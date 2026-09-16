@@ -1,7 +1,9 @@
 /* Flat 16 MB address space preserving the original LE linear addresses.
  * The data object lives at 0x80000, so DS:0x0004 is 0x80004 and is written
- * DSB(0x80004). The code object range 0x10000..0x73B15 is reserved but never
- * populated: code is reimplemented in C and mapped through fn_resolve(). */
+ * DSB(0x80004). The code object range 0x10000..0x73B15 is reserved: the port
+ * never executes the original code bytes (code stays reimplemented in C), but
+ * mem_load_le() may populate them so cross-object fixups resolve and the image
+ * can be validated against Ghidra. */
 #ifndef PR_MEM_H
 #define PR_MEM_H
 

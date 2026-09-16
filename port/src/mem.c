@@ -91,6 +91,7 @@ int mem_load_le(const char *exe_path, const char *object_bin_out)
      * against the Ghidra byte-for-byte diff of the objects in Task 3. */
     for (u32 obj = 0; obj < nobj; obj++) {
         const u8 *e = d + le + objtab + obj * 24;
+        u32 virt = rd32(e + 0);     /* object virtual size */
         u32 rel = rd32(e + 4);
         u32 pageidx = rd32(e + 12); /* 1-based number of the object's page 0 */
         u32 npg = rd32(e + 16);
@@ -113,12 +114,21 @@ int mem_load_le(const char *exe_path, const char *object_bin_out)
             if (avail < psz && mem_in_range(dst, psz))
                 mem_fill(dst + avail, 0, psz - avail);
         }
+        /* Zero the object's BSS tail: the part of its virtual size beyond the
+         * file-backed pages. Without this, repeated loads leak stale bytes from
+         * whatever previously occupied mem[] (later tasks load files into
+         * scratch mem[] space). */
+        u32 mapped = npg * psz;
+        if (virt > mapped && mem_in_range(rel + mapped, virt - mapped))
+            mem_fill(rel + mapped, 0, virt - mapped);
     }
 
     if (object_bin_out) {
-        u32 end = DATA_BASE + 0x8B0D0;
+        size_t len = DATA_BASE + 0x8B0D0 - CODE_BASE;
         FILE *o = fopen(object_bin_out, "wb");
-        if (o) { fwrite(mem + CODE_BASE, 1, end - CODE_BASE, o); fclose(o); }
+        int ok = o && fwrite(mem + CODE_BASE, 1, len, o) == len;
+        if (o) ok = (fclose(o) == 0) && ok;
+        if (!ok) { free(d); return 0; }
     }
     free(d);
     return 1;

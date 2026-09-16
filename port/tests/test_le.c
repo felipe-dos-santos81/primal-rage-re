@@ -26,5 +26,19 @@ int test_le(void)
           "DS:0x0010 is the SBPRO.DIG string");
     CHECK(memcmp(mem + DATA_BASE + 0x1C, "SBLASTER.DIG", 13) == 0,
           "DS:0x001C is the SBLASTER.DIG string");
+
+    /* The data object's virtual size (0x8B0D0) exceeds its file-backed pages
+     * (113 * 0x1000 == 0x71000). Poison that BSS tail, reload, and require the
+     * loader to have zeroed it: this fails if the tail is left to whatever
+     * mem[] held before, which a zero-initialised global would disguise. */
+    {
+        u32 mapped = 113u * 0x1000u;
+        mem_fill(DATA_BASE + mapped, 0xFF, 0x8B0D0 - mapped);
+        CHECK(mem_load_le(EXE, NULL) == 1, "reload after poisoning the BSS tail");
+        int dirty = 0;
+        for (u32 i = 0; i < 0x8B0D0 - mapped; i++)
+            if (mem[DATA_BASE + mapped + i] != 0) dirty = 1;
+        CHECK(!dirty, "data object BSS tail is zero-filled, not stale");
+    }
     return g_failures - before;
 }
