@@ -24,7 +24,10 @@ DATA_LO, DATA_HI = 0x80000, 0x10B0D0
 
 # No word boundary: Ghidra also emits _DAT_<addr> and _PTR_<kind>_<addr> for a
 # symbol overlapping smaller ones at the same address; the inner form must match.
-GLOB_RE = re.compile(r"(?:DAT|PTR_[A-Za-z0-9]+)_([0-9a-fA-F]{8})")
+# The kind segment holds underscores for multi-segment names such as
+# PTR_s_ASSHOLE_000804ab_1_0009af40 (string address + index + storage address);
+# matching it greedily keeps only the trailing 8-hex-digit storage address.
+GLOB_RE = re.compile(r"(?:DAT|PTR_[A-Za-z0-9_]+)_([0-9a-fA-F]{8})")
 
 
 def main(decomp_dir, out_path):
