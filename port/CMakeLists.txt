@@ -12,7 +12,6 @@ find_package(SDL3 REQUIRED CONFIG)
 
 add_library(prage_core STATIC src/mem.c src/platform/res.c)
 target_include_directories(prage_core PUBLIC src)
-target_link_libraries(prage_core PUBLIC SDL3::SDL3)
 
 add_executable(prageport src/main.c)
 target_link_libraries(prageport PRIVATE prage_core SDL3::SDL3)

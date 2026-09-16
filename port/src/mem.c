@@ -4,9 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* The linker caps __DATA,__common alignment at 0x4000; without this, a 64 MB
- * array makes the compiler request 0x8000 and ld warns. 0x4000 still exceeds
- * every access width used here. */
+/* PORT: aligned(0x4000). The original has no such object; this caps the
+ * linker's requested alignment. A 64 MB array makes the compiler ask for
+ * 0x8000, which exceeds macOS's __DATA,__common maximum and makes ld warn.
+ * 0x4000 still exceeds every access width used here. */
 u8 mem[MEM_SIZE] __attribute__((aligned(0x4000)));
 
 /* The registration table is port infrastructure, not game state: game state
