@@ -1,0 +1,167 @@
+51 clusters (size>=3)
+
+== cluster size=533  0x10d70-0x65624
+   top: FUN_0002c3fc FUN_0002ae14 FUN_0002bc30 FUN_00033950 FUN_0001c500 FUN_0002b150
+   strings: ------- | twi5.smk | twg.smk | 16 Meg Release | ORIGINAL COIN-OP DEVELOPMENT | Frank Kuan           Programmer/Designer | Jason Leong          Art Director | Steve Riesenberger   Associate Producer
+
+== cluster size=100  0x1282c-0x61a70
+   top: FUN_0001b544 FUN_00061a70 FUN_00028788 FUN_00012da8 FUN_00026254 FUN_00017fa0
+   strings: Primal Rage | %s needs more extended memory.\nPlease consult t | SETTING CONFIGURATION DEFAULT VALUES | Record number out of bounds | Write extends past end of EEPROM
+
+== cluster size=67  0x11f28-0x6c8ea
+   top: FUN_00024c5c FUN_000424e8 FUN_000255cc FUN_0002ea78 FUN_000249f0 FUN_0002c060
+
+== cluster size=32  0x615a3-0x72c35
+   top: FUN_0006b550 FUN_0006b592 FUN_0006c0eb FUN_0006225a FUN_00061f79 FUN_000615a3
+
+== cluster size=30  0x10610-0x6f3b3
+   top: FUN_00067730 FUN_00069bc0 FUN_00065b7b FUN_0001cf40 FUN_00061423 FUN_0001071d
+   strings: Out of timer handles\n | Insufficient memory for driver descriptor\n | Insufficient low memory\n | Invalid driver type\n | Out of driver handles\n | Minimum DMA buffer size too large for VDM\n | Could not allocate build buffer\n | Could not initialize instrument manager\n
+
+== cluster size=28  0x5d86a-0x6a3a0
+   top: FUN_0005d8ab FUN_0005d8bf FUN_0005dadc FUN_0006616a FUN_00066b88 FUN_00066bb8
+
+== cluster size=22  0x5d936-0x6a410
+   top: FUN_0005d973 FUN_0006a410 FUN_00069372 FUN_000653a1 FUN_0005d9c3 FUN_000656e2
+   strings: Invalid XMIDI sequence\n
+
+== cluster size=21  0x71276-0x728fa
+   top: FUN_000723a4 FUN_000716aa FUN_000712a6 FUN_00071276 FUN_000714d5 FUN_00071d7e
+
+== cluster size=21  0x5de79-0x6ab80
+   top: FUN_00068ab0 FUN_00068570 FUN_00068ed0 FUN_00069250 FUN_0005de94 FUN_0006a7c0
+
+== cluster size=19  0x1afe8-0x6d39f
+   top: FUN_00047370 FUN_0001b3ac FUN_0001d290 FUN_0001b120 FUN_00065827 FUN_0001afe8
+   strings: Corrupted .INI file\n | Primal Rage | DRIVER | DEVICE | IO_ADDR | DMA_8_bit | DMA_16_bit
+
+== cluster size=19  0x10b70-0x623b0
+   top: FUN_0001bec4 FUN_00061564 FUN_0001b084 FUN_0001be30 FUN_00010c30 FUN_00010d34
+   strings: \RAGE.S16 | RM.DRV
+
+== cluster size=16  0x12cd4-0x73aa6
+   top: FUN_00072eb7 FUN_0007358d FUN_00061a4c FUN_0001317c FUN_000738c6 FUN_00019164
+
+== cluster size=16  0x1013c-0x68050
+   top: FUN_0001013c FUN_0001cb18 FUN_0005dc0f FUN_0005dcc5 FUN_0005dc4d FUN_0005dca6
+
+== cluster size=16  0x10034-0x6f3df
+   top: FUN_00010830 FUN_000109a0 FUN_00010034 FUN_0005d87e FUN_0006603e FUN_00066c60
+   strings: SB16.DIG | SBPRO.DIG | SBLASTER.DIG
+
+== cluster size=15  0x100dc-0x65240
+   top: FUN_000102b8 FUN_00064130 FUN_00010678 FUN_00064ed8 FUN_00065240 FUN_000100dc
+
+== cluster size=14  0x62728-0x727bc
+   top: FUN_0006fb28 caseD_3 FUN_000727bc FUN_0006fcca FUN_00062728 FUN_00071800
+
+== cluster size=13  0x1b610-0x4ffd8
+   top: FUN_0001bbac FUN_0001b850 FUN_0001b730 FUN_0001b6a0 FUN_0001b890 FUN_0001b610
+
+== cluster size=10  0x109f4-0x6ae80
+   top: FUN_00061506 FUN_00010a68 FUN_00067d90 FUN_0006a2d0 FUN_000109f4 FUN_0005db61
+
+== cluster size=9  0x1e30c-0x50161
+   top: FUN_000500bb FUN_0001e458 FUN_00050161 FUN_0001e30c FUN_0002eb80 FUN_0002ede0
+
+== cluster size=9  0x100c4-0x6c881
+   top: FUN_0001c8cc FUN_00063ce8 FUN_00010570 FUN_00010684 FUN_000100c4 FUN_0005dfeb
+
+== cluster size=9  0x10024-0x6c875
+   top: FUN_0006345c FUN_00063180 FUN_0001c884 FUN_00062770 FUN_00062f3c FUN_00010024
+
+== cluster size=8  0x6af8b-0x6b4b3
+   top: FUN_0006b36f FUN_0006b2c0 FUN_0006b4b3 FUN_0006afca FUN_0006b1ed FUN_0006b12b
+
+== cluster size=8  0x6559b-0x6ce84
+   top: FUN_0006ce84 FUN_0006c8eb FUN_000655e4 FUN_0006559b FUN_0006cb6c FUN_0006cc9f
+   strings: 0123456789abcdefghijklmnopqrstuvwxyz
+
+== cluster size=8  0x61a47-0x738a0
+   top: FUN_00073289 FUN_000626ed FUN_0006c4cf FUN_00072c97 FUN_0006ce7d FUN_0006f707
+   strings: Floating-point support not loaded\n | Stack Overflow!\n
+
+== cluster size=8  0x1cc28-0x680f0
+   top: FUN_0005dc8b FUN_0005dd03 FUN_0001cc28 FUN_0001cd9c FUN_0001ce04 FUN_0001ce70
+
+== cluster size=8  0x1c740-0x65340
+   top: FUN_0001c740 FUN_000649b0 FUN_00052106 FUN_00065340 FUN_00050d23 FUN_00062756
+
+== cluster size=8  0x10510-0x6c851
+   top: FUN_0006279c FUN_000643cc FUN_00062a2c FUN_00062c1c FUN_0006c7b9 FUN_00010510
+
+== cluster size=7  0x6bf63-0x72b9c
+   top: FUN_0006c03a FUN_0006bf63 FUN_0006bf82 FUN_0006d2e5 FUN_0006c00b FUN_00072b6d
+
+== cluster size=7  0x6b55c-0x7391a
+   top: FUN_00073465 FUN_000734a6 FUN_000730db FUN_0006b55c FUN_00073804 FUN_0007391a
+
+== cluster size=6  0x624d4-0x72ca6
+   top: FUN_0006c435 FUN_000624d4 FUN_0006c484 FUN_00072c54 FUN_00072ca6 FUN_0006b6d5
+
+== cluster size=6  0x5d9e5-0x6a350
+   top: FUN_0005d9e5 FUN_00067e10 FUN_0006a350 FUN_0005db7c FUN_0005ddd0 FUN_0005ddf2
+   strings: Unable to open file DIG.INI\n | Unable to open file MDI.INI\n | DIG.INI | MDI.INI
+
+== cluster size=6  0x3c600-0x3c88c
+   top: FUN_0003c88c FUN_0003c6a8 FUN_0003c600 FUN_0003c6e8 FUN_0003c758 FUN_0003c800
+
+== cluster size=6  0x12c7c-0x1333c
+   top: FUN_00012d48 FUN_00012e3c FUN_00012df0 FUN_0001333c FUN_00013290 FUN_00012c7c
+
+== cluster size=5  0x61998-0x6d3be
+   top: FUN_00061998 FUN_00062386 FUN_00065f88 FUN_0006d348 FUN_0006d3be
+
+== cluster size=5  0x46bbc-0x470f8
+   top: FUN_00046c78 FUN_00046f4c FUN_00046dd4 FUN_000470f8 FUN_00046bbc
+
+== cluster size=5  0x1acf0-0x6ba08
+   top: FUN_0001acf0 FUN_00061ab0 FUN_00061a88 FUN_0006b9d0 FUN_0006ba08
+
+== cluster size=4  0x6fe85-0x71a76
+   top: FUN_0007124c FUN_00071a76 caseD_0 caseD_40
+
+== cluster size=4  0x6cd41-0x72d20
+   top: FUN_00072d20 FUN_0006cd41 FUN_0006cda2 FUN_00072cd6
+   strings: 0123456789abcdefghijklmnopqrstuvwxyz
+
+== cluster size=4  0x6b875-0x72a0c
+   top: FUN_0006b875 FUN_0006b92a FUN_0006b8ef FUN_00072a0c
+
+== cluster size=4  0x61922-0x719af
+   top: FUN_0006fd38 FUN_000718b0 FUN_000719af FUN_00061922
+
+== cluster size=4  0x4fc05-0x5004a
+   top: FUN_0005004a FUN_0004fc05 FUN_0004fcfd FUN_00050021
+
+== cluster size=4  0x34978-0x654c7
+   top: FUN_00065490 FUN_0004246c FUN_000654c7 FUN_00034978
+
+== cluster size=4  0x2ef24-0x65546
+   top: FUN_00065546 FUN_0003157c FUN_0002ef24 FUN_00031a78
+
+== cluster size=4  0x20860-0x6d2cd
+   top: FUN_000653ed FUN_00065739 FUN_00020860 FUN_0006d2cd
+   strings: 0123456789ABCDEF
+
+== cluster size=4  0x1d0bc-0x6c6d5
+   top: FUN_0006c6d5 FUN_0001d0bc FUN_00062734 FUN_00065380
+   strings: Warning: you need at least %i bytes more free me | Warning: you need at least %i bytes more free me
+
+== cluster size=4  0x1c930-0x5deca
+   top: FUN_0001c930 FUN_0005deca FUN_0001cab8 FUN_0005de48
+
+== cluster size=4  0x108e8-0x661c4
+   top: FUN_000108e8 FUN_000109ca FUN_000661c4 FUN_0005dfa5
+
+== cluster size=3  0x738e0-0x73aa4
+   top: FUN_000738e0 FUN_000739ef FUN_00073aa4
+
+== cluster size=3  0x61f04-0x6c0e5
+   top: FUN_00061f10 FUN_00061f04 FUN_0006c0e5
+
+== cluster size=3  0x5e488-0x5e4e8
+   top: FUN_0005e4e8 FUN_0005e488 FUN_0005e4b8
+
+== cluster size=3  0x5e09b-0x5e400
+   top: FUN_0005e400 FUN_0005e394 FUN_0005e09b

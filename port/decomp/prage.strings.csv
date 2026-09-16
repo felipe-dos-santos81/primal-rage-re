@@ -1,0 +1,226 @@
+address,length,string,n_xrefs,xref_from
+0001d2c0,9,"01-01-01",1,0001d2dc
+0002ef10,17,"0123456789ABCDEF",0,
+00032701,13,"MSD X.......",0,
+00032738,13,"    .X......",0,
+0003276f,13,"    ..X.....",0,
+000327d9,17,"			d    ....X...",0,
+00032810,17,"			D    .....X..",0,
+00032847,17,"			$    ......X.",0,
+00032882,13,"LSD .......X",0,
+00065576,37,"0123456789abcdefghijklmnopqrstuvwxyz",1,000655c2
+00072cb1,37,"0123456789abcdefghijklmnopqrstuvwxyz",1,00072cfa
+00080004,9,"SB16.DIG",2,0001006d 00010068
+00080010,10,"SBPRO.DIG",1,00010084
+0008001c,13,"SBLASTER.DIG",1,0001009b
+0008002c,10,"\RAGE.S16",2,00010c98 00010d25
+00080038,9,"twi5.smk",1,0001104b
+00080044,8,"twg.smk",1,00011055
+0008004c,15,"16 Meg Release",1,000113de
+0008005b,20,"xT E A M    R A G E",0,
+00080070,29,"ORIGINAL COIN-OP DEVELOPMENT",1,000115f2
+0008008f,42,"HDennis Harper        Producer/Programmer",0,
+000800bc,41,"Frank Kuan           Programmer/Designer",1,0001161c
+000800e8,34,"Jason Leong          Art Director",1,00011637
+0008010b,36,"xJ. Cameron Petty     Game Designer",0,
+0008012f,37,"PJeanne Parson        Audio Designer",0,
+00080154,40,"Steve Riesenberger   Associate Producer",1,00011682
+0008017c,25,"TWI CONSUMER DEVELOPMENT",1,0001170d
+00080198,35,"Senior Producer:     Ken Humphries",1,00011721
+000801bb,39,"xAssociate Producer:  Thomas MacDevitt",0,
+000801e2,38,"anTest Manager:        Curtis Soldano",0,
+00080208,31,"Analysts:            Rob Boone",1,0001176b
+00080227,36,"u                     Kelvin Filson",0,
+0008024b,33,"                      Mike Kruse",0,
+0008026c,35,"                     John Arvay Jr",1,000117b6
+0008028f,34,"aSpecial Thanks:      Steve Wahid",0,
+000802b1,38,"ano                     Tony McColgan",0,
+000802d7,36,"                      Darren Betton",0,
+000802fb,20," T E E N    R A G E",0,
+0008030f,24," TEENY WEENY GAMES LTD.",0,
+00080327,35," Produced by:         Colin Fuidge",0,
+0008034a,33,"anProgrammed by:       Mark Roll",0,
+0008036b,38,"                      Manjit Ghataora",0,
+00080391,35,"   Support Programmers: John Young",0,
+000803b4,38,"                     Chris Waterworth",1,00011907
+000803da,32,"ESMusic and sound:     Rob Lord",0,
+000803fa,36,"li                     Mark Bandola",0,
+0008041e,37,"rkGraphics Support:    Paul Mitchell",0,
+00080443,33,"G                     David Swan",0,
+00080464,35,"                     Warren Hawkes",1,00011984
+00080487,33,"rInstall Program:     Mark Judge",0,
+000804ab,9,"8ASSHOLE",0,
+000804c1,8,"eseFACK",0,
+000804cc,6,"PHUCK",1,0009af50
+000804d4,8,"FUK YOU",1,0009af54
+000804e9,8,"mesCUNT",0,
+000804f1,9,"e hPENIS",0,
+00080501,16," */MOTHERFUCKER",0,
+00080511,11,"_CNBASTARD",0,
+0008051c,7,"NIGGER",1,0009af74
+00080529,10,"onsVAGINA",0,
+00080533,6,"eANUS",0,
+00080539,15,"EEREAT MY DICK",0,
+00080548,7,"EAT MY",1,0009af88
+0008054f,9," EAT ME",0,
+00080558,8,"MY DICK",1,0009af90
+00080560,9,"EAT DICK",1,0009af94
+00080569,8,"OCKCOCK",0,
+00080571,9,"ACKPUSSY",0,
+000805a4,6,"index",4,0001b12b 0001b17a 0001b1df 0001b1eb
+000805b4,12,"Primal Rage",1,0001c1c9
+000805c0,59,"%s needs more extended memory.\nPlease consult the manual.\n",1,0001c1ce
+000805fc,64,"%s needs %iK more extended memory.\nPlease consult the manual.\n",0,
+0008063c,70,"Warning: you need at least %i bytes more free memory for midi music.\n",1,0001d119
+00080684,71,"Warning: you need at least %i bytes more free memory for any samples.\n",1,0001d188
+000806cc,50,"%s cannot Allocate DOS memory for Sound Drivers.\n",1,000a2cbc
+00080700,21,"%s cannot find %s!!\n",1,000a2cc0
+00080715,27," mu%s file %s is corrupt!\n",0,
+00080730,28,"%s requires a VGA display.\n",1,000a2cc8
+0008074c,32,"%s needs more extended memory.\n",1,000a2ccc
+0008076c,38,"%s cannot initialise the sound card.\n",1,000a2cd0
+00080792,46,"ll%s cannot allocate memory for object data.\n",0,
+000807c0,45,"%s cannot allocate memory for process data.\n",1,000a2cd8
+000807ed,25," re%s is out of memory.\n",0,
+00080807,41,"%%s cannot allocate valid sample block.\n",0,
+00080830,36,"%s cannot Initialise CD-Rom Drive.\n",1,000a2ce4
+00080854,44,"%s requires at least a 486 microprocessor.\n",1,000a2ce8
+00080880,12,"Primal Rage",1,0001d299
+000808cb,10," *English",0,
+000808e1,11,"einDeutsch",0,
+000808ec,9,"italiano",0,
+00080994,23,"                      ",3,00025e67 00026b59 000294fc
+000809ac,9,"%s%.03d%",1,00026ef3
+000809bc,6,"%s:%d",1,0002bf95
+000809c8,37,"SETTING CONFIGURATION DEFAULT VALUES",1,0002cae4
+000809ed,43,"\n*	SETTING CONFIGURATION DEFAULT VALUES",0,
+00080a24,24,"Round Time (in seconds)",1,0002d414
+00080a3c,24,"Match Time (in seconds)",0,
+00080a54,81,"Selects Per Character:	SAURON 	BLIZZARD 	TALON 	VERTIGO 	ARMADON 	DIABLO 	CHAOS ",0,
+00080aa5,35,"Coiattempt to write outside eeprom",0,
+00080ac8,28,"Record number out of bounds",1,0002d508
+00080ae4,33,"Write extends past end of EEPROM",1,0002d571
+00080b05,24," seBad High-score-table",0,
+00080b34,9,"01-01-01",1,000bcd5c
+00080b44,7,"OS:   ",1,0002f94b
+00080b4c,7,"MAIN: ",1,0002f96b
+00080b53,13,"xNull Menu",0,
+00080bac,20,"ADDRESS    RAW DATA",0,
+00080bd4,8,"DIAGS",0,
+00080be4,7,"      ",1,00038c95
+00080c08,12,"english.txt",2,000c9418 000c9434
+00080c14,11,"french.txt",1,000c941c
+00080c1f,12,"xgerman.txt",0,
+00080c2b,13,"xitalian.txt",0,
+00080c38,12,"spanish.txt",1,000c9428
+00080c44,13,"portugal.txt",1,000c942c
+00080c51,14,"  Rbrazil.txt",0,
+00081714,17,"0123456789ABCDEF",1,000657c8
+00081728,7,"DRIVER",1,000659df
+0008172f,7,"DEVICE",1,00065a08
+00081736,8,"IO_ADDR",1,00065a31
+00081742,10,"DMA_8_bit",1,00065a8c
+0008174c,11,"DMA_16_bit",1,00065ab8
+00081757,21,"Corrupted .INI file\n",2,00065b17 00065b12
+0008176c,43,"Insufficient memory for driver descriptor\n",2,00065ba8 00065ba3
+00081797,25,"Insufficient low memory\n",2,00065bf0 00065beb
+000817b0,8,"AIL3DIG",1,00065c2f
+000817b8,8,"AIL3MDI",1,00065c54
+000817c0,21,"Invalid driver type\n",2,00065c83 00065c7e
+000817d5,23,"Out of driver handles\n",2,00065d14 00065d0f
+000817ec,24,"Out of timer handles\n",2,00065e10 00065e0b
+00081804,43,"Minimum DMA buffer size too large for VDM\n",2,0006743b 00067434
+0008182f,39,"LCould not allocate memory for driver\n",0,
+00081856,24,"vo.DIG driver required\n",0,
+0008186e,36,"(vDigital sound hardware not found\n",0,
+00081892,34,"l)Could not allocate DMA buffers\n",0,
+000818b4,33,"Could not allocate build buffer\n",2,00067b0d 00067b05
+000818d5,41,"r VCould not allocate SAMPLE structures\n",0,
+000818fe,24,"veOut of timer handles\n",0,
+00081916,25,"reDriver file not found\n",0,
+00081930,8,"DIG.INI",1,00067e1b
+00081938,29,"Unable to open file DIG.INI\n",2,00067e42 00067e3d
+00081955,27,"MA Out of sample handles\n",0,
+00081985,33,"memInternal note queue overflow\n",0,
+000819a6,40,"oiCould not allocate memory for driver\n",0,
+000819ce,24," D.MDI driver required\n",0,
+000819e6,199,"e,\nGeneral MIDI timbres for Yamaha OPL-2- and OPL-3-based sound cards\nwere produced by The Fat Man(TM) and developed by K. Weston Phelan\nand George Alistair Sanger.  Copyright 1993, The Fat Man(TM)\n",0,
+00081aad,35,"IDIXMIDI sound hardware not found\n",0,
+00081ad0,41,"Could not initialize instrument manager\n",2,00069f2c 00069f22
+00081af9,43,"he Could not allocate SEQUENCE structures\n",0,
+00081b24,22,"Out of timer handles\n",2,0006a0b6 0006a0af
+00081b3a,25,"aiDriver file not found\n",0,
+00081b54,8,"MDI.INI",1,0006a35b
+00081b5c,29,"Unable to open file MDI.INI\n",2,0006a382 0006a37d
+00081b79,31,"rdwOut of sequence handles\n",0,
+00081b98,24,"Invalid XMIDI sequence\n",4,0006a450 0006a54c 0006a44b 0006a545
+00081bc5,22,"ENCNo timbres loaded\n",0,
+00081bdb,53,"fDriver could not install timbre bank %u, patch %u\n",0,
+00081c10,36,"Floating-point support not loaded\n",1,0006f708
+00081c34,16,"RATIONAL DOS/4G",0,
+00081c44,48,"Not enough memory to allocate file structures\n",0,
+000a2c9c,7,"RM.DRV",1,0001bf4c
+000a78cc,8,"UUUUUUU",1,000a7a7c
+000a78d6,8,"UUUUUUU",1,000a7a80
+000a78e0,8,"UUUUUUU",1,000a7a84
+000a78ea,8,"UUUUUUU",1,000a7a88
+000a78f4,8,"UUUUUUU",1,000a7a8c
+000a78fe,8,"UUUUUUU",1,000a7a90
+000a7908,8,"UUUUUUU",1,000a7a94
+000a7912,8,"UUUUUUU",1,000a7aa4
+000a791c,8,"UUUUUUU",1,000a7aa8
+000a7926,8,"UUUUUUU",1,000a7aac
+000a7930,8,"UUUUUUU",1,000a7ab0
+000a793a,8,"UUUUUUU",1,000a7ab4
+000a7944,8,"UUUUUUU",1,000a7ab8
+000a794e,8,"UUUUUUU",1,000a7abc
+000a7958,8,"UUUUUUU",1,000a7acc
+000a7962,8,"UUUUUUU",1,000a7ad0
+000a796c,8,"UUUUUUU",1,000a7ad4
+000a7976,8,"UUUUUUU",1,000a7ad8
+000a7980,8,"UUUUUUU",1,000a7adc
+000a798a,8,"UUUUUUU",1,000a7ae0
+000a7994,8,"UUUUUUU",1,000a7ae4
+000a799e,8,"UUUUUUU",1,000a7af4
+000a79a8,8,"UUUUUUU",1,000a7af8
+000a79b2,8,"UUUUUUU",1,000a7afc
+000a79bc,8,"UUUUUUU",1,000a7b00
+000a79c6,8,"UUUUUUU",1,000a7b04
+000a79d0,8,"UUUUUUU",1,000a7b08
+000a79da,8,"UUUUUUU",1,000a7b0c
+000a79e4,8,"UUUUUUU",1,000a7b1c
+000a79ee,8,"FFFFFFF",1,000a7b20
+000a79f8,8,"UUUUUUU",1,000a7b24
+000a7a02,8,"UUUUUUU",1,000a7b28
+000a7a0c,8,"UUUUUUU",1,000a7b2c
+000a7a16,8,"UUUUUUU",1,000a7b30
+000a7a20,8,"FFFFFFF",1,000a7b34
+000a7a2a,8,"UUUUUUU",1,000a7b44
+000a7a34,8,"UUUUUUU",1,000a7b48
+000a7a3e,8,"UUUUUUU",1,000a7b4c
+000a7a48,8,"UUUUUUU",1,000a7b50
+000a7a52,8,"UUUUUUU",1,000a7b54
+000a7a5c,8,"UUUUUUU",1,000a7b58
+000a7a66,8,"UUUUUUU",1,000a7b5c
+000a7d78,20,"Teeny Weeny Games",0,
+000bd410,52,"456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdef",0,
+000be01d,7,"COMBO",0,
+000c7742,8,"PPPPPPP",1,0003fd80
+000c97f2,8,"-------",3,0004d8da 0004dace 0004b7ef
+000c9e89,15,"eeeeefffffffff",0,
+000ca455,7,"fffeed",0,
+000cad36,22,"deffffffffgggggKKKKK",0,
+000cb16a,15,"ddddddddddddef",0,
+000d1154,324,"TTTTMMMM    CCCCOOOOPPPPRRRRIIIIGGGGTTTT    1111999999994444    AAAATTTTAAAARRRRIIII    GGGGAAAAMMMMEEEESSSS    CCCCOOOORRRRPPPP....    TTTTIIIIMMMMEEEE    WWWWAAAARRRRNNNNEEEERRRR    IIIINNNNTTTTEEEERRRRAAAACCCCTTTTIIIIVVVVEEEE    AAAALLLLLLLL    RRRRIIIIGGGGHHHHTTTTSSSS    RRRREEEESSSSEEEERRRRVVVVEEEEDDDD    VERSION 2.3",0,
+000d41c8,13,"}0|0{0z0y0x0",1,000c8dc4
+000d5afa,29,"( ( ( ( ( ( ( + + + + + + + ",0,
+000e0698,7,"Q3R3S3",1,000c8a58
+000e06b0,7,"S3S3Q3",1,000c8aa8
+000e06bc,51,"T3U3V3W3X3Y3Z3[3\3]3^3_3`3a3b3c3d3e3f3g3h3i3j3k3l3",1,000c8a80
+000e0700,7,"l3k3j3",1,000c8b20
+000e16e6,23,"o5p5q5r5r5r5r5r5q5p5o5",1,00021964
+000e79f6,17,"UEVEWEXEYEUEVEWE",0,
+000ea75c,35,"& ' ( ) * + * ) ( ' & , - . / 0 1 ",0,
+000ea7d6,29,"8 9 : ; < = > ? @ A B C D E ",0,
+000ea8bc,33,"_ ` a b c d e f g h i j k l m n ",0,
+000f09c2,18,"Stack Overflow!\n",1,00072c97
