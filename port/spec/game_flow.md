@@ -79,15 +79,43 @@ frame loop is reached through `0x20C10`:
   by `0x24C5C`) and `PTR_FUN_000A86C4`/`_DAT_00104AEC` (render, walked by
   `0x255CC`). This is the engine's extension seam.
 * **Tick** — `DAT_00105D88` is incremented by the 9-byte handler `0x2D62C`
-  (`DAT_00105D88++`). `main` locks that code page and the `DAT_00105D88` data
-  page, so it is an interrupt handler; the interrupt vector is not yet
-  confirmed.
-* **Pacing** — counter pair `DAT_00101508` (advanced asynchronously) and
-  `DAT_0010150C` (loop-local), compared in `0x255CC`. `0x1C740` additionally
-  busy-polls VBlank around the present work.
+  (`DAT_00105D88++`); `main` locks that code page and the `DAT_00105D88` data
+  page. **Tick rate = 60 Hz (inferred).** Evidence: `0x32B00` converts a tick
+  delta to seconds by dividing by `0x3c` = 60
+  (`(… - DAT_00107478) / 0x3c`), and the per-player timer pair updated in
+  `0x32970` wraps at `0xe10` = 3600 ticks (= 60 s = 1 minute) with an outer
+  reset at `0x383f` ≈ 14400 (= 4 minutes). Not directly measured: a
+  dosbox-x memory-file run never reached the frame loop (every per-frame
+  counter stayed 0), so `DAT_00105D88` could not be timed.
+  **Interrupt vector: unresolved.** `0x2D62C` has exactly one reference in the
+  whole binary — `main`'s region lock; the game code (`0x10000..0x5FFFF`)
+  contains **no** `int 21h`/`int 31h` instruction (all DOS/DPMI calls live in
+  the `0x6xxxx+` runtime), so no install site names the handler. A dosbox-x
+  `-log-int21` run showed only vector `0x15` get/set (DOS4GW's own hook) and
+  no `int 21h AX=25` for a timer vector. What would settle it: break at
+  `0x2D62C` in the dosbox-x debugger and read the vector/IDT entry, or trace
+  the DPMI `int 31h AX=0205` call that installs it.
+* **Pacing** — counter pair `DAT_00101508` (advanced asynchronously, presumably
+  by the same tick source) and `DAT_0010150C` (loop-local), compared in
+  `0x255CC`. `0x1C740` additionally busy-polls VBlank around the present work.
 * **Screen surface** — `0x51F45` (called once from `main`) sets
-  `(0, 200, &DAT_001088F8, 0x140, -1, 1, 0)` → 320x200 offscreen buffer at
-  `0x1088F8`; globals `DAT_000E87A0` / `DAT_000E87A4`.
+  `DAT_000E87A0 = DAT_001014E4`, `DAT_000E87A4 = DAT_001014E8` (the two
+  offscreen buffers) and builds a 200-entry dword row-offset table at
+  `DAT_001088F8` (`0, 0x140, 0x280, …` = 320-byte scanlines).
+* **Present / framebuffer write path (verified).** The game writes the
+  **linear VGA framebuffer at `0xA0000`** directly — it is **not** a VBE LFB
+  and **not** banked `int 10h 4F05`:
+  * `0x255CC` (master loop): when `DAT_001014FC != 0`, copies 16000 dwords
+    (64000 bytes = 320×200) from `DAT_000E87A4` to `&DAT_000A0000`, then clears
+    the flag.
+  * `0x501A3`: dirty-dword blit — writes only dwords that differ between
+    `DAT_000E87A4` and the flipped buffer `DAT_000E87A0` into `&DAT_000A0000`.
+  * `0x50188` swaps `DAT_000E87A0` ↔ `DAT_000E87A4` (double buffer).
+  * `main` gates on `int 10h` mode `0x13` (320×200×8) — the mode in which
+    `0xA0000` **is** the linear framebuffer. No `4F00`/`4F01`/`4F02`/`4F05`
+    VBE call exists anywhere in the decompilation.
+  * `0x1C740` (reached from the render dispatch) also VBlank-gates
+    (`in(0x3DA) & 8`) a blit of `DAT_000E87A4` to the display.
 * **Palette** — `0x1C470` flushes a 4x`u32`-record dirty-list at
   `DAT_00107498` (head `DAT_00107798`) to the VGA DAC, VBlank-gated. Records:
   `[0]` colour ptr or resource handle, `[1]` first DAC index, `[2]` count,
@@ -114,8 +142,11 @@ frame loop is reached through `0x20C10`:
 | `0x11000` | per-state render/play dispatch (13 cases) |
 | `0x1C740` | present / flip (VBlank-gated) |
 | `0x1C470` | palette dirty-list flush → VGA DAC |
-| `0x2D62C` | tick handler `DAT_00105D88++` (interrupt handler, vector TBD) |
-| `0x51F45` | 320x200 screen-surface setup (`&DAT_001088F8`) |
+| `0x2D62C` | tick handler `DAT_00105D88++` (interrupt handler; vector unresolved) |
+| `0x51F45` | 320x200 double-buffer + scanline table setup (`&DAT_001088F8`) |
+| `0x50188` | swap back/fore buffers `DAT_000E87A0` ↔ `DAT_000E87A4` |
+| `0x501A3` | dirty-dword blit `DAT_000E87A4` → linear VGA `0xA0000` |
+| `0x255CC` frame-loop full copy | 64000-byte `DAT_000E87A4` → `0xA0000` when `DAT_001014FC != 0` |
 | `PTR_FUN_000A8644` / `_DAT_00104AE8` | update process table / bitmask |
 | `PTR_FUN_000A86C4` / `_DAT_00104AEC` | render process table / bitmask |
 
@@ -130,7 +161,15 @@ frame loop is reached through `0x20C10`:
    `main` locks 8 regions (ISR code `0x2D62C`, `0x1B610`+`0x4000`,
    `0x62451`+`0x1000`; data `0x101508`, `0x105D88`, `0xEF6DE`).
 4. `DAT_00101524` memory-block list layout and the `0x600` / `0x200` block sizes.
-5. Which interrupt carries the tick (`0x2D62C`), and which code the framebuffer
-   write path uses (`0xA0000` is never referenced directly).
+5. ~~Which code the framebuffer write path uses~~ — **resolved**: linear VGA
+   `0xA0000` (mode `0x13`), written by a plain dword copy / dirty-dword blit
+   from `DAT_000E87A4`; no VBE LFB, no `4F05` banking. See "Present /
+   framebuffer write path".
+   **Still open:** which interrupt vector carries the tick `0x2D62C` (rate is
+   60 Hz, inferred; the install site names no handler — see "Tick"). This is
+   the one item Task 13 could not settle.
+   Port decision: `gfx_present()` renders the 320×200 index buffer through the
+   DAC to the window — the faithful equivalent of the original's `0xA0000`
+   write. No change required.
 6. Why `main` gates on `int 10h` mode `0x13` (320x200, matching the `0x51F45`
    surface) while the installed set is `S16` (640x480).

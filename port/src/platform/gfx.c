@@ -51,6 +51,13 @@ void gfx_flush_palette(void)
     DSD(0x107798) = DS_00107498;
 }
 
+/* PORT: the original writes the game's 320x200 index buffer straight into the
+ * linear VGA framebuffer at 0xA0000 (mode 13h) — a 64000-byte dword copy in the
+ * master loop (0x255CC) or the dirty-dword blit 0x501A3, from DAT_000E87A4.
+ * Task 13 confirmed this statically: no VBE 4F00/4F01/4F02/4F05 call exists and
+ * main gates on int 10h mode 0x13. The port has no VGA aperture, so the faithful
+ * equivalent is to convert the same indices through the DAC to RGB and hand the
+ * frame to the host window. No behavioural change required. */
 void gfx_present(const u8 *indices, int w, int h)
 {
     static u8 rgb[320 * 200 * 3];

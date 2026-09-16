@@ -19,7 +19,13 @@
 #include <string.h>
 #include <time.h>
 
-/* Nominal retrace interval. TODO(verify): Task 13 pins the original tick rate. */
+/* Original tick interval = 60 Hz. Task 13 pinned the rate by inference, not by
+ * a direct count of DAT_00105D88: the engine converts a tick delta to seconds
+ * with / 0x3c (60) at 0x32B00, and the per-player timers wrap at 0xe10 (3600
+ * ticks = 1 minute) at 0x32970. (A dosbox-x memory-file run never reached the
+ * frame loop, so the counter could not be timed live.)
+ * TODO(verify): the interrupt vector that installs 0x2D62C is still unknown —
+ * it has no static install site. See port/spec/game_flow.md "Tick". */
 #define HOST_TICK_NS 16666667ull
 
 /* PORT: a host stall (resume from sleep, NTP step, debugger pause) must not cost
