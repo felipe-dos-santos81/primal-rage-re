@@ -1,15 +1,18 @@
-/* Flat 16 MB address space preserving the original LE linear addresses.
- * The data object lives at 0x80000, so DS:0x0004 is 0x80004 and is written
- * DSB(0x80004). The code object range 0x10000..0x73B15 is reserved: the port
- * never executes the original code bytes (code stays reimplemented in C), but
- * mem_load_le() may populate them so cross-object fixups resolve and the image
- * can be validated against Ghidra. */
+/* Flat 64 MB address space preserving the original LE linear addresses.
+ * The original probes extended memory and keeps a block list; 0x1B120 loads
+ * every INDEX resource eagerly, 41.31 MB shipped, so the port sizes its flat
+ * space to hold them rather than emulating EMS. The data object lives at
+ * 0x80000, so DS:0x0004 is 0x80004 and is written DSB(0x80004). The code
+ * object range 0x10000..0x73B15 is reserved: the port never executes the
+ * original code bytes (code stays reimplemented in C), but mem_load_le() may
+ * populate them so cross-object fixups resolve and the image can be validated
+ * against Ghidra. */
 #ifndef PR_MEM_H
 #define PR_MEM_H
 
 #include "types.h"
 
-#define MEM_SIZE 0x1000000u
+#define MEM_SIZE 0x4000000u
 #define DATA_BASE 0x80000u
 #define CODE_BASE 0x10000u
 #define CODE_END  0x73B15u

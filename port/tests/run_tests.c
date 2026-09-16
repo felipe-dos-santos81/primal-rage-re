@@ -8,6 +8,7 @@ int main(void)
     test_scaffold();
     test_mem();
     test_le();
+    test_res();
     printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
     return g_failures != 0;
 }

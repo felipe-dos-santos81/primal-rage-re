@@ -9,7 +9,7 @@ int test_mem(void)
 {
     int before = g_failures;
 
-    CHECK_EQ_INT(MEM_SIZE, 0x1000000);
+    CHECK_EQ_INT(MEM_SIZE, 0x4000000);
     CHECK(mem_in_range(0x80000, 0x8B0D0), "data object range is inside mem[]");
     CHECK(!mem_in_range(MEM_SIZE - 4, 8), "writes past the end are rejected");
 

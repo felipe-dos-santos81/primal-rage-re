@@ -4,7 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-u8 mem[MEM_SIZE];
+/* The linker caps __DATA,__common alignment at 0x4000; without this, a 64 MB
+ * array makes the compiler request 0x8000 and ld warns. 0x4000 still exceeds
+ * every access width used here. */
+u8 mem[MEM_SIZE] __attribute__((aligned(0x4000)));
 
 /* The registration table is port infrastructure, not game state: game state
  * lives in mem[] at its original offsets, but the mapping from original code

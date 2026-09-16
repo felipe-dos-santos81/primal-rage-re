@@ -1,0 +1,30 @@
+/* Resource manager: the INDEX table at 0x1B120 and handle resolution at
+ * 0x1B544. The 20-byte-per-entry table, its count and every resource payload
+ * live in mem[] at the offsets the original uses. */
+#ifndef PR_RES_H
+#define PR_RES_H
+
+#include "types.h"
+
+/* Builds the entry table in mem[] the way 0x1B120 does and loads each
+ * resource's bytes from disk. game_dir holds the INDEX-listed files;
+ * index_path is the INDEX file itself. Returns the entry count, 0 on failure. */
+int res_load_index(const char *game_dir, const char *index_path);
+
+u32 res_count(void);
+
+/* 12-byte, zero-padded, not necessarily NUL-terminated. */
+const char *res_name(u32 index);
+
+u32 res_size(u32 index);
+u8  res_flags(u32 index);
+
+/* Packs a resource index (high bits) and byte offset (low 23 bits) the way
+ * 0x1B544 expands a handle. */
+u32 res_handle(u32 index, u32 offset);
+
+/* handle -> pointer, matching 0x1B544. NULL when the index is out of range or
+ * the entry has no data block. */
+void *res_resolve(u32 handle);
+
+#endif /* PR_RES_H */
