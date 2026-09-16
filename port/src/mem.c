@@ -192,9 +192,17 @@ int mem_load_le_fixups(const char *exe_path, u32 object_index)
         for (long cur = 0; cur < end - begin; ) {
             const u8 *r = d + le + frt + begin + cur;
             u8 src = r[0], tf = r[1];
-            if ((src & 0x20) || (src & 0xf) != 0x7 || (tf & 3) != 0) {
+            /* Accept only the exact encodings this walker models, so an
+             * unrecognised record is reported (return 0), never misparsed: the
+             * source byte must be a plain 32-bit offset (0x07) -- no alias
+             * (0x10), source list (0x20) or 0x40 source-location-size bit; the
+             * target byte must be an internal reference (low 2 bits clear) with
+             * only the 32-bit target offset (0x10) and 16-bit object (0x40)
+             * flags this walker reads. Additive (0x04/0x20) and chaining (0x08)
+             * records resize the record and are likewise rejected. */
+            if (src != 0x07 || (tf & ~(u8)0x50) != 0) {
                 free(d);
-                return 0; /* source list, non-32-bit offset, or imported */
+                return 0;
             }
             s32 src_off = (s16)rd16(r + 2);
             const u8 *q = r + 4;
