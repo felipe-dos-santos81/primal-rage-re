@@ -22,6 +22,11 @@
 /* Nominal retrace interval. TODO(verify): Task 13 pins the original tick rate. */
 #define HOST_TICK_NS 16666667ull
 
+/* PORT: a host stall (resume from sleep, NTP step, debugger pause) must not cost
+ * one loop iteration per missed interval. Beyond this many intervals the port
+ * skips the lost time instead of replaying it. 30 intervals = 0.5 s. */
+#define HOST_TICK_MAX_CATCHUP 30u
+
 /* Set 1 BIOS scan codes for SDL_SCANCODE_A..Z, indexed - SDL_SCANCODE_A. */
 static const u8 k_bios_letter[26] = {
     0x1E, 0x30, 0x2E, 0x20, 0x12, 0x21, 0x22, 0x23, 0x17, 0x24, 0x25, 0x26,
@@ -39,10 +44,12 @@ static int g_sdl_video;
 static int g_pending; /* a frame was submitted and awaits present */
 static int g_w, g_h;
 
+/* Monotonic, so a wall-clock step (NTP, manual set) cannot skew the tick base.
+ * CLOCK_MONOTONIC is POSIX; the port already targets a POSIX host. */
 static uint64_t now_ns(void)
 {
     struct timespec ts;
-    timespec_get(&ts, TIME_UTC);
+    clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
 }
 
@@ -146,10 +153,14 @@ void host_pump(void)
 
     if (!g_tick_started) { g_tick_base_ns = now_ns(); g_tick_started = 1; }
     uint64_t now = now_ns();
-    if (now < g_tick_base_ns) g_tick_base_ns = now; /* clock stepped back */
-    while (now - g_tick_base_ns >= HOST_TICK_NS) {
-        g_tick++;
-        g_tick_base_ns += HOST_TICK_NS;
+    uint64_t missed = (now - g_tick_base_ns) / HOST_TICK_NS;
+    if (missed > HOST_TICK_MAX_CATCHUP) {
+        /* Long stall: advance a bounded amount and rebase, dropping the rest. */
+        g_tick += HOST_TICK_MAX_CATCHUP;
+        g_tick_base_ns = now;
+    } else {
+        g_tick += (u32)missed;
+        g_tick_base_ns += missed * HOST_TICK_NS;
     }
 }
 
@@ -177,7 +188,7 @@ int host_read_file(const char *path, u8 *dst, u32 max, u32 *len_out)
     if (!f) return 0;
     long sz;
     if (fseek(f, 0, SEEK_END) != 0 || (sz = ftell(f)) < 0 ||
-        (u32)sz > max || fseek(f, 0, SEEK_SET) != 0) {
+        (uint64_t)sz > (uint64_t)max || fseek(f, 0, SEEK_SET) != 0) {
         fclose(f);
         return 0;
     }

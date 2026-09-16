@@ -35,7 +35,14 @@ int test_host(void)
     CHECK(host_tick_count() > t0, "host_wait_vblank advances host_tick_count");
     CHECK(host_tick_count() >= t0, "tick does not go backwards");
 
-    /* File round-trip, over-max rejection, and a missing file. */
+    /* A pump with no elapsed interval must not invent ticks (the catch-up clamp
+     * must preserve normal pacing). */
+    u32 tprev = host_tick_count();
+    host_pump();
+    CHECK_EQ_INT((int)host_tick_count(), (int)tprev);
+
+    /* File round-trip, over-max rejection, and a missing file. The over-max read
+     * must fail cleanly and leave the destination untouched. */
     const char *path = "port_host_test.tmp";
     const u8 out[5] = { 'p', 'r', 'a', 'g', 'e' };
     u8 in[8];
@@ -44,7 +51,9 @@ int test_host(void)
     CHECK(host_read_file(path, in, sizeof in, &n), "host_read_file succeeds");
     CHECK_EQ_INT((int)n, (int)sizeof out);
     CHECK(in[0] == 'p' && in[4] == 'e', "file contents round-trip");
+    for (size_t i = 0; i < sizeof in; i++) in[i] = 0xAB;
     CHECK(!host_read_file(path, in, 4, &n), "file larger than max fails");
+    CHECK(in[0] == 0xAB && in[7] == 0xAB, "over-max read writes nothing");
     CHECK(!host_read_file("no/such/prage/file", in, sizeof in, &n),
           "missing file fails");
     remove(path);
