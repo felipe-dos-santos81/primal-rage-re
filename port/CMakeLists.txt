@@ -10,11 +10,17 @@ add_compile_options(-Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing)
 
 find_package(SDL3 REQUIRED CONFIG)
 
-add_library(prage_core STATIC src/mem.c src/platform/res.c src/platform/gra.c src/platform/gfx.c src/platform/input.c)
+add_library(prage_core STATIC src/mem.c src/platform/res.c src/platform/gra.c src/platform/gfx.c src/platform/input.c src/host.c)
 target_include_directories(prage_core PUBLIC src)
+# Task 12 reversal: Task 6 made prage_core drop SDL3::SDL3 PUBLIC so run_tests
+# (which had no SDL code) need not link SDL. host.c now lives in the library and
+# is the real implementation the suite must exercise, so SDL must be linked.
+# PRIVATE still confines the dependency to the link line; SDL headers stay in
+# host.c/main.c only, which is the binding constraint, not the link.
+target_link_libraries(prage_core PRIVATE SDL3::SDL3)
 
 add_executable(prageport src/main.c)
-target_link_libraries(prageport PRIVATE prage_core SDL3::SDL3)
+target_link_libraries(prageport PRIVATE prage_core)
 
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/src/symbols.h
@@ -30,7 +36,7 @@ add_custom_target(symbols DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/symbols.h)
 add_dependencies(prage_core symbols)
 
 enable_testing()
-add_executable(run_tests tests/run_tests.c tests/test_scaffold.c tests/test_mem.c tests/test_le.c tests/test_res.c tests/test_gra.c tests/test_gfx.c tests/test_input.c)
+add_executable(run_tests tests/run_tests.c tests/test_scaffold.c tests/test_mem.c tests/test_le.c tests/test_res.c tests/test_gra.c tests/test_gfx.c tests/test_input.c tests/test_host.c)
 target_include_directories(run_tests PRIVATE src tests)
 target_link_libraries(run_tests PRIVATE prage_core)
 add_test(NAME unit COMMAND run_tests WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/..")

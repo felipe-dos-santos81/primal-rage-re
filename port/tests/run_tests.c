@@ -12,6 +12,7 @@ int main(void)
     test_gra();
     test_gfx();
     test_input();
+    test_host();
     printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
     return g_failures != 0;
 }

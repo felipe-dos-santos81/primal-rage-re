@@ -2,7 +2,8 @@
 #include "test.h"
 
 /* Dequeues one key, failing instead of blocking forever: input_get_key() spins
- * on host_pump() while empty, and host_pump() is still a no-op today. */
+ * on host_pump() while empty, and the headless suite has no window to produce a
+ * key, so a missing key must fail rather than hang. */
 static int take(void)
 {
     CHECK(input_has_key(), "key present before input_get_key");
