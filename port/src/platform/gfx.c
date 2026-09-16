@@ -51,13 +51,16 @@ void gfx_flush_palette(void)
     DSD(0x107798) = DS_00107498;
 }
 
-/* PORT: the original writes the game's 320x200 index buffer straight into the
- * linear VGA framebuffer at 0xA0000 (mode 13h) — a 64000-byte dword copy in the
- * master loop (0x255CC) or the dirty-dword blit 0x501A3, from DAT_000E87A4.
- * Task 13 confirmed this statically: no VBE 4F00/4F01/4F02/4F05 call exists and
- * main gates on int 10h mode 0x13. The port has no VGA aperture, so the faithful
- * equivalent is to convert the same indices through the DAC to RGB and hand the
- * frame to the host window. No behavioural change required. */
+/* PORT: the original writes the game's 320x200 index buffer to the *literal*
+ * address 0xA0000 (mov edi/ebx, 0xa0000) — a 64000-byte dword copy in the
+ * master loop (0x255CC), or the dirty-dword blit (0x501A3), from
+ * DAT_000E87A4. Task 13 verified that immediate is covered by no LE fixup, so
+ * it is the VGA mode-13h aperture, NOT a data-object address. The port maps the
+ * LE data object flat at DATA_BASE 0x80000, so mem[0xA0000] would alias
+ * data-object offset 0x20000 — live engine tables (PTR_DAT_000A1290, the LUTs
+ * at 0xA1420, …), never a screen. gfx_present() therefore must NOT write mem[]:
+ * it converts the same indices through the DAC to RGB and hands the frame to
+ * the host window. No behavioural change required. */
 void gfx_present(const u8 *indices, int w, int h)
 {
     static u8 rgb[320 * 200 * 3];

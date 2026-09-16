@@ -71,7 +71,7 @@ frame loop is reached through `0x20C10`:
   0x11D04   STATE MACHINE: switch(DAT_000F0A64) cases 1..9, transitions via
             DAT_000F0A64 / DAT_000F0A6C / DAT_000F0A6A / DAT_000F0A6F / DAT_000F0A72
   0x11000   per-state render/play dispatch (13-case switch)
-  0x1C740   PRESENT: VBlank wait `in(0x3DA) & 8`, then 0x52106 / 0x50161 / 0x50D23
+  0x1C740   VBlank-gated animation/FLIC blit (NOT the screen write; screen is 0xA0000)
 ```
 
 * **Process tables** — two 32-entry `code *` tables `0x80` bytes apart, each
@@ -80,13 +80,18 @@ frame loop is reached through `0x20C10`:
   `0x255CC`). This is the engine's extension seam.
 * **Tick** — `DAT_00105D88` is incremented by the 9-byte handler `0x2D62C`
   (`DAT_00105D88++`); `main` locks that code page and the `DAT_00105D88` data
-  page. **Tick rate = 60 Hz (inferred).** Evidence: `0x32B00` converts a tick
-  delta to seconds by dividing by `0x3c` = 60
+  page. **Tick rate = 60 Hz (measured + static).** Static: `0x32B00` converts a
+  tick delta to seconds by dividing by `0x3c` = 60
   (`(… - DAT_00107478) / 0x3c`), and the per-player timer pair updated in
-  `0x32970` wraps at `0xe10` = 3600 ticks (= 60 s = 1 minute) with an outer
-  reset at `0x383f` ≈ 14400 (= 4 minutes). Not directly measured: a
-  dosbox-x memory-file run never reached the frame loop (every per-frame
-  counter stayed 0), so `DAT_00105D88` could not be timed.
+  `0x32970` wraps at `0xe10` = 3600 ticks (= 60 s = 1 minute), outer reset
+  `0x383f` ≈ 14400 (= 4 minutes). Measured: in a live dosbox-x run the dword at
+  physical `0x2EBD88` advanced 729 counts over a 12.139 s window (BIOS 18.2 Hz
+  tick: 221) = **60.05 Hz**. That address's 4 KB-page offset (`0xd88`) equals
+  `DAT_00105D88`'s (data offset `0x85d88`), so it is very likely
+  `DAT_00105D88`; the runtime page map is not the LE page order, so the
+  identification is probable, not certain. The counter kept running while the
+  master loop was idle (all per-frame counters stayed 0) — consistent with an
+  interrupt-driven tick.
   **Interrupt vector: unresolved.** `0x2D62C` has exactly one reference in the
   whole binary — `main`'s region lock; the game code (`0x10000..0x5FFFF`)
   contains **no** `int 21h`/`int 31h` instruction (all DOS/DPMI calls live in
@@ -102,20 +107,45 @@ frame loop is reached through `0x20C10`:
   `DAT_000E87A0 = DAT_001014E4`, `DAT_000E87A4 = DAT_001014E8` (the two
   offscreen buffers) and builds a 200-entry dword row-offset table at
   `DAT_001088F8` (`0, 0x140, 0x280, …` = 320-byte scanlines).
-* **Present / framebuffer write path (verified).** The game writes the
-  **linear VGA framebuffer at `0xA0000`** directly — it is **not** a VBE LFB
-  and **not** banked `int 10h 4F05`:
+* **Present / framebuffer write path (verified-with-caveat).** The screen-write
+  target is the **literal address `0xA0000`** — the VGA mode-13h aperture — not a
+  pointer and not a data-object address:
   * `0x255CC` (master loop): when `DAT_001014FC != 0`, copies 16000 dwords
-    (64000 bytes = 320×200) from `DAT_000E87A4` to `&DAT_000A0000`, then clears
-    the flag.
+    (64000 bytes = 320×200) from `DAT_000E87A4` to the literal `0xA0000`
+    (`mov edi, 0xa0000`), then clears the flag.
   * `0x501A3`: dirty-dword blit — writes only dwords that differ between
-    `DAT_000E87A4` and the flipped buffer `DAT_000E87A0` into `&DAT_000A0000`.
+    `DAT_000E87A4` and the flipped buffer `DAT_000E87A0` to the literal
+    `0xA0000` (`mov ebx, 0xa0000`).
   * `0x50188` swaps `DAT_000E87A0` ↔ `DAT_000E87A4` (double buffer).
-  * `main` gates on `int 10h` mode `0x13` (320×200×8) — the mode in which
-    `0xA0000` **is** the linear framebuffer. No `4F00`/`4F01`/`4F02`/`4F05`
-    VBE call exists anywhere in the decompilation.
-  * `0x1C740` (reached from the render dispatch) also VBlank-gates
-    (`in(0x3DA) & 8`) a blit of `DAT_000E87A4` to the display.
+  * `main` gates on `int 10h` mode `0x13` (320×200×8); no `4F00`/`4F01`/`4F02`/
+    `4F05` VBE call exists anywhere in the decompilation.
+  * `0x1C740` VBlank-gates (`in(0x3DA) & 8`) a blit of `DAT_000E87A4` through
+    `FUN_00065340`; this is an animation/FLIC-style blit, **not** the screen
+    write.
+  The *literal-target* and *not-a-data-object-address* facts are verified; the
+  "VGA aperture" reading is inferred from the literal being non-relocated plus
+  mode `0x13`. See the conflict below.
+
+* **Aperture conflict with the port's memory model (verified) — the rule.**
+  `0x501A3`/`0x255CC` write `0xA0000` as a **literal immediate**, and no LE
+  fixup covers it (the nearby fixup at `0x501AC` relocates only the
+  `DAT_000E87A4` operand). Non-relocated means **not** a data-object address:
+  it is the VGA aperture. Runtime proof: the image is relocated at load (data
+  pages live around `0x266000`+ — the bit-expansion LUT `00 80 c0 e0 f0 f8 fc
+  fe`, stored in the file at data offset `0x21420`, is at physical `0x287420`),
+  and a dosbox-x memory-file dump shows **`0xA0000..0xAFA00` all `0xFF`** — the
+  data object is not mapped there.
+  In the port's flat model the data object *is* mapped at `DATA_BASE 0x80000`,
+  so `mem[0xA0000]` **is** data-object offset `0x20000`, which holds **live
+  engine data, not a screen**: the 8-dword pointer table `PTR_DAT_000A1290`
+  (file `0xA1290` = `90 f0 01 00 …`), bit-expansion/step LUTs at `0xA1420`
+  (`00 80 c0 e0 f0 f8 fc fe …`), `0xA163C`, `0xA173C`, `0xA769C`, `0xA7BC0`,
+  read via `FUN_00018950`/`FUN_00015F48` and callers at `prage.c:5608`, `4522`,
+  `4386`, `3657`, `3710`, `9034`, `11200`, `25199`.
+  **Rule: screen output must never target `mem[0xA0000]`.** The port keeps its
+  frame buffer outside the mapped data object; `gfx_present()` renders the
+  320×200 index buffer to the SDL window. Task 14 must not "port" the `0xA0000`
+  copy as a `mem[]` write.
 * **Palette** — `0x1C470` flushes a 4x`u32`-record dirty-list at
   `DAT_00107498` (head `DAT_00107798`) to the VGA DAC, VBlank-gated. Records:
   `[0]` colour ptr or resource handle, `[1]` first DAC index, `[2]` count,
@@ -140,13 +170,13 @@ frame loop is reached through `0x20C10`:
 | `0x24C5C` | per-frame update (frame counter, 2 player records, update process table) |
 | `0x11D04` | state machine `switch(DAT_000F0A64)` |
 | `0x11000` | per-state render/play dispatch (13 cases) |
-| `0x1C740` | present / flip (VBlank-gated) |
+| `0x1C740` | VBlank-gated animation/FLIC blit of `DAT_000E87A4` (not the screen write) |
 | `0x1C470` | palette dirty-list flush → VGA DAC |
 | `0x2D62C` | tick handler `DAT_00105D88++` (interrupt handler; vector unresolved) |
 | `0x51F45` | 320x200 double-buffer + scanline table setup (`&DAT_001088F8`) |
 | `0x50188` | swap back/fore buffers `DAT_000E87A0` ↔ `DAT_000E87A4` |
-| `0x501A3` | dirty-dword blit `DAT_000E87A4` → linear VGA `0xA0000` |
-| `0x255CC` frame-loop full copy | 64000-byte `DAT_000E87A4` → `0xA0000` when `DAT_001014FC != 0` |
+| `0x501A3` | dirty-dword blit `DAT_000E87A4` → literal aperture `0xA0000` |
+| `0x255CC` frame-loop full copy | 64000-byte `DAT_000E87A4` → literal `0xA0000` when `DAT_001014FC != 0` |
 | `PTR_FUN_000A8644` / `_DAT_00104AE8` | update process table / bitmask |
 | `PTR_FUN_000A86C4` / `_DAT_00104AEC` | render process table / bitmask |
 
@@ -161,15 +191,21 @@ frame loop is reached through `0x20C10`:
    `main` locks 8 regions (ISR code `0x2D62C`, `0x1B610`+`0x4000`,
    `0x62451`+`0x1000`; data `0x101508`, `0x105D88`, `0xEF6DE`).
 4. `DAT_00101524` memory-block list layout and the `0x600` / `0x200` block sizes.
-5. ~~Which code the framebuffer write path uses~~ — **resolved**: linear VGA
-   `0xA0000` (mode `0x13`), written by a plain dword copy / dirty-dword blit
-   from `DAT_000E87A4`; no VBE LFB, no `4F05` banking. See "Present /
-   framebuffer write path".
+5. ~~Which code the framebuffer write path uses~~ — **resolved**: the write
+   target is the literal (non-relocated) address `0xA0000`, the VGA mode-`0x13`
+   aperture, reached by a plain dword copy / dirty-dword blit from
+   `DAT_000E87A4`; no VBE LFB, no `4F05` banking. **The earlier claim that
+   `0xA0000` had zero references was a false negative**: it is written as a
+   *literal immediate* (`mov edi/ebx, 0xa0000`), which the decompiler renders as
+   `DAT_000A0000`, and the fixup right beside it (`0x501AC`) covers only the
+   `DAT_000E87A4` operand — so it is not a relocated data pointer. See "Present
+   / framebuffer write path" and "Aperture conflict".
+   **Port rule (verified):** `mem[0xA0000]` is data-object offset `0x20000`
+   (live pointer table / LUTs), so screen output must never target it; the port
+   keeps its frame buffer outside the mapped data object and renders the
+   320×200 index buffer to the window.
    **Still open:** which interrupt vector carries the tick `0x2D62C` (rate is
-   60 Hz, inferred; the install site names no handler — see "Tick"). This is
+   60 Hz, inferred; no install site names the handler — see "Tick"). This is
    the one item Task 13 could not settle.
-   Port decision: `gfx_present()` renders the 320×200 index buffer through the
-   DAC to the window — the faithful equivalent of the original's `0xA0000`
-   write. No change required.
 6. Why `main` gates on `int 10h` mode `0x13` (320x200, matching the `0x51F45`
    surface) while the installed set is `S16` (640x480).

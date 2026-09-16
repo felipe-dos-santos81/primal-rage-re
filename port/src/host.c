@@ -19,11 +19,10 @@
 #include <string.h>
 #include <time.h>
 
-/* Original tick interval = 60 Hz. Task 13 pinned the rate by inference, not by
- * a direct count of DAT_00105D88: the engine converts a tick delta to seconds
- * with / 0x3c (60) at 0x32B00, and the per-player timers wrap at 0xe10 (3600
- * ticks = 1 minute) at 0x32970. (A dosbox-x memory-file run never reached the
- * frame loop, so the counter could not be timed live.)
+/* Original tick interval = 60 Hz. Task 13 pinned the rate from the engine's own
+ * unit conversions (/ 0x3c = 60 at 0x32B00; timers wrap at 0xe10 = 3600 ticks =
+ * 1 minute at 0x32970) and measured a live 60.05 Hz counter at physical
+ * 0x2EBD88 (page offset 0xd88 == DAT_00105D88's, so very likely that counter).
  * TODO(verify): the interrupt vector that installs 0x2D62C is still unknown —
  * it has no static install site. See port/spec/game_flow.md "Tick". */
 #define HOST_TICK_NS 16666667ull
