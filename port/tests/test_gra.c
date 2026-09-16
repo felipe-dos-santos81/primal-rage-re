@@ -98,11 +98,11 @@ int test_gra(void)
     /* Palette bank: S16FONTS is 27 colours over a 144-byte type-5 body, and
      * the first colour word 0x0090D0F0 packs to (0x3C, 0x34, 0x24). */
     {
-        u8 pal[3 * 1024];
+        u8 pal[4096];
         int cols = -1;
         CHECK(load_at("data/game/C/S16FONTS.GRA", SCRATCH, &len), "fonts loads");
         CHECK(gra_open(SCRATCH, len, c, 4, &n), "fonts chain");
-        CHECK(gra_decode_palette(SCRATCH, c, n, pal, &cols), "fonts palette decodes");
+        CHECK(gra_decode_palette(SCRATCH, c, n, pal, sizeof pal, &cols), "fonts palette decodes");
         CHECK_EQ_INT(cols, 27);
         CHECK_EQ_INT(pal[0], 0x3C);
         CHECK_EQ_INT(pal[1], 0x34);
@@ -110,8 +110,23 @@ int test_gra(void)
 
         CHECK(load_at("data/game/C/S16TITLE.GRA", SCRATCH, &len), "title loads");
         CHECK(gra_open(SCRATCH, len, c, 4, &n), "title chain");
-        CHECK(gra_decode_palette(SCRATCH, c, n, pal, &cols), "title palette decodes");
+        CHECK(gra_decode_palette(SCRATCH, c, n, pal, sizeof pal, &cols), "title palette decodes");
         CHECK_EQ_INT(cols, 720);
+    }
+
+    /* The largest bank in the shipped set is S16ATTRC's 1292 colours (3876 B).
+     * An exactly-sized buffer succeeds; an undersized buffer is rejected with
+     * *count left 0, never written past its capacity. */
+    {
+        u8 big[1292 * 3];
+        u8 tiny[3 * 8];
+        int cols = -1;
+        CHECK(load_at("data/game/C/S16ATTRC.GRA", SCRATCH, &len), "attrc loads");
+        CHECK(gra_open(SCRATCH, len, c, 4, &n), "attrc chain");
+        CHECK(gra_decode_palette(SCRATCH, c, n, big, sizeof big, &cols), "largest bank fits");
+        CHECK_EQ_INT(cols, 1292);
+        CHECK_EQ_INT(gra_decode_palette(SCRATCH, c, n, tiny, sizeof tiny, &cols), 0);
+        CHECK_EQ_INT(cols, 0);
     }
 
     /* A single frame: FONTS frame 0 is 13x7, consumes 92 RLE bytes and has
@@ -128,13 +143,20 @@ int test_gra(void)
         for (int i = 0; i < 13 * 7; i++) if (px[i]) opaque++;
         CHECK_EQ_INT(opaque, 88);
 
-        /* Sentinel records must be rejected, not decoded into a huge length. */
-        CHECK(load_at("data/game/C/S16TITLE.GRA", SCRATCH, &len), "title loads again");
-        CHECK(gra_open(SCRATCH, len, c, 4, &n), "title chain again");
-        CHECK_EQ_INT(gra_decode_frame(SCRATCH, c, n, 864, px, sizeof px), -1);
+        /* Sentinel records, by *record index* (the earlier byte offsets 864 and
+         * 624 were being misread as indices and only hit the out-of-range
+         * guard). S16FONTS has 5 zero-dimension records and S16TITLE has 1
+         * negative-dimension record (-320x-200 at index 72); each must be
+         * rejected by the sentinel guard. Removing `(s16)w <= 0 || (s16)h <= 0`
+         * makes the zero-dimension ones return >= 0, so these tests fail. */
+        static const int zero_dim[] = {52, 232, 263, 328, 330};
         CHECK(load_at("data/game/C/S16FONTS.GRA", SCRATCH, &len), "fonts loads a third time");
         CHECK(gra_open(SCRATCH, len, c, 4, &n), "fonts chain a third time");
-        CHECK_EQ_INT(gra_decode_frame(SCRATCH, c, n, 624, px, sizeof px), -1);
+        for (unsigned k = 0; k < sizeof zero_dim / sizeof zero_dim[0]; k++)
+            CHECK_EQ_INT(gra_decode_frame(SCRATCH, c, n, zero_dim[k], px, sizeof px), -1);
+        CHECK(load_at("data/game/C/S16TITLE.GRA", SCRATCH, &len), "title loads again");
+        CHECK(gra_open(SCRATCH, len, c, 4, &n), "title chain again");
+        CHECK_EQ_INT(gra_decode_frame(SCRATCH, c, n, 72, px, sizeof px), -1);
     }
 
     /* Primary assertion: exact consumption across all 69 shipped files. Every

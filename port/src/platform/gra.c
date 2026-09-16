@@ -36,8 +36,14 @@ int gra_open(u32 file_off, u32 file_len, GraChunk *out, int max, int *count)
  *   b & 0x80 != 0, b&0x40==0 repeat run   (b & 0x3F) pixels, one colour byte
  *   b & 0x80 != 0, b&0x40!=0 transparent  (b & 0x3F) pixels, index 0
  * Returns the bytes consumed, or -1 if a run overruns the row, src, or dst, or
- * if a token would advance zero pixels (which the original's grammar excludes
- * but which would otherwise spin). */
+ * if a token would advance zero pixels.
+ * PORT: transparent runs write index 0, conflating them with palette entry 0.
+ * Lossless for the shipped assets: over all 113,266,036 sprite pixel slots
+ * (w*h of every positive-dimension descriptor), 0 of the 49,423,356 opaque
+ * pixels carry index 0, so no opaque pixel is lost. Not lossless in principle —
+ * a sprite using entry 0 opaque cannot be told apart from a transparent run.
+ * PORT: a zero-advance token (0x00 / 0x80 / 0xC0) returns -1; the original's
+ * measure loop would not terminate. None occurs in the 69 shipped files. */
 static int rle_decode(const u8 *src, u32 src_len, u16 w, u16 h,
                       u8 *dst, u32 dst_len)
 {
@@ -73,7 +79,7 @@ static int rle_decode(const u8 *src, u32 src_len, u16 w, u16 h,
 }
 
 int gra_decode_palette(u32 file_off, const GraChunk *chunks, int chunk_count,
-                       u8 *rgb_out, int *count)
+                       u8 *rgb_out, u32 rgb_cap, int *count)
 {
     /* TODO(verify): the bank is returned flat; which record / DAC base index a
      * given sprite selects is still open, so no sub-palette split is applied. */
@@ -85,12 +91,15 @@ int gra_decode_palette(u32 file_off, const GraChunk *chunks, int chunk_count,
 
     u32 p = file_off + c5->body_off;
     u32 end = p + c5->body_len;
-    int cnt = 0;
+    u32 cnt = 0;
     while (p < end) {
         if (p + 4 > end) return 0;
         u32 n = DSD(p);
         p += 4;
         if (n > (end - p) / 4) return 0;
+        /* Reject before writing when this record would not fit. The invariant
+         * 3*cnt <= rgb_cap holds on entry, so this never writes past rgb_cap. */
+        if (n > (rgb_cap - cnt * 3) / 3) return 0;
         for (u32 i = 0; i < n; i++) {
             u32 word = DSD(p);
             p += 4;
@@ -99,8 +108,8 @@ int gra_decode_palette(u32 file_off, const GraChunk *chunks, int chunk_count,
             rgb_out[cnt * 3 + 2] = (u8)((word >> 18) & 0xFF);
             cnt++;
         }
-        *count = cnt;
     }
+    *count = (int)cnt;
     return 1;
 }
 
@@ -127,6 +136,9 @@ int gra_decode_frame(u32 file_off, const GraChunk *chunks, int chunk_count,
      * sprites. TODO(verify): the sentinel meaning is documented, not proven. */
     if ((s16)w <= 0 || (s16)h <= 0) return -1;
 
+    /* PORT: resolves the pixel handle through res_resolve (the port's resource
+     * heap) instead of the original's EMS block walk at 0x1B544. The bytes are
+     * identical, and res_size() gives rle_decode a length the original lacks. */
     u32 idx = handle >> 23;
     u32 off = handle & 0x7FFFFFu;
     if (idx >= res_count()) return -1;
@@ -135,5 +147,7 @@ int gra_decode_frame(u32 file_off, const GraChunk *chunks, int chunk_count,
     u8 *src = res_resolve(res_handle(idx, off));
     if (!src) return -1;
 
+    /* PORT: returns RLE bytes consumed (the original writes into a caller
+     * buffer and signals nothing); the exact-consumption test needs it. */
     return rle_decode(src, size - off, w, h, dst, dst_len);
 }
