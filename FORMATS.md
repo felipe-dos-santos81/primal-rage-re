@@ -162,9 +162,9 @@ b = (word >> 18) & 0xFF;   // bits 18..25
 which is exactly the packing of the chunk-5 words (they form descending
 shading ramps, e.g. `S16FONTS` palette 0 = `0090d0f0 0070b0d0 … 00001010`).
 A scan of the data object finds resource handles pointing into chunk-5 bodies
-for **27** of the 30 `.GRA` files that contain a type-5 chunk (e.g.
-`s16fonts`, `s16title`, `s16jap`, `s16beach`), so the bank is a real resource,
-not a stray table.
+for **27** of the 30 `.GRA` files that contain a type-5 chunk — e.g.
+`s16title` (19 chunk-5 handles), `s16jap` (47) and `s16beach` (12), while
+`s16fonts` has none — so the bank is a real resource, not a stray table.
 
 **Still open (marked likely, not promoted):**
 
