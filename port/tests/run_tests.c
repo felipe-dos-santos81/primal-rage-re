@@ -9,6 +9,7 @@ int main(void)
     test_mem();
     test_le();
     test_res();
+    test_gra();
     printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
     return g_failures != 0;
 }

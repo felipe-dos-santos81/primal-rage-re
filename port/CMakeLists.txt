@@ -10,7 +10,7 @@ add_compile_options(-Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing)
 
 find_package(SDL3 REQUIRED CONFIG)
 
-add_library(prage_core STATIC src/mem.c src/platform/res.c)
+add_library(prage_core STATIC src/mem.c src/platform/res.c src/platform/gra.c)
 target_include_directories(prage_core PUBLIC src)
 
 add_executable(prageport src/main.c)
@@ -30,7 +30,7 @@ add_custom_target(symbols DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/symbols.h)
 add_dependencies(prage_core symbols)
 
 enable_testing()
-add_executable(run_tests tests/run_tests.c tests/test_scaffold.c tests/test_mem.c tests/test_le.c tests/test_res.c)
+add_executable(run_tests tests/run_tests.c tests/test_scaffold.c tests/test_mem.c tests/test_le.c tests/test_res.c tests/test_gra.c)
 target_include_directories(run_tests PRIVATE src tests)
 target_link_libraries(run_tests PRIVATE prage_core)
 add_test(NAME unit COMMAND run_tests WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/..")
