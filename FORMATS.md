@@ -73,11 +73,11 @@ struct GraChunk {       // 8-byte header, then the body
 
 Chunk types seen:
 
-| Type | Where | Notes |
+| Type | Where | Computed layout |
 |---|---|---|
-| `2` | always first | pixel/bitmap data (largest body) |
-| `5` | FONTS, TITLE, JAP | frame/animation descriptor table |
-| `6` | last chunk | trailing table / palette |
+| `2` | always first | RLE pixel blobs, addressed by the type-6 handles (largest body) |
+| `5` | files with palettes | palette bank: repeated `{ u32 count; u32 colour[count] }` |
+| `6` | last chunk | frame descriptor table: `body_len / 12` 12-byte records |
 
 Examples (`tools/gra_chunks.py`):
 
@@ -88,10 +88,89 @@ S16TITLE.GRA : type 2 @0x0 (1501656) -> type 5 @0x16E9E0 (2928) -> type 6 @0x16F
 S16COBSD.GRA : type 2 @0x0 (145427)  (single chunk; `next` = 0)
 ```
 
-**Open:** the pixel encoding of chunk type 2 (bit depth, sprite frames /
-palette indexing / inter-frame deltas) and the exact layout of chunks 5 and 6.
-`S16FONTS` chunk 5 begins with `u16 version=5, '43', u32 next, u32 count=7`
-followed by 7 descending value pairs — probably a per-font colour table.
+### Decoded payload layout
+
+All three types are now decoded. Every row below is **verified** against the
+decompilation and independently against the shipped bytes by
+`tools/gra_render.py` (658 of 659 sprites across six files decode to *exactly*
+the byte range up to the next sprite's offset — see `gra_render.py --frame`).
+
+**Type 6 — frame descriptor table (verified).**
+`body_len / 12` records, each 12 bytes:
+
+```c
+struct GraFrame {        // on disk, 12 bytes
+    uint16_t width;      // pixels
+    uint16_t height;     // rows
+    int16_t  x;          // signed origin / hotspot
+    int16_t  y;
+    uint32_t pixels;     // resource handle: (index << 23) | file_offset
+};
+```
+
+`s16rad.gra` chunk 6 is 468 B = 39 records; record 0 is
+`{122, 107, 122, 0, 0x0F80028A}` — width 122, height 107, pixel offset
+`0x28A` into chunk 2 of resource index 31 (`s16rad.gra`). The in-game consumer
+is `FUN_0001c528` (`port/decomp/prage.c`), which resolves the handle and reads
+`[0]`..`[2]`; the static handle table `DAT_000a8b30` holds thousands of handles
+that all land on 12-byte strides inside chunk 6. The `x`/`y` anchor reading is
+**verified** by signed values (`-3`, `-35`, `-219`, …); the exact meaning of
+each as sprite origin is **likely**.
+
+**Type 2 — RLE pixel data (verified).**
+The blobs are 8-bit palette-index bitmaps with per-sprite RLE. A row is
+`width` pixels; there are `height` rows, decoded back to back with no row
+marker. One control byte per token:
+
+| Control byte | Meaning |
+|---|---|
+| `b & 0x80 == 0` | literal run of `b & 0x7F` pixels, each followed by its own colour byte |
+| `b & 0x40 == 0` | repeat run of `b & 0x3F` pixels, one colour byte follows |
+| `b & 0x40 != 0` | transparent run of `b & 0x3F` pixels, no data |
+
+The in-game decoder is `FUN_00041030` (0x41030): its first pass measures each
+row (`iVar9 -= bVar2 & 0x7f` / `& 0x3f`, skipping `1+count` bytes for literals
+and `2` for repeats — i.e. the literal payload *is* the per-pixel colour), and
+its second pass rasterises the same tokens into a 1 bpp opacity mask
+(`0x26` bytes/row, 296 px = the S16 max sprite width). The blobs are
+**independent**, not delta-coded: `tools/gra_render.py` decodes every measured
+sprite standalone to exactly `next_offset - offset` bytes (658/659), so the
+"delta relative to the previous frame" note in the brief is **not** observed.
+
+**Type 5 — palette bank (verified).**
+Concatenated `{ u32 count; count × u32 colour }` records, no outer count:
+parse until the body ends (the parse consumes the whole body exactly —
+`S16FONTS` 27 colours / 144 B, `S16TITLE` 720 / 2928 B, `S16BEACH` 90 / 368 B).
+The in-game consumer is `FUN_00033754`, which resolves a handle and reads
+`count = *ptr` to build a palette record, and `FUN_0001c470` (0x1c470), the
+VBlank-gated DAC flush, which for a handle takes `FUN_0001b544() + 4` and emits
+`count` colours with
+
+```c
+r = (word >> 2)  & 0xFF;   // bits  2.. 9
+g = (word >> 10) & 0xFF;   // bits 10..17
+b = (word >> 18) & 0xFF;   // bits 18..25
+```
+
+which is exactly the packing of the chunk-5 words (they form descending
+shading ramps, e.g. `S16FONTS` palette 0 = `0090d0f0 0070b0d0 … 00001010`).
+The data object holds handles pointing into chunk 5 for 37 files, so the bank
+is a real resource, not a stray table.
+
+**Still open (marked likely, not promoted):**
+
+* Which chunk-5 sub-palette (and which DAC base index) a given sprite uses —
+  the per-record `count/colour` groups are read as one flat palette by
+  `gra_render.py`; the game likely selects a sub-palette per sprite.
+* The type-6 `x`/`y` fields as sprite origin vs. bounding-box corner is
+  **likely** (evidence: signed small values, both signs present).
+* A few descriptors carry "negative" dimensions (`s16title` one record is
+  `width=0xFEC0`, `height=0xFF38` = `-320`, `-200`, the 320×200 screen); these
+  are **likely** full-screen blit / clear sentinels and are not decoded here.
+
+Run `tools/gra_render.py FILE.GRA 0 out.ppm --frame N` to reproduce any frame
+(the first `--palette`-less run uses the file's first type-5 chunk, otherwise a
+greyscale ramp).
 
 ## Other files (not yet analysed)
 
