@@ -3,16 +3,15 @@
 #include <string.h>
 
 #include "host.h"
-#include "platform/input.h"
+#include "game/flow.h"
 
 static void usage(const char *argv0)
 {
     printf("usage: %s --game-dir DIR [--check N]\n", argv0);
 }
 
-/* Placeholder run until game/flow (Task 14) supplies game_main(): open the real
- * SDL window and pump until ESC (or window close, which the host maps to ESC).
- * This is the Task 12 proof that the SDL host is live, not the final loop. */
+/* Task 14: open the SDL host, then hand control to the ported game flow
+ * (init chain -> frame loop -> title state), which runs until ESC. */
 static int run_windowed(const char *game_dir)
 {
     if (!host_init("Primal Rage", 320, 200)) {
@@ -20,16 +19,10 @@ static int run_windowed(const char *game_dir)
         return 1;
     }
     printf("prageport 0.0.1 game-dir=%s\n", game_dir);
-    for (;;) {
-        host_pump();
-        if (input_check_key() == 0x011B) { /* ESC: scan 0x01, ASCII 0x1B */
-            input_clear();
-            break;
-        }
-        host_wait_vblank();
-    }
+    game_set_game_dir(game_dir);
+    int rc = game_main();
     host_shutdown();
-    return 0;
+    return rc;
 }
 
 int main(int argc, char **argv)

@@ -152,6 +152,24 @@ frame loop is reached through `0x20C10`:
   `[3]` non-zero -> `[0]` is a resource handle resolved by `0x1B544` **+4**.
   Colours are 8-bit guns at R=bits[2..9], G=bits[10..17], B=bits[18..25].
 
+## Title state (Task 14)
+
+* **Title/attract state is index 1.** `FUN_000121a0` — case 1 of
+  `switch(DAT_000F0A64)` — is the animated title screen: on entry it spawns a
+  scrolling/zooming logo animation through two `FUN_0002ae14` tasks, holds it
+  for `DAT_000F0A66 = 0x600` ticks, then transitions to state 2
+  (`DAT_000F0A64 = 2`). The attract sub-machine `FUN_00011000` case 0xb assigns
+  state 1 (`DAT_000F0A64 = 1`) when its cycle counter `DAT_000F0A5C == 0`.
+* **Runtime confirmation unavailable.** Task 14 could not read `DAT_000F0A64`
+  live: this macOS DOSBox-X build refuses the internal debugger ("Debugger in
+  Mac OS X not available unless you start DOSBox-X from Terminal"), so no
+  breakpoint or memory dump could be scripted. The index above is static
+  evidence, not a runtime reading. Confidence: **likely**.
+* Port choice: the port enters state 1 directly (the 0x11000 attract
+  sub-machine is deferred) and renders the full-screen `S16TITLE.GRA` frames
+  10/12/13/18; the logo/menu sprite composite is deferred to the menus
+  sub-project.
+
 ## Landmarks (verified)
 
 | Address | Meaning |

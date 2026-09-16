@@ -30,5 +30,6 @@ int test_gra(void);
 int test_gfx(void);
 int test_input(void);
 int test_host(void);
+int test_flow(void);
 
 #endif /* PR_TEST_H */
