@@ -1,5 +1,8 @@
 #include "mem.h"
+#include "symbols.h"
 #include "test.h"
+
+void fn_probe(void) { }
 
 int test_mem(void)
 {
@@ -25,6 +28,17 @@ int test_mem(void)
     /* The macros must be usable as lvalues, not just rvalues. */
     DSW(0x90008) = 0x1234;
     CHECK_EQ_INT(DSW(0x90008), 0x1234);
+
+    /* Code addresses stored in data (process tables, the lock calls in main)
+     * must survive a round trip through the flat address space. */
+    {
+        extern void fn_probe(void);
+        CHECK(fn_resolve(FN_0002D62C) == NULL, "unregistered address resolves to NULL");
+        fn_register(FN_0002D62C, fn_probe);
+        CHECK(fn_resolve(FN_0002D62C) == fn_probe, "round trip");
+        CHECK_EQ_INT(fn_origin(fn_probe), FN_0002D62C);
+        CHECK(fn_resolve(0xDEAD) == NULL, "unknown address is NULL, not garbage");
+    }
 
     return g_failures - before;
 }

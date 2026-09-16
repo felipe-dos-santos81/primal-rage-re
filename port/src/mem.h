@@ -36,4 +36,11 @@ int mem_load_le(const char *exe_path, const char *object_bin_out);
  * loader does not implement. */
 int mem_load_le_fixups(const char *exe_path, u32 object_index);
 
+/* Original code addresses are stored in data, but the port reimplements code
+ * in C. Registration maps an original linear code address to the C function
+ * implementing it, in both directions. */
+void  fn_register(u32 orig_addr, void (*fn)(void));
+void (*fn_resolve(u32 orig_addr))(void);
+u32   fn_origin(void (*fn)(void));
+
 #endif /* PR_MEM_H */

@@ -6,6 +6,35 @@
 
 u8 mem[MEM_SIZE];
 
+/* The registration table is port infrastructure, not game state: game state
+ * lives in mem[] at its original offsets, but the mapping from original code
+ * addresses to C functions only exists in the port. */
+#define FN_TABLE_MAX 512
+static struct { u32 addr; void (*fn)(void); } fn_table[FN_TABLE_MAX];
+static u32 fn_table_len;
+
+void fn_register(u32 orig_addr, void (*fn)(void))
+{
+    assert(fn_table_len < FN_TABLE_MAX);
+    fn_table[fn_table_len].addr = orig_addr;
+    fn_table[fn_table_len].fn = fn;
+    fn_table_len++;
+}
+
+void (*fn_resolve(u32 orig_addr))(void)
+{
+    for (u32 i = 0; i < fn_table_len; i++)
+        if (fn_table[i].addr == orig_addr) return fn_table[i].fn;
+    return NULL;
+}
+
+u32 fn_origin(void (*fn)(void))
+{
+    for (u32 i = 0; i < fn_table_len; i++)
+        if (fn_table[i].fn == fn) return fn_table[i].addr;
+    return 0;
+}
+
 int mem_in_range(u32 addr, u32 len)
 {
     if (len == 0) return 1;
