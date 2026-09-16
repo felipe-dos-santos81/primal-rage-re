@@ -1,5 +1,6 @@
 #include "mem.h"
 #include "test.h"
+#include <stdlib.h>
 #include <string.h>
 
 #define EXE "data/game/C/PRAGE.EXE"
@@ -40,5 +41,28 @@ int test_le(void)
             if (mem[DATA_BASE + mapped + i] != 0) dirty = 1;
         CHECK(!dirty, "data object BSS tail is zero-filled, not stale");
     }
+    /* mem[] must equal Ghidra's fixup-applied image of the data object.
+     * The oracle is not committed (see Task 3 Step 1), so it is required only
+     * when PR_ORACLE_REQUIRED=1 and otherwise skipped with a notice. */
+    {
+        FILE *g = fopen("port/tests/ghidra_data.bin", "rb");
+        if (!g && getenv("PR_ORACLE_REQUIRED")) {
+            CHECK(0, "PR_ORACLE_REQUIRED=1 but the Ghidra oracle is missing");
+        } else if (!g) {
+            printf("SKIP data-object oracle (generate it per Task 3 Step 1, "
+                   "or set PR_ORACLE_REQUIRED=1 to require it)\n");
+        } else {
+            static u8 oracle[0x8B0D0];
+            size_t got = fread(oracle, 1, sizeof oracle, g);
+            fclose(g);
+            CHECK_EQ_INT(got, sizeof oracle);
+            int diff = -1;
+            for (size_t i = 0; i < sizeof oracle && diff < 0; i++)
+                if (mem[DATA_BASE + i] != oracle[i]) diff = (int)i;
+            CHECK(diff < 0, "data object matches the Ghidra image");
+            if (diff >= 0) printf("  first difference at DS:0x%05x\n", diff);
+        }
+    }
+
     return g_failures - before;
 }

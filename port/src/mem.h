@@ -25,9 +25,15 @@ int  mem_in_range(u32 addr, u32 len);
 void mem_fill(u32 addr, u8 value, u32 len);
 
 /* Loads the LE image of exe_path into mem[]: header, object table, page map,
- * then the page data. Fixups are applied by mem_load_le_fixups() (Task 3).
+ * then the page data, then every object's LE fixups. Returns 1 on success.
  * When object_bin_out is non-NULL, also dumps CODE_BASE..DATA_BASE+data_size
- * as raw bytes for diffing against Ghidra. Returns 1 on success. */
+ * as raw bytes for diffing against Ghidra. */
 int mem_load_le(const char *exe_path, const char *object_bin_out);
+
+/* Applies the LE fixup records whose source lies in object_index (0-based
+ * object table index: 0 = code, 1 = data) to mem[]. Returns 1 if every fixup
+ * was applied, 0 if the file cannot be parsed or holds a fixup form this
+ * loader does not implement. */
+int mem_load_le_fixups(const char *exe_path, u32 object_index);
 
 #endif /* PR_MEM_H */

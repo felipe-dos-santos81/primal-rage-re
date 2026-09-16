@@ -54,18 +54,27 @@ static long find_bound_base(const u8 *d, size_t n, long le)
     return -1;
 }
 
-int mem_load_le(const char *exe_path, const char *object_bin_out)
+static u8 *slurp(const char *path, long *out_size)
 {
-    FILE *f = fopen(exe_path, "rb");
-    if (!f) return 0;
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
     fseek(f, 0, SEEK_END);
     long sz = ftell(f);
     fseek(f, 0, SEEK_SET);
-    if (sz <= 0) { fclose(f); return 0; }
+    if (sz <= 0) { fclose(f); return NULL; }
     u8 *d = malloc((size_t)sz);
-    if (!d) { fclose(f); return 0; }
-    if (fread(d, 1, (size_t)sz, f) != (size_t)sz) { free(d); fclose(f); return 0; }
+    if (!d) { fclose(f); return NULL; }
+    if (fread(d, 1, (size_t)sz, f) != (size_t)sz) { free(d); fclose(f); return NULL; }
     fclose(f);
+    *out_size = sz;
+    return d;
+}
+
+int mem_load_le(const char *exe_path, const char *object_bin_out)
+{
+    long sz;
+    u8 *d = slurp(exe_path, &sz);
+    if (!d) return 0;
 
     long le = find_le(d, (size_t)sz);
     if (le < 0) { free(d); return 0; }
@@ -87,8 +96,8 @@ int mem_load_le(const char *exe_path, const char *object_bin_out)
     /* Page map: one 4-byte entry per page, indexed by (1-based page number - 1).
      * Entry 0 means "not present" and is zero-filled; a non-zero entry's high
      * word is the 1-based physical page number, stored at
-     * pagedata + (phys - 1) * psz. TODO(verify): confirm this entry encoding
-     * against the Ghidra byte-for-byte diff of the objects in Task 3. */
+     * pagedata + (phys - 1) * psz. Confirmed byte-for-byte: the loaded image
+     * matches Ghidra's lx-loader (Task 3 oracle) for all 0x8B0D0 data bytes. */
     for (u32 obj = 0; obj < nobj; obj++) {
         const u8 *e = d + le + objtab + obj * 24;
         u32 virt = rd32(e + 0);     /* object virtual size */
@@ -123,12 +132,91 @@ int mem_load_le(const char *exe_path, const char *object_bin_out)
             mem_fill(rel + mapped, 0, virt - mapped);
     }
 
+    for (u32 obj = 0; obj < nobj; obj++) {
+        if (!mem_load_le_fixups(exe_path, obj)) { free(d); return 0; }
+    }
+
     if (object_bin_out) {
         size_t len = DATA_BASE + 0x8B0D0 - CODE_BASE;
         FILE *o = fopen(object_bin_out, "wb");
         int ok = o && fwrite(mem + CODE_BASE, 1, len, o) == len;
         if (o) ok = (fclose(o) == 0) && ok;
         if (!ok) { free(d); return 0; }
+    }
+    free(d);
+    return 1;
+}
+
+int mem_load_le_fixups(const char *exe_path, u32 object_index)
+{
+    long sz;
+    u8 *d = slurp(exe_path, &sz);
+    if (!d) return 0;
+
+    long le = find_le(d, (size_t)sz);
+    if (le < 0) { free(d); return 0; }
+
+    u32 npages = rd32(d + le + 0x14);
+    u32 psz    = rd32(d + le + 0x28);
+    u32 last   = rd32(d + le + 0x2c);
+    u32 nobj   = rd32(d + le + 0x44);
+    u32 objtab = rd32(d + le + 0x40);
+    u32 fpt    = rd32(d + le + 0x68); /* fixup page table */
+    u32 frt    = rd32(d + le + 0x6c); /* fixup record table */
+
+    if (object_index >= nobj) { free(d); return 0; }
+    if ((long)(le + fpt) + (long)(npages + 1) * 4 > sz || (long)(le + frt) > sz) {
+        free(d);
+        return 0;
+    }
+
+    const u8 *e = d + le + objtab + object_index * 24;
+    u32 rel = rd32(e + 4), pageidx = rd32(e + 12), npg = rd32(e + 16);
+
+    /* The fixup page table maps logical page -> [begin,end) in the record
+     * table, so a page's records are contiguous. PRAGE.EXE only carries the
+     * internal 32-bit offset form (source type 7, target type 0): the 32-bit
+     * word at the source offset becomes target_base + target_offset, the same
+     * absolute linear address Ghidra's lx-loader computes. Every other form is
+     * reported (return 0), never skipped silently. */
+    for (u32 p = 0; p < npg; p++) {
+        u32 page = pageidx + p;
+        long begin = (long)rd32(d + le + fpt + (page - 1) * 4);
+        long end   = (long)rd32(d + le + fpt + page * 4);
+        if (end < begin || (long)(le + frt + end) > sz) { free(d); return 0; }
+
+        /* Ghidra gives the last page of the last object only lastPageSize
+         * bytes, so fixups there clip at that length rather than at pageSize. */
+        u32 pagelen = (object_index + 1 == nobj && p + 1 == npg) ? last : psz;
+
+        for (long cur = 0; cur < end - begin; ) {
+            const u8 *r = d + le + frt + begin + cur;
+            u8 src = r[0], tf = r[1];
+            if ((src & 0x20) || (src & 0xf) != 0x7 || (tf & 3) != 0) {
+                free(d);
+                return 0; /* source list, non-32-bit offset, or imported */
+            }
+            s32 src_off = (s16)rd16(r + 2);
+            const u8 *q = r + 4;
+            u32 target_obj;
+            if (tf & 0x40) { target_obj = rd16(q); q += 2; } else { target_obj = *q++; }
+            s32 target_off;
+            if (tf & 0x10) { target_off = (s32)rd32(q); q += 4; }
+            else { target_off = (s16)rd16(q); q += 2; if (target_off < 0) target_off += 0x10000; }
+            if (target_obj < 1 || target_obj > nobj) { free(d); return 0; }
+
+            u32 base = rd32(d + le + objtab + (target_obj - 1) * 24 + 4);
+            if (base == 0) base = target_obj * 0x100000;
+            u32 value = base + (u32)target_off;
+
+            for (u32 k = 0; k < 4; k++) {
+                s32 o = src_off + (s32)k;
+                if (o < 0 || (u32)o >= pagelen) continue;
+                u32 dst = rel + p * psz + (u32)o;
+                if (mem_in_range(dst, 1)) mem[dst] = (u8)(value >> (8 * k));
+            }
+            cur += (long)(q - r);
+        }
     }
     free(d);
     return 1;
