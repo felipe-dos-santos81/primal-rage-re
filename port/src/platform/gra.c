@@ -75,6 +75,8 @@ static int rle_decode(const u8 *src, u32 src_len, u16 w, u16 h,
 int gra_decode_palette(u32 file_off, const GraChunk *chunks, int chunk_count,
                        u8 *rgb_out, int *count)
 {
+    /* TODO(verify): the bank is returned flat; which record / DAC base index a
+     * given sprite selects is still open, so no sub-palette split is applied. */
     *count = 0;
     const GraChunk *c5 = 0;
     for (int i = 0; i < chunk_count; i++)
@@ -117,6 +119,8 @@ int gra_decode_frame(u32 file_off, const GraChunk *chunks, int chunk_count,
 
     u16 w = DSW(at), h = DSW(at + 2);
     u32 handle = DSD(at + 8);
+    /* TODO(verify): the s16 x/y anchor is not read here; its meaning (sprite
+     * origin vs. bounding-box corner) is likely, not proven. */
 
     /* Zero-dimension and "negative"-dimension records (0xFEC0 = -320,
      * 0xFC31 = -975, ...) read as full-screen blit/clear sentinels, not
