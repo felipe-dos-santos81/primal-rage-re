@@ -8,14 +8,25 @@ u8 mem[MEM_SIZE];
 
 /* The registration table is port infrastructure, not game state: game state
  * lives in mem[] at its original offsets, but the mapping from original code
- * addresses to C functions only exists in the port. */
-#define FN_TABLE_MAX 512
+ * addresses to C functions only exists in the port.
+ * Sized with headroom over the generated symbol set: symbols.h defines 1206
+ * FN_ constants, so 1300 covers every original function address one-for-one. */
+#define FN_TABLE_MAX 1300
 static struct { u32 addr; void (*fn)(void); } fn_table[FN_TABLE_MAX];
 static u32 fn_table_len;
 
 void fn_register(u32 orig_addr, void (*fn)(void))
 {
-    assert(fn_table_len < FN_TABLE_MAX);
+    /* Unconditional, not assert-only: NDEBUG would compile an assert out and
+     * let the store run past fn_table, after which fn_resolve could return a
+     * garbage pointer that is then called. Fail closed in every build. */
+    if (fn_table_len >= FN_TABLE_MAX) {
+        fprintf(stderr,
+                "fn_register: table full (limit %d), cannot register "
+                "original address 0x%05X (fn %p)\n",
+                FN_TABLE_MAX, (unsigned)orig_addr, (void *)fn);
+        abort();
+    }
     fn_table[fn_table_len].addr = orig_addr;
     fn_table[fn_table_len].fn = fn;
     fn_table_len++;

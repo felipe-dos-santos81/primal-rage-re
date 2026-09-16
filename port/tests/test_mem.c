@@ -3,6 +3,7 @@
 #include "test.h"
 
 void fn_probe(void) { }
+void fn_probe2(void) { }
 
 int test_mem(void)
 {
@@ -33,11 +34,21 @@ int test_mem(void)
      * must survive a round trip through the flat address space. */
     {
         extern void fn_probe(void);
+        extern void fn_probe2(void);
         CHECK(fn_resolve(FN_0002D62C) == NULL, "unregistered address resolves to NULL");
         fn_register(FN_0002D62C, fn_probe);
         CHECK(fn_resolve(FN_0002D62C) == fn_probe, "round trip");
         CHECK_EQ_INT(fn_origin(fn_probe), FN_0002D62C);
         CHECK(fn_resolve(0xDEAD) == NULL, "unknown address is NULL, not garbage");
+
+        /* An unregistered function has origin 0, the sentinel callers test. */
+        CHECK_EQ_INT(fn_origin(fn_probe2), 0);
+
+        /* Same address registered twice: the first entry wins and the later
+         * registration is ignored, not silently substituted. */
+        fn_register(FN_000255CC, fn_probe);
+        fn_register(FN_000255CC, fn_probe2);
+        CHECK(fn_resolve(FN_000255CC) == fn_probe, "duplicate address keeps first registration");
     }
 
     return g_failures - before;

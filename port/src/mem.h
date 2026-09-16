@@ -38,7 +38,11 @@ int mem_load_le_fixups(const char *exe_path, u32 object_index);
 
 /* Original code addresses are stored in data, but the port reimplements code
  * in C. Registration maps an original linear code address to the C function
- * implementing it, in both directions. */
+ * implementing it, in both directions.
+ * Sentinels: fn_resolve returns NULL for an address that was never registered,
+ * and fn_origin returns 0 for a function that was never registered (0 is never
+ * a legal code address; the code object starts at 0x10000). Callers must check
+ * fn_resolve for NULL before making the indirect call. */
 void  fn_register(u32 orig_addr, void (*fn)(void));
 void (*fn_resolve(u32 orig_addr))(void);
 u32   fn_origin(void (*fn)(void));
