@@ -23,6 +23,12 @@ Sprite RLE (one control byte, then optional data, per token):
     b & 0x40 != 0            transparent: (b & 0x3f) pixels, no data
 Rows are decoded back to back, `height` rows of `width` pixels, no row marker.
 Transparent pixels are written as the background colour (black).
+
+Palette scope: this tool flattens the whole type-5 palette bank into one
+palette and maps index 0 / transparent to black.  The game selects a
+sub-palette per sprite, so the PPM is a shape/colour aid, not a pixel-exact
+game frame.  The strong oracle for the C decoder is the *exact-consumption*
+property (a decoded frame ends exactly at the next frame's pixel offset).
 """
 import argparse
 import struct

@@ -59,7 +59,7 @@ Runtime model (from the decompilation):
   I.e. a handle packs a resource index (high bits) and a byte offset (low 23 bits).
 * File/memory helpers live around `0x61C60`–`0x62xxx`.
 
-## `S16*.GRA` — graphics (chunk format verified, payload TBD)
+## `S16*.GRA` — graphics (chunk format and payloads verified)
 
 Each `.GRA` is a **linked list of chunks**:
 
@@ -90,10 +90,12 @@ S16COBSD.GRA : type 2 @0x0 (145427)  (single chunk; `next` = 0)
 
 ### Decoded payload layout
 
-All three types are now decoded. Every row below is **verified** against the
+All three types are now decoded. Every claim below is **verified** against the
 decompilation and independently against the shipped bytes by
-`tools/gra_render.py` (658 of 659 sprites across six files decode to *exactly*
-the byte range up to the next sprite's offset — see `gra_render.py --frame`).
+`tools/gra_render.py`. Across all 69 `.GRA` files, **18,201 of 18,202**
+descriptors that carry positive dimensions and a next-sprite offset RLE-decode
+to *exactly* that next offset (17 zero-dimension records and 10
+negative-dimension sentinels are excluded — see "Still open").
 
 **Type 6 — frame descriptor table (verified).**
 `body_len / 12` records, each 12 bytes:
@@ -112,30 +114,35 @@ struct GraFrame {        // on disk, 12 bytes
 `{122, 107, 122, 0, 0x0F80028A}` — width 122, height 107, pixel offset
 `0x28A` into chunk 2 of resource index 31 (`s16rad.gra`). The in-game consumer
 is `FUN_0001c528` (`port/decomp/prage.c`), which resolves the handle and reads
-`[0]`..`[2]`; the static handle table `DAT_000a8b30` holds thousands of handles
-that all land on 12-byte strides inside chunk 6. The `x`/`y` anchor reading is
+`[0]`..`[2]`; the static table `DAT_000a8b30` is a list of **18,443
+consecutive resource handles before the first non-handle**, 18,442 of which
+point into a chunk-6 body and **every one of those is 12-byte aligned** (scan
+the data object at offset `0xA8B30 - 0x80000`). The `x`/`y` anchor reading is
 **verified** by signed values (`-3`, `-35`, `-219`, …); the exact meaning of
 each as sprite origin is **likely**.
 
 **Type 2 — RLE pixel data (verified).**
 The blobs are 8-bit palette-index bitmaps with per-sprite RLE. A row is
 `width` pixels; there are `height` rows, decoded back to back with no row
-marker. One control byte per token:
+marker. Dispatch is in order — bit 7 first, then bit 6 — and the conditions are
+complete, so a byte in `0x00..0x7F` is always a literal and never a
+transparent run:
 
 | Control byte | Meaning |
 |---|---|
 | `b & 0x80 == 0` | literal run of `b & 0x7F` pixels, each followed by its own colour byte |
-| `b & 0x40 == 0` | repeat run of `b & 0x3F` pixels, one colour byte follows |
-| `b & 0x40 != 0` | transparent run of `b & 0x3F` pixels, no data |
+| `b & 0x80 != 0 && b & 0x40 == 0` | repeat run of `b & 0x3F` pixels, one colour byte follows |
+| `b & 0x80 != 0 && b & 0x40 != 0` | transparent run of `b & 0x3F` pixels, no data |
 
 The in-game decoder is `FUN_00041030` (0x41030): its first pass measures each
 row (`iVar9 -= bVar2 & 0x7f` / `& 0x3f`, skipping `1+count` bytes for literals
 and `2` for repeats — i.e. the literal payload *is* the per-pixel colour), and
-its second pass rasterises the same tokens into a 1 bpp opacity mask
-(`0x26` bytes/row, 296 px = the S16 max sprite width). The blobs are
-**independent**, not delta-coded: `tools/gra_render.py` decodes every measured
-sprite standalone to exactly `next_offset - offset` bytes (658/659), so the
-"delta relative to the previous frame" note in the brief is **not** observed.
+its second pass rasterises the same tokens into a fixed 1 bpp opacity mask
+(`0x26` = 38 bytes = 304 bits per row). The blobs are **independent**, not
+delta-coded: `tools/gra_render.py` decodes descriptors standalone to exactly
+`next_offset - offset` bytes (18,201/18,202 across all 69 files, exclusions
+above), so the "delta relative to the previous frame" note in the brief is
+**not** observed.
 
 **Type 5 — palette bank (verified).**
 Concatenated `{ u32 count; count × u32 colour }` records, no outer count:
@@ -154,8 +161,10 @@ b = (word >> 18) & 0xFF;   // bits 18..25
 
 which is exactly the packing of the chunk-5 words (they form descending
 shading ramps, e.g. `S16FONTS` palette 0 = `0090d0f0 0070b0d0 … 00001010`).
-The data object holds handles pointing into chunk 5 for 37 files, so the bank
-is a real resource, not a stray table.
+A scan of the data object finds resource handles pointing into chunk-5 bodies
+for **27** of the 30 `.GRA` files that contain a type-5 chunk (e.g.
+`s16fonts`, `s16title`, `s16jap`, `s16beach`), so the bank is a real resource,
+not a stray table.
 
 **Still open (marked likely, not promoted):**
 
@@ -164,9 +173,23 @@ is a real resource, not a stray table.
   `gra_render.py`; the game likely selects a sub-palette per sprite.
 * The type-6 `x`/`y` fields as sprite origin vs. bounding-box corner is
   **likely** (evidence: signed small values, both signs present).
-* A few descriptors carry "negative" dimensions (`s16title` one record is
-  `width=0xFEC0`, `height=0xFF38` = `-320`, `-200`, the 320×200 screen); these
-  are **likely** full-screen blit / clear sentinels and are not decoded here.
+* 10 descriptors carry "negative" dimensions: 2 are `(-320, -200)` (the
+  320×200 screen, in `s16title` and `s16slabs`) and 8 are `(-975, h)` with
+  `h ∈ {-53, -62, -64, -79}` (in `s16beach`, `s16caves`, `s16citys`,
+  `s16grave`, `s16himal`, `s16jungl`, `s16stone`, `s16volcn`). These read as
+  full-screen blit / clear sentinels. A further 17 records have `width == 0`
+  (5 of them in `s16fonts`). Both families are excluded from the
+  exact-consumption count above and are not decoded here.
+* The exact `x`/`y` semantics are characterised above, not proven (see the
+  Type 6 note).
+
+**Renderer scope (oracle limitation).** `tools/gra_render.py` emits RGB only:
+it flattens the whole chunk-5 palette bank into one palette and maps
+transparent / index 0 to black. The game selects a sub-palette per sprite, so
+byte-for-byte PPM agreement with a C decoder is **not** a valid test. Task 9
+should assert the **exact-consumption property** (a decoded frame consumes
+exactly `next_sprite_offset - frame_offset` bytes) as the independent signal,
+with PPM comparison as a secondary check only.
 
 Run `tools/gra_render.py FILE.GRA 0 out.ppm --frame N` to reproduce any frame
 (the first `--palette`-less run uses the file's first type-5 chunk, otherwise a
