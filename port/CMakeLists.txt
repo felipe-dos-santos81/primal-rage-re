@@ -14,6 +14,19 @@ add_executable(prageport src/main.c src/mem.c)
 target_include_directories(prageport PRIVATE src)
 target_link_libraries(prageport PRIVATE SDL3::SDL3)
 
+add_custom_command(
+  OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/src/symbols.h
+  COMMAND ${CMAKE_COMMAND} -E env python3
+          ${CMAKE_CURRENT_SOURCE_DIR}/../tools/gen_symbols.py
+          ${CMAKE_CURRENT_SOURCE_DIR}/../port/decomp
+          ${CMAKE_CURRENT_SOURCE_DIR}/src/symbols.h
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../tools/gen_symbols.py
+          ${CMAKE_CURRENT_SOURCE_DIR}/../port/decomp/prage.functions.csv
+          ${CMAKE_CURRENT_SOURCE_DIR}/../port/decomp/prage.c
+  COMMENT "generating symbols.h")
+add_custom_target(symbols DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/symbols.h)
+add_dependencies(prageport symbols)
+
 enable_testing()
 add_executable(run_tests tests/run_tests.c tests/test_scaffold.c tests/test_mem.c tests/test_le.c src/mem.c)
 target_include_directories(run_tests PRIVATE src tests)
