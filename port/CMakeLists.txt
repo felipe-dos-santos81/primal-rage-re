@@ -10,11 +10,11 @@ add_compile_options(-Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing)
 
 find_package(SDL3 REQUIRED CONFIG)
 
-add_executable(prageport src/main.c)
+add_executable(prageport src/main.c src/mem.c)
 target_include_directories(prageport PRIVATE src)
 target_link_libraries(prageport PRIVATE SDL3::SDL3)
 
 enable_testing()
-add_executable(run_tests tests/run_tests.c tests/test_scaffold.c)
+add_executable(run_tests tests/run_tests.c tests/test_scaffold.c tests/test_mem.c src/mem.c)
 target_include_directories(run_tests PRIVATE src tests)
 add_test(NAME unit COMMAND run_tests)
