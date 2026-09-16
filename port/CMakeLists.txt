@@ -15,6 +15,6 @@ target_include_directories(prageport PRIVATE src)
 target_link_libraries(prageport PRIVATE SDL3::SDL3)
 
 enable_testing()
-add_executable(run_tests tests/run_tests.c tests/test_scaffold.c tests/test_mem.c src/mem.c)
+add_executable(run_tests tests/run_tests.c tests/test_scaffold.c tests/test_mem.c tests/test_le.c src/mem.c)
 target_include_directories(run_tests PRIVATE src tests)
 add_test(NAME unit COMMAND run_tests)

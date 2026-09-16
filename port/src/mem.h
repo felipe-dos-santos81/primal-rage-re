@@ -22,4 +22,10 @@ extern u8 mem[MEM_SIZE];
 int  mem_in_range(u32 addr, u32 len);
 void mem_fill(u32 addr, u8 value, u32 len);
 
+/* Loads the LE image of exe_path into mem[]: header, object table, page map,
+ * then the page data. Fixups are applied by mem_load_le_fixups() (Task 3).
+ * When object_bin_out is non-NULL, also dumps CODE_BASE..DATA_BASE+data_size
+ * as raw bytes for diffing against Ghidra. Returns 1 on success. */
+int mem_load_le(const char *exe_path, const char *object_bin_out);
+
 #endif /* PR_MEM_H */
