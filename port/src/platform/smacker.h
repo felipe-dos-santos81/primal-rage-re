@@ -25,7 +25,7 @@ typedef struct SmkMovie {
     u32 table_off, flags_off, trees_off, data_off, treesize;
     u32 tree_size[4];            /* header order: mmap, mclr, full, type */
     s32 *tree[4];                /* into `words` */
-    s32 *last[4];                /* into `words` */
+    s32 *last[4][3];             /* three recency slots per tree, into `words` */
     u8  pal[768];                /* current 256-entry RGB table */
     u32 next_frame;              /* frame cursor */
     s32 words[SMK_TREE_WORDS];   /* tree value arena */

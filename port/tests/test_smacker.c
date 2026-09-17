@@ -28,6 +28,20 @@ int test_smacker(void)
     CHECK_EQ_INT(smk_height(&m), 200);
     CHECK_EQ_INT(smk_frames(&m), 121);
 
+    /* Task 4: all four trees (mmap, mclr, full, type) decode into the arena,
+     * in order, and every tree/last pointer stays inside `words`. */
+    CHECK(m.tree[0] != NULL && m.tree[1] != NULL &&
+          m.tree[2] != NULL && m.tree[3] != NULL, "all four trees decoded");
+    for (int i = 0; i < 4; i++) {
+        CHECK(m.tree[i] != NULL && m.tree[i] >= m.words &&
+              m.tree[i] < m.words + SMK_TREE_WORDS, "tree pointer in arena");
+        for (int k = 0; k < 3; k++)
+            CHECK(m.last[i][k] != NULL && m.last[i][k] >= m.words &&
+                  m.last[i][k] < m.words + SMK_TREE_WORDS, "last pointer in arena");
+        if (i > 0)
+            CHECK(m.tree[i - 1] < m.tree[i], "trees laid out in order");
+    }
+
     /* Fixed profile: a truncated header, a bad magic, and a size that runs
      * past the buffer are all rejected. */
     CHECK_EQ_INT(smk_open(data, 8, &m), 0);
@@ -42,5 +56,14 @@ int test_smacker(void)
     data[0x68] = 0xFF; data[0x69] = 0xFF; data[0x6A] = 0xFF; data[0x6B] = 0x7F;
     CHECK_EQ_INT(smk_open(data, (u32)sz, &m), 0);
     for (int i = 0; i < 4; i++) data[0x68 + i] = save_size[i];
+
+    /* A tree value count too large for the arena (SMK_TREE_WORDS) is rejected:
+     * each of the four tree_size fields is set to 0x7FFFFFFF, which the
+     * container check does not look at but the tree decode must. */
+    u8 save_ts[16];
+    for (int i = 0; i < 16; i++) { save_ts[i] = data[0x38 + i]; data[0x38 + i] = 0xFF; }
+    for (int i = 0; i < 4; i++) data[0x38 + 4 * i + 3] = 0x7F;
+    CHECK_EQ_INT(smk_open(data, (u32)sz, &m), 0);
+    for (int i = 0; i < 16; i++) data[0x38 + i] = save_ts[i];
     return g_failures - before;
 }
