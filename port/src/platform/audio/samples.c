@@ -87,3 +87,12 @@ int samples_load(const u8 *data, u32 len, SampleVoice *out)
     out->channels = 1;
     return 1;
 }
+
+u32 samples_to_s16(const u8 *pcm, u32 frames, s16 *out)
+{
+    if (pcm == NULL || out == NULL)
+        return 0;
+    for (u32 i = 0; i < frames; i++)
+        out[i] = (s16)(((s32)pcm[i] - 128) << 8);
+    return frames;
+}

@@ -395,3 +395,8 @@ int seq_active_track(void)
             n++;
     return n;
 }
+
+int seq_playing(void)
+{
+    return S.playing;
+}

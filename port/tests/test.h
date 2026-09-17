@@ -35,5 +35,6 @@ int test_opl(void);
 int test_samples(void);
 int test_mixer(void);
 int test_sequencer(void);
+int test_ail(void);
 
 #endif /* PR_TEST_H */

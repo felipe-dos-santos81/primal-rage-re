@@ -38,4 +38,11 @@ typedef struct {
  * the buffer is rejected rather than followed. out == NULL also returns 0. */
 int samples_load(const u8 *data, u32 len, SampleVoice *out);
 
+/* The one 8-bit-unsigned -> s16 conversion in the port. The sample-play path
+ * (AIL_start_sample) calls it with its own buffer; the mixer only ever sees
+ * s16. `pcm` is 8-bit unsigned mono, byte 128 is centre; `out` is caller-owned
+ * and must hold `frames` s16. Returns the number of frames written (0 when
+ * either pointer is NULL). */
+u32 samples_to_s16(const u8 *pcm, u32 frames, s16 *out);
+
 #endif /* PR_SAMPLES_H */

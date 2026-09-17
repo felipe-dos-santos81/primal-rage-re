@@ -53,4 +53,11 @@ void seq_stop(void);
  * sounding" observable; it is not an AIL sequence status code. */
 int seq_active_track(void);
 
+/* Whether the loaded bank is currently playing: 1 from seq_start until seq_stop
+ * or the bank's end meta halts it, 0 otherwise. The AIL surface's
+ * AIL_sequence_status reads this for the original's 4 (playing) / 2 (stopped)
+ * codes; seq_active_track cannot stand in for it, because it is 0 between
+ * notes. */
+int seq_playing(void);
+
 #endif /* PR_SEQUENCER_H */
