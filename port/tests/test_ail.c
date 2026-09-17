@@ -109,6 +109,15 @@ int test_ail(void)
         seq_tick();
     CHECK_EQ_INT(AIL_sequence_status(seq), 2);
 
+    /* 4c. A failed re-init clears `loaded`: a later start_sequence must not
+     *     restart the previously loaded bank. */
+    {
+        static const u8 bad_bank[4] = { 0 };
+        CHECK_EQ_INT(AIL_init_sequence(seq, bad_bank, 0), 0);
+        AIL_start_sequence(seq);
+        CHECK_EQ_INT(AIL_sequence_status(seq), 2);
+    }
+
     /* 5. The 8-bit -> s16 conversion is exact and lives once, in samples.c. */
     {
         static const u8 pcm8[3] = { 0, 128, 255 };

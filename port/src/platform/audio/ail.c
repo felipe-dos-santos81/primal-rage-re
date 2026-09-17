@@ -406,8 +406,14 @@ s32 AIL_init_sequence(HSEQUENCE sequence, const void *data, u32 sequence_num)
     (void)sequence_num;
     if (sequence == NULL || !sequence->used)
         return 0;
-    if (!seq_load((const u8 *)data, seq_bank_size((const u8 *)data)))
+    if (!seq_load((const u8 *)data, seq_bank_size((const u8 *)data))) {
+        /* Bad data: clear `loaded` so a later AIL_start_sequence cannot
+         * restart the previous bank; state matches the post-init stopped
+         * value the success path sets. */
+        sequence->loaded = 0;
+        sequence->state = 2;
         return 0;
+    }
     sequence->loaded = 1;
     sequence->state = 2;
     return 1;
