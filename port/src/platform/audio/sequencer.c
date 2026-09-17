@@ -25,8 +25,12 @@
 static const u8 OPL_SLOT[SEQ_OPL_CHANNELS] = { 0, 1, 2, 8, 9, 10, 16, 17, 18 };
 
 /* MIDI note -> { block, fnum } for 49716 Hz, fnum <= 1023 with the highest
- * usable fnum (lowest block). Verified against the capture: note 84 ->
- * block 5 fnum 0x2B2 and note 47 -> block 2 fnum 0x3CF match prage_000.dro. */
+ * usable fnum (lowest block). Capture-verified anchors: note 84 -> block 5
+ * fnum 0x2B2 and note 79 -> block 5 fnum 0x205 match prage_000.dro, re-derived
+ * by tools/opl_seq.py --capture-anchors. Note 47 is NOT a match: this melodic
+ * entry gives block 2 fnum 0x28B while the capture's percussion note is block 2
+ * fnum 0x3CF — the driver remaps percussion (port/spec/audio.md divergence 6,
+ * "Percussion note frequency"). */
 static const u16 NOTE_TAB[128][2] = {
     {0x00,0x0AC}, {0x00,0x0B7}, {0x00,0x0C2}, {0x00,0x0CD}, {0x00,0x0D9}, {0x00,0x0E6}, {0x00,0x0F4}, {0x00,0x102},
     {0x00,0x112}, {0x00,0x122}, {0x00,0x133}, {0x00,0x146}, {0x00,0x159}, {0x00,0x16D}, {0x00,0x183}, {0x00,0x19A},

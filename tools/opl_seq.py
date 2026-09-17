@@ -80,9 +80,9 @@ NOTE_TAB = tuple(note_to_block_fnum(n) for n in range(128))
 # by note-on time, not copied from sequencer.c's NOTE_TAB literal. `python3
 # tools/opl_seq.py --capture-anchors <music> <capture.dro>` re-derives them and
 # fails if the formula disagrees. 0, 31 and 127 are computed-table boundary
-# points (lowest entry, octave, clamp) and are NOT capture claims. The C
-# NOTE_TAB comment's "note 47 -> 0x3CF" is a documented divergence (audio.md
-# item 6), not an anchor: percussion is remapped by the driver.
+# points (lowest entry, octave, clamp) and are NOT capture claims. Note 47 is a
+# documented divergence (audio.md item 6), not an anchor: the melodic table
+# gives 0x28B, the capture's percussion note is 0x3CF (driver remap).
 NOTE_ANCHORS = {0: (0, 0x0AC), 31: (1, 0x205), 79: (5, 0x205),
                 84: (5, 0x2B2), 127: (7, 0x3FF)}
 
