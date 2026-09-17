@@ -9,7 +9,8 @@
 
 #include "types.h"
 
-/* 256 DAC entries, { R, G, B }, each already reduced to 6-bit 0..63. */
+/* 256 DAC entries, { R, G, B }, each an 8-bit gun 0..255 (the original's
+ * `word >> 2`); the real VGA DAC is 6-bit, but the port keeps the full byte. */
 extern u8 gfx_dac[256][3];
 
 /* Drains the dirty-list at DS_00107498 up to the head pointer DS_00107798, then

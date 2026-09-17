@@ -47,7 +47,7 @@ static int write_exact(const char *path, const u8 *src, u32 len)
 
 /* Dumps one captured frame as three artifacts:
  *   frame_NNNN.ppm  binary P6 RGB, converted through the DAC exactly as
- *                   gfx_present() does (gfx_dac[idx][0..2]; 6-bit values).
+ *                   gfx_present() does (gfx_dac[idx][0..2]; 8-bit guns).
  *   frame_NNNN.pal  the 256-entry DAC, 3 bytes per entry.
  *   frame_NNNN.idx  the raw 320x200 palette indices the decoder produced.
  * The .idx is what makes the comparison against tools/gra_render.py

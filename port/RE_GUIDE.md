@@ -101,16 +101,28 @@ python3 tools/le_info.py --index data/game/C/INDEX
 |---|---|
 | `0x6245C` | LE entry → `jmp 0x624D4` |
 | `0x624D4` | WATCOM/DOS4GW `_start` (PSP/env parsing, builds `argc/argv`) |
+| `0x6C435` | CRT `main` wrapper → `0x1BEC4` |
+| `0x1BEC4` | **game main** (init chain + dispatch) |
+| `0x20C10` | startup orchestrator → master loop |
+| `0x1BE30` | teardown |
 | `0x10034` | sound-driver init (`SB16.DIG`/`SBPRO.DIG`/`SBLASTER.DIG`) |
+| `0x1B120` | `INDEX` loader / resource-table builder |
+| `0x1B544` | resource-handle → pointer (30 callers) |
+| `0x1C0F0` | extended-memory probe + memory-block list (EMS; unused by the flat port) |
 | `0x2C3FC` | most-called function (206 callers) — core engine helper |
 | `0x255CC` | master frame loop |
 | `0x24C5C` | per-frame update (frame counter, player records, update process table) |
 | `0x11D04` | state machine `switch(DAT_000F0A64)` |
 | `0x11000` | per-state render/play dispatch (13 cases) |
-| `0x1C740` | present / flip (VBlank-gated) |
+| `0x1C740` | VBlank-gated animation/FLIC-style blit of `DAT_000E87A4` (**not** the screen write) |
 | `0x1C470` | palette dirty-list flush → VGA DAC |
-| `0x2D62C` | tick handler `DAT_00105D88++` (vector TBD) |
-| `0x51F45` | 320x200 screen-surface setup (`&DAT_001088F8`) |
+| `0x2D62C` | tick handler `DAT_00105D88++`; rate 60.05 Hz measured, **interrupt vector unresolved** |
+| `0x51F45` | 320x200 double-buffer + scanline-table setup (`&DAT_001088F8`) |
+| `0x50188` | swap back/fore buffers `DAT_000E87A0` ↔ `DAT_000E87A4` |
+| `0x501A3` | dirty-dword blit `DAT_000E87A4` → literal aperture `0xA0000` |
+| `0xA0000` | VGA mode-13h aperture, written as a **literal immediate** (no LE fixup) — hardware, never `mem[0xA0000]` |
+| `PTR_FUN_000A8644` / `_DAT_00104AE8` | update process table / bitmask |
+| `PTR_FUN_000A86C4` / `_DAT_00104AEC` | render process table / bitmask |
 | `0x1C500` | small leaf called 181× — likely a getter/accessor |
 | `0x2BC30`, `0x2AE14`, `0x2F198` | very hot code (150–190 callers) |
 | `0x5D7DC` | 113 callers — likely allocator/memory helper |
@@ -119,19 +131,21 @@ python3 tools/le_info.py --index data/game/C/INDEX
 
 The code is dense from roughly `0x10000`–`0x39000` (engine/utilities) and
 `0x3A000`–`0x6A000` (game logic), with libraries at the high end
-(`0x5C000`+ looks like the WATCOM runtime / DOS4GW glue). A proper subsystem
-split is still to be written (see "Next steps").
+(`0x5C000`+ looks like the WATCOM runtime / DOS4GW glue). The subsystem split is
+in `port/spec/`; `game_flow.md` covers the loop, state machine and frame path.
 
 ## Next steps
 
-1. Subsystem split by call graph (cluster by caller/callee) and write
-   `port/spec/<subsystem>.md` files, following the format in the sibling
-   `test-drive-sdl3/port/RE_GUIDE.md`. ~~Identify the main loop~~ — done:
+1. Subsystem split by call graph. ~~Identify the main loop~~ — done:
    `0x1BEC4` → `0x20C10` → `0x255CC` (loop) → `0x24C5C` → `0x11D04` (state
-   machine) → `0x11000` → `0x1C740` (present); see `spec/game_flow.md`.
-2. Decode `S16*.GRA` fully (sprite/tile container) — see `FORMATS.md`.
+   machine) → `0x11000`; the frame write/present path is the literal `0xA0000`
+   copy (`0x255CC` full copy / `0x501A3` dirty blit) from `DAT_000E87A4`. See
+   `spec/game_flow.md`.
+2. ~~Decode `S16*.GRA` fully~~ — done: chunk types 2/5/6 decoded (Task 8),
+   implemented in `port/src/platform/gra.c` and confirmed byte-exact against
+   `tools/gra_render.py`; see `FORMATS.md`.
 3. Name the hot core functions (`0x2C3FC`, `0x2BC30`, `0x1C500`, `0x2AE14`).
-4. Pin the tick interrupt vector and the framebuffer write path (the present
-   path does not reference `0xA0000` directly).
-5. The SDL3 port work lives in `docs/superpowers/specs/` and, from sub-project
-   1 onward, in a sibling `port/` CMake project.
+4. Pin the tick **interrupt vector** (the rate is measured at 60.05 Hz; the
+   framebuffer write path has since been resolved as a literal `0xA0000`).
+5. The SDL3 port lives in `port/` (engine core, Tasks 0–15); audio, Smacker,
+   menus/EEPROM and the fight engine are the remaining sub-projects.

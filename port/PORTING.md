@@ -20,4 +20,10 @@ Faithful reimplementation of PRAGE.EXE. Read the spec in
 
 ## Build and checks
     cmake -S port -B build && cmake --build build
-    ./build/run_tests
+    PR_ORACLE_REQUIRED=1 ./build/run_tests
+    ./build/prageport --game-dir data/game/C --check 60
+
+The byte-exact oracles (`ghidra_data.bin`, `s16title_frame10.idx`) are copies of
+the game's own bytes and are git-ignored, so the suite SKIPS them unless
+`PR_ORACLE_REQUIRED` is set — a real verification run must set it. `make verify`
+runs the whole ladder.

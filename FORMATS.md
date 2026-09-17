@@ -183,17 +183,23 @@ for **27** of the 30 `.GRA` files that contain a type-5 chunk — e.g.
 * The exact `x`/`y` semantics are characterised above, not proven (see the
   Type 6 note).
 
-**Renderer scope (oracle limitation).** `tools/gra_render.py` emits RGB only:
-it flattens the whole chunk-5 palette bank into one palette and maps
-transparent / index 0 to black. The game selects a sub-palette per sprite, so
-byte-for-byte PPM agreement with a C decoder is **not** a valid test. Task 9
-should assert the **exact-consumption property** (a decoded frame consumes
-exactly `next_sprite_offset - frame_offset` bytes) as the independent signal,
-with PPM comparison as a secondary check only.
+**Renderer scope (what the oracle can and cannot pin).**
+`tools/gra_render.py` flattens the whole chunk-5 palette bank into one palette
+and maps transparent / index 0 to black; the game selects a sub-palette per
+sprite, so byte-for-byte agreement is **not** a general property. The C port
+(`port/src/platform/gra.c`) therefore takes the **exact-consumption property**
+(a decoded frame consumes exactly `next_sprite_offset - frame_offset` bytes) as
+its primary acceptance — 18,201/18,202 across all 69 files, the single miss
+being a `S16TITLE` 74×167 descriptor at `0x349d7`. For the four full-screen,
+fully-opaque `S16TITLE` frames `{10,12,13,18}` (0 transparent pixels, no opaque
+index 0, indices ≤ 63) the port's index buffers and RGB PPMs are additionally
+**byte-identical** to `gra_render.py` — an exact comparison valid for that
+subset only, not a claim about palettes or frames in general.
 
 Run `tools/gra_render.py FILE.GRA 0 out.ppm --frame N` to reproduce any frame
 (the first `--palette`-less run uses the file's first type-5 chunk, otherwise a
-greyscale ramp).
+greyscale ramp); add `--indices OUT.idx` to emit the raw index buffer, which is
+what the byte-exact index comparison uses.
 
 ## Other files (not yet analysed)
 

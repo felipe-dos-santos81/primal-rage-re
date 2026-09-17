@@ -167,25 +167,31 @@ frame loop is reached through `0x20C10`:
   evidence, not a runtime reading. Confidence: **likely**.
 * Port choice: the port enters state 1 directly (the 0x11000 attract
   sub-machine is deferred) and renders the full-screen `S16TITLE.GRA` frames
-  10/12/13/18; the logo/menu sprite composite is deferred to the menus
-  sub-project.
+  `{10,12,13,18}`; the logo/menu sprite composite is deferred to the menus
+  sub-project. The four frames are the asset's only 320×200 descriptors, so the
+  *set* is derived; rendering them full-screen in place of the original's
+  task-system composite is the port's choice.
 
-### Task 14 port notes Task 15 must account for
+### Task 14 port notes (Task 15 acted on)
 
 * **The port title path is not the original's render path.** The original title
   is composited by the process-table task system (`FUN_0002AE14` spawns tasks;
   the sprite blitter draws `DAT_000A8B30` handle sprites over a backdrop). The
   port skips that and decodes the four full-screen 320×200 `S16TITLE.GRA`
-  descriptors `{10,12,13,18}` — a **chosen** frame set, not derived from the
-  binary — cycling them every `TITLE_HOLD_FRAMES = 8` game frames (the original
-  advances via task timers). A pixel comparison against the original's title is
-  therefore **not apples-to-apples**: the asset is original but the composite is
-  not. `--check` frame capture must not assume the port's title equals the
-  original's.
-* **`--check N` in `port/src/main.c` does nothing yet.** It prints a line and
-  returns 0 without `host_init()` or any `game_frame()` call, so it does not
-  render or capture anything; it is still the Task 12 placeholder. Task 15 owns
-  the real headless frame capture (`frame_NNNN.ppm` + `.pal` sidecar).
+  descriptors `{10,12,13,18}` — derived from the asset (its only 320×200
+  descriptors), but composited by the port — cycling them every
+  `TITLE_HOLD_FRAMES = 8` game frames (the original advances via task timers).
+  A pixel comparison against the original's title is therefore **not
+  apples-to-apples**: the asset is original but the composite is not.
+  `--check` frame capture must not assume the port's title equals the original's.
+* **`--check N` is implemented (Task 15).** `run_check()` in `port/src/main.c`
+  runs exactly N master-loop iterations with no window (`host_init()` is never
+  called) and writes `frame_NNNN.ppm` (P6 RGB via the DAC), `frame_NNNN.pal`
+  (the 256-entry DAC) and `frame_NNNN.idx` (the raw indices); exit code is the
+  accumulated assertion-failure count. The port's `.idx`/`.ppm` for the four
+  title frames `{10,12,13,18}` are **byte-identical to `tools/gra_render.py`**;
+  the emulator dimension is **unusable** (the reachable attract shares 0
+  non-black colours with the chosen frames — see the Task 15 report).
 * **The presented buffer is redrawn every frame** (0x255CC swaps every presented
   tick, so a hold frame that skipped the redraw would present a blank buffer).
   An on-screen sample of the raised window showed 4 distinct images of
@@ -244,8 +250,9 @@ frame loop is reached through `0x20C10`:
    (live pointer table / LUTs), so screen output must never target it; the port
    keeps its frame buffer outside the mapped data object and renders the
    320×200 index buffer to the window.
-   **Still open:** which interrupt vector carries the tick `0x2D62C` (rate is
-   60 Hz, inferred; no install site names the handler — see "Tick"). This is
-   the one item Task 13 could not settle.
+   **Still open:** which interrupt vector carries the tick `0x2D62C` (the rate
+   is settled — 60.05 Hz measured, agreeing with the static ÷`0x3c` conversion;
+   see "Tick" — but no install site names the handler). This is the one item
+   Task 13 could not settle.
 6. Why `main` gates on `int 10h` mode `0x13` (320x200, matching the `0x51F45`
    surface) while the installed set is `S16` (640x480).

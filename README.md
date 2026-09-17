@@ -14,15 +14,22 @@ mode game code: everything interesting lives in two LE objects (code + data).
 |---|---|
 | `data/game/C/` | Installed game (`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound drivers) |
 | `data/game/CD/RAGECD.ISO` | Original CD (`/Volumes/RAGECD` when mounted: `RAGE.S04`, `RAGE.S08`, `RAGE.S16`, `RAGE.SND`) |
-| `port/RE_GUIDE.md` | Address conventions, DOS/4GW layout, toolchain, subsystem split |
+| `port/` | **SDL3 engine-core port** (sub-project 1) — `cmake -S port -B build` |
+| `port/RE_GUIDE.md` | Address conventions, DOS/4GW layout, toolchain, landmarks |
+| `port/spec/game_flow.md` | Entry, frame loop, state machine, tick, pixel path |
+| `port/PORTING.md` | Porting rules (memory model, `mem[]` discipline, `fn_resolve`) |
 | `port/DECOMPILATION.md` | Exact dependencies and steps used to produce `port/decomp/` |
 | `port/decomp/prage.c` | Ghidra decompilation of every function (via the lx-loader) |
 | `port/decomp/prage.functions.csv` | Function index: entry, size, callers, callees |
 | `port/decomp/prage.strings.csv` | Defined strings with cross-references |
 | `port/decomp/prage.symbols.csv` | User-defined / imported symbols |
 | `FORMATS.md` | Decoded on-disk formats (LE layout, `INDEX`, `GRA`) |
+| `docs/superpowers/` | Sub-project specs, plans and the engine-core report |
 | `tools/le_info.py` | Dump the LE header/objects and decode `INDEX` |
+| `tools/gra_render.py` | Independent GRA decoder + frame oracle (`--indices`, `--frame`) |
+| `tools/gen_symbols.py` | Generate `port/src/symbols.h` from the decompilation |
 | `_tools/ghidra_scripts/` | Ghidra headless scripts used to produce the artefacts |
+| `Makefile` | `make help` — PORT (`build`/`test`/`check`/`run`/`verify`) and RE targets |
 
 ## Toolchain
 
@@ -56,9 +63,44 @@ $G _tools/ghidra_proj prage -process PRAGE.EXE \
 
 ## Status
 
-* `PRAGE.EXE` loads and analyses cleanly: **~1350 functions** decompiled, 0 failures.
-* LE layout, `INDEX` container format verified.
-* `S16*.GRA` header identified (`02 00 "43"` + fields); full sprite/format
-  decode still open — see `FORMATS.md`.
-* No subsystem specs written yet; the entry/startup (`0x624d4`) and the sound
-  driver init (`0x10034`, loads `SB16.DIG`) are confirmed.
+**Reverse engineering.** `PRAGE.EXE` loads and analyses cleanly: **~1350
+functions** decompiled, 0 failures. LE layout and the `INDEX` container are
+verified; the `S16*.GRA` chunk types 2/5/6 are fully decoded (`FORMATS.md`).
+The entry/startup (`0x624D4`), the game main (`0x1BEC4`), the real frame loop
+(`0x255CC` → `0x24C5C` → `0x11D04`), the tick (60.05 Hz measured) and the
+literal-`0xA0000` framebuffer write path are pinned — see `port/spec/game_flow.md`.
+
+**SDL3 port — sub-project 1, engine core: boot → title screen, running.** The
+port reimplements the engine in C over a flat `mem[]` that holds the original
+LE data image at its original addresses, reads the original `data/game/C/`
+assets at runtime, and SDL3 appears only in `host.c`/`main.c`. Ported and
+verified: the LE loader + fixups (byte-exact against Ghidra's image), the
+`INDEX` resource manager, `fn_resolve` code-address mapping, GRA decode
+(byte-exact against `tools/gra_render.py`), the palette flush (`0x1C470`), the
+process-table scheduler, and the `0x255CC`/`0x24C5C`/`0x11D04` loop running the
+title state. Audio, Smacker, menus/EEPROM and the fight engine are stubbed at
+their call sites and are the remaining sub-projects (`/* PORT: */` markers).
+
+### Build and run
+
+```bash
+cmake -S port -B build && cmake --build build     # or: make build
+./build/prageport --game-dir data/game/C          # windowed; ESC to quit
+./build/prageport --game-dir data/game/C --check 60
+```
+
+`--check N` is a headless mode: it runs exactly N master-loop iterations with no
+window and writes `frame_NNNN.ppm` (RGB), `frame_NNNN.pal` (the DAC) and
+`frame_NNNN.idx` (raw indices) per frame, exiting non-zero on an internal
+assertion failure.
+
+### Verify
+
+```bash
+PR_ORACLE_REQUIRED=1 ./build/run_tests            # or: make verify
+```
+
+`PR_ORACLE_REQUIRED=1` is required for a real verification run: the byte-exact
+Ghidra/title-screen oracles are git-ignored (they are copies of the game's own
+bytes), so without it the suite skips those comparisons. `make verify` runs the
+full ladder (oracle-required tests, `--check`, `symbols.h` idempotence).

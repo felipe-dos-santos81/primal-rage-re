@@ -56,6 +56,26 @@ int test_host(void)
     CHECK(in[0] == 0xAB && in[7] == 0xAB, "over-max read writes nothing");
     CHECK(!host_read_file("no/such/prage/file", in, sizeof in, &n),
           "missing file fails");
+
+    /* A sparse file whose low 32 bits fit `max` must still be rejected: the
+     * guard compares the real 64-bit size, not a truncated u32. The old
+     * narrowing bug passed the guard here and ran fread(size) into `in`. */
+    const char *big = "port_host_big.tmp";
+    FILE *bf = fopen(big, "wb");
+    if (bf) {
+        if (fseek(bf, (long)(4294967296ll + 2 - 1), SEEK_SET) != 0 ||
+            fputc(0, bf) == EOF) {
+            fclose(bf);
+        } else {
+            fclose(bf);
+            for (size_t i = 0; i < sizeof in; i++) in[i] = 0xCD;
+            CHECK(!host_read_file(big, in, 4, &n),
+                  "file whose low 32 bits fit max is still rejected");
+            CHECK(in[0] == 0xCD && in[7] == 0xCD,
+                  "sparse over-size read writes nothing");
+        }
+        remove(big);
+    }
     remove(path);
 
     return g_failures - before;

@@ -36,9 +36,10 @@
  * system (0x2AE14 spawns tasks; the sprite blitter fills DAT_000E87A4). PORT:
  * the port renders selected full-screen S16TITLE.GRA frames instead; the
  * logo/menu sprite overlay is deferred to the menus sub-project. The frame set
- * {10,12,13,18} is a port choice (the four 320x200 descriptors), not an
- * original-derived constant, and TITLE_HOLD_FRAMES is a port rate — the
- * original advances its animation through task timers. */
+ * {10,12,13,18} is derived from the asset — S16TITLE has exactly four 320x200
+ * descriptors — but rendering them full-screen is the port's choice, not the
+ * original's composite. TITLE_HOLD_FRAMES is a port rate: the original advances
+ * its animation through task timers. */
 static const int TITLE_FRAMES[] = { 10, 12, 13, 18 };
 #define TITLE_FRAME_COUNT ((int)(sizeof TITLE_FRAMES / sizeof TITLE_FRAMES[0]))
 #define TITLE_HOLD_FRAMES 8   /* PORT: title-image rate (original: task timers) */

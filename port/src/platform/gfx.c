@@ -55,8 +55,10 @@ void gfx_flush_palette(void)
  * address 0xA0000 (mov edi/ebx, 0xa0000) — a 64000-byte dword copy in the
  * master loop (0x255CC), or the dirty-dword blit (0x501A3), from
  * DAT_000E87A4. Task 13 verified that immediate is covered by no LE fixup, so
- * it is the VGA mode-13h aperture, NOT a data-object address. The port maps the
- * LE data object flat at DATA_BASE 0x80000, so mem[0xA0000] would alias
+ * it is NOT a data-object address; the "VGA mode-13h aperture" reading is
+ * inferred from that plus the mode-0x13 gate (spec: verified-with-caveat).
+ * The port maps the LE data object flat at DATA_BASE 0x80000, so mem[0xA0000]
+ * would alias
  * data-object offset 0x20000 — live engine tables (PTR_DAT_000A1290, the LUTs
  * at 0xA1420, …), never a screen. gfx_present() therefore must NOT write mem[]:
  * it converts the same indices through the DAC to RGB and hands the frame to

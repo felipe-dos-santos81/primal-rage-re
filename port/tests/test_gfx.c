@@ -137,27 +137,40 @@ int test_gfx(void)
                 GraChunk ch[8];
                 int n = 0;
                 CHECK(gra_open(off, res_size(idx), ch, 8, &n), "S16TITLE chain");
+
+                /* Frame 10 vs the independent Python decoder: the check that
+                 * validates the decoder itself (matches `--indices`). */
                 static u8 got_idx[320 * 200];
                 int used = gra_decode_frame(off, ch, n, 10, got_idx, sizeof got_idx);
                 CHECK(used > 0, "S16TITLE frame 10 decodes");
                 CHECK(nread == sizeof want && memcmp(got_idx, want, sizeof want) == 0,
                       "title frame 10 index buffer is byte-identical to the "
                       "independent Python decoder");
-            }
 
-            /* If a --check run left frame_0001.idx in the CWD, the live capture
-             * must be that same buffer: this pins the runtime path, not just the
-             * decoder. Optional because a standalone suite run has no frames;
-             * when the artifact is present it is a real assertion. */
-            FILE *fr = fopen("frame_0001.idx", "rb");
-            if (fr) {
-                static u8 runtime_idx[320 * 200];
-                size_t rn = fread(runtime_idx, 1, sizeof runtime_idx, fr);
-                fclose(fr);
-                CHECK(rn == sizeof want &&
-                      memcmp(runtime_idx, want, sizeof want) == 0,
-                      "--check frame_0001.idx is byte-identical to the independent "
-                      "Python decoder");
+                /* Runtime capture: a --check run leaves frame_NNNN.idx in the
+                 * CWD. The port cycles the four full-screen title images
+                 * {10,12,13,18} every 8 loop frames, so loop frames 1/9/17/25
+                 * are exactly those images. Each present artifact must equal
+                 * what the decoder emits for its image, pinning the flow wiring
+                 * for all four frames (not just the first). This cannot detect a
+                 * stale artifact: it only runs when the file is present. */
+                static const int loop_frames[4] = { 1, 9, 17, 25 };
+                static const int images[4] = { 10, 12, 13, 18 };
+                for (int k = 0; k < 4; k++) {
+                    char rf[32];
+                    snprintf(rf, sizeof rf, "frame_%04d.idx", loop_frames[k]);
+                    FILE *fr = fopen(rf, "rb");
+                    if (!fr) continue;
+                    static u8 runtime_idx[320 * 200];
+                    size_t rn = fread(runtime_idx, 1, sizeof runtime_idx, fr);
+                    fclose(fr);
+                    static u8 expect_idx[320 * 200];
+                    int usedk = gra_decode_frame(off, ch, n, images[k],
+                                                 expect_idx, sizeof expect_idx);
+                    CHECK(rn == sizeof expect_idx && usedk > 0 &&
+                          memcmp(runtime_idx, expect_idx, sizeof expect_idx) == 0,
+                          "--check title frame matches the decoder for its image");
+                }
             }
         }
     }

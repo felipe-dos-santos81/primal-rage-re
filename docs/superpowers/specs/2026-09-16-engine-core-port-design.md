@@ -122,11 +122,12 @@ main 0x1BEC4
                  DAT_000F0A64 / DAT_000F0A6C / DAT_000F0A6A / DAT_000F0A6F /
                  DAT_000F0A72; per-state work 0x121A0, 0x11F6C, 0x12484,
                  0x11578, ...
-                 └─ 0x11000  ★ per-state render/play dispatch (13-case switch)
-                     └─ 0x1C740  ★ PRESENT / FLIP
-                         do { b = in(0x3DA); } while ((b & 8) == 0);   VBlank
-                         calls 0x52106 (palette + wait), 0x50161, 0x50D23
+                  └─ 0x11000  ★ per-state render/play dispatch (13-case switch)
+                      └─ 0x1C740  animation/FLIC-style player, blits DAT_000E87A4
+                          via FUN_00065340 after an `in(0x3DA) & 8` wait.
+                          (NOT the frame loop's present — corrected in Task 13.)
 ```
+
 
 **Process tables.** Two 32-entry callback tables, `0x80` bytes apart, each
 gated by a `u32` bitmask: `PTR_FUN_000a8644` + `_DAT_00104AE8` (update, walked
@@ -165,12 +166,29 @@ base after flush:
 Colour words are 8-bit guns packed R = bits[2..9], G = bits[10..17],
 B = bits[18..25]. The function is VBlank-gated.
 
-**Not yet located:** the framebuffer write path. `0xA0000` has **zero**
-references in the decompilation, so the game does not write the linear
-framebuffer directly; it is either a VBE LFB pointer held in a global, banked
-`int 10h 4F05` writes, or a `rep movs` to a stored pointer. This is a named
-discovery task, not a guess. Related unresolved: `main` gates on
-`int 10h` mode `0x13` (320×200) while the installed set is `S16` (640×480).
+**Framebuffer write path — resolved, with a rule that constrains the memory
+model.** An earlier note here claimed `0xA0000` had zero references and left the
+path unknown; that was a **false negative** — the address appears as literal
+immediates (`mov ebx,0xa0000` at `0x501A3`, `mov edi,0xa0000` in `0x255CC`),
+which a symbol search misses. The game copies its 320x200 buffer to a constant
+`0xA0000`: no VBE LFB, no banked `int 10h AX=4F05`, mode 13h.
+
+That address is **not** data-object memory, and the port must not treat it as
+such. The LE data object is *declared* at `0x80000` spanning through `0xA0000`,
+and a flat mapping would put `mem[0xA0000]` at data-object offset `0x20000` —
+which holds live state (`PTR_DAT_000A1290`, LUTs at `0xA1420`, and 1435 fixups).
+But DOS/4GW relocates the image above 1 MB: a memory dump of the running game
+shows `0xA0000..0xAFA00` as `0xFF` while the file's unique LUT bytes
+(`00 80 c0 e0 f0 f8 fc fe`) sit at physical `0x287420` and the pointer table at
+`0x287290` — a uniform relocation base of `0x266000`.
+
+**Rule (bind Task 14 and later):** absolute addresses inside the VGA/BIOS window
+`0xA0000`–`0xFFFFF` refer to **hardware**, not to the data object, because the
+original's image is relocated above 1 MB. Screen and aperture writes must never
+target `mem[0xA0000]`; the port keeps its frame buffer outside the mapped data
+object and presents it through `gfx_present()`. `gfx_present()` needs no change
+for this reason, but any ported code that copies to `0xA0000` must be redirected
+to the port's frame buffer under a `/* PORT: ... */` marker.
 
 ## Section 3 — Address and memory model
 
@@ -178,13 +196,21 @@ Single flat buffer, original addresses preserved (32-bit flat, so no
 segment:offset reconstruction is needed):
 
 ```c
-static u8 mem[0x1000000];          /* 16 MB, not tight 0x10B0D0+1 */
+static u8 mem[0x4000000];          /* 64 MB, sized to hold the resource set */
 ```
 
 * Data object at its LE base `0x80000`, so `DAT_00107874` is `mem+0x107874`.
-* Code object range `0x10000`–`0x73B15` is **reserved but not populated** with
-  code bytes; the port reimplements code in C.
-* 16 MB rather than the exact end: no allocation-size-dependent bounds
+* Code object range `0x10000`–`0x73B15` is **reserved**; the port never
+  *executes* those bytes (code is reimplemented in C), but the loader may
+  populate the range so cross-object fixups resolve and the image can be
+  validated against Ghidra.
+* **64 MB, revised during implementation (was 16 MB).** `0x1B120` loads every
+  `INDEX` resource eagerly; the shipped set is 69 entries totalling 41.31 MB
+  (largest `s16rex.gra`, 3.64 MB), which is why the original probes extended
+  memory and keeps a memory-block list. Sizing the flat space to fit is
+  preferable to emulating EMS. All original addresses are unchanged — only the
+  ceiling grows.
+* Room to spare rather than the exact end: no allocation-size-dependent bounds
   arithmetic, and a stray original pointer stays inside the buffer.
 * Writes outside `mem[]` are a bug; debug builds bounds-assert.
 
@@ -332,7 +358,7 @@ No test framework; assertion-based self-checks plus the PPM comparison, as in
 |---|---|---|
 | 1 | Exact interrupt vector for the tick ISR is unidentified; if the loop's pacing depends on ISR-side state beyond the counter, the host tick model changes. | Plan task 1 pins the vector (installer search + dosbox-x breakpoint) before any porting of the loop. |
 | 2 | GRA chunk 2 may be delta/compressed across frames rather than standalone bitmaps. | Decode frames in order; if the title screen needs sequential state, it is still in scope; if it needs the fight engine, that part moves to sub-project 5 and is stubbed. |
-| 3 | `int 10h` mode `0x13` gate vs the 640×480 `S16` asset set is contradictory, and the framebuffer write path is unknown. | Named discovery task; `present_frame()` isolates the answer. |
+| 3 | The `int 10h` mode `0x13` gate (320x200) versus the installed `S16` (640x480) asset set is still contradictory — unresolved for Task 14. (The framebuffer write path itself is now **resolved**: a constant `0xA0000`, which is the VGA aperture because DOS/4GW relocates the image above 1 MB — see the memory-model rule above.) | Named discovery task for the resolution question; `present_frame()` isolates it. |
 | 4 | `fn_resolve` breaks if the original does arithmetic on code addresses. | Documented limitation; revisit when sub-project 5's jump tables need it. |
 | 5 | LE fixups may include intra-object references that are mis-applied. | `mem_load_le()` asserts + the three-way agreement in verification step 3. |
 
