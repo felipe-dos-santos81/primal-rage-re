@@ -235,6 +235,7 @@ static int smk_tree(SmkMovie *m, SmkBits *b, u32 idx, u32 *used)
 int smk_open(const u8 *data, u32 len, SmkMovie *out)
 {
     SmkBits bits;
+    SmkMovie tmp;
     u32 used = 0, i;
 
     if (out == NULL)
@@ -275,35 +276,46 @@ int smk_open(const u8 *data, u32 len, SmkMovie *out)
     if (data_off + payload != len)
         return reject("payload sizes do not account for the whole file");
 
-    out->data = data;
-    out->len = len;
-    out->width = width;
-    out->height = height;
-    out->frames = frames;
+    /* Everything after this point can fail, so stage into `tmp` and commit to
+     * `*out` only once the trees decode: the header promises `*out` is
+     * untouched on a 0 return. */
+    tmp.data = data;
+    tmp.len = len;
+    tmp.width = width;
+    tmp.height = height;
+    tmp.frames = frames;
     /* pts_inc is a signed integer; its magnitude * 10us paces a frame. Two's
      * complement negation on the raw u32 stays defined for any input. */
-    out->frame_delay_us = (((s32)pts_raw < 0) ? (0u - pts_raw) : pts_raw) * 10u;
-    out->table_off = (u32)table_off;
-    out->flags_off = (u32)flags_off;
-    out->trees_off = (u32)trees_off;
-    out->data_off = (u32)data_off;
-    out->treesize = treesize;
-    out->tree_size[0] = rd32(data + SMK_TREE_SIZES_OFF + 0);
-    out->tree_size[1] = rd32(data + SMK_TREE_SIZES_OFF + 4);
-    out->tree_size[2] = rd32(data + SMK_TREE_SIZES_OFF + 8);
-    out->tree_size[3] = rd32(data + SMK_TREE_SIZES_OFF + 12);
-    out->next_frame = 0;
+    tmp.frame_delay_us = (((s32)pts_raw < 0) ? (0u - pts_raw) : pts_raw) * 10u;
+    tmp.table_off = (u32)table_off;
+    tmp.flags_off = (u32)flags_off;
+    tmp.trees_off = (u32)trees_off;
+    tmp.data_off = (u32)data_off;
+    tmp.treesize = treesize;
+    tmp.tree_size[0] = rd32(data + SMK_TREE_SIZES_OFF + 0);
+    tmp.tree_size[1] = rd32(data + SMK_TREE_SIZES_OFF + 4);
+    tmp.tree_size[2] = rd32(data + SMK_TREE_SIZES_OFF + 8);
+    tmp.tree_size[3] = rd32(data + SMK_TREE_SIZES_OFF + 12);
+    tmp.next_frame = 0;
 
     if (treesize > (0xFFFFFFFFu >> 3))
         return reject("tree bitstream too large");
-    bits.p = data + out->trees_off;
+    bits.p = data + tmp.trees_off;
     bits.nbits = treesize * 8;
     bits.pos = 0;
     bits.err = 0;
     for (i = 0; i < 4; i++)
-        if (!smk_tree(out, &bits, i, &used))
+        if (!smk_tree(&tmp, &bits, i, &used))
             return reject(bits.err ? "tree bitstream overrun"
                                    : "tree value count exceeds the arena");
+
+    *out = tmp;
+    /* The arena pointers above address `tmp.words`; rebase them into the copy. */
+    for (i = 0; i < 4; i++) {
+        out->tree[i] = out->words + (tmp.tree[i] - tmp.words);
+        for (u32 k = 0; k < 3; k++)
+            out->last[i][k] = out->words + (tmp.last[i][k] - tmp.words);
+    }
     return 1;
 }
 

@@ -63,7 +63,9 @@ int test_smacker(void)
     u8 save_ts[16];
     for (int i = 0; i < 16; i++) { save_ts[i] = data[0x38 + i]; data[0x38 + i] = 0xFF; }
     for (int i = 0; i < 4; i++) data[0x38 + 4 * i + 3] = 0x7F;
+    m.width = 0xDEADBEEFu;
     CHECK_EQ_INT(smk_open(data, (u32)sz, &m), 0);
+    CHECK_EQ_INT(m.width, 0xDEADBEEFu);   /* *out untouched on rejection */
     for (int i = 0; i < 16; i++) data[0x38 + i] = save_ts[i];
     return g_failures - before;
 }
