@@ -231,15 +231,18 @@ static void game_state_title(void)
     if (!s_title_ready) {
         title_load();
         if (!s_title_ready) return;
-        /* 0x121a0 (state 1's first entry) calls FUN_0002c3fc(0x41)/(0x43); its
-         * case 1 requests the title music, which the master loop's 0x1CF20 then
-         * loads and starts — the request is made here, started by the frame
-         * path, not on a port-side timer. PORT: the port requests the S16TITLE
-         * bank directly instead of the runtime sound table's handle. */
+        /* 0x121a0 (state 1's first entry) calls FUN_0002c3fc(0x41)/(0x43);
+         * both records are case 5, voice cancels (FUN_0001ce04 stops the voice
+         * whose id matches), not a case-1 music request. PORT: the port requests
+         * the S16TITLE bank directly instead of the static sound table's
+         * handle; the master loop's 0x1CF20 then loads and starts it — the
+         * request is made here, started by the frame path, not on a port-side
+         * timer. */
         s_music_request = 1;
-        /* 0x121A0's first entry also calls FUN_0002C3FC(0x41)/(0x43); the port
-         * queues the located announcer sample here and lets the master loop's
-         * 0x1CF20 play it (the original's request/play split, not collapsed). */
+        /* 0x121A0's first entry also runs those two case-5 voice cancels; PORT:
+         * the port queues the located announcer sample here and lets the master
+         * loop's 0x1CF20 play it (the original's request/play split, not
+         * collapsed). */
         game_sample_request();
     }
     /* Redraw the current image into the draw buffer every frame, matching the
@@ -330,13 +333,14 @@ void game_audio_init(void)
 
 /* Locates the title music bank in S16TITLE.GRA through the resource layer: the
  * first FORM/XMID container in the resource, the same scan tools/opl_seq.py and
- * seq_load use. The original passes a runtime sound-table handle (the title
- * 0x121a0 calls FUN_0002c3fc(0x41), whose case 1 requests it); Task 9's capture
- * spans this S16TITLE bank end to end.
+ * seq_load use. Task 9's capture spans this S16TITLE bank end to end. (The
+ * original's 0x121a0 FUN_0002c3fc(0x41)/(0x43) are case 5 voice cancels, not a
+ * case-1 music request.)
  * TODO(verify): the sound-table id -> resource handle mapping is not extracted
- * (DAT_000bbdc8 is zero in PRAGE.EXE and populated at runtime), so the port
- * binds the title state to the bank directly. Returns NULL on a bank whose
- * declared FORM size runs past the loaded resource. */
+ * (DAT_000BBDC8 is a static table in PRAGE.EXE, stride 12, byte 0 = case,
+ * dword +4 = handle), so the port binds the title state to the bank directly.
+ * Returns NULL on a bank whose declared FORM size runs past the loaded
+ * resource. */
 static const u8 *title_music_bank(void)
 {
     const u8 *base = (const u8 *)res_resolve(res_handle(TITLE_RES, 0));

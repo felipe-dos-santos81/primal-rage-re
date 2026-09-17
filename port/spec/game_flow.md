@@ -154,6 +154,45 @@ frame loop is reached through `0x20C10`:
   `[3]` non-zero -> `[0]` is a resource handle resolved by `0x1B544` **+4**.
   Colours are 8-bit guns at R=bits[2..9], G=bits[10..17], B=bits[18..25].
 
+## Sprite compositor — `0x14328` (sub-project 4a-i, ported)
+
+On-screen sprites are a **three-stage pipeline** (verified by disassembly):
+
+1. **Actor update + pset sync** — `0x2A31C` walks the actor list and `0x2A1FC` →
+   `0x2A820` writes each actor's position, layer and frame id into a 0x20-byte
+   **pset** entry in the pool at `DAT_001014EC`. **4a-ii's; not ported.**
+2. **Ordering** — `0x255CC` calls `0x1C3FC`, an insertion sort of the
+   singly-linked display list at `DS_00105B44` ascending by `pset->layer`
+   (`word` at `+0x0E`), stable; the sorted insert `0x1C3A0` places a node and the
+   580-node pool lives at `DS_0010153C`. Ported in
+   `port/src/platform/render.c` (`render_list_init/insert/remove/sort`).
+3. **Composite** — `0x14328` walks the list, builds a 0x40-byte display node per
+   entry via `0x14268`, projects the pset position (`proj_x = round(v*3901/4096)`,
+   `proj_y = round(v*3414/4096)`; only positions are scaled — sprites blit 1:1),
+   applies the clip rectangle and the layer-1/layer-2 mode rules, and calls the
+   span blitter `0x51E5C`. The blitter resolves the pixel handle and palette bank
+   and dispatches through `PTR_LAB_00080C8C` to a renderer that writes
+   `mem + DSD(DS_000E87A4)`. Ported in `render.c` and
+   `port/src/platform/sprite.c`.
+
+The clip rectangle is the literal `{0, 0, 320, 200}` of the master loop's camera
+struct `DS_000A87CC + 8`, not a runtime camera. The port wires `render_list_init`
+into `game_init` and `render_list_sort()` then `render_list()` into `0x255CC`'s
+order (after the render process table, before `0x1C470`'s palette flush); with an
+empty list the wiring is a no-op. Ownership: `render.c` owns the list and the
+projection/clip driver; `sprite.c` is a pure raster unit that consumes a node.
+
+**Proven vs unproven:** the RLE span renderer is byte-identical to
+sub-project 1's `gra_decode_frame` on 32 real sprites (row-wise at each sprite's
+own width); the clipped, mirrored and mode-1 shear renderers are proven by
+hand-computed tests and negative controls, **not** by an emulator. The clipped
+renderers' window-intersection formulation is a `PORT` deviation from the
+original's six straddle branches. `DAT_00081310[0] == 0x0005D110` (a stale code
+pointer; the port maps bank byte 0 to no offset) and `RAW+HFLIP` (type `0x0A`, a
+no-op) are pinned. Full record:
+`../../docs/superpowers/plans/2026-09-17-sprite-compositor-report.md`; format
+notes in `../../FORMATS.md` ("Sprite compositor").
+
 ## Boot logos — `0x1C740` (sub-project 2b-i, video)
 
 `FUN_00011000` case 0 (the attract sub-machine's entry) plays the two boot
