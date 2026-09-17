@@ -315,6 +315,12 @@ instead of the byte-exact Python fallback being the only bar.**
 `verified (cmd: DX-CAPTURE /O capture + tools/opl_trace.py below; DOSBox-X
 2026.08.31, Homebrew/macOS)`.
 
+`TODO(verify): whether this bounded run's capture spans the title/attract music
+that Task 8/9 must diff per-tick — the bounded run proves the original drives
+OPL FM at register level, not which tracks it covered. A title/attract-targeted
+re-capture (longer `-time-limit`, or anchored on the AIL 60 Hz tick) would
+settle it.`
+
 ### The route that works: `DX-CAPTURE /O`
 
 DOSBox-X's internal shell command `DX-CAPTURE` takes `/O` = "OPL FM (DROv2
@@ -357,10 +363,12 @@ prage_000.dro  7201 FM register writes  span 28117 ms  349 + 320 (2nd set) key-o
 prage_001.dro  1052 FM register writes  span  9433 ms   36 +  40 (2nd set) key-ons
 ```
 `verified (cmd: tools/opl_trace.py --info <file>)`. The stream opens with the
-AIL/MDI driver's cached OPL3 state (`0x01=0x20` waveform-select enable,
-`0x105=0x01` OPL3 enable, second-set `0x120`/`0x121`/… configuration), then
-operator/channel setup and key-ons on `0xB0`–`0xB8` and `0x1B0`–`0x1B8`. That is
-the shipped `SBPRO2.MDI` FM path playing — captured, not inferred.
+AIL/MDI driver's cached dual-OPL2 state (the `.dro` header reports hardware type
+`1` = dual-OPL2, second register set present): `0x01=0x20` waveform-select
+enable, `0x105=0x01` (the OPL3-mode enable bit), second-set `0x120`/`0x121`/…
+configuration, then operator/channel setup and key-ons on `0xB0`–`0xB8` and
+`0x1B0`–`0x1B8`. That is the shipped `SBPRO2.MDI` FM path playing — captured,
+not inferred.
 
 Sample (`tools/opl_trace.py <file>`, columns `tick_ms reg value`; `tick_ms` is
 accumulated from the capture's own delay commands, never wall-clock):
@@ -382,7 +390,7 @@ procedure and `tools/opl_trace.py` are. Traces are kept locally under
 
 Decodes DBRAWOPL v2 into a normalised `(tick_ms, register, value)` stream. It
 rebuilds the raw-code→register table the same way the recorder does
-(`Capture::MakeTables`, `adlib.cpp:834`), maps bit `0x80` to the OPL3 second
+(`Capture::MakeTables`, `adlib.cpp:834`), maps bit `0x80` to the second
 register set (`0x100+`), and decodes both delay forms (`delay256`,
 `delayShift8`). `--self-test` round-trips a synthetic file.
 `verified (cmd: python3 tools/opl_trace.py --self-test)`.
@@ -548,7 +556,7 @@ note-on)`.
 
 No Sound Blaster misconfiguration explains 3d either: both runs used the
 DOSBox-X defaults `sbtype=sb16`, `sbbase=220`, `irq=7`, `dma=1`,
-`oplmode=auto → OPL3`. `verified (cmd: grep '^sbtype' on the stored conf)`.
+`oplmode=auto` (whose capture reports dual-OPL2). `verified (cmd: grep '^sbtype' on the stored conf)`.
 
 The **mapper route is genuinely unavailable in this build** — but it was never
 the only route. The `caprawopl` mapper handler is commented out
