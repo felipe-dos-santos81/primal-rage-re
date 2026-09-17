@@ -20,9 +20,11 @@ static u32 count_raw(const char *dir)
     return n;
 }
 
-/* The oracle's presented-frame count, from Task 2's capture directory. Absent
- * capture: skip unless PR_ORACLE_REQUIRED=1, then fail (the 2a gate). */
-static void check_capture(const char *movie, u32 presented)
+/* The capture holds the frames the original presents: a prefix of the decoded
+ * sequence (settled by re-capture, commit 199cad1: TWI5 120 of 121, TWG 41 of
+ * 41; TWI5's last payload frame is real and never presented). Absent capture:
+ * skip unless PR_ORACLE_REQUIRED=1, then fail (the 2a gate). */
+static void check_capture(const char *movie, u32 expected, u32 decoded)
 {
     char dir[512];
     u32 n;
@@ -32,33 +34,33 @@ static void check_capture(const char *movie, u32 presented)
         if (getenv("PR_ORACLE_REQUIRED") != NULL)
             CHECK(0, "PR_ORACLE_REQUIRED=1 but the smacker capture is missing");
         else
-            printf("test_smacker: no capture at %s, presented count not checked\n", dir);
+            printf("test_smacker: no capture at %s, prefix not checked\n", dir);
         return;
     }
-    CHECK_EQ_INT(presented, n);
+    CHECK_EQ_INT(n, expected);                 /* the settled presented count */
+    CHECK(decoded >= n, "every presented frame is decoded");
 }
 
 /* Decode every payload frame of `file` in `dir` into the caller-owned index
  * buffer, in place (SKIP and palette deltas depend on the previous frame).
- * When `dump_dir` is non-NULL, write each presented frame as 320x200 RGB24
- * through the current palette (`frame_%04u.raw`). Reports the presented count
- * via `*presented`. Returns the header frame count, or 0 when it will not open.
+ * When `dump_dir` is non-NULL, write every frame as 320x200 RGB24 through the
+ * current palette (`frame_%04u.raw`). Reports the decoded count via `*written`
+ * and returns the header frame count, or 0 when it will not open.
  *
- * The original never presents a trailing ring frame that changes the image; a
- * trailing no-op hold is the image it does show, so it is presented (TWG's last
- * frames are 8-byte SKIP holds; TWI5's last frame is new content). */
+ * The decoder never drops a frame; which of the decoded frames the original
+ * presents is the player's rule (Task 7). The oracle compares the capture's
+ * prefix with `smk_compare.py --frames <capture count>`. */
 static u32 decode_movie(const char *dir, const char *file, const char *dump_dir,
-                        u32 *presented)
+                        u32 *written)
 {
     char path[512];
     static u8 data[2 << 20];
     static u8 frame[320 * 200];
-    static u8 prev[320 * 200];
     static u8 rgb[320 * 200 * 3];
     static u8 dac[256][3];
     static SmkMovie m;
     size_t sz;
-    u32 i, wh, n, written = 0;
+    u32 i, wh, n, count = 0;
     FILE *f;
 
     snprintf(path, sizeof(path), "%s/%s", dir, file);
@@ -73,30 +75,24 @@ static u32 decode_movie(const char *dir, const char *file, const char *dump_dir,
     wh = m.width * m.height;
     n = smk_frames(&m);
     for (i = 0; i < n; i++) {
-        int ring = (i + 1 == n) && (i > 0);   /* trailing ring/hold frame */
-        int hold;
         CHECK(smk_decode_frame(&m, frame), "frame decodes");
-        hold = ring && memcmp(frame, prev, wh) == 0;
-        if (!ring || hold) {
-            if (dump_dir != NULL) {
-                u32 p;
-                smk_palette_to(&m, dac);
-                for (p = 0; p < wh; p++) {
-                    rgb[p * 3 + 0] = dac[frame[p]][0];
-                    rgb[p * 3 + 1] = dac[frame[p]][1];
-                    rgb[p * 3 + 2] = dac[frame[p]][2];
-                }
-                snprintf(path, sizeof(path), "%s/frame_%04u.raw", dump_dir, i);
-                f = fopen(path, "wb");
-                CHECK(f != NULL, "dump frame opens");
-                if (f != NULL) {
-                    fwrite(rgb, 1, (size_t)wh * 3, f);
-                    fclose(f);
-                }
+        if (dump_dir != NULL) {
+            u32 p;
+            smk_palette_to(&m, dac);
+            for (p = 0; p < wh; p++) {
+                rgb[p * 3 + 0] = dac[frame[p]][0];
+                rgb[p * 3 + 1] = dac[frame[p]][1];
+                rgb[p * 3 + 2] = dac[frame[p]][2];
             }
-            written++;
+            snprintf(path, sizeof(path), "%s/frame_%04u.raw", dump_dir, i);
+            f = fopen(path, "wb");
+            CHECK(f != NULL, "dump frame opens");
+            if (f != NULL) {
+                fwrite(rgb, 1, (size_t)wh * 3, f);
+                fclose(f);
+            }
         }
-        memcpy(prev, frame, wh);
+        count++;
     }
 
     /* Past the last frame the decoder must reject, never re-read. */
@@ -109,7 +105,7 @@ static u32 decode_movie(const char *dir, const char *file, const char *dump_dir,
             for (k = 0; k < 3; k++) nonzero += dac[c][k] != 0;
         CHECK(nonzero > 0, "palette is populated");
     }
-    *presented = written;
+    *written = count;
     return n;
 }
 
@@ -178,13 +174,17 @@ int test_smacker(void)
     CHECK_EQ_INT(m.width, 0xDEADBEEFu);   /* *out untouched on rejection */
     for (int i = 0; i < 16; i++) data[0x38 + i] = save_ts[i];
 
-    /* Task 5: every frame of both movies decodes in bounds, the palette ends
-     * populated, and the presented counts are the capture's (TWI5 120 of the
-     * header's 121 - the trailing ring frame is decoded but not presented;
-     * TWG 41). With PR_SMK_DUMP set, write the RGB oracle frames too. */
+    /* Task 5: every frame of both movies decodes in bounds (no dropping) and
+     * the palette ends populated. The decoder's count equals the header (TWI5
+     * 121, TWG 41). The original presents only a prefix (settled by re-capture,
+     * commit 199cad1): TWI5 120 of 121 - its 121st payload frame is real and
+     * never presented - and TWG 41 of 41. That presentation rule is the
+     * player's (Task 7), not the test's; here the oracle compares the captured
+     * prefix via `smk_compare.py --frames <capture count>`. With PR_SMK_DUMP
+     * set, write every decoded frame as RGB24. */
     const char *dump = getenv("PR_SMK_DUMP");
     char dump_sub[600];
-    u32 presented_twi5, presented_twg;
+    u32 decoded_twi5, decoded_twg;
 
     if (dump != NULL) {
         snprintf(dump_sub, sizeof(dump_sub), "%s/twi5", dump);
@@ -192,18 +192,18 @@ int test_smacker(void)
         mkdir(dump_sub, 0777);
     }
     CHECK_EQ_INT(decode_movie(dir, "TWI5.SMK", dump ? dump_sub : NULL,
-                              &presented_twi5), 121);
-    CHECK_EQ_INT(presented_twi5, 120);
-    check_capture("twi5", presented_twi5);
+                              &decoded_twi5), 121);
+    CHECK_EQ_INT(decoded_twi5, 121);
+    check_capture("twi5", 120, decoded_twi5);
 
     if (dump != NULL) {
         snprintf(dump_sub, sizeof(dump_sub), "%s/twg", dump);
         mkdir(dump_sub, 0777);
     }
     CHECK_EQ_INT(decode_movie(dir, "TWG.SMK", dump ? dump_sub : NULL,
-                              &presented_twg), 41);
-    CHECK_EQ_INT(presented_twg, 41);
-    check_capture("twg", presented_twg);
+                              &decoded_twg), 41);
+    CHECK_EQ_INT(decoded_twg, 41);
+    check_capture("twg", 41, decoded_twg);
 
     /* Bounds: a 4x4 movie has a single 4x4 block, so decoding must never touch
      * a pixel past the first 16 even though every run in these trees is sized

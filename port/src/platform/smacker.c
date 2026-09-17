@@ -361,6 +361,9 @@ static int smk_palette_update(SmkMovie *m, const u8 *p, u32 n, u32 *chunk)
 
     if (n == 0)
         return 0;
+    /* PORT: the plan's original Format reference omitted the palette chunk's
+     * leading length byte; this follows the corrected reference (b2e20f4): the
+     * first byte is the chunk length in 4-byte units, the byte included. */
     len = (u32)p[0] * 4u;
     if (len == 0 || len > n)
         return 0;
@@ -450,6 +453,10 @@ static int smk_video(SmkMovie *m, u8 *frame, const u8 *p, u32 n)
     b.pos = 0;
     b.err = 0;
 
+    /* PORT: the pixel order follows the corrected Format reference (b2e20f4),
+     * not the plan's old wording: MONO uses all 16 bits of `map` (there is no
+     * 8-bit truncation) and FULL's first code paints columns 2-3, the second
+     * columns 0-1. */
     while (blk < blocks) {
         s32 type = smk_get_code(&b, m->tree[3], m->last[3]);
         u32 run, mode;
