@@ -201,3 +201,44 @@ int sprite_render_shear(const u8 *src, u8 *dst, int width, int rows,
     }
     return 0;
 }
+
+void sprite_blit(SpriteNode *n)
+{
+    if (n == NULL || n->width == 0 || n->rows == 0) return;
+    const u8 *src = NULL;
+    if (!gra_sprite_pixels(n->pixel_handle, &src)) return;
+
+    u8  bank = (u8)sprite_bank(n->pal_ptr);
+    u8 *dst  = mem + DSD(DS_000E87A4)
+                   + DSD(DS_001088F8 + (u32)n->y * 4u) + (u32)n->x;
+
+    /* PORT: 0x51E5C stores rows - clip_b into the node for the call and
+     * restores +0x14/+0x30 afterwards. The port keeps the node intact and
+     * passes the reduced row count, so a node can be re-blitted and the
+     * renderers never see clip_b. */
+    int rows = n->rows - n->clip_b;
+    int L = n->clip_l, R = n->clip_r, T = n->clip_t;
+    int w = n->width;
+
+    /* PORT: the ten live entries of PTR_LAB_00080C8C, as a switch so the
+     * mapping is explicit rather than inferred from bit combinations.
+     * Everything else is the original's no-op stub, including RAW+HFLIP
+     * (type 0x0A), which the original leaves unimplemented. */
+    switch (n->type & 0x1Fu) {
+    case 0x01: sprite_render_rle(src, dst, w, rows, 320, bank); break;
+    case 0x02: sprite_render_raw(src, dst, w, rows, 320, bank); break;
+    case 0x04: case 0x06:
+        sprite_render_shear(src, dst, w, rows, 320, bank, L, R, T); break;
+    case 0x09:
+        sprite_render_rle_clipped(src, dst, w, rows, 320, bank, 0, 0, 0, 1); break;
+    case 0x11:
+        sprite_render_rle_clipped(src, dst, w, rows, 320, bank, L, R, T, 0); break;
+    case 0x12:
+        sprite_render_raw(src, dst, w, rows, 320, bank); break;
+    case 0x14: case 0x16:
+        sprite_render_shear(src, dst, w, rows, 320, bank, L, R, T); break;
+    case 0x19:
+        sprite_render_rle_clipped(src, dst, w, rows, 320, bank, L, R, T, 1); break;
+    default: break;                       /* PORT: stub slot: no-op */
+    }
+}

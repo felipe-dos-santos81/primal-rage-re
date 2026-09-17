@@ -369,6 +369,43 @@ static void check_shear(void)
     DSW(DS_00107900 + 4) = 0;
 }
 
+static void check_blit_dispatch(void)
+{
+    /* A zero-size node must return without touching the buffer. Snapshot first:
+     * `CHECK(1, "no crash")` would assert nothing, and a test that asserts
+     * nothing is not a test. */
+    u32 icon = DSD(DS_000E87A4);
+    static u8 pre[320 * 200];
+    memcpy(pre, mem + icon, sizeof pre);
+    SpriteNode n; memset(&n, 0, sizeof n);
+    sprite_blit(&n);
+    CHECK(memcmp(mem + icon, pre, sizeof pre) == 0,
+          "a zero-size node blits nothing");
+
+    /* The blitter restores +0x14 and +0x30 after the call. */
+    GraSprite g; u32 dh = 0;
+    CHECK_EQ_INT(gra_sprite_lookup(0x2C11u, &g, &dh), 1);
+    memset(&n, 0, sizeof n);
+    sprite_node_build(&n, 0x2C11u);
+    n.pal_ptr = dh;                 /* any resolvable pointer with a bank byte */
+    n.x = 0; n.y = 0;
+    n.rows = 2; n.width = 2;        /* clamp so the fixture is small */
+    n.clip_t = 1; n.clip_b = 0;
+    int rows_before = n.rows, top_before = n.clip_t;
+    sprite_blit(&n);
+    CHECK_EQ_INT(n.rows, rows_before);
+    CHECK_EQ_INT(n.clip_t, top_before);
+
+    /* RAW+HFLIP (type 10) is a no-op in the original and must stay one. */
+    SpriteNode r; memset(&r, 0, sizeof r);
+    r.type = 0x0Au; r.rows = 4; r.width = 4;
+    r.pixel_handle = n.pixel_handle; r.pal_ptr = dh;
+    u8 *back = mem + DSD(DS_000E87A4);
+    u8 before = back[DSD(DS_001088F8) + 0];
+    sprite_blit(&r);
+    CHECK_EQ_INT(back[DSD(DS_001088F8) + 0], before);
+}
+
 int test_sprite(void)
 {
     check_node_build();
@@ -379,5 +416,6 @@ int test_sprite(void)
     check_rle_row_edges();
     check_rle_mirror();
     check_shear();
+    check_blit_dispatch();
     return 0;
 }

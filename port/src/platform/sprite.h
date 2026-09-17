@@ -44,6 +44,16 @@ u8 sprite_bank_offset(u8 bank_byte);
  * consumes. A pointer that does not resolve yields no offset. */
 u32 sprite_bank(u32 pal_ptr);
 
+/* PORT: 0x51E5C. The span blitter: resolves the node's pixel handle and palette
+ * bank, computes the destination from the current back buffer
+ * (mem + DS_000E87A4 + DS_001088F8[y] + x) and dispatches on `n->type & 0x1F` to
+ * the renderer the original's PTR_LAB_00080C8C selects. `rows - clip_b` rows are
+ * drawn (clip_b is consumed here, never passed to a renderer); the node itself
+ * is left intact, so it can be blitted again. A zero-size node, an unresolvable
+ * pixel handle, or any type outside the ten live entries (including RAW+HFLIP,
+ * type 0x0A, which the original leaves a stub) draws nothing. */
+void sprite_blit(SpriteNode *n);
+
 /* RLE-renders `rows` rows of `width` pixels from src into dst. Each destination
  * row starts `stride` bytes after the previous one (the original's 0x140 row
  * pitch), so the caller offsets dst to the sprite's screen x and the renderer
