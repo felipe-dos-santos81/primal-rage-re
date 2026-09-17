@@ -27,7 +27,8 @@ frames.  The reference decode is *alignment only*: the pixels written to the
 oracle are always the original's captured pixels, never the reference's.  A
 reference frame that cannot be found in the interior aborts the tool rather
 than emitting a misaligned oracle; trailing frames the original does not
-present are dropped.
+present are dropped only after >=1 s of post-movie capture, so a truncated
+window fails loudly instead of masquerading as an early movie end.
 
 Output (all git-ignored):
 
@@ -238,7 +239,8 @@ def align(ref_hashes, cap_hashes):
     return out
 
 
-def capture_movie(name, out_dir, game_dir, ref_dir, cap_hashes, frame_bytes):
+def capture_movie(name, out_dir, game_dir, ref_dir, cap_hashes, frame_bytes,
+                  host_fps):
     movie_file = None
     for f in os.listdir(game_dir):
         if f.upper() == MOVIES[name]:
@@ -287,6 +289,13 @@ def capture_movie(name, out_dir, game_dir, ref_dir, cap_hashes, frame_bytes):
     end = last + 1
     while end < len(cap_hashes) and cap_hashes[end] == cap_hashes[last]:
         end += 1
+    # A truncated capture must not masquerade as a movie that ends early: a
+    # trailing reference frame is only "not presented" if the capture keeps
+    # running well past the movie. Require >=1 s of post-movie capture.
+    if len(cap_hashes) - end < int(host_fps):
+        sys.exit('smk_capture: %s: only %d captured frames after the last '
+                 'presented frame (<1 s); the capture window may have truncated '
+                 'the movie - raise --time-limit' % (name, len(cap_hashes) - end))
     return dict(name=name, file=os.path.basename(movie_file),
                 header_frames=container['frames'],
                 displayed=len(mapping), first=first, last=last, end=end,
@@ -389,8 +398,8 @@ def main():
     host_period = 1.0 / host_fps
     results = []
     for m in a.movies:
-        results.append(capture_movie(m, a.out, a.game_dir,
-                                     a.reference_dir, cap_hashes, frame_bytes))
+        results.append(capture_movie(m, a.out, a.game_dir, a.reference_dir,
+                                     cap_hashes, frame_bytes, host_fps))
 
     with open(os.path.join(a.out, 'pacing.txt'), 'w') as f:
         f.write('# measured from the DOSBox-X AVI capture (VBlank-gated original)\n')
