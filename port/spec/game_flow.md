@@ -170,6 +170,28 @@ frame loop is reached through `0x20C10`:
   10/12/13/18; the logo/menu sprite composite is deferred to the menus
   sub-project.
 
+### Task 14 port notes Task 15 must account for
+
+* **The port title path is not the original's render path.** The original title
+  is composited by the process-table task system (`FUN_0002AE14` spawns tasks;
+  the sprite blitter draws `DAT_000A8B30` handle sprites over a backdrop). The
+  port skips that and decodes the four full-screen 320×200 `S16TITLE.GRA`
+  descriptors `{10,12,13,18}` — a **chosen** frame set, not derived from the
+  binary — cycling them every `TITLE_HOLD_FRAMES = 8` game frames (the original
+  advances via task timers). A pixel comparison against the original's title is
+  therefore **not apples-to-apples**: the asset is original but the composite is
+  not. `--check` frame capture must not assume the port's title equals the
+  original's.
+* **`--check N` in `port/src/main.c` does nothing yet.** It prints a line and
+  returns 0 without `host_init()` or any `game_frame()` call, so it does not
+  render or capture anything; it is still the Task 12 placeholder. Task 15 owns
+  the real headless frame capture (`frame_NNNN.ppm` + `.pal` sidecar).
+* **The presented buffer is redrawn every frame** (0x255CC swaps every presented
+  tick, so a hold frame that skipped the redraw would present a blank buffer).
+  An on-screen sample of the raised window showed 4 distinct images of
+  9.8k–18.7k colours after the fix; before the fix it also showed a 298-colour,
+  84 %-single-colour blank frame.
+
 ## Landmarks (verified)
 
 | Address | Meaning |

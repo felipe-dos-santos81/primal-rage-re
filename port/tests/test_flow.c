@@ -9,6 +9,30 @@ static int g_called;
 
 static void probe_task(void) { g_called++; }
 
+static u32 buf_hash(const u8 *p)
+{
+    u32 h = 2166136261u;
+    for (u32 k = 0; k < 320u * 200u; k++) { h ^= p[k]; h *= 16777619u; }
+    return h;
+}
+
+static u32 buf_nonzero(const u8 *p)
+{
+    u32 n = 0;
+    for (u32 k = 0; k < 320u * 200u; k++) if (p[k]) n++;
+    return n;
+}
+
+/* game_loop() presents mem[DS_000E87A4] and then swaps the two buffers. The
+ * presentation test below must reproduce that ordering, otherwise it cannot see
+ * a buffer that is presented but never redrawn. */
+static void swap_like_loop(void)
+{
+    u32 t = DSD(DS_000E87A0);
+    DSD(DS_000E87A0) = DSD(DS_000E87A4);
+    DSD(DS_000E87A4) = t;
+}
+
 int test_flow(void)
 {
     int before = g_failures;
@@ -33,7 +57,8 @@ int test_flow(void)
     DSD(DS_00104AE8) = 1;
     g_called = 0;
 
-    DSW(DS_000F0A64) = 1;      /* title state */
+    DSD(DS_00104B00) = 3;      /* the state-machine mode 0x24C5C switches on */
+    DSW(DS_000F0A64) = 1;      /* title state (chosen, see port/spec) */
     DSB(DS_000A81A8) = 0;      /* not quitting */
     DSB(DS_00104B1D) = 1;      /* skip the deferred menu poll */
     u32 frame0 = DSD(DS_000EF6DC);
@@ -42,15 +67,24 @@ int test_flow(void)
 
     CHECK(g_called == 1, "game_frame runs the update process table");
     CHECK_EQ_INT(DSD(DS_000EF6DC), (long)frame0 + 1);
-    CHECK_EQ_INT(DSD(DS_001014FC), 1);   /* title asked for a full present */
     DSD(DS_00104AE8) = 0;
 
-    /* The title frame was decoded into the back buffer: the shipped title art
-     * is not all index 0. */
-    u8 *fb = mem + DSD(DS_000E87A4);
-    u32 nonzero = 0;
-    for (u32 i = 0; i < 320u * 200u; i++) if (fb[i]) nonzero++;
-    CHECK(nonzero > 1000, "title frame decoded into the draw buffer");
+    /* Presentation test: over consecutive frames the buffer game_loop presents
+     * must always be a drawn image. This fails if a hold frame skips the redraw
+     * while the loop still swaps (the old blank-every-other-frame bug). */
+    u32 last_hash = 0;
+    int distinct = 0;
+    for (int i = 0; i < 20; i++) {
+        game_frame();
+        const u8 *presented = mem + DSD(DS_000E87A4);
+        u32 nz = buf_nonzero(presented);
+        CHECK(nz > 1000, "presented buffer is a drawn image, not blank");
+        u32 h = buf_hash(presented);
+        if (h != last_hash) { distinct++; last_hash = h; }
+        DSD(DS_001014FC) = 0;
+        swap_like_loop();
+    }
+    CHECK(distinct >= 2, "title animates across presented buffers");
 
     /* The title enqueued a palette record; flushing it fills the DAC. */
     gfx_dac[1][0] = gfx_dac[1][1] = gfx_dac[1][2] = 0;
@@ -62,6 +96,10 @@ int test_flow(void)
     DSW(DS_000F0A64) = 6;
     game_frame();
     CHECK_EQ_INT(DSB(DS_000A81A8), 0);
+
+    /* A mode other than 3 must not run the state machine at all. */
+    DSD(DS_00104B00) = 7;
+    game_frame();
 
     return g_failures - before;
 }

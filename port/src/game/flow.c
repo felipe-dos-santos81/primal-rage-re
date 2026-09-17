@@ -34,11 +34,14 @@
 
 /* The original title is a composite drawn through the process-table task
  * system (0x2AE14 spawns tasks; the sprite blitter fills DAT_000E87A4). PORT:
- * the port renders the full-screen S16TITLE.GRA frames instead; the logo/menu
- * sprite overlay is deferred to the menus sub-project. */
+ * the port renders selected full-screen S16TITLE.GRA frames instead; the
+ * logo/menu sprite overlay is deferred to the menus sub-project. The frame set
+ * {10,12,13,18} is a port choice (the four 320x200 descriptors), not an
+ * original-derived constant, and TITLE_HOLD_FRAMES is a port rate — the
+ * original advances its animation through task timers. */
 static const int TITLE_FRAMES[] = { 10, 12, 13, 18 };
 #define TITLE_FRAME_COUNT ((int)(sizeof TITLE_FRAMES / sizeof TITLE_FRAMES[0]))
-#define TITLE_HOLD_FRAMES 8   /* game frames each image is held */
+#define TITLE_HOLD_FRAMES 8   /* PORT: title-image rate (original: task timers) */
 
 static const char *s_game_dir;
 
@@ -160,17 +163,18 @@ static void game_state_title(void)
         title_load();
         if (!s_title_ready) return;
     }
-    if (s_title_hold > 0) {
-        s_title_hold--;
-        DSD(DS_001014FC) = 1;
-        return;
-    }
-    s_title_hold = TITLE_HOLD_FRAMES - 1;
+    /* Redraw the current image into the draw buffer every frame, matching the
+     * original: 0x255CC swaps buffers every presented tick, so a buffer that is
+     * not redrawn this frame is presented blank on the next. TITLE_HOLD_FRAMES
+     * only slows which image is current; it must never skip the redraw. */
     u8 *dst = mem + DSD(DS_000E87A4);
     int consumed = gra_decode_frame(s_title_off, s_title_chunks, s_title_chunk_n,
                                     TITLE_FRAMES[s_title_idx], dst, 320u * 200u);
     if (consumed < 0) return;   /* keep the previous image */
-    s_title_idx = (s_title_idx + 1) % TITLE_FRAME_COUNT;
+    if (++s_title_hold >= TITLE_HOLD_FRAMES) {
+        s_title_hold = 0;
+        s_title_idx = (s_title_idx + 1) % TITLE_FRAME_COUNT;
+    }
     DSD(DS_001014FC) = 1;       /* signals the full-screen copy in game_loop */
 }
 
@@ -178,8 +182,14 @@ static void game_state_title(void)
 static void game_state_init(void)
 {
     /* The original enters state 0 (the 0x11000 attract sub-machine), which then
-     * transitions to the title state 1. PORT: the attract sub-machine is
-     * deferred, so the port enters state 1 (the title) directly. */
+     * transitions to title state 1. PORT: the attract sub-machine is deferred,
+     * so the port enters state 1 directly. The index is a chosen, likely value
+     * from static evidence (see port/spec/game_flow.md "Title state"), not a
+     * runtime reading — no scriptable DOSBox-X debugger was available.
+     * 0x24C5C drives 0x11D04 only in case 3 of switch(DAT_00104B00), so the
+     * port selects that mode; the original derives the value in 0x10E80's
+     * register handoff. */
+    DSD(DS_00104B00) = 3;
     DSW(DS_000F0A64) = 1;
     DSB(DS_000F0A71) = 0;
     DSB(DS_000F0A5C) = 4;
@@ -268,11 +278,26 @@ void game_loop(void)
 
 void game_frame(void)
 {
+    /* PORT: 0x24C5C calls 0x4F644 (unless DAT_00104B00 == 0x27); it is a
+     * per-mode input/wait helper owned by no ported sub-project yet. */
     /* PORT: the two 0x94-byte player records at DS_001077E0 and 0x24C5C's
      * int 16h input loop belong to the fight engine (sub-project 5). */
     DSD(DS_000EF6DC)++;                                /* frame counter */
     run_process_table(DS_000A8644, DSD(DS_00104AE8));  /* update table */
-    game_state_step();                                 /* 0x11D04 */
+    /* PORT: 0x24C5C's second 0x38990 per-frame service call is deferred. */
+
+    /* The original reaches the state machine 0x11D04 only in case 3 of
+     * switch(DAT_00104B00) (0x24C5C). The other modes (login/attract/fight and
+     * diagnostics) are deferred to sub-projects 4/5. */
+    switch (DSD(DS_00104B00)) {
+    case 3:
+        game_state_step();                             /* 0x11D04 */
+        break;
+    default:
+        /* PORT: 0x24C5C's case 1/2/4..0x33 modes drive menus, attract, fight
+         * and diagnostics; deferred to sub-projects 4/5. */
+        break;
+    }
 }
 
 void game_state_step(void)
