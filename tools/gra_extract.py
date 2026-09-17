@@ -59,3 +59,69 @@ def decode_raw(d, w, h, off):
     if off + w * h > len(d):
         raise ValueError("raw blob %dx%d at %#x overruns the file" % (w, h, off))
     return [[(d[off + r * w + c], True) for c in range(w)] for r in range(h)]
+
+
+def palette_records(body):
+    """type-5 body -> list of records, each [(r,g,b), ...], in file order."""
+    recs, pos = [], 0
+    while pos + 4 <= len(body):
+        count = struct.unpack_from('<I', body, pos)[0]
+        end = pos + 4 + 4 * count
+        if end > len(body):
+            raise ValueError("palette record at %#x overruns the body" % pos)
+        recs.append(parse_palette(body[pos:end]))
+        pos = end
+    return recs
+
+
+def _family(stem):
+    """'S16KONSH' -> 'KON': drop the set prefix (S04/S08/S16), keep three letters."""
+    if len(stem) > 3 and stem[0] == 'S' and stem[1:3].isdigit():
+        stem = stem[3:]
+    return stem[:3]
+
+
+def choose_bank(stem, banks, force_from=None):
+    """Spec rule step 1 -> (source_stem or 'greyscale', records or None)."""
+    if force_from is not None:
+        return force_from, banks[force_from]
+    if stem in banks:
+        return stem, banks[stem]
+    cands = [s for s in banks if s != stem and _family(stem) == _family(s)]
+    if cands:
+        best = min(cands, key=lambda s: (len(s), s))
+        return best, banks[best]
+    return 'greyscale', None
+
+
+def choose_record(records, max_index, force=None):
+    """Spec rule step 2 -> (record id | 'flat' | None, colour list).
+    Colour lists are indexed 1-based by the caller (to_rgba), except GREY."""
+    if records is None:
+        return None, GREY
+    if force is not None:
+        return force, records[force]
+    for i, rec in enumerate(records):
+        if max_index <= len(rec):
+            return i, rec
+    return 'flat', [c for rec in records for c in rec]
+
+
+def to_rgba(rows, colours):
+    """rows of (index, opaque) -> (RGBA bytes, count of opaque pixels without a colour).
+    Palette records are 1-based (index 1 = record[0]); GREY is the identity."""
+    one_based = colours is not GREY
+    out = bytearray()
+    bad = 0
+    for row in rows:
+        for idx, opaque in row:
+            if not opaque:
+                out += b'\0\0\0\0'
+                continue
+            k = idx - 1 if one_based else idx
+            if 0 <= k < len(colours):
+                out += bytes(colours[k]) + b'\xff'
+            else:
+                out += bytes(MAGENTA) + b'\xff'
+                bad += 1
+    return bytes(out), bad
