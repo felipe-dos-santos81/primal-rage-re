@@ -63,7 +63,10 @@ static void fill_run(u8 *dst, int n, u8 colour)
 
 /* PORT: decodes one row of `width` pixels and returns the advanced source.
  * Runs that extend past the row are clipped to it, matching the original's
- * raster pass. */
+ * raster pass. `dst == NULL` walks exactly the same control bytes and stores
+ * nothing, which is how the clipped renderer consumes rows it must not draw
+ * (0x5D28F's top skip and vis <= 0); the source advance is identical either
+ * way, so the following rows stay in sync. */
 static const u8 *rle_row(u8 *dst, const u8 *src, int width, u8 bank, int mirror)
 {
     int col = 0;
@@ -73,11 +76,13 @@ static const u8 *rle_row(u8 *dst, const u8 *src, int width, u8 bank, int mirror)
         if (b < 0x80) {
             n = b;
             if (n > width - col) n = width - col;
-            if (mirror) {
-                for (int i = 0; i < n; i++)
-                    dst[width - 1 - (col + i)] = (u8)(src[i] + bank);
-            } else {
-                copy_run(dst + col, src, n, bank);
+            if (dst != NULL) {
+                if (mirror) {
+                    for (int i = 0; i < n; i++)
+                        dst[width - 1 - (col + i)] = (u8)(src[i] + bank);
+                } else {
+                    copy_run(dst + col, src, n, bank);
+                }
             }
             src += b;              /* PORT: the run length, not the clipped count */
         } else if (b < 0xC0) {
@@ -89,13 +94,64 @@ static const u8 *rle_row(u8 *dst, const u8 *src, int width, u8 bank, int mirror)
             u8 colour = (u8)(DSD(0x00081314u + (u32)(*src) * 4u) + (u32)bank);
             src++;
             if (n > width - col) n = width - col;
-            if (mirror)
-                for (int i = 0; i < n; i++) dst[width - 1 - (col + i)] = colour;
-            else
-                fill_run(dst + col, n, colour);
+            if (dst != NULL) {
+                if (mirror)
+                    for (int i = 0; i < n; i++) dst[width - 1 - (col + i)] = colour;
+                else
+                    fill_run(dst + col, n, colour);
+            }
         } else {
             n = b & 0x3F;
             if (n > width - col) n = width - col;
+            /* PORT: transparent runs touch neither destination nor source. */
+        }
+        col += n;
+    }
+    return src;
+}
+
+/* PORT: 0x5D28F (clipped) and 0x57FFB (clipped+hflip). The original is a
+ * six-way nest of straddle branches (line/right/both x span-crosses-edge); the
+ * port instead renders one row by intersecting each decoded run with the row's
+ * visible window [clip_l, clip_l + vis), which is provably equivalent -- every
+ * original branch draws exactly the window-covered part of the straddling run
+ * and skips the rest. dst[0] is the window's first visible column: the blitter
+ * computes dst = mem + ... + node.x and render_list has clamped node.x inward to
+ * the clip edge, so the window is written sequentially from dst[0] and dst is
+ * never indexed by the original column. The clipped-off run portions are still
+ * walked, so the whole row's stream is consumed (the original rewinds esi by the
+ * overhang for the literal case to reach the same endpoint). */
+static const u8 *rle_row_clipped(u8 *dst, const u8 *src, int width, u8 bank,
+                                 int clip_l, int vis, int mirror)
+{
+    int col = 0;
+    while (col < width) {
+        u8 b = *src++;
+        int n;
+        int lo, hi;
+        if (b < 0x80) {
+            n = b;
+            lo = (col > clip_l) ? col : clip_l;
+            hi = (col + n < clip_l + vis) ? col + n : clip_l + vis;
+            for (int c = lo; c < hi; c++) {
+                int d = c - clip_l;
+                if (mirror) d = vis - 1 - d;
+                dst[d] = (u8)(src[c - col] + bank);
+            }
+            src += b;              /* PORT: the run length, not the visible count */
+        } else if (b < 0xC0) {
+            n = b & 0x3F;
+            u8 colour = (u8)(DSD(0x00081314u + (u32)(*src) * 4u) + (u32)bank);
+            src++;
+            lo = (col > clip_l) ? col : clip_l;
+            hi = (col + n < clip_l + vis) ? col + n : clip_l + vis;
+            for (int c = lo; c < hi; c++) {
+                int d = c - clip_l;
+                if (mirror) d = vis - 1 - d;
+                dst[d] = colour;
+            }
+        } else {
+            n = b & 0x3F;
             /* PORT: transparent runs touch neither destination nor source. */
         }
         col += n;
@@ -109,6 +165,31 @@ int sprite_render_rle(const u8 *src, u8 *dst, int width, int rows,
     if (src == NULL || dst == NULL || width <= 0 || rows <= 0) return -1;
     for (int r = 0; r < rows; r++) {
         src = rle_row(dst, src, width, bank, 0);
+        dst += stride;
+    }
+    return 0;
+}
+
+int sprite_render_rle_clipped(const u8 *src, u8 *dst, int width, int rows,
+                              int stride, u8 bank,
+                              int clip_l, int clip_r, int clip_t, int mirror)
+{
+    if (src == NULL || dst == NULL || width <= 0 || rows <= 0) return -1;
+    int vis = width - clip_l - clip_r;
+    if (vis <= 0) {
+        /* PORT: 0x5D28F's L>=W / R>=W path still walks every row so the source
+         * pointer ends where the unclipped renderer would leave it. */
+        for (int r = 0; r < rows; r++)
+            src = rle_row(NULL, src, width, bank, mirror);
+        return 0;
+    }
+    int skip = clip_t;
+    if (skip < 0) skip = 0;
+    if (skip > rows) skip = rows;
+    for (int r = 0; r < skip; r++)
+        src = rle_row(NULL, src, width, bank, mirror);
+    for (int r = skip; r < rows; r++) {
+        src = rle_row_clipped(dst, src, width, bank, clip_l, vis, mirror);
         dst += stride;
     }
     return 0;

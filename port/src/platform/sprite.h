@@ -54,6 +54,21 @@ u32 sprite_bank(u32 pal_ptr);
 int sprite_render_rle(const u8 *src, u8 *dst, int width, int rows,
                       int stride, u8 bank);
 
+/* PORT: 0x5D28F (clipped) and 0x57FFB (clipped+hflip). RLE-renders the
+ * `width`-pixel rows inside a clip window. `rows` has already had clip_b
+ * subtracted by the blitter, so there is no clip_b here; `clip_t` whole rows at
+ * the top are consumed without drawing and `clip_l`/`clip_r` columns each side
+ * are the window overhangs. The visible window is `width - clip_l - clip_r`
+ * columns wide and is written sequentially from dst[0] -- the blitter's dst
+ * already points at the window's first visible column, because render_list
+ * clamped node.x inward to the clip edge. `mirror` reverses the window
+ * horizontally (0x57FFB). The whole row's stream is always consumed, even when
+ * nothing is visible (vis <= 0), so later rows stay in sync. Returns 0, or -1
+ * if src/dst is NULL or width/rows is non-positive. */
+int sprite_render_rle_clipped(const u8 *src, u8 *dst, int width, int rows,
+                              int stride, u8 bank,
+                              int clip_l, int clip_r, int clip_t, int mirror);
+
 /* PORT: 0x58CBD. Raw (uncompressed) copy renderer: `rows` rows of `width`
  * bytes are copied from src to dst with the bank offset added byte-wise to
  * every pixel, advancing dst by `stride` per row and src by `width`. The

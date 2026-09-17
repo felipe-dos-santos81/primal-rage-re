@@ -195,11 +195,92 @@ static void check_raw_copy(void)
     CHECK_EQ_INT(d2[1], 0x03);
 }
 
+/* 0x5D28F / 0x57FFB semantics. Fixture: a 6-wide, 3-row RLE sprite whose row
+ * is [literal 2][transparent 1][fill 3], built by repeating the 9-byte ROW so
+ * the three stream rows are byte-identical; stride 16, bank 0 (identity). The
+ * blob's trailing zero bytes are no-op literals, so a source desync of a few
+ * bytes would hide here -- the distinct-payload AB stream below pins source
+ * consumption instead. Destination indexing is window-relative: dst[0] is the
+ * window's first visible column (render_list clamped node.x to the clip edge),
+ * so the expected rows below are the visible window written from dst[0]. */
+static void check_clipped_case(const u8 *blob, int clip_l, int clip_r,
+                               const u8 *expect, const char *what)
+{
+    u8 dst[3 * 16];
+    memset(dst, 0xEE, sizeof dst);
+    CHECK_EQ_INT(sprite_render_rle_clipped(blob, dst, 6, 3, 16, 0,
+                                           clip_l, clip_r, 0, 0), 0);
+    /* Every stream row is checked, so a per-row source desync (rather than
+     * clipping) would also trip this. */
+    int same = 1;
+    for (int r = 0; r < 3 && same; r++)
+        for (int c = 0; c < 6; c++)
+            if (dst[r * 16 + c] != expect[c]) same = 0;
+    CHECK(same, what);
+}
+
+static void check_rle_clipped(void)
+{
+    static const u8 ROW[9] = { 0x02, 0x0A, 0x0B, 0xC1, 0x00, 0x83, 0x07,0,0 };
+    u8 blob[27];
+    for (int i = 0; i < 3; i++) memcpy(blob + i * 9, ROW, sizeof ROW);
+
+    /* 0xEE marks a column the window does not cover (dst untouched). */
+    static const u8 e_none[6]   = { 0x0A,0x0B,0xEE,0x07,0x07,0x07 };
+    static const u8 e_left[6]   = { 0x0B,0xEE,0x07,0x07,0x07,0xEE };
+    static const u8 e_ltrans[6] = { 0xEE,0x07,0x07,0x07,0xEE,0xEE };
+    static const u8 e_right[6]  = { 0x0A,0x0B,0xEE,0x07,0xEE,0xEE };
+    static const u8 e_both[6]   = { 0xEE,0x07,0xEE,0xEE,0xEE,0xEE };
+    static const u8 e_spans[6]  = { 0x07,0xEE,0xEE,0xEE,0xEE,0xEE };
+
+    check_clipped_case(blob, 0, 0, e_none,  "clipped: no clip");
+    check_clipped_case(blob, 1, 0, e_left,  "clipped: left cuts mid-literal");
+    check_clipped_case(blob, 2, 0, e_ltrans,"clipped: left cuts transparent");
+    check_clipped_case(blob, 0, 2, e_right, "clipped: right cuts fill run");
+    check_clipped_case(blob, 2, 2, e_both,  "clipped: left and right");
+    check_clipped_case(blob, 4, 1, e_spans, "clipped: window inside fill run");
+
+    /* clip_t: whole rows of stream consumed without drawing, so the visible
+     * rows shift up by one and the last destination slot stays untouched. */
+    u8 dst[3 * 16]; memset(dst, 0xEE, sizeof dst);
+    CHECK_EQ_INT(sprite_render_rle_clipped(blob, dst, 6, 3, 16, 0, 0,0,1,0), 0);
+    for (int c = 0; c < 6; c++) {
+        CHECK_EQ_INT(dst[c], e_none[c]);
+        CHECK_EQ_INT(dst[16 + c], e_none[c]);
+        CHECK_EQ_INT(dst[32 + c], 0xEE);
+    }
+
+    /* Source consumption, on rows with DISTINCT payloads: clipping must still
+     * consume each whole row's stream, or row B decodes out of sync. */
+    static const u8 AB[12] = {
+        0x02,0x11,0x12, 0xC1, 0x83,0x05,
+        0x02,0x21,0x22, 0xC1, 0x83,0x06,
+    };
+    static const u8 e_a[6] = { 0x12,0xEE,0x05,0x05,0x05,0xEE };
+    static const u8 e_b[6] = { 0x22,0xEE,0x06,0x06,0x06,0xEE };
+    memset(dst, 0xEE, sizeof dst);
+    CHECK_EQ_INT(sprite_render_rle_clipped(AB, dst, 6, 2, 16, 0, 1,0,0,0), 0);
+    int same = 1;
+    for (int c = 0; c < 6; c++) {
+        if (dst[c] != e_a[c]) same = 0;
+        if (dst[16 + c] != e_b[c]) same = 0;
+    }
+    CHECK(same, "clipped: L=1 consumes each whole row's stream");
+
+    /* vis <= 0: the whole stream is still consumed, nothing is drawn. */
+    memset(dst, 0xEE, sizeof dst);
+    CHECK_EQ_INT(sprite_render_rle_clipped(blob, dst, 6, 3, 16, 0, 3,3,0,0), 0);
+    same = 1;
+    for (int i = 0; i < (int)sizeof dst; i++) if (dst[i] != 0xEE) same = 0;
+    CHECK(same, "clipped: zero-width window draws nothing");
+}
+
 int test_sprite(void)
 {
     check_node_build();
     check_rle_cross();
     check_bank_and_colour();
     check_raw_copy();
+    check_rle_clipped();
     return 0;
 }
