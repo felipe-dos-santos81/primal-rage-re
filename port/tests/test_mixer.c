@@ -74,23 +74,31 @@ int test_mixer(void)
     CHECK(saw_pos && saw_neg, "clipping saturates both s16 limits");
     CHECK(!outside, "no sample wraps past the s16 limits");
 
-    /* A voice whose rate differs from out_rate is resampled without reading out
-     * of bounds. Two-sample buffer, 100x the output rate: an unclamped
-     * nearest-neighbour read would step ~100 samples past the end on the first
-     * frame. Canary values immediately after the buffer must survive. */
-    static struct {
-        s16 pcm[2];
-        s16 canary[4];
-    } g = { { 32000, 32000 }, { 111, 222, 333, 444 } };
+    /* A voice whose rate differs from out_rate is resampled without reading
+     * outside its buffer. Six-sample ramp at twice out_rate: the 16.16 phase
+     * advances exactly two samples per output frame, so a one-shot voice reads
+     * ramp[0], ramp[2], ramp[4] and then, at the fourth frame, has idx == 6 ==
+     * frames. Expected output is exactly those three values followed by silence
+     * — asserted per frame, so an unclamped read of ramp[6] would change frame 4
+     * and fail. (The negative control needs the over-read to be deterministic:
+     * temporarily stripping the idx >= frames guard and padding the array is
+     * what confirms this test can fail.) */
+    static s16 ramp[6] = { 100, 200, 300, 400, 500, 600 };
     mixer_reset();
-    mixer_add_sample(g.pcm, 2, 44100 * 100, 256, 0);
-    mixer_render(out, FRAMES, 44100);
-    CHECK_EQ_INT(g.canary[0], 111);
-    CHECK_EQ_INT(g.canary[1], 222);
-    CHECK_EQ_INT(g.canary[2], 333);
-    CHECK_EQ_INT(g.canary[3], 444);
-    CHECK_EQ_INT(g.pcm[0], 32000);
-    CHECK_EQ_INT(g.pcm[1], 32000);
+    mixer_add_sample(ramp, 6, 44100 * 2, 256, 0);
+    mixer_render(out, 6, 44100);
+    CHECK_EQ_INT(out[0], 100);
+    CHECK_EQ_INT(out[1], 100);
+    CHECK_EQ_INT(out[2], 300);
+    CHECK_EQ_INT(out[3], 300);
+    CHECK_EQ_INT(out[4], 500);
+    CHECK_EQ_INT(out[5], 500);
+    CHECK_EQ_INT(out[6], 0);
+    CHECK_EQ_INT(out[7], 0);
+    CHECK_EQ_INT(out[8], 0);
+    CHECK_EQ_INT(out[9], 0);
+    CHECK_EQ_INT(out[10], 0);
+    CHECK_EQ_INT(out[11], 0);
 
     return g_failures - before;
 }

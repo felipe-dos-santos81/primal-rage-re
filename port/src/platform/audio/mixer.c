@@ -12,6 +12,9 @@
 #include "mixer.h"
 #include "opl/opl.h"
 
+/* Four, matching the original's four AIL sample handles. TODO(verify): the
+ * original's behaviour once all four are busy is unknown — drop, steal, or
+ * error (see mixer.h); this port drops. */
 #define MIXER_VOICES 4
 #define MIXER_UNITY_VOLUME 256
 #define MIXER_MAX_VOLUME 1024
