@@ -454,11 +454,16 @@ can be re-blitted and `render_list`'s own state is not perturbed.
 (dword loads for small counts). The port reads byte-wise, so it never over-reads
 the blob — a strict improvement with identical output.
 
-**`bank == 0`** selects the stale `0x5D110` value in the original, which then
-acts as a colour offset. The port reproduces the *offset arithmetic* by defining
-`bank(0) = 0x5D110` explicitly and documenting it as an original quirk rather
-than silently substituting 0. Whether any shipped asset reaches `bank == 0` is
-unknown; the behaviour is pinned so a divergence is visible rather than masked.
+**`bank == 0` is an original defect, not a palette operation.** For `n` in
+1..255, `DAT_00081310[n]` is `(n-1)` replicated in all four bytes, so the
+original's dword add is exactly a per-pixel `+ (n-1)`. `DAT_00081310[0]` holds
+the stale code pointer `0x0005D110`, whose four bytes differ, so the same dword
+add gives each pixel *inside a 4-pixel group* a different offset — position- and
+alignment-dependent garbage. A byte-wise port cannot reproduce an
+alignment-dependent carry, so the port treats `bank == 0` as no offset and
+records a `/* TODO(verify): */` naming it as the first suspect if the 4a-ii
+oracle ever diverges in 4-pixel groups. Whether any shipped asset reaches
+`bank == 0` is unknown.
 
 **No dynamic allocation, no SDL** outside `host.c`/`main.c`; `sprite.c` and
 `render.c` are pure `mem[]` writers.
