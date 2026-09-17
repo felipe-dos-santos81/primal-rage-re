@@ -15,7 +15,10 @@ Faithful reimplementation of PRAGE.EXE. Read the spec in
 1. One C function per original function, header comment `/* 0xADDR — spec section */`.
 2. Follow the spec; confirm against the decompilation wherever it says `likely`.
 3. Mark deliberate deviations `/* PORT: ... */`; doubts `/* TODO(verify): ... */`.
-4. No `static` game state.
+4. No shadowing of original state: anything the original keeps in its data segment
+   stays in `mem[]` at its original offset, never mirrored in a long-lived C global.
+   Port-only bookkeeping for port-only behaviour is fine as `static` (e.g. the
+   chosen title frame cycle in `game/flow.c`) — say so where it lives.
 5. Do not reformat files owned by another module.
 
 ## Build and checks
