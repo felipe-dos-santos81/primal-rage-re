@@ -79,12 +79,12 @@ static void copy_run(u8 *dst, const u8 *src, int n, u8 bank)
  * portions are still walked, so the whole row's stream is consumed (the original
  * rewinds esi by the overhang for the literal case to reach the same endpoint).
  *
- * PORT: 0x57F80 (hflip RLE) and 0x57FFB (hflip + clipped RLE) set the row's
- * destination once to dst + width - 1 and walk it backward, so the mirror is a
- * property of the destination pointer. The port keeps the row base at
- * mem + ...y... + x (dst[0] is the window's first visible column, as above) and
- * mirrors the column inside the row via vis - 1 - (col - clip_l). Observable
- * result is identical; only the pointer arithmetic differs. */
+ * PORT: 0x57F80 (hflip RLE) sets the row destination once to dst + width - 1;
+ * 0x57FFB (hflip + clipped RLE) uses dst + vis - 1; both then walk it backward,
+ * so the mirror is a property of the destination pointer. The port keeps the row
+ * base at mem + ...y... + x (dst[0] is the window's first visible column, as
+ * above) and mirrors the column inside the row via vis - 1 - (col - clip_l).
+ * Observable result is identical; only the pointer arithmetic differs. */
 static const u8 *rle_row(u8 *dst, const u8 *src, int width, u8 bank,
                          int mirror, int clip_l, int vis)
 {
