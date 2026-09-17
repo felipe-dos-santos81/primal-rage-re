@@ -140,6 +140,11 @@ def main(argv):
     ap.add_argument('--palette', type=int, default=None,
                     help='chunk index supplying the palette (default: first type-5)')
     ap.add_argument('--frame', type=int, default=0, help='descriptor index (default 0)')
+    ap.add_argument('--indices', default=None,
+                    help='also write the raw width*height 8-bit index buffer '
+                         '(transparent pixels = 0) to this path; this is the '
+                         'palette-independent oracle the C decoder is compared '
+                         'against byte-for-byte')
     args = ap.parse_args(argv)
 
     d = open(args.gra, 'rb').read()
@@ -190,6 +195,9 @@ def main(argv):
           file=sys.stderr)
     rows, used = decode_sprite(d, w, h, off)
     open(args.out, 'wb').write(render(rows, w, h, palette))
+    if args.indices:
+        open(args.indices, 'wb').write(
+            bytes(v if opaque else 0 for row in rows for v, opaque in row))
     print("wrote %s (%dx%d, %d RLE bytes from %#x..%#x)"
           % (args.out, w, h, used - off, off, used), file=sys.stderr)
 

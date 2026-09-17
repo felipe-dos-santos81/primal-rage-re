@@ -1,7 +1,11 @@
 #include "platform/gfx.h"
+#include "platform/gra.h"
 #include "platform/res.h"
 #include "mem.h"
 #include "test.h"
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
 
 /* Scratch colour buffer for raw-pointer records, clear of the resource heap
  * (0x10B0D0 .. ~0x2A8C548), same as the GRA test. */
@@ -94,6 +98,69 @@ int test_gfx(void)
     CHECK_EQ_INT(gfx_dac[0x20][0], 0);
     CHECK_EQ_INT(DSD(REC + 4), 0xFFFFFFFFu);
     CHECK_EQ_INT(DSD(HEAD), REC);
+
+    /* Task 15: the title-screen index comparison against the independent Python
+     * decoder. port/tests/s16title_frame10.idx is the raw 320x200 8-bit index
+     * buffer tools/gra_render.py decodes for S16TITLE frame 10 — the first image
+     * the port's title player presents, so --check frame_0001.idx is this same
+     * buffer at runtime. It is generated locally and git-ignored like
+     * ghidra_data.bin, and is required only when PR_ORACLE_REQUIRED=1.
+     *
+     * This is the comparison that can be exact: both sides are index buffers
+     * from two independent decoders, and all four full-screen title frames are
+     * fully opaque (no transparent run and no opaque index 0), so the port's
+     * index-0-for-transparent model and its flat-palette choice cannot mask a
+     * difference. The PPM/RGB check and the emulator capture cannot pin the
+     * indices and are NOT asserted here (see the Task 15 report). */
+    {
+        FILE *of = fopen("port/tests/s16title_frame10.idx", "rb");
+        if (!of && getenv("PR_ORACLE_REQUIRED")) {
+            CHECK(0, "PR_ORACLE_REQUIRED=1 but s16title_frame10.idx is missing");
+        } else if (!of) {
+            printf("SKIP title index oracle (generate it with tools/gra_render.py "
+                   "S16TITLE.GRA 2 out.ppm --frame 10 --indices "
+                   "port/tests/s16title_frame10.idx, or set PR_ORACLE_REQUIRED=1 "
+                   "to require it)\n");
+        } else {
+            static u8 want[320 * 200];
+            size_t nread = fread(want, 1, sizeof want, of);
+            fclose(of);
+            CHECK_EQ_INT(nread, sizeof want);
+
+            /* INDEX names are lowercase and not NUL-terminated at 12 chars. */
+            u32 idx = res_count();   /* sentinel: not found */
+            for (u32 i = 0; i < res_count(); i++)
+                if (strncasecmp(res_name(i), "s16title.gra", 12) == 0) { idx = i; break; }
+            CHECK(idx < res_count(), "s16title.gra is in the INDEX");
+            if (idx < res_count()) {
+                u32 off = (u32)((const u8 *)res_resolve(res_handle(idx, 0)) - mem);
+                GraChunk ch[8];
+                int n = 0;
+                CHECK(gra_open(off, res_size(idx), ch, 8, &n), "S16TITLE chain");
+                static u8 got_idx[320 * 200];
+                int used = gra_decode_frame(off, ch, n, 10, got_idx, sizeof got_idx);
+                CHECK(used > 0, "S16TITLE frame 10 decodes");
+                CHECK(nread == sizeof want && memcmp(got_idx, want, sizeof want) == 0,
+                      "title frame 10 index buffer is byte-identical to the "
+                      "independent Python decoder");
+            }
+
+            /* If a --check run left frame_0001.idx in the CWD, the live capture
+             * must be that same buffer: this pins the runtime path, not just the
+             * decoder. Optional because a standalone suite run has no frames;
+             * when the artifact is present it is a real assertion. */
+            FILE *fr = fopen("frame_0001.idx", "rb");
+            if (fr) {
+                static u8 runtime_idx[320 * 200];
+                size_t rn = fread(runtime_idx, 1, sizeof runtime_idx, fr);
+                fclose(fr);
+                CHECK(rn == sizeof want &&
+                      memcmp(runtime_idx, want, sizeof want) == 0,
+                      "--check frame_0001.idx is byte-identical to the independent "
+                      "Python decoder");
+            }
+        }
+    }
 
     return g_failures - before;
 }
