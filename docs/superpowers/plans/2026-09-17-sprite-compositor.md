@@ -1241,10 +1241,16 @@ stage explicit paths, never `git add -A`.)
 ```c
 static void check_blit_dispatch(void)
 {
-    /* A zero-size node is a no-op and must not touch the buffer. */
+    /* A zero-size node must return without touching the buffer. Snapshot first:
+     * `CHECK(1, "no crash")` would assert nothing, and a test that asserts
+     * nothing is not a test. */
+    u32 icon = DSD(DS_000E87A4);
+    static u8 pre[320 * 200];
+    memcpy(pre, mem + icon, sizeof pre);
     SpriteNode n; memset(&n, 0, sizeof n);
     sprite_blit(&n);
-    CHECK(1, "no crash on a zero node");
+    CHECK(memcmp(mem + icon, pre, sizeof pre) == 0,
+          "a zero-size node blits nothing");
 
     /* The blitter restores +0x14 and +0x30 after the call. */
     GraSprite g; u32 dh = 0;
