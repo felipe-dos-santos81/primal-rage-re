@@ -28,6 +28,7 @@ mode game code: everything interesting lives in two LE objects (code + data).
 | `docs/superpowers/` | Sub-project specs, plans and the engine-core report |
 | `tools/le_info.py` | Dump the LE header/objects and decode `INDEX` |
 | `tools/gra_render.py` | Independent GRA decoder + frame oracle (`--indices`, `--frame`) |
+| `tools/gra_extract.py` | Extract every S16 sprite to RGBA PNG + `manifest.json` (`make re-extract`) |
 | `tools/gen_symbols.py` | Generate `port/src/symbols.h` from the decompilation |
 | `_tools/ghidra_scripts/` | Ghidra headless scripts used to produce the artefacts |
 | `Makefile` | `make help` — PORT (`build`/`test`/`check`/`run`/`verify`) and RE targets |
@@ -42,7 +43,7 @@ mode game code: everything interesting lives in two LE objects (code + data).
   `~/Library/ghidra/ghidra_12.2_DEV/Extensions/ghidra-lx-loader`.
 * **JDK 25** (`temurin-25`) for Ghidra 12.2.
 * **dosbox-x** for ground truth (memory layout, runtime behaviour).
-* Python 3 with `capstone` for ad-hoc disassembly checks.
+* Python 3 with `capstone` for ad-hoc disassembly checks and `Pillow` for `tools/gra_extract.py`.
 
 ### Regenerate the decompilation
 
