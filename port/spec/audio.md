@@ -309,13 +309,27 @@ Pro 2 → OPL FM), sample driver = **SB16.DIG** (16-bit DMA).
 
 ## OPL register-trace capture spike (Task 2)
 
-**Verdict: NOT ACHIEVABLE with `dosbox-x` 2026.08.31.** None of the three routes
-produces register-level OPL write logging, so the primary oracle — a captured
-original OPL register-write stream on the address/data ports `0x388`/`0x389`
-(SB aliases in the `0x220` range) emitted by `SBPRO2.MDI` while the title music
-plays — is unavailable. Task 9's byte-exact Python sequencer fallback therefore
-governs. `verified (cmd: routes 1–3 below; DOSBox-X version 2026.08.31,
+**Verdict: the original's OPL register stream was NOT captured, so Task 9's
+byte-exact Python fallback still governs the acceptance bar. The earlier
+headline "NOT ACHIEVABLE" is withdrawn — the mechanism is not missing; the
+capture is.** `verified (cmd: routes 1–3 below; DOSBox-X version 2026.08.31,
 Homebrew/macOS)`.
+
+What the three routes establish, and what they do not:
+
+* Routes 1 (`[capture]`) and 2 (`-opencaptures`) have **no register-level
+  surface** — unchanged from the first pass.
+* Route 3 — the debugger's CPU instruction trace — **does** exist and **is**
+  register-level for I/O: a trace line `out dx,al` carries the port in `EDX` and
+  the value in `AL`. It **can** capture OPL writes, proven end to end on a
+  synthetic guest probe (route 3c). The first pass's 0-byte `LOGCPU.TXT` was an
+  **invocation artifact** — `LOG` with no count argument logs zero instructions
+  — not a capability limit.
+* What is missing is an **operational** capture of the *original's* music.
+  Across **53,477,376 traced instructions** (17 windows) of the running game,
+  with active VGA retrace polling and palette writes, there were **zero** writes
+  to `0x388`/`0x389` or the SB FM mirrors `0x220`/`0x221`; the only `out dx,al`
+  port seen was the VGA DAC port `0x3C9` (route 3d).
 
 ### Route 1 — the `[capture]` config section
 
@@ -367,7 +381,7 @@ $ SDL_VIDEODRIVER=dummy dosbox-x -defaultconf -opencaptures /bin/echo
 **Result: it hands the captures *folder path* to an external program and exits.
 No register-level logging.**
 
-### Route 3 — the debugger's I/O logging
+### Route 3 — the debugger's CPU instruction trace
 
 **3a. Piped / scripted session (non-TTY): refused.** The debugger does not
 engage and DOS continues to boot. Exact log line:
@@ -379,35 +393,88 @@ LOG: Debugger in Mac OS X not available unless you start DOSBox-X from terminal 
 ...
 ```
 
-**3b. With a pseudo-TTY: it engages, but has no I/O logging.** Under a pty
-(`expect`) the debugger _does_ start and can be driven — `HELP` is processed and
-`QUIT` exits the emulator (contrary to the Task 13 note, which holds only for a
-non-TTY pipe):
+**3b. Under a pseudo-TTY it engages and is scriptable.** Driven with `expect` on
+a pty, `HELP` is processed and `QUIT` exits the emulator (so the Task 13 note
+"refuses a scriptable session" holds only for a non-TTY pipe). The command table
+contains **no I/O-port logging and no I/O-port breakpoint**; the only logging is
+a **CPU instruction** trace:
 
-```sh
-$ expect dbg.exp      # spawn ... -break-start; expect {OVERVIEW OF ALL COMMANDS}
-                      # ; send "HELP\r"; (help text matched) ; send "QUIT\r"; expect eof
-GOT-DEBUGGER-PROMPT
-CMD-PROCESSED
-QUIT-EFFECTIVE
-```
-
-The complete command table (captured from the `HELP` screen) contains **no
-I/O-port logging and no I/O-port breakpoint**. The only logging is a **CPU
-instruction** trace, which is not a register stream:
-
-* `LOG [num]`, `LOGS`/`LOGL`/`LOGC [num]` — write a CPU log (`LOGCPU.TXT`).
-* `HEAVYLOG` — automatic CPU log when DOSBox-X exits.
+* `LOG [num]`, `LOGS`/`LOGL`/`LOGC [num]` — write a CPU log to `LOGCPU.TXT`
+  (`num` = instruction count; `src/debug/debug.cpp:3050` `logcode`).
+* `HEAVYLOG` — ring-buffer CPU log (`LOGCPU_INT_CD.TXT`) written on DOSBox-X exit.
 * `IN[P|W|D] [port]` / `OUT[P|W|D] [port] [data]` — one-off manual port access.
 * Breakpoints: `BP`, `BPINT`, `BPM`, `BPLM` — none port-based.
 
-A bounded attempt to produce a CPU log (drive the debugger, `LOG`, resume, quit)
-left `LOGCPU.TXT` at **0 bytes**, and it is in any case an instruction trace, not
-the normalised `(tick, register, value)` oracle form.
+Two invocation facts explain the first pass's **0-byte** `LOGCPU.TXT` and are
+required to drive the trace at all:
+
+1. `LOG` with **no count logs nothing**: `cpuLogCounter` becomes `0` and the
+   file is opened and immediately closed with zero instructions
+   (`debug.cpp:3050-3066`, `6581-6593`).
+2. A log started from the **reset vector is truncated after 3 instructions**:
+   BIOS POST calls `DEBUG_StopLog()` (`debug.cpp:6622`). Observed directly —
+   `LOG 200000` under `-break-start` produced a 747-byte `LOGCPU.TXT` holding
+   exactly the 3 instructions before POST's stop message. To trace past POST,
+   break in mid-run first: `BPINT 21` + `RUN` (reaches the first DOS call,
+   i.e. after POST), then `BPDEL *` and `LOG <num>`.
+
+**3c. The trace IS register-level for OPL ports — proven with a probe.** A
+41-byte `.COM` guest (`OPLPROBE.COM`: `mov dx,0388h`/`0389h` + `out dx,al`) was
+traced under the mechanism:
+
+```sh
+$ dosbox-x -defaultconf -fastlaunch -nopromptfolder -break-start \
+    -c "MOUNT C <probe-dir>" -c "C:" -c "OPLPROBE.COM" -c "EXIT"
+# expect on a pty:  BPINT 21 ; RUN ; BPDEL * ; LOG 80000
+$ grep -E 'out +dx,al' LOGCPU.TXT | grep -E 'EDX:0000038(8|9)'
+0814:00000105  out  dx,al   ... EDX:00000388 ... EAX:00000020
+0814:0000010B  out  dx,al   ... EDX:00000389 ... EAX:00000001
+0814:00000111  out  dx,al   ... EDX:00000388 ... EAX:00000040
+0814:00000117  out  dx,al   ... EDX:00000389 ... EAX:00000010
+0814:0000011D  out  dx,al   ... EDX:00000388 ... EAX:00000060
+0814:00000123  out  dx,al   ... EDX:00000389 ... EAX:000000F0
+```
+
+All **6/6** writes were recovered, in order, with the exact register and value
+(`AL`). So the mechanism is a viable register-level capture: ordered
+`(tick, register, value)` with `tick` from the trace's own instruction order.
+
+**3d. But no OPL writes from the *original* in bounded sweeps.** Same mechanism,
+game instead of probe:
+
+```sh
+$ dosbox-x -defaultconf -fastlaunch -nopromptfolder -break-start \
+    -c "MOUNT C <data/game/C>" \
+    -c "IMGMOUNT D <data/game/CD/RAGECD.ISO> -t iso" -c "C:" -c "PRAGE.EXE -f"
+# expect on a pty:  BPINT 21 ; RUN ; BPDEL * ; 17 × LOG 300000
+```
+
+17 windows × `0x300000` = **53,477,376 traced instructions**: `opl_hits = 0` in
+every window (no `out dx,al` to `0x388`/`0x389`/`0x220`/`0x221`). The only
+`out dx,al` port present was `0x3C9` (VGA DAC palette). VGA retrace polls
+(`in al,dx`, `EDX=0x3DA`) ranged 0–20,110 per window, so the guest was executing
+and rendering throughout. A separate earlier sweep with the emulator's own
+`[log]` at all-debug also produced no `0x388`/`0x389`. `verified (cmd above)`.
+
+**3e. Why this still is not an oracle for this cycle.** The trace capability is
+real, but no music-playing window was captured, so there is no original stream
+to diff against. Two explanations remain open and are **not** resolved here:
+(a) the original had not yet entered its FM-note playback in the traced windows;
+(b) the shipped configuration's playback does not drive the OPL ports. Settling
+this is Task 8/9 work (e.g. anchor a trace on the AIL 60 Hz tick).
+The emulator's own OPL device code has its register-write logging commented out
+(`src/hardware/adlib.cpp:1049`), so no emulator-level route exists.
+
+No `tools/opl_trace.py` is committed: the brief conditions it on an end-to-end
+capture of the *original*, which was not obtained. The parser rule above
+(`out dx,al` → port `EDX`, value `AL`, ordered) is sufficient to build it the
+moment a music window is captured.
 
 ### Consequence
 
-The primary oracle is **not available**; no `tools/opl_trace.py` is written.
-Task 9 must synthesise the expected register stream in Python and compare
-byte-for-byte against the ported C sequencer (the design's fallback), in the
-normalised `(tick, register, value)` form.
+The primary oracle — a captured original OPL register stream — was **not
+obtained** in this cycle, so Task 9's byte-exact Python fallback governs the
+acceptance bar. This is now a **scoped** claim: the debugger instruction-trace
+mechanism exists and can capture OPL register writes (3c), but no window of the
+original's music playback was captured (3d), so the route is not proven
+unavailable — only unproven-in-budget. No `tools/opl_trace.py` is written.
