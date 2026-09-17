@@ -31,5 +31,6 @@ int test_gfx(void);
 int test_input(void);
 int test_host(void);
 int test_flow(void);
+int test_opl(void);
 
 #endif /* PR_TEST_H */
