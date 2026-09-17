@@ -69,9 +69,9 @@ build: ## Configure and build the SDL3 port (CMake → build/)
 # PR_ORACLE_REQUIRED as "required".
 test: build ## Run the assertion suite (oracle=1 requires the byte-exact oracles)
 	@if [ -n "$(oracle)" ]; then \
-		PR_ORACLE_REQUIRED=1 ./$(BUILD_DIR)/run_tests; \
+		PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
 	else \
-		./$(BUILD_DIR)/run_tests; \
+		PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
 	fi
 
 check: build ## Run N frames headless, writing frame_*.ppm/.pal/.idx (frames=60)
@@ -89,7 +89,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, symbols.h i
 	@echo "== headless frames (must precede the tests that read frame_*.idx) =="
 	./$(BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(frames)
 	@echo "== tests (oracles required; consume the captured frames) =="
-	PR_ORACLE_REQUIRED=1 ./$(BUILD_DIR)/run_tests
+	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests
 	@echo "== symbols.h must regenerate byte-identically =="
 	$(PYTHON) tools/gen_symbols.py $(DECOMP_DIR) $(PORT_DIR)/src/symbols.h
 	@git diff --quiet -- $(PORT_DIR)/src/symbols.h || { \
