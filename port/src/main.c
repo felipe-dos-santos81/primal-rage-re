@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "host.h"
 #include "mem.h"
@@ -54,19 +55,21 @@ static int write_exact(const char *path, const u8 *src, u32 len)
     return 0;
 }
 
-/* Dumps one captured frame as three artifacts:
- *   frame_NNNN.ppm  binary P6 RGB, converted through the DAC exactly as
- *                   gfx_present() does (gfx_dac[idx][0..2]; 8-bit guns).
- *   frame_NNNN.pal  the 256-entry DAC, 3 bytes per entry.
- *   frame_NNNN.idx  the raw 320x200 palette indices the decoder produced.
+/* Dumps one captured frame as three artifacts under frames/:
+ *   frames/frame_NNNN.ppm  binary P6 RGB, converted through the DAC exactly
+ *                          as gfx_present() does (gfx_dac[idx][0..2]; 8-bit
+ *                          guns).
+ *   frames/frame_NNNN.pal  the 256-entry DAC, 3 bytes per entry.
+ *   frames/frame_NNNN.idx  the raw 320x200 palette indices the decoder
+ *                          produced.
  * The .idx is what makes the comparison against tools/gra_render.py
  * byte-exact: two different indices can share an RGB value, so the PPM alone
  * cannot prove the index buffers agree. Returns the failed-assertion count. */
 static int capture_frame(int n, const u8 *indices)
 {
     int fail = 0;
-    char base[32];
-    snprintf(base, sizeof base, "frame_%04d", n);
+    char base[40];
+    snprintf(base, sizeof base, "frames/frame_%04d", n);
     char path[48];
 
     static u8 ppm[32 + CHECK_W * CHECK_H * 3];
@@ -148,6 +151,7 @@ static int probe_announcer_audio(void)
  * failed-assertion count. */
 static int run_check(const char *game_dir, int frames)
 {
+    mkdir("frames", 0755);             /* ignore EEXIST; capture_frame needs it */
     game_set_game_dir(game_dir);
     int fail = 0, distinct = 0;
     u32 last_hash = 0;
