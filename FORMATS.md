@@ -273,9 +273,8 @@ fmt : audioformat=1 (PCM), channels=1, rate=11025 Hz,
 data: 19327 bytes   (8-bit unsigned mono; byte 128 is centre)
 ```
 
-`verified (cmd: python3 -c "d=open('data/game/C/S16SOUND.GRA','rb').read(); \
-i=d.find(b'RIFF'); ..."` — see `port/spec/audio.md` "Samples"). The rate matches
-the AIL preference the game sets at init (`FUN_0005d87e(1,0x2b11)` in
+`verified` (cmd: the full RIFF/WAVE scan is in `port/spec/audio.md` "Samples").
+The rate matches the AIL preference the game sets at init (`FUN_0005d87e(1,0x2b11)` in
 `FUN_0001cf40`). The declared RIFF size is **19432** because a trailing
 `LIST`/`INFO` (and `fact`) chunk follows the PCM, so the container size field
 must not be trusted; the port's parser walks chunks and bounds each against the
@@ -292,7 +291,8 @@ inside the level GRAs / `S16SND2.GRA` and were not located
 * `RAGE.S04`, `RAGE.S08`, `RAGE.S16` (CD) — the same game at 320×200 /
   640×400 / 640×480 (`S04`, `S08`, `S16` are the three graphics sets; the CD
   `PRAGE.EXE` differs from the installed one only in the graphics prefix).
-* `RAGE.SND` — audio.
+* `RAGE.SND` — AIL driver directory (no music or sample payload); see
+  `port/spec/audio.md` "`RAGE.SND` on the CD is a driver directory".
 * `twi5.smk`, `twg.smk` — Smacker video (logos / intro).
 * `DIG.INI`, `MDI.INI`, `*.DIG`, `*.MDI`, `RM.DRV`, `FAT.AD` —
   Miles/AIL sound driver set (third-party). `FAT.OPL`/`FAT.AD` are the patch

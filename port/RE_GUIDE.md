@@ -130,7 +130,7 @@ python3 tools/le_info.py --index data/game/C/INDEX
 | `0x1CF40` | AIL init (sub-project 2a): `AIL_startup`, prefs, 4 sample handles, sequence handle, 60 Hz timer |
 | `0x1CF20` | master-loop audio service: play queued samples (`0x1CB18`), start pending song (`0x1C930`), advance/sequence + render |
 | `0x1C930` | load and start the pending song (`AIL_init_sequence`/`set_volume`/`start_sequence`) |
-| `0x5D851`–`0x5DFFF` | AIL public-API thunk block (33 AIL + 3 non-AIL; the game→audio boundary) |
+| `0x5D7DC`–`0x5DFFF` | sound-library block (36 game→audio callees: 33 AIL thunks `0x5D851`–`0x5DFEB` + 3 non-AIL below; the game→audio boundary) |
 | `0x5DE48` | AIL XMIDI loader (`FORM`/`CAT`/`XMID` container parse) |
 | `0x6FB28` | largest function (4979 bytes) |
 

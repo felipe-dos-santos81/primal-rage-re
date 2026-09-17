@@ -114,7 +114,7 @@ the sequence loaded and the sample became a voice. Ported calls keep the
 original signatures and return-value meanings (`AIL_sequence_status` 4/2,
 allocation 0).
 
-### DoD 2 — title/attract music plays: **met at the register/data level; not heard.**
+### DoD 2 — title/attract music plays: **met at the register/data level only; audible playback not met (not heard).**
 
 The title bank is located in `S16TITLE.GRA` (first `FORM`/`XMID` container),
 decoded, sequenced and written to the OPL core; the frame service also renders
@@ -394,9 +394,10 @@ original assertions remain intact.
   domain**.
 * Licence text preserved in-tree at
   `port/src/platform/audio/opl/LICENSE.opal.txt` (identical to upstream).
-* The vendored source files are **byte-identical to upstream** apart from an
-  8-line provenance banner each (stripped for the comparison), a property worth
-  more than fixing their comment paths. Their banners cite upstream-relative
+* The vendored source files are **byte-identical to upstream** apart from a
+  per-file provenance banner each (8 lines in `opal.c`, 7 in `opal/opal.h`;
+  stripped for the comparison), a property worth more than fixing their comment
+  paths. Their banners cite upstream-relative
   paths (`../LICENSE.opal.txt`, `../../LICENSE.opal.txt`) and a
   `THIRD_PARTY_LICENSES.md` that did not exist in this tree. Those cite paths do
   not resolve in this tree; the accurate in-tree path is recorded here, in
@@ -471,6 +472,9 @@ Recorded in the ledger; none blocks this cycle.
 * **Task 1 doc minors** (audio.md wording at `:224`; elided scan commands at
   `:113`; stated-but-not-shown outputs at `:138/:199/:276`): documentation
   completeness, non-blocking.
+* **Task 3 minor** (row 31 does not cite the callee's 1-param definition
+  (`prage.c:39531`) inline): cosmetic; the row already cites all three call
+  sites (`prage.c:8381/:8424/:8745`) and its address and body are verified.
 * **Task 4 (`g_opl` non-static)**: accepted. It is port-only bookkeeping with
   no `mem[]` counterpart and no handle in the wrapper interface; the PORT
   comment argues the deviation (`opl.c:3`).
@@ -498,6 +502,11 @@ Recorded in the ledger; none blocks this cycle.
 * **Whole-branch deferred minor**: `0x5d7dc` is **not audio** — it is the
   Watcom `rand()` LCG (33 game callers, no AIL caller). Game code/determinism,
   not this cycle (`port/spec/audio.md` "AIL surface" correction).
+
+**Coverage check.** Every `minor (deferred)` line in the ledger
+(`progress.md`: Tasks 1×3, 3×1, 4×2, 5×1, 6×1, 7×3, 8×2, 9×1, 10×1, 11×1,
+12×3) plus the whole-branch item is represented above; Task 3's was the only
+one omitted and is added here.
 
 ## 11. Honesty statement
 

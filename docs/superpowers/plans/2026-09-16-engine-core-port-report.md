@@ -339,6 +339,7 @@ Sub-project 1's definition of done is met except for the emulator leg of DoD 3
 unusable and is not claimed) and DoD 6's open question of whether the original
 handles ESC at the title (the port's ESC exit is a deliberate deviation).
 Everything else on the path is either ported and verified or stubbed with a
-sub-project marker. Sub-project 2a (audio/AIL) is complete and reported
-separately (`2026-09-16-audio-ail-port-report.md`); the remaining work is
-sub-projects 2b (Smacker), 4 (menus/EEPROM) and 5 (fight engine).
+sub-project marker. Sub-project 2a (audio/AIL) is implementation complete,
+reported separately (`2026-09-16-audio-ail-port-report.md`) with its scope and
+open items (audibility unverified, reconstruction unproven); the remaining work
+is sub-projects 2b (Smacker), 4 (menus/EEPROM) and 5 (fight engine).

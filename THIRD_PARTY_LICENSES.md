@@ -8,6 +8,7 @@
 * Synthesis core by Shayde/Reality (Reality Adlib Tracker 2), **public domain**
 * Vendored at: `port/src/platform/audio/opl/` (`opal.c`, `opal/opal.h`)
 * Licence text: `port/src/platform/audio/opl/LICENSE.opal.txt`
-* Files are byte-identical to upstream apart from an 8-line provenance banner.
-  Their banner comments cite upstream-relative licence paths that do not resolve
-  in this tree; the correct in-tree path is the one above.
+* Files are byte-identical to upstream apart from a per-file provenance banner
+  (8 lines in `opal.c`, 7 in `opal/opal.h`). Their banner comments cite
+  upstream-relative licence paths that do not resolve in this tree; the correct
+  in-tree path is the one above.
