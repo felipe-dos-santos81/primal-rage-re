@@ -1,6 +1,6 @@
 /* SDL3 host. The only module besides main.c that touches SDL. Everything the
  * engine needs from the outside world goes through here: the window, the event
- * pump, the tick clock, frame presentation, and raw file I/O.
+ * pump, the tick clock, frame presentation, raw file I/O, and audio output.
  *
  * Tick model. The original advances DAT_00105D88 from a 60 Hz interrupt handler
  * while loop code separately busy-polls VBlank. The port has no ISR: host_pump()
@@ -134,6 +134,7 @@ int host_init(const char *title, int w, int h)
 
 void host_shutdown(void)
 {
+    host_audio_close(); /* one authoritative teardown, before SDL_Quit() */
     if (g_scratch) { SDL_DestroySurface(g_scratch); g_scratch = NULL; }
     if (g_window) { SDL_DestroyWindow(g_window); g_window = NULL; }
     if (g_sdl_video) { SDL_Quit(); g_sdl_video = 0; }
@@ -212,4 +213,63 @@ int host_write_file(const char *path, const u8 *src, u32 len)
     int ok = (n == (size_t)len);
     if (fclose(f) != 0) ok = 0;
     return ok;
+}
+
+/* Audio seam. This is the only place SDL's audio device exists; game-side audio
+ * modules hand mixed stereo frames to host_audio_submit() and never see SDL.
+ * The stream pulls from SDL's own queue (no callback), so host.c has no
+ * reference to the mixer and every caller stays buildable and testable headless.
+ *
+ * PORT: fixed audio profile, no hardware probe. The seam asks SDL for the
+ * default playback device at the caller's rate/channels; it never enumerates
+ * devices or negotiates formats beyond what SDL needs to open.
+ * TODO(verify): SDL_OpenAudioDeviceStream opens and unpauses the default device
+ * on call, so the failure branch (NULL on a host with no audio device) is not
+ * exercised by the suite, which never opens a real device. */
+static SDL_AudioStream *g_audio;
+static int g_audio_rate;     /* > 0 iff the seam is open */
+static int g_audio_channels;
+
+int host_audio_open(int rate, int channels)
+{
+    /* Guard before any SDL call, exactly like host_init(): an impossible profile
+     * reports failure instead of letting SDL negotiate something unexpected. */
+    if (rate <= 0 || channels <= 0) return 0;
+    if (g_audio) host_audio_close();
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) return 0;
+
+    SDL_AudioSpec spec;
+    spec.format = SDL_AUDIO_S16;
+    spec.channels = channels;
+    spec.freq = rate;
+    SDL_AudioStream *s = SDL_OpenAudioDeviceStream(
+        SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
+    if (!s) { SDL_QuitSubSystem(SDL_INIT_AUDIO); return 0; }
+
+    g_audio = s;
+    g_audio_rate = rate;
+    g_audio_channels = channels;
+    return 1;
+}
+
+void host_audio_close(void)
+{
+    if (g_audio) { SDL_DestroyAudioStream(g_audio); g_audio = NULL; }
+    /* Only quit the subsystem if we initialised it (rate marks that). */
+    if (g_audio_rate) SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    g_audio_rate = 0;
+    g_audio_channels = 0;
+}
+
+void host_audio_submit(const s16 *frames, int frame_count)
+{
+    if (!g_audio || !frames || frame_count <= 0) return;
+    size_t bytes = (size_t)frame_count * (size_t)g_audio_channels * sizeof(s16);
+    if (bytes > (size_t)INT32_MAX) return; /* SDL_PutAudioStreamData takes int */
+    SDL_PutAudioStreamData(g_audio, frames, (int)bytes);
+}
+
+u32 host_audio_rate(void)
+{
+    return (u32)g_audio_rate;
 }

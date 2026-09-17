@@ -78,5 +78,31 @@ int test_host(void)
     }
     remove(path);
 
+    /* Audio seam (Task 5). The suite must never open a real device, so every
+     * assertion here stays on the closed/no-device path: submit is a no-op and
+     * open() of an impossible profile fails through the precondition guard
+     * before SDL is touched. */
+    host_audio_close();                                  /* before any open */
+    CHECK_EQ_INT((int)host_audio_rate(), 0);
+    const s16 audio[4] = { 0, 0, 0, 0 };
+    host_audio_submit(audio, 2);                         /* no device: no-op */
+    host_audio_submit(NULL, 2);
+    host_audio_submit(audio, 0);
+    host_audio_submit(audio, -1);                        /* negative count */
+    CHECK_EQ_INT(host_audio_open(0, 2), 0);              /* rate <= 0 */
+    CHECK_EQ_INT(host_audio_open(44100, 0), 0);          /* channels <= 0 */
+    CHECK_EQ_INT(host_audio_open(-44100, -2), 0);
+    CHECK_EQ_INT((int)host_audio_rate(), 0);             /* still closed */
+    host_audio_close();
+    host_audio_close();                                  /* idempotent */
+    CHECK_EQ_INT((int)host_audio_rate(), 0);
+
+    /* host_shutdown() tears the audio seam down first, so afterwards every
+     * audio entry point must still be a safe no-op reading rate 0. */
+    host_shutdown();
+    host_audio_submit(audio, 2);
+    host_audio_close();
+    CHECK_EQ_INT((int)host_audio_rate(), 0);
+
     return g_failures - before;
 }

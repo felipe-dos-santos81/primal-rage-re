@@ -45,4 +45,21 @@ int  host_read_file(const char *path, u8 *dst, u32 max, u32 *len_out);
  * byte was written, else 0. */
 int  host_write_file(const char *path, const u8 *src, u32 len);
 
+/* Opens the default playback device for `channels`-channel s16 frames at `rate`
+ * Hz, matching opl_render()'s stereo-interleaved output. Returns 1 on success,
+ * 0 on failure (non-positive rate/channels, or no audio device); never aborts,
+ * and safe to call headless. */
+int  host_audio_open(int rate, int channels);
+
+/* Closes the audio seam and releases the device. Idempotent, and safe after
+ * host_shutdown(); the seam is then a no-op and host_audio_rate() reads 0. */
+void host_audio_close(void);
+
+/* Queues `frame_count` interleaved s16 frames for playback. A no-op when no
+ * device is open, or when `frames` is NULL / `frame_count` <= 0. */
+void host_audio_submit(const s16 *frames, int frame_count);
+
+/* Device sample rate in Hz, or 0 when no device is open. */
+u32  host_audio_rate(void);
+
 #endif /* PR_HOST_H */
