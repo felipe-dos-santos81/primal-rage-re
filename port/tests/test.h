@@ -38,5 +38,6 @@ int test_sequencer(void);
 int test_ail(void);
 int test_smacker(void);
 int test_movie(void);
+int test_sprite(void);
 
 #endif /* PR_TEST_H */

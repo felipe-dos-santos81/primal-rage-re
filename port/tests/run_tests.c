@@ -21,6 +21,7 @@ int main(void)
     test_ail();
     test_smacker();
     test_movie();
+    test_sprite();
     printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
     return g_failures != 0;
 }
