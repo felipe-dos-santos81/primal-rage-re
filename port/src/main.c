@@ -106,6 +106,35 @@ static u32 buf_hash(const u8 *p)
     return h;
 }
 
+/* Task 12: after the title state queues the announcer sample and the master
+ * loop's audio service plays it through the game's own AIL call path (0x1CF20 ->
+ * 0x1CB18 -> AIL_start_sample), assert the audio facts themselves, not that a
+ * function was called: a mixer voice became active, and the mixer rendered
+ * non-silence while it was. Probe before the title music's first note (XMIDI
+ * tick 59 = frame 30 at two ticks/frame, Task 8) so the non-silence is the
+ * sample's, not the FM's. No device is open: mixer_render() is the same
+ * observable the frame loop uses. Returns the failed-assertion count. */
+static int probe_announcer_audio(void)
+{
+    int fail = 0;
+    if (mixer_active_voices() <= 0) {
+        fprintf(stderr,
+                "prageport: --check announcer sample added no active voice\n");
+        return 1;
+    }
+    static s16 buf[4096 * 2];
+    mixer_render(buf, 4096, MIXER_OPL_RATE);
+    int nonzero = 0;
+    for (int i = 0; i < 4096 * 2; i++)
+        if (buf[i] != 0) { nonzero = 1; break; }
+    if (!nonzero) {
+        fprintf(stderr, "prageport: --check mixer rendered silence with the "
+                        "announcer sample active\n");
+        fail++;
+    }
+    return fail;
+}
+
 /* PORT: the original has no headless mode. The port runs the real master loop
  * one frame at a time without opening a window: game_init() runs the init chain
  * once, then each game_loop() call advances exactly one frame because the loop
@@ -128,6 +157,7 @@ static int run_check(const char *game_dir, int frames)
     for (int i = 1; i <= frames; i++) {
         DSB(DS_000A81A8) = 1;            /* one loop iteration per call */
         game_loop();                     /* frame i */
+        if (i == 5) fail += probe_announcer_audio();   /* Task 12: sample audible */
         const u8 *presented = mem + DSD(DS_000E87A0);
         fail += capture_frame(i, presented);
         u32 h = buf_hash(presented);

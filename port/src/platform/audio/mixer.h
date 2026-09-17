@@ -68,6 +68,11 @@ void mixer_stop_sample(const void *owner);
 /* Stops every active voice. */
 void mixer_stop_samples(void);
 
+/* Number of currently active sample voices. PORT: the headless `--check` uses
+ * this as the observable form of "a sample became a live voice"; no production
+ * code reads it. */
+int mixer_active_voices(void);
+
 /* Renders `frames` stereo frames into `out` as interleaved s16 (left, right).
  * out == NULL or out_rate == 0 fills nothing and renders nothing. */
 void mixer_render(s16 *out, u32 frames, u32 out_rate);

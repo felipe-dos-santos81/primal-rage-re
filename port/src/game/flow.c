@@ -13,6 +13,7 @@
 #include "platform/input.h"
 #include "platform/audio/ail.h"
 #include "platform/audio/mixer.h"
+#include "platform/audio/samples.h"
 #include "platform/audio/sequencer.h"
 #include "host.h"
 
@@ -34,6 +35,10 @@
 
 /* s16title.gra is resource index 7 in the shipped INDEX. */
 #define TITLE_RES 7u
+
+/* s16sound.gra is resource index 5; the one located PCM sample (Task 1) lives
+ * in it as a RIFF/WAVE blob. */
+#define SOUND_RES 5u
 
 /* The original title is a composite drawn through the process-table task
  * system (0x2AE14 spawns tasks; the sprite blitter fills DAT_000E87A4). PORT:
@@ -75,6 +80,18 @@ static int s_title_hold;
  * original keeps the sequence handle in DAT_001028c0 and the pending-song
  * handle in DAT_001028cc, both in mem[]; none of this is a mem[] offset. */
 static HSEQUENCE s_sequence;
+/* The four sample handles the original keeps at DAT_00102860 (spec audio.md
+ * "AIL surface" row 10). The announcer is queued on slot 0. */
+static HSAMPLE s_samples[4];
+/* The announcer request: the original's FUN_0002c3fc case 2/3 resolves the
+ * sample bytes and FUN_0001cc28 queues them; the master loop's 0x1CF20 -> the
+ * per-slot FUN_0001cb18 then sets the handle up and calls AIL_start_sample.
+ * PORT: the runtime sound table (DAT_000bbdc8) maps an id to a resource only at
+ * runtime and is not extracted (see title_music_bank), so the port binds the one
+ * located sample (S16SOUND.GRA, Task 1) directly. s_pending_sample.pcm borrows
+ * the resource bytes in mem[]; they outlive the voice. */
+static SampleVoice s_pending_sample;
+static int s_sample_request;     /* a state asked for a sample; 0x1CF20 plays it */
 static int s_music_request;      /* a state asked for music; 0x1CF20 starts it */
 static u32 s_audio_ticks;        /* seq_tick() calls driven since start */
 static u32 s_audio_frac;         /* sub-host-tick sample remainder, /60 */
@@ -187,6 +204,26 @@ static void title_load(void)
     s_title_ready = 1;
 }
 
+/* FUN_0002c3fc (case 2/3) -> FUN_0001cc28 at the title state's first entry:
+ * resolves the announcer's bytes and queues them. The resource is scanned for
+ * the RIFF/WAVE blob (the same shape samples_load parses) rather than trusting a
+ * fixed offset; samples_load bounds every chunk against the bytes it is handed,
+ * so a truncated or corrupt blob is rejected instead of over-read. */
+static void game_sample_request(void)
+{
+    const u8 *base = (const u8 *)res_resolve(res_handle(SOUND_RES, 0));
+    if (base == NULL) return;
+    u32 size = res_size(SOUND_RES);
+    for (u32 i = 0; i + 12 <= size; i++) {
+        if (memcmp(base + i, "RIFF", 4) != 0) continue;
+        if (memcmp(base + i + 8, "WAVE", 4) != 0) continue;
+        if (samples_load(base + i, size - i, &s_pending_sample)) {
+            s_sample_request = 1;
+            return;
+        }
+    }
+}
+
 static void game_state_title(void)
 {
     if (!s_title_ready) {
@@ -198,6 +235,10 @@ static void game_state_title(void)
          * path, not on a port-side timer. PORT: the port requests the S16TITLE
          * bank directly instead of the runtime sound table's handle. */
         s_music_request = 1;
+        /* 0x121A0's first entry also calls FUN_0002C3FC(0x41)/(0x43); the port
+         * queues the located announcer sample here and lets the master loop's
+         * 0x1CF20 play it (the original's request/play split, not collapsed). */
+        game_sample_request();
     }
     /* Redraw the current image into the draw buffer every frame, matching the
      * original: 0x255CC swaps buffers every presented tick, so a buffer that is
@@ -249,14 +290,20 @@ void game_audio_init(void)
     mixer_reset();
     AIL_startup();
     DSB(DS_000A2CB1) = 1;
+    /* PORT: the original's master SFX volume (DAT_000a2cb4) is an EEPROM/options
+     * value owned by sub-project 4, and game_audio_init already carries the
+     * shipped enable flag above. The shipped EXE data segment holds 0x7f (full)
+     * at this address, so the port installs that default rather than playing the
+     * announcer at the zeroed mem[] value. */
+    DSD(DS_000A2CB4) = 0x7f;
     AIL_set_preference(4, 4);
     AIL_set_preference(1, 0x2b11);  /* 11025 Hz sample rate */
     AIL_set_preference(3, 0x14);
     HDIGDRIVER dig = AIL_install_DIG_INI();
     if (dig != NULL) {
         for (int i = 0; i < 4; i++) {
-            HSAMPLE s = AIL_allocate_sample_handle(dig);
-            if (s != NULL) AIL_init_sample(s);
+            s_samples[i] = AIL_allocate_sample_handle(dig);
+            if (s_samples[i] != NULL) AIL_init_sample(s_samples[i]);
         }
     }
     AIL_set_preference(0xb, 1);
@@ -330,8 +377,29 @@ static void title_music_start(void)
  * wall time without bursting. With no
  * device (host_audio_rate() == 0, e.g. --check) the sequencer still advances
  * but nothing is rendered or submitted. */
+/* FUN_0001cb18 (reached from 0x1CF20): sets a queued sample up on its handle and
+ * starts it, in the original's call order. The port has the one announcer slot
+ * rather than the original's per-slot loop over four. */
+static void game_sample_play(void)
+{
+    HSAMPLE h = s_samples[0];
+    if (h == NULL || s_pending_sample.pcm == NULL) return;
+    AIL_init_sample(h);
+    AIL_set_sample_address(h, s_pending_sample.pcm, s_pending_sample.frames);
+    AIL_set_sample_volume(h, (s32)DSD(DS_000A2CB4));
+    AIL_set_sample_rate(h, s_pending_sample.rate);
+    AIL_set_sample_type(h, 0, 0);
+    AIL_set_sample_loop_count(h, 0);   /* the original forces 0 = one-shot */
+    AIL_start_sample(h);
+}
+
 void game_audio_service(void)
 {
+    /* 0x1CF20 plays queued samples before it starts the pending song. */
+    if (s_sample_request) {
+        s_sample_request = 0;
+        game_sample_play();
+    }
     if (s_music_request) {
         s_music_request = 0;
         title_music_start();

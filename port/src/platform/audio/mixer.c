@@ -109,6 +109,14 @@ void mixer_stop_samples(void)
         g_voices[i].active = 0;
 }
 
+int mixer_active_voices(void)
+{
+    int n = 0;
+    for (int i = 0; i < MIXER_VOICES; i++)
+        if (g_voices[i].active) n++;
+    return n;
+}
+
 /* Renders the OPL frame at the current phase into g_opl_last, then advances the
  * phase. Nearest neighbour: the frame read is floor(phase), and the core never
  * runs out, so the read is always valid. */

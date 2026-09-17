@@ -4,6 +4,7 @@
 #include "symbols.h"
 #include "platform/gfx.h"
 #include "platform/audio/ail.h"
+#include "platform/audio/mixer.h"
 #include "platform/res.h"
 #include "test.h"
 #include <string.h>
@@ -136,6 +137,22 @@ int test_flow(void)
      * that request, loads the S16TITLE bank and ticks it. */
     game_audio_init();
     CHECK_EQ_INT((int)game_audio_ticks(), 0);
+    /* Task 12: the title state queued the announcer sample (S16SOUND.GRA's
+     * RIFF/WAVE blob) through the game's own request path; the master loop's
+     * audio service (0x1CF20 -> 0x1CB18) must play it. The title bank's first
+     * note is at XMIDI tick 59, so this single-tick render is before the FM
+     * sounds and any non-silence is the sample's, not the music's. */
+    host_wait_vblank();
+    game_audio_service();
+    CHECK(mixer_active_voices() > 0,
+          "announcer sample became an active mixer voice");
+    {
+        static s16 abuf[4096 * 2];
+        mixer_render(abuf, 4096, MIXER_OPL_RATE);
+        int nz = 0;
+        for (int i = 0; i < 4096 * 2; i++) if (abuf[i]) { nz = 1; break; }
+        CHECK(nz, "mixer rendered non-silence with the announcer sample active");
+    }
     /* The service is paced by the host's 60 Hz clock, not the loop count, so
      * drive that clock here: one host_wait_vblank() per service advances it one
      * tick, which becomes two sequencer ticks. */
