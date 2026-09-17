@@ -1138,11 +1138,20 @@ make verify && git add -A && git commit -m "sprite: mirrored RLE renderer (0x57F
 ```c
 static void check_shear(void)
 {
-    u8 src[6 * 3];
-    for (int i = 0; i < 18; i++) src[i] = (u8)(10 + i);
+    /* The shear reads `vis` bytes from `src + sh`, where `sh` can be positive
+     * (up to +2 in the cases below), so the fixture must carry slack past the
+     * last row: 6 columns x 4 rows = 24 bytes for a 3-row image. A 6x3 buffer
+     * would read out of bounds on the +2 case. */
+    u8 src[6 * 4];
+    for (int i = 0; i < 24; i++) src[i] = (u8)(10 + i);
     u8 dst[6 * 3]; memset(dst, 0xEE, sizeof dst);
 
-    /* With DS_00107900 all zero, the shear is zero and this is a plain copy. */
+    /* Zero the table explicitly first: this test must not depend on whatever
+     * the loaded data object happens to hold at DS_00107900. With the table
+     * zero the shear is zero and this is a plain copy. */
+    DSW(DS_00107900 + 0) = 0;
+    DSW(DS_00107900 + 2) = 0;
+    DSW(DS_00107900 + 4) = 0;
     CHECK_EQ_INT(sprite_render_shear(src, dst, 6, 3, 6, 0, 0,0,0), 0);
     for (int i = 0; i < 18; i++) CHECK_EQ_INT(dst[i], src[i]);
 
@@ -1196,13 +1205,20 @@ int sprite_render_shear(const u8 *src, u8 *dst, int width, int rows,
 the shift is arithmetic. Reading it as `u16` makes negative shear wrong.
 
 - [ ] **Step 4: Run the tests** — expect pass, including the negative-shear case.
-- [ ] **Step 5: Negative control** — drop the `(i16)` cast and confirm the
-  negative-shear assertion fails. Revert.
+- [ ] **Step 5: Negative control** — replace the arithmetic shift `>> 5` with a
+  truncating `/ 32` and confirm the negative-shear assertion fails (`-33 / 32 == -1`,
+  not `-2`). Revert. Do **not** use "drop the `(i16)` cast" as the control: that makes
+  the shift amount `(65503 - 0) >> 5 == 2046`, a wild positive offset that reads far
+  outside the fixture — the assertion would fail for the wrong reason and the read is
+  out of bounds.
 - [ ] **Step 6: `make verify` then commit**
 
 ```bash
-make verify && git add -A && git commit -m "sprite: mode-1 shear copy renderer (0x5215C)"
+make verify && git add port/src/platform/sprite.c port/src/platform/sprite.h port/tests/test_sprite.c && git commit -m "sprite: mode-1 shear copy renderer (0x5215C)"
 ```
+
+(This plan is being executed while another session commits to the same branch:
+stage explicit paths, never `git add -A`.)
 
 ---
 
