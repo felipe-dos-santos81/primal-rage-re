@@ -27,10 +27,8 @@
  * it has no static install site. See port/spec/game_flow.md "Tick". */
 #define HOST_TICK_NS 16666667ull
 
-/* PORT: a host stall (resume from sleep, NTP step, debugger pause) must not cost
- * one loop iteration per missed interval. Beyond this many intervals the port
- * skips the lost time instead of replaying it. 30 intervals = 0.5 s. */
-#define HOST_TICK_MAX_CATCHUP 30u
+/* HOST_TICK_MAX_CATCHUP lives in host.h: the audio service shares the host
+ * clock's catch-up bound, so it must be a single source of truth. */
 
 /* Set 1 BIOS scan codes for SDL_SCANCODE_A..Z, indexed - SDL_SCANCODE_A. */
 static const u8 k_bios_letter[26] = {

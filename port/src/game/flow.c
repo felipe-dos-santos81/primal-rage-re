@@ -60,15 +60,16 @@ static int s_title_hold;
  * original's PIT ISR), one host tick = 2 XMIDI ticks (Task 8: 8.333 ms), and a
  * device frame wants MIXER_OPL_RATE/60 samples. game_audio_service derives both
  * the tick count and the sample count from the same measured host tick delta,
- * so a slow loop iteration cannot slow the music relative to wall time. A stall
- * is clamped to GAME_AUDIO_MAX_TICKS host ticks (4 sequencer ticks) so the
- * resume cannot burst; the host clock already drops lost time past 30 intervals
- * (host.c), so this is the same bounded-catch-up policy. */
+ * so a slow loop iteration cannot slow the music relative to wall time. The
+ * catch-up is clamped to the host clock's own bound (HOST_TICK_MAX_CATCHUP —
+ * the intervals host_pump() will replay before rebasing), not a second tuning
+ * constant: a stall the host clock itself replays keeps the music's wall-clock
+ * time, and past that bound both drop the lost time together. The clamp also
+ * bounds the render, so one iteration can never submit an unbounded burst. */
 #define GAME_AUDIO_TICKS_PER_HOST_TICK 2u
-#define GAME_AUDIO_MAX_TICKS 2u
 /* Largest service burst: one host tick is 49716/60 = 828.6 frames (828 or 829),
- * so a max-clamped service is GAME_AUDIO_MAX_TICKS of those. */
-#define AUDIO_FRAMES_MAX (((MIXER_OPL_RATE + 59) / 60) * GAME_AUDIO_MAX_TICKS)
+ * so a max-clamped service is HOST_TICK_MAX_CATCHUP of those. */
+#define AUDIO_FRAMES_MAX (((MIXER_OPL_RATE + 59) / 60) * HOST_TICK_MAX_CATCHUP)
 
 /* Audio state (see the audio section below). PORT: port-only bookkeeping — the
  * original keeps the sequence handle in DAT_001028c0 and the pending-song
@@ -325,7 +326,8 @@ static void title_music_start(void)
  * host's measured 60 Hz tick delta. Task 8 measured one XMIDI tick = 8.333 ms
  * (120 Hz) for the shipped profile, so two sequencer ticks per host tick; both
  * the tick count and the sample count derive from that one delta, and a stalled
- * frame is clamped, so the music tracks wall time without bursting. With no
+ * frame is clamped to the host clock's own catch-up bound, so the music tracks
+ * wall time without bursting. With no
  * device (host_audio_rate() == 0, e.g. --check) the sequencer still advances
  * but nothing is rendered or submitted. */
 void game_audio_service(void)
@@ -337,11 +339,13 @@ void game_audio_service(void)
 
     /* Both the sequencer tick count and the audio frame count come from the
      * same measured host tick delta, so they stay matched and a slow iteration
-     * cannot change the tempo. A stall is clamped so the resume cannot burst. */
+     * cannot change the tempo. A stall is clamped to the host clock's own
+     * catch-up bound, so time the host clock drops is dropped here too and a
+     * stall it replays keeps the music's wall-clock time. */
     u32 now = host_tick_count();
     u32 elapsed = now - s_last_host_tick;
     s_last_host_tick = now;
-    if (elapsed > GAME_AUDIO_MAX_TICKS) elapsed = GAME_AUDIO_MAX_TICKS;
+    if (elapsed > HOST_TICK_MAX_CATCHUP) elapsed = HOST_TICK_MAX_CATCHUP;
 
     u32 ticks = elapsed * GAME_AUDIO_TICKS_PER_HOST_TICK;
     for (u32 i = 0; i < ticks; i++) seq_tick();

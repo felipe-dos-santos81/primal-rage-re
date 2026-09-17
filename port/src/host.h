@@ -7,6 +7,13 @@
 
 #include "types.h"
 
+/* PORT: a host stall (resume from sleep, NTP step, debugger pause) must not
+ * cost one loop iteration per missed interval. Beyond this many intervals the
+ * port skips the lost time instead of replaying it. 30 intervals = 0.5 s.
+ * Exported so the audio service shares this bound instead of inventing a
+ * second catch-up policy. */
+#define HOST_TICK_MAX_CATCHUP 30u
+
 /* Opens a `w`x`h` window titled `title` and initialises SDL video. Returns 1 on
  * success, 0 on failure (no display, no video driver); never aborts. On failure
  * the rest of the host stays a safe no-op: host_pump() still advances the tick
