@@ -5,6 +5,7 @@
  * Scope (Task 14): the title-screen path is live. Every call owned by a later
  * sub-project is stubbed where it is reached and named in a PORT comment. */
 #include "game/flow.h"
+#include "game/movie.h"
 #include "mem.h"
 #include "symbols.h"
 #include "platform/res.h"
@@ -266,6 +267,15 @@ static void game_state_init(void)
      * 0x24C5C drives 0x11D04 only in case 3 of switch(DAT_00104B00), so the
      * port selects that mode; the original derives the value in 0x10E80's
      * register handoff. */
+    /* PORT: FUN_00011000 case 0 (the attract sub-machine's entry) plays the two
+     * boot logos through two 0x1C740 calls before it assigns title state 1. The
+     * rest of the attract sub-machine is still deferred, so the port plays the
+     * logos here and then enters state 1 directly, as before. The names are
+     * lowercase while the on-disk files are uppercase; res_load_file's scan
+     * matches case-insensitively. A missing or rejected movie is skipped, never
+     * fatal. */
+    movie_play(s_game_dir, "twi5.smk");
+    movie_play(s_game_dir, "twg.smk");
     DSD(DS_00104B00) = 3;
     DSW(DS_000F0A64) = 1;
     DSB(DS_000F0A71) = 0;

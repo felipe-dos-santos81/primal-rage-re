@@ -20,6 +20,7 @@ int main(void)
     test_sequencer();
     test_ail();
     test_smacker();
+    test_movie();
     printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
     return g_failures != 0;
 }
