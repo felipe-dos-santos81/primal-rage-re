@@ -319,7 +319,11 @@ instead of the byte-exact Python fallback being the only bar.**
 that Task 8/9 must diff per-tick — the bounded run proves the original drives
 OPL FM at register level, not which tracks it covered. A title/attract-targeted
 re-capture (longer `-time-limit`, or anchored on the AIL 60 Hz tick) would
-settle it.`
+settle it.` **Task 9 resolved: yes.** The C sequencer's title bank halts (meta
+`FF 2F`) at tick 3434, which under the 120 Hz note alignment of "Music tick
+rate" is 28117 ms after the first note-on — equal to the capture's last write
+at 28117 ms, so `prage_000.dro` spans the title/attract bank end to end.
+`verified (cmd: ./build/run_tests + tools/opl_trace.py --info)`.
 
 ### The route that works: `DX-CAPTURE /O`
 
@@ -971,3 +975,30 @@ differ — they are kept as the correction record for the earlier claim.
    offset 448 yields velocity 149), so running status is not the correct
    interpretation. `verified (cmd: parse of every EVNT chunk; see the offset 448
    case)`. No parser change is warranted on this evidence.
+
+4. **Driver cached-state init block omitted.** After `0x01 = 0x20` and
+   `0x105 = 0x01` the capture writes a full reset sweep (`0x20..0x35` and
+   `0x120..0x135`, values `0x01`/`0x3F`/`0xFF`/`0x0F`) before its first key-on.
+   The port opens with only the two enable writes. The comparison excludes this
+   by normalising the capture from its first key-on and dropping the port's
+   tick-0 writes. `verified (cmd: ./build/run_tests capture-oracle line)`.
+5. **Per-note patch re-application and channel reuse.** The port re-applies the
+   whole 14-byte patch on every key-on and allocates the lowest free voice; the
+   driver applies operators when a patch is selected and schedules channels on
+   its own state. First difference after the item-4 normalisation is the port's
+   first note operator write (tick 60, `0x20 = 0x00`) against the capture's
+   first key-on (tick 60, `0xB0 = 0x2B`): the capture's first note still uses
+   the init-block operator state. The port emits 9340 writes, the capture 6380
+   after normalisation. Not matchable without reproducing the driver's
+   channel/patch state machine. `verified (cmd: ./build/run_tests, "capture
+   oracle first difference")`.
+6. **Percussion note frequency.** The port maps MIDI percussion through the
+   melodic `NOTE_TAB`; the capture's first drum note (MIDI 47) is block 2 fnum
+   `0x3CF` while the melodic table gives `0x28B`. `TODO(verify): the driver's
+   percussion note -> fnum mapping.` `verified (cmd: capture A0/B0 vs
+   sequencer.c NOTE_TAB)`.
+
+Task 9 result: `tools/opl_seq.py` and the C sequencer agree **byte-for-byte**
+(9340 writes: tick, register, value and order) — the tolerance-free governing
+oracle comparison. Against the capture the port is **not** byte-exact for items
+1 and 4-6; each is excluded or reported, never tuned away.

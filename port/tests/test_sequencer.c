@@ -71,6 +71,98 @@ static int any_nonzero(const s16 *b, int n)
     return 0;
 }
 
+/* --- Task 9 oracle comparison ------------------------------------------- */
+
+#define OPL_SEQ_PY "tools/opl_seq.py"
+#define OPL_TRACE_PY "tools/opl_trace.py"
+#define CAPTURE_DRO "data/audio-captures/prage_000.dro"
+
+/* One normalised (tick, reg, value) write. */
+typedef struct {
+    u32 tick;
+    u16 reg;
+    u8 val;
+} ev_t;
+
+/* Runs `cmd` and parses its "tick reg value" lines (opl_seq.py / opl_trace.py
+ * share this format). Fills up to `cap` events; `total` always gets the full
+ * count. Returns 0 on success. */
+static int read_ev_stream(const char *cmd, ev_t *out, int cap, u32 *total)
+{
+    FILE *p = popen(cmd, "r");
+    char line[128];
+    int n = 0;
+
+    *total = 0;
+    if (p == NULL)
+        return -1;
+    while (fgets(line, sizeof line, p) != NULL) {
+        unsigned t, r, v;
+        if (sscanf(line, "%u %x %x", &t, &r, &v) != 3)
+            continue;
+        if (n < cap) {
+            out[n].tick = t;
+            out[n].reg = (u16)r;
+            out[n].val = (u8)v;
+        }
+        n++;
+    }
+    (void)pclose(p);
+    *total = (u32)n;
+    return 0;
+}
+
+static int ev_eq(const ev_t *a, const ev_t *b)
+{
+    return a->tick == b->tick && a->reg == b->reg && a->val == b->val;
+}
+
+/* Registers the port deliberately does not reproduce byte-for-byte against the
+ * capture (port/spec/audio.md "Known capture divergences"): the OPL rhythm
+ * register 0xBD, and the carrier TL family whose driver velocity offset is not
+ * a pure function of velocity. */
+static int documented_excluded(u16 reg)
+{
+    static const u8 carrier_tl[9] = { 0x43, 0x44, 0x45, 0x4B, 0x4C, 0x4D, 0x53, 0x54, 0x55 };
+    u8 lo = (u8)(reg & 0xFF);
+
+    if (lo == 0xBD)
+        return 1;
+    for (int i = 0; i < 9; i++)
+        if (lo == carrier_tl[i])
+            return 1;
+    return 0;
+}
+
+/* Runs the C sequencer for `ticks` ticks, tagging each write with the tick it
+ * was made on (seq_start's writes are tick 0). */
+static int capture_c_stream(ev_t *out, int cap, u32 ticks)
+{
+    u32 prev, tick;
+    int n = 0;
+
+    opl_reset();
+    seq_start();
+    for (u32 k = 0; k < opl_write_count() && n < cap; k++) {
+        out[n].tick = 0;
+        out[n].reg = opl_trace_reg(k);
+        out[n].val = opl_trace_val(k);
+        n++;
+    }
+    prev = opl_write_count();
+    for (tick = 1; tick <= ticks; tick++) {
+        seq_tick();
+        for (u32 k = prev; k < opl_write_count() && n < cap; k++) {
+            out[n].tick = tick;
+            out[n].reg = opl_trace_reg(k);
+            out[n].val = opl_trace_val(k);
+            n++;
+        }
+        prev = opl_write_count();
+    }
+    return n;
+}
+
 int test_sequencer(void)
 {
     int before = g_failures;
@@ -261,6 +353,102 @@ int test_sequencer(void)
     /* 6. A truncated bank is rejected without discarding the loaded one. */
     CHECK_EQ_INT(patches_load(fat, 100), 0);
     CHECK_EQ_INT(patches_count(), 181);
+
+    /* 7. Task 9 oracle: the C register stream must equal tools/opl_seq.py's
+     *    byte for byte — same tick, register, value and order. Governing
+     *    oracle, no tolerance. */
+    {
+        static ev_t c_ev[OPL_TRACE_MAX];
+        static ev_t py_ev[OPL_TRACE_MAX];
+        static char cmd[256];
+        u32 py_total = 0;
+        int c_n;
+
+        CHECK_EQ_INT(patches_load(fat, fat_len), 1);
+        CHECK_EQ_INT(seq_load(xmi, xmi_len), 1);
+        c_n = capture_c_stream(c_ev, (int)OPL_TRACE_MAX, 4096);
+        CHECK(!opl_trace_overflow(), "C register stream fits the trace seam");
+
+        snprintf(cmd, sizeof cmd, "python3 %s %s --trace", OPL_SEQ_PY, TITLE_GRA);
+        CHECK_EQ_INT(read_ev_stream(cmd, py_ev, (int)OPL_TRACE_MAX, &py_total), 0);
+        CHECK_EQ_INT((long)c_n, (long)py_total);
+        if (c_n == (int)py_total) {
+            for (int i = 0; i < c_n; i++) {
+                if (!ev_eq(&c_ev[i], &py_ev[i])) {
+                    printf("ORACLE C-vs-Python first difference at write %d: "
+                           "C tick=%u reg=%#04x val=%#04x, python tick=%u reg=%#04x val=%#04x\n",
+                           i, c_ev[i].tick, c_ev[i].reg, c_ev[i].val,
+                           py_ev[i].tick, py_ev[i].reg, py_ev[i].val);
+                    CHECK(0, "C register stream equals the Python oracle byte-for-byte");
+                    break;
+                }
+            }
+        } else {
+            printf("ORACLE C-vs-Python count differs: C=%d python=%u\n", c_n, py_total);
+        }
+        if (c_n == (int)py_total) {
+            int bad = 0;
+            for (int i = 0; i < c_n; i++)
+                if (!ev_eq(&c_ev[i], &py_ev[i]))
+                    bad = 1;
+            if (!bad)
+                printf("oracle C-vs-Python: %d writes byte-exact\n", c_n);
+        }
+
+        /* 8. Capture oracle (informational). The capture is the real driver,
+         *    which the port reconstructs rather than reproduces: its
+         *    cached-state init block, per-patch operator application and
+         *    channel reuse are not modelled. Compare under the documented
+         *    normalisation (capture ms -> port tick at 120 Hz, starting at the
+         *    first key-on; the carrier-TL and 0xBD divergences excluded) and
+         *    print the first remaining difference for the Task 9 report. It
+         *    does not fail the suite on a known divergence. */
+        {
+            static ev_t cap_ev[OPL_TRACE_MAX];
+            u32 cap_total = 0, w = 0, pyi = 0;
+            u32 first_key = 0;
+            int diff = -1;
+
+            snprintf(cmd, sizeof cmd, "python3 %s %s", OPL_TRACE_PY, CAPTURE_DRO);
+            if (read_ev_stream(cmd, cap_ev, (int)OPL_TRACE_MAX, &cap_total) != 0 || cap_total == 0) {
+                printf("SKIP capture oracle (need %s)\n", CAPTURE_DRO);
+            } else {
+                for (u32 i = 0; i < cap_total; i++)
+                    if (cap_ev[i].reg >= 0xB0 && cap_ev[i].reg <= 0xB8 &&
+                        (cap_ev[i].val & 0x20)) {
+                        first_key = i;
+                        break;
+                    }
+                for (u32 i = first_key; i < cap_total; i++) {
+                    if (documented_excluded(cap_ev[i].reg))
+                        continue;
+                    cap_ev[w].tick = (cap_ev[i].tick * 120u + 500u) / 1000u + 60u;
+                    cap_ev[w].reg = cap_ev[i].reg;
+                    cap_ev[w].val = cap_ev[i].val;
+                    w++;
+                }
+                for (u32 i = 0; i < (u32)c_n && pyi < w; i++) {
+                    if (c_ev[i].tick == 0)
+                        continue;   /* port init, matches capture's dropped block */
+                    if (documented_excluded(c_ev[i].reg))
+                        continue;
+                    if (!ev_eq(&c_ev[i], &cap_ev[pyi])) {
+                        diff = (int)i;
+                        break;
+                    }
+                    pyi++;
+                }
+                if (diff < 0)
+                    printf("capture oracle: %u captured writes normalised vs C, all matched\n", w);
+                else
+                    printf("capture oracle first difference at C write %d: "
+                           "C tick=%u reg=%#04x val=%#04x vs capture tick=%u reg=%#04x val=%#04x "
+                           "(C %d writes, capture %u normalised)\n",
+                           diff, c_ev[diff].tick, c_ev[diff].reg, c_ev[diff].val,
+                           cap_ev[pyi].tick, cap_ev[pyi].reg, cap_ev[pyi].val, c_n, w);
+            }
+        }
+    }
 
     free(gra);
     free(fat);

@@ -32,4 +32,13 @@ void opl_render(s16 *out, u32 frames);
  * a stopped sequencer emits no further writes. Not used by the game path. */
 u32 opl_write_count(void);
 
+/* Test seam: the first OPL_TRACE_MAX writes since the last opl_reset, in order,
+ * so the sequencer oracle can diff the exact (reg, value) stream. Index i is
+ * valid for i < opl_write_count() (writes past the cap are dropped and flagged
+ * by opl_trace_overflow()). Not used by the game path. */
+#define OPL_TRACE_MAX 16384u
+u16 opl_trace_reg(u32 i);
+u8 opl_trace_val(u32 i);
+int opl_trace_overflow(void);
+
 #endif /* PR_OPL_H */
