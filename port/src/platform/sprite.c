@@ -196,7 +196,7 @@ int sprite_render_shear(const u8 *src, u8 *dst, int width, int rows,
         int ref = (s16)DSW(DS_00107900);
         int sh  = ((int)(s16)DSW(DS_00107900 + (clip_t + r) * 2) - ref) >> 5;
         copy_run(dst, src + sh, vis, bank);
-        src += width;               /* net advance = width, as the original */
+        src += width;
         dst += stride;
     }
     return 0;
