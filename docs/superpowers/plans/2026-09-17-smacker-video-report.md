@@ -314,10 +314,11 @@ The presentation rule is the player's, and it was **settled, not guessed**:
   121 periods of 71.2 ms with 120 images.
 * **TWI5's 121st payload frame is real, distinct content the original never
   presents.** It is unique (its MD5 matches none of frames 0-119), ffmpeg
-  decodes it as a real frame, and it appears in none of **three independent
-  captures** taken during the human-directed re-capture (commit `199cad1`,
-  which also hardened `smk_capture.py` to refuse a capture window that
-  truncates the movie tail, so an early end cannot masquerade). TWG's frames
+  decodes it as a real frame, and it appears in none of the **three independent
+  captures** recorded during the human-directed re-capture (commit `199cad1`;
+  recorded from that re-capture, not re-executed this cycle), which also
+  hardened `smk_capture.py` to refuse a capture window that truncates the movie
+  tail, so an early end cannot masquerade. TWG's frames
   37-40 decode to the same hold image, so the held frame *is* presented and the
   capture correctly emits 41.
 * **Ownership.** The decoder never drops a frame; the oracle compares the
@@ -351,7 +352,7 @@ Both files are `SMK2`, 320×200, **silent**, and reconcile to the byte
 | audio frame flags | `[]` | `[]` |
 | keyframes (`frame_size & 1`) | `[]` | `[]` |
 | palette-change frames | 3 (`0, 101, 102`) | 1 (`0`) |
-| layout (tbl/trees/data/end) | `0x68 / 0x2c5 / 0xa200 / 0x127000` | `0x68 / 0x135 / 0x1800 / 0x7948` |
+| layout (tbl/trees/data/end) | `0x68 / 0x2c5 / 0xa200 / 0x127100` | `0x68 / 0x135 / 0x1800 / 0x7948` |
 
 The decoder supports exactly this observed set: `SMK2`, all four trees present,
 MONO/FULL/SKIP/FILL, a first-frame + delta palette, no keyframe bits, no audio.
@@ -487,7 +488,8 @@ The project may claim:
   capture as RGB24 (palette included): TWI5 **120/120**, TWG **41/41**;
 * the original presents **TWI5 120 of 121** and **TWG 41 of 41**, and TWI5's
   121st payload frame is real content it never presents (three independent
-  captures, commit `199cad1`);
+  captures recorded at commit `199cad1`; recorded from that re-capture, not
+  re-executed this cycle);
 * pacing is derived from the header's `pts_inc` and confirmed by the measured
   capture (`|pts_inc| × 10 us`);
 * the decoder is clean-room, allocation-free, fixed-profile, and rejects
