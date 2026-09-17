@@ -275,6 +275,40 @@ static void check_rle_clipped(void)
     CHECK(same, "clipped: zero-width window draws nothing");
 }
 
+/* The unified rle_row must reduce to the old unclipped row exactly, including
+ * at its boundaries: a run that exactly reaches width, and literal/fill/
+ * transparent runs that overshoot it (the original clips those to the row but
+ * still consumes the whole run from the source). */
+static void check_rle_row_edges(void)
+{
+    /* literal 2 then fill 3 exactly fills the 5-pixel row. */
+    static const u8 exact[5] = { 0x02, 0x0A, 0x0B, 0x83, 0x07 };
+    u8 out[6]; memset(out, 0xEE, sizeof out);
+    CHECK_EQ_INT(sprite_render_rle(exact, out, 5, 1, 6, 0), 0);
+    CHECK_EQ_INT(out[0], 0x0A);
+    CHECK_EQ_INT(out[1], 0x0B);
+    for (int i = 2; i < 5; i++) CHECK_EQ_INT(out[i], 0x07);
+    CHECK_EQ_INT(out[5], 0xEE);
+
+    /* literal 9 on a 4-wide row: 4 drawn, the full 9 consumed. */
+    static const u8 lo[10] = { 0x09, 1,2,3,4,5,6,7,8,9 };
+    u8 l4[4]; memset(l4, 0xEE, sizeof l4);
+    CHECK_EQ_INT(sprite_render_rle(lo, l4, 4, 1, 4, 0), 0);
+    for (int i = 0; i < 4; i++) CHECK_EQ_INT(l4[i], i + 1);
+
+    /* fill 10 on a 4-wide row: clipped to 4. */
+    static const u8 fo[2] = { 0x8A, 0x03 };
+    u8 f4[4]; memset(f4, 0xEE, sizeof f4);
+    CHECK_EQ_INT(sprite_render_rle(fo, f4, 4, 1, 4, 0), 0);
+    for (int i = 0; i < 4; i++) CHECK_EQ_INT(f4[i], 0x03);
+
+    /* transparent 10 on a 4-wide row: nothing drawn. */
+    static const u8 to[1] = { 0xCA };
+    u8 t4[4]; memset(t4, 0xEE, sizeof t4);
+    CHECK_EQ_INT(sprite_render_rle(to, t4, 4, 1, 4, 0), 0);
+    for (int i = 0; i < 4; i++) CHECK_EQ_INT(t4[i], 0xEE);
+}
+
 int test_sprite(void)
 {
     check_node_build();
@@ -282,5 +316,6 @@ int test_sprite(void)
     check_bank_and_colour();
     check_raw_copy();
     check_rle_clipped();
+    check_rle_row_edges();
     return 0;
 }
