@@ -309,13 +309,93 @@ Pro 2 → OPL FM), sample driver = **SB16.DIG** (16-bit DMA).
 
 ## OPL register-trace capture spike (Task 2)
 
-**Verdict: the original's OPL register stream was NOT captured, so Task 9's
-byte-exact Python fallback still governs the acceptance bar. The earlier
-headline "NOT ACHIEVABLE" is withdrawn — the mechanism is not missing; the
-capture is.** `verified (cmd: routes 1–3 below; DOSBox-X version 2026.08.31,
-Homebrew/macOS)`.
+**Verdict: YES — the original's OPL register stream was captured. The route
+exists and works, so the captured stream can now govern the Task 9 comparison
+instead of the byte-exact Python fallback being the only bar.**
+`verified (cmd: DX-CAPTURE /O capture + tools/opl_trace.py below; DOSBox-X
+2026.08.31, Homebrew/macOS)`.
 
-What the three routes establish, and what they do not:
+### The route that works: `DX-CAPTURE /O`
+
+DOSBox-X's internal shell command `DX-CAPTURE` takes `/O` = "OPL FM (DROv2
+format)": it starts raw OPL capture, runs the program, and finalises a
+**DBRAWOPL `.dro`** file when the program exits.
+
+```sh
+$ strings "$(command -v dosbox-x)" | grep -i 'DROv2 format'
+/O for OPL FM (DROv2 format) and /-D disabling post-exit delay.
+```
+`verified (cmd above; DOSBox-X src/shell/shell_cmds.cpp:4513 CMD_DXCAPTURE →
+CAPTURE_StartOPL())`.
+
+The recorder (`Adlib::Capture`, `src/hardware/adlib.cpp:806`) arms on
+`CAPTURE_StartOPL()` but **only opens the file at the guest's first FM note-on**
+(`Capture::DoWrite`, `adlib.cpp:996`: a write to reg `0xB0`–`0xB8` with bit
+`0x20`, or percussion `0xBD`), then dumps the register cache and every
+subsequent FM register change as ordered `(raw,value)` pairs with millisecond
+delays. A gap over 30 s (`adlib.cpp:976`) ends the file; a later note-on starts
+the next one. `verified (cmd: source read; reproduced by the probe below)`.
+
+**Exact capture command** (repo root; `.dro` output is git-ignored):
+
+```sh
+G=$PWD/data/game
+dosbox-x -defaultconf -fastlaunch -nopromptfolder -nogui -nomenu -time-limit 120 \
+  -set "sdl fullscreen=false" -set "dosbox captures=/tmp/gamecap" \
+  -c "MOUNT C $G/C" \
+  -c "IMGMOUNT D $G/CD/RAGECD.ISO -t iso" \
+  -c "C:" -c "DX-CAPTURE /O PRAGE.EXE -f" -c "EXIT"
+```
+`-time-limit` bounds the run; the game need not exit, because the `.dro` is
+created (with a placeholder header) at the first note-on and finalised on
+emulator shutdown. `verified`.
+
+### Result: the original emits a full FM stream
+
+```
+prage_000.dro  7201 FM register writes  span 28117 ms  349 + 320 (2nd set) key-ons
+prage_001.dro  1052 FM register writes  span  9433 ms   36 +  40 (2nd set) key-ons
+```
+`verified (cmd: tools/opl_trace.py --info <file>)`. The stream opens with the
+AIL/MDI driver's cached OPL3 state (`0x01=0x20` waveform-select enable,
+`0x105=0x01` OPL3 enable, second-set `0x120`/`0x121`/… configuration), then
+operator/channel setup and key-ons on `0xB0`–`0xB8` and `0x1B0`–`0x1B8`. That is
+the shipped `SBPRO2.MDI` FM path playing — captured, not inferred.
+
+Sample (`tools/opl_trace.py <file>`, columns `tick_ms reg value`; `tick_ms` is
+accumulated from the capture's own delay commands, never wall-clock):
+
+```
+       0 0x0001 0x20
+       0 0x0105 0x01
+       0 0x0120 0x01
+       0 0x0021 0x01
+       0 0x0121 0x01
+       0 0x0022 0x01
+```
+
+The `.dro` files themselves are **not committed** (git-ignored); only this
+procedure and `tools/opl_trace.py` are. Traces are kept locally under
+`data/audio-captures/` for comparison. `verified`.
+
+### `tools/opl_trace.py`
+
+Decodes DBRAWOPL v2 into a normalised `(tick_ms, register, value)` stream. It
+rebuilds the raw-code→register table the same way the recorder does
+(`Capture::MakeTables`, `adlib.cpp:834`), maps bit `0x80` to the OPL3 second
+register set (`0x100+`), and decodes both delay forms (`delay256`,
+`delayShift8`). `--self-test` round-trips a synthetic file.
+`verified (cmd: python3 tools/opl_trace.py --self-test)`.
+
+A synthetic 16-bit `.COM` writing six OPL registers and one key-on, captured
+through the same command, produced a `.dro` from which `opl_trace.py` recovered
+all eight `(reg,value)` writes in order, exactly as written. `verified`.
+
+The three routes below are the first pass's search for a register-level surface.
+Routes 1–2 have no register-level surface; route 3 (the debugger instruction
+trace) **is** register-level and was proven on a probe, but it is not what
+produced the capture — the `DX-CAPTURE /O` route above did. They are kept here
+as the record of what was tried.
 
 * Routes 1 (`[capture]`) and 2 (`-opencaptures`) have **no register-level
   surface** — unchanged from the first pass.
@@ -325,11 +405,9 @@ What the three routes establish, and what they do not:
   synthetic guest probe (route 3c). The first pass's 0-byte `LOGCPU.TXT` was an
   **invocation artifact** — `LOG` with no count argument logs zero instructions
   — not a capability limit.
-* What is missing is an **operational** capture of the *original's* music.
-  Across **53,477,376 traced instructions** (17 windows) of the running game,
-  with active VGA retrace polling and palette writes, there were **zero** writes
-  to `0x388`/`0x389` or the SB FM mirrors `0x220`/`0x221`; the only `out dx,al`
-  port seen was the VGA DAC port `0x3C9` (route 3d).
+* The first pass's operational sweep of the *original* saw **zero** OPL writes
+  (`0x388`/`0x389` or the SB mirrors `0x220`/`0x221`) across **53,477,376 traced
+  instructions** (17 windows), which 3e now explains as a window artifact.
 
 ### Route 1 — the `[capture]` config section
 
@@ -439,7 +517,8 @@ All **6/6** writes were recovered, in order, with the exact register and value
 (`AL`). So the mechanism is a viable register-level capture: ordered
 `(tick, register, value)` with `tick` from the trace's own instruction order.
 
-**3d. But no OPL writes from the *original* in bounded sweeps.** Same mechanism,
+**3d. First pass: no OPL writes seen from the *original* in a bounded sweep.**
+(Window artifact — see 3e.) Same mechanism,
 game instead of probe:
 
 ```sh
@@ -456,25 +535,35 @@ every window (no `out dx,al` to `0x388`/`0x389`/`0x220`/`0x221`). The only
 and rendering throughout. A separate earlier sweep with the emulator's own
 `[log]` at all-debug also produced no `0x388`/`0x389`. `verified (cmd above)`.
 
-**3e. Why this still is not an oracle for this cycle.** The trace capability is
-real, but no music-playing window was captured, so there is no original stream
-to diff against. Two explanations remain open and are **not** resolved here:
-(a) the original had not yet entered its FM-note playback in the traced windows;
-(b) the shipped configuration's playback does not drive the OPL ports. Settling
-this is Task 8/9 work (e.g. anchor a trace on the AIL 60 Hz tick).
-The emulator's own OPL device code has its register-write logging commented out
-(`src/hardware/adlib.cpp:1049`), so no emulator-level route exists.
+**3e. The first pass's "no OPL writes" was a window artifact.** The
+17×`0x300000`-instruction sweep (3d) covered only the game's load/startup phase,
+before FM playback; the raw capture arms at the **first FM note-on** and runs
+until shutdown. Under the **same `-defaultconf` configuration** the sweep used,
+`DX-CAPTURE /O` yields 7201 OPL register writes (8,253 across the two files
+above). So the game's audio init **did** succeed and the driver **does** drive
+OPL — this is neither an environmental Sound Blaster failure nor a driver that
+avoids FM. The earlier "route unproven/unavailable" conclusion is withdrawn.
+`likely (inferred: same config now produces the stream; capture begins at first
+note-on)`.
 
-No `tools/opl_trace.py` is committed: the brief conditions it on an end-to-end
-capture of the *original*, which was not obtained. The parser rule above
-(`out dx,al` → port `EDX`, value `AL`, ordered) is sufficient to build it the
-moment a music window is captured.
+No Sound Blaster misconfiguration explains 3d either: both runs used the
+DOSBox-X defaults `sbtype=sb16`, `sbbase=220`, `irq=7`, `dma=1`,
+`oplmode=auto → OPL3`. `verified (cmd: grep '^sbtype' on the stored conf)`.
+
+The **mapper route is genuinely unavailable in this build** — but it was never
+the only route. The `caprawopl` mapper handler is commented out
+(`src/hardware/adlib.cpp:1748`
+`//MAPPER_AddHandler(OPL_SaveRawEvent,…, "caprawopl", "Cap OPL", …)`), so there
+is no editable-mapper-file hotkey to bind. The working, non-interactive route is
+the `DX-CAPTURE /O` shell command above, which needs no mapper.
+`verified (cmd: source read + strings)`.
+
+`tools/opl_trace.py` is now committed (see above) and the original's stream was
+obtained, so nothing is deferred here.
 
 ### Consequence
 
-The primary oracle — a captured original OPL register stream — was **not
-obtained** in this cycle, so Task 9's byte-exact Python fallback governs the
-acceptance bar. This is now a **scoped** claim: the debugger instruction-trace
-mechanism exists and can capture OPL register writes (3c), but no window of the
-original's music playback was captured (3d), so the route is not proven
-unavailable — only unproven-in-budget. No `tools/opl_trace.py` is written.
+The primary oracle — the original's OPL register stream — **was obtained**. The
+Task 9 comparison now anchors on `tools/opl_trace.py` output from a `.dro`
+captured with `DX-CAPTURE /O`; the byte-exact Python fallback is no longer the
+sole acceptance bar.
