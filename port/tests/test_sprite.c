@@ -117,9 +117,67 @@ static void check_rle_cross(void)
     CHECK(transparents > 0, "sample covers transparent runs");
 }
 
+/* The two generated tables live in a region Ghidra never decompiled, so
+ * gen_symbols.py emits no DS_ symbols for them; the addresses are literals and
+ * are inside the loaded data object. */
+#define BANK_TABLE   0x00081310u
+#define COLOUR_TABLE 0x00081314u
+
+static void check_bank_and_colour(void)
+{
+    /* BANK_TABLE[n] == (n-1) replicated, for every n in 1..255. These are
+     * static generated table facts, so they are pinned exactly. */
+    for (u32 n = 1; n < 256; n++)
+        CHECK(DSD(BANK_TABLE + n * 4u) == (n - 1u) * 0x01010101u,
+              "bank table entry is (n-1) replicated");
+    /* [0] is the stale code pointer, deliberately not replicated. */
+    CHECK(DSD(BANK_TABLE) == 0x0005D110u, "bank[0] is the stale pointer");
+
+    /* COLOUR_TABLE[n] == n replicated, for every n. */
+    for (u32 n = 0; n < 256; n++)
+        CHECK(DSD(COLOUR_TABLE + n * 4u) == n * 0x01010101u,
+              "colour table entry is n replicated");
+
+    /* The bank *byte* mapping: (b-1), except that byte 0 is no offset. */
+    CHECK_EQ_INT(sprite_bank_offset(1), 0);
+    CHECK_EQ_INT(sprite_bank_offset(2), 1);
+    CHECK_EQ_INT(sprite_bank_offset(255), 254);
+    CHECK_EQ_INT(sprite_bank_offset(0), 0);
+
+    /* sprite_bank resolves a palette pointer and reads its byte 8. Build the
+     * pointer in scratch memory: a resolvable handle is not needed for a
+     * pointer that is already a mem[] offset only if the caller passes one, so
+     * use a resource handle from the sprite table's own descriptor. */
+    GraSprite g; u32 dh = 0;
+    CHECK_EQ_INT(gra_sprite_lookup(0x2C11u, &g, &dh), 1);
+    /* dh resolves to the 12-byte descriptor; byte 8 is the low byte of the
+     * pixel handle, which is a non-zero arbitrary bank byte. Assert the
+     * relationship rather than a magic value. */
+    const u8 *desc = (const u8 *)res_resolve(dh);
+    CHECK(desc != NULL, "descriptor resolves");
+    u8 b = desc[8];
+    CHECK_EQ_INT(sprite_bank(dh), (b == 0u) ? 0 : (int)(u8)(b - 1u));
+
+    /* A non-zero bank must actually shift the drawn pixels. This is the path
+     * the cross-check in Task 3 cannot cover: it renders at bank offset 0, so
+     * the fill-colour `+ bank` add is otherwise untested. Row: literal 2, fill
+     * 3 (colour index 7) -- at offset 2 every drawn byte is +2. */
+    static const u8 row[9] = { 0x02, 0x0A, 0x0B, 0x83, 0x07, 0,0,0,0 };
+    u8 out[8]; memset(out, 0xEE, sizeof out);
+    CHECK_EQ_INT(sprite_render_rle(row, out, 5, 1, 8, 2), 0);
+    CHECK_EQ_INT(out[0], 0x0C);   /* 0x0A + 2 */
+    CHECK_EQ_INT(out[1], 0x0D);   /* 0x0B + 2 */
+    CHECK_EQ_INT(out[2], 0x09);   /* colour index 7, zero-offset byte 7, + 2 */
+    CHECK_EQ_INT(out[3], 0x09);
+    CHECK_EQ_INT(out[4], 0x09);
+    /* No overrun into the row padding. */
+    CHECK_EQ_INT(out[5], 0xEE);
+}
+
 int test_sprite(void)
 {
     check_node_build();
     check_rle_cross();
+    check_bank_and_colour();
     return 0;
 }

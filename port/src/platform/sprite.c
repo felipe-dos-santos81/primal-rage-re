@@ -1,7 +1,7 @@
 #include "platform/sprite.h"
 #include "platform/gra.h"
+#include "platform/res.h"
 #include "../mem.h"
-#include "../symbols.h"
 #include <stddef.h>
 
 void sprite_node_build(SpriteNode *n, u32 sprite_id)
@@ -43,6 +43,12 @@ void sprite_node_build(SpriteNode *n, u32 sprite_id)
 u8 sprite_bank_offset(u8 bank_byte)
 {
     return (bank_byte == 0u) ? 0u : (u8)(bank_byte - 1u);
+}
+
+u32 sprite_bank(u32 pal_ptr)
+{
+    const u8 *p = (const u8 *)res_resolve(pal_ptr);
+    return sprite_bank_offset((p != NULL) ? p[8] : 0u);
 }
 
 static void copy_run(u8 *dst, const u8 *src, int n, u8 bank)

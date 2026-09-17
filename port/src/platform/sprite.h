@@ -38,6 +38,12 @@ void sprite_node_build(SpriteNode *n, u32 sprite_id);
  * alignment-dependent dword carry, so bank byte 0 maps to no offset. */
 u8 sprite_bank_offset(u8 bank_byte);
 
+/* PORT: 0x51E5C is its only original caller. Resolves `pal_ptr` through
+ * res_resolve and maps the palette descriptor's bank byte through
+ * sprite_bank_offset, giving the source-index offset sprite_render_rle
+ * consumes. A pointer that does not resolve yields no offset. */
+u32 sprite_bank(u32 pal_ptr);
+
 /* RLE-renders `rows` rows of `width` pixels from src into dst. Each destination
  * row starts `stride` bytes after the previous one (the original's 0x140 row
  * pitch), so the caller offsets dst to the sprite's screen x and the renderer
