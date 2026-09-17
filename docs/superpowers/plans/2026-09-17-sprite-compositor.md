@@ -1075,7 +1075,18 @@ stage explicit paths, never `git add -A`.)
 - Modify: `port/tests/test_sprite.c`
 
 **Interfaces:**
-- Produces: `mirror` on both RLE entry points (already in the signatures).
+- Produces: the mirrored path, exercised through `sprite_render_rle_clipped`'s
+  `mirror` parameter — that is the type-`0x09` path (`RLE|hflip`), and the only
+  mirrored entry the dispatch table has. `sprite_render_rle` is the unclipped
+  *unmirrored* entry and passes `mirror = 0` internally; it takes no mirror
+  argument. (The original's `0x57F80` unmirrored / `0x57FFB` mirrored pair maps
+  onto the one unified `rle_row`, whose `mirror` parameter Task 6 already
+  plumbed — so on this task most of the "implementation" already exists and the
+  work is the tests plus the `PORT` note.)
+- **TDD note for this task:** because Task 6 unified the row decoder and already
+  carries `mirror`, the new mirror test will likely pass on its first run — there
+  is no honest RED. Do not fake one. Write the test, observe it pass, and provide
+  the sensitivity evidence with Step 5's negative control instead.
 
 - [ ] **Step 1: Write the failing test**
 
