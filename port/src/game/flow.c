@@ -10,6 +10,7 @@
 #include "symbols.h"
 #include "platform/res.h"
 #include "platform/gra.h"
+#include "platform/render.h"
 #include "platform/gfx.h"
 #include "platform/input.h"
 #include "platform/audio/ail.h"
@@ -482,6 +483,7 @@ void game_init(void)
     }
     surface_setup();        /* 0x51F45 */
     palette_list_init();    /* 0x336C0 */
+    render_list_init();     /* 0x1C350 */
     /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
     /* PORT: 0x1D0BC allocates the MIDI sequence buffer and the four sample
      * buffers. The port references the XMIDI bank's resource bytes directly
@@ -529,6 +531,8 @@ void game_loop(void)
          * (menus / fight engine). */
         game_frame();                        /* 0x24C5C */
         run_process_table(DS_000A86C4, DSD(DS_00104AEC));  /* render table */
+        render_list_sort();                  /* 0x1C3FC */
+        render_list();                       /* 0x14328 */
         DSD(DS_00104AF4)++;
         /* PORT: 0x134C0 deferred (scene/narrative). */
 
