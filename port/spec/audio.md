@@ -603,8 +603,8 @@ reachability and a confidence mark.
 game code  (obj0, 0x10000 … ~0x5d000  and 0x63xxx)          <- "the game"
    │  calls
    ▼
-AIL public-API thunks  0x5d7dc … 0x5dfff                    <- the AIL surface
-   │  36 callees; 33 AIL + 3 non-AIL helpers (see below)
+AIL public-API thunks  0x5d851 … 0x5dfff                    <- the AIL surface
+   │  36 callees in the 0x5d7dc–0x5dfff sound-library block: 33 AIL + 3 non-AIL (see below)
    ▼
 AIL engine (statically linked)  0x65b43 … 0x6aca0           <- vendored, internal
    │  driver-call dispatcher 0x5d973(driver, fn#, in, out)
@@ -645,6 +645,15 @@ argument expression at the call site. Reachability: **init** = game main
 `FUN_000121a0`; **in-play** = `FUN_0002c3fc` (206 callers) and the master loop
 `0x255cc → FUN_0001cf20`; **teardown** = `FUN_0001d018`/`0x1be30`.
 
+**Names are inferred labels; behaviour is what is verified — do not read a name
+as evidence.** The AIL names in the third column are the closest Miles AIL 3.02
+matches and are *inferred*. The `verified` marks cover the address, the call-site
+signature/arguments (`called as`) and the behaviour to reproduce, **not** the
+name. A row can therefore carry a `verified` behaviour and still have a
+`likely`/`TODO(verify)` name: rows **14, 19, 21–24** are exactly that case. Plan
+tokens: name `likely` = closest AIL match, unconfirmed; name `TODO(verify): …` =
+no name assigned, and the stated check would settle it.
+
 | # | address | AIL name (conf.) | called as (site) | behaviour to reproduce | reach | conf |
 |---|---|---|---|---|---|---|
 | 1 | `0x5d851` | `AIL_startup` (likely) | `FUN_0005d851()` — `FUN_0001cf40` | installs the AIL timer hook then loads the 18 default preferences via `FUN_0006603e` (pref 0..0x11 = 200,1,0x8000,100,0x10,100,0x28f,0,0,1,0x78,8,0x7f,1,0,2,1,1). No args, no return used. | init | verified body |
@@ -658,26 +667,26 @@ argument expression at the call site. Reachability: **init** = game main
 | 9 | `0x5db9e` | `AIL_install_DIG_driver_file` (verified) | `(pcVar1,0)` / `("SBPRO.DIG",0)` / `("SBLASTER.DIG",0)` — `FUN_00010034` | installs the named driver file; `0` on failure ("Driver file not found"). Used as the `SB16.DIG → SBPRO.DIG → SBLASTER.DIG` fallback chain (handle `DAT_00081e08`). | movie | verified (body + 3 literal names) |
 | 10 | `0x5dbcb` | `AIL_allocate_sample_handle` (verified) | `(DAT_00081e08)` `FUN_0001013c`; `(DAT_001028c8)` ×4 `FUN_0001cf40` | finds a free sample slot on the driver, inits it, returns the handle (`0` + "Out of sample handles" when full). Init allocates exactly **4** sample handles (loop `iVar2+0x18` until `0x60`). | movie, init | verified body |
 | 11 | `0x5dbf4` | `AIL_release_sample_handle` (verified) | `(*(param_1+0x23c))` `FUN_00010570` | marks the sample free (state=1). | movie | verified body |
-| 12 | `0x5dc0f` | `AIL_init_sample` (verified) | sample arg, 6 sites (`0x1013c`,`0x1cb18`,`0x1cc28`,`0x1cd9c`,`0x1ce04`,`0x1cf40`,`0x1d220`) | resets the sample (state=2, position/loop/volume defaults, **default rate `0x2b11`=11025**). | all | verified body |
+| 12 | `0x5dc0f` | `AIL_init_sample` (verified) | sample arg, 7 sites (`0x1013c`,`0x1cb18`,`0x1cc28`,`0x1cd9c`,`0x1ce04`,`0x1cf40`,`0x1d220`) | resets the sample (state=2, position/loop/volume defaults, **default rate `0x2b11`=11025**). | all | verified body |
 | 13 | `0x5dc2a` | `AIL_set_sample_address` (verified) | `(handle, buf, len)` `FUN_0001cb18` | sets `sample.addr=buf`, `sample.len=*buf` (XMI block), resets position fields. | in-play/title | verified body |
-| 14 | `0x5dc4d` | `AIL_set_sample_type` (likely) | `(h,uVar3,cVar1!='\0')` `FUN_0001013c`; `(h,0,0)` `FUN_0001cb18` | writes `sample+0x34=fmt`, `sample+0x38=flag` and re-commits; `fmt` is the 0..3 code derived from the record's two flags. Exact field names open. | movie, in-play | verified body / name likely |
+| 14 | `0x5dc4d` | `AIL_set_sample_type` (likely) | `(h,uVar3,cVar1!='\0')` `FUN_0001013c`; `(h,0,0)` `FUN_0001cb18` | writes `sample+0x34=fmt`, `sample+0x38=flag` and re-commits; `fmt` is the 0..3 code derived from the record's two flags. Exact field names open. | movie, in-play | behaviour verified; name likely (inferred) |
 | 15 | `0x5dc70` | `AIL_start_sample` (verified) | `(handle)` `FUN_0001cb18` | marks the sample playing (state=4) and issues driver call `0x401` (DMA start). | in-play/title | verified body |
 | 16 | `0x5dc8b` | `AIL_stop_sample` (verified) | `(handle)`, 7 sites (`0x10510`,`0x10570`,`0x1cc28`,`0x1cd9c`,`0x1ce04`,`0x1d018`,`0x1d220`) | marks the sample stopped (state=2) and fires its registered callbacks. | movie, teardown | verified body |
 | 17 | `0x5dca6` | `AIL_set_sample_rate` (verified) | `(h,*(param_1+0x27c))` `FUN_0001013c`; `(h,0x2b11)` `FUN_0001cb18` | sets `sample.rate` (+0x3c). Init/streaming set 11025. | movie, in-play | verified body |
 | 18 | `0x5dcc5` | `AIL_set_sample_volume` (verified) | `(h,0x7f)` `FUN_0001013c`; `(h,DAT_000a2cb4)` `FUN_0001cb18`/`FUN_0001ced4` | sets `sample.volume` (+0x40), clamped 0..`0x7f`; `DAT_000a2cb4` is the game volume global. | movie, in-play | verified body |
-| 19 | `0x5dce4` | `AIL_set_sample_loop_count` (likely) | `(handle,0)` `FUN_0001cb18` | writes `sample+0x30` (loop count; init default 1, game forces 0 = no loop). | in-play/title | verified body / name likely |
+| 19 | `0x5dce4` | `AIL_set_sample_loop_count` (likely) | `(handle,0)` `FUN_0001cb18` | writes `sample+0x30` (loop count; init default 1, game forces 0 = no loop). | in-play/title | behaviour verified; name likely (inferred) |
 | 20 | `0x5dd03` | `AIL_sample_status` (verified) | `(handle)` 6 sites | returns `sample+4`: `2`=stopped, `4`=playing (the game gates on `!= 4` and `== 4`). | movie, in-play | verified body |
-| 21 | `0x5dd2c` | sample buffer-size helper (no AIL name) | `(DAT_00081e08,*(param_1+0x27c),uVar3)` `FUN_0001013c` | computes the byte size of a streaming buffer from format/rate/len; result `(n+3)&~3` is allocated. Likely game/AIL streaming glue. | movie | verified body / name TODO |
-| 22 | `0x5dd5d` | streaming buffer index | `(puVar1[0x8f])` in `FUN_000102b8` | returns which of the two streaming buffers needs refilling (`0`/`1`, or `-1` when idle). | movie | verified body / name TODO |
-| 23 | `0x5dd86` | feed streaming buffer | `(handle,uVar2,buf,len)` `FUN_000102b8` | installs `(buf,len)` into streaming half `uVar2`, resets its consumed count, issues driver call `0x401`. | movie | verified body / name TODO |
-| 24 | `0x5ddad` | `AIL_register_sample_callback` (likely) | `(handle,0,param_1)` `FUN_0001013c` | stores a function pointer into the sample's callback table (`+0x854`, indexed); `FUN_00068070`/`FUN_000680f0` invoke `+0x84c`/`+0x850` on start/stop. | movie | verified body / name likely |
+| 21 | `0x5dd2c` | sample buffer-size helper (no AIL name) | `(DAT_00081e08,*(param_1+0x27c),uVar3)` `FUN_0001013c` | computes the byte size of a streaming buffer from format/rate/len; result `(n+3)&~3` is allocated. Likely game/AIL streaming glue. | movie | behaviour verified; name TODO(verify) |
+| 22 | `0x5dd5d` | streaming buffer index | `(puVar1[0x8f])` in `FUN_000102b8` | returns which of the two streaming buffers needs refilling (`0`/`1`, or `-1` when idle). | movie | behaviour verified; name TODO(verify) |
+| 23 | `0x5dd86` | feed streaming buffer | `(handle,uVar2,buf,len)` `FUN_000102b8` | installs `(buf,len)` into streaming half `uVar2`, resets its consumed count, issues driver call `0x401`. | movie | behaviour verified; name TODO(verify) |
+| 24 | `0x5ddad` | `AIL_register_sample_callback` (likely) | `(handle,0,param_1)` `FUN_0001013c` | stores a function pointer into the sample's callback table (`+0x854`, indexed); `FUN_00068070`/`FUN_000680f0` invoke `+0x84c`/`+0x850` on start/stop. | movie | behaviour verified; name likely (inferred) |
 | 25 | `0x5ddd0` | `AIL_install_MDI_INI` (verified) | `FUN_0005ddd0()` — `FUN_0001cf40` | opens `MDI.INI`, installs the named `.MDI`; returns the MDI driver handle (`DAT_001028c4`). | init | verified (body reads `"MDI.INI"`) |
 | 26 | `0x5de1f` | `AIL_allocate_sequence_handle` (verified) | `(DAT_001028c4)` — `FUN_0001cf40` | allocates the single sequence handle from the MDI driver (`DAT_001028c0`; `0` + "Out of sequence handles"). | init | verified body |
 | 27 | `0x5de48` | `AIL_init_sequence` (verified) | `(DAT_001028c0,DAT_001028d0,0)` ×2 `FUN_0001c930` | parses the `FORM/CAT/XMID` bank, walks the XMID records, sets up banks/tempo; `0` + "Invalid XMIDI sequence" on bad data. **This is the music load.** | title, in-play | verified body |
 | 28 | `0x5de79` | `AIL_start_sequence` (verified) | `(DAT_001028c0)` — `FUN_0001c930` | silences all channels, resets the track to start, marks playing (state=4). **This is the music start.** | title, in-play | verified body |
 | 29 | `0x5deaf` | `AIL_stop_sequence` (verified) | `(DAT_001028c0)` 5 sites (`0x1c930`,`0x1ca6c`,`0x1d018`,`0x1d1b0`) | sends all-notes-off (cc `0xb0/0x40`), marks stopped (state=2). **This is the music stop.** | all | verified body |
 | 30 | `0x5deca` | `AIL_set_sequence_volume` (verified) | `(DAT_001028c0,DAT_000a2cb8,500)` | sets the sequence target volume and a fade time in ms (500 ms here; computes a per-tick delta). | title, in-play | verified body |
-| 31 | `0x5deed` | `AIL_sequence_status` (verified) | `(DAT_001028c0)` 3 sites (`0x1ca40`,`0x1cab8`,`0x1d018`) | returns `sequence+4`; the game treats `4` as *playing*. | in-play, teardown | verified body |
+| 31 | `0x5deed` | `AIL_sequence_status` (verified) | `FUN_0005deed(DAT_001028c0,param_2,param_3)` `prage.c:8381`; 3 game sites (`0x1ca40`,`0x1cab8`,`0x1d018`) + 1 internal-only site (`FUN_0005d8d3`) | returns `sequence+4`; the game treats `4` as *playing*. | in-play, teardown | verified body |
 | 32 | `0x5dfdc` | no-op (purpose unknown) | `FUN_0005dfdc()` — `FUN_00010034`, `FUN_00010610` | empty body (prologue/epilogue only, no stack). Runs once when the sound-driver refcount goes 0→1. Behaviour to reproduce: **nothing**. | init/first use | verified (disasm: only `push/mov/pop/ret`) |
 | 33 | `0x5dfeb` | no-op (purpose unknown) | `FUN_0005dfeb()` — `FUN_000100c4`, `FUN_00010684` | empty body. Runs once when the refcount goes 1→0. Behaviour: **nothing**. | teardown | verified (disasm) |
 | — | `0x5d7dc` | **not AIL**: Watcom `rand()` | 0-arg, 33 game sites | 32-bit LCG returning `(seed>>16)*(arg&0xffff)>>16`. Not audio; must exist for game determinism. | all | verified |
@@ -689,7 +698,7 @@ argument expression at the call site. Reachability: **init** = game main
 Game code never calls these; they are listed so no later task mistakes them for
 the surface. `FUN_0005d8ab`/`FUN_0005d8bf` (lock/unlock around all engine entry
 points; `FUN_00066264`/`FUN_00066271` refcount), `FUN_0005d8d3`, `FUN_0005d8fc`,
-`FUN_0005d8d3`, `FUN_0005d91b`/`0x5d936`/`0x5d958`/`0x5d9a8` (driver
+`FUN_0005d91b`/`0x5d936`/`0x5d958`/`0x5d9a8` (driver
 enable/query), `FUN_0005d9c3`/`0x5d9e5`/`0x5da3b`/`0x5da68` (INI parse, timer
 period), `FUN_0005daa6` is surface but `FUN_0005dac3` (stop) is internal,
 `FUN_0005daf7` (release all timers), `FUN_0005db0b`/`0x5db34`/`0x5db61`
