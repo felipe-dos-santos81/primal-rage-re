@@ -650,7 +650,7 @@ as evidence.** The AIL names in the third column are the closest Miles AIL 3.02
 matches and are *inferred*. The `verified` marks cover the address, the call-site
 signature/arguments (`called as`) and the behaviour to reproduce, **not** the
 name. A row can therefore carry a `verified` behaviour and still have a
-`likely`/`TODO(verify)` name: rows **14, 19, 21–24** are exactly that case. Plan
+`likely`/`TODO(verify)` name: affected rows include **1–2, 14, 19, 21–24**. Plan
 tokens: name `likely` = closest AIL match, unconfirmed; name `TODO(verify): …` =
 no name assigned, and the stated check would settle it.
 
@@ -684,9 +684,9 @@ no name assigned, and the stated check would settle it.
 | 26 | `0x5de1f` | `AIL_allocate_sequence_handle` (verified) | `(DAT_001028c4)` — `FUN_0001cf40` | allocates the single sequence handle from the MDI driver (`DAT_001028c0`; `0` + "Out of sequence handles"). | init | verified body |
 | 27 | `0x5de48` | `AIL_init_sequence` (verified) | `(DAT_001028c0,DAT_001028d0,0)` ×2 `FUN_0001c930` | parses the `FORM/CAT/XMID` bank, walks the XMID records, sets up banks/tempo; `0` + "Invalid XMIDI sequence" on bad data. **This is the music load.** | title, in-play | verified body |
 | 28 | `0x5de79` | `AIL_start_sequence` (verified) | `(DAT_001028c0)` — `FUN_0001c930` | silences all channels, resets the track to start, marks playing (state=4). **This is the music start.** | title, in-play | verified body |
-| 29 | `0x5deaf` | `AIL_stop_sequence` (verified) | `(DAT_001028c0)` 5 sites (`0x1c930`,`0x1ca6c`,`0x1d018`,`0x1d1b0`) | sends all-notes-off (cc `0xb0/0x40`), marks stopped (state=2). **This is the music stop.** | all | verified body |
+| 29 | `0x5deaf` | `AIL_stop_sequence` (verified) | `(DAT_001028c0)` 5 game call sites (`0x1c930` ×2, `0x1ca6c`, `0x1d018`, `0x1d1b0`; 6th site `0x69b62` is engine-internal) | sends all-notes-off (cc `0xb0/0x40`), marks stopped (state=2). **This is the music stop.** | all | verified body |
 | 30 | `0x5deca` | `AIL_set_sequence_volume` (verified) | `(DAT_001028c0,DAT_000a2cb8,500)` | sets the sequence target volume and a fade time in ms (500 ms here; computes a per-tick delta). | title, in-play | verified body |
-| 31 | `0x5deed` | `AIL_sequence_status` (verified) | `FUN_0005deed(DAT_001028c0,param_2,param_3)` `prage.c:8381`; 3 game sites (`0x1ca40`,`0x1cab8`,`0x1d018`) + 1 internal-only site (`FUN_0005d8d3`) | returns `sequence+4`; the game treats `4` as *playing*. | in-play, teardown | verified body |
+| 31 | `0x5deed` | `AIL_sequence_status` (verified) | `(DAT_001028c0,param_2,param_3)` `prage.c:8381` (`FUN_0001ca40`); `(DAT_001028c0)` `prage.c:8424` (`FUN_0001cab8`); `(DAT_001028c0)` `prage.c:8745` (`FUN_0001d018`) — all 3 call sites (exhaustive) | returns `sequence+4`; the game treats `4` as *playing*. | in-play, teardown | verified body |
 | 32 | `0x5dfdc` | no-op (purpose unknown) | `FUN_0005dfdc()` — `FUN_00010034`, `FUN_00010610` | empty body (prologue/epilogue only, no stack). Runs once when the sound-driver refcount goes 0→1. Behaviour to reproduce: **nothing**. | init/first use | verified (disasm: only `push/mov/pop/ret`) |
 | 33 | `0x5dfeb` | no-op (purpose unknown) | `FUN_0005dfeb()` — `FUN_000100c4`, `FUN_00010684` | empty body. Runs once when the refcount goes 1→0. Behaviour: **nothing**. | teardown | verified (disasm) |
 | — | `0x5d7dc` | **not AIL**: Watcom `rand()` | 0-arg, 33 game sites | 32-bit LCG returning `(seed>>16)*(arg&0xffff)>>16`. Not audio; must exist for game determinism. | all | verified |
