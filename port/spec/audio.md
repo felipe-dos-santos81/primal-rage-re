@@ -304,3 +304,110 @@ Pro 2 → OPL FM), sample driver = **SB16.DIG** (16-bit DMA).
 | Exact `S16SND2` / `S16TITLE` type-2 body split | `TODO(verify)` |
 | Other (raw, headerless) sound-effect sample locations | `TODO(verify)` |
 | AIL timer `0x3c` == 60 Hz (vs ms) | `likely`, `TODO(verify)` |
+
+---
+
+## OPL register-trace capture spike (Task 2)
+
+**Verdict: NOT ACHIEVABLE with `dosbox-x` 2026.08.31.** None of the three routes
+produces register-level OPL write logging, so the primary oracle — a captured
+original OPL register-write stream on the address/data ports `0x388`/`0x389`
+(SB aliases in the `0x220` range) emitted by `SBPRO2.MDI` while the title music
+plays — is unavailable. Task 9's byte-exact Python sequencer fallback therefore
+governs. `verified (cmd: routes 1–3 below; DOSBox-X version 2026.08.31,
+Homebrew/macOS)`.
+
+### Route 1 — the `[capture]` config section
+
+The brief's command returns nothing:
+
+```sh
+$ dosbox-x -defaultconf -printconf 2>/dev/null | sed -n '/\[capture\]/,/^\[/p'
+                       # (no output)
+```
+
+`-printconf` prints the config file's **path**, not its contents, so that
+pipeline can never match. Resolving the file directly:
+
+```sh
+$ dosbox-x -defaultconf -printconf
+/Users/<user>/Library/Preferences/DOSBox-X 2026.08.31 Preferences
+```
+
+That file has **no `[capture]` section at all**, and neither does
+`dosbox-x.reference.full.conf` nor `dosbox-x.reference.conf`
+(`grep -c '^\[capture\]'` → `0` in both). The only capture facility is the
+`[dosbox]` key `captures = capture`, documented in the reference config as
+*"Directory where things like **wave, midi, screenshot** get captured"*.
+
+**Result: covers waveform / MIDI / screenshot output only — no OPL register
+logging.**
+
+### Route 2 — `-opencaptures`
+
+```sh
+$ dosbox-x --help 2>&1 | grep -A2 -i opencaptures
+  -opencaptures <param>                   Launch captures
+  -opensaves <param>                      Launch saves
+```
+
+The man page (`man 1 dosbox-x`) is explicit:
+
+> **`-opencaptures`** *program* — Calls program with as first parameter the
+> location of the captures folder and exit.
+
+Verified by handing it a harmless program:
+
+```sh
+$ SDL_VIDEODRIVER=dummy dosbox-x -defaultconf -opencaptures /bin/echo
+... (DOSBox-X startup log) ...
+./capture
+```
+
+**Result: it hands the captures *folder path* to an external program and exits.
+No register-level logging.**
+
+### Route 3 — the debugger's I/O logging
+
+**3a. Piped / scripted session (non-TTY): refused.** The debugger does not
+engage and DOS continues to boot. Exact log line:
+
+```sh
+$ printf 'HELP\nQUIT\n' | dosbox-x -defaultconf -break-start -noconsole
+...
+LOG: Debugger in Mac OS X not available unless you start DOSBox-X from terminal or from Terminal application
+...
+```
+
+**3b. With a pseudo-TTY: it engages, but has no I/O logging.** Under a pty
+(`expect`) the debugger _does_ start and can be driven — `HELP` is processed and
+`QUIT` exits the emulator (contrary to the Task 13 note, which holds only for a
+non-TTY pipe):
+
+```sh
+$ expect dbg.exp      # spawn ... -break-start; expect {OVERVIEW OF ALL COMMANDS}
+                      # ; send "HELP\r"; (help text matched) ; send "QUIT\r"; expect eof
+GOT-DEBUGGER-PROMPT
+CMD-PROCESSED
+QUIT-EFFECTIVE
+```
+
+The complete command table (captured from the `HELP` screen) contains **no
+I/O-port logging and no I/O-port breakpoint**. The only logging is a **CPU
+instruction** trace, which is not a register stream:
+
+* `LOG [num]`, `LOGS`/`LOGL`/`LOGC [num]` — write a CPU log (`LOGCPU.TXT`).
+* `HEAVYLOG` — automatic CPU log when DOSBox-X exits.
+* `IN[P|W|D] [port]` / `OUT[P|W|D] [port] [data]` — one-off manual port access.
+* Breakpoints: `BP`, `BPINT`, `BPM`, `BPLM` — none port-based.
+
+A bounded attempt to produce a CPU log (drive the debugger, `LOG`, resume, quit)
+left `LOGCPU.TXT` at **0 bytes**, and it is in any case an instruction trace, not
+the normalised `(tick, register, value)` oracle form.
+
+### Consequence
+
+The primary oracle is **not available**; no `tools/opl_trace.py` is written.
+Task 9 must synthesise the expected register stream in Python and compare
+byte-for-byte against the ported C sequencer (the design's fallback), in the
+normalised `(tick, register, value)` form.
