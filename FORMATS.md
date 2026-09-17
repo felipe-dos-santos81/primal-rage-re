@@ -205,6 +205,61 @@ Run `tools/gra_render.py FILE.GRA 0 out.ppm --frame N` to reproduce any frame
 greyscale ramp); add `--indices OUT.idx` to emit the raw index buffer, which is
 what the byte-exact index comparison uses.
 
+## `FAT.OPL` / `FAT.AD` — FM patch bank (verified)
+
+The two patch banks the Miles FM drivers load. Layout, confirmed from the bytes
+and cross-checked against the captured OPL trace (Task 8):
+
+```
+table:    { u16 key (LE); u32 payload_offset (LE) }   step 6, terminator key 0xFFFF
+          key = (bank << 8) | program
+          bank 0x00 = melodic programs 0x00..0x7F
+          bank 0x7F = percussion, keyed by MIDI note (0x23..0x57 shipped)
+payload:  14 bytes at payload_offset:
+          [0]  0x0E  (entry marker)   [1] 0x00   [2] key/percussion base
+          [3..7]   modulator: 0x20, 0x40, 0x60, 0x80, 0xE0
+          [8]      0xC0 feedback/connection
+          [9..13]  carrier:   0x20, 0x40, 0x60, 0x80, 0xE0
+```
+
+`FAT.OPL` is 3622 bytes: 181 records (0x0000..0x007F then 0x7F23..0x7F57),
+table `0x000..0x43D`, the `0xFFFF` terminator at `0x43E`, payloads from `0x440`
+at `0xE` bytes each. The first four payload offsets `0x440`, `0x44E`, `0x45C`,
+`0x46A` confirm the `0xE` step (the design document's earlier "`0x400`" read
+`FAT.OPL` bytes `40 04` as big-endian; the little-endian u32 offset is
+`0x440`).
+
+Payload decode is **verified** against the capture: for program 0x7A the
+capture writes modulator `0x20=0x0E, 0x40=0x00, 0x60=0xF6, 0x80=0x00` and
+carrier `0x20=0xC0, 0x60=0x1F, 0x80=0x02, 0xE0=0x03`, `0xC0=0x3E`, matching
+payload `0e 00 00 0e 00 f6 00 00 0e c0 00 1f 02 03` byte-for-byte (the driver
+ORs `0x30` into `0xC0` — OPL3 left/right output — and scales the carrier TL by
+velocity; see `port/spec/audio.md`).
+
+The command that showed the table and payloads:
+
+```sh
+python3 -c "d=open('data/game/C/FAT.OPL','rb').read(); \
+print([ (hex(int.from_bytes(d[6*n:6*n+2],'little')), hex(int.from_bytes(d[6*n+2:6*n+6],'little'))) for n in range(5)])"
+# [(0x0, 0x440), (0x1, 0x44e), (0x2, 0x45c), (0x3, 0x46a), (0x4, 0x478)]
+```
+
+## XMIDI music banks (verified)
+
+Each level GRA, `S16SOUND`/`S16SND2`/`S16TITLE`/`S16SELMO`, and `PRAGE.EXE`
+(`0xC87C4`) carry an XMIDI bundle (Task 1). Container:
+
+```
+FORM XDIR { INFO }        directory
+CAT  XMID { FORM XMID { TIMB, RBRN, EVNT } }
+```
+
+* `TIMB` — 16-bit little-endian `(bank << 8) | program` keys: the timbres the
+  sequence uses (e.g. `S16TITLE` begins `0017 0000 0049 0058 …`).
+* `EVNT` — the event stream; grammar in `port/spec/audio.md` ("Music event
+  grammar"). `FORM`/chunk sizes are **big-endian** IFF sizes; data fields
+  (offsets, TIMB keys) are little-endian.
+
 ## Other files (not yet analysed)
 
 * `PR.BMP`, `IMAGES.IMJ`, `INSTALL.EXE`, `RAMDTCT.EXE` — installer/CD assets.
@@ -213,5 +268,6 @@ what the byte-exact index comparison uses.
   `PRAGE.EXE` differs from the installed one only in the graphics prefix).
 * `RAGE.SND` — audio.
 * `twi5.smk`, `twg.smk` — Smacker video (logos / intro).
-* `DIG.INI`, `MDI.INI`, `*.DIG`, `*.MDI`, `RM.DRV`, `FAT.OPL`, `FAT.AD` —
-  Miles/AIL sound driver set (third-party).
+* `DIG.INI`, `MDI.INI`, `*.DIG`, `*.MDI`, `RM.DRV`, `FAT.AD` —
+  Miles/AIL sound driver set (third-party). `FAT.OPL`/`FAT.AD` are the patch
+  banks — see the `FAT.OPL` section above.

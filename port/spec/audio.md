@@ -786,3 +786,135 @@ driver offset +0x2e at its `0x300` init.`
 | Streaming AIL timer = 250 Hz (4 ms counter) | **verified** |
 | Sequencer tick = MDI-driver timer (offset +0x2e), rate not in EXE | **verified**; value `TODO(verify)` |
 | AIL names for rows 14/19/24 and rows 21–23 | **likely** / `TODO(verify)` by AIL 3.02 header match |
+
+---
+
+## Music event grammar (Task 8)
+
+The XMIDI `EVNT` stream that the sequencer decodes. Read from the bytes and the
+decompilation (`FUN_00068750` = the VLQ reader, `FUN_00069372` = the per-tick
+event loop, `FUN_0006a410` = the container parser in `port/decomp/prage.c`), and
+confirmed against the capture.
+
+* **Delta times are single bytes** (`< 0x80`) that precede the event group they
+  apply to. A delta of `0x00` is **omitted**: the next byte is a status byte
+  directly, which is why `EVNT` starts with `FF 58 …`. `FUN_00069372`'s event
+  loop breaks when the byte at the read pointer is `< 0x80` and then reads that
+  one byte into the tick countdown (`[0xb] = *ptr`), so no multi-byte delta and
+  no running status occur. `verified (cmd: prage.c FUN_00069372 0x6960a/0x698c0;
+  FUN_00068750)`.
+* Status bytes (channel events carry a 4-bit channel; channel 9 is percussion):
+
+  | status | bytes | meaning |
+  |---|---|---|
+  | `0x8n` | note, vel | note off |
+  | `0x9n` | note, vel, **VLQ duration** | note on; `vel == 0` = note off. The trailing duration is a Miles extension (note length in ticks); the engine stores it (`[0x185]`) and releases when it reaches 0. |
+  | `0xAn` / `0xEn` | two data bytes | aftertouch / pitch bend (decoded as parameter pairs) |
+  | `0xBn` | controller, value | ctrl 0 = bank select (`B0 00 00` in every song header), 7 volume, 10 pan, 91/93 effects, 64 sustain |
+  | `0xCn` | program | program change |
+  | `0xDn` | value | channel pressure |
+  | `0xFF` | type, VLQ length, data | meta: `0x51` tempo (3 bytes, µs/quarter), `0x58` time signature, `0x2F` XMIDI loop/end; `0xF0`/`0xF7` are sysex + VLQ length |
+
+  `verified (cmd: prage.c FUN_00069372 branches; EVNT bytes below)`.
+
+* **Patch key.** A program change selects a FAT.OPL entry by
+  `(bank << 8) | program`; bank comes from controller 0. MIDI channel 9 is
+  percussion and selects `0x7F00 | note`. `verified` against the capture (the
+  first four notes are channel 9 and their patches are the `0x7F` drum bank
+  entries).
+
+Reproduce the parse (from the repo root; prints the first note-ons and their
+durations):
+
+```sh
+python3 - <<'EOF'
+import struct
+d=open('data/game/C/S16TITLE.GRA','rb').read()
+i=221480; size=int.from_bytes(d[i+4:i+8],'big')
+assert d[i:i+12]==b'FORM\x00\x00\x13\x0eXMID' and size==0x130e
+p=i+12; ev=None
+while p+8<=i+8+size:
+    cid=d[p:p+4]; sz=int.from_bytes(d[p+4:p+8],'big')
+    if cid==b'EVNT': ev=d[p+8:p+8+sz]
+    p+=8+sz+(sz&1)
+q=0; tick=0; n=0
+while q<len(ev) and n<6:
+    b=ev[q]
+    if b<0x80: tick+=b; q+=1; continue
+    q+=1
+    if (b&0xf0)==0x90:
+        note,vel=ev[q],ev[q+1]; q+=2
+        dur=0
+        while ev[q]&0x80: dur=(dur<<7)|(ev[q]&0x7f); q+=1
+        dur=(dur<<7)|ev[q]; q+=1
+        if vel: print('tick=%d note=%d vel=%d dur=%d'%(tick,note,vel,dur)); n+=1
+    elif b&0xf0 in (0x80,0xa0,0xb0,0xe0): q+=2
+    elif b&0xf0 in (0xc0,0xd0): q+=1
+    elif b==0xff:
+        q+=1; ln=0
+        while ev[q]&0x80: ln=(ln<<7)|(ev[q]&0x7f); q+=1
+        ln=(ln<<7)|ev[q]; q+=1+ln
+    else: break
+EOF
+```
+
+## Music tick rate (Task 8)
+
+**Answer: one XMIDI delta tick is 8.333 ms (120 Hz).** This is the driver's OPL
+write cadence in the shipped configuration, measured from the capture rather
+than inferred from the EXE (the spec's earlier `TODO(verify)`).
+
+Evidence — align `S16TITLE.GRA`'s first note-ons against the captured key-on
+times in `data/audio-captures/prage_000.dro`:
+
+```
+note#  tick  note  cap_ms  pred_ms  err
+  0     59   47       0      0.0    0.0
+  1     67   45      64     66.7   -2.7
+  2     74   43     124    125.0   -1.0
+  3     82   36     192    191.7    0.3
+  4    254   84    1624   1625.0   -1.0
+  5    551   79    4100   4100.0    0.0
+  6    568   74    4240   4241.7   -1.7
+  7    578   72    4324   4325.0   -1.0
+  8    594   68    4456   4458.3   -2.3
+  9    733   43    5616   5616.7   -0.7
+ 16    753   61    5784   5783.3    0.7
+```
+
+`pred_ms = (tick - 59) * 1000 / 120`. The first 17 notes fit within **3 ms over
+5.6 s**; fitting the same points at 60 Hz gives errors growing past 1 s and at
+250 Hz the residuals scatter. `verified (cmd: tools/opl_trace.py --json on
+prage_000.dro + the scan above)`. The engine's own event timing agrees: its
+tempo accumulator (`FUN_00069372`, `[0x15] += [0x11]`, `[0x11] = 100`) advances
+one musical tick per driver service with no scaling, so the delta unit is the
+service period. The AIL default-preference table the game installs contains
+`0x78 = 120` (spec row 1), consistent with the measured rate.
+`TODO(verify): the value the loaded SBPRO2.MDI writes to driver offset +0x2e
+during driver call 0x300 (FUN_00065b7b) — the behavioural 120 Hz is measured,
+that field is not.`
+
+The port keeps this as `SEQ_TICK_MS = 1000/120` (`sequencer.h`).
+`TODO(verify): the capture's note-on alignment drifts by ~0.5 s after tick 594;
+that is an un-modelled loop/branch (meta `FF 2F` / `RBRN`), not a rate change —
+left to Task 9.`
+
+## FAT.OPL patch bank (Task 8)
+
+Container and payload layout are in `FORMATS.md` ("`FAT.OPL` / `FAT.AD`"). The
+payload decode is **verified** against the capture:
+
+* `[3..7]` → modulator registers `0x20, 0x40, 0x60, 0x80, 0xE0` and `[9..13]` →
+  carrier, with `[8]` → `0xC0`. For program `0x7A` the capture writes
+  modulator `0x20=0x0E, 0x40=0x00, 0x60=0xF6, 0x80=0x00` and carrier
+  `0x20=0xC0, 0x60=0x1F, 0x80=0x02, 0xE0=0x03`, `0xC0=0x3E`; the payload
+  (`0e 00 00 0e 00 f6 00 00 0e c0 00 1f 02 03`) matches except the two driver
+  transforms below. `verified (cmd: prage_000.dro + FAT.OPL)`.
+* The driver ORs `0x30` into `0xC0` (the OPL3 left/right output bits):
+  `0x0E -> 0x3E`, `0x04 -> 0x34`. `verified (cmd: capture)`.
+* The driver attenuates the **carrier TL** (`[10]`) by note velocity: program
+  `0x7A` `[10] = 0x00` is written as `0x17` at velocity 113 and the drum
+  `[10] = 0x00` as `0x16` at velocity 127. `verified (cmd: capture)`.
+  `TODO(verify): the exact velocity→TL function.`
+* `[0] = 0x0E` and `[1] = 0x00` are constant across all 181 entries; `[2]` is
+  the percussion base note for the `0x7F` bank (`likely`).
