@@ -214,8 +214,10 @@ uncorrected `+0x800` then `>>12` for the `DS_00107A3E`, `DS_00107A3A` and
 `DS_00107A38` offsets (`prage.c:3166`, `:3173`, `:3175`), while layer 1's `y`
 (line 3167-3169) does use the corrected form. Use a separate uncorrected helper for
 those three. In a compositor-only run all five of those globals are zero, so the two
-forms coincide there. `TODO(verify)`: 4a-ii's pixel oracle must confirm which form
-applies to those operands.
+forms coincide there. `TODO(verify)`: 4a-ii's pixel oracle must confirm both which
+form applies to those operands **and their load width** — the decomp renders
+`DAT_00107a3e`/`3a`/`38` as `(uint)` (zero-extended) while the port sign-extends with
+`(s16)`; with the globals zero the two are indistinguishable.
 
 ### `0x1C3A0` / `0x1C3FC` — list insert and sort
 
