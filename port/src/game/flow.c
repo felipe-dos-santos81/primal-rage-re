@@ -389,7 +389,12 @@ static void game_sample_play(void)
     AIL_set_sample_volume(h, (s32)DSD(DS_000A2CB4));
     AIL_set_sample_rate(h, s_pending_sample.rate);
     AIL_set_sample_type(h, 0, 0);
-    AIL_set_sample_loop_count(h, 0);   /* the original forces 0 = one-shot */
+    /* The original gates this on the per-slot flag DAT_00102868[slot] == 1
+     * (prage.c:8469-8471): only a flagged slot gets loop count 0. The port has
+     * no per-slot flag and always forces 0 (one-shot). TODO(verify): the flag's
+     * source and the original's non-1 behaviour are unmodelled; the shipped data
+     * presumably carries 1, which is why the port matches the spec. */
+    AIL_set_sample_loop_count(h, 0);
     AIL_start_sample(h);
 }
 

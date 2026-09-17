@@ -34,7 +34,12 @@
  * (FORM or CAT, any type). The caller of AIL_init_sequence has no length to
  * pass — the original's third argument is a sequence number — and the XMIDI
  * bank is self-describing, so the length is derived here instead. Returns 0
- * when `data` is NULL or does not start with FORM/CAT. */
+ * when `data` is NULL or does not start with FORM/CAT.
+ *
+ * Precondition: `data` points to at least 8 readable bytes (id + size field).
+ * This function cannot check that without a length the AIL surface does not
+ * carry, so the caller owns the bound; game_music_bank_find validates the
+ * declared size before seq_load is handed the result. */
 u32 seq_bank_size(const u8 *data);
 
 /* Parses the XMIDI bank at `data` (length `len`) into playable state. Returns 1

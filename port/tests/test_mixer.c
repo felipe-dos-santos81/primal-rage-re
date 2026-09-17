@@ -128,5 +128,18 @@ int test_mixer(void)
               "stopping the last sample voice is exact silence");
     }
 
+    /* A rate whose exact 16.16 step is 2^32 must saturate, not wrap: wrapping
+     * gives step 0, pinning the voice on its first sample forever. rate 2^17 at
+     * out_rate 2 gives step 2^32, so a u32 truncation would make it 0. */
+    {
+        static s16 pcm[4] = { 100, 200, 300, 400 };
+        mixer_reset();
+        CHECK(mixer_add_sample(pcm, 4, 1 << 17, 256, 0, &owner_a) == 1,
+              "a voice starts before the wrap check");
+        CHECK_EQ_INT(mixer_active_voices(), 1);
+        mixer_render(out, 8, 2);
+        CHECK_EQ_INT(mixer_active_voices(), 0);
+    }
+
     return g_failures - before;
 }

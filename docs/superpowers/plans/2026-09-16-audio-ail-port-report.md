@@ -544,3 +544,23 @@ the original-pick limit; DoD 4 for decode/transcription with the reconstruction
 explicitly unproven. Everything on the audio path is either ported and verified
 or stubbed and marked. Smacker audio streaming (the four `0x5dd*` stubs) is
 sub-project 2b; menus/EEPROM and the fight engine remain sub-projects 4–5.
+
+## 13. Post-merge residual clearing
+
+After the merge to `main` (`989684d`) the parked residuals (§9, §10) were
+cleared. Nothing under `data/` was touched; `make verify` is green (exit 0) and
+the captured-stream oracle still reports 9340 register writes byte-exact.
+
+| Parked item | Action |
+|---|---|
+| **Important 3** — `sample->format` stored, never consulted | `AIL_start_sample` now carries a `/* PORT: */` marker: the field (row 14) is recorded, not applied, because `samples_load` accepts only the one shipped 8-bit-unsigned shape and the game always passes format 0. No rejection logic added — the AIL surface is an internal API, not a trust boundary. |
+| **Minor 4** — `state = 4` set with no voice behind it | `mixer_add_sample` returns 1/0 and the handle reports playing only when a voice started; a NULL address or empty length now reports stopped. Check: `test_ail.c` (null address → status 2). |
+| **Minor 5** — `rate_step` truncation could wrap | Saturates at `0xffffffff` (the file's existing "saturate, never a cast" policy). Check: `test_mixer.c` (step exactly 2^32 ends the voice instead of pinning it). |
+| **Minor 6** — `seq_bank_size` silently required 8 readable bytes | Precondition documented in `sequencer.h`/`sequencer.c`: the AIL surface carries no length, so the caller owns the bound and `game_music_bank_find` validates it. |
+| **Minor 7** — loop-count gate unmodelled | `flow.c`'s sample-play now records the original's `DAT_00102868[slot] == 1` gate (`prage.c:8469-8471`) with a `TODO(verify)` in place of the false "the original forces 0" comment. |
+| **Minor 8** — spec listed nonexistent `port/tests/test_opl_trace.c` | Removed from the design's file table; the register-write comparison is `test_sequencer.c`. |
+| **Residual** — failed re-init left a stale `state` member | `AIL_init_sequence`'s failure path sets `state = seq_playing() ? 4 : 2`, truthful about an already-playing bank still sounding (`seq_load` returns before `halt`); `TODO(verify)` records the original's unproven behaviour. |
+
+Negative controls (falsifiability): the wrapping `rate_step` makes
+`test_mixer.c` fail (`1 != 0`); an unconditional `state = 4` makes `test_ail.c`
+fail (`4 != 2`). Both experiments were reverted before the final `make verify`.

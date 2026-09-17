@@ -195,6 +195,11 @@ int test_ail(void)
         CHECK_EQ_INT(out[0], 18432);
         CHECK_EQ_INT(out[1], 18432);
         AIL_stop_sample(hs[0]);
+        /* A start with no sample bytes adds no voice, so status stays stopped
+         * instead of reporting playing with nothing behind it. */
+        AIL_set_sample_address(hs[0], NULL, 0);
+        AIL_start_sample(hs[0]);
+        CHECK_EQ_INT(AIL_sample_status(hs[0]), 2);
         AIL_release_sample_handle(hs[0]);
         AIL_release_sample_handle(hs[1]);
 

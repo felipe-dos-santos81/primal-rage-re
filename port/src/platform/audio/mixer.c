@@ -46,10 +46,17 @@ static u32 g_opl_step;
 static u32 g_opl_rendered;
 static s16 g_opl_last[2];
 
-/* 16.16 samples-per-output-frame. */
+/* 16.16 samples-per-output-frame. Saturates instead of wrapping: the 16.16
+ * product can exceed a u32 for a rate far above out_rate, and a wrapped step
+ * would misplay the voice (worst case, replay its first sample forever) rather
+ * than merely end it. voice_read stops the voice as soon as idx passes frames,
+ * so a saturated step is safe. */
 static u32 rate_step(int rate, u32 out_rate)
 {
-    return (u32)(((unsigned long long)(u32)rate << 16) / out_rate);
+    if (rate <= 0 || out_rate == 0)
+        return 0;
+    unsigned long long step = ((unsigned long long)(u32)rate << 16) / out_rate;
+    return step > 0xffffffffull ? 0xffffffffu : (u32)step;
 }
 
 static s16 sat16(s32 v)
@@ -72,11 +79,11 @@ void mixer_reset(void)
     opl_reset();
 }
 
-void mixer_add_sample(const s16 *pcm, u32 frames, int rate, int volume, int loop,
-                      const void *owner)
+int mixer_add_sample(const s16 *pcm, u32 frames, int rate, int volume, int loop,
+                     const void *owner)
 {
     if (pcm == NULL || frames == 0 || rate <= 0)
-        return;
+        return 0;
     if (volume < 0) volume = 0;
     if (volume > MIXER_MAX_VOLUME) volume = MIXER_MAX_VOLUME;
     for (int i = 0; i < MIXER_VOICES; i++) {
@@ -92,8 +99,9 @@ void mixer_add_sample(const s16 *pcm, u32 frames, int rate, int volume, int loop
         v->idx = 0;
         v->frac = 0;
         v->step = 0;
-        return;
+        return 1;
     }
+    return 0;   /* all four voices busy: dropped (mixer.h) */
 }
 
 void mixer_stop_sample(const void *owner)

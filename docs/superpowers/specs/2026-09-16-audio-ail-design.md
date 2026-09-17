@@ -94,8 +94,7 @@ port/src/platform/audio/sequencer.{c,h}  music event stream -> OPL register writ
 port/src/platform/audio/samples.{c,h}    SB16 16-bit sample load/format/voice model
 port/src/platform/audio/mixer.{c,h}      mixes sample voices + OPL output into frames
 port/src/platform/audio/opl/             vendored single-file OPL core + its licence
-port/tests/test_sequencer.c              event stream vs the music data
-port/tests/test_opl_trace.c              the register-write comparison
+port/tests/test_sequencer.c              event stream vs the music data + register-write comparison
 port/tests/test_samples.c                sample decode and bounds
 ```
 

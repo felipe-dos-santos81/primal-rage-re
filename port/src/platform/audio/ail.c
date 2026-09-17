@@ -287,14 +287,22 @@ void AIL_start_sample(HSAMPLE sample)
     s16 *buf = sample_buffer(sample);
     mixer_stop_sample(sample);   /* a restart must not stack a second voice */
     if (buf != NULL && sample->addr != NULL) {
+        /* PORT: sample->format (row 14) is recorded but never applied. The only
+         * shipped sample is 8-bit unsigned mono (samples.h) and samples_load
+         * rejects every other shape, so this conversion is unconditional. */
         u32 frames = samples_to_s16(sample->addr, sample->len, buf);
         int rate = sample->rate != 0 ? (int)sample->rate : 11025;
         /* 0..0x7f -> Q8 with 0x7f (the game's full volume) at unity 256, not
          * 254: the mixer's unity is 256 (mixer.h). */
         int volume = (int)sample->volume * 256 / 0x7f;
-        mixer_add_sample(buf, frames, rate, volume, sample->loop != 0, sample);
+        if (mixer_add_sample(buf, frames, rate, volume, sample->loop != 0,
+                             sample))
+            sample->state = 4;
+        return;
     }
-    sample->state = 4;
+    /* No sample bytes (or no buffer): no voice was added, so report stopped
+     * rather than playing with nothing behind it. */
+    sample->state = 2;
 }
 
 /* 0x5dc8b — spec audio.md "AIL surface" (row 16). */
@@ -407,11 +415,14 @@ s32 AIL_init_sequence(HSEQUENCE sequence, const void *data, u32 sequence_num)
     if (sequence == NULL || !sequence->used)
         return 0;
     if (!seq_load((const u8 *)data, seq_bank_size((const u8 *)data))) {
-        /* Bad data: clear `loaded` so a later AIL_start_sequence cannot
-         * restart the previous bank; state matches the post-init stopped
-         * value the success path sets. */
+        /* Bad data: clear `loaded` so a later AIL_start_sequence cannot restart
+         * the previous bank. seq_load returns before halt(), so an already
+         * playing bank keeps sounding through the engine; the status below
+         * reports that truthfully instead of claiming stopped. TODO(verify): the
+         * original's behaviour on a failed re-init of a playing handle (stop vs
+         * keep playing) is unproven. */
         sequence->loaded = 0;
-        sequence->state = 2;
+        sequence->state = seq_playing() ? 4 : 2;
         return 0;
     }
     sequence->loaded = 1;

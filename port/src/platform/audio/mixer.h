@@ -54,11 +54,12 @@ void mixer_reset(void);
 /* Starts a voice. Ignores pcm == NULL, frames == 0 or rate <= 0. `volume` is
  * Q8 (see above); `loop` selects one-shot vs looping. `owner` identifies the
  * caller's sample handle, so mixer_stop_sample(owner) can stop just this
- * caller's voices and never another's. Dropped when all four voices are busy —
- * a port choice; the original's exhaustion policy is unverified (see TODO
- * above). */
-void mixer_add_sample(const s16 *pcm, u32 frames, int rate, int volume, int loop,
-                      const void *owner);
+ * caller's voices and never another's. Returns 1 when a voice started, 0 when
+ * the arguments were invalid or all four voices were busy — a port choice; the
+ * original's exhaustion policy is unverified (see TODO above). The return is
+ * what lets callers report "playing" only when a voice actually exists. */
+int mixer_add_sample(const s16 *pcm, u32 frames, int rate, int volume, int loop,
+                     const void *owner);
 
 /* Stops every active voice owned by `owner`. A voice whose `owner` slot was
  * reused after the original ended on its own is left alone: matching on the

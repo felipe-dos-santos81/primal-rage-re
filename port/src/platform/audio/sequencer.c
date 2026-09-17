@@ -295,6 +295,10 @@ static void process(void)
     halt();
 }
 
+/* Precondition: `data` points to at least 8 readable bytes (the "FORM"/"CAT "
+ * id plus the big-endian size). The AIL surface carries no length (see ail.h),
+ * so the caller owns this bound; game_music_bank_find validates the declared
+ * size against the loaded resource before seq_load is handed the result. */
 u32 seq_bank_size(const u8 *data)
 {
     if (data == NULL)
