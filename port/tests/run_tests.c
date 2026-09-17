@@ -15,6 +15,7 @@ int main(void)
     test_host();
     test_flow();
     test_opl();
+    test_samples();
     test_mixer();
     printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
     return g_failures != 0;
