@@ -792,57 +792,117 @@ make verify && git add -A && git commit -m "sprite: RLE span renderer, cross-che
 ## Task 4: Bank and colour tables, pinned
 
 **Files:**
-- Modify: `port/src/platform/sprite.c`
+- Modify: `port/src/platform/sprite.c`, `port/src/platform/sprite.h`
 - Modify: `port/tests/test_sprite.c`
 
 **Interfaces:**
-- Produces: the bank and colour arithmetic used by every renderer, with the
-  `bank == 0` anomaly pinned.
+- Produces: `u32 sprite_bank(u32 pal_ptr);` — resolves the palette pointer and
+  returns the source-index offset (`0` for bank byte 0, else `byte - 1`). Task 9's
+  blitter calls it; the test calls it directly, which is also why it is not
+  `static` (an unused `static` would break the zero-warnings rule).
+- Produces: the pinned table facts as regression assertions.
+
+`DS_00081310` and `DS_00081314` are **not** in the generated `symbols.h` (the
+region is one Ghidra never decompiled), so the test spells both addresses as
+literals. Both are inside the loaded data object (`DATA_BASE 0x80000`, data size
+`0x8B0D0`), i.e. real `mem[]` bytes.
 
 - [ ] **Step 1: Write the failing test**
 
+Add another `static` helper to `test_sprite.c` and call it from `test_sprite()`:
+
 ```c
+/* The two generated tables live in a region Ghidra never decompiled, so
+ * gen_symbols.py emits no DS_ symbols for them; the addresses are literals and
+ * are inside the loaded data object. */
+#define BANK_TABLE   0x00081310u
+#define COLOUR_TABLE 0x00081314u
+
 static void check_bank_and_colour(void)
 {
-    /* DAT_00081310[n] == (n-1) replicated, for every n in 1..255. These are
+    /* BANK_TABLE[n] == (n-1) replicated, for every n in 1..255. These are
      * static generated table facts, so they are pinned exactly. */
     for (u32 n = 1; n < 256; n++)
-        CHECK(DSD(DS_00081310 + n * 4u) == (n - 1u) * 0x01010101u,
+        CHECK(DSD(BANK_TABLE + n * 4u) == (n - 1u) * 0x01010101u,
               "bank table entry is (n-1) replicated");
     /* [0] is the stale code pointer, deliberately not replicated. */
-    CHECK(DSD(DS_00081310) == 0x0005D110u, "bank[0] is the stale pointer");
+    CHECK(DSD(BANK_TABLE) == 0x0005D110u, "bank[0] is the stale pointer");
 
-    /* DAT_00081314[n] == n replicated, for every n. */
+    /* COLOUR_TABLE[n] == n replicated, for every n. */
     for (u32 n = 0; n < 256; n++)
-        CHECK(DSD(DS_00081314 + n * 4u) == n * 0x01010101u,
+        CHECK(DSD(COLOUR_TABLE + n * 4u) == n * 0x01010101u,
               "colour table entry is n replicated");
 
-    /* The port's byte-level bank is (b-1), and bank byte 0 is no offset: see
-     * the TODO(verify) in sprite.c. This takes the bank *byte* — the value at
-     * pal_ptr[8] — not the palette pointer. */
+    /* The bank *byte* mapping: (b-1), except that byte 0 is no offset. */
     CHECK_EQ_INT(sprite_bank_offset(1), 0);
     CHECK_EQ_INT(sprite_bank_offset(2), 1);
     CHECK_EQ_INT(sprite_bank_offset(255), 254);
     CHECK_EQ_INT(sprite_bank_offset(0), 0);
+
+    /* sprite_bank resolves a palette pointer and reads its byte 8. Build the
+     * pointer in scratch memory: a resolvable handle is not needed for a
+     * pointer that is already a mem[] offset only if the caller passes one, so
+     * use a resource handle from the sprite table's own descriptor. */
+    GraSprite g; u32 dh = 0;
+    CHECK_EQ_INT(gra_sprite_lookup(0x2C11u, &g, &dh), 1);
+    /* dh resolves to the 12-byte descriptor; byte 8 is the low byte of the
+     * pixel handle, which is a non-zero arbitrary bank byte. Assert the
+     * relationship rather than a magic value. */
+    const u8 *desc = (const u8 *)res_resolve(dh);
+    CHECK(desc != NULL, "descriptor resolves");
+    u8 b = desc[8];
+    CHECK_EQ_INT(sprite_bank(dh), (b == 0u) ? 0 : (int)(u8)(b - 1u));
+
+    /* A non-zero bank must actually shift the drawn pixels. This is the path
+     * the cross-check in Task 3 cannot cover: it renders at bank offset 0, so
+     * the fill-colour `+ bank` add is otherwise untested. Row: literal 2, fill
+     * 3 (colour index 7) -- at offset 2 every drawn byte is +2. */
+    static const u8 row[9] = { 0x02, 0x0A, 0x0B, 0x83, 0x07, 0,0,0,0 };
+    u8 out[8]; memset(out, 0xEE, sizeof out);
+    CHECK_EQ_INT(sprite_render_rle(row, out, 5, 1, 8, 2), 0);
+    CHECK_EQ_INT(out[0], 0x0C);   /* 0x0A + 2 */
+    CHECK_EQ_INT(out[1], 0x0D);   /* 0x0B + 2 */
+    CHECK_EQ_INT(out[2], 0x09);   /* colour index 7, zero-offset byte 7, + 2 */
+    CHECK_EQ_INT(out[3], 0x09);
+    CHECK_EQ_INT(out[4], 0x09);
+    /* No overrun into the row padding. */
+    CHECK_EQ_INT(out[5], 0xEE);
 }
 ```
 
-`sprite_bank_offset` is declared in `sprite.h` by Task 3; this task only adds the
-test. `sprite_bank(pal_ptr)` resolves the pointer and delegates to it.
-
 - [ ] **Step 2: Run and watch it fail**
-- [ ] **Step 3: Implement** — `sprite_bank_offset` and `sprite_bank` already
-  landed in Task 3; this task only extracts the fill colour into
-  `static u8 colour_run(u8 idx, u8 bank)` returning
-  `(u8)(DSB(DS_00081314 + idx) + bank)`, and uses it from `rle_row`.
+
+Run: `PR_GAME_DIR=data/game/C make test`. Expected: build failure —
+`sprite_bank` undeclared.
+
+- [ ] **Step 3: Implement**
+
+```c
+u32 sprite_bank(u32 pal_ptr)
+{
+    const u8 *p = (const u8 *)res_resolve(pal_ptr);
+    return sprite_bank_offset((p != NULL) ? p[8] : 0u);
+}
+```
+
+Declare it in `sprite.h` next to `sprite_bank_offset`, with a doc comment naming
+`0x51E5C` (its only original caller). Nothing else changes: the fill colour in
+`rle_row` already computes `COLOUR_TABLE[idx] + bank` byte-wise and Task 3 landed
+that. Drop the now-unused `#include "../symbols.h"` from `sprite.c` if nothing in
+it references a `DS_*` macro (Task 3's reviewer flagged it as unused).
+
 - [ ] **Step 4: Run the tests** — expect pass.
-- [ ] **Step 5: Negative control** — assert `[0]` equals 0 instead of
-  `0x5D110`, confirm the test fails, revert.
+- [ ] **Step 5: Negative control** — assert `BANK_TABLE[0]` equals 0 instead of
+  `0x5D110` and confirm the test fails; then change the render assertion to
+  `bank = 0` and confirm the four `+2` assertions fail. Revert both.
 - [ ] **Step 6: `make verify` then commit**
 
 ```bash
-make verify && git add -A && git commit -m "sprite: pin the bank and colour tables"
+make verify && git add port/src/platform/sprite.c port/src/platform/sprite.h port/tests/test_sprite.c && git commit -m "sprite: pin the bank and colour tables"
 ```
+
+(This plan is being executed while another session commits to the same branch:
+stage explicit paths, never `git add -A`.)
 
 ---
 
