@@ -1,6 +1,8 @@
 #include "platform/gra.h"
 #include "platform/res.h"
 #include "../mem.h"
+#include "../symbols.h"
+#include <string.h>
 
 int gra_open(u32 file_off, u32 file_len, GraChunk *out, int max, int *count)
 {
@@ -83,6 +85,19 @@ static int rle_decode(const u8 *src, u32 src_len, u16 w, u16 h,
     return (int)pos;
 }
 
+/* Shared decode core for gra_decode_frame (frame-indexed) and
+ * gra_decode_frame_at (blob-addressed). A zero or "negative" dimension
+ * (0xFEC0 = -320, 0xFC31 = -975, ...) reads as a full-screen blit/clear
+ * sentinel, not a sprite, and is rejected here; the frame path sign-extends the
+ * header's u16 so the original's (s16) test is reproduced.
+ * TODO(verify): the sentinel meaning is documented, not proven. */
+static int decode_frame_core(const u8 *blob, u32 len, int w, int h,
+                             u8 *dst, u32 cap)
+{
+    if (blob == NULL || dst == NULL || w <= 0 || h <= 0) return -1;
+    return rle_decode(blob, len, (u16)w, (u16)h, dst, cap);
+}
+
 int gra_decode_palette(u32 file_off, const GraChunk *chunks, int chunk_count,
                        u8 *rgb_out, u32 rgb_cap, int *count)
 {
@@ -136,11 +151,6 @@ int gra_decode_frame(u32 file_off, const GraChunk *chunks, int chunk_count,
     /* TODO(verify): the s16 x/y anchor is not read here; its meaning (sprite
      * origin vs. bounding-box corner) is likely, not proven. */
 
-    /* Zero-dimension and "negative"-dimension records (0xFEC0 = -320,
-     * 0xFC31 = -975, ...) read as full-screen blit/clear sentinels, not
-     * sprites. TODO(verify): the sentinel meaning is documented, not proven. */
-    if ((s16)w <= 0 || (s16)h <= 0) return -1;
-
     /* PORT: resolves the pixel handle through res_resolve (the port's resource
      * heap) instead of the original's EMS block walk at 0x1B544. The bytes are
      * identical, and res_size() gives rle_decode a length the original lacks. */
@@ -154,5 +164,40 @@ int gra_decode_frame(u32 file_off, const GraChunk *chunks, int chunk_count,
 
     /* PORT: returns RLE bytes consumed (the original writes into a caller
      * buffer and signals nothing); the exact-consumption test needs it. */
-    return rle_decode(src, size - off, w, h, dst, dst_len);
+    return decode_frame_core(src, size - off, (int)(s16)w, (int)(s16)h,
+                             dst, dst_len);
+}
+
+int gra_decode_frame_at(const u8 *blob, u32 len, int w, int h, u8 *dst, u32 cap)
+{
+    return decode_frame_core(blob, len, w, h, dst, cap);
+}
+
+int gra_sprite_lookup(u32 sprite_id, GraSprite *out, u32 *desc_handle)
+{
+    u32 h = DSD(DS_000A8B30 + (sprite_id & 0x7FFFu) * 4u);
+    if (h == 0) return 0;
+    if (desc_handle) *desc_handle = h;
+    return gra_sprite_open(h, out);
+}
+
+int gra_sprite_open(u32 desc_handle, GraSprite *out)
+{
+    const u8 *p = (const u8 *)res_resolve(desc_handle);
+    if (p == NULL || out == NULL) return 0;
+    memcpy(&out->width,  p + 0, 2);
+    memcpy(&out->height, p + 2, 2);
+    memcpy(&out->xorg,   p + 4, 2);
+    memcpy(&out->yorg,   p + 6, 2);
+    out->pixel_handle = (u32)p[8] | ((u32)p[9] << 8) | ((u32)p[10] << 16) |
+                        ((u32)p[11] << 24);
+    return 1;
+}
+
+int gra_sprite_pixels(u32 pixel_handle, const u8 **out)
+{
+    const u8 *p = (const u8 *)res_resolve(pixel_handle);
+    if (p == NULL) return 0;
+    if (out) *out = p;
+    return 1;
 }

@@ -1,5 +1,7 @@
 #include "platform/gra.h"
+#include "platform/res.h"
 #include "mem.h"
+#include "symbols.h"
 #include "test.h"
 #include <dirent.h>
 #include <stdio.h>
@@ -52,9 +54,54 @@ static void put_header(u32 at, u16 type, const char magic[2], u32 next)
     DSD(at + 4) = next;
 }
 
+static void check_gra_sprites(void)
+{
+    /* The sprite table itself is static in the data object and already
+     * resident, but resolving its handles needs the resource INDEX. test_res
+     * loads it earlier in the run_tests order; load it here too (guarded, so
+     * the bump allocator is never asked for it twice) to make this test
+     * independent of that ordering. Needs platform/res.h. */
+    if (DSD(DS_001014F0) == 0)
+        CHECK(res_load_index("data/game/C", "data/game/C/INDEX") > 0,
+              "resource index loads");
+
+    /* The first entry must resolve, and its descriptor must be self-consistent.
+     * Its header values are read from the shipped asset (s16statu.gra): 30x27
+     * with X pivot 15 and Y pivot 13, positive height => RLE, not the raw
+     * marker. */
+    GraSprite s;
+    u32 dh = 0;
+    CHECK_EQ_INT(gra_sprite_lookup(0, &s, &dh), 1);
+    CHECK(dh != 0, "sprite 0 has a descriptor handle");
+    CHECK_EQ_INT(s.width, 30);
+    CHECK_EQ_INT(s.height, 27);
+    CHECK_EQ_INT(s.xorg, 15);
+    CHECK_EQ_INT(s.yorg, 13);
+    const u8 *px = NULL;
+    CHECK_EQ_INT(gra_sprite_pixels(s.pixel_handle, &px), 1);
+    CHECK(px != NULL, "pixel handle resolves");
+
+    /* A garbage handle must be rejected. */
+    CHECK_EQ_INT(gra_sprite_open(0x7FFFFFFFu, &s), 0);
+    CHECK_EQ_INT(gra_sprite_pixels(0x7FFFFFFFu, &px), 0);
+
+    /* The table is the documented 18,443 entries, indices 0..18442. The port
+     * masks the id to 0x7FFF exactly as 0x14268 does and applies no other
+     * bound. The table's end is NOT discoverable from the data — the dwords
+     * after it are nonzero but are not handles (the first all-zero dword is at
+     * index 18535, and 18534 reads 0x128D) — so the length is pinned from the
+     * disassembly, not inferred. */
+    int n = 0;
+    for (u32 i = 0; i < 18443u; i++)
+        if (DSD(DS_000A8B30 + i * 4u) != 0) n++;
+    CHECK_EQ_INT(n, 18443);
+}
+
 int test_gra(void)
 {
     int before = g_failures;
+
+    check_gra_sprites();
 
     check_chain("S16FONTS.GRA", 3, (const u16[]){2, 5, 6},
                 (const u32[]){39244, 144, 4644});

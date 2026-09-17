@@ -185,25 +185,39 @@ for (node = DSD(DS_00105B44); node != 0; node = DSD(node)) {
 computes, for `p = v * 3901`:
 
 ```
-eax = p + 0x800
-edx = (p + 0x800) >> 31          /* sar 31 */
-edx <<= 12
-eax -= edx                        /* sbb: subtract 0x1000 only when the sum went negative */
+eax = p + 0x800                   /* p = v * num */
+edx = eax >> 31                   /* sar 31: the sign mask */
+edx <<= 12                        /* 0 or 0xFFFFF000; sets CF when the mask was -1 */
+sbb eax, edx                      /* eax - edx - CF */
 eax >>= 12                        /* sar 12 */
 ```
 
-i.e. round-to-nearest for positive values, and the same magnitude for negative
-values. A plain arithmetic `>>12` truncates toward negative infinity and is
-**not** equivalent for negative inputs. Implement it as:
+`sbb` subtracts the borrow as well as `edx`, so for a negative sum the net effect is
+`p + 0x1000 - 1 == p + 0xFFF`. **This rounds half toward +infinity, not half away
+from zero** — which makes the projection asymmetric at negative exact values
+(`proj_x(-4096) == -3900`, while the mathematically symmetric answer would be
+`-3901`). A plain arithmetic `>>12` truncates toward negative infinity and is
+**not** equivalent for negative inputs (`proj_x(-1) == 0`, but `(-3901+0x800)>>12 == -1`).
+Implement it as:
 
 ```c
 static int proj_scale(int v, int num)
 {
     int p = v * num + 0x800;
-    int bias = (p >> 31) << 12;
-    return (p - bias) >> 12;
+    if (p < 0) p += 0xFFF;
+    return p >> 12;
 }
 ```
+
+**The mode-1/mode-2 offset projections are NOT this idiom.** The original uses an
+uncorrected `+0x800` then `>>12` for the `DS_00107A3E`, `DS_00107A3A` and
+`DS_00107A38` offsets (`prage.c:3166`, `:3173`, `:3175`), while layer 1's `y`
+(line 3167-3169) does use the corrected form. Use a separate uncorrected helper for
+those three. In a compositor-only run all five of those globals are zero, so the two
+forms coincide there. `TODO(verify)`: 4a-ii's pixel oracle must confirm both which
+form applies to those operands **and their load width** — the decomp renders
+`DAT_00107a3e`/`3a`/`38` as `(uint)` (zero-extended) while the port sign-extends with
+`(s16)`; with the globals zero the two are indistinguishable.
 
 ### `0x1C3A0` / `0x1C3FC` — list insert and sort
 
@@ -792,57 +806,117 @@ make verify && git add -A && git commit -m "sprite: RLE span renderer, cross-che
 ## Task 4: Bank and colour tables, pinned
 
 **Files:**
-- Modify: `port/src/platform/sprite.c`
+- Modify: `port/src/platform/sprite.c`, `port/src/platform/sprite.h`
 - Modify: `port/tests/test_sprite.c`
 
 **Interfaces:**
-- Produces: the bank and colour arithmetic used by every renderer, with the
-  `bank == 0` anomaly pinned.
+- Produces: `u32 sprite_bank(u32 pal_ptr);` — resolves the palette pointer and
+  returns the source-index offset (`0` for bank byte 0, else `byte - 1`). Task 9's
+  blitter calls it; the test calls it directly, which is also why it is not
+  `static` (an unused `static` would break the zero-warnings rule).
+- Produces: the pinned table facts as regression assertions.
+
+`DS_00081310` and `DS_00081314` are **not** in the generated `symbols.h` (the
+region is one Ghidra never decompiled), so the test spells both addresses as
+literals. Both are inside the loaded data object (`DATA_BASE 0x80000`, data size
+`0x8B0D0`), i.e. real `mem[]` bytes.
 
 - [ ] **Step 1: Write the failing test**
 
+Add another `static` helper to `test_sprite.c` and call it from `test_sprite()`:
+
 ```c
+/* The two generated tables live in a region Ghidra never decompiled, so
+ * gen_symbols.py emits no DS_ symbols for them; the addresses are literals and
+ * are inside the loaded data object. */
+#define BANK_TABLE   0x00081310u
+#define COLOUR_TABLE 0x00081314u
+
 static void check_bank_and_colour(void)
 {
-    /* DAT_00081310[n] == (n-1) replicated, for every n in 1..255. These are
+    /* BANK_TABLE[n] == (n-1) replicated, for every n in 1..255. These are
      * static generated table facts, so they are pinned exactly. */
     for (u32 n = 1; n < 256; n++)
-        CHECK(DSD(DS_00081310 + n * 4u) == (n - 1u) * 0x01010101u,
+        CHECK(DSD(BANK_TABLE + n * 4u) == (n - 1u) * 0x01010101u,
               "bank table entry is (n-1) replicated");
     /* [0] is the stale code pointer, deliberately not replicated. */
-    CHECK(DSD(DS_00081310) == 0x0005D110u, "bank[0] is the stale pointer");
+    CHECK(DSD(BANK_TABLE) == 0x0005D110u, "bank[0] is the stale pointer");
 
-    /* DAT_00081314[n] == n replicated, for every n. */
+    /* COLOUR_TABLE[n] == n replicated, for every n. */
     for (u32 n = 0; n < 256; n++)
-        CHECK(DSD(DS_00081314 + n * 4u) == n * 0x01010101u,
+        CHECK(DSD(COLOUR_TABLE + n * 4u) == n * 0x01010101u,
               "colour table entry is n replicated");
 
-    /* The port's byte-level bank is (b-1), and bank byte 0 is no offset: see
-     * the TODO(verify) in sprite.c. This takes the bank *byte* — the value at
-     * pal_ptr[8] — not the palette pointer. */
+    /* The bank *byte* mapping: (b-1), except that byte 0 is no offset. */
     CHECK_EQ_INT(sprite_bank_offset(1), 0);
     CHECK_EQ_INT(sprite_bank_offset(2), 1);
     CHECK_EQ_INT(sprite_bank_offset(255), 254);
     CHECK_EQ_INT(sprite_bank_offset(0), 0);
+
+    /* sprite_bank resolves a palette pointer and reads its byte 8. Build the
+     * pointer in scratch memory: a resolvable handle is not needed for a
+     * pointer that is already a mem[] offset only if the caller passes one, so
+     * use a resource handle from the sprite table's own descriptor. */
+    GraSprite g; u32 dh = 0;
+    CHECK_EQ_INT(gra_sprite_lookup(0x2C11u, &g, &dh), 1);
+    /* dh resolves to the 12-byte descriptor; byte 8 is the low byte of the
+     * pixel handle, which is a non-zero arbitrary bank byte. Assert the
+     * relationship rather than a magic value. */
+    const u8 *desc = (const u8 *)res_resolve(dh);
+    CHECK(desc != NULL, "descriptor resolves");
+    u8 b = desc[8];
+    CHECK_EQ_INT(sprite_bank(dh), (b == 0u) ? 0 : (int)(u8)(b - 1u));
+
+    /* A non-zero bank must actually shift the drawn pixels. This is the path
+     * the cross-check in Task 3 cannot cover: it renders at bank offset 0, so
+     * the fill-colour `+ bank` add is otherwise untested. Row: literal 2, fill
+     * 3 (colour index 7) -- at offset 2 every drawn byte is +2. */
+    static const u8 row[9] = { 0x02, 0x0A, 0x0B, 0x83, 0x07, 0,0,0,0 };
+    u8 out[8]; memset(out, 0xEE, sizeof out);
+    CHECK_EQ_INT(sprite_render_rle(row, out, 5, 1, 8, 2), 0);
+    CHECK_EQ_INT(out[0], 0x0C);   /* 0x0A + 2 */
+    CHECK_EQ_INT(out[1], 0x0D);   /* 0x0B + 2 */
+    CHECK_EQ_INT(out[2], 0x09);   /* colour index 7, zero-offset byte 7, + 2 */
+    CHECK_EQ_INT(out[3], 0x09);
+    CHECK_EQ_INT(out[4], 0x09);
+    /* No overrun into the row padding. */
+    CHECK_EQ_INT(out[5], 0xEE);
 }
 ```
 
-`sprite_bank_offset` is declared in `sprite.h` by Task 3; this task only adds the
-test. `sprite_bank(pal_ptr)` resolves the pointer and delegates to it.
-
 - [ ] **Step 2: Run and watch it fail**
-- [ ] **Step 3: Implement** — `sprite_bank_offset` and `sprite_bank` already
-  landed in Task 3; this task only extracts the fill colour into
-  `static u8 colour_run(u8 idx, u8 bank)` returning
-  `(u8)(DSB(DS_00081314 + idx) + bank)`, and uses it from `rle_row`.
+
+Run: `PR_GAME_DIR=data/game/C make test`. Expected: build failure —
+`sprite_bank` undeclared.
+
+- [ ] **Step 3: Implement**
+
+```c
+u32 sprite_bank(u32 pal_ptr)
+{
+    const u8 *p = (const u8 *)res_resolve(pal_ptr);
+    return sprite_bank_offset((p != NULL) ? p[8] : 0u);
+}
+```
+
+Declare it in `sprite.h` next to `sprite_bank_offset`, with a doc comment naming
+`0x51E5C` (its only original caller). Nothing else changes: the fill colour in
+`rle_row` already computes `COLOUR_TABLE[idx] + bank` byte-wise and Task 3 landed
+that. Drop the now-unused `#include "../symbols.h"` from `sprite.c` if nothing in
+it references a `DS_*` macro (Task 3's reviewer flagged it as unused).
+
 - [ ] **Step 4: Run the tests** — expect pass.
-- [ ] **Step 5: Negative control** — assert `[0]` equals 0 instead of
-  `0x5D110`, confirm the test fails, revert.
+- [ ] **Step 5: Negative control** — assert `BANK_TABLE[0]` equals 0 instead of
+  `0x5D110` and confirm the test fails; then change the render assertion to
+  `bank = 0` and confirm the four `+2` assertions fail. Revert both.
 - [ ] **Step 6: `make verify` then commit**
 
 ```bash
-make verify && git add -A && git commit -m "sprite: pin the bank and colour tables"
+make verify && git add port/src/platform/sprite.c port/src/platform/sprite.h port/tests/test_sprite.c && git commit -m "sprite: pin the bank and colour tables"
 ```
+
+(This plan is being executed while another session commits to the same branch:
+stage explicit paths, never `git add -A`.)
 
 ---
 
@@ -923,20 +997,33 @@ static const u8 ROW[9] = { 0x02, 0x0A, 0x0B, 0xC1, 0x00, 0x83, 0x07,0,0 };
 ```
 
 The blob is `ROW` repeated per row (the helper builds a 3-row stream), width 6,
-`stride = 16`, `bank = 1` (offset 0). Expected, with `X` = untouched:
+`stride = 16`, `bank = 0`. (`bank` is the **offset** argument; 0 is identity, so
+drawn bytes are the source bytes unchanged. A literal `1` would add 1 to every
+drawn pixel — the same trap Task 3 hit.)
 
-| case | clip | expected row | note |
+**Destination indexing is window-relative, and that is load-bearing.** The
+blitter computes `dst = mem + … + node.x`, and `render_list` has already clamped
+`node.x` inward to the clip edge (`if (l >= 0) x = clip_left`). So `dst[0]` is the
+window's *first visible* column and the renderer writes the visible window
+sequentially from `dst[0]`; it must **not** index the destination by the original
+column. (The original reaches the same result by skipping the clipped-off part of
+the first straddling run before its first store.)
+
+Expected rows, `X` = untouched, six columns shown (`dst[0..5]`):
+
+| case | clip | expected row | why |
 |---|---|---|---|
-| none | L=0 R=0 T=0 B=0 | `0A 0B X 07 07 07` | baseline |
-| left only | L=2 R=0 | `X X X 07 07 07` | the literal run straddles the left edge and must be split, and its payload partially consumed |
-| right only | L=0 R=2 | `0A 0B X 07 X X` | the fill run straddles the right edge |
-| both | L=2 R=2 | `X X X 07 X X` | the fill run straddles both edges |
-| left spans both | L=4 R=1 | `X X X X X X` | visible window is 1 col, inside the fill |
-| top | T=1 | rows shifted up by one | the helper consumes one whole row of stream without drawing |
+| none | L=0 R=0 T=0 | `0A 0B X 07 07 07` | baseline |
+| left, mid-literal | L=1 R=0 | `0B X 07 07 07 X` | window is cols 1..5; the literal run is split and its second payload byte is the first drawn pixel |
+| left, mid-transparent | L=2 R=0 | `X 07 07 07 X X` | window is cols 2..5; col 2 is the transparent run |
+| right only | L=0 R=2 | `0A 0B X 07 X X` | window is cols 0..3; the fill run is cut after col 3 |
+| both | L=2 R=2 | `X 07 X X X X` | window is cols 2..3: transparent, then one fill pixel |
+| left spans both | L=4 R=1 | `07 X X X X X` | window is col 4 alone, inside the fill run |
+| top | T=1 | rows shifted up by one | one whole row of stream is consumed without drawing |
 | bottom | — | nothing further | `clip_b` is subtracted by the blitter, not here; the caller passes the reduced `rows` |
 
-Plus: assert the source pointer is left at the same position for L/R cases as
-for the unclipped case (clipping must consume the whole row's stream).
+Plus: assert the source pointer is left at the same position for the L/R cases as
+for the unclipped case — clipping must still consume the whole row's stream.
 
 - [ ] **Step 2: Run and watch it fail**
 
@@ -947,10 +1034,9 @@ The equivalent formulation, recorded with a `/* PORT: ... */` comment naming
 
 ```
 vis = width - clip_l - clip_r
-if vis <= 0: consume each row's stream without drawing; return 0
-skip clip_t whole rows (decode, no draw) with a row-consuming helper
+if vis <= 0: consume every row's stream without drawing; return 0
+consume clip_t whole rows without drawing
 per remaining row:
-    dst_col = 0
     col = 0
     while col < width:
         b = *src++
@@ -971,19 +1057,28 @@ per remaining row:
     dst += stride
 ```
 
-Two helpers are required and must be tested independently:
-`static const u8 *rle_skip_row(const u8 *src, int width);` (decode a row without
-drawing, used by the top clip) and the visible-window test above.
+**Do not write a second control-byte walker.** The "consume without drawing"
+paths (the `vis <= 0` case and the `clip_t` rows) reuse the *same* row decoder:
+extend Task 3's `rle_row` so it accepts `dst == NULL` and skips every store while
+walking exactly the same control bytes, then call it for the skipped rows. A
+separate `rle_skip_row` that re-implements the literal/fill/transparent walk would
+be verbatim duplication of the logic block and a review finding.
+
+A skipped row still consumes its source bytes in order — that is what keeps the
+following rows in sync — it simply stores nothing.
 
 - [ ] **Step 4: Run the tests** — expect pass on every row.
 - [ ] **Step 5: Negative control** — draw the clipped part instead of skipping it
-  (drop the visibility test) and confirm the left-only and right-only
-  expectations fail. Revert.
+  (drop the visibility test) and confirm the left-mid-literal, right-only and
+  both-sides expectations fail. Revert.
 - [ ] **Step 6: `make verify` then commit**
 
 ```bash
-make verify && git add -A && git commit -m "sprite: clipped RLE renderer (0x5D28F semantics)"
+make verify && git add port/src/platform/sprite.c port/src/platform/sprite.h port/tests/test_sprite.c && git commit -m "sprite: clipped RLE renderer (0x5D28F semantics)"
 ```
+
+(This plan is being executed while another session commits to the same branch:
+stage explicit paths, never `git add -A`.)
 
 ---
 
@@ -994,7 +1089,18 @@ make verify && git add -A && git commit -m "sprite: clipped RLE renderer (0x5D28
 - Modify: `port/tests/test_sprite.c`
 
 **Interfaces:**
-- Produces: `mirror` on both RLE entry points (already in the signatures).
+- Produces: the mirrored path, exercised through `sprite_render_rle_clipped`'s
+  `mirror` parameter — that is the type-`0x09` path (`RLE|hflip`), and the only
+  mirrored entry the dispatch table has. `sprite_render_rle` is the unclipped
+  *unmirrored* entry and passes `mirror = 0` internally; it takes no mirror
+  argument. (The original's `0x57F80` unmirrored / `0x57FFB` mirrored pair maps
+  onto the one unified `rle_row`, whose `mirror` parameter Task 6 already
+  plumbed — so on this task most of the "implementation" already exists and the
+  work is the tests plus the `PORT` note.)
+- **TDD note for this task:** because Task 6 unified the row decoder and already
+  carries `mirror`, the new mirror test will likely pass on its first run — there
+  is no honest RED. Do not fake one. Write the test, observe it pass, and provide
+  the sensitivity evidence with Step 5's negative control instead.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1046,11 +1152,20 @@ make verify && git add -A && git commit -m "sprite: mirrored RLE renderer (0x57F
 ```c
 static void check_shear(void)
 {
-    u8 src[6 * 3];
-    for (int i = 0; i < 18; i++) src[i] = (u8)(10 + i);
+    /* The shear reads `vis` bytes from `src + sh`, where `sh` can be positive
+     * (up to +2 in the cases below), so the fixture must carry slack past the
+     * last row: 6 columns x 4 rows = 24 bytes for a 3-row image. A 6x3 buffer
+     * would read out of bounds on the +2 case. */
+    u8 src[6 * 4];
+    for (int i = 0; i < 24; i++) src[i] = (u8)(10 + i);
     u8 dst[6 * 3]; memset(dst, 0xEE, sizeof dst);
 
-    /* With DS_00107900 all zero, the shear is zero and this is a plain copy. */
+    /* Zero the table explicitly first: this test must not depend on whatever
+     * the loaded data object happens to hold at DS_00107900. With the table
+     * zero the shear is zero and this is a plain copy. */
+    DSW(DS_00107900 + 0) = 0;
+    DSW(DS_00107900 + 2) = 0;
+    DSW(DS_00107900 + 4) = 0;
     CHECK_EQ_INT(sprite_render_shear(src, dst, 6, 3, 6, 0, 0,0,0), 0);
     for (int i = 0; i < 18; i++) CHECK_EQ_INT(dst[i], src[i]);
 
@@ -1104,13 +1219,20 @@ int sprite_render_shear(const u8 *src, u8 *dst, int width, int rows,
 the shift is arithmetic. Reading it as `u16` makes negative shear wrong.
 
 - [ ] **Step 4: Run the tests** — expect pass, including the negative-shear case.
-- [ ] **Step 5: Negative control** — drop the `(i16)` cast and confirm the
-  negative-shear assertion fails. Revert.
+- [ ] **Step 5: Negative control** — replace the arithmetic shift `>> 5` with a
+  truncating `/ 32` and confirm the negative-shear assertion fails (`-33 / 32 == -1`,
+  not `-2`). Revert. Do **not** use "drop the `(i16)` cast" as the control: that makes
+  the shift amount `(65503 - 0) >> 5 == 2046`, a wild positive offset that reads far
+  outside the fixture — the assertion would fail for the wrong reason and the read is
+  out of bounds.
 - [ ] **Step 6: `make verify` then commit**
 
 ```bash
-make verify && git add -A && git commit -m "sprite: mode-1 shear copy renderer (0x5215C)"
+make verify && git add port/src/platform/sprite.c port/src/platform/sprite.h port/tests/test_sprite.c && git commit -m "sprite: mode-1 shear copy renderer (0x5215C)"
 ```
+
+(This plan is being executed while another session commits to the same branch:
+stage explicit paths, never `git add -A`.)
 
 ---
 
@@ -1133,10 +1255,16 @@ make verify && git add -A && git commit -m "sprite: mode-1 shear copy renderer (
 ```c
 static void check_blit_dispatch(void)
 {
-    /* A zero-size node is a no-op and must not touch the buffer. */
+    /* A zero-size node must return without touching the buffer. Snapshot first:
+     * `CHECK(1, "no crash")` would assert nothing, and a test that asserts
+     * nothing is not a test. */
+    u32 icon = DSD(DS_000E87A4);
+    static u8 pre[320 * 200];
+    memcpy(pre, mem + icon, sizeof pre);
     SpriteNode n; memset(&n, 0, sizeof n);
     sprite_blit(&n);
-    CHECK(1, "no crash on a zero node");
+    CHECK(memcmp(mem + icon, pre, sizeof pre) == 0,
+          "a zero-size node blits nothing");
 
     /* The blitter restores +0x14 and +0x30 after the call. */
     GraSprite g; u32 dh = 0;
@@ -1356,22 +1484,27 @@ Add these helpers to `test_render.c` and call them from `int test_render(void)`:
 ```c
 static void check_proj_rounding(void)
 {
-    /* round(v * 3901 / 4096), round-to-nearest, symmetric about zero. The
-     * negative cases are the ones a plain >>12 gets wrong. */
+    /* The original's idiom: p = v * 3901 + 0x800, then + 0xFFF when p < 0, then
+     * >>12. Half toward +infinity, so the projection is ASYMMETRIC at negative
+     * exact values: proj_x(-4096) is -3900, not -3901. The negative cases are
+     * the ones a plain >>12 gets wrong. */
     CHECK_EQ_INT(render_proj_x(0), 0);
     CHECK_EQ_INT(render_proj_x(4096), 3901);
-    CHECK_EQ_INT(render_proj_x(-4096), -3901);
+    CHECK_EQ_INT(render_proj_x(-4096), -3900);
+    CHECK_EQ_INT(render_proj_x(-1), 0);
+    /* This one discriminates the corrected idiom from the plausible-looking
+     * `p - ((p >> 31) << 12)`: that form yields -1949 here, the original -1950. */
+    CHECK_EQ_INT(render_proj_x(-2048), -1950);
     CHECK_EQ_INT(render_proj_x(1), (3901 + 0x800) >> 12);
     CHECK_EQ_INT(render_proj_y(4096), 3414);
-    CHECK_EQ_INT(render_proj_y(-4096), -3414);
+    CHECK_EQ_INT(render_proj_y(-4096), -3413);
 
-    /* Exhaustive small-range check against the original's own idiom, computed
-     * independently here: p = v*3901 + 0x800; bias = (p >> 31) << 12;
-     * result = (p - bias) >> 12. A truncating implementation fails here. */
+    /* Exhaustive small-range self-consistency pin, computed with the corrected
+     * idiom. The explicit values above are the real discriminators. */
     for (int v = -8192; v <= 8192; v++) {
         int p = v * 3901 + 0x800;
-        int want = (p - ((p >> 31) << 12)) >> 12;
-        CHECK_EQ_INT(render_proj_x(v), want);
+        if (p < 0) p += 0xFFF;
+        CHECK_EQ_INT(render_proj_x(v), p >> 12);
     }
 }
 
