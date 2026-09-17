@@ -935,7 +935,8 @@ payload decode is **verified** against the capture:
 
 Places where the port's register stream deliberately differs from
 `data/audio-captures/prage_000.dro`. Task 9 must either match each one or
-explicitly exclude it; none is silent.
+explicitly exclude it; none is silent. Entries marked *withdrawn* no longer
+differ — they are kept as the correction record for the earlier claim.
 
 1. **Carrier TL velocity attenuation omitted.** The driver adds a velocity term
    to the carrier TL (`[10]`) — dominant form `+ 0x16 + ((127 - velocity) >> 3)`,
@@ -944,14 +945,20 @@ explicitly exclude it; none is silent.
    than the capture. `TODO(verify): the exact function` (disassemble
    `SBPRO2.MDI`, or a single-program velocity sweep).
 
-2. **`0x105 = 0x01` (OPL3-mode enable) omitted.** The capture's next write after
-   `0x01 = 0x20` is `0x105 = 0x01`. Writing it to the vendored opal core
-   **silences** the output: a probe writes `0x01 = 0x20` + a key-on and renders
-   1003 non-zero samples; the same sequence with `0x105 = 0x01` inserted renders
-   0, and `0x105 = 0x00` renders 1003 again. `verified (cmd: probe against
-   `build/libprage_core.a``). The port therefore stays OPL2 and omits the write;
-   the core's arithmetic is not modified. Matching the capture needs a core-side
-   OPL3-mode fix, not a sequencer write.
+2. **`0x105 = 0x01` (OPL3-mode enable): withdrawn, port now matches.** The
+   capture's next write after `0x01 = 0x20` is `0x105 = 0x01`. Earlier text here
+   claimed writing it to the vendored opal core **silences** the output. That is
+   an artifact of the probe behind it omitting the driver's `0xC0 = patch | 0x30`
+   output-enable write. In OPL2 mode `channelMix` forces every channel's enable
+   on, masking a missing `0xC0`; in OPL3 mode the `0xC0` bits gate the mix, so
+   the `0xC0`-less probe rendered 0. With the `0xC0` enable present — as every
+   real note setup has — `0x105 = 0x01` is output-neutral and byte-identical.
+   The port now writes `0x105 = 0x01` after `0x01 = 0x20`, matching the capture;
+   the core is unmodified. `verified (cmd: ./build/run_tests covers
+   port/tests/test_opl.c; a 1024-frame key-on probe against
+   build/libprage_core.a measures 1003/1003 non-zero samples with and without
+   the write when 0xC0 is written, memcmp 0; without 0xC0 the old probe's
+   1003/0 reproduces)`.
 
 3. **Sequencer parser and XMIDI running status.** The reviewer flagged possible
    running status / `0x80` note-off / `0x9n vel 0` in the non-title banks. No

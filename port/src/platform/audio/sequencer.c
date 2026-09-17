@@ -356,13 +356,15 @@ void seq_start(void)
         S.program[c] = 0;
         S.bank[c] = 0;
     }
-    /* The captured driver enables waveform select (0x01 = 0x20) as its first
-     * write; the port needs it because patches write 0xE0. The capture then
-     * sets 0x105 = 0x01 (OPL3 mode). KNOWN DIVERGENCE: the port omits it —
-     * writing 0x105 = 0x01 silences the vendored opal core (a key-on renders
-     * 0 samples vs 1003 without it), so the port stays in OPL2 mode. See
-     * port/spec/audio.md "Known capture divergences". */
+    /* The captured driver's cached state opens with waveform-select enable
+     * (0x01 = 0x20) then the OPL3-mode enable (0x105 = 0x01); the port writes
+     * both, in that order, matching the capture. The port needs 0x01 because
+     * patches write 0xE0. 0x105 does not change the port's output: every
+     * apply_patch writes 0xC0 = patch | 0x30 (both output enables), which in
+     * OPL3 mode is what gates each channel's mix. See port/spec/audio.md
+     * "Known capture divergences". */
     opl_write(0x01, 0x20);
+    opl_write(0x105, 0x01);
 }
 
 void seq_stop(void)
