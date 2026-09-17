@@ -28,4 +28,24 @@ typedef struct {
  * and negates both dimensions. */
 void sprite_node_build(SpriteNode *n, u32 sprite_id);
 
+/* The bank byte's effect on the source index. The original indexes a table at
+ * DS_00081310 by the palette descriptor's bank byte; entries 1..255 hold
+ * (b-1) replicated across the dword, so the byte-level effect is a plain -1.
+ * Entry 0 is NOT replicated: it holds the stale code pointer 0x0005D110, whose
+ * bytes differ, so the original's dword add would give each pixel of a 4-pixel
+ * group a different offset — position-dependent garbage and a latent defect,
+ * not a palette operation. A byte-wise port cannot reproduce an
+ * alignment-dependent dword carry, so bank byte 0 maps to no offset. */
+u8 sprite_bank_offset(u8 bank_byte);
+
+/* RLE-renders `rows` rows of `width` pixels from src into dst. Each destination
+ * row starts `stride` bytes after the previous one (the original's 0x140 row
+ * pitch), so the caller offsets dst to the sprite's screen x and the renderer
+ * advances the rest of the row itself; `bank` is the source-index offset the
+ * blitter computes via sprite_bank_offset (0 = identity, Task 4). Transparent
+ * runs leave dst untouched, and runs longer than the remaining row are clipped
+ * to it. Returns 0, or -1 if src/dst is NULL or a dimension is non-positive. */
+int sprite_render_rle(const u8 *src, u8 *dst, int width, int rows,
+                      int stride, u8 bank);
+
 #endif /* PR_SPRITE_H */

@@ -53,6 +53,13 @@ int gra_decode_palette(u32 file_off, const GraChunk *chunks, int chunk_count,
 int gra_decode_frame(u32 file_off, const GraChunk *chunks, int chunk_count,
                      int frame, u8 *dst, u32 dst_len);
 
+/* Decodes the RLE blob at `blob` (length `len` bytes) as a `w` x `h` index
+ * image, row-major and packed at `w`, into dst (capacity dst_len). Same decoder,
+ * semantics and return value as gra_decode_frame (RLE bytes consumed, or -1);
+ * it takes the blob and its length directly so a caller can decode a sprite
+ * reached by handle rather than by a frame index. `w`/`h` must be positive. */
+int gra_decode_frame_at(const u8 *blob, u32 len, int w, int h, u8 *dst, u32 cap);
+
 /* Handle-addressed sprite descriptors: the original's 12-byte records
  * { s16 width; s16 height; s16 xorg; s16 yorg; u32 pixel_handle } reached
  * through the static handle table at DS_000A8B30 instead of a GRA file's own
