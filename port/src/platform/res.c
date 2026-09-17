@@ -133,15 +133,23 @@ int res_load_file(const char *game_dir, const char *name, u32 *out_off, u32 *out
 
     if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return 0; }
     long sz = ftell(f);
-    if (sz <= 0 || fseek(f, 0, SEEK_SET) != 0) { fclose(f); return 0; }
+    /* Reject a size that is not a positive u32 before allocating. The size is
+     * then the single u32 used for both the allocation and the read: were the
+     * read left as the long, a >4 GiB file truncated for res_alloc could pass
+     * mem_in_range and then fread the full size past mem[]. */
+    if (sz <= 0 || sz > 0xFFFFFFFFL || fseek(f, 0, SEEK_SET) != 0) {
+        fclose(f);
+        return 0;
+    }
+    u32 size = (u32)sz;
 
-    u32 off = res_alloc((u32)sz);
+    u32 off = res_alloc(size);
     if (off == 0) { fclose(f); return 0; }
-    if (fread(mem + off, 1, (size_t)sz, f) != (size_t)sz) { fclose(f); return 0; }
+    if (fread(mem + off, 1, size, f) != size) { fclose(f); return 0; }
     fclose(f);
 
     *out_off = off;
-    *out_size = (u32)sz;
+    *out_size = size;
     return 1;
 }
 

@@ -3,7 +3,9 @@
 #include "symbols.h"
 #include "test.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 int test_res(void)
 {
@@ -80,6 +82,33 @@ int test_res(void)
     CHECK_EQ_INT(res_load_file("data/game/C", "nope.smk", &miss_off, &miss_size), 0);
     CHECK_EQ_INT(miss_off, 0xDEADBEEFu);
     CHECK_EQ_INT(miss_size, 0xFEEDFACEu);
+
+    /* Size boundaries, both rejected with the outputs untouched. A sparse file
+     * gives the length with no large fixture on disk. 128 MiB is above MEM_SIZE,
+     * so the allocator's bound is hit before any read. 4 GiB + 1 is the u32
+     * truncation case that used to pass that bound (the low 32 bits are 0) and
+     * then over-read past mem[]; the size is now rejected before allocating, so
+     * no read happens — if that guard regresses this test faults rather than
+     * silently corrupting the flat space. */
+    char big_path[] = "/tmp/pr_resbig_XXXXXX";
+    int big_fd = mkstemp(big_path);
+    CHECK(big_fd >= 0, "sparse fixture created");
+    if (big_fd >= 0) {
+        u32 big_off = 0xDEADBEEFu, big_size = 0xFEEDFACEu;
+        CHECK_EQ_INT(ftruncate(big_fd, 0x8000000), 0);
+        CHECK_EQ_INT(res_load_file("/tmp", big_path + 5, &big_off, &big_size), 0);
+        CHECK_EQ_INT(big_off, 0xDEADBEEFu);
+        CHECK_EQ_INT(big_size, 0xFEEDFACEu);
+
+        big_off = 0xDEADBEEFu, big_size = 0xFEEDFACEu;
+        CHECK_EQ_INT(ftruncate(big_fd, 0x100000000L), 0);
+        CHECK_EQ_INT(res_load_file("/tmp", big_path + 5, &big_off, &big_size), 0);
+        CHECK_EQ_INT(big_off, 0xDEADBEEFu);
+        CHECK_EQ_INT(big_size, 0xFEEDFACEu);
+
+        close(big_fd);
+        unlink(big_path);
+    }
 
     return g_failures - before;
 }
