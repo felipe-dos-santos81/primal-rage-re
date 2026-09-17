@@ -311,7 +311,7 @@ typedef struct SmkMovie {
     u32 table_off, flags_off, trees_off, data_off, treesize;
     u32 tree_size[4];            /* header order: mmap, mclr, full, type */
     s32 *tree[4];                /* into `words` */
-    s32 *last[4];                /* into `words` */
+    s32 *last[4][3];             /* three recency slots per tree (into `words`) */
     u8  pal[768];                /* current 256-entry RGB table */
     u32 next_frame;              /* frame cursor */
     s32 words[SMK_TREE_WORDS];   /* tree value arena */
@@ -401,7 +401,7 @@ git commit -m "smacker: container parse and validation"
 - Modify: `port/tests/test_smacker.c`
 
 **Interfaces:**
-- Produces: `m.tree[4]` / `m.last[4]` (into `m.words`) populated by `smk_open`, and an internal `smk_get_code()` used by Task 5.
+- Produces: `m.tree[4]` / `m.last[4][3]` (into `m.words`) populated by `smk_open`. The code decoder `smk_get_code(tree, last)` is **implemented in Task 5** (a now-unused static would break the zero-warning baseline). Its contract, which Task 4's preorder layout must satisfy: *a node word at index `p` stores `0x80000000 | left_count`; the left child is `p + 1` and the right child is `p + 1 + (word & 0x7FFFFFFF)`; a read bit of 0 descends left, 1 descends right; a word below `0x80000000` is a leaf value.* Reading a code also updates the three `last[tree][k]` recency slots.
 
 - [ ] **Step 1: Add the failing assertion to `test_smacker.c`**
 
