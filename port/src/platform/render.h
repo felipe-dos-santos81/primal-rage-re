@@ -35,4 +35,26 @@ u32 render_list_head(void);
 /* PORT: number of nodes currently listed. */
 int render_list_count(void);
 
+/* PORT: the compositor's camera and clip rectangle. The original's master loop
+ * passes DS_000A87CC in edx and `camera + 8` in ebx, so clip_l/t/r/b are the
+ * fields at +8..+20. */
+struct RenderCamera {
+    int x, y;
+    int clip_l, clip_t, clip_r, clip_b;
+};
+
+/* PORT: the master loop's camera: position {0, 0} and clip {0, 0, 320, 200}. */
+extern const struct RenderCamera render_camera_default;
+
+/* PORT: 0x14328. Walks the display list, projects each pset's position, applies
+ * the layer-1/layer-2 mode y-rules and the clip rectangle, and blits the visible
+ * nodes into the back buffer. */
+void render_list(void);
+
+/* PORT: 0x14328's projection: round(v * 3901 / 4096) and round(v * 3414 /
+ * 4096). Exposed so the original's rounding idiom can be tested in isolation
+ * from the driver. */
+int render_proj_x(int v);
+int render_proj_y(int v);
+
 #endif /* PR_RENDER_H */
