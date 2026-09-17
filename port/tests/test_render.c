@@ -218,11 +218,94 @@ static void check_layer_modes(void)
     for (u32 i = 0; i < 64; i++) DSW(DS_00107900 + i * 2u) = 0;
 }
 
+/* The expected buffer: the back buffer as it is now, plus `bank`'s rendering of
+ * the sprite at (x, y). Writing into a copy of the live back buffer (rather
+ * than into a zeroed one) is what makes the comparison valid — the sprite has
+ * transparent runs and the buffer has existing content underneath. */
+static void expect_composite(u8 *out, u32 icon, int x, int y,
+                             const u8 *px, const GraSprite *g, u8 bank)
+{
+    memcpy(out, mem + icon, 320 * 200);
+    CHECK_EQ_INT(sprite_render_rle(px, out + (u32)y * 320u + (u32)x,
+                                   g->width, g->height, 320, bank), 0);
+}
+
+static void check_end_to_end(void)
+{
+    render_list_init();
+
+    GraSprite g; u32 dh = 0;
+    CHECK_EQ_INT(gra_sprite_lookup(0x2C11u, &g, &dh), 1);
+    const u8 *px = NULL;
+    CHECK_EQ_INT(gra_sprite_pixels(g.pixel_handle, &px), 1);
+
+    /* pset+0x18 is a resource handle, not a raw pointer (the original's title
+     * psets hold values like 0x4197C6C, which decode as index 8 / in-range
+     * offsets into s16attrc.gra, while as raw mem[] offsets they would exceed
+     * MEM_SIZE). The blitter resolves it and reads byte 8. Find two resolvable
+     * handles whose bank byte differs, so the two layers' pixels are
+     * distinguishable without inventing a pointer. */
+    u32 pal_a = 0, pal_b = 0;
+    u8 bank_a = 0, bank_b = 0;
+    for (u32 id = 0; id < 0x7FFFu && pal_b == 0; id++) {
+        GraSprite g2; u32 h = 0;
+        if (!gra_sprite_lookup(id, &g2, &h)) continue;
+        u8 b = (u8)sprite_bank(h);
+        if (pal_a == 0) { pal_a = h; bank_a = b; }
+        else if (b != bank_a) { pal_b = h; bank_b = b; }
+    }
+    CHECK(pal_a != 0 && pal_b != 0 && bank_a != bank_b,
+          "two resolvable handles with different banks");
+
+    /* Layer > 2 psets store their coordinates pre-shifted by 6 (render_list
+     * decodes them with >> 6), so choose the pset x/y whose projections equal
+     * the pivots and land the sprite at (0, 0). */
+    int pset_x = 0, pset_y = 0;
+    for (int v = 0; v < 4096; v++) {
+        if (render_proj_x(v) >= (int)g.xorg) { pset_x = v; break; }
+    }
+    for (int v = 0; v < 4096; v++) {
+        if (render_proj_y(v) >= (int)g.yorg) { pset_y = v; break; }
+    }
+    int sx = render_proj_x(pset_x) - (int)g.xorg;
+    int sy = render_proj_y(pset_y) - (int)g.yorg;
+
+    u32 pa = RSCRATCH + 0xA00u, pb = RSCRATCH + 0xA20u;
+    DSW(pa + 0x00) = 0x2C11u; DSD(pa + 0x04) = pset_x << 6;   /* 9x8 RLE, s16attrc */
+    DSD(pa + 0x08) = pset_y << 6;  DSW(pa + 0x0E) = 3;
+    DSD(pa + 0x18) = pal_a;
+    DSW(pb + 0x00) = 0x2C11u; DSD(pb + 0x04) = pset_x << 6;   /* same sprite, other bank */
+    DSD(pb + 0x08) = pset_y << 6;  DSW(pb + 0x0E) = 4;
+    DSD(pb + 0x18) = pal_b;
+
+    static u8 expect[320 * 200];
+    u32 back = DSD(DS_000E87A4);
+
+    /* Layer 4 (bank_b) is higher, so it wins where they overlap. */
+    expect_composite(expect, back, sx, sy, px, &g, bank_b);
+    CHECK_EQ_INT(render_list_insert(pa), 1);
+    CHECK_EQ_INT(render_list_insert(pb), 1);
+    render_list_sort();
+    render_list();
+    CHECK(memcmp(mem + back, expect, sizeof expect) == 0,
+          "the higher layer's pixels win");
+
+    /* Swap the layers: bank_a must now win. Two-sided by construction —
+     * if neither pset composited, neither assertion holds. */
+    DSW(pa + 0x0E) = 4; DSW(pb + 0x0E) = 3;
+    expect_composite(expect, back, sx, sy, px, &g, bank_a);
+    render_list_sort();
+    render_list();
+    CHECK(memcmp(mem + back, expect, sizeof expect) == 0,
+          "swapping the layers swaps the winner");
+}
+
 int test_render(void)
 {
     check_list_order();
     check_proj_rounding();
     check_offscreen_skip();
     check_layer_modes();
+    check_end_to_end();
     return 0;
 }

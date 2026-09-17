@@ -1611,10 +1611,23 @@ static void check_end_to_end(void)
     const u8 *px = NULL;
     CHECK_EQ_INT(gra_sprite_pixels(g.pixel_handle, &px), 1);
 
-    /* Two palette banks: byte 8 = 1 (offset 0) and byte 8 = 3 (offset 2), so
-     * the two psets draw different pixels and the winner is identifiable. */
-    DSB(RSCRATCH + 0x800u + 8u) = 1;
-    DSB(RSCRATCH + 0x900u + 8u) = 3;
+    /* pset+0x18 is a resource HANDLE, not a mem[] offset: the original's title
+     * psets hold values like 0x4197C6C, which decode as index 8 / in-range
+     * offsets into s16attrc.gra, while as raw offsets they would exceed
+     * MEM_SIZE. The blitter resolves it and reads byte 8. So find two real
+     * resolvable handles whose bank byte differs, and derive the expected banks
+     * from them rather than hard-coding a pointer. */
+    u32 pal_a = 0, pal_b = 0;
+    u8 bank_a = 0, bank_b = 0;
+    for (u32 id = 0; id < 0x7FFFu && pal_b == 0; id++) {
+        GraSprite g2; u32 h = 0;
+        if (!gra_sprite_lookup(id, &g2, &h)) continue;
+        u8 b = (u8)sprite_bank(h);
+        if (pal_a == 0) { pal_a = h; bank_a = b; }
+        else if (b != bank_a) { pal_b = h; bank_b = b; }
+    }
+    CHECK(pal_a != 0 && pal_b != 0 && bank_a != bank_b,
+          "two resolvable handles with different banks");
 
     /* Layer-3 psets take their coordinates un-shifted, so choose the pset x/y
      * whose projections equal the pivots and land the sprite at (0, 0). */
@@ -1629,18 +1642,20 @@ static void check_end_to_end(void)
     int sy = render_proj_y(pset_y) - (int)g.yorg;
 
     u32 pa = RSCRATCH + 0xA00u, pb = RSCRATCH + 0xA20u;
-    DSW(pa + 0x00) = 0x2C11u; DSD(pa + 0x04) = pset_x;   /* 9x8 RLE, s16attrc */
-    DSD(pa + 0x08) = pset_y;  DSW(pa + 0x0E) = 3;
-    DSD(pa + 0x18) = RSCRATCH + 0x800u;
-    DSW(pb + 0x00) = 0x2C11u; DSD(pb + 0x04) = pset_x;   /* same sprite, other bank */
-    DSD(pb + 0x08) = pset_y;  DSW(pb + 0x0E) = 4;
-    DSD(pb + 0x18) = RSCRATCH + 0x900u;
+    /* layer > 2 stores its coordinates PRE-SHIFTED: render_list does
+     * px = DSD(pset+4) >> 6 for layers 3 and up. */
+    DSW(pa + 0x00) = 0x2C11u; DSD(pa + 0x04) = pset_x << 6;  /* 9x8 RLE, s16attrc */
+    DSD(pa + 0x08) = pset_y << 6;  DSW(pa + 0x0E) = 3;
+    DSD(pa + 0x18) = pal_a;
+    DSW(pb + 0x00) = 0x2C11u; DSD(pb + 0x04) = pset_x << 6;  /* same sprite, other bank */
+    DSD(pb + 0x08) = pset_y << 6;  DSW(pb + 0x0E) = 4;
+    DSD(pb + 0x18) = pal_b;
 
     static u8 expect[320 * 200];
     u32 back = DSD(DS_000E87A4);
 
     /* Layer 4 (bank offset 2) is higher, so it wins where they overlap. */
-    expect_composite(expect, back, sx, sy, px, &g, 2);
+    expect_composite(expect, back, sx, sy, px, &g, bank_b);
     CHECK_EQ_INT(render_list_insert(pa), 1);
     CHECK_EQ_INT(render_list_insert(pb), 1);
     render_list_sort();
@@ -1651,7 +1666,7 @@ static void check_end_to_end(void)
     /* Swap the layers: bank offset 0 must now win. Two-sided by construction —
      * if neither pset composited, neither assertion holds. */
     DSW(pa + 0x0E) = 4; DSW(pb + 0x0E) = 3;
-    expect_composite(expect, back, sx, sy, px, &g, 0);
+    expect_composite(expect, back, sx, sy, px, &g, bank_a);
     render_list_sort();
     render_list();
     CHECK(memcmp(mem + back, expect, sizeof expect) == 0,
