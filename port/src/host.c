@@ -130,6 +130,13 @@ int host_init(const char *title, int w, int h)
     return 1;
 }
 
+int host_has_window(void)
+{
+    /* g_window is NULL before host_init(), after host_shutdown(), and after a
+     * failed host_init() (all failure paths call host_shutdown()). */
+    return g_window != NULL;
+}
+
 void host_shutdown(void)
 {
     host_audio_close(); /* one authoritative teardown, before SDL_Quit() */

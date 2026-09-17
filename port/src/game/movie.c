@@ -38,12 +38,16 @@ static void movie_present(u32 w, u32 h)
 }
 
 /* PORT: pace one frame by smk_frame_delay_us, converted to whole 60 Hz host
- * ticks, carrying the sub-tick remainder so a long movie does not drift. */
+ * ticks, carrying the sub-tick remainder so a long movie does not drift. With
+ * no window open (the test suite, `--check`) there is nothing to display, so
+ * the real-time wait is skipped and the run stays fast and deterministic; the
+ * frame is still decoded and presented through the same seam. */
 static void movie_pace(u32 delay_us)
 {
     s_pace += delay_us * 60u;
     u32 ticks = s_pace / 1000000u;
     s_pace %= 1000000u;
+    if (!host_has_window()) return;
     while (ticks-- != 0) host_wait_vblank();
 }
 

@@ -20,6 +20,13 @@
  * and host_present_rgb() does nothing. */
 int  host_init(const char *title, int w, int h);
 
+/* 1 while a window is open. Returns 0 before host_init(), after
+ * host_shutdown(), and when host_init() failed to open one. Headless callers
+ * (the test suite, `--check`) use this to skip real-time waits: with no window
+ * there is nothing to display, so pacing on the wall clock would only burn
+ * verification time. No effect on any existing call. */
+int  host_has_window(void);
+
 /* Closes the window and shuts SDL down. Safe to call more than once, and after
  * a failed host_init(). */
 void host_shutdown(void);

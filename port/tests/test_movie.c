@@ -1,4 +1,5 @@
 #include "game/movie.h"
+#include "host.h"
 #include "test.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,8 +9,10 @@
  * is real and never shown) and TWG 41 of 41 (its 41st is a hold of the 40th, so
  * the held image is displayed). `movie_frames_presented()` reports the count the
  * last movie_play() actually presented, so the rule is asserted on the real
- * playback, not on a helper. Real-time pacing makes this the slowest suite:
- * TWI5 is ~8.6 s and TWG ~5.8 s at the movies' own frame rates. */
+ * playback, not on a helper.
+ * A headless gate must not pace against the wall clock: the suite never opens a
+ * window, so the movie's real-time tick budget (TWI5 ~515 ticks) must not be
+ * spent waiting. Pacing is re-enabled when a window is open (windowed run). */
 int test_movie(void)
 {
     int before = g_failures;
@@ -19,8 +22,11 @@ int test_movie(void)
         return 0;
     }
 
+    u32 ticks0 = host_tick_count();
     CHECK_EQ_INT(movie_play(dir, "twi5.smk"), 1);
     CHECK_EQ_INT((int)movie_frames_presented(), 120);
+    CHECK((host_tick_count() - ticks0) < 100,
+          "headless playback does not sleep on the VBlank clock");
 
     CHECK_EQ_INT(movie_play(dir, "twg.smk"), 1);
     CHECK_EQ_INT((int)movie_frames_presented(), 41);

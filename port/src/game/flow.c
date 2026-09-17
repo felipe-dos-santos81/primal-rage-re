@@ -274,8 +274,10 @@ static void game_state_init(void)
      * lowercase while the on-disk files are uppercase; res_load_file's scan
      * matches case-insensitively. A missing or rejected movie is skipped, never
      * fatal. */
-    movie_play(s_game_dir, "twi5.smk");
-    movie_play(s_game_dir, "twg.smk");
+    if (!movie_play(s_game_dir, "twi5.smk"))
+        fprintf(stderr, "flow: twi5.smk playback failed\n");
+    if (!movie_play(s_game_dir, "twg.smk"))
+        fprintf(stderr, "flow: twg.smk playback failed\n");
     DSD(DS_00104B00) = 3;
     DSW(DS_000F0A64) = 1;
     DSB(DS_000F0A71) = 0;
