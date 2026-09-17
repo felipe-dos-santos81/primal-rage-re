@@ -174,10 +174,32 @@ static void check_bank_and_colour(void)
     CHECK_EQ_INT(out[5], 0xEE);
 }
 
+static void check_raw_copy(void)
+{
+    /* A 4x2 raw fixture with the bank offset applied byte-wise. */
+    const u8 src[8] = { 1,2,3,4, 5,6,7,8 };
+    /* dst must fit two stride-16 rows: the brief's dst[16] would write row 1
+     * at dst[16..19], past the end, clobbering the adjacent stack. */
+    u8 dst[32]; memset(dst, 0xEE, sizeof dst);
+    CHECK_EQ_INT(sprite_render_raw(src, dst, 4, 2, 16, 3), 0);
+    for (int i = 0; i < 4; i++) CHECK_EQ_INT(dst[i], src[i] + 3);
+    for (int i = 0; i < 4; i++) CHECK_EQ_INT(dst[16 + i], src[4 + i] + 3);
+    /* The row gap is untouched. */
+    for (int i = 4; i < 16; i++) CHECK_EQ_INT(dst[i], 0xEE);
+
+    /* Overflow wraps byte-wise, not into the next pixel. */
+    const u8 hi[2] = { 0xFE, 0xFF };
+    u8 d2[2] = { 0, 0 };
+    CHECK_EQ_INT(sprite_render_raw(hi, d2, 2, 1, 2, 4), 0);
+    CHECK_EQ_INT(d2[0], 0x02);
+    CHECK_EQ_INT(d2[1], 0x03);
+}
+
 int test_sprite(void)
 {
     check_node_build();
     check_rle_cross();
     check_bank_and_colour();
+    check_raw_copy();
     return 0;
 }

@@ -113,3 +113,17 @@ int sprite_render_rle(const u8 *src, u8 *dst, int width, int rows,
     }
     return 0;
 }
+
+/* PORT: 0x58CBD. Bulk-copies `width` bytes per row with the bank offset added
+ * byte-wise (copy_run), so src advances only by width*rows and dst by stride. */
+int sprite_render_raw(const u8 *src, u8 *dst, int width, int rows,
+                      int stride, u8 bank)
+{
+    if (src == NULL || dst == NULL || width <= 0 || rows <= 0) return -1;
+    for (int r = 0; r < rows; r++) {
+        copy_run(dst, src, width, bank);
+        src += width;
+        dst += stride;
+    }
+    return 0;
+}

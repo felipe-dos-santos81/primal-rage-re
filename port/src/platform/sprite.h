@@ -54,4 +54,15 @@ u32 sprite_bank(u32 pal_ptr);
 int sprite_render_rle(const u8 *src, u8 *dst, int width, int rows,
                       int stride, u8 bank);
 
+/* PORT: 0x58CBD. Raw (uncompressed) copy renderer: `rows` rows of `width`
+ * bytes are copied from src to dst with the bank offset added byte-wise to
+ * every pixel, advancing dst by `stride` per row and src by `width`. The
+ * original maps both the unclipped raw type 0x02 and the clipped type 0x12
+ * (RAW|CLIP) here, so clipping is the composite driver's job (destination
+ * offset and reduced row count), never this renderer's — hence no clip
+ * arguments. Returns 0, or -1 if src/dst is NULL or a dimension is
+ * non-positive. */
+int sprite_render_raw(const u8 *src, u8 *dst, int width, int rows,
+                      int stride, u8 bank);
+
 #endif /* PR_SPRITE_H */
