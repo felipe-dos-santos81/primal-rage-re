@@ -1,0 +1,46 @@
+/* Software mixer: sums the OPL FM core's stereo output and the active sample
+ * voices into interleaved stereo frames.
+ *
+ * PORT: this whole subsystem is invented. In the original the SB16.DIG driver
+ * mixed sample voices in hardware and the SBPRO2.MDI FM driver drove a separate
+ * OPL chip; game code never summed audio (port/spec/audio.md "AIL surface").
+ * A single software mixer is the port's replacement for both. Its arithmetic —
+ * per-voice Q8 volume, nearest-neighbour resampling, saturating s16 output — has
+ * no original counterpart.
+ *
+ * Voice pool: four, matching the four AIL sample handles the original allocates
+ * (port/spec/audio.md "AIL surface" row 10: FUN_0001cf40 allocates 0x60 == 4 *
+ * 0x18 bytes). A fifth concurrent add is dropped.
+ *
+ * Volume: Q8 fixed point, clamped to [0, 1024]. 256 is unity gain, 0 is silent,
+ * negative values clamp to 0; above 256 amplifies and may saturate.
+ *
+ * pcm: mono s16, `frames` samples. A stereo render duplicates it to both
+ * channels. `loop` nonzero loops at the end; zero stops the voice there.
+ *
+ * Resampling: one policy for every source, the OPL core included — nearest
+ * neighbour off a 16.16 phase accumulator. A voice whose rate differs from
+ * out_rate never reads outside its own buffer.
+ */
+#ifndef PR_MIXER_H
+#define PR_MIXER_H
+
+#include "types.h"
+
+/* Clears every voice and resets the OPL core, so "nothing playing" is exact
+ * silence even with no register writes. */
+void mixer_reset(void);
+
+/* Starts a voice. Ignores pcm == NULL, frames == 0 or rate <= 0. `volume` is
+ * Q8 (see above); `loop` selects one-shot vs looping. Dropped when all four
+ * voices are busy. */
+void mixer_add_sample(const s16 *pcm, u32 frames, int rate, int volume, int loop);
+
+/* Stops every active voice. */
+void mixer_stop_samples(void);
+
+/* Renders `frames` stereo frames into `out` as interleaved s16 (left, right).
+ * out == NULL or out_rate == 0 fills nothing and renders nothing. */
+void mixer_render(s16 *out, u32 frames, u32 out_rate);
+
+#endif /* PR_MIXER_H */
