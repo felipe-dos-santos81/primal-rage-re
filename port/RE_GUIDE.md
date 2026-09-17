@@ -135,6 +135,39 @@ python3 tools/le_info.py --index data/game/C/INDEX
 | `0x5D7DC`–`0x5DFFF` | sound-library block (36 game→audio callees: 33 AIL thunks `0x5D851`–`0x5DFEB` + 3 non-AIL below; the game→audio boundary) |
 | `0x5DE48` | AIL XMIDI loader (`FORM`/`CAT`/`XMID` container parse) |
 | `0x6FB28` | largest function (4979 bytes) |
+| `0x14268` | sprite node build (id → display node, `sprite_node_build`) |
+| `0x14328` | composite driver `render_list` (project + clip the display list) |
+| `0x51E5C` | span blitter `sprite_blit`; dispatches via `PTR_LAB_00080C8C` |
+| `0x5D218`/`0x5D28F` | RLE / clipped RLE span renderers |
+| `0x57F80`/`0x57FFB` | mirrored RLE / mirrored clipped RLE renderers |
+| `0x58CBD`/`0x5215C` | raw + clip / mode-1 shear copy renderers |
+| `0x1C350`/`0x1C390`/`0x1C3D0`/`0x1C458`/`0x1C3FC` | display-list pool: reset, sorted insert, remove, find-by-pset, sort |
+| `DS_000A8B30` | static 18,443-entry sprite-handle table (`id & 0x7FFF`; `id & 0x8000` = hflip) |
+| `DS_00105B44` | display-list head; nodes `{next, &pset}`, pool 580 at `DS_0010153C` |
+| `DS_001088F8` | 200-dword row-offset table (`y * 0x140`), built by `0x51F45` |
+| `DS_00107900` | mode-1 shear table (signed 16-bit ramp, produced by `0x38A38`) |
+| `DS_00081310`/`DS_00081314` | bank table (`(n-1)` replicated) / fill-colour table (`n` replicated) |
+
+### Sprite compositor (sub-project 4a-i)
+
+On-screen sprites go through a **three-stage pipeline**:
+
+1. **Actor update + pset sync** — `0x2A31C` walks the actor list and `0x2A820`
+   syncs each 0x68-byte actor record into a 0x20-byte **pset** (`DAT_001014EC`),
+   computing screen position and layer. **4a-ii's, not yet ported.**
+2. **Ordering** — `0x1C3FC` insertion-sorts the singly-linked display list at
+   `DS_00105B44` ascending by the pset layer, stable. Ported in
+   `port/src/platform/render.c` (`render_list_sort`, `render_list_insert`).
+3. **Composite** — `0x14328` walks the list, builds a 0x40-byte display node per
+   entry via `0x14268`, projects and clips it, and calls the span blitter
+   `0x51E5C`, which dispatches to a renderer that writes
+   `mem + DS_000E87A4`. Ported in `render.c`/`sprite.c`.
+
+The compositor is self-contained: it consumes psets and a display list and needs
+no actor, no animation interpreter and no emulator. Its oracle is a three-way RLE
+agreement against sub-project 1's already-verified decoder; the clipped,
+mirrored and shear renderers are proven by hand-computed tests, not by a pixel
+oracle. Full record: `../docs/superpowers/plans/2026-09-17-sprite-compositor-report.md`.
 
 The code is dense from roughly `0x10000`–`0x39000` (engine/utilities) and
 `0x3A000`–`0x6A000` (game logic), with libraries at the high end
@@ -159,9 +192,13 @@ in `port/spec/`; `game_flow.md` covers the loop, state machine and frame path.
    framebuffer write path has since been resolved as a literal `0xA0000`).
 5. The SDL3 port lives in `port/`: engine core (sub-project 1), audio/AIL
    (sub-project 2a, report at
-   `../docs/superpowers/plans/2026-09-16-audio-ail-port-report.md`) and Smacker
+   `../docs/superpowers/plans/2026-09-16-audio-ail-port-report.md`), Smacker
    video (sub-project 2b-i, report at
    `../docs/superpowers/plans/2026-09-17-smacker-video-report.md`; spec at
-   `../docs/superpowers/specs/2026-09-17-smacker-video-design.md`). Streamed
-   Smacker audio (2b-ii), menus/EEPROM (4) and the fight engine (5) remain; the
-   run-time AIL sound-id table (`DAT_000bbdc8`) is still unextracted.
+   `../docs/superpowers/specs/2026-09-17-smacker-video-design.md`) and the
+   sprite compositor (sub-project 4a-i, report at
+   `../docs/superpowers/plans/2026-09-17-sprite-compositor-report.md`). Streamed
+   Smacker audio (2b-ii), the actor system (4a-ii), menus/EEPROM (4) and the
+   fight engine (5) remain. The AIL sound-id table `DAT_000BBDC8` is **static in
+   the EXE** (stride 12; byte 0 = case, dword +4 = handle), so its id → resource
+   mapping is extractable; it is not yet extracted.
