@@ -369,6 +369,61 @@ static void check_shear(void)
     DSW(DS_00107900 + 4) = 0;
 }
 
+/* Dispatch pinning: compare the blitter's whole back-buffer output against the
+ * raster of the renderer the original's PTR_LAB_00080C8C selects. Comparing
+ * output (not the call site) makes a swap between renderer classes -- or wrong
+ * clip arguments into a shared renderer -- change the compared bytes. */
+#define BLIT_BUF (320 * 200)
+
+static u8 blit_pristine[BLIT_BUF];
+
+enum {
+    REF_RLE,
+    REF_RAW,
+    REF_RLE_MIRROR,
+    REF_RLE_CLIP,
+    REF_RLE_MIRROR_CLIP,
+    REF_SHEAR
+};
+
+static void blit_ref(u8 *out, int which, const u8 *src, int w, int rows,
+                     u8 bank, int x, int y, int L, int R, int T)
+{
+    memcpy(out, blit_pristine, BLIT_BUF);
+    u8 *dst = out + DSD(DS_001088F8 + (u32)y * 4u) + (u32)x;
+    switch (which) {
+    case REF_RLE:
+        sprite_render_rle(src, dst, w, rows, 320, bank); break;
+    case REF_RAW:
+        sprite_render_raw(src, dst, w, rows, 320, bank); break;
+    case REF_RLE_MIRROR:
+        sprite_render_rle_clipped(src, dst, w, rows, 320, bank, 0,0,0,1); break;
+    case REF_RLE_CLIP:
+        sprite_render_rle_clipped(src, dst, w, rows, 320, bank, L,R,T,0); break;
+    case REF_RLE_MIRROR_CLIP:
+        sprite_render_rle_clipped(src, dst, w, rows, 320, bank, L,R,T,1); break;
+    case REF_SHEAR:
+        sprite_render_shear(src, dst, w, rows, 320, bank, L,R,T); break;
+    }
+}
+
+static void blit_node(SpriteNode *n, u32 type, u32 pixels, u32 pal,
+                      int w, int rows, int L, int R, int T)
+{
+    memset(n, 0, sizeof *n);
+    n->type = type; n->pixel_handle = pixels; n->pal_ptr = pal;
+    n->width = w; n->rows = rows;
+    n->clip_l = L; n->clip_r = R; n->clip_t = T;
+}
+
+/* Blit one node against the starting buffer and capture the whole back buffer. */
+static void blit_run(u8 *out, SpriteNode *n, u32 icon)
+{
+    memcpy(mem + icon, blit_pristine, BLIT_BUF);
+    sprite_blit(n);
+    memcpy(out, mem + icon, BLIT_BUF);
+}
+
 static void check_blit_dispatch(void)
 {
     /* A zero-size node must return without touching the buffer. Snapshot first:
@@ -404,6 +459,110 @@ static void check_blit_dispatch(void)
     u8 before = back[DSD(DS_001088F8) + 0];
     sprite_blit(&r);
     CHECK_EQ_INT(back[DSD(DS_001088F8) + 0], before);
+
+    /* ---- Pin every live dispatch class by its whole-buffer output raster. */
+    {
+        const u8 *rle = NULL;
+        u32 icon2 = DSD(DS_000E87A4);
+        u32 pix = n.pixel_handle;
+        u8 bank = (u8)sprite_bank(dh);
+        SpriteNode s;
+        static u8 got[BLIT_BUF], got2[BLIT_BUF], ref[BLIT_BUF], ref2[BLIT_BUF];
+
+        memcpy(blit_pristine, mem + icon2, BLIT_BUF);
+
+        u32 idx = pix >> 23, off = pix & 0x7FFFFFu;
+        u32 blen = (idx < (u32)res_count() && off < res_size(idx))
+                       ? res_size(idx) - off : 0;
+        CHECK(blen >= 40, "0x2C11 blob is long enough for the fixtures");
+        CHECK_EQ_INT(gra_sprite_pixels(pix, &rle), 1);
+
+        /* 0x01 -> unclipped RLE (0x5D218). */
+        blit_node(&s, 0x01, pix, dh, 9, 1, 0,0,0);
+        blit_run(got, &s, icon2);
+        blit_ref(ref, REF_RLE, rle, 9, 1, bank, 0, 0, 0,0,0);
+        CHECK(memcmp(got, ref, BLIT_BUF) == 0,
+              "0x01 routes to the RLE renderer");
+        /* The real blob's control bytes must make RLE differ from a byte copy,
+         * or this case could pass a raw/RLE swap. */
+        blit_ref(ref2, REF_RAW, rle, 9, 1, bank, 0, 0, 0,0,0);
+        CHECK(memcmp(ref, ref2, BLIT_BUF) != 0,
+              "0x2C11 blob: RLE raster != raw copy");
+
+        /* 0x02 raw (0x58CBD); 0x12 (RAW|CLIP) shares the same entry, so its
+         * raster must equal 0x02's. */
+        blit_node(&s, 0x02, pix, dh, 9, 3, 0,0,0);
+        blit_run(got, &s, icon2);
+        blit_ref(ref, REF_RAW, rle, 9, 3, bank, 0, 0, 0,0,0);
+        CHECK(memcmp(got, ref, BLIT_BUF) == 0,
+              "0x02 routes to the raw renderer");
+        blit_node(&s, 0x12, pix, dh, 9, 3, 0,0,0);
+        blit_run(got2, &s, icon2);
+        CHECK(memcmp(got2, ref, BLIT_BUF) == 0,
+              "0x12 routes to the raw renderer");
+        CHECK(memcmp(got, got2, BLIT_BUF) == 0,
+              "0x12 shares 0x58CBD with 0x02");
+
+        /* 0x11 -> clipped RLE, mirror off (0x5D28F). */
+        blit_node(&s, 0x11, pix, dh, 9, 1, 2,1,0);
+        blit_run(got, &s, icon2);
+        blit_ref(ref, REF_RLE_CLIP, rle, 9, 1, bank, 0, 0, 2,1,0);
+        CHECK(memcmp(got, ref, BLIT_BUF) == 0,
+              "0x11 routes to clipped RLE");
+
+        /* 0x09 (mirror, no clip; 0x57F80) vs 0x19 (mirror+clip; 0x57FFB):
+         * same renderer, different arguments -- the rasters must differ. */
+        blit_node(&s, 0x09, pix, dh, 9, 1, 0,0,0);
+        blit_run(got, &s, icon2);
+        blit_ref(ref, REF_RLE_MIRROR, rle, 9, 1, bank, 0, 0, 0,0,0);
+        CHECK(memcmp(got, ref, BLIT_BUF) == 0,
+              "0x09 routes to mirrored RLE");
+        blit_node(&s, 0x19, pix, dh, 9, 1, 2,1,0);
+        blit_run(got2, &s, icon2);
+        blit_ref(ref2, REF_RLE_MIRROR_CLIP, rle, 9, 1, bank, 0, 0, 2,1,0);
+        CHECK(memcmp(got2, ref2, BLIT_BUF) == 0,
+              "0x19 routes to mirrored clipped RLE");
+        CHECK(memcmp(ref, ref2, BLIT_BUF) != 0,
+              "0x19's clip arguments change the raster");
+        /* The mirror itself must change the raster, distinguishing 0x09 from
+         * the unmirrored RLE cases. */
+        blit_ref(ref2, REF_RLE, rle, 9, 1, bank, 0, 0, 0,0,0);
+        CHECK(memcmp(ref, ref2, BLIT_BUF) != 0,
+              "0x09's mirror changes the raster");
+
+        /* Mode-1 shear (0x04/0x14 unclipped, 0x06/0x16 clipped; 0x5215C). A
+         * non-zero DS_00107900 makes the raster differ from a plain copy. */
+        DSW(DS_00107900 + 0) = 0;
+        DSW(DS_00107900 + 2) = 32;
+        DSW(DS_00107900 + 4) = 64;
+
+        blit_node(&s, 0x04, pix, dh, 9, 3, 0,0,0);
+        blit_run(got, &s, icon2);
+        blit_ref(ref, REF_SHEAR, rle, 9, 3, bank, 0, 0, 0,0,0);
+        CHECK(memcmp(got, ref, BLIT_BUF) == 0,
+              "0x04 routes to the shear renderer");
+        blit_node(&s, 0x14, pix, dh, 9, 3, 0,0,0);
+        blit_run(got2, &s, icon2);
+        CHECK(memcmp(got2, ref, BLIT_BUF) == 0,
+              "0x14 shares the shear raster with 0x04");
+        blit_ref(ref2, REF_RAW, rle, 9, 3, bank, 0, 0, 0,0,0);
+        CHECK(memcmp(ref, ref2, BLIT_BUF) != 0,
+              "non-zero shear table makes 0x04 differ from a copy");
+
+        blit_node(&s, 0x06, pix, dh, 9, 3, 2,1,1);
+        blit_run(got, &s, icon2);
+        blit_ref(ref, REF_SHEAR, rle, 9, 3, bank, 0, 0, 2,1,1);
+        CHECK(memcmp(got, ref, BLIT_BUF) == 0,
+              "0x06 routes to clipped shear");
+        blit_node(&s, 0x16, pix, dh, 9, 3, 2,1,1);
+        blit_run(got2, &s, icon2);
+        CHECK(memcmp(got2, ref, BLIT_BUF) == 0,
+              "0x16 shares the shear raster with 0x06");
+
+        DSW(DS_00107900 + 0) = 0;
+        DSW(DS_00107900 + 2) = 0;
+        DSW(DS_00107900 + 4) = 0;
+    }
 }
 
 int test_sprite(void)
