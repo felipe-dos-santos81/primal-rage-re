@@ -74,17 +74,22 @@ test: build ## Run the assertion suite (oracle=1 requires the byte-exact oracles
 		./$(BUILD_DIR)/run_tests; \
 	fi
 
-check: build ## Run N frames headless, writing frame_*.ppm (frames=60)
+check: build ## Run N frames headless, writing frame_*.ppm/.pal/.idx (frames=60)
 	@echo "Running $(frames) frames headless ..."
 	./$(BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(frames)
 	@ls -1 frame_*.ppm 2>/dev/null | head -3
-	@echo "Compare these against a dosbox-x capture of the same screen."
+	@echo "The reference that is apples-to-apples is the Python decoder on the same GRA frames:"
+	@echo "  python3 tools/gra_render.py data/game/C/S16TITLE.GRA 2 out.ppm --frame N --indices out.idx"
+	@echo "An emulator cannot drive the port's chosen full-screen title frames (Task 15 report)."
 
-verify: build ## Full ladder: oracle-required tests, --check frames, symbols.h idempotence
-	@echo "== tests (oracles required) =="
-	PR_ORACLE_REQUIRED=1 ./$(BUILD_DIR)/run_tests
-	@echo "== headless frames =="
+# The --check run must come first: test_gfx.c reads frame_0001/0009/0017/0025.idx
+# from the CWD, so the ladder has to produce them (frames >= 25) before the suite
+# consumes them — otherwise that four-frame comparison never runs.
+verify: build ## Full ladder: --check frames, oracle-required tests, symbols.h idempotence
+	@echo "== headless frames (must precede the tests that read frame_*.idx) =="
 	./$(BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(frames)
+	@echo "== tests (oracles required; consume the captured frames) =="
+	PR_ORACLE_REQUIRED=1 ./$(BUILD_DIR)/run_tests
 	@echo "== symbols.h must regenerate byte-identically =="
 	$(PYTHON) tools/gen_symbols.py $(DECOMP_DIR) $(PORT_DIR)/src/symbols.h
 	@git diff --quiet -- $(PORT_DIR)/src/symbols.h || { \
@@ -96,8 +101,9 @@ run: build ## Run the port windowed, reading the original assets
 
 clean: ## Remove build outputs and locally generated oracles (keeps the SDD ledger)
 	rm -rf $(BUILD_DIR)
-	rm -f $(PORT_DIR)/tests/ghidra_data.bin $(PORT_DIR)/tests/title_screen_ref.ppm
-	rm -f frame_*.ppm
+	rm -f $(PORT_DIR)/tests/ghidra_data.bin $(PORT_DIR)/tests/title_screen_ref.ppm \
+	      $(PORT_DIR)/tests/s16title_frame10.idx
+	rm -f frame_*.ppm frame_*.pal frame_*.idx
 	@echo "Cleanup complete. (.superpowers/ deliberately kept — it holds the plan ledger.)"
 
 # ── RE · static inspection ───────────────────────────────────────────────────

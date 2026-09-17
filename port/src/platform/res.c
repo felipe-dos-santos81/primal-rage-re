@@ -81,8 +81,10 @@ int res_load_index(const char *game_dir, const char *index_path)
     /* Walk the entries exactly as 0x1B120 does, and additionally read each
      * resource's bytes from disk: the original reads them through 0x1B3AC,
      * which the port replaces with a direct file read into the block. A file
-     * that cannot be read leaves the block zeroed and is counted, not fatal —
-     * the CD sets contain files the installed directory may not have. */
+     * that cannot be read is counted, not fatal — the CD sets contain files the
+     * installed directory may not have. The unread block only *reads* as zeroed
+     * because `mem[]` starts zeroed and this bump allocator never reuses or
+     * clears a block; the allocator itself does not zero. */
     u32 biggest = 0, missing = 0;
     for (u32 i = 0; i < DSD(DS_001014F0); i++) {
         u32 size = DSD(table + i * RES_REC + 12) & 0xFFFFFFu;

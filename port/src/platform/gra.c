@@ -26,6 +26,8 @@ int gra_open(u32 file_off, u32 file_len, GraChunk *out, int max, int *count)
         if (next == 0) break;
         off = next;
     }
+    /* A chain longer than `max` stops here with *count == max and still returns
+     * 1 (truncated, not an error): the caller sees at most `max` chunks. */
     *count = n;
     return 1;
 }
@@ -35,8 +37,11 @@ int gra_open(u32 file_off, u32 file_len, GraChunk *out, int max, int *count)
  *   b & 0x80 == 0            literal run  (b & 0x7F) pixels, one colour byte each
  *   b & 0x80 != 0, b&0x40==0 repeat run   (b & 0x3F) pixels, one colour byte
  *   b & 0x80 != 0, b&0x40!=0 transparent  (b & 0x3F) pixels, index 0
- * Returns the bytes consumed, or -1 if a run overruns the row, src, or dst, or
- * if a token would advance zero pixels.
+ * Returns the bytes consumed, or -1 if `w*h` exceeds `dst_len`, the source is
+ * exhausted before the sprite is filled, a literal's payload overruns `src_len`,
+ * or a token would advance zero pixels (0x00 / 0x80 / 0xC0). A run longer than
+ * the remaining row is clipped to the row (the original's raster pass does the
+ * same) and does not fail.
  * PORT: transparent runs write index 0, conflating them with palette entry 0.
  * Lossless for the shipped assets: over all 113,266,036 sprite pixel slots
  * (w*h of every positive-dimension descriptor), 0 of the 49,423,356 opaque

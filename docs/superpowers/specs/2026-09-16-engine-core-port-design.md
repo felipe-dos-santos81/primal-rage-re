@@ -243,8 +243,7 @@ loads the file, so **Ghidra's mapped memory is the reference image**.
 addresses from that image, so `mem_load_le()` is validated by comparing `mem[]`
 against a `DumpBytes` dump of the data object.
 
-The code object is skipped (its range stays reserved). No generated asset
-blobs: the port runs on original data.
+No generated asset blobs: the port runs on original data.
 
 **Code addresses in data.** The original stores function addresses in data
 (e.g. `main` passes `FUN_0002D62C` and `FUN_0001B610` plus lengths to the
@@ -316,19 +315,31 @@ every original busy-wait pumps the host). The original tick rate and pacing
 counter pair are preserved rather than replaced by a fixed timestep.
 
 **Present.** One `present_frame()` seam, so sub-projects 2–5 never touch it.
-The discovery task above determines what it must do; candidates are VBE LFB
-pointer, banked `4F05` writes, or `rep movs` to a stored pointer. Until then,
-the port renders the offscreen buffer to the window directly.
+**Resolved** (Task 13): the original copies its 320x200 buffer to the literal,
+non-relocated `0xA0000` — no VBE LFB pointer, no banked `int 10h AX=4F05`
+writes, no `rep movs` to a stored pointer. That address is not data-object
+memory; under the port's flat `mem[]` it would alias live tables (see §2, the
+aperture rule). The port therefore keeps its frame buffer outside the data
+object and renders it to the window through `gfx_present()`
+(`platform/gfx.c`); any ported copy to `0xA0000` is redirected under a
+`/* PORT: ... */` marker.
 
 **GRA decode, two tracks.** Neither is trusted alone:
 
-1. *Authoritative* — find the in-game consumer of chunk 2: the callers of
-   `0x1B544` that blit, paired with chunk 5's `count`-entry table. Working
-   hypothesis for the model: chunk 5 = per-frame `(offset, size)` pairs into
-   chunk 2, chunk 6 = palette (consistent with the `+4` header skip in
-   `0x1C470`, and with chunk 6 being last).
-2. *Oracle* — independent decoder in `tools/gra_render.py`; hypothesis →
-   render → pixel-diff against a dosbox-x screenshot of the same screen.
+1. *Authoritative* — the in-game consumers, now identified: chunk 5 is the
+   palette bank (concatenated `{ u32 count; u32 colour[count] }`, consumer
+   `FUN_00033754`, flushed by the DAC write `FUN_0001C470`), chunk 6 the
+   12-byte frame descriptors
+   (`{ u16 w; u16 h; s16 x; s16 y; u32 pixel_handle }`, consumer
+   `FUN_0001C528`, handle resolved through `FUN_0001B544`), and chunk 2 the
+   per-sprite independent 8bpp RLE (consumer `FUN_00041030`). See `FORMATS.md`
+   "Decoded payload layout" and the implementation in `platform/gra.c`.
+2. *Oracle* — independent decoder in `tools/gra_render.py`. `platform/gra.c`
+   matches it by **exact consumption** (18,201/18,202 descriptors across all 69
+   files) and byte-for-byte for the four full-screen, fully-opaque `S16TITLE`
+   frames `{10,12,13,18}` only. The dosbox-x pixel-diff leg proved unusable
+   (Task 15: the reachable attract shares 0 non-black colours with the chosen
+   frames), so no emulator agreement is claimed.
 
 `platform/gra.*` is shared by sub-projects 1–5 and mirrors the Python tool.
 

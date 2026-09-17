@@ -4,7 +4,7 @@
 
 **Goal:** Reconstruct the Primal Rage (DOS, 1995) engine core in C/SDL3 so the port boots the original `main` chain, runs the original frame loop, and renders the title screen from the original `data/game/C` assets.
 
-**Architecture:** Faithful reimplementation on a flat 16 MB address space that preserves the original LE linear addresses (`mem[]`, data object at `0x80000`). Original data files are read at runtime; the LE image is loaded and fixed up in-process; code is reimplemented in C and original data stays authoritative. SDL3 is confined to `host.c` and `main.c`; everything else talks through `host.h`. Spec: `docs/superpowers/specs/2026-09-16-engine-core-port-design.md`; runtime facts: `port/spec/game_flow.md`.
+**Architecture:** Faithful reimplementation on a flat 64 MB address space (`mem[]` is `0x4000000`, raised from 16 MB during implementation to hold the eagerly-loaded resource set — see Global Constraints) that preserves the original LE linear addresses (`mem[]`, data object at `0x80000`). Original data files are read at runtime; the LE image is loaded and fixed up in-process; code is reimplemented in C and original data stays authoritative. SDL3 is confined to `host.c` and `main.c`; everything else talks through `host.h`. Spec: `docs/superpowers/specs/2026-09-16-engine-core-port-design.md`; runtime facts: `port/spec/game_flow.md`.
 
 **Tech Stack:** C11, CMake ≥ 3.20, SDL3 (CMake config package), Python 3 for the independent asset oracle and code generators, dosbox-x for ground truth.
 
@@ -289,7 +289,7 @@ git commit -m "port: scaffold CMake build, test harness and types"
 
 **Interfaces:**
 - Consumes: `types.h`.
-- Produces: `extern u8 mem[MEM_SIZE];` with `MEM_SIZE 0x1000000`; macros `DSB(o)`, `DSW(o)`, `DSD(o)`, `DSP(o)` where `o` **includes** the `0x80000` base; `void mem_fill(u32 addr, u8 value, u32 len);` `int mem_in_range(u32 addr, u32 len);`.
+- Produces: `extern u8 mem[MEM_SIZE];` with `MEM_SIZE 0x4000000` (64 MB; raised from `0x1000000` in Task 6 — see Global Constraints); macros `DSB(o)`, `DSW(o)`, `DSD(o)`, `DSP(o)` where `o` **includes** the `0x80000` base; `void mem_fill(u32 addr, u8 value, u32 len);` `int mem_in_range(u32 addr, u32 len);`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -303,7 +303,7 @@ int test_mem(void)
 {
     int before = g_failures;
 
-    CHECK_EQ_INT(MEM_SIZE, 0x1000000);
+    CHECK_EQ_INT(MEM_SIZE, 0x4000000);
     CHECK(mem_in_range(0x80000, 0x8B0D0), "data object range is inside mem[]");
     CHECK(!mem_in_range(MEM_SIZE - 4, 8), "writes past the end are rejected");
 
@@ -345,7 +345,8 @@ Expected: compile error, `mem.h` not found.
 - [ ] **Step 3: Write `port/src/mem.h`**
 
 ```c
-/* Flat 16 MB address space preserving the original LE linear addresses.
+/* Flat 64 MB address space (raised from 16 MB; see Global Constraints) preserving
+ * the original LE linear addresses.
  * The data object lives at 0x80000, so DS:0x0004 is 0x80004 and is written
  * DSB(0x80004). The code object range 0x10000..0x73B15 is reserved but never
  * populated: code is reimplemented in C and mapped through fn_resolve(). */
@@ -354,7 +355,7 @@ Expected: compile error, `mem.h` not found.
 
 #include "types.h"
 
-#define MEM_SIZE 0x1000000u
+#define MEM_SIZE 0x4000000u
 #define DATA_BASE 0x80000u
 #define CODE_BASE 0x10000u
 #define CODE_END  0x73B15u

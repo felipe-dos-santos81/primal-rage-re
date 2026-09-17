@@ -23,7 +23,8 @@ typedef struct {
  * offset, 0 = last); body_off = off + 8 and body_len runs to `next` or EOF.
  * Fills up to `max` entries and stores the number found in *count. Returns 1 on
  * a well-formed chain, 0 on bad magic or a `next` that is out of range or does
- * not advance. */
+ * not advance. A chain longer than `max` is truncated: the walk stops at `max`
+ * and still returns 1 with *count == max (not an error). */
 int gra_open(u32 file_off, u32 file_len, GraChunk *out, int max, int *count);
 
 /* Decodes the type-5 palette bank in chunks (the file image lives at
@@ -44,8 +45,11 @@ int gra_decode_palette(u32 file_off, const GraChunk *chunks, int chunk_count,
  * res_resolve() to the chunk-2 RLE blob; transparent runs write index 0,
  * matching the Python oracle's model. Returns the number of RLE bytes consumed
  * (a caller can require it to equal the next sprite's offset), or -1 for an
- * out-of-range frame, a zero/negative-dimension sentinel, an unroutable handle
- * or a malformed run. */
+ * out-of-range frame, a zero/negative-dimension sentinel, an unroutable handle,
+ * or a run malformed in the source (source exhausted before the image is
+ * filled, a literal overrunning the blob, or a zero-advance token). A run
+ * longer than the remaining row is clipped to the row, matching the original's
+ * raster pass, and does not fail. */
 int gra_decode_frame(u32 file_off, const GraChunk *chunks, int chunk_count,
                      int frame, u8 *dst, u32 dst_len);
 

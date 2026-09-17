@@ -24,10 +24,14 @@ WATCOM C/C++32 code.
 | Entry | object 1 offset `0x5245C` (linear **`0x6245C`**) |
 | Object 0 (code) | linear `0x10000`, size `0x63B15`, 100 pages, `read|exec|preload|32-bit` |
 | Object 1 (data) | linear `0x80000`, size `0x8B0D0`, 113 pages, `read|write|preload|32-bit` |
-| Data-pages offset | `0x3C800` (from the LE header) |
+| Data-pages offset | `0x3C800` (relative to the embedded MZ image base at file `0x26654`, so page data begins at `0x62E54`) |
 
-The embedded page data is not simply `LE_header + data_pages_offset`; DOS/4GW
-resolves it through the object page map. **Use the
+The embedded page data is not simply `LE_header + data_pages_offset`: the
+`0x3C800` field is relative to the **embedded MZ image base** at file `0x26654`
+(the LE header at `0x290A4` sits `0x2A50` bytes into it), which is why
+`mem.c`'s `find_bound_base()` locates the inner MZ rather than adding the field
+to the LE header. DOS/4GW then resolves the pages through the object page map.
+**Use the
 [`ghidra-lx-loader`](https://github.com/yetmorecode/ghidra-lx-loader)** — it
 places the objects at their LE rel bases and applies the fixups, so absolute
 data references in the decompilation are already correct.

@@ -26,7 +26,7 @@ Conventions, the DOS/4GW memory model, and the toolchain. Read together with
 | Stack (`esp`, obj 2) | `0x8B0D0` |
 | Object 0 (code) | base `0x10000`, virtual size `0x63B15`, 100 pages, flags `read|exec|preload|32-bit` |
 | Object 1 (data) | base `0x80000`, virtual size `0x8B0D0`, 113 pages, flags `read|write|preload|32-bit` |
-| Data-pages offset | `0x3C800` (relative to the LE header) |
+| Data-pages offset | `0x3C800` (relative to the embedded MZ image base at file `0x26654`, not to the LE header; page data begins at `0x62E54`) |
 
 ## Address conventions
 
@@ -120,7 +120,7 @@ python3 tools/le_info.py --index data/game/C/INDEX
 | `0x51F45` | 320x200 double-buffer + scanline-table setup (`&DAT_001088F8`) |
 | `0x50188` | swap back/fore buffers `DAT_000E87A0` ↔ `DAT_000E87A4` |
 | `0x501A3` | dirty-dword blit `DAT_000E87A4` → literal aperture `0xA0000` |
-| `0xA0000` | VGA mode-13h aperture, written as a **literal immediate** (no LE fixup) — hardware, never `mem[0xA0000]` |
+| `0xA0000` | screen-write target, a **literal immediate** (no LE fixup) — literal-target and not-a-data-object are verified; the "VGA mode-13h aperture" reading is inferred (see `spec/game_flow.md`, verified-with-caveat). Hardware, never `mem[0xA0000]` |
 | `PTR_FUN_000A8644` / `_DAT_00104AE8` | update process table / bitmask |
 | `PTR_FUN_000A86C4` / `_DAT_00104AEC` | render process table / bitmask |
 | `0x1C500` | small leaf called 181× — likely a getter/accessor |
@@ -142,8 +142,11 @@ in `port/spec/`; `game_flow.md` covers the loop, state machine and frame path.
    copy (`0x255CC` full copy / `0x501A3` dirty blit) from `DAT_000E87A4`. See
    `spec/game_flow.md`.
 2. ~~Decode `S16*.GRA` fully~~ — done: chunk types 2/5/6 decoded (Task 8),
-   implemented in `port/src/platform/gra.c` and confirmed byte-exact against
-   `tools/gra_render.py`; see `FORMATS.md`.
+   implemented in `port/src/platform/gra.c`. The port matches
+   `tools/gra_render.py` by **exact consumption** (18,201/18,202 descriptors
+   across all 69 files) and byte-for-byte only for the four full-screen
+   `S16TITLE` frames `{10,12,13,18}`; the per-sprite sub-palette/DAC base and
+   the descriptor `x`/`y` anchor stay `likely`, not proven. See `FORMATS.md`.
 3. Name the hot core functions (`0x2C3FC`, `0x2BC30`, `0x1C500`, `0x2AE14`).
 4. Pin the tick **interrupt vector** (the rate is measured at 60.05 Hz; the
    framebuffer write path has since been resolved as a literal `0xA0000`).

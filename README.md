@@ -65,7 +65,9 @@ $G _tools/ghidra_proj prage -process PRAGE.EXE \
 
 **Reverse engineering.** `PRAGE.EXE` loads and analyses cleanly: **~1350
 functions** decompiled, 0 failures. LE layout and the `INDEX` container are
-verified; the `S16*.GRA` chunk types 2/5/6 are fully decoded (`FORMATS.md`).
+verified; the `S16*.GRA` chunk types 2/5/6 are decoded (`FORMATS.md`) — the
+per-sprite sub-palette/DAC base and the descriptor `x`/`y` anchor remain
+`likely`, not proven.
 The entry/startup (`0x624D4`), the game main (`0x1BEC4`), the real frame loop
 (`0x255CC` → `0x24C5C` → `0x11D04`), the tick (60.05 Hz measured) and the
 literal-`0xA0000` framebuffer write path are pinned — see `port/spec/game_flow.md`.
@@ -76,9 +78,14 @@ LE data image at its original addresses, reads the original `data/game/C/`
 assets at runtime, and SDL3 appears only in `host.c`/`main.c`. Ported and
 verified: the LE loader + fixups (byte-exact against Ghidra's image), the
 `INDEX` resource manager, `fn_resolve` code-address mapping, GRA decode
-(byte-exact against `tools/gra_render.py`), the palette flush (`0x1C470`), the
-process-table scheduler, and the `0x255CC`/`0x24C5C`/`0x11D04` loop running the
-title state. Audio, Smacker, menus/EEPROM and the fight engine are stubbed at
+(exact-consumption primary — 18,201/18,202 descriptors across all 69 files — and
+byte-identical to `tools/gra_render.py` for the four full-screen `S16TITLE`
+frames `{10,12,13,18}` only; the palette bank is flattened and the sub-palette
+choice is `likely`), the palette flush (`0x1C470`), the process-table scheduler,
+and the `0x255CC`/`0x24C5C`/`0x11D04` loop running the title state. The port's
+title renders those four asset frames full-screen; the original's task-system
+composite is not reproduced, and the emulator comparison is unusable (Task 15).
+Audio, Smacker, menus/EEPROM and the fight engine are stubbed at
 their call sites and are the remaining sub-projects (`/* PORT: */` markers).
 
 ### Build and run
@@ -103,4 +110,6 @@ PR_ORACLE_REQUIRED=1 ./build/run_tests            # or: make verify
 `PR_ORACLE_REQUIRED=1` is required for a real verification run: the byte-exact
 Ghidra/title-screen oracles are git-ignored (they are copies of the game's own
 bytes), so without it the suite skips those comparisons. `make verify` runs the
-full ladder (oracle-required tests, `--check`, `symbols.h` idempotence).
+full ladder in order — `--check` first (the suite's four-frame runtime-capture
+comparison consumes the `frame_*.idx` it writes), then the oracle-required
+tests, then `symbols.h` idempotence.
