@@ -302,35 +302,45 @@ it and call it from it (do not add a second entry point):
 ```c
 static void check_gra_sprites(void)
 {
-    /* The sprite table is static in the data object and already resident. The
-     * first entry must resolve, and its descriptor must be self-consistent:
-     * a positive height (RLE, not the raw marker) and a resolvable pixel
-     * handle. */
+    /* The sprite table itself is static in the data object and already
+     * resident, but resolving its handles needs the resource INDEX. test_res
+     * loads it earlier in the run_tests order; load it here too (guarded, so
+     * the bump allocator is never asked for it twice) to make this test
+     * independent of that ordering. Needs platform/res.h. */
+    if (DSD(DS_001014F0) == 0)
+        CHECK(res_load_index("data/game/C", "data/game/C/INDEX") > 0,
+              "resource index loads");
+
+    /* The first entry must resolve, and its descriptor must be self-consistent.
+     * Its header values are read from the shipped asset (s16statu.gra): 30x27
+     * with X pivot 15 and Y pivot 13, positive height => RLE, not the raw
+     * marker. */
     GraSprite s;
     u32 dh = 0;
     CHECK_EQ_INT(gra_sprite_lookup(0, &s, &dh), 1);
     CHECK(dh != 0, "sprite 0 has a descriptor handle");
-    CHECK(s.width > 0 && s.height > 0, "sprite 0 has positive dimensions");
+    CHECK_EQ_INT(s.width, 30);
+    CHECK_EQ_INT(s.height, 27);
+    CHECK_EQ_INT(s.xorg, 15);
+    CHECK_EQ_INT(s.yorg, 13);
     const u8 *px = NULL;
     CHECK_EQ_INT(gra_sprite_pixels(s.pixel_handle, &px), 1);
     CHECK(px != NULL, "pixel handle resolves");
-
-    /* An id beyond the table must be rejected, not read past it. */
-    CHECK_EQ_INT(gra_sprite_lookup(0x7FFFu, &s, &dh), 0);
 
     /* A garbage handle must be rejected. */
     CHECK_EQ_INT(gra_sprite_open(0x7FFFFFFFu, &s), 0);
     CHECK_EQ_INT(gra_sprite_pixels(0x7FFFFFFFu, &px), 0);
 
-    /* The table holds consecutive handles; the first non-handle ends it. Count
-     * how many resolve so the bound used elsewhere is grounded. */
+    /* The table is the documented 18,443 entries, indices 0..18442. The port
+     * masks the id to 0x7FFF exactly as 0x14268 does and applies no other
+     * bound. The table's end is NOT discoverable from the data — the dwords
+     * after it are nonzero but are not handles (the first all-zero dword is at
+     * index 18535, and 18534 reads 0x128D) — so the length is pinned from the
+     * disassembly, not inferred. */
     int n = 0;
-    for (u32 i = 0; i < 0x7FFFu; i++) {
-        if (!gra_sprite_lookup(i, &s, &dh)) break;
-        if (i > 0 && dh < DSD(DS_000A8B30 + (i - 1u) * 4u)) break;
-        n++;
-    }
-    CHECK(n > 1000, "the sprite table holds thousands of handles");
+    for (u32 i = 0; i < 18443u; i++)
+        if (DSD(DS_000A8B30 + i * 4u) != 0) n++;
+    CHECK_EQ_INT(n, 18443);
 }
 ```
 
@@ -391,9 +401,11 @@ Expected: pass.
 
 - [ ] **Step 5: Negative control**
 
-Temporarily widen the mask to `& 0xFFFFFFFFu` (i.e. drop the `0x7FFF`) and confirm
-`gra_sprite_lookup(0x7FFF, …)` no longer returns 0 on the second call — it reads
-past the table's useful end. Revert.
+Temporarily change the mask from `0x7FFFu` to `0x0000u` (i.e. `sprite_id & 0`) and
+confirm `gra_sprite_lookup(0x2C11, …)` now reads entry 0 — a different
+descriptor than the correct `0x2C11 & 0x7FFF` uses. Revert. (This is the control
+that isolates the mask; an id *above* the table, such as `0x7FFF`, does not test
+the mask, because `0x7FFF & 0x7FFF == 0x7FFF`.)
 
 - [ ] **Step 6: `make verify` then commit**
 
@@ -451,42 +463,39 @@ static void check_node_build(void)
     CHECK_EQ_INT(n.xorg, 0);
     CHECK_EQ_INT(n.yorg, 0);
 
-    /* A real RLE sprite: type base 1, no hflip, positive dimensions, pivots
-     * taken from the header, pixel handle resolvable. */
+    /* A real RLE sprite, with its header values read from the shipped assets
+     * (s16rad.gra): width 15, height 107, X pivot 8, Y pivot 53. The pivots are
+     * NOT centred, which is what makes the hflip assertion below non-vacuous. */
     SpriteNode a, b;
-    sprite_node_build(&a, 0x2C11u);
+    sprite_node_build(&a, 0x0001u);
     CHECK_EQ_INT(a.type & 0x01, 1);
     CHECK_EQ_INT(a.type & 0x02, 0);
     CHECK_EQ_INT(a.type & 0x08, 0);
-    CHECK(a.width > 0 && a.rows > 0, "positive dimensions");
+    CHECK_EQ_INT(a.width, 15);
+    CHECK_EQ_INT(a.rows, 107);
+    CHECK_EQ_INT(a.xorg, 8);
+    CHECK_EQ_INT(a.yorg, 53);
     const u8 *px = NULL;
     CHECK_EQ_INT(gra_sprite_pixels(a.pixel_handle, &px), 1);
 
     /* The same id with the hflip bit must set type bit 3 and mirror the X
-     * pivot as width - xorg - 1, changing nothing else. */
-    sprite_node_build(&b, 0x2C11u | 0x8000u);
+     * pivot as width - xorg - 1 == 15 - 8 - 1 == 6, changing nothing else. */
+    sprite_node_build(&b, 0x0001u | 0x8000u);
     CHECK_EQ_INT(b.type & 0x08, 8);
-    CHECK_EQ_INT(b.xorg, a.width - a.xorg - 1);
-    CHECK_EQ_INT(b.width, a.width);
-    CHECK_EQ_INT(b.rows, a.rows);
-    CHECK_EQ_INT(b.yorg, a.yorg);
+    CHECK_EQ_INT(b.xorg, 6);
+    CHECK_EQ_INT(b.width, 15);
+    CHECK_EQ_INT(b.rows, 107);
+    CHECK_EQ_INT(b.yorg, 53);
 
     /* A negative-height header selects the raw base and negates both
-     * dimensions. Scan the whole table rather than a guess: the first raw
-     * sprite may be far in. */
-    int found = 0;
-    for (u32 id = 0; id < 0x7FFFu && !found; id++) {
-        GraSprite g; u32 dh = 0;
-        if (!gra_sprite_lookup(id, &g, &dh)) break;
-        SpriteNode r;
-        sprite_node_build(&r, id);
-        if ((r.type & 0x02u) != 0) {
-            CHECK_EQ_INT(r.rows, -(int)g.height);
-            CHECK_EQ_INT(r.width, -(int)g.width);
-            found = 1;
-        }
-    }
-    CHECK(found, "at least one raw-base (negative-height) sprite exists");
+     * dimensions. The first such entry is id 0x2BDF (s16caves.gra), whose
+     * header is (-975, -53), so rows/width are 975/53 and type base is 2. */
+    SpriteNode r;
+    sprite_node_build(&r, 0x2BDFu);
+    CHECK_EQ_INT(r.type & 0x02, 2);
+    CHECK_EQ_INT(r.type & 0x01, 0);
+    CHECK_EQ_INT(r.rows, 975);
+    CHECK_EQ_INT(r.width, 53);
 }
 
 int test_sprite(void)
@@ -579,8 +588,9 @@ make verify && git add -A && git commit -m "sprite: display node and node builde
   static const u8 *rle_row(u8 *dst, const u8 *src, int width,
                            u8 bank, int mirror);   /* mirror==0 here */
   ```
-  and the public seam used by the tests:
+  and the public seams used elsewhere:
   ```c
+  u8  sprite_bank_offset(u8 bank_byte);              /* sprite.h; Task 4 tests it */
   int sprite_render_rle(const u8 *src, u8 *dst, int width, int rows,
                         int stride, u8 bank);
   ```
@@ -669,10 +679,26 @@ Expected: build failure — `sprite_render_rle` undeclared.
 static u32 sprite_bank(u32 pal_ptr)
 {
     const u8 *p = (const u8 *)res_resolve(pal_ptr);
-    u32 b = (p != NULL) ? (u32)p[8] : 0u;
-    return (b == 0u) ? 0u : (b - 1u);
+    return sprite_bank_offset((p != NULL) ? p[8] : 0u);
 }
 ```
+
+`sprite_bank_offset` takes the **bank byte** (the value at `pal_ptr[8]`), not the
+palette pointer, and it is declared in `sprite.h` so Task 4 can test the mapping
+directly:
+
+```c
+/* The bank byte's effect on the source index. DAT_00081310[b] == (b-1)
+ * replicated for b in 1..255, so this is a plain -1; [0] is the stale code
+ * pointer 0x0005D110 and gets no offset (see the note above). */
+u8 sprite_bank_offset(u8 bank_byte)
+{
+    return (bank_byte == 0u) ? 0u : (u8)(bank_byte - 1u);
+}
+```
+
+Declare `sprite_bank_offset` in `sprite.h` (Task 4's test calls it);
+`sprite_bank` stays internal to `sprite.c`.
 
 ```c
 static void copy_run(u8 *dst, const u8 *src, int n, u8 bank)
@@ -791,22 +817,24 @@ static void check_bank_and_colour(void)
         CHECK(DSD(DS_00081314 + n * 4u) == n * 0x01010101u,
               "colour table entry is n replicated");
 
-    /* The port's byte-level bank is (b-1), and bank 0 is no offset: see the
-     * TODO(verify) in sprite.c. */
-    CHECK_EQ_INT(sprite_bank_for_test(1), 0);
-    CHECK_EQ_INT(sprite_bank_for_test(2), 1);
-    CHECK_EQ_INT(sprite_bank_for_test(255), 254);
-    CHECK_EQ_INT(sprite_bank_for_test(0), 0);
+    /* The port's byte-level bank is (b-1), and bank byte 0 is no offset: see
+     * the TODO(verify) in sprite.c. This takes the bank *byte* — the value at
+     * pal_ptr[8] — not the palette pointer. */
+    CHECK_EQ_INT(sprite_bank_offset(1), 0);
+    CHECK_EQ_INT(sprite_bank_offset(2), 1);
+    CHECK_EQ_INT(sprite_bank_offset(255), 254);
+    CHECK_EQ_INT(sprite_bank_offset(0), 0);
 }
 ```
 
-Expose the bank helper for the test as `sprite_bank_for_test(u32)` (a thin
-wrapper over the static `sprite_bank`) or declare `sprite_bank` in `sprite.h` if
-that reads cleaner. Note the tables live in `mem[]` and are read with `DSD`.
+`sprite_bank_offset` is declared in `sprite.h` by Task 3; this task only adds the
+test. `sprite_bank(pal_ptr)` resolves the pointer and delegates to it.
 
 - [ ] **Step 2: Run and watch it fail**
-- [ ] **Step 3: Implement** — `sprite_bank(u32 pal_ptr)` per Task 3, plus a
-  `colour_run` helper returning `(u8)(DSB(DS_00081314 + idx) + bank)`.
+- [ ] **Step 3: Implement** — `sprite_bank_offset` and `sprite_bank` already
+  landed in Task 3; this task only extracts the fill colour into
+  `static u8 colour_run(u8 idx, u8 bank)` returning
+  `(u8)(DSB(DS_00081314 + idx) + bank)`, and uses it from `rle_row`.
 - [ ] **Step 4: Run the tests** — expect pass.
 - [ ] **Step 5: Negative control** — assert `[0]` equals 0 instead of
   `0x5D110`, confirm the test fails, revert.
@@ -1226,13 +1254,19 @@ make verify && git add -A && git commit -m "sprite: blitter dispatch table (0x51
 - [ ] **Step 1: Write the failing test**
 
 ```c
+#define RSCRATCH 0x3F00000u
+
 static void check_list_order(void)
 {
     render_list_init();
     CHECK_EQ_INT(render_list_count(), 0);
 
-    /* Three hand-built psets in layer order 5, 1, 3 (insertion order). */
-    u32 p1 = 0x04000000u, p2 = 0x04000020u, p3 = 0x04000040u;
+    /* Three hand-built psets in layer order 5, 1, 3 (insertion order).
+     * RSCRATCH = 0x3F00000u, a free region near the top of mem[]: below
+     * MEM_SIZE (0x4000000, so 0x04000000 and up are out-of-bounds writes) and
+     * above test_gra.c's SCRATCH (0x3000000), which whole .GRA files are
+     * loaded into. */
+    u32 p1 = RSCRATCH + 0x00u, p2 = RSCRATCH + 0x20u, p3 = RSCRATCH + 0x40u;
     DSW(p1 + 0x0E) = 5; DSW(p2 + 0x0E) = 1; DSW(p3 + 0x0E) = 3;
     CHECK_EQ_INT(render_list_insert(p1), 1);
     CHECK_EQ_INT(render_list_insert(p2), 1);
@@ -1247,7 +1281,7 @@ static void check_list_order(void)
 
     /* Stability: equal layers keep insertion order. */
     render_list_init();
-    u32 q1 = 0x04000100u, q2 = 0x04000120u;
+    u32 q1 = RSCRATCH + 0x100u, q2 = RSCRATCH + 0x120u;
     DSW(q1 + 0x0E) = 2; DSW(q2 + 0x0E) = 2;
     CHECK_EQ_INT(render_list_insert(q1), 1);
     CHECK_EQ_INT(render_list_insert(q2), 1);
@@ -1264,8 +1298,8 @@ static void check_list_order(void)
     /* Exhaustion: 580 nodes, the 581st insert fails without corrupting. */
     render_list_init();
     for (int i = 0; i < 580; i++)
-        CHECK_EQ_INT(render_list_insert(0x04000200u + (u32)i * 0x20u), 1);
-    CHECK_EQ_INT(render_list_insert(0x04030000u), 0);
+        CHECK_EQ_INT(render_list_insert(RSCRATCH + 0x200u + (u32)i * 0x20u), 1);
+    CHECK_EQ_INT(render_list_insert(RSCRATCH + 0x30000u), 0);
     CHECK_EQ_INT(render_list_count(), 580);
 }
 ```
@@ -1351,13 +1385,13 @@ static void check_offscreen_skip(void)
     static u8 copy[320 * 200];
     memcpy(copy, mem + back, sizeof copy);
 
-    u32 p = 0x04000400u;
-    DSW(p + 0x00) = 0x2C11u;              /* a real RLE sprite id */
+    u32 p = RSCRATCH + 0x400u;
+    DSW(p + 0x00) = 0x2C11u;              /* s16attrc.gra, 9x8 RLE */
     DSD(p + 0x04) = -400;                 /* projected x is far negative */
     DSD(p + 0x08) = 0;
     DSW(p + 0x0E) = 3;
-    DSD(p + 0x18) = 0x04000600u;          /* palette pointer; bank byte below */
-    DSB(0x04000600u + 8u) = 1;            /* bank 1 => offset 0 */
+    DSD(p + 0x18) = RSCRATCH + 0x600u;    /* palette pointer; bank byte below */
+    DSB(RSCRATCH + 0x600u + 8u) = 1;      /* bank 1 => offset 0 */
     CHECK_EQ_INT(render_list_insert(p), 1);
     render_list();
     CHECK(memcmp(mem + back, copy, sizeof copy) == 0,
@@ -1423,18 +1457,80 @@ make verify && git add -A && git commit -m "render: projection, clipping and com
 - [ ] **Step 1: Write the failing end-to-end test**
 
 ```c
+/* The expected buffer: the back buffer as it is now, plus `bank`'s rendering of
+ * the sprite at (x, y). Writing into a copy of the live back buffer (rather
+ * than into a zeroed one) is what makes the comparison valid — the sprite has
+ * transparent runs and the buffer has existing content underneath. */
+static void expect_composite(u8 *out, u32 icon, int x, int y,
+                             const u8 *px, const GraSprite *g, u8 bank)
+{
+    memcpy(out, mem + icon, 320 * 200);
+    CHECK_EQ_INT(sprite_render_rle(px, out + (u32)y * 320u + (u32)x,
+                                   g->width, g->height, 320, bank), 0);
+}
+
 static void check_end_to_end(void)
 {
-    /* Two psets, one sprite each, at known screen positions, layers 3 and 4.
-     * Assert the back buffer contains the first sprite's pixels at its
-     * position and that the higher-layer sprite is composited last (i.e. it
-     * wins where they overlap). */
+    render_list_init();
+
+    GraSprite g; u32 dh = 0;
+    CHECK_EQ_INT(gra_sprite_lookup(0x2C11u, &g, &dh), 1);
+    const u8 *px = NULL;
+    CHECK_EQ_INT(gra_sprite_pixels(g.pixel_handle, &px), 1);
+
+    /* Two palette banks: byte 8 = 1 (offset 0) and byte 8 = 3 (offset 2), so
+     * the two psets draw different pixels and the winner is identifiable. */
+    DSB(RSCRATCH + 0x800u + 8u) = 1;
+    DSB(RSCRATCH + 0x900u + 8u) = 3;
+
+    /* Layer-3 psets take their coordinates un-shifted, so choose the pset x/y
+     * whose projections equal the pivots and land the sprite at (0, 0). */
+    int pset_x = 0, pset_y = 0;
+    for (int v = 0; v < 4096; v++) {
+        if (render_proj_x(v) >= (int)g.xorg) { pset_x = v; break; }
+    }
+    for (int v = 0; v < 4096; v++) {
+        if (render_proj_y(v) >= (int)g.yorg) { pset_y = v; break; }
+    }
+    int sx = render_proj_x(pset_x) - (int)g.xorg;
+    int sy = render_proj_y(pset_y) - (int)g.yorg;
+
+    u32 pa = RSCRATCH + 0xA00u, pb = RSCRATCH + 0xA20u;
+    DSW(pa + 0x00) = 0x2C11u; DSD(pa + 0x04) = pset_x;   /* 9x8 RLE, s16attrc */
+    DSD(pa + 0x08) = pset_y;  DSW(pa + 0x0E) = 3;
+    DSD(pa + 0x18) = RSCRATCH + 0x800u;
+    DSW(pb + 0x00) = 0x2C11u; DSD(pb + 0x04) = pset_x;   /* same sprite, other bank */
+    DSD(pb + 0x08) = pset_y;  DSW(pb + 0x0E) = 4;
+    DSD(pb + 0x18) = RSCRATCH + 0x900u;
+
+    static u8 expect[320 * 200];
+    u32 back = DSD(DS_000E87A4);
+
+    /* Layer 4 (bank offset 2) is higher, so it wins where they overlap. */
+    expect_composite(expect, back, sx, sy, px, &g, 2);
+    CHECK_EQ_INT(render_list_insert(pa), 1);
+    CHECK_EQ_INT(render_list_insert(pb), 1);
+    render_list_sort();
+    render_list();
+    CHECK(memcmp(mem + back, expect, sizeof expect) == 0,
+          "the higher layer's pixels win");
+
+    /* Swap the layers: bank offset 0 must now win. Two-sided by construction —
+     * if neither pset composited, neither assertion holds. */
+    DSW(pa + 0x0E) = 4; DSW(pb + 0x0E) = 3;
+    expect_composite(expect, back, sx, sy, px, &g, 0);
+    render_list_sort();
+    render_list();
+    CHECK(memcmp(mem + back, expect, sizeof expect) == 0,
+          "swapping the layers swaps the winner");
 }
 ```
 
-Fill it in using `sprite_render_rle` on the same sprite id to compute the
-expected pixels into a scratch buffer, then assert the composited back buffer
-matches at both positions.
+Note the renderers agree with the blitter on the destination address: the
+blitter computes `mem + DSD(DS_000E87A4) + DS_001088F8[y] + x`, and
+`DS_001088F8[y] == y * 320`, which is exactly how `expect_composite` indexes.
+If this comparison fails while `check_rle_cross` passes, the fault is in
+`render_list`'s coordinate or clip arithmetic, not the renderer.
 
 - [ ] **Step 2: Run and watch it fail**
 - [ ] **Step 3: Implement the wiring**
@@ -1442,16 +1538,23 @@ matches at both positions.
 In `game_init`, after `surface_setup()` / `palette_list_init()`, add
 `render_list_init();`.
 
-In `game_loop`, between `game_frame()` and the `run_process_table` render-table
-call, insert:
+In `game_loop`, after the `run_process_table(DS_000A86C4, …)` **render-table**
+call (`flow.c:531`) and before `gfx_flush_palette()` (`flow.c:540`), insert:
 
 ```c
         render_list_sort();                  /* 0x1C3FC */
         render_list();                       /* 0x14328 */
 ```
 
-matching the original's order inside `0x255CC` (sort, render table, composite,
-present). With 4a-ii not yet delivered the list is empty, so this is a no-op —
+**The insertion point is load-bearing.** The original's order inside `0x255CC` is
+`FUN_00024c5c` (game_frame) → render-table dispatch → `0x1C3FC` (sort) →
+`0x14328` (composite) → `0x1C470` (palette) → present. The render table is what
+updates the psets, so sorting or compositing before it would composite a
+one-frame-stale list. (`0x255CC` gates all of sort/composite/present behind
+`DS_0010150C == DS_00101508`; the port's vblank pacing subsumes that gate, as the
+existing loop already does for present.)
+
+With 4a-ii not yet delivered the list is empty, so this is a no-op —
 which is exactly why it is safe to land now.
 
 - [ ] **Step 4: Run the tests and the checks**
@@ -1543,7 +1646,11 @@ make verify && git add -A && git commit -m "docs: sub-project 4a-i report, forma
   `PORT` note in `sprite.c`.
 * **`sprite_render_shear` must read the table as signed `i16`.** The test that
   catches this is the negative-shear one.
-* **Do not "fix" `bank == 0`.** It is pinned to the original's stale value; a
-  silent 0 would hide a real divergence.
+* **`bank == 0` is not a palette offset.** The original's `DAT_00081310[0]` is a
+  stale code pointer, so its dword add makes the offset vary *within* a 4-pixel
+  group — alignment-dependent garbage that no byte-wise port can reproduce. Task
+  4 pins the table entry to `0x5D110` *and* treats the bank byte as no offset.
+  Do not "fix" the table to hide this, and do not reintroduce the stale value as
+  an offset either.
 * **Task 12 must not change the title's output.** If `--check` frames move, the
   wiring order is wrong.
