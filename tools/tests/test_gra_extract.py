@@ -174,6 +174,10 @@ class ChooseRecordTests(unittest.TestCase):
     def test_force_overrides(self):
         self.assertEqual(choose_record(RECORDS, 1, force=1), (1, RECORDS[1]))
 
+    def test_force_negative_raises(self):
+        with self.assertRaises(IndexError):
+            choose_record(RECORDS, 1, force=-1)
+
 
 class ToRgbaTests(unittest.TestCase):
     def test_transparent_opaque_and_flagged(self):
@@ -189,10 +193,6 @@ class ToRgbaTests(unittest.TestCase):
         data, bad = to_rgba([[(0, True), (255, True)]], GREY)
         self.assertEqual(bad, 0)
         self.assertEqual(data, bytes((0, 0, 0, 255, 255, 255, 255, 255)))
-
-
-if __name__ == '__main__':
-    unittest.main()
 
 
 import json  # noqa: E402
@@ -305,6 +305,17 @@ class ExtractFileTests(unittest.TestCase):
         e = self.run_one(banks={})
         self.assertIn('error', e['sprites'][0])
         self.assertNotIn('png', e['sprites'][0])
+
+    def test_out_of_range_forced_record_is_recorded_not_raised(self):
+        class A(Args):
+            palette_record = 99
+        e = self.run_one(args=A())
+        self.assertIn('error', e['sprites'][0])
+        self.assertNotIn('png', e['sprites'][0])
+        # the rest of the file's sprites are still processed, not aborted
+        self.assertIn('error', e['sprites'][1])
+        self.assertNotIn('png', e['sprites'][1])
+        self.assertEqual(e['sprites'][2]['kind'], 'empty')
 
     def test_file_without_descriptors_is_skipped(self):
         with open(os.path.join(self.dir, 'S16FOO.GRA'), 'wb') as f:
@@ -419,3 +430,7 @@ class OracleTests(unittest.TestCase):
         self.assertIn(('S16TITLE.GRA', 72, 320, 200), found)
         self.assertIn(('S16SLABS.GRA', 36, 320, 200), found)
         self.assertEqual(sum(1 for _, _, w, _ in found if w == 975), 8)
+
+
+if __name__ == '__main__':
+    unittest.main()
