@@ -285,7 +285,8 @@ int test_sequencer(void)
         if (getenv("PR_ORACLE_REQUIRED")) {
             CHECK(0, "PR_ORACLE_REQUIRED=1 but S16TITLE.GRA/FAT.OPL is missing");
         } else {
-            printf("SKIP sequencer real-data checks (need " TITLE_GRA
+            printf("SKIP sequencer real-data checks — including the governing "
+                   "C-vs-Python byte gate (need untracked " TITLE_GRA
                    " @%u and " FAT_OPL ")\n", TITLE_XMI_OFF);
         }
         return g_failures - before;
@@ -427,25 +428,44 @@ int test_sequencer(void)
                     cap_ev[w].val = cap_ev[i].val;
                     w++;
                 }
-                for (u32 i = 0; i < (u32)c_n && pyi < w; i++) {
-                    if (c_ev[i].tick == 0)
-                        continue;   /* port init, matches capture's dropped block */
-                    if (documented_excluded(c_ev[i].reg))
-                        continue;
-                    if (!ev_eq(&c_ev[i], &cap_ev[pyi])) {
-                        diff = (int)i;
-                        break;
+                /* Lockstep walk, skipping the port's tick-0 init and the
+                 * documented-excluded registers on both sides. Stop at the
+                 * first difference or when either stream is exhausted: a stream
+                 * that merely ended must not read as "all matched" — an
+                 * uncompared capture tail is a real result, not a pass. */
+                {
+                    u32 ci = 0, c_tail = 0;
+                    for (;;) {
+                        while (ci < (u32)c_n &&
+                               (c_ev[ci].tick == 0 || documented_excluded(c_ev[ci].reg)))
+                            ci++;
+                        if (ci >= (u32)c_n || pyi >= w)
+                            break;
+                        if (!ev_eq(&c_ev[ci], &cap_ev[pyi])) {
+                            diff = (int)ci;
+                            break;
+                        }
+                        ci++;
+                        pyi++;
                     }
-                    pyi++;
+                    for (u32 k = ci; k < (u32)c_n; k++)
+                        if (c_ev[k].tick != 0 && !documented_excluded(c_ev[k].reg))
+                            c_tail++;
+                    if (diff >= 0)
+                        printf("capture oracle first difference at C write %d: "
+                               "C tick=%u reg=%#04x val=%#04x vs capture tick=%u reg=%#04x val=%#04x "
+                               "(C %d writes, capture %u normalised)\n",
+                               diff, c_ev[diff].tick, c_ev[diff].reg, c_ev[diff].val,
+                               cap_ev[pyi].tick, cap_ev[pyi].reg, cap_ev[pyi].val, c_n, w);
+                    else if (c_tail == 0 && pyi == w)
+                        printf("capture oracle: %u writes normalised vs C, all "
+                               "compared and matched\n", w);
+                    else
+                        printf("capture oracle: %u compared/matched, %u C-only, "
+                               "%u capture-only tail (not byte-exact; C %d writes, "
+                               "capture %u normalised)\n",
+                               pyi, c_tail, w - pyi, c_n, w);
                 }
-                if (diff < 0)
-                    printf("capture oracle: %u captured writes normalised vs C, all matched\n", w);
-                else
-                    printf("capture oracle first difference at C write %d: "
-                           "C tick=%u reg=%#04x val=%#04x vs capture tick=%u reg=%#04x val=%#04x "
-                           "(C %d writes, capture %u normalised)\n",
-                           diff, c_ev[diff].tick, c_ev[diff].reg, c_ev[diff].val,
-                           cap_ev[pyi].tick, cap_ev[pyi].reg, cap_ev[pyi].val, c_n, w);
             }
         }
     }

@@ -997,8 +997,25 @@ differ — they are kept as the correction record for the earlier claim.
    `0x3CF` while the melodic table gives `0x28B`. `TODO(verify): the driver's
    percussion note -> fnum mapping.` `verified (cmd: capture A0/B0 vs
    sequencer.c NOTE_TAB)`.
+7. **OPL rhythm register `0xBD` not written.** The capture's only `0xBD` write
+   is its tick-0 init value `0xC0` (rhythm-mode enable, all percussion off),
+   which normalisation drops with the init block (item 4). The port never
+   writes `0xBD` — it routes percussion through the melodic voice pool (items
+   5-6) — so `documented_excluded` also excludes `0xBD` defensively in case a
+   later capture writes it after its first key-on. `verified (cmd:
+   tools/opl_trace.py data/audio-captures/prage_000.dro | awk
+   '$2=="0x00bd"' -> one write, tick 0, value 0xC0)`.
 
 Task 9 result: `tools/opl_seq.py` and the C sequencer agree **byte-for-byte**
 (9340 writes: tick, register, value and order) — the tolerance-free governing
 oracle comparison. Against the capture the port is **not** byte-exact for items
-1 and 4-6; each is excluded or reported, never tuned away.
+1 and 4-7; each is excluded or reported, never tuned away.
+
+**Asset gate on the governing comparison.** The byte-exact C-vs-Python gate and
+the capture comparison both need the untracked `data/game/C` assets
+(`S16TITLE.GRA`, `FAT.OPL`) and the untracked `.dro` capture. In a checkout
+without them the test prints `SKIP sequencer real-data checks — including the
+governing C-vs-Python byte gate` and the suite still passes, so a green
+`./build/run_tests` there does **not** exercise the oracle. Run
+`PR_ORACLE_REQUIRED=1 ./build/run_tests` with the data present to make a missing
+asset fail and the gate run. `verified (cmd: run_tests SKIP line)`.
