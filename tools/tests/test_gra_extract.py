@@ -356,3 +356,66 @@ class MainTests(unittest.TestCase):
         with open(os.path.join(self.dir, 'S16KON.GRA'), 'wb') as f:
             f.write(broken_fixture())
         self.assertEqual(main([self.dir, self.out]), 1)
+
+
+import glob  # noqa: E402
+
+GAME_DIR = os.environ.get('PR_GAME_DIR', os.path.join(os.path.dirname(TOOLS), 'data', 'game', 'C'))
+HAVE_GAME = os.path.isfile(os.path.join(GAME_DIR, 'S16TITLE.GRA'))
+ORACLE_REQUIRED = 'PR_ORACLE_REQUIRED' in os.environ
+
+
+@unittest.skipUnless(HAVE_GAME or ORACLE_REQUIRED, 'no game assets at %s' % GAME_DIR)
+class OracleTests(unittest.TestCase):
+    def setUp(self):
+        self.assertTrue(HAVE_GAME, 'PR_ORACLE_REQUIRED set but %s has no S16TITLE.GRA' % GAME_DIR)
+        self.tmp = tempfile.TemporaryDirectory()
+        self.out = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_title_frame_10_matches_index_oracle(self):
+        import gra_render
+        from gra_render import chunks
+        path = os.path.join(GAME_DIR, 'S16TITLE.GRA')
+        ppm = os.path.join(self.out, 'o.ppm')
+        idx = os.path.join(self.out, 'o.idx')
+        gra_render.main([path, '0', ppm, '--frame', '10', '--indices', idx])
+        indices = open(idx, 'rb').read()
+        d = open(path, 'rb').read()
+        bank = palette_records(next(d[o:e] for t, o, e in chunks(d) if t == 5))
+        rec0 = bank[0]
+        self.assertEqual(len(rec0), 63)
+        self.assertEqual((min(indices), max(indices)), (1, 63))
+        expected = b''.join(bytes(rec0[i - 1]) + b'\xff' for i in indices)
+
+        entry = extract_file(path, self.out, {'S16TITLE': bank}, {}, Args())
+        s = entry['sprites'][10]
+        self.assertEqual((s['kind'], s['width'], s['height'], s['palette_record']), ('rle', 320, 200, 0))
+        im = Image.open(os.path.join(self.out, s['png']))
+        self.assertEqual(im.mode, 'RGBA')
+        self.assertEqual(im.tobytes(), expected)
+
+    def test_all_ten_raw_sentinels_decode(self):
+        from gra_render import chunks
+        found = []
+        for f in sorted(glob.glob(os.path.join(GAME_DIR, 'S16*.GRA'))):
+            d = open(f, 'rb').read()
+            body6 = next((d[o:e] for t, o, e in chunks(d) if t == 6), None)
+            if body6 is None:
+                continue
+            descs = read_descriptors(body6)
+            offs = sorted(x.offset for x in descs if x.kind != 'empty')
+            for x in descs:
+                if x.kind != 'raw':
+                    continue
+                nxt = next((o for o in offs if o > x.offset), len(d))
+                self.assertEqual(nxt - x.offset, x.width * x.height, (f, x.index))
+                rows = decode_raw(d, x.width, x.height, x.offset)
+                self.assertEqual((len(rows), len(rows[0])), (x.height, x.width))
+                found.append((os.path.basename(f), x.index, x.width, x.height))
+        self.assertEqual(len(found), 10, found)
+        self.assertIn(('S16TITLE.GRA', 72, 320, 200), found)
+        self.assertIn(('S16SLABS.GRA', 36, 320, 200), found)
+        self.assertEqual(sum(1 for _, _, w, _ in found if w == 975), 8)
