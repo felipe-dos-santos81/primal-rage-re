@@ -35,6 +35,7 @@ usage:
   opl_seq.py <music> [--trace]          # "tick reg value" lines (default)
   opl_seq.py <music> --info             # summary only
   opl_seq.py <music> --trace --patches PATH
+  opl_seq.py --capture-anchors <music> <capture.dro>   # re-derive note anchors
   opl_seq.py --self-test
 """
 import os
@@ -74,9 +75,19 @@ def note_to_block_fnum(note):
 
 NOTE_TAB = tuple(note_to_block_fnum(n) for n in range(128))
 
-# Notes on which the port's literal table is pinned to the capture (sequencer.c
-# NOTE_TAB comment, Task 8). The computed table must reproduce these.
-NOTE_ANCHORS = {0: (0, 0x0AC), 31: (1, 0x205), 84: (5, 0x2B2), 127: (7, 0x3FF)}
+# Values the computed table must reproduce. 84 and 79 are CAPTURE-DERIVED: the
+# title bank's first two melodic note-ons, paired to prage_000.dro key-on pairs
+# by note-on time, not copied from sequencer.c's NOTE_TAB literal. `python3
+# tools/opl_seq.py --capture-anchors <music> <capture.dro>` re-derives them and
+# fails if the formula disagrees. 0, 31 and 127 are computed-table boundary
+# points (lowest entry, octave, clamp) and are NOT capture claims. The C
+# NOTE_TAB comment's "note 47 -> 0x3CF" is a documented divergence (audio.md
+# item 6), not an anchor: percussion is remapped by the driver.
+NOTE_ANCHORS = {0: (0, 0x0AC), 31: (1, 0x205), 79: (5, 0x205),
+                84: (5, 0x2B2), 127: (7, 0x3FF)}
+
+# The capture-derived subset, re-checked by --capture-anchors.
+NOTE_CAPTURE = (84, 79)
 
 
 def load_patches(data):
@@ -246,6 +257,8 @@ class Sequencer:
         self.tokens = decode_events(evnt)
         self.patches = patches
         self.out = []
+        self.note_log = []          # (tick, midi, note) when track_notes is set
+        self.track_notes = False
         self.reset()
 
     def reset(self):
@@ -301,6 +314,8 @@ class Sequencer:
     def key_on(self, midi, note, vel, dur):
         if not (0 <= midi < 16 and 0 <= note <= 127):
             return
+        if self.track_notes:
+            self.note_log.append((self.tick, midi, note))
         if midi == 9:
             key = (0x7F << 8) | (note & 0xFF)
         else:
@@ -426,6 +441,69 @@ def self_test():
     print('self-test ok: %d events' % len(out))
 
 
+def capture_keyons(events):
+    """A DRO event stream -> [(ms, block, fnum)] for 0xB0..0xB8 key-ons.
+
+    A key-on's fnum low byte is the most recent 0xA0+ch write on the same chip;
+    block/fnum-high come from the 0xB0 value (bit 5 is the key bit)."""
+    last_a = {}
+    out = []
+    for ms, reg, val in events:
+        if 0xA0 <= reg <= 0xA8:
+            last_a[reg - 0xA0] = val
+        elif 0xB0 <= reg <= 0xB8 and (val & 0x20):
+            ch = reg - 0xB0
+            out.append((ms, (val >> 2) & 7,
+                        ((val & 3) << 8) | last_a.get(ch, 0)))
+    return out
+
+
+def cmd_capture_anchors(music, capture):
+    """Re-derive NOTE_CAPTURE from the capture; nonzero exit on any mismatch.
+
+    Pairs the title bank's note-ons to the capture's key-ons by note-on time
+    (port tick -> ms), not by position, so it does not assume the port's voice
+    or allocation order. Percussion (MIDI channel 9) is skipped: its fnum
+    mapping is the documented divergence (audio.md item 6)."""
+    import opl_trace
+    keyons = capture_keyons(opl_trace.parse(read(capture))[1])
+    patches = load_patches(read(os.path.join(
+        os.path.dirname(os.path.abspath(music)), 'FAT.OPL')))
+    if patches is None:
+        print('no usable patch bank beside %s' % music, file=sys.stderr)
+        return 1
+    seq = Sequencer(find_evnt(read(music)), patches)
+    seq.track_notes = True
+    seq.run(100000)
+
+    checked = set()
+    for tick, midi, note in seq.note_log:
+        if midi == 9 or note not in NOTE_CAPTURE or note in checked:
+            continue
+        ms = (tick - 60) * 1000 // 120
+        hits = [k for k in keyons if abs(k[0] - ms) <= 3]
+        if len(hits) != 1:
+            print('note %d: %d capture key-ons near ms %d, expected 1'
+                  % (note, len(hits), ms), file=sys.stderr)
+            return 1
+        _, block, fnum = hits[0]
+        want = note_to_block_fnum(note)
+        if (block, fnum) != want:
+            print('note %d: capture block %d fnum %#05x != formula %r'
+                  % (note, block, fnum, want), file=sys.stderr)
+            return 1
+        checked.add(note)
+        print('anchor note %d = block %d fnum %#05x (capture ms %d, formula agrees)'
+              % (note, block, fnum, ms))
+    if checked != set(NOTE_CAPTURE):
+        print('capture anchors not all found: %r'
+              % sorted(set(NOTE_CAPTURE) - checked), file=sys.stderr)
+        return 1
+    print('capture anchors verified: %s'
+          % ', '.join(str(n) for n in NOTE_CAPTURE))
+    return 0
+
+
 def main(argv):
     if not argv or argv[0] in ('-h', '--help'):
         print(__doc__.strip())
@@ -433,6 +511,12 @@ def main(argv):
     if argv[0] == '--self-test':
         self_test()
         return 0
+    if argv[0] == '--capture-anchors':
+        if len(argv) != 3:
+            print('usage: opl_seq.py --capture-anchors <music> <capture.dro>',
+                  file=sys.stderr)
+            return 2
+        return cmd_capture_anchors(argv[1], argv[2])
 
     music = None
     patches_path = None

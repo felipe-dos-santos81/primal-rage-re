@@ -412,7 +412,21 @@ int test_sequencer(void)
 
             snprintf(cmd, sizeof cmd, "python3 %s %s", OPL_TRACE_PY, CAPTURE_DRO);
             if (read_ev_stream(cmd, cap_ev, (int)OPL_TRACE_MAX, &cap_total) != 0 || cap_total == 0) {
-                printf("SKIP capture oracle (need %s)\n", CAPTURE_DRO);
+                /* Two causes read alike here: the capture may be absent, or it
+                 * is present but nothing decoded (no python3 on PATH, or
+                 * opl_trace.py failed). Say which, so the reader is not sent to
+                 * the wrong place. */
+                FILE *cf = fopen(CAPTURE_DRO, "rb");
+                if (cf == NULL) {
+                    printf("SKIP capture oracle — capture file missing: %s "
+                           "(see \"Recorded capture\" in port/spec/audio.md)\n",
+                           CAPTURE_DRO);
+                } else {
+                    fclose(cf);
+                    printf("SKIP capture oracle — %s present but no stream "
+                           "decoded: is python3 on PATH and " OPL_TRACE_PY
+                           " runnable?\n", CAPTURE_DRO);
+                }
             } else {
                 for (u32 i = 0; i < cap_total; i++)
                     if (cap_ev[i].reg >= 0xB0 && cap_ev[i].reg <= 0xB8 &&
