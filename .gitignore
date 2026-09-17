@@ -8,6 +8,7 @@ build/
 *.idx
 *.dro
 data/
+data/smk-captures/
 _tools/ghidra_proj/
 port/tests/ghidra_data.bin
 port/tests/title_screen_ref.ppm
