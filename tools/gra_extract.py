@@ -125,3 +125,151 @@ def to_rgba(rows, colours):
                 out += bytes(MAGENTA) + b'\xff'
                 bad += 1
     return bytes(out), bad
+
+
+import argparse  # noqa: E402
+import fnmatch  # noqa: E402
+import glob  # noqa: E402
+import json  # noqa: E402
+
+from PIL import Image  # noqa: E402
+
+
+def load_index(path):
+    """INDEX (20-byte records) -> {'S16KON': 49, ...}; {} when the file is absent."""
+    if not os.path.isfile(path):
+        return {}
+    d = open(path, 'rb').read()
+    out = {}
+    for i in range(0, len(d) - len(d) % 20, 20):
+        name = d[i:i + 12].split(b'\0')[0].decode('ascii', 'replace')
+        stem = os.path.splitext(name)[0].upper()
+        out[stem] = i // 20
+    return out
+
+
+def _stem(path):
+    return os.path.splitext(os.path.basename(path))[0].upper()
+
+
+def _bank_of(d):
+    """The file's palette records, or None if it has no type-5 chunk."""
+    for t, o, e in chunks(d):
+        if t == 5:
+            return palette_records(d[o:e])
+    return None
+
+
+def extract_file(path, out_dir, banks, index_map, args):
+    """One GRA -> PNGs under out_dir/<STEM>/ and the manifest entry for it."""
+    stem = _stem(path)
+    d = open(path, 'rb').read()
+    entry = {'gra': os.path.basename(path),
+             'resource_index': index_map.get(stem),
+             'palette_source': None, 'palette_records': None,
+             'skipped': False, 'sprites': []}
+    try:
+        ch = chunks(d)
+    except ValueError as e:
+        entry.update(skipped=True, reason='bad chunk chain: %s' % e)
+        return entry
+    body6 = next((d[o:e] for t, o, e in ch if t == 6), None)
+    if body6 is None:
+        entry.update(skipped=True, reason='no type-6 descriptor table (not graphics)')
+        return entry
+    force_from = _stem(args.palette_from) if args.palette_from else None
+    source, records = choose_bank(stem, banks, force_from)
+    entry['palette_source'] = source
+    entry['palette_records'] = [len(r) for r in records] if records is not None else None
+
+    sub = os.path.join(out_dir, stem)
+    os.makedirs(sub, exist_ok=True)
+    for desc in read_descriptors(body6):
+        s = {'index': desc.index, 'kind': desc.kind,
+             'width': desc.width, 'height': desc.height, 'x': desc.x, 'y': desc.y,
+             'pixel_offset': desc.offset, 'handle': '0x%08x' % desc.handle}
+        entry['sprites'].append(s)
+        if desc.kind == 'empty':
+            continue
+        try:
+            if desc.kind == 'raw':
+                rows = decode_raw(d, desc.width, desc.height, desc.offset)
+            else:
+                if not 0 <= desc.offset < len(d):
+                    raise ValueError("pixel offset %#x out of range" % desc.offset)
+                rows, used = decode_sprite(d, desc.width, desc.height, desc.offset)
+                s['rle_bytes'] = used - desc.offset
+        except (ValueError, IndexError) as e:
+            s['error'] = str(e)
+            continue
+        max_index = max((v for row in rows for v, o in row if o), default=0)
+        rid, colours = choose_record(records, max_index, args.palette_record)
+        data, bad = to_rgba(rows, colours)
+        png = '%s/%04d.png' % (stem, desc.index)
+        Image.frombytes('RGBA', (desc.width, desc.height), data).save(os.path.join(out_dir, png))
+        s.update(png=png, palette_record=rid, max_index=max_index)
+        if bad:
+            s['out_of_palette'] = bad
+    return entry
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('game_dir')
+    ap.add_argument('out_dir', nargs='?', default='extracted')
+    ap.add_argument('--only', default=None, help='glob on the GRA file name, e.g. S16KON*')
+    ap.add_argument('--palette-record', type=int, default=None,
+                    help='force this sub-palette record for every sprite of every file with a bank')
+    ap.add_argument('--palette-from', default=None,
+                    help='force the palette bank of this GRA (name or path) for every file')
+    args = ap.parse_args(argv)
+
+    files = sorted(glob.glob(os.path.join(args.game_dir, '*.GRA')) +
+                   glob.glob(os.path.join(args.game_dir, '*.gra')))
+    if not files:
+        print("no .GRA files in %s" % args.game_dir, file=sys.stderr)
+        return 1
+    banks = {}
+    for f in files:
+        try:
+            recs = _bank_of(open(f, 'rb').read())
+        except ValueError:
+            recs = None
+        if recs is not None:
+            banks[_stem(f)] = recs
+    if args.palette_from and _stem(args.palette_from) not in banks:
+        print("--palette-from %s: no palette bank in that file" % args.palette_from, file=sys.stderr)
+        return 1
+    index_map = load_index(os.path.join(args.game_dir, 'INDEX'))
+    if args.only:
+        files = [f for f in files if fnmatch.fnmatch(os.path.basename(f), args.only)]
+
+    os.makedirs(args.out_dir, exist_ok=True)
+    manifest = {'source_dir': args.game_dir, 'files': {}}
+    written = {'rle': 0, 'raw': 0}
+    empty = skipped = errors = 0
+    for f in files:
+        print("extracting %s ..." % os.path.basename(f), file=sys.stderr)
+        entry = extract_file(f, args.out_dir, banks, index_map, args)
+        manifest['files'][_stem(f)] = entry
+        if entry['skipped']:
+            skipped += 1
+            continue
+        for s in entry['sprites']:
+            if 'error' in s:
+                errors += 1
+            elif s['kind'] == 'empty':
+                empty += 1
+            else:
+                written[s['kind']] += 1
+    with open(os.path.join(args.out_dir, 'manifest.json'), 'w') as fp:
+        json.dump(manifest, fp, indent=1)
+    print("wrote %d PNGs (%d rle, %d raw), %d empty descriptors, %d files skipped, %d errors -> %s"
+          % (written['rle'] + written['raw'], written['rle'], written['raw'],
+             empty, skipped, errors, args.out_dir), file=sys.stderr)
+    return 1 if errors else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

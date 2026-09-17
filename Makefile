@@ -29,7 +29,7 @@ gra ?= S16TITLE.GRA
 chunk ?= 0
 
 .PHONY: help deps build test verify check smk-oracle run clean \
-        re-info re-gra re-render re-symbols re-cluster \
+        re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original
 
 # ── Environment ──────────────────────────────────────────────────────────────
@@ -138,6 +138,12 @@ re-gra: ## Dump GRA header fields and chunk chains for the installed S16 set
 
 re-render: ## Render one GRA chunk to PPM (gra=S16TITLE.GRA chunk=0 [frame=N] [palette=N])
 	$(PYTHON) tools/gra_render.py $(GAME_DIR)/$(gra) $(chunk) /tmp/$$(basename $(gra) .GRA).ppm $(if $(palette),--palette $(palette)) $(if $(frame),--frame $(frame))
+
+re-extract: ## Extract every S16 sprite to extracted/ (RGBA PNG per descriptor + manifest.json)
+	$(PYTHON) tools/gra_extract.py $(GAME_DIR) extracted
+
+re-extract-test: ## Unit + oracle tests for the extractor (oracle needs data/game/C)
+	PR_GAME_DIR=$(GAME_DIR) $(PYTHON) -m unittest tools.tests.test_gra_extract -v
 
 re-symbols: ## Regenerate port/src/symbols.h from the decompilation
 	$(PYTHON) tools/gen_symbols.py $(DECOMP_DIR) $(PORT_DIR)/src/symbols.h

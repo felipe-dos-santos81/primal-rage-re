@@ -193,3 +193,166 @@ class ToRgbaTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+import json  # noqa: E402
+import tempfile  # noqa: E402
+from PIL import Image  # noqa: E402
+from gra_extract import load_index, extract_file, main  # noqa: E402
+
+
+def write_fixture_dir(tmp, files):
+    """files: {'S16FOO.GRA': bytes}. Also writes an INDEX naming them in order."""
+    for name, data in files.items():
+        with open(os.path.join(tmp, name), 'wb') as f:
+            f.write(data)
+    with open(os.path.join(tmp, 'INDEX'), 'wb') as f:
+        for name in files:
+            f.write(struct.pack('<12sII', name.lower().encode(), len(files[name]) | 0x01000000, 0))
+
+
+class Args:
+    palette_record = None
+    palette_from = None
+
+
+def broken_fixture():
+    """One RLE descriptor whose pixel offset lies past the end of the file."""
+    from gra_render import chunks
+    d = bytearray(build_gra([SPRITE_A], RECORDS, [(4, 3, 0, 0, 0)]))
+    _, o, _ = next(c for c in chunks(bytes(d)) if c[0] == 6)
+    struct.pack_into('<I', d, o + 8, 0x7FFFFF)
+    return bytes(d)
+
+
+class ExtractFileTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = self.tmp.name
+        write_fixture_dir(self.dir, {'S16FOO.GRA': fixture()})
+        self.out = os.path.join(self.dir, 'out')
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_one(self, banks=None, args=Args()):
+        path = os.path.join(self.dir, 'S16FOO.GRA')
+        if banks is None:
+            from gra_render import chunks
+            d = open(path, 'rb').read()
+            banks = {'S16FOO': palette_records(next(d[o:e] for t, o, e in chunks(d) if t == 5))}
+        return extract_file(path, self.out, banks, load_index(os.path.join(self.dir, 'INDEX')), args)
+
+    def test_manifest_entry(self):
+        e = self.run_one()
+        self.assertEqual(e['gra'], 'S16FOO.GRA')
+        self.assertEqual(e['resource_index'], 0)
+        self.assertEqual(e['palette_source'], 'S16FOO')
+        self.assertEqual(e['palette_records'], [3, 8])
+        self.assertFalse(e['skipped'])
+        a, b, c = e['sprites']
+        self.assertEqual(a['kind'], 'rle')
+        self.assertEqual((a['width'], a['height'], a['x'], a['y']), (4, 3, 1, 2))
+        self.assertEqual(a['pixel_offset'], 8)
+        self.assertEqual(a['handle'], '0x00000008')
+        self.assertEqual(a['palette_record'], 1)
+        self.assertEqual(a['max_index'], 7)
+        self.assertEqual(a['rle_bytes'], len(SPRITE_A))
+        self.assertEqual(a['out_of_palette'], 1)
+        self.assertEqual(a['png'], 'S16FOO/0000.png')
+        self.assertEqual(b['kind'], 'raw')
+        self.assertEqual(b['palette_record'], 0)
+        self.assertNotIn('rle_bytes', b)
+        self.assertNotIn('out_of_palette', b)
+        self.assertEqual(c['kind'], 'empty')
+        self.assertNotIn('png', c)
+
+    def test_png_pixels(self):
+        self.run_one()
+        im = Image.open(os.path.join(self.out, 'S16FOO', '0000.png'))
+        self.assertEqual((im.mode, im.size), ('RGBA', (4, 3)))
+        px = im.load()
+        self.assertEqual(px[0, 0], (5, 10, 15, 255))       # index 5 -> record1[4]
+        self.assertEqual(px[1, 0], (255, 0, 255, 255))     # opaque index 0, flagged
+        self.assertEqual(px[2, 0], (0, 0, 0, 0))           # transparent run
+        self.assertEqual(px[3, 0], (0, 0, 0, 0))
+        self.assertEqual(px[0, 1], (2, 4, 6, 255))         # repeat colour 2
+        self.assertEqual(px[1, 2], (0, 0, 0, 0))           # transparent 1
+        self.assertEqual(px[3, 2], (1, 2, 3, 255))         # repeat colour 1
+        raw = Image.open(os.path.join(self.out, 'S16FOO', '0001.png'))
+        self.assertEqual(raw.size, (4, 3))
+        self.assertEqual(raw.load()[2, 0], (70, 80, 90, 255))   # index 3 -> record0[2]
+        self.assertFalse(os.path.exists(os.path.join(self.out, 'S16FOO', '0002.png')))
+
+    def test_greyscale_when_no_bank_anywhere(self):
+        e = self.run_one(banks={})
+        self.assertEqual(e['palette_source'], 'greyscale')
+        self.assertIsNone(e['palette_records'])
+        self.assertIsNone(e['sprites'][0]['palette_record'])
+        im = Image.open(os.path.join(self.out, 'S16FOO', '0001.png'))
+        self.assertEqual(im.load()[2, 0], (3, 3, 3, 255))
+
+    def test_forced_record(self):
+        class A(Args):
+            palette_record = 0
+        e = self.run_one(args=A())
+        self.assertEqual(e['sprites'][0]['palette_record'], 0)
+        self.assertEqual(e['sprites'][0]['out_of_palette'], 3)   # 5, 0 and 7 miss a 3-colour record
+
+    def test_sprite_error_is_recorded_not_raised(self):
+        with open(os.path.join(self.dir, 'S16FOO.GRA'), 'wb') as f:
+            f.write(broken_fixture())
+        e = self.run_one(banks={})
+        self.assertIn('error', e['sprites'][0])
+        self.assertNotIn('png', e['sprites'][0])
+
+    def test_file_without_descriptors_is_skipped(self):
+        with open(os.path.join(self.dir, 'S16FOO.GRA'), 'wb') as f:
+            f.write(chunk(2, b'\1\2\3', 0))
+        e = self.run_one(banks={})
+        self.assertTrue(e['skipped'])
+        self.assertIn('reason', e)
+        self.assertEqual(e['sprites'], [])
+
+
+class MainTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = self.tmp.name
+        # KON has a bank; KONSH has none and must borrow it; SND has no descriptors.
+        write_fixture_dir(self.dir, {
+            'S16KON.GRA': fixture(),
+            'S16KONSH.GRA': build_gra([SPRITE_A], None, [(4, 3, 0, 0, 0)]),
+            'S16SND.GRA': chunk(2, b'\1\2\3', 0),
+        })
+        self.out = os.path.join(self.dir, 'out')
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def manifest(self):
+        return json.load(open(os.path.join(self.out, 'manifest.json')))
+
+    def test_end_to_end(self):
+        rc = main([self.dir, self.out])
+        self.assertEqual(rc, 0)
+        m = self.manifest()
+        self.assertEqual(m['source_dir'], self.dir)
+        self.assertEqual(sorted(m['files']), ['S16KON', 'S16KONSH', 'S16SND'])
+        self.assertEqual(m['files']['S16KONSH']['palette_source'], 'S16KON')
+        self.assertEqual(m['files']['S16KONSH']['resource_index'], 1)
+        self.assertTrue(m['files']['S16SND']['skipped'])
+        self.assertTrue(os.path.exists(os.path.join(self.out, 'S16KONSH', '0000.png')))
+
+    def test_only_filter(self):
+        main([self.dir, self.out, '--only', 'S16KONSH*'])
+        self.assertEqual(list(self.manifest()['files']), ['S16KONSH'])
+
+    def test_palette_from(self):
+        main([self.dir, self.out, '--only', 'S16KONSH*', '--palette-from', 'S16KON.GRA'])
+        self.assertEqual(self.manifest()['files']['S16KONSH']['palette_source'], 'S16KON')
+
+    def test_error_sets_exit_status(self):
+        with open(os.path.join(self.dir, 'S16KON.GRA'), 'wb') as f:
+            f.write(broken_fixture())
+        self.assertEqual(main([self.dir, self.out]), 1)
