@@ -327,6 +327,48 @@ static void check_rle_mirror(void)
     for (int i = 0; i < 6; i++) CHECK_EQ_INT(mir[i], plain[5 - i]);
 }
 
+static void check_shear(void)
+{
+    /* The shear reads `vis` bytes from `src + sh`, where `sh` can be positive
+     * (up to +2 in the cases below), so the fixture must carry slack past the
+     * last row: 6 columns x 4 rows = 24 bytes for a 3-row image. A 6x3 buffer
+     * would read out of bounds on the +2 case. */
+    u8 src[6 * 4];
+    for (int i = 0; i < 24; i++) src[i] = (u8)(10 + i);
+    u8 dst[6 * 3]; memset(dst, 0xEE, sizeof dst);
+
+    /* Zero the table explicitly first: this test must not depend on whatever
+     * the loaded data object happens to hold at DS_00107900. With the table
+     * zero the shear is zero and this is a plain copy. */
+    DSW(DS_00107900 + 0) = 0;
+    DSW(DS_00107900 + 2) = 0;
+    DSW(DS_00107900 + 4) = 0;
+    CHECK_EQ_INT(sprite_render_shear(src, dst, 6, 3, 6, 0, 0,0,0), 0);
+    for (int i = 0; i < 18; i++) CHECK_EQ_INT(dst[i], src[i]);
+
+    /* A non-zero ramp shears row r by ((tab[r] - tab[0]) >> 5), arithmetic. */
+    DSW(DS_00107900 + 0) = 0;
+    DSW(DS_00107900 + 2) = 32;      /* row 1: (32-0)>>5 = 1 */
+    DSW(DS_00107900 + 4) = 64;      /* row 2: (64-0)>>5 = 2 */
+    memset(dst, 0xEE, sizeof dst);
+    CHECK_EQ_INT(sprite_render_shear(src, dst, 6, 3, 6, 0, 0,0,0), 0);
+    for (int i = 0; i < 6; i++) CHECK_EQ_INT(dst[i], src[i]);           /* row 0 */
+    for (int i = 0; i < 6; i++) CHECK_EQ_INT(dst[6+i], src[6 + i + 1]); /* row 1 */
+    for (int i = 0; i < 6; i++) CHECK_EQ_INT(dst[12+i], src[12 + i + 2]);/* row 2 */
+
+    /* Negative shear truncates toward -infinity: -33 >> 5 == -2. */
+    DSW(DS_00107900 + 2) = (u16)0xFFDFu;   /* -33 */
+    memset(dst, 0xEE, sizeof dst);
+    CHECK_EQ_INT(sprite_render_shear(src, dst, 6, 3, 6, 0, 0,0,0), 0);
+    /* (i16)0xFFDF == -33, (-33 - 0) >> 5 == -2 */
+    for (int i = 0; i < 6; i++) CHECK_EQ_INT(dst[6+i], src[6 + i - 2]);
+
+    /* Reset the table so later tests are unaffected. */
+    DSW(DS_00107900 + 0) = 0;
+    DSW(DS_00107900 + 2) = 0;
+    DSW(DS_00107900 + 4) = 0;
+}
+
 int test_sprite(void)
 {
     check_node_build();
@@ -336,5 +378,6 @@ int test_sprite(void)
     check_rle_clipped();
     check_rle_row_edges();
     check_rle_mirror();
+    check_shear();
     return 0;
 }

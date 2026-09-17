@@ -2,6 +2,7 @@
 #include "platform/gra.h"
 #include "platform/res.h"
 #include "../mem.h"
+#include "../symbols.h"
 #include <stddef.h>
 
 void sprite_node_build(SpriteNode *n, u32 sprite_id)
@@ -175,6 +176,27 @@ int sprite_render_raw(const u8 *src, u8 *dst, int width, int rows,
     for (int r = 0; r < rows; r++) {
         copy_run(dst, src, width, bank);
         src += width;
+        dst += stride;
+    }
+    return 0;
+}
+
+/* PORT: 0x5215C. The shear table DS_00107900 is signed 16-bit; the (s16) cast
+ * is load-bearing (see sprite.h). `ref` is tab[0], so row clip_t is unshifted.
+ * src is the window origin once, then advances a whole row per iteration. */
+int sprite_render_shear(const u8 *src, u8 *dst, int width, int rows,
+                        int stride, u8 bank,
+                        int clip_l, int clip_r, int clip_t)
+{
+    int vis = width - clip_l - clip_r;
+    if (src == NULL || dst == NULL || width <= 0 || rows <= 0) return -1;
+    if (vis <= 0 || rows - clip_t <= 0) return 0;
+    src += clip_t * width + clip_l;
+    for (int r = 0; r < rows - clip_t; r++) {
+        int ref = (s16)DSW(DS_00107900);
+        int sh  = ((int)(s16)DSW(DS_00107900 + (clip_t + r) * 2) - ref) >> 5;
+        copy_run(dst, src + sh, vis, bank);
+        src += width;               /* net advance = width, as the original */
         dst += stride;
     }
     return 0;

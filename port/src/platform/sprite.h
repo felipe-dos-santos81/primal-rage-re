@@ -80,4 +80,22 @@ int sprite_render_rle_clipped(const u8 *src, u8 *dst, int width, int rows,
 int sprite_render_raw(const u8 *src, u8 *dst, int width, int rows,
                       int stride, u8 bank);
 
+/* PORT: 0x5215C. Mode-1 shear renderer for dispatch types 0x04 (unclipped) and
+ * 0x06 (mode-1 | clip). The original stores signed 16-bit values one per image
+ * row at DS_00107900; row r is shifted horizontally by
+ * ((s16)tab[clip_t + r] - (s16)tab[0]) >> 5, an arithmetic shift, so a negative
+ * shear truncates toward -infinity (the shear cast is load-bearing: reading the
+ * entry as unsigned makes the shift amount a large positive offset). `rows` has
+ * already had clip_b subtracted by the blitter, so there is no clip_b; clip_t
+ * whole rows are skipped without drawing and clip_l/clip_r columns each side are
+ * the window overhangs. The visible window is `width - clip_l - clip_r` columns
+ * written sequentially from dst[0], and `vis` bytes are read from `src + sh`,
+ * where src is the window origin (row clip_t, column clip_l) advanced by width
+ * per row -- so the fixture needs slack past the last row for a positive sh.
+ * Returns 0 (including the vis <= 0 / rows - clip_t <= 0 no-draw paths), or -1
+ * if src/dst is NULL or width/rows is non-positive. */
+int sprite_render_shear(const u8 *src, u8 *dst, int width, int rows,
+                        int stride, u8 bank,
+                        int clip_l, int clip_r, int clip_t);
+
 #endif /* PR_SPRITE_H */
