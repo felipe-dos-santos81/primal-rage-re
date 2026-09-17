@@ -1,6 +1,6 @@
-/* SMK2 container parse, validation, and tree bitstream decode. See smacker.h
- * and the plan's "Format reference" (verified byte-exact on TWI5.SMK and
- * TWG.SMK). Frame decode (Task 5) is not implemented here.
+/* SMK2 container parse, validation, tree bitstream decode, and frame decode.
+ * See smacker.h and the plan's "Format reference" (verified byte-exact on
+ * TWI5.SMK and TWG.SMK against the DOSBox-X capture oracle).
  *
  * Layout, all offsets from the start of `data`:
  *   0x00 magic "SMK2"                0x34 treesize
@@ -9,8 +9,13 @@
  *   0x14 flags                       0x68+4*frames frame_flags[frames]
  *                                    0x68+5*frames tree bitstream (treesize)
  *                                    then sum(frame_size & ~3) payloads
+ *
+ * A frame payload is an optional palette update (its first byte is the chunk
+ * length in 4-byte units, including that byte) followed by the LSB-first video
+ * bitstream.
  */
 #include <stdio.h>
+#include <string.h>
 
 #include "smacker.h"
 
@@ -297,6 +302,9 @@ int smk_open(const u8 *data, u32 len, SmkMovie *out)
     tmp.tree_size[2] = rd32(data + SMK_TREE_SIZES_OFF + 8);
     tmp.tree_size[3] = rd32(data + SMK_TREE_SIZES_OFF + 12);
     tmp.next_frame = 0;
+    /* The palette starts black; a frame's update may skip entries, leaving
+     * them at their previous (here zero) value. */
+    memset(tmp.pal, 0, sizeof(tmp.pal));
 
     if (treesize > (0xFFFFFFFFu >> 3))
         return reject("tree bitstream too large");
@@ -317,6 +325,235 @@ int smk_open(const u8 *data, u32 len, SmkMovie *out)
             out->last[i][k] = out->words + (tmp.last[i][k] - tmp.words);
     }
     return 1;
+}
+
+/* ── Frame decode ───────────────────────────────────────────────────────────
+ * See the plan's "Format reference", subsections "Frame payload" and "Video
+ * bitstream". The frame buffer is written in place: a SKIP or a delta patch
+ * relies on the caller's previous frame still being there.
+ */
+
+/* Block-run table indexed by the block type's bits 2..7 (the format's
+ * "sizetable"). */
+static const u16 smk_block_runs[64] = {
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+    33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
+    49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 128, 256, 512, 1024, 2048
+};
+
+/* Standard 6-bit -> 8-bit palette gun expansion (the format's palmap). */
+static const u8 smk_pal[64] = {
+    0x00, 0x04, 0x08, 0x0C, 0x10, 0x14, 0x18, 0x1C, 0x20, 0x24, 0x28, 0x2C, 0x30, 0x34, 0x38, 0x3C,
+    0x41, 0x45, 0x49, 0x4D, 0x51, 0x55, 0x59, 0x5D, 0x61, 0x65, 0x69, 0x6D, 0x71, 0x75, 0x79, 0x7D,
+    0x82, 0x86, 0x8A, 0x8E, 0x92, 0x96, 0x9A, 0x9E, 0xA2, 0xA6, 0xAA, 0xAE, 0xB2, 0xB6, 0xBA, 0xBE,
+    0xC3, 0xC7, 0xCB, 0xCF, 0xD3, 0xD7, 0xDB, 0xDF, 0xE3, 0xE7, 0xEB, 0xEF, 0xF3, 0xF7, 0xFB, 0xFF
+};
+
+/* Palette update: the chunk's first byte is its length in 4-byte units (the
+ * byte included). `p`/`n` are the whole payload; on success `*chunk` is the
+ * chunk length and the update stays inside `p[0..chunk)`. Rejects an update
+ * that would read outside the chunk or copy outside the 256-entry palette. */
+static int smk_palette_update(SmkMovie *m, const u8 *p, u32 n, u32 *chunk)
+{
+    u8 old[768];
+    u32 len, i = 1, sz = 0;
+
+    if (n == 0)
+        return 0;
+    len = (u32)p[0] * 4u;
+    if (len == 0 || len > n)
+        return 0;
+    memcpy(old, m->pal, sizeof(old));
+    while (sz < 256) {
+        u8 t;
+        if (i >= len)
+            return 0;
+        t = p[i++];
+        if (t & 0x80) {                          /* skip: keep the old entries */
+            sz += (u32)(t & 0x7f) + 1;
+        } else if (t & 0x40) {                    /* copy from an earlier entry */
+            u32 off, cnt;
+            if (i >= len)
+                return 0;
+            off = p[i++];
+            cnt = (u32)(t & 0x3f) + 1;
+            if (off + cnt > 0x100)
+                return 0;
+            while (cnt-- != 0 && sz < 256) {
+                m->pal[sz * 3 + 0] = old[off * 3 + 0];
+                m->pal[sz * 3 + 1] = old[off * 3 + 1];
+                m->pal[sz * 3 + 2] = old[off * 3 + 2];
+                sz++;
+                off++;
+            }
+        } else {                                  /* new 6-bit entry */
+            if (i + 2 > len)
+                return 0;
+            m->pal[sz * 3 + 0] = smk_pal[t & 0x3f];
+            m->pal[sz * 3 + 1] = smk_pal[p[i] & 0x3f]; i++;
+            m->pal[sz * 3 + 2] = smk_pal[p[i] & 0x3f]; i++;
+            sz++;
+        }
+    }
+    *chunk = len;
+    return 1;
+}
+
+/* Decode one code from a big tree. Node words are `0x80000000 | left_count`;
+ * the left child is `p + 1`, the right child `p + 1 + (word & 0x7FFFFFFF)`, a
+ * 0 bit descends left and a 1 bit right, and a word below 0x80000000 is a leaf
+ * value. The three `last` slots share storage with the tree's escape leaves:
+ * a decoded value that differs from the current MRU shifts the three slots. */
+static s32 smk_get_code(SmkBits *b, const s32 *tree, s32 *last[3])
+{
+    const s32 *p = tree;
+    s32 v;
+
+    while ((u32)*p & 0x80000000u) {
+        u32 node = (u32)*p;
+        if (smk_bit(b))
+            p += 1 + (s32)(node & 0x7fffffffu);
+        else
+            p += 1;
+    }
+    v = *p;
+    if (v != *last[0]) {
+        *last[2] = *last[1];
+        *last[1] = *last[0];
+        *last[0] = v;
+    }
+    return v;
+}
+
+/* Decode the video bitstream (`p`/`n` bytes, LSB-first) into `frame`, which
+ * already holds the previous frame. 4x4 blocks in raster order; every write is
+ * inside width*height and every read inside the bitstream. */
+static int smk_video(SmkMovie *m, u8 *frame, const u8 *p, u32 n)
+{
+    SmkBits b;
+    u32 bw = m->width >> 2, bh = m->height >> 2;
+    u32 blocks, blk = 0, k;
+
+    if (bw == 0 || bh == 0 || n > (0xFFFFFFFFu >> 3))
+        return 0;
+    blocks = bw * bh;
+
+    /* The escape/MRU slots are per frame: reset before decoding. */
+    for (k = 0; k < 4; k++) {
+        *m->last[k][0] = 0;
+        *m->last[k][1] = 0;
+        *m->last[k][2] = 0;
+    }
+    b.p = p;
+    b.nbits = n * 8u;
+    b.pos = 0;
+    b.err = 0;
+
+    while (blk < blocks) {
+        s32 type = smk_get_code(&b, m->tree[3], m->last[3]);
+        u32 run, mode;
+        if (b.err)
+            return 0;
+        run = smk_block_runs[((u32)type >> 2) & 0x3fu];
+        mode = (u32)type & 3u;
+
+        if (mode == 0) {                          /* MONO */
+            while (run-- != 0 && blk < blocks) {
+                s32 clr = smk_get_code(&b, m->tree[1], m->last[1]);
+                s32 map = smk_get_code(&b, m->tree[0], m->last[0]);
+                u32 hi = ((u32)clr >> 8) & 0xffu;
+                u32 lo = (u32)clr & 0xffu;
+                u8 *o = frame + (blk / bw) * 4u * m->width + (blk % bw) * 4u;
+                u32 row, col;
+                if (b.err)
+                    return 0;
+                for (row = 0; row < 4; row++) {
+                    for (col = 0; col < 4; col++)
+                        o[col] = ((((u32)map >> (4 * row + col)) & 1u) ? (u8)hi : (u8)lo);
+                    o += m->width;
+                }
+                blk++;
+            }
+        } else if (mode == 1) {                   /* FULL */
+            while (run-- != 0 && blk < blocks) {
+                u8 *o = frame + (blk / bw) * 4u * m->width + (blk % bw) * 4u;
+                u32 row;
+                for (row = 0; row < 4; row++) {
+                    s32 c1 = smk_get_code(&b, m->tree[2], m->last[2]);
+                    s32 c2 = smk_get_code(&b, m->tree[2], m->last[2]);
+                    if (b.err)
+                        return 0;
+                    /* First code paints pixels 3 and 4, second pixels 1 and 2. */
+                    o[2] = (u8)((u32)c1 & 0xffu);
+                    o[3] = (u8)(((u32)c1 >> 8) & 0xffu);
+                    o[0] = (u8)((u32)c2 & 0xffu);
+                    o[1] = (u8)(((u32)c2 >> 8) & 0xffu);
+                    o += m->width;
+                }
+                blk++;
+            }
+        } else if (mode == 2) {                   /* SKIP: keep the previous */
+            blk += run;
+            if (blk > blocks)
+                blk = blocks;
+        } else {                                  /* FILL */
+            u8 col = (u8)(((u32)type >> 8) & 0xffu);
+            while (run-- != 0 && blk < blocks) {
+                u8 *o = frame + (blk / bw) * 4u * m->width + (blk % bw) * 4u;
+                u32 row;
+                for (row = 0; row < 4; row++) {
+                    o[0] = o[1] = o[2] = o[3] = col;
+                    o += m->width;
+                }
+                blk++;
+            }
+        }
+    }
+    return 1;
+}
+
+int smk_decode_frame(SmkMovie *m, u8 *frame)
+{
+    const u8 *payload;
+    uint64_t off;
+    u32 idx, size, pal_len = 0;
+
+    if (m == NULL || frame == NULL || m->data == NULL)
+        return 0;
+    idx = m->next_frame;
+    if (idx >= m->frames)
+        return 0;                                 /* past the last frame */
+
+    size = rd32(m->data + m->table_off + 4u * idx) & ~3u;
+    off = m->data_off;
+    for (u32 i = 0; i < idx; i++)
+        off += rd32(m->data + m->table_off + 4u * i) & ~3u;
+    if (off + size > m->len)
+        return 0;
+    payload = m->data + off;
+
+    if ((m->data[m->flags_off + idx] & 1u) != 0) {
+        if (!smk_palette_update(m, payload, size, &pal_len))
+            return 0;
+    }
+    if (!smk_video(m, frame, payload + pal_len, size - pal_len))
+        return 0;
+
+    m->next_frame = idx + 1;
+    return 1;
+}
+
+void smk_palette_to(const SmkMovie *m, u8 dac[256][3])
+{
+    u32 c;
+    if (m == NULL || dac == NULL)
+        return;
+    for (c = 0; c < 256; c++) {
+        dac[c][0] = m->pal[c * 3 + 0];
+        dac[c][1] = m->pal[c * 3 + 1];
+        dac[c][2] = m->pal[c * 3 + 2];
+    }
 }
 
 u32 smk_width(const SmkMovie *m)
