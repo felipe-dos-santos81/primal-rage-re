@@ -34,5 +34,13 @@ int test_smacker(void)
     u8 save = data[0]; data[0] = 'X';
     CHECK_EQ_INT(smk_open(data, (u32)sz, &m), 0);
     data[0] = save;
+
+    /* A frame_size entry whose payload runs past the buffer is rejected: the
+     * table starts at 0x68, so corrupt frame 0 to an oversized value. */
+    u8 save_size[4];
+    for (int i = 0; i < 4; i++) { save_size[i] = data[0x68 + i]; data[0x68 + i] = 0; }
+    data[0x68] = 0xFF; data[0x69] = 0xFF; data[0x6A] = 0xFF; data[0x6B] = 0x7F;
+    CHECK_EQ_INT(smk_open(data, (u32)sz, &m), 0);
+    for (int i = 0; i < 4; i++) data[0x68 + i] = save_size[i];
     return g_failures - before;
 }
