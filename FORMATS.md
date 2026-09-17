@@ -174,7 +174,14 @@ for **27** of the 30 `.GRA` files that contain a type-5 chunk — e.g.
 
 * Which chunk-5 sub-palette (and which DAC base index) a given sprite uses —
   the per-record `count/colour` groups are read as one flat palette by
-  `gra_render.py`; the game likely selects a sub-palette per sprite.
+  `gra_render.py`; the game selects a sub-palette per sprite at runtime
+  (the compositor's bank offset). **Likely, from the bytes:** sprite indices
+  are **1-based into the record** — across 3,700 sampled sprites no opaque
+  pixel carries index 0 and the highest index equals the record size
+  (`S16FONTS` `1..7` vs a 7-colour record, `S16TRB` `1..9` vs 9, `S16CONTI`
+  `1..24` vs 24, `S16KON` `1..31` vs its 31-colour records), so
+  `colour = record[index - 1]`. `tools/gra_extract.py` renders with that rule
+  and picks the first record that fits; not read from the decompilation.
 * The type-6 `x`/`y` fields as sprite origin vs. bounding-box corner is
   **likely** (evidence: signed small values, both signs present).
 * 10 descriptors carry "negative" dimensions: 2 are `(-320, -200)` (the
