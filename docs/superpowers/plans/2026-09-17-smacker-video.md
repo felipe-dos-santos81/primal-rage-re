@@ -52,7 +52,7 @@ Both movies are `SMK2`, 320×200, no audio. The container layout below reconcile
 
 `frame_size[i] & ~3` bytes. If `frame_flags[i] & 1`, a variable-length **palette update** comes first and the remainder is the video bitstream; otherwise the video bitstream is the whole payload and the palette is unchanged.
 
-**Palette state** is 256 entries × 3 bytes of already-expanded guns. A palette update is a run-length stream: read a control byte `t`:
+**Palette state** is 256 entries × 3 bytes of already-expanded guns. When present, a palette update's **first byte is the chunk length in 4-byte units, including that length byte**; the update must stay inside that chunk (a shorter declared chunk is a reject). The chunk body is a run-length stream: read a control byte `t`:
 - `t & 0x80` → skip `(t & 0x7f) + 1` entries (leave them unchanged);
 - else `t & 0x40` → copy `(t & 0x3f) + 1` entries from `old[off]` (next byte = `off`, entries, not bytes); reject if `off + j > 0x100`;
 - else → new entry: R = `smk_pal[t & 0x3f]`, G = `smk_pal[next & 0x3f]`, B = `smk_pal[next2 & 0x3f]`.
@@ -71,8 +71,8 @@ Bit order is **LSB-first** within each byte (read bit 0 of the byte first). The 
 
 - `run = block_runs[(type >> 2) & 0x3f]` (table below) — applies to `run` consecutive blocks;
 - `type & 3`:
-  - `0 MONO` — decode `clr` (mclr tree) and `map` (mmap tree); `hi = clr >> 8`, `lo = clr & 0xff`; for each of the 4 rows: for columns 0..3 pick `hi` if the corresponding `map` bit (bit `4*row+col`) is set else `lo`; `map` is 8 bits (rows 2–3 use 0 ⇒ `lo`).
-  - `1 FULL` — for each of the 4 rows, decode two **full-tree** codes: row bytes `[2k] = code & 0xff`, `[2k+1] = code >> 8`.
+  - `0 MONO` — decode `clr` (mclr tree) and `map` (mmap tree); `hi = clr >> 8`, `lo = clr & 0xff`; for each of the 4 rows and each of columns 0..3, pick `hi` if bit `4*row+col` of `map` is set, else `lo`. All 16 pixels use bits 0..15 of `map` — there is no 8-bit truncation.
+  - `1 FULL` — for each of the 4 rows, decode two **full-tree** codes: the first paints columns 2-3 (`out[2] = code & 0xff`, `out[3] = code >> 8`) and the second paints columns 0-1 (`out[0] = code & 0xff`, `out[1] = code >> 8`).
   - `2 SKIP` — advance `run` blocks, leaving the previous frame's content.
   - `3 FILL` — fill 4×4 with index `(type >> 8) & 0xff`.
 
