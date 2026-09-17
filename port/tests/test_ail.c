@@ -81,7 +81,7 @@ int test_ail(void)
     CHECK(seq != NULL, "allocate_sequence_handle returns the sequence");
     CHECK(AIL_allocate_sequence_handle(mdi) == NULL,
           "the single sequence handle is exhausted on a second allocate");
-    CHECK_EQ_INT(AIL_init_sequence(seq, k_bank, (u32)sizeof k_bank), 1);
+    CHECK_EQ_INT(AIL_init_sequence(seq, k_bank, 0), 1);
     opl_reset();
     AIL_start_sequence(seq);
     u32 w0 = opl_write_count();
@@ -100,6 +100,14 @@ int test_ail(void)
             seq_tick();
         CHECK_EQ_INT((int)opl_write_count(), (int)w1);
     }
+
+    /* 4b. Natural end (spec row 31): the bank's FF 2F end meta halts playback,
+     *     so AIL_sequence_status reports 2 with no AIL_stop_sequence call. */
+    AIL_start_sequence(seq);
+    CHECK_EQ_INT(AIL_sequence_status(seq), 4);
+    for (int i = 0; i < 40; i++)
+        seq_tick();
+    CHECK_EQ_INT(AIL_sequence_status(seq), 2);
 
     /* 5. The 8-bit -> s16 conversion is exact and lives once, in samples.c. */
     {
@@ -134,16 +142,52 @@ int test_ail(void)
         AIL_set_sample_volume(hs[0], 0x7f);
         AIL_set_sample_loop_count(hs[0], 0);
 
-        mixer_reset();                 /* silence OPL so only the voice is heard */
+        /* hs[1] plays a tone so that stopping hs[0] can be shown not to stop it
+         * (the original stops one handle, not every sample voice). */
+        static const u8 tone8[4] = { 200, 56, 200, 56 };
+        AIL_init_sample(hs[1]);
+        AIL_set_sample_address(hs[1], tone8, 4);
+        AIL_set_sample_rate(hs[1], 11025);
+        AIL_set_sample_volume(hs[1], 0x7f);
+        AIL_set_sample_loop_count(hs[1], 1);
+
+        mixer_reset();                 /* silence OPL so only the voices are heard */
         AIL_start_sample(hs[0]);
         CHECK_EQ_INT(AIL_sample_status(hs[0]), 4);
+        AIL_start_sample(hs[1]);
+        CHECK_EQ_INT(AIL_sample_status(hs[1]), 4);
         mixer_render(out, 64, 44100);
         CHECK(!all_zero(out, 2 * 64),
               "start_sample adds a mixer voice of the converted sample");
 
         AIL_stop_sample(hs[0]);
         CHECK_EQ_INT(AIL_sample_status(hs[0]), 2);
+        CHECK_EQ_INT(AIL_sample_status(hs[1]), 4);
+        mixer_render(out, 64, 44100);
+        CHECK(!all_zero(out, 2 * 64),
+              "stop_sample stops one handle's voice, not every sample voice");
+
+        AIL_stop_sample(hs[1]);
+        CHECK_EQ_INT(AIL_sample_status(hs[1]), 2);
+        mixer_render(out, 64, 44100);
+        CHECK(all_zero(out, 2 * 64), "stopping the last sample voice is silence");
+
+        /* Volume 0x7f maps to the mixer's unity (256), not 254, so the
+         * converted byte passes through unchanged: 200 -> (200-128)<<8. */
+        static const u8 one8[1] = { 200 };
+        mixer_reset();
+        AIL_init_sample(hs[0]);
+        AIL_set_sample_address(hs[0], one8, 1);
+        AIL_set_sample_rate(hs[0], 44100);   /* == out_rate: no resampling */
+        AIL_set_sample_volume(hs[0], 0x7f);
+        AIL_set_sample_loop_count(hs[0], 0);
+        AIL_start_sample(hs[0]);
+        mixer_render(out, 1, 44100);
+        CHECK_EQ_INT(out[0], 18432);
+        CHECK_EQ_INT(out[1], 18432);
+        AIL_stop_sample(hs[0]);
         AIL_release_sample_handle(hs[0]);
+        AIL_release_sample_handle(hs[1]);
 
         /* An uninitialised handle reports 0, not a stale status. */
         CHECK_EQ_INT(AIL_sample_status(NULL), 0);

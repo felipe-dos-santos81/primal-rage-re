@@ -126,8 +126,8 @@ void AIL_set_sample_type(HSAMPLE sample, s32 format, u32 flag);
 void AIL_start_sample(HSAMPLE sample);
 
 /* 0x5dc8b — spec audio.md "AIL surface" (row 16). Marks the sample stopped
- * (state 2). PORT: the port mixer has no per-voice stop, so this stops the
- * sample voices as a group. */
+ * (state 2) and stops this handle's voice only, matching the original's
+ * per-handle stop (the port mixer's voice carries the handle as its owner). */
 void AIL_stop_sample(HSAMPLE sample);
 
 /* 0x5dca6 — spec audio.md "AIL surface" (row 17). Sets the sample rate. */
@@ -171,11 +171,12 @@ void AIL_register_sample_callback(HSAMPLE sample, u32 which, void (*cb)(HSAMPLE)
 HSEQUENCE AIL_allocate_sequence_handle(HMDIDRIVER driver);
 
 /* 0x5de48 — spec audio.md "AIL surface" (row 27). Parses the FORM/CAT/XMID
- * bank at `data` (length `len`) and sets it up. Returns 1 on a usable bank, 0 on
- * bad data ("Invalid XMIDI sequence"). PORT: the original's third argument is a
- * sequence number (the game passes 0); the port's seq_load is length-bounded,
- * so the third argument is the bank's byte length instead. */
-s32 AIL_init_sequence(HSEQUENCE sequence, const void *data, u32 len);
+ * bank at `data` and sets it up. Returns 1 on a usable bank, 0 on bad data
+ * ("Invalid XMIDI sequence").
+ * PORT: `sequence_num` keeps the original's meaning (the game passes 0); the
+ * port ignores it and derives the bank length from the container
+ * (seq_bank_size). No length argument is added. */
+s32 AIL_init_sequence(HSEQUENCE sequence, const void *data, u32 sequence_num);
 
 /* 0x5de79 — spec audio.md "AIL surface" (row 28). Silences and restarts the
  * sequence, marking it playing (state 4). */

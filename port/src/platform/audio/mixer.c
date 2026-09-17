@@ -27,6 +27,7 @@
 
 typedef struct {
     const s16 *pcm;
+    const void *owner;   /* AIL sample handle; see mixer_stop_sample */
     u32 frames;
     int rate;
     int volume;
@@ -73,7 +74,8 @@ void mixer_reset(void)
     opl_reset();
 }
 
-void mixer_add_sample(const s16 *pcm, u32 frames, int rate, int volume, int loop)
+void mixer_add_sample(const s16 *pcm, u32 frames, int rate, int volume, int loop,
+                      const void *owner)
 {
     if (pcm == NULL || frames == 0 || rate <= 0)
         return;
@@ -83,6 +85,7 @@ void mixer_add_sample(const s16 *pcm, u32 frames, int rate, int volume, int loop
         if (g_voices[i].active) continue;
         mixer_voice *v = &g_voices[i];
         v->pcm = pcm;
+        v->owner = owner;
         v->frames = frames;
         v->rate = rate;
         v->volume = volume;
@@ -93,6 +96,13 @@ void mixer_add_sample(const s16 *pcm, u32 frames, int rate, int volume, int loop
         v->step = 0;
         return;
     }
+}
+
+void mixer_stop_sample(const void *owner)
+{
+    for (int i = 0; i < MIXER_VOICES; i++)
+        if (g_voices[i].active && g_voices[i].owner == owner)
+            g_voices[i].active = 0;
 }
 
 void mixer_stop_samples(void)

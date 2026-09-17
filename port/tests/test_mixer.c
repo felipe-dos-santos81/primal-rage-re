@@ -5,6 +5,9 @@
 
 static s16 out[2 * FRAMES];
 
+/* Voice owners for the per-voice stop test; any distinct addresses work. */
+static int owner_a, owner_b;
+
 static int all_zero(const s16 *b, int n)
 {
     for (int i = 0; i < n; i++)
@@ -35,7 +38,7 @@ int test_mixer(void)
      * rate == out_rate so no resampling is involved. */
     static s16 tone[8] = { 1000, -1000, 1000, -1000, 1000, -1000, 1000, -1000 };
     mixer_reset();
-    mixer_add_sample(tone, 8, 44100, 128, 1);
+    mixer_add_sample(tone, 8, 44100, 128, 1, &owner_a);
     mixer_render(out, FRAMES, 44100);
     CHECK(!all_zero(out, 2 * FRAMES), "one voice produces non-silence");
 
@@ -44,15 +47,15 @@ int test_mixer(void)
      * cannot be explained by clipping. */
     long one = sum_abs(out, 2 * FRAMES);
     mixer_reset();
-    mixer_add_sample(tone, 8, 44100, 128, 1);
-    mixer_add_sample(tone, 8, 44100, 128, 1);
+    mixer_add_sample(tone, 8, 44100, 128, 1, &owner_a);
+    mixer_add_sample(tone, 8, 44100, 128, 1, &owner_a);
     mixer_render(out, FRAMES, 44100);
     long two = sum_abs(out, 2 * FRAMES);
     CHECK(two > one, "two voices together are louder than one");
 
     /* Stopped voices contribute nothing. */
     mixer_reset();
-    mixer_add_sample(tone, 8, 44100, 256, 1);
+    mixer_add_sample(tone, 8, 44100, 256, 1, &owner_a);
     mixer_stop_samples();
     mixer_render(out, FRAMES, 44100);
     CHECK(all_zero(out, 2 * FRAMES), "stop_samples returns output to silence");
@@ -63,7 +66,7 @@ int test_mixer(void)
     static s16 loud[2] = { 30000, -30000 };
     mixer_reset();
     for (int i = 0; i < 4; i++)
-        mixer_add_sample(loud, 2, 44100, 256, 1);
+        mixer_add_sample(loud, 2, 44100, 256, 1, &owner_a);
     mixer_render(out, FRAMES, 44100);
     int saw_pos = 0, saw_neg = 0, outside = 0;
     for (int i = 0; i < 2 * FRAMES; i++) {
@@ -85,7 +88,7 @@ int test_mixer(void)
      * what confirms this test can fail.) */
     static s16 ramp[6] = { 100, 200, 300, 400, 500, 600 };
     mixer_reset();
-    mixer_add_sample(ramp, 6, 44100 * 2, 256, 0);
+    mixer_add_sample(ramp, 6, 44100 * 2, 256, 0, &owner_a);
     mixer_render(out, 6, 44100);
     CHECK_EQ_INT(out[0], 100);
     CHECK_EQ_INT(out[1], 100);
@@ -99,6 +102,31 @@ int test_mixer(void)
     CHECK_EQ_INT(out[9], 0);
     CHECK_EQ_INT(out[10], 0);
     CHECK_EQ_INT(out[11], 0);
+
+    /* Per-voice stop: stopping one owner leaves the other sounding; a stop for
+     * an owner with no active voice changes nothing; stopping the last returns
+     * to exact silence (OPL was reset and never written in this block). */
+    {
+        static s16 a[2] = { 1000, -1000 };
+        static s16 b[2] = { 2000, -2000 };
+        mixer_reset();
+        mixer_add_sample(a, 2, 44100, 256, 1, &owner_a);
+        mixer_add_sample(b, 2, 44100, 256, 1, &owner_b);
+        mixer_stop_sample(&owner_a);
+        mixer_render(out, FRAMES, 44100);
+        CHECK(!all_zero(out, 2 * FRAMES),
+              "stopping one owner leaves the other voice sounding");
+
+        mixer_stop_sample(&owner_a);   /* already stopped: stale-safe */
+        mixer_render(out, FRAMES, 44100);
+        CHECK(!all_zero(out, 2 * FRAMES),
+              "a stop for an inactive owner leaves the live voice alone");
+
+        mixer_stop_sample(&owner_b);
+        mixer_render(out, FRAMES, 44100);
+        CHECK(all_zero(out, 2 * FRAMES),
+              "stopping the last sample voice is exact silence");
+    }
 
     return g_failures - before;
 }

@@ -30,6 +30,13 @@
 
 #define SEQ_TICK_MS (1000.0 / 120.0)
 
+/* Byte length of the RIFF container at `data`, read from its own size field
+ * (FORM or CAT, any type). The caller of AIL_init_sequence has no length to
+ * pass — the original's third argument is a sequence number — and the XMIDI
+ * bank is self-describing, so the length is derived here instead. Returns 0
+ * when `data` is NULL or does not start with FORM/CAT. */
+u32 seq_bank_size(const u8 *data);
+
 /* Parses the XMIDI bank at `data` (length `len`) into playable state. Returns 1
  * on a bank with a usable EVNT chunk, 0 on anything else (NULL, empty, a
  * truncated FORM/CAT/XMID/EVNT). On 0 the previously loaded bank is left

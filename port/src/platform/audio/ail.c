@@ -21,8 +21,11 @@
 #include "sequencer.h"
 
 /* The 18 default preferences AIL_startup installs, prefs 0..0x11 (spec audio.md
- * "AIL surface" row 1). Pref 1 = 11025 Hz, pref 0xb = 1, pref 0x78 = 120 are the
- * ones the game's later calls rely on. */
+ * "AIL surface" row 1). Shipped defaults the game relies on: pref 1 = 1,
+ * pref 10 (0xa) = 0x78 = 120, pref 11 (0xb) = 8. These are only the defaults;
+ * FUN_0001cf40 later overrides some through AIL_set_preference — pref 1 =
+ * 0x2b11 (11025 Hz), pref 3 = 0x14, pref 4 = 4, pref 0xb = 1, pref 7 = 1
+ * (spec row 3). */
 #define AIL_PREF_COUNT 0x12
 #define AIL_MAX_TIMERS 16
 #define AIL_MAX_SAMPLES 4      /* spec row 10: FUN_0001cf40 allocates 0x60/0x18 */
@@ -186,9 +189,9 @@ HMDIDRIVER AIL_install_MDI_INI(void)
 /* ---- sample handles ---------------------------------------------------- */
 
 /* Grows (never shrinks) the handle's conversion buffer to hold its current
- * sample. A voice may still reference the old buffer and the mixer has no
- * per-voice stop, so the sample voices are stopped before the old buffer is
- * freed. Returns NULL when there is no sample or the allocation fails. */
+ * sample. A voice may still reference the old buffer, so this handle's voices
+ * are stopped before the old buffer is freed. Returns NULL when there is no
+ * sample or the allocation fails. */
 static s16 *sample_buffer(HSAMPLE s)
 {
     if (s->len == 0)
@@ -196,7 +199,7 @@ static s16 *sample_buffer(HSAMPLE s)
     if (s->conv != NULL && s->conv_cap >= s->len)
         return s->conv;
     if (s->conv != NULL)
-        mixer_stop_samples();
+        mixer_stop_sample(s);
     s16 *grown = (s16 *)malloc((size_t)s->len * sizeof(s16));
     if (grown == NULL)
         return NULL;
@@ -214,7 +217,7 @@ HSAMPLE AIL_allocate_sample_handle(HDIGDRIVER driver)
         if (g_samples[i].used)
             continue;
         g_samples[i].used = 1;
-        g_samples[i].state = 0;
+        g_samples[i].state = 2;   /* spec row 10: allocate inits the sample */
         g_samples[i].addr = NULL;
         g_samples[i].len = 0;
         g_samples[i].format = 0;
@@ -234,7 +237,7 @@ void AIL_release_sample_handle(HSAMPLE sample)
 {
     if (sample == NULL || !sample->used)
         return;
-    mixer_stop_samples();
+    mixer_stop_sample(sample);
     free(sample->conv);
     sample->conv = NULL;
     sample->conv_cap = 0;
@@ -282,24 +285,25 @@ void AIL_start_sample(HSAMPLE sample)
     if (sample == NULL || !sample->used)
         return;
     s16 *buf = sample_buffer(sample);
+    mixer_stop_sample(sample);   /* a restart must not stack a second voice */
     if (buf != NULL && sample->addr != NULL) {
         u32 frames = samples_to_s16(sample->addr, sample->len, buf);
         int rate = sample->rate != 0 ? (int)sample->rate : 11025;
-        int volume = (int)(sample->volume * 2);   /* 0..0x7f -> Q8 0..254 */
-        mixer_add_sample(buf, frames, rate, volume, sample->loop != 0);
+        /* 0..0x7f -> Q8 with 0x7f (the game's full volume) at unity 256, not
+         * 254: the mixer's unity is 256 (mixer.h). */
+        int volume = (int)sample->volume * 256 / 0x7f;
+        mixer_add_sample(buf, frames, rate, volume, sample->loop != 0, sample);
     }
     sample->state = 4;
 }
 
-/* 0x5dc8b — spec audio.md "AIL surface" (row 16).
- * PORT: the mixer has no per-voice stop, so this stops the sample voices as a
- * group. */
+/* 0x5dc8b — spec audio.md "AIL surface" (row 16). */
 void AIL_stop_sample(HSAMPLE sample)
 {
     if (sample == NULL || !sample->used)
         return;
     sample->state = 2;
-    mixer_stop_samples();
+    mixer_stop_sample(sample);   /* this handle's voice only (row 16) */
 }
 
 /* 0x5dca6 — spec audio.md "AIL surface" (row 17). */
@@ -394,12 +398,15 @@ HSEQUENCE AIL_allocate_sequence_handle(HMDIDRIVER driver)
 }
 
 /* 0x5de48 — spec audio.md "AIL surface" (row 27).
- * PORT: the third argument is the bank byte length (see ail.h). */
-s32 AIL_init_sequence(HSEQUENCE sequence, const void *data, u32 len)
+ * PORT: the third argument keeps the original's meaning (the sequence number,
+ * which the game passes as 0); the bank length seq_load needs is derived from
+ * the XMIDI container itself (seq_bank_size), not passed in. */
+s32 AIL_init_sequence(HSEQUENCE sequence, const void *data, u32 sequence_num)
 {
+    (void)sequence_num;
     if (sequence == NULL || !sequence->used)
         return 0;
-    if (!seq_load((const u8 *)data, len))
+    if (!seq_load((const u8 *)data, seq_bank_size((const u8 *)data)))
         return 0;
     sequence->loaded = 1;
     sequence->state = 2;

@@ -291,6 +291,18 @@ static void process(void)
     halt();
 }
 
+u32 seq_bank_size(const u8 *data)
+{
+    if (data == NULL)
+        return 0;
+    /* RIFF chunk size counts the bytes after the size field, so the container
+     * is 8 + size bytes. Type-agnostic (FORM or CAT) so an outer XDIR container
+     * can be sized too; seq_load is what insists on XMID. */
+    if (id4(data, 'F', 'O', 'R', 'M') || id4(data, 'C', 'A', 'T', ' '))
+        return 8u + rd_be32(data + 4);
+    return 0;
+}
+
 int seq_load(const u8 *data, u32 len)
 {
     const u8 *evnt = NULL;
