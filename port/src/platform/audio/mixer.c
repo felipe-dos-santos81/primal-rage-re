@@ -3,7 +3,7 @@
  *
  * Arithmetic: each output frame starts from the OPL core's stereo sample and
  * adds every active voice's sample scaled by its Q8 volume. The accumulator is
- * s32 so four full-scale voices plus OPL (up to ~5x full scale) cannot overflow
+ * s32 so four full-scale voices plus OPL (up to ~17x full scale) cannot overflow
  * before saturation; the result is then saturated to the s16 limits. A wrap here
  * would be audible garbage, so saturation is explicit, never a cast.
  */

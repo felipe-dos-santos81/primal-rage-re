@@ -25,7 +25,10 @@
  * negative values clamp to 0; above 256 amplifies and may saturate.
  *
  * pcm: mono s16, `frames` samples. A stereo render duplicates it to both
- * channels. `loop` nonzero loops at the end; zero stops the voice there.
+ * channels. `loop` nonzero loops at the end; zero stops the voice there. The
+ * mixer references this buffer, never copies it, so the caller must keep `pcm`
+ * valid and unchanged for as long as the voice is active — until it stops on
+ * its own, is stopped, or its pool slot is reused.
  *
  * Resampling: one policy for every source, the OPL core included — nearest
  * neighbour off a 16.16 phase accumulator. A voice whose rate differs from
