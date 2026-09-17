@@ -108,6 +108,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, symbols.h i
 	@echo "== tests (oracles required; consume the captured frames) =="
 	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory smk-oracle
+	@echo "== gra_extract oracle tests (real assets required) =="
+	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory re-extract-test
 	@echo "== symbols.h must regenerate byte-identically =="
 	$(PYTHON) tools/gen_symbols.py $(DECOMP_DIR) $(PORT_DIR)/src/symbols.h
 	@git diff --quiet -- $(PORT_DIR)/src/symbols.h || { \

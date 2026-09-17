@@ -187,10 +187,14 @@ for **27** of the 30 `.GRA` files that contain a type-5 chunk — e.g.
 * 10 descriptors carry "negative" dimensions: 2 are `(-320, -200)` (the
   320×200 screen, in `s16title` and `s16slabs`) and 8 are `(-975, h)` with
   `h ∈ {-53, -62, -64, -79}` (in `s16beach`, `s16caves`, `s16citys`,
-  `s16grave`, `s16himal`, `s16jungl`, `s16stone`, `s16volcn`). These read as
-  full-screen blit / clear sentinels. A further 17 records have `width == 0`
-  (5 of them in `s16fonts`). Both families are excluded from the
-  exact-consumption count above and are not decoded here.
+  `s16grave`, `s16himal`, `s16jungl`, `s16stone`, `s16volcn`). **Verified:**
+  for every one of the 10, `|w| * |h|` equals the distance to the next pixel
+  blob exactly, so these are raw, uncompressed `|w| x |h|` 8-bit bitmaps, not
+  RLE — full-screen backdrops and title/ending screens. `tools/gra_extract.py`
+  decodes and extracts all 10 (`OracleTests.test_all_ten_raw_sentinels_decode`
+  cross-checks this on the shipped assets). A further 17 records have
+  `width == 0` (5 of them in `s16fonts`) and address nothing. Both families
+  are excluded from the exact-consumption count above.
 * The exact `x`/`y` semantics are characterised above, not proven (see the
   Type 6 note).
 

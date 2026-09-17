@@ -100,6 +100,9 @@ def choose_record(records, max_index, force=None):
     if records is None:
         return None, GREY
     if force is not None:
+        if force < 0 or force >= len(records):
+            raise IndexError("forced record %d out of range (bank has %d records)"
+                             % (force, len(records)))
         return force, records[force]
     for i, rec in enumerate(records):
         if max_index <= len(rec):
@@ -199,14 +202,14 @@ def extract_file(path, out_dir, banks, index_map, args):
                     raise ValueError("pixel offset %#x out of range" % desc.offset)
                 rows, used = decode_sprite(d, desc.width, desc.height, desc.offset)
                 s['rle_bytes'] = used - desc.offset
+            max_index = max((v for row in rows for v, o in row if o), default=0)
+            rid, colours = choose_record(records, max_index, args.palette_record)
+            data, bad = to_rgba(rows, colours)
+            png = '%s/%04d.png' % (stem, desc.index)
+            Image.frombytes('RGBA', (desc.width, desc.height), data).save(os.path.join(out_dir, png))
         except (ValueError, IndexError) as e:
             s['error'] = str(e)
             continue
-        max_index = max((v for row in rows for v, o in row if o), default=0)
-        rid, colours = choose_record(records, max_index, args.palette_record)
-        data, bad = to_rgba(rows, colours)
-        png = '%s/%04d.png' % (stem, desc.index)
-        Image.frombytes('RGBA', (desc.width, desc.height), data).save(os.path.join(out_dir, png))
         s.update(png=png, palette_record=rid, max_index=max_index)
         if bad:
             s['out_of_palette'] = bad
