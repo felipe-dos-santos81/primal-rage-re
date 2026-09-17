@@ -9,6 +9,8 @@ PORT_DIR = port
 BUILD_DIR = build
 GAME_DIR = data/game/C
 RUNNER = data/game/run-window.sh
+SMK_CAPTURES = data/smk-captures
+SMK_DUMP = /tmp/pr_smk_dump
 DECOMP_DIR = port/decomp
 SCRIPTS_DIR = _tools/ghidra_scripts
 PROJ_DIR = _tools/ghidra_proj
@@ -26,7 +28,7 @@ frames ?= 60
 gra ?= S16TITLE.GRA
 chunk ?= 0
 
-.PHONY: help deps build test verify check run clean \
+.PHONY: help deps build test verify check smk-oracle run clean \
         re-info re-gra re-render re-symbols re-cluster \
         re-decompile re-analyze re-oracle re-original
 
@@ -82,6 +84,21 @@ check: build ## Run N frames headless, writing frame_*.ppm/.pal/.idx (frames=60)
 	@echo "  python3 tools/gra_render.py data/game/C/S16TITLE.GRA 2 out.ppm --frame N --indices out.idx"
 	@echo "An emulator cannot drive the port's chosen full-screen title frames (Task 15 report)."
 
+# Smacker frame oracle: the test dumps every decoded frame as 320x200 RGB24
+# (PR_SMK_DUMP), then smk_compare.py checks them pixel-exact against the capture.
+# Captures are git-ignored; absent capture skips (or fails under
+# PR_ORACLE_REQUIRED=1, which smk_compare.py enforces itself).
+smk-oracle: build ## Pixel-exact Smacker frame oracle (skips without data/smk-captures)
+	@echo "== smacker frame oracle (pixel-exact) =="
+	@if [ -d $(SMK_CAPTURES)/twi5 ] || [ -d $(SMK_CAPTURES)/twg ]; then \
+		rm -rf $(SMK_DUMP); \
+		PR_SMK_DUMP=$(SMK_DUMP) PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
+	else \
+		echo "smk-oracle: no capture at $(SMK_CAPTURES)/, frames not compared"; \
+	fi
+	@$(PYTHON) tools/smk_compare.py --capture $(SMK_CAPTURES)/twi5 --port $(SMK_DUMP)/twi5 --frames 120
+	@$(PYTHON) tools/smk_compare.py --capture $(SMK_CAPTURES)/twg --port $(SMK_DUMP)/twg --frames 41
+
 # The --check run must come first: test_gfx.c reads frame_0001/0009/0017/0025.idx
 # from the CWD, so the ladder has to produce them (frames >= 25) before the suite
 # consumes them — otherwise that four-frame comparison never runs.
@@ -90,6 +107,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, symbols.h i
 	./$(BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(frames)
 	@echo "== tests (oracles required; consume the captured frames) =="
 	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests
+	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory smk-oracle
 	@echo "== symbols.h must regenerate byte-identically =="
 	$(PYTHON) tools/gen_symbols.py $(DECOMP_DIR) $(PORT_DIR)/src/symbols.h
 	@git diff --quiet -- $(PORT_DIR)/src/symbols.h || { \
