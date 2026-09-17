@@ -19,11 +19,9 @@
 #define MIXER_UNITY_VOLUME 256
 #define MIXER_MAX_VOLUME 1024
 
-/* PORT: mirrored from OPAL_OPL3_SAMPLE_RATE (49716) in opl/opal/opal.h. That
- * header stays private to opl.c, so the core's rate is copied here rather than
- * exported through opl.h. TODO(verify): if the vendored core rate ever changes,
- * this constant must change with it. */
-#define MIXER_OPL_RATE 49716
+/* MIXER_OPL_RATE (the OPL core's native rate) is exported by mixer.h so the
+ * frame loop opens the device at exactly the rate this module renders; see that
+ * comment. */
 
 typedef struct {
     const s16 *pcm;

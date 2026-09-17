@@ -6,6 +6,7 @@
 #include "mem.h"
 #include "symbols.h"
 #include "platform/gfx.h"
+#include "platform/audio/mixer.h"
 #include "game/flow.h"
 
 static void usage(const char *argv0)
@@ -14,13 +15,20 @@ static void usage(const char *argv0)
 }
 
 /* Task 14: open the SDL host, then hand control to the ported game flow
- * (init chain -> frame loop -> title state), which runs until ESC. */
+ * (init chain -> frame loop -> title state), which runs until ESC. The audio
+ * device is opened here, with the window, so --check stays genuinely headless
+ * (it never reaches run_windowed). A failed open leaves host_audio_rate() 0 and
+ * the flow tick-runs the sequencer without rendering. */
 static int run_windowed(const char *game_dir)
 {
     if (!host_init("Primal Rage", 320, 200)) {
         fprintf(stderr, "prageport: no window/display available\n");
         return 1;
     }
+    if (host_audio_open(MIXER_OPL_RATE, 2))
+        printf("prageport: audio device open at %u Hz\n", host_audio_rate());
+    else
+        printf("prageport: no audio device; running silent\n");
     printf("prageport 0.0.1 game-dir=%s\n", game_dir);
     game_set_game_dir(game_dir);
     int rc = game_main();
@@ -98,13 +106,14 @@ static u32 buf_hash(const u8 *p)
 }
 
 /* PORT: the original has no headless mode. The port runs the real master loop
- * one frame at a time without opening a window: game_main() runs the init chain
- * then the loop, and the loop stops as soon as the quit flag DS_000A81A8 is set,
- * so presetting it makes each call advance exactly one frame. host_init() is
- * never called, so SDL opens no window and needs no display, and the captured
- * content is driven by the loop's own frame counter, not by wall time. The
- * presented buffer after the call is at DS_000E87A0 (the loop presents
- * DS_000E87A4, then 0x50188 swaps).
+ * one frame at a time without opening a window: game_init() runs the init chain
+ * once, then each game_loop() call advances exactly one frame because the loop
+ * stops as soon as the quit flag DS_000A81A8 is set (preset here). The init is
+ * split from game_main() so its teardown cannot stop the music between frames,
+ * and no device is opened. host_init() is never called, so SDL opens no window
+ * and needs no display, and the captured content is driven by the loop's own
+ * frame counter, not by wall time. The presented buffer after the call is at
+ * DS_000E87A0 (the loop presents DS_000E87A4, then 0x50188 swaps).
  * Runs exactly `frames` iterations and returns the accumulated
  * failed-assertion count. */
 static int run_check(const char *game_dir, int frames)
@@ -112,10 +121,11 @@ static int run_check(const char *game_dir, int frames)
     game_set_game_dir(game_dir);
     int fail = 0, distinct = 0;
     u32 last_hash = 0;
+    u32 audio0 = game_audio_ticks();
+    game_init();                       /* init chain once; runs the audio init */
     for (int i = 1; i <= frames; i++) {
         DSB(DS_000A81A8) = 1;            /* one loop iteration per call */
-        if (i == 1) game_main();         /* init chain + frame 1 */
-        else        game_loop();         /* frame i */
+        game_loop();                     /* frame i */
         const u8 *presented = mem + DSD(DS_000E87A0);
         fail += capture_frame(i, presented);
         u32 h = buf_hash(presented);
@@ -136,6 +146,24 @@ static int run_check(const char *game_dir, int frames)
         fprintf(stderr, "prageport: --check title palette never reached gfx_dac\n");
         fail++;
     }
+
+    /* Task 11: the frame loop must drive the sequencer every frame with no
+     * device. game_audio_ticks() counts seq_tick() calls, and the fixed profile
+     * is two per frame (120 Hz music over the 60 Hz loop), so a run of `frames`
+     * master-loop iterations must show 2*frames of them. */
+    if (game_audio_ticks() - audio0 < (u32)frames * 2u) {
+        fprintf(stderr, "prageport: --check sequencer did not advance (%u < %d)\n",
+                (unsigned)(game_audio_ticks() - audio0), frames * 2);
+        fail++;
+    }
+    /* The title bank's first note is at XMIDI tick 59 (Task 8) = frame 30 at two
+     * ticks/frame; a run past that must have keyed a note, proving the music
+     * bank loaded and sounded, not merely that the service ticked. */
+    if (frames >= 60 && !game_music_notes_seen()) {
+        fprintf(stderr, "prageport: --check title music keyed no notes\n");
+        fail++;
+    }
+    game_shutdown();                   /* 0x1BE30 teardown */
     return fail > 255 ? 255 : fail;
 }
 

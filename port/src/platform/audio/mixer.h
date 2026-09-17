@@ -39,6 +39,14 @@
 
 #include "types.h"
 
+/* The rate the mixer renders at, and therefore the rate the frame loop opens the
+ * audio device with: the OPL core's native sample rate. PORT: mirrored from
+ * OPAL_OPL3_SAMPLE_RATE (49716) in opl/opal/opal.h. That header stays private to
+ * opl.c, so the core's rate is exported here rather than through opl.h; the
+ * frame loop must not duplicate it. TODO(verify): if the vendored core rate ever
+ * changes, this constant must change with it. */
+#define MIXER_OPL_RATE 49716
+
 /* Clears every voice and resets the OPL core, so "nothing playing" is exact
  * silence even with no register writes. */
 void mixer_reset(void);

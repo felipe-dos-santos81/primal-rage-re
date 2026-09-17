@@ -11,6 +11,9 @@
 #include "platform/gra.h"
 #include "platform/gfx.h"
 #include "platform/input.h"
+#include "platform/audio/ail.h"
+#include "platform/audio/mixer.h"
+#include "platform/audio/sequencer.h"
 #include "host.h"
 
 #include <stdio.h>
@@ -52,6 +55,20 @@ static int s_title_chunk_n;
 static int s_title_ready;
 static int s_title_idx;
 static int s_title_hold;
+
+/* One frame of mixed stereo audio at the mixer's rate: 49716/60 = 828.6 frames,
+ * so a frame is 828 or 829 (game_audio_service's accumulator picks). */
+#define AUDIO_FRAMES_MAX ((MIXER_OPL_RATE + 59) / 60)
+
+/* Audio state (see the audio section below). PORT: port-only bookkeeping — the
+ * original keeps the sequence handle in DAT_001028c0 and the pending-song
+ * handle in DAT_001028cc, both in mem[]; none of this is a mem[] offset. */
+static HSEQUENCE s_sequence;
+static int s_music_request;      /* a state asked for music; 0x1CF20 starts it */
+static u32 s_audio_ticks;        /* seq_tick() calls driven since start */
+static u32 s_audio_frac;         /* sub-frame sample remainder, /60 */
+static int s_music_notes;        /* sticky: a note has been keyed */
+static s16 s_audio_buf[AUDIO_FRAMES_MAX * 2];
 
 /* ---- small ported helpers ---------------------------------------------- */
 
@@ -163,6 +180,12 @@ static void game_state_title(void)
     if (!s_title_ready) {
         title_load();
         if (!s_title_ready) return;
+        /* 0x121a0 (state 1's first entry) calls FUN_0002c3fc(0x41)/(0x43); its
+         * case 1 requests the title music, which the master loop's 0x1CF20 then
+         * loads and starts — the request is made here, started by the frame
+         * path, not on a port-side timer. PORT: the port requests the S16TITLE
+         * bank directly instead of the runtime sound table's handle. */
+        s_music_request = 1;
     }
     /* Redraw the current image into the draw buffer every frame, matching the
      * original: 0x255CC swaps buffers every presented tick, so a buffer that is
@@ -197,17 +220,117 @@ static void game_state_init(void)
     DSB(DS_000F0A6F) = 0;
 }
 
+/* ---- audio: the init chain's AIL calls and the frame-loop music service --- */
+
+/* 0x1CF40: installs the AIL profile and allocates the game's audio handles.
+ * PORT: fixed audio profile, no hardware probe (ail.c). The four sample handles
+ * and the single sequence handle live in ail.c; only the sequence is kept here
+ * because the title state needs it to start music. The 60 Hz timer is registered
+ * and started as in the original, but its callback is never fired: the port has
+ * no PIT/ISR and the frame loop owns pacing (see game_audio_service). */
+void game_audio_init(void)
+{
+    mixer_reset();
+    AIL_startup();
+    DSB(DS_000A2CB1) = 1;
+    AIL_set_preference(4, 4);
+    AIL_set_preference(1, 0x2b11);  /* 11025 Hz sample rate */
+    AIL_set_preference(3, 0x14);
+    HDIGDRIVER dig = AIL_install_DIG_INI();
+    if (dig != NULL) {
+        for (int i = 0; i < 4; i++) {
+            HSAMPLE s = AIL_allocate_sample_handle(dig);
+            if (s != NULL) AIL_init_sample(s);
+        }
+    }
+    AIL_set_preference(0xb, 1);
+    HMDIDRIVER mdi = AIL_install_MDI_INI();
+    if (mdi != NULL) s_sequence = AIL_allocate_sequence_handle(mdi);
+    HTIMER timer = AIL_register_timer(NULL);
+    AIL_set_timer_frequency(timer, 0x3c);   /* the original's 60 Hz game tick */
+    AIL_start_timer(timer);
+}
+
+/* Locates the title music bank in S16TITLE.GRA through the resource layer: the
+ * first FORM/XMID container in the resource, the same scan tools/opl_seq.py and
+ * seq_load use. The original passes a runtime sound-table handle (the title
+ * 0x121a0 calls FUN_0002c3fc(0x41), whose case 1 requests it); Task 9's capture
+ * spans this S16TITLE bank end to end.
+ * TODO(verify): the sound-table id -> resource handle mapping is not extracted
+ * (DAT_000bbdc8 is zero in PRAGE.EXE and populated at runtime), so the port
+ * binds the title state to the bank directly. Returns NULL on a bank whose
+ * declared FORM size runs past the loaded resource. */
+static const u8 *title_music_bank(u32 *len_out)
+{
+    const u8 *base = (const u8 *)res_resolve(res_handle(TITLE_RES, 0));
+    u32 size = res_size(TITLE_RES);
+    if (base == NULL || size < 12) return NULL;
+    for (u32 i = 0; i + 12 <= size; i++) {
+        if (memcmp(base + i, "FORM", 4) != 0) continue;
+        if (memcmp(base + i + 8, "XMID", 4) != 0) continue;
+        u32 fsz = ((u32)base[i + 4] << 24) | ((u32)base[i + 5] << 16) |
+                  ((u32)base[i + 6] << 8) | (u32)base[i + 7];
+        /* Task 10 carry-forward: seq_bank_size() trusts this declared size, so
+         * reject a bank that would run past the loaded resource before seq_load
+         * can read it — a corrupt asset must never cause an over-read. */
+        if (fsz < 4 || i + 8u + fsz > size) return NULL;
+        *len_out = 8u + fsz;
+        return base + i;
+    }
+    return NULL;
+}
+
+/* 0x1C930 (reached from 0x1CF20): loads and starts the pending song. */
+static void title_music_start(void)
+{
+    u32 len = 0;
+    const u8 *bank = title_music_bank(&len);
+    if (bank == NULL || s_sequence == NULL) return;
+    if (!AIL_init_sequence(s_sequence, bank, 0)) return;
+    AIL_set_sequence_volume(s_sequence, (s32)DSD(DS_000A2CB8), 500);
+    AIL_start_sequence(s_sequence);
+}
+
+/* 0x1CF20: the master loop's per-frame audio service (0x255CC). Starts the
+ * pending music, advances the sequencer, then renders and submits one frame of
+ * mixed stereo audio. PORT: no PIT/ISR — the music tick is driven here as two
+ * ticks per 60 Hz frame. Task 8 measured one XMIDI tick = 8.333 ms (120 Hz) for
+ * the shipped profile, so two per frame; the count is a fixed profile, never
+ * read from wall time, so music speed cannot vary between frames. With no
+ * device (host_audio_rate() == 0, e.g. --check) the sequencer still advances
+ * but nothing is rendered or submitted. */
+void game_audio_service(void)
+{
+    if (s_music_request) {
+        s_music_request = 0;
+        title_music_start();
+    }
+    seq_tick();
+    seq_tick();
+    s_audio_ticks += 2;
+    if (seq_active_track() > 0) s_music_notes = 1;
+
+    u32 rate = host_audio_rate();
+    if (rate == 0) return;
+    s_audio_frac += rate;               /* samples due this frame, scaled by 60 */
+    u32 n = s_audio_frac / 60u;
+    s_audio_frac %= 60u;
+    if (n > AUDIO_FRAMES_MAX) n = AUDIO_FRAMES_MAX;
+    if (n == 0) return;
+    mixer_render(s_audio_buf, n, rate);
+    host_audio_submit(s_audio_buf, (int)n);
+}
+
+u32 game_audio_ticks(void) { return s_audio_ticks; }
+int game_music_notes_seen(void) { return s_music_notes; }
+
 /* ---- the exported flow -------------------------------------------------- */
 
 void game_set_game_dir(const char *dir) { s_game_dir = dir; }
 
-int game_main(void)
+void game_init(void)
 {
     char index_path[512];
-    if (!s_game_dir) {
-        fprintf(stderr, "game_main: no game dir set\n");
-        return 1;
-    }
     snprintf(index_path, sizeof index_path, "%s/INDEX", s_game_dir);
 
     /* 0x1BEC4 init chain, in order. */
@@ -219,27 +342,45 @@ int game_main(void)
     DSD(DS_000A2CAC) = DSD(DS_00101514);
     /* PORT: no DPMI — the 0x109A0 region locks are no-ops. */
     /* PORT: 0x1B3AC resource-file setup is replaced by res_load_index(). */
-    /* PORT: audio/AIL (sub-project 3): 0x1CF40. */
+    game_audio_init();      /* 0x1CF40: AIL_startup, prefs, handles, timer */
     /* PORT: extended-memory block list (0x1E2A0/0x1C0F0) unused under flat mem[]. */
     /* PORT: 0x4FB98 (int 10h set mode) — the SDL host owns the window. */
 
-    if (int10h_query() != 0x13) { game_fatal("no VGA 320x200 mode"); return 0; }
+    if (int10h_query() != 0x13) { game_fatal("no VGA 320x200 mode"); return; }
 
     /* PORT: DPMI locks 0x10C30/0x10D34/0x1ADAC/0x1ADE4/0x10D0C are no-ops. */
     if (res_load_index(s_game_dir, index_path) <= 0) {
         game_fatal("resource INDEX load failed");
-        return 0;
+        return;
     }
     surface_setup();        /* 0x51F45 */
     palette_list_init();    /* 0x336C0 */
     /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
-    /* PORT: 0x1D0BC MIDI-memory setup (audio, sub-project 3). */
+    /* PORT: 0x1D0BC allocates the MIDI sequence buffer and the four sample
+     * buffers. The port references the XMIDI bank's resource bytes directly
+     * (sequencer.c) and samples.c allocates each handle's conversion buffer on
+     * AIL_start_sample, so no init-time work buffers are needed. */
     /* PORT: 0x47370 EEPROM read (menus/EEPROM, sub-project 4). */
 
     game_state_init();      /* 0x20C10's FUN_00010E80 */
+}
+
+/* 0x1BE30 teardown. */
+void game_shutdown(void)
+{
+    AIL_shutdown();         /* 0x1D018: stop/release every audio handle */
+    /* PORT: 0x1B084 (resource free) and the memory frees are no-ops under flat mem[]. */
+}
+
+int game_main(void)
+{
+    if (!s_game_dir) {
+        fprintf(stderr, "game_main: no game dir set\n");
+        return 1;
+    }
+    game_init();            /* 0x1BEC4 init chain */
     game_loop();            /* 0x20C10 -> 0x255CC */
-    /* 0x1BE30 teardown. PORT: 0x1D018 (audio shutdown, sub-project 3),
-     * 0x1B084 (resource free) and the memory frees are no-ops under flat mem[]. */
+    game_shutdown();        /* 0x1BE30 teardown */
     return 0;
 }
 
@@ -265,6 +406,10 @@ void game_loop(void)
         gfx_present(mem + DSD(DS_000E87A4), 320, 200);
         DSD(DS_001014FC) = 0;
         swap_buffers();                      /* 0x50188 */
+
+        /* 0x255CC's tail calls 0x1CF20 here: play pending samples, start/drive
+         * the music, render one frame of audio. */
+        game_audio_service();
 
         /* PORT: the original paces on the tick counter pair DS_00101508/150C;
          * the port waits one 60 Hz host retrace. */

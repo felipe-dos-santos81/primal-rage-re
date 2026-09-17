@@ -2,6 +2,7 @@
 #include "mem.h"
 #include "symbols.h"
 #include "platform/gfx.h"
+#include "platform/audio/ail.h"
 #include "platform/res.h"
 #include "test.h"
 
@@ -100,6 +101,19 @@ int test_flow(void)
     /* A mode other than 3 must not run the state machine at all. */
     DSD(DS_00104B00) = 7;
     game_frame();
+
+    /* Task 11: the init chain's audio calls and the title state's music request
+     * drive the sequencer with no device open (the suite never opens one).
+     * The title state above asked for music; the master-loop service inherits
+     * that request, loads the S16TITLE bank and ticks it. */
+    game_audio_init();
+    CHECK_EQ_INT((int)game_audio_ticks(), 0);
+    game_audio_service();                    /* starts the pending title music */
+    CHECK_EQ_INT((int)game_audio_ticks(), 2);
+    for (int i = 0; i < 40; i++)
+        game_audio_service();
+    CHECK(game_music_notes_seen(), "title music keys notes without a device");
+    AIL_shutdown();                          /* release handles for later tests */
 
     return g_failures - before;
 }
