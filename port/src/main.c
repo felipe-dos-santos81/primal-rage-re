@@ -28,7 +28,8 @@ static int run_windowed(const char *game_dir)
     if (host_audio_open(MIXER_OPL_RATE, 2))
         printf("prageport: audio device open at %u Hz\n", host_audio_rate());
     else
-        printf("prageport: no audio device; running silent\n");
+        printf("prageport: audio unavailable (%s); running silent\n",
+               host_audio_error());
     printf("prageport 0.0.1 game-dir=%s\n", game_dir);
     game_set_game_dir(game_dir);
     int rc = game_main();
@@ -122,6 +123,7 @@ static int run_check(const char *game_dir, int frames)
     int fail = 0, distinct = 0;
     u32 last_hash = 0;
     u32 audio0 = game_audio_ticks();
+    u32 host0 = host_tick_count();
     game_init();                       /* init chain once; runs the audio init */
     for (int i = 1; i <= frames; i++) {
         DSB(DS_000A81A8) = 1;            /* one loop iteration per call */
@@ -147,13 +149,25 @@ static int run_check(const char *game_dir, int frames)
         fail++;
     }
 
-    /* Task 11: the frame loop must drive the sequencer every frame with no
-     * device. game_audio_ticks() counts seq_tick() calls, and the fixed profile
-     * is two per frame (120 Hz music over the 60 Hz loop), so a run of `frames`
-     * master-loop iterations must show 2*frames of them. */
-    if (game_audio_ticks() - audio0 < (u32)frames * 2u) {
-        fprintf(stderr, "prageport: --check sequencer did not advance (%u < %d)\n",
-                (unsigned)(game_audio_ticks() - audio0), frames * 2);
+    /* Task 11: the frame loop must drive the sequencer with no device, paced by
+     * the host's 60 Hz clock, not by the loop-iteration count. The service
+     * derives two XMIDI ticks per measured host tick and clamps a stalled
+     * frame, so ticks can never outrun the observed host delta and, absent a
+     * stall, trail it by at most the final unserviced host tick (the wait after
+     * the last service call). */
+    u32 host_delta = host_tick_count() - host0;
+    u32 ticks = game_audio_ticks() - audio0;
+    if (ticks > 2u * host_delta) {
+        fprintf(stderr,
+                "prageport: --check sequencer outran the host clock (%u > %u)\n",
+                (unsigned)ticks, (unsigned)(2u * host_delta));
+        fail++;
+    }
+    if (ticks + 2u < 2u * host_delta) {
+        fprintf(stderr,
+                "prageport: --check sequencer did not track the host clock "
+                "(%u < %u)\n",
+                (unsigned)ticks, (unsigned)(2u * host_delta));
         fail++;
     }
     /* The title bank's first note is at XMIDI tick 59 (Task 8) = frame 30 at two

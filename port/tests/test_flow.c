@@ -1,10 +1,12 @@
 #include "game/flow.h"
+#include "host.h"
 #include "mem.h"
 #include "symbols.h"
 #include "platform/gfx.h"
 #include "platform/audio/ail.h"
 #include "platform/res.h"
 #include "test.h"
+#include <string.h>
 
 static int g_called;
 
@@ -24,6 +26,30 @@ static u32 buf_nonzero(const u8 *p)
     return n;
 }
 
+/* Negative control for the music-bank size guard. A FORM/XMID placed at offset
+ * 248 with fsz = 0xFFFFFF00 makes the old `i + 8 + fsz > size` u32 sum wrap to 0
+ * and pass; the wrap-free guard must reject it. A well-formed container in the
+ * same buffer must still be found. */
+static void check_bank_guard(void)
+{
+    static u8 buf[512];
+    memset(buf, 0, sizeof buf);
+    u8 *p = buf + 248;
+    memcpy(p, "FORM", 4);
+    p[4] = 0xFF; p[5] = 0xFF; p[6] = 0xFF; p[7] = 0x00;   /* fsz = 0xFFFFFF00 */
+    memcpy(p + 8, "XMID", 4);
+    CHECK(game_music_bank_find(buf, sizeof buf) == NULL,
+          "wrapping FORM size is rejected");
+
+    p[4] = 0x00; p[5] = 0x00; p[6] = 0x00; p[7] = 0x10;   /* fsz = 16 */
+    CHECK(game_music_bank_find(buf, sizeof buf) == p,
+          "well-formed FORM/XMID is found");
+
+    memset(buf, 0, sizeof buf);
+    CHECK(game_music_bank_find(buf, sizeof buf) == NULL,
+          "absent FORM/XMID is rejected");
+}
+
 /* game_loop() presents mem[DS_000E87A4] and then swaps the two buffers. The
  * presentation test below must reproduce that ordering, otherwise it cannot see
  * a buffer that is presented but never redrawn. */
@@ -37,6 +63,8 @@ static void swap_like_loop(void)
 int test_flow(void)
 {
     int before = g_failures;
+
+    check_bank_guard();
 
     /* Resources must be in mem[] for the title to decode. Earlier tests load
      * them; only load if this test runs first (a second load would exhaust the
@@ -108,12 +136,17 @@ int test_flow(void)
      * that request, loads the S16TITLE bank and ticks it. */
     game_audio_init();
     CHECK_EQ_INT((int)game_audio_ticks(), 0);
-    game_audio_service();                    /* starts the pending title music */
-    CHECK_EQ_INT((int)game_audio_ticks(), 2);
-    for (int i = 0; i < 40; i++)
+    /* The service is paced by the host's 60 Hz clock, not the loop count, so
+     * drive that clock here: one host_wait_vblank() per service advances it one
+     * tick, which becomes two sequencer ticks. */
+    for (int i = 0; i < 40; i++) {
+        host_wait_vblank();
         game_audio_service();
+    }
+    CHECK(game_audio_ticks() > 0, "audio service advances the sequencer");
     CHECK(game_music_notes_seen(), "title music keys notes without a device");
-    AIL_shutdown();                          /* release handles for later tests */
+    game_shutdown();                         /* release handles for later tests */
+    CHECK_EQ_INT((int)DSB(DS_000A2CB1), 0);  /* teardown clears the enable flag */
 
     return g_failures - before;
 }

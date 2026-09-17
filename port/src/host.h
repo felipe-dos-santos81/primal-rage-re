@@ -62,4 +62,9 @@ void host_audio_submit(const s16 *frames, int frame_count);
 /* Device sample rate in Hz, or 0 when no device is open. */
 u32  host_audio_rate(void);
 
+/* Human-readable reason the last host_audio_open() failed (SDL's own error
+ * where one applies), so the caller can report the real failure instead of
+ * assuming "no device". Empty before any open attempt. */
+const char *host_audio_error(void);
+
 #endif /* PR_HOST_H */

@@ -60,4 +60,10 @@ u32 game_audio_ticks(void);
  * that loaded a bank but never sounded one fails rather than passing silently. */
 int game_music_notes_seen(void);
 
+/* Scans `base`/`size` for the first FORM/XMID container and returns it, or NULL
+ * when it is absent or its declared FORM size runs past the range. Exposed for
+ * a unit test (the size guard is the only protection against an over-read on a
+ * corrupt bank — see flow.c). */
+const u8 *game_music_bank_find(const u8 *base, u32 size);
+
 #endif /* PR_GAME_FLOW_H */

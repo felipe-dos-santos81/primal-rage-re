@@ -56,9 +56,19 @@ static int s_title_ready;
 static int s_title_idx;
 static int s_title_hold;
 
-/* One frame of mixed stereo audio at the mixer's rate: 49716/60 = 828.6 frames,
- * so a frame is 828 or 829 (game_audio_service's accumulator picks). */
-#define AUDIO_FRAMES_MAX ((MIXER_OPL_RATE + 59) / 60)
+/* Music pacing. The sequencer is driven by the host's 60 Hz tick clock (the
+ * original's PIT ISR), one host tick = 2 XMIDI ticks (Task 8: 8.333 ms), and a
+ * device frame wants MIXER_OPL_RATE/60 samples. game_audio_service derives both
+ * the tick count and the sample count from the same measured host tick delta,
+ * so a slow loop iteration cannot slow the music relative to wall time. A stall
+ * is clamped to GAME_AUDIO_MAX_TICKS host ticks (4 sequencer ticks) so the
+ * resume cannot burst; the host clock already drops lost time past 30 intervals
+ * (host.c), so this is the same bounded-catch-up policy. */
+#define GAME_AUDIO_TICKS_PER_HOST_TICK 2u
+#define GAME_AUDIO_MAX_TICKS 2u
+/* Largest service burst: one host tick is 49716/60 = 828.6 frames (828 or 829),
+ * so a max-clamped service is GAME_AUDIO_MAX_TICKS of those. */
+#define AUDIO_FRAMES_MAX (((MIXER_OPL_RATE + 59) / 60) * GAME_AUDIO_MAX_TICKS)
 
 /* Audio state (see the audio section below). PORT: port-only bookkeeping — the
  * original keeps the sequence handle in DAT_001028c0 and the pending-song
@@ -66,7 +76,8 @@ static int s_title_hold;
 static HSEQUENCE s_sequence;
 static int s_music_request;      /* a state asked for music; 0x1CF20 starts it */
 static u32 s_audio_ticks;        /* seq_tick() calls driven since start */
-static u32 s_audio_frac;         /* sub-frame sample remainder, /60 */
+static u32 s_audio_frac;         /* sub-host-tick sample remainder, /60 */
+static u32 s_last_host_tick;     /* host clock at the last service call */
 static int s_music_notes;        /* sticky: a note has been keyed */
 static s16 s_audio_buf[AUDIO_FRAMES_MAX * 2];
 
@@ -230,6 +241,10 @@ static void game_state_init(void)
  * no PIT/ISR and the frame loop owns pacing (see game_audio_service). */
 void game_audio_init(void)
 {
+    /* TODO(verify): the original's FUN_0001cf40 gates the DIG install and its
+     * preferences behind param_2 and the MDI install behind param_1
+     * (prage.c:8703,8719); the port installs both unconditionally. The shipped
+     * init calls it with both nonzero, so the shipped behaviour is equal. */
     mixer_reset();
     AIL_startup();
     DSB(DS_000A2CB1) = 1;
@@ -249,6 +264,7 @@ void game_audio_init(void)
     HTIMER timer = AIL_register_timer(NULL);
     AIL_set_timer_frequency(timer, 0x3c);   /* the original's 60 Hz game tick */
     AIL_start_timer(timer);
+    s_last_host_tick = host_tick_count();
 }
 
 /* Locates the title music bank in S16TITLE.GRA through the resource layer: the
@@ -260,10 +276,21 @@ void game_audio_init(void)
  * (DAT_000bbdc8 is zero in PRAGE.EXE and populated at runtime), so the port
  * binds the title state to the bank directly. Returns NULL on a bank whose
  * declared FORM size runs past the loaded resource. */
-static const u8 *title_music_bank(u32 *len_out)
+static const u8 *title_music_bank(void)
 {
     const u8 *base = (const u8 *)res_resolve(res_handle(TITLE_RES, 0));
-    u32 size = res_size(TITLE_RES);
+    if (base == NULL) return NULL;
+    return game_music_bank_find(base, res_size(TITLE_RES));
+}
+
+/* Scans `base`/`size` for the first FORM/XMID container (the same scan
+ * tools/opl_seq.py and seq_load use) and validates its declared FORM size
+ * against the range. Exposed for a unit test: this check is the only guard
+ * against a corrupt bank, because seq_load is handed a length derived from the
+ * same declared size (seq_bank_size), making its own bound tautological.
+ * Returns NULL when the container is absent or its size runs past the range. */
+const u8 *game_music_bank_find(const u8 *base, u32 size)
+{
     if (base == NULL || size < 12) return NULL;
     for (u32 i = 0; i + 12 <= size; i++) {
         if (memcmp(base + i, "FORM", 4) != 0) continue;
@@ -272,9 +299,11 @@ static const u8 *title_music_bank(u32 *len_out)
                   ((u32)base[i + 6] << 8) | (u32)base[i + 7];
         /* Task 10 carry-forward: seq_bank_size() trusts this declared size, so
          * reject a bank that would run past the loaded resource before seq_load
-         * can read it — a corrupt asset must never cause an over-read. */
-        if (fsz < 4 || i + 8u + fsz > size) return NULL;
-        *len_out = 8u + fsz;
+         * can read it — a corrupt asset must never cause an over-read. Compare
+         * against the remaining bytes, never `i + 8 + fsz`: that u32 sum wraps
+         * for a crafted FORM placed at i >= 248 with fsz near 0xFFFFFF00.
+         * `i + 12 <= size` makes `size - (i + 8)` underflow-free. */
+        if (fsz < 4 || fsz > size - (i + 8u)) return NULL;
         return base + i;
     }
     return NULL;
@@ -283,8 +312,7 @@ static const u8 *title_music_bank(u32 *len_out)
 /* 0x1C930 (reached from 0x1CF20): loads and starts the pending song. */
 static void title_music_start(void)
 {
-    u32 len = 0;
-    const u8 *bank = title_music_bank(&len);
+    const u8 *bank = title_music_bank();
     if (bank == NULL || s_sequence == NULL) return;
     if (!AIL_init_sequence(s_sequence, bank, 0)) return;
     AIL_set_sequence_volume(s_sequence, (s32)DSD(DS_000A2CB8), 500);
@@ -293,10 +321,11 @@ static void title_music_start(void)
 
 /* 0x1CF20: the master loop's per-frame audio service (0x255CC). Starts the
  * pending music, advances the sequencer, then renders and submits one frame of
- * mixed stereo audio. PORT: no PIT/ISR — the music tick is driven here as two
- * ticks per 60 Hz frame. Task 8 measured one XMIDI tick = 8.333 ms (120 Hz) for
- * the shipped profile, so two per frame; the count is a fixed profile, never
- * read from wall time, so music speed cannot vary between frames. With no
+ * mixed stereo audio. PORT: no PIT/ISR — the music tick is driven here from the
+ * host's measured 60 Hz tick delta. Task 8 measured one XMIDI tick = 8.333 ms
+ * (120 Hz) for the shipped profile, so two sequencer ticks per host tick; both
+ * the tick count and the sample count derive from that one delta, and a stalled
+ * frame is clamped, so the music tracks wall time without bursting. With no
  * device (host_audio_rate() == 0, e.g. --check) the sequencer still advances
  * but nothing is rendered or submitted. */
 void game_audio_service(void)
@@ -305,14 +334,23 @@ void game_audio_service(void)
         s_music_request = 0;
         title_music_start();
     }
-    seq_tick();
-    seq_tick();
-    s_audio_ticks += 2;
+
+    /* Both the sequencer tick count and the audio frame count come from the
+     * same measured host tick delta, so they stay matched and a slow iteration
+     * cannot change the tempo. A stall is clamped so the resume cannot burst. */
+    u32 now = host_tick_count();
+    u32 elapsed = now - s_last_host_tick;
+    s_last_host_tick = now;
+    if (elapsed > GAME_AUDIO_MAX_TICKS) elapsed = GAME_AUDIO_MAX_TICKS;
+
+    u32 ticks = elapsed * GAME_AUDIO_TICKS_PER_HOST_TICK;
+    for (u32 i = 0; i < ticks; i++) seq_tick();
+    s_audio_ticks += ticks;
     if (seq_active_track() > 0) s_music_notes = 1;
 
     u32 rate = host_audio_rate();
     if (rate == 0) return;
-    s_audio_frac += rate;               /* samples due this frame, scaled by 60 */
+    s_audio_frac += rate * elapsed;     /* samples due, scaled by 60 */
     u32 n = s_audio_frac / 60u;
     s_audio_frac %= 60u;
     if (n > AUDIO_FRAMES_MAX) n = AUDIO_FRAMES_MAX;
@@ -368,7 +406,15 @@ void game_init(void)
 /* 0x1BE30 teardown. */
 void game_shutdown(void)
 {
-    AIL_shutdown();         /* 0x1D018: stop/release every audio handle */
+    /* 0x1D018 clears its enable flag, stops the sequence and the sample
+     * voices, then calls AIL_shutdown. AIL_shutdown releases the sample and
+     * sequence handles itself, so the explicit stop mirrors the original's
+     * ordering; clearing DS_000A2CB1 makes game_audio_init() idempotent. */
+    if (DSB(DS_000A2CB1)) {
+        DSB(DS_000A2CB1) = 0;
+        AIL_stop_sequence(s_sequence);
+        AIL_shutdown();     /* 0x5d86a */
+    }
     /* PORT: 0x1B084 (resource free) and the memory frees are no-ops under flat mem[]. */
 }
 

@@ -230,13 +230,37 @@ static SDL_AudioStream *g_audio;
 static int g_audio_rate;     /* > 0 iff the seam is open */
 static int g_audio_channels;
 
+/* Why the last host_audio_open() failed. SDL's own error distinguishes "no
+ * device" from "device present but the stream could not start"; without it the
+ * caller can only report the former. Captured before any teardown, which can
+ * reset SDL's error state. */
+static char g_audio_error[256];
+
+const char *host_audio_error(void)
+{
+    return g_audio_error;
+}
+
+static void audio_fail(const char *what)
+{
+    snprintf(g_audio_error, sizeof g_audio_error, "%s: %s", what, SDL_GetError());
+}
+
 int host_audio_open(int rate, int channels)
 {
+    g_audio_error[0] = '\0';
     /* Guard before any SDL call, exactly like host_init(): an impossible profile
      * reports failure instead of letting SDL negotiate something unexpected. */
-    if (rate <= 0 || channels <= 0) return 0;
+    if (rate <= 0 || channels <= 0) {
+        snprintf(g_audio_error, sizeof g_audio_error,
+                 "invalid profile (%d Hz, %d channels)", rate, channels);
+        return 0;
+    }
     if (g_audio) host_audio_close();
-    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) return 0;
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
+        audio_fail("SDL_InitSubSystem(SDL_INIT_AUDIO)");
+        return 0;
+    }
 
     SDL_AudioSpec spec;
     spec.format = SDL_AUDIO_S16;
@@ -244,14 +268,22 @@ int host_audio_open(int rate, int channels)
     spec.freq = rate;
     SDL_AudioStream *s = SDL_OpenAudioDeviceStream(
         SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
-    if (!s) { SDL_QuitSubSystem(SDL_INIT_AUDIO); return 0; }
+    if (!s) {
+        audio_fail("SDL_OpenAudioDeviceStream");
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        return 0;
+    }
 
     g_audio = s;
     g_audio_rate = rate;
     g_audio_channels = channels;
     /* SDL_OpenAudioDeviceStream leaves the stream paused; without this it renders
      * nothing even though submit succeeds. Resume now or tear down and fail. */
-    if (!SDL_ResumeAudioStreamDevice(s)) { host_audio_close(); return 0; }
+    if (!SDL_ResumeAudioStreamDevice(s)) {
+        audio_fail("SDL_ResumeAudioStreamDevice");
+        host_audio_close();
+        return 0;
+    }
     return 1;
 }
 
