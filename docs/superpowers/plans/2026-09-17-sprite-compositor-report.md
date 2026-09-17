@@ -37,7 +37,8 @@ way `0x14328` does. Three units landed:
   (`DS_0010153C`), sorted insert (`0x1C3A0`), remove (`0x1C3D0`/`0x1C458`),
   insertion sort (`0x1C3FC`) — and the projection/clip driver `render_list`
   (`0x14328`).
-* `game/flow.c` (`+4`, no deletions) calls `render_list_init` in `game_init` and
+* `game/flow.c`: the wiring commit `cfb664e` changed it by **+4 lines, no
+  deletions**. It calls `render_list_init` in `game_init` and
   `render_list_sort()` + `render_list()` in the master loop, after the render
   process table and before the palette flush — the original `0x255CC` order.
   Until 4a-ii populates the list this is provably a no-op: with an empty list
@@ -135,9 +136,14 @@ clip arguments into the shared RLE/shear renderer) changes the bytes. Changing
 `case 0x01` to the raw renderer fails the 0x01 assertion.
 
 **Projection rounding.** `render_proj_x/y` are unit-tested for exact values and
-an exhaustive `-8192..8192` loop. `proj_x(-2048) == -1950` is the discriminator:
-the corrected idiom (below) gives -1950, the brief's original `+0x1000` form
-gives -1949, and a plain `>>12` gives -1951.
+an exhaustive `-8192..8192` loop. `proj_x(-2048) == -1950` separates the shipped
+idiom from the brief's original `+0x1000` form (which gives -1949); it does
+**not** discriminate a plain `>>12`, which also gives -1950 there. A plain
+`>>12` is separated from the shipped idiom at `-1` (`0` vs `-1`) and `-4096`
+(`-3900` vs `-3901`). Verified numerically: at -4096 the shipped idiom (whose
+`p = v*3901 + 0x800` is negative, so it adds 0xFFF) gives -3900, the brief's
+`p - ((p>>31)<<12)` also gives -3900, and the uncorrected `(v*3901+0x800)>>12`
+gives -3901.
 
 **End-to-end.** A hand-built two-entry display list composites to a buffer the
 test builds directly through the renderers (`memcmp`, no tolerance); swapping
@@ -195,7 +201,8 @@ internally inconsistent; the controller re-derived the idiom from
 ## 5. Corrections this cycle made to earlier notes
 
 These correct wrong statements in the sub-project 2a notes and in `flow.c`; the
-corrected `flow.c` comments are comment-only (§8).
+corrected `flow.c` comments are comment-only (§1, and the fix-round note at the
+end of this report).
 
 * **`DAT_000BBDC8` is static in the EXE, not runtime-populated-and-zero.** It is
   a static table in the data object, **stride 12 bytes, byte 0 = case selector,
@@ -367,3 +374,30 @@ shear, bank and clip edges, green build with no new warnings, no `data/` writes
 and no new dependency — is met. The actor system (4a-ii) is the named next plan;
 it consumes `render_list_insert` and owns the title oracle that will close the
 two open `TODO(verify)` items.
+
+## Fix round 1 — documentation corrections
+
+A review of this report raised one Important finding that the controller ruled
+**wrong**, plus corrections that were applied here. No code, no test assertion
+and no numeric expectation changed.
+
+* **The Important finding: `proj_x(-4096) == -3900` was claimed to be -3901.**
+  Ruled incorrect. The reviewer evaluated `p` as `v*num` instead of
+  `p = v*num + 0x800`; with the shipped idiom `p` is negative at -4096, so it
+  adds 0xFFF and yields -3900. The test assertion and the implementation stand
+  unchanged. §3's discriminator sentence was nevertheless wrong and is fixed:
+  - `-2048` separates the shipped idiom (-1950) from the brief's original
+    `+0x1000` form (-1949). It does **not** separate a plain `>>12`, which is
+    also -1950 there.
+  - A plain `>>12` is separated from the shipped idiom at `-1` (`0` vs `-1`)
+    and `-4096` (`-3900` vs `-3901`).
+* **`port/spec/game_flow.md` projection description** now states the actual
+  idiom and its asymmetry (`proj_x(-4096) == -3900`, not -3901) and notes the
+  three mode-offset projections' uncorrected form, instead of the misleading
+  `round(v*3901/4096)`.
+* **`port/RE_GUIDE.md` display-list landmark row** now attributes each address
+  correctly and adds the previously missing splice entry `0x1C3A0`: reset
+  `0x1C350`, alloc `0x1C390`, sorted insert/splice `0x1C3A0`, remove/unlink
+  `0x1C3D0`, find-by-pset `0x1C458`, sort `0x1C3FC`.
+* Cosmetic: the `flow.c` `+4` note now names the wiring commit `cfb664e`, and
+  the comment-only cross-reference points at §1 instead of §8.
