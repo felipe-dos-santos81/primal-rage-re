@@ -10,6 +10,13 @@ Every claim below is marked with the source of evidence:
 * `likely` — consistent with the evidence but not directly proven here.
 * `TODO(verify): ...` — what would settle an open point.
 
+Cycle status (sub-project 2a, Task 13): the port implements this spec's AIL
+surface, event grammar and tick; the register trace was captured and governs the
+comparison, which the port matches at the data/decode level but **not**
+structurally (the driver's reconstruction is unverified), and the port's audio
+was never heard on this host. The full scope, deviations and open risks are in
+`../../docs/superpowers/plans/2026-09-16-audio-ail-port-report.md`.
+
 Addresses are LE linear code-object addresses (`base 0x10000`), as elsewhere in
 `port/spec`. File offsets are raw offsets into the files under `data/game/C/`,
 `/Volumes/RAGECD` (mounted `RAGECD.ISO`) or `PRAGE.EXE`.

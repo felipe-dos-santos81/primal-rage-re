@@ -187,7 +187,7 @@ Task 15 headless `run_check()` / `capture_frame()`.
 | Sub-project | Stubbed calls (original addresses) |
 |---|---|
 | 2 Smacker | `twi5.smk` / `twg.smk` logos are not on the engine-core path |
-| 3 Audio | AIL init `0x1CF40`, MIDI-memory `0x1D0BC`, audio shutdown `0x1D018` |
+| 3 Audio — **superseded** | Sub-project 2a ported the AIL surface, sequencer, samples and mixer; the stubs listed here are gone. See `2026-09-16-audio-ail-port-report.md`. The four `0x5dd*` movie/streaming stubs now belong to sub-project 2b (Smacker). |
 | 4 Menus / EEPROM | EEPROM read `0x47370`, menu-input poll `0x11F28`, transitions `0x10EE4`/`0x29D60`, character-select states 2–4, `0x11000` attract sub-machine |
 | 5 Fight engine | 2 player records at `DS_001077E0` (stride `0x94`), `0x4F644` and the second `0x38990` per-frame service, fight states 5–8, `0x292AC`, `0x134C0` (scene/narrative) |
 
@@ -339,4 +339,6 @@ Sub-project 1's definition of done is met except for the emulator leg of DoD 3
 unusable and is not claimed) and DoD 6's open question of whether the original
 handles ESC at the title (the port's ESC exit is a deliberate deviation).
 Everything else on the path is either ported and verified or stubbed with a
-sub-project marker. The remaining work is sub-projects 2–5.
+sub-project marker. Sub-project 2a (audio/AIL) is complete and reported
+separately (`2026-09-16-audio-ail-port-report.md`); the remaining work is
+sub-projects 2b (Smacker), 4 (menus/EEPROM) and 5 (fight engine).

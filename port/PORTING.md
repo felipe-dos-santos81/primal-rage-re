@@ -18,8 +18,16 @@ Faithful reimplementation of PRAGE.EXE. Read the spec in
 4. No shadowing of original state: anything the original keeps in its data segment
    stays in `mem[]` at its original offset, never mirrored in a long-lived C global.
    Port-only bookkeeping for port-only behaviour is fine as `static` (e.g. the
-   chosen title frame cycle in `game/flow.c`) — say so where it lives.
+   chosen title frame cycle in `game/flow.c`) — say so where it lives. Prefer
+   `static`; a link-visible port-only value is acceptable only when the wrapper's
+   interface has no handle to carry it (e.g. the single OPL chip, `g_opl` in
+   `platform/audio/opl/opl.c`) and its PORT comment says so. It is still never
+   original state and is never registered as a `mem[]` offset.
 5. Do not reformat files owned by another module.
+6. New subsystems stay data-in: no file I/O, no asset resolution and no SDL
+   outside `host.c`/`main.c`. The caller resolves assets and passes bytes/handles
+   in (the audio modules are the model), so each module is testable without the
+   game's assets and headless.
 
 ## Build and checks
     cmake -S port -B build && cmake --build build

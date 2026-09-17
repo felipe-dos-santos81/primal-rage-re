@@ -125,8 +125,13 @@ python3 tools/le_info.py --index data/game/C/INDEX
 | `PTR_FUN_000A86C4` / `_DAT_00104AEC` | render process table / bitmask |
 | `0x1C500` | small leaf called 181× — likely a getter/accessor |
 | `0x2BC30`, `0x2AE14`, `0x2F198` | very hot code (150–190 callers) |
-| `0x5D7DC` | 113 callers — likely allocator/memory helper |
-| `0x5D87E`, `0x5D973`, `0x5DB9E` | sound driver API used by `0x10034` |
+| `0x5D7DC` | **not audio**: the Watcom C runtime `rand()` — a 32-bit LCG `seed = seed*0xB90D12B9 + 0x38CE051F`. 33 game callers, 0 AIL callers (spec `audio.md` "AIL surface"). Earlier "allocator/memory helper" was wrong |
+| `0x5D87E`, `0x5D973`, `0x5DB9E` | sound driver API used by `0x10034`; `0x5D973` is AIL's driver dispatcher (`swi 0x31`), not game-called |
+| `0x1CF40` | AIL init (sub-project 2a): `AIL_startup`, prefs, 4 sample handles, sequence handle, 60 Hz timer |
+| `0x1CF20` | master-loop audio service: play queued samples (`0x1CB18`), start pending song (`0x1C930`), advance/sequence + render |
+| `0x1C930` | load and start the pending song (`AIL_init_sequence`/`set_volume`/`start_sequence`) |
+| `0x5D851`–`0x5DFFF` | AIL public-API thunk block (33 AIL + 3 non-AIL; the game→audio boundary) |
+| `0x5DE48` | AIL XMIDI loader (`FORM`/`CAT`/`XMID` container parse) |
 | `0x6FB28` | largest function (4979 bytes) |
 
 The code is dense from roughly `0x10000`–`0x39000` (engine/utilities) and
@@ -150,5 +155,8 @@ in `port/spec/`; `game_flow.md` covers the loop, state machine and frame path.
 3. Name the hot core functions (`0x2C3FC`, `0x2BC30`, `0x1C500`, `0x2AE14`).
 4. Pin the tick **interrupt vector** (the rate is measured at 60.05 Hz; the
    framebuffer write path has since been resolved as a literal `0xA0000`).
-5. The SDL3 port lives in `port/` (engine core, Tasks 0–15); audio, Smacker,
-   menus/EEPROM and the fight engine are the remaining sub-projects.
+5. The SDL3 port lives in `port/`: engine core (sub-project 1) and audio/AIL
+   (sub-project 2a, report at
+   `../docs/superpowers/plans/2026-09-16-audio-ail-port-report.md`). Smacker
+   (2b), menus/EEPROM (4) and the fight engine (5) remain; the run-time AIL
+   sound-id table (`DAT_000bbdc8`) is still unextracted.

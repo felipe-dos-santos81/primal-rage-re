@@ -14,7 +14,8 @@ mode game code: everything interesting lives in two LE objects (code + data).
 |---|---|
 | `data/game/C/` | Installed game (`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound drivers) |
 | `data/game/CD/RAGECD.ISO` | Original CD (`/Volumes/RAGECD` when mounted: `RAGE.S04`, `RAGE.S08`, `RAGE.S16`, `RAGE.SND`) |
-| `port/` | **SDL3 engine-core port** (sub-project 1) — `cmake -S port -B build` |
+| `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) — `cmake -S port -B build` |
+| `port/src/platform/audio/` | AIL surface, XMIDI sequencer, FAT.OPL, samples, mixer, vendored OPL core |
 | `port/RE_GUIDE.md` | Address conventions, DOS/4GW layout, toolchain, landmarks |
 | `port/spec/game_flow.md` | Entry, frame loop, state machine, tick, pixel path |
 | `port/PORTING.md` | Porting rules (memory model, `mem[]` discipline, `fn_resolve`) |
@@ -85,8 +86,21 @@ choice is `likely`), the palette flush (`0x1C470`), the process-table scheduler,
 and the `0x255CC`/`0x24C5C`/`0x11D04` loop running the title state. The port's
 title renders those four asset frames full-screen; the original's task-system
 composite is not reproduced, and the emulator comparison is unusable (Task 15).
-Audio, Smacker, menus/EEPROM and the fight engine are stubbed at
-their call sites and are the remaining sub-projects (`/* PORT: */` markers).
+**Audio — sub-project 2a, AIL/Miles, running.** The port runs the game's own
+audio path with no DOS driver: the `0x1CF40` AIL init completes, the title/
+attract XMIDI bank is decoded and sequenced into OPL register writes through a
+vendored FM core, one located announcer sample plays through the game's own
+sample request/play call path, and mixed stereo frames reach SDL audio when a
+device opens. The FM data path is proven byte-exact against an independent
+Python decoder (9340 OPL register writes, zero differences); the original's OPL
+trace was captured and governs the comparison, which the port does **not** match
+structurally (the driver's reconstruction semantics are unverified). The windowed
+run is silent on hosts where SDL audio cannot start — on this machine `-66681`.
+See `docs/superpowers/plans/2026-09-16-audio-ail-port-report.md`.
+
+Smacker (video and its audio streaming), menus/EEPROM and the fight engine are
+stubbed at their call sites and are the remaining sub-projects (`/* PORT: */`
+markers).
 
 ### Build and run
 
@@ -96,10 +110,17 @@ cmake -S port -B build && cmake --build build     # or: make build
 ./build/prageport --game-dir data/game/C --check 60
 ```
 
+The windowed run opens the audio device with the window, at the FM core's
+native 49716 Hz stereo rate; if no device can be started it prints SDL's reason
+and continues silently (audio is otherwise unconditional — there is no sound
+flag). A headless machine can run with `SDL_AUDIODRIVER=dummy` to exercise the
+open path without a device.
+
 `--check N` is a headless mode: it runs exactly N master-loop iterations with no
-window and writes `frame_NNNN.ppm` (RGB), `frame_NNNN.pal` (the DAC) and
-`frame_NNNN.idx` (raw indices) per frame, exiting non-zero on an internal
-assertion failure.
+window and no audio device, and writes `frame_NNNN.ppm` (RGB), `frame_NNNN.pal`
+(the DAC) and `frame_NNNN.idx` (raw indices) per frame, exiting non-zero on an
+internal assertion failure. It also asserts the announcer became a live voice
+rendering non-silence and that the sequencer keyed notes.
 
 ### Verify
 
@@ -113,3 +134,12 @@ bytes), so without it the suite skips those comparisons. `make verify` runs the
 full ladder in order — `--check` first (the suite's four-frame runtime-capture
 comparison consumes the `frame_*.idx` it writes), then the oracle-required
 tests, then `symbols.h` idempotence.
+
+### Third-party
+
+The FM synthesiser is vendored: **opal 2.0.3**, MIT
+(`https://github.com/RealBitdancer/opal`, commit `7e829f33`), whose synthesis
+core is by Shayde/Reality (Reality Adlib Tracker 2), public domain. It lives at
+`port/src/platform/audio/opl/` with its licence at
+`opl/LICENSE.opal.txt`; the files are byte-identical to upstream apart from a
+provenance banner. See `THIRD_PARTY_LICENSES.md`.

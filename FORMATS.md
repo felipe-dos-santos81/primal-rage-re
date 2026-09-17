@@ -260,6 +260,32 @@ CAT  XMID { FORM XMID { TIMB, RBRN, EVNT } }
   grammar"). `FORM`/chunk sizes are **big-endian** IFF sizes; data fields
   (offsets, TIMB keys) are little-endian.
 
+## Sample data (`S16SOUND.GRA`) — RIFF/WAVE PCM (verified)
+
+The one PCM sample the installed set contains is a standard **RIFF/WAVE** blob
+inside `S16SOUND.GRA` at file offset `0x24b13` (a scan of every installed file
+found `WAVE` only there and in the installer's own `SETSOUND.EXE`):
+
+```
+RIFF@0x24b13  WAVE
+fmt : audioformat=1 (PCM), channels=1, rate=11025 Hz,
+      byterate=11025, align=1, bits=8
+data: 19327 bytes   (8-bit unsigned mono; byte 128 is centre)
+```
+
+`verified (cmd: python3 -c "d=open('data/game/C/S16SOUND.GRA','rb').read(); \
+i=d.find(b'RIFF'); ..."` — see `port/spec/audio.md` "Samples"). The rate matches
+the AIL preference the game sets at init (`FUN_0005d87e(1,0x2b11)` in
+`FUN_0001cf40`). The declared RIFF size is **19432** because a trailing
+`LIST`/`INFO` (and `fact`) chunk follows the PCM, so the container size field
+must not be trusted; the port's parser walks chunks and bounds each against the
+buffer. The conversion from 8-bit unsigned to the mixer's s16 exists exactly
+once (`samples_to_s16`, `port/src/platform/audio/samples.c`).
+
+Other in-play sound effects are likely stored as headerless AIL sample blocks
+inside the level GRAs / `S16SND2.GRA` and were not located
+(`TODO(verify)`, `port/spec/audio.md` "Samples").
+
 ## Other files (not yet analysed)
 
 * `PR.BMP`, `IMAGES.IMJ`, `INSTALL.EXE`, `RAMDTCT.EXE` — installer/CD assets.
