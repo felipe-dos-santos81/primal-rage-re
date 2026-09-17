@@ -185,25 +185,37 @@ for (node = DSD(DS_00105B44); node != 0; node = DSD(node)) {
 computes, for `p = v * 3901`:
 
 ```
-eax = p + 0x800
-edx = (p + 0x800) >> 31          /* sar 31 */
-edx <<= 12
-eax -= edx                        /* sbb: subtract 0x1000 only when the sum went negative */
+eax = p + 0x800                   /* p = v * num */
+edx = eax >> 31                   /* sar 31: the sign mask */
+edx <<= 12                        /* 0 or 0xFFFFF000; sets CF when the mask was -1 */
+sbb eax, edx                      /* eax - edx - CF */
 eax >>= 12                        /* sar 12 */
 ```
 
-i.e. round-to-nearest for positive values, and the same magnitude for negative
-values. A plain arithmetic `>>12` truncates toward negative infinity and is
-**not** equivalent for negative inputs. Implement it as:
+`sbb` subtracts the borrow as well as `edx`, so for a negative sum the net effect is
+`p + 0x1000 - 1 == p + 0xFFF`. **This rounds half toward +infinity, not half away
+from zero** — which makes the projection asymmetric at negative exact values
+(`proj_x(-4096) == -3900`, while the mathematically symmetric answer would be
+`-3901`). A plain arithmetic `>>12` truncates toward negative infinity and is
+**not** equivalent for negative inputs (`proj_x(-1) == 0`, but `(-3901+0x800)>>12 == -1`).
+Implement it as:
 
 ```c
 static int proj_scale(int v, int num)
 {
     int p = v * num + 0x800;
-    int bias = (p >> 31) << 12;
-    return (p - bias) >> 12;
+    if (p < 0) p += 0xFFF;
+    return p >> 12;
 }
 ```
+
+**The mode-1/mode-2 offset projections are NOT this idiom.** The original uses an
+uncorrected `+0x800` then `>>12` for the `DS_00107A3E`, `DS_00107A3A` and
+`DS_00107A38` offsets (`prage.c:3166`, `:3173`, `:3175`), while layer 1's `y`
+(line 3167-3169) does use the corrected form. Use a separate uncorrected helper for
+those three. In a compositor-only run all five of those globals are zero, so the two
+forms coincide there. `TODO(verify)`: 4a-ii's pixel oracle must confirm which form
+applies to those operands.
 
 ### `0x1C3A0` / `0x1C3FC` — list insert and sort
 
@@ -1470,22 +1482,27 @@ Add these helpers to `test_render.c` and call them from `int test_render(void)`:
 ```c
 static void check_proj_rounding(void)
 {
-    /* round(v * 3901 / 4096), round-to-nearest, symmetric about zero. The
-     * negative cases are the ones a plain >>12 gets wrong. */
+    /* The original's idiom: p = v * 3901 + 0x800, then + 0xFFF when p < 0, then
+     * >>12. Half toward +infinity, so the projection is ASYMMETRIC at negative
+     * exact values: proj_x(-4096) is -3900, not -3901. The negative cases are
+     * the ones a plain >>12 gets wrong. */
     CHECK_EQ_INT(render_proj_x(0), 0);
     CHECK_EQ_INT(render_proj_x(4096), 3901);
-    CHECK_EQ_INT(render_proj_x(-4096), -3901);
+    CHECK_EQ_INT(render_proj_x(-4096), -3900);
+    CHECK_EQ_INT(render_proj_x(-1), 0);
+    /* This one discriminates the corrected idiom from the plausible-looking
+     * `p - ((p >> 31) << 12)`: that form yields -1949 here, the original -1950. */
+    CHECK_EQ_INT(render_proj_x(-2048), -1950);
     CHECK_EQ_INT(render_proj_x(1), (3901 + 0x800) >> 12);
     CHECK_EQ_INT(render_proj_y(4096), 3414);
-    CHECK_EQ_INT(render_proj_y(-4096), -3414);
+    CHECK_EQ_INT(render_proj_y(-4096), -3413);
 
-    /* Exhaustive small-range check against the original's own idiom, computed
-     * independently here: p = v*3901 + 0x800; bias = (p >> 31) << 12;
-     * result = (p - bias) >> 12. A truncating implementation fails here. */
+    /* Exhaustive small-range self-consistency pin, computed with the corrected
+     * idiom. The explicit values above are the real discriminators. */
     for (int v = -8192; v <= 8192; v++) {
         int p = v * 3901 + 0x800;
-        int want = (p - ((p >> 31) << 12)) >> 12;
-        CHECK_EQ_INT(render_proj_x(v), want);
+        if (p < 0) p += 0xFFF;
+        CHECK_EQ_INT(render_proj_x(v), p >> 12);
     }
 }
 
