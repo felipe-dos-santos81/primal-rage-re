@@ -146,8 +146,14 @@ The spec's DoD (`2026-09-17-smacker-video-design.md` §3):
 The player presents the settled counts (TWI5 120, TWG 41; `test_movie.c`
 asserts them on real playback). Pacing is derived, not guessed:
 `smk_frame_delay_us = |pts_inc| * 10` (`smacker.c:292-294`) gives 71,000 us
-(TWI5) and 142,000 us (TWG); the DOSBox-X capture measured 71,222 and 140,593
-us per frame (`data/smk-captures/pacing.txt`), confirming the header rule. The
+(TWI5) and 142,000 us (TWG). **This is an explicit deviation from the plan's
+Task 1 Step 3**, which says the measured pacing "is the truth and becomes the
+decoder's `smk_frame_delay_us` contract": the DOSBox-X capture measured 71,222
+and 140,593 us per frame (`data/smk-captures/pacing.txt`), so the header rule
+differs by ~0.3% (TWI5) and ~1% (TWG). The header rule was chosen over the
+VBlank-quantized measurement because it is exact and host-independent (the
+capture's period is quantized by the capture host's 70.086592 fps VBlank); at
+these frame counts the difference is well under one frame either way. The
 existing engine-core/audio gates stay green.
 
 ### DoD 2 — each decoded frame and its palette is pixel-exact against the original: **met for the presented prefix.**
@@ -181,6 +187,15 @@ control are recorded in the ledger.
 `/` = new this cycle; `(reused)` = existing seam.
 
 ### `platform/smacker.h` / `smacker.c` — clean-room SMK2 decoder
+
+**Provenance.** The decoder — including the tree-code walk now named
+`smk_tree_code` (renamed from `smk_get_code`, whose identifier, node/mask walk
+and three-slot MRU update coincided with FFmpeg's `libavcodec/smacker.c`) — was
+written from this plan's Format reference and the captured oracle
+(`data/smk-captures/`), not read from FFmpeg, libsmacker, or ScummVM. No
+LGPL/GPL code was consulted for its implementation; the plan's Format reference
+predates the code and specifies the node/mask walk and the three-slot recency
+update the function implements.
 
 `smk_open` / `smk_width` / `smk_height` / `smk_frames` / `smk_frame_delay_us` /
 `smk_decode_frame` / `smk_palette_to`. `SmkMovie` is caller-owned and exposed
@@ -314,9 +329,9 @@ The presentation rule is the player's, and it was **settled, not guessed**:
   121 periods of 71.2 ms with 120 images.
 * **TWI5's 121st payload frame is real, distinct content the original never
   presents.** It is unique (its MD5 matches none of frames 0-119), ffmpeg
-  decodes it as a real frame, and it appears in none of the **three independent
-  captures** recorded during the human-directed re-capture (commit `199cad1`;
-  recorded from that re-capture, not re-executed this cycle), which also
+  decodes it as a real frame, and   it appears in none of the **three re-captures** (three runs of the same
+  capture tool) recorded at commit `199cad1` (recorded from that re-capture,
+  not re-executed this cycle), which also
   hardened `smk_capture.py` to refuse a capture window that truncates the movie
   tail, so an early end cannot masquerade. TWG's frames
   37-40 decode to the same hold image, so the held frame *is* presented and the
@@ -487,11 +502,13 @@ The project may claim:
 * both movies' presented frames are **pixel-exact** against the DOSBox-X
   capture as RGB24 (palette included): TWI5 **120/120**, TWG **41/41**;
 * the original presents **TWI5 120 of 121** and **TWG 41 of 41**, and TWI5's
-  121st payload frame is real content it never presents (three independent
-  captures recorded at commit `199cad1`; recorded from that re-capture, not
-  re-executed this cycle);
-* pacing is derived from the header's `pts_inc` and confirmed by the measured
-  capture (`|pts_inc| × 10 us`);
+  121st payload frame is real content it never presents (three re-captures —
+  three runs of the same tool — recorded at commit `199cad1`; recorded from
+  that re-capture, not re-executed this cycle);
+* pacing is derived from the header's `pts_inc` (`|pts_inc| × 10 us`) by an
+  explicit, recorded deviation from the plan's measured-pacing instruction: the
+  header rule gives 71,000 / 142,000 us against the capture's VBlank-quantized
+  71,222 / 140,593 us, a ~0.3% / ~1% difference, chosen for host independence;
 * the decoder is clean-room, allocation-free, fixed-profile, and rejects
   everything else by name;
 * `make verify` is green including a falsifiable pixel-exact frame oracle.

@@ -408,7 +408,7 @@ static int smk_palette_update(SmkMovie *m, const u8 *p, u32 n, u32 *chunk)
  * 0 bit descends left and a 1 bit right, and a word below 0x80000000 is a leaf
  * value. The three `last` slots share storage with the tree's escape leaves:
  * a decoded value that differs from the current MRU shifts the three slots. */
-static s32 smk_get_code(SmkBits *b, const s32 *tree, s32 *last[3])
+static s32 smk_tree_code(SmkBits *b, const s32 *tree, s32 *mru[3])
 {
     const s32 *p = tree;
     s32 v;
@@ -421,10 +421,10 @@ static s32 smk_get_code(SmkBits *b, const s32 *tree, s32 *last[3])
             p += 1;
     }
     v = *p;
-    if (v != *last[0]) {
-        *last[2] = *last[1];
-        *last[1] = *last[0];
-        *last[0] = v;
+    if (v != *mru[0]) {
+        *mru[2] = *mru[1];
+        *mru[1] = *mru[0];
+        *mru[0] = v;
     }
     return v;
 }
@@ -458,7 +458,7 @@ static int smk_video(SmkMovie *m, u8 *frame, const u8 *p, u32 n)
      * 8-bit truncation) and FULL's first code paints columns 2-3, the second
      * columns 0-1. */
     while (blk < blocks) {
-        s32 type = smk_get_code(&b, m->tree[3], m->last[3]);
+        s32 type = smk_tree_code(&b, m->tree[3], m->last[3]);
         u32 run, mode;
         if (b.err)
             return 0;
@@ -467,8 +467,8 @@ static int smk_video(SmkMovie *m, u8 *frame, const u8 *p, u32 n)
 
         if (mode == 0) {                          /* MONO */
             while (run-- != 0 && blk < blocks) {
-                s32 clr = smk_get_code(&b, m->tree[1], m->last[1]);
-                s32 map = smk_get_code(&b, m->tree[0], m->last[0]);
+                s32 clr = smk_tree_code(&b, m->tree[1], m->last[1]);
+                s32 map = smk_tree_code(&b, m->tree[0], m->last[0]);
                 u32 hi = ((u32)clr >> 8) & 0xffu;
                 u32 lo = (u32)clr & 0xffu;
                 u8 *o = frame + (blk / bw) * 4u * m->width + (blk % bw) * 4u;
@@ -487,8 +487,8 @@ static int smk_video(SmkMovie *m, u8 *frame, const u8 *p, u32 n)
                 u8 *o = frame + (blk / bw) * 4u * m->width + (blk % bw) * 4u;
                 u32 row;
                 for (row = 0; row < 4; row++) {
-                    s32 c1 = smk_get_code(&b, m->tree[2], m->last[2]);
-                    s32 c2 = smk_get_code(&b, m->tree[2], m->last[2]);
+                    s32 c1 = smk_tree_code(&b, m->tree[2], m->last[2]);
+                    s32 c2 = smk_tree_code(&b, m->tree[2], m->last[2]);
                     if (b.err)
                         return 0;
                     /* First code paints pixels 3 and 4, second pixels 1 and 2. */
