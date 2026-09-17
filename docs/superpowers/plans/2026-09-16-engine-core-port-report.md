@@ -186,7 +186,7 @@ Task 15 headless `run_check()` / `capture_frame()`.
 
 | Sub-project | Stubbed calls (original addresses) |
 |---|---|
-| 2 Smacker | `twi5.smk` / `twg.smk` logos are not on the engine-core path |
+| 2 Smacker — **superseded** | Sub-project 2b-i ported the Smacker video decoder and the boot-logo player; `twi5.smk` / `twg.smk` now play on the boot path, pixel-exact against the original (TWI5 120/120, TWG 41/41). See `2026-09-17-smacker-video-report.md`. Streamed Smacker audio (2b-ii) remains. |
 | 3 Audio — **superseded** | Sub-project 2a ported the AIL surface, sequencer, samples and mixer; the stubs listed here are gone. See `2026-09-16-audio-ail-port-report.md`. The four `0x5dd*` movie/streaming stubs now belong to sub-project 2b (Smacker). |
 | 4 Menus / EEPROM | EEPROM read `0x47370`, menu-input poll `0x11F28`, transitions `0x10EE4`/`0x29D60`, character-select states 2–4, `0x11000` attract sub-machine |
 | 5 Fight engine | 2 player records at `DS_001077E0` (stride `0x94`), `0x4F644` and the second `0x38990` per-frame service, fight states 5–8, `0x292AC`, `0x134C0` (scene/narrative) |
@@ -341,5 +341,7 @@ handles ESC at the title (the port's ESC exit is a deliberate deviation).
 Everything else on the path is either ported and verified or stubbed with a
 sub-project marker. Sub-project 2a (audio/AIL) is implementation complete,
 reported separately (`2026-09-16-audio-ail-port-report.md`) with its scope and
-open items (audibility unverified, reconstruction unproven); the remaining work
-is sub-projects 2b (Smacker), 4 (menus/EEPROM) and 5 (fight engine).
+open items (audibility unverified, reconstruction unproven), and sub-project
+2b-i (Smacker video) is implementation complete, reported separately
+(`2026-09-17-smacker-video-report.md`); the remaining work is sub-project 2b-ii
+(streamed audio), 4 (menus/EEPROM) and 5 (fight engine).

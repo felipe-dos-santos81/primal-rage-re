@@ -46,7 +46,9 @@ The game uses an in-house engine, not a third-party framework:
   string pointers (`0xC9418`+).
 * **Video/audio** — `\RAGE.S16` path string; `RM.DRV` (DOS4GW RMI/DPMI), Miles
   AIL driver set (`DIG.INI`, `MDI.INI`, `*.DIG`, `*.MDI`, `FAT.OPL`, `FAT.AD`)
-  and Smacker video (`twi5.smk`, `twg.smk`).
+  and Smacker video (`twi5.smk`, `twg.smk`; SMK2, 320×200, silent — decoded by
+  the port, sub-project 2b-i, report at
+  `../../docs/superpowers/plans/2026-09-17-smacker-video-report.md`).
 
 ## Frame loop and process scheduler (verified)
 
@@ -151,6 +153,21 @@ frame loop is reached through `0x20C10`:
   `[0]` colour ptr or resource handle, `[1]` first DAC index, `[2]` count,
   `[3]` non-zero -> `[0]` is a resource handle resolved by `0x1B544` **+4**.
   Colours are 8-bit guns at R=bits[2..9], G=bits[10..17], B=bits[18..25].
+
+## Boot logos — `0x1C740` (sub-project 2b-i, video)
+
+`FUN_00011000` case 0 (the attract sub-machine's entry) plays the two boot
+Smacker movies through two `0x1C740` calls before assigning title state 1.
+`0x1C740` is the VBlank-gated FLIC-style blit of `DAT_000E87A4` listed above;
+its movie path is a licensed Smacker-library open/decode loop (`0x6345C`
+open/decode, `0x63180` stream setup). The port ports the player (video only)
+and wires `movie_play("twi5.smk")` then `movie_play("twg.smk")` at that case-0
+site (`port/src/game/flow.c`), decoding into `DAT_000E87A4` and presenting
+through `gfx_present`. The original presents TWI5 120 of 121 frames and TWG 41
+of 41; the rule that decides presentation is the player's and is content-based
+(`TODO(verify)` on the original loop's exact semantics). Streamed Smacker audio
+is sub-project 2b-ii and not ported. See
+`../../docs/superpowers/plans/2026-09-17-smacker-video-report.md`.
 
 ## Title state (Task 14)
 

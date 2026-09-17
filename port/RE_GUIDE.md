@@ -62,7 +62,9 @@ Conventions, the DOS/4GW memory model, and the toolchain. Read together with
 * `DIG.INI`, `MDI.INI`, `RM.DRV`, `SB16.DIG` / `SBPRO.DIG` / `SBLASTER.DIG`,
   `FAT.OPL`, `FAT.AD` — Miles/AIL sound-driver set. `FUN_00010034` inits the
   driver and falls back through `SB16.DIG → SBPRO.DIG → SBLASTER.DIG`.
-* `twi5.smk`, `twg.smk` — Smacker video (logos/intro).
+* `twi5.smk`, `twg.smk` — Smacker video (logos/intro), now decoded by the port
+  (sub-project 2b-i; SMK2, 320×200, silent). See `../FORMATS.md` and
+  `../../docs/superpowers/plans/2026-09-17-smacker-video-report.md`.
 
 ## Toolchain
 
@@ -155,8 +157,11 @@ in `port/spec/`; `game_flow.md` covers the loop, state machine and frame path.
 3. Name the hot core functions (`0x2C3FC`, `0x2BC30`, `0x1C500`, `0x2AE14`).
 4. Pin the tick **interrupt vector** (the rate is measured at 60.05 Hz; the
    framebuffer write path has since been resolved as a literal `0xA0000`).
-5. The SDL3 port lives in `port/`: engine core (sub-project 1) and audio/AIL
+5. The SDL3 port lives in `port/`: engine core (sub-project 1), audio/AIL
    (sub-project 2a, report at
-   `../docs/superpowers/plans/2026-09-16-audio-ail-port-report.md`). Smacker
-   (2b), menus/EEPROM (4) and the fight engine (5) remain; the run-time AIL
-   sound-id table (`DAT_000bbdc8`) is still unextracted.
+   `../docs/superpowers/plans/2026-09-16-audio-ail-port-report.md`) and Smacker
+   video (sub-project 2b-i, report at
+   `../docs/superpowers/plans/2026-09-17-smacker-video-report.md`; spec at
+   `../docs/superpowers/specs/2026-09-17-smacker-video-design.md`). Streamed
+   Smacker audio (2b-ii), menus/EEPROM (4) and the fight engine (5) remain; the
+   run-time AIL sound-id table (`DAT_000bbdc8`) is still unextracted.

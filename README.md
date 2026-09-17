@@ -14,7 +14,7 @@ mode game code: everything interesting lives in two LE objects (code + data).
 |---|---|
 | `data/game/C/` | Installed game (`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound drivers) |
 | `data/game/CD/RAGECD.ISO` | Original CD (`/Volumes/RAGECD` when mounted: `RAGE.S04`, `RAGE.S08`, `RAGE.S16`, `RAGE.SND`) |
-| `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) — `cmake -S port -B build` |
+| `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) + **Smacker video** (sub-project 2b-i) — `cmake -S port -B build` |
 | `port/src/platform/audio/` | AIL surface, XMIDI sequencer, FAT.OPL, samples, mixer, vendored OPL core |
 | `port/RE_GUIDE.md` | Address conventions, DOS/4GW layout, toolchain, landmarks |
 | `port/spec/game_flow.md` | Entry, frame loop, state machine, tick, pixel path |
@@ -97,8 +97,18 @@ trace was captured and governs the comparison, which the port does **not** match
 structurally (the driver's reconstruction semantics are unverified). The windowed
 run is silent on hosts where SDL audio cannot start — on this machine `-66681`.
 See `docs/superpowers/plans/2026-09-16-audio-ail-port-report.md`.
+**Video — sub-project 2b-i, Smacker logos, running.** The port decodes the two
+boot movies (`twi5.smk`, `twg.smk`) with an in-repo, clean-room SMK2 decoder and
+plays them on the boot path before the title screen. Both movies' presented
+frames are proven **pixel-exact** against frames captured from the original in
+DOSBox-X (RGB24, palette included): TWI5 120/120, TWG 41/41; the container
+layout reconciles byte-exactly on both files. The decoder is allocation-free and
+fixed-profile (rejects everything else by name); the player owns the
+presentation rule, which is content-based and carries a `TODO(verify)` on the
+original's `0x1C740` loop. See
+`docs/superpowers/plans/2026-09-17-smacker-video-report.md`.
 
-Smacker (video and its audio streaming), menus/EEPROM and the fight engine are
+Streamed Smacker audio (2b-ii), menus/EEPROM (4) and the fight engine (5) are
 stubbed at their call sites and are the remaining sub-projects (`/* PORT: */`
 markers).
 

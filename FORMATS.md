@@ -285,6 +285,41 @@ Other in-play sound effects are likely stored as headerless AIL sample blocks
 inside the level GRAs / `S16SND2.GRA` and were not located
 (`TODO(verify)`, `port/spec/audio.md` "Samples").
 
+## `TWI5.SMK` / `TWG.SMK` — Smacker video (verified)
+
+`data/game/C/TWI5.SMK` (1,208,576 B) and `TWG.SMK` (31,048 B) are **SMK2**,
+320×200, 121 and 41 frames, **silent**. Both reconcile to the byte
+(`data_off + Σ(frame_size & ~3) == filesize`) and are byte-identical to the CD
+copies (`RAGE.S16/TWI5.SMK`, `RAGE.S16/TWG.SMK`). Layout:
+
+| Offset | Size | Field |
+|---|---|---|
+| `0x00` | 4 | magic `"SMK2"` |
+| `0x04` / `0x08` | 4 | width / height = 320 / 200 |
+| `0x0C` | 4 | frame count = 121 (`TWI5`) / 41 (`TWG`) |
+| `0x10` | 4 | `pts_inc` signed: −7100 (`TWI5`) / −14200 (`TWG`); `|pts_inc| × 10 us` = the frame period |
+| `0x14` | 4 | flags (0; bit0 ring frame, bit1 Y-interlace, bit2 Y-double) |
+| `0x18` | 28 | unused audio data |
+| `0x34` | 4 | `treesize` (40763 / 5835) |
+| `0x38` | 16 | four tree sizes (mmap, mclr, full, type): `(31472, 2760, 109136, 1984)` / `(1088, 1824, 17328, 1488)` |
+| `0x48` | 28 | 7 × (u24 rate + u8 flag) audio descriptors — all zero ⇒ silent |
+| `0x64` | 4 | padding |
+| `0x68` | `4*frames` | `frame_size[i]`; low 2 bits are flags (bit0 = keyframe — clear in both) |
+| | `frames` | `frame_flags[i]`; bit0 = palette update, bits 1..7 = audio track |
+| | `treesize` | tree bitstream (LSB-first) |
+| | `Σ(frame_size & ~3)` | frame payloads, concatenated |
+
+The **fixed profile** (what the port's decoder accepts): all four Huffman trees
+present; MONO / FULL / SKIP / FILL 4×4 blocks with the 64-entry run table;
+palette update on frames `0` (and TWI5 `101`, `102`), whose chunk starts with a
+length byte in 4-byte units; no keyframe bits, no audio. Everything else is
+rejected by name. The tree/palette/block decode is **verified** by pixel-exact
+agreement against DOSBox-X frames (RGB24, palette included): TWI5 120/120, TWG
+41/41. `tools/smk_info.py` proves the layout; `tools/smk_capture.py` captures
+the original; `tools/smk_compare.py` is the oracle. See
+`docs/superpowers/plans/2026-09-17-smacker-video-report.md` and the format
+reference in `docs/superpowers/plans/2026-09-17-smacker-video.md`.
+
 ## Other files (not yet analysed)
 
 * `PR.BMP`, `IMAGES.IMJ`, `INSTALL.EXE`, `RAMDTCT.EXE` — installer/CD assets.
@@ -293,7 +328,6 @@ inside the level GRAs / `S16SND2.GRA` and were not located
   `PRAGE.EXE` differs from the installed one only in the graphics prefix).
 * `RAGE.SND` — AIL driver directory (no music or sample payload); see
   `port/spec/audio.md` "`RAGE.SND` on the CD is a driver directory".
-* `twi5.smk`, `twg.smk` — Smacker video (logos / intro).
 * `DIG.INI`, `MDI.INI`, `*.DIG`, `*.MDI`, `RM.DRV`, `FAT.AD` —
   Miles/AIL sound driver set (third-party). `FAT.OPL`/`FAT.AD` are the patch
   banks — see the `FAT.OPL` section above.
