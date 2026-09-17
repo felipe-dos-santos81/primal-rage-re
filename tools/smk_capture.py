@@ -139,7 +139,7 @@ def run_dosbox(game_dir, avi_dir, time_limit):
            '-nomenu', '-time-limit', str(time_limit),
            '-set', 'sdl fullscreen=false',
            '-set', 'dosbox captures=%s' % avi_dir,
-           '-c', 'MOUNT C "%s"' % game_dir]
+           '-c', 'MOUNT C "%s" -ro' % game_dir]
     iso = os.path.join(os.path.dirname(game_dir.rstrip('/')), 'CD', 'RAGECD.ISO')
     if os.path.isfile(iso):
         cmd += ['-c', 'IMGMOUNT D "%s" -t iso' % iso]
