@@ -231,7 +231,7 @@ Try, in order, and keep the first that yields per-frame images of the logos at 3
 2. DOSBox-X screenshots (its screenshot hotkey via `-c` autoexec or the `screenshot` command) on an interval.
 3. If neither automates frame-indexed capture, run the original, capture the AVI, and index frames by matching against the port's own first-pass output to align indices (documented in the tool).
 
-`tools/smk_capture.py` normalises the chosen artefact into `<dir>/frame_%04d.raw` (320×200 palette indices) plus a `palette.txt`, so comparison is index-based or RGB-based per the capture's fidelity. Record the chosen mechanism and its limits in the tool docstring.
+`tools/smk_capture.py` normalises the chosen artefact into `<dir>/frame_%04d.raw` as **320×200 RGB24 (192000 bytes)** plus a `palette.txt`, matching the capture's fidelity. RGB24 is required because the shipped palettes contain duplicate colours (TWI5 has 191 distinct entries of 256; TWG 96), so an index-only comparison would be ambiguous — the port's dump must emit RGB24 too (Task 5). Record the chosen mechanism and its limits in the tool docstring.
 
 - [ ] **Step 2: Write `tools/smk_compare.py`**
 
@@ -474,11 +474,10 @@ git commit -am "smacker: LSB-first tree bitstream decode"
 
 - [ ] **Step 4: Run the tests** — `PR_GAME_DIR=data/game/C make test`; expect `all checks passed`.
 
-- [ ] **Step 5: Add a `PR_SMK_DUMP=<dir>` dump path to the test and compare against the capture** — when the variable is set, the test decodes the movie and writes `frame_%04d.raw` (320×200 bytes) to the directory. Run `PR_SMK_DUMP=/tmp/port_twg PR_GAME_DIR=data/game/C make test`, then `python3 tools/smk_compare.py --capture data/smk-captures/twg --port /tmp/port_twg`. Expect exact match; if the palette model differs, resolve before proceeding (record the finding).
-
-- [ ] **Step 6: Negative control** — strip the `run` bound so a run can exceed the block count; confirm the test fails; revert.
-
-- [ ] **Step 7: `make verify` then commit**
+- [ ] **Step 5: Add a `PR_SMK_DUMP=<dir>` dump path to the test and compare against the capture** — when the variable is set, the test decodes the movie and writes `frame_%04d.raw` as **320×200 RGB24 (192000 bytes, converted through the current palette)**, matching the capture. Run `PR_SMK_DUMP=/tmp/port_twg PR_GAME_DIR=data/game/C make test`, then `python3 tools/smk_compare.py --capture data/smk-captures/twg --port /tmp/port_twg`. Expect exact match; if the palette or RGB conversion differs, resolve before proceeding (record the finding).
+- [ ] **Step 6: Settle the presented frame count** — the capture has TWI5 120 frames (header says 121) and TWG 41. Assert the port's decoded/presented count against the capture and document the disposition of TWI5's extra frame (decode-then-not-present, or a ruled exclusion). Never silently emit an unverified extra frame.
+- [ ] **Step 7: Negative control** — strip the `run` bound so a run can exceed the block count; confirm the test fails; revert.
+- [ ] **Step 8: `make verify` then commit**
 
 ```bash
 git commit -am "smacker: block decode and palette; frames match the capture"
@@ -522,7 +521,7 @@ git commit -am "res: name-based file loader (movies are not in INDEX)"
 - [ ] **Step 2: Run and watch it fail.**
 - [ ] **Step 3: Implement `movie.c`**; the headless `--check` path must not open a window, so `movie_play` renders through the same present seam the loop uses.
 - [ ] **Step 4: Wire the boot order** — call `movie_play(game_dir, "twi5.smk")` then `movie_play(game_dir, "twg.smk")` at the site `FUN_00011000` case 0 reaches (`0x1C740` twice), replacing the engine-core sub-project-2 stub.
-- [ ] **Step 5: Run `--check`** — `./build/prageport --game-dir data/game/C --check 120` exits 0 and the headless frame gate still passes; confirm no `mem[0xA0000]` write (the aperture rule) by inspection.
+- [ ] **Step 5: Run `--check`** — `./build/prageport --game-dir data/game/C --check 120` exits 0 and the headless frame gate still passes; confirm no `mem[0xA0000]` write (the aperture rule) by inspection. Also assert the presented frame count per movie matches the capture (TWI5 120, TWG 41), per Task 5 Step 6.
 - [ ] **Step 6: `make verify`; commit**
 
 ```bash
