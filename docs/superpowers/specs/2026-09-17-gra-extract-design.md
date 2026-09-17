@@ -31,9 +31,13 @@ output contract it will consume.
   | `RAGE.S08` | 190 | 12,133 | 29 |
   | `RAGE.S16` | 69 | 18,289 | 30 |
 
-* Sprites index a **sub-palette**, not the whole bank. Character files carry
-  records of `[31, 31, 31, 31, 9, 9]` colours and their sprites use indices in
-  `0..31`, one 31-colour record per colour variant. Which record applies is a
+* Sprites index a **sub-palette**, not the whole bank, and the index is
+  **1-based**: across 3,700 sampled sprites no opaque pixel carries index 0,
+  and the highest index equals the record size exactly (`S16FONTS` uses
+  `1..7` against a 7-colour record, `S16TRB` `1..9` against 9, `S16CONTI`
+  `1..24` against 24, `S16KON` `1..31` against its four 31-colour records).
+  So `colour = record[index - 1]`. Character files carry records of
+  `[31, 31, 31, 31, 9, 9]`, one 31-colour record per colour variant. Which record applies is a
   runtime, per-actor choice (`docs/superpowers/specs/2026-09-17-sprite-compositor-design.md`,
   the bank offset). A static extractor cannot know it; it can only choose a
   plausible default and record the choice.
@@ -117,8 +121,9 @@ OUT_DIR/
   * `resource_index` is the file's position in `INDEX` (the `handle >> 23`
     field), read from `GAME_DIR/INDEX` when present, else `null`.
   * `palette_source` names the stem whose bank was used, or `"greyscale"`.
-  * `palette_record` is the record chosen for this sprite, or `null` when
-    greyscale.
+  * `palette_record` is the record chosen for this sprite, `"flat"` when no
+    record fits, or `null` when greyscale. `out_of_palette` (present only
+    when non-zero) counts opaque pixels whose index has no colour.
   * Files with no descriptor table appear with `"skipped": true` and a
     `"reason"`.
 
@@ -131,17 +136,19 @@ The pair `(gra stem, index)` is the override key. `handle` and
 Applied per sprite, in this order:
 
 1. **Bank.** Use the file's own type-5 bank. If the file has none, borrow
-   from the file with a bank whose stem is the shortest prefix of this stem
-   (`KONSH` → `KON`, `COBSH` → `COB` not `COBFT`, `ESTKO` → `ESTIL`). If none
-   matches (`CAGE`, `GLIFE`, `RAD`), use a 256-step greyscale ramp.
-   `--palette-from` replaces this step.
-2. **Record.** Within the bank, take the first record whose `count` exceeds
-   the sprite's highest used index (`max_index < count`). If no record is
-   large enough, fall back to the bank flattened in order (what
-   `gra_render.py` does today) and set `palette_record` to `"flat"`.
-   `--palette-record N` replaces this step.
-3. **Colour.** `index → record.colour[index]`, decoded with the verified
-   `R/G/B` bit fields. Raw blobs use the same rule.
+   from the shortest-named file with a bank that shares this stem's first
+   three letters (`KONSH` → `KON`, `COBSH` → `COB` not `COBFT`, `ESTKO` →
+   `ESTIL`). If none matches (`CAGE`, `GLIFE`, `RAD`), use a 256-step
+   greyscale ramp. `--palette-from` replaces this step.
+2. **Record.** Within the bank, take the first record whose `count` is at
+   least the sprite's highest used index (`max_index <= count`). If no record
+   is large enough, fall back to the bank flattened in order and set
+   `palette_record` to `"flat"`. `--palette-record N` replaces this step.
+3. **Colour.** `index → record.colour[index - 1]` (1-based, see section 1),
+   decoded with the verified `R/G/B` bit fields. Index 0 opaque or an index
+   past the record is flagged magenta and counted in the manifest as
+   `out_of_palette`. Raw blobs use the same rule. Greyscale maps
+   `index → (index, index, index)`.
 
 This is a heuristic and is labelled as such in the manifest. It is right
 whenever a sprite's sub-palette is the first that fits, which is the common
@@ -182,7 +189,7 @@ Tests live in `tools/tests/test_gra_extract.py` and run under
 | synthetic GRA fixture (built in the test: chunk 2 with one RLE sprite using literal, repeat and transparent runs; one raw 4×3 sentinel; one `w == 0` record; chunk 5 with records `[3, 8]`; chunk 6) | end-to-end: PNG dimensions, alpha 0 exactly on transparent runs, opaque index 0 stays opaque, raw decode, `empty` kind, record choice (`max_index 2` → record 0, `max_index 5` → record 1) |
 | borrowing | `KONSH`-style stem with no bank borrows the shortest matching prefix; no match → greyscale and `palette_source == "greyscale"` |
 | flags | `--palette-record` and `--palette-from` override the rule |
-| cross-check (requires `data/game/C`; skipped with a message when absent, required under `PR_ORACLE_REQUIRED=1`) | for `S16TITLE` frame 10 the extractor's index buffer equals `gra_render.py --indices` byte-for-byte, and the PNG's RGB equals `gra_render.py`'s PPM (that frame uses only indices ≤ 63, all inside record 0 of the flat bank, so both rules agree) |
+| cross-check (requires `data/game/C`; skipped with a message when absent, required under `PR_ORACLE_REQUIRED=1`) | for `S16TITLE` frame 10 (indices `1..63`, record 0 has 63 colours) the PNG equals, pixel for pixel, the RGB computed from `gra_render.py --indices` and record 0 with the 1-based rule, alpha 255 everywhere (the frame is fully opaque) |
 | raw sentinels (same gate) | all ten negative-dimension descriptors decode with `|w|*|h|` bytes and produce PNGs of `|w| x |h|` |
 
 `make re-extract` runs the tool on `data/game/C` into `extracted/` and
@@ -191,7 +198,8 @@ prints the count of PNGs written, sprites skipped and errors.
 ## 8. Risks and open items
 
 * **The record choice is a guess** for any sprite whose sub-palette is not
-  the first that fits. Mitigated by recording the choice and by keeping the
+  the first that fits. The 1-based mapping is strongly evidenced but not
+  read from the decompilation; `FORMATS.md` records it as `likely`. Mitigated by recording the choice and by keeping the
   lossless data reachable; not solved here.
 * **Pure-Python decode speed.** ~44 MB of RLE across 18k sprites; expected
   around a minute. Acceptable for a batch tool; no numpy fast path unless it
