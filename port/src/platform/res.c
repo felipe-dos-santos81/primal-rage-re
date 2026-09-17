@@ -24,18 +24,13 @@ static u32 res_alloc(u32 size)
 
 u32 res_count(void) { return DSD(DS_001014F0); }
 
-/* Opens game_dir/<index entry name>. INDEX names are lowercase while the files
- * shipped on the CD are uppercase (S16TITLE.GRA); DOS is case-insensitive but a
- * POSIX filesystem is not, and macOS hides the mismatch. Try the exact name,
- * then scan the directory comparing case-insensitively, so the result does not
- * depend on the host filesystem's case behaviour. The 12-byte name is not
- * NUL-terminated when exactly 12 characters long. */
-static FILE *res_open(const char *game_dir, u32 index)
+/* Opens game_dir/<name>. INDEX names are lowercase while the files shipped on
+ * the CD are uppercase (S16TITLE.GRA); DOS is case-insensitive but a POSIX
+ * filesystem is not, and macOS hides the mismatch. Try the exact name, then
+ * scan the directory comparing case-insensitively, so the result does not
+ * depend on the host filesystem's case behaviour. */
+static FILE *res_open_name(const char *game_dir, const char *name, size_t nlen)
 {
-    const char *name = res_name(index);
-    size_t nlen = 0;
-    while (nlen < 12 && name[nlen]) nlen++;
-
     char path[512];
     snprintf(path, sizeof path, "%.*s/%.*s", 400, game_dir, (int)nlen, name);
     FILE *f = fopen(path, "rb");
@@ -54,6 +49,16 @@ static FILE *res_open(const char *game_dir, u32 index)
     }
     closedir(d);
     return f;
+}
+
+/* Index entries hold a 12-byte name that is not NUL-terminated when exactly 12
+ * characters long, so its length is measured before opening. */
+static FILE *res_open(const char *game_dir, u32 index)
+{
+    const char *name = res_name(index);
+    size_t nlen = 0;
+    while (nlen < 12 && name[nlen]) nlen++;
+    return res_open_name(game_dir, name, nlen);
 }
 
 /* game_dir is the directory holding the INDEX-listed files (data/game/C);
@@ -115,6 +120,29 @@ int res_load_index(const char *game_dir, const char *index_path)
     DSD(DS_001014EC) = res_alloc(0x4880u);
     DSD(DS_001014F4) = res_alloc(0xEBA0u);
     return (int)DSD(DS_001014F0);
+}
+
+int res_load_file(const char *game_dir, const char *name, u32 *out_off, u32 *out_size)
+{
+    if (!game_dir || !name || !out_off || !out_size) return 0;
+    size_t nlen = strlen(name);
+    if (nlen == 0) return 0;
+
+    FILE *f = res_open_name(game_dir, name, nlen);
+    if (!f) return 0;
+
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return 0; }
+    long sz = ftell(f);
+    if (sz <= 0 || fseek(f, 0, SEEK_SET) != 0) { fclose(f); return 0; }
+
+    u32 off = res_alloc((u32)sz);
+    if (off == 0) { fclose(f); return 0; }
+    if (fread(mem + off, 1, (size_t)sz, f) != (size_t)sz) { fclose(f); return 0; }
+    fclose(f);
+
+    *out_off = off;
+    *out_size = (u32)sz;
+    return 1;
 }
 
 static u32 res_table(void) { return DSD(DS_001014E0); }

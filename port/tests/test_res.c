@@ -61,5 +61,25 @@ int test_res(void)
     CHECK(found, "s16title.gra is in the index");
 
     CHECK(res_resolve(0xFFFFFFFFu) == NULL, "an out-of-range handle resolves to NULL");
+
+    /* The Smacker movies are not in INDEX, so they load by name. The shipped
+     * files are uppercase (TWI5.SMK) and the callers use lowercase, so this
+     * exercises the case-insensitive scan. */
+    u32 off = 0, size = 0;
+    CHECK_EQ_INT(res_load_file("data/game/C", "twi5.smk", &off, &size), 1);
+    CHECK_EQ_INT(size, 1208576);
+    CHECK(mem_in_range(off, size), "movie bytes got a block in mem[]");
+    CHECK_EQ_INT(mem[off], 'S');
+    CHECK_EQ_INT(mem[off + 1], 'M');
+    CHECK_EQ_INT(mem[off + 2], 'K');
+    CHECK_EQ_INT(res_load_file("data/game/C", "twg.smk", &off, &size), 1);
+    CHECK_EQ_INT(size, 31048);
+
+    /* A missing file fails without touching either output. */
+    u32 miss_off = 0xDEADBEEFu, miss_size = 0xFEEDFACEu;
+    CHECK_EQ_INT(res_load_file("data/game/C", "nope.smk", &miss_off, &miss_size), 0);
+    CHECK_EQ_INT(miss_off, 0xDEADBEEFu);
+    CHECK_EQ_INT(miss_size, 0xFEEDFACEu);
+
     return g_failures - before;
 }

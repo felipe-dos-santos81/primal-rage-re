@@ -11,6 +11,13 @@
  * index_path is the INDEX file itself. Returns the entry count, 0 on failure. */
 int res_load_index(const char *game_dir, const char *index_path);
 
+/* Loads game_dir/name into mem[] through the bump allocator, for files that
+ * are not INDEX entries (the Smacker movies). The name is matched
+ * case-insensitively like the INDEX path. On success writes the mem[] offset
+ * and byte count and returns 1; returns 0 on any failure (missing file, read
+ * error, does not fit mem[]) and leaves the outputs untouched. */
+int res_load_file(const char *game_dir, const char *name, u32 *out_off, u32 *out_size);
+
 u32 res_count(void);
 
 /* 12-byte, zero-padded, not necessarily NUL-terminated. */
