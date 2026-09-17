@@ -48,9 +48,15 @@ Deferred but in scope for the overall project: the full attract sequence
    driven by the reconstructed engine, reading `data/game/C/` original files.
 2. `INDEX` parsed; resource handles resolve (`entry = table + (handle>>23)*0x14`,
    `ptr = entry.data + (handle & 0x7FFFFF)`), matching `FUN_0001B544`.
-3. GRA chunk types 2/5/6 decoded; title-screen pixels and palette match a
-   dosbox-x screenshot **3-way**: port output, independent Python decoder, and
-   the emulator.
+3. GRA chunk types 2/5/6 decoded; the port's frames and palette agree with the
+   independent Python decoder — **achieved, byte-for-byte**, for the four
+   full-screen `S16TITLE` frames `{10,12,13,18}` (indices *and* RGB), plus the
+   exact-consumption property across all 69 files (18,201/18,202).
+   The third leg originally specified here — a dosbox-x screenshot — **proved
+   unusable** in this environment and is *not* claimed: the reachable attract
+   screen shares no non-black colours with the port's frames, and the port's
+   title is a chosen composition rather than the original's task-system
+   composite (see "Claim scope" near the end of this document).
 4. The reconstructed loop is the original's: `0x255CC` → `0x24C5C` →
    `0x11D04`, paced by the original tick source, exit path through `0x1BE30`.
 5. `--check` non-windowed mode: fixed number of frames, writes
@@ -77,7 +83,10 @@ and let the loop run it, with the sub-project-2/4 states stubbed.
 
 Identifying **which** state index is the title screen is therefore a plan task
 (read the `0x11D04` case bodies; confirm in dosbox-x by reading `DAT_000F0A64`
-while the title is displayed).
+while the title is displayed). **Outcome:** the static reading was done and
+yields index 1, which is marked `likely`; the dosbox-x confirmation was **not
+possible** — this build's DOSBox-X refuses a scriptable debugger, so the reading
+remains static-evidence-only.
 
 `ESC` at the title may or may not be handled by the original. If it is not, the
 port's exit is a deliberate deviation marked `/* PORT: exit at title */`
@@ -353,8 +362,12 @@ Cheapest sufficient proof, in order:
 2. Static: LE header/object-table fields cross-checked against
    `tools/le_info.py`; the loaded `mem[]` image cross-checked against a
    `DumpBytes.java` dump of Ghidra's fixup-applied memory.
-3. Three-way asset agreement: `tools/gra_render.py` ≡ `platform/gra.*` ≡
-   dosbox-x screenshot (pixels and DAC values).
+3. Two-way asset agreement that was actually achievable: `tools/gra_render.py` ≡
+   `platform/gra.*`, byte-for-byte on the four full-screen `S16TITLE` frames
+   (`{10,12,13,18}`) and on the exact-consumption property. The dosbox-x leg
+   originally listed here **could not be run** (see definition-of-done item 3 and
+   "Claim scope"); it must not be reported as satisfied. A future cycle with a
+   scriptable debugger or input injection could close it.
 4. `--check` self-comparison: fixed frame count, PPM out, per-frame asserts.
 5. Debug builds bounds-assert every `mem[]` access.
 6. Deviations marked `/* PORT: … */`; doubts marked `/* TODO(verify): … */`
@@ -367,11 +380,11 @@ No test framework; assertion-based self-checks plus the PPM comparison, as in
 
 | # | Risk | Mitigation |
 |---|---|---|
-| 1 | Exact interrupt vector for the tick ISR is unidentified; if the loop's pacing depends on ISR-side state beyond the counter, the host tick model changes. | Plan task 1 pins the vector (installer search + dosbox-x breakpoint) before any porting of the loop. |
+| 1 | Exact interrupt vector for the tick ISR is unidentified; if the loop's pacing depends on ISR-side state beyond the counter, the host tick model changes. | The planned mitigation **failed**: no static install site was found and this build's DOSBox-X refuses a scriptable debugger. The vector therefore remains **unresolved**, and the port's tick is a documented nominal at the *measured* rate (~60.05 Hz), marked `TODO(verify)`. |
 | 2 | GRA chunk 2 may be delta/compressed across frames rather than standalone bitmaps. | Decode frames in order; if the title screen needs sequential state, it is still in scope; if it needs the fight engine, that part moves to sub-project 5 and is stubbed. |
 | 3 | The `int 10h` mode `0x13` gate (320x200) versus the installed `S16` (640x480) asset set is still contradictory — unresolved for Task 14. (The framebuffer write path itself is now **resolved**: a constant `0xA0000`, which is the VGA aperture because DOS/4GW relocates the image above 1 MB — see the memory-model rule above.) | Named discovery task for the resolution question; `present_frame()` isolates it. |
 | 4 | `fn_resolve` breaks if the original does arithmetic on code addresses. | Documented limitation; revisit when sub-project 5's jump tables need it. |
-| 5 | LE fixups may include intra-object references that are mis-applied. | `mem_load_le()` asserts + the three-way agreement in verification step 3. |
+| 5 | LE fixups may include intra-object references that are mis-applied. | `mem_load_le()` asserts + the two-way agreement in verification step 3, and the byte-exact comparison of the loaded data object against Ghidra's fixup-applied image. |
 
 ## Section 8 — Docs this sub-project updates
 
