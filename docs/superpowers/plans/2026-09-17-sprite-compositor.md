@@ -983,20 +983,33 @@ static const u8 ROW[9] = { 0x02, 0x0A, 0x0B, 0xC1, 0x00, 0x83, 0x07,0,0 };
 ```
 
 The blob is `ROW` repeated per row (the helper builds a 3-row stream), width 6,
-`stride = 16`, `bank = 1` (offset 0). Expected, with `X` = untouched:
+`stride = 16`, `bank = 0`. (`bank` is the **offset** argument; 0 is identity, so
+drawn bytes are the source bytes unchanged. A literal `1` would add 1 to every
+drawn pixel — the same trap Task 3 hit.)
 
-| case | clip | expected row | note |
+**Destination indexing is window-relative, and that is load-bearing.** The
+blitter computes `dst = mem + … + node.x`, and `render_list` has already clamped
+`node.x` inward to the clip edge (`if (l >= 0) x = clip_left`). So `dst[0]` is the
+window's *first visible* column and the renderer writes the visible window
+sequentially from `dst[0]`; it must **not** index the destination by the original
+column. (The original reaches the same result by skipping the clipped-off part of
+the first straddling run before its first store.)
+
+Expected rows, `X` = untouched, six columns shown (`dst[0..5]`):
+
+| case | clip | expected row | why |
 |---|---|---|---|
-| none | L=0 R=0 T=0 B=0 | `0A 0B X 07 07 07` | baseline |
-| left only | L=2 R=0 | `X X X 07 07 07` | the literal run straddles the left edge and must be split, and its payload partially consumed |
-| right only | L=0 R=2 | `0A 0B X 07 X X` | the fill run straddles the right edge |
-| both | L=2 R=2 | `X X X 07 X X` | the fill run straddles both edges |
-| left spans both | L=4 R=1 | `X X X X X X` | visible window is 1 col, inside the fill |
-| top | T=1 | rows shifted up by one | the helper consumes one whole row of stream without drawing |
+| none | L=0 R=0 T=0 | `0A 0B X 07 07 07` | baseline |
+| left, mid-literal | L=1 R=0 | `0B X 07 07 07 X` | window is cols 1..5; the literal run is split and its second payload byte is the first drawn pixel |
+| left, mid-transparent | L=2 R=0 | `X 07 07 07 X X` | window is cols 2..5; col 2 is the transparent run |
+| right only | L=0 R=2 | `0A 0B X 07 X X` | window is cols 0..3; the fill run is cut after col 3 |
+| both | L=2 R=2 | `X 07 X X X X` | window is cols 2..3: transparent, then one fill pixel |
+| left spans both | L=4 R=1 | `07 X X X X X` | window is col 4 alone, inside the fill run |
+| top | T=1 | rows shifted up by one | one whole row of stream is consumed without drawing |
 | bottom | — | nothing further | `clip_b` is subtracted by the blitter, not here; the caller passes the reduced `rows` |
 
-Plus: assert the source pointer is left at the same position for L/R cases as
-for the unclipped case (clipping must consume the whole row's stream).
+Plus: assert the source pointer is left at the same position for the L/R cases as
+for the unclipped case — clipping must still consume the whole row's stream.
 
 - [ ] **Step 2: Run and watch it fail**
 
@@ -1007,10 +1020,9 @@ The equivalent formulation, recorded with a `/* PORT: ... */` comment naming
 
 ```
 vis = width - clip_l - clip_r
-if vis <= 0: consume each row's stream without drawing; return 0
-skip clip_t whole rows (decode, no draw) with a row-consuming helper
+if vis <= 0: consume every row's stream without drawing; return 0
+consume clip_t whole rows without drawing
 per remaining row:
-    dst_col = 0
     col = 0
     while col < width:
         b = *src++
@@ -1031,19 +1043,28 @@ per remaining row:
     dst += stride
 ```
 
-Two helpers are required and must be tested independently:
-`static const u8 *rle_skip_row(const u8 *src, int width);` (decode a row without
-drawing, used by the top clip) and the visible-window test above.
+**Do not write a second control-byte walker.** The "consume without drawing"
+paths (the `vis <= 0` case and the `clip_t` rows) reuse the *same* row decoder:
+extend Task 3's `rle_row` so it accepts `dst == NULL` and skips every store while
+walking exactly the same control bytes, then call it for the skipped rows. A
+separate `rle_skip_row` that re-implements the literal/fill/transparent walk would
+be verbatim duplication of the logic block and a review finding.
+
+A skipped row still consumes its source bytes in order — that is what keeps the
+following rows in sync — it simply stores nothing.
 
 - [ ] **Step 4: Run the tests** — expect pass on every row.
 - [ ] **Step 5: Negative control** — draw the clipped part instead of skipping it
-  (drop the visibility test) and confirm the left-only and right-only
-  expectations fail. Revert.
+  (drop the visibility test) and confirm the left-mid-literal, right-only and
+  both-sides expectations fail. Revert.
 - [ ] **Step 6: `make verify` then commit**
 
 ```bash
-make verify && git add -A && git commit -m "sprite: clipped RLE renderer (0x5D28F semantics)"
+make verify && git add port/src/platform/sprite.c port/src/platform/sprite.h port/tests/test_sprite.c && git commit -m "sprite: clipped RLE renderer (0x5D28F semantics)"
 ```
+
+(This plan is being executed while another session commits to the same branch:
+stage explicit paths, never `git add -A`.)
 
 ---
 
