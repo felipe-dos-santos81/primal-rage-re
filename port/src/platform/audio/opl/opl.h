@@ -28,4 +28,8 @@ void opl_write(u16 reg, u8 value);
  * register writes made so far, so the same writes produce the same samples. */
 void opl_render(s16 *out, u32 frames);
 
+/* Test seam: register writes since the last opl_reset. Lets callers assert that
+ * a stopped sequencer emits no further writes. Not used by the game path. */
+u32 opl_write_count(void);
+
 #endif /* PR_OPL_H */

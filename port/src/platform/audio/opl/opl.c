@@ -12,14 +12,23 @@
 
 Opal g_opl;
 
+static u32 g_writes;
+
 void opl_reset(void)
 {
     opalInit(&g_opl, OPAL_OPL3_SAMPLE_RATE);
+    g_writes = 0;
 }
 
 void opl_write(u16 reg, u8 value)
 {
     opalWriteReg(&g_opl, (uint16_t)reg, (uint8_t)value);
+    g_writes++;
+}
+
+u32 opl_write_count(void)
+{
+    return g_writes;
 }
 
 void opl_render(s16 *out, u32 frames)

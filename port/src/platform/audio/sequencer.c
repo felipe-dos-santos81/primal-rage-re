@@ -61,12 +61,21 @@ static struct {
     u32 wait;
     int loaded;
     int playing;
-    int active;
     u32 age;
     seq_voice voice[SEQ_OPL_CHANNELS];
     u8 program[SEQ_MIDI_CHANNELS];
     u8 bank[SEQ_MIDI_CHANNELS];
-} S;
+} S = {
+    /* Voices start free, so the first halt() has nothing to key off and
+     * seq_active_track() is 0 before the first load. */
+    .voice = {
+        [0] = { .note = SEQ_NOTE_FREE }, [1] = { .note = SEQ_NOTE_FREE },
+        [2] = { .note = SEQ_NOTE_FREE }, [3] = { .note = SEQ_NOTE_FREE },
+        [4] = { .note = SEQ_NOTE_FREE }, [5] = { .note = SEQ_NOTE_FREE },
+        [6] = { .note = SEQ_NOTE_FREE }, [7] = { .note = SEQ_NOTE_FREE },
+        [8] = { .note = SEQ_NOTE_FREE },
+    },
+};
 
 static u32 rd_be32(const u8 *p)
 {
@@ -98,10 +107,12 @@ static int read_vlq(u32 *out)
  * [9..13] = carrier 0x20/0x40/0x60/0x80/0xE0. Writes are ordered by register
  * family, matching the captured driver's per-note setup.
  *
- * TODO(verify): the driver ORs 0x30 into 0xC0 (OPL3 left/right output bits) in
- * the capture; kept here. TODO(verify): the driver also attenuates the carrier
- * TL (p[10]) by velocity (note 84 vel 113 -> 0x17, note 45 vel 127 -> 0x16);
- * this port applies the patch TL verbatim. */
+ * The driver ORs 0x30 into 0xC0 (OPL3 left/right output bits) in the capture;
+ * kept here. KNOWN DIVERGENCE: the driver also attenuates the carrier TL
+ * (p[10]) by velocity, dominantly p[10] + 0x16 + ((127 - vel) >> 3) added to
+ * the raw byte (KSL bits included); the residual is not a pure function of
+ * velocity (patch 0x34 is +1, patch 0x74 is -1), so this port applies the patch
+ * TL verbatim. See port/spec/audio.md "Known capture divergences". */
 static void apply_patch(int opl_ch, u16 key)
 {
     const u8 *p = patches_lookup(key);
@@ -129,7 +140,6 @@ static void key_off(int opl_ch)
     opl_write((u16)(0xB0 + opl_ch), S.voice[opl_ch].b0);
     S.voice[opl_ch].note = SEQ_NOTE_FREE;
     S.voice[opl_ch].release = 0;
-    S.active--;
 }
 
 /* Releases the voice on `midi`/`note`, oldest first. */
@@ -183,7 +193,6 @@ static void key_on(int midi, int note, int vel, u32 dur)
     S.voice[v].note = note;
     S.voice[v].release = dur;
     S.voice[v].age = ++S.age;
-    S.active++;
     {
         u8 block = (u8)NOTE_TAB[note][0];
         u16 fnum = NOTE_TAB[note][1];
@@ -193,8 +202,12 @@ static void key_on(int midi, int note, int vel, u32 dur)
     }
 }
 
-static void stop_end(void)
+/* The single halt path. Every exit from the parser that stops playback routes
+ * here, so no path can stop the stream while leaving OPL channels keyed on. */
+static void halt(void)
 {
+    for (int v = 0; v < SEQ_OPL_CHANNELS; v++)
+        key_off(v);
     S.playing = 0;
 }
 
@@ -215,21 +228,21 @@ static void process(void)
         if (b == 0xFF) {
             u8 type;
             u32 ln;
-            if (S.pos >= S.evnt_len) { stop_end(); return; }
+            if (S.pos >= S.evnt_len) { halt(); return; }
             type = S.evnt[S.pos++];
-            if (!read_vlq(&ln)) { stop_end(); return; }
+            if (!read_vlq(&ln)) { halt(); return; }
             if (type == 0x2F) {           /* XMIDI loop / end of sequence */
                 /* TODO(verify): the RBRN loop range is not reproduced; the
                  * capture stayed linear over its window, so playback stops. */
-                seq_stop();
+                halt();
                 return;
             }
-            if (S.evnt_len - S.pos < ln) { stop_end(); return; }
+            if (S.evnt_len - S.pos < ln) { halt(); return; }
             S.pos += ln;
         } else if (b == 0xF0 || b == 0xF7) {
             u32 ln;
-            if (!read_vlq(&ln)) { stop_end(); return; }
-            if (S.evnt_len - S.pos < ln) { stop_end(); return; }
+            if (!read_vlq(&ln)) { halt(); return; }
+            if (S.evnt_len - S.pos < ln) { halt(); return; }
             S.pos += ln;
         } else {
             u8 ch = (u8)(b & 0x0F);
@@ -237,45 +250,45 @@ static void process(void)
             if (hi == 0x90) {
                 u8 note, vel;
                 u32 dur;
-                if (S.evnt_len - S.pos < 2) { stop_end(); return; }
+                if (S.evnt_len - S.pos < 2) { halt(); return; }
                 note = S.evnt[S.pos++];
                 vel = S.evnt[S.pos++];
-                if (!read_vlq(&dur)) { stop_end(); return; }
+                if (!read_vlq(&dur)) { halt(); return; }
                 if (vel == 0)
                     key_off_note(ch, note);
                 else
                     key_on(ch, note, vel, dur);
             } else if (hi == 0x80) {
                 u8 note;
-                if (S.evnt_len - S.pos < 2) { stop_end(); return; }
+                if (S.evnt_len - S.pos < 2) { halt(); return; }
                 note = S.evnt[S.pos];
                 S.pos += 2;
                 key_off_note(ch, note);
             } else if (hi == 0xB0) {
                 u8 c, val;
-                if (S.evnt_len - S.pos < 2) { stop_end(); return; }
+                if (S.evnt_len - S.pos < 2) { halt(); return; }
                 c = S.evnt[S.pos++];
                 val = S.evnt[S.pos++];
                 if (c == 0 && ch < SEQ_MIDI_CHANNELS)
                     S.bank[ch] = val;        /* bank select */
             } else if (hi == 0xC0) {
-                if (S.pos >= S.evnt_len) { stop_end(); return; }
+                if (S.pos >= S.evnt_len) { halt(); return; }
                 if (ch < SEQ_MIDI_CHANNELS)
                     S.program[ch] = S.evnt[S.pos];
                 S.pos++;
             } else if (hi == 0xA0 || hi == 0xE0) {
-                if (S.evnt_len - S.pos < 2) { stop_end(); return; }
+                if (S.evnt_len - S.pos < 2) { halt(); return; }
                 S.pos += 2;
             } else if (hi == 0xD0) {
-                if (S.pos >= S.evnt_len) { stop_end(); return; }
+                if (S.pos >= S.evnt_len) { halt(); return; }
                 S.pos++;
             } else {
-                stop_end();                  /* unknown status: stop safely */
+                halt();                  /* unknown status: stop safely */
                 return;
             }
         }
     }
-    stop_end();
+    halt();
 }
 
 int seq_load(const u8 *data, u32 len)
@@ -314,13 +327,12 @@ int seq_load(const u8 *data, u32 len)
     if (evnt == NULL)
         return 0;
 
+    halt();                             /* release the previous bank's voices */
     S.evnt = evnt;
     S.evnt_len = evnt_len;
     S.pos = 0;
     S.wait = 0;
-    S.playing = 0;
     S.loaded = 1;
-    S.active = 0;
     return 1;
 }
 
@@ -328,10 +340,10 @@ void seq_start(void)
 {
     if (!S.loaded)
         return;
+    halt();                             /* release any voices from a prior run */
     S.pos = 0;
     S.wait = 0;
     S.playing = 1;
-    S.active = 0;
     S.age = 0;
     for (int v = 0; v < SEQ_OPL_CHANNELS; v++) {
         S.voice[v].note = SEQ_NOTE_FREE;
@@ -345,17 +357,17 @@ void seq_start(void)
         S.bank[c] = 0;
     }
     /* The captured driver enables waveform select (0x01 = 0x20) as its first
-     * write; the port needs it because patches write 0xE0. TODO(verify): the
-     * capture then sets 0x105 = 0x01 (OPL3 mode); the vendored core renders
-     * silence in that mode, so the port leaves it in its default OPL2 mode. */
+     * write; the port needs it because patches write 0xE0. The capture then
+     * sets 0x105 = 0x01 (OPL3 mode). KNOWN DIVERGENCE: the port omits it —
+     * writing 0x105 = 0x01 silences the vendored opal core (a key-on renders
+     * 0 samples vs 1003 without it), so the port stays in OPL2 mode. See
+     * port/spec/audio.md "Known capture divergences". */
     opl_write(0x01, 0x20);
 }
 
 void seq_stop(void)
 {
-    for (int v = 0; v < SEQ_OPL_CHANNELS; v++)
-        key_off(v);
-    S.playing = 0;
+    halt();
 }
 
 void seq_tick(void)
@@ -375,5 +387,9 @@ void seq_tick(void)
 
 int seq_active_track(void)
 {
-    return S.active;
+    int n = 0;
+    for (int v = 0; v < SEQ_OPL_CHANNELS; v++)
+        if (S.voice[v].note != SEQ_NOTE_FREE)
+            n++;
+    return n;
 }

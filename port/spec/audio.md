@@ -912,9 +912,55 @@ payload decode is **verified** against the capture:
   transforms below. `verified (cmd: prage_000.dro + FAT.OPL)`.
 * The driver ORs `0x30` into `0xC0` (the OPL3 left/right output bits):
   `0x0E -> 0x3E`, `0x04 -> 0x34`. `verified (cmd: capture)`.
-* The driver attenuates the **carrier TL** (`[10]`) by note velocity: program
-  `0x7A` `[10] = 0x00` is written as `0x17` at velocity 113 and the drum
-  `[10] = 0x00` as `0x16` at velocity 127. `verified (cmd: capture)`.
-  `TODO(verify): the exact velocity→TL function.`
+* The driver attenuates the **carrier TL** (`[10]`) by note velocity. The
+  attenuation is added to the raw payload byte (KSL bits included), so it can
+  carry into bits 6-7: patch `0x49`, `[10] = 0x00`, is written `0x16` at
+  velocity 127, `0x17` at 113 and `0x18` at 104. That is a dominant
+  `+ 0x16 + ((127 - velocity) >> 3)` term. `verified (cmd: prage_000.dro +
+  FAT.OPL)`.
+  `TODO(verify): the exact velocity→TL function.` The captured offset is **not**
+  a pure function of velocity: patch `0x34` (`[10] = 0x83`, KSL 2) is written
+  `0x9a` at velocity 127 (offset 23) and patch `0x74` (`[10] = 0x03`) is written
+  `0x18` at velocities 116-127 (offset 21), while the `[10] = 0x00` / `0x40`
+  patches sit at offset 22. Cases checked (velocity → written carrier TL):
+  `0x49` 127/122→`0x16`, 113→`0x17`, 104→`0x18`; `0x1e`/`0x58` 127→`0x16`;
+  `0x24` 120/127→`0x56`; `0x34` 127→`0x9a`; `0x74` 115→`0x19`, 126/127→`0x18`.
+  The title capture and `FAT.OPL` alone do not pin the per-patch residual;
+  **what would settle it**: disassemble `SBPRO2.MDI`'s velocity→TL path, or
+  capture a velocity sweep for one program. The port writes `[10]` verbatim.
 * `[0] = 0x0E` and `[1] = 0x00` are constant across all 181 entries; `[2]` is
   the percussion base note for the `0x7F` bank (`likely`).
+
+## Known capture divergences (Task 9)
+
+Places where the port's register stream deliberately differs from
+`data/audio-captures/prage_000.dro`. Task 9 must either match each one or
+explicitly exclude it; none is silent.
+
+1. **Carrier TL velocity attenuation omitted.** The driver adds a velocity term
+   to the carrier TL (`[10]`) — dominant form `+ 0x16 + ((127 - velocity) >> 3)`,
+   with an unexplained ±1 per-patch residual (see "FAT.OPL patch bank" above).
+   The port writes `[10]` verbatim, so its carrier TL is up to ~0x16 brighter
+   than the capture. `TODO(verify): the exact function` (disassemble
+   `SBPRO2.MDI`, or a single-program velocity sweep).
+
+2. **`0x105 = 0x01` (OPL3-mode enable) omitted.** The capture's next write after
+   `0x01 = 0x20` is `0x105 = 0x01`. Writing it to the vendored opal core
+   **silences** the output: a probe writes `0x01 = 0x20` + a key-on and renders
+   1003 non-zero samples; the same sequence with `0x105 = 0x01` inserted renders
+   0, and `0x105 = 0x00` renders 1003 again. `verified (cmd: probe against
+   `build/libprage_core.a``). The port therefore stays OPL2 and omits the write;
+   the core's arithmetic is not modified. Matching the capture needs a core-side
+   OPL3-mode fix, not a sequencer write.
+
+3. **Sequencer parser and XMIDI running status.** The reviewer flagged possible
+   running status / `0x80` note-off / `0x9n vel 0` in the non-title banks. No
+   such encoding is present: every `EVNT` chunk in every shipped `S16*.GRA`
+   musical bank (26 chunks, `S16TITLE`, `S16SND2`, `S16SOUND`, `S16SELMO`, the
+   arena GRAs, …) parses to its exact end under the port's single-byte-delta,
+   status-per-event, mandatory-`0x9n`-duration grammar, yielding zero note-ons
+   with velocity > 127 and zero `0x80`/`0x9n vel 0` events. A running-status
+   parse of the same bytes produces invalid velocities (e.g. `S16CONTI` at byte
+   offset 448 yields velocity 149), so running status is not the correct
+   interpretation. `verified (cmd: parse of every EVNT chunk; see the offset 448
+   case)`. No parser change is warranted on this evidence.
