@@ -14,7 +14,7 @@ mode game code: everything interesting lives in two LE objects (code + data).
 |---|---|
 | `data/game/C/` | Installed game (`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound drivers) |
 | `data/game/CD/RAGECD.ISO` | Original CD (`/Volumes/RAGECD` when mounted: `RAGE.S04`, `RAGE.S08`, `RAGE.S16`, `RAGE.SND`) |
-| `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) + **Smacker video** (sub-project 2b-i) — `cmake -S port -B build` |
+| `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) + **Smacker video** (sub-project 2b-i) + **sprite compositor** (sub-project 4a-i) — `cmake -S port -B build` |
 | `port/src/platform/audio/` | AIL surface, XMIDI sequencer, FAT.OPL, samples, mixer, vendored OPL core |
 | `port/RE_GUIDE.md` | Address conventions, DOS/4GW layout, toolchain, landmarks |
 | `port/spec/game_flow.md` | Entry, frame loop, state machine, tick, pixel path |
@@ -108,10 +108,20 @@ fixed-profile (rejects everything else by name); the player owns the
 presentation rule, which is content-based and carries a `TODO(verify)` on the
 original's `0x1C740` loop. See
 `docs/superpowers/plans/2026-09-17-smacker-video-report.md`.
+**Sprite compositor — sub-project 4a-i, ported.** The engine composites a
+display list into the back buffer the way `0x14328` does: the display node and
+builder (`0x14268`), the span blitter (`0x51E5C`), all six reachable renderers
+(RLE, clipped, mirrored, raw, mode-1 shear), the 580-node list with sorted
+insert and sort, and the projection/clip driver. The RLE renderer is proven
+byte-identical to sub-project 1's already-verified decoder on 32 real sprites;
+the clipped/mirrored/shear renderers are proven by hand-computed tests, not by
+an emulator (the DOSBox title oracle is 4a-ii's). `game_loop` calls the
+compositor in the original's order — a proven no-op until 4a-ii populates the
+list. See `docs/superpowers/plans/2026-09-17-sprite-compositor-report.md`.
 
-Streamed Smacker audio (2b-ii), menus/EEPROM (4) and the fight engine (5) are
-stubbed at their call sites and are the remaining sub-projects (`/* PORT: */`
-markers).
+Streamed Smacker audio (2b-ii), the actor system (4a-ii), menus/EEPROM (4) and
+the fight engine (5) are stubbed at their call sites and are the remaining
+sub-projects (`/* PORT: */` markers).
 
 ### Build and run
 

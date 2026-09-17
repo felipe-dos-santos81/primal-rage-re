@@ -125,6 +125,11 @@ the data object at offset `0xA8B30 - 0x80000`). The `x`/`y` anchor reading is
 **verified** by signed values (`-3`, `-35`, `-219`, …); the exact meaning of
 each as sprite origin is **likely**.
 
+The 12-byte record is the compositor's **sprite descriptor**; the node builder
+`0x14268` reads **`@+4` as the X pivot/origin and `@+6` as the Y pivot**
+(mechanically verified). Where these two are named the other way, the **names**
+are swapped, not the offsets. See "Sprite compositor" below.
+
 **Type 2 — RLE pixel data (verified).**
 The blobs are 8-bit palette-index bitmaps with per-sprite RLE. A row is
 `width` pixels; there are `height` rows, decoded back to back with no row
@@ -175,8 +180,10 @@ for **27** of the 30 `.GRA` files that contain a type-5 chunk — e.g.
 * Which chunk-5 sub-palette (and which DAC base index) a given sprite uses —
   the per-record `count/colour` groups are read as one flat palette by
   `gra_render.py`; the game selects a sub-palette per sprite at runtime
-  (the compositor's bank offset). **Likely, from the bytes:** sprite indices
-  are **1-based into the record** — across 3,700 sampled sprites no opaque
+  (the compositor's bank offset: `0x51E5C` adds `DAT_00081310[pal_ptr[8]]`, a
+  per-pixel index offset `+ (bank - 1)`, to every source pixel — see "Sprite
+  compositor" above). **Likely, from the bytes:** sprite indices are
+  **1-based into the record** — across 3,700 sampled sprites no opaque
   pixel carries index 0 and the highest index equals the record size
   (`S16FONTS` `1..7` vs a 7-colour record, `S16TRB` `1..9` vs 9, `S16CONTI`
   `1..24` vs 24, `S16KON` `1..31` vs its 31-colour records), so
@@ -215,6 +222,81 @@ Run `tools/gra_render.py FILE.GRA 0 out.ppm --frame N` to reproduce any frame
 (the first `--palette`-less run uses the file's first type-5 chunk, otherwise a
 greyscale ramp); add `--indices OUT.idx` to emit the raw index buffer, which is
 what the byte-exact index comparison uses.
+
+## Sprite compositor — descriptors, nodes, tables, renderers (verified)
+
+The engine's on-screen sprite path is three stages (`port/spec/game_flow.md`):
+actor update → pset sync (`0x2A31C` → `0x2A820`), list ordering
+(`0x1C3FC`/`0x1C3A0`), and composite (`0x14328` → `0x51E5C` → a renderer).
+Sub-project 4a-i ports the last two stages; the full record, with per-item
+provenance and what remains unproven, is
+`docs/superpowers/plans/2026-09-17-sprite-compositor-report.md`.
+
+**Sprite-handle table `DS_000A8B30` (verified by disassembly).** 18,443
+consecutive resource handles, static in the data object. A 16-bit sprite **id**
+indexes it as `id & 0x7FFF`; **`id & 0x8000` is the horizontal-flip bit**. The
+resolved descriptor handle and the descriptor's `pixel_handle` both go through
+the resource resolver (`0x1B544`; the port's `res_resolve`).
+
+**Sprite descriptor — 12 bytes (the type-6 record above).**
+`{i16 width @0; i16 height @2; i16 xorg @4; i16 yorg @6; u32 pixel_handle @8}`.
+`xorg` is the **X** pivot, `yorg` the **Y** pivot. A **negative `height`** is
+the raw marker: the node builder negates both dimensions and selects the raw
+base (type bit 2) instead of the RLE base (bit 1).
+
+**Display node — 0x40 bytes, built by `0x14268` and consumed by `0x51E5C`.**
+
+| off | width | meaning |
+|---|---|---|
+| `+0x00` | i32 | screen x (set last, by `0x14328`) |
+| `+0x04` | i32 | screen y (set last) |
+| `+0x08` | i32 | X pivot, hflip-adjusted (`width - xorg - 1`) |
+| `+0x0C` | i32 | Y pivot |
+| `+0x10` | u32 | type bits |
+| `+0x14` | i32 | rows; the blitter subtracts `+0x34` for the call and restores |
+| `+0x18` | i32 | width |
+| `+0x1C` | u32 | palette pointer; the bank byte is `((u8*)pal_ptr)[8]` |
+| `+0x20` | u32 | pixel handle |
+| `+0x24` | u32 | descriptor handle |
+| `+0x28`..`+0x34` | i32 | left / right / top / bottom overhangs |
+| `+0x38` | i32 | scratch: destination stride |
+| `+0x3C` | i32 | scratch: row index (mode-1 only) |
+
+Type bits: `0x01` RLE base, `0x02` raw base, `0x04` mode-1, `0x08` hflip,
+`0x10` clipped. `0x51E5C` dispatches on `type & 0x1F` through the 32-entry table
+`PTR_LAB_00080C8C`; only indices 1, 2, 4, 6, 9, 17, 18, 20, 22, 25 are live, and
+**`RAW+HFLIP` (type `0x0A`, slot 10) is a deliberate no-op stub** — hflip is
+valid only on the RLE base.
+
+**Control-byte grammar (identical in all four RLE renderers).** A row is
+`width` pixels, rows decoded back to back with no row marker:
+
+| byte | meaning |
+|---|---|
+| `0x00..0x7F` | literal run of `n = byte` pixels, each followed by its own colour byte |
+| `0x80..0xBF` | fill run of `n = byte & 0x3F` pixels, `colour = table[src[0]] + bank`, one payload byte |
+| `0xC0..0xFF` | transparent run of `n = byte & 0x3F` pixels; **neither destination nor source advances** |
+
+**Bank and colour tables (verified for every entry).**
+
+* `DAT_00081314[n] == n * 0x01010101` for `n = 0..255` — the fill colour table.
+* `DAT_00081310[n] == (n-1) * 0x01010101` for `n = 1..255` — the bank table.
+  `0x51E5C` does `bank = DAT_00081310[((u8*)pal_ptr)[8]]`, so for a well-formed
+  bank byte the net effect is a per-pixel source-index offset `+ (bank - 1)`.
+* `DAT_00081310[0] == 0x0005D110` — a **stale code pointer**, not a palette
+  entry. The original's dword add makes the offset vary *within* a 4-pixel
+  group (alignment-dependent garbage); a byte-wise port cannot reproduce it, so
+  the port maps bank byte 0 to no offset and pins the table value. Whether any
+  shipped asset reaches bank byte 0 is unknown.
+
+**Renderer scope.** All six reachable renderers are ported: `0x5D218` (RLE),
+`0x5D28F` (clipped RLE), `0x57F80` (mirrored RLE), `0x57FFB` (mirrored clipped
+RLE), `0x58CBD` (raw + clip), `0x5215C` (mode-1 shear). The clipped/mirrored
+renderers are a **`PORT` formulation** — the port intersects each decoded run
+with the row's visible window rather than transcribing the original's six
+straddle branches — proven by hand-computed exact-buffer tests and the RLE
+cross-check, **not** by an emulator pixel oracle. `DS_00107900`, the mode-1
+shear table, is a runtime-populated signed-16-bit ramp owned by 4a-ii.
 
 ## `FAT.OPL` / `FAT.AD` — FM patch bank (verified)
 
