@@ -53,4 +53,31 @@ int gra_decode_palette(u32 file_off, const GraChunk *chunks, int chunk_count,
 int gra_decode_frame(u32 file_off, const GraChunk *chunks, int chunk_count,
                      int frame, u8 *dst, u32 dst_len);
 
+/* Handle-addressed sprite descriptors: the original's 12-byte records
+ * { s16 width; s16 height; s16 xorg; s16 yorg; u32 pixel_handle } reached
+ * through the static handle table at DS_000A8B30 instead of a GRA file's own
+ * type-6 chunk. 0x14268 masks the sprite id to 0x7FFF, indexes the table by
+ * whole dwords, and calls 0x1B544 (the port's res_resolve) on the entry; a
+ * handle whose entry is zero is not a sprite. The table is 18,443 entries,
+ * indices 0..18442 — its end is not inferable from the data, so the mask is
+ * the only bound. */
+typedef struct {
+    s16 width, height, xorg, yorg;
+    u32 pixel_handle;
+} GraSprite;
+
+/* Opens descriptor `desc_handle` (a table entry, not a sprite id) into *out.
+ * Returns 1 and fills *out, or 0 if desc_handle does not resolve. */
+int gra_sprite_open(u32 desc_handle, GraSprite *out);
+
+/* Looks sprite id `sprite_id` up in the DS_000A8B30 handle table (masked to
+ * 0x7FFF as 0x14268 does), stores the descriptor handle in *desc_handle when
+ * non-NULL, and opens it into *out. Returns 1, or 0 for a zero table entry or
+ * an unresolvable descriptor. */
+int gra_sprite_lookup(u32 sprite_id, GraSprite *out, u32 *desc_handle);
+
+/* Resolves pixel_handle into *out (the RLE blob, as gra_decode_frame would
+ * consume it). Returns 1, or 0 if the handle does not resolve. */
+int gra_sprite_pixels(u32 pixel_handle, const u8 **out);
+
 #endif /* PR_GRA_H */

@@ -1,6 +1,8 @@
 #include "platform/gra.h"
 #include "platform/res.h"
 #include "../mem.h"
+#include "../symbols.h"
+#include <string.h>
 
 int gra_open(u32 file_off, u32 file_len, GraChunk *out, int max, int *count)
 {
@@ -155,4 +157,33 @@ int gra_decode_frame(u32 file_off, const GraChunk *chunks, int chunk_count,
     /* PORT: returns RLE bytes consumed (the original writes into a caller
      * buffer and signals nothing); the exact-consumption test needs it. */
     return rle_decode(src, size - off, w, h, dst, dst_len);
+}
+
+int gra_sprite_lookup(u32 sprite_id, GraSprite *out, u32 *desc_handle)
+{
+    u32 h = DSD(DS_000A8B30 + (sprite_id & 0x7FFFu) * 4u);
+    if (h == 0) return 0;
+    if (desc_handle) *desc_handle = h;
+    return gra_sprite_open(h, out);
+}
+
+int gra_sprite_open(u32 desc_handle, GraSprite *out)
+{
+    const u8 *p = (const u8 *)res_resolve(desc_handle);
+    if (p == NULL || out == NULL) return 0;
+    memcpy(&out->width,  p + 0, 2);
+    memcpy(&out->height, p + 2, 2);
+    memcpy(&out->xorg,   p + 4, 2);
+    memcpy(&out->yorg,   p + 6, 2);
+    out->pixel_handle = (u32)p[8] | ((u32)p[9] << 8) | ((u32)p[10] << 16) |
+                        ((u32)p[11] << 24);
+    return 1;
+}
+
+int gra_sprite_pixels(u32 pixel_handle, const u8 **out)
+{
+    const u8 *p = (const u8 *)res_resolve(pixel_handle);
+    if (p == NULL) return 0;
+    if (out) *out = p;
+    return 1;
 }
