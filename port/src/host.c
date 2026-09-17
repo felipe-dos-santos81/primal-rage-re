@@ -223,8 +223,8 @@ int host_write_file(const char *path, const u8 *src, u32 len)
  * PORT: fixed audio profile, no hardware probe. The seam asks SDL for the
  * default playback device at the caller's rate/channels; it never enumerates
  * devices or negotiates formats beyond what SDL needs to open.
- * TODO(verify): SDL_OpenAudioDeviceStream opens and unpauses the default device
- * on call, so the failure branch (NULL on a host with no audio device) is not
+ * TODO(verify): the failure branches (NULL from SDL_OpenAudioDeviceStream, or a
+ * failed SDL_ResumeAudioStreamDevice on a host with no audio device) are not
  * exercised by the suite, which never opens a real device. */
 static SDL_AudioStream *g_audio;
 static int g_audio_rate;     /* > 0 iff the seam is open */
@@ -249,6 +249,9 @@ int host_audio_open(int rate, int channels)
     g_audio = s;
     g_audio_rate = rate;
     g_audio_channels = channels;
+    /* SDL_OpenAudioDeviceStream leaves the stream paused; without this it renders
+     * nothing even though submit succeeds. Resume now or tear down and fail. */
+    if (!SDL_ResumeAudioStreamDevice(s)) { host_audio_close(); return 0; }
     return 1;
 }
 
@@ -264,8 +267,10 @@ void host_audio_close(void)
 void host_audio_submit(const s16 *frames, int frame_count)
 {
     if (!g_audio || !frames || frame_count <= 0) return;
+    /* Bound frame_count before multiplying: on a 32-bit size_t target the
+     * product below could wrap past the INT32_MAX byte cap SDL takes. */
+    if (frame_count > INT32_MAX / (g_audio_channels * (int)sizeof(s16))) return;
     size_t bytes = (size_t)frame_count * (size_t)g_audio_channels * sizeof(s16);
-    if (bytes > (size_t)INT32_MAX) return; /* SDL_PutAudioStreamData takes int */
     SDL_PutAudioStreamData(g_audio, frames, (int)bytes);
 }
 

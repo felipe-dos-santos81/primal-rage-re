@@ -89,6 +89,9 @@ int test_host(void)
     host_audio_submit(NULL, 2);
     host_audio_submit(audio, 0);
     host_audio_submit(audio, -1);                        /* negative count */
+    CHECK_EQ_INT((int)host_audio_rate(), 0);             /* submits kept seam closed */
+    host_audio_close();                                  /* safe after no-op submits */
+    CHECK_EQ_INT((int)host_audio_rate(), 0);
     CHECK_EQ_INT(host_audio_open(0, 2), 0);              /* rate <= 0 */
     CHECK_EQ_INT(host_audio_open(44100, 0), 0);          /* channels <= 0 */
     CHECK_EQ_INT(host_audio_open(-44100, -2), 0);
