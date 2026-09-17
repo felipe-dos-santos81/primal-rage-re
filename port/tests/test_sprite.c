@@ -309,6 +309,24 @@ static void check_rle_row_edges(void)
     for (int i = 0; i < 4; i++) CHECK_EQ_INT(t4[i], 0xEE);
 }
 
+/* 0x57F80 (hflip RLE) and 0x57FFB (hflip + clipped RLE): the same row decoder
+ * with mirror set must reverse the visible columns. The row fixture is
+ * [literal 2][transparent 1][fill 3], so the plain row is 0A 0B __ 07 07 07
+ * and its mirror is 07 07 07 __ 0B 0A -- the transparent gap lands on the
+ * opposite side and the two non-uniform runs swap ends, so this is not a
+ * palindromic pass. */
+static void check_rle_mirror(void)
+{
+    const u8 src[9] = { 0x02, 0x0A, 0x0B, 0xC1, 0x00, 0x83, 0x07,0,0 };
+    u8 plain[6], mir[6];
+    memset(plain, 0xEE, sizeof plain); memset(mir, 0xEE, sizeof mir);
+    CHECK_EQ_INT(sprite_render_rle(src, plain, 6, 1, 6, 1), 0);
+    /* The clipped entry with mirror=1 and no clip must reverse the columns. */
+    CHECK_EQ_INT(sprite_render_rle_clipped(src, mir, 6, 1, 6, 1,
+                                          0, 0, 0, /*mirror=*/1), 0);
+    for (int i = 0; i < 6; i++) CHECK_EQ_INT(mir[i], plain[5 - i]);
+}
+
 int test_sprite(void)
 {
     check_node_build();
@@ -317,5 +335,6 @@ int test_sprite(void)
     check_raw_copy();
     check_rle_clipped();
     check_rle_row_edges();
+    check_rle_mirror();
     return 0;
 }
