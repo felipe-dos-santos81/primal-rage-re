@@ -575,3 +575,205 @@ The primary oracle — the original's OPL register stream — **was obtained**. 
 Task 9 comparison now anchors on `tools/opl_trace.py` output from a `.dro`
 captured with `DX-CAPTURE /O`; the byte-exact Python fallback is no longer the
 sole acceptance bar.
+
+---
+
+## AIL surface (Task 3) — every call the game makes into the audio layer
+
+**What this section is.** The call list Task 10 implements: each game→audio entry
+point, its observed signature at the call sites, the behaviour to reproduce, its
+reachability and a confidence mark.
+
+**Evidence method (static only; no DOSBox-X).** Three passes, all reproducible:
+
+1. `port/decomp/prage.calls.csv` filtered to `caller < 0x5d000` and
+   `0x5d7dc <= callee < 0x5e000` — the 36 callees the game makes into the
+   sound-library block (`awk -F','` on the csv; the same set by name below).
+2. Each callee's body in `port/decomp/prage.c`, plus its internal callee
+   (`FUN_00065b43`–`FUN_0006aca0`) — the behaviour column is read from the code
+   that runs, not inferred from the name.
+3. Callers/edges traced through `calls.csv` to classify reachability, and two
+   hand-disassembled callbacks (`capstone`, LE pages resolved via `le_info.py`:
+   object 0 `0x10000→file 0x62e54`, object 1 `0x80000→file 0xc6e54`) because
+   Ghidra did not emit them as functions.
+
+### Where the game stops and the audio layer begins (the boundary)
+
+```
+game code  (obj0, 0x10000 … ~0x5d000  and 0x63xxx)          <- "the game"
+   │  calls
+   ▼
+AIL public-API thunks  0x5d7dc … 0x5dfff                    <- the AIL surface
+   │  36 callees; 33 AIL + 3 non-AIL helpers (see below)
+   ▼
+AIL engine (statically linked)  0x65b43 … 0x6aca0           <- vendored, internal
+   │  driver-call dispatcher 0x5d973(driver, fn#, in, out)
+   ▼
+external driver, loaded at runtime from RAGE.SND\*.DIG / *.MDI (low memory)
+```
+
+* The boundary the later tasks work against is **the thunk block
+  `0x5d7dc–0x5dfff`**: everything at or below it is the game; every call that
+  crosses it is listed below. The AIL engine and the loaded `.DIG`/`.MDI`
+  binaries are internal — reachable only through the calls below — and are not
+  part of the surface.
+* `0x5d973` (`FUN_0005d973`, 4 args: driver, fn#, in, out) is the driver
+  dispatcher; the engine calls it with driver API numbers **`0x300, 0x301,
+  0x302, 0x303, 0x304, 0x305, 0x306, 0x401, 0x402, 0x501, 0x502, 0x503`**
+  (`FUN_00065b7b`/`FUN_0006a410`/`FUN_00068070`/`FUN_0006a7c0` …). It is *not*
+  game-called. It uses DPMI (`swi 0x31`) into the loaded driver.
+  `verified (cmd: prage.c 0x66903 body + call sites; calls.csv)`
+* Corrections to earlier text in this file, explicitly:
+  * **`0x5D7DC` is not an audio entry point.** `FUN_0005d7dc` is the Watcom C
+    runtime `rand()`: a 32-bit LCG (`seed = seed*0xB90D12B9 + 0x38CE051F;
+    return (seed>>16)*(arg&0xffff)>>16`), 0 callees, called with no arguments by
+    33 game functions (`0x10f28` spawn delay, `0x121a0` title, 0x4xxxx in-play,
+    …). No AIL code calls it. `verified (cmd: prage.c 0x5d7dc body + all 33
+    call sites in calls.csv; all callers < 0x5d000)`.
+  * **The 60 Hz AIL timer drives the *game* tick, not the sequencer directly.**
+    See "Timer rate" below.
+  * `0x5d808` and `0x5d812` are also **not** AIL — game helpers that happen to
+    sit in the block (see table).
+
+### Game → AIL call list
+
+`FUN_0005dXXX` names are the decompiler's; the AIL name is the closest AIL 3.02
+API function and is marked in the confidence column. `called as` is the literal
+argument expression at the call site. Reachability: **init** = game main
+`FUN_0001bec4`/`main`; **movie** = Smacker/animation path
+`0x11000`/`0x24c5c → 0x1c740 → 0x6345c → 0x63180`; **title** = state 1
+`FUN_000121a0`; **in-play** = `FUN_0002c3fc` (206 callers) and the master loop
+`0x255cc → FUN_0001cf20`; **teardown** = `FUN_0001d018`/`0x1be30`.
+
+| # | address | AIL name (conf.) | called as (site) | behaviour to reproduce | reach | conf |
+|---|---|---|---|---|---|---|
+| 1 | `0x5d851` | `AIL_startup` (likely) | `FUN_0005d851()` — `FUN_0001cf40` | installs the AIL timer hook then loads the 18 default preferences via `FUN_0006603e` (pref 0..0x11 = 200,1,0x8000,100,0x10,100,0x28f,0,0,1,0x78,8,0x7f,1,0,2,1,1). No args, no return used. | init | verified body |
+| 2 | `0x5d86a` | `AIL_shutdown` (likely) | `FUN_0005d86a()` — `FUN_0001d018` | releases every installed driver (`FUN_0005db61` each), releases all timers, unhooks. No return used. | teardown | verified body |
+| 3 | `0x5d87e` | `AIL_set_preference` (verified) | `(7,1)` `FUN_00010034`; `(4,4)` `(1,0x2b11)` `(3,0x14)` `(0xb,1)` `FUN_0001cf40` | swaps `prefs[pref]=value`, returns the old value. Game sets sample rate **0x2b11 = 11025**, pref 3=20, pref 4=4, pref 0xb=1, pref 7=1. | movie, init | verified (body: `DAT_00108d64[pref]`) |
+| 4 | `0x5da12` | `AIL_register_timer` (verified) | `(&LAB_00010604)` `FUN_00010610`; `(&LAB_0001bdf4)` `FUN_0001cf40` | allocates a timer slot, stores the callback, returns its handle (byte offset `0,4,…0x3c`) or `-1` ("Out of timer handles"). | init | verified body |
+| 5 | `0x5da87` | `AIL_set_timer_frequency` (verified) | `(h,0xfa)` `FUN_00010610`; `(h,0x3c)` `FUN_0001cf40` | converts Hz→µs (`1000000/hz`) and stores the period; `0xfa`=**250 Hz**, `0x3c`=**60 Hz**. | init | verified (body `FUN_00066bb8` = `1000000/param_2`) |
+| 6 | `0x5daa6` | `AIL_start_timer` (verified) | `(DAT_000f0a20)` and `(uVar1)` | marks the timer running (state 1→2). | init | verified body |
+| 7 | `0x5dadc` | `AIL_release_timer_handle` (verified) | `(DAT_000f0a20)` `FUN_00010684` | clears the timer slot (state→0). Called on the refcount-0 shutdown. | teardown | verified body |
+| 8 | `0x5db7c` | `AIL_install_DIG_INI` (verified) | `FUN_0005db7c()` — `FUN_0001cf40` | opens `DIG.INI`, parses `DRIVER=`/`IO_ADDR`/`DMA_*`, installs the named `.DIG`; returns the DIG driver handle (stored `DAT_001028c8`). | init | verified (body reads `"DIG.INI"`) |
+| 9 | `0x5db9e` | `AIL_install_DIG_driver_file` (verified) | `(pcVar1,0)` / `("SBPRO.DIG",0)` / `("SBLASTER.DIG",0)` — `FUN_00010034` | installs the named driver file; `0` on failure ("Driver file not found"). Used as the `SB16.DIG → SBPRO.DIG → SBLASTER.DIG` fallback chain (handle `DAT_00081e08`). | movie | verified (body + 3 literal names) |
+| 10 | `0x5dbcb` | `AIL_allocate_sample_handle` (verified) | `(DAT_00081e08)` `FUN_0001013c`; `(DAT_001028c8)` ×4 `FUN_0001cf40` | finds a free sample slot on the driver, inits it, returns the handle (`0` + "Out of sample handles" when full). Init allocates exactly **4** sample handles (loop `iVar2+0x18` until `0x60`). | movie, init | verified body |
+| 11 | `0x5dbf4` | `AIL_release_sample_handle` (verified) | `(*(param_1+0x23c))` `FUN_00010570` | marks the sample free (state=1). | movie | verified body |
+| 12 | `0x5dc0f` | `AIL_init_sample` (verified) | sample arg, 6 sites (`0x1013c`,`0x1cb18`,`0x1cc28`,`0x1cd9c`,`0x1ce04`,`0x1cf40`,`0x1d220`) | resets the sample (state=2, position/loop/volume defaults, **default rate `0x2b11`=11025**). | all | verified body |
+| 13 | `0x5dc2a` | `AIL_set_sample_address` (verified) | `(handle, buf, len)` `FUN_0001cb18` | sets `sample.addr=buf`, `sample.len=*buf` (XMI block), resets position fields. | in-play/title | verified body |
+| 14 | `0x5dc4d` | `AIL_set_sample_type` (likely) | `(h,uVar3,cVar1!='\0')` `FUN_0001013c`; `(h,0,0)` `FUN_0001cb18` | writes `sample+0x34=fmt`, `sample+0x38=flag` and re-commits; `fmt` is the 0..3 code derived from the record's two flags. Exact field names open. | movie, in-play | verified body / name likely |
+| 15 | `0x5dc70` | `AIL_start_sample` (verified) | `(handle)` `FUN_0001cb18` | marks the sample playing (state=4) and issues driver call `0x401` (DMA start). | in-play/title | verified body |
+| 16 | `0x5dc8b` | `AIL_stop_sample` (verified) | `(handle)`, 7 sites (`0x10510`,`0x10570`,`0x1cc28`,`0x1cd9c`,`0x1ce04`,`0x1d018`,`0x1d220`) | marks the sample stopped (state=2) and fires its registered callbacks. | movie, teardown | verified body |
+| 17 | `0x5dca6` | `AIL_set_sample_rate` (verified) | `(h,*(param_1+0x27c))` `FUN_0001013c`; `(h,0x2b11)` `FUN_0001cb18` | sets `sample.rate` (+0x3c). Init/streaming set 11025. | movie, in-play | verified body |
+| 18 | `0x5dcc5` | `AIL_set_sample_volume` (verified) | `(h,0x7f)` `FUN_0001013c`; `(h,DAT_000a2cb4)` `FUN_0001cb18`/`FUN_0001ced4` | sets `sample.volume` (+0x40), clamped 0..`0x7f`; `DAT_000a2cb4` is the game volume global. | movie, in-play | verified body |
+| 19 | `0x5dce4` | `AIL_set_sample_loop_count` (likely) | `(handle,0)` `FUN_0001cb18` | writes `sample+0x30` (loop count; init default 1, game forces 0 = no loop). | in-play/title | verified body / name likely |
+| 20 | `0x5dd03` | `AIL_sample_status` (verified) | `(handle)` 6 sites | returns `sample+4`: `2`=stopped, `4`=playing (the game gates on `!= 4` and `== 4`). | movie, in-play | verified body |
+| 21 | `0x5dd2c` | sample buffer-size helper (no AIL name) | `(DAT_00081e08,*(param_1+0x27c),uVar3)` `FUN_0001013c` | computes the byte size of a streaming buffer from format/rate/len; result `(n+3)&~3` is allocated. Likely game/AIL streaming glue. | movie | verified body / name TODO |
+| 22 | `0x5dd5d` | streaming buffer index | `(puVar1[0x8f])` in `FUN_000102b8` | returns which of the two streaming buffers needs refilling (`0`/`1`, or `-1` when idle). | movie | verified body / name TODO |
+| 23 | `0x5dd86` | feed streaming buffer | `(handle,uVar2,buf,len)` `FUN_000102b8` | installs `(buf,len)` into streaming half `uVar2`, resets its consumed count, issues driver call `0x401`. | movie | verified body / name TODO |
+| 24 | `0x5ddad` | `AIL_register_sample_callback` (likely) | `(handle,0,param_1)` `FUN_0001013c` | stores a function pointer into the sample's callback table (`+0x854`, indexed); `FUN_00068070`/`FUN_000680f0` invoke `+0x84c`/`+0x850` on start/stop. | movie | verified body / name likely |
+| 25 | `0x5ddd0` | `AIL_install_MDI_INI` (verified) | `FUN_0005ddd0()` — `FUN_0001cf40` | opens `MDI.INI`, installs the named `.MDI`; returns the MDI driver handle (`DAT_001028c4`). | init | verified (body reads `"MDI.INI"`) |
+| 26 | `0x5de1f` | `AIL_allocate_sequence_handle` (verified) | `(DAT_001028c4)` — `FUN_0001cf40` | allocates the single sequence handle from the MDI driver (`DAT_001028c0`; `0` + "Out of sequence handles"). | init | verified body |
+| 27 | `0x5de48` | `AIL_init_sequence` (verified) | `(DAT_001028c0,DAT_001028d0,0)` ×2 `FUN_0001c930` | parses the `FORM/CAT/XMID` bank, walks the XMID records, sets up banks/tempo; `0` + "Invalid XMIDI sequence" on bad data. **This is the music load.** | title, in-play | verified body |
+| 28 | `0x5de79` | `AIL_start_sequence` (verified) | `(DAT_001028c0)` — `FUN_0001c930` | silences all channels, resets the track to start, marks playing (state=4). **This is the music start.** | title, in-play | verified body |
+| 29 | `0x5deaf` | `AIL_stop_sequence` (verified) | `(DAT_001028c0)` 5 sites (`0x1c930`,`0x1ca6c`,`0x1d018`,`0x1d1b0`) | sends all-notes-off (cc `0xb0/0x40`), marks stopped (state=2). **This is the music stop.** | all | verified body |
+| 30 | `0x5deca` | `AIL_set_sequence_volume` (verified) | `(DAT_001028c0,DAT_000a2cb8,500)` | sets the sequence target volume and a fade time in ms (500 ms here; computes a per-tick delta). | title, in-play | verified body |
+| 31 | `0x5deed` | `AIL_sequence_status` (verified) | `(DAT_001028c0)` 3 sites (`0x1ca40`,`0x1cab8`,`0x1d018`) | returns `sequence+4`; the game treats `4` as *playing*. | in-play, teardown | verified body |
+| 32 | `0x5dfdc` | no-op (purpose unknown) | `FUN_0005dfdc()` — `FUN_00010034`, `FUN_00010610` | empty body (prologue/epilogue only, no stack). Runs once when the sound-driver refcount goes 0→1. Behaviour to reproduce: **nothing**. | init/first use | verified (disasm: only `push/mov/pop/ret`) |
+| 33 | `0x5dfeb` | no-op (purpose unknown) | `FUN_0005dfeb()` — `FUN_000100c4`, `FUN_00010684` | empty body. Runs once when the refcount goes 1→0. Behaviour: **nothing**. | teardown | verified (disasm) |
+| — | `0x5d7dc` | **not AIL**: Watcom `rand()` | 0-arg, 33 game sites | 32-bit LCG returning `(seed>>16)*(arg&0xffff)>>16`. Not audio; must exist for game determinism. | all | verified |
+| — | `0x5d808` | **not AIL**: game helper | `FUN_0005d808()` — master loop `0x20c10` | `word[0x6f6de]=0` — resets the counter the 60 Hz callback increments. | in-play | verified (disasm) |
+| — | `0x5d812` | **not AIL**: stub | `0x292ac` (calls.csv; not rendered in `prage.c`) | `return 0`. | in-play | verified (disasm) |
+
+### Internal-only (reached only through the calls above)
+
+Game code never calls these; they are listed so no later task mistakes them for
+the surface. `FUN_0005d8ab`/`FUN_0005d8bf` (lock/unlock around all engine entry
+points; `FUN_00066264`/`FUN_00066271` refcount), `FUN_0005d8d3`, `FUN_0005d8fc`,
+`FUN_0005d8d3`, `FUN_0005d91b`/`0x5d936`/`0x5d958`/`0x5d9a8` (driver
+enable/query), `FUN_0005d9c3`/`0x5d9e5`/`0x5da3b`/`0x5da68` (INI parse, timer
+period), `FUN_0005daa6` is surface but `FUN_0005dac3` (stop) is internal,
+`FUN_0005daf7` (release all timers), `FUN_0005db0b`/`0x5db34`/`0x5db61`
+(driver get/install/uninstall internals), `FUN_0005ddf2` (install MDI from file),
+`FUN_0005de94` (all-notes-off reset), `FUN_0005df16`/`0x5df35`/`0x5df5e`/`0x5df7d`
+(sequence event helpers, note stealing, callback registration), and the whole
+engine body `FUN_00065b43 … FUN_0006aca0`.
+`verified (cmd: prage.calls.csv — every caller of these is >= 0x5d000)`.
+
+### Timer rate (Step 3)
+
+**Answer: the game installs two AIL timers, 60 Hz and 250 Hz; neither is proven
+to be the XMIDI sequencer tick. The sequencer is advanced by AIL's per-driver
+timer, whose rate is declared by the loaded `.MDI` driver, not by `PRAGE.EXE`.**
+
+What is verified statically:
+
+* The AIL timer subsystem stores an independent **period in µs** per timer and
+  reprograms PIT channel 0 to the soonest due timer:
+  `FUN_0005da87(hz)` → `FUN_0005da68(1000000/hz)` → `DAT_000efc40[t] = period`;
+  `FUN_000663d4(us)` writes `out 0x43,0x36; out 0x40,lo; out 0x40,hi` with
+  `divisor = us*10000/0x20bc` (≈ `us*1.1932`). So a 60 Hz timer fires every
+  `1000000/60 = 16666 µs` (PIT divisor ≈ 19887) exactly.
+  `verified (cmd: prage.c 0x66bb8/0x66b88/0x663d4/0x66407)`.
+* The game's `FUN_0001cf40` (called from game main `FUN_0001bec4`) sets the
+  **60 Hz** timer; its callback `LAB_0001bdf4` (hand-disassembled) does
+  `DAT_00081508++; DAT_00081500++; FUN_0001bbac(); word[0x6f6de]++; FUN_0002d62c()`
+  — i.e. it calls **`0x2D62C` = the game's 60 Hz tick** (`DAT_00105D88++`,
+  per `game_flow.md`). The 60 Hz value is the **game frame/music-service tick**.
+  `verified (cmd: prage.c 0x1cf40; capstone @0x1bdf4; game_flow.md "Tick")`.
+* `main` also calls `FUN_00010610`, which sets a **250 Hz** timer; its callback
+  `LAB_00010604` is `mov eax,[0x81e10]; inc [0x81e10]; ret` — a free-running
+  4 ms counter (`DAT_00081e10`) used as the **streaming-audio timeline**
+  (`FUN_000100dc`/`FUN_000102b8`/`FUN_00010678` multiply it by 4 µs).
+  `verified (cmd: prage.c 0x10610; capstone @0x10604)`.
+* The XMIDI sequencer is advanced by AIL's **per-driver** timer: `FUN_00065b7b`
+  (the engine's generic driver install) registers a timer with callback
+  `FUN_000656e2` and sets its frequency to `*(s16*)(driver+0x2e)`, a field the
+  **driver itself writes during its init** (driver call `0x300`, issued just
+  above). That rate lives in `SBPRO2.MDI`, not in `PRAGE.EXE`.
+  `verified (cmd: prage.c 0x65b7b lines "FUN_0005da12(&DAT_000656e0)" /
+  "FUN_0005da87(timer, *(s16*)(driver+0x2e))")`.
+* AIL also keeps an 18.2 Hz housekeeping timer: `FUN_0006646c` calls
+  `FUN_0005da68(0x3c, 0xd68d)` = 54925 µs.
+  `verified (cmd: prage.c 0x6646c)`.
+
+So the earlier "60 Hz to drive playback" phrasing is **correct for the game tick
+and the music-service timer, not proven for the sequencer's OPL write cadence**.
+
+`TODO(verify): the MDI driver's declared timer rate (and therefore the
+sequencer's OPL write cadence) — Task 8/9 settle it from the capture: bucket the
+`.dro` writes by inter-write delay from `tools/opl_trace.py` and test whether
+writes land on 1/60 s (16666 µs) boundaries (⇒60 Hz) or on another period; a
+driver rate ≠ 60 Hz also shows as the game-timer callbacks (0x2d62c /
+DAT_00081e10) and the FM writes advancing at different multiples. If the
+capture cannot separate them, read the rate the loaded `SBPRO2.MDI` writes to
+driver offset +0x2e at its `0x300` init.`
+
+### Notes for the implementing tasks
+
+* **Init chain Task 4 wires (music-relevant):** `FUN_0001cf40` with `param_1 != 0,
+  param_2 != 0` → `AIL_startup`; prefs `(4,4)(1,11025)(3,20)(0xb,1)`;
+  `AIL_install_DIG_INI` → 4× `AIL_allocate_sample_handle` + `AIL_init_sample`;
+  `AIL_install_MDI_INI` → `AIL_allocate_sequence_handle`; `AIL_register_timer`
+  with the 60 Hz callback. Then per song `AIL_init_sequence` +
+  `AIL_set_sequence_volume` + `AIL_start_sequence` (from `FUN_0001c930`).
+* **Sample play Task 5/6 prove:** the shortest path is
+  `FUN_0001cf20` (master loop) → for each slot `FUN_0001cb18` → `AIL_init_sample`
+  → `AIL_set_sample_address` → `AIL_set_sample_type` → `AIL_set_sample_volume`
+  → `AIL_set_sample_rate(11025)` → `AIL_set_sample_loop_count(0)` →
+  `AIL_start_sample`.
+* `DAT_000a2cb4` is the master SFX volume; `DAT_000a2cb8` the master music
+  volume (both fed to `AIL_set_sample_volume` / `AIL_set_sequence_volume`).
+  `verified (cmd: prage.c 0x1ced4 / 0x1cab8)`.
+* Nothing in the surface is deferred except the internal-only engine body and
+  the `.MDI` driver rate above.
+
+### Task-3 open items
+
+| Item | Status |
+|---|---|
+| Game→AIL surface = 33 AIL + 3 non-AIL callees in `0x5d7dc–0x5dfff` | **verified** |
+| `0x5d7dc` is `rand()`, not audio | **verified** |
+| Game music/frame AIL timer = 60 Hz | **verified** |
+| Streaming AIL timer = 250 Hz (4 ms counter) | **verified** |
+| Sequencer tick = MDI-driver timer (offset +0x2e), rate not in EXE | **verified**; value `TODO(verify)` |
+| AIL names for rows 14/19/24 and rows 21–23 | **likely** / `TODO(verify)` by AIL 3.02 header match |
