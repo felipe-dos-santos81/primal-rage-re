@@ -26,6 +26,116 @@
 
 ---
 
+## Errata — re-scope after Task 1 (the un-pinned gate tripped WIDER)
+
+Task 1 measured **total** divergence between the un-pinned original and the port:
+`title` 587 and `title2` 590 captured frames, 100% unexplained, 0/96 port frames
+exhibited, no window; deterministic (both captures agree); pinned-backup control
+reproduces the known-green window. Near-miss margins of 0.26%–4.7% of bytes
+varying per frame.
+
+Consequences, per the spec's Decision 4:
+
+* Task 5's premise — "port `0x2BF08` only if drift lands at frames 32/64/96" — is
+  **falsified**. The 4a-ii hypothesis that `0x2BF08` reaches the aperture only
+  with an active message is wrong at the aperture level: it composites a small
+  time-varying overlay on effectively **every** title frame.
+* Tasks 3–6 of the original schedule are **suspended** until Task 2's diagnosis.
+
+The replacement schedule follows. Tasks 1's commit (`33a74e9`) and the un-pinned
+captures are retained.
+
+### Task 1b: make the title oracle report total non-alignment instead of crashing
+
+`tools/title_compare.py:241` does `a, b = idx[0], idx[-1]` where `idx` lists the
+frames exhibiting any port frame. With zero exhibited frames `idx` is empty and
+it raises `IndexError`, so the oracle cannot report the very condition Task 1
+produced. This is load-bearing for any future re-capture that diverges.
+
+**Files:**
+- Modify: `tools/title_compare.py` (the window derivation in `check_capture`)
+- Test: `tools/tests/test_title_compare.py` (create if absent)
+
+**Interfaces:**
+- Produces: `check_capture`-level behaviour that reports `0 exhibited` and a
+  non-zero exit when no captured frame exhibits any port frame, instead of
+  raising.
+
+- [ ] **Step 1: Write the failing test**
+
+Follow the existing test style under `tools/tests/`. Add a case with a synthetic
+capture whose every frame is unexplained and assert the checker reports zero
+exhibited frames and fails cleanly (non-zero), not with a traceback.
+
+- [ ] **Step 2: Run it and confirm it fails with `IndexError`**
+
+Run the new test. Expected: FAIL with the `IndexError` traceback reproduction.
+
+- [ ] **Step 3: Add the empty-window branch**
+
+When no frame exhibits any port frame, print the per-capture counts (all
+unexplained) and return a failing status, without indexing `idx`. Keep every
+existing path and threshold unchanged.
+
+- [ ] **Step 4: Run the test and the oracle**
+
+Run the new test (PASS), then `make title-oracle` against the current un-pinned
+captures. Expected: it now reports `0 exhibited` and exits non-zero instead of
+crashing — the same measurement Task 1 collected, now from the oracle itself.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tools/title_compare.py tools/tests/test_title_compare.py
+git commit -m "title: report total non-alignment instead of crashing the oracle"
+```
+
+### Task 2: diagnose `0x2BF08`'s per-frame overlay
+
+Research task. Produces a written diagnosis, not code. It answers, with
+disassembly evidence: what `0x2BF08` writes to the aperture on a frame where
+`(DS_000EF6DC & 0x1F) != 0` (the frames Task 1 shows are affected) — the
+message/font overlay, its source record, which already-ported functions it
+composes through, and the size of a faithful port.
+
+**Files:**
+- Create: `docs/superpowers/plans/2026-09-18-bf08-overlay-diagnosis.md`
+
+- [ ] **Step 1: Trace the aperture path**
+
+From `prage.c:16666` (`0x2BF08`), follow each branch, especially the
+`FUN_0002F280` / `FUN_0002F198` / `FUN_0002F4BC` and `FUN_0001C500` calls, and
+determine which of them builds or moves display nodes that reach the composite.
+State which are called on a `(DS_000EF6DC & 0x1F) != 0` frame versus a `== 0`
+frame, and reconcile that with Task 1's finding that every frame differs.
+
+- [ ] **Step 2: Identify the overlay content**
+
+Determine what is drawn: a message id from `DS_00105C00`, a cursor, a blinking
+prompt, or text already in the grid. Disassemble the callees as needed
+(`file_offset = va + 0x52E54`).
+
+- [ ] **Step 3: Estimate the port**
+
+State the functions and records a faithful port needs, the ones already ported,
+and the new work — so the cycle can be re-specified with a real size.
+
+- [ ] **Step 4: Recommend**
+
+One of: port the overlay now; keep the pin and document the carve-out; or a
+smaller intermediate. Give the evidence for the recommendation.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add docs/superpowers/plans/2026-09-18-bf08-overlay-diagnosis.md
+git commit -m "docs: diagnose 0x2BF08's per-frame title overlay"
+```
+
+Tasks 3+ are re-specified once Task 2's diagnosis lands.
+
+---
+
 ### Task 1: Remove the `0x2BF08` inert pin and re-derive the oracle reference
 
 This is the probe-first step (spec Decision 4). It produces the reference everything else is judged against, and a **gate**: if the port's drift after un-pinning is wider than frames 32/64/96, stop and re-scope — do not start Task 3.
