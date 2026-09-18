@@ -928,7 +928,11 @@ stage explicit paths, never `git add -A`.)
 
 **Interfaces:**
 - Produces: `int sprite_render_raw(const u8 *src, u8 *dst, int width, int rows,
-  int stride, u8 bank);`
+  int stride, u8 bank, int clip_l, int clip_r, int clip_t);` — `0x58CBD` is
+  **clip-aware** (it serves both type `0x02` and type `0x12`); `sprite_blit` passes
+  `0, 0, 0` for `0x02` and the real overhangs for `0x12`. (This plan originally
+  claimed the raw path had no clip handling; the final review's disassembly of
+  `0x58CBD` and the design spec §4.6 disproved that. Corrected in the fix wave.)
 
 - [ ] **Step 1: Write the failing test**
 
@@ -938,7 +942,7 @@ static void check_raw_copy(void)
     /* A 4x2 raw fixture with the bank offset applied byte-wise. */
     const u8 src[8] = { 1,2,3,4, 5,6,7,8 };
     u8 dst[16]; memset(dst, 0xEE, sizeof dst);
-    CHECK_EQ_INT(sprite_render_raw(src, dst, 4, 2, 16, 3), 0);
+    CHECK_EQ_INT(sprite_render_raw(src, dst, 4, 2, 16, 3, 0, 0, 0), 0);
     for (int i = 0; i < 4; i++) CHECK_EQ_INT(dst[i], src[i] + 3);
     for (int i = 0; i < 4; i++) CHECK_EQ_INT(dst[16 + i], src[4 + i] + 3);
     /* The row gap is untouched. */
@@ -947,7 +951,7 @@ static void check_raw_copy(void)
     /* Overflow wraps byte-wise, not into the next pixel. */
     const u8 hi[2] = { 0xFE, 0xFF };
     u8 d2[2] = { 0, 0 };
-    CHECK_EQ_INT(sprite_render_raw(hi, d2, 2, 1, 2, 4), 0);
+    CHECK_EQ_INT(sprite_render_raw(hi, d2, 2, 1, 2, 4, 0, 0, 0), 0);
     CHECK_EQ_INT(d2[0], 0x02);
     CHECK_EQ_INT(d2[1], 0x03);
 }
@@ -1206,7 +1210,11 @@ int sprite_render_shear(const u8 *src, u8 *dst, int width, int rows,
     src += clip_t * width + clip_l;
     for (int r = 0; r < rows - clip_t; r++) {
         int ref = (i16)DSW(DS_00107900);
-        int sh  = ((int)(i16)DSW(DS_00107900 + (clip_t + r) * 2) - ref) >> 5;
+        /* The table is indexed by the DRAWN row (node->+0x3C counts from 0
+         * after the clip_t skip), not the image row: the disassembly of
+         * 0x5215C zeroes +0x3C before the loop and INC-references it per
+         * drawn row. A hand-computed clip_t > 0 test pins this. */
+        int sh  = ((int)(i16)DSW(DS_00107900 + r * 2) - ref) >> 5;
         copy_run(dst, src + sh, vis, bank);
         src += width;               /* net advance = width, as the original */
         dst += stride;
