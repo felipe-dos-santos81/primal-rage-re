@@ -763,10 +763,11 @@ int test_rng(void)
     for (unsigned i = 0; i < sizeof ranges / sizeof ranges[0]; i++)
         CHECK_EQ_INT((int)rng_next(ranges[i]), (int)expect[i]);
 
-    /* A range wider than 16 bits is masked, and 0 must not shift undefinedly. */
+    /* A range wider than 16 bits is masked, and 0 must not shift undefinedly.
+     * These are FRESH-seed draws, not members of the ordered sequence above. */
     rng_seed(0xABCDu);
-    CHECK_EQ_INT((int)rng_next(0x7FFFFFFFu), 12);
-    CHECK_EQ_INT((int)rng_next(0u), 111);
+    CHECK_EQ_INT((int)rng_next(0x7FFFFFFFu), 9158);
+    CHECK_EQ_INT((int)rng_next(0u), 0);
 
     /* rng_step advances the state and discards the value. */
     rng_seed(0xABCDu);
