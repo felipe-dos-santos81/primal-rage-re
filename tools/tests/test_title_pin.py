@@ -78,6 +78,24 @@ class TitlePinTest(unittest.TestCase):
         self.assertIn(out, r.stderr)
         self.assertFalse(os.path.exists(out))
 
+    def test_refuses_an_out_under_data_mixed_case(self):
+        # APFS is case-insensitive: Data/ resolves to the real data/ dir. Assert
+        # refusal directly, without assuming the host filesystem's case rules.
+        out = os.path.join(ROOT, "Data", "game", "C", "PRAGE_PIN.EXE")
+        r = self.run_tool(EXE, out)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn(out, r.stderr)
+        self.assertFalse(os.path.exists(out))
+
+    def test_refuses_a_missing_src(self):
+        with tempfile.TemporaryDirectory() as d:
+            missing = os.path.join(d, "nope.exe")
+            out = os.path.join(d, "out.exe")
+            r = self.run_tool(missing, out)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn(missing, r.stderr)
+            self.assertFalse(os.path.exists(out))
+
     def test_refuses_out_equal_to_src(self):
         with tempfile.TemporaryDirectory() as d:
             victim = os.path.join(d, "PRAGE.EXE")

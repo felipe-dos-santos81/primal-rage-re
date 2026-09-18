@@ -22,18 +22,35 @@ PATCHES = [
 ]
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
+def _fold(path):
+    # realpath does not canonicalize case, and APFS is case-insensitive; casefold
+    # so Data/ and data/ compare equal.
+    return os.path.normcase(path).casefold()
+
 def guard(src, out):
+    real_src = os.path.realpath(src)
     real_out = os.path.realpath(out)
-    if real_out == os.path.realpath(src):
+    if _fold(real_src) == _fold(real_out):
         raise SystemExit("title_pin: refusing to write over the source: %s" % out)
     real_data = os.path.realpath(DATA_DIR)
-    if real_out == real_data or real_out.startswith(real_data + os.sep):
+    fold_out, fold_data = _fold(real_out), _fold(real_data)
+    if fold_out == fold_data or fold_out.startswith(fold_data + os.sep):
         raise SystemExit("title_pin: refusing to write under data/: %s" % out)
+    # Filesystem-accurate backstop: the output's directory is the data/ dir.
+    if os.path.isdir(real_data) and os.path.isdir(os.path.dirname(real_out)):
+        try:
+            if os.path.samefile(real_data, os.path.dirname(real_out)):
+                raise SystemExit("title_pin: refusing to write under data/: %s" % out)
+        except OSError:
+            pass
 
 def patch(src, out):
     guard(src, out)
-    with open(src, "rb") as f:
-        img = bytearray(f.read())
+    try:
+        with open(src, "rb") as f:
+            img = bytearray(f.read())
+    except OSError as e:
+        raise SystemExit("title_pin: cannot read --src %s: %s" % (src, e))
     for off, orig, _repl in PATCHES:
         if img[off:off + len(orig)] != orig:
             raise SystemExit("title_pin: site mismatch at 0x%X -- wrong or "
