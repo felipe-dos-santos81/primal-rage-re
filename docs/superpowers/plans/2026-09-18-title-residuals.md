@@ -40,7 +40,10 @@ Consequences, per the spec's Decision 4:
   **falsified**. The 4a-ii hypothesis that `0x2BF08` reaches the aperture only
   with an active message is wrong at the aperture level: it composites a small
   time-varying overlay on effectively **every** title frame.
-* Tasks 3–6 of the original schedule are **suspended** until Task 2's diagnosis.
+* The original Tasks 2–6 are **suspended** until Task 2's diagnosis; they resume
+  re-numbered once the cycle is re-specified. (Original Task 1 is done; original
+  Task 2 — the effect-subsystem register-bindings pin — returns if the effect
+  slice is re-scheduled.)
 
 The replacement schedule follows. Tasks 1's commit (`33a74e9`) and the un-pinned
 captures are retained.
@@ -212,7 +215,7 @@ git commit -m "title: drop the 0x2BF08 inert pin so the oracle covers the true o
 
 ---
 
-### Task 2: Pin the effect-subsystem register bindings by disassembly
+### SUSPENDED (was Task 2): Pin the effect-subsystem register bindings by disassembly
 
 `__regparm3` hides the register arguments and the decompilation contradicts itself on the link-field order (`0x249B0` treats `[0]` as next, `0x249C0` treats `[1]` as next). No port code is written until this is pinned. Produces a committed companion doc, exactly as 4a-ii's `2026-09-17-actor-system-args.md` did.
 
@@ -258,7 +261,7 @@ git commit -m "docs: pin the 0x13xxx effect-subsystem register bindings"
 
 ---
 
-### Task 3: Port the list primitives and the effects module
+### SUSPENDED (was Task 3): Port the list primitives and the effects module
 
 **Files:**
 - Create: `port/src/game/effects.h`, `port/src/game/effects.c`
@@ -354,7 +357,7 @@ git commit -m "effects: port the 0x13xxx effect list (spawn 0x13C70, clear 0x13D
 
 ---
 
-### Task 4: Wire the effect list into the engine and the title
+### SUSPENDED (was Task 4): Wire the effect list into the engine and the title
 
 **Files:**
 - Modify: `port/src/game/actors.c:103-121` (`actors_reset`'s deferred `0x13DF0` marker)
@@ -392,7 +395,7 @@ git commit -m "flow: run the 0x13xxx effect list on the title path"
 
 ---
 
-### Task 5: Port `0x2BF08` — only if Task 1 measured drift at frames 32/64/96
+### SUSPENDED (was Task 5): Port `0x2BF08` — only if Task 1 measured drift at frames 32/64/96
 
 **Files:**
 - Modify: `port/src/game/flow.c:863-875` (the existing `0x2BF08` PORT marker)
@@ -431,7 +434,7 @@ git commit -m "flow: port 0x2BF08, the 0x11D04 tail's message/text tick"
 
 ---
 
-### Task 6: Record the falsifiability outcome and verify the ladder
+### SUSPENDED (was Task 6): Record the falsifiability outcome and verify the ladder
 
 **Files:**
 - Create: `docs/superpowers/plans/2026-09-18-title-residuals-report.md`
