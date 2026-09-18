@@ -10,6 +10,7 @@
  * themselves when the list is empty. The two pools are allocated by
  * res_load_index (platform/res.c), so actors_init only validates them. */
 #include "game/actors.h"
+#include "game/effects.h"
 #include "game/rng.h"
 #include "../mem.h"
 #include "../symbols.h"
@@ -100,8 +101,7 @@ void actors_reset(void)
     DSD(DS_00104AEC) = 0;       /* process mask: render table */
     DSD(DS_00100B4C) = 0;
     DSD(DS_00104AD0) = 0;
-    /* PORT: 0x13DF0 frees the 0x13xxx effect-list at sentinels DS_000FCCE0/E8,
-     * a subsystem (0x13ADC/0x13B3C) no task in this cycle reaches. */
+    effects_clear();                            /* 0x2BB2B (0x13DF0) */
     DSW(DS_00105BEA) = 0;
     DSB(DS_00105BED) = 0;
     mem_fill(DSD(DS_001014EC), 0, 0x4880u);   /* 0x61A70: pset pool */
@@ -117,8 +117,7 @@ void actors_reset(void)
     for (u32 rec = base; rec < base + ACTOR_POOL_RECORDS * ACTOR_REC_SIZE;
          rec += ACTOR_REC_SIZE)
         list_insert_before(DS_00105B3C, rec);
-    /* PORT: 0x13ADC re-inits the 0x13xxx effect-list free pool at
-     * DS_000FCCE8, out of scope for this cycle. */
+    effects_init();                             /* 0x2BBB8 (0x13ADC) */
     /* PORT: 0x4F228(0,0) zeroes the input/mouse state at DS_00107A38/3A and
      * DS_00107A54/55; input state is owned by platform/input.c. */
     DSD(DS_00105B44) = 0;

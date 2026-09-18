@@ -6,6 +6,7 @@
  * sub-project is stubbed where it is reached and named in a PORT comment. */
 #include "game/flow.h"
 #include "game/actors.h"
+#include "game/effects.h"
 #include "game/movie.h"
 #include "game/rng.h"
 #include "mem.h"
@@ -414,9 +415,8 @@ static void game_state_title(void)
             for (u32 node = title_retire_next(0); node != 0;
                  node = title_retire_next(node)) {              /* 0x123CB */
                 if (DSD(node) == 0x3E688u) {                    /* 0x123D6 */
-                    /* PORT: 0x13C70 (called 0x123EA) is the 0x13xxx
-                     * effect/spawn subsystem, out of this cycle (spec §11). Its
-                     * only in-window call is here, on nodes typed &0x3E688. */
+                    /* 0x123DE-0x123EA: EBX = 0x419786C, DL = 3, EAX = node. */
+                    effects_spawn(node, 3u, 0x419786Cu);        /* 0x123EA */
                 }
             }
             DSB(DS_000F0A6F)++;                                 /* 0x123FC */
