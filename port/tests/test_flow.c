@@ -39,11 +39,27 @@ static void check_bank_guard(void)
           "absent FORM/XMID is rejected");
 }
 
+/* The 0x47370/0x1C500/0x474E4 localisation reader over the shipped ENGLISH.TXT:
+ * 0x121A0's caption is string 0x15, so pin the decode of that id and two
+ * neighbours (a non-zero length-XOR, and a plain string) against the file. */
+static void check_localised_string(void)
+{
+    game_string_table_load("data/game/C");
+    CHECK(strcmp((const char *)game_string_get(0x15u), "THE FUTURE...") == 0,
+          "ENGLISH.TXT id 0x15 is the title caption");
+    CHECK(strcmp((const char *)game_string_get(0x14u), "THE NEW URTH?") == 0,
+          "ENGLISH.TXT id 0x14 decodes");
+    CHECK(strcmp((const char *)game_string_get(0x01u),
+                 "TM   1994 ATARI GAMES CORP.") == 0,
+          "ENGLISH.TXT id 0x01 decodes");
+}
+
 int test_flow(void)
 {
     int before = g_failures;
 
     check_bank_guard();
+    check_localised_string();
 
     /* Resources must be in mem[] for the title to decode. Earlier tests load
      * them; only load if this test runs first (a second load would exhaust the
@@ -95,6 +111,16 @@ int test_flow(void)
         if (logo != 0)
             CHECK(DSD(actor_pset(logo) + 0x18) != 0,
                   "logo pset carries a palette handle");
+    }
+
+    /* Phase 0's text branch ("THE FUTURE...") spawned one actor per non-space
+     * glyph into the 31x43 record grid at DS_00105F38; spaces release a cell and
+     * never spawn. */
+    {
+        int glyphs = 0;
+        for (u32 i = 0; i + 4u <= 0x14D4u; i += 4u)
+            if (DSD(DS_00105F38 + i) != 0) glyphs++;
+        CHECK(glyphs >= 10, "title caption laid out its glyphs in the grid");
     }
 
     /* DS_000F0A66 decreases 0x10 per presented title frame from 0x600. */

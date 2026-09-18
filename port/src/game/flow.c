@@ -42,7 +42,18 @@
  * in it as a RIFF/WAVE blob. */
 #define SOUND_RES 5u
 
+/* PORT: scratch for the localisation table (0x47370's 0x1C308 block). It must
+ * sit above the resource heap AND game_state_init's later movie loads (TWI5.SMK
+ * is 1.2 MB, allocated by res_load_file after this loader, pushing the heap to
+ * ~0x2BC0000), so it lives near the top of mem[]: 0x20 bytes for the 0x1E75C
+ * handle and 0x2000 for the file (ENGLISH.TXT is 6953 bytes shipped). The
+ * original keeps the handle in DAT_001082DC and the size in DAT_001082D8. */
+#define STRING_HANDLE 0x3800000u
+#define STRING_DATA   0x3800020u
+#define STRING_CAP    0x2000u
+
 static const char *s_game_dir;
+static int s_string_table_loaded;
 
 /* PORT: Task 10's dump hook bookkeeping. s_title_dump_n < 0 until 0x121A0's
  * entry frame arms it; each presented title frame then writes one
@@ -163,22 +174,96 @@ static void title_origin_reset(u32 idx)
     DSW(DS_00107A38) = (u16)(DSW(DS_00107A48) >> 6);  /* 0x3897D */
 }
 
-/* PORT: 0x1C500 is not a text-setup/clear-grid routine. It is a 37-byte
- * wrapper (prage.c:8005) around the string-table reader 0x474E4 (215 B,
- * prage.c:30989), which deobfuscates string `eax` into the 0x100-byte buffer
- * DS_00102760 and whose two callees are the paged-table accessors 0x1E75C
- * (23 B) and 0x1E808 (22 B); its table handle is the runtime global
- * DAT_00882DC. That is the spec §8 0x1E6D8/0x1E75C/0x1E808 string-table trio,
- * owned by 4c/4d
- * (fonts, text, ENGLISH.TXT), so 0x1C500 cannot be transcribed in isolation.
- * The port returns the original's output buffer DS_00102760 with an empty first
- * byte, so 0x2F198/0x2F280 see a zero-length string and emit no glyphs this
- * cycle; routing this chain is a follow-up decision. */
-static const u8 *title_string(void)
+/* PORT: 0x1E75C. Lock the paged data handle and return its data offset, or 0
+ * when it is locked or empty. The handle is {base @+8; len @+0xc; flags @+0x15}
+ * (0x1E6D8/0x1E75C/0x1E808's block header); the port builds it in mem[] and the
+ * "lock" is an inert single-threaded flag. */
+static u32 string_lock(u32 handle)
 {
-    DSB(DS_00102760) = 0;                       /* 0x1C517 */
+    if ((DSB(handle + 0x15) & 1u) == 0 && DSD(handle + 0xc) != 0) {
+        DSB(handle + 0x15) |= 2u;
+        return DSD(handle + 8);
+    }
+    return 0;
+}
+
+/* PORT: 0x1E808. Clear the lock bit. Its second argument feeds 0x500BB (a DPMI
+ * page-map query) and a write to [arg+0x10] that the string reader never reads;
+ * the port omits both, which is the arm 0x474E4 reaches. */
+static void string_unlock(u32 handle) { DSB(handle + 0x15) &= 0xFDu; }
+
+/* PORT: 0x474E4. Decode string `id` from the localisation table at `base` into
+ * `out` (capacity `outlen`). The table's +4 holds a linked list of group offsets
+ * relative to `base`; each group is a run of one-byte-length-prefixed entries
+ * and an entry's bytes are XORed with its plaintext length byte. Returns the
+ * decoded length (0 for an empty entry) or `outlen` when truncated. */
+static u32 string_decode(u32 base, u32 id, u8 *out, u32 outlen)
+{
+    u32 off = 0;
+    for (u32 g = id / 0x40u; g != 0; g--)
+        off = DSD(base + off + 4u);             /* 0x4752F */
+    u32 p = base + off + 8u;                    /* 0x47535 */
+    for (u32 i = id % 0x40u; i != 0; i--)
+        p += (u32)DSB(p) + 1u;                  /* 0x47544 */
+    u32 len = DSB(p);                           /* 0x4754D */
+    p += 1u;
+    if (len < outlen) {
+        for (u32 i = 0; i < len; i++)
+            out[i] = (u8)(DSB(p + i) ^ (u8)len);   /* 0x47564 */
+        out[len] = 0;                              /* 0x47572 */
+        return len != 0 ? len + 1u : 0u;
+    }
+    for (u32 i = 0; i + 1u < outlen; i++)
+        out[i] = (u8)(DSB(p + i) ^ (u8)len);       /* 0x47591 */
+    out[outlen - 1u] = 0;                          /* 0x4759E */
+    return outlen;
+}
+
+/* PORT: 0x47370. The original loads the loaded-config language file (index 0 =
+ * english.txt, selected by the DS_00104528 byte 0x20C10 extracts) through the
+ * 0x1C308/0x1E6D8 paged-memory manager and the 0x61xxx DOS file I/O, neither of
+ * which the port has. The port replaces both with a direct stdio read into
+ * STRING_DATA and a small handle at STRING_HANDLE, which is what 0x1E75C/
+ * 0x1E808/0x474E4 operate on. Idempotent; a missing file leaves the table
+ * empty (0x1C500 then returns ""). */
+void game_string_table_load(const char *dir)
+{
+    if (s_string_table_loaded) return;
+    s_string_table_loaded = 1;
+    if (dir == NULL) return;
+    char path[512];
+    snprintf(path, sizeof path, "%s/ENGLISH.TXT", dir);
+    FILE *f = fopen(path, "rb");
+    if (f == NULL) {
+        snprintf(path, sizeof path, "%s/english.txt", dir);
+        f = fopen(path, "rb");
+    }
+    if (f == NULL) return;
+    size_t n = fread(mem + STRING_DATA, 1, STRING_CAP, f);
+    fclose(f);
+    DSD(STRING_HANDLE + 8) = STRING_DATA;       /* base */
+    DSD(STRING_HANDLE + 0xc) = (u32)n;          /* len */
+    DSB(STRING_HANDLE + 0x15) = 0;              /* flags */
+    DSD(DS_001082DC) = STRING_HANDLE;           /* 0x4738E */
+    DSD(DS_001082D8) = (u32)n;                  /* 0x473A3 */
+}
+
+/* PORT: 0x1C500 + 0x474E4. The original's EAX = string id, EDX = DS_00102760,
+ * EBX = 0x100; 0x1C500 zeroes the first byte when 0x474E4 reports no string. */
+const u8 *game_string_get(u32 id)
+{
+    u32 base = string_lock(DSD(DS_001082DC));
+    if (base != 0) {
+        string_decode(base, id, mem + DS_00102760, 0x100u);
+        string_unlock(DSD(DS_001082DC));
+    } else {
+        DSB(DS_00102760) = 0;                   /* 0x1C517 */
+    }
     return (const u8 *)(mem + DS_00102760);
 }
+
+/* 0x1C500(0x15) -> 0x2F198: the title's caption. */
+static const u8 *title_string(void) { return game_string_get(0x15u); }
 
 /* PORT: 0x38B18 spawns `desc` into the first free slot of the 7-entry table at
  * DS_00107A1C as actor_spawn(desc, a2 << 3, 2, a3 << 3, 0); the argument
@@ -614,7 +699,10 @@ void game_init(void)
      * buffers. The port references the XMIDI bank's resource bytes directly
      * (sequencer.c) and samples.c allocates each handle's conversion buffer on
      * AIL_start_sample, so no init-time work buffers are needed. */
-    /* PORT: 0x47370 EEPROM read (menus/EEPROM, sub-project 4). */
+    /* 0x47370 loads the localisation table (0x20C10 calls it before 0x10E80);
+     * the port reads ENGLISH.TXT directly rather than the DOS memory/file
+     * managers. 0x121A0's caption comes from it. */
+    game_string_table_load(s_game_dir);
 
     game_state_init();      /* 0x20C10's FUN_00010E80 */
 }

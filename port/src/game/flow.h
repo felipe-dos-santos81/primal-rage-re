@@ -74,4 +74,13 @@ const u8 *game_music_bank_find(const u8 *base, u32 size);
  * title state has not entered. */
 void game_title_dump_frame(void);
 
+/* PORT: the title's localisation reader, 0x47370 + 0x1C500 + 0x474E4 over the
+ * ENGLISH.TXT table. `game_string_table_load(dir)` reads <dir>/ENGLISH.TXT once
+ * into mem[] (idempotent); `game_string_get(id)` decodes string `id` into the
+ * original's DS_00102760 buffer through the 0x1E75C/0x1E808 handle and returns
+ * it (an empty string when the table is absent or the id is empty). Exposed for
+ * a unit test; 0x121A0 uses it for string 0x15 ("THE FUTURE..."). */
+void game_string_table_load(const char *dir);
+const u8 *game_string_get(u32 id);
+
 #endif /* PR_GAME_FLOW_H */
