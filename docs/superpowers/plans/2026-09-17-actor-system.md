@@ -1591,8 +1591,10 @@ title-oracle: build ## Pixel-exact title oracle (skips without data/title-captur
 Add `TITLE_DUMP = /tmp/pr_title_dump`, and add `title-oracle` to the `verify`
 target right after `smk-oracle`. The second capture is optional at the target
 level: `title_compare.py` must still prove determinism when it is present, and
-must not fail merely because it is absent — but `PR_ORACLE_REQUIRED=1` with only
-one capture present must report that the determinism proof is incomplete.
+must not fail merely because it is absent **when `PR_ORACLE_REQUIRED` is unset**.
+Errata, 2026-09-18 (human-approved): with `PR_ORACLE_REQUIRED=1` and fewer than two
+captures, the tool must exit non-zero and say the determinism proof is incomplete —
+a green `make verify` has to mean the proof was completed.
 
 - [ ] **Step 4: Run it and fix what it finds**
 

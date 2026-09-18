@@ -452,8 +452,17 @@ window's transitions: port frame 0 (boot→title) and frame 95 (title→state 2)
 exhibited by neither capture, being displayed for under one capture interval. The
 coverage requirement is therefore: **every port frame in 1..94 must be exhibited by
 both captures**, and at most one frame at each end of the window (0 and 95) may be
-unexhibited, and only when its adjacent frame is exhibited exactly. Measured: 94/96
-exhibited by both, and the two captures' clean samples agree 53/53.
+unexhibited, and only when its adjacent frame is exhibited exactly. Final measured
+run: capture 1 = 53 clean / 56 spliced / 1 transition-row, missing port frame 95;
+capture 2 = 53 clean / 57 spliced / 0 transition-row, missing 0 and 95; coverage 1..94
+by both; the two captures' clean samples byte-identical on all 36 frames where both
+are clean.
+
+**Gate strictness, 2026-09-18 (human-approved).** With `PR_ORACLE_REQUIRED=1` and fewer
+than two captures present, `title_compare` must exit non-zero and say the determinism
+proof is incomplete. A green `make verify` must mean the proof was completed. Without
+the environment variable, an absent capture still skips cleanly (exit 0), so a machine
+without DOSBox stays green.
 
 
 
