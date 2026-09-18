@@ -57,15 +57,11 @@ So: `state = state * 0xB90D12B9 + 0x38CE051F` (u32 wrap), return
 `((state >> 16) * (range & 0xffff)) >> 16`. Seed `0xABCD`, hardcoded at
 `0x20C10` (`prage.c:11428`).
 
-**The file offset of the function start is `0xB0630`**, and the object-0 code
-mapping is `file = va + 0x52E54`, verified three ways: `0x5D7DC + 0x52E54 =
-0xB0630`; the byte at `0xB062F` is the previous function's `ret` (`c3`); and the
-42-byte body ends `5a 5b c3` (`pop edx; pop ebx; ret`), matching the `53 52`
-prologue — so a patch at the *next* byte would leave `push ebx` unmatched and
-corrupt the stack. A neighbouring function confirms the mapping:
-`0x5D808 + 0x52E54 = 0xB065C`. The tool must not rely on that constant alone; it
-locates the function by its unique 14-byte signature
-`53 52 25 ff ff 00 00 8b d8 a1 d8 f6 06 00`.
+**The object-0 code mapping is `file = va + 0x52E54`**, verified three ways:
+`0x5D7DC + 0x52E54 = 0xB0630`; the byte at `0xB062F` is the previous function's
+`ret` (`c3`); and the 42-byte body ends `5a 5b c3` (`pop edx; pop ebx; ret`),
+matching the `53 52` prologue. A neighbouring function confirms it:
+`0x5D808 + 0x52E54 = 0xB065C`. Every file offset in this plan is that conversion.
 
 Expected sequence from seed `0xABCD` (consecutive calls, each row one call):
 
@@ -78,6 +74,35 @@ Expected sequence from seed `0xABCD` (consecutive calls, each row one call):
 | `0x10000` | 0 (masked to 0) |
 | `0` | 0 (no undefined shift) |
 | `0x7FFFFFFF` | 11010 (masked to `0xFFFF`) |
+
+### A2. The pin — the three title draws are patched to immediates
+
+`0x121A0` draws three values on entry and uses them for the logo's start X, speed
+and gravity. Pin them by replacing each `call 0x5D7DC` (5 bytes, `e8 rel32`) with
+`mov eax, imm32` (5 bytes, `b8 imm32`) **in place**: same length, no code cave, no
+relocation, and the call is simply not taken.
+
+| file offset | VA | range (preceding `mov eax, imm`) | patched bytes | value |
+|---|---|---|---|---|
+| `0x650E9` | `0x12295` | `0x5A` (at `0x650E4`) | `b8 0c 00 00 00` | 12 |
+| `0x650F5` | `0x122A1` | `0x7E` (at `0x650F0`) | `b8 6f 00 00 00` | 111 |
+| `0x6510B` | `0x122B7` | `2` (at `0x65106`) | `b8 00 00 00 00` | 0 |
+
+Those are the **only** `0x5D7DC` call sites inside `0x121A0` (verified by scanning
+every one of the 122 `e8` sites in the image that target `0x5D7DC`). The values are
+**exactly** what the port's own LCG produces from `rng_seed(0xABCD)` followed by
+`rng_next(0x5A)`, `rng_next(0x7E)`, `rng_next(2)`, so the port needs no pin-side
+instrument at all: seed at title entry and take the real draws.
+
+**Why not a constant-returning stub of `0x5D7DC`** (the plan's first draft, and the
+first review's rejected design): it zeroes all three values, so the logo's start X,
+speed *and* gravity are 0 and the logo never moves — the 96-frame window would
+compare a near-static image and exercise almost none of the anim interpreter or the
+pset sync the oracle exists to prove.
+
+Resulting title state: `iVar1 = 12`, `iVar2 = 111 * 0x40 + 0x280 = 7744` (`0x1E40`,
+not negated because `iVar3 = 0`), `DS_00107A50 = 0x2420`, `DS_00107A3A = 0x121`,
+`logo+0x34 = -81`, `logo+0x36 = 8`, `logo+0x2C = 0xAA`.
 
 ### B. Actor record — 0x68 bytes, pool base `DS_001014F4`
 
@@ -219,9 +244,12 @@ DS_000F0A66`.
 Exit (`DS_000F0A6F == 2 && DS_0009AF3D == 0`): `DS_000F0A6F = 0`,
 `DS_000F0A64 = 2`. Always: `DS_00107A3A = (i16)(DS_00107A50 >> 5)`.
 
-With the pin (Task 1) all three draws return 0, so `iVar1 = 0`,
-`iVar2 = 0x280`, `iVar3 = 0`, `DS_00107A50 = 0x1640`, `DS_00107A3A = 0xB2`,
-`logo+0x34 = -6`, `logo+0x36 = 0`.
+With the pin (Task 1) all three draws are fixed, so `iVar1 = 12`,
+`iVar2 = 7744` (`0x1E40`, not negated because `iVar3 = 0`),
+`DS_00107A50 = 0x2420`, `DS_00107A3A = 0x121`,
+`logo+0x34 = -81`, `logo+0x36 = 8`, `logo+0x2C = 0xAA`. The non-zero `iVar1` is
+what makes the logo **move** (gravity `8` per frame), which is why this window
+exercises the anim interpreter and the pset sync at all.
 
 ### H. pset layer select and support (`0x2F0F0`, `0x2F198`, `0x2F280`, `0x2F4BC`)
 
@@ -287,7 +315,7 @@ So in the port: `actors_update()` goes at the **end of `game_frame()`**, and
 
 ---
 
-### Task 1: The pin — a stubbed-RNG capture copy
+### Task 1: The pin — a three-site capture copy
 
 **Files:**
 - Create: `tools/title_pin.py`
@@ -296,17 +324,15 @@ So in the port: `actors_update()` goes at the **end of `game_frame()`**, and
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `title_pin.py --src <exe> --out <exe>`; the patched copy has
-  `0x5D7DC` replaced by `31 c0 c3` (`xor eax,eax; ret`) and is otherwise
-  byte-identical. The port mirrors that constant with `rng_stub(1)` (Task 3).
+- Produces: `title_pin.py --src <exe> --out <exe>`; the copy has the three
+  `0x5D7DC` calls inside `0x121A0` replaced by `mov eax, imm32` (Format reference
+  A2) and is otherwise byte-identical. The port mirrors it by seeding `0xABCD` at
+  title entry and taking the three real draws (Tasks 3 and 9).
 
-Why a constant-return stub and not a re-seed (spec §7 rung 1): re-seeding
-removes the RNG's *value* history but leaves every draw *count* significant,
-and the original's count includes the timing-dependent spin
-(`while (DS_0010150C - 1 == DS_00101508) 0x5D7DC();`). A stub that always
-returns the same value makes the composite independent of the draw count
-*anywhere* in the run, so frame pacing may stay untouched and no code cave is
-needed. The LCG's real behaviour is carried by the Task 3 unit test.
+The pin fixes the title's three entry draws to the values the port's own LCG
+produces from seed `0xABCD`, so neither side needs any RNG-state reasoning and the
+logo keeps its motion. Format reference A2 records why a constant-returning stub of
+`0x5D7DC` — this task's first draft — was wrong.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -318,27 +344,50 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 TOOL = os.path.join(ROOT, "tools", "title_pin.py")
 EXE = os.path.join(ROOT, "data", "game", "C", "PRAGE.EXE")
 
-SIG = bytes.fromhex("535225ffff0000 8bd8a1d8f60600".replace(" ", ""))
-STUB = bytes.fromhex("31c0c3")
+# Format reference A2: (file offset, original 5 bytes, replacement, range).
+SITES = [
+    (0x650E9, bytes.fromhex("e842b50400"), bytes.fromhex("b80c000000"), 0x5A),
+    (0x650F5, bytes.fromhex("e836b50400"), bytes.fromhex("b86f000000"), 0x7E),
+    (0x6510B, bytes.fromhex("e820b50400"), bytes.fromhex("b800000000"), 2),
+]
+
+def lcg_draws():
+    s, out = 0xABCD, []
+    for _off, _orig, _repl, rng in SITES:
+        s = (s * 0xB90D12B9 + 0x38CE051F) & 0xFFFFFFFF
+        out.append(((s >> 16) * (rng & 0xFFFF)) >> 16)
+    return out
 
 class TitlePinTest(unittest.TestCase):
     def run_tool(self, src, out):
         return subprocess.run([sys.executable, TOOL, "--src", src, "--out", out],
                               capture_output=True, text=True)
 
-    def test_patches_stub_and_leaves_the_rest_identical(self):
+    def test_patches_all_three_sites_and_nothing_else(self):
         with tempfile.TemporaryDirectory() as d:
             out = os.path.join(d, "PRAGE_PIN.EXE")
             r = self.run_tool(EXE, out)
             self.assertEqual(r.returncode, 0, r.stderr)
-            a = open(EXE, "rb").read()
-            b = open(out, "rb").read()
+            with open(EXE, "rb") as fh: a = fh.read()
+            with open(out, "rb") as fh: b = fh.read()
             self.assertEqual(len(a), len(b))
-            self.assertEqual(b, a[:0xB0630] + STUB + a[0xB0633:])
+            expect = bytearray(a)
+            for off, _orig, repl, _rng in SITES:
+                expect[off:off + 5] = repl
+            self.assertEqual(b, bytes(expect))
 
-    def test_patch_site_holds_the_original_signature(self):
-        a = open(EXE, "rb").read()
-        self.assertEqual(a[0xB0630:0xB0630 + len(SIG)], SIG)
+    def test_patch_sites_hold_the_original_calls(self):
+        with open(EXE, "rb") as fh: a = fh.read()
+        for off, orig, _repl, _rng in SITES:
+            self.assertEqual(a[off:off + 5], orig, hex(off))
+
+    def test_patched_values_are_the_lcg_results_for_their_ranges(self):
+        # The immediates must equal rng_seed(0xABCD) + the real draws, or the
+        # port (which takes the real draws) would diverge on the entry frame.
+        vals = lcg_draws()
+        self.assertEqual(vals, [12, 111, 0])
+        for (_off, _orig, repl, _rng), v in zip(SITES, vals):
+            self.assertEqual(int.from_bytes(repl[1:], "little"), v)
 
     def test_refuses_an_already_patched_file(self):
         with tempfile.TemporaryDirectory() as d:
@@ -347,17 +396,35 @@ class TitlePinTest(unittest.TestCase):
             self.assertEqual(self.run_tool(EXE, once).returncode, 0)
             r = self.run_tool(once, twice)
             self.assertNotEqual(r.returncode, 0)
-            self.assertIn("signature", r.stderr)
+            self.assertIn("site", r.stderr)
             self.assertFalse(os.path.exists(twice))
 
     def test_refuses_a_wrong_file_and_writes_nothing(self):
         with tempfile.TemporaryDirectory() as d:
             bad = os.path.join(d, "bad.exe")
             out = os.path.join(d, "out.exe")
-            open(bad, "wb").write(b"\x00" * 4096)
+            with open(bad, "wb") as fh: fh.write(b"\x00" * 4096)
             r = self.run_tool(bad, out)
             self.assertNotEqual(r.returncode, 0)
             self.assertFalse(os.path.exists(out))
+
+    def test_refuses_an_out_under_data(self):
+        # data/ is git-ignored and this repo has no remote: overwriting it
+        # would destroy the only copy of the game.
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(ROOT, "data", "game", "C", "PRAGE_PIN.EXE")
+            r = self.run_tool(EXE, out)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertFalse(os.path.exists(out))
+
+    def test_refuses_out_equal_to_src(self):
+        with tempfile.TemporaryDirectory() as d:
+            victim = os.path.join(d, "PRAGE.EXE")
+            shutil.copyfile(EXE, victim)
+            with open(victim, "rb") as fh: before = fh.read()
+            r = self.run_tool(victim, victim)
+            self.assertNotEqual(r.returncode, 0)
+            with open(victim, "rb") as fh: self.assertEqual(fh.read(), before)
 
     def test_never_writes_under_data(self):
         with tempfile.TemporaryDirectory() as d:
@@ -365,12 +432,14 @@ class TitlePinTest(unittest.TestCase):
             self.run_tool(EXE, out)
             for root, _, files in os.walk(os.path.join(ROOT, "data")):
                 for f in files:
-                    if f.endswith("_PIN.EXE") or "pin" in f.lower():
+                    if f.endswith("_PIN.EXE"):
                         self.fail(f"pin wrote {os.path.join(root, f)}")
 
 if __name__ == "__main__":
     unittest.main()
 ```
+
+`import shutil` is needed for the `out == src` test.
 
 - [ ] **Step 2: Run it to verify it fails**
 
@@ -381,34 +450,46 @@ Expected: FAIL — `title_pin.py` does not exist.
 
 ```python
 #!/usr/bin/env python3
-"""Patch a COPY of PRAGE.EXE so FUN_0005d7dc returns a constant 0.
+"""Patch a COPY of PRAGE.EXE to pin the title's three RNG draws.
 
-The title's logo start X/speed/direction come from three RNG draws whose value
-depends on how many times the master loop's spin called the RNG -- a timing
-quantity. Constant-returning the RNG makes the composite independent of that
-count, which makes the capture reproducible (the spec's oracle gate).
+0x121A0 draws three values on entry and uses them for the logo's start X, speed
+and gravity. Each `call 0x5D7DC` is replaced in place by `mov eax, imm32` holding
+the value the port's own LCG (seed 0xABCD) produces for that call's range, so the
+port reproduces the same three values by seeding and taking the real draws and the
+logo keeps its motion. The master loop's spin draws are left alone: their values
+are discarded and no longer influence the composite.
 
-Fails closed: the original bytes at the patch site are verified before writing,
-so a wrong, truncated or already-patched binary aborts and writes nothing.
-Never writes under data/.
-Usage: title_pin.py --src data/game/C/PRAGE.EXE --out /tmp/pin/PRAGE.EXE"""
-import argparse, os, shutil, sys
+Fails closed: every patch site's original bytes are verified before anything is
+written, so a wrong, truncated or already-patched binary aborts and writes nothing.
+Refuses to write over the source or anywhere under the repo's data/.
+Usage: title_pin.py --src data/game/C/PRAGE.EXE --out /tmp/pr_title_pin/PRAGE.EXE"""
+import argparse, os
 
-SIG = bytes.fromhex("535225ffff00008bd8a1d8f60600")
-STUB = bytes.fromhex("31c0c3")
-# Verified: file offset of 0x5D7DC in the shipped PRAGE.EXE (obj0 code maps
-# file = va + 0x52E54), and the 42-byte body's pop/push symmetry proves the
-# entry is this byte, not the next. The signature check below is what makes
-# this safe.
-PATCH_OFF = 0xB0630
+# (file offset, original 5 bytes, replacement). Format reference A2.
+PATCHES = [
+    (0x650E9, bytes.fromhex("e842b50400"), bytes.fromhex("b80c000000")),  # 12
+    (0x650F5, bytes.fromhex("e836b50400"), bytes.fromhex("b86f000000")),  # 111
+    (0x6510B, bytes.fromhex("e820b50400"), bytes.fromhex("b800000000")),  # 0
+]
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+
+def guard(src, out):
+    real_out = os.path.realpath(out)
+    if real_out == os.path.realpath(src):
+        raise SystemExit("title_pin: refusing to write over the source: %s" % out)
+    if real_out == DATA_DIR or real_out.startswith(DATA_DIR + os.sep):
+        raise SystemExit("title_pin: refusing to write under data/: %s" % out)
 
 def patch(src, out):
+    guard(src, out)
     with open(src, "rb") as f:
         img = bytearray(f.read())
-    if img[PATCH_OFF:PATCH_OFF + len(SIG)] != SIG:
-        raise SystemExit("title_pin: signature mismatch at 0x%X -- wrong or "
-                         "already-patched binary, nothing written" % PATCH_OFF)
-    img[PATCH_OFF:PATCH_OFF + 3] = STUB
+    for off, orig, _repl in PATCHES:
+        if img[off:off + len(orig)] != orig:
+            raise SystemExit("title_pin: site mismatch at 0x%X -- wrong or "
+                             "already-patched binary, nothing written" % off)
+    for off, _orig, repl in PATCHES:
+        img[off:off + len(repl)] = repl
     d = os.path.dirname(os.path.abspath(out))
     os.makedirs(d, exist_ok=True)
     tmp = out + ".part"
@@ -422,7 +503,7 @@ def main():
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     patch(a.src, a.out)
-    print("title_pin: wrote %s (0x5D7DC -> xor eax,eax; ret)" % a.out)
+    print("title_pin: wrote %s (3 title draws -> 12, 111, 0)" % a.out)
 
 if __name__ == "__main__":
     main()
@@ -431,7 +512,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `python3 -m unittest tools.tests.test_title_pin -v`
-Expected: PASS (5 tests).
+Expected: PASS (8 tests), output pristine.
 
 - [ ] **Step 5: Add the Makefile target**
 
@@ -440,7 +521,7 @@ Add `title-pin` to `.PHONY` (line 31) and, next to `re-original`:
 ```make
 TITLE_PIN_DIR = /tmp/pr_title_pin
 
-title-pin: ## Build a stubbed-RNG copy of PRAGE.EXE for the title oracle (writes /tmp only)
+title-pin: ## Build the pinned copy of PRAGE.EXE for the title oracle (writes /tmp only)
 	$(PYTHON) tools/title_pin.py --src $(GAME_DIR)/PRAGE.EXE --out $(TITLE_PIN_DIR)/PRAGE.EXE
 ```
 
@@ -452,7 +533,7 @@ Also confirm `git status --short` shows no change under `data/`.
 
 ```bash
 git add tools/title_pin.py tools/tests/test_title_pin.py Makefile
-git commit -m "tools: stub the RNG in a capture-only PRAGE.EXE copy"
+git commit -m "tools: pin the title's three RNG draws in a capture-only PRAGE.EXE copy"
 ```
 
 ---
@@ -465,86 +546,122 @@ git commit -m "tools: stub the RNG in a capture-only PRAGE.EXE copy"
 - Modify: `.gitignore` (ignore `data/title-captures/`)
 
 **Interfaces:**
-- Consumes: `tools/title_pin.py` (Task 1); `tools/smk_capture.py`'s
-  `read_avi_frames(paths)` and `align(ref_hashes, cap_hashes)` are **imported**,
-  not copied.
-- Produces: `data/title-captures/title/frame_%04d.raw` — 320×200 RGB24 frames of
-  the original's title, indexed so that `frame_0000.raw` is the first frame the
-  original draws with `DS_000F0A66 == 0x600` (the port's Task 10 frame 0).
+- Consumes: `tools/title_pin.py` (Task 1); `tools/smk_capture.py`'s `run_dosbox`,
+  `read_avi_frames`, `align` and `ffprobe_fps` — **imported**, not copied.
+- Produces: `data/title-captures/title/frame_%04d.raw` — the pinned original's
+  title window as 320×200 RGB24, **one file per distinct game frame**, plus
+  `window.txt` recording, per written frame, the raw capture index it came from.
 
-The gate: two independent captures must produce identical frame files, else the
-pin is void and Task 1 is revisited. This is the spec's DoD #3.
+**Why one file per distinct game frame, not per capture frame** (the plan's second
+draft assumed capture index == game frame index, which is false): the game's logic
+runs at 60 Hz while mode 13h is captured at 70.09 Hz, so a game frame is displayed
+for one or two capture frames. Consecutive identical capture frames are holds of a
+single game frame and must be collapsed; otherwise no frame-for-frame comparison is
+possible.
+
+**Why the window is located by content, not by a fixed rule** (the plan's second
+draft said "the first frame after the second logo", which is wrong): `FUN_00011000`
+— the boot sub-machine, `prage.c:775` — runs its own countdown machine (180-, 64-
+and 240-frame waits) between the two logos and state 1. In the pinned capture the
+title window is the contiguous RNG-sensitive block at raw ≈2200, localised by
+diffing a pinned run against an unpinned one (`0x121A0` is the only title-state RNG
+consumer and the boot machine reaches the RNG only through a countdown re-seed).
+Its exact start is then pinned by content match against the port's `frame_0000.raw`
+(Task 10's `PR_TITLE_DUMP`) — so **the port's dump is an input to the anchor, not a
+consumer of it.** The tool must support `--port-anchor DIR` (align the port's frames
+against the capture and emit one capture frame per port frame) and must never write
+a guessed anchor.
+
+**The gate (spec DoD #3).** Two runs must agree on the distinct-frame content
+sequence over the title window. Whole-AVI byte-identity is not achievable and is
+not what the oracle needs: measured on two 45 s pinned runs, the boot text/movie
+region carries sampling jitter (they differ from raw frame 31, and their raw title
+blocks differ in phase). Byte-identity is required after the window is reduced to
+its distinct frames, which is the property the comparison actually depends on.
 
 - [ ] **Step 1: Write the failing test**
 
-There is no offline unit test for DOSBox-X itself; the gate is the tool's own
-`--verify-reproducible` mode, which runs the capture twice and compares. The
-task's proof is running it. Add the mode in Step 3 and use it in Step 5.
+There is no offline unit test for DOSBox-X itself; the tool's `--verify-reproducible`
+mode is the gate, and running it is this task's proof.
 
 - [ ] **Step 2: Write the tool**
 
-Reuse `smk_capture`'s helpers, and drive DOSBox-X exactly as 2b did:
-`dosbox-x -defaultconf -fastlaunch` with `DX-CAPTURE /V` and a conf that mounts
-`data/game/C` as the game drive and runs `Z:\PRAGE.EXE`. Read the produced AVI
-with ffmpeg to RGB24 (`-pix_fmt rgb24`), then locate the title window.
+Reuse `smk_capture` by import — its `run_dosbox` already performs the correct
+invocation (`dosbox-x -defaultconf -fastlaunch -nopromptfolder -nogui -nomenu
+-time-limit <n> -set "sdl fullscreen=false" -set "dosbox captures=<avi>" -c 'MOUNT C
+<dir> -ro' -c 'IMGMOUNT D <iso> -t iso' -c C: -c 'DX-CAPTURE /V PRAGE.EXE -f' -c
+EXIT`), so the tool must not re-implement it or modify `smk_capture.py`.
+
+Staging is required and must not copy the assets: build `/tmp/pr_title_pin/C/` as a
+symlink for every entry of `data/game/C` except `PRAGE.EXE`, which is the real
+pinned copy from Task 1, plus `/tmp/pr_title_pin/CD/RAGECD.ISO` symlinked to
+`data/game/CD/RAGECD.ISO`. That layout is what `run_dosbox`'s
+`dirname(game_dir)/CD/RAGECD.ISO` derivation needs.
 
 ```python
 #!/usr/bin/env python3
-"""Capture the original's title screen, pinned, as 320x200 RGB24 frames.
+"""Capture the pinned original's title window as 320x200 RGB24 frames.
 
-Runs PRAGE.EXE in DOSBox-X from the /tmp pinned copy (Task 1), records the whole
-run, and indexes the frames so frame_0000.raw is the first title frame
-(DS_000F0A66 == 0x600 as the port dumps it). --verify-reproducible runs the
-capture twice and requires byte-identical frames; a mismatch voids the pin.
+Runs the Task 1 pinned copy in DOSBox-X, records the whole boot (two Smacker logos,
+then FUN_00011000's boot sub-machine, then the title), and writes one frame per
+distinct game frame over the title window.
 
-Reuses smk_capture.read_avi_frames/align rather than re-implementing the
-DOSBox-X invocation and AVI path (2b already settled both).
-Usage: title_capture.py --out data/title-captures/title [--verify-reproducible]"""
+The window start is pinned by content, never guessed: without --port-anchor the
+tool writes the RNG-sensitive block (pinned-vs-unpinned diff) and reports it; with
+--port-anchor it aligns the port's frames and emits the matched capture frames, one
+per port frame.
+
+--verify-reproducible captures twice and requires the distinct-frame sequences to
+be byte-identical; a mismatch voids the pin.
+Reuses smk_capture.run_dosbox/read_avi_frames/align (2b settled the invocation).
+Usage: title_capture.py --out data/title-captures/title [--port-anchor DIR]
+                        [--verify-reproducible]"""
 ```
 
 The tool's contract, in order:
 
-1. Refuse to run unless the pinned copy exists (`/tmp/pr_title_pin/PRAGE.EXE`);
-   call Task 1's `patch()` itself if given `--src`, never touching `data/`.
-2. Record a long window (`--time-limit`, default 45 s) starting at launch. The
-   two boot movies (`twi5.smk`, `twg.smk`) run first; the title follows.
-3. Anchor: the captured frame whose pixels equal the *port's* `frame_0000.raw`
-   (given `--port-anchor DIR`) — used only to find the start index; the port's
-   dump is produced by Task 10's `PR_TITLE_DUMP`. Until that exists, `--anchor`
-   may take an explicit frame index for the first capture.
-4. Write frames from the anchor onward as `frame_%04d.raw`, 320×200×3, stopping
-   when a frame repeats the first frame of the title's own loop or the window
-   ends.
-5. `--verify-reproducible`: run 1–4 twice into temp dirs, compare every frame
-   byte-for-byte, exit non-zero with the first differing frame index.
+1. Refuse to run unless `/tmp/pr_title_pin/PRAGE.EXE` exists; build the staging
+   directory (symlinks only, never a copy); never write under `data/game/`.
+2. Capture the whole run (`--time-limit`, default 45 s) to a temp AVI dir; decode to
+   320×200 RGB24 with `read_avi_frames`.
+3. Locate the window: the RNG-sensitive contiguous block, and (when
+   `--port-anchor DIR` is given) the capture frame that matches the port's
+   `frame_0000.raw`, then one capture frame per subsequent port frame via `align`.
+4. Write the window collapsed to distinct consecutive frames as
+   `frame_%04d.raw` (exactly 192000 bytes each), recording each one's raw capture
+   index in `window.txt`. If the window cannot be identified, print the candidate
+   blocks with their indices and counts and stop without writing.
+5. `--verify-reproducible`: run 2–4 twice, require the distinct-frame sequences to
+   be byte-identical, and on failure report the first differing frame index.
 
-- [ ] **Step 3: Run the capture**
+- [ ] **Step 3: Run the capture and report the anchor evidence**
 
 Run: `make title-pin && python3 tools/title_capture.py --out data/title-captures/title --time-limit 45`
-Expected: `data/title-captures/title/frame_0000.raw` … exist. Inspect
-`frame_0000.raw` is 192000 bytes (320×200×3). If the anchor cannot be found,
-print the candidate frames (fps, count) and stop — do not guess.
+
+Expected: `frame_0000.raw` … exist, 192000 bytes each, and `window.txt` names the raw
+index of each. Report the window start found, the block boundaries, and both boot
+movies' last-presented raw indices as the anchor's evidence.
 
 - [ ] **Step 4: Run the reproducibility gate**
 
 Run: `python3 tools/title_capture.py --out data/title-captures/title --verify-reproducible`
-Expected: two runs identical, exit 0. **If it fails, stop and revisit Task 1** —
-the oracle is void without this.
+Expected: the two runs' distinct-frame sequences identical, exit 0. **If it fails,
+stop and revisit Task 1** — the oracle is void without this.
 
 - [ ] **Step 5: Wire the Makefile target and commit**
 
 ```make
 TITLE_CAPTURES = data/title-captures
 
-title-capture: title-pin ## Capture the pinned original title (skips the gate by default)
+title-capture: title-pin ## Capture the pinned original title window (skips the gate by default)
 	$(PYTHON) tools/title_capture.py --out $(TITLE_CAPTURES)/title --time-limit 45
 ```
 
-Add `data/title-captures/` to `.gitignore` (captures are originals' bytes).
+Add `data/title-captures/` to `.gitignore` (captures are the original's bytes).
 
 ```bash
 git add tools/title_capture.py Makefile .gitignore
-git commit -m "tools: capture the pinned original title as indexed RGB24 frames"
+git commit -m "tools: capture the pinned original title window as distinct RGB24 frames"
 ```
 
 ---
@@ -564,12 +681,14 @@ git commit -m "tools: capture the pinned original title as indexed RGB24 frames"
   void rng_seed(u32 s);        /* store s in DS_000EF6D8 */
   u32  rng_next(u32 range);    /* advance, return ((state>>16)*(range&0xffff))>>16 */
   void rng_step(void);         /* advance and discard (the master loop's own draw) */
-  void rng_stub(int on);       /* test/oracle only: rng_next returns 0, state frozen */
   ```
 
-`rng_stub` is the mirror of Task 1's patch. It exists solely so the oracle run
-can reproduce a constant-RNG original; the shipped binary never calls it. Do not
-replace it with an environment variable or a build flag.
+There is **no stub or pin-side instrument in the port.** Task 1 pins the original's
+three title draws to the values this LCG produces from seed `0xABCD`, so the port
+reproduces them honestly: `rng_seed(0xABCD)` runs at title entry (Task 9, inside
+`0x121A0`'s phase 0, before the three draws) and `rng_next` is called three times in
+the transcribed order with ranges `0x5A`, `0x7E`, `2`. Task 3 seeds only in
+`game_init` (mirroring `0x20C10`); the title-entry re-seed belongs to Task 9.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -587,7 +706,6 @@ int test_rng(void)
     static const u32 ranges[] = { 0x5Au, 0x7Eu, 2u, 0xFFFFu, 0x10000u, 0u, 0x7FFFFFFFu };
     static const u32 expect[] = { 12u, 111u, 0u, 29617u, 0u, 0u, 11010u };
 
-    rng_stub(0);
     rng_seed(0xABCDu);
     CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0xABCD);
     for (unsigned i = 0; i < sizeof ranges / sizeof ranges[0]; i++)
@@ -605,13 +723,12 @@ int test_rng(void)
     CHECK(DSD(DS_000EF6D8) != before, "rng_step advanced the state");
     CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)(0xABCDu * 0xB90D12B9u + 0x38CE051Fu));
 
-    /* The stub freezes the state and returns 0, which is what the pinned
-     * original's patched 0x5D7DC does (Task 1). */
-    rng_stub(1);
+    /* The three title draws, in order, are what Task 1 pins the original to:
+     * the immediates 12, 111, 0 in tools/title_pin.py must equal these. */
     rng_seed(0xABCDu);
-    CHECK_EQ_INT((int)rng_next(0x5Au), 0);
-    CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0xABCD);
-    rng_stub(0);
+    CHECK_EQ_INT((int)rng_next(0x5Au), 12);
+    CHECK_EQ_INT((int)rng_next(0x7Eu), 111);
+    CHECK_EQ_INT((int)rng_next(2u), 0);
     return 0;
 }
 ```
@@ -635,9 +752,6 @@ Expected: FAIL to build — `game/rng.h` not found.
 void rng_seed(u32 s);
 u32  rng_next(u32 range);
 void rng_step(void);
-/* Oracle instrument: mirrors tools/title_pin.py's stubbed 0x5D7DC. TEST USE
- * ONLY -- no shipped code path calls it. */
-void rng_stub(int on);
 
 #endif
 ```
@@ -648,20 +762,15 @@ void rng_stub(int on);
 #include "mem.h"
 #include "symbols.h"
 
-static int s_stub;
-
 void rng_seed(u32 s) { DSD(DS_000EF6D8) = s; }
 
 u32 rng_next(u32 range)
 {
-    if (s_stub) return 0;
     DSD(DS_000EF6D8) = DSD(DS_000EF6D8) * 0xB90D12B9u + 0x38CE051Fu;
     return (DSD(DS_000EF6D8) >> 16) * (range & 0xFFFFu) >> 16;
 }
 
 void rng_step(void) { (void)rng_next(0); }
-
-void rng_stub(int on) { s_stub = on; }
 ```
 
 - [ ] **Step 4: Wire it into the flow**
@@ -1112,8 +1221,9 @@ proof of the same property. Say so in the commit message.
 Extend `test_flow.c`: with the real title, after a few frames
 `DSD(DS_001014F4)` holds allocated records (`actor_list_head() != 0`), the psets
 carry a palette handle, and `DS_000F0A66` decreases by `0x10` per frame from
-`0x600`. Assert with the pin on (`rng_stub(1)`) that `DS_00107A50 == 0x1640` and
-`DS_00107A3A == 0xB2` after the entry frame, per Format reference G.
+`0x600`. Assert that the title-entry re-seed makes the three draws land where
+Task 1 pinned them: after the entry frame `DS_00107A50 == 0x2420` and
+`DS_00107A3A == 0x121`, per Format reference G.
 
 - [ ] **Step 2: Run it to verify it fails** — FAIL: the fake leaves no records.
 
@@ -1165,17 +1275,22 @@ git commit -m "title: transcribe 0x121A0 and delete the fake full-screen title"
   is absent, fail when `PR_ORACLE_REQUIRED=1` and absent.
 
 The window is exactly the spec's DoD #2: every frame from state-1 entry until
-`DS_000F0A66` reaches `0x11`, 96 frames, zero tolerance. `title_compare.py`
-mirrors `smk_compare.py` frame-for-frame and takes no tolerance argument.
+`DS_000F0A66` reaches `0x11`, 96 frames, zero tolerance. Index-for-index is valid
+here because Task 2 collapses the capture to one file per distinct game frame;
+`title_compare.py` otherwise mirrors `smk_compare.py`, including its env-gate
+semantics, and takes no tolerance argument. A mismatch must be reported with both
+the frame index and, from Task 2's `window.txt`, the raw capture frame it came
+from, so a collapse error (a genuinely repeated game frame merged) is diagnosable
+rather than silent.
 
 - [ ] **Step 1: Write the dump driver**
 
-`port/tests/test_title.c`: `test_title()` runs `game_init()`,
-`rng_stub(1)`, `rng_seed(0xABCDu)` — the same order the port will use, and the
-mirror of the pinned original — then drives `game_frame()`/`render_list()`
-directly for 96 frames, using `PR_TITLE_DUMP` when set. It must reuse the same
-presentation conversion as `gfx_present` (the palette in `gfx_dac`), so the
-dumped RGB24 equals what the capture holds.
+`port/tests/test_title.c`: `test_title()` runs `game_init()`, then drives
+`game_frame()`/`render_list()` for 96 frames with `PR_TITLE_DUMP` set. The title
+entry frame itself calls `rng_seed(0xABCDu)` (Task 9) before its three draws, which
+is the port-side half of Task 1's pin, so no test-side instrument is needed. The
+driver must reuse the same presentation conversion as `gfx_present` (the palette in
+`gfx_dac`), so the dumped RGB24 equals what the capture holds.
 
 - [ ] **Step 2: Write the comparator**
 
@@ -1240,16 +1355,21 @@ git commit -m "title: pixel-exact oracle over the 96-frame pinned window"
 
 - [ ] **Step 1: Write the report**
 
-Sections: what landed; the pin as implemented (the stub, why not re-seeding, the
-Task 1 patch bytes and file offset, the Task 2 gate result); the oracle result
-(frames matched, the exact command); the register-argument binding and where the
-evidence sits; the spec deviations taken with their evidence — **`res_alloc` not
-added to `res.h`** (the pools are already allocated at `res.c:120-121`), the
-`rng_step`/`rng_stub` API additions, the mirror+clip and window-intersection
-deviations inherited from 4a-i where they are still load-bearing; every
-`/* PORT: */` label introduced; every deferred op with its reason; open items
-(the `0x2BF08` hypothesis' verdict, `DS_00107900`'s producer, bank byte 0,
-`DS_00107A3E`/`3A`/`38`); and the residuals carried into 4b/4c/4d.
+Sections: what landed; the pin as implemented (the three patched draw sites and
+their file offsets, why the first draft's constant-returning stub was wrong — it
+zeroed the logo's start X, speed *and* gravity — and why the port needs no
+instrument: `rng_seed(0xABCD)` at title entry plus the real draws); the capture
+contract (one file per distinct game frame, why a capture index is not a game-frame
+index at 60 Hz logic / 70.09 Hz mode 13h, why the window is located by content and
+not by "after the second logo" — `FUN_00011000`'s boot sub-machine sits between
+them) and the Task 2 gate result; the oracle result (frames matched, the exact
+command); the register-argument binding and where the evidence sits; the spec
+deviations taken with their evidence — **`res_alloc` not added to `res.h`** (the
+pools are already allocated at `res.c:120-121`), the `rng_step` addition, the
+capture-api changes from the second draft; every `/* PORT: */` label introduced;
+every deferred op with its reason; open items (the `0x2BF08` hypothesis' verdict,
+`DS_00107900`'s producer, bank byte 0, `DS_00107A3E`/`3A`/`38`); and the residuals
+carried into 4b/4c/4d.
 
 - [ ] **Step 2: Update the docs**
 
@@ -1286,7 +1406,7 @@ git commit -m "docs: sub-project 4a-ii report and the docs the title change inva
 2. **Placeholders.** None: every code step carries its code; every
    transcription step names a `prage.c` line range and the Format reference
    section that fixes its semantics.
-3. **Type consistency.** `rng_next(u32)`, `rng_step(void)`, `rng_stub(int)`,
+3. **Type consistency.** `rng_next(u32)`, `rng_step(void)`,
    `actor_spawn(const u32*, u32, u32, u32, u32)`, `actors_update(void)`,
    `actor_pset(u32)`, `anim_next_sprite_id(u32, const u16*)` are used with the
    same signatures in every task that names them.
