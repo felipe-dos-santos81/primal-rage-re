@@ -44,8 +44,9 @@ Consequences, per the spec's Decision 4:
   has now re-specified them. Current schedule: Task 1 and Task 1b (done),
   Task 2 (done, the diagnosis), **Task 3** (overlay port + seeded inputs),
   **Task 4** (effect register bindings), **Task 5** (list primitives + effects
-  module), **Task 6** (wire), **Task 7** (falsifiability record + ladder). The
-  old conditional Task 5 is obsolete (see its note).
+  module), **Task 6** (wire), **Task 7** (port `0x134C0` step/age — added after
+  Task 6's review found the count never drains), **Task 8** (falsifiability
+  record + ladder). The old conditional Task 5 is obsolete (see its note).
 
 The replacement schedule follows. Tasks 1's commit (`33a74e9`) and the un-pinned
 captures are retained.
@@ -484,7 +485,84 @@ Task 5 remains to execute.
 
 ---
 
-### Task 7: Record the falsifiability outcome and verify the ladder
+### Task 7: Port `0x134C0`, the effect step/age (the count drain)
+
+Task 6's review found that `effects_spawn` increments `DAT_0009AF3D` and nothing
+decrements it, so the title's state-2 exit (`DSB(DS_0009AF3D) == 0`, `flow.c:432`)
+can no longer fire past frame 95. The decrement lives in `0x134C0`, which the
+port marks deferred at `flow.c:779` and which the master loop (`0x255CC`) calls
+every frame, after `DS_00104AF4++` and before `gfx_flush_palette`. The human
+elected to port it in this cycle rather than park it.
+
+`0x134c0` is `void FUN_000134c0(void)` (no arguments, unlike the `__regparm3`
+helpers) and is 1564 bytes with 3 callees. It walks the effect list, ages and
+tears effects down, and decrements `DAT_0009AF3D` (five decrement sites in the
+decompilation, `prage.c:2422/2478/2515/2547/2574`).
+
+**Files:**
+- Modify: `port/src/game/effects.c`, `port/src/game/effects.h`
+- Modify: `port/src/game/flow.c:779` (the deferred marker)
+- Modify: `port/tests/test_effects.c`
+
+**Interfaces:**
+- Consumes: `effects_spawn`/`effects_clear`/`effects_active`, the list
+  primitives, `0x13420` teardown, and the args doc's link directions.
+- Produces: `void effects_step(void)` (`0x134C0`), called from the master loop.
+
+- [ ] **Step 1: Write the failing test**
+
+In `port/tests/test_effects.c`, assert that after `effects_init()` and one
+`effects_spawn(...)`, `effects_active() == 1`, and that driving `effects_step()`
+to completion ages the effect out: `effects_active()` returns to 0 and the
+record is back on the free list exactly once (no leak, no double-link). Use the
+age/lifetime values the raw governs, not invented counts.
+
+- [ ] **Step 2: Run it and watch it fail**
+
+Expected: FAIL — `effects_step` does not exist.
+
+- [ ] **Step 3: Transcribe `0x134C0`**
+
+Follow the decompilation at `prage.c:2315-2591` and the raw bytes
+(`file_offset = va + 0x52E54`, i.e. `0x66314`) where the decompiler is
+ambiguous. Keep it in `effects.c`; export only `effects_step`. Every path that
+removes a record must decrement `DAT_0009AF3D` exactly once per removal, matching
+the raw — the count is the whole point.
+
+- [ ] **Step 4: Call it from the master loop**
+
+Replace the `/* PORT: 0x134C0 deferred (scene/narrative). */` marker at
+`flow.c:779` with `effects_step();`, in the original's position (after
+`DS_00104AF4++`, before `gfx_flush_palette()`).
+
+- [ ] **Step 5: Verify the drain and the window**
+
+Run: `cmake --build build && PR_GAME_DIR=data/game/C ./build/run_tests`
+Expected: `all checks passed`, including the new drain assertions.
+
+Run: `make title-oracle`
+Expected: still **green** (0 unexplained) — the step runs in the window and must
+not change the composite, since the spawned effect has no renderer.
+
+Then confirm the regression is gone: run the port past frame 95 headless (e.g.
+`./build/prageport --game-dir data/game/C --check 130`) and assert the title
+leaves state 2 rather than stalling. Record how you observed it.
+
+- [ ] **Step 6: Negative control**
+
+Disable the drain (stub `effects_step` to a no-op) and confirm the new
+`effects_active()`-returns-to-0 assertion fails. Restore.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add port/src/game/effects.c port/src/game/effects.h port/src/game/flow.c port/tests/test_effects.c
+git commit -m "effects: port 0x134C0 step/age so the effect count drains"
+```
+
+---
+
+### Task 8: Record the falsifiability outcome and verify the ladder
 
 **Files:**
 - Create: `docs/superpowers/plans/2026-09-18-title-residuals-report.md`
