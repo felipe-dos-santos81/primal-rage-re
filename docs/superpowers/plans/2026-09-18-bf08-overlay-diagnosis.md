@@ -166,8 +166,11 @@ Register/string proof:
   id `0x47` = `"- INSERT COINS -  "`, id `0x15` = `"THE FUTURE..."`.
 * **Value.** `DS_00105C00` is both the non-zero gate and the `%d` argument.
 * **Row.** `text_cursor_set`'s EDX is loaded from `DS_00105C05` (`8a 15 05 5c 08
-  00`). The captured glyph occupies rows 7–12, so `DS_00105C05 == 7` (or the
-  glyph renderer's equivalent row cell) in the capture.
+  00`). The captured glyph occupies **screen** rows 7–12. That is text row
+  `1`, not `7`: the renderer scales a text row by `20/3` px (`glyph y = row *
+  0x200`, projected by `3414/4096`), so text row `7` would land at screen rows
+  ~47–52. Seeded as `7` the overlay does not reproduce the capture; seeded as
+  `1` it is byte-identical. See the erratum at the end of this document.
 
 ### 2.2 The captured pixels read `CREDITS:5`
 
@@ -353,7 +356,7 @@ the title caption (`flow.c:370`).
 | `FUN_0002CAA8` | 1 line (`DS_00105D60 == 0`) | inline helper. |
 | `FUN_00065546` | 1 line | `snprintf(buf, n, "%s:%d", s, DS_00105C00)`; no need to port the original formatter. |
 | `DS_00105C00` data | pin or producer | **The blocking input** (§2.3). Three unported writers: `FUN_0002C304` (initial, `= high_nibble+1`), `FUN_0002CA48` (`dec`), `FUN_0002CA7C` (`sub`, reachable from the title input handler `0x11F28`). Static image gives `1`; capture is `5`. A `5` seed alone matches the no-input window only. |
-| `DS_00105C05` data | pin or producer | Capture shows row 7; unported writers `FUN_0002BF00` (`0x1d` at init) and `FUN_0002C06C` (attract/mode entries). |
+| `DS_00105C05` data | pin or producer | Capture shows **screen** rows 7–12 = text row `1` (`20/3` px per row); unported writers `FUN_0002BF00` (`0x1d` at init) and `FUN_0002C06C` (attract/mode entries). |
 | Unit test | one `test_flow` case | Cover the four branches: early return, FREE-PLAY hold/release, CREDITS (message), insert-coins `&0x1F`/`&0x20`; assert on globals, not rendering. |
 | Negative control | 1 assertion | Stub `0x2BF08` back to a no-op and show the overlay frames drift. |
 
@@ -381,7 +384,7 @@ sub-project (4b) that owns `0x11F28`.
 ## 6. Step 4 — recommendation
 
 **Smaller intermediate: port `0x2BF08`'s control flow, seed `DS_00105C00 = 5`
-and `DS_00105C05 = 7` for the no-input oracle window, and re-run the oracle. Do
+and `DS_00105C05 = 1` for the no-input oracle window, and re-run the oracle. Do
 not port the `0x2D974` config subsystem in this cycle; record the input-driven
 credit countdown (`0x2CA48`/`0x2CA7C` via `0x11F28`) as a declared 4b gap.**
 
@@ -399,7 +402,7 @@ Rationale, in order of weight:
    layer here is a two-value pin for the oracle window, alongside the existing
    `0x2D974` and RNG pins, with the countdown explicitly carved out.
 3. **Falsifiable.** With the captured values seeded (`DS_00105C00 = 5`,
-   `DS_00105C05 = 7`), the un-pinned oracle either goes green — proving
+   `DS_00105C05 = 1`), the un-pinned oracle either goes green — proving
    `0x2BF08` moves the composite — or it does not, in which case `0x2BF08` is
    recorded as a declared gap with the unit proof (spec Decision 5). The pin is
    documented and narrow (two values), unlike the removed byte pin which hid the
@@ -498,3 +501,21 @@ for port_i, pin_i, unp_i in ((10,225,226),(37,257,258),(51,273,274)):
 * Every claim above is instruction-level (raw `0x2BF08` bytes, raw writes to
   `DS_00105C00`/`DS_00105C05`/`DS_00105D60`, the LE-loaded `"%s:%d"`) or
   byte-level (ASCII glyphs, A/B residuals).
+
+---
+
+## Erratum — `DS_00105C05` is `1`, not `7` (corrected after implementation)
+
+§2.1 read the captured glyph's **screen** rows 7–12 as `DS_00105C05 == 7`. That
+is wrong: the renderer scales a text row by `20/3` px (`glyph y = row * 0x200`
+projected by `3414/4096`), so `7` would place the text at screen rows ~47–52.
+
+The port seeded `DS_00105C05 = 1` (and `DS_00105C00 = 5`) and
+`make title-oracle` passes against the un-pinned captures: 0 unexplained, 94/96
+exhibited in both. Port dump frames `frame_{0010,0037,0051}.raw` are
+byte-identical to un-pinned capture frames `{0226,0258,0274}.raw` (sha256
+prefixes `ce8f4ddc…`, `2a5ecae3…`, `b16bd2c8…`), matching §1.2's un-pinned
+hashes. Seeding `7` does not reproduce the block.
+
+Corrected in place at §2.1, §5's table and §6's recommendation. The two-seed
+pin and the 4b countdown carve-out are unchanged; only the row value was wrong.

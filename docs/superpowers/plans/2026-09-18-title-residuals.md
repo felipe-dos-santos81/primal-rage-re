@@ -234,7 +234,7 @@ already ported; only the control flow and the data are new.
   `text_cursor_hold` (`0x2F4BC`), `text_cells_release` (`0x2F280`), all already
   ported and declared in `game/actors.h` / `game/flow.h`.
 - Produces: a real `0x2BF08` in the `0x11D04` tail; pinned `DS_00105C00 = 5` and
-  `DS_00105C05 = 7`.
+  `DS_00105C05 = 1` (text row, not screen row).
 
 - [ ] **Step 1: Pin the raw call sites before writing code**
 
@@ -264,7 +264,8 @@ order, reusing the ported text functions. `FUN_0002CAA8` is
 
 Then seed the two runtime values beside the existing `0x2D974` pin
 (`flow.c:698-705`), with a `/* PORT: */` marker and `/* TODO(verify): */`:
-`DS_00105C00 = 5`, `DS_00105C05 = 7`. The diagnosis forbids porting `0x2D974`
+`DS_00105C00 = 5`, `DS_00105C05 = 1` (text row; the captured glyph is at screen
+rows 7–12 and one text row is `20/3` px). The diagnosis forbids porting `0x2D974`
 here: the initial value is a save/config read, and the countdown
 (`FUN_0002CA48`/`FUN_0002CA7C` via the title input handler `FUN_00011F28`) is
 input-driven and belongs to 4b.
