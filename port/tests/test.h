@@ -42,6 +42,7 @@ int test_sprite(void);
 int test_render(void);
 int test_rng(void);
 int test_actors(void);
+int test_effects(void);
 int test_anim(void);
 int test_text(void);
 int test_title(void);
