@@ -11,6 +11,7 @@ GAME_DIR = data/game/C
 RUNNER = data/game/run-window.sh
 SMK_CAPTURES = data/smk-captures
 SMK_DUMP = /tmp/pr_smk_dump
+TITLE_PIN_DIR = /tmp/pr_title_pin
 DECOMP_DIR = port/decomp
 SCRIPTS_DIR = _tools/ghidra_scripts
 PROJ_DIR = _tools/ghidra_proj
@@ -30,7 +31,7 @@ chunk ?= 0
 
 .PHONY: help deps build test verify check smk-oracle run clean \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
-        re-decompile re-analyze re-oracle re-original
+        re-decompile re-analyze re-oracle re-original title-pin
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -182,3 +183,6 @@ re-oracle: ## Ghidra headless: dump the fixup-applied data object to port/tests/
 
 re-original: ## Run the original game in DOSBox-X (interactive; ESC then y, twice, to quit)
 	sh $(RUNNER)
+
+title-pin: ## Build a stubbed-RNG copy of PRAGE.EXE for the title oracle (writes /tmp only)
+	$(PYTHON) tools/title_pin.py --src $(GAME_DIR)/PRAGE.EXE --out $(TITLE_PIN_DIR)/PRAGE.EXE
