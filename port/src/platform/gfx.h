@@ -25,6 +25,12 @@ void gfx_flush_palette(void);
  * dirty-list; flow.c's game_init and actors_reset() (0x2BAF4) both call it. */
 void palette_list_init(void);
 
+/* PORT: 0x33734. Appends a raw palette dirty-list record
+ * { ptr; first; count; flag } at the DS_00107798 head and advances the head.
+ * Moved here from flow.c so the dirty list has one owner: flow.c's game_init
+ * enqueue and actors.c's 0x33754 palette acquire both call it. */
+void palette_record(u32 ptr, u32 first, u32 count, u32 flag);
+
 /* Converts w*h bytes of palette indices through gfx_dac into RGB24 and hands the
  * frame to host_present_rgb(). */
 void gfx_present(const u8 *indices, int w, int h);

@@ -20,6 +20,20 @@ void palette_list_init(void)
     memset(gfx_dac, 0, sizeof gfx_dac);
 }
 
+/* 0x33734: appends a raw-pointer palette record { ptr; first; count; flag } at
+ * the DS_00107798 head and advances the head. PORT: moved from flow.c so the
+ * dirty-list writer has one owner; flow.c's init enqueue and game/actors.c's
+ * 0x33754 palette acquire both call it. */
+void palette_record(u32 ptr, u32 first, u32 count, u32 flag)
+{
+    u32 head = DSD(DS_00107798);
+    DSD(head + 0) = ptr;
+    DSD(head + 4) = first;
+    DSD(head + 8) = count;
+    DSD(head + 12) = flag;
+    DSD(DS_00107798) = head + 16;
+}
+
 void gfx_flush_palette(void)
 {
     u32 rec = DS_00107498;
