@@ -209,14 +209,20 @@ and manages the `+0x18` palette through `0x33864`/`0x33754` (the port's
 
 Two readers over one stream:
 
-* **Literal reader** `0x2A408` (`prage.c:15429`): if the record flag
-  `+0x28 >> 8 & 8` is set the id comes from `rec+0x08` itself; else the stream
-  word at `rec+0x08` is read and the pointer advances. `word & 0x8000` selects a
-  computed id, dispatched on `(word & 0x1F00) == 0xD00`:
+* **Literal reader** `0x2A408` (`prage.c:15429`), signature
+  `anim_next_sprite_id(u32 rec, u32 pset)` — the second register argument (EDX)
+  is the record's **pset pointer** (`DS_001014EC + slot*0x20`), pinned from all
+  six call sites (`0x2A3B5`, `0x2B04D`, `0x2BCDD`, `0x2BD12`, `0x2BD82`,
+  `0x34008`), not a stream pointer. It reads the stream word at `rec+0x08` but
+  **does not advance the cursor** — the caller advances (`0x2AE14` and `0x2AA70`
+  do `[rec+8] += 2` before the walk test). `word & 0x8000` selects a computed id,
+  dispatched on `(word & 0x1F00) == 0xD00`:
   * `(word >> 8 & 0x60) == 0x40` ⇒ one extra word consumed, id =
-    `0x29F34(rec, word & 0x7F)` plus the next stream word;
+    `0x29F34(rec, word & 0x7F)` plus the next stream word — e.g. `0xCD40`;
   * otherwise two extra words consumed, id =
-    `table[0x29F34(rec, word & 0x7F)]` (the `0x4F` table).
+    `table[0x29F34(rec, word & 0x7F)]` (the `0x4F` table) — e.g. `0x8D00`.
+  The plan's earlier `0xD100`/`0xD200` examples were wrong: `0xD100 & 0x1F00 =
+  0x1100` and `0xD200 & 0x1F00 = 0x1200`, so both take the keep-current-pset arm.
   The final hflip bit is `(id & 0x8000) != 0` XOR `(rec+0x28 >> 8 & 0x40) != 0`.
 * **Variable reader** `0x29F34` (`prage.c:15179`): `byte & 0x7F` selects the
   source — `< 0x40` ⇒ `DS_00105B4C[(byte + rec+0x51) & 0x3F]` (the 0x40-entry
@@ -228,8 +234,23 @@ Two readers over one stream:
   with a computed index by the title's first two objects unless the stream asks
   for it; transcribe both (they are 306 and 303 bytes) rather than stubbing.
 
-Stream pointer arithmetic in the record: `rec+0x08` is advanced word-wise by
-`0x2A408` and by `0x2BC30`/`0x2BCF4` (the anim-entry helpers).
+Stream pointer arithmetic in the record: `rec+0x08` is advanced word-wise by the
+callers of `0x2A408` (`0x2AE14`, `0x2AA70`) and by `0x2BC30`/`0x2BCF4` (the
+anim-entry helpers); the reader itself leaves the cursor alone.
+
+* **Dispatcher** `0x2B2A0` (`prage.c:16077`, 1623 B): the opcode table is 47
+  dwords at linear `0x2B1E4` (`cs:[op * 4 + 0x1B1E4]`, CS base `0x10000`),
+  opcodes `0x00..0x2E`, with `0x20..0x2E` reachable only through the `0x1F`
+  prefix. Direct opcode = `(word >> 8) & 0x1F`. It takes a **third register
+  argument (EBX)** as a flag: `0x2AE14` passes 1, `0x2AA70`/`0x2BC30` pass 0;
+  only opcode 0 reads it. Opcode 8 is the in-window RNG consumer (the Task 1
+  pin site) and sets `rec+0x20 = (float)rng_next(ax)`. Opcodes `0x10`/`0x11`/
+  `0x15` are `call dword ptr [DS_00105BD4]` — the callee address is the value
+  held in the `0x2B8F8` operand base, which a `0x4000`-mode operand takes
+  directly from the stream and `0x2B8F8` otherwise restores from `rec+0x0C`
+  (set by opcode `0x1A`, cleared by `0x1B`). Those three opcodes are therefore
+  a stream-directed call, and a transcription must have a real target for the
+  address the title's stream supplies.
 
 ### G. The title state `0x121A0` (`prage.c:1392-1493`)
 
@@ -1199,7 +1220,7 @@ git commit -m "actors: pset sync 0x2A31C/0x2A1FC/0x2A820 with motion and the she
   `0x1E1` case at `prage.c:15994-15997`.
 - Produces:
   ```c
-  u32  anim_next_sprite_id(u32 rec, const u16 *stream);  /* 0x2A408 */
+  u32  anim_next_sprite_id(u32 rec, u32 pset);            /* 0x2A408 */
   u32  anim_read_var(u32 rec, u8 op);                    /* 0x29F34 */
   void anim_write_var(u32 rec, u8 op, u32 value);        /* 0x29DB8 */
   void actors_pin_anim_tick_zero(int on);                /* oracle mirror, see below */
@@ -1515,7 +1536,7 @@ git commit -m "docs: sub-project 4a-ii report and the docs the title change inva
    section that fixes its semantics.
 3. **Type consistency.** `rng_next(u32)`, `rng_step(void)`,
    `actor_spawn(const u32*, u32, u32, u32, u32)`, `actors_update(void)`,
-   `actor_pset(u32)`, `anim_next_sprite_id(u32, const u16*)` are used with the
+   `actor_pset(u32)`, `anim_next_sprite_id(u32, u32)` are used with the
    same signatures in every task that names them.
 
 ## Execution handoff
