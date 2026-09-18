@@ -923,7 +923,7 @@ git commit -m "rng: the 0x5D7DC LCG, seeded at init, stepped once per iteration"
                                       * flags bit 0x400 (spawn's a5 bit 0x400) selects
                                       * the active-list TAIL (0x249C0), else the head
                                       * (0x249B0). Verified at 0x2AC84 `mov ecx,eax`,
-                                      * 0x2ACB8 `xor cl,cl`, 0x2ACBA `and ch,4`; the two
+                                      * 0x2ACB6 `xor cl,cl`, 0x2ACBA `and ch,4`; the two
                                       * intervening calls (0x249D0, 0x2EA30) do not
                                       * touch ECX. */
   void   actor_free(u32 rec);        /* 0x249B0 */

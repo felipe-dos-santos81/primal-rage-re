@@ -84,9 +84,10 @@ verified: the LE loader + fixups (byte-exact against Ghidra's image), the
 byte-identical to `tools/gra_render.py` for the four full-screen `S16TITLE`
 frames `{10,12,13,18}` only; the palette bank is flattened and the sub-palette
 choice is `likely`), the palette flush (`0x1C470`), the process-table scheduler,
-and the `0x255CC`/`0x24C5C`/`0x11D04` loop running the title state. The port's
-title renders those four asset frames full-screen; the original's task-system
-composite is not reproduced, and the emulator comparison is unusable (Task 15).
+and the `0x255CC`/`0x24C5C`/`0x11D04` loop. The title state now runs the real
+`0x121A0` actor composite through the display list (`make title-oracle` proves it
+pixel-exact — see the 4a-ii paragraph below); the earlier full-screen four-frame
+`S16TITLE` stand-in was removed in sub-project 4a-ii.
 **Audio — sub-project 2a, AIL/Miles, running.** The port runs the game's own
 audio path with no DOS driver: the `0x1CF40` AIL init completes, the title/
 attract XMIDI bank is decoded and sequenced into OPL register writes through a
@@ -124,8 +125,8 @@ actor pool and real title state: the `0x68`-byte records and their lists, spawn
 `0x2AE14`, the pset sync, the motion step, the animation-stream interpreter
 (`0x2A408`/`0x29F34`/`0x29DB8` and the 47-opcode dispatcher `0x2B2A0`), the text
 grid and glyph renderer, the `0x5D7DC` LCG, and `0x121A0` with its `ENGLISH.TXT`
-caption. The title composite is proven **pixel-exact** against two independent
-captures of the pinned original over the 96-frame window (`make title-oracle`):
+caption. The title composite is proven against two independent captures of the
+pinned original over its window (`make title-oracle`):
 the capture is modelled as a byte-offset splice of two adjacent port frames
 because the original updates the aperture at `0x255CC` with no retrace wait
 while DX-CAPTURE samples at 70.09 Hz, and every captured frame is explained with

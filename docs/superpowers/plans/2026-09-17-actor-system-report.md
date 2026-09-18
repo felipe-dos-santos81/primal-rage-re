@@ -1,12 +1,15 @@
 # Sub-project report — Primal Rage (DOS) → SDL3, sub-project 4a-ii: the actor system and the title
 
 Date: 2026-09-18
-Branch: `actor-system-2` (cut from `main` at `d5ef82a`)
-Base: `d5ef82a` ("plan: 4a-ii plan errata …"; the point where the merged
-sub-project 4a-i work ends and this cycle's branch starts)
-Cycle commits: 41, `d5ef82a..c2c80f0` — 9 `actors:`, 9 `tools:`, 8 `title:`,
-1 `rng:`, 14 `plan:`/`docs:` errata. The final commit adds this report and the
-docs it invalidates.
+Branch: `actor-system-2`. `main` had been fast-forwarded `d5ef82a..7f2bfe9` after
+the first session (Tasks 1–4), and this branch was cut from that point
+(`7f2bfe9`).
+Cycle range: `d5ef82a..c2c80f0` (41 commits) — 9 `actors:`, 9 `tools:`,
+8 `title:`, 1 `rng:`, 14 `plan:`/`docs:` errata. `d5ef82a` is the **diff base**
+(the point where the merged sub-project 4a-i work ends), so the range includes
+the first session's Task 1–4 commits that `main` already carried; this branch's
+own commits are `7f2bfe9..c2c80f0` (25). The final commit adds this report and
+the docs it invalidates.
 Spec: `docs/superpowers/specs/2026-09-17-actor-system-design.md`
 Plan: `docs/superpowers/plans/2026-09-17-actor-system.md` (revised in flight by
 14 errata commits)
@@ -20,8 +23,11 @@ the landing.
 
 ## 1. Summary
 
-The actor system is ported and the title is proven pixel-exact against the
-original for its 96-frame window. Six units landed:
+The actor system is ported and the title composite is proven against the
+original: every captured frame in the pinned window is explained as a byte-offset
+splice of two adjacent port frames (zero pixel tolerance, zero unexplained
+frames), covering port frames `1..94` with the two endpoint transitions
+disclosed (§4.3). Six units landed:
 
 * `game/rng.{c,h}` — the `0x5D7DC` LCG (`state = state*0xB90D12B9 + 0x38CE051F`,
   return `((state>>16) * (range & 0xffff)) >> 16`), seeded `0xABCD` in
@@ -57,7 +63,8 @@ Files extended: `port/src/game/flow.{c,h}`, `port/src/platform/gfx.{c,h}`,
 
 `make verify` is green with zero compiler warnings (§11). No SDL outside
 `host.c`/`main.c`, no new dependency (the oracle comparator is stdlib-only), and
-`data/` untouched (the pin writes `/tmp` only).
+`data/game` untouched — the pin writes `/tmp` only; the captures are written under
+the git-ignored `data/title-captures/`.
 
 ## 2. The pin as implemented
 
@@ -123,11 +130,16 @@ A capture index **is not** a game-frame index: the game's logic runs at 60 Hz
 while mode 13h is sampled at 70.09 Hz, so a game frame is displayed for one or
 two captured frames. The tool decodes the post-logo run (320×200 RGB24),
 collapses consecutive identical captured frames into one file per distinct game
-frame, and records each file's raw capture index in `window.txt`. The current
-captures: capture 1 is 582 distinct frames over raw `1377..3151`
-(`twi5_last=966`, `twg_last=1326`); capture 2 is 591 distinct over raw
-`1366..3151` (`twi5_last=955`, `twg_last=1315`) — the boot-region jitter means
-raw indices differ run to run.
+frame, and records each file's raw capture index in `window.txt`. The two
+capture directories present for the final oracle run are capture 1 = **582
+distinct** frames over raw **`1377..3151`** (`twi5_last=966`, `twg_last=1326`)
+and capture 2 = **591 distinct** over **`1366..3151`** (`955`/`1315`). These are
+the runs made for this report; they are **not** the earlier Task 2 runs. Task 2's
+contract run emitted 585 distinct over `1375..3152` (`964`/`1324`) and its
+reproducibility diagnostic saw run 1 = 586 / run 2 = 590 distinct. The boot
+region carries sampling jitter, so the distinct count and raw range differ run to
+run; the oracle aligns by content, and only the collapsed distinct sequence
+inside the window matters.
 
 ### 3.2 The window is located by content, not by "after the second logo"
 
@@ -148,9 +160,9 @@ RNG-sensitivity diff also died once the in-window consumers were pinned. The
 human approved the reorder (`428c649`): build the port side first, let the
 oracle's content alignment define the window, and make the **port-vs-two-captures**
 comparison the determinism proof. `--verify-reproducible` was demoted to a
-diagnostic (exit 0; it reported 323/586 shared, first divergence at distinct
-index 29, raw 1587 vs 1581 — the boot region). The stronger replacement is
-Task 10's oracle.
+diagnostic (exit 0; it reported 323 shared of run 1's 586 and run 2's 590
+distinct frames, first divergence at distinct index 29, raw 1587 vs 1581 — the
+boot region). The stronger replacement is Task 10's oracle.
 
 ## 4. The oracle
 
@@ -181,12 +193,14 @@ Three human-approved DoD #2 refinements:
 
 No threshold, mask, crop, frame-skip or per-frame allowance exists.
 
-### 4.2 The strictness rule
+### 4.2 The strictness rule (a human ruling)
 
 With `PR_ORACLE_REQUIRED=1` and fewer than two captures, the tool **exits
-non-zero** and says the determinism proof is incomplete (`5fb107b`/`c2c80f0`).
-A green `make verify` therefore means the proof was completed; it is not enough
-to print INCOMPLETE and exit 0.
+non-zero** and says the determinism proof is incomplete. This was a
+**human-approved** change (plan/spec errata `5fb107b`, commit `c2c80f0`), taken
+because the earlier behaviour printed `INCOMPLETE` but exited 0 — so a green
+`make verify` could mean the determinism proof was never completed. A green
+ladder must mean the proof was completed, not merely attempted.
 
 ### 4.3 Final measured result
 
@@ -212,14 +226,31 @@ predicts.
 
 ### 4.4 The exact commands
 
-The oracle is driven end to end by:
+The port dump must exist **before** the first (anchored) capture, and
+`make title-oracle` only runs the dump driver when a capture already exists
+(`Makefile:113-123`), so the dump is bootstrapped directly. The sequence is:
 
 ```bash
+# 1. Build, pin the original, and bootstrap the port dump by running the
+#    test_title.c driver directly (no capture exists yet, so `make title-oracle`
+#    would skip the driver).
+make build
 make title-pin
-python3 tools/title_capture.py --out data/title-captures/title --port-anchor /tmp/pr_title_dump/title
+PR_TITLE_DUMP=/tmp/pr_title_dump PR_GAME_DIR=data/game/C ./build/run_tests
+
+# 2. Capture the pinned original; the first capture is aligned to the port dump.
+python3 tools/title_capture.py --out data/title-captures/title \
+    --port-anchor /tmp/pr_title_dump/title
+
+# 3. A second, independent capture (unanchored) for the determinism proof.
 python3 tools/title_capture.py --out data/title-captures/title2
-make title-oracle          # needs the port dump at /tmp/pr_title_dump/title
-make verify                # the full ladder, exit 0
+
+# 4. Regenerate the dump and compare the port against both captures. This
+#    creates /tmp/pr_title_dump/title (rm -rf then re-dump) and is the gate.
+make title-oracle
+
+# 5. The full ladder; title-oracle is part of it.
+make verify
 ```
 
 `title-oracle` runs the `test_title.c` driver alone with `PR_TITLE_DUMP` set
@@ -310,6 +341,16 @@ mirror.
   allocations — `DS_001014EC` (`0x4880`) and `DS_001014F4` (`0xEBA0`) at
   `port/src/platform/res.c:120-121`; a second allocator entry point would
   allocate the pools twice. `actors_init()` validates what exists.
+* **Task 8b (the text renderer) was added mid-cycle by a human ruling** (plan
+  errata `11d90bb`), not in the original plan. Task 8 established that Format
+  reference H was wrong — the four functions are the game's **text grid**, not
+  pset layer select — and that `0x2F198` unconditionally emits text through
+  `0x2F830`, which no task owned. Because the shipped profile takes the title's
+  text branch (`DS_00104528 = 0x2D974(0x29) = 0`, bit 9 clear), the Task 10
+  window contains glyph pixels; without porting `0x2F830`/`0x2F5A0`, DoD #2
+  would have compared a partial scene and the oracle would have been dishonest.
+  `text_layout_seam()` was the explicit placeholder for that deferral; Task 8b
+  replaced it.
 * **`rng_step`** is the port's own name for `0x255CC`'s discarded draw, placed
   after `swap_buffers()` and before `game_audio_service()`.
 * **Capture-API changes from the second draft**: the tool's default mode emits
@@ -324,9 +365,11 @@ mirror.
   previous `0x2B00000` collided with `movie_play`'s TWI5 load.
 * **`0x47370`'s loader was replaced by a direct `ENGLISH.TXT` read** (a
   permitted port-asset pattern): the original's `0x1C308`/`0x1E6D8` paged-memory
-  manager and DOS file I/O are not ported. `DS_00104528` is pinned to `0` — the
-  `0x2D974(0x29)` result on the shipped image, which selects the title's text
-  branch (`text_cursor_set` → `0x2F198`).
+  manager and DOS file I/O are not ported. The caption is `0x1C500(0x15)` →
+  `0x474E4`, which decodes string id `0x15` (`THE FUTURE...`) into
+  `DS_00102760`. `DS_00104528` is pinned to `0` — the `0x2D974(0x29)` result on
+  the shipped image, which selects the title's text branch (`text_cursor_set` →
+  `0x2F198`).
 * **`actors_pin_anim_tick_zero(int)` is TEST-ONLY**, set by the Task 10 oracle
   driver, and draws `on ? 0 : rng_next(range)` at the single opcode-8 site.
 * **The fake-title machinery was deleted** (`TITLE_FRAMES`, `s_title_*`,
@@ -334,7 +377,7 @@ mirror.
   `test_gfx.c`'s S16TITLE frame-10 comparison with `s16title_frame10.idx`; both
   are superseded by the oracle.
 
-### PORT labels introduced (62 added lines; grouped)
+### PORT labels introduced (grouped)
 
 * `actors.c` (31): pool/lists — empty-sentinel report, pool-range invariant,
   two-pool validation, loader-assumed free list, `0x13DF0` effect-list free,
@@ -394,18 +437,23 @@ All are non-blocking; none is a data-loss or security path. Grouped by task
 | Task | Item | Disposition |
 |---|---|---|
 | 2 | `--anchor` unvalidated; capture `--out` has no `data/` guard; one bare `open().read()`; `diagnose()` uses run 1's logs; `--verify-reproducible --port-anchor` raises; AVI decoded twice | Carry. Non-default/diagnostic paths; the Makefile path is safe. `--out` guard should mirror `title_pin`'s. |
-| 2 | Fifth pin site absent from Format A2; stale report headers | Carry (doc traceability). |
+| 2 | Fifth pin site absent from Format A2; stale report headers; the plan's determinism paragraph has a mangled sentence | Carry (doc traceability/claims). |
 | 3 | `flow.c:555` provenance comment is a bare address; `test_rng.c:25` redundant CHECK | Carry; cosmetic. |
+| 3 | stale "Deviation" narrative in `task-3-report.md` | Carry (claims only). |
 | 4a | `DS_00101508/150C` written 0 — closed by `0x2BBE4` disassembly (param_1 = 0) | Closed. |
 | 4b | `actor_alloc` `0x400` tail-insert path unexercised — unreachable for the title | Carry; documented. |
 | 4c/d | stale `test_actors.c` comment; asymmetric reset guard; double free benign | Carry. |
+| 5 | `palette_acquire` (`0x33754`) has no dedicated oracle test; its reflow/refcount path is unexercised by the title | Carry; only read against the decomp. |
+| 5 | args doc §2 site 2 labels the `push`/immediate dance by register rather than by spawn argument name | Carry; cosmetic. |
 | 6.1 | two `TODO(verify)` layer clamps with a wrong rationale — Task 7 reworded; clamps correct | Closed (reason fixed). |
 | 6.2 | C99 UB `((s32)x >> 16) << 6` in four spots — Task 7 fixed | Closed. |
 | 6.3 | `set_dead` omits per-type teardown + `rec+0x2b &= 0xbf` — unreachable while the dispatcher was stubbed; now transcribed in `actor_set_dead` | Closed for the title; the per-type table's other cases remain unported. |
 | 7a | `actors.c:1243` comment names the wrong status-2 opcode set | Carry; cosmetic (direct `0x1F` falls through to `0x20`; status 2 is `0x00/0x01/0x05/0x07/0x08/0x15`). |
 | 7b | opcode `0x15` callee convention approximated (ECX vs the second `anim_code_fn` slot) | Carry; pre-existing seam, title streams do not reach it. |
+| 7c | the task-7 report's "dispatcher complete, none no-op'd" phrasing was corrected only in an appendix; the main body still reads strongly | Carry; wording. |
 | 8 | `text_cells_release` wrap/clamp branches untested | Carry; the title passes `col = -1`. |
 | 8 | `text_cursor_set` is a seam-stub note stale in `actors.h` — Task 8b replaced it | Closed. |
+| 8 | `task-8-report.md:131` cites the wrong byte pair for the `rec+0x59` store | Carry (claims only). |
 | 8b | unguarded truncation write `m[k-1]` for `col > 0x2A` — verified identical in the raw, not title-reachable | Carry. |
 | 8b | writable-string test cases missing; dead initialiser | Carry. |
 | 9 | loader drops `0x33340001` signature check; `logo` deref without guard (faithful); two tests share scratch `0x3F00000`; boot-path RNG state not test-covered; `string_decode` unbounded; glyph-count assertion `>= 10` against 12; `DS_00104B15` pinned 0 unverified | Carry. The signature check is cheap to restore. |
@@ -461,16 +509,19 @@ The project may claim:
   (including all 47 dispatcher opcodes), the text grid and glyph renderer, the
   real `0x121A0` title state and the `0x1C500` caption chain are ported and
   unit-tested;
-* the title composite is **pixel-exact** against two independent captures over
-  the 96-frame window: every captured frame is explained as a byte-offset splice
-  of two adjacent port frames (or one byte-wise transition row), with zero
-  unexplained frames, and the clean samples of 36 port frames agree between the
-  captures with zero disagreements;
+* the title composite is proven against two independent captures over the pinned
+  window: every captured frame is explained as a byte-offset splice of two
+  adjacent port frames (or one byte-wise transition row), with zero pixel
+  tolerance and zero unexplained frames, port frames `1..94` exhibited by both
+  captures, the two endpoint transitions (`0`, `95`) disclosed as the only
+  permissible exceptions, and the clean samples of 36 port frames agreeing
+  between the captures with zero disagreements;
 * three integration/transcription defects found by the oracle (palette-table
   entry resolution, 6-bit DAC expansion, 16.16 velocity) are fixed and verified
   against the decompilation;
-* `make verify` is green with zero warnings, `data/` untouched, no new
-  dependency, and the oracle's determinism proof completed.
+* `make verify` is green with zero warnings, `data/game` untouched (captures are
+  git-ignored under `data/title-captures/`), no new dependency, and the oracle's
+  determinism proof completed.
 
 The project may **not** claim:
 
@@ -492,7 +543,80 @@ The project may **not** claim:
 Sub-project 4a-ii's scope is complete: the RNG, the actor system, the text
 renderer and the real title state are ported; the DOSBox title oracle is in
 `make verify` and proves the composite against two captures with zero
-unexplained frames. The cycle's DoD — the port-vs-two-captures determinism
-proof, a green ladder with no new warnings, no `data/` writes and no new
-dependency — is met. The named residuals in §10 pass to sub-projects 4b/4c/4d,
-with `0x2BF08` and the deferred attract/effect subsystem the largest.
+unexplained frames (port frames `1..94`; the endpoints disclosed). The cycle's
+DoD — the port-vs-two-captures determinism proof, a green ladder with no new
+warnings, no `data/game` writes (captures are git-ignored under
+`data/title-captures/`) and no new dependency — is met. The named residuals in
+§10 pass to sub-projects 4b/4c/4d, with `0x2BF08` and the deferred attract/effect
+subsystem the largest.
+
+## Fix round — task-review findings (docs-only)
+
+A task review returned spec ❌ / quality Needs fixes: 1 Critical, 4 Important,
+4 Minor, all accuracy and completeness. No code changed. The fixes:
+
+* **Critical — the fake title was still live in `README.md`.** The
+  engine-core paragraph still said the port renders four asset frames
+  full-screen and does not reproduce the original's composite. Replaced with the
+  real statement: the title state `0x121A0` runs the original actor composite
+  through the display list, and the four-frame stand-in was removed in 4a-ii.
+* **Important — consent records.** §4.2 now presents the strictness rule as a
+  **human-approved** change (errata `5fb107b`) and gives its reason (a green
+  ladder must mean the determinism proof was completed, not merely attempted).
+  §8 now records that **Task 8b was added mid-cycle by a human ruling** (errata
+  `11d90bb`) and why: Format reference H was wrong (the four functions are the
+  text grid), `0x2F198` emits text through `0x2F830`, and the shipped profile
+  takes the text branch, so the window contains glyph pixels and omitting the
+  renderer would have made DoD #2 dishonest.
+* **Important — capture numbers.** §3.1 now identifies capture 1 (582 distinct,
+  raw `1377..3151`, `966`/`1326`) and capture 2 (591, `1366..3151`,
+  `955`/`1315`) as the runs made for this report, explicitly distinct from Task
+  2's contract run (585 over `1375..3152`, `964`/`1324`) and its diagnostic
+  (586/590). §3.3's diagnostic line is reworded to "323 shared of run 1's 586
+  and run 2's 590".
+* **Important — the command sequence.** §4.4 was misordered (it passed
+  `--port-anchor` before any dump existed) and mislabelled. It now bootstraps the
+  dump first (running the `test_title.c` driver directly, because
+  `make title-oracle` only runs the driver when a capture already exists), then
+  the anchored capture, then the second capture, then `make title-oracle` (which
+  regenerates the dump and compares), then `make verify`.
+* **Important — the `data/` claim.** "`data/` untouched" / "no `data/` writes"
+  is corrected to "`data/game` untouched"; the captures are written under the
+  git-ignored `data/title-captures/` (§1, §12, §13).
+* **Important — deferred minors completed.** The table now also carries Task 2's
+  mangled plan-determinism sentence, Task 3's stale `task-3-report.md`
+  deviation narrative, Task 5's two (`0x33754`/`palette_acquire` has no oracle
+  test and its reflow/refcount path is unexercised; the args doc's §2
+  register-vs-name label), Task 7's third (the dispatcher "complete, none
+  no-op'd" phrasing survives in the task-7 report's main body), and Task 8's
+  `task-8-report.md:131` wrong `rec+0x59` byte pair.
+* **Minor.** The PORT-label heading no longer claims "62 added lines" against a
+  grouped count of 56 (the count is dropped; the grouping is what matters). The
+  header now separates the **branch** (cut from `main` at `7f2bfe9`) from the
+  **cycle diff base** (`d5ef82a`, 41 commits including session 1; this branch's
+  own commits are `7f2bfe9..c2c80f0`, 25). The §1 headline and §12 now state the
+  exact oracle result (port frames `1..94` exhibited, endpoints disclosed)
+  instead of "pixel-exact for its 96-frame window". §8 names the caption string
+  `THE FUTURE...` (id `0x15`).
+* **Correction carried.** The plan's Task 4 comment that cited `0x2ACB8` for the
+  `xor cl,cl` is corrected to `0x2ACB6` (the args doc already had it right). The
+  report's §5 already cited `0x2ACB6`.
+
+Commands and output:
+
+```bash
+$ make verify
+EXIT=0
+all checks passed
+smk_compare: 120/120 frames match
+smk_compare: 41/41 frames match
+title_compare: capture 1: 110 frames in window: 53 clean, 56 splice, 1 transition, 0 unexplained
+title_compare: capture 2: 110 frames in window: 53 clean, 57 splice, 0 transition, 0 unexplained
+title_compare: determinism: clean samples of 36 port frame(s) agree, 0 disagree
+Ran 32 tests in 1.175s
+1304 globals, 1206 functions -> port/src/symbols.h
+all checks passed
+
+$ python3 tools/gen_symbols.py port/decomp port/src/symbols.h && git diff --quiet -- port/src/symbols.h
+symbols.h byte-identical (exit 0)
+```
