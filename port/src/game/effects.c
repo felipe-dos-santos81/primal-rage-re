@@ -11,6 +11,7 @@
 #include "../symbols.h"
 #include "platform/gfx.h"
 #include "platform/res.h"
+#include <stddef.h>
 
 /* 0x7CCF0 -> linear 0xFCCF0, the raw palette buffer 0x13420's case 4 enqueues
  * from. Not a named global in symbols.h. */
@@ -111,12 +112,17 @@ u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle)
     DSB(rec + 0x0d) = (u8)byte_arg;
 
     /* The iteration bound is the SOURCE record's +0xC, read before any entry is
-     * written; +0x10 holds zeros and +0x410 the resolved block's dwords. */
-    u32 count = DSD(source_rec + 0x0c);
-    for (u32 i = 0; i < count; i++)
-        DSD(rec + 0x10 + i * 4u) = 0;
-    for (u32 i = 0; i < count; i++)
-        DSD(rec + 0x410 + i * 4u) = resolved[1 + i];
+     * written; the original tests it signed (`test`/`jle`), so a non-positive
+     * count is skipped. +0x10 holds zeros and +0x410 the resolved block's
+     * dwords. PORT: 0x1B544 can fail to resolve; the original trusts the
+     * handle, the port skips the copy rather than dereference NULL. */
+    s32 count = (s32)DSD(source_rec + 0x0c);
+    for (s32 i = 0; i < count; i++)
+        DSD(rec + 0x10 + (u32)i * 4u) = 0;
+    if (resolved != NULL) {
+        for (s32 i = 0; i < count; i++)
+            DSD(rec + 0x410 + (u32)i * 4u) = resolved[1 + i];
+    }
 
     DSB(DS_0009AF3C) = 1;
     DSB(rec + 0x0e) = 1;
