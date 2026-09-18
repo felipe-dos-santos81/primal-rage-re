@@ -875,10 +875,17 @@ git commit -m "rng: the 0x5D7DC LCG, seeded at init, stepped once per iteration"
   for the `0x33754` palette path in Task 5).
 - Produces:
   ```c
-  void   actors_init(void);          /* validates the pool res.c already allocated */
+  int    actors_init(void);          /* validates the pool res.c already allocated */
   void   actors_reset(void);         /* 0x2BAF4 */
-  u32    actor_alloc(void);          /* 0x2AC80; record offset, or 0 */
-  void   actor_free(u32 rec);        /* 0x249C0 */
+  u32    actor_alloc(u32 flags);     /* 0x2AC80; record offset, or 0. Task 5 extends
+                                      * this from (void) and adds the flags argument:
+                                      * flags bit 0x400 (spawn's a5 bit 0x400) selects
+                                      * the active-list TAIL (0x249C0), else the head
+                                      * (0x249B0). Verified at 0x2AC84 `mov ecx,eax`,
+                                      * 0x2ACB8 `xor cl,cl`, 0x2ACBA `and ch,4`; the two
+                                      * intervening calls (0x249D0, 0x2EA30) do not
+                                      * touch ECX. */
+  void   actor_free(u32 rec);        /* 0x249B0 */
   u32    actor_record(u32 index);    /* pool index -> record offset, or 0 */
   u32    actor_index(u32 rec);       /* record offset -> pool index, or -1u */
   u32    actor_list_head(void);      /* DSD(DS_00105BCC), 0 when empty */
