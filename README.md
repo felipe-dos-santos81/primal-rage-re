@@ -14,7 +14,7 @@ mode game code: everything interesting lives in two LE objects (code + data).
 |---|---|
 | `data/game/C/` | Installed game (`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound drivers) |
 | `data/game/CD/RAGECD.ISO` | Original CD (`/Volumes/RAGECD` when mounted: `RAGE.S04`, `RAGE.S08`, `RAGE.S16`, `RAGE.SND`) |
-| `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) + **Smacker video** (sub-project 2b-i) + **sprite compositor** (sub-project 4a-i) — `cmake -S port -B build` |
+| `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) + **Smacker video** (sub-project 2b-i) + **sprite compositor** (sub-project 4a-i) + **actor system and title** (sub-project 4a-ii) — `cmake -S port -B build` |
 | `port/src/platform/audio/` | AIL surface, XMIDI sequencer, FAT.OPL, samples, mixer, vendored OPL core |
 | `port/RE_GUIDE.md` | Address conventions, DOS/4GW layout, toolchain, landmarks |
 | `port/spec/game_flow.md` | Entry, frame loop, state machine, tick, pixel path |
@@ -119,9 +119,26 @@ an emulator (the DOSBox title oracle is 4a-ii's). `game_loop` calls the
 compositor in the original's order — a proven no-op until 4a-ii populates the
 list. See `docs/superpowers/plans/2026-09-17-sprite-compositor-report.md`.
 
-Streamed Smacker audio (2b-ii), the actor system (4a-ii), menus/EEPROM (4) and
-the fight engine (5) are stubbed at their call sites and are the remaining
-sub-projects (`/* PORT: */` markers).
+**Actor system and title — sub-project 4a-ii, ported.** The engine runs its own
+actor pool and real title state: the `0x68`-byte records and their lists, spawn
+`0x2AE14`, the pset sync, the motion step, the animation-stream interpreter
+(`0x2A408`/`0x29F34`/`0x29DB8` and the 47-opcode dispatcher `0x2B2A0`), the text
+grid and glyph renderer, the `0x5D7DC` LCG, and `0x121A0` with its `ENGLISH.TXT`
+caption. The title composite is proven **pixel-exact** against two independent
+captures of the pinned original over the 96-frame window (`make title-oracle`):
+the capture is modelled as a byte-offset splice of two adjacent port frames
+because the original updates the aperture at `0x255CC` with no retrace wait
+while DX-CAPTURE samples at 70.09 Hz, and every captured frame is explained with
+zero pixel tolerance and zero unexplained frames. The oracle found and forced
+the fix of three defects (the `0x33754` palette-table entry, the 6-bit VGA DAC,
+the 16.16 actor velocity). One confirmed finding contradicts the earlier RE: the
+in-window opcode-8 count is 0, so pin site 4 is inert and the `task-2-anchor-re.md`
+account of the title's nondeterminism is wrong. See
+`docs/superpowers/plans/2026-09-17-actor-system-report.md`.
+
+Streamed Smacker audio (2b-ii), menus/EEPROM (4), the fight engine (5) and the
+deferred attract/effect subsystem (`0x11000`, `0x13C70`, `0x38A38`, `0x2BF08`)
+remain (`/* PORT: */` markers).
 
 ### Build and run
 
@@ -150,11 +167,24 @@ PR_ORACLE_REQUIRED=1 ./build/run_tests            # or: make verify
 ```
 
 `PR_ORACLE_REQUIRED=1` is required for a real verification run: the byte-exact
-Ghidra/title-screen oracles are git-ignored (they are copies of the game's own
+Ghidra/Smacker/title oracles are git-ignored (they are copies of the game's own
 bytes), so without it the suite skips those comparisons. `make verify` runs the
-full ladder in order — `--check` first (the suite's four-frame runtime-capture
-comparison consumes the `frame_*.idx` it writes), then the oracle-required
-tests, then `symbols.h` idempotence.
+full ladder in order — a `--check 60` headless smoke run, then the
+oracle-required test suite, then `make smk-oracle`, `make title-oracle`,
+the GRA-extract oracle tests, and finally `symbols.h` idempotence.
+
+The title oracle needs the pinned capture and the port dump:
+
+```bash
+make title-pin                                   # patch /tmp/pr_title_pin/PRAGE.EXE (writes /tmp only)
+make title-oracle                                # align the port dump into data/title-captures/* and compare
+```
+
+With two independent captures under `data/title-captures/`, `make title-oracle`
+proves both the pixel match (every captured frame is a byte-offset splice of two
+adjacent port frames, zero tolerance) and determinism (the captures agree on the
+clean samples). With `PR_ORACLE_REQUIRED=1` and fewer than two captures it fails
+rather than reporting the proof incomplete.
 
 ### Third-party
 

@@ -128,6 +128,10 @@ python3 tools/le_info.py --index data/game/C/INDEX
 | `0x1C500` | small leaf called 181× — likely a getter/accessor |
 | `0x2BC30`, `0x2AE14`, `0x2F198` | very hot code (150–190 callers) |
 | `0x5D7DC` | **not audio**: the Watcom C runtime `rand()` — a 32-bit LCG `seed = seed*0xB90D12B9 + 0x38CE051F`. 33 game callers, 0 AIL callers (spec `audio.md` "AIL surface"). Earlier "allocator/memory helper" was wrong |
+| `0x121A0` | title state (switch case 1): phases on `DS_000F0A6F`, spawns the logo/second objects, counts down `DS_000F0A66` |
+| `0x2AE14` | actor spawn; 5 args, EAX=descriptor, EDX/ECX/EBX, stack word (pinned in `docs/superpowers/plans/2026-09-17-actor-system-args.md`) |
+| `DS_001014F4` / `DS_001014EC` | actor-record pool (`0xEBA0`, 580×`0x68`) / pset pool (`0x4880`, 580×`0x20`), both allocated by `res_load_index` |
+| `0x2B2A0` | animation-stream opcode dispatcher, 47 entries at linear `0x2B1E4` |
 | `0x5D87E`, `0x5D973`, `0x5DB9E` | sound driver API used by `0x10034`; `0x5D973` is AIL's driver dispatcher (`swi 0x31`), not game-called |
 | `0x1CF40` | AIL init (sub-project 2a): `AIL_startup`, prefs, 4 sample handles, sequence handle, 60 Hz timer |
 | `0x1CF20` | master-loop audio service: play queued samples (`0x1CB18`), start pending song (`0x1C930`), advance/sequence + render |
@@ -154,7 +158,8 @@ On-screen sprites go through a **three-stage pipeline**:
 
 1. **Actor update + pset sync** — `0x2A31C` walks the actor list and `0x2A820`
    syncs each 0x68-byte actor record into a 0x20-byte **pset** (`DAT_001014EC`),
-   computing screen position and layer. **4a-ii's, not yet ported.**
+   computing screen position and layer. **Ported in sub-project 4a-ii**
+   (`port/src/game/actors.c`, `actors_update`).
 2. **Ordering** — `0x1C3FC` insertion-sorts the singly-linked display list at
    `DS_00105B44` ascending by the pset layer, stable. Ported in
    `port/src/platform/render.c` (`render_list_sort`, `render_list_insert`).
@@ -173,6 +178,33 @@ The code is dense from roughly `0x10000`–`0x39000` (engine/utilities) and
 `0x3A000`–`0x6A000` (game logic), with libraries at the high end
 (`0x5C000`+ looks like the WATCOM runtime / DOS4GW glue). The subsystem split is
 in `port/spec/`; `game_flow.md` covers the loop, state machine and frame path.
+
+### Actor system and title (sub-project 4a-ii)
+
+The actor system is ported (`port/src/game/actors.{c,h}`): the `0x68`-byte pool
+and its free/active lists, spawn `0x2AE14`, the pset sync `0x2A31C` →
+`0x2A1FC`/`0x2A820`, the motion step `0x2A4FC` (16.16 fixed point), the
+animation-stream readers `0x2A408`/`0x29F34` and writer `0x29DB8`, the 47-opcode
+dispatcher `0x2B2A0`, the text grid `0x2F0F0`/`0x2F198`/`0x2F280`/`0x2F4BC` and
+the glyph renderer `0x2F830`/`0x2F5A0`. The `0x5D7DC` LCG is
+`port/src/game/rng.c`, seeded `0xABCD` in `game_init` (`0x20C62`).
+`game/flow.c` transcribes the real title `0x121A0` (phases on `DS_000F0A6F`) and
+the `0x1C500`/`0x474E4` caption chain; `0x47370`'s paged-memory loader is
+replaced by a direct `ENGLISH.TXT` read.
+
+The title is proven **pixel-exact** against the original by
+`tools/title_compare.py`: `make title-pin` builds a capture-only `PRAGE.EXE`
+copy with the five consumed RNG draws patched in place, `tools/title_capture.py`
+captures the pinned original in DOSBox-X (one file per distinct game frame —
+capture index ≠ game-frame index at 60 Hz logic / 70.09 Hz mode 13h), and
+`make title-oracle` aligns the port dump into **two independent captures** and
+explains every captured frame as a byte-offset splice of two adjacent port
+frames (a tear model: the original updates the aperture at `0x255CC` with no
+retrace wait), with zero pixel tolerance and zero unexplained frames. The
+determinism proof is that both captures agree on the clean samples; with
+`PR_ORACLE_REQUIRED=1` and fewer than two captures the oracle fails rather than
+reporting incomplete. Full record:
+`../docs/superpowers/plans/2026-09-17-actor-system-report.md`.
 
 ## Next steps
 
@@ -195,10 +227,13 @@ in `port/spec/`; `game_flow.md` covers the loop, state machine and frame path.
    `../docs/superpowers/plans/2026-09-16-audio-ail-port-report.md`), Smacker
    video (sub-project 2b-i, report at
    `../docs/superpowers/plans/2026-09-17-smacker-video-report.md`; spec at
-   `../docs/superpowers/specs/2026-09-17-smacker-video-design.md`) and the
+   `../docs/superpowers/specs/2026-09-17-smacker-video-design.md`), the
    sprite compositor (sub-project 4a-i, report at
-   `../docs/superpowers/plans/2026-09-17-sprite-compositor-report.md`). Streamed
-   Smacker audio (2b-ii), the actor system (4a-ii), menus/EEPROM (4) and the
-   fight engine (5) remain. The AIL sound-id table `DAT_000BBDC8` is **static in
+   `../docs/superpowers/plans/2026-09-17-sprite-compositor-report.md`) and the
+   actor system + title oracle (sub-project 4a-ii, report at
+   `../docs/superpowers/plans/2026-09-17-actor-system-report.md`). Streamed
+   Smacker audio (2b-ii), menus/EEPROM (4), the fight engine (5) and the
+   deferred attract/effect subsystem (4d: `0x11000`, `0x13C70`, `0x38A38`,
+   `0x2BF08`) remain. The AIL sound-id table `DAT_000BBDC8` is **static in
    the EXE** (stride 12; byte 0 = case, dword +4 = handle), so its id → resource
    mapping is extractable; it is not yet extracted.

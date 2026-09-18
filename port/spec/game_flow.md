@@ -160,7 +160,8 @@ On-screen sprites are a **three-stage pipeline** (verified by disassembly):
 
 1. **Actor update + pset sync** — `0x2A31C` walks the actor list and `0x2A1FC` →
    `0x2A820` writes each actor's position, layer and frame id into a 0x20-byte
-   **pset** entry in the pool at `DAT_001014EC`. **4a-ii's; not ported.**
+   **pset** entry in the pool at `DAT_001014EC`. **Ported in sub-project 4a-ii**
+   (`port/src/game/actors.c`, `actors_update`).
 2. **Ordering** — `0x255CC` calls `0x1C3FC`, an insertion sort of the
    singly-linked display list at `DS_00105B44` ascending by `pset->layer`
    (`word` at `+0x0E`), stable; the sorted insert `0x1C3A0` places a node and the
@@ -213,51 +214,50 @@ of 41; the rule that decides presentation is the player's and is content-based
 is sub-project 2b-ii and not ported. See
 `../../docs/superpowers/plans/2026-09-17-smacker-video-report.md`.
 
-## Title state (Task 14)
+## Title state — `0x121A0` (sub-project 4a-ii, ported)
 
-* **Title/attract state is index 1.** `FUN_000121a0` — case 1 of
-  `switch(DAT_000F0A64)` — is the animated title screen: on entry it spawns a
-  scrolling/zooming logo animation through two `FUN_0002ae14` tasks, holds it
-  for `DAT_000F0A66 = 0x600` ticks, then transitions to state 2
-  (`DAT_000F0A64 = 2`). The attract sub-machine `FUN_00011000` case 0xb assigns
-  state 1 (`DAT_000F0A64 = 1`) when its cycle counter `DAT_000F0A5C == 0`.
-* **Runtime confirmation unavailable.** Task 14 could not read `DAT_000F0A64`
-  live: this macOS DOSBox-X build refuses the internal debugger ("Debugger in
-  Mac OS X not available unless you start DOSBox-X from Terminal"), so no
-  breakpoint or memory dump could be scripted. The index above is static
-  evidence, not a runtime reading. Confidence: **likely**.
-* Port choice: the port enters state 1 directly (the 0x11000 attract
-  sub-machine is deferred) and renders the full-screen `S16TITLE.GRA` frames
-  `{10,12,13,18}`; the logo/menu sprite composite is deferred to the menus
-  sub-project. The four frames are the asset's only 320×200 descriptors, so the
-  *set* is derived; rendering them full-screen in place of the original's
-  task-system composite is the port's choice.
+* **Title/attract state is index 1.** `FUN_000121A0` is case 1 of
+  `switch(DAT_000F0A64)`. The attract sub-machine `FUN_00011000` case 0xb
+  assigns state 1 when its cycle counter `DAT_000F0A5C == 0`; the port enters
+  state 1 directly (the attract sub-machine is deferred to 4d). That the
+  shipped title *is* state 1 is now confirmed at runtime by the oracle driver,
+  which asserts `DS_000F0A64 == 1` and `DS_000F0A66 == 0x600` on the entry frame.
+* **Phases on byte `DS_000F0A6F`:**
+  * **0**: `0x4F1E4`, `0x2BAF4` (`actors_reset`), `0x38910`; the branch on
+    `DS_00104528 & 0x200` — clear takes `0x1C500` + `0x2F198` (the caption/text
+    path, the shipped one because `DS_00104528 = 0x2D974(0x29) = 0`), set takes
+    `0x2AE14(0x9AE3C)` (mode-1 sprite, unreachable on the shipped profile); four
+    `0x38B18(0x9AC1C)` rows; three `0x5D7DC` draws (ranges `0x5A`/`0x7E`/`2`)
+    that fix the logo's start X, speed and gravity sign and `DS_00107A50`;
+    spawns the logo `0x9AC30` and the second object `0x9AC94`; sets
+    `DS_000F0A66 = 0x600`.
+  * **1**: `DS_000F0A66 -= 0x10` per frame; at `<= 0x10` it releases the caption
+    cells and the two records, spawns `0x9ACA8`, and runs the `0x33904` retire
+    walk; then `DS_00107A50 += (logo+0x32 >> 16)/2` and
+    `logo+0x2C = 0x40000 / DS_000F0A66`.
+  * **Exit**: `DS_000F0A6F = 0`, `DS_000F0A64 = 2`.
+  * **Always**: `DS_00107A3A = DS_00107A50 >> 5`.
+* **The pin.** `0x121A0` has no store to `DS_000EF6D8`; the only `0xABCD` seed
+  store is `0x20C62` in `0x20C10`, transcribed as `game_init`'s `rng_seed`. The
+  three draws are therefore the first three from `0xABCD` and land on
+  `12`/`111`/`0`, giving `iVar1 = 12`, `iVar2 = 0x1E40`, `DS_00107A50 = 0x2420`,
+  `DS_00107A3A = 0x121`, `logo+0x34 = -81`, `logo+0x36 = 8`, `logo+0x2C = 0xAA`.
+  The non-zero `iVar1` is what makes the logo move. The capture-only pinned
+  `PRAGE.EXE` patches those three draws (plus the anim opcode-8 site and
+  `0x2BF08`) in place so the original produces the same values; there is no
+  stub or instrument in the port (`tools/title_pin.py`).
+* **The caption.** `0x1C500(0x15)` → `0x474E4` decodes string id `0x15` from
+  `ENGLISH.TXT` (`THE FUTURE...`) into `DS_00102760` via the `0x1E75C`/`0x1E808`
+  lock pair. `0x47370`'s paged-memory loader is replaced by a direct
+  `ENGLISH.TXT` read into the buffer at `0x3800000`.
+* **`--check N`** (Task 15) runs exactly N master-loop iterations headless and
+  writes `frame_NNNN.ppm`/`.pal`/`.idx`; exit code is the assertion-failure
+  count. It is no longer used as a title oracle — `make title-oracle` is.
+* **The presented buffer is redrawn every frame** (`0x255CC` swaps every
+  presented tick, so a hold frame that skipped the redraw would present a blank
+  buffer).
 
-### Task 14 port notes (Task 15 acted on)
-
-* **The port title path is not the original's render path.** The original title
-  is composited by the process-table task system (`FUN_0002AE14` spawns tasks;
-  the sprite blitter draws `DAT_000A8B30` handle sprites over a backdrop). The
-  port skips that and decodes the four full-screen 320×200 `S16TITLE.GRA`
-  descriptors `{10,12,13,18}` — derived from the asset (its only 320×200
-  descriptors), but composited by the port — cycling them every
-  `TITLE_HOLD_FRAMES = 8` game frames (the original advances via task timers).
-  A pixel comparison against the original's title is therefore **not
-  apples-to-apples**: the asset is original but the composite is not.
-  `--check` frame capture must not assume the port's title equals the original's.
-* **`--check N` is implemented (Task 15).** `run_check()` in `port/src/main.c`
-  runs exactly N master-loop iterations with no window (`host_init()` is never
-  called) and writes `frame_NNNN.ppm` (P6 RGB via the DAC), `frame_NNNN.pal`
-  (the 256-entry DAC) and `frame_NNNN.idx` (the raw indices); exit code is the
-  accumulated assertion-failure count. The port's `.idx`/`.ppm` for the four
-  title frames `{10,12,13,18}` are **byte-identical to `tools/gra_render.py`**;
-  the emulator dimension is **unusable** (the reachable attract shares 0
-  non-black colours with the chosen frames — see the Task 15 report).
-* **The presented buffer is redrawn every frame** (0x255CC swaps every presented
-  tick, so a hold frame that skipped the redraw would present a blank buffer).
-  An on-screen sample of the raised window showed 4 distinct images of
-  9.8k–18.7k colours after the fix; before the fix it also showed a 298-colour,
-  84 %-single-colour blank frame.
+Full record: `../../docs/superpowers/plans/2026-09-17-actor-system-report.md`.
 
 ## Landmarks (verified)
 
