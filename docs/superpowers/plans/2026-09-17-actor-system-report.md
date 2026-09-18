@@ -670,3 +670,44 @@ all checks passed
 $ python3 tools/gen_symbols.py port/decomp port/src/symbols.h && git diff --quiet -- port/src/symbols.h
 symbols.h byte-identical (exit 0)
 ```
+
+## Post-review soundness fixes (`b6e017d`)
+
+The whole-branch review was ready to merge with no Critical/Important findings;
+its only two soundness holes were in the oracle itself, now fixed in
+`tools/title_compare.py`.
+
+1. **The determinism clause can no longer pass vacuously.** The clean-sample
+   agreement now requires at least one port frame to have a clean (`b=0`) sample
+   in **both** captures (`MIN_SHARED_CLEAN = 1`); if the shared clean set is
+   empty the run fails with `determinism proof VACUOUS`. A static floor of 36
+   was rejected: the shared-clean count is set by the capture sampling phase (53
+   clean in each capture, 36 in common in the measured pair), so a higher floor
+   would false-negative a legitimate pair. The measured 36 is the observed
+   value, not an invariant.
+2. **Every loaded frame's length is validated.** `load_frames` checks each
+   capture frame and the `--port` loader checks each port frame against
+   `192000`; a mismatch fails with the frame index and the two lengths (`capture
+   1 frame 2 is 1000 bytes, expected 192000`), instead of comparing a truncated
+   window.
+
+Commands and output:
+
+```bash
+$ PR_GAME_DIR=data/game/C make test          # exit 0, "all checks passed"
+$ make verify                                # exit 0 with both captures
+title_compare: capture 1: 110 frames in window: 53 clean, 56 splice, 1 transition, 0 unexplained
+title_compare: capture 2: 110 frames in window: 53 clean, 57 splice, 0 transition, 0 unexplained
+title_compare: determinism: clean samples of 36 port frame(s) agree, 0 disagree
+
+# deliberate failure paths
+$ python3 tools/title_compare.py --capture /tmp/t10/trunc_cap --port /tmp/pr_title_dump/title --frames 96
+title_compare: capture 1 frame 2 is 1000 bytes, expected 192000   # exit 1
+$ python3 tools/title_compare.py --capture data/title-captures/title --port /tmp/t10/trunc_port --frames 2
+title_compare: port frame 1 is 5 bytes, expected 192000           # exit 1
+$ python3 tools/title_compare.py --capture /tmp/t10/vac_a --capture /tmp/t10/vac_b --port /tmp/pr_title_dump/title --frames 96
+title_compare: determinism: clean samples of 0 port frame(s) agree, 0 disagree
+title_compare: determinism proof VACUOUS: no port frame has a clean sample in both captures ...   # exit 1
+$ PR_ORACLE_REQUIRED=1 python3 tools/title_compare.py --capture data/title-captures/title --port /tmp/pr_title_dump/title --frames 96
+title_compare: determinism proof INCOMPLETE: only 1 independent capture(s); two are required with PR_ORACLE_REQUIRED=1   # exit 1
+```
