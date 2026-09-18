@@ -239,23 +239,19 @@ static void check_end_to_end(void)
     const u8 *px = NULL;
     CHECK_EQ_INT(gra_sprite_pixels(g.pixel_handle, &px), 1);
 
-    /* pset+0x18 is a resource handle, not a raw pointer (the original's title
-     * psets hold values like 0x4197C6C, which decode as index 8 / in-range
-     * offsets into s16attrc.gra, while as raw mem[] offsets they would exceed
-     * MEM_SIZE). The blitter resolves it and reads byte 8. Find two resolvable
-     * handles whose bank byte differs, so the two layers' pixels are
-     * distinguishable without inventing a pointer. */
-    u32 pal_a = 0, pal_b = 0;
-    u8 bank_a = 0, bank_b = 0;
-    for (u32 id = 0; id < 0x7FFFu && pal_b == 0; id++) {
-        GraSprite g2; u32 h = 0;
-        if (!gra_sprite_lookup(id, &g2, &h)) continue;
-        u8 b = (u8)sprite_bank(h);
-        if (pal_a == 0) { pal_a = h; bank_a = b; }
-        else if (b != bank_a) { pal_b = h; bank_b = b; }
-    }
-    CHECK(pal_a != 0 && pal_b != 0 && bank_a != bank_b,
-          "two resolvable handles with different banks");
+    /* pset+0x18 is a 0x33754 palette-table entry ({handle; refcount; start;
+     * len}), not a resource handle: sprite_bank reads the low byte of the
+     * entry's `start` field at +8. Build two entries in scratch with different
+     * start bytes, so the two layers' pixels are distinguishable. (The previous
+     * version of this check treated pset+0x18 as a resolvable resource handle
+     * and searched handles for differing bank bytes; that encoded the
+     * sprite_bank bug the fix removes.) */
+    u32 pal_a = RSCRATCH + 0x1000u, pal_b = RSCRATCH + 0x1010u;
+    DSB(pal_a + 8) = 1;                 /* start 1 => bank offset 0 */
+    DSB(pal_b + 8) = 3;                 /* start 3 => bank offset 2 */
+    u8 bank_a = (u8)sprite_bank(pal_a);
+    u8 bank_b = (u8)sprite_bank(pal_b);
+    CHECK(bank_a != bank_b, "the two palette entries give different banks");
 
     /* Layer > 2 psets store their coordinates pre-shifted by 6 (render_list
      * decodes them with >> 6), so choose the pset x/y whose projections equal

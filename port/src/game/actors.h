@@ -30,6 +30,10 @@ u32  actor_next(u32 rec);
 u32  actor_pset(u32 rec);
 /* 0x2A31C. Walks the active list and syncs each record (0x2A1FC). */
 void actors_update(void);
+/* 0x2B150. Mark `rec` dead (rec+0x28 |= 8), release its pset palette and unlink
+ * the pset from the render list. 0x121A0's phase 1 calls it on the logo and the
+ * second object when DS_000F0A66 <= 0x10. */
+void actor_set_dead(u32 rec);
 
 /* ---- animation-stream interpreter -------------------------------------- */
 

@@ -1085,6 +1085,10 @@ static void set_dead(u32 rec)
     render_list_remove(pset);                   /* 0x1C458 + 0x1C3D0 */
 }
 
+/* Exposed for 0x121A0's phase-1 retirement of the logo and the second object
+ * (the same 0x2B150 the sync path reaches internally). */
+void actor_set_dead(u32 rec) { set_dead(rec); }
+
 /* 0x2AD40. The release path: drop the child, decrement the parent refcount,
  * return the record to the free list and zero its pset. */
 static void release_record(u32 rec, u32 pset)

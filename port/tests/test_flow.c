@@ -1,5 +1,6 @@
 #include "game/flow.h"
 #include "game/actors.h"
+#include "game/rng.h"
 #include "host.h"
 #include "mem.h"
 #include "symbols.h"
@@ -68,12 +69,16 @@ int test_flow(void)
     DSW(DS_000F0A64) = 1;      /* title state (chosen, see port/spec) */
     DSB(DS_000A81A8) = 0;      /* not quitting */
     DSB(DS_00104B1D) = 1;      /* skip the deferred menu poll */
+    /* This test drives the state machine without game_init(), so stand up the
+     * boot RNG seed that game_init() installs (0x20C62). Nothing consumes RNG
+     * between that seed and the title's three draws, so they are the first
+     * three from 0xABCD and land on the Task 1 pin (12, 111, 0). */
+    rng_seed(0xABCDu);
     u32 frame0 = DSD(DS_000EF6DC);
 
     /* Task 9: the real title. 0x121A0's entry frame resets and repopulates the
-     * actor pools; Format reference G pins the entry-frame invariants: the
-     * three entry draws (re-seeded 0xABCD) give DS_00107A50 = 0x2420 and
-     * DS_00107A3A = 0x121, and DS_000F0A66 = 0x600. */
+     * actor pools; Format reference G pins the entry-frame invariants:
+     * DS_00107A50 = 0x2420, DS_00107A3A = 0x121, DS_000F0A66 = 0x600. */
     game_frame();
 
     CHECK(g_called == 1, "game_frame runs the update process table");

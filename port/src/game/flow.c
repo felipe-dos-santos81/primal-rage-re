@@ -163,10 +163,17 @@ static void title_origin_reset(u32 idx)
     DSW(DS_00107A38) = (u16)(DSW(DS_00107A48) >> 6);  /* 0x3897D */
 }
 
-/* 0x1C500. PORT: 0x474E4 is the string-table deobfuscator over the
- * 0x1E75C/0x1E808 trio (spec §8: fonts, text, ENGLISH.TXT — 4c/4d). The port
- * returns the original's output buffer DS_00102760 with an empty first byte, so
- * 0x2F198/0x2F280 see a zero-length string and emit no glyphs this cycle. */
+/* PORT: 0x1C500 is not a text-setup/clear-grid routine. It is a 37-byte
+ * wrapper (prage.c:8005) around the string-table reader 0x474E4 (215 B,
+ * prage.c:30989), which deobfuscates string `eax` into the 0x100-byte buffer
+ * DS_00102760 and whose two callees are the paged-table accessors 0x1E75C
+ * (23 B) and 0x1E808 (22 B); its table handle is the runtime global
+ * DAT_00882DC. That is the spec §8 0x1E6D8/0x1E75C/0x1E808 string-table trio,
+ * owned by 4c/4d
+ * (fonts, text, ENGLISH.TXT), so 0x1C500 cannot be transcribed in isolation.
+ * The port returns the original's output buffer DS_00102760 with an empty first
+ * byte, so 0x2F198/0x2F280 see a zero-length string and emit no glyphs this
+ * cycle; routing this chain is a follow-up decision. */
 static const u8 *title_string(void)
 {
     DSB(DS_00102760) = 0;                       /* 0x1C517 */
@@ -285,12 +292,13 @@ static void game_state_title(void)
         title_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0x2Au, 0u);
         title_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0u, 0x1Eu);
         title_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0x2Au, 0x1Eu);
-        /* PORT: rng_seed(0xABCD) here is the port half of Task 1's three-draw
-         * pin. The EXE's only seed store is 0x20C62 in 0x20C10 (before
-         * 0x2D974(0x29)); 0x121A0 itself does not re-seed. Placing it after the
-         * 0x38B18 spawns makes the three draws below the first consumers of a
-         * fresh 0xABCD, matching the capture's patched draws (12, 111, 0). */
-        rng_seed(0xABCDu);
+        /* The EXE's only seed store is 0x20C62 in 0x20C10 (before
+         * 0x2D974(0x29)); 0x121A0 itself does not re-seed. The port's
+         * game_init() mirrors 0x20C10, and nothing consumes RNG between that
+         * seed and these three draws (measured: production --check prints
+         * DS_000EF6D8 == 0xABCD here), so the draws are the first three from
+         * 0xABCD and land on the Task 1 pin (12, 111, 0) with no title-entry
+         * re-seed. No PORT marker: this is the original's own RNG state. */
         int iVar1 = (int)rng_next(0x5Au);                   /* 0x12295 */
         int iVar2 = (int)rng_next(0x7Eu) * 0x40 + 0x280;    /* 0x122A1 */
         int iVar3 = (int)rng_next(2u);                      /* 0x122B7 */
@@ -313,10 +321,8 @@ static void game_state_title(void)
         DSW(DS_000F0A66) = t;                               /* 0x1236B */
         if (t <= 0x10u) {                                   /* 0x12375 (jg) */
             text_cells_release(-1, 4, title_string(), 0x1000u);   /* 0x12396 */
-            /* PORT: 0x2B150 (logo) and 0x2B150 (second) at 0x123A5/0x123B1 set
-             * the dead bit, release the pset palette and unlink the record. The
-             * teardown lives in actors.c (set_dead) and has no actors.h export;
-             * deferred rather than duplicating its ownership here. */
+            actor_set_dead(DSD(DS_000F0A58));               /* 0x123A5 (0x2B150) */
+            actor_set_dead(DSD(DS_000F0A54));               /* 0x123B1 (0x2B150) */
             DSD(DS_000F0A54) = actor_spawn((const u32 *)(mem + 0x9ACA8u),
                                            0u, 0xE4u, 0u, 0u);  /* 0x123BF */
             for (u32 node = title_retire_next(0); node != 0;

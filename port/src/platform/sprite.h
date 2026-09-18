@@ -38,10 +38,11 @@ void sprite_node_build(SpriteNode *n, u32 sprite_id);
  * alignment-dependent dword carry, so bank byte 0 maps to no offset. */
 u8 sprite_bank_offset(u8 bank_byte);
 
-/* PORT: 0x51E5C is its only original caller. Resolves `pal_ptr` through
- * res_resolve and maps the palette descriptor's bank byte through
- * sprite_bank_offset, giving the source-index offset sprite_render_rle
- * consumes. A pointer that does not resolve yields no offset. */
+/* PORT: 0x51E5C is its only original caller. `pal_ptr` is a 0x33754
+ * palette-table entry ({handle; refcount; start; len}); maps the low byte of
+ * its `start` field (the DAC upload offset) through sprite_bank_offset, giving
+ * the source-index offset sprite_render_rle consumes. Entry 0 yields no
+ * offset. */
 u32 sprite_bank(u32 pal_ptr);
 
 /* PORT: 0x51E5C. The span blitter: resolves the node's pixel handle and palette

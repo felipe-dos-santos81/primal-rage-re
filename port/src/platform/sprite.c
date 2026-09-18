@@ -48,8 +48,14 @@ u8 sprite_bank_offset(u8 bank_byte)
 
 u32 sprite_bank(u32 pal_ptr)
 {
-    const u8 *p = (const u8 *)res_resolve(pal_ptr);
-    return sprite_bank_offset((p != NULL) ? p[8] : 0u);
+    /* PORT: pal_ptr is a 0x33754 palette-table entry ({handle @+0; refcount
+     * @+4; start @+8; len @+12} at DS_00107618), not a resource handle: 0x33754
+     * returns the entry address (prage.c:20782/20811), spawn stores it in
+     * pset+0x18, and 0x14328 copies it into the node. The original's "bank at
+     * [+8]" is therefore the low byte of the entry's `start` — the DAC offset
+     * palette_record uploaded the palette at. Entry 0 is the null palette. */
+    if (pal_ptr == 0) return 0;
+    return sprite_bank_offset(DSB(pal_ptr + 8u));
 }
 
 static void copy_run(u8 *dst, const u8 *src, int n, u8 bank)

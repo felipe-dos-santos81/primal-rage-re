@@ -123,6 +123,10 @@ static void check_rle_cross(void)
 #define BANK_TABLE   0x00081310u
 #define COLOUR_TABLE 0x00081314u
 
+/* Scratch for a fake 0x33754 palette-table entry (16 bytes: handle, refcount,
+ * start, len). Clear of the resource heap and of the other tests' scratch. */
+#define PAL_ENTRY    0x3F00000u
+
 static void check_bank_and_colour(void)
 {
     /* BANK_TABLE[n] == (n-1) replicated, for every n in 1..255. These are
@@ -144,19 +148,18 @@ static void check_bank_and_colour(void)
     CHECK_EQ_INT(sprite_bank_offset(255), 254);
     CHECK_EQ_INT(sprite_bank_offset(0), 0);
 
-    /* sprite_bank resolves a palette pointer and reads its byte 8. Build the
-     * pointer in scratch memory: a resolvable handle is not needed for a
-     * pointer that is already a mem[] offset only if the caller passes one, so
-     * use a resource handle from the sprite table's own descriptor. */
-    GraSprite g; u32 dh = 0;
-    CHECK_EQ_INT(gra_sprite_lookup(0x2C11u, &g, &dh), 1);
-    /* dh resolves to the 12-byte descriptor; byte 8 is the low byte of the
-     * pixel handle, which is a non-zero arbitrary bank byte. Assert the
-     * relationship rather than a magic value. */
-    const u8 *desc = (const u8 *)res_resolve(dh);
-    CHECK(desc != NULL, "descriptor resolves");
-    u8 b = desc[8];
-    CHECK_EQ_INT(sprite_bank(dh), (b == 0u) ? 0 : (int)(u8)(b - 1u));
+    /* sprite_bank interprets its argument as a 0x33754 palette-table entry
+     * ({handle; refcount; start; len}), not a resource handle: the bank is the
+     * low byte of the entry's `start` field at +8. Build entries in scratch
+     * memory. (The previous version of this check resolved a sprite descriptor
+     * handle through res_resolve and read its byte 8; that encoded the
+     * sprite_bank bug the fix removes.) */
+    u32 entry = PAL_ENTRY;
+    DSD(entry + 8) = 0x41u;
+    CHECK_EQ_INT(sprite_bank(entry), 0x40);       /* sprite_bank_offset(0x41) */
+    DSB(entry + 8) = 0;                            /* start 0 => no offset */
+    CHECK_EQ_INT(sprite_bank(entry), 0);
+    CHECK_EQ_INT(sprite_bank(0), 0);               /* null palette entry */
 
     /* A non-zero bank must actually shift the drawn pixels. This is the path
      * the cross-check in Task 3 cannot cover: it renders at bank offset 0, so
@@ -533,9 +536,11 @@ static void check_blit_dispatch(void)
     /* The blitter restores +0x14 and +0x30 after the call. */
     GraSprite g; u32 dh = 0;
     CHECK_EQ_INT(gra_sprite_lookup(0x2C11u, &g, &dh), 1);
+    u32 pal = PAL_ENTRY;            /* fake 0x33754 palette-table entry */
+    DSB(pal + 8) = 1;               /* start 1 => bank offset 0 */
     memset(&n, 0, sizeof n);
     sprite_node_build(&n, 0x2C11u);
-    n.pal_ptr = dh;                 /* any resolvable pointer with a bank byte */
+    n.pal_ptr = pal;                 /* any resolvable pointer with a bank byte */
     n.x = 0; n.y = 0;
     n.rows = 2; n.width = 2;        /* clamp so the fixture is small */
     n.clip_t = 1; n.clip_b = 0;
@@ -547,7 +552,7 @@ static void check_blit_dispatch(void)
     /* RAW+HFLIP (type 10) is a no-op in the original and must stay one. */
     SpriteNode r; memset(&r, 0, sizeof r);
     r.type = 0x0Au; r.rows = 4; r.width = 4;
-    r.pixel_handle = n.pixel_handle; r.pal_ptr = dh;
+    r.pixel_handle = n.pixel_handle; r.pal_ptr = pal;
     u8 *back = mem + DSD(DS_000E87A4);
     u8 before = back[DSD(DS_001088F8) + 0];
     sprite_blit(&r);
@@ -558,7 +563,7 @@ static void check_blit_dispatch(void)
         const u8 *rle = NULL;
         u32 icon2 = DSD(DS_000E87A4);
         u32 pix = n.pixel_handle;
-        u8 bank = (u8)sprite_bank(dh);
+        u8 bank = (u8)sprite_bank(pal);
         SpriteNode s;
         static u8 got[BLIT_BUF], got2[BLIT_BUF], ref[BLIT_BUF], ref2[BLIT_BUF];
 
@@ -571,7 +576,7 @@ static void check_blit_dispatch(void)
         CHECK_EQ_INT(gra_sprite_pixels(pix, &rle), 1);
 
         /* 0x01 -> unclipped RLE (0x5D218). */
-        blit_node(&s, 0x01, pix, dh, 9, 1, 0,0,0);
+        blit_node(&s, 0x01, pix, pal, 9, 1, 0,0,0);
         blit_run(got, &s, icon2);
         blit_ref(ref, REF_RLE, rle, 9, 1, bank, 0, 0, 0,0,0);
         CHECK(memcmp(got, ref, BLIT_BUF) == 0,
@@ -584,12 +589,12 @@ static void check_blit_dispatch(void)
 
         /* 0x02 raw (0x58CBD); 0x12 (RAW|CLIP) shares the same entry, so its
          * raster must equal 0x02's. */
-        blit_node(&s, 0x02, pix, dh, 9, 3, 0,0,0);
+        blit_node(&s, 0x02, pix, pal, 9, 3, 0,0,0);
         blit_run(got, &s, icon2);
         blit_ref(ref, REF_RAW, rle, 9, 3, bank, 0, 0, 0,0,0);
         CHECK(memcmp(got, ref, BLIT_BUF) == 0,
               "0x02 routes to the raw renderer");
-        blit_node(&s, 0x12, pix, dh, 9, 3, 0,0,0);
+        blit_node(&s, 0x12, pix, pal, 9, 3, 0,0,0);
         blit_run(got2, &s, icon2);
         CHECK(memcmp(got2, ref, BLIT_BUF) == 0,
               "0x12 routes to the raw renderer");
@@ -599,7 +604,7 @@ static void check_blit_dispatch(void)
         /* 0x12 with real overhangs must use the clip-aware raw path: its raster
          * matches sprite_render_raw at the node's clip args and differs from the
          * no-clip raster. This pins the Critical fix. */
-        blit_node(&s, 0x12, pix, dh, 9, 3, 2,1,1);
+        blit_node(&s, 0x12, pix, pal, 9, 3, 2,1,1);
         blit_run(got2, &s, icon2);
         blit_ref(ref2, REF_RAW, rle, 9, 3, bank, 0, 0, 2,1,1);
         CHECK(memcmp(got2, ref2, BLIT_BUF) == 0,
@@ -608,7 +613,7 @@ static void check_blit_dispatch(void)
               "0x12's clip arguments change the raster");
 
         /* 0x11 -> clipped RLE, mirror off (0x5D28F). */
-        blit_node(&s, 0x11, pix, dh, 9, 1, 2,1,0);
+        blit_node(&s, 0x11, pix, pal, 9, 1, 2,1,0);
         blit_run(got, &s, icon2);
         blit_ref(ref, REF_RLE_CLIP, rle, 9, 1, bank, 0, 0, 2,1,0);
         CHECK(memcmp(got, ref, BLIT_BUF) == 0,
@@ -616,12 +621,12 @@ static void check_blit_dispatch(void)
 
         /* 0x09 (mirror, no clip; 0x57F80) vs 0x19 (mirror+clip; 0x57FFB):
          * same renderer, different arguments -- the rasters must differ. */
-        blit_node(&s, 0x09, pix, dh, 9, 1, 0,0,0);
+        blit_node(&s, 0x09, pix, pal, 9, 1, 0,0,0);
         blit_run(got, &s, icon2);
         blit_ref(ref, REF_RLE_MIRROR, rle, 9, 1, bank, 0, 0, 0,0,0);
         CHECK(memcmp(got, ref, BLIT_BUF) == 0,
               "0x09 routes to mirrored RLE");
-        blit_node(&s, 0x19, pix, dh, 9, 1, 2,1,0);
+        blit_node(&s, 0x19, pix, pal, 9, 1, 2,1,0);
         blit_run(got2, &s, icon2);
         blit_ref(ref2, REF_RLE_MIRROR_CLIP, rle, 9, 1, bank, 0, 0, 2,1,0);
         CHECK(memcmp(got2, ref2, BLIT_BUF) == 0,
@@ -640,12 +645,12 @@ static void check_blit_dispatch(void)
         DSW(DS_00107900 + 2) = 32;
         DSW(DS_00107900 + 4) = 64;
 
-        blit_node(&s, 0x04, pix, dh, 9, 3, 0,0,0);
+        blit_node(&s, 0x04, pix, pal, 9, 3, 0,0,0);
         blit_run(got, &s, icon2);
         blit_ref(ref, REF_SHEAR, rle, 9, 3, bank, 0, 0, 0,0,0);
         CHECK(memcmp(got, ref, BLIT_BUF) == 0,
               "0x04 routes to the shear renderer");
-        blit_node(&s, 0x14, pix, dh, 9, 3, 0,0,0);
+        blit_node(&s, 0x14, pix, pal, 9, 3, 0,0,0);
         blit_run(got2, &s, icon2);
         CHECK(memcmp(got2, ref, BLIT_BUF) == 0,
               "0x14 shares the shear raster with 0x04");
@@ -653,12 +658,12 @@ static void check_blit_dispatch(void)
         CHECK(memcmp(ref, ref2, BLIT_BUF) != 0,
               "non-zero shear table makes 0x04 differ from a copy");
 
-        blit_node(&s, 0x06, pix, dh, 9, 3, 2,1,1);
+        blit_node(&s, 0x06, pix, pal, 9, 3, 2,1,1);
         blit_run(got, &s, icon2);
         blit_ref(ref, REF_SHEAR, rle, 9, 3, bank, 0, 0, 2,1,1);
         CHECK(memcmp(got, ref, BLIT_BUF) == 0,
               "0x06 routes to clipped shear");
-        blit_node(&s, 0x16, pix, dh, 9, 3, 2,1,1);
+        blit_node(&s, 0x16, pix, pal, 9, 3, 2,1,1);
         blit_run(got2, &s, icon2);
         CHECK(memcmp(got2, ref, BLIT_BUF) == 0,
               "0x16 shares the shear raster with 0x06");
