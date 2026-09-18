@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Patch a COPY of PRAGE.EXE to pin the title's three RNG draws.
+"""Patch a COPY of PRAGE.EXE to pin the RNG draws the title consumes.
 
 0x121A0 draws three values on entry and uses them for the logo's start X, speed
 and gravity. Each `call 0x5D7DC` is replaced in place by `mov eax, imm32` holding
 the value the port's own LCG (seed 0xABCD) produces for that call's range, so the
 port reproduces the same three values by seeding and taking the real draws and the
-logo keeps its motion. The master loop's spin draws are left alone: their values
-are discarded and no longer influence the composite.
+logo keeps its motion. A fourth site pins the anim stream's opcode-8 handler
+(0x2B2A0) to 0, because that handler is the only in-window RNG consumer and its
+value would otherwise depend on the master loop's unbounded, host-timed spin. The
+master loop's remaining spin draws are left alone: their values are discarded and
+no longer influence the composite.
 
 Fails closed: every patch site's original bytes are verified before anything is
 written, so a wrong, truncated or already-patched binary aborts and writes nothing.
@@ -19,6 +22,7 @@ PATCHES = [
     (0x650E9, bytes.fromhex("e842b50400"), bytes.fromhex("b80c000000")),  # 12
     (0x650F5, bytes.fromhex("e836b50400"), bytes.fromhex("b86f000000")),  # 111
     (0x6510B, bytes.fromhex("e820b50400"), bytes.fromhex("b800000000")),  # 0
+    (0x7E289, bytes.fromhex("e8a2230300"), bytes.fromhex("b800000000")),  # opcode 8
 ]
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
@@ -70,7 +74,8 @@ def main():
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     patch(a.src, a.out)
-    print("title_pin: wrote %s (3 title draws -> 12, 111, 0)" % a.out)
+    print("title_pin: wrote %s (pinned draws the title consumes: entry 12, 111, 0 + "
+          "anim opcode-8 0)" % a.out)
 
 if __name__ == "__main__":
     main()
