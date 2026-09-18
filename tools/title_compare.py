@@ -33,19 +33,33 @@ ROW = FRAME_W * 3
 FRAME_BYTES = FRAME_H * ROW
 CHUNK = 8192
 
+# The determinism proof compares clean (b=0) samples that BOTH captures hold.
+# That set must not be empty or the proof is vacuous. The measured runs share 36
+# clean samples (53 clean each, 36 in common), but the shared count is set by the
+# capture sampling phase, not by the port, so a static floor above 1 would
+# false-negative a legitimate pair. The honest bound is at least one.
+MIN_SHARED_CLEAN = 1
+
 
 def load(path):
     with open(path, 'rb') as f:
         return f.read()
 
 
-def load_frames(d):
+def load_frames(d, what):
+    """Every frame must be exactly FRAME_BYTES; a short/long frame fails with
+    its index and the two lengths rather than comparing a truncated window."""
     frames, i = [], 0
     while True:
         path = os.path.join(d, 'frame_%04d.raw' % i)
         if not os.path.exists(path):
             break
-        frames.append(load(path))
+        data = load(path)
+        if len(data) != FRAME_BYTES:
+            print("title_compare: %s frame %d is %d bytes, expected %d"
+                  % (what, i, len(data), FRAME_BYTES))
+            return None
+        frames.append(data)
         i += 1
     return frames
 
@@ -196,13 +210,11 @@ def bands(c, a, b):
 
 
 def check_capture(capture, port, port_rows, n, name, verbose):
-    frames = load_frames(capture)
+    frames = load_frames(capture, name)
+    if frames is None:
+        return 1, None
     if not frames:
         print("title_compare: %s is empty" % name)
-        return 1, None
-    if len(frames[0]) != FRAME_BYTES:
-        print("title_compare: %s frame 0 is %d bytes, expected %d"
-              % (name, len(frames[0]), FRAME_BYTES))
         return 1, None
     raws = raw_map(capture) or list(range(len(frames)))
     kinds = [explain(frames[j], row_hashes(frames[j]), port, port_rows, n)
@@ -311,7 +323,12 @@ def main():
         if not os.path.exists(path):
             print("title_compare: port frame %d is missing at %s" % (i, path))
             return 1
-        port.append(load(path))
+        data = load(path)
+        if len(data) != FRAME_BYTES:
+            print("title_compare: port frame %d is %d bytes, expected %d"
+                  % (i, len(data), FRAME_BYTES))
+            return 1
+        port.append(data)
     port_rows = [row_hashes(p) for p in port]
 
     bad = 0
@@ -352,6 +369,11 @@ def main():
               "agree, %d disagree" % (agree, disagree))
         if disagree:
             bad += disagree
+        if agree + disagree < MIN_SHARED_CLEAN:
+            print("title_compare: determinism proof VACUOUS: no port frame has a "
+                  "clean sample in both captures, so the clean-sample agreement "
+                  "cannot be established (need >= %d)" % MIN_SHARED_CLEAN)
+            bad += 1
 
     return 1 if bad else 0
 
