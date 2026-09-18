@@ -440,8 +440,13 @@ u32 anim_next_sprite_id(u32 rec, u32 pset)
 
 /* PORT: 0x2B2A0's opcodes 0x10/0x11/0x15 call the code pointer at
  * DS_00105BD4 through the original's indirect `call`. The port routes that
- * through fn_resolve; no original address is registered yet, so the call is
- * skipped until a later task registers it. */
+ * through fn_resolve and skips it until a later task registers the target.
+ * The two title streams never dispatch these opcodes: the reached scripts are
+ * `[id 0x023D][0x18 hold 0x1B][0x8100 end]` at 0x0E897A and
+ * `[literal ids][0xCD40 id][0x18 hold 0x2F][ids][0x8100 end]` at 0x0E9116,
+ * and the 0x10/0x11 words in that data region belong to other actors'
+ * animation tables (referenced from 0xA17DC/0xA80xx/0xBB2xx). See
+ * .superpowers/sdd/2026-09-17-actor-system/task-7-report.md. */
 typedef void (*anim_code_fn)(u32 rec, u32 arg);
 static void anim_indirect(u32 rec, u32 arg)
 {
