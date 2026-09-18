@@ -87,18 +87,30 @@ relocation, and the call is simply not taken.
 | `0x650E9` | `0x12295` | `0x5A` (at `0x650E4`) | `b8 0c 00 00 00` | 12 |
 | `0x650F5` | `0x122A1` | `0x7E` (at `0x650F0`) | `b8 6f 00 00 00` | 111 |
 | `0x6510B` | `0x122B7` | `2` (at `0x65106`) | `b8 00 00 00 00` | 0 |
+| `0x7E289` | `0x2B435` | the anim-stream opcode-8 handler's own range | `b8 00 00 00 00` | 0 |
 
-Those are the **only** `0x5D7DC` call sites inside `0x121A0` (verified by scanning
-every one of the 122 `e8` sites in the image that target `0x5D7DC`). The values are
-**exactly** what the port's own LCG produces from `rng_seed(0xABCD)` followed by
-`rng_next(0x5A)`, `rng_next(0x7E)`, `rng_next(2)`, so the port needs no pin-side
-instrument at all: seed at title entry and take the real draws.
+Those first three are the **only** `0x5D7DC` call sites inside `0x121A0` (verified by
+scanning every one of the 122 `e8` sites in the image that target `0x5D7DC`).
 
-**Why not a constant-returning stub of `0x5D7DC`** (the plan's first draft, and the
-first review's rejected design): it zeroes all three values, so the logo's start X,
-speed *and* gravity are 0 and the logo never moves — the 96-frame window would
-compare a near-static image and exercise almost none of the anim interpreter or the
-pset sync the oracle exists to prove.
+The fourth is required and was found only by measurement: `FUN_0002B2A0`'s opcode 8
+(`0x2B435`, inside the animation-stream interpreter) reads `rand(range)` into the
+record's float frame timer `rec+0x20`, and the second title object's stream
+(`0x0E897A`, descriptor `0x9AC94`) contains ten opcode-8 words in its first `0x600`
+bytes. So the **RNG state at title entry is consumed in-window**, and the value of
+that state is exactly what the master loop's unbounded, host-timed spin
+(`while (DS_0010150C - 1 == DS_00101508) 0x5D7DC();`) makes run-to-run variable. Two
+identical captures shared only 4 of 110 window frames until this site was pinned.
+
+An optional belt-and-braces site, to be applied only if the gate still shows drift:
+`0x7852A` (`e8 01 81 03 00` -> `90 90 90 90 90`) NOPs the spin's call, making the
+original's per-iteration draw count one, as the port's `rng_step()` already is. It is
+not needed once `0x7E289` is pinned, because opcode 8 is the only in-window consumer.
+
+**Why not a constant-returning stub of `0x5D7DC`** (the plan's first draft): it
+zeroes the three entry draws, so the logo's start X, speed *and* gravity are 0 and
+the logo never moves — the 96-frame window would compare a near-static image. The
+correct rule is narrower: pin the draws whose **values are consumed**, and let the
+rest of the LCG run for real.
 
 Resulting title state: `iVar1 = 12`, `iVar2 = 111 * 0x40 + 0x280 = 7744` (`0x1E40`,
 not negated because `iVar3 = 0`), `DS_00107A50 = 0x2420`, `DS_00107A3A = 0x121`,
@@ -300,6 +312,7 @@ So in the port: `actors_update()` goes at the **end of `game_frame()`**, and
 | `0x2AE14` | 15885 |
 | `0x2B150` | 16049 |
 | `0x2BAF4` | 16432 |
+| `0x2B2A0` (anim opcode dispatcher) | 16077 |
 | `0x2BC30` / `0x2BCF4` | 16501 / 16545 |
 | `0x2BF08` | 16666 |
 | `0x2EA30` | 18424 |
@@ -344,16 +357,20 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 TOOL = os.path.join(ROOT, "tools", "title_pin.py")
 EXE = os.path.join(ROOT, "data", "game", "C", "PRAGE.EXE")
 
-# Format reference A2: (file offset, original 5 bytes, replacement, range).
-SITES = [
+# Format reference A2. The three title draws carry the ranges the port's LCG
+# must reproduce; the opcode-8 site is the in-window consumer (value 0 both sides).
+DRAW_SITES = [
     (0x650E9, bytes.fromhex("e842b50400"), bytes.fromhex("b80c000000"), 0x5A),
     (0x650F5, bytes.fromhex("e836b50400"), bytes.fromhex("b86f000000"), 0x7E),
     (0x6510B, bytes.fromhex("e820b50400"), bytes.fromhex("b800000000"), 2),
 ]
+PATCH_SITES = DRAW_SITES + [
+    (0x7E289, bytes.fromhex("e8a2230300"), bytes.fromhex("b800000000"), None),
+]
 
 def lcg_draws():
     s, out = 0xABCD, []
-    for _off, _orig, _repl, rng in SITES:
+    for _off, _orig, _repl, rng in DRAW_SITES:
         s = (s * 0xB90D12B9 + 0x38CE051F) & 0xFFFFFFFF
         out.append(((s >> 16) * (rng & 0xFFFF)) >> 16)
     return out
@@ -372,13 +389,13 @@ class TitlePinTest(unittest.TestCase):
             with open(out, "rb") as fh: b = fh.read()
             self.assertEqual(len(a), len(b))
             expect = bytearray(a)
-            for off, _orig, repl, _rng in SITES:
+            for off, _orig, repl, _rng in PATCH_SITES:
                 expect[off:off + 5] = repl
             self.assertEqual(b, bytes(expect))
 
     def test_patch_sites_hold_the_original_calls(self):
         with open(EXE, "rb") as fh: a = fh.read()
-        for off, orig, _repl, _rng in SITES:
+        for off, orig, _repl, _rng in PATCH_SITES:
             self.assertEqual(a[off:off + 5], orig, hex(off))
 
     def test_patched_values_are_the_lcg_results_for_their_ranges(self):
@@ -386,7 +403,7 @@ class TitlePinTest(unittest.TestCase):
         # port (which takes the real draws) would diverge on the entry frame.
         vals = lcg_draws()
         self.assertEqual(vals, [12, 111, 0])
-        for (_off, _orig, repl, _rng), v in zip(SITES, vals):
+        for (_off, _orig, repl, _rng), v in zip(DRAW_SITES, vals):
             self.assertEqual(int.from_bytes(repl[1:], "little"), v)
 
     def test_refuses_an_already_patched_file(self):
@@ -450,14 +467,15 @@ Expected: FAIL — `title_pin.py` does not exist.
 
 ```python
 #!/usr/bin/env python3
-"""Patch a COPY of PRAGE.EXE to pin the title's three RNG draws.
+"""Patch a COPY of PRAGE.EXE to pin the RNG draws the title consumes.
 
 0x121A0 draws three values on entry and uses them for the logo's start X, speed
 and gravity. Each `call 0x5D7DC` is replaced in place by `mov eax, imm32` holding
 the value the port's own LCG (seed 0xABCD) produces for that call's range, so the
 port reproduces the same three values by seeding and taking the real draws and the
-logo keeps its motion. The master loop's spin draws are left alone: their values
-are discarded and no longer influence the composite.
+logo keeps its motion. A fourth site pins the anim stream's opcode-8 handler
+(0x2B2A0) to 0, because that handler is the only in-window RNG consumer and its
+value would otherwise depend on the master loop's unbounded, host-timed spin.
 
 Fails closed: every patch site's original bytes are verified before anything is
 written, so a wrong, truncated or already-patched binary aborts and writes nothing.
@@ -470,15 +488,28 @@ PATCHES = [
     (0x650E9, bytes.fromhex("e842b50400"), bytes.fromhex("b80c000000")),  # 12
     (0x650F5, bytes.fromhex("e836b50400"), bytes.fromhex("b86f000000")),  # 111
     (0x6510B, bytes.fromhex("e820b50400"), bytes.fromhex("b800000000")),  # 0
+    (0x7E289, bytes.fromhex("e8a2230300"), bytes.fromhex("b800000000")),  # opcode 8
 ]
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
+# The guard must be case-insensitive and filesystem-accurate: this platform's
+# APFS resolves Data/ and data/ to the same directory, so a string-wise
+# comparison lets `--out <root>/Data/...` write into the real, unrecoverable
+# data/. Compare casefolded resolved paths and, where both exist, require that
+# the output's directory is not the same file as data/.
 def guard(src, out):
-    real_out = os.path.realpath(out)
-    if real_out == os.path.realpath(src):
+    fold = lambda p: os.path.realpath(p).casefold()
+    if fold(out) == fold(src):
         raise SystemExit("title_pin: refusing to write over the source: %s" % out)
-    if real_out == DATA_DIR or real_out.startswith(DATA_DIR + os.sep):
+    data = fold(DATA_DIR)
+    if fold(out) == data or fold(out).startswith(data + os.sep):
         raise SystemExit("title_pin: refusing to write under data/: %s" % out)
+    parent = os.path.dirname(fold(out))
+    try:
+        if os.path.exists(parent) and os.path.samefile(parent, DATA_DIR):
+            raise SystemExit("title_pin: refusing to write under data/: %s" % out)
+    except OSError:
+        pass
 
 def patch(src, out):
     guard(src, out)
@@ -533,7 +564,7 @@ Also confirm `git status --short` shows no change under `data/`.
 
 ```bash
 git add tools/title_pin.py tools/tests/test_title_pin.py Makefile
-git commit -m "tools: pin the title's three RNG draws in a capture-only PRAGE.EXE copy"
+git commit -m "tools: pin the RNG draws the title consumes in a capture-only PRAGE.EXE copy"
 ```
 
 ---
@@ -1110,13 +1141,22 @@ git commit -m "actors: pset sync 0x2A31C/0x2A1FC/0x2A820 with motion and the she
 - Create: `port/tests/test_anim.c` (and its `test.h`/`run_tests.c`/CMake entries) if the test file outgrows `test_actors.c`; splitting is preferred once it does.
 
 **Interfaces:**
-- Consumes: Tasks 4–6.
+- Consumes: Tasks 4–6; `game/rng.h` (`rng_next`), because the anim stream's opcode 8
+  draws a value into the record's frame timer `rec+0x20`.
 - Produces:
   ```c
-  u32 anim_next_sprite_id(u32 rec, const u16 *stream);  /* 0x2A408 */
-  u32 anim_read_var(u32 rec, u8 op);                    /* 0x29F34 */
-  void anim_write_var(u32 rec, u8 op, u32 value);       /* 0x29DB8 */
+  u32  anim_next_sprite_id(u32 rec, const u16 *stream);  /* 0x2A408 */
+  u32  anim_read_var(u32 rec, u8 op);                    /* 0x29F34 */
+  void anim_write_var(u32 rec, u8 op, u32 value);        /* 0x29DB8 */
+  void actors_pin_anim_tick_zero(int on);                /* oracle mirror, see below */
   ```
+
+`actors_pin_anim_tick_zero(on)` is the port's half of Task 1's fourth pin site: the
+original's opcode-8 handler has its `0x5D7DC` call replaced by `mov eax, 0`, so the
+port must make the opcode-8 tick draw 0 as well (`on ? 0 : rng_next(range)` at that
+one call site). It is a TEST-ONLY seam set by the title oracle driver (Task 10) and
+documented where it is defined; nothing else calls it, and it is the only way to
+reproduce the pinned original's opcode-8 behaviour without a nondeterministic RNG.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1142,7 +1182,9 @@ the returned id and the pointer's advance, so the spec's open item on
 
 `0x2A408` (`prage.c:15429-15470`), `0x29F34` (`prage.c:15179-15247`),
 `0x29DB8` (`prage.c:15090-15175`), plus the anim-entry helpers `0x2BC30`
-(`prage.c:16501`) and `0x2BCF4` (`prage.c:16545`) that also consume the stream.
+(`prage.c:16501`) and `0x2BCF4` (`prage.c:16545`) that also consume the stream, plus
+the opcode dispatcher `0x2B2A0` (`prage.c:16077`, 1623 bytes) — opcode 8 inside it
+is the in-window RNG consumer the pin mirrors.
 
 - [ ] **Step 4: Run, ladder, commit**
 
@@ -1285,12 +1327,14 @@ rather than silent.
 
 - [ ] **Step 1: Write the dump driver**
 
-`port/tests/test_title.c`: `test_title()` runs `game_init()`, then drives
-`game_frame()`/`render_list()` for 96 frames with `PR_TITLE_DUMP` set. The title
-entry frame itself calls `rng_seed(0xABCDu)` (Task 9) before its three draws, which
-is the port-side half of Task 1's pin, so no test-side instrument is needed. The
-driver must reuse the same presentation conversion as `gfx_present` (the palette in
-`gfx_dac`), so the dumped RGB24 equals what the capture holds.
+`port/tests/test_title.c`: `test_title()` runs `game_init()`, then
+`actors_pin_anim_tick_zero(1)` (the port's half of the pin — Task 1 patches the
+original's opcode-8 draw to 0, so the oracle run must make the same draw 0), then
+drives `game_frame()`/`render_list()` for 96 frames with `PR_TITLE_DUMP` set. The
+title entry frame itself calls `rng_seed(0xABCDu)` (Task 9) before its three draws,
+which is the port-side half of the other three pin sites. The driver must reuse the
+same presentation conversion as `gfx_present` (the palette in `gfx_dac`), so the
+dumped RGB24 equals what the capture holds.
 
 - [ ] **Step 2: Write the comparator**
 
