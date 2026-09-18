@@ -41,6 +41,76 @@ static void check_actor_spawn(void)
     CHECK_EQ_INT((int)DSD(DS_00105B3C), (int)free_head);
 }
 
+/* 0x2A31C -> 0x2A1FC -> 0x2A820/0x2A690. The title logo (descriptor 0x9AC30)
+ * spawns with the 0x2000 flag, so 0x2A820 takes its high-byte-0x20 branch; the
+ * test clears that bit to route through 0x2A690 and exercises the transformed
+ * position and the layer from rec+0x59. */
+static void check_pset_sync(void)
+{
+    const u32 *desc = (const u32 *)(mem + 0x9AC30u);
+
+    /* 0x2A690: pset x = rec+0x18 - DS_000F0AF0 + 0x2A00; y =
+     * DS_000F0AEC + 0x3BC0 - (rec+0x30>>16) - rec+0x1C. */
+    actors_reset();
+    DSB(DS_00104B24) = 0;                 /* 0x2A31C's gate */
+    DSB(DS_00104B26) = 0;                 /* 0x2A1FC's 0x2A820 short-circuit */
+    DSD(DS_000F0AF0) = 0;
+    DSD(DS_000F0AEC) = 0;
+    u32 rec = actor_spawn(desc, 0x4840u, 0xE0u, 0x1B00u, 0u);
+    CHECK(rec != 0, "pset sync record");
+    if (rec == 0) return;
+    DSW(rec + 0x28) &= 0xdfffu;           /* clear 0x2000: take the 0x2A690 path */
+    DSD(rec + 0x18) = 0x1000u;
+    DSD(rec + 0x1c) = 0x1000u;
+    DSW(rec + 0x2c) = 0x00aa;
+    DSB(rec + 0x59) = 8;
+    DSB(rec + 0x5a) = 0x11;               /* not read by the sync */
+    u32 pset = actor_pset(rec);
+    actors_update();
+    CHECK_EQ_INT((int)DSD(pset + 0x04), 0x3a00);
+    CHECK_EQ_INT((int)DSD(pset + 0x08), 0x2bc0);
+    CHECK_EQ_INT((int)DSW(pset + 0x0e), 0x00f8);   /* (s8)8 + 0xF0 */
+    CHECK_EQ_INT((int)DSW(pset + 0x0c), 0x00aa);
+    CHECK_EQ_INT((int)DSD(rec + 0x3c), 0x3a00);    /* mirrors the written pset x */
+    CHECK_EQ_INT((int)(DSB(rec + 0x2b) & 0x18), 0x18);  /* on-screen */
+
+    /* 0x2A39C: rec+0x28 & 4 clears the bit and writes pset+0 from 0x2A408. The
+     * reader is Task 7's stub (returns 0), so only the clear and the write are
+     * observable here; Task 7 owns the id value. */
+    actors_reset();
+    DSB(DS_00104B24) = 0;
+    DSB(DS_00104B26) = 0;
+    u32 r2 = actor_spawn(desc, 0x4840u, 0xE0u, 0x1B00u, 0u);
+    CHECK(r2 != 0, "anim-id record");
+    if (r2 != 0) {
+        DSD(r2 + 0x24) = 0;               /* no frame_timer, so only 0x2A39C runs */
+        DSW(r2 + 0x28) |= 4u;
+        u32 p2 = actor_pset(r2);
+        DSW(p2 + 0x00) = 0x1234;
+        actors_update();
+        CHECK_EQ_INT((int)(DSW(r2 + 0x28) & 4u), 0);
+        CHECK_EQ_INT((int)DSW(p2 + 0x00), 0);   /* 0x2A408 stub */
+    }
+
+    /* 0x2A820's on-screen test: a record far outside its extent does not get the
+     * +0x2B 0x18 visibility bits. */
+    actors_reset();
+    DSB(DS_00104B24) = 0;
+    DSB(DS_00104B26) = 0;
+    DSD(DS_000F0AF0) = 0;
+    DSD(DS_000F0AEC) = 0;
+    u32 r3 = actor_spawn(desc, 0x4840u, 0xE0u, 0x1B00u, 0u);
+    CHECK(r3 != 0, "offscreen record");
+    if (r3 != 0) {
+        DSD(r3 + 0x18) = 0x100000u;       /* beyond extent + 0x5400 */
+        DSD(r3 + 0x1c) = 0x1000u;
+        DSW(r3 + 0x2c) = 0x00aa;
+        DSB(r3 + 0x2b) &= (u8)~0x18u;
+        actors_update();
+        CHECK_EQ_INT((int)(DSB(r3 + 0x2b) & 0x18), 0);
+    }
+}
+
 int test_actors(void)
 {
     int before = g_failures;
@@ -112,6 +182,7 @@ int test_actors(void)
     DSW(q + 0x56) = 3;
     CHECK_EQ_INT((int)actor_pset(q), (int)(DSD(DS_001014EC) + 3u * 0x20u));
 
+    check_pset_sync();
     check_actor_spawn();
 
     return g_failures - before;

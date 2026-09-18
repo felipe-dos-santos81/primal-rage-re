@@ -28,5 +28,7 @@ u32  actor_index(u32 rec);
 u32  actor_list_head(void);
 u32  actor_next(u32 rec);
 u32  actor_pset(u32 rec);
+/* 0x2A31C. Walks the active list and syncs each record (0x2A1FC). */
+void actors_update(void);
 
 #endif /* PRAGE_GAME_ACTORS_H */
