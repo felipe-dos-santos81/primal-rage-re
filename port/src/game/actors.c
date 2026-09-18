@@ -16,6 +16,7 @@
 #include "platform/gfx.h"
 #include "platform/render.h"
 #include "platform/res.h"
+#include <string.h>
 
 /* ---- the two splice lists (0x249B0/0x249C0/0x249D0) -------------------- */
 
@@ -1291,4 +1292,113 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
         DSW(rec + 0x28) |= 8;
         return 0;
     }
+}
+
+/* ---- text cursor and record grid (0x2F0F0, 0x2F198, 0x2F280, 0x2F4BC) ----
+ *
+ * PORT: plan Format reference H names this group "pset layer select and
+ * support". The shipped machine is not a pset layer writer: 0x2F0F0 measures a
+ * display string, 0x2F198/0x2F4BC move the text cursor at DS_00105F34, and
+ * 0x2F280 clears a run of cells in the 31x43 actor-record pointer grid at
+ * DS_00105F38 (which actors_reset zeroes via 0x2F920), releasing each record
+ * through 0x2AD40. The layer at pset+0x0E is written only by the sync:
+ * 0x2A690 uses (s8)rec+0x59 + 0xF0 (0x2A7DC `movsx dx,[ebx+0x59]`; 0x2A7E1
+ * `add edx,0xf0`; 0x2A7D6 `mov [esi+0xe],dx`), 0x2A820 uses
+ * rec+0x49 + (s8)rec+0x59 (0x2A8CD `mov cl,[ebx+0x49]`; 0x2A8D0
+ * `movsx ax,[ebx+0x59]`; 0x2A8D7 `add ecx,eax`; 0x2A8EB `mov [esi+0xe],ax`),
+ * and 0x2AD40 zeroes it. rec+0x5A is written by spawn from a5's high 16
+ * (0x2AF26 `mov al,[esp+0x10]`; 0x2AF2A `mov [ecx+0x5a],al`) but is never read
+ * by the layer path, so Format references B and H overstate it. */
+
+/* 0x2F0F0. EAX = byte string, EDX = mode; pinned at the three internal call
+ * sites (0x2F1CD/0x2F243/0x2F28A are `mov eax,ebx; mov edx,ecx`). Mode & 3 in
+ * {0,1} returns strlen (the `repne scasb` path). Modes 2/3 sum a per-character
+ * class weight: class = (s8)(dword at 0xBD38D + c >> 24) = DSB(0xBD390 + c); a
+ * negative class is skipped; otherwise the width byte at table + class*4 + 2
+ * counts 1 when it is 8, else 2. The tables live in the original data object
+ * (DS 0x3D048 / 0x3D1EC). */
+int text_width(const u8 *s, u32 mode)
+{
+    mode &= 3u;
+    const u32 table = (mode == 2u) ? 0xbd048u : 0xbd1ecu;
+    if (mode != 2u && mode != 3u)
+        return (int)strlen((const char *)s);
+    int n = 0;
+    for (;;) {
+        u8 c = *s++;
+        if (c == 0) return n;
+        s32 cls = (s8)DSB(0xbd390u + c);
+        if (cls < 0) continue;
+        u8 w = DSB(table + (u32)cls * 4u + 2u);
+        n += (w == 8u) ? 1 : 2;
+    }
+}
+
+/* PORT: 0x2F830 is the word-wrap/glyph-layout renderer (it calls 0x2F280 and
+ * the 0x2F5A0 glyph blitter), a display-string subsystem this cycle does not
+ * own. 0x2F198 calls it only to advance the cursor by the laid-out line extent.
+ * Until 0x2F830 is transcribed this seam returns 0, so the cursor's high word
+ * lacks that extent. It is title-reachable: 0x121A0 calls 0x2F198 at 0x1223F
+ * and 0x2F280 at 0x12396. */
+static s32 text_layout_seam(const u8 *s, u32 mode, s32 row, s32 col)
+{
+    (void)s; (void)mode; (void)row; (void)col;
+    return 0;
+}
+
+/* 0x2F198. EAX = col (-1 centers), EDX = row (-1 reuses the cursor), EBX =
+ * string, ECX = mode. Writes {row, col + extent} as two words at
+ * DS_00105F34. The title's call (0x1223F) passes EAX=-1, EDX=4, EBX=0x1C500's
+ * result, ECX=0x1000. */
+void text_cursor_set(s32 col, s32 row, const u8 *s, u32 mode)
+{
+    if (row == -1) {
+        /* 0x2F1B4/0x2F1BA: reload both cursor words and sign-extend them. */
+        col = (s16)DSW(DS_00105F34 + 2);
+        row = (s16)DSW(DS_00105F34);
+    } else if (col == -1) {
+        s32 w = text_width(s, mode);
+        col = (0x2b - w) >> 1;
+        if (col < 0) col = 0;
+    }
+    s32 extent = text_layout_seam(s, mode, row, col);
+    DSW(DS_00105F34) = (u16)row;
+    DSW(DS_00105F34 + 2) = (u16)(col + extent);
+}
+
+/* 0x2F280. Same register shape as 0x2F198. Clears `text_width(s, mode)`
+ * consecutive cells of DS_00105F38, walking col 0..0x2a then wrapping to the
+ * next row, and releases every non-empty record through 0x2AD40. */
+void text_cells_release(s32 col, s32 row, const u8 *s, u32 mode)
+{
+    s32 count = text_width(s, mode);
+    if (col < 0) {
+        col = (0x2b - count) >> 1;
+        if (col < 0) {
+            col = 0;
+            count = 0x2a;
+        }
+    }
+    if (count <= 0) return;
+    u32 rowbase = (u32)row * 0xacu;
+    for (s32 i = 0; i < count; i++) {
+        u32 idx = (u32)col * 4u + rowbase;
+        u32 rec = DSD(DS_00105F38 + idx);
+        if (rec != 0) {
+            release_record(rec, actor_pset(rec));   /* 0x2AD40 */
+            DSD(DS_00105F38 + idx) = 0;
+        }
+        if (col < 0x2b) col++;
+        else { rowbase += 0xacu; col = 0; }
+    }
+}
+
+/* 0x2F4BC (`push esi; mov esi,[0x85f34]; call 0x2F198; mov [0x85f34],esi`).
+ * 0x2F198 with the cursor saved and restored. Its eight callers are not in
+ * this cycle, so the port takes the arguments explicitly. */
+void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode)
+{
+    u32 save = DSD(DS_00105F34);
+    text_cursor_set(col, row, s, mode);
+    DSD(DS_00105F34) = save;
 }

@@ -111,6 +111,88 @@ static void check_pset_sync(void)
     }
 }
 
+/* 0x2F0F0/0x2F198/0x2F280/0x2F4BC. Plan Format reference H calls these "pset
+ * layer select"; the shipped machine is a display-string width / text-cursor /
+ * record-grid group (see the PORT note in actors.c). Expected values below are
+ * hand-computed from the disassembly and the loaded font tables at DS
+ * 0x3D048 / 0x3D1EC / 0x3D38D. */
+static void check_pset_layer(void)
+{
+    actors_reset();
+
+    /* 0x2F0F0. Mode & 3 in {0,1}: strlen. In {2,3}: class = (s8)DSB(0xBD390+c);
+     * a negative class is skipped; otherwise add
+     * (DSB(table + class*4 + 2) == 8 ? 1 : 2). Loaded data: class('A')=10,
+     * class('B')=11 (both widths 16 -> 2); class('I')=18 (table A 16 -> 2,
+     * table B 8 -> 1); class('"')=255 (skipped). */
+    CHECK_EQ_INT(text_width((const u8 *)"", 0), 0);
+    CHECK_EQ_INT(text_width((const u8 *)"ABC", 0), 3);
+    CHECK_EQ_INT(text_width((const u8 *)"ABC", 1), 3);
+    CHECK_EQ_INT(text_width((const u8 *)"A\"I", 2), 4);
+    CHECK_EQ_INT(text_width((const u8 *)"A\"I", 3), 3);
+
+    /* 0x2F198. The cursor is the word pair at DS_00105F34: low = row, high =
+     * col + 0x2F830's line extent (0 while that seam is deferred). */
+    DSD(DS_00105F34) = 0;
+    text_cursor_set(5, 7, (const u8 *)"A", 0);
+    CHECK_EQ_INT((int)DSW(DS_00105F34), 7);
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), 5);
+
+    DSD(DS_00105F34) = 0;
+    text_cursor_set(-1, 9, (const u8 *)"ABC", 0);   /* col = (0x2b - 3) >> 1 */
+    CHECK_EQ_INT((int)DSW(DS_00105F34), 9);
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), 20);
+
+    DSW(DS_00105F34) = 0x20;                        /* row == -1 reuses it */
+    DSW(DS_00105F34 + 2) = 0x10;
+    text_cursor_set(-1, -1, (const u8 *)"", 0);
+    CHECK_EQ_INT((int)DSW(DS_00105F34), 0x20);
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), 0x10);
+
+    /* 0x2F4BC saves/restores DS_00105F34 around the same call. */
+    DSD(DS_00105F34) = 0x12345678;
+    text_cursor_hold(1, 2, (const u8 *)"A", 0);
+    CHECK_EQ_INT((int)DSD(DS_00105F34), (int)0x12345678u);
+
+    /* 0x2F280 clears `text_width` consecutive cells on the 43-wide diagonal
+     * and returns each record through 0x2AD40 (pset+0x0E zeroed, dead bit). */
+    actors_reset();
+    u32 rec = actor_spawn((const u32 *)(mem + 0x9AC30u), 0x4840u, 0xE0u,
+                          0x1B00u, 0u);
+    CHECK(rec != 0, "grid record");
+    if (rec != 0) {
+        u32 pset = actor_pset(rec);
+        DSW(pset + 0x0e) = 0xabcd;
+        DSD(DS_00105F38) = rec;                     /* row 0, col 0 */
+        text_cells_release(0, 0, (const u8 *)"ABC", 0);   /* strlen = 3 */
+        CHECK_EQ_INT((int)DSD(DS_00105F38), 0);
+        CHECK_EQ_INT((int)DSW(pset + 0x0e), 0);
+        CHECK_EQ_INT((int)(DSW(rec + 0x28) & 8u), 8);
+    }
+
+    /* A centered run starts at col (0x2b - width) >> 1. */
+    actors_reset();
+    rec = actor_spawn((const u32 *)(mem + 0x9AC30u), 0x4840u, 0xE0u,
+                      0x1B00u, 0u);
+    CHECK(rec != 0, "centered grid record");
+    if (rec != 0) {
+        DSD(DS_00105F38 + 20u * 4u) = rec;          /* row 0, col 20 */
+        text_cells_release(-1, 0, (const u8 *)"ABC", 0);
+        CHECK_EQ_INT((int)DSD(DS_00105F38 + 20u * 4u), 0);
+    }
+
+    /* Zero width clears nothing. */
+    actors_reset();
+    rec = actor_spawn((const u32 *)(mem + 0x9AC30u), 0x4840u, 0xE0u,
+                      0x1B00u, 0u);
+    CHECK(rec != 0, "empty-string grid record");
+    if (rec != 0) {
+        DSD(DS_00105F38) = rec;
+        text_cells_release(0, 0, (const u8 *)"", 0);
+        CHECK_EQ_INT((int)DSD(DS_00105F38), (int)rec);
+    }
+}
+
 int test_actors(void)
 {
     int before = g_failures;
@@ -184,6 +266,7 @@ int test_actors(void)
 
     check_pset_sync();
     check_actor_spawn();
+    check_pset_layer();
 
     return g_failures - before;
 }

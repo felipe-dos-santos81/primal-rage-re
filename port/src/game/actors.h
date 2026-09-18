@@ -59,4 +59,24 @@ void actors_anim_seek(u32 rec, u32 stream);
  * Set by the Task 10 title driver; nothing else calls it. */
 void actors_pin_anim_tick_zero(int on);
 
+/* ---- text cursor and record grid ---------------------------------------- */
+
+/* PORT: plan Format reference H calls the four functions below "pset layer
+ * select and support". The shipped machine is a display-string / text-cursor /
+ * actor-record-grid group, not a pset layer writer; the pset layer at
+ * pset+0x0E comes only from the sync (rec+0x59 alone in 0x2A690, rec+0x49 +
+ * rec+0x59 in 0x2A820). See the group comment in actors.c. */
+/* 0x2F0F0. EAX = byte string, EDX = mode. Mode & 3 in {0,1} returns strlen;
+ * modes 2/3 sum a per-character class weight from the data-object tables at
+ * DS 0x3D048 / 0x3D1EC / 0x3D38D. */
+int  text_width(const u8 *s, u32 mode);
+/* 0x2F198. EAX = col (-1 centers), EDX = row (-1 reuses the cursor), EBX =
+ * string, ECX = mode. Writes the two-word cursor at DS_00105F34. */
+void text_cursor_set(s32 col, s32 row, const u8 *s, u32 mode);
+/* 0x2F280. Same register shape as 0x2F198: clears `text_width` consecutive
+ * cells of the actor-record grid at DS_00105F38 and releases each record. */
+void text_cells_release(s32 col, s32 row, const u8 *s, u32 mode);
+/* 0x2F4BC. 0x2F198 with the cursor saved and restored afterwards. */
+void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode);
+
 #endif /* PRAGE_GAME_ACTORS_H */
