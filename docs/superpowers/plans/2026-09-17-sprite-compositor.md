@@ -928,7 +928,11 @@ stage explicit paths, never `git add -A`.)
 
 **Interfaces:**
 - Produces: `int sprite_render_raw(const u8 *src, u8 *dst, int width, int rows,
-  int stride, u8 bank);`
+  int stride, u8 bank, int clip_l, int clip_r, int clip_t);` — `0x58CBD` is
+  **clip-aware** (it serves both type `0x02` and type `0x12`); `sprite_blit` passes
+  `0, 0, 0` for `0x02` and the real overhangs for `0x12`. (This plan originally
+  claimed the raw path had no clip handling; the final review's disassembly of
+  `0x58CBD` and the design spec §4.6 disproved that. Corrected in the fix wave.)
 
 - [ ] **Step 1: Write the failing test**
 
@@ -938,7 +942,7 @@ static void check_raw_copy(void)
     /* A 4x2 raw fixture with the bank offset applied byte-wise. */
     const u8 src[8] = { 1,2,3,4, 5,6,7,8 };
     u8 dst[16]; memset(dst, 0xEE, sizeof dst);
-    CHECK_EQ_INT(sprite_render_raw(src, dst, 4, 2, 16, 3), 0);
+    CHECK_EQ_INT(sprite_render_raw(src, dst, 4, 2, 16, 3, 0, 0, 0), 0);
     for (int i = 0; i < 4; i++) CHECK_EQ_INT(dst[i], src[i] + 3);
     for (int i = 0; i < 4; i++) CHECK_EQ_INT(dst[16 + i], src[4 + i] + 3);
     /* The row gap is untouched. */
@@ -947,7 +951,7 @@ static void check_raw_copy(void)
     /* Overflow wraps byte-wise, not into the next pixel. */
     const u8 hi[2] = { 0xFE, 0xFF };
     u8 d2[2] = { 0, 0 };
-    CHECK_EQ_INT(sprite_render_raw(hi, d2, 2, 1, 2, 4), 0);
+    CHECK_EQ_INT(sprite_render_raw(hi, d2, 2, 1, 2, 4, 0, 0, 0), 0);
     CHECK_EQ_INT(d2[0], 0x02);
     CHECK_EQ_INT(d2[1], 0x03);
 }
@@ -1206,7 +1210,11 @@ int sprite_render_shear(const u8 *src, u8 *dst, int width, int rows,
     src += clip_t * width + clip_l;
     for (int r = 0; r < rows - clip_t; r++) {
         int ref = (i16)DSW(DS_00107900);
-        int sh  = ((int)(i16)DSW(DS_00107900 + (clip_t + r) * 2) - ref) >> 5;
+        /* The table is indexed by the DRAWN row (node->+0x3C counts from 0
+         * after the clip_t skip), not the image row: the disassembly of
+         * 0x5215C zeroes +0x3C before the loop and INC-references it per
+         * drawn row. A hand-computed clip_t > 0 test pins this. */
+        int sh  = ((int)(i16)DSW(DS_00107900 + r * 2) - ref) >> 5;
         copy_run(dst, src + sh, vis, bank);
         src += width;               /* net advance = width, as the original */
         dst += stride;
@@ -1319,7 +1327,7 @@ void sprite_blit(SpriteNode *n)
      * original leaves unimplemented. */
     switch (n->type & 0x1Fu) {
     case 0x01: sprite_render_rle(src, dst, w, rows, 320, bank); break;
-    case 0x02: sprite_render_raw(src, dst, w, rows, 320, bank); break;
+    case 0x02: sprite_render_raw(src, dst, w, rows, 320, bank, 0, 0, 0); break;
     case 0x04: case 0x06:
         sprite_render_shear(src, dst, w, rows, 320, bank, L, R, T); break;
     case 0x09:
@@ -1327,7 +1335,7 @@ void sprite_blit(SpriteNode *n)
     case 0x11:
         sprite_render_rle_clipped(src, dst, w, rows, 320, bank, L, R, T, 0); break;
     case 0x12:
-        sprite_render_raw(src, dst, w, rows, 320, bank); break;
+        sprite_render_raw(src, dst, w, rows, 320, bank, L, R, T); break;
     case 0x14: case 0x16:
         sprite_render_shear(src, dst, w, rows, 320, bank, L, R, T); break;
     case 0x19:
@@ -1343,12 +1351,14 @@ Two notes for the implementer, both correctness-relevant:
   composite driver set them.** `render_list` sets `+0x28/+0x2C/+0x30/+0x34` and
   sets type bit `0x10` together, so a node reaching the blitter with `0x11`/
   `0x12` always has consistent clip fields. Do not add extra guards.
-* **0x12 has no clip-aware raw renderer in the original** — the table maps it to
-  the same `0x58CBD` as the unclipped `0x02`. `sprite_render_raw` therefore
-  takes only `width`/`rows`; clipping for the raw path is applied by the
-  composite driver's `dst` offset and the reduced `rows`, not by the renderer.
-  If a hand-built node pairs `0x12` with non-zero clip fields, that is a caller
-  error, not a case to handle.
+* **0x58CBD is clip-aware and serves both 0x02 and 0x12.** Disassembly of
+  `0x58CBD` reads the node's clip fields: `vis = width - L - R`; if `T` then
+  `rows -= T`, `src += T * width`; `src += L`; per row it bulk-copies `vis`
+  bytes, then `src += R`, `dst += stride`. So `sprite_render_raw` takes
+  `clip_l/clip_r/clip_t` and is called with `0, 0, 0` for the unclipped `0x02`
+  and the real overhangs for `0x12`. A destination offset alone cannot skip
+  `clip_l` source columns or bound `vis`, which is why the clipped path needs
+  the renderer.
 
 - [ ] **Step 4: Run the tests** — expect pass.
 - [ ] **Step 5: Negative control** — remove the `RAW+HFLIP` early return and

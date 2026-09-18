@@ -167,14 +167,21 @@ int sprite_render_rle_clipped(const u8 *src, u8 *dst, int width, int rows,
     return 0;
 }
 
-/* PORT: 0x58CBD. Bulk-copies `width` bytes per row with the bank offset added
- * byte-wise (copy_run), so src advances only by width*rows and dst by stride. */
+/* PORT: 0x58CBD. Clip-aware raw copy, shared by type 0x02 (no clip) and 0x12
+ * (RAW|CLIP). vis = width - clip_l - clip_r; clip_t whole source rows are
+ * skipped (with their clip_l columns), then each drawn row copies `vis` bytes
+ * in bulk with the bank offset added byte-wise (copy_run), advancing src by a
+ * whole `width` (the L and R overhangs) and dst by stride. */
 int sprite_render_raw(const u8 *src, u8 *dst, int width, int rows,
-                      int stride, u8 bank)
+                      int stride, u8 bank,
+                      int clip_l, int clip_r, int clip_t)
 {
+    int vis = width - clip_l - clip_r;
     if (src == NULL || dst == NULL || width <= 0 || rows <= 0) return -1;
-    for (int r = 0; r < rows; r++) {
-        copy_run(dst, src, width, bank);
+    if (vis <= 0 || rows - clip_t <= 0) return 0;
+    src += clip_t * width + clip_l;
+    for (int r = 0; r < rows - clip_t; r++) {
+        copy_run(dst, src, vis, bank);
         src += width;
         dst += stride;
     }
@@ -182,8 +189,10 @@ int sprite_render_raw(const u8 *src, u8 *dst, int width, int rows,
 }
 
 /* PORT: 0x5215C. The shear table DS_00107900 is signed 16-bit; the (s16) cast
- * is load-bearing (see sprite.h). `ref` is tab[0], so row clip_t is unshifted.
- * src is the window origin once, then advances a whole row per iteration. */
+ * is load-bearing (see sprite.h). `ref` is tab[0]; the index is the drawn row
+ * (the original counts drawn rows in node->+0x3C, zeroed before the loop, so
+ * the first row after the clip_t skip uses tab[0]). src is the window origin
+ * once, then advances a whole row per iteration. */
 int sprite_render_shear(const u8 *src, u8 *dst, int width, int rows,
                         int stride, u8 bank,
                         int clip_l, int clip_r, int clip_t)
@@ -194,7 +203,7 @@ int sprite_render_shear(const u8 *src, u8 *dst, int width, int rows,
     src += clip_t * width + clip_l;
     for (int r = 0; r < rows - clip_t; r++) {
         int ref = (s16)DSW(DS_00107900);
-        int sh  = ((int)(s16)DSW(DS_00107900 + (clip_t + r) * 2) - ref) >> 5;
+        int sh  = ((int)(s16)DSW(DS_00107900 + r * 2) - ref) >> 5;
         copy_run(dst, src + sh, vis, bank);
         src += width;
         dst += stride;
@@ -226,7 +235,7 @@ void sprite_blit(SpriteNode *n)
      * (type 0x0A), which the original leaves unimplemented. */
     switch (n->type & 0x1Fu) {
     case 0x01: sprite_render_rle(src, dst, w, rows, 320, bank); break;
-    case 0x02: sprite_render_raw(src, dst, w, rows, 320, bank); break;
+    case 0x02: sprite_render_raw(src, dst, w, rows, 320, bank, 0, 0, 0); break;
     case 0x04: case 0x06:
         sprite_render_shear(src, dst, w, rows, 320, bank, L, R, T); break;
     case 0x09:
@@ -234,7 +243,7 @@ void sprite_blit(SpriteNode *n)
     case 0x11:
         sprite_render_rle_clipped(src, dst, w, rows, 320, bank, L, R, T, 0); break;
     case 0x12:
-        sprite_render_raw(src, dst, w, rows, 320, bank); break;
+        sprite_render_raw(src, dst, w, rows, 320, bank, L, R, T); break;
     case 0x14: case 0x16:
         sprite_render_shear(src, dst, w, rows, 320, bank, L, R, T); break;
     case 0x19:

@@ -8,6 +8,7 @@ build/
 *.idx
 *.dro
 extracted/
+frames/
 data/
 data/smk-captures/
 _tools/ghidra_proj/

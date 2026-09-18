@@ -141,7 +141,7 @@ python3 tools/le_info.py --index data/game/C/INDEX
 | `0x5D218`/`0x5D28F` | RLE / clipped RLE span renderers |
 | `0x57F80`/`0x57FFB` | mirrored RLE / mirrored clipped RLE renderers |
 | `0x58CBD`/`0x5215C` | raw + clip / mode-1 shear copy renderers |
-| `0x1C350`/`0x1C390`/`0x1C3D0`/`0x1C458`/`0x1C3FC` | display-list pool: reset, sorted insert, remove, find-by-pset, sort |
+| `0x1C350`/`0x1C390`/`0x1C3A0`/`0x1C3D0`/`0x1C458`/`0x1C3FC` | display-list pool: reset, alloc, sorted insert/splice, remove/unlink, find-by-pset, sort |
 | `DS_000A8B30` | static 18,443-entry sprite-handle table (`id & 0x7FFF`; `id & 0x8000` = hflip) |
 | `DS_00105B44` | display-list head; nodes `{next, &pset}`, pool 580 at `DS_0010153C` |
 | `DS_001088F8` | 200-dword row-offset table (`y * 0x140`), built by `0x51F45` |

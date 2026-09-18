@@ -167,13 +167,18 @@ On-screen sprites are a **three-stage pipeline** (verified by disassembly):
    580-node pool lives at `DS_0010153C`. Ported in
    `port/src/platform/render.c` (`render_list_init/insert/remove/sort`).
 3. **Composite** — `0x14328` walks the list, builds a 0x40-byte display node per
-   entry via `0x14268`, projects the pset position (`proj_x = round(v*3901/4096)`,
-   `proj_y = round(v*3414/4096)`; only positions are scaled — sprites blit 1:1),
-   applies the clip rectangle and the layer-1/layer-2 mode rules, and calls the
-   span blitter `0x51E5C`. The blitter resolves the pixel handle and palette bank
-   and dispatches through `PTR_LAB_00080C8C` to a renderer that writes
-   `mem + DSD(DS_000E87A4)`. Ported in `render.c` and
-   `port/src/platform/sprite.c`.
+   entry via `0x14268`, and projects the pset position with
+   `p = v*3901 + 0x800; if (p < 0) p += 0xFFF; proj_x = p >> 12` (same shape with
+   3414 for `proj_y`). This is **not** round-half-away-from-zero: at negative
+   exact values it rounds toward +infinity, so `proj_x(-4096) == -3900`, not
+   -3901. Only positions are scaled — sprites blit 1:1. The three mode-offset
+   projections (layer-1 x `DS_00107A3E`, layer-2 x `DS_00107A3A`, layer-2 y
+   fallback `DS_00107A38`) instead use the **uncorrected**
+   `(v*num + 0x800) >> 12`. It then applies the clip rectangle and the
+   layer-1/layer-2 mode rules, and calls the span blitter `0x51E5C`. The blitter
+   resolves the pixel handle and palette bank and dispatches through
+   `PTR_LAB_00080C8C` to a renderer that writes `mem + DSD(DS_000E87A4)`.
+   Ported in `render.c` and `port/src/platform/sprite.c`.
 
 The clip rectangle is the literal `{0, 0, 320, 200}` of the master loop's camera
 struct `DS_000A87CC + 8`, not a runtime camera. The port wires `render_list_init`

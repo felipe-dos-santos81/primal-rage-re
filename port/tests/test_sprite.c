@@ -181,7 +181,7 @@ static void check_raw_copy(void)
     /* dst must fit two stride-16 rows: the brief's dst[16] would write row 1
      * at dst[16..19], past the end, clobbering the adjacent stack. */
     u8 dst[32]; memset(dst, 0xEE, sizeof dst);
-    CHECK_EQ_INT(sprite_render_raw(src, dst, 4, 2, 16, 3), 0);
+    CHECK_EQ_INT(sprite_render_raw(src, dst, 4, 2, 16, 3, 0,0,0), 0);
     for (int i = 0; i < 4; i++) CHECK_EQ_INT(dst[i], src[i] + 3);
     for (int i = 0; i < 4; i++) CHECK_EQ_INT(dst[16 + i], src[4 + i] + 3);
     /* The row gap is untouched. */
@@ -190,9 +190,42 @@ static void check_raw_copy(void)
     /* Overflow wraps byte-wise, not into the next pixel. */
     const u8 hi[2] = { 0xFE, 0xFF };
     u8 d2[2] = { 0, 0 };
-    CHECK_EQ_INT(sprite_render_raw(hi, d2, 2, 1, 2, 4), 0);
+    CHECK_EQ_INT(sprite_render_raw(hi, d2, 2, 1, 2, 4, 0,0,0), 0);
     CHECK_EQ_INT(d2[0], 0x02);
     CHECK_EQ_INT(d2[1], 0x03);
+}
+
+/* Clipped raw (0x58CBD, type 0x12): clip_t whole source rows and clip_l source
+ * columns are skipped, and `vis = width - clip_l - clip_r` bytes per drawn row
+ * are copied from the window origin. Fixture: 6-wide, 3-row raw, clip_l 1,
+ * clip_r 2 (vis 3), clip_t 1 (2 drawn rows), stride 8. Hand-computed: the
+ * skipped row 0 and the clipped columns/gap must stay 0xEE, and each drawn
+ * row's bytes land at dst[0..2]. A no-clip copy of `width` bytes would draw
+ * row 0 and overwrite the dst[3..7] padding -- both caught below. */
+static void check_raw_clipped(void)
+{
+    u8 src[18];
+    for (int i = 0; i < 18; i++) src[i] = (u8)(10 + i);
+    /* row0 = 10..15 (skipped), row1 = 16..21, row2 = 22..27. */
+    u8 dst[2 * 8]; memset(dst, 0xEE, sizeof dst);
+
+    CHECK_EQ_INT(sprite_render_raw(src, dst, 6, 3, 8, 0, 1, 2, 1), 0);
+    /* src = row1 + clip_l = index 6+1 = 7 -> 17,18,19. */
+    CHECK_EQ_INT(dst[0], 17);
+    CHECK_EQ_INT(dst[1], 18);
+    CHECK_EQ_INT(dst[2], 19);
+    for (int i = 3; i < 8; i++) CHECK_EQ_INT(dst[i], 0xEE);
+    /* src advances a whole width to row2 + clip_l = index 12+1 = 13. */
+    CHECK_EQ_INT(dst[8], 23);
+    CHECK_EQ_INT(dst[9], 24);
+    CHECK_EQ_INT(dst[10], 25);
+    for (int i = 11; i < 16; i++) CHECK_EQ_INT(dst[i], 0xEE);
+
+    /* vis <= 0 draws nothing; rows - clip_t <= 0 draws nothing. */
+    memset(dst, 0xEE, sizeof dst);
+    CHECK_EQ_INT(sprite_render_raw(src, dst, 6, 3, 8, 0, 3, 3, 0), 0);
+    CHECK_EQ_INT(sprite_render_raw(src, dst, 6, 3, 8, 0, 0, 0, 3), 0);
+    for (int i = 0; i < (int)sizeof dst; i++) CHECK_EQ_INT(dst[i], 0xEE);
 }
 
 /* 0x5D28F / 0x57FFB semantics. Fixture: a 6-wide, 3-row RLE sprite whose row
@@ -327,6 +360,25 @@ static void check_rle_mirror(void)
     for (int i = 0; i < 6; i++) CHECK_EQ_INT(mir[i], plain[5 - i]);
 }
 
+/* Mirrored + clipped RLE (0x57FFB, type 0x19): the visible window is reversed,
+ * not the whole `width`. The earlier mirror test uses clip_l = 0 / vis = width,
+ * so its formula degenerates to vis-1-c and a bug ignoring clip_l passes. Here
+ * clip_l = 1, clip_r = 2 (vis = 3) and the row is
+ * [literal 2][transparent 1][fill 3], so the window covers image columns
+ * 1,2,3 = {0x0B, transparent, 0x07}; reversed it is {0x07, transparent, 0x0B}.
+ * Ignoring clip_l would instead reverse columns 0,1,2 = {0x0A, 0x0B, tr}. */
+static void check_rle_mirror_clip(void)
+{
+    const u8 src[9] = { 0x02, 0x0A, 0x0B, 0xC1, 0x00, 0x83, 0x07,0,0 };
+    u8 dst[8]; memset(dst, 0xEE, sizeof dst);
+    CHECK_EQ_INT(sprite_render_rle_clipped(src, dst, 6, 1, 8, 0,
+                                           1, 2, 0, /*mirror=*/1), 0);
+    CHECK_EQ_INT(dst[0], 0x07);
+    CHECK_EQ_INT(dst[1], 0xEE);          /* window column 2 is transparent */
+    CHECK_EQ_INT(dst[2], 0x0B);
+    for (int i = 3; i < 8; i++) CHECK_EQ_INT(dst[i], 0xEE);
+}
+
 static void check_shear(void)
 {
     /* The shear reads `vis` bytes from `src + sh`, where `sh` can be positive
@@ -369,6 +421,47 @@ static void check_shear(void)
     DSW(DS_00107900 + 4) = 0;
 }
 
+/* Clipped shear (0x5215C, type 0x16) with clip_t > 0 settles the table index:
+ * the disassembly indexes DS_00107900 by the DRAWN row, not the image row (the
+ * original zeroes node->+0x3C before the loop and increments it only for drawn
+ * rows). Fixture: 6-wide, 4-row, clip_l 1, clip_r 2 (vis 3), clip_t 1 (3 drawn
+ * rows), stride 8, ramp tab = {0,32,64,96}: drawn-row shears are
+ * 0, (32-0)>>5=1, (64-0)>>5=2. The image-row form would give 1,2,3, so row 0
+ * discriminates (it would write src index 8, not 7). */
+static void check_shear_clipped(void)
+{
+    u8 src[30];
+    for (int i = 0; i < 30; i++) src[i] = (u8)(10 + i);
+    u8 dst[3 * 8]; memset(dst, 0xEE, sizeof dst);
+
+    DSW(DS_00107900 + 0) = 0;
+    DSW(DS_00107900 + 2) = 32;
+    DSW(DS_00107900 + 4) = 64;
+    DSW(DS_00107900 + 6) = 96;
+
+    CHECK_EQ_INT(sprite_render_shear(src, dst, 6, 4, 8, 0, 1, 2, 1), 0);
+    /* src = clip_t*width + clip_l = 6+1 = 7 (value 17). Drawn row 0: sh 0. */
+    CHECK_EQ_INT(dst[0], 17);
+    CHECK_EQ_INT(dst[1], 18);
+    CHECK_EQ_INT(dst[2], 19);
+    for (int i = 3; i < 8; i++) CHECK_EQ_INT(dst[i], 0xEE);
+    /* src advances to 13 (value 23). Drawn row 1: sh 1 -> indices 14,15,16. */
+    CHECK_EQ_INT(dst[8], 24);
+    CHECK_EQ_INT(dst[9], 25);
+    CHECK_EQ_INT(dst[10], 26);
+    for (int i = 11; i < 16; i++) CHECK_EQ_INT(dst[i], 0xEE);
+    /* src advances to 19 (value 29). Drawn row 2: sh 2 -> indices 21,22,23. */
+    CHECK_EQ_INT(dst[16], 31);
+    CHECK_EQ_INT(dst[17], 32);
+    CHECK_EQ_INT(dst[18], 33);
+    for (int i = 19; i < 24; i++) CHECK_EQ_INT(dst[i], 0xEE);
+
+    DSW(DS_00107900 + 0) = 0;
+    DSW(DS_00107900 + 2) = 0;
+    DSW(DS_00107900 + 4) = 0;
+    DSW(DS_00107900 + 6) = 0;
+}
+
 /* Dispatch pinning: compare the blitter's whole back-buffer output against the
  * raster of the renderer the original's PTR_LAB_00080C8C selects. Comparing
  * output (not the call site) makes a swap between renderer classes -- or wrong
@@ -395,7 +488,7 @@ static void blit_ref(u8 *out, int which, const u8 *src, int w, int rows,
     case REF_RLE:
         sprite_render_rle(src, dst, w, rows, 320, bank); break;
     case REF_RAW:
-        sprite_render_raw(src, dst, w, rows, 320, bank); break;
+        sprite_render_raw(src, dst, w, rows, 320, bank, L,R,T); break;
     case REF_RLE_MIRROR:
         sprite_render_rle_clipped(src, dst, w, rows, 320, bank, 0,0,0,1); break;
     case REF_RLE_CLIP:
@@ -503,6 +596,17 @@ static void check_blit_dispatch(void)
         CHECK(memcmp(got, got2, BLIT_BUF) == 0,
               "0x12 shares 0x58CBD with 0x02");
 
+        /* 0x12 with real overhangs must use the clip-aware raw path: its raster
+         * matches sprite_render_raw at the node's clip args and differs from the
+         * no-clip raster. This pins the Critical fix. */
+        blit_node(&s, 0x12, pix, dh, 9, 3, 2,1,1);
+        blit_run(got2, &s, icon2);
+        blit_ref(ref2, REF_RAW, rle, 9, 3, bank, 0, 0, 2,1,1);
+        CHECK(memcmp(got2, ref2, BLIT_BUF) == 0,
+              "0x12 with clip routes to clipped raw");
+        CHECK(memcmp(ref2, ref, BLIT_BUF) != 0,
+              "0x12's clip arguments change the raster");
+
         /* 0x11 -> clipped RLE, mirror off (0x5D28F). */
         blit_node(&s, 0x11, pix, dh, 9, 1, 2,1,0);
         blit_run(got, &s, icon2);
@@ -571,10 +675,13 @@ int test_sprite(void)
     check_rle_cross();
     check_bank_and_colour();
     check_raw_copy();
+    check_raw_clipped();
     check_rle_clipped();
     check_rle_row_edges();
     check_rle_mirror();
+    check_rle_mirror_clip();
     check_shear();
+    check_shear_clipped();
     check_blit_dispatch();
     return 0;
 }

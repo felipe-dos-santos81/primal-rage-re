@@ -102,8 +102,8 @@ int test_gfx(void)
     /* Task 15: the title-screen index comparison against the independent Python
      * decoder. port/tests/s16title_frame10.idx is the raw 320x200 8-bit index
      * buffer tools/gra_render.py decodes for S16TITLE frame 10 — the first image
-     * the port's title player presents, so --check frame_0001.idx is this same
-     * buffer at runtime. It is generated locally and git-ignored like
+     * the port's title player presents, so --check frames/frame_0001.idx is
+     * this same buffer at runtime. It is generated locally and git-ignored like
      * ghidra_data.bin, and is required only when PR_ORACLE_REQUIRED=1.
      *
      * This is the comparison that can be exact: both sides are index buffers
@@ -148,7 +148,7 @@ int test_gfx(void)
                       "independent Python decoder");
 
                 /* Runtime capture: a --check run leaves frame_NNNN.idx in the
-                 * CWD. The port cycles the four full-screen title images
+                 * frames/ directory. The port cycles the four full-screen title images
                  * {10,12,13,18} every 8 loop frames, so loop frames 1/9/17/25
                  * are exactly those images. Each present artifact must equal
                  * what the decoder emits for its image, pinning the flow wiring
@@ -158,7 +158,7 @@ int test_gfx(void)
                 static const int images[4] = { 10, 12, 13, 18 };
                 for (int k = 0; k < 4; k++) {
                     char rf[32];
-                    snprintf(rf, sizeof rf, "frame_%04d.idx", loop_frames[k]);
+                    snprintf(rf, sizeof rf, "frames/frame_%04d.idx", loop_frames[k]);
                     FILE *fr = fopen(rf, "rb");
                     if (!fr) continue;
                     static u8 runtime_idx[320 * 200];
