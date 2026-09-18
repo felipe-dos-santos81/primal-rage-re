@@ -1477,41 +1477,62 @@ here because Task 2 collapses the capture to one file per distinct game frame;
 `title_compare.py` otherwise mirrors `smk_compare.py`, including its env-gate
 semantics, and takes no tolerance argument. A mismatch must be reported with both
 the frame index and, from Task 2's `window.txt`, the raw capture frame it came
+from, so a collapse error (a genuinely repeated game frame merged) is diagnosable
+rather than silent.
 
 **This task owns the determinism proof that Task 2 could not produce.** The window
 is pinned by aligning the port's `frame_0000.raw` into the capture (that is why
 `--port-anchor` exists), and determinism is proven by requiring the port to match
 **two independent captures** — not by a port-free byte-identity gate, which is
 circular (Format reference and Task 2 record the failed attempt). So the oracle step
-runs the capture twice and compares the port against both aligned windows; a
-disagreement between the two captures inside the aligned window is reported as a
-pin finding, with the raw indices of the first divergence.
-from, so a collapse error (a genuinely repeated game frame merged) is diagnosable
-rather than silent.
+captures twice and compares the port against both aligned windows; a disagreement
+between the two captures inside the aligned window is reported as a pin finding,
+with the raw indices of the first divergence, and the comparison against each
+capture is reported separately so a partial match names which run diverged.
+
+**Errata, 2026-09-18:** the title entry does **not** re-seed the LCG. Task 9
+established that `0x121A0` contains no store to `DS_000EF6D8`; the only `0xABCD`
+store is `0x20C62` in `0x20C10`, which Task 3 already transcribes as `game_init`'s
+`rng_seed(0xABCD)`. The dump driver therefore calls `game_init()` and nothing
+re-seeds after it — that is the path Task 9 measured to yield `12`/`111`/`0` and
+`DS_00107A50 == 0x2420`. Any re-seed in the oracle driver would force the pinned
+values by construction and hide a real divergence.
+
 
 - [ ] **Step 1: Write the dump driver**
 
 `port/tests/test_title.c`: `test_title()` runs `game_init()`, then
 `actors_pin_anim_tick_zero(1)` (the port's half of the pin — Task 1 patches the
 original's opcode-8 draw to 0, so the oracle run must make the same draw 0), then
-drives `game_frame()`/`render_list()` for 96 frames with `PR_TITLE_DUMP` set. The
-title entry frame itself calls `rng_seed(0xABCDu)` (Task 9) before its three draws,
-which is the port-side half of the other three pin sites. The driver must reuse the
-same presentation conversion as `gfx_present` (the palette in `gfx_dac`), so the
-dumped RGB24 equals what the capture holds.
+drives `game_frame()`/`render_list()` for 96 frames with `PR_TITLE_DUMP` set. **Do not
+re-seed the LCG in the driver** — `game_init()`'s `rng_seed(0xABCD)` is the port-side
+half of the other three pin sites and is the measured path (see the errata above). The
+driver must reuse the same presentation conversion as `gfx_present` (the palette in
+`gfx_dac`), so the dumped RGB24 equals what the capture holds.
+
+`actors_pin_anim_tick_zero(1)` is set unconditionally, but the driver must also
+**report whether the opcode-8 draw is actually consumed inside the window** (Task 7's
+hand-driven walk concluded it was not, contradicting the premise behind Task 1's fourth
+pin site and Format reference A2). Instrument the count and state the answer in the
+report: if it is zero, say plainly that pin site 4 is inert and that the
+`task-2-anchor-re.md` explanation for the title's original nondeterminism needs
+revisiting — without changing the capture.
 
 - [ ] **Step 2: Write the comparator**
 
 ```python
 #!/usr/bin/env python3
-"""Pixel-exact comparison of the port's title frames against the capture.
+"""Pixel-exact comparison of the port's title frames against the capture(s).
 Absent capture: skip (exit 0) unless PR_ORACLE_REQUIRED=1, then fail.
-Usage: title_compare.py --capture DIR --port DIR --frames 96"""
+Usage: title_compare.py --capture DIR [--capture DIR2] --port DIR --frames 96"""
 ```
 
 Same shape as `smk_compare.py`, including the env-gate semantics verbatim, with
 `frame_%04d.raw` on both sides and a zero-byte-tolerance comparison. Report the
-first differing byte offset, as `smk_compare.py` does.
+first differing byte offset, as `smk_compare.py` does. With a second `--capture`,
+compare the port against both aligned windows, report each separately, and report
+any disagreement between the two captures inside the window as a pin finding with
+the raw indices of the first divergence.
 
 - [ ] **Step 3: Wire the Makefile target**
 
@@ -1524,23 +1545,29 @@ title-oracle: build ## Pixel-exact title oracle (skips without data/title-captur
 	else \
 		echo "title-oracle: no capture at $(TITLE_CAPTURES)/, frames not compared"; \
 	fi
-	@$(PYTHON) tools/title_compare.py --capture $(TITLE_CAPTURES)/title --port $(TITLE_DUMP)/title --frames 96
+	@$(PYTHON) tools/title_compare.py --capture $(TITLE_CAPTURES)/title \
+		$(if $(wildcard $(TITLE_CAPTURES)/title2),--capture $(TITLE_CAPTURES)/title2,) \
+		--port $(TITLE_DUMP)/title --frames 96
 ```
 
 Add `TITLE_DUMP = /tmp/pr_title_dump`, and add `title-oracle` to the `verify`
-target right after `smk-oracle`.
+target right after `smk-oracle`. The second capture is optional at the target
+level: `title_compare.py` must still prove determinism when it is present, and
+must not fail merely because it is absent — but `PR_ORACLE_REQUIRED=1` with only
+one capture present must report that the determinism proof is incomplete.
 
 - [ ] **Step 4: Run it and fix what it finds**
 
-Run: `make title-pin && python3 tools/title_capture.py --out data/title-captures/title --port-anchor /tmp/pr_title_dump/title && make title-oracle`
-Expected: `title_compare: 96/96 frames match`.
+Run, capturing twice so the determinism proof is real:
+`make title-pin && python3 tools/title_capture.py --out data/title-captures/title --port-anchor /tmp/pr_title_dump/title && python3 tools/title_capture.py --out data/title-captures/title2 && make title-oracle`
+Expected: `title_compare: 96/96 frames match` against both captures.
 
 A mismatch is localised evidence: the first differing frame and byte offset name
 the stage (entry frame ⇒ spawn/descriptor mapping; later frames ⇒ the anim
 interpreter or the pset sync; a uniform colour shift ⇒ the pset palette enqueue;
 drift exactly at frames 32/64/96 ⇒ the `0x2BF08` hypothesis, take its named
 fallback). Fix the transcription, not the comparison, and re-run Task 2's
-reproducibility gate if the capture is suspected.
+reproducibility diagnostic if the capture is suspected.
 
 - [ ] **Step 5: Run the full ladder and commit**
 
