@@ -776,7 +776,7 @@ void game_loop(void)
         render_list_sort();                  /* 0x1C3FC */
         render_list();                       /* 0x14328 */
         DSD(DS_00104AF4)++;
-        /* PORT: 0x134C0 deferred (scene/narrative). */
+        effects_step();                      /* 0x134C0 */
 
         /* The original copies DAT_000E87A4 to the literal VGA aperture 0xA0000
          * here (0x255CC full copy when DS_001014FC != 0, else the 0x501A3

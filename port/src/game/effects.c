@@ -132,6 +132,193 @@ u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle)
     return rec;
 }
 
+/* ---- 0x134C0: the per-frame effect step/age ----------------------------- */
+
+/* The step moves colours packed as 0xRRGGBB in a dword (channels at byte shifts
+ * 0/8/16). 0x1362e/0x137ee-b raise each channel by 8 but not past the target;
+ * 0x13996/0x137ee-a lower it by 8, toward the target or to zero. */
+static u32 effect_lighten(u32 cur, u32 tgt)
+{
+    u32 b = (cur & 0xffu) + 8u, g = ((cur >> 8) & 0xffu) + 8u,
+        r = ((cur >> 16) & 0xffu) + 8u;
+    u32 tb = tgt & 0xffu, tg = (tgt >> 8) & 0xffu, tr = (tgt >> 16) & 0xffu;
+    if (b > tb) b = tb;
+    if (g > tg) g = tg;
+    if (r > tr) r = tr;
+    return (b & 0xffu) | ((g & 0xffu) << 8) | ((r & 0xffu) << 16);
+}
+
+static u32 effect_darken_to(u32 cur, u32 tgt)
+{
+    s32 b = (s32)(cur & 0xffu) - 8, g = (s32)((cur >> 8) & 0xffu) - 8,
+        r = (s32)((cur >> 16) & 0xffu) - 8;
+    s32 tb = (s32)(tgt & 0xffu), tg = (s32)((tgt >> 8) & 0xffu), tr = (s32)((tgt >> 16) & 0xffu);
+    if (b < tb) b = tb;
+    if (g < tg) g = tg;
+    if (r < tr) r = tr;
+    return ((u32)b & 0xffu) | (((u32)g & 0xffu) << 8) | (((u32)r & 0xffu) << 16);
+}
+
+static u32 effect_darken(u32 cur)
+{
+    s32 b = (s32)(cur & 0xffu) - 8, g = (s32)((cur >> 8) & 0xffu) - 8,
+        r = (s32)((cur >> 16) & 0xffu) - 8;
+    if (b < 0) b = 0;
+    if (g < 0) g = 0;
+    if (r < 0) r = 0;
+    return (u32)b | ((u32)g << 8) | ((u32)r << 16);
+}
+
+/* 0x134C0. */
+void effects_step(void)
+{
+    if (DSB(DS_0009AF3C) != 0) return;
+    u32 rec = DSD(DS_000FCCE0);
+    while (rec != DS_000FCCE0) {
+        u32 src = DSD(rec + 8);
+        s32 count = (s32)DSD(src + 0x0c);
+        u8 type = DSB(rec + 0x0c);
+        int removed = 0;
+
+        /* The state byte counts down from the spawn's DL (rec+0xD); only when it
+         * wraps does the type body run. Type 0 has no reload and instead runs
+         * the case-2 body once via the 0x13502 jump. */
+        if (type == 0) {
+            if (DSB(rec + 0x0e) == 0) { rec = DSD(rec); continue; }
+            DSB(rec + 0x0e) = 0;
+            type = 2;
+        } else {
+            u8 state = (u8)(DSB(rec + 0x0e) - 1);
+            DSB(rec + 0x0e) = state;
+            if (state != 0) { rec = DSD(rec); continue; }
+            DSB(rec + 0x0e) = DSB(rec + 0x0d);
+            if (type > 6) type = 6;     /* 0x13522: the >6 default body */
+        }
+
+        switch (type) {
+        case 1: {
+            u32 a = DSD(rec + 0x14);
+            u32 v = (u32)(((a & 0xffu) + (u32)((s32)DSD(rec + 0x18) >> 16)) & 0xffu)
+                  | (u32)((((a & 0xffffu) >> 8) + (u32)((s32)DSD(rec + 0x1a) >> 16)) & 0xffffu) << 8
+                  | (u32)((((a >> 16) & 0xffu) + (u32)((s32)DSD(rec + 0x1c) >> 16)) & 0xffu) << 16;
+            DSD(rec + 0x14) = v;
+            palette_record(rec + 0x14, DSD(src + 8) + (u32)DSB(rec + 0x0f), 1, 0);
+            break;
+        }
+        case 2:
+            /* 0x135a8: rotate the +0x10 trail by one dword either way; the sign
+             * of the block's first byte picks the direction and the palette
+             * offset. */
+            if ((s8)DSB(rec + 0x10) < 0) {
+                u32 d = rec + 0x14, s = rec + 0x10, tmp = DSD(d);
+                for (u32 i = 1; i < (u32)DSB(rec + 0x0f); i++) {
+                    d -= 4; u32 v = DSD(s); s -= 4; DSD(d + 4) = v;
+                }
+                DSD(d) = tmp;
+                palette_record(rec + 0x14,
+                               (u32)((s32)DSD(src + 8) - (s32)(s8)DSB(rec + 0x10)),
+                               (u32)DSB(rec + 0x0f), 0);
+            } else {
+                u32 d = rec + 0x14, s = rec + 0x18, tmp = DSD(d);
+                for (u32 i = 1; i < (u32)DSB(rec + 0x0f); i++) {
+                    d += 4; u32 v = DSD(s); s += 4; DSD(d - 4) = v;
+                }
+                DSD(d) = tmp;
+                palette_record(rec + 0x14,
+                               (u32)((s32)DSD(src + 8) + (s32)(s8)DSB(rec + 0x10)),
+                               (u32)DSB(rec + 0x0f), 0);
+            }
+            break;
+        case 3:
+            if (DSB(rec + 0x0f) != 0) {
+                palette_record(rec + 0x10, DSD(src + 8), (u32)count, 0);
+                DSB(rec + 0x0f) = 0;
+            } else {
+                int anim = 1;
+                for (s32 i = 0; i < count; i++) {
+                    u32 at = rec + 0x10 + (u32)i * 4u;
+                    u32 cur = DSD(at), tgt = DSD(rec + 0x410 + (u32)i * 4u);
+                    if (cur != tgt) { DSD(at) = effect_lighten(cur, tgt); anim = 0; }
+                }
+                if (anim) removed = 1;
+                else palette_record(rec + 0x10, DSD(src + 8), (u32)count, 0);
+            }
+            break;
+        case 4: {
+            int anim = 1;
+            for (s32 i = 0; i < count; i++) {
+                u32 at = rec + 0x10 + (u32)i * 4u;
+                u32 cur = DSD(at);
+                if (cur != 0) { DSD(at) = effect_darken(cur); anim = 0; }
+            }
+            if (anim) removed = 1;
+            else palette_record(rec + 0x10, DSD(src + 8), (u32)count, 0);
+            break;
+        }
+        case 5: {
+            /* 0x137ee: two-phase pulse. Flag +0x11 selects which side runs;
+             * each completed side drains the count without tearing down. */
+            u8 n = DSB(rec + 0x0f);
+            int anim = 1;
+            /* The dispatch left ESI at rec+0x14 for this body (0x1352d), unlike
+             * the 0x10 bases the other cases load. */
+            if (DSB(rec + 0x11) != 0) {
+                for (s32 i = 0; i < (s32)n; i++) {
+                    u32 at = rec + 0x14 + (u32)i * 4u;
+                    u32 cur = DSD(at);
+                    if (cur != 0) { DSD(at) = effect_darken(cur); anim = 0; }
+                }
+                if (anim) {
+                    DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) - 1);
+                    DSB(rec + 0x11) = 0;
+                }
+            } else {
+                for (s32 i = 0; i < (s32)n; i++) {
+                    u32 at = rec + 0x14 + (u32)i * 4u;
+                    u32 cur = DSD(at), tgt = DSD(rec + 0x414 + (u32)i * 4u);
+                    if (cur != tgt) { DSD(at) = effect_lighten(cur, tgt); anim = 0; }
+                }
+                if (anim) {
+                    DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) - 1);
+                    DSB(rec + 0x11) = 1;
+                }
+            }
+            palette_record(rec + 0x14, DSD(src + 8) + (u32)(s32)(s8)DSB(rec + 0x10),
+                           (u32)n, 0);
+            break;
+        }
+        case 6:
+        default:
+            if (DSB(rec + 0x0f) != 0) {
+                palette_record(rec + 0x10, DSD(src + 8), (u32)count, 0);
+                DSB(rec + 0x0f) = 0;
+            } else {
+                int anim = 1;
+                for (s32 i = 0; i < count; i++) {
+                    u32 at = rec + 0x10 + (u32)i * 4u;
+                    u32 cur = DSD(at), tgt = DSD(rec + 0x410 + (u32)i * 4u);
+                    if (cur != tgt) { DSD(at) = effect_darken_to(cur, tgt); anim = 0; }
+                }
+                if (anim) removed = 1;
+                else palette_record(rec + 0x10, DSD(src + 8), (u32)count, 0);
+            }
+            break;
+        }
+
+        if (removed) {
+            /* 0x249d0 unlinks and zeroes the links, so save the back-link first;
+             * after the unlink it points at the record's original next. */
+            u32 back = DSD(rec + 4);
+            list_unlink(rec);
+            list_insert_after(DS_000FCCE8, rec);
+            DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) - 1);
+            rec = DSD(back);
+        } else {
+            rec = DSD(rec);
+        }
+    }
+}
+
 /* 0x13DF0. */
 void effects_clear(void)
 {

@@ -22,6 +22,14 @@ void effects_init(void);
  * the entry count and the copied block come from `source_rec`'s +0xC. */
 u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle);
 
+/* 0x134C0. Ages every active record one frame. Each record's state byte
+ * (rec+0xE) counts down from the byte at rec+0xD; when it wraps the record's
+ * type body runs, animating its +0x10 block (through 0x33734's palette append)
+ * and dropping it to the free list once finished, draining DS_0009AF3D each
+ * time. Called from the master loop after DS_00104AF4++ and before the palette
+ * flush. A no-op while the lock is set. */
+void effects_step(void);
+
 /* 0x13DF0. Tears down every active record (0x13420) and zeroes the active count
  * and the lock. A no-op when the pool was never initialised (the zeroed active
  * sentinel). */

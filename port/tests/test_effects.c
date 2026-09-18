@@ -181,5 +181,41 @@ int test_effects(void)
     effects_clear();
     CHECK_EQ_INT(effects_active(), 0);
 
+    {
+        /* 0x134C0 drains the list the spawn grew. The record's age counter
+         * (rec+0xE) counts down from the byte arg stored at rec+0xD; the title
+         * spawn passes 3 (flow.c 0x123EA), so the counter wraps every third
+         * step and the type-3 body runs on steps 1 and 4. The first body is the
+         * flag(0x80) palette pass; the second animates +0x10 toward +0x410 and,
+         * with the source count (+0xC) zero, finds them equal immediately and
+         * tears the record down. Four steps is exactly the raw's lifetime. */
+        u32 src = EFFECTS_TEST_SRC;
+        effects_init();
+        mem_fill(src, 0, 0x40u);          /* source count +0xC == 0 */
+        u32 rec = effects_spawn(src, 3u, 0u);
+        CHECK_EQ_INT(effects_active(), 1);
+        CHECK_EQ_INT((int)rec, (int)DS_000F0B00);
+        effects_step();
+        CHECK_EQ_INT(effects_active(), 1);   /* wrap 1: flag palette pass */
+        effects_step();
+        CHECK_EQ_INT(effects_active(), 1);
+        effects_step();
+        CHECK_EQ_INT(effects_active(), 1);
+        effects_step();
+        CHECK_EQ_INT(effects_active(), 0);   /* wrap 2: teardown drains it */
+
+        /* The teardown unlinked from active and re-linked to the free list
+         * exactly once: the active sentinel is self-linked and the record
+         * appears in the free walk exactly once, with all 24 records back. */
+        CHECK_EQ_INT((int)DSD(DS_000FCCE0), (int)DS_000FCCE0);
+        int seen = 0, n = 0;
+        for (u32 p = DSD(DS_000FCCE8); p != DS_000FCCE8; p = DSD(p)) {
+            if (p == rec) seen++;
+            n++;
+        }
+        CHECK_EQ_INT(seen, 1);
+        CHECK_EQ_INT(n, 24);
+    }
+
     return g_failures - before;
 }
