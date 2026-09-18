@@ -14,7 +14,7 @@ mode game code: everything interesting lives in two LE objects (code + data).
 |---|---|
 | `data/game/C/` | Installed game (`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound drivers) |
 | `data/game/CD/RAGECD.ISO` | Original CD (`/Volumes/RAGECD` when mounted: `RAGE.S04`, `RAGE.S08`, `RAGE.S16`, `RAGE.SND`) |
-| `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) + **Smacker video** (sub-project 2b-i) + **sprite compositor** (sub-project 4a-i) + **actor system and title** (sub-project 4a-ii) — `cmake -S port -B build` |
+| `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) + **Smacker video** (sub-project 2b-i) + **sprite compositor** (sub-project 4a-i) + **actor system and title** (sub-project 4a-ii) + **title-path residuals** (sub-project 4a-iii) — `cmake -S port -B build` |
 | `port/src/platform/audio/` | AIL surface, XMIDI sequencer, FAT.OPL, samples, mixer, vendored OPL core |
 | `port/RE_GUIDE.md` | Address conventions, DOS/4GW layout, toolchain, landmarks |
 | `port/spec/game_flow.md` | Entry, frame loop, state machine, tick, pixel path |
@@ -87,9 +87,10 @@ choice is `likely`), the palette flush (`0x1C470`), the process-table scheduler,
 and the `0x255CC`/`0x24C5C`/`0x11D04` loop. The title state now runs the real
 `0x121A0` actor composite through the display list; `make title-oracle` explains
 every captured frame as a byte-offset splice of two adjacent port frames (port
-frames 1..94 exhibited by both captures, the two endpoint transitions disclosed,
-zero unexplained frames) — see the 4a-ii paragraph below. The earlier
-full-screen four-frame `S16TITLE` stand-in was removed in sub-project 4a-ii.
+frames 1..95 exhibited by both captures, the start-of-window transition
+disclosed, zero unexplained frames) — see the 4a-ii and 4a-iii paragraphs below.
+The earlier full-screen four-frame `S16TITLE` stand-in was removed in
+sub-project 4a-ii.
 **Audio — sub-project 2a, AIL/Miles, running.** The port runs the game's own
 audio path with no DOS driver: the `0x1CF40` AIL init completes, the title/
 attract XMIDI bank is decoded and sequenced into OPL register writes through a
@@ -128,7 +129,7 @@ actor pool and real title state: the `0x68`-byte records and their lists, spawn
 (`0x2A408`/`0x29F34`/`0x29DB8` and the 47-opcode dispatcher `0x2B2A0`), the text
 grid and glyph renderer, the `0x5D7DC` LCG, and `0x121A0` with its `ENGLISH.TXT`
 caption. The title composite is proven against two independent captures of the
-pinned original over its window (`make title-oracle`):
+un-pinned original over its window (`make title-oracle`):
 the capture is modelled as a byte-offset splice of two adjacent port frames
 because the original updates the aperture at `0x255CC` with no retrace wait
 while DX-CAPTURE samples at 70.09 Hz, and every captured frame is explained with
@@ -139,9 +140,26 @@ in-window opcode-8 count is 0, so pin site 4 is inert and the `task-2-anchor-re.
 account of the title's nondeterminism is wrong. See
 `docs/superpowers/plans/2026-09-17-actor-system-report.md`.
 
+**Title-path residuals — sub-project 4a-iii, ported.** 4a-ii's oracle proved a
+**pinned** original: `tools/title_pin.py` also ret'd `0x2BF08`, hiding the title
+overlay. 4a-iii removed that inert site, re-captured the true original, diagnosed
+the resulting per-frame divergence (`CREDITS:5`, rows 7–12), and ported it:
+`0x2BF08`'s four-branch message/text tick (seeded with the captured
+`DS_00105C00 = 5`, `DS_00105C05 = 1`) and the `0x13xxx` effect-list slice —
+spawn `0x13C70`, free-list build `0x13ADC`, clear `0x13DF0`, teardown `0x13420`
+and step/age `0x134C0` — in the new `port/src/game/effects.{c,h}` module. The
+oracle is now green against the un-pinned original (0 unexplained, port frames
+95/96 exhibited) and turns red when `0x2BF08` is stubbed back out, so it proves
+the overlay. `0x13C70`'s spawn is a **declared coverage gap** — it fills a
+record, but the effect render path is unported, so the spawn alone draws nothing
+and the oracle cannot distinguish it from absent; Task 5's unit tests carry it.
+The `0x134C0` step (ported when the wiring exposed a count-drain stall past the
+window) is unit-proven to drain and is oracle-consistent. See
+`docs/superpowers/plans/2026-09-18-title-residuals-report.md`.
+
 Streamed Smacker audio (2b-ii), menus/EEPROM (4), the fight engine (5) and the
-deferred attract/effect subsystem (`0x11000`, `0x13C70`, `0x38A38`, `0x2BF08`)
-remain (`/* PORT: */` markers).
+deferred attract subsystem (`0x11000`, `0x38A38`, `0x389C4`, `0x292AC`,
+`0x4F644`) and the `0x13xxx` effect render path remain (`/* PORT: */` markers).
 
 ### Build and run
 
@@ -176,10 +194,11 @@ full ladder in order — a `--check 60` headless smoke run, then the
 oracle-required test suite, then `make smk-oracle`, `make title-oracle`,
 the GRA-extract oracle tests, and finally `symbols.h` idempotence.
 
-The title oracle needs the pinned capture and the port dump:
+The title oracle compares the port dump against captures of the **un-pinned**
+original (the ported overlay runs):
 
 ```bash
-make title-pin                                   # patch /tmp/pr_title_pin/PRAGE.EXE (writes /tmp only)
+make title-pin                                   # patch only the 4 consumed RNG draws into /tmp/pr_title_pin/PRAGE.EXE (writes /tmp only)
 make title-oracle                                # align the port dump into data/title-captures/* and compare
 ```
 

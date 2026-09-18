@@ -62,9 +62,9 @@ frame loop is reached through `0x20C10`:
   0x389C4, 0x38A38   when DAT_00107A54 != 0
   0x24C5C   per-frame update
   process table 2: PTR_FUN_000A86C4 + bitmask _DAT_00104AEC (render)
-  DAT_00104AF4++   frame counter
-  0x134C0
-  pacing compare DAT_0010150C vs DAT_00101508
+   DAT_00104AF4++   frame counter
+   0x134C0           (ported: `effects_step`, the effect list step/age)
+   pacing compare DAT_0010150C vs DAT_00101508
 
 0x24C5C   per-frame update
   DAT_000EF6DC++                          frame counter
@@ -243,13 +243,38 @@ is sub-project 2b-ii and not ported. See
   `12`/`111`/`0`, giving `iVar1 = 12`, `iVar2 = 0x1E40`, `DS_00107A50 = 0x2420`,
   `DS_00107A3A = 0x121`, `logo+0x34 = -81`, `logo+0x36 = 8`, `logo+0x2C = 0xAA`.
   The non-zero `iVar1` is what makes the logo move. The capture-only pinned
-  `PRAGE.EXE` patches those three draws (plus the anim opcode-8 site and
-  `0x2BF08`) in place so the original produces the same values; there is no
-  stub or instrument in the port (`tools/title_pin.py`).
+  `PRAGE.EXE` patches only the four behaviour sites — those three draws plus the
+  anim opcode-8 site — in place so the original produces the same values; there
+  is no stub or instrument in the port (`tools/title_pin.py`). 4a-iii removed a
+  former fifth site that `ret`'d `0x2BF08`, so the oracle now compares the true
+  original.
 * **The caption.** `0x1C500(0x15)` → `0x474E4` decodes string id `0x15` from
   `ENGLISH.TXT` (`THE FUTURE...`) into `DS_00102760` via the `0x1E75C`/`0x1E808`
   lock pair. `0x47370`'s paged-memory loader is replaced by a direct
   `ENGLISH.TXT` read into the buffer at `0x3800000`.
+* **The message overlay `0x2BF08` (4a-iii, ported).** The `0x11D04` tail's tick
+  (`flow.c`, `game_overlay_step`) draws a centred `sprintf("%s:%d",
+  game_string_get(0x46), DS_00105C00)` → `CREDITS:5` on every frame from the
+  `DS_00105D60 == 0` / `DS_00105C00 != 0` branch (no `&0x1F` gate; the raw
+  `0x2BF7D`–`0x2BFCD` arm). `FUN_0002CAA8` is `DS_00105D60 == 0`; the
+  `FUN_0002F198`/`FUN_0002F4BC`/`FUN_0002F280` text trio is already ported. The
+  runtime inputs `DS_00105C00 = 5` (screen value) and `DS_00105C05 = 1` (text
+  row; screen rows 7–12) are seeded for the no-input oracle window; the live
+  credit countdown (`FUN_0002C304`/`FUN_0002CA48`/`FUN_0002CA7C` via `0x11F28`)
+  is a declared 4b gap. Diagnosis:
+  `../../docs/superpowers/plans/2026-09-18-bf08-overlay-diagnosis.md`.
+* **The effect list `0x13xxx` (4a-iii, ported).** `port/src/game/effects.{c,h}`
+  owns the two sentinels `DS_000FCCE0`/`DS_000FCCE8`, the lock `DS_0009AF3C`,
+  the count `DS_0009AF3D`, the intrusive link primitives (`0x249B0` insert-after,
+  `0x249C0` insert-before, `0x249D0` unlink), the free-list build `0x13ADC`, the
+  spawn `0x13C70` (record stride `0x814`, 24 records `0xF0B00`..`0xFC4CC`), the
+  per-entry teardown `0x13420`, the clear `0x13DF0`, and the step/age `0x134C0`
+  (`effects_step`, called from the master loop at `flow.c:779`).
+  `actors_reset` calls `0x13ADC`/`0x13DF0` at `0x2BBB8`/`0x2BB2B`; the title's
+  `0x123EA` calls `effects_spawn(node, 3u, 0x419786C)`. The spawn fills a record
+  but the effect **render** path is unported, so `0x13C70` is a declared coverage
+  gap carried by unit tests; `0x134C0`'s drain is unit-proven. Details:
+  `../../docs/superpowers/plans/2026-09-18-title-residuals-report.md`.
 * **`--check N`** (Task 15) runs exactly N master-loop iterations headless and
   writes `frame_NNNN.ppm`/`.pal`/`.idx`; exit code is the assertion-failure
   count. It is no longer used as a title oracle — `make title-oracle` is.

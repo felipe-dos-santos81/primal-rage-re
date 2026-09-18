@@ -194,17 +194,39 @@ replaced by a direct `ENGLISH.TXT` read.
 
 The title is proven **pixel-exact** against the original by
 `tools/title_compare.py`: `make title-pin` builds a capture-only `PRAGE.EXE`
-copy with the five consumed RNG draws patched in place, `tools/title_capture.py`
-captures the pinned original in DOSBox-X (one file per distinct game frame —
-capture index ≠ game-frame index at 60 Hz logic / 70.09 Hz mode 13h), and
-`make title-oracle` aligns the port dump into **two independent captures** and
-explains every captured frame as a byte-offset splice of two adjacent port
-frames (a tear model: the original updates the aperture at `0x255CC` with no
-retrace wait), with zero pixel tolerance and zero unexplained frames. The
-determinism proof is that both captures agree on the clean samples; with
-`PR_ORACLE_REQUIRED=1` and fewer than two captures the oracle fails rather than
-reporting incomplete. Full record:
-`../docs/superpowers/plans/2026-09-17-actor-system-report.md`.
+copy with the four behaviour sites patched in place (the three entry RNG draws
+plus the anim opcode-8 draw), `tools/title_capture.py` captures the **un-pinned**
+original in DOSBox-X (one file per distinct game frame — capture index ≠
+game-frame index at 60 Hz logic / 70.09 Hz mode 13h), and `make title-oracle`
+aligns the port dump into **two independent captures** and explains every
+captured frame as a byte-offset splice of two adjacent port frames (a tear
+model: the original updates the aperture at `0x255CC` with no retrace wait),
+with zero pixel tolerance and zero unexplained frames. The determinism proof is
+that both captures agree on the clean samples; with `PR_ORACLE_REQUIRED=1` and
+fewer than two captures the oracle fails rather than reporting incomplete. Full
+record: `../docs/superpowers/plans/2026-09-17-actor-system-report.md`.
+
+### Title-path residuals (sub-project 4a-iii)
+
+4a-ii's oracle proved a **pinned** original: `tools/title_pin.py` also ret'd
+`0x2BF08`, hiding the title overlay. 4a-iii removed that site, re-captured the
+true original, and ported the divergence. Two pieces:
+
+* **`0x2BF08`**, the `0x11D04` tail's per-frame message tick, ported in
+  `game/flow.c` (`game_overlay_step`): a centred `sprintf("%s:%d",
+  game_string_get(0x46), DS_00105C00)` (`CREDITS:5`) from the
+  `DS_00105D60 == 0` / `DS_00105C00 != 0` branch. Proven by the oracle (green on
+  the un-pinned captures, red when stubbed). Seeded inputs `DS_00105C00 = 5`,
+  `DS_00105C05 = 1`; the live credit countdown is a 4b gap. Diagnosis:
+  `../docs/superpowers/plans/2026-09-18-bf08-overlay-diagnosis.md`.
+* **The `0x13xxx` effect list**, ported in the new `port/src/game/effects.{c,h}`:
+  list primitives `0x249B0`/`0x249C0`/`0x249D0`, free-list build `0x13ADC`,
+  spawn `0x13C70`, per-entry teardown `0x13420`, clear `0x13DF0` and step/age
+  `0x134C0`. Wired in `actors_reset` (`0x2BBB8`/`0x2BB2B`) and the title's
+  `0x123EA` (`effects_spawn(node, 3u, 0x419786C)`). `0x13C70`'s render path is
+  unported, so the spawn is a declared coverage gap carried by unit tests;
+  `0x134C0`'s drain is unit-proven. Full record:
+  `../docs/superpowers/plans/2026-09-18-title-residuals-report.md`.
 
 ## Next steps
 
@@ -231,9 +253,12 @@ reporting incomplete. Full record:
    sprite compositor (sub-project 4a-i, report at
    `../docs/superpowers/plans/2026-09-17-sprite-compositor-report.md`) and the
    actor system + title oracle (sub-project 4a-ii, report at
-   `../docs/superpowers/plans/2026-09-17-actor-system-report.md`). Streamed
-   Smacker audio (2b-ii), menus/EEPROM (4), the fight engine (5) and the
-   deferred attract/effect subsystem (4d: `0x11000`, `0x13C70`, `0x38A38`,
-   `0x2BF08`) remain. The AIL sound-id table `DAT_000BBDC8` is **static in
-   the EXE** (stride 12; byte 0 = case, dword +4 = handle), so its id → resource
-   mapping is extractable; it is not yet extracted.
+   `../docs/superpowers/plans/2026-09-17-actor-system-report.md`) and the
+   title-path residuals (sub-project 4a-iii, report at
+   `../docs/superpowers/plans/2026-09-18-title-residuals-report.md`). Streamed
+   Smacker audio (2b-ii), menus/EEPROM (4), the fight engine (5), the
+   deferred attract subsystem (4d: `0x11000`, `0x38A38`, `0x389C4`, `0x292AC`,
+   `0x4F644`) and the `0x13xxx` effect **render** path remain. The AIL sound-id
+   table `DAT_000BBDC8` is **static in the EXE** (stride 12; byte 0 = case,
+   dword +4 = handle), so its id → resource mapping is extractable; it is not
+   yet extracted.
