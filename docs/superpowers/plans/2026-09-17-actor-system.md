@@ -1552,7 +1552,11 @@ So the comparator must, with **zero pixel tolerance**:
    over *N* and *b* is fine and uses the port as the hypothesis, so a wrong port
    frame cannot be explained. The splice is at a byte offset, not a row boundary:
    two measured captures split inside a scanline (`row 144 = port32[:732] ++
-   port31[732:]`);
+   port31[732:]`). If no single splice explains a frame, accept it only as
+   byte-exact outside **one** transition row whose every byte equals the byte at the
+   same offset in one of those two adjacent port frames — the original's copy writes
+   dwords, so a row caught mid-write is dword-interleaved (measured: one frame,
+   best splice still 22 bytes wrong, zero bytes from any third source);
 2. require **every** port frame in 1..94 to be exhibited by both captures (its bytes
    appear at their correct offsets, as some frame's prefix or suffix). At most one
    frame at each end of the window (0 and 95, the boot→title and title→state-2

@@ -432,13 +432,19 @@ The gate is therefore defined tear-aware, still with **zero pixel tolerance**:
 every captured frame must be exactly `port[N][0..b) ++ port[N+1][b..192000)` for some
 port frame *N* and splice byte *b* (a clean frame is `b = 0`; the splice is at a byte
 offset, not a row boundary, because two measured captures split inside a scanline —
-`row 144 = port32[:732] ++ port31[732:]`). Every port frame in the window must be
-exhibited by at least one capture (its bytes appear at their correct offsets, as some
-frame's prefix or suffix). Both captures must satisfy this independently, and their
-clean (`b = 0`) samples must be byte-identical to each other. The splice byte is
-derived from the data, never supplied as a tolerance, and no threshold, mask, crop or
-frame-skip is permitted. No captured frame may be explained by bytes from
-non-adjacent port frames.
+`row 144 = port32[:732] ++ port31[732:]`), **or**, failing that, must be byte-exact
+everywhere outside a single transition row, with every byte of that one row equal to
+the byte at the same offset in one of those two adjacent port frames. The second form
+is required because the original's copy writes dwords, so a row caught mid-write has
+its changed dwords interleaved between the two frames and no prefix/suffix split can
+represent it (measured: one frame in one capture, best splice still 22 bytes wrong,
+all in row 54, with zero bytes from any third source). Every port frame in the window
+must be exhibited by at least one capture (its bytes appear at their correct offsets,
+as some frame's prefix or suffix or transition-row candidate). Both captures must
+satisfy this independently, and their clean (`b = 0`) samples must be byte-identical
+to each other. The splice byte and the transition row are derived from the data,
+never supplied as a tolerance, and no threshold, mask, crop or frame-skip is
+permitted. No captured frame may be explained by bytes from non-adjacent port frames.
 
 **Coverage refinement, 2026-09-18 (human-approved).** At 60 Hz logic against a
 70.09 Hz sampler the capture can lose a whole game frame, and the two it loses are the
