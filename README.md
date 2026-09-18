@@ -152,7 +152,10 @@ oracle is now green against the un-pinned original (0 unexplained, port frames
 95/96 exhibited) and turns red when `0x2BF08` is stubbed back out, so it proves
 the overlay. `0x13C70`'s spawn is a **declared coverage gap** — it fills a
 record, but the effect render path is unported, so the spawn alone draws nothing
-and the oracle cannot distinguish it from absent; Task 5's unit tests carry it.
+and the oracle stays green either way; once `0x134C0` is ported the spawn is
+jointly responsible for exhibiting frame 95 (removing it reverts frame 95 to
+`missing`, which the oracle discloses rather than fails), so the spawn's own
+gate is Task 5's unit tests.
 The `0x134C0` step (ported when the wiring exposed a count-drain stall past the
 window) is unit-proven to drain and is oracle-consistent. See
 `docs/superpowers/plans/2026-09-18-title-residuals-report.md`.
@@ -198,7 +201,7 @@ The title oracle compares the port dump against captures of the **un-pinned**
 original (the ported overlay runs):
 
 ```bash
-make title-pin                                   # patch only the 4 consumed RNG draws into /tmp/pr_title_pin/PRAGE.EXE (writes /tmp only)
+make title-pin                                   # patch only the four behaviour sites (three entry RNG draws + the anim opcode-8 draw) into /tmp/pr_title_pin/PRAGE.EXE (writes /tmp only)
 make title-oracle                                # align the port dump into data/title-captures/* and compare
 ```
 

@@ -114,18 +114,23 @@ Free-list answer from Task 4: **the free list IS populated before the title's
 empties it before the spawn. Task 6 wired `effects_init`/`effects_clear` into
 `actors_reset` and the spawn into the title.
 
-**`0x13C70` does not move the composite in-window, and the oracle does not prove
-it.** A probe (since reverted) showed the spawn fires exactly once, on dump frame
-95 (`src=0x107628`, `count=31`), which the oracle reports as `missing [0,95]`
-and does not compare. There is no ported renderer that draws the spawned effect
-record, so the spawn alone produces no composite change. Stubbing the spawn out
-leaves the oracle green (a missing frame is disclosed, not failed), so the oracle
-cannot distinguish present from absent — this is precisely spec Decision 5's
-coverage gap. It is carried by Task 5's unit tests: spawn/teardown, the link
-direction (`[+0]`=next, `[+4]`=prev; insert-after vs insert-before proved with
-two records), the full 24-record pool, count bounds (signed; one-past-count left
-untouched) and the NULL-resolve guard — all mutation-proven (delete zero-loop →
-3 fails; swap insert direction → 9 fails; delete NULL guard → SIGSEGV).
+**`0x13C70`'s gate is the unit proof; the oracle does not falsify the spawn
+alone.** A probe (since reverted) showed the spawn fires exactly once, on dump
+frame 95 (`src=0x107628`, `count=31`). There is no ported renderer that draws the
+spawned effect record of its own, so the spawn alone draws nothing. The oracle
+stays **green either way**: after Task 7, the spawned type-3 record is what
+`effects_step` (`0x134C0`) ages to reach the type-3 first-wrap palette pass,
+which exhibits frame 95 (`missing [0]`); with the spawn removed, frame 95
+reverts to missing (`missing [0,95]`). That output does differ, so the spawn and
+the step are **jointly** responsible for exhibiting frame 95 — but a missing
+frame is disclosed, not failed, so removing the spawn does not turn the oracle
+red. This is a consistency observation, not a falsification of `0x13C70` on its
+own, which is why the spawn's gate is Task 5's unit tests (spec Decision 5's
+declared coverage gap): spawn/teardown, the link direction (`[+0]`=next,
+`[+4]`=prev; insert-after vs insert-before proved with two records), the full
+24-record pool, count bounds (signed; one-past-count left untouched) and the
+NULL-resolve guard — all mutation-proven (delete zero-loop → 3 fails; swap
+insert direction → 9 fails; delete NULL guard → SIGSEGV).
 
 The `0x13xxx` render path beyond the spawned record remains unported and stays a
 declared gap (spec §2 non-goal, §6).
@@ -213,7 +218,7 @@ Carried:
 * Streamed Smacker audio (2b-ii) — dropped from this cycle (both movies silent,
   no ported caller); until a caller exists.
 
-### Deferred minors (ledger)
+### Deferred and outstanding minors (ledger + reviews)
 
 * Task 1: the plan errata's backup command
   (`cp -R data/title-captures data/title-captures.pinned-backup`) writes under
@@ -221,13 +226,26 @@ Carried:
   used scratch outside the repo, the plan text still needs correcting.
 * Task 1: `tools/tests/test_title_pin.py` relies on `len(PATCH_SITES)` rather
   than a literal `== 4` assert.
-* Task 2/Task 4: `task-4-report.md:74` still says "next (state-1) frame",
+* Task 4: `task-4-report.md:74` still says "next (state-1) frame",
   inconsistent with the corrected args doc §4.
 * Task 5: the fix report's mutation-proof line numbers are stale
   (`:97/98/99` vs the committed `:110-112`); values match, proof genuine.
-* Task 7 review minors: three explanatory comments are not prefixed
-  `PORT:`/`TODO(verify):`; a latent type-5 drain-without-removal path is
-  unreachable while the spawn hardcodes type 3.
+
+Only these four are ledger-labelled `(deferred)`. Review minors also recorded
+but not fixed and not ledger-labelled `(deferred)`:
+
+* Task 1: the 4a-ii report wording ("nothing in `data/` was modified" vs the
+  regenerated captures).
+* Task 1b: the test uses `--frames 2` with a 1-frame dir; the RED trace cites the
+  pre-fix line number; the all-empty determinism case prints `INCOMPLETE` not
+  `VACUOUS`.
+* Task 3: `flow.c` fetches the string before the `&0x20` arm while the original
+  fetches per arm (semantically identical); `task-3-report.md`'s latch-write list
+  includes `0x2C024` (`add esp,0x14`); inline address comments sit just outside
+  the strict comment policy.
+* Task 7: three explanatory comments not prefixed `PORT:`/`TODO(verify):`; a
+  latent type-5 drain-without-removal path, unreachable while the spawn hardcodes
+  type 3.
 
 Resolved in-cycle, not carried: the `title_compare.py:241` total-non-alignment
 crash (Task 1b); the Task 6 count-drain stall (Task 7).
