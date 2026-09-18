@@ -5,6 +5,7 @@
  * Scope (Task 14): the title-screen path is live. Every call owned by a later
  * sub-project is stubbed where it is reached and named in a PORT comment. */
 #include "game/flow.h"
+#include "game/actors.h"
 #include "game/movie.h"
 #include "game/rng.h"
 #include "mem.h"
@@ -114,17 +115,6 @@ static void game_fatal(const char *what)
 {
     fprintf(stderr, "Primal Rage: fatal init error: %s\n", what);
     exit(1);
-}
-
-/* 0x336C0: resets the palette dirty-list head and marks every record unused. */
-static void palette_list_init(void)
-{
-    DSD(DS_00107798) = DS_00107498;
-    for (u32 i = 0; i < 0x180; i += 0x10) DSD(DS_0010749C + i) = 0xFFFFFFFFu;
-    DSD(DS_000BD470) = 0;
-    /* PORT: 0x336C0 then enqueues the initial palette via 0x33734. With no VGA
-     * DAC to reset, the port just clears gfx_dac. */
-    memset(gfx_dac, 0, sizeof gfx_dac);
 }
 
 /* 0x33734: appends a raw-pointer palette record { ptr; first; count; flag }. */
@@ -484,6 +474,12 @@ void game_init(void)
     /* PORT: DPMI locks 0x10C30/0x10D34/0x1ADAC/0x1ADE4/0x10D0C are no-ops. */
     if (res_load_index(s_game_dir, index_path) <= 0) {
         game_fatal("resource INDEX load failed");
+        return;
+    }
+    /* The actor and pset pools are the two allocations res_load_index performs
+     * (0x1B120's DS_001014EC/DS_001014F4); actors_init validates them. */
+    if (!actors_init()) {
+        game_fatal("actor pool allocation missing");
         return;
     }
     surface_setup();        /* 0x51F45 */

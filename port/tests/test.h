@@ -41,5 +41,6 @@ int test_movie(void);
 int test_sprite(void);
 int test_render(void);
 int test_rng(void);
+int test_actors(void);
 
 #endif /* PR_TEST_H */

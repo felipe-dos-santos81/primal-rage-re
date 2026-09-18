@@ -4,8 +4,21 @@
 #include "../mem.h"
 #include "../symbols.h"
 #include <stddef.h>
+#include <string.h>
 
 u8 gfx_dac[256][3];
+
+/* 0x336C0: resets the palette dirty-list head and marks every record unused.
+ * PORT: flow.c's game_init and game/actors.c's actors_reset() (0x2BAF4) share
+ * this one owner; the original's trailing 0x33734 initial-palette enqueue has no
+ * VGA DAC to reset, so the port just clears gfx_dac. */
+void palette_list_init(void)
+{
+    DSD(DS_00107798) = DS_00107498;
+    for (u32 i = 0; i < 0x180; i += 0x10) DSD(DS_0010749C + i) = 0xFFFFFFFFu;
+    DSD(DS_000BD470) = 0;
+    memset(gfx_dac, 0, sizeof gfx_dac);
+}
 
 void gfx_flush_palette(void)
 {

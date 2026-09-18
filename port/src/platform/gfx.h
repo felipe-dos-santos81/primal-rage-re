@@ -20,6 +20,11 @@ extern u8 gfx_dac[256][3];
  * not pass 0x100. Consumed records are marked first = -1. */
 void gfx_flush_palette(void);
 
+/* PORT: 0x336C0. Resets the palette dirty-list head, marks every record unused
+ * and clears the DAC. Owned here because gfx_flush_palette() owns the same
+ * dirty-list; flow.c's game_init and actors_reset() (0x2BAF4) both call it. */
+void palette_list_init(void);
+
 /* Converts w*h bytes of palette indices through gfx_dac into RGB24 and hands the
  * frame to host_present_rgb(). */
 void gfx_present(const u8 *indices, int w, int h);
