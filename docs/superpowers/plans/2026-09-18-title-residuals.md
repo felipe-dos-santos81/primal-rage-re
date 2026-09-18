@@ -350,8 +350,9 @@ git commit -m "docs: pin the 0x13xxx effect-subsystem register bindings"
 - Modify: `port/CMakeLists.txt` (add `src/game/effects.c` to `prage_core` and `tests/test_effects.c` to `run_tests`)
 
 **Interfaces:**
-- Consumes: the bindings, stride, count and link order from `2026-09-18-title-residuals-args.md`.
-- Produces: `void effects_init(void)` (`0x13ADC`), `u32 effects_spawn(u32 source_rec, u32 byte_arg)` (`0x13C70`, returns 0 when no free record), `void effects_clear(void)` (`0x13DF0`), `int effects_active(void)` (`DS_0009AF3D`), and the private link/unlink helpers.
+- Consumes: the bindings, stride (`0x814`), count (24, `0xF0B00`..`0xFC4CC`), link order (`[+0]`=next, `[+4]`=prev) and the free-list-populated answer from `docs/superpowers/plans/2026-09-18-title-residuals-args.md`.
+- Produces: `void effects_init(void)` (`0x13ADC`), `effects_spawn(...)` (`0x13C70`, returns 0 when no free record), `void effects_clear(void)` (`0x13DF0`), `int effects_active(void)` (`DS_0009AF3D`), and the private link/unlink helpers.
+  **`effects_spawn` takes three arguments, not two** — the pinned binding in the args doc includes the `EBX` handle (the call site passes `0x419786C` at `0x123DE`), and the entry count is read from the **source** record's `+0xC`. Use the args doc's exact register order.
 
 - [ ] **Step 1: Write the failing tests**
 
