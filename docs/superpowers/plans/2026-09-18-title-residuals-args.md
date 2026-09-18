@@ -32,9 +32,12 @@ contradiction is resolved in §3.
 | `0x13420` | per-entry teardown | `EAX` = node | void | unlinks from active list, runs type dispatch, re-inserts into free list |
 | `0x1B544` | handle → pointer | `EAX` = handle | `EAX` = resolved ptr | one register arg only; see §6 |
 
-`EBX`, `ECX`, `EDX` and `ESI` are callee-preserved by every one of these
-except where a caller uses them as scratch; the `__regparm3` signatures in
-`prage.c` (`undefined8`, `param_2`, `extraout_*`) are decompiler artefacts.
+The link/unlink helpers and `0x1B544` push and pop the caller's `EBX`/`ECX`/
+`EDX` (and `ESI` for `0x1B544`), so those are restored on return. That does
+**not** make `EBX`/`ECX`/`EDX` uniformly "callee-preserved arguments": `0x13C70`
+consumes `EBX` as its handle argument, and `0x249B0`/`0x249C0` consume `EDX` as
+the new node. The `__regparm3` signatures in `prage.c` (`undefined8`,
+`param_2`, `extraout_*`) are decompiler artefacts.
 
 ---
 
@@ -369,13 +372,20 @@ head-inserts into the active list.
 `FUN_000249b0` (`prage.c:11869`) and `FUN_000249c0` (`prage.c:11886`) write
 `param_2[1]` as the back-pointer and `*param_2` as the forward pointer — `[0]`
 is next, `[1]` (dword index; byte `+4`) is prev. The brief's worry comes from
-Ghidra's register model, and the real hazard is visible in `FUN_00013c70`
-(`prage.c:2709/2711`): it names the free-list *sentinel* address `puVar5` and
-writes `puVar5[2] = source`, `+0xf`, `+0xe` etc. to it, whereas the raw
-`0x13C7F 8b 1d e8 cc 07 00  mov ebx,[0x7cce8]` shows the record is
-`free_head.next` (in `EBX`), and the sentinel is only the anchor. Raw bytes
-win. (The brief's `prage.c:2690-2720` is `FUN_00013b3c`/`FUN_00013c70`, not
-the primitives; the primitives are at `prage.c:11869`, `:11886`, `:11903`.)
+Ghidra's regparm model, and the real Ghidra artefact is the `FUN_00013c70`
+signature: `void __regparm3 FUN_00013c70(undefined4 param_1, undefined1
+param_2)` (`prage.c:2699`) drops the `EBX` argument entirely and models the
+source record as the hidden `extraout_ECX` (`prage.c:2723` `puVar5[2] =
+extraout_ECX`, `:2726` the `+0xC` count). The record pointer itself is correct:
+`puVar5 = DAT_000fcce8` (`prage.c:2709`) is a **value** load of the free-list
+head pointer — Ghidra treats the global as a pointer variable, as its own
+`prage.c:2606 DAT_000fcce8 = &DAT_000fcce8;` shows — so `puVar5` is the first
+free record, and `prage.c:2721-2746` writes that record. The raw
+`0x13C7F 8b 1d e8 cc 07 00  mov ebx,[0x7cce8]` agrees: the record is
+`free_head.next` (in `EBX`). The decompiler is right about the record; what it
+cannot show is the `EBX` handle argument. Raw bytes win for the arg binding.
+(The brief's `prage.c:2690-2720` is `FUN_00013b3c`/`FUN_00013c70`, not the
+primitives; the primitives are at `prage.c:11869`, `:11886`, `:11903`.)
 
 ---
 
@@ -425,9 +435,15 @@ caller's tail — it does **not** reach `0x123EA`:
 00012357  e904010000        jmp  0x12460          ; end of this frame
 ```
 
-On the next frame the state-`1` arm (`0x121AA cmp al,1; 0x121AE jbe 0x1235C`)
-reaches `0x123EA` and calls `0x13C70`. `0x13C70` will therefore find the
-24-record free list built by the previous (state-0) frame.
+The state-`1` arm (`0x121AA cmp al,1; 0x121AE jbe 0x1235C`) does **not** reach
+`0x123EA` immediately. It decrements the countdown at `0x70A66` by `0x10` each
+frame (`0x12365 sub ebx,0x10`) and jumps to `0x12402` while
+`(value - 0x10) > 0x10` (`0x12372 cmp eax,0x10; 0x12375 jg 0x12402`). State 0
+armed that countdown with `0x600` (`0x12304 mov eax,0x600; 0x1230B mov word
+[0x70a66],ax`), so `0x123EA` is first reached many frames into state 1, after
+the fade. The free list built in the state-0 frame is untouched across all
+those frames, so the answer is unchanged: when `0x13C70` finally runs it finds
+the 24-record pool.
 
 The only `0x13DF0` callers are `0x29B74`, `0x2BAF4`, `0x43738`, `0x444C8`
 (`calls.csv`). Only `0x2BAF4` is on the title path, and it calls `0x13ADC`
@@ -503,15 +519,19 @@ param_2)` and `CONCAT44(param_2, …)` are wrong: `EDX` is overwritten from `ESI
 at `0x1B55F` before any use, and restored from the stack at the epilogue, so
 the caller's `EDX` is not an argument and not part of the result.
 
-`res_resolve` (`port/src/platform/res.c:164`) implements exactly the
-`0x1B57C`-skipped fast path: `index = handle >> 23`, bounds-check against
-`DS_001014F0`, take `DSD(table + index*20 + 16)`, return
-`mem + data + (handle & 0x7FFFFF)`. For the effect slice this is sufficient
-**iff** the title handle's entry has flag `0x1000000`; otherwise the original
-takes the `[block+8]` / on-demand branch that `res_resolve` does not port and
-would return NULL. Task 5 must treat the new work as: call `res_resolve(handle)`
-and read dwords from `resolved + 4 + 4*i`; no new resolver logic unless the
-title entry is not flagged `0x1000000`.
+`res_resolve` (`port/src/platform/res.c:164`) implements the `0x1B57C`-skipped
+fast path: `index = handle >> 23`, take `DSD(table + index*20 + 16)`, return
+`mem + data + (handle & 0x7FFFFF)`. It adds two checks the original fast path
+does not have — `index >= DSD(DS_001014F0)` and `data == 0` — and returns NULL
+on those. For the effect slice this is sufficient **iff** the title handle's
+entry has flag `0x1000000`; otherwise the original takes the `[block+8]` /
+on-demand branch that `res_resolve` does not port. In that case (entry
+unflagged but `entry+0x10` nonzero) `res_resolve` returns a pointer from the
+descriptor — `mem + data + offset` — rather than the original's
+`[[entry+0x10]+8] + offset`: non-NULL but wrong. It returns NULL only when the
+index is out of range or `entry+0x10 == 0`. Task 5 must treat the new work as:
+call `res_resolve(handle)` and read dwords from `resolved + 4 + 4*i`; no new
+resolver logic unless the title entry is not flagged `0x1000000`.
 
 The port handle to resolve is `EBX = 0x419786C` at the title call: index
 `0x419786C >> 23 = 8`, offset `0x419786C & 0x7FFFFF = 0x19786C`.
