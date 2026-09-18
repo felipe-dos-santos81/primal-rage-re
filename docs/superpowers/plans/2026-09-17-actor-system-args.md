@@ -46,6 +46,7 @@ register argument is the `unaff_EBX` the decompiler leaves unaffiliated
 
 The descriptor byte that reaches `rec+0x48` is `desc+0x04` (`0x2AEAD`
 `mov al, [ebp+4]`); for both title descriptors it is `0x00` (raw bytes in §5.1).
+Arg 5's low 16 bits are also handed to `0x2AC80` as its argument (§3).
 
 ## 1. `0x2AE14` call sites in the title `0x121A0`
 
@@ -70,7 +71,7 @@ The descriptor byte that reaches `rec+0x48` is `desc+0x04` (`0x2AEAD`
 000122cf  bb001e0000       mov  ebx, 0x1e00
 000122d4  b9e0000000       mov  ecx, 0xe0
 000122d9  29fb             sub  ebx, edi          ; edi = iVar1 << 6  (= 12 << 6 = 0x300)
-000122db  0500150000       add  eax, 0x1500       ; eax = iVar2/2      (= 0x1E40/2)
+000122db  0500150000       add  eax, 0x1500       ; eax = iVar2/2 + 0x1500 -> DS_00107A50 (= 0x2420)
 000122e0  8d96002a0000     lea  edx, [esi + 0x2a00]; esi = iVar2     (= 0x1E40)
 000122e6  66a3507a0800     mov  [0x87a50], ax
 000122ec  b830ac0100       mov  eax, 0x1ac30
@@ -160,28 +161,32 @@ matching Format reference G.
 
 ## 3. The `0x2AC80` free-list flag
 
-`0x2AE41` calls `0x2AC80`; before it only EAX/EDX are touched
-(`0x2AE33`/`0x35`) — ECX is still the argument saved at `0x2AE23`:
+`0x2AE41` calls `0x2AC80` with EAX set to the low 16 bits of arg 5:
 
 ```
 0002ae33  31c0             xor  eax, eax
 0002ae35  31d2             xor  edx, edx
 0002ae37  668b442428       mov  ax, [esp+0x28]    ; EAX = low16 of arg 5
 0002ae3c  668954242a       mov  [esp+0x2a], dx
-0002ae41  e83afeffff       call 0x2ac80           ; ECX == spawn arg 3
+0002ae41  e83afeffff       call 0x2ac80
 ```
 
-`0x2AC80` reads that caller ECX for the tail-insert flag:
+`0x2AC80` tests that argument, copied to ECX by its own prologue (not the
+caller's ECX):
 
 ```
 0002ac80  53               push ebx
-0002ac81  51               push ecx               ; preserve caller's ECX
+0002ac81  51               push ecx
 0002ac82  52               push edx
 0002ac83  56               push esi
-0002ac84  89c1             mov  ecx, eax          ; local record
+0002ac84  89c1             mov  ecx, eax          ; ECX = the argument (EAX)
+0002ac86  8b153c5b0800     mov  edx, [0x85b3c]
 ...
+0002acb1  e87a3d0000       call 0x2ea30
+0002acb6  30c9             xor  cl, cl
 0002acb8  89c3             mov  ebx, eax
-0002acba  80e504           and  ch, 4             ; caller's ECX bit 0x400
+0002acba  80e504           and  ch, 4             ; argument bit 0x400
+0002acbd  31c0             xor  eax, eax
 0002acbf  6689c8           mov  ax, cx
 0002acc2  85c0             test eax, eax
 0002acc4  750c             jne  0x2acd2
@@ -192,10 +197,18 @@ matching Format reference G.
 0002acd7  e8e49cffff       call 0x249c0           ; tail insert (active list)
 ```
 
-`and ch,4` tests bit 8 of the high byte of caller ECX, i.e. **bit 0x400**. The
-flag is therefore **spawn argument 3 (ECX)**, not argument 5. For the title,
-arg3 ∈ {0xFF, 0xE0, 0xE4, 2}; none has 0x400, so every title spawn head-inserts
-and the tail path is unreachable this cycle.
+`0x2AC84` `mov ecx, eax` overwrites ECX with the argument **before** the test, so
+the caller's ECX is irrelevant; `0x2ACB6` `xor cl,cl` then `0x2ACBA` `and ch,4`
+tests **bit 0x400 of that argument** (EAX on entry). Neither intervening call
+clobbers ECX: `0x249D0` (`53 52 8b 18 …`, eax/ebx/edx only) and `0x2EA30`
+(`52 8a 35 … 5a 90 c3`, eax/dh/dl only).
+
+The flag is therefore the **low 16 bits of spawn arg 5** — the same word the
+decompilation tests at `prage.c:15960` to select the parent-relative branch. For
+the title every spawn passes `[stack] = 0`, so bit 0x400 is clear and every title
+spawn head-inserts; the tail path is unreachable this cycle. Plan errata
+`66c989c` records the same `0x2AC84`/`0x2ACB6`/`0x2ACBA` basis and the
+`actor_alloc(u32 flags)` interface.
 
 ## 4. Argument order conclusion
 
@@ -207,16 +220,17 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5); /* 0x2AE14 */
 |---|---|---|
 | `desc` | EAX | descriptor pointer: `+0x00`→`rec+0x08`, `+0x04`→`rec+0x48`, `+0x05`→`rec+0x20/24`, `+0x06`→`rec+0x2E`, `+0x08`→`rec+0x28`, `+0x0A`→`rec+0x40`, `+0x0C`→`rec+0x2C`, `+0x10` palette handle |
 | `a2` | EDX | `rec+0x18` world x (normal); `rec+0x34` when flag 0x400 |
-| `a3` | ECX | `rec+0x49` layer byte and (when `rec+0x28 & 0x2000` is clear) `rec+0x32` x-velocity; **also** the `0x400` alloc-list flag passed to `0x2AC80` |
+| `a3` | ECX | `rec+0x49` layer byte and (when `rec+0x28 & 0x2000` is clear) `rec+0x32` x-velocity |
 | `a4` | EBX (Ghidra's `unaff_EBX`) | `rec+0x1c` world y (normal); `rec+0x36` when flag 0x400 |
-| `a5` | stack `[esp+0x28]` | flags word: low 16 → `rec+0x28` OR'd over `(desc+0x08 & 0xFFC3)`, byte1 bit `0x44` → `rec+0x28` high byte, high 16 → `rec+0x5A` layer; bit `0x400` selects the parent-relative branch |
+| `a5` | stack `[esp+0x28]` | flags word: low 16 → `rec+0x28` OR'd over `(desc+0x08 & 0xFFC3)` and passed as EAX to `0x2AC80` (§3), byte1 bit `0x44` → `rec+0x28` high byte, high 16 → `rec+0x5A` layer; bit `0x400` selects the parent-relative branch |
 
 ---
 
-## 5. Checkable findings that contradict the Task 5 brief
+## 5. Checkable findings (the plan's corrected errata)
 
-These are recorded here because the same disassembly that fixes the binding
-also decides them; see `task-5-report.md` for the escalation.
+These are recorded here because the same disassembly that fixes the binding also
+decides them; they are now the plan's own corrected errata (the regenerated brief
+and the render-check / `0x1E1` corrections), not open contradictions.
 
 1. **Render-check type values.** `rec+0x48` is written from `desc+0x04`
    (`0x2AEAD` `mov byte ptr [ecx+0x48], al`, `al = [ebp+4]`). The shipped

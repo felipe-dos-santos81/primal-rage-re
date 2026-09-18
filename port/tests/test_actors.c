@@ -8,7 +8,8 @@
 
 /* PORT: descriptor 0x9AC30 is the title logo's (data object offset 0x1AC30,
  * resident in mem[] after test_le). Its pinned title call-site arguments are
- * actor_spawn(0x9AC30, 0x4840, 0xE0, 0x1B00, 0) — args doc §1 site 2. */
+ * actor_spawn(0x9AC30, 0x4840, 0xE0, 0x1B00, 0); a5 = 0 is also the 0x2AC80
+ * alloc flag word — args doc §1 site 2, §3. */
 static void check_actor_spawn(void)
 {
     actors_reset();

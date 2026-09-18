@@ -141,10 +141,11 @@ void actors_reset(void)
      * inert as above. */
 }
 
-/* 0x2AC80: pop the free-list head and link it into the active list. The flag is
- * the caller's ECX; its 0x400 bit selects the tail insert (0x249C0) over the
- * head insert (0x249B0). 0x2AE14 passes its arg 3 (ECX), so actor_spawn threads
- * a3 here. */
+/* 0x2AC80: pop the free-list head and link it into the active list. The
+ * argument is EAX at entry (0x2AC84 `mov ecx, eax` copies it before the
+ * `xor cl,cl` / `and ch,4` test); its 0x400 bit selects the tail insert (0x249C0)
+ * over the head insert (0x249B0). 0x2AE14 supplies EAX = the low 16 bits of its
+ * arg 5 (`0x2AE37 mov ax, [esp+0x28]`), so actor_spawn threads a5 here. */
 u32 actor_alloc(u32 flag)
 {
     if (list_head(DS_00105B3C) == 0) return 0;
@@ -152,8 +153,8 @@ u32 actor_alloc(u32 flag)
     list_unlink(rec);
     if (flag & 0x400u)
         /* TODO(verify): transcribed but unreached by this cycle's only caller:
-         * the title spawns pass arg 3 = 0xE0/0xE4/0xFF (and 2 via 0x38B18),
-         * none of which sets 0x400. */
+         * every title 0x2AE14 call passes a5 = 0, so the low 16 bits — and thus
+         * bit 0x400 — are clear. */
         list_insert_before(DS_00105BCC, rec);
     else
         list_insert_after(DS_00105BCC, rec);
@@ -285,12 +286,12 @@ static void spawn_mode1_cursor(u32 rec, u32 pset)
 
 /* 0x2AE14. The register arguments are pinned by disassembly in
  * docs/superpowers/plans/2026-09-17-actor-system-args.md: EAX=desc, EDX=a2,
- * ECX=a3, EBX=a4, and the flags word a5 on the stack. a3 is also the 0x2AC80
- * alloc flag (its ECX at the call). */
+ * ECX=a3, EBX=a4, and the flags word a5 on the stack. a5's low 16 bits are also
+ * the 0x2AC80 alloc flag (EAX at that call). */
 u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
 {
     const u8 *dp = (const u8 *)desc;
-    u32 rec = actor_alloc(a3);
+    u32 rec = actor_alloc(a5);
     if (rec == 0) return 0;
 
     u32 index = (rec - pool_base()) / ACTOR_REC_SIZE;
@@ -323,7 +324,7 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
     DSW(rec + 0x44) = 0;
     DSB(rec + 0x60) = 0;
     DSB(rec + 0x61) = 0;
-    DSW(rec + 0x40) = (u16)(extent << 6);
+    DSW(rec + 0x40) = (u16)(extent * 64);
     DSB(rec + 0x50) = DSB(rec + 0x51);
     DSB(rec + 0x54) = DSB(rec + 0x55);
     DSB(rec + 0x53) = DSB(rec + 0x55);
@@ -401,9 +402,10 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
         render_list_insert(pset);                   /* 0x1C390 + 0x1C3A0 */
         return rec;
     default:
-        /* PORT: per-type render check case 0x%02x is not ported. No title object
-         * reaches it: 0x9AC30 and 0x9AC94 both carry desc+0x04 = 0x00. Mirror
-         * the check's non-zero return (mark the record dead, return 0). */
+        /* PORT: the per-type render check case for this record's type is not
+         * ported. No title object reaches it: 0x9AC30 and 0x9AC94 both carry
+         * desc+0x04 = 0x00. Mirror the check's non-zero return (mark the record
+         * dead, return 0). */
         DSB(rec + 0x48) = 0;
         DSW(rec + 0x28) |= 8;
         return 0;

@@ -117,8 +117,8 @@ static void game_fatal(const char *what)
     exit(1);
 }
 
-/* 0x33734 palette_record now lives in platform/gfx.c (gfx.h), the dirty-list
- * owner; this file's init enqueue below calls the shared definition. */
+/* PORT: 0x33734 palette_record now lives in platform/gfx.c (gfx.h), the
+ * dirty-list owner; this file's init enqueue below calls the shared definition. */
 
 /* 0x51F45: binds the two offscreen buffers and builds the 200-entry scanline
  * offset table (0, 0x140, 0x280, ...). */

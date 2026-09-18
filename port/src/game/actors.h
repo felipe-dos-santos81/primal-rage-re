@@ -13,8 +13,9 @@
 int  actors_init(void);
 void actors_reset(void);
 /* Pops the free-list head and links it into the active list. `flag` is the
- * original's caller-ECX word (0x2AC80): its 0x400 bit selects the tail insert
- * (0x249C0) over the head insert (0x249B0). */
+ * original's EAX at the 0x2AC80 call (copied to ECX by 0x2AC84); its 0x400 bit
+ * selects the tail insert (0x249C0) over the head insert (0x249B0). 0x2AE14
+ * supplies the low 16 bits of its arg 5. */
 u32  actor_alloc(u32 flag);
 /* 0x2AE14. `desc` points at a descriptor in mem[]; the four register arguments
  * are a2=EDX, a3=ECX, a4=EBX and a5=the stack word, pinned by disassembly in
