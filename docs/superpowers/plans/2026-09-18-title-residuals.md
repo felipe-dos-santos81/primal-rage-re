@@ -40,10 +40,12 @@ Consequences, per the spec's Decision 4:
   **falsified**. The 4a-ii hypothesis that `0x2BF08` reaches the aperture only
   with an active message is wrong at the aperture level: it composites a small
   time-varying overlay on effectively **every** title frame.
-* The original Tasks 2–6 are **suspended** until Task 2's diagnosis; they resume
-  re-numbered once the cycle is re-specified. (Original Task 1 is done; original
-  Task 2 — the effect-subsystem register-bindings pin — returns if the effect
-  slice is re-scheduled.)
+* The original Tasks 2–6 were **suspended** by this errata; Task 2's diagnosis
+  has now re-specified them. Current schedule: Task 1 and Task 1b (done),
+  Task 2 (done, the diagnosis), **Task 3** (overlay port + seeded inputs),
+  **Task 4** (effect register bindings), **Task 5** (list primitives + effects
+  module), **Task 6** (wire), **Task 7** (falsifiability record + ladder). The
+  old conditional Task 5 is obsolete (see its note).
 
 The replacement schedule follows. Tasks 1's commit (`33a74e9`) and the un-pinned
 captures are retained.
@@ -215,7 +217,83 @@ git commit -m "title: drop the 0x2BF08 inert pin so the oracle covers the true o
 
 ---
 
-### SUSPENDED (was Task 2): Pin the effect-subsystem register bindings by disassembly
+### Task 3: Port the `0x2BF08` overlay and seed the captured values
+
+Diagnosis: `docs/superpowers/plans/2026-09-18-bf08-overlay-diagnosis.md`. The
+original draws a centred `CREDITS:5` line at rows 7–12 on **every** frame,
+through the ungated `DS_00105C00 != 0` branch of `0x2BF08`. All the rendering is
+already ported; only the control flow and the data are new.
+
+**Files:**
+- Modify: `port/src/game/flow.c:863-875` (the `0x2BF08` PORT marker) and the
+  init pin block near `flow.c:698-705`
+- Modify: `port/tests/test_flow.c`
+
+**Interfaces:**
+- Consumes: `game_string_get` (`flow.c:254`), `text_cursor_set` (`0x2F198`),
+  `text_cursor_hold` (`0x2F4BC`), `text_cells_release` (`0x2F280`), all already
+  ported and declared in `game/actors.h` / `game/flow.h`.
+- Produces: a real `0x2BF08` in the `0x11D04` tail; pinned `DS_00105C00 = 5` and
+  `DS_00105C05 = 7`.
+
+- [ ] **Step 1: Pin the raw call sites before writing code**
+
+`0x2BF08` and its callees are `__regparm3`, and the decompiler is already known
+to misstate this function: `prage.c:16694` shows `FUN_0001c500(DAT_00105c00)`
+where the raw bytes are `mov eax,0x46; call 0x1c500`. Disassemble `0x2BF08`
+(file `0x7ED5C`) with capstone and record, per branch, the constant string id
+passed to `0x1C500` (`0x45` FREE PLAY, `0x46` CREDITS, `0x47` INSERT COINS) and
+the arguments to `0x2F198`/`0x2F4BC`/`0x2F280`. The diagnosis's §3 table is the
+expected shape; raw bytes decide.
+
+- [ ] **Step 2: Write the failing test**
+
+In `port/tests/test_flow.c`, assert on the globals for the four branches —
+early return on `DS_0009AD58 != 0`; the `DS_00105D60 == 0` FREE-PLAY
+hold/release pair keyed on `&0x20`; the `DS_00105C00 != 0` CREDITS branch; the
+`DS_00105C00 == 0` insert-coins `&0x1F`/latch sequence. Assert the latch
+`DS_00105C04` behaviour and that the CREDITS branch is reached on a
+`(&0x1F) != 0` frame while `DS_00105C00 != 0`.
+
+- [ ] **Step 3: Implement**
+
+Transcribe `prage.c:16666-16711` at the PORT marker, in the raw-pinned branch
+order, reusing the ported text functions. `FUN_0002CAA8` is
+`DS_00105D60 == 0`; `FUN_00065546` becomes
+`snprintf(buf, sizeof buf, "%s:%d", game_string_get(0x46), DS_00105C00)`.
+
+Then seed the two runtime values beside the existing `0x2D974` pin
+(`flow.c:698-705`), with a `/* PORT: */` marker and `/* TODO(verify): */`:
+`DS_00105C00 = 5`, `DS_00105C05 = 7`. The diagnosis forbids porting `0x2D974`
+here: the initial value is a save/config read, and the countdown
+(`FUN_0002CA48`/`FUN_0002CA7C` via the title input handler `FUN_00011F28`) is
+input-driven and belongs to 4b.
+
+- [ ] **Step 4: Run the tests and the oracle**
+
+Run: `cmake --build build && PR_GAME_DIR=data/game/C ./build/run_tests`
+Expected: `all checks passed`.
+
+Run: `make title-oracle`
+Expected: **green against the un-pinned captures** — this is the proof that
+`0x2BF08` moves the composite (spec Decision 5). If it does not go green,
+record the exact residual and stop; do not weaken the oracle.
+
+- [ ] **Step 5: Negative control**
+
+Stub `0x2BF08` back to a no-op (or revert the branch) and confirm
+`make title-oracle` drifts again on the overlay frames. Restore.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add port/src/game/flow.c port/tests/test_flow.c
+git commit -m "flow: port 0x2BF08's title overlay and pin its captured inputs"
+```
+
+---
+
+### Task 4: Pin the effect-subsystem register bindings by disassembly
 
 `__regparm3` hides the register arguments and the decompilation contradicts itself on the link-field order (`0x249B0` treats `[0]` as next, `0x249C0` treats `[1]` as next). No port code is written until this is pinned. Produces a committed companion doc, exactly as 4a-ii's `2026-09-17-actor-system-args.md` did.
 
@@ -261,7 +339,7 @@ git commit -m "docs: pin the 0x13xxx effect-subsystem register bindings"
 
 ---
 
-### SUSPENDED (was Task 3): Port the list primitives and the effects module
+### Task 5: Port the list primitives and the effects module
 
 **Files:**
 - Create: `port/src/game/effects.h`, `port/src/game/effects.c`
@@ -357,7 +435,7 @@ git commit -m "effects: port the 0x13xxx effect list (spawn 0x13C70, clear 0x13D
 
 ---
 
-### SUSPENDED (was Task 4): Wire the effect list into the engine and the title
+### Task 6: Wire the effect list into the engine and the title
 
 **Files:**
 - Modify: `port/src/game/actors.c:103-121` (`actors_reset`'s deferred `0x13DF0` marker)
@@ -395,46 +473,16 @@ git commit -m "flow: run the 0x13xxx effect list on the title path"
 
 ---
 
-### SUSPENDED (was Task 5): Port `0x2BF08` — only if Task 1 measured drift at frames 32/64/96
+### Obsolete (was Task 5): conditional `0x2BF08` port — superseded by Task 3
 
-**Files:**
-- Modify: `port/src/game/flow.c:863-875` (the existing `0x2BF08` PORT marker)
-
-**Interfaces:**
-- Consumes: `string_decode`/`game_string_get` (`0x1C500`), `text_cursor_hold` (`0x2F4BC`), `text_cursor_set` (`0x2F198`), `text_cells_release` (`0x2F280`) — all already ported and declared in `game/actors.h` / `game/flow.h`.
-- Produces: a real `0x2BF08` in the `0x11D04` tail.
-
-- [ ] **Step 1: Decide from Task 1's result**
-
-If Task 1's drift was empty, **skip this task**. Record in the Task 6 report that `0x2BF08` does not reach the aperture in the pinned window and is carried as a gap with its unit proof from Step 3.
-
-- [ ] **Step 2: Write the failing test**
-
-In `port/tests/test_flow.c`, add a check that exercises the two reachable branches of `prage.c:16666` (`0x2BF08`): the early return when `DS_0009AD58 != 0`, and the `(DS_000EF6DC & 0x1F) == 0` latch path setting `DS_00105C04 = 0`. Assert on the globals, not on rendering.
-
-- [ ] **Step 3: Transcribe the function**
-
-Implement `prage.c:16666-16711` at `flow.c:863-875`, in the original's gate order (`DS_0009AD58`, `FUN_0002CAA8`, `DS_000EF6DC & 0x1F`/`0x20`, `DS_00105C04`, `DS_00105C00`), reusing the ported text functions. `FUN_0002CAA8` and the `sprintf` `FUN_00065546` are the only new helpers; the `sprintf` branch is the `DS_00105C00 != 0` message-format path.
-
-- [ ] **Step 4: Run the tests and the oracle**
-
-Run: `cmake --build build && PR_GAME_DIR=data/game/C ./build/run_tests && make title-oracle`
-Expected: `all checks passed`, oracle green.
-
-- [ ] **Step 5: Negative control**
-
-Stub `0x2BF08` back to a no-op; confirm `make title-oracle` drifts at the frames Task 1 identified. Revert.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add port/src/game/flow.c port/tests/test_flow.c
-git commit -m "flow: port 0x2BF08, the 0x11D04 tail's message/text tick"
-```
+The old Task 5 ported `0x2BF08` only if Task 1's drift landed at frames 32/64/96.
+Task 1 and Task 2 falsified that premise: the overlay draws on every frame. The
+work is now Task 3, which also pins the two runtime inputs. Nothing in the old
+Task 5 remains to execute.
 
 ---
 
-### SUSPENDED (was Task 6): Record the falsifiability outcome and verify the ladder
+### Task 7: Record the falsifiability outcome and verify the ladder
 
 **Files:**
 - Create: `docs/superpowers/plans/2026-09-18-title-residuals-report.md`
@@ -468,8 +516,22 @@ git commit -m "docs: record the 4a-iii residual outcome and the falsifiability v
 
 ## Self-Review
 
-**Spec coverage:** §1.1 (2b-ii dropped) is a decision, not a task — it is recorded in the spec and restated in Task 6's residuals. §2 in-scope items map to Task 1 (pin/capture), Task 3 (effect slice), Task 4 (wiring), Task 5 (`0x2BF08`). §5 (oracle change) is Task 1. §6 (DoD, falsifiability) is Task 6 Step 1 plus each task's test. §7 (invariants) is encoded in Task 3's tests and Task 1's fail-closed checks. §8 residuals are restated in Task 6.
+**Spec coverage:** §1.1 (2b-ii dropped) is a decision, recorded in the spec and
+restated in Task 7's residuals. §2 in-scope items map to Task 1 (pin/capture),
+Task 3 (`0x2BF08` overlay + seeded inputs), Tasks 4–6 (the `0x13xxx` effect
+slice), Task 7 (record + ladder). §5 (oracle change) is Task 1. §6 (DoD,
+falsifiability) is Task 7 Step 1 plus each task's tests. §7 (invariants) is
+encoded in Task 5's tests and Task 1's fail-closed checks. §8 residuals are
+restated in Task 7. The re-spec after Task 1 and Task 2 is recorded in the two
+errata blocks and the obsolete-Task-5 note.
 
-**Placeholder scan:** no TBD/TODO. Task 5 is explicitly conditional and says how to skip. The one deferred detail — exact record field names — is produced by Task 2 and consumed by Task 3, which is the plan's own interface mechanism, not a placeholder.
+**Placeholder scan:** no TBD. Task 3's per-branch string ids and text-call
+arguments are pinned from raw bytes in its Step 1 and consumed by its Step 3 —
+the plan's own interface mechanism, not a placeholder. The effect-slice record
+fields are produced by Task 4 and consumed by Task 5.
 
-**Type consistency:** `effects_init`, `effects_spawn`, `effects_clear`, `effects_active` are used with one signature each across Tasks 3, 4 and 5. `DS_0009AF3D` (active count) and `DS_0009AF3C` (lock) are used consistently with the spec.
+**Type consistency:** `effects_init`, `effects_spawn`, `effects_clear`,
+`effects_active` are used with one signature each across Tasks 5 and 6.
+`DS_0009AF3D` (active count) and `DS_0009AF3C` (lock) are used consistently with
+the spec; `DS_00105C00`/`DS_00105C05`/`DS_00105C04` match the diagnosis doc's
+names and roles.
