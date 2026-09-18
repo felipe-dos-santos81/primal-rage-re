@@ -1,48 +1,45 @@
 #!/usr/bin/env python3
-"""Patch a COPY of PRAGE.EXE so FUN_0005d7dc returns a constant 0.
+"""Patch a COPY of PRAGE.EXE to pin the title's three RNG draws.
 
-The title's logo start X/speed/direction come from three RNG draws whose value
-depends on how many times the master loop's spin called the RNG -- a timing
-quantity. Constant-returning the RNG makes the composite independent of that
-count, which makes the capture reproducible (the spec's oracle gate).
+0x121A0 draws three values on entry and uses them for the logo's start X, speed
+and gravity. Each `call 0x5D7DC` is replaced in place by `mov eax, imm32` holding
+the value the port's own LCG (seed 0xABCD) produces for that call's range, so the
+port reproduces the same three values by seeding and taking the real draws and the
+logo keeps its motion. The master loop's spin draws are left alone: their values
+are discarded and no longer influence the composite.
 
-Fails closed: the original bytes at the patch site are verified before writing,
-so a wrong, truncated or already-patched binary aborts and writes nothing.
-Never writes under data/.
-Usage: title_pin.py --src data/game/C/PRAGE.EXE --out /tmp/pin/PRAGE.EXE"""
+Fails closed: every patch site's original bytes are verified before anything is
+written, so a wrong, truncated or already-patched binary aborts and writes nothing.
+Refuses to write over the source or anywhere under the repo's data/.
+Usage: title_pin.py --src data/game/C/PRAGE.EXE --out /tmp/pr_title_pin/PRAGE.EXE"""
 import argparse, os
 
-# FUN_0005d7dc: push ebx; push edx; and eax,0xffff; ...; pop edx; pop ebx; ret.
-# 42 bytes (Ghidra size), file 0xB0630..0xB0659: obj0 code maps file = va +
-# 0x52E54 (verified against neighbours FUN_0005d808 @ +0x108.. and FUN_0005d812:
-# file 0xB065C == 0x5D808 + 0x52E54). Patching the entry with the 3-byte stub
-# replaces push ebx/push edx/and eax, so the ret is stack-balanced.
-SIG = bytes.fromhex("535225ffff00008bd8a1d8f60600")
-STUB = bytes.fromhex("31c0c3")
-PATCH_OFF = 0xB0630
-
-# Repo root from __file__, so the data/ guard holds whatever the caller's CWD is.
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_DIR = os.path.join(REPO_ROOT, "data")
+# (file offset, original 5 bytes, replacement). Format reference A2.
+PATCHES = [
+    (0x650E9, bytes.fromhex("e842b50400"), bytes.fromhex("b80c000000")),  # 12
+    (0x650F5, bytes.fromhex("e836b50400"), bytes.fromhex("b86f000000")),  # 111
+    (0x6510B, bytes.fromhex("e820b50400"), bytes.fromhex("b800000000")),  # 0
+]
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
 def guard(src, out):
-    if os.path.realpath(out) == os.path.realpath(src):
-        raise SystemExit("title_pin: refusing --out %s: resolves to --src, "
-                         "nothing written" % out)
-    data = os.path.realpath(DATA_DIR)
-    real = os.path.realpath(out)
-    if real == data or real.startswith(data + os.sep):
-        raise SystemExit("title_pin: refusing --out %s: resolves under %s, "
-                         "nothing written" % (out, DATA_DIR))
+    real_out = os.path.realpath(out)
+    if real_out == os.path.realpath(src):
+        raise SystemExit("title_pin: refusing to write over the source: %s" % out)
+    real_data = os.path.realpath(DATA_DIR)
+    if real_out == real_data or real_out.startswith(real_data + os.sep):
+        raise SystemExit("title_pin: refusing to write under data/: %s" % out)
 
 def patch(src, out):
     guard(src, out)
     with open(src, "rb") as f:
         img = bytearray(f.read())
-    if img[PATCH_OFF:PATCH_OFF + len(SIG)] != SIG:
-        raise SystemExit("title_pin: signature mismatch at 0x%X -- wrong or "
-                         "already-patched binary, nothing written" % PATCH_OFF)
-    img[PATCH_OFF:PATCH_OFF + 3] = STUB
+    for off, orig, _repl in PATCHES:
+        if img[off:off + len(orig)] != orig:
+            raise SystemExit("title_pin: site mismatch at 0x%X -- wrong or "
+                             "already-patched binary, nothing written" % off)
+    for off, _orig, repl in PATCHES:
+        img[off:off + len(repl)] = repl
     d = os.path.dirname(os.path.abspath(out))
     os.makedirs(d, exist_ok=True)
     tmp = out + ".part"
@@ -56,7 +53,7 @@ def main():
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     patch(a.src, a.out)
-    print("title_pin: wrote %s (0x5D7DC entry -> xor eax,eax; ret)" % a.out)
+    print("title_pin: wrote %s (3 title draws -> 12, 111, 0)" % a.out)
 
 if __name__ == "__main__":
     main()
