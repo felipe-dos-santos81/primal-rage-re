@@ -13,33 +13,30 @@ An approved model (Task 10 errata, commit 6bee3c5): a captured frame is valid if
      for the adjacent pair the rest of the frame identifies. No third source.
 
 Coverage: every port frame 1..94 must be exhibited by both captures; at most one
-endpoint (0 or 95) may be unexhibited, only when its neighbour (1 / 94) is
-exhibited exactly. Clean (b=0) samples of a port frame must be byte-identical
-across the two captures. The splice byte and transition row are derived from the
-data, never arguments; no threshold, mask, crop, frame-skip or per-frame
-allowance. If clause B is still insufficient (two transition rows, or a byte from
-a third frame), the frame is reported and the oracle fails; the model is not
-extended.
+frame at each end of the window (0 and 95) may be unexhibited, and only when its
+neighbour (1 / 94) is exhibited. Clean (b=0) samples of a port frame must be
+byte-identical across the two captures. The splice byte and transition row are
+derived from the data, never arguments; no threshold, mask, crop, frame-skip or
+per-frame allowance. If clause B is still insufficient (two transition rows, or a
+byte from a third frame), the frame is reported and the oracle fails; the model
+is not extended.
+
+Stdlib only (bytes/slices); no third-party imports.
 """
 import argparse
 import hashlib
 import os
 import sys
 
-import numpy as np
-
 FRAME_W, FRAME_H = 320, 200
 ROW = FRAME_W * 3
 FRAME_BYTES = FRAME_H * ROW
+CHUNK = 8192
 
 
 def load(path):
     with open(path, 'rb') as f:
         return f.read()
-
-
-def to_array(data):
-    return np.frombuffer(data, dtype=np.uint8)
 
 
 def load_frames(d):
@@ -74,14 +71,34 @@ def row_hashes(data):
             for r in range(FRAME_H)]
 
 
-def byte_prefix(c, p):
-    d = np.flatnonzero(c != p)
-    return int(d[0]) if d.size else FRAME_BYTES
+def first_diff(a, b):
+    """First byte index where a and b differ, or min(len) if equal."""
+    n = min(len(a), len(b))
+    i = 0
+    while i < n:
+        j = min(n, i + CHUNK)
+        if a[i:j] != b[i:j]:
+            k = i
+            while a[k] == b[k]:
+                k += 1
+            return k
+        i = j
+    return n
 
 
-def byte_suffix(c, p):
-    d = np.flatnonzero(c[::-1] != p[::-1])
-    return int(d[0]) if d.size else FRAME_BYTES
+def common_suffix(a, b):
+    """Length of the common trailing run of a and b."""
+    n = min(len(a), len(b))
+    i = 0
+    while i < n:
+        j = min(n, i + CHUNK)
+        if a[n - j:n - i] != b[n - j:n - i]:
+            k = 0
+            while a[n - 1 - k] == b[n - 1 - k]:
+                k += 1
+            return k
+        i = j
+    return n
 
 
 def row_common(ch, ph):
@@ -95,83 +112,90 @@ def row_common(ch, ph):
     return p, k
 
 
-def explain(c_arr, ch, port_arr, port_rows, n):
-    """(kind, data):
-    clean       data = M
-    splice      data = [(N, lo, hi)]
-    transition  data = [(N, r, only_N, only_N1)]
-    unexplained data = (mismatches, N, b)"""
+def best_splice(c, port, pref_r, suff_r, n):
+    """Exact best (mismatch_bytes, N, b) over the closest candidate frames."""
+    cands = [N for N in range(n - 1) if pref_r[N] + suff_r[N + 1] >= FRAME_H - 1]
+    if not cands:
+        cands = list(range(n - 1))
+    best = None
+    for N in cands:
+        a, b = port[N], port[N + 1]
+        db = sum(1 for x, y in zip(c, b) if x != y)
+        cur = 0
+        best_v, best_b = db, 0
+        for i in range(FRAME_BYTES):
+            ci = c[i]
+            if ci != a[i]:
+                cur += 1
+            if ci != b[i]:
+                cur -= 1
+            v = cur + db
+            if v < best_v:
+                best_v, best_b = v, i + 1
+        if best is None or best_v < best[0]:
+            best = (best_v, N, best_b)
+    return best
+
+
+def explain(c, ch, port, port_rows, n):
+    """(kind, data): clean=M; splice=[(N,lo,hi)]; transition=[(N,r,fromN,fromN1)];
+    unexplained=(None; the best splice is computed lazily for the report)."""
     pref_r, suff_r = [0] * n, [0] * n
+    for M, ph in enumerate(port_rows):
+        pref_r[M], suff_r[M] = row_common(ch, ph)
     for M in range(n):
-        pref_r[M], suff_r[M] = row_common(ch, port_rows[M])
-    for M in range(n):
-        if pref_r[M] == FRAME_H and c_arr.tobytes() == port_arr[M].tobytes():
+        if pref_r[M] == FRAME_H and c == port[M]:
             return 'clean', M
     splices = []
     for N in range(n - 1):
         if pref_r[N] + suff_r[N + 1] < FRAME_H:
             continue
-        pb = byte_prefix(c_arr, port_arr[N])
-        sb = byte_suffix(c_arr, port_arr[N + 1])
+        pb = first_diff(c, port[N])
+        sb = common_suffix(c, port[N + 1])
         if pb + sb >= FRAME_BYTES:
             splices.append((N, FRAME_BYTES - sb, pb))
     if splices:
         return 'splice', splices
-    trans = []
     for N in range(n - 1):
         if pref_r[N] + suff_r[N + 1] != FRAME_H - 1:
             continue
         r = pref_r[N]
-        a = c_arr[r * ROW:(r + 1) * ROW]
-        pa = port_arr[N][r * ROW:(r + 1) * ROW]
-        pb = port_arr[N + 1][r * ROW:(r + 1) * ROW]
-        if not bool(np.all((a == pa) | (a == pb))):
-            continue
-        if c_arr[:r * ROW].tobytes() != port_arr[N][:r * ROW].tobytes():
-            continue
-        if c_arr[(r + 1) * ROW:].tobytes() != \
-           port_arr[N + 1][(r + 1) * ROW:].tobytes():
-            continue
-        only_n = int(((a == pa) & (a != pb)).sum())
-        only_n1 = int(((a == pb) & (a != pa)).sum())
-        trans.append((N, r, only_n, only_n1))
-    if trans:
-        return 'transition', trans
-    best = None
-    for N in range(n - 1):
-        da = (c_arr != port_arr[N]).astype(np.int64)
-        db = (c_arr != port_arr[N + 1]).astype(np.int64)
-        pa = np.concatenate([[0], np.cumsum(da)])
-        pb = np.concatenate([[0], np.cumsum(db)])
-        vals = pa - pb + pb[-1]
-        b = int(np.argmin(vals))
-        m = int(vals[b])
-        if best is None or m < best[0]:
-            best = (m, N, b)
-    return 'unexplained', best
+        row = c[r * ROW:(r + 1) * ROW]
+        ra = port[N][r * ROW:(r + 1) * ROW]
+        rb = port[N + 1][r * ROW:(r + 1) * ROW]
+        only_n = only_n1 = 0
+        for x, y, z in zip(row, ra, rb):
+            if x == y:
+                if x != z:
+                    only_n += 1
+            elif x == z:
+                only_n1 += 1
+            else:
+                break
+        else:
+            if c[:r * ROW] == port[N][:r * ROW] and \
+               c[(r + 1) * ROW:] == port[N + 1][(r + 1) * ROW:]:
+                return 'transition', [(N, r, only_n, only_n1)]
+    return 'unexplained', (pref_r, suff_r)
 
 
-def first_diff_row_byte(c_arr, a, b, sp):
-    ref = np.concatenate([a[:sp], b[sp:]])
-    d = np.flatnonzero(c_arr != ref)
-    if d.size == 0:
+def first_diff_row_byte(c, a, b, sp):
+    ref = a[:sp] + b[sp:]
+    d = first_diff(c, ref)
+    if d >= FRAME_BYTES:
         return None, None
-    i = int(d[0])
-    return i // ROW, i
+    return d // ROW, d
 
 
-def bands(c_arr, a, b):
-    ma = c_arr == a
-    mb = c_arr == b
-    only_a = np.flatnonzero(ma & ~mb)
-    only_b = np.flatnonzero(mb & ~ma)
-    return ((int(only_a[0]), int(only_a[-1]), int(only_a.size))
-            if only_a.size else None,
-            (int(only_b[0]), int(only_b[-1]), int(only_b.size))
-            if only_b.size else None)
+def bands(c, a, b):
+    """Byte ranges/counts where c matches only a (old) and only b (new)."""
+    only_a = [i for i in range(FRAME_BYTES) if c[i] == a[i] and c[i] != b[i]]
+    only_b = [i for i in range(FRAME_BYTES) if c[i] == b[i] and c[i] != a[i]]
+    return ((only_a[0], only_a[-1], len(only_a)) if only_a else None,
+            (only_b[0], only_b[-1], len(only_b)) if only_b else None)
 
 
-def check_capture(capture, port_arr, port_rows, n, name, verbose):
+def check_capture(capture, port, port_rows, n, name, verbose):
     frames = load_frames(capture)
     if not frames:
         print("title_compare: %s is empty" % name)
@@ -181,8 +205,7 @@ def check_capture(capture, port_arr, port_rows, n, name, verbose):
               % (name, len(frames[0]), FRAME_BYTES))
         return 1, None
     raws = raw_map(capture) or list(range(len(frames)))
-    arrs = [to_array(f) for f in frames]
-    kinds = [explain(arrs[j], row_hashes(frames[j]), port_arr, port_rows, n)
+    kinds = [explain(frames[j], row_hashes(frames[j]), port, port_rows, n)
              for j in range(len(frames))]
 
     exh = []
@@ -197,7 +220,7 @@ def check_capture(capture, port_arr, port_rows, n, name, verbose):
                 if lo < FRAME_BYTES:
                     s.add(N + 1)
         elif kind == 'transition':
-            for (N, r, a, b) in data:
+            for (N, r, only_n, only_n1) in data:
                 s.add(N)
                 s.add(N + 1)
         exh.append(s)
@@ -205,51 +228,54 @@ def check_capture(capture, port_arr, port_rows, n, name, verbose):
     idx = [j for j, s in enumerate(exh) if s]
     a, b = idx[0], idx[-1]
     window = range(a, b + 1)
-    clean_j = {j for j in window if kinds[j][0] == 'clean'}
-    splice_j = {j for j in window if kinds[j][0] == 'splice'}
-    trans_j = {j for j in window if kinds[j][0] == 'transition'}
+    clean_j = [j for j in window if kinds[j][0] == 'clean']
+    splice_j = [j for j in window if kinds[j][0] == 'splice']
+    trans_j = [j for j in window if kinds[j][0] == 'transition']
     unexpl_j = [j for j in window if kinds[j][0] == 'unexplained']
     covered = set()
     for j in window:
         covered |= exh[j]
     missing = sorted(set(range(n)) - covered)
-    allowed = {0, n - 1}
-    bad_missing = [M for M in missing if M not in allowed]
+    bad_missing = [M for M in missing if M not in (0, n - 1)]
+    # Spec: at most one frame at each end of the window may be unexhibited, and
+    # only when its neighbour (1 / 94) is exhibited.
     endpoint_ok = True
     for M in (0, n - 1):
         if M in missing and (1 if M == 0 else n - 2) not in covered:
             endpoint_ok = False
 
+    splices = sorted({(N, lo) for j in splice_j for (N, lo, hi) in kinds[j][1]},
+                     key=lambda x: (x[1], x[0]))
+    trans = sorted({(N, r, on, on1) for j in trans_j
+                    for (N, r, on, on1) in kinds[j][1]})
     print("title_compare: %s: window distinct [%d..%d] (raw %s..%s)"
           % (name, a, b, raws[a], raws[b]))
     print("title_compare: %s: %d frames in window: %d clean, %d splice, "
           "%d transition, %d unexplained"
           % (name, b - a + 1, len(clean_j), len(splice_j), len(trans_j),
              len(unexpl_j)))
-    spl = sorted({d[0][0]: d[0] for j in splice_j for d in [kinds[j][1]]}.values(),
-                 key=lambda x: x[1])
-    print("title_compare: %s: splice bytes (N, b) [%d frames]: %s"
-          % (name, len(splice_j),
-             ['port%d@%d' % (N, lo) for (N, lo, hi) in spl] if verbose else
-             sorted({lo for (N, lo, hi) in spl})))
-    trs = sorted({d[0]: d[0] for j in trans_j for d in [kinds[j][1]]}.values())
-    print("title_compare: %s: transition rows (N, r, from_N, from_N+1) "
+    print("title_compare: %s: splice bytes [%d frames, %d distinct]: %s"
+          % (name, len(splice_j), len(splices),
+             ['port%d@%d' % (N, lo) for (N, lo) in splices] if verbose else
+             [lo for (N, lo) in splices]))
+    print("title_compare: %s: transition rows (N, row, from_N, from_N+1) "
           "[%d frames]: %s"
           % (name, len(trans_j),
-             ['port%d@row%d(%d/%d)' % t for t in trs] if trs else 'none'))
+             ['port%d@row%d(%d/%d)' % t for t in trans] if trans else 'none'))
     print("title_compare: %s: port frames exhibited %d/%d; missing %s; "
           "endpoints %s" % (name, len(covered), n, missing,
                             'OK' if endpoint_ok else 'BAD'))
 
     bad = len(unexpl_j) + len(bad_missing) + (0 if endpoint_ok else 1)
     for j in unexpl_j:
-        m, N, sp = kinds[j][1]
-        r, i = first_diff_row_byte(arrs[j], port_arr[N], port_arr[N + 1], sp)
+        pref_r, suff_r = kinds[j][1]
+        m, N, b = best_splice(frames[j], port, pref_r, suff_r, n)
+        r, i = first_diff_row_byte(frames[j], port[N], port[N + 1], b)
         print("title_compare: %s: UNEXPLAINED captured frame %d (raw %s): best "
               "byte splice port%d[0..%d) ++ port%d[%d..%d) still differs at %d "
               "byte(s) (first row %s byte %s)"
-              % (name, j, raws[j], N, sp, N + 1, sp, FRAME_BYTES, m, r, i))
-        oa, ob = bands(arrs[j], port_arr[N], port_arr[N + 1])
+              % (name, j, raws[j], N, b, N + 1, b, FRAME_BYTES, m, r, i))
+        oa, ob = bands(frames[j], port[N], port[N + 1])
         print("title_compare: %s:   bytes only port%d: %s; only port%d: %s"
               % (name, N, oa, N + 1, ob))
     for M in bad_missing:
@@ -286,7 +312,6 @@ def main():
             print("title_compare: port frame %d is missing at %s" % (i, path))
             return 1
         port.append(load(path))
-    port_arr = [to_array(p) for p in port]
     port_rows = [row_hashes(p) for p in port]
 
     bad = 0
@@ -296,7 +321,7 @@ def main():
             print("title_compare: capture %d at %s absent, not compared"
                   % (k + 1, capture))
             continue
-        rc, res = check_capture(capture, port_arr, port_rows, n,
+        rc, res = check_capture(capture, port, port_rows, n,
                                 'capture %d' % (k + 1), a.verbose)
         bad += rc
         if res:
@@ -305,8 +330,9 @@ def main():
     if len(results) < 2:
         if required:
             print("title_compare: determinism proof INCOMPLETE: only %d "
-                  "independent capture(s) present; two are required"
-                  % len(results))
+                  "independent capture(s); two are required with "
+                  "PR_ORACLE_REQUIRED=1" % len(results))
+            bad += 1
         else:
             print("title_compare: determinism proof skipped: only %d capture(s)"
                   % len(results))
@@ -314,11 +340,9 @@ def main():
         agree = disagree = 0
         for M in range(n):
             c1 = [j for j in results[0]['clean']
-                  if results[0]['kinds'][j][0] == 'clean'
-                  and results[0]['kinds'][j][1] == M]
+                  if results[0]['kinds'][j][1] == M]
             c2 = [j for j in results[1]['clean']
-                  if results[1]['kinds'][j][0] == 'clean'
-                  and results[1]['kinds'][j][1] == M]
+                  if results[1]['kinds'][j][1] == M]
             if c1 and c2:
                 if results[0]['frames'][c1[0]] == results[1]['frames'][c2[0]]:
                     agree += 1

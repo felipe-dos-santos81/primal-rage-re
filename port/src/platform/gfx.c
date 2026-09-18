@@ -63,14 +63,16 @@ void gfx_flush_palette(void)
             }
             ptr = (u32)(rp - mem) + 4;
         }
-        /* PORT: the original writes the VGA DAC ports 0x3C8/0x3C9 with the
-         * 6-bit channel `word >> 2` (0x1C470: `shr eax,2; out 0x3c9`); the VGA
-         * truncates each write to 6 bits, and expands 6-bit to its 8-bit display
-         * value as (v << 2) | (v >> 4). gfx_dac is the port's model of the
-         * *displayed* 8-bit RGB (the same unit smk_palette_to writes), so mask
-         * to 6 bits and expand here; the un-masked byte would fold the next
-         * channel's low bits in, and the raw 6-bit value would render every game
-         * palette at quarter brightness. */
+        /* PORT: the original writes the VGA DAC ports 0x3C8/0x3C9 (0x1C470:
+         * `shr eax,2; out 0x3c9` twice more). The three channels sit at word
+         * shifts 2/10/18, so the original's `out 0x3C9` — a 6-bit port — reads
+         * the low 6 bits of each 8-bit channel and the VGA expands 6-bit to its
+         * 8-bit display value as (v << 2) | (v >> 4). gfx_dac is the port's
+         * model of that *displayed* 8-bit RGB (the same unit smk_palette_to
+         * writes), so the port must truncate to 6 bits and expand. Reading the
+         * full 8-bit channel without the truncation, and without the expansion,
+         * is what rendered every game palette wrong; smk_palette_to already
+         * supplies display values, so this path is the one that needed it. */
         for (s32 i = 0; i < count; i++) {
             u32 word = DSD(ptr + (u32)i * 4);
             u8 index = (u8)(first + (u32)i);

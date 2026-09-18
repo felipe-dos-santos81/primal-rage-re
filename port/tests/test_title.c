@@ -62,8 +62,21 @@ int test_title(void)
     for (int i = 0; i < TITLE_WINDOW_FRAMES; i++) {
         DSB(DS_000A81A8) = 1;   /* exactly one game_loop iteration per call */
         game_loop();            /* update -> render -> present -> dump */
+        if (i == 0) {
+            /* State-1 entry (spec DoD #2): the entry frame sets the title
+             * countdown to 0x600 and leaves the state machine in state 1. */
+            CHECK_EQ_INT((int)DSW(DS_000F0A64), 1);
+            CHECK_EQ_INT((int)DSW(DS_000F0A66), 0x600);
+        }
     }
     game_shutdown();
+
+    /* The window's own boundary, not the frame count: the 96th presented frame
+     * is the one where DS_000F0A66 has just fallen below 0x11. If the timing
+     * drifted, the dump would cover the wrong window and this fails. */
+    CHECK_EQ_INT((int)DSW(DS_000F0A64), 1);
+    CHECK(DSW(DS_000F0A66) < 0x11,
+          "window ends at DS_000F0A66 < 0x11 (state-1 entry predicate)");
 
     /* The window is state 1 for 96 frames; the dump must hold exactly one RGB24
      * frame per presented frame (the hook's cap is 200, so the count is the

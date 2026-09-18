@@ -57,6 +57,17 @@ int test_gfx(void)
     CHECK_EQ_INT(gfx_dac[6][2], exp8(0x33));
     CHECK(gfx_dac[7][0] == 0, "count bounds the write");
 
+    /* 6-bit VGA truncation: a channel byte >= 0x40 must be masked to 6 bits
+     * before the display expansion. (0x50 & 0x3F) = 0x10 -> exp8(0x10) = 0x41;
+     * without the mask the full 8-bit channel exp8(0x50) = 0x45, so this pins
+     * the truncation. */
+    put_record(SCRATCH, 0x30, 1, 0);
+    DSD(SCRATCH) = 0x50u << 2;
+    gfx_flush_palette();
+    CHECK_EQ_INT(gfx_dac[0x30][0], exp8(0x50u & 0x3Fu));
+    CHECK(gfx_dac[0x30][0] != exp8(0x50u),
+          "the 6-bit VGA truncation is applied");
+
     /* Clamp: first 0xFE + count 8 overruns the DAC. Without the clamp the index
      * wraps and entry 0/1 get written; with it only 0xFE/0xFF are. */
     gfx_dac[0][0] = 0;
