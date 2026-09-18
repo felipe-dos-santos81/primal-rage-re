@@ -16,6 +16,7 @@
 #include "platform/input.h"
 #include "platform/audio/ail.h"
 #include "platform/audio/mixer.h"
+#include "platform/audio/patches.h"
 #include "platform/audio/samples.h"
 #include "platform/audio/sequencer.h"
 #include "host.h"
@@ -500,6 +501,17 @@ void game_audio_init(void)
     AIL_set_preference(0xb, 1);
     HMDIDRIVER mdi = AIL_install_MDI_INI();
     if (mdi != NULL) s_sequence = AIL_allocate_sequence_handle(mdi);
+    /* The original's MDI install loads the driver's FM patch bank (FAT.OPL).
+     * Without it every key-on carries no operator setup — the sequencer maps
+     * each program change through this bank (sequencer.c) — so the OPL core
+     * renders silence for the whole run. The bytes come through the resource
+     * layer like every other asset; a missing or short bank leaves the game
+     * silent, which is what the original does with no driver bank. */
+    {
+        u32 bank_off = 0, bank_len = 0;
+        if (res_load_file(s_game_dir, "FAT.OPL", &bank_off, &bank_len))
+            patches_load(mem + bank_off, bank_len);
+    }
     HTIMER timer = AIL_register_timer(NULL);
     AIL_set_timer_frequency(timer, 0x3c);   /* the original's 60 Hz game tick */
     AIL_start_timer(timer);

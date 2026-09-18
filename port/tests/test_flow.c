@@ -7,6 +7,7 @@
 #include "platform/gfx.h"
 #include "platform/audio/ail.h"
 #include "platform/audio/mixer.h"
+#include "platform/audio/patches.h"
 #include "platform/res.h"
 #include "test.h"
 #include <string.h>
@@ -149,7 +150,14 @@ int test_flow(void)
      * drive the sequencer with no device open (the suite never opens one).
      * The title state above asked for music; the master-loop service inherits
      * that request, loads the S16TITLE bank and ticks it. */
+    game_set_game_dir("data/game/C");
     game_audio_init();
+    /* The init chain must load the FM patch bank (FAT.OPL): the sequencer maps
+     * every program change through it, and without it a key-on carries no
+     * operator setup, so the OPL core renders silence for the whole run (the
+     * live title was silent until this load existed). This test runs before the
+     * audio tests, so the count is 0 here unless the init path loaded it. */
+    CHECK_EQ_INT(patches_count(), 181);
     CHECK_EQ_INT((int)game_audio_ticks(), 0);
     /* Task 12: the title state queued the announcer sample (S16SOUND.GRA's
      * RIFF/WAVE blob) through the game's own request path; the master loop's

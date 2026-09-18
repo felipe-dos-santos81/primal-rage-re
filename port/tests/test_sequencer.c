@@ -180,12 +180,18 @@ int test_sequencer(void)
         CHECK_EQ_INT(seq_load(junk, sizeof junk), 0);
         CHECK_EQ_INT(seq_load(NULL, 100), 0);
     }
-    CHECK_EQ_INT(patches_load(NULL, 0), 0);
+    /* A failed load must leave the loaded bank unchanged. The count is not
+     * necessarily 0 here: the game's own init path (game_audio_init) loads
+     * FAT.OPL, and test_flow runs before this test. */
     {
-        static const u8 junk[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
-        CHECK_EQ_INT(patches_load(junk, sizeof junk), 0);
+        int was = patches_count();
+        CHECK_EQ_INT(patches_load(NULL, 0), 0);
+        {
+            static const u8 junk[8] = { 1, 2, 3, 4, 5, 6, 7, 8 };
+            CHECK_EQ_INT(patches_load(junk, sizeof junk), 0);
+        }
+        CHECK_EQ_INT(patches_count(), was);
     }
-    CHECK_EQ_INT(patches_count(), 0);
 
     /* 0. Halt invariants (synthetic banks, no assets): every stop path must
      *    release keyed voices, so seq_active_track() reaches 0 and no further
