@@ -63,9 +63,20 @@ Expected: PASS, 4 sites.
 Run: `make title-pin`
 Expected: writes `/tmp/pr_title_pin/PRAGE.EXE`, exit 0, no write under `data/`.
 
-- [ ] **Step 5: Capture the un-pinned original twice**
+- [ ] **Step 5: Back up the pinned reference, then capture the un-pinned original twice**
 
-Run:
+The capture overwrites `data/title-captures/title` and `title2`, the only
+reference for the currently green oracle. Copy them aside first:
+
+```bash
+cp -R data/title-captures data/title-captures.pinned-backup
+```
+
+That backup is git-ignored scratch; it exists so the pinned reference can be
+restored without re-capturing if the un-pinned capture cannot be made to work.
+
+Then capture twice:
+
 ```bash
 python3 tools/title_capture.py --out data/title-captures/title  --time-limit 45
 python3 tools/title_capture.py --out data/title-captures/title2 --time-limit 45
