@@ -10,7 +10,7 @@ Fails closed: the original bytes at the patch site are verified before writing,
 so a wrong, truncated or already-patched binary aborts and writes nothing.
 Never writes under data/.
 Usage: title_pin.py --src data/game/C/PRAGE.EXE --out /tmp/pin/PRAGE.EXE"""
-import argparse, os, sys
+import argparse, os
 
 # FUN_0005d7dc: push ebx; push edx; and eax,0xffff; ...; pop edx; pop ebx; ret.
 # 42 bytes (Ghidra size), file 0xB0630..0xB0659: obj0 code maps file = va +
@@ -21,7 +21,22 @@ SIG = bytes.fromhex("535225ffff00008bd8a1d8f60600")
 STUB = bytes.fromhex("31c0c3")
 PATCH_OFF = 0xB0630
 
+# Repo root from __file__, so the data/ guard holds whatever the caller's CWD is.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(REPO_ROOT, "data")
+
+def guard(src, out):
+    if os.path.realpath(out) == os.path.realpath(src):
+        raise SystemExit("title_pin: refusing --out %s: resolves to --src, "
+                         "nothing written" % out)
+    data = os.path.realpath(DATA_DIR)
+    real = os.path.realpath(out)
+    if real == data or real.startswith(data + os.sep):
+        raise SystemExit("title_pin: refusing --out %s: resolves under %s, "
+                         "nothing written" % (out, DATA_DIR))
+
 def patch(src, out):
+    guard(src, out)
     with open(src, "rb") as f:
         img = bytearray(f.read())
     if img[PATCH_OFF:PATCH_OFF + len(SIG)] != SIG:

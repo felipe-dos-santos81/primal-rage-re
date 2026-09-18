@@ -1,5 +1,5 @@
 # tools/tests/test_title_pin.py
-import os, subprocess, sys, tempfile, unittest
+import os, shutil, subprocess, sys, tempfile, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TOOL = os.path.join(ROOT, "tools", "title_pin.py")
@@ -18,13 +18,16 @@ class TitlePinTest(unittest.TestCase):
             out = os.path.join(d, "PRAGE_PIN.EXE")
             r = self.run_tool(EXE, out)
             self.assertEqual(r.returncode, 0, r.stderr)
-            a = open(EXE, "rb").read()
-            b = open(out, "rb").read()
+            with open(EXE, "rb") as fh:
+                a = fh.read()
+            with open(out, "rb") as fh:
+                b = fh.read()
             self.assertEqual(len(a), len(b))
             self.assertEqual(b, a[:0xB0630] + STUB + a[0xB0633:])
 
     def test_patch_site_holds_the_original_signature(self):
-        a = open(EXE, "rb").read()
+        with open(EXE, "rb") as fh:
+            a = fh.read()
         self.assertEqual(a[0xB0630:0xB0630 + len(SIG)], SIG)
 
     def test_refuses_an_already_patched_file(self):
@@ -41,7 +44,8 @@ class TitlePinTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             bad = os.path.join(d, "bad.exe")
             out = os.path.join(d, "out.exe")
-            open(bad, "wb").write(b"\x00" * 4096)
+            with open(bad, "wb") as fh:
+                fh.write(b"\x00" * 4096)
             r = self.run_tool(bad, out)
             self.assertNotEqual(r.returncode, 0)
             self.assertFalse(os.path.exists(out))
@@ -52,8 +56,27 @@ class TitlePinTest(unittest.TestCase):
             self.run_tool(EXE, out)
             for root, _, files in os.walk(os.path.join(ROOT, "data")):
                 for f in files:
-                    if f.endswith("_PIN.EXE") or "pin" in f.lower():
+                    if f.endswith("_PIN.EXE"):
                         self.fail(f"pin wrote {os.path.join(root, f)}")
+
+    def test_refuses_an_out_under_data(self):
+        out = os.path.join(ROOT, "data", "game", "C", "PRAGE_PIN.EXE")
+        r = self.run_tool(EXE, out)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn(out, r.stderr)
+        self.assertFalse(os.path.exists(out))
+
+    def test_refuses_out_equal_to_src(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "PRAGE.EXE")
+            shutil.copyfile(EXE, src)
+            with open(src, "rb") as fh:
+                before = fh.read()
+            r = self.run_tool(src, src)
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn(src, r.stderr)
+            with open(src, "rb") as fh:
+                self.assertEqual(fh.read(), before)
 
 if __name__ == "__main__":
     unittest.main()
