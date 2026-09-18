@@ -66,6 +66,13 @@ int game_music_notes_seen(void);
  * corrupt bank — see flow.c). */
 const u8 *game_music_bank_find(const u8 *base, u32 size);
 
+/* PORT: 0x2BF08, the message line 0x11D04's tail draws after every state's
+ * function. EAX/EDX/ECX are ignored (the original stores two of them and reads
+ * neither). Draws the FREE-PLAY line (DS_00105D60 != 0), `CREDITS:<n>`
+ * (DS_00105C00 != 0) or the INSERT-COINS blink through the ported text calls;
+ * the message branch is ungated by DS_000EF6DC & 0x1f. Exposed for tests. */
+void game_overlay_step(void);
+
 /* PORT: Task 10's title dump hook, the counterpart of 2b's PR_SMK_DUMP. With
  * PR_TITLE_DUMP set, each presented title frame is written as RGB24
  * <dir>/title/frame_%04d.raw, capped by PR_TITLE_DUMP_FRAMES (default 200).

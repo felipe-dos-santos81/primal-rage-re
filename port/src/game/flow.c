@@ -706,6 +706,23 @@ void game_init(void)
     DSB(DS_00105B3A) = 0;       /* 0x20C9F */
     DSD(DS_001088D0) = 30;      /* 0x20CB0 */
     DSB(DS_0010452C) = 0;       /* 0x20CC2 */
+    /* PORT: 0x2BF08's captured inputs (docs/superpowers/plans/
+     * 2026-09-18-bf08-overlay-diagnosis.md §2.3). DS_00105C00 is the live credit
+     * counter the overlay renders as `<CREDITS string>:<n>`; the un-pinned title
+     * capture shows 5. Its initial value is 0x2C304's save/config read
+     * (0x2D974(0x29), the same subsystem pinned above) and its decrementers
+     * (0x2CA48/0x2CA7C via the title input handler 0x11F28) are input-driven;
+     * both belong to 4b, so the port seeds the captured no-input value rather
+     * than porting the config subsystem. DS_00105C05 is the text row; its
+     * writers (0x2BF00, 0x2C06C) are likewise unported. The diagnosis read the
+     * captured screen rows 7-12 as text row 7, but the renderer scales a text
+     * row by 20/3 px (0x200 >> 6, projected by render_proj_y's 3414/4096), so
+     * text row 1 lands on screen rows 7-12; row 1 is byte-verified against the
+     * un-pinned capture.
+     * TODO(verify): reproduces the captured no-input window only; credit
+     * countdown under input is the 4b carve-out. */
+    DSD(DS_00105C00) = 5;       /* 0x2BF08's %d */
+    DSB(DS_00105C05) = 1;       /* 0x2BF08's text row (screen rows 7-12) */
     /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
     /* PORT: 0x1D0BC allocates the MIDI sequence buffer and the four sample
      * buffers. The port references the XMIDI bank's resource bytes directly
@@ -864,13 +881,51 @@ void game_state_step(void)
      * function, including 0x121A0): both gate on DS_000F0A71 == 0 and two bits
      * of the input state DS_001088D8, then latch DS_000F0A71. With no input
      * those bits stay zero and neither branch is taken (spec §7). Deferred to
-     * 4b with that evidence.
-     * PORT: 0x2BF08 (same tail, every state): early-returns unless
-     * (DS_000EF6DC & 0x1F) == 0, i.e. frames 32/64/96 inside the pinned window;
-     * on those it runs the 0x1C500 -> 0x474E4 string-cursor tick and pset
-     * housekeeping. Spec §7 hypothesis: none of it reaches DS_000E87A4 unless a
-     * message is active, and DS_00105C00 is set only from 0x11F28 on menu
-     * input. Detectable signature: falsified iff the Task 10 oracle drifts at
-     * exactly frames 32, 64, 96 and nowhere else; the named fallback absorbs
-     * 0x2BF08 and the 0x1C500/0x474E4/0x1E75C chain. */
+     * 4b with that evidence. */
+    game_overlay_step();    /* 0x2BF08 */
+}
+
+/* PORT: 0x2BF08. Raw disassembly fixes the branch order and the misstated
+ * arguments (prage.c drops them): 0x45 FREE PLAY, 0x46 CREDITS, 0x47 INSERT
+ * COINS. `sprintf(buf, "%s:%d", ...)` becomes snprintf; the 0x65546 formatter
+ * itself is not ported. The message branch is ungated by DS_000EF6DC & 0x1f —
+ * that gate belongs only to the DS_00105C00 == 0 fallback. */
+void game_overlay_step(void)
+{
+    s32 row = (s32)DSB(DS_00105C05);
+
+    if (DSB(DS_0009AD58) != 0) return;                  /* 0x2BF18: attract */
+
+    if (DSB(DS_00105D60) != 0) {                        /* 0x2BF27: FREE PLAY */
+        const u8 *s = game_string_get(0x45u);
+        if ((DSB(DS_000EF6DC) & 0x20u) != 0)
+            text_cursor_hold(-1, row, s, 0u);           /* 0x2BF53 */
+        else
+            text_cells_release(-1, row, s, 0u);         /* 0x2C049 */
+        DSB(DS_00105C04) = 0;                           /* 0x2C04E */
+        return;
+    }
+
+    if (DSD(DS_00105C00) != 0) {                        /* 0x2BF7D: CREDITS */
+        char buf[64];
+        snprintf(buf, sizeof buf, "%s:%d", game_string_get(0x46u),
+                 (int)DSD(DS_00105C00));
+        text_cursor_set(-1, row, (const u8 *)buf, 0u);  /* 0x2BFBA */
+        DSB(DS_00105C04) = 0;                           /* 0x2BFC1 */
+        return;
+    }
+
+    /* 0x2BFCE: DS_00105C00 == 0 fallback (the blink). */
+    if ((DSB(DS_000EF6DC) & 0x1fu) != 0 && DSB(DS_00105C04) == 0) {
+        DSB(DS_00105C04) = 0;
+        return;                                         /* 0x2BFE6 -> 0x2C04E */
+    }
+    {
+        const u8 *s = game_string_get(0x47u);
+        if ((DSB(DS_000EF6DC) & 0x20u) != 0)
+            text_cursor_hold(0xd, row, s, 0u);          /* 0x2C017 */
+        else
+            text_cells_release(0xd, row, s, 0u);        /* 0x2C049 */
+        DSB(DS_00105C04) = 0;                           /* 0x2C04E */
+    }
 }

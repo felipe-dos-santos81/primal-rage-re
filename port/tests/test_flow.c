@@ -55,6 +55,74 @@ static void check_localised_string(void)
           "ENGLISH.TXT id 0x01 decodes");
 }
 
+/* Task 3: 0x2BF08's per-frame message line. Drive the exported tail entry
+ * directly and assert on the text grid DS_00105F38 and the latch DS_00105C04,
+ * not on rendering. Text row 1 is the captured DS_00105C05 (screen row 7). */
+static int overlay_row_cells(int row)
+{
+    int n = 0;
+    for (int c = 0; c < 43; c++)
+        if (DSD(DS_00105F38 + (u32)row * 0xacu + (u32)c * 4u) != 0) n++;
+    return n;
+}
+
+static void check_title_overlay(void)
+{
+    DSB(DS_00105C05) = 1;       /* captured text row (screen rows 7-12) */
+    DSD(DS_000EF6DC) = 0;
+    DSB(DS_00105D60) = 0;
+    DSD(DS_00105C00) = 5;       /* captured credit count */
+    DSB(DS_00105C04) = 0;
+    DSB(DS_0009AD58) = 0;
+    for (u32 i = 0; i + 4u <= 0x14D4u; i += 4u) DSD(DS_00105F38 + i) = 0;
+
+    /* DS_0009AD58 != 0 is the one true early return: nothing drawn or latched. */
+    DSB(DS_0009AD58) = 1;
+    DSB(DS_00105C04) = 0x5a;
+    game_overlay_step();
+    CHECK_EQ_INT(DSB(DS_00105C04), 0x5a);
+    CHECK_EQ_INT(overlay_row_cells(1), 0);
+    DSB(DS_0009AD58) = 0;
+
+    /* DS_00105D60 != 0: FREE PLAY. &0x20 picks hold (spawn) vs release. */
+    DSB(DS_00105D60) = 1;
+    DSB(DS_00105C04) = 0;
+    DSD(DS_000EF6DC) = 0x20;
+    game_overlay_step();
+    CHECK(overlay_row_cells(1) > 0, "FREE PLAY &0x20 holds its line");
+    DSD(DS_000EF6DC) = 0x00;
+    game_overlay_step();
+    CHECK_EQ_INT(overlay_row_cells(1), 0);  /* release clears the same cells */
+
+    /* DS_00105D60 == 0, DS_00105C00 != 0: CREDITS, ungated by &0x1f. */
+    DSB(DS_00105D60) = 0;
+    DSD(DS_000EF6DC) = 0x1f;
+    game_overlay_step();
+    CHECK(overlay_row_cells(1) > 0, "CREDITS drawn on a &0x1f frame");
+    CHECK_EQ_INT((int)DSW(DS_00105F34), 1);  /* message cursor row */
+    CHECK_EQ_INT(DSB(DS_00105C04), 0);       /* latch cleared */
+    for (u32 i = 0; i + 4u <= 0x14D4u; i += 4u) DSD(DS_00105F38 + i) = 0;
+
+    /* DS_00105C00 == 0, &0x1f != 0, latch clear: skip. */
+    DSD(DS_00105C00) = 0;
+    DSD(DS_000EF6DC) = 0x1f;
+    DSB(DS_00105C04) = 0;
+    game_overlay_step();
+    CHECK_EQ_INT(overlay_row_cells(1), 0);
+
+    /* DS_00105C00 == 0, &0x1f == 0, &0x20 != 0: INSERT COINS hold. */
+    DSD(DS_000EF6DC) = 0x20;
+    game_overlay_step();
+    CHECK(overlay_row_cells(1) > 0, "INSERT COINS &0x20 holds its line");
+    CHECK_EQ_INT(DSB(DS_00105C04), 0);
+
+    /* Latch set with &0x1f != 0 falls through to the release arm. */
+    DSB(DS_00105C04) = 1;
+    DSD(DS_000EF6DC) = 0x1f;
+    game_overlay_step();
+    CHECK_EQ_INT(overlay_row_cells(1), 0);
+}
+
 int test_flow(void)
 {
     int before = g_failures;
@@ -145,6 +213,8 @@ int test_flow(void)
     /* A mode other than 3 must not run the state machine at all. */
     DSD(DS_00104B00) = 7;
     game_frame();
+
+    check_title_overlay();
 
     /* Task 11: the init chain's audio calls and the title state's music request
      * drive the sequencer with no device open (the suite never opens one).
