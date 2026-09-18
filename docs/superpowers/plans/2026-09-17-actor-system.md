@@ -193,7 +193,7 @@ palette handles `0x4197C6C` and `0x419776C` (resource 8 = `S16ATTRC.GRA`).
 
 | off | width | meaning |
 |---|---|---|
-| `+0x00` | u16 | sprite id (`0x1E1` when the per-type check returned 2) |
+| `+0x00` | u16 | sprite id (`0x1E1` when the `0x2B2A0` opcode dispatcher returns 2, Task 7; otherwise `0x2A408`'s id) |
 | `+0x02` | u16 | `rec+0x2E \| (rec+0x5F ? 0x800 : 0)` |
 | `+0x04` | i32 | x |
 | `+0x08` | i32 | y |
@@ -1075,21 +1075,41 @@ Expected: FAIL — `actor_spawn` undefined.
 
 Transcribe `0x2AE14` (`prage.c:15885-16048`) with the write order listed in
 Format reference D, plus the helpers it calls that this cycle reaches:
-`0x2AD40` (`prage.c:15849`), `0x2EA30` (`prage.c:18424`), `0x33754`
+`0x2AC80` (already `actor_alloc`, extended in this task), `0x33754`
 (`prage.c:20751`, the pset `+0x18` palette source), and the pset palette
 enqueue through `0x33864` — in the port that is `palette_record()` in `flow.c`,
 which is `static`; give `actors.c` its own `0x33864` transcription writing the
 same dirty-list shape at `DS_00107798`, or make `palette_record` shared. Prefer
 sharing: move it from `flow.c` to `platform/gfx.{c,h}` (which already owns
 `gfx_dac` and `gfx_flush_palette`) and call it from both, so the palette queue
-has one owner.
+has one owner. (`0x2AD40` is **not** called by spawn — the earlier brief listed
+it in error; the release path spawn reaches is `0x2A820` → `0x2B150` →
+`0x33864`.)
+
+**Deferred callee edges (errata, 2026-09-18).** Spawn's body is written in this
+task, but two of its callees belong to later tasks and are transcribed there:
+
+| spawn calls | belongs to | how Task 5 handles it |
+|---|---|---|
+| `0x2A820` / `0x2A620` (pset sync + palette enqueue) | Task 6 | a `/* PORT: Task 6 */` stub that Task 6 replaces |
+| `0x2B2A0` (opcode dispatcher) and `0x2A408` (literal id reader) | Task 7 | `/* PORT: Task 7 */` stubs that Task 7 replaces |
+
+Every stub carries a `/* PORT: deferred to Task N */` marker naming the task
+that replaces it, and the implementer's report lists them. Until Task 7 lands,
+the pset sprite id (`pset+0x00`) is written by the stub and is **not**
+oracle-correct; Task 7 owns it. Nothing before Task 10 reads it.
 
 `0x2AE14` ends by calling the per-type render check
-`(**(code **)(&DS_000BB9DC + rec+0x48 * 0xC))()` — transcribe the indirection as
-a switch on `rec+0x48` over the cases the title reaches (descriptor `+0x04` is
-`0x01` for `0x9AC30`, `0x10` for `0x9AC94`), and `/* PORT: */`-name every case
-left unported with the reason. When the check returns 2 the pset sprite id
-becomes `0x1E1`.
+`(**(code **)(&DS_000BB9DC + rec+0x48 * 0xC))()`. `rec+0x48` is written from
+`desc+0x04` (`prage.c:15931`), and for **both** title descriptors that byte is
+`0x00` (`ghidra_data.bin` data offsets `0x1AC30` / `0x1AC94`; the plan's earlier
+`0x01`/`0x10` were `desc+0x05` and the `desc+0x06` word, misread). Table entry 0
+is `0x5D812` = `xor eax,eax; ret`, so the reachable case returns 0 → `rec+0x2b
+|= 0x40` and a display node is allocated and inserted. Transcribe the
+indirection as a switch on `rec+0x48` with case `0x00` implemented that way and
+`/* PORT: */`-name every other case left unported with the reason. The sprite
+id `0x1E1` is **not** this call's return: it is assigned when the `0x2B2A0`
+opcode dispatcher returns 2 (Task 7, `prage.c:15994-15997`).
 
 - [ ] **Step 5: Run, then the ladder, then commit**
 
@@ -1112,6 +1132,8 @@ git commit -m "actors: spawn 0x2AE14 with the register arguments pinned by disas
 
 **Interfaces:**
 - Consumes: Tasks 4–5.
+- Replaces the `/* PORT: deferred to Task 6 */` stub that Task 5 leaves for
+  `0x2A820` (and the palette enqueue it reaches through `0x2B150`/`0x33864`).
 - Produces:
   ```c
   void actors_update(void);   /* 0x2A31C: walk the active list, sync each record */
@@ -1165,6 +1187,9 @@ git commit -m "actors: pset sync 0x2A31C/0x2A1FC/0x2A820 with motion and the she
 **Interfaces:**
 - Consumes: Tasks 4–6; `game/rng.h` (`rng_next`), because the anim stream's opcode 8
   draws a value into the record's frame timer `rec+0x20`.
+- Replaces the `/* PORT: deferred to Task 7 */` stubs that Task 5 leaves for
+  `0x2B2A0` and `0x2A408`; this task owns the pset sprite id, including the
+  `0x1E1` case at `prage.c:15994-15997`.
 - Produces:
   ```c
   u32  anim_next_sprite_id(u32 rec, const u16 *stream);  /* 0x2A408 */
