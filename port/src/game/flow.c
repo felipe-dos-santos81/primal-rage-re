@@ -11,7 +11,6 @@
 #include "mem.h"
 #include "symbols.h"
 #include "platform/res.h"
-#include "platform/gra.h"
 #include "platform/render.h"
 #include "platform/gfx.h"
 #include "platform/input.h"
@@ -24,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 /* ---- port-local scratch and constants ---------------------------------- */
 
@@ -34,8 +34,6 @@
  * leaves it zeroed, so those reads become defined host state, not live BIOS. */
 #define GAME_BIOS_BASE   0x3000000u
 #define GAME_BIOS_LEN    0x1000u
-/* Packed palette words for the title's dirty-list record. */
-#define GAME_PAL_SCRATCH (GAME_BIOS_BASE + 0x1000u)
 
 /* s16title.gra is resource index 7 in the shipped INDEX. */
 #define TITLE_RES 7u
@@ -44,26 +42,12 @@
  * in it as a RIFF/WAVE blob. */
 #define SOUND_RES 5u
 
-/* The original title is a composite drawn through the process-table task
- * system (0x2AE14 spawns tasks; the sprite blitter fills DAT_000E87A4). PORT:
- * the port renders selected full-screen S16TITLE.GRA frames instead; the
- * logo/menu sprite overlay is deferred to the menus sub-project. The frame set
- * {10,12,13,18} is derived from the asset — S16TITLE has exactly four 320x200
- * descriptors — but rendering them full-screen is the port's choice, not the
- * original's composite. TITLE_HOLD_FRAMES is a port rate: the original advances
- * its animation through task timers. */
-static const int TITLE_FRAMES[] = { 10, 12, 13, 18 };
-#define TITLE_FRAME_COUNT ((int)(sizeof TITLE_FRAMES / sizeof TITLE_FRAMES[0]))
-#define TITLE_HOLD_FRAMES 8   /* PORT: title-image rate (original: task timers) */
-
 static const char *s_game_dir;
 
-static GraChunk s_title_chunks[8];
-static u32 s_title_off;
-static int s_title_chunk_n;
-static int s_title_ready;
-static int s_title_idx;
-static int s_title_hold;
+/* PORT: Task 10's dump hook bookkeeping. s_title_dump_n < 0 until 0x121A0's
+ * entry frame arms it; each presented title frame then writes one
+ * frame_%04d.raw. */
+static int s_title_dump_n = -1;
 
 /* Music pacing. The sequencer is driven by the host's 60 Hz tick clock (the
  * original's PIT ISR), one host tick = 2 XMIDI ticks (Task 8: 8.333 ms), and a
@@ -156,37 +140,97 @@ static void input_pump(void) { host_pump(); }
 
 /* ---- title state (state 1, 0x121A0) ------------------------------------ */
 
-static void title_load(void)
+/* PORT: 0x4F1E4. Two 0x2EA30 interrupt-lock calls bracket the write; 0x2EA30
+ * is inert in the port's single-threaded loop (actors_reset documents the
+ * same). */
+static void title_input_reset(void)
 {
-    void *base = res_resolve(res_handle(TITLE_RES, 0));
-    if (!base) { DSB(DS_000A81A8) = 1; return; }
-    u32 off = (u32)((const u8 *)base - mem);
-    int n = 0;
-    if (!gra_open(off, res_size(TITLE_RES), s_title_chunks, 8, &n)) {
-        DSB(DS_000A81A8) = 1;
-        return;
-    }
+    DSB(DS_00104B15) = 0;                       /* 0x4F1F1 */
+}
 
-    /* PORT: the whole type-5 palette bank is flattened; the original selects a
-     * sub-palette per sprite. Only the first 256 entries are pushed. */
-    static u8 pal[256 * 3 * 4];
-    int pc = 0;
-    if (!gra_decode_palette(off, s_title_chunks, n, pal, sizeof pal, &pc)) {
-        DSB(DS_000A81A8) = 1;
-        return;
-    }
-    int use = pc < 256 ? pc : 256;
-    for (int i = 0; i < use; i++)
-        DSD(GAME_PAL_SCRATCH + (u32)i * 4) =
-            ((u32)pal[i * 3 + 0] << 2) | ((u32)pal[i * 3 + 1] << 10) |
-            ((u32)pal[i * 3 + 2] << 18);
-    palette_record(GAME_PAL_SCRATCH, 0, (u32)use, 0);
+/* PORT: 0x38910. Called with eax = 0 from 0x121F9. 0x4F1D0 zeroes the two
+ * cursor words; the mode-1 cursor words copy DS_00107A4E; the two table words
+ * come from the data object's fixed-up tables DS_000BDE0C / DS_000BDDFC. */
+static void title_origin_reset(u32 idx)
+{
+    DSW(DS_00107A3A) = 0;                       /* 0x4F1D3 (0x4F1D0) */
+    DSW(DS_00107A38) = 0;                       /* 0x4F1DA (0x4F1D0) */
+    DSW(DS_00107A4A) = DSW(DS_00107A4E);        /* 0x38925 */
+    DSW(DS_00107A4C) = DSW(DS_00107A4E);        /* 0x3892B */
+    DSW(DS_00107A50) = DSW(DS_000BDE0C + idx * 2u);   /* 0x38938 */
+    DSW(DS_00107A40) = DSW(DS_000BDDFC + idx * 2u);   /* 0x38948 */
+    DSW(DS_00107A3A) = (u16)(DSW(DS_00107A50) >> 5);  /* 0x3895C */
+    DSW(DS_00107A38) = (u16)(DSW(DS_00107A48) >> 6);  /* 0x3897D */
+}
 
-    s_title_off = off;
-    s_title_chunk_n = n;
-    s_title_idx = 0;
-    s_title_hold = 0;
-    s_title_ready = 1;
+/* 0x1C500. PORT: 0x474E4 is the string-table deobfuscator over the
+ * 0x1E75C/0x1E808 trio (spec §8: fonts, text, ENGLISH.TXT — 4c/4d). The port
+ * returns the original's output buffer DS_00102760 with an empty first byte, so
+ * 0x2F198/0x2F280 see a zero-length string and emit no glyphs this cycle. */
+static const u8 *title_string(void)
+{
+    DSB(DS_00102760) = 0;                       /* 0x1C517 */
+    return (const u8 *)(mem + DS_00102760);
+}
+
+/* PORT: 0x38B18 spawns `desc` into the first free slot of the 7-entry table at
+ * DS_00107A1C as actor_spawn(desc, a2 << 3, 2, a3 << 3, 0); the argument
+ * binding is pinned by disassembly (docs/superpowers/plans/2026-09-17-actor-system-args.md §2).
+ * The original writes at index -1 when the table is already full; the port
+ * skips instead of touching the word before the table. */
+static void title_spawn_row(const u32 *desc, u32 a2, u32 a3)
+{
+    int slot = 0;
+    while (slot < 7 && DSD(DS_00107A1C + (u32)slot * 4u) != 0) slot++;
+    if (slot >= 7) return;
+    DSD(DS_00107A1C + (u32)slot * 4u) =
+        actor_spawn(desc, a2 << 3, 2u, a3 << 3, 0u);   /* 0x38B5D */
+}
+
+/* PORT: 0x33904. Iterate the fixed 0x10-stride table at
+ * DS_00107608..DS_00107798 (the raw immediates 0x87608/0x87798 are
+ * DS-relative), returning the first entry whose +4 word is non-zero, or 0 at
+ * the end. */
+static u32 title_retire_next(u32 node)
+{
+    u32 e = node ? node : DS_00107608;
+    for (;;) {
+        e += 0x10u;
+        if (e >= DS_00107798) return 0;
+        if (DSD(e + 4) != 0) return e;
+    }
+}
+
+/* PORT: Task 10's dump hook, the title counterpart of 2b's PR_SMK_DUMP. With
+ * PR_TITLE_DUMP set, each presented title frame is written as
+ * <dir>/title/frame_%04d.raw RGB24, converted through the live gfx_dac exactly
+ * as gfx_present does. PR_TITLE_DUMP_FRAMES caps the run (default 200). There
+ * is no phase predicate: Task 10 locates its 96-frame window by content
+ * alignment. Exported so the Task 10 driver can dump the frames it drives. */
+void game_title_dump_frame(void)
+{
+    const char *dir = getenv("PR_TITLE_DUMP");
+    if (dir == NULL || s_title_dump_n < 0) return;
+    const char *cap_s = getenv("PR_TITLE_DUMP_FRAMES");
+    long cap = cap_s ? strtol(cap_s, NULL, 0) : 200;
+    if (s_title_dump_n >= cap) return;
+
+    char sub[1024];
+    snprintf(sub, sizeof sub, "%s/title", dir);
+    mkdir(dir, 0777);       /* ignore EEXIST; the same pattern main.c uses */
+    mkdir(sub, 0777);
+    char path[1200];
+    snprintf(path, sizeof path, "%s/frame_%04d.raw", sub, s_title_dump_n);
+    FILE *f = fopen(path, "wb");
+    if (f != NULL) {
+        const u8 *idx = mem + DSD(DS_000E87A4);
+        for (u32 i = 0; i < 320u * 200u; i++) {
+            const u8 *rgb = gfx_dac[idx[i]];
+            fwrite(rgb, 1, 3, f);
+        }
+        fclose(f);
+    }
+    s_title_dump_n++;
 }
 
 /* FUN_0002c3fc (case 2/3) -> FUN_0001cc28 at the title state's first entry:
@@ -209,38 +253,95 @@ static void game_sample_request(void)
     }
 }
 
+/* 0x121A0: the title state. Phase counter DS_000F0A6F. */
 static void game_state_title(void)
 {
-    if (!s_title_ready) {
-        title_load();
-        if (!s_title_ready) return;
-        /* 0x121a0 (state 1's first entry) calls FUN_0002c3fc(0x41)/(0x43);
-         * both records are case 5, voice cancels (FUN_0001ce04 stops the voice
-         * whose id matches), not a case-1 music request. PORT: the port requests
-         * the S16TITLE bank directly instead of the static sound table's
-         * handle; the master loop's 0x1CF20 then loads and starts it — the
-         * request is made here, started by the frame path, not on a port-side
-         * timer. */
+    if (DSB(DS_000F0A6F) == 0) {
+        /* 0x121C9/0x121D3: FUN_0002C3FC(0x41)/(0x43) are case-5 voice cancels,
+         * not a case-1 music request (their static table records are case 5,
+         * their handles 0x383B6F4/0x3837440 point into s16title.gra). PORT: the
+         * port requests the S16TITLE bank and queues the located announcer
+         * sample here instead; that is a port choice standing in for the
+         * deferred attract-state trigger (0x11000), not a transcription of
+         * those calls. */
         s_music_request = 1;
-        /* 0x121A0's first entry also runs those two case-5 voice cancels; PORT:
-         * the port queues the located announcer sample here and lets the master
-         * loop's 0x1CF20 play it (the original's request/play split, not
-         * collapsed). */
         game_sample_request();
+        title_input_reset();                    /* 0x121D9 (0x4F1E4) */
+        actors_reset();                         /* 0x121E4 (0x2BAF4, eax = 1) */
+        DSW(DS_00107A48) = 0;                   /* 0x121F2 */
+        title_origin_reset(0);                  /* 0x121F9 (0x38910) */
+        if ((DSB(DS_00104528 + 1) & 2u) == 0) {
+            /* 0x12224/0x12238: text branch. DS_00104528 is pinned to 0 in
+             * game_init (0x2D974(0x29) = 0 on the shipped image), so this is
+             * the shipped path and the one Task 8b's renderer serves. */
+            text_cursor_set(-1, 4, title_string(), 0x1000u);      /* 0x1223F */
+        } else {
+            /* 0x1221D: mode-1 sprite branch, unreachable on the shipped
+             * profile. Arguments pinned at 0x12207-0x12218. */
+            actor_spawn((const u32 *)(mem + 0x9AE3Cu), 0x2A00u, 0xFFu, 0xC00u, 0u);
+        }
+        /* 0x1224F/0x12262/0x12275/0x1228B: four 0x38B18(0x9AC1C) rows. */
+        title_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0u, 0u);
+        title_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0x2Au, 0u);
+        title_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0u, 0x1Eu);
+        title_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0x2Au, 0x1Eu);
+        /* PORT: rng_seed(0xABCD) here is the port half of Task 1's three-draw
+         * pin. The EXE's only seed store is 0x20C62 in 0x20C10 (before
+         * 0x2D974(0x29)); 0x121A0 itself does not re-seed. Placing it after the
+         * 0x38B18 spawns makes the three draws below the first consumers of a
+         * fresh 0xABCD, matching the capture's patched draws (12, 111, 0). */
+        rng_seed(0xABCDu);
+        int iVar1 = (int)rng_next(0x5Au);                   /* 0x12295 */
+        int iVar2 = (int)rng_next(0x7Eu) * 0x40 + 0x280;    /* 0x122A1 */
+        int iVar3 = (int)rng_next(2u);                      /* 0x122B7 */
+        if (iVar3 != 0) iVar2 = -iVar2;                     /* 0x122C0 */
+        DSW(DS_00107A50) = (u16)((iVar2 / 2) + 0x1500);     /* 0x122E6 */
+        u32 logo = actor_spawn((const u32 *)(mem + 0x9AC30u),
+                               (u32)iVar2 + 0x2A00u, 0xE0u,
+                               0x1E00u - (u32)(iVar1 << 6), 0u);   /* 0x122F1 */
+        DSD(DS_000F0A58) = logo;                            /* 0x122FD */
+        DSW(DS_000F0A66) = 0x600;                           /* 0x1230B */
+        DSW(logo + 0x34) = (u16)(s16)(-iVar2 / 0x5F);       /* 0x1231A */
+        DSW(logo + 0x2C) = 0xAA;                            /* 0x12327 */
+        DSW(logo + 0x36) = (u16)(s16)((iVar1 << 6) / 0x5F); /* 0x12331 */
+        DSD(DS_000F0A54) = actor_spawn((const u32 *)(mem + 0x9AC94u),
+                                       0u, 0xE4u, 0u, 0u);   /* 0x1233F */
+        DSB(DS_000F0A6F)++;                                 /* 0x1234A */
+        s_title_dump_n = 0;     /* arm the Task 10 dump at title entry */
+    } else if (DSB(DS_000F0A6F) == 1) {
+        u16 t = (u16)(DSW(DS_000F0A66) - 0x10u);
+        DSW(DS_000F0A66) = t;                               /* 0x1236B */
+        if (t <= 0x10u) {                                   /* 0x12375 (jg) */
+            text_cells_release(-1, 4, title_string(), 0x1000u);   /* 0x12396 */
+            /* PORT: 0x2B150 (logo) and 0x2B150 (second) at 0x123A5/0x123B1 set
+             * the dead bit, release the pset palette and unlink the record. The
+             * teardown lives in actors.c (set_dead) and has no actors.h export;
+             * deferred rather than duplicating its ownership here. */
+            DSD(DS_000F0A54) = actor_spawn((const u32 *)(mem + 0x9ACA8u),
+                                           0u, 0xE4u, 0u, 0u);  /* 0x123BF */
+            for (u32 node = title_retire_next(0); node != 0;
+                 node = title_retire_next(node)) {              /* 0x123CB */
+                if (DSD(node) == 0x3E688u) {                    /* 0x123D6 */
+                    /* PORT: 0x13C70 (called 0x123EA) is the 0x13xxx
+                     * effect/spawn subsystem, out of this cycle (spec §11). Its
+                     * only in-window call is here, on nodes typed &0x3E688. */
+                }
+            }
+            DSB(DS_000F0A6F)++;                                 /* 0x123FC */
+        }
+        /* 0x12402: DS_00107A50 += (rec58+0x32 >> 16) / 2, and
+         * 0x12429: rec58+0x2C = 0x40000 / DS_000F0A66. */
+        u32 logo = DSD(DS_000F0A58);
+        if (logo != 0) {
+            DSW(DS_00107A50) = (u16)(DSW(DS_00107A50) +
+                                     (u16)(((s32)DSD(logo + 0x32) >> 16) / 2));
+            DSW(logo + 0x2C) = (u16)(0x40000u / (u32)DSW(DS_000F0A66));
+        }
+    } else if (DSB(DS_000F0A6F) == 2 && DSB(DS_0009AF3D) == 0) {
+        DSB(DS_000F0A6F) = 0;       /* 0x12453 (0x1244E) */
+        DSW(DS_000F0A64) = 2;       /* 0x12459 */
     }
-    /* Redraw the current image into the draw buffer every frame, matching the
-     * original: 0x255CC swaps buffers every presented tick, so a buffer that is
-     * not redrawn this frame is presented blank on the next. TITLE_HOLD_FRAMES
-     * only slows which image is current; it must never skip the redraw. */
-    u8 *dst = mem + DSD(DS_000E87A4);
-    int consumed = gra_decode_frame(s_title_off, s_title_chunks, s_title_chunk_n,
-                                    TITLE_FRAMES[s_title_idx], dst, 320u * 200u);
-    if (consumed < 0) return;   /* keep the previous image */
-    if (++s_title_hold >= TITLE_HOLD_FRAMES) {
-        s_title_hold = 0;
-        s_title_idx = (s_title_idx + 1) % TITLE_FRAME_COUNT;
-    }
-    DSD(DS_001014FC) = 1;       /* signals the full-screen copy in game_loop */
+    DSW(DS_00107A3A) = (u16)(DSW(DS_00107A50) >> 5);   /* 0x12476 */
 }
 
 /* 0x10E80: initialise the game state. */
@@ -464,6 +565,19 @@ void game_init(void)
     if (int10h_query() != 0x13) { game_fatal("no VGA 320x200 mode"); return; }
 
     /* PORT: DPMI locks 0x10C30/0x10D34/0x1ADAC/0x1ADE4/0x10D0C are no-ops. */
+    /* PORT: the DOS/4GW loader maps both LE objects before 0x1BEC4 runs. The
+     * port reimplements the code object but the data object at DATA_BASE holds
+     * the title descriptors and tables 0x121A0 reads; res_load_index only loads
+     * the INDEX resources, so map the image here. The resource heap starts at
+     * RES_HEAP (= the data object's end), so the two regions never overlap. */
+    {
+        char exe_path[512];
+        snprintf(exe_path, sizeof exe_path, "%s/PRAGE.EXE", s_game_dir);
+        if (!mem_load_le(exe_path, NULL)) {
+            game_fatal("PRAGE.EXE image load failed");
+            return;
+        }
+    }
     if (res_load_index(s_game_dir, index_path) <= 0) {
         game_fatal("resource INDEX load failed");
         return;
@@ -478,6 +592,17 @@ void game_init(void)
     palette_list_init();    /* 0x336C0 */
     render_list_init();     /* 0x1C350 */
     rng_seed(0xABCDu);      /* PORT: 0x20C10 seeds the LCG with a hardcoded 0xABCD. */
+    /* PORT: 0x20C5D-0x20CC2: DS_00104528 = 0x2D974(0x29). On the shipped image
+     * table32[0x29] (va 0x2D3A4) = 0x1D980 -> count 7, index 102, so 0x2D974
+     * returns the four bytes at DS_00105DE0+52..55, all zero. The port pins that
+     * 0 (the 0x2D974 save/config record subsystem is out of this cycle) and the
+     * three globals 0x20C10 derives from it, so 0x121A0 takes the text branch:
+     * DS_00105B3A = (v & 0x100) >> 4, DS_001088D0 = (v & 0xf)*5 + 0x1e,
+     * DS_0010452C = (v & 0xf0) >> 4, with v = 0. */
+    DSD(DS_00104528) = 0;       /* 0x20C6D */
+    DSB(DS_00105B3A) = 0;       /* 0x20C9F */
+    DSD(DS_001088D0) = 30;      /* 0x20CB0 */
+    DSB(DS_0010452C) = 0;       /* 0x20CC2 */
     /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
     /* PORT: 0x1D0BC allocates the MIDI sequence buffer and the four sample
      * buffers. The port references the XMIDI bank's resource bytes directly
@@ -537,6 +662,10 @@ void game_loop(void)
          * gfx_dac to RGB and hands it to the host. */
         gfx_flush_palette();                 /* 0x1C470 */
         gfx_present(mem + DSD(DS_000E87A4), 320, 200);
+        /* PORT: Task 10's PR_TITLE_DUMP hook — one RGB24 file per presented
+         * title frame, read before the swap replaces DS_000E87A4 with the back
+         * buffer. */
+        if (DSW(DS_000F0A64) == 1) game_title_dump_frame();
         DSD(DS_001014FC) = 0;
         swap_buffers();                      /* 0x50188 */
 
@@ -581,6 +710,10 @@ void game_frame(void)
          * and diagnostics; deferred to sub-projects 4/5. */
         break;
     }
+
+    /* 0x24C5C's tail calls 0x2A31C here (Format reference I): walk the active
+     * list and sync each record's pset before the render table composites. */
+    actors_update();                                   /* 0x2A31C */
 }
 
 void game_state_step(void)
@@ -593,7 +726,7 @@ void game_state_step(void)
         s16 sVar1 = (s16)(DSW(DS_000F0A6A) - 1);
         switch (DSW(DS_000F0A64)) {
         case 1:
-            game_state_title();   /* ported title/attract screen */
+            game_state_title();   /* 0x121A0 */
             break;
         case 2:
         case 3:
@@ -621,6 +754,17 @@ void game_state_step(void)
     } else {
         /* PORT: 0x11000 attract sub-machine (state 0 / >=10), deferred. */
     }
-    /* PORT: the trailing 0x10DB0/0x10E18/0x2BF08 present+transition helpers
-     * (menus) are deferred. */
+    /* PORT: 0x10DB0 and 0x10E18 (0x11D04's tail, run after every state's
+     * function, including 0x121A0): both gate on DS_000F0A71 == 0 and two bits
+     * of the input state DS_001088D8, then latch DS_000F0A71. With no input
+     * those bits stay zero and neither branch is taken (spec §7). Deferred to
+     * 4b with that evidence.
+     * PORT: 0x2BF08 (same tail, every state): early-returns unless
+     * (DS_000EF6DC & 0x1F) == 0, i.e. frames 32/64/96 inside the pinned window;
+     * on those it runs the 0x1C500 -> 0x474E4 string-cursor tick and pset
+     * housekeeping. Spec §7 hypothesis: none of it reaches DS_000E87A4 unless a
+     * message is active, and DS_00105C00 is set only from 0x11F28 on menu
+     * input. Detectable signature: falsified iff the Task 10 oracle drifts at
+     * exactly frames 32, 64, 96 and nowhere else; the named fallback absorbs
+     * 0x2BF08 and the 0x1C500/0x474E4/0x1E75C chain. */
 }

@@ -66,4 +66,12 @@ int game_music_notes_seen(void);
  * corrupt bank — see flow.c). */
 const u8 *game_music_bank_find(const u8 *base, u32 size);
 
+/* PORT: Task 10's title dump hook, the counterpart of 2b's PR_SMK_DUMP. With
+ * PR_TITLE_DUMP set, each presented title frame is written as RGB24
+ * <dir>/title/frame_%04d.raw, capped by PR_TITLE_DUMP_FRAMES (default 200).
+ * game_loop() calls it after each present; exported so the Task 10 driver can
+ * dump the frames it drives itself. No-op when PR_TITLE_DUMP is unset or the
+ * title state has not entered. */
+void game_title_dump_frame(void);
+
 #endif /* PR_GAME_FLOW_H */

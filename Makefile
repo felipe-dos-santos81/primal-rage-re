@@ -123,8 +123,7 @@ run: build ## Run the port windowed, reading the original assets
 
 clean: ## Remove build outputs and locally generated oracles (keeps the SDD ledger)
 	rm -rf $(BUILD_DIR)
-	rm -f $(PORT_DIR)/tests/ghidra_data.bin $(PORT_DIR)/tests/title_screen_ref.ppm \
-	      $(PORT_DIR)/tests/s16title_frame10.idx
+	rm -f $(PORT_DIR)/tests/ghidra_data.bin $(PORT_DIR)/tests/title_screen_ref.ppm
 	rm -rf frames/
 	@echo "Cleanup complete. (.superpowers/ deliberately kept — it holds the plan ledger.)"
 
