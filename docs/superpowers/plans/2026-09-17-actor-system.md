@@ -1534,6 +1534,34 @@ compare the port against both aligned windows, report each separately, and repor
 any disagreement between the two captures inside the window as a pin finding with
 the raw indices of the first divergence.
 
+**Errata, 2026-09-18 — the comparison is tear-aware, and the reason is measured.**
+The literal "96/96 index-for-index" gate is unsatisfiable against this capture and
+not because of the port: the original updates the VGA aperture progressively at
+`0x255CC` with no retrace wait, and DX-CAPTURE samples at 70.09 Hz against ~60 Hz,
+so about one captured frame in six is a **tear** (`cap220 = port5 rows 0..15 ++
+port6 rows 16..199`). Task 10 measured it: the port matches the capture exactly,
+whole frame, wherever the capture is clean (54/96 and 53/96 against two independent
+captures); 42 port frames have no clean sample at all; and the two captures
+disagree on precisely the torn samples. A torn frame is not a sample of any game
+frame.
+
+So the comparator must, with **zero pixel tolerance**:
+
+1. explain every captured frame as `port[N][0..t) ++ port[N+1][t..200)` for some
+   port frame *N* and tear row *t* (a clean frame is `t = 0`) — brute force over
+   *N* and *t* is trivial and uses the port as the hypothesis, so a wrong port
+   frame cannot be explained;
+2. require every port frame in 0..95 to be exhibited by at least one capture (its
+   rows must appear at their correct y, as some frame's band or body);
+3. require both captures to satisfy 1 and 2 independently, and their clean
+   (`t = 0`) samples to be byte-identical to each other;
+4. never accept rows from non-adjacent port frames in one captured frame.
+
+The tear row is derived from the data — it is never a tolerance argument. No
+threshold, mask, crop, frame-skip or per-frame allowance may be added. The SMK
+oracles are unaffected because the movie player writes whole frames; do not touch
+`smk_compare.py`.
+
 - [ ] **Step 3: Wire the Makefile target**
 
 ```make

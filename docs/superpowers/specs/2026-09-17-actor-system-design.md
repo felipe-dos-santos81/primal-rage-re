@@ -415,6 +415,29 @@ frame-alignment bootstrap 2b used. `make title-oracle` is a thin sibling of 2b's
 and absent. Comparison is frame-indexed, pixel-exact, zero tolerance — no
 tolerance parameter exists, as in 2b.
 
+**DoD #2 refinement, 2026-09-18 (human-approved).** The literal
+"96/96 frames byte-identical, index-for-index" gate was found to be unsatisfiable
+against the pinned capture, for a reason outside the port: the original updates
+the VGA aperture progressively at `0x255CC` with no retrace wait, while DOSBox-X's
+DX-CAPTURE samples at 70.09 Hz against the game's ~60 Hz. Roughly one captured
+frame in six is therefore a **tear** — a horizontal band from game frame *N*
+above a band from frame *N+1*. Task 10 measured the consequence: the port matches
+the capture exactly, whole frame, wherever the capture is clean (54/96 vs one
+capture, 53/96 vs a second); the remaining frames have no clean sample at all
+(the sampler caught each once, mid-write), and the two independent captures
+disagree on precisely the torn samples. A torn capture frame is not a sample of
+any game frame, so it cannot witness or falsify anything.
+
+The gate is therefore defined tear-aware, still with **zero pixel tolerance**:
+every captured frame must be exactly `port[N][0..t) ++ port[N+1][t..200)` for some
+port frame *N* and tear row *t* (a clean frame is `t = 0`), and every port frame
+in the 96-frame window must be exhibited by at least one capture. Both captures
+must satisfy this independently, and their clean (`t = 0`) samples must be
+byte-identical to each other. The tear row is derived from the data, never
+supplied as a tolerance, and no threshold, mask, crop or frame-skip is permitted.
+No captured frame may be explained by rows from non-adjacent port frames.
+
+
 **What each proof covers**
 * Unit tests: the LCG and its call order; pool bookkeeping; spawn field mapping;
   pset sync.
