@@ -238,6 +238,12 @@ def check_capture(capture, port, port_rows, n, name, verbose):
         exh.append(s)
 
     idx = [j for j, s in enumerate(exh) if s]
+    if not idx:
+        # No captured frame exhibits any port frame: there is no window to
+        # derive. Report the counts and fail; never index an empty idx.
+        print("title_compare: %s: %d frames, all unexplained; port frames "
+              "exhibited 0/%d" % (name, len(frames), n))
+        return 1, None
     a, b = idx[0], idx[-1]
     window = range(a, b + 1)
     clean_j = [j for j in window if kinds[j][0] == 'clean']
