@@ -6,7 +6,8 @@ TOOL = os.path.join(ROOT, "tools", "title_pin.py")
 EXE = os.path.join(ROOT, "data", "game", "C", "PRAGE.EXE")
 
 # Format reference A2. The three title draws carry the ranges the port's LCG
-# must reproduce; the opcode-8 site is the in-window consumer (value 0 both sides).
+# must reproduce; the opcode-8 site is the in-window consumer (value 0 both
+# sides); the last is a scope patch that makes the deferred FUN_0002BF08 inert.
 DRAW_SITES = [
     (0x650E9, bytes.fromhex("e842b50400"), bytes.fromhex("b80c000000"), 0x5A),
     (0x650F5, bytes.fromhex("e836b50400"), bytes.fromhex("b86f000000"), 0x7E),
@@ -14,6 +15,7 @@ DRAW_SITES = [
 ]
 PATCH_SITES = DRAW_SITES + [
     (0x7E289, bytes.fromhex("e8a2230300"), bytes.fromhex("b800000000"), None),
+    (0x7ED5C, bytes.fromhex("53"), bytes.fromhex("c3"), None),
 ]
 
 def lcg_draws():
@@ -38,13 +40,13 @@ class TitlePinTest(unittest.TestCase):
             self.assertEqual(len(a), len(b))
             expect = bytearray(a)
             for off, _orig, repl, _rng in PATCH_SITES:
-                expect[off:off + 5] = repl
+                expect[off:off + len(repl)] = repl
             self.assertEqual(b, bytes(expect))
 
     def test_patch_sites_hold_the_original_calls(self):
         with open(EXE, "rb") as fh: a = fh.read()
         for off, orig, _repl, _rng in PATCH_SITES:
-            self.assertEqual(a[off:off + 5], orig, hex(off))
+            self.assertEqual(a[off:off + len(orig)], orig, hex(off))
 
     def test_patched_values_are_the_lcg_results_for_their_ranges(self):
         # The immediates must equal rng_seed(0xABCD) + the real draws, or the

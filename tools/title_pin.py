@@ -11,18 +11,30 @@ value would otherwise depend on the master loop's unbounded, host-timed spin. Th
 master loop's remaining spin draws are left alone: their values are discarded and
 no longer influence the composite.
 
-Fails closed: every patch site's original bytes are verified before anything is
-written, so a wrong, truncated or already-patched binary aborts and writes nothing.
-Refuses to write over the source or anywhere under the repo's data/.
+A fifth site is a scope decision, not a behaviour pin: a one-byte patch makes
+FUN_0002BF08 inert (`53` -> `c3`, a `ret` as its first instruction, so the
+push/sub that follow never execute and the stack stays balanced). That function is
+deferred in the port, but the original calls it every frame of state 1 and its
+firing phase depends on the boot-timing-dependent frame counter; left live it
+lands on different frames each run. Inerting it makes the capture match the
+port's ported subset.
+
+PATCHES entries are `(offset, original_bytes, replacement_bytes)` of equal length
+(the length is not fixed). Fails closed: every patch site's original bytes are
+verified before anything is written, so a wrong, truncated or already-patched
+binary aborts and writes nothing. Refuses to write over the source or anywhere
+under the repo's data/.
 Usage: title_pin.py --src data/game/C/PRAGE.EXE --out /tmp/pr_title_pin/PRAGE.EXE"""
 import argparse, os
 
-# (file offset, original 5 bytes, replacement). Format reference A2.
+# (file offset, original bytes, replacement bytes). Format reference A2. The
+# replacement must be the same length as the original (in-place, no size change).
 PATCHES = [
     (0x650E9, bytes.fromhex("e842b50400"), bytes.fromhex("b80c000000")),  # 12
     (0x650F5, bytes.fromhex("e836b50400"), bytes.fromhex("b86f000000")),  # 111
     (0x6510B, bytes.fromhex("e820b50400"), bytes.fromhex("b800000000")),  # 0
     (0x7E289, bytes.fromhex("e8a2230300"), bytes.fromhex("b800000000")),  # opcode 8
+    (0x7ED5C, bytes.fromhex("53"), bytes.fromhex("c3")),  # inert FUN_0002BF08
 ]
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
@@ -50,6 +62,10 @@ def guard(src, out):
 
 def patch(src, out):
     guard(src, out)
+    for off, orig, repl in PATCHES:
+        if len(orig) != len(repl):
+            raise SystemExit("title_pin: patch table error at 0x%X -- replacement "
+                             "length differs, nothing written" % off)
     try:
         with open(src, "rb") as f:
             img = bytearray(f.read())
@@ -75,7 +91,7 @@ def main():
     a = ap.parse_args()
     patch(a.src, a.out)
     print("title_pin: wrote %s (pinned draws the title consumes: entry 12, 111, 0 + "
-          "anim opcode-8 0)" % a.out)
+          "anim opcode-8 0; inerted deferred FUN_0002BF08)" % a.out)
 
 if __name__ == "__main__":
     main()
