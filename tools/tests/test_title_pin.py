@@ -7,7 +7,7 @@ EXE = os.path.join(ROOT, "data", "game", "C", "PRAGE.EXE")
 
 # Format reference A2. The three title draws carry the ranges the port's LCG
 # must reproduce; the opcode-8 site is the in-window consumer (value 0 both
-# sides); the last is a scope patch that makes the deferred FUN_0002BF08 inert.
+# sides).
 DRAW_SITES = [
     (0x650E9, bytes.fromhex("e842b50400"), bytes.fromhex("b80c000000"), 0x5A),
     (0x650F5, bytes.fromhex("e836b50400"), bytes.fromhex("b86f000000"), 0x7E),
@@ -15,7 +15,6 @@ DRAW_SITES = [
 ]
 PATCH_SITES = DRAW_SITES + [
     (0x7E289, bytes.fromhex("e8a2230300"), bytes.fromhex("b800000000"), None),
-    (0x7ED5C, bytes.fromhex("53"), bytes.fromhex("c3"), None),
 ]
 
 def lcg_draws():

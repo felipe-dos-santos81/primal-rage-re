@@ -9,15 +9,8 @@ logo keeps its motion. A fourth site pins the anim stream's opcode-8 handler
 (0x2B2A0) to 0, because that handler is the only in-window RNG consumer and its
 value would otherwise depend on the master loop's unbounded, host-timed spin. The
 master loop's remaining spin draws are left alone: their values are discarded and
-no longer influence the composite.
-
-A fifth site is a scope decision, not a behaviour pin: a one-byte patch makes
-FUN_0002BF08 inert (`53` -> `c3`, a `ret` as its first instruction, so the
-push/sub that follow never execute and the stack stays balanced). That function is
-deferred in the port, but the original calls it every frame of state 1 and its
-firing phase depends on the boot-timing-dependent frame counter; left live it
-lands on different frames each run. Inerting it makes the capture match the
-port's ported subset.
+no longer influence the composite. All four sites are behaviour pins: the three
+entry draws and the opcode-8 draw.
 
 PATCHES entries are `(offset, original_bytes, replacement_bytes)` of equal length
 (the length is not fixed). Fails closed: every patch site's original bytes are
@@ -34,7 +27,6 @@ PATCHES = [
     (0x650F5, bytes.fromhex("e836b50400"), bytes.fromhex("b86f000000")),  # 111
     (0x6510B, bytes.fromhex("e820b50400"), bytes.fromhex("b800000000")),  # 0
     (0x7E289, bytes.fromhex("e8a2230300"), bytes.fromhex("b800000000")),  # opcode 8
-    (0x7ED5C, bytes.fromhex("53"), bytes.fromhex("c3")),  # inert FUN_0002BF08
 ]
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
@@ -91,7 +83,7 @@ def main():
     a = ap.parse_args()
     patch(a.src, a.out)
     print("title_pin: wrote %s (pinned draws the title consumes: entry 12, 111, 0 + "
-          "anim opcode-8 0; inerted deferred FUN_0002BF08)" % a.out)
+          "anim opcode-8 0)" % a.out)
 
 if __name__ == "__main__":
     main()
