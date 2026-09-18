@@ -12,6 +12,7 @@ RUNNER = data/game/run-window.sh
 SMK_CAPTURES = data/smk-captures
 SMK_DUMP = /tmp/pr_smk_dump
 TITLE_CAPTURES = data/title-captures
+TITLE_DUMP = /tmp/pr_title_dump
 TITLE_PIN_DIR = /tmp/pr_title_pin
 DECOMP_DIR = port/decomp
 SCRIPTS_DIR = _tools/ghidra_scripts
@@ -32,7 +33,8 @@ chunk ?= 0
 
 .PHONY: help deps build test verify check smk-oracle run clean \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
-        re-decompile re-analyze re-oracle re-original title-pin title-capture
+        re-decompile re-analyze re-oracle re-original title-pin title-capture \
+        title-oracle
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -101,6 +103,25 @@ smk-oracle: build ## Pixel-exact Smacker frame oracle (skips without data/smk-ca
 	@$(PYTHON) tools/smk_compare.py --capture $(SMK_CAPTURES)/twi5 --port $(SMK_DUMP)/twi5 --frames 120
 	@$(PYTHON) tools/smk_compare.py --capture $(SMK_CAPTURES)/twg --port $(SMK_DUMP)/twg --frames 41
 
+# Title frame oracle: the Task 10 driver runs game_init() and the 96-frame pinned
+# title window headless, dumping one RGB24 frame per presented frame (Task 9's
+# PR_TITLE_DUMP); title_compare.py aligns the dump into each capture by content
+# and requires a zero-byte match. Two captures prove determinism (the second is
+# optional; PR_ORACLE_REQUIRED=1 reports the proof incomplete without it). The
+# driver must not share a process with the unit suite, so run_tests runs it alone
+# when PR_TITLE_DUMP is set.
+title-oracle: build ## Pixel-exact title oracle (skips without data/title-captures)
+	@echo "== title oracle (pixel-exact, 96 frames) =="
+	@if [ -d $(TITLE_CAPTURES)/title ]; then \
+		rm -rf $(TITLE_DUMP); \
+		PR_TITLE_DUMP=$(TITLE_DUMP) PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
+	else \
+		echo "title-oracle: no capture at $(TITLE_CAPTURES)/, frames not compared"; \
+	fi
+	@$(PYTHON) tools/title_compare.py --capture $(TITLE_CAPTURES)/title \
+		$(if $(wildcard $(TITLE_CAPTURES)/title2),--capture $(TITLE_CAPTURES)/title2,) \
+		--port $(TITLE_DUMP)/title --frames 96
+
 # The --check run must come first: test_gfx.c reads frame_0001/0009/0017/0025.idx
 # from the CWD, so the ladder has to produce them (frames >= 25) before the suite
 # consumes them — otherwise that four-frame comparison never runs.
@@ -110,6 +131,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, symbols.h i
 	@echo "== tests (oracles required; consume the captured frames) =="
 	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory smk-oracle
+	@echo "== title oracle (pixel-exact) =="
+	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory title-oracle
 	@echo "== gra_extract oracle tests (real assets required) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory re-extract-test
 	@echo "== symbols.h must regenerate byte-identically =="

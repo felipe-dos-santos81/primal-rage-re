@@ -921,8 +921,14 @@ dead:
 static void motion_step(u32 rec)
 {
     if ((DSW(rec + 0x2a) >> 8 & 0x80u) == 0) return;
-    DSD(rec + 0x18) = (u32)((s32)DSD(rec + 0x18) + (s32)(s16)DSW(rec + 0x32));
-    DSD(rec + 0x1c) = (u32)((s32)DSD(rec + 0x1c) + (s32)(s16)DSW(rec + 0x34));
+    /* PORT: the original integrates the x velocity as `sar dword [eax+0x32],16`
+     * and the y velocity as `sar dword [eax+0x34],16` — the 16.16 fixed-point
+     * integer step (0x2A516/0x2A524), NOT the low 16-bit word. 0x121A0 stores
+     * the logo's -iVar2/0x5F at +0x34 and (iVar1<<6)/0x5F at +0x36, so reading
+     * +0x32/+0x34 as words would move the logo by (0,-81) instead of the
+     * original's (-81,+8). pset_write already reads the dwords the same way. */
+    DSD(rec + 0x18) = (u32)((s32)DSD(rec + 0x18) + ((s32)DSD(rec + 0x32) >> 16));
+    DSD(rec + 0x1c) = (u32)((s32)DSD(rec + 0x1c) + ((s32)DSD(rec + 0x34) >> 16));
     s16 sv = (s16)DSW(rec + 0x34);
     DSW(rec + 0x32) = (u16)(DSW(rec + 0x32) + DSW(rec + 0x38));
     if (sv < 0)

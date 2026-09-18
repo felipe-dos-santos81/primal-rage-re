@@ -63,14 +63,22 @@ void gfx_flush_palette(void)
             }
             ptr = (u32)(rp - mem) + 4;
         }
-        /* PORT: the original writes the VGA DAC ports 0x3C8/0x3C9; the port
-         * targets gfx_dac[] instead so gfx_present can convert indices to RGB. */
+        /* PORT: the original writes the VGA DAC ports 0x3C8/0x3C9 with the
+         * 6-bit channel `word >> 2` (0x1C470: `shr eax,2; out 0x3c9`); the VGA
+         * truncates each write to 6 bits, and expands 6-bit to its 8-bit display
+         * value as (v << 2) | (v >> 4). gfx_dac is the port's model of the
+         * *displayed* 8-bit RGB (the same unit smk_palette_to writes), so mask
+         * to 6 bits and expand here; the un-masked byte would fold the next
+         * channel's low bits in, and the raw 6-bit value would render every game
+         * palette at quarter brightness. */
         for (s32 i = 0; i < count; i++) {
             u32 word = DSD(ptr + (u32)i * 4);
             u8 index = (u8)(first + (u32)i);
-            gfx_dac[index][0] = (u8)(word >> 2);
-            gfx_dac[index][1] = (u8)((word >> 10) & 0xFF);
-            gfx_dac[index][2] = (u8)((word >> 18) & 0xFF);
+            u8 r = (u8)((word >> 2) & 0x3Fu), g = (u8)((word >> 10) & 0x3Fu);
+            u8 b = (u8)((word >> 18) & 0x3Fu);
+            gfx_dac[index][0] = (u8)((r << 2) | (r >> 4));
+            gfx_dac[index][1] = (u8)((g << 2) | (g >> 4));
+            gfx_dac[index][2] = (u8)((b << 2) | (b >> 4));
         }
         DSD(rec + 4) = 0xFFFFFFFFu;   /* the original marks the record consumed */
         rec += 16;

@@ -1,10 +1,21 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "test.h"
 
 int g_failures = 0;
 
 int main(void)
 {
+    /* The title oracle driver calls game_init() and so needs a fresh mem[]; it
+     * cannot share the process with the unit suite (a second res_load_index()
+     * would exhaust the 64 MB bump allocator). When PR_TITLE_DUMP asks for the
+     * dump, run only that driver. */
+    if (getenv("PR_TITLE_DUMP") != NULL) {
+        test_title();
+        printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
+        return g_failures != 0;
+    }
+
     test_scaffold();
     test_mem();
     test_le();
@@ -27,6 +38,7 @@ int main(void)
     test_actors();
     test_anim();
     test_text();
+    test_title();       /* no-op unless PR_TITLE_DUMP is set */
     printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
     return g_failures != 0;
 }

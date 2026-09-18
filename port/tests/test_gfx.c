@@ -23,6 +23,10 @@ static void put_record(u32 ptr, u32 first, u32 count, u32 flag)
     DSD(HEAD) = REC + 16;
 }
 
+/* The 6-bit VGA DAC channel expanded to the 8-bit value gfx_dac holds, exactly
+ * as gfx_flush_palette does (and as a VGA/DOSBox renders it). */
+static u8 exp8(u8 v6) { return (u8)((v6 << 2) | (v6 >> 4)); }
+
 int test_gfx(void)
 {
     int before = g_failures;
@@ -31,13 +35,13 @@ int test_gfx(void)
      * discrimination (only the addressed entries are written), head reset, and
      * consumed marking. */
     put_record(SCRATCH, 5, 1, 0);
-    u32 word = (0x40u << 2) | (0x80u << 10) | (0xC0u << 18);
+    u32 word = (0x10u << 2) | (0x20u << 10) | (0x30u << 18);
     DSD(SCRATCH) = word;
     DSD(SCRATCH + 4) = (0x11u << 2) | (0x22u << 10) | (0x33u << 18);
     gfx_flush_palette();
-    CHECK_EQ_INT(gfx_dac[5][0], 0x40);
-    CHECK_EQ_INT(gfx_dac[5][1], 0x80);
-    CHECK_EQ_INT(gfx_dac[5][2], 0xC0);
+    CHECK_EQ_INT(gfx_dac[5][0], exp8(0x10));
+    CHECK_EQ_INT(gfx_dac[5][1], exp8(0x20));
+    CHECK_EQ_INT(gfx_dac[5][2], exp8(0x30));
     CHECK(gfx_dac[4][0] == 0, "only the addressed DAC entry was written");
     CHECK_EQ_INT(DSD(HEAD), REC);            /* head reset to base */
     CHECK_EQ_INT(DSD(REC + 4), 0xFFFFFFFFu); /* record marked consumed */
@@ -47,10 +51,10 @@ int test_gfx(void)
     DSD(SCRATCH) = word;
     DSD(SCRATCH + 4) = (0x11u << 2) | (0x22u << 10) | (0x33u << 18);
     gfx_flush_palette();
-    CHECK_EQ_INT(gfx_dac[5][0], 0x40);
-    CHECK_EQ_INT(gfx_dac[6][0], 0x11);
-    CHECK_EQ_INT(gfx_dac[6][1], 0x22);
-    CHECK_EQ_INT(gfx_dac[6][2], 0x33);
+    CHECK_EQ_INT(gfx_dac[5][0], exp8(0x10));
+    CHECK_EQ_INT(gfx_dac[6][0], exp8(0x11));
+    CHECK_EQ_INT(gfx_dac[6][1], exp8(0x22));
+    CHECK_EQ_INT(gfx_dac[6][2], exp8(0x33));
     CHECK(gfx_dac[7][0] == 0, "count bounds the write");
 
     /* Clamp: first 0xFE + count 8 overruns the DAC. Without the clamp the index
@@ -60,8 +64,8 @@ int test_gfx(void)
     put_record(SCRATCH, 0xFE, 8, 0);
     for (int i = 0; i < 8; i++) DSD(SCRATCH + (u32)i * 4) = (u32)(0x10 + i) << 2;
     gfx_flush_palette();
-    CHECK_EQ_INT(gfx_dac[0xFE][0], 0x10);
-    CHECK_EQ_INT(gfx_dac[0xFF][0], 0x11);
+    CHECK_EQ_INT(gfx_dac[0xFE][0], exp8(0x10));
+    CHECK_EQ_INT(gfx_dac[0xFF][0], exp8(0x11));
     CHECK_EQ_INT(gfx_dac[0][0], 0);   /* no wrap past the table end */
     CHECK_EQ_INT(gfx_dac[1][0], 0);
 
@@ -81,12 +85,12 @@ int test_gfx(void)
             DSD(off + 8) = (0x31u << 2) | (0x32u << 10) | (0x33u << 18);
             put_record(res_handle(ridx, 0), 0x10, 2, 1);
             gfx_flush_palette();
-            CHECK_EQ_INT(gfx_dac[0x10][0], 0x21);
-            CHECK_EQ_INT(gfx_dac[0x10][1], 0x22);
-            CHECK_EQ_INT(gfx_dac[0x10][2], 0x23);
-            CHECK_EQ_INT(gfx_dac[0x11][0], 0x31);
-            CHECK_EQ_INT(gfx_dac[0x11][1], 0x32);
-            CHECK_EQ_INT(gfx_dac[0x11][2], 0x33);
+            CHECK_EQ_INT(gfx_dac[0x10][0], exp8(0x21));
+            CHECK_EQ_INT(gfx_dac[0x10][1], exp8(0x22));
+            CHECK_EQ_INT(gfx_dac[0x10][2], exp8(0x23));
+            CHECK_EQ_INT(gfx_dac[0x11][0], exp8(0x31));
+            CHECK_EQ_INT(gfx_dac[0x11][1], exp8(0x32));
+            CHECK_EQ_INT(gfx_dac[0x11][2], exp8(0x33));
         }
     }
 
