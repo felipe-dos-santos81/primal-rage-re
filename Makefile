@@ -188,5 +188,5 @@ re-original: ## Run the original game in DOSBox-X (interactive; ESC then y, twic
 title-pin: ## Build the pinned copy of PRAGE.EXE for the title oracle (writes /tmp only)
 	$(PYTHON) tools/title_pin.py --src $(GAME_DIR)/PRAGE.EXE --out $(TITLE_PIN_DIR)/PRAGE.EXE
 
-title-capture: title-pin ## Capture the pinned original title (skips the gate by default)
+title-capture: title-pin ## Capture the pinned original run for the title oracle (writes data/title-captures/)
 	$(PYTHON) tools/title_capture.py --out $(TITLE_CAPTURES)/title --time-limit 45
