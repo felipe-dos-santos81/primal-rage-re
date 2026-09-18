@@ -60,8 +60,10 @@ was computed; `N` is the argmin.
 | 322 | 92 | **497** | 98104 | 128587 |
 
 A one-frame timing shift would make the capture match `port[N+1]` (or `N-1`)
-exactly, i.e. residual ≈ 0 on the neighbour. Instead the neighbour is 20k–128k
-bytes off while `port[N]` is 0.26%–4.7% off. **Hypothesis 2 is rejected.**
+exactly, i.e. residual ≈ 0 on the neighbour. Instead every neighbour residual
+exceeds its frame's best-match residual: the smallest is 855 bytes (`j=258`,
+`vs N+1`) and the largest 128587, while `port[N]` residuals are 497–9055
+(0.26%–4.7% of the frame). **Hypothesis 2 is rejected.**
 
 The best two-piece splice under the oracle's own model (split `port[N]` /
 `port[N+1]` at the byte that minimises mismatch) reduces every sampled frame's
@@ -87,6 +89,28 @@ run is the same run with `0x2BF08` live. The two differ **only** in the
 directly attributes the entire residual to `0x2BF08` and rules out a timing
 shift: removing the pin did not move the frames relative to each other, it added
 166 (498/3) pixels of text.
+
+Content hashes (SHA-256 of the 192000-byte RGB24 frame) pin the three cited
+matches; the port and pinned-frame hashes are identical, the un-pinned frames
+differ. Prefixes (16 hex chars):
+
+| frames (port/pinned/un-pinned) | port prefix | pinned prefix | un-pinned prefix |
+|---|---|---|---|
+| `0010` / `0225` / `0226` | `fd7f8475ed2c0ac6` | `fd7f8475ed2c0ac6` | `ce8f4ddc8a93fd8d` |
+| `0037` / `0257` / `0258` | `4c0a76dd40e36011` | `4c0a76dd40e36011` | `2a5ecae378b86033` |
+| `0051` / `0273` / `0274` | `f6e7d0566558fd96` | `f6e7d0566558fd96` | `b16bd2c8ca5c201d` |
+
+Full values: port `frame_0010` =
+`fd7f8475ed2c0ac67575f388b191791ef22f427e834274ad8be197e5f4764576`,
+`frame_0037` = `4c0a76dd40e3601105bd18fc24c167d4626c83ddcc61945e2cc800d9b50e7eb5`,
+`frame_0051` = `f6e7d0566558fd96215aaba1416afdb0e54191fab7bb119cc1828c7818871ab8`;
+pinned `frame_0225`/`0257`/`0273` are byte-identical to those three; un-pinned
+`frame_0226` = `ce8f4ddc8a93fd8d28bb63ef9f45b2c1ee6ecd982808202653fdb9c1bc114eba`,
+`frame_0258` = `2a5ecae378b86033d795f34c147634ff8f60ce4583b2a3232e7a3b20e59c1420`,
+`frame_0274` = `b16bd2c8ca5c201df1065fd0b423327985f51ffa78b63a928a471d3039745e24`.
+The port frames are regenerable with `make title-oracle`; the un-pinned frames
+are the current `data/title-captures/title`; only the pinned backup is scratch
+(§7 gives the hash command), which is why its three hashes are recorded here.
 
 (The aligned indices are one lower in the pinned run because the un-pinned
 capture acquired one extra frame at the start; the oracle aligns by content, so
@@ -161,10 +185,11 @@ row 11  ##.....#####...##.....##.##.....##.......#......##.....##......###.
 row 12  .####..##..##..####...####.....####......#...####......##....####..
 ```
 
-Column segmentation gives 9 glyphs of widths `[6,6,6,6,4,6+5,2,6]`:
+Column segmentation gives **8 blobs covering 9 characters**, widths
+`[6,6,6,6,4,11,2,6]`:
 
-* `C R E D I T S` (the segment of width 11 is `T` and `S` touching), then
-  `:` (width 2), then a digit (width 6).
+* `C R E D I T S` (the 11-px blob is `T` and `S` touching), then `:` (width 2),
+  then a digit (width 6).
 * The digit is a `5`: full top bar, left descender on the second row, full middle
   bar, right-only lower strokes, bottom-left hook. (Compare `3`, which has the
   second row on the *right*; our second row is on the left.)
@@ -176,22 +201,47 @@ overlay.
 
 ### 2.3 Where the value comes from
 
-`DS_00105C00` has exactly one writer: `FUN_0002C304` (VA `0x2C304`,
-`prage.c:17047`):
+`DS_00105C00` is a **live credit counter**, not an immutable config snapshot.
+There are three stores to `0x85C00`; the first sets the initial value, the other
+two decrement it:
 
 ```
+; FUN_0002C304 (prage.c:17047) -- initial value
 2c304  mov  eax, 0x29
 2c309  call 0x2d974                  ; FUN_0002D974(0x29)
 2c30e  and  eax, 0xf0000
 2c313  sar  eax, 0x10
 2c316  inc  eax
 2c317  mov  [0x85c00], eax           ; DS_00105C00 = high_nibble + 1
+
+; FUN_0002CA48 (prage.c:17368) -- decrement by 1
+2ca57  cmp  dword [0x85c00], 0
+2ca5e  je   0x2ca78
+2ca60  cmp  byte [0x84b1f], 0        ; DS_00104B1F: input held -> skip
+2ca67  jne  0x2ca6f
+2ca69  dec  dword [0x85c00]
+
+; FUN_0002CA7C (prage.c:17395) -- decrement by EAX
+2ca8b  cmp  eax, [0x85c00]
+2ca91  ja   0x2ca78
+2ca93  cmp  byte [0x84b1f], 0        ; DS_00104B1F: input held -> skip
+2ca9a  jne  0x2caa2
+2ca9c  sub  dword [0x85c00], eax
 ```
 
 `FUN_0002C304` is called from `FUN_00010E80` (`prage.c:721`), the game-state
 init. `FUN_0002D974` is the save/config record reader: `FUN_0002D974(0x29)` is
 the same read the port already pins to `0` for `DS_00104528`
 (`flow.c:698-705`).
+
+`FUN_0002CA7C` is reached from `FUN_00011F28` (`prage.c:1181`), the title-state
+input handler, at raw `0x11F47` (`call 0x2ca7c`); `FUN_0002CA48` is the other
+decrementer (called at `prage.c:28762`). `FUN_00011F28` is itself called from the
+`0x11D04` tail before the state switch; the port stubs it
+(`flow.c:827-829`: "PORT: 0x11F28 menu-input poll (menus, sub-project 4).").
+So on the shipped no-input title path `DS_00105C00` holds its initial value, but
+once input exists it counts down. **All three stores are unported writers**, not
+just the initializer.
 
 On the **static** shipped image `FUN_0002D974(0x29) = 0` (table entry at
 VA `0x2D3A4` = `0x1D980`; the config bytes at `DS_00105DE0..` are zero), which
@@ -201,10 +251,12 @@ config subsystem in the DOSBox-X run (the "`0x2D974` save/config" residual in
 the spec, §8). This is the one input a port of `0x2BF08` alone cannot derive
 from shipped data — see §5.
 
-`DS_00105C05` (the row) is written by `FUN_0002C06C` (VA `0x2C06C`:
-`mov [0x85c05], al`), called from the attract/mode entries (`0x110ce`, `0x115c1`,
-`0x11a51`, `0x11aa3`, `0x11e03`, `0x11fb4`). The port enters the title directly
-and never calls it.
+`DS_00105C05` (the row) has two writers: `FUN_0002BF00` (VA `0x2BF00`:
+`mov byte [0x85c05], 0x1d`, `prage.c:16660`) on the init path
+(`prage.c:11436`), and `FUN_0002C06C` (VA `0x2C06C`: `mov [0x85c05], al`),
+called from the attract/mode entries (`0x110ce`, `0x115c1`, `0x11a51`, `0x11aa3`,
+`0x11e03`, `0x11fb4`). The port enters the title directly and calls neither, so
+that row is a second unported input.
 
 ---
 
@@ -300,8 +352,8 @@ the title caption (`flow.c:370`).
 | `0x2BF08` transcription | ~45 lines in `flow.c`, at the existing PORT marker `flow.c:863-875` | Four-branch control flow; reuse the four ported text functions; no new file. |
 | `FUN_0002CAA8` | 1 line (`DS_00105D60 == 0`) | inline helper. |
 | `FUN_00065546` | 1 line | `snprintf(buf, n, "%s:%d", s, DS_00105C00)`; no need to port the original formatter. |
-| `DS_00105C00` data | pin or producer | **The blocking input** (§2.3): the static image gives `1`; the capture is `5`. Reproducing it needs either `FUN_0002C304`+`FUN_0002D974(0x29)` (config subsystem, spec §8, out of this cycle) or a captured-value seed. |
-| `DS_00105C05` data | pin or producer | Capture shows row 7; the port never calls `FUN_0002C06C`. |
+| `DS_00105C00` data | pin or producer | **The blocking input** (§2.3). Three unported writers: `FUN_0002C304` (initial, `= high_nibble+1`), `FUN_0002CA48` (`dec`), `FUN_0002CA7C` (`sub`, reachable from the title input handler `0x11F28`). Static image gives `1`; capture is `5`. A `5` seed alone matches the no-input window only. |
+| `DS_00105C05` data | pin or producer | Capture shows row 7; unported writers `FUN_0002BF00` (`0x1d` at init) and `FUN_0002C06C` (attract/mode entries). |
 | Unit test | one `test_flow` case | Cover the four branches: early return, FREE-PLAY hold/release, CREDITS (message), insert-coins `&0x1F`/`&0x20`; assert on globals, not rendering. |
 | Negative control | 1 assertion | Stub `0x2BF08` back to a no-op and show the overlay frames drift. |
 
@@ -310,16 +362,28 @@ the un-pinned oracle green. With no producer ported, `DS_00105C00 == 0`, the
 message branch is skipped, and the un-pinned capture still carries the
 `CREDITS:5` text on every frame. If instead `FUN_0002C304` is ported on top of
 the existing `FUN_0002D974(0x29) = 0` pin, it renders `CREDITS:1` — still wrong.
-The read that yields `5` is runtime save/config state (the `0x2D974` residual),
-so the number is data, not code.
+The *initial* value that yields `5` is runtime save/config state (the `0x2D974`
+residual), so it is data, not code — but see the countdown caveat next.
+
+**And the seed is a fidelity compromise, not the source.** `DS_00105C00` is a
+live counter (§2.3): `FUN_0002C304` sets the initial value, then `FUN_0002CA48`
+(`dec`) and `FUN_0002CA7C` (`sub`, reached from the title input handler
+`FUN_00011F28` at `prage.c:1181` / raw `0x11F47`) count it down as credits are
+consumed. Seeding `5` reproduces the **no-input** captured window exactly — the
+oracle's window — but it does **not** reproduce credit countdown once input
+exists. Porting the seed is therefore not equivalent to porting
+`FUN_0002C304`/`FUN_0002CA48`/`FUN_0002CA7C`; it is a documented, coverage-limited
+pin whose behavioural gap (input-driven credits) belongs to the input
+sub-project (4b) that owns `0x11F28`.
 
 ---
 
 ## 6. Step 4 — recommendation
 
-**Smaller intermediate: port `0x2BF08`'s control flow with its two data inputs
-pinned to the captured values, and re-run the oracle. Do not port the `0x2D974`
-config subsystem in this cycle.**
+**Smaller intermediate: port `0x2BF08`'s control flow, seed `DS_00105C00 = 5`
+and `DS_00105C05 = 7` for the no-input oracle window, and re-run the oracle. Do
+not port the `0x2D974` config subsystem in this cycle; record the input-driven
+credit countdown (`0x2CA48`/`0x2CA7C` via `0x11F28`) as a declared 4b gap.**
 
 Rationale, in order of weight:
 
@@ -327,26 +391,34 @@ Rationale, in order of weight:
    already-ported code; the only new code is one 45-line transcription plus a
    one-line flag test and `snprintf`. That belongs in `flow.c` at the existing
    PORT marker. There is no new module.
-2. **The blocking input is data.** `DS_00105C00` is a value read from the
-   save/config subsystem, not game logic. Porting `FUN_0002D974` + the save
-   loader to obtain one nibble is exactly the "machinery with no caller"
-   anti-pattern the spec (§1.1) rejects. The right layer is a pin, alongside the
-   existing `0x2D974` and RNG pins, until sub-project 4 owns the config.
+2. **The blocking input is data, but the counter is not.** The *initial* value
+   of `DS_00105C00` is a save/config read (`0x2D974`), not game logic; porting
+   `FUN_0002D974` + the save loader to obtain one nibble is exactly the
+   "machinery with no caller" anti-pattern the spec (§1.1) rejects. The
+   *decrements* are input-driven and belong to 4b with `0x11F28`. So the right
+   layer here is a two-value pin for the oracle window, alongside the existing
+   `0x2D974` and RNG pins, with the countdown explicitly carved out.
 3. **Falsifiable.** With the captured values seeded (`DS_00105C00 = 5`,
    `DS_00105C05 = 7`), the un-pinned oracle either goes green — proving
    `0x2BF08` moves the composite — or it does not, in which case `0x2BF08` is
    recorded as a declared gap with the unit proof (spec Decision 5). The pin is
    documented and narrow (two values), unlike the removed byte pin which hid the
    whole function.
-4. **Cost of the alternative.** "Keep the pin and document the carve-out" leaves
+4. **Fidelity cost is stated, not hidden.** The seed matches the no-input
+   captured window only; it does not reproduce credit countdown once input
+   exists (see §2.3/§5). The countdown is deferred to the input sub-project, so
+   the oracle's claim is bounded: it proves `0x2BF08` against the no-input
+   window, not against a credit-consuming run.
+5. **Cost of the alternative.** "Keep the pin and document the carve-out" leaves
    the oracle proving only the pinned original, which is the state Task 1
    existed to end. Porting the overlay now without the data pin fails the oracle
    for the wrong reason (`DS_00105C00 == 0`), which is worse than the current
    honest red.
 
 If the seeded port does make the oracle green, the cycle's residual is reduced
-to the two documented data pins. If it does not, revert to the pin and record
-`0x2BF08` + `0x2D974` as the gap. Either way the oracle's claim becomes true.
+to the two documented data pins plus the 4b countdown gap. If it does not,
+revert to the pin and record `0x2BF08` + `0x2D974` as the gap. Either way the
+oracle's claim becomes true.
 
 ---
 
@@ -401,6 +473,19 @@ print((pin[p] != port[10]).sum())                  # 0: pinned control == port[1
 diff = (c != pin[p]).reshape(H,W,3).any(axis=2)
 rows = np.nonzero(diff.any(axis=1))[0]; cols = np.nonzero(diff.any(axis=0))[0]
 print(rows.min(), rows.max(), cols.min(), cols.max(), diff.sum())  # 7 12 130 196 166
+```
+
+```python
+# SHA-256 of the cited frames (port / pinned / un-pinned); §1.2 records them
+import hashlib, os
+def sha(d,i): return hashlib.sha256(
+    open(os.path.join(d,'frame_%04d.raw'%i),'rb').read()).hexdigest()
+pin_dir = os.path.expandvars('$TMPDIR/opencode/pr-title-captures.pinned-backup/title')
+for port_i, pin_i, unp_i in ((10,225,226),(37,257,258),(51,273,274)):
+    print(port_i, sha('/tmp/pr_title_dump/title', port_i))
+    print('   ', pin_i, sha(pin_dir, pin_i))
+    print('   ', unp_i, sha('data/title-captures/title', unp_i))
+# port and pinned rows are equal; un-pinned differs
 ```
 
 ---
