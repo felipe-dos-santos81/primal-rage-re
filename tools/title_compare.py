@@ -1,28 +1,31 @@
 #!/usr/bin/env python3
-"""Tear-aware title oracle: every captured frame must be a splice of two
-adjacent port frames, and every port frame must be exhibited.
+"""Byte-splice title oracle: every captured frame must be one port frame's prefix
+spliced to its successor's suffix; every port frame must be exhibited.
 
 Absent capture: skip (exit 0) unless PR_ORACLE_REQUIRED=1, then fail.
 Usage: title_compare.py --capture DIR [--capture DIR2] --port DIR --frames 96
 
-Zero pixel tolerance. The model is the human's Task 10 ruling:
-a captured frame C is explained by `port[N][0..t) ++ port[N+1][t..200)` for
-adjacent port frames N, N+1 and a tear row t (0..200); t=0 or t=200 is a clean
-whole port frame. Rows are exact: a frame is unexplained if no (N, t) splices
-it. Every captured frame inside the title window must be explained, and every
-port frame 0..frames-1 must be exhibited by both captures (its rows appear at
-their correct y as some frame's band or body). Clean samples of the same port
-frame must be byte-identical across the two captures.
+Zero pixel tolerance. The approved model (Task 10 errata, commit 37b16d4):
+a captured frame C is `port[N][0..b) ++ port[N+1][b..192000)` for adjacent port
+frames N, N+1 and a splice byte b, with b=0/192000 a clean whole port frame.
+Brute force over N and b; a frame may not mix bytes from non-adjacent port
+frames. Every port frame 1..94 must be exhibited by both captures; port 0 and
+port 95 (the boot->title and title->state-2 transitions, displayed for under one
+capture interval) may be unexhibited only when their adjacent frame (1 / 94) is
+exhibited exactly. Clean (b=0) samples of a port frame must be byte-identical
+across the two captures.
 
-The tear row is derived from the data, never taken as an argument; there is no
-threshold, mask, crop, frame-skip or per-frame allowance. A frame explaining
-only under a *sub-row* boundary is reported as model insufficiency (the ruling's
-STOP case), not accepted.
+The splice byte is derived from the data, never an argument; no threshold, mask,
+crop, frame-skip or per-frame allowance. If the byte model is insufficient
+(two splices in one captured frame), the frame is reported with its byte bands
+and the oracle fails; the model is not extended.
 """
 import argparse
 import hashlib
 import os
 import sys
+
+import numpy as np
 
 FRAME_W, FRAME_H = 320, 200
 FRAME_BYTES = FRAME_W * FRAME_H * 3
@@ -31,6 +34,10 @@ FRAME_BYTES = FRAME_W * FRAME_H * 3
 def load(path):
     with open(path, 'rb') as f:
         return f.read()
+
+
+def to_array(data):
+    return np.frombuffer(data, dtype=np.uint8)
 
 
 def load_frames(d):
@@ -45,7 +52,6 @@ def load_frames(d):
 
 
 def raw_map(d):
-    """window.txt emitted-index -> raw capture index, or None."""
     path = os.path.join(d, 'window.txt')
     if not os.path.exists(path):
         return None
@@ -66,83 +72,85 @@ def row_hashes(data):
             for r in range(FRAME_H)]
 
 
-def row_differs(a, b):
-    """Per-row difference flags between two frames' row-hash lists."""
-    return [0 if a[r] == b[r] else 1 for r in range(FRAME_H)]
+def byte_prefix(c, p):
+    d = np.flatnonzero(c != p)
+    return int(d[0]) if d.size else FRAME_BYTES
 
 
-def prefix_sum(flags):
-    out = [0] * (len(flags) + 1)
-    for i, v in enumerate(flags):
-        out[i + 1] = out[i] + v
-    return out
+def byte_suffix(c, p):
+    d = np.flatnonzero(c[::-1] != p[::-1])
+    return int(d[0]) if d.size else FRAME_BYTES
 
 
-def explain(ch, port_ch, n):
-    """Classify one captured frame. Returns (kind, data).
+def row_common(ch, ph):
+    k = 0
+    while k < FRAME_H and ch[k] == ph[k]:
+        k += 1
+    p = k
+    k = 0
+    while k < FRAME_H and ch[FRAME_H - 1 - k] == ph[FRAME_H - 1 - k]:
+        k += 1
+    return p, k
 
-    kind 'clean': data = port index M (C == port[M]).
-    kind 'torn':  data = list of (N, lo, hi) valid row-boundary splices.
-    kind 'unexplained': data = the best whole-row (N, t, mismatches, flags)."""
-    pref, suff = [], []
-    for ph in port_ch:
-        k = 0
-        while k < FRAME_H and ch[k] == ph[k]:
-            k += 1
-        pref.append(k)
-        k = 0
-        while k < FRAME_H and ch[FRAME_H - 1 - k] == ph[FRAME_H - 1 - k]:
-            k += 1
-        suff.append(k)
-    clean = [M for M in range(n) if pref[M] == FRAME_H]
-    if clean:
-        return 'clean', clean[0]
-    tears = []
+
+def explain(c_arr, ch, port_arr, port_rows, n):
+    """Return (kind, data).
+
+    clean:       data = port index M.
+    spliced:     data = list of (N, lo, hi) valid byte splices.
+    unexplained: data = (mismatches, N, b)."""
+    pref_r, suff_r = [0] * n, [0] * n
+    for M in range(n):
+        pref_r[M], suff_r[M] = row_common(ch, port_rows[M])
+    for M in range(n):
+        if pref_r[M] == FRAME_H and c_arr.tobytes() == port_arr[M].tobytes():
+            return 'clean', M
+    splices = []
     for N in range(n - 1):
-        if pref[N] + suff[N + 1] >= FRAME_H:
-            tears.append((N, max(0, FRAME_H - suff[N + 1]),
-                          min(FRAME_H, pref[N])))
-    if tears:
-        return 'torn', tears
-    # Best whole-row splice, for the failure report.
+        if pref_r[N] + suff_r[N + 1] < FRAME_H - 1:
+            continue
+        pb = byte_prefix(c_arr, port_arr[N])
+        sb = byte_suffix(c_arr, port_arr[N + 1])
+        if pb + sb >= FRAME_BYTES:
+            splices.append((N, FRAME_BYTES - sb, pb))
+    if splices:
+        return 'spliced', splices
     best = None
     for N in range(n - 1):
-        a = row_differs(ch, port_ch[N])       # C vs old (top band)
-        b = row_differs(ch, port_ch[N + 1])   # C vs new (bottom band)
-        pa = prefix_sum(a)
-        pb = prefix_sum(b)
-        for t in range(FRAME_H + 1):
-            m = pa[t] + (pb[FRAME_H] - pb[t])
-            if best is None or m < best[0]:
-                best = (m, N, t, a, b)
+        da = (c_arr != port_arr[N]).astype(np.int64)
+        db = (c_arr != port_arr[N + 1]).astype(np.int64)
+        pa = np.concatenate([[0], np.cumsum(da)])
+        pb = np.concatenate([[0], np.cumsum(db)])
+        vals = pa - pb + pb[-1]
+        b = int(np.argmin(vals))
+        m = int(vals[b])
+        if best is None or m < best[0]:
+            best = (m, N, b)
     return 'unexplained', best
 
 
-def first_diff_byte(cap_data, a, b, t):
-    """First byte differing from the whole-row splice a[:t]+b[t:]."""
-    for r in range(FRAME_H):
-        ref = a[r * FRAME_W * 3:(r + 1) * FRAME_W * 3] if r < t else \
-              b[r * FRAME_W * 3:(r + 1) * FRAME_W * 3]
-        got = cap_data[r * FRAME_W * 3:(r + 1) * FRAME_W * 3]
-        for i in range(len(ref)):
-            if ref[i] != got[i]:
-                return r, i
-    return None, None
+def first_diff_row_byte(c_arr, a, b, sp):
+    ref = np.concatenate([a[:sp], b[sp:]])
+    d = np.flatnonzero(c_arr != ref)
+    if d.size == 0:
+        return None, None
+    i = int(d[0])
+    return i // (FRAME_W * 3), i
 
 
-def subrow_boundary(cap_data, a_data, b_data, r):
-    """Evidence for the STOP case: does row r splice a[:x]+b[x:] for some x?"""
-    got = cap_data[r * FRAME_W * 3:(r + 1) * FRAME_W * 3]
-    ra = a_data[r * FRAME_W * 3:(r + 1) * FRAME_W * 3]
-    rb = b_data[r * FRAME_W * 3:(r + 1) * FRAME_W * 3]
-    for order, (x, y) in (('old-then-new', (ra, rb)), ('new-then-old', (rb, ra))):
-        for off in range(0, len(got) + 1):
-            if got[:off] == x[:off] and got[off:] == y[off:]:
-                return order, off
-    return None
+def bands(c_arr, a, b):
+    """Byte ranges where C matches only a (old) and only b (new)."""
+    ma = c_arr == a
+    mb = c_arr == b
+    only_a = np.flatnonzero(ma & ~mb)
+    only_b = np.flatnonzero(mb & ~ma)
+    return ((int(only_a[0]), int(only_a[-1])) if only_a.size else None,
+            int(only_a.size),
+            (int(only_b[0]), int(only_b[-1])) if only_b.size else None,
+            int(only_b.size))
 
 
-def check_capture(capture, port, port_ch, n, name):
+def check_capture(capture, port_arr, port_rows, n, name, verbose):
     frames = load_frames(capture)
     if not frames:
         print("title_compare: %s is empty" % name)
@@ -152,65 +160,70 @@ def check_capture(capture, port, port_ch, n, name):
               % (name, len(frames[0]), FRAME_BYTES))
         return 1, None
     raws = raw_map(capture) or list(range(len(frames)))
+    arrs = [to_array(f) for f in frames]
 
-    kinds = []
-    for data in frames:
-        kinds.append(explain(row_hashes(data), port_ch, n))
+    kinds = [explain(arrs[j], row_hashes(frames[j]), port_arr, port_rows, n)
+             for j in range(len(frames))]
 
     exh = []
     for kind, data in kinds:
         s = set()
         if kind == 'clean':
             s.add(data)
-        elif kind == 'torn':
+        elif kind == 'spliced':
             for (N, lo, hi) in data:
                 if hi > 0:
                     s.add(N)
-                if lo < FRAME_H:
+                if lo < FRAME_BYTES:
                     s.add(N + 1)
         exh.append(s)
 
     idx = [j for j, s in enumerate(exh) if s]
-    if not idx:
-        print("title_compare: %s: no captured frame is explained by a port frame"
-              % name)
-        return 1, None
     a, b = idx[0], idx[-1]
     window = range(a, b + 1)
     clean_j = {j for j in window if kinds[j][0] == 'clean'}
-    torn_j = {j for j in window if kinds[j][0] == 'torn'}
+    spliced_j = {j for j in window if kinds[j][0] == 'spliced'}
     unexpl_j = [j for j in window if kinds[j][0] == 'unexplained']
     covered = set()
     for j in window:
         covered |= exh[j]
     missing = sorted(set(range(n)) - covered)
+    allowed = {0, n - 1}
+    bad_missing = [M for M in missing if M not in allowed]
+    endpoint_ok = True
+    for M in (0, n - 1):
+        if M in missing and (M + 1 if M == 0 else M - 1) not in covered:
+            endpoint_ok = False
 
     print("title_compare: %s: window distinct [%d..%d] (raw %s..%s)"
           % (name, a, b, raws[a], raws[b]))
-    print("title_compare: %s: %d frames in window: %d clean, %d torn, "
-          "%d unexplained" % (name, b - a + 1, len(clean_j), len(torn_j),
+    print("title_compare: %s: %d frames in window: %d clean, %d spliced, "
+          "%d unexplained" % (name, b - a + 1, len(clean_j), len(spliced_j),
                               len(unexpl_j)))
-    tears = sorted({(d[0][0], d[0][1], d[0][2]) for j in torn_j
-                    for d in [kinds[j][1]]})
-    print("title_compare: %s: tear rows (N, lo..hi): %s"
-          % (name, tears if tears else 'none'))
-    print("title_compare: %s: port frames exhibited %d/%d; missing %s"
-          % (name, len(covered), n, missing))
+    spl = sorted({d[0][0]: d[0] for j in spliced_j for d in [kinds[j][1]]}.values(),
+                 key=lambda x: (x[1], x[0]))
+    print("title_compare: %s: splice bytes (N, b) [%d spliced frames]: %s"
+          % (name, len(spliced_j),
+             ['port%d@%d' % (N, lo) for (N, lo, hi) in spl] if verbose else
+             sorted({lo for (N, lo, hi) in spl})))
+    print("title_compare: %s: port frames exhibited %d/%d; missing %s; "
+          "endpoints %s" % (name, len(covered), n, missing,
+                            'OK' if endpoint_ok else 'BAD'))
 
-    bad = len(missing) + len(unexpl_j)
+    bad = len(unexpl_j) + len(bad_missing) + (0 if endpoint_ok else 1)
     for j in unexpl_j:
-        m, N, t, da, db = kinds[j][1]
-        r, c = first_diff_byte(frames[j], port[N], port[N + 1], t)
-        print("title_compare: %s: UNEXPLAINED captured frame %d (raw %s): "
-              "best whole-row splice port%d[0..%d) ++ port%d[%d..200) still "
-              "differs at %d row(s) (first row %s byte %s)"
-              % (name, j, raws[j], N, t, N + 1, t, m, r, c))
-        sub = subrow_boundary(frames[j], port[N], port[N + 1], t)
-        if sub:
-            print("title_compare: %s:   MODEL INSUFFICIENCY: row %d splices "
-                  "exactly at byte %d (%s) -- tear is mid-row, outside the "
-                  "whole-row model" % (name, t, sub[1], sub[0]))
-    for M in missing:
+        m, N, sp = kinds[j][1]
+        r, i = first_diff_row_byte(arrs[j], port_arr[N], port_arr[N + 1], sp)
+        print("title_compare: %s: UNEXPLAINED captured frame %d (raw %s): best "
+              "byte splice port%d[0..%d) ++ port%d[%d..%d) still differs at %d "
+              "byte(s) (first row %s byte %s)"
+              % (name, j, raws[j], N, sp, N + 1, sp, FRAME_BYTES, m, r, i))
+        oa, na, ob, nb = bands(arrs[j], port_arr[N], port_arr[N + 1])
+        print("title_compare: %s:   bytes only port%d: n=%d range %s; only "
+              "port%d: n=%d range %s -> two-splice (A..B..A) mix of two "
+              "adjacent port frames, outside the single-splice model"
+              % (name, N, na, oa, N + 1, nb, ob))
+    for M in bad_missing:
         print("title_compare: %s: PORT FRAME %d is not exhibited by any "
               "captured frame" % (name, M))
     return (1 if bad else 0), {'clean': clean_j, 'kinds': kinds, 'frames': frames}
@@ -221,6 +234,7 @@ def main():
     ap.add_argument('--capture', action='append', required=True)
     ap.add_argument('--port', required=True)
     ap.add_argument('--frames', type=int, default=0)
+    ap.add_argument('--verbose', action='store_true')
     a = ap.parse_args()
     required = os.environ.get('PR_ORACLE_REQUIRED') == '1'
 
@@ -243,7 +257,8 @@ def main():
             print("title_compare: port frame %d is missing at %s" % (i, path))
             return 1
         port.append(load(path))
-    port_ch = [row_hashes(p) for p in port]
+    port_arr = [to_array(p) for p in port]
+    port_rows = [row_hashes(p) for p in port]
 
     bad = 0
     results = []
@@ -252,7 +267,8 @@ def main():
             print("title_compare: capture %d at %s absent, not compared"
                   % (k + 1, capture))
             continue
-        rc, res = check_capture(capture, port, port_ch, n, 'capture %d' % (k + 1))
+        rc, res = check_capture(capture, port_arr, port_rows, n,
+                                'capture %d' % (k + 1), a.verbose)
         bad += rc
         if res:
             results.append(res)
