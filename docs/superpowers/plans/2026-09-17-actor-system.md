@@ -284,13 +284,33 @@ With the pin (Task 1) all three draws are fixed, so `iVar1 = 12`,
 what makes the logo **move** (gravity `8` per frame), which is why this window
 exercises the anim interpreter and the pset sync at all.
 
-### H. pset layer select and support (`0x2F0F0`, `0x2F198`, `0x2F280`, `0x2F4BC`)
+### H. Text grid and glyph renderer (`0x2F0F0`, `0x2F198`, `0x2F20C`, `0x2F280`, `0x2F4BC`, `0x2F830`, `0x2F5A0`)
 
-`0x2F0F0` (`prage.c:18923`, 105 B) selects the pset cursor; `0x2F198`
-(`prage.c:18974`, 115 B) clears/advances the pset layer; `0x2F280`
-(`prage.c:19028`, 146 B) writes the layer set; `0x2F4BC` (`prage.c:19185`,
-20 B) is a one-liner. All four operate on `DS_001014EC` slots through
-`DS_00105Bxx` cursors. Transcribe them from their loci.
+Corrected 2026-09-18 — this section previously (and wrongly) called these functions
+"pset layer select". They are the game's **text grid**. The pset layer is fed by
+`rec+0x59` (`0x2A690`, bytes `2a7dc`/`2a7e1`) and `rec+0x59`/`rec+0x49` (`0x2A820`,
+bytes `2a8cd`/`2a8d0`/`2a8d7`); `rec+0x5A` is written by spawn (`2af2a`) but never
+read by the layer path.
+
+* `0x2F0F0` (`prage.c:18925`, 105 B) `text_width(const u8 *s, u32 mode)` — EAX = byte
+  string, EDX = mode; returns the string's width. 0 callees.
+* `0x2F198` (`prage.c:18976`, 115 B) `text_cursor_set(col, row, s)` and its twin
+  `0x2F20C` (`prage.c:19003`) set the two-word cursor at `DS_00105F34`; each
+  **unconditionally calls `0x2F830(0)` / `0x2F830(1)`** (`prage.c:18993`/`:19020`),
+  which is what emits the glyphs.
+* `0x2F280` (`prage.c:19028`, 146 B) `text_cells_release(col, row, s, mode)` —
+  releases `text_width(s, mode)` cells of the 31x43 grid at `DS_00105F38`, releasing
+  records through `0x2AD40`.
+* `0x2F4BC` (`prage.c:19185`, 20 B) `text_cursor_hold` — a one-liner through `0x2F198`.
+* `0x2F830` (`prage.c:19404`, 239 B) — glyph layout; calls the blitter `0x2F5A0`
+  (`prage.c:19249`, 615 B) and reads the class/width tables at `DS_000BD048`
+  (mode 2) and `DS_000BD1EC`.
+* `DS_00104528` selects the title's phase-0 branch (bit 9): clear ⇒ `0x2F198()`
+  (text), set ⇒ `0x2AE14(0x9AE3C)`. It is `0x2D974(0x29)` (`prage.c:17793`), a
+  packed-record extractor over the `DS_00105Dxx` table; on the shipped image it
+  evaluates to 0 (`table32[0x29] = 0x1D980` → the four bytes at `DS_00105DE0+52..55`,
+  all zero), so the text path is the one the title takes.
+
 
 ### I. Master-loop ordering (`0x255CC`, `prage.c:~12040`)
 
@@ -1280,9 +1300,18 @@ git commit -m "actors: animation-stream interpreter 0x2A408/0x29F34/0x29DB8"
 
 **Interfaces:**
 - Consumes: Task 6.
-- Produces: `void pset_layer_select(u32 which);` — one entry point over the four
-  originals, keyed by the caller's address, since all four are pset-cursor
-  writes the title calls in sequence.
+- Produces, as landed (the section title and the commit message are a misnomer kept
+  for history — see the corrected Format reference H; these are the text grid, not
+  pset-layer writes):
+  ```c
+  int  text_width(const u8 *s, u32 mode);                          /* 0x2F0F0 */
+  void text_cursor_set(s32 col, s32 row, const u8 *s, u32 mode);   /* 0x2F198 */
+  void text_cells_release(s32 col, s32 row, const u8 *s, u32 mode);/* 0x2F280 */
+  void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode);  /* 0x2F4BC */
+  ```
+- `text_layout_seam()` is the explicit placeholder for `0x2F830`; **Task 8b**
+  replaces it. It returning 0 means the cursor's extent is 0 and no glyphs are drawn;
+  that is a planned deferral with an owner, not a defect.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1308,6 +1337,57 @@ git commit -m "actors: pset layer select 0x2F0F0/0x2F198/0x2F280/0x2F4BC"
 
 ---
 
+### Task 8b: The text renderer — `0x2F830` and `0x2F5A0`
+
+**Why this task exists.** Added 2026-09-18 by human-approved 4a-ii errata. Task 8
+established that `0x2F0F0/0x2F198/0x2F20C/0x2F280/0x2F4BC` are the game's text grid,
+that `0x2F198`/`0x2F20C` unconditionally emit text through `0x2F830`, and that on the
+shipped profile the title's phase 0 takes the text branch (`DS_00104528 =
+0x2D974(0x29) = 0`, bit 9 clear). Task 10's pixel-exact window therefore contains
+glyph pixels the port cannot yet draw. Porting this is what keeps DoD #2 honest.
+
+**Files:**
+- Modify: `port/src/game/actors.c`, `port/src/game/actors.h`
+- Modify: `port/tests/test_anim.c` (or create `port/tests/test_text.c` with its
+  `test.h`/`run_tests.c`/`CMakeLists.txt` `run_tests` entries if the file outgrows its
+  neighbour)
+
+**Interfaces:**
+- Consumes: Task 8.
+- Replaces `text_layout_seam()`; produces the real `0x2F830` transcription and its
+  `0x2F5A0` blitter, named for what they do, address-tagged, declared in `actors.h`.
+
+- [ ] **Step 1: Write the failing test**
+
+Extend the text-grid test: drive `text_cursor_set`/`text_cells_release` with a real
+string and assert the glyph pixels the renderer writes into the framebuffer region
+the original writes, hand-computed from the disassembly of the two loci and the
+class/width tables. Cover at least one character from each width class.
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `PR_GAME_DIR=data/game/C make test` — FAIL on the undefined renderer.
+
+- [ ] **Step 3: Transcribe `0x2F830`, `0x2F5A0` and the tables**
+
+`0x2F830` (`prage.c:19404`, 239 B), `0x2F5A0` (`prage.c:19249`, 615 B), and the
+class/width tables at `DS_000BD048` (mode 2) / `DS_000BD1EC`. **Pin every register
+argument from the raw call sites** (`0x2F198`/`0x2F20C` and their callers) — the
+decompiler drops them (it renders a four-parameter function as `FUN_0002f830(0)`),
+and the same loss affects the title's bare `FUN_0002f198()` call, which Task 9 needs.
+Record the binding with raw bytes in the report, as Task 5 and Task 7 did.
+
+- [ ] **Step 4: Run, ladder, commit**
+
+Run: `PR_GAME_DIR=data/game/C make test`, then `make verify`.
+
+```bash
+git add port/src/game/actors.c port/src/game/actors.h port/tests/test_anim.c
+git commit -m "actors: text renderer 0x2F830 and 0x2F5A0, replacing the layout seam"
+```
+
+---
+
 ### Task 9: The title state `0x121A0`, and the fake title's removal
 
 **Files:**
@@ -1317,7 +1397,7 @@ git commit -m "actors: pset layer select 0x2F0F0/0x2F198/0x2F280/0x2F4BC"
 - Delete reference: `port/tests/s16title_frame10.idx` (untracked; the `clean` entry goes with it)
 
 **Interfaces:**
-- Consumes: Tasks 3–8.
+- Consumes: Tasks 3–8b.
 - Produces: `game_state_title()` becomes the `0x121A0` transcription; a
   `PR_TITLE_DUMP` dump hook (mirroring 2b's `PR_SMK_DUMP`) in
   `port/src/game/movie.c`'s neighbourhood — put it in `flow.c` next to the state,
