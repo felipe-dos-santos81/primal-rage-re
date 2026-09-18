@@ -1547,15 +1547,21 @@ frame.
 
 So the comparator must, with **zero pixel tolerance**:
 
-1. explain every captured frame as `port[N][0..t) ++ port[N+1][t..200)` for some
-   port frame *N* and tear row *t* (a clean frame is `t = 0`) — brute force over
-   *N* and *t* is trivial and uses the port as the hypothesis, so a wrong port
-   frame cannot be explained;
-2. require every port frame in 0..95 to be exhibited by at least one capture (its
-   rows must appear at their correct y, as some frame's band or body);
+1. explain every captured frame as `port[N][0..b) ++ port[N+1][b..192000)` for some
+   port frame *N* and **splice byte** *b* (a clean frame is `b = 0`) — brute force
+   over *N* and *b* is fine and uses the port as the hypothesis, so a wrong port
+   frame cannot be explained. The splice is at a byte offset, not a row boundary:
+   two measured captures split inside a scanline (`row 144 = port32[:732] ++
+   port31[732:]`);
+2. require **every** port frame in 1..94 to be exhibited by both captures (its bytes
+   appear at their correct offsets, as some frame's prefix or suffix). At most one
+   frame at each end of the window (0 and 95, the boot→title and title→state-2
+   transitions) may be unexhibited, and only when its adjacent frame is exhibited
+   exactly — at 60 Hz logic against a 70.09 Hz sampler a whole game frame can be
+   lost, and those two are displayed for under one capture interval;
 3. require both captures to satisfy 1 and 2 independently, and their clean
-   (`t = 0`) samples to be byte-identical to each other;
-4. never accept rows from non-adjacent port frames in one captured frame.
+   (`b = 0`) samples to be byte-identical to each other;
+4. never accept bytes from non-adjacent port frames in one captured frame.
 
 The tear row is derived from the data — it is never a tolerance argument. No
 threshold, mask, crop, frame-skip or per-frame allowance may be added. The SMK

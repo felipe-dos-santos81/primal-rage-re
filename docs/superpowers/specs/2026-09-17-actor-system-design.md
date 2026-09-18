@@ -429,13 +429,26 @@ disagree on precisely the torn samples. A torn capture frame is not a sample of
 any game frame, so it cannot witness or falsify anything.
 
 The gate is therefore defined tear-aware, still with **zero pixel tolerance**:
-every captured frame must be exactly `port[N][0..t) ++ port[N+1][t..200)` for some
-port frame *N* and tear row *t* (a clean frame is `t = 0`), and every port frame
-in the 96-frame window must be exhibited by at least one capture. Both captures
-must satisfy this independently, and their clean (`t = 0`) samples must be
-byte-identical to each other. The tear row is derived from the data, never
-supplied as a tolerance, and no threshold, mask, crop or frame-skip is permitted.
-No captured frame may be explained by rows from non-adjacent port frames.
+every captured frame must be exactly `port[N][0..b) ++ port[N+1][b..192000)` for some
+port frame *N* and splice byte *b* (a clean frame is `b = 0`; the splice is at a byte
+offset, not a row boundary, because two measured captures split inside a scanline —
+`row 144 = port32[:732] ++ port31[732:]`). Every port frame in the window must be
+exhibited by at least one capture (its bytes appear at their correct offsets, as some
+frame's prefix or suffix). Both captures must satisfy this independently, and their
+clean (`b = 0`) samples must be byte-identical to each other. The splice byte is
+derived from the data, never supplied as a tolerance, and no threshold, mask, crop or
+frame-skip is permitted. No captured frame may be explained by bytes from
+non-adjacent port frames.
+
+**Coverage refinement, 2026-09-18 (human-approved).** At 60 Hz logic against a
+70.09 Hz sampler the capture can lose a whole game frame, and the two it loses are the
+window's transitions: port frame 0 (boot→title) and frame 95 (title→state 2) are
+exhibited by neither capture, being displayed for under one capture interval. The
+coverage requirement is therefore: **every port frame in 1..94 must be exhibited by
+both captures**, and at most one frame at each end of the window (0 and 95) may be
+unexhibited, and only when its adjacent frame is exhibited exactly. Measured: 94/96
+exhibited by both, and the two captures' clean samples agree 53/53.
+
 
 
 **What each proof covers**
