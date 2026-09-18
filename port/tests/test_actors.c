@@ -132,16 +132,16 @@ static void check_pset_layer(void)
     CHECK_EQ_INT(text_width((const u8 *)"A\"I", 3), 3);
 
     /* 0x2F198. The cursor is the word pair at DS_00105F34: low = row, high =
-     * col + 0x2F830's line extent (0 while that seam is deferred). */
+     * col + 0x2F830's glyph count (Task 8b; the extent was a 0-returning seam). */
     DSD(DS_00105F34) = 0;
     text_cursor_set(5, 7, (const u8 *)"A", 0);
     CHECK_EQ_INT((int)DSW(DS_00105F34), 7);
-    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), 5);
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), 6);     /* col 5 + 1 glyph */
 
     DSD(DS_00105F34) = 0;
     text_cursor_set(-1, 9, (const u8 *)"ABC", 0);   /* col = (0x2b - 3) >> 1 */
     CHECK_EQ_INT((int)DSW(DS_00105F34), 9);
-    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), 20);
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), 23);    /* col 20 + 3 glyphs */
 
     DSW(DS_00105F34) = 0x20;                        /* row == -1 reuses it */
     DSW(DS_00105F34 + 2) = 0x10;

@@ -26,6 +26,7 @@ int main(void)
     test_rng();
     test_actors();
     test_anim();
+    test_text();
     printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
     return g_failures != 0;
 }

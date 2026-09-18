@@ -78,5 +78,17 @@ void text_cursor_set(s32 col, s32 row, const u8 *s, u32 mode);
 void text_cells_release(s32 col, s32 row, const u8 *s, u32 mode);
 /* 0x2F4BC. 0x2F198 with the cursor saved and restored afterwards. */
 void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode);
+/* 0x2F830. EAX = string, EDX = mode, ECX = row, EBX = col, and a stack byte
+ * `vertical` (0x2F198 passes 0; 0x2F20C passes 1). All-spaces clears the run
+ * through 0x2F280; otherwise it lays each character out through 0x2F5A0 and
+ * returns the number of glyph cells emitted (0 on empty/all-space or a glyph
+ * abort). It truncates the caller's string at the line limit. */
+s32 text_render(const u8 *s, u32 mode, s32 row, s32 col, u32 vertical);
+/* 0x2F5A0. EAX = character, EDX = &col, EBX = &row, ECX = mode, and the same
+ * stack byte `vertical`. Releases the addressed cell's record (0x2AD40), spawns
+ * a non-space glyph as an actor (0x2AE14) and advances *col (vertical 0) or
+ * *row (vertical 1) by the glyph's width. Returns 1 when a negative class or a
+ * full pool aborts the string, 0 otherwise. */
+u8 text_glyph_emit(s32 ch, s32 *col, s32 *row, u32 mode, u32 vertical);
 
 #endif /* PRAGE_GAME_ACTORS_H */

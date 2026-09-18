@@ -1294,12 +1294,15 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
     }
 }
 
-/* ---- text cursor and record grid (0x2F0F0, 0x2F198, 0x2F280, 0x2F4BC) ----
+/* ---- text renderer and record grid -------------------------------------
+ * (0x2F0F0, 0x2F198, 0x2F280, 0x2F4BC, 0x2F5A0, 0x2F830)
  *
  * PORT: plan Format reference H names this group "pset layer select and
  * support". The shipped machine is not a pset layer writer: 0x2F0F0 measures a
  * display string, 0x2F198/0x2F4BC move the text cursor at DS_00105F34, and
- * 0x2F280 clears a run of cells in the 31x43 actor-record pointer grid at
+ * 0x2F830 lays the string out through 0x2F5A0, which spawns each non-space
+ * glyph as an actor (0x2AE14) into the grid; 0x2F280 clears a run of cells in
+ * the 31x43 actor-record pointer grid at
  * DS_00105F38 (which actors_reset zeroes via 0x2F920), releasing each record
  * through 0x2AD40. The layer at pset+0x0E is written only by the sync:
  * 0x2A690 uses (s8)rec+0x59 + 0xF0 (0x2A7DC `movsx dx,[ebx+0x59]`; 0x2A7E1
@@ -1334,22 +1337,132 @@ int text_width(const u8 *s, u32 mode)
     }
 }
 
-/* PORT: 0x2F830 is the word-wrap/glyph-layout renderer (it calls 0x2F280 and
- * the 0x2F5A0 glyph blitter), a display-string subsystem this cycle does not
- * own. 0x2F198 calls it only to advance the cursor by the laid-out line extent.
- * Until 0x2F830 is transcribed this seam returns 0, so the cursor's high word
- * lacks that extent. It is title-reachable: 0x121A0 calls 0x2F198 at 0x1223F
- * and 0x2F280 at 0x12396. */
-static s32 text_layout_seam(const u8 *s, u32 mode, s32 row, s32 col)
+/* 0x2F5A0. Emit or replace one glyph cell. The descriptor built for 0x2AE14 is
+ * 20 bytes: {sprite id u16; 0; 0; flags 0x2A00; extent 0x80; 0x1000;
+ * palette handle}. The 0x2A00 high byte carries bit 8, so 0x2AE14's initial
+ * animation-stream walk is skipped and 0x2A408 keeps the descriptor's literal
+ * sprite id rather than dereferencing it as a stream. The glyph's pixels are
+ * therefore produced by the actor renderer (0x1C390), not written here. */
+u8 text_glyph_emit(s32 ch, s32 *col, s32 *row, u32 mode, u32 vertical)
 {
-    (void)s; (void)mode; (void)row; (void)col;
+    u32 c = (u32)ch & 0xffu;
+    u32 cls = mode & 3u;
+    u32 mhi = mode & 0xf000u;
+    u32 table;
+    u32 palette;
+
+    if (cls == 2u) {
+        table = 0xbd048u;
+        palette = (mhi == 0x3000u) ? 0x8099ccu : 0x8099acu;
+    } else if (cls == 3u) {
+        table = 0xbd1ecu;
+        palette = 0x80995cu;
+    } else {
+        table = 0xbcd7cu;
+        switch (mhi) {
+        case 0x1000u: case 0x9000u: palette = 0x809984u; break;
+        case 0x2000u: case 0xa000u: palette = 0x80998cu; break;
+        case 0x3000u: case 0xb000u: palette = 0x809994u; break;
+        case 0x4000u: case 0x5000u: case 0xc000u: case 0xd000u:
+        case 0xf000u: palette = 0x8099a4u; break;
+        default: palette = 0x80997cu; break;
+        }
+    }
+
+    u32 width, height, sprite = 0;
+    if (cls == 2u || cls == 3u) {
+        /* 0x2F6BC: SAR 0x18 of the dword at 0xBD38D + c, i.e. its top byte. */
+        s32 k = (s8)DSB(0xbd390u + c);
+        if (k < 0) return 1;
+        u32 e = table + (u32)k * 4u;
+        sprite = DSW(e);
+        width = DSB(e + 2u);
+        height = DSB(e + 3u);
+    } else if (c > 0x2eb4u && c < 0x2ec6u) {
+        /* 0x2F6E0: fixed 8x8, table read skipped, so the surviving low word
+         * (the character) is the sprite id. PORT: unreachable — ESI was masked
+         * to 0xFF at 0x2F5AC, so ESI can never reach 0x2EB5. Transcribed. */
+        sprite = c;
+        width = 8u;
+        height = 8u;
+    } else {
+        u32 e = table + c * 4u;
+        sprite = DSW(e);
+        width = DSB(e + 2u);
+        height = DSB(e + 3u);
+    }
+
+    u32 off = (u32)*row * 0xacu + (u32)*col * 4u;
+    u32 rec = DSD(DS_00105F38 + off);
+    if (rec != 0) {
+        release_record(rec, actor_pset(rec));      /* 0x2AD40 */
+        DSD(DS_00105F38 + off) = 0;
+    }
+
+    if (c != 0x20u) {
+        u32 desc[5];
+        desc[0] = sprite;                          /* dp+0x00 */
+        desc[1] = 0;                               /* dp+0x04 frame, dp+0x05 */
+        desc[2] = 0x2a00u | (0x0080u << 16);       /* dp+0x08 flags, dp+0x0A extent */
+        desc[3] = 0x1000u;                         /* dp+0x0C */
+        desc[4] = palette;                         /* dp+0x10 palette handle */
+        /* 0x2F7A2: a2 = col * 0x200, a3 = 0xFF, a4 = row * 0x200, a5 = 0. */
+        u32 spawned = actor_spawn(desc, (u32)*col * 0x200u, 0xffu,
+                                  (u32)*row * 0x200u, 0u);
+        if (spawned == 0) return 1;
+        DSD(DS_00105F38 + off) = spawned;
+    }
+
+    if (vertical != 0) {
+        *row += (height == 0x10u) ? 2 : 1;
+    } else {
+        *col += (width == 0x10u) ? 2 : 1;
+    }
     return 0;
 }
 
+/* 0x2F830. `vertical` is the stack byte; 0x2F198 passes 0 and 0x2F20C passes 1.
+ * The write to the caller's string is the original's own truncation at the line
+ * limit (0x2A for horizontal, 0x1E for vertical). */
+s32 text_render(const u8 *s, u32 mode, s32 row, s32 col, u32 vertical)
+{
+    u8 *m = (u8 *)s;   /* 0x2F830 writes the terminator into param_1 */
+
+    if (*s == 0) return 0;                                 /* 0x2F849 */
+
+    u32 all_spaces = 1;
+    for (const u8 *p = s; *p != 0; p++) {                  /* 0x2F852-0x2F86C */
+        if (*p != 0x20u) { all_spaces = 0; break; }
+    }
+    if (all_spaces) {
+        text_cells_release(col, row, s, mode);             /* 0x2F882 -> 0x2F280 */
+        return 0;
+    }
+
+    s32 w = text_width(s, mode);                           /* 0x2F898 -> 0x2F0F0 */
+    if (vertical == 1u) {
+        if (w > 0x1e) m[0x1d] = 0;
+        if (w + row >= 0x1f) { s32 k = 0x1e - row; m[k - 1] = 0; }
+    } else {
+        if (w > 0x2a) m[0x29] = 0;
+        if (w + col >= 0x2b) { s32 k = 0x2a - col; m[k - 1] = 0; }
+    }
+
+    s32 count = 0;
+    for (;;) {
+        u8 ch = *s;
+        if (ch == 0) return count;                         /* 0x2F8E4 */
+        if (text_glyph_emit((s32)ch, &col, &row, mode, vertical) != 0)
+            return 0;                                      /* 0x2F903 */
+        count++;
+        s++;
+    }
+}
+
 /* 0x2F198. EAX = col (-1 centers), EDX = row (-1 reuses the cursor), EBX =
- * string, ECX = mode. Writes {row, col + extent} as two words at
- * DS_00105F34. The title's call (0x1223F) passes EAX=-1, EDX=4, EBX=0x1C500's
- * result, ECX=0x1000. */
+ * string, ECX = mode. Emits the string through 0x2F830 and writes
+ * {row, col + glyph count} as two words at DS_00105F34. The title's call
+ * (0x1223F) passes EAX=-1, EDX=4, EBX=0x1C500's result, ECX=0x1000. */
 void text_cursor_set(s32 col, s32 row, const u8 *s, u32 mode)
 {
     if (row == -1) {
@@ -1361,7 +1474,7 @@ void text_cursor_set(s32 col, s32 row, const u8 *s, u32 mode)
         col = (0x2b - w) >> 1;
         if (col < 0) col = 0;
     }
-    s32 extent = text_layout_seam(s, mode, row, col);
+    s32 extent = text_render(s, mode, row, col, 0u);   /* 0x2F198 passes 0 */
     DSW(DS_00105F34) = (u16)row;
     DSW(DS_00105F34 + 2) = (u16)(col + extent);
 }
