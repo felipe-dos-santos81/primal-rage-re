@@ -75,8 +75,8 @@ static void check_pset_sync(void)
     CHECK_EQ_INT((int)(DSB(rec + 0x2b) & 0x18), 0x18);  /* on-screen */
 
     /* 0x2A39C: rec+0x28 & 4 clears the bit and writes pset+0 from 0x2A408. The
-     * reader is Task 7's stub (returns 0), so only the clear and the write are
-     * observable here; Task 7 owns the id value. */
+     * logo stream (0x0E9116) begins with the literal 0x2C11, so the reader
+     * writes it back unchanged. */
     actors_reset();
     DSB(DS_00104B24) = 0;
     DSB(DS_00104B26) = 0;
@@ -89,7 +89,7 @@ static void check_pset_sync(void)
         DSW(p2 + 0x00) = 0x1234;
         actors_update();
         CHECK_EQ_INT((int)(DSW(r2 + 0x28) & 4u), 0);
-        CHECK_EQ_INT((int)DSW(p2 + 0x00), 0);   /* 0x2A408 stub */
+        CHECK_EQ_INT((int)DSW(p2 + 0x00), 0x2C11);   /* 0x2A408 literal */
     }
 
     /* 0x2A820's on-screen test: a record far outside its extent does not get the

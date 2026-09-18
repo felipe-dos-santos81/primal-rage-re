@@ -2,12 +2,15 @@
  * reset and the spawn. Original addresses are named in comments:
  *   0x249B0 insert-after, 0x249C0 insert-before, 0x249D0 unlink,
  *   0x2AC80 alloc, 0x2BAF4 state-begin reset, 0x2AD40 release, 0x2AE14 spawn,
- *   0x33754 palette acquire.
+ *   0x33754 palette acquire, 0x29F34/0x29DB8 anim variable read/write,
+ *   0x2A408 sprite-id reader, 0x2B8F8 operand fetch, 0x2B2A0 opcode dispatcher,
+ *   0x2BC30/0x2BCF4 animation entry.
  * The lists are {next@+0; prev@+4} dwords holding mem[] offsets; the sentinels
  * are the mem[] offsets DS_00105B3C (free) and DS_00105BCC (active) and point at
  * themselves when the list is empty. The two pools are allocated by
  * res_load_index (platform/res.c), so actors_init only validates them. */
 #include "game/actors.h"
+#include "game/rng.h"
 #include "../mem.h"
 #include "../symbols.h"
 #include "platform/gfx.h"
@@ -254,21 +257,501 @@ static u32 palette_acquire(u32 handle)
     return e;
 }
 
-/* PORT: deferred to Task 7. 0x2B2A0 is the animation-opcode dispatcher (1623
- * bytes). This stub cannot consume the stream, so it returns non-zero and not 2
- * to stop spawn's initial walk instead of spinning; it is NOT oracle-correct. */
-static u32 spawn_anim_opcode(u32 rec, u32 index)
+/* ---- animation-stream interpreter (0x29F34/0x29DB8/0x2A408/0x2B8F8/0x2B2A0) */
+
+static void set_dead(u32 rec);
+
+/* 0x29F34. Read one animation variable. `op & 0x7F` selects: < 0x40 the
+ * 0x40-word ring at DS_00105B4C indexed by rec+0x51; 0x40..0x45 the record's
+ * own fields (0x40..0x43 and 0x45 sign-extended, 0x44 the pset-slot word);
+ * 0x46..0x4B the same fields on the parent at rec+0x4A; 0x4C..0x51 on the
+ * child at rec+0x4B. The disassembly passes the selector in EDX's low byte
+ * (0x29F38 `xor dh,dh` / `and dl,0x7f`), not the decompiler's ABI reading. */
+u32 anim_read_var(u32 rec, u8 op)
 {
-    (void)rec; (void)index;
-    return 1;
+    u32 o = (u32)(op & 0x7fu);
+    if (o < 0x40u)
+        return DSW(DS_00105B4C + ((o + (u32)DSB(rec + 0x51)) & 0x3fu) * 2u);
+    switch (o) {
+    case 0x40: return (u32)(u16)(s8)DSB(rec + 0x52);
+    case 0x41: return (u32)(u16)(s8)DSB(rec + 0x53);
+    case 0x42: return (u32)(u16)(s8)DSB(rec + 0x54);
+    case 0x43: return (u32)(u16)(s8)DSB(rec + 0x55);
+    case 0x44: return DSW(rec + 0x56);
+    case 0x45: return (u32)(u16)(s8)DSB(rec + 0x58);
+    default: break;
+    }
+    u32 base;
+    if (o <= 0x4bu)
+        base = DSD(DS_001014F4) + (u32)DSB(rec + 0x4a) * ACTOR_REC_SIZE;
+    else if (o <= 0x51u)
+        base = DSD(DS_001014F4) + (u32)DSB(rec + 0x4b) * ACTOR_REC_SIZE;
+    else
+        return 0;
+    switch (o) {
+    case 0x46: case 0x4c: return (u32)(u16)(s8)DSB(base + 0x52);
+    case 0x47: case 0x4d: return (u32)(u16)(s8)DSB(base + 0x53);
+    case 0x48: case 0x4e: return (u32)(u16)(s8)DSB(base + 0x54);
+    case 0x49: case 0x4f: return (u32)(u16)(s8)DSB(base + 0x55);
+    case 0x4a: case 0x50: return DSW(base + 0x56);
+    default:              return (u32)(u16)(s8)DSB(base + 0x58); /* 0x4B/0x51 */
+    }
 }
 
-/* PORT: deferred to Task 7. 0x2A408 is the literal sprite-id reader; until it
- * lands pset+0x00 is written from here and is NOT oracle-correct. */
-static u32 spawn_anim_id(u32 rec, u32 pset)
+/* 0x29DB8. Write one animation variable; `value` is the original's EBX
+ * (0x29DBC `mov eax, ebx`), the selector is EDX. The parent/child byte stores
+ * (0x46..0x49, 0x4C..0x4F) save DS_00105BE8, the operand byte, not `value`
+ * (0x29E6A/0x29E75); 0x4A/0x4B/0x50/0x51 take the value. */
+void anim_write_var(u32 rec, u8 op, u32 value)
 {
-    (void)rec; (void)pset;
-    return 0;
+    u32 o = (u32)(op & 0x7fu);
+    if (o < 0x40u) {
+        DSW(DS_00105B4C + ((o + (u32)DSB(rec + 0x51)) & 0x3fu) * 2u) = (u16)value;
+        return;
+    }
+    switch (o) {
+    case 0x40: DSB(rec + 0x52) = (u8)value; return;
+    case 0x41: DSB(rec + 0x53) = (u8)value; return;
+    case 0x42: DSB(rec + 0x54) = (u8)value; return;
+    case 0x43: DSB(rec + 0x55) = (u8)value; return;
+    case 0x44: DSW(rec + 0x56) = (u16)(value & 0xffu); return;
+    case 0x45: DSB(rec + 0x58) = (u8)value; return;
+    default: break;
+    }
+    u32 base;
+    if (o <= 0x4bu)
+        base = DSD(DS_001014F4) + (u32)DSB(rec + 0x4a) * ACTOR_REC_SIZE;
+    else if (o <= 0x51u)
+        base = DSD(DS_001014F4) + (u32)DSB(rec + 0x4b) * ACTOR_REC_SIZE;
+    else
+        return;
+    switch (o) {
+    case 0x46: case 0x4c: DSB(base + 0x52) = (u8)DSW(DS_00105BE8); return;
+    case 0x47: case 0x4d: DSB(base + 0x53) = (u8)DSW(DS_00105BE8); return;
+    case 0x48: case 0x4e: DSB(base + 0x54) = (u8)DSW(DS_00105BE8); return;
+    case 0x49: case 0x4f: DSB(base + 0x55) = (u8)DSW(DS_00105BE8); return;
+    case 0x4a: case 0x50: DSW(base + 0x56) = (u16)(value & 0xffu); return;
+    default:              DSB(base + 0x58) = (u8)value; return; /* 0x4B/0x51 */
+    }
+}
+
+/* 0x2B8F8. Fetch the operand that follows an opcode word. The command word's
+ * bits 0x2000/0x4000 choose the form: 0 none, a literal sign-extended byte;
+ * 0x2000 a variable read; 0x4000 a variable read plus an inline dword that
+ * becomes the stream base DS_00105BD4; 0x6000 a variable read whose index is
+ * scaled by the next word's high nibble and dereferenced against rec+0x0C.
+ * The decompiler drops the `*2`/`*4` scalings (0x2BA78/0x2BAA3/0x2BAC9); this
+ * transcribes the raw arithmetic. */
+static u32 anim_operand(u32 rec)
+{
+    u32 p = DSD(rec + 8);
+    u16 cw = DSW(p);
+    u16 mode = (u16)(cw & 0x6000u);
+    DSW(DS_00105BE6) = mode;
+    u8 op = (u8)DSW(DS_00105BE4);
+    u8 ob = (u8)(cw & 0xffu);
+    u32 cx;
+    if (op == 0x1fu) {
+        u32 np = p + 2;
+        DSD(rec + 8) = np;
+        DSW(DS_00105BE4) = ob;
+        cx = DSW(np);
+        if (mode == 0) return cx;
+    } else {
+        DSW(DS_00105BE8) = ob;
+        if (mode == 0)
+            return ob > 0x7fu ? (0xffffff00u | (u32)ob) : (u32)ob;
+        cx = ob;
+    }
+    /* 0x2B96A */
+    DSW(DS_00105BE8) = (u16)cx;
+    u32 v = anim_read_var(rec, (u8)cx);
+    u16 mode2 = DSW(DS_00105BE6);
+    if (mode2 == 0x2000u) return v & 0xffffu;
+    u32 p2 = DSD(rec + 8) + 2;
+    u32 np = p2 + 2;
+    DSD(rec + 8) = np;
+    if (mode2 == 0x4000u) {
+        DSD(DS_00105BD4) = DSD(p2);
+        return v & 0xffffu;
+    }
+    u32 base = DSD(rec + 0x0c);
+    DSD(DS_00105BD4) = base;
+    u16 sel = (u16)(DSW(np) & 0xf000u);
+    if (sel == 0x1000u)
+        v = (v & 0xffffu) * 2u;
+    else if (sel == 0x2000u)
+        v = (v & 0xffffu) * 2u + 1u;
+    else if (sel == 0x4000u) {
+        base += (v & 0xffffu) * 2u;
+        DSD(DS_00105BD4) = base;
+        return DSW(base);
+    } else if (sel == 0x5000u) {
+        base += (v & 0xffffu) * 4u;
+        DSD(DS_00105BD4) = base;
+        return DSW(base);
+    } else if (sel == 0x6000u) {
+        base += (v & 0xffffu) * 4u + 2u;
+        DSD(DS_00105BD4) = base;
+        return DSW(base);
+    } else {
+        v &= 0xffffu;
+    }
+    u8 b = DSB(base + v);
+    return b > 0x7fu ? ((0xff00u | (u32)b) & 0xffffu) : (u32)b;
+}
+
+/* 0x2A408. The sprite-id reader. `pset` is the second register argument; every
+ * caller (0x2A39C, 0x2AE14, 0x2BC30, 0x2BCF4, 0x2BD44, 0x33F08) builds
+ * DS_001014EC + slot*0x20 in EDX before the call and the function reads it at
+ * 0x2A4A7 (`mov cx,[edx]`), which is the keep-current-id arm. */
+u32 anim_next_sprite_id(u32 rec, u32 pset)
+{
+    u32 res;
+    if ((DSW(rec + 0x28) >> 8 & 8u) != 0) {
+        res = DSW(rec + 8);
+    } else {
+        u32 p = DSD(rec + 8);
+        u16 word = DSW(p);
+        res = word;
+        if ((word & 0x8000u) != 0) {
+            if ((word & 0x1f00u) == 0xd00u) {
+                u32 e = p + 2;
+                DSD(rec + 8) = e;
+                if (((word >> 8) & 0x60u) == 0x40u) {
+                    u32 rv = anim_read_var(rec, (u8)(word & 0x7fu));
+                    res = (u32)DSW(e) + rv;
+                } else {
+                    DSD(rec + 8) = p + 4;
+                    u32 rv = anim_read_var(rec, (u8)(word & 0x7fu));
+                    u32 tab = DSD(p + 2);
+                    res = DSW(tab + (rv & 0xffffu) * 2u);
+                }
+            } else {
+                res = DSW(pset) & 0x7fffu;
+            }
+        }
+    }
+    u32 clearbit = (res & 0x8000u) == 0 ? 1u : 0u;
+    u32 hflip    = ((DSW(rec + 0x28) >> 8) & 0x40u) == 0 ? 1u : 0u;
+    if (clearbit == hflip) return res & 0x7fffu;
+    return (res & 0x7fffu) | 0x8000u;
+}
+
+/* PORT: 0x2B2A0's opcodes 0x10/0x11/0x15 call the code pointer at
+ * DS_00105BD4 through the original's indirect `call`. The port routes that
+ * through fn_resolve; no original address is registered yet, so the call is
+ * skipped until a later task registers it. */
+typedef void (*anim_code_fn)(u32 rec, u32 arg);
+static void anim_indirect(u32 rec, u32 arg)
+{
+    anim_code_fn fn = (anim_code_fn)(void *)fn_resolve(DSD(DS_00105BD4));
+    if (fn) fn(rec, arg);
+}
+
+/* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */
+static int anim_tick_zero;
+void actors_pin_anim_tick_zero(int on) { anim_tick_zero = on; }
+
+/* 0x2B2A0. The animation-opcode dispatcher (1623 bytes). The opcode is the
+ * command word's high byte & 0x1F, or, for the 0x1F prefix, the operand byte
+ * that anim_operand stores back into DS_00105BE4. `flag` is the original's EBX
+ * on entry: 0x2AE14 passes 1, 0x2AA70 and 0x2BC30 pass 0; only opcode 0 reads
+ * it. Returns 0 to keep walking, 1 to stop (opcode 0x0D) and 2 for death. */
+static u32 spawn_anim_opcode(u32 rec, u32 index, u32 flag)
+{
+    u32 p = DSD(rec + 8);
+    DSW(DS_00105BE4) = (u16)((DSW(p) >> 8) & 0x1fu);
+    if ((u8)DSW(DS_00105BE4) == 0x0du) return 1;
+    u32 value = anim_operand(rec);
+    u8 op = (u8)DSW(DS_00105BE4);
+    u16 ax = (u16)value;
+    union { float f; u32 u; } fu;
+
+    switch (op) {
+    case 0x00:                                      /* 0x2B304 */
+        (void)flag;                                 /* 0x2EA64 is a `ret` */
+        set_dead(rec);
+        /* fallthrough */
+    case 0x01:                                      /* 0x2B314 */
+        DSD(rec + 0x24) = 0;
+        DSD(rec + 0x20) = DSD(rec + 0x24);
+        return 2;
+    case 0x02:                                      /* 0x2B330 */
+        DSB(rec + 0x61) = (u8)value;
+        return 0;
+    case 0x03:                                      /* 0x2B343 */
+        DSD(rec + 8) = DSD(DS_00105BD4) - 2u;
+        return 0;
+    case 0x04: {                                    /* 0x2B35A */
+        u8 c = (u8)(DSB(rec + 0x50) + 1u);
+        DSB(rec + 0x50) = c;
+        if ((u32)c <= (u32)DSW(DS_00105BE8))
+            DSD(rec + 8) = DSD(DS_00105BD4) - 2u;
+        else
+            DSB(rec + 0x50) = 0;
+        return 0;
+    }
+    case 0x05:                                      /* 0x2B382 */
+        if (ax != 0) return 0;
+        DSD(rec + 0x20) = 0;
+        DSB(rec + 0x28) |= 0x10;
+        return 2;
+    case 0x06: {                                    /* 0x2B3B2 */
+        u32 edx = DSD(rec + 8) + 2u;
+        DSD(rec + 8) = edx;
+        u16 n1 = (u16)((u32)DSW(edx) + 1u);
+        u16 cx = ax;
+        if (cx != 0 && n1 >= cx) {
+            u32 t = edx + ((u32)cx * 4u - 2u);
+            DSD(rec + 8) = t;
+            DSD(rec + 8) = DSD(t) - 2u;
+        } else {
+            DSD(rec + 8) = edx + ((u32)n1 * 4u);
+        }
+        return 0;
+    }
+    case 0x07:                                      /* 0x2B40F */
+        fu.f = (float)(u32)ax;
+        DSD(rec + 0x20) = fu.u;
+        return 2;
+    case 0x08:                                      /* 0x2B42E, the pin site */
+        fu.f = (float)(u32)(anim_tick_zero ? 0u : rng_next(ax));
+        DSD(rec + 0x20) = fu.u;
+        return 2;
+    case 0x09:                                      /* 0x2B387 */
+        return 0;
+    case 0x0a:                                      /* 0x2B452 */
+        fu.f = (float)(s32)(s16)ax;
+        { union { float f; u32 u; } b; b.u = DSD(rec + 0x24); fu.f += b.f; }
+        DSD(rec + 0x24) = fu.u;
+        return 0;
+    case 0x0b:                                      /* 0x2B468 */
+        fu.f = (float)(u32)ax;
+        DSD(rec + 0x24) = fu.u;
+        return 0;
+    case 0x0c: {                                    /* 0x2B484 */
+        u16 var = DSW(DS_00105BE8);
+        u32 a5 = 0;
+        if (var > 0) a5 = (var == 1) ? 0x400u : 0u;
+        u32 e = DSD(rec + 8);
+        u32 w0 = e + 2;
+        e += 4;
+        DSD(rec + 8) = e;
+        s16 di = (s16)DSW(w0);
+        s16 bx = (s16)DSW(e);
+        u32 a2, a3, a4;
+        if (a5 == 0x400u) {
+            /* 0x2B4EB: a2 = (s16)word[p+2], a4 = (s16)word[p+4], a5 gets the
+             * parent slot (`add eax,edx` with EDX = the pset index). */
+            a2 = (u32)(s32)di;
+            a3 = 0;
+            a4 = (u32)(s32)bx;
+            a5 = (u32)(index + 0x400u);
+        } else {
+            a5 = (u32)((DSW(rec + 0x28) >> 8) & 0x40u);
+            a2 = (u32)((s32)di + (s32)DSD(rec + 0x18));
+            a3 = (u32)((s32)DSD(rec + 0x30) >> 16);
+            a4 = (u32)((s32)bx + (s32)DSD(rec + 0x1c));
+        }
+        DSD(DS_00105BD8) = rec;
+        u32 child = actor_spawn((const u32 *)(mem + DSD(DS_00105BD4)),
+                                a2, a3, a4, a5);
+        if (child != 0) {
+            DSW(child + 0x2a) |= (u16)((DSW(DS_000EF6DC) & 1u) | 4u);
+            DSB(child + 0x51) = DSB(rec + 0x51);
+        }
+        return 0;
+    }
+    case 0x0d:                                      /* 0x2B52F */
+    case 0x0e:                                      /* 0x2B534 */
+        anim_write_var(rec, (u8)ax, 0);
+        return 0;
+    case 0x0f: {                                    /* 0x2B538 */
+        if (DSW(DS_00105BE6) == 0) DSD(rec + 8) += 2u;
+        u32 v = DSW(DSD(rec + 8));
+        anim_write_var(rec, (u8)ax, v);
+        return 0;
+    }
+    case 0x10:                                      /* 0x2B56B */
+        anim_indirect(rec, index);
+        return 0;
+    case 0x11: {                                    /* 0x2B57F */
+        u32 e = DSD(rec + 8) + 2u;
+        DSD(rec + 8) = e;
+        anim_indirect(rec, DSW(e));
+        return 0;
+    }
+    case 0x12:                                      /* 0x2B5A4 */
+        DSB(rec + 0x4e) = 1;
+        DSW(rec + 0x2e) = (u16)(value << 4);
+        return 0;
+    case 0x13:                                      /* 0x2B5BB */
+        DSB(rec + 0x59) = (u8)value;
+        return 0;
+    case 0x14:                                      /* 0x2B5CE */
+        DSB(rec + 0x29) ^= 0x40;
+        return 0;
+    case 0x15:                                      /* 0x2B5E3 */
+        anim_indirect(rec, index);
+        return 0;
+    case 0x16:                                      /* 0x2B5FA */
+        DSB(rec + 0x29) &= (u8)~0x02u;
+        return 0;
+    case 0x17:                                      /* 0x2B60F */
+        anim_write_var(rec, (u8)DSW(DS_00105BE8), (u16)(value + 1u));
+        return 0;
+    case 0x18: {                                    /* 0x2B638 */
+        u16 cx = (u16)(value + 1u);
+        anim_write_var(rec, (u8)DSW(DS_00105BE8), cx);
+        u32 edi = DSD(rec + 8) + 2u;
+        DSD(rec + 8) = edi;
+        u16 d = DSW(edi);
+        if ((u32)d > (u32)cx) {
+            u32 a = edi + 2u;
+            DSD(rec + 8) = a;
+            DSD(rec + 8) = DSD(a) - 2u;
+        } else {
+            DSD(rec + 8) = edi + 4u;
+        }
+        return 0;
+    }
+    case 0x19: {                                    /* 0x2B68C */
+        u16 cx = (u16)(value - 1u);
+        anim_write_var(rec, (u8)DSW(DS_00105BE8), cx);
+        u32 ebx = DSD(rec + 8) + 2u;
+        DSD(rec + 8) = ebx;
+        u16 d = DSW(ebx);
+        if ((s32)(s16)cx < (s32)d) {
+            DSD(rec + 8) = ebx + 4u;
+        } else {
+            u32 a = ebx + 2u;
+            DSD(rec + 8) = a;
+            DSD(rec + 8) = DSD(a) - 2u;
+        }
+        return 0;
+    }
+    case 0x1a:                                      /* 0x2B6E8 */
+        DSD(rec + 0x0c) = DSD(DS_00105BD4);
+        return 0;
+    case 0x1b:                                      /* 0x2B6FC */
+        DSD(rec + 0x0c) = 0;
+        return 0;
+    case 0x1c: {                                    /* 0x2B70F */
+        DSD(rec + 0x10) = DSD(DS_00105BD4);
+        u32 pb = DSD(rec + 0x10) + (u32)
+                 ((s32)DSD(rec + 0x4f) >> 24);
+        fu.f = (float)(u32)DSB(pb);
+        DSD(rec + 0x20) = fu.u;
+        DSD(rec + 0x24) = fu.u;
+        DSB(rec + 0x2b) |= 0x04;
+        return 0;
+    }
+    case 0x1d:                                      /* 0x2B749 */
+        DSD(rec + 0x10) = 0;
+        return 0;
+    case 0x1e:                                      /* 0x2B75C */
+        DSB(rec + 0x2b) &= (u8)~0x04u;
+        return 0;
+    case 0x1f:                                      /* 0x2B771 */
+        /* fallthrough: 0x2EA64 is a `ret` */
+    case 0x20:                                      /* 0x2B776 */
+        if ((DSW(rec + 0x28) >> 8 & 0x40u) != 0)
+            DSD(rec + 0x18) = (u32)((s32)DSD(rec + 0x18)
+                                    - (s32)(s16)ax * 64);
+        else
+            DSD(rec + 0x18) = (u32)((s32)DSD(rec + 0x18)
+                                    + (s32)(s16)ax * 64);
+        return 0;
+    case 0x21:                                      /* 0x2B7B8 */
+        DSD(rec + 0x1c) = (u32)((s32)DSD(rec + 0x1c)
+                                + (s32)(s16)ax * 64);
+        return 0;
+    case 0x22:                                      /* 0x2B7D0 */
+        DSW(rec + 0x32) = (u16)(DSW(rec + 0x32)
+                                + (u16)((value << 6) & 0xffffu));
+        return 0;
+    case 0x25:                                      /* 0x2B7E9 */
+        DSW(rec + 0x34) = (u16)(DSW(rec + 0x34) + ax);
+        return 0;
+    case 0x26:                                      /* 0x2B7FF */
+        DSW(rec + 0x36) = (u16)(DSW(rec + 0x36) + ax);
+        return 0;
+    case 0x27:                                      /* 0x2B815 */
+        DSW(rec + 0x38) = (u16)(DSW(rec + 0x38) + ax);
+        return 0;
+    case 0x28:                                      /* 0x2B825 */
+        if ((DSW(rec + 0x28) >> 8 & 0x40u) != 0)
+            DSW(rec + 0x34) = (u16)(-value);
+        else
+            DSW(rec + 0x34) = ax;
+        return 0;
+    case 0x29: DSW(rec + 0x36) = ax; return 0;      /* 0x2B850 */
+    case 0x2a: DSW(rec + 0x38) = ax; return 0;      /* 0x2B860 */
+    case 0x2b: DSW(rec + 0x2c) = ax; return 0;      /* 0x2B870 */
+    case 0x2c:                                      /* 0x2B880 */
+        DSW(rec + 0x2c) = (u16)(DSW(rec + 0x2c) + ax);
+        return 0;
+    case 0x2d: {                                    /* 0x2B896 */
+        /* 0x2B89F reads a dword at pset+0x0A then `sar 0x10` (0x2B8A3): the
+         * compared value is the sign-extended word at pset+0x0C. */
+        s32 pv = (s32)(s16)DSW(DSD(DS_001014EC)
+                               + index * PSET_SIZE + 0x0c);
+        if (pv < (s32)ax) {
+            DSD(rec + 8) += 2u;
+            DSD(rec + 8) = DSD(DSD(rec + 8)) - 2u;
+        } else {
+            DSD(rec + 8) += 4u;
+        }
+        return 0;
+    }
+    case 0x2e:                                      /* 0x2B8D2 */
+        /* PORT: 0x2B2A0's opcode 0x2E calls 0x2C3FC (1268-byte effect/voice
+         * subsystem), out of this cycle's scope. Not silently dropped: the call
+         * is documented here and listed in the Task 7 report. */
+        return 0;
+    default:                                        /* 0x2B8E8 */
+        /* 0x2EA64 is a `ret`. */
+        return 0;
+    }
+}
+
+/* 0x2BC30. Point a record at `stream`, reset its animation cursor and cache,
+ * pre-walk its commands, then load the first sprite id. */
+void actors_anim_begin(u32 rec, u32 stream, u32 frame)
+{
+    DSD(rec + 0x0c) = 0;
+    DSD(rec + 0x10) = 0;
+    DSB(rec + 0x52) = 0;
+    DSB(rec + 0x50) = 0;
+    DSB(rec + 0x61) = 0;
+    DSD(rec + 8) = stream;
+    DSW(rec + 0x28) &= 0xf7ebu;
+    DSB(rec + 0x2b) &= (u8)~0x04u;
+    union { float f; u32 u; } fu;
+    fu.f = (float)frame;
+    DSD(rec + 0x24) = fu.u;
+    DSD(rec + 0x20) = fu.u;
+    for (;;) {
+        if (((DSW(DSD(rec + 8)) >> 8) & 0x80u) == 0) break;
+        u32 st = spawn_anim_opcode(rec, DSW(rec + 0x56), 0);
+        if (st != 0) {
+            if (st != 1) DSD(rec + 8) += 2u;
+            break;
+        }
+        DSD(rec + 8) += 2u;
+    }
+    u32 pset = DSD(DS_001014EC) + (u32)DSW(rec + 0x56) * PSET_SIZE;
+    DSW(pset) = (u16)anim_next_sprite_id(rec, pset);
+}
+
+/* 0x2BCF4. Point a record at `stream` and load its first sprite id. */
+void actors_anim_seek(u32 rec, u32 stream)
+{
+    DSD(rec + 8) = stream;
+    DSB(rec + 0x28) &= (u8)~0x14u;
+    u32 pset = DSD(DS_001014EC) + (u32)DSW(rec + 0x56) * PSET_SIZE;
+    DSW(pset) = (u16)anim_next_sprite_id(rec, pset);
 }
 
 /* ---- pset sync (0x2A31C -> 0x2A1FC -> 0x2A820) -------------------------- */
@@ -330,9 +813,9 @@ static void pset_point(u32 rec)
     DSD(pset + 4) = x;
     DSD(pset + 8) = (u32)y;
     if ((s16)DSW(rec + 0x32) > 0) {
-        /* TODO(verify): 0x2A7CA's clamp is `and eax,0xffff; cmp eax,0xff; jle`
-         * (signed), so values 0x8000..0xffff are not clamped. The decompiler
-         * reads it unsigned. Transcribed signed. */
+        /* PORT: 0x2A7C5 `and eax,0xffff` zero-extends the layer before
+         * 0x2A7CA's signed `jle` clamp, so signed and unsigned coincide and
+         * the clamp is correct. */
         s32 layer = 0xf0 - ((s32)DSD(rec + 0x30) >> 22)
                   + ((s32)DSD(rec + 0x56) >> 24);
         u16 u = (u16)layer;
@@ -361,12 +844,12 @@ static void pset_write(u32 rec, u32 pset)
             if ((DSW(parent + 0x28) & 8u) != 0) goto dead;
             u32 pp = DSD(DS_001014EC)
                    + (u32)DSW(parent + 0x56) * PSET_SIZE;
-            u32 x = DSD(pp + 4) + (u32)(((s32)DSD(rec + 0x32) >> 16) << 6);
+            u32 x = DSD(pp + 4) + (u32)(((s32)DSD(rec + 0x32) >> 16) * 64);
             DSD(pset + 4) = x;
             DSD(DS_00105BDC) = x;
             if ((DSW(rec + 0x28) & 0x40u) == 0)
                 DSD(pset + 8) = DSD(pp + 8)
-                    + (u32)(((s32)DSD(rec + 0x34) >> 16) << 6);
+                    + (u32)(((s32)DSD(rec + 0x34) >> 16) * 64);
             else
                 DSD(pset + 8) = (u32)((s32)DSD(DS_000F0AEC) + 0x3bc0
                     - ((s32)DSD(parent + 0x30) >> 16));
@@ -383,9 +866,9 @@ static void pset_write(u32 rec, u32 pset)
                        + (u32)DSB(rec + 0x4a) * ACTOR_REC_SIZE;
             if ((DSW(parent + 0x28) & 8u) != 0) goto dead;
             DSD(rec + 0x18) = DSD(parent + 0x18)
-                + (u32)(((s32)DSD(rec + 0x32) >> 16) << 6);
+                + (u32)(((s32)DSD(rec + 0x32) >> 16) * 64);
             DSD(rec + 0x1c) = DSD(parent + 0x1c)
-                + (u32)(((s32)DSD(rec + 0x34) >> 16) << 6);
+                + (u32)(((s32)DSD(rec + 0x34) >> 16) * 64);
             DSW(rec + 0x2c) = DSW(parent + 0x2c);
         }
         DSD(pset + 4) = DSD(rec + 0x18);
@@ -393,9 +876,9 @@ static void pset_write(u32 rec, u32 pset)
         DSD(pset + 8) = DSD(rec + 0x1c);
         DSD(DS_00105BE0) = DSD(rec + 0x1c);
         DSW(pset + 0x0c) = DSW(rec + 0x2c);
-        /* TODO(verify): 0x2A8DE's clamp is signed (`cmp edx,0xff; jle`), so a
-         * low word of 0x8000..0xffff is not clamped; the decompiler reads it
-         * unsigned. Transcribed signed. */
+        /* PORT: 0x2A8D9 `mov dx,cx` zero-extends the layer before 0x2A8DE's
+         * signed `jle` clamp, so signed and unsigned coincide and the clamp is
+         * correct. */
         u16 layer = (u16)((s32)DSB(rec + 0x49) + (s32)(s8)DSB(rec + 0x59));
         if ((s32)layer > 0xff) layer = 0xff;
         DSW(pset + 0x0e) = layer;
@@ -458,13 +941,13 @@ static void motion_step(u32 rec)
     }
 }
 
-/* 0x2A39C. Clear the +0x28 0x04 bit and write pset+0 from the Task 7 reader,
- * or-ing the parent's hflip into bit 0x8000. */
+/* 0x2A39C. Clear the +0x28 0x04 bit and write pset+0 from the reader, or-ing
+ * the parent's hflip into bit 0x8000. */
 static void anim_id_path(u32 rec, u32 slot)
 {
     DSB(rec + 0x28) &= 0xfb;
     u32 pset = DSD(DS_001014EC) + slot * PSET_SIZE;
-    u32 id = spawn_anim_id(rec, pset);          /* PORT: deferred to Task 7 */
+    u32 id = anim_next_sprite_id(rec, pset);
     if (DSB(rec + 0x4a) != 0) {
         u32 parent = DSD(DS_001014F4)
                    + (u32)DSB(rec + 0x4a) * ACTOR_REC_SIZE;
@@ -472,15 +955,6 @@ static void anim_id_path(u32 rec, u32 slot)
         else                                        id |= 0x8000u;
     }
     DSW(pset) = (u16)id;
-}
-
-/* PORT: deferred to Task 7. 0x29F34 is the animation-stream variable reader
- * (Task 7's anim_read_var); frame_timer's +0x28 0x10 probe returns early while
- * this returns 0, so opcode-conditional delays are not yet oracle-correct. */
-static u32 anim_read_var(u32 rec, u8 op)
-{
-    (void)rec; (void)op;
-    return 0;
 }
 
 /* 0x2AA70. The frame timer: consume stream opcodes until the dispatcher stops,
@@ -539,7 +1013,7 @@ stream_walk:;
             u32 p = DSD(rec + 8) + 2;
             DSD(rec + 8) = p;
             if ((DSW(p) >> 8 & 0x80u) == 0) break;
-            status = spawn_anim_opcode(rec, slot);  /* PORT: Task 7 stub */
+            status = spawn_anim_opcode(rec, slot, 0);   /* 0x2AA70 passes EBX=0 */
             if (status != 0) break;
         }
         if (status == 2) return;
@@ -760,11 +1234,11 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
             u32 p = DSD(rec + 0x08) + 2;
             DSD(rec + 0x08) = p;
             if ((DSW(p) >> 8 & 0x80) == 0) break;
-            status = spawn_anim_opcode(rec, index);
+            status = spawn_anim_opcode(rec, index, 1);   /* 0x2AE14 passes EBX=1 */
         } while (status == 0);
         if (status == 2) { id = 0x1e1u; have_id = 1; }   /* Task 7 owns this */
     }
-    if (!have_id) id = spawn_anim_id(rec, pset);
+    if (!have_id) id = anim_next_sprite_id(rec, pset);
     DSW(pset + 0x00) = (u16)id;
 
     DSW(pset + 0x02) = (u16)(DSW(rec + 0x2e)
