@@ -79,21 +79,24 @@ int sprite_render_rle_clipped(const u8 *src, u8 *dst, int width, int rows,
                               int stride, u8 bank,
                               int clip_l, int clip_r, int clip_t, int mirror);
 
-/* PORT: 0x58CBD. Raw (uncompressed) copy renderer: `rows` rows of `width`
- * bytes are copied from src to dst with the bank offset added byte-wise to
- * every pixel, advancing dst by `stride` per row and src by `width`. The
- * original maps both the unclipped raw type 0x02 and the clipped type 0x12
- * (RAW|CLIP) here, so clipping is the composite driver's job (destination
- * offset and reduced row count), never this renderer's — hence no clip
- * arguments. Returns 0, or -1 if src/dst is NULL or a dimension is
- * non-positive. */
+/* PORT: 0x58CBD. Clip-aware raw (uncompressed) copy renderer, shared by the
+ * unclipped raw type 0x02 (called with clip_l = clip_r = clip_t = 0) and the
+ * clipped type 0x12 (RAW|CLIP). `vis = width - clip_l - clip_r` bytes are
+ * copied per drawn row from src + clip_t*width + clip_l, with the bank offset
+ * added byte-wise to every pixel; src advances a whole `width` per row (the
+ * clip_l/clip_r overhangs) and dst by `stride`. The original maps both types to
+ * 0x58CBD and the renderer itself reads the node's clip fields. Returns 0
+ * (including the vis <= 0 / rows - clip_t <= 0 no-draw paths), or -1 if
+ * src/dst is NULL or a dimension is non-positive. */
 int sprite_render_raw(const u8 *src, u8 *dst, int width, int rows,
-                      int stride, u8 bank);
+                      int stride, u8 bank,
+                      int clip_l, int clip_r, int clip_t);
 
 /* PORT: 0x5215C. Mode-1 shear renderer for dispatch types 0x04 (unclipped) and
  * 0x06 (mode-1 | clip). The original stores signed 16-bit values one per image
- * row at DS_00107900; row r is shifted horizontally by
- * ((s16)tab[clip_t + r] - (s16)tab[0]) >> 5, an arithmetic shift, so a negative
+ * row at DS_00107900; the r-th drawn row (r = 0 after the clip_t skip, matching
+ * the original's node->+0x3C counter) is shifted horizontally by
+ * ((s16)tab[r] - (s16)tab[0]) >> 5, an arithmetic shift, so a negative
  * shear truncates toward -infinity (the shear cast is load-bearing: reading the
  * entry as unsigned makes the shift amount a large positive offset). `rows` has
  * already had clip_b subtracted by the blitter, so there is no clip_b; clip_t

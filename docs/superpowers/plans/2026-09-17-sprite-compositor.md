@@ -1319,7 +1319,7 @@ void sprite_blit(SpriteNode *n)
      * original leaves unimplemented. */
     switch (n->type & 0x1Fu) {
     case 0x01: sprite_render_rle(src, dst, w, rows, 320, bank); break;
-    case 0x02: sprite_render_raw(src, dst, w, rows, 320, bank); break;
+    case 0x02: sprite_render_raw(src, dst, w, rows, 320, bank, 0, 0, 0); break;
     case 0x04: case 0x06:
         sprite_render_shear(src, dst, w, rows, 320, bank, L, R, T); break;
     case 0x09:
@@ -1327,7 +1327,7 @@ void sprite_blit(SpriteNode *n)
     case 0x11:
         sprite_render_rle_clipped(src, dst, w, rows, 320, bank, L, R, T, 0); break;
     case 0x12:
-        sprite_render_raw(src, dst, w, rows, 320, bank); break;
+        sprite_render_raw(src, dst, w, rows, 320, bank, L, R, T); break;
     case 0x14: case 0x16:
         sprite_render_shear(src, dst, w, rows, 320, bank, L, R, T); break;
     case 0x19:
@@ -1343,12 +1343,14 @@ Two notes for the implementer, both correctness-relevant:
   composite driver set them.** `render_list` sets `+0x28/+0x2C/+0x30/+0x34` and
   sets type bit `0x10` together, so a node reaching the blitter with `0x11`/
   `0x12` always has consistent clip fields. Do not add extra guards.
-* **0x12 has no clip-aware raw renderer in the original** — the table maps it to
-  the same `0x58CBD` as the unclipped `0x02`. `sprite_render_raw` therefore
-  takes only `width`/`rows`; clipping for the raw path is applied by the
-  composite driver's `dst` offset and the reduced `rows`, not by the renderer.
-  If a hand-built node pairs `0x12` with non-zero clip fields, that is a caller
-  error, not a case to handle.
+* **0x58CBD is clip-aware and serves both 0x02 and 0x12.** Disassembly of
+  `0x58CBD` reads the node's clip fields: `vis = width - L - R`; if `T` then
+  `rows -= T`, `src += T * width`; `src += L`; per row it bulk-copies `vis`
+  bytes, then `src += R`, `dst += stride`. So `sprite_render_raw` takes
+  `clip_l/clip_r/clip_t` and is called with `0, 0, 0` for the unclipped `0x02`
+  and the real overhangs for `0x12`. A destination offset alone cannot skip
+  `clip_l` source columns or bound `vis`, which is why the clipped path needs
+  the renderer.
 
 - [ ] **Step 4: Run the tests** — expect pass.
 - [ ] **Step 5: Negative control** — remove the `RAW+HFLIP` early return and

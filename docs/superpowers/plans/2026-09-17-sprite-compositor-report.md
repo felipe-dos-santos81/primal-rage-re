@@ -122,11 +122,16 @@ buffers, computed by hand from the original's semantics:
   truncating division instead of the arithmetic `>> 5`: because
   `-33 / 32 == -1` toward zero where `-33 >> 5 == -2`, exactly the negative row
   fails by one byte. This is why the `(s16)` read of `DS_00107900` is
-  load-bearing.
-* **Raw copy (`0x58CBD`)** — a 4×2 fixture plus a `0xFE`/`0xFF` byte-overflow
-  case. The control swaps the byte-wise `+ bank` for the original's replicated
-  dword add; only the overflow assertion fails (`0x03` becomes `0x04`),
-  pinning byte-wise wrap semantics.
+  load-bearing. A clipped fixture with `clip_t > 0` (fix round 2) pins that the
+  table is indexed by the drawn row.
+* **Raw copy (`0x58CBD`)** — a 4×2 unclipped fixture plus a `0xFE`/`0xFF`
+  byte-overflow case. The control swaps the byte-wise `+ bank` for the
+  original's replicated dword add; only the overflow assertion fails (`0x03`
+  becomes `0x04`), pinning byte-wise wrap semantics. The same entry serves the
+  clipped type `0x12`, so a clipped fixture (added in fix round 2) pins the clip
+  window: `vis = width - L - R` bytes per drawn row at `dst[0..vis-1]`, the
+  clipped columns and skipped `clip_t` rows untouched, and `src` advancing a
+  whole `width` per row.
 
 **Dispatch pinned by output.** `sprite_blit`'s switch is checked against the
 spec's `PTR_LAB_00080C8C`, and every distinct call target is pinned by a
@@ -303,10 +308,13 @@ test-complete for its scope; the deferred items are coverage gaps, not defects.
 * **Task 6 (3):** the `clip_t` skip path reuses the zero-padded fixture; the
   16-byte stride tail is never asserted untouched; negative `clip_l`/`clip_r`
   are unguarded (out of contract; `render_list` clamps inward).
-* **Task 7 (1):** mirror is tested only with `clip_l = 0`/`vis == width`, so a
-  bug ignoring `clip_l` would pass; a mirror+clip case is the gap.
-* **Task 8 (2):** `clip_t < 0` is not clamped; the shear test does not exercise
-  non-zero `clip_l`/`clip_r`/`clip_t` or the no-draw paths.
+* **Task 7 (1):** mirror was tested only with `clip_l = 0`/`vis == width`, so a
+  bug ignoring `clip_l` could have passed; **closed in fix round 2** by a
+  mirrored+clipped hand-computed fixture (`clip_l = 1`, `vis = 3`).
+* **Task 8 (2):** the shear test did not exercise non-zero
+  `clip_l`/`clip_r`/`clip_t` — **closed in fix round 2** by a clipped-shear
+  fixture with `clip_t = 1` that also settles the table index; `clip_t < 0`
+  is still not clamped and the shear no-draw paths remain untested.
 * **Task 9 (2):** `type & 0x1F` vs the original's `& 0x7F` (no producer sets
   bits 5-6); a negative hand-built `x` would wrap `(u32)n->x` (caller contract).
 * **Task 10 (2):** the sort's stability path is untested in isolation; the
@@ -343,9 +351,9 @@ The project may claim:
 * that agreement is **byte-exact against `tools/gra_render.py`** only for the
   same four full-screen `S16TITLE` frames sub-project 1 pinned, and
   consumption-equivalent in general;
-* the clipped, mirrored, shear and raw renderers are proven by **hand-computed
-  exact-buffer tests with failing negative controls**, and the dispatch table by
-  output per class;
+* the clipped RLE, mirrored RLE, clipped raw and clipped shear renderers are
+  proven by **hand-computed exact-buffer tests with failing negative controls**,
+  and the dispatch table by output per class;
 * the projection rounding is the original's `sbb` idiom, with
   `proj_x(-2048) == -1950` the discriminator against both wrong forms;
 * the original's bank-0 defect and `RAW+HFLIP` no-op are pinned and tested;
@@ -401,3 +409,50 @@ and no numeric expectation changed.
   `0x1C3D0`, find-by-pset `0x1C458`, sort `0x1C3FC`.
 * Cosmetic: the `flow.c` `+4` note now names the wiring commit `cfb664e`, and
   the comment-only cross-reference points at §1 instead of §8.
+
+## Fix round 2 — the clipped-raw Critical and three clip-coverage gaps
+
+A whole-branch review of sub-project 4a-i found five issues; all were fixed on
+the same branch. Two were documentation-only; three touched `sprite.{c,h}` and
+`test_sprite.c`. None changed a numeric expectation.
+
+**Finding 1 (Critical): `0x58CBD` is clip-aware, and the port's raw renderer
+was not.** The original entry `0x58CBD` reads the node's clip fields:
+`vis = width - L - R`; if `T`, `rows -= T` and `src += T * width`; `src += L`;
+per row it bulk-copies `vis` bytes, then `src += R` and `dst += stride`
+(confirmed by headless Ghidra disassembly). The port routed both type `0x02`
+and type `0x12` (RAW|CLIP) to a `sprite_render_raw` that copied the full
+`width` per row, ignoring the clip fields. That is wrong and unsafe: at `x = 0`
+a 975-wide raw sprite (`0x2BDF`) gives `clip_r = 655`, so the old code copied
+975 bytes per row at stride 320 and wrote ~654 bytes past the 320×200 back
+buffer. `sprite_render_raw` now takes `clip_l`/`clip_r`/`clip_t`, mirrors
+`sprite_render_shear`'s shape, and reuses `copy_run`; `case 0x02` passes
+`0,0,0` and `case 0x12` passes `L,R,T`. Latent only because the display list is
+empty in 4a-i.
+
+**Finding 5: the shear table index is the drawn row, not the image row.** The
+disassembly of `0x5215C` shows `MOV dword ptr [EBP+0x3c],0x0` before the loop
+and `INC dword ptr [EBP+0x3c]` inside it, with the table index operand
+`[EAX*0x2 + 0x107900]` and `EAX = node->+0x3C`; so the first row after the
+`clip_t` skip uses `tab[0]` and the spec's `tab[r]` is correct. The port had
+`tab[clip_t + r]`; fixed to `tab[r]`, and `check_shear_clipped` (with
+`clip_t = 1`) rejects the image-row form.
+
+**Findings 3/4: coverage and claims.** Three live clip paths were compared only
+against themselves. Added hand-computed fixtures: clipped raw
+(`check_raw_clipped`), mirrored+clipped RLE (`check_rle_mirror_clip`,
+`clip_l = 1`, `vis = 3`), and clipped shear (`check_shear_clipped`,
+`clip_t = 1`). The dispatch test gained a `0x12`-with-non-zero-clip case. §3,
+§8 and §10 were corrected: the raw renderer's clip path is now proven, not
+merely asserted.
+
+Each new test was proven to discriminate: dropping the `clip_r` bound in
+`sprite_render_raw` failed `check_raw_clipped`; wiring `0x12` as `0,0,0` failed
+the dispatch case; disabling the RLE mirror failed `check_rle_mirror_clip`;
+indexing the shear table by `clip_t + r` failed `check_shear_clipped`. All
+mutations were reverted.
+
+The wiring is still a no-op: with the display list empty, `make check`'s 60
+captured title frames hash identically before and after this fix wave
+(`5f0c8ea646d5f2a459602fca515d21a0bf21700e`, 180 frame files), and `make verify`
+is green with zero warnings.
