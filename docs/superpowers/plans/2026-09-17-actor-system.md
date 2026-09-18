@@ -580,8 +580,10 @@ git commit -m "tools: pin the RNG draws the title consumes in a capture-only PRA
 - Consumes: `tools/title_pin.py` (Task 1); `tools/smk_capture.py`'s `run_dosbox`,
   `read_avi_frames`, `align` and `ffprobe_fps` — **imported**, not copied.
 - Produces: `data/title-captures/title/frame_%04d.raw` — the pinned original's
-  title window as 320×200 RGB24, **one file per distinct game frame**, plus
-  `window.txt` recording, per written frame, the raw capture index it came from.
+  post-logo run as 320×200 RGB24, collapsed to **one file per distinct consecutive
+  frame**, plus `window.txt` recording, per written frame, the raw capture index it
+  came from. The title window inside it is located by Task 10's content alignment,
+  not by this task.
 
 **Why one file per distinct game frame, not per capture frame** (the plan's second
 draft assumed capture index == game frame index, which is false): the game's logic
@@ -603,12 +605,21 @@ consumer of it.** The tool must support `--port-anchor DIR` (align the port's fr
 against the capture and emit one capture frame per port frame) and must never write
 a guessed anchor.
 
-**The gate (spec DoD #3).** Two runs must agree on the distinct-frame content
-sequence over the title window. Whole-AVI byte-identity is not achievable and is
-not what the oracle needs: measured on two 45 s pinned runs, the boot text/movie
-region carries sampling jitter (they differ from raw frame 31, and their raw title
-blocks differ in phase). Byte-identity is required after the window is reduced to
-its distinct frames, which is the property the comparison actually depends on.
+**The gate is re-derived in Task 10, and this ordering is deliberate.** A
+port-free window locator is circular: the only thing that identifies the first
+`DS_000F0A66 == 0x600` frame exactly is the port's own `frame_0000.raw`. An earlier
+draft tried to locate the window from the pinned-vs-unpinned RNG-sensitivity diff;
+pinning the in-window consumers (Format reference A2, sites 4 and 5) removed that
+sensitivity, so the locator silently fell back to a boot-region window and produced
+a meaningless verdict. So this task captures the run, collapses holds, records the
+evidence and provides `--port-anchor`; **Task 10 pins the window by content and
+proves determinism by requiring the port to match two independent captures** — a
+strictly stronger statement than a port-free byte-identity gate, and the only
+non-circular one.
+
+Whole-AVI byte-identity is not achievable and is not what the oracle needs:
+measured on two 45 s pinned runs, the boot text/movie region carries sampling
+jitter (they differ from raw frame 31).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -655,9 +666,11 @@ The tool's contract, in order:
    directory (symlinks only, never a copy); never write under `data/game/`.
 2. Capture the whole run (`--time-limit`, default 45 s) to a temp AVI dir; decode to
    320×200 RGB24 with `read_avi_frames`.
-3. Locate the window: the RNG-sensitive contiguous block, and (when
-   `--port-anchor DIR` is given) the capture frame that matches the port's
-   `frame_0000.raw`, then one capture frame per subsequent port frame via `align`.
+3. Emit the whole region after the second logo, collapsed to its distinct
+   consecutive frames, and (when `--port-anchor DIR` is given) align the port's
+   frames against the capture with `smk_capture.align` and emit one capture frame per
+   port frame, for Task 10. Never guess a window: with no `--port-anchor`, emit the
+   whole region.
 4. Write the window collapsed to distinct consecutive frames as
    `frame_%04d.raw` (exactly 192000 bytes each), recording each one's raw capture
    index in `window.txt`. If the window cannot be identified, print the candidate
@@ -665,26 +678,34 @@ The tool's contract, in order:
 5. `--verify-reproducible`: run 2–4 twice, require the distinct-frame sequences to
    be byte-identical, and on failure report the first differing frame index.
 
-- [ ] **Step 3: Run the capture and report the anchor evidence**
+- [ ] **Step 3: Run the capture and report the evidence**
 
 Run: `make title-pin && python3 tools/title_capture.py --out data/title-captures/title --time-limit 45`
 
 Expected: `frame_0000.raw` … exist, 192000 bytes each, and `window.txt` names the raw
-index of each. Report the window start found, the block boundaries, and both boot
-movies' last-presented raw indices as the anchor's evidence.
+capture index of each. Report: the emitted frame count, the raw range they cover,
+both boot movies' last-presented raw indices, and — since the RNG-sensitivity
+locator is dead by construction (Format reference A2 pins the consumers) — the fact
+that the emitted region covers the whole post-logo run, so Task 10's content
+alignment can find the title window inside it. Do not claim the title window has
+been located; this task does not locate it.
 
-- [ ] **Step 4: Run the reproducibility gate**
+- [ ] **Step 4: Confirm the pin is the only intended variance source**
 
 Run: `python3 tools/title_capture.py --out data/title-captures/title --verify-reproducible`
-Expected: the two runs' distinct-frame sequences identical, exit 0. **If it fails,
-stop and revisit Task 1** — the oracle is void without this.
+This is a **diagnostic, not a gate**: report the two runs' frame counts, how many
+frames are shared, and where they diverge. Expected: the boot/movie region diverges
+(sampling jitter) and the post-title region agrees. A divergence *inside* the title
+composite is a finding for Task 1 — report it with the raw indices instead of
+concluding anything, and do not treat the diagnostic's exit status as this task's
+verdict. Task 10 owns the real gate.
 
 - [ ] **Step 5: Wire the Makefile target and commit**
 
 ```make
 TITLE_CAPTURES = data/title-captures
 
-title-capture: title-pin ## Capture the pinned original title window (skips the gate by default)
+title-capture: title-pin ## Capture the pinned original run for the title oracle (writes data/title-captures/)
 	$(PYTHON) tools/title_capture.py --out $(TITLE_CAPTURES)/title --time-limit 45
 ```
 
@@ -692,7 +713,7 @@ Add `data/title-captures/` to `.gitignore` (captures are the original's bytes).
 
 ```bash
 git add tools/title_capture.py Makefile .gitignore
-git commit -m "tools: capture the pinned original title window as distinct RGB24 frames"
+git commit -m "tools: capture the pinned original run for the title oracle"
 ```
 
 ---
@@ -1322,6 +1343,15 @@ here because Task 2 collapses the capture to one file per distinct game frame;
 `title_compare.py` otherwise mirrors `smk_compare.py`, including its env-gate
 semantics, and takes no tolerance argument. A mismatch must be reported with both
 the frame index and, from Task 2's `window.txt`, the raw capture frame it came
+
+**This task owns the determinism proof that Task 2 could not produce.** The window
+is pinned by aligning the port's `frame_0000.raw` into the capture (that is why
+`--port-anchor` exists), and determinism is proven by requiring the port to match
+**two independent captures** — not by a port-free byte-identity gate, which is
+circular (Format reference and Task 2 record the failed attempt). So the oracle step
+runs the capture twice and compares the port against both aligned windows; a
+disagreement between the two captures inside the aligned window is reported as a
+pin finding, with the raw indices of the first divergence.
 from, so a collapse error (a genuinely repeated game frame merged) is diagnosable
 rather than silent.
 
