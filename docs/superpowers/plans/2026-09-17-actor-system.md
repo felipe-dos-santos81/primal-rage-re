@@ -35,7 +35,7 @@ loci. Addresses are DOS/4GW virtual.
 
 ### A. The RNG — `0x5D7DC` (`prage.c:38892`), verified byte-for-byte
 
-Disassembly at file offset `0xB0631` (identical bytes, 41 of them):
+Disassembly at file offset `0xB0630` (42 bytes, Ghidra's size):
 
 ```
 53              push ebx
@@ -57,10 +57,15 @@ So: `state = state * 0xB90D12B9 + 0x38CE051F` (u32 wrap), return
 `((state >> 16) * (range & 0xffff)) >> 16`. Seed `0xABCD`, hardcoded at
 `0x20C10` (`prage.c:11428`).
 
-**The file offset of the function start is `0xB0631`**, and the object-0 code
-mapping is `file = va + 0x52E55`, verified: `0x5D7DC + 0x52E55 = 0xB0631`. The
-tool must not rely on that constant alone; it locates the function by its unique
-19-byte signature `53 52 25 ff ff 00 00 8b d8 a1 d8 f6 06 00`.
+**The file offset of the function start is `0xB0630`**, and the object-0 code
+mapping is `file = va + 0x52E54`, verified three ways: `0x5D7DC + 0x52E54 =
+0xB0630`; the byte at `0xB062F` is the previous function's `ret` (`c3`); and the
+42-byte body ends `5a 5b c3` (`pop edx; pop ebx; ret`), matching the `53 52`
+prologue — so a patch at the *next* byte would leave `push ebx` unmatched and
+corrupt the stack. A neighbouring function confirms the mapping:
+`0x5D808 + 0x52E54 = 0xB065C`. The tool must not rely on that constant alone; it
+locates the function by its unique 14-byte signature
+`53 52 25 ff ff 00 00 8b d8 a1 d8 f6 06 00`.
 
 Expected sequence from seed `0xABCD` (consecutive calls, each row one call):
 
@@ -271,7 +276,8 @@ So in the port: `actors_update()` goes at the **end of `game_frame()`**, and
 | `0x2BF08` | 16666 |
 | `0x2EA30` | 18424 |
 | `0x2F0F0` | 18923 |
-| `0x2F198` | 19028 (see H) |
+| `0x2F198` | 18974 |
+| `0x2F280` | 19028 |
 | `0x33754` | 20751 |
 | `0x33904` | 20878 |
 | `0x38910` | 23689 |
@@ -328,11 +334,11 @@ class TitlePinTest(unittest.TestCase):
             a = open(EXE, "rb").read()
             b = open(out, "rb").read()
             self.assertEqual(len(a), len(b))
-            self.assertEqual(b, a[:0xB0631] + STUB + a[0xB0634:])
+            self.assertEqual(b, a[:0xB0630] + STUB + a[0xB0633:])
 
     def test_patch_site_holds_the_original_signature(self):
         a = open(EXE, "rb").read()
-        self.assertEqual(a[0xB0631:0xB0631 + 19], SIG)
+        self.assertEqual(a[0xB0630:0xB0630 + len(SIG)], SIG)
 
     def test_refuses_an_already_patched_file(self):
         with tempfile.TemporaryDirectory() as d:
@@ -391,8 +397,10 @@ import argparse, os, shutil, sys
 SIG = bytes.fromhex("535225ffff00008bd8a1d8f60600")
 STUB = bytes.fromhex("31c0c3")
 # Verified: file offset of 0x5D7DC in the shipped PRAGE.EXE (obj0 code maps
-# file = va + 0x52E55). The signature check below is what makes this safe.
-PATCH_OFF = 0xB0631
+# file = va + 0x52E54), and the 42-byte body's pop/push symmetry proves the
+# entry is this byte, not the next. The signature check below is what makes
+# this safe.
+PATCH_OFF = 0xB0630
 
 def patch(src, out):
     with open(src, "rb") as f:
@@ -873,7 +881,7 @@ git commit -m "actors: pool records, free/active lists and the state-begin reset
 disassembly before writing the function, not by inference**: the four title call
 sites in Format reference G are the test cases. Method: dump the call sites with
 `llvm-objdump -D -b binary -m i386` over the object-0 range (file offset
-`va + 0x52E55`), read the `mov ecx/edx/ebx/eax, ...` immediates preceding each
+`va + 0x52E54`), read the `mov ecx/edx/ebx/eax, ...` immediates preceding each
 `call`, and record, per call site: which register holds the descriptor and what
 each remaining argument is. Write the result into
 `docs/superpowers/plans/2026-09-17-actor-system-args.md`, and encode it as
