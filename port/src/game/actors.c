@@ -356,11 +356,17 @@ static u32 anim_operand(u32 rec)
         DSD(rec + 8) = np;
         DSW(DS_00105BE4) = ob;
         cx = DSW(np);
-        if (mode == 0) return cx;
+        if (mode == 0) {
+            /* 0x2B932 -> 0x2BAE1 stores the operand word before returning. */
+            DSW(DS_00105BE8) = (u16)cx;
+            return cx;
+        }
     } else {
         DSW(DS_00105BE8) = ob;
         if (mode == 0)
-            return ob > 0x7fu ? (0xffffff00u | (u32)ob) : (u32)ob;
+            /* 0x2BAE1 `and eax,0xffff`: the raw yields the 16-bit 0xFFxx, not
+             * a 32-bit sign-extension. */
+            return ob > 0x7fu ? (0xff00u | (u32)ob) : (u32)ob;
         cx = ob;
     }
     /* 0x2B96A */
@@ -598,8 +604,10 @@ static u32 spawn_anim_opcode(u32 rec, u32 index, u32 flag)
         DSB(rec + 0x29) ^= 0x40;
         return 0;
     case 0x15:                                      /* 0x2B5E3 */
+        /* 0x2B5E3 sets ECX=2 before the call and copies it to EAX after
+         * (`mov eax,ecx`), so the walk sees 2, not 0. */
         anim_indirect(rec, index);
-        return 0;
+        return 2;
     case 0x16:                                      /* 0x2B5FA */
         DSB(rec + 0x29) &= (u8)~0x02u;
         return 0;
@@ -716,14 +724,20 @@ static u32 spawn_anim_opcode(u32 rec, u32 index, u32 flag)
          * is documented here and listed in the Task 7 report. */
         return 0;
     default:                                        /* 0x2B8E8 */
-        /* 0x2EA64 is a `ret`. */
+        /* PORT: table opcodes 0x23 and 0x24 both point at 0x2B8E8, as does
+         * every opcode above 0x2E. The only effect there is the inert
+         * 0x2EA64 (`ret`), so these are named rather than silently skipped. */
         return 0;
     }
 }
 
 /* 0x2BC30. Point a record at `stream`, reset its animation cursor and cache,
- * pre-walk its commands, then load the first sprite id. */
-void actors_anim_begin(u32 rec, u32 stream, u32 frame)
+ * pre-walk its commands, then load the first sprite id. `frame_bits` is the
+ * original's third stack argument, stored verbatim into rec+0x24/rec+0x20
+ * (0x2BC8B `mov [ecx+0x24], eax`). The original callers pass IEEE-754 float
+ * bit patterns (0x40400000 at 0x12C13/0x14D5E, 0x3F800000 at 0x154C0,
+ * 0x40000000 at 0x155BF), so the port passes and stores those dwords raw. */
+void actors_anim_begin(u32 rec, u32 stream, u32 frame_bits)
 {
     DSD(rec + 0x0c) = 0;
     DSD(rec + 0x10) = 0;
@@ -733,10 +747,8 @@ void actors_anim_begin(u32 rec, u32 stream, u32 frame)
     DSD(rec + 8) = stream;
     DSW(rec + 0x28) &= 0xf7ebu;
     DSB(rec + 0x2b) &= (u8)~0x04u;
-    union { float f; u32 u; } fu;
-    fu.f = (float)frame;
-    DSD(rec + 0x24) = fu.u;
-    DSD(rec + 0x20) = fu.u;
+    DSD(rec + 0x24) = frame_bits;
+    DSD(rec + 0x20) = frame_bits;
     for (;;) {
         if (((DSW(DSD(rec + 8)) >> 8) & 0x80u) == 0) break;
         u32 st = spawn_anim_opcode(rec, DSW(rec + 0x56), 0);
@@ -1227,9 +1239,10 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
         DSB(rec + 0x49) = layer;
     }
 
-    /* 0x2AFFA: initial animation-stream walk. The dispatcher and the literal
-     * reader are Task 7 stubs, so the walk stops on the first opcode word and
-     * the sprite id comes from the stub. */
+    /* 0x2AFFA: initial animation-stream walk. `spawn_anim_opcode` consumes the
+     * leading command words; when it returns 2 (the 0x1F prefix, opcode 0 or
+     * 1) the engine's own id 0x1E1 replaces the stream id, else
+     * `anim_next_sprite_id` reads the literal/computed id. */
     u32 id = 0;
     int have_id = 0;
     if ((DSW(rec + 0x28) >> 8 & 8) == 0) {
@@ -1241,7 +1254,7 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
             if ((DSW(p) >> 8 & 0x80) == 0) break;
             status = spawn_anim_opcode(rec, index, 1);   /* 0x2AE14 passes EBX=1 */
         } while (status == 0);
-        if (status == 2) { id = 0x1e1u; have_id = 1; }   /* Task 7 owns this */
+        if (status == 2) { id = 0x1e1u; have_id = 1; }   /* status 2 -> 0x1E1 */
     }
     if (!have_id) id = anim_next_sprite_id(rec, pset);
     DSW(pset + 0x00) = (u16)id;

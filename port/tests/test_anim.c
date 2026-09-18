@@ -91,8 +91,12 @@ static void check_read_write_var(void)
         anim_write_var(rec, 0x4a, 0x55);
         CHECK_EQ_INT((int)DSW(parent + 0x56), 0x0055);
     }
-    /* out-of-range ops are ignored, never written. */
+    /* 0x7F is out of every selector range; the switch falls through without a
+     * store. The ring entry it would collide with if mishandled is checked
+     * unchanged. */
+    DSW(DS_00105B4C + 0x0f * 2u) = 0x1234;
     anim_write_var(rec, 0x7f, 0xffff);
+    CHECK_EQ_INT((int)DSW(DS_00105B4C + 0x0f * 2u), 0x1234);
 }
 
 /* 0x2A408: the literal reader, the two 0xD00 computed forms, the hflip fold,
@@ -260,17 +264,90 @@ static void check_entry_helpers(void)
     DSB(rec + 0x50) = 0x55;
     DSB(rec + 0x61) = 0x66;
     DSB(rec + 0x2b) = 0xff;
-    actors_anim_begin(rec, ANIM_SCRATCH, 7);
+    actors_anim_begin(rec, ANIM_SCRATCH, 0x40e00000u);   /* IEEE-754 7.0f bits */
     CHECK_EQ_INT((int)DSW(pset), 0x2c22);
     CHECK_EQ_INT((int)DSD(rec + 8), (int)ANIM_SCRATCH);
     CHECK_EQ_INT((int)DSB(rec + 0x50), 0);
     CHECK_EQ_INT((int)DSB(rec + 0x61), 0);
     CHECK_EQ_INT((int)(DSB(rec + 0x2b) & 0x04), 0);
-    union { float f; u32 u; } fu;
-    fu.u = DSD(rec + 0x20);
-    CHECK_EQ_INT((int)fu.f, 7);
-    fu.u = DSD(rec + 0x24);
-    CHECK_EQ_INT((int)fu.f, 7);
+    /* 0x2BC8B stores the raw dword argument, not a converted integer. */
+    CHECK_EQ_INT((int)DSD(rec + 0x20), 0x40e00000);
+    CHECK_EQ_INT((int)DSD(rec + 0x24), 0x40e00000);
+}
+
+/* The dispatcher driven through a stream (0x2BC30's pre-walk, EBX=0), covering
+ * the opcodes the title streams actually reach: 0x12, 0x18 (both branches),
+ * 0x00 and 0x01. The 0xCD40/0x8D00 cases above exercise 0x2A408, not the
+ * dispatcher. */
+static void check_dispatcher_streams(void)
+{
+    u16 *s = (u16 *)(mem + ANIM_SCRATCH);
+
+    /* 0x12: operand 0x14 -> rec+0x2E = 0x140, rec+0x4E = 1, then literal id. */
+    u32 rec = anim_alloc_record();
+    CHECK(rec != 0, "dispatch 0x12 record");
+    if (rec != 0) {
+        DSW(rec + 0x56) = 0;
+        DSW(rec + 0x2e) = 0;
+        s[0] = 0x9214; s[1] = 0x2c11;
+        actors_anim_begin(rec, ANIM_SCRATCH, 0x40e00000u);
+        CHECK_EQ_INT((int)DSW(rec + 0x2e), 0x0140);
+        CHECK_EQ_INT((int)DSB(rec + 0x4e), 1);
+        CHECK_EQ_INT((int)DSW(actor_pset(rec)), 0x2c11);
+    }
+
+    /* 0x18 fall-through: bound 0, so the counter (rec+0x52) increments once and
+     * the cursor advances to the literal id. */
+    rec = anim_alloc_record();
+    CHECK(rec != 0, "dispatch 0x18 fallthrough record");
+    if (rec != 0) {
+        DSW(rec + 0x56) = 0;
+        DSB(rec + 0x52) = 0;
+        s[0] = 0xb840; s[1] = 0x0000; s[2] = 0x0000; s[3] = 0x0000;
+        s[4] = 0x2c11;                         /* cursor+8 after fall-through */
+        actors_anim_begin(rec, ANIM_SCRATCH, 0x40e00000u);
+        CHECK_EQ_INT((int)DSB(rec + 0x52), 1);
+        CHECK_EQ_INT((int)DSW(actor_pset(rec)), 0x2c11);
+    }
+
+    /* 0x18 jump: bound 3 and the table dword points back at the stream, so the
+     * counter counts up to the bound before falling through. */
+    rec = anim_alloc_record();
+    CHECK(rec != 0, "dispatch 0x18 jump record");
+    if (rec != 0) {
+        DSW(rec + 0x56) = 0;
+        DSB(rec + 0x52) = 0;
+        s[0] = 0xb840; s[1] = 0x0003;
+        *(u32 *)(mem + ANIM_SCRATCH + 4) = ANIM_SCRATCH;
+        s[4] = 0x2c11;                         /* cursor+8 after fall-through */
+        actors_anim_begin(rec, ANIM_SCRATCH, 0x40e00000u);
+        CHECK_EQ_INT((int)DSB(rec + 0x52), 3);
+        CHECK_EQ_INT((int)DSW(actor_pset(rec)), 0x2c11);
+    }
+
+    /* 0x00: set_dead (rec+0x28 0x08) + frame reset, returns 2. */
+    rec = anim_alloc_record();
+    CHECK(rec != 0, "dispatch 0x00 record");
+    if (rec != 0) {
+        DSW(rec + 0x56) = 0;
+        DSB(rec + 0x28) &= (u8)~0x08u;
+        s[0] = 0x8000; s[1] = 0x2c11;
+        actors_anim_begin(rec, ANIM_SCRATCH, 0x40e00000u);
+        CHECK_EQ_INT((int)(DSB(rec + 0x28) & 0x08), 0x08);
+        CHECK_EQ_INT((int)DSD(rec + 0x24), 0);
+        CHECK_EQ_INT((int)DSD(rec + 0x20), 0);
+    }
+
+    /* 0x01: frame reset, returns 2. */
+    rec = anim_alloc_record();
+    CHECK(rec != 0, "dispatch 0x01 record");
+    if (rec != 0) {
+        DSW(rec + 0x56) = 0;
+        s[0] = 0x8100; s[1] = 0x2c11;
+        actors_anim_begin(rec, ANIM_SCRATCH, 0x40e00000u);
+        CHECK_EQ_INT((int)DSD(rec + 0x24), 0);
+        CHECK_EQ_INT((int)DSD(rec + 0x20), 0);
+    }
 }
 
 int test_anim(void)
@@ -286,6 +363,7 @@ int test_anim(void)
     check_real_stream();
     check_walk();
     check_entry_helpers();
+    check_dispatcher_streams();
     check_opcode8_pin();
     return g_failures - before;
 }

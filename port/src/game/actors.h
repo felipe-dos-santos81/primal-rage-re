@@ -48,8 +48,10 @@ u32  anim_read_var(u32 rec, u8 op);
 /* 0x29DB8. Write an animation variable (the mirror of anim_read_var). */
 void anim_write_var(u32 rec, u8 op, u32 value);
 /* 0x2BC30. Point an existing record at `stream`, reset its animation cursor and
- * cache, pre-walk the commands, then load the first sprite id. */
-void actors_anim_begin(u32 rec, u32 stream, u32 frame);
+ * cache, pre-walk the commands, then load the first sprite id. `frame_bits` is
+ * the original's third stack argument stored verbatim into rec+0x24/rec+0x20;
+ * the callers pass IEEE-754 float bit patterns. */
+void actors_anim_begin(u32 rec, u32 stream, u32 frame_bits);
 /* 0x2BCF4. Point a record at `stream` and load its first sprite id. */
 void actors_anim_seek(u32 rec, u32 stream);
 /* TEST-ONLY. Task 1's fourth pin replaced the opcode-8 call to 0x5D7DC with
