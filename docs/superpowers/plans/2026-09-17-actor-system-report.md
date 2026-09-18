@@ -431,8 +431,10 @@ once inside the window when `DS_000F0A66 < 0x11`), `0x10DB0`/`0x10E18` and
 
 ### Deferred minors, aggregated with disposition
 
-All are non-blocking; none is a data-loss or security path. Grouped by task
-(three earlier groups were closed by later tasks' evidence, as noted):
+All are non-blocking; none is a data-loss or security path. This table is swept
+against the ledger's per-task `minor (deferred)` blocks (Tasks 2, 3, 4, 5, 6, 7,
+8, 8b, 9, 10) and carries a row for each; items later closed by a task's own
+evidence are marked Closed, and nothing from those blocks is silently dropped:
 
 | Task | Item | Disposition |
 |---|---|---|
@@ -448,6 +450,7 @@ All are non-blocking; none is a data-loss or security path. Grouped by task
 | 6.1 | two `TODO(verify)` layer clamps with a wrong rationale — Task 7 reworded; clamps correct | Closed (reason fixed). |
 | 6.2 | C99 UB `((s32)x >> 16) << 6` in four spots — Task 7 fixed | Closed. |
 | 6.3 | `set_dead` omits per-type teardown + `rec+0x2b &= 0xbf` — unreachable while the dispatcher was stubbed; now transcribed in `actor_set_dead` | Closed for the title; the per-type table's other cases remain unported. |
+| 6.4 | `release_record` adds an `in_pool` guard and drops `0x2AD40`'s two inert `0x2EA30` lock calls | Carry; disclosed, consistent with spec §7. |
 | 7a | `actors.c:1243` comment names the wrong status-2 opcode set | Carry; cosmetic (direct `0x1F` falls through to `0x20`; status 2 is `0x00/0x01/0x05/0x07/0x08/0x15`). |
 | 7b | opcode `0x15` callee convention approximated (ECX vs the second `anim_code_fn` slot) | Carry; pre-existing seam, title streams do not reach it. |
 | 7c | the task-7 report's "dispatcher complete, none no-op'd" phrasing was corrected only in an appendix; the main body still reads strongly | Carry; wording. |
@@ -455,7 +458,9 @@ All are non-blocking; none is a data-loss or security path. Grouped by task
 | 8 | `text_cursor_set` is a seam-stub note stale in `actors.h` — Task 8b replaced it | Closed. |
 | 8 | `task-8-report.md:131` cites the wrong byte pair for the `rec+0x59` store | Carry (claims only). |
 | 8b | unguarded truncation write `m[k-1]` for `col > 0x2A` — verified identical in the raw, not title-reachable | Carry. |
-| 8b | writable-string test cases missing; dead initialiser | Carry. |
+| 8b | `test_text.c` passes string literals to a function that can write; no writable `char[]` truncation case | Carry. |
+| 8b | `test_text.c:389` — the writable-path branches (`m[0x29]`, `m[k-1]`, palette-variant selection) are untested | Carry. |
+| 8b | `actors.c:1372` `sprite = 0` is a dead initialiser | Carry. |
 | 9 | loader drops `0x33340001` signature check; `logo` deref without guard (faithful); two tests share scratch `0x3F00000`; boot-path RNG state not test-covered; `string_decode` unbounded; glyph-count assertion `>= 10` against 12; `DS_00104B15` pinned 0 unverified | Carry. The signature check is cheap to restore. |
 | 10 | clause B returns the first passing pair, not all | Carry; verdicts identical on the real captures. |
 | 10 | the two transcription fixes (gfx DAC, velocity) sit outside the brief's original file list | Recorded; in scope by necessity. |
@@ -615,6 +620,51 @@ title_compare: capture 2: 110 frames in window: 53 clean, 57 splice, 0 transitio
 title_compare: determinism: clean samples of 36 port frame(s) agree, 0 disagree
 Ran 32 tests in 1.175s
 1304 globals, 1206 functions -> port/src/symbols.h
+all checks passed
+
+$ python3 tools/gen_symbols.py port/decomp port/src/symbols.h && git diff --quiet -- port/src/symbols.h
+symbols.h byte-identical (exit 0)
+```
+
+## Fix round 2 — deferred-minor completeness and README consistency (docs-only)
+
+A re-review found 7 of 8 previous findings addressed; finding 6 (the
+deferred-minor aggregation) was still incomplete. Fixes:
+
+* **Task 6 minor #4 added** (`6.4`): `release_record` adds an `in_pool` guard
+  and drops `0x2AD40`'s two inert `0x2EA30` lock calls — disclosed and
+  consistent with spec §7.
+* **Task 8b minor #3 added**: `test_text.c:389` — the writable-path branches
+  (`m[0x29]`, `m[k-1]`, palette-variant selection) are untested. The previous
+  single row was split so 8b's #2 (no writable `char[]` truncation case), #3
+  (writable-path branches) and #4 (`sprite = 0` dead initialiser) each have
+  their own row.
+* **Sweep statement added.** The table's preamble now states it is swept against
+  every per-task `minor (deferred)` block in the ledger (Tasks 2, 3, 4, 5, 6, 7,
+  8, 8b, 9, 10), with a row per item and nothing silently dropped. Re-checked
+  block by block: Task 2 (x8), Task 3 (x3), Task 4 (a–e), Task 5 (x2), Task 6
+  (x4), Task 7 (x3), Task 8 (x3), Task 8b (x4), Task 9 (x7), Task 10 (x2) — all
+  present.
+* **README consistency (bundled Minor).** The engine-core paragraph's "proves
+  it pixel-exact" is replaced with the report's exact wording: every captured
+  frame explained as a byte-offset splice of two adjacent port frames, port
+  frames `1..94` exhibited by both captures, the two endpoint transitions
+  disclosed, zero unexplained frames. The paragraph's separate `S16TITLE`
+  GRA-decode byte-identity claim (against `tools/gra_render.py`) is untouched —
+  it is a different, still-true claim.
+
+Commands and output:
+
+```bash
+$ make verify
+EXIT=0
+all checks passed
+smk_compare: 120/120 frames match
+smk_compare: 41/41 frames match
+title_compare: capture 1: 110 frames in window: 53 clean, 56 splice, 1 transition, 0 unexplained
+title_compare: capture 2: 110 frames in window: 53 clean, 57 splice, 0 transition, 0 unexplained
+title_compare: determinism: clean samples of 36 port frame(s) agree, 0 disagree
+Ran 32 tests in 1.166s
 all checks passed
 
 $ python3 tools/gen_symbols.py port/decomp port/src/symbols.h && git diff --quiet -- port/src/symbols.h

@@ -85,9 +85,11 @@ byte-identical to `tools/gra_render.py` for the four full-screen `S16TITLE`
 frames `{10,12,13,18}` only; the palette bank is flattened and the sub-palette
 choice is `likely`), the palette flush (`0x1C470`), the process-table scheduler,
 and the `0x255CC`/`0x24C5C`/`0x11D04` loop. The title state now runs the real
-`0x121A0` actor composite through the display list (`make title-oracle` proves it
-pixel-exact — see the 4a-ii paragraph below); the earlier full-screen four-frame
-`S16TITLE` stand-in was removed in sub-project 4a-ii.
+`0x121A0` actor composite through the display list; `make title-oracle` explains
+every captured frame as a byte-offset splice of two adjacent port frames (port
+frames 1..94 exhibited by both captures, the two endpoint transitions disclosed,
+zero unexplained frames) — see the 4a-ii paragraph below. The earlier
+full-screen four-frame `S16TITLE` stand-in was removed in sub-project 4a-ii.
 **Audio — sub-project 2a, AIL/Miles, running.** The port runs the game's own
 audio path with no DOS driver: the `0x1CF40` AIL init completes, the title/
 attract XMIDI bank is decoded and sequenced into OPL register writes through a
