@@ -23,6 +23,7 @@ int main(void)
     test_movie();
     test_sprite();
     test_render();
+    test_rng();
     printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
     return g_failures != 0;
 }

@@ -6,6 +6,7 @@
  * sub-project is stubbed where it is reached and named in a PORT comment. */
 #include "game/flow.h"
 #include "game/movie.h"
+#include "game/rng.h"
 #include "mem.h"
 #include "symbols.h"
 #include "platform/res.h"
@@ -488,6 +489,7 @@ void game_init(void)
     surface_setup();        /* 0x51F45 */
     palette_list_init();    /* 0x336C0 */
     render_list_init();     /* 0x1C350 */
+    rng_seed(0xABCDu);      /* PORT: 0x20C10 seeds the LCG with a hardcoded 0xABCD. */
     /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
     /* PORT: 0x1D0BC allocates the MIDI sequence buffer and the four sample
      * buffers. The port references the XMIDI bank's resource bytes directly
@@ -549,6 +551,10 @@ void game_loop(void)
         gfx_present(mem + DSD(DS_000E87A4), 320, 200);
         DSD(DS_001014FC) = 0;
         swap_buffers();                      /* 0x50188 */
+
+        /* 0x255CC calls 0x5D7DC once per iteration, after the present and swap
+         * and before 0x1CF20. */
+        rng_step();
 
         /* 0x255CC's tail calls 0x1CF20 here: play pending samples, start/drive
          * the music, render one frame of audio. */
