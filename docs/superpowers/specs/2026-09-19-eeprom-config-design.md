@@ -45,9 +45,10 @@ All addresses are original linear VAs; `file_offset = va + 0x52E54` for obj-0 co
 | function | size | callers | role |
 |---|---|---|---|
 | `0x2D2F0` | 3 | 2 | tiny accessor |
-| `0x2D498` | 27 | 1 | bounded byte write — `"attempt to write outside eeprom"` (string at VA `0x80AA8`) |
-| `0x2D4B4` | 17 | 4 | bounded write helper |
-| `0x2D4EC` | 319 | 17 | bounded field write — `"Write extends past end of EEPROM"` (VA `0x80AE4`) |
+| `0x2D498` | 27 | 1 | bounded byte write into the EEPROM **storage image**: `addr < 0x80CE4 || addr >= 0x814DC` → `"attempt to write outside eeprom"`; else `*addr = dl`. The image is `0x80CE4..0x814DC` = `0x7F8` bytes. |
+| `0x2D4B4` | 17 | 4 | `eax = ceil_pow2(eax + 1)` (round a size up to a power of two) |
+| `0x2D4EC` | 319 | 17 | `(kind 0..8, value)`: maps a kind through the obj0 8-byte-entry table at `0x2D444` to a byte range in the storage image, enforces the `0x7F8` bound (`"Write extends past end of EEPROM"`), writes the value, and maintains `DS_00105E2F`/checksum bytes |
+| `0x2D444` | — | obj0 | 9-entry × 8-byte descriptor table for `0x2D4EC` (u16 limit@0, u16 @2, u32 base@4) |
 | `0x2D638` | 191 | 1 | storage load/validate: reads the stored image through `0x2E990` and checks the magic at its tail, copying a valid image into the working template |
 | `0x2E990` | — | many | storage primitive (read/write a byte run at a storage offset); the original's EEPROM access |
 | `0x2D6F8` | 633 | 1 | validate: magic check, defaults, load path |
@@ -68,6 +69,28 @@ entries. Decoded fields: bit position `(d >> 6) & 0xff`, bit width
 increasing, trailing index incrementing), field `0x29` = `0x0001D980` (width 8,
 bitpos 102, no trailing byte), `0x2A` = `0x00001B80`, `0x35` = `0x0000E0C0`,
 `0x37` = `0x000062C0`.
+
+**Derived walk (getter `0x2D974`, verified instruction-by-instruction).**
+`width = ((d >> 14) & 7) + 1`, `bitpos = (d >> 6) & 0xff`. `eax = bitpos + width`;
+`ecx = eax >> 1`; if `eax & 1` (odd) the seed value is the **low nibble** read at
+`DS_00105DE1 + ecx`, `ebx = ecx`, `width -= 1`; else the seed is `0` and
+`ebx = ecx`. Then loop with **`ebx` decremented before each read**: while `width != 0`,
+if `width == 1` take the **high nibble** at `DS_00105DE1 + ebx` and finish, else
+`value = (value << 8) | DSB(0x00105DE1 + ebx)`, `width -= 2`. Finally, if
+`(d & 0x3f) != 0`, `value = (value << 8) | DSB(0x00105DAF + (d & 0x3f))`.
+Field `0x29` (bitpos 102, width 8) reads bytes at indices 54, 53, 52, 51, so
+`value = b54<<24 | b53<<16 | b52<<8 | b51`, and `0x2C304`'s `& 0xF0000` extracts the
+low nibble of `b53` (`DS_00105DE1 + 53`).
+
+**Derived walk (setter `0x2DA0C`).** `field > 0x3E` → `0xFFFFFFFF`. Trailing byte
+first: if `(d & 0x3f) != 0`, `DSB(0x00105DAF + (d & 0x3f)) = value`, `value >>= 8`,
+and `DS_00105DD8 |= 1`. Then `DS_00105DD8 |= 6`; `ebx = (s32)bitpos >> 1`;
+if `bitpos & 1`: write `(DSB(0x00105DE1 + ebx) & 0x0f) | ((value & 0x0f) << 4)` back
+to `DS_00105DE0 + ebx + 1` (= `DS_00105DE1 + ebx`), `width -= 1`, `value >>= 4`.
+Then while `width != 0`: if `width == 1`, `DSB(0x00105DE1 + ebx)` gets its high nibble
+replaced by `value & 0x0f` and the loop ends, else `DSB(0x00105DE1 + ebx) = value`,
+`ebx++`, `value >>= 8`, `width -= 2`. Finally two `0x2D4EC` calls (kinds 1 and 2),
+which are no-ops in this cycle.
 
 **Config byte region** `DS_00105D88 + 0x1000` (registered for the original's
 memory-dump system by `0x109A0(&DAT_00105d88, 0x1000)` from the master init). The
@@ -130,7 +153,7 @@ Component list, with the exact semantics to derive in the plan:
 |---|---|---|
 | `config_field_get(u32 field)` | `0x2D974` | `field > 0x3E` → `0xFFFFFFFF`. Descriptor `DSD(0x2D300 + field*4)`; width `((d>>14)&7)+1`; walk the byte/nibble array ending at `DS_00105DE1 + ((bitpos+width)>>1)`; if `(d & 0x3f) != 0`, shift the accumulated value left 8 and OR the byte at `DS_00105DAF + (d & 0x3f)`. The exact walk (nibble vs byte steps, shift order, backwards direction) is taken from the raw bytes, not the decompiler. |
 | `config_field_set(u32 field, u32 value)` | `0x2DA0C` | The inverse walk, writing through the bounded helper. `field > 0x3E` → `0xFFFFFFFF`. |
-| bounded-write helpers | `0x2D498`, `0x2D4B4`, `0x2D4EC` | Own the `DS_00105D88 + 0x1000` bound and the eeprom error paths. No write may cross the bound. |
+| bounded-write helpers | `0x2D498`, `0x2D4B4`, `0x2D4EC` | Own the 2040-byte EEPROM storage image at `0x80CE4` and its `0x7F8` bound. **Because the port has no storage I/O, this image is inert and these three are declared no-ops**; the setter's three `0x2D4EC` calls become no-ops with it. Evidence for the bound is recorded in §3 so a later persistence cycle can port them. |
 | `config_validate(void)` | `0x2D6F8` | Magic `0x9C94D2C4` at `DS_00105E30`; mismatch → flag bits, defaults, rewrite magic; else the load path. The storage calls (`0x2D638`'s read and `0x2D6F8`'s own `0x2E990` reads) become declared no-ops reporting "no stored image", so validate routes to defaults, and the deferred high-score call `0x2DE98` is a declared no-op. |
 | `config_set_defaults(void)` | `0x2CADC` | Draw the defaults message through the ported text calls; write fields `0x29`/`0x35`/`0x37`/`0x2A` as above, with field `0x29`'s value from `0x2CCD0(0x32EB4)`. |
 | `0x2CCD0` parser | `0x2CCD0` | The obj-0 menu-descriptor parser the defaults path needs (asterisk-flagged default selection). Ported with the defaults path. |
@@ -146,10 +169,10 @@ Component list, with the exact semantics to derive in the plan:
 1. `port/src/game/config.{c,h}` owns the module; build has 0 warnings.
 2. Unit tests prove, against the raw bytes: setter→getter round-trip across widths
    1-8 and the trailing-byte case; `field > 0x3E` → `0xFFFFFFFF` for both getter and
-   setter; a write at the region bound is refused with no write past
-   `DS_00105D88 + 0x1000`; and a zeroed config region produces the expected
-   `DS_00105DD8` flags, the `0x9C94D2C4` magic, and consumer-field values that match
-   the obj-0 default table.
+   setter; the `DS_00105DD8` dirty flags the setter raises; and a zeroed config
+   region produces the expected `DS_00105DD8` flags, the `0x9C94D2C4` magic, and
+   consumer-field values that match the obj-0 default table. (The storage-image
+   bound is not tested: that layer is a declared no-op, §7.)
 3. `DS_00104528` is read from config in `flow.c`, not a literal.
 4. The title oracle does not regress. Whether the seeds could be removed is
    recorded with evidence: green if the defaults path reproduces the captured
@@ -159,12 +182,14 @@ Component list, with the exact semantics to derive in the plan:
 
 ## 7. Declared gaps and non-goals
 
-- **No save/load I/O.** The storage primitive `0x2E990` and its `0x2D638` caller
-  are declared no-ops reporting "no stored image", so the port behaves as a fresh
-  EEPROM every run and `config_validate` always routes to the defaults path; the
-  original persists config across runs. A host-side save file is a later cycle if
-  wanted. (`0x2E990` also appears in the decompiler as `FUN_0002e990` called from
-  `0x2D6F8`'s read path and from `0x2D638`.)
+- **No save/load I/O, hence no storage image.** The storage primitive `0x2E990`,
+  its `0x2D638` caller, the 2040-byte EEPROM image at `0x80CE4` and its writers
+  (`0x2D498`, `0x2D4EC`, the `0x2D444` kind table, `0x2D4B4`) are declared no-ops,
+  so the port behaves as a fresh EEPROM every run and `config_validate` always
+  routes to the defaults path; the original persists config across runs and keeps a
+  checksummed image. A host-side save file is a later cycle if wanted. (`0x2E990`
+  also appears in the decompiler as `FUN_0002e990`, called from `0x2D6F8`'s read
+  path and from `0x2D638`.)
 - **Deferred module functions:** `0x2DAE4`, `0x2DB58`, `0x2DBC4`, `0x2DCA0`,
   `0x2DDE4`, `0x2DE98` (high-score), `0x2DF8C`. The high-score call inside
   `config_validate` is therefore a declared no-op.
