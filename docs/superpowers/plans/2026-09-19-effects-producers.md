@@ -32,11 +32,11 @@
 - Modify: `port/src/game/effects.h`
 - Modify: `port/src/game/effects.c`
 - Modify: `port/tests/test_effects.c`
-- Create: `docs/superpowers/plans/2026-09-19-effects-producers.md`
+- Create: `docs/superpowers/plans/2026-09-19-effects-producers-derivations.md`
 
 **Interfaces:**
 - Consumes: `res_resolve(u32 handle)`; the pool globals `DS_000FCCE0`/`DS_000FCCE8`/`DS_0009AF3C`/`DS_0009AF3D`; `list_unlink`/`list_insert_after`.
-- Produces: `u32 effects_spawn_darken(u32 source_rec, u32 byte_arg, u32 handle);` — returns the record's `mem[]` offset, or `0` when the pool is empty/unbuilt. Sets `+0x0C = 4`, `+0x0F = 0`, `+0x0E = 1`, `+0x08 = source_rec`, `+0x0D = byte_arg`, `+0x10[0..n) = resolved[1+i]`, no `+0x410` fill, `DS_0009AF3D++`.
+- Produces: `u32 effects_spawn_darken(u32 source_rec, u32 byte_arg);` — returns the record's `mem[]` offset, or `0` when the pool is empty/unbuilt. Sets `+0x0C = 4`, `+0x0F = 0`, `+0x0E = 1`, `+0x08 = source_rec`, `+0x0D = byte_arg`, `+0x10[0..n) = resolved[1+i]`, no `+0x410` fill, `DS_0009AF3D++`. **The resource handle is `DSD(source_rec)`** — the raw dereferences `[source_rec]` (`0x13D86 mov eax,[esi]`); only `0x13C70` takes a handle register.
 
 - [ ] **Step 1: Derive `0x13D4C`'s register binding and confirm the shared pop from raw bytes**
 
@@ -55,7 +55,7 @@ dis(0x13c70, 96)   # for the shared prologue/pop only
 EOF
 ```
 
-Record in `docs/superpowers/plans/2026-09-19-effects-producers.md`:
+Record in `docs/superpowers/plans/2026-09-19-effects-producers-derivations.md`:
 1. The incoming registers for the source record, the byte arg and the handle (as the `2026-09-18-title-residuals-args.md` precedent does).
 2. Whether the free-list pop (sentinel test, lock save/set, unlink, lock restore) is instruction-identical to `0x13C70`'s — this decides whether Step 4 extracts `effect_take_free()`.
 3. The exact counts/offsets written, with file offsets for every claim.
@@ -74,13 +74,15 @@ Append to `port/tests/test_effects.c`, before the closing `return`:
         u32 tab = src + 0x100u, blk = src + 0x200u, rec;
         effects_init();
         mem_fill(src, 0, 0x300u);
+        DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x0C) = 2u;
         DSD(DS_001014E0) = tab;
         DSD(DS_001014F0) = 1;
         DSD(tab + 16) = blk;
         DSD(blk + 4) = 0x40404040u;
         DSD(blk + 8) = 0x00707070u;
-        rec = effects_spawn_darken(src, 0x2Cu, 0u);
+        DSD(blk + 12) = 0x0A0B0C0Du;
+        rec = effects_spawn_darken(src, 0x2Cu);
         CHECK(rec != 0, "0x13D4C takes a record");
         CHECK_EQ_INT(effects_active(), 1);
         CHECK_EQ_INT((int)DSB(rec + 0x0C), 4);
@@ -88,8 +90,10 @@ Append to `port/tests/test_effects.c`, before the closing `return`:
         CHECK_EQ_INT((int)DSB(rec + 0x0E), 1);
         CHECK_EQ_INT((int)DSD(rec + 0x08), (int)src);
         CHECK_EQ_INT((int)DSB(rec + 0x0D), 0x2C);
-        CHECK_EQ_INT((int)DSD(rec + 0x10), 0x40404040);
-        CHECK_EQ_INT((int)DSD(rec + 0x14), 0x00707070);
+        /* Handles beyond offset 0 prove the handle came from DSD(source_rec):
+         * with offset 0 these would be blk+4/blk+8 instead. */
+        CHECK_EQ_INT((int)DSD(rec + 0x10), 0x00707070);
+        CHECK_EQ_INT((int)DSD(rec + 0x14), 0x0A0B0C0D);
         /* The record front-inserts into the active list like 0x13C70. */
         CHECK_EQ_INT((int)DSD(DS_000FCCE0), (int)rec);
         CHECK_EQ_INT((int)DSD(rec), (int)DS_000FCCE0);
@@ -125,12 +129,14 @@ static u32 effect_take_free(void)
 }
 
 /* 0x13D4C. Type 4: +0x10 holds the resolved block's colours for the case-4
- * step body to darken to zero. */
-u32 effects_spawn_darken(u32 source_rec, u32 byte_arg, u32 handle)
+ * step body to darken to zero. The handle is read from the source record. */
+u32 effects_spawn_darken(u32 source_rec, u32 byte_arg)
 {
     u32 rec = effect_take_free();
     if (rec == 0) return 0;
-    const u32 *resolved = (const u32 *)res_resolve(handle);
+    /* PORT: the raw dereferences [source_rec] for the handle (0x13D86);
+     * there is no handle register. */
+    const u32 *resolved = (const u32 *)res_resolve(DSD(source_rec));
     DSB(rec + 0x0f) = 0;
     DSB(rec + 0x0c) = 4;
     DSD(rec + 8) = source_rec;
@@ -155,8 +161,8 @@ Refactor the existing `effects_spawn` (`0x13C70`) to call `effect_take_free()` s
 /* 0x13D4C. Pops a free record, fills it as type 4 (darken-to-zero over the
  * resolved block) and head-inserts it into the active list. Same contract as
  * effects_spawn: returns the record offset, or 0 when the pool is
- * unbuilt/empty. */
-u32 effects_spawn_darken(u32 source_rec, u32 byte_arg, u32 handle);
+ * unbuilt/empty. The handle is DSD(source_rec) (the raw reads [source_rec]). */
+u32 effects_spawn_darken(u32 source_rec, u32 byte_arg);
 ```
 
 - [ ] **Step 5: Run the tests green**
@@ -167,7 +173,7 @@ Expected: `all checks passed`.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add port/src/game/effects.c port/src/game/effects.h port/tests/test_effects.c docs/superpowers/plans/2026-09-19-effects-producers.md
+git add port/src/game/effects.c port/src/game/effects.h port/tests/test_effects.c docs/superpowers/plans/2026-09-19-effects-producers-derivations.md
 git commit -m "effects: port the type-4 producer (0x13D4C)"
 ```
 
@@ -181,11 +187,11 @@ git commit -m "effects: port the type-4 producer (0x13D4C)"
 - Modify: `port/src/game/effects.h`
 - Modify: `port/src/game/effects.c`
 - Modify: `port/tests/test_effects.c`
-- Modify: `docs/superpowers/plans/2026-09-19-effects-producers.md`
+- Modify: `docs/superpowers/plans/2026-09-19-effects-producers-derivations.md`
 
 **Interfaces:**
 - Consumes: `effect_take_free()` from Task 1; `res_resolve`.
-- Produces: `u32 effects_spawn_pulse(u32 source_rec, u32 byte_arg, u32 handle);` — sets `+0x0C = 6`, `+0x0F = 0x80`, `+0x0E = 1`, `+0x10[0..n) = 0xFFFFFF`, `+0x410[0..n) = resolved[1+i]`, `DS_0009AF3D++`.
+- Produces: `u32 effects_spawn_pulse(u32 source_rec, u32 byte_arg);` — sets `+0x0C = 6`, `+0x0F = 0x80`, `+0x0E = 1`, `+0x10[0..n) = 0xFFFFFF`, `+0x410[0..n) = resolved[1+i]`, `DS_0009AF3D++`. **The resource handle is `DSD(source_rec)`** (`0x13E66 mov eax,[ecx]`); there is no handle register.
 
 - [ ] **Step 1: Derive `0x13E28` from raw bytes**
 
@@ -216,13 +222,15 @@ Append to `port/tests/test_effects.c`:
         u32 tab = src + 0x100u, blk = src + 0x200u, rec;
         effects_init();
         mem_fill(src, 0, 0x300u);
+        DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x0C) = 2u;
         DSD(DS_001014E0) = tab;
         DSD(DS_001014F0) = 1;
         DSD(tab + 16) = blk;
         DSD(blk + 4) = 0x00102030u;
         DSD(blk + 8) = 0x00040506u;
-        rec = effects_spawn_pulse(src, 1u, 0u);
+        DSD(blk + 12) = 0x00070809u;
+        rec = effects_spawn_pulse(src, 1u);
         CHECK(rec != 0, "0x13E28 takes a record");
         CHECK_EQ_INT(effects_active(), 1);
         CHECK_EQ_INT((int)DSB(rec + 0x0C), 6);
@@ -231,8 +239,8 @@ Append to `port/tests/test_effects.c`:
         CHECK_EQ_INT((int)DSD(rec + 0x08), (int)src);
         CHECK_EQ_INT((int)DSD(rec + 0x10), 0x00FFFFFF);
         CHECK_EQ_INT((int)DSD(rec + 0x14), 0x00FFFFFF);
-        CHECK_EQ_INT((int)DSD(rec + 0x410), 0x00102030);
-        CHECK_EQ_INT((int)DSD(rec + 0x414), 0x00040506);
+        CHECK_EQ_INT((int)DSD(rec + 0x410), 0x00040506);
+        CHECK_EQ_INT((int)DSD(rec + 0x414), 0x00070809);
         DSD(DS_001014E0) = saved_tab;
         DSD(DS_001014F0) = saved_n;
     }
@@ -249,12 +257,13 @@ Expected: FAIL — `effects_spawn_pulse` undefined.
 
 ```c
 /* 0x13E28. Type 6: +0x10 starts white and the case-6 step body darkens it
- * toward the resolved block at +0x410. */
-u32 effects_spawn_pulse(u32 source_rec, u32 byte_arg, u32 handle)
+ * toward the resolved block at +0x410. The handle is read from source_rec. */
+u32 effects_spawn_pulse(u32 source_rec, u32 byte_arg)
 {
     u32 rec = effect_take_free();
     if (rec == 0) return 0;
-    const u32 *resolved = (const u32 *)res_resolve(handle);
+    /* PORT: the raw dereferences [source_rec] for the handle (0x13E66). */
+    const u32 *resolved = (const u32 *)res_resolve(DSD(source_rec));
     DSB(rec + 0x0f) = 0x80;
     DSB(rec + 0x0c) = 6;
     DSD(rec + 8) = source_rec;
@@ -284,7 +293,7 @@ Expected: `all checks passed`.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add port/src/game/effects.c port/src/game/effects.h port/tests/test_effects.c docs/superpowers/plans/2026-09-19-effects-producers.md
+git add port/src/game/effects.c port/src/game/effects.h port/tests/test_effects.c docs/superpowers/plans/2026-09-19-effects-producers-derivations.md
 git commit -m "effects: port the type-6 producer (0x13E28)"
 ```
 
@@ -298,7 +307,7 @@ git commit -m "effects: port the type-6 producer (0x13E28)"
 - Modify: `port/src/game/effects.h`
 - Modify: `port/src/game/effects.c`
 - Modify: `port/tests/test_effects.c`
-- Modify: `docs/superpowers/plans/2026-09-19-effects-producers.md`
+- Modify: `docs/superpowers/plans/2026-09-19-effects-producers-derivations.md`
 
 **Interfaces:**
 - Consumes: `effect_take_free()`; `res_resolve`.
@@ -377,7 +386,7 @@ Expected: `all checks passed`.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add port/src/game/effects.c port/src/game/effects.h port/tests/test_effects.c docs/superpowers/plans/2026-09-19-effects-producers.md
+git add port/src/game/effects.c port/src/game/effects.h port/tests/test_effects.c docs/superpowers/plans/2026-09-19-effects-producers-derivations.md
 git commit -m "effects: port the types-0/2 producer (0x13B3C)"
 ```
 
@@ -414,13 +423,16 @@ Append to `port/tests/test_effects.c` (add `#include "platform/gfx.h"` at the to
         effects_init();
         mem_fill(src, 0, 0x300u);
         DSD(src + 0x0C) = 2u;
+        DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x08) = 0x40u;          /* first DAC index for the record */
+        DSD(src + 0x0C) = 2u;
         DSD(DS_001014E0) = tab;
         DSD(DS_001014F0) = 1;
         DSD(tab + 16) = blk;
         DSD(blk + 4) = 0x40404040u;
         DSD(blk + 8) = 0x40404040u;
-        u32 rec = effects_spawn_darken(src, 1u, 0u);
+        DSD(blk + 12) = 0x40404040u;
+        u32 rec = effects_spawn_darken(src, 1u);
         CHECK(rec != 0, "end-to-end spawn");
         effects_step();                    /* state 1 -> 0, case-4 body runs */
         gfx_flush_palette();
