@@ -78,8 +78,9 @@ int test_config(void)
      * ((67 & 0xf) << 8 | 66) << 4 | (65 >> 4) = 0x3424. */
     CHECK_EQ_INT((int)config_field_get(0x35u), 0x3424);
 
-    /* Field 0x00 has bitpos 0, width 1 and trailing index 1: the value is the
-     * low nibble of byte 0 (0) shifted up 8 and OR'd with DS_00105DAF + 1. */
+    /* Field 0x00 has bitpos 0, width 2 and trailing index 1: the value is byte 0
+     * (the even-start walk reads it whole) shifted up 8 and OR'd with
+     * DS_00105DAF + 1. */
     DSB(DS_00105DAF + 1u) = 0xA1u;
     CHECK_EQ_INT((int)config_field_get(0x00u), 0xA1);
 
