@@ -79,8 +79,8 @@ return 1
 ```
 
 `DS_0009ACBC` is a 4-byte-entry mask table indexed by event code; `DS_001088E4`
-is the level mask. Both are obj-1 data; the raw displacements are `0x1ACBC` and
-`0x888E4`.
+carries the **newly-pressed (edge)** bits (see §3.3). Both are obj-1 data; the raw
+displacements are `0x1ACBC` and `0x888E4`.
 
 Call sites: `0x11D15` and `0x11D28` (inside `0x11D04`), plus `0x43939`/`0x43B4E`
 (fight engine, out of scope).
@@ -99,9 +99,13 @@ Call sites: `0x11D15` and `0x11D28` (inside `0x11D04`), plus `0x43939`/`0x43B4E`
   `DS_001088E4 = 0x50161(arg1)`, `DS_001088D8 = 0x50161() & 0xFF00FF00`,
   `DS_001088DC = 0x2D2F0()`, `DS_001088D4 = 0x2D2F0() & 0xFF`, and
   `DS_001088E4 |= DS_001088D8` only when `(0x2D2F0() & 2) != 0`. Because
-  `0x2D2F0()` returns 0, the joystick half is inert and the merge never fires:
-  `DS_001088E4` is the level mask and `DS_001088D8` the latched mask. Callers:
-  `0x24C6E` (inside `0x24C5C`) and `0x25210`.
+  `0x2D2F0()` is `xor eax,eax; ret`, the joystick half is inert and the merge
+  never fires. The two masks are **not** two copies of one level: `0x500C4` builds
+  its level word as `(byte[+0x2d8] << 24) | (byte[+0x2d9] << 8)`, which occupies
+  only the `0xFF00FF00` positions, so
+  `DS_001088E4 = 0x50161(0xFF00FF00)` reduces to the **newly-pressed (edge)**
+  bits and `DS_001088D8 = 0x50161(0x00FF00FF) & 0xFF00FF00` to the **held
+  (level)** bits. Callers: `0x24C6E` (inside `0x24C5C`) and `0x25210`.
 - `0x4F644` is the per-frame input builder `0x24C5C` calls; `flow.c` currently
   records it as unported.
 
@@ -120,9 +124,12 @@ Call sites: `0x11D15` and `0x11D28` (inside `0x11D04`), plus `0x43939`/`0x43B4E`
   `_DS_000F0A40`. Ends with `DS_000F0A70 = 2; DS_000F0A6F = 4; DS_000F0A68 = 0x5A`.
 - phase 2 — advance: `DS_000F0A6E++`; at `6` set `DS_000F0A70 = 3;
   DS_000F0A6F = 4; DS_000F0A68 = 0x1E`, otherwise `DS_000F0A6F = 1`.
-- phase 3 — leave: `0x2B150` (actor set dead), `DS_000F0A64 = <register handoff>`,
-  `DS_000F0A6F = 0`. The handoff is the selected next state and **must be derived
-  from the raw** (the decompiler drops it as `extraout_DX`).
+- phase 3 — leave: `0x2B150(DS_000F0A44, 3)` (actor set dead), then
+  `DSW(DS_000F0A64) = 3` and `DSB(DS_000F0A6F) = 0`. The stored value is the raw's
+  `mov word [0x70a64], dx` at `0x1216a`, where `edx` was set to `3` at `0x1215e`
+  and `0x2B150` preserves `edx` (`push edx` … `pop edx; pop ecx; pop ebx; ret`),
+  so the "register handoff" the decompiler shows as `extraout_DX` is the literal
+  **3**. The selector therefore always leads to state 3 (`0x12484`).
 - phase 4 — pause: decrement `DS_000F0A68`; when it expires,
   `DS_000F0A6F = DS_000F0A70` (2 or 3).
 
@@ -207,7 +214,13 @@ host calls.
   stand-in survives this cycle with its raw site cited (§5).
 - **States 3–9 are out of scope**, and with them `0x12484`, `0x11578`, `0x11A8C`,
   `0x11BCC`, `0x263F4`, `0x33F08`, `0x257A4` and the `0x10DB0`/`0x10E18`
-  transitions that lead to states 4/5.
+  transitions that lead to states 4/5. In particular the selector's own exit
+  (§3.4 phase 3) advances `DS_000F0A64` to state **3**, so after the carousel
+  completes the front-end stalls in the state-3 stub — the same already-declared
+  situation as today, one state later. Slice B is still strictly better than the
+  status quo, where the title's own transition to state 2 lands in a stub
+  immediately; the determinism oracle bounds its frame count and does not observe
+  the exit.
 - **The voice system `0x2C3FC` is out of scope**; state 2's and the state machine's
   voice calls are declared no-ops.
 - **The fight engine is out of scope** (`0x11F28`'s other two callers).
@@ -215,13 +228,16 @@ host calls.
 
 ## 8. Risks
 
-- **Register-handoff derivations.** `0x11F6C` phase 3's `DS_000F0A64 = extraout_DX`
-  and `0x11D04`'s two-poll divert are decompiler-hostile; the plan must derive
-  them from the raw bytes and prove them, not transcribe the decompile.
-- **Latch semantics.** `0x50161` returns `(level & ~mask) | edge` and mutates the
-  latch; `DS_001088E4` and `DS_001088D8` differ in exactly which bits are edges.
-  A naive port that treats both as plain levels would pass a weak test and break
-  the coin poll; the tests must distinguish the two masks.
+- **Register-handoff derivations.** `0x11F6C` phase 3 is now resolved to the
+  literal `3` (§3.4), but `0x11D04`'s two-`0x11F28` head block is still
+  decompiler-hostile; the plan must derive its register flow from the raw bytes
+  and prove it, not transcribe the decompile.
+- **Level versus edge.** `0x50161` returns `(level & ~mask) | edge` and mutates the
+  latch, and the two public masks are different in kind: `DS_001088E4` is the
+  newly-pressed (edge) bits and `DS_001088D8` the held (level) bits. A naive port
+  that treats both as plain levels would pass a weak test and break the coin poll;
+  the tests must feed a key down, then held, and assert that `E4` reports the press
+  and `D8` the hold.
 - **Key bitmap layout.** The two key-state bytes at `DAT_00101514 + 0x2d8`/`0x2d9`
   and their bit meaning must be derived; the SDL binding is a port choice and must
   be documented as such, not presented as the original's mapping.
