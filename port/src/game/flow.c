@@ -285,7 +285,7 @@ static void title_spawn_row(const u32 *desc, u32 a2, u32 a3)
 
 /* PORT: 0x33904. Iterate the fixed 0x10-stride table at
  * DS_00107608..DS_00107798 (the raw immediates 0x87608/0x87798 are
- * DS-relative), returning the first entry whose +4 word is non-zero, or 0 at
+ * DS-relative), returning the first entry whose +4 dword is non-zero, or 0 at
  * the end. Exposed for a unit test. */
 u32 frontend_list_next(u32 node)
 {
@@ -344,7 +344,7 @@ static void game_state_select(void)
         title_input_reset();                        /* 0x4F1D0 */
         title_spawn_row(desc, 0u, 0u);              /* 0x38B18 */
         DSD(DS_000F0A44) = actor_spawn(             /* 0x2AE14 */
-            (const u32 *)(mem + DSD(0x9AEE0u + 12u * n)),
+            (const u32 *)(mem + DSD(0x9AEE0u + 12u * n)),   /* 0x9AEE0 */
             0u, 0xE0u + n, 0x600u, 0u);
         for (u32 node = frontend_list_next(0); node != 0;
              node = frontend_list_next(node)) {
@@ -353,11 +353,11 @@ static void game_state_select(void)
         }
         if ((DSB(DS_00104528 + 1) & 2u) != 0u) {
             DSD(DS_000F0A40) = actor_spawn(         /* 0x2AE14 */
-                (const u32 *)(mem + DSD(0x9AEC8u + 4u * n)),
+                (const u32 *)(mem + DSD(0x9AEC8u + 4u * n)),   /* 0x9AEC8 */
                 0x2A00u, 0xFFu, 0x3400u, 0u);
         } else {
             text_cursor_set(-1, 0x18,               /* 0x1C500 + 0x2F198 */
-                game_string_get(DSD(0x9AEE4u + 12u * n)), 0x4003u);
+                game_string_get(DSD(0x9AEE4u + 12u * n)), 0x4003u);  /* 0x9AEE4 */
             u32 id2 = DSD(0x9AEE8u + 12u * n);
             if (id2 != 0)
                 text_cursor_set(-1, 0x1b,           /* 0x1C500 + 0x2F198 */
@@ -820,12 +820,12 @@ void game_init(void)
      * counter the overlay renders as `<CREDITS string>:<n>`; the un-pinned title
      * capture shows 5, now derived by 0x2C304's config read above. Its
      * decrementers (0x2CA48/0x2CA7C via the title input handler 0x11F28) are
-     * input-driven and wired through game_state_step's coin poll (4b). The
+     * input-driven and wired through game_state_step's coin poll. The
      * renderer scales a text row by 20/3 px (0x200 >> 6, projected by
      * render_proj_y's 3414/4096), so text row 1 lands on the captured screen
      * rows 7-12.
      * TODO(verify): reproduces the captured no-input window only; credit
-     * countdown under input is the 4b carve-out. */
+     * countdown under input is not yet covered by an oracle. */
     /* 0x20CCC: the init chain writes the overlay row to 0x1D. */
     config_set_credit_row_init();
     /* The captured title shows row 1, written by 0x2C06C(1) at 0x110CE inside
@@ -931,16 +931,15 @@ void game_loop(void)
 
 void game_frame(void)
 {
-    /* PORT: 0x24C5C calls 0x4F644 (unless DAT_00104B00 == 0x27); the port's
-     * input_state_update() (Task 2) is that call, wired in below. */
+    /* PORT: 0x24C5C calls 0x4F644 at 0x24C6E (unless DAT_00104B00 == 0x27) as
+     * its first action, before the frame counter and the process tables. */
+    if (DSW(DS_00104B00) != 0x27u) input_state_update();   /* 0x4F644 (0x24C6E) */
+
     /* PORT: the two 0x94-byte player records at DS_001077E0 and 0x24C5C's
      * int 16h input loop belong to the fight engine (sub-project 5). */
     DSD(DS_000EF6DC)++;                                /* frame counter */
     run_process_table(DS_000A8644, DSD(DS_00104AE8));  /* update table */
     /* PORT: 0x24C5C's second 0x38990 per-frame service call is deferred. */
-
-    /* 0x24C5C calls 0x4F644 at 0x24C6E only when DAT_00104B00 != 0x27. */
-    if (DSW(DS_00104B00) != 0x27u) input_state_update();   /* 0x4F644 */
 
     /* The original reaches the state machine 0x11D04 only in case 3 of
      * switch(DAT_00104B00) (0x24C5C). The other modes (login/attract/fight and
@@ -1022,8 +1021,8 @@ void game_state_step(void)
     /* PORT: 0x10DB0 and 0x10E18 (0x11D04's tail, run after every state's
      * function, including 0x121A0): both gate on DS_000F0A71 == 0 and two bits
      * of the input state DS_001088D8, then latch DS_000F0A71. With no input
-     * those bits stay zero and neither branch is taken (spec §7). Deferred to
-     * 4b with that evidence. */
+     * those bits stay zero and neither branch is taken (spec §7). Deferred
+     * with that evidence. */
     game_overlay_step();    /* 0x2BF08 */
 }
 

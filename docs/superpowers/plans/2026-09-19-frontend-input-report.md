@@ -22,10 +22,11 @@ Wiring added this task:
   ASCII byte at `+0x2d9`) from `host_key_bits()` immediately before
   `input_pump()` (`0x500C4`). `host.c`'s `k_input_bind` table is the binding;
   bit 0 is the coin input.
-* `game_frame` calls `input_state_update()` at the `0x24C6E` site, just before
-  the `DS_00104B00` switch, so `DS_001088E4`/`DS_001088D8` are fresh for
-  `game_state_step`; the raw guards that call with `cmp eax,0x27; je`, so the
-  port calls it only when `DSW(DS_00104B00) != 0x27`.
+* `game_frame` calls `input_state_update()` at the `0x24C6E` site as its first
+  action — before the frame counter and the process tables — so
+  `DS_001088E4`/`DS_001088D8` are fresh for `game_state_step`; the raw guards
+  that call with `cmp eax,0x27; je`, so the port calls it only when
+  `DSW(DS_00104B00) != 0x27`.
 * `game_state_step` calls `frontend_coin_poll(0)` and `(1)`.
 * `game_init` calls `config_set_credit_row_init()` (`0x2BF00` → `DS_00105C05 =
   0x1D`) in the `0x20CCC` block.
@@ -201,6 +202,10 @@ unclosed-file warnings in `tools/gra_extract.py`, not compiler warnings.
 
 ## 8. Declared gaps
 
+The DoD §2 coin-path unit coverage — the `DS_0009ACBC` mask table and
+`0x11F28`'s accept and reject paths — was an undeclared gap in the original
+report; the fix wave (§10) now covers it directly.
+
 * **No pixel oracle for state 2.** The select state is validated by the
   determinism log and by unit tests for `frontend_list_next` /
   `frontend_resource_known`; there is no decoded-frame against a capture.
@@ -221,3 +226,31 @@ unclosed-file warnings in `tools/gra_extract.py`, not compiler warnings.
 ```
 flow: wire the coin poll and the input update; record the outcome
 ```
+
+## 10. Fix wave (post-review)
+
+Commit `flow: cover the coin path and align game_frame order with the raw`
+applies the whole-branch review findings:
+
+* **F1 — coin-path unit tests (DoD §2).** `test_frontend.c` now asserts the
+  shipped mask table (`DSD(DS_0009ACBC) == 0x01000000`,
+  `DSD(DS_0009ACBC + 4) == 0x00000100`) and drives `game_state_step()` through
+  the reject path (no newly-pressed bit: credit held at 5, state 9's countdown
+  `DS_000F0A6A` steps 2 -> 1) and both accept paths (`DS_001088E4` set to each
+  mask: credit debited 5 -> 4 -> 3, countdown held at 2 because an accepted coin
+  returns from `0x11D04` before the dispatch). The block runs before the
+  `PR_FRONTEND_DUMP` guard; it maps `PRAGE.EXE` itself when `test_le()` has not,
+  so the standalone `PR_FRONTEND_DUMP` invocation covers it too.
+* **F2 — `game_frame` call order.** `input_state_update()` is now the first
+  statement of `game_frame()` (`0x24C6E`), matching the raw where `0x4F644`
+  precedes the frame counter and the process tables, not in the middle.
+* **F3 — comment accuracy.** The `0x33904` iterator comment says `+4 dword`
+  (the code and raw test a dword), in both `flow.c` and `flow.h`.
+* **F4 — ephemeral task names.** Removed the "Task 2" and "Deferred to 4b"
+  references from the shipping `flow.c` comments.
+* **F5 — address tags.** The `0x9AEE0` / `0x9AEE4` / `0x9AEC8` raw literals in
+  `game_state_select` now carry the address-tag comments the derivations doc
+  claims.
+* **F6 — iterator test hardened.** The `0x33904` test seeds a live dword at
+  `tbl+4` as well as `tbl+0x14` and still requires `tbl+0x10`, proving the
+  helper advances by `0x10` before its first test.

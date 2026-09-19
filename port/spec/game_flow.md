@@ -339,8 +339,9 @@ selector.
   (the `0x00FF00FF` family) plus the two packed cursors `DS_001088E0/2`.
   **Host binding:** `game_loop` fills the key bitmap from `host_key_bits()`
   (host.c's `k_input_bind` table; bit 0 = coin) immediately before `input_pump`;
-  `game_frame` calls `input_state_update()` at the `0x24C6E` site, just before
-  the `DS_00104B00` switch, so the masks are fresh for `game_state_step`.
+  `game_frame` calls `input_state_update()` at the `0x24C6E` site as its first
+  action — the raw's `0x4F644` precedes the frame counter and the process
+  tables — so the masks are fresh for `game_state_step`.
   `0x50146`'s repeat-timer setter has no port caller and stays inert.
 * **Credit layer** — `port/src/game/config.c` ports `0x2CAA8`
   (`config_not_free_play`), `0x2CA2C` (`config_has_credit`), `0x2C060`

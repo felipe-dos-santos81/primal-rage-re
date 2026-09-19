@@ -41,7 +41,7 @@ void game_frame(void);
 void game_state_step(void);
 
 /* 0x33904: the fixed 0x10-stride list iterator at DS_00107608..DS_00107798.
- * Returns the first entry whose +4 word is non-zero, or 0 at the end. Exposed
+ * Returns the first entry whose +4 dword is non-zero, or 0 at the end. Exposed
  * for a unit test. */
 u32 frontend_list_next(u32 node);
 

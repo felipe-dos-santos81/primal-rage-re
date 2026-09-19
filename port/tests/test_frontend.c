@@ -46,10 +46,76 @@ int test_frontend(void)
         const u32 tbl = DS_00107608;
         for (u32 i = 0; i < 0x190u; i++) saved[i] = DSB(tbl + i);
         mem_fill(tbl, 0, 0x190u);
+        DSD(tbl + 0x04u) = 1u;            /* tbl's own +4 is live */
         DSD(tbl + 0x14u) = 1u;            /* entry at tbl+0x10 is live */
+        /* The iterator advances by 0x10 before its first test, so the live
+         * dword at tbl+4 is skipped and the entry at tbl+0x10 wins. */
         CHECK_EQ_INT((int)frontend_list_next(0), (int)(tbl + 0x10u));
         CHECK_EQ_INT((int)frontend_list_next(tbl + 0x10u), 0);
         for (u32 i = 0; i < 0x190u; i++) DSB(tbl + i) = saved[i];
+    }
+
+    /* 0x11F28 / 0x11D04: the coin path. The mask table DS_0009ACBC lives in
+     * the data object; test_le() maps PRAGE.EXE in the shared suite, but the
+     * PR_FRONTEND_DUMP branch runs this file alone, so map it here to read the
+     * shipped masks. An accepted coin debits one credit through 0x2CA7C and
+     * returns early, so the frame's state dispatch is skipped; a rejected poll
+     * leaves the credit alone and runs the dispatch (state 9's countdown is the
+     * observable that the dispatch ran or was skipped). */
+    {
+        const char *gdir = getenv("PR_GAME_DIR");
+        char exe[560];
+        if (gdir == NULL || gdir[0] == '\0') gdir = "data/game/C";
+        snprintf(exe, sizeof exe, "%s/PRAGE.EXE", gdir);
+        if (DSD(DS_0009ACBC) == 0u)
+            CHECK(mem_load_le(exe, NULL) == 1,
+                  "PRAGE.EXE maps for the coin mask table");
+    }
+    {
+        const u32 saved_c00 = DSD(DS_00105C00);
+        const u32 saved_e4  = DSD(DS_001088E4);
+        const u8  saved_1d  = DSB(DS_00104B1D);
+        const u8  saved_1f  = DSB(DS_00104B1F);
+        const u8  saved_60  = DSB(DS_00105D60);
+        const u32 saved_dc  = DSD(DS_001082DC);
+        const u16 saved_64  = DSW(DS_000F0A64);
+        const u16 saved_6a  = DSW(DS_000F0A6A);
+        const u16 saved_6c  = DSW(DS_000F0A6C);
+
+        /* The masks are the shipped ones, or the checks below are vacuous. */
+        CHECK_EQ_INT((int)DSD(DS_0009ACBC), 0x01000000);
+        CHECK_EQ_INT((int)DSD(DS_0009ACBC + 4u), 0x00000100);
+
+        DSB(DS_00104B1D) = 0;          /* coin poll enabled */
+        DSB(DS_00104B1F) = 0;          /* debit not suppressed */
+        DSB(DS_00105D60) = 0;          /* not free play */
+        DSD(DS_00105C00) = 5u;
+        DSD(DS_001082DC) = 0;          /* no localisation table: empty strings */
+
+        /* Reject: no newly-pressed bit -> no debit, state 9's countdown runs. */
+        DSD(DS_001088E4) = 0u;
+        DSW(DS_000F0A64) = 9; DSW(DS_000F0A6A) = 2; DSW(DS_000F0A6C) = 3;
+        game_state_step();
+        CHECK_EQ_INT((int)DSD(DS_00105C00), 5);
+        CHECK_EQ_INT((int)DSW(DS_000F0A6A), 1);
+
+        /* Accept event 0: one credit debited, dispatch skipped (countdown held). */
+        DSD(DS_001088E4) = DSD(DS_0009ACBC);
+        DSW(DS_000F0A6A) = 2;
+        game_state_step();
+        CHECK_EQ_INT((int)DSD(DS_00105C00), 4);
+        CHECK_EQ_INT((int)DSW(DS_000F0A6A), 2);
+
+        /* Accept event 1: likewise. */
+        DSD(DS_001088E4) = DSD(DS_0009ACBC + 4u);
+        game_state_step();
+        CHECK_EQ_INT((int)DSD(DS_00105C00), 3);
+
+        DSD(DS_00105C00) = saved_c00; DSD(DS_001088E4) = saved_e4;
+        DSB(DS_00104B1D) = saved_1d;  DSB(DS_00104B1F) = saved_1f;
+        DSB(DS_00105D60) = saved_60;  DSD(DS_001082DC) = saved_dc;
+        DSW(DS_000F0A64) = saved_64;  DSW(DS_000F0A6A) = saved_6a;
+        DSW(DS_000F0A6C) = saved_6c;
     }
 
     const char *dump = getenv("PR_FRONTEND_DUMP");
