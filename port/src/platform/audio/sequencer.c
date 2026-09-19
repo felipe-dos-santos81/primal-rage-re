@@ -106,18 +106,56 @@ static int read_vlq(u32 *out)
     return 0;
 }
 
+/* SBPRO2.MDI 0xc27: the driver's 16-entry velocity curve, indexed by
+ * `velocity >> 3` at note-on (0x3ac5-0x3ad3). */
+static const u8 VEL_CURVE[16] = {
+    0x52, 0x55, 0x58, 0x5b, 0x5e, 0x61, 0x64, 0x67,
+    0x6a, 0x6d, 0x70, 0x73, 0x76, 0x79, 0x7c, 0x7f,
+};
+
+/* The driver's 8x8->7-bit scaling step (0x31a8-0x31c4): multiply, keep bits
+ * 7..14 of the product, and add 1 unless the result is zero. */
+static u8 drv_scale(u8 a, u8 b)
+{
+    u16 ax = (u16)(((u16)a * (u16)b) << 1);
+    u8 al = (u8)(ax >> 8);
+
+    return (u8)(al == 0 ? 0 : al + 1);
+}
+
+/* PORT: SBPRO2.MDI 0x346a-0x34d3 (carrier 0x40 family), 0x31a1-0x31c4 (volume
+ * product), 0xc27 (velocity curve). The driver writes
+ *   base   = 0x3f - (p[10] & 0x3f)
+ *   V      = drv_scale(volume * expression, VEL_CURVE[velocity >> 3])
+ *   scal   = base * V / 0x7f
+ *   byte   = (~scal & 0x3f) | (p[10] & 0xc0)
+ * where the volume/expression pair is controller 7 times controller 11. The
+ * sequencer models no controllers, so it substitutes the shipped title's
+ * measured channel-volume product 0x53 (prage_000.dro: the p[10]=0 patch
+ * writes 0x16 at velocity 127). The modulator (0x40 + base, p[4]) is the
+ * driver's verbatim byte; its velocity-sensitivity bit is clear in the
+ * shipped bank. One captured row (patch 0x34, 0x9a) is not reproduced (0x98
+ * here); this path has no term that accounts for the difference, so it is
+ * recorded unresolved in docs/superpowers/plans/2026-09-18-opl-velocity-tl.md
+ * rather than fitted. */
+static u8 carrier_tl(const u8 *p, int vel)
+{
+    u8 base = (u8)(0x3f - (p[10] & 0x3f));
+    u8 vol = drv_scale(0x53, VEL_CURVE[(vel >> 3) & 0xf]);
+    u8 scal = (u8)(((u16)base * vol) / 0x7f);
+
+    return (u8)(((u8)~scal & 0x3f) | (p[10] & 0xc0));
+}
+
 /* Applies a patch payload to an OPL channel. Payload layout (verified,
  * FORMATS.md): [3..7] = modulator 0x20/0x40/0x60/0x80/0xE0, [8] = 0xC0,
  * [9..13] = carrier 0x20/0x40/0x60/0x80/0xE0. Writes are ordered by register
  * family, matching the captured driver's per-note setup.
  *
  * The driver ORs 0x30 into 0xC0 (OPL3 left/right output bits) in the capture;
- * kept here. KNOWN DIVERGENCE: the driver also attenuates the carrier TL
- * (p[10]) by velocity, dominantly p[10] + 0x16 + ((127 - vel) >> 3) added to
- * the raw byte (KSL bits included); the residual is not a pure function of
- * velocity (patch 0x34 is +1, patch 0x74 is -1), so this port applies the patch
- * TL verbatim. See port/spec/audio.md "Known capture divergences". */
-static void apply_patch(int opl_ch, u16 key)
+ * kept here. The carrier TL is the driver's velocity-scaled byte, not p[10]
+ * verbatim (carrier_tl above). */
+static void apply_patch(int opl_ch, u16 key, int vel)
 {
     const u8 *p = patches_lookup(key);
     u8 base = OPL_SLOT[opl_ch];
@@ -127,7 +165,7 @@ static void apply_patch(int opl_ch, u16 key)
     opl_write((u16)(0x20 + base), p[3]);
     opl_write((u16)(0x23 + base), p[9]);
     opl_write((u16)(0x40 + base), p[4]);
-    opl_write((u16)(0x43 + base), p[10]);
+    opl_write((u16)(0x43 + base), carrier_tl(p, vel));
     opl_write((u16)(0x60 + base), p[5]);
     opl_write((u16)(0x63 + base), p[11]);
     opl_write((u16)(0x80 + base), p[6]);
@@ -180,7 +218,6 @@ static void key_on(int midi, int note, int vel, u32 dur)
 {
     u16 key;
     int v;
-    (void)vel;
 
     if (midi < 0 || midi >= SEQ_MIDI_CHANNELS || note < 0 || note > 127)
         return;
@@ -192,7 +229,7 @@ static void key_on(int midi, int note, int vel, u32 dur)
         key = PATCH_KEY(S.bank[midi], S.program[midi]);
 
     v = alloc_voice();
-    apply_patch(v, key);
+    apply_patch(v, key, vel);
     S.voice[v].midi = midi;
     S.voice[v].note = note;
     S.voice[v].release = dur;

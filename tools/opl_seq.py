@@ -62,6 +62,28 @@ PATCH_WRITES = (
     (0xE0, 7), (0xE3, 13),     # waveform select
 )
 
+# SBPRO2.MDI 0xc27: the driver's 16-entry velocity curve, indexed by
+# `velocity >> 3`. The shipped title's measured channel-volume product stands
+# in for the controller 7 / controller 11 pair the driver multiplies in
+# (see docs/superpowers/plans/2026-09-18-opl-velocity-tl.md).
+VEL_CURVE = (0x52, 0x55, 0x58, 0x5b, 0x5e, 0x61, 0x64, 0x67,
+             0x6a, 0x6d, 0x70, 0x73, 0x76, 0x79, 0x7c, 0x7f)
+TITLE_VOLUME = 0x53
+
+
+def scale7(a, b):
+    """The driver's 8x8->7-bit multiply+round (0x31a8-0x31c4)."""
+    al = ((a * b) << 1 >> 8) & 0xFF
+    return al + 1 if al else 0
+
+
+def carrier_tl(p, vel):
+    """The driver's carrier 0x40-family byte (0x346a-0x34d3)."""
+    base = 0x3F - (p[10] & 0x3F)
+    vol = scale7(TITLE_VOLUME, VEL_CURVE[(vel >> 3) & 0xF])
+    scal = (base * vol) // 0x7F
+    return ((~scal & 0x3F) | (p[10] & 0xC0)) & 0xFF
+
 
 def note_to_block_fnum(note):
     """MIDI note -> (block, fnum): lowest block with fnum <= 1023, rounded."""
@@ -302,13 +324,13 @@ class Sequencer:
         self.key_off(victim)
         return victim
 
-    def apply_patch(self, ch, key):
+    def apply_patch(self, ch, key, vel):
         p = self.patches.get(key)
         if p is None:
             return
         base = OPL_SLOT[ch]
         for reg, i in PATCH_WRITES:
-            self.write(reg + base, p[i])
+            self.write(reg + base, carrier_tl(p, vel) if i == 10 else p[i])
         self.write(0xC0 + ch, p[8] | 0x30)
 
     def key_on(self, midi, note, vel, dur):
@@ -321,7 +343,7 @@ class Sequencer:
         else:
             key = (self.bank[midi] << 8) | self.program[midi]
         v = self.alloc_voice()
-        self.apply_patch(v, key)
+        self.apply_patch(v, key, vel)
         block, fnum = NOTE_TAB[note]
         b0 = (block << 2) | ((fnum >> 8) & 0x03)
         self.voice[v] = {'midi': midi, 'note': note, 'release': dur,
