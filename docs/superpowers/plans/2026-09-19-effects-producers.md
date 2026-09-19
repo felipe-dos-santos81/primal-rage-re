@@ -207,7 +207,7 @@ dis(0x13e28, 200)
 EOF
 ```
 
-Record the register binding and every written offset in the derivation doc. Confirm against the raw bytes: type `6`, `+0x0F = 0x80`, the `0xFFFFFF` fill at `+0x10`, the resolved copy into `+0x410`.
+Record the register binding and every written offset in the derivation doc. Confirm against the raw bytes: type `6`, `+0x0F = 0x80`, the `0xFFFFFF` fill at `+0x10`, the resolved copy into `+0x410`, and the **loop ordering** — the white fill loop runs to completion before the resolved-copy loop, which is observable at `count == 257` where the two blocks overlap at `+0x410`.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -246,6 +246,32 @@ Append to `port/tests/test_effects.c`:
     }
     effects_clear();
     CHECK_EQ_INT(effects_active(), 0);
+    {
+        /* 0x13E28 at count == 257: the +0x10 white fill (i = 256 -> +0x410) and
+         * the +0x410 resolved copy (j = 0 -> +0x410) overlap. The raw runs the
+         * whole white loop before the resolved loop, so +0x410 ends as the
+         * resolved value; a merged loop would leave 0x00FFFFFF there. */
+        u32 src = EFFECTS_TEST_SRC;
+        u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
+        u32 tab = src + 0x100u, blk = src + 0x200u, rec;
+        effects_init();
+        mem_fill(src, 0, 0x300u);
+        DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
+        DSD(src + 0x0C) = 257u;
+        DSD(DS_001014E0) = tab;
+        DSD(DS_001014F0) = 1;
+        DSD(tab + 16) = blk;
+        DSD(blk + 4) = 0x11111111u;
+        DSD(blk + 8) = 0x22222222u;
+        rec = effects_spawn_pulse(src, 1u);
+        CHECK(rec != 0, "0x13E28 takes a 257-entry record");
+        CHECK_EQ_INT((int)DSD(rec + 0x10), 0x00FFFFFF);
+        CHECK_EQ_INT((int)DSD(rec + 0x410), 0x22222222);
+        DSD(DS_001014E0) = saved_tab;
+        DSD(DS_001014F0) = saved_n;
+    }
+    effects_clear();
+    CHECK_EQ_INT(effects_active(), 0);
 ```
 
 - [ ] **Step 3: Run it and watch it fail**
@@ -269,9 +295,16 @@ u32 effects_spawn_pulse(u32 source_rec, u32 byte_arg)
     DSD(rec + 8) = source_rec;
     DSB(rec + 0x0d) = (u8)byte_arg;
     s32 count = (s32)DSD(source_rec + 0x0c);
-    for (s32 i = 0; i < count; i++) {
+    /* Two loops, not one: the raw fills all of +0x10 with white first, THEN
+     * copies the resolved block into +0x410. The blocks overlap at +0x410 when
+     * count == 257 (white's i = 256, resolved's j = 0), and the raw's ordering
+     * leaves the resolved value there. A merged loop would leave white. */
+    for (s32 i = 0; i < count; i++)
         DSD(rec + 0x10 + (u32)i * 4u) = 0x00FFFFFFu;
-        if (resolved != NULL)
+    /* PORT: the raw dereferences `resolved` unconditionally (faults on a failed
+     * 0x1B544); the port skips the copy instead, as effects_spawn does. */
+    if (resolved != NULL) {
+        for (s32 i = 0; i < count; i++)
             DSD(rec + 0x410 + (u32)i * 4u) = resolved[1 + i];
     }
     DSB(DS_0009AF3C) = 1;
