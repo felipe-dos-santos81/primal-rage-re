@@ -47,5 +47,6 @@ int test_config(void);
 int test_anim(void);
 int test_text(void);
 int test_title(void);
+int test_frontend(void);
 
 #endif /* PR_TEST_H */

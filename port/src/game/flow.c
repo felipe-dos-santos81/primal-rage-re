@@ -286,8 +286,8 @@ static void title_spawn_row(const u32 *desc, u32 a2, u32 a3)
 /* PORT: 0x33904. Iterate the fixed 0x10-stride table at
  * DS_00107608..DS_00107798 (the raw immediates 0x87608/0x87798 are
  * DS-relative), returning the first entry whose +4 word is non-zero, or 0 at
- * the end. */
-static u32 title_retire_next(u32 node)
+ * the end. Exposed for a unit test. */
+u32 frontend_list_next(u32 node)
 {
     u32 e = node ? node : DS_00107608;
     for (;;) {
@@ -295,6 +295,109 @@ static u32 title_retire_next(u32 node)
         if (e >= DS_00107798) return 0;
         if (DSD(e + 4) != 0) return e;
     }
+}
+
+/* 0x1C6D4: membership test. The raw dereferences `rec` (`mov eax,[eax]`) then
+ * accepts exactly the nine resource addresses its cmp/jb/jbe tree selects and
+ * rejects everything else. Exposed for a unit test. */
+u32 frontend_resource_known(u32 rec)
+{
+    u32 v = DSD(rec);
+    switch (v) {
+    case 0x80995Cu: case 0x80997Cu: case 0x809984u: case 0x80998Cu:
+    case 0x809994u: case 0x80999Cu: case 0x8099A4u: case 0x8099ACu:
+    case 0x8099CCu:
+        return 1u;
+    default:
+        return 0u;
+    }
+}
+
+/* 0x11F6C: the six-entry selector. Phase 0 draws the first entry then falls
+ * into phase 1 (no jump between 0x11FD4 and 0x11FDA); phase 1 draws an entry;
+ * phase 4 pauses on DS_000F0A68; phase 2 advances the entry and leaves for
+ * state 3 past the sixth; phase 3 hands off. The jump table at 0x11F58 fixes
+ * the boundaries: 0 -> 0x11F89, 1 -> 0x11FDA, 2 -> 0x1211C, 3 -> 0x12159,
+ * 4 -> 0x1217B, default (ja) -> 0x1219A. */
+static void game_state_select(void)
+{
+    /* 0x487BC is a link-time offset below the data object's base; the loader
+     * fixes it to mem+0xC87BC. Config row 1, phase 0 and phase 1. */
+    const u32 *desc = (const u32 *)(mem + 0xC87BCu);
+
+    switch (DSB(DS_000F0A6F)) {
+    case 0:
+    case 1: {
+        u32 n = DSB(DS_000F0A6E);
+        if (DSB(DS_000F0A6F) == 0) {
+            /* 0x29D60 is a ret-only no-op. */
+            actors_reset();                         /* 0x2BAF4 (eax = 1) */
+            title_input_reset();                    /* 0x4F1D0 */
+            title_spawn_row(desc, 0u, 0u);          /* 0x38B18 */
+            config_set_credit_row(1u);              /* 0x2C06C (eax = 1) */
+            DSB(DS_000F0A6E) = 0;
+            DSD(DS_000F0A44) = 0;
+            if ((DSB(DS_00104528 + 1) & 2u) != 0u) DSD(DS_000F0A40) = 0;
+            n = 0;
+        }
+        actors_reset();                             /* 0x2BAF4 (eax = 1) */
+        title_input_reset();                        /* 0x4F1D0 */
+        title_spawn_row(desc, 0u, 0u);              /* 0x38B18 */
+        DSD(DS_000F0A44) = actor_spawn(             /* 0x2AE14 */
+            (const u32 *)(mem + DSD(0x9AEE0u + 12u * n)),
+            0u, 0xE0u + n, 0x600u, 0u);
+        for (u32 node = frontend_list_next(0); node != 0;
+             node = frontend_list_next(node)) {
+            if (!frontend_resource_known(node))
+                effects_spawn_pulse(node, 1u);      /* 0x13E28 (edx = 1) */
+        }
+        if ((DSB(DS_00104528 + 1) & 2u) != 0u) {
+            DSD(DS_000F0A40) = actor_spawn(         /* 0x2AE14 */
+                (const u32 *)(mem + DSD(0x9AEC8u + 4u * n)),
+                0x2A00u, 0xFFu, 0x3400u, 0u);
+        } else {
+            text_cursor_set(-1, 0x18,               /* 0x1C500 + 0x2F198 */
+                game_string_get(DSD(0x9AEE4u + 12u * n)), 0x4003u);
+            u32 id2 = DSD(0x9AEE8u + 12u * n);
+            if (id2 != 0)
+                text_cursor_set(-1, 0x1b,           /* 0x1C500 + 0x2F198 */
+                    game_string_get(id2), 0x4003u);
+        }
+        DSB(DS_000F0A70) = 2;
+        DSB(DS_000F0A6F) = 4;
+        DSW(DS_000F0A68) = 0x5Au;
+        return;
+    }
+    case 2:
+        break;      /* 0x1211C: advance, handled after the switch */
+    case 3:
+        actor_set_dead(DSD(DS_000F0A44));           /* 0x2B150 (edx = 3) */
+        DSW(DS_000F0A64) = 3;                       /* 0x1216A (literal 3) */
+        DSB(DS_000F0A6F) = 0;
+        return;
+    case 4: {
+        /* 0x1217B stores count-1 but tests the ORIGINAL value (`mov ax,[count];
+         * dec; mov [count],bx; test ax,ax; jg`), so it advances only when the
+         * original is <= 0. `--count < 1` would fire one frame early. */
+        s16 v = (s16)DSW(DS_000F0A68);
+        DSW(DS_000F0A68) = (u16)(v - 1);
+        if (v <= 0)
+            DSB(DS_000F0A6F) = DSB(DS_000F0A70);
+        return;
+    }
+    default:
+        return;
+    }
+
+    /* 0x1211C: advance the entry, or leave the carousel past the sixth. */
+    DSB(DS_000F0A6E)++;
+    if (DSB(DS_000F0A6E) == 6u) {
+        DSB(DS_000F0A70) = 3;
+        DSB(DS_000F0A6F) = 4;
+        DSW(DS_000F0A68) = 0x1Eu;
+        return;
+    }
+    DSB(DS_000F0A6F) = 1;
 }
 
 /* PORT: Task 10's dump hook, the title counterpart of 2b's PR_SMK_DUMP. With
@@ -414,8 +517,8 @@ static void game_state_title(void)
             actor_set_dead(DSD(DS_000F0A54));               /* 0x123B1 (0x2B150) */
             DSD(DS_000F0A54) = actor_spawn((const u32 *)(mem + 0x9ACA8u),
                                            0u, 0xE4u, 0u, 0u);  /* 0x123BF */
-            for (u32 node = title_retire_next(0); node != 0;
-                 node = title_retire_next(node)) {              /* 0x123CB */
+            for (u32 node = frontend_list_next(0); node != 0;
+                 node = frontend_list_next(node)) {             /* 0x123CB */
                 if (DSD(node) == 0x3E688u) {                    /* 0x123D6 */
                     /* 0x123DE-0x123EA: EBX = 0x419786C, DL = 3, EAX = node. */
                     effects_spawn(node, 3u, 0x419786Cu);        /* 0x123EA */
@@ -815,8 +918,8 @@ void game_loop(void)
 
 void game_frame(void)
 {
-    /* PORT: 0x24C5C calls 0x4F644 (unless DAT_00104B00 == 0x27); it is a
-     * per-mode input/wait helper owned by no ported sub-project yet. */
+    /* PORT: 0x24C5C calls 0x4F644 (unless DAT_00104B00 == 0x27). The port has
+     * input_state_update() (Task 2); Task 4 wires it into this frame path. */
     /* PORT: the two 0x94-byte player records at DS_001077E0 and 0x24C5C's
      * int 16h input loop belong to the fight engine (sub-project 5). */
     DSD(DS_000EF6DC)++;                                /* frame counter */
@@ -854,9 +957,11 @@ void game_state_step(void)
             game_state_title();   /* 0x121A0 */
             break;
         case 2:
+            game_state_select();   /* 0x11F6C */
+            break;
         case 3:
         case 4:
-            /* PORT: menus / character-select (sub-project 4). */
+            /* PORT: later states (sub-project 4). */
             break;
         case 5:
             /* PORT: match-start setup then state 6 (fight engine, sub-project 5). */

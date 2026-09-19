@@ -16,6 +16,15 @@ int main(void)
         return g_failures != 0;
     }
 
+    /* The state-2 selector driver also calls game_init(), so it must run alone
+     * for the same reason as PR_TITLE_DUMP above. test_frontend() still runs
+     * its helper unit checks before the gated driver. */
+    if (getenv("PR_FRONTEND_DUMP") != NULL) {
+        test_frontend();
+        printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
+        return g_failures != 0;
+    }
+
     test_scaffold();
     test_mem();
     test_le();
@@ -38,6 +47,7 @@ int main(void)
     test_actors();
     test_effects();
     test_config();
+    test_frontend();
     test_anim();
     test_text();
     test_title();       /* no-op unless PR_TITLE_DUMP is set */

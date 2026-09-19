@@ -36,9 +36,19 @@ void game_loop(void);
  * are deferred). Exposed for tests. */
 void game_frame(void);
 
-/* 0x11D04: switch(DS_000F0A64). Only the title state is ported; the other
- * cases carry PORT markers naming the sub-project that owns them. */
+/* 0x11D04: switch(DS_000F0A64). Only the title and select states are ported;
+ * the other cases carry PORT markers naming the sub-project that owns them. */
 void game_state_step(void);
+
+/* 0x33904: the fixed 0x10-stride list iterator at DS_00107608..DS_00107798.
+ * Returns the first entry whose +4 word is non-zero, or 0 at the end. Exposed
+ * for a unit test. */
+u32 frontend_list_next(u32 node);
+
+/* 0x1C6D4: membership test over the nine resource addresses the raw's
+ * cmp/jb/jbe tree accepts. `rec` is a linear address in mem[]; the raw
+ * dereferences it. Exposed for a unit test. */
+u32 frontend_resource_known(u32 rec);
 
 /* 0x1CF40: the init chain's audio calls — AIL_startup, the shipped preferences,
  * four sample handles, the sequence handle and the 60 Hz timer slot. Called by
