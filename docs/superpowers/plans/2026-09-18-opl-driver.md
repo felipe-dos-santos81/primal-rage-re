@@ -64,7 +64,7 @@ Expected: FAIL — `ModuleNotFoundError: mdi_disasm`.
 
 - [ ] **Step 3: Determine the load origin, then write the harness**
 
-Parse the container: read the `AIL3MDI` magic (offset 0) and the header fields after it; identify where the code body starts and the segment it is loaded at. Determine the origin **from evidence, not assumption** — e.g. by locating a `call`/`jmp` target that lands on a plausible instruction boundary, or by matching a header field against the file's structure — and record the evidence in the tool's docstring and in the Task 4 report. Load the body flat at that origin, disassemble with capstone in 16-bit x86 mode (`Cs(CS_ARCH_X86, CS_MODE_16)`), and emit `(addr, raw_bytes, text)`.
+Parse the container: read the `AIL3MDI` magic (offset 0) and the header fields after it; identify where the code body starts and the segment it is loaded at. Determine the origin **from evidence, not assumption** — e.g. by locating a `call`/`jmp` target that lands on a plausible instruction boundary, or by matching a header field against the file's structure — and record the evidence in the tool's docstring and in the Task 5 report. Load the body flat at that origin, disassemble with capstone in 16-bit x86 mode (`Cs(CS_ARCH_X86, CS_MODE_16)`), and emit `(addr, raw_bytes, text)`.
 
 The tool is a derivation aid, not port code: it does not need to be exhaustive, only correct for the regions used in Tasks 2–3. Skip an undecodable region by advancing one byte, as a debugger would, and mark it.
 
@@ -145,55 +145,101 @@ git commit -m "audio: apply SBPRO2.MDI's velocity-to-TL term to the carrier"
 
 ---
 
-### Task 3: Reproduce the note-setup register order
+### Task 3 (re-scoped): Match the driver's patch-application timing
 
-The capture's write 2 is `0xB0 = 0x2b` (a key-on) where the port writes `0x20` (an operator register); `sequencer.c`'s `apply_patch` writes all operators then `0xC0`, then `key_on` writes `0xA0` then `0xB0|0x20`. The driver's order differs and this task matches it.
+> **Errata (2026-09-18).** The original Task 3 assumed the write-2 divergence was a *register-order* difference. Task 1's harness and the Task 3 investigation **falsified** that: the driver's note-setup order is `20 23 40 43 60 63 80 83 E0 E3 C0 A0 B0` (key-on `0xB0` last) and the port already emits exactly that, so no order change exists. The write-2 divergence is caused by *when* the driver emits the operator families, not their order. This task replaces the original Task 3. Evidence: `.superpowers/sdd/2026-09-18-opl-driver/task-3-report.md` §1–§3.
+
+The original's tick-0 block (capture `prage_000.dro` lines 3–143, `0x20..0x95` values `0x01/0x3f/0xf6/0x0c`) is the driver's init/patch load: the operator families are emitted once, up front. The port instead re-emits the whole patch at every note-on, so its first post-tick-0 write is `0x20` where the capture's is the key-on `0xB0`.
+
+Driver facts already established (Task 3 report §1, to be recorded durably in this task's derivation doc):
+- `0x3184` is a flag-driven state machine over the per-voice byte `[si+0x1539]`: each bit names a register family; a handler writes that family, clears its bit, and jumps to the next test.
+- Note-on sets `[si+0x1539] = 0xf9` immediately before calling `0x3184` (`0x30c8`); the percussion scheduler sets it identically (`0x3802`).
+- Families/handlers: `0x80`→`0x3409` (`0x20`/`0x23`), `0x40`→`0x346a` (`0x40`/`0x43`), `0x20`→`0x34de` (`0x60`,`0x63`,`0x80`,`0x83`), `0x10`→`0x3542` (`0xE0`/`0xE3`), `0x08`→`0x3578` (`0xC0`), `0x01`→`0x35c2` (`0xA0`,`0xB0`).
+- The mod/car slot tables are `0xc37` (mod) and `0xc49` (car); emitters `0x2aa4`/`0x2abe`/`0x2ad6`.
 
 **Files:**
-- Modify: `port/src/platform/audio/sequencer.c` (`apply_patch`, `key_on`, `key_off`)
+- Modify: `port/src/platform/audio/sequencer.c`
 - Modify: `port/tests/test_sequencer.c`
-- Modify: `docs/superpowers/plans/2026-09-18-opl-velocity-tl.md` (extend with the order derivation)
+- Create: `docs/superpowers/plans/2026-09-18-opl-patch-application.md`
 
 **Interfaces:**
-- Consumes: the write seam `opl_write`; Task 2's carrier TL.
-- Produces: the per-note register sequence (order and register set) the driver emits, including the `0xB0`/`0x1B0` key-on placement and `0xC0 |= 0x30`.
+- Consumes: the write seam `opl_write`.
+- Produces: the per-voice "pending families" state that decides which registers a note-on emits, so unchanged operators are not re-sent.
 
-- [ ] **Step 1: Derive the driver's write order**
+- [ ] **Step 1: Derive when each family bit is set and cleared**
 
-From the driver (Task 1's harness) and the capture, establish the exact order of the writes for one note: which operator registers, where the `0xB0` key-on falls relative to them, where `0xC0` is written, and the second-set (`0x1B0`) mirror. Record the driver instructions and a capture sample in the derivation doc.
+Establish from `SBPRO2.MDI` (and `tools/mdi_disasm.py`) exactly what writes `[si+0x1539]`, what its bit values mean, and where the tick-0 patch load originates. Resolve: is `0xf9` set on every note-on, or only when the patch changed? Record the instructions and addresses in the derivation doc, **and also record the already-established note-setup order and the state-machine table above**, so the durable doc carries both results.
 
-- [ ] **Step 2: Write the failing test**
+- [ ] **Step 2: Establish how the oracle normalises**
 
-In `port/tests/test_sequencer.c`, assert the register order for one keyed note matches the derived sequence (e.g. the index of the `0xB0` key-on write and of the `0xC0` write within the note's write run). Assert on the trace, not audio.
+Read `port/tests/test_sequencer.c`'s capture comparison and determine precisely how the capture stream and the port stream are aligned (what the "normalised" capture count of 6380 means, and which writes are dropped on each side). The DoD depends on both streams being reduced the same way; if the oracle drops only the capture's tick-0 block, record that as the thing to reconcile.
 
-- [ ] **Step 3: Run it and watch it fail**
+- [ ] **Step 3: Write the failing test**
 
-Run: `cmake --build build && PR_GAME_DIR=data/game/C ./build/run_tests`
-Expected: FAIL — the port keys on last, after every operator write.
+In `port/tests/test_sequencer.c`, assert on the trace (not audio) that the port's first post-tick-0 write equals the capture's first post-tick-0 write for the same tick, or that the port's tick-0 stream carries the init/patch-load block the capture has. It must fail against the current tree.
 
-- [ ] **Step 4: Implement the derived order**
+- [ ] **Step 4: Implement the derived timing**
 
-Reorder/extend `apply_patch`/`key_on` to match, keeping the `key_off` path correct (a key-off must still clear the key bit on the same `0xB0`). Keep the existing `insert`-time `0xC0 = p[8] | 0x30` unless the driver places it elsewhere.
+Model the per-voice pending-family state in `sequencer.c`: emit the operator families when the driver does, and do not re-emit unchanged families at note-on. Keep the `0xC0`/`0xA0`/`0xB0` placement per the derived order (key-on last).
 
 - [ ] **Step 5: Run the tests and the capture comparison**
 
 Run: `cmake --build build && PR_GAME_DIR=data/game/C ./build/run_tests`
-Expected: `all checks passed`, and the **`capture oracle first difference` line advances beyond C write 2** — or reaches `all compared and matched`. Record the exact new line.
+Expected: `all checks passed`, and the **`capture oracle first difference` line advances beyond C write 2**, or reaches `all compared and matched`. Record the exact new line.
 
-- [ ] **Step 6: Negative control**
+- [ ] **Step 6: Re-check the count gap**
 
-Revert the ordering locally and confirm the first-difference line returns to write 2. Restore.
+Record the new C/capture write counts (were 9340 / 6380) and whether the gap narrowed — without tuning toward a count.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add port/src/platform/audio/sequencer.c port/tests/test_sequencer.c docs/superpowers/plans/2026-09-18-opl-velocity-tl.md
-git commit -m "audio: match SBPRO2.MDI's note-setup register order"
+git add port/src/platform/audio/sequencer.c port/tests/test_sequencer.c docs/superpowers/plans/2026-09-18-opl-patch-application.md
+git commit -m "audio: emit operator families when SBPRO2.MDI does, not per note-on"
 ```
 
 ---
 
-### Task 4: Record the outcome and verify the ladder
+### Task 4 (re-scoped): Derive and implement the percussion note→fnum remap
+
+> **Errata (2026-09-18).** New task, per the same re-scope. The capture keys MIDI note 47 on the percussion channel as `(block 2, fnum 0x3CF)` → `0xB0 = 0x2B`; the port uses its 12-TET `NOTE_TAB[47] = (2, 0x28B)` → `0x2A` (spec divergence #6). Deriving the driver's frequency path is a separate, small RE task.
+
+**Files:**
+- Modify: `port/src/platform/audio/sequencer.c`
+- Modify: `port/tests/test_sequencer.c`
+- Create: `docs/superpowers/plans/2026-09-18-opl-percussion-fnum.md`
+
+**Interfaces:**
+- Consumes: Task 3's patch-application timing.
+- Produces: the block/fnum pair the driver emits for a note, percussion and melodic.
+
+- [ ] **Step 1: Derive the percussion and melodic frequency paths**
+
+From the driver: percussion load `0x381d` sets `[si+0x1499] = 3` (`0x383b`); the note-on fnum is computed at `0x35fa`–`0x36a6` from `[si+0x14d5]`/`[si+0x14fd]` plus the patch's `[2]` base (`0x3aac`–`0x3ac1`). Establish the exact arithmetic for both the percussion and the melodic path, and verify the melodic anchors the Task 3 report says are already correct (note 84 = `0x2B2`, note 79 = `0x205`). Record instructions and addresses in the derivation doc.
+
+- [ ] **Step 2: Write the failing test**
+
+In `port/tests/test_sequencer.c`, assert on the trace (not audio) that the `0xB0` written for the capture's first note equals `0x2B`. It must fail against the current tree.
+
+- [ ] **Step 3: Implement the derived mapping**
+
+Replace the 12-TET `NOTE_TAB` path with the derived function for the percussion case (and melodic if the derivation differs from the current table), keeping `0xA0` (fnum low) and `0xB0` (block / fnum-high / key bit) consistent.
+
+- [ ] **Step 4: Run the tests and the capture comparison**
+
+Run: `cmake --build build && PR_GAME_DIR=data/game/C ./build/run_tests`
+Expected: `all checks passed`, and the `capture oracle first difference` line advances further, or reaches `all compared and matched`. Record the exact new line and the C/capture counts.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add port/src/platform/audio/sequencer.c port/tests/test_sequencer.c docs/superpowers/plans/2026-09-18-opl-percussion-fnum.md
+git commit -m "audio: derive SBPRO2.MDI's note frequencies"
+```
+
+---
+
+### Task 5: Record the outcome and verify the ladder
 
 **Files:**
 - Create: `docs/superpowers/plans/2026-09-18-opl-driver-report.md`
@@ -227,8 +273,10 @@ git commit -m "docs: record the OPL driver-fidelity outcome"
 
 ## Self-Review
 
-**Spec coverage:** §2 harness → Task 1. §3/§4 velocity→TL and its captured cases → Task 2. §5 note-setup order and the advancing first-difference line → Task 3. §6 DoD and §7/§8 dispositions and limits → Task 4 Steps 1–3. §1.1 decision 2 (residual named, not tuned) is enforced by Task 2 Step 2's "stop, do not fit" and Task 4 Step 1's write-count disclosure.
+**Re-scope note (2026-09-18):** the original Task 3 and Task 4 were replaced after execution. Task 2 ended in record-and-stop (the velocity→TL input is engine/config-supplied, not derivable from `SBPRO2.MDI`); the original Task 3's order premise was falsified (the port already matches the driver's order), so the write-2 blocker was re-attributed to divergence #5 (patch-application timing) and #6 (percussion note→fnum). The re-scoped Tasks 3 and 4 target those; the original report task is now Task 5.
 
-**Placeholder scan:** no TBD. Task 1 Step 3's load origin and Tasks 2–3's exact register sequences are genuine RE deliverables, each with a stated method and an evidence requirement — the plan's interface mechanism, not placeholders. The one thing the plan deliberately does not pre-state is the function itself, because inventing it is the failure mode the spec exists to avoid.
+**Spec coverage:** §2 harness → Task 1. §3/§4 velocity→TL and its captured cases → Task 2 (recorded negatively, V engine-supplied). §5's advancing first-difference line → re-scoped Tasks 3–4. §6 DoD and §7/§8 dispositions and limits → Task 5 Steps 1–3. §1.1 decision 2 (residual named, not tuned) is enforced by Task 2's record-and-stop and Task 5 Step 1's write-count disclosure.
 
-**Type consistency:** `mdi_disasm.load`/`MdiImage.disassemble` are used only in Task 1's tests; `opl_write(u16,u8)` and `patches_lookup(u16)` are the existing signatures; `apply_patch`/`key_on`/`key_off` keep their current names and roles across Tasks 2 and 3.
+**Placeholder scan:** no TBD. Task 1 Step 3's load origin, the state-machine semantics in Task 3, and the frequency arithmetic in Task 4 are genuine RE deliverables, each with a stated method and an evidence requirement — the plan's interface mechanism, not placeholders. The one thing the plan deliberately does not pre-state is the functions themselves, because inventing them is the failure mode the spec exists to avoid.
+
+**Type consistency:** `mdi_disasm.load`/`MdiImage.disassemble` are used only in Task 1's tests; `opl_write(u16,u8)` and `patches_lookup(u16)` are the existing signatures; `apply_patch`/`key_on`/`key_off` keep their current names and roles across Tasks 3 and 4.
