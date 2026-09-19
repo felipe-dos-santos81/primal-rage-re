@@ -924,37 +924,92 @@ payload decode is **verified** against the capture:
 * The driver ORs `0x30` into `0xC0` (the OPL3 left/right output bits):
   `0x0E -> 0x3E`, `0x04 -> 0x34`. `verified (cmd: capture)`.
 * The driver attenuates the **carrier TL** (`[10]`) by note velocity. The
-  attenuation is added to the raw payload byte (KSL bits included), so it can
-  carry into bits 6-7: patch `0x49`, `[10] = 0x00`, is written `0x16` at
-  velocity 127, `0x17` at 113 and `0x18` at 104. That is a dominant
-  `+ 0x16 + ((127 - velocity) >> 3)` term. `verified (cmd: prage_000.dro +
-  FAT.OPL)`.
-  `TODO(verify): the exact velocity→TL function.` The captured offset is **not**
-  a pure function of velocity: patch `0x34` (`[10] = 0x83`, KSL 2) is written
-  `0x9a` at velocity 127 (offset 23) and patch `0x74` (`[10] = 0x03`) is written
-  `0x18` at velocities 116-127 (offset 21), while the `[10] = 0x00` / `0x40`
-  patches sit at offset 22. Cases checked (velocity → written carrier TL):
+  function was derived from `SBPRO2.MDI`
+  (`docs/superpowers/plans/2026-09-18-opl-velocity-tl.md`):
+
+  ```
+  base    = 0x3f - (p[10] & 0x3f)                     ; driver 0x394d-0x3964
+  V       = scale7(scale7(cc7, cc11), VEL_CURVE[velocity >> 3])
+  scal    = (base * V) / 0x7f
+  written = ((~scal) & 0x3f) | (p[10] & 0xc0)         ; driver 0x34a0-0x34d3
+
+  scale7(a,b) = ((a*b) << 1) >> 8, +1 unless 0         ; driver 0x31a8-0x31c4
+  VEL_CURVE   = 52 55 58 5b 5e 61 64 67 6a 6d 70 73 76 79 7c 7f   ; driver 0xc27
+  ```
+
+  The port does **not** implement it, because `V` is **engine/config-supplied**,
+  not driver-derivable: the original scales the received CC7 by the sequence
+  volume before dispatch (`prage.c` around `0x2D974`/`0x2C8F0`, music volume =
+  `query(0x35)/2`) and sequence init sends `CC7 = DAT_00108D94`,
+  `CC11 = 0x7f`. `V`'s provenance is owned by the config workstream, so the port
+  writes `[10]` verbatim and records this as a **named** divergence (see
+  "Known capture divergences" #1). The earlier capture-fitted constant `0x53`
+  (commit `7bf339a`) is reverted (`f15b588`). One captured row is unexplained
+  even with `V = 0x53`: patch `0x34` (`[10] = 0x83`) is written `0x9a` where the
+  derivation gives `0x98`, while every other checked case matches:
   `0x49` 127/122→`0x16`, 113→`0x17`, 104→`0x18`; `0x1e`/`0x58` 127→`0x16`;
-  `0x24` 120/127→`0x56`; `0x34` 127→`0x9a`; `0x74` 115→`0x19`, 126/127→`0x18`.
-  The title capture and `FAT.OPL` alone do not pin the per-patch residual;
-  **what would settle it**: disassemble `SBPRO2.MDI`'s velocity→TL path, or
-  capture a velocity sweep for one program. The port writes `[10]` verbatim.
+  `0x24` 120/127→`0x56`; `0x74` 115→`0x19`, 126/127→`0x18`.
+  `verified (cmd: SBPRO2.MDI disassembly + prage_000.dro + FAT.OPL)`.
 * `[0] = 0x0E` and `[1] = 0x00` are constant across all 181 entries; `[2]` is
   the percussion base note for the `0x7F` bank (`likely`).
 
 ## Known capture divergences (Task 9)
 
-Places where the port's register stream deliberately differs from
-`data/audio-captures/prage_000.dro`. Task 9 must either match each one or
-explicitly exclude it; none is silent. Entries marked *withdrawn* no longer
+Places where the port's register stream differs from
+`data/audio-captures/prage_000.dro`. **No audio-fidelity claim is made**: the
+oracle is the register **write stream**, decoded by `tools/opl_trace.py`, never
+rendered or heard audio. Every difference is matched, excluded by name with a
+cause, or named as a gap; none is silent. Entries marked *withdrawn* no longer
 differ — they are kept as the correction record for the earlier claim.
 
-1. **Carrier TL velocity attenuation omitted.** The driver adds a velocity term
-   to the carrier TL (`[10]`) — dominant form `+ 0x16 + ((127 - velocity) >> 3)`,
-   with an unexplained ±1 per-patch residual (see "FAT.OPL patch bank" above).
-   The port writes `[10]` verbatim, so its carrier TL is up to ~0x16 brighter
-   than the capture. `TODO(verify): the exact function` (disassemble
-   `SBPRO2.MDI`, or a single-program velocity sweep).
+**Reduction (symmetric since Task 3).** Both streams are reduced by the same
+rule: anchor at the stream's **first key-on** (`0xB0..0xB8` with the key bit) and
+drop everything before it; drop the `documented_excluded` registers (`0xBD` and
+the carrier-TL family `0x43,0x44,0x45,0x4B,0x4C,0x4D,0x53,0x54,0x55`); map
+capture `ms -> tick` with `(ms*120+500)/1000 + 60` (the `+60` aligns the driver's
+first key-on, which is folded into its tick-0 init, to the port's at tick 60).
+Before the fix the capture was sliced from its first key-on while the port
+dropped only `tick==0`, so the first compared pair was always the port's
+**operator** write against the capture's **key-on** and the reported
+"first difference at C write 2" could never advance — an artifact, not a
+register-stream divergence. `verified (cmd: ./build/run_tests capture-oracle
+line; docs/superpowers/plans/2026-09-18-opl-oracle-alignment.md)`.
+
+**First-difference history.** Under the symmetric reduction the line measured
+real divergences — write 14 (#6 percussion note→fnum), then write 16 (#5
+channel reuse) — and is now:
+
+```
+capture oracle first difference at C write 24: C tick=68 reg=0xe1 val=0000 vs capture tick=68 reg=0xc1 val=0x34 (C 9340 writes, capture 6380 normalised)
+```
+
+`oracle C-vs-Python: 9340 writes byte-exact` is unchanged. The C count is the
+port's raw stream and the capture count is the reduced one, so they are **not** a
+like-for-like gap; neither changed this cycle.
+
+**Dispositions.** Item numbers are this spec's. (The cycle plan called channel
+assignment "divergence #7"; the channel half is **item 5** here — item 7 is the
+`0xBD` register.)
+
+| # | divergence | disposition |
+|---|---|---|
+| 1 | carrier-TL velocity attenuation | **named**: formula derived, input `V` engine-supplied; port writes `[10]` verbatim |
+| 2 | `0x105 = 0x01` (OPL3 enable) | **matched** |
+| 3 | parser / XMIDI running status | **matched** (not present) |
+| 4 | driver cached-state init block | **matched** under the symmetric reduction |
+| 5 | per-note patch re-application + channel reuse | **matched**: the "once up front" premise is falsified, the rotation is implemented |
+| 6 | percussion note→fnum | **matched** |
+| 7 | `0xBD` rhythm register never written | **excluded by name** (cause below) |
+| 8 | E0-family value skip | **named**: the current first divergence |
+
+1. **Carrier TL velocity attenuation — named.** The driver adds a velocity term
+   to the carrier TL (`[10]`); the derived function and its engine-supplied input
+   `V` are in "FAT.OPL patch bank" above and
+   `docs/superpowers/plans/2026-09-18-opl-velocity-tl.md`. `V` cannot be derived
+   from `SBPRO2.MDI` — it is the sequence volume the engine feeds as the received
+   CC7 (`prage.c` around `0x2D974`), owned by the config workstream — so the port
+   writes `[10]` verbatim. Patch `0x34` (`0x9a` captured vs `0x98` derived) is an
+   unexplained residual, recorded, not fitted.
 
 2. **`0x105 = 0x01` (OPL3-mode enable): withdrawn, port now matches.** The
    capture's next write after `0x01 = 0x20` is `0x105 = 0x01`. Earlier text here
@@ -983,46 +1038,71 @@ differ — they are kept as the correction record for the earlier claim.
    interpretation. `verified (cmd: parse of every EVNT chunk; see the offset 448
    case)`. No parser change is warranted on this evidence.
 
-4. **Driver cached-state init block omitted.** After `0x01 = 0x20` and
-   `0x105 = 0x01` the capture writes a full reset sweep (`0x20..0x35` and
-   `0x120..0x135`, values `0x01`/`0x3F`/`0xFF`/`0x0F`) before its first key-on,
-   and folds the first note's patch into that same `ms == 0` block (item 5).
-   The port opens with only the two enable writes. Both streams are reduced by
-   the **same** rule: drop everything before the stream's first key-on
-   (`0xB0..0xB8` with the key bit) plus the `documented_excluded` registers,
-   then map capture ms to port tick at 120 Hz. The first note's preamble is
-   thus discarded on both sides rather than on the capture only. `verified
-   (cmd: ./build/run_tests capture-oracle line)`.
-5. **Per-note patch re-application and channel reuse.** The port re-applies the
-   whole 14-byte patch on every key-on and allocates the lowest free voice; the
-   driver applies operators when a patch is selected and schedules channels on
-   its own state. Under the item-4 reduction the first compared write is now
-   the first key-on on both sides; its value already differs (port `0xB0 =
-   0x2A` vs capture `0x2B`, item 6). After item 6 the next difference is the
-   operator register: the port's first four notes all reuse OPL ch0 (`0x20`,
-   `0x23`) while the capture rotates ch0, ch1, ch2, ch3 (`0x20`/`0x23`,
-   `0x21`/`0x24`, `0x22`/`0x25`, `0x28`/`0x2B`). The port emits 9340 writes,
-   the capture 6380 after normalisation. Not matchable without reproducing the
-   driver's channel/patch state machine. `verified (cmd: ./build/run_tests,
-   "capture oracle first difference")`.
-6. **Percussion note frequency.** The port maps MIDI percussion through the
-   melodic `NOTE_TAB`; the capture's first drum note (MIDI 47) is block 2 fnum
-   `0x3CF` while the melodic table gives `0x28B`. `TODO(verify): the driver's
-   percussion note -> fnum mapping.` `verified (cmd: capture A0/B0 vs
-   sequencer.c NOTE_TAB)`.
-7. **OPL rhythm register `0xBD` not written.** The capture's only `0xBD` write
-   is its tick-0 init value `0xC0` (rhythm-mode enable, all percussion off),
-   which normalisation drops with the init block (item 4). The port never
-   writes `0xBD` — it routes percussion through the melodic voice pool (items
-   5-6) — so `documented_excluded` also excludes `0xBD` defensively in case a
-   later capture writes it after its first key-on. `verified (cmd:
-   tools/opl_trace.py data/audio-captures/prage_000.dro | awk
+4. **Driver cached-state init block — matched under the symmetric reduction.**
+   After `0x01 = 0x20` and `0x105 = 0x01` the capture writes a full reset sweep
+   (`0x20..0x35` and `0x120..0x135`, values `0x01`/`0x3F`/`0xFF`/`0x0F`) before
+   its first key-on, and folds the first note's patch into that same `ms == 0`
+   block (item 5). The port opens with only the two enable writes. Both streams
+   are reduced by the **same** rule: drop everything before the stream's first
+   key-on (`0xB0..0xB8` with the key bit) plus the `documented_excluded`
+   registers, then map capture ms to port tick at 120 Hz. The first note's
+   preamble is thus discarded on both sides rather than on the capture only.
+   `verified (cmd: ./build/run_tests capture-oracle line)`.
+5. **Per-note patch re-application and channel reuse — matched.** The
+   "operators are applied once, up front" premise is falsified: the driver
+   re-emits every operator family on **every** note-on (`0x30c8` sets
+   `[si+0x1539] = 0xf9` unconditionally → the state machine `0x3184`; derived
+   order `20 23 40 43 60 63 80 83 E0 E3 C0 A0 B0`, key-on last), and the port's
+   per-note `apply_patch` already matched this for notes 2+. Only the **first**
+   note's operators are folded into the driver's tick-0 init, which item 4's
+   reduction discards on both sides. The real half was **channel reuse**: the
+   driver's melodic allocator (`0x3095`-`0x30d8`) is a monotonic rotation cursor
+   over 18 OPL3 slots (`0x1408`, init `0xffff` at `0x306e`), not "lowest free";
+   the port now models 18 channels with the banked `OPL_SLOT`/`ch_reg` tables
+   recomposed from the driver (`0xc37`/`0xc49` → `0xc5b`/`0xc7f`; `0xca3`/`0xcb5`).
+   `verified (cmd: ./build/run_tests; docs/superpowers/plans/2026-09-18-opl-channel-assignment.md,
+   2026-09-18-opl-patch-application.md)`.
+6. **Percussion note frequency — matched.** The port's 12-TET melodic `NOTE_TAB`
+   is the driver's melodic result; a percussion note must index that table by its
+   patch's base byte `[2]`, not by the MIDI note. The driver's single frequency
+   routine `0x35fa`-`0x36a6` takes its index from `[si+0x14d5]`/`[si+0x14fd]`,
+   split at `0x3aac`-`0x3ac1`: melodic `note + base`, percussion `base` alone.
+   MIDI 47 → key `0x7F2F` payload `[2] = 54` → `NOTE_TAB[54] = (2, 0x3CF)` →
+   `0xB0 = 0x2B`, matching the capture. `verified (cmd: capture A0/B0 vs
+   sequencer.c NOTE_TAB; docs/superpowers/plans/2026-09-18-opl-percussion-fnum.md)`.
+7. **OPL rhythm register `0xBD` not written — excluded by name.** The capture's
+   only `0xBD` write is its tick-0 init value `0xC0` (rhythm-mode enable, all
+   percussion off), which the item-4 reduction drops with the init block. The
+   port never writes `0xBD` — it routes percussion through the melodic voice pool
+   (items 5-6) — so `documented_excluded` also excludes `0xBD` defensively in
+   case a later capture writes it after its first key-on. (This is spec item 7;
+   the cycle plan's "divergence #7" — channel assignment — is item 5 above.)
+   `verified (cmd: tools/opl_trace.py data/audio-captures/prage_000.dro | awk
    '$2=="0x00bd"' -> one write, tick 0, value 0xC0)`.
+8. **E0-family value skip — named (the current first divergence).** At C write 24
+   the port writes `0xE1 = 0x00` where the capture writes `0xC1 = 0x34`. The
+   disassembly's E0 handler `0x3542` writes E0 unconditionally, but the capture
+   emits the E0 family only where the patch's E0 byte is non-zero/changes. The
+   skip is not visible in the disassembled emitter (a shadow path the linear
+   disassembly did not decode, or a differing driver build), so reproducing it
+   would be a guess, not a derivation. Named, not fitted; it is what a future
+   cycle would derive. `verified (cmd: ./build/run_tests capture-oracle line;
+   docs/superpowers/plans/2026-09-18-opl-patch-application.md §2)`.
+
+**Named gaps (not fitted, do not affect the compared window).** The driver's
+voice-steal handler `0x36f6`-`0x3816` (quietest-voice, per-MIDI-channel counts
+`[ch+0x1a39]` and priorities `[ch+0x1979]`) is not modelled — the port keeps its
+oldest-voice steal; with 18 slots the allocator was not observed to exhaust in
+the compared window. The percussion allocator `0x30e1` (voice type 3) is
+unreachable for the shipped bank (all 181 `FAT.OPL` payloads have type
+`[0] = 0x0e`), so it is not modelled. Pitch bend / `[ch+0x18f9]` is unmodelled
+(no bend in the capture window). The `0x34` carrier-TL residual (item 1) is
+unexplained.
 
 Task 9 result: `tools/opl_seq.py` and the C sequencer agree **byte-for-byte**
 (9340 writes: tick, register, value and order) — the tolerance-free governing
-oracle comparison. Against the capture the port is **not** byte-exact for items
-1 and 4-7; each is excluded or reported, never tuned away.
+oracle comparison. Against the capture the remaining differences are items 1, 7
+and 8 (named/excluded above); each is excluded or reported, never tuned away.
 
 **Asset gate on the governing comparison.** The byte-exact C-vs-Python gate and
 the capture comparison both need the untracked `data/game/C` assets

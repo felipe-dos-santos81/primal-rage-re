@@ -97,11 +97,21 @@ attract XMIDI bank is decoded and sequenced into OPL register writes through a
 vendored FM core, one located announcer sample plays through the game's own
 sample request/play call path, and mixed stereo frames reach SDL audio when a
 device opens. The FM data path is proven byte-exact against an independent
-Python decoder (9340 OPL register writes, zero differences); the original's OPL
-trace was captured and governs the comparison, which the port does **not** match
-structurally (the driver's reconstruction semantics are unverified). The windowed
-run is silent on hosts where SDL audio cannot start — on this machine `-66681`.
-See `docs/superpowers/plans/2026-09-16-audio-ail-port-report.md`.
+Python decoder (9340 OPL register writes, zero differences), and the original's
+OPL trace was captured and governs the comparison under a **symmetric oracle**
+(both streams anchored at their first key-on). The port now matches the
+`SBPRO2.MDI` note-setup path further: percussion note→fnum and the driver's
+18-slot channel rotation are derived from the shipped driver and implemented, so
+the first reported difference advanced from write 2 (a metric artifact) to write
+24, a named E0-family value skip. The 9340 (port) / 6380 (reduced capture) write
+counts are unchanged and are not a like-for-like gap. Remaining differences —
+the carrier-TL velocity term (its input is engine/config-supplied, not driver-
+derivable), the `0xBD` rhythm register, the E0-family skip — are named or
+excluded with cause, never tuned. **No audibility claim**: the oracle is the
+register write stream, not rendered audio. The windowed run is silent on hosts
+where SDL audio cannot start — on this machine `-66681`. See
+`docs/superpowers/plans/2026-09-16-audio-ail-port-report.md` and
+`docs/superpowers/plans/2026-09-18-opl-driver-report.md`.
 **Video — sub-project 2b-i, Smacker logos, running.** The port decodes the two
 boot movies (`twi5.smk`, `twg.smk`) with an in-repo, clean-room SMK2 decoder and
 plays them on the boot path before the title screen. Both movies' presented
