@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Reproduce `SBPRO2.MDI`'s FM note-setup path and its velocity→TL function so the port's OPL register stream matches the captured original further than write 2, with every remaining divergence named.
+**Goal:** Reproduce `SBPRO2.MDI`'s FM note-setup path (register order, patch-application timing, note frequencies, channel assignment) and make the capture comparison measure real divergence (symmetric reduction), so the port's OPL register stream matches the captured original further than write 2, with every remaining divergence named. The velocity→TL derivation is recorded even though its input is engine-supplied.
 
 **Architecture:** A new disassembly harness (`tools/mdi_disasm.py`) derives the driver's behaviour from the shipped `SBPRO2.MDI`; the derived facts are transcribed into `port/src/platform/audio/sequencer.c`. The existing capture comparison in `port/tests/test_sequencer.c` is the oracle: it compares the C register stream against `data/audio-captures/prage_000.dro` and reports the first difference.
 
@@ -145,72 +145,62 @@ git commit -m "audio: apply SBPRO2.MDI's velocity-to-TL term to the carrier"
 
 ---
 
-### Task 3 (re-scoped): Match the driver's patch-application timing
+> **Global correction (2026-09-18).** Any change to the C register stream must also update `tools/opl_seq.py`: the governing C-vs-Python gate (`port/tests/test_sequencer.c` §7) compares every write, so an unmirrored change fails the suite. Tasks 4 and 5 below list it as a modified file.
 
-> **Errata (2026-09-18).** The original Task 3 assumed the write-2 divergence was a *register-order* difference. Task 1's harness and the Task 3 investigation **falsified** that: the driver's note-setup order is `20 23 40 43 60 63 80 83 E0 E3 C0 A0 B0` (key-on `0xB0` last) and the port already emits exactly that, so no order change exists. The write-2 divergence is caused by *when* the driver emits the operator families, not their order. This task replaces the original Task 3. Evidence: `.superpowers/sdd/2026-09-18-opl-driver/task-3-report.md` §1–§3.
+### Task 3 (re-scoped again): Make the capture-oracle reduction symmetric
 
-The original's tick-0 block (capture `prage_000.dro` lines 3–143, `0x20..0x95` values `0x01/0x3f/0xf6/0x0c`) is the driver's init/patch load: the operator families are emitted once, up front. The port instead re-emits the whole patch at every note-on, so its first post-tick-0 write is `0x20` where the capture's is the key-on `0xB0`.
-
-Driver facts already established (Task 3 report §1, to be recorded durably in this task's derivation doc):
-- `0x3184` is a flag-driven state machine over the per-voice byte `[si+0x1539]`: each bit names a register family; a handler writes that family, clears its bit, and jumps to the next test.
-- Note-on sets `[si+0x1539] = 0xf9` immediately before calling `0x3184` (`0x30c8`); the percussion scheduler sets it identically (`0x3802`).
-- Families/handlers: `0x80`→`0x3409` (`0x20`/`0x23`), `0x40`→`0x346a` (`0x40`/`0x43`), `0x20`→`0x34de` (`0x60`,`0x63`,`0x80`,`0x83`), `0x10`→`0x3542` (`0xE0`/`0xE3`), `0x08`→`0x3578` (`0xC0`), `0x01`→`0x35c2` (`0xA0`,`0xB0`).
-- The mod/car slot tables are `0xc37` (mod) and `0xc49` (car); emitters `0x2aa4`/`0x2abe`/`0x2ad6`.
+> **Errata #2 (2026-09-18).** The first re-scope (patch-application timing, divergence #5) was also **falsified**: the driver re-emits all operator families on *every* note-on (`0x30c8` sets `[si+0x1539]=0xf9` unconditionally → `0x3184`), so the port's per-note `apply_patch` already matches for notes 2+; only the *first* note's operators are folded into the driver's tick-0 init (reset `0x2c47` + tables `0xa3d`/`0xb32`). The real reason the DoD cannot advance is that the oracle's reduction is **asymmetric**: `port/tests/test_sequencer.c:443` slices the capture from its first key-on (discarding that note's operators, `0xC0` and `0xA0`), while `:459-461` drops only `tick==0` writes on the port side — so the port's first compared write is always its first tick-60 operator and the capture's is always its first key-on. No register-stream change can advance the line until the metric is fixed. This task replaces the #5 task. Evidence: `.superpowers/sdd/2026-09-18-opl-driver/task-3-report.md` (both sections) and `docs/superpowers/plans/2026-09-18-opl-patch-application.md`.
 
 **Files:**
-- Modify: `port/src/platform/audio/sequencer.c`
 - Modify: `port/tests/test_sequencer.c`
-- Create: `docs/superpowers/plans/2026-09-18-opl-patch-application.md`
+- Modify: `port/spec/audio.md`
+- Create: `docs/superpowers/plans/2026-09-18-opl-oracle-alignment.md`
 
 **Interfaces:**
-- Consumes: the write seam `opl_write`.
-- Produces: the per-voice "pending families" state that decides which registers a note-on emits, so unchanged operators are not re-sent.
+- Produces: a capture-oracle comparison that reduces both streams by the same rule, so its first-difference line measures real divergence.
 
-- [ ] **Step 1: Derive when each family bit is set and cleared**
+- [ ] **Step 1: Document the current reduction and the defect**
 
-Establish from `SBPRO2.MDI` (and `tools/mdi_disasm.py`) exactly what writes `[si+0x1539]`, what its bit values mean, and where the tick-0 patch load originates. Resolve: is `0xf9` set on every note-on, or only when the patch changed? Record the instructions and addresses in the derivation doc, **and also record the already-established note-setup order and the state-machine table above**, so the durable doc carries both results.
+Read the oracle (`port/tests/test_sequencer.c` §8, ~`:405-490`) and write down, in the derivation doc, exactly how each side is reduced today (`first_key` slicing on the capture; `tick==0` skipping on the port) and why that reduction can never align the two streams.
 
-- [ ] **Step 2: Establish how the oracle normalises**
+- [ ] **Step 2: Choose and justify a symmetric reduction**
 
-Read `port/tests/test_sequencer.c`'s capture comparison and determine precisely how the capture stream and the port stream are aligned (what the "normalised" capture count of 6380 means, and which writes are dropped on each side). The DoD depends on both streams being reduced the same way; if the oracle drops only the capture's tick-0 block, record that as the thing to reconcile.
+The candidate: drop only `tick==0` writes (and the documented-excluded registers) on *both* sides, with no first-key-on slicing. Establish what that does to the comparison. Record the choice and its rationale, and state what the "normalised" capture count now means.
 
-- [ ] **Step 3: Write the failing test**
+- [ ] **Step 3: Implement the symmetric reduction**
 
-In `port/tests/test_sequencer.c`, assert on the trace (not audio) that the port's first post-tick-0 write equals the capture's first post-tick-0 write for the same tick, or that the port's tick-0 stream carries the init/patch-load block the capture has. It must fail against the current tree.
+Change the oracle so both streams are reduced by the same rule. Do not weaken it into a comparison that trivially matches.
 
-- [ ] **Step 4: Implement the derived timing**
-
-Model the per-voice pending-family state in `sequencer.c`: emit the operator families when the driver does, and do not re-emit unchanged families at note-on. Keep the `0xC0`/`0xA0`/`0xB0` placement per the derived order (key-on last).
-
-- [ ] **Step 5: Run the tests and the capture comparison**
+- [ ] **Step 4: Re-measure**
 
 Run: `cmake --build build && PR_GAME_DIR=data/game/C ./build/run_tests`
-Expected: `all checks passed`, and the **`capture oracle first difference` line advances beyond C write 2**, or reaches `all compared and matched`. Record the exact new line.
+Record the new `capture oracle first difference` line and the C/capture counts (were 9340 / 6380). The line should move to a *real* divergence (e.g. #6 percussion fnum, #7 channel rotation) or reach `all compared and matched`.
 
-- [ ] **Step 6: Re-check the count gap**
+- [ ] **Step 5: Negative control**
 
-Record the new C/capture write counts (were 9340 / 6380) and whether the gap narrowed — without tuning toward a count.
+Confirm the new oracle still detects a real divergence: inject a perturbation into a scratch build (e.g. flip one register value) and verify the first-difference line moves back. A comparison that cannot fail is worthless. Restore.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add port/src/platform/audio/sequencer.c port/tests/test_sequencer.c docs/superpowers/plans/2026-09-18-opl-patch-application.md
-git commit -m "audio: emit operator families when SBPRO2.MDI does, not per note-on"
+git add port/tests/test_sequencer.c port/spec/audio.md docs/superpowers/plans/2026-09-18-opl-oracle-alignment.md
+git commit -m "tests: reduce the capture oracle symmetrically"
 ```
 
 ---
 
 ### Task 4 (re-scoped): Derive and implement the percussion note→fnum remap
 
-> **Errata (2026-09-18).** New task, per the same re-scope. The capture keys MIDI note 47 on the percussion channel as `(block 2, fnum 0x3CF)` → `0xB0 = 0x2B`; the port uses its 12-TET `NOTE_TAB[47] = (2, 0x28B)` → `0x2A` (spec divergence #6). Deriving the driver's frequency path is a separate, small RE task.
+> **Errata (2026-09-18).** The capture keys MIDI note 47 on the percussion channel as `(block 2, fnum 0x3CF)` → `0xB0 = 0x2B`; the port uses its 12-TET `NOTE_TAB[47] = (2, 0x28B)` → `0x2A` (spec divergence #6). Deriving the driver's frequency path is a separate, small RE task.
 
 **Files:**
 - Modify: `port/src/platform/audio/sequencer.c`
 - Modify: `port/tests/test_sequencer.c`
+- Modify: `tools/opl_seq.py` (mirror the C change for the governing gate)
 - Create: `docs/superpowers/plans/2026-09-18-opl-percussion-fnum.md`
 
 **Interfaces:**
-- Consumes: Task 3's patch-application timing.
+- Consumes: Task 3's symmetric oracle.
 - Produces: the block/fnum pair the driver emits for a note, percussion and melodic.
 
 - [ ] **Step 1: Derive the percussion and melodic frequency paths**
@@ -223,7 +213,7 @@ In `port/tests/test_sequencer.c`, assert on the trace (not audio) that the `0xB0
 
 - [ ] **Step 3: Implement the derived mapping**
 
-Replace the 12-TET `NOTE_TAB` path with the derived function for the percussion case (and melodic if the derivation differs from the current table), keeping `0xA0` (fnum low) and `0xB0` (block / fnum-high / key bit) consistent.
+Replace the 12-TET `NOTE_TAB` path with the derived function for the percussion case (and melodic if the derivation differs from the current table), keeping `0xA0` (fnum low) and `0xB0` (block / fnum-high / key bit) consistent. Mirror the same change in `tools/opl_seq.py`.
 
 - [ ] **Step 4: Run the tests and the capture comparison**
 
@@ -233,13 +223,53 @@ Expected: `all checks passed`, and the `capture oracle first difference` line ad
 - [ ] **Step 5: Commit**
 
 ```bash
-git add port/src/platform/audio/sequencer.c port/tests/test_sequencer.c docs/superpowers/plans/2026-09-18-opl-percussion-fnum.md
+git add port/src/platform/audio/sequencer.c port/tests/test_sequencer.c tools/opl_seq.py docs/superpowers/plans/2026-09-18-opl-percussion-fnum.md
 git commit -m "audio: derive SBPRO2.MDI's note frequencies"
 ```
 
 ---
 
-### Task 5: Record the outcome and verify the ladder
+### Task 5 (re-scoped): Match the driver's channel assignment
+
+> **Errata (2026-09-18).** New task from the same investigation: the port reuses OPL channel 0 for successive notes while the capture rotates across channels 0–3 (divergence #7). Until channel assignment matches, the two streams cannot walk in lockstep past the first few notes even with the same order and values.
+
+**Files:**
+- Modify: `port/src/platform/audio/sequencer.c`
+- Modify: `port/tests/test_sequencer.c`
+- Modify: `tools/opl_seq.py` (mirror the C change for the governing gate)
+- Create: `docs/superpowers/plans/2026-09-18-opl-channel-assignment.md`
+
+**Interfaces:**
+- Consumes: Task 4's note frequencies.
+- Produces: the OPL channel each voice's note is routed to, matching the driver's allocator.
+
+- [ ] **Step 1: Derive the driver's channel allocator**
+
+From `SBPRO2.MDI`, establish how a voice is assigned an OPL channel: find the voice→channel state (the report notes `[si+0x14c1]` masked `& 0xf` as a MIDI channel at `0x31a1`; find the corresponding OPL slot assignment) and the rotation/reuse rule. Record the instructions and addresses in the derivation doc.
+
+- [ ] **Step 2: Write the failing test**
+
+In `port/tests/test_sequencer.c`, assert on the trace (not audio) that the first few notes' OPL channels match the capture's (ch0,1,2,3 rotation). It must fail against the current tree.
+
+- [ ] **Step 3: Implement the derived allocator**
+
+Make `sequencer.c` assign OPL channels as the driver does. Mirror the change in `tools/opl_seq.py`.
+
+- [ ] **Step 4: Run the tests and the capture comparison**
+
+Run: `cmake --build build && PR_GAME_DIR=data/game/C ./build/run_tests`
+Expected: `all checks passed`, and the `capture oracle first difference` line advances further, or reaches `all compared and matched`. Record the exact new line and the C/capture counts.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add port/src/platform/audio/sequencer.c port/tests/test_sequencer.c tools/opl_seq.py docs/superpowers/plans/2026-09-18-opl-channel-assignment.md
+git commit -m "audio: match SBPRO2.MDI's channel assignment"
+```
+
+---
+
+### Task 6: Record the outcome and verify the ladder
 
 **Files:**
 - Create: `docs/superpowers/plans/2026-09-18-opl-driver-report.md`
@@ -251,11 +281,11 @@ git commit -m "audio: derive SBPRO2.MDI's note frequencies"
 
 - [ ] **Step 1: Write the report**
 
-Record: the derived velocity→TL function and the driver evidence for it; the derived write order; the **before and after** `capture oracle first difference` lines; the C/capture write counts (were 9340 vs 6380) and whether the gap narrowed; and every divergence in `port/spec/audio.md` with its disposition (matched, or excluded by name with cause). State plainly that no audio-fidelity claim is made.
+Record: the capture-oracle metric defect and its symmetric fix (before/after reduction); the driver's note-setup order and the patch-application timing; the true velocity→TL formula with the engine-supplied V and the unexplained `0x34` residual; the derived percussion frequency path and channel assignment; the **before and after** `capture oracle first difference` lines; the C/capture write counts (were 9340 / 6380) and whether the gap narrowed; and every divergence in `port/spec/audio.md` (was #1; now also #5/#6/#7 and the oracle alignment) with its disposition (matched, or excluded by name with cause). State plainly that no audio-fidelity claim is made.
 
 - [ ] **Step 2: Update the divergence list and README**
 
-In `port/spec/audio.md`, mark divergence #1 resolved (or state exactly what remains and why). Move each remaining divergence to matched/excluded. `README.md`'s audio paragraph says the register stream now matches the driver further than before, without claiming audibility.
+In `port/spec/audio.md`, update the divergence list: #1 (velocity→TL) now records the true formula and that its input V is engine/config-supplied (owned by the config workstream); record the oracle's reduction semantics; move each remaining divergence to matched/excluded/named. `README.md`'s audio paragraph says the register stream is compared under a symmetric oracle and what now matches, without claiming audibility.
 
 - [ ] **Step 3: Full ladder**
 
@@ -273,10 +303,10 @@ git commit -m "docs: record the OPL driver-fidelity outcome"
 
 ## Self-Review
 
-**Re-scope note (2026-09-18):** the original Task 3 and Task 4 were replaced after execution. Task 2 ended in record-and-stop (the velocity→TL input is engine/config-supplied, not derivable from `SBPRO2.MDI`); the original Task 3's order premise was falsified (the port already matches the driver's order), so the write-2 blocker was re-attributed to divergence #5 (patch-application timing) and #6 (percussion note→fnum). The re-scoped Tasks 3 and 4 target those; the original report task is now Task 5.
+**Re-scope note (2026-09-18):** the original Tasks 3–4 were replaced twice after execution. Task 2 ended in record-and-stop (the velocity→TL input is engine/config-supplied, not derivable from `SBPRO2.MDI`). The original Task 3's order premise was falsified (the port already matches the driver's order); the first re-scope's #5 premise was then also falsified (the driver re-emits operator families on every note-on, so the port already matches there). The surviving blockers are the capture-oracle's asymmetric reduction (Task 3), divergence #6 percussion note→fnum (Task 4) and divergence #7 channel assignment (Task 5); the report task is Task 6.
 
-**Spec coverage:** §2 harness → Task 1. §3/§4 velocity→TL and its captured cases → Task 2 (recorded negatively, V engine-supplied). §5's advancing first-difference line → re-scoped Tasks 3–4. §6 DoD and §7/§8 dispositions and limits → Task 5 Steps 1–3. §1.1 decision 2 (residual named, not tuned) is enforced by Task 2's record-and-stop and Task 5 Step 1's write-count disclosure.
+**Spec coverage:** §2 harness → Task 1. §3/§4 velocity→TL and its captured cases → Task 2 (recorded negatively, V engine-supplied). §5's advancing first-difference line → Tasks 3–5. §6 DoD and §7/§8 dispositions and limits → Task 6 Steps 1–3. §1.1 decision 2 (residual named, not tuned) is enforced by Task 2's record-and-stop and Task 6 Step 1's write-count disclosure.
 
-**Placeholder scan:** no TBD. Task 1 Step 3's load origin, the state-machine semantics in Task 3, and the frequency arithmetic in Task 4 are genuine RE deliverables, each with a stated method and an evidence requirement — the plan's interface mechanism, not placeholders. The one thing the plan deliberately does not pre-state is the functions themselves, because inventing them is the failure mode the spec exists to avoid.
+**Placeholder scan:** no TBD. Task 1 Step 3's load origin, Task 3's metric choice, and Tasks 4–5's frequency/allocator arithmetic are genuine RE deliverables, each with a stated method and an evidence requirement — the plan's interface mechanism, not placeholders. The one thing the plan deliberately does not pre-state is the functions themselves, because inventing them is the failure mode the spec exists to avoid.
 
-**Type consistency:** `mdi_disasm.load`/`MdiImage.disassemble` are used only in Task 1's tests; `opl_write(u16,u8)` and `patches_lookup(u16)` are the existing signatures; `apply_patch`/`key_on`/`key_off` keep their current names and roles across Tasks 3 and 4.
+**Type consistency:** `mdi_disasm.load`/`MdiImage.disassemble` are used only in Task 1's tests; `opl_write(u16,u8)` and `patches_lookup(u16)` are the existing signatures; `apply_patch`/`key_on`/`key_off` keep their current names and roles across Tasks 4 and 5.
