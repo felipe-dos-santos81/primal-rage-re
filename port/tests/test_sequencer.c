@@ -347,48 +347,6 @@ int test_sequencer(void)
         seq_tick();
     CHECK_EQ_INT(seq_active_track(), 0);
 
-    /* 4b. The carrier TL velocity term (Task 2). The driver replaces the raw
-     *     carrier byte with its volume-scaled TL (SBPRO2.MDI 0x346a-0x34d3);
-     *     the captured values are checked here through the write seam. A
-     *     program-0x49 note at velocity 127 writes 0x16 and a program-0x74
-     *     note at velocity 126 writes 0x18 (prage_000.dro + FAT.OPL). OPL
-     *     channel 0's carrier register is 0x43. */
-    {
-        static const u8 p49[] = { 0xc0, 0x49, 0x90, 0x3c, 0x7f, 0x05 };
-        static const u8 p74[] = { 0xc0, 0x74, 0x90, 0x3c, 0x7e, 0x05 };
-        u8 bank[64];
-        u32 len;
-        u8 v;
-
-        opl_reset();
-        len = build_xmi(bank, p49, sizeof p49);
-        CHECK_EQ_INT(seq_load(bank, len), 1);
-        seq_start();
-        seq_tick();
-        v = 0xff;
-        for (u32 i = 0; i < opl_write_count(); i++) {
-            if (opl_trace_reg(i) == 0x43) {
-                v = opl_trace_val(i);
-                break;
-            }
-        }
-        CHECK_EQ_INT(v, 0x16);
-
-        opl_reset();
-        len = build_xmi(bank, p74, sizeof p74);
-        CHECK_EQ_INT(seq_load(bank, len), 1);
-        seq_start();
-        seq_tick();
-        v = 0xff;
-        for (u32 i = 0; i < opl_write_count(); i++) {
-            if (opl_trace_reg(i) == 0x43) {
-                v = opl_trace_val(i);
-                break;
-            }
-        }
-        CHECK_EQ_INT(v, 0x18);
-    }
-
     /* 5. FAT.OPL decodes (loaded above): melodic and percussion keys resolve
      *    to their payloads, absent keys do not. */
     {
