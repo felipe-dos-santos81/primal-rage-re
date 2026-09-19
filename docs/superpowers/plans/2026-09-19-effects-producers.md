@@ -422,7 +422,6 @@ Append to `port/tests/test_effects.c` (add `#include "platform/gfx.h"` at the to
         palette_list_init();
         effects_init();
         mem_fill(src, 0, 0x300u);
-        DSD(src + 0x0C) = 2u;
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x08) = 0x40u;          /* first DAC index for the record */
         DSD(src + 0x0C) = 2u;
