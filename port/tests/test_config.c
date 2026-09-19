@@ -41,5 +41,41 @@ int test_config(void)
     CHECK_EQ_INT((int)config_field_get(0x100u), -1);
 
     for (u32 i = 0; i < 0x100u; i++) DSB(DS_00105D88 + i) = saved[i];
+
+    {
+        /* set -> get round-trips for even/odd starts, width 8 / width 4 / width 1
+         * and the trailing-byte case. These are the fields the consumers use plus
+         * the boundary shapes of the walk. */
+        static const u32 saved_lo = 0x00105DAFu, saved_hi = 0x00105DE1u;
+        u8 lo[0x20], hi[0x70];
+        for (u32 i = 0; i < 0x20u; i++) lo[i] = DSB(saved_lo + i);
+        for (u32 i = 0; i < 0x70u; i++) hi[i] = DSB(saved_hi + i);
+
+        config_field_set(0x29u, 0x0000ABCDu);
+        CHECK_EQ_INT((int)config_field_get(0x29u), 0xABCD);
+
+        config_field_set(0x35u, 0x0000000Au);
+        CHECK_EQ_INT((int)config_field_get(0x35u), 0x000A);
+
+        config_field_set(0x00u, 0x0000080Fu);
+        CHECK_EQ_INT((int)config_field_get(0x00u), 0x80F);
+
+        config_field_set(0x2Au, 0x00000003u);
+        CHECK_EQ_INT((int)config_field_get(0x2Au), 3);
+
+        /* The setter raises DS_00105DD8: |1 for a trailing byte, |6 always. */
+        DSB(DS_00105DD8) = 0;
+        config_field_set(0x00u, 0x10u);
+        CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x7);
+        DSB(DS_00105DD8) = 0;
+        config_field_set(0x29u, 0u);
+        CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x6);
+
+        CHECK_EQ_INT((int)config_field_set(0x3Fu, 0u), -1);
+        CHECK_EQ_INT((int)config_field_set(0x100u, 0u), -1);
+
+        for (u32 i = 0; i < 0x20u; i++) DSB(saved_lo + i) = lo[i];
+        for (u32 i = 0; i < 0x70u; i++) DSB(saved_hi + i) = hi[i];
+    }
     return 0;
 }

@@ -14,4 +14,10 @@
  * region. Returns 0xFFFFFFFF when field > 0x3E. */
 u32 config_field_get(u32 field);
 
+/* 0x2DA0C. Writes `value` into the packed field `field` (0x00..0x3E), preserving
+ * nibbles the field does not own and raising DS_00105DD8 (|1 for a trailing byte,
+ * |6 always). Returns 0, or 0xFFFFFFFF when field > 0x3E. The storage-image
+ * maintenance (0x2D4EC) is a no-op this cycle. */
+u32 config_field_set(u32 field, u32 value);
+
 #endif /* PRAGE_GAME_CONFIG_H */
