@@ -98,6 +98,11 @@ void effects_init(void)
 /* 0x13C70. */
 u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle)
 {
+    /* PORT: mirror effects_clear's unbuilt-pool guard. With the sentinels zeroed
+     * (actors_reset early-returns before effects_init) the free sentinel reads as
+     * rec=0 and list_unlink(0) would write mem[0]/mem[4], then link a phantom
+     * record onto the active list. */
+    if (DSD(DS_000FCCE8) == 0) return 0;
     u32 rec = DSD(DS_000FCCE8);
     if (rec == DS_000FCCE8) return 0;       /* empty free list */
     u8 saved = DSB(DS_0009AF3C);

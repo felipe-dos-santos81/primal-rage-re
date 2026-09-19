@@ -11,6 +11,21 @@ int test_effects(void)
 {
     int before = g_failures;
 
+    /* A spawn before effects_init must not walk mem[]: with the free sentinel
+     * zeroed, rec reads as 0 and list_unlink(0) would write mem[0]/mem[4] and
+     * then link the phantom record onto the active list. Mirrors the unbuilt-pool
+     * guard effects_clear has; the count stays 0 and neither list is touched. */
+    mem_fill(DS_000FCCE0, 0, 12u);
+    mem_fill(DS_0009AF3D, 0, 1u);
+    {
+        u32 m0 = DSD(0), m4 = DSD(4);
+        CHECK_EQ_INT((int)effects_spawn(EFFECTS_TEST_SRC, 0u, 0u), 0);
+        CHECK_EQ_INT(effects_active(), 0);
+        CHECK_EQ_INT((int)DSD(DS_000FCCE8), 0);
+        CHECK_EQ_INT((int)DSD(0), (int)m0);
+        CHECK_EQ_INT((int)DSD(4), (int)m4);
+    }
+
     /* Clearing an uninitialised pool must be a safe no-op, not a walk from the
      * zeroed sentinel through mem[] — the same hazard actors_reset guards. */
     mem_fill(DS_000FCCE0, 0, 8u);
