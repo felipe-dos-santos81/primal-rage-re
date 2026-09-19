@@ -34,6 +34,16 @@ u32 effects_spawn_darken(u32 source_rec, u32 byte_arg);
  * unbuilt/empty. The handle is DSD(source_rec) (the raw reads [source_rec]). */
 u32 effects_spawn_pulse(u32 source_rec, u32 byte_arg);
 
+/* 0x13B3C. Pops a free record, fills it as type 0 (flag == 0) or type 2
+ * (flag != 0) and head-inserts it into the active list. The resolved block is
+ * walked by the signed `offset` and copied into BOTH +0x14 and +0x414 (see the
+ * derivation doc for the negative-offset arm). The handle is DSD(source_rec)
+ * (the raw reads [source_rec]); there is no handle register. Unlike the other
+ * producers, the raw does NOT touch DS_0009AF3D, so this record never counts as
+ * active. Same contract as effects_spawn otherwise: returns the record offset,
+ * or 0 when the pool is unbuilt/empty. */
+u32 effects_spawn_scroll(u32 source_rec, s32 offset, u32 count, u32 flag);
+
 /* 0x134C0. Ages every active record one frame. Each record's state byte
  * (rec+0xE) counts down from the byte at rec+0xD; when it wraps the record's
  * type body runs, animating its +0x10 block (through 0x33734's palette append)

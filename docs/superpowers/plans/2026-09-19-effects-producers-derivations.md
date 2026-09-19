@@ -235,3 +235,191 @@ sentinel, same as `0x13C70`/`0x13D4C`. The lock is taken at `0x13EC3 mov
 The test is falsifiable on the handle binding: it sets `DSD(source_rec) = 4`
 (index 0, offset 4), so the copy reads `blk+8`/`blk+12`; a port that passed a
 handle of `0` would read `blk+4`/`blk+8` and fail `+0x410`/`+0x414`.
+
+---
+
+# Task 3: the types-0/2 producer `0x13B3C`
+
+`0x13B3C` (file `0x66990`, size 308, next function `0x13C70`) copies a run of
+the resolved block into BOTH `+0x14` and `+0x414`, walking the source by a
+signed offset, and selects type 0 or 2 from a flag. Reproduction:
+`dis(0x13b3c, 308)` with the mapping above. Ghidra lists it `callers=0` — it is
+dead in the shipped EXE, like `0x133D0`; there is no caller to corroborate the
+register roles, so they are read directly from the body.
+
+## 8. Incoming registers (`0x13B3C`, file `0x66990`)
+
+| role | register | raw evidence |
+|---|---|---|
+| source record | `EAX` | `0x13B41 89c7 mov edi, eax` (file `0x66995`) |
+| signed offset | `DL` | `0x13B43 88542408 mov [esp+8], dl` (`0x66997`); the arm test `0x13B93 84d2 test dl,dl` / `0x13B95 7d56 jge 0x13bed` |
+| flag (type select) | `BL` | `0x13B47 885c2404 mov [esp+4], bl` (`0x6699B`); `0x13C1D 8a742404 mov dh,[esp+4]` / `0x13C21 84f6 test dh,dh` |
+| count | `CL` | `0x13B4B 880c24 mov [esp], cl` (`0x6699F`); loop bound `0x13C16 8a0c24 mov cl,[esp]` |
+| handle | **no register** — read from `[source_rec]` | `0x13B85 8b07 mov eax, [edi]` (`0x669D9`) immediately before `0x13B8B e8b4790000 call 0x1b544` (`0x669DF`) |
+
+`__regparm3` maps `param_1 = EAX` (source record), `param_2 = DL` (offset),
+`param_3 = ECX/CL` (count); Ghidra lost the fourth register `BL` (the flag) as
+`unaff_BL`. This matches the port signature
+`effects_spawn_scroll(source_rec, offset, count, flag)`.
+
+The shared free-list pop is inlined at `0x13B4E..0x13B7F` (file
+`0x669A2`..`0x669D3`) — same four steps as Tasks 1–2; `0x13B7D test ecx,ecx; je`
+returns 0 when the pop yielded nothing. `effect_take_free()` covers it.
+
+## 9. Does it increment `DS_0009AF3D`? — **No**
+
+The function body (`0x13B3C..0x13C6F`) writes only `0x1AF3C` (the lock):
+`0x13B68 88253caf0100 mov [0x1af3c], ah` (`DL=1`), `0x13B75` restore,
+`0x13C4D 881d3caf0100 mov [0x1af3c], bl` (`BL=1`), `0x13C62 883d3caf0100 mov
+[0x1af3c], bh` (`BH=0`). There is **no** access to `0x1AF3D` anywhere in the
+range. The port therefore does **not** bump the active count: a scroll record
+is inserted into the active list but `effects_active()` does not see it. This
+is faithful to the raw; the other three producers do bump it.
+
+## 10. Does the zero-flag arm set `+0x0E = 0`? — **Yes**
+
+`0x13C1D 8a742404 mov dh,[esp+4]` loads the flag into `DH`; `0x13C21 84f6 test
+dh,dh; 0x13C23 740a je 0x13C2F`. The zero path is:
+
+```
+0x13C2F 88760c  mov [esi+0xc], dh   ; type 0   (DH == 0)
+0x13C32 88760e  mov [esi+0xe], dh   ; +0x0E = 0 (DH == 0)
+```
+
+The nonzero path is `0x13C25 c6460c02 mov [esi+0xc],2` /
+`0x13C29 c6460e01 mov [esi+0xe],1`. **Confirmed.** With `+0x0E == 0`,
+`effects_step`'s type-0 branch (`effects.c` case 0:
+`if (DSB(rec+0x0e)==0) continue;`) skips the record forever and never reloads
+the state byte, so a type-0 record never retires. The port reproduces this
+faithfully (the test pins `+0x0C = 0`, `+0x0E = 0`); it is **not** "fixed".
+
+## 11. Source walk and the `-0x80` / signed-offset handling
+
+`0x13B90 8d5804 lea ebx,[eax+4]` sets `EBX = resolved + 4` (`&resolved[1]`).
+The arm is chosen by `0x13B93 test dl,dl; 0x13B95 jge 0x13bed`: `DL` is a
+**signed byte**, so `offset < 0` takes the descending arm, `offset >= 0` the
+forward arm.
+
+**Forward arm** (`0x13BED..0x13C1B`, file `0x669ED`):
+
+```
+0x13BED 8b442405   mov  eax,[esp+5]   ; edx = (s32)(s8)[esp+8] = offset
+0x13BF1 c1f818     sar  eax,0x18
+0x13BF4 c1e002     shl  eax,2          ; offset*4
+0x13BF7 8d1403     lea  edx,[ebx+eax]  ; edx = resolved + 4 + 4*offset
+0x13BFA 89c8       mov  eax,ecx        ; eax = rec
+0x13BFC 31db       xor  ebx,ebx        ; i = 0
+0x13BFE eb14       jmp  0x13c14
+0x13C00 89d1       mov  ecx,edx        ; (loop) value ptr
+0x13C02 83c004     add  eax,4
+0x13C05 8b09       mov  ecx,[ecx]
+0x13C07 43         inc  ebx
+0x13C08 894810     mov  [eax+0x10],ecx ; rec+0x14 + 4*i
+0x13C0B 83c204     add  edx,4
+0x13C0E 898810040000 mov [eax+0x410],ecx ; rec+0x414 + 4*i
+0x13C14 31c9       xor  ecx,ecx
+0x13C16 8a0c24     mov  cl,[esp]       ; count
+0x13C19 39cb       cmp  ebx,ecx
+0x13C1B 7ce3       jl   0x13c00
+```
+
+A pre-tested `while` loop: `count` iterations, `i = 0..count-1`, storing
+`resolved[1 + offset + i]` at `+0x14 + 4*i` and `+0x414 + 4*i`. The destination
+base is `+0x14` (not `+0x10`): the store is at `[eax+0x10]` after `eax += 4`
+from `rec`.
+
+**Descending arm** (`0x13B97..0x13BEB`, file `0x66997`):
+
+```
+0x13B97 8b442405   mov  eax,[esp+5]
+0x13B9B c1f818     sar  eax,0x18       ; eax = (s32)(s8)offset
+0x13B9E 83f880     cmp  eax,-0x80
+0x13BA1 750f       jne  0x13bb2
+0x13BA3 31c0       xor  eax,eax
+0x13BA5 8a0424     mov  al,[esp]       ; count
+0x13BA8 c1e002     shl  eax,2
+0x13BAB 01c3       add  ebx,eax        ; ebx = resolved + 4 + 4*count
+0x13BAD 83eb04     sub  ebx,4          ;   ... - 4  => resolved + 4*count
+0x13BB0 eb0f       jmp  0x13bc1
+0x13BB2 31d2       xor  edx,edx
+0x13BB4 8a1424     mov  dl,[esp]       ; count
+0x13BB7 c1e202     shl  edx,2
+0x13BBA c1e002     shl  eax,2          ; offset*4
+0x13BBD 01d3       add  ebx,edx        ; ebx = resolved + 4 + 4*count
+0x13BBF 29c3       sub  ebx,eax        ;   ... - 4*offset
+0x13BC1 31d2       xor  edx,edx
+0x13BC3 8a1424     mov  dl,[esp]       ; edx = count (zero-extended byte)
+0x13BC6 85d2       test edx,edx
+0x13BC8 7c53       jl   0x13c1d
+0x13BCA 8d049500000000 lea eax,[edx*4]
+0x13BD1 01f0       add  eax,esi        ; eax = rec + 4*count
+0x13BD3 89d9       mov  ecx,ebx        ; (loop)
+0x13BD5 83e804     sub  eax,4
+0x13BD8 8b09       mov  ecx,[ecx]
+0x13BDA 4a         dec  edx
+0x13BDB 894818     mov  [eax+0x18],ecx ; rec+0x14 + 4*(count-j)
+0x13BDE 83eb04     sub  ebx,4
+0x13BE1 898818040000 mov [eax+0x418],ecx ; rec+0x414 + 4*(count-j)
+0x13BE7 85d2       test edx,edx
+0x13BE9 7c32       jl   0x13c1d
+0x13BEB ebe6       jmp  0x13bd3
+```
+
+* `offset == -0x80` (`0x13B9E cmp eax,-0x80`): source starts at
+  `resolved + 4*count = &resolved[count]`.
+* otherwise: source starts at `resolved + 4 + 4*count - 4*offset =
+  &resolved[1 + count - offset]`.
+
+The loop is a **do-while** (`0x13BC6 test/jl` before the body only skips a
+negative count, and the bottom `0x13BE7 test/jl` exits once `edx < 0`), so it
+runs `count+1` times: the destination index runs `count` down to `0` inclusive
+(`eaX = rec + 4*count` then `sub eax,4` each pass) while the source pointer runs
+`sp, sp-1, ..., sp-count`. With `count == 0` it still writes index 0 once. This
+asymmetry with the forward arm (`count` iterations) is the raw truth and the
+port transcribes it; the port test pins `offset = -1, count = 2` →
+`+0x14..+0x1C = resolved[2], resolved[3], resolved[4]` in descending
+destination order, and `offset = -0x80, count = 2` → `resolved[0], resolved[1],
+resolved[2]`.
+
+## 12. Offsets written by `0x13B3C`
+
+| offset | width | value | source instruction (file) |
+|---|---|---|---|
+| `+0x00` | dword | next link | `0x249D0`/`0x249B0` |
+| `+0x04` | dword | prev link | `0x249D0`/`0x249B0` |
+| `+0x08` | dword | `source_rec` (`EDI`) | `0x13C39 897e08 mov [esi+8], edi` (`0x66A...`) |
+| `+0x0C` | byte | `flag ? 2 : 0` | `0x13C25 c6460c02` / `0x13C2F 88760c` |
+| `+0x0D` | byte | `BL` (flag) | `0x13C3E 88460d mov [esi+0xd], al` |
+| `+0x0E` | byte | `flag ? 1 : 0` | `0x13C29 c6460e01` / `0x13C32 88760e` |
+| `+0x0F` | byte | `CL` (count) | `0x13C53 88460f mov [esi+0xf], al` (AL = `[esp]`) |
+| `+0x10` | byte | `DL` (offset) | `0x13C47 884610 mov [esi+0x10], al` (AL = `[esp+8]`) |
+| `+0x14 + 4*i` | dword × count | walked source dword | `0x13C08` / `0x13BDB` |
+| `+0x414 + 4*i` | dword × count | the same dword | `0x13C0E` / `0x13BE1` |
+| `DS_0009AF3D` | — | **not written** | — |
+
+Head-insert: `0x13C56 b8e0cc0700 mov eax,0x7cce0` (active sentinel),
+`0x13C45 89f2 mov edx,esi = rec`, `0x13C5D e84e0d0100 call 0x249b0` (`0x66A2D`)
+— front-inserts after the active sentinel, same as the other producers. The
+lock is set at `0x13C4D`, released at `0x13C62` around the insert.
+
+**Named overlap risk — not reachable here.** The count is a byte register
+(`CL`), so `count <= 0xFF`. In the forward arm the highest `+0x14` index is
+`count-1 <= 254`, so `+0x14 + 4*i <= +0x40C`, and the highest `+0x414` index is
+`254` (byte `+0x80C`): the runs stay disjoint (`+0x14..+0x40C` vs
+`+0x414..+0x80C`). In the descending arm both runs use the same index
+`0..count <= 255`, so `+0x14` tops out at `+0x410` and `+0x414` starts at
+`+0x414`; they never share an address. The `i = j + 256` interleave the Task 2
+test exercises at `count == 257` cannot occur for a byte count. The port's two
+independent loops per arm (`+0x14` and `+0x414` written in the same iteration)
+preserve the raw's per-iteration write order, so the stored values are exact
+regardless.
+
+**Null-resolve guard.** `0x13B90 lea ebx,[eax+4]` dereferences the resolver
+result unconditionally; the port keeps the `resolved != NULL` guard the other
+producers use (the fields and the list insert still run, only the copy is
+skipped).
+
+The test is falsifiable on the binding: it passes `offset = 0` with handle 0
+(`DSD(source_rec) == 0`), so the forward copy reads `blk+4`/`blk+8`; the raw
+stores those at `+0x14`/`+0x18` and `+0x414`/`+0x418`. A port that read from
+`+0x10`, or used offset `-128`'s base, would fail.

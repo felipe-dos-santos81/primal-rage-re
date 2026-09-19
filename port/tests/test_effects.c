@@ -328,5 +328,94 @@ int test_effects(void)
     effects_clear();
     CHECK_EQ_INT(effects_active(), 0);
 
+    {
+        /* 0x13B3C: flag != 0 -> type 2, +0x0E = 1; the resolved block is
+         * copied into BOTH +0x14 and +0x414, walked by the signed offset. */
+        u32 src = EFFECTS_TEST_SRC;
+        u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
+        u32 tab = src + 0x100u, blk = src + 0x200u, rec;
+        effects_init();
+        mem_fill(src, 0, 0x300u);
+        DSD(src + 0x0C) = 3u;
+        DSD(DS_001014E0) = tab;
+        DSD(DS_001014F0) = 1;
+        DSD(tab + 16) = blk;
+        for (int i = 0; i < 6; i++) DSD(blk + 4 + (u32)i * 4u) = 0x40u + (u32)i;
+        rec = effects_spawn_scroll(src, 0, 2u, 1u);
+        CHECK(rec != 0, "0x13B3C takes a record");
+        CHECK_EQ_INT((int)DSB(rec + 0x0C), 2);
+        CHECK_EQ_INT((int)DSB(rec + 0x0E), 1);
+        CHECK_EQ_INT((int)DSB(rec + 0x0F), 2);
+        CHECK_EQ_INT((int)DSB(rec + 0x0D), 1);
+        CHECK_EQ_INT((int)DSB(rec + 0x10), 0);
+        CHECK_EQ_INT((int)DSD(rec + 0x14), 0x40);
+        CHECK_EQ_INT((int)DSD(rec + 0x18), 0x41);
+        CHECK_EQ_INT((int)DSD(rec + 0x414), 0x40);
+        CHECK_EQ_INT((int)DSD(rec + 0x418), 0x41);
+        DSD(DS_001014E0) = saved_tab;
+        DSD(DS_001014F0) = saved_n;
+    }
+    effects_clear();
+    CHECK_EQ_INT(effects_active(), 0);
+
+    {
+        /* 0x13B3C negative-offset arm (0x13B97..0x13BEB): a do-while bounded by
+         * the byte count runs count+1 times, so offset -1 / count 2 fills
+         * +0x14..+0x1C descending from resolved[4] to resolved[2]. */
+        u32 src = EFFECTS_TEST_SRC;
+        u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
+        u32 tab = src + 0x100u, blk = src + 0x200u, rec;
+        effects_init();
+        mem_fill(src, 0, 0x300u);
+        DSD(DS_001014E0) = tab;
+        DSD(DS_001014F0) = 1;
+        DSD(tab + 16) = blk;
+        for (int i = 0; i < 6; i++) DSD(blk + 4 + (u32)i * 4u) = 0x40u + (u32)i;
+        rec = effects_spawn_scroll(src, -1, 2u, 1u);
+        CHECK(rec != 0, "0x13B3C negative offset");
+        CHECK_EQ_INT((int)DSD(rec + 0x14), 0x41);
+        CHECK_EQ_INT((int)DSD(rec + 0x18), 0x42);
+        CHECK_EQ_INT((int)DSD(rec + 0x1C), 0x43);
+        CHECK_EQ_INT((int)DSD(rec + 0x414), 0x41);
+        CHECK_EQ_INT((int)DSD(rec + 0x418), 0x42);
+        CHECK_EQ_INT((int)DSD(rec + 0x41C), 0x43);
+        effects_clear();
+        CHECK_EQ_INT(effects_active(), 0);
+
+        /* offset == -0x80 (0x13B9E cmp eax,-0x80) starts at resolved[count]
+         * instead of resolved[1 + count - offset]. */
+        effects_init();
+        mem_fill(src, 0, 0x300u);
+        DSD(DS_001014E0) = tab;
+        DSD(DS_001014F0) = 1;
+        DSD(tab + 16) = blk;
+        for (int i = 0; i < 6; i++) DSD(blk + 4 + (u32)i * 4u) = 0x40u + (u32)i;
+        rec = effects_spawn_scroll(src, -0x80, 2u, 1u);
+        CHECK(rec != 0, "0x13B3C offset -0x80");
+        CHECK_EQ_INT((int)DSD(rec + 0x14), 0);      /* resolved[0] */
+        CHECK_EQ_INT((int)DSD(rec + 0x18), 0x40);   /* resolved[1] */
+        CHECK_EQ_INT((int)DSD(rec + 0x1C), 0x41);   /* resolved[2] */
+
+        /* flag == 0 -> type 0 and state byte +0x0E = 0 (the raw truth; such a
+         * record never retires, and the raw does not bump DS_0009AF3D). */
+        effects_clear();
+        effects_init();
+        mem_fill(src, 0, 0x300u);
+        DSD(DS_001014E0) = tab;
+        DSD(DS_001014F0) = 1;
+        DSD(tab + 16) = blk;
+        rec = effects_spawn_scroll(src, 0, 0u, 0u);
+        CHECK(rec != 0, "0x13B3C zero flag");
+        CHECK_EQ_INT((int)DSB(rec + 0x0C), 0);
+        CHECK_EQ_INT((int)DSB(rec + 0x0E), 0);
+        CHECK_EQ_INT((int)DSB(rec + 0x0D), 0);
+        CHECK_EQ_INT((int)DSB(rec + 0x0F), 0);
+        CHECK_EQ_INT(effects_active(), 0);   /* raw never bumps the count */
+        DSD(DS_001014E0) = saved_tab;
+        DSD(DS_001014F0) = saved_n;
+    }
+    effects_clear();
+    CHECK_EQ_INT(effects_active(), 0);
+
     return g_failures - before;
 }

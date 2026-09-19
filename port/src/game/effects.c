@@ -206,6 +206,72 @@ u32 effects_spawn_pulse(u32 source_rec, u32 byte_arg)
     return rec;
 }
 
+/* 0x13B3C. Types 0/2: the resolved block, walked by the signed `offset`, is
+ * copied into BOTH +0x14 and +0x414. flag != 0 selects type 2 / +0x0E = 1;
+ * flag == 0 selects type 0 / +0x0E = 0 - the raw truth, which never retires:
+ * effects_step's type-0 branch skips while +0x0E is 0 and never reloads it.
+ * The raw does NOT bump DS_0009AF3D (0x13B3C..0x13C6F writes only 0x1AF3C),
+ * so this producer never counts as active. The handle is DSD(source_rec)
+ * (0x13B85 reads [source_rec]); there is no handle register. */
+u32 effects_spawn_scroll(u32 source_rec, s32 offset, u32 count, u32 flag)
+{
+    u32 rec = effect_take_free();
+    if (rec == 0) return 0;
+    const u32 *resolved = (const u32 *)res_resolve(DSD(source_rec));
+    u8 n = (u8)count;
+    s8 off = (s8)offset;
+    u8 fl = (u8)flag;
+
+    /* PORT: 0x1B544 can fail to resolve; the raw dereferences it
+     * unconditionally (0x13B90 lea ebx,[eax+4]). The port skips the copy,
+     * matching effects_spawn's existing guard. */
+    if (resolved != NULL) {
+        if (off < 0) {
+            /* Descending arm (0x13B97..0x13BEB). The raw is a do-while bounded
+             * by the byte count, so it runs count+1 times: destination
+             * +0x14/+0x414 indices count down to 0 inclusive while the source
+             * pointer descends. off == -0x80 is special-cased to start at
+             * resolved[count] (0x13B9E cmp eax,-0x80); otherwise it starts at
+             * resolved[1 + count - off] (0x13BBD add ebx,edx / 0x13BBF sub
+             * ebx,eax). */
+            const u32 *sp = (off == -0x80) ? resolved + n
+                                           : resolved + 1 + (s32)n - (s32)off;
+            for (s32 j = 0; j <= (s32)n; j++) {
+                u32 v = *sp--;
+                u32 idx = (u32)n - (u32)j;
+                DSD(rec + 0x14 + idx * 4u) = v;
+                DSD(rec + 0x414 + idx * 4u) = v;
+            }
+        } else {
+            /* Forward arm (0x13BED..0x13C1B): `count` dwords from
+             * resolved[1 + off] into +0x14[0..count) and +0x414[0..count). */
+            const u32 *sp = resolved + 1 + (s32)off;
+            for (u32 i = 0; i < n; i++) {
+                u32 v = sp[i];
+                DSD(rec + 0x14 + i * 4u) = v;
+                DSD(rec + 0x414 + i * 4u) = v;
+            }
+        }
+    }
+
+    if (fl == 0) {
+        DSB(rec + 0x0c) = 0;
+        DSB(rec + 0x0e) = 0;
+    } else {
+        DSB(rec + 0x0c) = 2;
+        DSB(rec + 0x0e) = 1;
+    }
+    DSD(rec + 8) = source_rec;
+    DSB(rec + 0x0d) = fl;
+    DSB(rec + 0x10) = (u8)offset;
+    DSB(rec + 0x0f) = n;
+
+    DSB(DS_0009AF3C) = 1;
+    list_insert_after(DS_000FCCE0, rec);
+    DSB(DS_0009AF3C) = 0;
+    return rec;
+}
+
 /* ---- 0x134C0: the per-frame effect step/age ----------------------------- */
 
 /* The step moves colours packed as 0xRRGGBB in a dword (channels at byte shifts
