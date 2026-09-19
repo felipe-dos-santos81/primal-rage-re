@@ -104,3 +104,86 @@ u32 config_field_set(u32 field, u32 value)
     config_storage_touch(2u, 0u);                  /* 0x2DAD4 */
     return 0u;
 }
+
+/* 0x2CCD0. Records are a contiguous array of stride 0x14: [0] presence,
+ * [4] shift (only cl is read; x86 masks the shift count), [8] count, [0x10]
+ * entries pointer. Entries are stride 8 with [0] a char *; the inner loop stops
+ * at the first '*' and sets that entry's index at the record's shift. */
+u32 config_menu_default_bits(u32 table)
+{
+    u32 bits = 0u;
+    u32 rec = table;
+    while (DSD(rec) != 0u) {
+        u32 shift   = DSD(rec + 4u) & 0x1Fu;       /* 0x2CCFA: cl only */
+        u32 count   = DSD(rec + 8u);
+        u32 entries = DSD(rec + 16u);
+        u32 found   = 0u;
+        for (u32 i = 0u; i < count && found == 0u; i++) {
+            u32 str = DSD(entries + i * 8u);
+            if (DSB(str) == (u8)'*') {             /* 0x2CCF3 */
+                found = 1u;
+                bits |= i << shift;                /* 0x2CD00 */
+            }
+        }
+        rec += 0x14u;                              /* 0x2CD1A: not a pointer chase */
+    }
+    return bits;
+}
+
+/* 0x2CADC. Order and values are the raw's. The message draw 0x2F198, screen
+ * setup 0x1AE20, storage write 0x2EA78 and cursor restore 0x2F280 are declared
+ * no-ops (spec §4/§7), so only the config-field effect is ported. */
+void config_set_defaults(void)
+{
+    u32 v29 = config_menu_default_bits(0xA2EB4u);  /* 0x2CAF8: obj-1 menu table */
+    config_field_set(0x29u, v29);
+    config_field_set(0x35u, 0xA0u);
+    config_field_set(0x37u, 0xA0u);
+    u32 v2a = config_field_get(0x2Au);
+    config_field_set(0x2Au, (v2a & 0xFCu) | 3u);
+}
+
+/* 0x2D6F8, no-storage path. */
+void config_validate(void)
+{
+    DSB(DS_00105DA5) = 0u;                         /* 0x2D70F */
+    DSB(DS_00105DA4) = 0u;                         /* 0x2D715 */
+
+    /* PORT: 0x2D638's storage load and the two 0x2E990 reads are declared
+     * no-ops (spec §7); a storage-absent read reports -1, so there is no stored
+     * image, the magic cannot match, and validate takes the defaults path. */
+    s32 read1 = -1;
+    s32 read2 = -1;
+
+    /* 0x2D754: taken only when a read failed AND DS_0002D490 is clear. The
+     * shipped image holds 4 there, so this never fires. */
+    if ((read1 < 0 || read2 < 0) && DSB(DS_0002D490) == 0u)
+        return;
+
+    /* 0x2D76F: version arms. With both reads -1 neither runs; the raw's
+     * stack-buffer copy into DS_00105DE1 has no stored image to copy. */
+    if (read2 > read1)
+        DSB(DS_00105DD8) |= 2u;                    /* 0x2D786 */
+    else if (read1 > read2)
+        DSB(DS_00105DD8) |= 4u;                    /* 0x2D7DC */
+
+    /* 0x2D820: the four bytes at DS_00105E30 read as a little-endian u32. */
+    if (DSD(DS_00105E30) != 0x9C94D2C4u || read1 < -1) {
+        /* 0x2D83A: defaults. The two 0x61A70 calls clear the unported pset pool
+         * (no-op); DS_00105E2F is cleared before the defaults writer runs. */
+        DSB(DS_00105DD8) |= 6u;                    /* 0x2D84F */
+        DSB(DS_00105DD8) |= 1u;                    /* 0x2D86F */
+        DSB(DS_00105E2F) = 0u;                     /* 0x2D881 */
+        config_set_defaults();                     /* 0x2D886 */
+        DSD(DS_00105E30) = 0x9C94D2C4u;            /* 0x2D88D */
+    }
+
+    /* 0x2D912/0x2D919: high-score validate 0x2DE98 and 0x2DF8C, both deferred
+     * no-ops (spec §6/§7); called unconditionally. */
+    if (read1 >= 0 || DSB(DS_0002D490) != 0u) {
+        DSB(DS_00105DA7) = 1u;                     /* 0x2D940 */
+        (void)config_field_get(0x24u);             /* 0x2D946: result discarded */
+        /* 0x2D962 calls 0x2DAE4(0x24) only when DS_00105DA4 + DS_00105DA5 != 0;
+         * both are 0 on this path, and 0x2DAE4 is a deferred no-op (spec §7). */
+    }
+}

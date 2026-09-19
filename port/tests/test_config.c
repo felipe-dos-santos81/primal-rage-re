@@ -77,5 +77,38 @@ int test_config(void)
         for (u32 i = 0; i < 0x20u; i++) DSB(saved_lo + i) = lo[i];
         for (u32 i = 0; i < 0x70u; i++) DSB(saved_hi + i) = hi[i];
     }
+
+    {
+        /* A zeroed config region fails the magic and the defaults path runs:
+         * the magic is rewritten, DS_00105DA7 is set, and the four fields the
+         * defaults writer touches carry the values from the obj-1 default table. */
+        u8 saved[0x100];
+        for (u32 i = 0; i < 0x100u; i++) saved[i] = DSB(DS_00105D88 + i);
+        for (u32 i = 0; i < 0x100u; i++) DSB(DS_00105D88 + i) = 0;
+
+        config_validate();
+        CHECK_EQ_INT((int)DSD(DS_00105E30), (int)0x9C94D2C4u);
+        CHECK_EQ_INT((int)DSB(DS_00105DA7), 1);
+
+        /* The mismatch path raises the flag byte with |6 then |1; the setter may
+         * add |1 again for a trailing byte, so the byte is 0x7 either way. */
+        CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x7);
+
+        /* Field 0x35 and 0x37 default to 0xA0; field 0x2A keeps the top six bits
+         * and gets 3 in the low two. */
+        CHECK_EQ_INT((int)config_field_get(0x35u), 0xA0);
+        CHECK_EQ_INT((int)config_field_get(0x37u), 0xA0);
+        CHECK_EQ_INT((int)(config_field_get(0x2Au) & 0x3u), 3);
+
+        /* Field 0x29's default is the menu table's '*' selection, walked from the
+         * obj-1 table at 0xA2EB4. The shipped table must be nonzero or the
+         * equality below is vacuous. */
+        CHECK(config_menu_default_bits(0xA2EB4u) != 0u,
+              "shipped menu table gives a nonzero default");
+        CHECK_EQ_INT((int)config_field_get(0x29u),
+                     (int)config_menu_default_bits(0xA2EB4u));
+
+        for (u32 i = 0; i < 0x100u; i++) DSB(DS_00105D88 + i) = saved[i];
+    }
     return 0;
 }
