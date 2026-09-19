@@ -14,7 +14,7 @@ mode game code: everything interesting lives in two LE objects (code + data).
 |---|---|
 | `data/game/C/` | Installed game (`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound drivers) |
 | `data/game/CD/RAGECD.ISO` | Original CD (`/Volumes/RAGECD` when mounted: `RAGE.S04`, `RAGE.S08`, `RAGE.S16`, `RAGE.SND`) |
-| `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) + **Smacker video** (sub-project 2b-i) + **sprite compositor** (sub-project 4a-i) + **actor system and title** (sub-project 4a-ii) + **title-path residuals** (sub-project 4a-iii) + **EEPROM/config core** (sub-project 4b-A) — `cmake -S port -B build` |
+| `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) + **Smacker video** (sub-project 2b-i) + **sprite compositor** (sub-project 4a-i) + **actor system and title** (sub-project 4a-ii) + **title-path residuals** (sub-project 4a-iii) + **EEPROM/config core** (sub-project 4b-A) + **front-end input/credits/select** (sub-project 4b-B) — `cmake -S port -B build` |
 | `port/src/platform/audio/` | AIL surface, XMIDI sequencer, FAT.OPL, samples, mixer, vendored OPL core |
 | `port/RE_GUIDE.md` | Address conventions, DOS/4GW layout, toolchain, landmarks |
 | `port/spec/game_flow.md` | Entry, frame loop, state machine, tick, pixel path |
@@ -193,13 +193,24 @@ layer and save/load I/O stay declared no-ops, so validate takes the fresh-machin
 defaults path. `game_init` now derives `DS_00104528` and the three `0x20C9F`–
 `0x20CC2` globals from field `0x29`, and `0x2C304` derives the credit counter
 `DS_00105C00 = 5` — the unseed the title oracle validates (0 unexplained). The
-credit countdown and the storage path remain 4b gaps. See
+storage path remains a 4b gap; the credit countdown and the front-end
+input/select path are ported in 4b-B. See
 `docs/superpowers/plans/2026-09-19-eeprom-config-report.md`.
+
+**Front-end input, credits and the select state — sub-project 4b-B, ported.**
+`port/src/platform/input.c` samples the host key bitmap into the `0x500C4`
+debounced level (`0x50161` selector), and `0x4F644` builds the newly-pressed and
+held masks each frame before the state machine. `port/src/game/config.c`'s credit
+layer (`0x2C060`/`0x2CA48`/`0x2CA7C`/`0x2C06C`/`0x2BF00`) is driven by `0x11F28`
+(`frontend_coin_poll`), and the `0x11F6C` select state
+(`0x33904`/`0x1C6D4`) is live: its exit advances `DS_000F0A64` to the state-3
+stub. The attract machine `0x11000` still supplies the title row-1 stand-in. See
+`docs/superpowers/plans/2026-09-19-frontend-input-report.md`.
 
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
 fight engine (5) and the
-deferred attract subsystem (`0x11000`, `0x38A38`, `0x389C4`, `0x292AC`,
-`0x4F644`) and the `0x13xxx` effect render path remain (`/* PORT: */` markers).
+deferred attract subsystem (`0x11000`, `0x38A38`, `0x389C4`, `0x292AC`) and the
+`0x13xxx` effect render path remain (`/* PORT: */` markers).
 
 ### Build and run
 

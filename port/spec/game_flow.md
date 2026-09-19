@@ -261,11 +261,13 @@ is sub-project 2b-ii and not ported. See
   `FUN_0002F198`/`FUN_0002F4BC`/`FUN_0002F280` text trio is already ported.
   `DS_00105C00` is now derived by `0x2C304` from the config bundle's field `0x29`
   (see the EEPROM/config section), so it renders the captured `5` without a seed.
-  `DS_00105C05 = 1` (text row; screen rows 7–12) is still seeded: its init writer
-  `0x2BF00` writes `0x1D` and the captured row comes from `0x2C06C`'s
-  attract/mode writer, both unported. The live credit countdown
-  (`FUN_0002CA48`/`FUN_0002CA7C` via `0x11F28`) is a declared 4b gap. Diagnosis:
-  `../../docs/superpowers/plans/2026-09-18-bf08-overlay-diagnosis.md`.
+   `DS_00105C05` (text row; screen rows 7–12) is written by the init chain at
+   `0x20CCC` (`0x2BF00` → `0x1D`); the captured row 1 comes from `0x2C06C(1)`
+   inside the still-unported attract machine `0x11000`, so the port stands in
+   with `DS_00105C05 = 1` there. The credit countdown
+   (`FUN_0002CA48`/`FUN_0002CA7C` via `0x11F28`) is now ported and wired through
+   `game_state_step`'s coin poll (4b-B). Diagnosis:
+   `../../docs/superpowers/plans/2026-09-18-bf08-overlay-diagnosis.md`.
 * **The effect list `0x13xxx` (4a-iii/4a-iv, ported).** `port/src/game/effects.{c,h}`
   owns the two sentinels `DS_000FCCE0`/`DS_000FCCE8`, the lock `DS_0009AF3C`,
   the count `DS_0009AF3D`, the intrusive link primitives (`0x249B0` insert-after,
@@ -315,12 +317,55 @@ reads `v = 0x2D974(0x29)` and derives `DS_00104528 = v`,
 at `0x10ECC`). The outer wrapper `0x20C10` is not transcribed as one function;
 its `0x2F9CC` and `0x10E80` calls fold into `game_init`/`game_state_init`.
 
-**Declared gaps.** No storage I/O (the save/load path and the `0x80CE4` image);
-the deferred module taps `0x1AE20`/`0x2EA78` (screen setup, storage write); the
-credit countdown `0x2CA48`/`0x2CA7C` and its caller `0x11F28` (input, 4b); and
-`DS_00105C05`'s init writer `0x2BF00` (`= 0x1D`) plus attract writer `0x2C06C`
-(`= 1`, the captured value). Full record:
+**Declared gaps.** No storage I/O (the save/load path and the `0x80CE4` image)
+and the deferred module taps `0x1AE20`/`0x2EA78` (screen setup, storage write).
+The credit layer (`0x2CA48`/`0x2CA7C`/`0x2C060`/`0x2C06C`/`0x2BF00`) and its
+caller `0x11F28` are ported in 4b-B (see "Front-end input, credits and the
+select state"). Full record:
 `../../docs/superpowers/plans/2026-09-19-eeprom-config-report.md`.
+
+## Front-end input, credits and the select state (4b-B, ported)
+
+Three layers complete the front-end path from the host keys to the state-2
+selector.
+
+* **Input bitfield** — `port/src/platform/input.c` owns the ported sampler.
+  `0x500C4` (`input_pump`) combines the BIOS key bytes at `DS_00101514`+`0x2d8`
+  (scan) and `+0x2d9`, keeps the previous level for every bit that changed that
+  frame (the raw's one-frame debounce), then runs the `0x50130`/`0x5010F` repeat
+  timer. `0x50161` (`input_select_bits`) is the level/edge selector sharing the
+  `DS_000E1C38` latch. `0x4F644` (`input_state_update`) builds the newly-pressed
+  mask `DS_001088E4` (the `0xFF00FF00` family) and the held mask `DS_001088D8`
+  (the `0x00FF00FF` family) plus the two packed cursors `DS_001088E0/2`.
+  **Host binding:** `game_loop` fills the key bitmap from `host_key_bits()`
+  (host.c's `k_input_bind` table; bit 0 = coin) immediately before `input_pump`;
+  `game_frame` calls `input_state_update()` at the `0x24C6E` site, just before
+  the `DS_00104B00` switch, so the masks are fresh for `game_state_step`.
+  `0x50146`'s repeat-timer setter has no port caller and stays inert.
+* **Credit layer** — `port/src/game/config.c` ports `0x2CAA8`
+  (`config_not_free_play`), `0x2CA2C` (`config_has_credit`), `0x2C060`
+  (`config_credit_ready`), `0x2CA48` (`config_credit_take`), `0x2CA7C`
+  (`config_credit_spend`), `0x2C06C` (`config_set_credit_row`) and the raw init
+  writer `0x2BF00` (`config_set_credit_row_init`, `DS_00105C05 = 0x1D`).
+  `DS_00105C00` is the credit count the overlay renders.
+* **The coin poll** — `0x11F28`, ported as `frontend_coin_poll` in `flow.c`.
+  It requires a credit (`0x2C060`), tests the event code's dword in the
+  `DS_0009ACBC` table against the newly-pressed mask `DS_001088E4`, and debits
+  one through `0x2CA7C`. `game_state_step` calls it with codes 0 (`0x11D15`,
+  `accepted |= 1`) and 1 (`0x11D28`, `accepted |= 2`). **The raw returns from
+  `0x11D04` when either is accepted** — it calls `0x32970(0)` then
+  `0x257a4(accepted)` and skips the state dispatch for that frame; both divert
+  handlers are unported (4b carve-out) and the port returns there.
+* **Select state** — `0x11F6C` (`game_state_select`, case 2), the six-entry
+  carousel, with `0x33904` (`frontend_list_next`) and `0x1C6D4`
+  (`frontend_resource_known`). Phase 0 writes config row 1
+  (`config_set_credit_row(1u)`) and falls through into phase 1 (no jump between
+  `0x11FD4` and `0x11FDA`); phase 4 tests the **original** count value
+  (`test ax,ax; jg`), so it advances one frame later than a prefix decrement.
+  **Exit:** phase 3 sets `DSW(DS_000F0A64) = 3` (literal 3) and
+  `DSB(DS_000F0A6F) = 0`; state 3 is the unported stub (`game_state_step`
+  cases 3/4 do nothing). Derivation and frame arithmetic:
+  `../../docs/superpowers/plans/2026-09-19-frontend-input-derivations.md`.
 
 ## Landmarks (verified)
 

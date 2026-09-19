@@ -820,14 +820,19 @@ void game_init(void)
      * counter the overlay renders as `<CREDITS string>:<n>`; the un-pinned title
      * capture shows 5, now derived by 0x2C304's config read above. Its
      * decrementers (0x2CA48/0x2CA7C via the title input handler 0x11F28) are
-     * input-driven and belong to 4b. DS_00105C05 is the text row; its init
-     * writer 0x2BF00 writes 0x1D=29 and the captured row 1 comes from 0x2C06C's
-     * attract/mode writer, so both writers are unported. The renderer scales a
-     * text row by 20/3 px (0x200 >> 6, projected by render_proj_y's 3414/4096),
-     * so text row 1 lands on the captured screen rows 7-12.
+     * input-driven and wired through game_state_step's coin poll (4b). The
+     * renderer scales a text row by 20/3 px (0x200 >> 6, projected by
+     * render_proj_y's 3414/4096), so text row 1 lands on the captured screen
+     * rows 7-12.
      * TODO(verify): reproduces the captured no-input window only; credit
      * countdown under input is the 4b carve-out. */
-    DSB(DS_00105C05) = 1;       /* 0x2BF08's text row (screen rows 7-12) */
+    /* 0x20CCC: the init chain writes the overlay row to 0x1D. */
+    config_set_credit_row_init();
+    /* The captured title shows row 1, written by 0x2C06C(1) at 0x110CE inside
+     * the attract machine 0x11000 (unported, 4d) and by 0x11F6C phase 0. Until
+     * 4d lands the port supplies that value here rather than fitting a constant
+     * into config.c. TODO(verify): remove when 0x11000 lands. */
+    DSB(DS_00105C05) = 1;
     /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
     /* PORT: 0x1D0BC allocates the MIDI sequence buffer and the four sample
      * buffers. The port references the XMIDI bank's resource bytes directly
@@ -873,6 +878,14 @@ void game_loop(void)
     DSD(DS_00101508) = 0;
     DSD(DS_0010150C) = 0;
     do {
+        {
+            /* PORT: the host fills the key bitmap 0x500C4 samples; the binding
+             * is host.c's table (host_key_bits()). */
+            u16 bits = host_key_bits();
+            u8 *k = mem + DSD(DS_00101514);
+            k[0x2d8] = (u8)(bits >> 8);
+            k[0x2d9] = (u8)bits;
+        }
         input_pump();                        /* 0x500C4 */
         /* PORT: 0x292AC and 0x389C4/0x38A38 (DS_00107A54 != 0) deferred
          * (menus / fight engine). */
@@ -918,13 +931,16 @@ void game_loop(void)
 
 void game_frame(void)
 {
-    /* PORT: 0x24C5C calls 0x4F644 (unless DAT_00104B00 == 0x27). The port has
-     * input_state_update() (Task 2); Task 4 wires it into this frame path. */
+    /* PORT: 0x24C5C calls 0x4F644 (unless DAT_00104B00 == 0x27); the port's
+     * input_state_update() (Task 2) is that call, wired in below. */
     /* PORT: the two 0x94-byte player records at DS_001077E0 and 0x24C5C's
      * int 16h input loop belong to the fight engine (sub-project 5). */
     DSD(DS_000EF6DC)++;                                /* frame counter */
     run_process_table(DS_000A8644, DSD(DS_00104AE8));  /* update table */
     /* PORT: 0x24C5C's second 0x38990 per-frame service call is deferred. */
+
+    /* 0x24C5C calls 0x4F644 at 0x24C6E only when DAT_00104B00 != 0x27. */
+    if (DSW(DS_00104B00) != 0x27u) input_state_update();   /* 0x4F644 */
 
     /* The original reaches the state machine 0x11D04 only in case 3 of
      * switch(DAT_00104B00) (0x24C5C). The other modes (login/attract/fight and
@@ -944,10 +960,29 @@ void game_frame(void)
     actors_update();                                   /* 0x2A31C */
 }
 
+/* PORT: 0x11F28. One coin/start event: requires a credit (0x2C060), then tests
+ * the event's mask in the DS_0009ACBC table against the newly-pressed bits
+ * DS_001088E4, and debits one credit through 0x2CA7C. Returns 1 when accepted. */
+static u32 frontend_coin_poll(u32 code)
+{
+    if (config_credit_ready() == 0u) return 0u;
+    if ((DSD(DS_0009ACBC + code * 4u) & DSD(DS_001088E4)) == 0u) return 0u;
+    (void)config_credit_spend(1u);
+    return 1u;
+}
+
 void game_state_step(void)
 {
     if (DSB(DS_00104B1D) == 0) {
-        /* PORT: 0x11F28 menu-input poll (menus, sub-project 4). */
+        u32 accepted = 0u;
+        if (frontend_coin_poll(0u)) accepted |= 1u;    /* 0x11D15 */
+        if (frontend_coin_poll(1u)) accepted |= 2u;    /* 0x11D28 */
+        if (accepted != 0u) {
+            /* PORT: the raw then calls 0x32970(eax=0) and 0x257a4(eax=accepted)
+             * and returns from 0x11D04, so the state dispatch below is skipped
+             * for that frame. Both divert handlers are unported (out of scope). */
+            return;
+        }
     }
 
     if (DSW(DS_000F0A64) < 10) {
