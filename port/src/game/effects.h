@@ -25,8 +25,8 @@ u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle);
 /* 0x13D4C. Pops a free record, fills it as type 4 (darken-to-zero over the
  * resolved block) and head-inserts it into the active list. Same contract as
  * effects_spawn: returns the record offset, or 0 when the pool is
- * unbuilt/empty. */
-u32 effects_spawn_darken(u32 source_rec, u32 byte_arg, u32 handle);
+ * unbuilt/empty. The handle is DSD(source_rec) (the raw reads [source_rec]). */
+u32 effects_spawn_darken(u32 source_rec, u32 byte_arg);
 
 /* 0x134C0. Ages every active record one frame. Each record's state byte
  * (rec+0xE) counts down from the byte at rec+0xD; when it wraps the record's

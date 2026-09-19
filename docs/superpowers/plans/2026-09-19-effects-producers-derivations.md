@@ -33,14 +33,18 @@ The handle is **not** an incoming register. `EAX` (source record) is copied to
 caller, `0x415A2` in `0x41578` (file `0x3E214`), confirms it: it passes
 `EAX = EBX` (the source record) and `EDX = 2` and never loads a handle.
 
-**Port consequence.** The brief's `effects_spawn_darken(source_rec, byte_arg,
-handle)` models the original's `[source_rec]` as an explicit third parameter
-(verified in this task's test and Task 4's: they pass `0`, which equals
-`source_rec[0]` because `mem_fill` zeroes the scratch record). A real call site
-wired later must pass `DSD(source_rec)` to stay register-faithful.
+**Port consequence.** The port has **no** handle parameter: it reads
+`DSD(source_rec)` and resolves that, matching the raw. The test is falsifiable —
+it sets the handle to index 0, offset 4, so `+0x10` copies `blk+8`/`blk+12`
+rather than `blk+4`/`blk+8`; a port that used a handle of `0` would fail.
 
 The `0x13D4C` prologue is `push ebx/ecx/esi/edi/ebp`; `EBX` is scratch
 (`0x13D9B mov ebx, eax` = the resolved pointer), not an argument.
+
+The same binding holds for the other two new producers (Tasks 2–3 own their full
+derivations): `0x13E28` reads the handle at `0x13E66 mov eax, [ecx]` (file
+`0x66CBA`) and takes no handle register; `0x13B3C` at `0x13B85 mov eax, [edi]`
+(file `0x669D9`), likewise.
 
 ## 2. The shared free-list pop
 

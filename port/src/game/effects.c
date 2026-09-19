@@ -148,12 +148,14 @@ u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle)
 }
 
 /* 0x13D4C. Type 4: +0x10 holds the resolved block's colours for the case-4
- * step body to darken to zero. */
-u32 effects_spawn_darken(u32 source_rec, u32 byte_arg, u32 handle)
+ * step body to darken to zero. The handle is read from the source record. */
+u32 effects_spawn_darken(u32 source_rec, u32 byte_arg)
 {
     u32 rec = effect_take_free();
     if (rec == 0) return 0;
-    const u32 *resolved = (const u32 *)res_resolve(handle);
+    /* PORT: the raw dereferences [source_rec] for the handle (0x13D86);
+     * there is no handle register. */
+    const u32 *resolved = (const u32 *)res_resolve(DSD(source_rec));
     DSB(rec + 0x0f) = 0;
     DSB(rec + 0x0c) = 4;
     DSD(rec + 8) = source_rec;
