@@ -34,9 +34,11 @@ dis(0x2ccd0, 93)    # config_menu_default_bits
    `0x2CAF9` (obj-0) has target object 2, target offset `0x22EB4` → value
    `0xA2EB4` (`0x80000 + 0x22EB4`). The same value is fixed up at source
    `0x1D2D4`. Reading the obj-0 offset as runtime (`0x32EB4`) lands in code
-   (`ffffff ff e8 db c2 ff ff …` at file `0x85D08`), not a record list, and
-   `config_menu_default_bits` would return `0`. The spec's "`0x22EB4` … obj-0
-   (`+0x10000`) → `0x32EB4`" is wrong; the raw immediate is obj-1.
+   (`ffffff ff e8 db c2 ff ff …` at file `0x85D08`), not a record list: its
+   presence word is `DSD(0x32EB4) = 0xFFFFFFFF`, so the walk would enter and
+   dereference a bogus entries pointer rather than return `0`. The spec's
+   "`0x22EB4` … obj-0 (`+0x10000`) → `0x32EB4`" is wrong; the raw immediate is
+   obj-1.
 2. **Record linkage is contiguous stride `0x14`, not a pointer chase.**
    `0x2CD17 8b4e14 mov ecx,[esi+0x14]` then `0x2CD1A 83c614 add esi,0x14` then
    `0x2CD1D 85c9 test ecx,ecx; jne` — the loop advances `ESI` by `0x14` and only
@@ -148,7 +150,7 @@ unported pset pool, no config effect. Declared a no-op this cycle.
 
 With the shipped table at `0xA2EB4` (file `0xE9D08`) this returns
 `0x00142095`: records `(shift 16, i 4)`, `(20, 1)`, `(0, 5)`, `(4, 9)`,
-`(8, 0)`, `(24, 0)`, `(16, 0)`, `(13, 1)`, `(14, 0)`, `(15, 0)`. **Nonzero.**
+`(8, 0)`, `(24, 0)`, `(10, 0)`, `(13, 1)`, `(14, 0)`, `(15, 0)`. **Nonzero.**
 
 ## 5. `0x2CADC` order and the unreachable paths
 

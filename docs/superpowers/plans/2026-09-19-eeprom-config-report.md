@@ -24,7 +24,7 @@ the two `0x2E990` reads, the `0x80CE4` image and its maintenance `0x2D4EC`
 (`config_storage_touch` is the setter's call-site placeholder) — the defaults
 writer's screen setup `0x1AE20` and storage write `0x2EA78` (with the message
 draw `0x2F198` and cursor restore `0x2F280`), the pset-pool tail calls `0x61A70`,
-and the high-score validators `0x2DE98`/`0x2DF8B`/`0x2DAE4`. With no storage the
+and the high-score validators `0x2DE98`/`0x2DF8C`/`0x2DAE4`. With no storage the
 magic never matches, so `config_validate` always takes the fresh-machine defaults
 path.
 
@@ -98,7 +98,7 @@ DS_001088D0 = (v & 0xF) * 5 + 0x1E
 DS_0010452C = (u8)((v & 0xF0) >> 4)
 ```
 
-With `v = 0x142095`: `DS_00104528 = 0x142095`, `DS_00105B3A = 0x10`,
+With `v = 0x142095`: `DS_00104528 = 0x142095`, `DS_00105B3A = 0x0`,
 `DS_001088D0 = 55`, `DS_0010452C = 9`.
 
 **`0x2C304` and its call site.** `0x2C304` is called from `0x10E80` at
@@ -121,7 +121,8 @@ that is `4 + 1 = 5`, the capture's credit count. `0x10E80` is called from
 **`0x2F9CC` ordering.** `0x2F9CC` is called first thing in the `0x20C10` wrapper
 (`0x20C15`) and runs `0x1AFE8`, then **`0x13ADC` (effects_init) at `0x2F9D4`**,
 then **`0x2D6F8` (config_validate) at `0x2FA0B`**, then `0x2D974(0x2A)` into
-`DS_001087410`. So `config_validate` precedes the `0x20C5D` config derivation and
+`DS_00107410` via `and al,0xFC` (`DS_00107410 = config_field_get(0x2A) & 0xFC`). So
+`config_validate` precedes the `0x20C5D` config derivation and
 follows effects_init. In the port, effects_init already runs inside
 `actors_init()` (`actors.c:120`), which `game_init` calls before the config
 block, so placing `config_validate()` at the head of that block reproduces the
@@ -170,6 +171,11 @@ from the attract entry `0x110CE` (`mov eax,1; call 0x2c06c`), which the port doe
 not run — it enters title state 1 directly and defers the attract sub-machine
 (4d). The raw therefore cannot reproduce the captured row on the ported path;
 the port keeps the captured `1`. No value was fitted.
+
+The brief's Step-3 fallback — restoring the `DS_00105C00 = 5` credit seed if a
+CREDITS-line residual had appeared — was **not needed**: the unseed succeeded and
+the only surviving writer-pin is `DS_00105C05`, whose captured value comes from the
+unported attract routine `0x2C06C` at `0x110CE`.
 
 ## 7. Declared gaps
 
