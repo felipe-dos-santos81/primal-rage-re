@@ -37,6 +37,7 @@ int main(void)
     test_rng();
     test_actors();
     test_effects();
+    test_config();
     test_anim();
     test_text();
     test_title();       /* no-op unless PR_TITLE_DUMP is set */
