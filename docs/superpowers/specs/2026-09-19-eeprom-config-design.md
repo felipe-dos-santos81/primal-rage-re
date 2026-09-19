@@ -155,7 +155,7 @@ Component list, with the exact semantics to derive in the plan:
 | `config_field_set(u32 field, u32 value)` | `0x2DA0C` | The inverse walk, writing through the bounded helper. `field > 0x3E` → `0xFFFFFFFF`. |
 | bounded-write helpers | `0x2D498`, `0x2D4B4`, `0x2D4EC` | Own the 2040-byte EEPROM storage image at `0x80CE4` and its `0x7F8` bound. **Because the port has no storage I/O, this image is inert and these three are declared no-ops**; the setter's three `0x2D4EC` calls become no-ops with it. Evidence for the bound is recorded in §3 so a later persistence cycle can port them. |
 | `config_validate(void)` | `0x2D6F8` | Magic `0x9C94D2C4` at `DS_00105E30`; mismatch → flag bits, defaults, rewrite magic; else the load path. The storage calls (`0x2D638`'s read and `0x2D6F8`'s own `0x2E990` reads) become declared no-ops reporting "no stored image", so validate routes to defaults, and the deferred high-score call `0x2DE98` is a declared no-op. |
-| `config_set_defaults(void)` | `0x2CADC` | Draw the defaults message through the ported text calls; write fields `0x29`/`0x35`/`0x37`/`0x2A` as above, with field `0x29`'s value from `0x2CCD0(0x32EB4)`. |
+| `config_set_defaults(void)` | `0x2CADC` | Write fields `0x29`/`0x35`/`0x37`/`0x2A` as above, with field `0x29`'s value from `0x2CCD0(0x32EB4)`. The message draw and its screen setup `0x1AE20` (190 B, unported, belongs to the menu/rendering cycle) and the storage write `0x2EA78` (263 B, storage layer) are **declared no-ops**; the config-field effect is fully ported. |
 | `0x2CCD0` parser | `0x2CCD0` | The obj-0 menu-descriptor parser the defaults path needs (asterisk-flagged default selection). Ported with the defaults path. |
 
 ## 5. Consumers and pins
@@ -192,7 +192,8 @@ Component list, with the exact semantics to derive in the plan:
   path and from `0x2D638`.)
 - **Deferred module functions:** `0x2DAE4`, `0x2DB58`, `0x2DBC4`, `0x2DCA0`,
   `0x2DDE4`, `0x2DE98` (high-score), `0x2DF8C`. The high-score call inside
-  `config_validate` is therefore a declared no-op.
+  `config_validate` is therefore a declared no-op. The defaults writer's screen
+  setup `0x1AE20` and storage write `0x2EA78` are also declared no-ops (§4).
 - **Slice B stays out:** the input poll `0x11F28`, the `0x11D04` state machine, the
   `0x11000` attract sub-machine, and the credit countdown `0x2CA48`/`0x2CA7C`.
 - **No fitted constants.** If the captured `CREDITS:5` is not reproducible from the
@@ -207,6 +208,7 @@ Component list, with the exact semantics to derive in the plan:
 - Whether the defaults path reproduces the captured credit value is **unknown**;
   the design treats it as the cycle's central falsifiable question rather than a
   promised outcome.
-- The `0x2CADC` defaults path draws text; wiring it at boot could add a first-frame
-  visual the port did not previously have, which the title oracle may or may not
-  observe. The plan must place the call to mirror `0x2F9CC` and check the oracle.
+- The `0x2CADC` defaults path draws text in the original and its storage write
+  touches the EEPROM image; both side-effects are declared no-ops here, so the port
+  will not show the boot defaults message. The plan must confirm the title oracle is
+  unaffected and record the omission as a declared gap, not a silent difference.
