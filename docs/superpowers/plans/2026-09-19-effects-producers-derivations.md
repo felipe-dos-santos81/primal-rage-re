@@ -423,3 +423,52 @@ The test is falsifiable on the binding: it passes `offset = 0` with handle 0
 (`DSD(source_rec) == 0`), so the forward copy reads `blk+4`/`blk+8`; the raw
 stores those at `+0x14`/`+0x18` and `+0x414`/`+0x418`. A port that read from
 `+0x10`, or used offset `-128`'s base, would fail.
+
+---
+
+# Task 4: the type-4 step dispatch and the end-to-end DAC chain
+
+## 13. Which step body runs for type 4
+
+`effects_step` (`0x134C0`) dispatches on `rec+0x0C` at `0x1351b`: it loads the
+type, `dec al`, rejects `> 5` to the `0x13996` body (types > 6), then jumps
+through `jmp dword ptr cs:[edx + 0x34a8]` with `edx = (type-1)*4` (`0x13530`,
+file `0x66384`). The stored operand `0x34a8` and the table entries carry LE
+load-time fixups (`+ 0x10000`, the code-object base); pre-fixup, the table sits
+at file `0x662fc` (VA `0x134a8`) and entry `k` holds `target_k - 0x10000`:
+
+| entry (type-1) | type | stored | target VA | body |
+|---|---|---|---|---|
+| 0 | 1 | `0x3541` | `0x13541` | `+0x14` channel add (lighten) |
+| 1 | 2 | `0x35a8` | `0x135a8` | `+0x10` trail rotate |
+| 2 | 3 | `0x362e` | `0x1362e` | flag pass then `+0x10` lighten toward `+0x410` |
+| 3 | **4** | `0x374f` | **`0x1374f`** | `+0x10` subtract-8 clamp-0 (darken to black) |
+| 4 | 5 | `0x37ee` | `0x137ee` | two-phase pulse over `+0x14` |
+| 5 | 6 | `0x3996` | `0x13996` | flag pass then `+0x10` darken toward `+0x410` |
+
+Reproduction (read-only): scan `data/game/C/PRAGE.EXE` for six consecutive
+`u32` equal to the six body VAs minus a common base; the only match is file
+`0x662fc`, base `0x10000`.
+
+The type-4 body `0x1374f` is the darken loop: `0x1375d 8b1e mov ebx,[esi]`
+(loads the `rec+0x10` dword, since dispatch `0x13537 lea eax,[edi+0x10]`),
+`0x13767 83ea08 sub edx,8` per channel, `0x1376c 7d02 jge` / `0x1376e 31d2
+xor edx,edx` clamps a negative lane to 0, and `0x13707 8916 mov [esi],edx`
+stores. `AL` is cleared to 0 only when a non-zero lane was written
+(`0x13763..0x137b3`), so `0x13726 test al,al; 0x13728 je` enqueues via
+`0x13ab4` while an all-zero pass falls to the removal at `0x1372e`
+(`call 0x249d0`, `call 0x249b0` free re-insert, `0x13744 dec [0x1af3d]`). This
+is what the end-to-end test drives: 9 steps from a `0x40` lane remove the record
+and return `effects_active()` to 0.
+
+## 14. Palette/DAC arithmetic for `0x40 → 0x38`
+
+The case-4 enqueue is `palette_record(rec+0x10, DSD(src+8), count, 0)` (the
+flag-0 `0x13ab4` tail). `gfx_flush_palette` (`0x1C470`, ported in
+`port/src/platform/gfx.c`) takes each lane as `(word >> shift) & 0x3F` then
+expands to the displayed 8-bit value `(v6 << 2) | (v6 >> 4)`. A lane of `0x40`
+minus 8 is `0x38`; the 6-bit truncation `(0x38 >> 2) & 0x3F = 0x0E`; the
+expansion `(0x0E << 2) | (0x0E >> 4) = 0x38`. The expected `gfx_dac` values are
+`0x38`, not fitted. (The `+0x14`/`+0x410` packing puts blue at bits 0/8/16 while
+the flush reads red from the low bits; with all three lanes equal the swap is
+unobservable here and the three DAC lanes are each `0x38`.)

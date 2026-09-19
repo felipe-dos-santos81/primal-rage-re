@@ -263,18 +263,24 @@ is sub-project 2b-ii and not ported. See
   credit countdown (`FUN_0002C304`/`FUN_0002CA48`/`FUN_0002CA7C` via `0x11F28`)
   is a declared 4b gap. Diagnosis:
   `../../docs/superpowers/plans/2026-09-18-bf08-overlay-diagnosis.md`.
-* **The effect list `0x13xxx` (4a-iii, ported).** `port/src/game/effects.{c,h}`
+* **The effect list `0x13xxx` (4a-iii/4a-iv, ported).** `port/src/game/effects.{c,h}`
   owns the two sentinels `DS_000FCCE0`/`DS_000FCCE8`, the lock `DS_0009AF3C`,
   the count `DS_0009AF3D`, the intrusive link primitives (`0x249B0` insert-after,
   `0x249C0` insert-before, `0x249D0` unlink), the free-list build `0x13ADC`, the
-  spawn `0x13C70` (record stride `0x814`, 24 records `0xF0B00`..`0xFC4CC`), the
   per-entry teardown `0x13420`, the clear `0x13DF0`, and the step/age `0x134C0`
   (`effects_step`, called from the master loop at `flow.c:779`).
   `actors_reset` calls `0x13ADC`/`0x13DF0` at `0x2BBB8`/`0x2BB2B`; the title's
-  `0x123EA` calls `effects_spawn(node, 3u, 0x419786C)`. The spawn fills a record
-  but the effect **render** path is unported, so `0x13C70` is a declared coverage
-  gap carried by unit tests; `0x134C0`'s drain is unit-proven. Details:
-  `../../docs/superpowers/plans/2026-09-18-title-residuals-report.md`.
+  `0x123EA` calls `effects_spawn(node, 3u, 0x419786C)`. The producer set is
+  complete: **`0x13C70` type 3**, **`0x13D4C` type 4** (`effects_spawn_darken`),
+  **`0x13E28` type 6** (`effects_spawn_pulse`) and **`0x13B3C` types 0/2**
+  (`effects_spawn_scroll`) are the only functions that take a free record and
+  write its type byte, so **types 1 and 5 have no producer and are dead**. An
+  end-to-end unit test proves spawn → `effects_step` → palette dirty list →
+  `gfx_dac`. The effect **render** path is still unported, so no shipped path
+  spawns types 0/2/4/6 yet; the producers are a declared coverage gap carried by
+  unit tests, and `0x134C0`'s drain is unit-proven. Details:
+  `../../docs/superpowers/plans/2026-09-18-title-residuals-report.md`,
+  `../../docs/superpowers/plans/2026-09-19-effects-producers-report.md`.
 * **`--check N`** (Task 15) runs exactly N master-loop iterations headless and
   writes `frame_NNNN.ppm`/`.pal`/`.idx`; exit code is the assertion-failure
   count. It is no longer used as a title oracle — `make title-oracle` is.

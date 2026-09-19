@@ -172,6 +172,18 @@ The `0x134C0` step (ported when the wiring exposed a count-drain stall past the
 window) is unit-proven to drain and is oracle-consistent. See
 `docs/superpowers/plans/2026-09-18-title-residuals-report.md`.
 
+**Effect producers — sub-project 4a-iv, ported.** The three missing `0x13xxx`
+producers now sit beside `0x13C70`: `0x13D4C` (type 4, darken-to-zero,
+`effects_spawn_darken`), `0x13E28` (type 6, darken toward a target,
+`effects_spawn_pulse`) and `0x13B3C` (types 0/2, signed-offset scroll,
+`effects_spawn_scroll`). The free-list head is taken only by these four, so
+types 1 and 5 have no producer and are dead. An end-to-end unit test proves the
+headline chain — spawn → `effects_step` → palette dirty list → `gfx_flush_palette`
+→ `gfx_dac` — and the new producers are callable but not yet wired into game
+flow (`0x29B74`, `0x41578`, `0x11F6C` remain unported), so the `0x13xxx` effect
+**render** path stays a coverage gap. See
+`docs/superpowers/plans/2026-09-19-effects-producers-report.md`.
+
 Streamed Smacker audio (2b-ii), menus/EEPROM (4), the fight engine (5) and the
 deferred attract subsystem (`0x11000`, `0x38A38`, `0x389C4`, `0x292AC`,
 `0x4F644`) and the `0x13xxx` effect render path remain (`/* PORT: */` markers).

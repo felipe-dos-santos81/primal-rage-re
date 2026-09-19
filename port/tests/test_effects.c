@@ -1,5 +1,6 @@
 /* port/tests/test_effects.c */
 #include "game/effects.h"
+#include "platform/gfx.h"
 #include "mem.h"
 #include "test.h"
 #include "symbols.h"
@@ -411,6 +412,48 @@ int test_effects(void)
         CHECK_EQ_INT((int)DSB(rec + 0x0D), 0);
         CHECK_EQ_INT((int)DSB(rec + 0x0F), 0);
         CHECK_EQ_INT(effects_active(), 0);   /* raw never bumps the count */
+        DSD(DS_001014E0) = saved_tab;
+        DSD(DS_001014F0) = saved_n;
+    }
+    effects_clear();
+    CHECK_EQ_INT(effects_active(), 0);
+
+    {
+        /* End-to-end: 0x13D4C's type-4 record darkens its +0x10 block toward
+         * zero and enqueues it; gfx_flush_palette drains the dirty list into
+         * gfx_dac. Each step subtracts 8 from every colour lane, and the DAC
+         * reader takes bits 2..7 of each lane, so a 0x40 lane becomes 0x38
+         * after one step. */
+        u32 src = EFFECTS_TEST_SRC;
+        u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
+        u32 tab = src + 0x100u, blk = src + 0x200u;
+        palette_list_init();
+        effects_init();
+        mem_fill(src, 0, 0x300u);
+        DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
+        DSD(src + 0x08) = 0x40u;          /* first DAC index for the record */
+        DSD(src + 0x0C) = 2u;
+        DSD(DS_001014E0) = tab;
+        DSD(DS_001014F0) = 1;
+        DSD(tab + 16) = blk;
+        DSD(blk + 4) = 0x40404040u;
+        DSD(blk + 8) = 0x40404040u;
+        DSD(blk + 12) = 0x40404040u;
+        u32 rec = effects_spawn_darken(src, 1u);
+        CHECK(rec != 0, "end-to-end spawn");
+        effects_step();                    /* state 1 -> 0, case-4 body runs */
+        gfx_flush_palette();
+        CHECK_EQ_INT(gfx_dac[0x40][0], 0x38);
+        CHECK_EQ_INT(gfx_dac[0x40][1], 0x38);
+        CHECK_EQ_INT(gfx_dac[0x40][2], 0x38);
+        CHECK_EQ_INT(gfx_dac[0x41][0], 0x38);
+        /* Cannot pass vacuously: 0x40 darkens 0x38, 0x30, ..., 0x00 across
+         * steps 1..8, then step 9 sees every lane zero and retires the record.
+         * The active count returning to 0 proves the step actually ran the
+         * case-4 body and removed the record, not that the DAC was never
+         * written. */
+        for (int i = 0; i < 8; i++) effects_step();
+        CHECK_EQ_INT(effects_active(), 0);
         DSD(DS_001014E0) = saved_tab;
         DSD(DS_001014F0) = saved_n;
     }
