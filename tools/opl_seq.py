@@ -80,9 +80,9 @@ NOTE_TAB = tuple(note_to_block_fnum(n) for n in range(128))
 # by note-on time, not copied from sequencer.c's NOTE_TAB literal. `python3
 # tools/opl_seq.py --capture-anchors <music> <capture.dro>` re-derives them and
 # fails if the formula disagrees. 0, 31 and 127 are computed-table boundary
-# points (lowest entry, octave, clamp) and are NOT capture claims. Note 47 is a
-# documented divergence (audio.md item 6), not an anchor: the melodic table
-# gives 0x28B, the capture's percussion note is 0x3CF (driver remap).
+# points (lowest entry, octave, clamp) and are NOT capture claims. This table is
+# the driver's melodic table; percussion selects it by its patch's base byte
+# instead (see Sequencer.key_on, matching sequencer.c).
 NOTE_ANCHORS = {0: (0, 0x0AC), 31: (1, 0x205), 79: (5, 0x205),
                 84: (5, 0x2B2), 127: (7, 0x3FF)}
 
@@ -322,7 +322,17 @@ class Sequencer:
             key = (self.bank[midi] << 8) | self.program[midi]
         v = self.alloc_voice()
         self.apply_patch(v, key)
-        block, fnum = NOTE_TAB[note]
+        # The driver keys a note through its patch's base byte, not its MIDI
+        # pitch (SBPRO2.MDI 0x35fa-0x36a6): melodic adds the base to the note
+        # (base 0 in every melodic FAT.OPL entry, so this is the note);
+        # percussion uses the base alone. Mirrors sequencer.c's key_on.
+        idx = note
+        if midi == 9:
+            p = self.patches.get(key)
+            if p is not None:
+                idx = p[2]
+        idx = max(0, min(idx, 127))
+        block, fnum = NOTE_TAB[idx]
         b0 = (block << 2) | ((fnum >> 8) & 0x03)
         self.voice[v] = {'midi': midi, 'note': note, 'release': dur,
                          'age': self.age, 'b0': b0}

@@ -402,6 +402,36 @@ int test_sequencer(void)
                 printf("oracle C-vs-Python: %d writes byte-exact\n", c_n);
         }
 
+        /* 7b. Percussion note -> fnum (spec divergence 6). The driver's
+         *     note-on path (SBPRO2.MDI 0x35fa-0x36a6) builds the fnum index
+         *     from the patch base byte ([di+2], stored at 0x3aac-0x3ac1), not
+         *     from the MIDI note: melodic adds the base to the note, percussion
+         *     uses the base alone. The title's first key-on is MIDI 47 on
+         *     channel 9; its 0x7F-bank patch base is 54, so the capture keys
+         *     block 2 fnum 0x3CF (0xA0=0xCF, 0xB0=0x2B). The melodic table
+         *     would give NOTE_TAB[47] = block 2 fnum 0x28B (0xB0=0x2A), so
+         *     this fails before the fix. */
+        {
+            const u8 *drum = patches_lookup(PATCH_KEY(PATCH_BANK_PERCUSSION, 47));
+            int fk = -1;
+            CHECK(drum != NULL && drum[2] == 54,
+                  "percussion note 47 patch base byte is 54");
+            for (int i = 0; i < c_n; i++) {
+                if (c_ev[i].reg >= 0xB0 && c_ev[i].reg <= 0xB8 &&
+                    (c_ev[i].val & 0x20)) {
+                    fk = i;
+                    break;
+                }
+            }
+            CHECK(fk > 0, "the title stream keys its first note on");
+            if (fk > 0) {
+                CHECK_EQ_INT(c_ev[fk].reg, 0xB0);
+                CHECK_EQ_INT(c_ev[fk].val, 0x2B);
+                CHECK_EQ_INT(c_ev[fk - 1].reg, 0xA0);
+                CHECK_EQ_INT(c_ev[fk - 1].val, 0xCF);
+            }
+        }
+
         /* 8. Capture oracle (informational). The capture is the real driver,
          *    which the port reconstructs rather than reproduces: its
          *    cached-state init block, per-patch operator application and

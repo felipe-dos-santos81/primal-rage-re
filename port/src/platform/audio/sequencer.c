@@ -27,10 +27,10 @@ static const u8 OPL_SLOT[SEQ_OPL_CHANNELS] = { 0, 1, 2, 8, 9, 10, 16, 17, 18 };
 /* MIDI note -> { block, fnum } for 49716 Hz, fnum <= 1023 with the highest
  * usable fnum (lowest block). Capture-verified anchors: note 84 -> block 5
  * fnum 0x2B2 and note 79 -> block 5 fnum 0x205 match prage_000.dro, re-derived
- * by tools/opl_seq.py --capture-anchors. Note 47 is NOT a match: this melodic
- * entry gives block 2 fnum 0x28B while the capture's percussion note is block 2
- * fnum 0x3CF — the driver remaps percussion (port/spec/audio.md divergence 6,
- * "Percussion note frequency"). */
+ * by tools/opl_seq.py --capture-anchors. This is the driver's melodic table
+ * (all 128 FAT.OPL melodic entries have base byte 0, so the driver's
+ * note+base index reduces to the note). Percussion is looked up through the
+ * 0x7F-bank patch's base byte instead; see key_on. */
 static const u16 NOTE_TAB[128][2] = {
     {0x00,0x0AC}, {0x00,0x0B7}, {0x00,0x0C2}, {0x00,0x0CD}, {0x00,0x0D9}, {0x00,0x0E6}, {0x00,0x0F4}, {0x00,0x102},
     {0x00,0x112}, {0x00,0x122}, {0x00,0x133}, {0x00,0x146}, {0x00,0x159}, {0x00,0x16D}, {0x00,0x183}, {0x00,0x19A},
@@ -198,8 +198,21 @@ static void key_on(int midi, int note, int vel, u32 dur)
     S.voice[v].release = dur;
     S.voice[v].age = ++S.age;
     {
-        u8 block = (u8)NOTE_TAB[note][0];
-        u16 fnum = NOTE_TAB[note][1];
+        /* PORT: the driver does not key a note at its MIDI pitch. Its note-on
+         * path (SBPRO2.MDI 0x35fa-0x36a6) builds the fnum table index from the
+         * patch's base byte ([di+2], stored at 0x3aac-0x3ac1): melodic adds the
+         * base to the note ([si+0x14d5]=note, [si+0x14fd]=base; every melodic
+         * FAT.OPL entry has base 0, so it reduces to NOTE_TAB[note]), while
+         * percussion uses the base alone ([si+0x14d5]=base, [si+0x14fd]=0), so
+         * a drum's 0x7F-bank patch base byte selects the table entry. */
+        const u8 *p = (midi == 9) ? patches_lookup(key) : NULL;
+        int idx = (p != NULL) ? (int)p[2] : note;
+        u8 block;
+        u16 fnum;
+        if (idx > 127)
+            idx = 127;
+        block = (u8)NOTE_TAB[idx][0];
+        fnum = NOTE_TAB[idx][1];
         S.voice[v].b0 = (u8)((block << 2) | ((fnum >> 8) & 0x03));
         opl_write((u16)(0xA0 + v), (u8)(fnum & 0xff));
         opl_write((u16)(0xB0 + v), (u8)(S.voice[v].b0 | 0x20));
