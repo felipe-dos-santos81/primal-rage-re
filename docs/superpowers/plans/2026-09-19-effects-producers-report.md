@@ -68,9 +68,9 @@ The out-of-line pop helper `0x133D0` has zero callers and produces nothing.
 
 ## 5. End-to-end result
 
-`port/tests/test_effects.c` now spawns via `effects_spawn_darken` (type 4),
-calls `effects_step()` once, drains through `gfx_flush_palette()`, and asserts
-`gfx_dac[0x40]` and `gfx_dac[0x41]` equal `0x38` on all three lanes.
+`port/tests/test_effects.c` spawns via `effects_spawn_darken` (type 4), calls
+`effects_step()` once, drains through `gfx_flush_palette()`, and asserts
+`gfx_dac[0x40][0..2]` and `gfx_dac[0x41][0]` equal `0x38`.
 
 The brief's expected `0x38` held. Derivation: each step's case-4 body subtracts 8
 from every colour lane (`0x1374f`: `0x13767 83ea08 sub edx,8`, clamp to 0), so
@@ -80,9 +80,16 @@ fitted.
 
 The test passed on first run (the producers and step wiring were already landed
 by Tasks 1–3), so per the brief's Step 2 it was tightened to drive eight further
-`effects_step()` calls — `0x38, 0x30, …, 0x00` — then a ninth that finds every
-lane zero and retires the record, asserting `effects_active() == 0`. The test
-therefore requires the case-4 body to run and cannot pass vacuously.
+`effects_step()` calls — those produce `0x30, 0x28, …, 0x00` (the first call
+supplied the `0x38`) — and nine total retire the record; `effects_active() == 0`
+proves it cannot pass vacuously.
+
+Type 6 (`effects_spawn_pulse`) and type 2 (`effects_spawn_scroll`, flag ≠ 0)
+have matching end-to-end tests added to satisfy spec §6. Type 6 drains white
+`0xFF`, then `0xF7` after one darken, and retires after its 24-step darken to
+the target. Type 2 rotates `[A,B] → [B,A]` and back across two drains; its
+non-vacuous proof is the drain reset, since a type-2 record has no retirement
+arm. Derivations §15/§16.
 
 ## 6. Declared gaps
 

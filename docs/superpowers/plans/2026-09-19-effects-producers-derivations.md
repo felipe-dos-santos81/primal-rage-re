@@ -243,9 +243,13 @@ handle of `0` would read `blk+4`/`blk+8` and fail `+0x410`/`+0x414`.
 `0x13B3C` (file `0x66990`, size 308, next function `0x13C70`) copies a run of
 the resolved block into BOTH `+0x14` and `+0x414`, walking the source by a
 signed offset, and selects type 0 or 2 from a flag. Reproduction:
-`dis(0x13b3c, 308)` with the mapping above. Ghidra lists it `callers=0` — it is
-dead in the shipped EXE, like `0x133D0`; there is no caller to corroborate the
-register roles, so they are read directly from the body.
+`dis(0x13b3c, 308)` with the mapping above. **It is live despite having no
+call-graph caller**: its VA is an entry in the jump table at VA `0x23AC4` (file
+`0x76918`), whose seven dwords are `0x13b3c, 0x13b20, 0x13b27, 0x13b2e, 0x13b35,
+0x13b3c, 0x13b20` — `0x13B3C` is entry 0 and entry 5. That table is the switch
+reached from object-0 code that selects the type-0/2 variant (spec §5). Only
+types 1 and 5 are dead: no producer writes them (§4). There is no caller to
+corroborate the register roles, so they are read directly from the body.
 
 ## 8. Incoming registers (`0x13B3C`, file `0x66990`)
 
@@ -269,7 +273,8 @@ returns 0 when the pop yielded nothing. `effect_take_free()` covers it.
 ## 9. Does it increment `DS_0009AF3D`? — **No**
 
 The function body (`0x13B3C..0x13C6F`) writes only `0x1AF3C` (the lock):
-`0x13B68 88253caf0100 mov [0x1af3c], ah` (`DL=1`), `0x13B75` restore,
+`0x13B68 88253caf0100 mov [0x1af3c], ah` (`AH` is set to 1 at `0x13B60 b401
+mov ah,1`; `DL` holds the saved old lock), `0x13B75` restore,
 `0x13C4D 881d3caf0100 mov [0x1af3c], bl` (`BL=1`), `0x13C62 883d3caf0100 mov
 [0x1af3c], bh` (`BH=0`). There is **no** access to `0x1AF3D` anywhere in the
 range. The port therefore does **not** bump the active count: a scroll record
@@ -389,7 +394,7 @@ resolved[2]`.
 | `+0x04` | dword | prev link | `0x249D0`/`0x249B0` |
 | `+0x08` | dword | `source_rec` (`EDI`) | `0x13C39 897e08 mov [esi+8], edi` (`0x66A...`) |
 | `+0x0C` | byte | `flag ? 2 : 0` | `0x13C25 c6460c02` / `0x13C2F 88760c` |
-| `+0x0D` | byte | `BL` (flag) | `0x13C3E 88460d mov [esi+0xd], al` |
+| `+0x0D` | byte | `AL` (flag) | `0x13C3E 88460d mov [esi+0xd], al` (AL = `[esp+4]` at `0x13C35 8a442404`; the incoming flag register is `BL`) |
 | `+0x0E` | byte | `flag ? 1 : 0` | `0x13C29 c6460e01` / `0x13C32 88760e` |
 | `+0x0F` | byte | `CL` (count) | `0x13C53 88460f mov [esi+0xf], al` (AL = `[esp]`) |
 | `+0x10` | byte | `DL` (offset) | `0x13C47 884610 mov [esi+0x10], al` (AL = `[esp+8]`) |
@@ -472,3 +477,80 @@ expansion `(0x0E << 2) | (0x0E >> 4) = 0x38`. The expected `gfx_dac` values are
 `0x38`, not fitted. (The `+0x14`/`+0x410` packing puts blue at bits 0/8/16 while
 the flush reads red from the low bits; with all three lanes equal the swap is
 unobservable here and the three DAC lanes are each `0x38`.)
+
+---
+
+# Task 5: end-to-end DAC for types 6 and 2
+
+The Task 4 test proves type 4 only; spec §6 requires every variant.
+`port/tests/test_effects.c` also drives type 6 and type 2 through spawn →
+`effects_step()` → `gfx_flush_palette()` → `gfx_dac`. Both expected values are
+derived below from the raw step bodies; same mapping (`file = va + 0x52E54`).
+
+## 15. Type-6 `0x13996` (the arm `effects_step` dispatches for `+0x0C == 6`)
+
+Dispatch: the jump table at VA `0x134A8` (file `0x662FC`) entry 5 (type 6) holds
+`0x3996` → VA `0x13996` (§13). The body has two arms selected by `rec+0x0F`
+(`0x13996 8a4f0f mov cl,[edi+0xf]; 0x1399c test cl,cl`):
+
+* **flag pass** (`cl != 0`): `0x139a0 mov eax,[edi+8]` (source), `0x139a5 mov
+  eax,[eax+8]` (first = `DSD(src+8)`), `0x139a3 mov edx,ebp` (count),
+  `EBX = rec+0x10` (`0x13999 lea ebx,[edi+0x10]`), `0x139a8 call 0x33734` —
+  enqueues the current `+0x10` block; `0x139ad c6470f00 mov byte [edi+0xf],0`
+  clears the flag. The spawn leaves `+0x10 = 0x00FFFFFF` (§7), so the first body
+  enqueues white.
+* **darken pass** (`cl == 0`): `0x139b6 89de mov esi,ebx` (cur = `rec+0x10`),
+  `0x139b8 lea eax,[edi+0x410]` (target), per-lane `0x139f0 83ea08 sub edx,8`
+  then `0x139f3 39c2 cmp edx,eax / 0x139f7 89c2 mov edx,eax` (clamp up to the
+  target), store `0x13a71 8916 mov [esi],edx`. `AL` is cleared when a lane is
+  written (`0x13a6f 30c0 xor al,al`), so `0x13a92 test al,al / 0x13a94 je
+  0x13ab4` enqueues via `0x13ab4..0x13abf call 0x33734`; an all-equal pass takes
+  the removal arm `0x13a96..0x13aac` (unlink, free re-insert, `0x13aac dec
+  [0x1af3d]`).
+
+Test inputs: `count = 1`, `+0x10 = 0x00FFFFFF`, `handle = 4` (index 0, offset 4,
+so `resolved[1] = blk+8`), target `+0x410 = 0x00404040`. The high byte must be
+zero because the darken reads only lanes at bits 0/8/16 and the full-dword
+comparison `0x139de cmp ebx,edx / 0x139e0 je` only succeeds once every lane
+reaches the target.
+
+`gfx_flush_palette` takes lane channels at `(word >> 2/10/18) & 0x3F` and
+expands to 8 bits as `(v << 2) | (v >> 4)` (§14):
+
+* step 1 (flag pass) enqueues `0x00FFFFFF`: each lane `(0xFFFFFF >> 2/10/18) &
+  0x3F = 0x3F` → `0xFF`. `gfx_dac[0x40] = 0xFF` on all three lanes.
+* step 2 (first darken) writes `0xFF - 8 = 0xF7` per lane (`0x00F7F7F7`): `v =
+  (0xF7 >> 2) & 0x3F = 0x3D` → `(0x3D << 2) | (0x3D >> 4) = 0xF7`.
+  `gfx_dac[0x40] = 0xF7`.
+* `0xFF - 8*k` clamps at `0x40` when `k = 24` (`0xFF - 192 = 0x3F < 0x40`), so
+  24 further steps after step 2 reach the target and the next all-equal pass
+  retires the record (`effects_active() == 0`). The type-4 lifetime is shorter
+  only because its body darkens to zero.
+
+## 16. Type-2 `0x135a8` (the arm `effects_step` dispatches for `+0x0C == 2`)
+
+Dispatch: jump-table entry 1 (type 2) holds `0x35a8` → VA `0x135a8` (§13). With
+`offset = +0x10 >= 0` the positive arm runs (`0x135ae test bl,bl; 0x135b0 jge
+0x135f1`):
+
+* rotate `+0x14` right by one dword: `0x135f6 lea esi,[eax+4]` (src = `rec+0x18`
+  with `EAX = rec+0x14`), `0x135f9 mov ebx,[eax]` (tmp = `+0x14`), the loop
+  `0x135fd..0x1360f` shifts each following dword down one, `0x13613 mov
+  [eax],ebx` writes tmp last. For `count = 2`, `[A,B] → [B,A]`.
+* enqueue: `0x13615 lea ebx,[edi+0x14]` (ptr), `0x13618 mov esi,[edi+0xd]` /
+  `0x1361e sar esi,0x18` (signed offset byte at `+0x10`), `0x1361b mov
+  eax,[edi+8]` (source), `0x13621 mov eax,[eax+8]` (first = `DSD(src+8)`),
+  `0x13627 add eax,esi` (first += offset), `0x13624 mov dl,[edi+0xf]` (count =
+  `DSB(rec+0x0F)`), `0x13629 jmp 0x13abf` → `call 0x33734`.
+
+Test inputs: `count = 2`, `offset = 0`, `flag = 1`, `first = 0x50`, `handle = 0`
+(so `resolved[1] = blk+4 = A = 0x00000040`, `resolved[2] = blk+8 = B =
+0x00000080`). `0x40` expands to `(0x10 << 2) | (0x10 >> 4) = 0x41` and `0x80` to
+`(0x20 << 2) | (0x20 >> 4) = 0x82` (lanes at bits 2..7: `0x40 >> 2 = 0x10`,
+`0x80 >> 2 = 0x20`).
+
+* step 1 rotates to `[B,A]`: `gfx_dac[0x50] = 0x82`, `gfx_dac[0x51] = 0x41`.
+* step 2 rotates back to `[A,B]`: `gfx_dac[0x50] = 0x41`, `gfx_dac[0x51] =
+  0x82`. The alternation proves the body ran twice through the dirty-list drain
+  (`gfx_flush_palette` resets `DS_00107798` to `DS_00107498`); a type-2 record
+  has no retirement arm, so drain + re-drain is the non-vacuous proof.

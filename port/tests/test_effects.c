@@ -21,6 +21,11 @@ int test_effects(void)
     {
         u32 m0 = DSD(0), m4 = DSD(4);
         CHECK_EQ_INT((int)effects_spawn(EFFECTS_TEST_SRC, 0u, 0u), 0);
+        /* The three new producers share effect_take_free, so they return 0 on
+         * the unbuilt pool without reading source_rec or touching mem[]. */
+        CHECK_EQ_INT((int)effects_spawn_darken(EFFECTS_TEST_SRC, 0u), 0);
+        CHECK_EQ_INT((int)effects_spawn_pulse(EFFECTS_TEST_SRC, 0u), 0);
+        CHECK_EQ_INT((int)effects_spawn_scroll(EFFECTS_TEST_SRC, 0, 1u, 1u), 0);
         CHECK_EQ_INT(effects_active(), 0);
         CHECK_EQ_INT((int)DSD(DS_000FCCE8), 0);
         CHECK_EQ_INT((int)DSD(0), (int)m0);
@@ -271,6 +276,64 @@ int test_effects(void)
     CHECK_EQ_INT(effects_active(), 0);
 
     {
+        /* 0x13D4C's copy loop tests the source count signed
+         * (0x13D9D mov ebp,[esi+0xc]; test/jle, file 0x66BF1): a high-bit-set
+         * count is skipped, not iterated ~4e9 times. The record still builds. */
+        u32 src = EFFECTS_TEST_SRC;
+        effects_init();
+        mem_fill(src, 0, 0x40u);
+        DSD(src + 0x0C) = 0xFFFFFFFFu;
+        u32 head = DSD(DS_000FCCE8);
+        DSD(head + 0x10) = 0xDDDDDDDDu;
+        u32 rec = effects_spawn_darken(src, 0u);
+        CHECK(rec != 0, "0x13D4C non-positive count is skipped");
+        CHECK_EQ_INT((int)rec, (int)head);
+        CHECK_EQ_INT((int)DSD(rec + 0x10), (int)0xDDDDDDDDu);  /* no copy */
+    }
+    effects_clear();
+    CHECK_EQ_INT(effects_active(), 0);
+
+    {
+        /* 0x1B544 can fail to resolve. The new producers keep the
+         * effects_spawn PORT guard: the resolved copy is skipped rather than
+         * dereferencing NULL, while the field writes and the list insert still
+         * run. Darken: +0x10 untouched; pulse: white fill still runs; scroll:
+         * both blocks untouched. */
+        u32 src = EFFECTS_TEST_SRC;
+        u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
+        effects_init();
+        mem_fill(src, 0, 0x40u);
+        DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
+        DSD(src + 0x0C) = 2u;
+        DSD(DS_001014F0) = 0;             /* res_resolve(index 0) -> NULL */
+        u32 head = DSD(DS_000FCCE8);
+        DSD(head + 0x10) = 0xDDDDDDDDu;
+        u32 rd = effects_spawn_darken(src, 0u);
+        CHECK(rd != 0, "0x13D4C unresolved handle takes a record");
+        CHECK_EQ_INT((int)rd, (int)head);
+        CHECK_EQ_INT((int)DSD(rd + 0x10), (int)0xDDDDDDDDu);
+        u32 head2 = DSD(DS_000FCCE8);
+        DSD(head2 + 0x410) = 0xEEEEEEEEu;
+        u32 rp = effects_spawn_pulse(src, 0u);
+        CHECK(rp != 0, "0x13E28 unresolved handle takes a record");
+        CHECK_EQ_INT((int)rp, (int)head2);
+        CHECK_EQ_INT((int)DSD(rp + 0x10), 0x00FFFFFF);        /* white fill ran */
+        CHECK_EQ_INT((int)DSD(rp + 0x410), (int)0xEEEEEEEEu); /* copy skipped */
+        u32 head3 = DSD(DS_000FCCE8);
+        DSD(head3 + 0x14) = 0xCCCCCCCCu;
+        DSD(head3 + 0x414) = 0xBBBBBBBBu;
+        u32 rs = effects_spawn_scroll(src, 0, 2u, 1u);
+        CHECK(rs != 0, "0x13B3C unresolved handle takes a record");
+        CHECK_EQ_INT((int)rs, (int)head3);
+        CHECK_EQ_INT((int)DSD(rs + 0x14), (int)0xCCCCCCCCu);
+        CHECK_EQ_INT((int)DSD(rs + 0x414), (int)0xBBBBBBBBu);
+        DSD(DS_001014E0) = saved_tab;
+        DSD(DS_001014F0) = saved_n;
+    }
+    effects_clear();
+    CHECK_EQ_INT(effects_active(), 0);
+
+    {
         /* 0x13E28: type 6, +0x0F = 0x80, +0x0E = 1, +0x10 = 0xFFFFFF,
          * +0x410 = the resolved block, count +1. */
         u32 src = EFFECTS_TEST_SRC;
@@ -397,6 +460,14 @@ int test_effects(void)
         CHECK_EQ_INT((int)DSD(rec + 0x18), 0x40);   /* resolved[1] */
         CHECK_EQ_INT((int)DSD(rec + 0x1C), 0x41);   /* resolved[2] */
 
+        /* The descending arm is a do-while, so count == 0 still writes index 0
+         * once: sp = resolved + 1 + 0 - (-1) = resolved[2], stored at +0x14
+         * and +0x414. */
+        rec = effects_spawn_scroll(src, -1, 0u, 1u);
+        CHECK(rec != 0, "0x13B3C negative offset count 0");
+        CHECK_EQ_INT((int)DSD(rec + 0x14), 0x41);   /* resolved[2] */
+        CHECK_EQ_INT((int)DSD(rec + 0x414), 0x41);
+
         /* flag == 0 -> type 0 and state byte +0x0E = 0 (the raw truth; such a
          * record never retires, and the raw does not bump DS_0009AF3D). */
         effects_clear();
@@ -412,6 +483,18 @@ int test_effects(void)
         CHECK_EQ_INT((int)DSB(rec + 0x0D), 0);
         CHECK_EQ_INT((int)DSB(rec + 0x0F), 0);
         CHECK_EQ_INT(effects_active(), 0);   /* raw never bumps the count */
+
+        /* flag == 0 still copies the resolved block; only the type/state bytes
+         * differ from the flag != 0 arm. */
+        for (int i = 0; i < 6; i++) DSD(blk + 4 + (u32)i * 4u) = 0x40u + (u32)i;
+        rec = effects_spawn_scroll(src, 0, 2u, 0u);
+        CHECK(rec != 0, "0x13B3C zero flag with count 2");
+        CHECK_EQ_INT((int)DSB(rec + 0x0C), 0);
+        CHECK_EQ_INT((int)DSB(rec + 0x0E), 0);
+        CHECK_EQ_INT((int)DSD(rec + 0x14), 0x40);
+        CHECK_EQ_INT((int)DSD(rec + 0x18), 0x41);
+        CHECK_EQ_INT((int)DSD(rec + 0x414), 0x40);
+        CHECK_EQ_INT((int)DSD(rec + 0x418), 0x41);
         DSD(DS_001014E0) = saved_tab;
         DSD(DS_001014F0) = saved_n;
     }
@@ -454,6 +537,103 @@ int test_effects(void)
          * written. */
         for (int i = 0; i < 8; i++) effects_step();
         CHECK_EQ_INT(effects_active(), 0);
+        DSD(DS_001014E0) = saved_tab;
+        DSD(DS_001014F0) = saved_n;
+    }
+    effects_clear();
+    CHECK_EQ_INT(effects_active(), 0);
+
+    {
+        /* End-to-end type 6 (0x13E28). The first case-6 body (0x13996) is the
+         * flag pass: 0x1399c test cl,cl / 0x139a8 call 0x33734 enqueues the
+         * white +0x10 block and clears +0x0F (0x139ad). The next body darkens
+         * toward the +0x410 target with the subtract-8 clamp (0x139f0 sub
+         * edx,8 / 0x139f7 mov edx,eax) and enqueues at 0x13ab4.
+         * gfx_flush_palette takes each lane at bits 2..7 and expands 6 -> 8:
+         * white 0x00FFFFFF gives r/g/b = (0xFFFFFF >> 2/10/18) & 0x3F = 0x3F,
+         * (0x3F << 2) | (0x3F >> 4) = 0xFF. One darken is 0xFF - 8 = 0xF7:
+         * v = (0xF7 >> 2) & 0x3F = 0x3D, (0x3D << 2) | (0x3D >> 4) = 0xF7. */
+        u32 src = EFFECTS_TEST_SRC;
+        u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
+        u32 tab = src + 0x100u, blk = src + 0x200u;
+        palette_list_init();
+        effects_init();
+        mem_fill(src, 0, 0x300u);
+        DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
+        DSD(src + 0x08) = 0x40u;          /* first DAC index */
+        DSD(src + 0x0C) = 1u;
+        DSD(DS_001014E0) = tab;
+        DSD(DS_001014F0) = 1;
+        DSD(tab + 16) = blk;
+        /* handle 4 shifts the resolved base by 4, so the +0x410 target is
+         * blk+8. The darken reads lanes at bits 0/8/16 only, so the target
+         * must have a zero high byte (0x00404040) for the full-dword equality
+         * test to ever succeed and let the record retire. */
+        DSD(blk + 4) = 0x00404040u;
+        DSD(blk + 8) = 0x00404040u;
+        DSD(blk + 12) = 0x00404040u;
+        u32 rec = effects_spawn_pulse(src, 1u);
+        CHECK(rec != 0, "end-to-end pulse spawn");
+        effects_step();                    /* state 1 -> 0, flag pass */
+        gfx_flush_palette();
+        CHECK_EQ_INT(gfx_dac[0x40][0], 0xFF);
+        CHECK_EQ_INT(gfx_dac[0x40][1], 0xFF);
+        CHECK_EQ_INT(gfx_dac[0x40][2], 0xFF);
+        effects_step();                    /* darken once: 0xFF -> 0xF7 */
+        gfx_flush_palette();
+        CHECK_EQ_INT(gfx_dac[0x40][0], 0xF7);
+        CHECK_EQ_INT(gfx_dac[0x40][1], 0xF7);
+        CHECK_EQ_INT(gfx_dac[0x40][2], 0xF7);
+        /* Cannot pass vacuously: 0xFF - 8*24 clamps to the 0x40 target, then
+         * the all-equal pass takes the removal arm (0x13a92 test al,al /
+         * 0x13a96..0x13aac) and retires the record. */
+        for (int i = 0; i < 24; i++) effects_step();
+        CHECK_EQ_INT(effects_active(), 0);
+        DSD(DS_001014E0) = saved_tab;
+        DSD(DS_001014F0) = saved_n;
+    }
+    effects_clear();
+    CHECK_EQ_INT(effects_active(), 0);
+
+    {
+        /* End-to-end type 2 (0x13B3C, flag != 0). The case-2 body (0x135a8)
+         * rotates the +0x14 block by one dword and enqueues it through 0x33734
+         * at 0x13abf. The positive-offset arm (0x135f1..0x13629) sets the
+         * first DAC index to DSD(src+8) + (s8)offset (0x13627 add eax,esi) and
+         * the count to DSB(rec+0x0F) (0x13624 mov dl,[edi+0xf]). gfx_flush
+         * expands each 6-bit lane: 0x80 -> (0x80 >> 2) & 0x3F = 0x20 -> 0x82;
+         * 0x40 -> (0x40 >> 2) & 0x3F = 0x10 -> 0x41. Step 1 rotates
+         * [A,B] -> [B,A], so DAC[0x50] = 0x82 (B) and DAC[0x51] = 0x41 (A);
+         * step 2 rotates back. */
+        u32 src = EFFECTS_TEST_SRC;
+        u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
+        u32 tab = src + 0x100u, blk = src + 0x200u;
+        palette_list_init();
+        effects_init();
+        mem_fill(src, 0, 0x300u);
+        /* handle 0 (src+0x00 == 0) so resolved[1] = blk+4 = A. */
+        DSD(src + 0x08) = 0x50u;          /* first DAC index */
+        DSD(src + 0x0C) = 2u;
+        DSD(DS_001014E0) = tab;
+        DSD(DS_001014F0) = 1;
+        DSD(tab + 16) = blk;
+        DSD(blk + 4) = 0x00000040u;       /* A = resolved[1] */
+        DSD(blk + 8) = 0x00000080u;       /* B = resolved[2] */
+        u32 rec = effects_spawn_scroll(src, 0, 2u, 1u);
+        CHECK(rec != 0, "end-to-end scroll spawn");
+        CHECK_EQ_INT((int)DSD(rec + 0x14), 0x40);
+        CHECK_EQ_INT((int)DSD(rec + 0x18), 0x80);
+        effects_step();                    /* state 1 -> 0, rotate + enqueue */
+        gfx_flush_palette();
+        CHECK_EQ_INT(gfx_dac[0x50][0], 0x82);   /* rotated-in B */
+        CHECK_EQ_INT(gfx_dac[0x51][0], 0x41);   /* rotated A */
+        /* Non-vacuous: the drain reset the dirty-list head, and the second
+         * step re-rotates and re-drains with the opposite order. */
+        CHECK_EQ_INT((int)DSD(DS_00107798), (int)DS_00107498);
+        effects_step();
+        gfx_flush_palette();
+        CHECK_EQ_INT(gfx_dac[0x50][0], 0x41);
+        CHECK_EQ_INT(gfx_dac[0x51][0], 0x82);
         DSD(DS_001014E0) = saved_tab;
         DSD(DS_001014F0) = saved_n;
     }

@@ -106,7 +106,8 @@ static u32 effect_take_free(void)
 {
     if (DSD(DS_000FCCE8) == 0) return 0;
     u32 rec = DSD(DS_000FCCE8);
-    if (rec == DS_000FCCE8) return 0;       /* empty free list */
+    /* PORT: the free sentinel points at itself when the list is empty. */
+    if (rec == DS_000FCCE8) return 0;
     u8 saved = DSB(DS_0009AF3C);
     DSB(DS_0009AF3C) = 1;
     list_unlink(rec);
@@ -186,10 +187,11 @@ u32 effects_spawn_pulse(u32 source_rec, u32 byte_arg)
     DSD(rec + 8) = source_rec;
     DSB(rec + 0x0d) = (u8)byte_arg;
     s32 count = (s32)DSD(source_rec + 0x0c);
-    /* Two loops, not one: the raw fills all of +0x10 with white first, THEN
-     * copies the resolved block into +0x410. The blocks overlap at +0x410 when
-     * count == 257 (white's i = 256, resolved's j = 0), and the raw's ordering
-     * leaves the resolved value there. A merged loop would leave white. */
+    /* PORT: two loops, not one - the raw (0x13E7D..0x13E96) fills all of +0x10
+     * with white first, THEN (0x13E98..0x13EAB) copies the resolved block into
+     * +0x410. The blocks overlap at +0x410 when count == 257 (white's i = 256,
+     * resolved's j = 0), and the raw's ordering leaves the resolved value
+     * there. A merged loop would leave white. */
     for (s32 i = 0; i < count; i++)
         DSD(rec + 0x10 + (u32)i * 4u) = 0x00FFFFFFu;
     /* PORT: the raw dereferences `resolved` unconditionally (faults on a failed
