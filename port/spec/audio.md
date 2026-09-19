@@ -953,7 +953,7 @@ payload decode is **verified** against the capture:
 * `[0] = 0x0E` and `[1] = 0x00` are constant across all 181 entries; `[2]` is
   the percussion base note for the `0x7F` bank (`likely`).
 
-## Known capture divergences (Task 9)
+## Known capture divergences
 
 Places where the port's register stream differs from
 `data/audio-captures/prage_000.dro`. **No audio-fidelity claim is made**: the
@@ -993,7 +993,7 @@ assignment "divergence #7"; the channel half is **item 5** here — item 7 is th
 
 | # | divergence | disposition |
 |---|---|---|
-| 1 | carrier-TL velocity attenuation | **named**: formula derived, input `V` engine-supplied; port writes `[10]` verbatim |
+| 1 | carrier-TL velocity attenuation | **named, metric-excluded**: formula derived, input `V` engine-supplied; port writes `[10]` verbatim |
 | 2 | `0x105 = 0x01` (OPL3 enable) | **matched** |
 | 3 | parser / XMIDI running status | **matched** (not present) |
 | 4 | driver cached-state init block | **matched** under the symmetric reduction |

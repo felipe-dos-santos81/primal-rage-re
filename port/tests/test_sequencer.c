@@ -456,8 +456,8 @@ int test_sequencer(void)
 
         /* 8. Capture oracle (informational). The capture is the real driver,
          *    which the port reconstructs rather than reproduces: its
-         *    cached-state init block, per-patch operator application and
-         *    channel reuse are not modelled. Both streams are reduced by the
+         *    cached-state init block and per-patch operator application are
+         *    not modelled. Both streams are reduced by the
          *    same rule: drop everything before the stream's first key-on
          *    (0xB0..0xB8 with the key bit), map capture ms -> port tick at
          *    120 Hz, and drop the documented-excluded registers. The driver

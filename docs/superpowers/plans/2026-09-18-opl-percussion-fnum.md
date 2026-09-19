@@ -31,8 +31,8 @@ collapses to a table lookup; the pieces:
 | `0x3646`-`0x364e` | `ax = (ax + (bx & 0xff) << 8 + 8) >> 4` (signed) |
 | `0x3650`-`0x3664` | clamp `ax` to `0..0x5ff` |
 | `0x3666`-`0x366b` | `idx = ax >> 4` |
-| `0x366f`/`0x367a` | `sem = t9dd[idx]` (table `0x9dd` = `idx mod 12`), row = `sem << 5` |
-| `0x3681`-`0x3683` | `w = pitch_tbl[16*sem + ((2*ax) & 0x1f)]` (words at `0x7fd`) |
+| `0x366f`/`0x367a` | `sem = t9dd[idx]` (table `0x9dd` = `idx mod 12`), row = `sem << 5` (32 **bytes** per semitone: `shl di,5`) |
+| `0x3681`-`0x3683` | `w = pitch_tbl[16*sem + ((2*ax) & 0x1f)]` (16 **words** per semitone — the same 32 bytes; word table at `0x7fd`) |
 | `0x3689`-`0x369b` | `oct = t97d[idx]` (table `0x97d` = `idx / 12`); `block = oct - 1 + (w < 0)`; if `block < 0` then `block++`, `w >>= 1` |
 | `0x36a1`-`0x36a6` | `a0 = w & 0xff`; `b0 = (block << 2) | ((w >> 8) & 0x03)` |
 

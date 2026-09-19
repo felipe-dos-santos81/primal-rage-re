@@ -3,7 +3,7 @@
  *
  * The original sent MIDI events to the loaded SBPRO2.MDI driver and the driver
  * wrote the OPL registers. This module stands in for that driver: it owns a
- * fixed 9-channel OPL voice pool, looks programs up in the FAT.OPL bank, and
+ * fixed 18-channel OPL voice pool, looks programs up in the FAT.OPL bank, and
  * writes the same register families the capture shows. Voice stealing and the
  * per-voice decode are the port's reconstruction, not the driver's code; the
  * parts the capture pins down (patch byte layout, tick, fnum/block) are noted
@@ -133,10 +133,10 @@ static int read_vlq(u32 *out)
  *
  * The driver ORs 0x30 into 0xC0 (OPL3 left/right output bits) in the capture;
  * kept here. KNOWN DIVERGENCE: the driver also attenuates the carrier TL
- * (p[10]) by velocity, dominantly p[10] + 0x16 + ((127 - vel) >> 3) added to
- * the raw byte (KSL bits included); the residual is not a pure function of
- * velocity (patch 0x34 is +1, patch 0x74 is -1), so this port applies the patch
- * TL verbatim. See port/spec/audio.md "Known capture divergences". */
+ * (p[10]) by velocity, but its input V is engine/config-supplied and not
+ * derivable from the driver, so this port applies the patch TL verbatim. See
+ * docs/superpowers/plans/2026-09-18-opl-velocity-tl.md and port/spec/audio.md
+ * "Known capture divergences". */
 static void apply_patch(int opl_ch, u16 key)
 {
     const u8 *p = patches_lookup(key);

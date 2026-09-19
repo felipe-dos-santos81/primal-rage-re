@@ -6,8 +6,9 @@ comparison measure real divergence. Plan:
 `docs/superpowers/specs/2026-09-18-opl-driver-design.md`.
 
 **What this cycle proves.** The port's OPL register stream now walks the captured
-original from its first key-on through four notes in lockstep, and the
-comparison's reported first difference is a **real** register divergence (the
+original from its first key-on through the second note's operator preamble; the
+first divergence is at C write 24. The comparison's reported first difference is
+a **real** register divergence (the
 E0-family value skip) rather than an artifact of the comparison. Two real
 divergences were derived and fixed: the percussion note→fnum remap and the
 18-slot channel rotation. One derivation (`velocity→TL`) ended in
@@ -58,8 +59,8 @@ The oracle's first-difference line moved through four states. Write 2 was an
 |---|---|---|
 | before the cycle | `C write 2: C tick=60 reg=0x20 val=0000 vs capture tick=60 reg=0xb0 val=0x2b` | **artifact**: the capture was sliced from its first key-on (dropping that note's operators/`C0`/`A0`) while the port dropped only `tick==0`, so the compared pair was always port-operator vs capture-key-on. Cannot advance by any stream change. |
 | after Task 3 (oracle fix) | `C write 14: C tick=60 reg=0xb0 val=0x2a vs capture tick=60 reg=0xb0 val=0x2b` | **real divergence #6**: percussion note 47 mapped by the melodic `NOTE_TAB` (`0x28B`) instead of the patch base (`0x3CF`). |
-| after Task 4 (#6) | `C write 16: C tick=68 reg=0x20 val=0000 vs capture tick=68 reg=0x21 val=0000` | **real divergence #5** (channel half): the port reused lowest-free OPL ch0; the capture rotates ch1. |
-| after Task 5 (#5/#7) — **current** | `C write 24: C tick=68 reg=0xe1 val=0000 vs capture tick=68 reg=0xc1 val=0x34` | **named divergence #8**: the E0-family value skip (next section). |
+| after Task 4 — fixed #6 (`9a22d83`) | `C write 16: C tick=68 reg=0x20 val=0000 vs capture tick=68 reg=0x21 val=0000` | **real divergence #5** (channel half): the port reused lowest-free OPL ch0; the capture rotates ch1. |
+| after Task 5 — fixed #5/#7 (`ce2210d`) — **current** | `C write 24: C tick=68 reg=0xe1 val=0000 vs capture tick=68 reg=0xc1 val=0x34` | **named divergence #8**: the E0-family value skip (next section). |
 
 The line advanced **write 2 → 14 → 16 → 24**; the write 2→14 step is the metric
 fix, the 14→24 steps are two derived-and-implemented driver behaviours.
