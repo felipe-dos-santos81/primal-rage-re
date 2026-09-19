@@ -95,13 +95,15 @@ void effects_init(void)
     DSB(DS_0009AF3C) = 0;
 }
 
-/* 0x13C70. */
-u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle)
+/* PORT: the four producers share one pop — take the free-list head under the
+ * interrupt lock. Returns 0 when the pool is unbuilt or empty. The unbuilt
+ * guard mirrors effects_clear's: with the sentinels zeroed (actors_reset
+ * early-returns before effects_init) the free sentinel reads as rec=0 and
+ * list_unlink(0) would write mem[0]/mem[4], then link a phantom record onto the
+ * active list. The original itself factors this pop out of line at 0x133D0
+ * (uncalled); the port keeps one owner for the four producers. */
+static u32 effect_take_free(void)
 {
-    /* PORT: mirror effects_clear's unbuilt-pool guard. With the sentinels zeroed
-     * (actors_reset early-returns before effects_init) the free sentinel reads as
-     * rec=0 and list_unlink(0) would write mem[0]/mem[4], then link a phantom
-     * record onto the active list. */
     if (DSD(DS_000FCCE8) == 0) return 0;
     u32 rec = DSD(DS_000FCCE8);
     if (rec == DS_000FCCE8) return 0;       /* empty free list */
@@ -109,6 +111,14 @@ u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle)
     DSB(DS_0009AF3C) = 1;
     list_unlink(rec);
     DSB(DS_0009AF3C) = saved;
+    return rec;
+}
+
+/* 0x13C70. */
+u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle)
+{
+    u32 rec = effect_take_free();
+    if (rec == 0) return 0;
 
     const u32 *resolved = (const u32 *)res_resolve(handle);
     DSB(rec + 0x0f) = 0x80;
@@ -129,6 +139,30 @@ u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle)
             DSD(rec + 0x410 + (u32)i * 4u) = resolved[1 + i];
     }
 
+    DSB(DS_0009AF3C) = 1;
+    DSB(rec + 0x0e) = 1;
+    list_insert_after(DS_000FCCE0, rec);
+    DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) + 1);
+    DSB(DS_0009AF3C) = 0;
+    return rec;
+}
+
+/* 0x13D4C. Type 4: +0x10 holds the resolved block's colours for the case-4
+ * step body to darken to zero. */
+u32 effects_spawn_darken(u32 source_rec, u32 byte_arg, u32 handle)
+{
+    u32 rec = effect_take_free();
+    if (rec == 0) return 0;
+    const u32 *resolved = (const u32 *)res_resolve(handle);
+    DSB(rec + 0x0f) = 0;
+    DSB(rec + 0x0c) = 4;
+    DSD(rec + 8) = source_rec;
+    DSB(rec + 0x0d) = (u8)byte_arg;
+    s32 count = (s32)DSD(source_rec + 0x0c);
+    if (resolved != NULL) {
+        for (s32 i = 0; i < count; i++)
+            DSD(rec + 0x10 + (u32)i * 4u) = resolved[1 + i];
+    }
     DSB(DS_0009AF3C) = 1;
     DSB(rec + 0x0e) = 1;
     list_insert_after(DS_000FCCE0, rec);

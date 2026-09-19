@@ -232,5 +232,38 @@ int test_effects(void)
         CHECK_EQ_INT(n, 24);
     }
 
+    {
+        /* 0x13D4C: type 4, +0x0F = 0, +0x0E = 1, +0x10 = the resolved block's
+         * dwords (no +0x410 fill), active count +1. */
+        u32 src = EFFECTS_TEST_SRC;
+        u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
+        u32 tab = src + 0x100u, blk = src + 0x200u, rec;
+        effects_init();
+        mem_fill(src, 0, 0x300u);
+        DSD(src + 0x0C) = 2u;
+        DSD(DS_001014E0) = tab;
+        DSD(DS_001014F0) = 1;
+        DSD(tab + 16) = blk;
+        DSD(blk + 4) = 0x40404040u;
+        DSD(blk + 8) = 0x00707070u;
+        rec = effects_spawn_darken(src, 0x2Cu, 0u);
+        CHECK(rec != 0, "0x13D4C takes a record");
+        CHECK_EQ_INT(effects_active(), 1);
+        CHECK_EQ_INT((int)DSB(rec + 0x0C), 4);
+        CHECK_EQ_INT((int)DSB(rec + 0x0F), 0);
+        CHECK_EQ_INT((int)DSB(rec + 0x0E), 1);
+        CHECK_EQ_INT((int)DSD(rec + 0x08), (int)src);
+        CHECK_EQ_INT((int)DSB(rec + 0x0D), 0x2C);
+        CHECK_EQ_INT((int)DSD(rec + 0x10), 0x40404040);
+        CHECK_EQ_INT((int)DSD(rec + 0x14), 0x00707070);
+        /* The record front-inserts into the active list like 0x13C70. */
+        CHECK_EQ_INT((int)DSD(DS_000FCCE0), (int)rec);
+        CHECK_EQ_INT((int)DSD(rec), (int)DS_000FCCE0);
+        DSD(DS_001014E0) = saved_tab;
+        DSD(DS_001014F0) = saved_n;
+    }
+    effects_clear();
+    CHECK_EQ_INT(effects_active(), 0);
+
     return g_failures - before;
 }

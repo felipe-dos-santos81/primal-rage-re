@@ -22,6 +22,12 @@ void effects_init(void);
  * the entry count and the copied block come from `source_rec`'s +0xC. */
 u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle);
 
+/* 0x13D4C. Pops a free record, fills it as type 4 (darken-to-zero over the
+ * resolved block) and head-inserts it into the active list. Same contract as
+ * effects_spawn: returns the record offset, or 0 when the pool is
+ * unbuilt/empty. */
+u32 effects_spawn_darken(u32 source_rec, u32 byte_arg, u32 handle);
+
 /* 0x134C0. Ages every active record one frame. Each record's state byte
  * (rec+0xE) counts down from the byte at rec+0xD; when it wraps the record's
  * type body runs, animating its +0x10 block (through 0x33734's palette append)
