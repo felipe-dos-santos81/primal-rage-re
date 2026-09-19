@@ -28,7 +28,7 @@ What independence does and does not buy. Agreement with the C stream is real
 evidence that the *implementation* of the shared contract is faithful — it
 catches transcription and coding errors, including in the note table. It is NOT
 evidence that the contract matches the original driver: the reconstruction
-choices (nine-voice pool, oldest-steal, per-note whole-patch re-apply) are the
+choices (18-voice OPL3 pool, oldest-steal, per-note whole-patch re-apply) are the
 port's and are unverified against the capture (spec "Known capture divergences").
 
 usage:
@@ -47,8 +47,21 @@ import sys
 # turns a copied literal into an independently computed value.
 OPL_CLOCK = 49716.0
 
-# OPL2 operator slot for each sequencer channel (0x20+slot, 0x40+slot, ...).
-OPL_SLOT = (0, 1, 2, 8, 9, 10, 16, 17, 18)
+# OPL3 operator register offset for each sequencer channel, including the
+# second register set's 0x100 (SBPRO2.MDI 0xc37 -> 0xc5b/0xc7f: channels 0-8 are
+# 0,1,2,8,9,10,16,17,18, channels 9-17 repeat them in bank 1).
+OPL_SLOT = (0, 1, 2, 8, 9, 10, 16, 17, 18,
+            0x100, 0x101, 0x102, 0x108, 0x109, 0x10a, 0x110, 0x111, 0x112)
+OPL_BANK = 9        # channels per OPL3 register set
+OPL_CHANNELS = len(OPL_SLOT)
+
+
+def ch_reg(ch, family):
+    """Channel-family register (0xC0/0xA0/0xB0) for an OPL3 channel.
+
+    The driver (SBPRO2.MDI 0xca3/0xcb5) addresses these by channel index within
+    its bank: 0x100*bank + (ch mod 9), unlike the operator families."""
+    return family + (ch % OPL_BANK) + (0x100 if ch >= OPL_BANK else 0)
 
 # PATCH_BYTES payload -> register, in the order the port writes them: modulator
 # fields then carrier fields (carrier at slot+3), each family in register order.
@@ -245,7 +258,7 @@ def decode_events(evnt):
 
 
 class Sequencer:
-    """Replays `decode_events` tokens against a nine-voice OPL pool.
+    """Replays `decode_events` tokens against an 18-voice OPL3 pool.
 
     `tick` tags every write with the number of completed tick_once calls; writes
     made by start() carry tick 0, matching the test driver.
@@ -267,7 +280,8 @@ class Sequencer:
         self.wait = 0
         self.playing = False
         self.age = 0
-        self.voice = [{'note': self.FREE} for _ in range(9)]
+        self.next = OPL_CHANNELS - 1     # driver's reset cursor 0xffff
+        self.voice = [{'note': self.FREE} for _ in range(OPL_CHANNELS)]
         self.program = [0] * 16
         self.bank = [0] * 16
 
@@ -275,31 +289,40 @@ class Sequencer:
         self.out.append((self.tick, reg, val))
 
     def halt(self):
-        for v in range(9):
+        for v in range(OPL_CHANNELS):
             self.key_off(v)
         self.playing = False
 
     def key_off(self, v):
         if self.voice[v]['note'] == self.FREE:
             return
-        self.write(0xB0 + v, self.voice[v]['b0'])
+        self.write(ch_reg(v, 0xB0), self.voice[v]['b0'])
         self.voice[v] = {'note': self.FREE}
 
     def key_off_note(self, midi, note):
-        matches = [v for v in range(9)
+        matches = [v for v in range(OPL_CHANNELS)
                    if self.voice[v].get('note') == note
                    and self.voice[v].get('midi') == midi]
         if matches:
             self.key_off(min(matches, key=lambda v: self.voice[v]['age']))
 
     def alloc_voice(self):
-        for v in range(9):
+        # SBPRO2.MDI's melodic allocator (0x3095-0x30d8): a monotonic rotation
+        # cursor over the 18 slot-owner bytes [0x1a49] takes the next free slot
+        # after the cursor, wrapping at 18, so successive notes rotate
+        # 0,1,2,... rather than reusing the lowest free channel. key_off leaves
+        # the cursor untouched (0x3162). Mirrors sequencer.c's alloc_voice.
+        v = self.next
+        for _ in range(OPL_CHANNELS):
+            v = (v + 1) % OPL_CHANNELS
             if self.voice[v]['note'] == self.FREE:
+                self.next = v
                 return v
-        victim = min(range(9), key=lambda v: self.voice[v]['age'])
-        # PORT: all nine busy — steal the oldest (original's exhaustion policy
-        # unverified; see mixer.h for the same unknown on the sample path).
+        victim = min(range(OPL_CHANNELS), key=lambda v: self.voice[v]['age'])
+        # PORT: all 18 busy — steal the oldest (the driver steals by quietest
+        # voice at 0x36f6; not reached in the compared window).
         self.key_off(victim)
+        self.next = victim
         return victim
 
     def apply_patch(self, ch, key):
@@ -309,7 +332,7 @@ class Sequencer:
         base = OPL_SLOT[ch]
         for reg, i in PATCH_WRITES:
             self.write(reg + base, p[i])
-        self.write(0xC0 + ch, p[8] | 0x30)
+        self.write(ch_reg(ch, 0xC0), p[8] | 0x30)
 
     def key_on(self, midi, note, vel, dur):
         if not (0 <= midi < 16 and 0 <= note <= 127):
@@ -337,8 +360,8 @@ class Sequencer:
         self.voice[v] = {'midi': midi, 'note': note, 'release': dur,
                          'age': self.age, 'b0': b0}
         self.age += 1
-        self.write(0xA0 + v, fnum & 0xFF)
-        self.write(0xB0 + v, b0 | 0x20)
+        self.write(ch_reg(v, 0xA0), fnum & 0xFF)
+        self.write(ch_reg(v, 0xB0), b0 | 0x20)
 
     def _advance(self):
         """Consume tokens until a delta is read or the stream halts."""
@@ -374,7 +397,7 @@ class Sequencer:
     def tick_once(self):
         if not self.playing:
             return
-        for v in range(9):
+        for v in range(OPL_CHANNELS):
             vc = self.voice[v]
             if vc['note'] == self.FREE:
                 continue

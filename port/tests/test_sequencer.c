@@ -432,6 +432,28 @@ int test_sequencer(void)
             }
         }
 
+        /* 7c. Channel assignment (spec divergence 7). The driver's melodic
+         *     allocator (SBPRO2.MDI 0x3095-0x30d8) walks a rotation cursor
+         *     [0x1408] over the 18 slot-owner bytes [0x1a49]: each note takes
+         *     the next free slot after the cursor (wrapping at 18), not the
+         *     lowest free channel, and freeing a voice does not move the cursor
+         *     back. The capture reflects it: its first four key-ons are OPL
+         *     ch0, ch1, ch2, ch3. The port must not reuse ch0. */
+        {
+            int got[4];
+            int n = 0;
+            for (int i = 0; i < c_n && n < 4; i++) {
+                if (c_ev[i].reg >= 0xB0 && c_ev[i].reg <= 0xB8 &&
+                    (c_ev[i].val & 0x20)) {
+                    got[n] = (int)(c_ev[i].reg - 0xB0);
+                    n++;
+                }
+            }
+            CHECK_EQ_INT(n, 4);
+            for (int i = 0; i < n; i++)
+                CHECK_EQ_INT(got[i], i);
+        }
+
         /* 8. Capture oracle (informational). The capture is the real driver,
          *    which the port reconstructs rather than reproduces: its
          *    cached-state init block, per-patch operator application and

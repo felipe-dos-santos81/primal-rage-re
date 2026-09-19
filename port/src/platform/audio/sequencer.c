@@ -7,7 +7,7 @@
  * writes the same register families the capture shows. Voice stealing and the
  * per-voice decode are the port's reconstruction, not the driver's code; the
  * parts the capture pins down (patch byte layout, tick, fnum/block) are noted
- * at their use.
+ * at their use. The channel pool is the driver's 18 OPL3 operator pairs.
  */
 #include <stddef.h>
 
@@ -15,14 +15,27 @@
 #include "patches.h"
 #include "opl/opl.h"
 
-#define SEQ_OPL_CHANNELS 9
+#define SEQ_OPL_CHANNELS 18
+#define SEQ_OPL_BANK 9
 #define SEQ_MIDI_CHANNELS 16
 #define SEQ_NOTE_FREE (-1)
 #define SEQ_NO_PATCH 0xFFFFu
 
-/* OPL2 operator register slot for each channel: 0x20+slot, 0x40+slot, ...
- * (channels 0-2 -> 0..2, 3-5 -> 8..10, 6-8 -> 16..18; op2 is slot+3). */
-static const u8 OPL_SLOT[SEQ_OPL_CHANNELS] = { 0, 1, 2, 8, 9, 10, 16, 17, 18 };
+/* PORT: operator register offset for each OPL3 channel, including the second
+ * register set's 0x100 (SBPRO2.MDI 0xc37 -> 0xc5b/0xc7f: channels 0-8 are
+ * {0,1,2,8,9,10,16,17,18}, channels 9-17 repeat them in bank 1; op2 is +3). */
+static const u16 OPL_SLOT[SEQ_OPL_CHANNELS] = {
+    0x00, 0x01, 0x02, 0x08, 0x09, 0x0a, 0x10, 0x11, 0x12,
+    0x100, 0x101, 0x102, 0x108, 0x109, 0x10a, 0x110, 0x111, 0x112,
+};
+
+/* PORT: register low byte for the channel families (0xC0/0xA0/0xB0). The
+ * driver (SBPRO2.MDI 0xca3/0xcb5) uses the channel index within its bank, not
+ * the operator slot: 0x100*bank + (ch mod 9). */
+static u16 ch_reg(int ch, u16 family)
+{
+    return (u16)(family + (ch % SEQ_OPL_BANK) + (ch >= SEQ_OPL_BANK ? 0x100 : 0));
+}
 
 /* MIDI note -> { block, fnum } for 49716 Hz, fnum <= 1023 with the highest
  * usable fnum (lowest block). Capture-verified anchors: note 84 -> block 5
@@ -66,18 +79,25 @@ static struct {
     int loaded;
     int playing;
     u32 age;
+    u32 next;          /* last allocated OPL channel, for the rotation */
     seq_voice voice[SEQ_OPL_CHANNELS];
     u8 program[SEQ_MIDI_CHANNELS];
     u8 bank[SEQ_MIDI_CHANNELS];
 } S = {
     /* Voices start free, so the first halt() has nothing to key off and
-     * seq_active_track() is 0 before the first load. */
+     * seq_active_track() is 0 before the first load. `next` seeds the driver's
+     * 0xffff rotation cursor: the first trial wraps to slot 0. */
+    .next = SEQ_OPL_CHANNELS - 1,
     .voice = {
         [0] = { .note = SEQ_NOTE_FREE }, [1] = { .note = SEQ_NOTE_FREE },
         [2] = { .note = SEQ_NOTE_FREE }, [3] = { .note = SEQ_NOTE_FREE },
         [4] = { .note = SEQ_NOTE_FREE }, [5] = { .note = SEQ_NOTE_FREE },
         [6] = { .note = SEQ_NOTE_FREE }, [7] = { .note = SEQ_NOTE_FREE },
-        [8] = { .note = SEQ_NOTE_FREE },
+        [8] = { .note = SEQ_NOTE_FREE }, [9] = { .note = SEQ_NOTE_FREE },
+        [10] = { .note = SEQ_NOTE_FREE }, [11] = { .note = SEQ_NOTE_FREE },
+        [12] = { .note = SEQ_NOTE_FREE }, [13] = { .note = SEQ_NOTE_FREE },
+        [14] = { .note = SEQ_NOTE_FREE }, [15] = { .note = SEQ_NOTE_FREE },
+        [16] = { .note = SEQ_NOTE_FREE }, [17] = { .note = SEQ_NOTE_FREE },
     },
 };
 
@@ -120,7 +140,7 @@ static int read_vlq(u32 *out)
 static void apply_patch(int opl_ch, u16 key)
 {
     const u8 *p = patches_lookup(key);
-    u8 base = OPL_SLOT[opl_ch];
+    u16 base = OPL_SLOT[opl_ch];
 
     if (p == NULL)
         return;
@@ -134,14 +154,14 @@ static void apply_patch(int opl_ch, u16 key)
     opl_write((u16)(0x83 + base), p[12]);
     opl_write((u16)(0xE0 + base), p[7]);
     opl_write((u16)(0xE3 + base), p[13]);
-    opl_write((u16)(0xC0 + opl_ch), (u8)(p[8] | 0x30));
+    opl_write(ch_reg(opl_ch, 0xC0), (u8)(p[8] | 0x30));
 }
 
 static void key_off(int opl_ch)
 {
     if (S.voice[opl_ch].note == SEQ_NOTE_FREE)
         return;
-    opl_write((u16)(0xB0 + opl_ch), S.voice[opl_ch].b0);
+    opl_write(ch_reg(opl_ch, 0xB0), S.voice[opl_ch].b0);
     S.voice[opl_ch].note = SEQ_NOTE_FREE;
     S.voice[opl_ch].release = 0;
 }
@@ -162,18 +182,32 @@ static void key_off_note(int midi, int note)
 
 static int alloc_voice(void)
 {
-    int best = -1;
-    for (int v = 0; v < SEQ_OPL_CHANNELS; v++) {
-        if (S.voice[v].note == SEQ_NOTE_FREE)
+    /* PORT: SBPRO2.MDI's melodic allocator (0x3095-0x30d8) walks a monotonic
+     * rotation cursor [0x1408] over the 18 slot-owner bytes [0x1a49]: it takes
+     * the next free slot after the cursor, wrapping at 18, so successive notes
+     * rotate 0,1,2,... instead of reusing the lowest free channel. key_off
+     * leaves `next` untouched (0x3162), so freeing ch0 does not pull the next
+     * note back to it. */
+    int v = (int)S.next;
+    for (int i = 0; i < SEQ_OPL_CHANNELS; i++) {
+        v = (v + 1) % SEQ_OPL_CHANNELS;
+        if (S.voice[v].note == SEQ_NOTE_FREE) {
+            S.next = (u32)v;
             return v;
-        if (best < 0 || S.voice[v].age < S.voice[best].age)
-            best = v;
+        }
     }
-    /* PORT: all nine voices busy — steal the oldest. The original's exhaustion
-     * policy (drop / steal / error) is not established; see mixer.h for the
-     * same unknown on the sample path. */
-    key_off(best);
-    return best;
+    /* PORT: all 18 voices busy — the driver steals by quietest voice at
+     * 0x36f6; the port keeps its oldest-voice policy (see spec divergences).
+     * (Not reached in the compared window; see the channel-assignment doc.) */
+    {
+        int best = 0;
+        for (int i = 1; i < SEQ_OPL_CHANNELS; i++)
+            if (S.voice[i].age < S.voice[best].age)
+                best = i;
+        key_off(best);
+        S.next = (u32)best;
+        return best;
+    }
 }
 
 static void key_on(int midi, int note, int vel, u32 dur)
@@ -214,8 +248,8 @@ static void key_on(int midi, int note, int vel, u32 dur)
         block = (u8)NOTE_TAB[idx][0];
         fnum = NOTE_TAB[idx][1];
         S.voice[v].b0 = (u8)((block << 2) | ((fnum >> 8) & 0x03));
-        opl_write((u16)(0xA0 + v), (u8)(fnum & 0xff));
-        opl_write((u16)(0xB0 + v), (u8)(S.voice[v].b0 | 0x20));
+        opl_write(ch_reg(v, 0xA0), (u8)(fnum & 0xff));
+        opl_write(ch_reg(v, 0xB0), (u8)(S.voice[v].b0 | 0x20));
     }
 }
 
@@ -378,6 +412,7 @@ void seq_start(void)
     S.wait = 0;
     S.playing = 1;
     S.age = 0;
+    S.next = SEQ_OPL_CHANNELS - 1;   /* driver's reset cursor 0xffff */
     for (int v = 0; v < SEQ_OPL_CHANNELS; v++) {
         S.voice[v].note = SEQ_NOTE_FREE;
         S.voice[v].midi = 0;
