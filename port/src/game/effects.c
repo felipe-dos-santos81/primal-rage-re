@@ -173,6 +173,32 @@ u32 effects_spawn_darken(u32 source_rec, u32 byte_arg)
     return rec;
 }
 
+/* 0x13E28. Type 6: +0x10 starts white and the case-6 step body darkens it
+ * toward the resolved block at +0x410. The handle is read from source_rec. */
+u32 effects_spawn_pulse(u32 source_rec, u32 byte_arg)
+{
+    u32 rec = effect_take_free();
+    if (rec == 0) return 0;
+    /* PORT: the raw dereferences [source_rec] for the handle (0x13E66). */
+    const u32 *resolved = (const u32 *)res_resolve(DSD(source_rec));
+    DSB(rec + 0x0f) = 0x80;
+    DSB(rec + 0x0c) = 6;
+    DSD(rec + 8) = source_rec;
+    DSB(rec + 0x0d) = (u8)byte_arg;
+    s32 count = (s32)DSD(source_rec + 0x0c);
+    for (s32 i = 0; i < count; i++) {
+        DSD(rec + 0x10 + (u32)i * 4u) = 0x00FFFFFFu;
+        if (resolved != NULL)
+            DSD(rec + 0x410 + (u32)i * 4u) = resolved[1 + i];
+    }
+    DSB(DS_0009AF3C) = 1;
+    DSB(rec + 0x0e) = 1;
+    list_insert_after(DS_000FCCE0, rec);
+    DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) + 1);
+    DSB(DS_0009AF3C) = 0;
+    return rec;
+}
+
 /* ---- 0x134C0: the per-frame effect step/age ----------------------------- */
 
 /* The step moves colours packed as 0xRRGGBB in a dword (channels at byte shifts

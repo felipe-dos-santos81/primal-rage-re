@@ -144,3 +144,78 @@ produces nothing. It does not weaken the dead-type proof.
 
 * This document records raw bytes only; no `data/` change.
 * Every claim above carries its file offset and byte sequence for re-verification.
+
+---
+
+# Task 2: the type-6 producer `0x13E28`
+
+`0x13E28` (file `0x66C7C`, 200 bytes, next function `0x13EF0`) is the
+"darken toward a target" producer: `+0x10` is filled white (`0xFFFFFF`) and the
+`effects_step` case-6 body darkens it toward the resolved block in `+0x410`.
+Reproduction: `dis(0x13e28, 210)` with the mapping above.
+
+## 6. Incoming registers (`0x13E28`, file `0x66C7C`)
+
+| role | register | raw evidence |
+|---|---|---|
+| source record | `EAX` | `0x13E2D 89c1 mov ecx, eax` (file `0x66C81`) |
+| byte arg (state reload) | `DL` | `0x13E78 88530d mov [ebx+0xd], dl` (file `0x66CCC`) |
+| handle | **no register** — read from `[source_rec]` | `0x13E66 8b01 mov eax, [ecx]` (file `0x66CBA`) immediately before `0x13E68 e8d7760000 call 0x1b544` (file `0x66CBC`) |
+
+As with `0x13D4C`, the handle is not an incoming register: `EAX` is copied to
+`ECX`, and the resolver `0x1B544` is fed `[ECX] = *(u32 *)source_rec`. The
+prologue `push ebx/ecx/esi/edi/ebp` (`0x13E28`, file `0x66C7C`) leaves `EBX`
+free for the popped record. This is the Task 1 human ruling, binding for all
+four producers.
+
+The shared free-list pop is inlined at `0x13E2F..0x13E60` (file
+`0x66C83`..`0x66CB2`) — same four steps as `0x13C70`/`0x13D4C`: self-test the
+free sentinel (`cmp ebx, 0x7cce8`), save the lock `[0x1af3c]`, set it, call
+`0x249D0` to unlink, restore it. `test ebx, ebx; je 0x13eea` returns 0 when the
+pop yielded nothing. `effect_take_free()` covers this.
+
+## 7. Offsets written by `0x13E28`
+
+| offset | width | value | source instruction (file) |
+|---|---|---|---|
+| `+0x00` | dword | next link | `0x249D0`/`0x249B0` |
+| `+0x04` | dword | prev link | `0x249D0`/`0x249B0` |
+| `+0x08` | dword | `source_rec` (`ECX`) | `0x13E75 894b08 mov [ebx+8], ecx` (`0x66CC9`) |
+| `+0x0C` | byte | `6` (type) | `0x13E71 c6430c06 mov byte [ebx+0xc], 6` (`0x66CC5`) |
+| `+0x0D` | byte | `DL` (byte arg) | `0x13E78 88530d mov [ebx+0xd], dl` (`0x66CCC`) |
+| `+0x0E` | byte | `1` (state) | `0x13ECB c6470e01 mov byte [edi+0xe], 1` (`0x66D1F`) |
+| `+0x0F` | byte | `0x80` | `0x13E6D c6430f80 mov byte [ebx+0xf], 0x80` (`0x66CC1`) |
+| `+0x10 + 4*i` | dword × count | `0x00FFFFFF` | `0x13E86 c74310ffffff00 mov dword [ebx+0x10], 0xffffff` (`0x66CDA`) |
+| `+0x410 + 4*i` | dword × count | `resolved[1+i]` | `0x13EAB 89b00c040000 mov [eax+0x40c], esi` (`0x66CFF`) |
+| `DS_0009AF3D` | byte | `++` (active count) | `0x13ED4..0x13EE4` (`0x66D28`..`0x66D38`) |
+
+**Confirmed against the raw bytes**: type `6` at `0x13E71 c6430c06`, `+0x0F =
+0x80` at `0x13E6D c6430f80`, and the white fill at `0x13E86
+c74310ffffff00`. The fill loop advances `EBX` by 4 per iteration (`0x13E91
+83c304`), so the dword `0x00FFFFFF` lands at `+0x10, +0x14, …`.
+
+Two loops, each bound by the **source** record's `+0xC` read signed
+(`test`/`jle` skips a non-positive count):
+
+* white fill: `0x13E7D mov edx, [ecx+0xc]` (`0x66CD1`), `test edx,edx; jle`
+  (`0x13E82`), body `0x13E86..0x13E96`.
+* resolved copy: `0x13E98 mov eax, [ecx+0xc]` (`0x66CEC`); `EDI` holds `rec`
+  (`0x13E5C mov edi, ebx`), `ESI` holds `resolved` (`0x13E7B mov esi, eax`).
+  `0x13EA1 mov eax, edi; 0x13EA5 add eax, 4; 0x13EA8 mov esi, [edx+4]; 0x13EAB
+  mov [eax+0x40c], esi` (`0x66CF5..0x66CFF`): on the first iteration
+  `eax = rec+0x404`, so the store is `rec+0x410` from `resolved[1]`; `edx += 4`
+  per iteration, so the sequence is `resolved[1], resolved[2], …`. A port that
+  copied `resolved[0]` (or from `+0x10`) would fail the test.
+* The raw dereferences `resolved` unconditionally; the port keeps the
+  `resolved != NULL` guard introduced in Task 1 (0x1B544 can fail), matching
+  `effects_spawn`'s existing PORT note.
+
+Head-insert: `0x13EBE mov eax, 0x7cce0` (active sentinel), `0x13EC9 mov edx,
+edi = rec`, `0x13ECF call 0x249b0` (`0x66D23`) — front-inserts after the active
+sentinel, same as `0x13C70`/`0x13D4C`. The lock is taken at `0x13EC3 mov
+[0x1af3c], dl` (`DL = 1`) and released at `0x13EDE mov [0x1af3c], dh`
+(`xor dh,dh` → 0), around the insert and the `DS_0009AF3D++`.
+
+The test is falsifiable on the handle binding: it sets `DSD(source_rec) = 4`
+(index 0, offset 4), so the copy reads `blk+8`/`blk+12`; a port that passed a
+handle of `0` would read `blk+4`/`blk+8` and fail `+0x410`/`+0x414`.

@@ -269,5 +269,38 @@ int test_effects(void)
     effects_clear();
     CHECK_EQ_INT(effects_active(), 0);
 
+    {
+        /* 0x13E28: type 6, +0x0F = 0x80, +0x0E = 1, +0x10 = 0xFFFFFF,
+         * +0x410 = the resolved block, count +1. */
+        u32 src = EFFECTS_TEST_SRC;
+        u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
+        u32 tab = src + 0x100u, blk = src + 0x200u, rec;
+        effects_init();
+        mem_fill(src, 0, 0x300u);
+        DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
+        DSD(src + 0x0C) = 2u;
+        DSD(DS_001014E0) = tab;
+        DSD(DS_001014F0) = 1;
+        DSD(tab + 16) = blk;
+        DSD(blk + 4) = 0x00102030u;
+        DSD(blk + 8) = 0x00040506u;
+        DSD(blk + 12) = 0x00070809u;
+        rec = effects_spawn_pulse(src, 1u);
+        CHECK(rec != 0, "0x13E28 takes a record");
+        CHECK_EQ_INT(effects_active(), 1);
+        CHECK_EQ_INT((int)DSB(rec + 0x0C), 6);
+        CHECK_EQ_INT((int)DSB(rec + 0x0F), 0x80);
+        CHECK_EQ_INT((int)DSB(rec + 0x0E), 1);
+        CHECK_EQ_INT((int)DSD(rec + 0x08), (int)src);
+        CHECK_EQ_INT((int)DSD(rec + 0x10), 0x00FFFFFF);
+        CHECK_EQ_INT((int)DSD(rec + 0x14), 0x00FFFFFF);
+        CHECK_EQ_INT((int)DSD(rec + 0x410), 0x00040506);
+        CHECK_EQ_INT((int)DSD(rec + 0x414), 0x00070809);
+        DSD(DS_001014E0) = saved_tab;
+        DSD(DS_001014F0) = saved_n;
+    }
+    effects_clear();
+    CHECK_EQ_INT(effects_active(), 0);
+
     return g_failures - before;
 }
