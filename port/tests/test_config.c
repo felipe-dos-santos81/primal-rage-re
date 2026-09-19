@@ -43,13 +43,15 @@ int test_config(void)
     for (u32 i = 0; i < 0x100u; i++) DSB(DS_00105D88 + i) = saved[i];
 
     {
-        /* set -> get round-trips for even/odd starts, width 8 / width 4 / width 1
-         * and the trailing-byte case. These are the fields the consumers use plus
-         * the boundary shapes of the walk. */
+        /* set -> get round-trips for even/odd starts, widths 8 / 4 / 3 / 1 / 2 and
+         * the trailing-byte case. Odd widths (3, and the synthesized 5 and 7) are
+         * the shape where the getter's cursor-parity seed ((bitpos+width)&1) and the
+         * setter's bitpos-parity branch disagree. */
         static const u32 saved_lo = 0x00105DAFu, saved_hi = 0x00105DE1u;
         u8 lo[0x20], hi[0x70];
         for (u32 i = 0; i < 0x20u; i++) lo[i] = DSB(saved_lo + i);
         for (u32 i = 0; i < 0x70u; i++) hi[i] = DSB(saved_hi + i);
+        u8 saved_flags = DSB(DS_00105DD8);
 
         config_field_set(0x29u, 0x0000ABCDu);
         CHECK_EQ_INT((int)config_field_get(0x29u), 0xABCD);
@@ -62,6 +64,33 @@ int test_config(void)
 
         config_field_set(0x2Au, 0x00000003u);
         CHECK_EQ_INT((int)config_field_get(0x2Au), 3);
+
+        /* Width 3, both parities: field 0x03 has bitpos 6 (getter odd-seed, setter
+         * even) and field 0x04 has bitpos 9 (getter even, setter odd). 11 bits. */
+        config_field_set(0x03u, 0x000005A3u);
+        CHECK_EQ_INT((int)config_field_get(0x03u), 0x5A3);
+        config_field_set(0x04u, 0x000006B7u);
+        CHECK_EQ_INT((int)config_field_get(0x04u), 0x6B7);
+
+        /* The setter's odd branch ORs the field's low nibble into the byte at
+         * DS_00105DE1 + (bitpos>>1) and must keep that byte's low nibble. Field
+         * 0x35 has bitpos 131, so it packs into DS_00105DE1 + 65. */
+        DSB(DS_00105DE1 + 65u) = 0x0Bu;
+        config_field_set(0x35u, 0x0000000Au);
+        CHECK_EQ_INT((int)(DSB(DS_00105DE1 + 65u) & 0x0Fu), 0x0B);
+
+        /* Widths 5 and 7 do not occur in the shipped table. Synthesize descriptors
+         * (the descriptor is just data; the same walk arithmetic runs) in unused
+         * slots 0x3C/0x3D and restore the slots after. */
+        u8 desc_saved[8];
+        for (u32 i = 0; i < 8u; i++) desc_saved[i] = DSB(DS_0002D300 + 0xF0u + i);
+        DSD(DS_0002D300 + 0x3Cu * 4u) = 0x00010500u;   /* width 5, bitpos 20 */
+        DSD(DS_0002D300 + 0x3Du * 4u) = 0x00018A00u;   /* width 7, bitpos 40 */
+        config_field_set(0x3Cu, 0x0000001Bu);
+        CHECK_EQ_INT((int)config_field_get(0x3Cu), 0x1B);
+        config_field_set(0x3Du, 0x0000006Du);
+        CHECK_EQ_INT((int)config_field_get(0x3Du), 0x6D);
+        for (u32 i = 0; i < 8u; i++) DSB(DS_0002D300 + 0xF0u + i) = desc_saved[i];
 
         /* The setter raises DS_00105DD8: |1 for a trailing byte, |6 always. */
         DSB(DS_00105DD8) = 0;
@@ -76,6 +105,7 @@ int test_config(void)
 
         for (u32 i = 0; i < 0x20u; i++) DSB(saved_lo + i) = lo[i];
         for (u32 i = 0; i < 0x70u; i++) DSB(saved_hi + i) = hi[i];
+        DSB(DS_00105DD8) = saved_flags;
     }
 
     {

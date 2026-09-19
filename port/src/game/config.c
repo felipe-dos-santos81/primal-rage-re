@@ -20,7 +20,7 @@ u32 config_field_get(u32 field)
     u32 value;
     s32 ebx;
 
-    if (cursor & 1u) {                          /* odd: seed is the low nibble */
+    if (cursor & 1u) {                          /* 0x13D9A7: odd start seeds the low nibble */
         value = DSB(DS_00105DE1 + idx) & 0x0Fu;
         ebx = (s32)idx;
         width -= 1u;
@@ -100,6 +100,10 @@ u32 config_field_set(u32 field, u32 value)
         value >>= 8;
     }
 
+    /* TODO(verify): the raw's edx at 0x2DACA/0x2DAD4 still holds the value shifted
+     * out by the write loop, not 0. The 0u placeholders are safe only because
+     * config_storage_touch is a no-op; a persistence cycle must re-derive both
+     * arguments from those sites instead of trusting them. */
     config_storage_touch(1u, 0u);                  /* 0x2DACA */
     config_storage_touch(2u, 0u);                  /* 0x2DAD4 */
     return 0u;
@@ -177,6 +181,11 @@ void config_validate(void)
         config_set_defaults();                     /* 0x2D886 */
         DSD(DS_00105E30) = 0x9C94D2C4u;            /* 0x2D88D */
     }
+
+    /* TODO(verify): the raw also performs three 0x2D4EC storage-maintenance calls
+     * on this path (0x2D8A5, 0x2D8AF, 0x2D909); the port omits them because
+     * storage is a no-op. A persistence cycle must add them rather than leave the
+     * storage image under-maintained. */
 
     /* 0x2D912/0x2D919: high-score validate 0x2DE98 and 0x2DF8C, both deferred
      * no-ops (spec §6/§7); called unconditionally. */
