@@ -195,8 +195,9 @@ replaced by a direct `ENGLISH.TXT` read.
 The title is proven **pixel-exact** against the original by
 `tools/title_compare.py`: `make title-pin` builds a capture-only `PRAGE.EXE`
 copy with the four behaviour sites patched in place (the three entry RNG draws
-plus the anim opcode-8 draw), `tools/title_capture.py` captures the **un-pinned**
-original in DOSBox-X (one file per distinct game frame — capture index ≠
+plus the anim opcode-8 draw), `tools/title_capture.py` captures the
+**overlay-live** original in DOSBox-X (four behaviour pins retained; one file per
+distinct game frame — capture index ≠
 game-frame index at 60 Hz logic / 70.09 Hz mode 13h), and `make title-oracle`
 aligns the port dump into **two independent captures** and explains every
 captured frame as a byte-offset splice of two adjacent port frames (a tear
@@ -216,7 +217,7 @@ true original, and ported the divergence. Two pieces:
   `game/flow.c` (`game_overlay_step`): a centred `sprintf("%s:%d",
   game_string_get(0x46), DS_00105C00)` (`CREDITS:5`) from the
   `DS_00105D60 == 0` / `DS_00105C00 != 0` branch. Proven by the oracle (green on
-  the un-pinned captures, red when stubbed). Seeded inputs `DS_00105C00 = 5`,
+  the overlay-live captures, red when stubbed). Seeded inputs `DS_00105C00 = 5`,
   `DS_00105C05 = 1`; the live credit countdown is a 4b gap. Diagnosis:
   `../docs/superpowers/plans/2026-09-18-bf08-overlay-diagnosis.md`.
 * **The `0x13xxx` effect list**, ported in the new `port/src/game/effects.{c,h}`:

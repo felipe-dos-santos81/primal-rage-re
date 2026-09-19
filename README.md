@@ -129,7 +129,8 @@ actor pool and real title state: the `0x68`-byte records and their lists, spawn
 (`0x2A408`/`0x29F34`/`0x29DB8` and the 47-opcode dispatcher `0x2B2A0`), the text
 grid and glyph renderer, the `0x5D7DC` LCG, and `0x121A0` with its `ENGLISH.TXT`
 caption. The title composite is proven against two independent captures of the
-un-pinned original over its window (`make title-oracle`):
+overlay-live original (four behaviour pins retained) over its window
+(`make title-oracle`):
 the capture is modelled as a byte-offset splice of two adjacent port frames
 because the original updates the aperture at `0x255CC` with no retrace wait
 while DX-CAPTURE samples at 70.09 Hz, and every captured frame is explained with
@@ -148,7 +149,8 @@ the resulting per-frame divergence (`CREDITS:5`, rows 7–12), and ported it:
 `DS_00105C00 = 5`, `DS_00105C05 = 1`) and the `0x13xxx` effect-list slice —
 spawn `0x13C70`, free-list build `0x13ADC`, clear `0x13DF0`, teardown `0x13420`
 and step/age `0x134C0` — in the new `port/src/game/effects.{c,h}` module. The
-oracle is now green against the un-pinned original (0 unexplained, port frames
+oracle is now green against the overlay-live original (four behaviour pins
+retained; 0 unexplained, port frames
 95/96 exhibited) and turns red when `0x2BF08` is stubbed back out, so it proves
 the overlay. `0x13C70`'s spawn is a **declared coverage gap** — it fills a
 record, but the effect render path is unported, so the spawn alone draws nothing
@@ -197,8 +199,8 @@ full ladder in order — a `--check 60` headless smoke run, then the
 oracle-required test suite, then `make smk-oracle`, `make title-oracle`,
 the GRA-extract oracle tests, and finally `symbols.h` idempotence.
 
-The title oracle compares the port dump against captures of the **un-pinned**
-original (the ported overlay runs):
+The title oracle compares the port dump against captures of the
+**overlay-live** original (four behaviour pins retained; the ported overlay runs):
 
 ```bash
 make title-pin                                   # patch only the four behaviour sites (three entry RNG draws + the anim opcode-8 draw) into /tmp/pr_title_pin/PRAGE.EXE (writes /tmp only)

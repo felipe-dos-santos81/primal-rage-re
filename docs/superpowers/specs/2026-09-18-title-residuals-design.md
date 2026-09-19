@@ -53,6 +53,26 @@ cycle exists to correct. It is dropped and revisited when a caller exists.
 | 5 | **Falsifiability rule.** Every ported item either moves the oracle and is proven by it, or is declared an explicit coverage gap with a unit-level proof. No silent unproven code. |
 | 6 | **Probe first for `0x13C70`.** Determine whether porting it moves the composite, and if it does not, declare the gap rather than claim proof. |
 
+### 1.3 Re-scope during execution (amended so the record is self-consistent)
+
+Two changes happened after execution started; this section records them and §2/§8
+are amended accordingly.
+
+* **`0x2BF08` re-scope.** The first draft removed the inert pin only to measure
+  drift and ported `0x2BF08` conditionally. The un-pinned capture instead
+  diverged totally (all 587/590 frames unexplained), falsifying the
+  frames-32/64/96 prediction (Decision 4). The human re-scoped to port the
+  overlay in-cycle and seed its captured inputs. The `DS_00105C05` row seed is
+  **`1`**, not the diagnosis's `7`: one text row is `20/3` px, so text row `1`
+  places the glyph at screen rows 7–12; the port dump is byte-identical to the
+  capture there.
+* **`0x134C0` moved into scope.** Task 6's spawn wiring left `DS_0009AF3D` with
+  no writer but the spawn's `+1` (`effects_clear` only zeroes it), and the
+  title's state-2 exit tests that count against zero. The title therefore
+  stalled past frame 95 where it previously progressed. The human elected to
+  port the step/age `0x134C0` in-cycle rather than carry the stall, so it is no
+  longer a non-goal or a carried residual.
+
 ## 2. Scope
 
 ### In scope
@@ -60,7 +80,8 @@ cycle exists to correct. It is dropped and revisited when a caller exists.
 * The `0x13xxx` effect-list slice the in-window call needs: spawn `0x13C70`,
   teardown `0x13DF0`, the list sentinels `DS_000FCCE0`/`DS_000FCCE8`, the lock
   `DAT_0009AF3C` and the active count `DAT_0009AF3D`, over the two intrusive
-  list primitives `0x249B0` (link) and `0x249D0` (unlink).
+  list primitives `0x249B0` (link) and `0x249D0` (unlink). Plus the per-frame
+  step/age `0x134C0` (§1.3).
 * `0x2BF08`, the `0x11D04` tail's message/text tick, in `flow.c`.
 * Removing the fifth `tools/title_pin.py` site, re-capturing twice, and
   re-deriving the oracle reference and its determinism proof.
@@ -71,7 +92,7 @@ cycle exists to correct. It is dropped and revisited when a caller exists.
 * The `0x13xxx` **render** path beyond what the spawned record needs to exist.
   If the effect is never drawn in-window, that is a declared gap (§6).
 * `0x11000`'s attract sub-machine (4d), `0x38A38`/`0x389C4`, `0x292AC`,
-  `0x134C0`, `0x4F644`, `0x10DB0`/`0x10E18`, and the player/fight-engine paths.
+  `0x4F644`, `0x10DB0`/`0x10E18`, and the player/fight-engine paths.
 * Any input model. `0x10DB0`/`0x10E18` gate on input-state bits the pinned
   no-input run never sets, so they stay deferred to 4b.
 * Streamed Smacker audio (2b-ii, §1.1).
@@ -185,7 +206,7 @@ The 4a-ii reference numbers (capture 1: 53 clean / 56 splice / 1 transition /
 ## 8. Residuals carried out of this cycle
 
 * `0x11000` attract sub-machine, `0x38A38` (`DS_00107900`'s producer),
-  `0x389C4`, `0x292AC`, `0x134C0`, `0x4F644` — 4b/4d.
+  `0x389C4`, `0x292AC`, `0x4F644` — 4b/4d.
 * `0x10DB0`/`0x10E18` — input-gated; deferred to 4b with the existing evidence.
 * The `0x13xxx` render path, if §6 declares a gap for it.
 * 4a-i's bank byte 0 and the `DS_00107A3E`/`3A`/`38` projection load width.

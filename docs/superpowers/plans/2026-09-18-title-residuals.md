@@ -182,14 +182,16 @@ Expected: writes `/tmp/pr_title_pin/PRAGE.EXE`, exit 0, no write under `data/`.
 - [ ] **Step 5: Back up the pinned reference, then capture the un-pinned original twice**
 
 The capture overwrites `data/title-captures/title` and `title2`, the only
-reference for the currently green oracle. Copy them aside first:
+reference for the currently green oracle. Copy them aside first, to scratch
+outside the repo (`data/` is read-only):
 
 ```bash
-cp -R data/title-captures data/title-captures.pinned-backup
+cp -R data/title-captures "$TMPDIR/pr-title-captures.pinned-backup"
 ```
 
-That backup is git-ignored scratch; it exists so the pinned reference can be
-restored without re-capturing if the un-pinned capture cannot be made to work.
+That backup lives outside the repo so it can never be committed or written back
+under `data/`; it exists so the pinned reference can be restored without
+re-capturing if the un-pinned capture cannot be made to work.
 
 Then capture twice:
 

@@ -220,10 +220,9 @@ Carried:
 
 ### Deferred and outstanding minors (ledger + reviews)
 
-* Task 1: the plan errata's backup command
-  (`cp -R data/title-captures data/title-captures.pinned-backup`) writes under
-  `data/`, against the read-only-data constraint; the implementation correctly
-  used scratch outside the repo, the plan text still needs correcting.
+* Task 1: the plan errata's backup command wrote under `data/`, against the
+  read-only-data constraint; the implementation correctly used scratch outside
+  the repo and the final fix wave corrected the plan text to match.
 * Task 1: `tools/tests/test_title_pin.py` relies on `len(PATCH_SITES)` rather
   than a literal `== 4` assert.
 * Task 4: `task-4-report.md:74` still says "next (state-1) frame",
@@ -258,8 +257,12 @@ Code: `port/src/game/effects.{c,h}` (new), `port/tests/test_effects.c` (new),
 Tools: `tools/title_pin.py`, `tools/tests/test_title_pin.py`,
 `tools/title_compare.py`, `tools/tests/test_title_compare.py`.
 Docs: this report, `docs/superpowers/plans/2026-09-18-bf08-overlay-diagnosis.md`,
-`docs/superpowers/plans/2026-09-18-title-residuals-args.md`, the spec, the plan
-and the ledger, `port/RE_GUIDE.md`, `port/spec/game_flow.md`, `README.md`.
+`docs/superpowers/plans/2026-09-18-title-residuals-args.md`,
+`docs/superpowers/specs/2026-09-18-title-residuals-design.md` (amended by the
+final fix wave to match the shipped scope),
+`docs/superpowers/plans/2026-09-18-title-residuals.md` (the plan), the ledger
+`.superpowers/sdd/2026-09-18-title-residuals/progress.md`, `port/RE_GUIDE.md`,
+`port/spec/game_flow.md`, `README.md`.
 `data/` was never modified; explicit paths only (no `git add -A`).
 
 ## 7. Verification claim and its limits
