@@ -140,5 +140,65 @@ int test_config(void)
 
         for (u32 i = 0; i < 0x100u; i++) DSB(DS_00105D88 + i) = saved[i];
     }
+
+    {
+        /* The credit layer: free play, the credit counter and the suppression
+         * flag DS_00104B1F. */
+        u32 credits = DSD(DS_00105C00);
+        u8 free_play = DSB(DS_00105D60);
+        u8 suppress = DSB(DS_00104B1F);
+
+        DSB(DS_00105D60) = 0;
+        DSB(DS_00104B1F) = 0;
+        DSD(DS_00105C00) = 5u;
+
+        CHECK_EQ_INT((int)config_not_free_play(), 1);
+        CHECK_EQ_INT((int)config_has_credit(), 1);
+        CHECK_EQ_INT((int)config_credit_ready(), 1);
+
+        /* 0x2CA48: takes one credit and reports success. */
+        CHECK_EQ_INT((int)config_credit_take(), 1);
+        CHECK_EQ_INT((int)DSD(DS_00105C00), 4);
+
+        /* 0x2CA7C: the n > credits guard leaves the counter alone. */
+        CHECK_EQ_INT((int)config_credit_spend(5u), 0);
+        CHECK_EQ_INT((int)DSD(DS_00105C00), 4);
+        CHECK_EQ_INT((int)config_credit_spend(4u), 1);
+        CHECK_EQ_INT((int)DSD(DS_00105C00), 0);
+
+        /* No credits and no free play: both predicates and the take fail. */
+        CHECK_EQ_INT((int)config_has_credit(), 0);
+        CHECK_EQ_INT((int)config_credit_take(), 0);
+        CHECK_EQ_INT((int)config_credit_spend(1u), 0);
+
+        /* DS_00105D60 (free play) short-circuits to success, counter untouched. */
+        DSB(DS_00105D60) = 1;
+        CHECK_EQ_INT((int)config_not_free_play(), 0);
+        DSD(DS_00105C00) = 2u;
+        CHECK_EQ_INT((int)config_credit_take(), 1);
+        CHECK_EQ_INT((int)DSD(DS_00105C00), 2);
+        CHECK_EQ_INT((int)config_credit_spend(9u), 1);
+        CHECK_EQ_INT((int)DSD(DS_00105C00), 2);
+        DSB(DS_00105D60) = 0;
+
+        /* DS_00104B1F suppresses the debit while still reporting success. */
+        DSD(DS_00105C00) = 3u;
+        DSB(DS_00104B1F) = 1;
+        CHECK_EQ_INT((int)config_credit_take(), 1);
+        CHECK_EQ_INT((int)DSD(DS_00105C00), 3);
+        CHECK_EQ_INT((int)config_credit_spend(1u), 1);
+        CHECK_EQ_INT((int)DSD(DS_00105C00), 3);
+        DSB(DS_00104B1F) = 0;
+
+        /* 0x2C06C/0x2BF00: the overlay row writers. */
+        config_set_credit_row(7u);
+        CHECK_EQ_INT((int)DSB(DS_00105C05), 7);
+        config_set_credit_row_init();
+        CHECK_EQ_INT((int)DSB(DS_00105C05), 0x1D);
+
+        DSD(DS_00105C00) = credits;
+        DSB(DS_00105D60) = free_play;
+        DSB(DS_00104B1F) = suppress;
+    }
     return 0;
 }

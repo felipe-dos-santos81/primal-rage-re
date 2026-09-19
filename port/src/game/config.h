@@ -38,4 +38,32 @@ void config_set_defaults(void);
  * defaults path, as on a fresh machine. */
 void config_validate(void);
 
+/* ---- credit layer (0x2Cxxx) ---------------------------------------------
+ * The credit counter DS_00105C00, the FREE PLAY flag DS_00105D60 and the
+ * debit-suppression flag DS_00104B1F. Read and written where the raw does. */
+
+/* 0x2CAA8. 1 when the machine is not in free play. */
+u32 config_not_free_play(void);
+
+/* 0x2CA2C. 1 when a credit is available or free play is on. */
+u32 config_has_credit(void);
+
+/* 0x2C060. Calls 0x2CAA8 then tail-jumps to 0x2CA2C, discarding the 0x2CAA8
+ * result, so this is config_has_credit(). */
+u32 config_credit_ready(void);
+
+/* 0x2CA48. Free play -> 1; no credits -> 0; otherwise decrement one credit
+ * (unless DS_00104B1F suppresses it) and -> 1. */
+u32 config_credit_take(void);
+
+/* 0x2CA7C(n). Free play -> 1; n > credits -> 0; otherwise subtract n (unless
+ * DS_00104B1F suppresses it) and -> 1. */
+u32 config_credit_spend(u32 n);
+
+/* 0x2C06C. Writes the overlay's text row DS_00105C05. */
+void config_set_credit_row(u8 row);
+
+/* 0x2BF00. The init-time row write: 0x1D. One caller, 0x20CCC in 0x20C10. */
+void config_set_credit_row_init(void);
+
 #endif /* PRAGE_GAME_CONFIG_H */

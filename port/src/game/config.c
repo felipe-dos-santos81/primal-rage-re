@@ -196,3 +196,54 @@ void config_validate(void)
          * both are 0 on this path, and 0x2DAE4 is a deferred no-op (spec §7). */
     }
 }
+
+/* ---- credit layer -------------------------------------------------------- */
+
+/* 0x2CAA8. `cmp byte [0x85d60],0; sete al; and eax,0xff`. */
+u32 config_not_free_play(void)
+{
+    return DSB(DS_00105D60) == 0u ? 1u : 0u;
+}
+
+/* 0x2CA2C. `mov edx,[0x85c00]; mov al,[0x85d60]; or eax,edx; setne al`. */
+u32 config_has_credit(void)
+{
+    return (u32)((DSB(DS_00105D60) | DSD(DS_00105C00)) != 0u);
+}
+
+/* 0x2C060. `call 0x2caa8; jmp 0x2ca2c` — the 0x2CAA8 result is discarded. */
+u32 config_credit_ready(void)
+{
+    (void)config_not_free_play();
+    return config_has_credit();
+}
+
+/* 0x2CA48. Free play, then the zero-credit guard, then the suppressed debit. */
+u32 config_credit_take(void)
+{
+    if (DSB(DS_00105D60) != 0u) return 1u;            /* 0x2CA51 */
+    if (DSD(DS_00105C00) == 0u) return 0u;            /* 0x2CA5E */
+    if (DSB(DS_00104B1F) == 0u) DSD(DS_00105C00)--;   /* 0x2CA69 */
+    return 1u;
+}
+
+/* 0x2CA7C. `cmp eax,[0x85c00]; ja` is an unsigned guard. */
+u32 config_credit_spend(u32 n)
+{
+    if (DSB(DS_00105D60) != 0u) return 1u;            /* 0x2CA85 */
+    if (n > DSD(DS_00105C00)) return 0u;              /* 0x2CA91 */
+    if (DSB(DS_00104B1F) == 0u) DSD(DS_00105C00) -= n;/* 0x2CA9C */
+    return 1u;
+}
+
+/* 0x2C06C. `mov byte [0x85c05], al`. */
+void config_set_credit_row(u8 row)
+{
+    DSB(DS_00105C05) = row;
+}
+
+/* 0x2BF00. `mov byte [0x85c05], 0x1d`. */
+void config_set_credit_row_init(void)
+{
+    DSB(DS_00105C05) = 0x1Du;
+}
