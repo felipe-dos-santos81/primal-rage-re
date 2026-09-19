@@ -20,7 +20,7 @@
 - `port/src/symbols.h` must regenerate byte-identically: `python3 tools/gen_symbols.py port/decomp port/src/symbols.h`.
 - Build 0 warnings. Stage explicit paths only; never `git add -A`. Commit style `<area>: <what changed>`.
 - **Register-level fidelity, no fitted constants.** Every value comes from the raw bytes of `data/game/C/PRAGE.EXE` or from an existing port constant. `file_offset = va + 0x52E54` for obj-0 **code**; where the decompiler and the raw bytes disagree, the raw bytes win.
-- **Immediate base trap.** In this module, `0x9C8` (a message pointer) is an **obj-1** data address (`+0x80000` → `0x809C8`), while `0x1D300` (the descriptor table) and `0x22EB4` (the menu table) are **obj-0** addresses (`+0x10000` → `0x2D300` / `0x32EB4`). Determine each immediate's base per site; reading `0x1D300` as obj-1 yields a meaningless `0xAAAA/0x5555` pattern.
+- **Immediate base trap.** In this module, `0x9C8` (a message pointer) and `0x22EB4` (the menu table) are **obj-1** data addresses (`+0x80000` → `0x809C8` / `0xA2EB4`), while `0x1D300` (the descriptor table) is an **obj-0** address (`+0x10000` → `0x2D300`). Determine each immediate's base per site from the LE fixup's target object; reading `0x1D300` as obj-1 yields a meaningless `0xAAAA/0x5555` pattern, and reading `0x22EB4` as obj-0 lands in code. (Corrected in Task 3: the LE fixup at obj-0 offset `0x1CAF9` targets object 2, base `0x80000`.)
 - The storage image (`0x80CE4`, length `0x7F8`) and everything that touches it are **no-ops** (spec §7).
 
 ---
@@ -414,7 +414,7 @@ Append to `port/tests/test_config.c`:
          * the shipped table says, so assert it round-trips through the getter
          * rather than pinning a hand-derived literal. */
         CHECK_EQ_INT((int)config_field_get(0x29u),
-                     (int)config_menu_default_bits(0x32EB4u));
+                     (int)config_menu_default_bits(0xA2EB4u));
 
         for (u32 i = 0; i < 0x100u; i++) DSB(DS_00105D88 + i) = saved[i];
     }
@@ -447,10 +447,14 @@ void config_validate(void);
 ```
 
 Add to `port/src/game/config.c` the three functions, transcribed from Step 1's
-derivation. `config_menu_default_bits` implements `0x2CCD0` exactly as the
-decompile shows but with the raw offsets (records are 5 dwords: `[0]` presence,
-`[1]` shift, `[2]` count, `[4]` pointer to 2-dword entries whose `[0]` is a
-`char *`; `[5]` is the next record):
+derivation. `config_menu_default_bits` implements `0x2CCD0` exactly as the raw
+shows (records are a **contiguous** array of 5 dwords with stride `0x14`: `[0]`
+presence, `[4]` shift (only the low byte is read), `[8]` count, `[0x10]` pointer
+to 8-byte entries whose `[0]` is a `char *`; `[0x14]` of a record is the *next*
+record's `[0]`, read only as a nonzero "continue" test — the advance is
+`add esi,0x14`, **not** a pointer chase. Corrected in Task 3 from the raw at
+`0x2CD17`–`0x2CD1F`; the `rec = DSD(rec + 20u)` form below would treat the next
+presence word as a pointer and stop after one record):
 
 ```c
 /* 0x2CCD0. */
@@ -470,17 +474,17 @@ u32 config_menu_default_bits(u32 table)
                 bits |= i << shift;
             }
         }
-        rec = DSD(rec + 20u);
+        rec += 0x14u;   /* 0x2CD1A: contiguous stride, not a pointer chase */
     }
     return bits;
 }
 
-/* 0x2CADC. Order and values are the raw's: set(0x29, menu_default_bits(0x32EB4)),
+/* 0x2CADC. Order and values are the raw's: set(0x29, menu_default_bits(0xA2EB4)),
  * set(0x35, 0xA0), set(0x37, 0xA0), set(0x2A, (get(0x2A) & 0xFC) | 3). The
  * message draw and the storage write are no-ops. */
 void config_set_defaults(void)
 {
-    u32 v29 = config_menu_default_bits(0x32EB4u);
+    u32 v29 = config_menu_default_bits(0xA2EB4u);
     config_field_set(0x29u, v29);
     config_field_set(0x35u, 0xA0u);
     config_field_set(0x37u, 0xA0u);
@@ -505,6 +509,18 @@ void config_validate(void)
 If Step 1 shows `0x2D6F8` writes the magic differently (e.g. four bytes in a
 different order) or writes `DS_00105E2F`, mirror the raw exactly and say so in the
 report; do not keep the shape above on faith.
+
+**Errata (Task 3, derived from the raw).** The shape above is an incomplete
+sketch. The raw's no-storage path additionally: reads the `DS_0002D490`
+absent-EEPROM flag for an early-out gate at `0x2D754` (the shipped image holds
+`4` there, so it never fires); takes strict-inequality version arms setting
+`|= 2` / `|= 4` (`0x2D786` / `0x2D7DC`); writes both `|= 6` **and** `|= 1`
+(`0x2D84F` / `0x2D86F`) around the two `0x61A70` pool clears; clears
+`DS_00105E2F` at `0x2D881` *before* `config_set_defaults`; and guards the tail
+`DS_00105DA7 = 1` with `read1 >= 0 || DS_0002D490 != 0`. The magic test/rewrite
+is the little-endian dword read/write of `DS_00105E30` as the sketch has it. See
+`docs/superpowers/plans/2026-09-19-eeprom-config-derivations.md` for the full
+derivation with file offsets.
 
 - [ ] **Step 5: Run the tests green**
 

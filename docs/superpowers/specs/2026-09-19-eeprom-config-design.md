@@ -106,23 +106,27 @@ writer, then rewrites the magic. The defaults writer is `0x2CADC`
 through the ported `0x2F198` and writes:
 
 ```
-0x2cb04  eax = 0x29  edx = 0x2CCD0(0x22EB4)  -> setter   ; field 0x29
+0x2cb04  eax = 0x29  edx = 0x2CCD0(0xA2EB4)  -> setter   ; field 0x29
 0x2cb0e  eax = 0x35  edx = 0xA0             -> setter
 0x2cb1d  eax = 0x37  edx = 0xA0             -> setter
 0x2cb2c  eax = 0x2A  edx = (get(0x2A) & 0xFC) | 3 -> setter
 ```
 
-`0x2CCD0` parses an obj-0 menu-descriptor list at `0x22EB4` (runtime `0x32EB4`),
+`0x2CCD0` parses an obj-1 menu-descriptor list at `0x22EB4` (runtime `0xA2EB4`),
 returning the bitfield of the entries flagged with `'*'` — i.e. field `0x29`'s
-default is the default-selected menu option.
+default is the default-selected menu option. On the shipped image this yields
+`0x142095`, so field `0x29`'s default makes `0x2C304`'s credit count `((0x142095
+& 0xF0000) >> 16) + 1 = 5`.
 
 **Immediate bases differ by site — a real trap.** Inside this module, `0x9C8`
-(the defaults message) is an obj-1 data pointer (`+0x80000` → `0x809C8`), while
-`0x1D300` (descriptor table) and `0x22EB4` (menu table) are obj-0 pointers
-(`+0x10000` → `0x2D300` / `0x32EB4`). Reading `0x1D300` as obj-1 yields the
+(the defaults message) and `0x22EB4` (the menu table) are obj-1 pointers
+(`+0x80000` → `0x809C8` / `0xA2EB4`), while `0x1D300` (descriptor table) is an
+obj-0 pointer (`+0x10000` → `0x2D300`). Reading `0x1D300` as obj-1 yields the
 meaningless alternating pattern `0xAAAA/0/0xFF0000/0/0x5555/…`; reading it as obj-0
-yields the sensible table above. Every immediate in this cycle must have its base
-determined per site, and the plan must say so.
+yields the sensible table above. Reading `0x22EB4` as obj-0 lands in code and the
+walk runs off into a bogus dereference. Every immediate in this cycle must have
+its base determined per site from its LE fixup's target object, and the plan must
+say so.
 
 **Boot site.** `0x2F9CC` (116 bytes, 10 callees) is the master init:
 `0x13ADC` (`effects_init`) → `0x2D6F8` (config validate) → `_DAT_00107410 =
@@ -155,7 +159,7 @@ Component list, with the exact semantics to derive in the plan:
 | `config_field_set(u32 field, u32 value)` | `0x2DA0C` | The inverse walk, writing through the bounded helper. `field > 0x3E` → `0xFFFFFFFF`. |
 | bounded-write helpers | `0x2D498`, `0x2D4B4`, `0x2D4EC` | Own the 2040-byte EEPROM storage image at `0x80CE4` and its `0x7F8` bound. **Because the port has no storage I/O, this image is inert and these three are declared no-ops**; the setter's three `0x2D4EC` calls become no-ops with it. Evidence for the bound is recorded in §3 so a later persistence cycle can port them. |
 | `config_validate(void)` | `0x2D6F8` | Magic `0x9C94D2C4` at `DS_00105E30`; mismatch → flag bits, defaults, rewrite magic; else the load path. The storage calls (`0x2D638`'s read and `0x2D6F8`'s own `0x2E990` reads) become declared no-ops reporting "no stored image", so validate routes to defaults, and the deferred high-score call `0x2DE98` is a declared no-op. |
-| `config_set_defaults(void)` | `0x2CADC` | Write fields `0x29`/`0x35`/`0x37`/`0x2A` as above, with field `0x29`'s value from `0x2CCD0(0x32EB4)`. The message draw and its screen setup `0x1AE20` (190 B, unported, belongs to the menu/rendering cycle) and the storage write `0x2EA78` (263 B, storage layer) are **declared no-ops**; the config-field effect is fully ported. |
+| `config_set_defaults(void)` | `0x2CADC` | Write fields `0x29`/`0x35`/`0x37`/`0x2A` as above, with field `0x29`'s value from `0x2CCD0(0xA2EB4)`. The message draw and its screen setup `0x1AE20` (190 B, unported, belongs to the menu/rendering cycle) and the storage write `0x2EA78` (263 B, storage layer) are **declared no-ops**; the config-field effect is fully ported. |
 | `0x2CCD0` parser | `0x2CCD0` | The obj-0 menu-descriptor parser the defaults path needs (asterisk-flagged default selection). Ported with the defaults path. |
 
 ## 5. Consumers and pins
