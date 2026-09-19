@@ -33,4 +33,27 @@ int input_check_key(void);
 /* Discards every queued key. */
 void input_clear(void);
 
+/* ---- game input bitfield (0x500C4 / 0x50161 / 0x4F644) ------------------
+ * The original keeps a debounced key level in DAT_000E1C34, a hold latch in
+ * DAT_000E1C38 and a repeat mask in DAT_000E1C3C, sampled from the key bitmap
+ * at DAT_00101514 + 0x2d8/0x2d9, and turns it into the two masks the game
+ * reads: DS_001088E4 (newly pressed) and DS_001088D8 (held). The host fills the
+ * bitmap; everything below is the raw's arithmetic. */
+
+/* 0x500C4. Samples the host key bitmap, applies the raw's one-frame debounce
+ * and repeat-timer logic, and returns the debounced level word. */
+u32 input_pump(void);
+
+/* 0x50161. Reports `level & ~mask` OR'd with the bits of `mask` newly set
+ * since the last call, latching them into DAT_000E1C38 as it goes. */
+u32 input_select_bits(u32 mask);
+
+/* 0x2D2F0. The joystick accessor: a constant 0 in the shipped profile
+ * (`xor eax,eax; ret`), so the joystick half of 0x4F644 is inert. */
+u32 input_joystick_device(u32 selector);
+
+/* 0x4F644. Builds DS_001088E4 (newly pressed) and DS_001088D8 (held) from the
+ * level word and the two 0x50161 mask families. */
+void input_state_update(void);
+
 #endif /* PR_INPUT_H */

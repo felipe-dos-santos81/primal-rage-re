@@ -147,10 +147,11 @@ static void run_process_table(u32 table, u32 mask)
     }
 }
 
-/* PORT: 0x500C4 samples the BIOS shift flags at DAT_00101514+0x2d8. The port
- * has no real-mode BIOS; keyboard input arrives through host_pump() ->
- * input_push(). */
-static void input_pump(void) { host_pump(); }
+/* PORT: 0x500C4 is now the real sampler in platform/input.c (declared through
+ * the platform/input.h include above). The old placeholder here only called
+ * host_pump(); the SDL event pump still runs once per frame because
+ * host_wait_vblank() (the loop tail below) invokes host_pump(), so the
+ * event-pump half 0x500C4 never had is unaffected. */
 
 /* ---- title state (state 1, 0x121A0) ------------------------------------ */
 

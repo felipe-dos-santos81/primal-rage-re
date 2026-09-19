@@ -81,4 +81,11 @@ u32  host_audio_rate(void);
  * assuming "no device". Empty before any open attempt. */
 const char *host_audio_error(void);
 
+/* PORT: the 16 input bits the game's bitfield carries, packed as the two key
+ * bytes at DAT_00101514 + 0x2d8/0x2d9. Which physical key drives which bit is a
+ * port choice: the original's mapping lives in a hardware keyboard handler and
+ * BIOS scancode space SDL does not have. The binding table lives in host.c and
+ * is the single place to change it. */
+u16 host_key_bits(void);
+
 #endif /* PR_HOST_H */

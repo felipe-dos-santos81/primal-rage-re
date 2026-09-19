@@ -37,6 +37,31 @@ static const u8 k_bios_letter[26] = {
     0x15, 0x2C
 };
 
+/* PORT: the host key binding. Bit 0 is the coin input 0x11F28 debits against;
+ * the rest are the held inputs the mode transitions and the menus read. */
+static const SDL_Scancode k_input_bind[16] = {
+    SDL_SCANCODE_5,      /* 0: coin */
+    SDL_SCANCODE_1,      /* 1: player 1 start */
+    SDL_SCANCODE_2,      /* 2: player 2 start */
+    SDL_SCANCODE_UP,     /* 3 */
+    SDL_SCANCODE_DOWN,   /* 4 */
+    SDL_SCANCODE_LEFT,   /* 5 */
+    SDL_SCANCODE_RIGHT,  /* 6 */
+    SDL_SCANCODE_SPACE,  /* 7 */
+    SDL_SCANCODE_A, SDL_SCANCODE_S, SDL_SCANCODE_D, SDL_SCANCODE_F,
+    SDL_SCANCODE_G, SDL_SCANCODE_H, SDL_SCANCODE_J, SDL_SCANCODE_K,
+};
+
+u16 host_key_bits(void)
+{
+    const bool *st = SDL_GetKeyboardState(NULL);
+    if (st == NULL) return 0u;
+    u16 bits = 0u;
+    for (int i = 0; i < 16; i++)
+        if (st[k_input_bind[i]]) bits |= (u16)(1u << i);
+    return bits;
+}
+
 static u32 g_tick;
 static uint64_t g_tick_base_ns;
 static int g_tick_started;
