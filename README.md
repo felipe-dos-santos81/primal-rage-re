@@ -14,7 +14,7 @@ mode game code: everything interesting lives in two LE objects (code + data).
 |---|---|
 | `data/game/C/` | Installed game (`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound drivers) |
 | `data/game/CD/RAGECD.ISO` | Original CD (`/Volumes/RAGECD` when mounted: `RAGE.S04`, `RAGE.S08`, `RAGE.S16`, `RAGE.SND`) |
-| `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) + **Smacker video** (sub-project 2b-i) + **sprite compositor** (sub-project 4a-i) + **actor system and title** (sub-project 4a-ii) + **title-path residuals** (sub-project 4a-iii) — `cmake -S port -B build` |
+| `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) + **Smacker video** (sub-project 2b-i) + **sprite compositor** (sub-project 4a-i) + **actor system and title** (sub-project 4a-ii) + **title-path residuals** (sub-project 4a-iii) + **EEPROM/config core** (sub-project 4b-A) — `cmake -S port -B build` |
 | `port/src/platform/audio/` | AIL surface, XMIDI sequencer, FAT.OPL, samples, mixer, vendored OPL core |
 | `port/RE_GUIDE.md` | Address conventions, DOS/4GW layout, toolchain, landmarks |
 | `port/spec/game_flow.md` | Entry, frame loop, state machine, tick, pixel path |
@@ -155,8 +155,9 @@ account of the title's nondeterminism is wrong. See
 **pinned** original: `tools/title_pin.py` also ret'd `0x2BF08`, hiding the title
 overlay. 4a-iii removed that inert site, re-captured the true original, diagnosed
 the resulting per-frame divergence (`CREDITS:5`, rows 7–12), and ported it:
-`0x2BF08`'s four-branch message/text tick (seeded with the captured
-`DS_00105C00 = 5`, `DS_00105C05 = 1`) and the `0x13xxx` effect-list slice —
+`0x2BF08`'s four-branch message/text tick (`DS_00105C05 = 1` seeded for the
+captured text row; `DS_00105C00` is now derived from the config module) and the
+`0x13xxx` effect-list slice —
 spawn `0x13C70`, free-list build `0x13ADC`, clear `0x13DF0`, teardown `0x13420`
 and step/age `0x134C0` — in the new `port/src/game/effects.{c,h}` module. The
 oracle is now green against the overlay-live original (four behaviour pins
@@ -184,7 +185,19 @@ flow (`0x29B74`, `0x41578`, `0x11F6C` remain unported), so the `0x13xxx` effect
 **render** path stays a coverage gap. See
 `docs/superpowers/plans/2026-09-19-effects-producers-report.md`.
 
-Streamed Smacker audio (2b-ii), menus/EEPROM (4), the fight engine (5) and the
+**EEPROM/config core — sub-project 4b-A, ported.** `port/src/game/config.{c,h}`
+ports the packed field layer (`0x2D974`/`0x2DA0C`), the menu-default parser
+(`0x2CCD0`), the defaults writer (`0x2CADC`) and the magic validate (`0x2D6F8`).
+The descriptor table and config bytes are read from the loaded image; the storage
+layer and save/load I/O stay declared no-ops, so validate takes the fresh-machine
+defaults path. `game_init` now derives `DS_00104528` and the three `0x20C9F`–
+`0x20CC2` globals from field `0x29`, and `0x2C304` derives the credit counter
+`DS_00105C00 = 5` — the unseed the title oracle validates (0 unexplained). The
+credit countdown and the storage path remain 4b gaps. See
+`docs/superpowers/plans/2026-09-19-eeprom-config-report.md`.
+
+Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
+fight engine (5) and the
 deferred attract subsystem (`0x11000`, `0x38A38`, `0x389C4`, `0x292AC`,
 `0x4F644`) and the `0x13xxx` effect render path remain (`/* PORT: */` markers).
 

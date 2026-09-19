@@ -225,7 +225,8 @@ is sub-project 2b-ii and not ported. See
 * **Phases on byte `DS_000F0A6F`:**
   * **0**: `0x4F1E4`, `0x2BAF4` (`actors_reset`), `0x38910`; the branch on
     `DS_00104528 & 0x200` — clear takes `0x1C500` + `0x2F198` (the caption/text
-    path, the shipped one because `DS_00104528 = 0x2D974(0x29) = 0`), set takes
+    path, the shipped one because `DS_00104528 = 0x2D974(0x29) = 0x142095` and
+    `& 0x200` is clear), set takes
     `0x2AE14(0x9AE3C)` (mode-1 sprite, unreachable on the shipped profile); four
     `0x38B18(0x9AC1C)` rows; three `0x5D7DC` draws (ranges `0x5A`/`0x7E`/`2`)
     that fix the logo's start X, speed and gravity sign and `DS_00107A50`;
@@ -257,11 +258,13 @@ is sub-project 2b-ii and not ported. See
   game_string_get(0x46), DS_00105C00)` → `CREDITS:5` on every frame from the
   `DS_00105D60 == 0` / `DS_00105C00 != 0` branch (no `&0x1F` gate; the raw
   `0x2BF7D`–`0x2BFCD` arm). `FUN_0002CAA8` is `DS_00105D60 == 0`; the
-  `FUN_0002F198`/`FUN_0002F4BC`/`FUN_0002F280` text trio is already ported. The
-  runtime inputs `DS_00105C00 = 5` (screen value) and `DS_00105C05 = 1` (text
-  row; screen rows 7–12) are seeded for the no-input oracle window; the live
-  credit countdown (`FUN_0002C304`/`FUN_0002CA48`/`FUN_0002CA7C` via `0x11F28`)
-  is a declared 4b gap. Diagnosis:
+  `FUN_0002F198`/`FUN_0002F4BC`/`FUN_0002F280` text trio is already ported.
+  `DS_00105C00` is now derived by `0x2C304` from the config bundle's field `0x29`
+  (see the EEPROM/config section), so it renders the captured `5` without a seed.
+  `DS_00105C05 = 1` (text row; screen rows 7–12) is still seeded: its init writer
+  `0x2BF00` writes `0x1D` and the captured row comes from `0x2C06C`'s
+  attract/mode writer, both unported. The live credit countdown
+  (`FUN_0002CA48`/`FUN_0002CA7C` via `0x11F28`) is a declared 4b gap. Diagnosis:
   `../../docs/superpowers/plans/2026-09-18-bf08-overlay-diagnosis.md`.
 * **The effect list `0x13xxx` (4a-iii/4a-iv, ported).** `port/src/game/effects.{c,h}`
   owns the two sentinels `DS_000FCCE0`/`DS_000FCCE8`, the lock `DS_0009AF3C`,
@@ -289,6 +292,35 @@ is sub-project 2b-ii and not ported. See
   buffer).
 
 Full record: `../../docs/superpowers/plans/2026-09-17-actor-system-report.md`.
+
+## EEPROM/config core — `0x2Dxxx` (4b-A, ported)
+
+`port/src/game/config.{c,h}` owns the packed config field layer: `0x2D974`
+(`config_field_get`), `0x2DA0C` (`config_field_set`), `0x2CCD0`
+(`config_menu_default_bits`), `0x2CADC` (`config_set_defaults`) and `0x2D6F8`
+(`config_validate`). The 63-entry descriptor table (obj-0 `0x2D300`) and the
+config byte region (`DS_00105D88`) are read out of the loaded image; no table or
+value is transcribed. With the storage layer (`0x2E990`, `0x2D638`, the `0x80CE4`
+image, `0x2D4EC`) declared a no-op, validate always takes the defaults path, as on
+a fresh machine, writing field `0x29 = 0x142095`, fields `0x35`/`0x37 = 0xA0`,
+field `0x2A`'s low two bits `= 3`, and the `0x9C94D2C4` magic.
+
+**Consumers (`flow.c` `game_init`).** `config_validate()` is called at the
+`0x20C5D` block; the master init `0x2F9CC` (whose `0x13ADC` effects_init already
+ran inside `actors_init`) invokes it before that block in the raw. The block then
+reads `v = 0x2D974(0x29)` and derives `DS_00104528 = v`,
+`DS_00105B3A = (v & 0x100) >> 4`, `DS_001088D0 = (v & 0xF)*5 + 0x1E`,
+`DS_0010452C = (v & 0xF0) >> 4` (raw `0x20C5D`–`0x20CC2`), plus `0x2C304`'s
+`DS_00105C00 = ((0x2D974(0x29) & 0xF0000) >> 16) + 1 = 5` (called from `0x10E80`
+at `0x10ECC`). The outer wrapper `0x20C10` is not transcribed as one function;
+its `0x2F9CC` and `0x10E80` calls fold into `game_init`/`game_state_init`.
+
+**Declared gaps.** No storage I/O (the save/load path and the `0x80CE4` image);
+the deferred module taps `0x1AE20`/`0x2EA78` (screen setup, storage write); the
+credit countdown `0x2CA48`/`0x2CA7C` and its caller `0x11F28` (input, 4b); and
+`DS_00105C05`'s init writer `0x2BF00` (`= 0x1D`) plus attract writer `0x2C06C`
+(`= 1`, the captured value). Full record:
+`../../docs/superpowers/plans/2026-09-19-eeprom-config-report.md`.
 
 ## Landmarks (verified)
 

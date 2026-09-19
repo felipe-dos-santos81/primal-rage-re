@@ -6,6 +6,7 @@
  * sub-project is stubbed where it is reached and named in a PORT comment. */
 #include "game/flow.h"
 #include "game/actors.h"
+#include "game/config.h"
 #include "game/effects.h"
 #include "game/movie.h"
 #include "game/rng.h"
@@ -695,33 +696,33 @@ void game_init(void)
     palette_list_init();    /* 0x336C0 */
     render_list_init();     /* 0x1C350 */
     rng_seed(0xABCDu);      /* PORT: 0x20C10 seeds the LCG with a hardcoded 0xABCD. */
-    /* PORT: 0x20C5D-0x20CC2: DS_00104528 = 0x2D974(0x29). On the shipped image
-     * table32[0x29] (va 0x2D3A4) = 0x1D980 -> count 7, index 102, so 0x2D974
-     * returns the four bytes at DS_00105DE0+52..55, all zero. The port pins that
-     * 0 (the 0x2D974 save/config record subsystem is out of this cycle) and the
-     * three globals 0x20C10 derives from it, so 0x121A0 takes the text branch:
-     * DS_00105B3A = (v & 0x100) >> 4, DS_001088D0 = (v & 0xf)*5 + 0x1e,
-     * DS_0010452C = (v & 0xf0) >> 4, with v = 0. */
-    DSD(DS_00104528) = 0;       /* 0x20C6D */
-    DSB(DS_00105B3A) = 0;       /* 0x20C9F */
-    DSD(DS_001088D0) = 30;      /* 0x20CB0 */
-    DSB(DS_0010452C) = 0;       /* 0x20CC2 */
+    /* PORT: 0x20C5D-0x20CC2: DS_00104528 = 0x2D974(0x29) and the three globals
+     * derived from v. The master init 0x2F9CC (0x20C15) runs 0x13ADC
+     * (effects_init, inside actors_init above) then 0x2D6F8 (config_validate)
+     * before this block, so on a fresh image v is what the defaults path wrote. */
+    config_validate();          /* 0x2F9CC's 0x2D6F8, before 0x20C5D */
+    u32 v = config_field_get(0x29u);                   /* 0x20C68 */
+    DSD(DS_00104528) = v;                              /* 0x20C6D */
+    DSB(DS_00105B3A) = (u8)((v & 0x100u) >> 4);        /* 0x20C9F */
+    DSD(DS_001088D0) = (v & 0xFu) * 5u + 0x1Eu;        /* 0x20CB0 */
+    DSB(DS_0010452C) = (u8)((v & 0xF0u) >> 4);         /* 0x20CC2 */
+    /* PORT: 0x2C304, called from 0x10E80 at 0x10ECC. The port's
+     * game_state_init() transcribes only 0x10E80's state handoff, not this
+     * credit initializer, so the derivation lives here with the config reads it
+     * depends on: DS_00105C00 = ((0x2D974(0x29) & 0xF0000) >> 16) + 1. */
+    DSD(DS_00105C00) = ((config_field_get(0x29u) & 0xF0000u) >> 16) + 1u;
     /* PORT: 0x2BF08's captured inputs (docs/superpowers/plans/
      * 2026-09-18-bf08-overlay-diagnosis.md §2.3). DS_00105C00 is the live credit
      * counter the overlay renders as `<CREDITS string>:<n>`; the un-pinned title
-     * capture shows 5. Its initial value is 0x2C304's save/config read
-     * (0x2D974(0x29), the same subsystem pinned above) and its decrementers
-     * (0x2CA48/0x2CA7C via the title input handler 0x11F28) are input-driven;
-     * both belong to 4b, so the port seeds the captured no-input value rather
-     * than porting the config subsystem. DS_00105C05 is the text row; its
-     * writers (0x2BF00, 0x2C06C) are likewise unported. The diagnosis read the
-     * captured screen rows 7-12 as text row 7, but the renderer scales a text
-     * row by 20/3 px (0x200 >> 6, projected by render_proj_y's 3414/4096), so
-     * text row 1 lands on screen rows 7-12; row 1 is byte-verified against the
-     * un-pinned capture.
+     * capture shows 5, now derived by 0x2C304's config read above. Its
+     * decrementers (0x2CA48/0x2CA7C via the title input handler 0x11F28) are
+     * input-driven and belong to 4b. DS_00105C05 is the text row; its init
+     * writer 0x2BF00 writes 0x1D=29 and the captured row 1 comes from 0x2C06C's
+     * attract/mode writer, so both writers are unported. The renderer scales a
+     * text row by 20/3 px (0x200 >> 6, projected by render_proj_y's 3414/4096),
+     * so text row 1 lands on the captured screen rows 7-12.
      * TODO(verify): reproduces the captured no-input window only; credit
      * countdown under input is the 4b carve-out. */
-    DSD(DS_00105C00) = 5;       /* 0x2BF08's %d */
     DSB(DS_00105C05) = 1;       /* 0x2BF08's text row (screen rows 7-12) */
     /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
     /* PORT: 0x1D0BC allocates the MIDI sequence buffer and the four sample
