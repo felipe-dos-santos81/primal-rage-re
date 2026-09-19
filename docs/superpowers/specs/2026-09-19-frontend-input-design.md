@@ -163,7 +163,7 @@ immediately after; the plan must confirm the exact relative position.
 | `platform/input.c` | `0x4F644` | `input_state_update()`: builds `DS_001088E4` (level) and `DS_001088D8` (latched). With `0x2D2F0() == 0` the joystick merge never fires. |
 | `game/config.c` | `0x2CAA8`/`0x2CA2C`/`0x2CA48`/`0x2CA7C`/`0x2C060` | The credit predicates and debit. `config.h`'s scope statement extends to "config and credit state". |
 | `game/config.c` | `0x2C06C`/`0x2BF00` | The overlay text-row writers. |
-| `game/config.c` | `0x2D2F0` | `return 0`; the joystick accessor, in the config cluster. |
+| `platform/input.c` | `0x2D2F0` | The joystick accessor, a constant `0`. It sits in the config *address* cluster but its only callers are inside `0x4F644`, so it lives with its caller rather than in `config.c` — `platform/` must not depend on `game/`. |
 | `flow.c` | `0x11F28` | The coin poll, replacing the current no-op in `game_state_step()`. |
 | — | `0x29D60` | A named no-op (1-byte `ret`) so its 15 call sites read as the raw does. |
 | `flow.c` | `0x11F6C` | `game_state_select()`: the six-entry, four-phase selector. |
