@@ -985,20 +985,26 @@ differ — they are kept as the correction record for the earlier claim.
 
 4. **Driver cached-state init block omitted.** After `0x01 = 0x20` and
    `0x105 = 0x01` the capture writes a full reset sweep (`0x20..0x35` and
-   `0x120..0x135`, values `0x01`/`0x3F`/`0xFF`/`0x0F`) before its first key-on.
-   The port opens with only the two enable writes. The comparison excludes this
-   by normalising the capture from its first key-on and dropping the port's
-   tick-0 writes. `verified (cmd: ./build/run_tests capture-oracle line)`.
+   `0x120..0x135`, values `0x01`/`0x3F`/`0xFF`/`0x0F`) before its first key-on,
+   and folds the first note's patch into that same `ms == 0` block (item 5).
+   The port opens with only the two enable writes. Both streams are reduced by
+   the **same** rule: drop everything before the stream's first key-on
+   (`0xB0..0xB8` with the key bit) plus the `documented_excluded` registers,
+   then map capture ms to port tick at 120 Hz. The first note's preamble is
+   thus discarded on both sides rather than on the capture only. `verified
+   (cmd: ./build/run_tests capture-oracle line)`.
 5. **Per-note patch re-application and channel reuse.** The port re-applies the
    whole 14-byte patch on every key-on and allocates the lowest free voice; the
    driver applies operators when a patch is selected and schedules channels on
-   its own state. First difference after the item-4 normalisation is the port's
-   first note operator write (tick 60, `0x20 = 0x00`) against the capture's
-   first key-on (tick 60, `0xB0 = 0x2B`): the capture's first note still uses
-   the init-block operator state. The port emits 9340 writes, the capture 6380
-   after normalisation. Not matchable without reproducing the driver's
-   channel/patch state machine. `verified (cmd: ./build/run_tests, "capture
-   oracle first difference")`.
+   its own state. Under the item-4 reduction the first compared write is now
+   the first key-on on both sides; its value already differs (port `0xB0 =
+   0x2A` vs capture `0x2B`, item 6). After item 6 the next difference is the
+   operator register: the port's first four notes all reuse OPL ch0 (`0x20`,
+   `0x23`) while the capture rotates ch0, ch1, ch2, ch3 (`0x20`/`0x23`,
+   `0x21`/`0x24`, `0x22`/`0x25`, `0x28`/`0x2B`). The port emits 9340 writes,
+   the capture 6380 after normalisation. Not matchable without reproducing the
+   driver's channel/patch state machine. `verified (cmd: ./build/run_tests,
+   "capture oracle first difference")`.
 6. **Percussion note frequency.** The port maps MIDI percussion through the
    melodic `NOTE_TAB`; the capture's first drum note (MIDI 47) is block 2 fnum
    `0x3CF` while the melodic table gives `0x28B`. `TODO(verify): the driver's

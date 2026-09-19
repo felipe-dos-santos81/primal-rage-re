@@ -405,15 +405,21 @@ int test_sequencer(void)
         /* 8. Capture oracle (informational). The capture is the real driver,
          *    which the port reconstructs rather than reproduces: its
          *    cached-state init block, per-patch operator application and
-         *    channel reuse are not modelled. Compare under the documented
-         *    normalisation (capture ms -> port tick at 120 Hz, starting at the
-         *    first key-on; the carrier-TL and 0xBD divergences excluded) and
-         *    print the first remaining difference for the Task 9 report. It
-         *    does not fail the suite on a known divergence. */
+         *    channel reuse are not modelled. Both streams are reduced by the
+         *    same rule: drop everything before the stream's first key-on
+         *    (0xB0..0xB8 with the key bit), map capture ms -> port tick at
+         *    120 Hz, and drop the documented-excluded registers. The driver
+         *    folds its tick-0 reset and the first note's patch into one block
+         *    (spec divergence 4), so the first note's operator/C0/A0 preamble
+         *    has no separately comparable capture writes; anchoring both
+         *    streams at the first key-on discards it symmetrically instead of
+         *    discarding it on the capture only. Print the first remaining
+         *    difference for the Task 9 report. It does not fail the suite on a
+         *    known divergence. */
         {
             static ev_t cap_ev[OPL_TRACE_MAX];
             u32 cap_total = 0, w = 0, pyi = 0;
-            u32 first_key = 0;
+            u32 first_key = 0, first_key_c = 0;
             int diff = -1;
 
             snprintf(cmd, sizeof cmd, "python3 %s %s", OPL_TRACE_PY, CAPTURE_DRO);
@@ -448,13 +454,21 @@ int test_sequencer(void)
                     cap_ev[w].val = cap_ev[i].val;
                     w++;
                 }
-                /* Lockstep walk, skipping the port's tick-0 init and the
-                 * documented-excluded registers on both sides. Stop at the
-                 * first difference or when either stream is exhausted: a stream
-                 * that merely ended must not read as "all matched" — an
-                 * uncompared capture tail is a real result, not a pass. */
+                /* The port is reduced by the same rule as the capture: start
+                 * at its first key-on and skip the documented-excluded
+                 * registers. Stop at the first difference or when either
+                 * stream is exhausted: a stream that merely ended must not
+                 * read as "all matched" — an uncompared capture tail is a real
+                 * result, not a pass. */
                 {
-                    u32 ci = 0, c_tail = 0;
+                    u32 ci, c_tail = 0;
+                    for (u32 i = 0; i < (u32)c_n; i++)
+                        if (c_ev[i].reg >= 0xB0 && c_ev[i].reg <= 0xB8 &&
+                            (c_ev[i].val & 0x20)) {
+                            first_key_c = i;
+                            break;
+                        }
+                    ci = first_key_c;
                     for (;;) {
                         while (ci < (u32)c_n &&
                                (c_ev[ci].tick == 0 || documented_excluded(c_ev[ci].reg)))
