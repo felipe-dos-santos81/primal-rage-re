@@ -202,10 +202,26 @@ Two loops, each bound by the **source** record's `+0xC` read signed
 * resolved copy: `0x13E98 mov eax, [ecx+0xc]` (`0x66CEC`); `EDI` holds `rec`
   (`0x13E5C mov edi, ebx`), `ESI` holds `resolved` (`0x13E7B mov esi, eax`).
   `0x13EA1 mov eax, edi; 0x13EA5 add eax, 4; 0x13EA8 mov esi, [edx+4]; 0x13EAB
-  mov [eax+0x40c], esi` (`0x66CF5..0x66CFF`): on the first iteration
-  `eax = rec+0x404`, so the store is `rec+0x410` from `resolved[1]`; `edx += 4`
-  per iteration, so the sequence is `resolved[1], resolved[2], …`. A port that
-  copied `resolved[0]` (or from `+0x10`) would fail the test.
+  mov [eax+0x40c], esi` (`0x66CF5..0x66CFF`): after `0x13EA5 add eax, 4` the
+  base is `eax = rec+4`, so the store `[eax+0x40c]` is `rec+0x410` from
+  `resolved[1]`; `edx += 4` per iteration, so the sequence is
+  `resolved[1], resolved[2], …`. A port that copied `resolved[0]` (or from
+  `+0x10`) would fail the test.
+
+**Loop ordering (observable).** The two loops are strictly sequential in the
+raw: the white-fill loop's back-edge is `0x13E96 jl 0x13E86` (`0x66CEA`), and
+the resolved-copy loop only starts after `0x13E98` (`0x66CEC`) sets up its own
+pointer — `0x13E82..0x13E84` branches past the whole white loop, and
+`0x13E9D test eax,eax; 0x13E9F jle` (`0x66CED`/`0x66CEF`) branches past the
+whole resolved loop. Therefore all `count` white dwords at `+0x10` are written
+before the first resolved dword lands at `+0x410`. The two address ranges
+overlap when `count == 257`: white's `i = 256` writes `+0x10 + 1024 = +0x410`,
+and resolved's `j = 0` writes `+0x410` too. Because the resolved loop runs
+second, `+0x410` ends as `resolved[1]`. A merged loop (white then resolved per
+`i`) would instead leave `0x00FFFFFF` at `+0x410`; the boundary regression test
+uses `count == 257` to pin this (`+0x810` is the last dword, inside the `0x814`
+record stride).
+
 * The raw dereferences `resolved` unconditionally; the port keeps the
   `resolved != NULL` guard introduced in Task 1 (0x1B544 can fail), matching
   `effects_spawn`'s existing PORT note.

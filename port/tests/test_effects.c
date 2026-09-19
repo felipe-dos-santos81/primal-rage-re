@@ -301,6 +301,32 @@ int test_effects(void)
     }
     effects_clear();
     CHECK_EQ_INT(effects_active(), 0);
+    {
+        /* 0x13E28 at count == 257: the +0x10 white fill (i = 256 -> +0x410) and
+         * the +0x410 resolved copy (j = 0 -> +0x410) overlap. The raw runs the
+         * whole white loop before the resolved loop, so +0x410 ends as the
+         * resolved value; a merged loop would leave 0x00FFFFFF there. */
+        u32 src = EFFECTS_TEST_SRC;
+        u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
+        u32 tab = src + 0x100u, blk = src + 0x200u, rec;
+        effects_init();
+        mem_fill(src, 0, 0x300u);
+        DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
+        DSD(src + 0x0C) = 257u;
+        DSD(DS_001014E0) = tab;
+        DSD(DS_001014F0) = 1;
+        DSD(tab + 16) = blk;
+        DSD(blk + 4) = 0x11111111u;
+        DSD(blk + 8) = 0x22222222u;
+        rec = effects_spawn_pulse(src, 1u);
+        CHECK(rec != 0, "0x13E28 takes a 257-entry record");
+        CHECK_EQ_INT((int)DSD(rec + 0x10), 0x00FFFFFF);
+        CHECK_EQ_INT((int)DSD(rec + 0x410), 0x22222222);
+        DSD(DS_001014E0) = saved_tab;
+        DSD(DS_001014F0) = saved_n;
+    }
+    effects_clear();
+    CHECK_EQ_INT(effects_active(), 0);
 
     return g_failures - before;
 }
