@@ -433,3 +433,208 @@ moving-channel writes with the capture's engine volumes.
 behaves as `0x54` (and `0x50` on the two rolled-volume channels). It is not a
 `SBPRO2.MDI` constant and is not readable from the shipped image. A port that
 implements the engine's `AIL_set_sequence_volume` path is exact.
+
+---
+
+# Round 3 — the ch1/ch4 residual (`seqvol` 0x50 vs 0x54)
+
+**Verdict: `NOT PINNABLE`.** The carrier-TL *law* of round 2 stands and is
+re-derived here exactly (§R3.1). The two-volume residual is real — ch1/ch4 match
+`seqvol = 0x50` on **151/151** discriminating rows and the steady channels match
+`0x54` on **514/514** — but no shipped-image mechanism produces it: the engine
+has **one** sequence volume (`seq+0xd`) and **one** AIL timer tick, so a single
+`seqvol` reaches every channel of a sequence at every instant. The only
+channel-varying candidate in the engine, the ctrl-109/115 per-channel volume
+overlay, is provably inert for this title (§R3.4). The residual is therefore
+**not derivable from the shipped image**; it is a property of the capture
+environment (the driver's live per-channel state, or a driver build whose
+per-channel volume the portable AIL API does not expose).
+
+Method. Harness in `/tmp`, not committed: standard library + `capstone` + the
+repo's own `tools/opl_seq.py` decode of `S16TITLE.GRA` and `tools/opl_trace.py`
+decode of `prage_000.dro`. Every carrier row is the operator-10 write
+(`reg = 0x43 + OPL_SLOT[v]`); a row is **matched** only when the capture has a
+write to that register at the row's own tick (`tick = (ms*120+500)//1000 + 60`,
+±2 ms) and its KSL bits `R & 0xc0 == p10 & 0xc0`. Counts below are over the
+exact-tick matched set (665 rows), which avoids the round-2 last-write
+smearing; the round-2 numbers reproduce on that set too (§R3.1).
+
+## R3.1 The law and the two implied volumes, re-derived
+
+For each matched row the model computes
+`V = scale7(scale7(clamp(seqvol*cc7/0x7f), cc11), VELCURVE[vel>>3])`,
+`att = ((~p10)&0x3f)*V/0x7f`, `R = ((~att)&0x3f) | (p10&0xc0)`, and the exact
+match counts for three candidate engine volumes are:
+
+| channel | rows | `@0x50` | `@0x54` | `@0x7f` |
+|---|---|---|---|---|
+| 1 | 74 | **74** | 1 | 0 |
+| 2 | 34 | 0 | **34** | 0 |
+| 3 | 22 | 0 | **22** | 0 |
+| 4 | 77 | **77** | 6 | 0 |
+| 5 | 28 | 0 | **28** | 0 |
+| 6 | 62 | 0 | **62** | 0 |
+| 7 | 25 | 0 | **25** | 0 |
+| 8 | 1 | 0 | **1** | 0 |
+| 9 | 342 | 0 | **342** | 0 |
+| **steady (2,3,5-9)** | **514** | 0 | **514/514** | 0 |
+| **ch1/ch4** | **151** | **151/151** | 7/151 | 0 |
+| all | 665 | 151 | 521 | 0 |
+
+111 of the 151 ch1/ch4 rows are **discriminating** (`R@0x50 != R@0x54`); on them
+`0x50` is right 111/111 and `0x54` is right 0/111, so the split is not a
+rounding tie. The image default `0x7f` matches 0/665.
+
+Reproduction:
+
+```sh
+python3 /tmp/round3.py   # harness, not committed
+# -> steady n=514 @0x50=0 @0x54=514/514 ; ch1/4 n=151 @0x50=151/151 @0x54=7
+```
+
+## R3.2 Hypothesis — `0x50` and `0x54` are one value at two times (rejected)
+
+`0x50 = 80` and `0x54 = 84` differ by 4; `gcd = 4`, so the ratio is exactly
+`80/84 = 20/21`, the one-step (4/84 = 1/21) difference of a volume *ramp*. If
+the title faded the sequence volume between `0x50` and `0x54`, some channels
+would be captured at `0x50` while others were already at `0x54`. **Rejected by
+the capture's temporal structure:**
+
+* the ch1/ch4 rows span port ticks **706 … 1090**, inside which the steady
+  channels (ch2 first note tick 2503, ch3/6 tick 1213, ch5 tick 2593, ch7 tick
+  551, ch8 tick 254, ch9 tick 59) are *already* captured. At tick 744, ch4
+  (att 12 at `0x50`) and ch9 (att 39 at `0x54`) are both written; a single
+  fading master volume would have to be two values at the same tick.
+* the last CC7-127 rows (ch1 tick 1090, ch4 tick 1078) are `0x50`, and the
+  steady channels after them are `0x54` — the value does not converge to one
+  number.
+* the residual is **constant across all 151 ch1/ch4 rows** over that 4-second
+  window (round 2 §R2.3 and task-5 §4), which a 500 ms fade cannot be.
+
+So the two values are **simultaneous and channel-scoped**, not one value at two
+times. `80/84` remains the *size* of the difference, not its mechanism.
+
+## R3.3 Hypothesis — the XMI or the engine's sequence setup carries a
+per-channel initial volume (rejected)
+
+* `S16TITLE.GRA` holds exactly one XMID bundle (`0x36128`), one `TIMB` (48 B)
+  and one `EVNT` (4810 B); there is **no** controller-7 or bank-Setup chunk
+  other than the `EVNT` stream. Its controller numbers are
+  `{0,6,7,10,11,91,93,100,101,116,121,123}` — no 109, no 115, and a full EVNT
+  walk (below) shows tick 0 is `cc0` banks, `cc10=0x40`, `cc91`, `cc93` and
+  tick 14 is `cc7=127`, `cc100`, `cc6`, `cc121`, `cc123`, `cc11=127`, `cc101`
+  on **every** channel identically. The XMI carries no per-channel level.
+* The engine's sequence setup `FUN_0006a410` (decomp `:50290`-`:50329`)
+  initialises the sequence volume `param_1[0xd] = DAT_00108d94` and sends
+  `CC7 = DAT_00108d94`, `CC11 = 0x7f` (`:50090`/`:50092`) **once per channel in
+  a loop**, with no channel-dependent operand. The image value is
+  `DAT_00108d94 = 0` (read from the loaded LE image via
+  `mem_load_le` — `/tmp/readds.c`: `DAT_00108D94 = 0`,
+  `DAT_000A2CB8 = 0x7f`). It is a single scalar.
+* The only per-channel volume array in the engine is `seq+0x350`, and it is
+  only touched under controllers 109/115 (§R3.4). There is **no other
+  per-channel volume/scaling term** in the dispatch path: the decompiled store
+  map `FUN_000688e0` and the dispatch `FUN_00068ab0` write only raw received
+  controller values (masked `& 0xff`) into the per-channel arrays; the single
+  multiply/divide in the whole dispatch is the sequence-volume scale at
+  `0x68c8b`-`0x68cad`, and it reads exactly one scalar (`[esi+0x34]`).
+
+## R3.4 Hypothesis — the ctrl-109/115 per-channel volume overlay (rejected for
+this title)
+
+Verified against the flat image rebuilt from `PRAGE.EXE` (`mem_load_le`, dumped
+to `/tmp/prage_obj.bin`; addresses below are linear, code base `0x10000`):
+
+* **ctrl 109 (`0x6d`)**: `0x68d95` → `call 0x5df16` = `FUN_0006a960`, which
+  searches the sequence's **rhythm-pattern** table for `param_2` and, if absent
+  (the title sends 109/0, `FUN_0006a960` would search for 0 and set `+0x14`),
+  resets the 4-entry array at `seq+0x7c`. **Not a volume.**
+* **ctrl 115 (`0x73`)**: `0x68e2d` → `call 0x68fa0` kills same-channel voices;
+  `0x68e3e` → `call 0x5df5e` = `FUN_0006ab80`, a **note-off/voice-release**
+  helper (restores `+0x20`, writes `reg 0xb0/0x40`), never `seq+0x350`;
+  `0x68e4d` → `call 0x5df7d` = `FUN_0006aca0`, which sets
+  `param_1[ch+0x23] = param_3 - 1` (a **bank/program** index), not volume.
+* The **only** writers of the per-channel volume array `seq+0x350` are the
+  RAM-resident function `FUN_00069320` (legal accessor `seq+0x350` at
+  `decomp:49352`/`:49448`) and the patch-based `FUN_00068ab0` branch
+  `0x68bc9`-`0x68bd4`: `mov dl,[edi+eax]; mov [esi+eax*4+0x290],edx` — that is
+  controller 83 (`0x53`), which the title never sends.
+* `FUN_00069320` runs from exactly two sites: the sequence **playback** loop
+  `0x699bb` (re-dispatches stored per-channel volumes when the sequence
+  position wraps, `0x699b4 test [eax+0x30],7`) and `FUN_0006a8d0`
+  (`AIL_set_sequence_volume`, `decomp:50491`). Neither is reachable with a
+  stored value the title can set: ctrl 109 does not store a volume and ctrl 115
+  stores a bank index. The title's controller set contains no 109/115-adjacent
+  volume controller.
+
+So the engine's per-channel volume array is inert for ch1/ch4, confirming
+round 2/task-5's conclusion — the residual is **not** the `seq+0x350` path.
+
+## R3.5 Hypothesis — a second engine sequence with its own volume (rejected)
+
+`AIL_init_sequence` (`FUN_0006a410`) sets a per-sequence volume `[0xd]`, and
+each of the 10 game channels could in principle be a separate sequence. But
+`tools/opl_seq.py`'s decode shows the title is **one** sequence
+(one `FORM XMID`, `FUN_0001c930` calls `AIL_init_sequence` once per song with the
+7000-byte `DAT_001028d0` block), and `FUN_0006a410`'s `[0xd]` is a single field
+per sequence. There is one AIL timer tick, so no two volumes can coexist. A
+second sequence with `[0xd] = 0x50` for ch1/ch4 would require the title to load
+two sequences and route two channels to the second, which the single-XMID file
+and single `AIL_init_sequence` call rule out.
+
+## R3.6 Hypothesis — a different driver build (not decidable from the shipped
+image)
+
+The capture's tick-0 reset block fingerprints `SBPRO2.MDI` (round 2 §R2.1), and
+`SBPRO2.MDI` has no per-channel volume: all channel state is the 16-entry
+controller arrays (`[di+0x18f9]`…`[di+0x1a49]`), and the TL path reads only
+`[di+0x1909]`, `[di+0x1949]`, `[si+0x1511]` (`0x31a1`-`0x31c4`). The one
+channel-dependent value the driver keeps is `[di+0x1909]` itself, and for
+ch1/ch4 the capture requires it to be `0x50 * cc7 / 0x7f` while the engine
+dispatched `0x54 * cc7 / 0x7f`. A driver that scaled CC7 per channel by some
+index-dependent factor would reproduce it, but **no such factor exists in the
+shipped `SBPRO2.MDI`**, and no reading of the shipped image produces `0x50` for
+two channels and `0x54` for the other eight. This is the residual's only live
+mechanism, and it is not decidable without either the exact driver build or a
+controlled capture that isolates per-channel engine state; both are outside the
+shipped image.
+
+## R3.7 What `0x54` actually is
+
+`0x54 = 84` and `DAT_000a2cb8 = 128 * 84 / 0x7f = 84.66` — i.e. the capture's
+engine volume is **not** a config-table output rounded to an int. The
+config path (`attract_config_volumes`, `FUN_0002c8f0`/`FUN_0002d974` over
+fields `0x2a`/`0x35`, `port/src/game/attract.c:108`) yields
+`(m * scale / 3) >> 1`; for the shipped `0x35 = 0xA0`, `scale = 3` that is
+`0x50`, not `0x54`. So `0x54` is not the attract-menu music volume either. It
+is the sequence volume the settled, steady channels imply; the shipped image
+never enumerates it. That is consistent with the residual being the AIL
+sequence-volume **fade endpoint** the capture's run happened to settle on for
+most channels, with ch1/ch4's driver state frozen 4 counts below — but that
+remainder is a *named* observation, not a mechanism, and the brief forbids
+shipping it as a fit.
+
+## R3.8 Verdict
+
+**`NOT PINNABLE`.** The carrier-TL law is exact (§R3.1), and the two implied
+volumes are exact and channel-scoped (`0x50` on 151/151 ch1/ch4 discriminating
+rows, `0x54` on 514/514 steady rows). Every shipped-image mechanism that could
+vary volume per channel is exhausted and rejected: sequence volume is one
+scalar (§R3.3), the ctrl-109/115 overlay is a pattern/bank/note path, not
+volume (§R3.4), the title is one sequence (§R3.5), and the driver has only the
+received CC7 (§R3.6). The difference is `80/84 ≡ 20/21` but is simultaneous, not
+a fade (§R3.2). What would pin it:
+
+1. **The exact driver build that produced the capture**, or a controlled
+   capture that seeds a known per-channel volume through the engine's own
+   `AIL_register_controller`-style path. If the live driver holds a per-channel
+   CC7 the engine's portable `AIL_set_sequence_volume` does not surface, that
+   state is the mechanism and is only visible in a running driver, not in the
+   image.
+2. **A second capture with a known, fixed engine volume** (no fade), so the
+   ch1/ch4 implied volume can be compared against the steady channels'
+   without the `0x50`/`0x54` endpoints being confounded.
+
+Until one of those exists, the honest statement is the one task-5 shipped: the
+law is exact on every channel; the `0x50` on the two rolled-volume channels is
+**named, not fitted**, and a single-`seqvol` model cannot cover it.
