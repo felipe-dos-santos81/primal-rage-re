@@ -962,26 +962,43 @@ rendered or heard audio. Every difference is matched, excluded by name with a
 cause, or named as a gap; none is silent. Entries marked *withdrawn* no longer
 differ — they are kept as the correction record for the earlier claim.
 
-**Reduction (symmetric since Task 3).** Both streams are reduced by the same
-rule: anchor at the stream's **first key-on** (`0xB0..0xB8` with the key bit) and
-drop everything before it; drop the `documented_excluded` registers (`0xBD` and
-the carrier-TL family `0x43,0x44,0x45,0x4B,0x4C,0x4D,0x53,0x54,0x55`); map
-capture `ms -> tick` with `(ms*120+500)/1000 + 60` (the `+60` aligns the driver's
-first key-on, which is folded into its tick-0 init, to the port's at tick 60).
-Before the fix the capture was sliced from its first key-on while the port
-dropped only `tick==0`, so the first compared pair was always the port's
-**operator** write against the capture's **key-on** and the reported
+**Reduction (symmetric since Task 3; write-on-change collapse added in the
+capture-artifact cycle).** Both streams are reduced by the same rule: anchor at
+the stream's **first key-on** (`0xB0..0xB8` with the key bit) and drop
+everything before it; drop the `documented_excluded` registers (`0xBD` and the
+carrier-TL family `0x43,0x44,0x45,0x4B,0x4C,0x4D,0x53,0x54,0x55`); **drop a
+write whose value equals the last value kept for that register** (from the OPL
+power-on value 0); map capture `ms -> tick` with `(ms*120+500)/1000 + 60` (the
+`+60` aligns the driver's first key-on, which is folded into its tick-0 init, to
+the port's at tick 60). The capture records write-on-change only — **no captured
+register has two consecutive equal values** (`0x20/0x21/0x24/0x41/0x120/0x122/0x125`
+all measured `consecutive-same = 0`) — while the shipped `SBPRO2.MDI` writes
+every family unconditionally (`FUN_0000_3184` gates on mask `0xf9`, writer
+`FUN_0000_2ad6`; no shadow anywhere in the 31-function image). The capture is
+therefore the lossy side (DOSBox-X's capture path drops an unchanged write), so
+both streams are collapsed the same way and the artefact cancels. Before the
+first fix the capture was sliced from its first key-on while the port dropped
+only `tick==0`, so the first compared pair was always the port's **operator**
+write against the capture's **key-on** and the reported
 "first difference at C write 2" could never advance — an artifact, not a
 register-stream divergence. `verified (cmd: ./build/run_tests capture-oracle
 line; docs/superpowers/plans/2026-09-18-opl-oracle-alignment.md)`.
 
 **First-difference history.** Under the symmetric reduction the line measured
 real divergences — write 14 (#6 percussion note→fnum), then write 16 (#5
-channel reuse) — and is now:
+channel reuse), then write 24 (the E0-family capture artefact, now collapsed on
+both sides). It is now:
 
 ```
-capture oracle first difference at C write 24: C tick=68 reg=0xe1 val=0000 vs capture tick=68 reg=0xc1 val=0x34 (C 9340 writes, capture 6380 normalised)
+capture oracle first difference at C write 102: C tick=734 reg=0x122 val=0x01 vs capture tick=734 reg=0x125 val=0x02 (C 9340 writes, capture 6372 normalised)
 ```
+
+At C write 102 the port emits `0x122 = 0x01` where the capture emits
+`0x125 = 0x02`: the capture omits `0x122` because that register already held
+`0x01` in the capture's own history. The collapse is a deterministic projection
+of each stream, so a difference in the projected streams is a **real** difference
+in the raw streams (a value or ordering divergence — item 9), not a residual
+artefact.
 
 `oracle C-vs-Python: 9340 writes byte-exact` is unchanged. The C count is the
 port's raw stream and the capture count is the reduced one, so they are **not** a
@@ -1000,7 +1017,8 @@ assignment "divergence #7"; the channel half is **item 5** here — item 7 is th
 | 5 | per-note patch re-application + channel reuse | **matched**: the "once up front" premise is falsified, the rotation is implemented |
 | 6 | percussion note→fnum | **matched** |
 | 7 | `0xBD` rhythm register never written | **excluded by name** (cause below) |
-| 8 | E0-family value skip | **named**: the current first divergence |
+| 8 | E0-family value skip | **capture artefact**: the capture records write-on-change only; the collapse removes it on both streams (below) |
+| 9 | `0x122` omitted at tick 734 | **named**: the current first divergence |
 
 1. **Carrier TL velocity attenuation — named.** The driver adds a velocity term
    to the carrier TL (`[10]`); the derived function and its engine-supplied input
@@ -1079,15 +1097,29 @@ assignment "divergence #7"; the channel half is **item 5** here — item 7 is th
    the cycle plan's "divergence #7" — channel assignment — is item 5 above.)
    `verified (cmd: tools/opl_trace.py data/audio-captures/prage_000.dro | awk
    '$2=="0x00bd"' -> one write, tick 0, value 0xC0)`.
-8. **E0-family value skip — named (the current first divergence).** At C write 24
-   the port writes `0xE1 = 0x00` where the capture writes `0xC1 = 0x34`. The
-   disassembly's E0 handler `0x3542` writes E0 unconditionally, but the capture
-   emits the E0 family only where the patch's E0 byte is non-zero/changes. The
-   skip is not visible in the disassembled emitter (a shadow path the linear
-   disassembly did not decode, or a differing driver build), so reproducing it
-   would be a guess, not a derivation. Named, not fitted; it is what a future
-   cycle would derive. `verified (cmd: ./build/run_tests capture-oracle line;
-   docs/superpowers/plans/2026-09-18-opl-patch-application.md §2)`.
+8. **E0-family value skip — capture artefact, now normalised.** The reported
+   first divergence at C write 24 was the port writing `0xE1 = 0x00` where the
+   capture wrote `0xC1 = 0x34`. The disassembly's E0 handler `0x3542` writes E0
+   unconditionally, and Ghidra confirms the same for every family
+   (`FUN_0000_3184` gates on mask `0xf9`, writer `FUN_0000_2ad6`; no shadow in the
+   31-function image), so the port is faithful to the bytes. The skip is a
+   property of the capture, not the driver: the capture records a register write
+   only when it changes the value, and this holds for **every** register
+   (measured `consecutive-same = 0`), not just the E0 family. The earlier note
+   here proposed "a shadow path the linear disassembly did not decode, or a
+   differing driver build"; the full decompilation rules out the former, and a
+   build change would have to alter every family's emitter — so the capture path
+   is the cause. The oracle now collapses the no-change write on both streams
+   (Reduction, above). `verified (cmd: ./build/run_tests capture-oracle line;
+   Ghidra decompilation of data/game/C/SBPRO2.MDI -> FUN_0000_3184,
+   FUN_0000_2ad6)`.
+9. **`0x122` omitted at tick 734 — named (the current first divergence).** After
+   the collapse the line advanced to C write 102: the port emits `0x122 = 0x01`
+   (second OPL2, channel 2 modulator byte 2) where the capture emits
+   `0x125 = 0x02` (the same channel's carrier). Both are real register writes;
+   the port's `0x122` history differs from the capture's, so the port's write is
+   a change while the capture's was not. Not yet derived; named, not fitted.
+   `verified (cmd: ./build/run_tests capture-oracle line)`.
 
 **Named gaps (not fitted, do not affect the compared window).** The driver's
 voice-steal handler `0x36f6`-`0x3816` (quietest-voice, per-MIDI-channel counts
@@ -1102,7 +1134,9 @@ unexplained.
 Task 9 result: `tools/opl_seq.py` and the C sequencer agree **byte-for-byte**
 (9340 writes: tick, register, value and order) — the tolerance-free governing
 oracle comparison. Against the capture the remaining differences are items 1, 7
-and 8 (named/excluded above); each is excluded or reported, never tuned away.
+and 9 (named/excluded above) — the earlier item 8 was a capture artefact, now
+collapsed on both sides; each remaining difference is excluded or reported, never
+tuned away.
 
 **Asset gate on the governing comparison.** The byte-exact C-vs-Python gate and
 the capture comparison both need the untracked `data/game/C` assets

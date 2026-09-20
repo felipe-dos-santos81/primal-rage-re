@@ -134,6 +134,21 @@ static int documented_excluded(u16 reg)
     return 0;
 }
 
+/* The DRO capture records a register write only when it changes that register's
+ * value: every captured register's value sequence has no two consecutive equal
+ * values (0x20/0x21/0x24/0x41/0x120/0x122/0x125 all measured
+ * consecutive-same=0). The shipped SBPRO2.MDI writes every family
+ * unconditionally (Ghidra: FUN_0000_3184 gates on mask 0xf9, writer
+ * FUN_0000_2ad6 — no shadow anywhere), so the port is faithful to the bytes and
+ * the capture is the lossy side: DOSBox-X's capture path drops an unchanged
+ * write. The oracle therefore compares state-change trajectories rather than
+ * write counts — both streams drop a write whose value equals the last value
+ * kept for that register, from the OPL power-on value 0. The recording artefact
+ * cancels on both sides; a real value or ordering divergence still shows.
+ * Indexed by the full 9-bit register so the second OPL2 bank (0x1E0-0x1F5) does
+ * not alias the first (0xE0-0xF5). */
+#define OPL_SHADOW_REGS 0x200
+
 /* Runs the C sequencer for `ticks` ticks, tagging each write with the tick it
  * was made on (seq_start's writes are tick 0). */
 static int capture_c_stream(ev_t *out, int cap, u32 ticks)
@@ -460,7 +475,10 @@ int test_sequencer(void)
          *    not modelled. Both streams are reduced by the
          *    same rule: drop everything before the stream's first key-on
          *    (0xB0..0xB8 with the key bit), map capture ms -> port tick at
-         *    120 Hz, and drop the documented-excluded registers. The driver
+         *    120 Hz, drop the documented-excluded registers, and drop a write
+         *    whose value equals the last kept value for that register (the
+         *    capture records write-on-change only — see the note above
+         *    documented_excluded). The driver
          *    folds its tick-0 reset and the first note's patch into one block
          *    (spec divergence 4), so the first note's operator/C0/A0 preamble
          *    has no separately comparable capture writes; anchoring both
@@ -472,6 +490,7 @@ int test_sequencer(void)
             static ev_t cap_ev[OPL_TRACE_MAX];
             u32 cap_total = 0, w = 0, pyi = 0;
             u32 first_key = 0, first_key_c = 0;
+            u8 cap_last[OPL_SHADOW_REGS] = { 0 };
             int diff = -1;
 
             snprintf(cmd, sizeof cmd, "python3 %s %s", OPL_TRACE_PY, CAPTURE_DRO);
@@ -499,33 +518,47 @@ int test_sequencer(void)
                         break;
                     }
                 for (u32 i = first_key; i < cap_total; i++) {
+                    u16 sh = (u16)(cap_ev[i].reg & (OPL_SHADOW_REGS - 1));
                     if (documented_excluded(cap_ev[i].reg))
                         continue;
+                    /* Symmetric reduction, capture side: drop a write whose
+                     * value equals the last kept value for that register. */
+                    if ((u8)cap_ev[i].val == cap_last[sh])
+                        continue;
+                    cap_last[sh] = (u8)cap_ev[i].val;
                     cap_ev[w].tick = (cap_ev[i].tick * 120u + 500u) / 1000u + 60u;
                     cap_ev[w].reg = cap_ev[i].reg;
                     cap_ev[w].val = cap_ev[i].val;
                     w++;
                 }
                 /* The port is reduced by the same rule as the capture: start
-                 * at its first key-on and skip the documented-excluded
-                 * registers. Stop at the first difference or when either
-                 * stream is exhausted: a stream that merely ended must not
-                 * read as "all matched" — an uncompared capture tail is a real
-                 * result, not a pass. */
+                 * at its first key-on, skip the documented-excluded registers,
+                 * and drop a write whose value equals the last kept value for
+                 * that register.
+                 * Stop at the first difference or when either stream is
+                 * exhausted: a stream that merely ended must not read as "all
+                 * matched" — an uncompared capture tail is a real result, not a
+                 * pass. */
                 {
-                    u32 ci, c_tail = 0;
+                    u8 c_last[OPL_SHADOW_REGS] = { 0 };
+                    u32 ci = 0, c_tail = 0, cw = 0;
                     for (u32 i = 0; i < (u32)c_n; i++)
                         if (c_ev[i].reg >= 0xB0 && c_ev[i].reg <= 0xB8 &&
                             (c_ev[i].val & 0x20)) {
                             first_key_c = i;
                             break;
                         }
-                    ci = first_key_c;
+                    for (u32 i = first_key_c; i < (u32)c_n; i++) {
+                        u16 sh = (u16)(c_ev[i].reg & (OPL_SHADOW_REGS - 1));
+                        if (c_ev[i].tick == 0 || documented_excluded(c_ev[i].reg))
+                            continue;
+                        if ((u8)c_ev[i].val == c_last[sh])
+                            continue;
+                        c_last[sh] = (u8)c_ev[i].val;
+                        c_ev[cw++] = c_ev[i];
+                    }
                     for (;;) {
-                        while (ci < (u32)c_n &&
-                               (c_ev[ci].tick == 0 || documented_excluded(c_ev[ci].reg)))
-                            ci++;
-                        if (ci >= (u32)c_n || pyi >= w)
+                        if (ci >= cw || pyi >= w)
                             break;
                         if (!ev_eq(&c_ev[ci], &cap_ev[pyi])) {
                             diff = (int)ci;
@@ -534,9 +567,7 @@ int test_sequencer(void)
                         ci++;
                         pyi++;
                     }
-                    for (u32 k = ci; k < (u32)c_n; k++)
-                        if (c_ev[k].tick != 0 && !documented_excluded(c_ev[k].reg))
-                            c_tail++;
+                    c_tail = cw - pyi;
                     if (diff >= 0)
                         printf("capture oracle first difference at C write %d: "
                                "C tick=%u reg=%#04x val=%#04x vs capture tick=%u reg=%#04x val=%#04x "

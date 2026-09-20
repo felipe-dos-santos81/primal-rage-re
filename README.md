@@ -105,11 +105,15 @@ OPL trace was captured and governs the comparison under a **symmetric oracle**
 `SBPRO2.MDI` note-setup path further: percussion note→fnum and the driver's
 18-slot channel rotation are derived from the shipped driver and implemented, so
 the first reported difference advanced from write 2 (a metric artifact) to write
-24, a named E0-family value skip. The 9340 (port) / 6380 (reduced capture) write
-counts are unchanged and are not a like-for-like gap. Remaining differences —
-the carrier-TL velocity term (its input is engine/config-supplied, not driver-
-derivable), the `0xBD` rhythm register, the E0-family skip — are named or
-excluded with cause, never tuned. **No audibility claim**: the oracle is the
+24. That write-24 difference turned out to be a capture artefact — the `.dro`
+capture records a register write only when its value changes, while the shipped
+driver writes every family unconditionally (Ghidra-confirmed in `FUN_0000_3184`
+and writer `FUN_0000_2ad6`) — so the oracle now collapses the no-change write on
+both streams and the line advances to write 102 (`0x122` vs `0x125`), a named
+residual. The 9340 (port) / 6372 (reduced capture) write counts are not a
+like-for-like gap. Remaining differences — the carrier-TL velocity term (its
+input is engine/config-supplied, not driver-derivable), the `0xBD` rhythm
+register, and the `0x122` write — are named or excluded with cause, never tuned. **No audibility claim**: the oracle is the
 register write stream, not rendered audio. The windowed run is silent on hosts
 where SDL audio cannot start — on this machine `-66681`. See
 `docs/superpowers/plans/2026-09-16-audio-ail-port-report.md` and
