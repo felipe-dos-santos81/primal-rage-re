@@ -459,26 +459,65 @@ git commit -m "audio: port the MDI channel-controller handler and re-apply loop"
 - Modify: `port/src/platform/audio/pitch.c` (only if Task 1's derivation changes it)
 
 **Interfaces:**
-- Consumes: Task 4's controller state; Task 1's TL fold.
+- Consumes: Task 4's controller state; the **round-2** TL derivation.
 
-- [ ] **Step 1: Implement the TL fold**
+> **Round 2 (post-blocker) — the TL law is now pinned; use this, not Task 1's
+> channel-level formula.** Task 5 first blocked because the Task-1 channel-level
+> formula reproduces 0/797 carrier-TL capture writes. Two follow-up derivations
+> (`docs/superpowers/plans/2026-09-20-midi-controllers-tl-derivation.md`) resolved
+> it: the driver's law is `att = F * V / 0x7f`, and the missing factor is the
+> **engine** scaling CC7 by the AIL sequence volume *before dispatch*
+> (`port/decomp/prage.c:49121`). With that input the law reproduces 630/630
+> steady-channel and 167/167 moving-channel writes. The exact, port-implementable form:
+>
+> ```
+> cc7_eff = clamp((seqvol * cc7) / 0x7f, 0, 0x7f)     /* engine side (prage.c:49121) */
+> F   = (~p10) & 0x3f
+> V   = scale7(scale7(cc7_eff, cc11), VELCURVE[velocity >> 3])
+> att = (F * V) / 0x7f
+> carrier_0x40 = ((~att) & 0x3f) | (p10 & 0xc0)
+> scale7(a,b) = t := ((a*b) << 1) >> 8 ; return t == 0 ? 0 : t + 1
+> VELCURVE    = 52 55 58 5b 5e 61 64 67 6b 6d 70 73 76 79 7c 7f   /* driver 0xc27 */
+> ```
+>
+> The ungated operator (gate bit clear) writes `((~p) & 0x3f) | (p & 0xc0)` with no
+> `V` term (confirmed 664/664). Gate bits: bit 0 = op1, bit 1 = op2; gate array is
+> `[v+0x1629]` normal / `[v+0x18e5]` type-3.
+>
+> **`seqvol` is a host/engine input, not a driver constant.** It is the AIL sequence
+> volume (the game's music volume), which the engine ramps
+> (`AIL_set_sequence_volume(seq, vol, 500)`); the image default is `0x7f` while the
+> capture ran lower. Model it as an explicit input the port owns — the test/engine
+> layer sets the value the capture used (record which value, and that the moving-CC7
+> channels imply a slightly different one, so those rows are the expected residual).
+> Do **not** bury it as an unexplained divisor.
 
-Using Task 1's derivation, in the `FAM_TL` branch compute the channel level and fold it per operator:
+- [ ] **Step 1: Implement the TL law, pan and mod**
 
-```c
-/* PORT: 0x3184 TL branch. factor = (volume * expression * 2) >> 8, rescaled by
- * the per-voice [0x1511]; the result attenuates via ~factor, gated per operator
- * by [0x18e5] bits. */
-u8 tl_mod(const seq_voice *v, u8 patch_tl, int bit);
-```
+Use the round-2 formula above verbatim (not Task 1's channel-level form). In the
+`FAM_TL` branch: gated operators get `att = (F * V) / 0x7f` then
+`((~att) & 0x3f) | (patch_tl & 0xc0)`; ungated operators write
+`((~patch_tl) & 0x3f) | (patch_tl & 0xc0)`. `V` is built with `scale7` over the
+engine-scaled CC7, expression and the velocity curve. Add the engine-side
+`cc7_eff` scaling with `seqvol` as an explicit, named input.
 
-Apply it to `p[4]`/`p[10]` (the bit per operator comes from Task 1's record). Apply `pan` to the `0xC0` byte and the mod-wheel AM bit to the `0x20` family.
+In the `FAM_CONN` branch apply pan: `< 0x1c` → `0x20`, `> 99` → `0x10`, else `0x30`,
+OR'd into `p[8] & 0x0f`. In `FAM_AMVIB` set the `0x40` vibrato bit on `0x20`/`0x23`
+when the channel's mod value is `>= 0x40`.
+
+Do **not** implement the `0x3b1e` sustain helper or ctrl 123's `0x39cc` body — they
+are named gaps the title does not exercise.
 
 - [ ] **Step 2: Retire the TL exclusion**
 
-In `port/tests/test_sequencer.c`, `documented_excluded` currently returns true for `0x40..0x55`. Reduce it to `0xBD` only, with the comment updated: the TL family is now modelled (item 1 closed).
+In `port/tests/test_sequencer.c`, `documented_excluded` currently returns true for
+`0xBD` plus `0x40..0x55`. Reduce it to `0xBD` only, and rewrite its comment: the TL
+family is now modelled, so the old "not derivable" justification is false. The new
+comment must state the actual position (the law is derived; `seqvol` is an engine
+input and the moving-CC7 channels are the expected residual).
 
-- [ ] **Step 3: Update `tools/opl_seq.py`** the same way (TL fold, pan, mod).
+- [ ] **Step 3: Update `tools/opl_seq.py`** the same way (TL law, pan, mod, and the
+  `seqvol` input), staying an independently written implementation.
 
 - [ ] **Step 4: Run the tests**
 
