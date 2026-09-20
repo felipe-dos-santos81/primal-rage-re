@@ -79,7 +79,7 @@ static struct {
     int loaded;
     int playing;
     u32 age;
-    u32 next;          /* last allocated OPL channel, for the rotation */
+    u32 next;          /* rotation cursor: the last slot tried (driver 0xffff) */
     seq_voice voice[SEQ_OPL_CHANNELS];
     u8 program[SEQ_MIDI_CHANNELS];
     u8 bank[SEQ_MIDI_CHANNELS];
@@ -235,12 +235,15 @@ static void key_on(int midi, int note, int vel, u32 dur)
         /* PORT: the driver does not key a note at its MIDI pitch. Its note-on
          * path (SBPRO2.MDI 0x35fa-0x36a6) builds the fnum table index from the
          * patch's base byte ([di+2], stored at 0x3aac-0x3ac1): melodic adds the
-         * base to the note ([si+0x14d5]=note, [si+0x14fd]=base; every melodic
-         * FAT.OPL entry has base 0, so it reduces to NOTE_TAB[note]), while
+         * base to the note ([si+0x14d5]=note, [si+0x14fd]=base), while
          * percussion uses the base alone ([si+0x14d5]=base, [si+0x14fd]=0), so
-         * a drum's 0x7F-bank patch base byte selects the table entry. */
-        const u8 *p = (midi == 9) ? patches_lookup(key) : NULL;
-        int idx = (p != NULL) ? (int)p[2] : note;
+         * a drum's 0x7F-bank patch base byte selects the table entry. Every
+         * melodic FAT.OPL entry in the shipped bank has base 0, so the melodic
+         * sum reduces to NOTE_TAB[note] for the compared window. */
+        const u8 *p = patches_lookup(key);
+        int idx = note;
+        if (p != NULL)
+            idx = (midi == 9) ? (int)p[2] : note + (int)p[2];
         u8 block;
         u16 fnum;
         if (idx > 127)
