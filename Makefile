@@ -158,14 +158,15 @@ attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/t
 # machine from state 2 into states 3/4, dumping one RGB24 frame per presented
 # frame from the state-3 entry (PR_FRONTEND_DUMP) plus a per-frame hash log for
 # the whole run. The capture is a 120 s passive run of the pinned original whose
-# front-end region follows the select carousel. The enforced gate is the
-# determinism check: PR_FRONTEND_DET makes run_tests re-invoke itself twice and
-# require the two frame-hash logs byte-identical. That run is the whole first
-# recipe line (the /bin/sh `if` compound's status is its last command), so a
-# determinism failure fails the ladder. The pixel comparison on the next line is
-# report-only for its classification result — the declared gap recorded in
-# port/spec/game_flow.md — until the state code lands. Captures are git-ignored;
-# an absent capture skips the gate and the comparison cleanly.
+# front-end region follows the select carousel. Two gates stand: the determinism
+# check (PR_FRONTEND_DET makes run_tests re-invoke itself twice and require the
+# two frame-hash logs byte-identical; that run is the whole first recipe line, so
+# a determinism failure fails the ladder), and the pixel comparison on the next
+# line, which now enforces its result — tools/title_compare.py --frontend exits
+# non-zero on any unexplained frame. It drops all-black capture frames as
+# documented artifacts (the oracle-level choice recorded in
+# port/spec/game_flow.md), but a content-bearing frame that disagrees with the
+# port still fails. Captures are git-ignored; an absent capture skips both.
 frontend-oracle: build ## Front-end oracle (states 3/4; skips without data/title-captures/frontend)
 	@echo "== front-end oracle (pixel-exact, states 3/4) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
@@ -196,7 +197,7 @@ verify: build ## Full ladder: --check frames, oracle-required tests, symbols.h i
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory smk-oracle
 	@echo "== title oracle (pixel-exact) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory title-oracle
-	@echo "== front-end oracle (states 3/4; reports until the state code lands) =="
+	@echo "== front-end oracle (pixel-exact, states 3/4; enforced) =="
 	@$(MAKE) --no-print-directory frontend-oracle
 	@echo "== attract prefix oracle (pixel-exact) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory attract-oracle

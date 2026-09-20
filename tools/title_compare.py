@@ -209,7 +209,14 @@ def bands(c, a, b):
             (only_b[0], only_b[-1], len(only_b)) if only_b else None)
 
 
-def check_capture(capture, port, port_rows, n, name, verbose, detail=True):
+def check_capture(capture, port, port_rows, n, name, verbose, detail=True,
+                  skip_black=False):
+    """`skip_black` (front-end mode only) classifies a capture frame that is
+    entirely black as an 'artifact': it neither requires a match nor counts as
+    unexplained, and its empty exhibition set cannot move the window bounds.
+    Only all-zero frames are dropped — a content-bearing frame is classified
+    exactly as before, so a port frame that disagrees with one is still
+    reported. The title window leaves this False and is byte-unchanged."""
     frames = load_frames(capture, name)
     if frames is None:
         return 1, None
@@ -217,8 +224,15 @@ def check_capture(capture, port, port_rows, n, name, verbose, detail=True):
         print("title_compare: %s is empty" % name)
         return 1, None
     raws = raw_map(capture) or list(range(len(frames)))
-    kinds = [explain(frames[j], row_hashes(frames[j]), port, port_rows, n)
-             for j in range(len(frames))]
+    black_j = []
+    kinds = []
+    for j in range(len(frames)):
+        if skip_black and not any(frames[j]):
+            kinds.append(('artifact', None))
+            black_j.append(j)
+        else:
+            kinds.append(explain(frames[j], row_hashes(frames[j]), port,
+                                 port_rows, n))
 
     exh = []
     for kind, data in kinds:
@@ -301,7 +315,7 @@ def check_capture(capture, port, port_rows, n, name, verbose, detail=True):
             print("title_compare: %s: PORT FRAME %d is not exhibited by any "
                   "captured frame" % (name, M))
     return (1 if bad else 0), {'clean': clean_j, 'kinds': kinds, 'frames': frames,
-                               'unexpl': unexpl_j}
+                               'unexpl': unexpl_j, 'black': black_j}
 
 
 def load_port(d, n):
@@ -329,22 +343,29 @@ def main():
     ap.add_argument('--frames', type=int, default=0)
     ap.add_argument('--verbose', action='store_true')
     ap.add_argument('--frontend', action='store_true',
-                    help='front-end window (states 3/4): report the same '
-                         'content-alignment classification over the 120 s '
-                         'capture; the classification result is report-only '
-                         'until the state code lands')
+                    help='front-end window (states 3/4): content-alignment '
+                         'classification over the 120 s capture, dropping '
+                         'all-black capture frames as artifacts; returns 1 on '
+                         'any unexplained frame (the enforced front-end gate)')
     a = ap.parse_args()
     required = os.environ.get('PR_ORACLE_REQUIRED') == '1'
 
     # Front-end mode: the port dump holds the state-3/4 frames, the capture the
     # whole post-logo run. The window is found by content alignment exactly as
-    # the title window is; the classification is identical. Until the state code
-    # lands the window is a declared gap (port/spec/game_flow.md), so only the
-    # CLASSIFICATION result — including >0 unexplained — is reported and exits 0;
-    # it is the pixel oracle a later cycle enforces, not a ladder gate today.
-    # Errors are still errors: an absent capture under PR_ORACLE_REQUIRED, a
-    # missing port dir, or an unloadable port dump return 1 (see the returns
-    # below).
+    # the title window is; the classification is identical, except that capture
+    # frames that are entirely black are dropped as ARTIFACTS. That exclusion is
+    # an explicit oracle-level choice, not a silent filter: an all-black frame
+    # carries no content to align, and the pin loop could not model the blank in
+    # the port (the port presents once at end-of-frame and the oracle dumps the
+    # post-swap buffer, so a local blank is byte-inert; and an all-black PORT
+    # frame content-matches sixteen all-black capture frames including pre-logo
+    # capture 0, which would explode the window). It is not proven that the
+    # original's black frame is a logic frame rather than a 70.09 Hz scanout
+    # sampling artifact, so the exclusion is recorded as a choice under
+    # uncertainty (port/spec/game_flow.md). Errors are still errors: an absent
+    # capture under PR_ORACLE_REQUIRED, a missing port dir, or an unloadable port
+    # dump return 1 (see the returns below). The result is now a gate: any
+    # unexplained frame returns 1.
     if a.frontend:
         capture = a.capture[0]
         if not os.path.isdir(capture):
@@ -360,22 +381,23 @@ def main():
         if port is None:
             return 1
         rc, res = check_capture(capture, port, port_rows, n, 'frontend',
-                                a.verbose, detail=False)
+                                a.verbose, detail=False, skip_black=True)
         if res is None:
             print("title_compare: frontend: window not derivable from the port "
-                  "dump (rc %d); states 3/4 carry no pixel oracle until the "
-                  "state code lands (port/spec/game_flow.md)." % rc)
-            return 0
-        unexpl = res['unexpl']
-        frames = res['frames']
+                  "dump (rc %d)." % rc)
+            return 1 if rc else 0
         raws = raw_map(capture) or list(range(len(frames)))
+        black = res['black']
+        print("title_compare: frontend: %d all-black capture frame(s) excluded "
+              "as artifacts: %s"
+              % (len(black), [(j, raws[j]) for j in black]))
+        unexpl = res['unexpl']
         if unexpl:
             print("title_compare: frontend: %d unexplained captured frame(s) in "
-                  "the window; first is %d (raw %s). States 3/4 carry no pixel "
-                  "oracle until the state code lands (port/spec/game_flow.md)."
+                  "the window; first is %d (raw %s)."
                   % (len(unexpl), unexpl[0], raws[unexpl[0]]))
-        else:
-            print("title_compare: frontend: 0 unexplained")
+            return 1
+        print("title_compare: frontend: 0 unexplained")
         return 0
 
     primary = a.capture[0]
