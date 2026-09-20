@@ -35,6 +35,12 @@ void actors_update(void);
  * second object when DS_000F0A66 <= 0x10. */
 void actor_set_dead(u32 rec);
 
+/* 0x33754. Acquire a reference to palette resource `handle` in the table at
+ * DS_00107618 and enqueue its DAC range via palette_record (0x33734). Returns
+ * the entry's mem[] offset (stored in pset+0x18), or 0 on a full table.
+ * Exposed for the attract phase-2 palette registration (0x11000). */
+u32 palette_acquire(u32 handle);
+
 /* ---- animation-stream interpreter -------------------------------------- */
 
 /* 0x2A408. Read the record's next sprite id from its animation stream. The

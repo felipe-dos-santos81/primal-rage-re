@@ -221,7 +221,7 @@ u32 actor_pset(u32 rec)
  * the entry's mem[] offset (the original's EAX, stored in pset+0x18); 0 when the
  * table is full. 0x1B544 is the port's res_resolve. The original's 0x62003 on a
  * full table is a fatal error; the port returns 0 rather than exiting. */
-static u32 palette_acquire(u32 handle)
+u32 palette_acquire(u32 handle)
 {
     const u32 *res = res_resolve(handle);           /* 0x1B544 */
     u32 count = res ? *res : 0;

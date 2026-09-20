@@ -48,6 +48,7 @@ int main(void)
     test_effects();
     test_config();
     test_frontend();
+    test_attract();
     test_anim();
     test_text();
     test_title();       /* no-op unless PR_TITLE_DUMP is set */

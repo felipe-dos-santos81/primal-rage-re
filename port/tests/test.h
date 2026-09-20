@@ -48,5 +48,6 @@ int test_anim(void);
 int test_text(void);
 int test_title(void);
 int test_frontend(void);
+int test_attract(void);
 
 #endif /* PR_TEST_H */

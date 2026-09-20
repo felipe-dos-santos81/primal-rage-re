@@ -10,7 +10,7 @@ add_compile_options(-Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing)
 
 find_package(SDL3 REQUIRED CONFIG)
 
-add_library(prage_core STATIC src/mem.c src/platform/res.c src/platform/gra.c src/platform/sprite.c src/platform/render.c src/platform/gfx.c src/platform/input.c src/platform/audio/opl/opal.c src/platform/audio/opl/opl.c src/platform/audio/samples.c src/platform/audio/patches.c src/platform/audio/sequencer.c src/platform/audio/mixer.c src/platform/audio/ail.c src/platform/smacker.c src/host.c src/game/flow.c src/game/movie.c src/game/rng.c src/game/actors.c src/game/effects.c src/game/config.c)
+add_library(prage_core STATIC src/mem.c src/platform/res.c src/platform/gra.c src/platform/sprite.c src/platform/render.c src/platform/gfx.c src/platform/input.c src/platform/audio/opl/opal.c src/platform/audio/opl/opl.c src/platform/audio/samples.c src/platform/audio/patches.c src/platform/audio/sequencer.c src/platform/audio/mixer.c src/platform/audio/ail.c src/platform/smacker.c src/host.c src/game/flow.c src/game/movie.c src/game/rng.c src/game/actors.c src/game/effects.c src/game/config.c src/game/attract.c)
 target_include_directories(prage_core PUBLIC src)
 # Task 12 reversal: Task 6 made prage_core drop SDL3::SDL3 PUBLIC so run_tests
 # (which had no SDL code) need not link SDL. host.c now lives in the library and
@@ -36,7 +36,7 @@ add_custom_target(symbols DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/symbols.h)
 add_dependencies(prage_core symbols)
 
 enable_testing()
-add_executable(run_tests tests/run_tests.c tests/test_scaffold.c tests/test_mem.c tests/test_le.c tests/test_res.c tests/test_gra.c tests/test_gfx.c tests/test_input.c tests/test_host.c tests/test_flow.c tests/test_opl.c tests/test_samples.c tests/test_mixer.c tests/test_sequencer.c tests/test_ail.c tests/test_smacker.c tests/test_movie.c tests/test_sprite.c tests/test_render.c tests/test_rng.c tests/test_actors.c tests/test_effects.c tests/test_config.c tests/test_frontend.c tests/test_anim.c tests/test_text.c tests/test_title.c)
+add_executable(run_tests tests/run_tests.c tests/test_scaffold.c tests/test_mem.c tests/test_le.c tests/test_res.c tests/test_gra.c tests/test_gfx.c tests/test_input.c tests/test_host.c tests/test_flow.c tests/test_opl.c tests/test_samples.c tests/test_mixer.c tests/test_sequencer.c tests/test_ail.c tests/test_smacker.c tests/test_movie.c tests/test_sprite.c tests/test_render.c tests/test_rng.c tests/test_actors.c tests/test_effects.c tests/test_config.c tests/test_frontend.c tests/test_attract.c tests/test_anim.c tests/test_text.c tests/test_title.c)
 target_include_directories(run_tests PRIVATE src tests)
 target_link_libraries(run_tests PRIVATE prage_core)
 add_test(NAME unit COMMAND run_tests WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/..")

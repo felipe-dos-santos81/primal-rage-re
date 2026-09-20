@@ -1,0 +1,38 @@
+/* port/src/game/attract.h
+ * The small attract/boot units: the per-bit scene tick, the state reset, the
+ * voice/rng scheduler, the per-state pause/continue tails and the
+ * config-derived volumes. The 0x11000 phase machine lives here too but is
+ * declared in the task that ports it. */
+#ifndef PRAGE_GAME_ATTRACT_H
+#define PRAGE_GAME_ATTRACT_H
+
+#include "../types.h"
+
+/* 0x292AC. For each set bit of DS_00104AD0, call the original function at
+ * DS_000A8744 + i*4 with i the bit's byte offset. */
+void attract_scene_tick(void);
+
+/* 0x10EE4. Reset the state machine to attract: the clock helper 0x32970(0),
+ * DS_00104B15 = 0 (0x4F1E4), actors_reset() (0x2BAF4 with eax = 1), then
+ * DS_00104B00 = 3, DS_000F0A64 = 0, DS_000F0A71 = 0, DS_000F0A6F = 0. */
+void attract_state_reset(void);
+
+/* 0x10F28. The attract's voice scheduler: two signed 16-bit countdowns
+ * DS_000F0A60/DS_000F0A62 that reload as rng_next(0x2D)+0x2D and
+ * rng_next(0x3C)+0x3C. Each expiry draws 0x2C3FC (voice, out of scope). */
+void attract_voice_tick(void);
+
+/* 0x10DB0. The per-state pause tail: when DS_000F0A71 == 0 and the two input
+ * bits (DS_001088D8 byte 3 bit 0x20, byte 1 bit 0x10) are set, latch
+ * DS_000F0A71 and move to state 4. */
+void frontend_pause_tail(void);
+
+/* 0x10E18. The per-state continue tail: same gate with byte 3 bit 0x10 and
+ * byte 1 bit 0x20; moves to state 5. */
+void frontend_continue_tail(void);
+
+/* 0x2C8F0 with eax = -2. Recompute the music/SFX volumes DS_000A2CB8 and
+ * DS_000A2CB4 from config fields 0x2A (scale), 0x35 and 0x37. */
+void attract_config_volumes(void);
+
+#endif /* PRAGE_GAME_ATTRACT_H */
