@@ -585,6 +585,91 @@ static void game_state_title(void)
     DSW(DS_00107A3A) = (u16)(DSW(DS_00107A50) >> 5);   /* 0x12476 */
 }
 
+/* PORT: 0x12658. The state-3 handoff spawner (derived in
+ * docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md §2). It
+ * spawns three actors from the 0x9AC44 descriptor run, stores the first at
+ * DS_000F0A58 and copies the third's +0x56 byte into the record before it
+ * (0x126AC/0x126D2). Then it walks the front-end list and spawns a type-3
+ * effect for every live entry that is neither handle 0x3E688 nor a known
+ * resource. Called only from game_state_3 phase 0. */
+static void game_state_3_handoff(void)
+{
+    u32 first = actor_spawn((const u32 *)(mem + 0x9AC44u),
+                            0x2A00u, 0xE0u, 0x5A00u, 0u);       /* 0x12672 */
+    DSW(first + 0x36u) = 0xFFC0u;                               /* 0x12677 */
+    DSD(DS_000F0A58) = first;                                   /* 0x1267D */
+    u32 a5 = (DSW(first + 0x56u) & 0xFFFFu) | 0x400u;           /* 0x12686 */
+    u32 second = actor_spawn((const u32 *)(mem + 0x9AC58u),
+                             0u, 0xE2u, 0u, a5);                /* 0x1269D */
+    DSB(first + 0x4Bu) = DSB(second + 0x56u);                   /* 0x126AC */
+    a5 = (DSW(first + 0x56u) & 0xFFFFu) | 0x400u;               /* 0x126B3 */
+    u32 third = actor_spawn((const u32 *)(mem + 0x9AC6Cu),
+                            0u, 0xE2u, 0u, a5);                 /* 0x126CA */
+    DSB(second + 0x4Bu) = DSB(third + 0x56u);                   /* 0x126D2 */
+    for (u32 rec = frontend_list_next(0); rec != 0;             /* 0x126D7 */
+         rec = frontend_list_next(rec)) {
+        if (DSD(rec) == 0x3E688u) continue;                     /* 0x126E8 */
+        if (frontend_resource_known(rec) != 0u) continue;       /* 0x126F3 */
+        effects_spawn(rec, 6u, DSD(rec));                       /* 0x126FE */
+    }
+    DSW(DS_00107A44) = 0;                                       /* 0x12712 */
+}
+
+/* PORT: 0x12484. State 3, the post-select presentation. Phase 0
+ * (DS_000F0A6F == 0) re-spawns the four corner rows, spawns a type-3 effect for
+ * the live list entry whose handle is 0x3E688, then takes the DS_00104528 bit-1
+ * branch (text rows or an actor through 0x2AE14) and hands off through 0x12658.
+ * Phase 1 tracks the handoff actor's offset and terminates into state 9 when it
+ * reaches 0x1E00. `cam` is the record 0x12658 stores at DS_000F0A58. */
+static void game_state_3(void)
+{
+    if (DSB(DS_000F0A6F) == 0) {
+        actors_reset();                                             /* 0x2BAF4 */
+        frontend_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0u, 0u);       /* 0x124A9 */
+        frontend_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0x2Au, 0u);    /* 0x124B9 */
+        frontend_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0u, 0x1Eu);    /* 0x124CC */
+        frontend_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0x2Au, 0x1Eu); /* 0x124DF */
+        for (u32 node = frontend_list_next(0); node != 0;          /* 0x124F7 */
+             node = frontend_list_next(node)) {
+            if (DSD(node) == 0x3E688u)                             /* 0x12504 */
+                effects_spawn(node, 2u, DSD(node));                /* 0x12515 */
+        }
+        if ((DSB(DS_00104528 + 1u) & 2u) == 0u) {                  /* 0x12527 */
+            text_cursor_set(-1, 0x18, game_string_get(0x13u),
+                            0x4003u);                              /* 0x12561 */
+            text_cursor_set(-1, 0x1B, game_string_get(0x14u),
+                            0x4003u);                              /* 0x12581 */
+        } else {
+            DSD(DS_000F0A40) = actor_spawn(                        /* 0x12546 */
+                (const u32 *)(mem + 0x9AEB4u), 0x2A00u, 0xFFu, 0x3400u, 0u);
+        }
+        game_state_3_handoff();                                    /* 0x12592 */
+        DSB(DS_000F0A6F)++;                                        /* 0x12597 */
+        return;
+    }
+    if (DSB(DS_000F0A6F) == 1) {
+        u32 cam = DSD(DS_000F0A58);                                /* 0x125BF */
+        DSW(DS_00107A38) = (u16)(DSW(DS_00107A44) >> 6);           /* 0x125B9 */
+        s32 v = 0x5A00 - (s32)DSD(cam + 0x1Cu);                    /* 0x125CE */
+        if (v < 0) v = -v;                                         /* 0x125D4 */
+        DSW(DS_00107A44) = (u16)v;                                 /* 0x125D6 */
+        s32 a = (s32)DSD(cam + 0x1Cu) - 0x1E00;                    /* 0x125E8 */
+        s32 b = (s16)DSW(cam + 0x36u) < 0                          /* 0x125EE */
+                    ? -(s32)((s32)DSD(cam + 0x34u) >> 16)          /* 0x125F9 */
+                    :  (s32)((s32)DSD(cam + 0x34u) >> 16);         /* 0x12600 */
+        if (a < 0) a = -a;                                         /* 0x12607 */
+        if (a <= b) {                                              /* 0x12609 */
+            DSD(cam + 0x24u) = 0x40C00000u;                        /* 0x12621 */
+            DSW(DS_000F0A6C) = 6;                                  /* 0x12628 */
+            DSD(cam + 0x1Cu) = 0x1E00u;                            /* 0x1262F */
+            DSW(DS_000F0A64) = 9;                                  /* 0x12636 */
+            DSW(cam + 0x36u) = 0;                                  /* 0x1263D */
+            DSW(DS_000F0A6A) = 0xF0;                               /* 0x12645 */
+            DSB(DS_000F0A72) = 0;                                  /* 0x1264C */
+        }
+    }
+}
+
 /* 0x10E80: initialise the game state. */
 static void game_state_init(void)
 {
@@ -1039,6 +1124,8 @@ void game_state_step(void)
             game_state_select();   /* 0x11F6C */
             break;
         case 3:
+            game_state_3();   /* 0x12484 */
+            break;
         case 4:
             /* PORT: later states (sub-project 4). */
             break;

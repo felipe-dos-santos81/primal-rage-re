@@ -5,6 +5,7 @@
  * the top of test_frontend() before the driver. */
 #include "game/flow.h"
 #include "game/actors.h"
+#include "game/effects.h"
 #include "platform/gfx.h"
 #include "mem.h"
 #include "symbols.h"
@@ -13,6 +14,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+
+/* Seed exactly one live front-end list entry at DS_00107608 with `handle` in
+ * its +0 dword. The iterator advances by 0x10 before its first test, so the
+ * live dword at tbl+4 is skipped and the entry at tbl+0x10 wins. `saved` must
+ * hold 0x190 bytes; restore_frontend_list() puts the whole table back. Shared
+ * by the 0x33904 iterator check and the state-3 (0x12484) check. */
+static void seed_frontend_list(u32 handle, u8 *saved)
+{
+    const u32 tbl = DS_00107608;
+    for (u32 i = 0; i < 0x190u; i++) saved[i] = DSB(tbl + i);
+    mem_fill(tbl, 0, 0x190u);
+    DSD(tbl + 0x04u) = 1u;            /* tbl's own +4 is live */
+    DSD(tbl + 0x10u) = handle;        /* the returned entry's +0 handle */
+    DSD(tbl + 0x14u) = 1u;            /* entry at tbl+0x10 is live */
+}
+
+static void restore_frontend_list(const u8 *saved)
+{
+    const u32 tbl = DS_00107608;
+    for (u32 i = 0; i < 0x190u; i++) DSB(tbl + i) = saved[i];
+}
 
 int test_frontend(void)
 {
@@ -45,16 +67,10 @@ int test_frontend(void)
      * restore the whole table afterwards. */
     {
         static u8 saved[0x190];
-        const u32 tbl = DS_00107608;
-        for (u32 i = 0; i < 0x190u; i++) saved[i] = DSB(tbl + i);
-        mem_fill(tbl, 0, 0x190u);
-        DSD(tbl + 0x04u) = 1u;            /* tbl's own +4 is live */
-        DSD(tbl + 0x14u) = 1u;            /* entry at tbl+0x10 is live */
-        /* The iterator advances by 0x10 before its first test, so the live
-         * dword at tbl+4 is skipped and the entry at tbl+0x10 wins. */
-        CHECK_EQ_INT((int)frontend_list_next(0), (int)(tbl + 0x10u));
-        CHECK_EQ_INT((int)frontend_list_next(tbl + 0x10u), 0);
-        for (u32 i = 0; i < 0x190u; i++) DSB(tbl + i) = saved[i];
+        seed_frontend_list(0u, saved);
+        CHECK_EQ_INT((int)frontend_list_next(0), (int)(DS_00107608 + 0x10u));
+        CHECK_EQ_INT((int)frontend_list_next(DS_00107608 + 0x10u), 0);
+        restore_frontend_list(saved);
     }
 
     /* 0x11F28 / 0x11D04: the coin path. The mask table DS_0009ACBC lives in
@@ -137,6 +153,61 @@ int test_frontend(void)
         DSB(DS_00104B15) = saved_15;
     }
 
+    /* 0x12484: state 3 (the post-select presentation). Phase 0 re-spawns the
+     * four corner rows, spawns a type-3 effect (0x13C70) for the live list entry
+     * whose handle is 0x3E688, takes the DS_00104528 bit-1 branch and hands off
+     * through 0x12658, which stores the first of its three actors at
+     * DS_000F0A58. Phase 1 terminates into state 9 once the handoff actor's
+     * offset reaches 0x1E00. Needs the actor/effect pools res_load_index
+     * allocates; the isolated PR_FRONTEND_DUMP run has none before game_init(),
+     * so it skips here and exercises state 3 through the driver instead. */
+    if (DSD(DS_001014F4) != 0) {
+        static u8 saved_list[0x190];
+        const u8  saved_1d = DSB(DS_00104B1D);
+        const u8  saved_29 = DSB(DS_00104528 + 1u);
+        const u32 saved_40 = DSD(DS_000F0A40);
+        const u32 saved_58 = DSD(DS_000F0A58);
+        const u16 saved_64 = DSW(DS_000F0A64);
+        const u16 saved_6a = DSW(DS_000F0A6A);
+        const u16 saved_6c = DSW(DS_000F0A6C);
+        const u8  saved_6f = DSB(DS_000F0A6F);
+        const u16 saved_38 = DSW(DS_00107A38);
+        const u16 saved_44 = DSW(DS_00107A44);
+        const u8  saved_72 = DSB(DS_000F0A72);
+
+        seed_frontend_list(0x3E688u, saved_list);
+        DSB(DS_00104B1D) = 0;
+        DSW(DS_000F0A64) = 3;
+        DSW(DS_000F0A6A) = 1;
+        DSB(DS_000F0A6F) = 0;
+        DSB(DS_00104528 + 1u) |= 2u;               /* take the DS_000F0A40 branch */
+        DSD(DS_000F0A40) = 0;
+        game_state_step();
+        CHECK_EQ_INT((int)DSB(DS_000F0A6F), 1);
+        CHECK(DSD(DS_000F0A40) != 0u, "phase 0 spawned through 0x2AE14");
+        CHECK(effects_active() != 0, "phase 0 spawned a type-3 effect");
+
+        {
+            u32 cam = DSD(DS_000F0A58);
+            DSD(cam + 0x1Cu) = 0x1E00u;
+            DSW(cam + 0x36u) = 0;                  /* high word of [cam+0x34], b = 0 */
+            DSB(DS_000F0A6F) = 1;
+            game_state_step();
+            CHECK_EQ_INT((int)DSW(DS_000F0A64), 9);
+            CHECK_EQ_INT((int)DSW(DS_000F0A6C), 6);
+            CHECK_EQ_INT((int)DSW(DS_000F0A6A), 0xF0);
+            CHECK_EQ_INT((int)DSD(cam + 0x1Cu), 0x1E00);
+        }
+
+        restore_frontend_list(saved_list);
+        DSB(DS_00104B1D) = saved_1d;   DSB(DS_00104528 + 1u) = saved_29;
+        DSD(DS_000F0A40) = saved_40;   DSD(DS_000F0A58) = saved_58;
+        DSW(DS_000F0A64) = saved_64;   DSW(DS_000F0A6A) = saved_6a;
+        DSW(DS_000F0A6C) = saved_6c;   DSB(DS_000F0A6F) = saved_6f;
+        DSW(DS_00107A38) = saved_38;   DSW(DS_00107A44) = saved_44;
+        DSB(DS_000F0A72) = saved_72;
+    }
+
     const char *dump = getenv("PR_FRONTEND_DUMP");
     if (dump == NULL || dump[0] == '\0') {
         printf("test_frontend: PR_FRONTEND_DUMP unset, state-2 driver skipped\n");
@@ -173,9 +244,11 @@ int test_frontend(void)
         int dump_failed = 0;
 
         u32 seen_entries = 0;
+        int reached3 = 0;
         for (int i = 0; i < 900; i++) {
             DSB(DS_000A81A8) = 1;          /* exactly one game_loop iteration */
             game_loop();
+            if (DSW(DS_000F0A64) == 3u) reached3 = 1;
             if (DSB(DS_000F0A6E) < 6u) seen_entries |= 1u << DSB(DS_000F0A6E);
             if (log != NULL) {
                 /* Hash the presented index buffer without reading pixels. */
@@ -218,9 +291,11 @@ int test_frontend(void)
          * Entry k is drawn on frame 1+93k; after the sixth, 0x1E pause frames
          * and the phase-3 handoff land state 3 on frame 589 (the arithmetic is
          * in docs/superpowers/plans/2026-09-19-frontend-input-derivations.md).
-         * The 900-frame window leaves margin through states 3/4. */
+         * State 3 now runs its 0x12484 phases and hands off to state 9, so the
+         * window is asserted to reach state 3, not to end in it; the state it
+         * ends in is whatever 0x12658's actor timing produces. */
         CHECK_EQ_INT((int)seen_entries, 0x3F);
-        CHECK_EQ_INT((int)DSW(DS_000F0A64), 3);
+        CHECK(reached3, "the window reaches state 3");
         CHECK_EQ_INT(dumped, (int)(raw_cap < (900 - 589) ? raw_cap : (900 - 589)));
         game_shutdown();
     }
