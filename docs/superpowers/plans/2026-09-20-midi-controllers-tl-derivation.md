@@ -282,3 +282,154 @@ The verification harness (built in `/tmp`, not committed) produced §3's numbers
 
 Ghidra references: `SBPRO2.MDI_decompiled.c:1178` (`<< 10`), `:868`/`:894`–`:900`
 (the TL branch).
+
+---
+
+# Round 2 — inverting the capture: the driver's TL *input* (not the branch)
+
+**Verdict: `PINNED`.** The driver's carrier-TL law is the binary's (§2 below,
+unchanged), and the ≈0.65 factor round 1 could not explain is **not in the
+driver** — it is the **engine's sequence-volume scaling of the received CC7**
+before it reaches the driver (`prage.c:49121`: `cc7_driver = (seq[0xd] * cc7) /
+0x7f`). Feeding the law that scaled CC7 reproduces **630/630** carrier writes on
+every steady-CC7 channel and **167/167** on the two moving-CC7 channels (ch1/4)
+with the capture's engine volume; the raw-CC7 model reproduces **0/797** (§1's
+result). Round 1's "`D=0xc0`" was the *shadow* of this engine scale.
+
+Method: the round-1 harness is rebuilt (in `/tmp`, not committed) to log, per
+TL-family write, `(tick, voice, reg, ch, p4, p10, p8, vol, expr, pan, mod, vel,
+vlevel)` from the existing `tools/opl_seq.py` XMI decode of `S16TITLE.GRA`, and to
+read `prage_000.dro` through `tools/opl_trace.py` with the repo alignment
+`tick = (ms*120+500)//1000 + 60`. `cap_at(reg,tick)` is the **last** capture write
+to `reg` at or before `tick` (the DRO is write-on-change, so this is the settled
+value; a **second write** to the same carrier in one apply would show as a
+constant offset and does not occur). No new XMI/DRO parser was needed.
+
+## R2.1 Which driver produced the capture — `SBPRO2.MDI`
+
+The capture's **tick-0 reset block** fingerprints the driver's reset table, and
+only `SBPRO2.MDI` matches:
+
+| capture (tick 0) | SBPRO2.MDI (`0xa3c+reg`) | SBPRO1 | OPL3 | ADLIBG | PASPLUS |
+|---|---|---|---|---|---|
+| `0x01 = 0x20` | **`0xa3d` = 0x20** | `0x00` | `0x01` | `0x01` | `0x00` |
+| default `0x20 = 0x01` | **0x01** | 0x01 | 0x3f | 0x3f | 0x00 |
+| default `0x40 = 0x3f` | **0x3f** | 0x3f | 0xff | 0xff | 0x00 |
+| default `0x60 = 0xff` | **0xff** | 0xff | 0x0f | 0x0f | 0x00 |
+| default `0x80 = 0x0f` | **0x0f** | 0x0f | 0x00 | 0x00 | 0x00 |
+
+`SBPRO2.MDI`'s reset routine `0x2c47` writes `reg 0x105 = 1` (`0x2c4c`:
+`mov bx,0x105; mov cl,1`) then a fixed table (loop `mov cl,[bx+0xa3c]`,
+`bx=1..0xf5`; `mov cl,[bx+0xa31]`, `bx=0x101..0x1f5`). The capture writes
+`0x105 = 0x01`; SBPRO1 reaches `0x105` only as table index `0xa31+0x105` and writes
+`0`, OPL3/ADLIBG write `0x01`/`0x01` but their default tables do not match the
+tick-0 block. `MDI.INI` also selects `DRIVER SBPRO2.MDI`. The DRO hardware field
+is `dual-OPL2` (the SB Pro 2 card); the driver still enables the OPL3 "new" bit,
+which the card ignores. **The capture is `SBPRO2.MDI`.** (`reg 0x43 = 0x16` at
+tick 0 is the patch apply, not the reset table, whose `0xa3c+0x43` is `0x3f`.)
+
+```sh
+python3 tools/opl_trace.py data/audio-captures/prage_000.dro | head -40
+#   0 0x0001 0x20   0 0x0105 0x01   0 0x0120 0x01   0 0x0021 0x01 …
+#   0 0x0043 0x16   0 0x0143 0x3f …
+```
+
+## R2.2 Inverting the capture — the implied level and its factor
+
+797 carrier rows (operator index 10, `reg = 0x43 + OPL_SLOT[v]`). For every row
+`att_capture = (~R) & 0x3f`, and `R & 0xc0 == p10 & 0xc0` in **797/797** (the byte
+carries the patch KSL bits). Reference model: `F = (~p10)&0x3f`, `V =
+scale7(scale7(cc7,cc11), VEL[vel>>3])`, `att = F*V/0x7f`.
+
+| hypothesis | match |
+|---|---|
+| driver law, model's **raw** `local_a` (`/0x7f`) — round 1 | **0/797** |
+| best single divisor `F*la/D` (D swept `0x40..0x18f`) | `0xc0` → 634/797 (**a fit**) |
+| `F` alone / `V` alone / `F=p10&0x3f` | 0 / 0 / 0 of 797 |
+| `F=(~p10)&0x7f` | 72/797 |
+| ungated modulator `R == p4` | 664/664 |
+
+The implied driver level is `≈0.65×` the model's `local_a` (`p10=0`, full level:
+capture `0x16` → `att=41`; `/0x7f` gives `att=63`). `D=0xc0` is not stable across
+channels, so it is the shadow of a *scaled input*, not a driver constant.
+
+## R2.3 The factor's source — the engine scales CC7
+
+`port/decomp/prage.c:49121`, controller-7 arm of the AIL sequencer:
+
+```c
+else if (param_3 == 7) {
+    param_4 = (param_1[0xd] * param_4) / 0x7f;  /* scale CC7 by seq volume */
+    if (0x7f < param_4) param_4 = 0x7f;
+    if (param_4 < 0)    param_4 = 0;
+}
+```
+
+`param_1[0xd]` is the AIL **sequence volume**: initialised from `DAT_00108d94`
+(`prage.c:50323`) and set by `AIL_set_sequence_volume(seq, DAT_000a2cb8, 500)`
+(`prage.c:8326/8346/8428`, via `FUN_0001cab8`). The driver has **no master
+volume**, so the CC7 it stores in `[di+0x1909]` is already `seqvol`-scaled. The
+correct input is therefore `cc7_eff = (seqvol * cc7) / 0x7f`:
+
+```
+V   = scale7(scale7(cc7_eff, cc11), VELCURVE[vel >> 3])
+att = ((~p10) & 0x3f) * V / 0x7f
+carrier_0x40 = ((~att) & 0x3f) | (p10 & 0xc0)
+scale7(a,b) = t := ((a*b) << 1) >> 8 ; return t == 0 ? 0 : t + 1
+```
+
+| group | rows | at `seqvol=0x54` |
+|---|---|---|
+| all carrier | 797 | **637/797** |
+| steady-CC7 channels (0,2,3,5,6,7,8,9) | 630 | **630/630 (100%)** |
+| moving-CC7 channels (1,4) | 167 | 7/167 |
+| ch1/ch4 at `seqvol=0x50` | 167 | **167/167 (100%)** |
+
+The 160 residuals are **exactly** ch1 and ch4 — the only channels whose CC7 leaves
+127 in the title (`49,52,56,…` on ch1, `48,51,54,…` on ch4) — and they reproduce
+100% at `seqvol=0x50`. The TL *law* is exact on every channel; the residual is the
+engine's CC7 scale value for two rolled-volume channels (engine state
+`DAT_000a2cb8`), not a driver term. `R & 0xc0 == p10 & 0xc0` still holds on all 797.
+
+Hypothesis matrix (counts of exact `R`):
+
+```
+H1  driver law, raw CC7 (round-1 committed model)   0/797
+H2  driver law, engine-scaled CC7 seqvol=0x54      637/797
+H2b   H2 on steady-CC7 channels                    630/630
+H2c   H2 on ch1/ch4 at seqvol=0x50                 167/167
+H3  best single divisor D                          0xc0 -> 634/797
+H4  F alone 0/797 ; H5 V alone 0/797 ; H6 F=p&0x3f 0/797 ; H7 F=(~p)&0x7f 72/797
+H8  sequential div F*C7/7f*C11/7f*vel/7f           642/797
+H9  best global seqvol (60..109)                   0x54 -> 637/797
+modulator ungated R==p4                            664/664
+```
+
+No shipped `.MDI` TL branch contains `mov cl,0xc0`; all use `0x7f`
+(`b1 7f` before `div cl` in ADLIB/ADLIBG/OPL3/PAS/PASPLUS/SBLASTER/SBPRO1/SBPRO2).
+
+## R2.4 Verdict
+
+**`PINNED`** — exact formula, port-implementable without guessing:
+
+```
+# engine side (the port's sequence/flow layer owns `seqvol`)
+cc7_eff = clamp((seqvol * cc7) / 0x7f, 0, 0x7f)
+# driver side (SBPRO2.MDI 0x3184; carrier at 0x34a0-0x34d3)
+F  = (~p10) & 0x3f
+V  = scale7(scale7(cc7_eff, cc11), VELCURVE[velocity >> 3])
+att = F * V / 0x7f
+carrier_0x40 = ((~att) & 0x3f) | (p10 & 0xc0)
+scale7(a,b) = t := ((a*b)<<1)>>8 ; return t==0 ? 0 : t+1
+VELCURVE = 52 55 58 5b 5e 61 64 67 6a 6d 70 73 76 79 7c 7f   # SBPRO2.MDI 0xc27
+```
+
+The modulator / ungated operator writes `((~p)&0x3f) | (p&0xc0)` verbatim
+(664/664). Reproduces **630/630** steady-channel carrier writes and **167/167**
+moving-channel writes with the capture's engine volumes.
+
+**Named, not fitted:** the exact engine sequence volume the capture ran with
+(`DAT_000a2cb8`) is runtime config — the image default is `0x7f`, the capture
+behaves as `0x54` (and `0x50` on the two rolled-volume channels). It is not a
+`SBPRO2.MDI` constant and is not readable from the shipped image. A port that
+implements the engine's `AIL_set_sequence_volume` path is exact.
