@@ -427,13 +427,35 @@ Expected: the compare names the window and the first capture frame the port cann
 Record the distinct index and the raw frame number. Note that frame-timing drift is expected
 and the aligner already classifies it as *splice*; only `unexplained` counts against you.
 
-- [ ] **Step 2: Pin the responsible site, one site at a time**
+- [ ] **Step 2: Pin the responsible site, one site at a time — and re-capture**
 
 For each unexplained frame: identify the RNG/behaviour site responsible (the title precedent
 is the entry draws plus the anim opcode-8 handler), add ONE new entry to `PATCHES` in
 `tools/title_pin.py` in the existing `(offset, original_bytes, replacement_bytes)` shape with
 equal lengths, and keep the table's fail-closed byte verification. Record every pin with its
-address and the draw it replaces, then re-run Step 1.
+address and the draw it replaces.
+
+**A pin changes the original's own output, so the capture is stale the moment you add one.**
+After each pin you MUST regenerate the reference before comparing again:
+
+```bash
+make frontend-capture      # depends on title-pin; re-runs the 120 s capture
+make frontend-oracle
+```
+
+The pin must be a determinism fix of the same character as the four existing title pins — a
+site where the original reads uninitialised or timing-dependent state — never a value chosen
+because it makes a frame match. A pin that alters the original's behaviour to agree with the
+port is a fitted constant by another name and is forbidden.
+
+- [ ] **Step 2b: Check the title window did not move**
+
+The pin table is shared, so a new pin could also change the title's frames. Run
+`make title-oracle`: the title oracle's line must stay byte-identical to its current
+`0 unexplained` output. If it does not, the pin leaks into the title's behaviour: re-capture
+`title`/`title2` with `make title-capture`, confirm the oracle passes against the new
+captures, and report the reference change explicitly — it is a material change to the
+oracle's basis, not a routine step.
 
 - [ ] **Step 3: Stop at convergence or eight pins**
 
