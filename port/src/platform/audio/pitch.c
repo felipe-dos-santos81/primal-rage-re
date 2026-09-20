@@ -70,7 +70,9 @@ void pitch_lookup(int index, s32 bend, u8 *a0, u8 *b0)
 
     /* PORT: 0x3646-0x3664. The 0xc0 fold is not a clamp: a bent wheel that
      * crosses an octave boundary wraps, it does not saturate. */
-    ax = (bend + (bx << 8) + 8) >> 4;
+    /* PORT: 0x3646 `add ah,bl` and 0x3648 `add ax,8` are 16-bit, so the sum is
+     * taken mod 2^16 before the arithmetic shift at 0x364e. */
+    ax = (s32)(s16)(bend + (bx << 8) + 8) >> 4;
     while (ax < 0)
         ax += 0xc0;
     while (ax > 0x5ff)

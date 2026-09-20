@@ -299,32 +299,93 @@ int test_sequencer(void)
             }
         }
         /* 0e. Controllers: a bend re-applies only the A0/B0 family, for active
-         *     voices of that channel only; a controller that changes a
-         *     register family re-applies it. Each zero-delta event group is
-         *     processed on its own tick, so tick through the two intervening
-         *     zero deltas to reach the volume controller. */
+         *     voices of that channel only, and carries the bent value, not the
+         *     centred key-on value. A bend on a channel with no active voice
+         *     writes nothing. Each zero-delta event group is processed on its
+         *     own tick, so advance one tick per group. */
         {
-            static const u8 ev[] = { 0x90, 0x30, 0x40, 0x7f, 0x00,   /* note on ch0 */
+            static const u8 ev[] = { 0xB0, 0x06, 0x02,                  /* bend scale ch0 */
+                                     0x00, 0x90, 0x30, 0x40, 0x7f, 0x00,/* note on ch0 */
                                      0xE0, 0x00, 0x30,                  /* bend ch0 */
                                      0x00, 0xE1, 0x00, 0x30,            /* bend ch1 */
                                      0x00, 0xB0, 0x07, 0x70 };          /* volume ch0 */
+            u32 start, i;
+            u16 key_a0 = 0, bend_a0 = 0;
+            int saw_key = 0, saw_bend = 0, saw_tl = 0;
+
             opl_reset();
             len = build_xmi(bank, ev, sizeof ev);
             CHECK_EQ_INT(seq_load(bank, len), 1);
             seq_start();
-            seq_tick();
-            u32 before = opl_write_count();
-            seq_tick();
-            seq_tick();
-            seq_tick();
-            int saw_a0 = 0, saw_40 = 0;
-            for (u32 i = before; i < opl_write_count(); i++) {
-                u16 r = opl_trace_reg(i);
-                if ((r & 0xf0) == 0xA0) saw_a0 = 1;
-                if ((r & 0xf0) == 0x40) saw_40 = 1;
-            }
-            CHECK(saw_a0, "bend re-applied the frequency family");
-            CHECK(saw_40, "volume re-applied the TL family");
+            seq_tick();                       /* tick 1: bend scale */
+            start = opl_write_count();
+            seq_tick();                       /* tick 2: note on, centred wheel */
+            for (i = start; i < opl_write_count(); i++)
+                if ((opl_trace_reg(i) & 0xf0) == 0xA0) {
+                    key_a0 = opl_trace_val(i);
+                    saw_key = 1;
+                }
+            CHECK(saw_key, "key-on wrote the frequency low byte");
+            start = opl_write_count();
+            seq_tick();                       /* tick 3: bend ch0 re-applies */
+            for (i = start; i < opl_write_count(); i++)
+                if ((opl_trace_reg(i) & 0xf0) == 0xA0) {
+                    bend_a0 = opl_trace_val(i);
+                    saw_bend = 1;
+                }
+            CHECK(saw_bend, "bend re-applied the frequency family");
+            CHECK(bend_a0 != key_a0, "bend carried the bent value, not the centred one");
+            start = opl_write_count();
+            seq_tick();                       /* tick 4: bend ch1, no active voice */
+            CHECK_EQ_INT(opl_write_count(), start);
+            start = opl_write_count();
+            seq_tick();                       /* tick 5: volume ch0 re-applies TL */
+            for (i = start; i < opl_write_count(); i++)
+                if ((opl_trace_reg(i) & 0xf0) == 0x40) saw_tl = 1;
+            CHECK(saw_tl, "volume re-applied the TL family");
+        }
+
+        /* 0f. A note keyed after a bend on its channel sounds bent: key-on
+         *     reaches the frequency routine (0x3085 -> 0x3184), which reads the
+         *     live wheel from the voice's channel ([si+0x14c1]). */
+        {
+            static const u8 ev[] = { 0xB0, 0x06, 0x02,                   /* bend scale ch0 */
+                                     0x00, 0x90, 0x30, 0x40, 0x7f, 0x00, /* note on ch0 */
+                                     0xE0, 0x00, 0x30,                   /* bend ch0 */
+                                     0x00, 0x90, 0x30, 0x40, 0x7f };     /* note on ch0 again */
+            u32 start, i;
+            u16 cent_a0 = 0, bend_a0 = 0, new_a0 = 0;
+            int saw_cent = 0, saw_bend = 0, saw_new = 0;
+
+            opl_reset();
+            len = build_xmi(bank, ev, sizeof ev);
+            CHECK_EQ_INT(seq_load(bank, len), 1);
+            seq_start();
+            seq_tick();                       /* tick 1: bend scale */
+            start = opl_write_count();
+            seq_tick();                       /* tick 2: note on, centred wheel */
+            for (i = start; i < opl_write_count(); i++)
+                if ((opl_trace_reg(i) & 0xf0) == 0xA0) {
+                    cent_a0 = opl_trace_val(i);
+                    saw_cent = 1;
+                }
+            start = opl_write_count();
+            seq_tick();                       /* tick 3: bend ch0 */
+            for (i = start; i < opl_write_count(); i++)
+                if ((opl_trace_reg(i) & 0xf0) == 0xA0) {
+                    bend_a0 = opl_trace_val(i);
+                    saw_bend = 1;
+                }
+            start = opl_write_count();
+            seq_tick();                       /* tick 4: second note on ch0 */
+            for (i = start; i < opl_write_count(); i++)
+                if ((opl_trace_reg(i) & 0xf0) == 0xA0) {
+                    new_a0 = opl_trace_val(i);
+                    saw_new = 1;
+                }
+            CHECK(saw_cent && saw_bend && saw_new, "key/bend/key all wrote a frequency low byte");
+            CHECK(new_a0 == bend_a0, "a note keyed after the bend uses the live wheel");
+            CHECK(new_a0 != cent_a0, "the bent key-on differs from the centred one");
         }
     }
 

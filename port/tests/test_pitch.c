@@ -29,6 +29,14 @@ int test_pitch(void)
     /* The product is 16-bit: the driver's imul result is used from `ax` only,
      * so 255 * 255 wraps to the signed 16-bit value. */
     CHECK_EQ_INT(pitch_bend_of(0x3fff, 255), -511);
+    /* The 0x3646/0x3648 additions are 16-bit too, so the sum wraps before the
+     * 0x364e shift; 127 folds to bx 91, and 91*256 + 8 + 16000 overflows. */
+    {
+        u8 a0, b0;
+        pitch_lookup(127, 16000, &a0, &b0);
+        CHECK_EQ_INT(a0, 0xDA);
+        CHECK_EQ_INT(b0, 0x01);
+    }
 
     return g_failures - before;
 }

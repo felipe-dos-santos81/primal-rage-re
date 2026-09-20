@@ -138,7 +138,7 @@ static int read_vlq(u32 *out)
  * derivable from the driver, so this port applies the patch TL verbatim. See
  * docs/superpowers/plans/2026-09-18-opl-velocity-tl.md and port/spec/audio.md
  * "Known capture divergences". */
-static void fam_apply(int opl_ch, u8 mask, s32 bend)
+static void fam_apply(int opl_ch, u8 mask)
 {
     const u8 *p = S.voice[opl_ch].patch;
     u16 base = OPL_SLOT[opl_ch];
@@ -167,6 +167,14 @@ static void fam_apply(int opl_ch, u8 mask, s32 bend)
     }
     if (mask & FAM_FREQ) {
         u8 a0, b0;
+        int ch = S.voice[opl_ch].midi;
+        s32 bend = 0;
+        /* PORT: 0x35fa reads the wheel unconditionally from the voice's own
+         * MIDI channel ([si+0x14c1] -> [bx+0x1939]/[bx+0x1929]); a key-on
+         * reaches the same routine, so it sounds the live wheel too. */
+        if (ch >= 0 && ch < SEQ_MIDI_CHANNELS)
+            bend = pitch_bend_of((S.wheel_msb[ch] << 7) | S.wheel_lsb[ch],
+                                 S.bend_scale[ch]);
         pitch_lookup(S.voice[opl_ch].index, bend, &a0, &b0);
         S.voice[opl_ch].b0 = b0;
         opl_write(ch_reg(opl_ch, 0xA0), a0);
@@ -221,20 +229,9 @@ static void midi_control(u8 status, u8 a, u8 b)
     } else {
         return;
     }
-    for (int v = 0; v < SEQ_OPL_CHANNELS; v++) {
-        int vc;
-        s32 bend = 0;
-        if (S.voice[v].note == SEQ_NOTE_FREE || S.voice[v].midi != ch)
-            continue;
-        /* PORT: the driver's frequency routine reads the wheel from the voice's
-         * own MIDI channel ([si+0x14c1]); guard the bounds so a voice keyed
-         * before its channel fields exist cannot index the wheel arrays. */
-        vc = S.voice[v].midi;
-        if ((mask & FAM_FREQ) && vc >= 0 && vc < SEQ_MIDI_CHANNELS)
-            bend = pitch_bend_of((S.wheel_msb[vc] << 7) | S.wheel_lsb[vc],
-                                 S.bend_scale[vc]);
-        fam_apply(v, mask, bend);
-    }
+    for (int v = 0; v < SEQ_OPL_CHANNELS; v++)
+        if (S.voice[v].note != SEQ_NOTE_FREE && S.voice[v].midi == ch)
+            fam_apply(v, mask);
 }
 
 static void key_off(int opl_ch)
@@ -328,13 +325,12 @@ static void key_on(int midi, int note, int vel, u32 dur)
         idx = 127;
     S.voice[v].patch = p;
     S.voice[v].index = idx;
-
-    fam_apply(v, FAM_ALL, 0);
-
     S.voice[v].midi = midi;
     S.voice[v].note = note;
     S.voice[v].release = dur;
     S.voice[v].age = ++S.age;
+
+    fam_apply(v, FAM_ALL);
 }
 
 /* The single halt path. Every exit from the parser that stops playback routes

@@ -384,7 +384,7 @@ class Sequencer:
         self.next = victim
         return victim
 
-    def apply(self, v, mask, bend):
+    def apply(self, v, mask):
         """Re-apply the register families selected by `mask` from the voice's
         cached patch, mirroring fam_apply (SBPRO2.MDI 0x3184)."""
         p = self.voice[v].get('patch')
@@ -397,6 +397,10 @@ class Sequencer:
             if mask & FAM_CONN:
                 self.write(ch_reg(v, 0xC0), p[8] | 0x30)
         if mask & FAM_FREQ:
+            # 0x35fa reads the wheel from the voice's own MIDI channel, so a
+            # key-on uses the live wheel just as a controller re-apply does.
+            ch = self.voice[v].get('midi', 0)
+            bend = self.channel_bend(ch) if 0 <= ch < 16 else 0
             block, val = self.block_fnum(self.voice[v]['index'], bend)
             b0 = (block << 2) | ((val >> 8) & 0x03)
             self.voice[v]['b0'] = b0
@@ -421,7 +425,11 @@ class Sequencer:
                 break
         while folded > 0x5f:
             folded -= 0xc
-        fine = (bend + (folded << 8) + 8) >> 4
+        # 0x3646/0x3648 are 16-bit adds; wrap before the 0x364e shift.
+        fine = (bend + (folded << 8) + 8) & 0xFFFF
+        if fine >= 0x8000:
+            fine -= 0x10000
+        fine >>= 4
         while fine < 0:
             fine += 0xc0
         while fine > 0x5ff:
@@ -461,8 +469,7 @@ class Sequencer:
         for v, voice in enumerate(self.voice):
             if voice.get('note') == self.FREE or voice.get('midi') != ch:
                 continue
-            bend = self.channel_bend(ch) if mask & FAM_FREQ else 0
-            self.apply(v, mask, bend)
+            self.apply(v, mask)
 
     def key_on(self, midi, note, vel, dur):
         if not (0 <= midi < 16 and 0 <= note <= 127):
@@ -486,7 +493,7 @@ class Sequencer:
         self.voice[v] = {'midi': midi, 'note': note, 'release': dur,
                          'age': self.age, 'b0': 0, 'patch': p, 'index': idx}
         self.age += 1
-        self.apply(v, FAM_ALL, 0)
+        self.apply(v, FAM_ALL)
 
     def _advance(self):
         """Consume tokens until a delta is read or the stream halts."""
