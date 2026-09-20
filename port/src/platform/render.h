@@ -57,4 +57,19 @@ void render_list(void);
 int render_proj_x(int v);
 int render_proj_y(int v);
 
+/* PORT: 0x389C4. Maintains the attract scroll/zoom projection. When
+ * DS_00107A3C >= 1 it derives DS_00107A38 from DS_00107A48 minus the s16 high
+ * word of DS_00107A3A, and advances DS_00107A4C to DS_00107A4A only when
+ * DS_00107A4A <= DS_00107A4C; otherwise DS_00107A38 = DS_00107A48 and
+ * DS_00107A4C = DS_00107A4E. Both arms divide by 64 through the raw's signed
+ * truncating form. */
+void render_scroll_edge(void);
+
+/* PORT: 0x38A38. Fills the signed-16-bit shear table at DS_00107900 downward
+ * from DS_00107A52 - 1, accumulating scaled DS_000F0AF0, conditionally writes
+ * DS_00107A3E, then writes DS_00107A44+2 and DS_00107A3A. Each table entry is
+ * the raw's signed truncating /256 followed by an arithmetic >> 1; the tail and
+ * DS_00107A3E divides are the same signed truncating /256 and /32. */
+void render_scroll_fill(void);
+
 #endif /* PR_RENDER_H */

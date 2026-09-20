@@ -296,6 +296,112 @@ static void check_end_to_end(void)
           "swapping the layers swaps the winner");
 }
 
+/* 0x389C4 / 0x38A38: the attract scroll/zoom projection. Seed the inputs, run
+ * the raw arithmetic, and assert exact words (no tolerance). Every global the
+ * two functions touch is saved and restored, including the shear-table
+ * entries. The expected values come from the raw disassembly recorded in
+ * docs/superpowers/plans/2026-09-19-attract-derivations.md: the raw divides by
+ * 2^n through MSVC's `sar`/`shl`/`sbb` idiom, which truncates toward zero
+ * (add 2^n-1 when negative), so a plain arithmetic shift is wrong for negative
+ * inputs. */
+static void check_scroll_projection(void)
+{
+    u16 s38 = DSW(DS_00107A38), s3a = DSW(DS_00107A3A);
+    u16 s3c = DSW(DS_00107A3C), s3e = DSW(DS_00107A3E);
+    u16 s40 = DSW(DS_00107A40), s42 = DSW(DS_00107A42);
+    u16 s46 = DSW(DS_00107A44 + 2), s48 = DSW(DS_00107A48);
+    u16 s4a = DSW(DS_00107A4A), s4c = DSW(DS_00107A4C);
+    u16 s4e = DSW(DS_00107A4E), s50 = DSW(DS_00107A50);
+    u16 s52 = DSW(DS_00107A52);
+    u32 sf0 = DSD(DS_000F0AF0);
+    u16 tbl[0x40];
+    for (u32 i = 0; i < 0x40; i++) tbl[i] = DSW(DS_00107900 + i * 2u);
+
+    /* Case A (0x389C4, DS_00107A3C < 1): DS_00107A38 = 0x0400 / 64 = 0x0010,
+     * then DS_00107A4C = DS_00107A4E = 0x00AB. */
+    DSW(DS_00107A3C) = 0;
+    DSW(DS_00107A48) = 0x0400;
+    DSW(DS_00107A4E) = 0x00AB;
+    render_scroll_edge();
+    CHECK_EQ_INT((int)DSW(DS_00107A38), 0x0010);
+    CHECK_EQ_INT((int)DSW(DS_00107A4C), 0x00AB);
+
+    /* Case B (0x389C4, DS_00107A3C >= 1, early return): the subtrahend is the
+     * s16 high word of DSD(DS_00107A3A), i.e. DS_00107A3C = 65, so
+     * x = 0 - 65 = -65. The raw's signed /64 gives (-65 + 63) >> 6 = -1 =
+     * 0xFFFF; a plain >> 6 would floor to -2 = 0xFFFE. DS_00107A4A (10) >
+     * DS_00107A4C (5), the `ja` early return, so 4C stays 5. */
+    DSW(DS_00107A3C) = 65;
+    DSW(DS_00107A48) = 0;
+    DSW(DS_00107A4A) = 10;
+    DSW(DS_00107A4C) = 5;
+    render_scroll_edge();
+    CHECK_EQ_INT((int)DSW(DS_00107A38), 0xFFFF);
+    CHECK_EQ_INT((int)DSW(DS_00107A4C), 5);
+
+    /* Case B' (0x389C4, DS_00107A3C >= 1, no early return): DS_00107A4A (3) <=
+     * DS_00107A4C (5), so DS_00107A4C = 3. Same x and same 0xFFFF. */
+    DSW(DS_00107A4A) = 3;
+    DSW(DS_00107A4C) = 5;
+    render_scroll_edge();
+    CHECK_EQ_INT((int)DSW(DS_00107A38), 0xFFFF);
+    CHECK_EQ_INT((int)DSW(DS_00107A4C), 3);
+
+    /* Case C (0x38A38): stride = 0x100 << 8 = 0x10000, step = 0x10000 / 3 =
+     * 21845. DS_00107A52 = 4 rows (indices 3,2,1,0), and each table entry is
+     * the raw's truncating /256 followed by the arithmetic `sar edx,1`:
+     *   i=3 row 0x10000 -> (256)>>1 = 0x0080
+     *   i=2 row 0x0AAAB -> (170)>>1 = 0x0055
+     *   i=1 row 0x05556 ->  (85)>>1 = 0x002A
+     *   i=0 row 0x00001 ->   (0)>>1 = 0x0000
+     * filled downward.
+     * edge = 0xEE + 3 = 0xF1; rows i=3 (0xF1) and i=2 (0xF0) skip the
+     * DS_00107A3E store because their low 16 exceed 0xEF. i=1 (0xEF) writes
+     * (0x2A + 0x2B00) / 32 = 0x0159; i=0 (0xEE) writes 0x0158.
+     * Tail: after the loop row = 0x10000 - 4*21845 = -21844; minus
+     * DS_00107A42 (2) * 21845 = -65534; /256 = -255 = 0xFF01. Then
+     * ((-255 >> 1) + 0x41) / 32 = (-128 + 65) / 32 = -1 = 0xFFFF. */
+    DSD(DS_000F0AF0) = 0x100u;
+    DSW(DS_00107A40) = 3;
+    DSW(DS_00107A52) = 4;
+    DSW(DS_00107A4C) = 0x00EE;
+    DSW(DS_00107A42) = 2;
+    DSW(DS_00107A50) = 0x0041;
+    DSW(DS_00107A3E) = 0xDEAD;
+    render_scroll_fill();
+    CHECK_EQ_INT((int)DSW(DS_00107900 + 0), 0x0000);
+    CHECK_EQ_INT((int)DSW(DS_00107900 + 2), 0x002A);
+    CHECK_EQ_INT((int)DSW(DS_00107900 + 4), 0x0055);
+    CHECK_EQ_INT((int)DSW(DS_00107900 + 6), 0x0080);
+    CHECK_EQ_INT((int)DSW(DS_00107A3E), 0x0158);
+    CHECK_EQ_INT((int)DSW(DS_00107A44 + 2), 0xFF01);
+    CHECK_EQ_INT((int)DSW(DS_00107A3A), 0xFFFF);
+
+    /* Case D (0x38A38, every row skips the DS_00107A3E store): one row with
+     * edge = 0x100 > 0xEF, so the seeded sentinel must survive. The row value
+     * is (0x10000 / 256) >> 1 = 0x0080. */
+    DSD(DS_000F0AF0) = 0x100u;
+    DSW(DS_00107A40) = 3;
+    DSW(DS_00107A52) = 1;
+    DSW(DS_00107A4C) = 0x0100;
+    DSW(DS_00107A42) = 0;
+    DSW(DS_00107A50) = 0x0041;
+    DSW(DS_00107A3E) = 0xDEAD;
+    render_scroll_fill();
+    CHECK_EQ_INT((int)DSW(DS_00107900 + 0), 0x0080);
+    CHECK_EQ_INT((int)DSW(DS_00107A3E), 0xDEAD);
+
+    DSW(DS_00107A38) = s38; DSW(DS_00107A3A) = s3a;
+    DSW(DS_00107A3C) = s3c; DSW(DS_00107A3E) = s3e;
+    DSW(DS_00107A40) = s40; DSW(DS_00107A42) = s42;
+    DSW(DS_00107A44 + 2) = s46; DSW(DS_00107A48) = s48;
+    DSW(DS_00107A4A) = s4a; DSW(DS_00107A4C) = s4c;
+    DSW(DS_00107A4E) = s4e; DSW(DS_00107A50) = s50;
+    DSW(DS_00107A52) = s52;
+    DSD(DS_000F0AF0) = sf0;
+    for (u32 i = 0; i < 0x40; i++) DSW(DS_00107900 + i * 2u) = tbl[i];
+}
+
 int test_render(void)
 {
     check_list_order();
@@ -303,5 +409,6 @@ int test_render(void)
     check_offscreen_skip();
     check_layer_modes();
     check_end_to_end();
+    check_scroll_projection();
     return 0;
 }

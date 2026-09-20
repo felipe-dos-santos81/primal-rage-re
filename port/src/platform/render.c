@@ -198,3 +198,52 @@ void render_list(void)
         }
     }
 }
+
+/* PORT: 0x389C4. The raw divides by 64 with MSVC's `sar`/`shl`/`sbb` signed
+ * idiom: for a negative numerator it adds 63, so the quotient truncates toward
+ * zero. C's `/` on int is exactly that; an arithmetic `>> 6` would floor and
+ * differ on negative inputs. The < 1 arm's numerator is a zero-extended u16, so
+ * its bias never applies but the `/ 64` is kept for symmetry with the raw. */
+void render_scroll_edge(void)
+{
+    if ((s16)DSW(DS_00107A3C) < 1) {
+        DSW(DS_00107A38) = (u16)((int)DSW(DS_00107A48) / 64);
+        DSW(DS_00107A4C) = DSW(DS_00107A4E);
+    } else {
+        int x = (int)DSW(DS_00107A48) - ((s32)DSD(DS_00107A3A) >> 16);
+        DSW(DS_00107A38) = (u16)(x / 64);
+        /* PORT: `ja` is the unsigned u16 compare DS_00107A4A > DS_00107A4C;
+         * equal falls through to the store. */
+        if (DSW(DS_00107A4A) > DSW(DS_00107A4C)) return;
+        DSW(DS_00107A4C) = DSW(DS_00107A4A);
+    }
+}
+
+/* PORT: 0x38A38. The same signed truncating form: every `/ 256` and `/ 32` is
+ * the raw's `sar`/`shl`/`sbb` divide by 2^n, truncating toward zero, not a
+ * plain arithmetic shift. The table entry is the raw's `t = (row / 256) >> 1`
+ * -- the truncating /256 at 0x38a88 (`sar eax,8`) followed by the arithmetic
+ * `sar edx,1` at 0x38a8f -- and DS_00107A3E reuses that same shifted t. `edge`
+ * mirrors the raw's edi -- (u16)DS_00107A4C plus the initial row index,
+ * decremented once per row -- and only its low 16 bits gate the DS_00107A3E
+ * store, which is skipped while that value exceeds 0xEF. */
+void render_scroll_fill(void)
+{
+    int stride = (int)(DSD(DS_000F0AF0) << 8);
+    int step   = stride / (int)DSW(DS_00107A40);
+    int idx    = (int)DSW(DS_00107A52) - 1;
+    int edge   = (int)DSW(DS_00107A4C) + idx;
+    int row    = stride;
+
+    for (; idx >= 0; idx--) {
+        int t = (row / 256) >> 1;
+        DSW(DS_00107900 + (u32)idx * 2u) = (u16)t;
+        if ((u16)edge <= 0xEF)
+            DSW(DS_00107A3E) = (u16)((t + 0x2B00) / 32);
+        edge--;
+        row -= step;
+    }
+    row -= (int)DSW(DS_00107A42) * step;
+    DSW(DS_00107A44 + 2) = (u16)(row / 256);
+    DSW(DS_00107A3A) = (u16)((((row / 256) >> 1) + (int)DSW(DS_00107A50)) / 32);
+}
