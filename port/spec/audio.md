@@ -976,7 +976,14 @@ all measured `consecutive-same = 0`) — while the shipped `SBPRO2.MDI` writes
 every family unconditionally (`FUN_0000_3184` gates on mask `0xf9`, writer
 `FUN_0000_2ad6`; no shadow anywhere in the 31-function image). The capture is
 therefore the lossy side (DOSBox-X's capture path drops an unchanged write), so
-both streams are collapsed the same way and the artefact cancels. Before the
+both streams are collapsed the same way and the artefact cancels. The anchor
+drops the driver's tick-0 block from the capture stream, but the driver wrote the
+chip all the same: the capture enters the compared window with a post-init shadow
+and the port with its power-on shadow, so a register the port first writes at the
+value the init already left is emitted by the port and suppressed by the driver
+(spec item 9). Both sides' collapse shadow is therefore seeded from the capture's
+pre-anchor register state, so the comparison starts from one hardware state and
+only post-anchor changes are compared. Before the
 first fix the capture was sliced from its first key-on while the port dropped
 only `tick==0`, so the first compared pair was always the port's **operator**
 write against the capture's **key-on** and the reported
@@ -986,19 +993,19 @@ line; docs/superpowers/plans/2026-09-18-opl-oracle-alignment.md)`.
 
 **First-difference history.** Under the symmetric reduction the line measured
 real divergences — write 14 (#6 percussion note→fnum), then write 16 (#5
-channel reuse), then write 24 (the E0-family capture artefact, now collapsed on
-both sides). It is now:
+channel reuse), then write 24 (the E0-family capture artefact), then write 102
+(`0x122` vs `0x125`, the init-shadow artefact, item 9), then write 152/302 as the
+TL family and the unmodelled frequency changes came into view. It is now:
 
 ```
-capture oracle first difference at C write 102: C tick=734 reg=0x122 val=0x01 vs capture tick=734 reg=0x125 val=0x02 (C 9340 writes, capture 6372 normalised)
+capture oracle first difference at C write 302: C tick=974 reg=0xb6 val=0x0e vs capture tick=969 reg=0xa6 val=0x7f (C 9340 writes, capture 5804 normalised)
 ```
 
-At C write 102 the port emits `0x122 = 0x01` where the capture emits
-`0x125 = 0x02`: the capture omits `0x122` because that register already held
-`0x01` in the capture's own history. The collapse is a deterministic projection
-of each stream, so a difference in the projected streams is a **real** difference
-in the raw streams (a value or ordering divergence — item 9), not a residual
-artefact.
+At write 302 the port writes `0xB6 = 0x0E` (channel-6 key-on/fnum high) where the
+capture, five ticks earlier, writes `0xA6 = 0x7F` (channel-6 fnum low) with no
+key-on — a mid-note frequency change (item 10). The collapse is a deterministic
+projection of each stream, so a difference in the projected streams is a **real**
+difference in the raw streams, not a residual artefact.
 
 `oracle C-vs-Python: 9340 writes byte-exact` is unchanged. The C count is the
 port's raw stream and the capture count is the reduced one, so they are **not** a
@@ -1010,24 +1017,30 @@ assignment "divergence #7"; the channel half is **item 5** here — item 7 is th
 
 | # | divergence | disposition |
 |---|---|---|
-| 1 | carrier-TL velocity attenuation | **named, metric-excluded**: formula derived, input `V` engine-supplied; port writes `[10]` verbatim |
+| 1 | TL level term (carrier **and** modulator) | **named, metric-excluded**: per-note velocity/volume offset, input engine-supplied; port writes the patch TL verbatim; excludes the whole family `0x40-0x55` |
 | 2 | `0x105 = 0x01` (OPL3 enable) | **matched** |
 | 3 | parser / XMIDI running status | **matched** (not present) |
-| 4 | driver cached-state init block | **matched** under the symmetric reduction |
+| 4 | driver cached-state init block (147 writes) | **not modelled, declared**: the anchor shadow is seeded from its effect so item 9 does not recur |
 | 5 | per-note patch re-application + channel reuse | **matched**: the "once up front" premise is falsified, the rotation is implemented |
 | 6 | percussion note→fnum | **matched** |
 | 7 | `0xBD` rhythm register never written | **excluded by name** (cause below) |
 | 8 | E0-family value skip | **capture artefact**: the capture records write-on-change only; the collapse removes it on both streams (below) |
-| 9 | `0x122` omitted at tick 734 | **named**: the current first divergence |
+| 9 | `0x122` omitted at tick 734 | **init-shadow artefact, seeded away**: the unmodelled tick-0 init left the capture's shadow non-zero; the anchor shadow is seeded from it (below) |
+| 10 | mid-note frequency change at tick 969 | **named**: the current first divergence |
 
-1. **Carrier TL velocity attenuation — named.** The driver adds a velocity term
-   to the carrier TL (`[10]`); the derived function and its engine-supplied input
-   `V` are in "FAT.OPL patch bank" above and
-   `docs/superpowers/plans/2026-09-18-opl-velocity-tl.md`. `V` cannot be derived
-   from `SBPRO2.MDI` — it is the sequence volume the engine feeds as the received
-   CC7 (`prage.c` around `0x2D974`), owned by the config workstream — so the port
-   writes `[10]` verbatim. Patch `0x34` (`0x9a` captured vs `0x98` derived) is an
-   unexplained residual, recorded, not fitted.
+1. **TL level term (carrier and modulator) — named.** The driver adds a per-note
+   velocity/volume offset to the total level of **both** operators; the derived
+   function and its engine-supplied input `V` are in "FAT.OPL patch bank" above
+   and `docs/superpowers/plans/2026-09-18-opl-velocity-tl.md`. `V` cannot be
+   derived from `SBPRO2.MDI` — it is the sequence volume the engine feeds as the
+   received CC7 (`prage.c` around `0x2D974`), owned by the config workstream — so
+   the port applies the patch TL verbatim to `[4]` and `[10]`. The scope is the
+   whole family, not just the carrier: at tick 744 (ch6, second bank) the port
+   writes `0x150 = 0x153 = 0x00` from a patch whose TL bytes are 0 while the
+   capture writes `0x18` to both, the offset varying per note (0/24/25) and the
+   rest of that voice's patch byte-identical. `documented_excluded` therefore
+   excludes the whole family `0x40-0x55`. Patch `0x34` (`0x9a` captured vs `0x98`
+   derived) is an unexplained residual, recorded, not fitted.
 
 2. **`0x105 = 0x01` (OPL3-mode enable): withdrawn, port now matches.** The
    capture's next write after `0x01 = 0x20` is `0x105 = 0x01`. Earlier text here
@@ -1056,15 +1069,18 @@ assignment "divergence #7"; the channel half is **item 5** here — item 7 is th
    interpretation. `verified (cmd: parse of every EVNT chunk; see the offset 448
    case)`. No parser change is warranted on this evidence.
 
-4. **Driver cached-state init block — matched under the symmetric reduction.**
+4. **Driver cached-state init block — not modelled; its shadow effect seeded.**
    After `0x01 = 0x20` and `0x105 = 0x01` the capture writes a full reset sweep
    (`0x20..0x35` and `0x120..0x135`, values `0x01`/`0x3F`/`0xFF`/`0x0F`) before
-   its first key-on, and folds the first note's patch into that same `ms == 0`
-   block (item 5). The port opens with only the two enable writes. Both streams
-   are reduced by the **same** rule: drop everything before the stream's first
-   key-on (`0xB0..0xB8` with the key bit) plus the `documented_excluded`
-   registers, then map capture ms to port tick at 120 Hz. The first note's
-   preamble is thus discarded on both sides rather than on the capture only.
+   its first key-on — 147 writes in all, whose last event is that first key-on —
+   and folds the first note's patch into that same `ms == 0` block (item 5). The
+   port opens with only the two enable writes, so it does not model the sweep.
+   Both streams are still reduced by the **same** rule (drop everything before the
+   stream's first key-on plus the `documented_excluded` registers, then map
+   capture ms to port tick at 120 Hz), so the preamble is discarded on both sides
+   rather than on the capture only; but because the sweep did write the chip, the
+   anchor shadow is seeded from the capture's pre-anchor register state (Reduction
+   above). Without that seed the unmodelled init leaks past the anchor as item 9.
    `verified (cmd: ./build/run_tests capture-oracle line)`.
 5. **Per-note patch re-application and channel reuse — matched.** The
    "operators are applied once, up front" premise is falsified: the driver
@@ -1113,13 +1129,27 @@ assignment "divergence #7"; the channel half is **item 5** here — item 7 is th
    (Reduction, above). `verified (cmd: ./build/run_tests capture-oracle line;
    Ghidra decompilation of data/game/C/SBPRO2.MDI -> FUN_0000_3184,
    FUN_0000_2ad6)`.
-9. **`0x122` omitted at tick 734 — named (the current first divergence).** After
-   the collapse the line advanced to C write 102: the port emits `0x122 = 0x01`
-   (second OPL2, channel 2 modulator byte 2) where the capture emits
-   `0x125 = 0x02` (the same channel's carrier). Both are real register writes;
-   the port's `0x122` history differs from the capture's, so the port's write is
-   a change while the capture's was not. Not yet derived; named, not fitted.
-   `verified (cmd: ./build/run_tests capture-oracle line)`.
+9. **`0x122` omitted at tick 734 — init-shadow artefact, seeded away.** After the
+   write-on-change collapse the line advanced to C write 102: the port emitted
+   `0x122 = 0x01` where the capture emitted `0x125 = 0x02`. The port's `0x122`
+   history differed because the driver's tick-0 block is a full 18-voice
+   cached-state init (147 writes, 145 of them — including `0x122 = 0x01` — not
+   modelled, spec divergence 4) whose last event is the first key-on, so the anchor
+   dropped it from the capture stream while it still set the capture's shadow. The
+   anchor shadow is now seeded from the capture's pre-anchor state, both sides
+   start from one hardware state, and the divergence is gone. This is the visible
+   consequence of the unmodelled init; divergence 4's disposition is corrected
+   accordingly. `verified (cmd: ./build/run_tests capture-oracle line)`.
+10. **Mid-note frequency change at tick 969 — named (the current first
+   divergence).** At C write 302 the port writes `0xB6 = 0x0E` (channel-6
+   key-on/fnum high) while the capture, at tick 969, writes `0xA6 = 0x7F`
+   (channel-6 fnum low) with no key-on, then `0xA7` at 974 and 977 — the driver
+   changes a sounding note's frequency without retriggering it. The port keys each
+   note once and never rewrites its fnum, so it has no such writes. This falsifies
+   the earlier "no bend in the capture window" note: the compared window does
+   contain them. Reproducing them from the capture would be fitting; a future
+   cycle would derive the driver's frequency path (`[ch+0x18f9]`). Named, not
+   fitted. `verified (cmd: ./build/run_tests capture-oracle line)`.
 
 **Named gaps (not fitted, do not affect the compared window).** The driver's
 voice-steal handler `0x36f6`-`0x3816` (quietest-voice, per-MIDI-channel counts
@@ -1127,16 +1157,17 @@ voice-steal handler `0x36f6`-`0x3816` (quietest-voice, per-MIDI-channel counts
 oldest-voice steal; with 18 slots the allocator was not observed to exhaust in
 the compared window. The percussion allocator `0x30e1` (voice type 3) is
 unreachable for the shipped bank (all 181 `FAT.OPL` payloads have type
-`[0] = 0x0e`), so it is not modelled. Pitch bend / `[ch+0x18f9]` is unmodelled
-(no bend in the capture window). The `0x34` carrier-TL residual (item 1) is
-unexplained.
+`[0] = 0x0e`), so it is not modelled. Pitch bend / mid-note frequency change
+(`[ch+0x18f9]`) is unmodelled and **is present in the compared window** (item 10;
+the earlier "no bend in the capture window" note is falsified). The `0x34`
+carrier-TL residual (item 1) is unexplained.
 
 Task 9 result: `tools/opl_seq.py` and the C sequencer agree **byte-for-byte**
 (9340 writes: tick, register, value and order) — the tolerance-free governing
 oracle comparison. Against the capture the remaining differences are items 1, 7
-and 9 (named/excluded above) — the earlier item 8 was a capture artefact, now
-collapsed on both sides; each remaining difference is excluded or reported, never
-tuned away.
+and 10 (named/excluded above) — the earlier item 8 was a capture artefact, now
+collapsed on both sides, and item 9 (the unmodelled init's shadow) is seeded
+away; each remaining difference is excluded or reported, never tuned away.
 
 **Asset gate on the governing comparison.** The byte-exact C-vs-Python gate and
 the capture comparison both need the untracked `data/game/C` assets
