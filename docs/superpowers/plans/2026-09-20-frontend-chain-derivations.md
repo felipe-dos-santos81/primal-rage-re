@@ -28,18 +28,22 @@ conflict is recorded in §0.2.
 `Cs(CS_ARCH_X86, CS_MODE_16)`; the image is a 32-bit LE (`flags 0x2045/0x2043`,
 and the decompilation is full of `eax/edx/…`). `CS_MODE_16` decodes every function
 as garbage — e.g. `0x2F4BC` decodes as `push si; mov si,[di]; xor al,0x5f …`, while
-`CS_MODE_32` gives the real `push esi; mov esi,[0x85f34]; call 0x2F198 …`. All
-listings here use `Cs(CS_ARCH_X86, CS_MODE_32)`.
+`CS_MODE_32` gives the real `push esi; mov esi,[0x85f34]; call 0x2F198 …` (raw file
+form; post-fixup `[0x105f34]`). All listings here use
+`Cs(CS_ARCH_X86, CS_MODE_32)`.
 
-**The brief's file-offset formulas are only partly right.** For the *code* object,
-`file_offset = VA + 0x52E54` works for the addresses cited here and is what the
-prior cycle's `docs/superpowers/plans/2026-09-17-actor-system-args.md` verified
-independently. For the *data* object, `file_offset = VA + 0x46E54` is **not**
-globally valid: at `VA 0x104AE8` it gives `0x14B93C`, past the 1,276,013-byte file.
-The data object's pages are not stored linearly; they must be walked through the LE
-page map. The port already does exactly this in `port/src/mem.c`
-(`mem_load_le` + `mem_load_le_fixups`); the derivation below uses a Python replica of
-those two functions.
+**The brief's file-offset formulas are right.** For the code object,
+`file_offset = VA + 0x52E54` (`VA 0x10000` → file `0x62E54`); for the data object,
+`file_offset = VA + 0x46E54` (`VA 0x80000` → file `0xC6E54`). Dumping the LE page map
+confirms all 213 logical pages map linearly (`phys == logical`; zero non-linear
+entries), so both formulas hold for every file-backed address. The prior cycle's
+`docs/superpowers/plans/2026-09-17-actor-system-args.md` verified the code formula
+independently. The data object is file-backed only up to
+`VA 0x80000 + 113*0x1000 = 0xF1000`; addresses above it (e.g. `0x104AE8`, `0x105F34`)
+are **BSS**, zero-filled at load, and no file formula yields bytes for them. The port
+maps and fixes up the image in `port/src/mem.c` (`mem_load_le` +
+`mem_load_le_fixups`); the derivation below uses a Python replica of those two
+functions.
 
 **Raw operands are pre-relocation.** In the file bytes a code address is encoded as
 `VA - 0x10000` and a data address as `VA - 0x80000`; the LE fixup records add the
@@ -56,11 +60,13 @@ LE fixups, so operands are absolute linear addresses (`[0xf0a58]`, `0x9ac44`).
 Reproduction (read-only; this is the shape of every listing in this document):
 
 ```python
-# walk the LE page map into a 0x2000000 flat image, then apply the internal
-# 32-bit fixups exactly as port/src/mem.c's mem_load_le + mem_load_le_fixups do.
+# map the LE objects (linear pages: phys == logical) into a 0x2000000 flat image,
+# then apply the internal 32-bit fixups exactly as port/src/mem.c's mem_load_le +
+# mem_load_le_fixups do.
 # LE header 0x290A4, bound base 0x26654, page data = bound + 0x3C800, page size 0x1000.
-# For each object: map its pages, then for each fixup record (src=0x07, tf&~0x50==0)
-# write base(target_obj) + target_off at src_off.
+# Code object file = VA + 0x52E54; data object file = VA + 0x46E54 (file-backed to
+# VA 0xF1000; above that is BSS). For each object: map its pages, then for each fixup
+# record (src=0x07, tf&~0x50==0) write base(target_obj) + target_off at src_off.
 from capstone import Cs, CS_ARCH_X86, CS_MODE_32
 md = Cs(CS_ARCH_X86, CS_MODE_32)
 for i in md.disasm(bytes(MEM[0x2f4bc:0x2f4bc+20]), 0x2f4bc):
@@ -72,8 +78,13 @@ Decompilation quotations are from `port/decomp/prage.c` (line numbers cited inli
 ### 0.2 Corrections against the plan/brief (raw wins)
 
 1. **Disassembly mode.** `CS_MODE_16` → `CS_MODE_32` (§0.1).
-2. **Data-object file offset.** `VA + 0x46E54` is not valid for the whole data object;
-   use the LE page map (§0.1).
+2. **Data-object file offset (this record's earlier claim corrected).** The first
+   version of this record said the data object's pages are non-linear and must be
+   page-walked. That is wrong: dumping the page map shows `phys == logical` for all
+   213 logical pages (zero non-linear entries), so `VA + 0x46E54` is valid for every
+   file-backed data address. `0x104AE8` is a **BSS** address (file-backed data ends
+   at `VA 0xF1000`), which is why no file offset resolves it — not a non-linearity
+   (§0.1).
 3. **`0x12658` spawns three actors, not two.** The brief/plan say "`0x2AE14` twice
    with different arguments". The raw calls `0x2AE14` **three** times
    (`0x12672`, `0x1269D`, `0x126CA`) from descriptors `0x9AC44`, `0x9AC58`, `0x9AC6C`
@@ -105,17 +116,17 @@ Decompilation quotations are from `port/decomp/prage.c` (line numbers cited inli
 
 ### 0.3 Addresses derived in this document
 
-| function | VA | file (obj-0) | decompiler | size | callers |
+| function | VA | file (obj-0) | decompiler | size | call sites (raw) |
 |---|---|---|---|---|---|
-| `0x2F4BC` | `0x2F4BC` | `0x82310` | `:19185` | 20 | 59 |
-| `0x12658` | `0x12658` | `0x654AC` | `:1586` | 198 | 1 |
-| `0x1EA08` | `0x1EA08` | `0x7185C` | `:10174` | 559 | 4 |
-| `0x29B74` | `0x29B74` | `0x7C9C8` | `:14991` | 81 | 1 (+ ptr store) |
-| `0x41578` | `0x41578` | `0x943CC` | `:27708` | 146 | 2 |
-| `0x1317C` | `0x1317C` | `0x65FD0` | `:2138` | 122 | 1 |
-| `0x1324C` | `0x1324C` | `0x660A0` | `:2166` | 67 | table entry 0 |
-| `0x13290` | `0x13290` | `0x660E4` | `:2183` | 169 | 1 |
-| `0x1333C` | `0x1333C` | `0x66190` | `:2238` | 134 | 1 |
+| `0x2F4BC` | `0x2F4BC` | `0x82310` | `:19185` | 20 | 59 (functions.csv) / 61 (raw scan) |
+| `0x12658` | `0x12658` | `0x654AC` | `:1586` | 198 | 1 (`0x12592`) |
+| `0x1EA08` | `0x1EA08` | `0x7185C` | `:10174` | 559 | 5 (3 functions, §3) |
+| `0x29B74` | `0x29B74` | `0x7C9C8` | `:14991` | 81 | 1 (`0x27B17`) + ptr stores |
+| `0x41578` | `0x41578` | `0x943CC` | `:27708` | 146 | 4 (`0x41755`,`0x41DE6`,`0x42337`,`0x42352`) |
+| `0x1317C` | `0x1317C` | `0x65FD0` | `:2138` | 122 | 3 (`0x12DE9`,`0x1321D`,`0x1323C`) |
+| `0x1324C` | `0x1324C` | `0x660A0` | `:2166` | 67 | 0 direct (update-table entry 0) |
+| `0x13290` | `0x13290` | `0x660E4` | `:2183` | 169 | 1 (`0x12D6C`) |
+| `0x1333C` | `0x1333C` | `0x66190` | `:2238` | 134 | 1 (`0x12D73`) |
 
 ---
 
@@ -125,13 +136,15 @@ Decompilation quotations are from `port/decomp/prage.c` (line numbers cited inli
 (`port/src/game/actors.c:1541`, declared `port/src/game/actors.h:83`). The raw
 confirms the existing transcription byte-for-byte.
 
-Body (`0x2F4BC`–`0x2F4CF`, file `0x82310`–`0x82323`):
+Body (`0x2F4BC`–`0x2F4CF`, file `0x82310`–`0x82323`), post-fixup operands (the
+raw file stores the same instructions with the DS-relative operand `[0x85f34]`,
+bytes `8b35345f0800`; the LE fixup adds the data base `0x80000`):
 
 ```
 0x2f4bc  56                push esi
-0x2f4bd  8b35345f0800      mov  esi, [0x85f34]      ; DS-relative -> DS_00105F34
+0x2f4bd  8b35345f1000      mov  esi, [0x105f34]     ; DS_00105F34
 0x2f4c3  e8d0fcffff        call 0x2f198            ; 0x2F198 = text_cursor_set
-0x2f4c8  8935345f0800      mov  [0x85f34], esi      ; restore the two-word cursor
+0x2f4c8  8935345f1000      mov  [0x105f34], esi     ; restore the two-word cursor
 0x2f4ce  5e                pop  esi
 0x2f4cf  c3                ret
 ```
@@ -302,8 +315,25 @@ Finally `DS_00107A44`'s low 16 bits are zeroed.
 
 ## 3. `0x1EA08` — the state-5 match-start builder
 
-`0x1EA08` (file `0x7185C`, `prage.c:10174`), called only from `0x11D04` case 5
-(`0x11DF7`). Full fixed-up body:
+`0x1EA08` (file `0x7185C`, `prage.c:10174`). It has **five direct call sites in
+three functions**, not one:
+
+* `0x11DF7` — `0x11D04` case 5 (state 5), `prage.c:1222`.
+* `0x1F140`, `0x1F278`, `0x1F39B` — `FUN_0001EEB0` (the match sub-state machine,
+  `prage.c:10374`), cases 2, 6 and 9 respectively (`prage.c:10409`, `:10464`,
+  `:10514`); the case-6/9 calls are guarded by `DAT_00104abc == 1`.
+* `0x11A42` — `FUN_00011A30` (a function Ghidra did not emit; raw body
+  `0x11A30`–`0x11A88`, `ret` at `0x11A88`). It is **unreachable in the shipped
+  image**: no `call`/`jmp` targets `0x11A30`, and the value `0x11A30` appears nowhere
+  in either LE object, so it is neither installed as a pointer nor reached
+  indirectly.
+
+**Downstream impact.** A Task-3 implementer told "only state 5" would wire `0x1EA08`
+into state 5 alone and miss the match-start triggers at `FUN_0001EEB0` cases 2/6/9
+(and would silently drop the dead `0x11A30` copy). The live call sites are the four
+in state 5 and `FUN_0001EEB0`. The body and globals below are unchanged.
+
+Full fixed-up body:
 
 ```
 0x1ea08  push ebx/ecx/edx/esi/edi/ebp ; sub esp, 0x34
@@ -319,8 +349,9 @@ Finally `DS_00107A44`'s low 16 bits are zeroed.
 0x1ea9e  mov edx,2 ; mov al,[0xa7b96] ; call 0x2f4bc   ; text_cursor_hold
 0x1eaad  push 0x2000 ; push 1 ; mov ecx,7 ; mov edx,2 ; xor eax,eax
 0x1eac0  mov ebx,[esi] ; mov al,[0xa7b97] ; call 0x2f4d0
-0x1eacc  scan i=0..9: if [esi+0x16] == table0[i] -> local = i   ; table0 = 0xA7B94
-0x1eb04  if (local > 6) local = 0
+0x1eacc  scan i=0..9: eax = tableL[i] ; if [esi+0x16] == *(u8*)eax -> local = i
+                                            ; tableL = 0xA7DA0 (letter pointers)
+0x1eb04  if (local > 6) local = 0            ; 0x1EB0A cmp eax,6 / jle keeps 0..6
 0x1eb15  loop i=0..9:
            0x1eb2f  call 0x2dbc4(i, 0) ; esi = blob
            0x1eb5a  call 0x2f4d0(eax=table2[i], edx=table0[i], ebx=i+1, ecx=2, push 1, push 0x3000)
@@ -344,27 +375,38 @@ Finally `DS_00107A44`'s low 16 bits are zeroed.
 | `0xA7B6C` | 20-byte descriptor | `{0x2C4F, 0, 0x00802800, 0x00001000, 0x0A0A13B4}` |
 | `0xA7B94` | 10 × 4 bytes, stride 4 | `0E 03 06 1D`, `10 0C 0F 15`, `12 0C 0F 15`, `14 0C 0F 15`, `17 02 05 0B`, `19 02 05 0B`, `1B 02 05 0B`, `17 16 19 1F`, `19 16 19 1F`, `1B 16 19 1F` |
 | `0xA7DA0` | 10 pointers (fixed up) | `0x8090C,0x80910,0x80914,0x80918,0x8091C,0x80920,0x80924,0x80928,0x80928,0x80928` → `"R","K","T","C","S","D","H","X","X","X"` |
-| `0xA7DCC` | 6 descriptors | `0xBB6DC,0xBB6F0,0xBB704,0xBB718,0xBB72C,0xBB740` |
+| `0xA7DCC` | 7 descriptors | `0xBB6DC,0xBB6F0,0xBB704,0xBB718,0xBB72C,0xBB740,0xBB754` |
 
 The byte table `0xA7B94[i]` = column, `[i+1]` = row, `[i+2]`/`[i+3]` are the two
 formatted-draw modes. The pointer table's single letters (`R K T C S D H X`) are the
-character/button labels; the scan at `0x1EACC` matches `[esi+0x16]` against
-`table0[i]`'s first byte to pick `local`, and `local` then indexes the six character
-descriptors `0xA7DCC`. This is a **match-start roster/character page**: draw the
-per-character name rows, then spawn the selected character's actor.
+character/button labels; the scan at `0x1EADB` loads `tableL[i]` from `0xA7DA0`
+(`0x1EADB mov eax,[eax*4 + 0xa7da0]`), compares `[esi+0x16]` against the byte it
+points to (`0x1EAE5 cmp dl,[eax]`), and sets `local = i`. The guard at `0x1EB0A`
+(`cmp eax,6` / `jle`) keeps indices `0..6`, so `'H'` (index 6) selects the seventh
+descriptor `0xBB754`; an index of `7..9` falls back to `0`. This is a **match-start
+roster/character page**: draw the per-character name rows, then spawn the selected
+character's actor.
 
 ### 3.2 The helper chain (partly unmodeled)
 
 * `0x2DBC4` (file `0x81018`, `prage.c:17958`) calls `0x2DB58` to read a paged
-  resource by index, decodes it (a run-length/escape decoder writing `DS_00105EFC`
-  and `DS_00105F00`), and returns a pointer whose `+4` is the first string and
-  whose `+0` is the next string's pointer. **`0x2DB58` is the paged-memory manager
-  the port does not model for this resource class** — this is a named gap (§7).
+  resource by index and decodes it (a run-length/escape decoder writing
+  `DS_00105EFC` and `DS_00105F00`). The returned pointer is used as
+  `{+4: first string, +0: next}` by the consumer (`0x1EA6B`, `0x1EAC0`, `0x1EBC7`) —
+  that layout is **read off the consumer, not decoded from `0x2DB58`**. **`0x2DB58`
+  is the paged-memory manager the port does not model for this resource class** —
+  named gap §7.1.
 * `0x2F4D0` (file `0x82324`, `prage.c:19200`)
   is `0x2EFD4` (a `sprintf`-style formatter, `prage.c:18819`) followed by
   `0x2F198` — "draw formatted text at (col,row)". Its `EAX`/`EDX` are the col/row
   that reach `0x2F198`; `EBX`/`ECX` and the two stack words feed the formatter
-  `0x2EFD4`, which is not modelled here.
+  `0x2EFD4`, whose exact output is **not decoded** (named gap §7.2).
+* `0x38B18` (file `0x8B96C`, `prage.c:23798`) — `frontend_spawn_row`. The binding is
+  pinned by the raw, not assumed: `0x38B1B mov esi,eax` (descriptor),
+  `0x38B1D mov ebp,edx` (a2), `0x38B51 shl ebx,3` (a3<<3), `0x38B54 lea edx,[ebp*8]`
+  (a2<<3), `0x38B4C mov ecx,2`, `0x38B4A push 0`, `0x38B5D call 0x2AE14`, then
+  `0x38B62 mov [edi*4 + 0x107a1c],eax` into the first free of the 7 slots. So
+  `frontend_spawn_row(desc, a2, a3)` = `actor_spawn(desc, a2<<3, 2, a3<<3, 0)`.
 * `0x2A17C` (file `0x7D7D0`, `prage.c:15272`) sets the spawned actor's pset flags
   from `rec+0x56` and, because `EBX = 0x105FD30` is non-zero, appends the
   `0x105FD30` entry through `0x33754` and stores it at `pset+0x18`.
@@ -383,9 +425,9 @@ frame). The globals it changes are all written through callees:
 | `DS_00105F34` (cursor), `DS_00105F38` (glyph grid) | `0x2F4D0`, `0x2F4BC` | per-glyph actors |
 | `DS_00105FD30` region | `0x2A17C → 0x33754` | pset link |
 
-The **index-selection** `local` (which of the six descriptors is spawned) depends on
+The **index-selection** `local` (which of the seven descriptors is spawned) depends on
 `[esi+0x16]`, produced by `0x2DBC4`/`0x2DB58`; that value cannot be pinned from the
-raw without modelling the paged resource (named gap, §7). The rest of the body is
+raw without modelling the paged resource (named gap §7.1). The rest of the body is
 pinnable.
 
 ---
@@ -472,8 +514,10 @@ render  DS_000A86C4: 0004f4e8 0001d540 0005d812 0001dc0c 0004f5c8 0005d812 … (
   `0x278A4 mov [0x84ae4],edx`, fixup → `0x29B74`. `DS_00104AE4` is invoked at
   `0x4F302`, `0x4F373`, `0x4F6F1`, `0x4F70D`, `0x4F9AA`, `0x4F9D1` (the `0x17`
   handlers).
-* `0x41578` is **not** in either table. It is reached by **direct call** from
-  `0x416D4` and `0x41C28` (decompiler `:27790`, `:28048`, `:28218`, `:28223`).
+* `0x41578` is **not** in either table. It is reached by **direct call** at four
+  sites in two functions — `0x416D4` (`0x41755`) and `0x41C28`
+  (`0x41DE6`,`0x42337`,`0x42352`) — the decompiler's `:27790`, `:28048`, `:28218`,
+  `:28223`.
 * The global `DS_00104AE4` is adjacent to but distinct from the update mask
   `DS_00104AE8` and the render mask `DS_00104AEC`. The plan's Step 4 conflated
   `0x104AE4` (state pointer) with `0x104AE8` (update mask).
@@ -599,15 +643,19 @@ finding; the port should not assume a live shake unless it wires a trigger.
 
 ### 5.2 `0x1317C` — camera-y clamp
 
-`0x1317C` (file `0x65FD0`, `prage.c:2138`), called only by `0x12DA8`
-(`prage.c:1923`), which sets `DS_001078F4` (the high word of `DS_001078F2`) from the
-selected player record's `+0` word and then calls `0x1317C`:
+`0x1317C` (file `0x65FD0`, `prage.c:2138`), called from three sites in three
+functions — `0x12DA8` at `0x12DE9` (`prage.c:1923`), `0x131F8` at `0x1321D`, and
+`0x13224` at `0x1323C`. All three set `DS_001078F4` (the high word of
+`DS_001078F2`) from a player record's `+0` word and then call `0x1317C`; `0x12DA8`
+branches on `DS_000F0AFE` (mode 0 reads `DS_001077E0 + DS_000F0AFF*0x94`, else the max
+of `DS_001077E0`/`DS_00107874`), while `0x131F8`/`0x13224` are the two arms split out:
 
 ```
 0x1317c  push edx ; sub esp,0xc
 0x13180  mov  eax, [0x1078f2]      ; DS_001078F2
 0x13185  sar  eax, 0x10            ; x = (s32)DS_001078F2 >> 16
-0x13188  cmp  eax, 0x1400 ; jle 0x131c9
+0x13188  cmp  eax, 0x1400
+0x1318d  jle  0x131c9
 0x1318f  lea  edx, [eax-0x1400]    ; d = x - 0x1400
 0x13198  fild dword [esp]          ; d
 0x1319b  fstp dword [esp+8]
@@ -647,8 +695,8 @@ the **high word of `DS_000F0AF0`**):
 ```
 
 The final block then clamps: `DS_000F0AEC = min(DS_000F0AEC, DS_0009AF28[DS_00104AFC]
->> 16)` (signed), where the dword read at `0x9AF28 + index*2` makes the effective
-value `word[2*index+1]`. For `index 0` that is `0x1700`.
+>> 16)` (signed). The dword is read at byte `0x9AF28 + 2*index`, so its high word is
+`word[index+1]` (not `word[2*index+1]`). For `index 0` that is `word[1] = 0x1700`.
 
 ### 5.3 `0x13290` — center on the two players (mode 2)
 
@@ -699,7 +747,7 @@ player, index = byte `DS_0010810D`), and the mode-4 transition is **not** gated 
 | `DS_001078F2` | `u32` | high word (`DS_001078F4`) = selected player x | `0x12DA8` |
 | `DS_001078FE` | `u8` | gates the mode-4 transition in `0x13290` | elsewhere |
 | `DS_0010810D` | `u8` | player index for mode 3 | elsewhere |
-| `DS_0009AF28` | word array | per-camera y limits (`word[2*i+1]` read) | static data |
+| `DS_0009AF28` | word array | per-camera y limits (`word[index+1]` read) | static data |
 | `DS_00104AFC` | `u16` | camera index into `DS_0009AF28` | camera-select logic |
 
 ---
@@ -729,9 +777,12 @@ player, index = byte `DS_0010810D`), and the mode-4 transition is **not** gated 
 0x11e3c  call 0x10db0 ; call 0x10e18 ; call 0x2bf08
 ```
 
-**Which call produces the values, and what they are.** Neither value is returned by a
-call; both are materialized in registers *before* the call sequence and read *after*
-it:
+**The values are set literally inside case 5, not inherited from a callee.** `CX` is
+loaded at `0x11DED` (`mov ecx,0x12c`) and `DH` is zeroed at `0x11E01` (`xor dh,dh`),
+both **inside case 5 itself**; they are then stored after the intervening calls at
+`0x11E11` (`mov [0x70a6f],dh`) and `0x11E1D` (`mov [0x70a6a],cx`). No call returns
+them and no callee sets them — the calls only have to preserve the registers, which
+every one of them does:
 
 * `CX = 0x12C` is loaded at `0x11DED`. Every intervening callee preserves `ECX`:
   `0x2C3FC` never writes `ECX` (scanned all 395 instructions of its 1268-byte body:
@@ -745,10 +796,10 @@ it:
   `EBX`), giving `DS_000F0A72 = 0` (which the decompiler also proved as a literal).
 
 The decompiler's `extraout_CX`/`extraout_DH` are its inability to track registers
-across `__regparm3` calls; the values are pinned by the raw. **No literal is fitted:
-the port must reproduce "store the register left by these calls", whose derived value
-is `0x12C`/`0`.** (If a future port chooses to hardcode, the evidence is this
-section.)
+across `__regparm3` calls. The raw is unambiguous: case 5 sets `CX = 0x12C` and
+`DH = 0` itself and stores them at `0x11E11`/`0x11E1D`. **No literal is fitted:** the
+port transcribes exactly those two stores with those two in-case values, and the
+callee-preservation analysis above is the proof the stores read the intended values.
 
 The decompiler's order (`prage.c:1225-1229`) lists `DAT_000f0a72`, `DAT_000f0a6c`,
 `DAT_000f0a64`, `DAT_000f0a6a`, `DAT_000f0a6f`; the raw order is `0x6f`, `0x72`,
@@ -759,28 +810,41 @@ the port should follow the raw order.
 
 ## 7. What could not be determined (named gaps)
 
-1. **`0x2DBC4`/`0x2DB58` (the paged resource reader used by `0x1EA08`).** It reads a
+1. **`0x2DB58`/`0x2DBC4` — the paged resource reader used by `0x1EA08`.** It reads a
    paged resource by index through the paged-memory manager, which the port does not
-   model for this resource class. Consequently the `local` index (which of the six
+   model for this resource class. Consequently the `local` index (which of the seven
    `0xA7DCC` character descriptors `0x1EA08` spawns) cannot be pinned. Evidence: the
-   body at file `0x81018`, calling `0x2DB58` at `0x81078`; the decoder writes
-   `DS_00105EFC`/`DS_00105F00` and the index comes from `[esi+0x16]` (`0x1EACC`).
-   **Everything else in `0x1EA08` is pinned** (tables, spawn args, call order).
-2. **The assets named by the two list handles `0x3E688` and `0x88874B0`.** They are
+   body at file `0x81018`, calling `0x2DB58` at `0x81078`; the index comes from
+   `[esi+0x16]` (`0x1EACC`). **The decoded resource format is also asserted, not
+   decoded:** the run-length/escape decoder writes `DS_00105EFC`/`DS_00105F00`, and
+   the returned blob's `+4` "first string" / `+0` "next pointer" layout is read off
+   the consumer (`0x1EA6B` copies 0x12 bytes from `[esi+4]`; `0x1EAC0`/`0x1EBC7` use
+   `[esi]`) rather than from a decoded format. Both go to a future task that models
+   `0x2DB58`.
+2. **The `0x2F4D0`/`0x2EFD4` formatter.** `0x2F4D0` is `0x2EFD4` followed by
+   `0x2F198`; the exact output of `0x2EFD4` (a `sprintf`-style formatter) is not
+   decoded — only its col/row pass-through to `0x2F198` and its call sites are
+   pinned. The `0x1EA08` draws therefore have exact `(col,row,table)` inputs but
+   un-asserted formatted output.
+3. **The assets named by the two list handles `0x3E688` and `0x88874B0`.** They are
    resource handles in the `0x1B544` space; the index/offset decode is pinned
    (`0x3E688`: index 0 offset `0x3E688`; `0x88874B0`: index 17 offset `0x874B0`) but
    the runtime page table that maps index → asset is not statically readable here.
    `0x88874B0` is above the port's `MEM_SIZE` and outside both LE objects.
-3. **The camera-index/player-index writers.** `DS_00104AFC`, `DS_000F0AFF`,
+4. **The camera-index/player-index writers.** `DS_00104AFC`, `DS_000F0AFF`,
    `DS_0010810D`, `DS_001078FE` are written by camera-select/fight code that is out of
    this cycle's scope; the camera functions' anchors below set them explicitly.
-4. **`0x1324C` is dormant.** No shipped store sets `DS_00104AE8` bit 0 (§5.1). The
+5. **`0x1324C` is dormant.** No shipped store sets `DS_00104AE8` bit 0 (§5.1). The
    port can transcribe the body, but there is no shipped trigger; wiring it live
    would be inventing behaviour.
-5. **The state-4 `0x2C3FC` `ECX` argument.** In state-4 case 0 the raw does not set
+6. **The state-4 `0x2C3FC` `ECX` argument.** In state-4 case 0 the raw does not set
    `ECX` before `0x2C3FC`; it inherits the caller's `ECX`. The port's `0x2C3FC`
-   (`0x2C3FC`'s caller-facing behaviour) is already ported and does not need the
-   value, so this is noted rather than resolved.
+   is already ported and does not need the value, so this is noted rather than
+   resolved.
+
+**Explicitly not a gap.** `0x38B18`'s argument binding is pinned by the raw (§3.2:
+`0x38B1B`/`0x38B1D`/`0x38B51`/`0x38B54`/`0x38B5D`), so the `frontend_spawn_row(desc,
+0, 0)` call in `0x1EA08` rests on disassembly, not on the port's existing comment.
 
 ---
 
