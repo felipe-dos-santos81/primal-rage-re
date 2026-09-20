@@ -22,6 +22,17 @@
 #define SEQ_NOTE_FREE (-1)
 #define SEQ_NO_PATCH 0xFFFFu
 
+/* PORT: register-family mask for the driver's applier (SBPRO2.MDI 0x3184),
+ * which tests [v+0x1539] in the order 0x80, 0x40, 0x20, 0x10, 0x08, 0x01 and
+ * clears each bit after writing that family. */
+#define FAM_FREQ  0x01
+#define FAM_CONN  0x08
+#define FAM_WAVE  0x10
+#define FAM_EG    0x20
+#define FAM_TL    0x40
+#define FAM_AMVIB 0x80
+#define FAM_ALL   (FAM_FREQ | FAM_CONN | FAM_WAVE | FAM_EG | FAM_TL | FAM_AMVIB)
+
 /* PORT: operator register offset for each OPL3 channel, including the second
  * register set's 0x100 (SBPRO2.MDI 0xc37 -> 0xc5b/0xc7f: channels 0-8 are
  * {0,1,2,8,9,10,16,17,18}, channels 9-17 repeat them in bank 1; op2 is +3). */
@@ -44,6 +55,8 @@ typedef struct {
     u32 release;       /* ticks left before auto key-off */
     u32 age;           /* allocation order, for stealing */
     u8 b0;             /* 0xB0 value without the key bit */
+    const u8 *patch;   /* cached patch payload, for controller re-applies */
+    int index;         /* cached fnum table index (note+base / base) */
 } seq_voice;
 
 static struct {
@@ -101,10 +114,12 @@ static int read_vlq(u32 *out)
     return 0;
 }
 
-/* Applies a patch payload to an OPL channel. Payload layout (verified,
- * FORMATS.md): [3..7] = modulator 0x20/0x40/0x60/0x80/0xE0, [8] = 0xC0,
- * [9..13] = carrier 0x20/0x40/0x60/0x80/0xE0. Writes are ordered by register
- * family, matching the captured driver's per-note setup.
+/* Applies the register families selected by `mask` to an OPL channel, from
+ * the voice's cached patch payload. Payload layout (verified, FORMATS.md):
+ * [3..7] = modulator 0x20/0x40/0x60/0x80/0xE0, [8] = 0xC0, [9..13] = carrier
+ * 0x20/0x40/0x60/0x80/0xE0. Writes are ordered by register family, matching
+ * the captured driver's per-note setup; a key-on passes FAM_ALL, which emits
+ * the full 0x20..0xC0 preamble before the 0xA0/0xB0 frequency pair.
  *
  * The driver ORs 0x30 into 0xC0 (OPL3 left/right output bits) in the capture;
  * kept here. KNOWN DIVERGENCE: the driver also attenuates the carrier TL
@@ -112,24 +127,40 @@ static int read_vlq(u32 *out)
  * derivable from the driver, so this port applies the patch TL verbatim. See
  * docs/superpowers/plans/2026-09-18-opl-velocity-tl.md and port/spec/audio.md
  * "Known capture divergences". */
-static void apply_patch(int opl_ch, u16 key)
+static void fam_apply(int opl_ch, u8 mask)
 {
-    const u8 *p = patches_lookup(key);
+    const u8 *p = S.voice[opl_ch].patch;
     u16 base = OPL_SLOT[opl_ch];
 
-    if (p == NULL)
-        return;
-    opl_write((u16)(0x20 + base), p[3]);
-    opl_write((u16)(0x23 + base), p[9]);
-    opl_write((u16)(0x40 + base), p[4]);
-    opl_write((u16)(0x43 + base), p[10]);
-    opl_write((u16)(0x60 + base), p[5]);
-    opl_write((u16)(0x63 + base), p[11]);
-    opl_write((u16)(0x80 + base), p[6]);
-    opl_write((u16)(0x83 + base), p[12]);
-    opl_write((u16)(0xE0 + base), p[7]);
-    opl_write((u16)(0xE3 + base), p[13]);
-    opl_write(ch_reg(opl_ch, 0xC0), (u8)(p[8] | 0x30));
+    if (p != NULL) {
+        if (mask & FAM_AMVIB) {
+            opl_write((u16)(0x20 + base), p[3]);
+            opl_write((u16)(0x23 + base), p[9]);
+        }
+        if (mask & FAM_TL) {
+            opl_write((u16)(0x40 + base), p[4]);
+            opl_write((u16)(0x43 + base), p[10]);
+        }
+        if (mask & FAM_EG) {
+            opl_write((u16)(0x60 + base), p[5]);
+            opl_write((u16)(0x63 + base), p[11]);
+            opl_write((u16)(0x80 + base), p[6]);
+            opl_write((u16)(0x83 + base), p[12]);
+        }
+        if (mask & FAM_WAVE) {
+            opl_write((u16)(0xE0 + base), p[7]);
+            opl_write((u16)(0xE3 + base), p[13]);
+        }
+        if (mask & FAM_CONN)
+            opl_write(ch_reg(opl_ch, 0xC0), (u8)(p[8] | 0x30));
+    }
+    if (mask & FAM_FREQ) {
+        u8 a0, b0;
+        pitch_lookup(S.voice[opl_ch].index, 0, &a0, &b0);
+        S.voice[opl_ch].b0 = b0;
+        opl_write(ch_reg(opl_ch, 0xA0), a0);
+        opl_write(ch_reg(opl_ch, 0xB0), (u8)(b0 | 0x20));
+    }
 }
 
 static void key_off(int opl_ch)
@@ -187,7 +218,9 @@ static int alloc_voice(void)
 
 static void key_on(int midi, int note, int vel, u32 dur)
 {
+    const u8 *p;
     u16 key;
+    int idx;
     int v;
     (void)vel;
 
@@ -201,33 +234,33 @@ static void key_on(int midi, int note, int vel, u32 dur)
         key = PATCH_KEY(S.bank[midi], S.program[midi]);
 
     v = alloc_voice();
-    apply_patch(v, key);
+
+    /* PORT: the driver does not key a note at its MIDI pitch. Its note-on
+     * path (SBPRO2.MDI 0x35fa-0x36a6) builds the fnum table index from the
+     * patch's base byte ([di+2], stored at 0x3aac-0x3ac1): melodic adds the
+     * base to the note ([si+0x14d5]=note, [si+0x14fd]=base), while percussion
+     * uses the base alone ([si+0x14d5]=base, [si+0x14fd]=0), so a drum's
+     * 0x7F-bank patch base byte selects the table entry. Every melodic
+     * FAT.OPL entry in the shipped bank has base 0, so the melodic sum reduces
+     * to the note for the compared window; pitch_lookup() folds the index and
+     * selects the fnum/block. The payload pointer and index are cached on the
+     * voice so a later controller re-apply (0x3184) can rebuild the writes
+     * without the key. */
+    p = patches_lookup(key);
+    idx = note;
+    if (p != NULL)
+        idx = (midi == 9) ? (int)p[2] : note + (int)p[2];
+    if (idx > 127)
+        idx = 127;
+    S.voice[v].patch = p;
+    S.voice[v].index = idx;
+
+    fam_apply(v, FAM_ALL);
+
     S.voice[v].midi = midi;
     S.voice[v].note = note;
     S.voice[v].release = dur;
     S.voice[v].age = ++S.age;
-    {
-        /* PORT: the driver does not key a note at its MIDI pitch. Its note-on
-         * path (SBPRO2.MDI 0x35fa-0x36a6) builds the fnum table index from the
-         * patch's base byte ([di+2], stored at 0x3aac-0x3ac1): melodic adds the
-         * base to the note ([si+0x14d5]=note, [si+0x14fd]=base), while
-         * percussion uses the base alone ([si+0x14d5]=base, [si+0x14fd]=0), so
-         * a drum's 0x7F-bank patch base byte selects the table entry. Every
-         * melodic FAT.OPL entry in the shipped bank has base 0, so the melodic
-         * sum reduces to the note for the compared window; pitch_lookup() folds
-         * the index and selects the fnum/block. */
-        const u8 *p = patches_lookup(key);
-        int idx = note;
-        u8 a0, b0;
-        if (p != NULL)
-            idx = (midi == 9) ? (int)p[2] : note + (int)p[2];
-        if (idx > 127)
-            idx = 127;
-        pitch_lookup(idx, 0, &a0, &b0);
-        S.voice[v].b0 = b0;
-        opl_write(ch_reg(v, 0xA0), a0);
-        opl_write(ch_reg(v, 0xB0), (u8)(b0 | 0x20));
-    }
 }
 
 /* The single halt path. Every exit from the parser that stops playback routes
@@ -396,6 +429,8 @@ void seq_start(void)
         S.voice[v].release = 0;
         S.voice[v].age = 0;
         S.voice[v].b0 = 0;
+        S.voice[v].patch = NULL;
+        S.voice[v].index = 0;
     }
     for (int c = 0; c < SEQ_MIDI_CHANNELS; c++) {
         S.program[c] = 0;
@@ -405,7 +440,7 @@ void seq_start(void)
      * (0x01 = 0x20) then the OPL3-mode enable (0x105 = 0x01); the port writes
      * both, in that order, matching the capture. The port needs 0x01 because
      * patches write 0xE0. 0x105 does not change the port's output: every
-     * apply_patch writes 0xC0 = patch | 0x30 (both output enables), which in
+     * fam_apply writes 0xC0 = patch | 0x30 (both output enables), which in
      * OPL3 mode is what gates each channel's mix. See port/spec/audio.md
      * "Known capture divergences". */
     opl_write(0x01, 0x20);
