@@ -118,6 +118,23 @@ int test_frontend(void)
         DSW(DS_000F0A6C) = saved_6c;
     }
 
+    /* 0x4F1D0 zeroes the two origin words; 0x4F1E4 writes DS_00104B15. They are
+     * distinct raw functions and 4b-B conflated them. */
+    {
+        const u16 saved_3a = DSW(DS_00107A3A);
+        const u16 saved_38 = DSW(DS_00107A38);
+        const u8  saved_15 = DSB(DS_00104B15);
+        DSW(DS_00107A3A) = 0x1234;
+        DSW(DS_00107A38) = 0x5678;
+        DSB(DS_00104B15) = 0x9A;
+        frontend_origin_zero();
+        CHECK_EQ_INT((int)DSW(DS_00107A3A), 0);
+        CHECK_EQ_INT((int)DSW(DS_00107A38), 0);
+        CHECK_EQ_INT((int)DSB(DS_00104B15), 0x9A);   /* 0x4F1D0 does NOT touch it */
+        DSW(DS_00107A3A) = saved_3a; DSW(DS_00107A38) = saved_38;
+        DSB(DS_00104B15) = saved_15;
+    }
+
     const char *dump = getenv("PR_FRONTEND_DUMP");
     if (dump == NULL || dump[0] == '\0') {
         printf("test_frontend: PR_FRONTEND_DUMP unset, state-2 driver skipped\n");

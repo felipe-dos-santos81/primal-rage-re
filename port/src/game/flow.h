@@ -100,4 +100,9 @@ void game_title_dump_frame(void);
 void game_string_table_load(const char *dir);
 const u8 *game_string_get(u32 id);
 
+/* 0x4F1D0. Zeroes the two origin words DS_00107A3A/DS_00107A38. Distinct from
+ * 0x4F1E4 (title_input_reset). Exposed so attract.c (0x11000 phase 0/1) and
+ * game_state_select share it. */
+void frontend_origin_zero(void);
+
 #endif /* PR_GAME_FLOW_H */

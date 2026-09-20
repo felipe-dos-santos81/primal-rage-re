@@ -163,6 +163,14 @@ static void title_input_reset(void)
     DSB(DS_00104B15) = 0;                       /* 0x4F1F1 */
 }
 
+/* 0x4F1D0. `xor edx,edx; mov word [0x87A3A],dx; mov word [0x87A38],dx`. The
+ * origin zeroing only; 0x4F1E4 (title_input_reset) is a different function. */
+void frontend_origin_zero(void)
+{
+    DSW(DS_00107A3A) = 0;                       /* 0x4F1D3 */
+    DSW(DS_00107A38) = 0;                       /* 0x4F1DA */
+}
+
 /* PORT: 0x38910. Called with eax = 0 from 0x121F9. 0x4F1D0 zeroes the two
  * cursor words; the mode-1 cursor words copy DS_00107A4E; the two table words
  * come from the data object's fixed-up tables DS_000BDE0C / DS_000BDDFC. */
@@ -332,7 +340,7 @@ static void game_state_select(void)
         if (DSB(DS_000F0A6F) == 0) {
             /* 0x29D60 is a ret-only no-op. */
             actors_reset();                         /* 0x2BAF4 (eax = 1) */
-            title_input_reset();                    /* 0x4F1D0 */
+            frontend_origin_zero();                 /* 0x4F1D0 */
             title_spawn_row(desc, 0u, 0u);          /* 0x38B18 */
             config_set_credit_row(1u);              /* 0x2C06C (eax = 1) */
             DSB(DS_000F0A6E) = 0;
@@ -341,7 +349,7 @@ static void game_state_select(void)
             n = 0;
         }
         actors_reset();                             /* 0x2BAF4 (eax = 1) */
-        title_input_reset();                        /* 0x4F1D0 */
+        frontend_origin_zero();                     /* 0x4F1D0 */
         title_spawn_row(desc, 0u, 0u);              /* 0x38B18 */
         DSD(DS_000F0A44) = actor_spawn(             /* 0x2AE14 */
             (const u32 *)(mem + DSD(0x9AEE0u + 12u * n)),   /* 0x9AEE0 */
