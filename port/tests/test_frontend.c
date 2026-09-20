@@ -291,6 +291,76 @@ int test_frontend(void)
         DSW(DS_000F0A76) = saved_76;   DSW(DS_0009AD98) = saved_98;
     }
 
+    /* 0x11D04 case 5 (state 5, the match-start block inline in the dispatch).
+     * The body runs 0x2C3FC (voice cancel, skipped), 0x1EA08, 0x2C06C, 0x32970
+     * (run clock, skipped), then stores the raw's five values. The case uses
+     * break, so the three shared tails still run after the switch; the second
+     * call below arms one of them to prove the case does not return early. */
+    {
+        const u8  saved_1d = DSB(DS_00104B1D);
+        const u8  saved_71 = DSB(DS_000F0A71);
+        const u8  saved_58 = DSB(DS_0009AD58);
+        const u8  saved_15 = DSB(DS_00104B15);
+        const u8  saved_60 = DSB(DS_00105D60);
+        const u8  saved_19 = DSB(DS_00104B19 + 2u);
+        const u8  saved_d8_1 = DSB(DS_001088D8 + 1u);
+        const u8  saved_d8_3 = DSB(DS_001088D8 + 3u);
+        const u8  saved_c5 = DSB(DS_00105C05);
+        const u16 saved_64 = DSW(DS_000F0A64);
+        const u16 saved_6a = DSW(DS_000F0A6A);
+        const u16 saved_6c = DSW(DS_000F0A6C);
+        const u8  saved_6f = DSB(DS_000F0A6F);
+        const u8  saved_72 = DSB(DS_000F0A72);
+
+        DSB(DS_00104B1D) = 1;          /* coin poll skipped */
+        DSB(DS_000F0A71) = 1;          /* pause/continue tails skipped */
+        DSB(DS_0009AD58) = 1;          /* overlay skipped */
+
+        /* Sentinels differ from every post-condition so a no-op case fails. */
+        DSW(DS_000F0A64) = 5;
+        DSW(DS_000F0A6C) = 0x1234;
+        DSW(DS_000F0A6A) = 0x1234;
+        DSB(DS_000F0A6F) = 0xAB;
+        DSB(DS_000F0A72) = 0xCD;
+        DSB(DS_00104B15) = 0x9A;
+        DSB(DS_00105C05) = 0x9A;   /* sentinel; 0x2C06C stores 0x1D */
+        game_state_step();
+        CHECK_EQ_INT((int)DSW(DS_000F0A64), 9);
+        CHECK_EQ_INT((int)DSW(DS_000F0A6C), 6);
+        CHECK_EQ_INT((int)DSW(DS_000F0A6A), 0x12C);
+        CHECK_EQ_INT((int)DSB(DS_000F0A6F), 0);
+        CHECK_EQ_INT((int)DSB(DS_000F0A72), 0);
+        CHECK_EQ_INT((int)DSB(DS_00104B15), 0);   /* 0x1EA08 ran 0x4F1E4 */
+        CHECK_EQ_INT((int)DSB(DS_00105C05), 0x1D);  /* 0x2C06C ran */
+
+        /* Fall-through proof: re-enter state 5 with the pause tail (0x10DB0)
+         * armed and its extra branch disabled. The tail runs after the case and
+         * overwrites the case's state 9 with state 4; DS_000F0A71 records that
+         * it fired. A case that returned before the tails would leave 9. */
+        DSW(DS_000F0A64) = 5;
+        DSB(DS_000F0A71) = 0;
+        DSB(DS_00104B19 + 2u) = 0;
+        DSB(DS_001088D8 + 3u) |= 0x20u;
+        DSB(DS_001088D8 + 1u) |= 0x10u;
+        DSB(DS_00104B15) = 0x9A;   /* sentinel; 0x1EA08's 0x4F1E4 stores 0 */
+        DSB(DS_00105C05) = 0x9A;   /* sentinel; 0x2C06C stores 0x1D */
+        game_state_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B15), 0);     /* 0x1EA08 ran again */
+        CHECK_EQ_INT((int)DSB(DS_00105C05), 0x1D);  /* 0x2C06C ran again */
+        CHECK_EQ_INT((int)DSB(DS_000F0A71), 1);
+        CHECK_EQ_INT((int)DSW(DS_000F0A64), 4);
+
+        DSB(DS_00104B1D) = saved_1d;   DSB(DS_000F0A71) = saved_71;
+        DSB(DS_0009AD58) = saved_58;   DSB(DS_00104B15) = saved_15;
+        DSB(DS_00105D60) = saved_60;   DSB(DS_00104B19 + 2u) = saved_19;
+        DSB(DS_001088D8 + 1u) = saved_d8_1;
+        DSB(DS_001088D8 + 3u) = saved_d8_3;
+        DSB(DS_00105C05) = saved_c5;
+        DSW(DS_000F0A64) = saved_64;   DSW(DS_000F0A6A) = saved_6a;
+        DSW(DS_000F0A6C) = saved_6c;   DSB(DS_000F0A6F) = saved_6f;
+        DSB(DS_000F0A72) = saved_72;
+    }
+
     const char *dump = getenv("PR_FRONTEND_DUMP");
     if (dump == NULL || dump[0] == '\0') {
         printf("test_frontend: PR_FRONTEND_DUMP unset, state-2 driver skipped\n");

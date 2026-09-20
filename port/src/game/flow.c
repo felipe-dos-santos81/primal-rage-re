@@ -765,6 +765,31 @@ static void game_state_4(void)
     }
 }
 
+/* PORT: 0x1EA08. The match-start builder, called inline from state 5. It resets
+ * the input latch and the actor pool, spawns the roster row from the 0xA7B6C
+ * descriptor, then builds the per-character rows and spawns the selected
+ * character's actor. The build reads its strings and its selection key from the
+ * paged resource reader 0x2DBC4/0x2DB58 (not modelled) and formats them through
+ * 0x2F4D0 (0x2EFD4, also not modelled), so only the three calls before the
+ * resource read are transcribed. Task 6 wires only this state-5 call site;
+ * 0x1EA08's other four callers (0x11A30 and three in FUN_0001EEB0, the match
+ * sub-state machine) belong to the match cycle and stay unwired. */
+static void frontend_match_start(void)
+{
+    frontend_input_reset();                                     /* 0x1EA11 (0x4F1E4) */
+    actors_reset();                                             /* 0x1EA26 (0x2BAF4) */
+    frontend_spawn_row((const u32 *)(mem + 0xA7B6Cu), 0u, 0u);  /* 0x1EA30 (0x38B18) */
+    /* PORT: 0x1EA4A onward is the resource-driven roster build: 0x2DBC4 returns
+     * a string blob whose [esi+0x16] selects the character descriptor from
+     * 0xA7DCC (the guard at 0x1EB0A keeps indices 0..6), and 0x2F4D0/0x2F4BC
+     * draw the formatted rows before 0x2AE14/0x2A17C spawn the selected actor.
+     * The port does not model the paged resource reader 0x2DB58/0x2DBC4 or the
+     * 0x2EFD4 formatter, so the blob, the `local` index, the string draws and
+     * the actor spawn are a declared gap
+     * (docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md §7.1,
+     * §7.2); spawning descriptor 0 would be a fitted constant. */
+}
+
 /* 0x10E80: initialise the game state. */
 static void game_state_init(void)
 {
@@ -1225,7 +1250,17 @@ void game_state_step(void)
             game_state_4();   /* 0x11578 */
             break;
         case 5:
-            /* PORT: match-start setup then state 6 (fight engine, sub-project 5). */
+            /* PORT: 0x2C3FC(0x100 / ecx = 0x12C) voice/sample cancel, out of
+             * scope (spec §7). */
+            frontend_match_start();                     /* 0x1EA08 */
+            config_set_credit_row(0x1Du);               /* 0x2C06C */
+            /* PORT: 0x32970(eax = 0), the run-clock/tick update, is out of scope
+             * (spec §7); the host clock owns wall time. */
+            DSB(DS_000F0A6F) = 0;                       /* 0x11E11 */
+            DSB(DS_000F0A72) = 0;                       /* 0x11E17 */
+            DSW(DS_000F0A6A) = 0x12C;                   /* 0x11E1D */
+            DSW(DS_000F0A6C) = 6;                       /* 0x11E2E */
+            DSW(DS_000F0A64) = 9;                       /* 0x11E35 */
             break;
         case 6:
         case 7:
