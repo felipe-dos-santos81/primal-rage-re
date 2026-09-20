@@ -311,6 +311,12 @@ int test_frontend(void)
         const u16 saved_6c = DSW(DS_000F0A6C);
         const u8  saved_6f = DSB(DS_000F0A6F);
         const u8  saved_72 = DSB(DS_000F0A72);
+        const u32 saved_ae8 = DSD(DS_00104AE8);
+        const u32 saved_aec = DSD(DS_00104AEC);
+        const u32 saved_ad0 = DSD(DS_00104AD0);
+        u32 saved_row[7];
+        for (u32 i = 0; i < 7u; i++)
+            saved_row[i] = DSD(DS_00107A1C + i * 4u);
 
         DSB(DS_00104B1D) = 1;          /* coin poll skipped */
         DSB(DS_000F0A71) = 1;          /* pause/continue tails skipped */
@@ -324,6 +330,13 @@ int test_frontend(void)
         DSB(DS_000F0A72) = 0xCD;
         DSB(DS_00104B15) = 0x9A;
         DSB(DS_00105C05) = 0x9A;   /* sentinel; 0x2C06C stores 0x1D */
+        /* Sentinels for 0x1EA08's prefix: 0x2BAF4 zeroes the three process
+         * masks and 0x38B70 clears the 7-entry row table before 0x38B18 fills
+         * slot 0 from the 0xA7B6C descriptor. */
+        DSD(DS_00104AE8) = 0x12345678u;
+        DSD(DS_00104AEC) = 0x12345678u;
+        DSD(DS_00104AD0) = 0x12345678u;
+        mem_fill(DS_00107A1C, 0, 28u);
         game_state_step();
         CHECK_EQ_INT((int)DSW(DS_000F0A64), 9);
         CHECK_EQ_INT((int)DSW(DS_000F0A6C), 6);
@@ -332,6 +345,18 @@ int test_frontend(void)
         CHECK_EQ_INT((int)DSB(DS_000F0A72), 0);
         CHECK_EQ_INT((int)DSB(DS_00104B15), 0);   /* 0x1EA08 ran 0x4F1E4 */
         CHECK_EQ_INT((int)DSB(DS_00105C05), 0x1D);  /* 0x2C06C ran */
+        /* 0x1EA08's prefix is observable only with the pool present (the
+         * isolated PR_FRONTEND_DUMP run reaches here before game_init()). */
+        if (DSD(DS_001014F4) != 0) {
+            CHECK_EQ_INT((int)DSD(DS_00104AE8), 0);   /* 0x2BAF4 ran */
+            CHECK_EQ_INT((int)DSD(DS_00104AEC), 0);
+            CHECK_EQ_INT((int)DSD(DS_00104AD0), 0);
+            CHECK(DSD(DS_00107A1C) != 0u, "0x1EA08 spawned the 0xA7B6C row");
+            if (DSD(DS_00107A1C) != 0u) {
+                u32 row = DSD(DS_00107A1C);
+                CHECK_EQ_INT((int)DSD(row + 8u), (int)DSD(0xA7B6Cu));
+            }
+        }
 
         /* Fall-through proof: re-enter state 5 with the pause tail (0x10DB0)
          * armed and its extra branch disabled. The tail runs after the case and
@@ -359,6 +384,10 @@ int test_frontend(void)
         DSW(DS_000F0A64) = saved_64;   DSW(DS_000F0A6A) = saved_6a;
         DSW(DS_000F0A6C) = saved_6c;   DSB(DS_000F0A6F) = saved_6f;
         DSB(DS_000F0A72) = saved_72;
+        DSD(DS_00104AE8) = saved_ae8;  DSD(DS_00104AEC) = saved_aec;
+        DSD(DS_00104AD0) = saved_ad0;
+        for (u32 i = 0; i < 7u; i++)
+            DSD(DS_00107A1C + i * 4u) = saved_row[i];
     }
 
     const char *dump = getenv("PR_FRONTEND_DUMP");

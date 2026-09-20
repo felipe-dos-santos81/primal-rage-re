@@ -432,6 +432,21 @@ grew from the 3-frame boundary island to the full 257-frame zoom (port frames
 exhibited 1/300 -> 234/300), and the title, attract, smacker and C-vs-Python
 oracles are unmoved. No `title_pin.py` pin was added.
 
+**State 5 (`0x11D04` case 5) store order is a declared, unassertable fidelity
+property — verified by the raw, asserted by nothing.** State 5 transcribes the
+five stores in the raw's order: `DS_000F0A6F` (`0x11E11`),
+`DS_000F0A72` (`0x11E17`), `DS_000F0A6A` (`0x11E1D`), `DS_000F0A6C` (`0x11E2E`),
+`DS_000F0A64` (`0x11E35`), after the calls at `0x11DF2`/`0x11DF7`/`0x11E03`/
+`0x11E0C`. The port has no write-order observation mechanism — `DSD`/`DSB`/`DSW`
+are plain memory stores and there is no write trace — and no call in the case
+reads those five globals, so the relative order is unobservable to any test.
+`port/tests/test_frontend.c` asserts the five values and the two observable
+calls (`0x1EA08`'s `0x4F1E4` latch clear and `0x2C06C`'s row store), which
+proves the stores and calls happened, **not** their order. The order rests on
+the raw citation above and on transcription; a reordering of the stores, or
+moving the calls after them, passes the suite and must not be read as tested.
+(Front-end chain Task 6.)
+
 **The all-black capture frames are excluded as artifacts — an explicit
 oracle-level choice, not a proven fact.** `tools/title_compare.py --frontend`
 classifies a capture frame that is entirely black as an artifact: it requires no
