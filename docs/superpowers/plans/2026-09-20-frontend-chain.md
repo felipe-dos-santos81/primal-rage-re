@@ -295,7 +295,8 @@ Replace case 3's stub with `game_state_3();` and add the handler beside
 `game_state_title`. The raw (`0x12484`, decompiler `:1501-1573`) has exactly **two**
 phases on `DS_000F0A6F`, in this order:
 
-**Phase 0** (`DS_000F0A6F == 0`):
+**Phase 0** (`DS_000F0A6F == 0`). Corrected after Task 3: the `0x2AE14` argument is
+`EAX = 0x9AEB4` (descriptor table `0x9AEC8[5]`), not a literal 0 — raw `0x12541`:
 1. `0x2BAF4()`
 2. `0x38B18()` — four times in a row (decompiler `:1510-1516`)
 3. The list walk: `p = 0x33904(); while (p != 0) { if (DSD(p) == 0x3E688) 0x13C70(); p = 0x33904(); }`
