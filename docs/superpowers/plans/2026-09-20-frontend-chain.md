@@ -144,7 +144,13 @@ do **not** add a fitted pin. Instead:
 - Extend the `PR_FRONTEND_DUMP` determinism log through states 3/4 so two runs must
   produce byte-identical frame hashes, and add that check to `run_tests`.
 - Keep the `frontend-oracle` target in place: it skips or reports, and stays the tool
-  that a later cycle picks up.
+  that Task 5 picks up.
+
+**This fallback is provisional, not final.** At this point in the plan `game_state_step`
+cases 3/4 are still stubs, so every dumped frame is identical and *no behaviour pin can
+move the comparison* — the mismatch is structural, not unpinned RNG. Task 5 re-runs the
+loop once Tasks 3 and 4 have ported the states, and either closes the oracle or re-records
+the gap as confirmed. Do not present this task's fallback as a closed gap.
 
 - [ ] **Step 6: Run the ladder and commit**
 
@@ -233,7 +239,7 @@ git commit -m "docs: derive the front-end chain's uncharacterized functions"
 - Test: `port/tests/test_frontend.c`
 
 **Interfaces:**
-- Consumes: Task 1's oracle frames, Task 2's record, the existing `game_state_select`, `frontend_list_next` (`0x33904`), `effects_spawn` (`0x13C70`), `actor_spawn` (`0x2AE14`).
+- Consumes: Task 5's pixel oracle (once closed), Task 2's record, the existing `game_state_select`, `frontend_list_next` (`0x33904`), `effects_spawn` (`0x13C70`), `actor_spawn` (`0x2AE14`).
 - Produces: `static void game_state_3(void);`
 
 - [ ] **Step 1: Write the failing test**
@@ -395,7 +401,70 @@ git commit -m "frontend: port state 4"
 
 ---
 
-### Task 5: Port state 5 (match start)
+### Task 5: Close the front-end oracle now that states 3/4 render
+
+Task 1 produced the capture, the RGB24 frame dump, the report-only `--frontend` compare and a
+real two-run determinism gate, but it could not pin anything: at that BASE `game_state_step`
+cases 3/4 were stubs, so every dumped frame was identical and no behaviour pin could move
+the comparison. The spec entry it wrote ("states 3/4 carry no pixel oracle") is therefore
+**provisional**, not final. With Tasks 3 and 4 ported the states now render, so the pin loop
+Task 1 was written to run is finally actionable. This task runs it under the same rules.
+
+**Files:**
+- Modify: `tools/title_pin.py` (the `PATCHES` table only), `Makefile`, `port/spec/game_flow.md`
+
+**Interfaces:**
+- Consumes: Task 1's `make frontend-capture` capture at `data/title-captures/frontend`, the
+  `PR_FRONTEND_DUMP` frame dump, `tools/title_compare.py --frontend`, and Task 2's record.
+- Produces: either a front-end window reporting `0 unexplained` with the oracle enforced by
+  the ladder, or a gap re-recorded as confirmed against ported states.
+
+- [ ] **Step 1: Compare and find the first unexplained frame**
+
+Run: `make title-pin && make frontend-oracle`
+Expected: the compare names the window and the first capture frame the port cannot explain.
+Record the distinct index and the raw frame number. Note that frame-timing drift is expected
+and the aligner already classifies it as *splice*; only `unexplained` counts against you.
+
+- [ ] **Step 2: Pin the responsible site, one site at a time**
+
+For each unexplained frame: identify the RNG/behaviour site responsible (the title precedent
+is the entry draws plus the anim opcode-8 handler), add ONE new entry to `PATCHES` in
+`tools/title_pin.py` in the existing `(offset, original_bytes, replacement_bytes)` shape with
+equal lengths, and keep the table's fail-closed byte verification. Record every pin with its
+address and the draw it replaces, then re-run Step 1.
+
+- [ ] **Step 3: Stop at convergence or eight pins**
+
+Stop when the window reports `0 unexplained`. If eight pins have been added without reaching
+it, stop and keep the gap. Never add a fitted pin to force a match.
+
+- [ ] **Step 4: Flip the target, or re-record the gap as confirmed**
+
+If converged: make `frontend-oracle` enforce its result (non-zero exit on any unexplained
+frame), add it to the `verify` ladder's sequence, and replace the provisional entry in
+`port/spec/game_flow.md` with the oracle's coverage and its frame window.
+If not converged: keep the report-only mode, and rewrite the spec entry so it states the gap
+**confirmed against ported states** — naming the frames and the pins attempted — rather than
+provisional.
+
+- [ ] **Step 5: Run the ladder and commit**
+
+Run: `make verify`
+Expected: exit 0, 0 warnings; the title/attract/smacker oracles and the C-vs-Python gate
+unmoved; and, if the oracle became a gate, it passes.
+
+```bash
+git add tools/title_pin.py Makefile port/spec/game_flow.md
+git commit -m "tests: close the front-end oracle against the ported states"
+```
+
+**Gate for this task:** either `0 unexplained` with the oracle enforced by the ladder, or the
+gap re-recorded as confirmed with the frames named. No third outcome.
+
+---
+
+### Task 6: Port state 5 (match start)
 
 **Files:**
 - Modify: `port/src/game/flow.c` (`game_state_step` case 5)
@@ -426,18 +495,21 @@ The raw (`0x11D04` case 5, decompiler `:1227-1236`) is inline, in this order:
 5. `DSD(DS_000F0A72) = 0`
 6. `DSW(DS_000F0A6C) = 6`
 7. `DSW(DS_000F0A64) = 9`
-8. `DSW(DS_000F0A6A) = <CX>` and `DSB(DS_000F0A6F) = <DH>`
+8. `DSW(DS_000F0A6A) = 0x12C` and `DSB(DS_000F0A6F) = 0`
 9. The three tails run in `game_state_step`'s shared tail — do **not** duplicate them here.
 
-**Ambiguity to resolve before writing this case, not after:** steps 8's two values arrive
-as the decompiler's `extraout_CX`/`extraout_DH`, i.e. register values left by one of the
-calls in steps 1-4 — the decompiler could not name them. Task 2's record must establish
-which call produces them and what they are. If Task 2 cannot pin it, this is a named gap:
-implement steps 1-7, leave `DS_000F0A6A`/`DS_000F0A6F` as the raw sets them from whatever
-the port's corresponding call returns, and record it. Do **not** substitute a literal.
+**Resolved by Task 2 (this replaces the earlier "resolve the `extraout_CX`/`extraout_DH`
+ambiguity" instruction).** The two values are not inherited register leftovers: case 5 sets
+them literally — `0x11DED mov ecx,0x12c`, `0x11E01 xor dh,dh`, stored at `0x11E11`
+(`DS_000F0A6F`) and `0x11E1D` (`DS_000F0A6A`). Use the literals `0x12C` and `0`. The
+decompiler's `extraout_` names were a decompiler artefact, not a data dependency on a
+callee, so there is nothing to look up at run time and no gap to declare.
 
 Use the port's real names for the calls; `0x1EA08` and `0x2C3FC` come from Task 2's record
-and the existing announcer helper respectively.
+and the existing announcer helper respectively. Note that Task 2 found `0x1EA08` has five
+direct call sites (state 5 plus `0x11A30` and three in `FUN_0001EEB0`, the match sub-state
+machine) — this task ports only the state-5 call; the others belong to the match cycle and
+must be recorded as a named gap, not silently wired.
 
 - [ ] **Step 4: Run the tests**
 
@@ -454,39 +526,49 @@ git commit -m "frontend: port state 5 (match start)"
 
 ---
 
-### Task 6: Effect render path
+### Task 7: Effect render path
 
 **Files:**
 - Modify: `port/src/game/effects.{c,h}`
 - Test: `port/tests/test_effects.c`
 
 **Interfaces:**
-- Consumes: Task 2's record of `0x1317C`/`0x1324C`/`0x13290`/`0x1333C` and the three globals.
-- Produces: the render entry the process tables and the frame loop call.
+- Consumes: Task 2's record of `0x1317C`/`0x1324C`/`0x13290`/`0x1333C` and the
+  `DS_000F0AEC`/`DS_000F0AF0`/`DS_000F0AF4` globals.
+- Produces: the camera/scene state updates and the palette-mutating effect path.
+
+**Premise corrected by the raw (Task 2).** The plan originally assumed one of these
+functions was the missing *drawing* half of the effect render path. Task 2's record refutes
+that: none of the four draws anything — they are fight-camera state updaters — and `0x1324C`
+(update-table entry 0) is dormant because **no shipped store ever sets `DS_00104AE8` bit 0**.
+Do not invent a draw. Port the state updates the record pins, and record in the spec that
+the assumed missing draw does not exist.
 
 - [ ] **Step 1: Write the failing test**
 
-Unit-test the camera/scene functions against the record's derived values — for each, a
-known input state and the exact expected output/global transition. Include one test that
-proves a spawned effect now changes the presented palette (not just the dirty list), which
-is the gap this task closes.
+Unit-test each camera/scene function against the record's derived values — a known input
+state and the exact expected output or global transition, one per function, including the
+`0x1324C` dormancy (with `DS_00104AE8` bit 0 clear it must not run). Include one test
+proving a spawned effect changes the **presented palette**, not just the dirty list — that
+is the real gap this task closes.
 
 - [ ] **Step 2: Run it and watch it fail**
 
-Run: `make build && ./build/run_tests 2>&1 | grep -iE "camera|scene|render"`
+Run: `make build && ./build/run_tests 2>&1 | grep -iE "camera|scene|palette"`
 Expected: FAIL — the functions do not exist.
 
 - [ ] **Step 3: Implement the layer**
 
-Add the camera/scene functions and their `mem[]` globals to `effects.c`, following the
-existing style (raw order, raw arithmetic, `/* PORT: 0x... */` tags). Wire the draw so it
-runs in the render pass the way the raw does, not from `effects_step`.
+Add the camera/scene state updates and their `mem[]` globals to `effects.c`, following the
+existing style (raw order, raw arithmetic, `/* PORT: 0x... */` tags). Wire the palette
+mutation into the render pass the way the raw does, not from `effects_step`, and let the
+existing update-table dispatch reach `0x1324C` — do not add a draw routine.
 
 - [ ] **Step 4: Run the tests**
 
 Run: `make verify`
-Expected: the new tests pass; the front-end oracle improves (state 3's spawned effects
-now draw); no other oracle moves.
+Expected: the new tests pass, including the palette-mutation test; no other oracle moves.
+The camera/scene functions change no pixels, so they must not move the front-end window.
 
 - [ ] **Step 5: Commit**
 
@@ -497,38 +579,54 @@ git commit -m "effects: port the camera/scene render path"
 
 ---
 
-### Task 7: Wire the effect call sites and close the docs
+### Task 8: Wire the effect call sites and close the docs
 
 **Files:**
 - Modify: `port/src/game/effects.c` or `port/src/game/actors.c` (wherever the list walk belongs), `port/src/game/flow.c`, `port/spec/game_flow.md`, `README.md`
 - Test: `port/tests/test_frontend.c`
 
 **Interfaces:**
-- Consumes: Task 2's record of `0x29B74`/`0x41578` and the existing `run_process_table`.
-- Produces: the two entries registered into the update and render process tables.
+- Consumes: Task 2's record of `0x29B74`/`0x41578` and the existing update-table dispatch in
+  `flow.c` (`run_process_table`, `game_frame`).
+- Produces: the `0x29B74` mode-`0x17` handler path with its `DS_00104AE4` store, and the four
+  `0x41578` direct call sites.
+
+**Premise corrected by the raw (Task 2).** The plan originally said both functions register
+into the process tables. They do not: `0x29B74` is the mode-`0x17` handler stored at
+`DS_00104AE4` and dispatched with `call dword [0x104ae4]` from six sites, and `0x41578` is
+direct-called from four sites. Do **not** add table entries. Also: `0x41578`'s second
+predicate half compares against `0x88874B0`, which lies above `MEM_SIZE` and can never match
+in the port's flat model — port the comparison faithfully (register-level fidelity) and
+record that it is simply never true. Do not delete it and do not substitute a value.
 
 - [ ] **Step 1: Write the failing test**
 
-Assert that after the registration runs, the update table's mask includes the `0x29B74`
-entry and the render table's includes `0x41578`, and that a table run with each enabled
-walks the list and spawns for a matching record.
+Assert that `DS_00104AE4` receives `0x29B74` (via its recorded store) and that the dispatch
+path reaches it, and that the four recorded direct call sites invoke `0x41578`. For
+`0x29B74`, assert it spawns for **every** live list entry (the record shows no predicate);
+for `0x41578`, assert the `*rec == 0x3E688` half matches and that the `0x88874B0` half is
+present in the code but unreachable in the flat model.
 
 - [ ] **Step 2: Run it and watch it fail**
 
-Run: `make build && ./build/run_tests 2>&1 | grep -iE "process table|0x29B74|0x41578"`
-Expected: FAIL — neither site is registered.
+Run: `make build && ./build/run_tests 2>&1 | grep -iE "0x29B74|0x41578|104AE4"`
+Expected: FAIL — neither path is wired.
 
 - [ ] **Step 3: Implement the wiring**
 
-Register both functions into the tables `game_frame` already runs, matching the raw's
-registration sites and masks. Do not call them ad hoc from the state handlers.
+Implement what the raw shows: the `DS_00104AE4` store at its recorded registration site plus
+the six `call dword [0x104ae4]` dispatch sites, and the four direct `0x41578` call sites.
+Follow Task 2's record for each address. Do not call either from the state handlers ad hoc,
+and do not register anything into `DS_000A8644`/`PTR_FUN_000A86C4`.
 
 - [ ] **Step 4: Update the docs**
 
 In `port/spec/game_flow.md`: move states 3/4/5 out of the stub list, record each state's
-ported phases, and state the effect render path's status. Record the pixel-oracle outcome
-(`0 unexplained`) or the declared fallback from Task 1. Note that states 6/7/8 and 9's
-semantics remain the next cycle. Update `README.md`'s status paragraph.
+ported phases, and state the effect render path's status — including that no camera/scene
+function draws and that the `0x88874B0` predicate half is dead in the flat model. Record the
+pixel-oracle outcome from Task 5 (`0 unexplained` and enforced, or the confirmed gap). Note
+that states 6/7/8 and 9's semantics remain the next cycle. Update `README.md`'s status
+paragraph.
 
 - [ ] **Step 5: Full ladder**
 
@@ -550,21 +648,33 @@ file the task did not touch.)
 
 ## Self-Review
 
-**Spec coverage.** Scope §4: states 3/4/5 → Tasks 3/4/5; the render path → Task 6; the
-call sites → Task 7; the capture/pin/oracle → Task 1. Architecture §5: handlers in
-`flow.c` (Tasks 3-5), render in `effects.c` (Task 6), process-table wiring (Task 7), the
-tools carve-out (Task 1). Interfaces §6: the new derivations → Task 2 Steps 1-5, with each
-helper's unit-test values → Task 2 Step 7; the already-ported functions are named in each
-task's Interfaces block. Data flow §7: transcribed in Tasks 3/4/5 Step 3. Sequencing §8 →
-task order. Verification §9: Task 1 (primary oracle + declared fallback), Tasks 3-6
-(helper and camera/scene unit tests), Task 7 Step 5 (non-regression). Risks §10 → Task 1's
-stopping condition, Task 5's ambiguity note and Task 2 Step 6. Open questions §11 →
-resolved in Task 1.
+**Spec coverage.** Scope §4: states 3/4/5 → Tasks 3/4/6; the render path → Task 7; the call
+sites → Task 8; the capture/pin/oracle → Tasks 1 and 5. Architecture §5: handlers in
+`flow.c` (Tasks 3/4/6), render in `effects.c` (Task 7), the handler/direct-call wiring
+(Task 8), the tools carve-out (Tasks 1 and 5). Interfaces §6: the new derivations → Task 2
+Steps 1-5, with each helper's unit-test values → Task 2 Step 7; the already-ported functions
+are named in each task's Interfaces block. Data flow §7: transcribed in Tasks 3/4/6 Step 3.
+Sequencing §8 → task order. Verification §9: Task 1 (capture, dump, determinism gate), Task
+5 (the pixel oracle itself), Tasks 3/4/6/7 (helper, camera/scene and palette unit tests),
+Task 8 Step 5 (non-regression). Risks §10 → Task 1's stopping condition, Task 6's ambiguity
+note and Task 2 Step 6. Open questions §11 → resolved in Tasks 1, 2 and 5.
 
-**Deferral to Task 2, stated not hidden.** Tasks 3-6 name the helpers they consume but
+**Plan-vs-raw corrections made after Task 2 (human-ruled).** The raw refuted three premises,
+and the plan now carries the corrections rather than the disproved text:
+- Task 5 was **added** because Task 1's pin loop was ordered before the states it needed
+  existed; its fallback is explicitly provisional and Task 5 closes or confirms it.
+- Task 7 no longer builds a drawing half: none of the camera/scene four draws, and `0x1324C`
+  is dormant (no shipped store sets `DS_00104AE8` bit 0). The task ports state updates plus
+  the palette-mutation path and records the non-gap.
+- Task 8 no longer registers table entries: `0x29B74` is the mode-`0x17` handler at
+  `DS_00104AE4` and `0x41578` is direct-called. `0x88874B0` is above `MEM_SIZE`, so that
+  predicate half is ported faithfully and is simply never true.
+
+**Deferral to Task 2, stated not hidden.** Tasks 3/4/6/7/8 name the helpers they consume but
 the raw semantics of `0x2F4BC`, `0x12658`, `0x1EA08`, `0x29B74`, `0x41578` and the
 camera/scene functions are produced by Task 2 — the same shape the previous cycle used for
-its derivation task. No task invents a value Task 2 has not derived.
+its derivation task. No task invents a value Task 2 has not derived, and no task ports a
+premise Task 2 has refuted.
 
 **Type consistency.** `game_state_3`/`game_state_4` are declared once (Tasks 3, 4);
 `frontend_list_next` (`0x33904`), `effects_spawn` (`0x13C70`), `actor_spawn` (`0x2AE14`),
