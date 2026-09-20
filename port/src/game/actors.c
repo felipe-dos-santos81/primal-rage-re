@@ -74,6 +74,8 @@ static int in_pool(u32 rec)
 
 /* ---- exported ----------------------------------------------------------- */
 
+static void anim_code_10FA8(u32 rec, u32 arg);
+
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
 int actors_init(void)
@@ -84,6 +86,10 @@ int actors_init(void)
         return 0;
     if (pset == 0 || !mem_in_range(pset, 0x4880u))
         return 0;
+    /* PORT: the animation code pointers this module implements. anim_indirect
+     * (0x2B2A0 opcodes 0x10/0x11/0x15) calls them through fn_resolve; an
+     * unregistered target is skipped. */
+    fn_register(0x10FA8u, (void (*)(void))anim_code_10FA8);
     return 1;
 }
 
@@ -458,6 +464,20 @@ static void anim_indirect(u32 rec, u32 arg)
 {
     anim_code_fn fn = (anim_code_fn)(void *)fn_resolve(DSD(DS_00105BD4));
     if (fn) fn(rec, arg);
+}
+
+/* 0x10FA8. The animation opcode 0x11 target reached on the logo streams after
+ * sprite 0x01FD: spawns the RAGE continuation actor — descriptor 0x9AD08
+ * (animation stream 0x0E88E6), layer 0xE4. The original (PRAGE.EXE obj0
+ * file 0x63DFC) is `push ebx/ecx/edx; push 0; mov ecx,0xE4; mov eax,0x1AD08;
+ * xor ebx,ebx; xor edx,edx; call 0x2AE14` — i.e. actor_spawn(desc, edx=0,
+ * ecx=0xE4, ebx=0, [esp]=0) — and ignores the rec/arg the dispatcher passes.
+ * 0x1AD08 is an LE-fixed data pointer, so it loads as mem + 0x9AD08. */
+static void anim_code_10FA8(u32 rec, u32 arg)
+{
+    (void)rec;
+    (void)arg;
+    actor_spawn((const u32 *)(mem + 0x9AD08u), 0, 0xE4, 0, 0);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */

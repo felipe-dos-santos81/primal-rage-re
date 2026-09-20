@@ -21,6 +21,14 @@ green, and `symbols.h` byte-identical.
 > not a palette gap — see "Frame 68 was the spawn-slot bug" below. The boundary
 > and its cause below are the post-fix truth.
 
+> Update (after this report): the frame-100 boundary below was closed by
+> implementing `0x10FA8` and registering it through `fn_resolve` in
+> `actors_init` — the port now spawns the `0x9AD08` hand-off actor exactly as the
+> raw's `0x2AE14` call. The attract oracle's first divergence moved to the last
+> attract capture frame **215** (raw 2180 / 2175), now the next unregistered
+> opcode-0x11 target (`0x4F83C` palette-animation starter / `0x10FC4`). The
+> frame-100 material below stands as the derivation; only the boundary moved.
+
 ## Modules and ownership
 
 | file | owns |

@@ -134,12 +134,13 @@ title-oracle: build ## Pixel-exact title oracle (skips without data/title-captur
 # Attract-prefix pixel oracle: the continuous PR_ATTRACT_DUMP run dumps every
 # presented state-0 frame plus the post-attract title window; attract_compare.py
 # derives the attract boundary from the title frames, checks every capture frame
-# in the matched prefix, and (with --expect-first 100) requires the FIRST
-# divergence to be the known boundary capture frame 100 (raw 1770 on `title`,
-# 1765 on `title2`). A regression anywhere in frames 0..99 then fails. The
-# boundary sits at 100 (not 68) because the phase 5/6/7 actor_spawn slot fix
-# extends the matched prefix. Captures are git-ignored; absent capture skips (or
-# fails under PR_ORACLE_REQUIRED=1).
+# in the matched prefix, and (with --expect-first 215) requires the FIRST
+# divergence to be the last attract capture frame (raw 2180 on `title`, 2175 on
+# `title2`). A regression anywhere in frames 0..214 then fails. The boundary sits
+# at 215 (not 100) because registering the animation opcode 0x11 target 0x10FA8
+# (the RAGE hand-off spawn) extends the matched prefix to the whole attract
+# window. Captures are git-ignored; absent capture skips (or fails under
+# PR_ORACLE_REQUIRED=1).
 attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/title-captures)
 	@echo "== attract prefix oracle (pixel-exact) =="
 	@if [ -d $(TITLE_CAPTURES)/title ]; then \
@@ -150,7 +151,7 @@ attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/t
 	fi
 	@$(PYTHON) tools/attract_compare.py --capture $(TITLE_CAPTURES)/title \
 		$(if $(wildcard $(TITLE_CAPTURES)/title2),--capture $(TITLE_CAPTURES)/title2,) \
-		--expect-first 100 --port $(ATTRACT_DUMP)
+		--expect-first 215 --port $(ATTRACT_DUMP)
 
 # The --check run must come first: test_gfx.c reads frame_0001/0009/0017/0025.idx
 # from the CWD, so the ladder has to produce them (frames >= 25) before the suite
