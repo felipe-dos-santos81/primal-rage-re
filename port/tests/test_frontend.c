@@ -208,6 +208,84 @@ int test_frontend(void)
         DSB(DS_000F0A72) = saved_72;
     }
 
+    /* 0x11578: state 4 (the match-up credit roll). Its phase counter is
+     * DS_0009AD98, separate from the dispatch word DS_000F0A64. The 8/12/13
+     * 0x2F4BC call counts are literal in the raw and are transcribed unrolled
+     * rather than counted here; only the phase state is asserted. The phase-0
+     * 0x2AE14 spawn needs the actor pool, so that one check is guarded (the
+     * isolated PR_FRONTEND_DUMP run reaches here before game_init()). */
+    {
+        const u8  saved_1d = DSB(DS_00104B1D);
+        const u8  saved_71 = DSB(DS_000F0A71);
+        const u8  saved_58 = DSB(DS_0009AD58);
+        const u8  saved_15 = DSB(DS_00104B15);
+        const u8  saved_c5 = DSB(DS_00105C05);
+        const u16 saved_64 = DSW(DS_000F0A64);
+        const u16 saved_6a = DSW(DS_000F0A6A);
+        const u16 saved_6c = DSW(DS_000F0A6C);
+        const u16 saved_74 = DSW(DS_000F0A74);
+        const u16 saved_76 = DSW(DS_000F0A76);
+        const u16 saved_98 = DSW(DS_0009AD98);
+
+        DSB(DS_00104B1D) = 1;          /* coin poll skipped */
+        DSB(DS_000F0A71) = 1;          /* pause/continue tails skipped */
+        DSB(DS_0009AD58) = 1;          /* overlay skipped */
+        DSW(DS_000F0A64) = 4;
+
+        /* Phase 0: the setup sequence, the 180-frame timer, continuation 1. */
+        DSW(DS_0009AD98) = 0;
+        DSW(DS_000F0A76) = 0;
+        DSW(DS_000F0A74) = 0;
+        game_state_step();
+        CHECK_EQ_INT((int)DSW(DS_0009AD98), 4);
+        CHECK_EQ_INT((int)DSW(DS_000F0A76), 0xB4);
+        CHECK_EQ_INT((int)DSW(DS_000F0A74), 1);
+
+        /* The phase-0 0x2AE14 descriptor is the data object's 0x9AD84 (raw
+         * 0x115CA), not a literal 0. Every phase-0 spawn head-inserts, so the
+         * first one (the 0x2AE14 actor) is the active list's tail and carries
+         * the descriptor's first dword in its +8 record dword. */
+        if (DSD(DS_001014F4) != 0) {
+            u32 tail = 0;
+            for (u32 rec = actor_list_head(); rec != 0u; rec = actor_next(rec))
+                tail = rec;
+            CHECK(tail != 0u, "phase 0 filled the actor list");
+            if (tail != 0u)
+                CHECK_EQ_INT((int)DSD(tail + 8u), (int)DSD(0x9AD84u));
+        }
+
+        /* Phase 4 with a non-zero timer decrements it and does not continue. */
+        DSW(DS_0009AD98) = 4;
+        DSW(DS_000F0A76) = 2;
+        DSW(DS_000F0A74) = 3;
+        game_state_step();
+        CHECK_EQ_INT((int)DSW(DS_000F0A76), 1);
+        CHECK_EQ_INT((int)DSW(DS_0009AD98), 4);
+
+        /* Phase 4 at zero: the raw tests the value before the decrement, so the
+         * store wraps to 0xFFFF and the continuation fires this frame. */
+        DSW(DS_000F0A76) = 0;
+        DSW(DS_000F0A74) = 3;
+        game_state_step();
+        CHECK_EQ_INT((int)DSW(DS_0009AD98), 3);
+        CHECK_EQ_INT((int)DSW(DS_000F0A76), 0xFFFF);
+
+        /* Phase 3 hands to state 9 with the state-3 terminator values. */
+        DSW(DS_0009AD98) = 3;
+        game_state_step();
+        CHECK_EQ_INT((int)DSW(DS_000F0A64), 9);
+        CHECK_EQ_INT((int)DSW(DS_000F0A6C), 0);
+        CHECK_EQ_INT((int)DSW(DS_000F0A6A), 1);
+        CHECK_EQ_INT((int)DSW(DS_0009AD98), 0);
+
+        DSB(DS_00104B1D) = saved_1d;   DSB(DS_000F0A71) = saved_71;
+        DSB(DS_0009AD58) = saved_58;
+        DSB(DS_00104B15) = saved_15;   DSB(DS_00105C05) = saved_c5;
+        DSW(DS_000F0A64) = saved_64;   DSW(DS_000F0A6A) = saved_6a;
+        DSW(DS_000F0A6C) = saved_6c;   DSW(DS_000F0A74) = saved_74;
+        DSW(DS_000F0A76) = saved_76;   DSW(DS_0009AD98) = saved_98;
+    }
+
     const char *dump = getenv("PR_FRONTEND_DUMP");
     if (dump == NULL || dump[0] == '\0') {
         printf("test_frontend: PR_FRONTEND_DUMP unset, state-2 driver skipped\n");

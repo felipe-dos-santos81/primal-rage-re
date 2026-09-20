@@ -670,6 +670,101 @@ static void game_state_3(void)
     }
 }
 
+/* PORT: 0x11578. State 4, the match-up sequence. Its phase counter is
+ * DS_0009AD98 (separate from the dispatch word DS_000F0A64). Cases 0/1/2 are
+ * the unrolled credit-roll pages of 8, 12 and 13 0x2F4BC calls — the counts
+ * are literal in the raw, not a loop bound. Each spawns the 0x9AD84
+ * descriptor, arms the 180-frame timer DS_000F0A76 and sets its continuation
+ * phase DS_000F0A74, then enters phase 4. Phase 4 counts the timer down and
+ * continues when the pre-decrement value is zero. Phase 3 hands to state 9.
+ * 0x2C06C is called in case 0 only, as the raw does. */
+static void game_state_4(void)
+{
+    switch (DSW(DS_0009AD98)) {
+    case 0:
+        /* PORT: 0x2C3FC(0x100) voice, out of scope (spec §7). */
+        frontend_input_reset();                                 /* 0x4F1E4 (eax = 0) */
+        actors_reset();                                         /* 0x2BAF4 (eax = 1) */
+        config_set_credit_row(0x1du);                           /* 0x2C06C (eax = 0x1D) */
+        (void)actor_spawn((const u32 *)(mem + 0x9AD84u),        /* 0x2AE14 */
+                          0u, 0xE0u, 0u, 0u);
+        text_cursor_hold(-1, 1, (const u8 *)(mem + 0x8005Cu), 0x2000u);   /* 0x2F4BC */
+        text_cursor_hold(-1, 3, (const u8 *)(mem + 0x80070u), 0x2000u);
+        text_cursor_hold(2, 7, (const u8 *)(mem + 0x80090u), 0u);
+        text_cursor_hold(2, 9, (const u8 *)(mem + 0x800BCu), 0u);
+        text_cursor_hold(2, 0xB, (const u8 *)(mem + 0x800E8u), 0x1000u);
+        text_cursor_hold(2, 0xD, (const u8 *)(mem + 0x8010Cu), 0x1000u);
+        text_cursor_hold(2, 0xF, (const u8 *)(mem + 0x80130u), 0x2000u);
+        text_cursor_hold(2, 0x11, (const u8 *)(mem + 0x80154u), 0x2000u);
+        DSW(DS_000F0A76) = 0xB4;                                /* 0x116A5 */
+        DSW(DS_000F0A74) = 1;                                   /* 0x116AC */
+        DSW(DS_0009AD98) = 4;                                   /* 0x116B2 */
+        return;
+    case 1:
+        /* PORT: 0x2C3FC(0x100) voice, out of scope (spec §7). */
+        frontend_input_reset();                                 /* 0x4F1E4 (eax = 0) */
+        actors_reset();                                         /* 0x2BAF4 (eax = 1) */
+        (void)actor_spawn((const u32 *)(mem + 0x9AD84u),        /* 0x2AE14 */
+                          0u, 0xE0u, 0u, 0u);
+        text_cursor_hold(-1, 1, (const u8 *)(mem + 0x8005Cu), 0x2000u);   /* 0x2F4BC */
+        text_cursor_hold(-1, 3, (const u8 *)(mem + 0x8017Cu), 0x2000u);
+        text_cursor_hold(2, 5, (const u8 *)(mem + 0x80198u), 0u);
+        text_cursor_hold(2, 7, (const u8 *)(mem + 0x801BCu), 0u);
+        text_cursor_hold(2, 9, (const u8 *)(mem + 0x801E4u), 0x1000u);
+        text_cursor_hold(2, 0xB, (const u8 *)(mem + 0x80208u), 0x1000u);
+        text_cursor_hold(2, 0xD, (const u8 *)(mem + 0x80228u), 0x1000u);
+        text_cursor_hold(2, 0xF, (const u8 *)(mem + 0x8024Cu), 0x1000u);
+        text_cursor_hold(2, 0x11, (const u8 *)(mem + 0x8026Cu), 0x1000u);
+        text_cursor_hold(2, 0x13, (const u8 *)(mem + 0x80290u), 0x3000u);
+        text_cursor_hold(2, 0x15, (const u8 *)(mem + 0x802B4u), 0x3000u);
+        text_cursor_hold(2, 0x17, (const u8 *)(mem + 0x802D8u), 0x3000u);
+        DSW(DS_0009AD98) = 4;                                   /* 0x11824 */
+        DSW(DS_000F0A76) = 0xB4;                                /* 0x1182B */
+        DSW(DS_000F0A74) = 2;                                   /* 0x11832 */
+        return;
+    case 2:
+        /* PORT: 0x2C3FC(0x100) voice, out of scope (spec §7). */
+        frontend_input_reset();                                 /* 0x4F1E4 (eax = 0) */
+        actors_reset();                                         /* 0x2BAF4 (eax = 1) */
+        (void)actor_spawn((const u32 *)(mem + 0x9AD84u),        /* 0x2AE14 */
+                          0u, 0xE0u, 0u, 0u);
+        text_cursor_hold(-1, 1, (const u8 *)(mem + 0x802FCu), 0x2000u);   /* 0x2F4BC */
+        text_cursor_hold(-1, 3, (const u8 *)(mem + 0x80310u), 0x2000u);
+        text_cursor_hold(2, 5, (const u8 *)(mem + 0x80328u), 0u);
+        text_cursor_hold(2, 7, (const u8 *)(mem + 0x8034Cu), 0x1000u);
+        text_cursor_hold(2, 9, (const u8 *)(mem + 0x8036Cu), 0x1000u);
+        text_cursor_hold(2, 0xB, (const u8 *)(mem + 0x80394u), 0x1000u);
+        text_cursor_hold(2, 0xD, (const u8 *)(mem + 0x803B4u), 0x1000u);
+        text_cursor_hold(2, 0xF, (const u8 *)(mem + 0x803DCu), 0x2000u);
+        text_cursor_hold(2, 0x11, (const u8 *)(mem + 0x803FCu), 0x2000u);
+        text_cursor_hold(2, 0x13, (const u8 *)(mem + 0x80420u), 0x3000u);
+        text_cursor_hold(2, 0x15, (const u8 *)(mem + 0x80444u), 0x3000u);
+        text_cursor_hold(2, 0x17, (const u8 *)(mem + 0x80464u), 0x3000u);
+        text_cursor_hold(2, 0x19, (const u8 *)(mem + 0x80488u), 0x3000u);
+        DSW(DS_000F0A76) = 0xB4;                                /* 0x119C0 */
+        DSW(DS_000F0A74) = 3;                                   /* 0x119C7 */
+        DSW(DS_0009AD98) = 4;                                   /* 0x119CD */
+        return;
+    case 3:
+        DSW(DS_000F0A6C) = 0;                                   /* 0x119E6 */
+        DSW(DS_000F0A64) = 9;                                   /* 0x119ED */
+        DSW(DS_000F0A6A) = 1;                                   /* 0x119F4 */
+        DSW(DS_0009AD98) = 0;                                   /* 0x119FB */
+        return;
+    case 4: {
+        /* The raw reads DS_000F0A76 before the decrement and continues on the
+         * frame the pre-decrement value is zero (`mov ax,[...]; test ax,ax;
+         * ja`), not after the store wraps. */
+        u16 old = DSW(DS_000F0A76);                             /* 0x11A08 */
+        DSW(DS_000F0A76) = (u16)(old - 1u);                     /* 0x11A11 */
+        if (old == 0u) DSW(DS_0009AD98) = DSW(DS_000F0A74);     /* 0x11A1D */
+        return;
+    }
+    default:
+        return;
+    }
+}
+
 /* 0x10E80: initialise the game state. */
 static void game_state_init(void)
 {
@@ -1127,7 +1222,7 @@ void game_state_step(void)
             game_state_3();   /* 0x12484 */
             break;
         case 4:
-            /* PORT: later states (sub-project 4). */
+            game_state_4();   /* 0x11578 */
             break;
         case 5:
             /* PORT: match-start setup then state 6 (fight engine, sub-project 5). */
