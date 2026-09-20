@@ -752,9 +752,9 @@ static void game_state_4(void)
         DSW(DS_0009AD98) = 0;                                   /* 0x119FB */
         return;
     case 4: {
-        /* The raw reads DS_000F0A76 before the decrement and continues on the
-         * frame the pre-decrement value is zero (`mov ax,[...]; test ax,ax;
-         * ja`), not after the store wraps. */
+        /* PORT: the raw reads DS_000F0A76 before the decrement and continues
+         * on the frame the pre-decrement value is zero (`mov ax,[...]; test
+         * ax,ax; ja`), not after the store wraps. */
         u16 old = DSW(DS_000F0A76);                             /* 0x11A08 */
         DSW(DS_000F0A76) = (u16)(old - 1u);                     /* 0x11A11 */
         if (old == 0u) DSW(DS_0009AD98) = DSW(DS_000F0A74);     /* 0x11A1D */

@@ -189,8 +189,8 @@ int test_frontend(void)
 
         {
             u32 cam = DSD(DS_000F0A58);
-            DSD(cam + 0x1Cu) = 0x1E00u;
-            DSW(cam + 0x36u) = 0;                  /* high word of [cam+0x34], b = 0 */
+            DSD(cam + 0x1Cu) = 0x1E01u;            /* sentinel; terminate stores 0x1E00 */
+            DSD(cam + 0x34u) = 0x10000u;           /* high word 1, so b = 1 >= |a| = 1 */
             DSB(DS_000F0A6F) = 1;
             game_state_step();
             CHECK_EQ_INT((int)DSW(DS_000F0A64), 9);
@@ -254,10 +254,12 @@ int test_frontend(void)
                 CHECK_EQ_INT((int)DSD(tail + 8u), (int)DSD(0x9AD84u));
         }
 
-        /* Phase 4 with a non-zero timer decrements it and does not continue. */
+        /* Phase 4 with a non-zero timer decrements it and does not continue.
+         * DS_000F0A74 is a sentinel that differs from both 4 and the natural
+         * continuation values, so an always-continue bug is unambiguous. */
         DSW(DS_0009AD98) = 4;
         DSW(DS_000F0A76) = 2;
-        DSW(DS_000F0A74) = 3;
+        DSW(DS_000F0A74) = 9;
         game_state_step();
         CHECK_EQ_INT((int)DSW(DS_000F0A76), 1);
         CHECK_EQ_INT((int)DSW(DS_0009AD98), 4);
@@ -270,8 +272,11 @@ int test_frontend(void)
         CHECK_EQ_INT((int)DSW(DS_0009AD98), 3);
         CHECK_EQ_INT((int)DSW(DS_000F0A76), 0xFFFF);
 
-        /* Phase 3 hands to state 9 with the state-3 terminator values. */
+        /* Phase 3 hands to state 9 with the state-3 terminator values. The two
+         * written globals start at sentinels so the checks test the stores. */
         DSW(DS_0009AD98) = 3;
+        DSW(DS_000F0A6C) = 0x1234;
+        DSW(DS_000F0A6A) = 0x1234;
         game_state_step();
         CHECK_EQ_INT((int)DSW(DS_000F0A64), 9);
         CHECK_EQ_INT((int)DSW(DS_000F0A6C), 0);
