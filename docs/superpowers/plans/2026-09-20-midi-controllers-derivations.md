@@ -82,7 +82,9 @@ same `FUN_0000_39cc` call (`:1422`-`:1435`).
 
 ```
 0x3cc0 c685691900         mov byte [di+0x1969], 0     ; sustain
+0x3cc5 57                 push di
 0x3cc6 e855fe             call 0x3b1e
+0x3cc9 83c402             add sp, 2
 0x3ccc c685591900         mov byte [di+0x1959], 0     ; mod
 0x3cd1 c68549197f         mov byte [di+0x1949], 0x7f  ; expression
 0x3cd6 c685291900         mov byte [di+0x1929], 0     ; wheel LSB
@@ -93,8 +95,9 @@ same `FUN_0000_39cc` call (`:1422`-`:1435`).
 
 So the reset values are exactly the brief's: `0x1929=0`, `0x1939=0x40`,
 `0x1949=0x7f`, `0x1959=0`, `0x1969=0`; **`0x1909` (volume), `0x1919` (pan) and
-`0x18f9` (bend scale) are not touched** — they stay BSS-zero unless a controller
-set them. Mask `0xC1` = `0x80|0x40|0x01` (AM/VIB + TL + frequency).
+`0x18f9` (bend scale) are not touched by this reset.** Volume and bend scale are
+consistent with BSS zero; pan is **not** (the capture's first key-on shows a
+non-zero pan, §5). Mask `0xC1` = `0x80|0x40|0x01` (AM/VIB + TL + frequency).
 
 The common tail (`0x3c50`-`0x3c7a`, the brief's re-apply loop) is reached with
 `al` = mask and `di` = channel:
@@ -156,6 +159,16 @@ path** (`0x3364`-`0x33ef`; decomp `:860`-`:880`), selected at `0x3275` by
 below lists the **normal-path** array for each local. (The type-3 path also
 pre-shifts `[bp-0x32]` once, `0x32fc` vs `0x33e1`.)
 
+**The gate array `[bp-0x14]` depends on the path** and this matters for the TL
+fold: the normal path loads it from `[si+0x1629]` (`0x33e8 8a842916`, decomp
+`:880`), the type-3 path from `[si+0x18e5]` (`0x3305 8a84e518`, decomp `:856`).
+The two arrays are **independent** — the patch loader writes both from different
+patch bytes (decomp `:1130` `[0x1629] = patch[0xd27]`, `:1131` `[0x18e5] =
+patch[0xd2b]`). The `0x3473`/`0x34a9` tests read `[bp-0x14]`, so the gate source
+is `0x1629` for a normal voice and `0x18e5` for a type-3 voice. Everything else in
+the table is the normal-path array; the type-3 path uses the parallel block at
+`0x327e`-`0x3310`.
+
 | local | voice array (normal) | meaning, by family |
 |---|---|---|
 | `[bp-4]` / `[bp-6]` | `0xc37`/`0xc49` + patch idx | per-operator write target |
@@ -168,7 +181,7 @@ pre-shifts `[bp-0x32]` once, `0x32fc` vs `0x33e1`.)
 | `[bp-0x2e]` | `0x163d` (16-bit) | `0xE0` (wave): low byte = op2, high byte = op1 |
 | `[bp-0x30]` | `0x16b5` (16-bit) | `0xC0` connection bits |
 | `[bp-0x32]` | `0x1575` | `0xC0` bit 0 |
-| `[bp-0x14]` | `0x18e5` | per-operator gate bits |
+| `[bp-0x14]` | `0x1629` (type-3: `0x18e5`) | per-operator gate bits |
 | `[bp-8]` | computed | TL channel level (below) |
 
 ### 2a. `0x80` — `0x20` family (AM/VIB/EG/KSR/MULT)
@@ -230,7 +243,7 @@ the `+1` when nonzero.
 0x346d shr bx,1
 0x346f shr bx,1                  ; bx >>= 2
 0x3471 mov bl,bh                 ; bl = field >> 10
-0x3473 test byte [bp-0x14],1     ; [v+0x18e5] bit 0
+0x3473 test byte [bp-0x14],1     ; gate array (0x1629 / 0x18e5), bit 0
 0x3477 je 0x3484
 0x3479 mov cl,0x7f
 0x347b mov al,bh
@@ -247,9 +260,10 @@ Op2 at `0x34a0`-`0x34d0`: same with `[bp-0x20]`, **bit 1** of `[bp-0x14]`
 (`test ...,2` at `0x34a9`), and `[bp-0x24]`. Formally, per operator:
 
 ```
-att = (field >> 10)                          # field = 0x172d / 0x1705 (16-bit)
-if ([v+0x18e5] & bit) att = (att * local_a) / 0x7f     # unsigned div
-TL  = (att ^ 0x3f) | patch_TL                 # ~att & 0x3f, then OR patch TL
+att  = (field >> 10)                         # field = 0x172d / 0x1705 (16-bit)
+gate = ([v+0x1499] == 3) ? [v+0x18e5] : [v+0x1629]      # per voice type
+if (gate & bit) att = (att * local_a) / 0x7f  # unsigned div
+TL   = (att ^ 0x3f) | patch_TL                # ~att & 0x3f, then OR patch TL
 ```
 
 where `bit` is `1` for op1 and `2` for op2. With the default state (volume 0,
@@ -302,7 +316,8 @@ low byte of the 16-bit field `[v+0x163d]` (`0x3542`), then op1 gets its high byt
 `0x35c2`-`0x36ee`. A voice of type 3 (`[bp-0x10] == 1`, set at `0x31ca` when
 `[v+0x1499] == 3`) **skips** the frequency computation entirely: `0x35c8` jumps to
 the mask clear at `0x36ee`. For every other type: if `[v+0x1499] == 2` (`0x35d1`)
-it takes the legacy `0x36ab` path (`uVar11 = [v+0x1755] >> 6`); else `0x35d6`
+it takes the legacy `0x36ab` path (`uVar11 = word[0x1755 + 2*v] >> 6`, `0x36ab`:
+`mov bx,si`; `0x36ad mov ax,[bx+si+0x1755]`; `0x36b3 shr ax,6`); else `0x35d6`
 checks `[v+0x1561] & 0x20` — if clear it writes a key-off `0xB0` (`0x35dd`, value
 `[v+0x154d] & ~0x20`), else it executes the `0x35fa` block. `0xB0` is always
 `cached_b0 | [v+0x1561]` (`0x36d2`), so the key-on bit is preserved across a
@@ -557,9 +572,10 @@ and the TL family at tick 0 is `0x3f` everywhere except `0x43 = 0x16`.
   `0x3f` at tick 0. With `volume = 0` (BSS, never reset by the 121 block) the
   level term `local_a` is 0, so `(att ^ 0x3f) | patch_TL` saturates to `0x3f` for
   the gated operators — consistent with volume defaulting to 0. `0x43 = 0x16`
-  is one operator where `[v+0x18e5]`'s gate bit is clear (so `att` is the patch
-  value) or where `patch_TL` dominates; `0x43` is not the modulator/carrier pair
-  of a single channel, so no stronger claim is made here.
+  is one operator where the gate bit of `[bp-0x14]` (normal `[v+0x1629]`, type-3
+  `[v+0x18e5]`) is clear (so `att` is the patch value) or where `patch_TL`
+  dominates; `0x43` is not the modulator/carrier pair of a single channel, so no
+  stronger claim is made here.
 - **Pan default selects `0x30`.** Tick-0 `C0 = 0x34` = connection low bits `0x04`
   | `0x30`. The `0x30` (rather than `0x20`) requires `[ch+0x1919]` in
   `[0x1c, 99]`, so the pan default is **not** BSS-zero (a zero pan would give
@@ -593,7 +609,9 @@ On plan-vs-raw conflict the raw wins. Corrections recorded:
    `16*sem + ((2*ax)&0x1f)`.
 6. **TL fold** — `att` is `(field>>10) * local_a / 0x7f` (the multiply then
    divide, integer), `patch_TL` is the cached voice byte `0x1589`/`0x159d`, and
-   the gate bits are `[v+0x18e5]` bit 0 (op1) / bit 1 (op2). `local_a` itself is
+   the gate bits are `[bp-0x14]` bit 0 (op1) / bit 1 (op2) — where `[bp-0x14]` is
+   `[v+0x1629]` for a normal voice and `[v+0x18e5]` for a type-3 voice (`0x33e8`
+   vs `0x3305`). `local_a` itself is
    `g(g((volume*expression*2)>>8) * [v+0x1511] * 2 >> 8)` with `g(x)=x+(x!=0)`.
 7. **The decompilation's index fold** (`:964`, `iVar10 += 0x18`) is 12 too large;
    the raw is `+0xc` (`0x363b`) after the mandatory `+0xc` in the do-while.
