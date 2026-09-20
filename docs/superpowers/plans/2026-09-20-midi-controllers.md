@@ -187,6 +187,11 @@ void pitch_lookup(int index, s32 bend, u8 *a0, u8 *b0);
 
 `pitch.c`: the tables as literals generated from the Task-1 command (`static const s16 PITCH_TBL[192]`, `static const u8 T97D[96]`, `static const u8 T9DD[96]`), then:
 
+> The `block`/`oct` lines below are the **naive** transcription and are known to be
+> one octave high (block 6 for note 84, block 3 for index 54). Task 1 settled the
+> corrected convention — use it here. The test's capture-pinned anchors (block 5,
+> block 2) govern; do not adjust the test to match the stub.
+
 ```c
 s32 pitch_bend_of(int wheel14, int scale)
 {
