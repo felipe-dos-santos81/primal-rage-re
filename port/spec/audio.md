@@ -955,8 +955,9 @@ payload decode is **verified** against the capture:
   makes their rows exact (`0x50`) differs from the steady channels' (`0x54`).
   That per-channel split is **provably unpinnable**: the engine has one sequence
   volume and one timer tick, yet ch4 and ch9 written at the same tick imply
-  `0x50` vs `0x54`, and every shipped-image per-channel volume path (ctrl
-  83/109/115) is inert for this title. No `SBPRO2.MDI` term varies by channel
+  `0x50` vs `0x54`, and the only shipped-image writer of the engine's
+  per-channel volume array (`seq+0x350`) is controller 83, which this title
+  never sends (109/115 do not write it). No `SBPRO2.MDI` term varies by channel
   (round 2 §R2.1 fingerprints the capture as `SBPRO2.MDI`). Reproducing those
   rows would need a fitted constant, which this repo forbids, so
   `documented_excluded` names exactly those rows instead of the whole family.
@@ -1007,8 +1008,8 @@ line; docs/superpowers/plans/2026-09-18-opl-oracle-alignment.md)`.
 **First-difference history.** Under the symmetric reduction the line measured
 real divergences — write 14 (#6 percussion note→fnum), then write 16 (#5
 channel reuse), then write 24 (the E0-family capture artefact), then write 102
-(`0x122` vs `0x125`, the init-shadow artefact, item 9), then write 152, then
-write 302 (the TL family and the unmodelled mid-note frequency change), and now
+(`0x122` vs `0x125`, the init-shadow artefact, item 9), then write 152 (the TL
+family), then write 302 (the unmodelled mid-note frequency change), and now
 write 430. The current line is:
 
 ```
@@ -1065,12 +1066,12 @@ assignment "divergence #7"; the channel half is **item 5** here — item 7 is th
 2. **`0x105 = 0x01` (OPL3-mode enable): withdrawn, port now matches.** The
    capture's next write after `0x01 = 0x20` is `0x105 = 0x01`. Earlier text here
    claimed writing it to the vendored opal core **silences** the output. That is
-   an artifact of the probe behind it omitting the driver's `0xC0 = patch | bits`
-   output-enable write (`bits` ∈ {`0x10`,`0x20`,`0x30`}, at least one enable
-   set). In OPL2 mode `channelMix` forces every channel's enable on, masking a
-   missing `0xC0`; in OPL3 mode the `0xC0` bits gate the mix, so the `0xC0`-less
-   probe rendered 0. With the `0xC0` enable present — as every real note setup
-   has — `0x105 = 0x01` is output-neutral and byte-identical.
+   an artifact of the probe behind it omitting the driver's `0xC0 = (p[8] & 0x0f)
+   | bits` output-enable write (`bits` ∈ {`0x10`,`0x20`,`0x30`}, at least one
+   enable set). In OPL2 mode `channelMix` forces every channel's enable on,
+   masking a missing `0xC0`; in OPL3 mode the `0xC0` bits gate the mix, so the
+   `0xC0`-less probe rendered 0. With the `0xC0` enable present — as every real
+   note setup has — `0x105 = 0x01` is output-neutral and byte-identical.
    The port now writes `0x105 = 0x01` after `0x01 = 0x20`, matching the capture;
    the core is unmodified. `verified (cmd: ./build/run_tests covers
    port/tests/test_opl.c; a 1024-frame key-on probe against

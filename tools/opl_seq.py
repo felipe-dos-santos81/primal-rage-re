@@ -48,9 +48,9 @@ import os
 import signal
 import sys
 
-# OPL clock the port pins its note table to (Hz). sequencer.c NOTE_TAB was
-# verified against the capture at this rate; deriving the table from it here
-# turns a copied literal into an independently computed value.
+# OPL clock (Hz) the note -> (block, fnum) formula and its capture anchors are
+# pinned to. The trace path uses the driver's own fine-step table (read from
+# SBPRO2.MDI); this formula is the independent cross-check.
 OPL_CLOCK = 49716.0
 
 # OPL3 operator register offset for each sequencer channel, including the
@@ -114,8 +114,11 @@ CTRL_STORES = {6: ('bend_scale', None), 7: ('volume', FAM_TL),
 
 
 def load_pitch_table(path):
-    """SBPRO2.MDI -> 192 signed words at 0x7fd, or None if the image is short."""
-    data = read(path)
+    """SBPRO2.MDI -> 192 signed words at 0x7fd, or None if absent or short."""
+    try:
+        data = read(path)
+    except OSError:
+        return None
     if len(data) < PITCH_TBL_OFFSET + 2 * PITCH_TBL_WORDS:
         return None
     return tuple(int.from_bytes(
@@ -124,8 +127,10 @@ def load_pitch_table(path):
 
 
 def computed_pitch_table():
-    """Fine-step table derived from the OPL clock (fallback when the driver
-    image is absent; the driver's own table is authoritative when present)."""
+    """Fine-step table computed from the OPL clock. Not used by the trace path:
+    `main` requires SBPRO2.MDI and passes the driver's literal table, so this is
+    reached only by `--self-test` / `--capture-anchors`, whose verifications use
+    the anchor formula below, not the emitted fnum."""
     table = []
     for n in range(PITCH_TBL_WORDS):
         sem, step = divmod(n, 16)
@@ -146,16 +151,14 @@ def note_to_block_fnum(note):
     return 7, 1023
 
 
-NOTE_TAB = tuple(note_to_block_fnum(n) for n in range(128))
-
-# Values the computed table must reproduce. 84 and 79 are CAPTURE-DERIVED: the
-# title bank's first two melodic note-ons, paired to prage_000.dro key-on pairs
-# by note-on time, not copied from sequencer.c's NOTE_TAB literal. `python3
-# tools/opl_seq.py --capture-anchors <music> <capture.dro>` re-derives them and
-# fails if the formula disagrees. 0, 31 and 127 are computed-table boundary
-# points (lowest entry, octave, clamp) and are NOT capture claims. This table is
-# the driver's melodic table; percussion selects it by its patch's base byte
-# instead (see Sequencer.key_on, matching sequencer.c).
+# Values the computed note -> (block, fnum) formula must reproduce. 84 and 79
+# are CAPTURE-DERIVED: the title bank's first two melodic note-ons, paired to
+# prage_000.dro key-on pairs by note-on time, not copied from any port table.
+# `python3 tools/opl_seq.py --capture-anchors <music> <capture.dro>` re-derives
+# them and fails if the formula disagrees. 0, 31 and 127 are formula boundary
+# points (lowest entry, octave, clamp) and are NOT capture claims. The trace
+# path instead uses the driver's own fine-step table read from SBPRO2.MDI;
+# percussion selects it by its patch's base byte (see Sequencer.key_on).
 NOTE_ANCHORS = {0: (0, 0x0AC), 31: (1, 0x205), 79: (5, 0x205),
                 84: (5, 0x2B2), 127: (7, 0x3FF)}
 
@@ -533,9 +536,10 @@ class Sequencer:
         # percussion uses the base alone. Mirrors sequencer.c's key_on.
         p = self.patches.get(key)
         idx = note
-        if midi == 9 and p is not None:
-            idx = p[2]
-        idx = max(0, min(idx, 127))
+        if p is not None:
+            idx = p[2] if midi == 9 else note + p[2]
+        if idx > 127:
+            idx = 127
         self.voice[v] = {'midi': midi, 'note': note, 'release': dur,
                          'age': self.age, 'b0': 0, 'patch': p, 'index': idx,
                          'level': VEL_LEVEL[(vel >> 3) & 0x0F]}
@@ -631,7 +635,8 @@ def cmd_info(music, patches_path, evnt, events):
 
 def self_test():
     for note, want in NOTE_ANCHORS.items():
-        assert NOTE_TAB[note] == want, (note, NOTE_TAB[note], want)
+        got = note_to_block_fnum(note)
+        assert got == want, (note, got, want)
 
     # Malformed patch banks are rejected whole, matching patches.c.
     assert load_patches(None) is None

@@ -38,5 +38,28 @@ int test_pitch(void)
         CHECK_EQ_INT(b0, 0x01);
     }
 
+    /* Folded low indices 0-6 with a centred wheel compute block -1 (one below
+     * the lowest legal block), so the `block < 0` carry runs (block++ and
+     * v >>= 1): index 0's v 0x02B2 halves to 0x0159, index 6's 0x03CF to
+     * 0x01E7, both lifted to block 0. */
+    {
+        u8 a0, b0;
+        pitch_lookup(0, 0, &a0, &b0);
+        CHECK_EQ_INT(a0, 0x59);
+        CHECK_EQ_INT(b0, 0x01);
+        pitch_lookup(6, 0, &a0, &b0);
+        CHECK_EQ_INT(a0, 0xE7);
+        CHECK_EQ_INT(b0, 0x01);
+    }
+    /* A negative bend drives `ax` below 0; the 0xc0 fold wraps it (it is not
+     * a clamp), so the index lands above centre. Index 0, bend -1000: ax -62
+     * -> 130. */
+    {
+        u8 a0, b0;
+        pitch_lookup(0, -1000, &a0, &b0);
+        CHECK_EQ_INT(a0, 0x27);
+        CHECK_EQ_INT(b0, 0x02);
+    }
+
     return g_failures - before;
 }

@@ -570,8 +570,8 @@ int test_sequencer(void)
          *     from the MIDI note: melodic adds the base to the note, percussion
          *     uses the base alone. The title's first key-on is MIDI 47 on
          *     channel 9; its 0x7F-bank patch base is 54, so the capture keys
-         *     block 2 fnum 0x3CF (0xA0=0xCF, 0xB0=0x2B). The melodic table
-         *     would give NOTE_TAB[47] = block 2 fnum 0x28B (0xB0=0x2A), so
+         *     block 2 fnum 0x3CF (0xA0=0xCF, 0xB0=0x2B). The melodic
+         *     pitch_lookup(47, 0) would give block 2 fnum 0x28B (0xB0=0x2A), so
          *     this fails before the fix. */
         {
             const u8 *drum = patches_lookup(PATCH_KEY(PATCH_BANK_PERCUSSION, 47));

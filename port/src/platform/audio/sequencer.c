@@ -147,8 +147,8 @@ static u8 scale7(u8 a, u8 b)
     return (u8)(t == 0 ? 0 : t + 1);
 }
 
-/* Applies the register families selected by `mask` to an OPL channel, from
- * the voice's cached patch payload. Payload layout (verified, FORMATS.md):
+/* PORT: Applies the register families selected by `mask` to an OPL channel,
+ * from the voice's cached patch payload. Payload layout (verified, FORMATS.md):
  * [3..7] = modulator 0x20/0x40/0x60/0x80/0xE0, [8] = 0xC0, [9..13] = carrier
  * 0x20/0x40/0x60/0x80/0xE0. Writes are ordered by register family, matching
  * the captured driver's per-note setup; a key-on passes FAM_ALL, which emits
@@ -223,12 +223,11 @@ static void fam_apply(int opl_ch, u8 mask)
     }
     if (mask & FAM_FREQ) {
         u8 a0, b0;
-        int ch = S.voice[opl_ch].midi;
         s32 bend = 0;
         /* PORT: 0x35fa reads the wheel unconditionally from the voice's own
          * MIDI channel ([si+0x14c1] -> [bx+0x1939]/[bx+0x1929]); a key-on
          * reaches the same routine, so it sounds the live wheel too. */
-        if (ch >= 0 && ch < SEQ_MIDI_CHANNELS)
+        if (known)
             bend = pitch_bend_of((S.wheel_msb[ch] << 7) | S.wheel_lsb[ch],
                                  S.bend_scale[ch]);
         pitch_lookup(S.voice[opl_ch].index, bend, &a0, &b0);
@@ -251,8 +250,6 @@ static void midi_control(u8 status, u8 a, u8 b)
     int ch = status & 0x0f;
     u8 mask;
 
-    if (ch >= SEQ_MIDI_CHANNELS)
-        return;
     if (hi == 0xe0) {
         S.wheel_lsb[ch] = a;
         S.wheel_msb[ch] = b;
@@ -300,6 +297,11 @@ static void key_off(int opl_ch)
     opl_set_write_attr(0xFF);
     S.voice[opl_ch].note = SEQ_NOTE_FREE;
     S.voice[opl_ch].release = 0;
+    /* PORT: the cached patch pointer and fnum index are valid only while the
+     * voice holds a note; clear them on release so a re-loaded patch bank can
+     * never leave a stale pointer for a later partial-mask fam_apply. */
+    S.voice[opl_ch].patch = NULL;
+    S.voice[opl_ch].index = 0;
 }
 
 /* Releases the voice on `midi`/`note`, oldest first. */
@@ -606,8 +608,8 @@ void seq_start(void)
      * (0x01 = 0x20) then the OPL3-mode enable (0x105 = 0x01); the port writes
      * both, in that order, matching the capture. The port needs 0x01 because
      * patches write 0xE0. 0x105 does not change the port's output: every
-     * fam_apply writes 0xC0 = patch | bits with bits in {0x10, 0x20, 0x30}
-     * (the default pan 0x40 gives 0x30, both output enables; the pan
+     * fam_apply writes 0xC0 = (p[8] & 0x0f) | bits with bits in {0x10, 0x20,
+     * 0x30} (the default pan 0x40 gives 0x30, both output enables; the pan
      * controller narrows that to one side but never clears both). Those bits
      * are what gate each channel's mix in OPL3 mode. See port/spec/audio.md
      * "Known capture divergences". */
