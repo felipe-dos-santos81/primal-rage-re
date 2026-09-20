@@ -366,6 +366,15 @@ def main():
     # capture under PR_ORACLE_REQUIRED, a missing port dir, or an unloadable port
     # dump return 1 (see the returns below). The result is now a gate: any
     # unexplained frame returns 1.
+    #
+    # Known limitation of the gate: only `unexplained` capture frames fail it.
+    # check_capture's `rc` also counts port frames no capture frame exhibits
+    # (coverage) and `endpoints BAD`, but the front-end branch deliberately
+    # ignores `rc` here: the 120 s capture ends before the 300 dumped frames do
+    # (the port dump runs into state 9, which the passive original leaves for the
+    # attract loop), so a coverage-based gate could never pass. "The oracle
+    # passes" therefore means "no content-bearing capture frame is unexplained",
+    # NOT "every dumped port frame was exhibited".
     if a.frontend:
         capture = a.capture[0]
         if not os.path.isdir(capture):
@@ -386,7 +395,7 @@ def main():
             print("title_compare: frontend: window not derivable from the port "
                   "dump (rc %d)." % rc)
             return 1 if rc else 0
-        raws = raw_map(capture) or list(range(len(frames)))
+        raws = raw_map(capture) or list(range(len(res['frames'])))
         black = res['black']
         print("title_compare: frontend: %d all-black capture frame(s) excluded "
               "as artifacts: %s"
