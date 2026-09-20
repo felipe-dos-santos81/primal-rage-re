@@ -32,6 +32,7 @@ int test_input(void);
 int test_host(void);
 int test_flow(void);
 int test_opl(void);
+int test_pitch(void);
 int test_samples(void);
 int test_mixer(void);
 int test_sequencer(void);

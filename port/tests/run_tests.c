@@ -45,6 +45,7 @@ int main(void)
     test_host();
     test_flow();
     test_opl();
+    test_pitch();
     test_samples();
     test_mixer();
     test_sequencer();
