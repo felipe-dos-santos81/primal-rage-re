@@ -6,6 +6,7 @@
  * sub-project is stubbed where it is reached and named in a PORT comment. */
 #include "game/flow.h"
 #include "game/actors.h"
+#include "game/attract.h"
 #include "game/config.h"
 #include "game/effects.h"
 #include "game/movie.h"
@@ -281,8 +282,9 @@ static const u8 *title_string(void) { return game_string_get(0x15u); }
  * DS_00107A1C as actor_spawn(desc, a2 << 3, 2, a3 << 3, 0); the argument
  * binding is pinned by disassembly (docs/superpowers/plans/2026-09-17-actor-system-args.md §2).
  * The original writes at index -1 when the table is already full; the port
- * skips instead of touching the word before the table. */
-static void title_spawn_row(const u32 *desc, u32 a2, u32 a3)
+ * skips instead of touching the word before the table. Shared by the title
+ * state, the 0x11F6C selector and the 0x11000 attract machine. */
+void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3)
 {
     int slot = 0;
     while (slot < 7 && DSD(DS_00107A1C + (u32)slot * 4u) != 0) slot++;
@@ -341,7 +343,7 @@ static void game_state_select(void)
             /* 0x29D60 is a ret-only no-op. */
             actors_reset();                         /* 0x2BAF4 (eax = 1) */
             frontend_origin_zero();                 /* 0x4F1D0 */
-            title_spawn_row(desc, 0u, 0u);          /* 0x38B18 */
+            frontend_spawn_row(desc, 0u, 0u);          /* 0x38B18 */
             config_set_credit_row(1u);              /* 0x2C06C (eax = 1) */
             DSB(DS_000F0A6E) = 0;
             DSD(DS_000F0A44) = 0;
@@ -350,7 +352,7 @@ static void game_state_select(void)
         }
         actors_reset();                             /* 0x2BAF4 (eax = 1) */
         frontend_origin_zero();                     /* 0x4F1D0 */
-        title_spawn_row(desc, 0u, 0u);              /* 0x38B18 */
+        frontend_spawn_row(desc, 0u, 0u);              /* 0x38B18 */
         DSD(DS_000F0A44) = actor_spawn(             /* 0x2AE14 */
             (const u32 *)(mem + DSD(0x9AEE0u + 12u * n)),   /* 0x9AEE0 */
             0u, 0xE0u + n, 0x600u, 0u);
@@ -488,10 +490,10 @@ static void game_state_title(void)
             actor_spawn((const u32 *)(mem + 0x9AE3Cu), 0x2A00u, 0xFFu, 0xC00u, 0u);
         }
         /* 0x1224F/0x12262/0x12275/0x1228B: four 0x38B18(0x9AC1C) rows. */
-        title_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0u, 0u);
-        title_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0x2Au, 0u);
-        title_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0u, 0x1Eu);
-        title_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0x2Au, 0x1Eu);
+        frontend_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0u, 0u);
+        frontend_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0x2Au, 0u);
+        frontend_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0u, 0x1Eu);
+        frontend_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0x2Au, 0x1Eu);
         /* The EXE's only seed store is 0x20C62 in 0x20C10 (before
          * 0x2D974(0x29)); 0x121A0 itself does not re-seed. The port's
          * game_init() mirrors 0x20C10, and nothing consumes RNG between that
@@ -758,7 +760,13 @@ int game_music_notes_seen(void) { return s_music_notes; }
 
 /* ---- the exported flow -------------------------------------------------- */
 
-void game_set_game_dir(const char *dir) { s_game_dir = dir; }
+void game_set_game_dir(const char *dir)
+{
+    s_game_dir = dir;
+    /* The attract machine's phase-0 boot logos (0x1C740) play from the same
+     * directory. */
+    attract_set_media_dir(dir);
+}
 
 void game_init(void)
 {
@@ -895,8 +903,14 @@ void game_loop(void)
             k[0x2d9] = (u8)bits;
         }
         input_pump();                        /* 0x500C4 */
-        /* PORT: 0x292AC and 0x389C4/0x38A38 (DS_00107A54 != 0) deferred
-         * (menus / fight engine). */
+        /* 0x255F3: the per-bit scene tick runs unconditionally; the two
+         * scroll/zoom projection calls at 0x25601/0x25606 are gated by
+         * DS_00107A54 (the raw's `cmp byte [0x107a54],0; je`). */
+        attract_scene_tick();                /* 0x292AC */
+        if (DSB(DS_00107A54) != 0u) {
+            render_scroll_edge();            /* 0x389C4 */
+            render_scroll_fill();            /* 0x38A38 */
+        }
         game_frame();                        /* 0x24C5C */
         run_process_table(DS_000A86C4, DSD(DS_00104AEC));  /* render table */
         render_list_sort();                  /* 0x1C3FC */
@@ -1021,17 +1035,19 @@ void game_state_step(void)
             }
             break;
         default:
+            /* 0x11CDC[0] -> 0x11D70: state 0 runs the attract sub-machine. */
+            attract_step();     /* 0x11000 */
             break;
         }
     } else {
-        /* PORT: 0x11000 attract sub-machine (state 0 / >=10), deferred. */
+        /* 0x11D54 (`ja 0x11D70`): states > 9 run the attract sub-machine. */
+        attract_step();         /* 0x11000 */
     }
-    /* PORT: 0x10DB0 and 0x10E18 (0x11D04's tail, run after every state's
-     * function, including 0x121A0): both gate on DS_000F0A71 == 0 and two bits
-     * of the input state DS_001088D8, then latch DS_000F0A71. With no input
-     * those bits stay zero and neither branch is taken (spec §7). Deferred
-     * with that evidence. */
-    game_overlay_step();    /* 0x2BF08 */
+    /* 0x11D8D/0x11D92/0x11D97: every state's jump-table target ends with the
+     * two tails then the overlay, in that order (state 0's 0x11D70 too). */
+    frontend_pause_tail();      /* 0x10DB0 */
+    frontend_continue_tail();   /* 0x10E18 */
+    game_overlay_step();        /* 0x2BF08 */
 }
 
 /* PORT: 0x2BF08. Raw disassembly fixes the branch order and the misstated

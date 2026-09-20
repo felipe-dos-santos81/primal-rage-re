@@ -35,4 +35,15 @@ void frontend_continue_tail(void);
  * DS_000A2CB4 from config fields 0x2A (scale), 0x35 and 0x37. */
 void attract_config_volumes(void);
 
+/* 0x11000. The 13-phase attract sub-machine. DS_000F0A6F selects the phase
+ * through the jump table at 0x10FCC (0 -> 0x1101F ... 0xC -> 0x11531); a value
+ * > 0xC skips straight to the 0x11550 tail. Every phase falls through to that
+ * tail, which runs the 0x10F28 voice scheduler while DS_0009AD58 == 0. */
+void attract_step(void);
+
+/* PORT: the game directory the phase-0 boot-logo movies (0x1C740 handed
+ * mem + 0x80038 / +0x80044, the fixed names "twi5.smk" and "twg.smk") are
+ * played from. Set from flow.c's game_set_game_dir(). */
+void attract_set_media_dir(const char *dir);
+
 #endif /* PRAGE_GAME_ATTRACT_H */

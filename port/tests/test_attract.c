@@ -317,5 +317,63 @@ int test_attract(void)
         DSD(DS_00104AD0) = saved_mask;
     }
 
+    /* 0x11000 phase 0xC: countdown, then hand to DS_000F0A70.
+     * 0x11000 phase 0xB: DS_000F0A48 = 0, DS_000F0A6F = 0, and the state handoff.
+     * Both phases fall through to the 0x11550 tail, which only runs the 0x10F28
+     * voice scheduler when DS_0009AD58 == 0. */
+    {
+        const u8 saved6f = DSB(DS_000F0A6F);
+        const u8 saved6e = DSB(DS_000F0A6E);
+        const u16 saved68 = DSW(DS_000F0A68);
+        const u8 saved70 = DSB(DS_000F0A70);
+        const u8 saved5c = DSB(DS_000F0A5C);
+        const u16 saved64 = DSW(DS_000F0A64);
+        const u32 saved48 = DSD(DS_000F0A48);
+        const u8 saved73 = DSB(DS_00108173);
+        const u16 saved60 = DSW(DS_000F0A60);
+        const u16 saved62 = DSW(DS_000F0A62);
+
+        DSB(DS_0009AD58) = 1;   /* suppress the tail's rng draw while testing */
+
+        DSB(DS_000F0A6F) = 0xC; DSB(DS_000F0A70) = 3; DSW(DS_000F0A68) = 1;
+        attract_step();
+        CHECK_EQ_INT((int)DSW(DS_000F0A68), 0);
+        CHECK_EQ_INT((int)DSB(DS_000F0A6F), 0xC);      /* original 1 -> not yet < 1 */
+        attract_step();
+        CHECK_EQ_INT((int)DSB(DS_000F0A6F), 3);        /* original 0 -> hand off */
+
+        DSB(DS_000F0A6F) = 0xB; DSB(DS_00108173) = 0; DSB(DS_000F0A5C) = 0;
+        DSB(DS_000F0A64) = 0xFF;
+        attract_step();
+        CHECK_EQ_INT((int)DSD(DS_000F0A48), 0);
+        CHECK_EQ_INT((int)DSB(DS_000F0A6F), 0);
+        CHECK_EQ_INT((int)DSW(DS_000F0A64), 1);
+
+        /* 0x11000 phase 8: DS_000F0A4C+0x24 clear -> set the 0xC countdown and
+         * target 0xC. DS_000F0A4C is pointed at a zeroed scratch cell so no
+         * loaded scene is needed. */
+        {
+            const u32 saved4c = DSD(DS_000F0A4C);
+            DSD(DS_000F0A4C) = 0x3F00000u;   /* free scratch near the top of mem[] */
+            DSD(0x3F00000u + 0x24u) = 0;
+            DSB(DS_000F0A6F) = 8;
+            DSW(DS_000F0A68) = 0;
+            DSB(DS_000F0A70) = 0;
+            attract_step();
+            CHECK_EQ_INT((int)DSW(DS_000F0A68), 0x40);
+            CHECK_EQ_INT((int)DSB(DS_000F0A70), 9);
+            CHECK_EQ_INT((int)DSB(DS_000F0A6F), 0xC);
+            DSD(DS_000F0A4C) = saved4c;
+        }
+
+        /* restore */
+        DSB(DS_000F0A6F) = saved6f; DSB(DS_000F0A6E) = saved6e;
+        DSW(DS_000F0A68) = saved68; DSB(DS_000F0A70) = saved70;
+        DSB(DS_000F0A5C) = saved5c; DSW(DS_000F0A64) = saved64;
+        DSD(DS_000F0A48) = saved48; DSB(DS_00108173) = saved73;
+        DSW(DS_000F0A60) = saved60; DSW(DS_000F0A62) = saved62;
+        DSB(DS_0009AD58) = 0;
+    }
+
     return g_failures - before;
 }

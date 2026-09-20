@@ -105,4 +105,12 @@ const u8 *game_string_get(u32 id);
  * game_state_select share it. */
 void frontend_origin_zero(void);
 
+/* 0x38B18. Spawns `desc` through actor_spawn(desc, a2 << 3, 2, a3 << 3, 0) into
+ * the first free slot of the 7-entry table at DS_00107A1C. The raw argument
+ * binding is eax = desc, edx = a2, ebx = a3 (pinned by disassembly in
+ * docs/superpowers/plans/2026-09-17-actor-system-args.md §2); the 0x11000
+ * attract phase 2 passes edx = ebx = 0. Shared by the title state, the 0x11F6C
+ * selector and the attract machine. */
+void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3);
+
 #endif /* PR_GAME_FLOW_H */

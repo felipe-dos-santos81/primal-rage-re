@@ -529,3 +529,276 @@ taken path (it passed `test ah,ah; jne`), so it clears `DS_00104B19` byte 2 and
 - Scene tick: shipped `DS_000A8744` = `0x4F7F4`, `+4`/`+8` = `0x5D812`; probes
   registered at `0xF00D0`/`0xF00D4` prove bit 0 -> entry 0, bit 1 -> entry at
   `i = 4`, no bits -> no calls.
+
+---
+
+# The `0x11000` attract sub-machine (Task 4)
+
+Register-level derivation of `0x11000` and its residual register arguments from
+the shipped `data/game/C/PRAGE.EXE`. The plain text bytes give the *unfixed* LE
+immediates; the five arguments below are read from the **loaded** image
+(`mem_load_le`), where the internal fixups have already added each target
+object's base (`+0x10000` for obj-0, `+0x80000` for obj-1). The phase byte is the
+low byte of `DS_000F0A6F`.
+
+Reproduction (read-only). `tools/` is untouched: the script reproduces
+`mem_load_le`'s page map, BSS zeroing and internal-offset fixups, then
+disassembles the loaded image.
+
+```python
+import struct
+from capstone import *
+d = open('data/game/C/PRAGE.EXE','rb').read()
+# ... reproduce find_le / find_bound_base / page map / mem_load_le_fixups ...
+mem = loaded_image_bytes()            # 64 MB flat mem[]
+md = Cs(CS_ARCH_X86, CS_MODE_32)
+for va, n in ((0x1101f, 0x545),):     # whole 0x11000 machine
+    for i in md.disasm(bytes(mem[va:va+n]), va):
+        print(hex(i.address), i.bytes.hex(), i.mnemonic, i.op_str)
+```
+
+## 1. Phase table `0x10FCC`
+
+The raw's `jmp dword ptr cs:[eax*4 + 0x10fcc]` (after `and eax,0xff` and
+`cmp al,0xC; ja 0x11550`). The loaded table:
+
+| phase | target | phase | target |
+|---|---|---|---|
+| 0 | `0x1101F` | 7 | `0x1128C` |
+| 1 | `0x1106B` | 8 | `0x112CA` |
+| 2 | `0x11089` | 9 | `0x112FD` |
+| 3 | `0x11199` | 0xA | `0x11478` |
+| 4 | `0x111C6` | 0xB | `0x114BC` |
+| 5 | `0x1121C` | 0xC | `0x11531` |
+| 6 | `0x11254` | | |
+
+Matches the controller-verified table. Every phase ends at the common tail
+`0x11550` (a `jmp`, or a fall-through for phase 0xC and the `>0xC` default).
+
+## 2. Item 1 — `0x38B18`'s arguments at `0x11138`
+
+```
+0x11116 b868ec9603           mov  eax, 0x396ec68        ; palette_acquire
+0x1111b 31db                 xor  ebx, ebx
+0x1111d e832260200           call 0x33754
+0x11122 b830fe0501           mov  eax, 0x105fe30
+0x11127 31d2                 xor  edx, edx
+0x11129 e826260200           call 0x33754
+0x1112e b808ac0900           mov  eax, 0x9ac08          ; desc (fixed up)
+0x11133 be3c000000           mov  esi, 0x3c
+0x11138 e8db790200           call 0x38b18
+0x1113d bb28ed9603           mov  ebx, 0x396ed28
+0x11142 ba04000000           mov  edx, 4
+0x11147 a1480a0f00           mov  eax, dword ptr [0xf0a48]
+0x1114c bfb4000000           mov  edi, 0xb4
+0x11151 e81a2b0000           call 0x13c70
+```
+
+`0x38B18` itself (unchanged):
+
+```
+0x38b18 56                   push esi
+0x38b19 57                   push edi
+0x38b1a 55                   push ebp
+0x38b1b 89c6                 mov  esi, eax        ; incoming esi is overwritten
+0x38b1d 89d5                 mov  ebp, edx        ; ebp = a2
+0x38b51 c1e303               shl  ebx, 3          ; a3 << 3
+0x38b54 8d14ed00000000       lea  edx, [ebp*8]    ; a2 << 3
+0x38b5b 89f0                 mov  eax, esi        ; desc
+0x38b5d e8b222ffff           call 0x2ae14         ; actor_spawn
+```
+
+So the true signature is `eax = desc, edx = a2, ebx = a3` — the same one the
+port already pins for `0x121A0`. At the attract site `edx` and `ebx` are the
+zeroes set at `0x11127`/`0x1111b`: `0x33754` pushes/pops `ebx, ecx, edx, esi,
+edi, ebp` (tail `0x33831`-`0x33836`), so both survive the last
+`palette_acquire`. `mov esi, 0x3C` is **not** an argument: `0x38B18` overwrites
+`esi` with `eax`, and `esi` is callee-saved across `0x38B18`/`0x13C70`/`0x2C3FC`
+— it carries `0x3C` to the `DS_000F0A62` store at `0x11178`.
+
+**Port answer:** `frontend_spawn_row((const u32 *)(mem + 0x9AC08), 0, 0)`. The
+port's helper did **not** need widening.
+
+## 3. Item 2 — `DS_000F0A60` at the end of phase 2
+
+```
+0x11156 b840000000           mov  eax, 0x40
+0x1115b b92d000000           mov  ecx, 0x2d
+0x11160 e897b20100           call 0x2c3fc
+0x11165 b842000000           mov  eax, 0x42
+0x1116a b703                 mov  bh, 3
+0x1116c e88bb20100           call 0x2c3fc
+0x11171 66890d600a0f00       mov  word ptr [0xf0a60], cx
+0x11178 668935620a0f00       mov  word ptr [0xf0a62], si
+0x1117f 66893d680a0f00       mov  word ptr [0xf0a68], di
+0x11188 883d700a0f00         mov  byte ptr [0xf0a70], bh
+0x1118e 880d6f0a0f00         mov  byte ptr [0xf0a6f], cl
+```
+
+Both ids are **case 2** in `0x2C3FC`'s record table at `0x3BDC8` (stride 12,
+byte 0 = case): `0x40 -> case 2`, `0x42 -> case 2` (only `0x41`/`0x43` are the
+case-5 cancels). Case 2 is the jump-table target `0x2C473`:
+
+```
+0x2c473 lea  eax, [edx*4]
+0x2c47a sub  eax, edx              ; id*3
+0x2c47c mov  eax, [eax*4 + 0xbbdcc]; handle
+0x2c483 call 0x1ce70               ; pushes ecx at 0x1ce71, pops at 0x1ceb9
+0x2c48a jne  0x2c8e8
+0x2c4b6 call 0x1cc28               ; pushes ecx, pops at 0x1cd19
+0x2c4c5 ret
+```
+
+Case 2 never writes `ecx`, and its only two callees (`0x1CE70`, `0x1CC28`) both
+save and restore `ecx` (`push ecx`/`pop ecx`). So `ecx = 0x2D` survives both
+`0x2C3FC` calls and `DS_000F0A60 = cx = 0x2D`.
+
+**Port answer:** `DSW(DS_000F0A60) = 0x2D`. (The `0x2D` is also the first
+voice's live register, not a voice argument; the port records it as the
+countdown value.)
+
+## 4. Item 3 — phase 9's text-call register flow and `0x1133F`
+
+```
+0x112fd f6052945100002       test byte ptr [0x104529], 2   ; DS_00104528+1
+0x11304 7518                 jne  0x11326
+0x11306 b803000000           mov  eax, 3
+0x1130b b900100000           mov  ecx, 0x1000
+0x11310 ba15000000           mov  edx, 0x15
+0x11315 e8e6b10000           call 0x1c500
+0x1131a 89c3                 mov  ebx, eax
+0x1131c b8ffffffff           mov  eax, 0xffffffff
+0x11321 e87add0100           call 0x2f198
+0x11326 b8eb010000           mov  eax, 0x1eb
+0x1132b ba00200000           mov  edx, 0x2000
+0x11330 e8cbb10000           call 0x1c500
+0x11335 e8b6dd0100           call 0x2f0f0
+0x1133a 89c2                 mov  edx, eax
+0x1133c c1fa1f               sar  edx, 0x1f
+0x1133f 2bc2                 sub  eax, edx
+0x11341 d1f8                 sar  eax, 1
+0x11343 be15000000           mov  esi, 0x15
+0x11348 b900200000           mov  ecx, 0x2000
+0x1134d 29c6                 sub  esi, eax
+0x1134f b8eb010000           mov  eax, 0x1eb
+0x11354 ba17000000           mov  edx, 0x17
+0x11359 e8a2b10000           call 0x1c500
+0x1135e 89c3                 mov  ebx, eax
+0x11360 89f0                 mov  eax, esi
+0x11362 e831de0100           call 0x2f198
+0x11367 b900200000           mov  ecx, 0x2000
+0x1136c bbc4ac0900           mov  ebx, 0x9acc4
+0x11371 ba17000000           mov  edx, 0x17
+0x11376 8d4605               lea  eax, [esi + 5]
+0x11379 e81ade0100           call 0x2f198
+```
+
+`0x1C500` is `push ebx; push edx; ...; pop edx; pop ebx; ret`, and it calls only
+`0x474E4`, which itself pushes `ecx, esi, edi, ebp`. So the mode register `ecx`
+and the string pointer `ebx` survive each `0x1C500`; the `edx` (row) and `ecx`
+(mode) set immediately before each call are the real arguments. `0x11335`'s
+`0x2F0F0` is handed the string just decoded in `eax` and the mode still in `edx`
+(`0x2000`, mode & 3 == 0 -> `strlen`); the `sar edx,31; sub eax,edx; sar eax,1`
+is the signed truncating `/2`, so:
+
+```
+width = text_width(game_string_get(0x1EB), 0x2000)
+esi   = 0x15 - width / 2
+```
+
+The two centered calls are `text_cursor_set(esi, 0x17, game_string_get(0x1EB),
+0x2000)` and `text_cursor_set(esi + 5, 0x17, mem + 0x9ACC4, 0x2000)` (the raw's
+`ebx = 0x1acc4` fixed up to `0x9acc4`; the bytes there are `"@"`, i.e. the string
+is `@`). The remaining phase-9 calls: `(-1, 0x15, ...3, 0x1000)`,
+`(-1, 0x18, ...0x1EC, 0x2000)`, `(-1, 0x19, ...4, 0x2000)`,
+`(-1, 0x1B, ...0x1ED, 0x3000)`, `(-1, 0x1D, mem + 0x8004C, 0)`,
+`(-1, 4, ...0x1EA, 0x4003)`.
+
+## 5. Item 4 — the `0x113ED` `ebx = 0x4C`
+
+```
+0x113de bb4c000800           mov  ebx, 0x8004c
+0x113e3 ba1d000000           mov  edx, 0x1d
+0x113e8 b8ffffffff           mov  eax, 0xffffffff
+0x113ed 31c9                 xor  ecx, ecx
+0x113ef e8a4dd0100           call 0x2f198
+```
+
+The un-fixed source immediate is `0x4C`; the LE loader's internal-offset fixup
+adds the data object's base (`0x80000`), so the loaded value is `0x8004C` — a
+data pointer, not a flag or a descriptor offset. `mem + 0x8004C` holds the
+NUL-terminated string `"16 Meg Release"`.
+
+**Port answer:** `text_cursor_set(-1, 0x1D, (const u8 *)(mem + 0x8004C), 0)`.
+
+## 6. Item 5 — the `0x11550` tail
+
+```
+0x11550 803d58ad090000       cmp  byte ptr [0x9ad58], 0
+0x11557 7505                 jne  0x1155e
+0x11559 e8caf9ffff           call 0x10f28
+0x1155e 5f                   pop  edi
+0x1155f 5e                   pop  esi
+0x11560 5a                   pop  edx
+0x11561 59                   pop  ecx
+0x11562 5b                   pop  ebx
+0x11563 c3                   ret
+```
+
+The tail sets up no arguments for `0x10F28`; the registers at the call are the
+phase's residue. `0x10F28` reads only its two countdown globals
+`DS_000F0A60`/`DS_000F0A62` and ignores incoming registers, so the port's
+`attract_voice_tick(void)` call is faithful. The gate is the byte
+`DS_0009AD58 == 0` (phase 0 sets it to 1, phase 2 clears it).
+
+## 7. Phase 0 boot logos
+
+```
+0x1104b b838000800           mov  eax, 0x80038          ; fixed up
+0x11050 e8ebb60000           call 0x1c740
+0x11055 b844000800           mov  eax, 0x80044          ; fixed up
+0x1105a e8e1b60000           call 0x1c740
+```
+
+`mem + 0x80038` is `"twi5.smk\0"` and `mem + 0x80044` is `"twg.smk\0"` — the two
+boot logos `game_state_init` played before this task. The port binds the two
+names at the call site (`movie_play(dir, name)`) and reaches the game directory
+through `attract_set_media_dir()`, set from `flow.c`'s `game_set_game_dir()`.
+
+## 8. The raw vs the brief/sketch — corrections
+
+- **Item 1**: the site does **not** set `esi` as an argument. `0x38B18`'s
+  signature is unchanged from the title pin (`eax/edx/ebx`); `esi = 0x3C` is the
+  saved `DS_000F0A62` value. The helper was not widened.
+- **Master loop (`0x255CC`)**: `0x292AC` is **unconditional**, before the gate;
+  the `DS_00107A54 != 0` gate covers only `0x389C4` then `0x38A38`:
+  ```
+  0x255ee call 0x500c4
+  0x255f3 call 0x292ac
+  0x255f8 cmp byte ptr [0x107a54], 0
+  0x255ff je  0x2560b
+  0x25601 call 0x389c4
+  0x25606 call 0x38a38
+  0x2560b call 0x24c5c
+  ```
+  The plan's sketch `if (DS_00107A54 != 0) { render_scroll_fill();
+  attract_scene_tick(); }` is wrong in both the gate and the order (and drops
+  `render_scroll_edge`).
+- **`game_state_step` (`0x11D04`)**: the dispatch table at `0x11CDC` maps state 0
+  to `0x11D70` (attract), state 1 to `0x121A0`, state 2 to `0x11F6C`; the raw's
+  `cmp ax,9; ja 0x11D70` sends every state `> 9` to attract too. Every jump-table
+  target ends with `0x10DB0; 0x10E18; 0x2BF08` in that order.
+- **Phase 0xA**: the raw discards `actor_spawn`'s return value (no store to
+  `DS_000F0A50`).
+- **Phase 2's `effects_spawn`**: the raw also passes `edi = 0xB4`, a register the
+  port's 3-argument `effects_spawn` does not model; the same `0xB4` is the
+  `DS_000F0A68` countdown written at `0x1117F`.
+
+## 9. Test values (Task 4)
+
+- Phase 0xC: `DS_000F0A68 = 1` -> store 0, `DS_000F0A6F` stays 0xC; a second call
+  from 0 -> store 0xFFFF and `DS_000F0A6F = DS_000F0A70`.
+- Phase 0xB with `DS_00108173 == 0`, `DS_000F0A5C == 0`: `DS_000F0A48 = 0`,
+  `DS_000F0A6F = 0`, `DS_000F0A64 = 1`.
+- Phase 8 with `DS_000F0A4C+0x24` clear: `DS_000F0A68 = 0x40`,
+  `DS_000F0A70 = 9`, `DS_000F0A6F = 0xC`.
