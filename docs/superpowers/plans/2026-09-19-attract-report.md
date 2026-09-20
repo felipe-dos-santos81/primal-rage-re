@@ -10,10 +10,16 @@ asked for.
 **Complete.** Boot enters state 0 (attract); the row stand-in is gone; the
 continuous attract+title oracle runs; the title window stays 0 unexplained on
 both captures; the attract oracle reports its first divergence at capture frame
-68 (raw 1626/1621), individually explained from the raw as the declared
-unported `0x4F7F4`/`0x4F83C` scene-palette driver. `rm -rf build && make verify`
-exits 0 with 0 C warnings, `all checks passed`, smk 120/120 + 41/41, the title
-oracle green, and `symbols.h` byte-identical.
+100 (raw 1770 / 1765), the animation-triggered actor spawn `0x10FA8`
+(descriptor `0x9AD08`, layer `0xE4`) that the port skips because the animation
+opcode-0x11 indirect call is unported. `rm -rf build && make verify` exits 0
+with 0 C warnings, `all checks passed`, smk 120/120 + 41/41, the title oracle
+green, and `symbols.h` byte-identical.
+
+> Errata: the first divergence was capture frame **68** (raw 1626 / 1621) before
+> the Finding-1 spawn-slot fix (`e29f849`). Frame 68 was *that bug's* symptom,
+> not a palette gap — see "Frame 68 was the spawn-slot bug" below. The boundary
+> and its cause below are the post-fix truth.
 
 ## Modules and ownership
 
@@ -58,35 +64,65 @@ capture 216** (raw 2198 / 2193).
 
 ```
 attract_compare: ... attract window [0..215]; title window starts at capture 216 (raw 2198)
-attract_compare: ... 68/216 capture frames explained; port attract frames exhibited 63/690
-attract_compare: ... FIRST DIVERGENCE at capture frame 68 (raw 1626)
-attract_compare: ...   best byte splice port214[0..0) ++ port215[0..192000) still differs at 920 byte(s) (first row 47 byte 45657)
+attract_compare: ... 100/216 capture frames explained; port attract frames exhibited 96/690
+attract_compare: ... FIRST DIVERGENCE at capture frame 100 (raw 1770)
+attract_compare: ...   best byte splice port339[0..0) ++ port340[0..192000) still differs at 6207 byte(s) (first row 85 byte 81850)
 ```
 
 | capture | first divergence | raw | capture frames explained | port frames exhibited |
 |---|---|---|---|---|
-| `title` | 68 | 1626 | 68/216 | 63/690 |
-| `title2` | 68 | 1621 | 68/216 | 63/690 |
+| `title` | 100 | 1770 | 100/216 | 96/690 |
+| `title2` | 100 | 1765 | 100/216 | 96/690 |
 
-**The divergence is declared and raw-explained.** It is a ~62x24 red element
-(rgb `243,8,8` / `203,8,8`) where the port renders the scene's normal background
-gradient — a palette animation on the attract scene. Its producer chain is:
+**The divergence is declared and raw-explained.** Capture frame 100 is where
+the attract's animated logo hand-off fires. The logo actors run the sprite
+streams at `0x0E88AE` / `0x0E88BC`; after sprite `0x01FD` the stream carries the
+command word `0xD100` at `0x0E88D2`, whose inline dword is the code pointer
+`0x00010FA8`. Animation opcode 0x11 calls that pointer through `DS_00105BD4`.
+The original's `0x10FA8` is:
 
-- `0x4F83C` (the starter, unported): sets `DS_00104AD0 |= 1`, zeroes
-  `DS_001088F1`, and enqueues the first palette via `0x33874`.
-- `0x4F7F4` (`DS_000A8744[0]`, unported): the per-frame driver `0x292AC` calls
-  for mask bit 0. It advances `DS_001088F1` through the 10-entry table at
-  `DS_000C98A0`, calls `0x33874` with each entry, and clears `DS_00104AD0` bit 0
-  once the counter reaches 10.
-- `0x33874` (unported): enqueues a palette record from the effect record
-  `DS_000F0A48`'s handle/count.
+```
+0x10fa8 53                 push ebx
+0x10fa9 51                 push ecx
+0x10faa 52                 push edx
+0x10fab 6a00               push 0
+0x10fad b9e4000000         mov  ecx, 0xe4
+0x10fb2 b808ad0100         mov  eax, 0x1ad08      ; descriptor, loads as mem + 0x9AD08
+0x10fb7 31db               xor  ebx, ebx
+0x10fb9 31d2               xor  edx, edx
+0x10fbb e8549e0100         call 0x2ae14          ; actor_spawn(0x9AD08, 0, 0xE4, 0, 0)
+0x10fc0 5a                 pop  edx
+0x10fc1 59                 pop  ecx
+0x10fc2 5b                 pop  ebx
+0x10fc3 c3                 ret
+```
 
-Because neither the starter nor the driver is ported, the port never sets
-`DS_00104AD0` bit 0 and the palette never animates. This is the `0x4F7F4` gap
-carried from Task 3/4 (the brief names the table `0x4A8744`; the port symbol is
-`DS_000A8744`, raw `0x28744` + data base `0x80000`, and its shipped entry 0 is
-`0x4F7F4`). No frame is silently skipped: the first 68 capture frames are
-explained, and the 69th is reported with its raw index.
+So the original spawns the RAGE continuation actor — descriptor `0x9AD08`
+(animation stream `0x0E88E6`, flags `0x2000`, frame 4), layer `0xE4` — exactly
+when the phase-5/6 actor finishes sprite `0x01FD`. The port reaches `0x01FD`
+(dump 339 / `--check` 340), advances to `0x01FE` (dump 340 / `--check` 341),
+and because `anim_indirect` (`port/src/game/actors.c:457`) resolves
+`fn_resolve(0x10FA8)` to NULL it never spawns `0x9AD08`. The capture keeps the
+letters (they are the hand-off actor); the port's letters vanish. An actor dump
+confirms no actor carrying a `0x02xx` sprite (the `0x9AD08` stream) ever exists
+in the port.
+
+The same streams also dispatch opcode 0x11 to `0x4F83C` (the palette-animation
+starter: `DS_00104AD0 |= 1`, `DS_001088F1 = 0`, then `0x33874`) and to
+`0x10FC4` (a `mov [eax+0x18],0; ret` helper). Those calls sit later in the same
+animation, so they are further declared gaps, not the frame-100 cause.
+
+### Frame 68 was the spawn-slot bug, not the palette driver
+
+Before the Finding-1 fix (`e29f849`, "attract: fix the spawn-phase argument
+slots and add the attract gates") the first divergence was capture frame 68
+(raw 1626 / 1621). That was the spawn-slot bug itself: phases 5/6/7 passed the
+voice id (`0xE2`/`0xE6`/`0xE8`) in EBX (a4) instead of ECX (a3), so the spawned
+logo actors took layer byte `rec+0x49 = 0` — drawn behind the background — and
+put the id into `rec+0x1C`. Reverting 5/6/7 reproduces the frame-68 divergence;
+fixing the slots extends the matched prefix to frames 0..99 and exposes the real
+unported gap at 100. The palette driver is still unported after the fix, so it
+cannot explain a divergence that the fix removed.
 
 ## The title-window result
 
@@ -149,28 +185,42 @@ The attract phases call the true `0x4F1D0` via `frontend_origin_zero` too.
 
 ## Declared gaps (unchanged or newly named)
 
+- **Attract logo animation indirect calls (new).** Animation opcode 0x11 in the
+  logo streams (`0x0E88AE`/`0x0E88BC`/`0x0E88E6`/`0x0E8900`/`0x0E890A`) carries
+  an inline code pointer and calls it through `DS_00105BD4`; the port's
+  `anim_indirect` (`port/src/game/actors.c:457`) skips it because `fn_resolve`
+  has no registration for the target. The targets reached on the boot cycle:
+  - `0x10FA8` — spawns descriptor `0x9AD08` (layer `0xE4`); **this is the attract
+    oracle's first divergence, capture frame 100 (raw 1770 / 1765).**
+  - `0x4F83C` — the palette-animation starter (`DS_00104AD0 |= 1`,
+    `DS_001088F1 = 0`, `0x33874`); reached later in the same animation.
+  - `0x10FC4` — `mov [eax+0x18],0; ret`.
 - **Attract scene palette animation** — `0x4F83C` / `0x4F7F4` / `0x33874` are
-  unported; `DS_00104AD0` bit 0 is never set. This is the attract oracle's
-  explained first divergence (capture frame 68).
+  unported; `DS_00104AD0` bit 0 is never set by the port. (The old report named
+  this as the frame-68 cause; frame 68 was actually the spawn-slot bug. The gap
+  is real but reachable only through the `0x4F83C` animation call above, so it
+  would show after frame 100.)
 - **Voice `0x2C3FC`** — all attract voice calls remain declared no-op stubs; the
   RNG draws that must stay (the `attract_voice_tick` `rng_next` calls) are kept.
 - **Fight states 5–9, front-end state 3/4, the `0x13xxx` effect render path,
   EEPROM storage I/O** — unchanged stubs.
 - **`effects_spawn`'s raw `edi = 0xB4`** register is not modelled (3-arg API);
   the same value is stored to `DS_000F0A68` (Task 4).
-- The attract's rendering matched all 68 distinct capture frames that precede
-  the first palette-animation frame; the other ~620 port frames are holds that
-  the capture collapsed, so "port frames exhibited 63/690" is expected, not a
+- The attract's rendering matched all 100 distinct capture frames that precede
+  the first unported-producer frame; the other ~590 port frames are holds that
+  the capture collapsed, so "port frames exhibited 96/690" is expected, not a
   coverage failure.
 
 ## Ladder evidence
 
 - `rm -rf build && make verify` → exit 0, `warnings=0` (C), `all checks passed`,
   `smk_compare: 120/120` + `41/41`, title oracle 0 unexplained on both captures,
+  attract oracle expected divergence at capture frame 100 on both captures,
   `symbols.h` regenerated byte-identically.
 - `PR_ATTRACT_DUMP=/tmp/pr_attract … ./build/run_tests` → `all checks passed`,
   690 attract frames + 96 title frames dumped.
 - `python3 tools/attract_compare.py --capture data/title-captures/title
   --capture data/title-captures/title2 --port /tmp/pr_attract` → exit 1 with the
-  first divergence above (declared).
+  first divergence above (declared); `--expect-first 100` makes it the passing
+  `make attract-oracle` gate.
 - Two `PR_ATTRACT_DUMP` runs: `diff` of the 690-line `attract.log` is silent.
