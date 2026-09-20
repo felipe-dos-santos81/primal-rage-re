@@ -66,7 +66,8 @@ This is the de-risking task: it must come before any state code. It has an expli
 
 - [ ] **Step 1: Add the longer capture target**
 
-In `Makefile`, beside `title-capture`:
+In `Makefile`, first add the dump directory beside the existing two (line 15-16):
+`FRONTEND_DUMP = /tmp/pr_frontend_dump`. Then, beside `title-capture`:
 
 ```makefile
 frontend-capture: title-pin ## Capture the pinned original's front-end region (Task 1 front-end chain)
@@ -538,9 +539,12 @@ C-vs-Python gate at 9866 byte-exact, and the title/attract/smacker oracles uncha
 - [ ] **Step 6: Commit**
 
 ```bash
-git add port/src/game/flow.c port/src/game/effects.c port/spec/game_flow.md README.md port/tests/test_frontend.c
+git add port/src/game/flow.c port/src/game/effects.c port/src/game/actors.c port/spec/game_flow.md README.md port/tests/test_frontend.c
 git commit -m "frontend: wire the effect call sites and record the chain"
 ```
+
+(Stage whichever of `effects.c`/`actors.c` actually received the list walk; do not stage a
+file the task did not touch.)
 
 ---
 
