@@ -222,11 +222,15 @@ attract's own `0x2C06C(1)` (the captured title row 1). Proof is a continuous
 headless run aligned to the existing post-logo captures: the attract prefix
 (derived as capture frames `0..215`) plus the title window in one
 `game_init()`, an env-gated `PR_ATTRACT_DUMP` driver with a run-to-run frame-hash
-log, and raw-derived unit tests. The attract scene's palette animation is a
-**declared coverage gap**: the scene tick's only shipped callee `0x4F7F4` (and
-its starter `0x4F83C`) is unported, so `tools/attract_compare.py` reports its
-first divergence at capture frame 68 (raw 1626/1621), individually explained from
-the raw; the title window stays 0 unexplained on both captures. The oracle also
+log, and raw-derived unit tests. `tools/attract_compare.py` matches capture
+frames 0..99 and reports its first divergence at capture frame 100 (raw
+1770/1765): the RAGE-logo actor's animation reaches opcode 0x11's inline code
+pointer `0x10FA8`, which the port's `anim_indirect` skips (`fn_resolve(0x10FA8)`
+is unregistered), so the `mem+0x9AD08` hand-off spawn never runs and the logo's
+continuation is missing. Two further unported attract producers are declared
+gaps: the scene-palette driver `0x4F7F4` and its starter `0x4F83C`. The title
+window stays 0 unexplained on both captures. (Before the `0x11000` spawn-slot fix
+`e29f849` the boundary was frame 68; frame 68 was that bug, not a palette gap.) The oracle also
 surfaced and fixed a real `0x336C0` bug — `palette_list_init` omitted the raw's
 palette ownership-table clear at `0x87618`, which the attract's earlier palette
 acquires exposed. See
@@ -297,10 +301,11 @@ python3 tools/attract_compare.py --capture data/title-captures/title \
     --capture data/title-captures/title2 --port /tmp/pr_attract
 ```
 
-Since the attract's scene-palette driver `0x4F7F4` (and its starter `0x4F83C`)
-is unported (declared gap), the comparator reports its first divergence at
-capture frame 68 (raw 1626/1621) — an individually explained, declared
-divergence, not a silent skip. The `PR_ATTRACT_DUMP` run also writes the title
+The comparator matches capture frames 0..99 and reports its first divergence at
+capture frame 100 (raw 1770/1765) — the unregistered animation inline code
+pointer `0x10FA8` (an individually explained, declared divergence, not a silent
+skip). The attract's scene-palette driver `0x4F7F4` and its starter `0x4F83C`
+are declared gaps too. The `PR_ATTRACT_DUMP` run also writes the title
 window to `/tmp/pr_attract/title`, so `title_compare` can be run on the same
 dump.
 
