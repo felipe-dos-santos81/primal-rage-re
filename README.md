@@ -99,29 +99,29 @@ attract XMIDI bank is decoded and sequenced into OPL register writes through a
 vendored FM core, one located announcer sample plays through the game's own
 sample request/play call path, and mixed stereo frames reach SDL audio when a
 device opens. The FM data path is proven byte-exact against an independent
-Python decoder (9340 OPL register writes, zero differences), and the original's
+Python decoder (9866 OPL register writes, zero differences), and the original's
 OPL trace was captured and governs the comparison under a **symmetric oracle**
-(both streams anchored at their first key-on). The port now matches the
-`SBPRO2.MDI` note-setup path further: percussion note→fnum and the driver's
-18-slot channel rotation are derived from the shipped driver and implemented, so
-the first reported difference advanced from write 2 (a metric artifact) to write
-24. That turned out to be a capture artefact — the `.dro` capture records a
-register write only when its value changes, while the shipped driver writes every
-family unconditionally (Ghidra-confirmed in `FUN_0000_3184` and writer
-`FUN_0000_2ad6`) — so the oracle collapses the no-change write on both streams.
-That exposed the driver's unmodelled 18-voice tick-0 init (whose effect the anchor
-shadow now seeds) and, finally, a mid-note frequency change at tick 969 the port
-does not model, which is the current first difference. The 9340 (port) / 5804
-(reduced capture) write counts are not a like-for-like gap. Remaining differences
-— the TL level term (both operators; input engine/config-supplied, not
-driver-derivable), the `0xBD` rhythm register, and the mid-note frequency change —
-are named or excluded with cause, never tuned. **No audibility claim**: the oracle is the
-register write stream, not rendered audio. The windowed run is silent on hosts
-where SDL audio cannot start — on this machine `-66681`. To listen anyway,
-`make audio-render` plays the title bank through the sequencer + OPL core + mixer
-and writes a 16-bit stereo WAV at the OPL rate (`AUDIO_WAV`, default
-`/tmp/pr_title_fm.wav`; `AUDIO_SECONDS`, default 12) — the audio path is real,
-only the device is missing. See
+(both streams anchored at their first key-on). The port now also reproduces
+`SBPRO2.MDI`'s MIDI-controller path — the channel handler (`0x3b54`), the
+mask-driven family re-apply (`0x3184`), the driver's `0x35fa` frequency routine
+(which retires the hand-fitted note table), and the total-level/pan/mod folds —
+which closed both remaining named divergences: the mid-note frequency change (a
+bend re-applies the frequency family) and the total-level term (the driver's TL
+law, with the engine's sequence volume scaling CC7). The first difference
+advanced from C write 302 at cycle start to **C write 430**. What remains there
+is an **intra-tick write-order** difference — the same registers and values in
+every tick, emitted in a different order; per-tick write multisets are identical
+— plus carrier TL on MIDI channels 1 and 4, whose engine per-channel volume is
+provably unpinnable (one sequence volume, one timer tick), and the `0xBD` rhythm
+register. The 9866 (port) / 6903 (reduced capture) write counts are not a
+like-for-like gap. Remaining differences are named or excluded with cause, never
+tuned. **No audibility claim**: the oracle is the register write stream, not
+rendered audio, and the render below is FM music only — the title announcer
+sample is not in it. The windowed run is silent on hosts where SDL audio cannot
+start — on this machine `-66681`. To listen anyway, `make audio-render` plays the
+title bank through the sequencer + OPL core + mixer and writes a 16-bit stereo
+WAV at the OPL rate (`AUDIO_WAV`, default `/tmp/pr_title_fm.wav`; `AUDIO_SECONDS`,
+default 12) — the audio path is real, only the device is missing. See
 `docs/superpowers/plans/2026-09-16-audio-ail-port-report.md` and
 `docs/superpowers/plans/2026-09-18-opl-driver-report.md`.
 **Video — sub-project 2b-i, Smacker logos, running.** The port decodes the two

@@ -141,8 +141,8 @@ static int ev_eq(const ev_t *a, const ev_t *b)
  * which this repo forbids, so the exclusion names exactly those rows instead of
  * the whole TL family: carrier-TL registers (low byte, both banks:
  * 0x43/0x44/0x45/0x4B/0x4C/0x4D/0x53/0x54/0x55) on channel 1 or 4 only.
- * Modulator TL (0x40..0x42, 0x48..0x50) and carrier TL on every other channel
- * are compared. 0xBD stays excluded unconditionally. */
+ * Modulator TL (0x40..0x42, 0x48..0x4A, 0x50..0x52) and carrier TL on every
+ * other channel are compared. 0xBD stays excluded unconditionally. */
 static int documented_excluded(u16 reg, u8 attr)
 {
     u8 lo = (u8)(reg & 0xFF);

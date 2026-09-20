@@ -606,8 +606,10 @@ void seq_start(void)
      * (0x01 = 0x20) then the OPL3-mode enable (0x105 = 0x01); the port writes
      * both, in that order, matching the capture. The port needs 0x01 because
      * patches write 0xE0. 0x105 does not change the port's output: every
-     * fam_apply writes 0xC0 = patch | 0x30 (both output enables), which in
-     * OPL3 mode is what gates each channel's mix. See port/spec/audio.md
+     * fam_apply writes 0xC0 = patch | bits with bits in {0x10, 0x20, 0x30}
+     * (the default pan 0x40 gives 0x30, both output enables; the pan
+     * controller narrows that to one side but never clears both). Those bits
+     * are what gate each channel's mix in OPL3 mode. See port/spec/audio.md
      * "Known capture divergences". */
     opl_write(0x01, 0x20);
     opl_write(0x105, 0x01);
