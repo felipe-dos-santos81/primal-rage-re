@@ -40,7 +40,44 @@
 | `port/spec/audio.md` (modify) | items 1 and 10 dispositions; the reduction note |
 | `docs/superpowers/plans/2026-09-20-midi-controllers-derivations.md` (new) | the raw-byte derivation record (Task 1) |
 
+### Task 1 corrections that bind Tasks 2-5
+
+Task 1 is complete and its record
+(`docs/superpowers/plans/2026-09-20-midi-controllers-derivations.md`) is the source
+of raw values for every later task. Where a task's text below disagrees with it,
+**the derivations record governs** (raw wins). The four corrections:
+
+1. **`pitch_lookup` is not `NOTE_TAB` at centre.** The record's §3b names the
+   indices where they differ. Task 2 must therefore not assume the centred path is
+   byte-identical.
+2. **The frequency routine's corrected form** (record §7):
+   ```c
+   int bx = index - 0x18;
+   do { bx += 0xc; } while (bx < 0);
+   while (bx > 0x5f) bx -= 0xc;
+   s32 ax = (bend + (bx << 8) + 8) >> 4;
+   while (ax < 0)    ax += 0xc0;
+   while (ax > 0x5ff) ax -= 0xc0;
+   int idx = (int)(ax >> 4);
+   int sem = T9DD[idx], oct = T97D[idx];
+   s16 v = PITCH_TBL[16 * sem + ((int)ax & 0xf)];
+   int block = oct - 1 + (v < 0);
+   if (block < 0) { block++; v = (s16)(v >> 1); }
+   *a0 = (u8)(v & 0xff); *b0 = (u8)((block << 2) | ((v >> 8) & 0x03));
+   ```
+   Not `clamp(0, 0x5ff)`, not `16*sem + ((2*ax)&0x1f)`.
+3. **The gate array is per voice type**: `[v+0x1629]` for normal voices,
+   `[v+0x18e5]` for type-3 voices (`[v+0x1499] == 3`). Bit 0 = op1, bit 1 = op2.
+   Task 5 must use the type-correct array.
+4. **The applier's mask order** is `0x80, 0x40, 0x20, 0x10, 0x08, 0x01`, each bit
+   cleared after its family is written. Type-3 voices skip the frequency block;
+   other types run it when `[v+0x1561] & 0x20`. Task 4's dispatch table comes from
+   the record §1-3, not the abbreviated `switch` sketched below; the no-re-apply
+   set is `{6, 64, 112, 113, 114, 123}`, and the reset block (ctrl 121) also calls
+   `0x3b1e(ch)`.
+
 ---
+
 
 ### Task 1: Derive the controller, family-apply and frequency semantics
 
@@ -127,6 +164,8 @@ git commit -m "docs: derive the MDI controller, family-apply and frequency seman
 - Create: `port/tests/test_pitch.c`
 - Modify: `port/src/platform/audio/sequencer.c` (the two `NOTE_TAB[...]` uses in `key_on`)
 - Modify: `port/CMakeLists.txt`, `port/tests/test.h`, `port/tests/run_tests.c`
+- Modify: `tools/opl_seq.py` — **only if** the centred `pitch_lookup` changes the
+  stream (see Step 4); its own note→fnum table, kept independently written
 
 **Interfaces:**
 - Produces: `s32 pitch_bend_of(int wheel14, int scale);` and `void pitch_lookup(int index, s32 bend, u8 *a0, u8 *b0);`
@@ -223,7 +262,20 @@ Replace `NOTE_TAB` in `sequencer.c`'s `key_on` with `pitch_lookup(idx, 0, &a0, &
 - [ ] **Step 4: Run the tests**
 
 Run: `PR_ORACLE_REQUIRED=1 ./build/run_tests 2>&1 | grep -iE "pitch|C-vs-Python|capture oracle"`
-Expected: `pitch` PASS; **`oracle C-vs-Python` unchanged** (`9340 writes byte-exact`); the capture oracle's line unmoved. The capture oracle is the equivalence proof against the old `NOTE_TAB`: every note in the song now goes through `pitch_lookup(index, 0)`, so if it disagreed with `NOTE_TAB` for any used index the capture line would move. If it does move, the driver's routine wins — record the indices and treat the moved line as the new boundary, do **not** adjust the routine to match `NOTE_TAB`.
+Expected: `pitch` PASS. The centred path is **not assumed byte-identical** —
+Task 1's record §3b names the indices where `pitch_lookup` differs from the retired
+`NOTE_TAB` (0-11, 16, 18, 108-127), so:
+
+- If both oracle lines are **unchanged**, the song uses none of the differing
+  indices — record that and move on.
+- If a line **moves**, the driver's routine wins. Update `tools/opl_seq.py`'s own
+  note→fnum path in lockstep so `oracle C-vs-Python` stays byte-exact (it must not
+  be left comparing two different models), and record the capture oracle's new
+  first-difference line for Task 6. Do **not** adjust the routine to match
+  `NOTE_TAB`.
+
+A moved `oracle C-vs-Python` that the Python side did not cause is a defect, not an
+expected outcome — the gate must remain byte-exact at the end of this task.
 
 - [ ] **Step 5: Commit**
 
