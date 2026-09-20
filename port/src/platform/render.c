@@ -226,7 +226,11 @@ void render_scroll_edge(void)
  * `sar edx,1` at 0x38a8f -- and DS_00107A3E reuses that same shifted t. `edge`
  * mirrors the raw's edi -- (u16)DS_00107A4C plus the initial row index,
  * decremented once per row -- and only its low 16 bits gate the DS_00107A3E
- * store, which is skipped while that value exceeds 0xEF. */
+ * store, which is skipped while that value exceeds 0xEF.
+ *
+ * PORT: DS_00107A40 is the divisor of the raw's `idiv ecx` at 0x38A59; it must
+ * be nonzero (a zero divisor traps there, while C's `/` on zero is undefined).
+ * Callers seed it from the loaded scroll config before the fill runs. */
 void render_scroll_fill(void)
 {
     int stride = (int)(DSD(DS_000F0AF0) << 8);

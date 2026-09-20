@@ -43,6 +43,14 @@ static int run_windowed(const char *game_dir)
 #define CHECK_W 320
 #define CHECK_H 200
 
+/* PORT: the boot attract runs ~690 frames before the title. A `--check` request
+ * at or above this bound is the `make verify` path (verify_frames = 820) and is
+ * asserting that the run crosses into the title; if a future attract
+ * lengthening pushes the title past the request, every title assertion below
+ * would be skipped silently, so fail loudly instead. `make check`'s short
+ * default stays below the bound and requires only the attract smoke render. */
+#define CHECK_TITLE_REACH_FRAMES 700
+
 /* Writes `len` bytes to `path`. host_write_file() reports success but leaves a
  * partial file behind if a mid-write failure occurs, so a failed capture removes
  * the artifact rather than leaving a truncated one for a comparison to read.
@@ -186,6 +194,17 @@ static int run_check(const char *game_dir, int frames)
             fail += probe_announcer_audio();
             announced = 1;
         }
+    }
+
+    /* PORT: a run at or above the attract bound claims to reach the title; if
+     * it did not, fail so a lengthened attract cannot silently skip every title
+     * assertion below. */
+    if (frames >= CHECK_TITLE_REACH_FRAMES && title_entry == 0) {
+        fprintf(stderr,
+                "prageport: --check %d frames never reached the title "
+                "(attract longer than %d?)\n",
+                frames, CHECK_TITLE_REACH_FRAMES);
+        fail++;
     }
 
     /* A hold pair is TITLE_HOLD_FRAMES = 8, so only the title window (>= 9

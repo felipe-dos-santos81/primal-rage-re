@@ -159,8 +159,9 @@ static void run_process_table(u32 table, u32 mask)
 
 /* PORT: 0x4F1E4. Two 0x2EA30 interrupt-lock calls bracket the write; 0x2EA30
  * is inert in the port's single-threaded loop (actors_reset documents the
- * same). */
-static void title_input_reset(void)
+ * same). Exported so attract.c's 0x11000 phase 0/2 and 0x10EE4 reuse the one
+ * body instead of inlining the byte store. */
+void frontend_input_reset(void)
 {
     DSB(DS_00104B15) = 0;                       /* 0x4F1F1 */
 }
@@ -344,7 +345,7 @@ static void game_state_select(void)
             /* 0x29D60 is a ret-only no-op. */
             actors_reset();                         /* 0x2BAF4 (eax = 1) */
             frontend_origin_zero();                 /* 0x4F1D0 */
-            frontend_spawn_row(desc, 0u, 0u);          /* 0x38B18 */
+            frontend_spawn_row(desc, 0u, 0u);       /* 0x38B18 */
             config_set_credit_row(1u);              /* 0x2C06C (eax = 1) */
             DSB(DS_000F0A6E) = 0;
             DSD(DS_000F0A44) = 0;
@@ -353,7 +354,7 @@ static void game_state_select(void)
         }
         actors_reset();                             /* 0x2BAF4 (eax = 1) */
         frontend_origin_zero();                     /* 0x4F1D0 */
-        frontend_spawn_row(desc, 0u, 0u);              /* 0x38B18 */
+        frontend_spawn_row(desc, 0u, 0u);           /* 0x38B18 */
         DSD(DS_000F0A44) = actor_spawn(             /* 0x2AE14 */
             (const u32 *)(mem + DSD(0x9AEE0u + 12u * n)),   /* 0x9AEE0 */
             0u, 0xE0u + n, 0x600u, 0u);
@@ -506,7 +507,7 @@ static void game_state_title(void)
          * those calls. */
         s_music_request = 1;
         game_sample_request();
-        title_input_reset();                    /* 0x121D9 (0x4F1E4) */
+        frontend_input_reset();                 /* 0x121D9 (0x4F1E4) */
         actors_reset();                         /* 0x121E4 (0x2BAF4, eax = 1) */
         DSW(DS_00107A48) = 0;                   /* 0x121F2 */
         title_origin_reset(0);                  /* 0x121F9 (0x38910) */

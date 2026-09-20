@@ -36,10 +36,9 @@ void attract_state_reset(void)
 {
     /* PORT: 0x32970(eax = 0), the run-clock/tick update, is out of scope
      * (spec §7); the host clock owns wall time. */
-    /* 0x4F1E4: DS_00104B15 = 0. The raw's 0x2EA30 interrupt-lock pair is inert
-     * in the port's single-threaded loop; flow.c's title_input_reset() is the
-     * same one-byte write. */
-    DSB(DS_00104B15) = 0;
+    /* 0x4F1E4: the raw calls the shared input-latch clear. flow.c's
+     * frontend_input_reset() is that one-byte write. */
+    frontend_input_reset();
     actors_reset();                             /* 0x2BAF4(1) */
     DSW(DS_00104B00) = 3;                       /* 0x10F05: edx = 3 */
     DSW(DS_000F0A64) = 0;
@@ -135,8 +134,8 @@ void attract_step(void)
     case 0:
         /* PORT: 0x2C3FC(0x100) voice, out of scope (spec §7). */
         DSB(DS_0009AD58) = 1;                       /* 0x11029 */
-        /* 0x11035: 0x4F1E4 (title_input_reset) ignores eax. */
-        DSB(DS_00104B15) = 0;                       /* 0x4F1E4 */
+        /* 0x11035: 0x4F1E4 (frontend_input_reset) ignores eax. */
+        frontend_input_reset();                     /* 0x4F1E4 */
         actors_reset();                             /* 0x1103F (0x2BAF4) */
         frontend_origin_zero();                     /* 0x11046 (0x4F1D0) */
         /* PORT: 0x1C740(mem + 0x80038) / 0x1C740(mem + 0x80044) play the two
@@ -162,8 +161,8 @@ void attract_step(void)
         if (c >= 4u) c = 0u;                        /* 0x110A1 (jl) */
         DSB(DS_000F0A5C) = c;                       /* 0x11098/0x110A5 */
         attract_config_volumes();                   /* 0x110B0 (0x2C8F0, eax = -2) */
-        /* 0x110BA: 0x4F1E4 (title_input_reset) ignores eax. */
-        DSB(DS_00104B15) = 0;                       /* 0x4F1E4 */
+        /* 0x110BA: 0x4F1E4 (frontend_input_reset) ignores eax. */
+        frontend_input_reset();                     /* 0x4F1E4 */
         actors_reset();                             /* 0x110C4 (0x2BAF4) */
         config_set_credit_row(1u);                  /* 0x110CE (0x2C06C, eax = 1) */
         DSD(DS_000F0A48) = palette_acquire(0x396ED28u);   /* 0x110D8 */
@@ -206,23 +205,27 @@ void attract_step(void)
             /* PORT: 0x2C3FC(DS_000F0A5C == 0 ? 0x54 : 0x56) voice, out of
              * scope (spec §7). */
             DSB(DS_000F0A6F) = 5;                   /* 0x1120B */
-            DSW(rec + 0x2Cu) = 0x1000u;             /* 0x11211 */
+            /* 0x11206 reloads eax from DS_000F0A50 after the voice call and
+             * 0x11211 stores through it; the reload is kept literal. */
+            DSW(DSD(DS_000F0A50) + 0x2Cu) = 0x1000u;  /* 0x11211 */
         }
         break;
     }
 
     case 5:
         if ((DSD(DSD(DS_000F0A50) + 0x24u) & 0x7FFFFFFFu) == 0u) {   /* 0x11221 */
+            /* 0x11230: ecx = 0xE2 (a3), ebx = 0 (a4), edx = 0 (a2), push 0. */
             DSD(DS_000F0A50) = actor_spawn((const u32 *)(mem + 0x9ACE0u),
-                                           0u, 0u, 0xE2u, 0u);   /* 0x1123E */
+                                           0u, 0xE2u, 0u, 0u);   /* 0x1123E */
             DSB(DS_000F0A6F) = 6;                   /* 0x11248 */
         }
         break;
 
     case 6:
         if ((DSD(DSD(DS_000F0A50) + 0x24u) & 0x7FFFFFFFu) == 0u) {   /* 0x11259 */
+            /* 0x11268: ecx = 0xE6 (a3), ebx = 0 (a4), edx = 0 (a2), push 0. */
             DSD(DS_000F0A50) = actor_spawn((const u32 *)(mem + 0x9ACF4u),
-                                           0u, 0u, 0xE6u, 0u);   /* 0x11276 */
+                                           0u, 0xE6u, 0u, 0u);   /* 0x11276 */
             DSB(DS_000F0A6F) = 7;                   /* 0x11280 */
         }
         break;
@@ -230,8 +233,9 @@ void attract_step(void)
     case 7:
         if ((DSD(DSD(DS_000F0A50) + 0x24u) & 0x7FFFFFFFu) == 0u) {   /* 0x11291 */
             actor_set_dead(DSD(DS_000F0A50));       /* 0x1129E */
+            /* 0x112A5: ecx = 0xE8 (a3), ebx = 0 (a4), edx = 0 (a2), push 0. */
             DSD(DS_000F0A4C) = actor_spawn((const u32 *)(mem + 0x9AD1Cu),
-                                           0u, 0u, 0xE8u, 0u);   /* 0x112B3 */
+                                           0u, 0xE8u, 0u, 0u);   /* 0x112B3 */
             DSB(DS_000F0A6F) = 8;                   /* 0x112BF */
         }
         break;

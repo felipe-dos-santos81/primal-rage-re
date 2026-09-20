@@ -372,6 +372,8 @@ int test_attract(void)
         const u8 saved73 = DSB(DS_00108173);
         const u16 saved60 = DSW(DS_000F0A60);
         const u16 saved62 = DSW(DS_000F0A62);
+        const u8  saved58 = DSB(DS_0009AD58);
+        const u32 saved_scratch = DSD(0x3F00000u + 0x24u);
 
         DSB(DS_0009AD58) = 1;   /* suppress the tail's rng draw while testing */
 
@@ -412,7 +414,95 @@ int test_attract(void)
         DSB(DS_000F0A5C) = saved5c; DSW(DS_000F0A64) = saved64;
         DSD(DS_000F0A48) = saved48; DSB(DS_00108173) = saved73;
         DSW(DS_000F0A60) = saved60; DSW(DS_000F0A62) = saved62;
-        DSB(DS_0009AD58) = 0;
+        DSB(DS_0009AD58) = saved58;
+        DSD(0x3F00000u + 0x24u) = saved_scratch;
+    }
+
+    /* 0x11000 spawn phases 3/5/6/7/0xA. actor_spawn's register binding is
+     * pinned as a2 = EDX, a3 = ECX, a4 = EBX, a5 = stack (docs/.../
+     * 2026-09-17-actor-system-args.md); the record stores a2 at +0x18, a4 at
+     * +0x1c and -- for these descriptors, whose flags word has bit 0x2000 --
+     * the (u8)a3 layer at +0x49. This is the permanent guard for the phase
+     * 5/6/7 mis-slotting that put 0xE2/0xE6/0xE8 in EBX and left ECX zero.
+     * Needs the actor pool, which res_load_index provides in the shared suite
+     * (test_actors); the isolated PR_ATTRACT_DUMP run loads no INDEX, so this
+     * block is skipped there exactly like the pool-dependent attract checks. */
+    if (DSD(DS_001014F4) != 0) {
+        const u8  saved6f = DSB(DS_000F0A6F);
+        const u8  saved58 = DSB(DS_0009AD58);
+        const u32 saved50 = DSD(DS_000F0A50);
+        const u32 saved4c = DSD(DS_000F0A4C);
+
+        DSB(DS_0009AD58) = 1;   /* suppress the tail's rng draw */
+        actors_reset();
+
+        /* Phase 3: desc 0x9ACCC, EDX = 0x2A00 (a2), ECX = 0xE0 (a3),
+         * EBX = 0x1E00 (a4), stack = 0. Raw 0x11199-0x111AF. */
+        DSB(DS_000F0A6F) = 3;
+        attract_step();
+        u32 r3 = DSD(DS_000F0A50);
+        CHECK(r3 != 0, "phase 3 spawned a record");
+        if (r3 != 0) {
+            CHECK_EQ_INT((int)DSD(r3 + 0x18), 0x2A00);   /* a2 */
+            CHECK_EQ_INT((int)DSD(r3 + 0x1c), 0x1E00);   /* a4 (EBX) */
+            CHECK_EQ_INT((int)DSB(r3 + 0x49), 0xE0);     /* a3 (ECX) */
+        }
+
+        /* Phases 5/6/7 respawn only while the pointed record's +0x24 is clear;
+         * seed a zero-+0x24 record each time. */
+        u32 seed = r3;
+        DSB(DS_000F0A6F) = 5;
+        if (seed != 0) DSD(seed + 0x24) = 0;
+        DSD(DS_000F0A50) = seed;
+        attract_step();
+        u32 r5 = DSD(DS_000F0A50);
+        CHECK(r5 != 0 && r5 != seed, "phase 5 spawned a new record");
+        if (r5 != 0) {
+            CHECK_EQ_INT((int)DSD(r5 + 0x1c), 0);        /* a4 = EBX = 0 */
+            CHECK_EQ_INT((int)DSB(r5 + 0x49), 0xE2);     /* a3 = ECX = 0xE2 */
+        }
+
+        seed = r5;
+        DSB(DS_000F0A6F) = 6;
+        if (seed != 0) DSD(seed + 0x24) = 0;
+        DSD(DS_000F0A50) = seed;
+        attract_step();
+        u32 r6 = DSD(DS_000F0A50);
+        CHECK(r6 != 0 && r6 != seed, "phase 6 spawned a new record");
+        if (r6 != 0) {
+            CHECK_EQ_INT((int)DSD(r6 + 0x1c), 0);        /* a4 = EBX = 0 */
+            CHECK_EQ_INT((int)DSB(r6 + 0x49), 0xE6);     /* a3 = ECX = 0xE6 */
+        }
+
+        seed = r6;
+        DSB(DS_000F0A6F) = 7;
+        if (seed != 0) DSD(seed + 0x24) = 0;
+        DSD(DS_000F0A50) = seed;
+        attract_step();
+        u32 r7 = DSD(DS_000F0A4C);
+        CHECK(r7 != 0, "phase 7 spawned a record into DS_000F0A4C");
+        if (r7 != 0) {
+            CHECK_EQ_INT((int)DSD(r7 + 0x1c), 0);        /* a4 = EBX = 0 */
+            CHECK_EQ_INT((int)DSB(r7 + 0x49), 0xE8);     /* a3 = ECX = 0xE8 */
+        }
+
+        /* Phase 0xA: desc 0x9AD30, a2 = high word of DSD(0x9ACC4) = 0x3A00,
+         * a3 = ECX = 0xD0, a4 = high word of DSD(0x9ACC6) = 0 (raw
+         * 0x11478-0x11496). The return value is discarded, so read the new
+         * active-list head. */
+        DSB(DS_000F0A6F) = 0xA;
+        attract_step();
+        u32 rA = actor_list_head();
+        CHECK(rA != 0, "phase 0xA spawned a record");
+        if (rA != 0) {
+            CHECK_EQ_INT((int)DSD(rA + 0x18), 0x3A00);   /* a2 */
+            CHECK_EQ_INT((int)DSD(rA + 0x1c), 0);        /* a4 (EBX) */
+            CHECK_EQ_INT((int)DSB(rA + 0x49), 0xD0);     /* a3 (ECX) */
+        }
+
+        actors_reset();
+        DSB(DS_000F0A6F) = saved6f; DSB(DS_0009AD58) = saved58;
+        DSD(DS_000F0A50) = saved50; DSD(DS_000F0A4C) = saved4c;
     }
 
     /* PR_ATTRACT_DUMP: the continuous state-0 run. game_init() may run once per

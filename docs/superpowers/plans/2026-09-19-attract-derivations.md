@@ -619,6 +619,59 @@ edi, ebp` (tail `0x33831`-`0x33836`), so both survive the last
 **Port answer:** `frontend_spawn_row((const u32 *)(mem + 0x9AC08), 0, 0)`. The
 port's helper did **not** need widening.
 
+## 2b. Phase 5/6/7 `actor_spawn` argument slots (re-verified)
+
+`0x2AE14` binds `eax = desc, edx = a2, ecx = a3, ebx = a4`, a5 on the stack
+(docs/superpowers/plans/2026-09-17-actor-system-args.md). The three respawn
+phases load the voice id into **ECX** (a3), not EBX. Disassembly (file bytes;
+the loader's data fixup adds `0x80000`, so `0x1ace0` loads as `mem + 0x9ACE0`
+and `[0x70a50]` as `DS_000F0A50`):
+
+```
+0x1122e 6a00                 push 0                  ; a5 = 0
+0x11230 b9e2000000           mov  ecx, 0xe2          ; a3
+0x11235 b8e0ac0100           mov  eax, 0x1ace0       ; desc -> mem + 0x9ACE0
+0x1123a 31db                 xor  ebx, ebx           ; a4 = 0
+0x1123c 31d2                 xor  edx, edx           ; a2 = 0
+0x1123e e8d19b0100           call 0x2ae14
+0x11243 a3500a0700           mov  dword ptr [0x70a50], eax
+
+0x11266 6a00                 push 0
+0x11268 b9e6000000           mov  ecx, 0xe6          ; a3
+0x1126d b8f4ac0100           mov  eax, 0x1acf4       ; mem + 0x9ACF4
+0x11272 31db                 xor  ebx, ebx
+0x11274 31d2                 xor  edx, edx
+0x11276 e8999b0100           call 0x2ae14
+0x1127b a3500a0700           mov  dword ptr [0x70a50], eax
+
+0x112a3 6a00                 push 0
+0x112a5 b9e8000000           mov  ecx, 0xe8          ; a3
+0x112aa b81cad0100           mov  eax, 0x1ad1c       ; mem + 0x9AD1C
+0x112af 31db                 xor  ebx, ebx
+0x112b1 31d2                 xor  edx, edx
+0x112b3 e85c9b0100           call 0x2ae14
+0x112b8 b508                 mov  ch, 8
+0x112ba a34c0a0700           mov  dword ptr [0x70a4c], eax
+```
+
+So the slots are `actor_spawn(desc, 0, 0xE2 /*0xE6/0xE8*/, 0, 0)`. A prior
+transcription put `0xE2/0xE6/0xE8` in the fourth slot (EBX), leaving ECX at
+zero: that stored the voice id at `rec+0x1C` (a4) and zeroed the layer byte
+`rec+0x49` (set from `(u8)a3` when the descriptor flags carry 0x2000), instead
+of the reverse.
+
+The other spawn sites, re-checked against the raw, already had the slots right:
+
+- Phase 3 `0x11199`: `push 0; mov ecx,0xe0; mov ebx,0x1e00; mov edx,0x2a00;
+  mov eax,0x1accc` → `actor_spawn(mem + 0x9ACCC, 0x2A00, 0xE0, 0x1E00, 0)`.
+- Phase 9 `0x113fb`: `push 0; mov ecx,0xff; mov ebx,0x780; mov edx,0x2a00;
+  mov eax,0x1ad44` → `actor_spawn(mem + 0x9AD44, 0x2A00, 0xFF, 0x780, 0)`.
+- Phase 0xA `0x11478`: `push 0; mov ecx,0xd0; mov eax,0x1ad30;
+  mov ebx,[0x1acc6]; mov edx,[0x1acc4]; sar ebx,0x10; sar edx,0x10` →
+  `actor_spawn(mem + 0x9AD30, hi(0x9ACC4), 0xD0, hi(0x9ACC6), 0)`.
+- `0x38B18` `0x38b5d`: `shl ebx,3; lea edx,[ebp*8]; mov eax,esi` →
+  `actor_spawn(desc, a2<<3, 2, a3<<3, 0)`.
+
 ## 3. Item 2 — `DS_000F0A60` at the end of phase 2
 
 ```
@@ -631,6 +684,7 @@ port's helper did **not** need widening.
 0x11171 66890d600a0f00       mov  word ptr [0xf0a60], cx
 0x11178 668935620a0f00       mov  word ptr [0xf0a62], si
 0x1117f 66893d680a0f00       mov  word ptr [0xf0a68], di
+0x11186 b10c                 mov  cl, 0xc
 0x11188 883d700a0f00         mov  byte ptr [0xf0a70], bh
 0x1118e 880d6f0a0f00         mov  byte ptr [0xf0a6f], cl
 ```

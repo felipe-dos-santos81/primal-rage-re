@@ -21,8 +21,11 @@ Because the capture is collapsed and the port dumps every presented tick, the
 port run is denser than the capture. The oracle therefore requires every capture
 frame in the attract window to be explained by some port frame (clean, splice or
 transition) and reports the FIRST capture frame it cannot explain; unwitnessed
-port frames are a statistic, not a failure. The comparison reuses
-tools/title_compare.py's helpers by import (that file is read-only).
+port frames are a statistic, not a failure. With `--expect-first N` the oracle
+becomes a gate: the first divergence must be exactly capture frame N (the known
+boundary of the matched prefix), so any regression inside frames 0..N-1 fails.
+The comparison reuses tools/title_compare.py's helpers by import (that file is
+read-only).
 
 Stdlib only. Read-only; writes nothing.
 """
@@ -64,7 +67,7 @@ def title_window_start(frames, port_title, port_title_rows):
 
 
 def check_capture(capture, port_attract, port_attract_rows,
-                  port_title, port_title_rows):
+                  port_title, port_title_rows, expect_first=None):
     frames = tc.load_frames(capture, os.path.basename(capture))
     if frames is None:
         return 1, None
@@ -113,7 +116,20 @@ def check_capture(capture, port_attract, port_attract_rows,
         print("attract_compare: %s:   best byte splice port%d[0..%d) ++ "
               "port%d[%d..%d) still differs at %d byte(s) (first row %s byte %s)"
               % (capture, N, b, N + 1, b, tc.FRAME_BYTES, m, r, i))
+        if expect_first is None:
+            return 1, (first, raws[first])
+        if first == expect_first:
+            print("attract_compare: %s: expected divergence at capture frame %d"
+                  % (capture, expect_first))
+            return 0, (first, raws[first])
+        print("attract_compare: %s: EXPECTED first divergence at capture frame "
+              "%d, got %d" % (capture, expect_first, first))
         return 1, (first, raws[first])
+    if expect_first is not None:
+        print("attract_compare: %s: EXPECTED first divergence at capture frame "
+              "%d, but the whole attract prefix was explained"
+              % (capture, expect_first))
+        return 1, (None, None)
     return 0, (None, None)
 
 
@@ -122,6 +138,9 @@ def main():
     ap.add_argument('--capture', action='append', required=True)
     ap.add_argument('--port', required=True,
                     help='PR_ATTRACT_DUMP root; attract/ and title/ live here')
+    ap.add_argument('--expect-first', type=int, default=None,
+                    help='capture frame index the FIRST divergence must land '
+                         'on; turns the report into a gate (0 = pass)')
     ap.add_argument('--verbose', action='store_true')
     a = ap.parse_args()
     required = os.environ.get('PR_ORACLE_REQUIRED') == '1'
@@ -158,7 +177,7 @@ def main():
                   % (k + 1, capture))
             continue
         rc, _ = check_capture(capture, port_attract, port_attract_rows,
-                              port_title, port_title_rows)
+                              port_title, port_title_rows, a.expect_first)
         bad += rc
     return 1 if bad else 0
 

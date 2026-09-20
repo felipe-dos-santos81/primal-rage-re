@@ -391,6 +391,21 @@ static void check_scroll_projection(void)
     CHECK_EQ_INT((int)DSW(DS_00107900 + 0), 0x0080);
     CHECK_EQ_INT((int)DSW(DS_00107A3E), 0xDEAD);
 
+    /* Case E: a single row with a NONZERO t (t = (0x10000 / 256) >> 1 = 0x80)
+     * and edge = 0 within range writes the shifted t, (0x80 + 0x2B00) / 32 =
+     * 0x015C. Case C only observes t == 0 (its last row overwrites the earlier
+     * nonzero store), so this pins the shifted-vs-unshifted store. */
+    DSD(DS_000F0AF0) = 0x100u;
+    DSW(DS_00107A40) = 3;
+    DSW(DS_00107A52) = 1;
+    DSW(DS_00107A4C) = 0;
+    DSW(DS_00107A42) = 0;
+    DSW(DS_00107A50) = 0x0041;
+    DSW(DS_00107A3E) = 0xDEAD;
+    render_scroll_fill();
+    CHECK_EQ_INT((int)DSW(DS_00107900 + 0), 0x0080);
+    CHECK_EQ_INT((int)DSW(DS_00107A3E), 0x015C);
+
     DSW(DS_00107A38) = s38; DSW(DS_00107A3A) = s3a;
     DSW(DS_00107A3C) = s3c; DSW(DS_00107A3E) = s3e;
     DSW(DS_00107A40) = s40; DSW(DS_00107A42) = s42;
