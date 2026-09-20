@@ -477,7 +477,7 @@ git commit -m "audio: port the MDI channel-controller handler and re-apply loop"
 > att = (F * V) / 0x7f
 > carrier_0x40 = ((~att) & 0x3f) | (p10 & 0xc0)
 > scale7(a,b) = t := ((a*b) << 1) >> 8 ; return t == 0 ? 0 : t + 1
-> VELCURVE    = 52 55 58 5b 5e 61 64 67 6b 6d 70 73 76 79 7c 7f   /* driver 0xc27 */
+> VELCURVE    = 52 55 58 5b 5e 61 64 67 6a 6d 70 73 76 79 7c 7f   /* driver 0xc27; index 7 is 0x6a */
 > ```
 >
 > The ungated operator (gate bit clear) writes `((~p) & 0x3f) | (p & 0xc0)` with no
