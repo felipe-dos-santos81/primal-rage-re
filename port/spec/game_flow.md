@@ -410,23 +410,45 @@ selector.
   cases 3/4 do nothing). Derivation and frame arithmetic:
   `../../docs/superpowers/plans/2026-09-19-frontend-input-derivations.md`.
 
-**States 3/4 carry no pixel oracle (front-end-chain Task 1).** The 120 s pinned
-capture (`make frontend-capture`: `data/title-captures/frontend`, 3712 distinct
-post-logo frames, raw 1376..8409) reaches the front-end, but the port cannot be
-compared over states 3/4 yet. `game_state_step` cases 3/4 are still the stubs
-above, so every frame the `PR_FRONTEND_DUMP` driver emits from the state-3 entry
-is the same fixed select/overlay frame (all 300 dumped frames byte-identical).
-`tools/title_compare.py --frontend` therefore collapses the window to the
-boundary island of the three capture frames that equal it: distinct [557..559]
-(raw 3117..3119), 2 clean, 0 splice, 0 transition, **1 unexplained** — capture
-frame 558 (raw 3118). **No `title_pin.py` front-end pin was added** (the four
-existing title pins are unchanged): the plan's premise that the state-3 frames
-are unpinned RNG draws does not hold at this BASE — the state code is absent, so
-the mismatch is structural and no behaviour pin can move it. The enforced gate is
-instead the determinism log: the driver logs a per-frame index/phase/hash from
-state 2 through state 3 for 900 frames, and `run_tests` re-invokes itself twice
-under `PR_FRONTEND_DET`, requiring the two runs' `select.log` byte-identical
-(`make frontend-oracle`). A later cycle that ports states 3/4 flips
+**States 3/4 pixel oracle: gap confirmed against the ported states (front-end-
+chain Task 5).** The 120 s pinned capture (`make frontend-capture`:
+`data/title-captures/frontend`, 3712 distinct post-logo frames, raw 1376..8409)
+reaches the front-end. With the state-3 render ported (`0x12484`) the
+`PR_FRONTEND_DUMP` driver now emits the real zoom-out, and
+`tools/title_compare.py --frontend` aligns it: window distinct [557..813] (raw
+3117..3418), 92 clean, 162 splice, 2 transition, **1 unexplained** — capture
+frame 558 (raw 3118). The oracle stays report-only (it exits 0 on the
+classification result), and the enforced gate is the `PR_FRONTEND_DET`
+determinism log (900 frames, two runs byte-identical, `make frontend-oracle`).
+
+Task 5 found and fixed a real port bug while running the pin loop: the raw's
+`actors_reset` (`0x2BAF4`) calls `0x38B70` at `0x2BBDA`, which zeroes the 7-entry
+front-end row table `DS_00107A1C` that `0x38B18` (`frontend_spawn_row`) fills;
+the port skipped it (actors.c's old comment misread `DS_00107A00/1C` as input
+state). Without the clear the table only accumulated, so in state-3 phase 0 all
+four corner-row spawns found the table full (`slot == 7`), `0x3E688` was never
+palette-acquired, and `0x12484`'s `effects_spawn(0x3E688, 2, …)` — the
+palette-driven zoom background — never fired. `actors.c` now ports `0x38B70` as
+`actor_cursor_reset()` and calls it from `actors_reset`; the front-end window
+grew from the 3-frame boundary island to the full 257-frame zoom, and the title,
+attract, smacker and C-vs-Python oracles are unmoved.
+
+The one remaining unexplained frame, capture 558 (raw 3118), is a fully black
+frame between two identical state-3 entry frames (caps 557/559, raw 3117/3119,
+both byte-equal to port frame 0). It is the original's one-frame screen blank at
+the state 2 → 3 handoff, produced by `0x52106` (`0x2BAF4` calls it at `0x2BBE8`
+when `param_1 != 0`): it clears both offscreen buffers, zeroes the VGA DAC, and
+blits the visible `0xA0000` aperture. The port deliberately performs the buffer
+and tick-counter arms (actors.c) but not the VGA DAC/aperture arms ("the
+aperture rule — never write mem[0xA0000]"), so it never presents the blank. The
+same `0x52106` blank is the unexplained single frame at every select entry
+transition (capture frames 386/420/454/488/522). **No `title_pin.py` front-end
+pin was added and none is possible**: states 3 and 4 consume no RNG (the only
+actor draw, the anim opcode-8 handler at `0x2B435`, is already the fourth title
+pin; the other candidate, `0x2BDA0`, has no callers), so the mismatch is a
+rendering/timing gap, not an unpinned draw — a pin here would be a fitted
+constant. Closing it needs the port's `0x52106` aperture/palette timing modelled,
+which is a port decision, not a pin. A later cycle that does so flips
 `frontend-oracle` from report to gate.
 
 ## Landmarks (verified)

@@ -12,6 +12,9 @@
  * either base is zero or outside mem[]. */
 int  actors_init(void);
 void actors_reset(void);
+/* 0x38B70. Zeroes the actor cursors and the two 7-dword arrays DS_00107A00 and
+ * the front-end row table DS_00107A1C; actors_reset calls it (0x2BBDA). */
+void actor_cursor_reset(void);
 /* Pops the free-list head and links it into the active list. `flag` is the
  * original's EAX at the 0x2AC80 call (copied to ECX by 0x2AC84); its 0x400 bit
  * selects the tail insert (0x249C0) over the head insert (0x249B0). 0x2AE14

@@ -93,6 +93,21 @@ int actors_init(void)
     return 1;
 }
 
+/* 0x38B70. Zeroes the three actor cursor globals DS_000BDFBC/C0/C4 and two
+ * 7-dword arrays: DS_00107A00 (input latches) and DS_00107A1C, the front-end
+ * row table that 0x38B18 (frontend_spawn_row) fills. The raw calls it from
+ * 0x2BAF4 (actors_reset) at 0x2BBDA and from 0x20C10 (game_init) at 0x20C3D;
+ * without the 0x2BAF4 call the row table only ever accumulates, so every spawn
+ * after the seventh is dropped. 0x654C7's count is in dwords (7 each). */
+void actor_cursor_reset(void)
+{
+    DSD(DS_000BDFBC) = 0;
+    DSD(DS_000BDFC0) = 0;
+    DSD(DS_000BDFC4) = 0;
+    mem_fill(0x107A00u, 0, 28u);
+    mem_fill(DS_00107A1C, 0, 28u);
+}
+
 /* 0x2BAF4. The title entry (0x121E4) calls it with eax = 1, so this mirrors the
  * param_1 != 0 arm and skips the param_1 == 0 back-buffer copy. */
 void actors_reset(void)
@@ -129,8 +144,7 @@ void actors_reset(void)
     DSD(DS_00105B44) = 0;
     DSD(DS_00105B48) = 0;
     render_list_init();                             /* 0x1C350 */
-    /* PORT: 0x38B70 zeroes the mouse/input arrays at DS_00107A00/DS_00107A1C;
-     * input state is owned by platform/input.c. */
+    actor_cursor_reset();                           /* 0x38B70 */
     mem_fill(DS_00105F38, 0, 0x14D4u);              /* 0x2F920 */
     /* 0x2BAF4's param_1 != 0 arm: 0x52106 clears both offscreen buffers and
      * zeroes the tick counters. PORT: its VGA DAC clear is palette_list_init's
