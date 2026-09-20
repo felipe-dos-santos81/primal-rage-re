@@ -77,16 +77,21 @@ static int any_nonzero(const s16 *b, int n)
 #define OPL_TRACE_PY "tools/opl_trace.py"
 #define CAPTURE_DRO "data/audio-captures/prage_000.dro"
 
-/* One normalised (tick, reg, value) write. */
+/* One normalised (tick, reg, value, attr) write. `attr` is the per-write
+ * attribution the OPL trace seam records (the MIDI channel a voice write
+ * belongs to, or 0xFF when unattributed). Streams decoded from a file carry no
+ * attribution, so read_ev_stream leaves it 0xFF. */
 typedef struct {
     u32 tick;
     u16 reg;
     u8 val;
+    u8 attr;
 } ev_t;
 
 /* Runs `cmd` and parses its "tick reg value" lines (opl_seq.py / opl_trace.py
  * share this format). Fills up to `cap` events; `total` always gets the full
- * count. Returns 0 on success. */
+ * count. Returns 0 on success. The third-party streams carry no attribution;
+ * ev_t.attr stays 0xFF. */
 static int read_ev_stream(const char *cmd, ev_t *out, int cap, u32 *total)
 {
     FILE *p = popen(cmd, "r");
@@ -104,6 +109,7 @@ static int read_ev_stream(const char *cmd, ev_t *out, int cap, u32 *total)
             out[n].tick = t;
             out[n].reg = (u16)r;
             out[n].val = (u8)v;
+            out[n].attr = 0xFF;
         }
         n++;
     }
@@ -118,18 +124,39 @@ static int ev_eq(const ev_t *a, const ev_t *b)
 }
 
 /* Registers the port deliberately does not reproduce against the capture
- * (port/spec/audio.md "Known capture divergences"): the OPL rhythm register
- * 0xBD only. The TL family (0x40-0x55) is now modelled: `att = F*V/0x7f`, with
- * `F = (~patch_tl) & 0x3f`, `V` the channel level built from the engine-scaled
- * CC7, expression and key-on velocity level, and the carrier gated by the
- * patch byte. `seqvol` (the AIL sequence volume) is an engine input the port
- * owns, not a driver constant; the capture is consistent with 0x54 on every
- * steady-CC7 channel, while the two channels whose CC7 moves (ch1/ch4) imply
- * 0x50. That residual is named, not fitted: the model uses the steady value
- * and ch1/ch4 are the expected difference (see the Task 5 record). */
-static int documented_excluded(u16 reg)
+ * (port/spec/audio.md "Known capture divergences"). `attr` is the write's
+ * per-MIDI-channel attribution from the OPL trace seam (0xFF unattributed).
+ *
+ * The carrier-TL law IS derived and implemented: `att = ((~p10) & 0x3f) * V /
+ * 0x7f` with `V = scale7(scale7(cc7_eff, cc11), VELCURVE[vel >> 3])`, where
+ * `cc7_eff = (seqvol * cc7) / 0x7f` is the engine's sequence-volume scaling
+ * (prage.c:49121). It is exact on every non-residual channel (630/630 steady
+ * carrier rows) and the ungated modulator path is verbatim (664/664).
+ *
+ * The residual is the engine's per-channel volume on MIDI channels 1 and 4 —
+ * the only channels whose CC7 moves. Round 3 proved it not pinnable: the engine
+ * has one sequence volume and one timer tick, yet ch4 and ch9 written at the
+ * same tick imply 0x50 vs 0x54; the only per-channel volume array writer
+ * (ctrl 83) is never sent. Reproducing those rows needs a fitted constant,
+ * which this repo forbids, so the exclusion names exactly those rows instead of
+ * the whole TL family: carrier-TL registers (low byte, both banks:
+ * 0x43/0x44/0x45/0x4B/0x4C/0x4D/0x53/0x54/0x55) on channel 1 or 4 only.
+ * Modulator TL (0x40..0x42, 0x48..0x50) and carrier TL on every other channel
+ * are compared. 0xBD stays excluded unconditionally. */
+static int documented_excluded(u16 reg, u8 attr)
 {
-    return (reg & 0xFF) == 0xBD;
+    u8 lo = (u8)(reg & 0xFF);
+
+    if (lo == 0xBD)
+        return 1;
+    switch (lo) {
+    case 0x43: case 0x44: case 0x45:
+    case 0x4B: case 0x4C: case 0x4D:
+    case 0x53: case 0x54: case 0x55:
+        return attr == 1 || attr == 4;
+    default:
+        return 0;
+    }
 }
 
 /* The DRO capture records a register write only when it changes that register's
@@ -160,6 +187,7 @@ static int capture_c_stream(ev_t *out, int cap, u32 ticks)
         out[n].tick = 0;
         out[n].reg = opl_trace_reg(k);
         out[n].val = opl_trace_val(k);
+        out[n].attr = opl_trace_attr(k);
         n++;
     }
     prev = opl_write_count();
@@ -169,6 +197,7 @@ static int capture_c_stream(ev_t *out, int cap, u32 ticks)
             out[n].tick = tick;
             out[n].reg = opl_trace_reg(k);
             out[n].val = opl_trace_val(k);
+            out[n].attr = opl_trace_attr(k);
             n++;
         }
         prev = opl_write_count();
@@ -204,6 +233,31 @@ int test_sequencer(void)
             CHECK_EQ_INT(patches_load(junk, sizeof junk), 0);
         }
         CHECK_EQ_INT(patches_count(), was);
+    }
+
+    /* The narrowed capture-exclusion predicate (no assets): the carrier-TL
+     * registers are excluded only for the residual channels 1 and 4; the
+     * modulator TL registers are never excluded, nor is carrier TL under any
+     * other attribution. 0xBD is excluded unconditionally. */
+    {
+        static const u16 ctl[9] = { 0x43, 0x44, 0x45, 0x4B, 0x4C, 0x4D, 0x53, 0x54, 0x55 };
+        static const u16 mtl[9] = { 0x40, 0x41, 0x42, 0x48, 0x49, 0x4A, 0x50, 0x51, 0x52 };
+        static const u8 attrs[5] = { 0, 1, 2, 4, 0xFF };
+
+        CHECK_EQ_INT(documented_excluded(0xBD, 0xFF), 1);
+        CHECK_EQ_INT(documented_excluded(0xBD, 0), 1);
+        CHECK_EQ_INT(documented_excluded(0x1BD, 4), 1);
+        for (int b = 0; b < 2; b++) {
+            u16 bank = (u16)(b ? 0x100 : 0);
+            for (int i = 0; i < 9; i++) {
+                for (int a = 0; a < 5; a++) {
+                    int want = (attrs[a] == 1 || attrs[a] == 4);
+                    CHECK_EQ_INT(documented_excluded((u16)(ctl[i] | bank), attrs[a]), want);
+                }
+                for (int a = 0; a < 5; a++)
+                    CHECK_EQ_INT(documented_excluded((u16)(mtl[i] | bank), attrs[a]), 0);
+            }
+        }
     }
 
     /* 0. Halt invariants (synthetic banks, no assets): every stop path must
@@ -628,19 +682,40 @@ int test_sequencer(void)
                     anchor_state[sh] = (u8)cap_ev[i].val;
                 }
                 memcpy(cap_last, anchor_state, sizeof cap_last);
-                for (u32 i = first_key; i < cap_total; i++) {
-                    u16 sh = (u16)(cap_ev[i].reg & (OPL_SHADOW_REGS - 1));
-                    if (documented_excluded(cap_ev[i].reg))
-                        continue;
-                    /* Symmetric reduction, capture side: drop a write whose
-                     * value equals the last kept value for that register. */
-                    if ((u8)cap_ev[i].val == cap_last[sh])
-                        continue;
-                    cap_last[sh] = (u8)cap_ev[i].val;
-                    cap_ev[w].tick = (cap_ev[i].tick * 120u + 500u) / 1000u + 60u;
-                    cap_ev[w].reg = cap_ev[i].reg;
-                    cap_ev[w].val = cap_ev[i].val;
-                    w++;
+                {
+                    /* The capture records no MIDI channel, so a captured write
+                     * inherits the attribution of the port's write at the same
+                     * (tick, register): the port knows the voice's channel, and
+                     * one register is written at most once per tick. Unmatched
+                     * capture writes stay unattributed (0xFF) and are compared.
+                     * The capture ticks are non-decreasing, so a cursor over the
+                     * port stream keeps this linear. */
+                    u32 c_scan = 0;
+                    for (u32 i = first_key; i < cap_total; i++) {
+                        u16 sh = (u16)(cap_ev[i].reg & (OPL_SHADOW_REGS - 1));
+                        u32 ct = (cap_ev[i].tick * 120u + 500u) / 1000u + 60u;
+                        u8 attr = 0xFF;
+
+                        while (c_scan < (u32)c_n && c_ev[c_scan].tick < ct)
+                            c_scan++;
+                        for (u32 k = c_scan; k < (u32)c_n && c_ev[k].tick == ct; k++)
+                            if (c_ev[k].reg == cap_ev[i].reg) {
+                                attr = c_ev[k].attr;
+                                break;
+                            }
+                        if (documented_excluded(cap_ev[i].reg, attr))
+                            continue;
+                        /* Symmetric reduction, capture side: drop a write whose
+                         * value equals the last kept value for that register. */
+                        if ((u8)cap_ev[i].val == cap_last[sh])
+                            continue;
+                        cap_last[sh] = (u8)cap_ev[i].val;
+                        cap_ev[w].tick = ct;
+                        cap_ev[w].reg = cap_ev[i].reg;
+                        cap_ev[w].val = cap_ev[i].val;
+                        cap_ev[w].attr = attr;
+                        w++;
+                    }
                 }
                 /* The port is reduced by the same rule as the capture: start
                  * at its first key-on, skip the documented-excluded registers,
@@ -662,7 +737,8 @@ int test_sequencer(void)
                         }
                     for (u32 i = first_key_c; i < (u32)c_n; i++) {
                         u16 sh = (u16)(c_ev[i].reg & (OPL_SHADOW_REGS - 1));
-                        if (c_ev[i].tick == 0 || documented_excluded(c_ev[i].reg))
+                        if (c_ev[i].tick == 0 ||
+                            documented_excluded(c_ev[i].reg, c_ev[i].attr))
                             continue;
                         if ((u8)c_ev[i].val == c_last[sh])
                             continue;

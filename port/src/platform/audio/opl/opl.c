@@ -17,13 +17,21 @@ static u32 g_writes;
 /* Test seam (opl.h): bounded record of the writes since the last reset. */
 static u16 g_trace_reg[OPL_TRACE_MAX];
 static u8 g_trace_val[OPL_TRACE_MAX];
+static u8 g_trace_attr[OPL_TRACE_MAX];
+static u8 g_attr = 0xFF;          /* attribution of the next write */
 static int g_trace_overflow;
 
 void opl_reset(void)
 {
     opalInit(&g_opl, OPAL_OPL3_SAMPLE_RATE);
     g_writes = 0;
+    g_attr = 0xFF;
     g_trace_overflow = 0;
+}
+
+void opl_set_write_attr(u8 attr)
+{
+    g_attr = attr;
 }
 
 void opl_write(u16 reg, u8 value)
@@ -32,6 +40,7 @@ void opl_write(u16 reg, u8 value)
     if (g_writes < OPL_TRACE_MAX) {
         g_trace_reg[g_writes] = reg;
         g_trace_val[g_writes] = value;
+        g_trace_attr[g_writes] = g_attr;
     } else {
         g_trace_overflow = 1;
     }
@@ -51,6 +60,11 @@ u16 opl_trace_reg(u32 i)
 u8 opl_trace_val(u32 i)
 {
     return i < OPL_TRACE_MAX ? g_trace_val[i] : 0;
+}
+
+u8 opl_trace_attr(u32 i)
+{
+    return i < OPL_TRACE_MAX ? g_trace_attr[i] : 0xFF;
 }
 
 int opl_trace_overflow(void)

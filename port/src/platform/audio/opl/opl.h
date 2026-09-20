@@ -41,4 +41,13 @@ u16 opl_trace_reg(u32 i);
 u8 opl_trace_val(u32 i);
 int opl_trace_overflow(void);
 
+/* Test seam: per-write attribution. `opl_set_write_attr` sets the byte recorded
+ * with every subsequent write until it is set again; `opl_trace_attr(i)` reads
+ * it back for write i. The sequencer sets it to a voice's MIDI channel around
+ * that voice's writes and back to 0xFF afterwards, so a write never inherits a
+ * stale channel. The default after opl_reset is 0xFF (unattributed). Not used
+ * by the game path. */
+void opl_set_write_attr(u8 attr);
+u8 opl_trace_attr(u32 i);
+
 #endif /* PR_OPL_H */

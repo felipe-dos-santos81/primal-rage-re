@@ -164,6 +164,12 @@ static void fam_apply(int opl_ch, u8 mask)
     int known = midi >= 0 && midi < SEQ_MIDI_CHANNELS;
     u8 ch = (u8)midi;
 
+    /* PORT: attribute every write this apply makes to the voice's MIDI channel
+     * until it returns, then clear it. The function has a single exit, so no
+     * write can inherit a stale channel. The oracle uses this to exclude only
+     * the carrier-TL rows of the residual channels (1 and 4). */
+    opl_set_write_attr((u8)midi);
+
     if (p != NULL) {
         if (mask & FAM_AMVIB) {
             /* PORT: SBPRO2.MDI 0x3409-0x345f. Controller 1 >= 0x40 ORs bit
@@ -230,6 +236,7 @@ static void fam_apply(int opl_ch, u8 mask)
         opl_write(ch_reg(opl_ch, 0xA0), a0);
         opl_write(ch_reg(opl_ch, 0xB0), (u8)(b0 | 0x20));
     }
+    opl_set_write_attr(0xFF);
 }
 
 /* PORT: 0x3b54, the channel-controller handler. Stores the controller, then
@@ -288,7 +295,9 @@ static void key_off(int opl_ch)
 {
     if (S.voice[opl_ch].note == SEQ_NOTE_FREE)
         return;
+    opl_set_write_attr((u8)S.voice[opl_ch].midi);
     opl_write(ch_reg(opl_ch, 0xB0), S.voice[opl_ch].b0);
+    opl_set_write_attr(0xFF);
     S.voice[opl_ch].note = SEQ_NOTE_FREE;
     S.voice[opl_ch].release = 0;
 }
