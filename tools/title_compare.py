@@ -331,16 +331,20 @@ def main():
     ap.add_argument('--frontend', action='store_true',
                     help='front-end window (states 3/4): report the same '
                          'content-alignment classification over the 120 s '
-                         'capture; report-only until the state code lands')
+                         'capture; the classification result is report-only '
+                         'until the state code lands')
     a = ap.parse_args()
     required = os.environ.get('PR_ORACLE_REQUIRED') == '1'
 
     # Front-end mode: the port dump holds the state-3/4 frames, the capture the
     # whole post-logo run. The window is found by content alignment exactly as
     # the title window is; the classification is identical. Until the state code
-    # lands the window is a declared gap (port/spec/game_flow.md), so this mode
-    # reports the outcome and exits 0 — it is the pixel oracle a later cycle
-    # enforces, not a ladder gate today.
+    # lands the window is a declared gap (port/spec/game_flow.md), so only the
+    # CLASSIFICATION result — including >0 unexplained — is reported and exits 0;
+    # it is the pixel oracle a later cycle enforces, not a ladder gate today.
+    # Errors are still errors: an absent capture under PR_ORACLE_REQUIRED, a
+    # missing port dir, or an unloadable port dump return 1 (see the returns
+    # below).
     if a.frontend:
         capture = a.capture[0]
         if not os.path.isdir(capture):

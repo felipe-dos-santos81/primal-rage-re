@@ -158,22 +158,24 @@ attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/t
 # machine from state 2 into states 3/4, dumping one RGB24 frame per presented
 # frame from the state-3 entry (PR_FRONTEND_DUMP) plus a per-frame hash log for
 # the whole run. The capture is a 120 s passive run of the pinned original whose
-# front-end region follows the select carousel. Until states 3/4 are ported the
-# window is expected to report unexplained frames — the declared gap recorded in
-# port/spec/game_flow.md — so the pixel comparison REPORTS rather than fails the
-# ladder. The enforced gate is the determinism check: PR_FRONTEND_DET makes
-# run_tests re-invoke itself twice and require the two frame-hash logs
-# byte-identical. Captures are git-ignored; an absent capture skips cleanly.
+# front-end region follows the select carousel. The enforced gate is the
+# determinism check: PR_FRONTEND_DET makes run_tests re-invoke itself twice and
+# require the two frame-hash logs byte-identical. That run is the whole first
+# recipe line (the /bin/sh `if` compound's status is its last command), so a
+# determinism failure fails the ladder. The pixel comparison on the next line is
+# report-only for its classification result — the declared gap recorded in
+# port/spec/game_flow.md — until the state code lands. Captures are git-ignored;
+# an absent capture skips the gate and the comparison cleanly.
 frontend-oracle: build ## Front-end oracle (states 3/4; skips without data/title-captures/frontend)
 	@echo "== front-end oracle (pixel-exact, states 3/4) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
 		rm -rf $(FRONTEND_DUMP); \
 		PR_FRONTEND_DET=$(FRONTEND_DUMP) PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
-		$(PYTHON) tools/title_compare.py --frontend --capture $(TITLE_CAPTURES)/frontend \
-			--port $(FRONTEND_DUMP)/run1; \
 	else \
 		echo "frontend-oracle: no capture at $(TITLE_CAPTURES)/frontend, frames not compared"; \
 	fi
+	@$(PYTHON) tools/title_compare.py --frontend --capture $(TITLE_CAPTURES)/frontend \
+		--port $(FRONTEND_DUMP)/run1
 
 # Headless FM render: on hosts where SDL audio cannot open, the windowed run is
 # silent, so this plays the title bank through the sequencer + OPL core + mixer

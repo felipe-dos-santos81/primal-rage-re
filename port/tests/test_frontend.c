@@ -170,6 +170,7 @@ int test_frontend(void)
         const char *cap_s = getenv("PR_FRONTEND_DUMP_FRAMES");
         long raw_cap = cap_s ? strtol(cap_s, NULL, 0) : 300;
         int dumped = 0;
+        int dump_failed = 0;
 
         u32 seen_entries = 0;
         for (int i = 0; i < 900; i++) {
@@ -187,20 +188,28 @@ int test_frontend(void)
              * (192000 bytes, 320x200) through gfx_dac, the same form the title
              * and attract hooks write. swap_buffers() has already run, so the
              * just-presented buffer is DS_000E87A0 (the hook reads DS_000E87A4
-             * before the swap). */
-            if (DSW(DS_000F0A64) >= 3u && dumped < (int)raw_cap) {
+             * before the swap). A frame counts as dumped only when all 192000
+             * bytes were written, so the count below cannot pass on a short or
+             * missing file; one failure stops further attempts. */
+            if (DSW(DS_000F0A64) >= 3u && !dump_failed &&
+                dumped < (int)raw_cap) {
                 const u8 *fb = mem + DSD(DS_000E87A0);
                 char path[1300];
                 snprintf(path, sizeof path, "%s/frame_%04d.raw", dump, dumped);
                 FILE *fr = fopen(path, "wb");
+                int ok = fr != NULL;
                 if (fr != NULL) {
                     for (u32 b = 0; b < 320u * 200u; b++) {
-                        const u8 *rgb = gfx_dac[fb[b]];
-                        fwrite(rgb, 1, 3, fr);
+                        if (fwrite(gfx_dac[fb[b]], 1, 3, fr) != 3) {
+                            ok = 0;
+                            break;
+                        }
                     }
-                    fclose(fr);
+                    if (fclose(fr) != 0) ok = 0;
                 }
-                dumped++;
+                CHECK(ok, "front-end frame writes to the dump");
+                if (ok) dumped++;
+                else dump_failed = 1;
             }
         }
         if (log != NULL) fclose(log);
@@ -228,7 +237,8 @@ int test_frontend_determinism(const char *self)
     char root[1024], gdir[1024];
     const char *r = getenv("PR_FRONTEND_DET");
     const char *d = getenv("PR_GAME_DIR");
-    snprintf(root, sizeof root, "%s", r != NULL ? r : "/tmp/pr_frontend_det");
+    snprintf(root, sizeof root, "%s",
+             (r != NULL && r[0] != '\0') ? r : "/tmp/pr_frontend_det");
     snprintf(gdir, sizeof gdir, "%s",
              (d != NULL && d[0] != '\0') ? d : "data/game/C");
 

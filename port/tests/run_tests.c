@@ -12,7 +12,8 @@ int main(int argc, char **argv)
      * PR_FRONTEND_DUMP runs must produce byte-identical frame-hash logs. The
      * check re-invokes this binary (game_init may run once per process), so it
      * must come first and run nothing else in this process. */
-    if (getenv("PR_FRONTEND_DET") != NULL) {
+    const char *det = getenv("PR_FRONTEND_DET");
+    if (det != NULL && det[0] != '\0') {
         test_frontend_determinism(argv[0]);
         printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
         return g_failures != 0;
