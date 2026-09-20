@@ -473,6 +473,15 @@ exists at data VA `0xE8B90` (object-0 offset `0x1BDA0`), and no code reads that
 pointer. The mismatch was therefore a rendering/timing gap, never an unpinned
 draw, so no behaviour pin was written (a pin here would be a fitted constant).
 
+**Known limitation of the enforced gate.** `frontend-oracle` fails only on
+`unexplained` capture frames. `check_capture`'s `rc` additionally counts port
+frames that no capture frame exhibits (coverage) and `endpoints BAD`, but the
+front-end branch deliberately ignores `rc`: the 120 s capture ends before the 300
+dumped frames do (the port dump runs on into state 9, which the passive original
+leaves for the attract loop), so a coverage-based gate could never pass. Passing
+the gate therefore means "no content-bearing capture frame is unexplained", NOT
+"every dumped port frame was exhibited".
+
 ## Landmarks (verified)
 
 | Address | Meaning |
