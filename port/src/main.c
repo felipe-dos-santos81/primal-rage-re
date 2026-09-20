@@ -64,8 +64,11 @@ static int write_exact(const char *path, const u8 *src, u32 len)
  *                          produced.
  * The .idx is what makes the comparison against tools/gra_render.py
  * byte-exact: two different indices can share an RGB value, so the PPM alone
- * cannot prove the index buffers agree. Returns the failed-assertion count. */
-static int capture_frame(int n, const u8 *indices)
+ * cannot prove the index buffers agree. `expect_drawn` gates the blank check:
+ * the state-0 attract legitimately starts on a blank buffer before its scene
+ * loads, so only the drawn title/select states are asserted non-blank. Returns
+ * the failed-assertion count. */
+static int capture_frame(int n, const u8 *indices, int expect_drawn)
 {
     int fail = 0;
     char base[40];
@@ -89,15 +92,17 @@ static int capture_frame(int n, const u8 *indices)
     snprintf(path, sizeof path, "%s.idx", base);
     if (!write_exact(path, indices, CHECK_W * CHECK_H)) fail++;
 
-    /* Internal assertion: the presented buffer is a drawn image, not the
+    /* Internal assertion: a drawn presented buffer is a drawn image, not the
      * never-drawn second buffer (the blank-every-other-frame bug Task 14
      * fixed). --check must fail rather than emit a blank capture. */
-    int nonzero = 0;
-    for (int i = 0; i < CHECK_W * CHECK_H; i++) if (indices[i]) nonzero++;
-    if (nonzero <= 1000) {
-        fprintf(stderr, "prageport: --check frame %d is blank (%d pixels)\n",
-                n, nonzero);
-        fail++;
+    if (expect_drawn) {
+        int nonzero = 0;
+        for (int i = 0; i < CHECK_W * CHECK_H; i++) if (indices[i]) nonzero++;
+        if (nonzero <= 1000) {
+            fprintf(stderr, "prageport: --check frame %d is blank (%d pixels)\n",
+                    n, nonzero);
+            fail++;
+        }
     }
     return fail;
 }
@@ -147,13 +152,16 @@ static int probe_announcer_audio(void)
  * and needs no display, and the captured content is driven by the loop's own
  * frame counter, not by wall time. The presented buffer after the call is at
  * DS_000E87A0 (the loop presents DS_000E87A4, then 0x50188 swaps).
- * Runs exactly `frames` iterations and returns the accumulated
- * failed-assertion count. */
+ * Boot enters state 0 (attract), so the title facts are asserted relative to the
+ * title entry rather than a fixed frame; a run shorter than the attract is a
+ * valid attract-only smoke test and skips them. Runs exactly `frames`
+ * iterations and returns the accumulated failed-assertion count. */
 static int run_check(const char *game_dir, int frames)
 {
     mkdir("frames", 0755);             /* ignore EEXIST; capture_frame needs it */
     game_set_game_dir(game_dir);
     int fail = 0, distinct = 0;
+    int title_entry = 0, title_frames = 0, announced = 0;
     u32 last_hash = 0;
     u32 audio0 = game_audio_ticks();
     u32 host0 = host_tick_count();
@@ -161,16 +169,28 @@ static int run_check(const char *game_dir, int frames)
     for (int i = 1; i <= frames; i++) {
         DSB(DS_000A81A8) = 1;            /* one loop iteration per call */
         game_loop();                     /* frame i */
-        if (i == 5) fail += probe_announcer_audio();   /* Task 12: sample audible */
+        u16 st = DSW(DS_000F0A64);
         const u8 *presented = mem + DSD(DS_000E87A0);
-        fail += capture_frame(i, presented);
-        u32 h = buf_hash(presented);
-        if (h != last_hash) { distinct++; last_hash = h; }
+        /* State 0 is the attract (blank until its scene loads); states 1..9 are
+         * drawn screens and must not be blank. */
+        fail += capture_frame(i, presented, st != 0 && st <= 9);
+        if (st == 1) {
+            if (title_entry == 0) title_entry = i;
+            title_frames++;
+            u32 h = buf_hash(presented);
+            if (h != last_hash) { distinct++; last_hash = h; }
+        }
+        /* The title state queues the announcer sample on entry; its voice is
+         * active a couple of frames later, once 0x1CF20 has played it. */
+        if (title_entry != 0 && !announced && i == title_entry + 2) {
+            fail += probe_announcer_audio();
+            announced = 1;
+        }
     }
 
-    /* A hold pair is TITLE_HOLD_FRAMES = 8, so only a run long enough to span
-     * two images can assert that the title animates. */
-    if (frames >= 9 && distinct < 2) {
+    /* A hold pair is TITLE_HOLD_FRAMES = 8, so only the title window (>= 9
+     * frames) can assert that the title animates. */
+    if (title_frames >= 9 && distinct < 2) {
         fprintf(stderr, "prageport: --check title did not animate (%d image(s))\n",
                 distinct);
         fail++;
@@ -206,9 +226,9 @@ static int run_check(const char *game_dir, int frames)
         fail++;
     }
     /* The title bank's first note is at XMIDI tick 59 (Task 8) = frame 30 at two
-     * ticks/frame; a run past that must have keyed a note, proving the music
-     * bank loaded and sounded, not merely that the service ticked. */
-    if (frames >= 60 && !game_music_notes_seen()) {
+     * ticks/frame; a title window past that must have keyed a note, proving the
+     * music bank loaded and sounded, not merely that the service ticked. */
+    if (title_frames >= 60 && !game_music_notes_seen()) {
         fprintf(stderr, "prageport: --check title music keyed no notes\n");
         fail++;
     }

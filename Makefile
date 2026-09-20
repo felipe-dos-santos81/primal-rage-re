@@ -28,6 +28,10 @@ GHIDRA_ENV = JAVA_HOME=$(JAVA_HOME_DIR)
 
 # Optional args: make check frames=120 / make re-render gra=S16CAGE.GRA chunk=1
 frames ?= 60
+# Boot enters state 0 (attract, ~690 frames) before the title, so a verify run
+# must cross the attract to exercise the title/announcer/music assertions. The
+# short `frames` default still drives `make check`'s attract-only smoke render.
+verify_frames ?= 820
 gra ?= S16TITLE.GRA
 chunk ?= 0
 
@@ -127,7 +131,7 @@ title-oracle: build ## Pixel-exact title oracle (skips without data/title-captur
 # consumes them — otherwise that four-frame comparison never runs.
 verify: build ## Full ladder: --check frames, oracle-required tests, symbols.h idempotence
 	@echo "== headless frames (must precede the tests that read frames/frame_*.idx) =="
-	./$(BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(frames)
+	./$(BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(verify_frames)
 	@echo "== tests (oracles required; consume the captured frames) =="
 	PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory smk-oracle

@@ -10,6 +10,28 @@
 #include "symbols.h"
 #include "test.h"
 
+/* The PR_ATTRACT_DUMP continuous-run driver (4d): the real init and master loop,
+ * plus the shared title window. */
+#include "game/actors.h"
+#include "game/flow.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+
+/* Highest 0x11000 phase (0xC). The boot cycle runs phases 0..9, 0xC and 0xB;
+ * phase 0xA is the other arm of phase 9's DS_000F0A5C branch and is skipped
+ * while the cycle counter is 0. */
+#define ATTRACT_PHASE_MAX 0xCu
+
+/* FNV-1a over the presented index buffer, the same stream the state-2 driver
+ * logs. Deterministic per run; two runs' logs must diff clean. */
+static u32 attract_frame_hash(const u8 *fb)
+{
+    u32 h = 2166136261u;
+    for (u32 b = 0; b < 320u * 200u; b++) h = (h ^ fb[b]) * 16777619u;
+    return h;
+}
+
 /* 0x292AC dispatch probes. The addresses are outside the code object, so they
  * cannot collide with a real original function. */
 static int g_scene_probe[2];
@@ -19,6 +41,19 @@ static void scene_probe1(void) { g_scene_probe[1]++; }
 int test_attract(void)
 {
     int before = g_failures;
+
+    /* The unit checks read the shipped data object (the config defaults and the
+     * DS_000A8744 table). The shared suite maps PRAGE.EXE in test_le() first,
+     * but the PR_ATTRACT_DUMP branch runs this file alone, so map it here. */
+    {
+        const char *gdir = getenv("PR_GAME_DIR");
+        char exe[560];
+        if (gdir == NULL || gdir[0] == '\0') gdir = "data/game/C";
+        snprintf(exe, sizeof exe, "%s/PRAGE.EXE", gdir);
+        if (DSD(DS_000A8744) == 0u)
+            CHECK(mem_load_le(exe, NULL) == 1,
+                  "PRAGE.EXE maps for the attract unit checks");
+    }
 
     /* 0x10DB0: pause tail. Gate is DS_000F0A71 == 0 AND DS_001088D8 byte 3 bit
      * 0x20 AND byte 1 bit 0x10. byte 3 of the little-endian dword is 0x20 in
@@ -154,7 +189,12 @@ int test_attract(void)
         CHECK_EQ_INT((int)DSB(DS_000F0A71), 0);
         CHECK_EQ_INT((int)DSB(DS_000F0A6F), 0);
         CHECK_EQ_INT((int)DSB(DS_00104B15), 0);   /* 0x4F1E4 */
-        CHECK_EQ_INT((int)DSD(DS_00104AD0), 0);   /* 0x2BAF4 */
+        /* 0x2BAF4 clears DS_00104AD0 only once the actor pool exists;
+         * actors_reset() is a documented no-op without it (the shared suite's
+         * test_actors provides the pool, the isolated PR_ATTRACT_DUMP run does
+         * not run before this check). */
+        if (DSD(DS_001014F4) != 0)
+            CHECK_EQ_INT((int)DSD(DS_00104AD0), 0);   /* 0x2BAF4 */
 
         DSW(DS_00104B00) = saved_b00;  DSW(DS_000F0A64) = saved64;
         DSB(DS_000F0A71) = saved71;    DSB(DS_000F0A6F) = saved6f;
@@ -373,6 +413,67 @@ int test_attract(void)
         DSD(DS_000F0A48) = saved48; DSB(DS_00108173) = saved73;
         DSW(DS_000F0A60) = saved60; DSW(DS_000F0A62) = saved62;
         DSB(DS_0009AD58) = 0;
+    }
+
+    /* PR_ATTRACT_DUMP: the continuous state-0 run. game_init() may run once per
+     * process, so the attract and the title share this one run — the attract is
+     * dumped to <dir>/attract/ by game_attract_dump_frame, and the title window
+     * to <dir>/title/ because game_title_dump_frame falls back to
+     * PR_ATTRACT_DUMP. run_tests.c runs this file alone when the env var is set.
+     * The phase sequence, the DS_000F0A5C wrap, the state-1 handoff and a
+     * per-frame hash log are asserted here; run-to-run log stability is two
+     * invocations + diff (the Task 1/4 determinism pattern). */
+    {
+        const char *dump = getenv("PR_ATTRACT_DUMP");
+        if (dump != NULL && dump[0] != '\0') {
+            const char *dir = getenv("PR_GAME_DIR");
+            if (dir == NULL || dir[0] == '\0') dir = "data/game/C";
+            game_set_game_dir(dir);
+            game_init();
+            actors_pin_anim_tick_zero(1);
+
+            mkdir(dump, 0777);      /* game_attract_dump_frame also makes it */
+            char log_path[1200];
+            snprintf(log_path, sizeof log_path, "%s/attract.log", dump);
+            FILE *log = fopen(log_path, "w");
+            CHECK(log != NULL, "attract hash log opens");
+
+            /* The boot cycle runs phases 0..9, 0xC and 0xB. Phase 0xA is the
+             * other arm of phase 9's DS_000F0A5C branch: at boot phase 2 wraps
+             * DS_000F0A5C 4 -> 0, so phase 9's `== 0` arm sets DS_000F0A70 = 0xB
+             * and 0xA is skipped until a later cycle. */
+            const u32 expected_phases = 0x3FFu | (1u << 0xBu) | (1u << 0xCu);
+            u32 phase_mask = 0;     /* phases seen */
+            u32 fivec_mask = 0;     /* DS_000F0A5C values seen */
+            int frames = 0;
+            int guard = 0;
+            /* The handoff iteration ends with DS_000F0A64 == 1 but ran the
+             * attract; the title entry is the next iteration. */
+            while (DSW(DS_000F0A64) != 1 && guard++ < 200000) {
+                u8 ph = DSB(DS_000F0A6F);
+                if (ph <= ATTRACT_PHASE_MAX) phase_mask |= 1u << ph;
+                if (DSB(DS_000F0A5C) < 32u) fivec_mask |= 1u << DSB(DS_000F0A5C);
+                DSB(DS_000A81A8) = 1;   /* exactly one game_loop iteration */
+                game_loop();
+                if (log != NULL) {
+                    const u8 *fb = mem + DSD(DS_000E87A4);
+                    fprintf(log, "%d %u %u\n", frames, (unsigned)ph,
+                            attract_frame_hash(fb));
+                }
+                frames++;
+            }
+            if (log != NULL) fclose(log);
+
+            CHECK(guard < 200000, "attract reached the handoff within the bound");
+            CHECK_EQ_INT((int)DSW(DS_000F0A64), 1);
+            CHECK_EQ_INT((int)phase_mask, (int)expected_phases);
+            CHECK((fivec_mask & (1u << 4)) != 0u, "DS_000F0A5C starts at 4");
+            CHECK((fivec_mask & 1u) != 0u, "DS_000F0A5C wraps to 0");
+
+            /* The title window joins the same run (no second game_init()). */
+            test_title_window(dump);
+            game_shutdown();
+        }
     }
 
     return g_failures - before;

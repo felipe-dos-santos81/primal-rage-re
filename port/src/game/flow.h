@@ -91,6 +91,13 @@ void game_overlay_step(void);
  * title state has not entered. */
 void game_title_dump_frame(void);
 
+/* PORT: 4d's attract dump hook, the state-0 counterpart of
+ * game_title_dump_frame. With PR_ATTRACT_DUMP set, each presented attract frame
+ * is written as <dir>/attract/frame_%04d.raw RGB24, capped by
+ * PR_ATTRACT_DUMP_FRAMES (default 4096). game_loop() calls it after each present
+ * while DS_000F0A64 == 0; exported so the 4d driver can document the same run. */
+void game_attract_dump_frame(void);
+
 /* PORT: the title's localisation reader, 0x47370 + 0x1C500 + 0x474E4 over the
  * ENGLISH.TXT table. `game_string_table_load(dir)` reads <dir>/ENGLISH.TXT once
  * into mem[] (idempotent); `game_string_get(id)` decodes string `id` into the

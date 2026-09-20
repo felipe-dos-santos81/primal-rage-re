@@ -47,6 +47,11 @@ int test_config(void);
 int test_anim(void);
 int test_text(void);
 int test_title(void);
+/* The title window driver on an already-initialised game: drive the state
+ * machine until the title state is reached (post-attract), then its 96-frame
+ * window. Shared by test_title() (standalone, PR_TITLE_DUMP) and test_attract()'s
+ * continuous PR_ATTRACT_DUMP run, because game_init() may run once per process. */
+int test_title_window(const char *dump);
 int test_frontend(void);
 int test_attract(void);
 

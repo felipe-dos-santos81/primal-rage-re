@@ -9,7 +9,6 @@
 #include "game/attract.h"
 #include "game/config.h"
 #include "game/effects.h"
-#include "game/movie.h"
 #include "game/rng.h"
 #include "mem.h"
 #include "symbols.h"
@@ -61,8 +60,10 @@ static int s_string_table_loaded;
 
 /* PORT: Task 10's dump hook bookkeeping. s_title_dump_n < 0 until 0x121A0's
  * entry frame arms it; each presented title frame then writes one
- * frame_%04d.raw. */
+ * frame_%04d.raw. s_attract_dump_n counts the state-0 4d attract frames from
+ * the first presented frame. */
 static int s_title_dump_n = -1;
+static int s_attract_dump_n = 0;
 
 /* Music pacing. The sequencer is driven by the host's 60 Hz tick clock (the
  * original's PIT ISR), one host tick = 2 XMIDI ticks (Task 8: 8.333 ms), and a
@@ -410,26 +411,19 @@ static void game_state_select(void)
     DSB(DS_000F0A6F) = 1;
 }
 
-/* PORT: Task 10's dump hook, the title counterpart of 2b's PR_SMK_DUMP. With
- * PR_TITLE_DUMP set, each presented title frame is written as
- * <dir>/title/frame_%04d.raw RGB24, converted through the live gfx_dac exactly
- * as gfx_present does. PR_TITLE_DUMP_FRAMES caps the run (default 200). There
- * is no phase predicate: Task 10 locates its 96-frame window by content
- * alignment. Exported so the Task 10 driver can dump the frames it drives. */
-void game_title_dump_frame(void)
+/* PORT: the frame-dump hook shared by the title (Task 10) and attract (4d)
+ * drivers, the counterpart of 2b's PR_SMK_DUMP. Writes the presented index
+ * buffer as <dir>/<sub>/frame_%04d.raw RGB24, converted through the live
+ * gfx_dac exactly as gfx_present does. The caller owns the frame counter and
+ * the cap. */
+static void game_dump_frame(const char *dir, const char *sub, int n)
 {
-    const char *dir = getenv("PR_TITLE_DUMP");
-    if (dir == NULL || s_title_dump_n < 0) return;
-    const char *cap_s = getenv("PR_TITLE_DUMP_FRAMES");
-    long cap = cap_s ? strtol(cap_s, NULL, 0) : 200;
-    if (s_title_dump_n >= cap) return;
-
-    char sub[1024];
-    snprintf(sub, sizeof sub, "%s/title", dir);
+    char subdir[1200];
+    snprintf(subdir, sizeof subdir, "%s/%s", dir, sub);
     mkdir(dir, 0777);       /* ignore EEXIST; the same pattern main.c uses */
-    mkdir(sub, 0777);
-    char path[1200];
-    snprintf(path, sizeof path, "%s/frame_%04d.raw", sub, s_title_dump_n);
+    mkdir(subdir, 0777);
+    char path[1300];
+    snprintf(path, sizeof path, "%s/frame_%04d.raw", subdir, n);
     FILE *f = fopen(path, "wb");
     if (f != NULL) {
         const u8 *idx = mem + DSD(DS_000E87A4);
@@ -439,7 +433,44 @@ void game_title_dump_frame(void)
         }
         fclose(f);
     }
+}
+
+/* PORT: Task 10's title dump hook. With PR_TITLE_DUMP set — or PR_ATTRACT_DUMP
+ * set, so one continuous 4d run dumps the title beside the attract — each
+ * presented title frame is written as <dir>/title/frame_%04d.raw.
+ * PR_TITLE_DUMP_FRAMES caps the run (default 200). There is no phase predicate:
+ * Task 10 locates its 96-frame window by content alignment. Exported so the
+ * Task 10 driver can dump the frames it drives. */
+void game_title_dump_frame(void)
+{
+    const char *dir = getenv("PR_TITLE_DUMP");
+    if (dir == NULL || dir[0] == '\0') dir = getenv("PR_ATTRACT_DUMP");
+    if (dir == NULL || dir[0] == '\0' || s_title_dump_n < 0) return;
+    const char *cap_s = getenv("PR_TITLE_DUMP_FRAMES");
+    long cap = cap_s ? strtol(cap_s, NULL, 0) : 200;
+    if (s_title_dump_n >= cap) return;
+
+    game_dump_frame(dir, "title", s_title_dump_n);
     s_title_dump_n++;
+}
+
+/* PORT: the 4d attract dump hook, the state-0 counterpart of
+ * game_title_dump_frame. With PR_ATTRACT_DUMP set, each presented attract
+ * frame is written as <dir>/attract/frame_%04d.raw RGB24 through the same
+ * gfx_dac conversion; PR_ATTRACT_DUMP_FRAMES caps the run (default 4096; the
+ * one boot cycle to the title is well under it). The capture is post-logo, so
+ * phase 0's logo frames are dumped too and the comparator simply finds no
+ * capture for them. */
+void game_attract_dump_frame(void)
+{
+    const char *dir = getenv("PR_ATTRACT_DUMP");
+    if (dir == NULL || dir[0] == '\0') return;
+    const char *cap_s = getenv("PR_ATTRACT_DUMP_FRAMES");
+    long cap = cap_s ? strtol(cap_s, NULL, 0) : 4096;
+    if (s_attract_dump_n >= cap) return;
+
+    game_dump_frame(dir, "attract", s_attract_dump_n);
+    s_attract_dump_n++;
 }
 
 /* FUN_0002c3fc (case 2/3) -> FUN_0001cc28 at the title state's first entry:
@@ -495,12 +526,14 @@ static void game_state_title(void)
         frontend_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0u, 0x1Eu);
         frontend_spawn_row((const u32 *)(mem + 0x9AC1Cu), 0x2Au, 0x1Eu);
         /* The EXE's only seed store is 0x20C62 in 0x20C10 (before
-         * 0x2D974(0x29)); 0x121A0 itself does not re-seed. The port's
-         * game_init() mirrors 0x20C10, and nothing consumes RNG between that
-         * seed and these three draws (measured: production --check prints
-         * DS_000EF6D8 == 0xABCD here), so the draws are the first three from
-         * 0xABCD and land on the Task 1 pin (12, 111, 0) with no title-entry
-         * re-seed. No PORT marker: this is the original's own RNG state. */
+         * 0x2D974(0x29)); 0x121A0 itself does not re-seed. Since 4d boot runs
+         * the state-0 attract first, which consumes the shared RNG stream, so
+         * these draws are no longer the first three from 0xABCD. The capture was
+         * made from the pinned original (tools/title_pin.py), whose three draws
+         * are hardcoded to the values the port's LCG produces from 0xABCD (12,
+         * 111, 0); the title driver reproduces that pin with rng_seed(0xABCD)
+         * immediately before the title entry (test_title_window). No re-seed
+         * here: this is the original's own RNG state. */
         int iVar1 = (int)rng_next(0x5Au);                   /* 0x12295 */
         int iVar2 = (int)rng_next(0x7Eu) * 0x40 + 0x280;    /* 0x122A1 */
         int iVar3 = (int)rng_next(2u);                      /* 0x122B7 */
@@ -554,27 +587,14 @@ static void game_state_title(void)
 /* 0x10E80: initialise the game state. */
 static void game_state_init(void)
 {
-    /* The original enters state 0 (the 0x11000 attract sub-machine), which then
-     * transitions to title state 1. PORT: the attract sub-machine is deferred,
-     * so the port enters state 1 directly. The index is a chosen, likely value
-     * from static evidence (see port/spec/game_flow.md "Title state"), not a
-     * runtime reading — no scriptable DOSBox-X debugger was available.
-     * 0x24C5C drives 0x11D04 only in case 3 of switch(DAT_00104B00), so the
-     * port selects that mode; the original derives the value in 0x10E80's
-     * register handoff. */
-    /* PORT: FUN_00011000 case 0 (the attract sub-machine's entry) plays the two
-     * boot logos through two 0x1C740 calls before it assigns title state 1. The
-     * rest of the attract sub-machine is still deferred, so the port plays the
-     * logos here and then enters state 1 directly, as before. The names are
-     * lowercase while the on-disk files are uppercase; res_load_file's scan
-     * matches case-insensitively. A missing or rejected movie is skipped, never
-     * fatal. */
-    if (!movie_play(s_game_dir, "twi5.smk"))
-        fprintf(stderr, "flow: twi5.smk playback failed\n");
-    if (!movie_play(s_game_dir, "twg.smk"))
-        fprintf(stderr, "flow: twg.smk playback failed\n");
+    /* 0x10E80 enters state 0 (the 0x11000 attract sub-machine), which plays the
+     * two boot logos in phase 0 (through movie_play) and hands off to title
+     * state 1 when DS_000F0A5C wraps to 0. DS_00104B00 is the port's selected
+     * mode; the original derives the value in 0x10E80's register handoff. The
+     * row-1 credit value comes from attract phase 2's 0x2C06C(1), not a
+     * stand-in. */
     DSD(DS_00104B00) = 3;
-    DSW(DS_000F0A64) = 1;
+    DSW(DS_000F0A64) = 0;
     DSB(DS_000F0A71) = 0;
     DSB(DS_000F0A5C) = 4;
     DSB(DS_000F0A6F) = 0;
@@ -844,11 +864,6 @@ void game_init(void)
      * countdown under input is not yet covered by an oracle. */
     /* 0x20CCC: the init chain writes the overlay row to 0x1D. */
     config_set_credit_row_init();
-    /* The captured title shows row 1, written by 0x2C06C(1) at 0x110CE inside
-     * the attract machine 0x11000 (unported, 4d) and by 0x11F6C phase 0. Until
-     * 4d lands the port supplies that value here rather than fitting a constant
-     * into config.c. TODO(verify): remove when 0x11000 lands. */
-    DSB(DS_00105C05) = 1;
     /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
     /* PORT: 0x1D0BC allocates the MIDI sequence buffer and the four sample
      * buffers. The port references the XMIDI bank's resource bytes directly
@@ -911,6 +926,10 @@ void game_loop(void)
             render_scroll_edge();            /* 0x389C4 */
             render_scroll_fill();            /* 0x38A38 */
         }
+        /* PORT: the state that dispatches this frame; the attract handoff sets
+         * state 1 inside game_frame, so the presented frame must be attributed
+         * to the state that produced it. */
+        const u16 state_before = DSW(DS_000F0A64);
         game_frame();                        /* 0x24C5C */
         run_process_table(DS_000A86C4, DSD(DS_00104AEC));  /* render table */
         render_list_sort();                  /* 0x1C3FC */
@@ -925,10 +944,13 @@ void game_loop(void)
          * gfx_dac to RGB and hands it to the host. */
         gfx_flush_palette();                 /* 0x1C470 */
         gfx_present(mem + DSD(DS_000E87A4), 320, 200);
-        /* PORT: Task 10's PR_TITLE_DUMP hook — one RGB24 file per presented
-         * title frame, read before the swap replaces DS_000E87A4 with the back
-         * buffer. */
-        if (DSW(DS_000F0A64) == 1) game_title_dump_frame();
+        /* PORT: Task 10's PR_TITLE_DUMP hook and 4d's PR_ATTRACT_DUMP hook — one
+         * RGB24 file per presented frame, read before the swap replaces
+         * DS_000E87A4 with the back buffer. The frame is attributed to the state
+         * that dispatched it: the attract's phase-0xB handoff sets state 1
+         * inside game_frame, so it is still an attract frame. */
+        if (state_before == 0) game_attract_dump_frame();
+        else if (state_before == 1) game_title_dump_frame();
         DSD(DS_001014FC) = 0;
         swap_buffers();                      /* 0x50188 */
 

@@ -6,10 +6,20 @@ int g_failures = 0;
 
 int main(void)
 {
+    /* The 4d continuous-run driver calls game_init() and drives the attract and
+     * the title in one process, so it runs alone for the same reason as
+     * PR_TITLE_DUMP below. test_attract() still runs its unit checks first. */
+    if (getenv("PR_ATTRACT_DUMP") != NULL) {
+        test_attract();
+        printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
+        return g_failures != 0;
+    }
+
     /* The title oracle driver calls game_init() and so needs a fresh mem[]; it
      * cannot share the process with the unit suite (a second res_load_index()
      * would exhaust the 64 MB bump allocator). When PR_TITLE_DUMP asks for the
-     * dump, run only that driver. */
+     * dump, run only that driver. It now drives the state-0 attract first to
+     * reach the post-attract title window. */
     if (getenv("PR_TITLE_DUMP") != NULL) {
         test_title();
         printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);

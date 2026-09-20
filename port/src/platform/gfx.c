@@ -8,12 +8,19 @@
 
 u8 gfx_dac[256][3];
 
-/* 0x336C0: resets the palette dirty-list head and marks every record unused.
- * PORT: flow.c's game_init and game/actors.c's actors_reset() (0x2BAF4) share
- * this one owner; the original's trailing 0x33734 initial-palette enqueue has no
- * VGA DAC to reset, so the port just clears gfx_dac. */
+/* 0x336C0: resets the palette ownership table and dirty list. The raw's first
+ * action (0x336C3) is mem_fill(0x87618, 0, 0x180) — it clears the 24-entry
+ * palette ownership table at DS_00107618 that palette_acquire records into;
+ * without it a later actors_reset leaves those entries live, so a palette
+ * acquired before the reset is found again and never re-enqueued, leaving the
+ * DAC cleared (black). Pre-attract the table was empty at the title, so the
+ * omission was invisible; the boot attract fills it. PORT: flow.c's game_init
+ * and game/actors.c's actors_reset() (0x2BAF4) share this owner; the original's
+ * trailing 0x33734 initial-palette enqueue has no VGA DAC to reset, so the port
+ * just clears gfx_dac. */
 void palette_list_init(void)
 {
+    mem_fill(DS_00107618, 0, 0x180u);   /* 0x336CF: the ownership table */
     DSD(DS_00107798) = DS_00107498;
     for (u32 i = 0; i < 0x180; i += 0x10) DSD(DS_0010749C + i) = 0xFFFFFFFFu;
     DSD(DS_000BD470) = 0;

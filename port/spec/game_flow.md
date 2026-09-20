@@ -199,7 +199,7 @@ no-op) are pinned. Full record:
 `../../docs/superpowers/plans/2026-09-17-sprite-compositor-report.md`; format
 notes in `../../FORMATS.md` ("Sprite compositor").
 
-## Boot logos — `0x1C740` (sub-project 2b-i, video)
+## Boot logos and the attract subsystem — `0x11000` (sub-project 4d, ported)
 
 `FUN_00011000` case 0 (the attract sub-machine's entry) plays the two boot
 Smacker movies through two `0x1C740` calls before assigning title state 1.
@@ -207,21 +207,63 @@ Smacker movies through two `0x1C740` calls before assigning title state 1.
 its movie path is a licensed Smacker-library open/decode loop (`0x6345C`
 open/decode, `0x63180` stream setup). The port ports the player (video only)
 and wires `movie_play("twi5.smk")` then `movie_play("twg.smk")` at that case-0
-site (`port/src/game/flow.c`), decoding into `DAT_000E87A4` and presenting
-through `gfx_present`. The original presents TWI5 120 of 121 frames and TWG 41
-of 41; the rule that decides presentation is the player's and is content-based
-(`TODO(verify)` on the original loop's exact semantics). Streamed Smacker audio
-is sub-project 2b-ii and not ported. See
-`../../docs/superpowers/plans/2026-09-17-smacker-video-report.md`.
+site (`port/src/game/attract.c`, `attract_step` phase 0), decoding into
+`DAT_000E87A4` and presenting through `gfx_present`. The original presents TWI5
+120 of 121 frames and TWG 41 of 41; the rule that decides presentation is the
+player's and is content-based (`TODO(verify)` on the original loop's exact
+semantics). Streamed Smacker audio is sub-project 2b-ii and not ported. See
+`../../docs/superpowers/plans/2026-09-17-smacker-video-report.md` and
+`../../docs/superpowers/plans/2026-09-19-attract-report.md`.
+
+Since 4d the port **boots through state 0**: `game_state_init` (`0x10E80`)
+enters state 0 and no longer plays the logos by hand or forces state 1. The
+attract subsystem is owned by `port/src/game/attract.{c,h}`:
+
+* `attract_step` (`0x11000`), the 13-phase machine. The boot cycle runs phases
+  0, 1, 2, `0xC` (its countdown), 3–9, `0xC` and `0xB`; phase 0xA is the
+  `DS_000F0A5C != 0` arm of phase 9 and is skipped until a later cycle because
+  phase 2 wraps `DS_000F0A5C` 4 → 0.
+* `attract_state_reset` (`0x10EE4`), `attract_voice_tick` (`0x10F28`, the two
+  signed countdowns that reload as `rng_next(N)+N`; its `0x2C3FC` voice calls
+  are declared no-op stubs), `attract_scene_tick` (`0x292AC`) and
+  `attract_config_volumes` (`0x2C8F0(-2)`), plus the per-state tails
+  `frontend_pause_tail` (`0x10DB0`) and `frontend_continue_tail` (`0x10E18`).
+* `port/src/platform/render.c` owns the attract scroll/zoom projection
+  `render_scroll_edge` (`0x389C4`) and `render_scroll_fill` (`0x38A38`) because
+  it writes compositor projection state; `flow.c` keeps only the state dispatch.
+* **The row-1 producer.** Attract phase 2 calls `config_set_credit_row(1u)`
+  (`0x2C06C(1)` at `0x110CE`), the captured title's credit row. The init-time
+  `DS_00105C05 = 1` stand-in is deleted; `game_init` keeps only
+  `config_set_credit_row_init()` (`0x20CCC` → `0x1D`).
+* **Handoff.** Phase 0xB with `DS_00108173 == 0` and `DS_000F0A5C == 0` sets
+  `DS_000F0A64 = 1` (title); the boot cycle therefore reaches the title.
+* **Declared rendering gap.** `attract_scene_tick`'s only shipped callee
+  `0x4F7F4` (the `DS_000A8744[0]` effect-palette driver: it advances
+  `DS_001088F1` through the 10-entry table at `DS_000C98A0`, enqueues each entry
+  via `0x33874`, and clears `DS_00104AD0` bit 0 after 10 frames) is unported, as
+  is the starter `0x4F83C` that sets `DS_00104AD0 |= 1`. The port sets no mask
+  bit, so the attract's palette animation never renders; the attract oracle's
+  first divergence (`tools/attract_compare.py`, capture frame 68 raw 1626/1621)
+  is exactly this producer.
+
+The attract and the title share one `game_init()` run: `PR_ATTRACT_DUMP`
+dumps every presented state-0 frame to `<dir>/attract/` and the post-attract
+title window to `<dir>/title/`, and `test_title_window` drives the state
+machine from boot to the title. Because the attract consumes the shared RNG
+stream, the driver re-seeds `0xABCD` immediately before the title entry to
+reproduce `tools/title_pin.py`'s hardcoded draws (12, 111, 0) — the capture's
+pin decouples the title draws from the attract's RNG state. `make verify` runs
+`--check 820` so the headless smoke test crosses the attract into the title.
 
 ## Title state — `0x121A0` (sub-project 4a-ii, ported)
 
 * **Title/attract state is index 1.** `FUN_000121A0` is case 1 of
   `switch(DAT_000F0A64)`. The attract sub-machine `FUN_00011000` case 0xb
-  assigns state 1 when its cycle counter `DAT_000F0A5C == 0`; the port enters
-  state 1 directly (the attract sub-machine is deferred to 4d). That the
-  shipped title *is* state 1 is now confirmed at runtime by the oracle driver,
-  which asserts `DS_000F0A64 == 1` and `DS_000F0A66 == 0x600` on the entry frame.
+  assigns state 1 when its cycle counter `DAT_000F0A5C == 0`; since 4d the port
+  boots through state 0 and reaches state 1 from the attract, as the original
+  does. That the shipped title *is* state 1 is confirmed at runtime by the
+  oracle driver, which asserts `DS_000F0A64 == 1` and `DS_000F0A66 == 0x600` on
+  the entry frame (now driven post-attract by `test_title_window`).
 * **Phases on byte `DS_000F0A6F`:**
   * **0**: `0x4F1E4`, `0x2BAF4` (`actors_reset`), `0x38910`; the branch on
     `DS_00104528 & 0x200` — clear takes `0x1C500` + `0x2F198` (the caption/text
@@ -263,8 +305,8 @@ is sub-project 2b-ii and not ported. See
   (see the EEPROM/config section), so it renders the captured `5` without a seed.
    `DS_00105C05` (text row; screen rows 7–12) is written by the init chain at
    `0x20CCC` (`0x2BF00` → `0x1D`); the captured row 1 comes from `0x2C06C(1)`
-   inside the still-unported attract machine `0x11000`, so the port stands in
-   with `DS_00105C05 = 1` there. The credit countdown
+   inside the ported attract machine `0x11000` (phase 2), so the former
+   init-time `DS_00105C05 = 1` stand-in is gone. The credit countdown
    (`FUN_0002CA48`/`FUN_0002CA7C` via `0x11F28`) is now ported and wired through
    `game_state_step`'s coin poll (4b-B). Diagnosis:
    `../../docs/superpowers/plans/2026-09-18-bf08-overlay-diagnosis.md`.

@@ -84,8 +84,10 @@ verified: the LE loader + fixups (byte-exact against Ghidra's image), the
 byte-identical to `tools/gra_render.py` for the four full-screen `S16TITLE`
 frames `{10,12,13,18}` only; the palette bank is flattened and the sub-palette
 choice is `likely`), the palette flush (`0x1C470`), the process-table scheduler,
-and the `0x255CC`/`0x24C5C`/`0x11D04` loop. The title state now runs the real
-`0x121A0` actor composite through the display list; `make title-oracle` explains
+and the `0x255CC`/`0x24C5C`/`0x11D04` loop. Boot runs the original's state-0
+attract first (sub-project 4d, below). The title state runs the real
+`0x121A0` actor composite through the display list; `make title-oracle` drives
+the continuous run through the attract to the pinned title window and explains
 every captured frame as a byte-offset splice of two adjacent port frames (port
 frames 1..95 exhibited by both captures, the start-of-window transition
 disclosed, zero unexplained frames) — see the 4a-ii and 4a-iii paragraphs below.
@@ -114,7 +116,8 @@ where SDL audio cannot start — on this machine `-66681`. See
 `docs/superpowers/plans/2026-09-18-opl-driver-report.md`.
 **Video — sub-project 2b-i, Smacker logos, running.** The port decodes the two
 boot movies (`twi5.smk`, `twg.smk`) with an in-repo, clean-room SMK2 decoder and
-plays them on the boot path before the title screen. Both movies' presented
+plays them on the boot path at the attract machine's phase 0 (`0x11000` case 0)
+before the title screen. Both movies' presented
 frames are proven **pixel-exact** against frames captured from the original in
 DOSBox-X (RGB24, palette included): TWI5 120/120, TWG 41/41; the container
 layout reconciles byte-exactly on both files. The decoder is allocation-free and
@@ -155,8 +158,9 @@ account of the title's nondeterminism is wrong. See
 **pinned** original: `tools/title_pin.py` also ret'd `0x2BF08`, hiding the title
 overlay. 4a-iii removed that inert site, re-captured the true original, diagnosed
 the resulting per-frame divergence (`CREDITS:5`, rows 7–12), and ported it:
-`0x2BF08`'s four-branch message/text tick (`DS_00105C05 = 1` seeded for the
-captured text row; `DS_00105C00` is now derived from the config module) and the
+`0x2BF08`'s four-branch message/text tick (`DS_00105C05` seeded then, now
+produced by the attract's `0x2C06C(1)`; `DS_00105C00` is derived from the config
+module) and the
 `0x13xxx` effect-list slice —
 spawn `0x13C70`, free-list build `0x13ADC`, clear `0x13DF0`, teardown `0x13420`
 and step/age `0x134C0` — in the new `port/src/game/effects.{c,h}` module. The
@@ -204,13 +208,34 @@ held masks each frame before the state machine. `port/src/game/config.c`'s credi
 layer (`0x2C060`/`0x2CA48`/`0x2CA7C`/`0x2C06C`/`0x2BF00`) is driven by `0x11F28`
 (`frontend_coin_poll`), and the `0x11F6C` select state
 (`0x33904`/`0x1C6D4`) is live: its exit advances `DS_000F0A64` to the state-3
-stub. The attract machine `0x11000` still supplies the title row-1 stand-in. See
-`docs/superpowers/plans/2026-09-19-frontend-input-report.md`.
+stub. See `docs/superpowers/plans/2026-09-19-frontend-input-report.md`.
 
-Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
-fight engine (5) and the
-deferred attract subsystem (`0x11000`, `0x38A38`, `0x389C4`, `0x292AC`) and the
-`0x13xxx` effect render path remain (`/* PORT: */` markers).
+**Attract/boot subsystem — sub-project 4d, ported.** The port now boots the way
+the original does — through state 0's attract — instead of playing the logos by
+hand and jumping to the title. `port/src/game/attract.{c,h}` owns the 13-phase
+`0x11000` machine (its phase 0 plays the two Smacker logos), the per-state
+tails `0x10DB0`/`0x10E18`, the reset/scheduler `0x10EE4`/`0x10F28` and the
+per-bit scene tick `0x292AC`; `render.c` owns the scroll/zoom projection
+`0x389C4`/`0x38A38`; `flow.c` keeps only the state dispatch. `game_state_init`
+enters state 0, and the deleted `DS_00105C05 = 1` stand-in is replaced by the
+attract's own `0x2C06C(1)` (the captured title row 1). Proof is a continuous
+headless run aligned to the existing post-logo captures: the attract prefix
+(derived as capture frames `0..215`) plus the title window in one
+`game_init()`, an env-gated `PR_ATTRACT_DUMP` driver with a run-to-run frame-hash
+log, and raw-derived unit tests. The attract scene's palette animation is a
+**declared coverage gap**: the scene tick's only shipped callee `0x4F7F4` (and
+its starter `0x4F83C`) is unported, so `tools/attract_compare.py` reports its
+first divergence at capture frame 68 (raw 1626/1621), individually explained from
+the raw; the title window stays 0 unexplained on both captures. The oracle also
+surfaced and fixed a real `0x336C0` bug — `palette_list_init` omitted the raw's
+palette ownership-table clear at `0x87618`, which the attract's earlier palette
+acquires exposed. See
+`docs/superpowers/plans/2026-09-19-attract-report.md`.
+
+Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), and
+the fight engine (5) remain; the attract's `0x2C3FC` voice calls and the
+`0x4F7F4`/`0x4F83C` scene-palette driver, and the `0x13xxx` effect render path,
+are declared gaps with `/* PORT: */` markers.
 
 ### Build and run
 
@@ -229,8 +254,10 @@ open path without a device.
 `--check N` is a headless mode: it runs exactly N master-loop iterations with no
 window and no audio device, and writes `frame_NNNN.ppm` (RGB), `frame_NNNN.pal`
 (the DAC) and `frame_NNNN.idx` (raw indices) per frame, exiting non-zero on an
-internal assertion failure. It also asserts the announcer became a live voice
-rendering non-silence and that the sequencer keyed notes.
+internal assertion failure. Because boot runs the state-0 attract first, its
+title facts (announcer voice, music notes, non-blank drawn frames) are asserted
+relative to the title entry, so a short attract-only run is still valid;
+`make verify` uses `--check 820` to cross the attract and exercise them.
 
 ### Verify
 
@@ -241,7 +268,8 @@ PR_ORACLE_REQUIRED=1 ./build/run_tests            # or: make verify
 `PR_ORACLE_REQUIRED=1` is required for a real verification run: the byte-exact
 Ghidra/Smacker/title oracles are git-ignored (they are copies of the game's own
 bytes), so without it the suite skips those comparisons. `make verify` runs the
-full ladder in order — a `--check 60` headless smoke run, then the
+full ladder in order — a `--check 820` headless smoke run (crossing the boot
+attract into the title), then the
 oracle-required test suite, then `make smk-oracle`, `make title-oracle`,
 the GRA-extract oracle tests, and finally `symbols.h` idempotence.
 
@@ -258,6 +286,23 @@ proves both the pixel match (every captured frame is a byte-offset splice of two
 adjacent port frames, zero tolerance) and determinism (the captures agree on the
 clean samples). With `PR_ORACLE_REQUIRED=1` and fewer than two captures it fails
 rather than reporting the proof incomplete.
+
+The attract oracle compares the same continuous run's state-0 prefix against
+those post-logo captures; the attract window is derived as the capture frames
+before the title window (0..215):
+
+```bash
+PR_ATTRACT_DUMP=/tmp/pr_attract PR_GAME_DIR=data/game/C ./build/run_tests
+python3 tools/attract_compare.py --capture data/title-captures/title \
+    --capture data/title-captures/title2 --port /tmp/pr_attract
+```
+
+Since the attract's scene-palette driver `0x4F7F4` (and its starter `0x4F83C`)
+is unported (declared gap), the comparator reports its first divergence at
+capture frame 68 (raw 1626/1621) — an individually explained, declared
+divergence, not a silent skip. The `PR_ATTRACT_DUMP` run also writes the title
+window to `/tmp/pr_attract/title`, so `title_compare` can be run on the same
+dump.
 
 ### Third-party
 
