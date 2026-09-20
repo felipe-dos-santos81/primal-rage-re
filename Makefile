@@ -74,6 +74,11 @@ deps: ## Check the toolchain and the (untracked) game assets
 
 # ── Port · build and verify ──────────────────────────────────────────────────
 
+# Dependency note (front-end-chain Task 6 review): `cmake --build` recompiles
+# edited sources, including port/tests/*.c. Verified by editing an assertion and
+# observing `make build`, `make verify` and a direct `cmake --build build` all
+# pick it up and fail on the edit. `verify` and every oracle target depend on
+# this target, so none can run a stale test binary.
 build: ## Configure and build the SDL3 port (CMake → build/)
 	@echo "Configuring $(PORT_DIR)/ ..."
 	cmake -S $(PORT_DIR) -B $(BUILD_DIR)
