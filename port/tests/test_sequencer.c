@@ -298,6 +298,34 @@ int test_sequencer(void)
                 CHECK(opl_write_count() > before, "restart keys off sounding notes");
             }
         }
+        /* 0e. Controllers: a bend re-applies only the A0/B0 family, for active
+         *     voices of that channel only; a controller that changes a
+         *     register family re-applies it. Each zero-delta event group is
+         *     processed on its own tick, so tick through the two intervening
+         *     zero deltas to reach the volume controller. */
+        {
+            static const u8 ev[] = { 0x90, 0x30, 0x40, 0x7f, 0x00,   /* note on ch0 */
+                                     0xE0, 0x00, 0x30,                  /* bend ch0 */
+                                     0x00, 0xE1, 0x00, 0x30,            /* bend ch1 */
+                                     0x00, 0xB0, 0x07, 0x70 };          /* volume ch0 */
+            opl_reset();
+            len = build_xmi(bank, ev, sizeof ev);
+            CHECK_EQ_INT(seq_load(bank, len), 1);
+            seq_start();
+            seq_tick();
+            u32 before = opl_write_count();
+            seq_tick();
+            seq_tick();
+            seq_tick();
+            int saw_a0 = 0, saw_40 = 0;
+            for (u32 i = before; i < opl_write_count(); i++) {
+                u16 r = opl_trace_reg(i);
+                if ((r & 0xf0) == 0xA0) saw_a0 = 1;
+                if ((r & 0xf0) == 0x40) saw_40 = 1;
+            }
+            CHECK(saw_a0, "bend re-applied the frequency family");
+            CHECK(saw_40, "volume re-applied the TL family");
+        }
     }
 
     gra = read_file(TITLE_GRA, &gra_len);

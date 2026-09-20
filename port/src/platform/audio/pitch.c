@@ -47,7 +47,10 @@ static const u8 T9DD[96] = {
 
 s32 pitch_bend_of(int wheel14, int scale)
 {
-    return (s32)((wheel14 - 0x2000) >> 5) * scale;
+    /* PORT: 0x35fa-0x3625. `imul cx` produces a 32-bit dx:ax product but the
+     * driver saves only `ax` (`mov cx,ax` at 0x3625), so the operand width is
+     * 16-bit: the product is truncated to s16 before the note fold. */
+    return (s16)(((wheel14 - 0x2000) >> 5) * scale);
 }
 
 void pitch_lookup(int index, s32 bend, u8 *a0, u8 *b0)

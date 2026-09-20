@@ -18,11 +18,16 @@ of sequencer.c:
     without touching voice state, and `Sequencer` replays the tokens — where
     sequencer.c interleaves parsing and register emission in one position-
     mutating loop;
-  * the note -> (block, fnum) table is COMPUTED from the OPL clock (49716 Hz)
-    and the MIDI pitch formula and pinned to capture-verified anchors, where
-    sequencer.c carries the table as a copied literal;
-  * voice selection and patch application are table / comprehension driven
-    rather than a branch-for-branch copy of the port's helpers.
+  * the integer note -> (block, fnum) table is COMPUTED from the OPL clock
+    (49716 Hz) and the MIDI pitch formula and pinned to capture-verified
+    anchors. The driver's fine-step fnum table (SBPRO2.MDI 0x7fd, 192 signed
+    words) is read from the driver image, not computed: its generator deviates
+    from the formula by one at a handful of fine steps, and the C stream is
+    compared byte-for-byte against that literal;
+  * controller state and the family re-apply loop mirror `midi_control` /
+    `fam_apply`, but voice selection and patch application are table /
+    comprehension driven rather than a branch-for-branch copy of the port's
+    helpers.
 
 What independence does and does not buy. Agreement with the C stream is real
 evidence that the *implementation* of the shared contract is faithful — it
@@ -67,13 +72,50 @@ def ch_reg(ch, family):
 # fields then carrier fields (carrier at slot+3), each family in register order.
 PATCH_BYTES = 14
 PATCH_MAX = 256
-PATCH_WRITES = (
-    (0x20, 3), (0x23, 9),      # AM/VIB/EG/KSR/MULT
-    (0x40, 4), (0x43, 10),     # KSL/TL
-    (0x60, 5), (0x63, 11),     # attack/decay
-    (0x80, 6), (0x83, 12),     # sustain/release
-    (0xE0, 7), (0xE3, 13),     # waveform select
+
+# Family bits (SBPRO2.MDI 0x3184 tests and clears them in the order
+# AMVIB, TL, EG, WAVE, CONN, FREQ; this table keeps that write order).
+FAM_FREQ, FAM_CONN, FAM_WAVE, FAM_EG, FAM_TL, FAM_AMVIB = 0x01, 0x08, 0x10, 0x20, 0x40, 0x80
+FAM_ALL = 0xF9
+FAMILY_WRITES = (
+    (FAM_AMVIB, ((0x20, 3), (0x23, 9))),      # AM/VIB/EG/KSR/MULT
+    (FAM_TL, ((0x40, 4), (0x43, 10))),        # KSL/TL
+    (FAM_EG, ((0x60, 5), (0x63, 11),          # attack/decay
+              (0x80, 6), (0x83, 12))),        # sustain/release
+    (FAM_WAVE, ((0xE0, 7), (0xE3, 13))),      # waveform select
 )
+
+# The driver's 0x7fd fine-step fnum table: 12 semitones x 16 steps, signed.
+PITCH_TBL_OFFSET = 0x7FD
+PITCH_TBL_WORDS = 192
+# The straightforward controller stores; the value (mask) is None for the
+# controllers whose raw handler returns before the re-apply loop.
+CTRL_STORES = {6: ('bend_scale', None), 7: ('volume', FAM_TL),
+               11: ('expression', FAM_TL), 1: ('mod', FAM_AMVIB),
+               10: ('pan', FAM_CONN), 64: ('sustain', None)}
+
+
+def load_pitch_table(path):
+    """SBPRO2.MDI -> 192 signed words at 0x7fd, or None if the image is short."""
+    data = read(path)
+    if len(data) < PITCH_TBL_OFFSET + 2 * PITCH_TBL_WORDS:
+        return None
+    return tuple(int.from_bytes(
+        data[PITCH_TBL_OFFSET + 2 * i:PITCH_TBL_OFFSET + 2 * i + 2],
+        'little', signed=True) for i in range(PITCH_TBL_WORDS))
+
+
+def computed_pitch_table():
+    """Fine-step table derived from the OPL clock (fallback when the driver
+    image is absent; the driver's own table is authoritative when present)."""
+    table = []
+    for n in range(PITCH_TBL_WORDS):
+        sem, step = divmod(n, 16)
+        note = 84 + sem + step / 16.0
+        freq = 440.0 * 2.0 ** ((note - 69) / 12.0)
+        ref = int(round(freq * 2.0 ** 15 / OPL_CLOCK))
+        table.append(ref if ref <= 1023 else ref // 2 - 1024)
+    return tuple(table)
 
 
 def note_to_block_fnum(note):
@@ -165,10 +207,10 @@ def decode_events(evnt):
     """EVNT bytes -> token list, stopping at the first fatal byte.
 
     Tokens are ('delta', ticks) between event groups; ('note', ch, note, vel,
-    dur) / ('off', ch, note) / ('ctrl', ch, num, val) / ('program', ch, prog) /
-    ('ignore',) for events; and a final ('halt', why). Tokenising is pure: it
-    reads no voice/program state and emits nothing, so the replay in `Sequencer`
-    is what decides each write's tick.
+    dur) / ('off', ch, note) / ('ctrl', ch, num, val) / ('bend', ch, lsb, msb) /
+    ('program', ch, prog) / ('ignore',) for events; and a final ('halt', why).
+    Tokenising is pure: it reads no voice/program state and emits nothing, so
+    the replay in `Sequencer` is what decides each write's tick.
     """
     toks = []
     n = len(evnt)
@@ -242,7 +284,12 @@ def decode_events(evnt):
                     return halt('program past end')
                 toks.append(('program', ch, evnt[pos]))
                 pos += 1
-            elif hi in (0xA0, 0xE0):
+            elif hi == 0xE0:
+                if n - pos < 2:
+                    return halt('bend past end')
+                toks.append(('bend', ch, evnt[pos], evnt[pos + 1]))
+                pos += 2
+            elif hi == 0xA0:
                 if n - pos < 2:
                     return halt('aftertouch past end')
                 toks.append(('ignore',))
@@ -266,9 +313,10 @@ class Sequencer:
 
     FREE = -1
 
-    def __init__(self, evnt, patches):
+    def __init__(self, evnt, patches, pitch_tbl=None):
         self.tokens = decode_events(evnt)
         self.patches = patches
+        self.pitch_tbl = pitch_tbl if pitch_tbl is not None else computed_pitch_table()
         self.out = []
         self.note_log = []          # (tick, midi, note) when track_notes is set
         self.track_notes = False
@@ -284,6 +332,17 @@ class Sequencer:
         self.voice = [{'note': self.FREE} for _ in range(OPL_CHANNELS)]
         self.program = [0] * 16
         self.bank = [0] * 16
+        # Per-MIDI-channel controller state (the driver's 0x18f9/0x1909/0x1919/
+        # 0x1929/0x1939/0x1949/0x1959/0x1969 arrays). The wheel opens centred and
+        # expression full; the rest are BSS zero.
+        self.wheel_lsb = [0] * 16
+        self.wheel_msb = [0x40] * 16
+        self.bend_scale = [0] * 16
+        self.volume = [0] * 16
+        self.expression = [0x7F] * 16
+        self.pan = [0] * 16
+        self.mod = [0] * 16
+        self.sustain = [0] * 16
 
     def write(self, reg, val):
         self.out.append((self.tick, reg, val))
@@ -325,14 +384,85 @@ class Sequencer:
         self.next = victim
         return victim
 
-    def apply_patch(self, ch, key):
-        p = self.patches.get(key)
-        if p is None:
+    def apply(self, v, mask, bend):
+        """Re-apply the register families selected by `mask` from the voice's
+        cached patch, mirroring fam_apply (SBPRO2.MDI 0x3184)."""
+        p = self.voice[v].get('patch')
+        base = OPL_SLOT[v]
+        if p is not None:
+            for bit, writes in FAMILY_WRITES:
+                if mask & bit:
+                    for reg, i in writes:
+                        self.write(reg + base, p[i])
+            if mask & FAM_CONN:
+                self.write(ch_reg(v, 0xC0), p[8] | 0x30)
+        if mask & FAM_FREQ:
+            block, val = self.block_fnum(self.voice[v]['index'], bend)
+            b0 = (block << 2) | ((val >> 8) & 0x03)
+            self.voice[v]['b0'] = b0
+            self.write(ch_reg(v, 0xA0), val & 0xFF)
+            self.write(ch_reg(v, 0xB0), b0 | 0x20)
+
+    def bend_of(self, wheel14, scale):
+        """0x360f-0x3625: the driver keeps only the low 16 bits of the imul."""
+        val = ((wheel14 - 0x2000) >> 5) * scale
+        return ((val + 0x8000) & 0xFFFF) - 0x8000
+
+    def channel_bend(self, ch):
+        return self.bend_of((self.wheel_msb[ch] << 7) | self.wheel_lsb[ch],
+                            self.bend_scale[ch])
+
+    def block_fnum(self, index, bend):
+        """0x35fa: the driver's folded fine-step lookup -> (block, fnum)."""
+        folded = index - 0x18
+        while True:
+            folded += 0xc
+            if folded >= 0:
+                break
+        while folded > 0x5f:
+            folded -= 0xc
+        fine = (bend + (folded << 8) + 8) >> 4
+        while fine < 0:
+            fine += 0xc0
+        while fine > 0x5ff:
+            fine -= 0xc0
+        idx2 = fine >> 4
+        sem, octave = idx2 % 12, idx2 // 12
+        val = self.pitch_tbl[16 * sem + (fine & 0xf)]
+        block = octave - 1 + (1 if val < 0 else 0)
+        if block < 0:
+            block += 1
+            val >>= 1
+        return block, val
+
+    def control(self, status, a, b):
+        """0x3b54: store the controller, then re-apply the affected family for
+        active voices on the same MIDI channel."""
+        hi, ch = status & 0xF0, status & 0x0F
+        if ch >= 16:
             return
-        base = OPL_SLOT[ch]
-        for reg, i in PATCH_WRITES:
-            self.write(reg + base, p[i])
-        self.write(ch_reg(ch, 0xC0), p[8] | 0x30)
+        mask = None
+        if hi == 0xE0:
+            self.wheel_lsb[ch], self.wheel_msb[ch] = a, b
+            mask = FAM_FREQ
+        elif hi == 0xB0:
+            if a == 121:
+                self.sustain[ch] = 0
+                self.mod[ch] = 0
+                self.expression[ch] = 0x7F
+                self.wheel_lsb[ch], self.wheel_msb[ch] = 0, 0x40
+                mask = FAM_FREQ | FAM_TL | FAM_AMVIB
+            else:
+                field, mask = CTRL_STORES.get(a, (None, None))
+                if field is not None:
+                    getattr(self, field)[ch] = b
+        if mask is None:
+            return
+        for v, voice in enumerate(self.voice):
+            if voice.get('note') == self.FREE or voice.get('midi') != ch:
+                continue
+            bend = self.channel_bend(ch) if mask & FAM_FREQ else 0
+            self.apply(v, mask, bend)
 
     def key_on(self, midi, note, vel, dur):
         if not (0 <= midi < 16 and 0 <= note <= 127):
@@ -344,24 +474,19 @@ class Sequencer:
         else:
             key = (self.bank[midi] << 8) | self.program[midi]
         v = self.alloc_voice()
-        self.apply_patch(v, key)
         # The driver keys a note through its patch's base byte, not its MIDI
         # pitch (SBPRO2.MDI 0x35fa-0x36a6): melodic adds the base to the note
         # (base 0 in every melodic FAT.OPL entry, so this is the note);
         # percussion uses the base alone. Mirrors sequencer.c's key_on.
+        p = self.patches.get(key)
         idx = note
-        if midi == 9:
-            p = self.patches.get(key)
-            if p is not None:
-                idx = p[2]
+        if midi == 9 and p is not None:
+            idx = p[2]
         idx = max(0, min(idx, 127))
-        block, fnum = NOTE_TAB[idx]
-        b0 = (block << 2) | ((fnum >> 8) & 0x03)
         self.voice[v] = {'midi': midi, 'note': note, 'release': dur,
-                         'age': self.age, 'b0': b0}
+                         'age': self.age, 'b0': 0, 'patch': p, 'index': idx}
         self.age += 1
-        self.write(ch_reg(v, 0xA0), fnum & 0xFF)
-        self.write(ch_reg(v, 0xB0), b0 | 0x20)
+        self.apply(v, FAM_ALL, 0)
 
     def _advance(self):
         """Consume tokens until a delta is read or the stream halts."""
@@ -388,6 +513,11 @@ class Sequencer:
                 _, ch, num, val = tok
                 if num == 0:
                     self.bank[ch] = val
+                else:
+                    self.control(0xB0 | ch, num, val)
+            elif kind == 'bend':
+                _, ch, lsb, msb = tok
+                self.control(0xE0 | ch, lsb, msb)
             elif kind == 'program':
                 _, ch, prog = tok
                 self.program[ch] = prog
@@ -590,7 +720,13 @@ def main(argv):
               % patches_path, file=sys.stderr)
         return 1
 
-    seq = Sequencer(evnt, patches)
+    pitch_tbl = load_pitch_table(os.path.join(
+        os.path.dirname(os.path.abspath(music)), 'SBPRO2.MDI'))
+    if pitch_tbl is None:
+        print('SBPRO2.MDI pitch table missing beside %s' % music, file=sys.stderr)
+        return 1
+
+    seq = Sequencer(evnt, patches, pitch_tbl)
     events = seq.run(100000)
     if info:
         cmd_info(music, patches_path, evnt, events)

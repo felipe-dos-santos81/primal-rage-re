@@ -71,6 +71,17 @@ static struct {
     seq_voice voice[SEQ_OPL_CHANNELS];
     u8 program[SEQ_MIDI_CHANNELS];
     u8 bank[SEQ_MIDI_CHANNELS];
+    /* PORT: the driver's per-MIDI-channel controller state, indexed by channel
+     * (0x1909 volume, 0x1919 pan, 0x1929/0x1939 wheel LSB/MSB, 0x1949
+     * expression, 0x1959 mod, 0x1969 sustain, 0x18f9 bend scale). */
+    u8 wheel_lsb[SEQ_MIDI_CHANNELS];
+    u8 wheel_msb[SEQ_MIDI_CHANNELS];
+    u8 bend_scale[SEQ_MIDI_CHANNELS];
+    u8 volume[SEQ_MIDI_CHANNELS];
+    u8 expression[SEQ_MIDI_CHANNELS];
+    u8 pan[SEQ_MIDI_CHANNELS];
+    u8 mod[SEQ_MIDI_CHANNELS];
+    u8 sustain[SEQ_MIDI_CHANNELS];
 } S = {
     /* Voices start free, so the first halt() has nothing to key off and
      * seq_active_track() is 0 before the first load. `next` seeds the driver's
@@ -127,7 +138,7 @@ static int read_vlq(u32 *out)
  * derivable from the driver, so this port applies the patch TL verbatim. See
  * docs/superpowers/plans/2026-09-18-opl-velocity-tl.md and port/spec/audio.md
  * "Known capture divergences". */
-static void fam_apply(int opl_ch, u8 mask)
+static void fam_apply(int opl_ch, u8 mask, s32 bend)
 {
     const u8 *p = S.voice[opl_ch].patch;
     u16 base = OPL_SLOT[opl_ch];
@@ -156,10 +167,73 @@ static void fam_apply(int opl_ch, u8 mask)
     }
     if (mask & FAM_FREQ) {
         u8 a0, b0;
-        pitch_lookup(S.voice[opl_ch].index, 0, &a0, &b0);
+        pitch_lookup(S.voice[opl_ch].index, bend, &a0, &b0);
         S.voice[opl_ch].b0 = b0;
         opl_write(ch_reg(opl_ch, 0xA0), a0);
         opl_write(ch_reg(opl_ch, 0xB0), (u8)(b0 | 0x20));
+    }
+}
+
+/* PORT: 0x3b54, the channel-controller handler. Stores the controller, then
+ * re-applies the affected register family for every active voice on the same
+ * MIDI channel (the raw's 0x3c53 loop). The no-re-apply controllers (6, 64,
+ * 112, 113, 114, 123) return before the loop, matching the raw's dispatch
+ * table; 112/113/114 store state (patch-bank/percussion/patch-flag) the port's
+ * AIL-layer bank model has no separate field for, so they are inert here. */
+static void midi_control(u8 status, u8 a, u8 b)
+{
+    u8 hi = (u8)(status & 0xf0);
+    int ch = status & 0x0f;
+    u8 mask;
+
+    if (ch >= SEQ_MIDI_CHANNELS)
+        return;
+    if (hi == 0xe0) {
+        S.wheel_lsb[ch] = a;
+        S.wheel_msb[ch] = b;
+        mask = FAM_FREQ;
+    } else if (hi == 0xb0) {
+        switch (a) {
+        case 6:  S.bend_scale[ch] = b; return;
+        case 7:  S.volume[ch] = b; mask = FAM_TL; break;
+        case 11: S.expression[ch] = b; mask = FAM_TL; break;
+        case 1:  S.mod[ch] = b; mask = FAM_AMVIB; break;
+        case 10: S.pan[ch] = b; mask = FAM_CONN; break;
+        /* TODO(verify): ctrl 64 also calls 0x3b1e(ch) when b < 0x40; that
+         * sustain-release helper is a Task 5 gap (spec §10). */
+        case 64: S.sustain[ch] = b; return;
+        /* PORT: 0x3cc0-0x3ce2. The reset does not touch volume, pan or bend
+         * scale; it also calls 0x3b1e(ch), a Task 5 gap. */
+        case 121:
+            S.sustain[ch] = 0;
+            S.mod[ch] = 0;
+            S.expression[ch] = 0x7f;
+            S.wheel_lsb[ch] = 0;
+            S.wheel_msb[ch] = 0x40;
+            mask = (u8)(FAM_AMVIB | FAM_TL | FAM_FREQ);
+            break;
+        case 123: return;
+        case 112: return;
+        case 113: return;
+        case 114: return;
+        default:  return;
+        }
+    } else {
+        return;
+    }
+    for (int v = 0; v < SEQ_OPL_CHANNELS; v++) {
+        int vc;
+        s32 bend = 0;
+        if (S.voice[v].note == SEQ_NOTE_FREE || S.voice[v].midi != ch)
+            continue;
+        /* PORT: the driver's frequency routine reads the wheel from the voice's
+         * own MIDI channel ([si+0x14c1]); guard the bounds so a voice keyed
+         * before its channel fields exist cannot index the wheel arrays. */
+        vc = S.voice[v].midi;
+        if ((mask & FAM_FREQ) && vc >= 0 && vc < SEQ_MIDI_CHANNELS)
+            bend = pitch_bend_of((S.wheel_msb[vc] << 7) | S.wheel_lsb[vc],
+                                 S.bend_scale[vc]);
+        fam_apply(v, mask, bend);
     }
 }
 
@@ -255,7 +329,7 @@ static void key_on(int midi, int note, int vel, u32 dur)
     S.voice[v].patch = p;
     S.voice[v].index = idx;
 
-    fam_apply(v, FAM_ALL);
+    fam_apply(v, FAM_ALL, 0);
 
     S.voice[v].midi = midi;
     S.voice[v].note = note;
@@ -330,14 +404,24 @@ static void process(void)
                 if (S.evnt_len - S.pos < 2) { halt(); return; }
                 c = S.evnt[S.pos++];
                 val = S.evnt[S.pos++];
+                /* ctrl 0 is the AIL-layer bank select, not a 0x3b54 handler;
+                 * every other controller goes to the driver's dispatch. */
                 if (c == 0 && ch < SEQ_MIDI_CHANNELS)
-                    S.bank[ch] = val;        /* bank select */
+                    S.bank[ch] = val;
+                else
+                    midi_control(b, c, val);
             } else if (hi == 0xC0) {
                 if (S.pos >= S.evnt_len) { halt(); return; }
                 if (ch < SEQ_MIDI_CHANNELS)
                     S.program[ch] = S.evnt[S.pos];
                 S.pos++;
-            } else if (hi == 0xA0 || hi == 0xE0) {
+            } else if (hi == 0xE0) {
+                u8 lsb, msb;
+                if (S.evnt_len - S.pos < 2) { halt(); return; }
+                lsb = S.evnt[S.pos++];
+                msb = S.evnt[S.pos++];
+                midi_control(b, lsb, msb);
+            } else if (hi == 0xA0) {
                 if (S.evnt_len - S.pos < 2) { halt(); return; }
                 S.pos += 2;
             } else if (hi == 0xD0) {
@@ -435,6 +519,14 @@ void seq_start(void)
     for (int c = 0; c < SEQ_MIDI_CHANNELS; c++) {
         S.program[c] = 0;
         S.bank[c] = 0;
+        S.wheel_lsb[c] = 0;
+        S.wheel_msb[c] = 0x40;
+        S.bend_scale[c] = 0;
+        S.volume[c] = 0;
+        S.expression[c] = 0x7f;
+        S.pan[c] = 0;
+        S.mod[c] = 0;
+        S.sustain[c] = 0;
     }
     /* The captured driver's cached state opens with waveform-select enable
      * (0x01 = 0x20) then the OPL3-mode enable (0x105 = 0x01); the port writes

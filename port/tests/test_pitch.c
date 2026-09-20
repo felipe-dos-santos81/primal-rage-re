@@ -26,6 +26,9 @@ int test_pitch(void)
     CHECK_EQ_INT(pitch_bend_of(0x2000, 12), 0);
     /* A full-up wheel with scale 1 is (0x1fff >> 5) * 1 = 0xff. */
     CHECK_EQ_INT(pitch_bend_of(0x3fff, 1), 0xFF);
+    /* The product is 16-bit: the driver's imul result is used from `ax` only,
+     * so 255 * 255 wraps to the signed 16-bit value. */
+    CHECK_EQ_INT(pitch_bend_of(0x3fff, 255), -511);
 
     return g_failures - before;
 }
