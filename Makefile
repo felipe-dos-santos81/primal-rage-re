@@ -14,6 +14,7 @@ SMK_DUMP = /tmp/pr_smk_dump
 TITLE_CAPTURES = data/title-captures
 TITLE_DUMP = /tmp/pr_title_dump
 ATTRACT_DUMP = /tmp/pr_attract_dump
+FRONTEND_DUMP = /tmp/pr_frontend_dump
 TITLE_PIN_DIR = /tmp/pr_title_pin
 DECOMP_DIR = port/decomp
 SCRIPTS_DIR = _tools/ghidra_scripts
@@ -43,7 +44,7 @@ chunk ?= 0
 .PHONY: help deps build test verify check smk-oracle run clean \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original title-pin title-capture \
-        title-oracle attract-oracle
+        title-oracle attract-oracle frontend-capture frontend-oracle
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -153,6 +154,27 @@ attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/t
 		$(if $(wildcard $(TITLE_CAPTURES)/title2),--capture $(TITLE_CAPTURES)/title2,) \
 		--expect-first 215 --port $(ATTRACT_DUMP)
 
+# Front-end oracle: the Task 1 driver runs game_init() and drives the state
+# machine from state 2 into states 3/4, dumping one RGB24 frame per presented
+# frame from the state-3 entry (PR_FRONTEND_DUMP) plus a per-frame hash log for
+# the whole run. The capture is a 120 s passive run of the pinned original whose
+# front-end region follows the select carousel. Until states 3/4 are ported the
+# window is expected to report unexplained frames — the declared gap recorded in
+# port/spec/game_flow.md — so the pixel comparison REPORTS rather than fails the
+# ladder. The enforced gate is the determinism check: PR_FRONTEND_DET makes
+# run_tests re-invoke itself twice and require the two frame-hash logs
+# byte-identical. Captures are git-ignored; an absent capture skips cleanly.
+frontend-oracle: build ## Front-end oracle (states 3/4; skips without data/title-captures/frontend)
+	@echo "== front-end oracle (pixel-exact, states 3/4) =="
+	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
+		rm -rf $(FRONTEND_DUMP); \
+		PR_FRONTEND_DET=$(FRONTEND_DUMP) PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
+		$(PYTHON) tools/title_compare.py --frontend --capture $(TITLE_CAPTURES)/frontend \
+			--port $(FRONTEND_DUMP)/run1; \
+	else \
+		echo "frontend-oracle: no capture at $(TITLE_CAPTURES)/frontend, frames not compared"; \
+	fi
+
 # Headless FM render: on hosts where SDL audio cannot open, the windowed run is
 # silent, so this plays the title bank through the sequencer + OPL core + mixer
 # and writes a 16-bit stereo WAV at the OPL rate for listening in any player.
@@ -172,6 +194,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, symbols.h i
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory smk-oracle
 	@echo "== title oracle (pixel-exact) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory title-oracle
+	@echo "== front-end oracle (states 3/4; reports until the state code lands) =="
+	@$(MAKE) --no-print-directory frontend-oracle
 	@echo "== attract prefix oracle (pixel-exact) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory attract-oracle
 	@echo "== gra_extract oracle tests (real assets required) =="
@@ -253,3 +277,6 @@ title-pin: ## Build the pinned copy of PRAGE.EXE for the title oracle (writes /t
 
 title-capture: title-pin ## Capture the pinned original run for the title oracle (writes data/title-captures/)
 	$(PYTHON) tools/title_capture.py --out $(TITLE_CAPTURES)/title --time-limit 45
+
+frontend-capture: title-pin ## Capture the pinned original's front-end region (Task 1 front-end chain)
+	$(PYTHON) tools/title_capture.py --out $(TITLE_CAPTURES)/frontend --time-limit 120

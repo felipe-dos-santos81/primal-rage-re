@@ -209,7 +209,7 @@ def bands(c, a, b):
             (only_b[0], only_b[-1], len(only_b)) if only_b else None)
 
 
-def check_capture(capture, port, port_rows, n, name, verbose):
+def check_capture(capture, port, port_rows, n, name, verbose, detail=True):
     frames = load_frames(capture, name)
     if frames is None:
         return 1, None
@@ -285,21 +285,41 @@ def check_capture(capture, port, port_rows, n, name, verbose):
                             'OK' if endpoint_ok else 'BAD'))
 
     bad = len(unexpl_j) + len(bad_missing) + (0 if endpoint_ok else 1)
-    for j in unexpl_j:
-        pref_r, suff_r = kinds[j][1]
-        m, N, b = best_splice(frames[j], port, pref_r, suff_r, n)
-        r, i = first_diff_row_byte(frames[j], port[N], port[N + 1], b)
-        print("title_compare: %s: UNEXPLAINED captured frame %d (raw %s): best "
-              "byte splice port%d[0..%d) ++ port%d[%d..%d) still differs at %d "
-              "byte(s) (first row %s byte %s)"
-              % (name, j, raws[j], N, b, N + 1, b, FRAME_BYTES, m, r, i))
-        oa, ob = bands(frames[j], port[N], port[N + 1])
-        print("title_compare: %s:   bytes only port%d: %s; only port%d: %s"
-              % (name, N, oa, N + 1, ob))
-    for M in bad_missing:
-        print("title_compare: %s: PORT FRAME %d is not exhibited by any "
-              "captured frame" % (name, M))
-    return (1 if bad else 0), {'clean': clean_j, 'kinds': kinds, 'frames': frames}
+    if detail:
+        for j in unexpl_j:
+            pref_r, suff_r = kinds[j][1]
+            m, N, b = best_splice(frames[j], port, pref_r, suff_r, n)
+            r, i = first_diff_row_byte(frames[j], port[N], port[N + 1], b)
+            print("title_compare: %s: UNEXPLAINED captured frame %d (raw %s): best "
+                  "byte splice port%d[0..%d) ++ port%d[%d..%d) still differs at %d "
+                  "byte(s) (first row %s byte %s)"
+                  % (name, j, raws[j], N, b, N + 1, b, FRAME_BYTES, m, r, i))
+            oa, ob = bands(frames[j], port[N], port[N + 1])
+            print("title_compare: %s:   bytes only port%d: %s; only port%d: %s"
+                  % (name, N, oa, N + 1, ob))
+        for M in bad_missing:
+            print("title_compare: %s: PORT FRAME %d is not exhibited by any "
+                  "captured frame" % (name, M))
+    return (1 if bad else 0), {'clean': clean_j, 'kinds': kinds, 'frames': frames,
+                               'unexpl': unexpl_j}
+
+
+def load_port(d, n):
+    """Load n frames of d as (frames, row_hashes), or (None, None) after a
+    message. Shared by the title window and the front-end window."""
+    port = []
+    for i in range(n):
+        path = os.path.join(d, 'frame_%04d.raw' % i)
+        if not os.path.exists(path):
+            print("title_compare: port frame %d is missing at %s" % (i, path))
+            return None, None
+        data = load(path)
+        if len(data) != FRAME_BYTES:
+            print("title_compare: port frame %d is %d bytes, expected %d"
+                  % (i, len(data), FRAME_BYTES))
+            return None, None
+        port.append(data)
+    return port, [row_hashes(p) for p in port]
 
 
 def main():
@@ -308,8 +328,51 @@ def main():
     ap.add_argument('--port', required=True)
     ap.add_argument('--frames', type=int, default=0)
     ap.add_argument('--verbose', action='store_true')
+    ap.add_argument('--frontend', action='store_true',
+                    help='front-end window (states 3/4): report the same '
+                         'content-alignment classification over the 120 s '
+                         'capture; report-only until the state code lands')
     a = ap.parse_args()
     required = os.environ.get('PR_ORACLE_REQUIRED') == '1'
+
+    # Front-end mode: the port dump holds the state-3/4 frames, the capture the
+    # whole post-logo run. The window is found by content alignment exactly as
+    # the title window is; the classification is identical. Until the state code
+    # lands the window is a declared gap (port/spec/game_flow.md), so this mode
+    # reports the outcome and exits 0 — it is the pixel oracle a later cycle
+    # enforces, not a ladder gate today.
+    if a.frontend:
+        capture = a.capture[0]
+        if not os.path.isdir(capture):
+            print("title_compare: no capture at %s (%s)"
+                  % (capture, 'FAIL (required)' if required else 'skipped'))
+            return 1 if required else 0
+        if not os.path.isdir(a.port):
+            print("title_compare: no port dump at %s" % a.port)
+            return 1
+        n = a.frames or len([f for f in os.listdir(a.port)
+                             if f.endswith('.raw')])
+        port, port_rows = load_port(a.port, n)
+        if port is None:
+            return 1
+        rc, res = check_capture(capture, port, port_rows, n, 'frontend',
+                                a.verbose, detail=False)
+        if res is None:
+            print("title_compare: frontend: window not derivable from the port "
+                  "dump (rc %d); states 3/4 carry no pixel oracle until the "
+                  "state code lands (port/spec/game_flow.md)." % rc)
+            return 0
+        unexpl = res['unexpl']
+        frames = res['frames']
+        raws = raw_map(capture) or list(range(len(frames)))
+        if unexpl:
+            print("title_compare: frontend: %d unexplained captured frame(s) in "
+                  "the window; first is %d (raw %s). States 3/4 carry no pixel "
+                  "oracle until the state code lands (port/spec/game_flow.md)."
+                  % (len(unexpl), unexpl[0], raws[unexpl[0]]))
+        else:
+            print("title_compare: frontend: 0 unexplained")
+        return 0
 
     primary = a.capture[0]
     if not os.path.isdir(primary):
@@ -323,19 +386,9 @@ def main():
         n = a.frames
     else:
         n = len([f for f in os.listdir(a.port) if f.endswith('.raw')])
-    port = []
-    for i in range(n):
-        path = os.path.join(a.port, 'frame_%04d.raw' % i)
-        if not os.path.exists(path):
-            print("title_compare: port frame %d is missing at %s" % (i, path))
-            return 1
-        data = load(path)
-        if len(data) != FRAME_BYTES:
-            print("title_compare: port frame %d is %d bytes, expected %d"
-                  % (i, len(data), FRAME_BYTES))
-            return 1
-        port.append(data)
-    port_rows = [row_hashes(p) for p in port]
+    port, port_rows = load_port(a.port, n)
+    if port is None:
+        return 1
 
     bad = 0
     results = []

@@ -410,6 +410,25 @@ selector.
   cases 3/4 do nothing). Derivation and frame arithmetic:
   `../../docs/superpowers/plans/2026-09-19-frontend-input-derivations.md`.
 
+**States 3/4 carry no pixel oracle (front-end-chain Task 1).** The 120 s pinned
+capture (`make frontend-capture`: `data/title-captures/frontend`, 3712 distinct
+post-logo frames, raw 1376..8409) reaches the front-end, but the port cannot be
+compared over states 3/4 yet. `game_state_step` cases 3/4 are still the stubs
+above, so every frame the `PR_FRONTEND_DUMP` driver emits from the state-3 entry
+is the same fixed select/overlay frame (all 300 dumped frames byte-identical).
+`tools/title_compare.py --frontend` therefore collapses the window to the
+boundary island of the three capture frames that equal it: distinct [557..559]
+(raw 3117..3119), 2 clean, 0 splice, 0 transition, **1 unexplained** — capture
+frame 558 (raw 3118). **No `title_pin.py` front-end pin was added** (the four
+existing title pins are unchanged): the plan's premise that the state-3 frames
+are unpinned RNG draws does not hold at this BASE — the state code is absent, so
+the mismatch is structural and no behaviour pin can move it. The enforced gate is
+instead the determinism log: the driver logs a per-frame index/phase/hash from
+state 2 through state 3 for 900 frames, and `run_tests` re-invokes itself twice
+under `PR_FRONTEND_DET`, requiring the two runs' `select.log` byte-identical
+(`make frontend-oracle`). A later cycle that ports states 3/4 flips
+`frontend-oracle` from report to gate.
+
 ## Landmarks (verified)
 
 | Address | Meaning |

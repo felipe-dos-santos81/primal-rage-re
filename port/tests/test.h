@@ -54,6 +54,10 @@ int test_title(void);
  * continuous PR_ATTRACT_DUMP run, because game_init() may run once per process. */
 int test_title_window(const char *dump);
 int test_frontend(void);
+/* The Task 1 fallback determinism gate: re-invoke this binary twice with
+ * PR_FRONTEND_DUMP and require the two frame-hash logs byte-identical. `self` is
+ * argv[0]; PR_FRONTEND_DET names the dump root. */
+int test_frontend_determinism(const char *self);
 int test_attract(void);
 
 #endif /* PR_TEST_H */

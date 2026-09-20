@@ -5,12 +5,14 @@
  * the top of test_frontend() before the driver. */
 #include "game/flow.h"
 #include "game/actors.h"
+#include "platform/gfx.h"
 #include "mem.h"
 #include "symbols.h"
 #include "test.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 
 int test_frontend(void)
 {
@@ -143,7 +145,10 @@ int test_frontend(void)
 
     /* The driver runs the real init and loop for a fixed window, as the title
      * driver does, because game_init() may run once per process.
-     * PR_FRONTEND_DUMP names a directory to receive the hash log. */
+     * PR_FRONTEND_DUMP names a directory to receive the hash log and, from the
+     * state-3 entry on, one RGB24 frame per presented frame. The log covers the
+     * whole window, through states 3/4, so two runs can be diffed; the frame
+     * dump is capped by PR_FRONTEND_DUMP_FRAMES (default 300). */
     {
         const char *dir = getenv("PR_GAME_DIR");
         if (dir == NULL || dir[0] == '\0') dir = "data/game/C";
@@ -155,13 +160,19 @@ int test_frontend(void)
         DSW(DS_000F0A64) = 2;
         DSB(DS_000F0A6F) = 0;
 
+        mkdir(dump, 0777);      /* ignore EEXIST; matches the frame-dump hook */
+
         char log_path[1200];
         snprintf(log_path, sizeof log_path, "%s/select.log", dump);
         FILE *log = fopen(log_path, "w");
         CHECK(log != NULL, "state-2 hash log opens");
 
+        const char *cap_s = getenv("PR_FRONTEND_DUMP_FRAMES");
+        long raw_cap = cap_s ? strtol(cap_s, NULL, 0) : 300;
+        int dumped = 0;
+
         u32 seen_entries = 0;
-        for (int i = 0; i < 640; i++) {
+        for (int i = 0; i < 900; i++) {
             DSB(DS_000A81A8) = 1;          /* exactly one game_loop iteration */
             game_loop();
             if (DSB(DS_000F0A6E) < 6u) seen_entries |= 1u << DSB(DS_000F0A6E);
@@ -172,6 +183,25 @@ int test_frontend(void)
                 for (u32 b = 0; b < 320u * 200u; b++) h = (h ^ fb[b]) * 16777619u;
                 fprintf(log, "%d %u %u\n", i, (unsigned)DSB(DS_000F0A6F), h);
             }
+            /* Once state 3 is reached, write the just-presented frame as RGB24
+             * (192000 bytes, 320x200) through gfx_dac, the same form the title
+             * and attract hooks write. swap_buffers() has already run, so the
+             * just-presented buffer is DS_000E87A0 (the hook reads DS_000E87A4
+             * before the swap). */
+            if (DSW(DS_000F0A64) >= 3u && dumped < (int)raw_cap) {
+                const u8 *fb = mem + DSD(DS_000E87A0);
+                char path[1300];
+                snprintf(path, sizeof path, "%s/frame_%04d.raw", dump, dumped);
+                FILE *fr = fopen(path, "wb");
+                if (fr != NULL) {
+                    for (u32 b = 0; b < 320u * 200u; b++) {
+                        const u8 *rgb = gfx_dac[fb[b]];
+                        fwrite(rgb, 1, 3, fr);
+                    }
+                    fclose(fr);
+                }
+                dumped++;
+            }
         }
         if (log != NULL) fclose(log);
 
@@ -179,10 +209,60 @@ int test_frontend(void)
          * Entry k is drawn on frame 1+93k; after the sixth, 0x1E pause frames
          * and the phase-3 handoff land state 3 on frame 589 (the arithmetic is
          * in docs/superpowers/plans/2026-09-19-frontend-input-derivations.md).
-         * The 640-frame window leaves margin. */
+         * The 900-frame window leaves margin through states 3/4. */
         CHECK_EQ_INT((int)seen_entries, 0x3F);
         CHECK_EQ_INT((int)DSW(DS_000F0A64), 3);
+        CHECK_EQ_INT(dumped, (int)(raw_cap < (900 - 589) ? raw_cap : (900 - 589)));
         game_shutdown();
     }
     return g_failures - before;
+}
+
+/* The fallback determinism gate: two independent PR_FRONTEND_DUMP runs of the
+ * states 3/4 window must write byte-identical frame-hash logs. game_init() may
+ * run once per process, so the check re-invokes this binary twice (the two
+ * invocations + diff pattern) and compares the two logs. The runner sets
+ * PR_FRONTEND_DET to the dump root; the children see only PR_FRONTEND_DUMP. */
+int test_frontend_determinism(const char *self)
+{
+    char root[1024], gdir[1024];
+    const char *r = getenv("PR_FRONTEND_DET");
+    const char *d = getenv("PR_GAME_DIR");
+    snprintf(root, sizeof root, "%s", r != NULL ? r : "/tmp/pr_frontend_det");
+    snprintf(gdir, sizeof gdir, "%s",
+             (d != NULL && d[0] != '\0') ? d : "data/game/C");
+
+    /* The children must not inherit this mode or they recurse; drop it from the
+     * environment before the re-invocations. root/gdir are copied first because
+     * unsetenv invalidates the pointers getenv returned. */
+    unsetenv("PR_FRONTEND_DET");
+    mkdir(root, 0777);      /* the run1/run2 children only create their leaf */
+
+    for (int k = 1; k <= 2; k++) {
+        char cmd[4096], log[1300];
+        snprintf(log, sizeof log, "%s/run%d.log", root, k);
+        snprintf(cmd, sizeof cmd,
+                 "PR_FRONTEND_DUMP='%s/run%d' PR_GAME_DIR='%s' '%s' >'%s' 2>&1",
+                 root, k, gdir, self, log);
+        CHECK(system(cmd) == 0, "front-end determinism run completes");
+    }
+
+    char p1[1300], p2[1300];
+    snprintf(p1, sizeof p1, "%s/run1/select.log", root);
+    snprintf(p2, sizeof p2, "%s/run2/select.log", root);
+    FILE *f1 = fopen(p1, "rb");
+    FILE *f2 = fopen(p2, "rb");
+    CHECK(f1 != NULL && f2 != NULL, "front-end determinism logs open");
+    if (f1 != NULL && f2 != NULL) {
+        int same = 1;
+        for (;;) {
+            int a = fgetc(f1), b = fgetc(f2);
+            if (a != b) { same = 0; break; }
+            if (a == EOF) break;
+        }
+        CHECK(same, "two front-end runs' frame hashes are byte-identical");
+    }
+    if (f1 != NULL) fclose(f1);
+    if (f2 != NULL) fclose(f2);
+    return g_failures;
 }

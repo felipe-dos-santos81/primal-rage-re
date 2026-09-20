@@ -4,8 +4,20 @@
 
 int g_failures = 0;
 
-int main(void)
+int main(int argc, char **argv)
 {
+    (void)argc;
+
+    /* The front-end fallback determinism gate (Task 1): two independent
+     * PR_FRONTEND_DUMP runs must produce byte-identical frame-hash logs. The
+     * check re-invokes this binary (game_init may run once per process), so it
+     * must come first and run nothing else in this process. */
+    if (getenv("PR_FRONTEND_DET") != NULL) {
+        test_frontend_determinism(argv[0]);
+        printf(g_failures ? "FAILURES: %d\n" : "all checks passed\n", g_failures);
+        return g_failures != 0;
+    }
+
     /* The 4d continuous-run driver calls game_init() and drives the attract and
      * the title in one process, so it runs alone for the same reason as
      * PR_TITLE_DUMP below. test_attract() still runs its unit checks first. */
