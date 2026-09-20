@@ -117,7 +117,11 @@ does not model, which is the current first difference. The 9340 (port) / 5804
 driver-derivable), the `0xBD` rhythm register, and the mid-note frequency change —
 are named or excluded with cause, never tuned. **No audibility claim**: the oracle is the
 register write stream, not rendered audio. The windowed run is silent on hosts
-where SDL audio cannot start — on this machine `-66681`. See
+where SDL audio cannot start — on this machine `-66681`. To listen anyway,
+`make audio-render` plays the title bank through the sequencer + OPL core + mixer
+and writes a 16-bit stereo WAV at the OPL rate (`AUDIO_WAV`, default
+`/tmp/pr_title_fm.wav`; `AUDIO_SECONDS`, default 12) — the audio path is real,
+only the device is missing. See
 `docs/superpowers/plans/2026-09-16-audio-ail-port-report.md` and
 `docs/superpowers/plans/2026-09-18-opl-driver-report.md`.
 **Video — sub-project 2b-i, Smacker logos, running.** The port decodes the two

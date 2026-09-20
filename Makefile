@@ -153,6 +153,14 @@ attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/t
 		$(if $(wildcard $(TITLE_CAPTURES)/title2),--capture $(TITLE_CAPTURES)/title2,) \
 		--expect-first 215 --port $(ATTRACT_DUMP)
 
+# Headless FM render: on hosts where SDL audio cannot open, the windowed run is
+# silent, so this plays the title bank through the sequencer + OPL core + mixer
+# and writes a 16-bit stereo WAV at the OPL rate for listening in any player.
+AUDIO_WAV ?= /tmp/pr_title_fm.wav
+AUDIO_SECONDS ?= 12
+audio-render: build ## Render the title FM music headlessly to a WAV (AUDIO_WAV, AUDIO_SECONDS)
+	PR_AUDIO_WAV=$(AUDIO_WAV) PR_AUDIO_WAV_SECONDS=$(AUDIO_SECONDS) ./$(BUILD_DIR)/run_tests
+
 # The --check run must come first: test_gfx.c reads frame_0001/0009/0017/0025.idx
 # from the CWD, so the ladder has to produce them (frames >= 25) before the suite
 # consumes them — otherwise that four-frame comparison never runs.

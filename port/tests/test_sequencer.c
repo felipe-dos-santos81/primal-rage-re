@@ -608,6 +608,77 @@ int test_sequencer(void)
         }
     }
 
+    /* 9. Optional headless audio render (PR_AUDIO_WAV=<path>). On hosts where
+     *    SDL audio cannot open, the FM output is inaudible in the windowed run;
+     *    this plays the title bank through the sequencer + OPL core + mixer and
+     *    writes a 16-bit stereo WAV at the OPL rate, so the music can be
+     *    listened to in any player. Duration via PR_AUDIO_WAV_SECONDS (default
+     *    12). The sequencer is paced by the rendered audio, not by wall time:
+     *    the driver runs at 2 ticks per 60 Hz frame = 120 Hz, so each
+     *    MIXER_OPL_RATE/120 rendered frames advance one tick. */
+    {
+        const char *wav = getenv("PR_AUDIO_WAV");
+        if (wav != NULL) {
+            u32 seconds = 12;
+            const char *sec = getenv("PR_AUDIO_WAV_SECONDS");
+            u32 rate = MIXER_OPL_RATE;
+            u32 total, done = 0, acc = 0;
+            s16 chunk[2 * 1024];
+            FILE *f;
+
+            if (sec != NULL && atoi(sec) > 0) seconds = (u32)atoi(sec);
+            total = seconds * rate;
+            f = fopen(wav, "wb");
+            if (f == NULL) {
+                CHECK(0, "PR_AUDIO_WAV: cannot open output file");
+            } else {
+                u8 hdr[44];
+                u32 data_bytes = total * 4u;   /* stereo, 16-bit */
+                u32 riff = 36u + data_bytes;
+                u32 brate = rate * 4u;
+                u32 i;
+
+                for (i = 0; i < 4; i++) hdr[i] = "RIFF"[i];
+                hdr[4] = (u8)riff; hdr[5] = (u8)(riff >> 8);
+                hdr[6] = (u8)(riff >> 16); hdr[7] = (u8)(riff >> 24);
+                for (i = 0; i < 4; i++) hdr[8 + i] = "WAVE"[i];
+                for (i = 0; i < 4; i++) hdr[12 + i] = "fmt "[i];
+                hdr[16] = 16; hdr[17] = 0; hdr[18] = 0; hdr[19] = 0;
+                hdr[20] = 1; hdr[21] = 0;      /* PCM */
+                hdr[22] = 2; hdr[23] = 0;      /* 2 channels */
+                hdr[24] = (u8)rate; hdr[25] = (u8)(rate >> 8);
+                hdr[26] = (u8)(rate >> 16); hdr[27] = (u8)(rate >> 24);
+                hdr[28] = (u8)brate; hdr[29] = (u8)(brate >> 8);
+                hdr[30] = (u8)(brate >> 16); hdr[31] = (u8)(brate >> 24);
+                hdr[32] = 4; hdr[33] = 0;      /* block align */
+                hdr[34] = 16; hdr[35] = 0;     /* bits per sample */
+                for (i = 0; i < 4; i++) hdr[36 + i] = "data"[i];
+                hdr[40] = (u8)data_bytes; hdr[41] = (u8)(data_bytes >> 8);
+                hdr[42] = (u8)(data_bytes >> 16); hdr[43] = (u8)(data_bytes >> 24);
+                fwrite(hdr, 1, sizeof hdr, f);
+
+                opl_reset();
+                mixer_reset();
+                seq_start();
+                while (done < total) {
+                    u32 n = total - done;
+                    if (n > 1024u) n = 1024u;
+                    mixer_render(chunk, n, rate);
+                    fwrite(chunk, 2, (size_t)n * 2u, f);
+                    done += n;
+                    acc += n * 120u;            /* sequencer ticks per second */
+                    while (acc >= rate) {
+                        acc -= rate;
+                        seq_tick();
+                    }
+                }
+                fclose(f);
+                printf("PR_AUDIO_WAV: wrote %s (%u s, %u Hz)\n", wav,
+                       (unsigned)seconds, (unsigned)rate);
+            }
+        }
+    }
+
     free(gra);
     free(fat);
     return g_failures - before;
