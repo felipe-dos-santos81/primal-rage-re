@@ -323,10 +323,19 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   (`effects_spawn_scroll`) are the only functions that take a free record and
   write its type byte, so **types 1 and 5 have no producer and are dead**. An
   end-to-end unit test proves spawn → `effects_step` → palette dirty list →
-  `gfx_dac`. The effect **render** path is still unported, so no shipped path
-  spawns types 0/2/4/6 yet; the producers are a declared coverage gap carried by
-  unit tests, and `0x134C0`'s drain is unit-proven. Details:
-  `../../docs/superpowers/plans/2026-09-18-title-residuals-report.md`,
+  `gfx_dac` (the palette actually presented through `gfx_present`).
+* **The camera/scene layer (ported).** `0x12CD4` (the camera-y stepper), `0x1317C`
+  (camera-y clamp), `0x1324C` (screen-shake decay, update-table entry 0), `0x13290`
+  (mode-2 two-player centering) and `0x1333C` (mode-3 one-player centering) live in
+  `effects.c` and maintain `DS_000F0AEC`/`DS_000F0AF0`/`DS_000F0AF4`/`DS_000F0AF6`/
+  `DS_000F0AFE`. **None of them draws** — the plan's assumed "missing draw" half of the
+  effect render path does not exist; the state is consumed by the existing render pass
+  (`0x14328`) and the actor-pset sync. `0x1324C` is **dormant**: no shipped store sets
+  `DS_00104AE8` bit 0, so it never runs, and it is registered only so the existing
+  update-table dispatch reaches it if bit 0 is ever set. The four producers' shipped call
+  sites (`0x29B74`/`0x41578`) are the remaining wiring (Task 8), so no shipped path
+  spawns types 0/2/4/6 yet; the producers remain a coverage gap carried by unit tests.
+  Details: `../../docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md` §5,
   `../../docs/superpowers/plans/2026-09-19-effects-producers-report.md`.
 * **`--check N`** (Task 15) runs exactly N master-loop iterations headless and
   writes `frame_NNNN.ppm`/`.pal`/`.idx`; exit code is the assertion-failure

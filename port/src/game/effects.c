@@ -5,7 +5,15 @@
  * are DS_000FCCE0 (active) and DS_000FCCE8 (free) and point at themselves when
  * empty. 24 records of stride 0x814 run DS_000F0B00..0xFC4CC. PORT: the
  * DS_0009AF3C interrupt lock is written for fidelity but is inert in the port's
- * single-threaded loop. */
+ * single-threaded loop.
+ *
+ * The fight-camera/scene state updates also live here: the camera-y stepper
+ * (0x12CD4), the camera-y clamp (0x1317C), the screen-shake decay (0x1324C,
+ * update-table entry 0) and the two camera-x centering modes (0x13290/0x1333C).
+ * None of them draws: they maintain DS_000F0AEC/DS_000F0AF0/DS_000F0AF4, which
+ * the existing render pass and the actor-pset sync consume. 0x1324C is dormant
+ * in the shipped path (no store sets DS_00104AE8 bit 0); it is registered so the
+ * existing update-table dispatch reaches it if bit 0 is ever set. */
 #include "game/effects.h"
 #include "../mem.h"
 #include "../symbols.h"
@@ -82,9 +90,15 @@ static void effect_teardown(u32 rec)
 
 /* ---- exported ----------------------------------------------------------- */
 
+/* PORT: registers the original code addresses this module implements. Defined
+ * with the camera/scene layer below; declared here because effects_init() is the
+ * module's init (actors_reset calls it on every entry). */
+static void camera_register(void);
+
 /* 0x13ADC. */
 void effects_init(void)
 {
+    camera_register();
     DSB(DS_0009AF3C) = 1;
     DSD(DS_000FCCE4) = DS_000FCCE0;
     DSD(DS_000FCCE0) = DS_000FCCE0;
@@ -459,6 +473,130 @@ void effects_step(void)
             rec = DSD(rec);
         }
     }
+}
+
+/* ---- the fight-camera/scene state updates ------------------------------- */
+
+/* 0x804A8: the raw float 3.616898175096139e-05 (data-object bytes 26 B4 17 38),
+ * used by 0x1317C's quadratic y-offset. */
+static const float CAMERA_Y_SCALE = 3.616898175096139e-05f;
+
+/* 0x12CD4. Steps DS_000F0AEC toward `target` by at most 0x100, then adds the
+ * screen-shake term. PORT: the raw loads the dword at 0xF0AF2 and `sar eax,0x10`
+ * (0x12d03/0x12d1d), which is the signed 16-bit word at 0xF0AF4 - the shake
+ * offset DS_000F0AF4 - not the high word of the camera x at 0xF0AF0. */
+static void camera_y_step(s32 target)
+{
+    s32 cur = (s32)DSD(DS_000F0AEC);
+    s32 diff = target - cur;
+    s32 mag = diff < 0 ? -diff : diff;
+    s32 next;
+    if (mag > 0x100) {
+        if (diff > 0) {
+            DSD(DS_000F0AEC) = (u32)(cur + 0x100 + (s32)(s16)DSW(DS_000F0AF4));
+            return;
+        }
+        next = cur - 0x100;
+    } else {
+        next = target;
+    }
+    DSD(DS_000F0AEC) = (u32)(next + (s32)(s16)DSW(DS_000F0AF4));
+}
+
+/* 0x1317C. Derives a camera-y target from the selected player's x
+ * (DS_001078F2's high word), steps DS_000F0AEC toward it (0x12CD4), then clamps
+ * it to the per-camera limit DS_0009AF28[DS_00104AFC] (dword read at 2*index,
+ * high word). */
+void camera_y_clamp(void)
+{
+    s32 x = (s32)DSD(DS_001078F2) >> 16;
+    s32 target = 0;
+    if (x > 0x1400) {
+        float d = (float)(x - 0x1400);
+        /* PORT: 0x1319f's `cmp eax,0x8000; jl` arm is dead - x is a
+         * sign-extended 16-bit word, so x >= 0x8000 never holds. The reachable
+         * arm is 0x131ac's `d * (d * C)`, truncated by 0x61a4c's frndint. */
+        target = (s32)((double)d * ((double)d * (double)CAMERA_Y_SCALE));
+    }
+    camera_y_step(target);
+
+    u32 idx = (u32)DSW(DS_00104AFC);
+    s32 limit = (s32)DSD(DS_0009AF28 + idx * 2u) >> 16;
+    if (limit < (s32)DSD(DS_000F0AEC))
+        DSD(DS_000F0AEC) = (u32)limit;
+}
+
+/* 0x1324C. Screen-shake decay, update-table entry 0. PORT: dormant in the
+ * shipped path - no store sets DS_00104AE8 bit 0 (only clears and bits 2/5/6
+ * are written). Registered so the existing update-table dispatch reaches it. */
+void camera_shake_decay(void)
+{
+    s16 vel = (s16)DSW(DS_000F0AF6);
+    s16 off = (s16)DSW(DS_000F0AF4);
+    s16 sum = (s16)(off + vel);
+    if (vel < 0 && sum <= 0) {
+        vel = 0;
+        DSB(DS_00104AE8) &= 0xfe;
+        sum = 0;
+    }
+    vel = (s16)(vel - 0x20);
+    DSW(DS_000F0AF6) = (u16)vel;
+    DSW(DS_000F0AF4) = (u16)sum;
+}
+
+/* 0x13290. Camera mode 2: centre DS_000F0AF0 on the midpoint of the two player
+ * x's (DS_001077B0 / DS_00107844, +0x18), moving 0x40 per frame until within
+ * 0x100 and the y-clamp is zero; then, gated on DS_001078FE, hand to mode 4. */
+void camera_center_two(void)
+{
+    s32 cam = (s32)DSD(DS_000F0AF0);
+    s32 p0 = (s32)DSD(DSD(DS_001077B0) + 0x18);
+    s32 p1 = (s32)DSD(DSD(DS_00107844) + 0x18);
+    s32 mid = p0 > p1 ? (p0 - p1) / 2 + p1 : (p1 - p0) / 2 + p0;
+    s32 diff = mid - cam;
+    s32 mag = diff < 0 ? -diff : diff;
+    int settle = 0;
+    if (mag <= 0x100) {
+        if (DSD(DS_000F0AEC) == 0) settle = 1;
+    } else {
+        s32 amag = cam < 0 ? -cam : cam;
+        if (amag == 0x5D00) settle = 1;
+        else cam += diff > 0 ? 0x40 : -0x40;
+    }
+    if (settle && DSB(DS_001078FE) != 0) DSB(DS_000F0AFE) = 4;
+    DSD(DS_000F0AF0) = (u32)cam;
+}
+
+/* 0x1333C. Camera mode 3: centre DS_000F0AF0 on one player's x (index byte
+ * DS_0010810D = byte 3 of DS_0010810A; record at DS_001077B0 + index*0x94).
+ * Same 0x40/0x100/0x5D00 logic as mode 2, but the mode-4 handoff is NOT gated
+ * on DS_001078FE. */
+void camera_center_one(void)
+{
+    s32 cam = (s32)DSD(DS_000F0AF0);
+    u8 idx = DSB(DS_0010810A + 3u);
+    s32 src = (s32)DSD(DSD(DS_001077B0 + (u32)idx * 0x94u) + 0x18);
+    s32 diff = src - cam;
+    s32 mag = diff < 0 ? -diff : diff;
+    int settle = 0;
+    if (mag <= 0x100) {
+        if (DSD(DS_000F0AEC) == 0) settle = 1;
+    } else {
+        s32 amag = cam < 0 ? -cam : cam;
+        if (amag == 0x5D00) settle = 1;
+        else cam += diff > 0 ? 0x40 : -0x40;
+    }
+    if (settle) DSB(DS_000F0AFE) = 4;
+    DSD(DS_000F0AF0) = (u32)cam;
+}
+
+/* PORT: one-time registration (the raw's update table is static data). */
+static void camera_register(void)
+{
+    static int done;
+    if (done) return;
+    done = 1;
+    fn_register(FN_0001324C, camera_shake_decay);
 }
 
 /* 0x13DF0. */

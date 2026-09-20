@@ -59,8 +59,13 @@ its own. That risk is front-loaded by sequencing (section 8).
 * State 4 — `0x11578`.
 * State 5 — the match-start block inline in `0x11D04` case 5.
 * The effect **render** path — the camera/scene layer (`0x1317C`, `0x1324C`, `0x13290`,
-  `0x1333C`) and their `DS_000F0AEC`/`DS_000F0AF0`/`DS_000F0AF4` state, plus the draw
-  that makes a spawned effect visible.
+  `0x1333C`) and their `DS_000F0AEC`/`DS_000F0AF0`/`DS_000F0AF4` state. **There is no
+  missing draw to port:** Task 2's derivation, re-checked against the bytes, found that
+  none of the four functions draws anything — they are fight-camera state updaters whose
+  state the existing render pass (`0x14328`) and the actor-pset sync already consume. The
+  effect palette path is already complete (spawn → `effects_step` → palette dirty list →
+  `gfx_flush_palette` → `gfx_dac` → `gfx_present`). `0x1324C` is update-table entry 0 and
+  is **dormant**: no shipped store sets `DS_00104AE8` bit 0.
 * The unported effect call sites `0x29B74` and `0x41578`.
 * The capture/pin/oracle extension that verifies the above.
 
@@ -83,9 +88,12 @@ Three layers, each extended where it already lives. No new module boundaries.
   `mem[]` counter — `DS_000F0A6F` for state 3, `DS_0009AD98` for state 4 — transcribed
   phase-for-phase from the raw. No restructuring, no invented abstractions.
 * **Effect render** — `port/src/game/effects.{c,h}`, beside the existing producers and
-  `effects_step`. The camera/scene functions join the existing
-  spawn → step → palette dirty list → `gfx_dac` chain, so a populated palette is applied
-  during the render pass.
+  `effects_step`. The camera/scene functions maintain the camera state the render pass
+  consumes; they draw nothing and touch no palette. The palette path itself is the
+  existing spawn → step → palette dirty list → `gfx_flush_palette` → `gfx_dac` chain,
+  which the master loop already runs before `gfx_present`. `0x1324C` is registered so the
+  existing update-table dispatch (`run_process_table`) reaches it the way the raw does;
+  no call site is added and no draw routine exists.
 * **Process-table wiring** — `0x29B74` and `0x41578` register into the port's existing
   `run_process_table` update/render tables (which `game_frame` already runs) rather than
   being called ad hoc, so they fire in the raw's order.
@@ -129,9 +137,9 @@ value is transcribed from the decompiler without checking the bytes.
 * **State 5** (inline in `0x11D04`) — `0x2C3FC`, `0x1EA08`, `0x2C06C`, `0x32970`, then
   `DS_000F0A72 = 0`, `DS_000F0A6C = 6`, `DS_000F0A64 = 9` and the three tails: match
   start, then the state-9 wait, then state 6.
-* **Effects** — spawn → record → `effects_step` → palette dirty list → `gfx_dac`; the
-  new camera/scene layer applies the scene during the render pass so a populated palette
-  actually draws.
+* **Effects** — spawn → record → `effects_step` → palette dirty list → `gfx_flush_palette`
+  → `gfx_dac` → `gfx_present`; the camera/scene layer only maintains camera state
+  (`DS_000F0AEC`/`DS_000F0AF0`/`DS_000F0AF4`) that the existing render pass consumes.
 
 ## 8. Sequencing
 
@@ -144,7 +152,8 @@ value is transcribed from the decompiler without checking the bytes.
 2. **Derivation record** for `0x2F4BC`, `0x12658`, `0x1EA08`, `0x29B74`, `0x41578` and
    the camera/scene functions.
 3. **State 3**, then **state 4**, then **state 5**, each gated on the oracle advancing.
-4. **Effect render path** (camera/scene + draw), then the **process-table wiring**.
+4. **Effect render path** (the camera/scene state updates; no draw exists), then the
+   **process-table wiring**.
 5. **Docs** — `port/spec/game_flow.md` dispositions, README and the cycle report.
 
 ## 9. Verification
