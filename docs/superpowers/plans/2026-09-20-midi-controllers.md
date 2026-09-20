@@ -537,14 +537,36 @@ git commit -m "audio: model the TL, pan and mod paths and drop the TL exclusion"
 
 **Files:**
 - Modify: `port/spec/audio.md`, `README.md`
+- Modify: `port/src/platform/audio/sequencer.c`, `port/tests/test_sequencer.c` (stale-comment sweep only — no behaviour change)
 - Read: `make audio-render` output
+
+> **Items carried in from the Task 5 review (deferred minors).** Fix these in the same
+> pass; they are documentation consistency, and the spec text is now actively wrong:
+> - `port/src/platform/audio/sequencer.c:608-611` — the comment claims "every
+>   `fam_apply` writes `0xC0 = patch | 0x30`", which pan now varies
+>   (`(p[8] & 0x0f) | bits`, bits ∈ {0x10, 0x20, 0x30}).
+> - `port/tests/test_sequencer.c:144` — the prose range "Modulator TL
+>   (`0x40..0x42, 0x48..0x50`)" should be `0x40..0x42, 0x48..0x4A, 0x50..0x52`.
+> - `port/spec/audio.md` still states the port "does not implement" the TL law and
+>   writes TL verbatim, still lists the whole `0x40-0x55` family as excluded, still
+>   gives the old first difference (`302` / `9340` writes), and still calls the
+>   carrier-TL residual unexplained. All of that is now false — see the round-2/3
+>   derivation (`docs/superpowers/plans/2026-09-20-midi-controllers-tl-derivation.md`).
 
 - [ ] **Step 1: Update the spec**
 
-- Item 1: change to **matched** (derived from volume × expression), and delete the exclusion row.
-- Item 10: change to **matched** (family `0x01` re-apply on bend), or name the new first divergence if one remains.
-- Reduction: note that `documented_excluded` is now `0xBD` only.
-- First-difference history: append the new line from Task 5.
+- Item 1: change to **matched**, recording the pinned law (`att = ((~p10)&0x3f) * V / 0x7f`
+  with `V = scale7(scale7(cc7_eff, cc11), VELCURVE[vel>>3])` and the engine's
+  `cc7_eff = clamp((seqvol*cc7)/0x7f, 0, 0x7f)` at `prage.c:49121`), and replace the
+  old "not derivable" exclusion row with the **narrowed** one: carrier TL on MIDI
+  channels 1 and 4 only, because the engine's per-channel volume there is provably
+  unpinnable (round 3: one sequence volume, one timer, yet a simultaneous per-channel
+  split).
+- Item 10: change to **matched** (family `0x01` re-apply on bend), or name the new
+  first divergence if one remains.
+- Reduction: note that `documented_excluded` is now `0xBD` plus carrier TL on ch1/ch4.
+- First-difference history: append the new line from Task 5 (C write 430 at the time
+  of writing; use the actual value you observe).
 
 - [ ] **Step 2: Update the README** audio paragraph to the new boundary and the closed items.
 
