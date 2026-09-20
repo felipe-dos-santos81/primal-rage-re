@@ -449,14 +449,17 @@ void AIL_stop_sequence(HSEQUENCE sequence)
 }
 
 /* 0x5deca — spec audio.md "AIL surface" (row 30).
- * PORT: recorded, not applied — the port sequencer has no master-volume stage
- * and does not model the fade. */
+ * PORT: the value feeds the sequencer's sequence-volume input, which the
+ * original's CC7 arm uses to scale the driver's volume before dispatch
+ * (prage.c:49121). The 500 ms fade is still not modelled (the port applies the
+ * target immediately). */
 void AIL_set_sequence_volume(HSEQUENCE sequence, s32 volume, u32 fade_ms)
 {
     (void)fade_ms;
     if (sequence == NULL || !sequence->used)
         return;
     sequence->volume = volume;
+    seq_set_sequence_volume((u8)(volume < 0 ? 0 : volume > 0x7f ? 0x7f : volume));
 }
 
 /* 0x5deed — spec audio.md "AIL surface" (row 31). */

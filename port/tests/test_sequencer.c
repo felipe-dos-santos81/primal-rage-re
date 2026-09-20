@@ -117,23 +117,19 @@ static int ev_eq(const ev_t *a, const ev_t *b)
     return a->tick == b->tick && a->reg == b->reg && a->val == b->val;
 }
 
-/* Registers the port deliberately does not reproduce byte-for-byte against the
- * capture (port/spec/audio.md "Known capture divergences"): the OPL rhythm
- * register 0xBD, and the whole TL family 0x40-0x55. The driver adds a per-note
- * velocity/volume term to the total level of BOTH operators (carrier and
- * modulator): at tick 744 voice ch6/bank1 the port writes 0x150=0x153=0x00 from
- * a patch whose TL bytes are 0 while the capture writes 0x18 to both, and the
- * offset varies per note (0/24/25 across the window) — the rest of that voice's
- * patch matches exactly, so it is the level term, not a wrong patch. Its input
- * is engine/config-supplied (the received CC7), not derivable from the driver,
- * so the port writes TL verbatim. */
+/* Registers the port deliberately does not reproduce against the capture
+ * (port/spec/audio.md "Known capture divergences"): the OPL rhythm register
+ * 0xBD only. The TL family (0x40-0x55) is now modelled: `att = F*V/0x7f`, with
+ * `F = (~patch_tl) & 0x3f`, `V` the channel level built from the engine-scaled
+ * CC7, expression and key-on velocity level, and the carrier gated by the
+ * patch byte. `seqvol` (the AIL sequence volume) is an engine input the port
+ * owns, not a driver constant; the capture is consistent with 0x54 on every
+ * steady-CC7 channel, while the two channels whose CC7 moves (ch1/ch4) imply
+ * 0x50. That residual is named, not fitted: the model uses the steady value
+ * and ch1/ch4 are the expected difference (see the Task 5 record). */
 static int documented_excluded(u16 reg)
 {
-    u8 lo = (u8)(reg & 0xFF);
-
-    if (lo == 0xBD)
-        return 1;
-    return lo >= 0x40 && lo <= 0x55;
+    return (reg & 0xFF) == 0xBD;
 }
 
 /* The DRO capture records a register write only when it changes that register's
@@ -479,10 +475,16 @@ int test_sequencer(void)
 
         CHECK_EQ_INT(patches_load(fat, fat_len), 1);
         CHECK_EQ_INT(seq_load(xmi, xmi_len), 1);
+        /* The capture ran with the engine's AIL sequence volume below the image
+         * default; 0x54 is the value the steady-CC7 channels imply. Both the C
+         * stream and the Python oracle are driven with the same explicit input
+         * so the byte gate compares the sequencer, not the volume setting. */
+        seq_set_sequence_volume(0x54);
         c_n = capture_c_stream(c_ev, (int)OPL_TRACE_MAX, 4096);
         CHECK(!opl_trace_overflow(), "C register stream fits the trace seam");
 
-        snprintf(cmd, sizeof cmd, "python3 %s %s --trace", OPL_SEQ_PY, TITLE_GRA);
+        snprintf(cmd, sizeof cmd, "python3 %s %s --trace --seqvol %u",
+                 OPL_SEQ_PY, TITLE_GRA, 0x54u);
         CHECK_EQ_INT(read_ev_stream(cmd, py_ev, (int)OPL_TRACE_MAX, &py_total), 0);
         CHECK_EQ_INT((long)c_n, (long)py_total);
         if (c_n == (int)py_total) {

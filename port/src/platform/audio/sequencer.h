@@ -48,6 +48,14 @@ u32 seq_bank_size(const u8 *data);
  * unchanged. Does not start playback. */
 int seq_load(const u8 *data, u32 len);
 
+/* Engine sequence volume (the AIL sequence volume, 0..0x7f). It is an input,
+ * not sequence data: the original's sequencer scales a received CC7 by it
+ * before the driver sees it (prage.c:49121), and the SBPRO2.MDI carrier-TL
+ * law consumes the scaled value. Defaults to the image's DAT_00108d94 (0x7f);
+ * AIL_set_sequence_volume forwards the game's music volume here. Persists
+ * across seq_load/seq_start. */
+void seq_set_sequence_volume(u8 volume);
+
 /* Advances the stream by exactly one driver tick (SEQ_TICK_MS) while playing:
  * releases expired notes, then, when the pending delta has elapsed, processes
  * the next event group and emits its register writes. No-op when not playing. */

@@ -40,6 +40,7 @@ usage:
   opl_seq.py <music> [--trace]          # "tick reg value" lines (default)
   opl_seq.py <music> --info             # summary only
   opl_seq.py <music> --trace --patches PATH
+  opl_seq.py <music> --trace --seqvol N # engine AIL seq volume 0..0x7f
   opl_seq.py --capture-anchors <music> <capture.dro>   # re-derive note anchors
   opl_seq.py --self-test
 """
@@ -74,16 +75,33 @@ PATCH_BYTES = 14
 PATCH_MAX = 256
 
 # Family bits (SBPRO2.MDI 0x3184 tests and clears them in the order
-# AMVIB, TL, EG, WAVE, CONN, FREQ; this table keeps that write order).
+# AMVIB, TL, EG, WAVE, CONN, FREQ). Only the two controller-free families are
+# table-driven; AMVIB, TL and CONN each fold a controller and are computed in
+# `apply`.
 FAM_FREQ, FAM_CONN, FAM_WAVE, FAM_EG, FAM_TL, FAM_AMVIB = 0x01, 0x08, 0x10, 0x20, 0x40, 0x80
 FAM_ALL = 0xF9
 FAMILY_WRITES = (
-    (FAM_AMVIB, ((0x20, 3), (0x23, 9))),      # AM/VIB/EG/KSR/MULT
-    (FAM_TL, ((0x40, 4), (0x43, 10))),        # KSL/TL
     (FAM_EG, ((0x60, 5), (0x63, 11),          # attack/decay
               (0x80, 6), (0x83, 12))),        # sustain/release
     (FAM_WAVE, ((0xE0, 7), (0xE3, 13))),      # waveform select
 )
+
+# Engine AIL sequence volume default: the image's DAT_00108d94. The capture ran
+# below it; the test drives both streams with the steady-channel value (0x54).
+SEQ_VOL_DEFAULT = 0x7F
+
+# The driver's key-on velocity-level table (SBPRO2.MDI 0xc27), indexed by
+# velocity >> 3; stored per voice at note-on and folded into the TL level.
+VEL_LEVEL = (0x52, 0x55, 0x58, 0x5B, 0x5E, 0x61, 0x64, 0x67,
+             0x6A, 0x6D, 0x70, 0x73, 0x76, 0x79, 0x7C, 0x7F)
+
+
+def scale7(a, b):
+    """One stage of the driver's 0x31b0 staircase: `(a*b*2) >> 8`, then +1 when
+    the shifted product is non-zero (the `cmp al,1; sbb al,0xff` idiom)."""
+    t = ((a * b) << 1) >> 8
+    return 0 if t == 0 else t + 1
+
 
 # The driver's 0x7fd fine-step fnum table: 12 semitones x 16 steps, signed.
 PITCH_TBL_OFFSET = 0x7FD
@@ -313,13 +331,14 @@ class Sequencer:
 
     FREE = -1
 
-    def __init__(self, evnt, patches, pitch_tbl=None):
+    def __init__(self, evnt, patches, pitch_tbl=None, seqvol=SEQ_VOL_DEFAULT):
         self.tokens = decode_events(evnt)
         self.patches = patches
         self.pitch_tbl = pitch_tbl if pitch_tbl is not None else computed_pitch_table()
         self.out = []
         self.note_log = []          # (tick, midi, note) when track_notes is set
         self.track_notes = False
+        self.seqvol_init = seqvol & 0x7F   # engine input; survives start()
         self.reset()
 
     def reset(self):
@@ -329,18 +348,20 @@ class Sequencer:
         self.playing = False
         self.age = 0
         self.next = OPL_CHANNELS - 1     # driver's reset cursor 0xffff
+        self.seqvol = self.seqvol_init
         self.voice = [{'note': self.FREE} for _ in range(OPL_CHANNELS)]
         self.program = [0] * 16
         self.bank = [0] * 16
         # Per-MIDI-channel controller state (the driver's 0x18f9/0x1909/0x1919/
         # 0x1929/0x1939/0x1949/0x1959/0x1969 arrays). The wheel opens centred and
-        # expression full; the rest are BSS zero.
+        # expression full; the rest are BSS zero except pan, which the capture's
+        # tick-0 C0 = 0x34 pins to [0x1c, 99] (mid-centre 0x40 is the choice).
         self.wheel_lsb = [0] * 16
         self.wheel_msb = [0x40] * 16
         self.bend_scale = [0] * 16
         self.volume = [0] * 16
         self.expression = [0x7F] * 16
-        self.pan = [0] * 16
+        self.pan = [0x40] * 16
         self.mod = [0] * 16
         self.sustain = [0] * 16
 
@@ -384,22 +405,47 @@ class Sequencer:
         self.next = victim
         return victim
 
+    def _operator_tl(self, patch_tl, gate_bit, ch, v):
+        """One operator's 0x40 byte (SBPRO2.MDI 0x346a-0x34d3): the inverted
+        attenuation in bits 0-5, the patch's KSL bits in 6-7. The channel level
+        scales the attenuation only when the operator's gate bit is set."""
+        att = (~patch_tl) & 0x3F
+        if gate_bit:
+            level = scale7(scale7((self.seqvol * self.volume[ch]) // 0x7F,
+                                  self.expression[ch]),
+                           self.voice[v]['level'])
+            att = (att * level) // 0x7F
+        return ((~att) & 0x3F) | (patch_tl & 0xC0)
+
     def apply(self, v, mask):
         """Re-apply the register families selected by `mask` from the voice's
         cached patch, mirroring fam_apply (SBPRO2.MDI 0x3184)."""
         p = self.voice[v].get('patch')
         base = OPL_SLOT[v]
+        ch = self.voice[v].get('midi', 0)
         if p is not None:
+            if mask & FAM_AMVIB:
+                # Controller 1 >= 0x40 ORs the 0x40 (AM) bit into both 0x20
+                # bytes; the patch bits are otherwise verbatim.
+                am = 0x40 if self.mod[ch] >= 0x40 else 0
+                self.write(0x20 + base, p[3] | am)
+                self.write(0x23 + base, p[9] | am)
+            if mask & FAM_TL:
+                # Gate bit 0 = modulator, bit 1 = carrier; the normal-voice
+                # gate byte is (p[8] & 1) | 2, so the carrier is always gated.
+                self.write(0x40 + base, self._operator_tl(p[4], p[8] & 1, ch, v))
+                self.write(0x43 + base, self._operator_tl(p[10], 2, ch, v))
             for bit, writes in FAMILY_WRITES:
                 if mask & bit:
                     for reg, i in writes:
                         self.write(reg + base, p[i])
             if mask & FAM_CONN:
-                self.write(ch_reg(v, 0xC0), p[8] | 0x30)
+                pan = self.pan[ch]
+                bits = 0x20 if pan < 0x1C else 0x10 if pan > 99 else 0x30
+                self.write(ch_reg(v, 0xC0), (p[8] & 0x0F) | bits)
         if mask & FAM_FREQ:
             # 0x35fa reads the wheel from the voice's own MIDI channel, so a
             # key-on uses the live wheel just as a controller re-apply does.
-            ch = self.voice[v].get('midi', 0)
             bend = self.channel_bend(ch) if 0 <= ch < 16 else 0
             block, val = self.block_fnum(self.voice[v]['index'], bend)
             b0 = (block << 2) | ((val >> 8) & 0x03)
@@ -491,7 +537,8 @@ class Sequencer:
             idx = p[2]
         idx = max(0, min(idx, 127))
         self.voice[v] = {'midi': midi, 'note': note, 'release': dur,
-                         'age': self.age, 'b0': 0, 'patch': p, 'index': idx}
+                         'age': self.age, 'b0': 0, 'patch': p, 'index': idx,
+                         'level': VEL_LEVEL[(vel >> 3) & 0x0F]}
         self.age += 1
         self.apply(v, FAM_ALL)
 
@@ -690,6 +737,7 @@ def main(argv):
 
     music = None
     patches_path = None
+    seqvol = SEQ_VOL_DEFAULT
     info = False
     i = 0
     while i < len(argv):
@@ -698,6 +746,16 @@ def main(argv):
             pass
         elif a == '--info':
             info = True
+        elif a == '--seqvol':
+            if i + 1 >= len(argv):
+                print('--seqvol needs a value', file=sys.stderr)
+                return 2
+            i += 1
+            try:
+                seqvol = int(argv[i], 0)
+            except ValueError:
+                print('--seqvol value is not an integer', file=sys.stderr)
+                return 2
         elif a == '--patches':
             if i + 1 >= len(argv):
                 print('--patches needs a path', file=sys.stderr)
@@ -711,8 +769,8 @@ def main(argv):
             music = a
         i += 1
     if music is None:
-        print('usage: opl_seq.py <music> [--trace|--info] [--patches PATH]',
-              file=sys.stderr)
+        print('usage: opl_seq.py <music> [--trace|--info] [--patches PATH] '
+              '[--seqvol N]', file=sys.stderr)
         return 2
     if patches_path is None:
         patches_path = os.path.join(os.path.dirname(os.path.abspath(music)), 'FAT.OPL')
@@ -733,7 +791,7 @@ def main(argv):
         print('SBPRO2.MDI pitch table missing beside %s' % music, file=sys.stderr)
         return 1
 
-    seq = Sequencer(evnt, patches, pitch_tbl)
+    seq = Sequencer(evnt, patches, pitch_tbl, seqvol=seqvol)
     events = seq.run(100000)
     if info:
         cmd_info(music, patches_path, evnt, events)

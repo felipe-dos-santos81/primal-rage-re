@@ -33,6 +33,14 @@
 #define FAM_AMVIB 0x80
 #define FAM_ALL   (FAM_FREQ | FAM_CONN | FAM_WAVE | FAM_EG | FAM_TL | FAM_AMVIB)
 
+/* PORT: the driver's key-on velocity-level table (SBPRO2.MDI 0xc27), indexed
+ * by the MIDI velocity >> 3. Stored on the voice as [v+0x1511] at note-on and
+ * folded into the TL channel level (0x31b8). */
+static const u8 SEQ_VEL_LEVEL[16] = {
+    0x52, 0x55, 0x58, 0x5b, 0x5e, 0x61, 0x64, 0x67,
+    0x6a, 0x6d, 0x70, 0x73, 0x76, 0x79, 0x7c, 0x7f,
+};
+
 /* PORT: operator register offset for each OPL3 channel, including the second
  * register set's 0x100 (SBPRO2.MDI 0xc37 -> 0xc5b/0xc7f: channels 0-8 are
  * {0,1,2,8,9,10,16,17,18}, channels 9-17 repeat them in bank 1; op2 is +3). */
@@ -55,6 +63,7 @@ typedef struct {
     u32 release;       /* ticks left before auto key-off */
     u32 age;           /* allocation order, for stealing */
     u8 b0;             /* 0xB0 value without the key bit */
+    u8 level;          /* key-on velocity level [v+0x1511], from 0xc27 */
     const u8 *patch;   /* cached patch payload, for controller re-applies */
     int index;         /* cached fnum table index (note+base / base) */
 } seq_voice;
@@ -68,6 +77,7 @@ static struct {
     int playing;
     u32 age;
     u32 next;          /* rotation cursor: the last slot tried (driver 0xffff) */
+    u8 seqvol;         /* AIL sequence volume (engine input), 0..0x7f */
     seq_voice voice[SEQ_OPL_CHANNELS];
     u8 program[SEQ_MIDI_CHANNELS];
     u8 bank[SEQ_MIDI_CHANNELS];
@@ -85,8 +95,10 @@ static struct {
 } S = {
     /* Voices start free, so the first halt() has nothing to key off and
      * seq_active_track() is 0 before the first load. `next` seeds the driver's
-     * 0xffff rotation cursor: the first trial wraps to slot 0. */
+     * 0xffff rotation cursor: the first trial wraps to slot 0. `seqvol` opens at
+     * the image's AIL sequence-volume default (DAT_00108d94, 0x7f). */
     .next = SEQ_OPL_CHANNELS - 1,
+    .seqvol = 0x7f,
     .voice = {
         [0] = { .note = SEQ_NOTE_FREE }, [1] = { .note = SEQ_NOTE_FREE },
         [2] = { .note = SEQ_NOTE_FREE }, [3] = { .note = SEQ_NOTE_FREE },
@@ -125,6 +137,16 @@ static int read_vlq(u32 *out)
     return 0;
 }
 
+/* PORT: the driver's `local_a` staircase (SBPRO2.MDI 0x31b0-0x31c2): each
+ * stage computes `(a*b*2) >> 8` and then the `cmp al,1; sbb al,0xff` idiom,
+ * i.e. `+1` when the shifted product is non-zero. Used twice for the channel
+ * level and again by the per-operator TL fold. */
+static u8 scale7(u8 a, u8 b)
+{
+    u32 t = ((u32)a * b * 2u) >> 8;
+    return (u8)(t == 0 ? 0 : t + 1);
+}
+
 /* Applies the register families selected by `mask` to an OPL channel, from
  * the voice's cached patch payload. Payload layout (verified, FORMATS.md):
  * [3..7] = modulator 0x20/0x40/0x60/0x80/0xE0, [8] = 0xC0, [9..13] = carrier
@@ -133,24 +155,47 @@ static int read_vlq(u32 *out)
  * the full 0x20..0xC0 preamble before the 0xA0/0xB0 frequency pair.
  *
  * The driver ORs 0x30 into 0xC0 (OPL3 left/right output bits) in the capture;
- * kept here. KNOWN DIVERGENCE: the driver also attenuates the carrier TL
- * (p[10]) by velocity, but its input V is engine/config-supplied and not
- * derivable from the driver, so this port applies the patch TL verbatim. See
- * docs/superpowers/plans/2026-09-18-opl-velocity-tl.md and port/spec/audio.md
- * "Known capture divergences". */
+ * kept here, with the pan controller selecting between 0x30/0x20/0x10. */
 static void fam_apply(int opl_ch, u8 mask)
 {
     const u8 *p = S.voice[opl_ch].patch;
     u16 base = OPL_SLOT[opl_ch];
+    int midi = S.voice[opl_ch].midi;
+    int known = midi >= 0 && midi < SEQ_MIDI_CHANNELS;
+    u8 ch = (u8)midi;
 
     if (p != NULL) {
         if (mask & FAM_AMVIB) {
-            opl_write((u16)(0x20 + base), p[3]);
-            opl_write((u16)(0x23 + base), p[9]);
+            /* PORT: SBPRO2.MDI 0x3409-0x345f. Controller 1 >= 0x40 ORs bit
+             * 0x40 into both 0x20 bytes; the patch bits are otherwise verbatim. */
+            u8 am = (known && S.mod[ch] >= 0x40) ? 0x40 : 0;
+            opl_write((u16)(0x20 + base), (u8)(p[3] | am));
+            opl_write((u16)(0x23 + base), (u8)(p[9] | am));
         }
         if (mask & FAM_TL) {
-            opl_write((u16)(0x40 + base), p[4]);
-            opl_write((u16)(0x43 + base), p[10]);
+            /* PORT: SBPRO2.MDI 0x319a-0x31c4 (channel level) and
+             * 0x346a-0x34d3 (per-operator fold). The engine scales a received
+             * CC7 by the AIL sequence volume before dispatch (prage.c:49121);
+             * `level` then folds in the channel expression and the per-voice
+             * key-on velocity level with the driver's staircase. Gate bit 0 is
+             * the modulator, bit 1 the carrier; the normal-voice gate byte
+             * [v+0x1629] is (p[8]&1)|2, so the carrier is always gated. Every
+             * shipped payload opens 0x000e (type 0), so the type-3 gate
+             * [v+0x18e5] is not reachable and is not modelled. */
+            u8 cc7 = known ? (u8)(((u32)S.seqvol * S.volume[ch]) / 0x7f) : 0;
+            u8 expr = known ? S.expression[ch] : 0x7f;
+            u8 level = scale7(scale7(cc7, expr), S.voice[opl_ch].level);
+            u8 gate = (u8)((p[8] & 1) | 2);
+            u8 att;
+
+            att = (u8)((~p[4]) & 0x3f);
+            if (gate & 1)
+                att = (u8)(((u32)att * level) / 0x7f);
+            opl_write((u16)(0x40 + base), (u8)(((~att) & 0x3f) | (p[4] & 0xc0)));
+            att = (u8)((~p[10]) & 0x3f);
+            if (gate & 2)
+                att = (u8)(((u32)att * level) / 0x7f);
+            opl_write((u16)(0x43 + base), (u8)(((~att) & 0x3f) | (p[10] & 0xc0)));
         }
         if (mask & FAM_EG) {
             opl_write((u16)(0x60 + base), p[5]);
@@ -162,8 +207,13 @@ static void fam_apply(int opl_ch, u8 mask)
             opl_write((u16)(0xE0 + base), p[7]);
             opl_write((u16)(0xE3 + base), p[13]);
         }
-        if (mask & FAM_CONN)
-            opl_write(ch_reg(opl_ch, 0xC0), (u8)(p[8] | 0x30));
+        if (mask & FAM_CONN) {
+            /* PORT: SBPRO2.MDI 0x3578-0x35bf. Base 0x30; pan < 0x1c -> 0x20,
+             * pan > 99 -> 0x10, else 0x30. */
+            u8 pan = known ? S.pan[ch] : 0x40;
+            u8 bits = (pan < 0x1c) ? 0x20 : (pan > 99 ? 0x10 : 0x30);
+            opl_write(ch_reg(opl_ch, 0xC0), (u8)((p[8] & 0x0f) | bits));
+        }
     }
     if (mask & FAM_FREQ) {
         u8 a0, b0;
@@ -293,7 +343,6 @@ static void key_on(int midi, int note, int vel, u32 dur)
     u16 key;
     int idx;
     int v;
-    (void)vel;
 
     if (midi < 0 || midi >= SEQ_MIDI_CHANNELS || note < 0 || note > 127)
         return;
@@ -327,6 +376,7 @@ static void key_on(int midi, int note, int vel, u32 dur)
     S.voice[v].index = idx;
     S.voice[v].midi = midi;
     S.voice[v].note = note;
+    S.voice[v].level = SEQ_VEL_LEVEL[(vel >> 3) & 0x0f];
     S.voice[v].release = dur;
     S.voice[v].age = ++S.age;
 
@@ -493,6 +543,18 @@ int seq_load(const u8 *data, u32 len)
     return 1;
 }
 
+/* PORT: engine input — the AIL sequence volume. The original's sequencer scales
+ * a received CC7 by this before handing it to the driver (prage.c:49121:
+ * `param_4 = (seq[0xd] * param_4) / 0x7f`), and the driver's TL law consumes
+ * that scaled value. It is not a driver constant: DAT_00108d94 seeds it at
+ * sequence setup and AIL_set_sequence_volume sets it (flow.c's music volume).
+ * Clamped to 0..0x7f; persists across seq_load/seq_start (it is engine state,
+ * not sequence data). */
+void seq_set_sequence_volume(u8 volume)
+{
+    S.seqvol = volume > 0x7f ? 0x7f : volume;
+}
+
 void seq_start(void)
 {
     if (!S.loaded)
@@ -509,6 +571,7 @@ void seq_start(void)
         S.voice[v].release = 0;
         S.voice[v].age = 0;
         S.voice[v].b0 = 0;
+        S.voice[v].level = 0;
         S.voice[v].patch = NULL;
         S.voice[v].index = 0;
     }
@@ -520,7 +583,13 @@ void seq_start(void)
         S.bend_scale[c] = 0;
         S.volume[c] = 0;
         S.expression[c] = 0x7f;
-        S.pan[c] = 0;
+        /* PORT: the driver's reset (0x3cc0) does not touch pan, and BSS-zero
+         * would give 0x24, but the capture's tick-0 0xC0 = 0x34 needs
+         * [ch+0x1919] in [0x1c, 99]. The exact default is not readable from the
+         * DRO; 0x40 (MIDI centre) is a documented choice inside that evidenced
+         * band and yields the captured 0x30 bits. The title also sends CC10 =
+         * 0x40 on every channel at tick 0, so the default is not exercised. */
+        S.pan[c] = 0x40;
         S.mod[c] = 0;
         S.sustain[c] = 0;
     }
