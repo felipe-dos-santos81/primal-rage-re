@@ -104,7 +104,7 @@ Real functions already ported and reusable: `0x2C3FC`, `0x4F1E4`, `0x2BAF4`, `0x
 
 Entirely uncharacterized, and derived in this cycle before any porting:
 
-* `0x2F4BC` — called 8, 11 and 13 times in state 4's phases 0/1/2.
+* `0x2F4BC` — called 8, 12 and 13 times in state 4's phases 0/1/2.
 * `0x12658` — called once at the end of state 3 phase 0.
 * `0x1EA08` — called by state 5.
 * `0x29B74` / `0x41578` — the effect call sites (they walk the front-end list with
@@ -122,7 +122,7 @@ value is transcribed from the decompiler without checking the bytes.
   spawn into `DS_000F0A40`; then `0x12658`. Later phases do timing arithmetic on
   `DS_00107A38`/`DS_00107A44` and hand to state 9.
 * **State 4** — phases 0/1/2 each perform match setup (`0x2C3FC`, `0x4F1E4`, `0x2BAF4`,
-  `0x2C06C`, `0x2AE14`, `N× 0x2F4BC` — 8, 11, 13), set the 180-frame timer
+  `0x2C06C`, `0x2AE14`, `N× 0x2F4BC` — 8, 12, 13), set the 180-frame timer
   `DS_000F0A76 = 0xB4` and the continuation phase in `DS_000F0A74`, then enter delay
   phase 4. Phase 4 counts the timer down and jumps to the continuation phase. Phase 3
   hands to state 9 with `DS_000F0A6C = 0`.
