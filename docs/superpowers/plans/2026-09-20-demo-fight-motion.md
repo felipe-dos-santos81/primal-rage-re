@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Port the attract demo fight's motion and render path — states 6 and 7 of the original's state machine — so the port's demo advances from the front-end into a visible, moving CPU-vs-CPU fight, with a report-only pixel oracle that proves the demo window clean up to the frame the original first lands a hit.
+**Goal:** Port the attract demo fight's motion and render path — states 6 and 7 of the original's state machine — so the port's demo advances from the front-end into a visible, moving CPU-vs-CPU fight, with a **report-only** pixel oracle over a provisional demo window. The window's declared bound was "clean up to the frame the original first lands a hit"; the measurement refuted it (0 clean; the first unexplained frame is the state-9 hold's globe render, before state 6 — see Amendment 5 and `port/spec/game_flow.md`). Cycle 2 owns the window's closure and its re-anchoring.
 
 **Architecture:** Three new modules carry the fight: `camera.c` (the fight camera state machine and the 16.16 projection), `fighter.c` (per-fighter think/AI and, in cycle 2, hit resolution), and `fight.c` (the arena frame and the HUD/health path). `flow.c` wires states 6 and 7 into the existing `game_state_step` switch and gains the `DS_00104B15` tail in `game_frame` minus its combat calls. The existing capture and oracle machinery is reused: one `PR_FRONTEND_DUMP` run, a second compare window over it as its own report-only ladder target, and the demo's determinism pinned in the existing `tools/title_pin.py` table.
 
@@ -55,7 +55,7 @@ Two boundaries verified while the spec was written, both of which this plan depe
 
 ## Amendments
 
-Two changes were made after execution began; the numbering below reflects them.
+Five changes were made after execution began; the numbering below reflects them.
 
 1. **A new Task 6 was inserted and the old Tasks 6–7 became 7–8.** Task 5's review
    confirmed, and the reviewer independently verified against the raw, that the demo
@@ -97,6 +97,32 @@ Two changes were made after execution began; the numbering below reflects them.
    state 6 (`0x11B23`). The human ruled that Task 8 absorbs the generator and the
    `0x36E2C` gate the port also skips, rather than splitting the work. Amendment 3's
    `cm=0` measurement is therefore a *symptom*, not the cause.
+5. **The declared bound is refuted, and the report-only window is
+   non-discriminating by construction.** Task 9's measurement (recorded in
+   `port/spec/game_flow.md`, `README.md` and the design spec) found the demo
+   window reports **0 clean / ~2942 unexplained**, and its first unexplained frame
+   is **capture 811 (raw 3421)**, inside the **state-9 hold's globe render** — not
+   the first landing hit this plan's Goal promised. The raw evidence: `0x11D04`'s
+   case-9 arm draws nothing (it only decrements `DS_000F0A6A` and, at zero,
+   restores `DS_000F0A64 = DS_000F0A6C`), and the state-9 handoff at
+   `0x12636`/`0x12645` matches `port/src/game/flow.c:668,670` (state 9, timer
+   `0xF0`); the capture's demo fight does not begin until capture 839 (836 is
+   all-black, 837 the `- LOADING -` screen), 28 capture frames after the
+   divergence. This amendment supersedes the Goal above, Task 9 Step 5's "first
+   landing hit" clause, and the Gate at the end of this plan.
+
+   The window is also **structurally incapable of showing cycle-1 content**, which
+   is a plan flaw, not an implementation flaw. `title_compare.py --demo` defines
+   the window as the capture region after the front-end window; that window's last
+   exhibited port frame is **258**, inside the state-9 hold, so the demo window
+   opens on state 9 and diverges at its first frame — before state 6. Re-anchoring
+   it to the state-6/7 entry (**dumped 481**) was measured and does **not** restore
+   discriminating power: no capture frame after 811 exhibits any port frame in
+   [481..1380] (**0/900 exhibited**), because the port's state-7 arena render is
+   itself a cycle-2 gap (the broken globe background, the `0x3C88C` draw helper
+   §7.7). The artifact proves only that the front-end window is clean and that the
+   demo window's divergence is measured and named; cycle 2 must re-anchor the
+   window once the arena render lands.
 
 ---
 
@@ -640,7 +666,7 @@ git add tools/title_pin.py Makefile port/spec/game_flow.md README.md docs/superp
 git commit -m "tests: pin the demo's determinism and record its bound"
 ```
 
-**Gate for this cycle:** the demo window reports clean from its start to the measured divergence frame, that frame is the first landing hit, the pins are all determinism fixes, every helper has mutation-proof unit tests, and every unported piece is a named gap. Cycle 2 then implements combat and retires the bound.
+**Gate for this cycle — unmet by construction (see Amendment 5).** The original gate required the demo window clean from its start to the measured divergence frame *and* that frame to be the first landing hit. The measurement refuted both: the window reports 0 clean and its first unexplained frame is capture 811, the state-9 hold's globe render, before state 6 and before the demo fight begins at capture 839. What cycle 1 does satisfy: the pins are all determinism fixes, every helper has mutation-proof unit tests, every unported piece is a named gap, and the enforced front-end gate stays `0 unexplained`. Cycle 2 implements combat, re-anchors the window, and retires the bound.
 
 ---
 

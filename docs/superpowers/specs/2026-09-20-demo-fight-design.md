@@ -174,7 +174,9 @@ control returns to the attract loop.
 
 ## Verification
 
-Reuse the existing capture and oracle machinery; take no new capture.
+Reuse the existing capture and oracle machinery. Task 9's fix round did
+re-capture `frontend` after pinning the two state-6 character picks (a pin changes
+the pinned original's own output); no other capture was taken.
 
 - **One dump run, two windows.** `PR_FRONTEND_DUMP` runs once with the frame count
   raised so the dump covers the state-6 entry plus the demo's up-to-900 frames
@@ -189,7 +191,15 @@ Reuse the existing capture and oracle machinery; take no new capture.
   811), and the declared expectation is *clean from the window start up to that
   frame* — which the measurement refutes, since the frame is the window's first.
   Cycle 2 closes the remainder and the same target becomes a ladder gate.
-  The front-end chain shipped exactly this shape one cycle ago.
+  The front-end chain shipped exactly this shape one cycle ago. The window is
+  also **non-discriminating by construction**: it opens at the front-end window's
+  end (last exhibited port frame 258), inside the state-9 hold and before state 6,
+  so it would read identically for correct or entirely broken motion tasks.
+  Re-anchoring the port side to the state-6/7 entry (dumped 481) was measured and
+  does not restore discrimination — no capture frame after 811 exhibits any port
+  frame in [481..1380] (0/900 exhibited), because the port's state-7 arena render
+  is itself a cycle-2 gap. Cycle 2 must re-anchor the window once the arena render
+  lands.
 - **Pins.** The demo's non-determinism goes in the existing `tools/title_pin.py`
   `PATCHES` table: the two character picks through `0x41350`, plus any per-frame
   AI draw that proves unpinned. The table keeps its fail-closed byte verification.
@@ -203,6 +213,16 @@ Reuse the existing capture and oracle machinery; take no new capture.
   not match the port's. The state-9 hold's divergence is a render gap with no
   pinnable site, and the per-committed-move generator draw at `0x47063` is not
   constant-pinnable (cycle 2). See the status note and `port/spec/game_flow.md`.
+  **Two consequences of that pin shape are explicit.** (a) Because the pins force
+  the reference's two picks to the port's own LCG values (`4`, `4`), **no oracle
+  result can support the claim that the port's state-6 RNG handling is faithful** —
+  the reference was made to agree with the port. (b) The pin replaces each
+  `call 0x5D7DC` with `mov eax,imm32`, which does **not** advance the reference
+  LCG, while the port's `rng_next(7)`/`rng_next(6)` (`port/src/game/flow.c:783,798`)
+  do: the pinned capture's stream is **offset from the port's by two draws from
+  state 6 onward**. Neither regresses cycle 1 (the window diverges at capture 811,
+  before state 6), but cycle 2 must resolve the offset before reusing this
+  capture. See `tools/title_pin.py:14-21,38-39`.
 - **Determinism.** The two-run `PR_FRONTEND_DET` gate extends over the demo
   window.
 - **Unit proofs.** `0x4FB20` exhaustively as pure geometry; the `0x17FA0`
@@ -226,7 +246,11 @@ Reuse the existing capture and oracle machinery; take no new capture.
    Cycle 1's finding sharpens this: the generator's `rng(0x64)` at `0x47063`
    executes once per committed move with a different value each time, so the
    constant-replacement pin shape cannot align it; cycle 2 must settle how the
-   demo's stream is kept in step.
+   demo's stream is kept in step. Compounding it, the two state-6 pick pins are
+   `call`→`mov` replacements, so the reference LCG does not advance for them while
+   the port's `rng_next(7)`/`rng_next(6)` do — the pinned capture's stream is
+   offset from the port's by two draws from state 6 onward. Cycle 2 must resolve
+   both the per-move draw and this two-draw offset before reusing the capture.
 2. **`0x49C78` is 2492 bytes** with an unexplored callee set, the largest single
    unknown in the slice. It gets its own derivation before anyone ports it, and
    its unpinnable parts become named gaps.

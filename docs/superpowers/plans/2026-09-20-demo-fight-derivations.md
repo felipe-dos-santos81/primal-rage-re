@@ -1307,9 +1307,12 @@ Task 5 leaves it as a `/* PORT: */` skip; cycle 2 owns it.
     `0x3B080`, `0x3A95C`, `0x188DC`, `0x39834`, `0x235C4`, `0x36D20`, `0x2BD44`.**
     The think driver's branch targets are listed with their call addresses; their
     interiors are gaps.
-13. **`0x1D890` (375 B) HUD spawn.** Whether it preserves `DL` (the `DS_00104B1B`
-    value) is unverified; if it clobbers `DL` the stored byte differs. Evidence:
-    `0x11B1E`, `0x11B23`.
+13. **`0x1D890` HUD spawn `DL` preservation — retracted; not a gap.** The raw
+    `0x1D890` preserves `DL` across its body (`push edx` … `pop edx`), so the
+    `DS_00104B1B` write at `0x11B23` stores the caller's constant; the port
+    depends on exactly that (`port/src/game/flow.c:805-806`). Task 1's ruling
+    already recorded it, and the earlier "unverified" line is withdrawn.
+    Evidence: `0x1D890`'s `push/pop edx`, `0x11B1E`, `0x11B23`.
 14. **`0x11BF8`** is a second timer handler with no direct caller or jump-table
     reference in the fixed image; recorded as dead/duplicate, not wired.
 15. **`0x17FA0`'s `0x1A570` interaction.** `0x1A570(side)` returns

@@ -653,6 +653,17 @@ reports and exits 0.
   exhibited**.
 * **First unexplained captured frame 811 (raw 3421)** — the first frame after
   the front-end window.
+* **The window is non-discriminating by construction (a plan flaw, not an
+  implementation flaw).** `--demo` defines the window as the capture region after
+  the front-end window; that window's last exhibited port frame is 258, inside
+  this state-9 hold, so the demo window opens on state 9 and diverges at its
+  **first** frame — before state 6. It would read identically for correct or
+  entirely broken Tasks 2–8. Re-anchoring the port side to the state-6/7 entry
+  (dumped 481) was measured and does **not** restore discrimination: no capture
+  frame after 811 exhibits any port frame in [481..1380] (**0/900 exhibited**),
+  because the port's state-7 arena render is itself a cycle-2 gap (the broken
+  globe background, `0x3C88C` §7.7). Cycle 2 must re-anchor the window once the
+  arena render lands.
 
 Cycle 1's declared bound expected this frame to be the original's first landing
 hit (the cycle split gives cycle 2 collision and damage). Task 9's verification
@@ -712,7 +723,18 @@ a site:
 * The generator's `rng(0x64)` is **not** pinned: it executes once per committed
   move with a different value each time, so the `mov eax, imm32`
   constant-replacement shape cannot align it. That is a cycle-2 question (how the
-  demo's stream is kept in step), recorded here rather than fitted.
+     demo's stream is kept in step), recorded here rather than fitted.
+
+**Two consequences of the pin shape, stated plainly.** (a) The pins force the
+reference's two state-6 picks to the port's own LCG values (`4`, `4`), so **no
+oracle result can support the claim that the port's state-6 RNG handling is
+faithful** — the reference was made to agree with the port, and the capture was
+re-captured to match. (b) The pin replaces each `call 0x5D7DC` with `mov eax,imm32`,
+which does **not** advance the reference LCG, while the port's `rng_next(7)` /
+`rng_next(6)` (`port/src/game/flow.c:783,798`) do: the pinned capture's stream is
+**offset from the port's by two draws from state 6 onward**. Neither regresses
+cycle 1 (the window diverges at capture 811, before state 6), but cycle 2 must
+resolve the offset before reusing this capture. `tools/title_pin.py:14-21,38-39`.
 
 The demo window therefore cannot converge in cycle 1; cycle 2 owns it: collision
 and damage (`0x3BB90`, `0x4FB20`, `0x3BAEC`, `0x3B9D8`), the `0x3CF38` hit chain,
