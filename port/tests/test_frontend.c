@@ -439,8 +439,9 @@ int test_frontend(void)
      * 1970, where the state drops to 0 and dumping stops. So the state>=3 dump
      * run is loop frames 589..1969, i.e. dumped frames 0..1380 (1381 frames); the
      * 1400 cap covers it and the 2000-frame loop clears the 1970 exit. The
-     * front-end window itself is unchanged (it ends at capture frame 813, inside
-     * state 3). */
+     * front-end window is now distinct [557..810] (254 frames; the earlier
+     * [557..813] moved with Task 9's re-capture), and it ends inside the state-9
+     * hold — its last exhibited port frame is 258. */
     {
         const char *dir = getenv("PR_GAME_DIR");
         if (dir == NULL || dir[0] == '\0') dir = "data/game/C";

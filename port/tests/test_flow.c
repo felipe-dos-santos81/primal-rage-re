@@ -128,7 +128,7 @@ static void check_title_overlay(void)
  * DS_000F0A64 = DS_000F0A6C (the state-6 entry); it draws no RNG (verified
  * against the fixed-up image at 0x11D04's case-9 arm). That matters to the demo
  * window: the port's RNG stream position at state 6 is the raw's only if state 9
- * consumes no draw, and the first unexplained demo frame (capture 814) is inside
+ * consumes no draw, and the first unexplained demo frame (capture 811) is inside
  * this hold, so a draw here would be a determinism site and not a render gap.
  * The two LCG-state assertions fail if case 9 ever draws. */
 static void check_state9_countdown(void)
