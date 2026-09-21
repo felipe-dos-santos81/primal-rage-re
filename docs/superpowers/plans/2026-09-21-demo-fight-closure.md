@@ -4,7 +4,7 @@
 
 **Goal:** Make the attract demo fight play end-to-end and pixel-faithfully, so `make demo-oracle` reports the demo window with **0 unexplained frames** — from its opening frame through the 900-frame fight, the timer exit and the continue sequence.
 
-**Architecture:** No new modules unless Task 1's derivation proves a genuinely new subsystem exists; the hit chain extends `fight.c` (the arena frame and HUD/health path) and `fighter.c` (per-fighter damage and reactions), and the globe render extends whichever existing pass already produces its display list. Work is sequenced derivation-first, then **in frame order** — state 9's globe, the state-7 arena render, the hit chain, the timer exit and continue sequence — so the oracle's *first-unexplained frame* advances monotonically and every task is independently verifiable. The state-6 RNG pins are replaced by a source-level pin before any frame comparison past the character picks, so exactly one reference change happens and every later measurement uses an aligned stream.
+**Architecture:** No new modules unless Task 1's derivation proves a genuinely new subsystem exists; the hit chain extends `fight.c` (the arena frame and HUD/health path) and `fighter.c` (per-fighter reactions), and the globe render extends whichever existing pass already produces its display list. Work is sequenced derivation-first, then **in frame order** — the projection, the hitbox machine and the hit chain, the timer exit — so the oracle's *first-unexplained frame* advances monotonically and every task is independently verifiable. The state-6 RNG divergence is fixed at its source before any frame comparison past the character picks, so exactly one reference change happens and every later measurement uses an aligned stream.
 
 **Tech Stack:** C99, CMake, SDL3 (host layer only), Python 3 for the oracle tools, DOSBox-X for captures. The original is `data/game/C/PRAGE.EXE` (DOS/4GW bound LE, 32-bit); its decompilation is `port/decomp/prage.c`.
 
@@ -30,103 +30,69 @@
 - `make verify` must pass at the end of every task whose change can move an oracle.
 - Never `git add -A`. Commit style: `<area>: <what changed>`.
 
+## Amendments
+
+**Amendment 1 — Task 1's raw-wins corrections.** Task 1's derivation (`docs/superpowers/plans/2026-09-21-demo-fight-closure-derivations.md`) corrected several premises of this plan against the raw bytes. Under this project's standing rule the raw wins; the corrections are applied here and recorded there.
+
+1. **The timer exit and the continue sequence are already ported** (§0.3.1, §4). `0x11BCC` and `0x11D04` case 7 are transcribed at `port/src/game/flow.c:1349-1365` and were reached by cycle 1. Only the out-of-scope `0x2C3FC(0x100)` voice is skipped. The old Task 6 shrinks to a unit test pinning the case-7 transition plus the record's statement that the demo loops back to the attract; it is now Task 5.
+2. **`0x3C88C` draws nothing** (§2.2). It is the per-slot attack-frame state machine that **arms the hitboxes the collision chain scans** — not a background. The state-7 "broken globe background" and the state-9 globe are one fix: `DS_00107A54` is never set because the port skipped `0x38730` (called only from `0x20DF4` at `0x20E7F`/`0x20E90`, itself a named gap). Task 3 owns that projection.
+3. **The chain does not touch health** (§0.3.2): no numeric hit-point field is among the bytes it writes. It transitions the reaction state, the stun timers and the hit counters. `fight_health_bars` derives its sprite from the actor's world-Y word, not from the chain.
+4. **`0x3C88C` and the hit chain share `0x3C600`/`0x3C6A8`** (§0.3.3, §3.9) — ported once, in whichever lands first (Task 4 owns them).
+5. **The `0x3CF38` chain is sized at 45 functions / ~8.2 KB transitive closure — 22 new / 2720 B** (§3.7), and it is **RNG-free** (§3.8). A post-hit divergence would live in the `+0x52` handler or `0x39040`, not in the chain.
+6. **Amendment 5 of the cycle-1 plan carried pre-recapture frame numbers** (§9): the demo fight begins at capture **836**, **25** frames after the divergence, not 839/28.
+
+**Amendment 2 — the RNG ruling (human, Option 1: pin the spin).** Task 1 answered the RNG question with **no single pinnable origin**: the seed is deterministic (one store, `0x20C62 = 0xABCD`) but the divergence is the master loop `0x255CC`'s unbounded, host-timed spin, which draws `rng(0x7FFF)` at `0x256B1` and at `0x256D6` inside the spin loop, each iteration advancing the LCG (§5). The constant pins at the two consumption sites (`0x11AAD`/`0x11AE9`) force the picks without advancing the reference's LCG, which is exactly the two-draw offset cycle 1 recorded. The human ruled: **pin the spin** — pin both master-loop draws in the pinned original to a non-advancing `mov eax,0`, and make the port stop drawing there too, so both streams carry only the meaningful draws. Task 2 is re-scoped to this.
+
+**Amendment 3 — Tasks 4 and 5 merge.** The hitbox machine (`0x3C88C`, which arms hitboxes) and the collision chain (`0x3CF38`, which scans them) cannot be split at an oracle boundary: arming alone produces no hit and the chain alone finds nothing armed, so neither half advances the oracle's first-unexplained frame. They land as one task. The cycle is six tasks, not seven.
+
 ## File Structure
 
 | file | responsibility |
 |---|---|
-| `docs/superpowers/plans/2026-09-21-demo-fight-closure-derivations.md` (new) | the raw-byte derivation record (Task 1) — the authoritative source for every later task |
-| `port/src/game/fight.c`, `fight.h` (modify) | the hit chain's entry into the arena frame; the HUD/health path's damage half |
-| `port/src/game/fighter.c`, `fighter.h` (modify) | per-fighter damage, hit reactions and the arena render gap `0x3C88C` |
-| the state-9 globe render's existing owner (Task 1 names it) | the globe render; **no new module** unless Task 1 proves a new subsystem, in which case it says so with the evidence and this table is amended |
-| `port/src/game/flow.c` (modify) | the timer exit and the continue sequence wiring |
-| `tools/title_pin.py` (modify, approved) | the state-6 source pin replacing the two constant pins |
+| `docs/superpowers/plans/2026-09-21-demo-fight-closure-derivations.md` | the raw-byte derivation record (Task 1, done) — the authoritative source for every later task |
+| `tools/title_pin.py` (modify, approved) | the master-loop spin pin replacing the two constant pins |
+| `port/src/game/flow.c` (modify) | the `0x20DF4` reset call site that must call `0x38730`; the port's master loop |
+| `port/src/game/fight.c`, `fight.h` (modify) | the hitbox machine's caller and the hit chain's entry into the arena frame |
+| `port/src/game/fighter.c`, `fighter.h` (modify) | the arming store, the collision/reaction callees |
+| the `0x38730` projection's owner (Task 1 §1.2 names the producer and its display-list path) | the globe projection; **no new module** unless Task 1 proves a new subsystem, in which case this table is amended |
 | `port/tests/test_fight.c`, `port/tests/test_flow.c` (modify) | the cycle's assertions |
-| `port/spec/game_flow.md`, `README.md`, `docs/superpowers/specs/2026-09-21-demo-fight-closure-design.md`, `docs/superpowers/plans/2026-09-20-demo-fight-motion.md` (modify) | the recorded bound, the corrected capture numbers, and the cycle's status |
+| `port/spec/game_flow.md`, `README.md`, `docs/superpowers/specs/2026-09-21-demo-fight-closure-design.md` (modify) | the recorded bound, the corrected capture numbers, the cycle's status |
 
 ---
 
 ### Task 1: Derive the closure cycle
 
-This is the risk-burner: it bounds the `0x3CF38` hit chain before the sequence is committed to, and every later task ports from the record rather than re-deriving. It also corrects two known record errors it re-reads that ground for anyway, and records the think-chain disposition.
-
-**Files:**
-- Create: `docs/superpowers/plans/2026-09-21-demo-fight-closure-derivations.md`
-- Modify: `port/src/game/fighter.c` (the think-chain marker comment only)
-- Modify: `docs/superpowers/plans/2026-09-20-demo-fight-motion.md` (Amendment 5's capture numbers)
-- Modify: `port/spec/game_flow.md` (the front-end window figures)
-
-**Interfaces:**
-- Produces: the record's sections that every later task cites. Each later task names the section supplying its values; **a missing anchor is a Task 1 defect to fix here, not licence to invent a value downstream.**
-
-- [ ] **Step 1: Derive the state-9 globe render**
-
-State 9 is the window's opening state and the current first-unexplained frame. Derive what produces the globe: its producer function, the display-list path it writes, the globals it reads, and the frame at which the port reaches state 9. Record whether the port reaches the state at the right frame with the right values, and which of the two (state entry or render) is wrong — do not assume.
-
-- [ ] **Step 2: Derive the `0x3C88C` gap**
-
-The state-7 arena render is incomplete. Derive exactly what `0x3C88C` contributes, what calls it, and whether the state-7 arena render is otherwise complete. Record the observed symptom (a broken globe) beside the address that explains it.
-
-- [ ] **Step 3: Derive the `0x3CF38` hit chain — and its size**
-
-This is the cycle's largest unknown and the reason this task exists. Derive the full chain from `0x3CF38`: its body, every callee it pulls in that the port lacks, collision and damage arithmetic with widths, the health/`+0x52` transitions it drives, and its reaction-animation path. **Record the size explicitly** (function count and byte count) so the sequence can be re-scoped before Tasks 5 commits to it. Record every RNG call site (`0x5D7DC`) inside the chain with its range argument and its frequency.
-
-- [ ] **Step 4: Derive the timer exit and the continue sequence**
-
-Derive what the 900-frame timer exit runs and what the continue sequence does, with the state transitions and the globals that drive them. Record which of these the port already reaches and which it does not.
-
-- [ ] **Step 5: Derive the RNG nondeterminism's source**
-
-The state-6 character picks are nondeterministic in the original. Derive **where that originates** — the LCG seed source, or an earlier uninitialised or timing-dependent read — with the addresses that prove it. State explicitly whether the nondeterminism has a **single pinnable origin**. If it does not, that is an escalation to the human, not a quiet fallback to a per-site pin.
-
-- [ ] **Step 6: Record what could not be determined**
-
-Any function whose semantics depend on state the port does not model is listed as a named gap with the evidence — never guessed.
-
-- [ ] **Step 7: Give each function its unit-test values**
-
-For every function derived in Steps 1–5, record the concrete input and the exact expected output or global transition its unit test must assert, in the shape `2026-09-20-demo-fight-derivations.md` §8 used. A function whose values cannot be pinned is listed in Step 6 instead.
-
-- [ ] **Step 8: Correct the two known record errors**
-
-Amendment 5 in `docs/superpowers/plans/2026-09-20-demo-fight-motion.md` states the demo fight begins at capture 839, 28 frames after the divergence — that is the **pre-recapture** set. The correct post-recapture values are **836** and **25** (already correct in `README.md:299` and `port/spec/game_flow.md:685`). Correct the plan. Then correct the plan's stale front-end window figures — `[557..813]`/257 appears at five sites; reality is `[557..810]`/254.
-
-- [ ] **Step 9: Mark the think chain unexercised**
-
-Add a `/* PORT: ... */` note in `port/src/game/fighter.c` where the think chain begins, stating that it is unexercised by the demo — every writer of `slot+0x64` in the image sets `0xFF` — and is owned by the interactive match. Record the same in the derivation record, noting that its unit tests are its only evidence.
-
-- [ ] **Step 10: Commit**
-
-```bash
-git add docs/superpowers/plans/2026-09-21-demo-fight-closure-derivations.md docs/superpowers/plans/2026-09-20-demo-fight-motion.md port/spec/game_flow.md port/src/game/fighter.c
-git commit -m "docs: derive the demo fight's closure, the hit chain and the RNG source"
-```
-
-**Gate for this task:** the record states the `0x3CF38` chain's size, answers where the state-6 RNG nondeterminism originates and whether it has a single pinnable origin, and every function Tasks 2–6 name has either unit-test values or a Step 6 gap entry. Nothing downstream starts before this resolves.
+Done. Record: `docs/superpowers/plans/2026-09-21-demo-fight-closure-derivations.md` (commits `9b0fff0..7b694d4`, review clean). Its sections are the value source for Tasks 2–5; **a missing anchor is a Task 1 defect, not licence to invent a value.**
 
 ---
 
-### Task 2: Pin the state-6 RNG nondeterminism at its source
+### Task 2: Pin the master loop's RNG spin — the divergence's source
 
-This runs before any frame comparison past the character picks. The current pins force the reference's draw to the port's value **without advancing the reference's LCG**, so the reference and the port streams are offset by two draws for the rest of the demo; every later task's measurement depends on this being fixed first. Doing it here also means exactly one reference change happens in the cycle.
+This runs before any frame comparison past the character picks. The constant pins at the two consumption sites force the reference's draw **without advancing the reference's LCG**, so the reference and the port streams are offset by two draws for the rest of the demo; every later task's measurement depends on this being fixed first. Per Amendment 2 the fix is at the divergence's source — the master loop's spin — not at the consumption sites. Doing it here also means exactly one reference change happens in the cycle.
 
 **Files:**
 - Modify: `tools/title_pin.py`
+- Modify: `port/src/game/flow.c` (the port's master loop, the port of `0x255CC`)
 - Modify: `port/tests/test_fight.c` (the state-6 pick assertions — cycle 1's `check_state6` lives here)
 - Modify: `port/spec/game_flow.md`, `docs/superpowers/specs/2026-09-21-demo-fight-closure-design.md` (the recorded reference change)
 
 **Interfaces:**
-- Consumes: Task 1 Step 5's answer on the nondeterminism's origin and its single-pinnability.
-- Produces: an aligned reference — the port's own LCG carries every draw after the picks, and the oracle validates the picks instead of being forced to them.
+- Consumes: record §5 (the two master-loop draw sites and the spin) and §7.10 (the reference values).
+- Produces: an aligned reference — both streams carry only the meaningful draws, and the oracle validates the picks instead of being forced to them.
 
-- [ ] **Step 1: Replace the two constant pins with the source pin**
+- [ ] **Step 1: Pin the two master-loop draws**
 
-Remove the two `(0x64901, ..., b804000000)` / `(0x6493D, ..., b804000000)` entries that substitute `mov eax,4` for `call 0x5D7DC`, and add the single pin Task 1 Step 5 identified at the nondeterminism's origin, in the existing `(offset, original_bytes, replacement_bytes)` shape with equal lengths. Keep the table's fail-closed byte verification: it must abort before writing on any mismatch.
+Remove the two `(0x64901, …, b804000000)` / `(0x6493D, …, b804000000)` entries that substitute `mov eax,4` for `call 0x5D7DC` at the consumption sites. Add entries pinning the two master-loop draws — `0x256B1` and `0x256D6`, the `rng(0x7FFF)` sites record §5.2 identifies — to a non-advancing `mov eax,0`, in the existing `(offset, original_bytes, replacement_bytes)` shape with equal lengths. Keep the table's fail-closed byte verification: it must abort before writing on any mismatch.
 
-- [ ] **Step 2: Verify the pin's bytes against the shipped binary**
+- [ ] **Step 2: Make the port stop drawing at the spin**
+
+Establish what the port's master loop does at the spin. If it models the spin and draws RNG there, stop it drawing — that is the port half of the ruling. If it does not model the spin at all (likely: the port presents one frame per `game_frame`), record that fact in the report and in the record, because it means the pin alone aligns the streams and the port needs no change. Do **not** invent a port change to mirror a mechanism the port does not have.
+
+- [ ] **Step 3: Verify the pin's bytes against the shipped binary**
 
 Confirm each `original_bytes` entry byte-matches `data/game/C/PRAGE.EXE` at that offset and that every `rel32` target still resolves where the entry claims. A pin whose bytes do not match the shipped image is a Task 1 defect.
 
-- [ ] **Step 3: Re-capture and re-run the oracles**
+- [ ] **Step 4: Re-capture and re-run the oracles**
 
 A pin changes the pinned original's own output, so the capture is stale the moment the pin lands:
 
@@ -139,49 +105,55 @@ make attract-oracle
 
 Expected: the title and attract **claims** are unchanged (`54 clean, 55 splice, 2 transition, 0 unexplained` / `54 clean, 57 splice, 0 unexplained`; `FIRST DIVERGENCE at capture frame 215`). Report every window index that moved, with the old and new values.
 
-- [ ] **Step 4: Prove the picks are now validated rather than forced**
+- [ ] **Step 5: Prove the streams are aligned, and that the assertion can fail**
 
-Assert that the port's state-6 picks and the reference's agree **without** the constant substitution — the observable is that the reference's LCG state after the picks matches the port's, so the two streams stay in step. Seed the assertion so it can fail, and prove it fails under a mutation of the pin (e.g. reverting to the constant substitution, which reintroduces the offset).
+Assert that the port's state-6 picks and the reference's agree **without** the constant substitution — the observable is that the reference's LCG state after the picks matches the port's, so the two streams stay in step. Seed the assertion so it can fail, and prove it fails under a mutation that reintroduces the offset (e.g. restoring one constant pin, or perturbing the port's draw count).
 
-- [ ] **Step 5: Record the reference change**
+- [ ] **Step 6: Record the reference change**
 
-Record in `port/spec/game_flow.md` and the design spec which capture indices moved and why — the pin fix, not a regression — and that the oracle's claim is the invariant while the indices are derived.
+Record in `port/spec/game_flow.md` and the design spec which capture indices moved and why — the pin fix, not a regression — and that the oracle's claim is the invariant while the indices are derived. Record the pin's two addresses and the port's spin behaviour from Step 2.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add tools/title_pin.py port/spec/game_flow.md docs/superpowers/specs/2026-09-21-demo-fight-closure-design.md port/tests/test_fight.c
-git commit -m "tests: pin the state-6 RNG nondeterminism at its source"
+git add tools/title_pin.py port/src/game/flow.c port/spec/game_flow.md docs/superpowers/specs/2026-09-21-demo-fight-closure-design.md port/tests/test_fight.c
+git commit -m "tests: pin the master loop's RNG spin at its source"
 ```
 
-**Gate for this task:** the reference's stream is aligned with the port's after the state-6 picks, the state-6 picks are validated by the oracle rather than forced, and the moved capture indices are recorded.
+**Gate for this task:** the reference's stream is aligned with the port's after the state-6 picks, the state-6 picks are validated by the oracle rather than forced, the moved capture indices are recorded, and the port's spin behaviour is stated.
 
 ---
 
-### Task 3: The state-9 globe render
+### Task 3: The `0x38730` projection — the state-9 globe and the state-7 background
 
-The window's opening frame. Nothing else can be measured until this frame matches, because the oracle reports the **first** unexplained frame and it currently sits here.
+One fix explains both the window's opening frame and the state-7 arena background (Amendment 1.2). `DS_00107A54` is written by exactly three sites and read only at `0x255F8`; the port never sets it, so the scroll/zoom projection never runs and the globe's projected layer is coarser. `0x38730` is the producer — it seeds the scroll/zoom tables, derives the band selectors, calls `0x387F4`/`0x38890`/`0x38A38`, and sets `DS_00107A54 = 1` — and its only callers are `0x20DF4` at `0x20E7F`/`0x20E90`, the state-6 fight reset the port skipped as a named gap.
 
 **Files:**
-- Modify: the state-9 globe render's owner, named by Task 1 Step 1 (extend it; do not create a module)
-- Modify: `port/tests/test_flow.c` (the state's assertions — cycle 1 put the state-9 countdown test here)
-- Modify: `port/tests/test_fight.c` if Task 1 Step 1 shows the render's observable belongs with the fight's assertions instead
+- Modify: the `0x38730` projection's owner, named by record §1.2 (extend it; do not create a module)
+- Modify: `port/src/game/flow.c` (the `0x20DF4` reset call site — the port currently ports only `0x49300` from it, at `flow.c:785-790`)
+- Modify: `port/tests/test_flow.c` (cycle 1 put the state-9 countdown test here)
+- Modify: `port/tests/test_fight.c` if record §1.2 shows the projection's observable belongs with the fight's assertions instead
 
 **Interfaces:**
-- Consumes: Task 1 Step 1's derivation and Step 7's unit-test values.
-- Produces: a state-9 frame that matches the original's.
+- Consumes: record §1 (especially §1.4) and §7.0/§7.6.
+- Produces: the projection, so `DS_00107A54` is set and both the state-9 globe and the state-7 background carry their projected layer.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Derive `0x38730`'s argument from `0x20DF4`'s raw body**
 
-Assert the derived global transitions and the render's observable output — the exact values Task 1 Step 7 recorded, transcribed verbatim as literals:
+Record §1.4 flags this as a named gap: `0x38730`'s argument `i` at `0x20E7F` is a register handoff in `0x20DF4`, not statically pinned, and `0x20DF4`'s caller `0x11A8C` passes only `(draw1, 1)`. Derive it from `0x20DF4`'s raw body. **If it cannot be pinned, the globe layer is a §6 gap — not an invented table index.** Report which it is before implementing.
+
+- [ ] **Step 2: Write the failing test**
+
+Assert the derived values — the exact inputs and expected transitions record §7.0/§7.6 gives — with seeded sentinels:
 
 ```c
-/* Task 1 Step 7's anchors for the state-9 globe render, as literals.
- * STATE9_* are the record's values; a missing anchor is a Task 1 defect. */
+/* Record §7.0/§7.6 anchors, as literals. A missing anchor is a Task 1 defect. */
 {
-    DSD(DS_000F0A64) = STATE9_STATE_IN;        /* Task 1 Step 7 anchor */
-    DSD(DS_000F0A6A) = STATE9_TIMER_IN;        /* Task 1 Step 7 anchor */
-    state9_step_under_test();
+    DSD(DS_00107A54) = 0;                      /* sentinel differs from post-condition */
+    DSD(DS_000F0A64) = STATE9_STATE_IN;        /* record anchor */
+    DSD(DS_000F0A6A) = STATE9_TIMER_IN;        /* record anchor */
+    state9_step_under_test();                  /* the real ported name, from record §1.2 */
+    CHECK_EQ_INT((int)DSD(DS_00107A54), 1);
     CHECK_EQ_INT((int)DSD(DS_000F0A64), STATE9_STATE_OUT);
     CHECK_EQ_INT((int)DSD(DS_000F0A6A), STATE9_TIMER_OUT);
 }
@@ -189,25 +161,25 @@ Assert the derived global transitions and the render's observable output — the
 
 Seed every input with a sentinel that differs from the post-condition, so a missing write fails rather than passing on a zero the test itself left behind.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Step 3: Run the test to verify it fails**
 
 Run: `./build/run_tests`
-Expected: FAIL — the state-9 render is unported, so the asserted transition does not happen.
+Expected: FAIL — `DS_00107A54` is never set, so the asserted transition does not happen.
 
-- [ ] **Step 3: Implement the render**
+- [ ] **Step 4: Implement the projection and wire it in**
 
-Port the producer and its display-list path from the record, into the owner Task 1 named. One C function per original function, with the address tag in each header comment.
+Port `0x38730` and its callees from the record into the owner record §1.2 names. One C function per original function, with the address tag in each header comment. Then call it from the `0x20DF4` reset path at the port's `flow.c:785-790` site, in the original's order.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 5: Run the test to verify it passes**
 
 Run: `./build/run_tests`
 Expected: PASS, output pristine.
 
-- [ ] **Step 5: Prove the assertion can fail**
+- [ ] **Step 6: Prove the assertion can fail**
 
-Mutate the code under test — remove or invert the write the assertion checks — and confirm the named assertion fails. Restore. Report the mutation and the failure in the report.
+Mutate the code under test — remove or invert the `DS_00107A54 = 1` store — and confirm the named assertion fails. Restore. Report the mutation and the failure in the report.
 
-- [ ] **Step 6: Re-measure the oracle**
+- [ ] **Step 7: Re-measure the oracle**
 
 ```bash
 make demo-oracle
@@ -215,126 +187,60 @@ make demo-oracle
 
 Expected: the first-unexplained frame **advances** past 811. Report the new first-unexplained frame, the counts, and the window indices. If it does not advance, that is a Task 1 defect — return to the record rather than tuning the render to match.
 
-- [ ] **Step 7: Full ladder and commit**
+- [ ] **Step 8: Full ladder and commit**
 
 Run: `make verify`
 Expected: exit 0, 0 warnings, every oracle claim unmoved, and the front-end oracle still `0 unexplained`.
 
 ```bash
-git add port/src/game/<owner>.c port/tests/test_fight.c port/tests/test_flow.c
-git commit -m "fight: port the state-9 globe render"
+git add port/src/game/flow.c port/src/game/<owner>.c port/tests/test_fight.c port/tests/test_flow.c
+git commit -m "fight: port the 0x38730 projection"
 ```
 
-**Gate for this task:** the window's opening frame is explained and the oracle's first-unexplained frame has advanced past it.
+**Gate for this task:** `DS_00107A54` is set on the demo's path, the state-9 frame is explained, and the oracle's first-unexplained frame has advanced past it.
 
 ---
 
-### Task 4: The state-7 arena render gap
+### Task 4: The hitbox machine and the hit chain
 
-The `0x3C88C` gap, measured as a broken globe. With state 9 clean, this is the next frame the oracle cannot explain.
+The cycle's largest task, and its core: `0x3C88C` arms the hitboxes, `0x3CF38` scans and resolves them. Neither half advances the oracle alone (Amendment 3), which is why they are one task. Task 1 sized the chain at 45 functions / ~8.2 KB transitive closure, 22 new / 2720 B (§3.7); it is RNG-free (§3.8).
 
 **Files:**
-- Modify: `port/src/game/fighter.c` (the arena render path)
+- Modify: `port/src/game/fight.c` (the hitbox machine's caller `fight_slot_pass` and the chain's entry into the arena frame)
+- Modify: `port/src/game/fighter.c` (the arming store, the collision and reaction callees)
 - Modify: `port/tests/test_fight.c`
 
 **Interfaces:**
-- Consumes: Task 1 Step 2's derivation and Step 7's unit-test values.
-- Produces: a complete state-7 arena render.
+- Consumes: record §2 (the machine), §3 (the chain), §7.1–§7.5 and §7.7–§7.11 (the values), §6.7–§6.9 (the gaps).
+- Produces: armed hitboxes, resolved hits, the reaction state and the `+0x52` transitions the chain drives. `0x3C600`/`0x3C6A8` are owned here (first landing).
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Confirm the chain's size against the record**
 
-Assert the derived values — the exact inputs and expected outputs Task 1 Step 7 recorded — with seeded sentinels:
-
-```c
-/* Task 1 Step 7's anchors for 0x3C88C, as literals. */
-{
-    DSD(DS_001077B0) = ARENA_SLOT_IN;          /* Task 1 Step 7 anchor */
-    DSW(DS_00107D40) = ARENA_SEED_IN;          /* Task 1 Step 7 anchor */
-    arena_render_under_test();
-    CHECK_EQ_INT((int)DSD(ARENA_OUT_ADDR), ARENA_OUT);   /* Task 1 Step 7 anchor */
-}
-```
-
-- [ ] **Step 2: Run the test to verify it fails**
-
-Run: `./build/run_tests`
-Expected: FAIL — `0x3C88C` is unported.
-
-- [ ] **Step 3: Implement the gap**
-
-Port `0x3C88C` and whatever it needs, from the record.
-
-- [ ] **Step 4: Run the test to verify it passes**
-
-Run: `./build/run_tests`
-Expected: PASS, output pristine.
-
-- [ ] **Step 5: Prove the assertion can fail**
-
-Mutate the implementation and confirm the named assertion fails. Restore, and report the mutation.
-
-- [ ] **Step 6: Re-measure the oracle**
-
-```bash
-make demo-oracle
-```
-
-Expected: the first-unexplained frame advances again. Report it with the counts. If it does not advance, return to the record.
-
-- [ ] **Step 7: Full ladder and commit**
-
-Run: `make verify`
-
-```bash
-git add port/src/game/fighter.c port/tests/test_fight.c
-git commit -m "fighter: port the 0x3C88C arena render gap"
-```
-
-**Gate for this task:** the arena render is complete and the oracle's first-unexplained frame has advanced past it.
-
----
-
-### Task 5: The hit chain
-
-Collision, damage, health and hit reactions — the demo's core, and the cycle's largest unknown, which Task 1 Step 3 sized before this task was committed to.
-
-**Files:**
-- Modify: `port/src/game/fight.c` (the hit chain's entry into the arena frame; the HUD/health damage half)
-- Modify: `port/src/game/fighter.c` (per-fighter damage and reactions)
-- Modify: `port/tests/test_fight.c`
-
-**Interfaces:**
-- Consumes: Task 1 Step 3's derivation, its recorded size, and Step 7's unit-test values.
-- Produces: hits that resolve — damage applied, health changed, reactions played — and the `+0x52` transitions the chain drives.
-
-- [ ] **Step 1: Confirm the chain's size against Task 1 Step 3**
-
-Read the recorded size. If the chain is materially larger than the spec assumed, **stop and report** — that is a re-scope conversation with the human, not a silent overrun.
+Read §3.7. If the chain is materially larger than 22 new functions / 2720 B, **stop and report** — that is a re-scope conversation with the human, not a silent overrun.
 
 - [ ] **Step 2: Write the failing tests**
 
-One assertion per derived behaviour, with the record's exact values and seeded sentinels — at minimum: a hit is detected when the record's collision predicate is satisfied and not otherwise; the health/`+0x52` transition the chain drives occurs with the derived value; the reaction animation is selected by the derived index.
+One assertion per derived behaviour, with the record's exact values and seeded sentinels. At minimum: `0x3C88C` arms a hitbox (the `word[0x107D58 + side*0x40 + i*2] = 8` store) and clears it on the record's conditions; the collision predicate finds an armed hitbox and not otherwise (§7.2); the hitbox validates against the target's stance (§7.3); the reaction drive writes the record's `+0x52`/`+0x5F` transitions (§7.4); hit-stun immunity returns the record's value (§7.5); plus the eleven §7.11 fixtures.
 
 ```c
-/* Task 1 Step 7's anchors for the hit chain, as literals. */
+/* Record §7.1–§7.5 / §7.11 anchors, as literals. */
 {
-    DSD(DS_001077B0) = HIT_SLOT_A_IN;          /* Task 1 Step 7 anchor */
-    DSD(DS_001077B4) = HIT_SLOT_B_IN;          /* Task 1 Step 7 anchor */
-    DSW(HIT_HEALTH_ADDR) = HIT_HEALTH_IN;      /* Task 1 Step 7 anchor */
-    hit_chain_under_test();
-    CHECK_EQ_INT((int)DSW(HIT_HEALTH_ADDR), HIT_HEALTH_OUT);   /* Task 1 Step 7 anchor */
-    CHECK_EQ_INT((int)DSB(HIT_STATE_ADDR), HIT_STATE_OUT);     /* Task 1 Step 7 anchor */
+    DSD(DS_001077B0) = HIT_SLOT_A_IN;          /* record anchor */
+    DSW(HIT_PHASE_ADDR) = HIT_PHASE_IN;        /* record anchor */
+    hit_chain_under_test();                    /* the real ported name, from record §3 */
+    CHECK_EQ_INT((int)DSW(HIT_PHASE_ADDR), HIT_PHASE_OUT);   /* record anchor */
+    CHECK_EQ_INT((int)DSB(HIT_REACTION_ADDR), HIT_REACTION_OUT);  /* record anchor */
 }
 ```
 
 - [ ] **Step 3: Run the tests to verify they fail**
 
 Run: `./build/run_tests`
-Expected: FAIL — the chain is unported and the fight stalls on it.
+Expected: FAIL — the machine and the chain are unported and the fight stalls on them.
 
-- [ ] **Step 4: Implement the chain**
+- [ ] **Step 4: Implement the machine, then the chain**
 
-Port `0x3CF38` and its callees from the record. One C function per original function. Anything the record lists as a Step 6 gap gets a `/* PORT: <addr>. <reason> */` skip, not an invented value.
+Port `0x3C88C` and its four callees (`0x3C600`, `0x3C6A8`, `0x3C758`, `0x3C800`) first, with their tests, then `0x3CF38` and its callees. One C function per original function. Anything the record lists as a §6 gap gets a `/* PORT: <addr>. <reason> */` skip, not an invented value. The port's `fight_slot_pass` already loops 2 × 32 and keeps `DS_00107ED8`/`DC`/`EE4`; replace the `/* PORT: */` skip at `port/src/game/fight.c:152-154` with the real call.
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
@@ -351,7 +257,7 @@ Mutate the implementation once per assertion and confirm each named assertion fa
 make demo-oracle
 ```
 
-Expected: the fight now lands hits and the first-unexplained frame advances **past the stall**. Report the new first-unexplained frame with the counts, and say explicitly whether the advance is past the first landing hit. If the chain consumes RNG and a new divergence appears, derive its source and pin it at that source — never fit a value.
+Expected: the fight lands hits and the first-unexplained frame advances **past the stall**. Report the new first-unexplained frame with the counts, and say explicitly whether the advance is past the first landing hit. The chain is RNG-free (§3.8); if a post-hit divergence appears, derive its source in the `+0x52` handler or `0x39040` and pin it at that source — never fit a value.
 
 - [ ] **Step 8: Full ladder and commit**
 
@@ -359,79 +265,72 @@ Run: `make verify`
 
 ```bash
 git add port/src/game/fight.c port/src/game/fighter.c port/tests/test_fight.c
-git commit -m "fight: port the 0x3CF38 hit chain"
+git commit -m "fight: port the hitbox machine and the 0x3CF38 hit chain"
 ```
 
-**Gate for this task:** hits resolve, and the oracle's first-unexplained frame has advanced past the stall.
+**Gate for this task:** hitboxes arm, hits resolve, and the oracle's first-unexplained frame has advanced past the stall.
 
 ---
 
-### Task 6: The timer exit and the continue sequence
+### Task 5: Pin the timer exit and the loop-back
 
-The window's end. The demo runs out state 6's 900-frame timer and continues; both are currently unported.
+Corrected by Amendment 1.1: both are already ported (`port/src/game/flow.c:1349-1365`), so this task is a test of existing code plus the record's statement — not an implementation. A test of already-ported code cannot start RED; the mutation proof is what shows it can fail.
 
 **Files:**
-- Modify: `port/src/game/flow.c`
 - Modify: `port/tests/test_flow.c`
+- Modify: `port/spec/game_flow.md` (the loop-back statement)
 
 **Interfaces:**
-- Consumes: Task 1 Step 4's derivation and Step 7's unit-test values.
-- Produces: the timer exit and the continue sequence, so the window's end frames are explained.
+- Consumes: record §4 and §7.6 (the case-7 transition values).
+- Produces: the case-7 transition pinned by a test, and the record's statement that the demo loops back to the attract.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the test**
 
-Assert the derived state transitions and globals, with seeded sentinels:
+Assert `0x11D04` case 7's transition from record §7.6, with seeded sentinels:
 
 ```c
-/* Task 1 Step 7's anchors for the timer exit and continue sequence. */
+/* Record §7.6 anchors, as literals. */
 {
-    DSD(DS_000F0A64) = TIMER_EXIT_STATE_IN;    /* Task 1 Step 7 anchor */
-    DSD(DS_000F0A6A) = TIMER_EXIT_TIMER_IN;    /* Task 1 Step 7 anchor */
+    DSD(DS_000F0A6A) = TIMER_EXIT_TIMER_IN;    /* record anchor */
+    DSD(DS_000F0A64) = TIMER_EXIT_STATE_IN;    /* record anchor */
     game_state_step();
-    CHECK_EQ_INT((int)DSD(DS_000F0A64), TIMER_EXIT_STATE_OUT);   /* anchor */
+    CHECK_EQ_INT((int)DSD(DS_000F0A6A), TIMER_EXIT_TIMER_OUT);   /* record anchor */
+    CHECK_EQ_INT((int)DSD(DS_000F0A64), TIMER_EXIT_STATE_OUT);   /* record anchor */
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [ ] **Step 2: Run it**
 
 Run: `./build/run_tests`
-Expected: FAIL.
+Expected: PASS if the port's transcription at `flow.c:1349-1365` is faithful. **If it FAILS, that is a finding: the port's transcription is wrong. Report it — do not adjust the test to match the port.**
 
-- [ ] **Step 3: Implement the exit and the continue sequence**
+- [ ] **Step 3: Prove the assertion can fail**
 
-Port them from the record. Keep each original function's identity and address tag.
+Mutate `flow.c:1349-1365` — e.g. remove the `DS_000F0A64 = DS_000F0A6C` store, or change the countdown's zero test — and confirm the named assertion fails. Restore, and report the mutation.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 4: Record the loop-back**
 
-Run: `./build/run_tests`
-Expected: PASS, output pristine.
+State in `port/spec/game_flow.md` that for the demo's chain `DS_000F0A6C` is 0, so the 900-frame exit hands to state 0, the attract sub-machine (record §4.2), and that the nonzero continuations belong to the next attract loop.
 
-- [ ] **Step 5: Prove the assertion can fail**
-
-Mutate and confirm the named assertion fails. Restore, and report.
-
-- [ ] **Step 6: Re-measure the oracle**
+- [ ] **Step 5: Re-measure the oracle and run the ladder**
 
 ```bash
 make demo-oracle
+make verify
 ```
 
-Expected: the first-unexplained frame advances to the window's end. Report the counts.
-
-- [ ] **Step 7: Full ladder and commit**
-
-Run: `make verify`
+Expected: the window's end frames are explained; exit 0, 0 warnings.
 
 ```bash
-git add port/src/game/flow.c port/tests/test_flow.c
-git commit -m "flow: port the demo's timer exit and continue sequence"
+git add port/tests/test_flow.c port/spec/game_flow.md
+git commit -m "flow: pin the demo's timer exit and loop-back"
 ```
 
-**Gate for this task:** the window's end frames are explained.
+**Gate for this task:** the case-7 transition is pinned by a test that can fail, and the loop-back is recorded.
 
 ---
 
-### Task 7: Close the cycle — the window end-to-end and the record
+### Task 6: Close the cycle — the window end-to-end and the record
 
 **Files:**
 - Modify: `port/spec/game_flow.md`, `README.md`, `docs/superpowers/specs/2026-09-21-demo-fight-closure-design.md`
@@ -450,11 +349,11 @@ Record the window indices, the frame count, the classification counts, and the f
 
 - [ ] **Step 2: Assess the Gate honestly**
 
-The Gate is **the demo window reports 0 unexplained frames**. If it does, say so with the numbers. **If it does not, do not declare it met and do not fit a pin or a value to force it:** report the residual frames as named gaps with their evidence, and state which of the four porting tasks left them. Cycle 1's failure was not that its Gate went unmet — it was that the record nearly read as though it had.
+The Gate is **the demo window reports 0 unexplained frames**. If it does, say so with the numbers. **If it does not, do not declare it met and do not fit a pin or a value to force it:** report the residual frames as named gaps with their evidence, and state which task left them. Cycle 1's failure was not that its Gate went unmet — it was that the record nearly read as though it had.
 
 - [ ] **Step 3: Record the cycle's status**
 
-In `port/spec/game_flow.md` and `README.md`: the demo window's final numbers, the corrected capture figures, every pin with its address, the RNG source pin and the reference change it caused, the residual gaps, and that the interactive match remains unowned. In the design spec, mark the closure cycle's outcome and leave the interactive match's section standing.
+In `port/spec/game_flow.md` and `README.md`: the demo window's final numbers, the corrected capture figures (836/25), every pin with its address, the master-loop spin pin and the reference change it caused, the residual gaps, and that the interactive match remains unowned. In the design spec, mark the closure cycle's outcome and leave the interactive match's section standing.
 
 - [ ] **Step 4: Confirm every oracle claim is unmoved**
 
@@ -477,12 +376,12 @@ git commit -m "docs: record the demo fight's closure"
 
 ## Self-Review
 
-**Spec coverage.** The spec's Goal is the demo window at `0 unexplained` end-to-end; Task 7 Step 2 is its honest assessment. Its "In" list maps to tasks: the state-9 globe render (Task 3), the `0x3C88C` gap (Task 4), the `0x3CF38` hit chain (Task 5), the timer exit and continue sequence (Task 6), the RNG source (Task 2), and the think-chain marker (Task 1 Step 9). Its "removed from this cycle" item — window re-anchoring — is honoured by not appearing as a task, with the reason recorded in the spec. Its Verification section's two commitments are tasks: the source-level pin (Task 2) and the corrected capture numbers (Task 1 Step 8). Its Risks section maps to Task 5 Step 1 (the chain's size, with an explicit stop), Task 3 Step 3 (the globe's owner, extend rather than invent), Task 1 Step 5 plus Task 2 (the RNG source, escalating rather than falling back), and Task 7 Step 2 (the window may still not read clean).
+**Spec coverage.** The spec's Goal is the demo window at `0 unexplained` end-to-end; Task 6 Step 2 is its honest assessment. Its "In" list maps to tasks: the state-9 globe render and the state-7 background (Task 3, one fix), the `0x3C88C` gap and the `0x3CF38` hit chain (Task 4, merged), the timer exit and continue sequence (Task 5, corrected to a test), the RNG source (Task 2, re-scoped by Amendment 2), and the think-chain marker (Task 1 Step 9, done). Its "removed from this cycle" item — window re-anchoring — is honoured by not appearing as a task, with the reason recorded in the spec. Its Verification section's two commitments are tasks: the source-level pin (Task 2) and the corrected capture numbers (Task 1 Step 8, done). Its Risks section maps to Task 4 Step 1 (the chain's size, with an explicit stop), Task 3 Step 1 (the projection's argument, a gap rather than an invented index), Task 2 (the RNG source, escalated and ruled rather than quietly fallen back on), and Task 6 Step 2 (the window may still not read clean).
 
-**Deliberate deferrals, stated not hidden.** The interactive match — the mode graph, the coin divert, `0x1EEB0`, `0x1F458`, the player screens and human input — is not implemented by any task and is recorded as unowned in Task 7 Step 3. The dead think chain is kept and marked in Task 1 Step 9 rather than deleted or quietly carried. Every unported piece inside the demo window becomes a `/* PORT: */` skip plus a named gap, never a silent no-op.
+**Deliberate deferrals, stated not hidden.** The interactive match — the mode graph, the coin divert, `0x1EEB0`, `0x1F458`, the player screens and human input — is not implemented by any task and is recorded as unowned in Task 6 Step 3. The dead think chain is kept and marked (Task 1 Step 9) rather than deleted or quietly carried. Every unported piece inside the demo window becomes a `/* PORT: */` skip plus a named gap, never a silent no-op. The `0x32BAC` fixture is carried as a deferred minor rather than a pinned value.
 
-**The derivation dependency is not a placeholder.** Task 1's record is the authoritative source for Tasks 2–6's exact values, exactly as `2026-09-20-demo-fight-derivations.md` was for cycle 1. Every porting step names the record section that supplies its values and states that a missing anchor is a Task 1 defect rather than licence to invent one — inventing a value is the fitted constant this project forbids. No step says "TBD", "similar to Task N", or describes an action without its command.
+**The derivation dependency is not a placeholder.** Task 1's record is the authoritative source for Tasks 2–5's exact values, exactly as `2026-09-20-demo-fight-derivations.md` was for cycle 1. Every porting step names the record section that supplies its values and states that a missing anchor is a Task 1 defect rather than licence to invent one — inventing a value is the fitted constant this project forbids. The test skeletons call `<thing>_under_test()` only because the ported function's real name comes from the record; the implementer substitutes it. No step says "TBD", "similar to Task N", or describes an action without its command.
 
-**Type consistency.** `game_state_step`, `game_frame`, `fight_arena_frame`, `fighter_think` and `actors_update` are the existing names and are used unchanged. New functions are named for the original they port and are introduced by the task that first needs them; later tasks reference them by the name their own `Interfaces` block gives. Globals are referenced by their `symbols.h` names throughout, and a name the generator does not emit gets a local `#define` with the raw address.
+**Type consistency.** `game_state_step`, `game_frame`, `fight_arena_frame`, `fighter_think`, `fight_slot_pass` and `actors_update` are the existing names and are used unchanged. New functions are named for the original they port and are introduced by the task that first needs them; later tasks reference them by the name their own `Interfaces` block gives. Globals are referenced by their `symbols.h` names throughout, and a name the generator does not emit gets a local `#define` with the raw address.
 
-**Right-sizing.** Task 1 is one derivation deliverable with its own gate. Tasks 3–6 each end at an independently verifiable oracle advance, which is exactly the boundary at which a reviewer could reject one while approving its neighbour. Task 2 is separated from Task 3 because it must precede every frame comparison past the picks and produces one reference change — folding it into Task 3 would bury a prerequisite inside a render task. Task 7 is the cycle's record and its honest Gate assessment, which no porting task can own.
+**Right-sizing.** Task 1 is one derivation deliverable with its own gate, and it is done. Tasks 3, 4 and 5 each end at an independently verifiable oracle advance — which is why the hitbox machine and the chain, neither of which advances the oracle alone, are one task. Task 2 is separated from Task 3 because it must precede every frame comparison past the picks and produces one reference change; folding it into Task 3 would bury a prerequisite inside a render task. Task 6 is the cycle's record and its honest Gate assessment, which no porting task can own.
