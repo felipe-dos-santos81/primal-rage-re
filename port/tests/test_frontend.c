@@ -491,6 +491,10 @@ int test_frontend(void)
         int reached3 = 0;
         int seen6 = 0;
         u32 entry_lcg = 0;
+        int dust_sampled = 0;
+        u32 dust_actor[4] = { 0, 0, 0, 0 };
+        u32 dust_anim[4] = { 0, 0, 0, 0 };
+        u32 dust_type[4] = { 0, 0, 0, 0 };
         for (int i = 0; i < 2000; i++) {
             /* The state-9 exit leaves DS_000F0A64 == 6 for the next iteration;
              * nothing draws between the hold and the state-6 handler, so this
@@ -501,6 +505,23 @@ int test_frontend(void)
             }
             DSB(DS_000A81A8) = 1;          /* exactly one game_loop iteration */
             game_loop();
+            /* The dust entries exist from the state-6 frame on; sample them
+             * before the state-7 frames advance their animations, and read the
+             * actor's fields now — later state transitions run actors_reset
+             * (0x2BAF4), which zeroes the record pool the pointers point into. */
+            if (seen6 && !dust_sampled) {
+                u32 n = 0;
+                for (u32 e = DSD(DS_0010884C); e != DS_0010884C && n < 4u;
+                     e = DSD(e), n++) {
+                    u32 actor = DSD(e + 8u);
+                    dust_actor[n] = actor;
+                    if (actor != 0) {
+                        dust_anim[n] = DSD(actor + 8u);
+                        dust_type[n] = DSB(actor + 0x48u);
+                    }
+                }
+                dust_sampled = 1;
+            }
             if (DSW(DS_000F0A64) == 3u) reached3 = 1;
             if (DSB(DS_000F0A6E) < 6u) seen_entries |= 1u << DSB(DS_000F0A6E);
             if (log != NULL) {
@@ -565,6 +586,24 @@ int test_frontend(void)
         CHECK_EQ_INT((int)entry_lcg, (int)FRONTEND_RNG_AFTER_ATTRACT);
         CHECK_EQ_INT((int)DSB(DS_0010816A), 0);
         CHECK_EQ_INT((int)DSB(DS_0010816A + 1u), 3);
+
+        /* The dust descriptors the aligned stream picks. From the state-6
+         * entry at FRONTEND_RNG_AFTER_ATTRACT, 0x49388's rng(0x64) draws are
+         * 93, 80, 30, 25 in spawn order (P0's two iterations, then draw2, then
+         * P1's two) -> 0xC9524 indices 0, 1, 3, 4 through the raw's thresholds
+         * (0x493B0..0x493E4). The list is newest-first, so its order is
+         * 4, 3, 1, 0; each actor's +8 is its descriptor's first dword
+         * (0x2AE7D). A rng(side) picker (always index 4) fails on the second
+         * entry. */
+        {
+            static const u32 order[4] = { 4u, 3u, 1u, 0u };
+            for (u32 n = 0; n < 4u; n++) {
+                u32 desc = DSD(DS_000C9524 + order[n] * 4u);
+                CHECK(dust_actor[n] != 0, "dust entry carries a spawned actor");
+                CHECK_EQ_INT((int)dust_anim[n], (int)(DSD(desc) + 2u));
+                CHECK_EQ_INT((int)dust_type[n], (int)(0x20u + order[n]));
+            }
+        }
         game_shutdown();
     }
     return g_failures - before;

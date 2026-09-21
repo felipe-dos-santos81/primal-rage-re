@@ -1833,8 +1833,13 @@ values, not two: `0x49388` draws unconditionally at its entry (`0x493AB`) before
 the `rng(0x1800)` (`0x495DF`) and `rng(step)` (`0x495FC`) pair. The demo's
 `slot+0x81` is 2, so state 6's `fighter_spawn(0)` issues six draws between
 `0x11AAD` and `0x11AE9`; the capture's picks confirm it (cycle 2's Task 2 report;
-`port/spec/game_flow.md`). The port's `fighter_spawn_slot` still skips the
-builder, so its stream is six draws behind per spawn.
+`port/spec/game_flow.md`). Cycle 2 ports the builder as `fight_dust_build`
+(`port/src/game/fight.c`), called from `fighter_spawn_slot` at the `0x33E43`
+gate, so the port now issues those six draws per spawn. **Correction (cycle 2
+review):** the picker's `0x49388` draw range is not the caller's side — raw
+`0x4938b..0x493ab` reads `DSW(0x104B00) == 3 ? 0x64 : DSW(0x108860 + side*2)`
+(the side indexes the table word). The port's first cut passed the side; fixed
+to the raw's range.
 
 ### 10.6 `0x1D890` (375 B) — state 6's call is a 4-byte reset
 

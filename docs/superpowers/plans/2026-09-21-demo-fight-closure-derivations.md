@@ -598,11 +598,12 @@ The master loop `0x255CC` draws RNG at **two** sites, both `rng(0x7FFF)`
 * the body draw at `0x256B1` (`EAX = EBP`), after the present/swap and before
   `0x1CF20`; and
 * the **spin** draw at `0x256D6`, inside
-  `while (DS_000F0A0C - 1 == DS_000F0A08) { 0x256D6 rng_step(); }`
+  `while (DS_0010150C - 1 == DS_00101508) { 0x256D6 rng_step(); }`
   (`0x256C6`–`0x256DB`).
 
-`DS_000F0A08` is the VBlank tick counter (ISR-incremented); `DS_000F0A0C` is the
-loop counter. The spin runs a **host-timed, unbounded** number of times per
+`DS_00101508` (`0x256CC CMP EAX,[0x101508]`) is the VBlank tick counter
+(ISR-incremented); `DS_0010150C` (`0x256BB MOV EAX,[0x10150C]`) is the loop
+counter. The spin runs a **host-timed, unbounded** number of times per
 presented frame, and **each spin advances the LCG**. So the stream position at
 state 6 is the seed plus a variable number of draws that depends on the host's
 real-time pacing, not on any game state.
@@ -683,10 +684,12 @@ it was **not the only offset**.
 default arm → `0x4AAD0` and its callees — is still unported (its transitive
 closure is ~189 functions / ~27 KB including CRT stubs; the demo-relevant
 subset is the 0x4Bxxx dust behaviour). The dust's *actor* is spawned and
-rendered (the descriptor `0xBB4C0`, type `0x24`, whose per-type callback is the
-`0x5D812` stub), but its motion and despawn are not. The demo window's first
-unexplained frame is still **816** (the state-9 hold render), so the oracle
-cannot measure the dust's pixels until Task 3 lands.
+rendered: the aligned stream's picks are `0xC9524` indices 0, 1, 3, 4 → the
+descriptors `0xBB470`/`0xBB484`/`0xBB4AC`/`0xBB4C0`, types
+`0x20`/`0x21`/`0x23`/`0x24`, whose per-type callbacks at `0xBB9DC + type*0xC`
+are all the `0x5D812` stub. Its motion and despawn are not. The demo window's
+first unexplained frame is still **816** (the state-9 hold render), so the
+oracle cannot measure the dust's pixels until Task 3 lands.
 
 ---
 

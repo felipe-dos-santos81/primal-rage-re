@@ -57,10 +57,18 @@ void fight_list_init(void)
 
 /* ---- 0x494A8 the dust builder (state 6's fighter spawn) ----------------- */
 
-/* 0x49388. The dust descriptor picker: one rng draw (the caller's EAX, the
- * side) mapped through the raw's thresholds. */
-static u32 fight_dust_pick(u32 range)
+/* 0x49388. The dust descriptor picker. The draw's range is the raw's
+ * 0x4938b..0x493ab: `MOV DX,[0x104B00]; CMP EDX,3; JNZ 0x4939E;
+ * MOV EAX,0x64; JMP 0x493AB; 0x4939E MOV AX,[EAX*2+0x108860]; AND EAX,0xffff;
+ * 0x493AB CALL 0x5D7DC` — the caller's EAX (the side, set at 0x495AE) indexes
+ * the table word DS_00108860[side] (0x33C50 seeds it 100), except in mode 3
+ * (the demo), where the range is 0x64. One draw; the value maps through the
+ * raw's thresholds to a 0xC9524 index. */
+static u32 fight_dust_pick(u32 side)
 {
+    u32 range = (DSW(DS_00104B00) == 3u)
+              ? 0x64u
+              : (u32)DSW(DS_00108860 + side * 2u);
     u32 v = rng_next(range);                    /* 0x493AB */
     if (v < 0x1eu) return 4;
     if (v < 0x32u) return 3;

@@ -537,10 +537,23 @@ int test_attract(void)
             u32 fivec_mask = 0;     /* DS_000F0A5C values seen */
             int frames = 0;
             int guard = 0;
+            /* The attract's LCG state at its handoff phase. The voice tick
+             * 0x10F28 (called from 0x11559 while DS_0009AD58 == 0, set at
+             * 0x11092) is the attract's only consumer: it draws 26 values over
+             * the boot attract, so the state here is seed 0xABCD advanced 26
+             * steps (0x4308698B). Sampled at the top of the case-0xB iteration,
+             * before that iteration's tail tick; the front-end driver re-seeds
+             * to this value (test_frontend.c). */
+            u32 handoff_lcg = 0;
+            int seen_handoff = 0;
             /* The handoff iteration ends with DS_000F0A64 == 1 but ran the
              * attract; the title entry is the next iteration. */
             while (DSW(DS_000F0A64) != 1 && guard++ < 200000) {
                 u8 ph = DSB(DS_000F0A6F);
+                if (!seen_handoff && ph == 0xBu) {
+                    handoff_lcg = DSD(DS_000EF6D8);
+                    seen_handoff = 1;
+                }
                 if (ph <= ATTRACT_PHASE_MAX) phase_mask |= 1u << ph;
                 if (DSB(DS_000F0A5C) < 32u) fivec_mask |= 1u << DSB(DS_000F0A5C);
                 DSB(DS_000A81A8) = 1;   /* exactly one game_loop iteration */
@@ -559,6 +572,15 @@ int test_attract(void)
             CHECK_EQ_INT((int)phase_mask, (int)expected_phases);
             CHECK((fivec_mask & (1u << 4)) != 0u, "DS_000F0A5C starts at 4");
             CHECK((fivec_mask & 1u) != 0u, "DS_000F0A5C wraps to 0");
+
+            /* The 26-draw measurement, pinned: the observed handoff state is
+             * the derived value and the seed advanced 26 steps. The sentinel 0
+             * fails if the phase never ran. */
+            CHECK(seen_handoff, "the attract reached its handoff phase");
+            CHECK_EQ_INT((int)handoff_lcg, 0x4308698B);
+            rng_seed(0xABCDu);
+            for (u32 i = 0; i < 26u; i++) (void)rng_next(0u);
+            CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)handoff_lcg);
 
             /* The title window joins the same run (no second game_init()). */
             test_title_window(dump);

@@ -775,10 +775,12 @@ derived:
   dust entries' fields.
 * **Residual.** The dust entries' type-0 processing (`0x49C78`'s default arm →
   `0x4AAD0` and its callees) is still a named gap, so the dust's motion and
-  despawn are not faithful; its actor is spawned and rendered (the descriptor
-  `0xBB4C0`, type `0x24`, whose per-type callback is the `0x5D812` stub). The
-  demo window's first unexplained frame is still 816 (the state-9 hold render),
-  so the oracle cannot measure the dust's pixels until Task 3 lands.
+  despawn are not faithful; its actor is spawned and rendered. The aligned
+  stream's picks are `0xC9524` indices 0, 1, 3, 4 → the descriptors
+  `0xBB470`/`0xBB484`/`0xBB4AC`/`0xBB4C0`, types `0x20`/`0x21`/`0x23`/`0x24`,
+  whose per-type callbacks at `0xBB9DC + type*0xC` are all the `0x5D812` stub.
+  The demo window's first unexplained frame is still 816 (the state-9 hold
+  render), so the oracle cannot measure the dust's pixels until Task 3 lands.
   `tools/title_pin.py`; `host.c:203`; `flow.c`; `fighter.c`; `fight.c`;
   `actors.c`; `effects.c`.
 

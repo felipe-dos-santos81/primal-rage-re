@@ -1341,7 +1341,8 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
     /* 0x2B0D4: the per-type render check calls DS_000BB9DC[rec+0x48 * 0xC]. The
      * stub 0x5D812 (`xor eax,eax; ret`) returns 0, so the record takes the
      * visible path. Types 0x00 (the title objects and the fighter descriptors)
-     * and 0x24 (the dust descriptors at 0xC9524) both carry it. */
+     * and 0x20..0x25 (the six dust descriptors 0xC9524[0..5] reachable through
+     * 0x49388) all carry it. */
     if (DSD(DS_000BB9DC + (u32)DSB(rec + 0x48) * 0xCu) == FN_0005D812) {
         DSB(rec + 0x2b) |= 0x40;
         if ((a5 & 0x400u) == 0) DSB(rec + 0x4a) = 0;

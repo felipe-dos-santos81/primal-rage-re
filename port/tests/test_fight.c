@@ -980,14 +980,14 @@ static void check_slot_latch(void)
     CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x30u), 0x220);
 }
 
-/* 0x11A8C: state 6. Eight draws from the shared stream — rng(7) at 0x11AAD,
+/* 0x11A8C: state 6. Fourteen draws from the shared stream — rng(7) at 0x11AAD,
  * then the P0 spawn's dust builder (0x494A8: three draws per iteration over
- * slot+0x81 = 2, so six) and rng(6) at 0x11AE9 — the stores, the arm and the
- * character picks. The draws are precomputed on a fresh seed so a wrong order,
- * count or range fails; DS_00104AFC must carry draw1, DS_0010816A[0]/[1] the
- * two mapped characters, and the LCG state after the handler must equal the
- * model's eight-step state (a dropped dust draw or a restored master-loop draw
- * moves it). */
+ * slot+0x81 = 2, so six), rng(6) at 0x11AE9 and the P1 spawn's six — the
+ * stores, the arm and the character picks. The draws are precomputed on a fresh
+ * seed so a wrong order, count or range fails; DS_00104AFC must carry draw1,
+ * DS_0010816A[0]/[1] the two mapped characters, and the LCG state after the
+ * handler must equal the model's fourteen-step state (a dropped dust draw or a
+ * restored master-loop draw moves it). */
 static void check_state6(void)
 {
     (void)demo_fixture();
@@ -999,6 +999,7 @@ static void check_state6(void)
     DSB(DS_00104B1D) = 0;               /* let 0x41350 store the character */
     DSD(DS_001088E4) = 0;               /* coin poll mask: nothing accepted */
     DSB(DS_00104528 + 1u) = 2;          /* (DS_00104528+1)&2 set: skip text */
+    DSW(DS_00104B00) = 3;               /* mode 3: 0x49388's range is 0x64 */
     DSB(DS_00104B15) = 0;
     DSB(DS_00104B19 + 2u) = 0;
     DSW(DS_001082CC) = 0;
@@ -1013,23 +1014,28 @@ static void check_state6(void)
     rng_seed(0x1234u);
     u32 draw1 = rng_next(7u);
     /* Each spawn's dust builder (0x494A8) draws three values per iteration —
-     * 0x49388's rng(side) (the picker; range 0 for side 0, 1 for side 1),
-     * rng(0x1800) at 0x495DF and rng(step) at 0x495FC with step = 0x300 /
-     * slot+0x81 — over slot+0x81 = 2 iterations. P0's six sit between 0x11AAD
-     * and 0x11AE9; P1's six follow at 0x11B08. slot+0x81 is 2 here (0x49300
-     * seeds DS_001088CC = 2, DS_000C9520 divides slot+0x3C = 0). */
-    for (u32 i = 0; i < 2u; i++) {
-        (void)rng_next(0u);
-        (void)rng_next(0x1800u);
-        (void)rng_next(0x300u / 2u);
+     * 0x49388's pick (the raw's range: mode 3 -> 0x64, 0x49397; else
+     * DS_00108860[side], 0x4939E), rng(0x1800) at 0x495DF and rng(step) at
+     * 0x495FC with step = 0x300 / slot+0x81 — over slot+0x81 = 2 iterations.
+     * P0's six sit between 0x11AAD and 0x11AE9; P1's six follow at 0x11B08.
+     * slot+0x81 is 2 here (0x49300 seeds DS_001088CC = 2, DS_000C9520 divides
+     * slot+0x3C = 0). Each pick's value maps through the raw's thresholds
+     * (0x493B0..0x493E4) to the 0xC9524 descriptor index. */
+    u32 dust_idx[4];
+    u32 di = 0;
+    u32 draw2 = 0;
+    for (u32 side = 0; side < 2u; side++) {
+        for (u32 i = 0; i < 2u; i++) {
+            u32 v = rng_next(0x64u);
+            dust_idx[di++] = (v < 0x1eu) ? 4u : (v < 0x32u) ? 3u
+                           : (v < 0x46u) ? 5u : (v < 0x55u) ? 1u
+                           : (v < 0x5fu) ? 0u : 2u;
+            (void)rng_next(0x1800u);
+            (void)rng_next(0x300u / 2u);
+        }
+        if (side == 0u) draw2 = rng_next(6u);
     }
-    u32 draw2 = rng_next(6u);
     u32 p1_char = (draw1 + draw2) % 7u;
-    for (u32 i = 0; i < 2u; i++) {
-        (void)rng_next(1u);
-        (void)rng_next(0x1800u);
-        (void)rng_next(0x300u / 2u);
-    }
     u32 end_state = DSD(DS_000EF6D8);
 
     DSW(DS_000F0A64) = 6;
@@ -1042,15 +1048,26 @@ static void check_state6(void)
     /* 0x494A8's effect, not only its draws: two entries per side moved to the
      * 0x10884C list (each insert-after puts the newest first, so side 1's two
      * lead), each with a type-0 header, the step at +0x1A and a spawned actor
-     * at +8. */
+     * at +8. The actor's +8 is its descriptor's first dword (0x2AE7D), so
+     * asserting it against the modeled picker index discriminates the raw's
+     * rng(0x64) range from a range that always yields index 4. */
     {
         u32 n = 0;
         for (u32 e = DSD(DS_0010884C); e != DS_0010884C; e = DSD(e)) {
+            u32 spawn = 3u - n;         /* the list is newest-first */
+            u32 actor = DSD(e + 8u);
+            u32 desc = DSD(DS_000C9524 + dust_idx[spawn] * 4u);
             CHECK_EQ_INT((int)DSB(e + 0x1Eu), 0);
             CHECK_EQ_INT((int)DSW(e + 0x1Au), 0x180);
             CHECK_EQ_INT((int)DSD(e + 0x0Cu),
                          (int)(DS_001077B0 + (n < 2u ? 0x94u : 0u)));
-            CHECK(DSD(e + 8u) != 0, "dust entry carries a spawned actor");
+            CHECK(actor != 0, "dust entry carries a spawned actor");
+            /* The actor's +8 is the anim pointer desc[0] (0x2AE7D) after the
+             * spawn's walk (0x2AFFA advances it by 2 before the first sprite
+             * id); +0x48 keeps the descriptor's type byte (dp[4], 0x20+idx),
+             * which the visible arm of 0x2B0D4 does not rewrite. */
+            CHECK_EQ_INT((int)DSD(actor + 8u), (int)(DSD(desc) + 2u));
+            CHECK_EQ_INT((int)DSB(actor + 0x48u), (int)(0x20u + dust_idx[spawn]));
             n++;
         }
         CHECK_EQ_INT((int)n, 4);
