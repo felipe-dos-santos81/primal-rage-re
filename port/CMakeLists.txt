@@ -10,7 +10,7 @@ add_compile_options(-Wall -Wextra -Wno-unused-parameter -fno-strict-aliasing)
 
 find_package(SDL3 REQUIRED CONFIG)
 
-add_library(prage_core STATIC src/mem.c src/platform/res.c src/platform/gra.c src/platform/sprite.c src/platform/render.c src/platform/gfx.c src/platform/input.c src/platform/audio/opl/opal.c src/platform/audio/opl/opl.c src/platform/audio/samples.c src/platform/audio/patches.c src/platform/audio/pitch.c src/platform/audio/sequencer.c src/platform/audio/mixer.c src/platform/audio/ail.c src/platform/smacker.c src/host.c src/game/flow.c src/game/movie.c src/game/rng.c src/game/actors.c src/game/effects.c src/game/camera.c src/game/config.c src/game/attract.c)
+add_library(prage_core STATIC src/mem.c src/platform/res.c src/platform/gra.c src/platform/sprite.c src/platform/render.c src/platform/gfx.c src/platform/input.c src/platform/audio/opl/opal.c src/platform/audio/opl/opl.c src/platform/audio/samples.c src/platform/audio/patches.c src/platform/audio/pitch.c src/platform/audio/sequencer.c src/platform/audio/mixer.c src/platform/audio/ail.c src/platform/smacker.c src/host.c src/game/flow.c src/game/movie.c src/game/rng.c src/game/actors.c src/game/effects.c src/game/camera.c src/game/fighter.c src/game/fight.c src/game/config.c src/game/attract.c)
 target_include_directories(prage_core PUBLIC src)
 # Task 12 reversal: Task 6 made prage_core drop SDL3::SDL3 PUBLIC so run_tests
 # (which had no SDL code) need not link SDL. host.c now lives in the library and

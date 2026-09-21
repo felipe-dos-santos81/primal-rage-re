@@ -738,9 +738,19 @@ argument; the second is `dx`. Note the demo prologue passes `ax` as the side in
 0x17650  DS_00100B0C = (DS_00100B0C * 0xF3D + 0x800) / 0x1000
 0x17653  DS_00100B00 = (DS_00100B00 * 0xD56 + 0x800) / 0x1000
 0x17656  DS_00100B04 = (DS_00100B04 * 0xD56 + 0x800) / 0x1000
-0x17659  if (0x140E4() && DS_00100B60) 0x170A0()
-         if (0x140E4() && DS_00100B61) 0x170A0()
+0x17698  if (0x140E4()) {                         ; exactly ONE call (corrected, see below)
+0x176A1      if (DS_00100B60) 0x170A0(EAX=0)
+0x176B1      if (DS_00100B61) 0x170A0(EAX=1)
+         }
 ```
+
+**Correction (raw wins).** This section previously transcribed two `0x140E4()`
+calls, one per store. The raw has exactly **one** `call 0x140e4` at `0x17698`
+(`e847caffff`); its `test al,al; je 0x176C4` gates **both** stores:
+`0x176A1`–`0x176AF` (`DS_00100B60` → `0x170A0(EAX=0)`) and `0x176B1`–`0x176C3`
+(`DS_00100B61` → `0x170A0(EAX=1)`). Task 2 found and independently verified
+this; `port/src/game/camera.c`'s `camera_decay` already carries the single-gate
+form as a PORT skip. The listing above is corrected to match.
 
 The raw form of the signed divide is
 `iVar3 = x >> 31; result = ((x + iVar3*-0x1000) - (iVar3<<11 < 0)) >> 12`, i.e. a

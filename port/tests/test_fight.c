@@ -1,5 +1,8 @@
 /* port/tests/test_fight.c */
 #include "game/camera.h"
+#include "game/fight.h"
+#include "game/fighter.h"
+#include "game/rng.h"
 #include "mem.h"
 #include "symbols.h"
 #include "test.h"
@@ -291,6 +294,184 @@ static void check_decay(void)
     CHECK_EQ_INT((int)DSD(DS_00100B08), (int)0xFFFFF0C4u);   /* -0xF3C */
 }
 
+/* 0x263F4: the arena frame's order and its two observable contracts. The two
+ * latch sentinels differ from the values they copy, so a missing latch fails;
+ * the 0x19068 pass stores a record float and clears the record's +0x20, so a
+ * missing fighter update fails. */
+static void check_arena_frame(void)
+{
+    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
+    u32 a0 = FIGHT_ACTORS + 1u * 0x20u;
+
+    mem_fill(FIGHT_ACTORS, 0, 0x80);
+    mem_fill(FIGHT_RECS, 0, 0x200);
+
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSD(DS_001077B0) = p0;
+    DSD(DS_00107844) = p1;
+    DSD(DS_001077B8) = 0;
+    DSD(DS_0010784C) = 0;
+    DSD(DS_001014E0) = 0;               /* res_resolve NULL: no origin subtract */
+    DSD(DS_001014F0) = 0;
+    DSW(p0 + 0x28u) = 0;
+    DSW(p0 + 0x56u) = 1;
+    DSW(p1 + 0x28u) = 0;
+    DSW(p1 + 0x56u) = 2;
+    DSW(a0) = 0;                        /* actor bit 15 clear */
+    DSD(DS_00100AF0) = 0;
+    DSD(DS_00100AF4) = 0;
+
+    /* The latches must take the PRE-frame values, not their sentinels. */
+    DSD(DS_001077E4) = 0x00001111u;
+    DSD(DS_001077E8) = 0x00002222u;
+    DSD(DS_00107878) = 0x00003333u;
+    DSD(DS_0010787C) = 0x00004444u;
+
+    /* 0x19068 side 0: the +0x5E timer reaches the record float store. */
+    DSB(DS_00107802) = 0;
+    DSB(DS_00107896) = 0;
+    DSB(0x0010780Fu) = 0;               /* slot0 +0x5F */
+    DSB(DS_00100B58) = 0;               /* equal -> the stance gate passes */
+    DSB(DS_00100B5E) = 1;
+    DSB(DS_00100B5A) = 1;
+    DSB(DS_00100B5C) = 3;
+    DSD(p0 + 0x24u) = 0;
+    DSD(p0 + 0x20u) = 0xDEADBEEFu;
+    DSB(0x001078A3u) = 0;               /* slot1 +0x5F */
+    DSB(DS_00100B58 + 1u) = 0x55;            /* side 1 mismatches -> 0x1922C skip */
+
+    /* 0x49C78: an empty effect list; the DS_001088BF tail gate is closed. */
+    DSD(DS_0010884C) = DS_0010884C;
+    DSB(DS_001088BF) = 0;
+    /* 0x35658: no camera-target record, so the HUD pass returns at 0x3577E. */
+    DSD(DS_001077A8) = 0;
+    /* 0x1282C: the dust gate is closed. */
+    DSW(DS_000EF6DC) = 1;
+    /* 0x1958C: inert unless DS_001078FA == 2. */
+    DSB(DS_001078FA) = 0;
+    /* 0x12DA8: a non-zero camera mode selects the max arm, no slot deref. */
+    DSB(DS_000F0AFE) = 4;
+
+    fight_arena_frame();
+
+    CHECK_EQ_INT((int)DSD(DS_001077E8), 0x1111);
+    CHECK_EQ_INT((int)DSD(DS_0010787C), 0x3333);
+    CHECK_EQ_INT((int)DSD(p0 + 0x24u), 0x40400000);   /* (float)3.0 */
+    CHECK_EQ_INT((int)DSD(p0 + 0x20u), 0);
+}
+
+/* 0x1958C: a side whose +0x803 state byte is 0x0A clears its DS_00100AF8
+ * entry. The sentinel differs from the post-condition. */
+static void check_fighter_pass_a(void)
+{
+    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
+
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSD(DS_001077B0) = p0;
+    DSD(DS_00107844) = p1;
+    DSB(DS_001078FA) = 2;
+    DSD(DS_00100AF8) = 0xDEADBEEFu;
+    DSD(DS_00100AFC) = 0xDEADBEEFu;
+    DSB(DS_00107803) = 0x0A;            /* side 0 leaves the fight */
+    DSB(DS_00107803 + 0x94u) = 0;       /* side 1 stays */
+    DSB(0x0010780Fu) = 0x40;            /* slot0 +0x5F >= 0x40: anim block off */
+    DSB(0x001078A3u) = 0x40;            /* slot1 +0x5F */
+    DSB(DS_001077F0) = 0;
+    DSB(DS_00107884) = 0;
+    /* Pin the winner comparison so only the 0x0A clear can zero the flag: the
+     * lower +0x34 word makes the post-loop logic clear DS_00100AFC instead. */
+    DSW(DS_00107838) = 0;
+    DSW(DS_001078CC) = 1;
+    DSB(DS_0010780A) = 0;
+    DSB(DS_0010789E) = 0;
+    DSB(DS_0010783A) = 0;
+    DSB(DS_001078CE) = 0;
+
+    fighter_pass_a();
+    CHECK_EQ_INT((int)DSD(DS_00100AF8), 0);
+}
+
+/* 0x19068: the +0x5E timer and the +0x5A stance timer arm the record's
+ * animation float from +0x5C and clear the record's +0x20. */
+static void check_fighter_pass_b(void)
+{
+    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
+
+    mem_fill(FIGHT_RECS, 0, 0x200);
+    DSD(DS_001077B0) = p0;
+    DSD(DS_00107844) = p1;
+    DSB(DS_00107802) = 0;
+    DSB(DS_00107896) = 0;
+    DSB(DS_00107EE0) = 0;               /* 0x3C570(5) returns 0 (frame path) */
+    DSB(0x0010780Fu) = 0;
+    DSB(DS_00100B58) = 0;
+    DSB(DS_00100B5E) = 1;               /* -> 0 */
+    DSB(DS_00100B5A) = 1;               /* == 1 -> the float store */
+    DSB(DS_00100B5C) = 3;
+    DSD(p0 + 0x24u) = 0;
+    DSD(p0 + 0x20u) = 0xDEADBEEFu;
+    DSB(0x001078A3u) = 0;
+    DSB(DS_00100B58 + 1u) = 0x55;            /* side 1 skips through the gap */
+
+    fighter_pass_b(1);                  /* arg != 0 bypasses the 0x3C570 gate */
+    CHECK_EQ_INT((int)DSB(DS_00100B5E), 0x0A);
+    CHECK_EQ_INT((int)DSD(p0 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSD(p0 + 0x20u), 0);
+}
+
+/* 0x49C78: the direct RNG call sites and their gates. A case-3 entry issues
+ * exactly one rng(0x3C); the DS_001088BF tail issues one rng(2) only inside
+ * 1..4. The RNG state is the proof; the sentinel seeds prove the gate. */
+static void check_effects_rng(void)
+{
+    u32 entry = FIGHT_RECS + 0x3000u;
+    u32 rec = FIGHT_RECS + 0x3100u;
+    u32 saved;
+
+    mem_fill(FIGHT_RECS, 0, 0x4000);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSD(DS_001077B0) = FIGHT_RECS;
+    DSD(DS_00107844) = FIGHT_RECS + 0x100u;
+    DSW(FIGHT_RECS + 0x56u) = 1;
+    DSW(FIGHT_RECS + 0x100u + 0x56u) = 2;
+    DSW(DS_00104B00) = 3;
+    DSB(DS_001088BF) = 0;
+    DSB(DS_00104AEC) = 0xFF;
+
+    /* The one-entry list: 0x10884C -> entry -> 0x10884C. */
+    DSD(DS_0010884C) = entry;
+    DSD(entry) = DS_0010884C;
+    DSB(entry + 0x21u) = 0;
+    DSD(entry + 8u) = rec;
+    DSB(entry + 0x1Eu) = 3;
+    DSB(rec + 0x48u) = 0x20;            /* the raw's `si` is 0 */
+    DSD(rec + 0x30u) = 0;               /* the 0xBD898 gate passes */
+
+    rng_seed(0x1234u);
+    (void)rng_next(0x3Cu);
+    saved = DSD(DS_000EF6D8);
+    rng_seed(0x1234u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)saved);
+
+    /* An empty list draws nothing when the tail gate is closed. */
+    DSD(DS_0010884C) = DS_0010884C;
+    DSB(DS_001088BF) = 0;
+    rng_seed(0x1234u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0x1234);
+
+    /* The tail gate open (2, inside 1..4) issues one rng(2). */
+    DSB(DS_001088BF) = 2;
+    rng_seed(0x1234u);
+    (void)rng_next(2u);
+    saved = DSD(DS_000EF6D8);
+    rng_seed(0x1234u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)saved);
+    CHECK_EQ_INT((int)DSB(DS_001088BF), 0);
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -298,6 +479,9 @@ int test_fight(void)
     u8 s_f0ae0[0x20];
     u8 s_proj[0xF4];
     u8 s_slots[0x160];
+    u8 s_d0[0x200];
+    u8 s_88[0x100];
+    u8 s_a5[0x800];
     u32 s_actor_tab = DSD(DS_001014EC);
     u32 s_res_tab = DSD(DS_001014E0);
     u32 s_res_cnt = DSD(DS_001014F0);
@@ -310,6 +494,9 @@ int test_fight(void)
     snap(s_f0ae0, 0x000F0AE0u, 0x20u);
     snap(s_proj, 0x00100A70u, 0xF4u);
     snap(s_slots, 0x001077A0u, 0x160u);
+    snap(s_d0, 0x00107D00u, 0x200u);
+    snap(s_88, 0x00108840u, 0x100u);
+    snap(s_a5, 0x00104500u, 0x800u);
 
     check_projection();
     check_dispatch();
@@ -317,10 +504,17 @@ int test_fight(void)
     check_dust_gate();
     check_screen_base();
     check_decay();
+    check_arena_frame();
+    check_fighter_pass_a();
+    check_fighter_pass_b();
+    check_effects_rng();
 
     put(s_f0ae0, 0x000F0AE0u, 0x20u);
     put(s_proj, 0x00100A70u, 0xF4u);
     put(s_slots, 0x001077A0u, 0x160u);
+    put(s_d0, 0x00107D00u, 0x200u);
+    put(s_88, 0x00108840u, 0x100u);
+    put(s_a5, 0x00104500u, 0x800u);
     DSD(DS_001014EC) = s_actor_tab;
     DSD(DS_001014E0) = s_res_tab;
     DSD(DS_001014F0) = s_res_cnt;
