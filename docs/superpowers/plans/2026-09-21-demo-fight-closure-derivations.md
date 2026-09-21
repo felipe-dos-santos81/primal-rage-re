@@ -223,7 +223,7 @@ at `0x3C88C`–`0x3CB65` and the jump table at `0x3C87C`
 
 ### 2.3 The two callees the hit chain does not need
 
-* **`0x3C758(side, out)`** (0x3C758–0x3C7FF, 168 B): reads the attack-frame
+* **`0x3C758(side, out)`** (body_end `0x3C7FF` − entry `0x3C758` = 167 B): reads the attack-frame
   descriptor (`0x3C600`), maps the frame's own input words through `0x3C6E8`
   (three calls), ORs them into `*out`, and compares against the side's command
   word `DS_001088E0[side]`: returns 2 when a command bit overlaps, 0 when the
@@ -378,9 +378,14 @@ mask = dword[0xA182C + char*0x200 + r*8]                  ; 64-bit per-char mask
 if (c < 0x20) return (mask >> bit) & 1
 else          return (dword[0xA182C + char*0x200 + r*8 + 4] >> (c-0x20)) & 1
 ```
-`0xA182C`'s first row is `00 00 ff 00 ff ff ff 7f` = bits `0x10..0x17` and
-`0x20..0x3E` set, so a fresh `r = 0xFF` returns 1 and a target already in a
-reaction `r` can only be re-hit by an allowed attack bit.
+`0xA182C` is 512 bytes = 64 rows of 8 bytes, one table per character
+(`char*0x200`), indexed by the current reaction `r`. The rows fall in three
+groups: rows `0x00..0x0F` are `00 00 ff 00 ff ff ff 7f` (dword0 bits
+`0x10..0x17`, dword1 bits `0x00..0x1E`); rows `0x10..0x1F` are
+`00 00 00 00 ff ff ff 7f` (dword0 clear, dword1 bits `0x00..0x1E`); rows
+`0x20..0x3F` are all zero. So a fresh `r = 0xFF` returns 1, and a target in
+reaction `r` can only be re-hit by an attack whose reaction `c` has row `r`'s
+bit set.
 
 `0x3CBC4`/`0x3CC58` (145 B each) pick a reaction variant from `DS_001088E0[side]`
 bit `0x4000`, `0x1DDF4` (109 B, the attacker/defender geometry test via the two
@@ -404,7 +409,7 @@ self_slot+0x5F = reaction; DS_001088A8[side] = reaction             ; 0x34EE7/0x
 DSB(self_rec+0x63) = 0                                              ; 0x34EFC
 if (DSB(0x1078FA) == 2) { self_rec+0x59 = 1; other_rec+0x59 = 0xFF } ; 0x34F07..0x34F47
 0x3AFC4(side, reaction, &anim)      ; the (0xDE114, 0xA3528, 0xA6728) triple
-if (*(u32*)(anim[1]+4) != 0) {                                      ; 0x34F64
+if (*(u32*)(anim[1]+4) != 0) {   ; 0x34F64; anim[1] = 0xA3528 + idx*0x14
     sound = word[0xE9308 + (u8)DSB(anim[0]+7)*2]                    ; 0x34F97
     0x2C3FC(sound)                                                  ; 0x34FA4 (voice)
     if (self_slot+0x54 != 2) 0x3C4CC(self_rec, 0x40000000)          ; 0x34FBC
@@ -428,11 +433,20 @@ record), `0x188AC`/`0x188DC`/`0x1890C` (the screen-anchor setters), and the
 `word[frame_table + 0xC + value*0x14]` at `0x107DD8[...]` (the frame index is the `value` argument, not the slot index). `0x32BAC` (44 B) plays the
 two hit sounds `char+0x1C` / `ebx+0x1C` through `0x2DAE4` (a sound wrapper).
 
-**The `+0x52` transitions the chain drives:** on a resolved hit,
-`slot+0x52 = 9` and `slot+0x53 = 8` (unless `+0x52` was already 4); on the
-`0x35D7C` / `0x3BDDC` no-hit arm, `slot+0x54 = 2`, `slot+0x53 = 4`. `+0x52 == 9`
-is a `0x34B14` table no-op (entries 9..16), i.e. the reaction plays through the
-animation stream, not a per-frame handler.
+**The `+0x52` transitions the chain drives are table-gated, not unconditional.**
+The `slot+0x52 = 9` / `slot+0x53 = 8` / `slot+0x6A++` arm runs only when
+`*(u32*)(anim[1]+4) != 0`. That field is table data at
+`0xA3528 + ((char<<6)+reaction)*0x14 + 4`, and it varies: char 0 / reaction 0
+reads `0x000C8B80` (nonzero → the arm runs), while char 0 / reaction `0x20` —
+the demo's own first-hit reaction, because `0xC619C` entry 0's reaction field is
+`0x20` — reads `0` (the arm is **not** taken; the driver falls to the
+`else` arm and then the callback block below). A second `else`
+(`slot+0x5F = 0xFF`) is followed by an unconditional block when `*(u32*)anim[1]`
+is nonzero: it sets `slot+0x5F = reaction` and calls `*(void**)anim[1]`
+(char 0 / reaction 0x20: `0x0003D17C`). On the `0x35D7C` / `0x3BDDC` no-hit arm,
+`slot+0x54 = 2`, `slot+0x53 = 4`. `+0x52 == 9` is a `0x34B14` table no-op
+(entries 9..16); when it is taken the reaction plays through the animation
+stream, not a per-frame handler.
 
 **A health/HP field is not written by the chain.** What it does write:
 `slot+0x7C` (byte, hit counter), `slot+0x55` (byte, hit index), `slot+0x5F`
@@ -476,8 +490,11 @@ selection and reaction driver the port has no equivalent for.
 | `0x188DC` | 44 | screen-anchor setter | §3.6 |
 | `0x1890C` | 64 | screen-anchor setter | §3.6 |
 
-**Already reached or ported under another name (18 functions, ~4200 bytes)** —
-these are not new work, but Task 5 must confirm each port's semantics match:
+**Present in the port or already reached under another name (18 functions,
+~4200 bytes)** — these are not new work, but Task 5 must confirm each port's
+semantics match. Two of them (`0x1922C`, `0x18B04`) are *reached but declared
+incomplete* (cycle-1 §7.12 gaps): they stay in this bucket because they are not
+new functions, but they are not fully ported either:
 `0x33950` (`fighter_ctx_same`), `0x3AFC4` (`fighter_anim_triple`), `0x186D0`
 (`fighter_slot_latch`), `0x18714`, `0x187FC` (`ai_distance`'s helper), `0x1881C`,
 `0x1922C` (gap §7.12), `0x18B04` (gap §7.12), `0x18350`, `0x18428`, `0x18460`,
@@ -538,9 +555,9 @@ DSW(DS_000F0A64) = DSW(DS_000F0A6C)
 
 ### 4.2 The continue sequence is `DS_000F0A6C = DS_000F0A72`, and for the demo it is 0
 
-`DS_000F0A6C` is written by: `0x10DE?`/`0x10E56` (`0x10DB0`/`0x10E18` tails),
-`0x119E6` (`0x11000`), `0x11E2E` (state 5 → 6), `0x11BB9` (state 6 →
-`DS_000F0A72`), and `0x12628` (state 3 → 6). In the demo's chain state 3's phase
+`DS_000F0A6C` is written by: `0x10DEE` (`0x10DB0`'s write), `0x10E56`
+(`0x10E18`'s write), `0x119E6` (`0x11000`), `0x11E2E` (state 5 → 6),
+`0x11BB9` (state 6 → `DS_000F0A72`), and `0x12628` (state 3 → 6). In the demo's chain state 3's phase
 1 sets `DS_000F0A72 = 0` at `0x1264C`, so state 6's `DS_000F0A6C = DS_000F0A72`
 (`0x11BB9`) is **0**, and the 900-frame exit hands to **state 0, the attract
 sub-machine** (`0x11000`). The nonzero continuations (`DS_000F0A72 ∈ {3,4,5}`
@@ -639,13 +656,31 @@ past the character picks.
    `0x3C758` return semantics are transcribed, not unit-pinned.
 4. **The reaction tables' semantics** (§3.6): `0xDE114`/`0xA3528`/`0xA6728` are
    the same triples `fighter_anim_triple` already indexes, but the *meaning* of
-   `*(u32*)(anim[1])` (the callback invoked at `0x35045`) and the `0xE9308` sound
-   index are not decoded.
+   the `0xA3528` entry fields (`+0`, `+4`), the `0xE9308` sound index and the
+   callback invoked at `0x35045` are not decoded. The shipped fixture's values
+   and its branch are pinned in §7.11; the table-driven tail is §6.9.
 5. **`0x39040`'s hit-reaction RNG follow-up** (§3.8): it reads `DS_001088A8` and
    draws `0x5D7DC`, so it *is* a second RNG consumer on the hit path; its body is
    not decoded and it is not in the chain's closure.
 6. **The think chain's interiors** (already cycle-1 §7.12) remain gaps and are
    marked unexercised in §8.
+7. **`0x1DDF4` (109 B), the attacker/defender geometry test** (§3.5, §7.11): it
+   compares `|0x187FC(...)|` against `|0x1881C(...)|` and a per-character
+   threshold, and both helpers latch the slots through `0x186D0` and read actor
+   positions. Its result is not statically pinnable without seeding the actor
+   pool, and the `0x12`/`0x10` (or `0x13`/`0x11`) reaction-variant tail of
+   `0x3CBC4`/`0x3CC58` depends on it. Evidence: `0x1DDF4`, `0x187FC`, `0x1881C`.
+8. **`0x3C4CC` / `0x3C520` / `0x3C480` (82/76/75 B), the anim-start wrappers**
+   (§3.6): their only output is a `0x2BC30` (`actors_anim_begin`) call plus a
+   screen-anchor write. `0x3C4CC`'s dispatch is pinned (`slot+0x52` in
+   {0,1,2,5,0xE,0x15} → `0x2BC30`, else `0x3C480`), but the animation records
+   and the anchor arithmetic are the same machinery cycle-1 already lists as
+   gaps. Declared here rather than given invented outputs.
+9. **`0x34E2C`'s table-driven tail** (§3.6, §7.11): the head writes and the
+   shipped fixture's branch are pinned, but the `0xA3528` entry fields and the
+   `0x3D17C` callback at `*(u32*)anim[1]` are not decoded. The `+0x52 = 9` arm
+   is reachable only for a reaction whose `0xA3528+4` is nonzero (witness char
+   0 / reaction 0 = `0x000C8B80`; char 0 / reaction 0x20 = `0`).
 
 ---
 
@@ -690,19 +725,35 @@ Input A: `DSB(P+0x7A) = 0`; `DSB(P+0x54) = 0`. Entry 0's `d = 0x01` (byte
 
 ### 7.4 `0x3CE58` — validate and drive the reaction
 
-Input: `DSD(0x1077B0) = P`; `DSB(P+0x7A) = 0`; `DSB(P+0x54) = 0`;
+The shipped fixture (char 0, hitbox 0) makes `0x3CE58` call
+`0x3AFC4(0, 0x20, &anim)`, so the test must seed the char that selects the
+triple: `DSB(P+0x7A) = 0` gives `anim[1] = 0xA3528 + ((0<<6)+0x20)*0x14 =
+0xA37A8`, whose bytes are `7c d1 03 00 | 00 00 00 00 | ...` (i.e.
+`*(u32*)0xA37A8 = 0x0003D17C`, `*(u32*)(0xA37A8+4) = 0`).
+
+Input A: `DSD(0x1077B0) = P`; `DSB(P+0x7A) = 0`; `DSB(P+0x54) = 0`;
 `DSB(P+0x56) = 0`; `DSB(P+0x5F) = 0xFF`; `DSW(0x107D58 + 0) = 8`;
-`DSW(0x104B00) = 3` (not 0x21/0x22). Expected: returns 1;
-`DSB(P+0x5F) == 0x20`; `DSW(P+0x84)` incremented by 1; `DSB(P+0x52) == 9`;
-`DSB(P+0x53) == 8`. Input B: `DSB(P+0x56) = 6` → returns 0 (the `0x3CE24` gate,
-`(s8)(dword[slot+0x53] >> 24) <= 5`).
+`DSW(0x104B00) = 3` (not 0x21/0x22). Expected: returns 1; `DSW(P+0x84)`
+incremented by 1; `DSB(P+0x5F) == 0x20`. **`DSB(P+0x52)` is unchanged** (seed it
+`0x55`) and `DSB(P+0x53)` unchanged: the fixture's `*(u32*)(0xA37A8+4) == 0`, so
+`0x34E2C` does not take the `+0x52 = 9` arm (§3.6). Input B: `DSB(P+0x56) = 6`
+→ returns 0 (the `0x3CE24` gate, `(s8)(dword[slot+0x53] >> 24) <= 5`).
+Input C (the `+0x52 = 9` arm): as Input A but overwrite the shipped reaction
+field `DSW(0xC619C + 4) = 0x0000` so the reaction is 0, whose table entry reads
+`*(u32*)(0xA3528+4) = 0x000C8B80 != 0`. Expected: returns 1;
+`DSB(P+0x52) == 9`; `DSB(P+0x53) == 8`; `DSW(P+0x6A)` incremented by 1.
 
 ### 7.5 `0x3CD94` — hit-stun immunity
 
-Input: `DSB(P+0x5F) = 0xFF` → returns 1. Input B: `DSB(P+0x7A) = 0`,
-`DSB(P+0x5F) = 0` (row 0 of `0xA182C` is `00 00 ff 00 ff ff ff 7f`), reaction
-`c = 0x20` (entry 0): bit 0x20 is set → returns 1. Input C: seed
-`DSB(P+0x5F) = 0x0F` (row 0x0F = the last 8 bytes, all zero) → returns 0.
+Input: `DSB(P+0x5F) = 0xFF` → returns 1 (the `0xFF` early-out). Input B:
+`DSB(P+0x7A) = 0`, `DSB(P+0x5F) = 0`, reaction `c = 0x20` (entry 0): the `c >=
+0x20` branch reads `dword[0xA182C + char*0x200 + 0*8 + 4]`; char 0 row 0 is
+`00 00 ff 00 ff ff ff 7f` (dword1 = `0x7FFFFFFF`), so bit 0 is 1 → returns 1.
+Input C: `DSB(P+0x5F) = 0x20` (row 0x20, all zero) →
+`dword[0xA182C + 0x20*8 + 4] == 0` → returns 0. **Input D (the refuted case):**
+`DSB(P+0x5F) = 0x0F` returns **1**, not 0 — row 0x0F is
+`00 00 ff 00 ff ff ff 7f`, identical to row 0. Only rows `0x20..0x3F` are zero
+(the three groups are in §3.5).
 
 ### 7.6 `0x11D04` case 7 and `0x11BCC` — the timer exit
 
@@ -744,6 +795,75 @@ becomes 8 (`DSW(0x107D58 + 0) == 8`); with `DSW(0x1088E0) = 0` it stays 0.
 
 Not new; §5 is the RNG deliverable. The two draw sites to reference are
 `0x11AAD` (`rng(7)`) and `0x11AE9` (`rng(6)`), and the seed site is `0x20C62`.
+
+### 7.11 The remaining new chain functions
+
+These 11 functions are in §3.7's "new to the port" table and are not the
+hit-detection core of §7.1–§7.9. Each is given its pinned fixture; the four
+functions that cannot be pinned are §6.7–§6.9.
+
+**`0x3CE24(side, i)` — the stance/hit-stun gate.** Input: `DSB(P+0x56) = 6`
+→ returns 0 (the signed `slot+0x56 <= 5` gate fails; `slot+0x56` is the high byte
+of the dword at `slot+0x53`). Input B: `DSB(P+0x56) = 0`, `DSB(P+0x5F) = 0xFF`
+→ `0x3CD94` returns 1 → returns 1.
+
+**`0x3CBC4(side)` — reaction variant A.** Input: `DSB(P+0x54) = 2` → returns
+`0x16`. Input B: `DSB(P+0x54) = 0`,
+`DSW(DS_001088E0 + side*2) = 0x4000` (bit `0x4000` set) → returns `0x14`. The
+`0x12`/`0x10` tail routes through `0x1DDF4` (§6.7).
+
+**`0x3CC58(side)` — reaction variant B.** Same shape: `0x17` at
+`DSB(P+0x54) = 2`, `0x15` at bit `0x4000`; tail `0x13`/`0x11` via §6.7.
+
+**`0x34D8C(side)` — the `+0x59` palette-flash pair.** Input:
+`DSB(0x1078FA) = 2`; `DSD(0x1077B0) = P0`, `DSD(0x107844) = P1`; seed
+`DSB(P0+0x59) = 0x55`, `DSB(P1+0x59) = 0x55`. Call `0x34D8C(0)`. Expected:
+`DSB(P0+0x59) == 1` and `DSB(P1+0x59) == 0xFF`. Input B: `DSB(0x1078FA) = 1` →
+both unchanged.
+
+**`0x34E2C(side, reaction)` — the reaction driver, head.** Input A:
+`reaction = 0xFF` → returns with no writes (seed `P+0x5F = 0xAA`; assert it
+stays). Input B (the shipped demo fixture, char 0 / reaction 0x20): seed
+`DSD(0x1077B0) = P`, `DSB(P+0x7A) = 0`, `DSB(P+0x54) = 0`,
+`DSB(0x1078FA) = 1`, `DSW(P+0x84) = 0x10`; call `0x34E2C(0, 0x20)`. The table
+entry `0xA3528 + ((0<<6)+0x20)*0x14 = 0xA37A8` reads `*(u32*)0xA37A8 = 0x0003D17C`
+and `*(u32*)(0xA37A8+4) = 0`. Expected: `DSW(P+0x84) == 0x11`;
+`DSB(P+0x88) == 0`; `DSB(P+0x8A) == 1`; `DSB(P+0x5F) == 0x20`;
+`DSB(DS_001088A8) == 0x20`; `DSB(P+0x52)` **unchanged** (seed `0x55`) because the
+`+0x52 = 9` arm needs `*(u32*)(0xA37A8+4) != 0`. Input C (the arm): as Input B
+but overwrite `DSW(0xC619C + 4) = 0x0000` (reaction 0, `*(u32*)(0xA3528+4) =
+0x000C8B80`) → `DSB(P+0x52) == 9`, `DSB(P+0x53) == 8`,
+`DSW(P+0x6A) == seed+1`. The tail is §6.9.
+
+**`0x339AC(out, rec)` — the ctx builder from a record.** Input:
+`DSD(0x1077B0) = P0`, `DSD(0x107844) = P1`, `DSB(rec+0x51) = 1`. Expected:
+`out[0] == 1`, `out[1] == 0`, `out[2] == 0x107844`, `out[3] == 0x1077B0`,
+`out[4] == P1`, `out[5] == P0`.
+
+**`0x4CE70(side, reaction)` — the per-character reaction allow-list.** Input:
+`DSB(0x1077B0 + 0x7A) = 0` (char 0), `reaction = 0x28` → returns 0. Input B:
+char 0, `reaction = 0x20` → returns 1.
+
+**`0x188AC(side, x, y)` — the record-anchor setter.** Input: `side = 0`,
+`DSD(0x1077B0) = P`; call with `x = 0x1111`, `y = 0x2222`. Expected:
+`DSD(P+0x18) == 0x1111`, `DSD(P+0x1C) == 0x2222` (then `0x186D0(0)` runs).
+
+**`0x188DC(side, x)` — the `+0x2C` anchor setter.** Input: `side = 0`,
+`DSD(0x1077B0) = P`, `DSD(P+0x2C) = 0xAA`; call with `x = 0x3333`. Expected:
+`DSD(P+0x2C) == 0x3333`. Its `0x18714` tail (the `rec+0x18` write) is §6.7.
+
+**`0x1890C(side, y)` — the `+0x1C` anchor setter.** Input: `side = 0`,
+`DSD(0x1077B0) = P`, `DSB(P+0x42) = 0x08` (bit 3, so `0x186D0` latches
+`slot+0x30 = rec+0x1C`), `DSB(P+0x41) = 0`, `DSD(P+0x18) = 0xAA`,
+`DSD(P+0x1C) = 0x100`; call with `y = 0x60`. Expected: `DSD(P+0x1C) == 0x60`
+(`rec+0x1C += y − slot+0x30`, and `slot+0x30` was just latched to `rec+0x1C`).
+
+**`0x32BAC(char)` — the two hit sounds (call-order seam).** `0x2DAE4` is an
+unported out-of-scope sound wrapper, so the assertion is a call-order seam.
+Input: `char = 0` (EAX), `EBX = 0` → exactly two `0x2DAE4` calls:
+`0x2DAE4(0x1C, 1)` then `0x2DAE4(0x1B, 1)` (`EAX = char+1+0x1B`, then
+`EBX+0x1B`; EDX = 1). Input B: `EBX = 7` (`EBX+1 > 6`) → one call,
+`0x2DAE4(0x1C, 1)`.
 
 ---
 
