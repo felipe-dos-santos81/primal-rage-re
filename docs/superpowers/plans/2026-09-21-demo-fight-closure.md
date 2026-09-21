@@ -124,9 +124,11 @@ git commit -m "tests: pin the master loop's RNG spin at its source"
 
 ---
 
-### Task 3: The `0x38730` projection — the state-9 globe and the state-7 background
+### Task 3: The `0x38730` projection — the state-7 background, and the state-9 globe actor
 
-One fix explains both the window's opening frame and the state-7 arena background (Amendment 1.2). `DS_00107A54` is written by exactly three sites and read only at `0x255F8`; the port never sets it, so the scroll/zoom projection never runs and the globe's projected layer is coarser. `0x38730` is the producer — it seeds the scroll/zoom tables, derives the band selectors, calls `0x387F4`/`0x38890`/`0x38A38`, and sets `DS_00107A54 = 1` — and its only callers are `0x20DF4` at `0x20E7F`/`0x20E90`, the state-6 fight reset the port skipped as a named gap.
+**Corrected premise (Task 3's first pass, `4e7321b`).** This task was planned on the claim that one fix — `0x38730`, the producer of `DS_00107A54` — explains both the window's opening frame and the state-7 arena background. That claim is **half wrong**, and the first pass proved it rather than papering over it: `0x38730`'s only callers are `0x20DF4`'s `0x20E7F`/`0x20EAF` (the state-6 reset), every other `0x20DF4` caller reads `DS_00104AFC` which only state 6 writes, and state 9 precedes state 6 — so the projection's first changed port frame is dumped 481 and frames 0..480 are byte-identical. The oracle's first-unexplained frame therefore did **not** advance, and the state-9 globe frame's real cause is the **globe actor's animation** (the port cycles 12 images where the capture advances a rotation).
+
+`DS_00107A54` is written by exactly three sites and read only at `0x255F8`; the port never set it, so the scroll/zoom projection never ran and the state-7 arena background was coarser. `0x38730` seeds the scroll/zoom tables, derives the band selectors, calls `0x387F4`/`0x38890`/`0x38A38`, and sets `DS_00107A54 = 1`. That work is **done and reviewed** (`4e7321b`). What remains for this task is the globe actor's animation, which is what the gate's third clause actually needs.
 
 **Files:**
 - Modify: the `0x38730` projection's owner, named by record §1.2 (extend it; do not create a module)
@@ -197,7 +199,76 @@ git add port/src/game/flow.c port/src/game/<owner>.c port/tests/test_fight.c por
 git commit -m "fight: port the 0x38730 projection"
 ```
 
-**Gate for this task:** `DS_00107A54` is set on the demo's path, the state-9 frame is explained, and the oracle's first-unexplained frame has advanced past it.
+**Gate for this task:** the state-9 frame is explained and the oracle's first-unexplained frame has advanced past 816. *Status at `4e7321b`: `DS_00107A54` is set on the demo's path (reviewed); the advance is not, because the projection cannot reach state 9. The continuation below is the remaining work.*
+
+---
+
+### Task 3, continuation: the state-9 globe actor's animation
+
+Task 1's record §1.4 blamed the projection for the state-9 hold's frame. `4e7321b` refuted that (the projection's first changed frame is dumped 481, the state-6 entry; frames 0..480 are byte-identical) and corrected §1.4 in place. The measured divergence is the **globe actor's animation**: the port cycles 12 images where the capture advances a rotation — dumped 264 against capture 816, 205 differing bytes, rows 98..144.
+
+**Files:**
+- Modify: the globe actor's animation owner — **derive it** (candidates: the actor frame/anim stepping in `port/src/game/actors.c`, `port/src/game/attract.c`, or the state-9 hold's draw path)
+- Modify: `port/tests/test_flow.c`, or `port/tests/test_fight.c` if the derived observable belongs with the fight's assertions
+
+**Interfaces:**
+- Consumes: record §1.2/§1.3 (the state-9 hold's draw path and its producer) and §7.0 (the state-9 values).
+- Produces: a state-9 globe frame that matches the capture's.
+
+- [ ] **Step 1: Derive the globe actor's animation**
+
+Derive the globe actor's record, the fields its frame/rotation is driven from, what steps them each frame, and why the port cycles 12 images where the capture rotates. Cite the addresses. If the rotation turns out to be a subsystem larger than this continuation can carry, **stop and report its size** — that is a re-scope conversation with the human, not a silent overrun.
+
+- [ ] **Step 2: Write the failing test**
+
+Assert the derived values with seeded sentinels — the exact inputs and expected transitions your Step 1 derivation pins:
+
+```c
+/* The continuation's derivation anchors, as literals. */
+{
+    DSD(GLOBE_ANIM_ADDR) = GLOBE_ANIM_IN;      /* Step 1 anchor */
+    globe_anim_step_under_test();              /* the real ported name, from Step 1 */
+    CHECK_EQ_INT((int)DSD(GLOBE_ANIM_ADDR), GLOBE_ANIM_OUT);   /* Step 1 anchor */
+}
+```
+
+- [ ] **Step 3: Run the test to verify it fails**
+
+Run: `./build/run_tests`
+Expected: FAIL — the port cycles the wrong sequence.
+
+- [ ] **Step 4: Implement it**
+
+Port what Step 1 derived, one C function per original function with its address tag, into the owner Step 1 names. A value that cannot be pinned is a named gap with its evidence, never an invented one.
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `./build/run_tests`
+Expected: PASS, output pristine.
+
+- [ ] **Step 6: Prove the assertion can fail**
+
+Mutate the implementation and confirm the named assertion fails. Restore, and report the mutation with its command and output.
+
+- [ ] **Step 7: Re-measure the oracle**
+
+```bash
+make demo-oracle
+```
+
+Expected: the first-unexplained frame **advances past 816**. If it does not, return to the derivation — do not tune the render to match.
+
+- [ ] **Step 8: Full ladder and commit**
+
+Run: `make verify`
+Expected: exit 0, 0 warnings, every oracle claim unmoved.
+
+```bash
+git add port/src/game/<owner>.c port/tests/test_flow.c port/tests/test_fight.c
+git commit -m "fight: port the state-9 globe actor's animation"
+```
+
+**Gate for this continuation:** the state-9 frame is explained and the oracle's first-unexplained frame has advanced past 816.
 
 ---
 
