@@ -222,8 +222,12 @@ descriptor `0x9AC80`: stream `0x0E89F6`, frame hold 7, layer 0xE2, ids
 spawned; the port's composite then froze at dumped 312 while the capture's
 rotation ran to capture 830.
 
-**Size (Step 1's gate).** One function, 18 bytes of original code
-(`0x12720`..`0x1273B`), plus its `fn_register` line — not a subsystem.
+**Size (Step 1's gate).** One function, **44 bytes** of original code
+(`0x12720`..`0x1274B`, the `RET` at `0x1274B`; raw extent confirmed by
+disassembly), plus its `fn_register` line — not a subsystem. (The first
+statement of this paragraph said 18 bytes / `0x12720..0x1273B`; the raw's
+`CALL 0x2AE14` at `0x12743` and the pops/RET at `0x12748`..`0x1274B` refute
+that. Task 4's correction, per the ledger's parked minor.)
 
 **Measured.** With the target registered, the demo dump's first changed frame is
 dumped **264** — exactly the frame the capture's 816 lands on — and the
@@ -1025,9 +1029,102 @@ Every one of the five sites is corrected to `[557..810]` / `254`. These are
 capture-derived **indices**, not the oracle's claim; the claim
 (`0 unexplained`) is unchanged.
 
+### 9.3 Task 4's derivation — what capture 832..836 actually are (raw wins)
+
+The closure plan's Task 4 premise ("cycle 1 recorded capture 836 as all-black
+and 837 as the `- LOADING -` screen, so 832..836 is the fight's entry") is
+**refuted by the re-captured frontend capture**. The distinct-frame profile of
+the current `data/title-captures/frontend` is:
+
+| capture | content |
+|---|---|
+| 830 | the state-9 hold's globe (port 312..339 match byte-exactly) |
+| 831 | **all zero** (the oracle drops it as an artifact) |
+| 832 | black except rows **192..197**, x 0.. (`- LOADING -`), 498 non-zero bytes |
+| 833 | rows 0..94 black; rows 95..199 the arena (the fighters differ from 834) |
+| 834..836 | the arena frame: beach, both fighters, `NO ANIMALS...`, `CREDITS : 5` |
+
+So **833..836 are the fight's first frames, not "the entry"**: only 832 is
+pre-fight. 833 is a capture-time tear — rows 141..199 are byte-identical to
+834's, rows 95..140 (the fighters) differ — i.e. the top band is the previous
+frame's black and the rest is the arena frame the 70.09 Hz sampler caught
+mid-scanout. Explaining 833..836 therefore requires the **arena render's pixel
+fidelity**, which is Task 5's "state-7 arena render" gap, not an entry screen.
+
+**831 = `0x2BAF4(1)`'s blackout.** The state-6 frame's `0x20DF4` calls
+`0x2BAF4` (`0x20E73 mov eax,1` / `0x20E78 call 0x2baf4`) in the same EDX branch
+as `0x38730`. `0x2BAF4`'s param_1 != 0 arm runs `0x52106` — which waits on
+`in 0x3DA` and writes 256 × 3 zero bytes to the DAC ports `0x3C8`/`0x3C9` —
+and `0x336C0` (the palette-list reset). The frame is drawn but the DAC is black,
+so the capture's 831 is all zero. (The port's `actors_reset()` ports that arm;
+`make demo-oracle` drops all-black capture frames, so the oracle never requires
+this frame.)
+
+**832 = the lazy resource loader's `- LOADING -` screen.** `0x1B544` (the
+handle→pointer resolver, ported as `res_resolve`) calls `0x1B3AC` when the
+entry's `+0xc` lacks the resident bit `0x1000000`. `0x1B3AC`'s head:
+
+```
+0x1B3DA test cl,cl ; jz 0x1B3F4        ; CL = BL = 1 from 0x1B5E0/0x1B5E7
+0x1B3DE mov eax,0x1e9                  ; localisation string 489
+0x1B3E3 mov ebx,0xe6                   ; y = (0xE6*0xD56+0x800)>>12 = 192
+0x1B3E8 xor edx,edx                    ; x = 0
+0x1B3EA call 0x1c500                   ; the string reader (game_string_get)
+0x1B3EF call 0x1c65c                   ; draw it: 0x1C5E8 per glyph + 0x1C470
+0x1B3F8 mov [0x1014fc],dl              ; the master loop's full-copy flag
+```
+
+String 489 decodes from `ENGLISH.TXT` to `- LOADING -` (id 489 = 0x1E9;
+`0x474E4`'s length-XOR). `0x1C65C` draws at `(param_2*0xF3D+0x800)>>12`,
+`(EBX*0xD56+0x800)>>12` = (0, 192) via `0x1C5E8`, which reads the **same font
+table** `0xBCD7C` the port's `text_glyph_emit` uses but blits directly through
+`0x51ED8` (no glyph actor) and calls `0x1C470`'s DAC flush. Measured on the
+capture: 832's only content is rows 192..197 — the arithmetic's y.
+
+**The trigger is real in the port's own frame order.** A temporary log of the
+first resolve of each resource index (a debug build, not committed) shows the
+fight's resources are first resolved at loop frame 1071 = the first state-7
+frame: `s16beach` (21), `s16trb` (32), `s16cob` (33), `s16cobsh` (34),
+`s16rex` (55), `s16rexsh` (57), `s16statu` (2). So the port resolves them at
+exactly the frame the original would load them; what it lacks is the
+*presentation*: `res_load_index` reads every INDEX resource eagerly at init
+(`res.c:94-106`), so `res_resolve` never loads and never draws.
+
+**The state-6 branch is three calls, and the port had two.** `0x20DF4`'s
+EDX != 0 block (`0x20E73`..`0x20E8A`) runs `0x2BAF4` (0x20E78), `0x38730`
+(0x20E7F) and `0x412A0` (0x20E86). The port ports `0x38730`; Task 4 added
+`0x2BAF4` and this record names `0x412A0` a gap:
+
+* `0x412A0(i)` (76 B, `0x412A0..0x412EC`) spawns the scene's props: for each
+  12-byte triple in `0xC82CC[i]` (scene 0 = `0xC7F78`; 5 entries, the terminator
+  a zero first dword) it calls `0x2AE14(desc=[esi], a2=[esi+4], a3=0,
+  a4=(s32)[esi+6]>>16, a5=0)`, then `0x2C320(i)`. Scene 0's descriptors are
+  sprite ids `0x2EF..0x2F3` = `0xA8B30` entries resolving to `s16beach`
+  descriptor indices 1, 0, 2, **4 (the temple/columns)**, 3. `0xC7F58[i]` is a
+  ret-only/no-op pointer (`0x412EC` is the function's own `RET`, `0x5D812` is
+  `return 0`), so it spawns nothing.
+* `0x2C320(i)` (0x2C320..0x2C385, 102 B, the `RET` at 0x2C385) spawns `n = DSW(0xBBD98 + i*2)` crowd actors
+  from `0xBBDA8[i]` (12-byte records: a2 `[esi]`, a3 `(s16)[esi+2]`, a4
+  `(s16)[esi+4]`, the descriptor `0xBB9D8[[esi+0xa]*3]`, a5
+  `([esi+0xb]<<16)|word[esi+8]`) and stores `DS_00105C08`.
+
+The capture's arena content the port lacks — the temple columns and the rocks —
+is exactly these props. Measured (a temporary patch, not committed): with
+`0x2BAF4` alone the attract's globe and its held text vanish and the arena's
+backdrop and both fighters appear, but the port's first arena frame still
+differs from capture 834 by **68729 of 192000 RGB bytes (~36 %)**, and the
+port's first fighter (char 0, the gold T-rex) renders its torso as a flat
+triangle. Those are the Task 5 render gaps.
+
+**Size (Step 1's gate).** The entry is **not one screen**: it is the state-6
+branch's `0x412A0`/`0x2C320` (portable, ~150 B of code + 4 tables) plus the
+**lazy-loader presentation**, which is a `platform/res.c` rework (residency +
+on-demand reads + the `0x1C65C`/`0x1C5E8` direct glyph path), plus the arena
+render fidelity the gate's 833..836 need. This is a re-scope, not a silent
+overrun: reported to the human with the sizes above.
+
 ---
 
-## 10. Provenance
 
 * Raw bytes: `data/game/C/PRAGE.EXE` (read-only), 32-bit `capstone` over the code
   object at file offset `VA + 0x52E54` for the `E8` scans; data operands from
