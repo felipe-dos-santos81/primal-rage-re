@@ -1513,7 +1513,11 @@ selects; gap §7.16). A command with bit `0x1000` sets `DSW(DS_001077FE) == 1`; 
 Array strides (raw): `DS_00107802`/`03`/`04` and `DS_001077FE` are slot fields
 (`0x107802`/`0x107803`/`0x107804`/`0x1077FE` at `side 0`, `+ side*0x94`);
 `DS_001078F8` is byte-stride (`[esi + 0x1078F8]`, `esi = side`); `DS_00107D40` is
-dword stride `0x94` (`[ebx + 0x107D40]`, `ebx = 0x1077B0 + side*0x94`).
+dword stride **4** — the store is `0x3BED4 mov dword ptr [ebx + 0x107D40], eax` with
+`ebx` set at `0x3BE97 lea ebx, [esi*4]`, so the address is `0x107D40 + side*4`. This
+is distinct from the `0x94`-stride slot fields: those are written only after `ebx` is
+reloaded at `0x3BEE8 mov ebx, 0x1077b0` and `0x3BEF0 add ebx, eax` (`eax = side*0x94`),
+which happens *after* the `0x107D40` store.
 
 ### 8.18 `0x3B298` — the command-state dispatch (entry copy)
 
