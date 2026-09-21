@@ -68,12 +68,26 @@ Two changes were made after execution began; the numbering below reflects them.
 2. **Task 3's "stubs" wording is void.** The human ruled during the pre-flight scan that
    no behaviour-less stub ships: port what the record shows is load-bearing, otherwise a
    `/* PORT: <addr>. <reason> */` skip plus a named gap. Task 3 was executed that way.
+3. **A new Task 8 was inserted and the old Task 8 became Task 9.** Task 7's measurement
+   showed the demo still frozen after its fix, and systematic debugging (controller-run,
+   instrumenting the port and confirming against the raw) found a second, dominant
+   omission: `fight_health_sync` (`0x34B6C`) ports only the `rec+0x52 == 6` case of the
+   raw's dispatch, while the raw jumps through a 22-entry table —
+   `0x34BF4 cmp al,0x15; ja 0x34C08; jmp dword ptr cs:[eax*4 + 0x24B14]`. The demo's
+   fighters sit at `rec+0x52 == 0`, so they take the unported default `0x349C8`; the AI
+   mapper `fight_command_map` (`0x3B134`) is never called, the command words
+   `DS_001088E0`/`E2` stay 0, and the fighters never move or change animation. The human
+   ruled that the `+0x52` handlers fold into cycle 1. (The table is at `0x34B14`
+   — `PTR_LAB_00034b14`, confirmed in Ghidra; the port's comment naming it is
+   correct.) Task 7's report blamed `0x3C88C` and `0x20DF4`; both were refuted by
+   disassembly — `0x3C88C`'s subtree is pure slot logic with no aperture or blit
+   reference.
 
 ---
 
 ### Task 1: Derive the fight camera, the think chain and `0x49C78`
 
-This is the cycle's derivation task and it gates every other task. It is also where the spec's open question 2 is answered: **how often the demo's AI consumes the RNG.** That answer decides how many pins Task 8 needs, and whether the demo bound is the first landing hit or something earlier.
+This is the cycle's derivation task and it gates every other task. It is also where the spec's open question 2 is answered: **how often the demo's AI consumes the RNG.** That answer decides how many pins Task 9 needs, and whether the demo bound is the first landing hit or something earlier.
 
 **Files:**
 - Create: `docs/superpowers/plans/2026-09-20-demo-fight-derivations.md`
@@ -103,7 +117,7 @@ This is the cycle's derivation task and it gates every other task. It is also wh
 
 `0x1975C` (186 B), `0x3B464` (608 B), `0x3B298` (441 B), `0x3B134` (355 B), `0x3BDDC` (401 B), `0x18C14` (1035 B), `0x1A978` (408 B), plus the behaviour helpers the record finds. Record the input→command-word mapping in `0x3B134`/`0x3B298` precisely enough to unit-test over hand-built input masks, and record every RNG call site (`0x5D7DC`) inside the think chain with its range argument and its per-frame or per-decision frequency.
 
-**Answer this explicitly, with the call sites as evidence:** does the demo's AI draw from the RNG every frame, every decision, or rarely? If it draws every frame, say how many draws per frame and in what order, because that is exactly what Task 8 must pin.
+**Answer this explicitly, with the call sites as evidence:** does the demo's AI draw from the RNG every frame, every decision, or rarely? If it draws every frame, say how many draws per frame and in what order, because that is exactly what Task 9 must pin.
 
 - [ ] **Step 6: Record what could not be determined**
 
@@ -479,7 +493,76 @@ git commit -m "tests: open the demo window, report-only"
 
 ---
 
-### Task 8: Pin the demo's determinism and record the cycle-1 bound
+### Task 8: Port the per-fighter state dispatch (inserted — see Amendments)
+
+This is the task that makes the demo move. Task 7's measurement showed the port's state-7 output frozen, and the controller's root-cause investigation found why: `fight_health_sync` (`0x34B6C`) ports only the `rec+0x52 == 6` case of the raw's dispatch, and the demo's fighters sit at `+0x52 == 0`, so they take the unported default and the AI mapper `fight_command_map` (`0x3B134`) is never called.
+
+**Files:**
+- Modify: `port/src/game/fight.c` (`fight_health_sync`'s `+0x52` dispatch) and, for the handlers, `port/src/game/fighter.c` / `fighter.h`
+- Modify: `port/tests/test_fight.c`
+- Modify: `docs/superpowers/plans/2026-09-20-demo-fight-derivations.md` — the table and the handlers are not yet derived; §7.10 currently covers `0x34B6C` as a single gap
+
+**Interfaces:**
+- Consumes: Task 3's `fight_hud_pass`/`fight_stance_pass`/`fight_command_map`, Task 6's spawn, and `actors.c`.
+- Produces: the `+0x52` handlers the demo path enters, so `fight_command_map` runs and `DS_001088E0`/`E2` become non-zero.
+
+- [ ] **Step 1: Derive the table and the handlers into the record**
+
+The dispatch is at `0x34BF4`: `mov al,[ecx+0x52]; cmp al,0x15; ja 0x34C08; and eax,0xff; jmp dword ptr cs:[eax*4 + 0x34b14]`. The 22-entry table at `0x34B14` (`PTR_LAB_00034b14`, confirmed in Ghidra) is:
+
+| `+0x52` | handler | calls |
+|---|---|---|
+| 0, and the `>0x15` default | `0x34C08` | `0x349C8` |
+| 1 | `0x34C15` | `0x359E0` |
+| 2 | `0x34C26` | `0x35C1C` / `0x35D20` |
+| 3 | `0x34C46` | `0x35D7C` |
+| 4 | `0x34C53` | `0x35F84` |
+| 5 | `0x34C62` | `0x36430` |
+| 6 | `0x34C73` | `0x1A978` (already ported as `fight_stance_pass`) |
+| 7 | `0x34C80` | `0x399CC` |
+| 8 | `0x34C8D` | `0x37464` |
+| 12 | `0x34C9A` | — |
+| 13 | `0x34CA9` | — |
+| 17 | `0x34CB8` | — |
+| 18 | `0x34CC7` | — |
+| 19 | `0x34D22` | — |
+| 20 | `0x34D69` | — |
+| 21 | `0x34D78` | — |
+| 9, 10, 11, 14, 15, 16 | `0x34D83` | the epilogue — a no-op |
+
+Derive each handler the demo enters into the record in §8's shape (body, globals, arithmetic with widths, addresses, unit-test values). The port's existing comment naming `0x34B14` is correct — leave it.
+
+- [ ] **Step 2: Establish which handlers the demo actually enters — do not port all 22 speculatively**
+
+The measured starting point is `+0x52 == 0` (the default `0x349C8`). Follow what each handler does to `+0x52` to see whether the demo path cycles into other states, and port only the ones it enters. Leave the rest as §7.10 gaps with the evidence.
+
+- [ ] **Step 3: Port the default handler first and prove it moves the demo**
+
+Port `0x349C8` and whatever it needs, then add a test asserting that the command word becomes non-zero for a live fighter — the observable that proves the AI mapper now runs. Seed the command word to a sentinel differing from the post-condition, and prove the assertion fails when the handler is skipped.
+
+- [ ] **Step 4: Port the remaining entered handlers**
+
+One at a time, each with its own test values from Step 1, re-running the measurement between them.
+
+- [ ] **Step 5: Re-measure the demo window**
+
+Run `make demo-oracle` and report the new window, the counts, the first unexplained frame, and whether the port's state-7 frames now vary (previously one image across 899 frames). If the fighters now move and animate, say whether the new first-unexplained frame is a landing hit or a declared gap — the `0x494A8` dust gap (2 RNG per side) remains a candidate.
+
+- [ ] **Step 6: Full ladder and commit**
+
+Run: `make verify`
+Expected: exit 0, 0 warnings, every oracle unmoved, and the front-end window still `257 frames, 0 unexplained`.
+
+```bash
+git add port/src/game/fight.c port/src/game/fighter.c port/src/game/fighter.h port/tests/test_fight.c docs/superpowers/plans/2026-09-20-demo-fight-derivations.md
+git commit -m "fighter: port the per-fighter +0x52 state dispatch"
+```
+
+**Gate for this task:** the command words are non-zero during the demo and the port's state-7 frames vary — or a BLOCKED report carrying the evidence.
+
+---
+
+### Task 9: Pin the demo's determinism and record the cycle-1 bound
 
 **Files:**
 - Modify: `tools/title_pin.py` (approved), `Makefile`, `port/spec/game_flow.md`, `README.md`, `docs/superpowers/specs/2026-09-20-demo-fight-design.md`
@@ -529,7 +612,7 @@ git commit -m "tests: pin the demo's determinism and record its bound"
 
 ## Self-Review
 
-**Spec coverage.** The spec's cycle 1 is "the derivation, the fight camera and projection, the arena and fighter render, the think/AI chain, the state 6/7 handlers, the 900-frame timer and the `0x11BCC` exit, and the `game_frame` tail minus its combat calls" plus the provisional oracle. Task 1 covers the derivation (including open question 2, the RNG-consumption answer, and open question 3's `0x49C78` pinnability). Task 2 the camera and projection. Task 3 the arena and fighter render. Task 4 the think chain. Task 5 the states, the tail minus `0x3BB90`, and the timer exit. Task 6 (inserted — see Amendments) the fighter spawn, without which the arena frame runs on null slots and the bound below is unreachable. Task 7 the provisional, report-only window. Task 8 the pins and the recorded bound. The spec's out-of-scope list — the mode graph, the coin divert, `0x1EEB0`, `0x1F458`, `0x1EA08`'s remaining sites, the player screens and the human input mapping — is not implemented by any task and is recorded as unowned in Task 8 Step 5. The camera-chain deferral the previous cycle left is retired by Task 2, which the spec calls out.
+**Spec coverage.** The spec's cycle 1 is "the derivation, the fight camera and projection, the arena and fighter render, the think/AI chain, the state 6/7 handlers, the 900-frame timer and the `0x11BCC` exit, and the `game_frame` tail minus its combat calls" plus the provisional oracle. Task 1 covers the derivation (including open question 2, the RNG-consumption answer, and open question 3's `0x49C78` pinnability). Task 2 the camera and projection. Task 3 the arena and fighter render. Task 4 the think chain. Task 5 the states, the tail minus `0x3BB90`, and the timer exit. Task 6 (inserted — see Amendments) the fighter spawn, without which the arena frame runs on null slots and the bound below is unreachable. Task 7 the provisional, report-only window. Task 8 (inserted) the per-fighter +0x52 state dispatch, without which the AI mapper never runs and the demo never moves; Task 9 the pins and the recorded bound. The spec's out-of-scope list — the mode graph, the coin divert, `0x1EEB0`, `0x1F458`, `0x1EA08`'s remaining sites, the player screens and the human input mapping — is not implemented by any task and is recorded as unowned in Task 9 Step 5. The camera-chain deferral the previous cycle left is retired by Task 2, which the spec calls out.
 
 **Deliberate deferrals, stated not hidden.** `0x3BB90` is the only combat call in cycle 1's scope and is explicitly skipped in Task 5 Step 4 with a `/* PORT: */` marker and a reason. The HUD/health path (`0x35658`, `0x33F08`, `0x1D890`) is ported only as far as Task 1's record shows it is needed for motion; the rest is cycle 2's. No task invents a value Task 1 has not derived, and no task ports a premise the spec's correction refutes.
 
