@@ -21,7 +21,7 @@
 - `game_init()` may run only once per process; any test that calls it must be env-gated (`PR_*_DUMP`).
 - Assertions must be able to fail. A test that pre-sets the value it then checks is a defect, not a style point: seed sentinels that differ from the post-conditions, and prove each new assertion fails under a mutation of the code it tests.
 - Capture oracles **skip cleanly** when their capture directory is absent — never fail. `PR_ORACLE_REQUIRED=1` makes an absent capture a failure.
-- Oracles that must not move: the title oracle (`54 clean, 55 splice, 2 transition, 0 unexplained` and `54 clean, 57 splice, 0 unexplained`), the attract oracle (`FIRST DIVERGENCE at capture frame 215`), `smk_compare` (`120/120`, `41/41`), the enforced front-end oracle (window `[557..813]`, 257 frames, `0 unexplained`), and `oracle C-vs-Python: 9866 writes byte-exact`.
+- Oracles that must not move: the title oracle (`54 clean, 55 splice, 2 transition, 0 unexplained` and `54 clean, 57 splice, 0 unexplained`), the attract oracle (`FIRST DIVERGENCE at capture frame 215`), `smk_compare` (`120/120`, `41/41`), the enforced front-end oracle (window `[557..810]`, 254 frames, `0 unexplained`), and `oracle C-vs-Python: 9866 writes byte-exact`.
 - On plan-vs-raw conflict, the RAW wins; record the correction and the address.
 - `make verify` must pass at the end of every task whose change can move an oracle.
 - Never `git add -A`. Commit style: `<area>: <what changed>`.
@@ -106,8 +106,8 @@ Five changes were made after execution began; the numbering below reflects them.
    case-9 arm draws nothing (it only decrements `DS_000F0A6A` and, at zero,
    restores `DS_000F0A64 = DS_000F0A6C`), and the state-9 handoff at
    `0x12636`/`0x12645` matches `port/src/game/flow.c:668,670` (state 9, timer
-   `0xF0`); the capture's demo fight does not begin until capture 839 (836 is
-   all-black, 837 the `- LOADING -` screen), 28 capture frames after the
+   `0xF0`); the capture's demo fight does not begin until capture 836 (833 is
+   all-black, 834 the `- LOADING -` screen), 25 capture frames after the
    divergence. This amendment supersedes the Goal above, Task 9 Step 5's "first
    landing hit" clause, and the Gate at the end of this plan.
 
@@ -481,7 +481,7 @@ With fighters live, `0x263F4`'s per-side calls and the `game_frame` tail's `0x18
 - [ ] **Step 6: Full ladder and commit**
 
 Run: `make verify`
-Expected: exit 0, 0 warnings, every oracle unmoved, and the front-end window still `257 frames, 0 unexplained`.
+Expected: exit 0, 0 warnings, every oracle unmoved, and the front-end window still `254 frames, 0 unexplained`.
 
 ```bash
 git add port/src/game/fighter.c port/src/game/fighter.h port/src/game/fight.c port/src/game/fight.h port/src/game/flow.c port/tests/test_fight.c docs/superpowers/plans/2026-09-20-demo-fight-derivations.md
@@ -503,7 +503,7 @@ git commit -m "fighter: port the demo fight's fighter spawn"
 
 - [ ] **Step 1: Raise the dump length**
 
-`PR_FRONTEND_DUMP` currently dumps 900 frames from the front-end entry. State 6 arms a 900-frame timer, so the dump must cover the state-6 entry plus the demo. Raise `PR_FRONTEND_DUMP_FRAMES` in the driver (and its Makefile default if it has one) enough to cover it, and record the new value in the report. Do not remove the existing front-end window — it must keep reporting `257 frames, 0 unexplained`.
+`PR_FRONTEND_DUMP` currently dumps 900 frames from the front-end entry. State 6 arms a 900-frame timer, so the dump must cover the state-6 entry plus the demo. Raise `PR_FRONTEND_DUMP_FRAMES` in the driver (and its Makefile default if it has one) enough to cover it, and record the new value in the report. Do not remove the existing front-end window — it must keep reporting `254 frames, 0 unexplained`.
 
 - [ ] **Step 2: Add the demo window to the comparator**
 
@@ -525,7 +525,7 @@ In `port/spec/game_flow.md`'s states 6/7 section, record the window, the counts,
 - [ ] **Step 6: Full ladder and commit**
 
 Run: `make verify`
-Expected: exit 0, 0 warnings, every existing oracle unmoved (including the front-end window's `257 frames, 0 unexplained`).
+Expected: exit 0, 0 warnings, every existing oracle unmoved (including the front-end window's `254 frames, 0 unexplained`).
 
 ```bash
 git add Makefile tools/title_compare.py port/tests/test_frontend.c port/spec/game_flow.md
@@ -611,7 +611,7 @@ Run `make demo-oracle` and report the new window, the counts, the first unexplai
 - [ ] **Step 6: Full ladder and commit**
 
 Run: `make verify`
-Expected: exit 0, 0 warnings, every oracle unmoved, and the front-end window still `257 frames, 0 unexplained`.
+Expected: exit 0, 0 warnings, every oracle unmoved, and the front-end window still `254 frames, 0 unexplained`.
 
 ```bash
 git add port/src/game/flow.c port/src/game/fight.c port/src/game/fighter.c port/src/game/fighter.h port/tests/test_fight.c docs/superpowers/plans/2026-09-20-demo-fight-derivations.md
@@ -666,7 +666,7 @@ git add tools/title_pin.py Makefile port/spec/game_flow.md README.md docs/superp
 git commit -m "tests: pin the demo's determinism and record its bound"
 ```
 
-**Gate for this cycle — unmet by construction (see Amendment 5).** The original gate required the demo window clean from its start to the measured divergence frame *and* that frame to be the first landing hit. The measurement refuted both: the window reports 0 clean and its first unexplained frame is capture 811, the state-9 hold's globe render, before state 6 and before the demo fight begins at capture 839. What cycle 1 does satisfy: the pins are all determinism fixes, every helper has mutation-proof unit tests, every unported piece is a named gap, and the enforced front-end gate stays `0 unexplained`. Cycle 2 implements combat, re-anchors the window, and retires the bound.
+**Gate for this cycle — unmet by construction (see Amendment 5).** The original gate required the demo window clean from its start to the measured divergence frame *and* that frame to be the first landing hit. The measurement refuted both: the window reports 0 clean and its first unexplained frame is capture 811, the state-9 hold's globe render, before state 6 and before the demo fight begins at capture 836. What cycle 1 does satisfy: the pins are all determinism fixes, every helper has mutation-proof unit tests, every unported piece is a named gap, and the enforced front-end gate stays `0 unexplained`. Cycle 2 implements combat, re-anchors the window, and retires the bound.
 
 ---
 

@@ -623,6 +623,13 @@ tail:
     DSB(ctx[2] + 0x64u) = 0xFFu;                        /* 0x3B6B8 */
 }
 
+/* PORT: 0x1975C is unexercised by the attract demo. Every writer of slot+0x64
+ * in the image sets 0xFF (0x33CFB spawn, 0x33B00 case 19 only, 0x3B6B8/0x3B985/
+ * 0x3B9D2), and the only non-0xFF writer 0x2A620 writes an actor record, not the
+ * slot, so 0x3B464 returns at 0x3B49F for both demo fighters and 0x3B134
+ * (fight_command_map) is unreachable from the demo. This chain is owned by the
+ * interactive match; its unit tests are its only evidence
+ * (docs/superpowers/plans/2026-09-21-demo-fight-closure-derivations.md §8). */
 /* 0x1975C. The think step: for each index whose DS_00100AD0 count exceeds 2,
  * run the think driver. The raw loops i in {0,1}, gates on DS_00100AD0[i], but
  * passes ctx[1] (=1-i) to 0x1922C and 0x3B464; the port keeps that flip. */
