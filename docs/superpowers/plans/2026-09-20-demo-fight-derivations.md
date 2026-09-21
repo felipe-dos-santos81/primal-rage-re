@@ -1965,9 +1965,13 @@ else if ((s16)DSB(b+0x31) >= (s16)DSW(entry+4)) { b+0x31 = 0; b+0x30++; }  ; 0x4
 DSB(b+0x31)++; DSD(b+0x0C)++                  ; 0x4734F/0x47355
 ```
 
-The `0x2D974`/`0x2CAA8` block at `0x47241` is **dead**: `0x2CAA8` is
-`return 1` (`0x2CAAC .. 0x2CAB3`), so `(dip & 0x800) && 0x2CAA8() == 0` is always
-false (`0x47235`/`0x47239`).
+The `0x2D974`/`0x2CAA8` block at `0x47241` is **inert in the demo**:
+`0x2CAA8` is `return DS_00105D60 == 0` (`0x2CAAC..0x2CAB7`
+`cmp byte [0x105d60],0; setz al; and eax,0xff`; the port's
+`config_not_free_play`, `config.c:203`). With FREE PLAY `DS_00105D60 == 0` in
+the demo, `0x2CAA8` returns 1 and `(dip(0x29) & 0x800) && 0x2CAA8() == 0` is
+false at `0x47237`/`0x4723B`. The block is a named gap because under free play
+plus the DIP bit it runs (it zeroes `DS_001082C8` and does text work).
 
 The per-side AI block is `DS_001081F0 + side*0x40` (`b`), 0x40 bytes:
 
@@ -2052,7 +2056,7 @@ Gate 0 dispatches on `slot+0x52` through the 22-entry table at `0x34B14`:
 | 0, >0x15 | `0x34C08` | `0x349C8` | ported (`fighter_state_default`) |
 | 1 | `0x34C15` | `0x359E0` | gap |
 | 2 | `0x34C26` | `0x35C1C`/`0x35D20` | gap |
-| 3 | `0x34C46` | `0x35D7C` (needs `0x3CF38`) | gap (§11.5) |
+| 3 | `0x34C46` | `0x35D7C` | ported (`fighter_state_35d7c`; `0x3CF38` arm gap) |
 | 4 | `0x34C53` | `0x35F84` | gap |
 | 5 | `0x34C62` | `0x36430` | gap |
 | 6 | `0x34C73` | `0x1A978` | ported (`fight_stance_pass`) |
@@ -2110,11 +2114,12 @@ off the demo path.
 With the generator wired, the demo's command words are non-zero and vary
 (`cmd0` 0x1010/0x0000, `cmd1` 0xA0A0/0x2020/0x0C0C/…). The `+0x52` states the
 demo reaches: side 0 `0 -> 0x0E` (via `0x35838`), side 1 `0 -> 3` (via `0x3BDDC`
-on the command's bit 15). Both then stall: `0x0E` is a table no-op and `0x35D7C`
-(case 3) depends on the unported hit-detection chain `0x3CF38` (`0x3CF38` ->
-`0x3CD44`/`0x3CE58`/`0x3C6A8`/`0x32BAC`), a pre-existing §7.6 gap. So the port's
-arena output varies for ~430 frames and then freezes; closing the fight needs
-cycle 2's combat chain.
+on the command's bit 15). `0x0E` is a table no-op; side 1 now takes its real
+handler `0x35D7C`, which clears `slot+0x53`/`slot+0x54` and then declares the
+`if (0x3CF38 == 0) { +0x54 = 2; +0x53 = 4; }` arm — `0x3CF38`
+(`0x3CD44`/`0x3CE58`/`0x3C6A8`/`0x32BAC`) is the pre-existing §7.6 hit-detection
+gap. So the port's arena output varies for ~430 frames and then freezes; closing
+the fight needs cycle 2's combat chain.
 
 ### 11.6 Unit-test values
 

@@ -793,6 +793,9 @@ static void ai_band(u32 side)
         table = DSD(b + 0x14u);                         /* 0x46E8B */
         entry = table;
         for (;;) {
+            /* PORT: 0x46E96. The raw re-clamps d to 0xFF inside the loop
+             * (0x46E94 starts EBX=0, 0x46E9C `jle`); it is constant, kept
+             * verbatim. */
             u32 m = ((u32)mag > 0xFFu) ? 0xFFu : (u32)mag;
             if ((u32)DSB(entry + 2u) <= m && m <= (u32)DSB(entry + 3u)) break;
             i++;
@@ -841,7 +844,10 @@ static void ai_pick(u32 side)
                 if (r <= cum) break;                    /* 0x470af */
             }
             i++;
-            if (i >= 0xAu) return;                      /* 0x470e8 */
+            /* PORT: 0x470E8. The raw's `cmp eax,0xa; jl` loop tail is
+             * unreachable: i == 9 breaks at 0x47073 first, so i never reaches
+             * 10. Kept verbatim. */
+            if (i >= 0xAu) return;
         }
         DSD(b + 0x08u) = i;                             /* 0x47076/0x470b6 */
         {
@@ -930,14 +936,15 @@ static int ai_pred_cmd_sign(u32 side, int want_zero)
     return (ai_facing_cmd(side) == 0u) == (want_zero != 0);
 }
 
-/* 0x46898 / 0x468D8. The secondary-record identity rec_self+0x10 == 0x22BEC
- * with rec_self+0x24 bit 31 clear; 0x46898 wants +0x54 == 2, 0x468D8 wants
- * +0x54 != 2 or +0x52 == 7. */
+/* 0x46898 / 0x468D8. The +0x10 identity is read from ctx_swap's [ESP+0xc]
+ * (= ctx[3] = &slot[side], the slot's 0x22BEC code pointer), the +0x24 dword
+ * from [ESP+0x14] (= ctx[5] = rec_self); 0x46898 wants slot+0x54 == 2, 0x468D8
+ * wants slot+0x54 != 2 or slot+0x52 == 7. */
 static int ai_pred_46898(u32 side)
 {
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                        /* 0x468A0 */
-    if (DSD(ctx[5] + 0x10u) != 0x22BECu) return 0;
+    if (DSD(ctx[3] + 0x10u) != 0x22BECu) return 0;
     if ((DSD(ctx[5] + 0x24u) & 0x7FFFFFFFu) != 0u) return 0;
     return DSB(ctx[3] + 0x54u) == 2u;
 }
@@ -946,7 +953,7 @@ static int ai_pred_468d8(u32 side)
 {
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                        /* 0x468E3 */
-    if (DSD(ctx[5] + 0x10u) == 0x22BECu
+    if (DSD(ctx[3] + 0x10u) == 0x22BECu
             && (DSD(ctx[5] + 0x24u) & 0x7FFFFFFFu) == 0u
             && DSB(ctx[3] + 0x54u) != 2u)
         return 1;
@@ -1012,9 +1019,11 @@ static void ai_manage(u32 side)
     DSB(b + 0x31u) = 0;                                 /* 0x471F8 */
 }
 
-/* 0x47208. One side's command word for this frame. The 0x2D974/0x2CAA8
- * DIP/replay block at 0x47241 is dead: 0x2CAA8 is `return 1`, so its
- * `(dip & 0x800) && 0x2CAA8() == 0` gate is always false (0x47237/0x4723B). */
+/* 0x47208. One side's command word for this frame. The 0x2D974/0x2CAA8 block
+ * at 0x47241 (a DIP bit 0x800 plus 0x2CAA8 = config_not_free_play) is inert in
+ * the demo: DS_00105D60 (FREE PLAY) is 0, so 0x2CAA8 returns 1 and
+ * `(dip & 0x800) && 0x2CAA8() == 0` is false at 0x47237/0x4723B. It is a named
+ * gap because it can run under free play. */
 void fighter_command_generate(u32 side)
 {
     u32 ctx[6];
@@ -1155,12 +1164,12 @@ int fighter_state_36638(u32 slot, u32 rec)
     else                           DSB(slot + 0x53u) = 0u;     /* 0x36680 */
     switch (DSB(slot + 0x54u)) {                        /* 0x36684 table 0x36620 */
     case 1u:                                            /* 0x366B9 */
-        actor_anim_start(rec, DSD(0x000C9210u + (u32)DSB(slot + 0x7Au) * 4u),
+        actors_anim_begin(rec, DSD(0x000C9210u + (u32)DSB(slot + 0x7Au) * 4u),
                          0x3F800000u);
         DSB(slot + 0x52u) = 0x12u;
         return 1;
     case 4u:                                            /* 0x366D8 */
-        actor_anim_start(rec, DSD(0x000C91E8u + (u32)DSB(slot + 0x7Au) * 4u),
+        actors_anim_begin(rec, DSD(0x000C91E8u + (u32)DSB(slot + 0x7Au) * 4u),
                          0x3F800000u);
         DSB(slot + 0x52u) = 8u;
         DSB(slot + 0x57u) = 2u;
@@ -1169,7 +1178,7 @@ int fighter_state_36638(u32 slot, u32 rec)
         /* PORT: 0x38154 — the +0x54 == 5 arm is a named gap (§7.10). */
         return 0;
     default:                                            /* 0x3669A; 0,2,3,>5 */
-        actor_anim_start(rec, DSD(0x000C91E8u + (u32)DSB(slot + 0x7Au) * 4u),
+        actors_anim_begin(rec, DSD(0x000C91E8u + (u32)DSB(slot + 0x7Au) * 4u),
                          0x3F800000u);
         DSB(slot + 0x52u) = 0x12u;
         return 1;
@@ -1203,7 +1212,7 @@ static void fighter_state_35838(u32 slot, u32 rec, u32 dirbits)
     DSB(slot + 0x41u) |= 0x80u;                         /* 0x35846 */
     if ((DSW(rec + 0x28u) >> 8 & 0x40u) == 0u) {        /* 0x35859 */
         if ((dirbits & 0x2000u) != 0u) {                /* 0x35866 */
-            actor_anim_start(rec, DSD(0x000C8A40u + (u32)DSB(slot + 0x7Au) * 4u),
+            actors_anim_begin(rec, DSD(0x000C8A40u + (u32)DSB(slot + 0x7Au) * 4u),
                              0x3F800000u);
             DSB(slot + 0x43u) |= 2u;
             goto tail;
@@ -1215,7 +1224,7 @@ static void fighter_state_35838(u32 slot, u32 rec, u32 dirbits)
         }
     } else {
         if ((dirbits & 0x1000u) != 0u) {                /* 0x358B9 */
-            actor_anim_start(rec, DSD(0x000C8A40u + (u32)DSB(slot + 0x7Au) * 4u),
+            actors_anim_begin(rec, DSD(0x000C8A40u + (u32)DSB(slot + 0x7Au) * 4u),
                              0x3F800000u);
             DSB(slot + 0x43u) |= 2u;
             DSW(slot + 0x4Cu) = 0;
@@ -1232,7 +1241,7 @@ static void fighter_state_35838(u32 slot, u32 rec, u32 dirbits)
             return;
         }
     }
-    actor_anim_start(rec, DSD(0x000C8AB8u + (u32)DSB(slot + 0x7Au) * 4u),
+    actors_anim_begin(rec, DSD(0x000C8AB8u + (u32)DSB(slot + 0x7Au) * 4u),
                      0x3F800000u);
     DSB(slot + 0x43u) |= 1u;
 tail:
@@ -1269,7 +1278,7 @@ void fighter_state_default(u32 side)
             if (fighter_attack_consume(side) != 0) return;   /* 0x34A9F */
         }
         if ((cmd & 0x4000u) != 0u) {                    /* 0x34AB5 */
-            actor_anim_start(rec,
+            actors_anim_begin(rec,
                 DSD(0x000C8978u + (u32)DSB(slot + 0x7Au) * 4u), 0x40000000u);
             DSB(slot + 0x52u) = 5u;
             DSB(slot + 0x54u) = 1u;
@@ -1279,6 +1288,21 @@ void fighter_state_default(u32 side)
                 || (cmd & 0x2000u) != 0u)
             fighter_state_35838(slot, rec, (u32)(cmd & 0xF000u));   /* 0x34B06 */
     }
+}
+
+/* 0x35D7C. The +0x52 == 3 handler. It clears the slot's +0x53/+0x54, then,
+ * when 0x3CF38 reports no hit, arms slot+0x54 = 2 and slot+0x53 = 4. 0x3CF38 is
+ * the hit-detection chain (0x3CD44/0x3CE58/0x3C6A8/0x32BAC) already a named gap
+ * (§7.6), so the conditional arm is declared, not issued: the port keeps the
+ * unconditional clears. */
+void fighter_state_35d7c(u32 side)
+{
+    u32 slot = DSD(DS_001077A8 + side * 4u);            /* 0x35DF1 */
+    if (slot == 0u) return;
+    DSB(slot + 0x54u) = 0;                              /* 0x35DDA */
+    DSB(slot + 0x53u) = 0;                              /* 0x35DDE */
+    /* PORT: 0x35DE8 0x3CF38(side) and its 0x35DF5 arm (slot+0x54 = 2,
+     * slot+0x53 = 4) are named gaps (§7.6/§11.5). */
 }
 
 /* 0x3BDDC. The attack/command consumer. When the slot's +0x40 bit 7 is clear

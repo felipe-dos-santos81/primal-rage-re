@@ -40,11 +40,6 @@ void actor_pset_point(u32 rec);
  * then the pset write. 0x2A31C calls it for each active record; 0x35658 calls it
  * on the fighter at 0x35813. Exposed for fight_hud_pass. */
 void actor_sync(u32 rec);
-/* 0x2BC30. Restart a record's animation at `anim` with `frame` as the timer
- * float (1.0f = 0x3F800000 from the fight handlers): resets the record's
- * +0x0C/+0x10/+0x50/+0x52/+0x61 and the +0x28/+0x2B masks, consumes the leading
- * animation command words, and re-reads the pset sprite id. */
-void actor_anim_start(u32 rec, u32 anim, u32 frame);
 /* 0x2A31C. Walks the active list and syncs each record (0x2A1FC). */
 void actors_update(void);
 /* 0x2A17C. Point a record's pset word +2 at `word` OR the 0x800 sprite bit when

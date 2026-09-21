@@ -99,6 +99,10 @@ void fighter_state_default(u32 side);
  * per slot+0x54. Called by 0x349C8, 0x35838 and the 0x34B6C position branch. */
 int fighter_state_36638(u32 slot, u32 rec);
 
+/* 0x35D7C. The +0x52 == 3 handler: clear slot+0x53/+0x54, then (behind the
+ * unported 0x3CF38 hit check, a named gap) arm slot+0x54 = 2, slot+0x53 = 4. */
+void fighter_state_35d7c(u32 side);
+
 /* 0x3BDDC. The attack/command consumer the mapper's 0x8000 arm calls behind
  * 0x3BDB0. Reads the side's command word DS_001088E0/E2; when bit 15 is set it
  * clears the record's +0x34/+0x43/+0x42, sets the slot's +0x5F to 0xFF and

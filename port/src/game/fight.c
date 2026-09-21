@@ -314,13 +314,32 @@ static void fight_health_sync(u32 side)
     }
 
     switch (DSB(rec + 0x52u)) {                 /* 0x34BF4 table 0x34B14 */
+    case 0u:                                    /* 0x34C08 -> 0x349C8 */
+        fighter_state_default(side);
+        break;
+    case 1u:  /* PORT: 0x34C15 0x359E0 — unported handler (§7.10) */ break;
+    case 2u:  /* PORT: 0x34C26 0x35C1C/0x35D20 — unported (§7.10) */ break;
+    case 3u:                                    /* 0x34C46 -> 0x35D7C */
+        fighter_state_35d7c(side);
+        break;
+    case 4u:  /* PORT: 0x34C53 0x35F84 — unported handler (§7.10) */ break;
+    case 5u:  /* PORT: 0x34C62 0x36430 — unported handler (§7.10) */ break;
     case 6u:                                    /* 0x34C73 -> 0x1A978 */
         fight_stance_pass(side);
         break;
+    case 7u:  /* PORT: 0x34C80 0x399CC — unported handler (§7.10) */ break;
+    case 8u:  /* PORT: 0x34C8D 0x37464 — unported handler (§7.10) */ break;
     /* 9,10,11,14,15,16 -> 0x34D83, the epilogue no-op. */
     case 9u: case 10u: case 11u: case 14u: case 15u: case 16u:
         break;
-    default:                                    /* 0 and >0x15 -> 0x34C08 0x349C8 */
+    case 12u: /* PORT: 0x34C9A 0x361C8 — unported handler (§7.10) */ break;
+    case 13u: /* PORT: 0x34CA9 0x36300 — unported handler (§7.10) */ break;
+    case 17u: /* PORT: 0x34CB8 0x36710 — unported handler (§7.10) */ break;
+    case 18u: /* PORT: 0x34CC7 inline cmd gate + 0x3BDDC -> 0x18B04 (§7.10) */ break;
+    case 19u: /* PORT: 0x34D22 inline +0x8E countdown + 0x33B00 (§7.10) */ break;
+    case 20u: /* PORT: 0x34D69 0x35E6C — unported handler (§7.10) */ break;
+    case 21u: /* PORT: 0x34D78 0x364FC — unported handler (§7.10) */ break;
+    default:                                    /* >0x15 -> 0x34C08 0x349C8 */
         fighter_state_default(side);
         break;
     }

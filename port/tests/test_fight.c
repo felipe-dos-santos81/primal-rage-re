@@ -1244,6 +1244,19 @@ static void check_state_dispatch(void)
     fight_hud_pass(0u);
     CHECK_EQ_INT((int)DSB(p0 + 0x52u), 0x0E);
     CHECK_EQ_INT((int)DSB(p0 + 0x43u) & 0x01, 0x00);
+
+    /* D: +0x52 == 3 (the demo's other entered state) must take its own handler
+     * 0x35D7C, which clears slot+0x53/+0x54; the default handler leaves them.
+     * Seeded 0xAA differs from the post-condition. */
+    DSB(p0 + 0x42u) = 0;
+    DSB(p0 + 0x52u) = 3;
+    DSB(p0 + 0x53u) = 0xAAu;
+    DSB(p0 + 0x54u) = 0xAAu;
+    DSW(DS_001088E0) = 0;
+    fight_hud_pass(0u);
+    CHECK_EQ_INT((int)DSB(p0 + 0x53u), 0);
+    CHECK_EQ_INT((int)DSB(p0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSB(p0 + 0x52u), 3);      /* 0x35D7C does not re-state */
 }
 
 int test_fight(void)
