@@ -489,8 +489,19 @@ fighter slot table at `0x1077B0`; the previous cycle's §5 did not cover mode 0.
 0x12ced  if (|diff| <= 0x100) new = arg
          else if (diff > 0)    new = old + 0x100
          else                  new = old - 0x100
-0x12d1d  DS_000F0AEC = new + (DS_000F0AF2 >> 16)   ; DS_000F0AF2 = high word of DS_000F0AF0
+0x12d03/0x12d1d  eax = *(s32*)0xF0AF2
+0x12d08/0x12d22  sar  eax, 0x10
+0x12d0b/0x12d25  new += eax
+0x12d0d/0x12d27  DS_000F0AEC = new
 ```
+
+The added term is a **32-bit read at `0xF0AF2` arithmetic-shifted right by 16**,
+which is exactly the sign-extended 16-bit word at `0xF0AF4`:
+`(s32)DSD(DS_000F0AF2) >> 16 ≡ (s16)DSW(DS_000F0AF4)` — the **shake offset**
+`0x1324C` maintains and `port/src/game/effects.c` already treats as such. The demo's
+camera-x high word is *not* this value; `0x12CD4` never reads `DS_000F0AF0` for the
+term. The common tail at `0x12D1D` applies the term on all three paths (the
+`|diff| <= 0x100` path jumps to it from `0x12CF7`).
 
 Step `0x100`, threshold `0x100`. (Plan's `0x40` belongs to `0x13290`.)
 
@@ -561,16 +572,20 @@ complex camera mode and its exact behaviour is a partial gap (§7.5).
 0x12dd0     jmp 0x12de3
 0x12dd2     eax = DS_001077E0
 0x12dd7     edx = DS_00107874
-0x12ddd     if (eax > edx) eax = edx                          ; min(...)
-0x12de3  mov word [0x1078f4], ax        ; DS_001078F2 high word = selected x
+0x12ddd     cmp eax, edx ; jg 0x12de3   ; if (eax <= edx) eax = edx
+0x12de1     mov eax, edx                ; -> signed MAX(eax, edx)
+0x12de3  mov word [0x1078f4], ax        ; DS_001078F2 high word = selected y
 0x12de9  call 0x1317C
 0x12dee  ret
 ```
 
-So `0x12DA8` chooses the "selected player x" (mode 0: the `DS_000F0AFF` slot's
-`+0x30`; otherwise the min of `DS_001077E0`/`DS_00107874`), stores its low word to
-`DS_001078F4`, and runs the y-clamp `0x1317C`. It is called from the arena frame at
-`0x26534`.
+So `0x12DA8` chooses the "selected player **y**" (mode 0: the `DS_000F0AFF` slot's
+`+0x30`, a copy of the record's `+0x1C`; otherwise the **signed max** of
+`DS_001077E0`/`DS_00107874`), stores its low word to `DS_001078F4`, and runs the
+y-clamp `0x1317C`. It is called from the arena frame at `0x26534`. The label is y, not
+x: `DS_001078F4` is the high word of `DS_001078F2`, which `0x1317C` reads as its
+`x = (s32)DS_001078F2 >> 16` and compares against `0x1400` before stepping the
+camera **y** `DS_000F0AEC`.
 
 ### 2.8 `0x1282C` — the dust/scene spawner
 
@@ -599,13 +614,17 @@ activation.
 |---|---|---|---|
 | `DS_000F0AF0` | `s32` | camera x; clamped to `[-0x5D00, 0x5D00]` by `0x12D48` | `0x12D48` modes, `0x12DF0`, `0x12E3C`, `0x12FD8`, `0x13290`, `0x1333C` |
 | `DS_000F0AEC` | `s32` | camera y; stepped by `0x12CD4`, clamped by `0x1317C` | `0x12CD4`, `0x1317C` |
-| `DS_000F0AF2` | `s16` | the **high word** of `DS_000F0AF0` (not a separate global) | alias |
-| `DS_000F0AF4` | `s16` | shake offset (`offset += velocity`) | `0x1324C` (dormant) |
+| `DS_000F0AF4` | `s16` | shake offset; `0x12CD4` adds `(s16)DSW(0xF0AF4)` to camera y | `0x1324C` (dormant) |
 | `DS_000F0AF6` | `s16` | shake velocity (`-= 0x20`/call) | `0x1324C` (dormant) |
 | `DS_000F0AFE` | `u8` | camera mode `0..4` | `0x13290`/`0x1333C` set 4; `0x12DA8` reads |
 | `DS_000F0AFF` | `u8` | player index for mode 0 | camera-select code (elsewhere) |
 | `DS_001077A8` | ptr[2] | camera-target record pointers (stride 4) | elsewhere |
 | `DS_00104AFC` | `u16` | camera index into `DS_0009AF28` | set by state 6 to `rng(7)` (§6.1) |
+
+**`DS_000F0AF2` is not a global of its own.** It is only ever the address of the
+32-bit read `*(s32*)0xF0AF2` in `0x12CD4`; the read's high 16 bits are `DS_000F0AF4`,
+so the term is the sign-extended shake offset, **not** the high word of the camera x
+`DS_000F0AF0`.
 
 ### 2.10 `camera_init` registers nothing
 
@@ -1262,6 +1281,16 @@ Task 5 leaves it as a `/* PORT: */` skip; cycle 2 owns it.
     `(word[actor] & 0x8000) == 0`; the branch selecting between the two `local_A`
     forms is pinned, but the *meaning* of actor bit 15 (facing/airborne) is inferred,
     not proven.
+16. **`0x3B298`'s input scan and `0x3BDDC`'s continuation.** `0x3B298`'s entry
+    (the `slot[self]+0x86 = slot[other]+0x84` copy at `0x3B2D6`, the `anim[2]+2`
+    bit 0/1 gate at `0x3B2E8`–`0x3B30C`) is pinned and anchored (§8.18); the scan it
+    then runs (`0x1AB5C` at `0x3B315`, `0x46460` at `0x3B326`) and the record `+0x43`
+    bit `0x20`/`0x10` writes on `ctx[3]` (`0x3B405`/`0x3B40D` for `0x20`,
+    `0x3B433`/`0x3B43B` for `0x10`, where `ctx[3] = &slot[side]`) are a gap because
+    `0x1AB5C`/`0x46460` are not decoded (also §7.12). `0x3BDDC`'s entry clears are
+    anchored (§8.17), but its continuation (`0x4649C` at `0x3BE7F` selecting
+    `0xBEF28`/`0xBEF64` and `0x3C480` at `0x3BF05` reading `0xC8B30[char]`) is a gap.
+    Evidence: `0x3B2CE`–`0x3B44A`, `0x3BE43`–`0x3BF64`.
 
 ---
 
@@ -1309,12 +1338,17 @@ Expected: mode-2 `0x13290` ran.
 
 ### 8.3 `0x12CD4` — y-stepper
 
-Input A: `DSD(DS_000F0AEC) = 0`, argument `0x250`, `DSD(DS_000F0AF0) = 0`.
-Expected: `DSD(DS_000F0AEC) == 0x100` (diff `0x250 > 0x100`, step `+0x100`).
-Input B: `DSD(DS_000F0AEC) = 0x100`, argument `0x150`.
+Input A: `DSD(DS_000F0AEC) = 0`, argument `0x250`, `DSD(DS_000F0AF0) = 0`,
+`DSW(DS_000F0AF4) = 0`. Expected: `DSD(DS_000F0AEC) == 0x100` (diff `0x250 > 0x100`,
+step `+0x100`).
+Input B: `DSD(DS_000F0AEC) = 0x100`, argument `0x150`, `DSW(DS_000F0AF4) = 0`.
 Expected: `DSD(DS_000F0AEC) == 0x150` (`|diff| <= 0x100`).
-Input C: `DSD(DS_000F0AEC) = 0x200`, argument `0x50`, `DSW(DS_000F0AF0+2) = 0`.
+Input C: `DSD(DS_000F0AEC) = 0x200`, argument `0x50`, `DSW(DS_000F0AF4) = 0`.
 Expected: `DSD(DS_000F0AEC) == 0x100`.
+Input D (the shake term): `DSD(DS_000F0AEC) = 0x200`, argument `0x50`,
+`DSW(DS_000F0AF4) = 0x0020`. Expected: `DSD(DS_000F0AEC) == 0x120`
+(`0x100 + (s16)0x0020`). A test that seeds `DSW(DS_000F0AF0+2)` instead does **not**
+catch a wrong term, because `0xF0AF4` is BSS-zero in the demo; seed `DS_000F0AF4`.
 
 ### 8.4 `0x12DF0` — mode 0
 
@@ -1344,11 +1378,16 @@ pre-seeded by the test.
 ### 8.7 `0x12DA8`
 
 Input: `DSB(DS_000F0AFE) = 2`; `DSD(DS_001077E0) = 0x12345678`;
-`DSD(DS_00107874) = 0x9ABCDEF0`; `DSD(DS_000F0AEC) = 0`; `DSW(DS_00104AFC) = 0`.
-Expected: `DSW(DS_001078F4) == 0x5678` (min is `0x12345678`, low word stored).
+`DSD(DS_00107874) = 0x9ABCDEF0` (negative); `DSD(DS_000F0AEC) = 0`;
+`DSW(DS_00104AFC) = 0`. Expected: `DSW(DS_001078F4) == 0x5678` — `0x9ABCDEF0` is
+signed-negative, so the **signed max** of `0x12345678`/`0x9ABCDEF0` is `0x12345678`,
+whose low word is `0x5678`.
 Input B: `DSB(DS_000F0AFE) = 0`; `DSB(DS_000F0AFF) = 1`;
-`DSW(0x1077E0 + 0x94) = 0x2222`.
+`DSW(0x1077E0 + 0x94) = 0x2222` (i.e. slot 1 `+0x30`).
 Expected: `DSW(DS_001078F4) == 0x2222`.
+Input C (max, not min): `DSB(DS_000F0AFE) = 2`; `DSD(DS_001077E0) = 0x00001000`;
+`DSD(DS_00107874) = 0x00003000`. Expected: `DSW(DS_001078F4) == 0x3000` (signed max;
+a min implementation returns `0x1000` and fails).
 
 ### 8.8 `0x263F4` — the arena frame
 
@@ -1447,6 +1486,48 @@ Input: `DSD(DS_001077A8) = R` (non-zero); `DSD(R+0x7A) = 3`;
 Expected: `s = X - 0x16B5`; if `0 <= s < 0x4B1`,
 `DSD(DSD(R[1]) + 8) == DSW(DSD(R[9]) + s*2)`, else `0x1E1`. This is a gap beyond the
 table selection (§3.8, §7.9).
+
+### 8.17 `0x3BDDC` — the command consumer's entry clears
+
+Raw `0x3BDDC`–`0x3BF64`: `0x33950` fills the context; `slot[side].+0x40` bit 7
+(`0x3BDF3 test byte [eax+0x40],0x80`) must be clear and
+`DSW(0x1088E0 + side*2)` bit 15 (`0x3BE09 and ah,0x80`) must be set; then
+`rec = DSD(0x1077B0 + side*0x94)` has `+0x34`/`+0x43`/`+0x42` cleared
+(`0x3BE2F`/`0x3BE35`/`0x3BE39`) and `slot[side].+0x5F` set to `0xFF` (`0x3BE43`).
+
+Input A: `side = 0`; `DSD(DS_001077B0) = P`; `DSB(DS_001077B0 + 0x40) = 0`;
+`DSW(DS_001088E0) = 0x8000`; seed `DSW(P + 0x34) = 0xAA`, `DSB(P + 0x43) = 0xAA`,
+`DSB(P + 0x42) = 0xAA`, `DSB(DS_001077B0 + 0x5F) = 0xAA`. Call `0x3BDDC(0)`.
+Expected: `DSW(P + 0x34) == 0`, `DSB(P + 0x43) == 0`, `DSB(P + 0x42) == 0`,
+`DSB(DS_001077B0 + 0x5F) == 0xFF`.
+Input B (slot gate): `DSB(DS_001077B0 + 0x40) = 0x80` → none of the four change.
+Input C (command bit): `DSW(DS_001088E0) = 0x0000` → none of the four change.
+Input D (continuation): as A plus `DSB(DS_00107803) = 1` (so `0x3BE5D` jumps to the
+table selection). Expected `DSB(DS_00107802) == 3`, `DSB(DS_00107803) == 4`,
+`DSB(DS_00107804) == 2`, `DSB(DS_001078F8) == 1`, `DSW(DS_001077FE) == 0` (command
+`0x8000` has neither bit `0x1000` nor `0x2000`), and `DSD(DS_00107D40)` one of
+`0xBEF28 + char*6` / `0xBEF64 + char*6` with `char = DSB(DS_0010782A)` (`0x4649C`
+selects; gap §7.16). A command with bit `0x1000` sets `DSW(DS_001077FE) == 1`; bit
+`0x2000` sets `0xFFFF` (`0x3BF22`–`0x3BF51`).
+
+Array strides (raw): `DS_00107802`/`03`/`04` and `DS_001077FE` are slot fields
+(`0x107802`/`0x107803`/`0x107804`/`0x1077FE` at `side 0`, `+ side*0x94`);
+`DS_001078F8` is byte-stride (`[esi + 0x1078F8]`, `esi = side`); `DS_00107D40` is
+dword stride `0x94` (`[ebx + 0x107D40]`, `ebx = 0x1077B0 + side*0x94`).
+
+### 8.18 `0x3B298` — the command-state dispatch (entry copy)
+
+Raw `0x3B2B2`–`0x3B2DD`: `0x33A10` fills the context, so `[esp+8] = ctx[2] =
+&slot[1-side]` and `[esp+0xc] = ctx[3] = &slot[side]`; then
+`word[&slot[side] + 0x86] = word[&slot[1-side] + 0x84]` runs unconditionally (the
+`0x3B134` call at `0x3B2C9` returns to `0x3B2CE`).
+
+Input: `side = 0` (EAX), second arg (EDX) `= 0`;
+`DSW(DS_00107844 + 0x84 = 0x1078C8) = 0x1234`;
+`DSW(DS_001077B0 + 0x86 = 0x107836) = 0x0000`.
+Expected: `DSW(0x107836) == 0x1234` and `DSW(0x1078C8) == 0x1234` (source unchanged).
+The `anim[2]+2` bit gate (`0x3B2E8`–`0x3B30C`) then decides whether the input scan
+runs; the scan and the `ctx[3]+0x43` bit writes are gap §7.16.
 
 ---
 
