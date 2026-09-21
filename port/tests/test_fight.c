@@ -417,6 +417,48 @@ static void check_fighter_pass_b(void)
     CHECK_EQ_INT((int)DSB(DS_00100B5E), 0x0A);
     CHECK_EQ_INT((int)DSD(p0 + 0x24u), 0x40400000);
     CHECK_EQ_INT((int)DSD(p0 + 0x20u), 0);
+
+    /* 0xFF is a real stance value (0x3BDDC writes it): it must take the 0x1922C
+     * skip even when it equals DS_00100B58[side]. The timer and record fields
+     * keep their sentinels. */
+    DSB(0x0010780Fu) = 0xFF;
+    DSB(DS_00100B58) = 0xFF;
+    DSB(DS_00100B5E) = 5;
+    DSB(DS_00100B5A) = 1;
+    DSB(DS_00100B5C) = 3;
+    DSD(p0 + 0x24u) = 0xDEADBEEFu;
+    DSD(p0 + 0x20u) = 0x12345678u;
+    DSB(0x001078A3u) = 0xFF;
+    DSB(DS_00100B58 + 1u) = 0xFF;
+
+    fighter_pass_b(1);
+    CHECK_EQ_INT((int)DSB(DS_00100B5E), 5);
+    CHECK_EQ_INT((int)DSD(p0 + 0x24u), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(p0 + 0x20u), 0x12345678);
+}
+
+/* 0x35658: the HUD pass's `rec+0x28 = *rec+0x18` and `*rec+0x28 |= 1` walk the
+ * two-level record DS_001077A8[side] -> fighter. Seeded so the wrong base (rec
+ * itself rather than *rec) fails. */
+static void check_hud_pass(void)
+{
+    u32 rec = FIGHT_RECS + 0x400u;
+    u32 fighter = FIGHT_RECS + 0x500u;
+
+    mem_fill(FIGHT_RECS + 0x400u, 0, 0x180);
+    DSD(DS_001077A8) = rec;
+    DSD(DS_001077A8 + 4u) = 0;          /* side 1: no record */
+    DSD(rec) = fighter;                 /* the two-level pointer */
+    DSD(rec + 0x18u) = 0x0000CCCCu;     /* a wrong-base source would copy this */
+    DSD(rec + 0x28u) = 0x0000BBBBu;     /* sentinel, differs from the copy */
+    DSD(fighter + 0x18u) = 0x0000AAAAu;
+    DSB(fighter + 0x28u) = 0;
+    DSB(rec + 0x52u) = 0;               /* 0x34B6C does not dispatch to 0x1A978 */
+    DSD(DS_00104B00) = 3;               /* not 4: the mode-4 arm is skipped */
+
+    fight_hud_pass(0);
+    CHECK_EQ_INT((int)DSD(rec + 0x28u), 0x0000AAAAu);
+    CHECK_EQ_INT((int)DSB(fighter + 0x28u), 1);
 }
 
 /* 0x49C78: the direct RNG call sites and their gates. A case-3 entry issues
@@ -507,6 +549,7 @@ int test_fight(void)
     check_arena_frame();
     check_fighter_pass_a();
     check_fighter_pass_b();
+    check_hud_pass();
     check_effects_rng();
 
     put(s_f0ae0, 0x000F0AE0u, 0x20u);

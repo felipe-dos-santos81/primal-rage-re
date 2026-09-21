@@ -866,7 +866,7 @@ The 22 direct callees are `0x493F0`, `0x4B69C`, `0x4AAD0`, `0x4BD4C`, `0x4AC38`,
 `0x4B470`, `0x4B430`, `0x4B2AC`, `0x4A7D4`, `0x2BE00`, `0x496DC`, `0x4A868`,
 `0x4A928`, `0x4A634`, `0x4987C`.
 
-**RNG sites (5), with ranges and gates:**
+**RNG sites (8 direct encodings, 3–5 logical draws), with ranges and gates:**
 
 | site | call | gate |
 |---|---|---|
@@ -885,6 +885,18 @@ executes one of each pair, so a pass makes **3–5 draws** depending on entry st
 `0x4A476`) —
 the fixed `0x49E3A`, one of `0x4A305/0x4A315`, one of `0x4A439/0x4A449`, one of
 `0x4A4C5/0x4A4F7`, and the tail `0x4A611`.)
+
+**Correction (raw wins).** Those eight are only `0x49C78`'s **own direct** sites.
+The pass's **subtree** draws further RNG every frame: `0x4A634` is called
+unconditionally at `0x4A591` and carries `0x4A664`, `0x4A69E`, `0x4A6A9`; the tail
+callee `0x4987C` carries `0x499B1`, `0x49B08`; and `0x496DC` (called from the
+case-13/14 bodies) carries `0x4978E`, `0x4981D`, `0x4982E`. So a frame whose
+`0x49C78` reaches those bodies consumes RNG beyond the direct-site bound — the
+per-frame count is not bounded by 3–5 once the effect list is non-empty.
+`0x493F0` (`0x49CAA`) was checked and draws nothing. The `0x4A634`/`0x4987C`/
+`0x496DC` bodies are the §7.4 gap; this note records the stream consequence, it
+does not port them. (Task 3 issued the eight direct sites with their gates and
+recorded the subtree shortfall in its report.)
 
 The internal entry semantics (`0x4B69C`, `0x4AC38`, `0x4987C`, `0x4A634`, …) are a
 gap: this pass is the largest single unknown in the slice and it operates on the
@@ -1058,12 +1070,18 @@ override == 0`, `0x3B1AD`).
 **But the demo frame as a whole draws every frame.** Three non-AI passes consume the
 stream on the state-7 path:
 
-1. **`0x49C78`** (`0x2652A`, every frame, **when the effect list at `0x10884C` is
-   non-empty**; an empty list early-returns at `0x49CC5` with **zero** draws): 8
-   encoded `0x5D7DC` call sites forming up to 5 logical draws — the fixed `0x49E3A` `rng(0x3C)`, one of
+1. **`0x49C78`** (`0x2652A`, every frame): **8 direct `0x5D7DC` encodings**
+   forming 3–5 logical draws — the fixed `0x49E3A` `rng(0x3C)`, one of
    `{0x4A305,0x4A315}` `rng(0xC00)`, one of `{0x4A439,0x4A449}` `rng(0xC00)`, one of
-   `{0x4A4C5,0x4A4F7}` `rng(0x14)`, and the tail `0x4A611` `rng(2)`. So **3–5 draws
-   per frame**, in that site order.
+   `{0x4A4C5,0x4A4F7}` `rng(0x14)` (mode-9 only), and the tail `0x4A611` `rng(2)` —
+   **but that is not the frame's bound.** The pass's subtree draws more:
+   `0x4A591` calls `0x4A634` **unconditionally**, and `0x4A634` carries
+   `0x4A664`/`0x4A69E`/`0x4A6A9`; the tail callee `0x4987C` carries
+   `0x499B1`/`0x49B08`; and `0x496DC` (called from the case-13/14 bodies) carries
+   `0x4978E`/`0x4981D`/`0x4982E`. An empty list (`0x49CC5 je 0x4A476`) skips the
+   entry walk but **still reaches `0x4A634`** at `0x4A591`, so "empty list → zero
+   draws" is not guaranteed. So the non-AI draw count is 3–5 direct **plus** the
+   subtree's conditional draws. (Corrected — §4's correction carries the addresses.)
 2. **`0x1958C`** (`0x2647D`, every frame): one `rng(2)` at `0x19714`, only in the
    exact-tie branch.
 3. **`0x1282C`** (`0x2652F`, every frame): three draws
@@ -1082,8 +1100,9 @@ state 7 (case 7 of 0x11D04):
   0x263F4
     0x1958C                        -> rng(2)            (rare, tie-break)
     0x1975C -> 0x3B464 -> 0x3B298 -> 0x3B134   rng(100) (conditional, per fighter)
-    0x49C78                        -> 3..5 draws, order 0x49E3A, 0x4A305|0x4A315,
-                                      0x4A439|0x4A449, 0x4A4C5|0x4A4F7, 0x4A611
+    0x49C78                        -> 3..5 direct draws (order 0x49E3A, 0x4A305|0x4A315,
+                                       0x4A439|0x4A449, 0x4A4C5|0x4A4F7, 0x4A611)
+                                       + the 0x4A634/0x4987C/0x496DC subtree draws
     0x1282C                        -> rng(7), rng(0x1300), rng(0x2000) (every 64th frame)
     0x35658 x2 -> 0x34B6C -> 0x1A978 -> 0x3B134   rng(100) (conditional, per side)
     0x12DA8                        -> none
@@ -1094,17 +1113,17 @@ game_frame tail (0x24C5C, if DS_00104B15):
 ```
 
 **Consequence for Task 7.** The demo's determinism cannot be pinned by the two
-character picks alone: on frames where the effect list is non-empty the stream is
-advanced by `0x49C78` (3–5 draws), and it is advanced conditionally by
-`0x1958C`/`0x3B134`. If the port reproduces `0x49C78`'s call order
-and its entry states, the stream stays aligned; if `0x49C78` is deferred as a gap
-(§7.10) the port will **not** consume the same RNG stream and the demo will diverge at
-the first frame whose `0x49C78` draws affected an entry state — which can be **earlier
-than the first landing hit**. The cycle-1 bound is therefore conditional on how much
-of `0x49C78` Task 3 ports: at minimum the RNG call sites must be issued in order even
-if the entry effects are stubbed, or the bound must be declared earlier than the
-first hit. This record flags that explicitly rather than assuming the bound is the
-first landing hit.
+character picks alone: on frames where `0x49C78` runs it advances the stream by its
+3–5 direct draws **plus** the `0x4A634`/`0x4987C`/`0x496DC` subtree draws, and it is
+advanced conditionally by `0x1958C`/`0x3B134`. If the port reproduces `0x49C78`'s
+call order and its entry states, the stream stays aligned; if `0x49C78` is deferred
+as a gap (§7.10) the port will **not** consume the same RNG stream and the demo will
+diverge at the first frame whose `0x49C78` draws affected an entry state — which can
+be **earlier than the first landing hit**. The cycle-1 bound is therefore conditional
+on how much of `0x49C78` Task 3 ports: at minimum the direct RNG call sites must be
+issued in order even if the entry effects are stubbed, and the subtree draws are a
+second, separate source of drift once their bodies run. This record flags that
+explicitly rather than assuming the bound is the first landing hit.
 
 `0x5D7DC` itself is the 32-bit LCG already reproduced by `port/src/game/rng.c`:
 `state = state * 0xB90D12B9 + 0x38CE051F`; `result = ((state >> 16) * (range & 0xFFFF)) >> 16`.

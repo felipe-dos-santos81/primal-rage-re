@@ -173,9 +173,11 @@ void fighter_pass_b(u32 arg)
         u32 slot = DS_001077B0 + side * 0x94u;
         u8 st = (u8)DSB(slot + 0x5fu);
 
-        /* 0x190A8: a stance byte that differs from the latched DS_00100B58 is
-         * handed to 0x1922C (a named gap §7.6). */
-        if (st != DSB(DS_00100B58 + side) && st != 0xFFu) {
+        /* 0x190A8: the side is handed to 0x1922C (a named gap §7.6) unless the
+         * stance byte equals the latched DS_00100B58 AND is not 0xFF. The raw
+         * branches to the skip on `st != B58` (0x190AE) or `st == 0xFF`
+         * (0x190BD falls through, not to 0x190CB). */
+        if (st != DSB(DS_00100B58 + side) || st == 0xFFu) {
             /* PORT: 0x190C1 0x1922C(side) — named gap (§7.6). */
             continue;
         }

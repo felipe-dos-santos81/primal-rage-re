@@ -185,11 +185,18 @@ void fight_hud_pass(u32 side)
         return;
     }
 
-    DSD(rec + 0x28u) = DSD(rec + 0x18u);        /* 0x357E9 */
-    /* PORT: 0x357EE 0x34038(side) and 0x357F5 0x38D24(side) run before the
-     * spine; both are named gaps (§7.8) and are skipped. */
-    fight_health_sync(side);                    /* 0x357FC 0x34B6C */
-    DSB(rec + 0x28u) = (u8)(DSB(rec + 0x28u) | 1u);   /* 0x35808..0x35810 */
+    /* 0x357E4: rec is the camera-target record; *rec is the fighter record.
+     * `[eax+0x28] = [*rec+0x18]` (eax=rec), and 0x35810's `[*rec+0x28] |= 1`
+     * uses the same ebx (= *rec), which the callee-saved register holds across
+     * the calls. */
+    {
+        u32 fighter = DSD(rec);                 /* 0x357E4 ebx = [eax] */
+        DSD(rec + 0x28u) = DSD(fighter + 0x18u);          /* 0x357E6/0x357E9 */
+        /* PORT: 0x357EE 0x34038(side) and 0x357F5 0x38D24(side) run before the
+         * spine; both are named gaps (§7.8) and are skipped. */
+        fight_health_sync(side);                /* 0x357FC 0x34B6C */
+        DSB(fighter + 0x28u) = (u8)(DSB(fighter + 0x28u) | 1u); /* 0x35808..0x35810 */
+    }
     /* PORT: 0x35803 0x3531C(side), 0x35813 0x2A1FC(rec), 0x3581C/0x35824
      * 0x354F0(side)/(1-side) and 0x35829 0x186C4 run after it; all named gaps
      * (§7.8) and skipped. */
