@@ -7,18 +7,20 @@ the value the port's own LCG (seed 0xABCD) produces for that call's range, so th
 port reproduces the same three values by seeding and taking the real draws and the
 logo keeps its motion. A fourth site pins the anim stream's opcode-8 handler
 (0x2B2A0) to 0, because that handler is the only in-window RNG consumer and its
-value would otherwise depend on the master loop's unbounded, host-timed spin. The
-master loop's remaining spin draws are left alone: their values are discarded and
-no longer influence the composite.
+value would otherwise depend on the master loop's unbounded, host-timed spin.
 
-Two more sites pin the demo's state-6 character picks (0x11A8C): draw1 =
-`rng(7)` at 0x11AAD and draw2 = `rng(6)` at 0x11AE9. They are one-time draws of
-the same class as the title's three — their values depend on the master loop's
-host-timed spin, which the port does not model — so the pin makes the original's
-picks equal the port's (draw1 = 4, draw2 = 4, both from the port's seeded LCG),
-which is what aligns the two fighters' characters with the port's spawn. The pin
-changes no oracle-measured frame: the demo window's first unexplained frame is the
-state-9 hold (capture 811), before state 6. All six sites are behaviour pins.
+Two more sites pin the master loop 0x255CC's own draws: the body draw at 0x256B1
+(file 0x78505) and the spin draw at 0x256D6 (file 0x7852A), both `rng(0x7FFF)`
+(EBP = 0x7FFF at 0x255E4). The spin runs a host-timed, unbounded number of times
+per presented frame and each iteration advances the LCG, so the stream position at
+state 6 depends on real-time pacing. Pinning both to a non-advancing `mov eax,0`
+— and making the port's game_loop stop drawing at the body site, which is the only
+one the port modelled (it never had the spin) — leaves both streams carrying only
+the consumption-site draws, so the reference's LCG state after the state-6 picks
+matches the port's. The state-6 character picks (0x11A8C: draw1 = `rng(7)` at
+0x11AAD, draw2 = `rng(6)` at 0x11AE9) are therefore **not** pinned: they are drawn
+from the aligned stream and the oracle validates them instead of being forced to
+the port's values. All six sites are behaviour pins.
 
 PATCHES entries are `(offset, original_bytes, replacement_bytes)` of equal length
 (the length is not fixed). Fails closed: every patch site's original bytes are
@@ -35,8 +37,8 @@ PATCHES = [
     (0x650F5, bytes.fromhex("e836b50400"), bytes.fromhex("b86f000000")),  # 111
     (0x6510B, bytes.fromhex("e820b50400"), bytes.fromhex("b800000000")),  # 0
     (0x7E289, bytes.fromhex("e8a2230300"), bytes.fromhex("b800000000")),  # opcode 8
-    (0x64901, bytes.fromhex("e82abd0400"), bytes.fromhex("b804000000")),  # demo draw1 = 4
-    (0x6493D, bytes.fromhex("e8eebc0400"), bytes.fromhex("b804000000")),  # demo draw2 = 4
+    (0x78505, bytes.fromhex("e826810300"), bytes.fromhex("b800000000")),  # 0x256B1 master body
+    (0x7852A, bytes.fromhex("e801810300"), bytes.fromhex("b800000000")),  # 0x256D6 master spin
 ]
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
@@ -92,8 +94,8 @@ def main():
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     patch(a.src, a.out)
-    print("title_pin: wrote %s (pinned: title entry 12, 111, 0 + anim opcode-8 0; "
-          "demo state-6 picks 4, 4)" % a.out)
+    print("title_pin: wrote %s (pinned: title entry 12, 111, 0 + anim opcode-8 0 + "
+          "master-loop draws 0x256B1, 0x256D6 -> 0)" % a.out)
 
 if __name__ == "__main__":
     main()

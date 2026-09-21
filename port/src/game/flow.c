@@ -1216,9 +1216,12 @@ void game_loop(void)
         DSD(DS_001014FC) = 0;
         swap_buffers();                      /* 0x50188 */
 
-        /* 0x255CC calls 0x5D7DC once per iteration, after the present and swap
-         * and before 0x1CF20. */
-        rng_step();
+        /* PORT: 0x256B1 (the master loop's body draw, `rng(0x7FFF)`) is pinned to
+         * a non-advancing `mov eax,0` in the pinned original (tools/title_pin.py),
+         * and the port draws nothing here, so both streams carry only the
+         * consumption-site draws and stay in step. The original's spin draw
+         * (0x256D6) is pinned the same way; the port never modelled the spin — it
+         * waits one 60 Hz host retrace below, so it has no spin draw to stop. */
 
         /* 0x255CC's tail calls 0x1CF20 here: play pending samples, start/drive
          * the music, render one frame of audio. */

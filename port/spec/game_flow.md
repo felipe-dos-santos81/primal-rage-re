@@ -704,37 +704,78 @@ a site:
   pin (`0x7E289`). So the hold has no unpinned draw to pin.
 * The demo window's own RNG sites are state 6's two character picks
   (`0x11AAD` → `rng(7)`, `0x11AE9` → `rng(6)`) and the state-7 CPU-AI
-  generator's `rng(0x64)` at `0x47063` (one draw per committed move, §11.2). The
-  picks are one-time draws whose values depend on the master loop's host-timed
-  spin (the class the title's three pins address), so `title_pin.py` now pins
-  them to the port's own LCG values: draw1 = 4 (file `0x64901`, `e82abd0400` →
-  `b804000000`) and draw2 = 4 (file `0x6493D`, `e8eebc0400` → `b804000000`).
-  The measurement that justified them: the port's picks are `draw1 = 4`,
-  `draw2 = 4`, so its characters are `0xC835A[4] = 1` and `0xC835A[1] = 5`; the
-  unpinned capture's fighters were a yellow/gold dinosaur and a white furry
-  biped, while the port's two characters render as a blue/white furry biped
-  (char 1) and a red/orange creature (char 5) — different, so the original's
-  spin-shifted stream had picked other characters. After the pin and a
-  re-capture the capture's fighters are the blue/white furry and the red
-  dinosaur, matching the port (the arena moved with them, to the characters'
-  home ice arena; the port's arena render is still the broken globe background).
-  The pin changes no measured frame: the first divergence is the state-9 render
-  at 811.
+  generator's `rng(0x64)` at `0x47063` (one draw per committed move, §11.2).
+  Cycle 1 pinned the picks to the port's own LCG values (`0x64901`/`0x6493D`,
+  `call` → `mov eax,4`). That was a determinism fix of the wrong shape — the
+  `call`→`mov` pin does **not** advance the reference's LCG while the port's
+  draws do, so the streams were offset by two draws from state 6 onward — and
+  **cycle 2 removed both pins** and pinned the divergence's source instead.
 * The generator's `rng(0x64)` is **not** pinned: it executes once per committed
   move with a different value each time, so the `mov eax, imm32`
   constant-replacement shape cannot align it. That is a cycle-2 question (how the
-     demo's stream is kept in step), recorded here rather than fitted.
+    demo's stream is kept in step), recorded here rather than fitted.
 
-**Two consequences of the pin shape, stated plainly.** (a) The pins force the
-reference's two state-6 picks to the port's own LCG values (`4`, `4`), so **no
-oracle result can support the claim that the port's state-6 RNG handling is
-faithful** — the reference was made to agree with the port, and the capture was
-re-captured to match. (b) The pin replaces each `call 0x5D7DC` with `mov eax,imm32`,
-which does **not** advance the reference LCG, while the port's `rng_next(7)` /
-`rng_next(6)` (`port/src/game/flow.c:783,798`) do: the pinned capture's stream is
-**offset from the port's by two draws from state 6 onward**. Neither regresses
-cycle 1 (the window diverges at capture 811, before state 6), but cycle 2 must
-resolve the offset before reusing this capture. `tools/title_pin.py:14-21,38-39`.
+**Cycle 2 replaced the two state-6 pins with the master-loop pin, and the two
+streams still do not meet — the finding is recorded, not papered over.** The
+master loop `0x255CC` draws `rng(0x7FFF)` twice: the body draw at `0x256B1`
+(file `0x78505`, `e826810300` → `b800000000`) and the spin draw at `0x256D6`
+(file `0x7852A`, `e801810300` → `b800000000`), both with `EBP = 0x7FFF`
+(`0x255E4`). The spin is `while (DS_0010150C - 1 == DS_00101508) rng_step()`
+(`0x256C6`..`0x256DB`) — host-timed and unbounded, which is why the reference's
+stream position was not deterministic. `title_pin.py` now pins both sites to a
+non-advancing `mov eax,0`, and the port's `game_loop` stopped drawing at the
+body site (the `rng_step()` there removed; `port/src/game/flow.c`). The port
+never modelled the spin: its master loop waits one 60 Hz host retrace
+(`host_wait_vblank()`, `host.c:203`), so it has no spin draw to stop.
+
+The oracle claims held after the re-capture (`make frontend-capture`): title
+`54 clean, 55 splice, 2 transition, 0 unexplained` / `54 clean, 57 splice, 0
+unexplained`, attract `FIRST DIVERGENCE at capture frame 215`, front-end `0
+unexplained`. The window indices moved (host-timed, derived): the front-end
+window distinct `[557..810]` → `[560..815]` (raw `3113..3414` → `3108..3409`;
+counts `254: 100 clean, 150 splice` → `256: 103 clean, 152 splice`), the demo
+window distinct `[811..3759]` → `[816..3616]`, first unexplained `811` → `816`,
+and the post-logo distinct count `3760` → `3617`. The claim is the gate; the
+indices are derived.
+
+**The pin does not align the streams: the reference's state-6 entry is the seed
+plus the attract's draws, and the port's driver is at the seed.** Measured and
+derived:
+
+* The port's attract draws exactly **26** values before the title handoff (its
+  LCG state at `attract_step` case 0xB is `0x4308698B` = seed `0xABCD` advanced
+  26 steps), and the attract oracle shows the capture's attract is the same run.
+  The title's three draws are pinned to constants (no advance), and the only
+  draw site reachable from states 2..5 is the already-pinned opcode-8 handler
+  (`0x2B2A0`), so the capture's stream at its state-6 entry is the seed + 26.
+* The port's front-end driver (`PR_FRONTEND_DUMP`) enters at state 2, so its
+  state-6 entry is the seed + 0 (instrumented: `DS_000EF6D8` = `0x23C79644`
+  after `rng(7)`, i.e. `0xABCD` before it).
+* State 6 draws more than the port's two. `fighter_spawn(0)` (`0x33EB4` →
+  `0x33C78`) calls the dust builder `0x494A8`, whose loop (`0x49540`/`0x4967F`,
+  bound `slot+0x81`) draws **three** values per iteration — `0x49388`'s
+  unconditional draw (`0x493AB`), `rng(0x1800)` (`0x495DF`) and `rng(step)`
+  (`0x495FC`) — between `0x11AAD` and `0x11AE9`. The port's
+  `fighter_spawn_slot` skips the whole builder (the §10.5 gap), so it misses
+  3 × `slot+0x81` draws per spawn; the demo's `slot+0x81` is 2, so six draws
+  between the two picks. **§10.5's "loops `n` times … two RNG values per
+  iteration" is wrong against the raw: the loop bound is `slot+0x81`, and
+  `0x49388` draws once per iteration (three draws total per iteration).**
+* The capture's picks confirm both offsets: at seed+26, `rng(7)` = 0, and after
+  the dust's six draws `rng(6)` = 3, giving characters `0xC835A[0] = 0` and
+  `0xC835A[3] = 3` — exactly the two fighters the re-captured demo shows
+  (matched frame-for-frame against the port's forced-character renders). The
+  port's driver picks are `draw1 = 0`, `draw2 = 5` (seed+0, no dust draws) →
+  characters `0` and `0xC835A[5] = 6`, which is what its own frames show.
+* So the streams are **not** aligned in the oracle's comparison path: the
+  reference is 26 draws ahead of the port's driver (the skipped attract) and
+  the port is six draws behind inside state 6 (the skipped dust builder).
+  Resolving this needs a human decision — either the front-end driver
+  reproduces the attract's draws (or re-seeds to its post-state `0x4308698B`,
+  the pattern the title driver already uses) **and** the port issues the dust
+  builder's draws, or the attract's three sites (`0x10F4D`/`0x10F76`/`0x10F95`)
+  are pinned too. Neither is fitted here. `tools/title_pin.py`; `host.c:203`;
+  `port/src/game/flow.c`; `port/src/game/fighter.c`.
 
 The demo window therefore cannot converge in cycle 1; cycle 2 owns it: collision
 and damage (`0x3BB90`, `0x4FB20`, `0x3BAEC`, `0x3B9D8`), the `0x3CF38` hit chain,

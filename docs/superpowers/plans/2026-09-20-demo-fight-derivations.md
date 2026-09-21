@@ -1824,6 +1824,18 @@ iteration** and builds the dust entries the effects pass `0x49C78` renders. The
 entry semantics are a gap (the same class as §7.4); it is **not** what makes a
 slot live, because every liveness store precedes it.
 
+**Correction (cycle 2, raw wins).** Two claims above are wrong against the
+fixed-up image. The loop bound is `slot+0x81` — `0x4967F` reloads
+`AL = [EDI+0x81]` and compares it with the counter, which `0x49676` increments —
+not `n = 0x300 / slot+0x81` (that value is the second draw's range and the
+per-iteration x offset, `0x49555`/`0x49674`). And each iteration draws **three**
+values, not two: `0x49388` draws unconditionally at its entry (`0x493AB`) before
+the `rng(0x1800)` (`0x495DF`) and `rng(step)` (`0x495FC`) pair. The demo's
+`slot+0x81` is 2, so state 6's `fighter_spawn(0)` issues six draws between
+`0x11AAD` and `0x11AE9`; the capture's picks confirm it (cycle 2's Task 2 report;
+`port/spec/game_flow.md`). The port's `fighter_spawn_slot` still skips the
+builder, so its stream is six draws behind per spawn.
+
 ### 10.6 `0x1D890` (375 B) — state 6's call is a 4-byte reset
 
 `0x1D890(AL)`: for `side = 0,1` it always writes

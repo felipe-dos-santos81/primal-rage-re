@@ -120,6 +120,21 @@ port's own LCG carries every downstream draw. The oracle then *validates* the
 state-6 picks instead of being forced to them, and the two-draw offset
 disappears rather than being papered over.
 
+**Outcome (Task 2, recorded).** The source-level pin landed: the two master-loop
+draws `0x256B1`/`0x256D6` are pinned to a non-advancing `mov eax,0` and the
+port's `game_loop` stopped drawing at the body site; the reference is now
+deterministic and the oracle claims held after the re-capture (the derived
+indices moved). **The pin alone does not align the streams**, and Task 2's gate
+is therefore unmet: the reference's state-6 entry is the seed + 26 (the attract's
+voice-tick draws, which the front-end driver skips by entering at state 2) and
+the port is a further six draws behind inside state 6 (the dust builder
+`0x494A8` draws three values per loop iteration between `0x11AAD` and `0x11AE9`;
+`fighter_spawn_slot` skips it). The capture's picks (`0`/`3`) and the port's
+(`0`/`6`) confirm both offsets. The fix is a human decision: reproduce the
+attract's draws in the driver (or re-seed to its post-state) and issue the dust
+builder's draws in the port, or pin the attract's three draw sites too.
+`port/spec/game_flow.md` carries the evidence and addresses.
+
 **The invariant is the oracle's claim, not its window indices.** A capture is
 host-timed and provably unstable — repeat capture of the same tree yielded 587 vs
 588 distinct frames — so the window's derived indices move whenever the reference
@@ -153,6 +168,13 @@ correction and its address recorded.
   the pin mechanism. If Task 1 shows the nondeterminism has no single pinnable
   origin, that is an escalation back to the human rather than a quiet fallback to
   the advance-and-overwrite pin.
+- **The source pin may not align the streams (realized in Task 2).** The pin
+  removes the master loop's host-timed draws, but the oracle's comparison path
+  differs from the reference's: the front-end driver skips the attract (26
+  draws) and the port skips the dust builder's draws (six per spawn). Task 2
+  reported this with the evidence instead of pinning the consumption sites; the
+  alignment fix is a human decision (`port/spec/game_flow.md`, "Cycle 2 replaced
+  the two state-6 pins…").
 - **The fight may not converge on a first try.** The hit chain's RNG consumption
   is new and may itself need a determinism answer. Task 1's derivation covers it;
   if a new nondeterministic site appears mid-cycle it is handled the same way —
