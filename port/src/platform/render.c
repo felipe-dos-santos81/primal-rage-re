@@ -1,5 +1,8 @@
 #include "platform/render.h"
+#include "platform/res.h"
 #include "platform/sprite.h"
+#include "../game/actors.h"
+#include "../game/flow.h"
 #include "../mem.h"
 #include "../symbols.h"
 
@@ -9,6 +12,11 @@
 #define RENDER_NODE_COUNT  580
 #define RENDER_NODE_BYTES  8
 #define RENDER_PSET_LAYER  0x0Eu
+
+/* The per-scene actor-descriptor pointer tables 0x387F4/0x38890 read.
+ * symbols.h emits no name for either address. */
+#define DS_000BDF7C  0x000BDF7Cu
+#define DS_000BDF9C  0x000BDF9Cu
 
 const struct RenderCamera render_camera_default = { 0, 0, 0, 0, 320, 200 };
 
@@ -250,4 +258,74 @@ void render_scroll_fill(void)
     row -= (int)DSW(DS_00107A42) * step;
     DSW(DS_00107A44 + 2) = (u16)(row / 256);
     DSW(DS_00107A3A) = (u16)((((row / 256) >> 1) + (int)DSW(DS_00107A50)) / 32);
+}
+
+/* 0x387F4. The scene's first actor and edge base. Spawns the actor whose
+ * descriptor 0xBDF7C[i] points at (layer a3 = 2), seeds DS_00107A55 from the
+ * 0xA8A18 byte table and DS_00107A48 from the actor sprite's height, and
+ * acquires the four scene palettes. The height comes from the resolved sprite
+ * descriptor's first dword (the 12-byte { s16 w; s16 h; ... } record
+ * gra_sprite_lookup reads), high word, signed. */
+static void render_scroll_scene_a(u32 i)
+{
+    DSB(DS_00107A55) = DSB(DS_000A8A18 + i);            /* 0x387F9/0x387FF */
+    u32 desc = DSD(DS_000BDF7C + i * 4u);               /* 0x38804 */
+    u32 handle = DSD(DS_000A8B30 + DSD(desc) * 4u);     /* 0x3880B/0x3880D */
+    const u32 *res = res_resolve(handle);               /* 0x38814 (0x1B544) */
+    /* PORT: the raw dereferences the resolved pointer unguarded; res_resolve
+     * returns NULL for an out-of-range handle, so a missing resource reads 0. */
+    int v = res ? (int)(*res) >> 16 : 0;                /* 0x38819/0x3881B */
+    /* PORT: the raw's abs() arm (0x38820 JGE skips the 0x38822 MOV EBX,EAX)
+     * keeps EBX when the value is non-negative, and 0x38733/0x387CF make that
+     * EBX the scene index i. A negative height is negated. */
+    int x = (v < 0) ? -v : (int)i;                      /* 0x38822/0x38824 */
+    DSW(DS_00107A48) = (u16)((u32)(x - (int)DSW(DS_00107A4E)) << 6u); /* 0x38835/0x3883D */
+    DSD(DS_000BDFBC) = actor_spawn((const u32 *)(mem + desc), 0u, 2u, 0u, 0u);  /* 0x3884C/0x38851 */
+    if (DSW(DS_00104B00) != 0x13u) {                    /* 0x38856/0x38861 */
+        palette_acquire(0x105FF3Cu);                    /* 0x38863/0x38868 */
+        palette_acquire(0x080997Cu);                    /* 0x3886D/0x38872 */
+        palette_acquire(0x0809984u);                    /* 0x38877/0x3887C */
+        palette_acquire(0x080998Cu);                    /* 0x38881/0x38886 */
+    }
+}
+
+/* 0x38890. The scene's second actor and the shear-table length. Spawns the
+ * actor whose descriptor 0xBDF9C[i] points at (layer a3 = 1, a4 = DS_00107A4E +
+ * 0x100), seeds DS_00107A56 from the 0xA8A20 byte table and DS_00107A52 =
+ * 0xF8 - DS_00107A4E. */
+static void render_scroll_scene_b(u32 i)
+{
+    DSB(DS_00107A56) = DSB(DS_000A8A20 + i);            /* 0x38893/0x3889E */
+    DSW(DS_00107A52) = (u16)(0xF8 - (int)DSW(DS_00107A4E));   /* 0x388AB/0x388C3 */
+    /* PORT: the raw resolves the two sprite handles at 0x388CA and 0x388E5 and
+     * discards both pointers; 0x1B544 has no side effect in the port. */
+    u32 desc = DSD(DS_000BDF9C + i * 4u);               /* 0x388F3 */
+    DSD(DS_000BDFC0) = actor_spawn((const u32 *)(mem + desc), 0u, 1u,
+                                   (u32)DSW(DS_00107A4E) + 0x100u, 0u);  /* 0x38901/0x38906 */
+}
+
+/* 0x38730. The attract scene/zoom projection setup: seed the per-scene
+ * scroll/zoom tables and enable the per-frame projection. `i` is the scene
+ * index, which the demo's only call site passes as the state-6 RNG draw
+ * (0x20DF7 clamps EAX to 7 into EBX, 0x20E7D reloads it into EAX). The raw's
+ * two 0x2EA30 interrupt-lock calls are inert in the port (actors_reset
+ * documents the same). */
+void render_scroll_setup(u32 i)
+{
+    DSW(DS_00107A4E) = DSW(DS_000BDE1C + i * 2u);       /* 0x38741 */
+    DSW(DS_00107A42) = DSW(DS_000BDE2C + i * 2u);       /* 0x3874F */
+    frontend_origin_zero();                             /* 0x38764 (0x4F1D0) */
+    DSW(DS_00107A4A) = DSW(DS_00107A4E);                /* 0x3876F */
+    DSW(DS_00107A4C) = DSW(DS_00107A4E);                /* 0x38775 */
+    DSW(DS_00107A50) = DSW(DS_000BDE0C + i * 2u);       /* 0x38785 */
+    DSW(DS_00107A40) = DSW(DS_000BDDFC + i * 2u);       /* 0x3879A */
+    DSW(DS_00107A3A) = (u16)((int)DSW(DS_00107A50) / 32);   /* 0x387AA */
+    /* PORT: this divide reads the PRE-call DS_00107A48; 0x387F4 writes the new
+     * one below and render_scroll_edge re-derives DS_00107A38 from it on the
+     * next master-loop frame. */
+    DSW(DS_00107A38) = (u16)((int)DSW(DS_00107A48) / 64);   /* 0x387C6 */
+    render_scroll_scene_a(i);                           /* 0x387D1 (0x387F4) */
+    render_scroll_scene_b(i);                           /* 0x387D8 (0x38890) */
+    render_scroll_fill();                               /* 0x387DD (0x38A38) */
+    DSB(DS_00107A54) = 1;                               /* 0x387E2 */
 }

@@ -788,6 +788,15 @@ static void game_state_6(void)
      * DS_0010884C that the 0x49C78 walk reads, so it is ported as fight_list_init
      * (a zero head would walk address 0 forever). */
     fight_list_init();                                  /* 0x11AC4 0x49300 */
+    /* 0x20E4C/0x20E52: the reset zeroes the two camera words the projection
+     * reads — 0x38A38's stride is DS_000F0AF0 << 8 and 0x2A620's shear base is
+     * DS_000F0AEC — before the 0x38730 call below. */
+    DSD(DS_000F0AEC) = 0;
+    DSD(DS_000F0AF0) = 0;
+    /* 0x20E7F 0x38730(eax=draw1): the attract projection setup. Its argument is
+     * 0x20DF4's clamped EAX (0x20DF7 MOV EBX,EAX; 0x20E01/0x20E06 clamp to 7;
+     * 0x20E7D MOV EAX,EBX), which 0x11AC1 loaded with the state-6 draw. */
+    render_scroll_setup(draw1);                         /* 0x11AC4 0x38730 */
     fight_char_select(0u, draw1);                       /* 0x11ACD 0x41350 */
     fighter_spawn(0u);                                  /* 0x11AD9 0x33EB4 */
     /* 0x11AE3: EDX after 0x33EB4 is the caller's 7 — 0x33EB4 push/pops EDX and

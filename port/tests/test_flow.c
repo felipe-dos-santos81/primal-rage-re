@@ -8,6 +8,7 @@
 #include "platform/audio/ail.h"
 #include "platform/audio/mixer.h"
 #include "platform/audio/patches.h"
+#include "platform/render.h"
 #include "platform/res.h"
 #include "test.h"
 #include <string.h>
@@ -169,6 +170,120 @@ static void check_state9_countdown(void)
     DSW(DS_000F0A6C) = saved_6c;
 }
 
+/* symbols.h emits no name for the 0x387F4/0x38890 scene-descriptor tables. */
+#define TEST_DS_000BDF7C 0x000BDF7Cu
+
+/* Task 3: 0x38730's projection setup. Every input and output is seeded with a
+ * sentinel that differs from its post-condition. The anchors are the shipped
+ * bytes: 0xBDE1C = {0xA4,0xA4,0x94,...}, 0xBDE2C[0..1] = 0, 0xBDE0C =
+ * {0x0B00,0x0700,...}, 0xBDDFC = {0x0060,0x0050,...}, 0xA8A18 = {3,7,...},
+ * 0xA8A20 = {1,1,...}. 0xBDF7C[0] -> descriptor 0xBDE50 -> sprite id 0x2BE0 ->
+ * s16beach.gra+0x38CF8 (w=549, h=213); 0xBDF7C[1] -> 0xBDEB4 -> 0x2BEA ->
+ * s16volcn.gra+0x3988C (w=488, h=213). Both heights are positive, so the raw
+ * keeps EBX = i (0x38820 JGE skips the 0x38822 MOV EBX,EAX) and the two cases
+ * differ only in their table rows and their i. */
+static void check_scroll_setup(void)
+{
+    const u16 saved[15] = {
+        DSW(DS_00107A38), DSW(DS_00107A3A), DSW(DS_00107A3E),
+        DSW(DS_00107A40), DSW(DS_00107A42), DSW(DS_00107A44 + 2),
+        DSW(DS_00107A48), DSW(DS_00107A4A), DSW(DS_00107A4C),
+        DSW(DS_00107A4E), DSW(DS_00107A50), DSW(DS_00107A52),
+        DSW(DS_00107A54), DSW(DS_00107A55), DSW(DS_00107A56),
+    };
+    const u32 saved_f0 = DSD(DS_000F0AF0);
+    const u32 saved_bc = DSD(DS_000BDFBC);
+    const u32 saved_c0 = DSD(DS_000BDFC0);
+    const u16 saved_shear0 = DSW(DS_00107900 + 0u);
+    const u16 saved_shear53 = DSW(DS_00107900 + 0x53u * 2u);
+
+    DSD(DS_000F0AF0) = 0;               /* 0x20DF4 zeroes it before 0x38730 */
+    DSW(DS_00107900 + 0u) = 0xDEAD;
+    DSW(DS_00107900 + 0x53u * 2u) = 0xDEAD;
+    DSB(DS_00107A54) = 0;
+    DSB(DS_00107A55) = 0x99; DSB(DS_00107A56) = 0x99;
+    DSW(DS_00107A4E) = 0x5678; DSW(DS_00107A42) = 0x5678;
+    DSW(DS_00107A4A) = 0x5678; DSW(DS_00107A4C) = 0x5678;
+    DSW(DS_00107A50) = 0x5678; DSW(DS_00107A40) = 0x5678;
+    DSW(DS_00107A3A) = 0x5678; DSW(DS_00107A38) = 0x5678;
+    DSW(DS_00107A44 + 2) = 0x5678;
+    DSW(DS_00107A48) = 0x1234;          /* 0x38730 divides this pre-call value */
+    DSD(DS_000BDFBC) = 0; DSD(DS_000BDFC0) = 0;
+
+    render_scroll_setup(0u);
+
+    CHECK_EQ_INT((int)DSW(DS_00107A4E), 0xA4);
+    CHECK_EQ_INT((int)DSW(DS_00107A42), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107A50), 0x0B00);
+    CHECK_EQ_INT((int)DSW(DS_00107A40), 0x60);
+    CHECK_EQ_INT((int)DSW(DS_00107A4A), 0xA4);
+    CHECK_EQ_INT((int)DSW(DS_00107A4C), 0xA4);
+    CHECK_EQ_INT((int)DSB(DS_00107A55), 3);
+    CHECK_EQ_INT((int)DSB(DS_00107A56), 1);
+    CHECK_EQ_INT((int)DSW(DS_00107A52), 0x54);
+    /* 0x387C6 divides the PRE-call DS_00107A48 (0x1234 / 64 = 0x48); 0x387F4
+     * then writes it: h = 213 is non-negative, so the raw keeps EBX = i = 0 and
+     * the value is (0 - 0xA4) << 6 = 0xD700. */
+    CHECK_EQ_INT((int)DSW(DS_00107A38), 0x48);
+    CHECK_EQ_INT((int)DSW(DS_00107A48), 0xD700);
+    /* 0x38A38's tail with stride 0: DS_00107A3A = (0 + 0x0B00) / 32 = 0x58. */
+    CHECK_EQ_INT((int)DSW(DS_00107A3A), 0x58);
+    CHECK_EQ_INT((int)DSW(DS_00107A44 + 2), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107900 + 0u), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107900 + 0x53u * 2u), 0);
+    /* edge = 0xA4 + 0x53 walks down to 0xA4, so the <= 0xEF rows store
+     * (0 + 0x2B00) / 32 = 0x158. */
+    CHECK_EQ_INT((int)DSW(DS_00107A3E), 0x158);
+    CHECK_EQ_INT((int)DSB(DS_00107A54), 1);
+    CHECK(DSD(DS_000BDFBC) != 0, "scene A actor spawned");
+    CHECK(DSD(DS_000BDFC0) != 0, "scene B actor spawned");
+
+    /* Scene 1: same height, different table rows. 0xBDE0C[1] = 0x0700 gives
+     * DS_00107A3A = 0x0700 / 32 = 0x38, and (1 - 0xA4) << 6 = 0xD740. */
+    DSW(DS_00107A48) = 0x1234;
+    render_scroll_setup(1u);
+    CHECK_EQ_INT((int)DSW(DS_00107A4E), 0xA4);
+    CHECK_EQ_INT((int)DSW(DS_00107A50), 0x0700);
+    CHECK_EQ_INT((int)DSW(DS_00107A40), 0x50);
+    CHECK_EQ_INT((int)DSW(DS_00107A48), 0xD740);
+    CHECK_EQ_INT((int)DSW(DS_00107A3A), 0x38);
+    CHECK_EQ_INT((int)DSB(DS_00107A55), 7);
+    CHECK_EQ_INT((int)DSB(DS_00107A54), 1);
+
+    /* The negative-height arm: the raw negates (0x38822/0x38824) instead of
+     * keeping i. The shipped first-set heights are all positive, so seed the
+     * scene-0 sprite's s16 height to -0x100: (0x100 - 0xA4) << 6 = 0x1700. */
+    {
+        u32 handle = DSD(DS_000A8B30
+                         + DSD(DSD(TEST_DS_000BDF7C)) * 4u);
+        u8 *sp = (u8 *)res_resolve(handle);
+        if (sp == NULL) {
+            CHECK(0, "scene 0 sprite descriptor resolves");
+        } else {
+            u8 h0 = sp[2], h1 = sp[3];
+            sp[2] = 0x00; sp[3] = 0xFF;     /* height = -0x100 */
+            DSW(DS_00107A48) = 0x1234;
+            render_scroll_setup(0u);
+            CHECK_EQ_INT((int)DSW(DS_00107A48), 0x1700);
+            sp[2] = h0; sp[3] = h1;
+        }
+    }
+
+    DSW(DS_00107A38) = saved[0]; DSW(DS_00107A3A) = saved[1];
+    DSW(DS_00107A3E) = saved[2]; DSW(DS_00107A40) = saved[3];
+    DSW(DS_00107A42) = saved[4]; DSW(DS_00107A44 + 2) = saved[5];
+    DSW(DS_00107A48) = saved[6]; DSW(DS_00107A4A) = saved[7];
+    DSW(DS_00107A4C) = saved[8]; DSW(DS_00107A4E) = saved[9];
+    DSW(DS_00107A50) = saved[10]; DSW(DS_00107A52) = saved[11];
+    DSW(DS_00107A54) = saved[12]; DSW(DS_00107A55) = saved[13];
+    DSW(DS_00107A56) = saved[14];
+    DSD(DS_000F0AF0) = saved_f0;
+    DSD(DS_000BDFBC) = saved_bc;
+    DSD(DS_000BDFC0) = saved_c0;
+    DSW(DS_00107900 + 0u) = saved_shear0;
+    DSW(DS_00107900 + 0x53u * 2u) = saved_shear53;
+}
+
 int test_flow(void)
 {
     int before = g_failures;
@@ -301,6 +416,10 @@ int test_flow(void)
     /* Task 9: the state-9 countdown's faithfulness and its no-draw invariant. */
     check_state9_countdown();
 
+    /* Task 3: the 0x38730 projection setup. It needs the resource table (above)
+     * and a live actor pool (the title entry rebuilt it), so it runs here. */
+    check_scroll_setup();
+
     /* 0x11A8C: the live state 6. The old "a deferred state is a harmless no-op"
      * premise is retired — state 6 now draws the shared RNG, runs 0x41350 for
      * both players, spawns the HUD path and arms the 900-frame timer. It is
@@ -317,8 +436,21 @@ int test_flow(void)
     DSW(DS_000F0A6C) = 0;
     DSB(DS_000F0A6F) = 0xFF;
     DSW(DS_000F0A64) = 6;
+    /* Task 3: the 0x20DF4 reset path must run 0x38730, which seeds the
+     * scroll/zoom projection and sets DS_00107A54 = 1. The sentinel differs
+     * from the post-condition, so a missing store fails rather than passing on
+     * a zero the test itself left behind. */
+    DSB(DS_00107A54) = 0;
+    /* 0x20DF4 zeroes the projection's camera stride input at 0x20E52 before its
+     * 0x38730 call. Seed it non-zero: without that zeroing render_scroll_fill's
+     * stride is 0x100 << 8, so the first shear row (index DS_00107A52 - 1 = 0x53)
+     * is (0x10000 / 256) >> 1 = 0x80 instead of 0. */
+    DSD(DS_000F0AF0) = 0x100;
+    DSW(DS_00107900 + 0x53u * 2u) = 0xDEAD;
     rng_seed(0xABCDu);
     game_frame();
+    CHECK_EQ_INT((int)DSB(DS_00107A54), 1);
+    CHECK_EQ_INT((int)DSW(DS_00107900 + 0x53u * 2u), 0);
     CHECK_EQ_INT((int)DSB(DS_00104B15), 1);
     CHECK_EQ_INT((int)DSW(DS_001082CC), 3);
     CHECK_EQ_INT((int)DSW(DS_000F0A64), 7);

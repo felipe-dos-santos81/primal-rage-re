@@ -72,4 +72,12 @@ void render_scroll_edge(void);
  * DS_00107A3E divides are the same signed truncating /256 and /32. */
 void render_scroll_fill(void);
 
+/* PORT: 0x38730. The attract scene/zoom projection setup for scene `i`: seeds
+ * DS_00107A4E/42/50/40 from the per-scene tables at DS_000BDE1C/BDE2C/BDE0C/
+ * BDDFC, derives DS_00107A3A/38, runs 0x387F4/0x38890 (the two scene actors,
+ * DS_00107A55/56/48/52) and 0x38A38, then enables the projection with
+ * DS_00107A54 = 1. The demo's only call site (0x11AC4 -> 0x20DF4 -> 0x20E7F)
+ * passes the state-6 RNG draw as `i`. */
+void render_scroll_setup(u32 i);
+
 #endif /* PR_RENDER_H */

@@ -170,6 +170,32 @@ landmass band, and the `0x38730` argument `i` the demo passes at `0x20E7F`) is
 derived from `0x20DF4`'s raw body, and if the argument cannot be pinned the
 globe layer is a Step 6 gap, **not** an invented table index.
 
+**Correction (Task 3, measured — the raw refutes the state-9 half of the claim
+above).** The argument **is** pinned: `i = draw1`, the state-6 RNG draw, from
+`0x20DF4`'s own body (`0x20DF7 MOV EBX,EAX`; `0x20E01 CMP EAX,0x7` /
+`0x20E06 MOV EBX,0x7`; `0x20E7D MOV EAX,EBX`; `0x20E7F CALL 0x38730`) and its
+caller (`0x11AC1 MOV AX,BX`; `0x11AC4 CALL 0x20DF4`, with `BX = draw1` from
+`0x11AB2`). But the projection explains the **state-7 background only, not the
+state-9 hold frame the oracle window opens on**: `0x38730` cannot have run before
+the hold, because state 9 is entered from state 3's phase 1
+(`0x1262F`–`0x1264C`, which sets `DS_000F0A6C = 6`) and state 6 runs after it,
+and every other `0x20DF4` call site (`0x25A95`, `0x25BE6`, `0x269BE`, `0x270E0`,
+`0x295E4`; and `0x20E90`'s caller `0x4256A`) reads `DS_00104AFC`, which only
+state 6 writes (`0x11AB4`) — so at the hold the original's `DS_00107A54` is 0 as
+well. Measured on the Task 3 tree: a byte diff of the demo dump against the same
+tree with the `render_scroll_setup` wiring removed shows the **first changed
+frame is dumped 481** (the state-6 entry) and all 900 frames 481..1380 change;
+frames 0..480 are byte-identical. The oracle's first-unexplained frame therefore
+does not move (capture 816, the hold's globe). The hold's divergence is its
+**globe actor animation** — the gap cycle 1 already named at
+`port/spec/game_flow.md:790-792` (the `0x3E688` palette-driven zoom-actor globe
+render advanced through `0x2A31C`): the port's hold (dumped 240..480) renders 12
+distinct images in a 6-frame cycle whose first four steps match the capture's
+812..815 byte-exactly, while the capture's globe advances through ~19 distinct
+rotation steps before the fight at 834; the port's step 5 (dumped 264) already
+differs by 205 bytes and the gap grows. The state-9 frame is **not** a
+`DS_00107A54` gap.
+
 ---
 
 ## 2. The `0x3C88C` state-7 arena render gap (Step 2)
