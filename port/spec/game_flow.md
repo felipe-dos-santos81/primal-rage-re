@@ -353,7 +353,7 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   `0x4F9AA`, `0x4F9D1`) plus one direct `call 0x29B74` at `0x27B17`; `0x41578` is
   direct-called from four sites (`0x41755`, `0x41DE6`, `0x42337`, `0x42352` in
   `0x416D4`/`0x41C28`). Every one of the live sites is reached only through
-  `0x24C5C`'s **unported mode cases** (`0x12`, `0x16..0x1B`, `0xE`, `0xF`, `9`) and
+  `0x24C5C`'s **unported mode cases** (`0x12`, `0x13`, `0x16..0x1B`, `0xE`, `0xF`, `9`) and
   the unported match/fight chain; the `0x2861C` region is dead outright. The port's
   `DS_00104B00` is fixed at 3 by `0x10E80`, so none
   is reachable from the ported states 3/4/5. They are **deferred and unowned by
@@ -503,9 +503,20 @@ handoff remain the **next cycle**.
 state-3 render ported (`0x12484`) the `PR_FRONTEND_DUMP` driver emits the real
 zoom-out, and `tools/title_compare.py --frontend` aligns it: window distinct
 [557..813] (raw 3117..3418), **257 frames: 92 clean, 162 splice, 2 transition,
-0 unexplained**. `frontend-oracle` enforces that result (the Python compare
-exits non-zero on any unexplained frame) and is a `verify` ladder step; it was
-proven to fail (exit 2) on an induced regression.
+0 unexplained**. The claim that result supports is precise and narrow: **no
+content-bearing capture frame inside the window the port's own dump exhibits is
+unexplained.** The window is derived from the port's dump (`check_capture`'s
+`idx`→`a,b` mapping) and the branch discards `check_capture`'s `rc` (coverage and
+`endpoints BAD`), so `unexplained` is only ever evaluated inside that
+self-derived window. The oracle therefore **cannot detect a port that
+under-renders the front-end**: a dump of 300 identical copies of port frame 0
+(nothing rendered past the state-3 entry) exits 0 (window `[557..559]`, 2 clean,
+0 unexplained, exhibited 1/300), and a dump of only the first 12 real frames
+exits 0 (window `[557..569]`, 0 unexplained, exhibited 9/12). `frontend-oracle`
+keeps enforcing the gate (the Python compare exits non-zero on any unexplained
+frame) and remains a `verify` ladder step; it was proven to fail on an induced
+regression (exit 1 — the unexplained count is corruption-dependent, not a fixed
+2).
 
 Task 5 found and fixed a real port bug: the raw's `actors_reset` (`0x2BAF4`)
 calls `0x38B70` at `0x2BBDA`, which zeroes the 7-entry front-end row table
@@ -540,7 +551,8 @@ oracle-level choice, not a proven fact.** `tools/title_compare.py --frontend`
 classifies a capture frame that is entirely black as an artifact: it requires no
 match and is not counted as unexplained; only all-zero frames are dropped, so a
 content-bearing frame that disagrees with the port still fails (a deliberately
-corrupted port frame yields `2 unexplained`, exit 1). Sixteen all-black capture
+corrupted port frame is reported; the unexplained count is corruption-dependent
+and the tool returns 1, not a fixed 2). Sixteen all-black capture
 frames are excluded: distinct 0, 213, 353, 386, 420, 454, 488, 522, 558, 836,
 1873, 2087, 2129, 2386, 3440, 3569 (raw 1376, 2181, 2429, 2538, 2646, 2755,
 2863, 2972, 3118, 3679, 4800, 5409, 5815, 6766, 7852, 8212). One of them,
@@ -577,13 +589,18 @@ pointer. The mismatch was therefore a rendering/timing gap, never an unpinned
 draw, so no behaviour pin was written (a pin here would be a fitted constant).
 
 **Known limitation of the enforced gate.** `frontend-oracle` fails only on
-`unexplained` capture frames. `check_capture`'s `rc` additionally counts port
-frames that no capture frame exhibits (coverage) and `endpoints BAD`, but the
-front-end branch deliberately ignores `rc`: the 120 s capture ends before the 300
-dumped frames do (the port dump runs on into state 9, which the passive original
-leaves for the attract loop), so a coverage-based gate could never pass. Passing
-the gate therefore means "no content-bearing capture frame is unexplained", NOT
-"every dumped port frame was exhibited".
+`unexplained` capture frames, and `unexplained` is evaluated only inside the
+window the port's own dump exhibits (`check_capture` derives that window from its
+`idx`→`a,b` mapping, then the branch discards `rc`). `check_capture`'s `rc`
+additionally counts port frames that no capture frame exhibits (coverage) and
+`endpoints BAD`; the front-end branch ignores both. The 120 s capture does end
+before the 300 dumped frames do (the port dump runs on into state 9, which the
+passive original leaves for the attract loop), but that is not the whole story:
+the ignored coverage is exactly what lets a port that **under-renders** the
+front-end pass (counterexamples above). Passing the gate therefore means "no
+content-bearing capture frame inside the port-exhibited window is unexplained",
+NOT "every dumped port frame was exhibited" and NOT "the front-end was
+rendered".
 
 ## Landmarks (verified)
 

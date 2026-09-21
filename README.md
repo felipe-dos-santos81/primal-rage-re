@@ -264,10 +264,14 @@ consumed by the existing render pass and actor-pset sync. The front-end pixel
 oracle is **closed and enforced**: a 120 s pinned capture aligns the port's
 state-3 zoom to window `[557..813]` (raw `3117..3418`), **257 frames: 92 clean,
 162 splice, 2 transition, 0 unexplained**, and `make verify`'s `frontend-oracle`
-step exits non-zero on any unexplained frame. Sixteen all-black capture frames are
-excluded as an explicit oracle-level choice, **not** a proven fact (the
-investigation could not settle whether capture 558's black frame is a distinct
-logic frame or a 70.09 Hz scanout artifact). The effect call sites
+step exits non-zero on any unexplained frame. It proves exactly one thing: **no
+content-bearing capture frame inside the window the port's own dump exhibits is
+unexplained** — the window is derived from that dump and the coverage/`endpoints
+BAD` counts are ignored, so a port that **under-renders** the front-end (only the
+state-3 entry frame, or only the first 12 frames) still passes. Sixteen all-black
+capture frames are excluded as an explicit oracle-level choice, **not** a proven
+fact (the investigation could not settle whether capture 558's black frame is a
+distinct logic frame or a 70.09 Hz scanout artifact). The effect call sites
 `0x29B74`/`0x41578` are **deferred**: the raw reaches them only through
 `0x24C5C`'s unported mode cases (`0x12`, `0x16..0x1B`) and the match/fight chain,
 and the port's `DS_00104B00` is fixed at 3, so wiring them would be a dispatch

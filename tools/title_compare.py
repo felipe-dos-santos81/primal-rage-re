@@ -346,7 +346,10 @@ def main():
                     help='front-end window (states 3/4): content-alignment '
                          'classification over the 120 s capture, dropping '
                          'all-black capture frames as artifacts; returns 1 on '
-                         'any unexplained frame (the enforced front-end gate)')
+                         'any unexplained frame (the enforced front-end gate). '
+                         'The window is derived from the port dump and coverage '
+                         'is ignored, so this cannot detect an under-rendering '
+                         'port')
     a = ap.parse_args()
     required = os.environ.get('PR_ORACLE_REQUIRED') == '1'
 
@@ -367,14 +370,20 @@ def main():
     # dump return 1 (see the returns below). The result is now a gate: any
     # unexplained frame returns 1.
     #
-    # Known limitation of the gate: only `unexplained` capture frames fail it.
-    # check_capture's `rc` also counts port frames no capture frame exhibits
-    # (coverage) and `endpoints BAD`, but the front-end branch deliberately
-    # ignores `rc` here: the 120 s capture ends before the 300 dumped frames do
-    # (the port dump runs into state 9, which the passive original leaves for the
-    # attract loop), so a coverage-based gate could never pass. "The oracle
-    # passes" therefore means "no content-bearing capture frame is unexplained",
-    # NOT "every dumped port frame was exhibited".
+    # Known limitation of the gate: only `unexplained` capture frames fail it,
+    # and `unexplained` is evaluated only inside the window the port's own dump
+    # exhibits (`check_capture` derives that window from `idx`, then the branch
+    # discards `rc`). The ignored `rc` counts port frames no capture frame
+    # exhibits (coverage) and `endpoints BAD`. The 120 s capture does end before
+    # the 300 dumped frames do (the port dump runs into state 9, which the passive
+    # original leaves for the attract loop), but that is not the whole story: the
+    # ignored coverage is exactly what lets a port that UNDER-RENDERS the
+    # front-end pass. A dump of 300 identical copies of port frame 0 exits 0
+    # (window [557..559], 2 clean, 0 unexplained, exhibited 1/300), and a dump of
+    # only the first 12 real frames exits 0 (window [557..569], exhibited 9/12).
+    # "The oracle passes" therefore means "no content-bearing capture frame inside
+    # the port-exhibited window is unexplained", NOT "every dumped port frame was
+    # exhibited" and NOT "the front-end was rendered".
     if a.frontend:
         capture = a.capture[0]
         if not os.path.isdir(capture):
