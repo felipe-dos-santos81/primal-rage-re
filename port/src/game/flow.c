@@ -1241,8 +1241,12 @@ void game_frame(void)
      * its first action, before the frame counter and the process tables. */
     if (DSW(DS_00104B00) != 0x27u) input_state_update();   /* 0x4F644 (0x24C6E) */
 
-    /* PORT: the two 0x94-byte player records at DS_001077E0 and 0x24C5C's
-     * int 16h input loop belong to the fight engine (sub-project 5). */
+    /* 0x24C73: the per-side CPU-AI command block. It runs while
+     * DS_00104B26 == 0 (BSS, read-only in the image) and DS_00104B19+2 != 0
+     * (armed by state 6), and fills DS_001088E0/E2 via 0x47208. The original's
+     * int 16h input loop and the 0x94-byte player records it consumes are the
+     * interactive match's and stay a gap; this block is the demo's AI. */
+    fighter_command_block();                           /* 0x24C73 */
     DSD(DS_000EF6DC)++;                                /* frame counter */
     run_process_table(DS_000A8644, DSD(DS_00104AE8));  /* update table */
     /* PORT: 0x24C5C's second 0x38990 per-frame service call is deferred. */

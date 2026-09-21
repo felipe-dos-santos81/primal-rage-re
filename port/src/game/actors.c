@@ -1229,6 +1229,42 @@ void actors_update(void)
     }
 }
 
+/* 0x2BC30. Restart a record's animation at `anim` with `frame` as the timer
+ * float (the caller's stack argument; 1.0f = 0x3F800000 from the fight
+ * handlers). Resets the record's +0x0C/+0x10/+0x50/+0x52/+0x61 and the +0x28
+ * and +0x2B masks, then consumes the leading animation command words exactly as
+ * the spawn's 0x2AFFA walk does (0x2AE14 passes EBX=1; 0x2BC30 passes 0), and
+ * finishes by re-reading the pset sprite id. The EAX&0xFFFF branch at 0x2BC61 is
+ * dead (EAX is zeroed at 0x2BC61). */
+void actor_anim_start(u32 rec, u32 anim, u32 frame)
+{
+    DSD(rec + 0x0c) = 0;                                /* 0x2BC38 */
+    DSD(rec + 0x10) = 0;                                /* 0x2BC3F */
+    DSB(rec + 0x52) = 0;                                /* 0x2BC46 */
+    DSB(rec + 0x50) = 0;                                /* 0x2BC4A */
+    DSB(rec + 0x61) = 0;                                /* 0x2BC4E */
+    DSD(rec + 0x08) = anim;                             /* 0x2BC52 */
+    DSW(rec + 0x28) &= 0xf7ebu;                         /* 0x2BC55 */
+    DSB(rec + 0x2b) &= 0xfbu;                           /* 0x2BC5E */
+    DSD(rec + 0x24) = frame;                            /* 0x2BC8B */
+    DSD(rec + 0x20) = frame;                            /* 0x2BC91 */
+    for (;;) {                                          /* 0x2BC96 */
+        if ((DSW(DSD(rec + 0x08)) >> 8 & 0x80u) == 0u) break;
+        {
+            u32 st = spawn_anim_opcode(rec, (u32)DSW(rec + 0x56), 0u);
+            if (st != 0u) {
+                if (st != 1u) DSD(rec + 0x08) += 2u;    /* 0x2BCC0 */
+                break;
+            }
+            DSD(rec + 0x08) += 2u;                      /* 0x2BCC6 */
+        }
+    }
+    {
+        u32 pset = actor_pset(rec);                     /* 0x2BCCC..0x2BCDB */
+        DSW(pset) = (u16)anim_next_sprite_id(rec, pset);/* 0x2BCE1/0x2BCE6 */
+    }
+}
+
 /* 0x2AE14. The register arguments are pinned by disassembly in
  * docs/superpowers/plans/2026-09-17-actor-system-args.md: EAX=desc, EDX=a2,
  * ECX=a3, EBX=a4, and the flags word a5 on the stack. a5's low 16 bits are also

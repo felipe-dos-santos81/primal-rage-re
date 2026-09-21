@@ -1133,6 +1133,119 @@ static void check_list_init(void)
     put(s_li, 0x001083C4u, sizeof s_li);
 }
 
+/* 0x24C73/0x47208: the demo's CPU-AI command generator. A live pair of slots
+ * (think gate armed, idle state, a legal character) must produce a non-zero
+ * command word, and the two sides must be able to differ. The command words are
+ * seeded to zero; a missing fighter_command_block() leaves them zero. The AI
+ * state blocks 0x1081F0..0x1082EF are saved because they are outside the test's
+ * shared snapshots. */
+static void check_command_generator(void)
+{
+    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
+    u32 r0 = FIGHT_RECS + 0x200u, r1 = FIGHT_RECS + 0x300u;
+    u8 s_ai[0x100];
+    int any = 0;
+
+    snap(s_ai, 0x001081F0u, sizeof s_ai);
+    mem_fill(0x001081F0u, 0, sizeof s_ai);
+    mem_fill(FIGHT_RECS, 0, 0x400);
+    mem_fill(FIGHT_ACTORS, 0, 0x80);
+
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSD(DS_001077B0) = p0;
+    DSD(DS_00107844) = p1;
+    DSD(DS_001077A8) = p0;
+    DSD(DS_001077A8 + 4u) = p1;
+    DSD(p0) = r0;                       /* slot+0 = fighter record */
+    DSD(p1) = r1;
+    DSB(p0 + 0x7Au) = 0;                /* character 0 */
+    DSB(p1 + 0x7Au) = 0;
+    DSB(p0 + 0x63u) = 1;                /* 0x47208's emit gate */
+    DSB(p1 + 0x63u) = 1;
+    DSB(p0 + 0x5Fu) = 0xFFu;            /* idle: 0x466F4's stance byte */
+    DSB(p1 + 0x5Fu) = 0xFFu;
+    DSB(p0 + 0x52u) = 0;                /* slot state */
+    DSB(p1 + 0x52u) = 0;
+    DSW(r0 + 0x56u) = 1;                /* actor index for 0x1A570 */
+    DSW(r1 + 0x56u) = 2;
+    DSW(r0 + 0x08u) = 0;                /* avoid an animation walk */
+    DSW(r1 + 0x08u) = 0;
+    DSW(FIGHT_ACTORS + 1u * 0x20u) = 0; /* actor bit 15 clear */
+    DSW(FIGHT_ACTORS + 2u * 0x20u) = 0;
+
+    DSB(DS_00104B26) = 0;
+    DSB(0x00104B1Bu) = 1;               /* state 6's arm */
+    DSB(0x00105B39u) = 0;
+    DSD(DS_001082C8) = 7;               /* difficulty, state 6's handoff */
+    DSD(DS_001082C8 + 4u) = 7;
+    DSW(DS_001088E0) = 0;
+    DSW(DS_001088E2) = 0;
+
+    rng_seed(0x1234u);
+    for (int i = 0; i < 30; i++) {
+        fighter_command_block();
+        if (DSW(DS_001088E0) != 0u || DSW(DS_001088E2) != 0u) any = 1;
+    }
+    CHECK(any, "the demo AI emits a non-zero command word");
+
+    put(s_ai, 0x001081F0u, sizeof s_ai);
+}
+
+/* 0x36E2C and the +0x52 dispatch. Input A arms the gate (slot+0x42 bit 0x10)
+ * with the fighter out of range, so the position branch's 0x36638 arm runs and
+ * sets slot+0x52 = 0x12. Input B clears the gate, so the table dispatches to the
+ * default handler 0x349C8 and a 0x1000 command runs 0x35838 -> slot+0x52 = 0x0E.
+ * The seeded post-conditions differ, so a swapped or skipped branch fails. */
+static void check_state_dispatch(void)
+{
+    u32 p0 = FIGHT_RECS, r0 = FIGHT_RECS + 0x200u;
+
+    mem_fill(FIGHT_RECS, 0, 0x400);
+    mem_fill(FIGHT_ACTORS, 0, 0x80);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSD(DS_001077A8) = p0;
+    DSD(DS_001077A8 + 4u) = 0;          /* side 1 inert */
+    DSD(p0) = r0;
+    DSB(p0 + 0x7Au) = 0;
+    DSW(r0 + 0x56u) = 0;
+    DSB(p0 + 0x5Fu) = 0xFFu;
+    DSB(p0 + 0x54u) = 0;
+    DSB(p0 + 0x53u) = 0;
+    DSB(p0 + 0x43u) = 0;
+    DSW(r0 + 0x28u) = 0;                /* facing clear */
+    DSD(DS_00104B00) = 3;               /* not 4, not 0x22/0x25 */
+    DSW(r0 + 0x08u) = 0;                /* safe animation pointer */
+
+    /* A: gate 1, |x| >= 0x7C00 -> the 0x36638 arm -> slot+0x52 = 0x12. */
+    DSD(r0 + 0x18u) = 0x00010000u;      /* x - 0x3000 = 0xD000 */
+    DSB(p0 + 0x42u) = 0x10u;
+    DSB(p0 + 0x52u) = 0;
+    DSW(DS_001088E0) = 0;
+    fight_hud_pass(0u);
+    CHECK_EQ_INT((int)DSB(p0 + 0x52u), 0x12);
+    CHECK_EQ_INT((int)DSB(p0 + 0x41u) & 0x80, 0x80);
+
+    /* B: gate 0 (bit 0x10 clear), +0x52 = 0 -> the table -> 0x349C8, and a
+     * 0x1000 command runs 0x35838 -> slot+0x52 = 0x0E. */
+    DSB(p0 + 0x42u) = 0;
+    DSB(p0 + 0x41u) = 0;
+    DSB(p0 + 0x43u) = 0;
+    DSB(p0 + 0x52u) = 0;
+    DSB(p0 + 0x53u) = 0;
+    DSW(DS_001088E0) = 0x1000u;
+    fight_hud_pass(0u);
+    CHECK_EQ_INT((int)DSB(p0 + 0x52u), 0x0E);
+    CHECK_EQ_INT((int)DSB(p0 + 0x43u) & 0x01, 0x01);
+
+    /* C: the same command with +0x52 = 0x0E (a no-op table case) leaves the
+     * state alone: the dispatch really is the table, not a fallthrough. */
+    DSB(p0 + 0x43u) = 0;
+    DSW(DS_001088E0) = 0x1000u;
+    fight_hud_pass(0u);
+    CHECK_EQ_INT((int)DSB(p0 + 0x52u), 0x0E);
+    CHECK_EQ_INT((int)DSB(p0 + 0x43u) & 0x01, 0x00);
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -1191,6 +1304,8 @@ int test_fight(void)
     check_state7();
     check_game_frame_tail();
     check_list_init();
+    check_command_generator();
+    check_state_dispatch();
 
     put(s_f0ae0, 0x000F0AE0u, 0x20u);
     put(s_proj, 0x00100A70u, 0xF4u);

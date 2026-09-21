@@ -1293,8 +1293,14 @@ Task 5 leaves it as a `/* PORT: */` skip; cycle 2 owns it.
    `0x354F0`, `0x186C4` are not decoded, and the health-bar drawing is cycle 2.
 9. **`0x33F08` health sprite table.** The `rec[9]`-indexed table and `0x2A408` are
    not decoded; the per-character constant selection is pinned (§3.8).
-10. **`0x34B6C` (541 B) interior.** Only its `0x1A978` call and its `0x1077A8` reads
-    are pinned.
+10. **`0x34B6C` (541 B) interior.** Retired by Task 8's re-scope: the `0x36E2C`
+    gate, the `0x34B97` position branch, the 22-entry `0x34B14` table and the
+    `0x349C8` default handler are now pinned (§11). The remaining gaps are the
+    `0x349C8` +0x42 bit 6/7 arms (`0x37178`, `0x37D18`), the `0x36638` +0x54 == 5
+    arm (`0x366FB -> 0x38154`), the `0x34BE8` in-range arm (`0x36F10`, proven
+    unreachable — its own `0x36FD4` write is bit 0x20, and no writer sets slot
+    +0x42 bit 0x10), and the handlers for the states whose transition needs the
+    unported hit-detection chain `0x3CF38` (`0x35D7C`, case 3).
 11. **`0x1A978`'s helper chain.** `0x1A6AC`, `0x1A640`, `0x1A8F4`, `0x1A734` are not
     decoded; the call into `0x3B134` and the timer/stance bytes are pinned (§5.6).
 12. **`0x1AB5C` (302 B), `0x1922C`, `0x18B44`, `0x3B938`, `0x39278`, `0x3AD98`,
@@ -1923,7 +1929,212 @@ to a sentinel; a state-7 `game_frame` (the tail's `0x2A690`) writes
 
 ---
 
-## 11. Provenance
+## 11. The demo's CPU-AI command generator and the `+0x52` dispatch (Task 8)
+
+This supersedes §7.10's one-line treatment. It is the delivery of the re-scoped
+Task 8: the demo's command words come from `game_frame`'s `0x24C73` block, not
+from the think chain, and the `+0x52` table only reacts to them.
+
+### 11.1 `0x24C73` — the game_frame command block
+
+`0x24C5C` after `0x4F644` (`input_state_update`). The gate is
+`DS_00104B26 == 0 && DS_00104B1B != 0` (`0x24C73`/`0x24C7C`). `DS_00104B26` is
+read at `0x24C73`/`0x24CBA`/`0x2A32B`/`0x2A214` and **written nowhere** in the
+image (BSS 0); `DS_00104B1B` is set to 1 by state 6 (`0x11B23`). So the block
+runs for the whole demo. Per side: if `slot+0x41 & 0x10` is clear call
+`0x47208(side)`, else `cmd[side] = 0` (`0x24C96`); then `0x461DC()` (`0x24CB5`).
+
+Writers of `DS_001088E0/E2`: this block, `0x4F644`, and `0x3B134` (reachable
+only from the think chain, which is dead — §11.4).
+
+### 11.2 `0x47208` — the CPU-AI move generator
+
+`0x47208(side)`, 344 B. Body (addresses inline):
+
+```
+0x33950(ctx, side)                            ; ctx[0]=side, [1]=1-side, [2]=&slot[side], [3]=&slot[1-side]
+0x469A8(param = ctx[1])                       ; classify the other slot into block[side]
+if (slot[side]+0x63 == 0) return             ; 0x472AA the think gate
+cmd[side] = 0                                 ; 0x472CA
+if (DS_00105B39 != 0) return                  ; 0x472D4 (BSS, read-only)
+0x470F8(side)                                 ; manage/ pick a move
+entry = DSD(b+0x1C) + DSB(b+0x30)*8           ; the current move step
+cmd[side] = 0x3C6E8(0x1A570(side) & 0xff, DSD(entry))   ; 0x472F7/0x472FF
+if (DSD(entry) == 0xFFFF) { b+0x04 = 0; cmd[side] = 0; }          ; 0x4731C
+else if ((s16)DSB(b+0x31) >= (s16)DSW(entry+4)) { b+0x31 = 0; b+0x30++; }  ; 0x47338
+DSB(b+0x31)++; DSD(b+0x0C)++                  ; 0x4734F/0x47355
+```
+
+The `0x2D974`/`0x2CAA8` block at `0x47241` is **dead**: `0x2CAA8` is
+`return 1` (`0x2CAAC .. 0x2CAB3`), so `(dip & 0x800) && 0x2CAA8() == 0` is always
+false (`0x47235`/`0x47239`).
+
+The per-side AI block is `DS_001081F0 + side*0x40` (`b`), 0x40 bytes:
+
+| off | use | off | use |
+|---|---|---|---|
+| `+0x00` | frame counter | `+0x2C` | weight id |
+| `+0x04` | active flag | `+0x2D` | band id |
+| `+0x08` | move-step index | `+0x2E` | move id |
+| `+0x0C` | frames-on-move | `+0x2F` | weight sub-index |
+| `+0x10` | last state | `+0x30` | step cursor |
+| `+0x14` | band-table ptr | `+0x31` | step timer |
+| `+0x18` | move-id table ptr | `+0x34` | aux table ptr |
+| `+0x1C` | move-step table ptr | `+0x38` | aux table ptr |
+| `+0x20` | weight table ptr | `+0x3C` | aux dword |
+| `+0x24` | prev state | `+0x28` | state |
+
+**The chain.**
+
+* **`0x469A8`** classifies `slot[param]`'s state into `block[1-param]+0x28`. It
+  first copies `block[1-param]+0x24 = +0x28` when `fighter_frame_flag(0, param)`
+  is clear (`0x469BB`), then calls `0x46958` (`slot+0x53 in {7,8}` and
+  `slot+0x5F < 0x40`); on 1 it maps `block[1-param]+0x24` in `{0,1}` to state 1,
+  else `0x46698` to 0xD, else 0. On 0 it tries, in order:
+  `0x466F4`->2, `0x4673C`->3, `0x46794`->4, `0x467DC`->6, `0x4682C`->5,
+  `0x468D8`->7, `slot[param]+0x53 == 0x0B`->9, `slot[param]+0x53 == 6`->0xB,
+  `0x46898`->0xC, else 8. Predicates:
+  `0x466F4` `+0x5F==0xFF && +0x54==0 && +0x53==0 && +0x52==0`;
+  `0x4673C` `+0x5F==0xFF && +0x54==1 && +0x53==0 && +0x52 in {5,0x15}`;
+  `0x46794` `+0x5F==0xFF && +0x54==2 && +0x53==0 && +0x52==4`;
+  `0x467DC`/`0x4682C` `+0x54==0 && +0x53==0 && +0x52==1` plus `0x1A5D4` == 0 / != 0;
+  `0x468D8`/`0x46898` the `rec_self+0x10 == 0x22BEC` identity; `0x1A5D4` reads
+  `rec+0x28` bit 0x4000 and `cmd` bits 0x2000/0x1000.
+* **`0x470F8`** clears `b+0x04` when the state is 0/7/9 and `slot+0x54 != 2` and
+  the prior state differs, then, when `slot+0x53 == 0` and `b+0x04 == 0`, calls
+  `0x46F4C` and sets `b+0x04=1`, `b+0x0C=0`, `b+0x00++`, `b+0x30=0`, `b+0x31=0`.
+* **`0x46F4C`** selects the char's move-step and aux tables (`0x8C0BC`/`0x8A4A0`,
+  `0x83C68`/`0x81E24`, `0x91D0C`/`0x90154`, `0x949E4`/`0x92F9C`,
+  `0x8EF0C`/`0x8D2FC`, `0x892AC`/`0x87B1C`, `0x868D4`/`0x84F78`), calls `0x46C78`
+  and `0x46DD4`, clamps `DS_001082C8` to 0..7, sets
+  `b+0x20 = 0x95FC8 + DSB(b+0x2F)*0x50 + diff*0x0A`, draws `rng(0x64)`, and picks
+  the first weighted index (index 9 is the fallback), setting `b+0x08`, `b+0x2E`
+  and the `b+0x1C`/`b+0x3C` pointers.
+* **`0x46C78`** maps the *other* slot's `+0x5F`/`+0x8A`/`+0x64` by state to a
+  weight id and calls `0x46BBC`; `0x46BBC` stores `b+0x2C = id` and selects the
+  band table `b+0x14 = 0x95CA8[char_self*10+char_other][id]` and the aux
+  `b+0x34 = 0x95E38[...][id]`. `0x46C78` then sets `b+0x10 = state`.
+* **`0x46DD4`** computes `|0x187FC()| >> 6` (clamped to 0xFF), where `0x187FC`
+  latches both slots (`0x186D0` twice) and returns `slot0+0x2C - slot1+0x2C`,
+  scans the `b+0x14` band table (4-byte `{id, sub, lo, hi}` records, 20 max) for
+  `lo <= d <= hi`, and sets `b+0x2D`, `b+0x2F`,
+  `b+0x18 = 0x8C238[...][id]`, `b+0x38 = 0x8A4A4[...][id]`.
+* **`0x3C6E8(facing, input)`** maps `input` bits `0x10000/0x40000/0x20000/0x80000`
+  to `0x10/0x20/0x1000/0x2000` (swapped for facing != 0) and returns `input & 0xffff`,
+  so a move step's input word's other bits pass through.
+* **`0x461DC`** writes each side's command word into the 0x14-word ring at
+  `DS_00108270` (+0x28 per side) and advances `DS_001082D4`.
+
+**RNG consumption.** `0x46F4C` draws exactly one `0x5D7DC(0x64)` (`0x47063`)
+each time a move is committed, i.e. on the frame `0x470F8` finds `slot+0x53 == 0`
+and `b+0x04 == 0` after a state transition or a `0xFFFF` terminator — not every
+frame. There is no RNG draw elsewhere in `0x24C73`/`0x47208`/`0x469A8`/`0x461DC`.
+
+### 11.3 `0x36E2C` and the `0x34B14` dispatch
+
+`fight_health_sync` (`0x34B6C`) calls `0x36E2C(rec = slot)` at `0x34B8E`.
+`0x36E2C` returns 1 iff
+`(DS_00104B1D == 3 || DS_00104B14 == 0 || slot+0x63 != 0)` **and**
+`slot+0x42 & 0x10` **and** `slot+0x52 in {0,1,5,6,7}` **and** `slot+0x54 <= 1`.
+
+Gate 1 runs the position branch (`0x34B97..0x34BEF`):
+`x = rec+0x18 ± 0x3000` (sign from `rec+0x29 & 0x40`); if
+`-DS_000BE018 < x < DS_000BE018` (`DS_000BE018 = 0x7C00`) call `0x36F10(slot)`,
+else `slot+0x43 |= 0x40` and `0x36638(slot, rec)`. **The branch is unreachable:**
+slot+0x42 bit 0x10 is never written (the exhaustive `MOV/OR/AND ... +0x42]` scan
+gives no writer; `0x36F10`'s own `0x36FD4` write is `| 0x820` = bits 0x20/0x800),
+so the gate can never return 1 before `0x36F10` has run.
+
+Gate 0 dispatches on `slot+0x52` through the 22-entry table at `0x34B14`:
+
+| `+0x52` | entry | handler | port status |
+|---|---|---|---|
+| 0, >0x15 | `0x34C08` | `0x349C8` | ported (`fighter_state_default`) |
+| 1 | `0x34C15` | `0x359E0` | gap |
+| 2 | `0x34C26` | `0x35C1C`/`0x35D20` | gap |
+| 3 | `0x34C46` | `0x35D7C` (needs `0x3CF38`) | gap (§11.5) |
+| 4 | `0x34C53` | `0x35F84` | gap |
+| 5 | `0x34C62` | `0x36430` | gap |
+| 6 | `0x34C73` | `0x1A978` | ported (`fight_stance_pass`) |
+| 7 | `0x34C80` | `0x399CC` | gap |
+| 8 | `0x34C8D` | `0x37464` | gap |
+| 9,10,11,14,15,16 | `0x34D83` | epilogue no-op | ported |
+| 12 | `0x34C9A` | `0x361C8` | gap |
+| 13 | `0x34CA9` | `0x36300` | gap |
+| 17 | `0x34CB8` | `0x36710` | gap |
+| 18 | `0x34CC7` | `0x3BDDC`/`0x18B04` | partial (`fighter_attack_consume`) |
+| 19 | `0x34D22` | `0x33B00` per side | gap |
+| 20 | `0x34D69` | `0x35E6C` | gap |
+| 21 | `0x34D78` | `0x364FC` | gap |
+
+**`0x349C8` (default).** `rec = DS_001077A8[side]`, `fighter = DSD(rec)`. If
+`slot+0x42` bit 6 -> `0x37178` (gap); bit 7 -> `0x37D18` (gap). Else:
+`0x365C8(slot, rec, side)` sets/clears `slot+0x43` bit 0x40 (1 when the other
+slot exists, its `+0x43` bit 0x80 is set, and this slot is behind it in the
+facing direction); `0x36638(slot, rec)` returns 1 after clearing `slot+0x40`
+bits and restarting the animation when `slot+0x43` bit 0x40 is set.
+Then `bVar2 = (cmd>>8 & 3) != 0 && (cmd>>8 & 0xC) != 0`; if not, `0x3BDDC(side)`.
+If `cmd & 0x4000`: `0x2BC30(fighter, 0xC8978[char], 0x40000000)`, `slot+0x52 = 5`,
+`slot+0x54 = 1`. Else if `(slot+0x53 == 0 && cmd & 0x1000) || cmd & 0x2000`:
+`0x35838(slot, fighter, cmd & 0xF000)`, which restarts the animation and sets
+`slot+0x52 = 0x0E`.
+
+**`0x36638(slot, rec)`.** `slot+0x54 == 3` clears `slot+0x43` bit 0x40 and
+returns 0. Otherwise, with `slot+0x43` bit 0x40 set: `slot+0x40 &= 0xBFFF7FFF`,
+`slot+0x41 |= 0x80`, `slot+0x53 = (mode == 0x25 ? 0xC : 0)`, then by `slot+0x54`:
+default (0,2,3,>5) and 1 restart at `0xC91E8[char]`/`0xC9210[char]` and set
+`slot+0x52 = 0x12` (return 1 / 0); 4 restarts at `0xC91E8[char]`, `slot+0x52 = 8`,
+`slot+0x57 = 2` (return 0); 5 calls `0x38154` (gap).
+
+**`0x2BC30(rec, anim, frame)`.** Resets `rec+0x0C/+0x10/+0x50/+0x52/+0x61`, sets
+`rec+0x08 = anim`, `rec+0x28 &= 0xF7EB`, `rec+0x2B &= 0xFB`,
+`rec+0x24 = rec+0x20 = frame`, consumes the leading animation command words with
+`0x2B2A0(rec, rec+0x56)` (EBX = 0), then `pset = 0x1014EC + rec+0x56*0x20`,
+`pset = 0x2A408(rec, pset)`. Ported as `actor_anim_start` (actors.c).
+
+### 11.4 The think chain is dead
+
+Confirmed (Task 8's carry-forward): `0x3B464` returns at `0x3B49F` when
+`slot[other]+0x64 == 0xFF`. Every writer of `slot+0x64` sets `0xFF` — `0x33CFB`
+(spawn), `0x33B00` (0x94-byte bulk copy plus a conditional `0xFF`; case 19 only),
+`0x3B6B8`, `0x3B985`, `0x3B9D2` — and the only non-`0xFF` writer, `0x2A620`
+(`0x2A65C`), writes an **actor record** (`0x2A690` is called at `0x25443` with
+`EAX = DSD(slot[side])`), not the slot. The exhaustive `MOV ... +0x64]` and
+`+0x62]/+0x63]` scans confirm no word/dword store overlaps `+0x64`. So
+`fight_command_map` (`0x3B134`) and the Task-4 think chain are unreachable for
+the demo's fighter slots. `0x3B298`'s other callers (`0x18C14`, `0x3B714`) are
+off the demo path.
+
+### 11.5 What the demo enters (measured in the port)
+
+With the generator wired, the demo's command words are non-zero and vary
+(`cmd0` 0x1010/0x0000, `cmd1` 0xA0A0/0x2020/0x0C0C/…). The `+0x52` states the
+demo reaches: side 0 `0 -> 0x0E` (via `0x35838`), side 1 `0 -> 3` (via `0x3BDDC`
+on the command's bit 15). Both then stall: `0x0E` is a table no-op and `0x35D7C`
+(case 3) depends on the unported hit-detection chain `0x3CF38` (`0x3CF38` ->
+`0x3CD44`/`0x3CE58`/`0x3C6A8`/`0x32BAC`), a pre-existing §7.6 gap. So the port's
+arena output varies for ~430 frames and then freezes; closing the fight needs
+cycle 2's combat chain.
+
+### 11.6 Unit-test values
+
+* **Generator (`fighter_command_block`).** Two live slots (`DS_001077A8[side] =
+ *slot`, `slot+0x00 = fighter`, `slot+0x7A = 0`, `slot+0x63 = 1`,
+  `slot+0x5F = 0xFF`, `slot+0x52 = 0`, fighter `+0x56 = 1`/`2`, actor word 0),
+  `DS_00104B26 = 0`, `0x104B1B = 1`, `0x105B39 = 0`, `DS_001082C8 = 7`, the AI
+  block zeroed, `rng_seed(0x1234)`. 30 calls must produce a non-zero
+  `DS_001088E0` or `E2`. Evidence: `port/tests/test_fight.c:check_command_generator`.
+* **Gate/dispatch (`fight_hud_pass`).** Input A: `slot+0x42 = 0x10`, `+0x52 = 0`,
+  `+0x54 = 0`, fighter `+0x18 = 0x00010000`, `+0x28 = 0` -> gate 1 -> 0x36638
+  arm -> `slot+0x52 == 0x12`, `slot+0x41 & 0x80`. Input B: `slot+0x42 = 0`,
+  `+0x52 = 0`, `cmd = 0x1000` -> gate 0 -> table -> `0x349C8` -> `0x35838` ->
+  `slot+0x52 == 0x0E`, `slot+0x43 & 1`. Input C: `+0x52 = 0x0E` with `cmd = 0x1000`
+  leaves `+0x52 == 0x0E` and `slot+0x43 & 1 == 0`. Evidence:
+  `port/tests/test_fight.c:check_state_dispatch`.
+
+---
+
+## 12. Provenance
 
 * Raw bytes: `data/game/C/PRAGE.EXE` (read-only), 32-bit `capstone` over the LE
   page-mapped image with the internal 32-bit fixups applied, exactly as

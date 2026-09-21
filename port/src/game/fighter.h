@@ -74,6 +74,31 @@ void fighter_spawn(u32 side);
  * ported, and the unported branch targets are named gaps (§7.12). */
 void fighter_think(void);
 
+/* 0x47208. One side's CPU-AI command word for this frame: classify the slot
+ * state (0x469A8), manage the move selection (0x470F8 -> 0x46F4C, which draws
+ * rng(0x64)), and map the selected move step through 0x3C6E8 into
+ * DS_001088E0/E2. Returns early (command word 0) when slot+0x63 is clear or
+ * DS_00105B39 is set. */
+void fighter_command_generate(u32 side);
+
+/* 0x461DC. Write each side's command word into the 0x14-word input ring at
+ * DS_00108270 (+0x28 per side) and advance DS_001082D4. */
+void fighter_input_ring_update(void);
+
+/* 0x24C73. game_frame's per-side command block (`DS_00104B26 == 0 &&
+ * DS_00104B19+2 != 0`): fill both sides' command words (slot+0x41 bit 0x10
+ * zeroes a side instead) and run 0x461DC. */
+void fighter_command_block(void);
+
+/* 0x349C8. The +0x52 == 0 (and >0x15) default handler of fight_health_sync's
+ * dispatch: the 0x365C8/0x36638 gates, the 0x3BDDC consumer and the
+ * 0x35838/0x2BC30 transitions. Its +0x42 bit 6/7 arms are named gaps (§7.10). */
+void fighter_state_default(u32 side);
+
+/* 0x36638. Reset the slot's +0x43 bit 0x40 and restart the fighter's animation
+ * per slot+0x54. Called by 0x349C8, 0x35838 and the 0x34B6C position branch. */
+int fighter_state_36638(u32 slot, u32 rec);
+
 /* 0x3BDDC. The attack/command consumer the mapper's 0x8000 arm calls behind
  * 0x3BDB0. Reads the side's command word DS_001088E0/E2; when bit 15 is set it
  * clears the record's +0x34/+0x43/+0x42, sets the slot's +0x5F to 0xFF and

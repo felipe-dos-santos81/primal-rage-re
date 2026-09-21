@@ -643,13 +643,652 @@ void fighter_think(void)
     }
 }
 
+/* ---- 0x47208 the demo/CPU-AI command generator -------------------------
+ *
+ * The attract demo's command words come from here, not from the think chain:
+ * game_frame (0x24C73) runs 0x47208 per side when DS_00104B26 == 0 and
+ * DS_00104B19+2 != 0, which is the whole demo. 0x47208 walks the per-side AI
+ * state block at DS_001081F0 + side*0x40: it classifies the fighter's state
+ * (0x469A8), manages the move selection (0x470F8 -> 0x46F4C, which draws
+ * rng(0x64) = 0x5D7DC), and maps the selected move step's input word through
+ * 0x3C6E8 into DS_001088E0/E2. Addresses, widths and control flow are from
+ * docs/superpowers/plans/2026-09-20-demo-fight-derivations.md §11.
+ *
+ * The per-side AI block (0x40 bytes, base DS_001081F0 + side*0x40):
+ *   +0x00 frame counter      +0x04 active flag    +0x08 step index
+ *   +0x0C frames-on-move     +0x10 last state     +0x14 band-table ptr
+ *   +0x18 move-id table ptr  +0x1C move-step ptr  +0x20 weight table ptr
+ *   +0x24 prev state         +0x28 state          +0x2C weight id
+ *   +0x2D band id            +0x2E move id        +0x2F weight sub-index
+ *   +0x30 cursor             +0x31 step timer     +0x34/+0x38 aux ptrs
+ *   +0x3C aux dword
+ */
+
+#define AI_BASE 0x001081F0u
+
+/* 0x1081F0 + side*0x40. */
+static u32 ai_b(u32 side)
+{
+    return AI_BASE + side * 0x40u;
+}
+
+/* 0x187FC. The two slots latched, then slot0+0x2C - slot1+0x2C. 0x46DD4 calls
+ * it once for the sign and once for the value, so the port keeps both calls. */
+static s32 ai_distance(void)
+{
+    fighter_slot_latch(0u);                             /* 0x18800 */
+    fighter_slot_latch(1u);                             /* 0x18808 */
+    return (s32)DSD(0x001077DCu) - (s32)DSD(0x00107870u);   /* 0x1880D */
+}
+
+/* 0x3C6E8. Map a move step's input bitfield to the command word: the four
+ * 0x10000/0x20000/0x40000/0x80000 gates OR 0x10/0x20/0x1000/0x2000 in the
+ * order `facing` selects (the raw's EAX/EBX/ECX/EDI/ESI). */
+static u16 fighter_cmd_facing(u32 facing, u32 input)
+{
+    u32 eax = input;
+    u32 a, b, c, d;
+    if (facing != 0u) { a = 0x20u; b = 0x2000u; c = 0x10u; d = 0x1000u; }
+    else              { a = 0x10u; b = 0x1000u; c = 0x20u; d = 0x2000u; }
+    if ((input & 0x10000u) != 0u) eax |= a;             /* 0x3C726 */
+    if ((input & 0x40000u) != 0u) eax |= c;             /* 0x3C730 */
+    if ((input & 0x20000u) != 0u) eax |= b;             /* 0x3C73A */
+    if ((input & 0x80000u) != 0u) eax |= d;             /* 0x3C744 */
+    return (u16)eax;                                    /* 0x3C748 */
+}
+
+/* 0x46F4C's per-character tables: the move-step pointer table (EBP) and the
+ * aux table ([ESP]). Both are data-object pointer arrays read from mem[]. */
+static void ai_move_tables(u32 ch, u32 *step, u32 *aux)
+{
+    switch (ch & 0xFFu) {
+    case 0u: *step = 0x0008C0BCu; *aux = 0x0008A4A0u; break;
+    case 1u: *step = 0x00083C68u; *aux = 0x00081E24u; break;
+    case 2u: *step = 0x00091D0Cu; *aux = 0x00090154u; break;
+    case 3u: *step = 0x000949E4u; *aux = 0x00092F9Cu; break;
+    case 4u: *step = 0x0008EF0Cu; *aux = 0x0008D2FCu; break;
+    case 5u: *step = 0x000892ACu; *aux = 0x00087B1Cu; break;
+    default: *step = 0x000868D4u; *aux = 0x00084F78u; break;  /* char 6 */
+    }
+}
+
+/* 0x46DD4's per-character tables: the move-id byte table (EBP) and the aux
+ * pointer table (EDI). */
+static void ai_band_tables(u32 ch, u32 *ids, u32 *aux)
+{
+    switch (ch & 0xFFu) {
+    case 0u: *ids = 0x0008C238u; *aux = 0x0008A4A4u; break;
+    case 1u: *ids = 0x00083E70u; *aux = 0x00081E28u; break;
+    case 2u: *ids = 0x00091F0Cu; *aux = 0x00090158u; break;
+    case 3u: *ids = 0x00094B8Cu; *aux = 0x00092FA0u; break;
+    case 4u: *ids = 0x0008F0E4u; *aux = 0x0008D300u; break;
+    case 5u: *ids = 0x000893E0u; *aux = 0x00087B20u; break;
+    default: *ids = 0x00086A34u; *aux = 0x00084F7Cu; break;  /* char 6 */
+    }
+}
+
+/* 0x46BBC. Store the weight id (+0x2C) and select this side's band table
+ * (+0x14) and aux table (+0x34) from the char-pair index. */
+static void ai_weight(u32 side, u32 id)
+{
+    u32 b = ai_b(side);
+    u32 idx = (u32)DSB(DS_001077B0 + side * 0x94u + 0x7Au) * 10u
+            + (u32)DSB(DS_001077B0 + (side ^ 1u) * 0x94u + 0x7Au);
+    u32 p1 = DSD(0x00095CA8u + idx * 4u);               /* 0x46BD3 */
+    u32 p2 = DSD(0x00095E38u + idx * 4u);
+    DSB(b + 0x2Cu) = (u8)id;                            /* 0x46BE8 */
+    DSD(b + 0x14u) = DSD(p1 + id * 4u);                 /* 0x46C05 */
+    DSD(b + 0x34u) = DSD(p2 + id * 4u);                 /* 0x46C15 */
+}
+
+/* 0x46C78. The state -> weight-id switch over the *other* slot's +0x5F/+0x8A/
+ * +0x64 (0x33950's ctx[3] = &slot[1-side]), then +0x10 = state. */
+static void ai_state_setup(u32 side)
+{
+    u32 b = ai_b(side);
+    u32 state = DSD(b + 0x28u);                         /* 0x46C94 */
+    u32 other = DS_001077B0 + (side ^ 1u) * 0x94u;
+    switch (state) {
+    case 0u:  ai_weight(side, (u32)DSB(other + 0x5Fu)); break;          /* 0x46CB0 */
+    case 1u:                                                            /* 0x46CBE */
+        if (DSB(other + 0x8Au) == 0u)
+            ai_weight(side, (u32)DSB(other + 0x5Fu) + 0x40u);
+        else
+            ai_weight(side, 0x88u);
+        break;
+    case 8u:  ai_weight(side, 0x88u); break;
+    case 2u:  ai_weight(side, 0x82u); break;
+    case 3u:  ai_weight(side, 0x85u); break;
+    case 4u:  ai_weight(side, 0x87u); break;
+    case 5u:  ai_weight(side, 0x83u); break;
+    case 6u:  ai_weight(side, 0x84u); break;
+    case 7u:  ai_weight(side, 0x81u); break;
+    case 9u:  ai_weight(side, 0x86u); break;
+    case 0xBu:                                                          /* 0x46D59 */
+        if (DSB(other + 0x64u) != 0xFFu)
+            ai_weight(side, (u32)DSB(other + 0x64u));
+        else
+            ai_weight(side, 0x88u);
+        break;
+    case 0xCu: ai_weight(side, 0x89u); break;
+    case 0xDu: ai_weight(side, 0x8Au); break;
+    default: break;   /* 0x62003 out of scope; state is 0..0xD by construction */
+    }
+    DSD(b + 0x10u) = state;                             /* 0x46DA4 */
+}
+
+/* 0x46DD4. Pick the range band from the two-fighter distance (>>6, clamped to
+ * 0xFF) and select the move-id table (+0x18) and aux table (+0x38). */
+static void ai_band(u32 side)
+{
+    u32 b = ai_b(side);
+    u32 ids, aux;
+    ai_band_tables(DSB(DS_001077B0 + side * 0x94u + 0x7Au), &ids, &aux);
+    {
+        s32 sign = ai_distance();                       /* 0x46E58 */
+        s32 v = ai_distance();
+        s32 mag = (sign < 0) ? -v : v;
+        u32 table, entry, i = 0;
+        mag = mag >> 6;                                 /* 0x46E79..0x46E83 */
+        table = DSD(b + 0x14u);                         /* 0x46E8B */
+        entry = table;
+        for (;;) {
+            u32 m = ((u32)mag > 0xFFu) ? 0xFFu : (u32)mag;
+            if ((u32)DSB(entry + 2u) <= m && m <= (u32)DSB(entry + 3u)) break;
+            i++;
+            entry += 4u;
+            if (i >= 0x14u) { entry = table; break; }   /* 0x46EC5 fallthrough */
+        }
+        DSB(b + 0x2Du) = DSB(entry);                    /* 0x46EB7/0x46ECA */
+        DSB(b + 0x2Fu) = DSB(entry + 1u);               /* 0x46ED0 */
+    }
+    {
+        u32 id = (u32)DSB(b + 0x2Du);
+        DSD(b + 0x18u) = DSD(ids + id * 4u);            /* 0x46EDB */
+        DSD(b + 0x38u) = DSD(aux + id * 4u);            /* 0x46EE7 */
+    }
+}
+
+/* 0x46F4C. Commit the move: clamp the difficulty DS_001082C8 to 0..7, build the
+ * weight-table pointer from the band sub-index, draw rng(0x64), pick the first
+ * weighted index whose cumulative weight reaches the draw (index 9 is the
+ * fallback), then load the move id and its step/aux pointers. */
+static void ai_pick(u32 side)
+{
+    u32 b = ai_b(side);
+    u32 step, aux;
+    ai_move_tables(DSB(DS_001077B0 + side * 0x94u + 0x7Au), &step, &aux);
+    ai_state_setup(side);                               /* 0x46FE3 */
+    ai_band(side);                                      /* 0x46FEC */
+    {
+        s32 diff = (s32)DSD(DS_001082C8 + side * 4u);   /* 0x46FFB */
+        if (diff < 0) DSD(DS_001082C8 + side * 4u) = 0;
+        else if (diff >= 8) DSD(DS_001082C8 + side * 4u) = 7;
+        diff = (s32)DSD(DS_001082C8 + side * 4u);
+        DSD(b + 0x20u) = 0x00095FC8u + (u32)DSB(b + 0x2Fu) * 0x50u
+                       + (u32)diff * 0x0Au;             /* 0x47058 */
+    }
+    {
+        s32 r = (s32)rng_next(0x64u);                   /* 0x47063 */
+        u32 i = 0;
+        s32 cum = 0;
+        for (;;) {
+            s8 wt;
+            if (i == 9u) break;                         /* 0x47073 */
+            wt = (s8)DSB(DSD(b + 0x20u) + i);           /* 0x470a4 */
+            if (wt != 0) {
+                cum += (s32)wt;
+                if (r <= cum) break;                    /* 0x470af */
+            }
+            i++;
+            if (i >= 0xAu) return;                      /* 0x470e8 */
+        }
+        DSD(b + 0x08u) = i;                             /* 0x47076/0x470b6 */
+        {
+            u8 id = DSB(DSD(b + 0x18u) + i);            /* 0x470b9 */
+            DSB(b + 0x2Eu) = id;
+            DSD(b + 0x1Cu) = DSD(step + (u32)id * 4u);  /* 0x470c8 */
+            DSD(b + 0x3Cu) = DSD(aux + (u32)id * 4u);   /* 0x470da */
+        }
+    }
+}
+
+/* 0x1A5D4. 0x2000 when the other side's facing bit 0x4000 is clear and the
+ * command's 0x2000 is set; 0x1000 in the mirror; else 0. */
+static u32 ai_facing_cmd(u32 side)
+{
+    u32 rec = DSD(DS_001077B0 + side * 0x94u);          /* 0x1A5E0 */
+    u16 cmd = DSW(DS_001088E0 + side * 2u);
+    if ((DSW(rec + 0x28u) >> 8 & 0x40u) == 0u) {
+        if ((cmd >> 8 & 0x20u) != 0u) return 0x2000u;
+    } else if ((cmd >> 8 & 0x10u) != 0u) {
+        return 0x1000u;
+    }
+    return 0u;
+}
+
+/* 0x46958. slot+0x53 in {7,8} and slot+0x5F < 0x40. */
+static int ai_ready(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    u8 st = DSB(slot + 0x53u);
+    if (st == 8u || st == 7u) {
+        if ((u32)DSB(slot + 0x5Fu) < 0x40u) return 1;
+    }
+    return 0;
+}
+
+/* 0x46698. slot+0x40 bit 7 set, then the +0x2C ordering and rec_self+0x34. */
+static int ai_pred_46698(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                        /* 0x466A0 */
+    if ((DSB(ctx[2] + 0x40u) & 0x80u) == 0u) return 0;
+    if ((s32)DSD(ctx[3] + 0x2Cu) > (s32)DSD(ctx[2] + 0x2Cu))
+        return (s16)DSW(ctx[4] + 0x34u) >= 0;
+    return (s16)DSW(ctx[4] + 0x34u) <= 0;
+}
+
+/* 0x466F4. Idle: +0x5F == 0xFF, +0x54 == 0, +0x53 == 0, +0x52 == 0. */
+static int ai_pred_466f4(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    if (DSB(slot + 0x5Fu) != 0xFFu) return 0;
+    if (DSB(slot + 0x54u) != 0u) return 0;
+    if (DSB(slot + 0x53u) != 0u) return 0;
+    return DSB(slot + 0x52u) == 0u;
+}
+
+/* 0x4673C. +0x54 == 1 and +0x52 in {5,0x15}. */
+static int ai_pred_4673c(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    if (DSB(slot + 0x5Fu) != 0xFFu) return 0;
+    if (DSB(slot + 0x54u) != 1u) return 0;
+    if (DSB(slot + 0x53u) != 0u) return 0;
+    return DSB(slot + 0x52u) == 5u || DSB(slot + 0x52u) == 0x15u;
+}
+
+/* 0x46794. +0x54 == 2 and +0x52 == 4. */
+static int ai_pred_46794(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    if (DSB(slot + 0x5Fu) != 0xFFu) return 0;
+    if (DSB(slot + 0x54u) != 2u) return 0;
+    if (DSB(slot + 0x53u) != 0u) return 0;
+    return DSB(slot + 0x52u) == 4u;
+}
+
+/* 0x467DC / 0x4682C. +0x54 == 0, +0x53 == 0, +0x52 == 1, then the 0x1A5D4
+ * command-sign test (0x467DC: zero, 0x4682C: non-zero). */
+static int ai_pred_cmd_sign(u32 side, int want_zero)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    if (DSB(slot + 0x54u) != 0u) return 0;
+    if (DSB(slot + 0x53u) != 0u) return 0;
+    if (DSB(slot + 0x52u) != 1u) return 0;
+    return (ai_facing_cmd(side) == 0u) == (want_zero != 0);
+}
+
+/* 0x46898 / 0x468D8. The secondary-record identity rec_self+0x10 == 0x22BEC
+ * with rec_self+0x24 bit 31 clear; 0x46898 wants +0x54 == 2, 0x468D8 wants
+ * +0x54 != 2 or +0x52 == 7. */
+static int ai_pred_46898(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_swap(ctx, side);                        /* 0x468A0 */
+    if (DSD(ctx[5] + 0x10u) != 0x22BECu) return 0;
+    if ((DSD(ctx[5] + 0x24u) & 0x7FFFFFFFu) != 0u) return 0;
+    return DSB(ctx[3] + 0x54u) == 2u;
+}
+
+static int ai_pred_468d8(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_swap(ctx, side);                        /* 0x468E3 */
+    if (DSD(ctx[5] + 0x10u) == 0x22BECu
+            && (DSD(ctx[5] + 0x24u) & 0x7FFFFFFFu) == 0u
+            && DSB(ctx[3] + 0x54u) != 2u)
+        return 1;
+    return DSB(ctx[3] + 0x52u) == 7u;
+}
+
+/* 0x469A8. Classify `param`'s slot state into the AI state of block[1-param],
+ * then store it. The raw reads slot[param] (EBX) and writes block[1-param]
+ * (ECX = 1-param); the port keeps that transpose. */
+static void ai_classify(u32 param)
+{
+    u32 ecx = 1u - param;
+    if (fighter_frame_flag(0u, param) == 0) {           /* 0x469BB */
+        DSD(0x00108214u + ecx * 0x40u) = DSD(0x00108218u + ecx * 0x40u);
+    }
+    if (ai_ready(param) != 0) {                         /* 0x469D7 */
+        u32 prev = DSD(0x00108214u + ecx * 0x40u);
+        u32 v = (prev == 0u || prev == 1u) ? 1u : 0u;
+        if (v != 0u) { DSD(0x00108218u + ecx * 0x40u) = 1u; return; }
+        DSD(0x00108218u + ecx * 0x40u) =
+            (ai_pred_46698(param) != 0) ? 0x0Du : 0u;
+        return;
+    }
+    if (ai_pred_466f4(param) != 0) {                    /* 0x46A20 */
+        DSD(0x00108218u + ecx * 0x40u) = 2u; return;
+    }
+    if (ai_pred_4673c(param) != 0) { DSD(0x00108218u + ecx * 0x40u) = 3u; return; }
+    if (ai_pred_46794(param) != 0) { DSD(0x00108218u + ecx * 0x40u) = 4u; return; }
+    if (ai_pred_cmd_sign(param, 1) != 0) { DSD(0x00108218u + ecx * 0x40u) = 6u; return; }
+    if (ai_pred_cmd_sign(param, 0) != 0) { DSD(0x00108218u + ecx * 0x40u) = 5u; return; }
+    if (ai_pred_468d8(param) != 0) { DSD(0x00108218u + ecx * 0x40u) = 7u; return; }
+    if (DSB(DS_001077B0 + param * 0x94u + 0x53u) == 0x0Bu) {   /* 0x46AE4 */
+        DSD(0x00108218u + ecx * 0x40u) = 9u; return;
+    }
+    if (DSB(DS_001077B0 + param * 0x94u + 0x53u) == 6u) {      /* 0x46B12 */
+        DSD(0x00108218u + ecx * 0x40u) = 0x0Bu; return;
+    }
+    if (ai_pred_46898(param) != 0) { DSD(0x00108218u + ecx * 0x40u) = 0xCu; return; }
+    DSD(0x00108218u + ecx * 0x40u) = 8u;                /* 0x46B5D */
+}
+
+/* 0x470F8. Reset the active flag when the state transitioned, then, when the
+ * fighter is idle (slot+0x53 == 0) and no move is active, pick a new move. */
+static void ai_manage(u32 side)
+{
+    u32 b = ai_b(side);
+    u32 slot = DS_001077B0 + side * 0x94u;
+    u32 state = DSD(b + 0x28u);
+    if (state == 0u && DSB(slot + 0x54u) != 2u) {
+        DSD(b + 0x04u) = 0;                             /* 0x47126 */
+    } else if (state == 7u && DSD(b + 0x10u) != 7u && DSB(slot + 0x54u) != 2u) {
+        DSD(b + 0x04u) = 0;                             /* 0x47163 */
+    } else if (state == 9u && DSD(b + 0x10u) != 9u && DSB(slot + 0x54u) != 2u) {
+        DSD(b + 0x04u) = 0;                             /* 0x4719D */
+    }
+    if (DSB(slot + 0x53u) != 0u) return;                /* 0x471B1 */
+    if (DSD(b + 0x04u) != 0u) return;                   /* 0x471C6 */
+    ai_pick(side);                                      /* 0x471CA */
+    DSD(b + 0x0Cu) = 0;                                 /* 0x471DA */
+    DSD(b + 0x04u) = 1;                                 /* 0x471E2 */
+    DSD(b + 0x00u) = DSD(b + 0x00u) + 1u;               /* 0x471F2 */
+    DSB(b + 0x30u) = 0;                                 /* 0x471EA */
+    DSB(b + 0x31u) = 0;                                 /* 0x471F8 */
+}
+
+/* 0x47208. One side's command word for this frame. The 0x2D974/0x2CAA8
+ * DIP/replay block at 0x47241 is dead: 0x2CAA8 is `return 1`, so its
+ * `(dip & 0x800) && 0x2CAA8() == 0` gate is always false (0x47237/0x4723B). */
+void fighter_command_generate(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                        /* 0x47216 */
+    ai_classify(ctx[1]);                                /* 0x47291 */
+    {
+        u32 slot = ctx[2];
+        u32 b = ai_b(side);
+        u32 entry;
+        if (DSB(slot + 0x63u) == 0u) return;            /* 0x472AA */
+        DSW(DS_001088E0 + side * 2u) = 0;               /* 0x472CA */
+        if (DSB(0x00105B39u) != 0u) return;             /* 0x472D4 */
+        ai_manage(side);                                /* 0x472DA */
+        entry = DSD(b + 0x1Cu) + (u32)DSB(b + 0x30u) * 8u;   /* 0x472E7 */
+        DSW(DS_001088E0 + side * 2u) =
+            fighter_cmd_facing(fighter_actor_bit15_clear(side), DSD(entry));
+        if (DSD(entry) == 0xFFFFu) {                    /* 0x4731C */
+            DSD(b + 0x04u) = 0;
+            DSW(DS_001088E0 + side * 2u) = 0;
+        } else if ((s16)DSB(b + 0x31u) >= (s16)DSW(entry + 4u)) {   /* 0x47338 */
+            DSB(b + 0x31u) = 0;
+            DSB(b + 0x30u) = (u8)(DSB(b + 0x30u) + 1u);
+        }
+        DSB(b + 0x31u)++;                               /* 0x4734F */
+        DSD(b + 0x0Cu)++;                               /* 0x47355 */
+    }
+}
+
+/* 0x461DC's per-word transform (the EAX == 4 arm): a conditional bit
+ * swap/toggle over the local command copy. Only reached when
+ * slot[side]+0x63 == 0 and word[DS_00101514 + 0x2D4/0x2D6] == 4. */
+static void ai_ring_transform(u16 *w, u8 *flag)
+{
+    if ((*w & 0x0001u) != 0u && (*w & 0x3030u) == 0u) goto done;
+    if ((*w & 0x0001u) != 0u && (*w & 0x1010u) != 0u) {
+        if ((*w & 0x0100u) != 0u) *w ^= 0x0101u;
+        else                      *w ^= 0x0001u;
+        *w |= 0x0202u;
+        *flag = 1;
+        goto toggle;
+    }
+    if ((*w & 0x0001u) != 0u && (*w & 0x2020u) != 0u) {
+        *w |= 0x0002u;
+        if ((*w & 0x0100u) != 0u) *w ^= 0x0100u;
+        *flag = 1;
+        goto toggle;
+    }
+    if ((*w & 0x0004u) != 0u && (*w & 0x3030u) == 0u) goto done;
+    if ((*w & 0x0004u) != 0u && (*w & 0x1010u) != 0u) {
+        if ((*w & 0x0400u) != 0u) *w ^= 0x0404u;
+        else                      *w ^= 0x0004u;
+        *w |= 0x0808u;
+        *flag = 1;
+        goto toggle;
+    }
+    if ((*w & 0x0004u) != 0u && (*w & 0x2020u) != 0u) {
+        *w |= 0x0008u;
+        if ((*w & 0x0400u) != 0u) *w ^= 0x0400u;
+        *flag = 1;
+    }
+toggle:
+    if (*flag == 1u) {
+        if ((*w & 0x0010u) != 0u) *w ^= 0x0010u;
+        if ((*w & 0x1000u) != 0u) *w ^= 0x1000u;
+        if ((*w & 0x0020u) != 0u) *w ^= 0x0020u;
+        if ((*w & 0x0020u) != 0u) *w ^= 0x2000u;
+    }
+done:
+    ;
+}
+
+/* 0x461DC. Write each side's command word into the 0x14-word input ring at
+ * DS_00108270 (+0x28 per side) and advance DS_001082D4. When slot+0x63 is
+ * clear and word[DS_00101514 + 0x2D4/0x2D6] == 4 the word goes through
+ * 0x3C6E8 and ai_ring_transform first. */
+void fighter_input_ring_update(void)
+{
+    u16 loc[2];
+    for (u32 side = 0; side < 2u; side++) {             /* 0x461EF */
+        u32 slot = DS_001077B0 + side * 0x94u;
+        u32 sel = 2u;                                   /* 0x461F8 */
+        if (DSB(slot + 0x63u) == 0u) {                  /* 0x461FF */
+            sel = (u32)DSW(DS_00101514 + 0x2D4u + side * 2u) & 0xFFFFu;
+        }
+        if (sel == 4u) {                                /* 0x46222 */
+            u16 w;
+            u8 fl = 0;
+            if ((fighter_actor_bit15_clear(side) & 0xFFu) == 1u) {
+                w = fighter_cmd_facing(side, DSW(DS_001088E0 + side * 2u));
+            } else {
+                w = DSW(DS_001088E0 + side * 2u);
+            }
+            ai_ring_transform(&w, &fl);
+            loc[side] = w;
+        } else {
+            loc[side] = DSW(DS_001088E0 + side * 2u);   /* 0x46402 */
+        }
+    }
+    {
+        u32 pos = ((DSD(DS_001082D2) >> 16) + 1u);      /* 0x46420 */
+        if (pos >= 0x14u) pos = 0u;
+        DSW(DS_00108270 + pos * 2u) = loc[0];           /* 0x4643C */
+        DSW(0x001082D4u) = (u16)pos;                    /* 0x46447 */
+        DSW(0x00108298 + pos * 2u) = loc[1];            /* 0x4644E */
+    }
+}
+
+/* 0x24C73. game_frame's per-side command block: fill both command words. */
+void fighter_command_block(void)
+{
+    if (DSB(DS_00104B26) != 0u) return;                 /* 0x24C73 */
+    if (DSB(0x00104B1Bu) == 0u) return;                 /* 0x24C7C */
+    for (u32 side = 0; side < 2u; side++) {             /* 0x24C8B */
+        if ((DSB(DS_001077B0 + side * 0x94u + 0x41u) & 0x10u) == 0u)
+            fighter_command_generate(side);             /* 0x24CA1 */
+        else
+            DSW(DS_001088E0 + side * 2u) = 0;           /* 0x24C96 */
+    }
+    fighter_input_ring_update();                        /* 0x24CB5 */
+}
+
+/* ---- 0x34B6C's +0x52 handlers the demo enters -------------------------- */
+
+/* 0x36638. Clear slot+0x43 bit 0x40 and restart the fighter's animation when
+ * that bit is set; the +0x54 arm picks the start animation. Called by 0x349C8,
+ * 0x35838 and the 0x34B6C position branch. The +0x54 == 5 arm (0x366FB ->
+ * 0x38154) is a named gap (§7.10); no demo path reaches it. */
+int fighter_state_36638(u32 slot, u32 rec)
+{
+    if (DSB(slot + 0x54u) == 3u) {                      /* 0x3663E */
+        DSB(slot + 0x43u) &= 0xBFu;
+        return 0;
+    }
+    if ((DSB(slot + 0x43u) & 0x40u) == 0u) return 0;    /* 0x36656 */
+    DSD(slot + 0x40u) &= 0xBFFF7FFFu;                   /* 0x3665C */
+    DSB(slot + 0x41u) |= 0x80u;                         /* 0x36672 */
+    if (DSW(DS_00104B00) == 0x25u) DSB(slot + 0x53u) = 0x0Cu;   /* 0x3667A */
+    else                           DSB(slot + 0x53u) = 0u;     /* 0x36680 */
+    switch (DSB(slot + 0x54u)) {                        /* 0x36684 table 0x36620 */
+    case 1u:                                            /* 0x366B9 */
+        actor_anim_start(rec, DSD(0x000C9210u + (u32)DSB(slot + 0x7Au) * 4u),
+                         0x3F800000u);
+        DSB(slot + 0x52u) = 0x12u;
+        return 1;
+    case 4u:                                            /* 0x366D8 */
+        actor_anim_start(rec, DSD(0x000C91E8u + (u32)DSB(slot + 0x7Au) * 4u),
+                         0x3F800000u);
+        DSB(slot + 0x52u) = 8u;
+        DSB(slot + 0x57u) = 2u;
+        return 0;
+    case 5u:                                            /* 0x366FB */
+        /* PORT: 0x38154 — the +0x54 == 5 arm is a named gap (§7.10). */
+        return 0;
+    default:                                            /* 0x3669A; 0,2,3,>5 */
+        actor_anim_start(rec, DSD(0x000C91E8u + (u32)DSB(slot + 0x7Au) * 4u),
+                         0x3F800000u);
+        DSB(slot + 0x52u) = 0x12u;
+        return 1;
+    }
+}
+
+/* 0x365C8. 1 when this slot is behind the other's +0x2C in the facing
+ * direction and the other slot's +0x43 bit 0x80 is set. */
+static int fighter_state_365c8(u32 slot, u32 rec, u32 side)
+{
+    u32 other;
+    if ((DSB(slot + 0x42u) & 0x10u) != 0u) return 0;
+    other = DSD(DS_001077A8 + (side ^ 1u) * 4u);
+    if (other == 0u) return 0;
+    if ((DSB(slot + 0x42u) & 0x08u) != 0u) return 0;
+    if ((DSB(other + 0x43u) & 0x80u) == 0u) return 0;
+    if ((DSB(other + 0x42u) & 0x08u) != 0u) return 0;
+    if ((DSW(rec + 0x28u) >> 8 & 0x40u) == 0u) {
+        if ((s32)DSD(slot + 0x2Cu) <= (s32)DSD(other + 0x2Cu)) return 1;
+    } else if ((s32)DSD(other + 0x2Cu) < (s32)DSD(slot + 0x2Cu)) {
+        return 1;
+    }
+    return 0;
+}
+
+/* 0x35838. The command's direction bits (EBX = cmd & 0xF000) select a fresh
+ * animation and set slot+0x52 = 0xE. */
+static void fighter_state_35838(u32 slot, u32 rec, u32 dirbits)
+{
+    DSD(slot + 0x40u) &= 0xFCFF7FFFu;                   /* 0x3583F */
+    DSB(slot + 0x41u) |= 0x80u;                         /* 0x35846 */
+    if ((DSW(rec + 0x28u) >> 8 & 0x40u) == 0u) {        /* 0x35859 */
+        if ((dirbits & 0x2000u) != 0u) {                /* 0x35866 */
+            actor_anim_start(rec, DSD(0x000C8A40u + (u32)DSB(slot + 0x7Au) * 4u),
+                             0x3F800000u);
+            DSB(slot + 0x43u) |= 2u;
+            goto tail;
+        }
+        if (DSW(DS_00104B00) == 0x22u) {                /* 0x35891 */
+            DSB(slot + 0x43u) |= 0x40u;
+            (void)fighter_state_36638(slot, rec);
+            goto tail;
+        }
+    } else {
+        if ((dirbits & 0x1000u) != 0u) {                /* 0x358B9 */
+            actor_anim_start(rec, DSD(0x000C8A40u + (u32)DSB(slot + 0x7Au) * 4u),
+                             0x3F800000u);
+            DSB(slot + 0x43u) |= 2u;
+            DSW(slot + 0x4Cu) = 0;
+            DSB(slot + 0x52u) = 0x0Eu;
+            DSB(slot + 0x53u) = 0u;
+            return;
+        }
+        if (DSW(DS_00104B00) == 0x22u) {                /* 0x358EF */
+            DSB(slot + 0x43u) |= 0x40u;
+            (void)fighter_state_36638(slot, rec);
+            DSW(slot + 0x4Cu) = 0;
+            DSB(slot + 0x52u) = 0x0Eu;
+            DSB(slot + 0x53u) = 0u;
+            return;
+        }
+    }
+    actor_anim_start(rec, DSD(0x000C8AB8u + (u32)DSB(slot + 0x7Au) * 4u),
+                     0x3F800000u);
+    DSB(slot + 0x43u) |= 1u;
+tail:
+    DSW(slot + 0x4Cu) = 0;                              /* 0x35928 */
+    DSB(slot + 0x52u) = 0x0Eu;                          /* 0x3592E */
+    DSB(slot + 0x53u) = 0u;
+}
+
+/* 0x349C8. The +0x52 == 0 default handler. Its +0x42 bit 6/7 arms
+ * (0x37178/0x37D18) are named gaps (§7.10); no demo writer sets either bit. */
+void fighter_state_default(u32 side)
+{
+    u32 slot = DSD(DS_001077A8 + side * 4u);            /* 0x349CF */
+    u32 rec;
+    if (slot == 0u) return;
+    rec = DSD(slot);
+    if ((DSB(slot + 0x42u) & 0x40u) != 0u) {            /* 0x349E6 */
+        /* PORT: 0x37178 — +0x42 bit 6 arm, a named gap (§7.10). */
+        return;
+    }
+    if ((DSB(slot + 0x42u) & 0x80u) != 0u) {            /* 0x349F7 */
+        /* PORT: 0x37D18 — +0x42 bit 7 arm, a named gap (§7.10). */
+        return;
+    }
+    if (fighter_state_365c8(slot, rec, side) != 0)      /* 0x34A3E */
+        DSB(slot + 0x43u) |= 0x40u;
+    else
+        DSB(slot + 0x43u) &= 0xBFu;
+    if (fighter_state_36638(slot, rec) != 0) return;    /* 0x34A55 */
+    {
+        u16 cmd = DSW(DS_001088E0 + side * 2u);         /* 0x34A62 */
+        int bvar2 = ((cmd >> 8) & 3u) != 0u && ((cmd >> 8) & 0xCu) != 0u;
+        if (!bvar2) {
+            if (fighter_attack_consume(side) != 0) return;   /* 0x34A9F */
+        }
+        if ((cmd & 0x4000u) != 0u) {                    /* 0x34AB5 */
+            actor_anim_start(rec,
+                DSD(0x000C8978u + (u32)DSB(slot + 0x7Au) * 4u), 0x40000000u);
+            DSB(slot + 0x52u) = 5u;
+            DSB(slot + 0x54u) = 1u;
+            return;
+        }
+        if ((DSB(slot + 0x53u) == 0u && (cmd & 0x1000u) != 0u)   /* 0x34AE1 */
+                || (cmd & 0x2000u) != 0u)
+            fighter_state_35838(slot, rec, (u32)(cmd & 0xF000u));   /* 0x34B06 */
+    }
+}
+
 /* 0x3BDDC. The attack/command consumer. When the slot's +0x40 bit 7 is clear
  * and the side's command word has bit 15 set, it clears the record's
  * +0x34/+0x43/+0x42, sets the slot's +0x5F to 0xFF, and (unless 0x3CF38
  * returns non-zero) writes the attack state: the 0xBEF28/0xBEF64 table at
  * DS_00107D40 + side*4, the slot's +0x52/+0x53/+0x54, DS_001078F8+side and the
  * slot's +0x4E from the command's 0x1000/0x2000 bits. Returns 1 on the attack
- * transition, 0 when either gate rejects. */
+ * transition, 0 when either the slot's +0x40 bit 7 or the command's bit 15
+ * rejects. Its 0x3CF38 gate and 0x3C480 continuation are named gaps (§7.6/§7.16). */
 int fighter_attack_consume(u32 side)
 {
     u32 ctx[6];

@@ -273,18 +273,57 @@ void fight_command_map(u32 side, u32 edx_arg, u32 override)
 
 /* ---- 0x34B6C the health sync ------------------------------------------- */
 
+/* 0x36E2C. The position gate that decides between the 0x34B97 position branch
+ * and the 0x34BF4 +0x52 table: 1 when the slot's +0x63 is armable and
+ * (DS_00104B1D == 3 || DS_00104B14 == 0 || slot+0x63 != 0), +0x42 bit 0x10 is
+ * set, +0x52 is one of {0,1,5,6,7} and +0x54 <= 1. */
+static int fight_position_gate(u32 rec)
+{
+    u8 st;
+    if (!(DSB(DS_00104B1D) == 3u || DSB(DS_00104B14) == 0u
+          || DSB(rec + 0x63u) != 0u))
+        return 0;
+    if ((DSB(rec + 0x42u) & 0x10u) == 0u) return 0;
+    st = DSB(rec + 0x52u);
+    if (!(st == 0u || st == 1u || st == 5u || st == 6u || st == 7u)) return 0;
+    return DSB(rec + 0x54u) <= 1u;
+}
+
 static void fight_health_sync(u32 side)
 {
     u32 rec = DSD(DS_001077A8 + side * 4u);     /* 0x34B73 */
     if (rec == 0) return;                       /* 0x34B7C */
     if (DSD(rec) == 0) return;                  /* 0x34B82/0x34B86 */
 
-    /* PORT: 0x34B8C..0x34BF3. The 0x36E2C(rec) gate and the 0x36638/0x36F10
-     * position branch are named gaps (§7.10); the raw reaches the +0x52
-     * dispatch below only when 0x36E2C returns 0. */
-    if (DSB(rec + 0x52u) == 6)                  /* table 0x34B14 -> 0x34C73 */
-        fight_stance_pass(side);                /* 0x34C75 0x1A978 */
-    /* PORT: 0x34C08..0x34D88. The other +0x52 cases are named gaps (§7.10). */
+    if (fight_position_gate(rec) != 0) {        /* 0x34B8E 0x36E2C */
+        u32 fighter = DSD(rec);
+        s32 x = ((DSW(fighter + 0x28u) >> 8 & 0x40u) != 0u)
+              ? (s32)DSD(fighter + 0x18u) + 0x3000
+              : (s32)DSD(fighter + 0x18u) - 0x3000;
+        if (x < (s32)DSD(DS_000BE018) && x > -(s32)DSD(DS_000BE018)) {
+            /* PORT: 0x34BE8 0x36F10 — the in-range arm. It is unreachable:
+             * slot+0x42 bit 0x10 is set only inside 0x36F10 itself (0x36FD4
+             * `| 0x820` is bit 0x20, not 0x10; no writer sets bit 0x10), so the
+             * gate can never return 1 without this call having already run.
+             * Named gap (§7.10). */
+        } else {
+            DSB(rec + 0x43u) |= 0x40u;          /* 0x34BD1 */
+            (void)fighter_state_36638(rec, fighter);   /* 0x34BDE */
+        }
+        return;
+    }
+
+    switch (DSB(rec + 0x52u)) {                 /* 0x34BF4 table 0x34B14 */
+    case 6u:                                    /* 0x34C73 -> 0x1A978 */
+        fight_stance_pass(side);
+        break;
+    /* 9,10,11,14,15,16 -> 0x34D83, the epilogue no-op. */
+    case 9u: case 10u: case 11u: case 14u: case 15u: case 16u:
+        break;
+    default:                                    /* 0 and >0x15 -> 0x34C08 0x349C8 */
+        fighter_state_default(side);
+        break;
+    }
 }
 
 /* ---- 0x35658 the HUD/health pass --------------------------------------- */
