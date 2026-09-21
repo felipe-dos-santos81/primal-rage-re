@@ -70,6 +70,7 @@ int main(int argc, char **argv)
     test_rng();
     test_actors();
     test_effects();
+    test_fight();
     test_config();
     test_frontend();
     test_attract();
