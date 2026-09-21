@@ -217,8 +217,9 @@ debounced level (`0x50161` selector), and `0x4F644` builds the newly-pressed and
 held masks each frame before the state machine. `port/src/game/config.c`'s credit
 layer (`0x2C060`/`0x2CA48`/`0x2CA7C`/`0x2C06C`/`0x2BF00`) is driven by `0x11F28`
 (`frontend_coin_poll`), and the `0x11F6C` select state
-(`0x33904`/`0x1C6D4`) is live: its exit advances `DS_000F0A64` to the state-3
-stub. See `docs/superpowers/plans/2026-09-19-frontend-input-report.md`.
+(`0x33904`/`0x1C6D4`) is live: its exit advances `DS_000F0A64` to state 3 (ported
+in the front-end-chain cycle below). See
+`docs/superpowers/plans/2026-09-19-frontend-input-report.md`.
 
 **Attract/boot subsystem — sub-project 4d, ported.** The port now boots the way
 the original does — through state 0's attract — instead of playing the logos by
@@ -249,10 +250,40 @@ palette ownership-table clear at `0x87618`, which the attract's earlier palette
 acquires exposed. See
 `docs/superpowers/plans/2026-09-19-attract-report.md`.
 
-Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), and
-the fight engine (5) remain; the attract's `0x2C3FC` voice calls and the
-`0x4F7F4`/`0x4F83C` scene-palette driver, and the `0x13xxx` effect render path,
-are declared gaps with `/* PORT: */` markers.
+**Front-end chain — states 3/4/5, ported.** `port/src/game/flow.c` now ports the
+states after the select carousel: state 3 (`0x12484`, the post-select presentation
+and its `0x12658` handoff), state 4 (`0x11578`, the 8/12/13-line credit roll) and
+state 5 (the inline `0x11D04` match-start block), so the port advances
+carousel → 3 → 4 → 5 → 9 → 6 unaided. `port/src/game/effects.c` owns the `0x13xxx`
+effect render path: `0x1324C` (screen-shake decay) is registered as update-table
+entry 0 but **dormant** (no shipped store sets `DS_00104AE8` bit 0), and the
+palette path spawn → `effects_step` → dirty list → `gfx_flush_palette` →
+`gfx_dac` → `gfx_present` is proven end to end. **No camera/scene function
+draws** — the plan's assumed missing draw does not exist; the camera state is
+consumed by the existing render pass and actor-pset sync. The front-end pixel
+oracle is **closed and enforced**: a 120 s pinned capture aligns the port's
+state-3 zoom to window `[557..813]` (raw `3117..3418`), **257 frames: 92 clean,
+162 splice, 2 transition, 0 unexplained**, and `make verify`'s `frontend-oracle`
+step exits non-zero on any unexplained frame. Sixteen all-black capture frames are
+excluded as an explicit oracle-level choice, **not** a proven fact (the
+investigation could not settle whether capture 558's black frame is a distinct
+logic frame or a 70.09 Hz scanout artifact). The effect call sites
+`0x29B74`/`0x41578` are **deferred**: the raw reaches them only through
+`0x24C5C`'s unported mode cases (`0x12`, `0x16..0x1B`) and the match/fight chain,
+and the port's `DS_00104B00` is fixed at 3, so wiring them would be a dispatch
+path nothing can reach. The match cycle's `0x1EA08` call sites, the unported half
+of `0x1EA08` itself, and the unowned camera chain
+(`0x12CD4`/`0x1317C`/`0x13290`/`0x1333C` and its `0x12D48` dispatcher) are
+declared gaps. See
+`docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md` and
+`port/spec/game_flow.md`.
+
+Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
+fight engine (5), and the match cycle's `0x1EA08` sites remain; the attract's
+`0x2C3FC` voice calls and the `0x4F7F4`/`0x4F83C` scene-palette driver are
+declared gaps with `/* PORT: */` markers. The `0x13xxx` effect render path is no
+longer a gap (no draw was missing); its effect call sites are deferred as
+unreachable.
 
 ### Build and run
 

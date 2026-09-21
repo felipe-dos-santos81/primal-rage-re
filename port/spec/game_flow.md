@@ -339,9 +339,27 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   plan owns that chain, and the raw gives `0x12CD4` exactly one caller (`0x1317C` at
   `0x131cb`), so all four are unreachable in the port; shipping them would be dead
   production surface. A later cycle must port the dispatcher chain first.
-  The four producers' shipped call sites (`0x29B74`/`0x41578`) are the remaining wiring
-  (Task 8), so no shipped path spawns types 0/2/4/6 yet; the producers remain a coverage
-  gap carried by unit tests. Details:
+  **The effect call sites are deferred too (front-end-chain Task 8).** The plan
+  said `0x29B74` and `0x41578` register into the process tables; the raw refutes it.
+  `0x29B74` is the mode-`0x17` handler stored at `DS_00104AE4` (stores at
+  `0x2788B`/`0x278A4` in `FUN_000277C0` mode `0xF`, `0x2861E` in `FUN_00028468`
+  mode 8, `0x28978` in `FUN_00028788` mode 9), dispatched by six
+  `call dword [0x104AE4]` sites (`0x4F302`, `0x4F373`, `0x4F6F1`, `0x4F70D`,
+  `0x4F9AA`, `0x4F9D1`) plus one direct `call 0x29B74` at `0x27B17`; `0x41578` is
+  direct-called from four sites (`0x41755`, `0x41DE6`, `0x42337`, `0x42352` in
+  `0x416D4`/`0x41C28`). Every one of those sites is reached only through
+  `0x24C5C`'s **unported mode cases** (`0x12`, `0x16..0x1B`) and the unported
+  match/fight chain; the port's `DS_00104B00` is fixed at 3 by `0x10E80`, so none
+  is reachable from the ported states 3/4/5. They are **deferred and unowned by
+  this plan** — no dispatch path is shipped, and `port/tests/test_frontend.c` pins
+  that no handler is registered and that state 5 neither arms `DS_00104AE4` nor
+  leaves mode 3. `0x41578`'s register-level comparison against `0x88874B0` is
+  **dead in the port's flat model**: `0x88874B0` is above `MEM_SIZE`
+  (`0x4000000`) and outside both LE objects, so that half of the predicate can
+  never match. Because the four `0x41578` sites are themselves unreachable, no
+  port code holds the comparison; the raw fact is recorded here rather than
+  deleted or substituted. No shipped path spawns types 0/2/4/6 yet; the producers
+  remain a coverage gap carried by unit tests. Details:
   `../../docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md` §5,
   `../../docs/superpowers/plans/2026-09-19-effects-producers-report.md`.
 * **`--check N`** (Task 15) runs exactly N master-loop iterations headless and
@@ -426,14 +444,59 @@ selector.
   and frame arithmetic:
   `../../docs/superpowers/plans/2026-09-19-frontend-input-derivations.md`.
 
+## Front-end states 3/4/5 (front-end-chain Tasks 3/4/6, ported)
+
+`game_state_step`'s cases 3/4/5 are ported; the port now advances
+carousel → 3 → 4 → 5 → 9 → 6 unaided (state 6 is the fight engine's entry, out of
+this cycle's scope). Each state is a phase machine driven by its own `mem[]`
+counter, transcribed phase-for-phase from the raw.
+
+* **State 3 — `0x12484` (`game_state_3`).** Phase 0 (`DS_000F0A6F == 0`):
+  `actors_reset` (`0x2BAF4`), four `frontend_spawn_row(0x9AC1C)` corner rows, a
+  type-3 `effects_spawn` for the live list entry whose handle is `0x3E688`, the
+  `DS_00104528` bit-1 branch (the `0x1C500`/`0x2F198` text pair, or a `0x2AE14`
+  spawn into `DS_000F0A40`), then the `0x12658` handoff (`game_state_3_handoff`):
+  three `0x2AE14` spawns, `DS_000F0A58` = the first, the two `+0x4B`/`+0x56`
+  field copies, the list walk spawning a type-3 effect per
+  `*rec != 0x3E688 && !frontend_resource_known(rec)`, and `DS_00107A44` zeroed.
+  Phase 1 tracks the handoff actor's `+0x1C` offset and terminates into state 9
+  when it reaches `0x1E00`.
+* **State 4 — `0x11578` (`game_state_4`).** Phase counter `DS_0009AD98`.
+  Cases 0/1/2 are the unrolled credit-roll pages of **8, 12 and 13** `0x2F4BC`
+  (`text_cursor_hold`) calls — the counts are literal in the raw, not a loop
+  bound — each spawning the `0x9AD84` descriptor, arming the 180-frame timer
+  `DS_000F0A76 = 0xB4` and the continuation phase `DS_000F0A74` (1/2/3), then
+  entering phase 4. `0x2C06C` is called in case 0 only, as the raw does. Phase 4
+  counts the timer down and continues on the frame the pre-decrement value is
+  zero; phase 3 hands to state 9 with `DS_000F0A6C = 0`.
+* **State 5 — inline in `0x11D04` case 5.** `frontend_match_start` (`0x1EA08`),
+  `config_set_credit_row(0x1D)` (`0x2C06C`), then the raw's five stores in raw
+  order: `DS_000F0A6F` (`0x11E11`), `DS_000F0A72` (`0x11E17`), `DS_000F0A6A`
+  (`0x11E1D`), `DS_000F0A6C` (`0x11E2E`), `DS_000F0A64` (`0x11E35`). The `0x2C3FC`
+  voice cancel and the `0x32970` run clock are out of scope and skipped.
+
+**Gaps this section leaves.** `frontend_match_start` is ported only through its
+three pinnable pre-resource calls (`0x4F1E4`, `0x2BAF4`, `0x38B18(0xA7B6C)`); the
+`0x2DBC4`/`0x2DB58` paged-resource blob, the `local` character index, the
+`0x2F4D0`/`0x2F4BC` formatted draws and the `0x2AE14`/`0x2A17C` spawn are a named
+gap (derivations §7.1/§7.2) — the port does not model the resource reader, so
+spawning a descriptor would be a fitted constant. `0x1EA08`'s other four call
+sites are the **match cycle's** and are unwired: `0x11A42` in `FUN_00011A30` (a
+dead copy — `0x11A30` is referenced nowhere in either LE object) and `0x1F140`/
+`0x1F278`/`0x1F39B` in `FUN_0001EEB0` (the match sub-state machine, cases 2/6/9).
+No task in this plan owns the match cycle. States 6/7/8 (the fight engine:
+`0x11A8C`, `0x263F4`, `0x33F08`) and state 9's semantics beyond the countdown
+handoff remain the **next cycle**.
+
 **States 3/4 pixel oracle: enforced gate (front-end-chain Task 5, closed).** The
 120 s pinned capture (`make frontend-capture`: `data/title-captures/frontend`,
 3712 distinct post-logo frames, raw 1376..8409) reaches the front-end. With the
 state-3 render ported (`0x12484`) the `PR_FRONTEND_DUMP` driver emits the real
 zoom-out, and `tools/title_compare.py --frontend` aligns it: window distinct
-[557..813] (raw 3117..3418), 92 clean, 162 splice, 2 transition, **0
-unexplained**. `frontend-oracle` now enforces that result (the Python compare
-exits non-zero on any unexplained frame) and is a `verify` ladder step.
+[557..813] (raw 3117..3418), **257 frames: 92 clean, 162 splice, 2 transition,
+0 unexplained**. `frontend-oracle` enforces that result (the Python compare
+exits non-zero on any unexplained frame) and is a `verify` ladder step; it was
+proven to fail (exit 2) on an induced regression.
 
 Task 5 found and fixed a real port bug: the raw's `actors_reset` (`0x2BAF4`)
 calls `0x38B70` at `0x2BBDA`, which zeroes the 7-entry front-end row table

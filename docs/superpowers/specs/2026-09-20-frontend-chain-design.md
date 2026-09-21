@@ -10,15 +10,19 @@ select state), 4d (attract), the OPL/MIDI-controller audio cycle.
 
 The port's state machine (`port/src/game/flow.c` `game_state_step`, the raw's `0x11D04`)
 dispatches states 0 (attract), 1 (title) and 2 (the six-entry select carousel) for real.
-States 3, 4, 5, 6, 7, 8 and 9 are no-op stubs. Because the carousel's exit sets state 3,
-**the port dead-ends at character select today**.
+States 3, 4 and 5 are now ported too (Tasks 3/4/6), so the carousel advances into the
+match-up chain; states 6, 7, 8 and 9's semantics beyond the countdown handoff remain
+no-op stubs and are the next cycle.
 
-Two declared gaps block these states from working:
+Two declared gaps were thought to block these states from working; both were
+resolved or re-scoped during implementation:
 
-* The `0x13xxx` effect **render** path is unported: an effect spawns and steps its palette
-  correctly (unit-proven in the effects-producers cycle) but draws nothing.
-* The call sites that wire effects into the update/render process tables (`0x29B74`,
-  `0x41578`) are unported, so no shipped path spawns effects at all.
+* The `0x13xxx` effect **render** path was called unported. Task 7 found no missing
+  draw exists — the palette path is the existing spawn → step → dirty list →
+  `gfx_flush_palette` → `gfx_dac` chain.
+* The call sites (`0x29B74`, `0x41578`) were called table-registering. Task 2's
+  derivation refuted that; Task 8 found them unreachable from the ported path and
+  deferred them (see §5).
 
 ## 2. Goal
 
@@ -66,7 +70,8 @@ its own. That risk is front-loaded by sequencing (section 8).
   effect palette path is already complete (spawn → `effects_step` → palette dirty list →
   `gfx_flush_palette` → `gfx_dac` → `gfx_present`). `0x1324C` is update-table entry 0 and
   is **dormant**: no shipped store sets `DS_00104AE8` bit 0.
-* The unported effect call sites `0x29B74` and `0x41578`.
+* The effect call sites `0x29B74` and `0x41578` — investigated and **deferred** as
+  unreachable from the ported path (see §5).
 * The capture/pin/oracle extension that verifies the above.
 
 **Out:**
@@ -94,9 +99,16 @@ Three layers, each extended where it already lives. No new module boundaries.
   which the master loop already runs before `gfx_present`. `0x1324C` is registered so the
   existing update-table dispatch (`run_process_table`) reaches it the way the raw does;
   no call site is added and no draw routine exists.
-* **Process-table wiring** — `0x29B74` and `0x41578` register into the port's existing
-  `run_process_table` update/render tables (which `game_frame` already runs) rather than
-  being called ad hoc, so they fire in the raw's order.
+* **Effect call sites — deferred, not wired.** The plan said `0x29B74` and `0x41578`
+  register into the port's existing `run_process_table` update/render tables. Task 2's
+  derivation, re-checked against the bytes in Task 8, refuted that: `0x29B74` is the
+  mode-`0x17` handler stored at `DS_00104AE4` and dispatched by six
+  `call dword [0x104AE4]` sites, and `0x41578` is direct-called from four sites. Neither
+  appears in either process table, and every one of those sites is reached only through
+  `0x24C5C`'s unported mode cases (`0x12`, `0x16..0x1B`) and the unported match/fight
+  chain. The port's `DS_00104B00` is fixed at 3 by `0x10E80`, so none is reachable from
+  the ported states 3/4/5. Per the reachability ruling they are **deferred and unowned by
+  this plan** — no dispatch path is shipped (see `port/spec/game_flow.md`).
 
 **Tools.** The repo's standing rule is that existing `tools/` files are read-only. This
 cycle carves out `tools/title_pin.py` and `tools/title_compare.py` by explicit approval:
@@ -152,8 +164,8 @@ value is transcribed from the decompiler without checking the bytes.
 2. **Derivation record** for `0x2F4BC`, `0x12658`, `0x1EA08`, `0x29B74`, `0x41578` and
    the camera/scene functions.
 3. **State 3**, then **state 4**, then **state 5**, each gated on the oracle advancing.
-4. **Effect render path** (the camera/scene state updates; no draw exists), then the
-   **process-table wiring**.
+4. **Effect render path** (the camera/scene state updates; no draw exists). The effect
+   call sites are investigated and deferred as unreachable (see §5).
 5. **Docs** — `port/spec/game_flow.md` dispositions, README and the cycle report.
 
 ## 9. Verification
