@@ -1608,8 +1608,10 @@ Addresses added by this section:
 
 Arguments: `EAX = side`; `EDX = (s32)(u32)dword[0xBDA38 + side*2] >> 16`; `ECX =
 word[0xBD898] = 0x400`; the stack arg `= 0x4000` for side 0, `0` for side 1.
-`DS_000BDA38` is the per-side initial-x table: side 0 → `0xE8100001 >> 16 =
-0xFFFFE810` (`-0x17F0`), side 1 → `0x1800E810 >> 16 = 0x1800`. **`0x33EB4`
+`DS_000BDA38` is the per-side initial-x table: side 0 reads the dword
+`0xE8001001` → `sar 16 = 0xFFFFE800` (`-0x1800`), side 1 reads the dword
+`0x1800E800` → `0x1800` (bytes `01 10 00 e8 00 18 18 00` at `0xBDA38`).
+**`0x33EB4`
 preserves EDX** — it pushes it at `0x33EB6` and pops it after the `ret 4` — so
 the value state 6 stores in `DS_001082C8` is the caller's `7`, not a callee
 return (§10.8).
@@ -1777,7 +1779,10 @@ any resource reader (§10.9). The `desc+0x10` palette handles are `0x1BFD58`
 `0x2A17C` (pinned by the raw: `0x2A17E mov ecx,eax`; `0x2A192 mov eax,edx`)
 writes `pset+2 = word | (rec+0x5F ? 0x800 : 0)` and, for a non-zero handle,
 releases the existing `pset+0x18` entry through `0x33864` and sets it to
-`palette_acquire(handle)`; a zero handle clears `pset+0x18`. The spawn passes
+`palette_acquire(handle)`. A **zero** handle returns at `0x2A1AC` (`test ebx,ebx
+/ je 0x2A1F8`) **leaving `pset+0x18` unchanged** — the store at `0x2A1F5` is
+dead, reachable only from `0x2A1E6`'s `test ebx,ebx / je` inside the guarded
+acquire path, where EBX is still the non-zero entry value. The spawn passes
 `word = 0`, so the fighter's palette becomes `DS_000A8A98[char][DS_00105B34[side]]`.
 
 ### 10.4 `0x1CEBC` (24 B) and the tail
@@ -1905,6 +1910,11 @@ diverts to `0x4CF20` (no list, no RNG).
 (`DS_00104AEC |= 2`), a named gap.
 
 **`DS_001082C8`.** Input: state 6. Expected `7`.
+
+**`0x2A17C`.** Input: `rec+0x56 = 0`; `pset+0x18` seeded to a sentinel;
+`handle = 0`. Expected: `pset+2 = word | (rec+0x5F ? 0x800 : 0)` and
+`pset+0x18` **unchanged** (the raw returns at `0x2A1AC`). Input B: a non-zero
+handle → the existing entry is released and `pset+0x18 = palette_acquire(handle)`.
 
 **Arena frame with live slots.** After the spawn, seed `DSD(0x1077B0) + 0x3C`
 to a sentinel; a state-7 `game_frame` (the tail's `0x2A690`) writes

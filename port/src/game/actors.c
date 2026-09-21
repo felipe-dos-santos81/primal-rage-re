@@ -1107,21 +1107,21 @@ static void palette_release(u32 entry)
 /* 0x2A17C. EAX=rec, EDX=word, EBX=handle (pinned by the raw: 0x2A17E copies EAX
  * to ECX and 0x2A192 copies EDX to EAX before the pset+2 OR). The spawn's
  * 0x29BC8 passes word 0 and the character's palette handle, so an existing
- * entry (the descriptor's) is released before the new one is acquired. */
+ * entry (the descriptor's) is released before the new one is acquired. A zero
+ * handle returns at 0x2A1AC leaving pset+0x18 unchanged: the 0x2A1F5 store is
+ * dead, reached only from 0x2A1E6's `test ebx,ebx / je` inside the guarded
+ * acquire path. */
 void actor_pset_palette(u32 rec, u32 word, u32 handle)
 {
     u32 pset = actor_pset(rec);                             /* 0x2A182..0x2A190 */
     DSW(pset + 0x02u) = (u16)(word | (DSB(rec + 0x5fu) != 0 ? 0x800u : 0u));
-    if (handle != 0) {                                      /* 0x2A1AA */
-        u32 old = DSD(pset + 0x18u);                        /* 0x2A1BF */
-        if (old != 0) {                                     /* 0x2A1C2 */
-            palette_release(old);                           /* 0x2A1C8 0x33864 */
-            DSD(pset + 0x18u) = 0;                          /* 0x2A1CD */
-        }
-        DSD(pset + 0x18u) = palette_acquire(handle);        /* 0x2A1EA/0x2A1EF */
-    } else {
-        DSD(pset + 0x18u) = 0;                              /* 0x2A1F5 */
+    if (handle == 0) return;                                /* 0x2A1AA/0x2A1AC */
+    u32 old = DSD(pset + 0x18u);                            /* 0x2A1BF */
+    if (old != 0) {                                         /* 0x2A1C2 */
+        palette_release(old);                               /* 0x2A1C8 0x33864 */
+        DSD(pset + 0x18u) = 0;                              /* 0x2A1CD */
     }
+    DSD(pset + 0x18u) = palette_acquire(handle);            /* 0x2A1EA/0x2A1EF */
 }
 
 /* 0x2B150. Set the dead bit (0x28 0x08), release the pset palette and unlink

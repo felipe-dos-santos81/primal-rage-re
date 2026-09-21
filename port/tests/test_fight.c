@@ -385,6 +385,32 @@ static void check_arena_frame(void)
     CHECK_EQ_INT((int)DSD(p0 + 0x20u), 0);
 }
 
+/* 0x2A17C: a zero handle returns at 0x2A1AC (`test ebx,ebx / je 0x2A1F8`) and
+ * leaves the pset's palette entry (+0x18) unchanged; the 0x2A1F5 store is dead.
+ * The +0x18 sentinel differs from any acquired entry, so the old clearing
+ * behaviour fails here. The +2 write still runs. */
+static void check_pset_palette_zero_handle(void)
+{
+    u32 rec = DSD(DS_001014F4);                     /* a valid pool record */
+    if (rec == 0) { CHECK(0, "actor pool base set"); return; }
+    u16 saved_56 = DSW(rec + 0x56u);
+    u8  saved_5f = DSB(rec + 0x5fu);
+
+    mem_fill(FIGHT_ACTORS, 0, 0x80u);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSW(rec + 0x56u) = 0;                           /* pset slot 0 */
+    DSB(rec + 0x5fu) = 0;
+    DSD(FIGHT_ACTORS + 0x18u) = 0xDEADBEEFu;        /* pset+0x18 sentinel */
+    DSW(FIGHT_ACTORS + 2u) = 0xAAAAu;               /* pset+2 sentinel */
+
+    actor_pset_palette(rec, 0x1234u, 0u);
+    CHECK_EQ_INT((int)DSD(FIGHT_ACTORS + 0x18u), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 2u), 0x1234);
+
+    DSW(rec + 0x56u) = saved_56;
+    DSB(rec + 0x5fu) = saved_5f;
+}
+
 /* Task 6 Step 5: with the spawn live, the game_frame tail's per-side
  * 0x186D0/0x2A690 calls run on the spawned records. State 6 spawns both sides,
  * then a state-7 game_frame syncs P0's record pset (0x2A690 writes rec+0x3C
@@ -1072,6 +1098,7 @@ int test_fight(void)
     check_decay();
     check_arena_frame();
     check_arena_frame_live();
+    check_pset_palette_zero_handle();
     check_fighter_pass_a();
     check_fighter_pass_b();
     check_hud_pass();
