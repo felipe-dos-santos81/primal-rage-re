@@ -715,18 +715,19 @@ a site:
   constant-replacement shape cannot align it. That is a cycle-2 question (how the
     demo's stream is kept in step), recorded here rather than fitted.
 
-**Cycle 2 replaced the two state-6 pins with the master-loop pin, and the two
-streams still do not meet — the finding is recorded, not papered over.** The
-master loop `0x255CC` draws `rng(0x7FFF)` twice: the body draw at `0x256B1`
-(file `0x78505`, `e826810300` → `b800000000`) and the spin draw at `0x256D6`
-(file `0x7852A`, `e801810300` → `b800000000`), both with `EBP = 0x7FFF`
-(`0x255E4`). The spin is `while (DS_0010150C - 1 == DS_00101508) rng_step()`
-(`0x256C6`..`0x256DB`) — host-timed and unbounded, which is why the reference's
-stream position was not deterministic. `title_pin.py` now pins both sites to a
-non-advancing `mov eax,0`, and the port's `game_loop` stopped drawing at the
-body site (the `rng_step()` there removed; `port/src/game/flow.c`). The port
-never modelled the spin: its master loop waits one 60 Hz host retrace
-(`host_wait_vblank()`, `host.c:203`), so it has no spin draw to stop.
+**Cycle 2 replaced the two state-6 pins with the master-loop pin, then closed
+the two deterministic offsets the pin alone did not cover — the streams now
+meet.** The master loop `0x255CC` draws `rng(0x7FFF)` twice: the body draw at
+`0x256B1` (file `0x78505`, `e826810300` → `b800000000`) and the spin draw at
+`0x256D6` (file `0x7852A`, `e801810300` → `b800000000`), both with
+`EBP = 0x7FFF` (`0x255E4`). The spin is
+`while (DS_0010150C - 1 == DS_00101508) rng_step()` (`0x256C6`..`0x256DB`) —
+host-timed and unbounded, which is why the reference's stream position was not
+deterministic. `title_pin.py` now pins both sites to a non-advancing
+`mov eax,0`, and the port's `game_loop` stopped drawing at the body site (the
+`rng_step()` there removed; `port/src/game/flow.c`). The port never modelled the
+spin: its master loop waits one 60 Hz host retrace (`host_wait_vblank()`,
+`host.c:203`), so it has no spin draw to stop.
 
 The oracle claims held after the re-capture (`make frontend-capture`): title
 `54 clean, 55 splice, 2 transition, 0 unexplained` / `54 clean, 57 splice, 0
@@ -738,44 +739,48 @@ window distinct `[811..3759]` → `[816..3616]`, first unexplained `811` → `81
 and the post-logo distinct count `3760` → `3617`. The claim is the gate; the
 indices are derived.
 
-**The pin does not align the streams: the reference's state-6 entry is the seed
-plus the attract's draws, and the port's driver is at the seed.** Measured and
+**The pin alone did not align the streams; two deterministic draw sources were
+missing, and both are now ported (the human's ruling, Option 1).** Measured and
 derived:
 
-* The port's attract draws exactly **26** values before the title handoff (its
-  LCG state at `attract_step` case 0xB is `0x4308698B` = seed `0xABCD` advanced
-  26 steps), and the attract oracle shows the capture's attract is the same run.
-  The title's three draws are pinned to constants (no advance), and the only
-  draw site reachable from states 2..5 is the already-pinned opcode-8 handler
-  (`0x2B2A0`), so the capture's stream at its state-6 entry is the seed + 26.
-* The port's front-end driver (`PR_FRONTEND_DUMP`) enters at state 2, so its
-  state-6 entry is the seed + 0 (instrumented: `DS_000EF6D8` = `0x23C79644`
-  after `rng(7)`, i.e. `0xABCD` before it).
-* State 6 draws more than the port's two. `fighter_spawn(0)` (`0x33EB4` →
-  `0x33C78`) calls the dust builder `0x494A8`, whose loop (`0x49540`/`0x4967F`,
-  bound `slot+0x81`) draws **three** values per iteration — `0x49388`'s
-  unconditional draw (`0x493AB`), `rng(0x1800)` (`0x495DF`) and `rng(step)`
-  (`0x495FC`) — between `0x11AAD` and `0x11AE9`. The port's
-  `fighter_spawn_slot` skips the whole builder (the §10.5 gap), so it misses
-  3 × `slot+0x81` draws per spawn; the demo's `slot+0x81` is 2, so six draws
-  between the two picks. **§10.5's "loops `n` times … two RNG values per
-  iteration" is wrong against the raw: the loop bound is `slot+0x81`, and
-  `0x49388` draws once per iteration (three draws total per iteration).**
-* The capture's picks confirm both offsets: at seed+26, `rng(7)` = 0, and after
-  the dust's six draws `rng(6)` = 3, giving characters `0xC835A[0] = 0` and
-  `0xC835A[3] = 3` — exactly the two fighters the re-captured demo shows
-  (matched frame-for-frame against the port's forced-character renders). The
-  port's driver picks are `draw1 = 0`, `draw2 = 5` (seed+0, no dust draws) →
-  characters `0` and `0xC835A[5] = 6`, which is what its own frames show.
-* So the streams are **not** aligned in the oracle's comparison path: the
-  reference is 26 draws ahead of the port's driver (the skipped attract) and
-  the port is six draws behind inside state 6 (the skipped dust builder).
-  Resolving this needs a human decision — either the front-end driver
-  reproduces the attract's draws (or re-seeds to its post-state `0x4308698B`,
-  the pattern the title driver already uses) **and** the port issues the dust
-  builder's draws, or the attract's three sites (`0x10F4D`/`0x10F76`/`0x10F95`)
-  are pinned too. Neither is fitted here. `tools/title_pin.py`; `host.c:203`;
-  `port/src/game/flow.c`; `port/src/game/fighter.c`.
+* The reference's state-6 entry is the seed **+ 26**: the attract's voice tick
+  `0x10F28` (called from `0x11559` while `DS_0009AD58 == 0`, set at `0x11092`)
+  draws `rng(0x2D)`/`rng(2)`/`rng(0x3C)` at `0x10F4D`/`0x10F76`/`0x10F95`
+  before the title; the title's three draws are pinned to constants (no
+  advance); and the only draw site reachable from states 2..5 is the
+  already-pinned opcode-8 handler (`0x2B2A0`). The port's own attract reaches
+  the `attract_step` case 0xB handoff with `DS_000EF6D8 == 0x4308698B` = seed
+  `0xABCD` advanced exactly 26 steps (the attract oracle shows the capture's
+  attract is that same run). The front-end driver entered at state 2 and sat at
+  the seed; it now re-seeds to that post-state (`FRONTEND_RNG_AFTER_ATTRACT`,
+  `test_frontend.c`) — the same pattern the title driver uses for the pinned
+  title, and the dumped window is unchanged.
+* State 6 itself draws six more than the port's two. `fighter_spawn(0)`
+  (`0x33EB4` → `0x33C78`) calls the dust builder `0x494A8`, whose loop
+  (`0x49540`/`0x4967F`, bound `slot+0x81`) draws three values per iteration —
+  `0x49388`'s unconditional draw (`0x493AB`), `rng(0x1800)` (`0x495DF`) and
+  `rng(step)` (`0x495FC`) — between `0x11AAD` and `0x11AE9`; the demo's
+  `slot+0x81` is 2, so six draws. The port's `fighter_spawn_slot` skipped the
+  builder; `fight_dust_build` (`port/src/game/fight.c`) now ports it — the
+  entry traffic, the `0x49388`/`0x29CDC`/`0x496AC` helpers and the `0x2AE14`
+  actor spawn. (§10.5's "loops `n` times … two RNG values per iteration" was
+  wrong against the raw: the bound is `slot+0x81` and `0x49388` draws once per
+  iteration; corrected in the cycle-1 record.)
+* The capture's picks confirm both: at seed+26, `rng(7)` = 0, and after the
+  dust's six draws `rng(6)` = 3, giving characters `0xC835A[0] = 0` and
+  `0xC835A[3] = 3` — exactly the two fighters the re-captured demo shows, and
+  now the port's too (verified frame-for-frame against the capture). The driver
+  asserts the entry LCG state and the two characters
+  (`test_frontend.c`), and `check_state6` asserts the full 14-draw model and the
+  dust entries' fields.
+* **Residual.** The dust entries' type-0 processing (`0x49C78`'s default arm →
+  `0x4AAD0` and its callees) is still a named gap, so the dust's motion and
+  despawn are not faithful; its actor is spawned and rendered (the descriptor
+  `0xBB4C0`, type `0x24`, whose per-type callback is the `0x5D812` stub). The
+  demo window's first unexplained frame is still 816 (the state-9 hold render),
+  so the oracle cannot measure the dust's pixels until Task 3 lands.
+  `tools/title_pin.py`; `host.c:203`; `flow.c`; `fighter.c`; `fight.c`;
+  `actors.c`; `effects.c`.
 
 The demo window therefore cannot converge in cycle 1; cycle 2 owns it: collision
 and damage (`0x3BB90`, `0x4FB20`, `0x3BAEC`, `0x3B9D8`), the `0x3CF38` hit chain,

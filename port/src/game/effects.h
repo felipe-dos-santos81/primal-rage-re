@@ -11,6 +11,15 @@
  * All of these are generated in symbols.h. */
 #define EFFECTS_REC_SIZE 0x814u
 
+/* 0x249B0/0x249C0/0x249D0. The {next@+0; prev@+4} splice-list primitives,
+ * shared by the effect lists (0xFCCE0/0xFCCE8) and the fight-effect lists
+ * (0x1083C4/0x10884C that 0x49300 builds and 0x494A8 draws from). Exposed
+ * because 0x494A8's builder moves nodes between the fight-effect lists and a
+ * second implementation would be a duplicate port. */
+void effects_list_insert_after(u32 at, u32 rec);
+void effects_list_insert_before(u32 at, u32 rec);
+void effects_list_unlink(u32 rec);
+
 /* 0x13ADC. Self-links both sentinels, then tail-appends the 24 records to the
  * free list (0x249C0 insert-before, so 0xF0B00 stays the head). */
 void effects_init(void);

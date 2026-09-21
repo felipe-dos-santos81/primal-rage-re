@@ -6,6 +6,7 @@
 #include "game/flow.h"
 #include "game/actors.h"
 #include "game/effects.h"
+#include "game/rng.h"
 #include "platform/gfx.h"
 #include "mem.h"
 #include "symbols.h"
@@ -14,6 +15,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+
+/* The reference's LCG state when its state 6 runs. The attract's voice tick
+ * (0x10F28, called from 0x11559 while DS_0009AD58 == 0) is the only consumer
+ * before the title: it draws 26 values over the boot attract, and the port's
+ * own attract reaches attract_step case 0xB's title handoff with
+ * DS_000EF6D8 == 0x4308698B, i.e. seed 0xABCD advanced 26 steps. The title's
+ * three draws are pinned to constants (no advance) and states 2..5 draw
+ * nothing (only the pinned opcode-8 handler is reachable), so the reference's
+ * state-6 entry is that same state. The driver enters at state 2, so it
+ * re-seeds to it — the same pattern test_title_window uses for the pinned
+ * title. The assertion below fails if the re-seed or the state-6 draws move. */
+#define FRONTEND_RNG_AFTER_ATTRACT 0x4308698Bu
 
 /* Seed exactly one live front-end list entry at DS_00107608 with `handle` in
  * its +0 dword. The iterator advances by 0x10 before its first test, so the
@@ -449,9 +462,18 @@ int test_frontend(void)
         game_init();
         actors_pin_anim_tick_zero(1);
 
+        /* The attract runs before the reference's state 6; this driver skips it
+         * by entering at state 2, so re-seed to the attract's post-state. */
+        rng_seed(FRONTEND_RNG_AFTER_ATTRACT);
+
         /* Enter state 2 at phase 0, the entry game_state_title() leaves for. */
         DSW(DS_000F0A64) = 2;
         DSB(DS_000F0A6F) = 0;
+
+        /* Seed the pick bytes so the alignment check below cannot pass on a
+         * never-written BSS zero. */
+        DSB(DS_0010816A) = 0xFFu;
+        DSB(DS_0010816A + 1u) = 0xFFu;
 
         mkdir(dump, 0777);      /* ignore EEXIST; matches the frame-dump hook */
 
@@ -467,7 +489,16 @@ int test_frontend(void)
 
         u32 seen_entries = 0;
         int reached3 = 0;
+        int seen6 = 0;
+        u32 entry_lcg = 0;
         for (int i = 0; i < 2000; i++) {
+            /* The state-9 exit leaves DS_000F0A64 == 6 for the next iteration;
+             * nothing draws between the hold and the state-6 handler, so this
+             * is the state-6 entry's LCG state. */
+            if (!seen6 && DSW(DS_000F0A64) == 6u) {
+                entry_lcg = DSD(DS_000EF6D8);
+                seen6 = 1;
+            }
             DSB(DS_000A81A8) = 1;          /* exactly one game_loop iteration */
             game_loop();
             if (DSW(DS_000F0A64) == 3u) reached3 = 1;
@@ -523,6 +554,17 @@ int test_frontend(void)
         CHECK_EQ_INT((int)seen_entries, 0x3F);
         CHECK(reached3, "the window reaches state 3");
         CHECK_EQ_INT(dumped, (int)(raw_cap < 1381 ? raw_cap : 1381));
+
+        /* Alignment: the driver's state-6 entry sits at the attract's
+         * post-state, and the two picks drawn from it (plus the dust builder's
+         * six intermediate draws) are the capture's characters, 0xC835A[0] = 0
+         * and 0xC835A[3] = 3. A reverted re-seed leaves entry_lcg at the seed
+         * (or 0); a dropped dust draw or a restored master-loop draw changes
+         * the characters. */
+        CHECK(seen6, "the driver reaches state 6");
+        CHECK_EQ_INT((int)entry_lcg, (int)FRONTEND_RNG_AFTER_ATTRACT);
+        CHECK_EQ_INT((int)DSB(DS_0010816A), 0);
+        CHECK_EQ_INT((int)DSB(DS_0010816A + 1u), 3);
         game_shutdown();
     }
     return g_failures - before;

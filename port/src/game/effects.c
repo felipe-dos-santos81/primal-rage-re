@@ -28,7 +28,7 @@
 /* ---- the splice lists (0x249B0/0x249C0/0x249D0) ------------------------- */
 
 /* 0x249B0: insert rec immediately after `at`. */
-static void list_insert_after(u32 at, u32 rec)
+void effects_list_insert_after(u32 at, u32 rec)
 {
     u32 next = DSD(at);
     DSD(at) = rec;
@@ -38,7 +38,7 @@ static void list_insert_after(u32 at, u32 rec)
 }
 
 /* 0x249C0: insert rec immediately before `at`. */
-static void list_insert_before(u32 at, u32 rec)
+void effects_list_insert_before(u32 at, u32 rec)
 {
     u32 prev = DSD(at + 4);
     DSD(at + 4) = rec;
@@ -48,7 +48,7 @@ static void list_insert_before(u32 at, u32 rec)
 }
 
 /* 0x249D0: unlink rec and zero its two link fields. */
-static void list_unlink(u32 rec)
+void effects_list_unlink(u32 rec)
 {
     u32 prev = DSD(rec + 4);
     DSD(DSD(rec) + 4) = prev;
@@ -67,7 +67,7 @@ static void effect_teardown(u32 rec)
 {
     u8 saved = DSB(DS_0009AF3C);
     DSB(DS_0009AF3C) = 1;
-    list_unlink(rec);
+    effects_list_unlink(rec);
     DSB(DS_0009AF3C) = saved;
 
     u32 src = DSD(rec + 8);
@@ -85,7 +85,7 @@ static void effect_teardown(u32 rec)
         break;
     }
 
-    list_insert_after(DS_000FCCE8, rec);
+    effects_list_insert_after(DS_000FCCE8, rec);
 }
 
 /* ---- exported ----------------------------------------------------------- */
@@ -105,7 +105,7 @@ void effects_init(void)
     DSD(DS_000FCCEC) = DS_000FCCE8;
     DSD(DS_000FCCE8) = DS_000FCCE8;
     for (u32 rec = DS_000F0B00; rec < DS_000FCCE0; rec += EFFECTS_REC_SIZE)
-        list_insert_before(DS_000FCCE8, rec);
+        effects_list_insert_before(DS_000FCCE8, rec);
     DSB(DS_0009AF3C) = 0;
 }
 
@@ -113,7 +113,7 @@ void effects_init(void)
  * interrupt lock. Returns 0 when the pool is unbuilt or empty. The unbuilt
  * guard mirrors effects_clear's: with the sentinels zeroed (actors_reset
  * early-returns before effects_init) the free sentinel reads as rec=0 and
- * list_unlink(0) would write mem[0]/mem[4], then link a phantom record onto the
+ * effects_list_unlink(0) would write mem[0]/mem[4], then link a phantom record onto the
  * active list. The original itself factors this pop out of line at 0x133D0
  * (uncalled); the port keeps one owner for the four producers. */
 static u32 effect_take_free(void)
@@ -124,7 +124,7 @@ static u32 effect_take_free(void)
     if (rec == DS_000FCCE8) return 0;
     u8 saved = DSB(DS_0009AF3C);
     DSB(DS_0009AF3C) = 1;
-    list_unlink(rec);
+    effects_list_unlink(rec);
     DSB(DS_0009AF3C) = saved;
     return rec;
 }
@@ -156,7 +156,7 @@ u32 effects_spawn(u32 source_rec, u32 byte_arg, u32 handle)
 
     DSB(DS_0009AF3C) = 1;
     DSB(rec + 0x0e) = 1;
-    list_insert_after(DS_000FCCE0, rec);
+    effects_list_insert_after(DS_000FCCE0, rec);
     DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) + 1);
     DSB(DS_0009AF3C) = 0;
     return rec;
@@ -182,7 +182,7 @@ u32 effects_spawn_darken(u32 source_rec, u32 byte_arg)
     }
     DSB(DS_0009AF3C) = 1;
     DSB(rec + 0x0e) = 1;
-    list_insert_after(DS_000FCCE0, rec);
+    effects_list_insert_after(DS_000FCCE0, rec);
     DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) + 1);
     DSB(DS_0009AF3C) = 0;
     return rec;
@@ -216,7 +216,7 @@ u32 effects_spawn_pulse(u32 source_rec, u32 byte_arg)
     }
     DSB(DS_0009AF3C) = 1;
     DSB(rec + 0x0e) = 1;
-    list_insert_after(DS_000FCCE0, rec);
+    effects_list_insert_after(DS_000FCCE0, rec);
     DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) + 1);
     DSB(DS_0009AF3C) = 0;
     return rec;
@@ -283,7 +283,7 @@ u32 effects_spawn_scroll(u32 source_rec, s32 offset, u32 count, u32 flag)
     DSB(rec + 0x0f) = n;
 
     DSB(DS_0009AF3C) = 1;
-    list_insert_after(DS_000FCCE0, rec);
+    effects_list_insert_after(DS_000FCCE0, rec);
     DSB(DS_0009AF3C) = 0;
     return rec;
 }
@@ -465,8 +465,8 @@ void effects_step(void)
             /* 0x249d0 unlinks and zeroes the links, so save the back-link first;
              * after the unlink it points at the record's original next. */
             u32 back = DSD(rec + 4);
-            list_unlink(rec);
-            list_insert_after(DS_000FCCE8, rec);
+            effects_list_unlink(rec);
+            effects_list_insert_after(DS_000FCCE8, rec);
             DSB(DS_0009AF3D) = (u8)(DSB(DS_0009AF3D) - 1);
             rec = DSD(back);
         } else {

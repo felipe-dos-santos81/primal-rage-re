@@ -1338,24 +1338,23 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
         mode1_cursor(rec, pset);                    /* 0x2A620 */
     }
 
-    /* 0x2B0D4: the per-type render check (DS_000BB9DC + rec+0x48 * 0xC). Case
-     * 0x00 is 0x5D812 `xor eax,eax; ret`, so the check returns 0 and the record
-     * takes the visible path. */
-    switch (DSB(rec + 0x48)) {
-    case 0x00:
+    /* 0x2B0D4: the per-type render check calls DS_000BB9DC[rec+0x48 * 0xC]. The
+     * stub 0x5D812 (`xor eax,eax; ret`) returns 0, so the record takes the
+     * visible path. Types 0x00 (the title objects and the fighter descriptors)
+     * and 0x24 (the dust descriptors at 0xC9524) both carry it. */
+    if (DSD(DS_000BB9DC + (u32)DSB(rec + 0x48) * 0xCu) == FN_0005D812) {
         DSB(rec + 0x2b) |= 0x40;
         if ((a5 & 0x400u) == 0) DSB(rec + 0x4a) = 0;
         render_list_insert(pset);                   /* 0x1C390 + 0x1C3A0 */
         return rec;
-    default:
-        /* PORT: the per-type render check case for this record's type is not
-         * ported. No title object reaches it: 0x9AC30 and 0x9AC94 both carry
-         * desc+0x04 = 0x00. Mirror the check's non-zero return (mark the record
-         * dead, return 0). */
-        DSB(rec + 0x48) = 0;
-        DSW(rec + 0x28) |= 8;
-        return 0;
     }
+    /* PORT: the real per-type callbacks (types 2/3/4/5/7/8/...) are unported.
+     * No object the port spawns reaches them (the title's 0x9AC30/0x9AC94, the
+     * fighters' descriptors and the dust's 0xBB4C0 are the stub), so mirror the
+     * check's non-zero return: mark the record dead, return 0. */
+    DSB(rec + 0x48) = 0;
+    DSW(rec + 0x28) |= 8;
+    return 0;
 }
 
 /* ---- text renderer and record grid -------------------------------------

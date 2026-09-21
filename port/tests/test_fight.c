@@ -980,10 +980,14 @@ static void check_slot_latch(void)
     CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x30u), 0x220);
 }
 
-/* 0x11A8C: state 6. Two draws from the shared stream (rng(7), then rng(6)),
- * the four stores, the arm and the character picks. The draws are precomputed
- * on a fresh seed so a wrong order or range fails; DS_00104AFC must carry draw1
- * and DS_0010816A[0]/[1] the two mapped characters. */
+/* 0x11A8C: state 6. Eight draws from the shared stream — rng(7) at 0x11AAD,
+ * then the P0 spawn's dust builder (0x494A8: three draws per iteration over
+ * slot+0x81 = 2, so six) and rng(6) at 0x11AE9 — the stores, the arm and the
+ * character picks. The draws are precomputed on a fresh seed so a wrong order,
+ * count or range fails; DS_00104AFC must carry draw1, DS_0010816A[0]/[1] the
+ * two mapped characters, and the LCG state after the handler must equal the
+ * model's eight-step state (a dropped dust draw or a restored master-loop draw
+ * moves it). */
 static void check_state6(void)
 {
     (void)demo_fixture();
@@ -1008,14 +1012,49 @@ static void check_state6(void)
 
     rng_seed(0x1234u);
     u32 draw1 = rng_next(7u);
+    /* Each spawn's dust builder (0x494A8) draws three values per iteration —
+     * 0x49388's rng(side) (the picker; range 0 for side 0, 1 for side 1),
+     * rng(0x1800) at 0x495DF and rng(step) at 0x495FC with step = 0x300 /
+     * slot+0x81 — over slot+0x81 = 2 iterations. P0's six sit between 0x11AAD
+     * and 0x11AE9; P1's six follow at 0x11B08. slot+0x81 is 2 here (0x49300
+     * seeds DS_001088CC = 2, DS_000C9520 divides slot+0x3C = 0). */
+    for (u32 i = 0; i < 2u; i++) {
+        (void)rng_next(0u);
+        (void)rng_next(0x1800u);
+        (void)rng_next(0x300u / 2u);
+    }
     u32 draw2 = rng_next(6u);
     u32 p1_char = (draw1 + draw2) % 7u;
+    for (u32 i = 0; i < 2u; i++) {
+        (void)rng_next(1u);
+        (void)rng_next(0x1800u);
+        (void)rng_next(0x300u / 2u);
+    }
+    u32 end_state = DSD(DS_000EF6D8);
 
     DSW(DS_000F0A64) = 6;
     rng_seed(0x1234u);
     game_state_step();
 
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)end_state);
     CHECK_EQ_INT((int)DSW(DS_00104AFC), (int)draw1);
+
+    /* 0x494A8's effect, not only its draws: two entries per side moved to the
+     * 0x10884C list (each insert-after puts the newest first, so side 1's two
+     * lead), each with a type-0 header, the step at +0x1A and a spawned actor
+     * at +8. */
+    {
+        u32 n = 0;
+        for (u32 e = DSD(DS_0010884C); e != DS_0010884C; e = DSD(e)) {
+            CHECK_EQ_INT((int)DSB(e + 0x1Eu), 0);
+            CHECK_EQ_INT((int)DSW(e + 0x1Au), 0x180);
+            CHECK_EQ_INT((int)DSD(e + 0x0Cu),
+                         (int)(DS_001077B0 + (n < 2u ? 0x94u : 0u)));
+            CHECK(DSD(e + 8u) != 0, "dust entry carries a spawned actor");
+            n++;
+        }
+        CHECK_EQ_INT((int)n, 4);
+    }
     CHECK_EQ_INT((int)DSB(DS_0010816A), (int)DSB(DS_000C835A + draw1));
     CHECK_EQ_INT((int)DSB(DS_0010816A + 1u), (int)DSB(DS_000C835A + p1_char));
     CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x63u), 1);

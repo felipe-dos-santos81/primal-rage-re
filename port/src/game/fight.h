@@ -55,6 +55,15 @@ void fight_slot_clear(void);
  * DS_0010884C to point at itself when the list is empty. */
 void fight_list_init(void);
 
+/* 0x494A8. The dust/effect entry builder the fighter spawn (0x33C78) calls at
+ * 0x33E43 when DS_00104B14 == 0. Each iteration moves one node from the free
+ * fight-effect list (DS_001083C4) to the active one (DS_0010884C), picks a
+ * descriptor (0xC9524), spawns the dust actor and fills the entry. It issues
+ * three RNG draws per iteration (0x49388, rng(0x1800), rng(step)) over
+ * slot+0x81 iterations — state 6's six intermediate draws. The entry's type-0
+ * processing (0x4AAD0) is a named gap (§7.4); the spawned actor renders. */
+void fight_dust_build(u32 side);
+
 /* 0x41350. The per-side character select state 6 calls for both players. It
  * runs 0x33C18 (the slot field reset), stores the character index (0xC835A[char])
  * into DS_0010816A[side] unless DS_00104B1D == 1, sets the slot's +0x63 think

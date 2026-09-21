@@ -637,6 +637,57 @@ are the human's to choose, and the record does not pick one:
 Until the human rules, Task 2 is BLOCKED and no later task may compare frames
 past the character picks.
 
+### 5.4 Task 2's outcome (the human's ruling: Option 1 — fix the driver and the port)
+
+The human ruled Option 1. The master-loop pin landed (both draws at
+`0x256B1`/`0x256D6` → non-advancing `mov eax,0`; the port's `game_loop` body
+draw removed; `tools/title_pin.py`, commit `53b4cef`) and the reference became
+deterministic — but the two streams still did not meet, because §5.2 counted
+only the master loop's draws and **two deterministic sources were missing**:
+
+1. **The attract's 26 draws.** The attract's voice tick `0x10F28` (called from
+   `0x11559` while `DS_0009AD58 == 0`, set at `0x11092`) draws `rng(0x2D)` /
+   `rng(2)` / `rng(0x3C)` at `0x10F4D`/`0x10F76`/`0x10F95` before the title.
+   The title's three draws are pinned to constants (no advance) and the only
+   draw site reachable from states 2..5 is the already-pinned opcode-8 handler
+   (`0x2B2A0`), so the reference's state-6 entry is the seed advanced by the
+   attract's draws. The port's own attract reaches the `attract_step` case 0xB
+   handoff with `DS_000EF6D8 == 0x4308698B` — seed `0xABCD` advanced exactly
+   **26** steps (measured; the attract oracle shows the capture's attract is
+   that same run). The front-end driver (`test_frontend.c`) enters at state 2
+   and skipped them; it now re-seeds to that state
+   (`FRONTEND_RNG_AFTER_ATTRACT`), the same pattern the title driver uses for
+   the pinned title. The capture stays valid — **no third re-capture**.
+2. **The dust builder's draws.** `fighter_spawn(0)` (`0x33EB4` → `0x33C78`,
+   gate `DS_00104B14 == 0`) calls the dust builder `0x494A8`, whose loop
+   (`0x49540`/`0x4967F`, bound `slot+0x81`) draws **three** values per
+   iteration — `0x49388`'s unconditional draw (`0x493AB`), `rng(0x1800)`
+   (`0x495DF`) and `rng(step)` (`0x495FC`) — between `0x11AAD` and `0x11AE9`.
+   The demo's `slot+0x81` is 2 (0x49300 seeds `DS_001088CC = 2`,
+   `DS_000C9520` divides `slot+0x3C = 0`), so **six** draws sit between the
+   picks. The port's `fighter_spawn_slot` skipped the whole builder;
+   `fight_dust_build` (`port/src/game/fight.c`) now ports it — the entry
+   traffic, the `0x49388`/`0x29CDC`/`0x496AC` helpers and the `0x2AE14` actor
+   spawn. (§10.5 of the cycle-1 record said "loops `n` times … two RNG values
+   per iteration"; the raw wins: the bound is `slot+0x81` and `0x49388` draws
+   once per iteration. Corrected there.)
+
+With both fixed the capture's picks are reproduced exactly: at seed+26,
+`rng(7)` = 0; after the six dust draws `rng(6)` = 3, so the characters are
+`0xC835A[0] = 0` and `0xC835A[3] = 3` — the re-captured demo's fighters, and now
+the port's driver's too (verified frame-for-frame against the capture). The
+master-loop spin was real (it is what made the reference nondeterministic) but
+it was **not the only offset**.
+
+**Residual (named gap).** The dust entries' type-0 processing — `0x49C78`'s
+default arm → `0x4AAD0` and its callees — is still unported (its transitive
+closure is ~189 functions / ~27 KB including CRT stubs; the demo-relevant
+subset is the 0x4Bxxx dust behaviour). The dust's *actor* is spawned and
+rendered (the descriptor `0xBB4C0`, type `0x24`, whose per-type callback is the
+`0x5D812` stub), but its motion and despawn are not. The demo window's first
+unexplained frame is still **816** (the state-9 hold render), so the oracle
+cannot measure the dust's pixels until Task 3 lands.
+
 ---
 
 ## 6. What could not be determined (named gaps)

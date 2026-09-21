@@ -8,6 +8,7 @@
 #include "game/fighter.h"
 #include "game/camera.h"
 #include "game/actors.h"
+#include "game/effects.h"
 #include "game/rng.h"
 #include "../mem.h"
 #include "../symbols.h"
@@ -43,14 +44,8 @@ void fight_list_init(void)
     DSD(DS_0010884C) = DS_0010884C;            /* 0x4931E */
     DSD(DS_001083C8) = DS_001083C4;            /* 0x49324 */
     DSD(DS_001083C4) = DS_001083C4;            /* 0x4932F */
-    for (u32 node = 0x1083CCu; node < DS_0010884C; node += 0x24u) {
-        /* 0x49347 0x249C0(0x1083C4, node): insert before the sentinel. */
-        u32 prev = DSD(DS_001083C4 + 4u);       /* 0x4933D */
-        DSD(DS_001083C4 + 4u) = node;
-        DSD(node) = DS_001083C4;
-        DSD(node + 4u) = prev;
-        DSD(prev) = node;
-    }
+    for (u32 node = 0x1083CCu; node < DS_0010884C; node += 0x24u)
+        effects_list_insert_before(DS_001083C4, node);   /* 0x49347 0x249C0 */
     if ((u32)DSW(DS_00104AFC) == 7u) {          /* 0x4935C */
         DSB(DS_001088CC) = 0;                   /* 0x49363 */
         DSB(DS_001088CB) = 0;                   /* 0x49369 */
@@ -58,6 +53,103 @@ void fight_list_init(void)
     }
     DSB(DS_001088CC) = 2u;                      /* 0x49377 */
     DSB(DS_001088CB) = 4u;                      /* 0x4937D */
+}
+
+/* ---- 0x494A8 the dust builder (state 6's fighter spawn) ----------------- */
+
+/* 0x49388. The dust descriptor picker: one rng draw (the caller's EAX, the
+ * side) mapped through the raw's thresholds. */
+static u32 fight_dust_pick(u32 range)
+{
+    u32 v = rng_next(range);                    /* 0x493AB */
+    if (v < 0x1eu) return 4;
+    if (v < 0x32u) return 3;
+    if (v < 0x46u) return 5;
+    if (v < 0x55u) return 1;
+    if (v < 0x5fu) return 0;
+    return 2;
+}
+
+/* 0x29CDC. The value written into the picked descriptor's +0x10: the per-side
+ * table DS_000A8AF8 (when DS_00105B34[side] == 0) or DS_000A8B14, indexed by
+ * the slot's character byte. */
+static u32 fight_dust_value(u32 side, u32 ch)
+{
+    if (DSB(DS_00105B34 + side) == 0u) return DSD(DS_000A8AF8 + ch * 4u);
+    return DSD(DS_000A8B14 + ch * 4u);
+}
+
+/* 0x496AC. The clamp the dust actor's +0x2C receives. The argument is the
+ * loop's step (0x49568's [ESP], reloaded at 0x49629), not the y. */
+static u16 fight_dust_clamp(u32 v)
+{
+    if (v > 0xaffu) return 0xc00u;
+    if (v < 0x401u) return 0xf80u;
+    return (u16)(((0xb00u - v) >> 1) + 0xc00u);
+}
+
+/* 0x494A8. The dust/effect entry builder. 0x33C78 calls it at 0x33E43 when
+ * DS_00104B14 == 0; each iteration moves one node from the free fight-effect
+ * list (DS_001083C4, built by 0x49300) to the active one (DS_0010884C), picks a
+ * descriptor (0xC9524[0x49388]), spawns the dust actor (0x2AE14) and fills the
+ * entry's fields. The loop bound is slot+0x81 (0x4967F) and each iteration
+ * draws THREE values — 0x49388's, rng(0x1800) (0x495DF) and rng(step)
+ * (0x495FC). State 6's stream needs exactly those: the demo's slot+0x81 is 2,
+ * so six draws land between the picks at 0x11AAD and 0x11AE9. The entry's
+ * +0x1E type is 0, whose 0x49C78 handler (0x4AAD0) is the unported dust
+ * behaviour (§7.4); the actor it spawns is an ordinary pool actor and renders. */
+void fight_dust_build(u32 side)
+{
+    /* PORT: 0x494A8's DS_00104AFA == 0x23 arm calls 0x4CF20, a six-entry
+     * variant of this builder with its own draws. Not reached in the demo (the
+     * reference's state-6 draws are this arm's 3 x slot+0x81) and a named gap. */
+    if (DSB(DS_00104AFA) == 0x23u) return;
+
+    DSB(DS_001088AE + side) = 0;                /* 0x494F2 */
+    DSB(DS_001088C4) = 0;                       /* 0x494FE */
+    DSB(DS_001088A2 + side) = 0;                /* 0x49504 */
+    DSB(DS_001088A4 + side) = 0;                /* 0x4950A */
+    DSB(DS_001088B2 + side) = 0;                /* 0x49516 */
+    DSB(DS_001088BF) = 0;                       /* 0x49524 */
+    DSB(DS_001088A8 + side) = 0xffu;            /* 0x4952A */
+    DSB(DS_0010889E + side) = 0;                /* 0x49532 */
+    DSB(DS_001088B6 + side) = 0;                /* 0x49538 */
+    DSW(DS_00108892) = 0;                       /* 0x49546 */
+
+    u32 slot = DS_001077B0 + side * 0x94u;
+    u32 n = (u32)DSB(slot + 0x81u);             /* 0x49540 */
+    u32 step = (n != 0u) ? (0x300u / n) : 0x300u;   /* 0x49555/0x49563 */
+    u32 offset = 0;                             /* 0x49578 */
+    for (u32 i = 0; i < n; i++) {               /* 0x4967F */
+        u32 entry = DSD(DS_001083C4);           /* 0x49581 */
+        if (entry == DS_001083C4) return;       /* 0x4959C: the pool is empty */
+        effects_list_unlink(entry);             /* 0x49595 0x249D0 */
+        effects_list_insert_after(DS_0010884C, entry);   /* 0x495A9 0x249B0 */
+        u32 desc = DSD(DS_000C9524 + fight_dust_pick(side) * 4u);  /* 0x495B9 */
+        DSD(desc + 0x10u) = fight_dust_value(side, (u32)DSB(slot + 0x7Au)); /* 0x495CC */
+        u32 rec = DSD(slot);                    /* 0x495CF/0x495E6 */
+        u32 x = (u32)((s32)DSD(rec + 0x18u) - 0xc00 + (s32)rng_next(0x1800u)); /* 0x495E4 */
+        u32 y = offset + (u32)((s32)DSD(rec + 0x30u) >> 16) + 0x400u
+                + rng_next(step);               /* 0x49601 */
+        u32 actor = actor_spawn((const u32 *)(mem + desc), x, y, 0u, 0u);  /* 0x4960F */
+        DSD(entry + 8u) = actor;                /* 0x49614 */
+        DSD(actor + 0x14u) = entry;             /* 0x49617 */
+        DSB(entry + 0x1Eu) = 0;                 /* 0x4961A */
+        DSB(entry + 0x1Fu) = 0;                 /* 0x49622 */
+        DSB(entry + 0x21u) = (u8)y;             /* 0x49626 */
+        DSD(entry + 0x0Cu) = slot;              /* 0x4962D */
+        DSW(actor + 0x2Cu) = fight_dust_clamp(step);   /* 0x49638 */
+        DSW(entry + 0x1Cu) = 0;                 /* 0x4963C */
+        DSD(entry + 0x10u) = 0;                 /* 0x49646 */
+        DSW(entry + 0x1Au) = (u16)step;         /* 0x4964D */
+        if (DSB(rec + 0x51u) != 0u) {           /* 0x49651 */
+            DSW(actor + 0x2Eu) += 4;            /* 0x4965C */
+            DSB(actor + 0x4Eu) = 1;             /* 0x49664 */
+        }
+        offset += step;                         /* 0x49674 */
+    }
+    DSB(DS_001088C3) = 0;                       /* 0x49693 */
+    DSB(DS_001088C1) = 0;                       /* 0x4969B */
 }
 
 /* ---- 0x33C18 the character select's slot reset -------------------------- */

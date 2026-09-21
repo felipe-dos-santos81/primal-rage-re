@@ -124,16 +124,22 @@ disappears rather than being papered over.
 draws `0x256B1`/`0x256D6` are pinned to a non-advancing `mov eax,0` and the
 port's `game_loop` stopped drawing at the body site; the reference is now
 deterministic and the oracle claims held after the re-capture (the derived
-indices moved). **The pin alone does not align the streams**, and Task 2's gate
-is therefore unmet: the reference's state-6 entry is the seed + 26 (the attract's
-voice-tick draws, which the front-end driver skips by entering at state 2) and
-the port is a further six draws behind inside state 6 (the dust builder
-`0x494A8` draws three values per loop iteration between `0x11AAD` and `0x11AE9`;
-`fighter_spawn_slot` skips it). The capture's picks (`0`/`3`) and the port's
-(`0`/`6`) confirm both offsets. The fix is a human decision: reproduce the
-attract's draws in the driver (or re-seed to its post-state) and issue the dust
-builder's draws in the port, or pin the attract's three draw sites too.
-`port/spec/game_flow.md` carries the evidence and addresses.
+indices moved). The pin alone did **not** align the streams: the reference's
+state-6 entry is the seed + 26 (the attract's voice-tick draws, which the
+front-end driver skipped by entering at state 2) and the port was a further six
+draws behind inside state 6 (the dust builder `0x494A8` draws three values per
+loop iteration between `0x11AAD` and `0x11AE9`; `fighter_spawn_slot` skipped
+it). The human ruled **Option 1 — fix the driver and the port**: the driver now
+re-seeds to the attract's post-state (`0x4308698B`, derived: seed `0xABCD`
+advanced 26 steps) and `fight_dust_build` ports `0x494A8` including its entry
+traffic and actor spawn. The capture's picks are now reproduced
+(`0xC835A[0] = 0`, `0xC835A[3] = 3`) and the streams are in step; the driver
+asserts the entry LCG state and the characters, and the unit suite asserts the
+14-draw model. **No third re-capture was needed.** Residual: the dust entries'
+type-0 processing (`0x4AAD0` and its callees) is still a named gap, so the
+dust's motion/despawn is not faithful, and the demo window's first unexplained
+frame is still 816 (the state-9 hold render), so the dust's pixels are not yet
+measurable. `port/spec/game_flow.md` carries the evidence and addresses.
 
 **The invariant is the oracle's claim, not its window indices.** A capture is
 host-timed and provably unstable — repeat capture of the same tree yielded 587 vs

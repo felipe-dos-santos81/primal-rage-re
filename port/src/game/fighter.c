@@ -190,12 +190,8 @@ static void fighter_spawn_slot(u32 side, u32 a2, u32 a3, u32 a5)
     DSB(slot + 0x41u) &= 0x7Fu;                     /* 0x33E23..0x33E2F */
     DSD(DS_001077A0 + side * 4u) = 0;               /* 0x33E38 */
 
-    if (DSB(DS_00104B14) == 0) {
-        /* PORT: 0x33E43 0x494A8 — the dust/effect entry builder (515 B). It
-         * builds an entry on the 0x10884C list and draws rng(0x1800)/rng(0x300),
-         * but it is not what makes the slot live (the stores above are), so it
-         * is a named gap (§10.5). */
-    }
+    if (DSB(DS_00104B14) == 0)
+        fight_dust_build(side);                     /* 0x33E43 0x494A8 */
     if (fighter_spawn_audio_gate()) {               /* 0x33E48 0x1CEBC */
         /* PORT: 0x33E51..0x33EA6 resolves DS_000BDB1C[char] then the fixed
          * 0x287B2F5 through res_resolve; both are unported audio resources and
