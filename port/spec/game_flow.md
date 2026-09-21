@@ -456,9 +456,10 @@ selector.
 ## Front-end states 3/4/5 (front-end-chain Tasks 3/4/6, ported)
 
 `game_state_step`'s cases 3/4/5 are ported; the port now advances
-carousel → 3 → 4 → 5 → 9 → 6 unaided (state 6 is the fight engine's entry, out of
-this cycle's scope). Each state is a phase machine driven by its own `mem[]`
-counter, transcribed phase-for-phase from the raw.
+carousel → 3 → 4 → 5 → 9 → 6 unaided. State 5's `0x1EA08` site is wired; state 6
+is the attract demo fight's entry, ported by the demo-fight cycle 1 (see the
+states 6/7 section below). Each state is a phase machine driven by its own
+`mem[]` counter, transcribed phase-for-phase from the raw.
 
 * **State 3 — `0x12484` (`game_state_3`).** Phase 0 (`DS_000F0A6F == 0`):
   `actors_reset` (`0x2BAF4`), four `frontend_spawn_row(0x9AC1C)` corner rows, a
@@ -493,8 +494,10 @@ spawning a descriptor would be a fitted constant. `0x1EA08`'s other four call
 sites are the **match cycle's** and are unwired: `0x11A42` in `FUN_00011A30` (a
 dead copy — `0x11A30` is referenced nowhere in either LE object) and `0x1F140`/
 `0x1F278`/`0x1F39B` in `FUN_0001EEB0` (the match sub-state machine, cases 2/6/9).
-No task in this plan owns the match cycle. States 6/7/8 (the fight engine:
-`0x11A8C`, `0x263F4`, `0x33F08`) and state 9's semantics beyond the countdown
+No task in this plan owns the match cycle. States 6/7 (the attract demo
+fight: `0x11A8C`, `0x263F4`) were ported by the demo-fight cycle 1 (see the
+next section); state 8 (`0x33F08`'s run clock is not it — 8 is the run clock
+plus the `0x257A4` coin divert) and state 9's semantics beyond the countdown
 handoff remain the **next cycle**.
 
 **States 3/4 pixel oracle: enforced gate (front-end-chain Task 5, closed).** The
@@ -593,14 +596,84 @@ draw, so no behaviour pin was written (a pin here would be a fitted constant).
 window the port's own dump exhibits (`check_capture` derives that window from its
 `idx`→`a,b` mapping, then the branch discards `rc`). `check_capture`'s `rc`
 additionally counts port frames that no capture frame exhibits (coverage) and
-`endpoints BAD`; the front-end branch ignores both. The 120 s capture does end
-before the 300 dumped frames do (the port dump runs on into state 9, which the
-passive original leaves for the attract loop), but that is not the whole story:
-the ignored coverage is exactly what lets a port that **under-renders** the
-front-end pass (counterexamples above). Passing the gate therefore means "no
+`endpoints BAD`; the front-end branch ignores both. The demo-fight cycle raised
+the dump to 1381 frames, so the 120 s capture (3712 distinct post-logo frames)
+now runs past the dump instead of ending before it; but that is not the whole
+story: the ignored coverage is exactly what lets a port that **under-renders**
+the front-end pass (counterexamples above). Passing the gate therefore means "no
 content-bearing capture frame inside the port-exhibited window is unexplained",
 NOT "every dumped port frame was exhibited" and NOT "the front-end was
 rendered".
+
+## Demo fight states 6/7 (demo-fight cycle 1, report-only window)
+
+The attract demo's CPU-vs-CPU fight is states 6 (`0x11A8C`) and 7 (`0x11E8F`,
+the arena frame `0x263F4`, ended by `0x11BCC`'s timer exit). It is **not** the
+interactive match: that is the `DS_00104B00` mode graph (the `0x257A4` coin
+divert, `0x1EEB0`), which no task in cycle 1 owns. The port advances the
+front-end into the demo unaided. State 3's phase-1 terminator (`0x12658`) hands
+to state 9 with a 240-frame timer and target 6; state 9 counts down; state 6
+picks the two characters from the shared RNG, seeds `DS_001082C8`, spawns both
+fighters and arms the 900-frame timer; state 7 runs the arena loop until
+`0x11BCC` restores `DS_000F0A64 = DS_000F0A6C` and the state machine moves on.
+
+**Dump length.** `make demo-oracle` runs the same `PR_FRONTEND_DUMP` run as
+`frontend-oracle`. The driver loops 2000 frames from the state-2 entry and caps
+the RGB dump at 1400 frames (`PR_FRONTEND_DUMP_FRAMES`, default 1400). The
+measurement that sizes it: state 3 enters at loop 589 (dumped frame 0), state 6
+at loop 1070 (dumped 481), state 7 runs loop 1071..1969 (dumped 482..1380), and
+`0x11BCC`'s exit is loop 1970, where `DS_000F0A64` drops to 0 so the `state >= 3`
+dump stops. The dump therefore holds **1381 frames** (dumped 0..1380); the 1400
+cap covers it with no truncation, and the 2000-frame loop clears the 1970 exit.
+
+**The demo window is report-only, and its first measurement diverges at its
+first frame.** `tools/title_compare.py --demo` locates the front-end window with
+the same content alignment, then classifies the capture region after it against
+the port dump frames after the last frame that window exhibits — the same
+clean/splice/transition/unexplained model, no second one. It reports and exits 0.
+
+* Front-end window (unchanged, and still enforced in `verify`): distinct
+  **[557..813]** (raw 3117..3418), **257 frames: 92 clean, 162 splice, 2
+  transition, 0 unexplained**.
+* Demo window: distinct **[814..3711]** (raw **3425..8409**), **2898 frames:
+  0 clean, 0 splice, 0 transition, 2891 unexplained** (7 all-black capture
+  frames excluded as artifacts). Demo port frames [259..1380], **0/1122
+  exhibited**.
+* **First unexplained captured frame 814 (raw 3425)** — the first frame after
+  the front-end window.
+
+Cycle 1's declared bound expects the first unexplained frame to be the
+original's first landing hit, a consequence of the cycle split (cycle 2 owns
+collision and damage). It is **not** a hit, and it is earlier even than state 6.
+The evidence says the render path is incomplete:
+
+1. The port's state-7 output does not move: dumped frames **482..1380 are
+   byte-identical** (one distinct image across 899 frames). The fighters spawn
+   (Task 6 populated `DS_001077A8` and both slot records), but the per-frame
+   arena and fighter composition draws nothing new. A moving demo is the point of
+   the cycle, so this is a defect in the motion/render layers (Tasks 2-6).
+2. The divergence starts in the state-9 hold, before state 6. Captured frame 814
+   is closest to port frame 264 (205 differing bytes, rows 98..144), and no
+   capture frame after 813 matches any dump frame. So the state-9 hold's
+   zoom-actor animation is already off by a small sprite band, and the static
+   state-7 frame explains the rest.
+
+The gaps that may own the missing composition are `fight_slot_pass`'s `0x3C88C`
+draw helper (§7.7) and the skipped `0x20DF4` fight reset at `0x11AC4` (below);
+the derivation record named both as fidelity gaps, and this measurement shows at
+least one of them is load-bearing for whether the arena renders at all. Recorded
+here as a Task 2-6 remediation target: the demo window cannot converge until the
+state-7 frame stops being static and the state-9 hold's sprite band matches.
+
+**The skipped `0x20DF4` is a liveness gap, not only a fidelity gap.** The raw
+calls `0x20DF4` at `0x11AC4`; its first callee `0x49300` self-links the
+effect-list sentinels `DS_001083C4`/`DS_0010884C` and seeds `DS_001088CC`/`CB`.
+The port skipped `0x20DF4` as a named gap, but `fight_effects_pass` (`0x49C78`)
+reads `DS_0010884C` as a circular-list head and loops until it returns to the
+sentinel; with the global left at 0 the walk never terminates and the demo hangs
+on its first state-7 frame. `fight_list_init` ports `0x49300` verbatim (from the
+raw disassembly), so the walk is a no-op on the empty list exactly as the
+original's is. `0x20DF4`'s other resets remain a named gap.
 
 ## Landmarks (verified)
 

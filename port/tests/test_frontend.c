@@ -430,8 +430,17 @@ int test_frontend(void)
      * driver does, because game_init() may run once per process.
      * PR_FRONTEND_DUMP names a directory to receive the hash log and, from the
      * state-3 entry on, one RGB24 frame per presented frame. The log covers the
-     * whole window, through states 3/4, so two runs can be diffed; the frame
-     * dump is capped by PR_FRONTEND_DUMP_FRAMES (default 300). */
+     * whole window, through the demo, so two runs can be diffed; the frame dump
+     * is capped by PR_FRONTEND_DUMP_FRAMES (default 1400).
+     *
+     * The 2000-iteration loop and the 1400-frame cap are sized from the demo's
+     * state-7 exit: state 3 is entered at loop frame 589, state 6 runs at loop
+     * frame 1070 (dumped frame 481), and 0x11BCC's timer exit runs at loop frame
+     * 1970, where the state drops to 0 and dumping stops. So the state>=3 dump
+     * run is loop frames 589..1969, i.e. dumped frames 0..1380 (1381 frames); the
+     * 1400 cap covers it and the 2000-frame loop clears the 1970 exit. The
+     * front-end window itself is unchanged (it ends at capture frame 813, inside
+     * state 3). */
     {
         const char *dir = getenv("PR_GAME_DIR");
         if (dir == NULL || dir[0] == '\0') dir = "data/game/C";
@@ -451,13 +460,13 @@ int test_frontend(void)
         CHECK(log != NULL, "state-2 hash log opens");
 
         const char *cap_s = getenv("PR_FRONTEND_DUMP_FRAMES");
-        long raw_cap = cap_s ? strtol(cap_s, NULL, 0) : 300;
+        long raw_cap = cap_s ? strtol(cap_s, NULL, 0) : 1400;
         int dumped = 0;
         int dump_failed = 0;
 
         u32 seen_entries = 0;
         int reached3 = 0;
-        for (int i = 0; i < 900; i++) {
+        for (int i = 0; i < 2000; i++) {
             DSB(DS_000A81A8) = 1;          /* exactly one game_loop iteration */
             game_loop();
             if (DSW(DS_000F0A64) == 3u) reached3 = 1;
@@ -505,10 +514,14 @@ int test_frontend(void)
          * in docs/superpowers/plans/2026-09-19-frontend-input-derivations.md).
          * State 3 now runs its 0x12484 phases and hands off to state 9, so the
          * window is asserted to reach state 3, not to end in it; the state it
-         * ends in is whatever 0x12658's actor timing produces. */
+         * ends in is whatever 0x12658's actor timing produces. The demo adds
+         * states 9/6/7: state 7 runs its 900-frame timer and 0x11BCC's exit
+         * lands at loop frame 1970, so the state>=3 dump window is loop frames
+         * 589..1969 (1381 frames, dump 0..1380). The 1400 cap covers it; the
+         * 2000-frame loop clears the 1970 exit. */
         CHECK_EQ_INT((int)seen_entries, 0x3F);
         CHECK(reached3, "the window reaches state 3");
-        CHECK_EQ_INT(dumped, (int)(raw_cap < (900 - 589) ? raw_cap : (900 - 589)));
+        CHECK_EQ_INT(dumped, (int)(raw_cap < 1381 ? raw_cap : 1381));
         game_shutdown();
     }
     return g_failures - before;

@@ -44,7 +44,7 @@ chunk ?= 0
 .PHONY: help deps build test verify check smk-oracle run clean \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original title-pin title-capture \
-        title-oracle attract-oracle frontend-capture frontend-oracle
+        title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -181,6 +181,27 @@ frontend-oracle: build ## Front-end oracle (states 3/4; skips without data/title
 		echo "frontend-oracle: no capture at $(TITLE_CAPTURES)/frontend, frames not compared"; \
 	fi
 	@$(PYTHON) tools/title_compare.py --frontend --capture $(TITLE_CAPTURES)/frontend \
+		--port $(FRONTEND_DUMP)/run1
+
+# Demo window report (demo-fight cycle 1, Task 7). The same PR_FRONTEND_DUMP run
+# as frontend-oracle, whose raised frame count now covers the state-6 entry and
+# the 900-frame state-7 demo; the two-run PR_FRONTEND_DET determinism gate covers
+# the demo window too. title_compare.py --demo locates the front-end window with
+# the same content alignment, then classifies the capture region after it against
+# the port dump frames after the last frame that window exhibits — the same
+# clean/splice/transition/unexplained model, no second one — and reports the
+# window, the counts and the first unexplained frame. It is report-only (always
+# exits 0) and is NOT in verify's sequence; cycle 2 promotes it to a gate.
+# Captures are git-ignored; an absent capture skips both lines.
+demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title-captures/frontend)
+	@echo "== demo window (report-only, states 9/6/7) =="
+	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
+		rm -rf $(FRONTEND_DUMP); \
+		PR_FRONTEND_DET=$(FRONTEND_DUMP) PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
+	else \
+		echo "demo-oracle: no capture at $(TITLE_CAPTURES)/frontend, demo window not compared"; \
+	fi
+	@$(PYTHON) tools/title_compare.py --demo --capture $(TITLE_CAPTURES)/frontend \
 		--port $(FRONTEND_DUMP)/run1
 
 # Headless FM render: on hosts where SDL audio cannot open, the windowed run is

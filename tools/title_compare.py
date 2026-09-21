@@ -210,13 +210,19 @@ def bands(c, a, b):
 
 
 def check_capture(capture, port, port_rows, n, name, verbose, detail=True,
-                  skip_black=False):
+                  skip_black=False, capture_lo=0, quiet=False):
     """`skip_black` (front-end mode only) classifies a capture frame that is
     entirely black as an 'artifact': it neither requires a match nor counts as
     unexplained, and its empty exhibition set cannot move the window bounds.
     Only all-zero frames are dropped — a content-bearing frame is classified
     exactly as before, so a port frame that disagrees with one is still
-    reported. The title window leaves this False and is byte-unchanged."""
+    reported. The title window leaves this False and is byte-unchanged.
+
+    `capture_lo` (demo mode only) excludes capture frames before it from the
+    classification and the window, so the demo window is the region after the
+    front-end window. The title and front-end windows leave it 0. `quiet`
+    suppresses this function's report lines (the demo mode's front-end pass only
+    needs its derived window); neither parameter changes the result."""
     frames = load_frames(capture, name)
     if frames is None:
         return 1, None
@@ -227,7 +233,9 @@ def check_capture(capture, port, port_rows, n, name, verbose, detail=True,
     black_j = []
     kinds = []
     for j in range(len(frames)):
-        if skip_black and not any(frames[j]):
+        if j < capture_lo:
+            kinds.append(('excluded', None))
+        elif skip_black and not any(frames[j]):
             kinds.append(('artifact', None))
             black_j.append(j)
         else:
@@ -254,9 +262,12 @@ def check_capture(capture, port, port_rows, n, name, verbose, detail=True,
     idx = [j for j, s in enumerate(exh) if s]
     if not idx:
         # No captured frame exhibits any port frame: there is no window to
-        # derive. Report the counts and fail; never index an empty idx.
+        # derive. Report the counts and fail; never index an empty idx. The
+        # considered range is the whole capture for the title/front-end windows
+        # (capture_lo 0) and the region after the front-end window for --demo.
+        lo, hi = capture_lo, len(frames) - 1
         print("title_compare: %s: %d frames, all unexplained; port frames "
-              "exhibited 0/%d" % (name, len(frames), n))
+              "exhibited 0/%d" % (name, (hi - lo + 1) if hi >= lo else 0, n))
         return 1, None
     a, b = idx[0], idx[-1]
     window = range(a, b + 1)
@@ -280,23 +291,24 @@ def check_capture(capture, port, port_rows, n, name, verbose, detail=True,
                      key=lambda x: (x[1], x[0]))
     trans = sorted({(N, r, on, on1) for j in trans_j
                     for (N, r, on, on1) in kinds[j][1]})
-    print("title_compare: %s: window distinct [%d..%d] (raw %s..%s)"
-          % (name, a, b, raws[a], raws[b]))
-    print("title_compare: %s: %d frames in window: %d clean, %d splice, "
-          "%d transition, %d unexplained"
-          % (name, b - a + 1, len(clean_j), len(splice_j), len(trans_j),
-             len(unexpl_j)))
-    print("title_compare: %s: splice bytes [%d frames, %d distinct]: %s"
-          % (name, len(splice_j), len(splices),
-             ['port%d@%d' % (N, lo) for (N, lo) in splices] if verbose else
-             [lo for (N, lo) in splices]))
-    print("title_compare: %s: transition rows (N, row, from_N, from_N+1) "
-          "[%d frames]: %s"
-          % (name, len(trans_j),
-             ['port%d@row%d(%d/%d)' % t for t in trans] if trans else 'none'))
-    print("title_compare: %s: port frames exhibited %d/%d; missing %s; "
-          "endpoints %s" % (name, len(covered), n, missing,
-                            'OK' if endpoint_ok else 'BAD'))
+    if not quiet:
+        print("title_compare: %s: window distinct [%d..%d] (raw %s..%s)"
+              % (name, a, b, raws[a], raws[b]))
+        print("title_compare: %s: %d frames in window: %d clean, %d splice, "
+              "%d transition, %d unexplained"
+              % (name, b - a + 1, len(clean_j), len(splice_j), len(trans_j),
+                 len(unexpl_j)))
+        print("title_compare: %s: splice bytes [%d frames, %d distinct]: %s"
+              % (name, len(splice_j), len(splices),
+                 ['port%d@%d' % (N, lo) for (N, lo) in splices] if verbose else
+                 [lo for (N, lo) in splices]))
+        print("title_compare: %s: transition rows (N, row, from_N, from_N+1) "
+              "[%d frames]: %s"
+              % (name, len(trans_j),
+                 ['port%d@row%d(%d/%d)' % t for t in trans] if trans else 'none'))
+        print("title_compare: %s: port frames exhibited %d/%d; missing %s; "
+              "endpoints %s" % (name, len(covered), n, missing,
+                                'OK' if endpoint_ok else 'BAD'))
 
     bad = len(unexpl_j) + len(bad_missing) + (0 if endpoint_ok else 1)
     if detail:
@@ -315,7 +327,8 @@ def check_capture(capture, port, port_rows, n, name, verbose, detail=True,
             print("title_compare: %s: PORT FRAME %d is not exhibited by any "
                   "captured frame" % (name, M))
     return (1 if bad else 0), {'clean': clean_j, 'kinds': kinds, 'frames': frames,
-                               'unexpl': unexpl_j, 'black': black_j}
+                               'unexpl': unexpl_j, 'black': black_j,
+                               'window': (a, b), 'covered': covered}
 
 
 def load_port(d, n):
@@ -350,6 +363,15 @@ def main():
                          'The window is derived from the port dump and coverage '
                          'is ignored, so this cannot detect an under-rendering '
                          'port')
+    ap.add_argument('--demo', action='store_true',
+                    help='demo window (states 9/6/7): the same content-alignment '
+                         'classification over the capture region after the '
+                         'front-end window, against the port dump frames after '
+                         'the last frame that window exhibits. Same clean/'
+                         'splice/transition/unexplained classes and the same '
+                         'all-black artifact drop as --frontend. Report-only: '
+                         'prints the window, the counts and the first '
+                         'unexplained frame, and always exits 0')
     a = ap.parse_args()
     required = os.environ.get('PR_ORACLE_REQUIRED') == '1'
 
@@ -416,6 +438,92 @@ def main():
                   % (len(unexpl), unexpl[0], raws[unexpl[0]]))
             return 1
         print("title_compare: frontend: 0 unexplained")
+        return 0
+
+    # Demo mode (Task 7, report-only). The port dump is one run from the state-3
+    # entry through the demo, so it holds both windows. The front-end window is
+    # located first (quietly) exactly as --frontend locates it; the demo region
+    # is then the capture frames after that window and the port dump frames after
+    # the last frame the front-end window exhibits. The classification is the
+    # same `check_capture`/`explain` path — no second model — and the all-black
+    # artifact drop is kept. It is a report: it never returns 1, so it cannot
+    # gate the ladder until a later cycle promotes it.
+    if a.demo:
+        capture = a.capture[0]
+        if not os.path.isdir(capture):
+            print("title_compare: no capture at %s (%s)"
+                  % (capture, 'FAIL (required)' if required else 'skipped'))
+            return 1 if required else 0
+        if not os.path.isdir(a.port):
+            print("title_compare: no port dump at %s" % a.port)
+            return 1
+        n = a.frames or len([f for f in os.listdir(a.port)
+                             if f.endswith('.raw')])
+        port, port_rows = load_port(a.port, n)
+        if port is None:
+            return 1
+        fe_rc, fe_res = check_capture(capture, port, port_rows, n, 'frontend',
+                                      a.verbose, detail=False, skip_black=True,
+                                      quiet=True)
+        if fe_res is None or not fe_res['covered']:
+            print("title_compare: demo: front-end window not derivable (rc %d); "
+                  "no demo region to report" % fe_rc)
+            return 0
+        fe_a, fe_b = fe_res['window']
+        port_lo = max(fe_res['covered']) + 1
+        demo_port = port[port_lo:]
+        print("title_compare: demo: front-end window distinct [%d..%d]; demo "
+              "port frames [%d..%d] (%d frames)"
+              % (fe_a, fe_b, port_lo, n - 1, len(demo_port)))
+        if not demo_port:
+            print("title_compare: demo: no port frames after the front-end window")
+            return 0
+        rc, res = check_capture(capture, demo_port, port_rows[port_lo:],
+                                len(demo_port), 'demo', a.verbose, detail=False,
+                                skip_black=True, capture_lo=fe_b + 1)
+        if res is None:
+            # No capture frame after the front-end window explains any demo port
+            # frame. Still report the region and its first content-bearing frame
+            # (the report-only contract), skipping all-black artifacts exactly
+            # as the classification does.
+            frames = load_frames(capture, 'demo')
+            if frames is None:
+                return 1
+            raws = raw_map(capture) or list(range(len(frames)))
+            a0, b0 = fe_b + 1, len(frames) - 1
+            if a0 > b0:
+                print("title_compare: demo: no capture frames after the front-end "
+                      "window")
+                return 0
+            blk = [j for j in range(a0, b0 + 1) if not any(frames[j])]
+            content = b0 - a0 + 1 - len(blk)
+            print("title_compare: demo: window distinct [%d..%d] (raw %s..%s)"
+                  % (a0, b0, raws[a0], raws[b0]))
+            print("title_compare: demo: %d frames in window: 0 clean, 0 splice, "
+                  "0 transition, %d unexplained"
+                  % (b0 - a0 + 1, content))
+            print("title_compare: demo: %d all-black capture frame(s) excluded as "
+                  "artifacts" % len(blk))
+            first = next((j for j in range(a0, b0 + 1) if any(frames[j])), None)
+            if first is None:
+                print("title_compare: demo: 0 content-bearing frames in the window")
+            else:
+                print("title_compare: demo: first unexplained captured frame %d "
+                      "(raw %s); %d in the window"
+                      % (first, raws[first], content))
+            return 0
+        raws = raw_map(capture) or list(range(len(res['frames'])))
+        black = res['black']
+        print("title_compare: demo: %d all-black capture frame(s) excluded as "
+              "artifacts: %s"
+              % (len(black), [(j, raws[j]) for j in black]))
+        unexpl = res['unexpl']
+        if unexpl:
+            print("title_compare: demo: first unexplained captured frame %d "
+                  "(raw %s); %d in the window"
+                  % (unexpl[0], raws[unexpl[0]], len(unexpl)))
+        else:
+            print("title_compare: demo: 0 unexplained")
         return 0
 
     primary = a.capture[0]
