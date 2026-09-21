@@ -5,9 +5,9 @@
  * render. Addresses, gates, globals and the single RNG site are from
  * docs/superpowers/plans/2026-09-20-demo-fight-derivations.md §3.5 and §5.8.
  *
- * Task 4 adds the think/AI chain (0x1975C -> 0x3B464 -> 0x3B298 -> 0x3BDDC) to
- * this file. Its entry point is not declared yet: the arena frame's 0x264CC
- * call site carries a PORT skip until Task 4 lands (see fight.c). */
+ * Task 4 adds the think/AI chain (0x1975C -> 0x3B464 -> 0x3B298 -> 0x3B134 ->
+ * 0x3BDDC) here. The arena frame's 0x264CC slot calls fighter_think();
+ * 0x3BDDC is exposed because fight.c's 0x3B134 calls back into it. */
 #ifndef PRAGE_GAME_FIGHTER_H
 #define PRAGE_GAME_FIGHTER_H
 
@@ -49,5 +49,21 @@ void fighter_pass_a(void);
  * (§7.6); the gates, the timer arithmetic and the record float store are
  * ported. */
 void fighter_pass_b(u32 arg);
+
+/* 0x1975C. The think step the arena frame calls at 0x264CC. It iterates the two
+ * sides and, for each whose DS_00100AD0 count exceeds 2, runs the per-fighter
+ * think driver 0x3B464. The raw takes no argument (the brief's u8 side is a
+ * correction); the driver, the command dispatch and the command consumer are
+ * ported, and the unported branch targets are named gaps (§7.12). */
+void fighter_think(void);
+
+/* 0x3BDDC. The attack/command consumer the mapper's 0x8000 arm calls behind
+ * 0x3BDB0. Reads the side's command word DS_001088E0/E2; when bit 15 is set it
+ * clears the record's +0x34/+0x43/+0x42, sets the slot's +0x5F to 0xFF and
+ * writes the attack state (DS_00107802/03/04, DS_00107D40 + side*4,
+ * DS_001078F8 + side, DS_001077FE + side*0x94). Returns 1 on the transition,
+ * 0 when the slot's +0x40 bit 7 or the command's bit 15 rejects. Its 0x3CF38
+ * gate and 0x3C480 continuation are named gaps (§7.6/§7.16). */
+int fighter_attack_consume(u32 side);
 
 #endif /* PRAGE_GAME_FIGHTER_H */

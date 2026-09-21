@@ -514,6 +514,194 @@ static void check_effects_rng(void)
     CHECK_EQ_INT((int)DSB(DS_001088BF), 0);
 }
 
+/* 0x3B134: the command-word mapper's stance branch (record §8.13). The three
+ * side-0 cases differ only in the other slot's +0x34 sign and +0x64 stance, so
+ * a swapped branch or a missing table select fails; the side-1 case proves the
+ * side index reaches DS_001088E2, not DS_001088E0. Every case seeds the command
+ * word with 0xFFFF, which differs from every expected value. The mapper's
+ * rng(100) roll is bypassed with a non-zero override. */
+static void check_command_map(void)
+{
+    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
+    u32 r = FIGHT_RECS + 0x400u;
+
+    mem_fill(FIGHT_RECS, 0, 0x800);
+    DSD(DS_001077B0) = p0;
+    DSD(DS_00107844) = p1;
+    DSB(0x001077B0u + 0x63u) = 1;               /* side-0 gate A */
+    DSB(0x001077B0u + 0x54u) = 0;               /* 0x1AB10 */
+    DSB(0x001077B0u + 0x53u) = 0;
+    DSD(0x001077DCu) = 0x3000u;                 /* self +0x2C */
+    DSD(0x00107870u) = 0x1000u;                 /* other +0x2C */
+    DSB(0x001078A8u) = 0x01u;                   /* other +0x64 != 0xFF */
+    DSD(0x0010784Cu) = r;                       /* other +0x08 */
+    DSB(DS_0010782A) = 0;                       /* side-0 anim char */
+    DSB(DS_001078BE) = 0;                       /* side-1 anim char */
+
+    DSW(DS_001088E0) = 0xFFFFu;                 /* sentinel */
+    DSW(r + 0x34u) = 0xFFFFu;                   /* negative -> 0x6000 */
+    fight_command_map(0u, 0u, 1u);
+    CHECK_EQ_INT((int)DSW(DS_001088E0), 0x6000);
+
+    DSW(DS_001088E0) = 0xFFFFu;
+    DSW(r + 0x34u) = 0x0001u;                   /* non-negative -> 0x5000 */
+    fight_command_map(0u, 0u, 1u);
+    CHECK_EQ_INT((int)DSW(DS_001088E0), 0x5000);
+
+    /* The anim branch: other +0x64 == 0xFF and self left of other -> 0x2000. */
+    DSB(0x001078A8u) = 0xFFu;
+    DSD(0x001077DCu) = 0x1000u;
+    DSD(0x00107870u) = 0x3000u;
+    DSW(DS_001088E0) = 0xFFFFu;
+    fight_command_map(0u, 0u, 1u);
+    CHECK_EQ_INT((int)DSW(DS_001088E0), 0x2000);
+
+    /* Side 1 writes DS_001088E2; DS_001088E0 keeps its sentinel. */
+    DSB(0x001078A7u) = 1;                       /* side-1 gate A */
+    DSB(0x00107898u) = 0;                       /* side-1 +0x54 */
+    DSB(0x00107897u) = 0;                       /* side-1 +0x53 */
+    DSB(0x00107814u) = 0x01u;                   /* other (slot 0) +0x64 */
+    DSD(0x001077B8u) = r;                       /* other (slot 0) +0x08 */
+    DSW(r + 0x34u) = 0xFFFFu;
+    DSW(DS_001088E0) = 0x1234u;
+    DSW(DS_001088E2) = 0xFFFFu;
+    fight_command_map(1u, 0u, 1u);
+    CHECK_EQ_INT((int)DSW(DS_001088E2), 0x6000);
+    CHECK_EQ_INT((int)DSW(DS_001088E0), 0x1234);
+}
+
+/* 0x1975C/0x3B464/0x3B298: one fighter_think() must run both think drivers.
+ * The 0x3B464 tail is unconditional (slot+0x64 <- 0xFF and slot+0x41 |= 0x80)
+ * once the driver's gates pass, and 0x3B298's entry copy is
+ * word[slot[side]+0x86] = word[slot[1-side]+0x84]. The seeds differ from every
+ * post-condition, so a missing driver or a skipped side fails. Gate A is left
+ * off so no rng(100) roll is consumed. */
+static void check_think_chain(void)
+{
+    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
+    u32 r0 = FIGHT_RECS + 0x300u, r1 = FIGHT_RECS + 0x320u;
+
+    mem_fill(FIGHT_RECS, 0, 0x800);
+    DSD(DS_001077B0) = p0;
+    DSD(DS_00107844) = p1;
+    DSD(DS_00100AD0) = 3;
+    DSD(DS_00100AD0 + 4u) = 3;
+    /* The other-slot +0x64 latches and the frame test-and-set word. */
+    DSB(0x00107814u) = 0;
+    DSB(0x001078A8u) = 0;
+    DSB(0x001077F1u) = 0;
+    DSB(0x00107885u) = 0;
+    DSB(0x00107817u) = 0xAAu;
+    DSB(0x001078ABu) = 0xAAu;
+    DSD(DS_00107D50) = 0;
+    DSD(DS_00107D54) = 0;
+    /* 0x3B134's gate A off, so the mapper returns without the rng roll. */
+    DSB(0x001077B0u + 0x63u) = 0;
+    DSB(0x00107844u + 0x63u) = 0;
+    /* 0x1AB5C/0x1AB10 state bytes. */
+    DSB(0x001077B0u + 0x54u) = 0;
+    DSB(0x001077B0u + 0x53u) = 0;
+    DSB(0x00107844u + 0x54u) = 0;
+    DSB(0x00107844u + 0x53u) = 0;
+    /* The +0x48 switch reads the other slot's secondary record. */
+    DSD(0x001077B8u) = r0;
+    DSD(0x0010784Cu) = r1;
+    DSB(r0 + 0x48u) = 0;
+    DSB(r1 + 0x48u) = 0;
+    /* The entry-copy sentinels. */
+    DSW(0x00107834u) = 0x1111u;         /* slot0 +0x84 */
+    DSW(0x001078C8u) = 0x2222u;         /* slot1 +0x84 */
+    DSW(0x00107836u) = 0x3333u;         /* slot0 +0x86 */
+    DSW(0x001078CAu) = 0x4444u;         /* slot1 +0x86 */
+
+    fighter_think();
+
+    CHECK_EQ_INT((int)DSB(0x00107814u), 0xFF);      /* slot0 +0x64 */
+    CHECK_EQ_INT((int)DSB(0x001078A8u), 0xFF);      /* slot1 +0x64 */
+    CHECK_EQ_INT((int)DSB(0x001077F1u) & 0x80, 0x80);
+    CHECK_EQ_INT((int)DSB(0x00107885u) & 0x80, 0x80);
+    CHECK_EQ_INT((int)DSB(0x00107817u), 1);         /* slot0 +0x67 */
+    CHECK_EQ_INT((int)DSB(0x001078ABu), 1);         /* slot1 +0x67 */
+    /* i=0 thinks side 1: slot1+0x86 <- slot0+0x84; i=1 thinks side 0. */
+    CHECK_EQ_INT((int)DSW(0x001078CAu), 0x1111);
+    CHECK_EQ_INT((int)DSW(0x00107836u), 0x2222);
+}
+
+/* 0x3BDDC: the attack/command consumer (record §8.17). Input A drives the
+ * transition; B/C prove the +0x40 and command-bit-15 gates; D adds the
+ * table-select and the 0x1000/0x2000 command bits. The ring is seeded so
+ * 0x4649C returns 0 (0xBEF28) or 1 (0xBEF64). */
+static void check_attack_consume(void)
+{
+    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
+    u32 saved_ring[5];
+    u32 saved_pos = DSD(0x001082D2u);
+
+    /* The five ring words 0x4649C reads for side 0 at position 0. */
+    const u32 ring[5] = { 0x00108270u, 0x00108290u, 0x00108292u,
+                          0x00108294u, 0x00108296u };
+
+    mem_fill(FIGHT_RECS, 0, 0x400);
+    DSD(DS_001077B0) = p0;
+    DSD(DS_00107844) = p1;
+    DSD(0x001082D2u) = 0;                       /* ring position 0 */
+    for (int i = 0; i < 5; i++) {
+        saved_ring[i] = DSW(ring[i]);
+        DSW(ring[i]) = 0;
+    }
+    DSB(DS_0010782A) = 0;                       /* char 0 -> base + 0 */
+    DSB(0x001077B0u + 0x40u) = 0;               /* +0x40 bit 7 clear */
+    DSB(DS_00107803) = 1;                       /* reach the continuation */
+    DSW(DS_001088E0) = 0x8000u;
+
+    DSW(p0 + 0x34u) = 0x00AAu;
+    DSB(p0 + 0x43u) = 0xAAu;
+    DSB(p0 + 0x42u) = 0xAAu;
+    DSB(0x001077B0u + 0x5Fu) = 0xAAu;
+    CHECK_EQ_INT(fighter_attack_consume(0u), 1);
+    CHECK_EQ_INT((int)DSW(p0 + 0x34u), 0);
+    CHECK_EQ_INT((int)DSB(p0 + 0x43u), 0);
+    CHECK_EQ_INT((int)DSB(p0 + 0x42u), 0);
+    CHECK_EQ_INT((int)DSB(0x001077B0u + 0x5Fu), 0xFF);
+    CHECK_EQ_INT((int)DSB(DS_00107802), 3);
+    CHECK_EQ_INT((int)DSB(DS_00107803), 4);
+    CHECK_EQ_INT((int)DSB(DS_00107804), 2);
+    CHECK_EQ_INT((int)DSB(DS_001078F8), 1);
+    CHECK_EQ_INT((int)DSW(DS_001077FE), 0);
+    CHECK_EQ_INT((int)DSD(DS_00107D40), 0xBEF28);
+
+    /* The 0x1000 and 0x2000 command bits select +0x4E and the 0xBEF64 table. */
+    DSW(ring[0]) = 0x4000u;                     /* 0x4649C -> 1 -> 0xBEF64 */
+    DSW(DS_001088E0) = 0x9000u;                 /* bit 15 | 0x1000 */
+    CHECK_EQ_INT(fighter_attack_consume(0u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00107D40), 0xBEF64);
+    CHECK_EQ_INT((int)DSW(DS_001077FE), 1);
+
+    DSW(ring[0]) = 0;
+    DSW(DS_001088E0) = 0xA000u;                 /* bit 15 | 0x2000 */
+    CHECK_EQ_INT(fighter_attack_consume(0u), 1);
+    CHECK_EQ_INT((int)DSW(DS_001077FE), 0xFFFF);
+
+    /* Input B: the +0x40 bit-7 gate rejects; nothing changes. */
+    DSB(0x001077B0u + 0x40u) = 0x80u;
+    DSW(DS_001088E0) = 0x8000u;
+    DSW(p0 + 0x34u) = 0x00AAu;
+    DSB(p0 + 0x42u) = 0xAAu;
+    CHECK_EQ_INT(fighter_attack_consume(0u), 0);
+    CHECK_EQ_INT((int)DSW(p0 + 0x34u), 0x00AA);
+    CHECK_EQ_INT((int)DSB(p0 + 0x42u), 0xAA);
+
+    /* Input C: command bit 15 clear rejects. */
+    DSB(0x001077B0u + 0x40u) = 0;
+    DSW(DS_001088E0) = 0x0000u;
+    DSW(p0 + 0x34u) = 0x00AAu;
+    CHECK_EQ_INT(fighter_attack_consume(0u), 0);
+    CHECK_EQ_INT((int)DSW(p0 + 0x34u), 0x00AA);
+
+    for (int i = 0; i < 5; i++) DSW(ring[i]) = (u16)saved_ring[i];
+    DSD(0x001082D2u) = saved_pos;
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -524,6 +712,7 @@ int test_fight(void)
     u8 s_d0[0x200];
     u8 s_88[0x100];
     u8 s_a5[0x800];
+    u8 s_82[0x80];
     u32 s_actor_tab = DSD(DS_001014EC);
     u32 s_res_tab = DSD(DS_001014E0);
     u32 s_res_cnt = DSD(DS_001014F0);
@@ -539,6 +728,7 @@ int test_fight(void)
     snap(s_d0, 0x00107D00u, 0x200u);
     snap(s_88, 0x00108840u, 0x100u);
     snap(s_a5, 0x00104500u, 0x800u);
+    snap(s_82, 0x00108260u, 0x80u);
 
     check_projection();
     check_dispatch();
@@ -551,6 +741,9 @@ int test_fight(void)
     check_fighter_pass_b();
     check_hud_pass();
     check_effects_rng();
+    check_command_map();
+    check_think_chain();
+    check_attack_consume();
 
     put(s_f0ae0, 0x000F0AE0u, 0x20u);
     put(s_proj, 0x00100A70u, 0xF4u);
@@ -558,6 +751,7 @@ int test_fight(void)
     put(s_d0, 0x00107D00u, 0x200u);
     put(s_88, 0x00108840u, 0x100u);
     put(s_a5, 0x00104500u, 0x800u);
+    put(s_82, 0x00108260u, 0x80u);
     DSD(DS_001014EC) = s_actor_tab;
     DSD(DS_001014E0) = s_res_tab;
     DSD(DS_001014F0) = s_res_cnt;

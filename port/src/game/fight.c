@@ -3,7 +3,7 @@
  * 0x49C78. Addresses, gates and arithmetic are from
  * docs/superpowers/plans/2026-09-20-demo-fight-derivations.md §3-§5. The module
  * registers nothing; the arena frame is the state-7 body's first call
- * (0x11E8F). The 0x1975C think step is Task 4's chain and is a PORT skip. */
+ * (0x11E8F). The 0x1975C think step is fighter_think() (fighter.c). */
 #include "game/fight.h"
 #include "game/fighter.h"
 #include "game/camera.h"
@@ -146,10 +146,8 @@ void fight_command_map(u32 side, u32 edx_arg, u32 override)
             return;
         }
         DSW(DS_001088E0 + side * 2u) = 0x8000u;              /* 0x3B26F */
-        if (fight_attack_ready(side)) {
-            /* PORT: 0x3B28C 0x3BDDC(side) — Task 4's command consumer, a named
-             * gap (§7.16). */
-        }
+        if (fight_attack_ready(side))
+            (void)fighter_attack_consume(side);              /* 0x3B28C */
     }
 }
 
@@ -336,8 +334,7 @@ void fight_arena_frame(void)
     camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
                    DS_00100B61, DS_00100AF4);                  /* 0x264C7 */
 
-    /* PORT: 0x264CC call 0x1975C. The think/AI chain (0x3B464 -> 0x3B298 ->
-     * 0x3B134 -> 0x3BDDC) is Task 4's; the frame keeps its call slot here. */
+    fighter_think();                                           /* 0x264CC 0x1975C */
 
     camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
                    DS_00100B60, DS_00100AF0);                  /* 0x264EC */

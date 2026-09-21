@@ -13,8 +13,8 @@
  * 0x3C5CC, 0x16D58 twice, the two position latches, 0x17FA0 twice, 0x17580,
  * 0x1958C, 0x19068, 0x17FA0 twice, 0x1975C, 0x17FA0 twice, 0x3CB68, 0x35658
  * twice, 0x49C78, 0x1282C, 0x12DA8. The six 0x17FA0 calls are not redundant.
- * The 0x1975C think step is Task 4's chain and is a named skip for now (§5.1);
- * everything else is ported here or is a named gap. */
+ * The 0x1975C think step is fighter_think() (fighter.h); everything else is
+ * ported here or is a named gap. */
 void fight_arena_frame(void);
 
 /* 0x35658. The per-side HUD/health pass. The arena frame calls it twice. Its
