@@ -783,7 +783,8 @@ static void game_state_6(void)
     u32 draw1 = rng_next(7u);                           /* 0x11AAD (draw 1) */
     DSW(DS_00104AFC) = (u16)draw1;                      /* 0x11AB4 */
     /* PORT: 0x11AC4 0x20DF4(eax=draw1, edx=1) — a 155-byte reset with 11
-     * callees; its six resets stay a named gap. Its first callee 0x49300 is the
+     * callees; its six non-branch resets (0x29B70, 0x2C390, 0x12750, 0x28E98,
+     * 0x34978, 0x2C074) stay a named gap. Its first callee 0x49300 is the
      * only liveness precondition: it self-links the fight-effect list sentinel
      * DS_0010884C that the 0x49C78 walk reads, so it is ported as fight_list_init
      * (a zero head would walk address 0 forever). */
@@ -793,6 +794,14 @@ static void game_state_6(void)
      * DS_000F0AEC — before the 0x38730 call below. */
     DSD(DS_000F0AEC) = 0;
     DSD(DS_000F0AF0) = 0;
+    /* 0x20E78 0x2BAF4(EAX=1): the branch's first call. It clears the actor and
+     * pset pools, the render list and the process masks, zeroes the two
+     * offscreen buffers and blacks the DAC (0x52106/0x336C0), which releases the
+     * attract's presentation actors and their held text before the fight's own
+     * actors spawn. The port's actors_reset() ports the param_1 != 0 arm.
+     * PORT: the branch's third call 0x412A0 (the scene's prop actors and
+     * 0x2C320's crowd) stays a named gap. */
+    actors_reset();                                     /* 0x11AC4 0x2BAF4 */
     /* 0x20E7F 0x38730(eax=draw1): the attract projection setup. Its argument is
      * 0x20DF4's clamped EAX (0x20DF7 MOV EBX,EAX; 0x20E01/0x20E06 clamp to 7;
      * 0x20E7D MOV EAX,EBX), which 0x11AC1 loaded with the state-6 draw. */

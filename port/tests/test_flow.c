@@ -447,8 +447,18 @@ int test_flow(void)
      * is (0x10000 / 256) >> 1 = 0x80 instead of 0. */
     DSD(DS_000F0AF0) = 0x100;
     DSW(DS_00107900 + 0x53u * 2u) = 0xDEAD;
+    /* 0x20E78 0x2BAF4(EAX=1): the branch's actor-pool reset. Seed a live sentinel
+     * actor and mark its record at +0x44 (0x2AE14 writes that word 0); the pool
+     * fill must zero the marker. The seeded value differs from the
+     * post-condition, so a missing reset cannot pass on a record the test never
+     * touched, and a record the state-6 spawns reuse is written 0 by the spawn. */
+    u32 sentinel = actor_spawn((const u32 *)(mem + 0x9AC30u), 0x4840u, 0xE0u,
+                               0x1B00u, 0u);
+    CHECK(sentinel != 0, "the state-6 reset test seeds a live sentinel actor");
+    DSW(sentinel + 0x44u) = 0x5EEDu;
     rng_seed(0xABCDu);
     game_frame();
+    CHECK_EQ_INT((int)DSW(sentinel + 0x44u), 0);
     CHECK_EQ_INT((int)DSB(DS_00107A54), 1);
     CHECK_EQ_INT((int)DSW(DS_00107900 + 0x53u * 2u), 0);
     CHECK_EQ_INT((int)DSB(DS_00104B15), 1);
