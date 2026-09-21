@@ -19,8 +19,9 @@ void fight_arena_frame(void);
 
 /* 0x35658. The per-side HUD/health pass. The arena frame calls it twice. Its
  * load-bearing spine is 0x35658 -> 0x34B6C -> 0x1A978 -> 0x3B134: the command
- * word DS_001088E0/E2 is re-derived after the think step. The rest of the pass
- * (0x33C78, 0x34038, 0x38D24, 0x3531C, 0x2A1FC, 0x354F0, 0x186C4) is a named
+ * word DS_001088E0/E2 is re-derived after the think step, and its 0x35813 call
+ * to 0x2A1FC (actor_sync) advances the fighter's record each frame. The rest of
+ * the pass (0x33C78, 0x34038, 0x38D24, 0x3531C, 0x354F0, 0x186C4) is a named
  * gap (§7.8) and is skipped. */
 void fight_hud_pass(u32 side);
 

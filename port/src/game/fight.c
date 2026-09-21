@@ -314,10 +314,10 @@ void fight_hud_pass(u32 side)
          * spine; both are named gaps (§7.8) and are skipped. */
         fight_health_sync(side);                /* 0x357FC 0x34B6C */
         DSB(fighter + 0x28u) = (u8)(DSB(fighter + 0x28u) | 1u); /* 0x35808..0x35810 */
+        actor_sync(fighter);                    /* 0x35813 0x2A1FC */
     }
-    /* PORT: 0x35803 0x3531C(side), 0x35813 0x2A1FC(rec), 0x3581C/0x35824
-     * 0x354F0(side)/(1-side) and 0x35829 0x186C4 run after it; all named gaps
-     * (§7.8) and skipped. */
+    /* PORT: 0x35803 0x3531C(side), 0x3581C/0x35824 0x354F0(side)/(1-side) and
+     * 0x35829 0x186C4 are named gaps (§7.8) and skipped. */
 }
 
 /* ---- 0x49C78 the scene/effects pass ------------------------------------ */

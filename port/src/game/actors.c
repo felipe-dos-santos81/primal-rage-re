@@ -1177,8 +1177,9 @@ static void release_record(u32 rec, u32 pset)
     DSB(rec + 0x4a) = DSB(rec + 0x4b);
 }
 
-/* 0x2A1FC. Per-record sync: timer, anim-id, pset-id hold, motion then write. */
-static void sync_record(u32 rec)
+/* 0x2A1FC. Per-record sync: timer, anim-id, pset-id hold, motion then write.
+ * Exposed for 0x35658's 0x35813 call (the state-7 arena's fighter sync). */
+void actor_sync(u32 rec)
 {
     u32 slot = DSW(rec + 0x56);
     u32 pset = DSD(DS_001014EC) + slot * PSET_SIZE;
@@ -1222,7 +1223,7 @@ void actors_update(void)
             if ((DSW(rec + 0x28) & 1u) != 0)
                 DSB(rec + 0x28) &= 0xfe;
             else
-                sync_record(rec);
+                actor_sync(rec);
         }
         rec = next;
     }

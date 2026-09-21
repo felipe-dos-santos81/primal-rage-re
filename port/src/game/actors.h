@@ -36,6 +36,10 @@ u32  actor_pset(u32 rec);
  * written. 0x2A820's free-record arm calls the same body; the game_frame tail
  * (0x25443) calls it per live fighter. */
 void actor_pset_point(u32 rec);
+/* 0x2A1FC. Per-record sync: the frame timer, the animation-id hold and motion,
+ * then the pset write. 0x2A31C calls it for each active record; 0x35658 calls it
+ * on the fighter at 0x35813. Exposed for fight_hud_pass. */
+void actor_sync(u32 rec);
 /* 0x2A31C. Walks the active list and syncs each record (0x2A1FC). */
 void actors_update(void);
 /* 0x2A17C. Point a record's pset word +2 at `word` OR the 0x800 sprite bit when

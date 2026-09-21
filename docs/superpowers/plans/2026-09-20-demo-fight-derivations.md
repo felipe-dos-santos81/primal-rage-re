@@ -1288,9 +1288,9 @@ Task 5 leaves it as a `/* PORT: */` skip; cycle 2 owns it.
 7. **`0x3C88C` (730 B) and its draw helpers.** Called 64×/frame from `0x3CB68`; 4
    callees (`0x3C600`, `0x3C6A8`, `0x3C758`, `0x3C800`). Not decoded.
 8. **`0x35658` (478 B) interior.** The call spine (`0x35658 → 0x34B6C → 0x1A978 →
-   0x3B134`) is pinned and load-bearing (§3.7); `0x33C78`, `0x34038`, `0x38D24`,
-   `0x3531C`, `0x2A1FC`, `0x354F0`, `0x186C4` are not decoded, and the health-bar
-   drawing is cycle 2.
+   0x3B134`) is pinned and load-bearing (§3.7); the `0x35813` call to `0x2A1FC`
+   is `actor_sync` and is wired. `0x33C78`, `0x34038`, `0x38D24`, `0x3531C`,
+   `0x354F0`, `0x186C4` are not decoded, and the health-bar drawing is cycle 2.
 9. **`0x33F08` health sprite table.** The `rec[9]`-indexed table and `0x2A408` are
    not decoded; the per-character constant selection is pinned (§3.8).
 10. **`0x34B6C` (541 B) interior.** Only its `0x1A978` call and its `0x1077A8` reads

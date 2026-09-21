@@ -563,6 +563,38 @@ static void check_hud_pass(void)
     CHECK_EQ_INT((int)DSB(fighter + 0x28u), 1);
 }
 
+/* 0x35813 0x2A1FC: the HUD pass's `|= 1` is immediately followed by the
+ * per-record sync (the raw's `mov eax,ebx; call 0x2A1FC` with ebx = the fighter
+ * record), so the fighter's animation advances inside the state-7 arena's
+ * 0x2651B HUD pass. sync_record's 0x2AA70 frame_timer decrements the record's
+ * +0x20 float by 1.0. The spine before it is seeded inert (no 0x52 dispatch,
+ * mode != 4) and +0x24 is non-zero so frame_timer runs; the 3.0f sentinel
+ * differs from the 2.0f post-condition, so the omitted sync fails here. */
+static void check_hud_sync(void)
+{
+    u32 rec = FIGHT_RECS + 0x400u;
+    u32 fighter = FIGHT_RECS + 0x500u;
+
+    mem_fill(FIGHT_RECS + 0x400u, 0, 0x180);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSD(DS_001077A8) = rec;
+    DSD(DS_001077A8 + 4u) = 0;          /* side 1: no record */
+    DSD(rec) = fighter;                 /* the two-level pointer */
+    DSB(rec + 0x52u) = 0;               /* 0x34B6C does not dispatch to 0x1A978 */
+    DSD(DS_00104B00) = 3;               /* not 4: the mode-4 arm is skipped */
+    DSB(DS_00104B26) = 0;               /* the sync takes the timer path */
+
+    DSW(fighter + 0x56u) = 0;           /* pset slot 0 */
+    DSW(fighter + 0x28u) = 0;           /* bit 0 clear; bits 4/11 and +0x2a clear */
+    DSW(fighter + 0x2au) = 0;
+    DSD(fighter + 0x24u) = 0x3F800000u; /* 1.0f: the frame_timer precondition */
+    DSD(fighter + 0x20u) = 0x40400000u; /* 3.0f sentinel */
+
+    fight_hud_pass(0);
+    CHECK_EQ_INT((int)DSD(fighter + 0x20u), 0x40000000);   /* 2.0f: synced */
+    CHECK_EQ_INT((int)DSB(fighter + 0x28u), 1);
+}
+
 /* 0x49C78: the direct RNG call sites and their gates. A case-3 entry issues
  * exactly one rng(0x3C); the DS_001088BF tail issues one rng(2) only inside
  * 1..4. The RNG state is the proof; the sentinel seeds prove the gate. */
@@ -1147,6 +1179,7 @@ int test_fight(void)
     check_fighter_pass_a();
     check_fighter_pass_b();
     check_hud_pass();
+    check_hud_sync();
     check_effects_rng();
     check_command_map();
     check_think_chain();
