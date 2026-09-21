@@ -642,44 +642,16 @@ int test_effects(void)
     CHECK_EQ_INT(effects_active(), 0);
 
     {
-        /* ---- the fight-camera/scene state updates ------------------------- */
-        const u32 s_ec = DSD(DS_000F0AEC), s_x = DSD(DS_000F0AF0);
+        /* ---- the reachable fight-camera update: 0x1324C ------------------- */
         const u32 s_off = DSD(DS_000F0AF4), s_vel = DSD(DS_000F0AF6);
-        const u8 s_mode = DSB(DS_000F0AFE);
-        const u32 s_f2 = DSD(DS_001078F2);
-        const u16 s_afc = DSW(DS_00104AFC);
-        const u8 s_fe = DSB(DS_001078FE);
-        const u32 s_p0 = DSD(DS_001077B0), s_p1 = DSD(DS_00107844);
-        const u32 s_810a = DSD(DS_0010810A);
-        u32 p0 = 0x3F10000u, p1 = 0x3F10000u + 0x94u;
-
-        /* 0x1317C input A (record 8.6): x = 0 -> target 0; 0x12CD4 steps
-         * 0x250 -> 0x150 and the 0x1700 limit does not bite. */
-        DSD(DS_001078F2) = 0; DSW(DS_00104AFC) = 0;
-        DSD(DS_000F0AEC) = 0x250u; DSD(DS_000F0AF0) = 0; DSW(DS_000F0AF4) = 0;
-        camera_y_clamp();
-        CHECK_EQ_INT((int)DSD(DS_000F0AEC), 0x150);
-
-        /* 0x12CD4's added term is the signed word at 0xF0AF4 (the shake offset),
-         * NOT DS_000F0AF0's high word. Camera x is still 0 but the shake offset
-         * is 0x30, so the step is 0x150 + 0x30 = 0x180; reading f0af0's high
-         * word would leave 0x150. */
-        DSD(DS_000F0AEC) = 0x250u; DSD(DS_000F0AF0) = 0; DSW(DS_000F0AF4) = 0x30u;
-        camera_y_clamp();
-        CHECK_EQ_INT((int)DSD(DS_000F0AEC), 0x180);
-        DSW(DS_000F0AF4) = 0;
-
-        /* 0x1317C input B (record 8.6): x = 0x1800 -> float d = 0x400,
-         * trunc(1024 * (1024 * 3.616898175096139e-05)) = 37. */
-        DSD(DS_001078F2) = 0x18000000u; DSD(DS_000F0AEC) = 0;
-        camera_y_clamp();
-        CHECK_EQ_INT((int)DSD(DS_000F0AEC), 37);
-
-        /* The per-camera limit clamps after the step: index 0's table high word
-         * is 0x1700, so a camera y above it is pulled down. */
-        DSD(DS_001078F2) = 0; DSD(DS_000F0AEC) = 0x2000u;
-        camera_y_clamp();
-        CHECK_EQ_INT((int)DSD(DS_000F0AEC), 0x1700);
+        const u32 s_e4 = DSD(DS_001088E4), s_d8 = DSD(DS_001088D8);
+        const u32 s_dc = DSD(DS_001088DC), s_d4 = DSD(DS_001088D4);
+        const u16 s_e0 = DSW(DS_001088E0), s_e2 = DSW(DS_001088E2);
+        const u32 s_latch = DSD(DS_000E1C38), s_frame = DSD(DS_000EF6DC);
+        const u8 s_bec = DSB(DS_00105BEC), s_bee = DSB(DS_00105BEE);
+        const u32 s_tab = DSD(DS_000A8644);
+        const u32 s_bt = DSD(DS_00104B00);
+        const u32 s_lnext = DSD(DS_00105BCC), s_lprev = DSD(DS_00105BD0);
 
         /* 0x1324C input A (record 8.7): offset 0x10 + velocity -0x20 settles;
          * the offset zeroes and update-mask bit 0 clears, while the velocity
@@ -703,102 +675,34 @@ int test_effects(void)
         /* 0x1324C is update-table entry 0 and runs only when DS_00104AE8 bit 0
          * is set. The REAL dispatch (game_frame's run_process_table) must leave
          * the shake state alone with the bit clear and run the decay with it
-         * set. The active-actor sentinel is self-linked so actors_update is a
-         * no-op and only the table walk can move the sentinels. */
-        {
-            const u32 s_tab = DSD(DS_000A8644);
-            const u32 s_bt = DSD(DS_00104B00);
-            const u32 s_lnext = DSD(DS_00105BCC), s_lprev = DSD(DS_00105BD0);
-            effects_init();
-            CHECK(fn_resolve(FN_0001324C) != NULL,
-                  "0x1324C is registered for the update table");
-            DSD(DS_000A8644) = FN_0001324C;      /* entry 0 */
-            DSD(DS_00104B00) = 0;                /* skip the state machine */
-            DSD(DS_00105BCC) = DS_00105BCC;
-            DSD(DS_00105BD0) = DS_00105BCC;
-            DSW(DS_000F0AF4) = 0x100u; DSW(DS_000F0AF6) = 0x20u;
-            DSB(DS_00104AE8) = 0;
-            game_frame();
-            CHECK_EQ_INT((int)DSW(DS_000F0AF4), 0x100);  /* bit 0 clear: no run */
-            CHECK_EQ_INT((int)DSW(DS_000F0AF6), 0x20);
-            DSB(DS_00104AE8) = 1;
-            game_frame();
-            CHECK_EQ_INT((int)DSW(DS_000F0AF4), 0x120);  /* bit 0 set: ran */
-            CHECK_EQ_INT((int)DSW(DS_000F0AF6), 0);
-            DSB(DS_00104AE8) = 0;
-            DSD(DS_000A8644) = s_tab;
-            DSD(DS_00104B00) = s_bt;
-            DSD(DS_00105BCC) = s_lnext;
-            DSD(DS_00105BD0) = s_lprev;
-        }
-
-        /* 0x13290 input A (record 8.8): midpoint 0x2000, camera 0 -> +0x40; the
-         * settle test does not hold, so the mode byte is untouched. */
-        mem_fill(p0, 0, 0x40u); mem_fill(p1, 0, 0x40u);
-        DSD(DS_001077B0) = p0; DSD(DS_00107844) = p1;
-        DSD(p0 + 0x18) = 0x1000u; DSD(p1 + 0x18) = 0x3000u;
-        DSD(DS_000F0AF0) = 0; DSD(DS_000F0AEC) = 0; DSB(DS_001078FE) = 0;
-        DSB(DS_000F0AFE) = 2;
-        camera_center_two();
-        CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x40);
-        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 2);
-
-        /* 0x13290 input B (record 8.8): already settled with DS_001078FE set ->
-         * mode 4. */
-        DSD(DS_000F0AF0) = 0x2000u; DSD(DS_000F0AEC) = 0; DSB(DS_001078FE) = 1;
-        camera_center_two();
-        CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x2000);
-        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 4);
-
-        /* The DS_001078FE gate: settled but the gate clear must not hand off. */
-        DSD(DS_000F0AF0) = 0x2000u; DSB(DS_001078FE) = 0;
-        DSB(DS_000F0AFE) = 2;
-        camera_center_two();
-        CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x2000);
-        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 2);
-
-        /* 0x13290 input C (record 8.8): at the x limit and far from the midpoint
-         * -> no move, settled, mode 4. */
-        DSD(DS_000F0AF0) = 0x5D00u; DSB(DS_001078FE) = 1;
-        camera_center_two();
-        CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x5D00);
-        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 4);
-
-        /* 0x1333C input A (record 8.9): one player at 0x2000, camera 0 -> +0x40,
-         * mode untouched. */
-        DSB(DS_0010810A + 3u) = 0;
-        DSD(DS_000F0AF0) = 0; DSD(DS_000F0AEC) = 0;
-        DSD(p0 + 0x18) = 0x2000u;
-        DSB(DS_000F0AFE) = 2;
-        camera_center_one();
-        CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x40);
-        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 2);
-
-        /* 0x1333C input B (record 8.9): settled with DS_001078FE clear -> mode 4
-         * anyway (mode 3 is not gated). */
-        DSD(DS_000F0AF0) = 0x2000u; DSB(DS_001078FE) = 0;
-        DSB(DS_000F0AFE) = 2;
-        camera_center_one();
-        CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x2000);
-        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 4);
-
-        /* Mode 3 reads DS_001077B0 + index*0x94, so index 1 must use the second
-         * player's record, not the first. */
-        DSB(DS_0010810A + 3u) = 1;
-        DSD(DS_000F0AF0) = 0; DSD(p1 + 0x18) = 0x4000u;
-        camera_center_one();
-        CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x40);
-
-        /* Restore every camera global this block changed. */
-        DSD(DS_000F0AEC) = s_ec; DSD(DS_000F0AF0) = s_x;
-        DSD(DS_000F0AF4) = s_off; DSD(DS_000F0AF6) = s_vel;
-        DSB(DS_000F0AFE) = s_mode;
-        DSD(DS_001078F2) = s_f2;
-        DSW(DS_00104AFC) = s_afc;
-        DSB(DS_001078FE) = s_fe;
-        DSD(DS_001077B0) = s_p0; DSD(DS_00107844) = s_p1;
-        DSD(DS_0010810A) = s_810a;
+         * set. The active-actor sentinel is self-linked so actors_update walks
+         * nothing; every global game_frame touches here is restored below. */
+        effects_init();
+        CHECK(fn_resolve(FN_0001324C) != NULL,
+              "0x1324C is registered for the update table");
+        DSD(DS_000A8644) = FN_0001324C;      /* entry 0 */
+        DSD(DS_00104B00) = 0;                /* skip the state machine */
+        DSD(DS_00105BCC) = DS_00105BCC;
+        DSD(DS_00105BD0) = DS_00105BCC;
+        DSW(DS_000F0AF4) = 0x100u; DSW(DS_000F0AF6) = 0x20u;
         DSB(DS_00104AE8) = 0;
+        game_frame();
+        CHECK_EQ_INT((int)DSW(DS_000F0AF4), 0x100);  /* bit 0 clear: no run */
+        CHECK_EQ_INT((int)DSW(DS_000F0AF6), 0x20);
+        DSB(DS_00104AE8) = 1;
+        game_frame();
+        CHECK_EQ_INT((int)DSW(DS_000F0AF4), 0x120);  /* bit 0 set: ran */
+        CHECK_EQ_INT((int)DSW(DS_000F0AF6), 0);
+
+        DSD(DS_000F0AF4) = s_off; DSD(DS_000F0AF6) = s_vel;
+        DSB(DS_00104AE8) = 0;
+        DSD(DS_001088E4) = s_e4; DSD(DS_001088D8) = s_d8;
+        DSD(DS_001088DC) = s_dc; DSD(DS_001088D4) = s_d4;
+        DSW(DS_001088E0) = s_e0; DSW(DS_001088E2) = s_e2;
+        DSD(DS_000E1C38) = s_latch; DSD(DS_000EF6DC) = s_frame;
+        DSB(DS_00105BEC) = s_bec; DSB(DS_00105BEE) = s_bee;
+        DSD(DS_000A8644) = s_tab; DSD(DS_00104B00) = s_bt;
+        DSD(DS_00105BCC) = s_lnext; DSD(DS_00105BD0) = s_lprev;
     }
 
     {

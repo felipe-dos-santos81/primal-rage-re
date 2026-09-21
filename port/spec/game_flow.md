@@ -324,18 +324,25 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   write its type byte, so **types 1 and 5 have no producer and are dead**. An
   end-to-end unit test proves spawn → `effects_step` → palette dirty list →
   `gfx_dac` (the palette actually presented through `gfx_present`).
-* **The camera/scene layer (ported).** `0x12CD4` (the camera-y stepper), `0x1317C`
-  (camera-y clamp), `0x1324C` (screen-shake decay, update-table entry 0), `0x13290`
-  (mode-2 two-player centering) and `0x1333C` (mode-3 one-player centering) live in
-  `effects.c` and maintain `DS_000F0AEC`/`DS_000F0AF0`/`DS_000F0AF4`/`DS_000F0AF6`/
-  `DS_000F0AFE`. **None of them draws** — the plan's assumed "missing draw" half of the
-  effect render path does not exist; the state is consumed by the existing render pass
-  (`0x14328`) and the actor-pset sync. `0x1324C` is **dormant**: no shipped store sets
-  `DS_00104AE8` bit 0, so it never runs, and it is registered only so the existing
-  update-table dispatch reaches it if bit 0 is ever set. The four producers' shipped call
-  sites (`0x29B74`/`0x41578`) are the remaining wiring (Task 8), so no shipped path
-  spawns types 0/2/4/6 yet; the producers remain a coverage gap carried by unit tests.
-  Details: `../../docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md` §5,
+* **The camera/scene layer — `0x1324C` ported, the rest deferred (unowned gap).**
+  `0x1324C` (screen-shake decay, update-table entry 0) lives in `effects.c` and
+  maintains `DS_000F0AF4`/`DS_000F0AF6`. It draws nothing: the plan's assumed "missing
+  draw" half of the effect render path **does not exist**, and none of the camera/scene
+  functions draws — the state is consumed by the existing render pass (`0x14328`) and the
+  actor-pset sync. `0x1324C` is **dormant**: no shipped store sets `DS_00104AE8` bit 0, so
+  it never runs; it is registered only so the existing update-table dispatch reaches it if
+  bit 0 is ever set.
+  **Deferred and unowned by this plan:** `0x12CD4` (the camera-y stepper), `0x1317C`
+  (camera-y clamp), `0x13290` (mode-2 two-player centering) and `0x1333C` (mode-3
+  one-player centering), plus the dispatcher chain that is their only caller — `0x12D48`
+  with its modes `0x12DF0`/`0x12E3C`, and `0x12DA8`/`0x131F8`/`0x13224`. No task in this
+  plan owns that chain, and the raw gives `0x12CD4` exactly one caller (`0x1317C` at
+  `0x131cb`), so all four are unreachable in the port; shipping them would be dead
+  production surface. A later cycle must port the dispatcher chain first.
+  The four producers' shipped call sites (`0x29B74`/`0x41578`) are the remaining wiring
+  (Task 8), so no shipped path spawns types 0/2/4/6 yet; the producers remain a coverage
+  gap carried by unit tests. Details:
+  `../../docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md` §5,
   `../../docs/superpowers/plans/2026-09-19-effects-producers-report.md`.
 * **`--check N`** (Task 15) runs exactly N master-loop iterations headless and
   writes `frame_NNNN.ppm`/`.pal`/`.idx`; exit code is the assertion-failure

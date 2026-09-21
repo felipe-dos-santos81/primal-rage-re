@@ -60,22 +60,12 @@ void effects_clear(void);
 /* DS_0009AF3D, the active-record count. */
 int effects_active(void);
 
-/* 0x1317C. Camera-y clamp: step DS_000F0AEC toward a target derived from the
- * selected player's x (DS_001078F2) via 0x12CD4, then clamp to the per-camera
- * limit DS_0009AF28[DS_00104AFC]. Changes no pixels by itself. */
-void camera_y_clamp(void);
-
 /* 0x1324C. Screen-shake decay, the update table's entry 0. Dormant in the
  * shipped path: no store sets DS_00104AE8 bit 0. Registered so the existing
- * update-table dispatch reaches it if bit 0 is ever set. */
+ * update-table dispatch reaches it if bit 0 is ever set. The rest of the
+ * camera/scene layer (0x12CD4/0x1317C/0x13290/0x1333C) is deferred: its only
+ * callers are the unported 0x12D48 dispatcher chain, which no task in this plan
+ * owns. */
 void camera_shake_decay(void);
-
-/* 0x13290. Camera mode 2: centre DS_000F0AF0 on the two players' midpoint,
- * handing to mode 4 (DS_000F0AFE) when settled and DS_001078FE is set. */
-void camera_center_two(void);
-
-/* 0x1333C. Camera mode 3: centre DS_000F0AF0 on one player's x (index
- * DS_0010810D), handing to mode 4 when settled without the DS_001078FE gate. */
-void camera_center_one(void);
 
 #endif /* PRAGE_GAME_EFFECTS_H */
