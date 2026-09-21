@@ -1,0 +1,1469 @@
+# Demo fight: the camera, the think chain and `0x49C78` — raw-byte derivation (Task 1)
+
+Register-level derivation of the attract demo fight's motion path from the shipped
+`data/game/C/PRAGE.EXE`: the per-frame projection `0x17FA0`, the fight-camera chain,
+the arena frame `0x263F4` and its remaining callees, the scene/effects pass
+`0x49C78`, the think/AI chain, and the state 6/7 handlers. This is the record Tasks
+2–5 implement from. It changes no source.
+
+Everything below is read from the shipped bytes with `capstone` in **32-bit** mode.
+On any conflict between the plan/brief text and the bytes, the bytes win and the
+conflict is recorded in §0.2.
+
+This record also answers the cycle's open question 2 (§5.9): **how often the demo's
+AI consumes the RNG.**
+
+---
+
+## 0. Addressing, reproduction, and corrections
+
+### 0.1 The image, the formulas and the reproduction recipe
+
+`PRAGE.EXE` is a Microsoft DOS/4GW **bound** executable with the LE image at file
+`0x290A4`. Its two objects are unchanged from the previous cycle:
+
+```
+[0] code  base 0x10000  size 0x63B15  pages=100 pageidx=1   flags 0x2045
+[1] data  base 0x80000  size 0x8B0D0  pages=113 pageidx=101 flags 0x2043
+```
+
+For the code object `file_offset = VA + 0x52E54`; for the data object
+`file_offset = VA + 0x46E54`. The page map is linear (`phys == logical`); the data
+object is file-backed only to `VA 0xF1000`, above which it is BSS. All the fighter
+and camera state below (`0x100Axx`, `0x100Bxx`, `0x1077xx`, `0x1088xx`) is BSS,
+zero-filled at load; the static tables cited (`0xAxxxx`, `0xBedxx`, `0xCxxxx`,
+`0xDxxxx`, `0xExxxx`) are file-backed data.
+
+**Raw operands are pre-relocation in the file, post-relocation in the listings.**
+Every listing below is taken **after** applying the LE internal 32-bit fixups, so a
+code immediate is a linear VA (`0x17FA0`, `0x2AE14`) and a data operand is a linear
+address (`[0xf0af0]`, `[0x1077b0]`). This is the same convention as
+`docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md` §0.1.
+
+Reproduction: rebuild the flat image exactly as `port/src/mem.c`'s `mem_load_le` +
+`mem_load_le_fixups` do, then disassemble with capstone in 32-bit mode. A working
+replica of those two functions (and the caller/member scanners used for this
+record) is a read-only scratch script; it is not committed. The essential shape:
+
+```python
+# LE header 0x290A4, bound base 0x26654 (the inner MZ), page data = bound + 0x3C800,
+# page size 0x1000. Code object file = VA + 0x52E54, data object = VA + 0x46E54.
+# Map each object's pages linearly, zero its BSS tail, then apply every fixup record
+# (src==0x07, tf&~0x50==0) as target_base + target_off at src_off.
+from capstone import Cs, CS_ARCH_X86, CS_MODE_32
+md = Cs(CS_ARCH_X86, CS_MODE_32)
+for ins in md.disasm(bytes(MEM[0x17fa0:0x17fa0+0x22d]), 0x17fa0):
+    print("%#08x  %-18s %s %s" % (ins.address, ins.bytes.hex(), ins.mnemonic, ins.op_str))
+```
+
+`MEM` is a `bytearray(0x4000000)`. The two reference scans used repeatedly below:
+
+* **direct callers**: scan the code object for `E8 rel32` with `addr+5+rel == target`;
+* **data references**: scan the fixed-up image for the little-endian 4-byte target.
+
+Decompilation quotations are from `port/decomp/prage.c`; Ghidra's `size=`, `callers=`
+and `callees=` header counts are cited as the decompiler's claim and are **not**
+authoritative — the raw scan is.
+
+### 0.2 Corrections against the plan/brief (raw wins)
+
+1. **`0x17FA0`'s arguments and outputs are not what the brief/plan describe.**
+   The brief says it "takes a byte pointer and a record pointer (`&DS_00100B60`/
+   `&DS_00100AF0` for P1 …)". The raw takes **six** arguments (four registers plus
+   two stack words, `ret 8`) and it **does not take a record pointer** — it derives
+   each fighter's record from the slot table itself. Task 2's test snippet
+   (`camera_project(0, rec0)` and `DSD(rec0 + 0x1Cu)`) asserts a write the raw never
+   makes. The true arguments, record globals and output globals are in §1. The
+   correct record pointers are `DSD(DS_001077B0)` (P0) and `DSD(DS_00107844)` (P1),
+   **not** `DS_001077B4`.
+2. **`DS_001077B4` is not the player-1 record pointer.** It has three references
+   (`0x276E2`, `0x29775`, `0x42884`), all as `[idx*4 + 0x1077B4]` or a store
+   `mov [esi + 0x1077B4], eax` — the `+4` field of a 0x94-byte slot, not the slot
+   table itself. The slot table base is `0x1077B0` with stride `0x94`; the P1 slot
+   begins at `0x107844` (§1.1).
+3. **`0x17FA0` has no clamp and no "multiply".** Its fixed-point operation is an
+   arithmetic `(x + 0x20) >> 6` on two actor fields, followed by a sprite-origin
+   subtraction. The `0x100`/`0x40` stepping and the `±0x5D00` clamp the brief
+   attributes to the projection live in the **camera** chain (`0x12CD4` steps by
+   `0x100`; `0x12D48` clamps `DS_000F0AF0` to `±0x5D00`; `0x13290`/`0x1333C` step
+   by `0x40`). §1 and §2.
+4. **`0x1324C` (`camera_shake_decay`) stays dormant.** `0x1324C` is update-table
+   entry 0 and runs only when `DS_00104AE8` bit 0 is set. An exhaustive scan of every
+   reference to `0x104AE8` in the fixed image finds **no store that sets bit 0**: the
+   writes are `and …,0xDF/0xFB/0xEF/0xFD` (clears), `or …,0x04/0x40` (bits 2/6), and
+   `mov [0x104AE8],reg` / `0` where the register is zeroed immediately before. The
+   pattern `or byte [0x104AE8],1` occurs zero times. **No demo path sets bit 0**, so
+   the demo does not make the shake process live and there is nothing to re-port
+   (§2.11). This confirms the previous cycle's finding.
+5. **`camera_init` registers nothing.** The update table `DS_000A8644` contains no
+   camera function; its only camera-related entry is `0x1324C` at index 0 (bit 0,
+   dormant). The render table `DS_000A86C4` contains none. `0x12D48`, `0x1282C`,
+   `0x12DA8`, `0x12DF0`, `0x12E3C`, `0x13290` and `0x1333C` are all reached by direct
+   call. Task 2's `camera_init` must not register anything (§2.10).
+6. **`0x12CD4` steps by `0x100`, not `0x40`.** The plan's Task 2 Step 3 conflates the
+   `0x12CD4` y-stepper (`0x100` threshold, `0x100` step) with `0x13290`'s x-follower
+   (`0x100` threshold, `0x40` step). §2.3, §2.5.
+7. **The think chain does not reach `0x18C14`.** A breadth-first walk of the direct
+   `E8` call graph from the demo roots (`0x263F4`, `0x24C5C`, `0x11A8C`) reaches 922
+   functions; `0x18C14` is **not** among them (its 37 call sites are all off the demo
+   path). Task 4 must not port `0x18C14` for cycle 1; §5.7.
+8. **`0x35658` (the HUD/health path) is load-bearing for motion, not inert.** The
+   arena frame calls it twice per frame (`0x2651B`, `0x26525`), and `0x35658` calls
+   `0x34B6C` at `0x357FC`, which calls `0x1A978` at `0x34C75`, which calls the command
+   mapper `0x3B134` at `0x1A9AE`. So the command word `DS_001088E0`/`E2` is written
+   again after the think step. Task 3 cannot skip `0x35658` as an inert stub without
+   breaking the think mapping; the record says which parts are needed (§3.7, §5.6).
+9. **`0x1088E4` is not the think-chain input cursor.** The command word is
+   `word[0x1088E0 + side*2]` (`0x1088E0` side 0, `0x1088E2` side 1). `0x1088E4` has
+   nine references outside `0x3B134`/`0x3B298` (`0x11F35`, `0x28CE9`, `0x42F6D`,
+   `0x4F650`…) and is not read by the command mapper. Task 4's test snippet must seed
+   the mapped inputs, not `DSB(DS_001088E4)`; §5.4 gives the anchors.
+10. **The state-7 timer exit fires on the pre-decrement value 1, not 0.** The
+    dispatcher `0x11D04` computes `eax = (u16)DS_000F0A6A - 1` **before** the switch
+    (`0x11D62`–`0x11D69`), and case 7 stores `ax` then tests `ax >= 1`: the arena runs
+    while the new value is non-zero, so the exit frame is the one whose **pre** value
+    is 1. §6.2. (The plan's Task 5 Step 4 wording "the frame the pre-decrement value
+    is zero" is off by one.)
+11. **State 6 draws the RNG twice, and the two picks are coupled, not independent.**
+    `0x11AAD` draws `rng(7)` and uses it both for `DS_00104AFC` and for P0's
+    character; `0x11AE9` draws `rng(6)` and P1's character is
+    `(draw1 + draw2) % 7`. §6.1.
+12. **All brief function sizes are confirmed by the raw body extents.** The sizes in
+    the brief match Ghidra's and, for every function checked, the raw extent
+    (last instruction + next function boundary): `0x17FA0` 557, `0x12D48` 93,
+    `0x12DF0` 74, `0x12E3C` 409, `0x13290` 169, `0x1333C` 134, `0x12CD4` 93,
+    `0x1317C` 122, `0x12DA8` 72, `0x1282C` 166, `0x3C5CC` 23, `0x16D58` 73,
+    `0x17580` 330, `0x1958C` 464, `0x19068` 250, `0x3CB68` 91, `0x35658` 478,
+    `0x49C78` 2492, `0x1975C` 186, `0x3B464` 608, `0x3B298` 441, `0x3B134` 355,
+    `0x3BDDC` 401, `0x18C14` 1035, `0x1A978` 408, `0x263F4` 329. No correction.
+13. **`0x35658`'s call to `0x34B6C` is direct and real**, not a misparse: raw
+    `0x357FC e86bf3ffff call 0x34b6c`, inside `0x35658`'s extent, and `0x34B6C`
+    (`size=541`) reaches `0x1A978` at `0x34C75`.
+
+### 0.3 Addresses derived in this document
+
+| function | VA | file (obj-0) | decompiler | size | brief | call sites (raw) |
+|---|---|---|---|---|---|---|
+| `0x17FA0` | `0x17FA0` | `0x6ADF4` | `:5117` | 557 | 557 | 40 (12 arena frames) |
+| `0x17EEC` | `0x17EEC` | `0x6AD40` | `:5092` | 107 | — | 9 |
+| `0x16D58` | `0x16D58` | `0x69BAC` | `:4333` | 73 | 73 | 22 |
+| `0x17580` | `0x17580` | `0x6A3D4` | `:4723` | 330 | 330 | 7 |
+| `0x16308` | `0x16308` | `0x6915C` | `:3856` | 19 | — | 1 |
+| `0x1A570` | `0x1A570` | `0x6D3C4` | `:6458` | 57 | — | 42 |
+| `0x12D48` | `0x12D48` | `0x65B9C` | `:1894` | 93 | 93 | 2 |
+| `0x12DF0` | `0x12DF0` | `0x65C44` | `:1946` | 74 | 74 | 1 |
+| `0x12E3C` | `0x12E3C` | `0x65C90` | `:1975` | 409 | 409 | 1 |
+| `0x13290` | `0x13290` | `0x660E4` | `:2183` | 169 | 169 | 1 |
+| `0x1333C` | `0x1333C` | `0x66190` | `:2238` | 134 | 134 | 1 |
+| `0x12CD4` | `0x12CD4` | `0x65B28` | `:1864` | 93 | 93 | 1 |
+| `0x1317C` | `0x1317C` | `0x65FD0` | `:2138` | 122 | 122 | 3 |
+| `0x12DA8` | `0x12DA8` | `0x65BFC` | `:1923` | 72 | 72 | 15 |
+| `0x1282C` | `0x1282C` | `0x65680` | `:1639` | 166 | 166 | 4 |
+| `0x12C7C` | `0x12C7C` | `0x65AD0` | `:1831` | 85 | — | 1 |
+| `0x1324C` | `0x1324C` | `0x660A0` | `:2166` | 67 | — | 0 direct (table[0]) |
+| `0x263F4` | `0x263F4` | `0x79248` | `:13049` | 329 | 329 | 2 (`0x11C3F`, `0x11E8F`) |
+| `0x3C5CC` | `0x3C5CC` | `0x8F420` | `:26156` | 23 | 23 | 12 |
+| `0x3CB68` | `0x3CB68` | `0x8F9BC` | `:26447` | 91 | 91 | 13 |
+| `0x1958C` | `0x1958C` | `0x6C3E0` | `:6218` | 464 | 464 | 7 |
+| `0x19068` | `0x19068` | `0x6BEBC` | `:6001` | 250 | 250 | 12 |
+| `0x35658` | `0x35658` | `0x884AC` | `:21877` | 478 | 478 | 28 |
+| `0x34B6C` | `0x34B6C` | `0x879C0` | `:21353` | 541 | — | 1 |
+| `0x33F08` | `0x33F08` | `0x86D5C` | `:21193` | 302 | — | 6 |
+| `0x49C78` | `0x49C78` | `0x9CACC` | `:31799` | 2492 | 2492 | 7 |
+| `0x1975C` | `0x1975C` | `0x6C5B0` | `:6305` | 186 | 186 | 5 |
+| `0x3B134` | `0x3B134` | `0x8DF88` | `:25258` | 355 | 355 | 2 |
+| `0x3B298` | `0x3B298` | `0x8E0EC` | `:25318` | 441 | 441 | 14 |
+| `0x3B464` | `0x3B464` | `0x8E2B8` | `:25396` | 608 | 608 | 1 |
+| `0x3BDDC` | `0x3BDDC` | `0x8EC30` | `:25822` | 401 | 401 | 7 |
+| `0x18C14` | `0x18C14` | `0x6BA68` | `:5798` | 1035 | 1035 | 37 (off demo path) |
+| `0x1A978` | `0x1A978` | `0x6D7CC` | `:6640` | 408 | 408 | 1 (`0x34C75`) |
+| `0x186D0` | `0x186D0` | `0x6B524` | `:5425` | 223 | — | 21 |
+| `0x2A690` | `0x2A690` | `0x7D4E4` | `:15570` | 397 | — | 5 |
+| `0x33A10` | `0x33A10` | `0x86864` | `:20937` | 88 | — | 35 |
+| `0x3AFC4` | `0x3AFC4` | `0x8DE18` | `:25185` | 116 | — | 17 |
+| `0x5D7DC` | `0x5D7DC` | `0xB0630` | `:38892` | 42 | — | 113 |
+| `0x11A8C` | `0x11A8C` | `0x648E0` | `:1114` | 317 | — | 1 |
+| `0x11BCC` | `0x11BCC` | `0x64A20` | `:1154` | 41 | — | 1 (`0x11E77`) |
+| `0x11D04` | `0x11D04` | `0x64B58` | `:1169` | 546 | — | 1 |
+
+---
+
+## 1. `0x17FA0` — the per-frame projection (the bellwether)
+
+`0x17FA0` is called **six times per demo frame** from `0x263F4`, at
+`0x26450`, `0x26473`, `0x264A4`, `0x264C7`, `0x264EC`, `0x2650F`. It has 40 direct
+call sites across the arena-frame variants. The raw signature is `ret 8`,
+so it takes **six** arguments:
+
+| arg | register / stack | side 0 | side 1 |
+|---|---|---|---|
+| 1 | `EAX` | `0` | `1` |
+| 2 | `EDX` | `0x100B08` | `0x100B0C` |
+| 3 | `EBX` | `0x100B00` | `0x100B04` |
+| 4 | `ECX` | `0x100B62` | `0x100B63` |
+| 5 | `[esp+4]` | `0x100B60` | `0x100B61` |
+| 6 | `[esp+8]` | `0x100AF0` | `0x100AF4` |
+
+The demo-frame call sequence (raw, at `0x263F4`) is:
+
+```
+; first pair, before 0x17580
+0x26427  push 0x100af0        ; arg6
+0x2642c  mov  edx, [0x1077e4] ; 0x26432 xor eax,eax ; 0x26434 mov [0x1077e8],edx
+0x2643a  mov  edx, [0x107878] ; 0x26440 push 0x100b60 ; 0x26445 mov [0x10787c],edx
+0x2644b  mov  edx, 0x100b08   ; arg2
+0x26450  call 0x17fa0         ; (EBX=0x100b00, ECX=0x100b62 set in the prologue)
+0x26455  push 0x100af4
+0x2645a  mov  ecx, 0x100b63
+0x2645f  mov  ebx, 0x100b04
+0x26464  push 0x100b61
+0x26469  mov  edx, 0x100b0c
+0x2646e  mov  eax, 1
+0x26473  call 0x17fa0
+; second pair, after 0x17580/0x1958C/0x19068
+0x26489  push 0x100af0 ; 0x26498 push 0x100b60 ; edx=0x100b08, ecx=0x100b62,
+         ebx=0x100b00, eax=0  ; 0x264a4 call
+0x264a9 ... edx=0x100b0c, ecx=0x100b63, ebx=0x100b04, eax=1 ; 0x264c7 call
+; third pair, after 0x1975C
+0x264d1 ... (side 0) ; 0x264ec call
+0x264f1 ... (side 1) ; 0x2650f call
+```
+
+So each pair repeats the identical argument set; only `0x1958C`/`0x19068`/`0x1975C`
+run between the pairs.
+
+### 1.1 The slot table — where the fighter record comes from
+
+`0x17FA0` does **not** receive a record pointer. It derives each side's record from a
+two-entry slot table at `DS_001077B0`, stride `0x94` bytes, indexed by the side
+argument:
+
+```
+0x1805b  lea  eax, [esi*8]
+0x18062  add  eax, esi
+0x18064  shl  eax, 2
+0x18067  add  eax, esi        ; eax = side * 0x25
+0x18069  mov  ecx, [eax*4 + 0x1077b0]   ; ecx = *(u32*)(0x1077B0 + side*0x94)
+```
+
+* **P0 record pointer** = `DSD(DS_001077B0)` (`DSD(DS_00107844 - 0x94)`).
+* **P1 record pointer** = `DSD(DS_00107844)` (`DSD(DS_001077B0 + 0x94)`).
+
+`0x13290` independently confirms the layout: it reads player 0 x as
+`*(u32*)(DS_001077B0 + 0x18)` and player 1 x as `*(u32*)(DS_00107844 + 0x18)`
+(§2.5 and the previous record §5.3). The slot struct, read off its consumers:
+
+| slot offset | global (slot 0) | meaning | evidence |
+|---|---|---|---|
+| `+0x00` | `0x1077B0` | fighter record pointer | `0x18069`, `0x186D0` |
+| `+0x04` | `0x1077B4` | second actor pointer (spawned from `0xBB8D0`) | `0x42882` |
+| `+0x08` | `0x1077B8` | secondary record pointer `R0` | `0x17FB5`, `0x3B134@0x3B1F1` |
+| `+0x2C` | `0x1077DC` | copy of `rec+0x18` (x) | `0x186FC` |
+| `+0x30` | `0x1077E0` | copy of `rec+0x1C` (y) | `0x186B0`/`0x18ACA` |
+| `+0x34` | `0x1077E4` | signed word compared by `0x12E3C`/`0x12FD8` | `0x12E4B`, `0x12E98` |
+| `+0x38` | `0x1077E8` | previous `+0x34` latch | `0x2643A` |
+| `+0x48` | `0x1077F8` | byte, cleared by `0x276DB`/`0x2976E` | — |
+| `+0x63` | `0x107813` | byte gate for the think mapper | `0x3B168` |
+| `+0x64` | `0x107814` | byte target/stance selector | `0x3B1DC` |
+| `+0x7A` | `0x10782A` | character index | `0x17EF9`, `0x33F08` |
+
+The second slot begins at `0x107844`, so its `R1` secondary pointer is
+`DS_0010784C`, its `+0x34` is `DS_00107878`, its character byte is `DS_001078BE`,
+and its `+0x7A`-family fields are the `0x1078xx`/`0x108xx` addresses used below.
+
+### 1.2 The body (fixed-up)
+
+Prologue and the two "world" blocks (`R0`/`R1` are the secondary pointers):
+
+```
+0x17fa0  push esi; push edi; push ebp; sub esp, 0x18
+0x17fa6  mov  esi, eax            ; esi = side
+0x17fa8  mov  edi, edx            ; edi = arg2
+0x17faa  mov  ebp, ebx            ; ebp = arg3
+0x17fac  mov  [esp+0x10], ecx     ; arg4
+0x17fb0  call 0x17eec             ; eax = per-character constant (side)
+0x17fb5  mov  edx, [0x1077b8]     ; R0 = slot[0].+0x08
+0x17fbb  mov  [esp+0x14], eax     ; save the constant (local_10)
+0x17fbf  test edx, edx ; je 0x1800a
+0x17fc5  mov  ax, [edx+0x56]      ; R0->actor index
+0x17fc9  mov  ebx, [0x1014ec]     ; actor table base
+0x17fcf  shl  eax, 5 ; add eax, ebx
+0x17fd4  mov  ebx, [eax+4]        ; actor+4
+0x17fd7  mov  eax, [eax+8]        ; actor+8
+0x17fda  sar  eax, 6
+0x17fdd  mov  [0x100aa0], eax     ; DAT_00100aa0 = (actor+8) >> 6
+0x17fe4  sar  ebx, 6
+0x17fe7  mov  al, [0x10782a]      ; slot[0] character
+0x17fec  mov  [0x100aa8], ebx     ; DAT_00100aa8 = (actor+4) >> 6
+0x17ff2  mov  bx, [edx+0x34]      ; R0->+0x34 (signed word)
+0x17ff6  mov  eax, [eax*4 + 0xa174c]
+0x17ffd  test bx, bx ; jle 0x18004 ; neg eax
+0x18004  add  [0x100aa8], eax     ; += ±0xA174C[char]
+; R1 block identical for slot[1] using [0x1078be] -> 0x100aa4/0x100aac
+```
+
+The `R0`/`R1` blocks are independent of the six arguments; they write the four
+"world anchor" globals `0x100AA0`, `0x100AA4`, `0x100AA8`, `0x100AAC`. The table at
+`0xA174C` is `{0x28,0x28,0x00,0x1E,0x1E,0x14,0x28,0,0,0}`.
+
+Then the per-side work:
+
+```
+0x18069  ecx = P = *(u32*)(0x1077B0 + side*0x94)
+0x18070  mov ax, [ecx+0x28]
+0x18074  xor al, al
+0x18076  and ah, 0x40             ; keep only bit 0x4000
+0x1807e  setne al                 ; al = (P->+0x28 & 0x4000) != 0
+0x1808a  mov [ecx_arg4], al       ; *arg4 = facing flag
+0x18092  mov byte [arg5], 0       ; *arg5 = 0
+0x18095  dx = P->+0x56            ; actor index
+0x180a1  ax = word[actor]         ; actor word 0
+0x180a5  and ah, 0x7f             ; clear bit 15
+0x180b5  sub eax, [esp+0x14]      ; (actor.word0 & 0x7fff) - 0x17EEC(side)
+0x180be  mov [arg6], eax          ; *arg6 = that
+0x180c9  call 0x16afc(edx=0x100a78+side*4, eax=side)
+0x180ce  ... if al: copy dword 0x100a78[side] -> 0x100ac0[side]
+              else: zero 0x100ac0..0x100ac3[side]
+0x18108  call 0x164f4(edx=0x100a90+side*4, eax=side)
+0x1810d  ... if al: *arg5 = 1 ; copy dword 0x100a90[side] -> 0x100ac8[side]
+              else: zero 0x100ac8..0x100acb[side]
+```
+
+Then the projection proper and the sprite-origin subtraction:
+
+```
+0x18140  ax = [ecx+0x56]                       ; actor index
+0x1814e  edx = *(u32*)(actor + 4)
+0x18152  add edx, 0x20
+0x18155  sar edx, 6
+0x18158  mov [edi], edx                        ; *arg2 = ((actor+4) + 0x20) >> 6
+0x1815c  dx = [ecx+0x56]
+0x18163  eax = *(u32*)(actor + 8)
+0x18167  add eax, 0x20
+0x1816a  sar eax, 6
+0x1816d  mov [ebp], eax                        ; *arg3 = ((actor+8) + 0x20) >> 6
+0x18170  &local_20 = &[esp+4], &local_24 = &[esp]
+0x1817e  edx = *arg6                           ; the projected index base
+0x18186  call 0x16308(side, edx)               ; res_resolve(0xA8B30[actor.word0 & 0x7fff])
+0x1818b  ebx = sprite
+0x1818d  ecx = *(u32*)(sprite+2) >> 16
+0x18190  edx = *(u32*)(sprite+4) >> 16
+0x1819b  call 0x1a570(side)
+0x181a2  test al, al ; jne 0x181ac
+0x181a4  movsx eax, word[sprite]
+0x181a7  sub eax, ecx
+0x181a9  lea ecx, [eax-1]                      ; ecx = word[sprite] - ecx - 1
+0x181b0  local_20 = ecx ; local_24 = edx
+0x181bb  sub [ebp], local_24                   ; *arg3 -= ecx/edx
+0x181c2  sub [edi], local_20                   ; *arg2 -= the other
+0x181ca  ret 8
+```
+
+**Final arithmetic, exactly.**
+
+```
+outA = (u32)(actor+4) ; outA = (outA + 0x20) >> 6 (arithmetic) ; outA -= local_A
+outB = (u32)(actor+8) ; outB = (outB + 0x20) >> 6 (arithmetic) ; outB -= local_B
+```
+
+where `outA = *arg2` (`0x100B08`/`0x100B0C`), `outB = *arg3`
+(`0x100B00`/`0x100B04`), `local_B = (u32)(sprite+4) >> 16`, and
+
+```
+local_A = ((s32)(u32)(sprite+2) >> 16)                     if 0x1A570(side) != 0
+local_A = (s16)word[sprite] - ((s32)(u32)(sprite+2) >> 16) - 1   otherwise
+```
+
+and `actor = MEM[0x1014EC] + (u16)(P->+0x56) * 0x20`.
+
+`0x16AFC` (read `0x100A78[side]`) and `0x164F4` (read `0x100A90[side]`) return the
+booleans that copy or zero the `0x100AC0`/`0x100AC8` byte groups and set `*arg5`.
+They are themselves large (601 B and 547 B) and read resource/page state; the
+record lists them as gaps (§7.4). `0x16308` is `res_resolve(0xA8B30[actor.word0 &
+0x7fff])` (§7.3).
+
+`0x17EEC(side)` is statically readable: it indexes `slot[side].+0x7A`
+(`0x10782A + side*0x94`), takes the byte `0..6`, and returns a zero-extended 16-bit
+constant from the jump table at `0x17ED0`:
+
+| char | source | value |
+|---|---|---|
+| 0 or >6 | `word[0xE6DD0]` | `0x0EE4` |
+| 1 | `word[0xE39D0]` | `0x12A2` |
+| 2 | `word[0xECBD8]` | `0x0BD4` |
+| 3 | `word[0xD2134]` | `0x16B5` |
+| 4 | `word[0xEA604]` | `0x1F9E` |
+| 5 | `word[0xD3E08]` | `0x2F19` |
+| 6 | `word[0xE061C]` | `0x32D7` |
+
+`0x33F08` (the health-bar pass) reads the **same** per-character table
+(`0x33F08` decompiler `:21208`–`:21229`) and uses it the same way, which is the
+strongest cross-check that `0x17EEC`'s values are the fighter's per-character ground
+height.
+
+### 1.3 Worked pairs (statically-determinable stage)
+
+These pin the `(x + 0x20) >> 6` stage byte-for-byte. `actor+4` and `actor+8` are the
+two source fields; `outA`/`outB` are the values written by `0x18158`/`0x1816D`
+**before** the sprite-origin subtraction.
+
+| # | `actor+4` | `actor+8` | `outA = (actor+4+0x20)>>6` | `outB = (actor+8+0x20)>>6` |
+|---|---|---|---|---|
+| 1 | `0x00001000` | `0x00002000` | `0x00000040` | `0x00000080` |
+| 2 | `0x000003FF` | `0x00000040` | `0x00000010` | `0x00000001` |
+| 3 | `0xFFFFFFFF` | `0xFFFFFFC0` | `0x00000000` | `0xFFFFFFFF` |
+| 4 | `0x00000040` | `0x00000080` | `0x00000001` | `0x00000002` |
+
+Derivation, pair 3: `0xFFFFFFFF + 0x20 = 0x1F`; `0x1F >> 6 = 0`. `0xFFFFFFC0 + 0x20
+= 0xFFFFFFE0`; arithmetic `>> 6 = 0xFFFFFFFF` (`-1`). The `sar` is arithmetic, so
+negative inputs round toward `-inf` after the `+0x20`, i.e. the rounding is
+`floor((x+32)/64)`, not round-half-up for negatives — this is the drift risk the
+brief flags.
+
+The **final stored** values subtract the sprite origin (§7.3); they are not
+statically pinnable until the resource reader is modelled. §8.1 gives the exact test
+shape.
+
+---
+
+## 2. The camera chain
+
+The camera is a self-contained state machine on `DS_000F0AF0` (camera x),
+`DS_000F0AEC` (camera y), the shake pair `DS_000F0AF4`/`DS_000F0AF6`, and the mode
+byte `DS_000F0AFE`. The previous cycle
+(`2026-09-20-frontend-chain-derivations.md` §5) already derived `0x12D48`, `0x12CD4`,
+`0x1317C`, `0x1324C`, `0x13290`, `0x1333C`; this section confirms those against the
+raw and adds the four it deferred (`0x12DF0`, `0x12E3C`, `0x12DA8`, `0x1282C`).
+
+### 2.1 `0x12D48` — the dispatcher
+
+```
+0x12d48  mov al, [0xf0afe]
+0x12d4d  cmp al, 4 ; ja 0x12d78
+0x12d51  and eax, 0xff
+0x12d56  jmp dword ptr cs:[eax*4 + 0x12d34]   ; table = {0x12D5E,0x12D65,0x12D6C,0x12D73,0x12D78}
+     mode 0 -> 0x12DF0            (0x12d5e call 0x12df0)
+     mode 1 -> 0x12E3C            (0x12d65 call 0x12e3c)
+     mode 2 -> 0x13290            (0x12d6c call 0x13290)
+     mode 3 -> 0x1333C            (0x12d73 call 0x1333c)
+     mode 4 or >4 -> no call
+0x12d78  cmp dword [0xf0af0], 0x5d00 ; jle 0x12d8e
+0x12d84  mov dword [0xf0af0], 0x5d00
+0x12d8e  cmp dword [0xf0af0], 0xffffa300 ; jge 0x12da4
+0x12d9a  mov dword [0xf0af0], 0xffffa300
+0x12da4  ret
+```
+
+So the clamp is `DS_000F0AF0 = clamp(DS_000F0AF0, -0x5D00, +0x5D00)` after every mode.
+`0x12D48` has two direct call sites (raw): `0x12D6?` no — its callers are in
+`0x24C5C`'s tail family (`0x25422`, `0x2554B`). The arena frame does not call it; the
+`game_frame` tail does.
+
+### 2.2 `0x12DF0` — mode 0 (track one player)
+
+```
+0x12df0  push ebx/edx
+0x12df2  edx = DS_000F0AF0
+0x12dfa  al = DS_000F0AFF
+0x12dff  eax = *(u32*)(0x1077A8 + al*4)     ; camera-target record pointer
+0x12e06  eax = *(s32*)(record + 0x34)       ; target x
+0x12e09  eax -= edx                          ; diff
+0x12e0d  ebx = |eax|
+0x12e17  if (|diff| >= 0x1800) {
+0x12e1f      if (diff > 0)  diff -= 0x1800
+0x12e2a      else           diff += 0x1800
+0x12e2f      edx += diff
+0x12e31  }
+0x12e31  DS_000F0AF0 = edx
+```
+
+`DS_001077A8` is a separate two-entry pointer table (stride 4) of "camera target"
+records; `DS_000F0AFF` selects the entry. Note this is a **different** table from the
+fighter slot table at `0x1077B0`; the previous cycle's §5 did not cover mode 0.
+
+### 2.3 `0x12CD4` — the y-stepper
+
+```
+0x12cd4  edx = DS_000F0AEC ; ebx = arg
+0x12cdf  eax = arg - DS_000F0AEC ; ecx = |eax|
+0x12ced  if (|diff| <= 0x100) new = arg
+         else if (diff > 0)    new = old + 0x100
+         else                  new = old - 0x100
+0x12d1d  DS_000F0AEC = new + (DS_000F0AF2 >> 16)   ; DS_000F0AF2 = high word of DS_000F0AF0
+```
+
+Step `0x100`, threshold `0x100`. (Plan's `0x40` belongs to `0x13290`.)
+
+### 2.4 `0x1317C` — camera-y clamp (unchanged from the previous record)
+
+Body and float path are already derived in
+`2026-09-20-frontend-chain-derivations.md` §5.2: `x = (s32)DS_001078F2 >> 16`; if
+`x > 0x1400`, `d = x - 0x1400`, `arg = (s32)(d*d*C)` truncated (`0x61A4C` forces
+FPU round-toward-zero), `C = 3.616898175096139e-05` (float at `0x804A8`, bytes
+`26 B4 17 38`); then `0x12CD4(arg)` and the `DS_0009AF28[DS_00104AFC] >> 16` clamp.
+Raw confirmed at `0x1317C`–`0x131F5`.
+
+### 2.5 `0x13290` / `0x1333C` — modes 2 and 3 (unchanged from the previous record)
+
+Already derived in the previous record §5.3/§5.4; the raw matches. Mode 2 centers on
+the midpoint of `DS_001077B0`/`DS_00107844` `+0x18`, steps by `0x40`, and sets mode 4
+only when `DS_001078FE != 0`. Mode 3 centers on the single record
+`DS_001077B0 + DS_0010810D*0x94`, steps by `0x40`, and sets mode 4 **without** the
+`DS_001078FE` gate.
+
+### 2.6 `0x12E3C` — mode 1 (track the pair, front/back ordered)
+
+`0x12E3C` selects the "front" fighter by comparing `DS_001077E4` (slot 0 `+0x34`)
+with `DS_00107878` (slot 1 `+0x34`):
+
+```
+0x12e45  ebx = DS_000F0AF0
+0x12e4b  eax = DS_001077E4
+0x12e50  cmp eax, DS_00107878 ; setge al ; ebp = (DS_001077E4 >= DS_00107878)
+0x12e5c  esi = 1 ; edi = ebp ; esi = 1 - ebp
+         ; edx = slot[ebp], ecx = slot[esi]; the two +0x34 values are put in
+         ; local[8 + ebp*4] and local[8 + esi*4]
+0x12ebd  eax = local[8 + ebp*4] ; ebp = eax           (slot a's +0x34)
+0x12ec5  eax = local[8 + esi*4]
+0x12ecd  ebp -= eax ; diff = |diff|
+0x12ed7  ebp = word[0x9af28]                          (the per-camera y limit)
+0x12ee2  if (|diff| > limit) {
+             if (slot_a[+0x34] < slot_a[+0x38]) { slot_a[+0x34] = slot_a[+0x38];
+                                                   slot_a[+0x2C] = slot_a[+0x38];
+                                                   call 0x18714; rec+0x18 = result }
+             if (slot_b[+0x34] > slot_b[+0x38]) { slot_b[+0x34] = slot_b[+0x38];
+                                                   slot_b[+0x2C] = slot_b[+0x38];
+                                                   call 0x18714; rec+0x18 = result }
+             |diff| = rec[a]+0x18 - rec[b]+0x18 (abs)
+         }
+0x12f44  for i in {a,b}: local[i] = slot_i[+0x34] - DS_000F0AF0
+              if (|local[i]| > 0x1800) local[i] = local[i] ∓ 0x1800
+0x12f89  if (|diff| > 0x3000)  eax = (local[0] + local[1]) / 2
+         else if (local[0] == 0) eax = local[1]
+         ; else eax = local[0]
+0x12fb2  eax += DS_000F0AF0
+0x12fba  call 0x12c7c(eax)         ; store via 0x12C7C
+```
+
+`0x12C7C` is the shared "camera x commit" helper (85 B, one caller) and is also used
+by `0x12FD8`. Its body should be transcribed with `0x12E3C`. This is the most
+complex camera mode and its exact behaviour is a partial gap (§7.5).
+
+### 2.7 `0x12DA8` — the y-commit helper
+
+```
+0x12da8  push edx
+0x12da9  al = DS_000F0AFE
+0x12dae  test al, al
+0x12db0  jne 0x12dd2
+0x12db2     edx = DS_000F0AFF
+0x12dba     eax = edx*0x25 ; mov ax, word[eax*4 + 0x1077e0]   ; slot[idx].+0x30
+0x12dd0     jmp 0x12de3
+0x12dd2     eax = DS_001077E0
+0x12dd7     edx = DS_00107874
+0x12ddd     if (eax > edx) eax = edx                          ; min(...)
+0x12de3  mov word [0x1078f4], ax        ; DS_001078F2 high word = selected x
+0x12de9  call 0x1317C
+0x12dee  ret
+```
+
+So `0x12DA8` chooses the "selected player x" (mode 0: the `DS_000F0AFF` slot's
+`+0x30`; otherwise the min of `DS_001077E0`/`DS_00107874`), stores its low word to
+`DS_001078F4`, and runs the y-clamp `0x1317C`. It is called from the arena frame at
+`0x26534`.
+
+### 2.8 `0x1282C` — the dust/scene spawner
+
+```
+0x1282c  ... ax = word[0xef6dc] ; and al, 0x3f ; jne 0x128c9    ; gate: every 64th frame
+0x12849  eax = 7 ; call 0x5d7dc                                  ; rng(7)
+0x12853  test al, 3 ; jne 0x128c9                                ; 3 of 4 returns
+0x12857  test al, 4 ; if set:  edi=0x2800, esi=0xFF80, ebx=0
+                    else:      edi=0xFFFFD800, esi=0x80, ebx=0x4000
+0x12878  eax = 0x1300 ; call 0x5d7dc                              ; rng(0x1300)
+0x1288f  eax = 0x2000 ; call 0x5d7dc                              ; rng(0x2000)
+0x128b6  eax = 0xBB254
+0x128c0  call 0x2ae14                                            ; actor_spawn(0xBB254, edx=DS_000F0AF0+edi, ebx, ecx, push ee)
+0x128c5  mov word [eax+0x34], si
+0x128c9  ret
+```
+
+So `0x1282C` is a **rare** per-frame effect: it is gated on
+`(DS_000EF6DC & 0x3F) == 0` (every 64th frame) and then `rng(7) & 3 == 0` (one in
+four of those), i.e. roughly one in 256 frames, and it draws 3 RNG values per
+activation.
+
+### 2.9 The `DS_000F0AEC`/`DS_000F0AF0`/`DS_000F0AF4` semantics
+
+| global | type | meaning | writers |
+|---|---|---|---|
+| `DS_000F0AF0` | `s32` | camera x; clamped to `[-0x5D00, 0x5D00]` by `0x12D48` | `0x12D48` modes, `0x12DF0`, `0x12E3C`, `0x12FD8`, `0x13290`, `0x1333C` |
+| `DS_000F0AEC` | `s32` | camera y; stepped by `0x12CD4`, clamped by `0x1317C` | `0x12CD4`, `0x1317C` |
+| `DS_000F0AF2` | `s16` | the **high word** of `DS_000F0AF0` (not a separate global) | alias |
+| `DS_000F0AF4` | `s16` | shake offset (`offset += velocity`) | `0x1324C` (dormant) |
+| `DS_000F0AF6` | `s16` | shake velocity (`-= 0x20`/call) | `0x1324C` (dormant) |
+| `DS_000F0AFE` | `u8` | camera mode `0..4` | `0x13290`/`0x1333C` set 4; `0x12DA8` reads |
+| `DS_000F0AFF` | `u8` | player index for mode 0 | camera-select code (elsewhere) |
+| `DS_001077A8` | ptr[2] | camera-target record pointers (stride 4) | elsewhere |
+| `DS_00104AFC` | `u16` | camera index into `DS_0009AF28` | set by state 6 to `rng(7)` (§6.1) |
+
+### 2.10 `camera_init` registers nothing
+
+The update table `DS_000A8644` and render table `DS_000A86C4` contain no camera
+function (the tables are dumped in the previous record §4.3). `0x1324C` at update
+index 0 is the only camera-related entry and it is already registered by
+`port/src/game/effects.c:512`. **Task 2's `camera_init` must not double-register it
+and has nothing else to register**; if it needs a body it should only initialise the
+camera globals (all of which are BSS-zero at load).
+
+### 2.11 `0x1324C` stays dormant (the brief's Step 2 question)
+
+`0x1324C` runs only when `DS_00104AE8` bit 0 is set. Every reference to `0x104AE8` in
+the fixed image (27 sites) is:
+
+* `0x1326A`/`0x13277` — `0x1324C` reads then clears bit 0 itself;
+* `0x198BF` `or byte [0x104AE8],4` (bit 2); `0x25E1F` `or byte [0x104AE8],0x40` (bit 6);
+* `0x230C9`, `0x27E68`, `0x37CA0`, `0x48D77` — `and …,0xDF/0xFB/0xEF/0xFD` (clears);
+* `0x20E1E`, `0x20EC5`, `0x28DC6`, `0x2BB15`, `0x41437` — `mov dword [0x104AE8],reg`
+  where `reg` is `xor`-zeroed immediately before (`0x20E10`, `0x20EB9`, `0x28DB8`…);
+* `0x24CD7`, `0x25FC5`, `0x26B1E`, `0x29003`, `0x290B8`, `0x294BE`, `0x48D2C` —
+  reads/read-modify-writes that preserve or clear bits.
+
+`or byte [0x104AE8],1` occurs **zero** times. Therefore **no demo path makes
+`0x1324C` live**; it stays a dormant, already-ported updater. Do not propose
+re-porting it. (This supersedes the brief's "the demo may be what makes it live".)
+
+---
+
+## 3. The arena frame `0x263F4` and its remaining callees
+
+### 3.1 `0x263F4` — the demo arena frame, exact order
+
+Raw call order (all confirmed at the listed addresses):
+
+```
+0x263f4  push ebx/ecx/edx
+0x263f7  call 0x3c5cc
+0x263fc  xor edx,edx ; xor eax,eax ; mov dl,[0x10782a]
+0x26406  mov ecx, 0x100b62
+0x2640b  call 0x16d58                       ; side 0: (ax=0, dx=char0)
+0x26410  xor edx,edx ; mov eax,1 ; mov dl,[0x1078be]
+0x2641d  mov ebx, 0x100b00
+0x26422  call 0x16d58                       ; side 1: (ax=1, dx=char1)
+0x2642c  edx = DS_001077E4 ; DS_001077E8 = edx     ; latch x
+0x2643a  edx = DS_00107878 ; DS_0010787C = edx     ; latch x
+0x26450  call 0x17fa0   ; side 0 projection (pre)
+0x26473  call 0x17fa0   ; side 1 projection (pre)
+0x26478  call 0x17580
+0x2647d  call 0x1958c
+0x26482  xor eax,eax ; call 0x19068
+0x2649d  ... ; 0x264a4 call 0x17fa0               ; side 0 projection (mid)
+0x264c7  call 0x17fa0                             ; side 1 projection (mid)
+0x264cc  call 0x1975c                             ; the think step
+0x264e5  ... ; 0x264ec call 0x17fa0               ; side 0 projection (post)
+0x2650f  call 0x17fa0                             ; side 1 projection (post)
+0x26514  call 0x3cb68
+0x2651b  xor eax,eax ; call 0x35658               ; HUD/health side 0
+0x26520  mov eax,1 ; call 0x35658                 ; HUD/health side 1
+0x2652a  call 0x49c78
+0x2652f  call 0x1282c
+0x26534  call 0x12da8
+0x26539  pop edx/ecx/ebx ; ret
+```
+
+This is the order Task 3's `fight_arena_frame` must transcribe. The six `0x17FA0`
+calls are not redundant. Note the two `0x16D58` calls in the prologue use
+`(ax,dx) = (0, char_slot0)` and `(1, char_slot1)`; the character bytes are
+`DS_0010782A`/`DS_001078BE`.
+
+### 3.2 `0x3C5CC` — three stores
+
+```
+0x3c5cc  mov dword [0x107ee0], 0
+0x3c5d3  mov dword [0x107d50], 0
+0x3c5da  mov dword [0x107d54], 0
+0x3c5e1  ret
+```
+
+(23 B; the previous cycle's transcription is confirmed.)
+
+### 3.3 `0x16D58` — per-side screen base
+
+```
+0x16d58  if (ax in [0,1] && dx in [0,10)) {
+0x16d73      edx = dx
+0x16d75      eax = (dx << 10) + 0xCC300            ; edx << 10 == edx*0x400
+0x16d7d      dword [0x100a70 + ax*4] = eax
+0x16d84      eax = dx*0x3E8 + 0xC9BF0
+0x16d98      dword [0x100a98 + ax*4] = eax
+0x16d9f  }
+```
+
+Wait: the raw computes `eax = (dx << 10) + 0xCC300`? Re-read the listing:
+`mov eax,edx ; shl eax,0xa ; add eax,0xcc300` — yes `dx*0x400 + 0xCC300`. And
+`eax = edx; shl eax,5; sub eax,edx; shl eax,2; add eax,edx; shl eax,3; add
+eax,0xc9bf0` = `dx*0x1F*4*... ` = `dx*0x3E8 + 0xC9BF0`. So the two tables at
+`0x100A70` and `0x100A98` hold per-side pointers. `ax` is the sign-extended first
+argument; the second is `dx`. Note the demo prologue passes `ax` as the side in
+`eax`, but `0x16D58`'s first parameter is the *word* `ax` and second is `dx`.
+
+### 3.4 `0x17580` — the per-frame decay
+
+```
+0x17580  if (DS_00107824) DS_00107824--
+         if (DS_001078B8) DS_001078B8--
+         if (DS_00107826) DS_00107826--
+         if (DS_001078BA) DS_001078BA--
+0x17644  DS_00100B54 = 0 ; DS_00100AF8 = 0 ; DS_00100AFC = 0
+0x17647  DS_00100B08 = (DS_00100B08 * 0xF3D + 0x800) / 0x1000   (signed, trunc toward 0)
+0x17650  DS_00100B0C = (DS_00100B0C * 0xF3D + 0x800) / 0x1000
+0x17653  DS_00100B00 = (DS_00100B00 * 0xD56 + 0x800) / 0x1000
+0x17656  DS_00100B04 = (DS_00100B04 * 0xD56 + 0x800) / 0x1000
+0x17659  if (0x140E4() && DS_00100B60) 0x170A0()
+         if (0x140E4() && DS_00100B61) 0x170A0()
+```
+
+The raw form of the signed divide is
+`iVar3 = x >> 31; result = ((x + iVar3*-0x1000) - (iVar3<<11 < 0)) >> 12`, i.e. a
+signed truncating divide by `0x1000` with `+0x800` rounding, which the port should
+transcribe exactly. `0xF3D/0x1000 = 0.95239...`, `0xD56/0x1000 = 0.83350...`.
+Because the projection **overwrites** `0x100B00`–`0x100B0C` each call, the decay
+only affects whatever reads them between `0x17580` and the next projection pair
+(`0x1958C`/`0x19068`).
+
+### 3.5 `0x1958C` and `0x19068` — the two per-frame fighter passes
+
+Both loop over the two sides. `0x1958C` is the pre-think pass; `0x19068` is called
+with `EAX = 0` from the arena frame. Neither is a "render": the plan's Task 3 label
+`fighter_render(u8 side)` does not match the raw. Both are characterised, not fully
+derived:
+
+* `0x1958C` (464 B) gates on `DS_001078FA == 2`, calls `0x33950`/`0x19020`/`0x3AFC4`
+  per side, decrements the `DS_00100AF8`/`DS_00100AFC` pair, computes the two
+  `0x18950` reachabilities, and picks a winner. Its **only RNG site** is `0x19714`
+  (`eax=2`, `call 0x5d7dc`) inside the exact-tie branch
+  (`DS_00107838 == DS_001078CC` and `DS_0010789E == DS_0010780A`), used as
+  `[0x100AF8 + rng*4] = 0`. Then `0x193B0` runs when a flag is non-zero.
+* `0x19068` (250 B) gates on `DS_00107802`/`DS_00107896 != 0x13`, calls `0x3C570`,
+  and loops a hit-stun/timer update over `DS_00100B58`/`DS_00100B5A`/`DS_00100B5C`/
+  `DS_00100B5E` and the record pair, calling `0x3CF38` and `0x1922C`. **No RNG.**
+
+The full semantics of both are gaps (§7.6); the record pins their call order, gates,
+globals and RNG so Task 3 can wire them and defer their interiors.
+
+### 3.6 `0x3CB68` — the 2×32 slot pass
+
+```
+0x3cb68  DS_00107EDC = 0
+0x3cb6e  do {
+0x3cb74      DS_00107EE4 = 0x1A570(side)
+0x3cb7e      DS_00107ED8 = 0
+0x3cb84      do { 0x3C88C(); DS_00107ED8++ } while (DS_00107ED8 < 0x20)
+0x3cba0      DS_00107EDC++
+         } while (DS_00107EDC < 2)
+```
+
+So `0x3C88C` is called 64 times (2 sides × 32 slots). `0x3C88C` (730 B) is a large
+slot/draw helper with 4 callees (`0x3C600`, `0x3C6A8`, `0x3C758`, `0x3C800`); it is
+on the demo path and contributes to the frame, but is a gap (§7.7).
+
+### 3.7 `0x35658` — the HUD/health pass is load-bearing
+
+`0x35658(side)` is called twice per frame (`0x2651B`, `0x26525`). Its raw call order
+includes:
+
+```
+0x357d6  call 0x33C78
+0x357ee  call 0x34038
+0x357f5  call 0x38D24
+0x357fc  call 0x34B6C     <-- reaches the think mapper
+0x35803  call 0x3531C
+0x35813  call 0x2A1FC
+0x3581c  call 0x354F0
+0x35824  call 0x354F0
+0x35829  call 0x186C4
+```
+
+and `0x34B6C` (541 B) calls `0x1A978` at `0x34C75`, which calls `0x3B134` at
+`0x1A9AE`. Therefore the command word `DS_001088E0`/`E2` is re-derived by the HUD
+pass after the think step. Task 3 must port at least the `0x35658 → 0x34B6C →
+0x1A978` spine (or make `fight.c` call `0x1A978` directly at the right point); the
+rest of the HUD/health path is cycle 2. `0x35658` also reads the per-side timers
+`DS_00107828`, `DS_0010783C`, `DS_00107838`, `DS_00107840`–`0x42` and the
+camera-target table `DS_001077A8`. Full body is a gap (§7.8).
+
+### 3.8 `0x33F08` — health bars
+
+`0x33F08` loops `iVar4` over `{0,4}` reading `DS_001077A8[i]` (camera-target
+records); for each it selects the per-character constant from the **same** table as
+`0x17EEC` (see §1.2), computes `s = (actor.word0 & 0x7fff) - char_const`, and if
+`(rec+0x41 & 0x20) == 0 && 0 <= s < 0x4B1` writes
+`*(u16*)(rec[9] + s*2)` into `rec[1]+8`, else writes `0x1E1`. It sets/clears bit
+`0x40` of `rec[1]+0x29` from the actor's bit 15, then calls `0x2A408`. Called by the
+state-7 case at `0x11E94` and by `0x263F4`? No — the arena frame does **not** call
+`0x33F08`; the state-7 dispatcher calls it after `0x263F4` (`0x11E94`, and the
+alternate handler at `0x11C44`). The record's Task 5 wiring must call it there.
+Reading `rec[9]` (a health-bar sprite table) is a gap (§7.9).
+
+---
+
+## 4. `0x49C78` — the scene/effects pass
+
+`0x49C78` is 2492 B, called every demo frame at `0x2652A` (and from six other arena
+variants). It is a per-frame pass over a doubly-linked list rooted at
+`DS_0010884C`, switching on each entry's byte `+0x1E`:
+
+```
+0x49c78  push ebx/ecx/edx/esi/edi/ebp ; sub esp, 0x1c
+0x49c81  if (word[0x104b00] == 9) { initialise four locals }
+0x49caa  eax = 0x493F0() ; DS_00108874 = eax
+0x49caf  ecx = DS_0010884C
+0x49cc5  if (ecx == 0x10884C) goto 0x4a476          ; empty list -> tail
+0x49cd1  loop over list entries {
+             ebp = [ecx]                             ; next
+             al = [ecx+0x21]                         ; side/index
+             ebx = [ecx+8]                           ; record pointer
+             si = [ebx+0x48]
+             word[esp + al*2]++ ; dword[esp+8]++
+             0x4B69C(...)
+             switch ([entry+0x1E]) { ... cases ... }
+             ecx = ebp
+         }
+0x4a476  ... epilogue: clear DS_001088BF, and byte[0x104AEC] &= 0x7F
+```
+
+The 22 direct callees are `0x493F0`, `0x4B69C`, `0x4AAD0`, `0x4BD4C`, `0x4AC38`,
+`0x496AC`, `0x2BE1C`, `0x2BC30`, `0x5D7DC`, `0x2B150`, `0x2C3FC`, `0x4AF04`,
+`0x4B470`, `0x4B430`, `0x4B2AC`, `0x4A7D4`, `0x2BE00`, `0x496DC`, `0x4A868`,
+`0x4A928`, `0x4A634`, `0x4987C`.
+
+**RNG sites (5), with ranges and gates:**
+
+| site | call | gate |
+|---|---|---|
+| `0x49E3A` | `rng(0x3C)` then `+0x3C` → `[entry+0x18] = 60..119` | inside the `+0x1E` case body reached from `0x49D1?` |
+| `0x4A305` | `rng(0xC00)`, `edx - rng` | taken when `0x2BE00() > 0` |
+| `0x4A315` | `rng(0xC00)`, `edx + rng` | taken when `0x2BE00() <= 0` (the other arm) |
+| `0x4A439` | `rng(0xC00)`, `edx - rng` | mirror of the above for a second entry |
+| `0x4A449` | `rng(0xC00)`, `edx + rng` | mirror |
+| `0x4A4C5` | `rng(0x14)` then `+0x78` → `[0x1088B0]` | when `byte[0x1088C3] == 0` |
+| `0x4A4F7` | `rng(0x14)` then `+0x78` → `[0x1088B0]` | when `[0x1088C3] != 0 && word[0x1088B0] == 0` |
+| `0x4A611` | `rng(2)` then `0x4987C` | at the common tail |
+
+(That is eight `call 0x5d7dc` encodings, but three pairs are `if/else`: each pass
+executes one of each pair, so a pass makes **3–5 draws** depending on entry states (and
+**zero** when the list is empty — `0x49CC5` jumps straight to the epilogue at
+`0x4A476`) —
+the fixed `0x49E3A`, one of `0x4A305/0x4A315`, one of `0x4A439/0x4A449`, one of
+`0x4A4C5/0x4A4F7`, and the tail `0x4A611`.)
+
+The internal entry semantics (`0x4B69C`, `0x4AC38`, `0x4987C`, `0x4A634`, …) are a
+gap: this pass is the largest single unknown in the slice and it operates on the
+effect list, not the fighters, so it is **not load-bearing for fighter motion**. It
+is load-bearing for pixels, so it is a named gap for cycle 1 and cycle 2's to close.
+§7.10.
+
+---
+
+## 5. The think/AI chain and the RNG answer
+
+### 5.1 `0x1975C` — the think step
+
+```
+0x1975c  push ...
+0x19763  call 0x17CB0
+0x1976d  iVar2 = 0
+0x19770  loop {
+0x19770      call 0x33950                  ; fighter context for iVar2
+0x19778      if (*(s32*)(0x100AD0 + side*4) > 2) {
+0x19791          call 0x1922C
+0x1979b          if (0x3962C()) { *(u8*)(rec+0x8A)=0; 0x18B44(); return; }
+0x197bf          if (0x396AC()) { *(u8*)(rec+0x8A)=0; 0x18B44(); return; }
+0x197e?          *(u8*)(rec+0x67) = cl
+0x197ef          call 0x3B464           ; the think
+0x197f8          call 0x3B938
+0x197ff          call 0x39278
+             }
+0x197f0?     iVar2++
+         } while (iVar2 < 2)
+```
+
+So `0x1975C` iterates both sides and calls `0x3B464` once per active fighter
+(`DS_00100AD0[side] > 2`), at most twice per frame.
+
+### 5.2 `0x3B464` — the per-fighter think driver
+
+```
+0x3b464  push ... ; 0x33A10(0x3B476) ; 0x3C59C()
+0x3b491  if (0x3C59C()) return
+0x3b4a5  if (*(s8*)(rec+0x64) == -1) return
+0x3b4b1  0x3AFC4()
+0x3b4c5  *(u8*)(ctx+0x67) = 1
+0x3b4cc  if (0x3B298()) { *(u8*)(rec+0x8A) = 0; ... 0x3B080; 0x3AD98; goto done }
+0x3b4f0  0x2BD44() gated on slot+0x4B ...
+0x3b515  if (*(s32*)(ctx+0x14)) { call *(ctx+0x14); if nonzero ctx+0x14 = 0 }
+0x3b51f  bVar1 = *(u8*)(*(s32*)(rec+8) + 0x48)
+0x3b52b  switch on bVar1: 4/5 -> 0x36D20, ctx+0x18=ctx+0x1C=0 ; 8 -> 0x1922C; 0x235C4
+0x3b554  0x39834()
+0x3b56c  if (ctx+0x54 == 2) { 0x18B04; 0x39F40; ... }
+0x3b594  else { 0x3AFC4; 0x3A95C; if (*(s8*)(rec+100) not in {0,5}) switch(ctx+0x90) {1..4 pass; default 0x188DC} ; if (ctx+0x54 != 2) 0x3B080 }
+0x3b6ac  *(u8*)(*(s32*)(ctx+0xC)+0x41) |= 0x80
+0x3b6c0  *(u8*)(*(s32*)(ctx+8)+100) = 0xFF
+```
+
+`ctx` is the `0x33A10` context: `ctx[1]=side`, `ctx[2]=&slot[other]`,
+`ctx[3]=&slot[self]`, `ctx[4]=rec_other`, `ctx[5]=rec_self`; `rec` is the current
+fighter's record. Called once per active fighter from `0x1975C`.
+
+### 5.3 `0x3B298` — the command/state dispatch
+
+```
+0x3b298  0x33A10 ; 0x3AFC4 ; 0x3B134          ; <-- the mapper runs here
+         *(u16*)(ctx+0x86) = *(u16*)(ctx+0x84)
+0x3b2?d  if (anim-bit tests) {
+             uVar3 = 0x1AB5C()
+             for (i = 0; i < DAT_000BEEF2 >> 16; i++)
+                 if (0x46460() & uVar3) { bVar1/bVar2 = true based on bits 0x4000/0x8000 }
+             uVar4 = DS_001088E0[side]
+             if (uVar4 & uVar3) { ... }
+             ... set/clear DS_00100C43[side] bits 0x20/0x10 ...
+             0x1A734(); return 1
+         } else return 0
+```
+
+### 5.4 `0x3B134` — the command-word mapper (raw, precisely)
+
+`0x3B134(side=EAX, ctx_ptr=EDX, ctx2=EBX, override_byte=BL)` writes a 16-bit command
+to `word[DS_001088E0 + side*2]`. It calls `0x33A10` (fills the context) and `0x3AFC4`
+(fills three animation pointer slots at `ctx+0x18`), then:
+
+```
+0x3b168  if (slot[side].+0x63 == 0) return             ; gate A
+0x3b17a  if (0x1AB10(...) == 0) return                 ; gate B
+0x3b187  eax = 0x64 ; call 0x5d7dc                     ; RNG DECISION ROLL, rng(100)
+0x3b191  ebx = DS_001082C8[side]
+0x3b19a  cl = DS_0010452C ; ecx <<= 4
+0x3b1a3  ebx = *(u32*)(0xBEDF2 + ebx*2 + ecx) ; sar ebx,0x10
+0x3b1ad  if (rng > threshold && override_byte == 0) return
+```
+
+Then the command decision:
+
+```
+0x3b1bc  if (slot[self].+0x2C > slot[other].+0x2C) base = 0x1000 else base = 0x2000
+0x3b1d8  if (slot[other].+0x64 != 0xFF && slot[other].+0x08 != 0) {
+0x3b1fc      cx = (s16)word[ slot[other].+0x08 -> +0x34 ]
+0x3b205      cmd = (cx < 0) ? 0x6000 : 0x5000
+0x3b207/15   word[0x1088E0 + side*2] = cmd ; return
+         } else {
+0x3b220      bl = byte[ anim[2] + 2 ] ; bit0 = bl & 1
+0x3b22d      if (bit0 == 0) { word[0x1088E0+side*2] = base ; return }
+0x3b24a      bit1 = byte[ anim[2] + 2 ] & 2
+0x3b25d      if (bit1 == 0) { word[0x1088E0+side*2] = base | 0x4000 ; return }
+0x3b26f      word[0x1088E0+side*2] = 0x8000
+0x3b27f      if (0x3BDB0()) 0x3BDDC()
+         }
+```
+
+`slot[self]` is `ctx[3]`, `slot[other]` is `ctx[2]`; `anim[2]` is
+`ctx[0x18+8] = *(u32*)(ctx+0x20)`, the third `0x3AFC4` pointer. `base` is the
+facing-derived direction (`0x1000` if self is to the right of the other).
+
+The mapper therefore turns: (slot gate, fighter state, a `rng(100)` reaction roll
+against a per-character/per-`DS_0010452C` threshold, the two `+0x2C` positions, the
+other slot's `+0x64`/`+0x08->+0x34` stance, and the animation pointer's bits) into one
+of `{0x1000, 0x2000, 0x4000, 0x5000, 0x6000, 0x8000, base|0x4000}` at
+`DS_001088E0`/`E2`. `0x3B298` then reads `DS_001088E0[side]` bits 0x2000/0x1000/0x4000/
+0x8000; `0x3CBC4`/`0x3CC58`/`0x1A5D4`/`0x1A978` also read it.
+
+### 5.5 `0x3BDDC` — the attack/command consumer
+
+`0x3BDDC(side)` reads `DS_001088E0[side]`; if bit 15 is set it clears the fighter's
+`rec+0x34`/`rec+0x43`/`rec+0x42`, sets `ctx+0x5F = 0xFF`, and (when `DS_00107803[side]
+!= 0`) selects one of two static tables `0xBEF28`/`0xBEF64` by `0x4649C()`, stores it
+at `DS_00107D40[side]`, calls `0x3C480(0x3F800000)`, sets `DS_00107802[side]=3`,
+`DS_00107804[side]=2`, `DS_00107803[side]=4`, `DS_001078F8[side]=1`, and writes
+`DS_001077FE[side]` from the command bits. It is the transition into the "attack"
+state; 7 callers, all off the direct think spine except `0x3B28C` (inside `0x3B134`).
+
+### 5.6 `0x1A978` — the second command pass
+
+`0x1A978` is reached only from `0x34B6C@0x34C75`, which is reached from `0x35658`
+(HUD). It calls `0x3B134` at `0x1A9AE` when `*(s8*)(ctx+0x5F) != -1 &&
+*(s8*)(ctx+0x62) != 0`, and then manages the stance timer `ctx+0x61`/`ctx+0x60`,
+stance byte `ctx+0x54`, and transition byte `ctx+0x53`, calling `0x1A6AC`,
+`0x1A640`, `0x1A8F4`. Because `0x35658` runs after `0x1975C`, this pass can overwrite
+the think's command word. Task 4 must include it for fidelity; §7.11 for the
+remaining helpers.
+
+### 5.7 `0x18C14` is off the demo path
+
+BFS over the direct `E8` call graph from `{0x263F4, 0x24C5C, 0x11A8C}` reaches 922
+functions and does **not** include `0x18C14`. Its 37 call sites
+(`0x14D17 … 0x4869F`) are the interactive-match/mode handlers, out of cycle 1's
+scope. Task 4's "whichever of `0x18C14`/`0x1A978` the record finds on the demo path"
+resolves to `0x1A978` only. `0x18C14` is a correction (§0.2.7) and is not ported.
+
+### 5.8 Behaviour helpers reached by the demo think
+
+| helper | role | in cycle-1 scope |
+|---|---|---|
+| `0x33A10` | fill `{1-side, side, &slot[1-side], &slot[side], rec_other, rec_self}` | yes (pure) |
+| `0x39F40`/`0x3AFC4` | select animation pointer triples from `0xDE114`/`0xA3528`/`0xA6728` | yes (static) |
+| `0x1AB10` | fighter-state gate (`rec+0x54`/`rec+0x53` ∈ {0,1,…}) | yes (pure) |
+| `0x1AB5C` | input-mask builder (feeds `0x3B298`) | gap (§7.12) |
+| `0x46460` | per-player input record read | yes (reads `DS_001088xx`) |
+| `0x1A570` | "actor bit 15 clear" predicate (`(word[actor] & 0x8000) == 0`) | yes (pure) |
+| `0x1922C`/`0x18B44`/`0x3B938`/`0x39278` | think-step tails | gap (§7.12) |
+
+### 5.9 The RNG answer (the cycle's decision point)
+
+**The demo's command mapper (`0x3B134`) does not draw every frame.** It draws at most
+one `rng(100)` (`0x3B18C`, `mov eax,0x64; call 0x5d7dc`) per fighter per frame, and
+only when both gates pass:
+`slot[side].+0x63 != 0` (`0x3B168`) and `0x1AB10(...) != 0` (`0x3B17A`). It is a
+**conditional reaction roll**, not a per-frame or per-decision guaranteed draw: after
+the roll it may still return without writing a command (`rng > threshold &&
+override == 0`, `0x3B1AD`).
+
+**But the demo frame as a whole draws every frame.** Three non-AI passes consume the
+stream on the state-7 path:
+
+1. **`0x49C78`** (`0x2652A`, every frame, **when the effect list at `0x10884C` is
+   non-empty**; an empty list early-returns at `0x49CC5` with **zero** draws): 8
+   encoded `0x5D7DC` call sites forming up to 5 logical draws — the fixed `0x49E3A` `rng(0x3C)`, one of
+   `{0x4A305,0x4A315}` `rng(0xC00)`, one of `{0x4A439,0x4A449}` `rng(0xC00)`, one of
+   `{0x4A4C5,0x4A4F7}` `rng(0x14)`, and the tail `0x4A611` `rng(2)`. So **3–5 draws
+   per frame**, in that site order.
+2. **`0x1958C`** (`0x2647D`, every frame): one `rng(2)` at `0x19714`, only in the
+   exact-tie branch.
+3. **`0x1282C`** (`0x2652F`, every frame): three draws
+   (`0x1284E rng(7)`, `0x1287D rng(0x1300)`, `0x12898 rng(0x2000)`), but all gated on
+   `(DS_000EF6DC & 0x3F) == 0` (every 64th frame) and then `rng(7)&3 == 0`, i.e.
+   roughly once per 256 frames.
+
+Plus, because `0x35658` calls `0x1A978 → 0x3B134` (`0x34C75`/`0x1A9AE`), the
+`rng(100)` reaction roll can fire **twice per fighter per frame** (once in the think
+step at `0x1975C`, once in the HUD pass), each conditional.
+
+**Order per demo frame, with draw counts:**
+
+```
+state 7 (case 7 of 0x11D04):
+  0x263F4
+    0x1958C                        -> rng(2)            (rare, tie-break)
+    0x1975C -> 0x3B464 -> 0x3B298 -> 0x3B134   rng(100) (conditional, per fighter)
+    0x49C78                        -> 3..5 draws, order 0x49E3A, 0x4A305|0x4A315,
+                                      0x4A439|0x4A449, 0x4A4C5|0x4A4F7, 0x4A611
+    0x1282C                        -> rng(7), rng(0x1300), rng(0x2000) (every 64th frame)
+    0x35658 x2 -> 0x34B6C -> 0x1A978 -> 0x3B134   rng(100) (conditional, per side)
+    0x12DA8                        -> none
+  0x33F08                           -> none
+  tails 0x10DB0 / 0x10E18 / 0x2BF08 -> none
+game_frame tail (0x24C5C, if DS_00104B15):
+  0x3BB90 (cycle 2), 0x12D48, 0x186D0, 0x2A690, 0x33F08 -> none
+```
+
+**Consequence for Task 7.** The demo's determinism cannot be pinned by the two
+character picks alone: on frames where the effect list is non-empty the stream is
+advanced by `0x49C78` (3–5 draws), and it is advanced conditionally by
+`0x1958C`/`0x3B134`. If the port reproduces `0x49C78`'s call order
+and its entry states, the stream stays aligned; if `0x49C78` is deferred as a gap
+(§7.10) the port will **not** consume the same RNG stream and the demo will diverge at
+the first frame whose `0x49C78` draws affected an entry state — which can be **earlier
+than the first landing hit**. The cycle-1 bound is therefore conditional on how much
+of `0x49C78` Task 3 ports: at minimum the RNG call sites must be issued in order even
+if the entry effects are stubbed, or the bound must be declared earlier than the
+first hit. This record flags that explicitly rather than assuming the bound is the
+first landing hit.
+
+`0x5D7DC` itself is the 32-bit LCG already reproduced by `port/src/game/rng.c`:
+`state = state * 0xB90D12B9 + 0x38CE051F`; `result = ((state >> 16) * (range & 0xFFFF)) >> 16`.
+
+---
+
+## 6. States 6 and 7 and the `game_frame` tail
+
+### 6.1 `0x11A8C` — state 6 (317 B)
+
+Full fixed-up body:
+
+```
+0x11a8c  push ebx/ecx/edx
+0x11a8f  mov eax, 0x100 ; call 0x2c3fc
+0x11a99  call 0x29d60
+0x11a9e  mov eax, 0x1d ; call 0x2c06c
+0x11aa8  mov eax, 7 ; call 0x5d7dc            ; draw 1: rng(7)
+0x11ab2  mov ebx, eax
+0x11ab4  mov word [0x104afc], ax               ; DS_00104AFC = draw1
+0x11aba  xor eax, eax ; mov edx, 1
+0x11ac1  mov ax, bx
+0x11ac4  call 0x20df4
+0x11ac9  mov edx, ebx ; xor eax, eax
+0x11acd  call 0x41350                          ; P0 char = draw1
+0x11ad2  xor eax, eax ; mov edx, 7 ; call 0x33eb4
+0x11ade  mov eax, 6
+0x11ae3  mov [0x1082c8], edx                   ; DS_001082C8 = 0x33EB4 result
+0x11ae9  call 0x5d7dc                          ; draw 2: rng(6)
+0x11aee  lea edx, [ebx + eax]
+0x11af1  cmp edx, 7 ; jl 0x11af9
+0x11af6  sub edx, 7                            ; P1 char = (draw1+draw2) % 7
+0x11af9  mov eax, 1 ; call 0x41350
+0x11b03  mov eax, 1 ; call 0x33eb4
+0x11b0d  mov ah, 1
+0x11b0f  mov ebx, 3
+0x11b14  mov [0x104b15], ah                    ; DS_00104B15 = 1
+0x11b1a  xor eax, eax ; mov dl, 1
+0x11b1e  call 0x1d890                          ; HUD spawn
+0x11b23  mov [0x104b1b], dl                    ; DS_00104B19.byte2 = 1
+0x11b29  mov dh, [0x104529]                    ; DS_00104528+1
+0x11b2f  mov [0x1082cc], ebx                   ; DS_001082CC = 3
+0x11b35  test dh, 2 ; jne 0x11b9a
+0x11b3a  (eax,edx,ecx) = (6,2,0x2000) ; call 0x1c500 ; ebx=eax ; eax=-1 ; call 0x2f198
+0x11b5a  (7,4,0x2000) ; 0x1c500 ; 0x2f198
+0x11b7a  (8,6,0x2000) ; 0x1c500 ; 0x2f198
+0x11b9a  mov edx, 7 ; xor ah, ah ; mov ebx, 0x384 ; mov al, [0xf0a72]
+0x11bab  mov word [0xf0a64], dx                ; DS_000F0A64 = 7
+0x11bb2  mov word [0xf0a6a], bx                ; DS_000F0A6A = 900
+0x11bb9  mov word [0xf0a6c], ax                ; DS_000F0A6C = (u16)DS_000F0A72
+0x11bbf  mov byte [0xf0a6f], ah                ; DS_000F0A6F = 0
+0x11bc5  pop edx/ecx/ebx ; ret
+```
+
+Corrections vs plan: the two RNG draws are **coupled** (P1 = `(draw1+draw2)%7`) and
+`draw1` also sets `DS_00104AFC`; `DS_00104B19.byte2` is written `1` (from `mov dl,1`
+before `0x1D890`), not a register handoff (verify `0x1D890` preserves `DL` — it is
+the HUD spawner; §7.13). `DS_001082C8` is the `0x33EB4` result. The three
+`0x1C500`/`0x2F198` pairs are `(col,row,mode) = (6,2),(7,4),(8,6)` with `ecx=0x2000`.
+
+### 6.2 `0x11BCC` — the timer exit (41 B) and `0x11D04` case 7
+
+```
+0x11bcc  xor ah, ah
+0x11bce  mov [0x104b1b], ah                 ; DS_00104B19.byte2 = 0
+0x11bd4  mov [0x104b15], ah                 ; DS_00104B15 = 0
+0x11bda  mov ax, [0xf0a6c]
+0x11be0  mov [0xf0a64], ax                  ; DS_000F0A64 = DS_000F0A6C
+0x11be6  call 0x29d60
+0x11beb  mov eax, 0x100 ; jmp 0x2c3fc
+```
+
+The dispatcher `0x11D04` (raw, `0x11D4A`–`0x11D69`):
+
+```
+0x11d4a  ax = word[0xf0a64]
+0x11d50  cmp ax, 9 ; ja 0x11d70
+0x11d56  and eax, 0xffff ; edx = eax*4
+0x11d62  ax = word[0xf0a6a]
+0x11d68  dec eax                            ; eax = (u16)timer - 1
+0x11d69  jmp dword ptr cs:[edx + 0x11cdc]   ; 10-entry table, states 0..9
+```
+
+Case 7 (`0x11E67`):
+
+```
+0x11e67  mov word [0xf0a6a], ax             ; store timer-1
+0x11e6d  and eax, 0xffff
+0x11e72  cmp eax, 1
+0x11e75  jge 0x11e8f                        ; new != 0 -> run arena
+0x11e77  call 0x11bcc                       ; new == 0 -> exit
+0x11e7c  call 0x10db0 ; 0x10e18 ; 0x2bf08 ; ret
+0x11e8f  call 0x263f4
+0x11e94  call 0x33f08
+0x11e99  call 0x10db0 ; 0x10e18 ; 0x2bf08 ; ret
+```
+
+So the timer counts `900 → 1`; the frame with **pre** value `1` stores `0` and exits
+(899 arena frames), then `0x11BCC` restores the state. `0x11BF8` is a second, similar
+handler (decrement, exit below 2, else `0x263F4`+`0x33F08`) that has no direct
+caller or jump-table reference in the fixed image; it is recorded as a dead/duplicate
+and not wired (§7.14).
+
+### 6.3 `0x186D0` — the slot position latch
+
+`0x186D0(side)` computes the slot pointer `edx = 0x1077B0 + side*0x94` and, when
+`byte[edx+0x42]` has bit 3 set, copies the fighter record's `+0x18` to
+`slot+0x2C` (`0x1077DC`) and `+0x1C` to `slot+0x30` (`0x1077E0`); otherwise it calls
+`0x18540` first. It reads `DS_001077DC`/`DS_001077E0` (the slot copies) — not
+`DS_001077B0`/`B4` — which is why the plan's Task 2 test target is wrong. The tail
+reads `DS_00100AF0[side]` and `0x18350`, and returns `rec+0x18 - anim` (raw
+`0x18780 sub eax,edi`). It is called from the `game_frame` tail at `0x25438` etc.
+
+### 6.4 `0x2A690` — pset/screen sync (called from the tail)
+
+`0x2A690(rec)` computes `DAT_00105BDC` (screen x) from `rec+0x18` and
+`DAT_000F0AF0` (+0x2A00 offset), writes the actor entry's `+4`/`+8`, and sets
+`DAT_00105BE0` (screen y) from `DS_000F0AEC` and the record's z. It is the pset-sync
+path already partly mirrored in `port/src/game/actors.c`. It is called for each live
+player from the `game_frame` tail (`0x25443`, `0x2552F`).
+
+### 6.5 `0x3BB90` — cycle 1's combat skip
+
+`0x3BB90` (221 B, 2 callers, 3 callees) is the collision entry; it is the `game_frame`
+tail's first call and is explicitly deferred to cycle 2. It reads
+`DS_000BEEF8[fighter*4]` (hit radius, halved when `+0x54 == 2`) and calls `0x4FB20`.
+Task 5 leaves it as a `/* PORT: */` skip; cycle 2 owns it.
+
+---
+
+## 7. What could not be determined (named gaps)
+
+1. **`0x17FA0`'s sprite-origin subtraction (`0x16308`).** The final `*arg2`/`*arg3`
+   are reduced by `word[sprite]`, `*(u32*)(sprite+2)>>16`, `*(u32*)(sprite+4)>>16`,
+   where `sprite = res_resolve(0xA8B30[actor.word0 & 0x7FFF])` (`0x16308`). The
+   `0xA8B30` handles (`0x1060218` index 2, `0xF8045DC` index 31, `0x1D8080C8` index
+   59, …) require the runtime page table, which the port does not model for this
+   resource class (the same class as the previous cycle's §7.1). **Consequence:** the
+   pre-subtraction projection (`(x+0x20)>>6`, §1.3) is unit-testable; the final
+   stored globals are not until the resource reader exists. Evidence: `0x16308`
+   body, `0x18055`–`0x181C2`, table at `0xA8B30`.
+2. **`0x16AFC` (601 B) and `0x164F4` (547 B).** Their boolean results copy/zero
+   `0x100AC0`–`0x100ACB` and set `*arg5`. Both read resource/page state; not decoded.
+   Evidence: `0x180C9`, `0x18108`; bodies at `0x16AFC`, `0x164F4`.
+3. **`0xA8B30` handle → asset mapping.** Pinned only as the `res_resolve` index/offset
+   decoding (index = `handle >> 23`, offset = `handle & 0x7FFFFF`); the runtime page
+   table is not statically readable.
+4. **`0x49C78`'s entry bodies.** The pass structure, list root `0x10884C`, state
+   switch `+0x1E`, callee set and the 8 RNG sites are pinned (§4); the internal
+   effect/entry semantics (what each case draws or spawns, what `0x4B69C`/`0x4AC38`/
+   `0x4987C`/`0x4A634` do) are not. It is not load-bearing for fighter motion but is
+   load-bearing for pixels and for the RNG stream. §5.9 explains the Task 7 impact.
+5. **`0x12E3C` (mode 1).** The raw body is transcribed in §2.6 but its exact
+   min/midpoint selection, the `0x18714` calls and `0x12C7C`'s commit need the
+   `0x18714`/`0x12C7C` bodies transcribed to be unit-pinned; the `0x13290`/`0x1333C`
+   modes (2/3) are already pinned by the previous record and are the ones the demo
+   uses when it settles, so this is lower risk.
+6. **`0x1958C`/`0x19068` interiors.** Call order, gates, globals and the single RNG
+   site are pinned (§3.5); the hit-stun/`0x1922C`/`0x193B0`/`0x3CF38` semantics are
+   not. `0x1958C` calls `0x33950`/`0x19020`/`0x3AFC4`/`0x18950`; `0x19068` calls
+   `0x3C570`/`0x1922C`/`0x3CF38`.
+7. **`0x3C88C` (730 B) and its draw helpers.** Called 64×/frame from `0x3CB68`; 4
+   callees (`0x3C600`, `0x3C6A8`, `0x3C758`, `0x3C800`). Not decoded.
+8. **`0x35658` (478 B) interior.** The call spine (`0x35658 → 0x34B6C → 0x1A978 →
+   0x3B134`) is pinned and load-bearing (§3.7); `0x33C78`, `0x34038`, `0x38D24`,
+   `0x3531C`, `0x2A1FC`, `0x354F0`, `0x186C4` are not decoded, and the health-bar
+   drawing is cycle 2.
+9. **`0x33F08` health sprite table.** The `rec[9]`-indexed table and `0x2A408` are
+   not decoded; the per-character constant selection is pinned (§3.8).
+10. **`0x34B6C` (541 B) interior.** Only its `0x1A978` call and its `0x1077A8` reads
+    are pinned.
+11. **`0x1A978`'s helper chain.** `0x1A6AC`, `0x1A640`, `0x1A8F4`, `0x1A734` are not
+    decoded; the call into `0x3B134` and the timer/stance bytes are pinned (§5.6).
+12. **`0x1AB5C` (302 B), `0x1922C`, `0x18B44`, `0x3B938`, `0x39278`, `0x3AD98`,
+    `0x3B080`, `0x3A95C`, `0x188DC`, `0x39834`, `0x235C4`, `0x36D20`, `0x2BD44`.**
+    The think driver's branch targets are listed with their call addresses; their
+    interiors are gaps.
+13. **`0x1D890` (375 B) HUD spawn.** Whether it preserves `DL` (the `DS_00104B1B`
+    value) is unverified; if it clobbers `DL` the stored byte differs. Evidence:
+    `0x11B1E`, `0x11B23`.
+14. **`0x11BF8`** is a second timer handler with no direct caller or jump-table
+    reference in the fixed image; recorded as dead/duplicate, not wired.
+15. **`0x17FA0`'s `0x1A570` interaction.** `0x1A570(side)` returns
+    `(word[actor] & 0x8000) == 0`; the branch selecting between the two `local_A`
+    forms is pinned, but the *meaning* of actor bit 15 (facing/airborne) is inferred,
+    not proven.
+
+---
+
+## 8. Unit-test values per helper
+
+Every anchor below is expressible as "set these `mem[]` globals / record fields, call
+this function, read these globals", so a test that cannot call `game_init()` can use
+them. Functions whose values cannot be pinned are in §7 instead. `DSD`/`DSW`/`DSB`
+are the port's typed `mem[]` accessors.
+
+### 8.1 `0x17FA0` — `camera_project(side)` (pre-subtraction stage)
+
+Input: `side = 0`; `DSD(DS_001077B0) = P` (a `mem[]` offset); `DSW(P+0x56) = I` (an
+actor index); `DSD(DS_001014EC + I*0x20 + 4) = actor4`;
+`DSD(DS_001014EC + I*0x20 + 8) = actor8`.
+Expected: `DSD(DS_00100B08) == ((actor4 + 0x20) >> 6) - <sprite local_20>`,
+`DSD(DS_00100B00) == ((actor8 + 0x20) >> 6) - <sprite local_24>`. **The subtraction
+is a gap (§7.1); a test may assert the four §1.3 pairs against the
+`(x+0x20)>>6` stage**, or inject `0x16308`'s return in a port seam. Assert the byte
+outputs `DSB(DS_00100B62) == ((DSW(P+0x28) & 0x4000) != 0)` and `DSB(DS_00100B60) == 0`
+before `0x16AFC`/`0x164F4`, and that `DSD(DS_00100AF0) == (DSW(actor0) & 0x7FFF) -
+0x17EEC(0)`.
+
+Worked stage pairs (from §1.3), with `actor4`/`actor8` seeded and the sprite seam
+forced to zero:
+
+| # | `actor4` | `actor8` | `DSD(0x100B08)` | `DSD(0x100B00)` |
+|---|---|---|---|---|
+| 1 | `0x1000` | `0x2000` | `0x40` | `0x80` |
+| 2 | `0x3FF` | `0x40` | `0x10` | `0x1` |
+| 3 | `0xFFFFFFFF` | `0xFFFFFFC0` | `0` | `0xFFFFFFFF` |
+| 4 | `0x40` | `0x80` | `0x1` | `0x2` |
+
+`0x17EEC` anchors (pure): `DSB(0x10782A + side*0x94) = 1` → returns `0x12A2`;
+`= 3` → `0x16B5`; `= 6` → `0x32D7`; `= 0` and `= 7` → `0x0EE4`.
+
+### 8.2 `0x12D48` — `camera_dispatch()`
+
+Input A: `DSB(DS_000F0AFE) = 4`, `DSD(DS_000F0AF0) = 0x7000`.
+Expected: no mode helper runs; `DSD(DS_000F0AF0) == 0x5D00` (clamp).
+Input B: `DSB(DS_000F0AFE) = 4`, `DSD(DS_000F0AF0) = 0xFFFFA000` (`-0x6000`).
+Expected: `DSD(DS_000F0AF0) == 0xFFFFA300` (`-0x5D00`).
+Input C: `DSB(DS_000F0AFE) = 2`, players seeded (see 8.6).
+Expected: mode-2 `0x13290` ran.
+
+### 8.3 `0x12CD4` — y-stepper
+
+Input A: `DSD(DS_000F0AEC) = 0`, argument `0x250`, `DSD(DS_000F0AF0) = 0`.
+Expected: `DSD(DS_000F0AEC) == 0x100` (diff `0x250 > 0x100`, step `+0x100`).
+Input B: `DSD(DS_000F0AEC) = 0x100`, argument `0x150`.
+Expected: `DSD(DS_000F0AEC) == 0x150` (`|diff| <= 0x100`).
+Input C: `DSD(DS_000F0AEC) = 0x200`, argument `0x50`, `DSW(DS_000F0AF0+2) = 0`.
+Expected: `DSD(DS_000F0AEC) == 0x100`.
+
+### 8.4 `0x12DF0` — mode 0
+
+Input: `DSB(DS_000F0AFF) = 0`; `DSD(DS_001077A8) = T`; `DSD(T+0x34) = 0x4000`;
+`DSD(DS_000F0AF0) = 0`.
+Expected: `|diff| = 0x4000 >= 0x1800` → `DSD(DS_000F0AF0) == 0x2800`.
+
+### 8.5 `0x1282C` — gate
+
+Input: `DSW(DS_000EF6DC) = 1` (so `& 0x3F != 0`).
+Expected: no actor spawns, `DSD(DS_000EF6DC)` unchanged, and the RNG counter unchanged
+(the function returned at `0x12843` before `0x1284E`).
+Input B: `DSW(DS_000EF6DC) = 0x40`, `rng` seeded so `rng(7) & 3 == 0`.
+Expected: three RNG advances and one actor spawned from `0xBB254`.
+
+### 8.6 `0x1317C`, `0x13290`, `0x1333C`, `0x1324C`
+
+Carry over verbatim from `2026-09-20-frontend-chain-derivations.md` §8.6–§8.8:
+`0x1317C` input A `DSD(DS_001078F2)=0`, `DSW(DS_00104AFC)=0`,
+`DSD(DS_000F0AEC)=0x250` → `0x150`; input B `DSD(DS_001078F2)=0x18000000` → `37`.
+`0x13290` input A → `DSD(DS_000F0AF0)==0x40`; input B → `==0x2000` and
+`DSB(DS_000F0AFE)==4`; input C `0x5D00` → settled `4`. `0x1333C` input A → `0x40`;
+input B → `DSB(DS_000F0AFE)==4` without the `DS_001078FE` gate. `0x1324C` inputs A/B
+as recorded there; note it is dormant and the `DS_00104AE8` sentinel must be
+pre-seeded by the test.
+
+### 8.7 `0x12DA8`
+
+Input: `DSB(DS_000F0AFE) = 2`; `DSD(DS_001077E0) = 0x12345678`;
+`DSD(DS_00107874) = 0x9ABCDEF0`; `DSD(DS_000F0AEC) = 0`; `DSW(DS_00104AFC) = 0`.
+Expected: `DSW(DS_001078F4) == 0x5678` (min is `0x12345678`, low word stored).
+Input B: `DSB(DS_000F0AFE) = 0`; `DSB(DS_000F0AFF) = 1`;
+`DSW(0x1077E0 + 0x94) = 0x2222`.
+Expected: `DSW(DS_001078F4) == 0x2222`.
+
+### 8.8 `0x263F4` — the arena frame
+
+Input: seed `DSD(DS_001077E4) = 0x1111`, `DSD(DS_0010787C) = 0x2222` sentinels;
+`DSD(DS_001077E4) = 0x3333`, `DSD(DS_00107878) = 0x4444`.
+Expected: `DSD(DS_001077E8) == 0x3333` and `DSD(DS_0010787C) == 0x4444` (the latches
+take the pre-frame values). The six `0x17FA0` calls, both `0x16D58`, `0x17580`,
+`0x1958C`, `0x19068`, `0x1975C`, `0x3CB68`, two `0x35658`, `0x49C78`, `0x1282C`,
+`0x12DA8` run in that order (a call-order trace seam is the honest assertion for the
+gap functions).
+
+### 8.9 `0x3C5CC`
+
+Input: `DSD(0x107EE0) = 0xDEADBEEF`, `DSD(0x107D50) = 0xDEADBEEF`,
+`DSD(0x107D54) = 0xDEADBEEF`. Call. Expected: all three `== 0`.
+
+### 8.10 `0x16D58`
+
+Input: `ax = 0`, `dx = 3`. Expected:
+`DSD(DS_00100A70) == 3*0x400 + 0xCC300 == 0xCCF00`;
+`DSD(DS_00100A98) == 3*0x3E8 + 0xC9BF0 == 0xCA7A8`.
+Input B: `ax = 5` (out of `[0,1]`). Expected: no writes.
+
+### 8.11 `0x17580`
+
+Input: `DSD(DS_00100B08) = 0x1000`, others 0; `DSD(DS_00107824..) = 0`;
+`DSD(DS_000EF6DC)` etc. Expected: `DSD(DS_00100B08) == (0x1000*0xF3D + 0x800) >> 12
+== 0xF3D` (since `0x1000*0xF3D = 0xF3D000`, `+0x800 = 0xF3D800`, `>>12 = 0xF3D`).
+Input B: `DSD(DS_00100B00) = 0x1000` → `(0x1000*0xD56 + 0x800)>>12 = 0xD56`. The four
+counter globals `0x107824`, `0x1078B8`, `0x107826`, `0x1078BA` decrement by 1 when
+non-zero.
+
+### 8.12 `0x186D0`
+
+Input: `side = 0`, `DSD(DS_001077B0) = P`, `DSD(P+0x18) = 0xAA`, `DSD(P+0x1C) = 0xBB`,
+`DSB(0x1077B0 + 0x42) = 0x08` (bit 3 set). Expected: `DSD(0x1077DC) == 0xAA`,
+`DSD(0x1077E0) == 0xBB`.
+
+### 8.13 `0x3B134` — the command mapper
+
+The mapper's clean, anim-independent branch is the `+0x64 != 0xFF && +0x08 != 0`
+path, which does not read `0x3AFC4`. To reach it both gates must pass:
+`DSB(0x1077B0 + side*0x94 + 0x63) != 0` and `0x1AB10` true (seed the context's
+fighter-state bytes `+0x54`/`+0x53`).
+
+Input A: `side = 0`; `DSB(0x107813) = 1`;
+`DSD(DS_001077B0) = P0`, `DSD(P0+0x2C+... )` — set the slot copies
+`DSD(0x1077DC) = 0x3000` (self), `DSD(0x107844 + 0x2C = 0x107870) = 0x1000` (other);
+`DSB(0x107844 + 0x64 = 0x1078A8) = 0x01`; `DSD(0x107844 + 0x08 = 0x10784C) = R`;
+`DSW(R+0x34) = 0xFFFF` (`-1`). Expected: `DSW(DS_001088E0) == 0x6000`.
+Input B: same but `DSW(R+0x34) = 0x0001`. Expected: `DSW(DS_001088E0) == 0x5000`.
+Input C: same but `DSD(0x1077DC) = 0x1000`, `DSD(0x107870) = 0x3000` (self left of
+other) and force the anim path (`DSB(0x1078A8) = 0xFF`). Expected: `0x2000` (or
+`0x2000|0x4000`/`0x8000` per the `anim[2]+2` bits — §7.11).
+
+Seed the sentinel `DSW(DS_001088E0) = 0xFFFF` first so each assertion depends on the
+mapper, and assert A and B together so a swapped branch fails.
+
+**Reaching the mapper.** A test that calls `fighter_think(side)` (the port's
+`0x1975C`) must seed every gate on the path, or it will never reach `0x3B134`:
+`DSD(DS_00100AD0 + side*4) > 2` (`0x19778`), `0x3C59C() == 0` and
+`*(s8*)(rec + 0x64) != -1` (`0x3B47F`/`0x3B4A5`), and then in `0x3B134` the slot
+gate `DSB(0x1077B0 + side*0x94 + 0x63) != 0` (`0x3B168`) and `0x1AB10(...) != 0`
+(`0x3B17A`). The `rng(100)` gate at `0x3B1AD` can be bypassed by passing the
+override byte non-zero (`cmp byte [esp+0x24],0`), so a direct `0x3B134` test with a
+non-zero override is deterministic; a `fighter_think` test must additionally seed the
+RNG or set the override path. If the port cannot inject the override, the mapper's
+command-word assertions are only reachable through the seeded state and the RNG gate
+becomes part of the fixture.
+
+### 8.14 `0x11A8C` — state 6
+
+Input: `DSB(DS_00104B15) = 0`; `DSW(DS_001082CC) = 0`; `DSW(DS_000F0A72) = 5`;
+`DSW(DS_000F0A6C) = 0`; `DSB(DS_000F0A6F) = 0xFF`; `DSB(DS_00104529) = 0`;
+`DSB(DS_00104B1B) = 0`. Call `game_state_step()` with `DSW(DS_000F0A64) == 6`.
+Expected: two RNG advances (draw1 = `rng(7)`, draw2 = `rng(6)`); P0 char = draw1,
+P1 char = `(draw1+draw2)%7`; `DSW(DS_00104AFC) == (u16)draw1`;
+`DSB(DS_00104B15) == 1`; `DSW(DS_001082CC) == 3`; `DSW(DS_000F0A64) == 7`;
+`DSW(DS_000F0A6A) == 900`; `DSW(DS_000F0A6C) == 5`; `DSB(DS_000F0A6F) == 0`;
+`DSB(DS_00104B1B) == 1`. With `DSB(DS_00104529) == 2`, the three `0x1C500`/`0x2F198`
+pairs do not run.
+
+### 8.15 `0x11BCC` and case 7
+
+Input: `DSW(DS_000F0A6A) = 1`; `DSW(DS_000F0A6C) = 4`; `DSB(DS_00104B15) = 1`;
+`DSB(DS_00104B1B) = 1`. Call the dispatcher with `DSW(DS_000F0A64) = 7`.
+Expected: `DSW(DS_000F0A6A) == 0`; `DSW(DS_000F0A64) == 4`; `DSB(DS_00104B15) == 0`;
+`DSB(DS_00104B1B) == 0`; `0x263F4` and `0x33F08` did **not** run.
+Input B: `DSW(DS_000F0A6A) = 2`. Expected: `DSW(DS_000F0A6A) == 1`;
+`0x263F4` and `0x33F08` ran; state still 7.
+
+### 8.16 `0x33F08`
+
+Input: `DSD(DS_001077A8) = R` (non-zero); `DSD(R+0x7A) = 3`;
+`DSW(actor + 0) = 0x8000 | X` so `(actor & 0x7FFF) = X`; `DSB(R+0x41) = 0`.
+Expected: `s = X - 0x16B5`; if `0 <= s < 0x4B1`,
+`DSD(DSD(R[1]) + 8) == DSW(DSD(R[9]) + s*2)`, else `0x1E1`. This is a gap beyond the
+table selection (§3.8, §7.9).
+
+---
+
+## 9. Provenance
+
+* Raw bytes: `data/game/C/PRAGE.EXE` (read-only), 32-bit `capstone` over the LE
+  page-mapped image with the internal 32-bit fixups applied, exactly as
+  `port/src/mem.c`'s `mem_load_le` + `mem_load_le_fixups`.
+* Decompilation: `port/decomp/prage.c` (read-only), line numbers cited inline.
+* Port cross-references: `port/src/game/effects.c:512` (`0x1324C` update-table
+  entry 0), `port/src/game/flow.c` (`game_state_step`, `game_frame`),
+  `port/src/game/actors.c` (pset/animation machinery), `port/src/game/rng.c`
+  (`0x5D7DC`), `port/src/platform/res.h` (`0x1B544` `res_resolve`).
+* Prior derivations used: `2026-09-20-frontend-chain-derivations.md` §4.3 (process
+  tables), §5 (camera `0x12D48`/`0x12CD4`/`0x1317C`/`0x1324C`/`0x13290`/`0x1333C`
+  and the `0x1324C` dormancy proof), §8.6–§8.8 (camera anchors);
+  `2026-09-17-actor-system-args.md` §0 (`0x2AE14` register binding).
+* This record is the delivery of Task 1 of
+  `docs/superpowers/plans/2026-09-20-demo-fight-motion.md`. Corrections to the
+  plan/brief are in §0.2; the named gaps are in §7; the RNG answer is §5.9.
