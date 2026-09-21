@@ -73,7 +73,10 @@ Two changes were made after execution began; the numbering below reflects them.
    instrumenting the port and confirming against the raw) found a second, dominant
    omission: `fight_health_sync` (`0x34B6C`) ports only the `rec+0x52 == 6` case of the
    raw's dispatch, while the raw jumps through a 22-entry table —
-   `0x34BF4 cmp al,0x15; ja 0x34C08; jmp dword ptr cs:[eax*4 + 0x24B14]`. The demo's
+   `0x34BF4 cmp al,0x15; ja 0x34C08; jmp dword ptr cs:[eax*4 + 0x34B14]` (the raw
+   file stores that displacement pre-fixup as `0x24B14`; the code-object base
+   `0x10000` makes the runtime table `0x34B14`, and its 22 entries read `0x24C08…`
+   in the file against `0x34C08…` at runtime). The demo's
    fighters sit at `rec+0x52 == 0`, so they take the unported default `0x349C8`; the AI
    mapper `fight_command_map` (`0x3B134`) is never called, the command words
    `DS_001088E0`/`E2` stay 0, and the fighters never move or change animation. The human
