@@ -85,6 +85,18 @@ Two changes were made after execution began; the numbering below reflects them.
    correct.) Task 7's report blamed `0x3C88C` and `0x20DF4`; both were refuted by
    disassembly — `0x3C88C`'s subtree is pure slot logic with no aperture or blit
    reference.
+4. **Task 8 was re-scoped to cover the demo's CPU-AI command generator.** Its first
+   implementer refuted the diagnosis in Amendment 3 against the raw, and the controller
+   confirmed the refutation in Ghidra: porting the `+0x52` dispatch is necessary but not
+   sufficient, because the command words `DS_001088E0`/`E2` come from `game_frame`'s own
+   `0x24C73` block (`0x47208` + `0x470F8`/`0x46F4C`/`0x469A8`/`0x3C6E8`), which cycle 1
+   scoped out as "the fight engine (sub-project 5)" and the port skips at
+   `flow.c:1244-1245`; with `cmd == 0` every `+0x52` write in the default handler
+   `0x349C8` is inert. The gate is open for the whole demo — `DS_00104B26` is read at
+   four sites and written nowhere in the image (BSS 0), and `DS_00104B1B` is set by
+   state 6 (`0x11B23`). The human ruled that Task 8 absorbs the generator and the
+   `0x36E2C` gate the port also skips, rather than splitting the work. Amendment 3's
+   `cm=0` measurement is therefore a *symptom*, not the cause.
 
 ---
 
@@ -496,22 +508,41 @@ git commit -m "tests: open the demo window, report-only"
 
 ---
 
-### Task 8: Port the per-fighter state dispatch (inserted — see Amendments)
+### Task 8: Port the demo's CPU-AI command generator and the per-fighter state dispatch (re-scoped — see Amendments)
 
-This is the task that makes the demo move. Task 7's measurement showed the port's state-7 output frozen, and the controller's root-cause investigation found why: `fight_health_sync` (`0x34B6C`) ports only the `rec+0x52 == 6` case of the raw's dispatch, and the demo's fighters sit at `+0x52 == 0`, so they take the unported default and the AI mapper `fight_command_map` (`0x3B134`) is never called.
+This is the task that makes the demo move. Task 7's measurement showed the port's state-7 output frozen. The controller's first diagnosis — that the omission was `fight_health_sync`'s `+0x52` dispatch alone — was **refuted against the raw by this task's first implementer and confirmed by the controller in Ghidra**. The demo's command words `DS_001088E0`/`E2` are produced by `game_frame`'s own `0x24C73` block, `0x47208` (the CPU-AI move generator), which cycle 1 scoped out as "the fight engine (sub-project 5)" and the port skips at `flow.c:1244-1245`. With the command words at zero the `+0x52` dispatch is inert — every `+0x52` write in the default handler `0x349C8` sits behind a `cmd` bit — so the generator and the dispatch are both required.
 
 **Files:**
-- Modify: `port/src/game/fight.c` (`fight_health_sync`'s `+0x52` dispatch) and, for the handlers, `port/src/game/fighter.c` / `fighter.h`
+- Modify: `port/src/game/flow.c` (`game_frame`'s `0x24C73` block — the generator's call site, replacing the `flow.c:1244-1245` skip)
+- Modify: `port/src/game/fighter.c` / `fighter.h` (the generator chain and the `+0x52` handlers)
+- Modify: `port/src/game/fight.c` (`fight_health_sync`'s `+0x52` dispatch, and the `0x36E2C` gate the port currently skips at `fight.c:282-287`)
 - Modify: `port/tests/test_fight.c`
-- Modify: `docs/superpowers/plans/2026-09-20-demo-fight-derivations.md` — the table and the handlers are not yet derived; §7.10 currently covers `0x34B6C` as a single gap
+- Modify: `docs/superpowers/plans/2026-09-20-demo-fight-derivations.md` — the generator, the gate, the table and the handlers are not yet derived; §7.10 currently covers `0x34B6C` as a single gap
 
 **Interfaces:**
-- Consumes: Task 3's `fight_hud_pass`/`fight_stance_pass`/`fight_command_map`, Task 6's spawn, and `actors.c`.
-- Produces: the `+0x52` handlers the demo path enters, so `fight_command_map` runs and `DS_001088E0`/`E2` become non-zero.
+- Consumes: Task 3's `fight_hud_pass`/`fight_stance_pass`/`fight_command_map`, Task 6's spawn, `actors.c`, and Task 5's `game_frame` tail.
+- Produces: a non-zero command word per side, the `0x36E2C` gate and its position branch, and the `+0x52` handlers the demo path enters.
 
-- [ ] **Step 1: Derive the table and the handlers into the record**
+- [ ] **Step 1: Derive the generator chain, the gate and the handlers into the record**
 
-The dispatch is at `0x34BF4`: `mov al,[ecx+0x52]; cmp al,0x15; ja 0x34C08; and eax,0xff; jmp dword ptr cs:[eax*4 + 0x34b14]`. The 22-entry table at `0x34B14` (`PTR_LAB_00034b14`, confirmed in Ghidra) is:
+**The command generator.** `game_frame` (`0x24C5C`) at `0x24C73`, confirmed in Ghidra:
+
+```c
+if (DS_00104B26 == 0 && DS_00104B1B != 0) {
+    for (side = 0; side < 2; side++)
+        if ((slot[side] + 0x41 & 0x10) == 0) 0x47208(side);
+        else DS_001088E0[side] = 0;
+    0x461DC();
+}
+```
+
+`DS_00104B26` is read at `0x24C73`/`0x24CBA`/`0x2A32B`/`0x2A214` and written nowhere in the image (BSS 0), and `DS_00104B1B` is set to 1 by state 6 (`0x11B23`), so the gate is open for the whole demo. The writers of `DS_001088E0` are this block's zeroing arm (`0x24C96`), `input_state_update` (`0x4F6BD`), and `0x47208`, which takes the command word's *address* and feeds it through `0x3C6E8`.
+
+`0x47208` (344 bytes, `0x47208..0x47360`) → `0x470F8` → `0x46F4C` is the CPU-AI move selector: per character (`slot+0x7A`) it indexes pointer tables (`0x8C0BC`/`0x8A4A0`, `0x83C68`/`0x81E24`) by a move id and draws `0x5D7DC` (`rand()`) when the sequence expires; `0x469A8` classifies the input into action states. **Derive the chain's RNG consumption into §4/§5.9's shape — Task 9's pins depend on it.**
+
+**The `0x36E2C` gate.** `call 0x36E2C` at `0x34B8E`, before the table. It returns 1 when `(DS_00104B1D == 3 || DS_00104B14 == 0 || slot+0x63 != 0)` and `slot+0x42 & 0x10` and `slot+0x52 ∈ {0,1,5,6,7}` and `slot+0x54 < 2`; when it returns 1 the raw runs the position branch (`0x34B97..0x34BEF`) — `x = rec+0x18 ± 0x3000` (sign from `rec+0x28` bit `0x4000`), then `-0x7C00 < x < 0x7C00` → `0x36F10(slot)`, else `slot+0x43 |= 0x40` and `0x36638(slot)`. The dispatch at `0x34BF4` is reached only when `0x36E2C` returns 0. The port currently skips both (`fight.c:282-287`) and always dispatches.
+
+**The dispatch.** `0x34BF4`: `mov al,[ecx+0x52]; cmp al,0x15; ja 0x34C08; and eax,0xff; jmp dword ptr cs:[eax*4 + 0x34b14]`. The 22-entry table at `0x34B14` (`PTR_LAB_00034b14`, confirmed in Ghidra) is:
 
 | `+0x52` | handler | calls |
 |---|---|---|
@@ -533,19 +564,19 @@ The dispatch is at `0x34BF4`: `mov al,[ecx+0x52]; cmp al,0x15; ja 0x34C08; and e
 | 21 | `0x34D78` | — |
 | 9, 10, 11, 14, 15, 16 | `0x34D83` | the epilogue — a no-op |
 
-Derive each handler the demo enters into the record in §8's shape (body, globals, arithmetic with widths, addresses, unit-test values). The port's existing comment naming `0x34B14` is correct — leave it.
+Derive each handler the demo enters into the record in §8's shape (body, globals, arithmetic with widths, addresses, unit-test values). The port's existing comment naming `0x34B14` is correct — leave it. The first implementer's report (`.superpowers/sdd/2026-09-20-demo-fight-motion/task-8-report.md`) already carries the handler bodies and the gate transcription — read it, re-verify against the raw, and fold the verified form into the record.
 
-- [ ] **Step 2: Establish which handlers the demo actually enters — do not port all 22 speculatively**
+- [ ] **Step 2: Port the generator and wire it into `game_frame` — the root cause**
 
-The measured starting point is `+0x52 == 0` (the default `0x349C8`). Follow what each handler does to `+0x52` to see whether the demo path cycles into other states, and port only the ones it enters. Leave the rest as §7.10 gaps with the evidence.
+Port `0x47208` and its chain, and call it from `flow.c`'s `game_frame` at the `0x24C73` site, replacing the `flow.c:1244-1245` skip. Assert in `test_fight.c` that a live fighter's command word becomes non-zero across frames. Seed the command word to a sentinel differing from the post-condition, and prove the assertion fails when the call is removed.
 
-- [ ] **Step 3: Port the default handler first and prove it moves the demo**
+- [ ] **Step 3: Port the `0x36E2C` gate and the position branch**
 
-Port `0x349C8` and whatever it needs, then add a test asserting that the command word becomes non-zero for a live fighter — the observable that proves the AI mapper now runs. Seed the command word to a sentinel differing from the post-condition, and prove the assertion fails when the handler is skipped.
+Without it the dispatch is not even reached the way the raw reaches it. Port the gate and the branch, and assert both outcomes: gate 1 → the position branch (`0x36F10` / `0x36638`), gate 0 → the table.
 
-- [ ] **Step 4: Port the remaining entered handlers**
+- [ ] **Step 4: Establish which handlers the demo actually enters — do not port all 22 speculatively**
 
-One at a time, each with its own test values from Step 1, re-running the measurement between them.
+The measured starting point is `+0x52 == 0` (the default `0x349C8`). Follow what each handler writes to `+0x52` to see whether the demo path cycles into other states, and port only the ones it enters. Leave the rest as §7.10 gaps with the evidence. Confirm or refute the first implementer's claim that `fight_command_map` (`0x3B134`) and the Task-4 think chain are unreachable because `slot+0x64` is only ever written `0xFF` — it is load-bearing for Task 9.
 
 - [ ] **Step 5: Re-measure the demo window**
 
@@ -557,8 +588,8 @@ Run: `make verify`
 Expected: exit 0, 0 warnings, every oracle unmoved, and the front-end window still `257 frames, 0 unexplained`.
 
 ```bash
-git add port/src/game/fight.c port/src/game/fighter.c port/src/game/fighter.h port/tests/test_fight.c docs/superpowers/plans/2026-09-20-demo-fight-derivations.md
-git commit -m "fighter: port the per-fighter +0x52 state dispatch"
+git add port/src/game/flow.c port/src/game/fight.c port/src/game/fighter.c port/src/game/fighter.h port/tests/test_fight.c docs/superpowers/plans/2026-09-20-demo-fight-derivations.md
+git commit -m "fighter: port the demo's CPU-AI command generator and the +0x52 state dispatch"
 ```
 
 **Gate for this task:** the command words are non-zero during the demo and the port's state-7 frames vary — or a BLOCKED report carrying the evidence.
@@ -615,7 +646,7 @@ git commit -m "tests: pin the demo's determinism and record its bound"
 
 ## Self-Review
 
-**Spec coverage.** The spec's cycle 1 is "the derivation, the fight camera and projection, the arena and fighter render, the think/AI chain, the state 6/7 handlers, the 900-frame timer and the `0x11BCC` exit, and the `game_frame` tail minus its combat calls" plus the provisional oracle. Task 1 covers the derivation (including open question 2, the RNG-consumption answer, and open question 3's `0x49C78` pinnability). Task 2 the camera and projection. Task 3 the arena and fighter render. Task 4 the think chain. Task 5 the states, the tail minus `0x3BB90`, and the timer exit. Task 6 (inserted — see Amendments) the fighter spawn, without which the arena frame runs on null slots and the bound below is unreachable. Task 7 the provisional, report-only window. Task 8 (inserted) the per-fighter +0x52 state dispatch, without which the AI mapper never runs and the demo never moves; Task 9 the pins and the recorded bound. The spec's out-of-scope list — the mode graph, the coin divert, `0x1EEB0`, `0x1F458`, `0x1EA08`'s remaining sites, the player screens and the human input mapping — is not implemented by any task and is recorded as unowned in Task 9 Step 5. The camera-chain deferral the previous cycle left is retired by Task 2, which the spec calls out.
+**Spec coverage.** The spec's cycle 1 is "the derivation, the fight camera and projection, the arena and fighter render, the think/AI chain, the state 6/7 handlers, the 900-frame timer and the `0x11BCC` exit, and the `game_frame` tail minus its combat calls" plus the provisional oracle. Task 1 covers the derivation (including open question 2, the RNG-consumption answer, and open question 3's `0x49C78` pinnability). Task 2 the camera and projection. Task 3 the arena and fighter render. Task 4 the think chain. Task 5 the states, the tail minus `0x3BB90`, and the timer exit. Task 6 (inserted — see Amendments) the fighter spawn, without which the arena frame runs on null slots and the bound below is unreachable. Task 7 the provisional, report-only window. Task 8 (inserted, then re-scoped — see Amendment 4) the demo's CPU-AI command generator, the `0x36E2C` gate and the per-fighter `+0x52` state dispatch, without which the command words stay zero and the demo never moves; Task 9 the pins and the recorded bound. The spec's out-of-scope list — the mode graph, the coin divert, `0x1EEB0`, `0x1F458`, `0x1EA08`'s remaining sites, the player screens and the human input mapping — is not implemented by any task and is recorded as unowned in Task 9 Step 5. The camera-chain deferral the previous cycle left is retired by Task 2, which the spec calls out.
 
 **Deliberate deferrals, stated not hidden.** `0x3BB90` is the only combat call in cycle 1's scope and is explicitly skipped in Task 5 Step 4 with a `/* PORT: */` marker and a reason. The HUD/health path (`0x35658`, `0x33F08`, `0x1D890`) is ported only as far as Task 1's record shows it is needed for motion; the rest is cycle 2's. No task invents a value Task 1 has not derived, and no task ports a premise the spec's correction refutes.
 
