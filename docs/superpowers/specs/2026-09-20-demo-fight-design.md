@@ -51,7 +51,9 @@ Two supporting facts, both verified during this design:
 
 ## Scope
 
-**In scope — states 6 and 7, the attract demo fight.**
+**In scope — states 6 and 7, the attract demo fight.** This is the scope of the
+whole demo-fight design; the next section splits it into two cycles, and cycle 1
+delivers everything here except the combat resolution.
 
 - State 6 (`0x11A8C`): the demo setup, including the two RNG character picks, the
   HUD spawn, the `DS_00104528` branch, and the four stores.
@@ -76,6 +78,30 @@ Two supporting facts, both verified during this design:
   two-player path.
 - `0x27FA8` and the KO/win screens, because the demo path does not reach them
   (see above).
+
+## Cycle split
+
+The demo fight is large enough to be two cycles, cut between **motion** and
+**combat**. The cut point is forced by the oracle: it cannot converge until the
+fighters both move and land hits, and a partial port can only satisfy the first
+half.
+
+**Cycle 1 — motion and render (the immediate cycle).** The derivation, the fight
+camera and projection, the arena and fighter render, the think/AI chain, the
+state 6/7 handlers, the 900-frame timer and the `0x11BCC` exit, and the
+`game_frame` tail minus its combat calls. The demo visibly moves and animates.
+Its oracle is **report-only**, proving the window clean up to the frame where the
+original first lands a hit — a bounded, declared divergence point that the cycle
+records and measures. This is the front-end chain's Task 1 → Task 5 shape: a
+provisional gap, opened honestly.
+
+**Cycle 2 — combat and closure.** Collision, damage, the health bars, and the
+oracle closure: the pins settle, the window converges, `frontend`-style
+enforcement moves the demo window into the ladder as a real gate.
+
+Cycle 2's design decisions are already made here (module layout, determinism
+strategy, oracle machinery), so cycle 2 needs no new design pass — only a plan
+drawn from the stages below.
 
 ## Architecture
 
@@ -143,6 +169,12 @@ Reuse the existing capture and oracle machinery; take no new capture.
   twice over that dump — once for the existing front-end window and once for a
   new demo window — as two separate ladder targets, so a demo regression and a
   front-end regression stay independently diagnosable.
+- **The demo window is report-only in cycle 1 and enforced in cycle 2.** Cycle 1
+  cannot converge it: without combat the port diverges at the first landing hit.
+  Cycle 1's target therefore reports and records the measured divergence frame,
+  and the declared expectation is *clean from the window start up to that frame*.
+  Cycle 2's combat closes the remainder and the same target becomes a ladder gate.
+  The front-end chain shipped exactly this shape one cycle ago.
 - **Pins.** The demo's non-determinism goes in the existing `tools/title_pin.py`
   `PATCHES` table: the two character picks through `0x41350`, plus any per-frame
   AI draw that proves unpinned. The table keeps its fail-closed byte verification.
@@ -179,34 +211,53 @@ Reuse the existing capture and oracle machinery; take no new capture.
 4. **Frame timing.** The capture samples at 70.09 Hz against the port's 60 Hz, so
    the aligner's splice classification carries the window, as it does for the
    title and front-end oracles.
-5. **Scale.** ~55 named functions is the largest cycle so far. If the layers do
-   not land in order, the fallback is the front-end chain's precedent: converge
-   what can be converged, declare the rest.
+5. **Scale, and the interim gap.** ~55 named functions across seven stages. The
+   cycle split above cuts that in half and gives cycle 1 a bounded, measured
+   divergence point instead of a long stretch with no converging signal. The cost
+   is deliberate: cycle 1 ships a report-only oracle and a declared gap where the
+   original first lands a hit. If cycle 1's layers do not all land, the same
+   fallback applies again within the cycle — converge what can be converged,
+   declare the rest.
 
 ## Sequencing
 
-The oracle is opened provisionally first and closed last, mirroring the
-front-end chain (Task 1 declared the gap, Task 5 closed it).
+Cycle 1 opens the oracle provisionally and **does not close it**; cycle 2 closes
+it. The stages below are the two cycles' task order.
 
-1. Derivation: `0x49C78` and the fighter/think chains — the record the later
-   tasks implement from, with unit-test values.
+**Cycle 1 — motion and render.**
+
+1. Derivation: `0x49C78`, the fighter chains and the think chain — the record the
+   later tasks implement from, with unit-test values, and the answer to open
+   question 2 (how often the AI consumes RNG).
 2. Camera and projection — unit-proven first; the bellwether.
-3. Arena scene and fighter render — first partial oracle signal.
-4. The think/AI chain — the fighters actually act.
-5. Collision, damage and health.
-6. State 6/7 handlers, the `game_frame` tail, the 900-frame timer and the
-   `0x11BCC` exit.
-7. Oracle closure: pins, extended window, enforced gate, docs.
+3. Arena and fighter render — first partial oracle signal.
+4. The think/AI chain — the fighters actually act, and the demo moves.
+5. State 6/7 handlers, the `game_frame` tail minus its combat calls, the
+   900-frame timer and the `0x11BCC` exit.
+6. The oracle opened provisionally: raise the dump length, add the demo window as
+   a report-only target, add the pins that the demo's motion needs, and record the
+   measured divergence frame — the first landing hit — as the declared bound.
+
+**Cycle 2 — combat and closure.**
+
+7. Collision (`0x3BB90`, `0x4FB20`, `0x3BAEC`, `0x3B9D8`), damage, the health bars
+   (`0x33F08`, `0x35658`, `0x1D890`) and the tail's combat calls.
+8. Oracle closure: any remaining pins, the window converges to zero unexplained,
+   and the demo window joins the ladder as an enforced gate.
 
 ## Success criteria
 
-- The demo window reports zero unexplained content-bearing capture frames and is
-  enforced in the `make verify` ladder.
-- Every helper has unit proof that fails under a mutation of the code it tests.
-- Every unported piece is a named gap carrying its address, and no fitted
-  constant ships.
-- `make verify` is green with the title, attract, smacker, front-end and
-  `oracle C-vs-Python: 9866 writes byte-exact` gates unmoved.
+**Cycle 1.** The demo visibly moves and animates; the demo window's report is
+clean from its start up to the first landing hit, and that divergence frame is
+measured and recorded as the declared bound; every helper has unit proof that
+fails under a mutation of the code it tests; every unported piece is a named gap
+carrying its address; no fitted constant ships; `make verify` is green with the
+title, attract, smacker, front-end and `oracle C-vs-Python: 9866 writes
+byte-exact` gates unmoved.
+
+**Cycle 2.** The demo window reports zero unexplained content-bearing capture
+frames and is enforced in the `make verify` ladder, with cycle 1's declared bound
+retired rather than narrowed.
 
 ## Gaps this cycle leaves
 
