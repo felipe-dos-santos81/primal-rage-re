@@ -49,7 +49,8 @@ scripted input. A bounded spike disproved that:
   identical 120 s runs: 659 shared distinct frames of ~3686, first divergence at
   distinct index 30 (raw 1586, during the boot sub-machine + title), longest common run
   80 frames. This is the same phenomenon the title oracle already absorbs as *splice*
-  frames; the title oracle reports 54 clean / 55 splice / **0 unexplained**.
+  frames; the title oracle reports 54 clean / 55 splice / 2 transition /
+  **0 unexplained**.
 
 The residual risk is therefore **content** determinism, not input reachability: the title
 needed four RNG/behaviour pins before it was stable, and the front-end will likely need
@@ -119,16 +120,26 @@ duplicating it into parallel files would be worse. The shared modules (`smk_capt
 ## 6. Interfaces and new derivations
 
 Real functions already ported and reusable: `0x2C3FC`, `0x4F1E4`, `0x2BAF4`, `0x2AE14`,
-`0x33904`, `0x13C70`, `0x1C500`, `0x2F198`, `0x2C06C`, `0x1EA08`, `0x32970`,
-`0x10DB0`/`0x10E18`/`0x2BF08` (the tails).
+`0x33904`, `0x13C70`, `0x1C500`, `0x2F198`, `0x2C06C`, `0x32970`,
+`0x10DB0`/`0x10E18`/`0x2BF08` (the tails). `0x1EA08` is only partly ported (see below).
 
-Entirely uncharacterized, and derived in this cycle before any porting:
+Derived in this cycle before any porting (and, where already partly ported,
+completed):
 
 * `0x2F4BC` — called 8, 12 and 13 times in state 4's phases 0/1/2.
 * `0x12658` — called once at the end of state 3 phase 0.
-* `0x1EA08` — called by state 5.
-* `0x29B74` / `0x41578` — the effect call sites (they walk the front-end list with
-  `0x33904` and call `0x13D4C` for records matching `0x3E688` or `0x88874B0`).
+* `0x1EA08` — ported only through its three pinnable pre-resource calls
+  (`0x4F1E4`, `0x2BAF4`, `0x38B18(0xA7B6C)`); the rest — the `0x2DBC4`/`0x2DB58`
+  blob, the un-pinnable `local` index, the `0x2F4D0`/`0x2F4BC` draws and the
+  `0x2AE14`/`0x2A17C` spawn — is a named gap. It has **five direct call sites in
+  three functions**: `0x11DF7` in state 5; `0x1F140`/`0x1F278`/`0x1F39B` in
+  `FUN_0001EEB0` (the match sub-state machine, cases 2/6/9); and `0x11A42` in the
+  dead `FUN_00011A30`. Only the state-5 site is wired; the other four are unwired.
+* `0x29B74` / `0x41578` — the effect call sites. `0x29B74` walks the front-end
+  list with `0x33904` and calls `0x13D4C` for **every** live entry (no predicate);
+  only `0x41578` filters for `*rec == 0x3E688` or `*rec == 0x88874B0`, and its
+  `0x88874B0` half can never match in the port's flat model. Neither registers
+  into the process tables.
 * The camera/scene functions `0x1317C`, `0x1324C`, `0x13290`, `0x1333C`.
 
 Every derived value is cited to a disassembly address or a command with real output; no
@@ -172,7 +183,10 @@ value is transcribed from the decompiler without checking the bytes.
 
 * **Primary:** a front-end pixel oracle against the extended capture, using the existing
   content-alignment plus clean/splice/unexplained classification, requiring **0
-  unexplained** over the states 3/4 window.
+  unexplained** content-bearing capture frames inside the port-exhibited window. The gate
+  is narrow: the window is derived from the port's own dump and the coverage/`endpoints
+  BAD` counts are ignored, so it does **not** by itself rule out an under-rendering port
+  (see `port/spec/game_flow.md`).
 * **Gated on the pin converging.** If the front-end cannot be made content-stable within
   phase 1, fall back to the `PR_FRONTEND_DUMP` determinism log extended through states
   3/4 (two runs byte-identical) and record the missing pixel oracle as a declared gap —

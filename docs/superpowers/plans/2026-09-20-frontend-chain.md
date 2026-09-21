@@ -194,14 +194,20 @@ Record what it spawns (`0x2AE14` twice with different arguments), the field copy
 
 - [ ] **Step 3: Re-derive `0x1EA08`**
 
-Called only by state 5. Record its full body and every global it writes.
+Five direct call sites in three functions: `0x11DF7` in state 5; `0x1F140`/`0x1F278`/
+`0x1F39B` in `FUN_0001EEB0` (the match sub-state machine, cases 2/6/9); `0x11A42` in the
+dead `FUN_00011A30`. Record its full body and every global it writes.
 
 - [ ] **Step 4: Re-derive the two effect call sites**
 
-`0x29B74` and `0x41578` both walk the front-end list via `0x33904` and call `0x13D4C`
-for records matching `0x3E688` (and `0x88874B0` in `0x41578`). Record: which process table
-each registers into (`DS_000A8644`/`DS_00104AE8` update vs `PTR_FUN_000A86C4`/
-`DS_00104AEC` render), the exact list predicate, and the `+0x0` handle meanings.
+The plan's premise — both walk the front-end list via `0x33904` and filter for `0x3E688`,
+and both register into a process table — is **refuted by the raw**. `0x29B74` calls
+`0x13D4C` for **every** live list entry (no predicate) and is installed as the mode-`0x17`
+handler at `DS_00104AE4`, dispatched by six `call dword [0x104ae4]` sites; `0x41578` is
+direct-called from four sites and filters for `*rec == 0x3E688 || *rec == 0x88874B0`,
+whose `0x88874B0` half lies above `MEM_SIZE` and can never match in the port's flat model.
+Neither registers into `DS_000A8644`/`DS_00104AE8` (update) or `PTR_FUN_000A86C4`/
+`DS_00104AEC` (render). Record the exact predicates and the `+0x0` handle meanings.
 
 - [ ] **Step 5: Re-derive the camera/scene functions**
 
