@@ -785,21 +785,23 @@ static void game_state_6(void)
     /* PORT: 0x11AC4 0x20DF4(eax=draw1, edx=1) — a 155-byte reset with 11
      * callees; unported, named gap. */
     fight_char_select(0u, draw1);                       /* 0x11ACD 0x41350 */
-    /* PORT: 0x11AD9 0x33EB4(0, 7) — the P0 fighter spawn. Its 0x33C78 body
-     * (571 B) pulls the unported 0x494A8/0x29BC8/0x1CEBC resource chain, so it
-     * is a named gap; the raw's DS_001082C8 = the callee's EDX is therefore not
-     * written. */
+    fighter_spawn(0u);                                  /* 0x11AD9 0x33EB4 */
+    /* 0x11AE3: EDX after 0x33EB4 is the caller's 7 — 0x33EB4 push/pops EDX and
+     * its `ret 4` consumes only the stack argument, so this is the constant, not
+     * a live callee return (record §10.8). */
+    DSD(DS_001082C8) = 7u;                              /* 0x11AE3 */
 
     u32 draw2 = rng_next(6u);                           /* 0x11AE9 (draw 2) */
     u32 p1 = draw1 + draw2;                             /* 0x11AEE */
     if (p1 >= 7u) p1 -= 7u;                             /* 0x11AF6 (single sub 7) */
     fight_char_select(1u, p1);                          /* 0x11AFE 0x41350 */
-    /* PORT: 0x11B08 0x33EB4(1, ...) — the P1 fighter spawn; same gap. */
+    fighter_spawn(1u);                                  /* 0x11B08 0x33EB4 */
 
     DSB(DS_00104B15) = 1;                               /* 0x11B14 */
-    /* PORT: 0x11B1E 0x1D890(0) — the 375-byte HUD spawn; named gap (§7.8). The
-     * raw's DL=1 is preserved across it (it push/pops edx), so the store below
-     * is the constant 1, not a live register handoff. */
+    /* 0x11B1E 0x1D890(0): EAX is 0, so only the four per-side HUD bytes are
+     * zeroed; the HUD actor arm is cycle 2's (§10.6). DL=1 is preserved (0x1D890
+     * push/pops EDX), so the store below is the constant 1. */
+    fight_hud_spawn(0u);                                /* 0x11B1E 0x1D890 */
     DSB(DS_00104B19 + 2u) = 1u;                         /* 0x11B23 */
     DSW(DS_001082CC) = 3u;                              /* 0x11B2F */
 

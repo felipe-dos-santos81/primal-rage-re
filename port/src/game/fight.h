@@ -54,6 +54,12 @@ void fight_slot_clear(void);
  * gate, and mirrors DS_0010810D. `char_index` is the raw's DX. */
 void fight_char_select(u32 side, u32 char_index);
 
+/* 0x1D890. The HUD spawn. State 6 calls it with EAX = 0, for which the raw only
+ * zeroes four per-side HUD bytes (DS_0010780E/DS_0010290C/DS_0010780A/
+ * DS_0010290E) and returns; the EAX != 0 arm (0x1D8CF..0x1D9DA) spawns the HUD
+ * actors and is cycle 2's (§10.6). */
+void fight_hud_spawn(u32 enable);
+
 /* 0x33F08. The two-side health-bar pass, called by state 7 (0x11E94) and the
  * game_frame tail (0x25457). Per side it selects the character constant
  * (0x17EEC's table), writes the health sprite id into the secondary actor's

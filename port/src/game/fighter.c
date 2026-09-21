@@ -7,9 +7,16 @@
  * and is called back from fight.c's 0x3B134. */
 #include "game/fighter.h"
 #include "game/fight.h"
+#include "game/actors.h"
 #include "game/rng.h"
 #include "../mem.h"
 #include "../symbols.h"
+
+/* PORT: data-object addresses with no symbols.h name (the generator emits none
+ * for these tables). */
+#define FIGHTER_SPAWN_X   0x000BDA38u   /* 0x33EC4: per-side initial x dword */
+#define FIGHTER_DESC_A    0x000BB7E0u   /* 0x33CC8: [char*2 + side] fighter */
+#define FIGHTER_DESC_B    0x000BB8D0u   /* 0x33D38: [char] secondary actor */
 
 /* ---- the shared per-fighter helpers ------------------------------------ */
 
@@ -87,6 +94,123 @@ void fighter_slot_latch(u32 side)
     }
     if ((DSB(slot + 0x41u) & 0x80u) != 0)           /* 0x186A5 */
         DSD(slot + 0x34u) = DSD(slot + 0x2Cu);      /* 0x186B4 */
+}
+
+/* 0x1CEBC. The audio gate the spawn tail tests: 1 when the AIL sequence handle
+ * DS_001028C8 is live (non-zero) and its busy byte DS_001028DB is clear. The
+ * port keeps its AIL handles outside mem[], so this is 0 and the tail's
+ * res_resolve calls (named gap, §10.4) are skipped. */
+static int fighter_spawn_audio_gate(void)
+{
+    if (DSD(DS_001028C8) == 0) return 0;            /* 0x1CEC3 */
+    if (DSB(DS_001028DB) != 0) return 0;            /* 0x1CECC */
+    return 1;                                       /* 0x1CECE */
+}
+
+/* 0x33C78. The spawn core. EAX = side, EDX = the initial x (the dword at
+ * DS_000BDA38 + side*2 shifted right 16), ECX = word[0xBD898] = 0x400 (the
+ * layer), and the stack argument = 0x4000 for side 0 / 0 for side 1. The three
+ * stores that make the slot live are DS_001077A8[side] (0x33CA0), slot+0x7A
+ * (0x33CB8) and slot+0x00 (0x33CD8). */
+static void fighter_spawn_slot(u32 side, u32 a2, u32 a3, u32 a5)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;          /* 0x33C84..0x33C95 */
+    DSD(DS_001077A8 + side * 4u) = slot;            /* 0x33CA0 */
+    u32 ch = (u32)DSB(DS_0010816A + side);          /* 0x33CB2 */
+    DSB(slot + 0x7Au) = (u8)ch;                     /* 0x33CB8 */
+
+    /* 0x33CC8/0x33CD3: the fighter record from descriptor [char*2 + side]. */
+    u32 desc = DSD(FIGHTER_DESC_A + (ch * 2u + side) * 4u);
+    u32 rec = actor_spawn((const u32 *)(mem + desc), a2, a3, 0u, a5);
+    DSD(slot) = rec;                                /* 0x33CD8 */
+
+    u8 n = (u8)(DSB(DS_001078FA) + 1u);             /* 0x33CDA..0x33CEA */
+    DSB(slot + 0x52u) = 0;                          /* 0x33CE0 */
+    DSB(slot + 0x53u) = 0;                          /* 0x33CE6 */
+    DSB(DS_001078FA) = n;
+    DSB(slot + 0x5Fu) = 0xFFu;                      /* 0x33CF2 */
+    DSB(slot + 0x64u) = 0xFFu;                      /* 0x33CFB */
+    if (n == 2u) {                                  /* 0x33CFF..0x33D0B */
+        DSB(DS_000F0AFE) = 1;                       /* 0x33D04 */
+    } else {
+        DSB(DS_000F0AFE) = 0;                       /* 0x33D13 (DL=0) */
+        DSB(DS_000F0AFF) = (u8)side;                /* 0x33D19 */
+    }
+
+    /* 0x33D1E..0x33D46: the secondary actor, parented to this record
+     * (a5 = actor index | 0x400 selects 0x2AE14's child arm). */
+    u32 idx = (u32)DSW(rec + 0x56u) | 0x400u;       /* 0x33D20..0x33D27 */
+    u32 desc2 = DSD(FIGHTER_DESC_B + ch * 4u);
+    u32 rec2 = actor_spawn((const u32 *)(mem + desc2), 0u, 0u, 0u, idx);
+    DSD(slot + 0x04u) = rec2;                       /* 0x33D46 */
+    DSB(rec2 + 0x59u) = DSB(DS_000BDB38);           /* 0x33D4E */
+
+    DSD(slot + 0x24u) = DSD(DS_000BDA8C + ch * 4u); /* 0x33D5D */
+    DSD(rec + 0x14u) = slot;                        /* 0x33D62 */
+    DSB(rec + 0x51u) = (u8)side;                    /* 0x33D6B */
+    DSB(rec + 0x4Cu) = 0;                           /* 0x33D70 */
+    DSB(rec + 0x4Du) = 0x1Eu;                       /* 0x33D7D */
+
+    /* 0x33D86..0x33DDA: slot+0x81 = DS_001088CC + min(slot+0x3C / 0xC350,
+     * DS_001088CB); the divide is unsigned (`div`). */
+    {
+        u32 q = DSD(slot + 0x3Cu) / DSD(DS_000C9520);
+        u32 cap = (u32)DSB(DS_001088CB);
+        if (q >= cap) q = cap;                      /* 0x33DCC..0x33DD0 */
+        DSB(slot + 0x81u) = (u8)(DSB(DS_001088CC) + q);
+    }
+
+    DSB(slot + 0x55u) = 0xFFu;                      /* 0x33D8D */
+    DSD(slot + 0x40u) = 0x80008000u;                /* 0x33D91 */
+    DSB(slot + 0x54u) = 0;                          /* 0x33D98 */
+    DSB(slot + 0x5Du) = 0;                          /* 0x33D9C */
+    DSD(slot + 0x08u) = 0;                          /* 0x33DA0 */
+    DSW(slot + 0x6Au) = 0;                          /* 0x33DA7 */
+    DSW(slot + 0x6Cu) = 0;                          /* 0x33DAD */
+    DSB(slot + 0x7Bu) = 0;                          /* 0x33DB3 */
+    DSB(slot + 0x7Cu) = 0;                          /* 0x33DB9 */
+    DSW(slot + 0x88u) = 0;                          /* 0x33DC3 */
+    DSD(slot + 0x20u) = 0xFFFFFFFFu;                /* 0x33DE4 */
+
+    fighter_slot_latch(side);                       /* 0x33DEB 0x186D0 */
+
+    DSD(slot + 0x0Cu) = 0;                          /* 0x33DF0 */
+    DSD(slot + 0x10u) = 0;                          /* 0x33DF7 */
+    DSD(slot + 0x14u) = 0;                          /* 0x33DFE */
+    DSD(slot + 0x18u) = 0;                          /* 0x33E07 */
+    DSD(slot + 0x1Cu) = 0;                          /* 0x33E17 */
+
+    /* 0x33E1E 0x29BC8(side, char, rec): the character palette at pset+0x18. */
+    {
+        u32 tbl = DSD(DS_000A8A98 + ch * 4u);       /* 0x29BCD */
+        u32 handle = DSD(tbl + (u32)DSB(DS_00105B34 + side) * 4u);
+        actor_pset_palette(rec, 0u, handle);        /* 0x29BE1 0x2A17C */
+    }
+
+    DSB(slot + 0x41u) &= 0x7Fu;                     /* 0x33E23..0x33E2F */
+    DSD(DS_001077A0 + side * 4u) = 0;               /* 0x33E38 */
+
+    if (DSB(DS_00104B14) == 0) {
+        /* PORT: 0x33E43 0x494A8 — the dust/effect entry builder (515 B). It
+         * builds an entry on the 0x10884C list and draws rng(0x1800)/rng(0x300),
+         * but it is not what makes the slot live (the stores above are), so it
+         * is a named gap (§10.5). */
+    }
+    if (fighter_spawn_audio_gate()) {               /* 0x33E48 0x1CEBC */
+        /* PORT: 0x33E51..0x33EA6 resolves DS_000BDB1C[char] then the fixed
+         * 0x287B2F5 through res_resolve; both are unported audio resources and
+         * neither return is read, so the tail is a named gap (§10.4). */
+    }
+}
+
+void fighter_spawn(u32 side)
+{
+    /* 0x33EB4: A5 = 0x4000/0 by side; a3 = word[0xBD898] = 0x400; the initial x
+     * is the dword at DS_000BDA38 + side*2 shifted right 16 (0x33EC4/0x33ECB). */
+    u32 a3 = (u32)DSW(DS_000BD898);
+    u32 a5 = (side == 0u) ? 0x4000u : 0u;
+    u32 a2 = (u32)((s32)DSD(FIGHTER_SPAWN_X + side * 2u) >> 16);
+    fighter_spawn_slot(side, a2, a3, a5);
 }
 
 /* 0x3C570. Test-and-set bit `bit` of DS_00107EE0: 1 when it was already set,

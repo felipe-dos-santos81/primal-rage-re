@@ -1,4 +1,5 @@
 /* port/tests/test_fight.c */
+#include "game/actors.h"
 #include "game/camera.h"
 #include "game/fight.h"
 #include "game/fighter.h"
@@ -345,6 +346,7 @@ static u32 demo_fixture(void)
     DSB(DS_001088BF) = 0;
     /* 0x35658: no camera-target record, so the HUD pass returns at 0x3577E. */
     DSD(DS_001077A8) = 0;
+    DSD(DS_001077A8 + 4u) = 0;
     /* 0x1282C: the dust gate is closed. */
     DSW(DS_000EF6DC) = 1;
     /* 0x1958C: inert unless DS_001078FA == 2. */
@@ -381,6 +383,57 @@ static void check_arena_frame(void)
     CHECK_EQ_INT((int)DSD(DS_0010787C), 0x3333);
     CHECK_EQ_INT((int)DSD(p0 + 0x24u), 0x40400000);   /* (float)3.0 */
     CHECK_EQ_INT((int)DSD(p0 + 0x20u), 0);
+}
+
+/* Task 6 Step 5: with the spawn live, the game_frame tail's per-side
+ * 0x186D0/0x2A690 calls run on the spawned records. State 6 spawns both sides,
+ * then a state-7 game_frame syncs P0's record pset (0x2A690 writes rec+0x3C
+ * from pset+4), so a seeded rec+0x3C sentinel must move; a skipped spawn leaves
+ * DS_001077A8 null and the record untouched. */
+static void check_arena_frame_live(void)
+{
+    u32 rec0;
+
+    (void)demo_fixture();
+    DSB(DS_00104B1D) = 1;               /* skip the coin poll */
+    DSD(DS_001088E4) = 0;
+    DSB(DS_00104528 + 1u) = 2;          /* skip the text rows */
+    actors_reset();                     /* deterministic pool for the spawn */
+
+    /* State 6 (0x11A8C) runs the spawn; its slot stores are the live fixture.
+     * The sentinels are readable in-range offsets that differ from the slots,
+     * so a skipped spawn fails the assertions without an out-of-range deref. */
+    DSD(DS_001077A8) = FIGHT_RECS;
+    DSD(DS_001077A8 + 4u) = FIGHT_RECS + 0x100u;
+    DSB(DS_00104B15) = 0;
+    DSB(DS_00104B19 + 2u) = 0;
+    DSW(DS_001082CC) = 0;
+    DSW(DS_00104AFC) = 0;
+    DSW(DS_000F0A6A) = 0;
+    DSW(DS_000F0A72) = 5;
+    DSW(DS_000F0A6C) = 0;
+    DSB(DS_000F0A6F) = 0xFF;
+    rng_seed(0x1234u);
+    DSW(DS_000F0A64) = 6;
+    game_state_step();
+
+    CHECK_EQ_INT((int)DSD(DS_001077A8), (int)DS_001077B0);
+    CHECK_EQ_INT((int)DSD(DS_001077A8 + 4u), (int)(DS_001077B0 + 0x94u));
+    rec0 = DSD(DS_001077B0);
+    CHECK(rec0 != 0, "live P0 record");
+    if (rec0 == 0) return;
+
+    DSD(rec0 + 0x3Cu) = 0xDEADBEEFu;    /* no pset x can equal this */
+
+    /* A state-7 game_frame runs 0x263F4, 0x33F08 and the DS_00104B15 tail
+     * (0x12D48 then 0x186D0 + 0x2A690 per live side, then 0x33F08). */
+    DSD(DS_00104B00) = 3;
+    DSD(DS_00104AE8) = 0;
+    DSW(DS_000F0A6A) = 100;
+    DSB(DS_00104B15) = 1;
+    game_frame();
+
+    CHECK(DSD(rec0 + 0x3Cu) != 0xDEADBEEFu, "live slot record synced across a frame");
 }
 
 /* 0x1958C: a side whose +0x803 state byte is 0x0A clears its DS_00100AF8
@@ -860,6 +913,10 @@ static void check_state6(void)
 {
     (void)demo_fixture();
 
+    actors_reset();                     /* the spawn allocates from the pool */
+    DSD(DS_001077A8) = FIGHT_RECS;      /* sentinels differ from the slots */
+    DSD(DS_001077A8 + 4u) = FIGHT_RECS + 0x100u;
+
     DSB(DS_00104B1D) = 0;               /* let 0x41350 store the character */
     DSD(DS_001088E4) = 0;               /* coin poll mask: nothing accepted */
     DSB(DS_00104528 + 1u) = 2;          /* (DS_00104528+1)&2 set: skip text */
@@ -896,6 +953,18 @@ static void check_state6(void)
     CHECK_EQ_INT((int)DSW(DS_000F0A6C), 5);
     CHECK_EQ_INT((int)DSW(DS_000F0A64), 7);
     CHECK_EQ_INT((int)DSB(DS_000F0A6F), 0);
+    CHECK_EQ_INT((int)DSD(DS_001082C8), 7);         /* the 0x33EB4 EDX handoff */
+
+    /* 0x33EB4/0x33C78: both slots are live. DS_001077A8 holds the slot
+     * addresses 0x1077B0/0x107844, slot+0x7A the picked character, slot+0x00
+     * the spawned fighter record, and DS_001078FA counted both spawns. */
+    CHECK_EQ_INT((int)DSD(DS_001077A8), (int)DS_001077B0);
+    CHECK_EQ_INT((int)DSD(DS_001077A8 + 4u), (int)(DS_001077B0 + 0x94u));
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x7Au), (int)DSB(DS_0010816A));
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x7Au), (int)DSB(DS_0010816A + 1u));
+    CHECK(DSD(DS_001077B0) != 0, "P0 spawn produced a record");
+    CHECK(DSD(DS_001077B0 + 0x94u) != 0, "P1 spawn produced a record");
+    CHECK_EQ_INT((int)DSB(DS_001078FA), 2);
 }
 
 /* Case 7: the pre-decrement timer. With timer 2 one call runs the arena and
@@ -1002,6 +1071,7 @@ int test_fight(void)
     check_screen_base();
     check_decay();
     check_arena_frame();
+    check_arena_frame_live();
     check_fighter_pass_a();
     check_fighter_pass_b();
     check_hud_pass();

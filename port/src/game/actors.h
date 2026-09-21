@@ -38,6 +38,11 @@ u32  actor_pset(u32 rec);
 void actor_pset_point(u32 rec);
 /* 0x2A31C. Walks the active list and syncs each record (0x2A1FC). */
 void actors_update(void);
+/* 0x2A17C. Point a record's pset word +2 at `word` OR the 0x800 sprite bit when
+ * the record's +0x5F is non-zero, and set the pset's palette entry at +0x18 to
+ * `handle`'s acquired entry: an existing entry is released first (0x33864);
+ * handle 0 clears it. 0x29BC8 (the fighter's character palette) passes word 0. */
+void actor_pset_palette(u32 rec, u32 word, u32 handle);
 /* 0x2B150. Mark `rec` dead (rec+0x28 |= 8), release its pset palette and unlink
  * the pset from the render list. 0x121A0's phase 1 calls it on the logo and the
  * second object when DS_000F0A66 <= 0x10. */

@@ -1564,7 +1564,356 @@ runs; the scan and the `ctx[3]+0x43` bit writes are gap §7.16.
 
 ---
 
-## 9. Provenance
+## 10. The fighter spawn chain (Task 6)
+
+Task 5 left the demo advancing into state 7 with **no live fighters**: the only
+writer of `DS_001077A8` (`0x33CA0`) lives in `0x33C78`, reached through the spawn
+entry `0x33EB4` (state 6) and the HUD respawn `0x357D6`. This section derives the
+whole state-6 spawn path and answers the Task 6 resource question (§10.9). It
+supersedes the §7.8 one-line treatment of `0x33C78`.
+
+Addresses added by this section:
+
+| function | VA | decompiler | size | callers | reached from |
+|---|---|---|---|---|---|
+| `0x33EB4` | `0x33EB4` | `:21174` | 53 | 6 | state 6 `0x11AD9`/`0x11B08` |
+| `0x33C78` | `0x33C78` | `:21069` | 571 | 9 | `0x33EB4`, HUD `0x357D6` |
+| `0x29BC8` | `0x29BC8` | `:17009` | 32 | 6 | spawn, think, HUD |
+| `0x2A17C` | `0x2A17C` | `:15728` | 127 | 22 | `0x29BC8` and the actor syncs |
+| `0x1CEBC` | `0x1CEBC` | `:1120` | 24 | 1 | spawn tail |
+| `0x494A8` | `0x494A8` | `:31418` | 515 | 1 | spawn (gate `0x104B14 == 0`) |
+| `0x1D890` | `0x1D890` | `:9235` | 375 | 2 | state 6 `0x11B1E` |
+| `0x20DF4` | `0x20DF4` | `:11482` | 155 | 4 | state 6 `0x11AC4` |
+
+### 10.1 `0x33EB4` — the spawn entry (53 B)
+
+```
+0x33eb4  push ebx; push ecx; push edx
+0x33eb7  test eax, eax ; jne 0x33ec2
+0x33ebb  mov ecx, 0x4000 ; jmp 0x33ec4
+0x33ec2  xor ecx, ecx
+0x33ec4  mov edx, [eax*2 + 0xbda38]      ; dword load
+0x33ecb  sar edx, 0x10                   ; arithmetic: the high word, sign-extended
+0x33ece  and ecx, 0xffff
+0x33ed4  push ecx                        ; the callee's stack arg (0x33C78 ret 4)
+0x33ed5  xor ecx, ecx
+0x33ed7  xor ebx, ebx
+0x33ed9  mov cx, [0xbd898]               ; ecx = 0x400 (zero-extended)
+0x33ee0  call 0x33c78
+0x33ee5  pop edx                          ; EDX = the caller's original EDX (push/pop)
+0x33ee6  pop ecx
+0x33ee7  pop ebx
+0x33ee8  ret
+```
+
+Arguments: `EAX = side`; `EDX = (s32)(u32)dword[0xBDA38 + side*2] >> 16`; `ECX =
+word[0xBD898] = 0x400`; the stack arg `= 0x4000` for side 0, `0` for side 1.
+`DS_000BDA38` is the per-side initial-x table: side 0 → `0xE8100001 >> 16 =
+0xFFFFE810` (`-0x17F0`), side 1 → `0x1800E810 >> 16 = 0x1800`. **`0x33EB4`
+preserves EDX** — it pushes it at `0x33EB6` and pops it after the `ret 4` — so
+the value state 6 stores in `DS_001082C8` is the caller's `7`, not a callee
+return (§10.8).
+
+### 10.2 `0x33C78` — the spawn core (571 B)
+
+Entry: `EAX = side`, `EDX = the initial x` (§10.1), `ECX = 0x400`, stack arg `a5 =
+0x4000/0`. `0x33C78` ends `add esp,8; pop edi; pop esi; ret 4`, i.e. it consumes
+its one stack argument.
+
+```
+0x33c78  push esi; push edi; sub esp, 8
+0x33c7d  mov [esp+4], eax                ; local = side
+0x33c81  mov [esp], ecx                  ; local = 0x400
+0x33c84  lea esi,[eax*8]; add esi,eax; shl esi,2; add esi,eax; shl esi,2
+0x33c95  add esi, 0x1077b0               ; esi = slot = 0x1077B0 + side*0x94
+0x33c9b  shl eax, 2                      ; eax = side*4
+0x33c9e  mov edi, esi
+0x33ca0  mov [eax + 0x1077a8], esi       ; DW: DS_001077A8[side] = slot (LIVENESS)
+0x33ca6  test esi, esi ; je 0x33eab      ; never taken (slot is a fixed address)
+0x33cae  mov ecx, [esp+4]
+0x33cb2  mov cl, [ecx + 0x10816a]        ; character = DS_0010816A[side]
+0x33cb8  mov [esi + 0x7a], cl            ; slot+0x7A = character
+0x33cbb  xor ecx, ecx
+0x33cbd  mov cx, [esp+0x14]              ; a5 (0x4000/0), the stack argument
+0x33cc2  push ecx                        ; the 0x2AE14 stack arg
+0x33cc3  xor ecx, ecx
+0x33cc5  mov cl, [esi + 0x7a]            ; ecx = character
+0x33cc8  mov eax, [eax + ecx*8 + 0xbb7e0]; fighter descriptor, idx = char*2+side
+0x33ccf  mov ecx, [esp+4]                ; ecx = 0x400 (the saved local)
+0x33cd3  call 0x2ae14                    ; actor_spawn(desc, edx, a3=0x400, a4=0, a5)
+0x33cd8  mov [esi], eax                  ; slot+0x00 = fighter record (LIVENESS)
+0x33cda  mov ah, [0x1078fa]
+0x33ce0  mov byte [esi+0x52], 0
+0x33ce4  inc ah
+0x33ce6  mov byte [esi+0x53], 0
+0x33cea  mov [0x1078fa], ah              ; DS_001078FA += 1
+0x33cf0  xor eax, eax
+0x33cf2  mov byte [esi+0x5f], 0xff       ; slot+0x5F = 0xFF
+0x33cf6  mov al, [0x1078fa]
+0x33cfb  mov byte [esi+0x64], 0xff       ; slot+0x64 = 0xFF
+0x33cff  cmp eax, 2 ; jne 0x33d0d
+0x33d04  mov byte [0xf0afe], 1           ; camera mode 1 when both are spawned
+0x33d0b  jmp 0x33d1e
+0x33d0d  xor dl, dl
+0x33d0f  mov al, [esp+4]                 ; side
+0x33d13  mov [0xf0afe], dl               ; camera mode 0
+0x33d19  mov [0xf0aff], al               ; DS_000F0AFF = side
+0x33d1e  mov eax, [esi]                  ; the fighter record
+0x33d20  mov ax, [eax+0x56]              ; its actor index
+0x33d24  or ah, 4                        ; | 0x400
+0x33d27  and eax, 0xffff
+0x33d2c  push eax                        ; a5 = index | 0x400 (0x2AE14 child arm)
+0x33d2d  xor eax, eax
+0x33d2f  xor ecx, ecx
+0x33d31  mov al, [esi+0x7a]              ; character
+0x33d34  xor ebx, ebx
+0x33d36  xor edx, edx
+0x33d38  mov eax, [eax*4 + 0xbb8d0]      ; secondary-actor descriptor [char]
+0x33d3f  call 0x2ae14
+0x33d44  mov edx, eax
+0x33d46  mov [esi+4], eax                ; slot+0x04 = secondary actor
+0x33d49  mov al, [0xbdb38]
+0x33d4e  mov [edx+0x59], al              ; secondary+0x59 = DS_000BDB38 (0xFD)
+0x33d51  xor eax, eax
+0x33d53  mov al, [esi+0x7a]
+0x33d56  mov eax, [eax*4 + 0xbda8c]      ; character health/anim table
+0x33d5d  mov [esi+0x24], eax             ; slot+0x24 = DS_000BDA8C[char]
+0x33d60  mov eax, [esi]
+0x33d62  mov [eax+0x14], esi             ; rec+0x14 = slot
+0x33d65  mov eax, [esi]
+0x33d67  mov dl, [esp+4]
+0x33d6b  mov [eax+0x51], dl              ; rec+0x51 = side
+0x33d6e  mov eax, [esi]
+0x33d70  mov byte [eax+0x4c], 0
+0x33d74  mov eax, 0x1e
+0x33d79  mov dl, al
+0x33d7b  mov eax, [esi]
+0x33d7d  mov [eax+0x4d], dl              ; rec+0x4D = 0x1E
+0x33d80  mov ebx, [0xc9520]              ; 0xC350
+0x33d86  mov eax, [esi+0x3c]
+0x33d89  xor edx, edx
+0x33d8b  div ebx                         ; unsigned: slot+0x3C / 0xC350
+0x33d8d  mov byte [esi+0x55], 0xff
+0x33d91  mov dword [esi+0x40], 0x80008000
+0x33d98  mov byte [esi+0x54], 0
+0x33d9c  mov byte [esi+0x5d], 0
+0x33da0  mov dword [esi+8], 0            ; slot+0x08 = 0
+0x33da7  mov word [esi+0x6a], 0
+0x33dad  mov word [esi+0x6c], 0
+0x33db3  mov byte [esi+0x7b], 0
+0x33db7  xor edx, edx
+0x33db9  mov byte [esi+0x7c], 0
+0x33dbd  mov dl, [0x1088cb]
+0x33dc3  mov word [esi+0x88], 0
+0x33dcc  cmp eax, edx ; jl 0x33dd2
+0x33dd0  mov eax, edx                    ; eax = min(quotient, DS_001088CB)
+0x33dd2  mov ah, [0x1088cc]              ; AH, not AL
+0x33dd8  add ah, al
+0x33dda  mov [esi+0x81], ah              ; slot+0x81 = DS_001088CC + low(min)
+0x33de0  mov eax, [esp+4]                ; side
+0x33de4  mov dword [esi+0x20], 0xffffffff
+0x33deb  call 0x186d0                    ; fighter_slot_latch(side)
+0x33df0  mov dword [esi+0xc], 0
+0x33df7  mov dword [esi+0x10], 0
+0x33dfe  mov dword [esi+0x14], 0
+0x33e05  xor edx, edx
+0x33e07  mov dword [esi+0x18], 0
+0x33e0e  mov eax, [esp+4]                ; side
+0x33e12  mov ebx, [esi]                  ; fighter record
+0x33e14  mov dl, [esi+0x7a]              ; character
+0x33e17  mov dword [esi+0x1c], 0
+0x33e1e  call 0x29bc8                    ; the character palette (§10.3)
+0x33e23  mov bl, [esi+0x41]
+0x33e26  xor ecx, ecx
+0x33e28  and bl, 0x7f
+0x33e2b  mov eax, [esp+4]
+0x33e2f  mov [esi+0x41], bl
+0x33e32  mov bh, [0x104b14]
+0x33e38  mov [eax*4 + 0x1077a0], ecx     ; DS_001077A0[side] = 0
+0x33e3f  test bh, bh ; jne 0x33e48
+0x33e43  call 0x494a8                    ; the dust entry (§10.5)
+0x33e48  call 0x1cebc                    ; the audio gate (§10.4)
+0x33e4d  test al, al ; je 0x33eab
+0x33e51  ... per-character sound handle table 0xBDB1C[char] ...
+0x33e9c  call 0x1b544                    ; res_resolve(handle), return ignored
+0x33ea1  mov eax, 0x287b2f5
+0x33ea6  call 0x1b544                    ; res_resolve(0x287B2F5), return ignored
+0x33eab  add esp, 8; pop edi; pop esi; ret 4
+```
+
+The three stores that make a slot live are `DS_001077A8[side] = slot` (0x33CA0),
+`slot+0x7A = character` (0x33CB8) and `slot+0x00 = fighter record` (0x33CD8).
+They precede every unported call.
+
+Descriptor selectors (data object): the fighter descriptor is
+`dword[0xBB7E0 + (char*2 + side)*4]` — the table is interleaved `[char][side]`
+(0xBB7E0 = char 0 side 0 = `0xBABB0`, 0xBB7E4 = char 0 side 1 = `0xBABC4`,
+stride 0x14) — and the secondary actor is `dword[0xBB8D0 + char*4]` (0xBB8D0
+char 0 = `0xBB010`). Both descriptors carry `+0x04 = 0x00`, the render type that
+`0x2AE14` sends down the visible path, so `0x2AE14` returns a live record without
+any resource reader (§10.9). The `desc+0x10` palette handles are `0x1BFD58`
+(fighter) and `0x0105FEB0` (secondary).
+
+`a3 = 0x400` reaches `0x2AE14` as the record's layer word (`DSW(rec+0x32) =
+0x400` on the non-child arm, because the descriptor's `+0x08` flag word is
+`0x0001` so the `0x20` bit is clear); `a4 = 0` is the record's world y.
+
+### 10.3 `0x29BC8` (32 B) and `0x2A17C` (127 B) — the character palette
+
+```
+0x29bc8  push ecx
+0x29bc9  mov ecx, eax                    ; ecx = side
+0x29bcb  mov eax, ebx                    ; eax = record (0x33C78's EBX)
+0x29bcd  mov ebx, [edx*4 + 0xa8a98]      ; ebx = DS_000A8A98[char] (a pointer)
+0x29bd4  xor edx, edx
+0x29bd6  mov dl, [ecx + 0x105b34]        ; DS_00105B34[side] (0 or 1)
+0x29bdc  mov ebx, [ebx + edx*4]          ; the palette handle
+0x29bdf  xor edx, edx
+0x29be1  call 0x2a17c                    ; (rec, edx=0, ebx=handle)
+0x29be6  pop ecx
+0x29be7  ret
+```
+
+`0x2A17C` (pinned by the raw: `0x2A17E mov ecx,eax`; `0x2A192 mov eax,edx`)
+writes `pset+2 = word | (rec+0x5F ? 0x800 : 0)` and, for a non-zero handle,
+releases the existing `pset+0x18` entry through `0x33864` and sets it to
+`palette_acquire(handle)`; a zero handle clears `pset+0x18`. The spawn passes
+`word = 0`, so the fighter's palette becomes `DS_000A8A98[char][DS_00105B34[side]]`.
+
+### 10.4 `0x1CEBC` (24 B) and the tail
+
+```
+0x1cebc  cmp dword [0x1028c8], 0 ; je 0x1ced1
+0x1cec5  cmp byte [0x1028db], 0 ; jne 0x1ced1
+0x1cece  mov al, 1 ; ret
+0x1ced1  xor al, al ; ret
+```
+
+`0x1CEBC` is `DS_001028C8 != 0 && DS_001028DB == 0` — the AIL sequence handle
+test. When it returns non-zero the tail resolves `0xBDB1C[char]` and the fixed
+`0x287B2F5` through `res_resolve` and discards both returns. The port keeps its
+AIL handles outside `mem[]`, so `DS_001028C8` is 0 and the tail is skipped; it is
+a named gap regardless (the handles are unported audio resources) and neither
+return is read, so nothing is lost for the spawn.
+
+### 10.5 `0x494A8` (515 B) — the dust entry (gap)
+
+Reached only when `DS_00104B14 == 0`. `0x494A8(side)`:
+`DS_00104AFA == 0x23` diverts to `0x4CF20`; otherwise it clears ten `0x1088xx`
+bytes, computes `n = DSB(slot+0x81) ? 0x300 / DSB(slot+0x81) : 0x300`, and loops
+`n` times: unlink `DS_001083C4` (`0x249D0`), insert it after the root `0x10884C`
+(`0x249B0`), pick a descriptor from `0xC9524[0x49388(side)]` (`0x49388`), write
+`0x29CDC(side, char)` into its `+0x10`, and call `0x2AE14` with
+`edx = rec+0x18 - 0xC00 + rng(0x1800)` and `ecx = rng(0x300)` added to
+`((s32)rec+0x30 >> 16) + 0x400`, then `0x496AC`. It draws **two RNG values per
+iteration** and builds the dust entries the effects pass `0x49C78` renders. The
+entry semantics are a gap (the same class as §7.4); it is **not** what makes a
+slot live, because every liveness store precedes it.
+
+### 10.6 `0x1D890` (375 B) — state 6's call is a 4-byte reset
+
+`0x1D890(AL)`: for `side = 0,1` it always writes
+`DSB(0x10780E + side*0x94) = 0`, `DSB(0x10290C + side) = 0`,
+`DSB(0x10780A + side*0x94) = 0`, `DSB(0x10290E + side) = 0`; then, **only when
+AL != 0**, it spawns the four HUD actors per side (`0x2AE14` from the `0xA76xx`
+tables), calls `0x1D2F0`/`0x1D464`/`0x1D838`, and ORs `2` into `DS_00104AEC`.
+State 6 calls it at `0x11B1E` with `EAX = 0` (`xor eax,eax` at `0x11B1A`; only DL
+survives, which is why `0x11B23` stores the constant 1). **The state-6 call is
+therefore the four-byte reset only** — no HUD actor is spawned and
+`DS_00104AEC` is untouched. The AL != 0 arm is cycle 2's HUD and a named gap.
+
+### 10.7 `0x20DF4` (155 B) — the fight reset (gap)
+
+State 6 calls it at `0x11AC4` with `EAX = draw1, EDX = 1`. Body: clear
+`DS_000F0A48`; `0x29B70`; clear `DS_00100B4C`, `DS_00104AE8`,
+`DS_001088EC`, `DS_00104B15`; `0x2C390`, `0x12750`, `0x49300`, `0x28E98`,
+`0x34978`, `0x2C074`; clear `DS_000F0AEC`/`DS_000F0AF0`; `DS_000F0AFA =
+(u8)CL`, `DS_000F0AF8 = 0`; `0x12C70` (which only writes
+`DS_000F0AFC = 0x400`); then, **iff EDX != 0 after `0x2C074`**, `0x2BAF4`
+(`actors_reset`) + `0x38730` + `0x412A0`. The EDX branch value comes from
+`0x2C074`'s return and is not statically pinned, and its six resets are unported,
+so it is a named gap. It is the function that owns the pre-spawn actor-pool
+reset; the spawn itself does not depend on it for liveness, so the unit test
+establishes the pool directly (it calls `actors_reset`).
+
+### 10.8 `DS_001082C8` — the EDX handoff
+
+State 6's `0x11AD2 xor eax,eax; 0x11AD4 mov edx,7; 0x11AD9 call 0x33eb4;
+0x11ADE mov eax,6; 0x11AE3 mov [0x1082c8],edx`. `0x33EB4` push/pops EDX
+(§10.1) and its callee cleans only the stack argument (`0x33C78 ret 4`), so EDX
+is still the caller's `7` after the call. **`DS_001082C8 = 7`**, a caller
+constant, not a callee return. (Task 5 left it unwritten rather than guess it.)
+
+### 10.9 The resource question (Task 6 Step 2) — answered
+
+**The spawn populates the live-slot count and both slot records without the
+paged-resource reader `0x2DBC4`/`0x2DB58`.** Evidence:
+
+1. The liveness stores (`0x33CA0`, `0x33CB8`, `0x33CD8`) precede every call in
+   `0x33C78` except the two `0x2AE14` spawns, whose descriptors are file-backed
+   data with render type `0x00` (§10.2), so `0x2AE14` takes its visible path.
+2. A direct-`E8` breadth-first walk of `0x33C78`'s call graph (227 functions,
+   over `port/decomp/prage.calls.csv`) **does not reach `0x2DBC4` or `0x2DB58`**.
+3. Those two addresses have **zero 4-byte data references** anywhere in the
+   fixed-up image, so no indirect call table can reach them either.
+4. The functions the brief flags — `0x494A8` (dust), `0x29BC8` (palette) and
+   `0x1CEBC` (AIL gate) — reach only `0x249B0`/`0x249D0`/`0x49388`/`0x29CDC`/
+   `0x2AE14`/`0x496AC`/`0x2A17C`/`0x33864`/`0x33754`, none of which is the
+   paged reader.
+
+The fallback (re-scope the cycle bound and move the spawn to cycle 2) is
+therefore **not** needed. `0x494A8` and the `res_resolve` tail remain named gaps
+for pixel/RNG fidelity, but they are not a liveness precondition.
+
+### 10.10 Corrections against the plan/brief (§0.2 convention)
+
+1. **`0x1D890` at `0x11B1E` is not a spawn.** The brief's files list calls it
+   "the 375-byte HUD spawn"; state 6 passes `EAX = 0`, so the raw runs only the
+   four-byte per-side reset (§10.6). The plan's "state 6's observables" list is
+   otherwise correct.
+2. **`DS_001082C8` is `7`.** §6.1 says it is "the `0x33EB4` result"; the raw
+   makes that result the caller's EDX, i.e. the constant 7 (§10.8).
+3. **`0x33F08`'s `rec[9]`-indexed table is `DS_000BDA8C[char]` for the spawn's
+   `slot+0x24` write** (0x33D56/0x33D5D), which is the `+0x24` table §3.8 refers
+   to; this pins where `slot+0x24` comes from.
+4. **The fighter descriptor table `0xBB7E0` is `[char][side]`-interleaved**
+   (index `char*2 + side`), not `[side][char]`; the brief's "`0x33EB4` (state 6's
+   spawn entry)" carries no such claim, but the interleave is the kind of thing
+   that silently picks the wrong record, so it is recorded.
+
+### 10.11 Unit-test values
+
+`DSD`/`DSW`/`DSB` are the port's typed accessors.
+
+**`0x33EB4` / `0x33C78` (spawn).** Input: pool initialized (`actors_reset`),
+`DS_001077B0`/`DS_00107844` valid, `DS_0010816A[0] = c0`, `DS_0010816A[1] = c1`,
+`DS_001077A8[0/1]` seeded to values that differ from the result, `DS_001078FA`
+seeded below 2. Expected: `DS_001077A8[0] == 0x1077B0`,
+`DS_001077A8[1] == 0x107844`, `DSB(0x1077B0+0x7A) == c0`,
+`DSB(0x107844+0x7A) == c1`, `DSD(0x1077B0) != 0`, `DSD(0x107844) != 0`,
+`DS_001078FA == 2`, and `slot+0x00`'s record has `0x1077B0` at `rec+0x14` and
+`side` at `rec+0x51`. With `c0`/`c1` picked through `0x41350`, the slot char is
+`0xC835A[draw]`.
+
+**`0x494A8`.** Gate: `DSB(0x104B14) == 0` runs it; `!= 0` skips. Input:
+`DS_00104AFA != 0x23`; `slot+0x81 = n`. Expected: one `0x10884C` entry per
+`n`, each with an actor, and `2n` RNG draws. Input B: `DS_00104AFA == 0x23` →
+diverts to `0x4CF20` (no list, no RNG).
+
+**`0x1D890`.** Input: `EAX = 0`. Expected: the four per-side bytes zeroed;
+`DS_00104AEC` unchanged, no actor spawned. Input B: `EAX != 0` → the HUD arm
+(`DS_00104AEC |= 2`), a named gap.
+
+**`DS_001082C8`.** Input: state 6. Expected `7`.
+
+**Arena frame with live slots.** After the spawn, seed `DSD(0x1077B0) + 0x3C`
+to a sentinel; a state-7 `game_frame` (the tail's `0x2A690`) writes
+`rec+0x3C = pset+4`, so the sentinel must move. A skipped spawn leaves
+`DS_001077A8` null and the record untouched.
+
+---
+
+## 11. Provenance
 
 * Raw bytes: `data/game/C/PRAGE.EXE` (read-only), 32-bit `capstone` over the LE
   page-mapped image with the internal 32-bit fixups applied, exactly as
@@ -1581,3 +1930,7 @@ runs; the scan and the `ctx[3]+0x43` bit writes are gap §7.16.
 * This record is the delivery of Task 1 of
   `docs/superpowers/plans/2026-09-20-demo-fight-motion.md`. Corrections to the
   plan/brief are in §0.2; the named gaps are in §7; the RNG answer is §5.9.
+* §10 is the delivery of Task 6 of the same plan: the spawn chain `0x33EB4` /
+  `0x33C78` and its callees, the resource-question answer, and the
+  `DS_001082C8 = 7` handoff. Its port is `fighter_spawn` (fighter.c),
+  `actor_pset_palette` (actors.c) and `fight_hud_spawn` (fight.c).

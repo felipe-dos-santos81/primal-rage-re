@@ -57,6 +57,23 @@ void fight_char_select(u32 side, u32 char_index)
     DSB(FIGHT_SLOT_INDEX) = (u8)(side ^ 1u);                /* 0x413BF */
 }
 
+/* ---- 0x1D890 the HUD spawn ---------------------------------------------- */
+
+void fight_hud_spawn(u32 enable)
+{
+    for (u32 side = 0; side < 2u; side++) {                 /* 0x1D8A6 loop */
+        DSB(DS_0010780E + side * 0x94u) = 0;                /* 0x1D8AB */
+        DSB(DS_0010290C + side) = 0;                        /* 0x1D8B1 */
+        DSB(DS_0010780A + side * 0x94u) = 0;                /* 0x1D8B7 */
+        DSB(DS_0010290E + side) = 0;                        /* 0x1D8C1 */
+        if (enable != 0u) {
+            /* PORT: 0x1D8CF..0x1D9DA the HUD actor spawn (0x1D2F0/0x1D464/
+             * 0x1D838, the 0xA76xx tables and DS_00104AEC bit 2) is cycle 2's
+             * HUD; state 6's EAX is 0, so it is not reached here (gap §10.6). */
+        }
+    }
+}
+
 /* ---- 0x33F08 the health-bar pass ---------------------------------------- */
 
 void fight_health_bars(void)

@@ -57,6 +57,16 @@ void fighter_pass_b(u32 arg);
  * latches slot+0x2C into slot+0x34. */
 void fighter_slot_latch(u32 side);
 
+/* 0x33EB4. The demo-fight fighter spawn entry state 6 calls after each
+ * character pick. It picks the 0x4000/0 stack argument by side, reads the
+ * per-side initial x from DS_000BDA38 (a dword load shifted right 16), and runs
+ * 0x33C78: it stores the slot pointer into DS_001077A8[side], copies the picked
+ * character (DS_0010816A[side]) into slot+0x7A, spawns the fighter and its
+ * secondary actor through actors.c's 0x2AE14, assigns the character palette
+ * (0x29BC8), and resets the slot fields. 0x494A8's dust entry and the
+ * res_resolve tail are named gaps (§10.4/§10.5). */
+void fighter_spawn(u32 side);
+
 /* 0x1975C. The think step the arena frame calls at 0x264CC. It iterates the two
  * sides and, for each whose DS_00100AD0 count exceeds 2, runs the per-fighter
  * think driver 0x3B464. The raw takes no argument (the brief's u8 side is a
