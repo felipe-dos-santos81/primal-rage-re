@@ -498,7 +498,9 @@ No task in this plan owns the match cycle. States 6/7 (the attract demo
 fight: `0x11A8C`, `0x263F4`) were ported by the demo-fight cycle 1 (see the
 next section); state 8 (`0x33F08`'s run clock is not it — 8 is the run clock
 plus the `0x257A4` coin divert) and state 9's semantics beyond the countdown
-handoff remain the **next cycle**.
+handoff (`0x10EE4`'s `DS_000F0A71` arm) remain the **next cycle**. The countdown
+itself is ported and faithful; the state-9 hold's render divergence is in the
+demo-fight section below.
 
 **States 3/4 pixel oracle: enforced gate (front-end-chain Task 5, closed).** The
 120 s pinned capture (`make frontend-capture`: `data/title-captures/frontend`,
@@ -626,11 +628,12 @@ at loop 1070 (dumped 481), state 7 runs loop 1071..1969 (dumped 482..1380), and
 dump stops. The dump therefore holds **1381 frames** (dumped 0..1380); the 1400
 cap covers it with no truncation, and the 2000-frame loop clears the 1970 exit.
 
-**The demo window is report-only, and its first measurement diverges at its
-first frame.** `tools/title_compare.py --demo` locates the front-end window with
-the same content alignment, then classifies the capture region after it against
-the port dump frames after the last frame that window exhibits — the same
-clean/splice/transition/unexplained model, no second one. It reports and exits 0.
+**The demo window is report-only, and its first unexplained frame is the state-9
+hold — not the first landing hit.** `tools/title_compare.py --demo` locates the
+front-end window with the same content alignment, then classifies the capture
+region after it against the port dump frames after the last frame that window
+exhibits — the same clean/splice/transition/unexplained model, no second one. It
+reports and exits 0.
 
 * Front-end window (unchanged, and still enforced in `verify`): distinct
   **[557..813]** (raw 3117..3418), **257 frames: 92 clean, 162 splice, 2
@@ -642,28 +645,61 @@ clean/splice/transition/unexplained model, no second one. It reports and exits 0
 * **First unexplained captured frame 814 (raw 3425)** — the first frame after
   the front-end window.
 
-Cycle 1's declared bound expects the first unexplained frame to be the
-original's first landing hit, a consequence of the cycle split (cycle 2 owns
-collision and damage). It is **not** a hit, and it is earlier even than state 6.
-The evidence says the render path is incomplete:
+Cycle 1's declared bound expected this frame to be the original's first landing
+hit (the cycle split gives cycle 2 collision and damage). Task 9's verification
+**retires that expectation**: capture 814 is in the **state-9 hold**, before
+state 6, and neither a motion-layer pin nor an RNG pin can move it.
 
-1. The port's state-7 output does not move: dumped frames **482..1380 are
-   byte-identical** (one distinct image across 899 frames). The fighters spawn
-   (Task 6 populated `DS_001077A8` and both slot records), but the per-frame
-   arena and fighter composition draws nothing new. A moving demo is the point of
-   the cycle, so this is a defect in the motion/render layers (Tasks 2-6).
-2. The divergence starts in the state-9 hold, before state 6. Captured frame 814
-   is closest to port frame 264 (205 differing bytes, rows 98..144), and no
-   capture frame after 813 matches any dump frame. So the state-9 hold's
-   zoom-actor animation is already off by a small sprite band, and the static
-   state-7 frame explains the rest.
+* Capture 814 is the "WHO WILL RULE THE NEW URTH?" globe screen. Its closest port
+  frame is **264**, 205 differing bytes in rows 98..144 — a sprite/content band
+  on the globe, not a whole-frame change. Port frame 264 is inside the state-9
+  hold: state 3 hands to state 9 at dumped frame 240 (`0x12636` sets
+  `DS_000F0A64 = 9`; `0x12645` sets the `0xF0` timer), state 9 runs dumped frames
+  240..480 and state 6 runs 481, so dumped frame 264 is state 9. `0x11D04`'s
+  case-9 arm (verified in the fixed-up image) only decrements `DS_000F0A6A` and,
+  at zero, restores `DS_000F0A64 = DS_000F0A6C`; it draws nothing.
+* The difference is the globe's island/landmass content: the capture draws it on
+  the later rotation steps (captures 814..835), the port draws it on only some
+  (`+264`/`+276`/`+282`/`+288` omit it; `+270` shows a smaller one), so the
+  port's state-9 hold render is coarser than the original's. The capture's demo
+  fight does not begin until capture **839** (raw 3747), 25 capture frames after
+  the divergence, so the divergence cannot be a landing hit.
+* The port's state-7 output now moves (Task 8): dumped frames 482..1380 hold
+  **64 distinct images** over loop frames 1071..1969 (55/10/1 per third), versus
+  one before. The motion then stalls at the `0x3CF38` hit chain (side 0 reaches
+  `+0x52 == 0x0E`, a table no-op; side 1 reaches `+0x52 == 3`, whose `0x35D7C`
+  handler needs `0x3CF38`). That is cycle 2's combat chain, not a determinism
+  site.
 
-The gaps that may own the missing composition are `fight_slot_pass`'s `0x3C88C`
-draw helper (§7.7) and the skipped `0x20DF4` fight reset at `0x11AC4` (below);
-the derivation record named both as fidelity gaps, and this measurement shows at
-least one of them is load-bearing for whether the arena renders at all. Recorded
-here as a Task 2-6 remediation target: the demo window cannot converge until the
-state-7 frame stops being static and the state-9 hold's sprite band matches.
+**No pin was added for the demo window.** A pin is a determinism fix — a site
+where the original reads uninitialised or timing-dependent state — never a value
+chosen to make a frame match. The first unexplained frame's cause is a render
+gap, not such a site:
+
+* State 9 draws no RNG (`0x11D04` case 9, above; the port's case 9 is faithful,
+  and `port/tests/test_flow.c`'s `check_state9_countdown` asserts the LCG state
+  is unchanged across it). The only RNG consumer reachable in the hold is the
+  actor-animation opcode-8 handler, which is already the fourth `title_pin.py`
+  pin (`0x7E289`). So the hold has no unpinned draw to pin.
+* The demo window's real RNG sites are downstream of the divergence: state 6's
+  two character picks (`0x11AAD`, `0x11AE9`) and the state-7 CPU-AI generator's
+  `rng(0x64)` at `0x47063` (one draw per committed move, §11.2). Neither is
+  responsible for frame 814, and the generator's draw executes many times with
+  different values, so the constant-replacement pin shape cannot align it. A pin
+  on either now would be a fitted constant that changes no measured frame.
+
+The demo window therefore cannot converge in cycle 1; cycle 2 owns it: collision
+and damage (`0x3BB90`, `0x4FB20`, `0x3BAEC`, `0x3B9D8`), the `0x3CF38` hit chain,
+the arena draw helper `0x3C88C` (§7.7), the state-9 hold's zoom-actor globe
+render (the `0x3E688` palette-driven zoom background spawned by
+`0x12484`/`0x12658` and advanced through the actor path `0x2A31C`), and the
+`- LOADING -` screen the capture shows at capture 837, which the port does not
+draw. The window's closure retires this bound rather than narrowing it.
+
+The gaps that may own the missing state-7 composition are `fight_slot_pass`'s
+`0x3C88C` draw helper (§7.7) and the skipped `0x20DF4` fight reset at `0x11AC4`
+(below); the derivation record named both as fidelity gaps, and this measurement
+shows at least one of them is load-bearing for whether the arena renders at all.
 
 **The skipped `0x20DF4` is a liveness gap, not only a fidelity gap.** The raw
 calls `0x20DF4` at `0x11AC4`; its first callee `0x49300` self-links the

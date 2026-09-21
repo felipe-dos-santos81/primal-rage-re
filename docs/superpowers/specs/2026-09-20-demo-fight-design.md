@@ -1,5 +1,12 @@
 # Demo fight — attract states 6/7 (design)
 
+**Status: cycle 1 complete, cycle 2 not started.** The measured bound differs
+from this design's declared one and is corrected in place below: the first
+unexplained demo-window frame is the **state-9 hold's globe render** (capture 814,
+closest port frame 264, 205 differing bytes in rows 98..144), **not** the first
+landing hit, and no pin can move it. See `port/spec/game_flow.md`'s demo-fight
+section and `.superpowers/sdd/2026-09-20-demo-fight-motion/task-9-report.md`.
+
 ## Context
 
 The port has the engine core, the OPL/audio stack, the sprite compositor, the
@@ -90,10 +97,11 @@ half.
 camera and projection, the arena and fighter render, the think/AI chain, the
 state 6/7 handlers, the 900-frame timer and the `0x11BCC` exit, and the
 `game_frame` tail minus its combat calls. The demo visibly moves and animates.
-Its oracle is **report-only**, proving the window clean up to the frame where the
-original first lands a hit — a bounded, declared divergence point that the cycle
-records and measures. This is the front-end chain's Task 1 → Task 5 shape: a
-provisional gap, opened honestly.
+Its oracle is **report-only**, proving the window clean up to its measured
+divergence point. Cycle 1's declared point was the first landing hit; the
+measurement found it is earlier — the state-9 hold's globe render — so the bound
+the cycle records is that measured frame, not the assumed hit. This is the
+front-end chain's Task 1 → Task 5 shape: a provisional gap, opened honestly.
 
 **Cycle 2 — combat and closure.** Collision, damage, the health bars, and the
 oracle closure: the pins settle, the window converges, `frontend`-style
@@ -170,10 +178,11 @@ Reuse the existing capture and oracle machinery; take no new capture.
   new demo window — as two separate ladder targets, so a demo regression and a
   front-end regression stay independently diagnosable.
 - **The demo window is report-only in cycle 1 and enforced in cycle 2.** Cycle 1
-  cannot converge it: without combat the port diverges at the first landing hit.
-  Cycle 1's target therefore reports and records the measured divergence frame,
-  and the declared expectation is *clean from the window start up to that frame*.
-  Cycle 2's combat closes the remainder and the same target becomes a ladder gate.
+  cannot converge it: the measured divergence is the state-9 hold's globe render,
+  before state 6, and closing the window also needs cycle 2's combat. Cycle 1's
+  target therefore reports and records the measured divergence frame (capture
+  814), and the declared expectation is *clean from the window start up to that
+  frame*. Cycle 2 closes the remainder and the same target becomes a ladder gate.
   The front-end chain shipped exactly this shape one cycle ago.
 - **Pins.** The demo's non-determinism goes in the existing `tools/title_pin.py`
   `PATCHES` table: the two character picks through `0x41350`, plus any per-frame
@@ -181,7 +190,10 @@ Reuse the existing capture and oracle machinery; take no new capture.
   `rng.c` already tracks the generator and `attract.c` already tracks the stream
   order, so this is expected to be a small number of sites — but that is not
   assumed. Every pin is regenerated against a fresh capture after it is added,
-  exactly as the front-end cycle required.
+  exactly as the front-end cycle required. **Cycle 1's outcome: no pin was
+  justified** — the divergence is a render gap, state 9 draws no RNG, and the
+  demo's real RNG sites are downstream of it (see the status note and
+  `port/spec/game_flow.md`).
 - **Determinism.** The two-run `PR_FRONTEND_DET` gate extends over the demo
   window.
 - **Unit proofs.** `0x4FB20` exhaustively as pure geometry; the `0x17FA0`
@@ -202,6 +214,10 @@ Reuse the existing capture and oracle machinery; take no new capture.
    draws matching the original's count and order. If they do not, the demo
    diverges progressively and pinning the character picks does not help. If it
    cannot be pinned honestly, it becomes a declared gap — never a fitted value.
+   Cycle 1's finding sharpens this: the generator's `rng(0x64)` at `0x47063`
+   executes once per committed move with a different value each time, so the
+   constant-replacement pin shape cannot align it; cycle 2 must settle how the
+   demo's stream is kept in step.
 2. **`0x49C78` is 2492 bytes** with an unexplored callee set, the largest single
    unknown in the slice. It gets its own derivation before anyone ports it, and
    its unpinnable parts become named gaps.
@@ -214,8 +230,9 @@ Reuse the existing capture and oracle machinery; take no new capture.
 5. **Scale, and the interim gap.** ~55 named functions across seven stages. The
    cycle split above cuts that in half and gives cycle 1 a bounded, measured
    divergence point instead of a long stretch with no converging signal. The cost
-   is deliberate: cycle 1 ships a report-only oracle and a declared gap where the
-   original first lands a hit. If cycle 1's layers do not all land, the same
+   is deliberate: cycle 1 ships a report-only oracle and a declared gap at its
+   measured divergence frame (the state-9 hold, not a landing hit). If cycle 1's
+   layers do not all land, the same
    fallback applies again within the cycle — converge what can be converged,
    declare the rest.
 
@@ -235,8 +252,10 @@ it. The stages below are the two cycles' task order.
 5. State 6/7 handlers, the `game_frame` tail minus its combat calls, the
    900-frame timer and the `0x11BCC` exit.
 6. The oracle opened provisionally: raise the dump length, add the demo window as
-   a report-only target, add the pins that the demo's motion needs, and record the
-   measured divergence frame — the first landing hit — as the declared bound.
+   a report-only target, add the pins that the demo's motion needs (none were
+   justified — see the cycle-1 outcome), and record the measured divergence frame
+   as the declared bound. The measured frame is the state-9 hold's globe render,
+   not the assumed first landing hit.
 
 **Cycle 2 — combat and closure.**
 
@@ -247,13 +266,15 @@ it. The stages below are the two cycles' task order.
 
 ## Success criteria
 
-**Cycle 1.** The demo visibly moves and animates; the demo window's report is
-clean from its start up to the first landing hit, and that divergence frame is
-measured and recorded as the declared bound; every helper has unit proof that
-fails under a mutation of the code it tests; every unported piece is a named gap
-carrying its address; no fitted constant ships; `make verify` is green with the
-title, attract, smacker, front-end and `oracle C-vs-Python: 9866 writes
-byte-exact` gates unmoved.
+**Cycle 1 — met, with the bound corrected.** The demo visibly moves and animates
+(64 distinct state-7 images over loop frames 1071..1969, versus one before); the
+demo window's report diverges at its first frame (capture 814), which the
+measurement shows is the state-9 hold's globe render, **not** the first landing
+hit — that measured frame is recorded as the declared bound, and no pin was
+justified or added; every helper has unit proof that fails under a mutation of
+the code it tests; every unported piece is a named gap carrying its address; no
+fitted constant ships; `make verify` is green with the title, attract, smacker,
+front-end and `oracle C-vs-Python: 9866 writes byte-exact` gates unmoved.
 
 **Cycle 2.** The demo window reports zero unexplained content-bearing capture
 frames and is enforced in the `make verify` ladder, with cycle 1's declared bound

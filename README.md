@@ -282,8 +282,28 @@ declared gaps. See
 `docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md` and
 `port/spec/game_flow.md`.
 
+The attract demo fight (states 6/7 — the CPU-vs-CPU demo, **not** the interactive
+match) is ported through **motion** (demo-fight cycle 1): state 3's `0x12658`
+handoff enters the 240-frame state-9 hold, state 6 picks the two characters from
+the shared RNG and spawns them, and state 7 runs the arena with the ported CPU-AI
+command generator (`0x47208`) and the `+0x52` state dispatch (`0x34B14`) — the
+port's state-7 dump now holds 64 distinct images over loop frames 1071..1969,
+versus one before. Its report-only oracle (`make demo-oracle`) measures the window
+`[814..3711]` (raw `3425..8409`), 2898 frames: 0 clean / 0 splice / 0 transition /
+2891 unexplained. The **first unexplained frame is capture 814, the state-9
+hold's globe render, not the first landing hit** the cycle's declared bound
+assumed (closest port frame 264, 205 differing bytes in rows 98..144; the
+capture's demo fight does not begin until capture 839). No pin was justified:
+state 9 draws no RNG, and the demo window's real RNG sites are downstream of the
+divergence. Cycle 2 owns collision and damage (`0x3BB90`, `0x4FB20`), the
+`0x3CF38` hit chain, the arena draw helper `0x3C88C`, the state-9 zoom-actor globe
+render, and the window's closure — retiring the bound, not narrowing it. See
+`port/spec/game_flow.md` and
+`docs/superpowers/plans/2026-09-20-demo-fight-derivations.md`.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
-fight engine (5), and the match cycle's `0x1EA08` sites remain; the attract's
+fight engine's combat half (5, demo-fight cycle 2), and the match cycle's
+`0x1EA08` sites remain; the attract's
 `0x2C3FC` voice calls and the `0x4F7F4`/`0x4F83C` scene-palette driver are
 declared gaps with `/* PORT: */` markers. The `0x13xxx` effect render path is no
 longer a gap (no draw was missing); its effect call sites are deferred as

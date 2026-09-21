@@ -123,6 +123,35 @@ static void check_title_overlay(void)
     CHECK_EQ_INT(overlay_row_cells(1), 0);
 }
 
+/* Task 9: the demo's state-9 hold is a pure countdown. The raw's 0x11D04 case
+ * 9 decrements DS_000F0A6A and, on the frame whose PRE value is 1, restores
+ * DS_000F0A64 = DS_000F0A6C (the state-6 entry); it draws no RNG (verified
+ * against the fixed-up image at 0x11D04's case-9 arm). That matters to the demo
+ * window: the port's RNG stream position at state 6 is the raw's only if state 9
+ * consumes no draw, and the first unexplained demo frame (capture 814) is inside
+ * this hold, so a draw here would be a determinism site and not a render gap.
+ * The two LCG-state assertions fail if case 9 ever draws. */
+static void check_state9_countdown(void)
+{
+    const u32 saved_rng = DSD(DS_000EF6D8);
+    DSB(DS_00104B1D) = 1;          /* skip the deferred coin poll */
+    DSB(DS_000F0A71) = 1;          /* both per-state tails return immediately */
+    DSW(DS_000F0A64) = 9;
+    DSW(DS_000F0A6A) = 3;          /* pre 3 -> new 2: no transition */
+    DSW(DS_000F0A6C) = 6;
+    game_state_step();
+    CHECK_EQ_INT((int)DSW(DS_000F0A6A), 2);
+    CHECK_EQ_INT((int)DSW(DS_000F0A64), 9);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (long)saved_rng);
+
+    DSW(DS_000F0A64) = 9;
+    DSW(DS_000F0A6A) = 1;          /* pre 1 -> new 0: restore the target */
+    game_state_step();
+    CHECK_EQ_INT((int)DSW(DS_000F0A6A), 0);
+    CHECK_EQ_INT((int)DSW(DS_000F0A64), 6);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (long)saved_rng);
+}
+
 int test_flow(void)
 {
     int before = g_failures;
@@ -251,6 +280,9 @@ int test_flow(void)
     CHECK(game_music_notes_seen(), "title music keys notes without a device");
     game_shutdown();                         /* release handles for later tests */
     CHECK_EQ_INT((int)DSB(DS_000A2CB1), 0);  /* teardown clears the enable flag */
+
+    /* Task 9: the state-9 countdown's faithfulness and its no-draw invariant. */
+    check_state9_countdown();
 
     /* 0x11A8C: the live state 6. The old "a deferred state is a harmless no-op"
      * premise is retired — state 6 now draws the shared RNG, runs 0x41350 for
