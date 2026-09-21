@@ -341,15 +341,21 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   production surface. A later cycle must port the dispatcher chain first.
   **The effect call sites are deferred too (front-end-chain Task 8).** The plan
   said `0x29B74` and `0x41578` register into the process tables; the raw refutes it.
-  `0x29B74` is the mode-`0x17` handler stored at `DS_00104AE4` (stores at
-  `0x2788B`/`0x278A4` in `FUN_000277C0` mode `0xF`, `0x2861E` in `FUN_00028468`
-  mode 8, `0x28978` in `FUN_00028788` mode 9), dispatched by six
+  `0x29B74` is the mode-`0x17` handler stored at `DS_00104AE4`. The raw constant
+  `74 9b 02 00` occurs **five** times, each storing `0x29B74` into `DS_00104AE4`:
+  `0x2788B`→`0x278A4` in `FUN_000277C0` (mode `0xF`); `0x2861E`→`0x2862A` in the
+  un-emitted region starting at `0x2861C` (after `FUN_00028468`'s `ret` at
+  `0x2861B`), which has **no callers** anywhere in the image and whose address
+  appears nowhere as a pointer; and `0x28978`→`0x2898F`, `0x28A9D`→`0x28AB9`
+  (`mov edi`), `0x28B3C`→`0x28B57` (`mov esi`), all three in `FUN_00028788`
+  (mode 9). It is dispatched by six
   `call dword [0x104AE4]` sites (`0x4F302`, `0x4F373`, `0x4F6F1`, `0x4F70D`,
   `0x4F9AA`, `0x4F9D1`) plus one direct `call 0x29B74` at `0x27B17`; `0x41578` is
   direct-called from four sites (`0x41755`, `0x41DE6`, `0x42337`, `0x42352` in
-  `0x416D4`/`0x41C28`). Every one of those sites is reached only through
-  `0x24C5C`'s **unported mode cases** (`0x12`, `0x16..0x1B`) and the unported
-  match/fight chain; the port's `DS_00104B00` is fixed at 3 by `0x10E80`, so none
+  `0x416D4`/`0x41C28`). Every one of the live sites is reached only through
+  `0x24C5C`'s **unported mode cases** (`0x12`, `0x16..0x1B`, `0xE`, `0xF`, `9`) and
+  the unported match/fight chain; the `0x2861C` region is dead outright. The port's
+  `DS_00104B00` is fixed at 3 by `0x10E80`, so none
   is reachable from the ported states 3/4/5. They are **deferred and unowned by
   this plan** — no dispatch path is shipped, and `port/tests/test_frontend.c` pins
   that no handler is registered and that state 5 neither arms `DS_00104AE4` nor
@@ -358,7 +364,10 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   (`0x4000000`) and outside both LE objects, so that half of the predicate can
   never match. Because the four `0x41578` sites are themselves unreachable, no
   port code holds the comparison; the raw fact is recorded here rather than
-  deleted or substituted. No shipped path spawns types 0/2/4/6 yet; the producers
+  deleted or substituted. **A later cycle that makes `0x41578` reachable must port
+  the comparison with it, including the never-true `0x88874B0` half** (register-
+  level fidelity — not deleted and not substituted). No shipped path spawns types
+  0/2/4/6 yet; the producers
   remain a coverage gap carried by unit tests. Details:
   `../../docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md` §5,
   `../../docs/superpowers/plans/2026-09-19-effects-producers-report.md`.
