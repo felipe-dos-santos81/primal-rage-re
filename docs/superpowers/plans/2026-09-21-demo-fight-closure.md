@@ -272,7 +272,76 @@ git commit -m "fight: port the state-9 globe actor's animation"
 
 ---
 
-### Task 4: The hitbox machine and the hit chain
+### Task 4: The fight's entry frames — the divergence at capture 832
+
+Task 3's continuation advanced the oracle's first-unexplained frame to capture **832**. That frame is not the fight and not the state-9 hold: it is the fight's entry (cycle 1 recorded capture 836 as all-black and 837 as the `- LOADING -` screen). The cycle did not anticipate it, and it sits **before** the fight — so Task 5's measurement cannot advance past its own stall until these frames are explained.
+
+**Files:**
+- Modify: the entry frames' producer — **derive it** (the string or screen and the pass or state that draws it)
+- Modify: `port/tests/test_flow.c`, or the file whose existing tests own that state
+
+**Interfaces:**
+- Consumes: the state machine's entry into the fight (Task 1's record §4 and cycle-1 §6.2) and the capture's 832..836.
+- Produces: the entry frames matching the capture's, so the oracle's first-unexplained frame advances past 832.
+
+- [ ] **Step 1: Derive what the entry frames are**
+
+Derive what draws capture 832..836: the screen's producer, the string or asset it uses, the pass or state that renders it, how many frames it spans, and what it does to the state machine. Cite the addresses. **If it turns out to be a subsystem larger than this task can carry, stop and report its size** — that is a re-scope conversation with the human, not a silent overrun.
+
+- [ ] **Step 2: Write the failing test**
+
+Assert the derived values with seeded sentinels — the exact inputs and expected transitions your Step 1 derivation pins:
+
+```c
+/* The Step 1 derivation anchors, as literals. A missing anchor is a Task 1 defect. */
+{
+    DSD(ENTRY_STATE_ADDR) = ENTRY_STATE_IN;    /* Step 1 anchor */
+    entry_step_under_test();                   /* the real ported name, from Step 1 */
+    CHECK_EQ_INT((int)DSD(ENTRY_STATE_ADDR), ENTRY_STATE_OUT);   /* Step 1 anchor */
+}
+```
+
+- [ ] **Step 3: Run the test to verify it fails**
+
+Run: `./build/run_tests`
+Expected: FAIL — the entry frames are unported.
+
+- [ ] **Step 4: Implement it**
+
+Port what Step 1 derived, one C function per original function with its address tag, into the owner Step 1 names. A value that cannot be pinned is a named gap with its evidence, never an invented one.
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `./build/run_tests`
+Expected: PASS, output pristine.
+
+- [ ] **Step 6: Prove the assertion can fail**
+
+Mutate the implementation and confirm the named assertion fails. Restore, and report the mutation with its command and output.
+
+- [ ] **Step 7: Re-measure the oracle**
+
+```bash
+make demo-oracle
+```
+
+Expected: the first-unexplained frame **advances past 832**, to the fight's start. If it does not, return to the derivation — do not tune the render to match. If the next divergence is a gap an earlier task declared (the dust's type-0 processing `0x4AAD0`), report it as that named gap rather than porting it here.
+
+- [ ] **Step 8: Full ladder and commit**
+
+Run: `make verify`
+Expected: exit 0, 0 warnings, every oracle claim unmoved.
+
+```bash
+git add port/src/game/<owner>.c port/tests/test_flow.c
+git commit -m "flow: port the fight's entry frames"
+```
+
+**Gate for this task:** the capture's 832..836 frames are explained and the oracle's first-unexplained frame has advanced to the fight's start.
+
+---
+
+### Task 5: The hitbox machine and the hit chain
 
 The cycle's largest task, and its core: `0x3C88C` arms the hitboxes, `0x3CF38` scans and resolves them. Neither half advances the oracle alone (Amendment 3), which is why they are one task. Task 1 sized the chain at 45 functions / ~8.2 KB transitive closure, 22 new / 2720 B (§3.7); it is RNG-free (§3.8).
 
@@ -343,7 +412,7 @@ git commit -m "fight: port the hitbox machine and the 0x3CF38 hit chain"
 
 ---
 
-### Task 5: Pin the timer exit and the loop-back
+### Task 6: Pin the timer exit and the loop-back
 
 Corrected by Amendment 1.1: both are already ported (`port/src/game/flow.c:1349-1365`), so this task is a test of existing code plus the record's statement — not an implementation. A test of already-ported code cannot start RED; the mutation proof is what shows it can fail.
 
@@ -401,7 +470,7 @@ git commit -m "flow: pin the demo's timer exit and loop-back"
 
 ---
 
-### Task 6: Close the cycle — the window end-to-end and the record
+### Task 7: Close the cycle — the window end-to-end and the record
 
 **Files:**
 - Modify: `port/spec/game_flow.md`, `README.md`, `docs/superpowers/specs/2026-09-21-demo-fight-closure-design.md`
@@ -447,12 +516,14 @@ git commit -m "docs: record the demo fight's closure"
 
 ## Self-Review
 
-**Spec coverage.** The spec's Goal is the demo window at `0 unexplained` end-to-end; Task 6 Step 2 is its honest assessment. Its "In" list maps to tasks: the state-9 globe render and the state-7 background (Task 3, one fix), the `0x3C88C` gap and the `0x3CF38` hit chain (Task 4, merged), the timer exit and continue sequence (Task 5, corrected to a test), the RNG source (Task 2, re-scoped by Amendment 2), and the think-chain marker (Task 1 Step 9, done). Its "removed from this cycle" item — window re-anchoring — is honoured by not appearing as a task, with the reason recorded in the spec. Its Verification section's two commitments are tasks: the source-level pin (Task 2) and the corrected capture numbers (Task 1 Step 8, done). Its Risks section maps to Task 4 Step 1 (the chain's size, with an explicit stop), Task 3 Step 1 (the projection's argument, a gap rather than an invented index), Task 2 (the RNG source, escalated and ruled rather than quietly fallen back on), and Task 6 Step 2 (the window may still not read clean).
+**Spec coverage.** The spec's Goal is the demo window at `0 unexplained` end-to-end; Task 7 Step 2 is its honest assessment. Its "In" list maps to tasks: the state-9 globe render and the state-7 background (Task 3, which measurement split into the `0x38730` projection and the globe actor's animation), the `0x3C88C` gap and the `0x3CF38` hit chain (Task 5, merged), the timer exit and continue sequence (Task 6, corrected to a test), the RNG source (Task 2, re-scoped by Amendment 2), and the think-chain marker (Task 1 Step 9, done). Task 4 exists because measurement, not the plan, found the fight's entry frames. Its "removed from this cycle" item — window re-anchoring — is honoured by not appearing as a task, with the reason recorded in the spec. Its Verification section's two commitments are tasks: the source-level pin (Task 2) and the corrected capture numbers (Task 1 Step 8, done). Its Risks section maps to Task 5 Step 1 (the chain's size, with an explicit stop), Task 4 Step 1 and Task 3's continuations (a derivation that finds the plan's premise wrong, and a gap rather than an invented value), Task 2 (the RNG source, escalated and ruled rather than quietly fallen back on), and Task 7 Step 2 (the window may still not read clean).
 
-**Deliberate deferrals, stated not hidden.** The interactive match — the mode graph, the coin divert, `0x1EEB0`, `0x1F458`, the player screens and human input — is not implemented by any task and is recorded as unowned in Task 6 Step 3. The dead think chain is kept and marked (Task 1 Step 9) rather than deleted or quietly carried. Every unported piece inside the demo window becomes a `/* PORT: */` skip plus a named gap, never a silent no-op. The `0x32BAC` fixture is carried as a deferred minor rather than a pinned value.
+**Deliberate deferrals, stated not hidden.** The interactive match — the mode graph, the coin divert, `0x1EEB0`, `0x1F458`, the player screens and human input — is not implemented by any task and is recorded as unowned in Task 7 Step 3. The dead think chain is kept and marked (Task 1 Step 9) rather than deleted or quietly carried. Every unported piece inside the demo window becomes a `/* PORT: */` skip plus a named gap, never a silent no-op. The `0x32BAC` fixture is carried as a deferred minor rather than a pinned value.
 
-**The derivation dependency is not a placeholder.** Task 1's record is the authoritative source for Tasks 2–5's exact values, exactly as `2026-09-20-demo-fight-derivations.md` was for cycle 1. Every porting step names the record section that supplies its values and states that a missing anchor is a Task 1 defect rather than licence to invent one — inventing a value is the fitted constant this project forbids. The test skeletons call `<thing>_under_test()` only because the ported function's real name comes from the record; the implementer substitutes it. No step says "TBD", "similar to Task N", or describes an action without its command.
+**The derivation dependency is not a placeholder.** Task 1's record is the authoritative source for Tasks 2–6's exact values, exactly as `2026-09-20-demo-fight-derivations.md` was for cycle 1. Every porting step names the record section that supplies its values and states that a missing anchor is a Task 1 defect rather than licence to invent one — inventing a value is the fitted constant this project forbids. The test skeletons call `<thing>_under_test()` only because the ported function's real name comes from the record; the implementer substitutes it. No step says "TBD", "similar to Task N", or describes an action without its command.
 
 **Type consistency.** `game_state_step`, `game_frame`, `fight_arena_frame`, `fighter_think`, `fight_slot_pass` and `actors_update` are the existing names and are used unchanged. New functions are named for the original they port and are introduced by the task that first needs them; later tasks reference them by the name their own `Interfaces` block gives. Globals are referenced by their `symbols.h` names throughout, and a name the generator does not emit gets a local `#define` with the raw address.
 
-**Right-sizing.** Task 1 is one derivation deliverable with its own gate, and it is done. Tasks 3, 4 and 5 each end at an independently verifiable oracle advance — which is why the hitbox machine and the chain, neither of which advances the oracle alone, are one task. Task 2 is separated from Task 3 because it must precede every frame comparison past the picks and produces one reference change; folding it into Task 3 would bury a prerequisite inside a render task. Task 6 is the cycle's record and its honest Gate assessment, which no porting task can own.
+**Right-sizing.** Task 1 is one derivation deliverable with its own gate, and it is done. Tasks 3, 4, 5 and 6 each end at an independently verifiable oracle advance — which is why the hitbox machine and the chain, neither of which advances the oracle alone, are one task, and why the fight's entry frames are their own task: they sit before the fight and block its measurement. Task 2 is separated from Task 3 because it must precede every frame comparison past the picks and produces one reference change; folding it into Task 3 would bury a prerequisite inside a render task. Task 7 is the cycle's record and its honest Gate assessment, which no porting task can own.
+
+**Measurement over plan.** Three of this plan's task premises were refuted by the raw or by the oracle after the plan was written: Task 6's premise that the timer exit was unported, Task 3's premise that the projection explained the state-9 frame, and the assumption that the unported set was fully known. Each was corrected where it was found, with the addresses, and the plan was amended rather than the measurement bent. That is the intended failure mode of this cycle — the oracle's first-unexplained frame is the schedule, and a premise that does not survive contact with it is the plan's defect, not the code's.
