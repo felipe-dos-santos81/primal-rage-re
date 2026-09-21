@@ -48,6 +48,12 @@ void fight_effects_pass(void);
  * exposed because 0x3C570's bit test reads DS_00107EE0 and a test may seed it. */
 void fight_slot_clear(void);
 
+/* 0x49300. State 6's fight-effect list init: self-links the DS_001083C4 and
+ * DS_0010884C sentinels and seeds DS_001088CC/CB from DS_00104AFC. Called by the
+ * unported 0x20DF4 at 0x11AC4; ported because 0x49C78's list walk needs
+ * DS_0010884C to point at itself when the list is empty. */
+void fight_list_init(void);
+
 /* 0x41350. The per-side character select state 6 calls for both players. It
  * runs 0x33C18 (the slot field reset), stores the character index (0xC835A[char])
  * into DS_0010816A[side] unless DS_00104B1D == 1, sets the slot's +0x63 think

@@ -783,7 +783,11 @@ static void game_state_6(void)
     u32 draw1 = rng_next(7u);                           /* 0x11AAD (draw 1) */
     DSW(DS_00104AFC) = (u16)draw1;                      /* 0x11AB4 */
     /* PORT: 0x11AC4 0x20DF4(eax=draw1, edx=1) — a 155-byte reset with 11
-     * callees; unported, named gap. */
+     * callees; its six resets stay a named gap. Its first callee 0x49300 is the
+     * only liveness precondition: it self-links the fight-effect list sentinel
+     * DS_0010884C that the 0x49C78 walk reads, so it is ported as fight_list_init
+     * (a zero head would walk address 0 forever). */
+    fight_list_init();                                  /* 0x11AC4 0x49300 */
     fight_char_select(0u, draw1);                       /* 0x11ACD 0x41350 */
     fighter_spawn(0u);                                  /* 0x11AD9 0x33EB4 */
     /* 0x11AE3: EDX after 0x33EB4 is the caller's 7 — 0x33EB4 push/pops EDX and

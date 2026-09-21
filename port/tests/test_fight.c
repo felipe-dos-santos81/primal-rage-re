@@ -1056,6 +1056,51 @@ static void check_game_frame_tail(void)
     CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x7000);
 }
 
+/* 0x49300, state 6's fight-effect list init. It self-links the 0x1083C4 and
+ * 0x10884C sentinels, inserts the 0x24-stride nodes into the 0x1083C4 list with
+ * 0x249C0, and seeds DS_001088CC/CB from DS_00104AFC. The sentinel is zeroed
+ * first so the check cannot pass on stale state, and the 0x1083C4..0x10883F
+ * region (not covered by test_fight's other snapshots) is saved and restored. */
+static void check_list_init(void)
+{
+    u8 s_li[0x48C];
+    u32 s_a4fc = DSD(DS_00104AFC);
+
+    snap(s_li, 0x001083C4u, sizeof s_li);
+    DSD(DS_0010884C) = 0;               /* head would walk address 0 if unset */
+    DSD(DS_00108850) = 0;
+    DSD(DS_001083C4) = 0;
+    DSD(DS_001083C8) = 0;
+    DSD(DS_00108880) = 0xDEADBEEFu;
+    DSB(DS_001088CC) = 0xAB;
+    DSB(DS_001088CB) = 0xCD;
+    DSD(DS_00104AFC) = 0;               /* draw1 != 7: the 2/4 arm */
+
+    fight_list_init();
+
+    CHECK_EQ_INT((int)DSD(DS_0010884C), (int)DS_0010884C);
+    CHECK_EQ_INT((int)DSD(DS_00108850), (int)DS_0010884C);
+    CHECK_EQ_INT((int)DSD(DS_00108880), 0x1500);
+    CHECK_EQ_INT((int)DSB(DS_001088CC), 2);
+    CHECK_EQ_INT((int)DSB(DS_001088CB), 4);
+    /* The loop inserts 32 nodes 0x1083CC..0x108828 into the 0x1083C4 list, each
+     * before the sentinel, so the sentinel's next is the first node and its prev
+     * is the last; the last node's next wraps back to the sentinel. */
+    CHECK_EQ_INT((int)DSD(DS_001083C4), (int)0x001083CCu);
+    CHECK_EQ_INT((int)DSD(0x001083CCu), (int)0x001083F0u);
+    CHECK_EQ_INT((int)DSD(DS_001083C8), (int)0x00108828u);
+    CHECK_EQ_INT((int)DSD(0x00108828u), (int)DS_001083C4);
+
+    /* The draw1 == 7 arm (unreachable from rng(7), but the raw branch exists). */
+    DSD(DS_00104AFC) = 7;
+    fight_list_init();
+    CHECK_EQ_INT((int)DSB(DS_001088CC), 0);
+    CHECK_EQ_INT((int)DSB(DS_001088CB), 0);
+
+    DSD(DS_00104AFC) = s_a4fc;
+    put(s_li, 0x001083C4u, sizeof s_li);
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -1112,6 +1157,7 @@ int test_fight(void)
     check_state6();
     check_state7();
     check_game_frame_tail();
+    check_list_init();
 
     put(s_f0ae0, 0x000F0AE0u, 0x20u);
     put(s_proj, 0x00100A70u, 0xF4u);

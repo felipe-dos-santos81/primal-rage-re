@@ -26,6 +26,40 @@ void fight_slot_clear(void)
     DSD(DS_00107D54) = 0;                       /* 0x3C5DB */
 }
 
+/* ---- 0x49300 the fight-effect list init --------------------------------- */
+
+/* 0x49300, called from state 6's 0x20DF4 at 0x11AC4. It self-links the
+ * 0x1083C4 and 0x10884C {next@+0; prev@+4} sentinels (inserting each 0x24-stride
+ * node into the 0x1083C4 list with 0x249C0) and seeds DS_001088CC/CB from the
+ * draw1 value DS_00104AFC. The port skipped 0x20DF4 as a named gap, but the
+ * 0x49C78 walk at 0x49CAF (fight_effects_pass) reads DS_0010884C as its head and
+ * loops until it returns to the sentinel, so without this init the uninitialised
+ * zero head walks address 0 forever. Ported here because 0x49300 is that walk's
+ * liveness precondition; 0x20DF4's other resets stay declared gaps. */
+void fight_list_init(void)
+{
+    DSD(DS_00108880) = 0x1500u;                 /* 0x49312 */
+    DSD(DS_00108850) = DS_0010884C;            /* 0x49318 */
+    DSD(DS_0010884C) = DS_0010884C;            /* 0x4931E */
+    DSD(DS_001083C8) = DS_001083C4;            /* 0x49324 */
+    DSD(DS_001083C4) = DS_001083C4;            /* 0x4932F */
+    for (u32 node = 0x1083CCu; node < DS_0010884C; node += 0x24u) {
+        /* 0x49347 0x249C0(0x1083C4, node): insert before the sentinel. */
+        u32 prev = DSD(DS_001083C4 + 4u);       /* 0x4933D */
+        DSD(DS_001083C4 + 4u) = node;
+        DSD(node) = DS_001083C4;
+        DSD(node + 4u) = prev;
+        DSD(prev) = node;
+    }
+    if ((u32)DSW(DS_00104AFC) == 7u) {          /* 0x4935C */
+        DSB(DS_001088CC) = 0;                   /* 0x49363 */
+        DSB(DS_001088CB) = 0;                   /* 0x49369 */
+        return;
+    }
+    DSB(DS_001088CC) = 2u;                      /* 0x49377 */
+    DSB(DS_001088CB) = 4u;                      /* 0x4937D */
+}
+
 /* ---- 0x33C18 the character select's slot reset -------------------------- */
 
 /* 0x33C18. Clear the per-side character fields and reset the 0x108860 word. */
