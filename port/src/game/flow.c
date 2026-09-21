@@ -1200,7 +1200,13 @@ void game_frame(void)
         break;
     default:
         /* PORT: 0x24C5C's case 1/2/4..0x33 modes drive menus, attract, fight
-         * and diagnostics; deferred to sub-projects 4/5. */
+         * and diagnostics; deferred to sub-projects 4/5. The effect call sites
+         * 0x29B74 (the DS_00104AE4 mode-0x17 handler, six `call [0x104ae4]`
+         * sites) and 0x41578 (four direct calls) live only in those unported
+         * modes — 0x24C5C cases 0x12 and 0x16..0x1b — plus the unported
+         * match/fight chain, so they are deferred with them (UNOWNED BY THIS
+         * PLAN; see port/spec/game_flow.md). DS_00104B00 is fixed at 3 by
+         * 0x10E80, so no reachable path enters those cases; nothing is wired. */
         break;
     }
 

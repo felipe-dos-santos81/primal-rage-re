@@ -153,6 +153,22 @@ int test_frontend(void)
         DSB(DS_00104B15) = saved_15;
     }
 
+    /* Task 8: the effect call sites 0x29B74 (the DS_00104AE4 mode-0x17 handler)
+     * and 0x41578 are deferred, not shipped. The raw reaches them only through
+     * 0x24C5C's unported mode cases (0x12 and 0x16..0x1b) and the unported
+     * match/fight chain; the port's DS_00104B00 is fixed at 3 by 0x10E80, so
+     * wiring either would be a dispatch path nothing can reach (UNOWNED BY THIS
+     * PLAN; see port/spec/game_flow.md). This pins that no unreachable handler
+     * is registered: registering FN_00029B74 or FN_00041578 fails it. The
+     * behavioral half (the ported state machine never arms DS_00104AE4 and
+     * never leaves mode 3) is asserted in the state-5 block below. */
+    {
+        CHECK(fn_resolve(FN_00029B74) == NULL,
+              "0x29B74 is deferred, not registered");
+        CHECK(fn_resolve(FN_00041578) == NULL,
+              "0x41578 is deferred, not registered");
+    }
+
     /* 0x12484: state 3 (the post-select presentation). Phase 0 re-spawns the
      * four corner rows, spawns a type-3 effect (0x13C70) for the live list entry
      * whose handle is 0x3E688, takes the DS_00104528 bit-1 branch and hands off
@@ -314,6 +330,8 @@ int test_frontend(void)
         const u32 saved_ae8 = DSD(DS_00104AE8);
         const u32 saved_aec = DSD(DS_00104AEC);
         const u32 saved_ad0 = DSD(DS_00104AD0);
+        const u32 saved_ae4 = DSD(DS_00104AE4);
+        const u16 saved_b00 = DSW(DS_00104B00);
         u32 saved_row[7];
         for (u32 i = 0; i < 7u; i++)
             saved_row[i] = DSD(DS_00107A1C + i * 4u);
@@ -337,6 +355,11 @@ int test_frontend(void)
         DSD(DS_00104AEC) = 0x12345678u;
         DSD(DS_00104AD0) = 0x12345678u;
         mem_fill(DS_00107A1C, 0, 28u);
+        /* Task 8 sentinels: the deferred effect call sites must stay unarmed
+         * through the ported path. 0xDEADBEEF is never a code address the port
+         * arms, and mode 3 is the only mode the port dispatches. */
+        DSD(DS_00104AE4) = 0xDEADBEEFu;
+        DSW(DS_00104B00) = 3;
         game_state_step();
         CHECK_EQ_INT((int)DSW(DS_000F0A64), 9);
         CHECK_EQ_INT((int)DSW(DS_000F0A6C), 6);
@@ -345,6 +368,12 @@ int test_frontend(void)
         CHECK_EQ_INT((int)DSB(DS_000F0A72), 0);
         CHECK_EQ_INT((int)DSB(DS_00104B15), 0);   /* 0x1EA08 ran 0x4F1E4 */
         CHECK_EQ_INT((int)DSB(DS_00105C05), 0x1D);  /* 0x2C06C ran */
+        /* Task 8: the ported state-5 path does not arm the deferred 0x29B74
+         * handler and does not leave mode 3 (so the six call dword [0x104ae4]
+         * sites and the four 0x41578 sites stay unreachable). */
+        CHECK(DSD(DS_00104AE4) == 0xDEADBEEFu,
+              "state 5 does not arm the deferred 0x29B74 handler");
+        CHECK_EQ_INT((int)DSW(DS_00104B00), 3);
         /* 0x1EA08's prefix is observable only with the pool present (the
          * isolated PR_FRONTEND_DUMP run reaches here before game_init()). */
         if (DSD(DS_001014F4) != 0) {
@@ -386,6 +415,7 @@ int test_frontend(void)
         DSB(DS_000F0A72) = saved_72;
         DSD(DS_00104AE8) = saved_ae8;  DSD(DS_00104AEC) = saved_aec;
         DSD(DS_00104AD0) = saved_ad0;
+        DSD(DS_00104AE4) = saved_ae4;  DSW(DS_00104B00) = saved_b00;
         for (u32 i = 0; i < 7u; i++)
             DSD(DS_00107A1C + i * 4u) = saved_row[i];
     }

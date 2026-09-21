@@ -1,8 +1,8 @@
 /* Top-level game flow: the init chain (0x1BEC4), the master frame loop
  * (0x255CC), the per-frame update (0x24C5C) and the state machine (0x11D04).
  * This is the Task 14 seam that turns the platform modules into a running game:
- * the title-screen path is live; every callee owned by a later sub-project is
- * stubbed with a PORT marker in flow.c naming the sub-project. */
+ * states 0/1/2 and the front-end states 3/4/5 are live; every callee owned by a
+ * later sub-project is stubbed with a PORT marker in flow.c naming it. */
 #ifndef PR_GAME_FLOW_H
 #define PR_GAME_FLOW_H
 
@@ -36,8 +36,9 @@ void game_loop(void);
  * are deferred). Exposed for tests. */
 void game_frame(void);
 
-/* 0x11D04: switch(DS_000F0A64). Only the title and select states are ported;
- * the other cases carry PORT markers naming the sub-project that owns them. */
+/* 0x11D04: switch(DS_000F0A64). States 0/1/2 and the front-end states 3/4/5 are
+ * ported; 6/7/8 (the fight engine) and state 9's semantics beyond the countdown
+ * handoff carry PORT markers naming the sub-project that owns them. */
 void game_state_step(void);
 
 /* 0x33904: the fixed 0x10-stride list iterator at DS_00107608..DS_00107798.
