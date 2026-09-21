@@ -2,6 +2,7 @@
 #include "game/camera.h"
 #include "game/fight.h"
 #include "game/fighter.h"
+#include "game/flow.h"
 #include "game/rng.h"
 #include "mem.h"
 #include "symbols.h"
@@ -294,11 +295,10 @@ static void check_decay(void)
     CHECK_EQ_INT((int)DSD(DS_00100B08), (int)0xFFFFF0C4u);   /* -0xF3C */
 }
 
-/* 0x263F4: the arena frame's order and its two observable contracts. The two
- * latch sentinels differ from the values they copy, so a missing latch fails;
- * the 0x19068 pass stores a record float and clears the record's +0x20, so a
- * missing fighter update fails. */
-static void check_arena_frame(void)
+/* The arena frame's minimal live fixture: two seeded slots with no camera-target
+ * record, an empty effect list and every gate closed, so fight_arena_frame runs
+ * its call order without pulling in the gap functions. Returns P0's record. */
+static u32 demo_fixture(void)
 {
     u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
     u32 a0 = FIGHT_ACTORS + 1u * 0x20u;
@@ -351,6 +351,29 @@ static void check_arena_frame(void)
     DSB(DS_001078FA) = 0;
     /* 0x12DA8: a non-zero camera mode selects the max arm, no slot deref. */
     DSB(DS_000F0AFE) = 4;
+
+    /* The state 7 / game_frame tails: DS_000F0A71 and the DS_001088D8 input
+     * bits must be clear so frontend_pause_tail/frontend_continue_tail return,
+     * and the overlay must take its early return. The actor list is emptied so
+     * game_frame's actors_update walk is inert. */
+    DSB(DS_000F0A71) = 0;
+    DSD(DS_001088D8) = 0;
+    DSB(DS_0009AD58) = 0;
+    DSB(DS_00105D60) = 0;
+    DSD(DS_00105C00) = 0;
+    DSB(DS_00105C04) = 0;
+    DSD(DS_00105BCC) = DS_00105BCC;
+    DSB(DS_00104B24) = 0;
+    return p0;
+}
+
+/* 0x263F4: the arena frame's order and its two observable contracts. The two
+ * latch sentinels differ from the values they copy, so a missing latch fails;
+ * the 0x19068 pass stores a record float and clears the record's +0x20, so a
+ * missing fighter update fails. */
+static void check_arena_frame(void)
+{
+    u32 p0 = demo_fixture();
 
     fight_arena_frame();
 
@@ -702,6 +725,242 @@ static void check_attack_consume(void)
     DSD(0x001082D2u) = saved_pos;
 }
 
+/* 0x41350/0x33C18: the per-side character select. The slot's +0x63 think gate,
+ * DS_0010816A (the 0xC835A[char] byte), DS_0010816E, DS_00108860 and the
+ * DS_00104B1D suppression are the pinned observables. */
+static void check_char_select(void)
+{
+    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
+    mem_fill(FIGHT_RECS, 0, 0x200);
+    DSD(DS_001077B0) = p0;
+    DSD(DS_00107844) = p1;
+    DSW(DS_00108860) = 0;
+    DSW(DS_00108860 + 2u) = 0;
+    DSB(DS_0010816A) = 0xFFu;
+    DSB(DS_0010816A + 1u) = 0xFFu;
+    DSB(DS_0010816E) = 0;
+    DSB(DS_0010816E + 1u) = 0;
+    DSB(DS_001077B0 + 0x63u) = 0;               /* slot 0 +0x63 */
+    DSB(DS_001077B0 + 0x94u + 0x63u) = 0;       /* slot 1 +0x63 */
+    DSB(DS_00104B1D) = 0;
+
+    fight_char_select(0u, 1u);
+    CHECK_EQ_INT((int)DSB(DS_0010816A), (int)DSB(DS_000C835A + 1u));
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x63u), 1);
+    CHECK_EQ_INT((int)DSB(DS_0010816E), 0xFF);
+    CHECK_EQ_INT((int)DSW(DS_00108860), 100);
+
+    fight_char_select(1u, 3u);
+    CHECK_EQ_INT((int)DSB(DS_0010816A + 1u), (int)DSB(DS_000C835A + 3u));
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x63u), 1);
+    CHECK_EQ_INT((int)DSB(DS_0010816E + 1u), 0xFF);
+    CHECK_EQ_INT((int)DSW(DS_00108860 + 2u), 100);
+    CHECK_EQ_INT((int)DSB(0x0010810Du), 0);     /* side 1 -> the other index */
+
+    /* DS_00104B1D == 1 suppresses the character store only. */
+    DSB(DS_00104B1D) = 1;
+    DSB(DS_0010816A) = 0xABu;
+    fight_char_select(0u, 5u);
+    CHECK_EQ_INT((int)DSB(DS_0010816A), 0xAB);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x63u), 1);
+}
+
+/* 0x33F08: the health-bar pass. The health word comes from the slot+0x24 table
+ * indexed by (actor word & 0x7fff) - char_const, into the secondary actor's +8;
+ * the out-of-range arm writes 0x1E1; actor bit 15 sets the pset+0x29 bit 0x40;
+ * 0x2A408 re-asserts the secondary's current sprite word into its pset. */
+static void check_health_bars(void)
+{
+    u32 r = FIGHT_RECS + 0x600u;
+    u32 fighter = FIGHT_RECS + 0x700u;
+    u32 secondary = FIGHT_RECS + 0x800u;
+    u32 hptable = FIGHT_RECS + 0xA00u;
+
+    mem_fill(FIGHT_RECS + 0x600u, 0, 0x600);
+    mem_fill(FIGHT_ACTORS, 0, 0x80);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSD(DS_001077A8) = r;
+    DSD(DS_001077A8 + 4u) = 0;          /* side 1 inert */
+    DSD(r) = fighter;
+    DSD(r + 4u) = secondary;
+    DSD(r + 0x24u) = hptable;
+    DSB(r + 0x7Au) = 3;                 /* char 3 -> 0x16B5 */
+    DSB(r + 0x41u) = 0;
+    DSW(fighter + 0x56u) = 1;           /* actor index 1 */
+    DSW(secondary + 0x56u) = 1;         /* secondary actor index 1 */
+    DSW(secondary + 0x28u) = 0x0800u;   /* literal-id arm of 0x2A408 */
+
+    DSW(FIGHT_ACTORS + 1u * 0x20u) = 0x8000u | 0x16B5u;   /* s = 0 */
+    DSW(hptable) = 0x1234u;
+    DSD(secondary + 8u) = 0xDEADBEEFu;
+    fight_health_bars();
+    CHECK_EQ_INT((int)DSD(secondary + 8u), 0x1234);
+    CHECK_EQ_INT((int)DSB(secondary + 0x29u) & 0x40, 0x40);
+    /* 0x2A408 re-asserts the secondary's sprite word; the +0x29 bit 0x40 makes
+     * the hflip term clear, so the returned id keeps bit 15. */
+    CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 1u * 0x20u), 0x9234);
+
+    /* actor bit 15 clear: the pset+0x29 bit 0x40 is cleared. */
+    DSW(FIGHT_ACTORS + 1u * 0x20u) = 0x16B5u;
+    DSD(secondary + 8u) = 0xDEADBEEFu;
+    DSW(secondary + 0x28u) = 0x0800u;
+    DSB(secondary + 0x29u) = 0x48u;     /* bit 3 keeps the literal arm, bit 6 seeded */
+    fight_health_bars();
+    CHECK_EQ_INT((int)DSB(secondary + 0x29u) & 0x40, 0);
+
+    /* +0x41 bit 0x20 forces the out-of-range sprite. */
+    DSB(r + 0x41u) = 0x20u;
+    DSD(secondary + 8u) = 0xDEADBEEFu;
+    fight_health_bars();
+    CHECK_EQ_INT((int)DSD(secondary + 8u), 0x1E1);
+}
+
+/* 0x186D0: the slot position latch. Bit 3 of slot+0x42 takes the clean
+ * rec+0x18/+0x1C copy; the clear arm adds the DS_00100AB0/AB4 offsets; bit 7 of
+ * slot+0x41 latches slot+0x2C into slot+0x34. */
+static void check_slot_latch(void)
+{
+    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
+    mem_fill(FIGHT_RECS, 0, 0x200);
+    DSD(DS_001077B0) = p0;
+    DSD(DS_00107844) = p1;
+    DSD(p0 + 0x18u) = 0xAAu;                    /* record position */
+    DSD(p0 + 0x1Cu) = 0xBBu;
+    DSD(DS_001077B0 + 0x2Cu) = 0xDEADu;         /* slot +0x2C */
+    DSD(DS_001077B0 + 0x30u) = 0xDEADu;         /* slot +0x30 */
+    DSD(DS_001077B0 + 0x34u) = 0xDEADu;         /* slot +0x34 */
+    DSB(DS_001077B0 + 0x42u) = 0x08u;           /* bit 3 set: clean copy */
+    DSB(DS_001077B0 + 0x41u) = 0;               /* bit 7 clear: no +0x34 latch */
+    fighter_slot_latch(0u);
+    CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x2Cu), 0xAA);
+    CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x30u), 0xBB);
+    CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x34u), 0xDEAD);   /* gate clear */
+
+    DSB(DS_001077B0 + 0x41u) = 0x80u;
+    DSD(p0 + 0x18u) = 0x1234u;                  /* the latch copies rec+0x18 */
+    fighter_slot_latch(0u);
+    CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x34u), 0x1234);   /* +0x34 latch */
+
+    DSB(DS_001077B0 + 0x42u) = 0;               /* bit 3 clear: the anchor sum */
+    DSB(DS_001077B0 + 0x41u) = 0;
+    DSD(DS_00100AB0) = 0x10u;
+    DSD(DS_00100AB4) = 0x20u;
+    DSD(p0 + 0x18u) = 0x100u;
+    DSD(p0 + 0x1Cu) = 0x200u;
+    fighter_slot_latch(0u);
+    CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x2Cu), 0x110);
+    CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x30u), 0x220);
+}
+
+/* 0x11A8C: state 6. Two draws from the shared stream (rng(7), then rng(6)),
+ * the four stores, the arm and the character picks. The draws are precomputed
+ * on a fresh seed so a wrong order or range fails; DS_00104AFC must carry draw1
+ * and DS_0010816A[0]/[1] the two mapped characters. */
+static void check_state6(void)
+{
+    (void)demo_fixture();
+
+    DSB(DS_00104B1D) = 0;               /* let 0x41350 store the character */
+    DSD(DS_001088E4) = 0;               /* coin poll mask: nothing accepted */
+    DSB(DS_00104528 + 1u) = 2;          /* (DS_00104528+1)&2 set: skip text */
+    DSB(DS_00104B15) = 0;
+    DSB(DS_00104B19 + 2u) = 0;
+    DSW(DS_001082CC) = 0;
+    DSW(DS_00104AFC) = 0;
+    DSW(DS_000F0A6A) = 0;
+    DSW(DS_000F0A72) = 5;
+    DSW(DS_000F0A6C) = 0;
+    DSB(DS_000F0A6F) = 0xFF;
+    DSB(DS_0010816A) = 0xFFu;
+    DSB(DS_0010816A + 1u) = 0xFFu;
+
+    rng_seed(0x1234u);
+    u32 draw1 = rng_next(7u);
+    u32 draw2 = rng_next(6u);
+    u32 p1_char = (draw1 + draw2) % 7u;
+
+    DSW(DS_000F0A64) = 6;
+    rng_seed(0x1234u);
+    game_state_step();
+
+    CHECK_EQ_INT((int)DSW(DS_00104AFC), (int)draw1);
+    CHECK_EQ_INT((int)DSB(DS_0010816A), (int)DSB(DS_000C835A + draw1));
+    CHECK_EQ_INT((int)DSB(DS_0010816A + 1u), (int)DSB(DS_000C835A + p1_char));
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x63u), 1);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x63u), 1);
+    CHECK_EQ_INT((int)DSB(DS_0010816E), 0xFF);
+    CHECK_EQ_INT((int)DSB(DS_00104B15), 1);
+    CHECK_EQ_INT((int)DSB(DS_00104B19 + 2u), 1);
+    CHECK_EQ_INT((int)DSW(DS_001082CC), 3);
+    CHECK_EQ_INT((int)DSW(DS_000F0A6A), 900);
+    CHECK_EQ_INT((int)DSW(DS_000F0A6C), 5);
+    CHECK_EQ_INT((int)DSW(DS_000F0A64), 7);
+    CHECK_EQ_INT((int)DSB(DS_000F0A6F), 0);
+}
+
+/* Case 7: the pre-decrement timer. With timer 2 one call runs the arena and
+ * leaves state 7; with timer 1 it exits through 0x11BCC and does not run the
+ * arena. The fixture's latch sentinels (077E8/0787C) prove which arm ran. */
+static void check_state7(void)
+{
+    (void)demo_fixture();
+    DSB(DS_00104B1D) = 1;
+    DSW(DS_000F0A64) = 7;
+    DSW(DS_000F0A6A) = 2;
+    DSW(DS_000F0A6C) = 4;
+    DSB(DS_00104B15) = 1;
+    DSB(DS_00104B19 + 2u) = 1;
+    game_state_step();
+    CHECK_EQ_INT((int)DSW(DS_000F0A6A), 1);
+    CHECK_EQ_INT((int)DSW(DS_000F0A64), 7);
+    CHECK_EQ_INT((int)DSD(DS_001077E8), 0x1111);   /* the arena latch ran */
+    CHECK_EQ_INT((int)DSD(DS_0010787C), 0x3333);
+
+    (void)demo_fixture();
+    DSB(DS_00104B1D) = 1;
+    DSW(DS_000F0A64) = 7;
+    DSW(DS_000F0A6A) = 1;
+    DSW(DS_000F0A6C) = 4;
+    DSB(DS_00104B15) = 1;
+    DSB(DS_00104B19 + 2u) = 1;
+    game_state_step();
+    CHECK_EQ_INT((int)DSW(DS_000F0A6A), 0);
+    CHECK_EQ_INT((int)DSW(DS_000F0A64), 4);
+    CHECK_EQ_INT((int)DSB(DS_00104B15), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B19 + 2u), 0);
+    CHECK_EQ_INT((int)DSD(DS_001077E8), 0x2222);   /* sentinel: no arena */
+}
+
+/* 0x24C5C's DS_00104B15 tail: with the flag armed the tail's 0x12D48 clamp
+ * runs; disarmed it is skipped. The fixture's camera mode 4 makes the dispatcher
+ * clamp only, so the camera-x value is the whole observable. */
+static void check_game_frame_tail(void)
+{
+    (void)demo_fixture();
+    DSB(DS_00104B1D) = 1;
+    DSD(DS_00104B00) = 3;
+    DSW(DS_000F0A64) = 7;
+    DSW(DS_000F0A6A) = 2;
+    DSB(DS_00104B15) = 1;
+    DSB(DS_000F0AFE) = 4;
+    DSD(DS_000F0AF0) = 0x7000u;
+    DSD(DS_00104AE8) = 0;
+    game_frame();
+    CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x5D00);
+
+    (void)demo_fixture();
+    DSB(DS_00104B1D) = 1;
+    DSD(DS_00104B00) = 3;
+    DSW(DS_000F0A64) = 7;
+    DSW(DS_000F0A6A) = 2;
+    DSB(DS_00104B15) = 0;
+    DSB(DS_000F0AFE) = 4;
+    DSD(DS_000F0AF0) = 0x7000u;
+    DSD(DS_00104AE8) = 0;
+    game_frame();
+    CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x7000);
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -713,6 +972,9 @@ int test_fight(void)
     u8 s_88[0x100];
     u8 s_a5[0x800];
     u8 s_82[0x80];
+    u8 s_8100[0x80];
+    u8 s_5b[0x300];
+    u8 s_9ad[0x10];
     u32 s_actor_tab = DSD(DS_001014EC);
     u32 s_res_tab = DSD(DS_001014E0);
     u32 s_res_cnt = DSD(DS_001014F0);
@@ -729,6 +991,9 @@ int test_fight(void)
     snap(s_88, 0x00108840u, 0x100u);
     snap(s_a5, 0x00104500u, 0x800u);
     snap(s_82, 0x00108260u, 0x80u);
+    snap(s_8100, 0x00108100u, 0x80u);
+    snap(s_5b, 0x00105B00u, 0x300u);
+    snap(s_9ad, 0x0009AD50u, 0x10u);
 
     check_projection();
     check_dispatch();
@@ -744,6 +1009,12 @@ int test_fight(void)
     check_command_map();
     check_think_chain();
     check_attack_consume();
+    check_char_select();
+    check_health_bars();
+    check_slot_latch();
+    check_state6();
+    check_state7();
+    check_game_frame_tail();
 
     put(s_f0ae0, 0x000F0AE0u, 0x20u);
     put(s_proj, 0x00100A70u, 0xF4u);
@@ -752,6 +1023,9 @@ int test_fight(void)
     put(s_88, 0x00108840u, 0x100u);
     put(s_a5, 0x00104500u, 0x800u);
     put(s_82, 0x00108260u, 0x80u);
+    put(s_8100, 0x00108100u, 0x80u);
+    put(s_5b, 0x00105B00u, 0x300u);
+    put(s_9ad, 0x0009AD50u, 0x10u);
     DSD(DS_001014EC) = s_actor_tab;
     DSD(DS_001014E0) = s_res_tab;
     DSD(DS_001014F0) = s_res_cnt;

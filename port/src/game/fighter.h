@@ -50,6 +50,13 @@ void fighter_pass_a(void);
  * ported. */
 void fighter_pass_b(u32 arg);
 
+/* 0x186D0. The slot position latch the game_frame tail (0x25438) calls per live
+ * side. With slot+0x42 bit 3 set it copies the fighter record's +0x18/+0x1C to
+ * slot+0x2C/+0x30; otherwise the 0x18540/0x18350 screen-anchor path (named gaps
+ * §6.3) offsets them by DS_00100AB0/AB4[side]. A set slot+0x41 bit 7 then
+ * latches slot+0x2C into slot+0x34. */
+void fighter_slot_latch(u32 side);
+
 /* 0x1975C. The think step the arena frame calls at 0x264CC. It iterates the two
  * sides and, for each whose DS_00100AD0 count exceeds 2, runs the per-fighter
  * think driver 0x3B464. The raw takes no argument (the brief's u8 side is a

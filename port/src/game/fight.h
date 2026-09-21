@@ -48,4 +48,18 @@ void fight_effects_pass(void);
  * exposed because 0x3C570's bit test reads DS_00107EE0 and a test may seed it. */
 void fight_slot_clear(void);
 
+/* 0x41350. The per-side character select state 6 calls for both players. It
+ * runs 0x33C18 (the slot field reset), stores the character index (0xC835A[char])
+ * into DS_0010816A[side] unless DS_00104B1D == 1, sets the slot's +0x63 think
+ * gate, and mirrors DS_0010810D. `char_index` is the raw's DX. */
+void fight_char_select(u32 side, u32 char_index);
+
+/* 0x33F08. The two-side health-bar pass, called by state 7 (0x11E94) and the
+ * game_frame tail (0x25457). Per side it selects the character constant
+ * (0x17EEC's table), writes the health sprite id into the secondary actor's
+ * pset+8 from the slot+0x24 table, sets the pset+0x29 bit 0x40 from actor bit
+ * 15, and advances the secondary actor's animation (0x2A408). The slot+0x24
+ * table is a named gap (§7.9). */
+void fight_health_bars(void);
+
 #endif /* PRAGE_GAME_FIGHT_H */

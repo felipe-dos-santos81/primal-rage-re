@@ -7,8 +7,11 @@
 #include "game/flow.h"
 #include "game/actors.h"
 #include "game/attract.h"
+#include "game/camera.h"
 #include "game/config.h"
 #include "game/effects.h"
+#include "game/fight.h"
+#include "game/fighter.h"
 #include "game/rng.h"
 #include "mem.h"
 #include "symbols.h"
@@ -765,6 +768,53 @@ static void game_state_4(void)
     }
 }
 
+/* 0x11A8C. State 6: the demo-fight setup. It picks two random characters from
+ * the shared RNG stream and arms the 900-frame state-7 timer.
+ *
+ * RNG DRAW ORDER (Task 7 pins the shared stream): draw1 = rng(7) at 0x11AAD also
+ * sets DS_00104AFC and P0's character; draw2 = rng(6) at 0x11AE9 gives P1 the
+ * character (draw1 + draw2) % 7. Exactly two draws, in that order. */
+static void game_state_6(void)
+{
+    /* PORT: 0x2C3FC(0x100) voice, out of scope (spec §7). */
+    /* 0x29D60 is a ret-only no-op. */
+    config_set_credit_row(0x1Du);                       /* 0x11AA3 0x2C06C */
+
+    u32 draw1 = rng_next(7u);                           /* 0x11AAD (draw 1) */
+    DSW(DS_00104AFC) = (u16)draw1;                      /* 0x11AB4 */
+    /* PORT: 0x11AC4 0x20DF4(eax=draw1, edx=1) — a 155-byte reset with 11
+     * callees; unported, named gap. */
+    fight_char_select(0u, draw1);                       /* 0x11ACD 0x41350 */
+    /* PORT: 0x11AD9 0x33EB4(0, 7) — the P0 fighter spawn. Its 0x33C78 body
+     * (571 B) pulls the unported 0x494A8/0x29BC8/0x1CEBC resource chain, so it
+     * is a named gap; the raw's DS_001082C8 = the callee's EDX is therefore not
+     * written. */
+
+    u32 draw2 = rng_next(6u);                           /* 0x11AE9 (draw 2) */
+    u32 p1 = draw1 + draw2;                             /* 0x11AEE */
+    if (p1 >= 7u) p1 -= 7u;                             /* 0x11AF6 (single sub 7) */
+    fight_char_select(1u, p1);                          /* 0x11AFE 0x41350 */
+    /* PORT: 0x11B08 0x33EB4(1, ...) — the P1 fighter spawn; same gap. */
+
+    DSB(DS_00104B15) = 1;                               /* 0x11B14 */
+    /* PORT: 0x11B1E 0x1D890(0) — the 375-byte HUD spawn; named gap (§7.8). The
+     * raw's DL=1 is preserved across it (it push/pops edx), so the store below
+     * is the constant 1, not a live register handoff. */
+    DSB(DS_00104B19 + 2u) = 1u;                         /* 0x11B23 */
+    DSW(DS_001082CC) = 3u;                              /* 0x11B2F */
+
+    if ((DSB(DS_00104528 + 1u) & 2u) == 0u) {           /* 0x11B35 */
+        text_cursor_set(-1, 2, game_string_get(6u), 0x2000u);   /* 0x11B49/55 */
+        text_cursor_set(-1, 4, game_string_get(7u), 0x2000u);   /* 0x11B69/75 */
+        text_cursor_set(-1, 6, game_string_get(8u), 0x2000u);   /* 0x11B89/95 */
+    }
+
+    DSW(DS_000F0A64) = 7;                               /* 0x11BAB */
+    DSW(DS_000F0A6A) = 900;                             /* 0x11BB2 */
+    DSW(DS_000F0A6C) = DSW(DS_000F0A72);                /* 0x11BB9 */
+    DSB(DS_000F0A6F) = 0;                               /* 0x11BBF */
+}
+
 /* PORT: 0x1EA08. The match-start builder, called inline from state 5. It resets
  * the input latch and the actor pool, spawns the roster row from the 0xA7B6C
  * descriptor, then builds the per-character rows and spawns the selected
@@ -1213,6 +1263,21 @@ void game_frame(void)
     /* 0x24C5C's tail calls 0x2A31C here (Format reference I): walk the active
      * list and sync each record's pset before the render table composites. */
     actors_update();                                   /* 0x2A31C */
+
+    /* 0x24C5C's DS_00104B15 tail (0x25414): the demo fight's post-update. It is
+     * armed by state 6 and cleared by the 0x11BCC timer exit. The per-side loop
+     * gates on the camera-target table DS_001077A8[side], which 0x33C78 (the
+     * unported fighter spawn) fills. */
+    if (DSB(DS_00104B15) != 0) {                       /* 0x25414 */
+        /* PORT: 0x3BB90 is cycle 2's; see the spec's cycle split. */
+        camera_dispatch();                             /* 0x25422 0x12D48 */
+        for (u32 side = 0; side < 2u; side++) {        /* 0x2542D */
+            if (DSD(DS_001077A8 + side * 4u) == 0) continue;
+            fighter_slot_latch(side);                  /* 0x25438 0x186D0 */
+            actor_pset_point(DSD(DS_001077B0 + side * 0x94u));  /* 0x25443 */
+        }
+        fight_health_bars();                           /* 0x25457 0x33F08 */
+    }
 }
 
 /* PORT: 0x11F28. One coin/start event: requires a credit (0x2C060), then tests
@@ -1269,7 +1334,25 @@ void game_state_step(void)
             DSW(DS_000F0A64) = 9;                       /* 0x11E35 */
             break;
         case 6:
+            game_state_6();                             /* 0x11A8C */
+            break;
         case 7:
+            /* 0x11D62 computes sVar1 = (u16)timer - 1 before the switch; case 7
+             * stores it and exits when the new value is 0, so the exit frame is
+             * the one whose PRE value is 1. */
+            DSW(DS_000F0A6A) = (u16)sVar1;              /* 0x11E67 */
+            if (sVar1 == 0) {                           /* 0x11E72 (jge) */
+                /* 0x11BCC the timer exit. */
+                DSB(DS_00104B19 + 2u) = 0;              /* 0x11BCE */
+                DSB(DS_00104B15) = 0;                   /* 0x11BD4 */
+                DSW(DS_000F0A64) = DSW(DS_000F0A6C);    /* 0x11BE0 */
+                /* PORT: 0x29D60 is a ret-only no-op; 0x2C3FC(0x100) voice, out
+                 * of scope (spec §7). */
+            } else {
+                fight_arena_frame();                    /* 0x11E8F 0x263F4 */
+                fight_health_bars();                    /* 0x11E94 0x33F08 */
+            }
+            break;
         case 8:
             /* PORT: fight engine (sub-project 5). */
             break;

@@ -31,6 +31,11 @@ u32  actor_index(u32 rec);
 u32  actor_list_head(void);
 u32  actor_next(u32 rec);
 u32  actor_pset(u32 rec);
+/* 0x2A690. The free-record pset point writer: pset+0x10/0x14 take pset+4/8,
+ * pset+4/8 take the record's world x/y, the layer at pset+0x0E and rec+0x3C are
+ * written. 0x2A820's free-record arm calls the same body; the game_frame tail
+ * (0x25443) calls it per live fighter. */
+void actor_pset_point(u32 rec);
 /* 0x2A31C. Walks the active list and syncs each record (0x2A1FC). */
 void actors_update(void);
 /* 0x2B150. Mark `rec` dead (rec+0x28 |= 8), release its pset palette and unlink

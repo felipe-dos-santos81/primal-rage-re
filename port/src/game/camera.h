@@ -27,6 +27,11 @@
 void camera_project(u32 side, u32 out_a, u32 out_b, u32 facing, u32 page_flag,
                     u32 index_out);
 
+/* 0x17EEC. The per-character ground constant for character index `ch` (the
+ * slot's +0x7A byte). Char 0 and char > 6 return word[0xE6DD0]. Shared with
+ * 0x33F08, which selects from the same table. */
+u32 camera_char_const(u32 ch);
+
 /* 0x12D48. The per-frame mode switch on DS_000F0AFE:
  * 0 -> 0x12DF0, 1 -> 0x12E3C, 2 -> 0x13290, 3 -> 0x1333C, else nothing; then
  * DS_000F0AF0 = clamp(DS_000F0AF0, -0x5D00, +0x5D00). */

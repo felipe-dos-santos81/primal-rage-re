@@ -205,11 +205,6 @@ int test_flow(void)
     CHECK(gfx_dac[1][0] || gfx_dac[1][1] || gfx_dac[1][2],
           "title palette reached gfx_dac");
 
-    /* A deferred (non-title) state must be a harmless no-op, not a crash. */
-    DSW(DS_000F0A64) = 6;
-    game_frame();
-    CHECK_EQ_INT(DSB(DS_000A81A8), 0);
-
     /* A mode other than 3 must not run the state machine at all. */
     DSD(DS_00104B00) = 7;
     game_frame();
@@ -256,6 +251,30 @@ int test_flow(void)
     CHECK(game_music_notes_seen(), "title music keys notes without a device");
     game_shutdown();                         /* release handles for later tests */
     CHECK_EQ_INT((int)DSB(DS_000A2CB1), 0);  /* teardown clears the enable flag */
+
+    /* 0x11A8C: the live state 6. The old "a deferred state is a harmless no-op"
+     * premise is retired — state 6 now draws the shared RNG, runs 0x41350 for
+     * both players, spawns the HUD path and arms the 900-frame timer. It is
+     * exercised last, after the title-overlay and audio assertions, so its text
+     * and overlay writes cannot corrupt them. */
+    DSD(DS_00104B00) = 3;
+    DSB(DS_00104B1D) = 1;                    /* skip the deferred menu poll */
+    DSB(DS_00104B15) = 0;
+    DSB(DS_00104B19 + 2u) = 0;
+    DSW(DS_001082CC) = 0;
+    DSW(DS_000F0A6A) = 0;
+    DSW(DS_000F0A72) = 5;
+    DSW(DS_000F0A6C) = 0;
+    DSB(DS_000F0A6F) = 0xFF;
+    DSW(DS_000F0A64) = 6;
+    rng_seed(0xABCDu);
+    game_frame();
+    CHECK_EQ_INT((int)DSB(DS_00104B15), 1);
+    CHECK_EQ_INT((int)DSW(DS_001082CC), 3);
+    CHECK_EQ_INT((int)DSW(DS_000F0A64), 7);
+    CHECK_EQ_INT((int)DSW(DS_000F0A6A), 900);
+    CHECK_EQ_INT((int)DSW(DS_000F0A6C), 5);
+    CHECK_EQ_INT((int)DSB(DS_000F0A6F), 0);
 
     return g_failures - before;
 }

@@ -26,12 +26,12 @@
 
 /* ---- small pure helpers ------------------------------------------------- */
 
-/* 0x17EEC. The per-character ground constant from slot[side].+0x7A (the byte at
- * 0x10782A + side*0x94). The jump table at 0x17ED0 sends char 0 and char > 6 to
- * word[0xE6DD0]. */
-static u32 camera_char_const(u32 side)
+/* 0x17EEC. The per-character ground constant for character index `ch` (the
+ * slot's +0x7A byte). The jump table at 0x17ED0 sends char 0 and char > 6 to
+ * word[0xE6DD0]. Exported because 0x33F08 selects from the same table. */
+u32 camera_char_const(u32 ch)
 {
-    switch (DSB(DS_0010782A + side * 0x94u)) {
+    switch (ch) {
     case 1:  return DSW(DS_000E39D0);
     case 2:  return DSW(DS_000ECBD8);
     case 3:  return DSW(DS_000D2134);
@@ -55,7 +55,9 @@ static int camera_actor_bit15_clear(u32 side)
  * tail-jumps 0x1B544; a failed resolve returns the 0 sentinel. */
 static u32 camera_resolve_sprite(u32 side, u32 index)
 {
-    u32 handle = DSD(DS_000A8B30 + (camera_char_const(side) + index) * 4u);
+    u32 handle = DSD(DS_000A8B30
+                     + (camera_char_const(DSB(DS_0010782A + side * 0x94u))
+                        + index) * 4u);
     const u8 *p = (const u8 *)res_resolve(handle);
     return p != NULL ? (u32)(p - mem) : 0u;
 }
@@ -105,7 +107,8 @@ void camera_project(u32 side, u32 out_a, u32 out_b, u32 facing, u32 page_flag,
         /* 0x180A1: *index_out = (actor.word0 & 0x7FFF) - 0x17EEC(side). */
         {
             u32 base = (u32)DSW(actor) & 0x7FFFu;
-            DSD(index_out) = base - camera_char_const(side);
+            DSD(index_out) = base
+                - camera_char_const(DSB(DS_0010782A + side * 0x94u));
         }
 
         /* 0x18140: out_a = ((s32)actor+4 + 0x20) >> 6, arithmetic. */

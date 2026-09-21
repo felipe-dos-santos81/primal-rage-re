@@ -830,8 +830,8 @@ static void mode1_cursor(u32 rec, u32 pset)
 
 /* 0x2A690. Write pset+0x10/0x14 (previous x/y), pset+0x04/0x08 and the layer at
  * pset+0x0E, cache the mode-1 shear ramp entry at rec+0x46, and mirror the x
- * into rec+0x3C. */
-static void pset_point(u32 rec)
+ * into rec+0x3C. Exported for the game_frame tail's per-fighter sync (0x25443). */
+void actor_pset_point(u32 rec)
 {
     u32 pset = actor_pset(rec);
     u32 x;
@@ -888,7 +888,7 @@ static void pset_write(u32 rec, u32 pset)
 {
     if ((DSW(rec + 0x28) >> 8 & 0x20u) == 0) {
         if ((DSW(rec + 0x28) >> 8 & 0x04u) == 0) {
-            pset_point(rec);
+            actor_pset_point(rec);
         } else {
             u32 parent = DSD(DS_001014F4)
                        + (u32)DSB(rec + 0x4a) * ACTOR_REC_SIZE;

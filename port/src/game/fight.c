@@ -7,9 +7,15 @@
 #include "game/fight.h"
 #include "game/fighter.h"
 #include "game/camera.h"
+#include "game/actors.h"
 #include "game/rng.h"
 #include "../mem.h"
 #include "../symbols.h"
+
+/* 0x10810D: the mode-3 single-player slot index, written by 0x41350. Ghidra
+ * emits it only as the `ram0x0010810d` form, so gen_symbols.py has no DS_ name
+ * (camera.c's CAMERA_SLOT_INDEX3 is the same address). */
+#define FIGHT_SLOT_INDEX 0x0010810Du
 
 /* ---- 0x3C5CC the frame's first call ------------------------------------ */
 
@@ -18,6 +24,69 @@ void fight_slot_clear(void)
     DSD(DS_00107EE0) = 0;                       /* 0x3C5CF */
     DSD(DS_00107D50) = 0;                       /* 0x3C5D5 */
     DSD(DS_00107D54) = 0;                       /* 0x3C5DB */
+}
+
+/* ---- 0x33C18 the character select's slot reset -------------------------- */
+
+/* 0x33C18. Clear the per-side character fields and reset the 0x108860 word. */
+static void fight_char_reset(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    DSB(slot + 0x7Fu) = 0;                      /* 0x33C2E */
+    DSB(slot + 0x80u) = 0;                      /* 0x33C32 */
+    DSD(slot + 0x3Cu) = 0;                      /* 0x33C39 */
+    DSB(slot + 0x82u) = 0;                      /* 0x33C40 */
+    DSB(slot + 0x5Bu) = 0;                      /* 0x33C4C */
+    DSW(DS_00108860 + side * 2u) = 100u;        /* 0x33C50 */
+}
+
+/* ---- 0x41350 the per-side character select ------------------------------ */
+
+void fight_char_select(u32 side, u32 char_index)
+{
+    fight_char_reset(side);                                 /* 0x41354 */
+    if (DSB(DS_00104B1D) != 1u)                             /* 0x41359 */
+        DSB(DS_0010816A + side) =
+            DSB(DS_000C835A + (char_index & 0xFFFFu));      /* 0x41367 */
+    DSB(DS_001077B0 + side * 0x94u + 0x63u) = 1u;           /* 0x41385 */
+    DSB(DS_0010816E + side) = 0xFFu;                        /* 0x41390 */
+    DSB(DS_00105B34 + side) = 0u;                           /* 0x41398 */
+    if (DSB(DS_0010816A + side) == DSB(DS_0010816A + (side ^ 1u))
+            && DSB(DS_00105B34 + (side ^ 1u)) == 0u)
+        DSB(DS_00105B34 + side) = 1u;                       /* 0x413B5 */
+    DSB(FIGHT_SLOT_INDEX) = (u8)(side ^ 1u);                /* 0x413BF */
+}
+
+/* ---- 0x33F08 the health-bar pass ---------------------------------------- */
+
+void fight_health_bars(void)
+{
+    u32 table = DSD(DS_001014EC);                           /* 0x33F0D */
+    for (u32 side = 0; side < 2u; side++) {                 /* 0x33F13 */
+        u32 rec = DSD(DS_001077A8 + side * 4u);             /* 0x33F15 */
+        if (rec == 0) continue;                             /* 0x33F1D */
+        u32 fighter = DSD(rec);                             /* 0x33F76 */
+        u32 actorword = DSW(table
+            + (u32)(u16)DSW(fighter + 0x56u) * 0x20u);      /* 0x33F87 */
+        s32 s = (s32)(actorword & 0x7FFFu)
+              - (s32)camera_char_const(DSB(rec + 0x7Au));   /* 0x33F8E */
+        u32 pset = DSD(rec + 4u);                           /* 0x33FA8 */
+        if ((DSB(rec + 0x41u) & 0x20u) == 0 && s >= 0 && s < 0x4B1) {
+            DSD(pset + 8u) = (u32)DSW(DSD(rec + 0x24u) + (u32)s * 2u);  /* 0x33FC4 */
+        } else {
+            DSD(pset + 8u) = 0x1E1u;                        /* 0x33FAB */
+        }
+        if ((actorword & 0x8000u) != 0)                     /* 0x33FDE */
+            DSB(pset + 0x29u) |= 0x40u;                     /* 0x33FEC */
+        else
+            DSB(pset + 0x29u) &= 0xBFu;                     /* 0x33FF5 */
+        {
+            u32 secondary = DSD(rec + 4u);                  /* 0x33FF9 */
+            u32 spset = table
+                + (u32)(u16)DSW(secondary + 0x56u) * 0x20u; /* 0x34005 */
+            DSW(spset) = (u16)anim_next_sprite_id(secondary, spset);
+        }
+    }
 }
 
 /* ---- 0x3CB68 the 2x32 slot pass ---------------------------------------- */

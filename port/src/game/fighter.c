@@ -66,6 +66,29 @@ int fighter_actor_bit15_clear(u32 side)
     return (DSW(actor) & 0x8000u) == 0;
 }
 
+/* 0x186D0. The slot position latch (the game_frame tail's 0x25438 call). */
+void fighter_slot_latch(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    u32 rec = DSD(slot);                            /* 0x186F3/0x18702 */
+    if ((DSB(slot + 0x42u) & 0x08u) == 0) {         /* 0x186E6 */
+        /* PORT: 0x18627 0x18540(side) and 0x1864D 0x18350(side, anchor) — the
+         * screen-anchor path is a named gap (§6.3); the anchor compare and the
+         * +0x100AB0/+0x100AB4 offsets are transcribed. */
+        u32 anchor = DSD(DS_00100AF0 + side * 4u);
+        if (anchor != DSD(slot + 0x20u)) {
+            DSD(slot + 0x20u) = anchor;             /* 0x18645 */
+        }
+        DSD(slot + 0x2Cu) = DSD(rec + 0x18u) + DSD(DS_00100AB0 + side * 8u);
+        DSD(slot + 0x30u) = DSD(rec + 0x1Cu) + DSD(DS_00100AB4 + side * 8u);
+    } else {
+        DSD(slot + 0x2Cu) = DSD(rec + 0x18u);       /* 0x186FC */
+        DSD(slot + 0x30u) = DSD(rec + 0x1Cu);       /* 0x1860B */
+    }
+    if ((DSB(slot + 0x41u) & 0x80u) != 0)           /* 0x186A5 */
+        DSD(slot + 0x34u) = DSD(slot + 0x2Cu);      /* 0x186B4 */
+}
+
 /* 0x3C570. Test-and-set bit `bit` of DS_00107EE0: 1 when it was already set,
  * else set it and return 0. */
 static int fighter_slot_flag(u32 bit)
