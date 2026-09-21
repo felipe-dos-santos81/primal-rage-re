@@ -53,9 +53,27 @@ Two boundaries verified while the spec was written, both of which this plan depe
 
 ---
 
+## Amendments
+
+Two changes were made after execution began; the numbering below reflects them.
+
+1. **A new Task 6 was inserted and the old Tasks 6–7 became 7–8.** Task 5's review
+   confirmed, and the reviewer independently verified against the raw, that the demo
+   advances into state 7 but has **no fighters**: `DS_001077A8`, the live-slot count that
+   `0x263F4`, `0x186D0` and `0x33F08` read, is only ever *read* in the port — its writer
+   is `0x33CA0` inside `0x33C78`, reached solely through the spawn `0x33EB4` (state 6) /
+   `0x357D6` (HUD), which no cycle owned. The cycle's stated bound (clean up to the frame
+   the original first lands a hit) is unreachable while the arena frame runs on null
+   slots, so the human ruled that the spawn folds into cycle 1 as the new Task 6.
+2. **Task 3's "stubs" wording is void.** The human ruled during the pre-flight scan that
+   no behaviour-less stub ships: port what the record shows is load-bearing, otherwise a
+   `/* PORT: <addr>. <reason> */` skip plus a named gap. Task 3 was executed that way.
+
+---
+
 ### Task 1: Derive the fight camera, the think chain and `0x49C78`
 
-This is the cycle's derivation task and it gates every other task. It is also where the spec's open question 2 is answered: **how often the demo's AI consumes the RNG.** That answer decides how many pins Task 7 needs, and whether the demo bound is the first landing hit or something earlier.
+This is the cycle's derivation task and it gates every other task. It is also where the spec's open question 2 is answered: **how often the demo's AI consumes the RNG.** That answer decides how many pins Task 8 needs, and whether the demo bound is the first landing hit or something earlier.
 
 **Files:**
 - Create: `docs/superpowers/plans/2026-09-20-demo-fight-derivations.md`
@@ -85,7 +103,7 @@ This is the cycle's derivation task and it gates every other task. It is also wh
 
 `0x1975C` (186 B), `0x3B464` (608 B), `0x3B298` (441 B), `0x3B134` (355 B), `0x3BDDC` (401 B), `0x18C14` (1035 B), `0x1A978` (408 B), plus the behaviour helpers the record finds. Record the input→command-word mapping in `0x3B134`/`0x3B298` precisely enough to unit-test over hand-built input masks, and record every RNG call site (`0x5D7DC`) inside the think chain with its range argument and its per-frame or per-decision frequency.
 
-**Answer this explicitly, with the call sites as evidence:** does the demo's AI draw from the RNG every frame, every decision, or rarely? If it draws every frame, say how many draws per frame and in what order, because that is exactly what Task 7 must pin.
+**Answer this explicitly, with the call sites as evidence:** does the demo's AI draw from the RNG every frame, every decision, or rarely? If it draws every frame, say how many draws per frame and in what order, because that is exactly what Task 8 must pin.
 
 - [ ] **Step 6: Record what could not be determined**
 
@@ -371,7 +389,55 @@ git commit -m "flow: port the demo states 6 and 7 and the fight tail"
 
 ---
 
-### Task 6: Open the demo window (report-only)
+### Task 6: Port the fighter spawn (inserted — see Amendments)
+
+This is the task that gives the demo something to render. Tasks 2–5 built a faithful motion and render path, but the arena frame runs on null slots because the spawn belonged to no cycle; until it lands, the demo window cannot be clean past the first frame the original draws a fighter.
+
+**Files:**
+- Modify: `port/src/game/flow.c` (wire `0x33EB4` into state 6 at the raw's position)
+- Modify: `port/src/game/fighter.c`, `fighter.h`, `port/src/game/fight.c`, `fight.h` (the spawn and whatever it calls)
+- Modify: `port/tests/test_fight.c`
+- Modify: `docs/superpowers/plans/2026-09-20-demo-fight-derivations.md` — the spawn chain is not yet derived; extend the record before porting
+
+**Interfaces:**
+- Consumes: Task 5's state 6 in `flow.c`; Task 3's `fight_slot_clear`/`fight_health_bars` and Task 4's slot/character helpers; `actors.c`'s existing record and pset machinery.
+- Produces: whatever the record pins for the spawn, and the live-slot count non-zero for the two slots after state 6.
+
+- [ ] **Step 1: Derive the spawn chain into the record**
+
+`0x33EB4` (state 6's spawn entry), `0x33C78` (571 B — its `0x33CA0 mov [eax+0x877A8],esi` is what populates `DS_001077A8`), and everything it pulls in: `0x494A8`, `0x29BC8`, `0x1CEBC`, `0x1D890`, `0x20DF4`, and the `DS_001082C8` EDX handoff. Extend `docs/superpowers/plans/2026-09-20-demo-fight-derivations.md` with a new section in the record's established shape: each function's body, globals, arithmetic with widths, addresses, and the concrete input/expected-output pairs its unit test must assert (the shape §8 uses). Derive before porting — the earlier tasks paid for guessing at gated call order.
+
+- [ ] **Step 2: Settle the resource question — this is the tripwire**
+
+`0x494A8`/`0x29BC8`/`0x1CEBC` may be the same unported paged-resource class (`0x2DBC4`/`0x2DB58`) that earlier cycles declared as gaps. Establish from the raw whether the spawn can populate the live-slot count and the two slot records without that reader. **If it cannot, stop and report BLOCKED with the evidence** — the human's fallback is to re-scope the cycle-1 bound and move the spawn to cycle 2. Do not fabricate a spawn to make the arena frame look alive.
+
+- [ ] **Step 3: Port and wire it**
+
+Wire `0x33EB4` into state 6 at the raw's position (after the character picks, where the raw calls it), and `0x1D890` where the raw calls it. Reuse `actors.c`'s record and pset machinery rather than adding a parallel allocator.
+
+- [ ] **Step 4: Test the spawn**
+
+Assert that after state 6 runs, the live-slot count the record names is `2` and the slot records carry the characters state 6 picked. Seed each to a sentinel that differs from the post-condition, and prove the assertion fails when the spawn is skipped.
+
+- [ ] **Step 5: Re-measure the arena frame with live slots**
+
+With fighters live, `0x263F4`'s per-side calls and the `game_frame` tail's `0x186D0`/`0x2A690`/`0x33F08` stop being inert. Add an assertion that the slot records change across a frame, so the later tasks measure a moving fight rather than a null one.
+
+- [ ] **Step 6: Full ladder and commit**
+
+Run: `make verify`
+Expected: exit 0, 0 warnings, every oracle unmoved, and the front-end window still `257 frames, 0 unexplained`.
+
+```bash
+git add port/src/game/fighter.c port/src/game/fighter.h port/src/game/fight.c port/src/game/fight.h port/src/game/flow.c port/tests/test_fight.c docs/superpowers/plans/2026-09-20-demo-fight-derivations.md
+git commit -m "fighter: port the demo fight's fighter spawn"
+```
+
+**Gate for this task:** the live-slot count is non-zero for two slots after state 6 and the arena frame's per-side calls are live — or a BLOCKED report carrying the resource evidence, which sends the cycle back to the human for the fallback.
+
+---
+
+### Task 7: Open the demo window (report-only)
 
 **Files:**
 - Modify: `Makefile`, `tools/title_compare.py` (approved), `port/tests/test_frontend.c`, `port/spec/game_flow.md`
@@ -413,13 +479,13 @@ git commit -m "tests: open the demo window, report-only"
 
 ---
 
-### Task 7: Pin the demo's determinism and record the cycle-1 bound
+### Task 8: Pin the demo's determinism and record the cycle-1 bound
 
 **Files:**
 - Modify: `tools/title_pin.py` (approved), `Makefile`, `port/spec/game_flow.md`, `README.md`, `docs/superpowers/specs/2026-09-20-demo-fight-design.md`
 
 **Interfaces:**
-- Consumes: Task 6's window and first-unexplained measurement; Task 1 Step 5's answer on how often the AI draws from the RNG.
+- Consumes: Task 7's window and first-unexplained measurement; Task 1 Step 5's answer on how often the AI draws from the RNG.
 - Produces: the pins the demo needs, and the recorded bound that cycle 2 retires.
 
 - [ ] **Step 1: Pin one site at a time**
@@ -463,7 +529,7 @@ git commit -m "tests: pin the demo's determinism and record its bound"
 
 ## Self-Review
 
-**Spec coverage.** The spec's cycle 1 is "the derivation, the fight camera and projection, the arena and fighter render, the think/AI chain, the state 6/7 handlers, the 900-frame timer and the `0x11BCC` exit, and the `game_frame` tail minus its combat calls" plus the provisional oracle. Task 1 covers the derivation (including open question 2, the RNG-consumption answer, and open question 3's `0x49C78` pinnability). Task 2 the camera and projection. Task 3 the arena and fighter render. Task 4 the think chain. Task 5 the states, the tail minus `0x3BB90`, and the timer exit. Task 6 the provisional, report-only window. Task 7 the pins and the recorded bound. The spec's out-of-scope list — the mode graph, the coin divert, `0x1EEB0`, `0x1F458`, `0x1EA08`'s remaining sites, the player screens and the human input mapping — is not implemented by any task and is recorded as unowned in Task 7 Step 5. The camera-chain deferral the previous cycle left is retired by Task 2, which the spec calls out.
+**Spec coverage.** The spec's cycle 1 is "the derivation, the fight camera and projection, the arena and fighter render, the think/AI chain, the state 6/7 handlers, the 900-frame timer and the `0x11BCC` exit, and the `game_frame` tail minus its combat calls" plus the provisional oracle. Task 1 covers the derivation (including open question 2, the RNG-consumption answer, and open question 3's `0x49C78` pinnability). Task 2 the camera and projection. Task 3 the arena and fighter render. Task 4 the think chain. Task 5 the states, the tail minus `0x3BB90`, and the timer exit. Task 6 (inserted — see Amendments) the fighter spawn, without which the arena frame runs on null slots and the bound below is unreachable. Task 7 the provisional, report-only window. Task 8 the pins and the recorded bound. The spec's out-of-scope list — the mode graph, the coin divert, `0x1EEB0`, `0x1F458`, `0x1EA08`'s remaining sites, the player screens and the human input mapping — is not implemented by any task and is recorded as unowned in Task 8 Step 5. The camera-chain deferral the previous cycle left is retired by Task 2, which the spec calls out.
 
 **Deliberate deferrals, stated not hidden.** `0x3BB90` is the only combat call in cycle 1's scope and is explicitly skipped in Task 5 Step 4 with a `/* PORT: */` marker and a reason. The HUD/health path (`0x35658`, `0x33F08`, `0x1D890`) is ported only as far as Task 1's record shows it is needed for motion; the rest is cycle 2's. No task invents a value Task 1 has not derived, and no task ports a premise the spec's correction refutes.
 
