@@ -61,6 +61,10 @@ static void check_projection(void)
      * skipped, exposing the statically-determinable stage. */
     DSD(DS_001014F0) = 0;
 
+    /* Seed the page flag: BSS 0 cannot distinguish "wrote 0" from "never
+     * touched it", so the 0x100B60 assertion below needs a differing sentinel. */
+    DSB(DS_00100B60) = 0xFF;
+
     for (int i = 0; i < 4; i++) {
         DSD(a0 + 4u) = s_pairs[i][0];
         DSD(a0 + 8u) = s_pairs[i][1];
@@ -561,6 +565,18 @@ static void check_hud_pass(void)
     fight_hud_pass(0);
     CHECK_EQ_INT((int)DSD(rec + 0x28u), 0x0000AAAAu);
     CHECK_EQ_INT((int)DSB(fighter + 0x28u), 1);
+
+    /* The mode is the 16-bit word at 0x104B00; DS_00104B02 is a separate global.
+     * A dword read would see 0x00010004 and miss the mode-4 arm, run the spine
+     * and overwrite both sentinels. */
+    DSW(DS_00104B00) = 4;
+    DSW(DS_00104B02) = 1;
+    DSB(rec + 0x43u) = 0;               /* the mode-4 arm needs bit 0x80 clear */
+    DSD(rec + 0x28u) = 0x0000BBBBu;
+    DSB(fighter + 0x28u) = 0;
+    fight_hud_pass(0);
+    CHECK_EQ_INT((int)DSD(rec + 0x28u), 0x0000BBBBu);
+    CHECK_EQ_INT((int)DSB(fighter + 0x28u), 0);
 }
 
 /* 0x35813 0x2A1FC: the HUD pass's `|= 1` is immediately followed by the
@@ -792,6 +808,7 @@ static void check_attack_consume(void)
     DSB(p0 + 0x43u) = 0xAAu;
     DSB(p0 + 0x42u) = 0xAAu;
     DSB(0x001077B0u + 0x5Fu) = 0xAAu;
+    DSW(DS_001077FE) = 0x1234u;         /* sentinel != the 0 the call writes */
     CHECK_EQ_INT(fighter_attack_consume(0u), 1);
     CHECK_EQ_INT((int)DSW(p0 + 0x34u), 0);
     CHECK_EQ_INT((int)DSB(p0 + 0x43u), 0);

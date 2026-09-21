@@ -355,7 +355,7 @@ void fight_hud_pass(u32 side)
     /* PORT: 0x35661..0x35773. The per-side preamble (the 0x3C59C(3) gate, the
      * DS_00107828/38/3c/40/42 timer traffic, DS_001078fb and DS_001088d4) is a
      * named gap (§7.8); the spine below is what is pinned. */
-    if (DSD(DS_00104B00) == 4 && (DSB(rec + 0x43u) & 0x80u) == 0) {
+    if (DSW(DS_00104B00) == 4 && (DSB(rec + 0x43u) & 0x80u) == 0) {
         /* PORT: 0x35792..0x357D6. The mode-4 arm (0x33C78 behind the
          * DS_001088E0 bit-0 gate) is a named gap (§7.8). */
         return;
