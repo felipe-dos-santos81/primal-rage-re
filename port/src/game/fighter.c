@@ -1097,7 +1097,7 @@ void fighter_input_ring_update(void)
         u32 slot = DS_001077B0 + side * 0x94u;
         u32 sel = 2u;                                   /* 0x461F8 */
         if (DSB(slot + 0x63u) == 0u) {                  /* 0x461FF */
-            sel = (u32)DSW(DS_00101514 + 0x2D4u + side * 2u) & 0xFFFFu;
+            sel = (u32)DSW(DSD(DS_00101514) + 0x2D4u + side * 2u) & 0xFFFFu;
         }
         if (sel == 4u) {                                /* 0x46222 */
             u16 w;
