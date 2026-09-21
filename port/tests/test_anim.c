@@ -240,6 +240,64 @@ static void check_opcode8_pin(void)
     CHECK_EQ_INT((int)DSW(pset), 0x01e1);      /* status 2 -> engine id 0x1E1 */
 }
 
+/* 0x12720: the animation opcode 0x11 target the globe's first presentation
+ * stream reaches. The word at 0xE89A8 is 0xD100 — opcode 0x11, mode 0x4000 —
+ * so anim_operand loads the code pointer 0x12720 into DS_00105BD4 and the
+ * dispatcher's indirect call reaches it. It spawns the globe's fourth layer as
+ * a child of DS_000F0A58: descriptor 0x9AC80 (stream 0x0E89F6, frame hold 7,
+ * layer 0xE2). Driven from the real descriptor 0x9AC44 with the cursor at the
+ * op-0x11 word, so the walk's own operand decode is what supplies the target.
+ * The tail sentinel differs from the post-condition: with the target skipped no
+ * record is spawned and `after` stays `before`. */
+static void check_globe_opcode11_spawn(void)
+{
+    actors_reset();
+    DSB(DS_00104B24) = 0;
+    DSB(DS_00104B26) = 0;
+    u32 parent = actor_spawn((const u32 *)(mem + 0x9AC44u),
+                             0x2A00u, 0xE0u, 0x5A00u, 0u);
+    CHECK(parent != 0, "globe first-layer record");
+    if (parent == 0) return;
+    u32 saved_a58 = DSD(DS_000F0A58);
+    DSW(parent + 0x56) = 7;             /* a non-zero slot: the child's +0x4A is the parent's slot */
+    DSD(DS_000F0A58) = parent;          /* 0x12720 reads this global */
+    DSD(parent + 8) = 0x0E89A6u;        /* the walk reads the op-0x11 word at 0xE89A8 */
+    DSD(parent + 0x20) = 0;             /* expired frame timer */
+    DSD(parent + 0x24) = 0x3f800000u;   /* 1.0f: frame_timer runs */
+    DSW(parent + 0x2a) = 0;
+    DSW(parent + 0x28) &= (u16)~0x0810u;
+
+    u32 before[64];
+    int nbefore = 0;
+    for (u32 r = actor_list_head(); r != 0 && nbefore < 64; r = actor_next(r))
+        before[nbefore++] = r;
+
+    actor_sync(parent);
+
+    /* The record the walk spawned is the one the active list did not hold. */
+    u32 child = 0;
+    for (u32 r = actor_list_head(); r != 0; r = actor_next(r)) {
+        int seen = 0;
+        for (int i = 0; i < nbefore; i++) if (before[i] == r) { seen = 1; break; }
+        if (!seen) child = r;
+    }
+    CHECK(child != 0, "the opcode-0x11 target spawned the fourth layer");
+    if (child != 0) {
+        union { float f; u32 u; } fu;
+        CHECK_EQ_INT((int)DSB(child + 0x49), 0xE2);            /* layer 0xE2 */
+        CHECK_EQ_INT((int)DSB(child + 0x4a), 7);               /* a5 = the parent slot */
+        /* The 0x400 in a5 selects the parent-relative spawn: the descriptor's
+         * own u16@8 (0x2000) plus the 0x400 parent bit. */
+        CHECK_EQ_INT((int)DSW(child + 0x28), 0x2400);
+        CHECK_EQ_INT((int)DSW(actor_pset(child)), 0x0235);     /* stream 0x0E89F6's first id */
+        fu.u = DSD(child + 0x24);
+        CHECK_EQ_INT((int)fu.f, 7);                            /* descriptor hold 7 */
+        fu.u = DSD(child + 0x20);
+        CHECK_EQ_INT((int)fu.f, 6);                            /* 7 - 1 */
+    }
+    DSD(DS_000F0A58) = saved_a58;
+}
+
 /* 0x2BCF4/0x2BC30: the stream-entry helpers also load the first id through
  * 0x2A408. 0x2BCF4 only re-points the cursor; 0x2BC30 also resets the cache and
  * the frame timer and pre-walks the commands. */
@@ -365,5 +423,6 @@ int test_anim(void)
     check_entry_helpers();
     check_dispatcher_streams();
     check_opcode8_pin();
+    check_globe_opcode11_spawn();
     return g_failures - before;
 }

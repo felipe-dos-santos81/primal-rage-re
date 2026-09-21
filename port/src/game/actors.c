@@ -75,6 +75,7 @@ static int in_pool(u32 rec)
 /* ---- exported ----------------------------------------------------------- */
 
 static void anim_code_10FA8(u32 rec, u32 arg);
+static void anim_code_12720(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -90,6 +91,7 @@ int actors_init(void)
      * (0x2B2A0 opcodes 0x10/0x11/0x15) calls them through fn_resolve; an
      * unregistered target is skipped. */
     fn_register(0x10FA8u, (void (*)(void))anim_code_10FA8);
+    fn_register(0x12720u, (void (*)(void))anim_code_12720);
     return 1;
 }
 
@@ -492,6 +494,22 @@ static void anim_code_10FA8(u32 rec, u32 arg)
     (void)rec;
     (void)arg;
     actor_spawn((const u32 *)(mem + 0x9AD08u), 0, 0xE4, 0, 0);
+}
+
+/* 0x12720. The animation opcode 0x11 target reached on the globe's first
+ * presentation stream: the word at 0xE89A8 is `0xD100` (opcode 0x11, mode
+ * 0x4000), so `anim_operand` loads the code pointer 0x12720 into
+ * DS_00105BD4 and the dispatcher's indirect call reaches here. Spawns the
+ * globe's fourth layer: a child of DS_000F0A58 (a5 = its pset slot | 0x400),
+ * descriptor 0x9AC80 (stream 0x0E89F6, frame hold 7, layer 0xE2). The original
+ * ignores the rec/arg the dispatcher passes. */
+static void anim_code_12720(u32 rec, u32 arg)
+{
+    (void)rec;
+    (void)arg;
+    u32 first = DSD(DS_000F0A58);
+    u32 a5 = ((u32)DSW(first + 0x56u) | 0x400u) & 0xFFFFu;
+    actor_spawn((const u32 *)(mem + 0x9AC80u), 0u, 0xE2u, 0u, a5);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */

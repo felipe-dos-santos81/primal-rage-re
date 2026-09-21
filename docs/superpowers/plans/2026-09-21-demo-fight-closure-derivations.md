@@ -196,6 +196,45 @@ rotation steps before the fight at 834; the port's step 5 (dumped 264) already
 differs by 205 bytes and the gap grows. The state-9 frame is **not** a
 `DS_00107A54` gap.
 
+### 1.5 The state-9 globe actor's animation (Task 3 continuation)
+
+The hold's divergence is **one animation-interpreter call the port skipped**:
+the opcode-0x11 indirect target `0x12720`.
+
+**The draw path.** `0x12658` (state 3's handoff) spawns three presentation actors
+— descriptors `0x9AC44`/`0x9AC58`/`0x9AC6C`, layers 0xE0/0xE2/0xE2 — and stores
+the first at `DS_000F0A58` (`game_state_3_handoff`). The globe zooms through
+state 3's phase-1 tracking (dumped 0..239) and **rotates through the actors'
+animation streams during the state-9 hold** (dumped 240..): the rotation is the
+three layers' sprite ids advancing together, one step per 6 frames
+(`rec+0x24 = 6.0`; the descriptor `dp[5]` hold is set by the stream). Layer 1
+walks the 13-word table at `0x0E89C0` (`0x20F..0x21A`), layer 2 reads
+`0x021B + rec+0x52` (`0xE89DA`), layer 3 `0x0228 + rec+0x52` (`0xE89E8`).
+
+**The missing call.** Layer 1's stream dispatches opcode 0x11 at `0xE89A8`: the
+word there is `0xD100` (opcode 0x11, mode 0x4000), so `anim_operand` loads the
+code pointer `0x12720` (the dword at `0xE89AA`) into `DS_00105BD4` and
+`0x2B57F`'s `call dword[0x105BD4]` reaches it. `0x12720` spawns the globe's
+**fourth layer** — a child of `DS_000F0A58` (`a5 = its pset slot | 0x400`,
+descriptor `0x9AC80`: stream `0x0E89F6`, frame hold 7, layer 0xE2, ids
+`0x235 + rec+0x52`). The port's `actors_init` registered only `0x10FA8`, so
+`anim_indirect`'s `fn_resolve(0x12720)` returned NULL and the fourth layer never
+spawned; the port's composite then froze at dumped 312 while the capture's
+rotation ran to capture 830.
+
+**Size (Step 1's gate).** One function, 18 bytes of original code
+(`0x12720`..`0x1273B`), plus its `fn_register` line — not a subsystem.
+
+**Measured.** With the target registered, the demo dump's first changed frame is
+dumped **264** — exactly the frame the capture's 816 lands on — and the
+capture's globe frames 816..822 and 824..830 now match port frames exactly
+(816 == 264, 817 == 270, 819 == 277..281, 824 == 291, 829 == 306..311,
+830 == 312..339; 823 is a splice). The demo oracle's first-unexplained frame
+advances **816 → 832**, and the next divergence is the `- LOADING -` screen the
+spec already names (`port/spec/game_flow.md`, "the `- LOADING -` screen the
+capture shows at capture 834, which the port does not draw") — not the
+state-7/dust gaps.
+
 ---
 
 ## 2. The `0x3C88C` state-7 arena render gap (Step 2)
