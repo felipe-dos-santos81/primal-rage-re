@@ -247,8 +247,9 @@ static void check_opcode8_pin(void)
  * a child of DS_000F0A58: descriptor 0x9AC80 (stream 0x0E89F6, frame hold 7,
  * layer 0xE2). Driven from the real descriptor 0x9AC44 with the cursor at the
  * op-0x11 word, so the walk's own operand decode is what supplies the target.
- * The tail sentinel differs from the post-condition: with the target skipped no
- * record is spawned and `after` stays `before`. */
+ * The spawned record is identified as the one the active list did not hold
+ * before the call: with the target skipped the list is unchanged and the
+ * assertions below cannot pass on a record the test itself left behind. */
 static void check_globe_opcode11_spawn(void)
 {
     actors_reset();
