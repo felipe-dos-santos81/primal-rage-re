@@ -504,11 +504,12 @@ demo-fight section below.
 
 **States 3/4 pixel oracle: enforced gate (front-end-chain Task 5, closed).** The
 120 s pinned capture (`make frontend-capture`: `data/title-captures/frontend`,
-3712 distinct post-logo frames, raw 1376..8409) reaches the front-end. With the
-state-3 render ported (`0x12484`) the `PR_FRONTEND_DUMP` driver emits the real
-zoom-out, and `tools/title_compare.py --frontend` aligns it: window distinct
-[557..813] (raw 3117..3418), **257 frames: 92 clean, 162 splice, 2 transition,
-0 unexplained**. The claim that result supports is precise and narrow: **no
+3760 distinct post-logo frames, raw 1373..8409 after Task 9's re-capture) reaches
+the front-end. With the state-3 render ported (`0x12484`) the `PR_FRONTEND_DUMP`
+driver emits the real zoom-out, and `tools/title_compare.py --frontend` aligns
+it: window distinct [557..810] (raw 3113..3414), **254 frames: 100 clean, 150
+splice, 3 transition, 0 unexplained** (the demo section below records why the
+window indices moved from the pre-Task-9 `[557..813]` / 257 frames). The claim that result supports is precise and narrow: **no
 content-bearing capture frame inside the window the port's own dump exhibits is
 unexplained.** The window is derived from the port's dump (`check_capture`'s
 `idx`→`a,b` mapping) and the branch discards `check_capture`'s `rc` (coverage and
@@ -532,9 +533,10 @@ spawns found the table full (`slot == 7`), `0x3E688` was never palette-acquired,
 and `0x12484`'s `effects_spawn(0x3E688, 2, …)` — the palette-driven zoom
 background — never fired. `actors.c` now ports `0x38B70` as
 `actor_cursor_reset()` and calls it from `actors_reset`; the front-end window
-grew from the 3-frame boundary island to the full 257-frame zoom (port frames
-exhibited 1/300 -> 234/300), and the title, attract, smacker and C-vs-Python
-oracles are unmoved. No `title_pin.py` pin was added.
+grew from the 3-frame boundary island to the full zoom (257 frames at the time;
+254 in the Task 9 re-capture), port frames exhibited 1/300 -> 234/300, and the
+title, attract, smacker and C-vs-Python oracles are unmoved. No `title_pin.py`
+pin was added by that fix.
 
 **State 5 (`0x11D04` case 5) store order is a declared, unassertable fidelity
 property — verified by the raw, asserted by nothing.** State 5 transcribes the
@@ -558,11 +560,12 @@ match and is not counted as unexplained; only all-zero frames are dropped, so a
 content-bearing frame that disagrees with the port still fails (a deliberately
 corrupted port frame is reported; the unexplained count is corruption-dependent
 and the tool returns 1, not a fixed 2). Sixteen all-black capture
-frames are excluded: distinct 0, 213, 353, 386, 420, 454, 488, 522, 558, 836,
-1873, 2087, 2129, 2386, 3440, 3569 (raw 1376, 2181, 2429, 2538, 2646, 2755,
-2863, 2972, 3118, 3679, 4800, 5409, 5815, 6766, 7852, 8212). One of them,
-capture 558 (raw 3118), is the frame the earlier report named: a fully black
-frame between two identical state-3 entry frames (caps 557/559, raw 3117/3119,
+frames are excluded: distinct 0, 213, 353, 386, 420, 454, 488, 522, 558, 833,
+1876, 2088, 2128, 2392, 3426, 3552 (raw 1373, 2178, 2425, 2533, 2642, 2750,
+2859, 2968, 3114, 3675, 4792, 5401, 5807, 6758, 7810, 8202, in the Task 9
+re-capture). One of them,
+capture 558 (raw 3114), is the frame the earlier report named: a fully black
+frame between two identical state-3 entry frames (caps 557/559, raw 3113/3115,
 both byte-equal to port frame 0). It is produced by `0x52106`, which `0x2BAF4`
 calls at `0x2BBEA` (the `xor eax,eax` at `0x2BBE8` precedes it) when
 `param_1 != 0`: it clears both offscreen buffers, zeroes the VGA DAC, and blits
@@ -635,22 +638,28 @@ region after it against the port dump frames after the last frame that window
 exhibits — the same clean/splice/transition/unexplained model, no second one. It
 reports and exits 0.
 
-* Front-end window (unchanged, and still enforced in `verify`): distinct
-  **[557..813]** (raw 3117..3418), **257 frames: 92 clean, 162 splice, 2
-  transition, 0 unexplained**.
-* Demo window: distinct **[814..3711]** (raw **3425..8409**), **2898 frames:
-  0 clean, 0 splice, 0 transition, 2891 unexplained** (7 all-black capture
+* Front-end window (still enforced in `verify`): distinct **[557..810]** (raw
+  3113..3414), **254 frames: 100 clean, 150 splice, 3 transition, 0
+  unexplained**. These numbers moved from `[557..813]` / `257 frames: 92 clean,
+  162 splice, 2 transition` when Task 9 added the demo pins and re-captured
+  `frontend`. The move is the **capture's, not the port's**: the capture is
+  host-timed and not reproducible (a `title_capture.py --verify-reproducible`
+  run of the pinned original gave 587 vs 588 distinct frames and a first
+  divergence at distinct index 30), so the distinct-frame indices shift between
+  captures while the oracle's claim stays the same (`0 unexplained`).
+* Demo window: distinct **[811..3759]** (raw **3421..8409**), **2949 frames:
+  0 clean, 0 splice, 0 transition, 2942 unexplained** (7 all-black capture
   frames excluded as artifacts). Demo port frames [259..1380], **0/1122
   exhibited**.
-* **First unexplained captured frame 814 (raw 3425)** — the first frame after
+* **First unexplained captured frame 811 (raw 3421)** — the first frame after
   the front-end window.
 
 Cycle 1's declared bound expected this frame to be the original's first landing
 hit (the cycle split gives cycle 2 collision and damage). Task 9's verification
-**retires that expectation**: capture 814 is in the **state-9 hold**, before
+**retires that expectation**: the frame is in the **state-9 hold**, before
 state 6, and neither a motion-layer pin nor an RNG pin can move it.
 
-* Capture 814 is the "WHO WILL RULE THE NEW URTH?" globe screen. Its closest port
+* Capture 811 is the "WHO WILL RULE THE NEW URTH?" globe screen. Its closest port
   frame is **264**, 205 differing bytes in rows 98..144 — a sprite/content band
   on the globe, not a whole-frame change. Port frame 264 is inside the state-9
   hold: state 3 hands to state 9 at dumped frame 240 (`0x12636` sets
@@ -659,11 +668,11 @@ state 6, and neither a motion-layer pin nor an RNG pin can move it.
   case-9 arm (verified in the fixed-up image) only decrements `DS_000F0A6A` and,
   at zero, restores `DS_000F0A64 = DS_000F0A6C`; it draws nothing.
 * The difference is the globe's island/landmass content: the capture draws it on
-  the later rotation steps (captures 814..835), the port draws it on only some
+  the later rotation steps (captures 811..832), the port draws it on only some
   (`+264`/`+276`/`+282`/`+288` omit it; `+270` shows a smaller one), so the
   port's state-9 hold render is coarser than the original's. The capture's demo
-  fight does not begin until capture **839** (raw 3747), 25 capture frames after
-  the divergence, so the divergence cannot be a landing hit.
+  fight does not begin until capture **836**, 25 capture frames after the
+  divergence, so the divergence cannot be a landing hit.
 * The port's state-7 output now moves (Task 8): dumped frames 482..1380 hold
   **64 distinct images** over loop frames 1071..1969 (55/10/1 per third), versus
   one before. The motion then stalls at the `0x3CF38` hit chain (side 0 reaches
@@ -671,29 +680,46 @@ state 6, and neither a motion-layer pin nor an RNG pin can move it.
   handler needs `0x3CF38`). That is cycle 2's combat chain, not a determinism
   site.
 
-**No pin was added for the demo window.** A pin is a determinism fix — a site
-where the original reads uninitialised or timing-dependent state — never a value
-chosen to make a frame match. The first unexplained frame's cause is a render
-gap, not such a site:
+**Two pins were added, for the demo's state-6 character picks; the state-9 hold
+itself has no pinnable site.** A pin is a determinism fix — a site where the
+original reads uninitialised or timing-dependent state — never a value chosen to
+make a frame match. The first unexplained frame's cause is a render gap, not such
+a site:
 
 * State 9 draws no RNG (`0x11D04` case 9, above; the port's case 9 is faithful,
   and `port/tests/test_flow.c`'s `check_state9_countdown` asserts the LCG state
   is unchanged across it). The only RNG consumer reachable in the hold is the
   actor-animation opcode-8 handler, which is already the fourth `title_pin.py`
   pin (`0x7E289`). So the hold has no unpinned draw to pin.
-* The demo window's real RNG sites are downstream of the divergence: state 6's
-  two character picks (`0x11AAD`, `0x11AE9`) and the state-7 CPU-AI generator's
-  `rng(0x64)` at `0x47063` (one draw per committed move, §11.2). Neither is
-  responsible for frame 814, and the generator's draw executes many times with
-  different values, so the constant-replacement pin shape cannot align it. A pin
-  on either now would be a fitted constant that changes no measured frame.
+* The demo window's own RNG sites are state 6's two character picks
+  (`0x11AAD` → `rng(7)`, `0x11AE9` → `rng(6)`) and the state-7 CPU-AI
+  generator's `rng(0x64)` at `0x47063` (one draw per committed move, §11.2). The
+  picks are one-time draws whose values depend on the master loop's host-timed
+  spin (the class the title's three pins address), so `title_pin.py` now pins
+  them to the port's own LCG values: draw1 = 4 (file `0x64901`, `e82abd0400` →
+  `b804000000`) and draw2 = 4 (file `0x6493D`, `e8eebc0400` → `b804000000`).
+  The measurement that justified them: the port's picks are `draw1 = 4`,
+  `draw2 = 4`, so its characters are `0xC835A[4] = 1` and `0xC835A[1] = 5`; the
+  unpinned capture's fighters were a yellow/gold dinosaur and a white furry
+  biped, while the port's two characters render as a blue/white furry biped
+  (char 1) and a red/orange creature (char 5) — different, so the original's
+  spin-shifted stream had picked other characters. After the pin and a
+  re-capture the capture's fighters are the blue/white furry and the red
+  dinosaur, matching the port (the arena moved with them, to the characters'
+  home ice arena; the port's arena render is still the broken globe background).
+  The pin changes no measured frame: the first divergence is the state-9 render
+  at 811.
+* The generator's `rng(0x64)` is **not** pinned: it executes once per committed
+  move with a different value each time, so the `mov eax, imm32`
+  constant-replacement shape cannot align it. That is a cycle-2 question (how the
+  demo's stream is kept in step), recorded here rather than fitted.
 
 The demo window therefore cannot converge in cycle 1; cycle 2 owns it: collision
 and damage (`0x3BB90`, `0x4FB20`, `0x3BAEC`, `0x3B9D8`), the `0x3CF38` hit chain,
 the arena draw helper `0x3C88C` (§7.7), the state-9 hold's zoom-actor globe
 render (the `0x3E688` palette-driven zoom background spawned by
 `0x12484`/`0x12658` and advanced through the actor path `0x2A31C`), and the
-`- LOADING -` screen the capture shows at capture 837, which the port does not
+`- LOADING -` screen the capture shows at capture 834, which the port does not
 draw. The window's closure retires this bound rather than narrowing it.
 
 The gaps that may own the missing state-7 composition are `fight_slot_pass`'s

@@ -262,8 +262,11 @@ palette path spawn → `effects_step` → dirty list → `gfx_flush_palette` →
 draws** — the plan's assumed missing draw does not exist; the camera state is
 consumed by the existing render pass and actor-pset sync. The front-end pixel
 oracle is **closed and enforced**: a 120 s pinned capture aligns the port's
-state-3 zoom to window `[557..813]` (raw `3117..3418`), **257 frames: 92 clean,
-162 splice, 2 transition, 0 unexplained**, and `make verify`'s `frontend-oracle`
+state-3 zoom to window `[557..810]` (raw `3113..3414`), **254 frames: 100 clean,
+150 splice, 3 transition, 0 unexplained** (the indices moved from `[557..813]` /
+257 frames when demo-fight cycle 1's pins forced a re-capture; the capture is
+host-timed and not reproducible, so its distinct-frame indices shift while the
+oracle's `0 unexplained` claim does not), and `make verify`'s `frontend-oracle`
 step exits non-zero on any unexplained frame. It proves exactly one thing: **no
 content-bearing capture frame inside the window the port's own dump exhibits is
 unexplained** — the window is derived from that dump and the coverage/`endpoints
@@ -289,16 +292,20 @@ the shared RNG and spawns them, and state 7 runs the arena with the ported CPU-A
 command generator (`0x47208`) and the `+0x52` state dispatch (`0x34B14`) — the
 port's state-7 dump now holds 64 distinct images over loop frames 1071..1969,
 versus one before. Its report-only oracle (`make demo-oracle`) measures the window
-`[814..3711]` (raw `3425..8409`), 2898 frames: 0 clean / 0 splice / 0 transition /
-2891 unexplained. The **first unexplained frame is capture 814, the state-9
+`[811..3759]` (raw `3421..8409`), 2949 frames: 0 clean / 0 splice / 0 transition /
+2942 unexplained. The **first unexplained frame is capture 811, the state-9
 hold's globe render, not the first landing hit** the cycle's declared bound
 assumed (closest port frame 264, 205 differing bytes in rows 98..144; the
-capture's demo fight does not begin until capture 839). No pin was justified:
-state 9 draws no RNG, and the demo window's real RNG sites are downstream of the
-divergence. Cycle 2 owns collision and damage (`0x3BB90`, `0x4FB20`), the
-`0x3CF38` hit chain, the arena draw helper `0x3C88C`, the state-9 zoom-actor globe
-render, and the window's closure — retiring the bound, not narrowing it. See
-`port/spec/game_flow.md` and
+capture's demo fight does not begin until capture 836). The state-9 hold itself
+has no pinnable site (it draws no RNG), but the demo's two state-6 character picks
+do: they are one-time draws whose values depend on the master loop's host-timed
+spin, so `tools/title_pin.py` pins them to the port's LCG values (`draw1 = 4` at
+file `0x64901`, `draw2 = 4` at `0x6493D`), which aligns the capture's two
+fighters with the port's spawn. Cycle 2 owns collision and damage (`0x3BB90`,
+`0x4FB20`), the `0x3CF38` hit chain, the arena draw helper `0x3C88C`, the
+state-9 zoom-actor globe render, the per-committed-move generator draw at
+`0x47063` (not constant-pinnable), and the window's closure — retiring the bound,
+not narrowing it. See `port/spec/game_flow.md` and
 `docs/superpowers/plans/2026-09-20-demo-fight-derivations.md`.
 
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the

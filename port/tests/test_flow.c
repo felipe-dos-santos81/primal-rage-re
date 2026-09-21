@@ -133,7 +133,17 @@ static void check_title_overlay(void)
  * The two LCG-state assertions fail if case 9 ever draws. */
 static void check_state9_countdown(void)
 {
+    /* Save and restore every global this seeds: the following state-6 block
+     * asserts DS_000F0A64 == 7, and a leaked DS_000F0A71 == 1 would make
+     * game_state_step's two per-state tails short-circuit for it (they are gated
+     * on that flag), so the state-6 assertions could pass for the wrong reason. */
     const u32 saved_rng = DSD(DS_000EF6D8);
+    const u8  saved_b1d = DSB(DS_00104B1D);
+    const u8  saved_a71 = DSB(DS_000F0A71);
+    const u16 saved_64  = DSW(DS_000F0A64);
+    const u16 saved_6a  = DSW(DS_000F0A6A);
+    const u16 saved_6c  = DSW(DS_000F0A6C);
+
     DSB(DS_00104B1D) = 1;          /* skip the deferred coin poll */
     DSB(DS_000F0A71) = 1;          /* both per-state tails return immediately */
     DSW(DS_000F0A64) = 9;
@@ -150,6 +160,13 @@ static void check_state9_countdown(void)
     CHECK_EQ_INT((int)DSW(DS_000F0A6A), 0);
     CHECK_EQ_INT((int)DSW(DS_000F0A64), 6);
     CHECK_EQ_INT((int)DSD(DS_000EF6D8), (long)saved_rng);
+
+    DSD(DS_000EF6D8) = saved_rng;
+    DSB(DS_00104B1D) = saved_b1d;
+    DSB(DS_000F0A71) = saved_a71;
+    DSW(DS_000F0A64) = saved_64;
+    DSW(DS_000F0A6A) = saved_6a;
+    DSW(DS_000F0A6C) = saved_6c;
 }
 
 int test_flow(void)
@@ -291,6 +308,7 @@ int test_flow(void)
      * and overlay writes cannot corrupt them. */
     DSD(DS_00104B00) = 3;
     DSB(DS_00104B1D) = 1;                    /* skip the deferred menu poll */
+    DSB(DS_000F0A71) = 0;                    /* the tails must run, not short-circuit */
     DSB(DS_00104B15) = 0;
     DSB(DS_00104B19 + 2u) = 0;
     DSW(DS_001082CC) = 0;

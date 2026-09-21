@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Patch a COPY of PRAGE.EXE to pin the RNG draws the title consumes.
+"""Patch a COPY of PRAGE.EXE to pin the RNG draws the title and the demo consume.
 
 0x121A0 draws three values on entry and uses them for the logo's start X, speed
 and gravity. Each `call 0x5D7DC` is replaced in place by `mov eax, imm32` holding
@@ -9,8 +9,16 @@ logo keeps its motion. A fourth site pins the anim stream's opcode-8 handler
 (0x2B2A0) to 0, because that handler is the only in-window RNG consumer and its
 value would otherwise depend on the master loop's unbounded, host-timed spin. The
 master loop's remaining spin draws are left alone: their values are discarded and
-no longer influence the composite. All four sites are behaviour pins: the three
-entry draws and the opcode-8 draw.
+no longer influence the composite.
+
+Two more sites pin the demo's state-6 character picks (0x11A8C): draw1 =
+`rng(7)` at 0x11AAD and draw2 = `rng(6)` at 0x11AE9. They are one-time draws of
+the same class as the title's three — their values depend on the master loop's
+host-timed spin, which the port does not model — so the pin makes the original's
+picks equal the port's (draw1 = 4, draw2 = 4, both from the port's seeded LCG),
+which is what aligns the two fighters' characters with the port's spawn. The pin
+changes no oracle-measured frame: the demo window's first unexplained frame is the
+state-9 hold (capture 811), before state 6. All six sites are behaviour pins.
 
 PATCHES entries are `(offset, original_bytes, replacement_bytes)` of equal length
 (the length is not fixed). Fails closed: every patch site's original bytes are
@@ -27,6 +35,8 @@ PATCHES = [
     (0x650F5, bytes.fromhex("e836b50400"), bytes.fromhex("b86f000000")),  # 111
     (0x6510B, bytes.fromhex("e820b50400"), bytes.fromhex("b800000000")),  # 0
     (0x7E289, bytes.fromhex("e8a2230300"), bytes.fromhex("b800000000")),  # opcode 8
+    (0x64901, bytes.fromhex("e82abd0400"), bytes.fromhex("b804000000")),  # demo draw1 = 4
+    (0x6493D, bytes.fromhex("e8eebc0400"), bytes.fromhex("b804000000")),  # demo draw2 = 4
 ]
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
@@ -82,8 +92,8 @@ def main():
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     patch(a.src, a.out)
-    print("title_pin: wrote %s (pinned draws the title consumes: entry 12, 111, 0 + "
-          "anim opcode-8 0)" % a.out)
+    print("title_pin: wrote %s (pinned: title entry 12, 111, 0 + anim opcode-8 0; "
+          "demo state-6 picks 4, 4)" % a.out)
 
 if __name__ == "__main__":
     main()
