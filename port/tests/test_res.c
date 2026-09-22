@@ -85,12 +85,22 @@ int test_res(void)
         CHECK_EQ_INT((int)DSD(DS_001014FC), 0);
 
         /* A lazy entry stays unread until its first resolve: that resolve
-         * presents (0x1B3AC's head) and marks it read (0x1B47A). */
+         * presents (0x1B3AC's head) and marks it read (0x1B47A). The read's
+         * stall advances DS_00101508 by bytes/117882 (record 9.6) and its tail
+         * re-syncs DS_0010150C to it (0x1B45F/0x1B464), so the master loop's
+         * gate (0x25643) passes on the load frame. Seed the pair to different
+         * sentinels: a missing stall leaves 1508 at 0x5678, a missing re-sync
+         * leaves 150C at 0x1234. */
         CHECK((DSD(table + 0u * 20u + 12u) & 0x20000000u) == 0u,
               "lazy entry unread after init");
         DSD(DS_001014FC) = 0;
+        DSD(DS_00101508) = 0x5678;
+        DSD(DS_0010150C) = 0x1234;
         CHECK(res_resolve(res_handle(0u, 0)) != NULL, "s16slabs resolves");
         CHECK_EQ_INT((int)DSD(DS_001014FC), 1);
+        CHECK(DSD(DS_00101508) > 0x5678u,
+              "the lazy read advanced the ISR tick by its stall");
+        CHECK_EQ_INT((int)DSD(DS_0010150C), (int)DSD(DS_00101508));
         CHECK((DSD(table + 0u * 20u + 12u) & 0x20000000u) != 0u,
               "lazy entry marked read by its first resolve");
 

@@ -40,7 +40,17 @@ static u32 g_heap = RES_HEAP;
  * 0 from the init walk's call (0x1B250), 1 from the lazy resolve (0x1B5E9).
  * With draw set, string 489 is read through 0x1C500 and blitted at (0,192)
  * through 0x1C65C; either way the master loop's full-copy flag DS_001014FC is
- * set (0x1B3F8). `index` is the entry being read, for the read-stall model. */
+ * set (0x1B3F8). `index` is the entry being read, for the read-stall model.
+ *
+ * The read's tail re-syncs the master loop's tick gate: 0x1B3AC ends with
+ * `MOV EAX,[0x101508]` / `MOV [0x10150C],EAX` (0x1B45F/0x1B464), so
+ * DS_0010150C is set equal to DS_00101508 once the read completes and the gate
+ * (0x25643) passes on the load frame. The port's payloads are resident, so its
+ * read is atomic: it models the ISR ticks the read consumes by advancing
+ * DS_00101508 (the stall above) and then applies the same re-sync. Without it
+ * the gate would fail for the stall's ticks and the loader's frame — which the
+ * capture holds (the attract's 498-byte frame at capture 1, the title's first
+ * frames) — would never be presented. */
 static void res_load_present(u32 draw, u32 index)
 {
     if (draw != 0u) {
@@ -48,6 +58,7 @@ static void res_load_present(u32 draw, u32 index)
         /* PORT: the read's stall, advanced on the tick counter the gate reads. */
         u32 size = res_size(index);
         DSD(DS_00101508) += (size + RES_READ_BYTES_PER_TICK - 1u) / RES_READ_BYTES_PER_TICK;
+        DSD(DS_0010150C) = DSD(DS_00101508);   /* 0x1B45F/0x1B464 */
     }
     DSD(DS_001014FC) = 1u;                                    /* 0x1B3F8 */
 }

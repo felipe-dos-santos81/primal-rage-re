@@ -29,13 +29,12 @@
 /* The title window is defined in master-loop ticks, not in dumped frames: the
  * state-1 handler decrements DS_000F0A66 by 0x10 a tick (0x1230B seeds 0x600,
  * 0x1235x subtracts), so the window ends when it falls below 0x11 after 96
- * ticks. Since the master loop's tick gate (0x25643) presents only when
- * DS_0010150C == DS_00101508, a stall tick writes no file, so the dump holds one
- * frame per *presented* tick, not one per tick: 78, the number of gate-passed
- * ticks in the window (derived: the title's resource reads advance DS_00101508
- * by bytes/117882, record §9.6). The two counts are independent. */
+ * ticks. The master loop's tick gate (0x25643) presents only when
+ * DS_0010150C == DS_00101508, but the loader's read re-syncs the pair
+ * (0x1B45F/0x1B464: DS_0010150C = DS_00101508), so the gate passes on the load
+ * frame and on every tick after it: the dump holds one frame per tick. */
 #define TITLE_WINDOW_ITERS 96       /* ticks: state-1 entry to DS_000F0A66 < 0x11 */
-#define TITLE_PRESENTED_FRAMES 78   /* the gate-passed ticks the dump holds */
+#define TITLE_PRESENTED_FRAMES 96   /* the gate-passed ticks the dump holds */
 
 static int count_raw(const char *dir)
 {
@@ -99,8 +98,8 @@ int test_title_window(const char *dump)
 
     /* The window is state 1 for 96 ticks; the dump must hold exactly one RGB24
      * frame per *presented* tick (the hook's cap is 200, so the count is the
-     * run's, not the cap's). The presented count is lower than the tick count
-     * because the tick gate (0x25643) skips the stall ticks — see the constants
+     * run's, not the cap's). The loader's re-sync makes the gate pass on the
+     * load frame, so every tick in the window presents — see the constants
      * above. */
     {
         char sub[1200];
