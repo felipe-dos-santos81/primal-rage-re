@@ -1761,6 +1761,199 @@ static void check_hit_helpers(void)
     CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x7Cu), 0x5A);
 }
 
+/* Task 6b: the 0x3531C/0x350D0 +0x53 machine and the 0x1DE64 reaction picker.
+ * The transitions are the dosbox-x-measured ones (record §7.8): 0x350D0 drives
+ * +0x52 to 3 via 0x3BDDC (0x3520E), 0x3531C case 8 calls the chain at 0x354BC,
+ * and 0x1DE64 maps the command word to the reaction codes. */
+static void check_state_machine(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    u32 saved_tab = DSD(DS_00101514);
+    u32 tab = FIGHT_RECS + 0x500u;
+
+    /* A: +0x53 = 0 (0x3531C's default) and a bit-15 command with +0x52 = 0x0E
+     * drive +0x52 to 3 through 0x3BDDC (0x3520E). Seeded +0x54 = 0x55 and
+     * +0x53 = 0 differ from the post-conditions 2 and 4. */
+    (void)hit_fixture(0);
+    DSD(DS_001077A8) = s0;
+    DSD(DS_001077A8 + 4u) = s1;
+    DSD(s0) = r0;
+    DSD(s1) = r1;
+    DSB(r0 + 0x51u) = 0;
+    DSB(r1 + 0x51u) = 1;
+    DSB(s0 + 0x52u) = 0x0Eu;
+    DSB(s0 + 0x53u) = 0;
+    DSB(s0 + 0x54u) = 0x55u;
+    DSB(s0 + 0x43u) = 0;
+    DSB(s0 + 0x41u) = 0;
+    DSW(s0 + 0x78u) = 0;
+    DSD(s0 + 0x40u) = 0;
+    DSW(DS_001088E0) = 0x8000u;
+    DSD(DS_00107D40) = 0xDEADBEEFu;
+    fighter_state_3531c(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 3);      /* 0x3BF0A via 0x3520E */
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 2);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 4);
+    CHECK_EQ_INT((int)DSB(DS_001078F8), 1);
+    CHECK_EQ_INT((int)DSD(DS_00107D40), 0x000BEF28);  /* char 0, no 0x4000 */
+
+    /* B: +0x53 = 4 increments +0x56 (0x3540E) and touches nothing else. */
+    DSB(s0 + 0x53u) = 4;
+    DSB(s0 + 0x56u) = 0x11u;
+    DSB(s0 + 0x52u) = 0x77u;
+    fighter_state_3531c(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x56u), 0x12);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x77);
+
+    /* C1: +0x53 = 8 with slot+0x88 below the 0xBDBE8 = 3 gate and +0x5F < 0x18
+     * calls the 0x3CF38 chain at 0x354BC; an armed hitbox resolves, so +0x7C
+     * (the hit counter) increments. */
+    (void)hit_fixture(0);
+    DSD(DS_001077A8) = s0;
+    DSD(DS_001077A8 + 4u) = s1;
+    DSD(s0) = r0;
+    DSD(s1) = r1;
+    DSB(r0 + 0x51u) = 0;
+    DSB(r1 + 0x51u) = 1;
+    DSB(s0 + 0x53u) = 8;
+    DSB(s0 + 0x56u) = 0;
+    DSW(s0 + 0x88u) = 0;                        /* 3 > 0: the gate passes */
+    DSB(s0 + 0x5Fu) = 0x10u;                    /* 0x34E20: 0x10 < 0x18 */
+    DSB(s0 + 0x7Cu) = 0;
+    DSW(DS_00107D58) = 8;                       /* armed hitbox 0 */
+    fighter_state_3531c(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x7Cu), 1);      /* the chain resolved */
+    CHECK_EQ_INT((int)DSB(s0 + 0x56u), 1);      /* 0x3547A still ran */
+
+    /* C2: slot+0x88 = 3 closes the 0xBDBE8 gate, so the chain is not called:
+     * the hit counter stays 0 and +0x5F keeps the seeded 0x10. */
+    (void)hit_fixture(0);
+    DSD(DS_001077A8) = s0;
+    DSD(DS_001077A8 + 4u) = s1;
+    DSD(s0) = r0;
+    DSD(s1) = r1;
+    DSB(r0 + 0x51u) = 0;
+    DSB(r1 + 0x51u) = 1;
+    DSB(s0 + 0x53u) = 8;
+    DSW(s0 + 0x88u) = 3;                        /* 3 <= 3: the gate closes */
+    DSB(s0 + 0x5Fu) = 0x10u;
+    DSB(s0 + 0x7Cu) = 0;
+    DSW(DS_00107D58) = 8;                       /* armed, but not reached */
+    fighter_state_3531c(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x7Cu), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x5Fu), 0x10);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 8);
+
+    /* C3: +0x5F >= 0x18 closes the 0x34E20 gate the same way. */
+    (void)hit_fixture(0);
+    DSD(DS_001077A8) = s0;
+    DSD(DS_001077A8 + 4u) = s1;
+    DSD(s0) = r0;
+    DSD(s1) = r1;
+    DSB(s0 + 0x53u) = 8;
+    DSW(s0 + 0x88u) = 0;
+    DSB(s0 + 0x5Fu) = 0x18u;                    /* 0x34E20: not < 0x18 */
+    DSB(s0 + 0x7Cu) = 0;
+    DSW(DS_00107D58) = 8;
+    fighter_state_3531c(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x7Cu), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 8);
+
+    /* D: 0x39280 clears slot+0x5D and the +0x43 bit 2. */
+    (void)hit_fixture(0);
+    DSB(DS_001077B0 + 0x5Du) = 0xAAu;
+    DSB(DS_001077B0 + 0x43u) = 0xFFu;
+    fighter_state_39280(0u);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x5Du), 0);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x43u), 0xFB);
+
+    /* E: 0x34DDC. char 0's threshold is word[0xBD870] = 0x1180. */
+    (void)hit_fixture(0);
+    DSD(DS_001077B0 + 0x30u) = 0x2000u;         /* above the threshold */
+    DSD(FIGHT_RECS + 0x36u) = 0xFFFFFFFFu;
+    CHECK_EQ_INT(fighter_34ddc(0u), 1);
+    DSD(DS_001077B0 + 0x30u) = 0x1000u;         /* below, +0x36 negative */
+    CHECK_EQ_INT(fighter_34ddc(0u), 0);
+    DSD(FIGHT_RECS + 0x36u) = 0;                /* below but +0x36 clear */
+    CHECK_EQ_INT(fighter_34ddc(0u), 1);
+
+    /* F: 0x34E20's 0x18 boundary. */
+    CHECK_EQ_INT(fighter_34e20(0x17u), 1);
+    CHECK_EQ_INT(fighter_34e20(0x18u), 0);
+
+    /* G: 0x3C59C's test-and-set, the preamble gate. */
+    DSD(DS_00107D50) = 0;
+    CHECK_EQ_INT(fighter_pass_flag(3u, 0u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00107D50), 0x08);
+    CHECK_EQ_INT(fighter_pass_flag(3u, 0u), 1);
+    CHECK_EQ_INT(fighter_pass_flag(2u, 0u), 0); /* a different bit is free */
+    CHECK_EQ_INT((int)DSD(DS_00107D50), 0x0C);
+
+    /* H: 0x1DE64's command-word map. slot+0x63 = 1 (the fixture) skips the
+     * 0x46460 scan, so the result is the raw command word. */
+    (void)hit_fixture(0);
+    DSD(DS_00101514) = tab;
+    mem_fill(tab, 0, 0x300u);
+    DSW(tab + 0x2D4u) = 0;
+    DSW(DS_001088E0) = 0;
+    CHECK_EQ_INT((int)hit_reaction_pick(0u, 0u), 0xFF);
+    DSW(DS_001088E0) = 0x0001u;
+    CHECK_EQ_INT((int)hit_reaction_pick(0u, 2u), 0x0C);
+    DSW(DS_001088E0) = 0x0002u;
+    CHECK_EQ_INT((int)hit_reaction_pick(0u, 2u), 0x0D);
+    DSW(DS_001088E0) = 0x0004u;
+    CHECK_EQ_INT((int)hit_reaction_pick(0u, 2u), 0x0E);
+    DSW(DS_001088E0) = 0x0008u;
+    CHECK_EQ_INT((int)hit_reaction_pick(0u, 2u), 0x0F);
+    DSW(DS_001088E0) = 0x4001u;                 /* the 0x4000 arm */
+    CHECK_EQ_INT((int)hit_reaction_pick(0u, 0u), 8);
+    DSW(DS_001088E0) = 0x4002u;
+    CHECK_EQ_INT((int)hit_reaction_pick(0u, 0u), 9);
+    DSD(DS_00101514) = saved_tab;
+}
+
+/* Task 6b wiring: fight_hud_pass's 0x35803 call drives +0x52 out of the 0x0E
+ * no-op through 0x3531C -> 0x350D0 -> 0x3BDDC. Seeded +0x52 = 0x0E differs
+ * from the post-condition 3, and +0x54 = 0x55 from 2. */
+static void check_hud_pass_machine(void)
+{
+    u32 p0 = DS_001077B0, r0 = FIGHT_RECS;
+
+    mem_fill(p0, 0, 0x94u * 2u);                /* the real slot pair */
+    mem_fill(FIGHT_RECS, 0, 0x400u);
+    mem_fill(FIGHT_ACTORS, 0, 0x80u);
+    mem_fill(0x00107D18u, 0, 0x40u);            /* the 0x107D18.. words */
+    mem_fill(0x00107D58u, 0, 0x180u);           /* the three hitbox arrays */
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSD(DS_001077A8) = p0;
+    DSD(DS_001077A8 + 4u) = 0;                  /* side 1 inert */
+    DSD(p0) = r0;
+    DSB(p0 + 0x7Au) = 0;
+    DSB(p0 + 0x63u) = 1;
+    DSB(p0 + 0x5Fu) = 0xFFu;
+    DSB(p0 + 0x52u) = 0x0Eu;
+    DSB(p0 + 0x53u) = 0;
+    DSB(p0 + 0x54u) = 0x55u;
+    DSB(p0 + 0x43u) = 0;
+    DSB(p0 + 0x41u) = 0;
+    DSD(p0 + 0x40u) = 0;
+    DSW(p0 + 0x78u) = 0;
+    DSB(r0 + 0x51u) = 0;
+    DSW(r0 + 0x56u) = 0;
+    DSW(r0 + 0x28u) = 0;
+    DSD(DS_00104B00) = 3;
+    DSW(DS_001088E0) = 0x8000u;
+    DSD(DS_00107D50) = 0;                       /* the preamble gate is fresh */
+
+    fight_hud_pass(0u);
+    CHECK_EQ_INT((int)DSB(p0 + 0x52u), 3);      /* the machine drove it */
+    CHECK_EQ_INT((int)DSB(p0 + 0x54u), 2);
+    CHECK_EQ_INT((int)DSB(p0 + 0x53u), 4);
+    CHECK_EQ_INT((int)DSB(DS_001078F8), 1);
+    CHECK_EQ_INT((int)DSW(p0 + 0x88u), 1);      /* the preamble ran */
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -1831,6 +2024,8 @@ int test_fight(void)
     check_hit_reaction_drive();
     check_hit_chain();
     check_hit_helpers();
+    check_state_machine();
+    check_hud_pass_machine();
 
     put(s_f0ae0, 0x000F0AE0u, 0x20u);
     put(s_proj, 0x00100A70u, 0xF4u);

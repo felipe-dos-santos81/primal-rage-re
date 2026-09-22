@@ -115,6 +115,41 @@ void hit_slot_step(void);
  * Returns 1 on a resolved hit, 0 otherwise. RNG-free (§3.8). */
 int hit_chain_resolve(u32 side);
 
+/* 0x3C59C. Test-and-set bit `bit` of DSD(DS_00107D50 + side*4): 0 the first
+ * time (and sets it), 1 when already set. fight_hud_pass's preamble gate. */
+int fighter_pass_flag(u32 bit, u32 side);
+
+/* 0x3531C. The +0x53 dispatcher fight_hud_pass calls at 0x35803. Cases 0, 0xd
+ * and >0xf run 0x350D0; 4 increments +0x56; 7 runs the +0x41 bit 7 / +0xC
+ * callback and, for char 4 with a live +0x5F and +0x86 > 0x5A, 0x367DC; 8 runs
+ * the 0xBDBE8/+0x88 gate, 0x34E20(+0x5F), clears +0x53 and calls the 0x3CF38
+ * chain directly at 0x354BC; 10 runs the +0x10 callback. */
+void fighter_state_3531c(u32 side);
+
+/* 0x350D0. The core per-frame body 0x3531C's default runs: the +0x52/+0x53/
+ * +0x54 state drive (0x3BDDC at 0x3520E), the direct 0x3CF38 call at 0x352A6,
+ * and the 0x1DE64/0x34E2C reaction on a miss. */
+void fighter_state_350d0(u32 side);
+
+/* 0x39280. Clear slot+0x5D and the slot's +0x43 bit 2. */
+void fighter_state_39280(u32 side);
+
+/* 0x34DDC. 0 when slot+0x30 is above word[0xBD870 + char*2] and the record's
+ * +0x36 is negative, else 1. */
+int fighter_34ddc(u32 side);
+
+/* 0x34E20. 1 when the reaction byte is below 0x18. */
+int fighter_34e20(u32 reaction);
+
+/* 0x39040. The per-side round/timer pass; its tail clears the +0x107D2C/
+ * 0x107D20/0x107D24 words and the 0x107A80 table. */
+void fighter_39040(u32 side);
+
+/* 0x1DE64. The reaction picker: map the side's command word (or, with slot+0x63
+ * clear, the 0x46460/0x4649C input scan — a named gap) through 0x1DDF4 to a
+ * reaction code; 0xFF when nothing maps. */
+u32 hit_reaction_pick(u32 side, u32 stance);
+
 /* 0x3BDDC. The attack/command consumer the mapper's 0x8000 arm calls behind
  * 0x3BDB0. Reads the side's command word DS_001088E0/E2; when bit 15 is set it
  * clears the record's +0x34/+0x43/+0x42, sets the slot's +0x5F to 0xFF and

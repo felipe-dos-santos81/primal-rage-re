@@ -1307,6 +1307,453 @@ void fighter_state_35d7c(u32 side)
     }
 }
 
+/* ---- the 0x3531C/0x350D0 +0x53 machine (fight_hud_pass's 0x35803 call) ----
+ * 0x3531C dispatches on slot+0x53 and its default (and case 0/0xd) runs
+ * 0x350D0, the core per-frame body. 0x350D0 drives slot+0x52 to 3 through
+ * 0x3BDDC (0x3520E) and calls the hit chain 0x3CF38 directly at 0x352A6;
+ * 0x3531C case 8 calls it at 0x354BC. Addresses and gates are from
+ * docs/superpowers/plans/2026-09-20-demo-fight-derivations.md §3.7, §11.3 and
+ * the cycle-2 record §7.8/§7.10. */
+
+/* The chain helpers 0x350D0 shares; defined with the rest of the chain below. */
+static void hit_facing_flag(u32 side);                      /* 0x18B04 */
+static void hit_stance_timer(u32 side);                     /* 0x1922C */
+
+/* PORT: data-object addresses symbols.h does not name. */
+#define FIGHT_STUN_BASE  0x00107A80u  /* 0x107A80: 0x40-byte per-side table */
+#define FIGHT_D24_BASE   0x00107D24u  /* 0x107D24: per-side word, 0x38BC8 clears */
+#define FIGHT_D2C_BASE   0x00107D2Cu  /* 0x107D2C: the per-side round word */
+#define FIGHT_D2E_BASE   0x00107D2Eu  /* 0x107D2E: the side-1 round word */
+#define FIGHT_ANIM_367DC 0x000C8950u  /* 0xC8950: 0x367DC's per-character anim */
+#define FIGHT_ANIM_36BC8 0x000C8A18u  /* 0xC8A18: 0x36BC8's per-character anim */
+#define FIGHT_ROUND_HI   0x001088EAu  /* 0x1088EA: 0x4F944's second word */
+#define FIGHT_THR_34DDC  0x000BD870u  /* 0xBD870: 0x34DDC's per-char threshold */
+#define FIGHT_THR_350D0  0x000BEF14u  /* 0xBEF14: 0x350D0's per-char threshold */
+
+/* 0x3C59C. Test-and-set bit `bit` of DSD(DS_00107D50 + side*4): 0 the first
+ * time (and sets it), 1 when it was already set. fight_slot_clear zeroes the
+ * pair each arena frame, so 0x35658's preamble gate is 0 once per side. */
+int fighter_pass_flag(u32 bit, u32 side)
+{
+    u32 m = 1u << (bit & 0x1Fu);
+    if ((DSD(DS_00107D50 + side * 4u) & m) != 0u) return 1;   /* 0x3C5B3 */
+    DSD(DS_00107D50 + side * 4u) |= m;                        /* 0x3C5C2 */
+    return 0;
+}
+
+/* 0x39280. Clear the slot's +0x5D and its +0x43 bit 2 (the screen-anchor
+ * flag). Called by 0x350D0's +0x41 bit 2 arm and its DS_001078F2 block. */
+void fighter_state_39280(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    DSB(slot + 0x5Du) = 0;                                  /* 0x3928F */
+    DSB(slot + 0x43u) &= 0xFBu;                             /* 0x39296 */
+}
+
+/* 0x34DDC. 0 when the slot's +0x30 is above the per-character threshold
+ * (word[0xBD870 + char*2]) and the record's +0x36 is negative, else 1. */
+int fighter_34ddc(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    u32 ch = (u32)DSB(slot + 0x7Au);
+    s32 thr = (s32)(s16)DSW(FIGHT_THR_34DDC + ch * 2u);
+    if (thr > (s32)DSD(slot + 0x30u)) {                     /* 0x34E05 */
+        u32 rec = DSD(slot);                                /* 0x34E09 */
+        if ((s16)DSW(rec + 0x36u) < 0) return 0;            /* 0x34E16 */
+    }
+    return 1;
+}
+
+/* 0x34E20. 1 when the reaction byte is below 0x18. */
+int fighter_34e20(u32 reaction)
+{
+    return reaction < 0x18u;
+}
+
+/* 0x38BB0. Clear the 0x40-byte per-side table at 0x107A80 + side*0x40. */
+static void fighter_38bb0(u32 side)
+{
+    u32 base = FIGHT_STUN_BASE + side * 0x40u;
+    for (u32 i = 0; i < 0x40u; i++) DSB(base + i) = 0;      /* 0x38BBB */
+}
+
+/* 0x38BC8. 0x38BB0 plus DSW(0x107D24 + side*2) = 0. */
+static void fighter_38bc8(u32 side)
+{
+    DSW(FIGHT_D24_BASE + side * 2u) = 0;                    /* 0x38BCC */
+    fighter_38bb0(side);                                    /* 0x38BDA */
+}
+
+/* 0x41310. Add `delta` to the camera-target record's +0x3C (mode 3 excluded);
+ * a negative delta that would underflow clamps to 0. */
+static void fighter_41310(u32 side, s32 delta)
+{
+    u32 rec;
+    s32 v;
+    if (DSW(DS_00104B00) == 3u) return;                     /* 0x41313 */
+    rec = DSD(DS_001077A8 + side * 4u);                     /* 0x41317 */
+    v = (s32)DSD(rec + 0x3Cu) + delta;                      /* 0x41322 */
+    if (delta < 0 && v < 1) {                               /* 0x41328 */
+        DSD(rec + 0x3Cu) = 0;                               /* 0x41330 */
+        return;
+    }
+    DSD(rec + 0x3Cu) = (u32)v;                              /* 0x4133C */
+}
+
+/* 0x4F944. Clamp to 0x14, then write the HUD counter globals. */
+static void fighter_4f944(u32 v)
+{
+    if (v > 0x14u) v = 0x14u;                               /* 0x4F94A */
+    DSB(DS_001088F0) = (u8)v;                               /* 0x4F953 */
+    DSW(DS_001088E8) = 0;                                   /* 0x4F95F */
+    DSW(FIGHT_ROUND_HI) = 0x10u;                            /* 0x4F969 */
+    DSB(DS_00104AE9) |= 8u;                                 /* 0x4F974 */
+}
+
+/* 0x367DC. The +0x53 == 7 arm's reset: restart the record's animation at
+ * 0xC8950[char], clear the slot's +0x52/+0x53/+0x54/+0x55/+0x5F, zero the
+ * record's +0x4C/+0x4D and mask the slot's +0x40; in modes other than
+ * 3/0x22/0x24 a second animation at 0x102900[side]. */
+static void fighter_state_367dc(u32 slot, u32 rec)
+{
+    actors_anim_begin(rec, DSD(FIGHT_ANIM_367DC
+                               + (u32)DSB(slot + 0x7Au) * 4u),
+                      0x40400000u);                         /* 0x367F5 */
+    DSB(rec + 0x4Cu) = 0;                                   /* 0x367FF */
+    DSB(rec + 0x4Du) = 0x1Eu;                               /* 0x36803 */
+    DSB(slot + 0x52u) = 0;                                  /* 0x36806 */
+    DSB(slot + 0x53u) = 0;                                  /* 0x3680A */
+    DSB(slot + 0x5Fu) = 0xFFu;                              /* 0x3680E */
+    DSB(slot + 0x55u) = 0xFFu;                              /* 0x36812 */
+    DSB(slot + 0x54u) = 0;                                  /* 0x36819 */
+    DSD(slot + 0x40u) &= 0xCCF7BFFFu;                       /* 0x3681D */
+    if (DSW(DS_00104B00) != 3u && DSW(DS_00104B00) != 0x22u
+            && DSW(DS_00104B00) != 0x24u) {
+        actors_anim_begin(rec, DSD(DS_00102900
+                                   + (u32)DSB(rec + 0x51u) * 4u),
+                          0x3F800000u);                     /* 0x36854 */
+    }
+}
+
+/* 0x36BC8. The +0x43 bit 2 arm: clear this slot's +0x74, run the 0x38BC8/
+ * 0x38BB0 stun clear selected by the *other* side's DSW(0x107D2C+side*2) > 0,
+ * restart this record's animation at 0xC8A18[char], anchor it, then set
+ * slot+0x52 = 7, +0x53 = 2, +0x54 = 0, +0x5D = 0x44 and clear +0x43 bit 2.
+ * Returns 7. */
+static int fighter_state_36bc8(u32 slot, u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);
+    u32 other = 1u - side;
+    DSW(slot + 0x74u) = 0;                                  /* 0x36C32 */
+    if ((s16)DSW(FIGHT_D2C_BASE + other * 2u) < 1)          /* 0x36C46 */
+        fighter_38bc8(other);                               /* 0x36C4E */
+    else
+        fighter_38bb0(other);                               /* 0x36C58 */
+    actors_anim_begin(rec, DSD(FIGHT_ANIM_36BC8
+                               + (u32)DSB(slot + 0x7Au) * 4u),
+                      0x40800000u);                         /* 0x36C70 */
+    hit_anchor_set(side, DSD(rec + 0x18u), 0u);             /* 0x36C82 */
+    DSB(slot + 0x5Du) = 0x44u;                              /* 0x36C87 */
+    DSB(slot + 0x54u) = 0;                                  /* 0x36C8B */
+    DSB(slot + 0x52u) = 7u;                                 /* 0x36C8F */
+    DSB(slot + 0x53u) = 2u;                                 /* 0x36C96 */
+    if ((DSB(slot + 0x43u) & 4u) != 0u) {                   /* 0x36C9A */
+        DSB(slot + 0x43u) &= 0xFBu;                         /* 0x36CA1 */
+        return 7;
+    }
+    if (DSW(DS_00104B00) != 3u && DSW(DS_00104B00) != 0x22u) {
+        actors_anim_begin(rec, DSD(DS_00102900
+                                   + (u32)DSB(rec + 0x51u) * 4u),
+                          0x40400000u);                     /* 0x36CD1 */
+    }
+    return 7;                                               /* 0x36CD6 */
+}
+
+/* 0x39040. The per-side round/timer pass. Gated on DSW(0x107D2C + side*2) > 1;
+ * the body updates the round resource byte, slot+0x81's band, the 0x107D18
+ * timer, the 0x41310/0x4F944 counters and (in the non-0x63 arm) the 0x1088BF
+ * roll, and draws the round text through 0x38D90/0x38FEC (the 0x2F4D0/0x2EFD4
+ * text-grid formatter is a declared gap, record §7.8 / frontend §7.2). The tail
+ * always clears DSW(0x107D2C/0x107D20/0x107D24 + side*2) and the 0x40-byte
+ * table at 0x107A80 + side*0x40. */
+void fighter_39040(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    if ((s16)DSW(FIGHT_D2C_BASE + side * 2u) > 1) {         /* 0x39056 */
+        u32 q = DSD(slot + 0x3Cu) / DSD(DS_000C9520);       /* 0x3908C */
+        DSB(DS_001088B6 + side) = (u8)DSB(FIGHT_D2C_BASE + side * 2u); /* 0x3907B */
+        {
+            s32 lim = (s32)(u32)DSB(slot + 0x81u)
+                    - (s32)(u32)DSB(DS_001088CC);           /* 0x390A2 */
+            if ((s32)q > lim) {
+                u32 cap = (u32)DSB(DS_001088CB);
+                if (q >= cap) q = cap;                      /* 0x390B4 */
+                DSB(slot + 0x81u) =
+                    (u8)((u32)DSB(DS_001088CC) + (u8)q);    /* 0x390CC */
+            }
+        }
+        DSW(DS_00107D18 + side * 2u) = 0xB4u;               /* 0x390E1 */
+        /* PORT: 0x390E8 0x38D90(side) and 0x390EF 0x38FEC(side) are the
+         * round-text draws; 0x38D90 reaches the unmodelled 0x2F4D0/0x2EFD4
+         * formatter (named gap, record §7.8). */
+        DSW(DS_00107D1C + side * 2u) = DSW(DS_00107D20 + side * 2u); /* 0x390FB */
+        DSB(slot + 0x7Bu) = (u8)(DSB(slot + 0x7Bu) + 1u);   /* 0x39110 */
+        if (DSB(slot + 0x63u) == 0u) {                      /* 0x39117 */
+            s32 round = (s32)(s16)DSW(FIGHT_D2C_BASE + side * 2u);
+            if (round == 2) {
+                fighter_41310(side, 0x3E8);                 /* 0x3913A */
+            } else if (round >= 3) {
+                fighter_41310(side, round <= 0xC
+                              ? (s32)(u32)((round - 2) * 0x7D0)
+                              : 0x4E20);                    /* 0x3916D */
+                {
+                    s32 a = (s32)(s16)DSW(DS_00107D20 + side * 2u);
+                    s32 r2 = (s32)(s16)DSW(FIGHT_D2C_BASE + side * 2u);
+                    if (a >= 0x23 && r2 >= 4) {             /* 0x39190 */
+                        fighter_4f944((u32)r2);             /* 0x39195 */
+                        if (a >= 0x41 && r2 >= 5)           /* 0x391B8 */
+                            DSB(DS_001088BF) =
+                                (u8)(rng_next(2u) + 1u);    /* 0x391CA */
+                    } else if (a <= 0x23) {                 /* 0x391DE */
+                        u32 r3 = (u32)DSB(DS_001088A8 + side);
+                        /* PORT: 0x3923D 0x2C3FC(code) is the character voice,
+                         * out of scope; the rng draws stay. */
+                        if (r3 >= 0x20u && r3 <= 0x3Fu)
+                            (void)rng_next(3u);             /* 0x391FE */
+                        else
+                            (void)rng_next(2u);             /* 0x39228 */
+                    }
+                }
+            }
+        }
+    }
+    DSW(FIGHT_D2C_BASE + side * 2u) = 0;                    /* 0x39244 */
+    DSW(DS_00107D20 + side * 2u) = 0;                       /* 0x3924C */
+    DSW(FIGHT_D24_BASE + side * 2u) = 0;                    /* 0x39254 */
+    fighter_38bb0(side);                                    /* 0x3925C */
+}
+
+/* 0x1DE64. The reaction picker 0x350D0 calls after a miss. With the slot's
+ * +0x63 clear it scans 0x46460/0x4649C for a live input (a named gap: those
+ * two are the unported input scanner, §7.12); otherwise the result is the
+ * side's command word. The command's bits then map to a reaction code, the
+ * 0x10/0x11/0x14/0x15 codes selected by 0x1DDF4's geometry test. Returns 0xFF
+ * when nothing maps. */
+u32 hit_reaction_pick(u32 side, u32 stance)
+{
+    u32 ctx[6];
+    u32 slot;
+    u32 r = 0xFFu;
+    fighter_ctx_same(ctx, side);                            /* 0x1DE76 */
+    slot = ctx[2];                                          /* &slot[side] */
+    {
+        s32 n = ((s32)DSD(slot + 0x90u) >> 16 < 0xF) ? 5 : 0xF;   /* 0x1DEA1 */
+        if (DSB(slot + 0x63u) == 0u) {                      /* 0x1DEB8 */
+            /* PORT: 0x1DEDC 0x46460/0x4649C — the input scanner, a named gap
+             * (§7.12). The demo's slot+0x63 is 1, so this arm is unreachable. */
+            (void)n;
+        } else {
+            r = (u32)DSW(DS_001088E0 + side * 2u);          /* 0x1DEC2 */
+        }
+    }
+    if (r != 0xFFu) {                                       /* 0x1DF5C */
+        s32 sel = (side == 0u)
+                ? (s32)(s16)DSW(DSD(DS_00101514) + 0x2D4u)  /* 0x1DF6B */
+                : (s32)(s16)DSW(DSD(DS_00101514) + 0x2D6u); /* 0x1DF79 */
+        u32 b4 = r & 0xCu;                                  /* 0x1DFB7 */
+        u32 b3 = r & 3u;                                    /* 0x1DFBD */
+        u32 ch = (u32)DSB(slot + 0x7Au);
+        if (stance == 2u) {                                 /* 0x1DFC4 */
+            if ((r & 1u) != 0u) return 0xCu;                /* 0x1DFD4 */
+            if ((r & 2u) != 0u) return 0xDu;                /* 0x1DFE4 */
+            if ((r & 4u) != 0u) return 0xEu;                /* 0x1DFF7 */
+            if ((r & 8u) != 0u) return 0xFu;                /* 0x1E00A */
+            if (sel == 4) {                                 /* 0x1E015 */
+                if (b3 == 3u) return 0x16u;                 /* 0x1E028 */
+                if (b4 == 0xCu) return 0x11u;               /* 0x1E041 */
+            }
+        } else if ((r & 0x4000u) == 0u) {                   /* 0x1E052 */
+            if (sel == 4) {                                 /* 0x1E0E5 */
+                if (b3 == 3u)                               /* 0x1E0F6 */
+                    return hit_geometry(1u - side,
+                        DSD(0x000A7AF4u + ch * 4u), 0x000A7A70u)
+                        ? 0x12u : 0x10u;                    /* 0x1E11D */
+                if (b4 == 0xCu)                             /* 0x1E13B */
+                    return hit_geometry(1u - side,
+                        DSD(0x000A7B1Cu + ch * 4u), 0x000A7A70u)
+                        ? 0x13u : 0x11u;                    /* 0x1E166 */
+            }
+            if ((r & 1u) != 0u)                             /* 0x1E17E */
+                return hit_geometry(1u - side,
+                    DSD(0x000A7AF4u + ch * 4u), 0x000A7A70u)
+                    ? 4u : 0u;                              /* 0x1E1A9 */
+            if ((r & 2u) != 0u)                             /* 0x1E1C1 */
+                return hit_geometry(1u - side,
+                    DSD(0x000A7B1Cu + ch * 4u), 0x000A7A70u)
+                    ? 5u : 1u;                              /* 0x1E1E8 */
+            if ((r & 4u) != 0u)                             /* 0x1E20B */
+                return hit_geometry(1u - side,
+                    DSD(0x000A7A7Cu + ch * 4u), 0x000A7A70u)
+                    ? 6u : 2u;                              /* 0x1E22F */
+            if ((r & 8u) != 0u)                             /* 0x1E252 */
+                return hit_geometry(1u - side,
+                    DSD(0x000A7AA4u + ch * 4u), 0x000A7A70u)
+                    ? 7u : 3u;                              /* 0x1E279 */
+        } else {                                            /* 0x1E058 */
+            if ((r & 1u) != 0u) return 8u;                  /* 0x1E069 */
+            if ((r & 2u) != 0u) return 9u;                  /* 0x1E07D */
+            if ((r & 4u) != 0u) return 0xAu;                /* 0x1E090 */
+            if ((r & 8u) != 0u) return 0xBu;                /* 0x1E0A3 */
+            if (sel == 4) {                                 /* 0x1E0AE */
+                if (b3 == 3u) return 0x14u;                 /* 0x1E0C1 */
+                if (b4 == 0xCu) return 0x15u;               /* 0x1E0DA */
+            }
+        }
+    }
+    return 0xFFu;                                           /* 0x1E28F */
+}
+
+/* 0x350D0. The core per-frame body 0x3531C's default runs. It drives the
+ * +0x52/+0x53/+0x54 state (0x3BDDC at 0x3520E), calls the 0x3CF38 hit chain
+ * directly at 0x352A6, and on a miss picks a reaction with 0x1DE64 and applies
+ * it through 0x34E2C. */
+void fighter_state_350d0(u32 side)
+{
+    u32 ctx[6];
+    u32 slot, rec;
+    fighter_ctx_same(ctx, side);                            /* 0x3513B */
+    slot = ctx[2];
+    rec = ctx[4];
+    if (DSD(slot + 0x14u) != 0u) {                          /* 0x35144 */
+        /* PORT: 0x3514C. The raw calls the slot+0x14 callback and zeroes the
+         * field when it returns non-zero; the port's fn_resolve callbacks are
+         * void and no ported writer registers one (the spawn zeroes it), so the
+         * field is left as-is. */
+        void (*fn)(void) = fn_resolve(DSD(slot + 0x14u));
+        if (fn) fn();
+    }
+    if ((DSB(slot + 0x43u) & 4u) != 0u
+            && DSB(slot + 0x54u) != 2u) {                   /* 0x3515E */
+        (void)fighter_state_36bc8(slot, rec);               /* 0x35172 */
+        return;
+    }
+    if ((DSB(slot + 0x41u) & 4u) != 0u) {                   /* 0x35180 */
+        DSD(slot + 0x40u) &= 0xFBFFFBFFu;                   /* 0x35186 */
+        fighter_state_39280(side);                          /* 0x35190 */
+    }
+    if ((s16)DSW(slot + 0x78u) > 0) return;                 /* 0x35199 */
+    if (DSB(slot + 0x54u) == 2u) {                          /* 0x351A4 */
+        s32 t = (s32)(s16)DSW(FIGHT_THR_350D0
+                              + (u32)DSB(slot + 0x7Au) * 2u);
+        if (t > (s32)DSD(slot + 0x30u)
+                && (s16)DSW(rec + 0x36u) < 0) {             /* 0x351C2 */
+            DSB(slot + 0x53u) = 0xCu;                       /* 0x351CF */
+            return;
+        }
+    } else {                                                /* 0x351DB */
+        u16 cmd = DSW(DS_001088E0 + side * 2u);
+        int bvar2 = ((cmd >> 8) & 3u) != 0u
+                 && ((cmd >> 8) & 0xCu) != 0u;              /* 0x35201 */
+        if (!bvar2 && fighter_attack_consume(side) != 0) {  /* 0x3520E */
+            hit_facing_flag(side);                          /* 0x3521A */
+            return;
+        }
+    }
+    {
+        u32 s = DSD(DS_001077A8 + side * 4u);               /* 0x35227 */
+        if (s == 0u || DSD(s) == 0u) return;                /* 0x3523A */
+        fighter_39040(1u - side);                           /* 0x35244 */
+        if (DSB(DS_001078F2 + side) != 0u) {                /* 0x3524C */
+            DSB(DS_001078F2 + side) = 0;                    /* 0x35257 */
+            fighter_state_39280(side);                      /* 0x3525D */
+        }
+        hit_stance_timer(side);                             /* 0x35265 */
+        DSW(slot + 0x74u) = 0;                              /* 0x3526E */
+        if ((DSB(s + 0x42u) & 0x90u) != 0u) {               /* 0x35274 */
+            DSB(s + 0x53u) = 3u;                            /* 0x3527A */
+            return;
+        }
+        if (DSB(s + 0x54u) == 2u) {                         /* 0x35286 */
+            if (fighter_34ddc(side) == 0) return;           /* 0x3528E */
+            if (DSB(DS_001078F8 + side) == 0u) return;      /* 0x35297 */
+        }
+        DSB(s + 0x56u) = 0;                                 /* 0x352A2 */
+        if (hit_chain_resolve(side) != 0) return;           /* 0x352A6 */
+        {
+            u32 r = hit_reaction_pick(side, (u32)DSB(s + 0x54u)); /* 0x352BA */
+            if (r == 0xFFu) return;                         /* 0x352C9 */
+            hit_reaction_apply(side, r);                    /* 0x352CD */
+        }
+    }
+}
+
+/* 0x3531C. The +0x53 dispatcher fight_hud_pass calls at 0x35803. Cases 0, 0xd
+ * and >0xf run 0x350D0; 4 increments +0x56; 7 runs the +0x41 bit 7 / +0xC
+ * callback and, for char 4 with a live +0x5F and +0x86 > 0x5A, 0x367DC; 8 runs
+ * the 0xBDBE8/+0x88 gate, 0x34E20(+0x5F), clears +0x53 and calls the 0x3CF38
+ * chain directly at 0x354BC; 10 runs the +0x10 callback. */
+void fighter_state_3531c(u32 side)
+{
+    u32 slot = DSD(DS_001077A8 + side * 4u);                /* 0x35383 */
+    if (slot == 0u || DSD(slot) == 0u) return;              /* 0x3539A */
+    if ((s16)DSW(DS_001078F6) != 0) {                       /* 0x353A7 */
+        DSB(DS_001078F6) = (u8)(DSW(DS_001078F6) - 1u);
+        if ((s16)DSW(DS_001078F6) < 1) {
+            /* PORT: 0x353C0/0x353CA 0x2C3FC(0xEC/0xE0) and 0x353DD 0x2B150 are
+             * the voice/cutscene pair; 0x36F10 (their only writer of
+             * DS_001078F6) is unreachable, so this arm is inert. */
+            DSD(slot + 0x40u) |= 0x801000u;                 /* 0x353E2 */
+        }
+    }
+    switch (DSB(slot + 0x53u)) {                            /* 0x353E9 table 0x352DC */
+    case 4u:
+        DSB(slot + 0x56u) = (u8)(DSB(slot + 0x56u) + 1u);   /* 0x3540E */
+        return;
+    case 7u:
+        DSB(slot + 0x41u) |= 0x80u;                         /* 0x3541B */
+        DSB(slot + 0x43u) &= 0xCFu;                         /* 0x35422 */
+        {
+            void (*fn)(void) = fn_resolve(DSD(slot + 0xCu));
+            if (fn) fn();                                   /* 0x35431 */
+        }
+        if (DSB(slot + 0x7Au) == 4u                         /* 0x3543C */
+                && (DSB(slot + 0x5Fu) == 0x21u
+                    || DSB(slot + 0x5Fu) == 0x22u)
+                && (s32)DSD(slot + 0x86u) >> 16 > 0x5A) {
+            fighter_state_367dc(slot, DSD(slot));           /* 0x3546B */
+            return;
+        }
+        return;
+    case 8u:
+        DSB(slot + 0x56u) = (u8)(DSB(slot + 0x56u) + 1u);   /* 0x3547A */
+        DSB(slot + 0x43u) &= 0xCFu;                         /* 0x35487 */
+        if ((s16)DSW(DS_000BDBE8) <= (s16)DSW(slot + 0x88u))  /* 0x35498 */
+            return;
+        if (fighter_34e20((u32)DSB(slot + 0x5Fu)) == 0)     /* 0x354A8 */
+            return;
+        {
+            u32 r = (u32)DSB(slot + 0x5Fu);
+            DSB(slot + 0x53u) = 0;                          /* 0x354B5 */
+            if (hit_chain_resolve(side) != 0) return;       /* 0x354BC */
+            DSB(slot + 0x53u) = 8u;                         /* 0x354C9 */
+            DSB(slot + 0x5Fu) = (u8)r;                      /* 0x354CD */
+        }
+        return;
+    case 10u:
+        {
+            void (*fn)(void) = fn_resolve(DSD(slot + 0x10u));
+            if (fn) fn();                                   /* 0x354E2 */
+        }
+        return;
+    case 1u: case 2u: case 3u: case 5u: case 6u:
+    case 9u: case 11u: case 12u: case 14u: case 15u:
+        return;                                             /* 0x354E5 */
+    default:                                                /* 0, 13, >15 */
+        fighter_state_350d0(side);                          /* 0x353FF */
+        return;
+    }
+}
+
 /* 0x3BDDC. The attack/command consumer. When the slot's +0x40 bit 7 is clear
  * and the side's command word has bit 15 set, it clears the record's
  * +0x34/+0x43/+0x42, sets the slot's +0x5F to 0xFF, and (unless 0x3CF38

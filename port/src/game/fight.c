@@ -506,12 +506,34 @@ static void fight_health_sync(u32 side)
 
 void fight_hud_pass(u32 side)
 {
-    u32 rec = DSD(DS_001077A8 + side * 4u);     /* 0x35775 */
-    if (rec == 0) return;                       /* 0x3577E */
+    u32 slot = DS_001077B0 + side * 0x94u;
+    u32 rec;
 
-    /* PORT: 0x35661..0x35773. The per-side preamble (the 0x3C59C(3) gate, the
-     * DS_00107828/38/3c/40/42 timer traffic, DS_001078fb and DS_001088d4) is a
-     * named gap (§7.8); the spine below is what is pinned. */
+    /* 0x35661..0x35773: the per-side preamble. 0x3C59C(3, side) is a
+     * test-and-set fight_slot_clear zeroes each arena frame, so it runs once
+     * per side; it maintains the slot+0x88/+0x8C/+0x90/+0x92 timers and
+     * slot+0x78 that 0x350D0 and 0x3531C case 8 read. */
+    if (fighter_pass_flag(3u, side) == 0) {                 /* 0x356BE */
+        DSW(slot + 0x88u) = (u16)(DSW(slot + 0x88u) + 1u);  /* 0x356D6 */
+        {
+            s16 c = (s16)DSW(slot + 0x8Cu);                 /* 0x356CF */
+            if (c > 0)      DSW(slot + 0x8Cu) = (u16)(c - 1);   /* 0x356E5 */
+            else if (c < 0) DSW(slot + 0x8Cu) = 0;          /* 0x356F2 */
+        }
+        if ((s32)DSD(slot + 0x90u) >> 16 < 0x270F)          /* 0x35713 */
+            DSW(slot + 0x92u) = (u16)(DSW(slot + 0x92u) + 1u);  /* 0x3571B */
+    }
+    {
+        u16 cap = DSW(DS_000BDBEC);                         /* 0x35733 */
+        u16 v = DSW(slot + 0x78u);                          /* 0x3573A */
+        if ((s16)v > (s16)cap)      DSW(slot + 0x78u) = 0;  /* 0x35748 */
+        else if ((s16)v > 0)        DSW(slot + 0x78u) = (u16)((s16)v - 1); /* 0x35757 */
+    }
+    DSB(DS_001078FB) = (u8)((((DSB(DS_001088D4) & 4u) != 0u) ? 0u : 1u) + 2u); /* 0x35770 */
+
+    rec = DSD(DS_001077A8 + side * 4u);                     /* 0x35775 */
+    if (rec == 0) return;                                   /* 0x3577E */
+
     if (DSW(DS_00104B00) == 4 && (DSB(rec + 0x43u) & 0x80u) == 0) {
         /* PORT: 0x35792..0x357D6. The mode-4 arm (0x33C78 behind the
          * DS_001088E0 bit-0 gate) is a named gap (§7.8). */
@@ -528,11 +550,12 @@ void fight_hud_pass(u32 side)
         /* PORT: 0x357EE 0x34038(side) and 0x357F5 0x38D24(side) run before the
          * spine; both are named gaps (§7.8) and are skipped. */
         fight_health_sync(side);                /* 0x357FC 0x34B6C */
+        fighter_state_3531c(side);              /* 0x35803 0x3531C */
         DSB(fighter + 0x28u) = (u8)(DSB(fighter + 0x28u) | 1u); /* 0x35808..0x35810 */
         actor_sync(fighter);                    /* 0x35813 0x2A1FC */
     }
-    /* PORT: 0x35803 0x3531C(side), 0x3581C/0x35824 0x354F0(side)/(1-side) and
-     * 0x35829 0x186C4 are named gaps (§7.8) and skipped. */
+    /* PORT: 0x3581C/0x35824 0x354F0(side)/(1-side) and 0x35829 0x186C4 are
+     * named gaps (§7.8) and skipped. */
 }
 
 /* ---- 0x49C78 the scene/effects pass ------------------------------------ */
