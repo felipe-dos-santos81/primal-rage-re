@@ -170,6 +170,54 @@ static void check_state9_countdown(void)
     DSW(DS_000F0A6C) = saved_6c;
 }
 
+/* Task 7: the demo's timer exit, 0x11D04 case 7 -> 0x11BCC. The raw's case-7
+ * arm (0x11E67) stores DS_000F0A6A = timer-1 and, when the new value is 0
+ * (0x11E72), calls 0x11BCC: clear DS_00104B19+2 (0x11BCE), clear DS_00104B15
+ * (0x11BD4), hand DS_000F0A64 = DS_000F0A6C (0x11BE0). Record §7.6 Input A pins
+ * the exit frame as DS_000F0A6A = 1 (the frame whose PRE value is 1) with
+ * DS_000F0A6C = 0, so the handoff is state 0 — the attract sub-machine (§4.2).
+ * The 0x263F4 arena frame must not run on the exit frame: DS_00107EE0 is the
+ * word its first callee 0x3C5CC zeroes, seeded with a sentinel that differs from
+ * the post-condition, so a spurious arena call fails rather than passing on a
+ * zero the test never touched. */
+static void check_timer_exit(void)
+{
+    const u16 saved_64  = DSW(DS_000F0A64);
+    const u16 saved_6a  = DSW(DS_000F0A6A);
+    const u16 saved_6c  = DSW(DS_000F0A6C);
+    const u8  saved_b15 = DSB(DS_00104B15);
+    const u8  saved_b1b = DSB(DS_00104B19 + 2u);
+    const u8  saved_b1d = DSB(DS_00104B1D);
+    const u8  saved_a71 = DSB(DS_000F0A71);
+    const u32 saved_ee0 = DSD(DS_00107EE0);
+
+    DSB(DS_00104B1D) = 1;          /* skip the deferred coin poll */
+    DSB(DS_000F0A71) = 1;          /* both per-state tails return immediately */
+    DSW(DS_000F0A64) = 7;          /* the state-7 arm */
+    DSW(DS_000F0A6A) = 1;          /* record §7.6 Input A: pre 1 -> new 0 */
+    DSW(DS_000F0A6C) = 0;          /* the demo's chain target (record §4.2) */
+    DSB(DS_00104B15) = 1;
+    DSB(DS_00104B19 + 2u) = 1;
+    DSD(DS_00107EE0) = 0x5EEDu;    /* the 0x263F4 sentinel */
+
+    game_state_step();
+
+    CHECK_EQ_INT((int)DSW(DS_000F0A6A), 0);          /* 0x11E67 */
+    CHECK_EQ_INT((int)DSW(DS_000F0A64), 0);          /* 0x11BE0: DS_000F0A6C */
+    CHECK_EQ_INT((int)DSB(DS_00104B15), 0);          /* 0x11BD4 */
+    CHECK_EQ_INT((int)DSB(DS_00104B19 + 2u), 0);     /* 0x11BCE */
+    CHECK_EQ_INT((int)DSD(DS_00107EE0), 0x5EED);     /* 0x263F4 did not run */
+
+    DSW(DS_000F0A64) = saved_64;
+    DSW(DS_000F0A6A) = saved_6a;
+    DSW(DS_000F0A6C) = saved_6c;
+    DSB(DS_00104B15) = saved_b15;
+    DSB(DS_00104B19 + 2u) = saved_b1b;
+    DSB(DS_00104B1D) = saved_b1d;
+    DSB(DS_000F0A71) = saved_a71;
+    DSD(DS_00107EE0) = saved_ee0;
+}
+
 /* symbols.h emits no name for the 0x387F4/0x38890 scene-descriptor tables. */
 #define TEST_DS_000BDF7C 0x000BDF7Cu
 
@@ -467,6 +515,11 @@ int test_flow(void)
     CHECK_EQ_INT((int)DSW(DS_000F0A6A), 900);
     CHECK_EQ_INT((int)DSW(DS_000F0A6C), 5);
     CHECK_EQ_INT((int)DSB(DS_000F0A6F), 0);
+
+    /* Task 7: the timer exit and its handoff to the attract sub-machine. Runs
+     * last and restores every global it seeds, so it cannot perturb the
+     * assertions above. */
+    check_timer_exit();
 
     return g_failures - before;
 }

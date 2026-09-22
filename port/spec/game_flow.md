@@ -622,6 +622,14 @@ picks the two characters from the shared RNG, seeds `DS_001082C8`, spawns both
 fighters and arms the 900-frame timer; state 7 runs the arena loop until
 `0x11BCC` restores `DS_000F0A64 = DS_000F0A6C` and the state machine moves on.
 
+**The loop-back.** For the demo's chain `DS_000F0A6C` is 0: state 3's phase 1
+sets `DS_000F0A72 = 0` (`0x1264C`), and state 6 copies it into `DS_000F0A6C`
+(`0x11BB9`). So the 900-frame exit hands `DS_000F0A64 = 0` — state 0, the
+attract sub-machine `0x11000` (record §4.2) — and the demo loops back to the
+attract. The nonzero continuations (`DS_000F0A72 ∈ {3,4,5}` from the attract
+phase at `0x1150E`/`0x11517`/`0x1151F`, `port/src/game/attract.c:304-307`)
+belong to the *next* attract loop, not this demo run.
+
 **Dump length.** `make demo-oracle` runs the same `PR_FRONTEND_DUMP` run as
 `frontend-oracle`. The driver loops 2000 frames from the state-2 entry and caps
 the RGB dump at 1400 frames (`PR_FRONTEND_DUMP_FRAMES`, default 1400). The
