@@ -1371,26 +1371,47 @@ arena palettes were flushed" are both true but irrelevant — on the loader fram
 the *present* itself is gated, and the frames that do present after the catch-up
 carry the composition. The state-6 frame never reaches the composition.
 
-**It is an I/O-cache effect, not a structural one.** A *second* state-6 entry in
-the same run (t≈118.93, after the demo's state-7 exit) shows `150C` tracking
-`1508` throughout (`3/3`, `28/28`, `55/55`) and the copy at t≈119.95 — that read
-was already cached, so the handler finished inside its tick and the gate passed.
-The first entry's read is the uncached one.
+**The stall is a reproducible per-entry read cost, not an I/O-cache effect (a
+correction).** The earlier text here read the second state-6 entry's samples as
+`150C` tracking `1508` and concluded the first entry's read was the uncached one.
+Re-reading `/tmp/t5a_swap.csv` row by row refutes that: the 118.931 entry blocks
+for ~0.94 s with `150C` frozen at 3 for 63 samples and at 34 for 56 samples while
+`1508` climbs 0→56 (distribution `0×12, 3×63, 28×4, 29×12, 34×56, 55×3, 56×1`);
+the first entry shows the same shape (`0×12, 3×73, 31×3, 32×12, 36×47, 54×1`).
+The `3/3`, `28/28`, `55/55` values the earlier text quoted are the handful of
+catch-up samples where `150C` momentarily equals `1508`. So the two 9→6 entries
+block **55 and 56 ticks** and the 7→6 entry (t≈97.795, the one actually after the
+demo's state-7 exit; the 118.931 entry is preceded by state 9 from t≈113.925)
+blocks **27**. The stall is repeatable per transition, i.e. a function of the
+resources read.
 
-**Why the port cannot reproduce it (the named gap).** `port/src/game/flow.c`
-(`game_loop`, `1226`-`1246`) has no gate: it sorts, renders, `gfx_flush_palette()`,
-`gfx_present()` and `swap_buffers()` every iteration. Its
-`DS_00101508`/`DS_0010150C` are written only by `palette_list_init` and the loop
-prologue (both 0) and by `actors_reset` (0), and are **never advanced** — the
-original's tick pacing is replaced by `host_wait_vblank()` (`1261`). A ported
-gate would therefore always pass. The gate fails in the original only because the
-state-6 handler outlasts ~55 ticks in its resource loads; the port reads every
-payload eagerly at init (`res.c`), so its handler is fast, and modelling the
-duration would need either a host-dependent value (a fitted constant) or the
-real-time `host_tick_count()` (which makes the gate non-deterministic and would
-break the two-run `PR_FRONTEND_DET` determinism gate). This is the §6-style
-named gap: the mechanism is pinned; the reproduction is blocked on the loader's
-read timing, which the port abstracts by design.
+**The stall duration is derivable from the bytes read.** A temporary trace in the
+port's `res_resolve` (`PR_T5A_TRACE`) names the entries the state-6 handler
+resolves: `s16beach` (233128 B) + `s16rex` (3812084 B) + `s16cob` (2438316 B) =
+**6483528 bytes**, which block 55 ticks → **117882 bytes/tick**. The 7→6 entry
+resolves a smaller set (the new characters), consistent with its 27. This is a
+derived rate, not a fitted per-frame constant; the port's reads are deterministic
+(the RNG is seeded), so the same entries are resolved each run.
+
+**What the port needs (the size case).** `port/src/game/flow.c` (`game_loop`,
+`1226`-`1246`) has no gate: it sorts, renders, `gfx_flush_palette()`,
+`gfx_present()` and `swap_buffers()` every iteration, and its
+`DS_00101508`/`DS_0010150C` are written only with 0 and never advanced. The
+implementation (done, stashed as `task5a: gate+counter+stall+display-hold WIP`)
+adds: the gate around sort/render/flush/copy/swap; `game_loop_begin` for the
+loop prologue the per-frame drivers must not repeat; the read stall in
+`res_load_present` (`DS_00101508 += bytes / 117882`); and a display-hold buffer
+(`gfx_display`) so a gate-failed frame dumps the held frame the screen shows, not
+the back buffer `0x52106` just zeroed. It makes the port's state-6 frame black
+and the following frames the held/arena frames, and `--check` passes. **But the
+dump hooks are per-iteration, so the title window's held frames shift the
+oracles:** title moves `54 clean, 55 splice, 2 transition, 0 unexplained` →
+`44 clean, 45 splice, 2 transition, 0 unexplained` and `54 clean, 57 splice, 0` →
+`44 clean, 47 splice, 0`. The title/attract/frontend/demo windows and the
+title/attract claims therefore need re-derivation, and the demo oracle's
+`res is None` fallback (title_compare.py `489`-`514`) ignores the port entirely,
+so its "first unexplained 832" cannot move until that fallback is fixed. That is
+the re-scope: a display-hold/oracle-window pass, not this task.
 
 **The VGA-retrace ordering (the second named measurement).** `0x1C470` waits for
 the VGA status bit before its DAC writes (`0x1C481`-`0x1C489`: `MOV EDX,0x3da` /
