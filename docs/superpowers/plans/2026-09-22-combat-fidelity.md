@@ -231,6 +231,63 @@ git commit -m "fight: port the +0x52 state handlers"
 
 ---
 
+### Task 3b: The upstream freeze — the `0x3Fxxx` script and the `0x35D7C` inputs
+
+**Task 3's finding (the raw wins).** The twelve `0x34B14` handlers are on the **original's** path but **not on the port's** (the port's state-machine phase diverged upstream). The loop-1400 freeze is **s0's `+0x52 = 3`/`+0x53 = 4`** — the already-ported `0x35D7C` retry loop — not s1's `9`/`8`. `0x37178` has two entries (`0x349EA`, `0x349C8`'s `+0x42` bit 6 arm, provably never taken in the window; and `0x37A4F`, `0x379C4`'s `DS_001078FE == 0 && slot+0x57 == 2` arm after a `0x36870` case-4 call, **not** excluded — resolve it). `0x36870` has 9 callers, not 2. The case-2 closer's caller is **`0x3FD30`**, reached via the `0x3Fxxx` script. This task derives and ports the freeze's real cause.
+
+**Files:**
+- Modify: `port/src/game/fighter.c` (the `0x35D7C` inputs and/or the `0x3Fxxx` script)
+- Modify: `port/src/game/fight.c` if the derivation places it there
+- Test: `port/tests/test_fight.c`
+
+**Interfaces:**
+- Consumes: the Task 3 report's refutation (in `.superpowers/sdd/2026-09-22-combat-fidelity/task-3-report.md`); the cycle-2 record's `+0x52` machine.
+- Produces: the fight's state changes continuing past loop 1400 to the timer exit.
+
+- [ ] **Step 1: Derive the freeze's cause**
+
+Establish with the raw and a live-RAM dump: what drives s0's `+0x52` to `3` and holds `+0x53` at `4` — the `0x35D7C` retry loop's inputs — and what the `0x3Fxxx` script (`0x3FD30` and its siblings) does. State whether the port's `0x35D7C` is unfaithful or its inputs are missing. **If the closure is materially larger than a task, stop and report its size** — a re-scope conversation, not a silent overrun.
+
+- [ ] **Step 2: Write the failing test**
+
+Assert the state the derivation names, with seeded sentinels that differ from the post-conditions.
+
+- [ ] **Step 3: Run it to verify it fails**
+
+Run: `./build/run_tests`
+Expected: FAIL — the port's state differs.
+
+- [ ] **Step 4: Implement**
+
+Port the divergence, one C function per original with its address tag. A value that cannot be pinned is a named gap with its evidence.
+
+- [ ] **Step 5: Run it to verify it passes**
+
+Run: `./build/run_tests`
+Expected: PASS, output pristine.
+
+- [ ] **Step 6: Prove the assertion can fail**
+
+Mutate the fix and confirm the named assertion fails. Restore, and report the mutation.
+
+- [ ] **Step 7: Measure the fight's progression**
+
+Record the last state-change frame (before: 1400) and the timer exit. Expected: the state changes continue past 1400.
+
+- [ ] **Step 8: Full ladder and commit**
+
+Run: `make verify`
+Expected: exit 0, 0 warnings, every oracle claim unmoved.
+
+```bash
+git add <the files the derivation names>
+git commit -m "fight: port the upstream state that froze the demo fight"
+```
+
+**Gate for this task:** the fight's state changes continue past loop 1400 to the timer exit — or the residual is a named gap with its evidence.
+
+---
+
 ### Task 4: The fighter animation poses
 
 **Files:**
