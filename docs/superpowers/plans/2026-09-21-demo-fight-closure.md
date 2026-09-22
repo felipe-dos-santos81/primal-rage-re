@@ -474,6 +474,70 @@ git commit -m "flow: present the state-6 entry's DAC/palette state"
 
 ---
 
+### Task 5c: The presentation path — expose the held frames
+
+Task 5a pinned why capture 831 is all-black and 832 is black+text (the master loop's tick gate failing during the loader's read stall, record §9.6) and landed the gate, the counters and the loader re-sync. Its decisive measurement: **the port's offscreen buffers at the state-6 hold are byte-identical to captures 832 (`mem + DS_000E87A4`) and 831 (`mem + DS_000E87A0`)** — the port produces both states. But the presentation path never exposes them: `gfx_display` snapshots `E87A4` only at the last `gfx_present`/copy, so a gate-failed hold dumps the stale state-9 globe through the **arena** palette (dac nz 506), and an exact-hash scan finds no port frame in `[313..1380]` matching any capture frame in `[831..3616]`.
+
+**Files:**
+- Modify: `port/src/platform/gfx.c` (`gfx_display`/`gfx_present` — the hold snapshot)
+- Modify: `port/src/platform/res.c` (the loader's flush scope)
+- Modify: `port/src/game/flow.c` if the gate/render ordering is the cause
+- Modify: `port/tests/test_res.c`/`test_frontend.c`
+
+**Interfaces:**
+- Consumes: record §9.6 (the gate, the 117882 bytes/tick rate, the named gap); Task 5a's measurement (the byte-identical buffers); `0x2BAF4`/`0x52106` (the blackout), `0x336C0` (the list reset), `0x1C470` (the flush), `0x25672` (its call site inside the gate).
+- Produces: the port exhibiting capture 831/832, so the demo oracle's first-unexplained frame advances past 832.
+
+- [ ] **Step 1: Measure the dirty list at `0x25672`**
+
+Record §9.6's open gap: the dirty-list and ownership contents (`DS_00107498..DS_00107798`, `DS_00107618..`) at the flush on the loader frame, in the original and the port. The live-RAM dump reads them (`BP` never fires in this DOSBox-X build; the DOS/4GW base is re-derived per run from `"RAGE.S16"`, VA `0x8002D`). Decide which candidate the evidence supports: (a) the loader's flush scope (the port drains the arena's palette records too, so the DAC lacks the `0x52106` blackout), or (b) the gate/render ordering (the state-7 render overwrites `E87A4` before the first gate-pass). **Do not port a fix before the measurement names it.** If the measurement is out of reach, stop and report that — a re-scope conversation, not an approximation.
+
+- [ ] **Step 2: Write the failing test**
+
+Assert the measured behaviour with seeded sentinels — the exact DAC/palette state or display-hold the Step 1 measurement pins. Seed a sentinel that differs from the post-condition; never assert an unseeded BSS-zero.
+
+- [ ] **Step 3: Run the test to verify it fails**
+
+Run: `./build/run_tests`
+Expected: FAIL — the port's held frame or DAC differs from the measured one.
+
+- [ ] **Step 4: Implement it**
+
+Port what Step 1 measured, one C function per original function with its address tag, into the owner Step 1 names. A value that cannot be pinned is a named gap with its evidence, never an invented one. Keep the display-hold deterministic — no host-timing value may reach frame content.
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `./build/run_tests`
+Expected: PASS, output pristine.
+
+- [ ] **Step 6: Prove the assertion can fail**
+
+Mutate the implementation and confirm the named assertion fails. Restore, and report the mutation with its command and output.
+
+- [ ] **Step 7: Re-measure the oracle**
+
+```bash
+make demo-oracle
+```
+
+Expected: the port exhibits 831/832 and the first-unexplained frame **advances past 832**. If it does not, return to the measurement — do not tune to match.
+
+- [ ] **Step 8: Full ladder and commit**
+
+Run: `make verify`
+Expected: exit 0, 0 warnings, every oracle claim unmoved (title `54/55/2/0` and `54/57/0`, attract `215`, front-end `0 unexplained`).
+
+```bash
+git add <the files Step 1 named>
+git commit -m "gfx: present the held frame the gate's stall shows"
+```
+
+**Gate for this task:** the port exhibits the capture's 831/832 states and the oracle's first-unexplained frame has advanced past 832.
+
+**Carried minor (from Task 5a's review):** `RES_READ_BYTES_PER_TICK` is not pinned by any assertion — `test_res.c` only asserts `DS_00101508 > 0x5678`, so any positive rate passes. Pin the exact delta (`DSD(DS_00101508) == 0x5678 + ceil(res_size(0)/RES_READ_BYTES_PER_TICK)`).
+
+---
+
 ### Task 5b: The fighter animation-pose fidelity
 
 Task 5 measured the arena's residual after the RLE-window fix: **22.2%** (42667 bytes) against capture 834, of which the raptor is 24709 and the T-rex 17741. The raptor's silhouette has **IoU 0.293** against the capture and **no translation improves it** (best shift `(1,0)`, IoU 0.298; a forced flip is worse), so it is a different animation frame, not a position or a flip. The T-rex's residual is 3-channel colour on an aligned silhouette (5352 of its 6363 differing pixels differ in all three channels, e.g. port `(81,16,60)` vs capture `(97,48,121)` at x=124 y=83). This is the animation/think state across `actors.c`/`fighter.c` plus the actor frame-timer path — a derivation, not a single pass.
@@ -602,6 +666,65 @@ git commit -m "fight: port the hitbox machine and the 0x3CF38 hit chain"
 ```
 
 **Gate for this task:** hitboxes arm, hits resolve, and the oracle's first-unexplained frame has advanced past the stall.
+
+---
+
+### Task 6b: The `+0x52` state machine — the chain's driver
+
+Task 6's machine and chain are landed and verified (the machine arms at loop frames 1076..1090), but the fight still stalls. **Correction (raw wins):** the originally-named `+0x52` chain (`0x193B0`→`0x3B714`→`0x3B298`→`0x1AB5C`→`0x1A7CC`) is **not** the driver — **none of the five writes `+0x52` to 0/3** (`0x1A7CC` writes `+0x52 = 6` at `0x1A8E2`), and the chain is **unreachable in the demo**: `0x3B755` requires `+0x5F != 0xFF` and the demo's slots are `0xFF` (Task 4's finding). Its closure is also **310 funcs / 43 KB**, materially larger than a task.
+
+**The real driver is the §7.8 `fight_hud_pass` gap** (`0x3531C`/`0x350D0`/`0x35803`), which calls the chain `0x3CF38` **directly** at `0x352A6` and `0x354BC` — two callers the earlier analysis omitted — and drives `+0x52` to 3 via `0x3BDDC` (`0x3520E`). Measured in dosbox-x: the original's `+0x52` cycles `0 → 0x0E → 9 → 0x10 → 0 → 5 → 3 …`, and hits land (`+0x7C` = 1/1 by t≈54.47 s).
+
+**Files:**
+- Modify: `port/src/game/fight.c` (the `fight_hud_pass` gap and the two direct chain callers)
+- Modify: `port/src/game/fighter.c` (the `+0x52`/`+0x53` writers the gap reaches)
+- Modify: `port/tests/test_fight.c`
+
+**Interfaces:**
+- Consumes: record §7.8 (the `fight_hud_pass` gap), §7.6/§7.12 (the refuted chain), §2/§3 (Task 6's machine and chain), the dosbox-x `+0x52` trace.
+- Produces: the chain firing on the demo's real route, hits landing, and the fight progressing.
+
+- [ ] **Step 1: Derive the gap's size and the two direct callers**
+
+Derive the `fight_hud_pass` gap's closure size (`0x3531C`/`0x350D0`/`0x35803` and the `0x38xxx`/`0x1DE64` deps the earlier report flagged as underived, 1078 B), the two direct `0x3CF38` callers (`0x352A6`/`0x354BC`), and how `+0x52` reaches 3. Cite the addresses. **If it is materially larger than a task, stop and report its size** — a re-scope conversation with the human, not a silent overrun.
+
+- [ ] **Step 2: Write the failing test**
+
+Assert the derived transitions with seeded sentinels — the exact `+0x52` inputs and expected transitions Step 1 pins. Seed sentinels that differ from the post-conditions.
+
+- [ ] **Step 3: Run the test to verify it fails**
+
+Run: `./build/run_tests`
+Expected: FAIL — `+0x52` does not return to 0/3.
+
+- [ ] **Step 4: Implement it**
+
+Port what Step 1 derived, one C function per original function with its address tag, into the owner Step 1 names. A value that cannot be pinned is a named gap with its evidence, never an invented one.
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `./build/run_tests`
+Expected: PASS, output pristine.
+
+- [ ] **Step 6: Prove the assertion can fail**
+
+Mutate the implementation and confirm the named assertion fails. Restore, and report the mutation with its command and output.
+
+- [ ] **Step 7: Re-measure the stall**
+
+Confirm the chain now fires and the fight progresses past ~430 frames (the point it previously froze). If it does not, return to the derivation — do not tune to match.
+
+- [ ] **Step 8: Full ladder and commit**
+
+Run: `make verify`
+Expected: exit 0, 0 warnings, every oracle claim unmoved (title `54/55/2/0` and `54/57/0`, attract `215`, front-end `0 unexplained`).
+
+```bash
+git add port/src/game/fighter.c port/tests/test_fight.c
+git commit -m "fight: drive the +0x52 state machine so the hit chain fires"
+```
+
+**Gate for this task:** `+0x52` returns to 0/3, the chain fires, and the fight progresses past the frame it previously froze.
 
 ---
 
