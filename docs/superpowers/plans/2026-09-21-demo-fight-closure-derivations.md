@@ -1439,6 +1439,43 @@ the copy is not; the ordering across the entry is flush/blackout → copy, and t
 retrace sync cannot separate the two candidates (the DAC state at the copy is
 simply the last `0x1C470`/`0x52106` write).
 
+**Task 5c — the loader's flush scope and the enqueue order (the presentation
+path's mechanism, a named gap).** Task 5c measured the state-6 entry again (the
+DOSBox-X live-RAM route of Task 5a, the data base recovered per run from
+`"RAGE.S16"`; polled every ~2 ms) and named the mechanism:
+
+* **Candidate (a) — the loader's flush scope/timing — is the mechanism.** The
+  original's loader flush (`0x1C470` via `0x1C65C`) drains only the `0x33734`
+  initial palette (`002a3470`, `flag=0`) and the `0x80997C` font palette
+  (`0080997c`, the loader text's own acquire); the arena's **4** palette records
+  (`flag=1`) are enqueued after it and **survive to the gate's `0x25672`
+  flush**, which drains them. The port's loader flush drains the arena's records
+  instead (`nrec=5`, the `0a838b44`/`0105ff3c`/`00809984`/`0080998c`/`0a838c60`
+  enqueues), so its gate flush is **empty** and its DAC already holds the arena
+  palette at the loader frame.
+* **Candidate (b) is refuted.** The port's `render_list` call is inside the gate
+  (`flow.c:1250`, `0x2566D`, matching the raw's `0x25643` gate → `0x2566D`
+  render → `0x25672` flush), and the original's render list is **non-empty**
+  (`2e7574`) at the gate-pass frame, so the render overwrites `E87A4` in both.
+* **The decisive byte comparison.** The port's `mem + DS_000E87A4` after the
+  state-6 loader draw is **byte-identical to capture 832** (diff 0, both 498
+  non-zero bytes / 166 px), but the gate's own `render_list` overwrites it
+  before `gfx_present`, so it is never exhibited.
+
+**The remaining work is a named gap.** Exposing the held frame needs the
+original's **non-atomic read** — the state-6 handler blocks in `0x1B3AC` for the
+whole ~1 s the poll shows (`150C` frozen at 3 while `1508` climbs 3→54), and the
+port's atomic read (`res.c` loads every payload at init) makes the gate always
+pass — plus the **palette enqueue order** (`palette_acquire`'s `start = prev
+.start + prev.len`, which fixes each palette's DAC range). Modelling the block
+needs either a host-timing value (forbidden) or a re-work of the read/gate model
+in `res.c`/`flow.c`; scoping the loader's flush would be unfaithful (the raw's
+`0x1C470` drains the whole list). That is a **subsystem, deliberately deferred by
+the human ruling** ("accept 831/832 as a documented named gap and move to Task
+6" is the open branch). The measurement lives in
+`.superpowers/sdd/2026-09-21-demo-fight-closure/task-5c-report.md` (that session
+reverted its traces and committed no code).
+
 ---
 
 ## 10. Provenance
