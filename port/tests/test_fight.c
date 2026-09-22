@@ -1434,17 +1434,296 @@ static void check_state_dispatch(void)
     CHECK_EQ_INT((int)DSB(p0 + 0x43u) & 0x01, 0x00);
 
     /* D: +0x52 == 3 (the demo's other entered state) must take its own handler
-     * 0x35D7C, which clears slot+0x53/+0x54; the default handler leaves them.
-     * Seeded 0xAA differs from the post-condition. */
+     * 0x35D7C, which clears slot+0x53/+0x54 and then, when the 0x3CF38 chain
+     * reports no hit (no armed hitbox), re-arms slot+0x54 = 2, slot+0x53 = 4.
+     * The default handler leaves them. Seeded 0xAA differs from both. */
+    mem_fill(0x00107D58u, 0, 0x180u);           /* no armed hitbox */
     DSB(p0 + 0x42u) = 0;
     DSB(p0 + 0x52u) = 3;
     DSB(p0 + 0x53u) = 0xAAu;
     DSB(p0 + 0x54u) = 0xAAu;
     DSW(DS_001088E0) = 0;
     fight_hud_pass(0u);
-    CHECK_EQ_INT((int)DSB(p0 + 0x53u), 0);
-    CHECK_EQ_INT((int)DSB(p0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSB(p0 + 0x53u), 4);      /* 0x35D7C's no-hit re-arm */
+    CHECK_EQ_INT((int)DSB(p0 + 0x54u), 2);
     CHECK_EQ_INT((int)DSB(p0 + 0x52u), 3);      /* 0x35D7C does not re-state */
+}
+
+/* ---- Task 6: the 0x3C88C hitbox machine and the 0x3CF38 hit chain --------
+ * The per-function fixtures are record §7.1-§7.5, §7.7-§7.9 and §7.11. The
+ * slot fields live at DS_001077B0 + off; the fighter record is a scratch
+ * address so a wrong slot/record base fails. */
+
+/* Zero both slots and the scratch records, make slot[0] live with `ch`, and
+ * seed the mode/command/reaction globals the chain reads. */
+static u32 hit_fixture(u32 ch)
+{
+    mem_fill(DS_001077B0, 0, 0x94u);
+    mem_fill(DS_001077B0 + 0x94u, 0, 0x94u);
+    mem_fill(0x00107D58u, 0, 0x180u);           /* the three per-slot arrays */
+    mem_fill(FIGHT_RECS, 0, 0x200u);
+    mem_fill(FIGHT_ACTORS, 0, 0x80u);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSD(DS_001077B0) = FIGHT_RECS;
+    DSD(DS_00107844) = FIGHT_RECS + 0x100u;
+    DSB(DS_001077B0 + 0x7Au) = (u8)ch;
+    DSB(DS_001077B0 + 0x63u) = 1;
+    DSB(DS_001077B0 + 0x5Fu) = 0xFFu;
+    DSD(DS_00104B00) = 3;
+    DSB(DS_001078FA) = 0;
+    DSW(DS_001088E0) = 0;
+    DSW(DS_001088E2) = 0;
+    DSB(DS_00100B5A) = 0;
+    DSB(DS_00100B5A + 1u) = 0;
+    DSB(DS_00100B5E) = 0;
+    DSB(DS_00100B5E + 1u) = 0;
+    DSB(DS_00107EE4) = 0;
+    DSD(DS_00107ED8) = 0;
+    DSD(DS_00107EDC) = 0;
+    return FIGHT_RECS;
+}
+
+/* §7.8 0x3C600: the per-attack-frame descriptor. */
+static void check_hit_frame_desc(void)
+{
+    u32 saved = DSD(DS_00101514);
+    u32 tab = FIGHT_RECS + 0x400u;
+
+    (void)hit_fixture(0);
+    CHECK_EQ_INT((int)hit_frame_desc(0u, 0u), 0x000BFE3C);
+
+    /* slot+0x63 clear: the controller selector. */
+    mem_fill(tab, 0, 0x300u);
+    DSD(DS_00101514) = tab;
+    DSB(DS_001077B0 + 0x63u) = 0;
+    DSW(tab + 0x2D4u) = 2;                  /* the sel-2 path */
+    CHECK_EQ_INT((int)hit_frame_desc(0u, 0u), (int)DSD(0x000C619Cu));
+    DSW(tab + 0x2D4u) = 0;                  /* the sel-0/4/6 path */
+    CHECK_EQ_INT((int)hit_frame_desc(0u, 0u), (int)DSD(0x000C6B9Cu));
+
+    DSD(DS_00101514) = saved;
+}
+
+/* §7.7 0x3C6A8: seed/clear a slot. */
+static void check_hit_slot_seed(void)
+{
+    (void)hit_fixture(0);
+    DSW(DS_00107D58) = 0x1234;
+    DSW(DS_00107E58) = 0x5678;
+    DSW(DS_00107DD8) = 0x9ABC;
+    hit_slot_seed(0u, 0u, 0u);
+    CHECK_EQ_INT((int)DSW(DS_00107D58), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107E58), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107DD8), 3);     /* frame 0's +0xC */
+}
+
+/* §7.9 0x3C88C: the phase-8 decrement and the clear. */
+static void check_hit_machine(void)
+{
+    (void)hit_fixture(0);
+    DSW(DS_00107D58) = 8;
+    DSW(DS_00107DD8) = 3;
+    hit_slot_step();
+    CHECK_EQ_INT((int)DSW(DS_00107DD8), 2);     /* decrement, still >= 1 */
+    CHECK_EQ_INT((int)DSW(DS_00107D58), 8);
+
+    (void)hit_fixture(0);
+    DSW(DS_00107D58) = 8;
+    DSW(DS_00107DD8) = 0;
+    hit_slot_step();
+    CHECK_EQ_INT((int)DSW(DS_00107D58), 0);     /* signed -1 < 1 clears */
+    CHECK_EQ_INT((int)DSW(DS_00107DD8), 3);     /* reloaded from frame 0 */
+
+    /* Phase 7 with a live stun runs the 2..7 block; the exact outcome is
+     * data-dependent (0x3C758/0x3C800 are §6.3), so no assertion here. */
+    (void)hit_fixture(0);
+    DSW(DS_00107D58) = 7;
+    DSW(DS_00107DD8) = 5;
+    hit_slot_step();
+}
+
+/* §7.2 0x3CD44 and §7.3 0x3CCEC: the armed scan and the stance test. */
+static void check_hit_scan_stance(void)
+{
+    (void)hit_fixture(0);
+    DSW(DS_00107D58 + 0x0Au) = 8;               /* index 5 */
+    CHECK_EQ_INT((int)hit_scan(0u), 5);
+    DSW(DS_00107D58 + 0x0Au) = 0;
+    CHECK_EQ_INT((int)hit_scan(0u), -1);
+
+    /* Entry 0: d = 0x01, e = 0x00. */
+    DSB(DS_001077B0 + 0x54u) = 0;
+    CHECK_EQ_INT(hit_stance_ok(0u, 0u), 1);     /* d, stance 0 */
+    DSB(DS_001077B0 + 0x54u) = 1;
+    CHECK_EQ_INT(hit_stance_ok(0u, 0u), 1);     /* d, stance 1 */
+    DSB(DS_001077B0 + 0x54u) = 2;
+    CHECK_EQ_INT(hit_stance_ok(0u, 0u), 0);     /* e = 0 at stance 2 */
+    {
+        u8 saved = DSB(0x000C61A3u);
+        DSB(0x000C61A3u) = 1;                   /* seed the e flag */
+        CHECK_EQ_INT(hit_stance_ok(0u, 0u), 1);
+        DSB(0x000C61A3u) = saved;
+    }
+}
+
+/* §7.5 0x3CD94 and §7.11 0x3CE24: the immunity bitmask and its gate. */
+static void check_hit_immunity_gate(void)
+{
+    (void)hit_fixture(0);
+    DSB(DS_001077B0 + 0x5Fu) = 0xFFu;
+    CHECK_EQ_INT(hit_immunity(0u, 0u), 1);      /* the 0xFF early-out */
+
+    DSB(DS_001077B0 + 0x5Fu) = 0;               /* row 0, c = 0x20 */
+    CHECK_EQ_INT(hit_immunity(0u, 0u), 1);
+    DSB(DS_001077B0 + 0x5Fu) = 0x0F;            /* row 0x0F is row 0's twin */
+    CHECK_EQ_INT(hit_immunity(0u, 0u), 1);
+    DSB(DS_001077B0 + 0x5Fu) = 0x20;            /* rows 0x20.. are zero */
+    CHECK_EQ_INT(hit_immunity(0u, 0u), 0);
+
+    /* The 0x3CE24 gate: the signed byte slot+0x56 <= 5. */
+    DSB(DS_001077B0 + 0x5Fu) = 0xFFu;
+    DSB(DS_001077B0 + 0x56u) = 6;
+    CHECK_EQ_INT(hit_gate(0u, 0u), 0);
+    DSB(DS_001077B0 + 0x56u) = 0;
+    CHECK_EQ_INT(hit_gate(0u, 0u), 1);
+}
+
+/* §7.11 0x4CE70, 0x3CBC4, 0x3CC58, 0x34D8C: the allow-list, the reaction
+ * variants and the palette-flash pair. */
+static void check_hit_reactions(void)
+{
+    (void)hit_fixture(0);
+    CHECK_EQ_INT(hit_reaction_allow(0u, 0x20u), 1);
+    CHECK_EQ_INT(hit_reaction_allow(0u, 0x28u), 0);
+
+    DSB(DS_001077B0 + 0x54u) = 2;
+    CHECK_EQ_INT(hit_reaction_a(0u), 0x16);
+    CHECK_EQ_INT(hit_reaction_b(0u), 0x17);
+    DSB(DS_001077B0 + 0x54u) = 0;
+    DSW(DS_001088E0) = 0x4000;
+    CHECK_EQ_INT(hit_reaction_a(0u), 0x14);
+    CHECK_EQ_INT(hit_reaction_b(0u), 0x15);
+
+    DSB(DS_001078FA) = 2;
+    DSB(DS_001077B0 + 0x59u) = 0x55;
+    DSB(DS_001077B0 + 0x94u + 0x59u) = 0x55;
+    hit_flash_pair(0u);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x59u), 1);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x59u), 0xFF);
+
+    DSB(DS_001078FA) = 1;
+    DSB(DS_001077B0 + 0x59u) = 0x55;
+    DSB(DS_001077B0 + 0x94u + 0x59u) = 0x55;
+    hit_flash_pair(0u);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x59u), 0x55);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x59u), 0x55);
+}
+
+/* §7.4 0x3CE58: the validate-and-drive. Input A drives the reaction; Input B
+ * fails the 0x3CE24 gate; Input C takes the +0x52 = 9 arm via reaction 0. */
+static void check_hit_reaction_drive(void)
+{
+    u16 saved_react = DSW(0x000C619Cu + 4u);
+
+    (void)hit_fixture(0);
+    DSB(DS_001077B0 + 0x7Cu) = 0;
+    DSW(DS_00107D58) = 8;
+    DSW(DS_001077B0 + 0x84u) = 0x10;
+    CHECK_EQ_INT(hit_reaction_drive(0u, 0u), 1);
+    CHECK_EQ_INT((int)DSW(DS_001077B0 + 0x84u), 0x11);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x5Fu), 0x20);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x52u), 0);
+
+    (void)hit_fixture(0);
+    DSB(DS_001077B0 + 0x56u) = 6;               /* the gate rejects */
+    CHECK_EQ_INT(hit_reaction_drive(0u, 0u), 0);
+
+    (void)hit_fixture(0);
+    DSB(DS_001077B0 + 0x52u) = 0x55;            /* seeded, must move to 9 */
+    DSW(DS_001077B0 + 0x6Au) = 0x40;
+    DSW(0x000C619Cu + 4u) = 0;                  /* reaction 0: stream != 0 */
+    CHECK_EQ_INT(hit_reaction_drive(0u, 0u), 1);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x53u), 8);
+    CHECK_EQ_INT((int)DSW(DS_001077B0 + 0x6Au), 0x41);
+    DSW(0x000C619Cu + 4u) = saved_react;
+}
+
+/* §7.1 0x3CF38: a resolved hit consumes the hitbox and drives the reaction. */
+static void check_hit_chain(void)
+{
+    (void)hit_fixture(0);
+    DSW(DS_00107D58) = 8;                       /* armed hitbox 0 */
+    DSB(DS_001077B0 + 0x7Cu) = 0;
+    CHECK_EQ_INT(hit_chain_resolve(0u), 1);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x55u), 0);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x5Fu), 0x20);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x7Cu), 1);
+    CHECK_EQ_INT((int)DSW(DS_00107D58), 0);     /* consumed */
+
+    /* No armed hitbox: the raw returns at 0x3CF5E without touching +0x55. */
+    (void)hit_fixture(0);
+    DSW(DS_00107D58) = 7;
+    DSB(DS_001077B0 + 0x55u) = 0x11;
+    DSB(DS_001077B0 + 0x7Cu) = 0x40;
+    CHECK_EQ_INT(hit_chain_resolve(0u), 0);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x55u), 0x11);  /* untouched */
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x7Cu), 0x40);
+
+    /* Armed but the reaction gate fails: the else path resets +0x5F/+0x55. */
+    (void)hit_fixture(0);
+    DSW(DS_00107D58) = 8;
+    DSB(DS_001077B0 + 0x56u) = 6;
+    DSB(DS_001077B0 + 0x55u) = 0x11;
+    DSB(DS_001077B0 + 0x7Cu) = 0x40;
+    CHECK_EQ_INT(hit_chain_resolve(0u), 0);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x5Fu), 0xFF);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x55u), 0xFF);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x7Cu), 0x40);
+}
+
+/* §7.11 0x339AC, 0x188AC, 0x188DC, 0x1890C, 0x32BAC. */
+static void check_hit_helpers(void)
+{
+    u32 out[6];
+    u32 rec = hit_fixture(0), p1 = FIGHT_RECS + 0x100u;
+
+    /* 0x339AC: rec+0x51 selects the slot pair. */
+    DSB(rec + 0x51u) = 1;
+    hit_anim_ctx(out, rec);
+    CHECK_EQ_INT((int)out[0], 1);
+    CHECK_EQ_INT((int)out[1], 0);
+    CHECK_EQ_INT((int)out[2], (int)(DS_001077B0 + 0x94u));
+    CHECK_EQ_INT((int)out[3], (int)DS_001077B0);
+    CHECK_EQ_INT((int)out[4], (int)p1);
+    CHECK_EQ_INT((int)out[5], (int)rec);
+
+    /* 0x188AC: write the record's +0x18/+0x1C. */
+    hit_anchor_set(0u, 0x1111u, 0x2222u);
+    CHECK_EQ_INT((int)DSD(rec + 0x18u), 0x1111);
+    CHECK_EQ_INT((int)DSD(rec + 0x1Cu), 0x2222);
+
+    /* 0x188DC: slot+0x2C = x; the 0x18714 tail's clean arm is a self-write. */
+    DSB(DS_001077B0 + 0x42u) = 0x08u;
+    DSD(DS_001077B0 + 0x2Cu) = 0xAAu;
+    hit_anchor_x(0u, 0x3333u);
+    CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x2Cu), 0x3333);
+
+    /* 0x1890C: rec+0x1C += (y - slot+0x30) after a latch. */
+    DSB(DS_001077B0 + 0x42u) = 0x08u;
+    DSB(DS_001077B0 + 0x41u) = 0;
+    DSD(rec + 0x18u) = 0xAAu;
+    DSD(rec + 0x1Cu) = 0x100u;
+    hit_anchor_y(0u, 0x60u);
+    CHECK_EQ_INT((int)DSD(rec + 0x1Cu), 0x60);
+
+    /* 0x32BAC: the raw entry is a one-byte RET (record correction, raw wins);
+     * the port's hit_sound has no observable effect. */
+    DSD(DS_001077B0) = 0xDEADBEEFu;
+    DSB(DS_001077B0 + 0x7Cu) = 0x5A;
+    hit_sound(0u);
+    CHECK_EQ_INT((int)DSD(DS_001077B0), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x7Cu), 0x5A);
 }
 
 int test_fight(void)
@@ -1508,6 +1787,15 @@ int test_fight(void)
     check_scene_props();
     check_command_generator();
     check_state_dispatch();
+    check_hit_frame_desc();
+    check_hit_slot_seed();
+    check_hit_machine();
+    check_hit_scan_stance();
+    check_hit_immunity_gate();
+    check_hit_reactions();
+    check_hit_reaction_drive();
+    check_hit_chain();
+    check_hit_helpers();
 
     put(s_f0ae0, 0x000F0AE0u, 0x20u);
     put(s_proj, 0x00100A70u, 0xF4u);

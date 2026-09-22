@@ -301,12 +301,14 @@ static void fight_slot_pass(void)
 {
     /* 0x3CB6B saves DS_00107ED8 and 0x3CB71 zeroes DS_00107EDC; the outer loop
      * increments DS_00107EDC to 2 and the inner runs 0x20 times per side. */
+    DSD(DS_00107EDC) = 0;                       /* 0x3CB71 */
     for (u32 side = 0; side < 2u; side++) {
         DSB(DS_00107EE4) = (u8)fighter_actor_bit15_clear(side);   /* 0x3CB89 */
         for (u32 i = 0; i < 0x20u; i++) {
-            /* PORT: 0x3CB96 0x3C88C — the 64-call slot/draw helper is a named
-             * gap (§7.7); it reads DS_00107ED8/DC/E4, which the port keeps. */
+            DSD(DS_00107ED8) = i;               /* 0x3CB96 */
+            hit_slot_step();                    /* 0x3CB9B 0x3C88C */
         }
+        DSD(DS_00107EDC) = side + 1u;           /* 0x3CBA8 */
     }
     DSD(DS_00107EDC) = 2;                       /* 0x3CBAE */
     DSD(DS_00107ED8) = 0x20u;                   /* 0x3CBB9 */

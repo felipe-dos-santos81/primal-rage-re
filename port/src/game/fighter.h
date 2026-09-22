@@ -99,9 +99,21 @@ void fighter_state_default(u32 side);
  * per slot+0x54. Called by 0x349C8, 0x35838 and the 0x34B6C position branch. */
 int fighter_state_36638(u32 slot, u32 rec);
 
-/* 0x35D7C. The +0x52 == 3 handler: clear slot+0x53/+0x54, then (behind the
- * unported 0x3CF38 hit check, a named gap) arm slot+0x54 = 2, slot+0x53 = 4. */
+/* 0x35D7C. The +0x52 == 3 handler: clear slot+0x53/+0x54, then, when the
+ * 0x3CF38 hit chain reports no hit, arm slot+0x54 = 2, slot+0x53 = 4. */
 void fighter_state_35d7c(u32 side);
+
+/* 0x3C88C. The per-slot attack-frame state machine fight_slot_pass runs 2 x 32
+ * times per arena frame. Reads DS_00107ED8 (slot index), DS_00107EDC (side) and
+ * DS_00107EE4 (facing); phase 0 arms the hitbox (word[0x107D58 + side*0x40 +
+ * i*2] = 8) and phases 2..8 decrement/advance it. 0x3C758's return semantics and
+ * the 0x3C800 displacement are transcribed, not unit-pinned (§6.3). */
+void hit_slot_step(void);
+
+/* 0x3CF38. The hit chain for `side`: scan the armed hitboxes, validate against
+ * the target's stance and hit-stun, drive the reaction and consume the hitbox.
+ * Returns 1 on a resolved hit, 0 otherwise. RNG-free (§3.8). */
+int hit_chain_resolve(u32 side);
 
 /* 0x3BDDC. The attack/command consumer the mapper's 0x8000 arm calls behind
  * 0x3BDB0. Reads the side's command word DS_001088E0/E2; when bit 15 is set it
@@ -111,5 +123,26 @@ void fighter_state_35d7c(u32 side);
  * 0 when the slot's +0x40 bit 7 or the command's bit 15 rejects. Its 0x3CF38
  * gate and 0x3C480 continuation are named gaps (§7.6/§7.16). */
 int fighter_attack_consume(u32 side);
+
+/* The machine's and chain's per-function fixtures (record §7.1-§7.5, §7.7-§7.9
+ * and §7.11) exercise these directly. */
+u32  hit_frame_desc(u32 side, u32 i);                 /* 0x3C600 */
+void hit_slot_seed(u32 side, u32 value, u32 i);       /* 0x3C6A8 */
+s32  hit_scan(u32 side);                              /* 0x3CD44 */
+int  hit_stance_ok(u32 side, u32 i);                  /* 0x3CCEC */
+int  hit_reaction_drive(u32 side, u32 i);             /* 0x3CE58 */
+int  hit_gate(u32 side, u32 i);                       /* 0x3CE24 */
+int  hit_immunity(u32 side, u32 i);                   /* 0x3CD94 */
+u16  hit_reaction_a(u32 side);                        /* 0x3CBC4 */
+u16  hit_reaction_b(u32 side);                        /* 0x3CC58 */
+void hit_flash_pair(u32 side);                        /* 0x34D8C */
+void hit_reaction_apply(u32 side, u32 reaction);      /* 0x34E2C */
+void hit_anim_ctx(u32 out[6], u32 rec);               /* 0x339AC */
+int  hit_reaction_allow(u32 side, u32 reaction);      /* 0x4CE70 */
+int  hit_geometry(u32 side, u32 table, u32 idx);      /* 0x1DDF4 */
+void hit_anchor_set(u32 side, u32 x, u32 y);          /* 0x188AC */
+void hit_anchor_x(u32 side, u32 x);                   /* 0x188DC */
+void hit_anchor_y(u32 side, u32 y);                   /* 0x1890C */
+void hit_sound(u32 ch);                               /* 0x32BAC */
 
 #endif /* PRAGE_GAME_FIGHTER_H */

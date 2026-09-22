@@ -334,7 +334,7 @@ void fighter_pass_b(u32 arg)
             DSB(DS_00100B5E + side) = ch;
             if ((s8)ch > 0) {
                 DSB(slot + 0x56u) = 0;              /* 0x190E1 */
-                /* PORT: 0x190E7 0x3CF38(side) — named gap (§7.6). */
+                (void)hit_chain_resolve(side);      /* 0x190E7 0x3CF38 */
             } else {
                 DSB(DS_00100B5E + side) = 0;        /* 0x190F0 */
             }
@@ -1294,18 +1294,17 @@ void fighter_state_default(u32 side)
 }
 
 /* 0x35D7C. The +0x52 == 3 handler. It clears the slot's +0x53/+0x54, then,
- * when 0x3CF38 reports no hit, arms slot+0x54 = 2 and slot+0x53 = 4. 0x3CF38 is
- * the hit-detection chain (0x3CD44/0x3CE58/0x3C6A8/0x32BAC) already a named gap
- * (§7.6), so the conditional arm is declared, not issued: the port keeps the
- * unconditional clears. */
+ * when 0x3CF38 reports no hit, arms slot+0x54 = 2 and slot+0x53 = 4. */
 void fighter_state_35d7c(u32 side)
 {
     u32 slot = DSD(DS_001077A8 + side * 4u);            /* 0x35DF1 */
     if (slot == 0u) return;
     DSB(slot + 0x54u) = 0;                              /* 0x35DDA */
     DSB(slot + 0x53u) = 0;                              /* 0x35DDE */
-    /* PORT: 0x35DE8 0x3CF38(side) and its 0x35DF5 arm (slot+0x54 = 2,
-     * slot+0x53 = 4) are named gaps (§7.6/§11.5). */
+    if (hit_chain_resolve(side) == 0) {                 /* 0x35DE8 0x3CF38 */
+        DSB(slot + 0x54u) = 2u;                         /* 0x35DF5 */
+        DSB(slot + 0x53u) = 4u;
+    }
 }
 
 /* 0x3BDDC. The attack/command consumer. When the slot's +0x40 bit 7 is clear
@@ -1332,8 +1331,7 @@ int fighter_attack_consume(u32 side)
     DSB(self + 0x5Fu) = 0xFFu;                          /* 0x3BE43 */
 
     if (DSB(DS_00107803 + side * 0x94u) == 0) {
-        /* PORT: 0x3BE61 0x3CF38(side) — named gap (§7.6); the raw returns 1
-         * before the continuation when it is non-zero. */
+        if (hit_chain_resolve(side) != 0) return 1;     /* 0x3BE61 0x3CF38 */
     }
 
     u32 base = fighter_input_scan(side, 0, 5, 0x4000u) ? 0xBEF64u
@@ -1354,4 +1352,573 @@ int fighter_attack_consume(u32 side)
         DSW(DS_001077FE + side * 0x94u) = 0;            /* 0x3BF51 */
     }
     return 1;                                           /* 0x3BF57 */
+}
+
+/* ---- the 0x3C88C hitbox machine and the 0x3CF38 hit chain ----------------
+ * 0x3C88C is the per-slot attack-frame state machine that arms the hitboxes;
+ * 0x3CF38 scans them, validates the hit against the target's stance and
+ * hit-stun, drives the reaction and consumes the hitbox. Addresses, table
+ * layouts, gates and the pinned fixtures are from
+ * docs/superpowers/plans/2026-09-21-demo-fight-closure-derivations.md
+ * §2, §3, §7.1-§7.5, §7.7-§7.9 and §7.11. */
+
+/* Data-object addresses the generator emits no symbols.h name for. */
+#define HIT_TABLE_PLAYER 0x000C619Cu  /* 0xC619C: {u32 frame; u16 reaction; u8 d; u8 e} */
+#define HIT_TABLE_CPU    0x000C6B9Cu  /* 0xC6B9C: the CPU-controller variant */
+#define HIT_IMMUNE_MASK  0x000A182Cu  /* 0xA182C: 64 rows x 8 bytes per character */
+#define HIT_GEOM_TABLE   0x000A7A70u  /* 0xA7A70: 0x1DDF4's per-character threshold */
+#define HIT_GEOM_TABLE2  0x000A7B44u  /* 0xA7B44: 0x1DDF4's per-character table pointer */
+
+/* 0x3C600. The per-attack-frame descriptor for (side, i). `sel` is 2 whenever
+ * slot+0x63 != 0 (always in the demo), so the player table 0xC619C is read. */
+u32 hit_frame_desc(u32 side, u32 i)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    u32 sel;
+    if (DSB(slot + 0x63u) != 0u) {
+        sel = 2u;
+    } else if (side == 0u) {
+        sel = (u32)DSW(DSD(DS_00101514) + 0x2D4u);
+    } else {
+        sel = (u32)DSW(DSD(DS_00101514) + 0x2D6u);
+    }
+    {
+        u32 entry = (u32)DSB(slot + 0x7Au) * 0x20u + i;
+        switch (sel) {
+        case 0u: case 4u: case 6u: return DSD(HIT_TABLE_CPU + entry * 8u);
+        case 2u:                   return DSD(HIT_TABLE_PLAYER + entry * 8u);
+        default:                   return 0u;
+        /* PORT: 0x3C6A0 the raw's default returns the caller's ECX; unreachable
+         * while slot+0x63 != 0 (the demo), so the port returns 0. */
+        }
+    }
+}
+
+/* 0x3C6A8. Seed/clear slot (side, i): phase = value, the displacement
+ * accumulator = 0, and the stun countdown = the frame's word at +0xC. */
+void hit_slot_seed(u32 side, u32 value, u32 i)
+{
+    u32 desc = hit_frame_desc(side, i);
+    u32 off = side * 0x40u + i * 2u;
+    DSW(DS_00107D58 + off) = (u16)value;
+    DSW(DS_00107E58 + off) = 0;
+    DSW(DS_00107DD8 + off) = DSW(desc + 0xCu + value * 0x14u);
+}
+
+/* 0x3C758. The connect/input test. `facing` is the raw's EDX (DS_00107EE4);
+ * `*out` accumulates the command bits the frame's first word maps to. Returns
+ * 2 (the third word overlaps the command), 1 (the second word, or no
+ * accumulation), 0 (the accumulated mask equals the first word) or 3 (partial
+ * overlap). §6.3: transcribed, not unit-pinned. */
+static u32 hit_connect(u32 side, u32 facing, u32 i, u16 *out)
+{
+    u32 desc = hit_frame_desc(side, i);
+    u32 off = side * 0x40u + i * 2u;
+    u32 phase = (u32)DSW(DS_00107D58 + off);
+    u16 m0 = fighter_cmd_facing(facing, DSD(desc + phase * 0x14u));
+    u16 m1 = fighter_cmd_facing(facing, DSD(desc + phase * 0x14u + 4u));
+    u16 m2 = fighter_cmd_facing(facing, DSD(desc + phase * 0x14u + 8u));
+    u16 cmd = DSW(DS_001088E0 + side * 2u);
+    if ((cmd & m2) != 0u) return 2u;
+    if ((cmd & m1) != 0u) return 1u;
+    {
+        u32 acc = (u32)*out | (u32)(cmd & m0);
+        *out = (u16)acc;
+        if ((u32)m0 == acc) return 0u;
+        if (((u32)m0 & acc) != 0u) return 3u;
+    }
+    return 1u;
+}
+
+/* 0x3C800. The displacement test. On a command overlap with the mapped word at
+ * descriptor+phase*0x14+0x10 it returns 1 and writes the frame's displacement
+ * (the high word of the dword at +0x0A, i.e. the word at +0x0C). §6.3. */
+static u32 hit_displace(u32 side, u32 facing, u32 i, u16 *out)
+{
+    u32 desc = hit_frame_desc(side, i);
+    u32 off = side * 0x40u + i * 2u;
+    u32 phase = (u32)DSW(DS_00107D58 + off);
+    u16 m = fighter_cmd_facing(facing, DSD(desc + phase * 0x14u + 0x10u));
+    if ((DSW(DS_001088E0 + side * 2u) & m) == 0u) return 0u;
+    *out = (u16)(DSD(desc + phase * 0x14u + 0xAu) >> 16);
+    return 1u;
+}
+
+/* 0x3C88C. The per-slot attack-frame state machine. */
+void hit_slot_step(void)
+{
+    u32 i = DSD(DS_00107ED8);
+    u32 side = DSD(DS_00107EDC);
+    u32 facing = (u32)DSB(DS_00107EE4);
+    u32 off = side * 0x40u + i * 2u;
+    u32 desc = hit_frame_desc(side, i);
+    s32 phase = (s16)DSW(DS_00107D58 + off);
+    u16 out;
+
+    if (desc == 0u) {                                   /* 0x3C8C5 */
+        hit_slot_seed(side, 0u, i);
+        return;
+    }
+    if (phase < 0 || phase > 8) {                       /* 0x3C8E5 */
+        hit_slot_seed(side, 0u, i);
+        return;
+    }
+    if (phase == 8) {                                   /* 0x3C8F9 */
+        DSW(DS_00107DD8 + off) = (u16)(DSW(DS_00107DD8 + off) - 1u);
+        if ((s16)DSW(DS_00107DD8 + off) >= 1) return;    /* 0x3C909 */
+        hit_slot_seed(side, 0u, i);                      /* 0x3C912 */
+        return;
+    }
+    if (phase == 0) {                                    /* 0x3C92D */
+        out = 0;
+        if (hit_connect(side, facing, i, &out) == 0u)
+            hit_slot_seed(side, 1u, i);                  /* 0x3C96A */
+        {
+            s32 ph = (s16)DSW(DS_00107D58 + off);
+            if (DSD(desc + (u32)ph * 0x14u) == 0u
+                    && DSW(DS_00107D58 + off) != 0u)
+                DSW(DS_00107D58 + off) = 8u;             /* 0x3C9A3 ARM */
+        }
+        return;                                          /* 0x3C9EC: phase < 2 */
+    }
+    if (phase == 1) {                                    /* 0x3C9AE */
+        out = 0;
+        if (hit_connect(side, facing, i, &out) != 0u)
+            hit_slot_seed(side, 2u, i);                  /* 0x3C9E7 */
+        return;                                          /* 0x3C9EC: phase < 2 */
+    }
+    /* phases 2..7 */                                    /* 0x3C9EC */
+    DSW(DS_00107DD8 + off) = (u16)(DSW(DS_00107DD8 + off) - 1u);
+    if ((s16)DSW(DS_00107DD8 + off) < 1) {               /* 0x3CA1E */
+        hit_slot_seed(side, 0u, i);                      /* 0x3CA30 */
+        phase = (s16)DSW(DS_00107D58 + off);             /* 0x3CA43 reload */
+    }
+    out = DSW(DS_00107E58 + off);                        /* 0x3CA61 */
+    if (phase >= 2 && phase < 8) {                       /* 0x3CA6B */
+        u16 disp = 0;
+        if (hit_displace(side, facing, i, &disp) != 0u)  /* 0x3CA94 */
+            DSW(DS_00107DD8 + off) = disp;               /* 0x3CAB3 */
+    }
+    {
+        u16 acc = out;
+        switch (hit_connect(side, facing, i, &acc)) {    /* 0x3CAD2 */
+        case 0u: {                                       /* 0x3CAE8 advance */
+            hit_slot_seed(side, (u32)phase + 1u, i);
+            {
+                s32 ph = (s16)DSW(DS_00107D58 + off);
+                if (DSD(desc + (u32)ph * 0x14u) == 0u
+                        && DSW(DS_00107D58 + off) != 0u)
+                    DSW(DS_00107D58 + off) = 8u;         /* 0x3CB2F ARM */
+            }
+            break;
+        }
+        case 2u:                                         /* 0x3C912 */
+            hit_slot_seed(side, 0u, i);
+            break;
+        case 3u:                                         /* 0x3CB41 */
+            DSW(DS_00107E58 + off) = acc;
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+/* 0x3CCEC. 1 when the hitbox is valid against the target's stance: the
+ * descriptor's `e` flag (byte +7) for stance 2, `d` (byte +6) for stance 0/1. */
+int hit_stance_ok(u32 side, u32 i)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    u32 entry = (u32)DSB(slot + 0x7Au) * 0x20u + i;
+    u8 e = DSB(HIT_TABLE_PLAYER + entry * 8u + 7u);
+    u8 d = DSB(HIT_TABLE_PLAYER + entry * 8u + 6u);
+    u8 st = DSB(slot + 0x54u);
+    if (e != 0u && st == 2u) return 1;
+    if (d != 0u && (st == 1u || st == 0u)) return 1;
+    return 0;
+}
+
+/* 0x3CD44. The armed-hitbox scan: the first slot whose phase is 8 and whose
+ * stance is valid, or -1. */
+s32 hit_scan(u32 side)
+{
+    for (u32 i = 0; i < 0x20u; i++) {
+        if ((s16)DSW(DS_00107D58 + side * 0x40u + i * 2u) == 8
+                && hit_stance_ok(side, i))
+            return (s32)i;
+    }
+    return -1;
+}
+
+/* 0x3CD94. The hit-stun immunity bitmask: a fresh reaction 0xFF is immune (1);
+ * a reaction 0..0x3F is immune only when the per-character mask's bit for the
+ * candidate reaction is set. */
+int hit_immunity(u32 side, u32 i)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    u8 r = DSB(slot + 0x5Fu);
+    if (r == 0xFFu) return 1;
+    if (r >= 0x40u) return 0;
+    {
+        u32 ch = (u32)DSB(slot + 0x7Au);
+        u32 entry = ch * 0x20u + i;
+        s32 c = (s16)DSW(HIT_TABLE_PLAYER + entry * 8u + 4u);
+        u32 base = HIT_IMMUNE_MASK + ch * 0x200u + (u32)r * 8u;
+        if (c < 0x20) return (int)((DSD(base) >> ((u32)c & 0x1Fu)) & 1u);
+        return (int)((DSD(base + 4u) >> (((u32)c - 0x20u) & 0x1Fu)) & 1u);
+    }
+}
+
+/* 0x3CE24. The stance/hit-stun gate: the signed byte slot+0x56 (the high byte
+ * of the dword at slot+0x53) <= 5 and 0x3CD94 != 0. */
+int hit_gate(u32 side, u32 i)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    if ((s8)DSB(slot + 0x56u) >= 6) return 0;
+    return hit_immunity(side, i) != 0;
+}
+
+/* 0x4CE70. The per-character reaction allow-list: 1 unless `reaction` is one of
+ * the character's blocked ids. */
+int hit_reaction_allow(u32 side, u32 reaction)
+{
+    u32 ch = (u32)DSB(DS_001077B0 + side * 0x94u + 0x7Au);
+    if (ch < 7u) {
+        switch (ch) {
+        case 0u:
+            if (reaction == 0x28u || reaction == 0x29u
+                    || reaction == 0x2Au || reaction == 0x2Cu) return 0;
+            break;
+        case 1u:
+            if (reaction == 0x22u || reaction == 0x23u
+                    || reaction == 0x24u) return 0;
+            break;
+        case 2u:
+            if (reaction == 0x22u || reaction == 0x24u
+                    || reaction == 0x26u || reaction == 0x27u) return 0;
+            break;
+        case 3u:
+            if (reaction == 0x22u || reaction == 0x23u) return 0;
+            break;
+        case 4u:
+            if (reaction == 0x24u || reaction == 0x26u) return 0;
+            break;
+        case 5u:
+            if (reaction == 0x21u || reaction == 0x22u) return 0;
+            break;
+        case 6u:
+            if (reaction == 0x21u || reaction == 0x24u) return 0;
+            break;
+        }
+    }
+    return 1;
+}
+
+/* 0x1881C. The two slots latched, then slot0+0x30 - slot1+0x30. */
+static s32 hit_vert_distance(void)
+{
+    fighter_slot_latch(0u);                             /* 0x18820 */
+    fighter_slot_latch(1u);                             /* 0x18828 */
+    return (s32)DSD(DS_001077E0) - (s32)DSD(DS_001077E0 + 0x94u);
+}
+
+/* 0x1DDF4. The attacker/defender geometry test: |0x187FC| <= threshold1 and
+ * |0x1881C| <= threshold2, the thresholds being the two per-character byte
+ * tables shifted left 6. `side` is the raw's EAX (the attacker's opposite);
+ * `table` is 0xA7B44[char(side)] and `idx` is 0xA7A70. §6.7. */
+int hit_geometry(u32 side, u32 table, u32 idx)
+{
+    u32 ch = (u32)DSB(DS_001077B0 + side * 0x94u + 0x7Au);
+    u32 thr1 = (u32)DSB(table + ch) << 6;
+    u32 thr2 = (u32)DSB(idx + ch) << 6;
+    s32 d1 = ai_distance();
+    if (d1 < 0) d1 = -d1;
+    if (d1 > (s32)thr1) return 0;
+    {
+        s32 d2 = hit_vert_distance();
+        if (d2 < 0) d2 = -d2;
+        if (d2 > (s32)thr2) return 0;
+    }
+    return 1;
+}
+
+/* 0x3CBC4. Reaction variant A: 0x16 crouching, 0x14 on command bit 0x4000,
+ * 0x12/0x10 from 0x1DDF4. The 0x33950 call only supplies the register
+ * leftovers 0x1DDF4 reads (ctx[2] = &slot[side] for the character byte). */
+u16 hit_reaction_a(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    if (DSB(slot + 0x54u) == 2u) return 0x16u;
+    if ((DSW(DS_001088E0 + side * 2u) & 0x4000u) != 0u) return 0x14u;
+    if (hit_geometry(1u - side,
+                     DSD(HIT_GEOM_TABLE2 + (u32)DSB(slot + 0x7Au) * 4u),
+                     HIT_GEOM_TABLE))
+        return 0x12u;
+    return 0x10u;
+}
+
+/* 0x3CC58. Reaction variant B: the same shape with 0x17/0x15/0x13/0x11. */
+u16 hit_reaction_b(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    if (DSB(slot + 0x54u) == 2u) return 0x17u;
+    if ((DSW(DS_001088E0 + side * 2u) & 0x4000u) != 0u) return 0x15u;
+    if (hit_geometry(1u - side,
+                     DSD(HIT_GEOM_TABLE2 + (u32)DSB(slot + 0x7Au) * 4u),
+                     HIT_GEOM_TABLE))
+        return 0x13u;
+    return 0x11u;
+}
+
+/* 0x34D8C. The +0x59 palette-flash pair, only when DS_001078FA == 2. */
+void hit_flash_pair(u32 side)
+{
+    if (DSB(DS_001078FA) != 2u) return;
+    DSB(DS_001077B0 + side * 0x94u + 0x59u) = 1u;
+    DSB(DS_001077B0 + (1u - side) * 0x94u + 0x59u) = 0xFFu;
+}
+
+/* 0x339AC. The ctx builder from a record: out[0]=rec+0x51, out[1]=1-out[0],
+ * out[2]=&slot[out[0]], out[3]=&slot[out[1]], out[4]=*out[2], out[5]=*out[3]. */
+void hit_anim_ctx(u32 out[6], u32 rec)
+{
+    u32 s = (u32)DSB(rec + 0x51u);
+    out[0] = s;
+    out[1] = 1u - s;
+    out[2] = DS_001077B0 + s * 0x94u;
+    out[3] = DS_001077B0 + (1u - s) * 0x94u;
+    out[4] = DSD(out[2]);
+    out[5] = DSD(out[3]);
+}
+
+/* 0x188AC. Write the record's +0x18/+0x1C and re-latch the slot. */
+void hit_anchor_set(u32 side, u32 x, u32 y)
+{
+    u32 rec = DSD(DS_001077B0 + side * 0x94u);
+    DSD(rec + 0x18u) = x;
+    DSD(rec + 0x1Cu) = y;
+    fighter_slot_latch(side);                           /* 0x188D2 */
+}
+
+/* 0x18714. The record-x the 0x188DC tail writes: slot+0x42 bit 3 set takes the
+ * record's +0x18; otherwise slot+0x2C minus DS_00100AB0[side]. */
+static u32 hit_record_x(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    if ((DSB(slot + 0x42u) & 0x08u) != 0u)
+        return DSD(DSD(slot) + 0x18u);                  /* 0x18738 */
+    /* PORT: 0x1873F 0x18540(side) and 0x1875F 0x18350(side, anchor) — the
+     * screen-anchor path is the same named gap as fighter_slot_latch's (§6.3);
+     * the raw's final `slot+0x2C - DS_00100AB0[side]` is kept. */
+    return DSD(slot + 0x2Cu) - DSD(DS_00100AB0 + side * 8u);
+}
+
+/* 0x188DC. Set slot+0x2C to x, then write the record's +0x18 from 0x18714. */
+void hit_anchor_x(u32 side, u32 x)
+{
+    DSD(DS_001077B0 + side * 0x94u + 0x2Cu) = x;        /* 0x188F2 */
+    DSD(DSD(DS_001077B0 + side * 0x94u) + 0x18u) = hit_record_x(side);
+}
+
+/* 0x1890C. Re-latch, then rec+0x1C += (y - slot+0x30), then re-latch. */
+void hit_anchor_y(u32 side, u32 y)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    u32 rec;
+    fighter_slot_latch(side);                           /* 0x18916 */
+    rec = DSD(slot);
+    DSD(rec + 0x1Cu) = (u32)((s32)DSD(rec + 0x1Cu)
+                             + ((s32)y - (s32)DSD(slot + 0x30u)));
+    fighter_slot_latch(side);                           /* 0x18943 */
+}
+
+/* 0x3C480. anim-begin plus the two anchor writes. */
+static void hit_anim_start_a(u32 rec, u32 stream, u32 frame_bits)
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, rec);                             /* 0x3C48E */
+    hit_anchor_set(ctx[0], DSD(ctx[4] + 0x18u), 0u);    /* 0x3C49F */
+    actors_anim_begin(rec, stream, frame_bits);         /* 0x3C4B3 */
+    hit_anchor_x(ctx[0], DSD(ctx[2] + 0x2Cu));          /* 0x3C4BD */
+}
+
+/* 0x3C4CC. Dispatch on slot+0x52: {0,1,2,5,0xE,0x15} -> 0x2BC30, else 0x3C480. */
+static void hit_anim_start_b(u32 rec, u32 stream, u32 frame_bits)
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, rec);                             /* 0x3C4D6 */
+    {
+        u8 st = DSB(ctx[2] + 0x52u);
+        if (st == 0u || st == 1u || st == 2u || st == 5u
+                || st == 0xEu || st == 0x15u)
+            actors_anim_begin(ctx[4], stream, frame_bits);   /* 0x3C502 */
+        else
+            hit_anim_start_a(ctx[4], stream, frame_bits);    /* 0x3C513 */
+    }
+}
+
+/* 0x3C520. anim-begin plus the +0x2C/+0x30 anchor writes. */
+static void hit_anim_start_c(u32 rec, u32 stream, u32 frame_bits)
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, rec);                             /* 0x3C52F */
+    actors_anim_begin(rec, stream, frame_bits);         /* 0x3C54A */
+    hit_anchor_x(ctx[0], DSD(ctx[2] + 0x2Cu));          /* 0x3C554 */
+    hit_anchor_y(ctx[0], DSD(ctx[2] + 0x30u));          /* 0x3C55E */
+}
+
+/* 0x18B04. The attacker/defender facing flag: when mode != 0x22 and
+ * self+0x2C < other+0x2C set self_rec+0x29 bit 0x40 (else clear it), then
+ * slot+0x2C = self+0x2C and rec+0x18 = 0x18714(side). */
+static void hit_facing_flag(u32 side)
+{
+    u32 ctx[6];
+    if (DSW(DS_00104B00) == 0x22u) return;              /* 0x18B16 */
+    fighter_ctx_same(ctx, side);                        /* 0x18B1C */
+    if ((s32)DSD(ctx[2] + 0x2Cu) < (s32)DSD(ctx[3] + 0x2Cu))
+        DSB(ctx[4] + 0x29u) |= 0x40u;                   /* 0x18B39 */
+    else
+        DSB(ctx[4] + 0x29u) &= 0xBFu;                   /* 0x18AAE */
+    DSD(ctx[2] + 0x2Cu) = DSD(ctx[2] + 0x2Cu);          /* 0x18AC7: self -> self */
+    DSD(ctx[4] + 0x18u) = hit_record_x(side);           /* 0x18AEC */
+}
+
+/* 0x1922C. The stance timer: when DS_00100B5A[side] > 0 and the record's +0x24
+ * float is clear, seed it from the signed byte DS_00100B5C[side], zero +0x20,
+ * and clamp a value outside [1.0, DS_0008058C] to 3.0. Then clear B5A (only on
+ * the taken arm) and B5E. */
+static void hit_stance_timer(u32 side)
+{
+    if ((s8)DSB(DS_00100B5A + side) > 0) {              /* 0x19244 */
+        u32 rec = DSD(DS_001077B0 + side * 0x94u);
+        if ((DSD(rec + 0x24u) & 0x7FFFFFFFu) == 0u) {   /* 0x19251 */
+            union { float f; u32 u; } fu;
+            fu.f = (float)(s16)(s8)DSB(DS_00100B5C + side);
+            DSD(rec + 0x24u) = fu.u;                    /* 0x1926A */
+            DSD(rec + 0x20u) = 0;                       /* 0x19271 */
+            if (!(fu.f >= 1.0f) || fu.f > *(const float *)(mem + DS_0008058C))
+                DSD(rec + 0x24u) = 0x40400000u;         /* 0x1929C 3.0f */
+        }
+        DSB(DS_00100B5A + side) = 0;                    /* 0x192A8 */
+    }
+    DSB(DS_00100B5E + side) = 0;                        /* 0x192B3 */
+}
+
+/* 0x32BAC. The raw entry the chain calls is a one-byte RET: the 44-byte extent
+ * record §0.3.4 gives it is the orphaned 0x32BB0 body, whose callers are
+ * elsewhere, so the hit sound is dead on this path. The demo also skips the call
+ * entirely (slot+0x63 != 0). Correction to record §3.6/§7.11 (raw wins). */
+void hit_sound(u32 ch)
+{
+    (void)ch;
+}
+
+/* 0x34E2C. The reaction driver. With reaction == 0xFF it returns; otherwise it
+ * resets the reaction state, plays the animation the (char, reaction) table
+ * selects and drives the +0x52/+0x53 transitions. The 0xA3528 entry fields and
+ * the *(u32*)anim[1] callback (0x3D17C) are the §6.9 gap, and the 0x2C3FC voice
+ * is out of scope; the +0x5F stores stay. */
+void hit_reaction_apply(u32 side, u32 reaction)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    u32 other = DS_001077B0 + (1u - side) * 0x94u;
+    u32 rec = DSD(slot);
+    u32 anim[3];
+    u32 stream = 0;
+    u32 callback;
+
+    if (reaction == 0xFFu) return;                      /* 0x34E36 */
+
+    DSW(slot + 0x88u) = 0;                              /* 0x34E9E */
+    DSB(slot + 0x8Au) = 1;                              /* 0x34EAE */
+    if (DSB(slot + 0x54u) == 2u)
+        DSB(DS_001078F8 + side) = 0;                    /* 0x34EBC */
+    else
+        hit_facing_flag(side);                          /* 0x34ECF 0x18B04 */
+    hit_stance_timer(side);                             /* 0x34ED7 0x1922C */
+    DSW(slot + 0x84u) = (u16)(DSW(slot + 0x84u) + 1u);  /* 0x34EEB */
+    DSB(slot + 0x5Fu) = (u8)reaction;                   /* 0x34EE7 */
+    DSB(DS_001088A8 + side) = (u8)reaction;             /* 0x34EF6 */
+    DSB(rec + 0x63u) = 0;                               /* 0x34EFC */
+    if (DSB(DS_001078FA) == 2u) {                       /* 0x34F07 */
+        DSB(slot + 0x59u) = 1u;                         /* 0x34F2E */
+        DSB(other + 0x59u) = 0xFFu;                     /* 0x34F47 */
+    }
+    fighter_anim_triple(anim, side, (s32)reaction);     /* 0x34F5B 0x3AFC4 */
+    {
+        u32 p = DSD(anim[1] + 4u);                      /* 0x34F64 */
+        if (p != 0u) stream = DSD(p);
+    }
+    callback = DSD(anim[1]);                            /* 0x34F77 */
+    {
+        u16 bx = DSW(anim[2] + 2u);                     /* 0x34F7F */
+        if (stream != 0u) {                             /* 0x34F85 */
+            /* PORT: 0x34F97/0x34FA4 the 0xE9308 sound through 0x2C3FC, out of
+             * scope (spec §7). */
+            if (DSB(slot + 0x54u) != 2u)
+                hit_anim_start_b(rec, stream, 0x40000000u);   /* 0x34FBC 0x3C4CC */
+            else
+                hit_anim_start_c(rec, stream, 0x40000000u);   /* 0x34FCC 0x3C520 */
+            if (DSB(slot + 0x52u) != 4u)
+                DSB(slot + 0x52u) = 9u;                 /* 0x34FDB */
+            DSB(slot + 0x53u) = 8u;                     /* 0x34FE3 */
+            DSW(slot + 0x6Au) = (u16)(DSW(slot + 0x6Au) + 1u);   /* 0x34FF7 */
+            if (((bx >> 8) & 0x10u) != 0u)
+                DSB(slot + 0x41u) |= 0x80u;             /* 0x35004 */
+        } else {
+            DSB(slot + 0x5Fu) = 0xFFu;                  /* 0x3500E */
+        }
+    }
+    if (callback != 0u) {                               /* 0x35017 */
+        /* PORT: 0x35032 the 0x2C3FC voice (out of scope) and 0x35045 the
+         * *(u32*)anim[1] callback 0x3D17C (§6.9 gap); the +0x5F store stays. */
+        DSB(slot + 0x5Fu) = (u8)reaction;               /* 0x35042 */
+    }
+}
+
+/* 0x3CE58. Validate the hitbox and drive the reaction: the 0x3CE24 gate, the
+ * 0x4CE70 allow-list in modes 0x21/0x22, 0x34D8C, the 0x10/0x11 variant select
+ * and 0x34E2C. */
+int hit_reaction_drive(u32 side, u32 i)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    u32 reaction;
+    if (!hit_gate(side, i)) return 0;                   /* 0x3CE5E */
+    if (i >= 0x20u) return 1;                           /* 0x3CE73 */
+    reaction = (u32)(s16)DSW(HIT_TABLE_PLAYER
+                             + ((u32)DSB(slot + 0x7Au) * 0x20u + i) * 8u + 4u);
+    if ((DSW(DS_00104B00) == 0x21u || DSW(DS_00104B00) == 0x22u)
+            && !hit_reaction_allow(side, reaction))
+        return 0;                                       /* 0x3CEC0 */
+    hit_flash_pair(side);                               /* 0x3CEC8 */
+    if (reaction == 0x10u)      reaction = hit_reaction_a(side);   /* 0x3CF04 */
+    else if (reaction == 0x11u) reaction = hit_reaction_b(side);   /* 0x3CF0D */
+    DSB(slot + 0x5Fu) = (u8)reaction;                   /* 0x3CF25 */
+    hit_reaction_apply(side, reaction);                 /* 0x3CF2E */
+    return 1;
+}
+
+/* 0x3CF38. The hit wrapper. */
+int hit_chain_resolve(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    s32 i = hit_scan(side);                             /* 0x3CF54 */
+    if (i == -1) return 0;                              /* 0x3CF5E */
+    {
+        u8 r = DSB(slot + 0x5Fu);                       /* 0x3CF64 */
+        if ((r >= 0x10u && r <= 0x17u) && (u32)i >= 0x1Cu)
+            return 0;                                   /* 0x3CF75 */
+    }
+    if (hit_reaction_drive(side, (u32)i) != 0) {        /* 0x3CF7F */
+        DSB(slot + 0x7Cu) = (u8)(DSB(slot + 0x7Cu) + 1u);   /* 0x3CFA6 */
+        DSB(slot + 0x55u) = (u8)i;                      /* 0x3CFAE */
+        hit_slot_seed(side, 0u, (u32)i);                /* 0x3CFB4 consume */
+        if (DSB(slot + 0x63u) == 0u)
+            hit_sound((u32)DSB(slot + 0x7Au));          /* 0x3CFCA 0x32BAC */
+        return 1;
+    }
+    if (DSB(slot + 0x53u) == 0u)
+        DSB(slot + 0x5Fu) = 0xFFu;                      /* 0x3CFDF */
+    DSB(slot + 0x55u) = 0xFFu;                          /* 0x3CFF4 */
+    return 0;
 }
