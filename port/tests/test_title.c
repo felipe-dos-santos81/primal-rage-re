@@ -26,7 +26,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define TITLE_WINDOW_FRAMES 96
+/* The title window is defined in master-loop ticks, not in dumped frames: the
+ * state-1 handler decrements DS_000F0A66 by 0x10 a tick (0x1230B seeds 0x600,
+ * 0x1235x subtracts), so the window ends when it falls below 0x11 after 96
+ * ticks. Since the master loop's tick gate (0x25643) presents only when
+ * DS_0010150C == DS_00101508, a stall tick writes no file, so the dump holds one
+ * frame per *presented* tick, not one per tick: 78, the number of gate-passed
+ * ticks in the window (derived: the title's resource reads advance DS_00101508
+ * by bytes/117882, record §9.6). The two counts are independent. */
+#define TITLE_WINDOW_ITERS 96       /* ticks: state-1 entry to DS_000F0A66 < 0x11 */
+#define TITLE_PRESENTED_FRAMES 78   /* the gate-passed ticks the dump holds */
 
 static int count_raw(const char *dir)
 {
@@ -70,7 +79,7 @@ int test_title_window(const char *dump)
      * coin poll, the update table and the scene tick do not draw). */
     rng_seed(0xABCDu);
 
-    for (int i = 0; i < TITLE_WINDOW_FRAMES; i++) {
+    for (int i = 0; i < TITLE_WINDOW_ITERS; i++) {
         DSB(DS_000A81A8) = 1;   /* exactly one game_loop iteration per call */
         game_loop();            /* update -> render -> present -> dump */
         if (i == 0) {
@@ -81,23 +90,26 @@ int test_title_window(const char *dump)
         }
     }
 
-    /* The window's own boundary, not the frame count: the 96th presented frame
-     * is the one where DS_000F0A66 has just fallen below 0x11. If the timing
-     * drifted, the dump would cover the wrong window and this fails. */
+    /* The window's own boundary, not the tick count: the 96th tick is the one
+     * where DS_000F0A66 has just fallen below 0x11. If the timing drifted, the
+     * dump would cover the wrong window and this fails. */
     CHECK_EQ_INT((int)DSW(DS_000F0A64), 1);
     CHECK(DSW(DS_000F0A66) < 0x11,
           "window ends at DS_000F0A66 < 0x11 (state-1 entry predicate)");
 
-    /* The window is state 1 for 96 frames; the dump must hold exactly one RGB24
-     * frame per presented frame (the hook's cap is 200, so the count is the
-     * run's, not the cap's). */
+    /* The window is state 1 for 96 ticks; the dump must hold exactly one RGB24
+     * frame per *presented* tick (the hook's cap is 200, so the count is the
+     * run's, not the cap's). The presented count is lower than the tick count
+     * because the tick gate (0x25643) skips the stall ticks — see the constants
+     * above. */
     {
         char sub[1200];
         snprintf(sub, sizeof sub, "%s/title", dump);
-        CHECK_EQ_INT(count_raw(sub), TITLE_WINDOW_FRAMES);
+        CHECK_EQ_INT(count_raw(sub), TITLE_PRESENTED_FRAMES);
     }
-    /* Frame 96's invariants: the entry spawned the logo and the phase ran to the
-     * release point. A missing logo means the window compared a dead scene. */
+    /* The window's end invariants: the entry spawned the logo and the phase ran
+     * to the release point. A missing logo means the window compared a dead
+     * scene. */
     CHECK(DSD(DS_000F0A58) != 0, "title logo record exists after the window");
 
     return g_failures - before;

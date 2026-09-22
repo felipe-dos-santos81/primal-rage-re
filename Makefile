@@ -126,7 +126,7 @@ smk-oracle: build ## Pixel-exact Smacker frame oracle (skips without data/smk-ca
 # driver must not share a process with the unit suite, so run_tests runs it alone
 # when PR_TITLE_DUMP is set.
 title-oracle: build ## Pixel-exact title oracle (skips without data/title-captures)
-	@echo "== title oracle (pixel-exact, 96 frames) =="
+	@echo "== title oracle (pixel-exact, presented window) =="
 	@if [ -d $(TITLE_CAPTURES)/title ]; then \
 		rm -rf $(TITLE_DUMP); \
 		PR_TITLE_DUMP=$(TITLE_DUMP) PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
@@ -135,7 +135,7 @@ title-oracle: build ## Pixel-exact title oracle (skips without data/title-captur
 	fi
 	@$(PYTHON) tools/title_compare.py --capture $(TITLE_CAPTURES)/title \
 		$(if $(wildcard $(TITLE_CAPTURES)/title2),--capture $(TITLE_CAPTURES)/title2,) \
-		--port $(TITLE_DUMP)/title --frames 96
+		--port $(TITLE_DUMP)/title
 
 # Attract-prefix pixel oracle: the continuous PR_ATTRACT_DUMP run dumps every
 # presented state-0 frame plus the post-attract title window; attract_compare.py
