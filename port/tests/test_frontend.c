@@ -6,6 +6,7 @@
 #include "game/flow.h"
 #include "game/actors.h"
 #include "game/effects.h"
+#include "game/fight.h"
 #include "game/rng.h"
 #include "platform/gfx.h"
 #include "mem.h"
@@ -433,6 +434,51 @@ int test_frontend(void)
             DSD(DS_00107A1C + i * 4u) = saved_row[i];
     }
 
+    /* 0x41350 / 0xA8A28: the palette-variant flag the T-rex's handle is
+     * selected by. With the original's pre-state (DS_0010816A[0..1] = 0, the
+     * BSS value the front-end dump driver must seed — record §7.1) side 0's
+     * char equals side 1's, so variant 1 selects 0xA8A28[1] = 0x1BB9FCD8; the
+     * driver's old 0xFF seed made variant 0 and 0x1BB9FD58. The variant sentinel
+     * starts at 0, differing from the post-condition 1. */
+    {
+        const u8  saved_1d  = DSB(DS_00104B1D);
+        const u8  saved_6a0 = DSB(DS_0010816A);
+        const u8  saved_6a1 = DSB(DS_0010816A + 1u);
+        const u8  saved_6e0 = DSB(DS_0010816E);
+        const u8  saved_b34 = DSB(DS_00105B34);
+        const u8  saved_b35 = DSB(DS_00105B34 + 1u);
+        const u8  saved_idx = DSB(0x0010810Du);
+        const u8  saved_63  = DSB(DS_001077B0 + 0x63u);
+        const u32 saved_3c  = DSD(DS_001077B0 + 0x3Cu);
+        const u8  saved_7f  = DSB(DS_001077B0 + 0x7Fu);
+        const u8  saved_80  = DSB(DS_001077B0 + 0x80u);
+        const u8  saved_82  = DSB(DS_001077B0 + 0x82u);
+        const u8  saved_5b  = DSB(DS_001077B0 + 0x5Bu);
+        const u16 saved_860 = DSW(DS_00108860);
+
+        DSB(DS_00104B1D) = 0;          /* the char store runs */
+        DSB(DS_0010816A) = 0;          /* the original's BSS pre-state */
+        DSB(DS_0010816A + 1u) = 0;
+        DSB(DS_00105B34) = 0;          /* sentinel; the post-condition is 1 */
+        DSB(DS_00105B34 + 1u) = 0;
+        fight_char_select(0u, 0u);     /* 0xC835A[0] = 0, the T-rex */
+        CHECK_EQ_INT((int)DSB(DS_00105B34), 1);
+        CHECK_EQ_INT((int)DSD(0xA8A28u + DSB(DS_00105B34) * 4u), 0x1BB9FCD8);
+
+        DSB(DS_00104B1D) = saved_1d;
+        DSB(DS_0010816A) = saved_6a0;  DSB(DS_0010816A + 1u) = saved_6a1;
+        DSB(DS_0010816E) = saved_6e0;
+        DSB(DS_00105B34) = saved_b34;  DSB(DS_00105B34 + 1u) = saved_b35;
+        DSB(0x0010810Du) = saved_idx;
+        DSB(DS_001077B0 + 0x63u) = saved_63;
+        DSD(DS_001077B0 + 0x3Cu) = saved_3c;
+        DSB(DS_001077B0 + 0x7Fu) = saved_7f;
+        DSB(DS_001077B0 + 0x80u) = saved_80;
+        DSB(DS_001077B0 + 0x82u) = saved_82;
+        DSB(DS_001077B0 + 0x5Bu) = saved_5b;
+        DSW(DS_00108860) = saved_860;
+    }
+
     const char *dump = getenv("PR_FRONTEND_DUMP");
     if (dump == NULL || dump[0] == '\0') {
         printf("test_frontend: PR_FRONTEND_DUMP unset, state-2 driver skipped\n");
@@ -471,9 +517,13 @@ int test_frontend(void)
         DSB(DS_000F0A6F) = 0;
 
         /* Seed the pick bytes so the alignment check below cannot pass on a
-         * never-written BSS zero. */
+         * never-written BSS zero. DS_0010816A[1] must equal the original's BSS
+         * value 0 at side 0's 0x41350 call: it is the other side's pick byte
+         * then, and only char[0] == char[1] gives the T-rex variant 1 (record
+         * §7.1). [0] is overwritten before the variant test, so 0xFF is a
+         * sentinel that cannot pass as a never-written BSS zero. */
         DSB(DS_0010816A) = 0xFFu;
-        DSB(DS_0010816A + 1u) = 0xFFu;
+        DSB(DS_0010816A + 1u) = 0u;
 
         mkdir(dump, 0777);      /* ignore EEXIST; matches the frame-dump hook */
 
@@ -604,6 +654,11 @@ int test_frontend(void)
         CHECK_EQ_INT((int)entry_lcg, (int)FRONTEND_RNG_AFTER_ATTRACT);
         CHECK_EQ_INT((int)DSB(DS_0010816A), 0);
         CHECK_EQ_INT((int)DSB(DS_0010816A + 1u), 3);
+        /* Record §7.1: the seed's consequence — the T-rex's variant is 1 and
+         * its handle 0x1BB9FCD8 (0xA8A28[1]). The old 0xFF seed left variant 0
+         * and 0x1BB9FD58, so this fails under that mutation. */
+        CHECK_EQ_INT((int)DSB(DS_00105B34), 1);
+        CHECK_EQ_INT((int)DSD(0xA8A28u + DSB(DS_00105B34) * 4u), 0x1BB9FCD8);
 
         /* Task 6b: the state-7 fight. slot+0x52 enters the 0x34B14 no-op 0x0E
          * and the 0x3531C/0x350D0 machine drives it back to 3 (the 0x3BDDC
