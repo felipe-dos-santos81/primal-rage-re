@@ -90,11 +90,24 @@ static void copy_run(u8 *dst, const u8 *src, int n, u8 bank)
  * 0x57FFB (hflip + clipped RLE) uses dst + vis - 1; both then walk it backward,
  * so the mirror is a property of the destination pointer. The port keeps the row
  * base at mem + ...y... + x (dst[0] is the window's first visible column, as
- * above) and mirrors the column inside the row via vis - 1 - (col - clip_l).
- * Observable result is identical; only the pointer arithmetic differs. */
+ * above) and mirrors the column inside the row via vis - 1 - (col - src_l).
+ * Observable result is identical; only the pointer arithmetic differs.
+ *
+ * PORT: the mirrored source window starts at `clip_r`, not `clip_l`. 0x57FFB
+ * computes vis = width - clip_l - clip_r (0x58001) and its three source paths
+ * all begin at the row-relative column clip_r: 0x58090 (clip_l != 0, clip_r ==
+ * 0) reads from the row start with no skip (0x58093), while 0x581D0 (clip_l ==
+ * 0, clip_r != 0) and 0x582F4 (both) load clip_r into the skip counter (`MOV
+ * EDX,[EBP+0x2c]` at 0x581D0/0x582F4) and consume that many source columns
+ * before drawing vis. Mirroring maps screen column s to source
+ * width-1-(s-(X-clip_l)), so the screen's right overhang clip_r is the source's
+ * left overhang: the window is [clip_r, width-clip_l) = [clip_r, clip_r+vis).
+ * Using clip_l here instead renders the wrong slice (the first fighter's torso
+ * as a diagonal triangle); the window is `width - clip_l - vis` == clip_r. */
 static const u8 *rle_row(u8 *dst, const u8 *src, int width, u8 bank,
                          int mirror, int clip_l, int vis)
 {
+    int src_l = mirror ? width - clip_l - vis : clip_l;
     int col = 0;
     while (col < width) {
         u8 b = *src++;
@@ -102,10 +115,10 @@ static const u8 *rle_row(u8 *dst, const u8 *src, int width, u8 bank,
         if (b < 0x80) {
             n = b;
             if (dst != NULL) {
-                lo = (col > clip_l) ? col : clip_l;
-                hi = (col + n < clip_l + vis) ? col + n : clip_l + vis;
+                lo = (col > src_l) ? col : src_l;
+                hi = (col + n < src_l + vis) ? col + n : src_l + vis;
                 for (int c = lo; c < hi; c++) {
-                    int d = c - clip_l;
+                    int d = c - src_l;
                     if (mirror) d = vis - 1 - d;
                     dst[d] = (u8)(src[c - col] + bank);
                 }
@@ -120,10 +133,10 @@ static const u8 *rle_row(u8 *dst, const u8 *src, int width, u8 bank,
             u8 colour = (u8)(DSD(0x00081314u + (u32)(*src) * 4u) + (u32)bank);
             src++;
             if (dst != NULL) {
-                lo = (col > clip_l) ? col : clip_l;
-                hi = (col + n < clip_l + vis) ? col + n : clip_l + vis;
+                lo = (col > src_l) ? col : src_l;
+                hi = (col + n < src_l + vis) ? col + n : src_l + vis;
                 for (int c = lo; c < hi; c++) {
-                    int d = c - clip_l;
+                    int d = c - src_l;
                     if (mirror) d = vis - 1 - d;
                     dst[d] = colour;
                 }

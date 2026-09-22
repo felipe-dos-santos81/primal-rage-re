@@ -365,11 +365,24 @@ static void check_rle_mirror(void)
 
 /* Mirrored + clipped RLE (0x57FFB, type 0x19): the visible window is reversed,
  * not the whole `width`. The earlier mirror test uses clip_l = 0 / vis = width,
- * so its formula degenerates to vis-1-c and a bug ignoring clip_l passes. Here
- * clip_l = 1, clip_r = 2 (vis = 3) and the row is
- * [literal 2][transparent 1][fill 3], so the window covers image columns
- * 1,2,3 = {0x0B, transparent, 0x07}; reversed it is {0x07, transparent, 0x0B}.
- * Ignoring clip_l would instead reverse columns 0,1,2 = {0x0A, 0x0B, tr}. */
+ * so its formula degenerates to vis-1-c and a bug ignoring the window passes.
+ * Here clip_l = 1, clip_r = 2 (vis = 3) and the row is
+ * [literal 2][transparent 1][fill 3].
+ *
+ * PORT correction (raw wins): the mirrored source window is [clip_r, clip_r +
+ * vis), not [clip_l, clip_l + vis). 0x57FFB's entry computes vis = width -
+ * clip_l - clip_r and walks the destination backward from dst + vis - 1
+ * (0x58001/0x58008); its three source paths all start the source at the
+ * row-relative column clip_r: 0x58090 (clip_l != 0, clip_r == 0) reads from the
+ * row start with no skip (0x58093), while 0x581D0 (clip_l == 0, clip_r != 0) and
+ * 0x582F4 (both) load clip_r into the skip counter (0x581D0/0x582F4 `MOV EDX,
+ * [EBP+0x2c]`) and consume that many source columns before drawing vis. The
+ * geometric reason: mirroring maps screen column s to source width-1-(s-L), so
+ * the screen's right overhang clip_r is the source's left overhang. The window
+ * is columns 2,3,4 = {transparent, 0x07, 0x07}; reversed it is {0x07, 0x07,
+ * transparent}. The old [clip_l, clip_l+vis) expectation (columns 1,2,3) is
+ * corrected here with the addresses above; it is the source of the port's
+ * triangle-rendered first fighter (port/src/platform/sprite.c rle_row). */
 static void check_rle_mirror_clip(void)
 {
     const u8 src[9] = { 0x02, 0x0A, 0x0B, 0xC1, 0x00, 0x83, 0x07,0,0 };
@@ -377,8 +390,8 @@ static void check_rle_mirror_clip(void)
     CHECK_EQ_INT(sprite_render_rle_clipped(src, dst, 6, 1, 8, 0,
                                            1, 2, 0, /*mirror=*/1), 0);
     CHECK_EQ_INT(dst[0], 0x07);
-    CHECK_EQ_INT(dst[1], 0xEE);          /* window column 2 is transparent */
-    CHECK_EQ_INT(dst[2], 0x0B);
+    CHECK_EQ_INT(dst[1], 0x07);
+    CHECK_EQ_INT(dst[2], 0xEE);          /* window column 2 is transparent */
     for (int i = 3; i < 8; i++) CHECK_EQ_INT(dst[i], 0xEE);
 }
 
