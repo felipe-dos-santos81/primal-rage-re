@@ -782,12 +782,15 @@ static void game_state_6(void)
 
     u32 draw1 = rng_next(7u);                           /* 0x11AAD (draw 1) */
     DSW(DS_00104AFC) = (u16)draw1;                      /* 0x11AB4 */
-    /* PORT: 0x11AC4 0x20DF4(eax=draw1, edx=1) — a 155-byte reset with 11
-     * callees; its six non-branch resets (0x29B70, 0x2C390, 0x12750, 0x28E98,
-     * 0x34978, 0x2C074) stay a named gap. Its first callee 0x49300 is the
-     * only liveness precondition: it self-links the fight-effect list sentinel
-     * DS_0010884C that the 0x49C78 walk reads, so it is ported as fight_list_init
-     * (a zero head would walk address 0 forever). */
+    /* PORT: 0x11AC4 0x20DF4(eax=draw1, edx=1) — a 155-byte reset. Its eight
+     * pre-branch calls are 0x29B70, 0x2C390, 0x12750, 0x49300, 0x28E98, 0x34978,
+     * 0x2C074 and 0x12C70, and 0x20E5C/0x20E63 also write the words
+     * DS_000F0AFA/DS_000F0AF8. Of these only 0x49300 is ported here
+     * (fight_list_init): it is the liveness precondition — it self-links the
+     * fight-effect list sentinel DS_0010884C that the 0x49C78 walk reads, so a
+     * zero head would walk address 0 forever. The rest, including 0x12C70
+     * (`word[0xF0AFC] = 0x400`, the camera-x step camera_x_commit reads), stay
+     * a named gap (record §6.10). */
     fight_list_init();                                  /* 0x11AC4 0x49300 */
     /* 0x20E4C/0x20E52: the reset zeroes the two camera words the projection
      * reads — 0x38A38's stride is DS_000F0AF0 << 8 and 0x2A620's shear base is
