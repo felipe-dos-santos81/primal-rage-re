@@ -504,12 +504,13 @@ demo-fight section below.
 
 **States 3/4 pixel oracle: enforced gate (front-end-chain Task 5, closed).** The
 120 s pinned capture (`make frontend-capture`: `data/title-captures/frontend`,
-3760 distinct post-logo frames, raw 1373..8409 after Task 9's re-capture) reaches
-the front-end. With the state-3 render ported (`0x12484`) the `PR_FRONTEND_DUMP`
-driver emits the real zoom-out, and `tools/title_compare.py --frontend` aligns
-it: window distinct [557..810] (raw 3113..3414), **254 frames: 100 clean, 150
-splice, 3 transition, 0 unexplained** (the demo section below records why the
-window indices moved from the pre-Task-9 `[557..813]` / 257 frames). The claim that result supports is precise and narrow: **no
+3617 distinct post-logo frames, raw 1367..8409 after the demo-fight closure
+cycle's re-capture) reaches the front-end. With the state-3 render ported
+(`0x12484`) the `PR_FRONTEND_DUMP` driver emits the real zoom-out, and
+`tools/title_compare.py --frontend` aligns it: window distinct **[560..830]**
+(raw 3108..3472), **271 frames: 117 clean, 153 splice, 0 transition, 0
+unexplained** (the demo section below records why the window indices moved from
+the pre-Task-9 `[557..813]` / 257 frames). The claim that result supports is precise and narrow: **no
 content-bearing capture frame inside the window the port's own dump exhibits is
 unexplained.** The window is derived from the port's dump (`check_capture`'s
 `idx`→`a,b` mapping) and the branch discards `check_capture`'s `rc` (coverage and
@@ -602,7 +603,7 @@ window the port's own dump exhibits (`check_capture` derives that window from it
 `idx`→`a,b` mapping, then the branch discards `rc`). `check_capture`'s `rc`
 additionally counts port frames that no capture frame exhibits (coverage) and
 `endpoints BAD`; the front-end branch ignores both. The demo-fight cycle raised
-the dump to 1381 frames, so the 120 s capture (3712 distinct post-logo frames)
+the dump to 1381 frames, so the 120 s capture (3617 distinct post-logo frames)
 now runs past the dump instead of ending before it; but that is not the whole
 story: the ignored coverage is exactly what lets a port that **under-renders**
 the front-end pass (counterexamples above). Passing the gate therefore means "no
@@ -610,12 +611,12 @@ content-bearing capture frame inside the port-exhibited window is unexplained",
 NOT "every dumped port frame was exhibited" and NOT "the front-end was
 rendered".
 
-## Demo fight states 6/7 (demo-fight cycle 1, report-only window)
+## Demo fight states 6/7 (demo-fight cycles 1–2, report-only window)
 
 The attract demo's CPU-vs-CPU fight is states 6 (`0x11A8C`) and 7 (`0x11E8F`,
 the arena frame `0x263F4`, ended by `0x11BCC`'s timer exit). It is **not** the
 interactive match: that is the `DS_00104B00` mode graph (the `0x257A4` coin
-divert, `0x1EEB0`), which no task in cycle 1 owns. The port advances the
+divert, `0x1EEB0`), which no task in either demo-fight cycle owns. The port advances the
 front-end into the demo unaided. State 3's phase-1 terminator (`0x12658`) hands
 to state 9 with a 240-frame timer and target 6; state 9 counts down; state 6
 picks the two characters from the shared RNG, seeds `DS_001082C8`, spawns both
@@ -639,65 +640,80 @@ at loop 1070 (dumped 481), state 7 runs loop 1071..1969 (dumped 482..1380), and
 dump stops. The dump therefore holds **1381 frames** (dumped 0..1380); the 1400
 cap covers it with no truncation, and the 2000-frame loop clears the 1970 exit.
 
-**The demo window is report-only, and its first unexplained frame is the state-9
-hold — not the first landing hit.** `tools/title_compare.py --demo` locates the
-front-end window with the same content alignment, then classifies the capture
-region after it against the port dump frames after the last frame that window
-exhibits — the same clean/splice/transition/unexplained model, no second one. It
-reports and exits 0.
+**The demo window is report-only; its first unexplained frame is capture 832 —
+the lazy loader's `- LOADING -` screen, the last blocker before the fight.**
+`tools/title_compare.py --demo` locates the front-end window with the same
+content alignment, then classifies the capture region after it against the port
+dump frames after the last frame that window exhibits — the same
+clean/splice/transition/unexplained model, no second one. It reports and exits 0.
 
-* Front-end window (still enforced in `verify`): distinct **[557..810]** (raw
-  3113..3414), **254 frames: 100 clean, 150 splice, 3 transition, 0
-  unexplained**. These numbers moved from `[557..813]` / `257 frames: 92 clean,
-  162 splice, 2 transition` when Task 9 added the demo pins and re-captured
-  `frontend`. The move is the **capture's, not the port's**: the capture is
-  host-timed and not reproducible (a `title_capture.py --verify-reproducible`
-  run of the pinned original gave 587 vs 588 distinct frames and a first
-  divergence at distinct index 30), so the distinct-frame indices shift between
-  captures while the oracle's claim stays the same (`0 unexplained`).
-* Demo window: distinct **[811..3759]** (raw **3421..8409**), **2949 frames:
-  0 clean, 0 splice, 0 transition, 2942 unexplained** (7 all-black capture
-  frames excluded as artifacts). Demo port frames [259..1380], **0/1122
+* Front-end window (still enforced in `verify`): distinct **[560..830]** (raw
+  3108..3472), **271 frames: 117 clean, 153 splice, 0 transition, 0
+  unexplained**. The indices moved again from cycle 1's `[557..810]` / `254`
+  (`100 clean, 150 splice, 3 transition`) when Task 2's master-loop pin forced
+  the cycle's re-capture; the move is the **capture's, not the port's** (the
+  capture is host-timed and not reproducible — a
+  `title_capture.py --verify-reproducible` run of the pinned original gave 587
+  vs 588 distinct frames and a first divergence at distinct index 30), and the
+  oracle's claim is unchanged.
+* Demo window: distinct **[831..3616]** (raw **3670..8409**), **2786 frames:
+  0 clean, 0 splice, 0 transition, 2779 unexplained** (7 all-black capture
+  frames excluded as artifacts). Demo port frames **[313..1380]**, **0/1068
   exhibited**.
-* **First unexplained captured frame 811 (raw 3421)** — the first frame after
-  the front-end window.
-* **The window is non-discriminating by construction (a plan flaw, not an
-  implementation flaw).** `--demo` defines the window as the capture region after
-  the front-end window; that window's last exhibited port frame is 258, inside
-  this state-9 hold, so the demo window opens on state 9 and diverges at its
-  **first** frame — before state 6. It would read identically for correct or
-  entirely broken Tasks 2–8. Re-anchoring the port side to the state-6/7 entry
-  (dumped 481) was measured and does **not** restore discrimination: no capture
-  frame after 811 exhibits any port frame in [481..1380] (**0/900 exhibited**),
-  because the port's state-7 arena render is itself a cycle-2 gap (the broken
-  globe background, `0x3C88C` §7.7). Cycle 2 must re-anchor the window once the
-  arena render lands.
+* **First unexplained captured frame 832 (raw 3671).** Capture 831 is all-black
+  (the state-6 `0x2BAF4(1)` DAC blackout; the oracle drops it as an artifact);
+  832 is black except rows 192..197 — the lazy loader's `- LOADING -` string
+  (489) drawn at (0,192) through `0x1B3AC`/`0x1C500`/`0x1C65C`; 833 is a
+  capture-time tear and 834..836 are the fight's first arena frames (the
+  corrected profile, record §9.3).
+* **Cycle 2 advanced the boundary 811 → 816 → 832, then stopped there.** Task 3
+  ported the state-9 globe's missing indirect-call target `0x12720` (the globe's
+  fourth layer), so the state-9 hold now matches (captures 816..830 == port
+  264..339) and the first-unexplained moved to the loader frame. Tasks 4/5/5a/5c
+  then landed the props, the loader's overlay, the `rle_row` mirror-window fix,
+  the camera seed, the master-loop tick gate + load-stall model and the real VGA
+  aperture; Task 5b the fighters' idle-animation tick; Tasks 6/6b the hitbox
+  machine and the `0x3CF38` hit chain (which now **fires** and lands hits). None
+  moved the first-unexplained past 832: 832 is the loader's presentation, and its
+  read-stall is the one piece proven un-derivable (closure outcome below).
+* **The window is no longer non-discriminating.** Cycle 1's `--demo` window
+  opened on the state-9 hold's first frame, so it read identically for correct or
+  broken code. Task 3 made the state-9 hold match, so the window's opening frames
+  are now explained up to 832; the boundary is a real content gap, not a
+  window-definition artifact. Window re-anchoring was **removed from this cycle**
+  (design spec, "Removed from this cycle"): no new reference and no re-anchoring
+  task, because porting the state-9 render made the opening frame clean instead.
 
-Cycle 1's declared bound expected this frame to be the original's first landing
-hit (the cycle split gives cycle 2 collision and damage). Task 9's verification
-**retires that expectation**: the frame is in the **state-9 hold**, before
-state 6, and neither a motion-layer pin nor an RNG pin can move it.
+Cycle 1's declared bound expected the first unexplained frame to be the
+original's first landing hit (the cycle split gives cycle 2 collision and
+damage). Task 9's verification **retired that expectation**: cycle 1's frame was
+in the **state-9 hold**, before state 6. Cycle 2 then explained it and moved the
+boundary to the loader frame (above).
 
-* Capture 811 is the "WHO WILL RULE THE NEW URTH?" globe screen. Its closest port
-  frame is **264**, 205 differing bytes in rows 98..144 — a sprite/content band
-  on the globe, not a whole-frame change. Port frame 264 is inside the state-9
-  hold: state 3 hands to state 9 at dumped frame 240 (`0x12636` sets
+* Cycle 1's capture 811 was the "WHO WILL RULE THE NEW URTH?" globe screen; its
+  closest port frame was **264**, 205 differing bytes in rows 98..144. Task 3
+  found the cause: the globe's fourth layer is spawned by the indirect-call
+  target `0x12720` (opcode `0x11` at `0xE89A8`, mode `0x4000`, loaded into
+  `DS_00105BD4` and reached by `0x2B57F`'s `call dword[0x105BD4]`), which was
+  unregistered, so `anim_indirect` skipped it. Registering it made the state-9
+  hold match (captures 816..830 == port 264..339). Port frame 264 is inside the
+  state-9 hold: state 3 hands to state 9 at dumped frame 240 (`0x12636` sets
   `DS_000F0A64 = 9`; `0x12645` sets the `0xF0` timer), state 9 runs dumped frames
-  240..480 and state 6 runs 481, so dumped frame 264 is state 9. `0x11D04`'s
-  case-9 arm (verified in the fixed-up image) only decrements `DS_000F0A6A` and,
-  at zero, restores `DS_000F0A64 = DS_000F0A6C`; it draws nothing.
-* The difference is the globe's island/landmass content: the capture draws it on
-  the later rotation steps (captures 811..832), the port draws it on only some
-  (`+264`/`+276`/`+282`/`+288` omit it; `+270` shows a smaller one), so the
-  port's state-9 hold render is coarser than the original's. The capture's demo
-  fight does not begin until capture **836**, 25 capture frames after the
-  divergence, so the divergence cannot be a landing hit.
-* The port's state-7 output now moves (Task 8): dumped frames 482..1380 hold
-  **64 distinct images** over loop frames 1071..1969 (55/10/1 per third), versus
-  one before. The motion then stalls at the `0x3CF38` hit chain (side 0 reaches
-  `+0x52 == 0x0E`, a table no-op; side 1 reaches `+0x52 == 3`, whose `0x35D7C`
-  handler needs `0x3CF38`). That is cycle 2's combat chain, not a determinism
-  site.
+  240..480 and state 6 runs 481. `0x11D04`'s case-9 arm only decrements
+  `DS_000F0A6A` and, at zero, restores `DS_000F0A64 = DS_000F0A6C`; it draws
+  nothing.
+* The capture's demo fight does not begin until capture **833/834** (833 is a
+  capture-time tear; 834..836 are full arena frames). Amendment 5 of the cycle-1
+  plan said 839/28 and Task 1 corrected it to **836/25** against the
+  then-current capture; the Task 2 re-capture moved the divergence to 832 and the
+  loader text to 832, so the current divergence→fight gap is 832 → 833/834, not
+  25 frames. (Record §9.1 carries the 836/25 correction; §9.3, measured against
+  the final capture, is the raw-wins refinement.)
+* The port's state-7 output moves: cycle 1 measured 64 distinct images over loop
+  frames 1071..1969. Cycle 2's `+0x52` state machine (Task 6b) drives the chain
+  so it **fires** and hits land (`+0x7C` 0/0 → 1/1); the fight's last state
+  change moved **1262 → 1400**. The residual stall tail is a named gap (closure
+  outcome below), not a determinism site.
 
 **Two pins were added, for the demo's state-6 character picks; the state-9 hold
 itself has no pinnable site.** A pin is a determinism fix — a site where the
@@ -787,27 +803,24 @@ derived:
   stream's picks are `0xC9524` indices 0, 1, 3, 4 → the descriptors
   `0xBB470`/`0xBB484`/`0xBB4AC`/`0xBB4C0`, types `0x20`/`0x21`/`0x23`/`0x24`,
   whose per-type callbacks at `0xBB9DC + type*0xC` are all the `0x5D812` stub.
-  The demo window's first unexplained frame is still 816 (the state-9 hold
-  render), so the oracle cannot measure the dust's pixels until Task 3 lands.
+  The demo window's first unexplained frame is 832 (the loader frame), so the
+  dust's pixels are measurable only after it is explained.
   `tools/title_pin.py`; `host.c:203`; `flow.c`; `fighter.c`; `fight.c`;
   `actors.c`; `effects.c`.
 
-The demo window therefore cannot converge in cycle 1; cycle 2 owns it: collision
-and damage (`0x3BB90`, `0x4FB20`, `0x3BAEC`, `0x3B9D8`), the `0x3CF38` hit chain,
-the arena draw helper `0x3C88C` (§7.7), the state-9 hold's zoom-actor globe
-render (the `0x3E688` palette-driven zoom background spawned by
-`0x12484`/`0x12658` and advanced through the actor path `0x2A31C`), and the
-`- LOADING -` screen the capture shows at capture 832 (cycle 1 recorded 834),
-which the port now draws at the first lazy resolve — string 489 at (0,192)
-through `res_load_present`/`text_blit_string` (`0x1B3AC`/`0x1C500`/`0x1C65C`),
-proven pixel-exact in the port's first text-bearing frame; the frame it lands in
-still diverges by the arena render, so the demo window's first unexplained frame
-stays 832. The window's closure retires this bound rather than narrowing it.
+Cycle 2 landed the collision/damage half (`0x3BB90`, `0x4FB20`, `0x3BAEC`,
+`0x3B9D8`), the `0x3CF38` hit chain, the `0x3C88C` hitbox machine (§7.7), the
+state-9 globe's fourth layer (`0x12720`), and the `- LOADING -` screen (string
+489 at (0,192) through `res_load_present`/`text_blit_string`
+(`0x1B3AC`/`0x1C500`/`0x1C65C`), now drawn into the real VGA aperture and proven
+pixel-exact at 166 px against capture 832). The Gate is nevertheless **UNMET** —
+see the closure outcome below.
 
-The gaps that may own the missing state-7 composition are `fight_slot_pass`'s
-`0x3C88C` draw helper (§7.7) and the skipped `0x20DF4` fight reset at `0x11AC4`
-(below); the derivation record named both as fidelity gaps, and this measurement
-shows at least one of them is load-bearing for whether the arena renders at all.
+The `0x3C88C` draw helper and the skipped `0x20DF4` fight reset at `0x11AC4`
+(below) were named as the gaps that might own the missing state-7 composition;
+the machine is now ported and the `0x20DF4` liveness fix landed, so the residual
+state-7 divergence is the fighter animation/palette subsystem (closure outcome
+below).
 
 **The skipped `0x20DF4` is a liveness gap, not only a fidelity gap.** The raw
 calls `0x20DF4` at `0x11AC4`; its first callee `0x49300` self-links the
@@ -818,6 +831,84 @@ sentinel; with the global left at 0 the walk never terminates and the demo hangs
 on its first state-7 frame. `fight_list_init` ports `0x49300` verbatim (from the
 raw disassembly), so the walk is a no-op on the empty list exactly as the
 original's is. `0x20DF4`'s other resets remain a named gap.
+
+## Demo fight cycle 2 — closure outcome (Task 8)
+
+`make demo-oracle` (report-only, **not** in `verify`) measures the demo window
+end-to-end. **The cycle's Gate — the demo window reports 0 unexplained frames —
+is UNMET.** The measurement, reproduced by Task 8:
+
+* Demo window distinct **[831..3616]** (raw **3670..8409**), **2786 frames:
+  0 clean, 0 splice, 0 transition, 2779 unexplained** (7 all-black frames
+  excluded). **First unexplained captured frame 832 (raw 3671).** The port
+  exhibits **0/1068** demo port frames ([313..1380]).
+* Front-end window (enforced in `verify`): **[560..830]** (raw 3108..3472),
+  **271 frames: 117 clean, 153 splice, 0 transition, 0 unexplained** — its
+  claim holds.
+
+**The residual frames are named gaps, each with its evidence and the task that
+left it. No pin or value was fitted to force the Gate.**
+
+1. **Captures 831/832 — the loader read-stall / the presented DAC-palette state
+   at the state-6 entry** (Tasks 5a/5c). Proven **un-derivable**. The port
+   produces both states: `mem + DS_000E87A4` at the state-6 hold is
+   byte-identical to capture 832 (498 non-zero bytes) and `mem + DS_000E87A0` to
+   capture 831 (all zero). Task 5c landed the real VGA aperture (`0x51ED8` vs
+   the back buffer's `0x51E5C`; `0x52106` clears it at `0x5214C`..`0x52151`), so
+   the loader's text now lands in the aperture at 166 px — exactly capture 832 —
+   with `E87A4` untouched. But the master loop's tick gate (`0x25643`,
+   `if (150C == 1508)`) passes on the loader frame (`0x1B3AC`'s tail re-syncs
+   `150C = 1508` at `0x1B45F`/`0x1B464`), so the copy overwrites the aperture in
+   the same iteration. Exhibiting 832 needs the read's stall to hold frames; the
+   stall's post-read ISR ticks are **not derivable** — `0x1BDF4` is a PIT timer
+   interrupt (`0x1BE0E`/`0x1BE10`) whose count is post-read CPU work ÷
+   cycles-per-tick, a host/emulator property, and the two live-RAM polls
+   disagree (Δ=2 vs Δ=3). **No constant was shipped.**
+2. **The palette order** (Task 5b). `palette_acquire` assigns DAC ranges in
+   acquisition order; the character palette (`0x1BB9FD58`, DAC range
+   `start=142`) differs while the backdrop palette matches, so the T-rex's
+   residual is a palette/bank difference, not a frame — the same palette-order
+   subsystem Task 5c deferred.
+3. **The fighter animation poses** (Task 5b). The raptor silhouette's IoU is
+   0.522 with no port frame matching over 900 (0.293 pre-fix). The residual is
+   the fighters' animation/think state across `actors.c`/`fighter.c` plus the
+   actor frame-timer path — a derivation.
+4. **The fight's stall tail** (Task 6b). At loop 1400, side 1 lands on
+   `+0x52 = 9` with `+0x53 = 8` where the original is at `+0x52 = 4`; closing it
+   needs the unported `0x34B14` handlers (§7.10: `0x35F84`, `0x36870`,
+   `0x235C4`, `0x370F0`, …) plus the `0x3C88C` re-arm. `0x34038`/`0x38D24`/
+   `0x354F0`/`0x186C4` remain named gaps.
+5. **The interactive match is UNOWNED.** The mode graph (`DS_00104B00`), the
+   `0x257A4` coin divert, `0x1EEB0`, `0x1F458`, the player screens and human
+   input are not implemented by any task in this cycle. The design spec's Out
+   section stands; this is not a gap inside the demo window.
+
+**What the cycle did land** (oracle-neutral or boundary-advancing): the state-9
+globe layer (`0x12720`); the hitbox machine (`0x3C88C`) and the `0x3CF38` hit
+chain, which now **fires** and lands hits (`+0x7C` 0/0 → 1/1, last state change
+1262 → 1400); the master-loop tick gate + load-stall model and the loader
+re-sync; the fighters' idle-animation tick (`0x37A58`); the `rle_row`
+mirror-window fix; the props and the loader overlay; the `fight_hud_pass`
+driver; the state-6 camera seed (`0x12C70`); and the real VGA aperture. Every
+enforced oracle claim is at its original value (`README.md`, "Verify").
+
+**Pins.** All six `title_pin.py` sites are behaviour pins: the three `0x121A0`
+title-entry draws (file `0x650E9`/`0x650F5`/`0x6510B` = VAs
+`0x12295`/`0x122A1`/`0x122B7`, values 12/111/0), the anim opcode-8 handler (file
+`0x7E289` = VA `0x2B435` → 0), and the two master-loop draws (`0x256B1`, file
+`0x78505`, and `0x256D6`, file `0x7852A`, both `rng(0x7FFF)` with `EBP = 0x7FFF`
+at `0x255E4`, both → 0). The spin pin (`0x256D6`) is the one that made the
+reference deterministic: the spin `while (DS_0010150C - 1 == DS_00101508)
+rng_step()` (`0x256C6`..`0x256DB`) is host-timed and unbounded, so the
+reference's stream position was not deterministic; pinning it forced the cycle's
+one re-capture and moved the derived window indices (front-end `[557..810]`/254
+→ `[560..830]`/271, demo `[811..3759]` → `[831..3616]`), not the oracle claims.
+The state-6 character picks (`0x11AAD` `rng(7)`, `0x11AE9` `rng(6)`) are **not**
+pinned — they are drawn from the aligned stream and the oracle validates them.
+The title window splits `TITLE_WINDOW_ITERS 96` (ticks) from
+`TITLE_PRESENTED_FRAMES 96` (gate-passed ticks the dump holds); the split is
+derived from `0x25643` and the re-sync (`0x1230B`/`0x1235x`), and both constants
+are 96 after the re-sync restored the loader frames.
 
 ## Landmarks (verified)
 

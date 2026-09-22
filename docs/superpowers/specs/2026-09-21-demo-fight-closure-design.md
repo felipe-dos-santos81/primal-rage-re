@@ -203,3 +203,58 @@ These are Task 1's to answer with evidence, not assumptions to carry:
 4. What does the timer exit run, and what does the continue sequence do?
 5. Where does the state-6 RNG nondeterminism originate, and is it pinnable at
    that single origin?
+
+## Outcome (recorded by Task 8, `demo-fight-closure`)
+
+**The Gate — the demo window reports 0 unexplained frames — is UNMET.** The
+honest measurement of `make demo-oracle` (report-only, not in `verify`):
+
+* Demo window distinct **[831..3616]** (raw **3670..8409**), **2786 frames:
+  0 clean, 0 splice, 0 transition, 2779 unexplained** (7 all-black frames
+  excluded). **First unexplained captured frame 832 (raw 3671)**, the lazy
+  loader's `- LOADING -` screen.
+* Front-end window (enforced in `verify`): **[560..830]** (raw 3108..3472),
+  **271 frames: 117 clean, 153 splice, 0 transition, 0 unexplained**.
+
+The boundary advanced **811 → 816 → 832** across the cycle and then stopped. No
+pin or value was fitted to force it. The residual frames are named gaps, each
+with its evidence and its owning task, in `port/spec/game_flow.md` ("Demo fight
+cycle 2 — closure outcome"):
+
+1. **831/832 — the loader read-stall / the presented DAC-palette state at the
+   state-6 entry** (Tasks 5a/5c) — **proven un-derivable**: the port produces
+   both held states, but the gate passes on the loader frame, and the post-read
+   ISR tick count is a host/emulator property (two live-RAM polls disagree,
+   Δ=2 vs Δ=3), so no constant was shipped.
+2. **The palette order** (Task 5b) — `palette_acquire` assigns DAC ranges in
+   acquisition order; the character palette `0x1BB9FD58` (range `start=142`)
+   differs while the backdrop matches.
+3. **The fighter animation poses** (Task 5b) — the raptor silhouette's IoU is
+   0.522 with no port frame matching over 900.
+4. **The fight's stall tail** (Task 6b) — at loop 1400, s1 lands on `+0x52 = 9`
+   where the original is at `+0x52 = 4`; closing it needs the unported `0x34B14`
+   handlers (§7.10).
+5. **The interactive match is UNOWNED** — the mode graph, the `0x257A4` coin
+   divert, `0x1EEB0`, `0x1F458`, the player screens and human input. This
+   cycle's **Out** section stands unchanged; it is not a gap inside the demo
+   window.
+
+**What the cycle landed.** The state-9 globe's fourth layer (`0x12720`); the
+hitbox machine (`0x3C88C`) and the `0x3CF38` hit chain, which now **fires** and
+lands hits (`+0x7C` 0/0 → 1/1; the fight's last state change moved 1262 → 1400);
+the master-loop tick gate + load-stall model and the loader re-sync; the
+fighters' idle-animation tick (`0x37A58`); the `rle_row` mirror-window fix; the
+props and the loader overlay; the `fight_hud_pass` driver; the state-6 camera
+seed (`0x12C70`); and the real VGA aperture. Every enforced oracle claim is at
+its original value (title `54 clean, 55 splice, 2 transition, 0 unexplained` /
+`54 clean, 57 splice, 0 unexplained`; attract `FIRST DIVERGENCE at capture frame
+215`; front-end `0 unexplained`; smk `120/120` + `41/41`; C-vs-Python byte-exact).
+
+**The one reference change.** Cycle 2 replaced the fitted state-6 character
+picks with a source-level pin on the master loop's host-timed draws (`0x256B1`/
+`0x256D6` → non-advancing), and the spin pin forced the cycle's single
+re-capture. The derived window indices moved (front-end `[557..810]`/254 →
+`[560..830]`/271; demo `[811..3759]` → `[831..3616]`); the oracle **claims** did
+not. The corrected capture figures are **836/25** (Task 1, correcting Amendment
+5's 839/28), refined by the final re-capture to divergence 832 and the fight's
+first frames at 833/834.

@@ -262,9 +262,10 @@ palette path spawn → `effects_step` → dirty list → `gfx_flush_palette` →
 draws** — the plan's assumed missing draw does not exist; the camera state is
 consumed by the existing render pass and actor-pset sync. The front-end pixel
 oracle is **closed and enforced**: a 120 s pinned capture aligns the port's
-state-3 zoom to window `[557..810]` (raw `3113..3414`), **254 frames: 100 clean,
-150 splice, 3 transition, 0 unexplained** (the indices moved from `[557..813]` /
-257 frames when demo-fight cycle 1's pins forced a re-capture; the capture is
+state-3 zoom to window `[560..830]` (raw `3108..3472`), **271 frames: 117 clean,
+153 splice, 0 transition, 0 unexplained** (the indices moved from `[557..813]` /
+257 frames when demo-fight cycle 1's pins forced a re-capture, and again to
+`[560..830]` / 271 when cycle 2's master-loop pin forced a second; the capture is
 host-timed and not reproducible, so its distinct-frame indices shift while the
 oracle's `0 unexplained` claim does not), and `make verify`'s `frontend-oracle`
 step exits non-zero on any unexplained frame. It proves exactly one thing: **no
@@ -286,31 +287,44 @@ declared gaps. See
 `port/spec/game_flow.md`.
 
 The attract demo fight (states 6/7 — the CPU-vs-CPU demo, **not** the interactive
-match) is ported through **motion** (demo-fight cycle 1): state 3's `0x12658`
+match) is ported through **motion** (demo-fight cycle 1) and **closure**
+(demo-fight cycle 2, the `demo-fight-closure` branch): state 3's `0x12658`
 handoff enters the 240-frame state-9 hold, state 6 picks the two characters from
 the shared RNG and spawns them, and state 7 runs the arena with the ported CPU-AI
-command generator (`0x47208`) and the `+0x52` state dispatch (`0x34B14`) — the
-port's state-7 dump now holds 64 distinct images over loop frames 1071..1969,
-versus one before. Its report-only oracle (`make demo-oracle`) measures the window
-`[811..3759]` (raw `3421..8409`), 2949 frames: 0 clean / 0 splice / 0 transition /
-2942 unexplained. The **first unexplained frame is capture 811, the state-9
-hold's globe render, not the first landing hit** the cycle's declared bound
-assumed (closest port frame 264, 205 differing bytes in rows 98..144; the
-capture's demo fight does not begin until capture 836). The state-9 hold itself
-has no pinnable site (it draws no RNG), but the demo's two state-6 character picks
-do: they are one-time draws whose values depend on the master loop's host-timed
-spin, so `tools/title_pin.py` pins them to the port's LCG values (`draw1 = 4` at
-file `0x64901`, `draw2 = 4` at `0x6493D`), which aligns the capture's two
-fighters with the port's spawn. Cycle 2 owns collision and damage (`0x3BB90`,
-`0x4FB20`), the `0x3CF38` hit chain, the arena draw helper `0x3C88C`, the
-state-9 zoom-actor globe render, the per-committed-move generator draw at
-`0x47063` (not constant-pinnable), and the window's closure — retiring the bound,
-not narrowing it. See `port/spec/game_flow.md` and
-`docs/superpowers/plans/2026-09-20-demo-fight-derivations.md`.
+command generator (`0x47208`), the `+0x52` state machine (`0x3531C`/`0x350D0`),
+the `0x3C88C` hitbox machine and the `0x3CF38` hit chain — the chain now **fires**
+and hits land (`+0x7C` 0/0 → 1/1), and the fight's last state change moved
+**1262 → 1400**. Its report-only oracle (`make demo-oracle`) measures the demo
+window `[831..3616]` (raw `3670..8409`), **2786 frames: 0 clean / 0 splice / 0
+transition / 2779 unexplained** (7 all-black frames excluded). **The first
+unexplained frame is capture 832 (raw 3671)** — the lazy loader's `- LOADING -`
+screen, not the state-9 hold. (Amendment 5 of cycle 1's plan said the fight
+begins at 839/28; Task 1 corrected it to **836/25**, and the final re-capture
+moved the loader text to 832 with the fight's first frames at 833/834 — record
+§9.1/§9.3.) Cycle 2 advanced the boundary 811 → 816 → 832: the
+state-9 globe's fourth layer (`0x12720`) made the hold match, the `rle_row`
+mirror-window fix and the idle-animation tick (`0x37A58`) improved the arena, and
+the chain drives the fight past its former stall. **The cycle's Gate — 0
+unexplained frames — is UNMET**, and it is recorded as such: capture 832's
+read-stall is **proven un-derivable** (the port produces both held states but the
+gate passes on the loader frame, and the post-read ISR tick count is a
+host/emulator property with two live-RAM polls disagreeing, Δ=2 vs Δ=3), and the
+residuals are the palette-order subsystem, the fighters' animation poses, and the
+fight's stall tail (the unported `0x34B14` handlers). No pin or value was fitted
+to force the Gate. The state-9 hold draws no RNG; the demo's two state-6
+character picks are **not** pinned — cycle 2 replaced cycle 1's fitted picks with
+a source-level pin on the master loop's host-timed draws (`0x256B1`/`0x256D6` →
+non-advancing), so the oracle validates the picks instead of being forced to
+them. The **interactive match** (the mode graph, the `0x257A4` coin divert,
+`0x1EEB0`, `0x1F458`, the player screens and human input) remains **unowned**.
+See `port/spec/game_flow.md`, the design spec
+`docs/superpowers/specs/2026-09-21-demo-fight-closure-design.md`, and the
+derivation record `docs/superpowers/plans/2026-09-21-demo-fight-closure-derivations.md`.
 
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
-fight engine's combat half (5, demo-fight cycle 2), and the match cycle's
-`0x1EA08` sites remain; the attract's
+demo fight's residual palette/animation subsystem (the Gate's named gaps) and the
+interactive match cycle (the mode graph, `0x1EEB0`, the `0x1EA08` sites) remain;
+the attract's
 `0x2C3FC` voice calls and the `0x4F7F4`/`0x4F83C` scene-palette driver are
 declared gaps with `/* PORT: */` markers. The `0x13xxx` effect render path is no
 longer a gap (no draw was missing); its effect call sites are deferred as
