@@ -151,18 +151,20 @@ void actors_reset(void)
     render_list_init();                             /* 0x1C350 */
     actor_cursor_reset();                           /* 0x38B70 */
     mem_fill(DS_00105F38, 0, 0x14D4u);              /* 0x2F920 */
-    /* 0x2BAF4's param_1 != 0 arm: 0x52106 clears both offscreen buffers and
-     * zeroes the tick counters. PORT: its VGA DAC clear is palette_list_init's
-     * gfx_dac memset and its literal 0xA0000 aperture clear is never performed
-     * (the port's memory map aliases that address to engine tables). The
-     * param_1 == 0 arm (copy DS_000E87A0 into DS_000E87A4) is unreachable from
-     * the title path and is not transcribed. */
+    /* 0x2BAF4's param_1 != 0 arm: 0x52106 clears both offscreen buffers, blacks
+     * the DAC and clears the screen aperture, and zeroes the tick counters.
+     * PORT: the VGA DAC clear is palette_list_init's gfx_dac memset; the literal
+     * 0xA0000 clear (0x5214C-0x52151 `mov eax,0xa0000; call 0x51f72`) is
+     * gfx_aperture(), the port's model of that screen. The param_1 == 0 arm
+     * (copy DS_000E87A0 into DS_000E87A4) is unreachable from the title path and
+     * is not transcribed. */
     /* PORT: 0x52106 stores its param_1 into both tick counters; the call site
      * (0x2BBEA) zeroes EAX first, so param_1 is provably 0. */
     DSD(DS_00101508) = 0;
     DSD(DS_0010150C) = 0;
     mem_fill(DSD(DS_001014E8), 0, 0xFA00u);
     mem_fill(DSD(DS_001014E4), 0, 0xFA00u);
+    memset(gfx_aperture(), 0, 0xFA00u);          /* 0x5214C 0x51F72 */
     palette_list_init();                            /* 0x336C0 */
     DSB(DS_00105BED) = 1;
     /* PORT: 0x2EA30() restores the lock state saved before the counter zeroing;
@@ -1566,7 +1568,7 @@ static void text_blit_glyph(u32 ch, s32 *col, s32 *row)
     n.pal_ptr = palette_acquire(0x80997cu);           /* 0x1C610/0x1C61C */
     n.x = *col;                                       /* 0x1C630 */
     n.y = *row;                                       /* 0x1C635 */
-    sprite_blit(&n);                                  /* 0x1C63D */
+    sprite_blit_at(&n, gfx_aperture());               /* 0x1C63D 0x51ED8 */
     *col += (DSB(e + 2u) == 0x10u) ? 0xfu : 8;        /* 0x1C642/0x1C647 */
 }
 

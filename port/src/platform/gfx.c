@@ -143,19 +143,22 @@ void gfx_flush_palette(void)
  * at 0xA1420, …), never a screen. gfx_present() therefore must NOT write mem[]:
  * it converts the same indices through the DAC to RGB and hands the frame to
  * the host window. No behavioural change required. */
-/* PORT: the original's display is the VGA aperture, which keeps its content
- * until the master loop's gate (0x25643) copies a new frame. When the gate fails
- * the aperture — and so the screen — holds the last presented frame even though
- * 0x52106 has since zeroed the two offscreen buffers (DS_001014E8/E4). The port
- * has no aperture, so g_display keeps the last presented index buffer: the dump
- * drivers and gfx_present's own DAC path read it so a held frame is the last
- * presented one, not the freshly zeroed back buffer. */
-static u8 g_display[320 * 200];
-static int g_display_valid;
+/* PORT: the original's display is the VGA aperture (0xA0000), which keeps its
+ * content until something writes it: the master loop's copy (0x25680, `mov edi,
+ * 0xa0000`) or the loader's text blit (0x51ED8, `add edi, 0xa0000`). When the
+ * gate fails the aperture — and so the screen — holds the last written frame
+ * even though 0x52106 has since zeroed the two offscreen buffers
+ * (DS_001014E8/E4). g_aperture is that screen; gfx_present writes it and the
+ * dump drivers read it, so a held frame is what the screen shows, not the
+ * freshly zeroed back buffer. */
+static u8 g_aperture[320 * 200];
+static int g_aperture_valid;
+
+u8 *gfx_aperture(void) { return g_aperture; }
 
 const u8 *gfx_display(void)
 {
-    return g_display_valid ? g_display : NULL;
+    return g_aperture_valid ? g_aperture : NULL;
 }
 
 void gfx_present(const u8 *indices, int w, int h)
@@ -163,12 +166,17 @@ void gfx_present(const u8 *indices, int w, int h)
     static u8 rgb[320 * 200 * 3];
     if (w <= 0 || h <= 0 || (u32)w * (u32)h > sizeof rgb / 3) return;
     int n = w * h;
+    /* PORT: the copy 0x25680 writes the whole 320x200 index buffer to the
+     * aperture; the movie blit 0x1C740 does the same. A present of another size
+     * leaves the aperture alone and converts the caller's buffer. */
+    const u8 *screen = indices;
     if (w == 320 && h == 200) {
-        memcpy(g_display, indices, 320u * 200u);
-        g_display_valid = 1;
+        memcpy(g_aperture, indices, 320u * 200u);
+        g_aperture_valid = 1;
+        screen = g_aperture;
     }
     for (int i = 0; i < n; i++) {
-        const u8 *c = gfx_dac[indices[i]];
+        const u8 *c = gfx_dac[screen[i]];
         rgb[i * 3 + 0] = c[0];
         rgb[i * 3 + 1] = c[1];
         rgb[i * 3 + 2] = c[2];

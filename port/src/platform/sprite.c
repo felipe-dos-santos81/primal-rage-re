@@ -232,15 +232,18 @@ int sprite_render_shear(const u8 *src, u8 *dst, int width, int rows,
     return 0;
 }
 
-void sprite_blit(SpriteNode *n)
+/* PORT: 0x51E5C and 0x51ED8 are the same span blit with different destination
+ * bases: 0x51E5C does `add edi, [0x687a4]` (DS_000E87A4, the back buffer the
+ * renderer composites into) while 0x51ED8 does `add edi, 0xa0000` (the literal
+ * VGA aperture the loader's text draws into). `base` is that destination. */
+void sprite_blit_at(SpriteNode *n, u8 *base)
 {
     if (n == NULL || n->width == 0 || n->rows == 0) return;
     const u8 *src = NULL;
     if (!gra_sprite_pixels(n->pixel_handle, &src)) return;
 
     u8  bank = (u8)sprite_bank(n->pal_ptr);
-    u8 *dst  = mem + DSD(DS_000E87A4)
-                   + DSD(DS_001088F8 + (u32)n->y * 4u) + (u32)n->x;
+    u8 *dst  = base + DSD(DS_001088F8 + (u32)n->y * 4u) + (u32)n->x;
 
     /* PORT: 0x51E5C stores rows - clip_b into the node for the call and
      * restores +0x14/+0x30 afterwards. The port keeps the node intact and
@@ -271,4 +274,10 @@ void sprite_blit(SpriteNode *n)
         sprite_render_rle_clipped(src, dst, w, rows, 320, bank, L, R, T, 1); break;
     default: break;                       /* PORT: stub slot: no-op */
     }
+}
+
+/* 0x51E5C: the renderer's span blit, compositing into the back buffer. */
+void sprite_blit(SpriteNode *n)
+{
+    sprite_blit_at(n, mem + DSD(DS_000E87A4));
 }

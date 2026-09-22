@@ -55,6 +55,12 @@ u32 sprite_bank(u32 pal_ptr);
  * type 0x0A, which the original leaves a stub) draws nothing. */
 void sprite_blit(SpriteNode *n);
 
+/* PORT: 0x51ED8. The same span blit as 0x51E5C but with the VGA aperture
+ * (0xA0000) as its destination base instead of the back buffer DS_000E87A4;
+ * the loader's text draw (0x1C5E8) uses it, so its pixels reach the screen
+ * directly. `base` is the destination buffer. */
+void sprite_blit_at(SpriteNode *n, u8 *base);
+
 /* RLE-renders `rows` rows of `width` pixels from src into dst. Each destination
  * row starts `stride` bytes after the previous one (the original's 0x140 row
  * pitch), so the caller offsets dst to the sprite's screen x and the renderer

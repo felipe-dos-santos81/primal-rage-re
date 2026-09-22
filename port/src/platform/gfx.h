@@ -31,12 +31,20 @@ void palette_list_init(void);
  * enqueue and actors.c's 0x33754 palette acquire both call it. */
 void palette_record(u32 ptr, u32 first, u32 count, u32 flag);
 
-/* Converts w*h bytes of palette indices through gfx_dac into RGB24 and hands the
- * frame to host_present_rgb(). */
+/* PORT: the VGA aperture (0xA0000), the 320x200 screen. Two original writers
+ * target it directly: the loader's text blit (0x51ED8, `add edi, 0xa0000`) and
+ * the master loop's copy (0x25680) — the renderer's blit (0x51E5C) targets the
+ * back buffer DS_000E87A4 instead. gfx_present models the copy: it writes the
+ * index buffer into the aperture, then converts the aperture through gfx_dac.
+ * The loader's text blit draws into this buffer (see sprite_blit_at). */
+u8 *gfx_aperture(void);
+
+/* Writes w*h bytes of palette indices into the aperture (when 320x200) and hands
+ * the aperture converted through gfx_dac to host_present_rgb(). */
 void gfx_present(const u8 *indices, int w, int h);
 
-/* PORT: the last 320x200 index buffer handed to gfx_present(), or NULL before the
- * first. Models the VGA aperture, which holds its content when the master loop's
+/* PORT: the aperture after the last gfx_present(), or NULL before the first.
+ * Models the VGA aperture, which holds its content when the master loop's
  * gate fails. The dump drivers present this so a held frame is the last
  * presented one, not the freshly zeroed back buffer. */
 const u8 *gfx_display(void);

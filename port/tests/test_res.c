@@ -1,4 +1,5 @@
 #include "platform/res.h"
+#include "platform/gfx.h"
 #include "game/flow.h"
 #include "mem.h"
 #include "symbols.h"
@@ -130,11 +131,17 @@ int test_res(void)
     CHECK(strcmp((const char *)game_string_get(0x1E9u), "- LOADING -") == 0,
           "string 489 decodes to - LOADING -");
     {
-        const u32 scratch = 0x3F50000u;   /* above the resource heap */
+        /* PORT: the loader's text blit is 0x51ED8, whose destination base is the
+         * literal VGA aperture 0xA0000 (`add edi, 0xa0000`), not the back buffer
+         * the renderer's blit 0x51E5C uses (`add edi, [0x687a4]`). So the text
+         * must land in gfx_aperture() and must NOT touch DS_000E87A4. */
+        u8 *scratch = gfx_aperture();
         u32 saved_base = DSD(DS_000E87A4);
         u32 saved_row = DSD(DS_001088F8 + 192u * 4u);
-        mem_fill(scratch, 0, 0xFA00u);
-        DSD(DS_000E87A4) = scratch;
+        const u32 backbuf = 0x3F60000u;   /* above the resource heap */
+        memset(scratch, 0, 0xFA00u);
+        mem_fill(backbuf, 0xAAu, 0xFA00u);   /* a sentinel, not the 0 post-state */
+        DSD(DS_000E87A4) = backbuf;
         DSD(DS_001088F8 + 192u * 4u) = 192u * 0x140u;
         DSD(DS_001014FC) = 0;
         CHECK(res_resolve(res_handle(3u, 0)) != NULL, "the fresh lazy resolve draws");
@@ -142,7 +149,7 @@ int test_res(void)
         u32 pixels = 0, rowlo = 200u, rowhi = 0u, collo = 320u, colhi = 0u;
         for (u32 y = 192u; y < 198u; y++) {
             for (u32 x = 0u; x < 320u; x++) {
-                if (mem[scratch + y * 320u + x] != 0u) {
+                if (scratch[y * 320u + x] != 0u) {
                     pixels++;
                     if (y < rowlo) rowlo = y;
                     if (y > rowhi) rowhi = y;
@@ -156,6 +163,9 @@ int test_res(void)
         CHECK_EQ_INT((int)rowhi, 197);
         CHECK_EQ_INT((int)collo, 0);
         CHECK_EQ_INT((int)colhi, 85);
+        /* The back buffer keeps its sentinel: 0x51ED8 never writes it. */
+        CHECK_EQ_INT((int)mem[backbuf + 192u * 320u], 0xAA);
+        CHECK_EQ_INT((int)mem[backbuf + 197u * 320u + 85u], 0xAA);
         DSD(DS_000E87A4) = saved_base;
         DSD(DS_001088F8 + 192u * 4u) = saved_row;
     }

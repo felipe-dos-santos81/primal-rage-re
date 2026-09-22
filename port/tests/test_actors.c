@@ -1,6 +1,7 @@
 /* port/tests/test_actors.c */
 #include "test.h"
 #include "game/actors.h"
+#include "platform/gfx.h"
 #include "platform/res.h"
 #include "mem.h"
 #include "symbols.h"
@@ -248,6 +249,14 @@ int test_actors(void)
     CHECK_EQ_INT((int)DSD(DS_00104AE8), 0);
     CHECK_EQ_INT((int)DSD(DS_00104AEC), 0);
     CHECK_EQ_INT((int)actor_alloc(0), (int)DSD(DS_001014F4));
+
+    /* 0x2BAF4's param_1 != 0 arm runs 0x52106, which clears the screen aperture
+     * (0x5214C-0x52151 `mov eax,0xa0000; call 0x51f72`) beside the two offscreen
+     * buffers. A sentinel that differs from the post-state cannot survive. */
+    memset(gfx_aperture(), 0x5Au, 0xFA00u);
+    actors_reset();
+    CHECK_EQ_INT((int)gfx_aperture()[0], 0);
+    CHECK_EQ_INT((int)gfx_aperture()[0xFA00u - 1u], 0);
 
     /* The active list is the circular free/active pair 0x2AC80 links into:
      * after two allocs the head is the most recent record, and actor_next
