@@ -678,11 +678,14 @@ clean/splice/transition/unexplained model, no second one. It reports and exits 0
   read-stall is the one piece proven un-derivable (closure outcome below).
 * **The window is no longer non-discriminating.** Cycle 1's `--demo` window
   opened on the state-9 hold's first frame, so it read identically for correct or
-  broken code. Task 3 made the state-9 hold match, so the window's opening frames
-  are now explained up to 832; the boundary is a real content gap, not a
-  window-definition artifact. Window re-anchoring was **removed from this cycle**
+  broken code. Task 3 made the state-9 hold match — the hold's frames
+  (816..830) are clean inside the **front-end** window (`0 unexplained`) — so the
+  demo window's boundary (832, the loader's presentation) is a real content gap,
+  not a window-definition artifact; the demo window itself still reports
+  **0 clean** (above). Window re-anchoring was **removed from this cycle**
   (design spec, "Removed from this cycle"): no new reference and no re-anchoring
-  task, because porting the state-9 render made the opening frame clean instead.
+  task, because porting the state-9 render made the **front-end** window's
+  state-9 hold frames clean instead.
 
 Cycle 1's declared bound expected the first unexplained frame to be the
 original's first landing hit (the cycle split gives cycle 2 collision and
