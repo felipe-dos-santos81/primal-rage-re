@@ -272,21 +272,23 @@ git commit -m "fight: port the state-9 globe actor's animation"
 
 ---
 
-### Task 4: The fight's entry frames — the divergence at capture 832
+### Task 4: The loader's presentation and the fight's props
 
-Task 3's continuation advanced the oracle's first-unexplained frame to capture **832**. That frame is not the fight and not the state-9 hold: it is the fight's entry (cycle 1 recorded capture 836 as all-black and 837 as the `- LOADING -` screen). The cycle did not anticipate it, and it sits **before** the fight — so Task 5's measurement cannot advance past its own stall until these frames are explained.
+Task 4's first pass (`c4c3b36`, `bf14ad8`) derived what capture 832..836 actually are and **refuted this task's original premise**. Capture 831 is the DAC blackout (`0x2BAF4(1)`, oracle-dropped); **832 is the lazy loader's `- LOADING -`** (string 489, drawn via `0x1B3AC`/`0x1C500`/`0x1C65C` at (0,192)); and 833..836 are the fight's first arena frames. There is no "entry screen" to port. The human re-scoped the work: this task owns the loader frame and the props, and the new Task 5 owns the arena render's fidelity. The first pass also landed a correct, required, oracle-invisible fix — releasing the attract's actors at the state-6 entry.
 
 **Files:**
-- Modify: the entry frames' producer — **derive it** (the string or screen and the pass or state that draws it)
-- Modify: `port/tests/test_flow.c`, or the file whose existing tests own that state
+- Modify: `port/src/platform/res.c` (the residency/on-demand rework the loader's presentation needs)
+- Modify: the glyph blit's owner (`0x1C65C`/`0x1C5E8`)
+- Modify: the props' owner (`0x412A0`/`0x2C320`, ~150 B + 4 tables)
+- Modify: `port/tests/test_flow.c`, or the file whose existing tests own the observable
 
 **Interfaces:**
-- Consumes: the state machine's entry into the fight (Task 1's record §4 and cycle-1 §6.2) and the capture's 832..836.
-- Produces: the entry frames matching the capture's, so the oracle's first-unexplained frame advances past 832.
+- Consumes: the record's section on 832..836 (added by `bf14ad8`) and cycle-1 §10.7.
+- Produces: capture 832 explained, and the props in place for the arena render.
 
-- [ ] **Step 1: Derive what the entry frames are**
+- [ ] **Step 1: Derive the loader's presentation and the props**
 
-Derive what draws capture 832..836: the screen's producer, the string or asset it uses, the pass or state that renders it, how many frames it spans, and what it does to the state machine. Cite the addresses. **If it turns out to be a subsystem larger than this task can carry, stop and report its size** — that is a re-scope conversation with the human, not a silent overrun.
+Derive what the loader draws — string 489, its font/glyph path, the blit, and how many frames it spans — and what `0x412A0`/`0x2C320` spawn: the props' descriptors, their tables, and their count. Cite the addresses. **If the `res.c` residency rework turns out to be a subsystem larger than this task can carry, stop and report its size** — that is a re-scope conversation with the human, not a silent overrun.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -341,7 +343,76 @@ git commit -m "flow: port the fight's entry frames"
 
 ---
 
-### Task 5: The hitbox machine and the hit chain
+### Task 5: The arena render's fidelity
+
+Task 4's derivation found that capture 833..836 are the fight's first arena frames, that the port's first arena frame differs from capture 834 by **~36%**, and that the port renders the first fighter **as a triangle**. These frames sit before the fight's body, so Task 6's measurement cannot advance until they match.
+
+**Files:**
+- Modify: `port/src/game/fight.c` (`fight_arena_frame`) and whatever the derivation names
+- Modify: `port/tests/test_fight.c`
+
+**Interfaces:**
+- Consumes: the record's section on 833..836, and Task 4's props.
+- Produces: the fight's first arena frames matching the capture's, so the oracle's first-unexplained frame advances into the fight.
+
+- [ ] **Step 1: Derive the divergence**
+
+Derive why the port's first arena frame differs: the triangle's cause (the fighter's descriptor, pose or pset selection), what composes the ~36% difference, and which passes or assets are missing. Cite the addresses. **If the derivation shows a subsystem larger than this task can carry, stop and report its size** — that is a re-scope conversation with the human, not a silent overrun.
+
+- [ ] **Step 2: Write the failing test**
+
+Assert the derived values with seeded sentinels — the exact inputs and expected transitions your Step 1 derivation pins:
+
+```c
+/* The Step 1 derivation anchors, as literals. A missing anchor is a Task 1 defect. */
+{
+    DSD(ARENA_SLOT_IN_ADDR) = ARENA_SLOT_IN;   /* Step 1 anchor */
+    arena_pass_under_test();                   /* the real ported name, from Step 1 */
+    CHECK_EQ_INT((int)DSD(ARENA_OUT_ADDR), ARENA_OUT);   /* Step 1 anchor */
+}
+```
+
+- [ ] **Step 3: Run the test to verify it fails**
+
+Run: `./build/run_tests`
+Expected: FAIL — the pass or selection is wrong.
+
+- [ ] **Step 4: Implement it**
+
+Port what Step 1 derived, one C function per original function with its address tag, into the owner Step 1 names. A value that cannot be pinned is a named gap with its evidence, never an invented one.
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `./build/run_tests`
+Expected: PASS, output pristine.
+
+- [ ] **Step 6: Prove the assertion can fail**
+
+Mutate the implementation and confirm the named assertion fails. Restore, and report the mutation with its command and output.
+
+- [ ] **Step 7: Re-measure the oracle**
+
+```bash
+make demo-oracle
+```
+
+Expected: the first-unexplained frame **advances past 832, into the fight**. If it does not, return to the derivation — do not tune the render to match. If the next divergence is a gap an earlier task declared (the dust's type-0 processing `0x4AAD0`), report it as that named gap rather than porting it here.
+
+- [ ] **Step 8: Full ladder and commit**
+
+Run: `make verify`
+Expected: exit 0, 0 warnings, every oracle claim unmoved.
+
+```bash
+git add port/src/game/fight.c port/tests/test_fight.c
+git commit -m "fight: fix the arena render's first frames"
+```
+
+**Gate for this task:** the fight's first arena frames are explained and the oracle's first-unexplained frame has advanced into the fight.
+
+---
+
+### Task 6: The hitbox machine and the hit chain
 
 The cycle's largest task, and its core: `0x3C88C` arms the hitboxes, `0x3CF38` scans and resolves them. Neither half advances the oracle alone (Amendment 3), which is why they are one task. Task 1 sized the chain at 45 functions / ~8.2 KB transitive closure, 22 new / 2720 B (§3.7); it is RNG-free (§3.8).
 
@@ -412,7 +483,7 @@ git commit -m "fight: port the hitbox machine and the 0x3CF38 hit chain"
 
 ---
 
-### Task 6: Pin the timer exit and the loop-back
+### Task 7: Pin the timer exit and the loop-back
 
 Corrected by Amendment 1.1: both are already ported (`port/src/game/flow.c:1349-1365`), so this task is a test of existing code plus the record's statement — not an implementation. A test of already-ported code cannot start RED; the mutation proof is what shows it can fail.
 
@@ -470,7 +541,7 @@ git commit -m "flow: pin the demo's timer exit and loop-back"
 
 ---
 
-### Task 7: Close the cycle — the window end-to-end and the record
+### Task 8: Close the cycle — the window end-to-end and the record
 
 **Files:**
 - Modify: `port/spec/game_flow.md`, `README.md`, `docs/superpowers/specs/2026-09-21-demo-fight-closure-design.md`
@@ -524,6 +595,6 @@ git commit -m "docs: record the demo fight's closure"
 
 **Type consistency.** `game_state_step`, `game_frame`, `fight_arena_frame`, `fighter_think`, `fight_slot_pass` and `actors_update` are the existing names and are used unchanged. New functions are named for the original they port and are introduced by the task that first needs them; later tasks reference them by the name their own `Interfaces` block gives. Globals are referenced by their `symbols.h` names throughout, and a name the generator does not emit gets a local `#define` with the raw address.
 
-**Right-sizing.** Task 1 is one derivation deliverable with its own gate, and it is done. Tasks 3, 4, 5 and 6 each end at an independently verifiable oracle advance — which is why the hitbox machine and the chain, neither of which advances the oracle alone, are one task, and why the fight's entry frames are their own task: they sit before the fight and block its measurement. Task 2 is separated from Task 3 because it must precede every frame comparison past the picks and produces one reference change; folding it into Task 3 would bury a prerequisite inside a render task. Task 7 is the cycle's record and its honest Gate assessment, which no porting task can own.
+**Right-sizing.** Task 1 is one derivation deliverable with its own gate, and it is done. Tasks 3, 4, 5, 6 and 7 each end at an independently verifiable oracle advance — which is why the hitbox machine and the chain, neither of which advances the oracle alone, are one task, and why the loader's frame, the props and the arena render's fidelity are separate tasks: they sit before the fight and each blocks the next measurement. Task 2 is separated from Task 3 because it must precede every frame comparison past the picks and produces one reference change; folding it into Task 3 would bury a prerequisite inside a render task. Task 8 is the cycle's record and its honest Gate assessment, which no porting task can own.
 
 **Measurement over plan.** Three of this plan's task premises were refuted by the raw or by the oracle after the plan was written: Task 6's premise that the timer exit was unported, Task 3's premise that the projection explained the state-9 frame, and the assumption that the unported set was fully known. Each was corrected where it was found, with the addresses, and the plan was amended rather than the measurement bent. That is the intended failure mode of this cycle — the oracle's first-unexplained frame is the schedule, and a premise that does not survive contact with it is the plan's defect, not the code's.
