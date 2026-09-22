@@ -1983,6 +1983,11 @@ static void check_anim_stream_args(void)
     DSD(DS_00102900) = tgt;
     DSD(tgt + 0x0Cu) = 0xCAFEu;                 /* the sentinel */
     DSD(tgt + 8u) = 0xDEADBEEFu;
+    /* The first call's record is FIGHT_RECS (slot+0x00); 0x367DC clears its
+     * +0x0C and the slot's +0x52. Seed both so the assertions below cannot pass
+     * on a BSS zero (repo convention, cf. test_fight.c:1650). */
+    DSD(FIGHT_RECS + 0x0Cu) = 0x00005555u;
+    DSB(DS_001077B0 + 0x52u) = 0x55u;
 
     fighter_state_3531c(0u);
 
