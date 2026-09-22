@@ -490,7 +490,12 @@ Task 5a pinned why capture 831 is all-black and 832 is black+text (the master lo
 
 - [ ] **Step 1: Measure the dirty list at `0x25672`**
 
-Record §9.6's open gap: the dirty-list and ownership contents (`DS_00107498..DS_00107798`, `DS_00107618..`) at the flush on the loader frame, in the original and the port. The live-RAM dump reads them (`BP` never fires in this DOSBox-X build; the DOS/4GW base is re-derived per run from `"RAGE.S16"`, VA `0x8002D`). Decide which candidate the evidence supports: (a) the loader's flush scope (the port drains the arena's palette records too, so the DAC lacks the `0x52106` blackout), or (b) the gate/render ordering (the state-7 render overwrites `E87A4` before the first gate-pass). **Do not port a fix before the measurement names it.** If the measurement is out of reach, stop and report that — a re-scope conversation, not an approximation.
+**Amendment (human ruling) — the read/palette/present subsystem is OPEN.** Step 1's measurement has run and settled the mechanism: candidate **(a)** (the loader's flush scope) **confirmed**, (b) refuted. The **original's loader-frame gate FAILS** (`150C`=55 vs `1508`=57 at handler end, `/tmp/t5a_pal2.csv:118`) while the **port's passes** (`150C=1508`); both original buffers are zero through the block; the render list goes `0`→non-zero. **Making the port's loader-frame gate fail was tested and does NOT advance the oracle.** Exhibiting 832 needs the **text-present path — the same 498-byte overlay as the attract's capture-215 divergence** (`make attract-oracle` diverges there by exactly those 498 bytes) — plus the post-read ISR ticks. Therefore:
+- **The attract capture-215 claim MAY MOVE.** Record its new value with the reason (the human's earlier overlay ruling: fix the overlay and let the claim move).
+- **The post-read ISR ticks must be DERIVED, not fitted.** If they cannot be derived from the raw or a measurement, **stop and report that** — do not ship a constant.
+- Scope: the text-present path, the non-atomic read (the state-6 handler blocks; the port's atomic read makes the gate always pass), the palette enqueue order, and the held-frame presentation.
+
+The earlier measurement, for context: record §9.6's dirty-list and ownership contents (`DS_00107498..DS_00107798`, `DS_00107618..`) at the flush on the loader frame, in the original and the port. The live-RAM dump reads them (`BP` never fires in this DOSBox-X build; the DOS/4GW base is re-derived per run from `"RAGE.S16"`, VA `0x8002D`).
 
 - [ ] **Step 2: Write the failing test**
 
@@ -525,7 +530,7 @@ Expected: the port exhibits 831/832 and the first-unexplained frame **advances p
 - [ ] **Step 8: Full ladder and commit**
 
 Run: `make verify`
-Expected: exit 0, 0 warnings, every oracle claim unmoved (title `54/55/2/0` and `54/57/0`, attract `215`, front-end `0 unexplained`).
+Expected: exit 0, 0 warnings, every oracle claim unmoved **except the attract claim, which this task may move** (title `54/55/2/0` and `54/57/0`, front-end `0 unexplained`; attract recorded at its new value with the reason).
 
 ```bash
 git add <the files Step 1 named>
