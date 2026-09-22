@@ -1584,6 +1584,8 @@ static void check_hit_immunity_gate(void)
     DSB(DS_001077B0 + 0x5Fu) = 0xFFu;
     DSB(DS_001077B0 + 0x56u) = 6;
     CHECK_EQ_INT(hit_gate(0u, 0u), 0);
+    DSB(DS_001077B0 + 0x56u) = 5;               /* the boundary */
+    CHECK_EQ_INT(hit_gate(0u, 0u), 1);
     DSB(DS_001077B0 + 0x56u) = 0;
     CHECK_EQ_INT(hit_gate(0u, 0u), 1);
 }
