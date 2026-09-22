@@ -789,8 +789,12 @@ and damage (`0x3BB90`, `0x4FB20`, `0x3BAEC`, `0x3B9D8`), the `0x3CF38` hit chain
 the arena draw helper `0x3C88C` (§7.7), the state-9 hold's zoom-actor globe
 render (the `0x3E688` palette-driven zoom background spawned by
 `0x12484`/`0x12658` and advanced through the actor path `0x2A31C`), and the
-`- LOADING -` screen the capture shows at capture 834, which the port does not
-draw. The window's closure retires this bound rather than narrowing it.
+`- LOADING -` screen the capture shows at capture 832 (cycle 1 recorded 834),
+which the port now draws at the first lazy resolve — string 489 at (0,192)
+through `res_load_present`/`text_blit_string` (`0x1B3AC`/`0x1C500`/`0x1C65C`),
+proven pixel-exact in the port's first text-bearing frame; the frame it lands in
+still diverges by the arena render, so the demo window's first unexplained frame
+stays 832. The window's closure retires this bound rather than narrowing it.
 
 The gaps that may own the missing state-7 composition are `fight_slot_pass`'s
 `0x3C88C` draw helper (§7.7) and the skipped `0x20DF4` fight reset at `0x11AC4`
