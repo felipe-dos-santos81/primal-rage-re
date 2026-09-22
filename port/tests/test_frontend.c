@@ -550,6 +550,7 @@ int test_frontend(void)
          * 0x0E to 3 (the 0x3520E -> 0x3BF0A drive) and resolve a hit; a
          * missing 0x35803 call leaves all four counters false/zero. */
         int s7_saw14 = 0, s7_saw3 = 0, s7_hit = 0, s7_last_change = 0;
+        int s7_last = -1;              /* the last loop frame the state is 7 */
         u8 s7_prev[4] = { 0, 0, 0, 0 };
         for (int i = 0; i < 2000; i++) {
             /* The state-9 exit leaves DS_000F0A64 == 6 for the next iteration;
@@ -583,6 +584,7 @@ int test_frontend(void)
             if (DSW(DS_000F0A64) == 7u) {
                 u8 s0 = DSB(DS_001077B0 + 0x52u);
                 u8 s1 = DSB(DS_001077B0 + 0x94u + 0x52u);
+                s7_last = i;
                 if (s0 == 0x0Eu) s7_saw14 = 1;
                 if (s0 == 3u) s7_saw3 = 1;
                 if (DSB(DS_001077B0 + 0x7Cu) != 0u
@@ -669,6 +671,12 @@ int test_frontend(void)
         CHECK(s7_hit, "state-7 the 0x3CF38 chain resolves a hit");
         printf("test_frontend: state-7 last +0x52 change at loop frame %d\n",
                s7_last_change);
+        /* The Gate's first claim: the fight reaches the state-7 900-frame timer
+         * exit. State 7 is entered at loop 1070 and left at 1970 (the timer's
+         * 0x11BCC arm), so its last frame is 1969; a fight that stalls earlier
+         * (or never leaves) fails. The dump count above (1381) is the same
+         * proof through the presented frames. */
+        CHECK_EQ_INT(s7_last, 1969);
 
         /* The dust descriptors the aligned stream picks. From the state-6
          * entry at FRONTEND_RNG_AFTER_ATTRACT, 0x49388's rng(0x64) draws are
