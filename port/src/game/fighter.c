@@ -1323,9 +1323,10 @@ static void hit_stance_timer(u32 side);                     /* 0x1922C */
 #define FIGHT_STUN_BASE  0x00107A80u  /* 0x107A80: 0x40-byte per-side table */
 #define FIGHT_D24_BASE   0x00107D24u  /* 0x107D24: per-side word, 0x38BC8 clears */
 #define FIGHT_D2C_BASE   0x00107D2Cu  /* 0x107D2C: the per-side round word */
-#define FIGHT_D2E_BASE   0x00107D2Eu  /* 0x107D2E: the side-1 round word */
 #define FIGHT_ANIM_367DC 0x000C8950u  /* 0xC8950: 0x367DC's per-character anim */
 #define FIGHT_ANIM_36BC8 0x000C8A18u  /* 0xC8A18: 0x36BC8's per-character anim */
+#define FIGHT_367DC_STREAM 0x000E906Au /* 0xE906A: 0x367DC's second-call stream */
+#define FIGHT_36BC8_STREAM 0x000E906Eu /* 0xE906E: 0x36BC8's second-call stream */
 #define FIGHT_ROUND_HI   0x001088EAu  /* 0x1088EA: 0x4F944's second word */
 #define FIGHT_THR_34DDC  0x000BD870u  /* 0xBD870: 0x34DDC's per-char threshold */
 #define FIGHT_THR_350D0  0x000BEF14u  /* 0xBEF14: 0x350D0's per-char threshold */
@@ -1350,7 +1351,7 @@ void fighter_state_39280(u32 side)
     DSB(slot + 0x43u) &= 0xFBu;                             /* 0x39296 */
 }
 
-/* 0x34DDC. 0 when the slot's +0x30 is above the per-character threshold
+/* 0x34DDC. 0 when the slot's +0x30 is below the per-character threshold
  * (word[0xBD870 + char*2]) and the record's +0x36 is negative, else 1. */
 int fighter_34ddc(u32 side)
 {
@@ -1413,7 +1414,9 @@ static void fighter_4f944(u32 v)
 /* 0x367DC. The +0x53 == 7 arm's reset: restart the record's animation at
  * 0xC8950[char], clear the slot's +0x52/+0x53/+0x54/+0x55/+0x5F, zero the
  * record's +0x4C/+0x4D and mask the slot's +0x40; in modes other than
- * 3/0x22/0x24 a second animation at 0x102900[side]. */
+ * 3/0x22/0x24 a second animation on the side's 0x102900 record with the fixed
+ * 0xE906A stream (raw 0x36843 EDX = 0xE906A, 0x36848 EAX = 0x102900[side];
+ * 0x2BC30 stores EDX to rec+8 at 0x2BC52, so EDX is the stream). */
 static void fighter_state_367dc(u32 slot, u32 rec)
 {
     actors_anim_begin(rec, DSD(FIGHT_ANIM_367DC
@@ -1429,9 +1432,8 @@ static void fighter_state_367dc(u32 slot, u32 rec)
     DSD(slot + 0x40u) &= 0xCCF7BFFFu;                       /* 0x3681D */
     if (DSW(DS_00104B00) != 3u && DSW(DS_00104B00) != 0x22u
             && DSW(DS_00104B00) != 0x24u) {
-        actors_anim_begin(rec, DSD(DS_00102900
-                                   + (u32)DSB(rec + 0x51u) * 4u),
-                          0x3F800000u);                     /* 0x36854 */
+        actors_anim_begin(DSD(DS_00102900 + (u32)DSB(rec + 0x51u) * 4u),
+                          FIGHT_367DC_STREAM, 0x3F800000u);   /* 0x36854 */
     }
 }
 
@@ -1439,7 +1441,9 @@ static void fighter_state_367dc(u32 slot, u32 rec)
  * 0x38BB0 stun clear selected by the *other* side's DSW(0x107D2C+side*2) > 0,
  * restart this record's animation at 0xC8A18[char], anchor it, then set
  * slot+0x52 = 7, +0x53 = 2, +0x54 = 0, +0x5D = 0x44 and clear +0x43 bit 2.
- * Returns 7. */
+ * Returns 7. The 0x36CA9 second animation (0xE906E on the side's 0x102900
+ * record) is dead: both callers (0x350D0 0x35162, 0x36870 0x36A3F) require
+ * +0x43 bit 2 set, which forces this function's 0x36CA7 early return. */
 static int fighter_state_36bc8(u32 slot, u32 rec)
 {
     u32 side = (u32)DSB(rec + 0x51u);
@@ -1462,9 +1466,8 @@ static int fighter_state_36bc8(u32 slot, u32 rec)
         return 7;
     }
     if (DSW(DS_00104B00) != 3u && DSW(DS_00104B00) != 0x22u) {
-        actors_anim_begin(rec, DSD(DS_00102900
-                                   + (u32)DSB(rec + 0x51u) * 4u),
-                          0x40400000u);                     /* 0x36CD1 */
+        actors_anim_begin(DSD(DS_00102900 + (u32)DSB(rec + 0x51u) * 4u),
+                          FIGHT_36BC8_STREAM, 0x40400000u);   /* 0x36CD1 */
     }
     return 7;                                               /* 0x36CD6 */
 }

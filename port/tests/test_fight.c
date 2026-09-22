@@ -1954,6 +1954,47 @@ static void check_hud_pass_machine(void)
     CHECK_EQ_INT((int)DSW(p0 + 0x88u), 1);      /* the preamble ran */
 }
 
+/* Task 6b fix round 1: 0x367DC's second 0x2BC30 call passes the side's 0x102900
+ * record as the record and the fixed 0xE906A stream as the stream (raw
+ * 0x36843 EDX = 0xE906A, 0x36848 EAX = 0x102900[side]; 0x2BC30 stores EDX to
+ * rec+8 at 0x2BC52, so EDX is the stream). Seeded sentinels at the target
+ * record's +0x0C/+8 differ from actors_anim_begin's 0 and 0xE906A. The 0x36BC8
+ * twin (0x36CD1, stream 0xE906E) is dead — both its callers require +0x43
+ * bit 2, which forces its 0x36CA7 early return — so only 0x367DC is covered. */
+static void check_anim_stream_args(void)
+{
+    u32 tgt = FIGHT_RECS + 0x600u;
+    u32 saved900 = DSD(DS_00102900);
+    u32 saved900b = DSD(DS_00102900 + 4u);
+
+    /* Reach 0x367DC through 0x3531C case 7: char 4, +0x5F 0x21 and
+     * (s32)slot+0x86 >> 16 > 0x5A. Mode 0 (not 3/0x22/0x24) opens the second
+     * call. */
+    (void)hit_fixture(0);
+    DSD(DS_001077A8) = DS_001077B0;
+    DSD(DS_001077A8 + 4u) = DS_001077B0 + 0x94u;
+    DSB(FIGHT_RECS + 0x51u) = 0;
+    DSB(DS_001077B0 + 0x53u) = 7;
+    DSB(DS_001077B0 + 0x7Au) = 4;
+    DSB(DS_001077B0 + 0x5Fu) = 0x21u;
+    DSD(DS_001077B0 + 0x86u) = 0x00600000u;     /* >>16 = 0x60 > 0x5A */
+    DSW(DS_00104B00) = 0;
+    mem_fill(tgt, 0, 0x94u);
+    DSD(DS_00102900) = tgt;
+    DSD(tgt + 0x0Cu) = 0xCAFEu;                 /* the sentinel */
+    DSD(tgt + 8u) = 0xDEADBEEFu;
+
+    fighter_state_3531c(0u);
+
+    CHECK_EQ_INT((int)DSD(tgt + 0x0Cu), 0);     /* the 2nd call's record */
+    CHECK_EQ_INT((int)DSD(tgt + 8u), 0x000E906A);   /* its stream */
+    CHECK_EQ_INT((int)DSD(FIGHT_RECS + 0x0Cu), 0);  /* the 1st call's record */
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x52u), 0); /* 0x367DC cleared it */
+
+    DSD(DS_00102900) = saved900;
+    DSD(DS_00102900 + 4u) = saved900b;
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -2026,6 +2067,7 @@ int test_fight(void)
     check_hit_helpers();
     check_state_machine();
     check_hud_pass_machine();
+    check_anim_stream_args();
 
     put(s_f0ae0, 0x000F0AE0u, 0x20u);
     put(s_proj, 0x00100A70u, 0xF4u);
