@@ -1353,13 +1353,13 @@ entry (`DS_000F0A64`, the loader flag `DS_001014FC`, the two buffer pointers
 | 54.732 | 7 | **0** | **`084410`/`2FB038`** | 61 | 62 |
 
 At 53.698 `0x52106` (via `0x2BAF4` ← `0x20DF4` at `0x20E78`) sets **both**
-counters to 0 (`0x38806`/`0x38807`) and blacks the DAC. The state-6 handler then
+counters to 0 (`0x52108`/`0x5210D`) and blacks the DAC. The state-6 handler then
 spends ~55 timer ticks in its resource loads: `150C` stays at 0..3 while the
 timer ISR `0x1BDF4` (`INC EDX`/`MOV [0x101508],EDX` at `0x1BE0E`/`0x1BE10`)
 advances `1508` from 0 to ~55. At the gate `CMP EAX,[0x101508]` (`0x25643`) the
 two differ, so `FUN_0001c3fc` (sort), `FUN_00014328` (render), `FUN_0001c470`
 (flush), the copy (`0x25680`) and `FUN_00050188` (swap) are **all skipped**.
-`0x50188` (`0x36769`-`0x36771`) is exactly the `E87A0`↔`E87A4` exchange, and the
+`0x50188` (`0x5018A`-`0x5019B`) is exactly the `E87A0`↔`E87A4` exchange, and the
 table above shows it did **not** run for the whole ~1 s: the display holds the
 frame presented before the blackout, rendered through the blacked DAC → the
 capture's 831 (all black). The copy finally runs at 54.732, when `150C` catches
@@ -1393,9 +1393,9 @@ named gap: the mechanism is pinned; the reproduction is blocked on the loader's
 read timing, which the port abstracts by design.
 
 **The VGA-retrace ordering (the second named measurement).** `0x1C470` waits for
-the VGA status bit before its DAC writes (`0x1C470`: `in(0x3DA)` / `test al,8` /
-`jz` before the drain) and `0x52106` waits the same way before its 256×3
-blackout writes (`0x52106`: `0x3880A`-`0x38812`). The copy (`0x25680`, the
+the VGA status bit before its DAC writes (`0x1C481`-`0x1C489`: `MOV EDX,0x3da` /
+`IN AL,DX` / `TEST AL,0x8` / `JZ`) and `0x52106` waits the same way before its
+256×3 blackout writes (`0x5212E`-`0x52131`). The copy (`0x25680`, the
 `movsd` loop) has no retrace wait. So both DAC operations are retrace-synced and
 the copy is not; the ordering across the entry is flush/blackout → copy, and the
 retrace sync cannot separate the two candidates (the DAC state at the copy is
