@@ -479,23 +479,37 @@ static void fight_health_sync(u32 side)
     case 3u:                                    /* 0x34C46 -> 0x35D7C */
         fighter_state_35d7c(side);
         break;
-    case 4u:  /* PORT: 0x34C53 0x35F84 — unported handler (§7.10) */ break;
-    case 5u:  /* PORT: 0x34C62 0x36430 — unported handler (§7.10) */ break;
+    case 4u:                                    /* 0x34C53 -> 0x35F84 */
+        fighter_state_35f84(rec, DSD(rec));
+        break;
+    case 5u:                                    /* 0x34C62 -> 0x36430 */
+        fighter_state_36430(rec, DSD(rec), side);
+        break;
     case 6u:                                    /* 0x34C73 -> 0x1A978 */
         fight_stance_pass(side);
         break;
-    case 7u:  /* PORT: 0x34C80 0x399CC — unported handler (§7.10) */ break;
+    case 7u:                                    /* 0x34C80 -> 0x399CC */
+        fighter_state_399cc(side);
+        break;
     case 8u:  /* PORT: 0x34C8D 0x37464 — unported handler (§7.10) */ break;
     /* 9,10,11,14,15,16 -> 0x34D83, the epilogue no-op. */
     case 9u: case 10u: case 11u: case 14u: case 15u: case 16u:
         break;
-    case 12u: /* PORT: 0x34C9A 0x361C8 — unported handler (§7.10) */ break;
-    case 13u: /* PORT: 0x34CA9 0x36300 — unported handler (§7.10) */ break;
-    case 17u: /* PORT: 0x34CB8 0x36710 — unported handler (§7.10) */ break;
+    case 12u:                                   /* 0x34C9A -> 0x361C8 */
+        fighter_state_361c8(rec, DSD(rec));
+        break;
+    case 13u:                                   /* 0x34CA9 -> 0x36300 */
+        fighter_state_36300(rec, DSD(rec));
+        break;
+    case 17u:                                   /* 0x34CB8 -> 0x36710 */
+        fighter_state_36710(rec, DSD(rec));
+        break;
     case 18u: /* PORT: 0x34CC7 inline cmd gate + 0x3BDDC -> 0x18B04 (§7.10) */ break;
     case 19u: /* PORT: 0x34D22 inline +0x8E countdown + 0x33B00 (§7.10) */ break;
     case 20u: /* PORT: 0x34D69 0x35E6C — unported handler (§7.10) */ break;
-    case 21u: /* PORT: 0x34D78 0x364FC — unported handler (§7.10) */ break;
+    case 21u:                                   /* 0x34D78 -> 0x364FC */
+        fighter_state_364fc(rec, DSD(rec), side);
+        break;
     default:                                    /* >0x15 -> 0x34C08 0x349C8 */
         fighter_state_default(side);
         break;

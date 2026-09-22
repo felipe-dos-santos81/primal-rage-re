@@ -1447,6 +1447,35 @@ static void check_state_dispatch(void)
     CHECK_EQ_INT((int)DSB(p0 + 0x53u), 4);      /* 0x35D7C's no-hit re-arm */
     CHECK_EQ_INT((int)DSB(p0 + 0x54u), 2);
     CHECK_EQ_INT((int)DSB(p0 + 0x52u), 3);      /* 0x35D7C does not re-state */
+
+    /* E: +0x52 == 4 dispatches to 0x35F84 (the table's 0x34C53 entry), which
+     * writes +0x52 = 0x14 through the landing gate. The seeded 0x52 = 4
+     * differs from the post-value, so a no-op entry fails. */
+    mem_fill(FIGHT_RECS, 0, 0x400u);
+    mem_fill(FIGHT_ACTORS, 0, 0x80u);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSD(DS_001077A8) = p0;
+    DSD(DS_001077A8 + 4u) = 0;
+    DSD(p0) = r0;
+    DSB(p0 + 0x7Au) = 0;                        /* char 0: threshold 0x1600 */
+    DSD(p0 + 0x30u) = 0;
+    DSW(r0 + 0x36u) = 0xFFFFu;                  /* negative: the gate passes */
+    DSB(r0 + 0x51u) = 0;
+    DSB(p0 + 0x42u) = 0;
+    DSB(p0 + 0x43u) = 0;
+    DSB(p0 + 0x52u) = 4;
+    DSW(DS_001088E0) = 0;
+    fight_hud_pass(0u);
+    CHECK_EQ_INT((int)DSB(p0 + 0x52u), 0x14);   /* 0x35F84's landing state */
+
+    /* F: +0x52 == 12 dispatches to 0x361C8 (0x34C9A); its +0x58 == 3 case
+     * writes +0x52 = 9. Seeded +0x52 = 12 differs. */
+    DSB(p0 + 0x43u) = 0;
+    DSB(p0 + 0x58u) = 3;
+    DSW(r0 + 0x34u) = 0x0010u;                  /* |+0x34| = 0x10 < 0x11 */
+    DSB(p0 + 0x52u) = 12;
+    fight_hud_pass(0u);
+    CHECK_EQ_INT((int)DSB(p0 + 0x52u), 9);      /* 0x361C8's case 3 */
 }
 
 /* ---- Task 6: the 0x3C88C hitbox machine and the 0x3CF38 hit chain --------
@@ -1913,6 +1942,182 @@ static void check_state_machine(void)
     DSD(DS_00101514) = saved_tab;
 }
 
+/* Task 3: the remaining 0x34B14 +0x52 handlers. Each case seeds the inputs the
+ * handler reads and a sentinel that differs from the record §2.2 post-value, so
+ * a dropped store fails. The dispatch wiring is asserted by check_state_dispatch
+ * and check_hud_pass_machine. */
+static void check_state_handlers(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+
+    /* A: 0x35F84 (+0x52 = 4). The landing gate (word[0xBD882] >> 16 = 0x1600
+     * for char 0 >= slot+0x30, rec+0x36 <= 0) writes +0x52 = 0x14, +0x53 = 4,
+     * +0x78 = word[0xBDC16] and rec+0x24 = 0. The sentinel 0xAA differs from
+     * every post-value. */
+    (void)hit_fixture(0);
+    DSD(DS_001077A8) = s0;
+    DSD(DS_001077A8 + 4u) = s1;
+    DSD(s0) = r0;
+    DSD(s1) = r1;
+    DSB(r0 + 0x51u) = 0;
+    DSB(s0 + 0x7Au) = 0;                        /* char 0: threshold 0x1600 */
+    DSD(s0 + 0x30u) = 0;                        /* below the threshold */
+    DSW(r0 + 0x36u) = 0xFFFFu;                  /* negative */
+    DSD(r0 + 0x24u) = 0xDEADBEEFu;
+    DSB(s0 + 0x41u) = 0;
+    DSB(s0 + 0x52u) = 0xAAu;
+    DSB(s0 + 0x53u) = 0xAAu;
+    DSW(s0 + 0x78u) = 0xAAAAu;
+    fighter_state_35f84(s0, r0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x14);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 4);
+    CHECK_EQ_INT((int)DSW(s0 + 0x78u), (int)DSW(0x000BDC16u));
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x41u) & 0x80, 0x80);
+
+    /* A2: the same with rec+0x36 > 0 (the gate fails): the state is untouched. */
+    (void)hit_fixture(0);
+    DSD(DS_001077A8) = s0;
+    DSD(DS_001077A8 + 4u) = s1;
+    DSD(s0) = r0;
+    DSD(s1) = r1;
+    DSB(r0 + 0x51u) = 0;
+    DSB(s0 + 0x7Au) = 0;
+    DSD(s0 + 0x30u) = 0;
+    DSW(r0 + 0x36u) = 1;                        /* positive: the gate fails */
+    DSB(s0 + 0x52u) = 0xAAu;
+    fighter_state_35f84(s0, r0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0xAA);
+
+    /* B: 0x361C8 (+0x52 = 12). +0x58 = 3 with |rec+0x32 >> 16| < 0x11 zeroes
+     * rec+0x34 and writes +0x52 = 9. The sentinel +0x52 = 0xAA fails if the
+     * store is dropped. */
+    (void)hit_fixture(0);
+    DSD(DS_001077A8) = s0;
+    DSD(DS_001077A8 + 4u) = s1;
+    DSD(s0) = r0;
+    DSD(s1) = r1;
+    DSB(r0 + 0x51u) = 0;
+    DSB(s0 + 0x58u) = 3;
+    DSW(r0 + 0x34u) = 0x0010u;                  /* |+0x34| = 0x10 < 0x11 */
+    DSB(s0 + 0x52u) = 0xAAu;
+    fighter_state_361c8(s0, r0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0);
+
+    /* B2: +0x58 = 2 subtracts 0x38 from rec+0x36 and leaves +0x52. */
+    DSB(s0 + 0x58u) = 2;
+    DSW(r0 + 0x36u) = 0x0100u;
+    DSB(s0 + 0x52u) = 0xAAu;
+    fighter_state_361c8(s0, r0);
+    CHECK_EQ_INT((int)DSW(r0 + 0x36u), 0x00C8);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0xAA);
+
+    /* C: 0x36300 (+0x52 = 13), the same case-3 body. */
+    (void)hit_fixture(0);
+    DSD(DS_001077A8) = s0;
+    DSD(DS_001077A8 + 4u) = s1;
+    DSD(s0) = r0;
+    DSD(s1) = r1;
+    DSB(r0 + 0x51u) = 0;
+    DSB(s0 + 0x58u) = 3;
+    DSW(r0 + 0x34u) = 0x0010u;                  /* |+0x34| = 0x10 < 0x11 */
+    DSB(s0 + 0x52u) = 0xAAu;
+    fighter_state_36300(s0, r0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0);
+
+    /* D: 0x36710 (+0x52 = 17). +0x58 = 2 with rec+0x36 == 0 and rec+0x1C == 0
+     * writes rec+0x43 = byte[0xBD89A] = 8 and +0x52 = 9. The sentinels differ. */
+    (void)hit_fixture(0);
+    DSD(DS_001077A8) = s0;
+    DSD(DS_001077A8 + 4u) = s1;
+    DSD(s0) = r0;
+    DSD(s1) = r1;
+    DSB(r0 + 0x51u) = 0;
+    DSB(s0 + 0x58u) = 2;
+    DSW(r0 + 0x36u) = 0;
+    DSD(r0 + 0x1Cu) = 0;
+    DSB(r0 + 0x43u) = 0xAAu;
+    DSB(s0 + 0x52u) = 0xAAu;
+    fighter_state_36710(s0, r0);
+    CHECK_EQ_INT((int)DSB(r0 + 0x43u), (int)DSB(0x000BD89Au));
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+
+    /* D2: the first step (+0x58 = 0 -> 1) touches only +0x58. */
+    (void)hit_fixture(0);
+    DSD(DS_001077A8) = s0;
+    DSD(s0) = r0;
+    DSB(r0 + 0x51u) = 0;
+    DSB(s0 + 0x58u) = 0;
+    DSB(s0 + 0x52u) = 0xAAu;
+    fighter_state_36710(s0, r0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 1);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0xAA);
+
+    /* E: 0x399CC (+0x52 = 7). The self slot gets +0x41 bit 2 and +0x74 = 0. */
+    (void)hit_fixture(0);
+    DSD(DS_001077A8) = s0;
+    DSD(s0) = r0;
+    DSB(r0 + 0x51u) = 0;
+    DSB(s0 + 0x41u) = 0;
+    DSW(s0 + 0x74u) = 0xAAAAu;
+    DSB(s0 + 0x5Du) = 1;                        /* skip 0x367DC */
+    fighter_state_399cc(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x41u) & 4, 4);
+    CHECK_EQ_INT((int)DSW(s0 + 0x74u), 0);
+
+    /* F: 0x36430 (+0x52 = 5). With 0x365C8/0x36638 both clear and the command
+     * word 0, the handler writes +0x52 = 9 and +0x54 = 0. */
+    (void)hit_fixture(0);
+    DSD(DS_001077A8) = s0;
+    DSD(DS_001077A8 + 4u) = s1;
+    DSD(s0) = r0;
+    DSD(s1) = r1;
+    DSB(r0 + 0x51u) = 0;
+    DSB(r1 + 0x51u) = 1;
+    DSB(s0 + 0x42u) = 0;
+    DSB(s0 + 0x43u) = 0;
+    DSB(s0 + 0x54u) = 0;
+    DSW(DS_001088E0) = 0;
+    DSB(s0 + 0x52u) = 0xAAu;
+    DSB(s0 + 0x54u) = 0xAAu;
+    fighter_state_36430(s0, r0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
+
+    /* G: 0x364FC (+0x52 = 21). Command 0x4000 (the +0x40 high bit) with
+     * 0x1A640 == 0 writes +0x52 = 5. */
+    (void)hit_fixture(0);
+    DSD(DS_001077A8) = s0;
+    DSD(DS_001077A8 + 4u) = s1;
+    DSD(s0) = r0;
+    DSD(s1) = r1;
+    DSB(r0 + 0x51u) = 0;
+    DSB(r1 + 0x51u) = 1;
+    DSB(s0 + 0x42u) = 0;
+    DSB(s0 + 0x43u) = 0;
+    DSB(s0 + 0x54u) = 0;
+    DSW(r0 + 0x28u) = 0;                        /* facing clear: 0x1A640 = 0 */
+    DSW(DS_001088E0) = 0x4000u;
+    DSB(s0 + 0x52u) = 0xAAu;
+    fighter_state_364fc(s0, r0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 5);
+
+    /* H: 0x1A640's two non-zero arms and its zero arm. */
+    (void)hit_fixture(0);
+    DSD(DS_001077B0) = r0;
+    DSW(r0 + 0x28u) = 0;                        /* facing clear */
+    DSW(DS_001088E0) = 0x1000u;                 /* 0x1000 in the high byte */
+    CHECK_EQ_INT(fighter_1a640(0u), 0x1000);
+    DSW(r0 + 0x28u) = 0x4000u;                  /* facing set */
+    DSW(DS_001088E0) = 0x2000u;
+    CHECK_EQ_INT(fighter_1a640(0u), 0x2000);
+    DSW(DS_001088E0) = 0;
+    CHECK_EQ_INT(fighter_1a640(0u), 0);
+}
+
 /* Task 6b wiring: fight_hud_pass's 0x35803 call drives +0x52 out of the 0x0E
  * no-op through 0x3531C -> 0x350D0 -> 0x3BDDC. Seeded +0x52 = 0x0E differs
  * from the post-condition 3, and +0x54 = 0x55 from 2. */
@@ -2071,6 +2276,7 @@ int test_fight(void)
     check_hit_chain();
     check_hit_helpers();
     check_state_machine();
+    check_state_handlers();
     check_hud_pass_machine();
     check_anim_stream_args();
 

@@ -103,6 +103,20 @@ int fighter_state_36638(u32 slot, u32 rec);
  * 0x3CF38 hit chain reports no hit, arm slot+0x54 = 2, slot+0x53 = 4. */
 void fighter_state_35d7c(u32 side);
 
+/* The remaining 0x34B14 +0x52 handlers (record §2.2). One C function per
+ * original; the entry addresses are the table's 0x34B14 entries. */
+void fighter_state_35f84(u32 slot, u32 rec);             /* 0x35F84, +0x52=4 */
+void fighter_state_361c8(u32 slot, u32 rec);             /* 0x361C8, +0x52=12 */
+void fighter_state_36300(u32 slot, u32 rec);             /* 0x36300, +0x52=13 */
+void fighter_state_36710(u32 slot, u32 rec);             /* 0x36710, +0x52=17 */
+void fighter_state_399cc(u32 side);                      /* 0x399CC, +0x52=7 */
+void fighter_state_36430(u32 slot, u32 rec, u32 side);   /* 0x36430, +0x52=5 */
+void fighter_state_364fc(u32 slot, u32 rec, u32 side);   /* 0x364FC, +0x52=21 */
+
+/* 0x1A640. 0x1000 when this side's facing bit 0x4000 is clear and the command's
+ * 0x1000 is set; 0x2000 in the mirror; else 0. The mirror of 0x1A5D4. */
+int fighter_1a640(u32 side);
+
 /* 0x3C88C. The per-slot attack-frame state machine fight_slot_pass runs 2 x 32
  * times per arena frame. Reads DS_00107ED8 (slot index), DS_00107EDC (side) and
  * DS_00107EE4 (facing); phase 0 arms the hitbox (word[0x107D58 + side*0x40 +
