@@ -30,10 +30,18 @@ void palette_list_init(void)
 /* 0x33734: appends a raw-pointer palette record { ptr; first; count; flag } at
  * the DS_00107798 head and advances the head. PORT: moved from flow.c so the
  * dirty-list writer has one owner; flow.c's init enqueue and game/actors.c's
- * 0x33754 palette acquire both call it. */
+ * 0x33754 palette acquire both call it.
+ * PORT: the original never bounds the head because 0x1C470 drains the list
+ * every frame, and a frame cannot enqueue more records than the list holds in
+ * the shipped data. The port's test drivers run game_frame() without the loop's
+ * drain, so the head can reach the ownership table at DS_00107618 (the record
+ * region is the 24 records at DS_00107498..DS_00107618). A record that would
+ * write past it is dropped — the original would corrupt the table and the
+ * globals above it — and the palette is re-recorded by the next acquire. */
 void palette_record(u32 ptr, u32 first, u32 count, u32 flag)
 {
     u32 head = DSD(DS_00107798);
+    if (head + 0x10u > DS_00107618) return;
     DSD(head + 0) = ptr;
     DSD(head + 4) = first;
     DSD(head + 8) = count;
@@ -45,6 +53,14 @@ void gfx_flush_palette(void)
 {
     u32 rec = DS_00107498;
     u32 head = DSD(0x107798);
+    /* PORT: the head is valid only inside the record region (DS_00107498 up to
+     * the ownership table at DS_00107618). A list that was never initialized
+     * reads 0 and a stale head can sit outside it; either would walk past the
+     * table. Treat such a head as empty. */
+    if (head < DS_00107498 || head > DS_00107618) {
+        DSD(DS_00107798) = DS_00107498;
+        head = DS_00107498;
+    }
     /* PORT: maps the original's `in(0x3DA) & 8` VBlank spin, run before the
      * dirty-list drain in FUN_0001C470, onto gfx_wait_vblank() -> host_pump(). */
     if (rec != head) gfx_wait_vblank();
