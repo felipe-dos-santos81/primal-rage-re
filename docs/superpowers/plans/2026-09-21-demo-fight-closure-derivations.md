@@ -813,9 +813,13 @@ oracle cannot measure the dust's pixels until Task 3 lands.
     (`s32 step = (s32)DSW(DS_000F0AFC)`), so the fight's camera-x step starts at
     0 instead of 0x400. With step 0 and a nonzero delta the commit takes the
     `mag > step` arm, adds ±0 and never reaches the `else` that re-seeds the step
-    to 0x400, so the camera x stays frozen at its initial 0 and the projection's
-    shear stride (`DS_000F0AF0 << 8`, `render_scroll_fill`) is 0 — the port's
-    measured `DS_000F0AF0` is 0 on the first state-7 frames. The same reset's two
+    to 0x400 — so on the mode-1 path the camera x cannot move and the
+    projection's shear stride (`DS_000F0AF0 << 8`, `render_scroll_fill`) cannot
+    grow. Scope note: the camera *mode* is the byte at `DS_000F0AFE`, which this
+    reset does not write; the port's measured mode is 0 (`camera_mode_track_player`,
+    which writes `DS_000F0AF0` directly) on the first state-7 frames, where the
+    measured `DS_000F0AF0` is 0 — so this gap is a named input for the arena task,
+    not a proven cause of the port's current camera value. The same reset's two
     word stores `0x20E5C` (`word[0xF0AFA] = CX = 0`) and `0x20E63`
     (`word[0xF0AF8] = SI = 0`) are also unported (both are BSS-zero, so
     net-faithful today). Do not port here — the arena render's fidelity owns the
