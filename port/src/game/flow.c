@@ -788,15 +788,20 @@ static void game_state_6(void)
      * DS_000F0AFA/DS_000F0AF8. Of these only 0x49300 is ported here
      * (fight_list_init): it is the liveness precondition — it self-links the
      * fight-effect list sentinel DS_0010884C that the 0x49C78 walk reads, so a
-     * zero head would walk address 0 forever. The rest, including 0x12C70
-     * (`word[0xF0AFC] = 0x400`, the camera-x step camera_x_commit reads), stay
-     * a named gap (record §6.10). */
+     * zero head would walk address 0 forever. 0x12C70 (camera_step_seed) is
+     * called at its raw position below (0x20E6A); the rest, including the two
+     * word stores DS_000F0AFA/DS_000F0AF8, stay a named gap (record §6.10) —
+     * both stores are BSS-zero, so the port is net-faithful for them. */
     fight_list_init();                                  /* 0x11AC4 0x49300 */
     /* 0x20E4C/0x20E52: the reset zeroes the two camera words the projection
      * reads — 0x38A38's stride is DS_000F0AF0 << 8 and 0x2A620's shear base is
      * DS_000F0AEC — before the 0x38730 call below. */
     DSD(DS_000F0AEC) = 0;
     DSD(DS_000F0AF0) = 0;
+    /* 0x20E6A 0x12C70: the camera-x step seed (DS_000F0AFC = 0x400), at the
+     * raw's position before the EDX branch below. camera_x_commit reads it as
+     * the step. */
+    camera_step_seed();                                 /* 0x20E6A 0x12C70 */
     /* 0x20E78 0x2BAF4(EAX=1): the branch's first call. It clears the actor and
      * pset pools, the render list and the process masks, zeroes the two
      * offscreen buffers and blacks the DAC (0x52106/0x336C0), which releases the

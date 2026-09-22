@@ -192,6 +192,21 @@ static void camera_y_clamp(void)
     }
 }
 
+/* 0x12C70. The camera-x step seed: its whole body is `MOV word ptr
+ * [0x000F0AFC],0x400` (the RET is at 0x12C79). Its sole caller is 0x20DF4 at
+ * 0x20E6A (Ghidra xref), the state-6 fight reset, which runs it just before its
+ * EDX branch (0x2BAF4/0x38730/0x412A0). camera_x_commit (0x12C7C) reads
+ * DS_000F0AFC as the step and re-seeds it to 0x400 on the snap arm, so the seed
+ * is only observable on the first commit: without it a nonzero delta would take
+ * the `mag > step` arm with step 0, add 0 and never reach the snap. The demo's
+ * first state-7 commit has delta 0 (the camera x stays 0), so the port is
+ * net-faithful for these frames either way; the store is issued for the raw's
+ * own sake. */
+void camera_step_seed(void)
+{
+    DSW(DS_000F0AFC) = 0x400u;                          /* 0x12C70 */
+}
+
 /* 0x12C7C. The shared camera-x commit: snap when within DS_000F0AFC, else step
  * by it and reset the step to 0x400. */
 static void camera_x_commit(s32 arg)

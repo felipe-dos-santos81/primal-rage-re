@@ -1039,8 +1039,14 @@ static void check_state6(void)
     u32 end_state = DSD(DS_000EF6D8);
 
     DSW(DS_000F0A64) = 6;
+    /* 0x12C70's sentinel: the state-6 reset's camera-x step seed stores 0x400
+     * (0x20E6A), so a value that differs proves the store ran. */
+    DSW(DS_000F0AFC) = 0x1234;
     rng_seed(0x1234u);
     game_state_step();
+
+    CHECK_EQ_INT((int)DSW(DS_000F0AFC), 0x400);   /* 0x12C70 */
+    CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0);       /* 0x20E52 */
 
     CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)end_state);
     CHECK_EQ_INT((int)DSW(DS_00104AFC), (int)draw1);

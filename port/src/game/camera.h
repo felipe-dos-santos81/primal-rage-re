@@ -37,6 +37,10 @@ u32 camera_char_const(u32 ch);
  * DS_000F0AF0 = clamp(DS_000F0AF0, -0x5D00, +0x5D00). */
 void camera_dispatch(void);
 
+/* 0x12C70. The camera-x step seed: DS_000F0AFC = 0x400. 0x20DF4 (the state-6
+ * fight reset) is its only caller (0x20E6A). */
+void camera_step_seed(void);
+
 /* 0x17580. The per-frame projection decay: four word countdowns, three globals
  * zeroed, four signed truncating multiplies by 0xF3D/0xD56, then the
  * 0x140E4/0x170A0 tail (unported gap). */
