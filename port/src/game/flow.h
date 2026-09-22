@@ -26,6 +26,11 @@ void game_shutdown(void);
  * (data/game/C). Must be called before game_main(). */
 void game_set_game_dir(const char *dir);
 
+/* 0x255D4/0x255DA: the master loop's prologue — zeroes the tick pair
+ * DS_00101508/DS_0010150C. Called once by game_main(); the per-frame drivers
+ * that call game_loop() directly start from the BSS-zero pair. */
+void game_loop_begin(void);
+
 /* 0x255CC: the master frame loop (input pump -> frame -> render -> present ->
  * pacing) until the quit flag DS_000A81A8 is set. Exposed for tests. */
 void game_loop(void);

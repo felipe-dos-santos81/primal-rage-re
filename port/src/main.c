@@ -178,7 +178,8 @@ static int run_check(const char *game_dir, int frames)
         DSB(DS_000A81A8) = 1;            /* one loop iteration per call */
         game_loop();                     /* frame i */
         u16 st = DSW(DS_000F0A64);
-        const u8 *presented = mem + DSD(DS_000E87A0);
+        const u8 *presented = gfx_display();
+        if (presented == NULL) presented = mem + DSD(DS_000E87A0);
         /* State 0 is the attract (blank until its scene loads); states 1..9 are
          * drawn screens and must not be blank. */
         fail += capture_frame(i, presented, st != 0 && st <= 9);

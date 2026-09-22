@@ -143,11 +143,30 @@ void gfx_flush_palette(void)
  * at 0xA1420, …), never a screen. gfx_present() therefore must NOT write mem[]:
  * it converts the same indices through the DAC to RGB and hands the frame to
  * the host window. No behavioural change required. */
+/* PORT: the original's display is the VGA aperture, which keeps its content
+ * until the master loop's gate (0x25643) copies a new frame. When the gate fails
+ * the aperture — and so the screen — holds the last presented frame even though
+ * 0x52106 has since zeroed the two offscreen buffers (DS_001014E8/E4). The port
+ * has no aperture, so g_display keeps the last presented index buffer: the dump
+ * drivers and gfx_present's own DAC path read it so a held frame is the last
+ * presented one, not the freshly zeroed back buffer. */
+static u8 g_display[320 * 200];
+static int g_display_valid;
+
+const u8 *gfx_display(void)
+{
+    return g_display_valid ? g_display : NULL;
+}
+
 void gfx_present(const u8 *indices, int w, int h)
 {
     static u8 rgb[320 * 200 * 3];
     if (w <= 0 || h <= 0 || (u32)w * (u32)h > sizeof rgb / 3) return;
     int n = w * h;
+    if (w == 320 && h == 200) {
+        memcpy(g_display, indices, 320u * 200u);
+        g_display_valid = 1;
+    }
     for (int i = 0; i < n; i++) {
         const u8 *c = gfx_dac[indices[i]];
         rgb[i * 3 + 0] = c[0];

@@ -540,7 +540,8 @@ int test_frontend(void)
              * missing file; one failure stops further attempts. */
             if (DSW(DS_000F0A64) >= 3u && !dump_failed &&
                 dumped < (int)raw_cap) {
-                const u8 *fb = mem + DSD(DS_000E87A0);
+                const u8 *fb = gfx_display();
+                if (fb == NULL) fb = mem + DSD(DS_000E87A0);
                 char path[1300];
                 snprintf(path, sizeof path, "%s/frame_%04d.raw", dump, dumped);
                 FILE *fr = fopen(path, "wb");

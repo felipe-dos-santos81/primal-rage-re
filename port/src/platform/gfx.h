@@ -35,6 +35,12 @@ void palette_record(u32 ptr, u32 first, u32 count, u32 flag);
  * frame to host_present_rgb(). */
 void gfx_present(const u8 *indices, int w, int h);
 
+/* PORT: the last 320x200 index buffer handed to gfx_present(), or NULL before the
+ * first. Models the VGA aperture, which holds its content when the master loop's
+ * gate fails. The dump drivers present this so a held frame is the last
+ * presented one, not the freshly zeroed back buffer. */
+const u8 *gfx_display(void);
+
 /* Single mapping point for the original's `in(0x3DA) & 8` VBlank spin. */
 void gfx_wait_vblank(void);
 

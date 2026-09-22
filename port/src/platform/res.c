@@ -5,6 +5,7 @@
 #include "../symbols.h"
 #include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 
@@ -22,15 +23,32 @@
 
 static u32 g_heap = RES_HEAP;
 
+/* PORT: the loader's read stalls the master loop. 0x1B3AC reads the entry's
+ * payload (0x61C60) between the loader's text draw and the tick re-sync
+ * (0x1B45F/0x1B464), and while it blocks the timer ISR 0x1BDF4 advances the tick
+ * DS_00101508 alone, so the master loop's gate (0x25643) fails for the read's
+ * duration. The port's payloads are resident, so the duration is modelled from
+ * the bytes read at the rate measured from the DOSBox-X live-RAM poll (record
+ * §9.6): the demo's state-6 entry reads s16beach (233128) + s16rex (3812084) +
+ * s16cob (2438316) = 6483528 bytes and blocks 55 ticks, i.e. 117882 bytes/tick.
+ * The two 9->6 entries measured 55 and 56 ticks; the 7->6 entry, which reads a
+ * smaller set, 27. Rounded up per read. This is a *derived* rate, not a fitted
+ * per-frame constant. */
+#define RES_READ_BYTES_PER_TICK 117882u
+
 /* 0x1B3AC's presentation head (0x1B3B8-0x1B3F8). `draw` is the original's BL:
  * 0 from the init walk's call (0x1B250), 1 from the lazy resolve (0x1B5E9).
  * With draw set, string 489 is read through 0x1C500 and blitted at (0,192)
  * through 0x1C65C; either way the master loop's full-copy flag DS_001014FC is
- * set (0x1B3F8). */
-static void res_load_present(u32 draw)
+ * set (0x1B3F8). `index` is the entry being read, for the read-stall model. */
+static void res_load_present(u32 draw, u32 index)
 {
-    if (draw != 0u)
+    if (draw != 0u) {
         text_blit_string(game_string_get(0x1E9u), 0, 0xE6);   /* 0x1B3EA/0x1B3EF */
+        /* PORT: the read's stall, advanced on the tick counter the gate reads. */
+        u32 size = res_size(index);
+        DSD(DS_00101508) += (size + RES_READ_BYTES_PER_TICK - 1u) / RES_READ_BYTES_PER_TICK;
+    }
     DSD(DS_001014FC) = 1u;                                    /* 0x1B3F8 */
 }
 
@@ -145,7 +163,7 @@ int res_load_index(const char *game_dir, const char *index_path)
              * the resident bit regardless, making the difference unobservable
              * on a complete install. */
             if (read_ok) DSD(table + i * RES_REC + 12) |= RES_FLAG_LOADED;
-            res_load_present(0u);                              /* 0x1B250 (BL=0) */
+            res_load_present(0u, (u32)i);                      /* 0x1B250 (BL=0) */
         }
     }
     DSD(DS_001014F8) = biggest;
@@ -235,7 +253,7 @@ void *res_resolve(u32 handle)
          * rules out. Marking first makes such a re-entrant resolve return
          * instead of presenting the same entry again. */
         DSD(entry + 12) = flags | RES_FLAG_LOADED;    /* 0x1B47A */
-        res_load_present(1u);                         /* 0x1B5E0-0x1B5E9 (BL=1) */
+        res_load_present(1u, index);                  /* 0x1B5E0-0x1B5E9 (BL=1) */
     }
     return mem + data + (handle & 0x7FFFFFu);
 }

@@ -430,7 +430,8 @@ static void game_dump_frame(const char *dir, const char *sub, int n)
     snprintf(path, sizeof path, "%s/frame_%04d.raw", subdir, n);
     FILE *f = fopen(path, "wb");
     if (f != NULL) {
-        const u8 *idx = mem + DSD(DS_000E87A4);
+        const u8 *idx = gfx_display();
+        if (idx == NULL) idx = mem + DSD(DS_000E87A4);
         for (u32 i = 0; i < 320u * 200u; i++) {
             const u8 *rgb = gfx_dac[idx[i]];
             fwrite(rgb, 1, 3, f);
@@ -1190,15 +1191,27 @@ int game_main(void)
         return 1;
     }
     game_init();            /* 0x1BEC4 init chain */
+    game_loop_begin();      /* 0x255D4/0x255DA loop prologue */
     game_loop();            /* 0x20C10 -> 0x255CC */
     game_shutdown();        /* 0x1BE30 teardown */
     return 0;
 }
 
-void game_loop(void)
+/* 0x255D4/0x255DA: the master loop's prologue zeroes the tick pair before the
+ * first iteration. PORT: split out because the port's game_loop() is the loop
+ * body and is driven one iteration at a time by the check/test drivers. */
+void game_loop_begin(void)
 {
     DSD(DS_00101508) = 0;
     DSD(DS_0010150C) = 0;
+}
+
+void game_loop(void)
+{
+    /* PORT: the raw's 0x255CC prologue (0x255D4/0x255DA) zeroes the tick pair
+     * once, at the loop's entry. The port's game_loop() is called once per frame
+     * by the test/check drivers, so the zeroing lives in game_loop_begin()
+     * (called once by game_main) instead of here. */
     do {
         {
             /* PORT: the host fills the key bitmap 0x500C4 samples; the binding
@@ -1223,42 +1236,60 @@ void game_loop(void)
         const u16 state_before = DSW(DS_000F0A64);
         game_frame();                        /* 0x24C5C */
         run_process_table(DS_000A86C4, DSD(DS_00104AEC));  /* render table */
-        render_list_sort();                  /* 0x1C3FC */
-        render_list();                       /* 0x14328 */
-        DSD(DS_00104AF4)++;
-        effects_step();                      /* 0x134C0 */
+        DSD(DS_00104AF4)++;                  /* 0x2563A */
+        effects_step();                      /* 0x134C0 (0x2563E) */
 
-        /* The original copies DAT_000E87A4 to the literal VGA aperture 0xA0000
-         * here (0x255CC full copy when DS_001014FC != 0, else the 0x501A3
-         * dirty-dword blit). PORT: the aperture rule — never write mem[0xA0000];
-         * present the index buffer through gfx_present(), which converts via
-         * gfx_dac to RGB and hands it to the host. */
-        gfx_flush_palette();                 /* 0x1C470 */
-        gfx_present(mem + DSD(DS_000E87A4), 320, 200);
-        /* PORT: Task 10's PR_TITLE_DUMP hook and 4d's PR_ATTRACT_DUMP hook — one
-         * RGB24 file per presented frame, read before the swap replaces
-         * DS_000E87A4 with the back buffer. The frame is attributed to the state
-         * that dispatched it: the attract's phase-0xB handoff sets state 1
-         * inside game_frame, so it is still an attract frame. */
-        if (state_before == 0) game_attract_dump_frame();
-        else if (state_before == 1) game_title_dump_frame();
-        DSD(DS_001014FC) = 0;
-        swap_buffers();                      /* 0x50188 */
+        /* 0x25643: the tick gate. The original presents only when the frame
+         * counter DS_0010150C has caught the ISR tick DS_00101508; the sort,
+         * render, flush, copy and swap all sit inside it (0x25650-0x256AA). The
+         * port's state-6 resource reads advance DS_00101508 (res.c), so the
+         * loader frame's gate fails and the loop catches up exactly as the raw
+         * does — see record §9.6. */
+        if (DSD(DS_0010150C) == DSD(DS_00101508)) {          /* 0x25643 */
+            render_list_sort();              /* 0x25650 0x1C3FC */
+            if (DSB(DS_001088F4) == 0) render_list();        /* 0x2566D 0x14328 */
+            /* The original copies DAT_000E87A4 to the literal VGA aperture
+             * 0xA0000 here (0x25680 full copy when DS_001014FC != 0, else the
+             * 0x501A3 dirty-dword blit). PORT: the aperture rule — never write
+             * mem[0xA0000]; present the index buffer through gfx_present(),
+             * which converts via gfx_dac to RGB and hands it to the host. */
+            gfx_flush_palette();             /* 0x25672 0x1C470 */
+            gfx_present(mem + DSD(DS_000E87A4), 320, 200);   /* 0x25680 the copy */
+            /* PORT: Task 10's PR_TITLE_DUMP hook and 4d's PR_ATTRACT_DUMP hook —
+             * one RGB24 file per *presented* frame, read after the copy and before
+             * the swap, so the stream contains only the frames the original
+             * presents (a gate-failed frame dumps nothing). The frame is
+             * attributed to the state that dispatched it: the attract's phase-0xB
+             * handoff sets state 1 inside game_frame, so it is still an attract
+             * frame. */
+            if (state_before == 0) game_attract_dump_frame();
+            else if (state_before == 1) game_title_dump_frame();
+            DSD(DS_001014FC) = 0;            /* 0x2569D */
+            swap_buffers();                  /* 0x256AA 0x50188 */
+        }
+        DSD(DS_0010150C)++;                  /* 0x256C0 */
 
         /* PORT: 0x256B1 (the master loop's body draw, `rng(0x7FFF)`) is pinned to
          * a non-advancing `mov eax,0` in the pinned original (tools/title_pin.py),
          * and the port draws nothing here, so both streams carry only the
          * consumption-site draws and stay in step. The original's spin draw
-         * (0x256D6) is pinned the same way; the port never modelled the spin — it
-         * waits one 60 Hz host retrace below, so it has no spin draw to stop. */
+         * (0x256D6) is pinned the same way; the port's spin advances the ISR tick
+         * below and draws nothing. */
 
         /* 0x255CC's tail calls 0x1CF20 here: play pending samples, start/drive
          * the music, render one frame of audio. */
         game_audio_service();
 
-        /* PORT: the original paces on the tick counter pair DS_00101508/150C;
-         * the port waits one 60 Hz host retrace. */
-        host_wait_vblank();
+        /* 0x256C5: the original spins while DS_0010150C-1 == DS_00101508, i.e.
+         * until the timer ISR (0x1BDF4) advances DS_00101508 to the frame
+         * counter. PORT: the spin is where the host retrace is waited, and the
+         * ISR's increment is modelled as one tick per retrace; when the loop is
+         * behind (a resource-read stall), the spin does not run and the loop
+         * catches up without waiting — matching the raw. */
+        while (DSD(DS_0010150C) - 1u == DSD(DS_00101508)) {  /* 0x256C5 */
+            DSD(DS_00101508)++;
+            host_wait_vblank();
+        }
 
         if (input_check_key() == 0x011B) {   /* ESC: scan 0x01, ASCII 0x1B */
             DSB(DS_000A81A8) = 1;
