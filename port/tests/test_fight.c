@@ -1540,6 +1540,22 @@ static void check_hit_machine(void)
     DSW(DS_00107D58) = 7;
     DSW(DS_00107DD8) = 5;
     hit_slot_step();
+
+    /* The arm store 0x3C9A3: phase 0 with frame_table[phase].dword0 == 0 (the
+     * shipped char-0 entries read 0x00080000, so the entry is seeded here) and a
+     * connect that returns 0 (command 0) writes phase = 8. */
+    {
+        u32 saved0 = DSD(0x000BFE3Cu), saved1 = DSD(0x000BFE3Cu + 0x14u);
+        (void)hit_fixture(0);
+        DSD(0x000BFE3Cu) = 0;
+        DSD(0x000BFE3Cu + 0x14u) = 0;
+        DSW(DS_00107D58) = 0;
+        DSW(DS_001088E0) = 0;
+        hit_slot_step();
+        CHECK_EQ_INT((int)DSW(DS_00107D58), 8);     /* armed */
+        DSD(0x000BFE3Cu) = saved0;
+        DSD(0x000BFE3Cu + 0x14u) = saved1;
+    }
 }
 
 /* §7.2 0x3CD44 and §7.3 0x3CCEC: the armed scan and the stance test. */
@@ -1607,18 +1623,20 @@ static void check_hit_reactions(void)
     CHECK_EQ_INT(hit_reaction_b(0u), 0x15);
 
     DSB(DS_001078FA) = 2;
-    DSB(DS_001077B0 + 0x59u) = 0x55;
-    DSB(DS_001077B0 + 0x94u + 0x59u) = 0x55;
+    DSB(FIGHT_RECS + 0x59u) = 0x55;             /* the record, not the slot */
+    DSB(FIGHT_RECS + 0x100u + 0x59u) = 0x55;
+    DSB(DS_001077B0 + 0x59u) = 0x55;            /* the slot must stay untouched */
     hit_flash_pair(0u);
-    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x59u), 1);
-    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x59u), 0xFF);
+    CHECK_EQ_INT((int)DSB(FIGHT_RECS + 0x59u), 1);
+    CHECK_EQ_INT((int)DSB(FIGHT_RECS + 0x100u + 0x59u), 0xFF);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x59u), 0x55);
 
     DSB(DS_001078FA) = 1;
-    DSB(DS_001077B0 + 0x59u) = 0x55;
-    DSB(DS_001077B0 + 0x94u + 0x59u) = 0x55;
+    DSB(FIGHT_RECS + 0x59u) = 0x55;
+    DSB(FIGHT_RECS + 0x100u + 0x59u) = 0x55;
     hit_flash_pair(0u);
-    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x59u), 0x55);
-    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x59u), 0x55);
+    CHECK_EQ_INT((int)DSB(FIGHT_RECS + 0x59u), 0x55);
+    CHECK_EQ_INT((int)DSB(FIGHT_RECS + 0x100u + 0x59u), 0x55);
 }
 
 /* §7.4 0x3CE58: the validate-and-drive. Input A drives the reaction; Input B
@@ -1629,12 +1647,13 @@ static void check_hit_reaction_drive(void)
 
     (void)hit_fixture(0);
     DSB(DS_001077B0 + 0x7Cu) = 0;
+    DSB(DS_001077B0 + 0x52u) = 0x55;            /* §7.4: unchanged, not 0 */
     DSW(DS_00107D58) = 8;
     DSW(DS_001077B0 + 0x84u) = 0x10;
     CHECK_EQ_INT(hit_reaction_drive(0u, 0u), 1);
     CHECK_EQ_INT((int)DSW(DS_001077B0 + 0x84u), 0x11);
     CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x5Fu), 0x20);
-    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x52u), 0);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x52u), 0x55);
 
     (void)hit_fixture(0);
     DSB(DS_001077B0 + 0x56u) = 6;               /* the gate rejects */
@@ -1649,6 +1668,20 @@ static void check_hit_reaction_drive(void)
     CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x53u), 8);
     CHECK_EQ_INT((int)DSW(DS_001077B0 + 0x6Au), 0x41);
     DSW(0x000C619Cu + 4u) = saved_react;
+
+    /* §7.11 0x34E2C: the +0x59 pair writes the RECORD (0x34F2E/0x34F47
+     * dereference the slot first), not the slot. Isolated from 0x34D8C. */
+    (void)hit_fixture(0);
+    DSB(DS_001078FA) = 2;
+    DSB(FIGHT_RECS + 0x59u) = 0x55;
+    DSB(FIGHT_RECS + 0x100u + 0x59u) = 0x55;
+    DSB(DS_001077B0 + 0x59u) = 0x55;
+    DSB(DS_001077B0 + 0x94u + 0x59u) = 0x55;
+    hit_reaction_apply(0u, 0x20u);
+    CHECK_EQ_INT((int)DSB(FIGHT_RECS + 0x59u), 1);
+    CHECK_EQ_INT((int)DSB(FIGHT_RECS + 0x100u + 0x59u), 0xFF);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x59u), 0x55);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x59u), 0x55);
 }
 
 /* §7.1 0x3CF38: a resolved hit consumes the hitbox and drives the reaction. */

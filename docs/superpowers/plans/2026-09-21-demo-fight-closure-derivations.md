@@ -384,7 +384,7 @@ switch (sel) { case 0/4/6: return dword[0xC6B9C + (char*0x20+i)*8];
 `char = DSB(slot+0x7A)`. The two 8-byte entries are
 `{u32 frame_table; u16 reaction; u8 d; u8 e}`:
 `0xC619C` is the player-controller table and `0xC6B9C` the CPU table. The
-**demo** has `slot+0x63 = 1` (set by `fight_char_select`, `fighter.c:85`), so
+**demo** has `slot+0x63 = 1` (set by `fight_char_select`, `fight.c:240`), so
 `sel = 2` and the demo reads **`0xC619C`**. Verified entry 0:
 `0xC619C` = `3c fe 0b 00 | 20 00 | 01 00` → frame_table `0x000BFE3C`,
 reaction `0x0020`, `d = 0x01`, `e = 0x00`.

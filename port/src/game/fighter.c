@@ -1670,12 +1670,13 @@ u16 hit_reaction_b(u32 side)
     return 0x11u;
 }
 
-/* 0x34D8C. The +0x59 palette-flash pair, only when DS_001078FA == 2. */
+/* 0x34D8C. The +0x59 palette-flash pair, only when DS_001078FA == 2. The raw
+ * dereferences each slot to its record (0x34DB1/0x34DCC) before the +0x59. */
 void hit_flash_pair(u32 side)
 {
     if (DSB(DS_001078FA) != 2u) return;
-    DSB(DS_001077B0 + side * 0x94u + 0x59u) = 1u;
-    DSB(DS_001077B0 + (1u - side) * 0x94u + 0x59u) = 0xFFu;
+    DSB(DSD(DS_001077B0 + side * 0x94u) + 0x59u) = 1u;          /* 0x34DBA */
+    DSB(DSD(DS_001077B0 + (1u - side) * 0x94u) + 0x59u) = 0xFFu; /* 0x34DD3 */
 }
 
 /* 0x339AC. The ctx builder from a record: out[0]=rec+0x51, out[1]=1-out[0],
@@ -1841,8 +1842,8 @@ void hit_reaction_apply(u32 side, u32 reaction)
     DSB(DS_001088A8 + side) = (u8)reaction;             /* 0x34EF6 */
     DSB(rec + 0x63u) = 0;                               /* 0x34EFC */
     if (DSB(DS_001078FA) == 2u) {                       /* 0x34F07 */
-        DSB(slot + 0x59u) = 1u;                         /* 0x34F2E */
-        DSB(other + 0x59u) = 0xFFu;                     /* 0x34F47 */
+        DSB(rec + 0x59u) = 1u;                          /* 0x34F2E */
+        DSB(DSD(other) + 0x59u) = 0xFFu;                /* 0x34F47 */
     }
     fighter_anim_triple(anim, side, (s32)reaction);     /* 0x34F5B 0x3AFC4 */
     {
