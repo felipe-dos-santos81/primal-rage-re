@@ -1413,6 +1413,23 @@ title/attract claims therefore need re-derivation, and the demo oracle's
 so its "first unexplained 832" cannot move until that fallback is fixed. That is
 the re-scope: a display-hold/oracle-window pass, not this task.
 
+**Correction (green-first pass, `7e4663a`): the port also needs the loader's
+re-sync, and with it the windows do not move.** The gate model as written above
+advances `DS_00101508` on a read but never applies `0x1B3AC`'s tail
+(`0x1B45F`/`0x1B464`: `DS_0010150C = DS_00101508`), so the gate fails on the
+loader frame and the loader's presentation is never dumped. The measurement: the
+pre-gate attract dump holds the loader frame at frames 2..5 (498 nz); the
+gate-model dump replaces them with the arena (148024 nz), and a per-iteration
+trace shows `E87A4` holding the loader frame (`e4nz=166`) while the gate fails
+for the read's 13 ticks and `gfx_display()` holds the previous frame. The fix is
+one line in `res_load_present` after the stall advance. With it the attract
+oracle returns to `FIRST DIVERGENCE at capture frame 215` (was 1) and the title
+window to `[216..326]`, 111 frames, `54 clean, 55 splice, 2 transition, 0
+unexplained` / `54 clean, 57 splice, 0` (was `[236..326]`, 91, `44/45/2/0` /
+`44/47/0`), determinism `54 agree, 0 disagree`; `test_title.c`'s presented count
+is 96 again. So the title/attract *claims* never moved and no oracle model was
+needed — the `78`-frame window was the gate model's artifact.
+
 **The VGA-retrace ordering (the second named measurement).** `0x1C470` waits for
 the VGA status bit before its DAC writes (`0x1C481`-`0x1C489`: `MOV EDX,0x3da` /
 `IN AL,DX` / `TEST AL,0x8` / `JZ`) and `0x52106` waits the same way before its
