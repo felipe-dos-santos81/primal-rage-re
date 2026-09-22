@@ -1,4 +1,5 @@
 #include "platform/res.h"
+#include "game/flow.h"
 #include "mem.h"
 #include "symbols.h"
 #include "test.h"
@@ -97,6 +98,48 @@ int test_res(void)
         DSD(DS_001014FC) = 0;
         CHECK(res_resolve(res_handle(0u, 4)) != NULL, "s16slabs resolves again");
         CHECK_EQ_INT((int)DSD(DS_001014FC), 0);
+    }
+
+    /* The loader's presentation pixels. String 489 decodes to `- LOADING -`
+     * and 0x1C65C/0x1C5E8 blit it at (0,192) — the expression 0x1B3AC uses is
+     * game_string_get(0x1E9) with seeds (0, 0xE6). The composite buffer is
+     * pointed at a zeroed scratch and the row-192 offset built, so the first
+     * resolve of a fresh lazy entry (index 3 s16glife) draws where the check
+     * can see it. The capture's overlay is 166 non-zero pixels at rows
+     * 192..197, columns 0..85; the box is asserted, not just the count, so a
+     * string-id, font or position regression cannot pass. */
+    game_string_table_load("data/game/C");
+    CHECK(strcmp((const char *)game_string_get(0x1E9u), "- LOADING -") == 0,
+          "string 489 decodes to - LOADING -");
+    {
+        const u32 scratch = 0x3F50000u;   /* above the resource heap */
+        u32 saved_base = DSD(DS_000E87A4);
+        u32 saved_row = DSD(DS_001088F8 + 192u * 4u);
+        mem_fill(scratch, 0, 0xFA00u);
+        DSD(DS_000E87A4) = scratch;
+        DSD(DS_001088F8 + 192u * 4u) = 192u * 0x140u;
+        DSD(DS_001014FC) = 0;
+        CHECK(res_resolve(res_handle(3u, 0)) != NULL, "the fresh lazy resolve draws");
+        CHECK_EQ_INT((int)DSD(DS_001014FC), 1);
+        u32 pixels = 0, rowlo = 200u, rowhi = 0u, collo = 320u, colhi = 0u;
+        for (u32 y = 192u; y < 198u; y++) {
+            for (u32 x = 0u; x < 320u; x++) {
+                if (mem[scratch + y * 320u + x] != 0u) {
+                    pixels++;
+                    if (y < rowlo) rowlo = y;
+                    if (y > rowhi) rowhi = y;
+                    if (x < collo) collo = x;
+                    if (x > colhi) colhi = x;
+                }
+            }
+        }
+        CHECK_EQ_INT((int)pixels, 166);
+        CHECK_EQ_INT((int)rowlo, 192);
+        CHECK_EQ_INT((int)rowhi, 197);
+        CHECK_EQ_INT((int)collo, 0);
+        CHECK_EQ_INT((int)colhi, 85);
+        DSD(DS_000E87A4) = saved_base;
+        DSD(DS_001088F8 + 192u * 4u) = saved_row;
     }
 
     CHECK(res_resolve(0xFFFFFFFFu) == NULL, "an out-of-range handle resolves to NULL");
