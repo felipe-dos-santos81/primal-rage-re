@@ -1153,6 +1153,69 @@ is a `platform/res.c` rework (residency + on-demand reads + the
 gate's 833..836 need. This is a re-scope, not a silent overrun: reported to the
 human with the sizes above.
 
+### 9.4 Task 4's second pass — the loader's presentation, the props, and the frame-order gap
+
+**The loader is flag-driven, not eager.** `0x1B120`'s entry walk
+(`0x1B1FA`..`0x1B28E`) loads a resource at init only when the INDEX entry's
+`+0xC` dword has bit `0x1000000` set; the other entries are allocated
+(`0x1B232`/`0x1B241`) and left unread, to be loaded on their first `0x1B544`
+resolve. The shipped INDEX sets that bit for exactly two resources: index 1
+`s16fonts.gra` (flag 0x01) and index 2 `s16statu.gra` (0x01); the other 67 carry
+0x02. The init path calls `0x1B3AC` with `BL = 0` (`0x1B250 xor ebx,ebx`), so no
+LOADING screen is drawn at init; the lazy path (`0x1B5E0 mov ebx,1` /
+`0x1B5E7 mov edx,ebx` / `0x1B5E9 call 0x1b3ac`) passes BL = DL = 1, so
+`0x1B3AC` draws string 489 at (0,192).
+
+**What the port must model (small, not a subsystem).** (a) the residency state
+so `res_resolve` can tell a first resolve from a later one (the port reads every
+payload eagerly today, `res.c:94-106`); (b) `0x1B3AC`'s presentation head —
+`0x1C500(0x1E9)` + `0x1C65C` + `DS_001014FC = 1`; (c) the glyph path `0x1C5E8`
+(the font table `0xBCD7C`, the sprite node builder, `0x51ED8` = the port's
+`sprite_blit`, `palette_acquire(0x80997C)`) and `0x1C65C`'s cursor arithmetic
+(`(v*0xF3D+0x800)>>12`, `(v*0xD56+0x800)>>12` = (0,192) for `0x1B3AC`'s
+(EDX=0, EBX=0xE6)). The port already owns every piece except the residency bit
+and the cursor loop.
+
+**Named gap — the load point inside the frame.** The screen must be drawn where
+the original draws it, and that is **not** the port's first resolve. The attract
+oracle measures capture 215 as the port's frame plus 498 bytes from row 192
+(`attract_compare: ... still differs at 498 byte(s) (first row 192 byte
+184320)`): the original's text sits **on top of** the frame's content and is
+presented for one frame (the swap discards it). The port's first fight resolve
+is inside `render_scroll_setup` (state 6, `0x387F4`'s `0x1B544` call at
+`0x38814`), *before* the composition, so a draw there is covered by the arena.
+Candidates the record could not pin: `0x1CF20`'s per-frame audio service (the
+samples are INDEX resources — `s16sound.gra`, index 5 — so a first playback can
+trigger `0x1B3AC` after the composition) and the state machine's own late
+resolves. Pinning it needs a dosbox-x breakpoint on `0x1B3AC` logging the
+caller's return address, or the port's first-resolve order checked against the
+capture's frame content.
+
+**The props (`0x412A0`/`0x2C320`) — ported (Task 4).** `0x412A0(scene)` walks
+the 12-byte triples of `0xC82CC[scene]` until a zero first dword and spawns
+`0x2AE14(desc=[e], a2=[e+4], a3=(s16)[e+8], a4=0, a5=0)`, then `0x2C320(scene)`,
+then `0xC7F58[scene]()` — which is a no-op target (`0x412EC` is `0x412A0`'s own
+`RET`, `0x5D812` is `xor eax,eax; ret`), so the port does not issue it.
+`0x2C320(scene)` spawns `n = DSW(0xBBD98 + scene*2)` records from
+`0xBBDA8[scene]`: `desc = 0xBB9D8[[e+0xA]*3]`, `a2 = [e]`, `a3 = (s16)[e+6]`,
+`a4 = (s16)[e+4]`, `a5 = ([e+0xB]<<16) | word[e+8]`, and stores the table at
+`DS_00105C08`. Scene 0 (`0xC82CC[0] = 0xC7F78`, 5 triples; `0xBBD98[0] = 3`)
+issues 8 spawns and the crowd's first actor (descriptor `0xC7850`, whose
+`dword0` is the animation stream `0xE8EB2`) runs the animation walk, whose
+opcode-0x11 targets spawn 2 children from `0xC7864`/`0xC7878` (a5 = 0x407), so
+the active list grows by 10. Scene 2 (`0xC82CC[2] = 0xC7FF0`, 8 triples;
+`0xBBD98[2] = 0`) spawns 8 and leaves `DS_00105C08` untouched. The port ports
+both in `port/src/game/fight.c`, called from `game_state_6` at the raw's
+position (`0x20E86`, after `0x38730`, before `0x41350`); the first rendered
+frame changes at dumped 481 (21182 RGB bytes).
+
+**The attract claim conflict.** Landing the LOADING screen necessarily explains
+capture 215 (the same 498-byte overlay), so `attract-oracle`'s
+`--expect-first 215` would fail ("EXPECTED first divergence at capture frame
+215, but the whole attract prefix was explained"). That pin is a known-gap
+marker for exactly this task's content, so its update is a human decision; the
+loader was therefore derived and NOT landed in this pass.
+
 ---
 
 ## 10. Provenance
