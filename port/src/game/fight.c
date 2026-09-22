@@ -199,7 +199,14 @@ void fight_dust_build(u32 side)
         DSD(actor + 0x14u) = entry;             /* 0x49617 */
         DSB(entry + 0x1Eu) = 0;                 /* 0x4961A */
         DSB(entry + 0x1Fu) = 0;                 /* 0x49622 */
-        DSB(entry + 0x21u) = (u8)y;             /* 0x49626 */
+        /* 0x49626. The raw reads `[ESP+0x8]` at 0x4961E, after the
+         * 0x4960F 0x2AE14 call. 0x2AE14 ends `RET 0x4`, so it pops the
+         * 0x49603 `PUSH 0x0` and ESP returns to the frame base; `[ESP+0x8]`
+         * is then the side stored at 0x494B1, NOT the y stored at 0x49605
+         * (which is one slot lower). The original's entries carry +0x21 =
+         * 1,1,0,0 (the side), and 0x4AAD0 indexes the per-side
+         * DS_001088B2/DS_0010889E tables with it. */
+        DSB(entry + 0x21u) = (u8)side;          /* 0x49626 */
         DSD(entry + 0x0Cu) = slot;              /* 0x4962D */
         DSW(actor + 0x2Cu) = fight_dust_clamp(step);   /* 0x49638 */
         DSW(entry + 0x1Cu) = 0;                 /* 0x4963C */
@@ -600,6 +607,203 @@ static u32 fight_case_rec(void)
     return DSD(DS_001077B0 + (u32)idx * 0x94u);
 }
 
+/* ---- the type-0 effect handler 0x4AAD0 and its callees ------------------ */
+
+/* The 0xC95xx per-dust-descriptor stream/flag tables. The index is the entry's
+ * `si` = (u16)(actor+0x48 - 0x20) (0x49CE1/0x49CE7). Ghidra emits them as
+ * DAT_000c95xx, so gen_symbols.py has no DS_ name. */
+#define DS_000C955C 0x000C955Cu
+#define DS_000C958C 0x000C958Cu
+#define DS_000C95BC 0x000C95BCu
+#define DS_000C95D4 0x000C95D4u
+#define DS_000C9754 0x000C9754u
+
+/* 0x2BE1C. The difference of two fighter records' 0x2BE00 position terms. */
+static s32 fight_2be1c(u32 rec_a, u32 rec_b)
+{
+    return fight_2be00(rec_a) - fight_2be00(rec_b);
+}
+
+/* 0x2BE4C. `(rec+0x44 >> 16) * 2 + value - 0x2A00` (0x2BE4C..0x2BE5B). */
+static s32 fight_2be4c(u32 rec, s32 value)
+{
+    return (((s32)DSD(rec + 0x44u) >> 16) * 2) + value - 0x2A00;
+}
+
+/* 0x4B3F0. When the 0xC955C[index] stream is set, point the entry's actor at it
+ * and set the entry's type to 8. The raw's EBX selects actor+0x55; every
+ * 0x4AAD0 call site zeroes it (0x4AAFC, 0x4AB18, 0x4AB6D, 0x4AB97), so the port
+ * writes 0. */
+static int fight_4b3f0(u32 entry, u32 index)
+{
+    u32 stream = DSD(DS_000C955C + index * 4u);     /* 0x4B3F0 */
+    if (stream == 0u) return 0;                     /* 0x4B3F8 */
+    u32 actor = DSD(entry + 8u);
+    DSB(actor + 0x55u) = 0;                         /* 0x4B407 (EBX == 0) */
+    DSB(entry + 0x1Eu) = 8u;                        /* 0x4B40E */
+    actors_anim_begin(actor, stream, 0x40400000u);  /* 0x4B421 */
+    return 1;                                       /* 0x4B426 */
+}
+
+/* 0x4B430. As 0x4B3F0 but over the 0xC958C table. */
+static int fight_4b430(u32 entry, u32 index)
+{
+    u32 stream = DSD(DS_000C958C + index * 4u);     /* 0x4B430 */
+    if (stream == 0u) return 0;                     /* 0x4B438 */
+    u32 actor = DSD(entry + 8u);
+    DSB(actor + 0x55u) = 0;                         /* 0x4B44A (EBX == 0) */
+    DSB(entry + 0x1Eu) = 8u;                        /* 0x4B44E */
+    actors_anim_begin(actor, stream, 0x40400000u);  /* 0x4B461 */
+    return 1;                                       /* 0x4B466 */
+}
+
+/* 0x4BD4C. When the 0xC9754[index] stream is set, zero the actor's +0x34/+0x36/
+ * +0x38, point it at the stream, then set the entry's type to 8. */
+static int fight_4bd4c(u32 entry, u32 index)
+{
+    u32 stream = DSD(DS_000C9754 + index * 4u);     /* 0x4BD52 */
+    if (stream == 0u) return 0;                     /* 0x4BD59 */
+    u32 actor = DSD(entry + 8u);
+    DSW(actor + 0x38u) = 0;                         /* 0x4BD5E */
+    DSW(actor + 0x34u) = 0;                         /* 0x4BD67 */
+    DSW(actor + 0x36u) = 0;                         /* 0x4BD70 */
+    actors_anim_begin(actor, stream, 0x40800000u);  /* 0x4BD84 */
+    DSB(entry + 0x1Eu) = 8u;                        /* 0x4BD8E */
+    return 1;                                       /* 0x4BD89 */
+}
+
+/* 0x4B5A8. The `DS_001088B6[char] != 0 || (+0x52 == 7 && +0x53 == 2)` gate: on
+ * true it retargets the actor at the 0xC95BC[index] stream, sets the entry's
+ * +0x1A/+0x14 and type 3, and decrements DS_001088B6[char]. The raw returns the
+ * flag in AL; the caller tests AL only. */
+static int fight_4b5a8(u32 entry, u32 index)
+{
+    u32 slot = DSD(entry + 0xCu);
+    u32 rec = DSD(slot);
+    u8 ch = DSB(rec + 0x51u);                       /* 0x4B5B1 */
+    if (DSB(DS_001088B6 + ch) == 0u
+            && !(DSB(slot + 0x52u) == 7u && DSB(slot + 0x53u) == 2u))
+        return 0;                                   /* 0x4B694 */
+    u32 actor = DSD(entry + 8u);
+    actors_anim_begin(actor, DSD(DS_000C95BC + index * 4u), 0x40400000u); /* 0x4B5E6 */
+    DSW(entry + 0x1Au) = DSW(actor + 0x32u);        /* 0x4B5F2 */
+    DSW(actor + 0x38u) = 0xFFC0u;                   /* 0x4B5F9 */
+    s32 v;
+    if (((DSW(rec + 0x28u) >> 8) & 0x40u) == 0u) {  /* 0x4B612 */
+        DSW(actor + 0x34u) = 0xFFC0u;               /* 0x4B632 */
+        v = fight_2be00(rec) - 0x1800;              /* 0x4B642 */
+    } else {
+        DSW(actor + 0x34u) = 0x0040u;               /* 0x4B617 */
+        v = fight_2be00(rec) + 0x1800;              /* 0x4B627 */
+    }
+    DSD(entry + 0x14u) = (u32)fight_2be4c(actor, v);    /* 0x4B650 */
+    DSB(entry + 0x1Eu) = 3u;                        /* 0x4B656 */
+    u8 n = DSB(slot + 0x81u);
+    if (DSB(DS_001088B6 + ch) > n)                  /* 0x4B671 */
+        DSB(DS_001088B6 + ch) = n;                  /* 0x4B675 */
+    DSB(DS_001088B6 + ch) -= 1u;                    /* 0x4B68B */
+    return 1;                                       /* 0x4B691 */
+}
+
+/* 0x4B144. The type-0 entry's distance resolution: it walks the entry's actor
+ * toward DS_00108874 (the midpoint), drawing rng(2)/rng(0x1200) 1-3 times on
+ * the way, then sets the entry's +0x14 and type 1 and retargets the actor at
+ * the 0xC95D4[index] stream. The sign/`0x600`/`0x1800` arms are the raw's
+ * 0x4B164..0x4B24D. */
+static void fight_4b144(u32 entry, u32 index)
+{
+    u32 rec = DSD(DSD(entry + 0xCu));               /* 0x4B14C */
+    s32 pos = fight_2be00(rec);                     /* 0x4B151 */
+    s32 mid = (s32)DSD(DS_00108874);                /* 0x4B156 */
+    s32 ecx = pos - 0x600;                          /* 0x4B15E */
+    s32 result;
+    if ((u32)pos < (u32)mid) {                      /* 0x4B166 JNC */
+        if (mid > 0x2A00) {                         /* 0x4B172 JLE */
+            if (rng_next(2u) != 0u) {               /* 0x4B179 */
+                ecx -= (s32)rng_next(0x1200u);      /* 0x4B187 */
+                if ((u32)ecx > (u32)mid)            /* 0x4B196 JBE */
+                    result = mid - (s32)rng_next(0x1200u);   /* 0x4B1A1 */
+                else
+                    result = ecx;
+                goto lab;
+            }
+        }
+        result = (pos + 0x600) + (s32)rng_next(0x1200u);    /* 0x4B1C0 */
+        if ((u32)result > (u32)mid)                 /* 0x4B1CD JBE */
+            result = mid - (s32)rng_next(0x1200u);  /* 0x4B1D8 */
+    } else {
+        if (mid < 0x2A00) {                         /* 0x4B1F2 JGE */
+            if (rng_next(2u) != 0u) {               /* 0x4B1F9 */
+                ecx -= (s32)rng_next(0x1200u);      /* 0x4B207 */
+                if ((u32)ecx < (u32)mid)            /* 0x4B218 JNC */
+                    result = mid + (s32)rng_next(0x1200u);   /* 0x4B21F */
+                else
+                    result = ecx;
+                goto lab;
+            }
+        }
+        result = (pos - 0x600) - (s32)rng_next(0x1200u);    /* 0x4B237 */
+        if ((u32)result < (u32)mid)                 /* 0x4B246 JNC */
+            result = mid + (s32)rng_next(0x1200u);  /* 0x4B24D */
+    }
+lab:
+    {
+        u32 actor = DSD(entry + 8u);                /* 0x4B258 */
+        DSD(entry + 0x14u) = (u32)fight_2be4c(actor, result);   /* 0x4B268 */
+        DSB(entry + 0x1Eu) = 1u;                    /* 0x4B264 */
+        if ((s32)DSD(actor + 0x18u) < (s32)DSD(entry + 0x14u)) {    /* 0x4B271 */
+            DSW(actor + 0x34u) = 0x0080u;           /* 0x4B276 */
+            DSB(actor + 0x29u) &= (u8)~0x40u;       /* 0x4B27F */
+        } else {
+            DSW(actor + 0x34u) = 0xFF80u;           /* 0x4B285 */
+            DSB(actor + 0x29u) |= 0x40u;            /* 0x4B28E */
+        }
+        actors_anim_begin(actor, DSD(DS_000C95D4 + index * 4u), 0x40400000u); /* 0x4B2A1 */
+    }
+}
+
+/* 0x4AAD0. The type-0 (and >0xE) fight-effect handler. It gates on the slot's
+ * +0x54/+0x42, DS_001088C2, 0x4B5A8 and the 0x1088B2/0x10889E tables, then
+ * takes the 0x2BE00/0x2BE1C distance test into 0x4B144 (the four draws the
+ * state-7 entry was missing). `entry` is EAX/ECX, `index` is EDX/ESI
+ * (0x49D1E/0x4AAD5/0x4AAD7). */
+static void fight_4aad0(u32 entry, u32 index)
+{
+    if (DSW(DS_00104B00) == 9u) {                   /* 0x4AAE1 */
+        DSB(entry + 0x1Eu) = 9u;                    /* 0x4AAE6 */
+        return;
+    }
+    u32 slot = DSD(entry + 0xCu);                   /* 0x4AAEF */
+    if (DSB(slot + 0x54u) == 3u) {                  /* 0x4AAF2 */
+        if (fight_4b430(entry, index) != 0) return; /* 0x4AAFE */
+    }
+    if (DSB(slot + 0x54u) == 4u) {                  /* 0x4AB0E */
+        if (fight_4b3f0(entry, index) != 0) return; /* 0x4AB1A */
+    }
+    if (DSB(DS_001088C2) != 0u) {                   /* 0x4AB27 */
+        if (fight_4bd4c(entry, index) != 0) return; /* 0x4AB34 */
+    }
+    if (fight_4b5a8(entry, index) != 0) return;     /* 0x4AB45 */
+    if ((DSB(slot + 0x42u) & 2u) != 0u
+            || DSB(DS_001088B2 + (u32)DSB(entry + 0x21u)) != 0u) {
+        if (fight_4b3f0(entry, index) != 0) return; /* 0x4AB6F */
+    }
+    if ((DSB(slot + 0x42u) & 1u) != 0u
+            || DSB(DS_0010889E + (u32)DSB(entry + 0x21u)) != 0u) {
+        if (fight_4b430(entry, index) != 0) return; /* 0x4AB99 */
+    }
+    {
+        s32 d = fight_2be1c(DSD(entry + 8u), DSD(slot));    /* 0x4ABAE */
+        s32 e_actor = (s32)DSD(DS_00108874) - fight_2be00(DSD(entry + 8u));
+        s32 e_rec = (s32)DSD(DS_00108874) - fight_2be00(DSD(slot));
+        s32 ad = (d < 0) ? -d : d;
+        if (ad >= 0x1800 || ad <= 0x600                     /* 0x4ABE1/0x4ABEF */
+                || (e_actor > 0 && e_rec < 0)               /* 0x4ABFD */
+                || (e_actor < 0 && e_rec > 0))              /* 0x4ABF7 */
+            fight_4b144(entry, index);                      /* 0x4AC0B */
+    }
+}
+
 void fight_effects_pass(void)
 {
     /* The raw's four frame locals (0x49C7E/0x49C8E). Only the mode-9 block reads
@@ -619,7 +823,17 @@ void fight_effects_pass(void)
                  * 0x4B69C(entry, si) prelude are named gaps (§7.4). The `si`
                  * value the RNG cases use is (u16)(rec+0x48 - 0x20). */
 
-                switch (DSB(entry + 0x1Eu)) {   /* 0x49D03 */
+                /* 0x49D03: AL = +0x1E; CMP AL,0xE; JA 0x49D1E. The jump table
+                 * at 0x49C2C sends type 0 to the same 0x49D1E (0x4AAD0), so
+                 * both type 0 and >0xE take it; types 1,2,4..12 are their own
+                 * (unported) handlers and stay named gaps (§7.4). The `si` the
+                 * handler indexes with is (u16)(actor+0x48 - 0x20) (0x49CE1). */
+                u8 type = DSB(entry + 0x1Eu);
+                u32 index = (u32)(u16)((u32)DSB(rec + 0x48u) - 0x20u);
+                if (type == 0u || type > 0xEu) {
+                    fight_4aad0(entry, index);  /* 0x49D1E */
+                } else {
+                switch (type) {
                 case 3:
                     /* 0x49DC8: the DS_000BD898 position gate; the rest of the
                      * body (0x49DDE..0x49E38) is the named gap (§7.4). */
@@ -646,9 +860,9 @@ void fight_effects_pass(void)
                     break;
                 }
                 default:
-                    /* PORT: 0x49D1E 0x4AAD0 and the other +0x1E cases are
-                     * named gaps (§7.4). */
+                    /* PORT: types 1,2,4..12 are named gaps (§7.4). */
                     break;
+                }
                 }
 
                 head = next;                    /* 0x4A468 */

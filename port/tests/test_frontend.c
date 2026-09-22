@@ -545,6 +545,7 @@ int test_frontend(void)
         u32 dust_actor[4] = { 0, 0, 0, 0 };
         u32 dust_anim[4] = { 0, 0, 0, 0 };
         u32 dust_type[4] = { 0, 0, 0, 0 };
+        u32 dust_e21[4] = { 0xFF, 0xFF, 0xFF, 0xFF };   /* entry+0x21 */
         /* Task 6b: the state-7 fight's chain, sampled per loop frame. The
          * 0x3531C/0x350D0 machine must take slot 0's +0x52 out of 0 through
          * 0x0E to 3 (the 0x3520E -> 0x3BF0A drive) and resolve a hit; a
@@ -553,6 +554,10 @@ int test_frontend(void)
         int s7_last = -1;              /* the last loop frame the state is 7 */
         int s7_saw42_40 = 0;           /* the +0x42 bit 6 arm was ever set */
         u8 s7_prev[4] = { 0, 0, 0, 0 };
+        /* Task 3b: the first state-7 frame's LCG and the 2nd frame's command. */
+        u32 s7_entry_pre = 0, s7_entry_post = 0;
+        int s7_pre_seen = 0, s7_post_seen = 0;
+        u16 s7_cmd0_1072 = 0;
         for (int i = 0; i < 2000; i++) {
             /* The state-9 exit leaves DS_000F0A64 == 6 for the next iteration;
              * nothing draws between the hold and the state-6 handler, so this
@@ -561,8 +566,23 @@ int test_frontend(void)
                 entry_lcg = DSD(DS_000EF6D8);
                 seen6 = 1;
             }
+            /* Task 3b: the first state-7 frame's LCG, before and after its
+             * game_loop. The state-7 entry frame leaves the LCG at the
+             * original's 0x8612D6C5; the next frame draws the demo-AI picks and
+             * the type-0 effect handler's four draws, so the original reaches
+             * 0x10F7DB07. A port that skips the type-0 handler stops at
+             * 0xB45CD1BB (two draws). */
+            if (!s7_pre_seen && DSW(DS_000F0A64) == 7u) {
+                s7_entry_pre = DSD(DS_000EF6D8);
+                s7_pre_seen = 1;
+            }
             DSB(DS_000A81A8) = 1;          /* exactly one game_loop iteration */
             game_loop();
+            if (s7_pre_seen && !s7_post_seen) {
+                s7_entry_post = DSD(DS_000EF6D8);
+                s7_post_seen = 1;
+            }
+            if (i == 1072) s7_cmd0_1072 = DSW(DS_001088E0);
             /* The dust entries exist from the state-6 frame on; sample them
              * before the state-7 frames advance their animations, and read the
              * actor's fields now — later state transitions run actors_reset
@@ -573,6 +593,7 @@ int test_frontend(void)
                      e = DSD(e), n++) {
                     u32 actor = DSD(e + 8u);
                     dust_actor[n] = actor;
+                    dust_e21[n] = DSB(e + 0x21u);
                     if (actor != 0) {
                         dust_anim[n] = DSD(actor + 8u);
                         dust_type[n] = DSB(actor + 0x48u);
@@ -679,6 +700,19 @@ int test_frontend(void)
         CHECK(s7_hit, "state-7 the 0x3CF38 chain resolves a hit");
         printf("test_frontend: state-7 last +0x52 change at loop frame %d\n",
                s7_last_change);
+        /* Task 3b: the entry draw count. Both trees hold LCG 0x8612D6C5 at the
+         * first state-7 frame; the original draws six in that frame (the two
+         * demo-AI picks plus the type-0 effect handler's four) and reaches
+         * 0x10F7DB07. The port without the type-0 handler drew two and stopped
+         * at 0xB45CD1BB, so the two CHECKs below fail under that mutation. The
+         * residual is named in the report: the AI block state diverges at the
+         * 2nd state-7 frame (port a0=0,2,2 vs original 0,1,0), so cmd0 stays
+         * 0x1010 rather than the original's 0x4848 and the fight still stalls
+         * in slot 0's +0x52 = 3 retry loop. */
+        CHECK_EQ_INT((int)s7_entry_pre, (int)0x8612D6C5u);
+        CHECK_EQ_INT((int)s7_entry_post, (int)0x10F7DB07u);
+        printf("test_frontend: task3b entry post-LCG %08x, cmd0@1072 %04x\n",
+               (unsigned)s7_entry_post, (unsigned)s7_cmd0_1072);
         /* The Gate's first claim: the fight reaches the state-7 900-frame timer
          * exit. State 7 is entered at loop 1070 and left at 1970 (the timer's
          * 0x11BCC arm), so its last frame is 1969; a fight that stalls earlier
@@ -701,11 +735,20 @@ int test_frontend(void)
          * entry. */
         {
             static const u32 order[4] = { 4u, 3u, 1u, 0u };
+            /* The entry's +0x21 is the SIDE (0x49626; the raw reads the frame's
+             * [ESP+0x8] after 0x2AE14's `RET 0x4` restores ESP). The two
+             * side-1 entries (orders 4 and 3) carry 1, the side-0 ones 0.
+             * 0x4AAD0 indexes DS_001088B2/DS_0010889E with this byte, so a
+             * (u8)y write (the port's old bug) reads DS_001088CB = 4 for the
+             * order-0 entry and misroutes it to 0x4B430; the effect frame then
+             * draws three, not four. */
+            static const u32 want_e21[4] = { 1u, 1u, 0u, 0u };
             for (u32 n = 0; n < 4u; n++) {
                 u32 desc = DSD(DS_000C9524 + order[n] * 4u);
                 CHECK(dust_actor[n] != 0, "dust entry carries a spawned actor");
                 CHECK_EQ_INT((int)dust_anim[n], (int)(DSD(desc) + 2u));
                 CHECK_EQ_INT((int)dust_type[n], (int)(0x20u + order[n]));
+                CHECK_EQ_INT((int)dust_e21[n], (int)want_e21[n]);
             }
         }
         game_shutdown();
