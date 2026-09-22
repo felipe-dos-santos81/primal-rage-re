@@ -127,12 +127,24 @@ int res_load_index(const char *game_dir, const char *index_path)
         if (size > biggest) biggest = size;
 
         FILE *rf = res_open(game_dir, i);
-        if (!rf) { missing++; continue; }
-        size_t got = fread(mem + data, 1, size, rf);
-        fclose(rf);
-        if (got != size) missing++;
+        int read_ok = 0;
+        if (rf != NULL) {
+            size_t got = fread(mem + data, 1, size, rf);
+            fclose(rf);
+            read_ok = (got == size);
+        }
+        if (!read_ok) missing++;
         if (DSD(table + i * RES_REC + 12) & RES_FLAG_PRELOAD) {
-            DSD(table + i * RES_REC + 12) |= RES_FLAG_LOADED;  /* 0x1B47A */
+            /* PORT: 0x1B47A marks the entry read *after* 0x1B3AC's read; the
+             * init call passes EDX = 1, so a failed preload read is 0x1D290's
+             * fatal in the original, not a marked-but-empty entry. The port
+             * counts the failure and continues (the installed file set may be
+             * partial), so it marks only what it read. The 0x1B3F8 full-copy
+             * flag is stored before the read in the original, so the
+             * presentation runs either way; a preloaded entry is answered by
+             * the resident bit regardless, making the difference unobservable
+             * on a complete install. */
+            if (read_ok) DSD(table + i * RES_REC + 12) |= RES_FLAG_LOADED;
             res_load_present(0u);                              /* 0x1B250 (BL=0) */
         }
     }
@@ -206,7 +218,13 @@ void *res_resolve(u32 handle)
      * offset where the original stores its block descriptor, so the `data != 0`
      * guard above is the port's form of 0x1B57F's `[block+8] != 0`.
      * 0x1B5E0: the first resolve of a lazy entry presents the loader screen
-     * (0x1B3AC's head) and marks the entry read (0x1B47A). */
+     * (0x1B3AC's head) and marks the entry read (0x1B47A).
+     * PORT: 0x1B5A6's allocate arm (0x1E774) and 0x1B5D4's fatal have no port
+     * analogue (the payload block is allocated at init), and 0x1B5C2's arm — a
+     * set 0x40000000 in the entry's +0xC bypasses 0x1B5D4 and forces the load —
+     * is not modelled: an instruction search finds no store of 0x40000000 to an
+     * entry's +0xC anywhere in the code object (the INDEX carries 0x01/0x02
+     * only), so no shipped path sets it. */
     if ((flags & (RES_FLAG_PRELOAD | RES_FLAG_LOADED)) == 0u) {
         /* PORT: the original presents first (0x1B3EA/0x1B3EF) and marks the
          * entry read after the file read (0x1B47A). The port's payload is
