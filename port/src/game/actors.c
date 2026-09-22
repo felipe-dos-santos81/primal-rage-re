@@ -77,6 +77,7 @@ static int in_pool(u32 rec)
 
 static void anim_code_10FA8(u32 rec, u32 arg);
 static void anim_code_12720(u32 rec, u32 arg);
+static void anim_code_37A58(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -93,6 +94,7 @@ int actors_init(void)
      * unregistered target is skipped. */
     fn_register(0x10FA8u, (void (*)(void))anim_code_10FA8);
     fn_register(0x12720u, (void (*)(void))anim_code_12720);
+    fn_register(0x37A58u, (void (*)(void))anim_code_37A58);
     return 1;
 }
 
@@ -511,6 +513,45 @@ static void anim_code_12720(u32 rec, u32 arg)
     u32 first = DSD(DS_000F0A58);
     u32 a5 = ((u32)DSW(first + 0x56u) | 0x400u) & 0xFFFFu;
     actor_spawn((const u32 *)(mem + 0x9AC80u), 0u, 0xE2u, 0u, a5);
+}
+
+/* 0x37A58. The fighters' idle-animation tick, reached as an animation opcode
+ * 0x10 target: the word 0xD000 in the character streams (0xE6DD2 the T-rex,
+ * 0xD2136 the raptor) loads this address into DS_00105BD4 and the dispatcher's
+ * indirect call reaches here. It advances the stream variable rec+0x52 by
+ * rec+0x58 — the offset the 0xCD40 "id = next word + rec+0x52" form selects
+ * with — draws rng(2) and flips rec+0x58 between +1 and 0xFF when rec+0x4C
+ * expires, and in mode 6 with the variable back at 0 draws rng(3) and restarts
+ * the character's idle stream from 0xBDAB8[char] (0 for the raptor, so it
+ * skips). The dispatcher passed EAX=rec; the arg is ignored. */
+#define DS_000BDAB8 0x000BDAB8u
+static void anim_code_37A58(u32 rec, u32 arg)
+{
+    (void)arg;
+    u8 c = (u8)(DSB(rec + 0x4cu) - 1u);
+    DSB(rec + 0x4cu) = c;
+    if ((s8)c < 0) {                                        /* 0x37A67 */
+        DSB(rec + 0x58u) = (rng_next(2u) != 0) ? 1u : 0xffu; /* 0x37A6E/0x37A77 */
+        DSB(rec + 0x4cu) = (u8)((DSB(rec + 0x4du) / 3u) * 3u); /* 0x37A98 */
+    }
+    u8 v = (u8)(DSB(rec + 0x52u) + DSB(rec + 0x58u));
+    DSB(rec + 0x52u) = v;                                   /* 0x37AAB */
+    if (DSW(DS_00104B00) == 6u && v == 0u) {                /* 0x37AAE */
+        u32 slot = DSD(DS_001077A8 + (u32)DSB(rec + 0x51u) * 4u);
+        if (slot == 0) return;                              /* 0x37AC5 -> ret */
+        if (DSB(slot + 0x54u) == 0u && rng_next(3u) == 0u) { /* 0x37ACF/0x37AD6 */
+            u32 stream = DSD(DS_000BDAB8 + (u32)DSB(slot + 0x7au) * 4u);
+            if (stream != 0) actors_anim_begin(rec, stream, 0x40400000u);
+        }
+    }
+    if ((s32)(s8)DSB(rec + 0x4fu) >= (s32)DSB(rec + 0x4du))
+        DSB(rec + 0x52u) = 0;                               /* 0x37B12 */
+    if ((s8)DSB(rec + 0x52u) < 0)
+        DSB(rec + 0x52u) = (u8)(DSB(rec + 0x4du) - 1u);     /* 0x37B21 */
+    u8 child = DSB(rec + 0x4bu);
+    if (child != 0u)                                        /* 0x37B29 */
+        DSB(DSD(DS_001014F4) + (u32)child * ACTOR_REC_SIZE + 0x52u)
+            = DSB(rec + 0x52u);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */

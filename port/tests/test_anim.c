@@ -409,6 +409,71 @@ static void check_dispatcher_streams(void)
     }
 }
 
+/* 0x37A58: the fighters' idle-animation tick, an opcode-0x10 target. The
+ * character streams (the T-rex 0xE6DD2, the raptor 0xD2136) carry the word
+ * 0xD000 (opcode 0x10, mode 0x4000), so anim_operand loads the dword 0x37A58
+ * into DS_00105BD4 and the dispatcher's indirect call reaches it. It advances
+ * rec+0x52 — the offset the 0xCD40 form selects the sprite id with — and on
+ * rec+0x4C's expiry draws rng(2), flips rec+0x58 between +1 and 0xFF and
+ * reseeds rec+0x4C to 3 * (rec+0x4D / 3). Before it was registered anim_indirect
+ * returned NULL and the variable froze, so the idle animation held its first
+ * sprite. */
+static void check_idle_tick_37a58(void)
+{
+    u16 *s = (u16 *)(mem + ANIM_SCRATCH);
+    u32 rec = anim_alloc_record();
+    CHECK(rec != 0, "idle-tick record");
+    if (rec == 0) return;
+    DSW(rec + 0x56) = 0;
+    DSW(DS_00104B00) = 3;                /* not 6: the rng(3) arm is skipped */
+    s[0] = 0x2c10;
+    s[1] = 0xd000;                       /* opcode 0x10, mode 0x4000 */
+    *(u32 *)(mem + ANIM_SCRATCH + 4) = 0x37a58u;
+    s[4] = 0x2c11;                       /* the literal id after the command */
+    DSW(rec + 0x28) = 0;
+    DSW(rec + 0x2a) = 0;
+    DSB(rec + 0x4b) = 0;
+    DSB(rec + 0x4f) = 0;
+    DSB(rec + 0x51) = 0;
+    DSB(rec + 0x4d) = 0x1e;
+
+    /* Tick A: the countdown has not expired. The variable advances by rec+0x58
+     * and no rng is drawn. */
+    DSB(rec + 0x4c) = 5;
+    DSB(rec + 0x52) = 0x10;              /* seeded sentinel, not the post-state */
+    DSB(rec + 0x58) = 1;
+    DSD(rec + 8) = ANIM_SCRATCH;
+    DSD(rec + 0x20) = 0;                 /* expired frame timer */
+    DSD(rec + 0x24) = 0x3f800000u;       /* 1.0f: frame_timer runs */
+    rng_seed(0xabcd);
+    u32 lcg0 = DSD(DS_000EF6D8);
+    actor_sync(rec);
+    CHECK_EQ_INT((int)DSB(rec + 0x52), 0x11);        /* 0x10 + 1 */
+    CHECK_EQ_INT((int)DSB(rec + 0x4c), 4);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)lcg0);  /* no rng draw */
+
+    /* Tick B: the countdown expires. rng(2) flips rec+0x58 and rec+0x4C is
+     * reseeded to 3 * (rec+0x4D / 3). The expected flip is the same draw the
+     * callback makes, so seed and draw it here. */
+    rng_seed(0xabcd);
+    u32 draw = rng_next(2u);
+    DSB(rec + 0x4c) = 0;
+    DSB(rec + 0x52) = 5;
+    DSB(rec + 0x58) = 1;
+    DSD(rec + 8) = ANIM_SCRATCH;
+    DSD(rec + 0x20) = 0;
+    DSD(rec + 0x24) = 0x3f800000u;
+    DSW(rec + 0x28) = 0;
+    DSW(rec + 0x2a) = 0;
+    rng_seed(0xabcd);
+    u32 lcg1 = DSD(DS_000EF6D8);
+    actor_sync(rec);
+    CHECK_EQ_INT((int)DSB(rec + 0x4c), 0x1e);        /* 3 * (0x1e / 3) */
+    CHECK(DSD(DS_000EF6D8) != lcg1, "the expiry drew rng(2)");
+    CHECK_EQ_INT((int)DSB(rec + 0x58), draw != 0u ? 1 : 0xff);
+    CHECK_EQ_INT((int)DSB(rec + 0x52), draw != 0u ? 6 : 4);
+}
+
 int test_anim(void)
 {
     int before = g_failures;
@@ -425,5 +490,6 @@ int test_anim(void)
     check_dispatcher_streams();
     check_opcode8_pin();
     check_globe_opcode11_spawn();
+    check_idle_tick_37a58();
     return g_failures - before;
 }
