@@ -551,6 +551,7 @@ int test_frontend(void)
          * missing 0x35803 call leaves all four counters false/zero. */
         int s7_saw14 = 0, s7_saw3 = 0, s7_hit = 0, s7_last_change = 0;
         int s7_last = -1;              /* the last loop frame the state is 7 */
+        int s7_saw42_40 = 0;           /* the +0x42 bit 6 arm was ever set */
         u8 s7_prev[4] = { 0, 0, 0, 0 };
         for (int i = 0; i < 2000; i++) {
             /* The state-9 exit leaves DS_000F0A64 == 6 for the next iteration;
@@ -592,6 +593,11 @@ int test_frontend(void)
                 if (i > 0 && (s0 != s7_prev[0] || s1 != s7_prev[1]))
                     s7_last_change = i;
                 s7_prev[0] = s0; s7_prev[1] = s1;
+                /* Task 3: 0x349C8's +0x42 bit 6 arm (0x349E6) is the only
+                 * in-window entry to 0x37178. Record whether it is ever set. */
+                if ((DSB(DS_001077B0 + 0x42u) & 0x40u) != 0u
+                        || (DSB(DS_001077B0 + 0x94u + 0x42u) & 0x40u) != 0u)
+                    s7_saw42_40 = 1;
             }
             if (log != NULL) {
                 /* Hash the presented index buffer without reading pixels. */
@@ -677,6 +683,10 @@ int test_frontend(void)
          * (or never leaves) fails. The dump count above (1381) is the same
          * proof through the presented frames. */
         CHECK_EQ_INT(s7_last, 1969);
+        /* The 0x37178 entry measurement: neither slot's +0x42 bit 6 is ever set
+         * in the state-7 window (checked per frame above), so 0x349C8's 0x349E6
+         * arm — 0x37178's only in-window entry — is never taken. */
+        CHECK_EQ_INT(s7_saw42_40, 0);
 
         /* The dust descriptors the aligned stream picks. From the state-6
          * entry at FRONTEND_RNG_AFTER_ATTRACT, 0x49388's rng(0x64) draws are

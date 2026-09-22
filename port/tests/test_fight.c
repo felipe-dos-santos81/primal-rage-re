@@ -1457,6 +1457,7 @@ static void check_state_dispatch(void)
     DSD(DS_001077A8) = p0;
     DSD(DS_001077A8 + 4u) = 0;
     DSD(p0) = r0;
+    DSD(DS_001077B0) = r0;                      /* 0x3C148/0x3C16C read this base */
     DSB(p0 + 0x7Au) = 0;                        /* char 0: threshold 0x1600 */
     DSD(p0 + 0x30u) = 0;
     DSW(r0 + 0x36u) = 0xFFFFu;                  /* negative: the gate passes */
@@ -1965,6 +1966,10 @@ static void check_state_handlers(void)
     DSD(s0 + 0x30u) = 0;                        /* below the threshold */
     DSW(r0 + 0x36u) = 0xFFFFu;                  /* negative */
     DSD(r0 + 0x24u) = 0xDEADBEEFu;
+    DSW(r0 + 0x34u) = 0xAAAAu;                  /* 0x3C148's +0x34 sentinel */
+    DSB(r0 + 0x42u) = 0xAAu;                    /* 0x3C148's +0x42 sentinel */
+    DSB(r0 + 0x43u) = 0xAAu;                    /* 0x3C148's +0x43 sentinel */
+    DSW(r0 + 0x44u) = 0xAAAAu;                  /* 0x3C16C's +0x44 sentinel */
     DSB(s0 + 0x41u) = 0;
     DSB(s0 + 0x52u) = 0xAAu;
     DSB(s0 + 0x53u) = 0xAAu;
@@ -1975,6 +1980,13 @@ static void check_state_handlers(void)
     CHECK_EQ_INT((int)DSW(s0 + 0x78u), (int)DSW(0x000BDC16u));
     CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0);
     CHECK_EQ_INT((int)DSB(s0 + 0x41u) & 0x80, 0x80);
+    /* 0x3C148/0x3C16C: every seeded sentinel is cleared. A dropped helper call
+     * leaves one of them non-zero. */
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0);
+    CHECK_EQ_INT((int)DSB(r0 + 0x42u), 0);
+    CHECK_EQ_INT((int)DSB(r0 + 0x43u), 0);
+    CHECK_EQ_INT((int)DSW(r0 + 0x36u), 0);
+    CHECK_EQ_INT((int)DSW(r0 + 0x44u), 0);
 
     /* A2: the same with rec+0x36 > 0 (the gate fails): the state is untouched. */
     (void)hit_fixture(0);

@@ -1587,7 +1587,6 @@ void fighter_state_364fc(u32 slot, u32 rec, u32 side)
 
 /* The chain helpers 0x350D0 shares; defined with the rest of the chain below. */
 static void hit_facing_flag(u32 side);                      /* 0x18B04 */
-static void hit_stance_timer(u32 side);                     /* 0x1922C */
 
 /* PORT: data-object addresses symbols.h does not name. */
 #define FIGHT_STUN_BASE  0x00107A80u  /* 0x107A80: 0x40-byte per-side table */
