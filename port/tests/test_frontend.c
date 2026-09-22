@@ -593,8 +593,10 @@ int test_frontend(void)
                 if (i > 0 && (s0 != s7_prev[0] || s1 != s7_prev[1]))
                     s7_last_change = i;
                 s7_prev[0] = s0; s7_prev[1] = s1;
-                /* Task 3: 0x349C8's +0x42 bit 6 arm (0x349E6) is the only
-                 * in-window entry to 0x37178. Record whether it is ever set. */
+                /* Task 3: record whether 0x349C8's +0x42 bit 6 (the 0x349E6
+                 * arm) is ever set in the state-7 window. This measures only
+                 * that bit; it does not settle 0x37178's reachability, whose
+                 * other entry is 0x37A4F (0x36870's case-4 body). */
                 if ((DSB(DS_001077B0 + 0x42u) & 0x40u) != 0u
                         || (DSB(DS_001077B0 + 0x94u + 0x42u) & 0x40u) != 0u)
                     s7_saw42_40 = 1;
@@ -683,9 +685,10 @@ int test_frontend(void)
          * (or never leaves) fails. The dump count above (1381) is the same
          * proof through the presented frames. */
         CHECK_EQ_INT(s7_last, 1969);
-        /* The 0x37178 entry measurement: neither slot's +0x42 bit 6 is ever set
-         * in the state-7 window (checked per frame above), so 0x349C8's 0x349E6
-         * arm — 0x37178's only in-window entry — is never taken. */
+        /* The +0x42 bit 6 measurement: neither slot's bit is set in the
+         * state-7 window (checked per frame above), so 0x349C8's 0x349E6 arm
+         * is never taken. This asserts only that bit, not 0x37178's
+         * reachability (its 0x37A4F entry is not measured here). */
         CHECK_EQ_INT(s7_saw42_40, 0);
 
         /* The dust descriptors the aligned stream picks. From the state-6
