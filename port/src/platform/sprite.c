@@ -65,9 +65,11 @@ static void copy_run(u8 *dst, const u8 *src, int n, u8 bank)
 
 /* PORT: the single row decoder. It walks one row of `width` pixels of RLE
  * control bytes, returns the advanced source, and stores a run only where the
- * row's visible window [clip_l, clip_l + vis) covers it, window-relative at
- * dst[mirror ? vis-1-(c-clip_l) : c-clip_l]. The unclipped renderer passes
- * clip_l = 0, vis = width, so this reduces to a plain sequential row (and the
+ * row's visible window [src_l, src_l + vis) covers it, window-relative at
+ * dst[mirror ? vis-1-(c-src_l) : c-src_l]. `src_l` is the window's first source
+ * column: `clip_l` for the plain clipped path, and `clip_r` for the mirrored one
+ * (see the 0x57FFB note below). The unclipped renderer passes clip_l = 0,
+ * vis = width, so this reduces to a plain sequential row (and the
  * original's "runs longer than the row are clipped to it" falls out of the
  * intersection). `dst == NULL` walks exactly the same control bytes and stores
  * nothing, which is how the clipped renderer consumes rows it must not draw
