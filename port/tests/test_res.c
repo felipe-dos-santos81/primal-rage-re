@@ -98,8 +98,16 @@ int test_res(void)
         DSD(DS_0010150C) = 0x1234;
         CHECK(res_resolve(res_handle(0u, 0)) != NULL, "s16slabs resolves");
         CHECK_EQ_INT((int)DSD(DS_001014FC), 1);
-        CHECK(DSD(DS_00101508) > 0x5678u,
-              "the lazy read advanced the ISR tick by its stall");
+        /* The exact delta, not merely "advanced": the stall is
+         * ceil(res_size(0)/RES_READ_BYTES_PER_TICK) ticks (res.c). The rate is
+         * asserted against its literal first — the delta expression below is
+         * rate-relative, so without this a changed rate would move both sides
+         * together and the pin would be vacuous. res_size(0) is read from the
+         * shipped INDEX, so the assertion tracks the real payload. */
+        CHECK_EQ_INT((int)RES_READ_BYTES_PER_TICK, 117882);
+        CHECK_EQ_INT((int)DSD(DS_00101508),
+                     0x5678 + (int)((res_size(0u) + RES_READ_BYTES_PER_TICK - 1u)
+                                    / RES_READ_BYTES_PER_TICK));
         CHECK_EQ_INT((int)DSD(DS_0010150C), (int)DSD(DS_00101508));
         CHECK((DSD(table + 0u * 20u + 12u) & 0x20000000u) != 0u,
               "lazy entry marked read by its first resolve");

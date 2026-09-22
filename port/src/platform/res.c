@@ -33,8 +33,8 @@ static u32 g_heap = RES_HEAP;
  * s16cob (2438316) = 6483528 bytes and blocks 55 ticks, i.e. 117882 bytes/tick.
  * The two 9->6 entries measured 55 and 56 ticks; the 7->6 entry, which reads a
  * smaller set, 27. Rounded up per read. This is a *derived* rate, not a fitted
- * per-frame constant. */
-#define RES_READ_BYTES_PER_TICK 117882u
+ * per-frame constant. The macro lives in res.h so test_res.c pins the exact
+ * tick delta it produces. */
 
 /* 0x1B3AC's presentation head (0x1B3B8-0x1B3F8). `draw` is the original's BL:
  * 0 from the init walk's call (0x1B250), 1 from the lazy resolve (0x1B5E9).
