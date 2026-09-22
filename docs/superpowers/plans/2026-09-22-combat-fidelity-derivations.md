@@ -230,11 +230,14 @@ the `+0x52`/`+0x53`/`+0x54`/`+0x57` writes. `rec` is the fighter record
 | 19 | `0x34D22` | `0x33B00` | bulk-copies the slot record (0x25 dwords) in/out, `0x2EA30` (interrupt lock), `0x36E78`, `0x29BC8` (the character palette re-acquire) | — | — | — | — |
 | 20 | `0x34D69` | `0x35E6C` | `+0x41 \|= 0x80`; `0x2C3FC`; if `0x1088E0[side]` bits `(3&0xC)!=0` skip `0x3BDDC`; `0x3C480(2.0)`, `0x188AC` | **9** | **0** | — | — |
 | 21 | `0x34D78` | `0x364FC` | `0x365C8` (`+0x43` bit 0x40), `0x36638`; if `0x1088E0[side]` bit 0x40 and `0x1A640==0` → `+0x52=5`, `0x2BC30(2.0)`; else `0x2BC30(2.0)`, `+0x54=0` | **9** or **5** | — | **0** (the `9` arm) | — |
-| — | `0x349C8` bit 6 | `0x37178` | `DS_001078FE=0`; `+0x40 &= 0xFFBFFFBF`; `+0x42` bit 6; on the `-1`/in-range arms calls `0x36870`, else `0x35838` | **9** (`0x37241`/`0x3731A`) | — | — | — |
+| — | `0x349C8` bit 6 | `0x37178` | `DS_001078FE=0`; `+0x40 &= 0xFFBFFFBF`; `+0x42` bit 6; on the `-1`/in-range arms calls `0x36870`, else `0x35838` | **9** (`0x37241`/`0x3731A`) | — | — | **0** (`0x37361`/`0x37397`) or **1** (`0x373F8`/`0x3743A`) |
 | — | `0x349C8` bit 7 | `0x37D18` | `0x2BC30(4.0)`, `0x39A10`, `0x2C3FC`; sets the other slot's `rec+0x59 = 0xFF` and `+0x40 \|= 0x801000` | **9** | **3** | **3** | — |
 
-No handler writes `+0x57`; the only `+0x57` writer in the tail is `0x36638`
-(`+0x57 = 2` on its `+0x54 == 4` arm) and `0x3FD30` (`+0x57 = 1`).
+**None of the twelve table handlers writes `+0x57`** (an instruction scan of
+`MOV byte ptr [reg+0x57], imm` finds no site in their extents). The `+0x57`
+writers in the tail are `0x36638` (`+0x57 = 2` on its `+0x54 == 4` arm,
+`0x366F2`), `0x37178` (`+0x57 ∈ {0, 1}`, `0x37361`/`0x37397`/`0x373F8`/`0x3743A`),
+`0x3FD30` (`+0x57 = 1`, `0x3FDC9`) and `0x3FF08` (`+0x57 = 0`, `0x3FF87`).
 
 ### 2.3 Which returns `+0x52` from 9 to 4? — `0x36870`, not a handler
 
