@@ -1462,6 +1462,27 @@ DOSBox-X live-RAM route of Task 5a, the data base recovered per run from
   non-zero bytes / 166 px), but the gate's own `render_list` overwrites it
   before `gfx_present`, so it is never exhibited.
 
+**Task 5c re-measurement (the gate's role confirmed; the present path is the gap).**
+Re-polled the state-6 entry in both (DOSBox-X live RAM: the tick pair, the
+`E87A4`/`E87A0` content, the render-list head `DS_00105B44`, `DS_001088F4`; the
+port: env-gated traces). **The original's loader frame's gate fails**: at the
+handler's end `150C` = 55 while the ISR `1508` = 57 (`/tmp/t5a_pal2.csv:118`,
+`/tmp/t5c_dense.csv`), so the sort/render/flush/copy/swap are all skipped and the
+screen holds. Both offscreen buffers are **zero** through the whole read block,
+the render-list head is `0` at the blackout and then non-zero, and `DS_001088F4`
+stays 0. The port's loader frame is the opposite: `1508 += ceil(size/117882)`
+then `150C = 1508`, so the gate passes, the 80-node render list draws the arena,
+and `E87A4` (byte-identical to capture 832, diff 0, verified through `gfx_dac`)
+is overwritten before `gfx_present`. **Making the port's loader-frame gate fail
+does not advance the demo oracle** (tested: `first unexplained 832` unchanged —
+the held frame through the loader DAC is not a capture frame). So the gap is not
+a presentation one-liner: it needs the read/gate model to carry the ISR ticks the
+original's post-read spawns consume (a fitted constant) **and** the text-present
+path — the same 498-byte overlay the attract's capture 215 carries, which the
+port never presents (the reason the attract diverges there). **The rate itself is
+now pinned** by `test_res.c` (`RES_READ_BYTES_PER_TICK == 117882` plus the exact
+delta `0x5678 + ceil(res_size(0)/rate)`; both mutation-proved).
+
 **The remaining work is a named gap.** Exposing the held frame needs the
 original's **non-atomic read** — the state-6 handler blocks in `0x1B3AC` for the
 whole ~1 s the poll shows (`150C` frozen at 3 while `1508` climbs 3→54), and the
