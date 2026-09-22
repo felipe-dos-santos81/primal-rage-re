@@ -495,6 +495,12 @@ int test_frontend(void)
         u32 dust_actor[4] = { 0, 0, 0, 0 };
         u32 dust_anim[4] = { 0, 0, 0, 0 };
         u32 dust_type[4] = { 0, 0, 0, 0 };
+        /* Task 6b: the state-7 fight's chain, sampled per loop frame. The
+         * 0x3531C/0x350D0 machine must take slot 0's +0x52 out of 0 through
+         * 0x0E to 3 (the 0x3520E -> 0x3BF0A drive) and resolve a hit; a
+         * missing 0x35803 call leaves all four counters false/zero. */
+        int s7_saw14 = 0, s7_saw3 = 0, s7_hit = 0, s7_last_change = 0;
+        u8 s7_prev[4] = { 0, 0, 0, 0 };
         for (int i = 0; i < 2000; i++) {
             /* The state-9 exit leaves DS_000F0A64 == 6 for the next iteration;
              * nothing draws between the hold and the state-6 handler, so this
@@ -524,6 +530,17 @@ int test_frontend(void)
             }
             if (DSW(DS_000F0A64) == 3u) reached3 = 1;
             if (DSB(DS_000F0A6E) < 6u) seen_entries |= 1u << DSB(DS_000F0A6E);
+            if (DSW(DS_000F0A64) == 7u) {
+                u8 s0 = DSB(DS_001077B0 + 0x52u);
+                u8 s1 = DSB(DS_001077B0 + 0x94u + 0x52u);
+                if (s0 == 0x0Eu) s7_saw14 = 1;
+                if (s0 == 3u) s7_saw3 = 1;
+                if (DSB(DS_001077B0 + 0x7Cu) != 0u
+                        || DSB(DS_001077B0 + 0x94u + 0x7Cu) != 0u) s7_hit = 1;
+                if (i > 0 && (s0 != s7_prev[0] || s1 != s7_prev[1]))
+                    s7_last_change = i;
+                s7_prev[0] = s0; s7_prev[1] = s1;
+            }
             if (log != NULL) {
                 /* Hash the presented index buffer without reading pixels. */
                 const u8 *fb = mem + DSD(DS_000E87A4);
@@ -587,6 +604,16 @@ int test_frontend(void)
         CHECK_EQ_INT((int)entry_lcg, (int)FRONTEND_RNG_AFTER_ATTRACT);
         CHECK_EQ_INT((int)DSB(DS_0010816A), 0);
         CHECK_EQ_INT((int)DSB(DS_0010816A + 1u), 3);
+
+        /* Task 6b: the state-7 fight. slot+0x52 enters the 0x34B14 no-op 0x0E
+         * and the 0x3531C/0x350D0 machine drives it back to 3 (the 0x3BDDC
+         * attack transition), and the 0x3CF38 chain resolves a hit (+0x7C).
+         * A missing 0x35803 call leaves +0x52 at 0x0E and +0x7C at 0. */
+        CHECK(s7_saw14, "state-7 slot 0's +0x52 enters the 0x0E no-op");
+        CHECK(s7_saw3, "state-7 slot 0's +0x52 returns to 3");
+        CHECK(s7_hit, "state-7 the 0x3CF38 chain resolves a hit");
+        printf("test_frontend: state-7 last +0x52 change at loop frame %d\n",
+               s7_last_change);
 
         /* The dust descriptors the aligned stream picks. From the state-6
          * entry at FRONTEND_RNG_AFTER_ATTRACT, 0x49388's rng(0x64) draws are
