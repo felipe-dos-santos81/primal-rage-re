@@ -4,6 +4,7 @@
 #include "../mem.h"
 #include "../symbols.h"
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 
 u8 gfx_dac[256][3];
@@ -31,17 +32,36 @@ void palette_list_init(void)
  * the DS_00107798 head and advances the head. PORT: moved from flow.c so the
  * dirty-list writer has one owner; flow.c's init enqueue and game/actors.c's
  * 0x33754 palette acquire both call it.
- * PORT: the original never bounds the head because 0x1C470 drains the list
- * every frame, and a frame cannot enqueue more records than the list holds in
- * the shipped data. The port's test drivers run game_frame() without the loop's
- * drain, so the head can reach the ownership table at DS_00107618 (the record
- * region is the 24 records at DS_00107498..DS_00107618). A record that would
- * write past it is dropped — the original would corrupt the table and the
- * globals above it — and the palette is re-recorded by the next acquire. */
+ * PORT: the original never bounds the head; 0x1C470 drains the list every
+ * frame, and the drain interval's record count is bounded by measurement, not
+ * assumption. A temporary counter over the three faithful drivers gives a
+ * maximum of 10 records between drains (the demo run; 7 in the attract and
+ * title runs) against the 24 records that fit in
+ * DS_00107498..DS_00107618 (the ownership table at DS_00107618 is next), so a
+ * faithful path never reaches the bound. The test drivers drive game_frame()
+ * and effects_step() without the loop's per-frame drain, which is what made
+ * the head overflow before this guard (58 records between drains, 4 past the
+ * list); they now drain at their fixture boundaries, and this guard is the
+ * safety net for any future drain-less caller: a record that would write past
+ * the list is dropped *loudly* — the original would corrupt the ownership table
+ * and the globals above it — and the palette is re-recorded by the next
+ * acquire. */
 void palette_record(u32 ptr, u32 first, u32 count, u32 flag)
 {
     u32 head = DSD(DS_00107798);
-    if (head + 0x10u > DS_00107618) return;
+    /* PORT: an uninitialized head reads 0 and a stale one can sit outside the
+     * record region; recover to the base exactly as gfx_flush_palette does, so
+     * the two guards agree. */
+    if (head < DS_00107498 || head > DS_00107618) {
+        DSD(DS_00107798) = DS_00107498;
+        head = DS_00107498;
+    }
+    if (head + 0x10u > DS_00107618) {
+        fprintf(stderr, "gfx: palette dirty list full, dropping record "
+                        "(ptr=%08x first=%x count=%x flag=%x)\n",
+                ptr, first, count, flag);
+        return;
+    }
     DSD(head + 0) = ptr;
     DSD(head + 4) = first;
     DSD(head + 8) = count;
