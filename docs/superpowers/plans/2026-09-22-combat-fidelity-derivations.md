@@ -63,10 +63,11 @@ address in this record comes from Ghidra (fixups applied) or the port's
    the *handle*, not of the *range*. Evidence: §1.3.
 3. **No `0x34B14` handler returns `+0x52` from 9 to 4.** The brief's Step 2
    question ("which of them returns `+0x52` from 9 to 4?") is answered: **none**.
-   `+0x52 = 9` is a table no-op (entries 9..16); the twelve handlers write
-   `+0x52 ∈ {0, 5, 9, 0x12, 0x14, 0x15}` and never 4. The writer of
-   `+0x52 = 4` is `0x36870`'s `+0x54 == 2` arm at `0x36B91` (§2.3), a callee of
-   `0x37178` (a `0x349C8` sub-handler) and of `0x3FD30` — not a table handler.
+   `+0x52 = 9` is a table no-op (entries 9, 10, 11, 14, 15, 16); the twelve
+   handlers write `+0x52 ∈ {0, 5, 9, 0x12, 0x14, 0x15}` and never 4. The writer
+   of `+0x52 = 4` is `0x36870`'s `+0x54 == 2` arm at `0x36B91` (§2.3), a callee
+   of `0x37178` (a `0x349C8` sub-handler) and of `0x3FD30` — not a table
+   handler.
 4. **The handler tail's closure is not materially larger than a cycle.** The
    union of the twelve handlers' closure and the `+0x53` machine's closure
    (`0x3531C`, already scoped by cycle 2) is 317 functions / 46 808 B, of which
@@ -166,11 +167,11 @@ per side (`0x11ACD` side 0, `0x11AFE` side 1; `flow.c:821/831`):
 
 **Measured (original, state 7, `/tmp/t1_chars.py`):** chars `[0, 3]`, variant
 `[1, 0]`; side 0 (T-rex, ch 0) variant 1 → `0xA8A28[1] = 0x1BB9FCD8`. The
-`0x41350` code plus the measured variant prove the original's `DS_0010816A[1]`
-was **0** at side 0's call (variant[0]=1 requires `char[0] == char[1]` and
-`variant[1] == 0`; `char[0]` was just written to 0, so `char[1]` was 0 — the BSS
-value). Side 1 then writes `char[1] = 3` and, with `variant[0] == 1`, leaves
-`variant[1] = 0`.
+`0x41350` code plus the measured variant **infer** (a deduction, not a direct
+read) that the original's `DS_0010816A[1]` was **0** at side 0's call
+(variant[0]=1 requires `char[0] == char[1]` and `variant[1] == 0`; `char[0]` was
+just written to 0, so `char[1]` was 0 — the BSS value). Side 1 then writes
+`char[1] = 3` and, with `variant[0] == 1`, leaves `variant[1] = 0`.
 
 **Measured (port, `/tmp/t1_chars.py` trace, reverted):** with the driver's seed
 as shipped (`port/tests/test_frontend.c:475-476`,
@@ -196,17 +197,35 @@ handle already matched). The remaining 1 898 + 8 704 px is the pose residual
 (§3). The fix belongs at the caller — the dump driver's seed — with the engine
 `0x41350` unchanged; **the engine itself needs no change.**
 
+**Task 2's re-scope (the human's ruling).** The spec's "the palette acquisition
+order" is not the owner; **Task 2 fixes the front-end dump driver's seed**
+(`port/tests/test_frontend.c:475-476`) and records the reference change the seed
+fix causes. The port's dump changes, so the front-end oracle's derived window
+indices may move and the reference may need **one re-capture**; the **claims stay
+the invariant, not the indices** (title `54 clean, 55 splice, 2 transition, 0
+unexplained` / `54 clean, 57 splice, 0`; attract `FIRST DIVERGENCE at capture
+frame 215`; front-end `0 unexplained`; smk `120/120` + `41/41`). The Gate's
+second claim is measured by the unit assertion plus the arena byte-diff, not by
+`make demo-oracle` (§7.0).
+
 ---
 
 ## 2. The twelve `0x34B14` handlers and their size (Step 2)
 
 ### 2.1 The dispatch
 
-`0x36E2C` (`fight_health_sync` `0x34B6C` calls it at `0x34B8E`) dispatches on
+`fight_health_sync` (`0x34B6C`, body `0x34B6C..0x34D88`) dispatches on
 `slot+0x52` through the 22-entry table at `0x34B14` (`0x34BF4`: `mov
 al,[ecx+0x52]; cmp al,0x15; ja default; and eax,0xff; jmp
-dword ptr cs:[eax*4 + 0x34B14]`). Entries 9..16 (`0x34D83`) are an epilogue
-no-op. The port's table is in record §11.3 of
+dword ptr cs:[eax*4 + 0x34B14]`). The dispatch site is **inside
+`FUN_00034B6C`**, not `0x36E2C`: `0x36E2C` is a **predicate** (it returns 1
+only when `+0x42 & 0x10` and `+0x52 ∈ {0,1,5,6,7}` and `+0x54 <= 1`) that
+`0x34B6C` calls at `0x34B8E`; its return gates the position branch
+(`0x34B97..0x34BEF`) and a zero falls through to the dispatch
+(`0x34B93 TEST AL,AL; 0x34B95 JZ 0x34BF4`). Entries **9, 10, 11, 14, 15, 16**
+(`0x34D83`) are the epilogue no-op; entries **12 (`0x34C9A`) and 13 (`0x34CA9`)
+are real handlers** (the table at `0x34B14` read from Ghidra confirms the
+dwords). The port's table is in record §11.3 of
 `2026-09-20-demo-fight-derivations.md`; the twelve **gap** entries are below.
 
 ### 2.2 The twelve handlers
@@ -245,7 +264,8 @@ A scan of every `MOV byte ptr [reg+0x52], imm` in the image
 (`ghidra_search_instructions`) finds the writers of `+0x52 = 4` at `0x21908`
 (in `FUN_000216EC`), `0x36B91` (in `FUN_00036870`) and `0x3FDA4` (in
 `FUN_0003FD30`); **no `0x34B14` handler writes 4.** The `+0x52 = 9` state is a
-table no-op (entries 9..16), so the 9→4 transition is not driven by the dispatch.
+table no-op (entries 9, 10, 11, 14, 15, 16), so the 9→4 transition is not driven
+by the dispatch.
 
 `0x36870` (856 B) switches on `slot+0x54` (`(char)local_1c[0x15]`):
 
@@ -402,22 +422,34 @@ alone does not move `make demo-oracle` at all.**
 ## 5. The RNG question (Step 5)
 
 **Yes — the `0x34B14` tail consumes RNG (`0x5D7DC`).** A scan of the twelve
-handlers' closure (311 functions) for a direct `call 0x5D7DC` finds two sites:
+handlers' closure (311 functions) for a direct `call 0x5D7DC` finds two caller
+functions, and `0x39040` alone has **three** call sites (the review's correction;
+the conclusion is stronger than the first pass claimed):
 
-| caller | site | what |
+| caller | sites | what |
 |---|---|---|
-| `0x39040` | `0x391E9` (cycle-2 §3.8) | the per-side round/timer pass; `0x350D0` calls it at `0x35244`, `0x36870` at `0x36979` |
+| `0x39040` | `0x391C3` (`rng(2)`, arg load `0x391BE`), `0x391FE` (`rng(3)`, arg load `0x391F9`), `0x39228` (`rng(2)`, arg load `0x39223`) | the per-side round/timer pass; `0x350D0` calls it at `0x35244`, `0x36870` at `0x36974` |
 | `0x2B2A0` | in the animation opcode interpreter | `spawn_anim_opcode`, called from `0x2BC30`/`0x2AE14` |
 
+(`0x391E9` is **not** a call site — it is `MOV AL,[EBX+0x1088A8]`, the
+`rng(0x40)` gate's argument load; the first pass mis-cited it. The `0x36870`
+call to `0x39040` is at `0x36974`; `0x36979` is its return address.)
+
 `0x39040` is already ported (`fighter_39040`, `fighter.c:1482`) and already
-draws `rng_next(2u)` (`0x391CA`), and `0x350D0` already calls it
+draws `rng_next(2u)` (its site is the raw's `0x391C3`, the port comment's
+`0x391CA` is the store after it), and `0x350D0` already calls it
 (`fighter.c:1668`). The new handlers add draws where they reach `0x39040`
 (`0x33B00`, `0x36870`) or `0x2B2A0` (`0x33B00`'s palette re-acquire path does
 not; `0x359E0`/`0x367DC` do not). **Consequence: porting the handlers will change
-the RNG stream alignment**, so a determinism answer is needed before Task 3
-commits to a pin. This is **flagged to the human** (the brief's instruction),
-not pinned here; the port's RNG is seeded (`rng_seed`) and the cycle-2
-determinism gate (`PR_FRONTEND_DET`, `54 agree / 0 disagree`) is the arbiter.
+the RNG stream alignment.**
+
+**The determinism answer (the human's ruling).** Task 3 must **assert the port's
+draw sequence matches the original's at the same points** — a unit test on the
+draw order and values (the cycle-2 pattern: seed, drive the frame, assert the
+draws). **Pin at the source as cycle 2 did only if the streams drift.** The
+port's RNG is seeded (`rng_seed`), the cycle-2 determinism gate
+(`PR_FRONTEND_DET`, `54 agree / 0 disagree`) is the arbiter, and a drift found
+after Task 3 lands is derived at its site, never fitted.
 
 ---
 
@@ -453,6 +485,22 @@ determinism gate (`PR_FRONTEND_DET`, `54 agree / 0 disagree`) is the arbiter.
 
 ## 7. Unit-test values (the Tasks 2–4 substitutions)
 
+### 7.0 The Gate's second claim's measurement (the human's ruling)
+
+**The Gate's second claim (the arena's character palette matches the raw's DAC
+range, and the arena's byte-diff drops to the level the poses alone explain) is
+measured by the unit assertion plus the arena's byte-diff — not by
+`make demo-oracle`.** `make demo-oracle`'s `res is None` fallback
+(`tools/title_compare.py:484-514`) ignores the port, so its `first unexplained
+832` cannot move from any port change (§4.3, §6.2). The claim's evidence of
+record is therefore:
+
+* the unit assertion on the palette table entry's `start` (§7.1), and
+* the measured arena byte-diff before and after (§7.1's table), reported with
+  the pose residual named (§3.3).
+
+`make demo-oracle` stays report-only and its 832 is not the Gate's figure.
+
 ### 7.1 Task 2 — the palette order / variant
 
 * **The T-rex's DAC range (both trees):** `start = 142`, `len = 31`.
@@ -477,13 +525,24 @@ determinism gate (`PR_FRONTEND_DET`, `54 agree / 0 disagree`) is the arbiter.
 * **The measured byte-diff:** `frame_0482` vs capture 834 = 42 667 B (22.2%,
   15 067 px) with the seed, 30 536 B (15.9%, 10 602 px) with the original's BSS
   value; the T-rex region 6 363 → 1 898 px, the raptor region 8 704 → 8 704 px.
+* **Task 2's re-scope (the human's ruling).** Task 2 **fixes the front-end dump
+  driver's seed** (`port/tests/test_frontend.c:475-476`), not the engine and not
+  the acquisition order. Because the seed change alters the port's dump, it
+  **records the reference change it causes**: the front-end oracle's derived
+  window indices may move and the reference may need **one re-capture**. The
+  **claims stay the invariant, not the indices** — the title
+  `54 clean, 55 splice, 2 transition, 0 unexplained` / `54 clean, 57 splice, 0`,
+  the attract `FIRST DIVERGENCE at capture frame 215`, the front-end
+  `0 unexplained` and the smk `120/120` + `41/41` are the things that must not
+  move; a window index that moves with the seed fix is re-derived and recorded,
+  never treated as a regression. Evidence: §1.4/§1.5.
 
 ### 7.2 Task 3 — the `0x34B14` handlers
 
 * **The table** (§2.2) is the substitution source for the plan's `<...>`.
-* **`+0x52 = 9` is a no-op** (entries 9..16, `0x34D83`); **no handler writes
-  `+0x52 = 4`.** The 9→4 writer is `0x36870`'s `+0x54 == 2` arm at `0x36B91`
-  (`+0x52 = 4; +0x53 = 0; 0x3C520(2.0)`).
+* **`+0x52 = 9` is a no-op** (entries 9, 10, 11, 14, 15, 16, `0x34D83`);
+  **no handler writes `+0x52 = 4`.** The 9→4 writer is `0x36870`'s `+0x54 == 2`
+  arm at `0x36B91` (`+0x52 = 4; +0x53 = 0; 0x3C520(2.0)`).
 * **The original's state-7 s1 trajectory** (§3.2/§3.3) is the assertion source:
   `+0x52` cycles `0,1,3,4,5,9,0x0E,0x10,0x12` and `+0x53` cycles
   `0,4,7,8,10,11`; `+0x52=4` pairs with `+0x53=0, +0x54=2`.
