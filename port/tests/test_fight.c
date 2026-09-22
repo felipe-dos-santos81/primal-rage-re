@@ -8,7 +8,6 @@
 #include "mem.h"
 #include "symbols.h"
 #include "test.h"
-#include <stdio.h>
 #include <string.h>
 
 /* Scratch above the resource heap (test_effects uses 0x3F00000). */
@@ -1190,10 +1189,17 @@ static void check_game_frame_tail(void)
  * (0xC82CC[0] = 0xC7F78) has five non-zero triples and the crowd count
  * (0xBBD98[0]) is 3, so the pair issues 8 spawns. The crowd's first actor
  * (descriptor 0xC7850, whose dword0 is the animation stream 0xE8EB2) then runs
- * the animation walk, whose opcode-0x11 targets spawn 2 child actors from
- * 0xC7864/0xC7878 (a5 = 0x407: the parent bit + slot 7), so the active list
- * grows by 10. The count difference (not an absolute count) is the anchor, and
- * each record is found by its raw-derived a2/a3 rather than by list position. */
+ * the animation walk, whose opcode-0x0C targets (the stream words at
+ * 0xE8EB2/0xE8EBC are 0xCC01, (word>>8)&0x1F = 0x0C, dispatched at 0x2B484
+ * through anim_operand's mode-0x4000 load of DS_00105BD4) spawn 2 child actors
+ * from 0xC7864/0xC7878 (a5 = 0x407: the parent bit + slot 7); opcode 0x11
+ * (0x2B57F) only does anim_indirect and spawns nothing on this stream. So the
+ * active list grows by 10. The count difference (not an absolute count) is the
+ * anchor, and each record is found by its raw-derived a2/a3 rather than by list
+ * position. The props' a4 (0x2C320's `(s16)[e+4]`) and 0x412A0's a4 = 0 are
+ * left unasserted: both are zero on the shipped scene data, so a CHECK on them
+ * would pass on an unseeded BSS zero (AGENTS.md) — the count and the a2/a3/id
+ * triples above are the discriminating anchors. */
 static void check_scene_props(void)
 {
     u32 saved_5c08 = DSD(DS_00105C08);
@@ -1247,8 +1253,12 @@ static void check_scene_props(void)
 
     /* Scene 2 (0xC82CC[2] = 0xC7FF0, 8 triples) has no crowd (0xBBD98[2] = 0),
      * so 0x2C320 returns before its DS_00105C08 store and a sentinel there must
-     * survive; the 8 props all carry the walk-skipping 0x1A00 flags, so no
-     * animation child joins them. */
+     * survive. The count stays 8 only because the three descriptors whose
+     * word[8] is 0x1200 (0xC78DC/0xC78F0/0xC7904; bit 0x0800 clear, so
+     * actor_spawn runs the walk) point at the streams
+     * 0xE8EA6/0xE8EAC/0xE8E74, whose initial walks spawn no child — not because
+     * every prop skips the walk (the other five carry 0x1A00 or 0x5A00, which
+     * set 0x0800). */
     actors_reset();
     before = 0;
     for (u32 r = actor_list_head(); r != 0; r = actor_next(r)) before++;
