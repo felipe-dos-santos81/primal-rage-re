@@ -410,6 +410,128 @@ git commit -m "fight: fix the arena render's first frames"
 
 **Gate for this task:** the fight's first arena frames are explained and the oracle's first-unexplained frame has advanced into the fight.
 
+**Outcome (recorded, not smoothed):** the gate is **UNMET**. Two verified fixes landed — the mirrored clipped RLE read the wrong source window (`rle_row` used `[clip_l, clip_l+vis)` where the raw `0x57FFB` uses `[clip_r, clip_r+vis)`: `vis = width - clip_l - clip_r` at `0x58001`, and `0x581D0`/`0x582F4` load `clip_r` via `MOV EDX,[EBP+0x2c]`; this was the "triangle"), and `camera_step_seed()` (`0x12C70`) was placed at its raw call site `0x20E6A` (established **not** load-bearing — `camera_x_commit` self-seeds `0x400` on its first snap). Task 4's ~36% is not reproducible: measured 26.3% pre-fix, 22.2% after. The remainder was the brief's Step-1 size case and was **split by human ruling into Task 5a and Task 5b below**.
+
+---
+
+### Task 5a: The presented DAC/palette state at the state-6 entry
+
+Task 5 established that capture **831 is all-black** and **832 is black plus the loader's 498 bytes**, and that the port produces neither — its state-6 frame (dumped 481) presents the arena plus the `- LOADING -` text. Task 5 **refuted** the prior session's `gfx_display_hold` model from the raw: `0x1B3AC` ends with `DAT_0010150c = DAT_00101508` (`MOV EAX,[0x101508]` at `0x1B45F`, `MOV [0x10150C],EAX` at `0x1B464`), which re-syncs the master loop's gate (`0x255CC`: `if (DAT_0010150c == DAT_00101508) { … render/present … }`, checked after `0x24C5C` and before `DAT_0010150c++`), so the gate **passes** on the loader frame. Two candidates remain and the capture cannot separate them: the frame-end flush not uploading, versus the composition drawing nothing. **This task begins with a measurement, not a port.**
+
+**Files:**
+- Modify: whichever the Step 1 measurement names (`port/src/game/flow.c` the loop/flush ordering, `port/src/platform/gfx.c` the present path, or `port/src/platform/res.c` the loader)
+- Modify: `port/tests/test_flow.c` (or `port/tests/test_res.c`)
+
+**Interfaces:**
+- Consumes: record §9.5; the addresses `0x255CC` (the gate), `0x1B3AC`/`0x1B45F`/`0x1B464` (the loader's re-sync), `0x2BAF4`/`0x52106` (the DAC blackout), `0x336C0` (the palette-list reset); the captures `frame_0831.raw`/`frame_0832.raw`.
+- Produces: the mechanism that makes the capture's 831/832 black, with its addresses, and the fix if the port's ordering differs.
+
+- [ ] **Step 1: Measure the mechanism with dosbox-x**
+
+Run the pinned original under dosbox-x with breakpoints on `0x1B3AC`, `0x52106` and `0x255CC`, logging the caller and the DAC/palette state across the state-6 entry, and decide which of the two candidates produces the capture's black frames. **Do not port a fix before the measurement names the mechanism.** If the measurement is out of reach, stop and report that — it is a re-scope conversation, not an approximation.
+
+- [ ] **Step 2: Write the failing test**
+
+Assert the measured mechanism with seeded sentinels — the exact DAC/palette state or ordering your Step 1 measurement pins. Seed a sentinel that differs from the post-condition; never assert an unseeded BSS-zero.
+
+- [ ] **Step 3: Run the test to verify it fails**
+
+Run: `./build/run_tests`
+Expected: FAIL — the port's ordering or present state differs from the measured one.
+
+- [ ] **Step 4: Implement it**
+
+Port what Step 1 measured, one C function per original function with its address tag, into the owner Step 1 names. A value that cannot be pinned is a named gap with its evidence, never an invented one.
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `./build/run_tests`
+Expected: PASS, output pristine.
+
+- [ ] **Step 6: Prove the assertion can fail**
+
+Mutate the implementation and confirm the named assertion fails. Restore, and report the mutation with its command and output.
+
+- [ ] **Step 7: Re-measure the oracle**
+
+```bash
+make demo-oracle
+```
+
+Expected: the port exhibits the capture's 831/832 states and the first-unexplained frame **advances past 832**. If it does not, return to the measurement — do not tune to match.
+
+- [ ] **Step 8: Full ladder and commit**
+
+Run: `make verify`
+Expected: exit 0, 0 warnings, every oracle claim unmoved.
+
+```bash
+git add <the files Step 1 named>
+git commit -m "flow: present the state-6 entry's DAC/palette state"
+```
+
+**Gate for this task:** the port exhibits the capture's 831/832 states (black, then black plus the loader text) and the oracle's first-unexplained frame has advanced past 832.
+
+---
+
+### Task 5b: The fighter animation-pose fidelity
+
+Task 5 measured the arena's residual after the RLE-window fix: **22.2%** (42667 bytes) against capture 834, of which the raptor is 24709 and the T-rex 17741. The raptor's silhouette has **IoU 0.293** against the capture and **no translation improves it** (best shift `(1,0)`, IoU 0.298; a forced flip is worse), so it is a different animation frame, not a position or a flip. The T-rex's residual is 3-channel colour on an aligned silhouette (5352 of its 6363 differing pixels differ in all three channels, e.g. port `(81,16,60)` vs capture `(97,48,121)` at x=124 y=83). This is the animation/think state across `actors.c`/`fighter.c` plus the actor frame-timer path — a derivation, not a single pass.
+
+**Files:**
+- Modify: `port/src/game/actors.c` (the actor frame timer), `port/src/game/fighter.c` (the pose/frame selection)
+- Modify: `port/tests/test_anim.c`, `port/tests/test_fight.c`
+
+**Interfaces:**
+- Consumes: Task 5's composition measurements; the record's animation and frame-timer sections; the cycle-1 record §6.2/§10.
+- Produces: the fighters' poses and shading matching the capture's first arena frames.
+
+- [ ] **Step 1: Derive the animation-frame divergence**
+
+Derive why the port's raptor is at a different animation frame than the capture's, and whether the T-rex's 3-channel residual is a palette/bank selection or a different frame. Cite the addresses. **If the derivation shows a subsystem larger than this task can carry, stop and report its size** — that is a re-scope conversation, not a silent overrun.
+
+- [ ] **Step 2: Write the failing test**
+
+Assert the derived frame/pose values with seeded sentinels — the exact inputs and expected transitions your Step 1 derivation pins. Seed sentinels that differ from the post-conditions.
+
+- [ ] **Step 3: Run the test to verify it fails**
+
+Run: `./build/run_tests`
+Expected: FAIL — the frame or selection is wrong.
+
+- [ ] **Step 4: Implement it**
+
+Port what Step 1 derived, one C function per original function with its address tag, into the owner Step 1 names. A value that cannot be pinned is a named gap with its evidence, never an invented one.
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `./build/run_tests`
+Expected: PASS, output pristine.
+
+- [ ] **Step 6: Prove the assertion can fail**
+
+Mutate the implementation and confirm the named assertion fails. Restore, and report the mutation with its command and output.
+
+- [ ] **Step 7: Re-measure the oracle**
+
+```bash
+make demo-oracle
+```
+
+Expected: the first arena frames' fighters match the capture and the first-unexplained frame **advances into the fight body**. If it does not, return to the derivation — do not tune the render to match.
+
+- [ ] **Step 8: Full ladder and commit**
+
+Run: `make verify`
+Expected: exit 0, 0 warnings, every oracle claim unmoved.
+
+```bash
+git add port/src/game/actors.c port/src/game/fighter.c port/tests/test_anim.c port/tests/test_fight.c
+git commit -m "fight: match the fighters' arena poses"
+```
+
+**Gate for this task:** the first arena frames' fighters match the capture (the raptor's pose, the T-rex's shading) and the oracle's first-unexplained frame has advanced into the fight.
+
 ---
 
 ### Task 6: The hitbox machine and the hit chain
