@@ -164,7 +164,11 @@ git commit -m "tests: seed the driver's palette variant to the original's"
 
 ---
 
-### Task 3: The `0x34B14` handlers
+### Task 3: The `+0x52` state handlers and the 9→4 closer
+
+**Task 1's findings (the raw wins).** The dispatcher is `fight_health_sync` (**`0x34B6C`**), whose jump table at `0x34BF4` indexes `slot+0x52`; `0x36E2C` is only the predicate it calls at `0x34B8E`. The **9→4 stall closer is not one of the twelve**: `+0x52 = 9` is a table no-op (entries 9,10,11,14,15,16), and the 9→4 transition is **`0x36870`'s `+0x54 == 2` arm** (`0x36B91`: `+0x52 = 4; +0x53 = 0; 0x3C520(2.0)`), reached via `0x37178` (a `0x349C8` sub-handler) and `0x3FD30`. The tail's **size is not a re-scope stop** — 10 funcs / 1182 B incremental over cycle 2's `0x3531C`.
+
+**The RNG ruling (human).** The tail consumes RNG (`0x39040`'s three draw sites `0x391C3`/`0x391FE`/`0x39228`; and `0x2B2A0`). **Assert the port's draw sequence matches the original's at the same points**; pin at the source as cycle 2 did only if the streams drift.
 
 **Files:**
 - Modify: `port/src/game/fighter.c` (the `+0x52` dispatch and the state handlers)
@@ -172,12 +176,12 @@ git commit -m "tests: seed the driver's palette variant to the original's"
 - Test: `port/tests/test_fight.c`
 
 **Interfaces:**
-- Consumes: record §2 (each handler's body, callees and writes; the size; the `+0x52 = 9 → 4` answer).
+- Consumes: record §2 (each handler's body, callees and writes; the dispatcher `0x34B6C`; the 9→4 closer `0x36870`; the size) and §5 (the draw sequence).
 - Produces: the fight progressing past loop 1400 to the timer exit.
 
-- [ ] **Step 1: Size gate**
+- [ ] **Step 1: Size gate — measured, not a stop**
 
-Read record §2's measured closure. If it is materially larger than a cycle, **stop and report the size** — a re-scope conversation with the human. Otherwise say which case you are in before implementing.
+Record §2 measured the closure: 10 funcs / 1182 B incremental over cycle 2's `0x3531C`. **The stop condition is not triggered.** Say so, then proceed.
 
 - [ ] **Step 2: Write the failing test**
 
