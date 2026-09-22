@@ -1265,13 +1265,39 @@ demo run) and nothing else.
 with the same 498-byte residual: the port's overlay now lands in the title's
 phase-0 frame (`title/frame_0000.raw`), but the oracle compares capture 215
 against the *attract* frames, and the port's text-bearing frames carry content
-the capture's 215 does not (the attract's CREDITS overlay + a backdrop that
-covers the text; the title phase-0 frame's own render). `make demo-oracle`
-still reports first unexplained 832: the port's text-bearing frame (481) also
-carries the arena render, while capture 832 is black + text — i.e. the next
-divergence is the arena render's fidelity (Task 5's declared gap) and the
-port's DAC/palette state at the state-6 entry. Neither claim is a fitted
-number: `--expect-first 215` still holds and is left unchanged.
+the capture's 215 does not. `make demo-oracle` still reports first unexplained
+832: the port's text-bearing frame (481) also carries the arena render, while
+capture 832 is black + text. Neither claim is a fitted number:
+`--expect-first 215` still holds and is left unchanged.
+
+**Named gap — the attract→title transition's presented DAC/palette state.**
+Capture 215 is *black plus exactly the loader's 498 bytes* (nothing else); the
+port's title phase-0 frame presents the composed title content (105222
+non-black bytes, the loader's pixels covered). This is not the title's render:
+the title oracle is green on its own window, and the reviewer's measurement
+shows the port's title-frame-0 text region is byte-identical to capture 216's.
+It is the *presented DAC state at the frame where the draw lands*, the same
+class as the demo's 831/832 at the state-6 entry:
+
+* Port side, measured: a temporary trace at the title dump prints
+  `gfx_dac non-black entries=126 first=1 last=127` for `title/frame_0000.raw`
+  — the frame-end flush (`0x25672`) has uploaded the frame's acquired palettes
+  before the present, so the content is visible.
+* Original side, from the capture: at 215 the only visible palette is the
+  loader's own range, i.e. only the flush the draw itself runs (`0x1C65C` →
+  `0x1C470`, uploading `0x80997C`'s range) had taken effect at the copy.
+* Candidate mechanisms, both consistent with 215/216: (a) the original's
+  frame-end flush did not upload the frame's other palettes before the copy;
+  (b) the original's phase-0 composition drew nothing, leaving the buffer
+  black plus the text. The capture cannot separate them (216's text region
+  shows content, not the text, so the text was covered or never composed).
+* Addresses to start from: `0x52106` (the `0x2BAF4` DAC blackout),
+  `0x336C0` (the palette-list reset), `0x1C470` (the draw's own flush),
+  `0x2563E` (the master loop's tick gate) / `0x25672` (its flush) / `0x25677`
+  (the copy), `0x2EA78` (the flag-checked present path that copies *before*
+  flushing), and `0x1223F`/`0x1224F` (the title phase-0 caption and the draw's
+  spawn row). **Owner:** the render/palette-fidelity task (the re-scoped Task
+  5 / cycle 2's render task), together with the demo's state-6 DAC state.
 
 **Raw correction to the Task 4 brief.** The brief's deferred-minor text says
 scene 2's walk-running descriptors carry `word[8] = 0x1200/0x1200/0x1240`.
@@ -1281,16 +1307,29 @@ extent), so the third value is a transposition. The walk bit is `0x0800` in
 `word[8]` (`0x2AE14`'s `>> 8 & 8` test): `0x1200` runs the walk, `0x1A00` and
 `0x5A00` skip it.
 
-**A pre-existing dirty-list overflow (fixed).** `palette_record` (`0x33734`)
-never bounds the head; the original relies on `0x1C470` draining the list every
-frame. The test suite drives `game_frame()` without the loop's drain, so
-`test_effects` already overflowed the 24 records at
-`DS_00107498..DS_00107618` before this pass (17 records written past the list,
-silently corrupting the ownership table and above). The new presentation's
-extra records tipped the corruption into `DS_001077A8`/`DS_001077B0` and made
-`fight_health_bars` follow a wild pointer. `palette_record` now drops a record
-that would write past the list and `gfx_flush_palette` treats an
-out-of-region head as empty.
+**A pre-existing dirty-list overflow (fixed, and the bound now measured).**
+`palette_record` (`0x33734`) never bounds the head; the original relies on
+`0x1C470` draining the list every frame. The test suite drives `game_frame()`
+and `effects_step()` without the loop's drain, so `test_effects` already
+overflowed the 24 records at `DS_00107498..DS_00107618` before this pass (the
+pre-change tree writes 17 records past the list, silently corrupting the
+ownership table and above; in the loader-pass tree 4 records reach the
+ownership table's start). The new presentation's extra records tipped the
+corruption into `DS_001077A8`/`DS_001077B0` and made `fight_health_bars` follow
+a wild pointer.
+
+**The faithful path's per-drain bound is measured, not assumed.** A temporary
+counter in `palette_record` (reset by both `gfx_flush_palette` and
+`palette_list_init`) over the three real drivers gives: **demo run 10 records
+between drains** (0 dropped), **attract run 7** (0 dropped), **title run 7**
+(0 dropped) — all below the 24 the list holds, so no faithful path reaches the
+bound. The test drivers now drain at their fixture boundaries
+(`test_effects.c`'s `fixture_begin`, the loop's per-frame `0x25672`), which
+removes the overflow at its root: the tests peak at 24 records in one interval
+(at the bound, 0 dropped) and the pre-fix 4 drops are gone. `palette_record`
+keeps a *loud* drop (`fprintf(stderr, ...)`) as the safety net, and
+`gfx_flush_palette` treats an out-of-region head as empty; both guards share
+the same head-recovery so an uninitialized head cannot write at `mem[0]`.
 
 ---
 
