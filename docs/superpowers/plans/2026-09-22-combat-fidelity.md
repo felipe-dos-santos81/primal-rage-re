@@ -102,36 +102,40 @@ git commit -m "docs: derive the combat/render fidelity cycle"
 
 ---
 
-### Task 2: The palette order and the loader flush scope
+### Task 2: The driver's palette-variant seed and the loader flush scope
+
+**Task 1's finding (the raw wins): the palette engine is faithful.** The original's and the port's `DS_00107618` tables are identical in order and `start`/`len` for all 11 entries; no `palette_acquire` call diverges. The T-rex's colour difference is the **front-end dump driver's `DS_0010816A` seed** (`port/tests/test_frontend.c:475-476`, `= 0xFF`), which makes the port's palette variant 0 where the original's (BSS 0) is 1 — so the port acquires `0x1BB9FD58` where the original acquires `0x1BB9FCD8`. **Fix the driver's seed, not the engine** (record §1.5/§7.1). The human ruled: fix it and record the reference change it causes — the oracle's **claims** are the invariant, not its window indices.
 
 **Files:**
-- Modify: the callers the Task 1 record names (candidates: `port/src/game/actors.c`, `port/src/platform/render.c`, `port/src/game/attract.c`, `port/src/game/flow.c`)
-- Modify: `port/src/platform/res.c` (the loader's flush scope)
-- Test: `port/tests/test_actors.c` or `port/tests/test_res.c` (whichever the record's owner names)
+- Modify: `port/tests/test_frontend.c` (the `DS_0010816A` seed at `:475-476`)
+- Modify: `port/src/platform/res.c` / `port/src/game/actors.c` (the loader flush scope, per record §4 — apply only what the record shows faithful)
+- Test: `port/tests/test_frontend.c`
 
 **Interfaces:**
-- Consumes: record §1 (the acquisition sequence, the diverging call, and `0x1BB9FD58`'s range in each).
-- Produces: the arena's character palette at the raw's DAC range.
+- Consumes: record §1 (the variant mechanism — `0x41350`, `DS_00105B34[0]`, the `0xA8A28`/`0xA8AF8` handle tables) and §4 (the loader flush scope's separability).
+- Produces: the port's character variant and handles matching the original; the arena's byte-diff reduced.
 
 - [ ] **Step 1: Write the failing test**
 
-Assert `0x1BB9FD58`'s DAC range against the record's value, with a seeded sentinel. Call the acquisition path the record names, then:
+Assert the driver's seed and its consequence: with `DS_0010816A` at the original's value, the port's variant and T-rex handle match the original's. Seed a sentinel that differs from the post-condition:
 
 ```c
-/* Record §1: 0x1BB9FD58's DAC range in the original. */
-CHECK_EQ_INT((int)DSD(<the 0x1BB9FD58 table entry> + 8), <the record's start>);
+/* Record §1: the original's DS_0010816A is BSS 0, giving variant 1 → 0x1BB9FCD8. */
+CHECK_EQ_INT((int)DSB(DS_0010816A + 1u), 0);
+/* after the acquire, the T-rex's table entry holds the original's handle */
+CHECK_EQ_INT((int)DSD(<the T-rex's DS_00107618 entry>), 0x1BB9FCD8);
 ```
 
-Substitute the record's table entry and start. The sentinel is the seeded value at `+8` **before** the call, chosen to differ from the post-condition.
+Substitute the record's table entry. The sentinel is the value seeded before the call, chosen to differ from the post-condition.
 
 - [ ] **Step 2: Run it to verify it fails**
 
 Run: `./build/run_tests`
-Expected: FAIL — the port's `start` differs from the record's.
+Expected: FAIL — the driver seeds `0xFF`, so the variant is 0 and the handle is `0x1BB9FD58`.
 
 - [ ] **Step 3: Implement**
 
-Fix the acquisition **sequence** at the owner the record names (the caller, not `palette_acquire`), and scope the loader's flush to the palettes the original drains. One C function per original function, with its address tag. A value that cannot be pinned is a named gap, never an invented one.
+Set the driver's seed to the original's value (BSS 0). Apply the loader flush scope only as far as record §4 shows it faithful — it is oracle-neutral (1382/1382 byte-identical frames), so a change there is for fidelity, not for the oracle.
 
 - [ ] **Step 4: Run it to verify it passes**
 
@@ -140,15 +144,11 @@ Expected: PASS, output pristine.
 
 - [ ] **Step 5: Prove the assertion can fail**
 
-Mutate the fix (e.g. reorder one acquisition) and confirm the named assertion fails. Restore, and report the mutation with its command and output.
+Restore the `0xFF` seed and confirm the named assertion fails. Restore, and report the mutation with its command and output.
 
-- [ ] **Step 6: Re-measure the oracle**
+- [ ] **Step 6: Re-measure the arena and the oracle**
 
-```bash
-make demo-oracle
-```
-
-Record the arena's byte-diff against capture 834 (before: 42667 bytes / 22.2% / 15067 px) and the first-unexplained frame. Expected: the diff drops materially and the T-rex's 3-channel residual disappears; the first-unexplained frame may stay 832 (that gap is out of scope). If the diff does not move, return to the record — do not tune to match.
+Record the arena's byte-diff against capture 834 (before: 42667 bytes / 22.2% / 15067 px), the T-rex region (before: 6363 px), and the first-unexplained frame (832). Expected: the diff drops to about 30536 bytes / 15.9% / 10602 px and the T-rex region to about 1898 px (record §1.5). Because the port's dump changes, the front-end oracle's **derived window indices may move** and the reference may need one re-capture: run `make frontend-oracle`, and if it fails on the window, re-capture and record which indices moved and why. The **claims** must not move. If the diff does not move, return to the record — do not tune to match.
 
 - [ ] **Step 7: Full ladder and commit**
 
@@ -156,11 +156,11 @@ Run: `make verify`
 Expected: exit 0, 0 warnings, every oracle claim unmoved.
 
 ```bash
-git add <the files the record names>
-git commit -m "gfx: fix the palette acquisition order"
+git add port/tests/test_frontend.c
+git commit -m "tests: seed the driver's palette variant to the original's"
 ```
 
-**Gate for this task:** `0x1BB9FD58`'s DAC range matches the record, and the arena's byte-diff drops.
+**Gate for this task:** the port's palette variant and T-rex handle match the original's, and the arena's byte-diff drops.
 
 ---
 
