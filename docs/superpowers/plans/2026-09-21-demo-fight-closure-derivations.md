@@ -1202,8 +1202,12 @@ then `0xC7F58[scene]()` — which is a no-op target (`0x412EC` is `0x412A0`'s ow
 `DS_00105C08`. Scene 0 (`0xC82CC[0] = 0xC7F78`, 5 triples; `0xBBD98[0] = 3`)
 issues 8 spawns and the crowd's first actor (descriptor `0xC7850`, whose
 `dword0` is the animation stream `0xE8EB2`) runs the animation walk, whose
-opcode-0x11 targets spawn 2 children from `0xC7864`/`0xC7878` (a5 = 0x407), so
-the active list grows by 10. Scene 2 (`0xC82CC[2] = 0xC7FF0`, 8 triples;
+opcode-`0x0C` targets (the stream words at `0xE8EB2`/`0xE8EBC` are `0xCC01`,
+`(word>>8)&0x1F = 0x0C`, dispatched at `0x2B484` via `anim_operand`'s
+mode-0x4000 load of `DS_00105BD4`) spawn 2 children from
+`0xC7864`/`0xC7878` (a5 = 0x407), so
+the active list grows by 10. Opcode `0x11` (`0x2B57F`) only does
+`anim_indirect` and spawns nothing on this stream. Scene 2 (`0xC82CC[2] = 0xC7FF0`, 8 triples;
 `0xBBD98[2] = 0`) spawns 8 and leaves `DS_00105C08` untouched. The port ports
 both in `port/src/game/fight.c`, called from `game_state_6` at the raw's
 position (`0x20E86`, after `0x38730`, before `0x41350`); the first rendered
@@ -1215,6 +1219,78 @@ capture 215 (the same 498-byte overlay), so `attract-oracle`'s
 215, but the whole attract prefix was explained"). That pin is a known-gap
 marker for exactly this task's content, so its update is a human decision; the
 loader was therefore derived and NOT landed in this pass.
+
+### 9.5 Task 4's third pass — the load point measured, the overlay landed, the claims re-measured
+
+**The load point, measured in dosbox-x.** The installed `PRAGE.EXE` was run
+under DOSBox-X's interactive debugger driven over a pty (this 2026.08.31 build
+has no debugger MCP server; the pty carries the debugger's ncurses commands and
+its output window text). DOS/4GW relocates the image, so the runtime addresses
+were first pinned from a `[dosbox] memory file` dump: the file bytes of code VA
+`0x1B5E9` appear at linear `0x20C5E9` (delta `+0x1F1000`, code object base
+`0x201000`) and of data VA `0x8002D` ("RAGE.S16") at `0x26602D` (delta
+`+0x1E6000`, data object base `0x266000`), so the loader's full-copy flag
+`DS_001014FC` is at linear `0x2E74FC`. A linear memory-change breakpoint there
+(`BPLM 2E74FC`) hit four times: (1) t≈1.8 s, the init preload's `0x1B3F8`
+store (`EBX = 0`); (2) t≈6.8 s, `FUN_0002EA78`'s clear (`0x2EAC9`, the
+movie/present path); (3) t≈39.7 s, the first lazy load — the break is inside
+`0x1B3AC`'s file I/O with the 12-byte entry name `s16slabs.gra` on its stack;
+(4) the master loop's clear. At hit 3 the `SS:ESP` stack (0x200 bytes) gives
+the return chain `0x1B408` (inside `0x1B3AC`) ← `0x1B5EE` (`0x1B544`'s lazy
+call) ← `0x33761` (`0x33754` palette_acquire) ← `0x2B09C` (`0x2AE14`
+actor_spawn) ← `0x38B62` (`0x38B18` frontend_spawn_row) ← … ← `0x11D8D`
+(`0x11D04`'s tail) ← `0x2523D` (`0x24C5C`) ← `0x25610` (`0x255CC`). So the
+original's first lazy load is a **spawn's palette acquire inside the state
+machine, i.e. inside `game_frame` before the render-list composition** — the
+same point the port's own resolve order reaches (`palette_acquire` from
+`actor_spawn`; the port's first lazy resolves are the attract phase-2
+`0x110D8` acquire of index 7 `s16title` and the title phase-0 rows' index 0
+`s16slabs` / index 8 `s16attrc`, traced with a temporary log).
+
+**Landed (this pass).** `0x1C5E8`/`0x1C65C` are `text_blit_glyph`/
+`text_blit_string` in `port/src/game/actors.c`; `0x1B3AC`'s head
+(`0x1B3EA`/`0x1B3EF` + the `0x1B3F8` flag store) is `res_load_present` in
+`port/src/platform/res.c`, called with `draw = 1` from the first resolve of a
+non-preloaded entry and `draw = 0` from the init preload walk. The entry's
+`+0xC` flags keep the original's meanings (`0x1000000` preload, `0x20000000`
+read, `0x1B47A`). The port's payloads stay eagerly read (documented in
+`res.c`: nothing can observe the read timing) but the *presentation* is
+flag-driven, so it fires exactly once per lazy entry. A/B against the
+pre-change tree: the overlay changes **exactly the 498 bytes at rows 192..197,
+columns 0..85** of the port's first text-bearing frame (dumped 481 in the
+demo run) and nothing else.
+
+**The claims did not move (raw/measurement wins over the expectation).**
+`make attract-oracle` still reports `FIRST DIVERGENCE at capture frame 215`
+with the same 498-byte residual: the port's overlay now lands in the title's
+phase-0 frame (`title/frame_0000.raw`), but the oracle compares capture 215
+against the *attract* frames, and the port's text-bearing frames carry content
+the capture's 215 does not (the attract's CREDITS overlay + a backdrop that
+covers the text; the title phase-0 frame's own render). `make demo-oracle`
+still reports first unexplained 832: the port's text-bearing frame (481) also
+carries the arena render, while capture 832 is black + text — i.e. the next
+divergence is the arena render's fidelity (Task 5's declared gap) and the
+port's DAC/palette state at the state-6 entry. Neither claim is a fitted
+number: `--expect-first 215` still holds and is left unchanged.
+
+**Raw correction to the Task 4 brief.** The brief's deferred-minor text says
+scene 2's walk-running descriptors carry `word[8] = 0x1200/0x1200/0x1240`.
+The raw at `0xC78DC`/`0xC78F0`/`0xC7904` (`data/game/C/PRAGE.EXE` data object)
+reads `0x1200/0x1200/0x1200`; the `0x0040` is the *next* word (`+0x0A`, the
+extent), so the third value is a transposition. The walk bit is `0x0800` in
+`word[8]` (`0x2AE14`'s `>> 8 & 8` test): `0x1200` runs the walk, `0x1A00` and
+`0x5A00` skip it.
+
+**A pre-existing dirty-list overflow (fixed).** `palette_record` (`0x33734`)
+never bounds the head; the original relies on `0x1C470` draining the list every
+frame. The test suite drives `game_frame()` without the loop's drain, so
+`test_effects` already overflowed the 24 records at
+`DS_00107498..DS_00107618` before this pass (17 records written past the list,
+silently corrupting the ownership table and above). The new presentation's
+extra records tipped the corruption into `DS_001077A8`/`DS_001077B0` and made
+`fight_health_bars` follow a wild pointer. `palette_record` now drops a record
+that would write past the list and `gfx_flush_palette` treats an
+out-of-region head as empty.
 
 ---
 
