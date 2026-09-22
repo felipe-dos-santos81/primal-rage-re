@@ -8,6 +8,7 @@
 #include "mem.h"
 #include "symbols.h"
 #include "test.h"
+#include <stdio.h>
 #include <string.h>
 
 /* Scratch above the resource heap (test_effects uses 0x3F00000). */
@@ -1096,6 +1097,25 @@ static void check_state6(void)
     CHECK(DSD(DS_001077B0) != 0, "P0 spawn produced a record");
     CHECK(DSD(DS_001077B0 + 0x94u) != 0, "P1 spawn produced a record");
     CHECK_EQ_INT((int)DSB(DS_001078FA), 2);
+
+    /* 0x20DF4's third branch call (0x20E86): 0x412A0/0x2C320 spawn the scene
+     * draw1 selects. The first prop triple's a2 must be a live record's, and a
+     * scene with a crowd must leave the crowd table at DS_00105C08. Both are
+     * read from the shipped tables, so the assertion cannot pass on a value the
+     * test itself wrote. */
+    {
+        u32 prop_tab = DSD(DS_000C82CC + draw1 * 4u);
+        if (DSD(prop_tab) != 0u) {
+            u32 a2 = DSD(prop_tab + 4u);
+            u32 found = 0;
+            for (u32 r = actor_list_head(); r != 0; r = actor_next(r))
+                if (DSD(r + 0x18u) == a2) found = 1;
+            CHECK(found, "state 6 spawns the scene's first prop");
+        }
+        if (DSW(DS_000BBD98 + draw1 * 2u) != 0u)
+            CHECK_EQ_INT((int)DSD(DS_00105C08),
+                         (int)DSD(DS_000BBDA8 + draw1 * 4u));
+    }
 }
 
 /* Case 7: the pre-decrement timer. With timer 2 one call runs the arena and
@@ -1166,6 +1186,82 @@ static void check_game_frame_tail(void)
  * 0x249C0, and seeds DS_001088CC/CB from DS_00104AFC. The sentinel is zeroed
  * first so the check cannot pass on stale state, and the 0x1083C4..0x10883F
  * region (not covered by test_fight's other snapshots) is saved and restored. */
+/* 0x412A0/0x2C320: the scene's props and crowd. Scene 0's prop table
+ * (0xC82CC[0] = 0xC7F78) has five non-zero triples and the crowd count
+ * (0xBBD98[0]) is 3, so the pair issues 8 spawns. The crowd's first actor
+ * (descriptor 0xC7850, whose dword0 is the animation stream 0xE8EB2) then runs
+ * the animation walk, whose opcode-0x11 targets spawn 2 child actors from
+ * 0xC7864/0xC7878 (a5 = 0x407: the parent bit + slot 7), so the active list
+ * grows by 10. The count difference (not an absolute count) is the anchor, and
+ * each record is found by its raw-derived a2/a3 rather than by list position. */
+static void check_scene_props(void)
+{
+    u32 saved_5c08 = DSD(DS_00105C08);
+    u32 before, after;
+
+    actors_reset();                     /* the spawns allocate from the pool */
+    before = 0;
+    for (u32 r = actor_list_head(); r != 0; r = actor_next(r)) before++;
+
+    fight_scene_props(0u);
+
+    after = 0;
+    for (u32 r = actor_list_head(); r != 0; r = actor_next(r)) after++;
+    CHECK_EQ_INT((int)(after - before), 10);
+
+    /* The props: 0xC7F78's five triples' a2 values with their descriptor ids
+     * (0xC77EC..0xC783C carry 0x2EF..0x2F3) and a3 = the triples' word at +8.
+     * The props' flags (0x1A00) skip the animation walk, so rec+8 keeps the
+     * descriptor's id. */
+    static const u32 prop_a2[5] = { 0xFFFFAC00u, 0x00004400u, 0xFFFFF000u,
+                                    0xFFFFD800u, 0xFFFFD280u };
+    static const u16 prop_a3[5] = { 0x0C00u, 0x0C00u, 0x0D40u, 0x0F40u, 0x1080u };
+    static const u32 prop_id[5] = { 0x2EFu, 0x2F0u, 0x2F1u, 0x2F2u, 0x2F3u };
+    for (u32 i = 0; i < 5u; i++) {
+        u32 found = 0;
+        for (u32 r = actor_list_head(); r != 0; r = actor_next(r)) {
+            if (DSD(r + 0x18u) != prop_a2[i]) continue;
+            found = 1;
+            CHECK_EQ_INT((int)DSW(r + 0x32u), (int)prop_a3[i]);
+            CHECK_EQ_INT((int)DSD(r + 0x08u), (int)prop_id[i]);
+        }
+        CHECK(found, "the scene spawns each prop triple");
+    }
+
+    /* The crowd: 0xBBC18's three records, a2 = the record's first dword and
+     * a3 = its word at +6, spawned from 0xBB9D8[k*3] (k = 0x1B/0x2E/0x2F). */
+    static const u32 crowd_a2[3] = { 0xFFFFEEA0u, 0xFFFFD7C0u, 0xFFFFEDB0u };
+    static const u16 crowd_a3[3] = { 0x2492u, 0x0F1Bu, 0x0D35u };
+    for (u32 i = 0; i < 3u; i++) {
+        u32 found = 0;
+        for (u32 r = actor_list_head(); r != 0; r = actor_next(r)) {
+            if (DSD(r + 0x18u) != crowd_a2[i]) continue;
+            found = 1;
+            CHECK_EQ_INT((int)DSW(r + 0x32u), (int)crowd_a3[i]);
+        }
+        CHECK(found, "the scene spawns each crowd record");
+    }
+
+    /* 0x2C320 stores its table pointer at DS_00105C08 (0x2C339). */
+    CHECK_EQ_INT((int)DSD(DS_00105C08), (int)0x000BBC18u);
+
+    /* Scene 2 (0xC82CC[2] = 0xC7FF0, 8 triples) has no crowd (0xBBD98[2] = 0),
+     * so 0x2C320 returns before its DS_00105C08 store and a sentinel there must
+     * survive; the 8 props all carry the walk-skipping 0x1A00 flags, so no
+     * animation child joins them. */
+    actors_reset();
+    before = 0;
+    for (u32 r = actor_list_head(); r != 0; r = actor_next(r)) before++;
+    DSD(DS_00105C08) = 0xDEADBEEFu;
+    fight_scene_props(2u);
+    after = 0;
+    for (u32 r = actor_list_head(); r != 0; r = actor_next(r)) after++;
+    CHECK_EQ_INT((int)(after - before), 8);
+    CHECK_EQ_INT((int)DSD(DS_00105C08), (int)0xDEADBEEFu);
+
+    DSD(DS_00105C08) = saved_5c08;
+}
+
 static void check_list_init(void)
 {
     u8 s_li[0x48C];
@@ -1390,6 +1486,7 @@ int test_fight(void)
     check_state7();
     check_game_frame_tail();
     check_list_init();
+    check_scene_props();
     check_command_generator();
     check_state_dispatch();
 

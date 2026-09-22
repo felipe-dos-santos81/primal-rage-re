@@ -55,6 +55,17 @@ void fight_slot_clear(void);
  * DS_0010884C to point at itself when the list is empty. */
 void fight_list_init(void);
 
+/* 0x2C320. The scene's crowd actors: `n = DSW(0xBBD98 + scene*2)` records in
+ * the table at `0xBBDA8[scene]`, each spawning 0x2AE14 with the descriptor
+ * `0xBB9D8[[e+0xA]*3]`. Only caller is 0x412A0. */
+void fight_scene_crowd(u32 scene);
+
+/* 0x412A0. The scene's prop actors: the 12-byte triples of `0xC82CC[scene]`
+ * (until a zero first dword), then 0x2C320(scene). The `0x20DF4` branch's third
+ * call (0x20E86) with EAX = the clamped scene index; the tail `0xC7F58[scene]()`
+ * is a no-op target and is not issued (see the .c). */
+void fight_scene_props(u32 scene);
+
 /* 0x494A8. The dust/effect entry builder the fighter spawn (0x33C78) calls at
  * 0x33E43 when DS_00104B14 == 0. Each iteration moves one node from the free
  * fight-effect list (DS_001083C4) to the active one (DS_0010884C), picks a

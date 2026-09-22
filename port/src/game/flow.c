@@ -802,13 +802,16 @@ static void game_state_6(void)
      * offscreen buffers and blacks the DAC (0x52106/0x336C0), which releases the
      * attract's presentation actors and their held text before the fight's own
      * actors spawn. The port's actors_reset() ports the param_1 != 0 arm.
-     * PORT: the branch's third call 0x412A0 (the scene's prop actors and
-     * 0x2C320's crowd) stays a named gap. */
+     * The branch's other two calls follow below: 0x38730 and 0x412A0. */
     actors_reset();                                     /* 0x11AC4 0x2BAF4 */
     /* 0x20E7F 0x38730(eax=draw1): the attract projection setup. Its argument is
      * 0x20DF4's clamped EAX (0x20DF7 MOV EBX,EAX; 0x20E01/0x20E06 clamp to 7;
      * 0x20E7D MOV EAX,EBX), which 0x11AC1 loaded with the state-6 draw. */
     render_scroll_setup(draw1);                         /* 0x11AC4 0x38730 */
+    /* 0x20E86 0x412A0(eax=draw1): the branch's third call — the scene's prop
+     * actors (0xC82CC[draw1]) and the crowd (0x2C320), which 0x412A0's tail
+     * runs. */
+    fight_scene_props(draw1);                           /* 0x11AC4 0x412A0 */
     fight_char_select(0u, draw1);                       /* 0x11ACD 0x41350 */
     fighter_spawn(0u);                                  /* 0x11AD9 0x33EB4 */
     /* 0x11AE3: EDX after 0x33EB4 is the caller's 7 — 0x33EB4 push/pops EDX and

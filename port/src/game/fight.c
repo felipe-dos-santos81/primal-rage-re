@@ -55,6 +55,61 @@ void fight_list_init(void)
     DSB(DS_001088CB) = 4u;                      /* 0x4937D */
 }
 
+/* ---- 0x412A0/0x2C320 the scene's props and crowd ------------------------ */
+
+/* The crowd's descriptor-index table at 0xBB9D8 (stride 0xC, the first dword
+ * used); symbols.h emits no name for it. */
+#define DS_000BB9D8 0x000BB9D8u
+
+/* 0x2C320. The scene's crowd actors. `n = DSW(0xBBD98 + scene*2)`; for each
+ * 12-byte record in the table at `0xBBDA8[scene]` it spawns
+ * 0x2AE14(desc = 0xBB9D8[[e+0xA]*3], a2 = [e], a3 = (s16)[e+6], a4 = (s16)[e+4],
+ * a5 = ([e+0xB] << 16) | word[e+8]) and stores the table at DS_00105C08. The
+ * only caller is 0x412A0 (0x412D8). Scene 0's table is 0xBBC18 with 3 records. */
+void fight_scene_crowd(u32 scene)
+{
+    u16 n = DSW(DS_000BBD98 + scene * 2u);          /* 0x2C325 */
+    if (n == 0u) return;                            /* 0x2C32D */
+    u32 table = DSD(DS_000BBDA8 + scene * 4u);      /* 0x2C332 */
+    DSD(DS_00105C08) = table;                       /* 0x2C339 */
+    for (u32 i = 0; i < (u32)n; i++) {              /* 0x2C340 */
+        u32 e = table + i * 0xCu;
+        u32 a5 = ((u32)DSB(e + 0xbu) << 16) | DSW(e + 8u);        /* 0x2C347 */
+        u32 desc = DSD(DS_000BB9D8 + (u32)DSB(e + 0xau) * 0xCu);  /* 0x2C370 */
+        (void)actor_spawn((const u32 *)(mem + desc), DSD(e),
+                          (u32)(s32)(s16)DSW(e + 6u),   /* a3 = ECX */
+                          (u32)(s32)(s16)DSW(e + 4u),   /* a4 = EBX */
+                          a5);                          /* 0x2C379 */
+    }
+}
+
+/* 0x412A0. The scene's prop actors, the `0x20DF4` branch's third call
+ * (0x20E86, EAX = the clamped scene index). For each 12-byte triple in the
+ * table at `0xC82CC[scene]` — until a zero first dword — it spawns
+ * 0x2AE14(desc = [e], a2 = [e+4], a3 = (s16)[e+8], a4 = 0, a5 = 0), then
+ * 0x2C320(scene).
+ *
+ * PORT: the tail call `0xC7F58[scene]()` (0x412DD) is not issued: the eight
+ * table entries are no-op targets — 0x412EC is 0x412A0's own `RET` and 0x5D812
+ * is `xor eax,eax; ret` (both in the fixed image) — so it spawns nothing.
+ * Scene 0's table is 0xC7F78 (5 triples) and its descriptors at 0xC77EC,
+ * 0xC7800, 0xC7814, 0xC7828, 0xC783C carry sprite ids 0x2EF..0x2F3, which
+ * 0xA8B30 resolves to s16beach descriptor indices 1, 0, 2, 4 (the temple), 3. */
+void fight_scene_props(u32 scene)
+{
+    u32 table = DSD(DS_000C82CC + scene * 4u);      /* 0x412A8 */
+    if (DSD(table) != 0u) {                         /* 0x412B3 */
+        u32 e = table;
+        for (;;) {
+            (void)actor_spawn((const u32 *)(mem + DSD(e)), DSD(e + 4u),
+                              (u32)(s32)(s16)DSW(e + 8u), 0u, 0u);  /* 0x412C7 */
+            e += 0xCu;                              /* 0x412CF */
+            if (DSD(e) == 0u) break;                /* 0x412D2 (EBP == 0) */
+        }
+    }
+    fight_scene_crowd(scene);                       /* 0x412D8 */
+}
+
 /* ---- 0x494A8 the dust builder (state 6's fighter spawn) ----------------- */
 
 /* 0x49388. The dust descriptor picker. The draw's range is the raw's
