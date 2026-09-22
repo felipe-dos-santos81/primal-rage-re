@@ -118,5 +118,10 @@ s32 text_render(const u8 *s, u32 mode, s32 row, s32 col, u32 vertical);
  * *row (vertical 1) by the glyph's width. Returns 1 when a negative class or a
  * full pool aborts the string, 0 otherwise. */
 u8 text_glyph_emit(s32 ch, s32 *col, s32 *row, u32 mode, u32 vertical);
+/* 0x1C65C. EAX = the string, EDX = the x seed, EBX = the y seed (12-bit fixed
+ * point, truncating /0x1000 after +0x800). Blits each glyph directly through
+ * 0x1C5E8 (the font table 0xBCD7C, no glyph actor) and flushes the palette
+ * dirty list. The resource loader calls it for string 489 at (0,192). */
+void text_blit_string(const u8 *s, s32 x, s32 y);
 
 #endif /* PRAGE_GAME_ACTORS_H */

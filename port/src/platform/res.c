@@ -1,4 +1,6 @@
 #include "platform/res.h"
+#include "../game/actors.h"
+#include "../game/flow.h"
 #include "../mem.h"
 #include "../symbols.h"
 #include <dirent.h>
@@ -10,7 +12,27 @@
 #define RES_HEAP  0x10B0D0u   /* first free offset above the data object */
 #define RES_MAX   256u
 
+/* The entry's +0xC dword: the low 24 bits are the payload size, the high byte
+ * is the loader's flag byte. 0x1B210 preloads an entry only when 0x1000000 is
+ * set (the shipped INDEX sets it for s16fonts and s16statu); 0x1B3AC sets
+ * 0x20000000 after an entry is read (0x1B47A), so 0x1B544's test pair
+ * distinguishes resident / already-read / first read. */
+#define RES_FLAG_PRELOAD 0x01000000u
+#define RES_FLAG_LOADED  0x20000000u
+
 static u32 g_heap = RES_HEAP;
+
+/* 0x1B3AC's presentation head (0x1B3B8-0x1B3F8). `draw` is the original's BL:
+ * 0 from the init walk's call (0x1B250), 1 from the lazy resolve (0x1B5E9).
+ * With draw set, string 489 is read through 0x1C500 and blitted at (0,192)
+ * through 0x1C65C; either way the master loop's full-copy flag DS_001014FC is
+ * set (0x1B3F8). */
+static void res_load_present(u32 draw)
+{
+    if (draw != 0u)
+        text_blit_string(game_string_get(0x1E9u), 0, 0xE6);   /* 0x1B3EA/0x1B3EF */
+    DSD(DS_001014FC) = 1u;                                    /* 0x1B3F8 */
+}
 
 /* PORT: replaces FUN_0001C308. Bump allocator; the original is a real block
  * allocator with free(). Substituted until a task needs to release memory. */
@@ -89,7 +111,13 @@ int res_load_index(const char *game_dir, const char *index_path)
      * that cannot be read is counted, not fatal — the CD sets contain files the
      * installed directory may not have. The unread block only *reads* as zeroed
      * because `mem[]` starts zeroed and this bump allocator never reuses or
-     * clears a block; the allocator itself does not zero. */
+     * clears a block; the allocator itself does not zero.
+     * PORT: the original reads a payload at its first resolve (0x1B3AC), the
+     * port reads all of them here. Nothing can observe the read timing — a
+     * payload is reachable only through res_resolve — but the loader's flags
+     * are kept, so 0x1B544's first resolve of a non-preloaded entry still runs
+     * the presentation. Only the preloaded entries (0x1B210) mark themselves
+     * read at init; the rest stay unread-flagged and draw on first resolve. */
     u32 biggest = 0, missing = 0;
     for (u32 i = 0; i < DSD(DS_001014F0); i++) {
         u32 size = DSD(table + i * RES_REC + 12) & 0xFFFFFFu;
@@ -103,6 +131,10 @@ int res_load_index(const char *game_dir, const char *index_path)
         size_t got = fread(mem + data, 1, size, rf);
         fclose(rf);
         if (got != size) missing++;
+        if (DSD(table + i * RES_REC + 12) & RES_FLAG_PRELOAD) {
+            DSD(table + i * RES_REC + 12) |= RES_FLAG_LOADED;  /* 0x1B47A */
+            res_load_present(0u);                              /* 0x1B250 (BL=0) */
+        }
     }
     DSD(DS_001014F8) = biggest;
     if (missing) fprintf(stderr, "res: %u of %u resources not read\n",
@@ -165,7 +197,27 @@ void *res_resolve(u32 handle)
 {
     u32 index = handle >> 23;
     if (index >= DSD(DS_001014F0)) return NULL;
-    u32 data = DSD(res_table() + index * RES_REC + 16);
+    u32 entry = res_table() + index * RES_REC;
+    u32 flags = DSD(entry + 12);
+    u32 data = DSD(entry + 16);
     if (data == 0) return NULL;
+    /* 0x1B569: the resident test. 0x1B57F/0x1B585: an entry whose loaded flag
+     * is already set returns without presenting — the port stores the payload
+     * offset where the original stores its block descriptor, so the `data != 0`
+     * guard above is the port's form of 0x1B57F's `[block+8] != 0`.
+     * 0x1B5E0: the first resolve of a lazy entry presents the loader screen
+     * (0x1B3AC's head) and marks the entry read (0x1B47A). */
+    if ((flags & (RES_FLAG_PRELOAD | RES_FLAG_LOADED)) == 0u) {
+        /* PORT: the original presents first (0x1B3EA/0x1B3EF) and marks the
+         * entry read after the file read (0x1B47A). The port's payload is
+         * already resident, so it marks first: the presentation's own palette
+         * flush (0x1C470 -> 0x1B544) can name the entry being read only if a
+         * dirty-list record was enqueued before its resolve, which the
+         * original's enqueue order (palette_record runs after res_resolve)
+         * rules out. Marking first makes such a re-entrant resolve return
+         * instead of presenting the same entry again. */
+        DSD(entry + 12) = flags | RES_FLAG_LOADED;    /* 0x1B47A */
+        res_load_present(1u);                         /* 0x1B5E0-0x1B5E9 (BL=1) */
+    }
     return mem + data + (handle & 0x7FFFFFu);
 }

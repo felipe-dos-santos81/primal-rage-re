@@ -62,6 +62,43 @@ int test_res(void)
     }
     CHECK(found, "s16title.gra is in the index");
 
+    /* The loader's residency state (0x1B544/0x1B3AC). The shipped INDEX
+     * preloads only s16fonts (1) and s16statu (2); every other entry is read
+     * on first resolve, which is when 0x1B3AC presents the `- LOADING -`
+     * screen and sets the master loop's full-copy flag DS_001014FC. The flag
+     * is seeded to 0 before each step so a missing presentation cannot pass on
+     * a stale value. */
+    {
+        u32 table = DSD(DS_001014E0);
+        /* The INDEX's own preload byte: 0x01 vs 0x02. */
+        CHECK_EQ_INT((int)(res_flags(1) & 1u), 1);
+        CHECK_EQ_INT((int)(res_flags(2) & 1u), 1);
+        CHECK_EQ_INT((int)(res_flags(0) & 1u), 0);
+
+        /* A preloaded entry is marked read by the init walk (0x1B47A) and its
+         * resolve presents nothing (0x1B569's resident arm). */
+        CHECK((DSD(table + 1u * 20u + 12u) & 0x20000000u) != 0u,
+              "preloaded entry marked read at init");
+        DSD(DS_001014FC) = 0;
+        CHECK(res_resolve(res_handle(1u, 0)) != NULL, "s16fonts resolves");
+        CHECK_EQ_INT((int)DSD(DS_001014FC), 0);
+
+        /* A lazy entry stays unread until its first resolve: that resolve
+         * presents (0x1B3AC's head) and marks it read (0x1B47A). */
+        CHECK((DSD(table + 0u * 20u + 12u) & 0x20000000u) == 0u,
+              "lazy entry unread after init");
+        DSD(DS_001014FC) = 0;
+        CHECK(res_resolve(res_handle(0u, 0)) != NULL, "s16slabs resolves");
+        CHECK_EQ_INT((int)DSD(DS_001014FC), 1);
+        CHECK((DSD(table + 0u * 20u + 12u) & 0x20000000u) != 0u,
+              "lazy entry marked read by its first resolve");
+
+        /* The second resolve presents nothing (0x1B57F/0x1B585). */
+        DSD(DS_001014FC) = 0;
+        CHECK(res_resolve(res_handle(0u, 4)) != NULL, "s16slabs resolves again");
+        CHECK_EQ_INT((int)DSD(DS_001014FC), 0);
+    }
+
     CHECK(res_resolve(0xFFFFFFFFu) == NULL, "an out-of-range handle resolves to NULL");
 
     /* The Smacker movies are not in INDEX, so they load by name. The shipped

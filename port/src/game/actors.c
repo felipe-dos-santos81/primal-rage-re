@@ -17,6 +17,7 @@
 #include "platform/gfx.h"
 #include "platform/render.h"
 #include "platform/res.h"
+#include "platform/sprite.h"
 #include <string.h>
 
 /* ---- the two splice lists (0x249B0/0x249C0/0x249D0) -------------------- */
@@ -1501,6 +1502,49 @@ u8 text_glyph_emit(s32 ch, s32 *col, s32 *row, u32 mode, u32 vertical)
         *col += (width == 0x10u) ? 2 : 1;
     }
     return 0;
+}
+
+/* ---- the loader's direct glyph path (0x1C5E8, 0x1C65C) ------------------
+ *
+ * PORT: the resource loader's `- LOADING -` screen. 0x1C5E8/0x1C65C are the
+ * text system's other glyph path: instead of spawning a glyph actor (0x2F5A0)
+ * they build a display node from the font table and blit it directly. The
+ * font table is the same 0xBCD7C 4-byte {u16 sprite id; u8 width; u8 height}
+ * table text_glyph_emit reads. */
+
+/* 0x1C5E8. EAX = the character, EDX = &col, EBX = &row. Builds the display
+ * node from the font entry, acquires the font palette 0x80997C (0x33754),
+ * blits through 0x51ED8 and advances *col by the entry's width byte (0x10
+ * advances 0xF, else 8). The original's return is the palette entry pointer;
+ * no caller reads it. */
+static void text_blit_glyph(u32 ch, s32 *col, s32 *row)
+{
+    u32 e = 0xbcd7cu + (ch & 0xffu) * 4u;
+    SpriteNode n;
+    sprite_node_build(&n, DSW(e));                    /* 0x1C5FB/0x1C60B */
+    n.pal_ptr = palette_acquire(0x80997cu);           /* 0x1C610/0x1C61C */
+    n.x = *col;                                       /* 0x1C630 */
+    n.y = *row;                                       /* 0x1C635 */
+    sprite_blit(&n);                                  /* 0x1C63D */
+    *col += (DSB(e + 2u) == 0x10u) ? 0xfu : 8;        /* 0x1C642/0x1C647 */
+}
+
+/* 0x1C65C. EAX = the string, EDX = the x seed, EBX = the y seed. The seeds are
+ * 12-bit fixed point: (v*0xF3D + 0x800)/0x1000 and (v*0xD56 + 0x800)/0x1000
+ * (the original's SAR/SBB sequence is a truncating division, so the C
+ * division is the same operation). 0x1B3AC's (EDX=0, EBX=0xE6) gives
+ * (0, 192). Walks the string through 0x1C5E8 and flushes the palette dirty
+ * list (0x1C470) when the string is non-empty. */
+void text_blit_string(const u8 *s, s32 x, s32 y)
+{
+    s32 col = (x * 0xf3d + 0x800) / 0x1000;           /* 0x1C66A-0x1C680 */
+    s32 row = (y * 0xd56 + 0x800) / 0x1000;           /* 0x1C683-0x1C69C */
+    if (*s == 0) return;                              /* 0x1C6A3-0x1C6AA */
+    while (*s != 0) {
+        text_blit_glyph((u32)*s, &col, &row);         /* 0x1C6BD */
+        s++;
+    }
+    gfx_flush_palette();                              /* 0x1C6C6 */
 }
 
 /* 0x2F830. `vertical` is the stack byte; 0x2F198 passes 0 and 0x2F20C passes 1.
