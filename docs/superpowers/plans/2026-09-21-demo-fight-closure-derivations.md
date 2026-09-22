@@ -1331,6 +1331,76 @@ keeps a *loud* drop (`fprintf(stderr, ...)`) as the safety net, and
 `gfx_flush_palette` treats an out-of-region head as empty; both guards share
 the same head-recovery so an uninitialized head cannot write at `mem[0]`.
 
+### 9.6 Task 5a — the state-6 entry's black frames are the master loop's gate (pinned)
+
+**The gate, measured in the live guest RAM.** DOSBox-X run of the pinned
+original with `-set "dosbox memory file=/tmp/prage.mem"`; the data-object base is
+recovered per run from `"RAGE.S16"` (data VA `0x8002D`), so
+`linear(va) = base + (va − 0x80000)`. Polling every ~4 ms across the state-6
+entry (`DS_000F0A64`, the loader flag `DS_001014FC`, the two buffer pointers
+`DS_000E87A0`/`DS_000E87A4`, and the tick pair `DS_00101508`/`DS_0010150C`):
+
+| t (s) | state | `1014FC` | `E87A0`/`E87A4` | `1508` | `150C` |
+|---|---|---|---|---|---|
+| 53.692 | 6 | 0 | `2FB038`/`084410` | 479 | 480 |
+| 53.698 | 6 | 0 | `2FB038`/`084410` | **0** | **0** |
+| 53.729 | 6 | 1 | `2FB038`/`084410` | 1 | 0 |
+| 53.779 | 6 | 1 | `2FB038`/`084410` | 3 | **3** |
+| 54.104 | 6 | 1 | `2FB038`/`084410` | 23 | **3** |
+| 54.617 | 6 | 1 | `2FB038`/`084410` | 54 | 54 |
+| 54.642 | **7** | 1 | `2FB038`/`084410` | 55 | 55 |
+| 54.726 | 7 | 1 | `2FB038`/`084410` | 61 | 59 |
+| 54.732 | 7 | **0** | **`084410`/`2FB038`** | 61 | 62 |
+
+At 53.698 `0x52106` (via `0x2BAF4` ← `0x20DF4` at `0x20E78`) sets **both**
+counters to 0 (`0x38806`/`0x38807`) and blacks the DAC. The state-6 handler then
+spends ~55 timer ticks in its resource loads: `150C` stays at 0..3 while the
+timer ISR `0x1BDF4` (`INC EDX`/`MOV [0x101508],EDX` at `0x1BE0E`/`0x1BE10`)
+advances `1508` from 0 to ~55. At the gate `CMP EAX,[0x101508]` (`0x25643`) the
+two differ, so `FUN_0001c3fc` (sort), `FUN_00014328` (render), `FUN_0001c470`
+(flush), the copy (`0x25680`) and `FUN_00050188` (swap) are **all skipped**.
+`0x50188` (`0x36769`-`0x36771`) is exactly the `E87A0`↔`E87A4` exchange, and the
+table above shows it did **not** run for the whole ~1 s: the display holds the
+frame presented before the blackout, rendered through the blacked DAC → the
+capture's 831 (all black). The copy finally runs at 54.732, when `150C` catches
+`1508` (62 vs 61): the capture's 832 onward.
+
+So **the missing gate is the root cause of the 831/832 class**, not the DAC
+contents: the previous pass's "the composition ran on the loader frame" and "the
+arena palettes were flushed" are both true but irrelevant — on the loader frame
+the *present* itself is gated, and the frames that do present after the catch-up
+carry the composition. The state-6 frame never reaches the composition.
+
+**It is an I/O-cache effect, not a structural one.** A *second* state-6 entry in
+the same run (t≈118.93, after the demo's state-7 exit) shows `150C` tracking
+`1508` throughout (`3/3`, `28/28`, `55/55`) and the copy at t≈119.95 — that read
+was already cached, so the handler finished inside its tick and the gate passed.
+The first entry's read is the uncached one.
+
+**Why the port cannot reproduce it (the named gap).** `port/src/game/flow.c`
+(`game_loop`, `1226`-`1246`) has no gate: it sorts, renders, `gfx_flush_palette()`,
+`gfx_present()` and `swap_buffers()` every iteration. Its
+`DS_00101508`/`DS_0010150C` are written only by `palette_list_init` and the loop
+prologue (both 0) and by `actors_reset` (0), and are **never advanced** — the
+original's tick pacing is replaced by `host_wait_vblank()` (`1261`). A ported
+gate would therefore always pass. The gate fails in the original only because the
+state-6 handler outlasts ~55 ticks in its resource loads; the port reads every
+payload eagerly at init (`res.c`), so its handler is fast, and modelling the
+duration would need either a host-dependent value (a fitted constant) or the
+real-time `host_tick_count()` (which makes the gate non-deterministic and would
+break the two-run `PR_FRONTEND_DET` determinism gate). This is the §6-style
+named gap: the mechanism is pinned; the reproduction is blocked on the loader's
+read timing, which the port abstracts by design.
+
+**The VGA-retrace ordering (the second named measurement).** `0x1C470` waits for
+the VGA status bit before its DAC writes (`0x1C470`: `in(0x3DA)` / `test al,8` /
+`jz` before the drain) and `0x52106` waits the same way before its 256×3
+blackout writes (`0x52106`: `0x3880A`-`0x38812`). The copy (`0x25680`, the
+`movsd` loop) has no retrace wait. So both DAC operations are retrace-synced and
+the copy is not; the ordering across the entry is flush/blackout → copy, and the
+retrace sync cannot separate the two candidates (the DAC state at the copy is
+simply the last `0x1C470`/`0x52106` write).
+
 ---
 
 ## 10. Provenance
