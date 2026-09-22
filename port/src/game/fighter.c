@@ -1697,7 +1697,7 @@ void fighter_state_3531c(u32 side)
     u32 slot = DSD(DS_001077A8 + side * 4u);                /* 0x35383 */
     if (slot == 0u || DSD(slot) == 0u) return;              /* 0x3539A */
     if ((s16)DSW(DS_001078F6) != 0) {                       /* 0x353A7 */
-        DSB(DS_001078F6) = (u8)(DSW(DS_001078F6) - 1u);
+        DSW(DS_001078F6) = (u16)(DSW(DS_001078F6) - 1u);    /* 0x353AF */
         if ((s16)DSW(DS_001078F6) < 1) {
             /* PORT: 0x353C0/0x353CA 0x2C3FC(0xEC/0xE0) and 0x353DD 0x2B150 are
              * the voice/cutscene pair; 0x36F10 (their only writer of
