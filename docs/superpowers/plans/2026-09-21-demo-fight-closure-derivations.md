@@ -804,6 +804,23 @@ oracle cannot measure the dust's pixels until Task 3 lands.
    `0x3D17C` callback at `*(u32*)anim[1]` are not decoded. The `+0x52 = 9` arm
    is reachable only for a reaction whose `0xA3528+4` is nonzero (witness char
    0 / reaction 0 = `0x000C8B80`; char 0 / reaction 0x20 = `0`).
+10. **`0x12C70` — the camera-x step seed at the state-6 entry (Task 4's
+    follow-up, the arena-render task's input).** `0x20DF4` calls `0x12C70` at
+    `0x20E6A`, whose whole body is `MOV word ptr [0x000F0AFC],0x400` (`0x12C70`;
+    `RET` at `0x12C79`; sole caller `0x20DF4`, verified by xref). The port does
+    not call it, so `DS_000F0AFC` stays BSS 0 until something else writes it;
+    `camera_x_commit` (`port/src/game/camera.c:200-207`) reads it as the step
+    (`s32 step = (s32)DSW(DS_000F0AFC)`), so the fight's camera-x step starts at
+    0 instead of 0x400. With step 0 and a nonzero delta the commit takes the
+    `mag > step` arm, adds ±0 and never reaches the `else` that re-seeds the step
+    to 0x400, so the camera x stays frozen at its initial 0 and the projection's
+    shear stride (`DS_000F0AF0 << 8`, `render_scroll_fill`) is 0 — the port's
+    measured `DS_000F0AF0` is 0 on the first state-7 frames. The same reset's two
+    word stores `0x20E5C` (`word[0xF0AFA] = CX = 0`) and `0x20E63`
+    (`word[0xF0AF8] = SI = 0`) are also unported (both are BSS-zero, so
+    net-faithful today). Do not port here — the arena render's fidelity owns the
+    camera. Evidence: `0x20DF4` disassembly, `0x12C70` (xref: exactly one caller,
+    `0x20E6A` in `FUN_00020df4`), `camera.c:197-210`.
 
 ---
 
@@ -1093,7 +1110,10 @@ exactly the frame the original would load them; what it lacks is the
 **The state-6 branch is three calls, and the port had two.** `0x20DF4`'s
 EDX != 0 block (`0x20E73`..`0x20E8A`) runs `0x2BAF4` (0x20E78), `0x38730`
 (0x20E7F) and `0x412A0` (0x20E86). The port ports `0x38730`; Task 4 added
-`0x2BAF4` and this record names `0x412A0` a gap:
+`0x2BAF4` and this record names `0x412A0` a gap. The reset's eight pre-branch
+calls and its two word stores (`0x20E5C`/`0x20E63`) are a separate gap; §6.10
+names `0x12C70` (`word[0xF0AFC] = 0x400`) because the arena render's camera step
+reads it (`camera.c:200-207`):
 
 * `0x412A0(i)` (76 B, `0x412A0..0x412EC`) spawns the scene's props: for each
   12-byte triple in `0xC82CC[i]` (scene 0 = `0xC7F78`; 5 entries, the terminator
@@ -1103,7 +1123,8 @@ EDX != 0 block (`0x20E73`..`0x20E8A`) runs `0x2BAF4` (0x20E78), `0x38730`
   descriptor indices 1, 0, 2, **4 (the temple/columns)**, 3. `0xC7F58[i]` is a
   ret-only/no-op pointer (`0x412EC` is the function's own `RET`, `0x5D812` is
   `return 0`), so it spawns nothing.
-* `0x2C320(i)` (0x2C320..0x2C385, 102 B, the `RET` at 0x2C385) spawns `n = DSW(0xBBD98 + i*2)` crowd actors
+* `0x2C320(i)` (101 B by the end-minus-start convention: `0x2C320`..`0x2C385`, the
+  `RET` at `0x2C385`) spawns `n = DSW(0xBBD98 + i*2)` crowd actors
   from `0xBBDA8[i]` (12-byte records: a2 `[esi]`, a3 `(s16)[esi+2]`, a4
   `(s16)[esi+4]`, the descriptor `0xBB9D8[[esi+0xa]*3]`, a5
   `([esi+0xb]<<16)|word[esi+8]`) and stores `DS_00105C08`.
@@ -1117,14 +1138,20 @@ port's first fighter (char 0, the gold T-rex) renders its torso as a flat
 triangle. Those are the Task 5 render gaps.
 
 **Size (Step 1's gate).** The entry is **not one screen**: it is the state-6
-branch's `0x412A0`/`0x2C320` (portable, ~150 B of code + 4 tables) plus the
-**lazy-loader presentation**, which is a `platform/res.c` rework (residency +
-on-demand reads + the `0x1C65C`/`0x1C5E8` direct glyph path), plus the arena
-render fidelity the gate's 833..836 need. This is a re-scope, not a silent
-overrun: reported to the human with the sizes above.
+branch's `0x412A0`/`0x2C320` (portable: `0x412A0` 76 B — `0x412A0`..`0x412EC`,
+the `RET` at `0x412EC` — plus `0x2C320` 101 B — `0x2C320`..`0x2C385`, the `RET`
+at `0x2C385`; **177 B** by this record's end-minus-start convention, 179 B
+counting both `RET`s — and the six tables `0xC82CC`, `0xC7F78`, `0xC7F58`,
+`0xBBD98`, `0xBBDA8`, `0xBB9D8`, all already in `mem[]`; the earlier "~150 B of
+code + 4 tables" understated both) plus the **lazy-loader presentation**, which
+is a `platform/res.c` rework (residency + on-demand reads + the
+`0x1C65C`/`0x1C5E8` direct glyph path), plus the arena render fidelity the
+gate's 833..836 need. This is a re-scope, not a silent overrun: reported to the
+human with the sizes above.
 
 ---
 
+## 10. Provenance
 
 * Raw bytes: `data/game/C/PRAGE.EXE` (read-only), 32-bit `capstone` over the code
   object at file offset `VA + 0x52E54` for the `E8` scans; data operands from
