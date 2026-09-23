@@ -555,6 +555,11 @@ int test_frontend(void)
         u16 s7_cmd0_1072 = 0;
         u16 s7_cmd1_1071 = 0;
         u32 s7_cam0 = 0;
+        /* Task 5 / record §7.0/§7.1: the Gate's second claim — the T-rex
+         * character palette's DAC range, sampled from the palette table while
+         * the state is 7. Sentinel 0 differs from the post-condition 142. */
+        u32 s7_pal_start = 0, s7_pal_len = 0;
+        int s7_pal_sampled = 0;
         for (int i = 0; i < 2000; i++) {
             /* The state-9 exit leaves DS_000F0A64 == 6 for the next iteration;
              * nothing draws between the hold and the state-6 handler, so this
@@ -603,6 +608,26 @@ int test_frontend(void)
             if (DSW(DS_000F0A64) == 3u) reached3 = 1;
             if (DSB(DS_000F0A6E) < 6u) seen_entries |= 1u << DSB(DS_000F0A6E);
             if (DSW(DS_000F0A64) == 7u) {
+                /* The Gate's second claim: the T-rex character palette's DAC
+                 * range. The palette table (DS_00107618, 0x10-byte entries
+                 * {handle; rc; start; len}) is populated by the arena's spawn
+                 * and drained at the state transitions, so sample the entry
+                 * while the state is 7, before actors_reset (0x2BAF4) clears
+                 * the pool. Record §1.2/§1.3: the entry is start=142 len=31 in
+                 * both the original and the port. The variant selects the
+                 * handle (0x1BB9FD58 variant 0 / 0x1BB9FCD8 variant 1, the
+                 * driver's), not the range — so the range is the invariant
+                 * claim 2 names. */
+                if (!s7_pal_sampled) {
+                    const u32 handle = DSD(0xA8A28u + DSB(DS_00105B34) * 4u);
+                    for (u32 e = DS_00107618; e < DS_00107798; e += 0x10u) {
+                        if (DSD(e) == handle) {
+                            s7_pal_start = DSD(e + 8u);
+                            s7_pal_len = DSD(e + 12u);
+                        }
+                    }
+                    s7_pal_sampled = 1;
+                }
                 u8 s0 = DSB(DS_001077B0 + 0x52u);
                 u8 s1 = DSB(DS_001077B0 + 0x94u + 0x52u);
                 s7_last = i;
@@ -693,6 +718,15 @@ int test_frontend(void)
          * and 0x1BB9FD58, so this fails under that mutation. */
         CHECK_EQ_INT((int)DSB(DS_00105B34), 1);
         CHECK_EQ_INT((int)DSD(0xA8A28u + DSB(DS_00105B34) * 4u), 0x1BB9FCD8);
+        /* The Gate's second claim: the T-rex's character palette lands at the
+         * raw's DAC range (record §1.2/§1.3, entry 6: start=142 len=31 in both
+         * trees). A palette table that assigns a different range — e.g. a
+         * changed acquisition order, or a `count` from the wrong resource —
+         * fails here. The handle 0x1BB9FD58 the spec's Verification names is
+         * the pre-fix variant-0 handle at the same range; the driver's fixed
+         * seed (variant 1) acquires the original's 0x1BB9FCD8 (record §1.4). */
+        CHECK_EQ_INT((int)s7_pal_start, 142);
+        CHECK_EQ_INT((int)s7_pal_len, 31);
 
         /* Task 6b/Task 3c: the state-7 fight. slot+0x52 enters the 0x34B14
          * no-op 0x0E and the 0x3531C/0x350D0 machine drives it to the 9/8

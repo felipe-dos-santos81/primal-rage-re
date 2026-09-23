@@ -121,8 +121,11 @@ existing oracle claim is unmoved.
 exit) is measured by a test at the raw's dispatch point, reporting the last
 state-change frame and the timer exit; an env-gated probe is used only if the
 test cannot reach the frame, and then the probe is the evidence of record. Claim
-2 (the palette's DAC range) is a unit assertion on `palette_acquire`'s `start` for
-`0x1BB9FD58`, and the arena's byte-diff is measured before and after.
+2 (the palette's DAC range) is an assertion on the palette table entry's `start`
+and `len` for the T-rex's character palette (`0xA8A28[DS_00105B34]`): the
+pre-fix variant-0 handle `0x1BB9FD58` and the original's variant-1 handle
+`0x1BB9FCD8` land at the same range `start=142 len=31` (record §1.2/§1.3), and
+the arena's byte-diff is measured before and after.
 
 **Every existing oracle claim must stay unmoved.** The invariant is the claim, not
 the window indices: title `54 clean, 55 splice, 2 transition, 0 unexplained` and

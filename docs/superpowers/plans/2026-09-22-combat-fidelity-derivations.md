@@ -517,7 +517,7 @@ measured by the unit assertion plus the arena's byte-diff — not by
 832` cannot move from any port change (§4.3, §6.2). The claim's evidence of
 record is therefore:
 
-* the unit assertion on the palette table entry's `start` (§7.1), and
+* the assertion on the palette table entry's `start`/`len` (§7.1), and
 * the measured arena byte-diff before and after (§7.1's table), reported with
   the pose residual named (§3.3).
 
@@ -527,15 +527,29 @@ record is therefore:
 
 * **The T-rex's DAC range (both trees):** `start = 142`, `len = 31`.
 * **The original's T-rex handle:** `0x1BB9FCD8` (`0xA8A28[1]`); **the port's as
-  shipped:** `0x1BB9FD58` (`0xA8A28[0]`).
+  shipped (pre-fix, variant 0):** `0x1BB9FD58` (`0xA8A28[0]`); **the port at
+  HEAD (the fixed driver, variant 1):** `0x1BB9FCD8` — the original's.
 * **The flag:** `DS_00105B34[0] == 1` (original) vs `0` (port's dump driver);
   `DS_0010816A[0] == 0`, `DS_0010816A[1] == 3` after `0x41350` runs.
-* **The unit assertion:** call `fight_char_select(0, char_index)` with
+* **The flag/handle assertion:** call `fight_char_select(0, char_index)` with
   `DS_00104B1D != 1` and the *original's* pre-state (`DS_0010816A[0..1] = 0`),
   then `CHECK_EQ_INT((int)DSB(DS_00105B34), 1)` and
   `CHECK_EQ_INT((int)DSD(0xA8A28 + DSB(DS_00105B34) * 4), 0x1BB9FCD8)`. Seed
   the sentinel: with `DS_0010816A[1] = 0xFF` (the current driver) the assertion
   fails (variant 0), which is the mutation proof.
+* **The DAC-range assertion (the Gate's second claim):** the palette table
+  entry (`DS_00107618`, `{handle; rc; start; len}` at 0x10 stride) for the
+  T-rex's character palette must be `start = 142`, `len = 31`. The table is
+  populated by the arena's spawn and drained at the state transitions, so the
+  driver samples the entry while `DS_000F0A64 == 7` (before `actors_reset`
+  0x2BAF4), looking it up by `0xA8A28[DS_00105B34]`, and asserts `start == 142`
+  / `len == 31` after the run (`test_frontend.c:728-729`). The spec's
+  Verification names the port's pre-fix variant-0 handle `0x1BB9FD58`; the fixed
+  driver's seed is variant 1, so the entry's handle is the original's
+  `0x1BB9FCD8` — the *range* is the invariant claim 2 names, and §1.2/§1.3 show
+  it is identical for both handles. Mutation proof: `palette_acquire`'s stored
+  `len` for `0x1BB9FCD8` perturbed `count` → `count + 1` fails
+  `test_frontend.c:729` (`32 != 31`).
 * **The seed's design constraint (Task 2's fix direction).** The driver's seed
   must not perturb the variant, so `DS_0010816A[1]` must be seeded to a value
   that equals `char[0]` at side 0's call. The only value that both preserves the
