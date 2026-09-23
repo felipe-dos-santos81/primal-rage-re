@@ -2374,6 +2374,9 @@ static void check_deep_callees(void)
     u32 s_40_1 = DSD(s1 + 0x40u);
     u32 s_a8_0 = DSD(DS_001077A8);
     u32 s_a8_1 = DSD(DS_001077A8 + 4u);
+    u32 s_b00 = DSW(DS_00104B00);
+    u32 s_af8 = DSD(DS_00100AF8);
+    u32 s_tbl = DSD(0x003F40000u);
     u8  s_42_0 = DSB(s0 + 0x42u);
     u8  s_42_1 = DSB(s1 + 0x42u);
     u8  s_51_0 = DSB(r0 + 0x51u);
@@ -2415,6 +2418,57 @@ static void check_deep_callees(void)
     CHECK_EQ_INT((int)DSW(s1 + 0x74u), 0x309);
     CHECK_EQ_INT((int)DSB(s0 + 0x53u), 3);
 
+    /* C: 0x385B0 (the 0x36870 mode-0x25 reset). The seed differs from every
+     * asserted post-condition: 0x100AF8 = 1, rec+0x28 = 0xFF, S+0x40 =
+     * 0xFFFFFFFF, rec+0x42 = 0xFF, S+0x52/+0x53 = 0xFF, S+0x54 = 2. */
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSB(r0 + 0x51u) = 0;
+    DSB(r0 + 0x7Au) = 0;
+    DSD(DS_00100AF8) = 1;
+    DSB(r0 + 0x28u) = 0xFFu;
+    DSD(s0 + 0x40u) = 0xFFFFFFFFu;
+    DSB(r0 + 0x42u) = 0xFFu;
+    DSB(s0 + 0x52u) = 0xFFu;
+    DSB(s0 + 0x53u) = 0xFFu;
+    DSB(s0 + 0x54u) = 2;
+    fighter_385b0(r0);
+    CHECK_EQ_INT((int)DSD(DS_00100AF8), 0);
+    CHECK_EQ_INT((int)DSB(r0 + 0x28u), 0xCB);   /* 0xDF then actors_anim_begin &= 0xEB */
+    CHECK_EQ_INT(DSD(s0 + 0x40u), 0xCCF33FFFu); /* 0xCCF3BFFF then +0x41 &= 0x7F */
+    CHECK_EQ_INT((int)DSB(r0 + 0x42u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0);
+
+    /* D: the 0x349C8 +0x42 bit-6 arm runs 0x37178 -> 0x36870 -> 0x385B0 under
+     * mode 0x25. The two records' facing bits differ so 0x37178 takes the
+     * different-facing in-range arm (the one that calls 0x36870); the seeded
+     * 0x100AF8 = 1 is cleared only by 0x385B0, so the assertion proves the
+     * whole chain ran. */
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSD(DS_001078DC) = 0x003F40000u;            /* the approach-table pointer */
+    DSW(0x003F40000u) = 0;                       /* base = 0, not -1 */
+    DSW(DS_00104B00) = 0x25u;                    /* the 0x385B0 mode */
+    DSB(r0 + 0x51u) = 0;
+    DSB(r0 + 0x7Au) = 0;
+    DSB(s0 + 0x7Au) = 0;
+    DSB(s1 + 0x7Au) = 0;
+    DSB(s0 + 0x54u) = 0xFFu;
+    DSB(s0 + 0x42u) = 0x40u;                     /* the bit-6 arm (after +0x40) */
+    DSW(r0 + 0x28u) = 0x4000u;                   /* facing_s != facing_o */
+    DSW(r1 + 0x28u) = 0;
+    DSD(r0 + 0x18u) = 0x100u;
+    DSD(r1 + 0x18u) = 0x100u;
+    DSD(DS_00100AF8) = 1;                        /* cleared by 0x385B0 */
+    fighter_state_default(0u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x42u) & 4, 4);   /* 0x37178 ran */
+    CHECK_EQ_INT((int)DSD(DS_00100AF8), 0);
+    /* 0x37178 set S+0x52 = 9 before calling 0x36870; only 0x385B0 (the mode
+     * 0x25 arm) clears it, so this distinguishes the mode arm from the body. */
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0);
+
     DSD(DS_001078DC) = s_dc;
     DSD(s0 + 0x40u) = s_40_0;
     DSD(s1 + 0x40u) = s_40_1;
@@ -2430,6 +2484,9 @@ static void check_deep_callees(void)
     DSB(r0 + 0x59u) = s_59_0;
     DSW(s0 + 0x74u) = s_74_0;
     DSW(s1 + 0x74u) = s_74_1;
+    DSW(DS_00104B00) = (u16)s_b00;
+    DSD(DS_00100AF8) = s_af8;
+    DSD(0x003F40000u) = s_tbl;
 }
 
 int test_fight(void)

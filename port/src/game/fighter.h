@@ -105,6 +105,16 @@ void fighter_37d18(u32 slot, u32 rec);                   /* 0x37D18 */
  * record's +0x51 (0x107824 + side*0x94). Called by 0x37D18 and the pose chain. */
 void fighter_39a10(u32 rec, u32 value);                  /* 0x39A10 */
 
+/* 0x37178. The 0x349C8 +0x42 bit-6 arm's callee (the approach machine). */
+void fighter_37178(u32 slot);                            /* 0x37178 */
+
+/* 0x36870. The +0x54 machine 0x37178/0x379C4 call; its mode-0x25 arm runs
+ * 0x385B0. */
+void fighter_36870(u32 rec);                             /* 0x36870 */
+
+/* 0x385B0. The mode-0x25 slot reset 0x36870 runs. */
+void fighter_385b0(u32 rec);                             /* 0x385B0 */
+
 /* 0x36638. Reset the slot's +0x43 bit 0x40 and restart the fighter's animation
  * per slot+0x54. Called by 0x349C8, 0x35838 and the 0x34B6C position branch. */
 int fighter_state_36638(u32 slot, u32 rec);
