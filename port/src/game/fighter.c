@@ -2203,6 +2203,7 @@ void fighter_385b0(u32 rec)
     DSD(DS_00100AF8 + side * 4u) = 0;                       /* 0x38625 */
     DSB(rec + 0x28u) &= 0xDFu;                              /* 0x38649 */
     DSB(s + 0x62u) = 0;                                     /* 0x3864C */
+    DSB(s + 0x8Au) = 0;                                     /* 0x38657 */
     DSW(s + 0x84u) = (u16)(DSW(s + 0x84u) + 1u);            /* 0x3865F */
     fighter_164e8(side);                                    /* 0x38666 */
     DSD(s + 0x40u) &= 0xCCF3BFFFu;                          /* 0x3866B */
@@ -2256,8 +2257,11 @@ static void fighter_379c4(u32 slot)
     if ((DSB(slot + 0x41u) & 2u) != 0u) {                   /* 0x379D5 */
         if (DSD(DS_001078E8) != 0u) {                       /* 0x379DB */
             /* PORT: 0x379E8 the indirect CALL [0x1078E8] (EAX = slot, EDX =
-             * rec). 0x1078E8 is set only by the unported pose chain, so it is
-             * 0 in the port and fn_resolve yields NULL. */
+             * rec). The raw tests only [0x1078E8] != 0 and calls it; the extra
+             * `cb != 0` is the port-level guard the raw has no need of — the
+             * raw's pointer IS the target, while fn_resolve returns NULL for a
+             * target with no C registration. 0x1078E8 is set only by the
+             * unported pose chain, so it is 0 here and the arm is dead. */
             int (*cb)(u32, u32) =
                 (int (*)(u32, u32))(void *)fn_resolve(DSD(DS_001078E8));
             if (cb != 0 && cb(slot, rec) != 0) return;      /* 0x379F0 */

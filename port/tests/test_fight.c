@@ -2362,9 +2362,16 @@ static void check_anim_stream_args(void)
     DSD(DS_00102900 + 4u) = saved900b;
 }
 
-/* Task 3: the 0x349C8 +0x42 bit-7 arm's deep callee 0x39A10 (and the 0x37D18
- * caller that wires it). Seeds differ from the post-conditions, so an
- * unwritten field cannot pass. */
+/* Task 3: the 0x349C8 +0x42 bit-6/7 arms' deep callees (0x385B0 and 0x39A10)
+ * and the minimal caller chain that wires them. Seeds differ from the
+ * post-conditions, so an unwritten field cannot pass.
+ *
+ * State restore: the cases re-seed the slot pair and records from tf_hit_fixture
+ * each time, and the enclosing test_fight snapshots the real slot region
+ * (0x1077A0..0x107900, s_slots) and restores it; FIGHT_RECS is a scratch the
+ * fixtures re-zero. Only the globals this check perturbs outside those
+ * (0x1078DC, 0x104B00, 0x100AF8, 0x1077A8 and the 0x3F40000 scratch) are
+ * saved/restored explicitly at the end. */
 static void check_deep_callees(void)
 {
     u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
@@ -2431,12 +2438,14 @@ static void check_deep_callees(void)
     DSB(r0 + 0x42u) = 0xFFu;
     DSB(s0 + 0x52u) = 0xFFu;
     DSB(s0 + 0x53u) = 0xFFu;
+    DSB(s0 + 0x8Au) = 0xAAu;                    /* 0x38657 clears it */
     DSB(s0 + 0x54u) = 2;
     fighter_385b0(r0);
     CHECK_EQ_INT((int)DSD(DS_00100AF8), 0);
     CHECK_EQ_INT((int)DSB(r0 + 0x28u), 0xCB);   /* 0xDF then actors_anim_begin &= 0xEB */
     CHECK_EQ_INT(DSD(s0 + 0x40u), 0xCCF33FFFu); /* 0xCCF3BFFF then +0x41 &= 0x7F */
     CHECK_EQ_INT((int)DSB(r0 + 0x42u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x8Au), 0);      /* raw 0x38657 */
     CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
     CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0);
     CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0);
