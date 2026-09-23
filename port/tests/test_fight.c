@@ -39,6 +39,19 @@ static void fight_reset_recs(void)
     fight_reset_bases();
 }
 
+/* Zero the actor pool and point DS_001014EC at it. */
+static void fight_reset_actors(void)
+{
+    mem_fill(FIGHT_ACTORS, 0, 0x80);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+}
+
+/* Zero the three per-slot hitbox arrays at 0x107D58. */
+static void fight_reset_slots(void)
+{
+    mem_fill(0x00107D58u, 0, 0x180u);
+}
+
 /* 0x17FA0: the four worked pairs at the (x+0x20)>>6 stage, plus side selection,
  * the facing/page flags, the 0x100AF0 index base and the sprite-origin
  * subtraction on a seeded fake resource. */
@@ -336,8 +349,7 @@ static void check_pset_palette_zero_handle(void)
     u16 saved_56 = DSW(rec + 0x56u);
     u8  saved_5f = DSB(rec + 0x5fu);
 
-    mem_fill(FIGHT_ACTORS, 0, 0x80u);
-    DSD(DS_001014EC) = FIGHT_ACTORS;
+    fight_reset_actors();
     DSW(rec + 0x56u) = 0;                           /* pset slot 0 */
     DSB(rec + 0x5fu) = 0;
     DSD(FIGHT_ACTORS + 0x18u) = 0xDEADBEEFu;        /* pset+0x18 sentinel */
@@ -827,8 +839,7 @@ static void check_health_bars(void)
     u32 hptable = FIGHT_RECS + 0xA00u;
 
     mem_fill(FIGHT_RECS + 0x600u, 0, 0x600);
-    mem_fill(FIGHT_ACTORS, 0, 0x80);
-    DSD(DS_001014EC) = FIGHT_ACTORS;
+    fight_reset_actors();
     DSD(DS_001077A8) = r;
     DSD(DS_001077A8 + 4u) = 0;          /* side 1 inert */
     DSD(r) = fighter;
@@ -1372,8 +1383,7 @@ static void check_state_dispatch(void)
     u32 p0 = FIGHT_RECS, r0 = FIGHT_RECS + 0x200u;
 
     mem_fill(FIGHT_RECS, 0, 0x400);
-    mem_fill(FIGHT_ACTORS, 0, 0x80);
-    DSD(DS_001014EC) = FIGHT_ACTORS;
+    fight_reset_actors();
     DSD(DS_001077A8) = p0;
     DSD(DS_001077A8 + 4u) = 0;          /* side 1 inert */
     DSD(p0) = r0;
@@ -1420,7 +1430,7 @@ static void check_state_dispatch(void)
      * 0x35D7C, which clears slot+0x53/+0x54 and then, when the 0x3CF38 chain
      * reports no hit (no armed hitbox), re-arms slot+0x54 = 2, slot+0x53 = 4.
      * The default handler leaves them. Seeded 0xAA differs from both. */
-    mem_fill(0x00107D58u, 0, 0x180u);           /* no armed hitbox */
+    fight_reset_slots();           /* no armed hitbox */
     DSB(p0 + 0x42u) = 0;
     DSB(p0 + 0x52u) = 3;
     DSB(p0 + 0x53u) = 0xAAu;
@@ -1435,8 +1445,7 @@ static void check_state_dispatch(void)
      * writes +0x52 = 0x14 through the landing gate. The seeded 0x52 = 4
      * differs from the post-value, so a no-op entry fails. */
     mem_fill(FIGHT_RECS, 0, 0x400u);
-    mem_fill(FIGHT_ACTORS, 0, 0x80u);
-    DSD(DS_001014EC) = FIGHT_ACTORS;
+    fight_reset_actors();
     DSD(DS_001077A8) = p0;
     DSD(DS_001077A8 + 4u) = 0;
     DSD(p0) = r0;
@@ -2095,7 +2104,7 @@ static void check_hud_pass_machine(void)
     mem_fill(FIGHT_RECS, 0, 0x400u);
     mem_fill(FIGHT_ACTORS, 0, 0x80u);
     mem_fill(0x00107D18u, 0, 0x40u);            /* the 0x107D18.. words */
-    mem_fill(0x00107D58u, 0, 0x180u);           /* the three hitbox arrays */
+    fight_reset_slots();           /* the three hitbox arrays */
     DSD(DS_001014EC) = FIGHT_ACTORS;
     DSD(DS_001077A8) = p0;
     DSD(DS_001077A8 + 4u) = 0;                  /* side 1 inert */
