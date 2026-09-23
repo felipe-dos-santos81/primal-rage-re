@@ -22,6 +22,23 @@ static const u32 s_pairs[4][4] = {
     { 0x00000040u, 0x00000080u, 0x00000001u, 0x00000002u },
 };
 
+/* The repeated in-file setups, named. Each body is exactly the sequence the
+ * checks below used to repeat, in the same order and with the same values. */
+
+/* Point the two fighter-slot bases at the scratch records (0x100 apart). */
+static void fight_reset_bases(void)
+{
+    DSD(DS_001077B0) = FIGHT_RECS;
+    DSD(DS_00107844) = FIGHT_RECS + 0x100u;
+}
+
+/* Zero the record scratch and point the two slot bases at it. */
+static void fight_reset_recs(void)
+{
+    mem_fill(FIGHT_RECS, 0, 0x200);
+    fight_reset_bases();
+}
+
 /* 0x17FA0: the four worked pairs at the (x+0x20)>>6 stage, plus side selection,
  * the facing/page flags, the 0x100AF0 index base and the sprite-origin
  * subtraction on a seeded fake resource. */
@@ -40,8 +57,7 @@ static void check_projection(void)
     DSD(DS_001014EC) = FIGHT_ACTORS;
     DSD(DS_001077B8) = 0;               /* skip the side-independent blocks */
     DSD(DS_0010784C) = 0;
-    DSD(DS_001077B0) = p0;              /* P0 fighter record pointer */
-    DSD(DS_00107844) = p1;              /* P1 fighter record pointer */
+    fight_reset_bases();
     DSW(p0 + 0x28u) = 0x4000;           /* facing bit set for side 0 */
     DSW(p0 + 0x56u) = 1;                /* actor index */
     DSB(DS_0010782A) = 0;               /* side-0 char -> 0x0EE4 */
@@ -140,8 +156,7 @@ static void check_dispatch(void)
     CHECK_EQ_INT((int)DSD(DS_000F0AF0), (int)0xFFFFA300u);   /* -0x5D00 */
 
     /* Mode 2 centers on the two records' +0x18 midpoint. */
-    DSD(DS_001077B0) = p0;
-    DSD(DS_00107844) = p1;
+    fight_reset_bases();
     DSD(p0 + 0x18u) = 0x1000;
     DSD(p1 + 0x18u) = 0x3000;
     DSD(DS_000F0AF0) = 0;
@@ -391,11 +406,8 @@ static void check_arena_frame_live(void)
  * entry. The sentinel differs from the post-condition. */
 static void check_fighter_pass_a(void)
 {
-    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
-
     DSD(DS_001014EC) = FIGHT_ACTORS;
-    DSD(DS_001077B0) = p0;
-    DSD(DS_00107844) = p1;
+    fight_reset_bases();
     DSB(DS_001078FA) = 2;
     DSD(DS_00100AF8) = 0xDEADBEEFu;
     DSD(DS_00100AFC) = 0xDEADBEEFu;
@@ -422,11 +434,9 @@ static void check_fighter_pass_a(void)
  * animation float from +0x5C and clear the record's +0x20. */
 static void check_fighter_pass_b(void)
 {
-    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
+    u32 p0 = FIGHT_RECS;
 
-    mem_fill(FIGHT_RECS, 0, 0x200);
-    DSD(DS_001077B0) = p0;
-    DSD(DS_00107844) = p1;
+    fight_reset_recs();
     DSB(DS_00107802) = 0;
     DSB(DS_00107896) = 0;
     DSB(DS_00107EE0) = 0;               /* 0x3C570(5) returns 0 (frame path) */
@@ -543,8 +553,7 @@ static void check_effects_rng(void)
 
     mem_fill(FIGHT_RECS, 0, 0x4000);
     DSD(DS_001014EC) = FIGHT_ACTORS;
-    DSD(DS_001077B0) = FIGHT_RECS;
-    DSD(DS_00107844) = FIGHT_RECS + 0x100u;
+    fight_reset_bases();
     DSW(FIGHT_RECS + 0x56u) = 1;
     DSW(FIGHT_RECS + 0x100u + 0x56u) = 2;
     DSW(DS_00104B00) = 3;
@@ -593,12 +602,10 @@ static void check_effects_rng(void)
  * rng(100) roll is bypassed with a non-zero override. */
 static void check_command_map(void)
 {
-    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
     u32 r = FIGHT_RECS + 0x400u;
 
     mem_fill(FIGHT_RECS, 0, 0x800);
-    DSD(DS_001077B0) = p0;
-    DSD(DS_00107844) = p1;
+    fight_reset_bases();
     DSB(0x001077B0u + 0x63u) = 1;               /* side-0 gate A */
     DSB(0x001077B0u + 0x54u) = 0;               /* 0x1AB10 */
     DSB(0x001077B0u + 0x53u) = 0;
@@ -649,12 +656,10 @@ static void check_command_map(void)
  * off so no rng(100) roll is consumed. */
 static void check_think_chain(void)
 {
-    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
     u32 r0 = FIGHT_RECS + 0x300u, r1 = FIGHT_RECS + 0x320u;
 
     mem_fill(FIGHT_RECS, 0, 0x800);
-    DSD(DS_001077B0) = p0;
-    DSD(DS_00107844) = p1;
+    fight_reset_bases();
     DSD(DS_00100AD0) = 3;
     DSD(DS_00100AD0 + 4u) = 3;
     /* The other-slot +0x64 latches and the frame test-and-set word. */
@@ -704,7 +709,7 @@ static void check_think_chain(void)
  * 0x4649C returns 0 (0xBEF28) or 1 (0xBEF64). */
 static void check_attack_consume(void)
 {
-    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
+    u32 p0 = FIGHT_RECS;
     u32 saved_ring[5];
     u32 saved_pos = DSD(0x001082D2u);
 
@@ -713,8 +718,7 @@ static void check_attack_consume(void)
                           0x00108294u, 0x00108296u };
 
     mem_fill(FIGHT_RECS, 0, 0x400);
-    DSD(DS_001077B0) = p0;
-    DSD(DS_00107844) = p1;
+    fight_reset_bases();
     DSD(0x001082D2u) = 0;                       /* ring position 0 */
     for (int i = 0; i < 5; i++) {
         saved_ring[i] = DSW(ring[i]);
@@ -779,10 +783,7 @@ static void check_attack_consume(void)
  * DS_00104B1D suppression are the pinned observables. */
 static void check_char_select(void)
 {
-    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
-    mem_fill(FIGHT_RECS, 0, 0x200);
-    DSD(DS_001077B0) = p0;
-    DSD(DS_00107844) = p1;
+    fight_reset_recs();
     DSW(DS_00108860) = 0;
     DSW(DS_00108860 + 2u) = 0;
     DSB(DS_0010816A) = 0xFFu;
@@ -869,10 +870,8 @@ static void check_health_bars(void)
  * slot+0x41 latches slot+0x2C into slot+0x34. */
 static void check_slot_latch(void)
 {
-    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
-    mem_fill(FIGHT_RECS, 0, 0x200);
-    DSD(DS_001077B0) = p0;
-    DSD(DS_00107844) = p1;
+    u32 p0 = FIGHT_RECS;
+    fight_reset_recs();
     DSD(p0 + 0x18u) = 0xAAu;                    /* record position */
     DSD(p0 + 0x1Cu) = 0xBBu;
     DSD(DS_001077B0 + 0x2Cu) = 0xDEADu;         /* slot +0x2C */
@@ -1325,8 +1324,7 @@ static void check_command_generator(void)
     mem_fill(FIGHT_ACTORS, 0, 0x80);
 
     DSD(DS_001014EC) = FIGHT_ACTORS;
-    DSD(DS_001077B0) = p0;
-    DSD(DS_00107844) = p1;
+    fight_reset_bases();
     DSD(DS_001077A8) = p0;
     DSD(DS_001077A8 + 4u) = p1;
     DSD(p0) = r0;                       /* slot+0 = fighter record */
