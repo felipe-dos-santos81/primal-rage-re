@@ -19,6 +19,10 @@
 #define FIGHTER_DESC_A    0x000BB7E0u   /* 0x33CC8: [char*2 + side] fighter */
 #define FIGHTER_DESC_B    0x000BB8D0u   /* 0x33D38: [char] secondary actor */
 
+/* 0x29BC8. The character-palette acquire the spawn (0x33E1E) and the +0x52
+ * handler block (0x33B00/0x36E78) share; defined with that block. */
+static void fighter_29bc8(u32 side, u32 rec, u32 ch);
+
 /* ---- the shared per-fighter helpers ------------------------------------ */
 
 void fighter_ctx_swap(u32 out[6], u32 side)
@@ -236,12 +240,8 @@ static void fighter_spawn_slot(u32 side, u32 a2, u32 a3, u32 a5)
     DSD(slot + 0x18u) = 0;                          /* 0x33E07 */
     DSD(slot + 0x1Cu) = 0;                          /* 0x33E17 */
 
-    /* 0x33E1E 0x29BC8(side, char, rec): the character palette at pset+0x18. */
-    {
-        u32 tbl = DSD(DS_000A8A98 + ch * 4u);       /* 0x29BCD */
-        u32 handle = DSD(tbl + (u32)DSB(DS_00105B34 + side) * 4u);
-        actor_pset_palette(rec, 0u, handle);        /* 0x29BE1 0x2A17C */
-    }
+    /* 0x33E1E 0x29BC8(side, rec, ch): the character palette at pset+0x18. */
+    fighter_29bc8(side, rec, ch);
 
     DSB(slot + 0x41u) &= 0x7Fu;                     /* 0x33E23..0x33E2F */
     DSD(DS_001077A0 + side * 4u) = 0;               /* 0x33E38 */
@@ -1650,7 +1650,6 @@ static void fighter_state_35b7c(u32 slot, u32 rec);         /* 0x35B7C */
 void fighter_state_35d20(u32 slot, u32 rec);                /* 0x35D20 */
 static void fighter_1883c(u32 side, u32 a, u32 b);          /* 0x1883C */
 static void fighter_36e78(u32 slot);                        /* 0x36E78 */
-static void fighter_29bc8(u32 side, u32 rec, u32 ch);       /* 0x29BC8 */
 static u32  hit_record_x(u32 side);                         /* 0x18714 */
 static u32  hit_record_y(u32 side);                         /* 0x18788 */
 static void hit_facing_flag(u32 side);                      /* 0x18B04 */
@@ -1756,12 +1755,15 @@ static void fighter_36e78(u32 slot)
             + ((u32)DSB(DSD(slot) + 0x51u) ^ 1u) * 4u); /* 0x36EBE */
         if (other != 0u) {
             u32 side;
-            u32 s;
+            u32 slot2;
             DSB(other + 0x5Du) = 0u;                    /* 0x36EC9 */
             DSB(other + 0x43u) &= 0xFBu;                /* 0x36EDB */
             side = (u32)DSB(DS_001078FF);               /* 0x36ED5 */
-            s = DSD(DS_001077B0 + side * 0x94u);        /* 0x36EF0 */
-            fighter_29bc8(side, s, (u32)DSB(s + 0x7Au));      /* 0x36F00 */
+            slot2 = DS_001077B0 + side * 0x94u;         /* 0x36EF0 */
+            /* 0x36EF0 reads DSD(slot2) as the record; 0x36EF7 reads the char
+             * from DSB(slot2 + 0x7A) (the slot), not the actor. */
+            fighter_29bc8(side, DSD(slot2),
+                          (u32)DSB(slot2 + 0x7Au));     /* 0x36F00 */
             DSB(DS_00104AE9) &= 0xFEu;                  /* 0x36F05 */
         }
     }
@@ -1820,7 +1822,9 @@ void fighter_state_359e0(u32 slot, u32 rec, u32 side)
         if ((DSW(rec + 0x28u) >> 8 & 0x40u) != 0u)      /* 0x35B53 */
             sx = (s16)(-sx);                            /* 0x35B66 */
         DSW(slot + 0x4Cu) = (u16)sx;                    /* 0x35B4F */
-        fighter_1883c(side, (u32)(s32)sx, 0u);          /* 0x35B72 */
+        /* 0x35B49 reads the side from F+0x51 (the actor), not the dispatch
+         * argument; the two are equal by construction. */
+        fighter_1883c((u32)DSB(rec + 0x51u), (u32)(s32)sx, 0u);   /* 0x35B72 */
     }
 }
 
@@ -1875,7 +1879,9 @@ void fighter_state_37464(u32 side)
         if ((DSW(rec + 0x28u) >> 8 & 0x40u) != 0u)
             sx = (s16)(-sx);
         DSW(slot + 0x4Cu) = (u16)sx;
-        fighter_1883c(side, (u32)(s32)sx, 0u);          /* 0x37631 */
+        /* 0x375E3 reads the side from F+0x51 (the actor), not the parameter;
+         * the two are equal by construction. */
+        fighter_1883c((u32)DSB(rec + 0x51u), (u32)(s32)sx, 0u);   /* 0x37631 */
     }
 }
 

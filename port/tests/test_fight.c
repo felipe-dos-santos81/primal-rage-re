@@ -2081,6 +2081,12 @@ static void check_gap_handlers(void)
     u32 s_left = DSD(DS_000BDBEC);
     u16 s_base = DSW(DS_001078DC);
     u8 s_mem1000 = DSB(0x00001000u);
+    u32 s_pool = DSD(DS_001014F4);
+    u32 s_ec = DSD(DS_001014EC);
+    u32 s_pal = DSD(DS_00107798);
+    u32 s_tbl0 = DSD(DS_000A8A98);
+    u32 s_tbl1 = DSD(DS_000A8A98 + 4u);
+    u8  s_5b34 = DSB(DS_00105B34);
 
     /* A: 0x35D20 (+0x52 = 2). +0x54 == 4 raises DS_001078FE; +0x52 -> 9 and
      * +0x43 bits 0/1 are cleared; +0x53 survives only at 0x0D. */
@@ -2222,10 +2228,53 @@ static void check_gap_handlers(void)
     CHECK_EQ_INT((int)DSW(s0 + 0x92u), 0);
     CHECK_EQ_INT((int)DSB(s0 + 0x41u) & 0x80, 0x80);
 
+    /* G: 0x36E78's 0x29BC8 call reads the character from the SLOT, not the
+     * actor. Raw 0x36EF0 loads the record DSD(slot) but 0x36EF7 loads the char
+     * from DSB(slot+0x7A). The slot char (0) resolves to a zero palette handle,
+     * so actor_pset_palette leaves pset+0x18 at its sentinel; the actor char (1)
+     * resolves to a non-zero handle, which would release it. Reached through
+     * 0x33B00 with the slot's +0x5A >= 0x78. */
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    fight_reset_actors();
+    {
+        u32 src = 0x00107BD0u, dst2 = 0x00107B00u, act = 0x3F50000u;
+        u32 tbl_slot = 0x3F51000u, tbl_actor = 0x3F52000u, old = 0x3F53000u;
+        mem_fill(src, 0, 0x94u);
+        mem_fill(dst2, 0, 0x68u);
+        mem_fill(act, 0, 0x68u);
+        DSD(src + 0u) = act;                    /* 0x33B00's rec = DSD(slot) */
+        DSD(src + 0x08u) = 0;                   /* skip the +0x64 reset */
+        DSB(src + 0x5Bu) = 0;                   /* 0x36E78's second branch */
+        DSB(src + 0x7Au) = 0;                   /* the SLOT char -> handle 0 */
+        DSB(act + 0x7Au) = 1;                   /* the ACTOR char -> handle 0x1234 */
+        DSB(s0 + 0x5Au) = 0x78u;                /* >= 0x78: run 0x36E78 */
+        DSW(DS_00104B00) = 0;                   /* != 3: run 0x36E78 */
+        DSB(DS_001078FF) = 0;                   /* 0x36E78's palette side */
+        DSB(DS_00105B34) = 0;                   /* the per-side table index */
+        DSD(DS_000A8A98 + 0u) = tbl_slot;
+        DSD(DS_000A8A98 + 4u) = tbl_actor;
+        DSD(tbl_slot + 0u) = 0;                 /* handle 0 */
+        DSD(tbl_actor + 0u) = 0x1234u;          /* handle 0x1234 */
+        DSD(DS_001014F4) = act;                 /* in_pool(act) */
+        DSD(DS_001014EC) = FIGHT_ACTORS;        /* actor_pset(act) = FIGHT_ACTORS */
+        DSD(old + 4u) = 1;                      /* palette_release(old) drops it */
+        DSD(FIGHT_ACTORS + 0x18u) = old;        /* pset+0x18 sentinel */
+        fighter_state_33b00(0u, src, dst2);
+        CHECK_EQ_INT((int)DSD(FIGHT_ACTORS + 0x18u), (int)old);
+        CHECK_EQ_INT((int)DSD(old + 4u), 1);
+    }
+
     DSB(DS_000BDA3E) = s_max;
     DSD(DS_000BDBEC) = s_left;
     DSW(DS_001078DC) = s_base;
     DSB(0x00001000u) = s_mem1000;
+    DSD(DS_001014F4) = s_pool;
+    DSD(DS_001014EC) = s_ec;
+    DSD(DS_00107798) = s_pal;
+    DSD(DS_000A8A98) = s_tbl0;
+    DSD(DS_000A8A98 + 4u) = s_tbl1;
+    DSB(DS_00105B34) = s_5b34;
 }
 
 /* Task 6b wiring: fight_hud_pass's 0x35803 call drives +0x52 out of the 0x0E

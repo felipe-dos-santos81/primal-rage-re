@@ -345,6 +345,12 @@ fields. **Callees:** `0x2C3FC`✓ (stub), `0x3BDDC`✓, `0x18B04`✓, `0x3C480`�
   `other = DS_001077A8[(u8)F[0x51] ^ 1]`; if non-zero: `other[0x5D] = 0;
   other[0x43] &= 0xFB; 0x29BC8(...); DSB(0x104AE9) &= 0xFE;`
   Evidence `0x36E82`..`0x36F03`. **Callees:** `0x29BC8`✓.
+  **`0x29BC8`'s arguments (fix-round-2):** the record is `DSD(slot)` (`0x36EF0`
+  `MOV EBX,[EAX*4 + 0x1077B0]`), the character is `DSB(slot + 0x7A)` (`0x36EF7`
+  `MOV DL,[EAX*4 + 0x10782A]`, `0x10782A = 0x1077B0 + 0x7A`), and the side is
+  `DSB(0x1078FF)` (`0x36ED5`). The character is the **slot's**, not the actor's;
+  a first revision read it from the actor (which is only 0x68 bytes, so `+0x7A`
+  is outside the copied record).
 
 ### 1.7 Porting plan and test values (§8 holds the substitution table)
 
