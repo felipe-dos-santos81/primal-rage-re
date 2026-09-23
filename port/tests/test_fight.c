@@ -61,6 +61,19 @@ static void fight_reset_slot_pair(u32 s0, u32 s1, u32 r0, u32 r1)
     DSD(s1) = r1;
 }
 
+/* The state-6 / game_frame tail globals, zeroed with the 0x0F timer armed. */
+static void fight_reset_state6(void)
+{
+    DSB(DS_00104B15) = 0;
+    DSB(DS_00104B19 + 2u) = 0;
+    DSW(DS_001082CC) = 0;
+    DSW(DS_00104AFC) = 0;
+    DSW(DS_000F0A6A) = 0;
+    DSW(DS_000F0A72) = 5;
+    DSW(DS_000F0A6C) = 0;
+    DSB(DS_000F0A6F) = 0xFF;
+}
+
 /* 0x17FA0: the four worked pairs at the (x+0x20)>>6 stage, plus side selection,
  * the facing/page flags, the 0x100AF0 index base and the sprite-origin
  * subtraction on a seeded fake resource. */
@@ -392,14 +405,7 @@ static void check_arena_frame_live(void)
      * so a skipped spawn fails the assertions without an out-of-range deref. */
     DSD(DS_001077A8) = FIGHT_RECS;
     DSD(DS_001077A8 + 4u) = FIGHT_RECS + 0x100u;
-    DSB(DS_00104B15) = 0;
-    DSB(DS_00104B19 + 2u) = 0;
-    DSW(DS_001082CC) = 0;
-    DSW(DS_00104AFC) = 0;
-    DSW(DS_000F0A6A) = 0;
-    DSW(DS_000F0A72) = 5;
-    DSW(DS_000F0A6C) = 0;
-    DSB(DS_000F0A6F) = 0xFF;
+    fight_reset_state6();
     rng_seed(0x1234u);
     DSW(DS_000F0A64) = 6;
     game_state_step();
@@ -988,14 +994,7 @@ static void check_state6(void)
     DSD(DS_001088E4) = 0;               /* coin poll mask: nothing accepted */
     DSB(DS_00104528 + 1u) = 2;          /* (DS_00104528+1)&2 set: skip text */
     DSW(DS_00104B00) = 3;               /* mode 3: 0x49388's range is 0x64 */
-    DSB(DS_00104B15) = 0;
-    DSB(DS_00104B19 + 2u) = 0;
-    DSW(DS_001082CC) = 0;
-    DSW(DS_00104AFC) = 0;
-    DSW(DS_000F0A6A) = 0;
-    DSW(DS_000F0A72) = 5;
-    DSW(DS_000F0A6C) = 0;
-    DSB(DS_000F0A6F) = 0xFF;
+    fight_reset_state6();
     DSB(DS_0010816A) = 0xFFu;
     DSB(DS_0010816A + 1u) = 0xFFu;
 
