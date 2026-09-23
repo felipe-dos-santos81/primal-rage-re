@@ -938,7 +938,7 @@ without stalling) is not.
    character palette handle `0x1BB9FCD8` (variant 1) is acquired at
    **`start=142 len=31`** — the port's ownership table (`DS_00107618`) entry 6 at
    HEAD, identical to the original's (record §1.2); the unit assertion is
-   `test_frontend.c:714-715` (`DS_00105B34 == 1`, `0xA8A28[1] == 0x1BB9FCD8`).
+   `test_frontend.c:694-695` (`DS_00105B34 == 1`, `0xA8A28[1] == 0x1BB9FCD8`).
    The arena byte-diff (`frame_0482.raw` vs capture
    `frontend/frame_0834.raw`) fell **42 667 B (22.2 %, 15 067 px) → 18 294 B
    (9.5 %, 6 194 px)**; the T-rex region 6 363 → 1 773 px, the raptor region

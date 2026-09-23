@@ -156,9 +156,11 @@ named gap with its evidence.
   resolving a different handle), that is the same shape and is recorded.
 - **The Gate's second claim depends on a measurement that does not exist yet.**
   "The level the poses alone explain" is measured by Task 5 after the palette and
-  the poses land. If the poses prove un-derivable, the claim is reported with the
-  pose residual named as a gap and the Gate is assessed honestly — not declared
-  met, and no pin or value fitted to force it.
+  the poses land. If the poses prove un-derivable, the residual is reported with
+  the pose named as a gap and the Gate is assessed honestly — the **Gate** is not
+  declared met, and no pin or value is fitted to force it. (Claim 2's palette
+  core is independent of this: it is MET with the pose residual named — see the
+  Outcome.)
 - **The window may still not read clean.** It will not: 831/832 stays
   un-derivable. This cycle's Gate is not the window's count; the record says so
   explicitly so the artifact cannot read as though the demo window were closed.

@@ -414,7 +414,7 @@ Two measurements, not a prediction:
 
 1. **The loader flush has zero effect on the port's dumped frames.** Removing
    `text_blit_string`'s `gfx_flush_palette()` (`actors.c:1590`, `0x1C6C6`) and
-   re-dumping produces **1382/1382 byte-identical frames** (all frames 0..1381
+   re-dumping produces **1381/1381 byte-identical frames** (all frames 0..1380
    hash-equal to the unmodified tree; `frame_0481` and `frame_0482` both
    identical). The port's per-iteration frame-end flush drains the same records,
    so the loader flush's scope is invisible to the dump.
@@ -758,8 +758,9 @@ The pose family's `+0x52 = 0x10` writers are reached only through this chain
   (`0x19720 CMP [0x100AF8],0; ... 0x1974D CALL 0x193B0`), gated on
   `DS_00100AF8 != 0 && DSB(0x10783A) != 0` (side 0) or the `AFC`/`0x1078CE` pair
   (side 1).
-* `DS_00100AF8[side]` has **three** writers (a Task 4 fix-round-1 correction;
-  `ghidra_get_xrefs_to 0x100AF8`):
+* `DS_00100AF8[side]` is **written at 12 sites across six functions**
+  (`ghidra_get_xrefs_to 0x100AF8` returns 15 refs — 12 writes, 3 reads; a Task 4
+  fix-round-1 correction, re-derived at HEAD):
   * **`0x19020(side)`** (`0x1904C`/`0x1905C`): calls the callback at
     `slot[side]+0x18` and sets `DS_00100AF8[side] = (result == 0)`. `0x19020` is
     the port's named gap at `fighter.c:287`; `slot+0x18` is set to `0x3FD30` by
@@ -768,7 +769,12 @@ The pose family's `+0x52 = 0x10` writers are reached only through this chain
     `EAX = [0x100B54]` (`0x1756A`). `0x170A0`'s only caller is `0x17580`, which
     calls it once per side (`0x176AC` EAX=0, `0x176BF` EAX=1); `0x17580`'s
     callers include `0x26254` (`0x262E9`).
+  * **`0x17580`** (`0x175EA`): `MOV [0x100AF8], EDX` — Task 4's fourth writer.
+  * **`0x1958C`** (`0x195C6`/`0x19618`/`0x196B1`/`0x196DE`/`0x19705`/`0x19719`):
+    the ported pass's own writes.
   * **`0x36870`** (`0x36928`) and **`0x385B0`** (`0x38625`) zero the entry.
+  * The three reads are the gates: `0x1958C` (`0x19632`/`0x19720`) and `0x18C14`
+    (`0x18C49`).
 
   **The operational conclusion survives** (`FUN_00026254`'s frame order:
   `0x262E9 CALL 0x17580` → `0x262EE CALL 0x1958C`): `0x17580`/`0x170A0`'s write
