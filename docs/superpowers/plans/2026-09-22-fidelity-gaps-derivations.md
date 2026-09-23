@@ -119,6 +119,26 @@ writes `(&DAT_00107802)[side*0x94] = 0x14` (slot+0x52, `0x36037`) and
    drivers call `0x33874(DS_000F0A48, DSD(0xC98A0 + counter*4))`
    (`0x4F809`/`0x4F81D`/`0x4F81F`). The decompile's `param_1` is EAX = the
    palette entry, not the record.
+7. **`0x385B0`'s call site is `0x36884`, not a `+0x54` arm** (a fix-round-1
+   correction of this record). `0x36870` calls `0x385B0` at its top, guarded by
+   `DSW(0x104B00) == 0x25` (`0x36878 MOV DX,[0x104b00]; 0x3687f CMP EDX,0x25;
+   0x36882 JNZ 0x3688e; 0x36884 CALL 0x385b0`); the `+0x54` switch is the else
+   branch, and its case 2 (`0x36B91`/`0x36BAC`) calls `0x3C520(2.0f)`. The
+   first revision placed `0x385B0` in the `+0x54 == 2` arm, which would have
+   mis-wired Task 3.
+8. **`0x4F83C`'s `DS_00104AD0` bit-0 clear is at function level** (a
+   fix-round-1 correction). `0x4F85D JZ 0x4f883` on `F0A48 == 0` jumps straight
+   to `0x4F883 AND byte[0x104ad0],0xfe`; the `0x4F881 JC 0x4f88a` skips it only
+   when `counter < 10`. The first revision nested the clear inside the
+   `F0A48 != 0` branch, which would leave bit 0 set (a one-frame spurious
+   enable) on the `F0A48 == 0` path.
+9. **`0x33874`'s descriptor is `DSD(0xF0A48)`, not `0xC98A0`** (a fix-round-1
+   correction). `0xC98A0` is a ten-handle array (`ghidra_read_memory 0xC98A0` =
+   `28 f1 96 03 … 28 ed 96 03`, ten `0x0396xxxx` handles) read only by the two
+   drivers (`0x4F810`/`0x4F861`) as the EDX resolver input; the descriptor the
+   enqueue walks is its EAX argument, `DSD(0xF0A48)` (the runtime result of
+   `palette_acquire(0x396ED28)`, `0x110D8`). The first revision named
+   `0xC98A0`, which would have misdirected Task 5.
 
 ---
 
@@ -180,7 +200,7 @@ if ((DSW(F[0x28]) >> 8) & 0x40) S[0x4C] = -S[0x4C];                             
 `FUN_00035c1c`):
 
 ```
-max = (u8)DSB(0xBDA3E + (u8)S[0x7A] * 2);                    // 0x35C25, the low byte of the word 0x35B7C reads
+max = (s8)DSB(0xBDA3E + (u8)S[0x7A] * 2);                    // 0x35C25, the low byte of the word 0x35B7C reads; compared signed (`0x35C47 CMP DL,DH; 0x35C49 JG`)
 F[0x52] = (s8)(F[0x52] + F[0x58]);                           // 0x35C2F
 r = 0;                                                        // ECX
 if ((s8)F[0x52] < 0)        { F[0x52] = max - 1; r = 1; }     // 0x35C3B..0x35C42
@@ -279,8 +299,8 @@ first two dwords, `S+0x5A`/`S+0x5D` restored, `S+0x64` (= 0xFF), `S+0x08`
 
 ### 1.5 `0x35E6C` — state 20 (`fighter_state_35e6c(S, F)`)
 
-Disassembly `0x35E6C..0x35F82` (decompile `FUN_00035e6c`; EBX = slot, EAX =
-actor on entry):
+Disassembly `0x35E6C..0x35F82` (decompile `FUN_00035e6c`; on entry **EAX =
+slot, EDX = actor** — the dispatch's `0x34D69 MOV EDX,ESI; MOV EAX,ECX`):
 
 ```
 side = (u8)F[0x51]; other = 1 - side;
@@ -347,9 +367,14 @@ fields. **Callees:** `0x2C3FC`✓ (stub), `0x3BDDC`✓, `0x18B04`✓, `0x3C480`�
 
 ### 2.1 `0x385B0` — the slot reset (`fighter_385b0(F)`)
 
-Only caller: `0x36870` (`0x369`? in its `+0x54 == 2` arm; `ghidra_get_function_callers
-0x385B0` returns exactly `FUN_00036870`). It is reached from `0x37178` (the
-`0x349C8` bit-6 arm) and `0x3FD30`.
+Only caller: `0x36870`, at **`0x36884`**, guarded by `DSW(0x104B00) == 0x25`
+(`0x36878 MOV DX,[0x104b00]; 0x3687f CMP EDX,0x25; 0x36882 JNZ 0x3688e;
+0x36884 CALL 0x385b0`). `ghidra_get_xrefs_to 0x385B0` returns exactly this one
+call. It is **not** in any `+0x54` arm: the `+0x54` switch is `0x36870`'s else
+branch, and its case 2 (`S+0x54 == 2`) calls `0x3C520` (`0x36B91`/`0x36BAC`,
+`EDX = DSD(0xC89F0 + char*4)`, `PUSH 0x40000000`). `0x385B0` is reached via
+`0x36870`, whose own callers are `0x37178` (the `0x349C8` bit-6 arm) and
+`0x3FD30`.
 
 Body (disassembly `0x385B0..0x3872F`; `EAX = ECX = param_1` = the **actor**
 `F`; `side = F[0x51]`; `S = 0x1077B0 + side*0x94`, `So = 0x1077B0 + other*0x94`):
@@ -392,8 +417,9 @@ Body (decompile `FUN_00039a10`): `word[0x107824 + side*0x94] = value` where
 ### 2.3 Porting plan and test values
 
 * **Task 3** adds `fighter_385b0(F)` and `fighter_39a10(F, value)`, wired at
-  the record's call sites: `0x385B0` at `0x36870`'s `+0x54 == 2` arm, `0x39A10`
-  at `0x37D18` (and, when the pose chain lands, the rest).
+  the record's call sites: `0x385B0` at `0x36870`'s **`DSW(0x104B00) == 0x25`
+  arm** (`0x36884`, the function's top; the `+0x54` switch is the else branch),
+  `0x39A10` at `0x37D18` (and, when the pose chain lands, the rest).
 * The record does **not** port `0x36870`/`0x37178`/`0x37D18` themselves in this
   cycle: they are the `0x349C8` bit-6/7 arms, which are named gaps
   (`fighter.c:1320`/`:1324`). Task 3 ports the two callees at the call sites the
@@ -526,41 +552,67 @@ DS_001088F1 = 0;                                           // 0x4F847/0x4F855
 if (DSD(0xF0A48) != 0) {                                   // 0x4F84F/0x4F85B
     DS_001088F1 = 1;                                       // 0x4F85F/0x4F86C
     0x33874(DS_000F0A48, DSD(0xC98A0));                    // 0x4F861..0x4F872
-    if ((u8)DS_001088F1 >= 10) DS_00104AD0 &= 0xFE;        // 0x4F877..0x4F883
+    if ((u8)DS_001088F1 < 10) return;                      // 0x4F877..0x4F881 (JC 0x4F88A)
 }
+DS_00104AD0 &= 0xFE;                                       // 0x4F883 (function level: reached from the
+                                                           //  F0A48 == 0 path via JZ 0x4F883, and from
+                                                           //  the counter >= 10 path)
 ```
 
 So `0x4F83C` **starts** the sequence (bit 0, counter = 1, enqueue record[0]);
-`0x4F7F4` **advances** it (counter++, enqueue record[counter], clear bit 0 at
-≥ 10). The `0xC98A0` array holds the ten per-step records; `DS_000F0A48` is the
-attract's palette entry (set at `attract.c:168`, `0x110D8`).
+the bit-0 clear is at **function level** — it runs on the `F0A48 == 0` path
+(`0x4F85D JZ 0x4F883`) and on the counter-≥10 path, so `0x4F83C` leaves bit 0
+set only on the `F0A48 != 0` path (where `counter == 1 < 10` skips it via
+`0x4F881 JC 0x4F88A`). `0x4F7F4` **advances** it (counter++, enqueue
+record[counter], clear bit 0 at ≥ 10 — the same function-level shape). The
+`0xC98A0` array holds the ten per-step **handles**; `DS_000F0A48` is the
+attract's palette **entry** (set at `attract.c:168`, `0x110D8`).
 
-### 4.4 `0x33874` — the list enqueue (`FUN_00033874`, 143 B)
+### 4.4 `0x33874` — the palette reflow / re-enqueue (`FUN_00033874`, 143 B)
 
-Called by both drivers (`get_xrefs_to 0x33874` = `0x4F81F`, `0x4F872`). It
-resolves its **EDX** argument via `0x1B544` (`0x33883`), then walks the
-descriptor array at its **EAX** argument (`EBX = EAX`, `0x3387F`) and appends
-4-dword records to the `DS_00107798` dirty list:
+Called by both drivers (`get_xrefs_to 0x33874` = `0x4F81F`, `0x4F872`) as
+`0x33874(DSD(0xF0A48), DSD(0xC98A0 + counter*4))`. Its **EAX** argument
+(`EBX = EAX`, `0x3387F`) is the **descriptor**; its **EDX** argument is the
+**handle**, resolved via `0x1B544` (`0x33881`/`0x33883`). The two are distinct
+structures:
 
-* if `[EAX+0xC] >= [resolved]`: if the resolved value changed, update
-  `[EAX]` and append `{EDX; [EAX+8]; [resolved]; 1}` (`0x3389B`..`0x338AF`);
-* else: walk `EAX, EAX+0x10, …` (bounded by `0x107798`), accumulating
-  `[EAX+8] + [EAX+0xC]`, and append `{end; start; len; 1}` per entry
-  (`0x338B4`..`0x338F5`).
+* **the descriptor = `DSD(0xF0A48)`**, the palette ownership table entry the
+  attract's `palette_acquire(0x396ED28)` returned (`0x110D8` stores it into
+  `DS_000F0A48`). Its layout is the port's own `palette_acquire` entry
+  (`actors.c:270-273`): `{handle; rc; start; len}` at 0x10 stride, so the
+  enqueue's `[EAX]` = handle, `[EAX+8]` = start, `[EAX+0xC]` = len.
+* **the handle array = `0xC98A0`**: ten resource handles
+  (`ghidra_read_memory 0xC98A0` = `28 f1 96 03 … 28 ed 96 03`, ten
+  `0x0396xxxx` values), read only by the two drivers
+  (`0x4F810`/`0x4F861`) as the resolver input. The enqueue never references it.
+
+The function reflows the palette table from the descriptor and re-enqueues the
+changed entries onto the `DS_00107798` dirty list (`0x33879` = the head):
+
+* if `descriptor.len < resolved.count`: walk the table from the descriptor at
+  `EAX+0x10` strides (bounded by `0x107798`), and for each entry whose
+  `prev.start + prev.len > next.start`, set `next.start = prev.start + prev.len`
+  and append `{next.handle; next.start; next.len; 1}` (`0x338B4`..`0x338F5`);
+* else if `handle != descriptor.handle`: set `descriptor.handle = handle` and
+  append `{handle; descriptor.start; resolved.count; 1}`
+  (`0x3389B`..`0x338AF`).
 
 The record's fields map to the port's `palette_record`/`gfx_flush_palette`
 tuple `{ptr; first; count; flag}`; `flag = 1` means "resolve `ptr`" in
-`gfx_flush_palette` (`gfx.c:97`). **The exact descriptor layout at `0xC98A0`
-and the `[EAX]`/`[EAX+8]`/`[EAX+0xC]` semantics are not fully pinned from the
-two callers alone** — Task 5 must derive them from the `0xC98A0` array contents
-(`ghidra_read_memory 0xC98A0`, 40 bytes) before implementing, and record them.
-This is the one value in §4 that is a named gap, not a fitted constant.
+`gfx_flush_palette` (`gfx.c:97`). **The walk branch is the same reflow as
+`palette_acquire`'s tail (`actors.c:276-283`)**, so the descriptor's layout and
+the branch shapes are pinned; the **residual Task-5 verification** is the exact
+`[resolved]` semantics (the `0x1B544` return's `[EAX]` count, and its `EDX`
+preservation — `0x1B544` returns `CONCAT44(param_2, addr)`, so `EDX` is the
+incoming handle) and whether the reflow is byte-identical to `palette_acquire`'s
+tail. No `0xC98A0` read is needed for the descriptor.
 
 ### 4.5 The `DS_00104AD0` bit-0 protocol and the `DS_001088F1` counter
 
 * `DS_00104AD0` is the 16-bit driver mask (`attract_scene_tick`); bit 0 alone
-  has a handler (`0x4F7F4`). `0x4F83C` sets it, `0x4F7F4` clears it at counter
-  ≥ 10.
+  has a handler (`0x4F7F4`). `0x4F83C` sets it and, at **function level**,
+  clears it when the counter is not `< 10` — so it leaves bit 0 set only on the
+  `F0A48 != 0` path (counter 1); `0x4F7F4` clears it at counter ≥ 10.
 * `DS_001088F1` (a byte) is the step counter: `0x4F83C` = 1, `0x4F7F4`
   increments; the sequence runs 10 steps (`0x4F82B`/`0x4F87E` compare to 0xA).
 * The gate `DS_000F0A48` (the attract palette entry) is non-zero only once the
@@ -635,10 +687,16 @@ load) is not involved.
   (and every dumped frame 312..480) vs
   `data/title-captures/frontend/frame_0830.raw` = **0 bytes differ** (dump 311
   differs by 4 629 B). The port's state-9 render is correct at that point.
+  **Reproducible:** `PR_FRONTEND_DUMP=/tmp/ff PR_FRONTEND_DUMP_FRAMES=315
+  PR_GAME_DIR=data/game/C ./build/run_tests` writes the dump; the measurement is
+  `dump 310/311 = 4 629 B`, `dump 312..314 = 0 B` against `frame_0830.raw`
+  (re-run at fix-round 1; the earlier `/tmp/ffhold*` run's frames were the same).
 * The port reaches capture-830's content at loop 901 (dump 312) and holds it
   for 169 frames; the capture reaches it at 830 and the loader follows at 831.
   The capture's corresponding frames (by the front-end window's capture↔port
-  mapping, capture ≈ loop−29) change by 10 000–150 000 bytes per frame.
+  mapping, capture ≈ loop−29) change by 10 000–150 000 bytes per frame
+  (measured: capture 829→830 = 4 629 B, 830→831 = 119 130 B, 900→901 =
+  120 377 B — so the capture's state-9 screen animates right up to the loader).
 * State 9 is the **match-start countdown** (`flow.c:1432-1438`; entered with
   `DS_000F0A6A = 0x12C`, `DS_000F0A6C = 6` from the state-5 arm `0x11E1D`/
   `0x11E2E`/`0x11E35`). The divergence is the countdown's **screen animation
@@ -724,11 +782,15 @@ change banked early; the record leaves the order to the reviewer.
    render content), not the load model and not one of the four in-scope gaps.
    Oracle-neutral (neither oracle covers port frames 259..480). Evidence: §5.1's
    trace, the byte-identical `frame_0314.raw` ↔ `frame_0830.raw`.
-2. **`0x33874`'s descriptor layout** (§4.4). The two call sites pin the
-   arguments (`0x33874(DS_000F0A48, DSD(0xC98A0 + counter*4))`), the resolver
-   call, the list target and the appended tuple; the `0xC98A0` array's record
-   fields (`[EAX]`, `[EAX+8]`, `[EAX+0xC]`) are not fully pinned. **Owner:**
-   Task 5, derived from `ghidra_read_memory 0xC98A0` (40 B) before porting.
+2. **`0x33874`'s residual semantics** (§4.4). The descriptor is
+   `DSD(0xF0A48)` (the palette ownership table entry, layout
+   `{handle; rc; start; len}` — the port's `palette_acquire`), the handle is
+   `DSD(0xC98A0 + counter*4)` (the ten-handle array), the resolver, the list
+   target, the two branch shapes and the appended tuple are all pinned. What
+   remains is the exact `[resolved]` count semantics (the `0x1B544` return) and
+   whether the walk branch is byte-identical to `palette_acquire`'s tail.
+   **Owner:** Task 5, verified against `palette_acquire` (`actors.c:276-283`)
+   before porting.
 3. **`0x349C8`'s bit-6/7 arms** (`0x37178`, `0x37D18`) remain unported
    (`fighter.c:1320`/`:1324`); Task 3 ports their callees `0x385B0`/`0x39A10`
    at the call sites. If the arms are needed for reachability, Task 3 records
