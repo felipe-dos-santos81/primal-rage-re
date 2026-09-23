@@ -1022,16 +1022,26 @@ static void check_state6(void)
      * slot+0x3C = 0). Each pick's value maps through the raw's thresholds
      * (0x493B0..0x493E4) to the 0xC9524 descriptor index. */
     u32 dust_idx[4];
+    u32 dust_off[4];                /* the loop's running offset */
+    u32 dust_dy[4];                 /* the loop's rng(step) draw */
     u32 di = 0;
     u32 draw2 = 0;
     for (u32 side = 0; side < 2u; side++) {
+        u32 offset = 0;
         for (u32 i = 0; i < 2u; i++) {
             u32 v = rng_next(0x64u);
-            dust_idx[di++] = (v < 0x1eu) ? 4u : (v < 0x32u) ? 3u
+            dust_idx[di] = (v < 0x1eu) ? 4u : (v < 0x32u) ? 3u
                            : (v < 0x46u) ? 5u : (v < 0x55u) ? 1u
                            : (v < 0x5fu) ? 0u : 2u;
             (void)rng_next(0x1800u);
-            (void)rng_next(0x300u / 2u);
+            /* The entry's +0x1A is the y (0x49642 reads [ESP+0x4], the value
+             * 0x49605 wrote after 0x2AE14's RET 0x4 restores ESP), not the step.
+             * y = offset + (rec+0x30 >> 16) + 0x400 + rng(step); the assertion
+             * below reads the slot's rec+0x30 after game_state_step. */
+            dust_off[di] = offset;
+            dust_dy[di] = rng_next(0x300u / 2u);
+            offset += 0x180u;
+            di++;
         }
         if (side == 0u) draw2 = rng_next(6u);
     }
@@ -1056,18 +1066,24 @@ static void check_state6(void)
 
     /* 0x494A8's effect, not only its draws: two entries per side moved to the
      * 0x10884C list (each insert-after puts the newest first, so side 1's two
-     * lead), each with a type-0 header, the step at +0x1A and a spawned actor
-     * at +8. The actor's +8 is its descriptor's first dword (0x2AE7D), so
-     * asserting it against the modeled picker index discriminates the raw's
-     * rng(0x64) range from a range that always yields index 4. */
+     * lead), each with a type-0 header, the y at +0x1A, the side at +0x21 and a
+     * spawned actor at +8. The actor's +8 is its descriptor's first dword
+     * (0x2AE7D), so asserting it against the modeled picker index discriminates
+     * the raw's rng(0x64) range from a range that always yields index 4. */
     {
         u32 n = 0;
         for (u32 e = DSD(DS_0010884C); e != DS_0010884C; e = DSD(e)) {
             u32 spawn = 3u - n;         /* the list is newest-first */
             u32 actor = DSD(e + 8u);
             u32 desc = DSD(DS_000C9524 + dust_idx[spawn] * 4u);
+            u32 rec = DSD(DSD(e + 0x0Cu));     /* the entry's slot's record */
+            u32 y = dust_off[spawn]
+                  + (u32)((s32)DSD(rec + 0x30u) >> 16) + 0x400u + dust_dy[spawn];
             CHECK_EQ_INT((int)DSB(e + 0x1Eu), 0);
-            CHECK_EQ_INT((int)DSW(e + 0x1Au), 0x180);
+            CHECK_EQ_INT((int)DSW(e + 0x1Au), (int)(u16)y);
+            /* +0x21 is the side (0x49626; the raw reads [ESP+0x8] after
+             * 0x2AE14's RET 0x4), not the y low byte. Spawns 0/1 are side 0. */
+            CHECK_EQ_INT((int)DSB(e + 0x21u), (int)(spawn < 2u ? 0u : 1u));
             CHECK_EQ_INT((int)DSD(e + 0x0Cu),
                          (int)(DS_001077B0 + (n < 2u ? 0x94u : 0u)));
             CHECK(actor != 0, "dust entry carries a spawned actor");

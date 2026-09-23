@@ -711,6 +711,11 @@ int test_frontend(void)
          * in slot 0's +0x52 = 3 retry loop. */
         CHECK_EQ_INT((int)s7_entry_pre, (int)0x8612D6C5u);
         CHECK_EQ_INT((int)s7_entry_post, (int)0x10F7DB07u);
+        /* The command word at the 2nd state-7 frame is the residual Task 3c
+         * owns: the demo-AI block state diverges there, so the port holds the
+         * 1st frame's 0x1010 where the original's is 0x4848. This assertion
+         * pins the current value so Task 3c's change is deliberate. */
+        CHECK_EQ_INT((int)s7_cmd0_1072, 0x1010);
         printf("test_frontend: task3b entry post-LCG %08x, cmd0@1072 %04x\n",
                (unsigned)s7_entry_post, (unsigned)s7_cmd0_1072);
         /* The Gate's first claim: the fight reaches the state-7 900-frame timer

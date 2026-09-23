@@ -142,8 +142,13 @@ static u32 fight_dust_value(u32 side, u32 ch)
     return DSD(DS_000A8B14 + ch * 4u);
 }
 
-/* 0x496AC. The clamp the dust actor's +0x2C receives. The argument is the
- * loop's step (0x49568's [ESP], reloaded at 0x49629), not the y. */
+/* 0x496AC. The clamp the dust actor's +0x2C receives. The argument is the y:
+ * 0x49629/0x49642 read `[ESP+0x4]` after 0x2AE14's `RET 0x4` (0x2B14A) has
+ * popped the 0x49603 `PUSH 0x0`, so ESP is back at the frame base and
+ * `[ESP+0x4]` is the value 0x49605 wrote (`ESP=S-4`, `[ESP+8]` = EBX = the y of
+ * 0x49601). The step lives at `[ESP]` (0x495F9) and is not read here. The
+ * original's entries confirm it: `entry+0x1a` = 0x0a49/0x0848/0x0a80/0x082d
+ * and `actor+0x2c` = 0xc5b/0xd5c/0xc40/0xd69 = the raw's `(0xb00-y)>>1 + 0xc00`. */
 static u16 fight_dust_clamp(u32 v)
 {
     if (v > 0xaffu) return 0xc00u;
@@ -208,10 +213,10 @@ void fight_dust_build(u32 side)
          * DS_001088B2/DS_0010889E tables with it. */
         DSB(entry + 0x21u) = (u8)side;          /* 0x49626 */
         DSD(entry + 0x0Cu) = slot;              /* 0x4962D */
-        DSW(actor + 0x2Cu) = fight_dust_clamp(step);   /* 0x49638 */
+        DSW(actor + 0x2Cu) = fight_dust_clamp(y);      /* 0x49638 */
         DSW(entry + 0x1Cu) = 0;                 /* 0x4963C */
         DSD(entry + 0x10u) = 0;                 /* 0x49646 */
-        DSW(entry + 0x1Au) = (u16)step;         /* 0x4964D */
+        DSW(entry + 0x1Au) = (u16)y;            /* 0x4964D */
         if (DSB(rec + 0x51u) != 0u) {           /* 0x49651 */
             DSW(actor + 0x2Eu) += 4;            /* 0x4965C */
             DSB(actor + 0x4Eu) = 1;             /* 0x49664 */
