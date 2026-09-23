@@ -73,18 +73,72 @@ int fighter_actor_bit15_clear(u32 side)
     return (DSW(actor) & 0x8000u) == 0;
 }
 
+/* 0x18540. The per-side screen anchor DS_00100AF0[side]: the slot's actor
+ * sprite id (its low 15 bits) minus the character's camera-x constant
+ * (0xE39D0/0xECBD8/0xD2134/0xEA604/0xD3E08/0xE061C, table 0x18524; the >6
+ * default 0xE6DD0), clamped to 0 when negative or at/over 0xE6DB4[char]. The
+ * raw's 0x18460 call is effect-free in this build: its 0x18428 dispatch's
+ * 0x1840C table resolves to 0x18408 (0x18350's epilogue), so it writes
+ * nothing (the port's fixup-applied mem[] holds the seven 0x18408 entries). */
+static void fighter_18540(u32 side)
+{
+    u32 slot = DSD(DS_001077A8 + side * 4u);            /* 0x18546 */
+    if (slot == 0) return;                              /* 0x1854F */
+    u32 ch = (u32)DSB(slot + 0x7Au);                    /* 0x18555 */
+    u32 cam;
+    switch (ch) {                                       /* 0x18561 table 0x18524 */
+    case 1u: cam = (u32)DSW(0x000E39D0u); break;
+    case 2u: cam = (u32)DSW(0x000ECBD8u); break;
+    case 3u: cam = (u32)DSW(0x000D2134u); break;
+    case 4u: cam = (u32)DSW(0x000EA604u); break;
+    case 5u: cam = (u32)DSW(0x000D3E08u); break;
+    case 6u: cam = (u32)DSW(0x000E061Cu); break;
+    default: cam = (u32)DSW(0x000E6DD0u); break;        /* char 0 and >6 */
+    }
+    u32 sprite = (u32)DSW(DSD(DS_001014EC)
+        + (u32)DSW(DSD(slot) + 0x56u) * 0x20u) & 0x7FFFu;   /* 0x185BB */
+    s32 anchor = (s32)sprite - (s32)cam;                /* 0x185DB */
+    DSD(0x00100AF0u + side * 4u) = (u32)anchor;         /* 0x185E4 */
+    if (anchor < 0 || (u32)anchor >= DSD(0x000E6DB4u + ch * 4u))
+        DSD(0x00100AF0u + side * 4u) = 0;               /* 0x18617 */
+}
+
+/* 0x18350. The per-side screen offset DS_00100AB0/AB4[side*8]: the signed byte
+ * pair at the character's anchor-indexed table (0xCEB00/0xCF399/0xCFC32/0xD033B/
+ * 0xD0A44, table 0x18334), the x negated when the actor's bit 15 is set, both
+ * scaled by 64. */
+static void fighter_18350(u32 side, u32 anchor)
+{
+    u32 ch = (u32)DSB(DS_001077B0 + side * 0x94u + 0x7Au);   /* 0x1835F */
+    const u8 *p;
+    switch (ch) {                                       /* 0x18384 table 0x18334 */
+    case 0u: p = mem + 0x000CEB00u + anchor * 2u; break;
+    case 1u: p = mem + 0x000CF399u + anchor * 2u; break;
+    case 2u: p = mem + 0x000CFC32u + anchor * 2u; break;
+    case 3u: p = mem + 0x000D033Bu + anchor * 2u; break;
+    case 4u: p = mem + 0x000D0A44u + anchor * 2u; break;
+    case 5u: p = mem + 0x000CEB00u + anchor * 2u; break;
+    default: p = mem + 0x000CF399u + anchor * 2u; break;   /* char 6 */
+    }
+    DSD(0x00100AB0u + side * 8u) = (u32)(s32)(s8)p[0];   /* 0x183BA */
+    DSD(0x00100AB4u + side * 8u) = (u32)(s32)(s8)p[1];   /* 0x183C4 */
+    if (fighter_actor_bit15_clear(side) == 0)            /* 0x183CC */
+        DSD(0x00100AB0u + side * 8u) = (u32)(-(s32)DSD(0x00100AB0u + side * 8u));
+    DSD(0x00100AB0u + side * 8u) <<= 6;                  /* 0x183F1 */
+    DSD(0x00100AB4u + side * 8u) <<= 6;                  /* 0x183F4 */
+}
+
 /* 0x186D0. The slot position latch (the game_frame tail's 0x25438 call). */
 void fighter_slot_latch(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;
     u32 rec = DSD(slot);                            /* 0x186F3/0x18702 */
     if ((DSB(slot + 0x42u) & 0x08u) == 0) {         /* 0x186E6 */
-        /* PORT: 0x18627 0x18540(side) and 0x1864D 0x18350(side, anchor) — the
-         * screen-anchor path is a named gap (§6.3); the anchor compare and the
-         * +0x100AB0/+0x100AB4 offsets are transcribed. */
+        fighter_18540(side);                        /* 0x18627 */
         u32 anchor = DSD(DS_00100AF0 + side * 4u);
         if (anchor != DSD(slot + 0x20u)) {
             DSD(slot + 0x20u) = anchor;             /* 0x18645 */
+            fighter_18350(side, anchor);            /* 0x1864D */
         }
         DSD(slot + 0x2Cu) = DSD(rec + 0x18u) + DSD(DS_00100AB0 + side * 8u);
         DSD(slot + 0x30u) = DSD(rec + 0x1Cu) + DSD(DS_00100AB4 + side * 8u);

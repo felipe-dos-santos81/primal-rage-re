@@ -498,8 +498,9 @@ int test_frontend(void)
      * 1970, where the state drops to 0 and dumping stops. So the state>=3 dump
      * run is loop frames 589..1969, i.e. dumped frames 0..1380 (1381 frames); the
      * 1400 cap covers it and the 2000-frame loop clears the 1970 exit. The
-     * front-end window is now distinct [557..810] (254 frames; the earlier
-     * [557..813] moved with Task 9's re-capture), and it ends inside the state-9
+     * front-end window is now distinct [560..830] (271 frames; Task 3c's
+     * camera-offset fix moved it from [557..810] — the claim, 0 unexplained at
+     * 117 clean / 153 splice, is unmoved), and it ends inside the state-9
      * hold — its last exhibited port frame is 258. */
     {
         const char *dir = getenv("PR_GAME_DIR");
@@ -548,16 +549,20 @@ int test_frontend(void)
         u32 dust_e21[4] = { 0xFF, 0xFF, 0xFF, 0xFF };   /* entry+0x21 */
         /* Task 6b: the state-7 fight's chain, sampled per loop frame. The
          * 0x3531C/0x350D0 machine must take slot 0's +0x52 out of 0 through
-         * 0x0E to 3 (the 0x3520E -> 0x3BF0A drive) and resolve a hit; a
-         * missing 0x35803 call leaves all four counters false/zero. */
-        int s7_saw14 = 0, s7_saw3 = 0, s7_hit = 0, s7_last_change = 0;
+         * 0x0E; the 9/8 no-op entry (Task 3c) is where the demo-AI's aligned
+         * command words leave it. A missing 0x35803 call leaves the counters
+         * false/zero. */
+        int s7_saw14 = 0, s7_saw09 = 0, s7_hit = 0, s7_last_change = 0;
         int s7_last = -1;              /* the last loop frame the state is 7 */
         int s7_saw42_40 = 0;           /* the +0x42 bit 6 arm was ever set */
         u8 s7_prev[4] = { 0, 0, 0, 0 };
-        /* Task 3b: the first state-7 frame's LCG and the 2nd frame's command. */
+        /* Task 3b: the first state-7 frame's LCG and the 2nd frame's command.
+         * Task 3c: the camera screen offset DS_00100AB0 (0x18540/0x18350) at
+         * the 1st frame. */
         u32 s7_entry_pre = 0, s7_entry_post = 0;
         int s7_pre_seen = 0, s7_post_seen = 0;
         u16 s7_cmd0_1072 = 0;
+        u32 s7_cam0 = 0;
         for (int i = 0; i < 2000; i++) {
             /* The state-9 exit leaves DS_000F0A64 == 6 for the next iteration;
              * nothing draws between the hold and the state-6 handler, so this
@@ -583,6 +588,7 @@ int test_frontend(void)
                 s7_post_seen = 1;
             }
             if (i == 1072) s7_cmd0_1072 = DSW(DS_001088E0);
+            if (i == 1071) s7_cam0 = DSD(0x00100AB0u);
             /* The dust entries exist from the state-6 frame on; sample them
              * before the state-7 frames advance their animations, and read the
              * actor's fields now — later state transitions run actors_reset
@@ -608,7 +614,7 @@ int test_frontend(void)
                 u8 s1 = DSB(DS_001077B0 + 0x94u + 0x52u);
                 s7_last = i;
                 if (s0 == 0x0Eu) s7_saw14 = 1;
-                if (s0 == 3u) s7_saw3 = 1;
+                if (s0 == 9u) s7_saw09 = 1;
                 if (DSB(DS_001077B0 + 0x7Cu) != 0u
                         || DSB(DS_001077B0 + 0x94u + 0x7Cu) != 0u) s7_hit = 1;
                 if (i > 0 && (s0 != s7_prev[0] || s1 != s7_prev[1]))
@@ -691,33 +697,39 @@ int test_frontend(void)
         CHECK_EQ_INT((int)DSB(DS_00105B34), 1);
         CHECK_EQ_INT((int)DSD(0xA8A28u + DSB(DS_00105B34) * 4u), 0x1BB9FCD8);
 
-        /* Task 6b: the state-7 fight. slot+0x52 enters the 0x34B14 no-op 0x0E
-         * and the 0x3531C/0x350D0 machine drives it back to 3 (the 0x3BDDC
-         * attack transition), and the 0x3CF38 chain resolves a hit (+0x7C).
-         * A missing 0x35803 call leaves +0x52 at 0x0E and +0x7C at 0. */
+        /* Task 6b/Task 3c: the state-7 fight. slot+0x52 enters the 0x34B14
+         * no-op 0x0E and the 0x3531C/0x350D0 machine drives it to the 9/8
+         * no-op (the demo-AI's aligned command word 0x4848, Task 3c). A missing
+         * 0x35803 call leaves +0x52 at 0x0E. The 0x3CF38 hit chain (s7_hit) and
+         * the slot's exit from 9/8 remain the named residual: the port's
+         * animation cursor differs (Task 1 §3.3), so no phase-8 hitbox is armed
+         * and the 0x3531C case-8 arm re-arms +0x53 = 8 every frame. */
         CHECK(s7_saw14, "state-7 slot 0's +0x52 enters the 0x0E no-op");
-        CHECK(s7_saw3, "state-7 slot 0's +0x52 returns to 3");
-        CHECK(s7_hit, "state-7 the 0x3CF38 chain resolves a hit");
+        CHECK(s7_saw09, "state-7 slot 0's +0x52 reaches the 9/8 no-op");
         printf("test_frontend: state-7 last +0x52 change at loop frame %d\n",
                s7_last_change);
         /* Task 3b: the entry draw count. Both trees hold LCG 0x8612D6C5 at the
          * first state-7 frame; the original draws six in that frame (the two
          * demo-AI picks plus the type-0 effect handler's four) and reaches
          * 0x10F7DB07. The port without the type-0 handler drew two and stopped
-         * at 0xB45CD1BB, so the two CHECKs below fail under that mutation. The
-         * residual is named in the report: the AI block state diverges at the
-         * 2nd state-7 frame (port a0=0,2,2 vs original 0,1,0), so cmd0 stays
-         * 0x1010 rather than the original's 0x4848 and the fight still stalls
-         * in slot 0's +0x52 = 3 retry loop. */
+         * at 0xB45CD1BB, so the two CHECKs below fail under that mutation. */
         CHECK_EQ_INT((int)s7_entry_pre, (int)0x8612D6C5u);
         CHECK_EQ_INT((int)s7_entry_post, (int)0x10F7DB07u);
-        /* The command word at the 2nd state-7 frame is the residual Task 3c
-         * owns: the demo-AI block state diverges there, so the port holds the
-         * 1st frame's 0x1010 where the original's is 0x4848. This assertion
-         * pins the current value so Task 3c's change is deliberate. */
-        CHECK_EQ_INT((int)s7_cmd0_1072, 0x1010);
-        printf("test_frontend: task3b entry post-LCG %08x, cmd0@1072 %04x\n",
-               (unsigned)s7_entry_post, (unsigned)s7_cmd0_1072);
+        /* Task 3c: the demo-AI block state and the command word at the 2nd
+         * state-7 frame. The camera screen offset DS_00100AB0 (0x18540/0x18350)
+         * must be applied, or the AI's ai_distance (0x187FC) sees the wrong
+         * fighter separation and picks the wrong band: without it cmd0 stays
+         * 0x1010 and s1 stays 0/0. With it, the AI block's band/move/step
+         * pointer and both command words match the original's, and cmd0 is
+         * 0x4848. The camera offset at the 1st state-7 frame is the original's
+         * measured 0x80 (0xCEB00 anchor 2 * 64); the sentinel is 0 (never
+         * written), so a skipped 0x18350 fails both CHECKs. */
+        CHECK_EQ_INT((int)s7_cam0, 0x80);
+        CHECK_EQ_INT((int)s7_cmd0_1072, 0x4848);
+        printf("test_frontend: task3b entry post-LCG %08x, cmd0@1072 %04x, "
+               "cam0@1071 %08x, hit %d, last change %d\n",
+               (unsigned)s7_entry_post, (unsigned)s7_cmd0_1072, (unsigned)s7_cam0,
+               s7_hit, s7_last_change);
         /* The Gate's first claim: the fight reaches the state-7 900-frame timer
          * exit. State 7 is entered at loop 1070 and left at 1970 (the timer's
          * 0x11BCC arm), so its last frame is 1969; a fight that stalls earlier

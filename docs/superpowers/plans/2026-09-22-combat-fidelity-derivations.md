@@ -588,3 +588,78 @@ record is therefore:
   `fighter_39040`), `game/flow.c` (`game_state_6`), `platform/gfx.c`
   (`gfx_flush_palette`, `palette_record`), `platform/res.c`
   (`res_load_present`), `tests/test_frontend.c` (the `DS_0010816A` seed).
+
+---
+
+## 9. Task 3c — the screen-anchor/offset (the demo-AI's distance input)
+
+### 9.1 The divergence and its first frame
+
+Task 3b aligned the state-7 entry's LCG but the demo-AI command words still
+diverged: at the **2nd** state-7 frame (loop 1072) the port's `cmd0` was `0x1010`
+and its slot 1 was `00/00`, where the original's were `0x4848` and `09/08`. The
+first divergence is one frame earlier: at loop 1071 the port's `cmd1` was
+`0x0000` and slot 1 `00/00`, the original's `0x0002` / `09/08`, with the AI
+blocks matching (`b1` state 2, weight `0x82`). So the AI's *input* differed, not
+its logic: `ai_pick`'s band (port `+0x2D=02`, original `01`) came from a
+different `ai_distance` (0x187FC = `slot0+0x2C - slot1+0x2C`).
+
+### 9.2 The owner: `0x18540`/`0x18350`, the port's named gap
+
+`slot+0x2C` is the latched screen position, not the record's world x:
+`0x186D0` (`fighter_slot_latch`) sets
+`slot+0x2C = rec+0x18 + DS_00100AB0[side*8]`. Measured on the live original
+(`/tmp/t3c_pos.py`): at the state-6 frame `rec+0x18 = -6144/6144` — **the same as
+the port's** — while `lat = -5824/5888`, the difference being the camera offsets
+`DS_00100AB0 = 0x140 / 0xFFFFFF00`. The port transcribed the `+0x100AB0/AB4`
+reads but left `0x18627 0x18540(side)` and `0x1864D 0x18350(side, anchor)` as a
+named gap (§6.3 of the cycle-2 record), so its offsets stayed 0.
+
+* **`0x18540(side)`** (229 B) seeds `DS_00100AF0[side]` = the slot's actor word
+  (`DSW(DSD(0x1014EC) + DSW(rec+0x56)*0x20) & 0x7FFF`) minus the character's
+  camera constant — the jump table `0x18524` maps char **0 and >6 to the default**
+  `0xE6DD0`, char 1..6 to `0xE39D0/0xECBD8/0xD2134/0xEA604/0xD3E08/0xE061C`
+  (the same mapping as `camera_char_const`), clamped to 0 when negative or at/over
+  `0xE6DB4[char]`.
+* **`0x18350(side, anchor)`** (185 B) writes `DS_00100AB0/AB4[side*8]` from the
+  character's anchor-indexed signed-byte pair — the jump table `0x18334` maps
+  char 0/5 and >6 to `0xCEB00`, char 1/6 to `0xCF399`, char 2/3/4 to
+  `0xCFC32/0xD033B/0xD0A44` — the x negated when the actor's bit 15 is set
+  (`0x1A570`), both shifted left 6.
+* `0x18460` (193 B) and `0x18428` (27 B) are **effect-free in this build**: the
+  `0x1840C` jump table resolves to `0x18408` (`0x18350`'s epilogue), so the
+  `0x18428` dispatch writes nothing (the port's fixup-applied `mem[]` holds the
+  seven `0x18408` entries, read back from the test driver).
+
+### 9.3 The measured effect
+
+With the gap ported, the camera offsets match the original's frame by frame
+(`/tmp/t3c_pos.py` vs the port's `PR_T3C_TRACE`): `0x140/0xFFFFFF00` (state-6),
+`0x80/0` (frame 1), `0, 0x880/0xFFFFF9C0`, …; the AI block's band/move/step
+pointer match (`b0 +0x2D=0x0F, +0x2E=0x41, +0x1C` → VA `0x8AB7C`); and both
+command words match (`cmd0 = 0x4848` at loop 1072, `cmd1 = 0x0002` at 1071).
+
+### 9.4 The residual (a named gap)
+
+The port's slots reach the original's `+0x52=9, +0x53=8` no-op at loop 1072 but do
+**not** advance to the original's `+0x52=0x10, +0x53=0x0A` (measured original,
+`/tmp/t3c_64.py`). `+0x52=9` is a table no-op and `slot+0x64` is `0xFF` in **both**
+trees (so `0x3B464`'s think chain returns at `0x3B49F` in both — the port's
+comment stands), so the transition is not the think chain: the `+0x53=8` arm
+(`0x3531C` case 8, `0x354BC`) re-arms `+0x53=8` every frame because
+`hit_chain_resolve` (`0x3CF38`) returns 0 — no phase-8 hitbox is armed, because
+the port's animation cursor differs (Task 1 §3.3, Task 4's pose gap). The
+`+0x52=0x10` writers are the `0x3A504/0x3A650/0x3A79C/0x3A8E8/0x3A95C` family
+(and `0x235C4`/`0x39F40`/`0x3C358`), i.e. the pose machine, not the AI. **The
+residual is a separate subsystem; the demo-AI block state and the command words
+match.**
+
+### 9.5 Provenance (Task 3c)
+
+`ghidra_read_memory` at `0x18524`/`0x1840C`/`0x18334`/`0xE39D0`/`0xEA604`/
+`0xE6DB4`/`0xE6DD0`/`0xA1774`/`0xCEB00`/`0xD033B`; `ghidra_disassemble_function`
+at `0x18540`/`0x186D0`/`0x18460`/`0x18428`/`0x18350`; live measurements
+`/tmp/t3c_pos.py` (the camera offsets and `rec+0x18`) and `/tmp/t3c_64.py`
+(`slot+0x64`/`+0x5F`); the port's env-gated `PR_T3C_TRACE` dump (reverted). The
+front-end oracle's window moved `[557..810]` → `[560..830]`; its claim
+(`0 unexplained`, 271: 117 clean / 153 splice) is unmoved.

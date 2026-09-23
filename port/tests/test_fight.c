@@ -971,6 +971,8 @@ static void check_slot_latch(void)
 
     DSB(DS_001077B0 + 0x42u) = 0;               /* bit 3 clear: the anchor sum */
     DSB(DS_001077B0 + 0x41u) = 0;
+    DSD(DS_001077A8) = 0;                       /* 0x18540's slot read: early out */
+    DSD(DS_00100AF0) = DSD(DS_001077B0 + 0x20u);/* anchor unchanged: no 0x18350 */
     DSD(DS_00100AB0) = 0x10u;
     DSD(DS_00100AB4) = 0x20u;
     DSD(p0 + 0x18u) = 0x100u;
@@ -978,6 +980,35 @@ static void check_slot_latch(void)
     fighter_slot_latch(0u);
     CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x2Cu), 0x110);
     CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x30u), 0x220);
+
+    /* 0x18540/0x18350: the screen anchor and offset. With the side's slot live
+     * and the camera path (bit 3 clear), 0x18540 seeds DS_00100AF0[side] from
+     * the actor's low 15 bits minus the character's camera constant (char 0 ->
+     * the >6 default 0xE6DD0 = 3812) and 0x18350 writes the anchor-indexed
+     * table pair (0xCEB00 = (-5, 52)), the x negated when the actor's bit 15 is
+     * set, both scaled by 64. A sprite of 3815 gives anchor 3, so AB0 = 5*64 =
+     * 320 and AB4 = 52*64 = 3328. The seeded sentinels (0xDEADBEEF) differ from
+     * every post-condition, and a skipped 0x18540/0x18350 leaves them. */
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSD(DS_001077A8) = DS_001077B0;             /* the slot 0x18540 classifies */
+    DSB(DS_0010782A) = 0;                       /* slot+0x7A: char 0 */
+    DSW(p0 + 0x56u) = 1;                        /* actor index */
+    DSW(FIGHT_ACTORS + 1u * 0x20u) = 0x8EE7u;   /* sprite 3815, bit 15 set */
+    DSB(DS_001077B0 + 0x42u) = 0;               /* bit 3 clear: the camera path */
+    DSB(DS_001077B0 + 0x41u) = 0;
+    DSD(DS_001077B0 + 0x20u) = 0xDEADBEEFu;     /* differs from the anchor */
+    DSD(DS_00100AF0) = 0xDEADBEEFu;
+    DSD(DS_00100AB0) = 0xDEADBEEFu;
+    DSD(DS_00100AB4) = 0xDEADBEEFu;
+    DSD(p0 + 0x18u) = 0x100u;
+    DSD(p0 + 0x1Cu) = 0x200u;
+    fighter_slot_latch(0u);
+    CHECK_EQ_INT((int)DSD(DS_00100AF0), 3);
+    CHECK_EQ_INT((int)DSD(DS_00100AB0), 320);
+    CHECK_EQ_INT((int)DSD(DS_00100AB4), 3328);
+    CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x20u), 3);         /* the latch stores it */
+    CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x2Cu), 0x240);
+    CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x30u), 0xF00);
 }
 
 /* 0x11A8C: state 6. Fourteen draws from the shared stream — rng(7) at 0x11AAD,
