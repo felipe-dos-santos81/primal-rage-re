@@ -669,6 +669,13 @@ command words match (`cmd0 = 0x4848` at loop 1072, `cmd1 = 0x0002` at 1071).
 
 ### 9.4 The residual (a named gap)
 
+> **Task 4 correction (§10.1/§10.3): this section's mechanism is refuted.** The
+> `0x3531C` case 8 `+0x53 = 8` arm does **not** re-arm every frame (its
+> `word[0xBDBE8]=3 <= slot+0x88` gate at `0x35498` returns after 3 frames), and
+> the port's animation cursor does **not** differ (it matches the original's
+> `0xD2316` at the 9/8 entry). The residual is the unported
+> `0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC` → pose-family chain; see §10.
+
 The port's slots reach the original's `+0x52=9, +0x53=8` no-op at loop 1072 but do
 **not** advance to the original's `+0x52=0x10, +0x53=0x0A` (measured original,
 `/tmp/t3c_64.py`). `+0x52=9` is a table no-op and `slot+0x64` is `0xFF` in **both**
@@ -751,10 +758,24 @@ The pose family's `+0x52 = 0x10` writers are reached only through this chain
   (`0x19720 CMP [0x100AF8],0; ... 0x1974D CALL 0x193B0`), gated on
   `DS_00100AF8 != 0 && DSB(0x10783A) != 0` (side 0) or the `AFC`/`0x1078CE` pair
   (side 1).
-* `DS_00100AF8[side]` is written by **`0x19020(side)`** (`0x19020` calls the
-  callback at `slot[side]+0x18` and sets `DS_00100AF8[side] = (result == 0)`).
-  `0x19020` is the port's named gap at `fighter.c:287`. `slot+0x18` is set to
-  `0x3FD30` by `0x3FF08` (Task 3b's closer chain, `0xA50C0`/`0x3FFDC`).
+* `DS_00100AF8[side]` has **three** writers (a Task 4 fix-round-1 correction;
+  `ghidra_get_xrefs_to 0x100AF8`):
+  * **`0x19020(side)`** (`0x1904C`/`0x1905C`): calls the callback at
+    `slot[side]+0x18` and sets `DS_00100AF8[side] = (result == 0)`. `0x19020` is
+    the port's named gap at `fighter.c:287`; `slot+0x18` is set to `0x3FD30` by
+    `0x3FF08` (Task 3b's closer chain, `0xA50C0`/`0x3FFDC`).
+  * **`0x170A0`** (`0x1756F`): `MOV [EBP*4 + 0x100AF8], EAX` with
+    `EAX = [0x100B54]` (`0x1756A`). `0x170A0`'s only caller is `0x17580`, which
+    calls it once per side (`0x176AC` EAX=0, `0x176BF` EAX=1); `0x17580`'s
+    callers include `0x26254` (`0x262E9`).
+  * **`0x36870`** (`0x36928`) and **`0x385B0`** (`0x38625`) zero the entry.
+
+  **The operational conclusion survives** (`FUN_00026254`'s frame order:
+  `0x262E9 CALL 0x17580` → `0x262EE CALL 0x1958C`): `0x17580`/`0x170A0`'s write
+  runs **before** `0x1958C`, and `0x1958C` calls `0x19020` at `0x195B6` inside
+  its loop **before** the tail gate reads `AF8` at `0x19632` — so the gate reads
+  `0x19020`'s value, and in the port (where `0x19020` is unported, so it never
+  runs) nothing sets `AF8` non-zero.
 
 **So the freeze's remaining layer is the `0x19020`/`0x3Fxxx` closer chain
 (Task 3b's re-scoped subsystem) feeding `0x193B0`/`0x3B714`/`0x3AAFC` and the
@@ -774,13 +795,22 @@ not the RNG (`0x5Dxxx`), not the five known stubs, and not named anywhere in
 | `0x3FD30` + `0x3FF08` + `0x3FFDC` (the closer script) | 303 / 44 324 B | 45 / 5 623 B |
 | **union** | 345 / 51 648 B | **68 funcs / 10 467 B** |
 
-The union's genuinely-new work is **68 functions / 10 467 bytes** (of which
+**The "new" heuristic undercounts (a Task 4 fix-round-1 caveat): it treats a
+function merely *named in a comment* as ported.** `0x193B0` (475 B, a closure
+root) and `0x19020` (70 B) are **unported** — they are excluded only because
+`fighter.c:287`/`:354` and `fighter.h:39-41` name them as named gaps. So the
+true genuinely-new work is **≥ 11 012 B** (10 467 + 545). The size conclusion is
+unaffected.
+
+The union's genuinely-new work is **68 functions / ≥ 10 467 bytes** (of which
 `0x18C14` 1035, `0x392A0` 907, `0x3AAFC` 667, `0x3B714` 449, `0x385B0` 384,
 `0x3A0FC` 355, `0x3AE9C` 294, `0x38ED0` 284, `0x192DC` 212, `0x19164` 198, the
-five pose-family members 116 each, …). **Size case: the closure is materially
-larger than a task** — ~2.4× the handler tail's 36 / 4 335 (§2.4) and ~3.3×
-cycle 2's `+0x53` machine (26 / 3 153). Task 3b's first attempt already scoped the
-closer chain at 15–20 funcs / ~3–4 KB and was re-scoped for the same reason.
+**four** 116-B pose-family members `0x3A504`/`0x3A650`/`0x3A79C`/`0x3A8E8`, …).
+`0x3A95C` is **122 B** and is **not** in the closure (its only caller `0x3B464`
+is unreachable in the demo). **Size case: the closure is materially larger than
+a task** — ~2.4× the handler tail's 36 / 4 335 (§2.4) and ~3.3× cycle 2's
+`+0x53` machine (26 / 3 153). Task 3b's first attempt already scoped the closer
+chain at 15–20 funcs / ~3–4 KB and was re-scoped for the same reason.
 **Task 4 triggers the brief's Step-1 size gate: no port was landed.**
 
 ### 10.5 The measured effect on the arena (no code landed)
