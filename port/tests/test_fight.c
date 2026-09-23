@@ -2069,6 +2069,165 @@ static void check_state_handlers(void)
     CHECK_EQ_INT(fighter_1a640(0u), 0);
 }
 
+/* The five remaining +0x52 handlers (record §1). Each case seeds the inputs the
+ * handler reads plus a sentinel that differs from the raw's post-value, so a
+ * dropped store fails. The data tables the handlers read are seeded because the
+ * unit process has no image loaded, and the seeded scalars are restored. */
+static void check_gap_handlers(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    u8 s_max = DSB(DS_000BDA3E);
+    u32 s_left = DSD(DS_000BDBEC);
+    u16 s_base = DSW(DS_001078DC);
+    u8 s_mem1000 = DSB(0x00001000u);
+
+    /* A: 0x35D20 (+0x52 = 2). +0x54 == 4 raises DS_001078FE; +0x52 -> 9 and
+     * +0x43 bits 0/1 are cleared; +0x53 survives only at 0x0D. */
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSB(s0 + 0x52u) = 0xFFu;
+    DSB(s0 + 0x43u) = 0xFFu;
+    DSB(s0 + 0x53u) = 0x05u;
+    DSB(s0 + 0x54u) = 4u;
+    DSB(DS_001078FE) = 0;
+    fighter_state_35d20(s0, r0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0xFC);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0);
+    CHECK_EQ_INT((int)DSB(DS_001078FE), 1);
+
+    /* B: 0x35C1C (+0x52 = 2). A negative step underflows the frame to max-1
+     * (max = byte[0xBDA3E]); the clamp returns 1 and sets +0x29 bit 8, and the
+     * tail sets +0x28 bit 4. max is seeded to 4 so the seek index stays in
+     * mem[] (the unit process has no image). */
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSB(DS_000BDA3E) = 4;
+    DSB(s0 + 0x43u) = 0;
+    DSB(r0 + 0x52u) = 0;
+    DSB(r0 + 0x58u) = 0xFFu;                    /* step -1 */
+    DSB(r0 + 0x29u) = 0;
+    DSB(r0 + 0x28u) = 0;
+    DSB(r0 + 0x56u) = 0;
+    CHECK_EQ_INT(fighter_state_35c1c(s0, r0), 1);
+    CHECK_EQ_INT((int)DSB(r0 + 0x52u), 3);      /* max - 1 */
+    CHECK_EQ_INT((int)DSB(r0 + 0x29u) & 8, 8);
+    CHECK_EQ_INT((int)DSB(r0 + 0x28u) & 4, 4);
+
+    /* C: 0x359E0 (+0x52 = 1). Command 0x2000 makes 0x1A5D4 non-zero and +0x43
+     * bit 1 lets the pass tail run: the per-char x delta (0xBDBEC >> 16 = 3)
+     * moves rec+0x18, 0x35C1C clamps the frame, and +0x4C = the frame byte << 6
+     * is handed to 0x1883C (which adds it to +0x2C). +0x42 bit 3 makes the
+     * 0x1883C latch / hit_record_x round-trip rec+0x18 unchanged. */
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSB(s0 + 0x42u) = 8;                        /* the latch short path */
+    DSB(s1 + 0x42u) = 8;
+    DSW(DS_001088E0) = 0x2000u;                 /* 0x1A5D4 != 0 */
+    DSB(s0 + 0x43u) = 2;                        /* the +0x43 bit 1 gate */
+    DSB(s0 + 0x41u) = 0x40;
+    DSB(DS_000EF6DC) = 1;
+    DSB(s0 + 0x7Au) = 0;
+    DSD(DS_000BDBEC) = 0x00030000u;             /* d = 3 */
+    DSB(DS_000BDA3E) = 4;                       /* max, for 0x35C1C */
+    DSD(r0 + 0x18u) = 0x400u;
+    DSD(r0 + 0x1Cu) = 0x2222u;
+    DSB(r0 + 0x52u) = 0;
+    DSB(r0 + 0x58u) = 0;
+    DSW(r0 + 0x28u) = 0;
+    DSB(r0 + 0x29u) = 0;
+    DSD(r0 + 0x0Cu) = 0x1000u;                  /* the frame byte table */
+    DSB(0x00001000u) = 5;                       /* (s8)5 << 6 = 0x140 */
+    DSD(s0 + 0x2Cu) = 0;
+    DSD(s0 + 0x30u) = 0;
+    DSB(r0 + 0x56u) = 0;
+    fighter_state_359e0(s0, r0, 0u);
+    CHECK_EQ_INT((int)DSW(s0 + 0x4Cu), 0x140);  /* (s8)5 << 6 */
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x3FD);  /* 0x400 - 3, round-tripped */
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x3FD + 0x140);   /* 0x1883C added +0x4C */
+    CHECK_EQ_INT((int)DSB(r0 + 0x28u) & 4, 4);  /* 0x35C1C ran */
+
+    /* D: 0x37464 (+0x52 = 8). base = word[0x1078DC] = 0x10; 0x1A570(other) != 0
+     * so X = Fo[0x18] - base = 0xF0; |F[0x18] - X| = 0x10 <= 0x200 takes case 0,
+     * writing +0x52 = 9 and rec+0x18 = X. */
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSW(DS_001078DC) = 0x10;                    /* base */
+    DSB(s0 + 0x57u) = 0;
+    DSB(s0 + 0x7Au) = 0;
+    DSB(s1 + 0x7Au) = 0;
+    DSD(r0 + 0x18u) = 0x100u;
+    DSD(r1 + 0x18u) = 0x100u;
+    DSB(r0 + 0x56u) = 0;
+    DSB(r1 + 0x56u) = 0;
+    DSB(DS_000BDA3E) = 4;                       /* max, for 0x35B7C */
+    DSB(r0 + 0x52u) = 0;
+    DSB(r0 + 0x58u) = 0;
+    DSB(s0 + 0x43u) = 0;
+    DSB(s0 + 0x53u) = 0;
+    fighter_state_37464(0u);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0xF0);   /* X = Fo[0x18] - base */
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+
+    /* E: 0x33B00 (+0x52 = 19). The slot's 0x94 bytes come from `src` and its
+     * actor's 0x68 bytes from `dst2`, with +0x5A/+0x5D and the actor's first two
+     * dwords restored; +0x08 non-zero also sets +0x64 = 0xFF. */
+    (void)tf_hit_fixture(0);
+    {
+        u32 src = 0x00107BD0u, dst2 = 0x00107B00u, act = 0x3F50000u;
+        mem_fill(src, 0x33u, 0x94u);
+        mem_fill(dst2, 0x66u, 0x68u);
+        mem_fill(act, 0x77u, 0x68u);
+        DSD(src + 0u) = act;                    /* the new actor pointer */
+        DSD(src + 8u) = 0x12345678u;            /* +0x08 -> the +0x64 reset */
+        DSD(dst2 + 0u) = 0xAAAAAAAAu;           /* overwritten by f0 */
+        DSD(dst2 + 4u) = 0xBBBBBBBBu;           /* overwritten by f1 */
+        DSD(act + 0u) = 0xDEADBEEFu;            /* f0 */
+        DSD(act + 4u) = 0xCAFEBABEu;            /* f1 */
+        DSB(s0 + 0x5Au) = 0x11u;                /* the saved +0x5A */
+        DSB(s0 + 0x5Du) = 0x22u;                /* the saved +0x5D */
+        fighter_state_33b00(0u, src, dst2);
+        CHECK_EQ_INT((int)DSD(s0 + 0u), (int)act);        /* the slot copy */
+        CHECK_EQ_INT((int)DSB(s0 + 0x33u), 0x33);         /* a mid-slot byte */
+        CHECK_EQ_INT((int)DSB(s0 + 0x5Au), 0x11);         /* restored */
+        CHECK_EQ_INT((int)DSB(s0 + 0x5Du), 0x22);         /* restored */
+        CHECK_EQ_INT((int)DSB(s0 + 0x64u), 0xFF);         /* +0x08 was set */
+        CHECK_EQ_INT((int)DSD(s0 + 0x08u), 0);            /* +0x08 cleared */
+        CHECK_EQ_INT(DSD(act + 0u), 0xDEADBEEFu);         /* F[0] restored */
+        CHECK_EQ_INT(DSD(act + 4u), 0xCAFEBABEu);         /* F[1] restored */
+        CHECK_EQ_INT((int)DSD(act + 8u), 0x66666666u);    /* mid-actor dword */
+    }
+
+    /* F: 0x35E6C (+0x52 = 20). Command 0 (0x3BDDC returns 0) reaches the body:
+     * +0x52 -> 9, +0x53/+0x54 cleared, +0x84 incremented, +0x92 cleared and
+     * +0x41 bit 0x80 set. */
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSB(r0 + 0x51u) = 0;
+    DSW(DS_001088E0) = 0;
+    DSB(s0 + 0x41u) = 0;
+    DSB(s0 + 0x52u) = 0;
+    DSB(s0 + 0x53u) = 0xFFu;
+    DSB(s0 + 0x54u) = 0xFFu;
+    DSW(s0 + 0x84u) = 0;
+    DSW(s0 + 0x92u) = 0xFFu;
+    DSB(s0 + 0x7Au) = 0;
+    DSB(r0 + 0x56u) = 0;
+    fighter_state_35e6c(s0, r0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSW(s0 + 0x84u), 1);
+    CHECK_EQ_INT((int)DSW(s0 + 0x92u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x41u) & 0x80, 0x80);
+
+    DSB(DS_000BDA3E) = s_max;
+    DSD(DS_000BDBEC) = s_left;
+    DSW(DS_001078DC) = s_base;
+    DSB(0x00001000u) = s_mem1000;
+}
+
 /* Task 6b wiring: fight_hud_pass's 0x35803 call drives +0x52 out of the 0x0E
  * no-op through 0x3531C -> 0x350D0 -> 0x3BDDC. Seeded +0x52 = 0x0E differs
  * from the post-condition 3, and +0x54 = 0x55 from 2. */
@@ -2226,6 +2385,7 @@ int test_fight(void)
     check_hit_helpers();
     check_state_machine();
     check_state_handlers();
+    check_gap_handlers();
     check_hud_pass_machine();
     check_anim_stream_args();
 

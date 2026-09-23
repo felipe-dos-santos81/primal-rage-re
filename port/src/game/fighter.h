@@ -113,6 +113,15 @@ void fighter_state_399cc(u32 side);                      /* 0x399CC, +0x52=7 */
 void fighter_state_36430(u32 slot, u32 rec, u32 side);   /* 0x36430, +0x52=5 */
 void fighter_state_364fc(u32 slot, u32 rec, u32 side);   /* 0x364FC, +0x52=21 */
 
+/* The five remaining 0x34B14 +0x52 handlers (record §1). One C function per
+ * original; the entry addresses are the table's 0x34B14 entries. */
+void fighter_state_359e0(u32 slot, u32 rec, u32 side);   /* 0x359E0, +0x52=1 */
+int  fighter_state_35c1c(u32 slot, u32 rec);             /* 0x35C1C, +0x52=2 */
+void fighter_state_35d20(u32 slot, u32 rec);             /* 0x35D20, +0x52=2 */
+void fighter_state_37464(u32 side);                      /* 0x37464, +0x52=8 */
+void fighter_state_33b00(u32 side, u32 src, u32 dst2);   /* 0x33B00, +0x52=19 */
+void fighter_state_35e6c(u32 slot, u32 rec);             /* 0x35E6C, +0x52=20 */
+
 /* 0x1A640. 0x1000 when this side's facing bit 0x4000 is clear and the command's
  * 0x1000 is set; 0x2000 in the mirror; else 0. The mirror of 0x1A5D4. */
 int fighter_1a640(u32 side);

@@ -839,6 +839,39 @@ slot base is `S = DS_001077B0 + side*0x94`; `F = DSD(S)`.
   `DSW(S+0x92)==0`, `S[0x41] & 0x80`. Mutation: revert the `S+0x84` increment →
   `0 != 1`.
 
+**Task-2 implementation corrections (the raw wins).** The recipes above are
+incomplete against the raw control flow and the unit process (which loads no
+image), so the shipped assertions in `port/tests/test_fight.c`
+(`check_gap_handlers`) seed more, and the two `0x35C1C`/`0x359E0` mutations
+differ:
+
+* **`0x35C1C`:** `max = DSB(0xBDA3E)` is 0 without the image, so the record's
+  seed (`F[0x52]=0`, `F[0x58]=0xFF`) clamps the frame to `max-1 = 0xFF` and the
+  raw's seek index `(s8)F[0x52]*2 = -2` reads `mem[-2]` — out of bounds. The
+  test seeds `DSB(0xBDA3E)=4` (max), so the frame clamps to 3 and the index is
+  `mem[6]`. The record's mutation ("revert the clamp") would crash on that same
+  `-2`; the shipped mutation writes `max` instead of `max-1` (index `mem[8]`)
+  and fails `3 != 4` at the frame assertion.
+* **`0x359E0`:** the record's seed leaves `0x1A5D4`/`0x1A640` zero and
+  `S[0x43]` bit 1 clear, so the raw takes the `0x35B7C` early return at
+  `0x35A5F` and never reaches the `S[0x4C]`/`F[0x18]` tail the assertion reads
+  (raw `0x35A2B`..`0x35A40` / `0x35A4A`..`0x35A5F`). The test sets command
+  `0x2000` (`0x1A5D4 != 0`, raw `0x1A5D4` reads the command's bit 0x2000),
+  `S[0x43] |= 2`, `DSD(0xBDBEC)=0x30000` (d = 3) and `S[0x42] |= 8` (so the
+  `0x1883C` latch and `0x18714` round-trip `rec+0x18` unchanged, letting the
+  assertion read the post-delta value). `mem[0x1000] = 5` makes the `<< 6`
+  visible; the mutation drops the shift.
+* **`0x33B00`:** the record's "swap the two sources" mutation makes the slot's
+  first dword the actor pointer `0xAAAAAAAA` and the next `memcpy` writes to
+  `0xAAAAAAAA` (out of bounds). The shipped mutation changes only the actor
+  copy's source (`mem + dst2` → `mem + src`), failing the actor's `+8` dword.
+* **`0x37464`:** the record's seed gives `base = 0` (no image), so the x
+  assertion is vacuous; the test seeds `DSW(0x1078DC) = 0x10`.
+* **`0x29BC8`/`0x18788`:** the plan's helper list omits `0x18788` (the raw
+  `0x18714` twin, `0x1883C`'s second callee) and `0x29BC8` (the record calls it
+  "ported" but the port had only inlined it in the spawn). Both are added as
+  `hit_record_y`/`fighter_29bc8` (one C function per original).
+
 ### 8.2 Task 3 — the deep callees (`port/tests/test_fight.c`)
 
 * **`0x385B0`:** seed `DS_00100AF8[side]=1`, `F[0x28]=0xFF`,
