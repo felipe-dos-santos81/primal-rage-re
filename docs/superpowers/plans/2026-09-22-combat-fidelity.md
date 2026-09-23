@@ -108,7 +108,7 @@ git commit -m "docs: derive the combat/render fidelity cycle"
 
 **Files:**
 - Modify: `port/tests/test_frontend.c` (the `DS_0010816A` seed at `:475-476`)
-- Modify: `port/src/platform/res.c` / `port/src/game/actors.c` (the loader flush scope, per record §4 — apply only what the record shows faithful)
+- Modify: `port/src/platform/res.c` / `port/src/game/actors.c` (the loader flush scope, per record §4 — §4.2 shows it separable as a code change but §4.3 measures it oracle-neutral, so it is fidelity-only; the human's ruling re-scoped Task 2 to the seed and the flush scope was **not landed** — a recorded gap)
 - Test: `port/tests/test_frontend.c`
 
 **Interfaces:**
@@ -135,7 +135,7 @@ Expected: FAIL — the driver seeds `0xFF`, so the variant is 0 and the handle i
 
 - [ ] **Step 3: Implement**
 
-Set the driver's seed to the original's value (BSS 0). Apply the loader flush scope only as far as record §4 shows it faithful — it is oracle-neutral (1382/1382 byte-identical frames), so a change there is for fidelity, not for the oracle.
+Set the driver's seed to the original's value (BSS 0). Record §4.2 finds the loader flush scope **separable as a code change**, but §4.3 measures it **oracle-neutral** (1381/1381 byte-identical dumped frames; `make demo-oracle`'s `res is None` fallback ignores the port), so it is fidelity-only. The human's ruling re-scoped Task 2 to the seed; the flush scope was therefore **not landed** — a recorded gap, not a claimed impossibility.
 
 - [ ] **Step 4: Run it to verify it passes**
 

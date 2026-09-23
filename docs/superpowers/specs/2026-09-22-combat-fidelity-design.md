@@ -214,8 +214,16 @@ faithful `+0x52` handlers (`0x35F84`/`0x36430`/`0x399CC`/`0x361C8`/`0x36300`/
 missing RNG draws (the type-0 effect handler `0x4AAD0`/`0x4B144` and its wiring —
 the entry LCG now reaches `0x10F7DB07`, matching); and the demo-AI block state
 (`0x18540`/`0x18350` — the command words now match: `cmd0@1072 = 0x4848`,
-`cmd1@1071 = 0x0002`). The loader flush scope got **no engine change**: the
-record (§4) shows no faithful standalone change.
+`cmd1@1071 = 0x0002`). The loader flush scope got **no engine change**, but not
+because no change exists: record §4.2 finds it **separable as a code change** — a
+distinct owner (`platform/res.c`'s `res_load_present`, `platform/gfx.c`'s
+`gfx_flush_palette`/`palette_record`, `game/flow.c`'s ordering) from the 831/832
+held-frame gap. §4.3 then measured it **oracle-neutral**: removing
+`text_blit_string`'s `gfx_flush_palette()` re-dumps 1381/1381 byte-identical
+frames, and `make demo-oracle`'s `res is None` fallback ignores the port. It is
+therefore a **fidelity-only** change. The human's ruling re-scoped Task 2 to the
+driver's palette-variant seed, so the flush scope was **not landed** — a recorded
+gap, not a claimed impossibility.
 
 **Named gaps carried out of the cycle.** 831/832's held-frame presentation (the
 post-read ISR ticks, a host property — un-derivable, so excluded, not fitted);
