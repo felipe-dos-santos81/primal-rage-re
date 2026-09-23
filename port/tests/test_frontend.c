@@ -498,10 +498,11 @@ int test_frontend(void)
      * 1970, where the state drops to 0 and dumping stops. So the state>=3 dump
      * run is loop frames 589..1969, i.e. dumped frames 0..1380 (1381 frames); the
      * 1400 cap covers it and the 2000-frame loop clears the 1970 exit. The
-     * front-end window is now distinct [560..830] (271 frames; Task 3c's
-     * camera-offset fix moved it from [557..810] — the claim, 0 unexplained at
-     * 117 clean / 153 splice, is unmoved), and it ends inside the state-9
-     * hold — its last exhibited port frame is 258. */
+     * front-end window is distinct [560..830] (271 frames). The [557..810]/254
+     * text here was stale drift, already flagged in Task 2's review and
+     * corrected here; Task 3c's camera-offset fix does not touch it (the window
+     * covers port frames 0..258, the fight starts at port frame 481). The window
+     * ends inside the state-9 hold — its last exhibited port frame is 258. */
     {
         const char *dir = getenv("PR_GAME_DIR");
         if (dir == NULL || dir[0] == '\0') dir = "data/game/C";
@@ -562,6 +563,7 @@ int test_frontend(void)
         u32 s7_entry_pre = 0, s7_entry_post = 0;
         int s7_pre_seen = 0, s7_post_seen = 0;
         u16 s7_cmd0_1072 = 0;
+        u16 s7_cmd1_1071 = 0;
         u32 s7_cam0 = 0;
         for (int i = 0; i < 2000; i++) {
             /* The state-9 exit leaves DS_000F0A64 == 6 for the next iteration;
@@ -588,6 +590,7 @@ int test_frontend(void)
                 s7_post_seen = 1;
             }
             if (i == 1072) s7_cmd0_1072 = DSW(DS_001088E0);
+            if (i == 1071) s7_cmd1_1071 = DSW(DS_001088E2);
             if (i == 1071) s7_cam0 = DSD(0x00100AB0u);
             /* The dust entries exist from the state-6 frame on; sample them
              * before the state-7 frames advance their animations, and read the
@@ -715,20 +718,23 @@ int test_frontend(void)
          * at 0xB45CD1BB, so the two CHECKs below fail under that mutation. */
         CHECK_EQ_INT((int)s7_entry_pre, (int)0x8612D6C5u);
         CHECK_EQ_INT((int)s7_entry_post, (int)0x10F7DB07u);
-        /* Task 3c: the demo-AI block state and the command word at the 2nd
-         * state-7 frame. The camera screen offset DS_00100AB0 (0x18540/0x18350)
-         * must be applied, or the AI's ai_distance (0x187FC) sees the wrong
-         * fighter separation and picks the wrong band: without it cmd0 stays
-         * 0x1010 and s1 stays 0/0. With it, the AI block's band/move/step
-         * pointer and both command words match the original's, and cmd0 is
-         * 0x4848. The camera offset at the 1st state-7 frame is the original's
-         * measured 0x80 (0xCEB00 anchor 2 * 64); the sentinel is 0 (never
-         * written), so a skipped 0x18350 fails both CHECKs. */
+        /* Task 3c: the demo-AI block state and both command words. The camera
+         * screen offset DS_00100AB0 (0x18540/0x18350) must be applied, or the
+         * AI's ai_distance (0x187FC) sees the wrong fighter separation and picks
+         * the wrong band: without it cmd1 at the 1st state-7 frame stays 0x0000
+         * (s1 stays 0/0) and cmd0 at the 2nd stays 0x1010. With it, the AI
+         * block's band/move/step pointer and both command words match the
+         * original's: cmd1@1071 = 0x0002, cmd0@1072 = 0x4848. The camera offset
+         * at the 1st state-7 frame is the original's measured 0x80 (0xCEB00
+         * anchor 2 * 64); the sentinel is 0 (never written), so a skipped
+         * 0x18350 fails the cam0 CHECK and a skipped 0x18540 the rest. */
         CHECK_EQ_INT((int)s7_cam0, 0x80);
+        CHECK_EQ_INT((int)s7_cmd1_1071, 0x0002);
         CHECK_EQ_INT((int)s7_cmd0_1072, 0x4848);
-        printf("test_frontend: task3b entry post-LCG %08x, cmd0@1072 %04x, "
-               "cam0@1071 %08x, hit %d, last change %d\n",
-               (unsigned)s7_entry_post, (unsigned)s7_cmd0_1072, (unsigned)s7_cam0,
+        printf("test_frontend: task3b entry post-LCG %08x, cmd1@1071 %04x, "
+               "cmd0@1072 %04x, cam0@1071 %08x, hit %d, last change %d\n",
+               (unsigned)s7_entry_post, (unsigned)s7_cmd1_1071,
+               (unsigned)s7_cmd0_1072, (unsigned)s7_cam0,
                s7_hit, s7_last_change);
         /* The Gate's first claim: the fight reaches the state-7 900-frame timer
          * exit. State 7 is entered at loop 1070 and left at 1970 (the timer's

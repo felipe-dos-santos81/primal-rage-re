@@ -661,5 +661,8 @@ match.**
 at `0x18540`/`0x186D0`/`0x18460`/`0x18428`/`0x18350`; live measurements
 `/tmp/t3c_pos.py` (the camera offsets and `rec+0x18`) and `/tmp/t3c_64.py`
 (`slot+0x64`/`+0x5F`); the port's env-gated `PR_T3C_TRACE` dump (reverted). The
-front-end oracle's window moved `[557..810]` → `[560..830]`; its claim
-(`0 unexplained`, 271: 117 clean / 153 splice) is unmoved.
+front-end oracle's window is `[560..830]` (`271: 117 clean / 153 splice`,
+`0 unexplained`) and is **unmoved** by this task — the `[557..810]`/254 text the
+comment carried was pre-existing stale drift (already flagged in Task 2's
+review), and the window covers port frames 0..258 while the fight starts at port
+frame 481.

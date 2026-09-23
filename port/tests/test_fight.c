@@ -1009,6 +1009,23 @@ static void check_slot_latch(void)
     CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x20u), 3);         /* the latch stores it */
     CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x2Cu), 0x240);
     CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x30u), 0xF00);
+
+    /* The char-6 arm of 0x18350's 0x18334 table: char 6 -> 0xCF399, while the
+     * >6 default (0x1838B) is 0xCEB00. Char 6's camera constant 0xE061C = 13015
+     * and the clamp 0xE6DB4[6] = 1043, so sprite 13015 gives anchor 0; the same
+     * anchor then reads (-1, 60) not the default's (-5, 52), so AB0 = 1*64 = 64
+     * and AB4 = 60*64 = 3840. A conflated default (char 6 -> 0xCEB00) gives
+     * 320/3328, so the CHECKs below fail under that mutation. */
+    DSB(DS_0010782A) = 6;                       /* slot+0x7A: char 6 */
+    DSW(FIGHT_ACTORS + 1u * 0x20u) = 0xB2D7u;   /* sprite 13015, bit 15 set */
+    DSD(DS_001077B0 + 0x20u) = 0xDEADBEEFu;
+    DSD(DS_00100AF0) = 0xDEADBEEFu;
+    DSD(DS_00100AB0) = 0xDEADBEEFu;
+    DSD(DS_00100AB4) = 0xDEADBEEFu;
+    fighter_slot_latch(0u);
+    CHECK_EQ_INT((int)DSD(DS_00100AF0), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100AB0), 64);
+    CHECK_EQ_INT((int)DSD(DS_00100AB4), 3840);
 }
 
 /* 0x11A8C: state 6. Fourteen draws from the shared stream — rng(7) at 0x11AAD,

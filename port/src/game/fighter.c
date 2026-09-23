@@ -118,7 +118,8 @@ static void fighter_18350(u32 side, u32 anchor)
     case 3u: p = mem + 0x000D033Bu + anchor * 2u; break;
     case 4u: p = mem + 0x000D0A44u + anchor * 2u; break;
     case 5u: p = mem + 0x000CEB00u + anchor * 2u; break;
-    default: p = mem + 0x000CF399u + anchor * 2u; break;   /* char 6 */
+    case 6u: p = mem + 0x000CF399u + anchor * 2u; break;
+    default: p = mem + 0x000CEB00u + anchor * 2u; break;   /* char >6 (0x1838B) */
     }
     DSD(0x00100AB0u + side * 8u) = (u32)(s32)(s8)p[0];   /* 0x183BA */
     DSD(0x00100AB4u + side * 8u) = (u32)(s32)(s8)p[1];   /* 0x183C4 */
