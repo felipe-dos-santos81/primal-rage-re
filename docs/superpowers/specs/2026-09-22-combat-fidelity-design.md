@@ -177,3 +177,53 @@ These are Task 1's to answer with evidence, not assumptions to carry:
    held-frame gap, and does fixing it move the demo oracle at all?
 5. Does the `0x34B14` tail consume RNG, and if so does it need a determinism
    answer before it can be ported?
+
+## Outcome (recorded)
+
+**The Gate is UNMET overall.** Its second claim holds; its first does not.
+
+**Claim 2 — MET.** The T-rex's character palette is acquired at the raw's DAC
+range: handle `0x1BB9FCD8` (variant 1) at **`start=142 len=31`** (the port's
+ownership-table entry 6 at HEAD; the original's table, record §1.2, is identical
+in order and range). The arena's byte-diff against capture 834 fell **42 667 B
+(22.2 %, 15 067 px) → 18 294 B (9.5 %, 6 194 px)**; the T-rex region
+6 363 → 1 773 px, the raptor region 8 704 → 4 421 px. The raptor's teal-mask
+silhouette IoU rose **0.522 → 1.000** (frame 482; 0.974 at 483). The residual is
+the pose state (claim 1's gap), named — not fitted.
+
+**Claim 1 — UNMET.** The fight **reaches** the 900-frame timer exit
+(`s7_last == 1969`, asserted in `port/tests/test_frontend.c`), but it does not
+run to it without stalling: the slot state machine's last `+0x52` change is loop
+frame **1072**, and the original's pose state `0x10`/`0x0A` is never entered
+(`s7_saw10`/`s7_saw0a` both 0). The cause is the unported
+`0x19020 → 0x193B0 → 0x3B714 → 0x3AAFC →` pose-family chain: `0x19020` is
+unported, so `DS_00100AF8`/`AFC` stay 0 and `fighter_pass_a`'s tail never runs
+(record §10). Its closure is **68 new functions / 10 467 B (true new
+≥ 11 012 B)** — ~2.4× a task — so Task 4 landed no port and the subsystem is
+handed to **cycle 4**.
+
+**What the cycle landed.** The front-end dump driver's palette-variant seed
+(`DS_0010816A[1]` `0xFF` → `0`; no engine change — `0x41350` is faithful); seven
+faithful `+0x52` handlers (`0x35F84`/`0x36430`/`0x399CC`/`0x361C8`/`0x36300`/
+`0x36710`/`0x364FC`) and the `0x3C148`/`0x3C16C` clears; the state-7 entry's four
+missing RNG draws (the type-0 effect handler `0x4AAD0`/`0x4B144` and its wiring —
+the entry LCG now reaches `0x10F7DB07`, matching); and the demo-AI block state
+(`0x18540`/`0x18350` — the command words now match: `cmd0@1072 = 0x4848`,
+`cmd1@1071 = 0x0002`). The loader flush scope got **no engine change**: the
+record (§4) shows no faithful standalone change.
+
+**Named gaps carried out of the cycle.** 831/832's held-frame presentation (the
+post-read ISR ticks, a host property — un-derivable, so excluded, not fitted);
+the unported `0x36870` 9→4 closer and `0x37178`/`0x37D18`; the five unported
+`+0x52` handlers (`0x359E0`, `0x35C1C`/`0x35D20`, `0x37464`, `0x33B00`,
+`0x35E6C`); and the `0x19020`/`0x3Fxxx` freeze subsystem (cycle 4).
+
+**The interactive match remains UNOWNED** — the mode graph, the `0x257A4` coin
+divert, `0x1EEB0`, `0x1F458`, the player screens and human input (the Scope "Out"
+above stands).
+
+**Every enforced oracle claim is unmoved**: title `54 clean, 55 splice, 2
+transition, 0 unexplained` and `54 clean, 57 splice, 0 unexplained`; attract
+`FIRST DIVERGENCE at capture frame 215`; front-end `[560..830]` / 271 frames
+`0 unexplained`; smk `120/120` + `41/41`; the C-vs-Python `9866 writes`
+byte-exact claim. `make verify` exits 0 with 0 warnings.

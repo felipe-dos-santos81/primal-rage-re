@@ -850,7 +850,11 @@ is UNMET.** The measurement, reproduced by Task 8:
   claim holds.
 
 **The residual frames are named gaps, each with its evidence and the task that
-left it. No pin or value was fitted to force the Gate.**
+left it. No pin or value was fitted to force the Gate.** (Cycle 3's section below
+updates items 2–4: the "palette order" premise is refuted — the acquisition
+sequences are identical and the T-rex's colour difference was the front-end dump
+driver's `DS_0010816A` seed; the pose residual and the stall tail are one
+subsystem, the unported `0x19020` chain.)
 
 1. **Captures 831/832 — the loader read-stall / the presented DAC-palette state
    at the state-6 entry** (Tasks 5a/5c). Proven **un-derivable**. The port
@@ -912,6 +916,82 @@ The title window splits `TITLE_WINDOW_ITERS 96` (ticks) from
 `TITLE_PRESENTED_FRAMES 96` (gate-passed ticks the dump holds); the split is
 derived from `0x25643` and the re-sync (`0x1230B`/`0x1235x`), and both constants
 are 96 after the re-sync restored the loader frames.
+
+## Demo fight cycle 3 — combat/render fidelity outcome (Task 5)
+
+Cycle 3 (branch `combat-fidelity`, spec
+`../../docs/superpowers/specs/2026-09-22-combat-fidelity-design.md`, record
+`../../docs/superpowers/plans/2026-09-22-combat-fidelity-derivations.md`) closed
+three of cycle 2's named residuals. **The Gate is UNMET overall**: its second
+claim (the palette/arena) is MET; its first (the fight runs to the timer exit
+without stalling) is not.
+
+**The Gate's two claims, measured.**
+
+1. **The fight reaches the timer exit — but stalls.** The state-7 900-frame timer
+   exit is reached: `s7_last == 1969` (`port/tests/test_frontend.c`; state 7 is
+   entered at loop 1070 and left at 1970, so its last frame is 1969). It does
+   **not** run to it without stalling: the slot state machine's last `+0x52`
+   change is loop frame **1072**, and the original's pose state `0x10`/`0x0A` is
+   never entered (`s7_saw10`/`s7_saw0a` are 0). **UNMET.**
+2. **The arena's character palette matches the raw's DAC range.** The T-rex's
+   character palette handle `0x1BB9FCD8` (variant 1) is acquired at
+   **`start=142 len=31`** — the port's ownership table (`DS_00107618`) entry 6 at
+   HEAD, identical to the original's (record §1.2); the unit assertion is
+   `test_frontend.c:714-715` (`DS_00105B34 == 1`, `0xA8A28[1] == 0x1BB9FCD8`).
+   The arena byte-diff (`frame_0482.raw` vs capture
+   `frontend/frame_0834.raw`) fell **42 667 B (22.2 %, 15 067 px) → 18 294 B
+   (9.5 %, 6 194 px)**; the T-rex region 6 363 → 1 773 px, the raptor region
+   8 704 → 4 421 px. The raptor's teal-mask IoU (region x 185..320, y 85..200)
+   rose **0.522 → 1.000** (frame 482; 0.974 at 483). **MET.** The residual is the
+   pose state (claim 1's gap), named not fitted.
+
+**The freeze is the pose subsystem, not a single state (cycle 4's).** The
+original's T-rex leaves the 9/8 hold for the pose state `0x10`/`0x0A` on the 6th
+frame; the port stays at 9/8. The `+0x52 = 0x10` writers are reached only through
+`0x1958C` (`fighter_pass_a`, ported) → `0x193B0` → `0x3B714` → `0x3AAFC` → the
+`0x3A504`/`0x3A650`/`0x3A79C`/`0x3A8E8` pose family, gated on
+`DS_00100AF8 != 0`. `0x19020` (which sets `AF8[side] = (result == 0)`) is
+unported, so `AF8`/`AFC` stay 0 and the tail never runs. The closure is **68 new
+functions / 10 467 B (true new ≥ 11 012 B)** — ~2.4× the handler tail and ~3.3×
+cycle 2's `+0x53` machine — so Task 4 landed no port and the subsystem is handed
+to **cycle 4**. (The brief's `0x3531C` case-8 re-arm model is refuted: its gate
+`word[0xBDBE8] = 3 ≤ slot+0x88` at `0x35498` stops it writing after 3 frames, and
+the port's animation cursor already matches `0xD2316`.) **Measured at HEAD the
+port's hit counter `+0x7C` is 0 for the whole state-7 window (`s7_hit == 0`):
+cycle 2's `+0x7C 0/0 → 1/1` was a by-product of the old diverged trajectory
+(s0's `+0x52=3`/`+0x53=4`/`+0x54=2` retry loop re-armed a hitbox). With the
+trajectory now matching the original's early path, the hit requires the pose
+state the port cannot reach.**
+
+**What the cycle landed.** The front-end dump driver's palette-variant seed
+(`DS_0010816A[1]` `0xFF` → `0`; no engine change — `0x41350` is faithful, and
+the acquisition sequences are identical); seven faithful `+0x52` handlers
+(`0x35F84`/`0x36430`/`0x399CC`/`0x361C8`/`0x36300`/`0x36710`/`0x364FC`) and the
+`0x3C148`/`0x3C16C` clears; the state-7 entry's four missing RNG draws (the
+type-0 effect handler `0x4AAD0`/`0x4B144` and its `fight_effects_pass` wiring —
+the entry LCG now reaches `0x10F7DB07`, matching); and the demo-AI block state
+(`fighter_18540`/`fighter_18350` wired into `fighter_slot_latch` — the command
+words now match: `cmd0@1072 = 0x4848`, `cmd1@1071 = 0x0002`). The loader flush
+scope got **no engine change**: record §4 shows no faithful standalone change.
+
+**Named gaps carried out of the cycle.** 831/832's held-frame presentation (the
+post-read ISR ticks, a host property — un-derivable, so excluded, not fitted);
+the unported `0x36870` 9→4 closer and `0x37178`/`0x37D18`; the five unported
+`+0x52` handlers (`0x359E0`, `0x35C1C`/`0x35D20`, `0x37464`, `0x33B00`,
+`0x35E6C`); and the `0x19020`/`0x3Fxxx` freeze subsystem (cycle 4).
+
+**The interactive match remains UNOWNED** — the mode graph (`DS_00104B00`), the
+`0x257A4` coin divert, `0x1EEB0`, `0x1F458`, the player screens and human input
+are implemented by no task in any demo-fight cycle.
+
+**Every enforced oracle claim is unmoved.** `make verify` exits 0 with 0
+warnings: title `54 clean, 55 splice, 2 transition, 0 unexplained` and
+`54 clean, 57 splice, 0 unexplained`; attract `FIRST DIVERGENCE at capture frame
+215` (raw 2180/2175); front-end `[560..830]` / 271 frames: 117 clean, 153 splice,
+0 transition, `0 unexplained`; smk `120/120` + `41/41`; C-vs-Python `9866 writes
+byte-exact`; `symbols.h` regenerates byte-identically (1304 globals, 1206
+functions).
 
 ## Landmarks (verified)
 
