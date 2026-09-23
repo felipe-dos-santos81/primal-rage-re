@@ -23,6 +23,11 @@
  * handler block (0x33B00/0x36E78) share; defined with that block. */
 static void fighter_29bc8(u32 side, u32 rec, u32 ch);
 
+/* 0x39A10/0x37D18. The 0x349C8 +0x42 bit-7 arm's chain; defined together with
+ * the other 0x36xxx/0x37xxx handlers below. */
+void fighter_39a10(u32 rec, u32 value);                  /* 0x39A10 */
+void fighter_37d18(u32 slot, u32 rec);                   /* 0x37D18 */
+
 /* ---- the shared per-fighter helpers ------------------------------------ */
 
 void fighter_ctx_swap(u32 out[6], u32 side)
@@ -1322,7 +1327,16 @@ void fighter_state_default(u32 side)
         return;
     }
     if ((DSB(slot + 0x42u) & 0x80u) != 0u) {            /* 0x349F7 */
-        /* PORT: 0x37D18 — +0x42 bit 7 arm, a named gap (§7.10). */
+        /* 0x349F9 reads the side from the actor (ESI = rec), then the other
+         * slot; only when the other slot's +0x40 holds 0x8200000 does it run
+         * 0x37D18 on that slot and set this slot's +0x53 = 3. */
+        u32 other = DSD(DS_001077A8                     /* 0x34A03 */
+                        + ((u32)DSB(rec + 0x51u) ^ 1u) * 4u);
+        if (other != 0u                                /* 0x34A0C */
+                && (DSD(other + 0x40u) & 0x8200000u) == 0x8200000u) {   /* 0x34A1B */
+            fighter_37d18(other, DSD(other));           /* 0x34A29 */
+            DSB(slot + 0x53u) = 3u;                     /* 0x34A2E */
+        }
         return;
     }
     if (fighter_state_365c8(slot, rec, side) != 0)      /* 0x34A3E */
@@ -2105,6 +2119,49 @@ static int fighter_state_36bc8(u32 slot, u32 rec)
                           FIGHT_36BC8_STREAM, 0x40400000u);   /* 0x36CD1 */
     }
     return 7;                                               /* 0x36CD6 */
+}
+
+/* PORT: 0xC9238 (0x37D18's per-character animation stream) has no symbols.h
+ * name. */
+#define FIGHT_ANIM_37D18  0x000C9238u
+
+/* 0x37D18. The 0x349C8 +0x42 bit-7 arm's callee. Sets the slot's dispatch state
+ * to +0x52 = 9, +0x53 = 3, +0x54 = 3 and +0x42 = (+0x42 & 0xDB) | 4, starts the
+ * 0xC9238[char] animation at 2.0, writes the +0x74 timer = 0x309 (via 0x39A10),
+ * resets the 0x1078DC approach-table pointer to 0xBD89C, then, when the other
+ * slot exists, sets the other actor's +0x59 = 0xFF and the other slot's +0x40
+ * bits 0x801000. EAX = slot, EDX = rec. */
+void fighter_37d18(u32 slot, u32 rec)
+{
+    DSB(slot + 0x52u) = 9u;                                 /* 0x37D1E */
+    DSB(slot + 0x53u) = 3u;                                 /* 0x37D22 */
+    DSB(slot + 0x54u) = 3u;                                 /* 0x37D26 */
+    DSB(slot + 0x42u) = (u8)((DSB(slot + 0x42u) & 0xDBu) | 0x04u);   /* 0x37D35 */
+    actors_anim_begin(rec, DSD(FIGHT_ANIM_37D18                    /* 0x37D4B */
+                               + (u32)DSB(slot + 0x7Au) * 4u),
+                      0x40800000u);
+    fighter_39a10(rec, 0x309u);                             /* 0x37D57 */
+    /* PORT: 0x37D5C..0x37D73 0x2C3FC voice, out of scope. The raw loads
+     * EDX = 0xBD89C (the voice's second argument) at 0x37D6E; 0x2C3FC preserves
+     * EDX, so 0x37D7B stores 0xBD89C to the 0x1078DC approach-table pointer. */
+    DSD(DS_001078DC) = DS_000BD89C;                         /* 0x37D7B */
+    {
+        u32 other = DSD(DS_001077A8                         /* 0x37D88 */
+                        + ((u32)DSB(rec + 0x51u) ^ 1u) * 4u);
+        if (other != 0u) {                                  /* 0x37D91 */
+            DSB(DSD(other) + 0x59u) = 0xFFu;                /* 0x37D95 */
+            DSD(other + 0x40u) |= 0x801000u;                /* 0x37D99 */
+        }
+    }
+}
+
+/* 0x39A10. Write `value` (a signed word, truncated) to the +0x74 timer of the
+ * slot named by the record's +0x51: word[0x107824 + side*0x94]. EAX = rec,
+ * EDX = value. */
+void fighter_39a10(u32 rec, u32 value)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x39A11 */
+    DSW(DS_001077B0 + side * 0x94u + 0x74u) = (u16)value;   /* 0x39A28 */
 }
 
 /* 0x39040. The per-side round/timer pass. Gated on DSW(0x107D2C + side*2) > 1;

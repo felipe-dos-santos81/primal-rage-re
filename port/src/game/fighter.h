@@ -92,8 +92,18 @@ void fighter_command_block(void);
 
 /* 0x349C8. The +0x52 == 0 (and >0x15) default handler of fight_health_sync's
  * dispatch: the 0x365C8/0x36638 gates, the 0x3BDDC consumer and the
- * 0x35838/0x2BC30 transitions. Its +0x42 bit 6/7 arms are named gaps (§7.10). */
+ * 0x35838/0x2BC30 transitions. Its +0x42 bit 6/7 arms call 0x37178/0x37D18. */
 void fighter_state_default(u32 side);
+
+/* 0x37D18. The 0x349C8 +0x42 bit-7 arm's callee: set the slot's +0x52/+0x53/
+ * +0x54 = 9/3/3, set +0x42 bit 2 (clearing bit 5), start the 0xC9238[char]
+ * animation at 2.0, write the +0x74 timer = 0x309 and reset the 0x1078DC
+ * approach-table pointer to 0xBD89C, then flag the other slot. */
+void fighter_37d18(u32 slot, u32 rec);                   /* 0x37D18 */
+
+/* 0x39A10. Write `value` to the +0x74 timer word of the slot named by the
+ * record's +0x51 (0x107824 + side*0x94). Called by 0x37D18 and the pose chain. */
+void fighter_39a10(u32 rec, u32 value);                  /* 0x39A10 */
 
 /* 0x36638. Reset the slot's +0x43 bit 0x40 and restart the fighter's animation
  * per slot+0x54. Called by 0x349C8, 0x35838 and the 0x34B6C position branch. */

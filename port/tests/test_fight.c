@@ -2362,6 +2362,76 @@ static void check_anim_stream_args(void)
     DSD(DS_00102900 + 4u) = saved900b;
 }
 
+/* Task 3: the 0x349C8 +0x42 bit-7 arm's deep callee 0x39A10 (and the 0x37D18
+ * caller that wires it). Seeds differ from the post-conditions, so an
+ * unwritten field cannot pass. */
+static void check_deep_callees(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    u32 s_dc = DSD(DS_001078DC);
+    u32 s_40_0 = DSD(s0 + 0x40u);
+    u32 s_40_1 = DSD(s1 + 0x40u);
+    u32 s_a8_0 = DSD(DS_001077A8);
+    u32 s_a8_1 = DSD(DS_001077A8 + 4u);
+    u8  s_42_0 = DSB(s0 + 0x42u);
+    u8  s_42_1 = DSB(s1 + 0x42u);
+    u8  s_51_0 = DSB(r0 + 0x51u);
+    u8  s_51_1 = DSB(r1 + 0x51u);
+    u8  s_53_0 = DSB(s0 + 0x53u);
+    u8  s_7a_0 = DSB(s0 + 0x7Au);
+    u8  s_7a_1 = DSB(s1 + 0x7Au);
+    u8  s_59_0 = DSB(r0 + 0x59u);
+    u16 s_74_0 = DSW(s0 + 0x74u);
+    u16 s_74_1 = DSW(s1 + 0x74u);
+
+    /* A: 0x39A10 writes the +0x74 timer of the slot named by the record's
+     * +0x51 (word[0x107824 + side*0x94]). The sentinel 0xFFFF differs from
+     * both written values; side 1 proves the +0x51 read, not a fixed slot. */
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSB(r0 + 0x51u) = 0;
+    DSW(s0 + 0x74u) = 0xFFFFu;
+    DSW(s1 + 0x74u) = 0xFFFFu;
+    fighter_39a10(r0, 0x1234u);
+    CHECK_EQ_INT((int)DSW(s0 + 0x74u), 0x1234);
+    DSB(r0 + 0x51u) = 1;
+    fighter_39a10(r0, 0x0BADu);
+    CHECK_EQ_INT((int)DSW(s1 + 0x74u), 0x0BAD);
+
+    /* B: the 0x349C8 +0x42 bit-7 arm runs 0x37D18 on the other slot when its
+     * +0x40 holds 0x8200000. 0x37D18 writes that slot's +0x74 = 0x309 through
+     * 0x39A10, then the arm sets this slot's +0x53 = 3. */
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSB(r0 + 0x51u) = 0;
+    DSB(r1 + 0x51u) = 1;
+    DSB(s0 + 0x42u) = 0x80u;                    /* the bit-7 arm */
+    DSB(s0 + 0x53u) = 0;                        /* sentinel != 3 */
+    DSD(s1 + 0x40u) = 0x8200000u;               /* the other-slot gate */
+    DSW(s1 + 0x74u) = 0xFFFFu;                  /* sentinel != 0x309 */
+    DSB(s1 + 0x7Au) = 0;
+    fighter_state_default(0u);
+    CHECK_EQ_INT((int)DSW(s1 + 0x74u), 0x309);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 3);
+
+    DSD(DS_001078DC) = s_dc;
+    DSD(s0 + 0x40u) = s_40_0;
+    DSD(s1 + 0x40u) = s_40_1;
+    DSD(DS_001077A8) = s_a8_0;
+    DSD(DS_001077A8 + 4u) = s_a8_1;
+    DSB(s0 + 0x42u) = s_42_0;
+    DSB(s1 + 0x42u) = s_42_1;
+    DSB(r0 + 0x51u) = s_51_0;
+    DSB(r1 + 0x51u) = s_51_1;
+    DSB(s0 + 0x53u) = s_53_0;
+    DSB(s0 + 0x7Au) = s_7a_0;
+    DSB(s1 + 0x7Au) = s_7a_1;
+    DSB(r0 + 0x59u) = s_59_0;
+    DSW(s0 + 0x74u) = s_74_0;
+    DSW(s1 + 0x74u) = s_74_1;
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -2435,6 +2505,7 @@ int test_fight(void)
     check_state_machine();
     check_state_handlers();
     check_gap_handlers();
+    check_deep_callees();
     check_hud_pass_machine();
     check_anim_stream_args();
 
