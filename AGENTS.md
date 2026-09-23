@@ -86,9 +86,17 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
 
 ## Tests
 
-- One `int test_X(void)` per file, declared in `port/tests/test.h`, called from
-  `run_tests.c`, and the `.c` added to `port/CMakeLists.txt`'s **explicit** source
-  list (no globbing).
+- One `int test_X(void)` per file. **Register it once** — add `X(test_foo)` to
+  `TEST_CASES` in `port/tests/test.h`; the declarations, the run order and the
+  build all follow from that one line (CMake globs `tests/test_*.c` with
+  `CONFIGURE_DEPENDS` — the one deliberate exception to the repo's no-globbing
+  rule, and the registry is what makes it safe). Env-gated drivers go in
+  `TEST_DRIVERS` with their env var; each runs alone before the unit cases.
+- Shared test fixtures live in `port/tests/test_fixtures.{h,c}`. A fixture moved
+  there keeps its body byte-for-byte; only its home and its callers change.
+- **Consolidating tests must not change an assertion.** The
+  `CHECK`/`CHECK_EQ_INT` count per file is the gate: it is identical before and
+  after, and `make verify` stays green.
 - Only `CHECK(cond,msg)` and `CHECK_EQ_INT(a,b)`.
 - **`game_init()` may run only once per process** (a second resource load
   exhausts the bump allocator). Any test calling it must be env-gated, and
