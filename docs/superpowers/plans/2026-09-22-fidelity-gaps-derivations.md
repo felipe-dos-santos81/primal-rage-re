@@ -900,6 +900,29 @@ differ:
   `0x39a10(F, 0x1234)`; assert `DSW(S+0x74)==0x1234`. Mutation: write the wrong
   slot → the assertion fails.
 
+**Task-3 implementation corrections (the raw wins).** The recipes above are
+incomplete against the raw control flow, and the two callers are unported, so
+the shipped assertions in `port/tests/test_fight.c` (`check_deep_callees`) seed
+more and wire the callees' real call chains:
+
+* **`0x385B0` (test values):** the recipe's `F[0x28]==0xDF` and
+  `S[0x40]==0xCCF3BFFF` miss the tail: `0x385B0`'s `S+0x41 &= 0x7F` (raw
+  `0x386EE`) clears `S+0x40` bit 0x8000 (`0xCCF33FFF`), and the
+  `actors_anim_begin` tail (`0x2BC30`) does `rec+0x28 &= 0xEB` (raw `0x2BC52`),
+  so `F[0x28]` is `0xCB`, not `0xDF`. The test asserts the actual post-states
+  and seeds `S+0x52`/`S+0x53` (the recipe left them BSS-zero). Mutation: drop the
+  `F[0x28] &= 0xDF` → `0xEB != 0xCB` at `test_fight.c:2437`.
+* **`0x385B0`'s and `0x39A10`'s callers are unported** (record §2.3). To satisfy
+  the brief's "wire each at its real call site" and the repo's no-unreachable-
+  code rule, Task 3 ports the minimal chain too: `0x37D18` (the bit-7 arm's
+  callee), and `0x37178` + `0x36870` + `0x379C4` + `0x164E8` (the bit-6 arm's
+  chain). Evidence: `0x349C8` `0x349EA CALL 0x37178` and `0x34A29 CALL 0x37D18`;
+  `0x37178` `0x37256`/`0x3732F CALL 0x36870`; `0x36870` `0x36884 CALL 0x385B0`
+  under `DSW(0x104B00)==0x25`; `0x37D18` `0x37D57 CALL 0x39A10`. The chain is
+  off the demo path (`+0x42` bits 6/7 are never set there), so the ladder is
+  unmoved. The `0x385B0` `S+0x54 == 5` arm (`0x38154`) stays the existing named
+  gap (§7.4).
+
 ### 8.3 Task 4 — the loader flush scope (`port/tests/test_frontend.c`)
 
 * Drive the state-6 loader path; assert the loader draw's flush drained only
