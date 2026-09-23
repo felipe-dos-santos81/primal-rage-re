@@ -52,6 +52,15 @@ static void fight_reset_slots(void)
     mem_fill(0x00107D58u, 0, 0x180u);
 }
 
+/* Wire DS_001077A8 to the two slots and each slot's +0 to its record. */
+static void fight_reset_slot_pair(u32 s0, u32 s1, u32 r0, u32 r1)
+{
+    DSD(DS_001077A8) = s0;
+    DSD(DS_001077A8 + 4u) = s1;
+    DSD(s0) = r0;
+    DSD(s1) = r1;
+}
+
 /* 0x17FA0: the four worked pairs at the (x+0x20)>>6 stage, plus side selection,
  * the facing/page flags, the 0x100AF0 index base and the sprite-origin
  * subtraction on a seeded fake resource. */
@@ -1769,10 +1778,7 @@ static void check_state_machine(void)
      * drive +0x52 to 3 through 0x3BDDC (0x3520E). Seeded +0x54 = 0x55 and
      * +0x53 = 0 differ from the post-conditions 2 and 4. */
     (void)tf_hit_fixture(0);
-    DSD(DS_001077A8) = s0;
-    DSD(DS_001077A8 + 4u) = s1;
-    DSD(s0) = r0;
-    DSD(s1) = r1;
+    fight_reset_slot_pair(s0, s1, r0, r1);
     DSB(r0 + 0x51u) = 0;
     DSB(r1 + 0x51u) = 1;
     DSB(s0 + 0x52u) = 0x0Eu;
@@ -1803,10 +1809,7 @@ static void check_state_machine(void)
      * calls the 0x3CF38 chain at 0x354BC; an armed hitbox resolves, so +0x7C
      * (the hit counter) increments. */
     (void)tf_hit_fixture(0);
-    DSD(DS_001077A8) = s0;
-    DSD(DS_001077A8 + 4u) = s1;
-    DSD(s0) = r0;
-    DSD(s1) = r1;
+    fight_reset_slot_pair(s0, s1, r0, r1);
     DSB(r0 + 0x51u) = 0;
     DSB(r1 + 0x51u) = 1;
     DSB(s0 + 0x53u) = 8;
@@ -1822,10 +1825,7 @@ static void check_state_machine(void)
     /* C2: slot+0x88 = 3 closes the 0xBDBE8 gate, so the chain is not called:
      * the hit counter stays 0 and +0x5F keeps the seeded 0x10. */
     (void)tf_hit_fixture(0);
-    DSD(DS_001077A8) = s0;
-    DSD(DS_001077A8 + 4u) = s1;
-    DSD(s0) = r0;
-    DSD(s1) = r1;
+    fight_reset_slot_pair(s0, s1, r0, r1);
     DSB(r0 + 0x51u) = 0;
     DSB(r1 + 0x51u) = 1;
     DSB(s0 + 0x53u) = 8;
@@ -1840,10 +1840,7 @@ static void check_state_machine(void)
 
     /* C3: +0x5F >= 0x18 closes the 0x34E20 gate the same way. */
     (void)tf_hit_fixture(0);
-    DSD(DS_001077A8) = s0;
-    DSD(DS_001077A8 + 4u) = s1;
-    DSD(s0) = r0;
-    DSD(s1) = r1;
+    fight_reset_slot_pair(s0, s1, r0, r1);
     DSB(s0 + 0x53u) = 8;
     DSW(s0 + 0x88u) = 0;
     DSB(s0 + 0x5Fu) = 0x18u;                    /* 0x34E20: not < 0x18 */
@@ -1920,10 +1917,7 @@ static void check_state_handlers(void)
      * +0x78 = word[0xBDC16] and rec+0x24 = 0. The sentinel 0xAA differs from
      * every post-value. */
     (void)tf_hit_fixture(0);
-    DSD(DS_001077A8) = s0;
-    DSD(DS_001077A8 + 4u) = s1;
-    DSD(s0) = r0;
-    DSD(s1) = r1;
+    fight_reset_slot_pair(s0, s1, r0, r1);
     DSB(r0 + 0x51u) = 0;
     DSB(s0 + 0x7Au) = 0;                        /* char 0: threshold 0x1600 */
     DSD(s0 + 0x30u) = 0;                        /* below the threshold */
@@ -1953,10 +1947,7 @@ static void check_state_handlers(void)
 
     /* A2: the same with rec+0x36 > 0 (the gate fails): the state is untouched. */
     (void)tf_hit_fixture(0);
-    DSD(DS_001077A8) = s0;
-    DSD(DS_001077A8 + 4u) = s1;
-    DSD(s0) = r0;
-    DSD(s1) = r1;
+    fight_reset_slot_pair(s0, s1, r0, r1);
     DSB(r0 + 0x51u) = 0;
     DSB(s0 + 0x7Au) = 0;
     DSD(s0 + 0x30u) = 0;
@@ -1969,10 +1960,7 @@ static void check_state_handlers(void)
      * rec+0x34 and writes +0x52 = 9. The sentinel +0x52 = 0xAA fails if the
      * store is dropped. */
     (void)tf_hit_fixture(0);
-    DSD(DS_001077A8) = s0;
-    DSD(DS_001077A8 + 4u) = s1;
-    DSD(s0) = r0;
-    DSD(s1) = r1;
+    fight_reset_slot_pair(s0, s1, r0, r1);
     DSB(r0 + 0x51u) = 0;
     DSB(s0 + 0x58u) = 3;
     DSW(r0 + 0x34u) = 0x0010u;                  /* |+0x34| = 0x10 < 0x11 */
@@ -1991,10 +1979,7 @@ static void check_state_handlers(void)
 
     /* C: 0x36300 (+0x52 = 13), the same case-3 body. */
     (void)tf_hit_fixture(0);
-    DSD(DS_001077A8) = s0;
-    DSD(DS_001077A8 + 4u) = s1;
-    DSD(s0) = r0;
-    DSD(s1) = r1;
+    fight_reset_slot_pair(s0, s1, r0, r1);
     DSB(r0 + 0x51u) = 0;
     DSB(s0 + 0x58u) = 3;
     DSW(r0 + 0x34u) = 0x0010u;                  /* |+0x34| = 0x10 < 0x11 */
@@ -2006,10 +1991,7 @@ static void check_state_handlers(void)
     /* D: 0x36710 (+0x52 = 17). +0x58 = 2 with rec+0x36 == 0 and rec+0x1C == 0
      * writes rec+0x43 = byte[0xBD89A] = 8 and +0x52 = 9. The sentinels differ. */
     (void)tf_hit_fixture(0);
-    DSD(DS_001077A8) = s0;
-    DSD(DS_001077A8 + 4u) = s1;
-    DSD(s0) = r0;
-    DSD(s1) = r1;
+    fight_reset_slot_pair(s0, s1, r0, r1);
     DSB(r0 + 0x51u) = 0;
     DSB(s0 + 0x58u) = 2;
     DSW(r0 + 0x36u) = 0;
@@ -2046,10 +2028,7 @@ static void check_state_handlers(void)
     /* F: 0x36430 (+0x52 = 5). With 0x365C8/0x36638 both clear and the command
      * word 0, the handler writes +0x52 = 9 and +0x54 = 0. */
     (void)tf_hit_fixture(0);
-    DSD(DS_001077A8) = s0;
-    DSD(DS_001077A8 + 4u) = s1;
-    DSD(s0) = r0;
-    DSD(s1) = r1;
+    fight_reset_slot_pair(s0, s1, r0, r1);
     DSB(r0 + 0x51u) = 0;
     DSB(r1 + 0x51u) = 1;
     DSB(s0 + 0x42u) = 0;
@@ -2065,10 +2044,7 @@ static void check_state_handlers(void)
     /* G: 0x364FC (+0x52 = 21). Command 0x4000 (the +0x40 high bit) with
      * 0x1A640 == 0 writes +0x52 = 5. */
     (void)tf_hit_fixture(0);
-    DSD(DS_001077A8) = s0;
-    DSD(DS_001077A8 + 4u) = s1;
-    DSD(s0) = r0;
-    DSD(s1) = r1;
+    fight_reset_slot_pair(s0, s1, r0, r1);
     DSB(r0 + 0x51u) = 0;
     DSB(r1 + 0x51u) = 1;
     DSB(s0 + 0x42u) = 0;
