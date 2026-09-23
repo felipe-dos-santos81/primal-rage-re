@@ -1860,6 +1860,11 @@ void fighter_state_37464(u32 side)
     u32 so = DS_001077B0 + other * 0x94u;
     u32 rec = DSD(slot);
     u32 ro = DSD(so);
+    /* TODO(verify): 0x374E3 loads DSD(0x1078DC) before indexing, and the raw's
+     * 0x36F10 (the unported pose/winner chain) initializes that pointer to
+     * 0xBD89C. This reads the pointer word as the table; the faithful form is
+     * DSW(DSD(0x1078DC) + …) once 0x36F10's initialization is ported.
+     * Record §1.3's Task-3 correction. */
     s16 base = (s16)DSW(DS_001078DC
         + (u32)DSB(slot + 0x7Au) * 14u + (u32)DSB(so + 0x7Au) * 2u);  /* 0x374D1 */
     s16 x;

@@ -240,7 +240,8 @@ Disassembly `0x37464..0x3763E` (decompile `FUN_00037464`). The dispatch passes
 other = 1 - side;
 S  = 0x1077B0 + side*0x94;  So = 0x1077B0 + other*0x94;
 F  = DSD(S);                Fo = DSD(So);
-base = (s16)DSW(0x1078DC + (u8)S[0x7A]*14 + (u8)So[0x7A]*2);        // 0x374D1..0x3753C
+base = (s16)DSW(DSD(0x1078DC) + (u8)S[0x7A]*14 + (u8)So[0x7A]*2);   // 0x374D1..0x3753C
+                                                                     // (0x1078DC is a pointer; 0x374E3 loads [0x1078DC])
 if (0x1A570(other) == 0) X = (s16)Fo[0x18] + base;                  // 0x3750B..0x3753C
 else                     X = (s16)Fo[0x18] - base;                  // 0x374D1..0x37509
 diff = (s16)F[0x18] - X;                                            // 0x3754D
@@ -262,8 +263,18 @@ if (DSB(0xEF6DC) & 1) {                                             // 0x375BF..
 **Writes:** `S+0x52` (= 9, case 0), `F+0x18` (case 0), `S+0x43` (bit 0x40,
 case 1), `S+0x4C` (default arm), and the `0x35C1C`/`0x1883C` fields.
 **Callees:** `0x1A570`✓, `0x35B7C`✗, `0x36638`✓, `0x35C1C`✗, `0x1883C`✗.
-**Data:** `0x1078DC` (the per-character-pair approach table, 14 B per side-char
-+ 2 B per other-char), `0xEF6DC` (the frame counter).
+**Data:** `0x1078DC` (a **pointer** to the per-character-pair approach table —
+the table is at `DSD(0x1078DC)`, 14 B per side-char + 2 B per other-char;
+`0x374E3`/`0x3751D` load `[0x1078DC]` before indexing. The pointer's default is
+`0xBD89C`, written by `0x36F10` at `0x3704B` and reset by `0x37D18` at
+`0x37D7B`; the static image has it 0), `0xEF6DC` (the frame counter).
+**Correction (Task 3):** the first revision's `DSW(0x1078DC + …)` omitted the
+dereference, so the port's `fighter_state_37464` reads the pointer word as the
+table. The faithful fix is `DSW(DSD(0x1078DC) + …)` **plus** the `0x1078DC`
+initialization, which the raw performs in `0x36F10` (the unported pose/winner
+chain). Until that chain lands the port cannot be faithful here; Task 3 corrects
+this record and flags the port (`fighter.c` `fighter_state_37464`'s
+`/* TODO(verify) */`) rather than half-fixing it.
 
 ### 1.4 `0x33B00` — state 19 (`fighter_state_33b00(side, src, dst2)`)
 
