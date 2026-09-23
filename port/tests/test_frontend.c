@@ -12,6 +12,7 @@
 #include "mem.h"
 #include "symbols.h"
 #include "test.h"
+#include "test_fixtures.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,27 +29,6 @@
  * re-seeds to it — the same pattern test_title_window uses for the pinned
  * title. The assertion below fails if the re-seed or the state-6 draws move. */
 #define FRONTEND_RNG_AFTER_ATTRACT 0x4308698Bu
-
-/* Seed exactly one live front-end list entry at DS_00107608 with `handle` in
- * its +0 dword. The iterator advances by 0x10 before its first test, so the
- * live dword at tbl+4 is skipped and the entry at tbl+0x10 wins. `saved` must
- * hold 0x190 bytes; restore_frontend_list() puts the whole table back. Shared
- * by the 0x33904 iterator check and the state-3 (0x12484) check. */
-static void seed_frontend_list(u32 handle, u8 *saved)
-{
-    const u32 tbl = DS_00107608;
-    for (u32 i = 0; i < 0x190u; i++) saved[i] = DSB(tbl + i);
-    mem_fill(tbl, 0, 0x190u);
-    DSD(tbl + 0x04u) = 1u;            /* tbl's own +4 is live */
-    DSD(tbl + 0x10u) = handle;        /* the returned entry's +0 handle */
-    DSD(tbl + 0x14u) = 1u;            /* entry at tbl+0x10 is live */
-}
-
-static void restore_frontend_list(const u8 *saved)
-{
-    const u32 tbl = DS_00107608;
-    for (u32 i = 0; i < 0x190u; i++) DSB(tbl + i) = saved[i];
-}
 
 int test_frontend(void)
 {
@@ -81,10 +61,10 @@ int test_frontend(void)
      * restore the whole table afterwards. */
     {
         static u8 saved[0x190];
-        seed_frontend_list(0u, saved);
+        tf_frontend_seed_list(0u, saved);
         CHECK_EQ_INT((int)frontend_list_next(0), (int)(DS_00107608 + 0x10u));
         CHECK_EQ_INT((int)frontend_list_next(DS_00107608 + 0x10u), 0);
-        restore_frontend_list(saved);
+        tf_frontend_restore_list(saved);
     }
 
     /* 0x11F28 / 0x11D04: the coin path. The mask table DS_0009ACBC lives in
@@ -205,7 +185,7 @@ int test_frontend(void)
         const u16 saved_44 = DSW(DS_00107A44);
         const u8  saved_72 = DSB(DS_000F0A72);
 
-        seed_frontend_list(0x3E688u, saved_list);
+        tf_frontend_seed_list(0x3E688u, saved_list);
         DSB(DS_00104B1D) = 0;
         DSW(DS_000F0A64) = 3;
         DSW(DS_000F0A6A) = 1;
@@ -229,7 +209,7 @@ int test_frontend(void)
             CHECK_EQ_INT((int)DSD(cam + 0x1Cu), 0x1E00);
         }
 
-        restore_frontend_list(saved_list);
+        tf_frontend_restore_list(saved_list);
         DSB(DS_00104B1D) = saved_1d;   DSB(DS_00104528 + 1u) = saved_29;
         DSD(DS_000F0A40) = saved_40;   DSD(DS_000F0A58) = saved_58;
         DSW(DS_000F0A64) = saved_64;   DSW(DS_000F0A6A) = saved_6a;

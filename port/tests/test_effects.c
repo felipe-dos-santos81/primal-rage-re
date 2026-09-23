@@ -5,21 +5,10 @@
 #include "mem.h"
 #include "test.h"
 #include "symbols.h"
+#include "test_fixtures.h"
 
 /* Scratch for a source record: mem[] above the heap, the base other tests use. */
 #define EFFECTS_TEST_SRC 0x3F00000u
-
-/* The real master loop drains the palette dirty list once per frame (0x25672);
- * these fixtures drive effects_init/spawn/step/teardown directly and would
- * otherwise accumulate records across fixtures — a temporary counter measured
- * 58 records between drains and 4 written past the list before this drain was
- * added. The list holds the 24 records at DS_00107498..DS_00107618, so each
- * fixture drains at its boundary the way the loop does. */
-static void fixture_begin(void)
-{
-    effects_init();
-    gfx_flush_palette();
-}
 
 int test_effects(void)
 {
@@ -53,7 +42,7 @@ int test_effects(void)
 
     /* Building the free list makes records available; an empty list is
      * self-linked, so a spawn succeeds and becomes the one active effect. */
-    fixture_begin();
+    tf_effects_fixture_begin();
 
     /* 0x13ADC link direction: both sentinels self-linked; 0x249C0 appends each
      * record before the free sentinel, so the free list runs pool order
@@ -194,7 +183,7 @@ int test_effects(void)
         /* Full pool: 24 records come out, the 25th spawn finds the self-linked
          * free sentinel and must return 0 without touching either list. */
         u32 src = EFFECTS_TEST_SRC;
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x40u);
         for (u32 i = 0; i < 24u; i++)
             CHECK(effects_spawn(src, 0u, 0u) != 0, "pool has 24 records");
@@ -224,7 +213,7 @@ int test_effects(void)
          * with the source count (+0xC) zero, finds them equal immediately and
          * tears the record down. Four steps is exactly the raw's lifetime. */
         u32 src = EFFECTS_TEST_SRC;
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x40u);          /* source count +0xC == 0 */
         u32 rec = effects_spawn(src, 3u, 0u);
         CHECK_EQ_INT(effects_active(), 1);
@@ -257,7 +246,7 @@ int test_effects(void)
         u32 src = EFFECTS_TEST_SRC;
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         u32 tab = src + 0x100u, blk = src + 0x200u, rec;
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x300u);
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x0C) = 2u;
@@ -293,7 +282,7 @@ int test_effects(void)
          * (0x13D9D mov ebp,[esi+0xc]; test/jle, file 0x66BF1): a high-bit-set
          * count is skipped, not iterated ~4e9 times. The record still builds. */
         u32 src = EFFECTS_TEST_SRC;
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x40u);
         DSD(src + 0x0C) = 0xFFFFFFFFu;
         u32 head = DSD(DS_000FCCE8);
@@ -314,7 +303,7 @@ int test_effects(void)
          * both blocks untouched. */
         u32 src = EFFECTS_TEST_SRC;
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x40u);
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x0C) = 2u;
@@ -352,7 +341,7 @@ int test_effects(void)
         u32 src = EFFECTS_TEST_SRC;
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         u32 tab = src + 0x100u, blk = src + 0x200u, rec;
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x300u);
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x0C) = 2u;
@@ -386,7 +375,7 @@ int test_effects(void)
         u32 src = EFFECTS_TEST_SRC;
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         u32 tab = src + 0x100u, blk = src + 0x200u, rec;
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x300u);
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x0C) = 257u;
@@ -411,7 +400,7 @@ int test_effects(void)
         u32 src = EFFECTS_TEST_SRC;
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         u32 tab = src + 0x100u, blk = src + 0x200u, rec;
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x300u);
         DSD(src + 0x0C) = 3u;
         DSD(DS_001014E0) = tab;
@@ -442,7 +431,7 @@ int test_effects(void)
         u32 src = EFFECTS_TEST_SRC;
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         u32 tab = src + 0x100u, blk = src + 0x200u, rec;
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x300u);
         DSD(DS_001014E0) = tab;
         DSD(DS_001014F0) = 1;
@@ -461,7 +450,7 @@ int test_effects(void)
 
         /* offset == -0x80 (0x13B9E cmp eax,-0x80) starts at resolved[count]
          * instead of resolved[1 + count - offset]. */
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x300u);
         DSD(DS_001014E0) = tab;
         DSD(DS_001014F0) = 1;
@@ -484,7 +473,7 @@ int test_effects(void)
         /* flag == 0 -> type 0 and state byte +0x0E = 0 (the raw truth; such a
          * record never retires, and the raw does not bump DS_0009AF3D). */
         effects_clear();
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x300u);
         DSD(DS_001014E0) = tab;
         DSD(DS_001014F0) = 1;
@@ -524,7 +513,7 @@ int test_effects(void)
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         u32 tab = src + 0x100u, blk = src + 0x200u;
         palette_list_init();
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x300u);
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x08) = 0x40u;          /* first DAC index for the record */
@@ -570,7 +559,7 @@ int test_effects(void)
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         u32 tab = src + 0x100u, blk = src + 0x200u;
         palette_list_init();
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x300u);
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x08) = 0x40u;          /* first DAC index */
@@ -622,7 +611,7 @@ int test_effects(void)
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         u32 tab = src + 0x100u, blk = src + 0x200u;
         palette_list_init();
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x300u);
         /* handle 0 (src+0x00 == 0) so resolved[1] = blk+4 = A. */
         DSD(src + 0x08) = 0x50u;          /* first DAC index */
@@ -689,7 +678,7 @@ int test_effects(void)
          * the shake state alone with the bit clear and run the decay with it
          * set. The active-actor sentinel is self-linked so actors_update walks
          * nothing; every global game_frame touches here is restored below. */
-        fixture_begin();
+        tf_effects_fixture_begin();
         CHECK(fn_resolve(FN_0001324C) != NULL,
               "0x1324C is registered for the update table");
         DSD(DS_000A8644) = FN_0001324C;      /* entry 0 */
@@ -727,7 +716,7 @@ int test_effects(void)
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         u32 tab = src + 0x100u, blk = src + 0x200u;
         palette_list_init();
-        fixture_begin();
+        tf_effects_fixture_begin();
         mem_fill(src, 0, 0x300u);
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x08) = 0x40u;          /* first DAC index */

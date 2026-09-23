@@ -7,20 +7,8 @@
 #include "platform/res.h"
 #include "mem.h"
 #include "symbols.h"
+#include "test_fixtures.h"
 #include <string.h>
-
-/* Scratch mem[] away from every resource the index allocator hands out (the
- * loaded image ends near 41 MB; MEM_SIZE is 64 MB). */
-#define ANIM_SCRATCH 0x3E00000u
-#define ANIM_DESC    (ANIM_SCRATCH + 0x800u)
-
-static u32 anim_alloc_record(void)
-{
-    actors_reset();
-    DSB(DS_00104B24) = 0;
-    DSB(DS_00104B26) = 0;
-    return actor_alloc(0);
-}
 
 /* 0x29F34: the variable reader. Format reference F: < 0x40 indexes the ring
  * through rec+0x51; 0x40..0x45 are the record's own fields (0x40..0x43 and 0x45
@@ -28,7 +16,7 @@ static u32 anim_alloc_record(void)
  * the child. 0x29DB8 is the mirror. */
 static void check_read_write_var(void)
 {
-    u32 rec = anim_alloc_record();
+    u32 rec = tf_anim_alloc_record();
     CHECK(rec != 0, "reader record");
     if (rec == 0) return;
 
@@ -104,7 +92,7 @@ static void check_read_write_var(void)
  * 0x0E897A, which begins `40 CD` = word 0xCD40). */
 static void check_next_sprite_id(void)
 {
-    u32 rec = anim_alloc_record();
+    u32 rec = tf_anim_alloc_record();
     CHECK(rec != 0, "id record");
     if (rec == 0) return;
     u16 *s = (u16 *)(mem + ANIM_SCRATCH);
@@ -188,23 +176,13 @@ static void check_real_stream(void)
     CHECK_EQ_INT((int)DSD(rec + 8), 0x0e897cu);
 }
 
-/* Build a descriptor at ANIM_DESC whose stream is ANIM_SCRATCH, spawn it. */
-static u32 anim_spawn_stream(void)
-{
-    memset(mem + ANIM_DESC, 0, 0x14);
-    *(u32 *)(mem + ANIM_DESC + 0x00) = ANIM_SCRATCH;
-    DSB(ANIM_DESC + 0x04) = 0x00;              /* render type 0 */
-    DSB(ANIM_DESC + 0x05) = 0x00;
-    return actor_spawn((const u32 *)(mem + ANIM_DESC), 0, 0, 0, 0);
-}
-
 /* The spawn/frame-timer walks: the literal word is left at the cursor by
  * 0x2A408, and the next walk advances the cursor by one word and loads it. */
 static void check_walk(void)
 {
     u16 *s = (u16 *)(mem + ANIM_SCRATCH);
     s[0] = 0x2c11; s[1] = 0x2c12;
-    u32 rec = anim_spawn_stream();
+    u32 rec = tf_anim_spawn_stream();
     CHECK(rec != 0, "walk record");
     if (rec == 0) return;
     u32 pset = actor_pset(rec);
@@ -229,7 +207,7 @@ static void check_opcode8_pin(void)
     s[0] = 0x88ff; s[1] = 0;
     actors_pin_anim_tick_zero(1);
     rng_seed(0xabcd);
-    u32 rec = anim_spawn_stream();
+    u32 rec = tf_anim_spawn_stream();
     actors_pin_anim_tick_zero(0);
     CHECK(rec != 0, "opcode-8 record");
     if (rec == 0) return;
@@ -305,7 +283,7 @@ static void check_globe_opcode11_spawn(void)
 static void check_entry_helpers(void)
 {
     u16 *s = (u16 *)(mem + ANIM_SCRATCH);
-    u32 rec = anim_alloc_record();
+    u32 rec = tf_anim_alloc_record();
     CHECK(rec != 0, "entry record");
     if (rec == 0) return;
     DSW(rec + 0x56) = 0;
@@ -343,7 +321,7 @@ static void check_dispatcher_streams(void)
     u16 *s = (u16 *)(mem + ANIM_SCRATCH);
 
     /* 0x12: operand 0x14 -> rec+0x2E = 0x140, rec+0x4E = 1, then literal id. */
-    u32 rec = anim_alloc_record();
+    u32 rec = tf_anim_alloc_record();
     CHECK(rec != 0, "dispatch 0x12 record");
     if (rec != 0) {
         DSW(rec + 0x56) = 0;
@@ -357,7 +335,7 @@ static void check_dispatcher_streams(void)
 
     /* 0x18 fall-through: bound 0, so the counter (rec+0x52) increments once and
      * the cursor advances to the literal id. */
-    rec = anim_alloc_record();
+    rec = tf_anim_alloc_record();
     CHECK(rec != 0, "dispatch 0x18 fallthrough record");
     if (rec != 0) {
         DSW(rec + 0x56) = 0;
@@ -371,7 +349,7 @@ static void check_dispatcher_streams(void)
 
     /* 0x18 jump: bound 3 and the table dword points back at the stream, so the
      * counter counts up to the bound before falling through. */
-    rec = anim_alloc_record();
+    rec = tf_anim_alloc_record();
     CHECK(rec != 0, "dispatch 0x18 jump record");
     if (rec != 0) {
         DSW(rec + 0x56) = 0;
@@ -385,7 +363,7 @@ static void check_dispatcher_streams(void)
     }
 
     /* 0x00: set_dead (rec+0x28 0x08) + frame reset, returns 2. */
-    rec = anim_alloc_record();
+    rec = tf_anim_alloc_record();
     CHECK(rec != 0, "dispatch 0x00 record");
     if (rec != 0) {
         DSW(rec + 0x56) = 0;
@@ -398,7 +376,7 @@ static void check_dispatcher_streams(void)
     }
 
     /* 0x01: frame reset, returns 2. */
-    rec = anim_alloc_record();
+    rec = tf_anim_alloc_record();
     CHECK(rec != 0, "dispatch 0x01 record");
     if (rec != 0) {
         DSW(rec + 0x56) = 0;
@@ -421,7 +399,7 @@ static void check_dispatcher_streams(void)
 static void check_idle_tick_37a58(void)
 {
     u16 *s = (u16 *)(mem + ANIM_SCRATCH);
-    u32 rec = anim_alloc_record();
+    u32 rec = tf_anim_alloc_record();
     CHECK(rec != 0, "idle-tick record");
     if (rec == 0) return;
     DSW(rec + 0x56) = 0;

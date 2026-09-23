@@ -8,11 +8,8 @@
 #include "mem.h"
 #include "symbols.h"
 #include "test.h"
+#include "test_fixtures.h"
 #include <string.h>
-
-/* Scratch above the resource heap (test_effects uses 0x3F00000). */
-#define FIGHT_ACTORS 0x3F20000u
-#define FIGHT_RECS   0x3F30000u
 
 /* The derivation record §1.3's four worked pairs: actor+4, actor+8, the
  * projection stage (actor4+0x20)>>6, (actor8+0x20)>>6. The final stored globals
@@ -24,9 +21,6 @@ static const u32 s_pairs[4][4] = {
     { 0xFFFFFFFFu, 0xFFFFFFC0u, 0x00000000u, 0xFFFFFFFFu },
     { 0x00000040u, 0x00000080u, 0x00000001u, 0x00000002u },
 };
-
-static void snap(u8 *dst, u32 off, u32 len) { memcpy(dst, mem + off, len); }
-static void put(const u8 *src, u32 off, u32 len) { memcpy(mem + off, src, len); }
 
 /* 0x17FA0: the four worked pairs at the (x+0x20)>>6 stage, plus side selection,
  * the facing/page flags, the 0x100AF0 index base and the sprite-origin
@@ -300,86 +294,13 @@ static void check_decay(void)
     CHECK_EQ_INT((int)DSD(DS_00100B08), (int)0xFFFFF0C4u);   /* -0xF3C */
 }
 
-/* The arena frame's minimal live fixture: two seeded slots with no camera-target
- * record, an empty effect list and every gate closed, so fight_arena_frame runs
- * its call order without pulling in the gap functions. Returns P0's record. */
-static u32 demo_fixture(void)
-{
-    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
-    u32 a0 = FIGHT_ACTORS + 1u * 0x20u;
-
-    mem_fill(FIGHT_ACTORS, 0, 0x80);
-    mem_fill(FIGHT_RECS, 0, 0x200);
-
-    DSD(DS_001014EC) = FIGHT_ACTORS;
-    DSD(DS_001077B0) = p0;
-    DSD(DS_00107844) = p1;
-    DSD(DS_001077B8) = 0;
-    DSD(DS_0010784C) = 0;
-    DSD(DS_001014E0) = 0;               /* res_resolve NULL: no origin subtract */
-    DSD(DS_001014F0) = 0;
-    DSW(p0 + 0x28u) = 0;
-    DSW(p0 + 0x56u) = 1;
-    DSW(p1 + 0x28u) = 0;
-    DSW(p1 + 0x56u) = 2;
-    DSW(a0) = 0;                        /* actor bit 15 clear */
-    DSD(DS_00100AF0) = 0;
-    DSD(DS_00100AF4) = 0;
-
-    /* The latches must take the PRE-frame values, not their sentinels. */
-    DSD(DS_001077E4) = 0x00001111u;
-    DSD(DS_001077E8) = 0x00002222u;
-    DSD(DS_00107878) = 0x00003333u;
-    DSD(DS_0010787C) = 0x00004444u;
-
-    /* 0x19068 side 0: the +0x5E timer reaches the record float store. */
-    DSB(DS_00107802) = 0;
-    DSB(DS_00107896) = 0;
-    DSB(0x0010780Fu) = 0;               /* slot0 +0x5F */
-    DSB(DS_00100B58) = 0;               /* equal -> the stance gate passes */
-    DSB(DS_00100B5E) = 1;
-    DSB(DS_00100B5A) = 1;
-    DSB(DS_00100B5C) = 3;
-    DSD(p0 + 0x24u) = 0;
-    DSD(p0 + 0x20u) = 0xDEADBEEFu;
-    DSB(0x001078A3u) = 0;               /* slot1 +0x5F */
-    DSB(DS_00100B58 + 1u) = 0x55;            /* side 1 mismatches -> 0x1922C skip */
-
-    /* 0x49C78: an empty effect list; the DS_001088BF tail gate is closed. */
-    DSD(DS_0010884C) = DS_0010884C;
-    DSB(DS_001088BF) = 0;
-    /* 0x35658: no camera-target record, so the HUD pass returns at 0x3577E. */
-    DSD(DS_001077A8) = 0;
-    DSD(DS_001077A8 + 4u) = 0;
-    /* 0x1282C: the dust gate is closed. */
-    DSW(DS_000EF6DC) = 1;
-    /* 0x1958C: inert unless DS_001078FA == 2. */
-    DSB(DS_001078FA) = 0;
-    /* 0x12DA8: a non-zero camera mode selects the max arm, no slot deref. */
-    DSB(DS_000F0AFE) = 4;
-
-    /* The state 7 / game_frame tails: DS_000F0A71 and the DS_001088D8 input
-     * bits must be clear so frontend_pause_tail/frontend_continue_tail return,
-     * and the overlay must take its early return. The actor list is emptied so
-     * game_frame's actors_update walk is inert. */
-    DSB(DS_000F0A71) = 0;
-    DSD(DS_001088D8) = 0;
-    DSB(DS_0009AD58) = 0;
-    DSB(DS_00105D60) = 0;
-    DSD(DS_00105C00) = 0;
-    DSB(DS_00105C04) = 0;
-    DSD(DS_00105BCC) = DS_00105BCC;
-    DSB(DS_00104B24) = 0;
-    return p0;
-}
-
 /* 0x263F4: the arena frame's order and its two observable contracts. The two
  * latch sentinels differ from the values they copy, so a missing latch fails;
  * the 0x19068 pass stores a record float and clears the record's +0x20, so a
  * missing fighter update fails. */
 static void check_arena_frame(void)
 {
-    u32 p0 = demo_fixture();
+    u32 p0 = tf_demo_fixture();
 
     fight_arena_frame();
 
@@ -424,7 +345,7 @@ static void check_arena_frame_live(void)
 {
     u32 rec0;
 
-    (void)demo_fixture();
+    (void)tf_demo_fixture();
     DSB(DS_00104B1D) = 1;               /* skip the coin poll */
     DSD(DS_001088E4) = 0;
     DSB(DS_00104528 + 1u) = 2;          /* skip the text rows */
@@ -1038,7 +959,7 @@ static void check_slot_latch(void)
  * restored master-loop draw moves it). */
 static void check_state6(void)
 {
-    (void)demo_fixture();
+    (void)tf_demo_fixture();
 
     actors_reset();                     /* the spawn allocates from the pool */
     DSD(DS_001077A8) = FIGHT_RECS;      /* sentinels differ from the slots */
@@ -1195,7 +1116,7 @@ static void check_state6(void)
  * arena. The fixture's latch sentinels (077E8/0787C) prove which arm ran. */
 static void check_state7(void)
 {
-    (void)demo_fixture();
+    (void)tf_demo_fixture();
     DSB(DS_00104B1D) = 1;
     DSW(DS_000F0A64) = 7;
     DSW(DS_000F0A6A) = 2;
@@ -1208,7 +1129,7 @@ static void check_state7(void)
     CHECK_EQ_INT((int)DSD(DS_001077E8), 0x1111);   /* the arena latch ran */
     CHECK_EQ_INT((int)DSD(DS_0010787C), 0x3333);
 
-    (void)demo_fixture();
+    (void)tf_demo_fixture();
     DSB(DS_00104B1D) = 1;
     DSW(DS_000F0A64) = 7;
     DSW(DS_000F0A6A) = 1;
@@ -1228,7 +1149,7 @@ static void check_state7(void)
  * clamp only, so the camera-x value is the whole observable. */
 static void check_game_frame_tail(void)
 {
-    (void)demo_fixture();
+    (void)tf_demo_fixture();
     DSB(DS_00104B1D) = 1;
     DSD(DS_00104B00) = 3;
     DSW(DS_000F0A64) = 7;
@@ -1240,7 +1161,7 @@ static void check_game_frame_tail(void)
     game_frame();
     CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x5D00);
 
-    (void)demo_fixture();
+    (void)tf_demo_fixture();
     DSB(DS_00104B1D) = 1;
     DSD(DS_00104B00) = 3;
     DSW(DS_000F0A64) = 7;
@@ -1350,7 +1271,7 @@ static void check_list_init(void)
     u8 s_li[0x48C];
     u32 s_a4fc = DSD(DS_00104AFC);
 
-    snap(s_li, 0x001083C4u, sizeof s_li);
+    tf_snap(s_li, 0x001083C4u, sizeof s_li);
     DSD(DS_0010884C) = 0;               /* head would walk address 0 if unset */
     DSD(DS_00108850) = 0;
     DSD(DS_001083C4) = 0;
@@ -1382,7 +1303,7 @@ static void check_list_init(void)
     CHECK_EQ_INT((int)DSB(DS_001088CB), 0);
 
     DSD(DS_00104AFC) = s_a4fc;
-    put(s_li, 0x001083C4u, sizeof s_li);
+    tf_put(s_li, 0x001083C4u, sizeof s_li);
 }
 
 /* 0x24C73/0x47208: the demo's CPU-AI command generator. A live pair of slots
@@ -1398,7 +1319,7 @@ static void check_command_generator(void)
     u8 s_ai[0x100];
     int any = 0;
 
-    snap(s_ai, 0x001081F0u, sizeof s_ai);
+    tf_snap(s_ai, 0x001081F0u, sizeof s_ai);
     mem_fill(0x001081F0u, 0, sizeof s_ai);
     mem_fill(FIGHT_RECS, 0, 0x400);
     mem_fill(FIGHT_ACTORS, 0, 0x80);
@@ -1440,7 +1361,7 @@ static void check_command_generator(void)
     }
     CHECK(any, "the demo AI emits a non-zero command word");
 
-    put(s_ai, 0x001081F0u, sizeof s_ai);
+    tf_put(s_ai, 0x001081F0u, sizeof s_ai);
 }
 
 /* 0x36E2C and the +0x52 dispatch. Input A arms the gate (slot+0x42 bit 0x10)
@@ -1548,42 +1469,13 @@ static void check_state_dispatch(void)
  * slot fields live at DS_001077B0 + off; the fighter record is a scratch
  * address so a wrong slot/record base fails. */
 
-/* Zero both slots and the scratch records, make slot[0] live with `ch`, and
- * seed the mode/command/reaction globals the chain reads. */
-static u32 hit_fixture(u32 ch)
-{
-    mem_fill(DS_001077B0, 0, 0x94u);
-    mem_fill(DS_001077B0 + 0x94u, 0, 0x94u);
-    mem_fill(0x00107D58u, 0, 0x180u);           /* the three per-slot arrays */
-    mem_fill(FIGHT_RECS, 0, 0x200u);
-    mem_fill(FIGHT_ACTORS, 0, 0x80u);
-    DSD(DS_001014EC) = FIGHT_ACTORS;
-    DSD(DS_001077B0) = FIGHT_RECS;
-    DSD(DS_00107844) = FIGHT_RECS + 0x100u;
-    DSB(DS_001077B0 + 0x7Au) = (u8)ch;
-    DSB(DS_001077B0 + 0x63u) = 1;
-    DSB(DS_001077B0 + 0x5Fu) = 0xFFu;
-    DSD(DS_00104B00) = 3;
-    DSB(DS_001078FA) = 0;
-    DSW(DS_001088E0) = 0;
-    DSW(DS_001088E2) = 0;
-    DSB(DS_00100B5A) = 0;
-    DSB(DS_00100B5A + 1u) = 0;
-    DSB(DS_00100B5E) = 0;
-    DSB(DS_00100B5E + 1u) = 0;
-    DSB(DS_00107EE4) = 0;
-    DSD(DS_00107ED8) = 0;
-    DSD(DS_00107EDC) = 0;
-    return FIGHT_RECS;
-}
-
 /* §7.8 0x3C600: the per-attack-frame descriptor. */
 static void check_hit_frame_desc(void)
 {
     u32 saved = DSD(DS_00101514);
     u32 tab = FIGHT_RECS + 0x400u;
 
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     CHECK_EQ_INT((int)hit_frame_desc(0u, 0u), 0x000BFE3C);
 
     /* slot+0x63 clear: the controller selector. */
@@ -1601,7 +1493,7 @@ static void check_hit_frame_desc(void)
 /* §7.7 0x3C6A8: seed/clear a slot. */
 static void check_hit_slot_seed(void)
 {
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSW(DS_00107D58) = 0x1234;
     DSW(DS_00107E58) = 0x5678;
     DSW(DS_00107DD8) = 0x9ABC;
@@ -1614,14 +1506,14 @@ static void check_hit_slot_seed(void)
 /* §7.9 0x3C88C: the phase-8 decrement and the clear. */
 static void check_hit_machine(void)
 {
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSW(DS_00107D58) = 8;
     DSW(DS_00107DD8) = 3;
     hit_slot_step();
     CHECK_EQ_INT((int)DSW(DS_00107DD8), 2);     /* decrement, still >= 1 */
     CHECK_EQ_INT((int)DSW(DS_00107D58), 8);
 
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSW(DS_00107D58) = 8;
     DSW(DS_00107DD8) = 0;
     hit_slot_step();
@@ -1630,7 +1522,7 @@ static void check_hit_machine(void)
 
     /* Phase 7 with a live stun runs the 2..7 block; the exact outcome is
      * data-dependent (0x3C758/0x3C800 are §6.3), so no assertion here. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSW(DS_00107D58) = 7;
     DSW(DS_00107DD8) = 5;
     hit_slot_step();
@@ -1640,7 +1532,7 @@ static void check_hit_machine(void)
      * connect that returns 0 (command 0) writes phase = 8. */
     {
         u32 saved0 = DSD(0x000BFE3Cu), saved1 = DSD(0x000BFE3Cu + 0x14u);
-        (void)hit_fixture(0);
+        (void)tf_hit_fixture(0);
         DSD(0x000BFE3Cu) = 0;
         DSD(0x000BFE3Cu + 0x14u) = 0;
         DSW(DS_00107D58) = 0;
@@ -1655,7 +1547,7 @@ static void check_hit_machine(void)
 /* §7.2 0x3CD44 and §7.3 0x3CCEC: the armed scan and the stance test. */
 static void check_hit_scan_stance(void)
 {
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSW(DS_00107D58 + 0x0Au) = 8;               /* index 5 */
     CHECK_EQ_INT((int)hit_scan(0u), 5);
     DSW(DS_00107D58 + 0x0Au) = 0;
@@ -1679,7 +1571,7 @@ static void check_hit_scan_stance(void)
 /* §7.5 0x3CD94 and §7.11 0x3CE24: the immunity bitmask and its gate. */
 static void check_hit_immunity_gate(void)
 {
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSB(DS_001077B0 + 0x5Fu) = 0xFFu;
     CHECK_EQ_INT(hit_immunity(0u, 0u), 1);      /* the 0xFF early-out */
 
@@ -1704,7 +1596,7 @@ static void check_hit_immunity_gate(void)
  * variants and the palette-flash pair. */
 static void check_hit_reactions(void)
 {
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     CHECK_EQ_INT(hit_reaction_allow(0u, 0x20u), 1);
     CHECK_EQ_INT(hit_reaction_allow(0u, 0x28u), 0);
 
@@ -1739,7 +1631,7 @@ static void check_hit_reaction_drive(void)
 {
     u16 saved_react = DSW(0x000C619Cu + 4u);
 
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSB(DS_001077B0 + 0x7Cu) = 0;
     DSB(DS_001077B0 + 0x52u) = 0x55;            /* §7.4: unchanged, not 0 */
     DSW(DS_00107D58) = 8;
@@ -1749,11 +1641,11 @@ static void check_hit_reaction_drive(void)
     CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x5Fu), 0x20);
     CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x52u), 0x55);
 
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSB(DS_001077B0 + 0x56u) = 6;               /* the gate rejects */
     CHECK_EQ_INT(hit_reaction_drive(0u, 0u), 0);
 
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSB(DS_001077B0 + 0x52u) = 0x55;            /* seeded, must move to 9 */
     DSW(DS_001077B0 + 0x6Au) = 0x40;
     DSW(0x000C619Cu + 4u) = 0;                  /* reaction 0: stream != 0 */
@@ -1765,7 +1657,7 @@ static void check_hit_reaction_drive(void)
 
     /* §7.11 0x34E2C: the +0x59 pair writes the RECORD (0x34F2E/0x34F47
      * dereference the slot first), not the slot. Isolated from 0x34D8C. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSB(DS_001078FA) = 2;
     DSB(FIGHT_RECS + 0x59u) = 0x55;
     DSB(FIGHT_RECS + 0x100u + 0x59u) = 0x55;
@@ -1781,7 +1673,7 @@ static void check_hit_reaction_drive(void)
 /* §7.1 0x3CF38: a resolved hit consumes the hitbox and drives the reaction. */
 static void check_hit_chain(void)
 {
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSW(DS_00107D58) = 8;                       /* armed hitbox 0 */
     DSB(DS_001077B0 + 0x7Cu) = 0;
     CHECK_EQ_INT(hit_chain_resolve(0u), 1);
@@ -1791,7 +1683,7 @@ static void check_hit_chain(void)
     CHECK_EQ_INT((int)DSW(DS_00107D58), 0);     /* consumed */
 
     /* No armed hitbox: the raw returns at 0x3CF5E without touching +0x55. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSW(DS_00107D58) = 7;
     DSB(DS_001077B0 + 0x55u) = 0x11;
     DSB(DS_001077B0 + 0x7Cu) = 0x40;
@@ -1800,7 +1692,7 @@ static void check_hit_chain(void)
     CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x7Cu), 0x40);
 
     /* Armed but the reaction gate fails: the else path resets +0x5F/+0x55. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSW(DS_00107D58) = 8;
     DSB(DS_001077B0 + 0x56u) = 6;
     DSB(DS_001077B0 + 0x55u) = 0x11;
@@ -1815,7 +1707,7 @@ static void check_hit_chain(void)
 static void check_hit_helpers(void)
 {
     u32 out[6];
-    u32 rec = hit_fixture(0), p1 = FIGHT_RECS + 0x100u;
+    u32 rec = tf_hit_fixture(0), p1 = FIGHT_RECS + 0x100u;
 
     /* 0x339AC: rec+0x51 selects the slot pair. */
     DSB(rec + 0x51u) = 1;
@@ -1869,7 +1761,7 @@ static void check_state_machine(void)
     /* A: +0x53 = 0 (0x3531C's default) and a bit-15 command with +0x52 = 0x0E
      * drive +0x52 to 3 through 0x3BDDC (0x3520E). Seeded +0x54 = 0x55 and
      * +0x53 = 0 differ from the post-conditions 2 and 4. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077A8) = s0;
     DSD(DS_001077A8 + 4u) = s1;
     DSD(s0) = r0;
@@ -1903,7 +1795,7 @@ static void check_state_machine(void)
     /* C1: +0x53 = 8 with slot+0x88 below the 0xBDBE8 = 3 gate and +0x5F < 0x18
      * calls the 0x3CF38 chain at 0x354BC; an armed hitbox resolves, so +0x7C
      * (the hit counter) increments. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077A8) = s0;
     DSD(DS_001077A8 + 4u) = s1;
     DSD(s0) = r0;
@@ -1922,7 +1814,7 @@ static void check_state_machine(void)
 
     /* C2: slot+0x88 = 3 closes the 0xBDBE8 gate, so the chain is not called:
      * the hit counter stays 0 and +0x5F keeps the seeded 0x10. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077A8) = s0;
     DSD(DS_001077A8 + 4u) = s1;
     DSD(s0) = r0;
@@ -1940,7 +1832,7 @@ static void check_state_machine(void)
     CHECK_EQ_INT((int)DSB(s0 + 0x53u), 8);
 
     /* C3: +0x5F >= 0x18 closes the 0x34E20 gate the same way. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077A8) = s0;
     DSD(DS_001077A8 + 4u) = s1;
     DSD(s0) = r0;
@@ -1955,7 +1847,7 @@ static void check_state_machine(void)
     CHECK_EQ_INT((int)DSB(s0 + 0x53u), 8);
 
     /* D: 0x39280 clears slot+0x5D and the +0x43 bit 2. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSB(DS_001077B0 + 0x5Du) = 0xAAu;
     DSB(DS_001077B0 + 0x43u) = 0xFFu;
     fighter_state_39280(0u);
@@ -1963,7 +1855,7 @@ static void check_state_machine(void)
     CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x43u), 0xFB);
 
     /* E: 0x34DDC. char 0's threshold is word[0xBD870] = 0x1180. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077B0 + 0x30u) = 0x2000u;         /* above the threshold */
     DSD(FIGHT_RECS + 0x36u) = 0xFFFFFFFFu;
     CHECK_EQ_INT(fighter_34ddc(0u), 1);
@@ -1986,7 +1878,7 @@ static void check_state_machine(void)
 
     /* H: 0x1DE64's command-word map. slot+0x63 = 1 (the fixture) skips the
      * 0x46460 scan, so the result is the raw command word. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_00101514) = tab;
     mem_fill(tab, 0, 0x300u);
     DSW(tab + 0x2D4u) = 0;
@@ -2020,7 +1912,7 @@ static void check_state_handlers(void)
      * for char 0 >= slot+0x30, rec+0x36 <= 0) writes +0x52 = 0x14, +0x53 = 4,
      * +0x78 = word[0xBDC16] and rec+0x24 = 0. The sentinel 0xAA differs from
      * every post-value. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077A8) = s0;
     DSD(DS_001077A8 + 4u) = s1;
     DSD(s0) = r0;
@@ -2053,7 +1945,7 @@ static void check_state_handlers(void)
     CHECK_EQ_INT((int)DSW(r0 + 0x44u), 0);
 
     /* A2: the same with rec+0x36 > 0 (the gate fails): the state is untouched. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077A8) = s0;
     DSD(DS_001077A8 + 4u) = s1;
     DSD(s0) = r0;
@@ -2069,7 +1961,7 @@ static void check_state_handlers(void)
     /* B: 0x361C8 (+0x52 = 12). +0x58 = 3 with |rec+0x32 >> 16| < 0x11 zeroes
      * rec+0x34 and writes +0x52 = 9. The sentinel +0x52 = 0xAA fails if the
      * store is dropped. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077A8) = s0;
     DSD(DS_001077A8 + 4u) = s1;
     DSD(s0) = r0;
@@ -2091,7 +1983,7 @@ static void check_state_handlers(void)
     CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0xAA);
 
     /* C: 0x36300 (+0x52 = 13), the same case-3 body. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077A8) = s0;
     DSD(DS_001077A8 + 4u) = s1;
     DSD(s0) = r0;
@@ -2106,7 +1998,7 @@ static void check_state_handlers(void)
 
     /* D: 0x36710 (+0x52 = 17). +0x58 = 2 with rec+0x36 == 0 and rec+0x1C == 0
      * writes rec+0x43 = byte[0xBD89A] = 8 and +0x52 = 9. The sentinels differ. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077A8) = s0;
     DSD(DS_001077A8 + 4u) = s1;
     DSD(s0) = r0;
@@ -2122,7 +2014,7 @@ static void check_state_handlers(void)
     CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
 
     /* D2: the first step (+0x58 = 0 -> 1) touches only +0x58. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077A8) = s0;
     DSD(s0) = r0;
     DSB(r0 + 0x51u) = 0;
@@ -2133,7 +2025,7 @@ static void check_state_handlers(void)
     CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0xAA);
 
     /* E: 0x399CC (+0x52 = 7). The self slot gets +0x41 bit 2 and +0x74 = 0. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077A8) = s0;
     DSD(s0) = r0;
     DSB(r0 + 0x51u) = 0;
@@ -2146,7 +2038,7 @@ static void check_state_handlers(void)
 
     /* F: 0x36430 (+0x52 = 5). With 0x365C8/0x36638 both clear and the command
      * word 0, the handler writes +0x52 = 9 and +0x54 = 0. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077A8) = s0;
     DSD(DS_001077A8 + 4u) = s1;
     DSD(s0) = r0;
@@ -2165,7 +2057,7 @@ static void check_state_handlers(void)
 
     /* G: 0x364FC (+0x52 = 21). Command 0x4000 (the +0x40 high bit) with
      * 0x1A640 == 0 writes +0x52 = 5. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077A8) = s0;
     DSD(DS_001077A8 + 4u) = s1;
     DSD(s0) = r0;
@@ -2182,7 +2074,7 @@ static void check_state_handlers(void)
     CHECK_EQ_INT((int)DSB(s0 + 0x52u), 5);
 
     /* H: 0x1A640's two non-zero arms and its zero arm. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077B0) = r0;
     DSW(r0 + 0x28u) = 0;                        /* facing clear */
     DSW(DS_001088E0) = 0x1000u;                 /* 0x1000 in the high byte */
@@ -2251,7 +2143,7 @@ static void check_anim_stream_args(void)
     /* Reach 0x367DC through 0x3531C case 7: char 4, +0x5F 0x21 and
      * (s32)slot+0x86 >> 16 > 0x5A. Mode 0 (not 3/0x22/0x24) opens the second
      * call. */
-    (void)hit_fixture(0);
+    (void)tf_hit_fixture(0);
     DSD(DS_001077A8) = DS_001077B0;
     DSD(DS_001077A8 + 4u) = DS_001077B0 + 0x94u;
     DSB(FIGHT_RECS + 0x51u) = 0;
@@ -2304,16 +2196,16 @@ int test_fight(void)
     u32 s_rng = DSD(DS_000EF6D8);
     u32 s_frame = DSD(DS_000EF6DC);
 
-    snap(s_f0ae0, 0x000F0AE0u, 0x20u);
-    snap(s_proj, 0x00100A70u, 0xF4u);
-    snap(s_slots, 0x001077A0u, 0x160u);
-    snap(s_d0, 0x00107D00u, 0x200u);
-    snap(s_88, 0x00108840u, 0x100u);
-    snap(s_a5, 0x00104500u, 0x800u);
-    snap(s_82, 0x00108260u, 0x80u);
-    snap(s_8100, 0x00108100u, 0x80u);
-    snap(s_5b, 0x00105B00u, 0x300u);
-    snap(s_9ad, 0x0009AD50u, 0x10u);
+    tf_snap(s_f0ae0, 0x000F0AE0u, 0x20u);
+    tf_snap(s_proj, 0x00100A70u, 0xF4u);
+    tf_snap(s_slots, 0x001077A0u, 0x160u);
+    tf_snap(s_d0, 0x00107D00u, 0x200u);
+    tf_snap(s_88, 0x00108840u, 0x100u);
+    tf_snap(s_a5, 0x00104500u, 0x800u);
+    tf_snap(s_82, 0x00108260u, 0x80u);
+    tf_snap(s_8100, 0x00108100u, 0x80u);
+    tf_snap(s_5b, 0x00105B00u, 0x300u);
+    tf_snap(s_9ad, 0x0009AD50u, 0x10u);
 
     check_projection();
     check_dispatch();
@@ -2356,16 +2248,16 @@ int test_fight(void)
     check_hud_pass_machine();
     check_anim_stream_args();
 
-    put(s_f0ae0, 0x000F0AE0u, 0x20u);
-    put(s_proj, 0x00100A70u, 0xF4u);
-    put(s_slots, 0x001077A0u, 0x160u);
-    put(s_d0, 0x00107D00u, 0x200u);
-    put(s_88, 0x00108840u, 0x100u);
-    put(s_a5, 0x00104500u, 0x800u);
-    put(s_82, 0x00108260u, 0x80u);
-    put(s_8100, 0x00108100u, 0x80u);
-    put(s_5b, 0x00105B00u, 0x300u);
-    put(s_9ad, 0x0009AD50u, 0x10u);
+    tf_put(s_f0ae0, 0x000F0AE0u, 0x20u);
+    tf_put(s_proj, 0x00100A70u, 0xF4u);
+    tf_put(s_slots, 0x001077A0u, 0x160u);
+    tf_put(s_d0, 0x00107D00u, 0x200u);
+    tf_put(s_88, 0x00108840u, 0x100u);
+    tf_put(s_a5, 0x00104500u, 0x800u);
+    tf_put(s_82, 0x00108260u, 0x80u);
+    tf_put(s_8100, 0x00108100u, 0x80u);
+    tf_put(s_5b, 0x00105B00u, 0x300u);
+    tf_put(s_9ad, 0x0009AD50u, 0x10u);
     DSD(DS_001014EC) = s_actor_tab;
     DSD(DS_001014E0) = s_res_tab;
     DSD(DS_001014F0) = s_res_cnt;
