@@ -345,7 +345,9 @@ git commit -m "fight: align the demo-AI block state"
 
 ### Task 4: The fighter animation poses
 
-**Task 3c's finding (the raw wins).** The demo-AI block state now aligns — the command words match the original's (`cmd0@1072 = 0x4848`, `cmd1@1071 = 0x0002`) — and the freeze's next layer is **this task's**. The slot `+0x52`/`+0x53` reaches the original's `9`/`8` but does not advance to `10`/`0x0A`: `0x3531C` case 8 re-arms `+0x53 = 8` because `hit_chain_resolve` (`0x3CF38`) returns 0 for want of a phase-8 hitbox, and the port's **animation cursor** differs (record §3.3). The `+0x52 = 0x10` writers are the **pose family** `0x3A504`/`0x3A650`/`0x3A79C`/`0x3A8E8`/`0x3A95C`. This task derives and ports the animation/think state that record §3 found to be a subsystem, and the pose family above.
+**Outcome (recorded): the size gate is TRIGGERED — the human ruled this becomes its own cycle.** The pose state `0x10`/`0x0A` is reached only via `0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC` → the pose family (`0x3A504`/`0x3A650`/`0x3A79C`/`0x3A8E8`); `0x19020` is unported, so `DS_00100AF8`/`AFC` stay 0 and `0x1958C`'s `0x1974D` tail never runs. The brief's model is refuted (`0x3531C` case 8's gate `word[0xBDBE8] = 3 ≤ +0x88` at `0x35498` stops it writing after 3 frames, and the port's cursor already matches). **Closure: 68 new funcs / 10467 B — ~2.4× a task.** The freeze subsystem becomes **cycle 4**; this cycle records it as a named gap. **What this cycle achieved for the poses instead:** the port's cursor is now `0xD2316` (matching the original), the arena's diff fell 30536 B → **18294 B (9.5%)**, and the raptor's IoU rose 0.522 → **1.000** — from Tasks 2/3b/3c.
+
+**Task 3c's finding (the raw wins).** The demo-AI block state now aligns — the command words match the original's (`cmd0@1072 = 0x4848`, `cmd1@1071 = 0x0002`). The slot `+0x52`/`+0x53` reaches the original's `9`/`8` but does not advance to `10`/`0x0A`; the remaining cause is the subsystem above, not this task.
 
 **Files:**
 - Modify: the owner the record names (candidates: `port/src/game/actors.c`, `port/src/game/fighter.c`)
@@ -407,6 +409,8 @@ git commit -m "actors: fix the fighters' animation pose state"
 ---
 
 ### Task 5: The Gate and the record
+
+**Recorded outcome (this cycle) — assess it, do not re-derive it.** **Claim 2 is MET:** the character palette's DAC range matches the raw (`start=142 len=31`), the arena's byte-diff fell 42667 B (22.2%) → **18294 B (9.5%)**, and the raptor's IoU rose 0.522 → **1.000**. **Claim 1's stall is UNMET and becomes cycle 4:** the fight reaches the timer exit (`s7_last == 1969`) but its state machine is frozen from 1072, because the pose state `0x10`/`0x0A` needs the unported `0x19020`→`0x193B0`→`0x3B714`→`0x3AAFC`→pose-family subsystem (68 funcs / 10467 B; true new ≥ 11012 B). **What the cycle landed:** the palette-variant driver seed; seven faithful `+0x52` handlers; the state-7 entry's four missing RNG draws (the entry LCG now `0x10F7DB07`, matching); the demo-AI block state (the command words now match); and the pose measurement. **Record the Gate as UNMET overall, with claim 2's numbers and claim 1's named gap, and hand the subsystem to cycle 4.**
 
 **Files:**
 - Modify: `port/spec/game_flow.md`, `README.md`, `docs/superpowers/specs/2026-09-22-combat-fidelity-design.md`
