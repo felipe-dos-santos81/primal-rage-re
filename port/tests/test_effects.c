@@ -10,6 +10,33 @@
 /* Scratch for a source record: mem[] above the heap, the base other tests use. */
 #define EFFECTS_TEST_SRC 0x3F00000u
 
+/* Zero the shared source scratch (entry count 0 at +0xC). */
+static void effects_reset_source(u32 size)
+{
+    mem_fill(EFFECTS_TEST_SRC, 0, size);
+}
+
+/* Install a one-entry resource table at `tab` whose block is `blk`. */
+static void effects_reset_restab(u32 tab, u32 blk)
+{
+    DSD(DS_001014E0) = tab;
+    DSD(DS_001014F0) = 1;
+    DSD(tab + 16) = blk;
+}
+
+/* Put the resource table back the way effects_reset_restab found it. */
+static void effects_restore_restab(u32 saved_tab, u32 saved_n)
+{
+    DSD(DS_001014E0) = saved_tab;
+    DSD(DS_001014F0) = saved_n;
+}
+
+/* Seed the six-dword resolved block the scroll tests copy. */
+static void effects_seed_block6(u32 blk)
+{
+    for (int i = 0; i < 6; i++) DSD(blk + 4 + (u32)i * 4u) = 0x40u + (u32)i;
+}
+
 int test_effects(void)
 {
     int before = g_failures;
@@ -58,7 +85,7 @@ int test_effects(void)
     {
         u32 src = EFFECTS_TEST_SRC;
         u32 rec;
-        mem_fill(src, 0, 0x40u);          /* source record, entry count 0 at +0xC */
+        effects_reset_source(0x40u);          /* source record, entry count 0 at +0xC */
         rec = effects_spawn(src, 0x2Au, 0x419786Cu);
         CHECK(rec != 0, "spawn takes a record once the free list is built");
         CHECK_EQ_INT(effects_active(), 1);
@@ -107,13 +134,11 @@ int test_effects(void)
         u32 blk = src + 0x200u;
         u32 head = DSD(DS_000FCCE8);
         u32 rec;
-        DSD(DS_001014E0) = tab;
-        DSD(DS_001014F0) = 1;
-        DSD(tab + 16) = blk;
+        effects_reset_restab(tab, blk);
         DSD(blk + 4) = 0x11111111u;
         DSD(blk + 8) = 0x22222222u;
         DSD(blk + 12) = 0x33333333u;
-        mem_fill(src, 0, 0x40u);
+        effects_reset_source(0x40u);
         DSD(src + 0x0C) = 3u;
         /* Dirty the record's entry tables, including one slot PAST the count,
          * so the count-bounded zero/copy loops are proven, not vacuous. */
@@ -148,7 +173,7 @@ int test_effects(void)
          * non-positive and must be skipped, not iterated ~4e9 times. */
         {
             u32 rec3 = DSD(DS_000FCCE8);
-            mem_fill(src, 0, 0x40u);
+            effects_reset_source(0x40u);
             DSD(src + 0x0C) = 0xFFFFFFFFu;
             u32 rneg = effects_spawn(src, 0u, 0u);
             CHECK(rneg != 0, "non-positive count is skipped");
@@ -172,8 +197,7 @@ int test_effects(void)
             DSD(DS_001014F0) = 1;
         }
 
-        DSD(DS_001014E0) = saved_tab;
-        DSD(DS_001014F0) = saved_n;
+        effects_restore_restab(saved_tab, saved_n);
     }
 
     effects_clear();
@@ -184,7 +208,7 @@ int test_effects(void)
          * free sentinel and must return 0 without touching either list. */
         u32 src = EFFECTS_TEST_SRC;
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x40u);
+        effects_reset_source(0x40u);
         for (u32 i = 0; i < 24u; i++)
             CHECK(effects_spawn(src, 0u, 0u) != 0, "pool has 24 records");
         CHECK_EQ_INT(effects_active(), 24);
@@ -214,7 +238,7 @@ int test_effects(void)
          * tears the record down. Four steps is exactly the raw's lifetime. */
         u32 src = EFFECTS_TEST_SRC;
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x40u);          /* source count +0xC == 0 */
+        effects_reset_source(0x40u);          /* source count +0xC == 0 */
         u32 rec = effects_spawn(src, 3u, 0u);
         CHECK_EQ_INT(effects_active(), 1);
         CHECK_EQ_INT((int)rec, (int)DS_000F0B00);
@@ -247,12 +271,10 @@ int test_effects(void)
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         u32 tab = src + 0x100u, blk = src + 0x200u, rec;
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x300u);
+        effects_reset_source(0x300u);
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x0C) = 2u;
-        DSD(DS_001014E0) = tab;
-        DSD(DS_001014F0) = 1;
-        DSD(tab + 16) = blk;
+        effects_reset_restab(tab, blk);
         DSD(blk + 4) = 0x40404040u;
         DSD(blk + 8) = 0x00707070u;
         DSD(blk + 12) = 0x0A0B0C0Du;
@@ -271,8 +293,7 @@ int test_effects(void)
         /* The record front-inserts into the active list like 0x13C70. */
         CHECK_EQ_INT((int)DSD(DS_000FCCE0), (int)rec);
         CHECK_EQ_INT((int)DSD(rec), (int)DS_000FCCE0);
-        DSD(DS_001014E0) = saved_tab;
-        DSD(DS_001014F0) = saved_n;
+        effects_restore_restab(saved_tab, saved_n);
     }
     effects_clear();
     CHECK_EQ_INT(effects_active(), 0);
@@ -283,7 +304,7 @@ int test_effects(void)
          * count is skipped, not iterated ~4e9 times. The record still builds. */
         u32 src = EFFECTS_TEST_SRC;
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x40u);
+        effects_reset_source(0x40u);
         DSD(src + 0x0C) = 0xFFFFFFFFu;
         u32 head = DSD(DS_000FCCE8);
         DSD(head + 0x10) = 0xDDDDDDDDu;
@@ -304,7 +325,7 @@ int test_effects(void)
         u32 src = EFFECTS_TEST_SRC;
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x40u);
+        effects_reset_source(0x40u);
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x0C) = 2u;
         DSD(DS_001014F0) = 0;             /* res_resolve(index 0) -> NULL */
@@ -329,8 +350,7 @@ int test_effects(void)
         CHECK_EQ_INT((int)rs, (int)head3);
         CHECK_EQ_INT((int)DSD(rs + 0x14), (int)0xCCCCCCCCu);
         CHECK_EQ_INT((int)DSD(rs + 0x414), (int)0xBBBBBBBBu);
-        DSD(DS_001014E0) = saved_tab;
-        DSD(DS_001014F0) = saved_n;
+        effects_restore_restab(saved_tab, saved_n);
     }
     effects_clear();
     CHECK_EQ_INT(effects_active(), 0);
@@ -342,12 +362,10 @@ int test_effects(void)
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         u32 tab = src + 0x100u, blk = src + 0x200u, rec;
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x300u);
+        effects_reset_source(0x300u);
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x0C) = 2u;
-        DSD(DS_001014E0) = tab;
-        DSD(DS_001014F0) = 1;
-        DSD(tab + 16) = blk;
+        effects_reset_restab(tab, blk);
         DSD(blk + 4) = 0x00102030u;
         DSD(blk + 8) = 0x00040506u;
         DSD(blk + 12) = 0x00070809u;
@@ -362,8 +380,7 @@ int test_effects(void)
         CHECK_EQ_INT((int)DSD(rec + 0x14), 0x00FFFFFF);
         CHECK_EQ_INT((int)DSD(rec + 0x410), 0x00040506);
         CHECK_EQ_INT((int)DSD(rec + 0x414), 0x00070809);
-        DSD(DS_001014E0) = saved_tab;
-        DSD(DS_001014F0) = saved_n;
+        effects_restore_restab(saved_tab, saved_n);
     }
     effects_clear();
     CHECK_EQ_INT(effects_active(), 0);
@@ -376,20 +393,17 @@ int test_effects(void)
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         u32 tab = src + 0x100u, blk = src + 0x200u, rec;
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x300u);
+        effects_reset_source(0x300u);
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x0C) = 257u;
-        DSD(DS_001014E0) = tab;
-        DSD(DS_001014F0) = 1;
-        DSD(tab + 16) = blk;
+        effects_reset_restab(tab, blk);
         DSD(blk + 4) = 0x11111111u;
         DSD(blk + 8) = 0x22222222u;
         rec = effects_spawn_pulse(src, 1u);
         CHECK(rec != 0, "0x13E28 takes a 257-entry record");
         CHECK_EQ_INT((int)DSD(rec + 0x10), 0x00FFFFFF);
         CHECK_EQ_INT((int)DSD(rec + 0x410), 0x22222222);
-        DSD(DS_001014E0) = saved_tab;
-        DSD(DS_001014F0) = saved_n;
+        effects_restore_restab(saved_tab, saved_n);
     }
     effects_clear();
     CHECK_EQ_INT(effects_active(), 0);
@@ -401,12 +415,10 @@ int test_effects(void)
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         u32 tab = src + 0x100u, blk = src + 0x200u, rec;
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x300u);
+        effects_reset_source(0x300u);
         DSD(src + 0x0C) = 3u;
-        DSD(DS_001014E0) = tab;
-        DSD(DS_001014F0) = 1;
-        DSD(tab + 16) = blk;
-        for (int i = 0; i < 6; i++) DSD(blk + 4 + (u32)i * 4u) = 0x40u + (u32)i;
+        effects_reset_restab(tab, blk);
+        effects_seed_block6(blk);
         rec = effects_spawn_scroll(src, 0, 2u, 1u);
         CHECK(rec != 0, "0x13B3C takes a record");
         CHECK_EQ_INT((int)DSB(rec + 0x0C), 2);
@@ -418,8 +430,7 @@ int test_effects(void)
         CHECK_EQ_INT((int)DSD(rec + 0x18), 0x41);
         CHECK_EQ_INT((int)DSD(rec + 0x414), 0x40);
         CHECK_EQ_INT((int)DSD(rec + 0x418), 0x41);
-        DSD(DS_001014E0) = saved_tab;
-        DSD(DS_001014F0) = saved_n;
+        effects_restore_restab(saved_tab, saved_n);
     }
     effects_clear();
     CHECK_EQ_INT(effects_active(), 0);
@@ -432,11 +443,9 @@ int test_effects(void)
         u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
         u32 tab = src + 0x100u, blk = src + 0x200u, rec;
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x300u);
-        DSD(DS_001014E0) = tab;
-        DSD(DS_001014F0) = 1;
-        DSD(tab + 16) = blk;
-        for (int i = 0; i < 6; i++) DSD(blk + 4 + (u32)i * 4u) = 0x40u + (u32)i;
+        effects_reset_source(0x300u);
+        effects_reset_restab(tab, blk);
+        effects_seed_block6(blk);
         rec = effects_spawn_scroll(src, -1, 2u, 1u);
         CHECK(rec != 0, "0x13B3C negative offset");
         CHECK_EQ_INT((int)DSD(rec + 0x14), 0x41);
@@ -451,11 +460,9 @@ int test_effects(void)
         /* offset == -0x80 (0x13B9E cmp eax,-0x80) starts at resolved[count]
          * instead of resolved[1 + count - offset]. */
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x300u);
-        DSD(DS_001014E0) = tab;
-        DSD(DS_001014F0) = 1;
-        DSD(tab + 16) = blk;
-        for (int i = 0; i < 6; i++) DSD(blk + 4 + (u32)i * 4u) = 0x40u + (u32)i;
+        effects_reset_source(0x300u);
+        effects_reset_restab(tab, blk);
+        effects_seed_block6(blk);
         rec = effects_spawn_scroll(src, -0x80, 2u, 1u);
         CHECK(rec != 0, "0x13B3C offset -0x80");
         CHECK_EQ_INT((int)DSD(rec + 0x14), 0);      /* resolved[0] */
@@ -474,10 +481,8 @@ int test_effects(void)
          * record never retires, and the raw does not bump DS_0009AF3D). */
         effects_clear();
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x300u);
-        DSD(DS_001014E0) = tab;
-        DSD(DS_001014F0) = 1;
-        DSD(tab + 16) = blk;
+        effects_reset_source(0x300u);
+        effects_reset_restab(tab, blk);
         rec = effects_spawn_scroll(src, 0, 0u, 0u);
         CHECK(rec != 0, "0x13B3C zero flag");
         CHECK_EQ_INT((int)DSB(rec + 0x0C), 0);
@@ -488,7 +493,7 @@ int test_effects(void)
 
         /* flag == 0 still copies the resolved block; only the type/state bytes
          * differ from the flag != 0 arm. */
-        for (int i = 0; i < 6; i++) DSD(blk + 4 + (u32)i * 4u) = 0x40u + (u32)i;
+        effects_seed_block6(blk);
         rec = effects_spawn_scroll(src, 0, 2u, 0u);
         CHECK(rec != 0, "0x13B3C zero flag with count 2");
         CHECK_EQ_INT((int)DSB(rec + 0x0C), 0);
@@ -497,8 +502,7 @@ int test_effects(void)
         CHECK_EQ_INT((int)DSD(rec + 0x18), 0x41);
         CHECK_EQ_INT((int)DSD(rec + 0x414), 0x40);
         CHECK_EQ_INT((int)DSD(rec + 0x418), 0x41);
-        DSD(DS_001014E0) = saved_tab;
-        DSD(DS_001014F0) = saved_n;
+        effects_restore_restab(saved_tab, saved_n);
     }
     effects_clear();
     CHECK_EQ_INT(effects_active(), 0);
@@ -514,13 +518,11 @@ int test_effects(void)
         u32 tab = src + 0x100u, blk = src + 0x200u;
         palette_list_init();
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x300u);
+        effects_reset_source(0x300u);
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x08) = 0x40u;          /* first DAC index for the record */
         DSD(src + 0x0C) = 2u;
-        DSD(DS_001014E0) = tab;
-        DSD(DS_001014F0) = 1;
-        DSD(tab + 16) = blk;
+        effects_reset_restab(tab, blk);
         DSD(blk + 4) = 0x40404040u;
         DSD(blk + 8) = 0x40404040u;
         DSD(blk + 12) = 0x40404040u;
@@ -539,8 +541,7 @@ int test_effects(void)
          * written. */
         for (int i = 0; i < 8; i++) effects_step();
         CHECK_EQ_INT(effects_active(), 0);
-        DSD(DS_001014E0) = saved_tab;
-        DSD(DS_001014F0) = saved_n;
+        effects_restore_restab(saved_tab, saved_n);
     }
     effects_clear();
     CHECK_EQ_INT(effects_active(), 0);
@@ -560,13 +561,11 @@ int test_effects(void)
         u32 tab = src + 0x100u, blk = src + 0x200u;
         palette_list_init();
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x300u);
+        effects_reset_source(0x300u);
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x08) = 0x40u;          /* first DAC index */
         DSD(src + 0x0C) = 1u;
-        DSD(DS_001014E0) = tab;
-        DSD(DS_001014F0) = 1;
-        DSD(tab + 16) = blk;
+        effects_reset_restab(tab, blk);
         /* handle 4 shifts the resolved base by 4, so the +0x410 target is
          * blk+8. The darken reads lanes at bits 0/8/16 only, so the target
          * must have a zero high byte (0x00404040) for the full-dword equality
@@ -591,8 +590,7 @@ int test_effects(void)
          * 0x13a96..0x13aac) and retires the record. */
         for (int i = 0; i < 24; i++) effects_step();
         CHECK_EQ_INT(effects_active(), 0);
-        DSD(DS_001014E0) = saved_tab;
-        DSD(DS_001014F0) = saved_n;
+        effects_restore_restab(saved_tab, saved_n);
     }
     effects_clear();
     CHECK_EQ_INT(effects_active(), 0);
@@ -612,13 +610,11 @@ int test_effects(void)
         u32 tab = src + 0x100u, blk = src + 0x200u;
         palette_list_init();
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x300u);
+        effects_reset_source(0x300u);
         /* handle 0 (src+0x00 == 0) so resolved[1] = blk+4 = A. */
         DSD(src + 0x08) = 0x50u;          /* first DAC index */
         DSD(src + 0x0C) = 2u;
-        DSD(DS_001014E0) = tab;
-        DSD(DS_001014F0) = 1;
-        DSD(tab + 16) = blk;
+        effects_reset_restab(tab, blk);
         DSD(blk + 4) = 0x00000040u;       /* A = resolved[1] */
         DSD(blk + 8) = 0x00000080u;       /* B = resolved[2] */
         u32 rec = effects_spawn_scroll(src, 0, 2u, 1u);
@@ -636,8 +632,7 @@ int test_effects(void)
         gfx_flush_palette();
         CHECK_EQ_INT(gfx_dac[0x50][0], 0x41);
         CHECK_EQ_INT(gfx_dac[0x51][0], 0x82);
-        DSD(DS_001014E0) = saved_tab;
-        DSD(DS_001014F0) = saved_n;
+        effects_restore_restab(saved_tab, saved_n);
     }
     effects_clear();
     CHECK_EQ_INT(effects_active(), 0);
@@ -717,13 +712,11 @@ int test_effects(void)
         u32 tab = src + 0x100u, blk = src + 0x200u;
         palette_list_init();
         tf_effects_fixture_begin();
-        mem_fill(src, 0, 0x300u);
+        effects_reset_source(0x300u);
         DSD(src + 0x00) = 4u;             /* handle = index 0, offset 4 */
         DSD(src + 0x08) = 0x40u;          /* first DAC index */
         DSD(src + 0x0C) = 2u;
-        DSD(DS_001014E0) = tab;
-        DSD(DS_001014F0) = 1;
-        DSD(tab + 16) = blk;
+        effects_reset_restab(tab, blk);
         DSD(blk + 4) = 0x40404040u;
         DSD(blk + 8) = 0x40404040u;
         DSD(blk + 12) = 0x40404040u;      /* resolved[2], the count-2 block */
@@ -740,8 +733,7 @@ int test_effects(void)
         CHECK_EQ_INT(gfx_dac[0x41][0], 0x38);
         CHECK_EQ_INT(gfx_dac[0x50][0], 0x77);
         effects_clear();
-        DSD(DS_001014E0) = saved_tab;
-        DSD(DS_001014F0) = saved_n;
+        effects_restore_restab(saved_tab, saved_n);
     }
     CHECK_EQ_INT(effects_active(), 0);
 
