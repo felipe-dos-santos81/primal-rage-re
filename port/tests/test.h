@@ -22,43 +22,61 @@ extern int g_failures;
         }                                                                      \
     } while (0)
 
-int test_scaffold(void);
-int test_mem(void);
-int test_le(void);
-int test_res(void);
-int test_gra(void);
-int test_gfx(void);
-int test_input(void);
-int test_host(void);
-int test_flow(void);
-int test_opl(void);
-int test_pitch(void);
-int test_samples(void);
-int test_mixer(void);
-int test_sequencer(void);
-int test_ail(void);
-int test_smacker(void);
-int test_movie(void);
-int test_sprite(void);
-int test_render(void);
-int test_rng(void);
-int test_actors(void);
-int test_effects(void);
-int test_fight(void);
-int test_config(void);
-int test_anim(void);
-int test_text(void);
-int test_title(void);
+/* One line per unit test; adding a test is one line here. */
+#define TEST_CASES(X)   \
+    X(test_mem)         \
+    X(test_le)          \
+    X(test_res)         \
+    X(test_gra)         \
+    X(test_gfx)         \
+    X(test_input)       \
+    X(test_host)        \
+    X(test_flow)        \
+    X(test_opl)         \
+    X(test_pitch)       \
+    X(test_samples)     \
+    X(test_mixer)       \
+    X(test_sequencer)   \
+    X(test_ail)         \
+    X(test_smacker)     \
+    X(test_movie)       \
+    X(test_sprite)      \
+    X(test_render)      \
+    X(test_rng)         \
+    X(test_actors)      \
+    X(test_effects)     \
+    X(test_fight)       \
+    X(test_config)      \
+    X(test_frontend)    \
+    X(test_attract)     \
+    X(test_anim)        \
+    X(test_text)        \
+    X(test_title)
+
+/* One line per env-gated driver; each runs alone, before the unit cases. Every
+ * entry is an int(void); the front-end determinism gate needs argv[0], so it is
+ * declared and called separately (test_frontend_determinism below). */
+#define TEST_DRIVERS(X)                       \
+    X(test_attract,  "PR_ATTRACT_DUMP")       \
+    X(test_title,    "PR_TITLE_DUMP")         \
+    X(test_frontend, "PR_FRONTEND_DUMP")
+
+#define TEST_CASE_DECLARE(name) int name(void);
+TEST_CASES(TEST_CASE_DECLARE)
+#undef TEST_CASE_DECLARE
+
+#define TEST_DRIVER_DECLARE(name, env) int name(void);
+TEST_DRIVERS(TEST_DRIVER_DECLARE)
+#undef TEST_DRIVER_DECLARE
+
 /* The title window driver on an already-initialised game: drive the state
  * machine until the title state is reached (post-attract), then its 96-frame
  * window. Shared by test_title() (standalone, PR_TITLE_DUMP) and test_attract()'s
  * continuous PR_ATTRACT_DUMP run, because game_init() may run once per process. */
 int test_title_window(const char *dump);
-int test_frontend(void);
 /* The Task 1 fallback determinism gate: re-invoke this binary twice with
  * PR_FRONTEND_DUMP and require the two frame-hash logs byte-identical. `self` is
  * argv[0]; PR_FRONTEND_DET names the dump root. */
 int test_frontend_determinism(const char *self);
-int test_attract(void);
 
 #endif /* PR_TEST_H */
