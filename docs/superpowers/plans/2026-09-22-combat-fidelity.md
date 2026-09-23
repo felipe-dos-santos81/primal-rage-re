@@ -231,22 +231,21 @@ git commit -m "fight: port the +0x52 state handlers"
 
 ---
 
-### Task 3b: The upstream freeze — the `0x3Fxxx` script and the `0x35D7C` inputs
+### Task 3b: The entry RNG draw-count divergence — the freeze's root
 
-**Task 3's finding (the raw wins).** The twelve `0x34B14` handlers are on the **original's** path but **not on the port's** (the port's state-machine phase diverged upstream). The loop-1400 freeze is **s0's `+0x52 = 3`/`+0x53 = 4`** — the already-ported `0x35D7C` retry loop — not s1's `9`/`8`. `0x37178` has two entries (`0x349EA`, `0x349C8`'s `+0x42` bit 6 arm, provably never taken in the window; and `0x37A4F`, `0x379C4`'s `DS_001078FE == 0 && slot+0x57 == 2` arm after a `0x36870` case-4 call, **not** excluded — resolve it). `0x36870` has 9 callers, not 2. The case-2 closer's caller is **`0x3FD30`**, reached via the `0x3Fxxx` script. This task derives and ports the freeze's real cause.
+**The first attempt's finding (the raw wins).** The first Task 3b attempt derived the freeze's two layers and triggered its size gate, so the human re-scoped this task to **the root**. The LCG state matches at the state-7 entry (`8612d6c5`), but **the port draws 2 where the original draws 6**, so the demo-AI command words diverge at the 2nd state-7 frame (port `cmd0 = 0x9090`, bit 15 → `fighter_attack_consume` → `+0x52 = 3`; the original `0x4848`), driving s0's `+0x52 = 3`/`+0x53 = 4` retry loop and the loop-1400 freeze. **The second layer — the unported closer chain (`0x19020`/`0x3FF08`/`0x3FD30`/`0x36870`/`FUN_0003FFDC` + the `0xA50C0` timed-table driver, ~15–20 funcs) — is out of scope for this task**, a follow-on only if still needed.
 
 **Files:**
-- Modify: `port/src/game/fighter.c` (the `0x35D7C` inputs and/or the `0x3Fxxx` script)
-- Modify: `port/src/game/fight.c` if the derivation places it there
-- Test: `port/tests/test_fight.c`
+- Modify: the owner the derivation names (candidates: `port/src/game/fighter.c`, `port/src/game/fight.c`, `port/src/platform/res.c`)
+- Test: `port/tests/test_fight.c` or `port/tests/test_frontend.c`
 
 **Interfaces:**
-- Consumes: the Task 3 report's refutation (in `.superpowers/sdd/2026-09-22-combat-fidelity/task-3-report.md`); the cycle-2 record's `+0x52` machine.
-- Produces: the fight's state changes continuing past loop 1400 to the timer exit.
+- Consumes: the first attempt's derivation (`.superpowers/sdd/2026-09-22-combat-fidelity/task-3b-report.md` — the entry draw counts, the LCG state, the command words); Task 3's corrected refutation.
+- Produces: the port's entry draw count matching the original's, the AI command words aligning, and the fight's state changes continuing past loop 1400.
 
-- [ ] **Step 1: Derive the freeze's cause**
+- [ ] **Step 1: Derive the entry's draws**
 
-Establish with the raw and a live-RAM dump: what drives s0's `+0x52` to `3` and holds `+0x53` at `4` — the `0x35D7C` retry loop's inputs — and what the `0x3Fxxx` script (`0x3FD30` and its siblings) does. State whether the port's `0x35D7C` is unfaithful or its inputs are missing. **If the closure is materially larger than a task, stop and report its size** — a re-scope conversation, not a silent overrun.
+Establish with the raw and a live-RAM dump which draws the original makes at the state-7 entry (6) and which the port makes (2) — the call sites and the LCG steps — and **name the four missing draws**. A value that cannot be pinned is a named gap with its evidence, never invented.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -284,11 +283,69 @@ git add <the files the derivation names>
 git commit -m "fight: port the upstream state that froze the demo fight"
 ```
 
-**Gate for this task:** the fight's state changes continue past loop 1400 to the timer exit — or the residual is a named gap with its evidence.
+**Gate for this task:** the port's entry draw count matches the original's and the fight's state changes continue past loop 1400 — or the residual is a named gap with its evidence. The closer chain is a follow-on, not this task's gate.
+
+---
+
+### Task 3c: The demo-AI block state
+
+**Task 3b's finding (the raw wins).** Task 3b fixed the state-7 entry's missing draws — the entry LCG now reaches `0x10F7DB07`, matching the original — but **the demo-AI command words still diverge**: `cmd0` at frame 1072 is `0x1010` (the original `0x4848`), and the last `+0x52` state change moved 1400 → **1093**. The residual is the **demo-AI block state** (`0x47208`/`0x47291`/`0x470F8`), which diverges at the 2nd state-7 frame (port `a0 = 0,2,2` vs the original `0,1,0`). The draw fix is necessary but not sufficient.
+
+**Files:**
+- Modify: the owner the derivation names (candidates: `port/src/game/fighter.c` — the CPU-AI command generator `0x47208`)
+- Test: `port/tests/test_fight.c`
+
+**Interfaces:**
+- Consumes: Task 3b's report (`.superpowers/sdd/2026-09-22-combat-fidelity/task-3b-report.md`); the cycle-2 record's `0x47208` command generator.
+- Produces: the demo-AI block state and the command words matching the original's.
+
+- [ ] **Step 1: Derive the block state**
+
+Establish with the raw and a live-RAM dump what `0x47208`/`0x47291`/`0x470F8` maintain (the `a0` block state) and where the port's diverges at the 2nd state-7 frame. **If the closure is materially larger than a task, stop and report its size** — a re-scope conversation, not a silent overrun.
+
+- [ ] **Step 2: Write the failing test**
+
+Assert the block state or the command word the derivation names, with seeded sentinels that differ from the post-conditions.
+
+- [ ] **Step 3: Run it to verify it fails**
+
+Run: `./build/run_tests`
+Expected: FAIL — the port's state differs.
+
+- [ ] **Step 4: Implement**
+
+Port the divergence, one C function per original with its address tag. A value that cannot be pinned is a named gap with its evidence.
+
+- [ ] **Step 5: Run it to verify it passes**
+
+Run: `./build/run_tests`
+Expected: PASS, output pristine.
+
+- [ ] **Step 6: Prove the assertion can fail**
+
+Mutate the fix and confirm the named assertion fails. Restore, and report the mutation.
+
+- [ ] **Step 7: Measure the fight's progression**
+
+Record the command words (before: `0x1010` vs the original `0x4848`), the last state-change frame (before: 1093), and the timer exit. Expected: the command words align and the state changes continue past 1093.
+
+- [ ] **Step 8: Full ladder and commit**
+
+Run: `make verify`
+Expected: exit 0, 0 warnings, every oracle claim unmoved.
+
+```bash
+git add <the files the derivation names>
+git commit -m "fight: align the demo-AI block state"
+```
+
+**Gate for this task:** the demo-AI block state and the command words match the original's, and the fight's state changes continue past 1093 — or the residual is a named gap with its evidence.
 
 ---
 
 ### Task 4: The fighter animation poses
+
+**Task 3c's finding (the raw wins).** The demo-AI block state now aligns — the command words match the original's (`cmd0@1072 = 0x4848`, `cmd1@1071 = 0x0002`) — and the freeze's next layer is **this task's**. The slot `+0x52`/`+0x53` reaches the original's `9`/`8` but does not advance to `10`/`0x0A`: `0x3531C` case 8 re-arms `+0x53 = 8` because `hit_chain_resolve` (`0x3CF38`) returns 0 for want of a phase-8 hitbox, and the port's **animation cursor** differs (record §3.3). The `+0x52 = 0x10` writers are the **pose family** `0x3A504`/`0x3A650`/`0x3A79C`/`0x3A8E8`/`0x3A95C`. This task derives and ports the animation/think state that record §3 found to be a subsystem, and the pose family above.
 
 **Files:**
 - Modify: the owner the record names (candidates: `port/src/game/actors.c`, `port/src/game/fighter.c`)
