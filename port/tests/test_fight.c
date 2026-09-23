@@ -1352,10 +1352,7 @@ static void check_command_generator(void)
 
     DSD(DS_001014EC) = FIGHT_ACTORS;
     fight_reset_bases();
-    DSD(DS_001077A8) = p0;
-    DSD(DS_001077A8 + 4u) = p1;
-    DSD(p0) = r0;                       /* slot+0 = fighter record */
-    DSD(p1) = r1;
+    fight_reset_slot_pair(p0, p1, r0, r1);
     DSB(p0 + 0x7Au) = 0;                /* character 0 */
     DSB(p1 + 0x7Au) = 0;
     DSB(p0 + 0x63u) = 1;                /* 0x47208's emit gate */
