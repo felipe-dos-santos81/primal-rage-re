@@ -61,6 +61,14 @@ static void fight_reset_slot_pair(u32 s0, u32 s1, u32 r0, u32 r1)
     DSD(s1) = r1;
 }
 
+/* Wire DS_001077A8 to slot 0 only (side 1 inert) and slot 0's record. */
+static void fight_reset_slot0(u32 p0, u32 r0)
+{
+    DSD(DS_001077A8) = p0;
+    DSD(DS_001077A8 + 4u) = 0;
+    DSD(p0) = r0;
+}
+
 /* The state-6 / game_frame tail globals, zeroed with the 0x0F timer armed. */
 static void fight_reset_state6(void)
 {
@@ -1392,9 +1400,7 @@ static void check_state_dispatch(void)
 
     mem_fill(FIGHT_RECS, 0, 0x400);
     fight_reset_actors();
-    DSD(DS_001077A8) = p0;
-    DSD(DS_001077A8 + 4u) = 0;          /* side 1 inert */
-    DSD(p0) = r0;
+    fight_reset_slot0(p0, r0);
     DSB(p0 + 0x7Au) = 0;
     DSW(r0 + 0x56u) = 0;
     DSB(p0 + 0x5Fu) = 0xFFu;
@@ -1454,9 +1460,7 @@ static void check_state_dispatch(void)
      * differs from the post-value, so a no-op entry fails. */
     mem_fill(FIGHT_RECS, 0, 0x400u);
     fight_reset_actors();
-    DSD(DS_001077A8) = p0;
-    DSD(DS_001077A8 + 4u) = 0;
-    DSD(p0) = r0;
+    fight_reset_slot0(p0, r0);
     DSD(DS_001077B0) = r0;                      /* 0x3C148/0x3C16C read this base */
     DSB(p0 + 0x7Au) = 0;                        /* char 0: threshold 0x1600 */
     DSD(p0 + 0x30u) = 0;
@@ -2081,9 +2085,7 @@ static void check_hud_pass_machine(void)
     mem_fill(0x00107D18u, 0, 0x40u);            /* the 0x107D18.. words */
     fight_reset_slots();           /* the three hitbox arrays */
     DSD(DS_001014EC) = FIGHT_ACTORS;
-    DSD(DS_001077A8) = p0;
-    DSD(DS_001077A8 + 4u) = 0;                  /* side 1 inert */
-    DSD(p0) = r0;
+    fight_reset_slot0(p0, r0);
     DSB(p0 + 0x7Au) = 0;
     DSB(p0 + 0x63u) = 1;
     DSB(p0 + 0x5Fu) = 0xFFu;
