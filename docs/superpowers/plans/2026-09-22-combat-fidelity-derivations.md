@@ -371,6 +371,20 @@ handlers and the `+0x53` machine's missing arms land (Tasks 3–4). Task 4 must
 **not** fit a cursor or a state; if the state machine's phase cannot be pinned
 from the raw after Tasks 2–3 land, it stays a named gap.
 
+**Task 4's correction (raw + measured; this section's port values are stale).**
+§3.2's port column (`+0x52 = 0`, cursor `0xD2140`) was measured at the base
+commit, before Tasks 3b/3c. Measured at HEAD, the port's raptor **matches the
+original's 9/8 entry exactly**: at loop 1071 (dumped frame 482) both trees hold
+`+0x52 = 9`, `+0x53 = 8`, `+0x54 = 0`, `+0x5F = 0x01`, `+0x6A = 0x0001`, cursor
+`0xD2316`, `rec+0x52 = 0`; the port's cursor then tracks the original's through
+the hold. The teal-mask silhouette IoU (region x 185..320, y 85..200; mask
+`g>90 && b>90 && g>r+30 && b>r+30`) of the port's dumped frame 482 against
+capture 834 is **1.000** (frame 483: 0.974), and the arena byte-diff at frame
+482 is **18 294 B / 6 194 px** (Task 2's 30 536 B / 10 602 px). **So the
+`+0x52=0`/cursor-`0xD2140` divergence §3.2/§3.3 report no longer exists.**
+
+The residual is the **exit** from 9/8 to the pose state `0x10`/`0x0A` (see §10).
+
 ---
 
 ## 4. The loader flush scope's separability (Step 4)
@@ -455,11 +469,19 @@ after Task 3 lands is derived at its site, never fitted.
 
 ## 6. Named gaps
 
-1. **The raptor's pose state-machine phase** (§3.3). The port's raptor is at
-   `+0x52=0` where the original is at `9` at the same frame, and its stream
-   cursor differs (`0xD2140` vs `0xD2316`). It is the `+0x52`/`+0x53` machine's
-   phase, not a single field; it may not be pin-able until Tasks 2–3 land. If it
-   cannot be pinned, it stays a named gap — never a fitted cursor or state.
+1. **The fighters' exit from 9/8 to the pose state `0x10`/`0x0A`** (§3.3
+   correction, §10). **Resolved as a cause, named as a gap.** The port's raptor
+   now matches the original's 9/8 entry (slot `+0x52=9`, `+0x53=8`, cursor
+   `0xD2316`), and its silhouette matches capture 834 (IoU 1.000); the
+   `+0x52=0`/cursor-`0xD2140` divergence §3.2/§3.3 report was stale (pre-Tasks
+   3b/3c). The residual is the **exit** to the pose state: it is reached only via
+   `0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC` → the `0x3A504`/`0x3A650`/
+   `0x3A79C`/`0x3A8E8` pose family, and `0x19020` is unported, so
+   `DS_00100AF8`/`AFC` stay 0 and `fighter_pass_a`'s tail never runs. **Its
+   closure is 68 new funcs / 10 467 B — materially larger than a task (§10.4),
+   so Task 4 landed no port.** The pose state is measured as
+   `s7_saw10`/`s7_saw0a` (printed, not asserted). A follow-on cycle owns it,
+   together with the `0x3Fxxx` closer script Task 3b re-scoped.
 2. **The demo oracle's `res is None` fallback** (`tools/title_compare.py:484-514`)
    ignores the port, so the first-unexplained 832 is a capture-only figure and
    cannot move from a port change. Any cycle-3 Gate claim measured through the
@@ -556,9 +578,15 @@ record is therefore:
   {0, 0xFF}` from `rng(2)` on the `rec+0x4C` 3-frame countdown).
 * **The original's first-state-7-frame fields:** slot `+0x52=9`, `+0x53=8`,
   `+0x54=0`, `+0x57=0`; cursor `0xD2316`; `rec+0x52` 0→8.
-* **The port's:** slot `+0x52=0`, `+0x53=0`; cursor `0xD2140`; `rec+0x52` 0→7.
-* **The divergence is a subsystem** (§3.3) — the assertion must be a state-machine
-  phase check, not a fitted cursor.
+* **The port's at HEAD (Task 4's correction):** slot `+0x52=9`, `+0x53=8`,
+  `+0x54=0`; cursor `0xD2316`; `rec+0x52` 0→8 — **identical** (the §7.3
+  "port's `+0x52=0`/cursor `0xD2140`" was the base commit's, before Tasks
+  3b/3c).
+* **The residual is the exit to the pose state `0x10`/`0x0A`** (§10): the
+  `0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC` → pose-family chain, closure
+  68 new funcs / 10 467 B — **the Step-1 size gate triggers; no port landed**.
+  The assertion is therefore the measured-not-asserted `s7_saw10`/`s7_saw0a`,
+  not a fitted cursor or state.
 
 ---
 
@@ -666,3 +694,116 @@ front-end oracle's window is `[560..830]` (`271: 117 clean / 153 splice`,
 comment carried was pre-existing stale drift (already flagged in Task 2's
 review), and the window covers port frames 0..258 while the fight starts at port
 frame 481.
+
+---
+
+## 10. Task 4 — the pose state's exit from 9/8 (the freeze's remaining layer)
+
+### 10.1 The brief's model is refuted (raw + measured)
+
+The brief (§Task 4) and §9.4 said the freeze's next layer is "`0x3531C` case 8
+re-arms `+0x53 = 8` because `hit_chain_resolve` (`0x3CF38`) returns 0 for want of
+a phase-8 hitbox, and the port's animation cursor differs". **Both premises are
+false.**
+
+1. **`0x3531C` case 8 does not re-arm forever.** Its second gate is
+   `0x3548A MOV DX,word[0xBDBE8]; 0x35491 CMP DX,[EAX+0x88]; 0x35498 JLE 0x354E5`
+   — `word[0xBDBE8] = 3` (`ghidra_read_memory 0xBDBE8` = `03 00 00 32`), so once
+   `slot+0x88 >= 3` case 8 **returns before touching `+0x53`** (only `+0x56`
+   increments, `0x3547A`). It cannot hold the state; it merely stops writing.
+2. **The port's animation cursor does not differ** (§3.3's correction): at the
+   9/8 entry both trees hold cursor `0xD2316` and `rec+0x52 = 0`, and the port
+   tracks the original through the hold.
+
+### 10.2 The measured divergence: the pose state is never entered
+
+Measured live (DOSBox-X, `/tmp/t4_orig.py`, base `0x266000`) vs the port's
+per-frame trace (`PR_T4_TRACE`, reverted):
+
+| | original | port |
+|---|---|---|
+| T-rex (`s0`) 9/8 entry | `+0x52=09 +0x53=08 +0x5F=0b`, `+0x56=00` | **identical** |
+| T-rex 6 frames later | `+0x52=10 +0x53=0A +0x54=00 +0x5F=0b`, `+0x56=05` | `+0x52=09 +0x53=08`, `+0x56=1c` (frozen) |
+| T-rex hitbox phases | `ph[0]=8` armed, then the hit consumes | `ph` all 0 |
+| `DS_00100AF8`/`AFC` | non-zero (a winner) | **0 / 0** |
+
+So the original's T-rex leaves 9/8 for the **pose state `0x10`/`0x0A`** (the
+`+0x54 = 0` variant, i.e. one of `0x3A504`/`0x3A650`/`0x3A79C`/`0x3A8E8`) on the
+6th frame of the hold; the port stays at 9/8 for the whole window. The raptor
+(`s1`) follows the T-rex: its exit from 9/8 at `+0x88 = 0x1c` (t = 54.255) is the
+same pose machine, not a `0x3531C` arm.
+
+### 10.3 The owner: `0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC` → the pose family
+
+The pose family's `+0x52 = 0x10` writers are reached only through this chain
+(`ghidra_get_function_callers`, exhaustive):
+
+* `0x3A504`/`0x3A650`/`0x3A79C`/`0x3A8E8` ← `0x3AAFC` only;
+  `0x3A95C` ← `0x3B464` (the think driver, unreachable in the demo because
+  `slot+0x64 == 0xFF`) and `0x3B464`'s other callers.
+* `0x3AAFC` (667 B, the reaction applier: it switches on the reaction code and
+  `slot+0x54`, and calls `0x39F40` or one of the pose family) ← `0x3B714` only.
+* `0x3B714` (449 B) ← `0x193B0` only.
+* `0x193B0` (the winner's per-frame body: `0x33950`, `0x34D8C`, `0x1922C`,
+  `0x3962C`, `0x396AC`, `0x19164`, `0x39A10`, `0x18B44`, `0x3C148`/`0x3C16C`,
+  and `0x3B714` when `slot+0x1C == 0`) ← `0x1958C` only.
+* `0x1958C` (`fighter_pass_a`, **ported**) calls `0x193B0` at `0x1974D`
+  (`0x19720 CMP [0x100AF8],0; ... 0x1974D CALL 0x193B0`), gated on
+  `DS_00100AF8 != 0 && DSB(0x10783A) != 0` (side 0) or the `AFC`/`0x1078CE` pair
+  (side 1).
+* `DS_00100AF8[side]` is written by **`0x19020(side)`** (`0x19020` calls the
+  callback at `slot[side]+0x18` and sets `DS_00100AF8[side] = (result == 0)`).
+  `0x19020` is the port's named gap at `fighter.c:287`. `slot+0x18` is set to
+  `0x3FD30` by `0x3FF08` (Task 3b's closer chain, `0xA50C0`/`0x3FFDC`).
+
+**So the freeze's remaining layer is the `0x19020`/`0x3Fxxx` closer chain
+(Task 3b's re-scoped subsystem) feeding `0x193B0`/`0x3B714`/`0x3AAFC` and the
+pose family.** In the port `DS_00100AF8`/`AFC` are 0 at every state-7 frame
+(measured), so `fighter_pass_a`'s tail — and therefore `0x193B0` and the pose
+state — can never run.
+
+### 10.4 The closure size (the stop-condition measurement)
+
+From `prage.calls.csv`/`prage.functions.csv`; "new" = not the `0x6xxxx` runtime,
+not the RNG (`0x5Dxxx`), not the five known stubs, and not named anywhere in
+`port/src` except the generated `symbols.h`:
+
+| root set | closure | new |
+|---|---|---|
+| `0x193B0` + `0x3B714` + `0x3AAFC` + `0x3A79C` | 308 funcs / 43 170 B | **55 funcs / 7 793 B** |
+| `0x3FD30` + `0x3FF08` + `0x3FFDC` (the closer script) | 303 / 44 324 B | 45 / 5 623 B |
+| **union** | 345 / 51 648 B | **68 funcs / 10 467 B** |
+
+The union's genuinely-new work is **68 functions / 10 467 bytes** (of which
+`0x18C14` 1035, `0x392A0` 907, `0x3AAFC` 667, `0x3B714` 449, `0x385B0` 384,
+`0x3A0FC` 355, `0x3AE9C` 294, `0x38ED0` 284, `0x192DC` 212, `0x19164` 198, the
+five pose-family members 116 each, …). **Size case: the closure is materially
+larger than a task** — ~2.4× the handler tail's 36 / 4 335 (§2.4) and ~3.3×
+cycle 2's `+0x53` machine (26 / 3 153). Task 3b's first attempt already scoped the
+closer chain at 15–20 funcs / ~3–4 KB and was re-scoped for the same reason.
+**Task 4 triggers the brief's Step-1 size gate: no port was landed.**
+
+### 10.5 The measured effect on the arena (no code landed)
+
+* Raptor teal-mask IoU vs capture 834 (region x 185..320, y 85..200):
+  **1.000** at port frame 482 (0.974 at 483) — the §3.2 "0.522" is stale.
+* Arena byte-diff `frame_0482.raw` vs capture 834: **18 294 B (9.5 %) /
+  6 194 px**, T-rex region 1 773 px, raptor region 4 421 px (Task 2's
+  30 536 B / 10 602 px, T-rex 1 898, raptor 8 704).
+* The fight's last `+0x52` state-change frame: **1072** (unmoved by Task 4);
+  the state-7 timer exit is `s7_last == 1969` (unmoved).
+* The pose state is measured in `test_frontend.c` as `s7_saw10`/`s7_saw0a`
+  (printed, not asserted — a named gap, like `s7_hit`).
+
+### 10.6 Provenance (Task 4)
+
+`ghidra_disassemble_function` at `0x3531C`/`0x34E2C`/`0x354F0`/`0x1958C`/
+`0x33C78`; `ghidra_decompile_function` at `0x3A504`/`0x3A650`/`0x3A79C`/
+`0x3A8E8`/`0x3A95C`/`0x3AAFC`/`0x3B714`/`0x193B0`/`0x1958C`/`0x19020`/`0x18950`/
+`0x38434`/`0x382C4`/`0x385B0`; `ghidra_get_function_callers` for the pose
+family, `0x3AAFC`, `0x3B714`, `0x193B0`, `0x367DC`, `0x39F40`, `0x193B0`;
+`ghidra_search_instructions` for the `+0x53`/`+0x56`/`+0x88` writers;
+`ghidra_read_memory` at `0xBDBE8` (`03 00 00 32`). Live measurement
+`/tmp/t4_orig.py` (DOSBox-X, base `0x266000`) and the port's env-gated
+`PR_T4_TRACE` (reverted). Frame diffs `/tmp/t1_diff.py` and the teal-mask IoU
+computed from `data/title-captures/frontend/frame_0834.raw`.

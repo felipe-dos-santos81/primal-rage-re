@@ -554,6 +554,16 @@ int test_frontend(void)
          * command words leave it. A missing 0x35803 call leaves the counters
          * false/zero. */
         int s7_saw14 = 0, s7_saw09 = 0, s7_hit = 0, s7_last_change = 0;
+        /* Task 4: the pose state 0x10/0x0A is measured but NOT asserted. The
+         * original's T-rex reaches it at the 6th frame of its 9/8 hold
+         * (0x3AAFC -> the 0x3A504/0x3A650/0x3A79C/0x3A8E8 pose family), but the
+         * port cannot: 0x19020 (fighter_pass_a's per-slot hook, fighter.c:287)
+         * is unported, so DS_00100AF8/AFC stay 0 and fighter_pass_a's tail never
+         * runs 0x193B0 -> 0x3B714 -> 0x3AAFC. The divergence is a subsystem (68
+         * new funcs / 10467 B, Task 4's derivation record §10.4), so the
+         * pose state is a named gap, not a fitted value. Measured so the next
+         * task can see it, exactly as s7_hit is. */
+        int s7_saw10 = 0, s7_saw0a = 0;
         int s7_last = -1;              /* the last loop frame the state is 7 */
         int s7_saw42_40 = 0;           /* the +0x42 bit 6 arm was ever set */
         u8 s7_prev[4] = { 0, 0, 0, 0 };
@@ -618,6 +628,10 @@ int test_frontend(void)
                 s7_last = i;
                 if (s0 == 0x0Eu) s7_saw14 = 1;
                 if (s0 == 9u) s7_saw09 = 1;
+                if (s0 == 0x10u || s1 == 0x10u) s7_saw10 = 1;
+                if (DSB(DS_001077B0 + 0x53u) == 0x0Au
+                        || DSB(DS_001077B0 + 0x94u + 0x53u) == 0x0Au)
+                    s7_saw0a = 1;
                 if (DSB(DS_001077B0 + 0x7Cu) != 0u
                         || DSB(DS_001077B0 + 0x94u + 0x7Cu) != 0u) s7_hit = 1;
                 if (i > 0 && (s0 != s7_prev[0] || s1 != s7_prev[1]))
@@ -703,10 +717,14 @@ int test_frontend(void)
         /* Task 6b/Task 3c: the state-7 fight. slot+0x52 enters the 0x34B14
          * no-op 0x0E and the 0x3531C/0x350D0 machine drives it to the 9/8
          * no-op (the demo-AI's aligned command word 0x4848, Task 3c). A missing
-         * 0x35803 call leaves +0x52 at 0x0E. The 0x3CF38 hit chain (s7_hit) and
-         * the slot's exit from 9/8 remain the named residual: the port's
-         * animation cursor differs (Task 1 §3.3), so no phase-8 hitbox is armed
-         * and the 0x3531C case-8 arm re-arms +0x53 = 8 every frame. */
+         * 0x35803 call leaves +0x52 at 0x0E. Task 4 corrected the residual: the
+         * slot's exit from 9/8 to the pose state 0x10/0x0A is the
+         * 0x19020 -> 0x193B0 -> 0x3B714 -> 0x3AAFC -> pose-family chain, which
+         * the port cannot run (0x19020 is unported, so DS_00100AF8/AFC stay 0).
+         * Task 1 §3.3's "the animation cursor differs" is stale: the port's
+         * raptor cursor now matches (0xD2316 at the 9/8 entry) and its
+         * silhouette matches capture 834. The pose state is measured by
+         * s7_saw10/s7_saw0a and is a named gap (Task 4 record §10). */
         CHECK(s7_saw14, "state-7 slot 0's +0x52 enters the 0x0E no-op");
         CHECK(s7_saw09, "state-7 slot 0's +0x52 reaches the 9/8 no-op");
         printf("test_frontend: state-7 last +0x52 change at loop frame %d\n",
@@ -732,10 +750,11 @@ int test_frontend(void)
         CHECK_EQ_INT((int)s7_cmd1_1071, 0x0002);
         CHECK_EQ_INT((int)s7_cmd0_1072, 0x4848);
         printf("test_frontend: task3b entry post-LCG %08x, cmd1@1071 %04x, "
-               "cmd0@1072 %04x, cam0@1071 %08x, hit %d, last change %d\n",
+               "cmd0@1072 %04x, cam0@1071 %08x, hit %d, last change %d, "
+               "pose10 %d, pose0a %d\n",
                (unsigned)s7_entry_post, (unsigned)s7_cmd1_1071,
                (unsigned)s7_cmd0_1072, (unsigned)s7_cam0,
-               s7_hit, s7_last_change);
+               s7_hit, s7_last_change, s7_saw10, s7_saw0a);
         /* The Gate's first claim: the fight reaches the state-7 900-frame timer
          * exit. State 7 is entered at loop 1070 and left at 1970 (the timer's
          * 0x11BCC arm), so its last frame is 1969; a fight that stalls earlier
