@@ -20,6 +20,9 @@
 #include "platform/sprite.h"
 #include <string.h>
 
+/* symbols.h emits no name for the type-0x2D teardown's counter at 0x108398. */
+#define DS_00108398 0x00108398u
+
 /* ---- the two splice lists (0x249B0/0x249C0/0x249D0) -------------------- */
 
 /* 0x249B0: insert rec immediately after `at`. */
@@ -79,6 +82,30 @@ static void anim_code_10FA8(u32 rec, u32 arg);
 static void anim_code_12720(u32 rec, u32 arg);
 static void anim_code_37A58(u32 rec, u32 arg);
 
+/* The 0xBB9D8 type table's two callback halves (cb1 at 0xBB9DC, cb2 at
+ * 0xBB9E0). actor_spawn's tail (0x2B0D4) calls cb1 with (rec, slot) and tests
+ * the returned AL as a whole byte; set_dead (0x2B150) calls cb2 with rec and
+ * discards its return. */
+typedef u8 (*actor_type_cb1)(u32 rec, u32 slot);
+typedef void (*actor_type_cb2)(u32 rec);
+
+static u8   actor_type_127C0(u32 rec, u32 slot);
+static u8   actor_type_198E8(u32 rec, u32 slot);
+static u8   actor_type_28F64(u32 rec, u32 slot);
+static u8   actor_type_2901C(u32 rec, u32 slot);
+static u8   actor_type_48CD8(u32 rec, u32 slot);
+static u8   actor_type_412F0(u32 rec, u32 slot);
+static u8   actor_type_412FC(u32 rec, u32 slot);
+static void actor_type_12800(u32 rec);
+static void actor_type_19928(u32 rec);
+static void actor_type_290D0(u32 rec);
+static void actor_type_3B9C4(u32 rec);
+static void actor_type_3D784(u32 rec);
+static void actor_type_3FC90(u32 rec);
+static void actor_type_40684(u32 rec);
+static void actor_type_48D3C(u32 rec);
+static void actor_type_49444(u32 rec);
+
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
 int actors_init(void)
@@ -95,6 +122,25 @@ int actors_init(void)
     fn_register(0x10FA8u, (void (*)(void))anim_code_10FA8);
     fn_register(0x12720u, (void (*)(void))anim_code_12720);
     fn_register(0x37A58u, (void (*)(void))anim_code_37A58);
+    /* The 16 non-stub entries of the type table's callback halves. The other
+     * entries hold the stub 0x5D812, which stays unregistered: the spawn
+     * dispatch's fn_resolve miss keeps the raw's identity test for it. */
+    fn_register(0x127C0u, (void (*)(void))actor_type_127C0);
+    fn_register(0x12800u, (void (*)(void))actor_type_12800);
+    fn_register(0x198E8u, (void (*)(void))actor_type_198E8);
+    fn_register(0x19928u, (void (*)(void))actor_type_19928);
+    fn_register(0x28F64u, (void (*)(void))actor_type_28F64);
+    fn_register(0x2901Cu, (void (*)(void))actor_type_2901C);
+    fn_register(0x290D0u, (void (*)(void))actor_type_290D0);
+    fn_register(0x3B9C4u, (void (*)(void))actor_type_3B9C4);
+    fn_register(0x3D784u, (void (*)(void))actor_type_3D784);
+    fn_register(0x3FC90u, (void (*)(void))actor_type_3FC90);
+    fn_register(0x40684u, (void (*)(void))actor_type_40684);
+    fn_register(0x412F0u, (void (*)(void))actor_type_412F0);
+    fn_register(0x412FCu, (void (*)(void))actor_type_412FC);
+    fn_register(0x48CD8u, (void (*)(void))actor_type_48CD8);
+    fn_register(0x48D3Cu, (void (*)(void))actor_type_48D3C);
+    fn_register(0x49444u, (void (*)(void))actor_type_49444);
     return 1;
 }
 
@@ -979,6 +1025,33 @@ void actor_pset_point(u32 rec)
     DSD(DS_00105BDC) = x;
 }
 
+/* 0x2BE5C. The mode-1 sibling of 0x2A690: rec+0x1C takes the pset y and the
+ * record's 16.16 vertical position; when rec+0x28 bit 12 is set the mode-1 arm
+ * runs (pset+0x14 = pset+8, 0x2A620 mode1_cursor, the 0x107900 ramp entry into
+ * rec+0x46, rec+0x18 from pset+4 and the 16.16 rec+0x44), otherwise rec+0x18
+ * comes from pset+4 and DS_000F0AF0. Clears rec+0x29 bit 5. EAX = rec. Called
+ * by the type-0x19/0x0A cb1 tails (0x28FB5/0x2906D), which set rec+0x29 bit 4
+ * (rec+0x28 bit 12) just before the call, so the mode-1 arm is the one the
+ * dispatch reaches. Exposed for its unit test. */
+void actor_mode1_pset(u32 rec)
+{
+    u32 pset = actor_pset(rec);
+    DSD(rec + 0x1c) = (DSD(DS_000F0AEC) + 0x3bc0u - DSD(pset + 8))
+                    - (u32)((s32)DSD(rec + 0x30) >> 16);
+    if ((DSW(rec + 0x28) & 0x1000u) != 0) {
+        DSD(pset + 0x14) = DSD(pset + 8);
+        mode1_cursor(rec, pset);
+        DSW(rec + 0x46) = DSW(DS_00107900
+                             + (u32)((s32)DSD(rec + 0x61) >> 24) * 2u);
+        DSD(rec + 0x18) = DSD(pset + 4)
+                        + (u32)((s32)DSD(rec + 0x44) >> 16) * 2u
+                        - 0x2a00u;
+    } else {
+        DSD(rec + 0x18) = DSD(DS_000F0AF0) + (DSD(pset + 4) - 0x2a00u);
+    }
+    DSB(rec + 0x29) &= (u8)~0x20u;
+}
+
 /* 0x2A820. The pset position/layer writer: 0x2A690 for a free record, the
  * parent-relative form for a child, and the on-screen visibility test. */
 static void pset_write(u32 rec, u32 pset)
@@ -1228,10 +1301,14 @@ static void set_dead(u32 rec)
 {
     DSB(rec + 0x28) |= 0x08;
     if ((DSW(rec + 0x2a) >> 8 & 0x40u) != 0) {
-        /* PORT: 0x2B150 calls the per-type teardown at DS_000BB9E0 + type*0xC
-         * and then clears rec+0x2b 0x40. No title record's code-object path is
-         * reimplemented and no address is registered for fn_resolve, so the
-         * callback and its clear are not executed here. */
+        /* 0x2B185: cb2 = DS_000BB9E0[type * 0xC], called with EAX = rec; its
+         * return is discarded. The stub 0x5D812 is unregistered, so its
+         * fn_resolve miss is skipped, and 0x2B18B clears rec+0x2b 0x40 either
+         * way. */
+        actor_type_cb2 cb2 = (actor_type_cb2)(void *)fn_resolve(
+            DSD(DS_000BB9E0 + (u32)DSB(rec + 0x48) * 0xCu));
+        if (cb2 != NULL) cb2(rec);
+        DSB(rec + 0x2b) &= (u8)~0x40u;
     }
     u32 pset = actor_pset(rec);
     if (DSD(pset + 0x18) != 0) {
@@ -1244,6 +1321,236 @@ static void set_dead(u32 rec)
 /* Exposed for 0x121A0's phase-1 retirement of the logo and the second object
  * (the same 0x2B150 the sync path reaches internally). */
 void actor_set_dead(u32 rec) { set_dead(rec); }
+
+/* ---- the per-type callbacks (0xBB9DC cb1 / 0xBB9E0 cb2) ----------------
+ * The 16 non-stub entries of the type table. Every body is the raw's; the
+ * data addresses are Ghidra's (fixup-applied) values. The five cb1s that pop
+ * a list (0x127C0, 0x198E8, 0x28F64, 0x2901C, 0x48CD8) return 0xFF when it
+ * is empty, else they link the popped node at rec+0x14 and re-insert it. */
+
+/* 0x127C0. Type 0x01: pop the 0xF0A78 head, insert it before 0xF0AE0. */
+static u8 actor_type_127C0(u32 rec, u32 slot)
+{
+    (void)slot;
+    u32 rec2 = list_head(DS_000F0A78);
+    if (rec2 == 0) return 0xff;
+    list_unlink(rec2);
+    DSD(rec2 + 8) = rec;
+    DSD(rec + 0x14) = rec2;
+    list_insert_before(DS_000F0AE0, rec2);
+    return 0;
+}
+
+/* 0x12800. Type 0x01's teardown: return the rec+0x14 node to 0xF0A78. */
+static void actor_type_12800(u32 rec)
+{
+    u32 rec2 = DSD(rec + 0x14);
+    if (rec2 == 0) return;
+    list_unlink(rec2);
+    list_insert_before(DS_000F0A78, DSD(rec + 0x14));
+    DSD(rec + 0x14) = 0;
+}
+
+/* 0x198E8. Types 0x06/0x26/0x27/0x28: pop 0x100C20, insert before 0x100C28. */
+static u8 actor_type_198E8(u32 rec, u32 slot)
+{
+    (void)slot;
+    u32 rec2 = list_head(DS_00100C20);
+    if (rec2 == 0) return 0xff;
+    list_unlink(rec2);
+    DSD(rec2 + 8) = rec;
+    DSD(rec + 0x14) = rec2;
+    list_insert_before(DS_00100C28, rec2);
+    return 0;
+}
+
+/* 0x19928. Types 0x06/0x26/0x27/0x28's teardown: return the node to 0x100C20
+ * and clear the type. */
+static void actor_type_19928(u32 rec)
+{
+    u32 rec2 = DSD(rec + 0x14);
+    if (rec2 == 0) return;
+    list_unlink(rec2);
+    list_insert_before(DS_00100C20, DSD(rec + 0x14));
+    DSD(rec + 0x14) = 0;
+    DSB(rec + 0x48) = 0;
+}
+
+/* 0x28F64. Type 0x19: pop 0x104888, insert before 0x104880, then 0x2BE5C and
+ * the two rng draws: rec+0x34 takes rng(0x20)+0x20 (negated when rec+0x28 bit
+ * 14 is set, with rec+0x29 0x40 set) and rec+0x36 takes rng(0x80)+0xC0. */
+static u8 actor_type_28F64(u32 rec, u32 slot)
+{
+    (void)slot;
+    u32 rec2 = list_head(DS_00104888);
+    if (rec2 == 0) return 0xff;
+    list_unlink(rec2);
+    list_insert_before(DS_00104880, rec2);
+    DSB(rec2 + 0x0c) = 0;
+    DSW(rec + 0x32) = DSW(DS_000BD898);
+    DSD(rec2 + 8) = rec;
+    DSB(rec + 0x29) |= 0x10;
+    DSD(rec + 0x14) = rec2;
+    actor_mode1_pset(rec);                              /* 0x2BE5C */
+    u32 ecx = rng_next(0x20u) + 0x20u;
+    u32 eax = rng_next(0x80u) + 0xc0u;
+    if ((DSW(rec + 0x28) & 0x4000u) != 0) {
+        DSW(rec + 0x34) = (u16)(0u - ecx);
+        DSB(rec + 0x29) |= 0x40;
+    } else {
+        DSW(rec + 0x34) = (u16)ecx;
+    }
+    DSW(rec + 0x44) = 0x0c;
+    DSW(rec + 0x36) = (u16)eax;
+    DSB(DS_00104AE8) |= 0x80;
+    return 0;
+}
+
+/* 0x2901C. Type 0x0A: the same head; both draws are rng(0x80) (no +0x20) and
+ * the bit-14 polarity is reversed: set takes CX, clear negates and sets
+ * rec+0x29 0x40. */
+static u8 actor_type_2901C(u32 rec, u32 slot)
+{
+    (void)slot;
+    u32 rec2 = list_head(DS_00104888);
+    if (rec2 == 0) return 0xff;
+    list_unlink(rec2);
+    list_insert_before(DS_00104880, rec2);
+    DSB(rec2 + 0x0c) = 0;
+    DSW(rec + 0x32) = DSW(DS_000BD898);
+    DSD(rec2 + 8) = rec;
+    DSB(rec + 0x29) |= 0x10;
+    DSD(rec + 0x14) = rec2;
+    actor_mode1_pset(rec);                              /* 0x2BE5C */
+    u32 ecx = rng_next(0x80u);
+    u32 eax = rng_next(0x80u) + 0xc0u;
+    if ((DSW(rec + 0x28) & 0x4000u) != 0) {
+        DSW(rec + 0x34) = (u16)ecx;
+    } else {
+        DSW(rec + 0x34) = (u16)(0u - ecx);
+        DSB(rec + 0x29) |= 0x40;
+    }
+    DSW(rec + 0x44) = 0x0c;
+    DSW(rec + 0x36) = (u16)eax;
+    DSB(DS_00104AE8) |= 0x80;
+    return 0;
+}
+
+/* 0x290D0. Types 0x0A/0x19's teardown: return the node to 0x104888. */
+static void actor_type_290D0(u32 rec)
+{
+    u32 rec2 = DSD(rec + 0x14);
+    if (rec2 == 0) return;
+    list_unlink(rec2);
+    list_insert_before(DS_00104888, DSD(rec + 0x14));
+    DSD(rec + 0x14) = 0;
+}
+
+/* 0x48CD8. Type 0x2D: pop 0x1082E0, insert before 0x108368, then the 0x104AE8
+ * bit 1 and the 0x108398 counter. */
+static u8 actor_type_48CD8(u32 rec, u32 slot)
+{
+    (void)slot;
+    u32 rec2 = list_head(DS_001082E0);
+    if (rec2 == 0) return 0xff;
+    list_unlink(rec2);
+    list_insert_before(DS_00108368, rec2);
+    DSB(rec2 + 0x0c) = 0;
+    DSD(rec2 + 8) = rec;
+    DSD(rec + 0x14) = rec2;
+    DSB(DS_00104AE8) |= 0x02;
+    DSB(DS_00108398) = (u8)(DSB(DS_00108398) + 1u);
+    return 0;
+}
+
+/* 0x48D3C. Type 0x2D's teardown: return the node to 0x1082E0, decrement the
+ * 0x108398 counter and clear the 0x104AE8 bit 1 on its 0xFF underflow. */
+static void actor_type_48D3C(u32 rec)
+{
+    u32 rec2 = DSD(rec + 0x14);
+    if (rec2 == 0) return;
+    list_unlink(rec2);
+    list_insert_before(DS_001082E0, DSD(rec + 0x14));
+    u8 c = (u8)(DSB(DS_00108398) - 1u);
+    DSD(rec + 0x14) = 0;
+    DSB(DS_00108398) = c;
+    if (c == 0xffu) DSB(DS_00104AE8) &= (u8)~0x02u;
+}
+
+/* 0x3B9C4. Types 0x02/0x03/0x04/0x05/0x08's teardown: zero the node's +8 and
+ * +0x64. */
+static void actor_type_3B9C4(u32 rec)
+{
+    u32 rec2 = DSD(rec + 0x14);
+    if (rec2 == 0) return;
+    DSD(rec2 + 8) = 0;
+    DSB(rec2 + 0x64) = 0xff;
+}
+
+/* 0x3D784. Type 0x09's teardown: `mov eax,0x4f; jmp 0x2c3fc`, the 1268-byte
+ * voice dispatcher the port carries as an out-of-scope stub. cb2's return is
+ * discarded. */
+static void actor_type_3D784(u32 rec)
+{
+    (void)rec;
+    /* PORT: 0x2C3FC(0x4F) voice, out of scope (spec §7). */
+}
+
+/* 0x3FC90. Type 0x10's teardown: clear the 0x108080 table entry named by the
+ * node's +0x51. */
+static void actor_type_3FC90(u32 rec)
+{
+    u32 rec2 = DSD(rec + 0x14);
+    if (rec2 == 0) return;
+    DSD(DS_00108080 + (u32)DSB(rec2 + 0x51) * 4u) = 0;
+}
+
+/* 0x40684. Type 0x1A's teardown: return the node to 0x107EF8 and clear the
+ * type. */
+static void actor_type_40684(u32 rec)
+{
+    u32 rec2 = DSD(rec + 0x14);
+    if (rec2 == 0) return;
+    list_unlink(rec2);
+    list_insert_before(DS_00107EF8, DSD(rec + 0x14));
+    DSD(rec + 0x14) = 0;
+    DSB(rec + 0x48) = 0;
+}
+
+/* 0x412F0. Type 0x16: rec+0x34 = 0x200, visible. */
+static u8 actor_type_412F0(u32 rec, u32 slot)
+{
+    (void)slot;
+    DSW(rec + 0x34) = 0x200;
+    return 0;
+}
+
+/* 0x412FC. Type 0x1B: rec+0x34 = 0x140, visible. */
+static u8 actor_type_412FC(u32 rec, u32 slot)
+{
+    (void)slot;
+    DSW(rec + 0x34) = 0x140;
+    return 0;
+}
+
+/* 0x49444. Types 0x20..0x25's teardown: clear the 0x10839C entry named by the
+ * node's 16.16 +0x18 when its +0x1C bit 1 is set, retire the node's +0x10
+ * child, then return the node to 0x1083C4. */
+static void actor_type_49444(u32 rec)
+{
+    u32 rec2 = DSD(rec + 0x14);
+    if (rec2 == 0) return;
+    if ((DSW(rec2 + 0x1c) & 2u) != 0)
+        DSD(DS_0010839C
+            + (u32)((s32)DSD(rec2 + 0x18) >> 16) * 4u) = 0;
+    if (DSD(rec2 + 0x10) != 0) {
+        set_dead(DSD(rec2 + 0x10));                     /* 0x2B150 */
+        DSD(rec2 + 0x10) = 0;
+    }
+    list_unlink(DSD(rec + 0x14));
+    list_insert_before(DS_001083C4, DSD(rec + 0x14));
+    DSD(rec + 0x14) = 0;
+}
 
 /* 0x2AD40. The release path: drop the child, decrement the parent refcount,
  * return the record to the free list and zero its pset. */
@@ -1435,24 +1742,28 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
         mode1_cursor(rec, pset);                    /* 0x2A620 */
     }
 
-    /* 0x2B0D4: the per-type render check calls DS_000BB9DC[rec+0x48 * 0xC]. The
-     * stub 0x5D812 (`xor eax,eax; ret`) returns 0, so the record takes the
-     * visible path. Types 0x00 (the title objects and the fighter descriptors)
-     * and 0x20..0x25 (the six dust descriptors 0xC9524[0..5] reachable through
-     * 0x49388) all carry it. */
-    if (DSD(DS_000BB9DC + (u32)DSB(rec + 0x48) * 0xCu) == FN_0005D812) {
-        DSB(rec + 0x2b) |= 0x40;
-        if ((a5 & 0x400u) == 0) DSB(rec + 0x4a) = 0;
-        render_list_insert(pset);                   /* 0x1C390 + 0x1C3A0 */
-        return rec;
+    /* 0x2B0D4: the per-type render check calls cb1 = DS_000BB9DC[type * 0xC]
+     * with (rec, slot) and tests the returned AL as a whole byte: non-zero
+     * marks the record dead and clears its type. The stub 0x5D812 is not
+     * registered, so a fn_resolve miss falls back to the raw's identity test
+     * (the stub returns 0 -> visible); every non-stub entry the table holds is
+     * registered in actors_init. */
+    u32 cb = DSD(DS_000BB9DC + (u32)DSB(rec + 0x48) * 0xCu);
+    actor_type_cb1 cb1 = (actor_type_cb1)(void *)fn_resolve(cb);
+    u8 visible;
+    if (cb1 != NULL)
+        visible = cb1(rec, index) == 0;
+    else
+        visible = cb == FN_0005D812;
+    if (!visible) {
+        DSB(rec + 0x48) = 0;
+        DSW(rec + 0x28) |= 8;
+        return 0;
     }
-    /* PORT: the real per-type callbacks (types 2/3/4/5/7/8/...) are unported.
-     * No object the port spawns reaches them (the title's 0x9AC30/0x9AC94, the
-     * fighters' descriptors and the dust's 0xBB4C0 are the stub), so mirror the
-     * check's non-zero return: mark the record dead, return 0. */
-    DSB(rec + 0x48) = 0;
-    DSW(rec + 0x28) |= 8;
-    return 0;
+    DSB(rec + 0x2b) |= 0x40;
+    if ((a5 & 0x400u) == 0) DSB(rec + 0x4a) = 0;
+    render_list_insert(pset);                   /* 0x1C390 + 0x1C3A0 */
+    return rec;
 }
 
 /* ---- text renderer and record grid -------------------------------------

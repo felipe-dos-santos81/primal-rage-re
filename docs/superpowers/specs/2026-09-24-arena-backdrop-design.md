@@ -24,9 +24,17 @@ the capture.
    call site. `make verify` exits 0 with every enforced claim unmoved — title
    `54 clean, 55 splice, 2 transition, 0 unexplained` and
    `54 clean, 57 splice, 0`; attract `FIRST DIVERGENCE at capture frame 215`;
-   front-end `[560..830]`/271 `0 unexplained`; smk `120/120` + `41/41`;
-   `oracle C-vs-Python: 9866 writes byte-exact`; `symbols.h` byte-identical.
-   0 warnings.
+   smk `120/120` + `41/41`; `oracle C-vs-Python: 9866 writes byte-exact`;
+   `symbols.h` byte-identical. 0 warnings.
+   **Absorbed claim move (Task 2, 2026-09-24).** The front-end claim moved from
+   `[560..830]`/271/`0 unexplained` to `[560..842]`/283/`2 unexplained (832,
+   833)`: the window is derived from the port's own dump, so a correct arena
+   render necessarily extends it (the fix explains captures 834..842 at 0
+   bytes), and 832/833 are pre-existing, out-of-scope gaps with named owners
+   (the state-9 hold's animation / the loader's presented DAC state). The two
+   are allowed by name in `tools/title_compare.py` with the reason recorded
+   there; any other unexplained frame still fails the gate. The other four
+   claims are unmoved.
 3. **The demo oracle's fallback is a consequence, not a gate** — it is
    report-only and always exits 0; if the frame matches, its window should
    align, but the cycle does not assert it.

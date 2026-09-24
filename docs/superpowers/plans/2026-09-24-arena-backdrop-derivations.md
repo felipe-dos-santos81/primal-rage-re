@@ -125,6 +125,33 @@ make verify
    but the record states the raw fact and the sensitivity in §4.3: counting it
    would put the group **over** the gate (190 f / 22 795 B closure, 29 new).
 
+10. **§7.3's teardown seed names the wrong type (Task 2 correction).** The seed
+    says `DSB(rec+0x48) = 0x01`, but type 0x01's cb2 is `0x12800`
+    (`DSD(0xBB9E0 + 0x01*0xC)`, the `0xF0A78` return), which neither clears
+    `rec+0x48` nor touches the `0x100C20` list the same bullet names. The
+    bullet's assertions describe type 0x06's cb2 `0x19928` (`DSD(0xBB9E0 +
+    0x06*0xC)`), which clears the type at `0x1994E` and returns the node to
+    `0x100C20` at `0x1993A`. Task 2 seeds type 0x06 (and tests type 0x01
+    separately against its real cb2's post-state). The bullet's "or 0"
+    alternative is also unreachable for the `rec+0x48 == 0` assertion: the
+    `JZ 0x19931` returns before it (Task 1's review already noted this).
+
+11. **§7.5's `0x2BE5C` mode-1 value needs the ramp seed (Task 2 correction).**
+    The mode-1 arm writes `word[rec+0x46]` (the high word of the dword at
+    `rec+0x44`) from the `0x107900` ramp at `0x2BEBC` *before* reading
+    `rec+0x44` at `0x2BEC0`, so the dword's high word is the ramp entry, not
+    anything seeded at `rec+0x44`; and `mode1_cursor` writes `rec+0x64` first
+    (`0x2A620`), which is the byte the ramp index `(s32)DSD(rec+0x61) >> 24`
+    reads. A seed of `pset+4`/`DS_000F0AF0`/bit 12 alone therefore cannot
+    observe the mode-1 term. Task 2 seeds the ramp entry at the index
+    `mode1_cursor` produces (`DS_000F0AEC = 0xFFFFC580`, `DS_00107A4C = 0` ->
+    index 5).
+
+12. **The five type-0x01 demo spawns move no claim (Task 2 measurement).** With
+    the 16-callback dispatch the five `cb = 0x127C0` spawns survive, but a
+    targeted isolation (type 0x01 only killed) leaves **0 of 1381** dumped
+    frames different. They change no oracle claim.
+
 ---
 
 ## 1. The runtime differential (Step 1)
@@ -728,6 +755,15 @@ move; it does. The justified readings:
   (the design's rule), or (c) re-scope the acceptance. **This is a cycle-level
   decision for Task 2/N+1, flagged here.**
 
+**Task 2 outcome (2026-09-24): the move was absorbed (option b).** The claim is
+updated in `tools/title_compare.py` (832/833 allowed by name with this reason;
+any other unexplained frame still fails), `port/tests/test_frontend.c` and this
+cycle's spec. Measured on the full 16-callback port: window `[560..842]`, 283
+frames, 2 unexplained (832, 833), `make verify` exit 0; title/attract/smk/
+C-vs-Python unmoved. The full port also revives the five type-0x01 demo spawns;
+measured, they change **0 of 1381** dumped frames (§0.3.12), so they move no
+claim.
+
 ### 6.3 The next residual: capture 843 (outside the window)
 
 Measured with the temporary fix: capture 843 is the first capture frame the
@@ -808,12 +844,15 @@ test file). Each assertion is raw-derived, seeded, and mutation-proven.
 
 ### 7.3 The teardown dispatch (`0x2B185`)
 
-* **Seed:** a record with `DSB(rec+0x48) = 0x01`, `DSW(rec+0x2a) |= 0x4000`, and
-  `rec+0x14` = a record on the `DS_00100C20` list (or 0, sentinel-seeded).
+* **Seed:** a record with `DSB(rec+0x48) = 0x06` (Task 2 correction, §0.3.10:
+  the type whose cb2 `0x19928` the assertions describe; `0x01`'s cb2 is
+  `0x12800`), `DSW(rec+0x2a) |= 0x4000`, and `rec+0x14` = a record on the
+  `DS_00100C20` list (a non-zero linked node: the `JZ 0x19931` returns before
+  the assertions otherwise).
 * **Assert:** the cb2 (`0x19928`) ran — `rec+0x14 == 0` and `DSB(rec+0x48) == 0`
   (`0x19947`/`0x1994E`) — and `DSB(rec+0x2b) & 0x40 == 0` (`0x2B18B`).
 * **Mutation proof:** skip the dispatch (today's PORT note) → `rec+0x14`
-  unchanged and `rec+0x48` still `0x01`; the assertions fail.
+  unchanged and `rec+0x48` still `0x06`; the assertions fail.
 
 ### 7.4 The dispatch's return contract (a table-driven case)
 
@@ -861,6 +900,10 @@ test file). Each assertion is raw-derived, seeded, and mutation-proven.
   and `byte[rec+0x29] & 0x20 == 0` (`0x2BEEA`). **Mutation proof:** set
   `rec+0x28` bit 12 → the mode-1 arm runs (`0x2BEA9` `mode1_cursor`,
   `0x2BEBC`, `0x2BED2`) and `DSD(rec+0x18)` no longer equals `Y + X − 0x2A00`.
+  **Task 2 correction (§0.3.11):** in the mode-1 arm `mode1_cursor` writes
+  `rec+0x64` (the ramp index) and `0x2BEBC` writes `rec+0x46` (the dword at
+  `rec+0x44`'s high word) before `0x2BEC0` reads it, so the mode-1 test must
+  seed the `0x107900` ramp entry at the index `mode1_cursor` produces.
 
 ---
 

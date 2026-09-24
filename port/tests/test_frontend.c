@@ -516,11 +516,17 @@ int test_frontend(void)
      * 1970, where the state drops to 0 and dumping stops. So the state>=3 dump
      * run is loop frames 589..1969, i.e. dumped frames 0..1380 (1381 frames); the
      * 1400 cap covers it and the 2000-frame loop clears the 1970 exit. The
-     * front-end window is distinct [560..830] (271 frames). The [557..810]/254
-     * text here was stale drift, already flagged in Task 2's review and
-     * corrected here; Task 3c's camera-offset fix does not touch it (the window
-     * covers port frames 0..258, the fight starts at port frame 481). The window
-     * ends inside the state-9 hold — its last exhibited port frame is 258. */
+     * front-end window is distinct [560..842] (283 frames: 125 clean, 154
+     * splice, 0 transition, 2 unexplained). The [557..810]/254 text here was
+     * stale drift, already flagged in Task 2's review and corrected here; Task
+     * 3c's camera-offset fix does not touch it. The arena-backdrop fix (the
+     * crowd actor 0's mountain layer, actor_spawn's per-type dispatch) extended
+     * the window from [560..830]: the window is derived from the port's own
+     * dump, so explaining captures 834..842 at 0 bytes necessarily grows it,
+     * and the two new unexplained frames (832, 833) are pre-existing,
+     * out-of-scope gaps with named owners, allowed by name in
+     * tools/title_compare.py. The window's exhibition set spans port frames
+     * 0..489 (253 exhibited). */
     {
         const char *dir = getenv("PR_GAME_DIR");
         if (dir == NULL || dir[0] == '\0') dir = "data/game/C";

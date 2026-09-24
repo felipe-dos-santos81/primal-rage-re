@@ -52,6 +52,12 @@ void actor_pset_palette(u32 rec, u32 word, u32 handle);
  * the pset from the render list. 0x121A0's phase 1 calls it on the logo and the
  * second object when DS_000F0A66 <= 0x10. */
 void actor_set_dead(u32 rec);
+/* 0x2BE5C. The mode-1 pset/position updater the type-0x19/0x0A cb1 tails call
+ * (0x28FB5/0x2906D): rec+0x1C from the pset y and the 16.16 vertical position,
+ * then the bit-12 mode-1 arm (pset+0x14, 0x2A620, the 0x107900 ramp entry,
+ * rec+0x18 from pset+4 and the 16.16 rec+0x44) or the DS_000F0AF0 form, and
+ * clears rec+0x29 bit 5. Exposed for its unit test. */
+void actor_mode1_pset(u32 rec);
 
 /* 0x33754. Acquire a reference to palette resource `handle` in the table at
  * DS_00107618 and enqueue its DAC range via palette_record (0x33734). Returns

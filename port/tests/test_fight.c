@@ -6,6 +6,7 @@
 #include "game/flow.h"
 #include "game/rng.h"
 #include "mem.h"
+#include "platform/render.h"
 #include "symbols.h"
 #include "test.h"
 #include "test_fixtures.h"
@@ -3633,6 +3634,475 @@ static void check_page_tail(void)
     DSD(DS_0010784C) = s_4c;
 }
 
+/* ---- the 0xBB9D8 type table's dispatch (arena-backdrop cycle) -----------
+ *
+ * The table at 0xBB9D8 is 0x30 12-byte records {desc, cb1, cb2} indexed by the
+ * record's type byte. actor_spawn's tail (0x2B0D4) calls cb1 = DSD(0xBB9DC +
+ * type*0xC) with (rec, slot) and tests AL: non-zero marks the record dead.
+ * set_dead (0x2B150) calls cb2 = DSD(0xBB9E0 + type*0xC) when rec+0x2a bit 14
+ * is set, then clears rec+0x2b 0x40. */
+
+/* A synthetic 20-byte descriptor for the per-type spawn cases: literal id
+ * 0x2F5, the given type at +4, frame 0 at +5, flags 0x1A00 at +8 (bit 0x0800
+ * set, so actor_spawn's initial walk is skipped and the literal id is kept),
+ * extent 0x40 at +0x0A, no palette. */
+#define ARENA_DESC 0x3F40000u
+
+static u32 arena_spawn_type(u32 type)
+{
+    mem_fill(ARENA_DESC, 0, 0x14u);
+    DSW(ARENA_DESC) = 0x02F5u;
+    DSB(ARENA_DESC + 4u) = (u8)type;
+    DSW(ARENA_DESC + 8u) = 0x1A00u;
+    DSW(ARENA_DESC + 0x0Au) = 0x40u;
+    return actor_spawn((const u32 *)(mem + ARENA_DESC), 0, 0, 0, 0);
+}
+
+/* Seed a splice list as empty (its sentinel's next and prev point at itself). */
+static void arena_list_empty(u32 sentinel)
+{
+    DSD(sentinel) = sentinel;
+    DSD(sentinel + 4u) = sentinel;
+}
+
+/* Link `node` as the only element of the list at `sentinel`. */
+static void arena_list_link(u32 sentinel, u32 node)
+{
+    DSD(sentinel) = node;
+    DSD(sentinel + 4u) = node;
+    DSD(node) = sentinel;
+    DSD(node + 4u) = sentinel;
+}
+
+/* The active record whose pset id is `id`, or 0. */
+static u32 arena_find_id(u32 id)
+{
+    for (u32 r = actor_list_head(); r != 0; r = actor_next(r)) {
+        u32 pset = actor_pset(r);
+        if (pset != 0 && DSW(pset) == (u16)id) return r;
+    }
+    return 0;
+}
+
+static int arena_u32_in(const u32 *set, u32 n, u32 v)
+{
+    for (u32 i = 0; i < n; i++) if (set[i] == v) return 1;
+    return 0;
+}
+
+/* The 0xBB9DC/0xBB9E0 halves: the 16 non-stub entries are the registered
+ * callbacks; the rest hold the stub 0x5D812. The five cb1s that pop a list
+ * (0x127C0 for 0x01, 0x198E8 for 0x06/0x26/0x27/0x28, 0x28F64 for 0x19,
+ * 0x2901C for 0x0A, 0x48CD8 for 0x2D) return 0xFF on an empty list; 0x412F0
+ * (0x16) and 0x412FC (0x1B) return 0. */
+static const u32 s_cb1_addrs[7] = { 0x127C0u, 0x198E8u, 0x28F64u, 0x2901Cu,
+                                    0x48CD8u, 0x412F0u, 0x412FCu };
+static const u32 s_cb2_addrs[9] = { 0x12800u, 0x19928u, 0x290D0u, 0x3B9C4u,
+                                    0x3D784u, 0x3FC90u, 0x40684u, 0x48D3Cu,
+                                    0x49444u };
+static const u8 s_pop_types[8] = { 0x01u, 0x06u, 0x26u, 0x27u, 0x28u, 0x19u,
+                                   0x0Au, 0x2Du };
+
+/* The table's shape, the registrations, and every type through the real spawn
+ * dispatch with the four pop lists empty: the eight pop-cb1 types are killed,
+ * all others stay visible. A stub-only dispatch (the pre-fix predicate) leaves
+ * the pop types visible and fails the kill assertions. */
+static void check_type_table(void)
+{
+    int n1 = 0, n2 = 0;
+
+    actors_reset();
+    for (u32 t = 0; t < 0x30u; t++) {
+        u32 c1 = DSD(DS_000BB9DC + t * 0xCu);
+        u32 c2 = DSD(DS_000BB9E0 + t * 0xCu);
+        if (c1 != FN_0005D812) {
+            n1++;
+            CHECK(arena_u32_in(s_cb1_addrs, 7u, c1), "cb1 is one of the seven");
+        }
+        if (c2 != FN_0005D812) {
+            n2++;
+            CHECK(arena_u32_in(s_cb2_addrs, 9u, c2), "cb2 is one of the nine");
+        }
+    }
+    CHECK_EQ_INT(n1, 10);   /* 0x01, 0x06/0x26/0x27/0x28, 0x19, 0x0A, 0x2D,
+                             * 0x16, 0x1B */
+    CHECK_EQ_INT(n2, 22);   /* those ten minus 0x16/0x1B, plus 0x1A,
+                             * 0x02..0x05, 0x08, 0x10, 0x09, 0x20..0x25 */
+    for (u32 i = 0; i < 7u; i++)
+        CHECK(fn_resolve(s_cb1_addrs[i]) != NULL, "cb1 registered");
+    for (u32 i = 0; i < 9u; i++)
+        CHECK(fn_resolve(s_cb2_addrs[i]) != NULL, "cb2 registered");
+    CHECK(fn_resolve(FN_0005D812) == NULL, "the stub is unregistered");
+
+    arena_list_empty(0x000F0A78u);
+    arena_list_empty(0x00100C20u);
+    arena_list_empty(0x00104888u);
+    arena_list_empty(0x001082E0u);
+    for (u32 t = 0; t < 0x30u; t++) {
+        int pops = 0;
+        for (u32 i = 0; i < 8u; i++) if (s_pop_types[i] == t) pops = 1;
+        u32 expected = DSD(DS_00105B3C);
+        u32 got = arena_spawn_type(t);
+        CHECK(expected != 0 && expected != DS_00105B3C, "the free-list head");
+        if (pops) {
+            CHECK_EQ_INT((int)got, 0);
+            CHECK_EQ_INT((int)DSB(expected + 0x48u), 0);
+            CHECK((DSW(expected + 0x28u) & 8u) != 0,
+                  "the pop-cb1 kill sets the dead bit");
+        } else {
+            CHECK(got != 0, "a non-pop type stays visible");
+            if (got != 0)
+                CHECK_EQ_INT((int)(DSW(got + 0x28u) & 8u), 0);
+        }
+    }
+}
+
+/* The callback bodies' written fields: the two 9-byte writers, the five
+ * list-pop cb1s (empty -> 0xFF, non-empty -> 0 and the node re-linked), then
+ * #3/#4's rng tails and 0x2BE5C. */
+static void check_type_callbacks(void)
+{
+    u32 rec, node, pset;
+    u32 seed = 0x12345678u;
+
+    actors_reset();
+    rec = DSD(DS_001014F4);
+    node = rec + ACTOR_REC_SIZE;
+    DSW(rec + 0x56) = 0;
+    DSW(node + 0x56) = 1;
+    pset = actor_pset(rec);
+
+    /* 0x412F0 / 0x412FC: the two 9-byte position writers. */
+    {
+        u8 (*f6)(u32, u32) = (u8 (*)(u32, u32))(void *)fn_resolve(0x412F0u);
+        u8 (*f7)(u32, u32) = (u8 (*)(u32, u32))(void *)fn_resolve(0x412FCu);
+        CHECK(f6 != NULL && f7 != NULL, "the 0x16/0x1B writers registered");
+        if (f6 != NULL && f7 != NULL) {
+            DSW(rec + 0x34) = 0x7FFFu;
+            CHECK_EQ_INT((int)f6(rec, 0), 0);
+            CHECK_EQ_INT((int)DSW(rec + 0x34), 0x200);
+            DSW(rec + 0x34) = 0x7FFFu;
+            CHECK_EQ_INT((int)f7(rec, 0), 0);
+            CHECK_EQ_INT((int)DSW(rec + 0x34), 0x140);
+        }
+    }
+
+    /* The five list-pop cb1s: {callback, pop sentinel, insert sentinel}. */
+    static const u32 pop[5][3] = {
+        { 0x127C0u, 0x000F0A78u, 0x000F0AE0u },
+        { 0x198E8u, 0x00100C20u, 0x00100C28u },
+        { 0x28F64u, 0x00104888u, 0x00104880u },
+        { 0x2901Cu, 0x00104888u, 0x00104880u },
+        { 0x48CD8u, 0x001082E0u, 0x00108368u },
+    };
+    DSB(0x00108398u) = 0;    /* DS_00108398: no symbols.h name */
+    for (u32 i = 0; i < 5u; i++) {
+        u8 (*f)(u32, u32) = (u8 (*)(u32, u32))(void *)fn_resolve(pop[i][0]);
+        CHECK(f != NULL, "the pop cb1 registered");
+        if (f == NULL) continue;
+
+        /* Empty list: 0xFF and no write. */
+        arena_list_empty(pop[i][1]);
+        arena_list_empty(pop[i][2]);
+        DSD(rec + 0x14) = 0xDEADBEEFu;
+        DSW(rec + 0x34) = 0x7FFFu;
+        CHECK_EQ_INT((int)f(rec, 0), 0xFF);
+        CHECK_EQ_INT((int)DSD(rec + 0x14), (int)0xDEADBEEFu);
+        CHECK_EQ_INT((int)DSW(rec + 0x34), 0x7FFF);
+
+        /* One node: popped, linked at rec+0x14, re-inserted before the
+         * insert sentinel. */
+        arena_list_link(pop[i][1], node);
+        DSD(rec + 0x14) = 0xDEADBEEFu;
+        CHECK_EQ_INT((int)f(rec, 0), 0);
+        CHECK_EQ_INT((int)DSD(rec + 0x14), (int)node);
+        CHECK_EQ_INT((int)DSD(node + 8u), (int)rec);
+        CHECK_EQ_INT((int)DSD(pop[i][2]), (int)node);
+        CHECK_EQ_INT((int)DSD(node), (int)pop[i][2]);
+        CHECK_EQ_INT((int)DSD(node + 4u), (int)pop[i][2]);
+        CHECK_EQ_INT((int)DSD(pop[i][1]), (int)pop[i][1]);
+
+        if (i == 2u || i == 3u) {          /* 0x28F64 / 0x2901C */
+            CHECK_EQ_INT((int)DSW(rec + 0x32), (int)DSW(DS_000BD898));
+            CHECK((DSB(rec + 0x29) & 0x10u) != 0,
+                  "the 0x19/0x0A head sets rec+0x29 0x10");
+            CHECK_EQ_INT((int)DSW(rec + 0x44), 0x0C);
+            CHECK_EQ_INT((int)DSB(node + 0x0Cu), 0);
+        }
+        if (i == 4u) {                     /* 0x48CD8 */
+            CHECK((DSB(DS_00104AE8) & 0x02u) != 0,
+                  "the 0x2D head sets 0x104AE8 bit 1");
+            CHECK_EQ_INT((int)DSB(0x00108398u), 1);
+        }
+    }
+
+    /* #3's tail (0x28F64): rec+0x34 takes rng(0x20)+0x20 (the first draw),
+     * rec+0x36 rng(0x80)+0xC0 (the second). The head sets rec+0x29 bit 4, so
+     * 0x2BE5C takes its mode-1 arm: rec+0x18 = pset+4 + (rec+0x44 >> 16)*2
+     * - 0x2A00, which is pset+4 - 0x2A00 here (the tail's own rec+0x44 = 0xC
+     * has a zero high word). The word sentinel 0x2000/0x6000 carries bit 14
+     * (the arm selector) and bit 5 (the 0x2BE5C clear), which must differ from
+     * the post-state 0. */
+    {
+        u8 (*f3)(u32, u32) = (u8 (*)(u32, u32))(void *)fn_resolve(0x28F64u);
+        u32 e1, e2;
+        CHECK(f3 != NULL, "0x28F64 registered");
+        if (f3 != NULL) {
+            arena_list_empty(0x00104880u);
+            arena_list_link(0x00104888u, node);
+            DSW(rec + 0x28) = 0x2000u;     /* bit 14 clear, bit 5 sentinel */
+            DSB(DS_00104AE8) = 0;
+            DSD(pset + 4u) = 0x11223344u;
+            DSD(pset + 8u) = 0x33445566u;
+            rng_seed(seed);
+            e1 = rng_next(0x20u) + 0x20u;
+            e2 = rng_next(0x80u) + 0xc0u;
+            rng_seed(seed);
+            CHECK_EQ_INT((int)f3(rec, 0), 0);
+            CHECK_EQ_INT((int)DSW(rec + 0x34), (int)(u16)e1);
+            CHECK_EQ_INT((int)DSW(rec + 0x36), (int)(u16)e2);
+            CHECK_EQ_INT((int)DSW(rec + 0x44), 0x0C);
+            CHECK_EQ_INT((int)(DSB(rec + 0x29) & 0x40u), 0);
+            CHECK((DSB(DS_00104AE8) & 0x80u) != 0,
+                  "the 0x19 tail sets 0x104AE8 bit 7");
+            CHECK_EQ_INT((int)DSD(rec + 0x18),
+                         (int)(0x11223344u - 0x2A00u));  /* the mode-1 arm */
+            CHECK_EQ_INT((int)DSD(pset + 0x14u), (int)0x33445566u);
+            CHECK_EQ_INT((int)(DSB(rec + 0x29) & 0x20u), 0);
+
+            /* bit 14 set: the negated draw. The 0x40 flip bit is unobservable
+             * here: the selector itself is rec+0x29 bit 6. */
+            arena_list_link(0x00104888u, node);
+            DSW(rec + 0x28) = 0x6000u;
+            rng_seed(seed);
+            e1 = rng_next(0x20u) + 0x20u;
+            rng_seed(seed);
+            CHECK_EQ_INT((int)f3(rec, 0), 0);
+            CHECK_EQ_INT((int)DSW(rec + 0x34), (int)(u16)(0u - e1));
+            CHECK_EQ_INT((int)(DSB(rec + 0x29) & 0x20u), 0);
+        }
+    }
+
+    /* #4 (0x2901C): both draws are rng(0x80) (no +0x20) and the bit-14
+     * polarity is reversed: set takes CX, clear negates and sets the 0x40. */
+    {
+        u8 (*f4)(u32, u32) = (u8 (*)(u32, u32))(void *)fn_resolve(0x2901Cu);
+        u32 e1, e2;
+        CHECK(f4 != NULL, "0x2901C registered");
+        if (f4 != NULL) {
+            arena_list_empty(0x00104880u);
+            arena_list_link(0x00104888u, node);
+            DSW(rec + 0x28) = 0x6000u;     /* bit 14 set, bit 5 sentinel */
+            rng_seed(seed);
+            e1 = rng_next(0x80u);
+            e2 = rng_next(0x80u) + 0xc0u;
+            rng_seed(seed);
+            CHECK_EQ_INT((int)f4(rec, 0), 0);
+            CHECK_EQ_INT((int)DSW(rec + 0x34), (int)(u16)e1);
+            CHECK_EQ_INT((int)DSW(rec + 0x36), (int)(u16)e2);
+            CHECK_EQ_INT((int)(DSB(rec + 0x29) & 0x20u), 0);
+
+            arena_list_link(0x00104888u, node);
+            DSW(rec + 0x28) = 0x2000u;     /* bit 14 clear, bit 5 sentinel */
+            rng_seed(seed);
+            e1 = rng_next(0x80u);
+            rng_seed(seed);
+            CHECK_EQ_INT((int)f4(rec, 0), 0);
+            CHECK_EQ_INT((int)DSW(rec + 0x34), (int)(u16)(0u - e1));
+            CHECK((DSB(rec + 0x29) & 0x40u) != 0,
+                  "the 0x0A clear arm sets rec+0x29 0x40");
+            CHECK_EQ_INT((int)(DSB(rec + 0x29) & 0x20u), 0);
+        }
+    }
+
+    /* 0x2BE5C directly: the bit-12-clear (else) arm and the mode-1 arm. In the
+     * mode-1 arm mode1_cursor writes rec+0x64 first, and that byte is the ramp
+     * index; with DS_000F0AEC = 0xFFFFC580, rec+0x30 = 0 and DS_00107A4C = 0,
+     * v = (0xFFFFC580 + 0x3BC0) >> 6 = 5, so the entry read is 0x107900+10. */
+    {
+        u16 saved_ramp = DSW(0x0010790Au);
+        u16 saved_clamp = DSW(0x00107A4Cu);
+        DSD(pset + 4u) = 0x11223344u;
+        DSD(pset + 8u) = 0x33445566u;
+        DSD(pset + 0x14u) = 0xDEADBEEFu;
+        DSD(DS_000F0AF0) = 0x55667788u;
+        DSD(DS_000F0AEC) = 0xFFFFC580u;
+        DSD(rec + 0x30) = 0;
+        DSW(rec + 0x28) = 0x2000u;          /* bit 12 clear, bit 5 sentinel */
+        actor_mode1_pset(rec);
+        CHECK_EQ_INT((int)DSD(rec + 0x18),
+                     (int)(0x55667788u + 0x11223344u - 0x2A00u));
+        CHECK_EQ_INT((int)(DSB(rec + 0x29) & 0x20u), 0);
+
+        DSW(0x00107A4Cu) = 0;
+        DSW(0x0010790Au) = 0x1234u;
+        DSW(rec + 0x28) = 0x1000u;          /* bit 12 set, bit 5 sentinel */
+        actor_mode1_pset(rec);
+        CHECK_EQ_INT((int)DSB(rec + 0x64u), 5);     /* the ramp index */
+        CHECK_EQ_INT((int)DSD(pset + 0x14u), (int)DSD(pset + 8u));
+        CHECK_EQ_INT((int)DSW(rec + 0x46u), 0x1234);
+        CHECK_EQ_INT((int)DSD(rec + 0x18),
+                     (int)(0x11223344u + 0x1234u * 2u - 0x2A00u));
+        CHECK_EQ_INT((int)DSD(rec + 0x1c),
+                     (int)(0xFFFFC580u + 0x3BC0u - 0x33445566u));
+        CHECK_EQ_INT((int)(DSB(rec + 0x29) & 0x20u), 0);
+        DSW(0x0010790Au) = saved_ramp;
+        DSW(0x00107A4Cu) = saved_clamp;
+    }
+}
+
+/* set_dead's cb2 dispatch (0x2B185) through four teardowns: 0x19928 (type
+ * 0x06, the same list 0x100C20 both ways), 0x12800 (type 0x01, node to
+ * 0xF0A78), 0x3B9C4 (type 0x02, no list) and 0x48D3C (type 0x2D, the counter
+ * underflow). Pre-fix the dispatch was a documented no-op and every
+ * rec+0x14/type assertion here fails. */
+static void check_type_teardown(void)
+{
+    u32 rec, node, node2;
+
+    actors_reset();
+    rec = actor_alloc(0);
+    node = actor_alloc(0);
+    node2 = actor_alloc(0);
+    CHECK(rec != 0 && node != 0 && node2 != 0, "the teardown seeds");
+    if (rec == 0 || node == 0 || node2 == 0) return;
+    DSW(rec + 0x56) = 0;
+
+    /* Type 0x06: 0x19928 returns the rec+0x14 node to the 0x100C20 list and
+     * clears the type; two nodes make the head-to-tail move observable. */
+    arena_list_empty(0x00100C20u);
+    DSD(0x00100C20u) = node2;
+    DSD(0x00100C24u) = node;
+    DSD(node2) = node;
+    DSD(node2 + 4u) = 0x00100C20u;
+    DSD(node) = 0x00100C20u;
+    DSD(node + 4u) = node2;
+    DSD(rec + 0x14) = node2;
+    DSB(rec + 0x48) = 0x06u;
+    DSB(rec + 0x2b) |= 0x40u;
+    DSW(rec + 0x2a) |= 0x4000u;
+    actor_set_dead(rec);
+    CHECK_EQ_INT((int)DSD(rec + 0x14), 0);
+    CHECK_EQ_INT((int)DSB(rec + 0x48), 0);
+    CHECK_EQ_INT((int)(DSB(rec + 0x2b) & 0x40u), 0);
+    CHECK_EQ_INT((int)(DSW(rec + 0x28) & 8u), 8);
+    CHECK_EQ_INT((int)DSD(0x00100C20u), (int)node);
+    CHECK_EQ_INT((int)DSD(node), (int)node2);
+    CHECK_EQ_INT((int)DSD(node2), (int)0x00100C20u);
+    CHECK_EQ_INT((int)DSD(0x00100C24u), (int)node2);
+
+    /* Type 0x01: 0x12800 moves the node to 0xF0A78 and leaves the type. */
+    arena_list_empty(0x000F0A78u);
+    arena_list_link(0x000F0AE0u, node);
+    DSD(rec + 0x14) = node;
+    DSB(rec + 0x48) = 0x01u;
+    DSB(rec + 0x2b) |= 0x40u;
+    DSW(rec + 0x2a) |= 0x4000u;
+    actor_set_dead(rec);
+    CHECK_EQ_INT((int)DSD(rec + 0x14), 0);
+    CHECK_EQ_INT((int)DSD(0x000F0A78u), (int)node);
+    CHECK_EQ_INT((int)DSD(node), (int)0x000F0A78u);
+    CHECK_EQ_INT((int)DSB(rec + 0x48), 0x01);     /* 0x12800 does not clear */
+    CHECK_EQ_INT((int)(DSB(rec + 0x2b) & 0x40u), 0);
+
+    /* Type 0x02: 0x3B9C4 zeroes the node's +8 and +0x64, leaves rec+0x14. */
+    DSD(rec + 0x14) = node;
+    DSD(node + 8u) = 0xDEADBEEFu;
+    DSB(node + 0x64u) = 0x11u;
+    DSB(rec + 0x48) = 0x02u;
+    DSB(rec + 0x2b) |= 0x40u;
+    DSW(rec + 0x2a) |= 0x4000u;
+    actor_set_dead(rec);
+    CHECK_EQ_INT((int)DSD(node + 8u), 0);
+    CHECK_EQ_INT((int)DSB(node + 0x64u), 0xFF);
+    CHECK_EQ_INT((int)DSD(rec + 0x14), (int)node);
+
+    /* Type 0x2D: 0x48D3C returns the node to 0x1082E0 and, on the counter's
+     * 0xFF underflow, clears the 0x104AE8 bit 1. */
+    arena_list_empty(0x001082E0u);
+    arena_list_link(0x00108368u, node);
+    DSB(0x00108398u) = 0;
+    DSB(DS_00104AE8) = 0xFFu;
+    DSD(rec + 0x14) = node;
+    DSB(rec + 0x48) = 0x2Du;
+    DSB(rec + 0x2b) |= 0x40u;
+    DSW(rec + 0x2a) |= 0x4000u;
+    actor_set_dead(rec);
+    CHECK_EQ_INT((int)DSD(rec + 0x14), 0);
+    CHECK_EQ_INT((int)DSD(0x001082E0u), (int)node);
+    CHECK_EQ_INT((int)DSB(0x00108398u), 0xFF);
+    CHECK_EQ_INT((int)(DSB(DS_00104AE8) & 0x02u), 0);
+    CHECK_EQ_INT((int)(DSB(rec + 0x2b) & 0x40u), 0);
+}
+
+/* The cycle's own invariant (the record's §7.2): the crowd actor 0
+ * (descriptor 0xC7850, type 0x1B) survives its type check and carries its two
+ * mountain children (the stream's inline opcode-0x0C spawns, ids 757/758)
+ * into the render list across an update. Pre-fix the parent is killed at
+ * 0x2B0F3 and the children cascade dead through pset_write's parent check. */
+static void check_arena_backdrop(void)
+{
+    u32 dummy, parent, a, b, pset, n;
+
+    actors_reset();
+    dummy = actor_alloc(0);           /* consume slot 0: the parent takes 1 */
+    CHECK(dummy != 0, "the arena seed's dummy alloc");
+    parent = actor_spawn((const u32 *)(mem + 0xC7850u), 0xFFFFEEA0u,
+                         0x2492u, 0, 0);
+    CHECK(parent != 0, "the crowd actor 0 spawns and survives");
+    if (parent == 0) return;
+
+    CHECK_EQ_INT((int)DSW(parent + 0x56), 1);
+    CHECK_EQ_INT((int)DSW(parent + 0x34), 0x140);      /* 0x412FC ran */
+    CHECK_EQ_INT((int)DSB(parent + 0x48), 0x1B);
+    CHECK_EQ_INT((int)(DSW(parent + 0x28) & 8u), 0);
+    CHECK_EQ_INT((int)DSB(parent + 0x4A), 0);          /* 0x2B116 cleared it */
+    pset = actor_pset(parent);
+    CHECK_EQ_INT((int)DSW(pset), 756);
+    CHECK_EQ_INT((int)DSW(pset + 0x0Eu), 94);          /* 0xF0 - (0x2492>>6) */
+
+    a = arena_find_id(757);
+    b = arena_find_id(758);
+    CHECK(a != 0, "mountain child A (id 757) is active");
+    CHECK(b != 0, "mountain child B (id 758) is active");
+    if (a != 0) {
+        CHECK_EQ_INT((int)(DSD(a + 0x32u) >> 16), 0xA8);
+        CHECK_EQ_INT((int)DSB(a + 0x4A), 1);
+    }
+    if (b != 0) {
+        CHECK_EQ_INT((int)(DSD(b + 0x32u) >> 16), 0x120);
+        CHECK_EQ_INT((int)DSB(b + 0x4A), 1);
+    }
+    CHECK_EQ_INT(render_list_count(), 3);
+
+    /* One update syncs all four records: pre-fix the parent's dead bit sends
+     * it through release_record and each child through pset_write's
+     * parent-dead arm, emptying the layer. The children's parent-relative
+     * psets resolve against the parent's current position and layer only on
+     * this sync (at spawn time the parent's pset was still unset). */
+    actors_update();
+    n = 0;
+    for (u32 r = actor_list_head(); r != 0; r = actor_next(r)) n++;
+    CHECK_EQ_INT((int)n, 4);
+    CHECK_EQ_INT(render_list_count(), 3);
+    CHECK_EQ_INT((int)DSW(actor_pset(parent)), 756);
+    CHECK_EQ_INT((int)(DSW(parent + 0x28) & 8u), 0);
+    a = arena_find_id(757);
+    b = arena_find_id(758);
+    CHECK(a != 0, "child A survives the update");
+    CHECK(b != 0, "child B survives the update");
+    if (a != 0) {
+        CHECK_EQ_INT((int)DSW(actor_pset(a) + 0x0Eu), 94);
+        CHECK_EQ_INT((int)DSD(actor_pset(a) + 4u),
+                     (int)(DSD(pset + 4u) + 0xA8u * 64u));
+    }
+    if (b != 0) {
+        CHECK_EQ_INT((int)DSW(actor_pset(b) + 0x0Eu), 94);
+        CHECK_EQ_INT((int)DSD(actor_pset(b) + 4u),
+                     (int)(DSD(pset + 4u) + 0x120u * 64u));
+    }
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -3647,6 +4117,10 @@ int test_fight(void)
     u8 s_8100[0x80];
     u8 s_5b[0x300];
     u8 s_9ad[0x10];
+    u8 s_f0a78[0x10];
+    u8 s_c20[0x10];
+    u8 s_82e0[0x90];
+    u8 s_8398;
     u32 s_actor_tab = DSD(DS_001014EC);
     u32 s_res_tab = DSD(DS_001014E0);
     u32 s_res_cnt = DSD(DS_001014F0);
@@ -3666,6 +4140,11 @@ int test_fight(void)
     tf_snap(s_8100, 0x00108100u, 0x80u);
     tf_snap(s_5b, 0x00105B00u, 0x300u);
     tf_snap(s_9ad, 0x0009AD50u, 0x10u);
+    /* The type-dispatch checks' list sentinels and the 0x2D counter. */
+    tf_snap(s_f0a78, 0x000F0A78u, 0x10u);
+    tf_snap(s_c20, 0x00100C20u, 0x10u);
+    tf_snap(s_82e0, 0x001082E0u, 0x90u);
+    s_8398 = DSB(0x00108398u);
 
     check_projection();
     check_dispatch();
@@ -3720,6 +4199,10 @@ int test_fight(void)
     check_winner_body();
     check_pass_a_tail();
     check_page_tail();
+    check_type_table();
+    check_type_callbacks();
+    check_type_teardown();
+    check_arena_backdrop();
 
     tf_put(s_f0ae0, 0x000F0AE0u, 0x20u);
     tf_put(s_proj, 0x00100A70u, 0xF4u);
@@ -3731,6 +4214,10 @@ int test_fight(void)
     tf_put(s_8100, 0x00108100u, 0x80u);
     tf_put(s_5b, 0x00105B00u, 0x300u);
     tf_put(s_9ad, 0x0009AD50u, 0x10u);
+    tf_put(s_f0a78, 0x000F0A78u, 0x10u);
+    tf_put(s_c20, 0x00100C20u, 0x10u);
+    tf_put(s_82e0, 0x001082E0u, 0x90u);
+    DSB(0x00108398u) = s_8398;
     DSD(DS_001014EC) = s_actor_tab;
     DSD(DS_001014E0) = s_res_tab;
     DSD(DS_001014F0) = s_res_cnt;
