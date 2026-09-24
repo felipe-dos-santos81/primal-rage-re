@@ -3762,12 +3762,13 @@ static void check_type_table(void)
  * #3/#4's rng tails and 0x2BE5C. */
 static void check_type_callbacks(void)
 {
-    u32 rec, node, pset;
+    u32 rec, node, node2, pset;
     u32 seed = 0x12345678u;
 
     actors_reset();
     rec = DSD(DS_001014F4);
     node = rec + ACTOR_REC_SIZE;
+    node2 = rec + 2u * ACTOR_REC_SIZE;
     DSW(rec + 0x56) = 0;
     DSW(node + 0x56) = 1;
     pset = actor_pset(rec);
@@ -3810,8 +3811,8 @@ static void check_type_callbacks(void)
         CHECK_EQ_INT((int)DSD(rec + 0x14), (int)0xDEADBEEFu);
         CHECK_EQ_INT((int)DSW(rec + 0x34), 0x7FFF);
 
-        /* One node: popped, linked at rec+0x14, re-inserted before the
-         * insert sentinel. */
+        /* One node: popped, linked at rec+0x14, re-inserted at the insert
+         * sentinel's head. */
         arena_list_link(pop[i][1], node);
         DSD(rec + 0x14) = 0xDEADBEEFu;
         CHECK_EQ_INT((int)f(rec, 0), 0);
@@ -3834,15 +3835,36 @@ static void check_type_callbacks(void)
                   "the 0x2D head sets 0x104AE8 bit 1");
             CHECK_EQ_INT((int)DSB(0x00108398u), 1);
         }
+
+        /* Two nodes: the destination already holds one, so the re-insert end
+         * is observable. The popped node must become the sentinel's next
+         * (0x249B0 insert-after); the insert-before form would make it the
+         * sentinel's prev and put node2 at the head. */
+        arena_list_link(pop[i][1], node);
+        arena_list_link(pop[i][2], node2);
+        DSD(rec + 0x14) = 0xDEADBEEFu;
+        CHECK_EQ_INT((int)f(rec, 0), 0);
+        CHECK_EQ_INT((int)DSD(rec + 0x14), (int)node);
+        CHECK_EQ_INT((int)DSD(pop[i][2]), (int)node);          /* head */
+        CHECK_EQ_INT((int)DSD(node), (int)node2);
+        CHECK_EQ_INT((int)DSD(node + 4u), (int)pop[i][2]);
+        CHECK_EQ_INT((int)DSD(node2), (int)pop[i][2]);
+        CHECK_EQ_INT((int)DSD(node2 + 4u), (int)node);
+        CHECK_EQ_INT((int)DSD(pop[i][2] + 4u), (int)node2);    /* tail */
+        CHECK_EQ_INT((int)DSD(pop[i][1]), (int)pop[i][1]);     /* pop empty */
     }
 
     /* #3's tail (0x28F64): rec+0x34 takes rng(0x20)+0x20 (the first draw),
      * rec+0x36 rng(0x80)+0xC0 (the second). The head sets rec+0x29 bit 4, so
      * 0x2BE5C takes its mode-1 arm: rec+0x18 = pset+4 + (rec+0x44 >> 16)*2
-     * - 0x2A00, which is pset+4 - 0x2A00 here (the tail's own rec+0x44 = 0xC
-     * has a zero high word). The word sentinel 0x2000/0x6000 carries bit 14
-     * (the arm selector) and bit 5 (the 0x2BE5C clear), which must differ from
-     * the post-state 0. */
+     * - 0x2A00. The high word of rec+0x44 is the 0x107900 ramp entry written
+     * at 0x2BEBC just before the read at 0x2BEC0 (record §0.3.11), and that
+     * entry is 0 here, so the value is pset+4 - 0x2A00. DS_000F0AF0 is seeded
+     * non-zero so the else arm would add it and fail the assertion; the
+     * sibling pset+0x14 == pset+8 assertion discriminates the arm too (only
+     * the mode-1 arm writes pset+0x14). The word sentinel 0x2000/0x6000
+     * carries bit 14 (the arm selector) and bit 5 (the 0x2BE5C clear), which
+     * must differ from the post-state 0. */
     {
         u8 (*f3)(u32, u32) = (u8 (*)(u32, u32))(void *)fn_resolve(0x28F64u);
         u32 e1, e2;
@@ -3854,6 +3876,7 @@ static void check_type_callbacks(void)
             DSB(DS_00104AE8) = 0;
             DSD(pset + 4u) = 0x11223344u;
             DSD(pset + 8u) = 0x33445566u;
+            DSD(DS_000F0AF0) = 0x55667788u;
             rng_seed(seed);
             e1 = rng_next(0x20u) + 0x20u;
             e2 = rng_next(0x80u) + 0xc0u;
@@ -3969,7 +3992,9 @@ static void check_type_teardown(void)
     DSW(rec + 0x56) = 0;
 
     /* Type 0x06: 0x19928 returns the rec+0x14 node to the 0x100C20 list and
-     * clears the type; two nodes make the head-to-tail move observable. */
+     * clears the type; two nodes make the insert end observable (the head
+     * node is re-inserted at the head, so the list is unchanged — the tail
+     * form would swap it). */
     arena_list_empty(0x00100C20u);
     DSD(0x00100C20u) = node2;
     DSD(0x00100C24u) = node;
@@ -3986,10 +4011,10 @@ static void check_type_teardown(void)
     CHECK_EQ_INT((int)DSB(rec + 0x48), 0);
     CHECK_EQ_INT((int)(DSB(rec + 0x2b) & 0x40u), 0);
     CHECK_EQ_INT((int)(DSW(rec + 0x28) & 8u), 8);
-    CHECK_EQ_INT((int)DSD(0x00100C20u), (int)node);
-    CHECK_EQ_INT((int)DSD(node), (int)node2);
-    CHECK_EQ_INT((int)DSD(node2), (int)0x00100C20u);
-    CHECK_EQ_INT((int)DSD(0x00100C24u), (int)node2);
+    CHECK_EQ_INT((int)DSD(0x00100C20u), (int)node2);
+    CHECK_EQ_INT((int)DSD(node2), (int)node);
+    CHECK_EQ_INT((int)DSD(node), (int)0x00100C20u);
+    CHECK_EQ_INT((int)DSD(0x00100C24u), (int)node);
 
     /* Type 0x01: 0x12800 moves the node to 0xF0A78 and leaves the type. */
     arena_list_empty(0x000F0A78u);
@@ -4119,6 +4144,7 @@ int test_fight(void)
     u8 s_9ad[0x10];
     u8 s_f0a78[0x10];
     u8 s_c20[0x10];
+    u8 s_4880[0x10];
     u8 s_82e0[0x90];
     u8 s_8398;
     u32 s_actor_tab = DSD(DS_001014EC);
@@ -4140,9 +4166,12 @@ int test_fight(void)
     tf_snap(s_8100, 0x00108100u, 0x80u);
     tf_snap(s_5b, 0x00105B00u, 0x300u);
     tf_snap(s_9ad, 0x0009AD50u, 0x10u);
-    /* The type-dispatch checks' list sentinels and the 0x2D counter. */
+    /* The type-dispatch checks' list sentinels and the 0x2D counter; 0xF0AE0
+     * is covered by s_f0ae0 above, and s_4880 spans the 0x104880/0x104888
+     * sentinel pairs. */
     tf_snap(s_f0a78, 0x000F0A78u, 0x10u);
     tf_snap(s_c20, 0x00100C20u, 0x10u);
+    tf_snap(s_4880, 0x00104880u, 0x10u);
     tf_snap(s_82e0, 0x001082E0u, 0x90u);
     s_8398 = DSB(0x00108398u);
 
@@ -4216,6 +4245,7 @@ int test_fight(void)
     tf_put(s_9ad, 0x0009AD50u, 0x10u);
     tf_put(s_f0a78, 0x000F0A78u, 0x10u);
     tf_put(s_c20, 0x00100C20u, 0x10u);
+    tf_put(s_4880, 0x00104880u, 0x10u);
     tf_put(s_82e0, 0x001082E0u, 0x90u);
     DSB(0x00108398u) = s_8398;
     DSD(DS_001014EC) = s_actor_tab;

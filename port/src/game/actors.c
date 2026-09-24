@@ -1029,7 +1029,8 @@ void actor_pset_point(u32 rec)
  * record's 16.16 vertical position; when rec+0x28 bit 12 is set the mode-1 arm
  * runs (pset+0x14 = pset+8, 0x2A620 mode1_cursor, the 0x107900 ramp entry into
  * rec+0x46, rec+0x18 from pset+4 and the 16.16 rec+0x44), otherwise rec+0x18
- * comes from pset+4 and DS_000F0AF0. Clears rec+0x29 bit 5. EAX = rec. Called
+ * comes from pset+4 and DS_000F0AF0. Clears rec+0x29 bit 5. EAX = rec on entry
+ * (the raw's register argument; the function returns void). Called
  * by the type-0x19/0x0A cb1 tails (0x28FB5/0x2906D), which set rec+0x29 bit 4
  * (rec+0x28 bit 12) just before the call, so the mode-1 arm is the one the
  * dispatch reaches. Exposed for its unit test. */
@@ -1295,8 +1296,9 @@ void actor_pset_palette(u32 rec, u32 word, u32 handle)
 }
 
 /* 0x2B150. Set the dead bit (0x28 0x08), release the pset palette and unlink
- * the pset from the render list. 63 callers in the original; only the sync
- * path reaches it in this cycle. */
+ * the pset from the render list. 63 callers in the original; the port reaches
+ * it from the sync path (0x2A1FC's release_record) and from the type-0x20..0x25
+ * teardown (0x49444). */
 static void set_dead(u32 rec)
 {
     DSB(rec + 0x28) |= 0x08;
@@ -1307,6 +1309,9 @@ static void set_dead(u32 rec)
          * way. */
         actor_type_cb2 cb2 = (actor_type_cb2)(void *)fn_resolve(
             DSD(DS_000BB9E0 + (u32)DSB(rec + 0x48) * 0xCu));
+        /* PORT: the raw calls the table entry unconditionally; the stub
+         * 0x5D812 is `XOR EAX,EAX; RET` and its return is discarded, so a
+         * fn_resolve miss (the stub) is skipped — same state either way. */
         if (cb2 != NULL) cb2(rec);
         DSB(rec + 0x2b) &= (u8)~0x40u;
     }
@@ -1326,9 +1331,10 @@ void actor_set_dead(u32 rec) { set_dead(rec); }
  * The 16 non-stub entries of the type table. Every body is the raw's; the
  * data addresses are Ghidra's (fixup-applied) values. The five cb1s that pop
  * a list (0x127C0, 0x198E8, 0x28F64, 0x2901C, 0x48CD8) return 0xFF when it
- * is empty, else they link the popped node at rec+0x14 and re-insert it. */
+ * is empty, else they link the popped node at rec+0x14 and re-insert it at
+ * the destination's head (0x249B0 insert-after; 0x249C0 is insert-before). */
 
-/* 0x127C0. Type 0x01: pop the 0xF0A78 head, insert it before 0xF0AE0. */
+/* 0x127C0. Type 0x01: pop the 0xF0A78 head, insert it at the 0xF0AE0 head. */
 static u8 actor_type_127C0(u32 rec, u32 slot)
 {
     (void)slot;
@@ -1337,7 +1343,7 @@ static u8 actor_type_127C0(u32 rec, u32 slot)
     list_unlink(rec2);
     DSD(rec2 + 8) = rec;
     DSD(rec + 0x14) = rec2;
-    list_insert_before(DS_000F0AE0, rec2);
+    list_insert_after(DS_000F0AE0, rec2);
     return 0;
 }
 
@@ -1347,11 +1353,11 @@ static void actor_type_12800(u32 rec)
     u32 rec2 = DSD(rec + 0x14);
     if (rec2 == 0) return;
     list_unlink(rec2);
-    list_insert_before(DS_000F0A78, DSD(rec + 0x14));
+    list_insert_after(DS_000F0A78, DSD(rec + 0x14));
     DSD(rec + 0x14) = 0;
 }
 
-/* 0x198E8. Types 0x06/0x26/0x27/0x28: pop 0x100C20, insert before 0x100C28. */
+/* 0x198E8. Types 0x06/0x26/0x27/0x28: pop 0x100C20, insert at 0x100C28. */
 static u8 actor_type_198E8(u32 rec, u32 slot)
 {
     (void)slot;
@@ -1360,7 +1366,7 @@ static u8 actor_type_198E8(u32 rec, u32 slot)
     list_unlink(rec2);
     DSD(rec2 + 8) = rec;
     DSD(rec + 0x14) = rec2;
-    list_insert_before(DS_00100C28, rec2);
+    list_insert_after(DS_00100C28, rec2);
     return 0;
 }
 
@@ -1371,12 +1377,12 @@ static void actor_type_19928(u32 rec)
     u32 rec2 = DSD(rec + 0x14);
     if (rec2 == 0) return;
     list_unlink(rec2);
-    list_insert_before(DS_00100C20, DSD(rec + 0x14));
+    list_insert_after(DS_00100C20, DSD(rec + 0x14));
     DSD(rec + 0x14) = 0;
     DSB(rec + 0x48) = 0;
 }
 
-/* 0x28F64. Type 0x19: pop 0x104888, insert before 0x104880, then 0x2BE5C and
+/* 0x28F64. Type 0x19: pop 0x104888, insert at 0x104880, then 0x2BE5C and
  * the two rng draws: rec+0x34 takes rng(0x20)+0x20 (negated when rec+0x28 bit
  * 14 is set, with rec+0x29 0x40 set) and rec+0x36 takes rng(0x80)+0xC0. */
 static u8 actor_type_28F64(u32 rec, u32 slot)
@@ -1385,7 +1391,7 @@ static u8 actor_type_28F64(u32 rec, u32 slot)
     u32 rec2 = list_head(DS_00104888);
     if (rec2 == 0) return 0xff;
     list_unlink(rec2);
-    list_insert_before(DS_00104880, rec2);
+    list_insert_after(DS_00104880, rec2);
     DSB(rec2 + 0x0c) = 0;
     DSW(rec + 0x32) = DSW(DS_000BD898);
     DSD(rec2 + 8) = rec;
@@ -1415,7 +1421,7 @@ static u8 actor_type_2901C(u32 rec, u32 slot)
     u32 rec2 = list_head(DS_00104888);
     if (rec2 == 0) return 0xff;
     list_unlink(rec2);
-    list_insert_before(DS_00104880, rec2);
+    list_insert_after(DS_00104880, rec2);
     DSB(rec2 + 0x0c) = 0;
     DSW(rec + 0x32) = DSW(DS_000BD898);
     DSD(rec2 + 8) = rec;
@@ -1442,11 +1448,11 @@ static void actor_type_290D0(u32 rec)
     u32 rec2 = DSD(rec + 0x14);
     if (rec2 == 0) return;
     list_unlink(rec2);
-    list_insert_before(DS_00104888, DSD(rec + 0x14));
+    list_insert_after(DS_00104888, DSD(rec + 0x14));
     DSD(rec + 0x14) = 0;
 }
 
-/* 0x48CD8. Type 0x2D: pop 0x1082E0, insert before 0x108368, then the 0x104AE8
+/* 0x48CD8. Type 0x2D: pop 0x1082E0, insert at 0x108368, then the 0x104AE8
  * bit 1 and the 0x108398 counter. */
 static u8 actor_type_48CD8(u32 rec, u32 slot)
 {
@@ -1454,7 +1460,7 @@ static u8 actor_type_48CD8(u32 rec, u32 slot)
     u32 rec2 = list_head(DS_001082E0);
     if (rec2 == 0) return 0xff;
     list_unlink(rec2);
-    list_insert_before(DS_00108368, rec2);
+    list_insert_after(DS_00108368, rec2);
     DSB(rec2 + 0x0c) = 0;
     DSD(rec2 + 8) = rec;
     DSD(rec + 0x14) = rec2;
@@ -1470,7 +1476,7 @@ static void actor_type_48D3C(u32 rec)
     u32 rec2 = DSD(rec + 0x14);
     if (rec2 == 0) return;
     list_unlink(rec2);
-    list_insert_before(DS_001082E0, DSD(rec + 0x14));
+    list_insert_after(DS_001082E0, DSD(rec + 0x14));
     u8 c = (u8)(DSB(DS_00108398) - 1u);
     DSD(rec + 0x14) = 0;
     DSB(DS_00108398) = c;
@@ -1512,7 +1518,7 @@ static void actor_type_40684(u32 rec)
     u32 rec2 = DSD(rec + 0x14);
     if (rec2 == 0) return;
     list_unlink(rec2);
-    list_insert_before(DS_00107EF8, DSD(rec + 0x14));
+    list_insert_after(DS_00107EF8, DSD(rec + 0x14));
     DSD(rec + 0x14) = 0;
     DSB(rec + 0x48) = 0;
 }
@@ -1548,7 +1554,7 @@ static void actor_type_49444(u32 rec)
         DSD(rec2 + 0x10) = 0;
     }
     list_unlink(DSD(rec + 0x14));
-    list_insert_before(DS_001083C4, DSD(rec + 0x14));
+    list_insert_after(DS_001083C4, DSD(rec + 0x14));
     DSD(rec + 0x14) = 0;
 }
 
@@ -1744,16 +1750,18 @@ u32 actor_spawn(const u32 *desc, u32 a2, u32 a3, u32 a4, u32 a5)
 
     /* 0x2B0D4: the per-type render check calls cb1 = DS_000BB9DC[type * 0xC]
      * with (rec, slot) and tests the returned AL as a whole byte: non-zero
-     * marks the record dead and clears its type. The stub 0x5D812 is not
-     * registered, so a fn_resolve miss falls back to the raw's identity test
-     * (the stub returns 0 -> visible); every non-stub entry the table holds is
-     * registered in actors_init. */
+     * marks the record dead and clears its type. Every non-stub entry the
+     * table holds is registered in actors_init, so the else arm is the stub's
+     * alone. */
     u32 cb = DSD(DS_000BB9DC + (u32)DSB(rec + 0x48) * 0xCu);
     actor_type_cb1 cb1 = (actor_type_cb1)(void *)fn_resolve(cb);
     u8 visible;
     if (cb1 != NULL)
         visible = cb1(rec, index) == 0;
     else
+        /* PORT: the raw calls the table entry unconditionally; the stub
+         * 0x5D812 is `XOR EAX,EAX; RET`, so the identity test stands in for
+         * the call and its AL == 0 (visible). */
         visible = cb == FN_0005D812;
     if (!visible) {
         DSB(rec + 0x48) = 0;
