@@ -887,7 +887,10 @@ void camera_unfreeze(u32 side)
         int r;
         if (box_o != 0u) {
             r = camera_sync_visible((u32)box_a[2], (u32)box_b[2],
-                                    (s32)box_a[0] - (s32)box_b[0],
+                                    ((s32)box_a[0]
+                                     + (s32)DSD(DS_00100B08 + side * 4u))
+                                    - ((s32)box_b[0]
+                                       + (s32)DSD(DS_00100B08 + other * 4u)),
                                     DS_00100B1C, DS_00100B14, DS_00100B28,
                                     DS_00100B34, DS_00100B24);
         } else {

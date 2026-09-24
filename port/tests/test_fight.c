@@ -572,6 +572,28 @@ static void check_unfreeze(void)
     CHECK_EQ_INT((int)DSD(DS_00100AE0 + 4u), (int)0xDEADBEEFu);   /* 0x170C5 */
     CHECK_EQ_INT((int)DSD(DS_00100AF8 + 4u), 0);
 
+    /* F: both boxes present, only side 0 runs, and B08[0] != B08[1]. The first
+     * 0x181D0 call's p3 is (box_a[0] + B08[0]) - (box_b[0] + B08[1])
+     * (0x172f8..0x17324); with B08[1] far larger it is negative enough that the
+     * clip is empty, so 0x170A0 returns at the first sync and B1C/B14/B34 keep
+     * their sentinels. Dropping either per-side offset makes p3 = box_a[0] -
+     * box_b[0] = 0, the clip stays visible and those globals are written. */
+    DSB(DS_00100B60) = 1;
+    DSB(DS_00100B61) = 0;
+    DSW(DS_00107824) = 0; DSW(DS_00107826) = 0;
+    DSW(DS_00107824 + 0x94u) = 0; DSW(DS_00107826 + 0x94u) = 0;
+    unfreeze_seed_b();
+    DSD(DS_00100B08) = 0x1000;                  /* decays to 0xF3D */
+    DSD(DS_00100B08 + 4u) = 0x2000;             /* decays to 0x1E7A */
+    DSD(DS_00100B1C) = 0xDEADBEEFu;
+    DSD(DS_00100B14) = 0xDEADBEEFu;
+    DSD(DS_00100B34) = 0xDEADBEEFu;
+    camera_decay();
+    CHECK_EQ_INT((int)DSD(DS_00100AE0), 0xF3D);              /* body ran */
+    CHECK_EQ_INT((int)DSD(DS_00100B1C), (int)0xDEADBEEFu);   /* 0x17324 p3 */
+    CHECK_EQ_INT((int)DSD(DS_00100B14), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_00100B34), (int)0xDEADBEEFu);
+
     tf_put(s_b, DS_00100B64, sizeof s_b);
     tf_put(s_row0, 0x000FD160u, sizeof s_row0);
     tf_put(s_row1, 0x000FEDE0u, sizeof s_row1);
