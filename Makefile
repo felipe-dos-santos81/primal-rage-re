@@ -74,20 +74,16 @@ deps: ## Check the toolchain and the (untracked) game assets
 
 # ── Port · build and verify ──────────────────────────────────────────────────
 
-# Dependency note (front-end-chain Task 6 review): `cmake --build` recompiles
-# edited sources, including port/tests/*.c. Verified by editing an assertion and
-# observing `make build`, `make verify` and a direct `cmake --build build` all
-# pick it up and fail on the edit. `verify` and every oracle target depend on
-# this target, so none can run a stale test binary.
+# `cmake --build` recompiles edited sources, including port/tests/*.c, and
+# `verify`/every oracle target depends on this one — so none can run stale.
 build: ## Configure and build the SDL3 port (CMake → build/)
 	@echo "Configuring $(PORT_DIR)/ ..."
 	cmake -S $(PORT_DIR) -B $(BUILD_DIR)
 	cmake --build $(BUILD_DIR)
 
-# Note: the Ghidra/title-screen oracles are deliberately untracked, so the suite
-# SKIPS them unless requested. Pass oracle=1 (or use `verify`) to require them —
-# and pass nothing at all otherwise, because the test treats even an empty
-# PR_ORACLE_REQUIRED as "required".
+# The oracle fixtures are git-ignored, so the suite SKIPS those checks unless
+# asked. Pass oracle=1 (or use `verify`); pass nothing otherwise — the test
+# treats even an empty PR_ORACLE_REQUIRED as "required".
 test: build ## Run the assertion suite (oracle=1 requires the byte-exact oracles)
 	@if [ -n "$(oracle)" ]; then \
 		PR_ORACLE_REQUIRED=1 PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
@@ -118,13 +114,11 @@ smk-oracle: build ## Pixel-exact Smacker frame oracle (skips without data/smk-ca
 	@$(PYTHON) tools/smk_compare.py --capture $(SMK_CAPTURES)/twi5 --port $(SMK_DUMP)/twi5 --frames 120
 	@$(PYTHON) tools/smk_compare.py --capture $(SMK_CAPTURES)/twg --port $(SMK_DUMP)/twg --frames 41
 
-# Title frame oracle: the Task 10 driver runs game_init() and the 96-frame pinned
-# title window headless, dumping one RGB24 frame per presented frame (Task 9's
-# PR_TITLE_DUMP); title_compare.py aligns the dump into each capture by content
-# and requires a zero-byte match. Two captures prove determinism (the second is
-# optional; PR_ORACLE_REQUIRED=1 reports the proof incomplete without it). The
-# driver must not share a process with the unit suite, so run_tests runs it alone
-# when PR_TITLE_DUMP is set.
+# Title frame oracle: the PR_TITLE_DUMP driver runs game_init() and the 96-frame
+# pinned title window headless, one RGB24 frame per presented frame;
+# title_compare.py aligns the dump into each capture by content and requires a
+# zero-byte match. Two captures prove determinism (the second is optional). The
+# driver runs alone, since game_init() may run once per process.
 title-oracle: build ## Pixel-exact title oracle (skips without data/title-captures)
 	@echo "== title oracle (pixel-exact, presented window) =="
 	@if [ -d $(TITLE_CAPTURES)/title ]; then \
@@ -137,16 +131,13 @@ title-oracle: build ## Pixel-exact title oracle (skips without data/title-captur
 		$(if $(wildcard $(TITLE_CAPTURES)/title2),--capture $(TITLE_CAPTURES)/title2,) \
 		--port $(TITLE_DUMP)/title
 
-# Attract-prefix pixel oracle: the continuous PR_ATTRACT_DUMP run dumps every
-# presented state-0 frame plus the post-attract title window; attract_compare.py
-# derives the attract boundary from the title frames, checks every capture frame
-# in the matched prefix, and (with --expect-first 215) requires the FIRST
-# divergence to be the last attract capture frame (raw 2180 on `title`, 2175 on
-# `title2`). A regression anywhere in frames 0..214 then fails. The boundary sits
-# at 215 (not 100) because registering the animation opcode 0x11 target 0x10FA8
-# (the RAGE hand-off spawn) extends the matched prefix to the whole attract
-# window. Captures are git-ignored; absent capture skips (or fails under
-# PR_ORACLE_REQUIRED=1).
+# Attract-prefix pixel oracle: the PR_ATTRACT_DUMP run dumps every presented
+# state-0 frame plus the post-attract title window; attract_compare.py derives
+# the boundary from the title frames, checks every capture frame in the matched
+# prefix, and (with --expect-first 215) requires the FIRST divergence to be the
+# last attract capture frame (raw 2180 on `title`, 2175 on `title2`) — so a
+# regression anywhere in frames 0..214 fails. Captures are git-ignored; an
+# absent capture skips (or fails under PR_ORACLE_REQUIRED=1).
 attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/title-captures)
 	@echo "== attract prefix oracle (pixel-exact) =="
 	@if [ -d $(TITLE_CAPTURES)/title ]; then \
@@ -159,19 +150,17 @@ attract-oracle: build ## Pixel-exact attract-prefix oracle (skips without data/t
 		$(if $(wildcard $(TITLE_CAPTURES)/title2),--capture $(TITLE_CAPTURES)/title2,) \
 		--expect-first 215 --port $(ATTRACT_DUMP)
 
-# Front-end oracle: the Task 1 driver runs game_init() and drives the state
-# machine from state 2 into states 3/4, dumping one RGB24 frame per presented
-# frame from the state-3 entry (PR_FRONTEND_DUMP) plus a per-frame hash log for
-# the whole run. The capture is a 120 s passive run of the pinned original whose
-# front-end region follows the select carousel. Two gates stand: the determinism
-# check (PR_FRONTEND_DET makes run_tests re-invoke itself twice and require the
-# two frame-hash logs byte-identical; that run is the whole first recipe line, so
-# a determinism failure fails the ladder), and the pixel comparison on the next
-# line, which now enforces its result — tools/title_compare.py --frontend exits
-# non-zero on any unexplained frame. It drops all-black capture frames as
-# documented artifacts (the oracle-level choice recorded in
-# port/spec/game_flow.md), but a content-bearing frame that disagrees with the
-# port still fails. Captures are git-ignored; an absent capture skips both.
+# Front-end oracle (the enforced one): the PR_FRONTEND_DUMP driver drives state
+# 2 into states 3/4, one RGB24 frame per presented frame plus a per-frame hash
+# log. Two gates stand: the PR_FRONTEND_DET determinism check (run_tests
+# re-invokes itself twice and requires the two hash logs byte-identical — the
+# whole first recipe line, so a failure fails the ladder), and the pixel
+# comparison, which exits non-zero on any unexplained frame except the two named
+# in tools/title_compare.py's FRONTEND_ALLOWED_UNEXPLAINED. All-black capture
+# frames are dropped as documented artifacts (port/spec/game_flow.md); a
+# content-bearing frame that disagrees still fails. The window is derived from
+# the port's own dump, so the gate cannot detect an under-rendering port.
+# Captures are git-ignored; an absent capture skips both.
 frontend-oracle: build ## Front-end oracle (states 3/4; skips without data/title-captures/frontend)
 	@echo "== front-end oracle (pixel-exact, states 3/4) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
@@ -183,16 +172,14 @@ frontend-oracle: build ## Front-end oracle (states 3/4; skips without data/title
 	@$(PYTHON) tools/title_compare.py --frontend --capture $(TITLE_CAPTURES)/frontend \
 		--port $(FRONTEND_DUMP)/run1
 
-# Demo window report (demo-fight cycle 1, Task 7). The same PR_FRONTEND_DUMP run
-# as frontend-oracle, whose raised frame count now covers the state-6 entry and
-# the 900-frame state-7 demo; the two-run PR_FRONTEND_DET determinism gate covers
-# the demo window too. title_compare.py --demo locates the front-end window with
-# the same content alignment, then classifies the capture region after it against
-# the port dump frames after the last frame that window exhibits — the same
-# clean/splice/transition/unexplained model, no second one — and reports the
-# window, the counts and the first unexplained frame. It is report-only (always
-# exits 0) and is NOT in verify's sequence; cycle 2 promotes it to a gate.
-# Captures are git-ignored; an absent capture skips both lines.
+# Demo window report: the same PR_FRONTEND_DUMP run as frontend-oracle (its frame
+# count covers the state-6 entry and the 900-frame state-7 demo). title_compare.py
+# --demo locates the front-end window with the same content alignment, then
+# classifies the capture region after it against the port frames after the last
+# frame that window exhibits — the same clean/splice/transition/unexplained model
+# — and reports the window, the counts and the first unexplained frame. It is
+# report-only (always exits 0) and is NOT in verify's sequence. Captures are
+# git-ignored; an absent capture skips both lines.
 demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title-captures/frontend)
 	@echo "== demo window (report-only, states 9/6/7) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
