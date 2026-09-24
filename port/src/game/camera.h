@@ -43,8 +43,15 @@ void camera_step_seed(void);
 
 /* 0x17580. The per-frame projection decay: four word countdowns, three globals
  * zeroed, four signed truncating multiplies by 0xF3D/0xD56, then the 0x140E4
- * box-overlap gate for the 0x170A0 tail (the tail itself is an unported gap). */
+ * box-overlap gate: when the boxes overlap, 0x170A0(0)/0x170A0(1) run for the
+ * sides whose DS_00100B60/DS_00100B61 gate is set. */
 void camera_decay(void);
+
+/* 0x170A0. The unfreeze half's per-side body: clip the side's screen box
+ * against the projected sprite, sync the three visible rectangles (0x181D0),
+ * and write DS_00100AF8[side] = DS_00100B54. Guarded on the other side's two
+ * hit-stun/recovery countdowns. */
+void camera_unfreeze(u32 side);
 
 /* 0x140E4. 1 iff the two actors' screen boxes overlap. `actor0`/`actor1` are
  * the raw's actor-table indices (slot+0x56), not side numbers. Writes no
