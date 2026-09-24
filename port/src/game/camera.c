@@ -85,9 +85,9 @@ static u32 camera_resolve_sprite(u32 side, u32 index)
 
 /* ---- the 0x17FA0 page-flag/visibility tail ------------------------------ */
 
-/* 0x164C0. 1 iff (rec+0x24) + (-1.0f) == rec+0x20 for slot[side]'s record. The
- * raw loads the float at 0x80580 (`00 00 80 BF` = -1.0), adds it and FCOMPs
- * against +0x20. */
+/* 0x164C0 — pose/freeze record §11. 1 iff (rec+0x24) + (-1.0f) == rec+0x20 for
+ * slot[side]'s record. The raw loads the float at 0x80580 (`00 00 80 BF` =
+ * -1.0), adds it and FCOMPs against +0x20. */
 static int camera_frame_last(u32 side)
 {
     u32 rec = DSD(DS_001077B0 + side * 0x94u);
@@ -97,10 +97,11 @@ static int camera_frame_last(u32 side)
     return a == b;
 }
 
-/* 0x16734. The per-character sprite-id map: switch on slot[side]'s character
- * (slot+0x7A), comparing the actor's sprite id (word[actor] & 0x7FFF) against
- * the case's literal ids; returns a code 0xD2..0xDA or -1. Its only caller is
- * 0x16AFC. 0x33A10's context supplies the self record (out[5]) and slot (out[3]). */
+/* 0x16734 — pose/freeze record §11. The per-character sprite-id map: switch on
+ * slot[side]'s character (slot+0x7A), comparing the actor's sprite id
+ * (word[actor] & 0x7FFF) against the case's literal ids; returns a code
+ * 0xD2..0xDA or -1. Its only caller is 0x16AFC. 0x33A10's context supplies the
+ * self record (out[5]) and slot (out[3]). */
 int camera_sprite_code(u32 side)
 {
     u32 ctx[6];
@@ -156,11 +157,12 @@ int camera_sprite_code(u32 side)
     return -1;
 }
 
-/* 0x16AFC. The first page-flag tail 0x17FA0 calls for a side: write the side's
- * screen box to `out` and return 1, or zero `out` and return 0. With a 0x16734
- * code it reads the 0xCC300 frame table; otherwise it runs the per-side
- * countdown (bits 2/3 of DS_00107EE0) and the 5-entry 0x98688 scan keyed by
- * (slot+0x53, slot+0x5F, rec+0x63, 0x164C0), caching into 0xFD120..0xFD138. */
+/* 0x16AFC — pose/freeze record §11. The first page-flag tail 0x17FA0 calls for
+ * a side: write the side's screen box to `out` and return 1, or zero `out` and
+ * return 0. With a 0x16734 code it reads the 0xCC300 frame table; otherwise it
+ * runs the per-side countdown (bits 2/3 of DS_00107EE0) and the 5-entry 0x98688
+ * scan keyed by (slot+0x53, slot+0x5F, rec+0x63, 0x164C0), caching into
+ * 0xFD120..0xFD138. */
 int camera_page_tail_a(u32 side, u32 out)
 {
     int code = camera_sprite_code(side);
@@ -215,10 +217,11 @@ int camera_page_tail_a(u32 side, u32 out)
     }
 }
 
-/* 0x164F4. The second page-flag tail 0x17FA0 calls: the 0x16AFC twin that
- * skips 0x16734, uses bits 0/1 of DS_00107EE0, scans the 0x96108 table and
- * caches into 0xFD140..0xFD158 (its cached-box path also requires rec+0x63 to
- * be >= the matched value). Writes the side's screen box to `out`. */
+/* 0x164F4 — pose/freeze record §11. The second page-flag tail 0x17FA0 calls:
+ * the 0x16AFC twin that skips 0x16734, uses bits 0/1 of DS_00107EE0, scans the
+ * 0x96108 table and caches into 0xFD140..0xFD158 (its cached-box path also
+ * requires rec+0x63 to be >= the matched value). Writes the side's screen box
+ * to `out`. */
 int camera_page_tail_b(u32 side, u32 out)
 {
     if (fighter_slot_flag(side == 0u ? 0u : 1u) == 0) {      /* 0x16500 */
@@ -685,8 +688,11 @@ static u32 camera_bitplane_accum(u32 handle, u32 frame, u32 count, u32 table)
 {
     const u8 *p = (const u8 *)res_resolve(handle);
     u32 sp = camera_res_off(p);
-    const u8 *s = (const u8 *)res_resolve(DSD(sp + 8u));
-    u32 si = (u32)(s - mem);
+    /* PORT: res_resolve can return NULL (the raw dereferences unconditionally);
+     * the resolve-failure guard returns the 0 width sentinel, like
+     * camera_resolve_sprite's 0. */
+    u32 si = camera_res_off((const u8 *)res_resolve(DSD(sp + 8u)));
+    if (si == 0u) return 0u;
     s32 width = (s32)(s16)DSW(sp);                 /* 0x41050 */
     u32 byte_width = (u32)((width + 7) / 8);       /* 0x41062 */
 

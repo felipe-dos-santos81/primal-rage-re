@@ -51,8 +51,9 @@ int fighter_connect_query(u32 param_1, u32 param_2);
 /* 0x1958C. The first per-frame fighter pass. Gated on DS_001078FA == 2; per
  * side it calls 0x33950/0x19020/0x3AFC4, clears DS_00100AF8/AFC entries, then
  * picks a winner from the two 0x18950 reachabilities and, on an exact tie,
- * draws rng(2) at 0x19714. 0x19020/0x193B0 are named gaps (§7.6); the gates,
- * the flag stores and the RNG site are ported. */
+ * draws rng(2) at 0x19714. 0x19020 is a named gap (§7.6); 0x193B0 is ported
+ * (fighter_winner_body) and wired at this pass's 0x1974D tail. The gates, the
+ * flag stores and the RNG site are ported. */
 void fighter_pass_a(void);
 
 /* 0x19068. The second per-frame fighter pass, called with arg = 0 by the

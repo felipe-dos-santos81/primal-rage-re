@@ -595,6 +595,23 @@ static void check_unfreeze(void)
     CHECK_EQ_INT((int)DSD(DS_00100B14), (int)0xDEADBEEFu);
     CHECK_EQ_INT((int)DSD(DS_00100B34), (int)0xDEADBEEFu);
 
+    /* G: the box_o == 0 branch (0x17182), the live demo path (0x100AC0 is 0
+     * there). Zero the other side's box +2/+3 so box_o = 0 and the sp_b arm
+     * runs; the body still completes and accumulates a non-zero B54. With the
+     * branch removed the box_b arm gets a zero-height box and returns at the
+     * first 0x181D0 sync, leaving B54 at 0. */
+    DSB(DS_00100B60) = 0;
+    DSB(DS_00100B61) = 1;
+    DSW(DS_00107824) = 0; DSW(DS_00107826) = 0;
+    DSW(DS_00107824 + 0x94u) = 0; DSW(DS_00107826 + 0x94u) = 0;
+    DSB(DS_00100AC0 + 2u) = 0;          /* other side's box absent -> box_o = 0 */
+    DSB(DS_00100AC0 + 3u) = 0;
+    DSD(DS_00100AF8 + 4u) = 0xDEADBEEFu;
+    unfreeze_seed_b();
+    camera_decay();
+    CHECK(DSD(DS_00100B54) != 0u, "box_o==0: B54 accumulated");
+    CHECK_EQ_INT((int)DSD(DS_00100AF8 + 4u), (int)DSD(DS_00100B54));
+
     tf_put(s_b, DS_00100B64, sizeof s_b);
     tf_put(s_row0, 0x000FD160u, sizeof s_row0);
     tf_put(s_row1, 0x000FEDE0u, sizeof s_row1);
@@ -3371,6 +3388,70 @@ static void check_winner_body(void)
     DSB(0x00107A80u + 0x40u) = sv_ac0;
 }
 
+/* 0x1974D: fighter_pass_a's tail dispatch. Whichever of AF8[0] (= DS_00100AF8)
+ * and AF8[1] (= DS_00100AFC) survives runs fighter_winner_body for that side
+ * when the side's slot+0x8A gate byte (0x10783A / 0x1078CE) is set. The direct
+ * winner-body test calls fighter_winner_body, so this pins the pass-level
+ * wiring. Every seed is a sentinel differing from the post-condition. */
+static void check_pass_a_tail(void)
+{
+    u32 s0 = DS_001077B0;
+    u32 s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS;
+    u32 r1 = FIGHT_RECS + 0x100u;
+    u16 sv_w0 = DSW(0x000A6728u);
+    u16 sv_w2 = DSW(0x000A6728u + 2u);
+    u32 sv_d8 = DSD(0x000A3528u + 8u);
+    u8  sv_b117 = DSB(0x000DE117u);
+    u8  sv_a80 = DSB(0x00107A80u);
+    u8  sv_ac0 = DSB(0x00107A80u + 0x40u);
+
+    /* --- side 0 wins: AF8[0] survives, AF8[1] is 0 -> the tail. --- */
+    winner_body_setup(s0, s1, r0, r1);
+    DSD(r0 + 0x20u) = 0x40F00000u;      /* 7.5f -> the pose on slot 1 */
+    DSD(r0 + 0x24u) = 0x40600000u;
+    DSB(DS_001078FA) = 2;               /* the pass gate */
+    DSW(s0 + 0x76u) = 0;                /* the anim gate off: AF8 kept */
+    DSW(s1 + 0x76u) = 0;
+    DSB(DS_00107803) = 0;               /* slot0 +0x53: not 0x0A */
+    DSB(DS_00107803 + 0x94u) = 0;
+    DSD(DS_00100AF8) = 0x1111u;         /* survives */
+    DSD(DS_00100AFC) = 0u;              /* -> goto tail */
+    DSB(DS_0010783A) = 0xEEu;           /* slot0 +0x8A: the 0x193B0 gate */
+    DSB(DS_001078CE) = 0u;
+
+    fighter_pass_a();
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0x10);    /* pose on the other slot */
+    CHECK_EQ_INT((int)DSB(s0 + 0x8Au), 0);       /* 0x19576 cleared the gate */
+    CHECK_EQ_INT((int)DSW(DS_00100B50), 0x1234); /* the 0x19472 latch */
+
+    /* --- side 1 wins: the mirror. --- */
+    winner_body_setup(s0, s1, r0, r1);
+    DSD(r1 + 0x20u) = 0;
+    DSD(r1 + 0x24u) = 0;
+    DSB(DS_001078FA) = 2;
+    DSW(s0 + 0x76u) = 0;
+    DSW(s1 + 0x76u) = 0;
+    DSB(DS_00107803) = 0;
+    DSB(DS_00107803 + 0x94u) = 0;
+    DSD(DS_00100AF8) = 0u;              /* -> goto tail */
+    DSD(DS_00100AFC) = 0x2222u;         /* survives */
+    DSB(DS_0010783A) = 0u;
+    DSB(DS_001078CE) = 0xEEu;           /* slot1 +0x8A */
+
+    fighter_pass_a();
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x10);      /* the mirror pose */
+    CHECK_EQ_INT((int)DSB(s1 + 0x8Au), 0);
+    CHECK_EQ_INT((int)DSW(DS_00100B50 + 2u), 0x5678);
+
+    DSW(0x000A6728u) = sv_w0;
+    DSW(0x000A6728u + 2u) = sv_w2;
+    DSD(0x000A3528u + 8u) = sv_d8;
+    DSB(0x000DE117u) = sv_b117;
+    DSB(0x00107A80u) = sv_a80;
+    DSB(0x00107A80u + 0x40u) = sv_ac0;
+}
+
 /* ---- Task 6: the 0x17FA0 page-flag/visibility tail ---------------------- */
 
 /* 0x16734/0x164C0/0x16AFC/0x164F4 and the 0x17FA0 wiring. The per-character
@@ -3637,6 +3718,7 @@ int test_fight(void)
     check_reaction_predicates();
     check_reaction();
     check_winner_body();
+    check_pass_a_tail();
     check_page_tail();
 
     tf_put(s_f0ae0, 0x000F0AE0u, 0x20u);
