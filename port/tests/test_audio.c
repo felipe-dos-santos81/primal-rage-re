@@ -1,11 +1,424 @@
+/* test_audio.c — the audio suite.
+ *
+ * Consolidated from: test_opl.c, test_pitch.c, test_samples.c, test_mixer.c, test_sequencer.c, test_ail.c.
+ * Every assertion is carried verbatim; only the file's home and the
+ * two cross-file static names (all_zero/out) changed. */
+
+#include "test.h"
+#include "platform/audio/opl/opl.h"
+#include "platform/audio/pitch.h"
+#include "platform/audio/samples.h"
+#include "platform/audio/mixer.h"
 #include "platform/audio/sequencer.h"
 #include "platform/audio/patches.h"
-#include "platform/audio/mixer.h"
-#include "platform/audio/opl/opl.h"
-#include "test.h"
+#include "platform/audio/ail.h"
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+
+
+/* ---- test_opl.c ---- */
+
+static s16 buf_a[2048], buf_b[2048];
+
+/* The driver's note setup: waveform enable, operator/channel registers with the
+ * output-enable write 0xC0 = patch | 0x30, then key-on. `with_105` inserts the
+ * capture's OPL3-mode enable (0x105 = 0x01) right after 0x01 = 0x20. */
+static void note_setup(int with_105, s16 *out)
+{
+    opl_reset();
+    opl_write(0x01, 0x20);
+    if (with_105)
+        opl_write(0x105, 0x01);
+    opl_write(0x20, 0x01);
+    opl_write(0x40, 0x10);
+    opl_write(0x60, 0xF0);
+    opl_write(0x80, 0x77);
+    opl_write(0xE0, 0x00);
+    opl_write(0xC0, 0x30);
+    opl_write(0xA0, 0x98);
+    opl_write(0xB0, 0x31);
+    opl_render(out, 1024);
+}
+
+int test_opl(void)
+{
+    int before = g_failures;
+
+    opl_reset();
+    opl_render(buf_a, 1024);
+    int silent = 1;
+    for (int i = 0; i < 2048; i++)
+        if (buf_a[i] != 0)
+            silent = 0;
+    CHECK(silent, "a reset core with no register writes renders silence");
+
+    opl_reset();
+    opl_write(0x20, 0x01);
+    opl_write(0x40, 0x10);
+    opl_write(0x60, 0xF0);
+    opl_write(0x80, 0x77);
+    opl_write(0xA0, 0x98);
+    opl_write(0xB0, 0x31);
+    opl_render(buf_a, 1024);
+    int any = 0;
+    for (int i = 0; i < 2048; i++)
+        if (buf_a[i] != 0)
+            any = 1;
+    CHECK(any, "a key-on write sequence produces audio");
+
+    opl_reset();
+    opl_write(0x20, 0x01);
+    opl_write(0x40, 0x10);
+    opl_write(0x60, 0xF0);
+    opl_write(0x80, 0x77);
+    opl_write(0xA0, 0x98);
+    opl_write(0xB0, 0x31);
+    opl_render(buf_b, 1024);
+    CHECK(memcmp(buf_a, buf_b, sizeof buf_a) == 0, "the core is deterministic");
+
+    /* Regression: the spec once claimed 0x105 = 0x01 silences the core. It does
+     * not, given the 0xC0 output-enable write every real note setup has; the
+     * old probe omitted that write and attributed the resulting OPL3-mode
+     * silence to 0x105. */
+    note_setup(0, buf_a);
+    note_setup(1, buf_b);
+    {
+        int n = 0;
+        for (int i = 0; i < 2048; i++)
+            if (buf_b[i] != 0)
+                n++;
+        CHECK(n > 0, "0x105 = 1 with 0xC0 enable still renders audio");
+        CHECK(memcmp(buf_a, buf_b, sizeof buf_a) == 0,
+              "0x105 = 1 is output-neutral given the 0xC0 enable");
+    }
+
+    return g_failures - before;
+}
+
+/* ---- test_pitch.c ---- */
+
+int test_pitch(void)
+{
+    int before = g_failures;
+
+    /* Capture-pinned anchors from the driver routine. b0 is the payload
+     * without the key-on bit; a key-on ORs 0x20. Note 84 (melodic) and 79
+     * (the negative-fnum carry) land on block 5; percussion base 54 on
+     * block 2. */
+    {
+        u8 a0, b0;
+        pitch_lookup(84, 0, &a0, &b0);
+        CHECK_EQ_INT(a0, 0xB2);
+        CHECK_EQ_INT(b0, 0x16);
+        pitch_lookup(79, 0, &a0, &b0);
+        CHECK_EQ_INT(a0, 0x05);
+        CHECK_EQ_INT(b0, 0x16);
+        pitch_lookup(54, 0, &a0, &b0);
+        CHECK_EQ_INT(a0, 0xCF);
+        CHECK_EQ_INT(b0, 0x0B);
+    }
+
+    /* A centred wheel (0x2000) is zero at any scale. */
+    CHECK_EQ_INT(pitch_bend_of(0x2000, 12), 0);
+    /* A full-up wheel with scale 1 is (0x1fff >> 5) * 1 = 0xff. */
+    CHECK_EQ_INT(pitch_bend_of(0x3fff, 1), 0xFF);
+    /* The product is 16-bit: the driver's imul result is used from `ax` only,
+     * so 255 * 255 wraps to the signed 16-bit value. */
+    CHECK_EQ_INT(pitch_bend_of(0x3fff, 255), -511);
+    /* The 0x3646/0x3648 additions are 16-bit too, so the sum wraps before the
+     * 0x364e shift; 127 folds to bx 91, and 91*256 + 8 + 16000 overflows. */
+    {
+        u8 a0, b0;
+        pitch_lookup(127, 16000, &a0, &b0);
+        CHECK_EQ_INT(a0, 0xDA);
+        CHECK_EQ_INT(b0, 0x01);
+    }
+
+    /* Folded low indices 0-6 with a centred wheel compute block -1 (one below
+     * the lowest legal block), so the `block < 0` carry runs (block++ and
+     * v >>= 1): index 0's v 0x02B2 halves to 0x0159, index 6's 0x03CF to
+     * 0x01E7, both lifted to block 0. */
+    {
+        u8 a0, b0;
+        pitch_lookup(0, 0, &a0, &b0);
+        CHECK_EQ_INT(a0, 0x59);
+        CHECK_EQ_INT(b0, 0x01);
+        pitch_lookup(6, 0, &a0, &b0);
+        CHECK_EQ_INT(a0, 0xE7);
+        CHECK_EQ_INT(b0, 0x01);
+    }
+    /* A negative bend drives `ax` below 0; the 0xc0 fold wraps it (it is not
+     * a clamp), so the index lands above centre. Index 0, bend -1000: ax -62
+     * -> 130. */
+    {
+        u8 a0, b0;
+        pitch_lookup(0, -1000, &a0, &b0);
+        CHECK_EQ_INT(a0, 0x27);
+        CHECK_EQ_INT(b0, 0x02);
+    }
+
+    return g_failures - before;
+}
+
+/* ---- test_samples.c ---- */
+
+/* The shipped sample Task 1 located: a RIFF/WAVE blob at file offset 0x24b13 in
+ * S16SOUND.GRA (port/spec/audio.md "Samples"). It is an 8-bit unsigned mono PCM
+ * WAV at 11025 Hz with 19327 data bytes; the fmt+data prefix is 44 + 19327. The
+ * file's RIFF size field also counts a trailing LIST/INFO and fact chunk, so
+ * only the prefix is read here — the loader must bound itself by the length it
+ * is given, not by that field. */
+#define SND_GRA "data/game/C/S16SOUND.GRA"
+#define SAMPLE_OFF 0x24b13u
+#define SAMPLE_LEN (44u + 19327u)
+
+static u8 g_blob[SAMPLE_LEN];
+
+static int read_blob(void)
+{
+    FILE *f = fopen(SND_GRA, "rb");
+    if (!f) return 0;
+    if (fseek(f, (long)SAMPLE_OFF, SEEK_SET) != 0) { fclose(f); return 0; }
+    size_t got = fread(g_blob, 1, sizeof g_blob, f);
+    fclose(f);
+    return got == sizeof g_blob;
+}
+
+/* A rejected load must never leave a half-filled descriptor. */
+static void check_zeroed(const SampleVoice *v, const char *msg)
+{
+    CHECK(v->pcm == NULL && v->frames == 0 && v->rate == 0 && v->channels == 0,
+          msg);
+}
+
+int test_samples(void)
+{
+    int before = g_failures;
+    SampleVoice v;
+
+    /* Zero-length sample: rejected regardless of any asset. */
+    memset(&v, 0xAB, sizeof v);
+    CHECK_EQ_INT(samples_load(NULL, 0, &v), 0);
+    check_zeroed(&v, "zero-length load leaves out zeroed");
+
+    /* A non-WAV buffer: same. */
+    {
+        static const u8 junk[64] = { 'N', 'O', 'T', 'W', 'A', 'V', 'E', '!' };
+        memset(&v, 0xAB, sizeof v);
+        CHECK_EQ_INT(samples_load(junk, sizeof junk, &v), 0);
+        check_zeroed(&v, "non-WAV buffer rejected, out zeroed");
+        CHECK_EQ_INT(samples_load(junk, sizeof junk, NULL), 0);
+        CHECK_EQ_INT(samples_load(NULL, 16, &v), 0);
+    }
+
+    if (!read_blob()) {
+        if (getenv("PR_ORACLE_REQUIRED")) {
+            CHECK(0, "PR_ORACLE_REQUIRED=1 but S16SOUND.GRA sample blob is missing");
+        } else {
+            printf("SKIP sample loader real-data checks (need " SND_GRA
+                   " @0x%x, %u bytes)\n", SAMPLE_OFF, (unsigned)SAMPLE_LEN);
+        }
+        return g_failures - before;
+    }
+
+    /* Confirm the bytes we are about to rely on are the located blob. */
+    CHECK(memcmp(g_blob, "RIFF", 4) == 0 && memcmp(g_blob + 8, "WAVE", 4) == 0,
+          "located bytes are a RIFF/WAVE blob");
+
+    /* 1. Valid sample: real rate, channels and frame count. */
+    CHECK_EQ_INT(samples_load(g_blob, SAMPLE_LEN, &v), 1);
+    CHECK_EQ_INT(v.rate, 11025);
+    CHECK_EQ_INT(v.channels, 1);
+    CHECK_EQ_INT(v.frames, 19327);
+    CHECK(v.pcm == g_blob + 44, "pcm references the caller's bytes, not a copy");
+
+    /* 2. Truncated input: every prefix shorter than the declared PCM (and every
+     *    header cut) is rejected, never read past `len`. */
+    memset(&v, 0xAB, sizeof v);
+    CHECK_EQ_INT(samples_load(g_blob, SAMPLE_LEN - 1, &v), 0);
+    check_zeroed(&v, "sample truncated at its end rejected");
+    CHECK_EQ_INT(samples_load(g_blob, 44 + 100, &v), 0);
+    check_zeroed(&v, "PCM cut to 100 bytes rejected");
+    CHECK_EQ_INT(samples_load(g_blob, 20, &v), 0);
+    check_zeroed(&v, "header cut mid-fmt rejected");
+    CHECK_EQ_INT(samples_load(g_blob, 4, &v), 0);
+
+    /* 3. Unknown format rejected: unsupported tag, bit depth, channel count,
+     *    and an empty data chunk. Each edits a copy of the real header. */
+    {
+        static u8 bad[SAMPLE_LEN];
+        memcpy(bad, g_blob, sizeof bad);
+        bad[20] = 3; bad[21] = 0;           /* fmt tag 3 = IEEE float */
+        memset(&v, 0xAB, sizeof v);
+        CHECK_EQ_INT(samples_load(bad, sizeof bad, &v), 0);
+        check_zeroed(&v, "non-PCM format tag rejected");
+
+        memcpy(bad, g_blob, sizeof bad);
+        bad[34] = 16; bad[35] = 0;          /* 16-bit PCM */
+        CHECK_EQ_INT(samples_load(bad, sizeof bad, &v), 0);
+        check_zeroed(&v, "16-bit sample rejected");
+
+        memcpy(bad, g_blob, sizeof bad);
+        bad[22] = 2; bad[23] = 0;           /* 2 channels */
+        CHECK_EQ_INT(samples_load(bad, sizeof bad, &v), 0);
+        check_zeroed(&v, "stereo sample rejected");
+
+        memcpy(bad, g_blob, sizeof bad);
+        bad[40] = 0; bad[41] = 0; bad[42] = 0; bad[43] = 0;  /* data size 0 */
+        CHECK_EQ_INT(samples_load(bad, sizeof bad, &v), 0);
+        check_zeroed(&v, "zero-length data chunk rejected");
+    }
+
+    return g_failures - before;
+}
+
+/* ---- test_mixer.c ---- */
+
+#define FRAMES 64
+
+static s16 mixer_out[2 * FRAMES];
+
+/* Voice owners for the per-voice stop test; any distinct addresses work. */
+static int owner_a, owner_b;
+
+static int mixer_all_zero(const s16 *b, int n)
+{
+    for (int i = 0; i < n; i++)
+        if (b[i] != 0)
+            return 0;
+    return 1;
+}
+
+static long sum_abs(const s16 *b, int n)
+{
+    long s = 0;
+    for (int i = 0; i < n; i++)
+        s += b[i] < 0 ? -(long)b[i] : (long)b[i];
+    return s;
+}
+
+int test_mixer(void)
+{
+    int before = g_failures;
+
+    /* Nothing playing: OPL reset with no register writes renders exact zeros
+     * across the whole buffer (Task 4 property), and no voice is added. */
+    mixer_reset();
+    mixer_render(mixer_out, FRAMES, 44100);
+    CHECK(mixer_all_zero(mixer_out, 2 * FRAMES), "reset mixer with no voices is exact silence");
+
+    /* One voice: nonzero output. Tone at 1 kHz-ish, volume 128 (~0.5), looping,
+     * rate == out_rate so no resampling is involved. */
+    static s16 tone[8] = { 1000, -1000, 1000, -1000, 1000, -1000, 1000, -1000 };
+    mixer_reset();
+    mixer_add_sample(tone, 8, 44100, 128, 1, &owner_a);
+    mixer_render(mixer_out, FRAMES, 44100);
+    CHECK(!mixer_all_zero(mixer_out, 2 * FRAMES), "one voice produces non-silence");
+
+    /* Two voices louder than one. Volume 128 with amplitude 1000 gives +/-500
+     * per voice, so two voices sum to +/-1000: well inside s16, the comparison
+     * cannot be explained by clipping. */
+    long one = sum_abs(mixer_out, 2 * FRAMES);
+    mixer_reset();
+    mixer_add_sample(tone, 8, 44100, 128, 1, &owner_a);
+    mixer_add_sample(tone, 8, 44100, 128, 1, &owner_a);
+    mixer_render(mixer_out, FRAMES, 44100);
+    long two = sum_abs(mixer_out, 2 * FRAMES);
+    CHECK(two > one, "two voices together are louder than one");
+
+    /* Stopped voices contribute nothing. */
+    mixer_reset();
+    mixer_add_sample(tone, 8, 44100, 256, 1, &owner_a);
+    mixer_stop_samples();
+    mixer_render(mixer_out, FRAMES, 44100);
+    CHECK(mixer_all_zero(mixer_out, 2 * FRAMES), "stop_samples returns output to silence");
+
+    /* Clipping saturates, never wraps. Four voices at unity of +/-30000 sum to
+     * +/-120000, past both s16 limits. Every sample must be exactly a limit and
+     * in the direction of the input sign. */
+    static s16 loud[2] = { 30000, -30000 };
+    mixer_reset();
+    for (int i = 0; i < 4; i++)
+        mixer_add_sample(loud, 2, 44100, 256, 1, &owner_a);
+    mixer_render(mixer_out, FRAMES, 44100);
+    int saw_pos = 0, saw_neg = 0, outside = 0;
+    for (int i = 0; i < 2 * FRAMES; i++) {
+        if (mixer_out[i] == 32767) saw_pos = 1;
+        else if (mixer_out[i] == -32768) saw_neg = 1;
+        else outside = 1;
+    }
+    CHECK(saw_pos && saw_neg, "clipping saturates both s16 limits");
+    CHECK(!outside, "no sample wraps past the s16 limits");
+
+    /* A voice whose rate differs from out_rate is resampled without reading
+     * outside its buffer. Six-sample ramp at twice out_rate: the 16.16 phase
+     * advances exactly two samples per output frame, so a one-shot voice reads
+     * ramp[0], ramp[2], ramp[4] and then, at the fourth frame, has idx == 6 ==
+     * frames. Expected output is exactly those three values followed by silence
+     * — asserted per frame, so an unclamped read of ramp[6] would change frame 4
+     * and fail. (The negative control needs the over-read to be deterministic:
+     * temporarily stripping the idx >= frames guard and padding the array is
+     * what confirms this test can fail.) */
+    static s16 ramp[6] = { 100, 200, 300, 400, 500, 600 };
+    mixer_reset();
+    mixer_add_sample(ramp, 6, 44100 * 2, 256, 0, &owner_a);
+    mixer_render(mixer_out, 6, 44100);
+    CHECK_EQ_INT(mixer_out[0], 100);
+    CHECK_EQ_INT(mixer_out[1], 100);
+    CHECK_EQ_INT(mixer_out[2], 300);
+    CHECK_EQ_INT(mixer_out[3], 300);
+    CHECK_EQ_INT(mixer_out[4], 500);
+    CHECK_EQ_INT(mixer_out[5], 500);
+    CHECK_EQ_INT(mixer_out[6], 0);
+    CHECK_EQ_INT(mixer_out[7], 0);
+    CHECK_EQ_INT(mixer_out[8], 0);
+    CHECK_EQ_INT(mixer_out[9], 0);
+    CHECK_EQ_INT(mixer_out[10], 0);
+    CHECK_EQ_INT(mixer_out[11], 0);
+
+    /* Per-voice stop: stopping one owner leaves the other sounding; a stop for
+     * an owner with no active voice changes nothing; stopping the last returns
+     * to exact silence (OPL was reset and never written in this block). */
+    {
+        static s16 a[2] = { 1000, -1000 };
+        static s16 b[2] = { 2000, -2000 };
+        mixer_reset();
+        mixer_add_sample(a, 2, 44100, 256, 1, &owner_a);
+        mixer_add_sample(b, 2, 44100, 256, 1, &owner_b);
+        mixer_stop_sample(&owner_a);
+        mixer_render(mixer_out, FRAMES, 44100);
+        CHECK(!mixer_all_zero(mixer_out, 2 * FRAMES),
+              "stopping one owner leaves the other voice sounding");
+
+        mixer_stop_sample(&owner_a);   /* already stopped: stale-safe */
+        mixer_render(mixer_out, FRAMES, 44100);
+        CHECK(!mixer_all_zero(mixer_out, 2 * FRAMES),
+              "a stop for an inactive owner leaves the live voice alone");
+
+        mixer_stop_sample(&owner_b);
+        mixer_render(mixer_out, FRAMES, 44100);
+        CHECK(mixer_all_zero(mixer_out, 2 * FRAMES),
+              "stopping the last sample voice is exact silence");
+    }
+
+    /* A rate whose exact 16.16 step is 2^32 must saturate, not wrap: wrapping
+     * gives step 0, pinning the voice on its first sample forever. rate 2^17 at
+     * out_rate 2 gives step 2^32, so a u32 truncation would make it 0. */
+    {
+        static s16 pcm[4] = { 100, 200, 300, 400 };
+        mixer_reset();
+        CHECK(mixer_add_sample(pcm, 4, 1 << 17, 256, 0, &owner_a) == 1,
+              "a voice starts before the wrap check");
+        CHECK_EQ_INT(mixer_active_voices(), 1);
+        mixer_render(mixer_out, 8, 2);
+        CHECK_EQ_INT(mixer_active_voices(), 0);
+    }
+
+    return g_failures - before;
+}
+
+/* ---- test_sequencer.c ---- */
 
 /* Builds a minimal FORM/XMID/EVNT XMI bank around `ev`, so the halt paths can
  * be exercised without assets. Layout matches what seq_load walks. */
@@ -848,5 +1261,225 @@ int test_sequencer(void)
 
     free(gra);
     free(fat);
+    return g_failures - before;
+}
+
+/* ---- test_ail.c ---- */
+
+/* Shallow checks for the AIL call surface (Task 10). The end-to-end wiring is
+ * Task 11's and the announcer sample is Task 12's; this file only pins the
+ * surface's observable contracts: the fixed-profile short-circuit, the
+ * preference/timer handle semantics, that music start/stop drives the
+ * sequencer, and that a sample-play call converts its bytes and reaches the
+ * mixer. No audio device is opened. */
+
+
+
+
+
+
+
+
+/* A minimal XMIDI bank: FORM/XMID with one EVNT chunk holding a note-on (with a
+ * 0x10-tick delta before the end meta) so the sequence stays playing for a
+ * tick, then the FF 2F end. Sizes are big-endian, as the container demands. */
+static const u8 k_bank[] = {
+    'F', 'O', 'R', 'M', 0x00, 0x00, 0x00, 0x14,
+    'X', 'M', 'I', 'D',
+    'E', 'V', 'N', 'T', 0x00, 0x00, 0x00, 0x08,
+    0x90, 0x3C, 0x64, 0x7F,       /* note on, ch0, note 0x3C, vel 0x64, dur 127 */
+    0x10,                         /* delta: 16 ticks before the next event */
+    0xFF, 0x2F, 0x00              /* XMIDI end */
+};
+
+static s16 ail_out[2 * 64];
+
+static int ail_all_zero(const s16 *b, int n)
+{
+    for (int i = 0; i < n; i++)
+        if (b[i] != 0)
+            return 0;
+    return 1;
+}
+
+static void timer_cb(void) {}
+
+int test_ail(void)
+{
+    int before = g_failures;
+
+    /* 1. Defaults and the preference swap semantics (spec row 3): setting
+     *    returns the old value, and an ail_out-of-range index is rejected. */
+    AIL_startup();
+    CHECK_EQ_INT(AIL_set_preference(4, 2), 0x10);
+    CHECK_EQ_INT(AIL_set_preference(0x12, 1), -1);
+
+    /* 2. Fixed profile, no hardware probe (spec rows 8, 9, 25): the fallback
+     *    chain's names all succeed, and so does a name that cannot exist,
+     *    proving no driver file is probed or opened. */
+    HDIGDRIVER dig = AIL_install_DIG_INI();
+    CHECK(dig != NULL, "install_DIG_INI returns a fixed-profile handle");
+    CHECK(AIL_install_DIG_driver_file("SB16.DIG", NULL) != NULL,
+          "fixed profile: SB16.DIG install succeeds");
+    CHECK(AIL_install_DIG_driver_file("SBPRO.DIG", NULL) != NULL,
+          "fixed profile: SBPRO.DIG install succeeds");
+    CHECK(AIL_install_DIG_driver_file("SBLASTER.DIG", NULL) != NULL,
+          "fixed profile: SBLASTER.DIG install succeeds");
+    CHECK(AIL_install_DIG_driver_file("NO_SUCH.DRV", NULL) != NULL,
+          "fixed profile: no driver-file probe (bogus name succeeds)");
+    HMDIDRIVER mdi = AIL_install_MDI_INI();
+    CHECK(mdi != NULL, "install_MDI_INI returns a fixed-profile handle");
+
+    /* 3. Timer handles (spec rows 4-7): distinct slots, a released slot is
+     *    reused. The callback is stored, never fired (no ISR in the port). */
+    HTIMER t0 = AIL_register_timer(timer_cb);
+    HTIMER t1 = AIL_register_timer(timer_cb);
+    CHECK(t0 >= 0 && t1 >= 0 && t1 != t0, "timer handles are distinct slots");
+    AIL_set_timer_frequency(t0, 0x3c);
+    AIL_start_timer(t0);
+    AIL_release_timer_handle(t0);
+    CHECK(AIL_register_timer(timer_cb) == t0, "a released timer slot is reused");
+    AIL_release_timer_handle(t1);
+
+    /* 4. Music start/stop drive the sequencer (spec rows 27-29, 31). Start
+     *    emits the sequencer's opening register writes and reports playing (4);
+     *    one tick keys the bank's note; stop halts it and reports 2; no further
+     *    tick writes anything. */
+    HSEQUENCE seq = AIL_allocate_sequence_handle(mdi);
+    CHECK(seq != NULL, "allocate_sequence_handle returns the sequence");
+    CHECK(AIL_allocate_sequence_handle(mdi) == NULL,
+          "the single sequence handle is exhausted on a second allocate");
+    CHECK_EQ_INT(AIL_init_sequence(seq, k_bank, 0), 1);
+    opl_reset();
+    AIL_start_sequence(seq);
+    u32 w0 = opl_write_count();
+    CHECK(w0 >= 2, "start_sequence emits the sequencer opening writes");
+    CHECK_EQ_INT(AIL_sequence_status(seq), 4);
+    seq_tick();
+    CHECK_EQ_INT(seq_active_track(), 1);
+    CHECK(opl_write_count() > w0, "a tick emits the note's register writes");
+    CHECK_EQ_INT(AIL_sequence_status(seq), 4);
+    AIL_stop_sequence(seq);
+    CHECK_EQ_INT(seq_active_track(), 0);
+    CHECK_EQ_INT(AIL_sequence_status(seq), 2);
+    {
+        u32 w1 = opl_write_count();
+        for (int i = 0; i < 8; i++)
+            seq_tick();
+        CHECK_EQ_INT((int)opl_write_count(), (int)w1);
+    }
+
+    /* 4b. Natural end (spec row 31): the bank's FF 2F end meta halts playback,
+     *     so AIL_sequence_status reports 2 with no AIL_stop_sequence call. */
+    AIL_start_sequence(seq);
+    CHECK_EQ_INT(AIL_sequence_status(seq), 4);
+    for (int i = 0; i < 40; i++)
+        seq_tick();
+    CHECK_EQ_INT(AIL_sequence_status(seq), 2);
+
+    /* 4c. A failed re-init clears `loaded`: a later start_sequence must not
+     *     restart the previously loaded bank. */
+    {
+        static const u8 bad_bank[4] = { 0 };
+        CHECK_EQ_INT(AIL_init_sequence(seq, bad_bank, 0), 0);
+        AIL_start_sequence(seq);
+        CHECK_EQ_INT(AIL_sequence_status(seq), 2);
+    }
+
+    /* 5. The 8-bit -> s16 conversion is exact and lives once, in samples.c. */
+    {
+        static const u8 pcm8[3] = { 0, 128, 255 };
+        s16 conv[3];
+        CHECK_EQ_INT(samples_to_s16(pcm8, 3, conv), 3);
+        CHECK_EQ_INT(conv[0], -32768);
+        CHECK_EQ_INT(conv[1], 0);
+        CHECK_EQ_INT(conv[2], 32512);
+        CHECK_EQ_INT(samples_to_s16(NULL, 3, conv), 0);
+        CHECK_EQ_INT(samples_to_s16(pcm8, 3, NULL), 0);
+    }
+
+    /* 6. The sample-play path: four handles, then exhaustion; start marks
+     *    playing and adds a mixer voice of the converted bytes, so rendering
+     *    is non-silent; stop returns to stopped. */
+    {
+        HSAMPLE hs[4];
+        for (int i = 0; i < 4; i++) {
+            hs[i] = AIL_allocate_sample_handle(dig);
+            CHECK(hs[i] != NULL, "one of the four sample handles allocates");
+        }
+        CHECK(AIL_allocate_sample_handle(dig) == NULL,
+              "a fifth sample handle is refused (four-handle pool)");
+
+        static const u8 pcm[4] = { 0, 0, 0, 0 };   /* converted: all -32768 */
+        AIL_init_sample(hs[0]);
+        CHECK_EQ_INT(AIL_sample_status(hs[0]), 2);
+        AIL_set_sample_address(hs[0], pcm, 4);
+        AIL_set_sample_type(hs[0], 0, 0);
+        AIL_set_sample_rate(hs[0], 11025);
+        AIL_set_sample_volume(hs[0], 0x7f);
+        AIL_set_sample_loop_count(hs[0], 0);
+
+        /* hs[1] plays a tone so that stopping hs[0] can be shown not to stop it
+         * (the original stops one handle, not every sample voice). */
+        static const u8 tone8[4] = { 200, 56, 200, 56 };
+        AIL_init_sample(hs[1]);
+        AIL_set_sample_address(hs[1], tone8, 4);
+        AIL_set_sample_rate(hs[1], 11025);
+        AIL_set_sample_volume(hs[1], 0x7f);
+        AIL_set_sample_loop_count(hs[1], 1);
+
+        mixer_reset();                 /* silence OPL so only the voices are heard */
+        AIL_start_sample(hs[0]);
+        CHECK_EQ_INT(AIL_sample_status(hs[0]), 4);
+        AIL_start_sample(hs[1]);
+        CHECK_EQ_INT(AIL_sample_status(hs[1]), 4);
+        mixer_render(ail_out, 64, 44100);
+        CHECK(!ail_all_zero(ail_out, 2 * 64),
+              "start_sample adds a mixer voice of the converted sample");
+
+        AIL_stop_sample(hs[0]);
+        CHECK_EQ_INT(AIL_sample_status(hs[0]), 2);
+        CHECK_EQ_INT(AIL_sample_status(hs[1]), 4);
+        mixer_render(ail_out, 64, 44100);
+        CHECK(!ail_all_zero(ail_out, 2 * 64),
+              "stop_sample stops one handle's voice, not every sample voice");
+
+        AIL_stop_sample(hs[1]);
+        CHECK_EQ_INT(AIL_sample_status(hs[1]), 2);
+        mixer_render(ail_out, 64, 44100);
+        CHECK(ail_all_zero(ail_out, 2 * 64), "stopping the last sample voice is silence");
+
+        /* Volume 0x7f maps to the mixer's unity (256), not 254, so the
+         * converted byte passes through unchanged: 200 -> (200-128)<<8. */
+        static const u8 one8[1] = { 200 };
+        mixer_reset();
+        AIL_init_sample(hs[0]);
+        AIL_set_sample_address(hs[0], one8, 1);
+        AIL_set_sample_rate(hs[0], 44100);   /* == out_rate: no resampling */
+        AIL_set_sample_volume(hs[0], 0x7f);
+        AIL_set_sample_loop_count(hs[0], 0);
+        AIL_start_sample(hs[0]);
+        mixer_render(ail_out, 1, 44100);
+        CHECK_EQ_INT(ail_out[0], 18432);
+        CHECK_EQ_INT(ail_out[1], 18432);
+        AIL_stop_sample(hs[0]);
+        /* A start with no sample bytes adds no voice, so status stays stopped
+         * instead of reporting playing with nothing behind it. */
+        AIL_set_sample_address(hs[0], NULL, 0);
+        AIL_start_sample(hs[0]);
+        CHECK_EQ_INT(AIL_sample_status(hs[0]), 2);
+        AIL_release_sample_handle(hs[0]);
+        AIL_release_sample_handle(hs[1]);
+
+        /* An uninitialised handle reports 0, not a stale status. */
+        CHECK_EQ_INT(AIL_sample_status(NULL), 0);
+    }
+
+    /* 7. Shutdown releases everything and the pool is reusable. */
+    AIL_shutdown();
+    CHECK_EQ_INT(AIL_sample_status(NULL), 0);
+    CHECK(AIL_allocate_sample_handle(dig) != NULL,
+          "sample handles are reusable after shutdown");
+
     return g_failures - before;
 }

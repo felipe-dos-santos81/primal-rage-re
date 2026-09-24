@@ -22,7 +22,9 @@ extern int g_failures;
         }                                                                      \
     } while (0)
 
-/* One line per unit test; adding a test is one line here. */
+/* One line per unit test; adding a test is one line here. The functions live
+ * in the per-area files (test_platform.c, test_game.c, test_fight.c,
+ * test_audio.c, test_video.c) — add to the area that owns the code. */
 #define TEST_CASES(X)   \
     X(test_mem)         \
     X(test_le)          \

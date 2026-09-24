@@ -371,7 +371,7 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   the unported match/fight chain; the `0x2861C` region is dead outright. The port's
   `DS_00104B00` is fixed at 3 by `0x10E80`, so none
   is reachable from the ported states 3/4/5. They are **deferred and unowned by
-  this plan** — no dispatch path is shipped, and `port/tests/test_frontend.c` pins
+  this plan** — no dispatch path is shipped, and `port/tests/test_game.c` pins
   that no handler is registered and that state 5 neither arms `DS_00104AE4` nor
   leaves mode 3. `0x41578`'s register-level comparison against `0x88874B0` is
   **dead in the port's flat model**: `0x88874B0` is above `MEM_SIZE`
@@ -569,7 +569,7 @@ five stores in the raw's order: `DS_000F0A6F` (`0x11E11`),
 `0x11E0C`. The port has no write-order observation mechanism — `DSD`/`DSB`/`DSW`
 are plain memory stores and there is no write trace — and no call in the case
 reads those five globals, so the relative order is unobservable to any test.
-`port/tests/test_frontend.c` asserts the five values and the two observable
+`port/tests/test_game.c` asserts the five values and the two observable
 calls (`0x1EA08`'s `0x4F1E4` latch clear and `0x2C06C`'s row store), which
 proves the stores and calls happened, **not** their order. The order rests on
 the raw citation above and on transcription; a reordering of the stores, or
@@ -761,7 +761,7 @@ make a frame match. The first unexplained frame's cause is a render gap, not suc
 a site:
 
 * State 9 draws no RNG (`0x11D04` case 9, above; the port's case 9 is faithful,
-  and `port/tests/test_flow.c`'s `check_state9_countdown` asserts the LCG state
+  and `port/tests/test_game.c`'s `check_state9_countdown` asserts the LCG state
   is unchanged across it). The only RNG consumer reachable in the hold is the
   actor-animation opcode-8 handler, which is already the fourth `title_pin.py`
   pin (`0x7E289`). So the hold has no unpinned draw to pin.
@@ -816,7 +816,7 @@ derived:
   `0xABCD` advanced exactly 26 steps (the attract oracle shows the capture's
   attract is that same run). The front-end driver entered at state 2 and sat at
   the seed; it now re-seeds to that post-state (`FRONTEND_RNG_AFTER_ATTRACT`,
-  `test_frontend.c`) — the same pattern the title driver uses for the pinned
+  `test_game.c`) — the same pattern the title driver uses for the pinned
   title, and the dumped window is unchanged.
 * State 6 itself draws six more than the port's two. `fighter_spawn(0)`
   (`0x33EB4` → `0x33C78`) calls the dust builder `0x494A8`, whose loop
@@ -834,7 +834,7 @@ derived:
   `0xC835A[3] = 3` — exactly the two fighters the re-captured demo shows, and
   now the port's too (verified frame-for-frame against the capture). The driver
   asserts the entry LCG state and the two characters
-  (`test_frontend.c`), and `check_state6` asserts the full 14-draw model and the
+  (`test_game.c`), and `check_state6` asserts the full 14-draw model and the
   dust entries' fields.
 * **Residual.** The dust entries' type-0 processing (`0x49C78`'s default arm →
   `0x4AAD0` and its callees) is still a named gap, so the dust's motion and
@@ -965,7 +965,7 @@ without stalling) is not.
 **The Gate's two claims, measured.**
 
 1. **The fight reaches the timer exit — but stalls.** The state-7 900-frame timer
-   exit is reached: `s7_last == 1969` (`port/tests/test_frontend.c`; state 7 is
+   exit is reached: `s7_last == 1969` (`port/tests/test_game.c`; state 7 is
    entered at loop 1070 and left at 1970, so its last frame is 1969). It does
    **not** run to it without stalling: the slot state machine's last `+0x52`
    change is loop frame **1072**, and the original's pose state `0x10`/`0x0A` is
@@ -974,7 +974,7 @@ without stalling) is not.
    character palette handle `0x1BB9FCD8` (variant 1) is acquired at
    **`start=142 len=31`** — the port's ownership table (`DS_00107618`) entry 6 at
    HEAD, identical to the original's (record §1.2); the unit assertion is
-   `test_frontend.c:694-695` (`DS_00105B34 == 1`, `0xA8A28[1] == 0x1BB9FCD8`).
+   `test_game.c:694-695` (`DS_00105B34 == 1`, `0xA8A28[1] == 0x1BB9FCD8`).
    The arena byte-diff (`frame_0482.raw` vs capture
    `frontend/frame_0834.raw`) fell **42 667 B (22.2 %, 15 067 px) → 18 294 B
    (9.5 %, 6 194 px)**; the T-rex region 6 363 → 1 773 px, the raptor region
@@ -1050,7 +1050,7 @@ human-ratified caller chain 5/1 741).
   by the raw**: `0x1C470` is a whole-list drain (`0x1C6C6`/`0x25672`/`0x2EADB`,
   no scope parameter) and the port's flush was already faithful; the real gap,
   the missing initial record `{0xBD470, 0, 1, 0}` (`0x336C0`'s `0x33734`
-  enqueue), is now enqueued and asserted (`test_frontend.c:485-489`).
+  enqueue), is now enqueued and asserted (`test_game.c:485-489`).
 * **The attract/scene palette drivers** — `0x4F7F4`/`0x4F83C`/`0x33874` ported
   and registered through `attract_scene_tick`; `0x4F83C` ships **test-only** (its
   `0xE8916`-table callers are unported) as an **explicit accepted exception**
