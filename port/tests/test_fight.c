@@ -699,6 +699,65 @@ static void check_arena_frame_live(void)
     CHECK(DSD(rec0 + 0x3Cu) != 0xDEADBEEFu, "live slot record synced across a frame");
 }
 
+/* 0x18950: the move-connectivity query fighter_pass_a's winner gate makes. The
+ * record §3's demo returns (0,1) rest on reading the odd 8-byte record's low
+ * dword as 0x0000FF00; the raw bytes are 00 00 FF 00 (dword 0x00FF0000, bits
+ * 16..23), so with the demo's states (slot0 0x0B, slot1 0x01) both queries
+ * return 0 and the position compare decides (side 0), matching cycle-3 §10.2.
+ * The row pointers are the shipped table at 0xA1290 (loaded by test_le). */
+static void check_connect_query(void)
+{
+    /* The demo's characters and states (record §3.3). */
+    DSB(DS_0010782A) = 0;               /* slot0 char */
+    DSB(DS_001078BE) = 3;               /* slot1 char */
+    DSB(DS_0010780F) = 0x0B;            /* slot0 state */
+    DSB(0x001078A3u) = 0x01;            /* slot1 state */
+
+    /* The raw's demo returns: 0x18950(0,1) = 0 and 0x18950(1,0) = 0. */
+    CHECK_EQ_INT(fighter_connect_query(0u, 1u), 0);
+    CHECK_EQ_INT(fighter_connect_query(1u, 0u), 0);
+
+    /* Discriminating low-branch case: state0 = 0 lands on the even record
+     * (dword 0x0000AAAA) and bit state1 = 3 is set -> 1. The stub returns 0. */
+    DSB(DS_0010780F) = 0;
+    DSB(0x001078A3u) = 3;
+    CHECK_EQ_INT(fighter_connect_query(0u, 1u), 1);
+
+    /* The state2 >= 0x20 branch reads the record's +4 dword. The pair
+     * (char0 = 0, char1 = 1) is table index 1, whose records carry 0x00000200
+     * there, so bit 9 is set and bit 8 is not. */
+    DSB(DS_001078BE) = 1;
+    DSB(DS_0010780F) = 0;
+    DSB(0x001078A3u) = 0x29;            /* 1 << 9 */
+    CHECK_EQ_INT(fighter_connect_query(0u, 1u), 1);
+    DSB(0x001078A3u) = 0x28;            /* 1 << 8: clear */
+    CHECK_EQ_INT(fighter_connect_query(0u, 1u), 0);
+
+    /* The wiring: (state0, state1) = (0, 3) gives (bl, al) = (1, 0), so the raw
+     * zeroes AFC (side 0 wins) even though the position words favour side 1;
+     * the take-both-as-0 stub would zero AF8 instead. */
+    DSB(DS_001078BE) = 3;
+    DSB(DS_0010780F) = 0;
+    DSB(0x001078A3u) = 3;
+    DSB(DS_001078FA) = 2;
+    DSB(0x00107803u) = 0;               /* slot0 +0x53: not 0x0A */
+    DSB(0x00107897u) = 0;               /* slot1 +0x53 */
+    DSW(DS_00107826) = 0;               /* slot0 +0x76: skip the anim gate */
+    DSW(0x001078BAu) = 0;               /* slot1 +0x76 */
+    DSB(0x001077F0u) = 0;               /* the +0x40 overrides clear */
+    DSB(0x00107884u) = 0;
+    DSD(DS_00100AF8) = 0x1111u;
+    DSD(DS_00100AFC) = 0x2222u;
+    DSW(0x00107838u) = 1;               /* the stub would pick side 1 */
+    DSW(0x001078CCu) = 0;
+    DSB(0x0010783Au) = 0;               /* no winner body */
+    DSB(0x001078CEu) = 0;
+
+    fighter_pass_a();
+    CHECK_EQ_INT((int)DSD(DS_00100AF8), 0x1111);   /* 0x1969A: AFC cleared */
+    CHECK_EQ_INT((int)DSD(DS_00100AFC), 0);
+}
+
 /* 0x1958C: a side whose +0x803 state byte is 0x0A clears its DS_00100AF8
  * entry. The sentinel differs from the post-condition. */
 static void check_fighter_pass_a(void)
@@ -3397,6 +3456,7 @@ int test_fight(void)
     check_arena_frame();
     check_arena_frame_live();
     check_pset_palette_zero_handle();
+    check_connect_query();
     check_fighter_pass_a();
     check_fighter_pass_b();
     check_hud_pass();

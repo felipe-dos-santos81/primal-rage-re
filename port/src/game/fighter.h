@@ -35,11 +35,19 @@ int fighter_state_ok(u32 side);
  * (word[actor] & 0x8000) == 0 for slot[side]'s actor record. */
 int fighter_actor_bit15_clear(u32 side);
 
+/* 0x18950. The move-connectivity query fighter_pass_a's winner gate makes: 1
+ * when bit state(param_2) is set in the pair table row for characters
+ * char(param_1)/char(param_2), at param_1's state record (the dword at
+ * row + state(param_1)*8, or its +4 twin when state(param_2) >= 0x20). The row
+ * is PTR_DAT_000a1290[char(param_2) + char(param_1)*10] (100 dwords at
+ * 0xA1290). */
+int fighter_connect_query(u32 param_1, u32 param_2);
+
 /* 0x1958C. The first per-frame fighter pass. Gated on DS_001078FA == 2; per
  * side it calls 0x33950/0x19020/0x3AFC4, clears DS_00100AF8/AFC entries, then
  * picks a winner from the two 0x18950 reachabilities and, on an exact tie,
- * draws rng(2) at 0x19714. 0x19020/0x18950/0x193B0 are named gaps (§7.6); the
- * gates, the flag stores and the RNG site are ported. */
+ * draws rng(2) at 0x19714. 0x19020/0x193B0 are named gaps (§7.6); the gates,
+ * the flag stores and the RNG site are ported. */
 void fighter_pass_a(void);
 
 /* 0x19068. The second per-frame fighter pass, called with arg = 0 by the

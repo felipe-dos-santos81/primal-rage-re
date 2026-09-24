@@ -287,6 +287,25 @@ static int fighter_slot_flag(u32 bit)
     return 0;
 }
 
+/* 0x18950. Pose/freeze record §3 (the winner gate). The move-connectivity
+ * query: 1 when bit state(param_2) is set in the pair table row for characters
+ * char(param_1)/char(param_2), at param_1's state record (the dword at
+ * row + state(param_1)*8, or its +4 twin when state(param_2) >= 0x20). */
+int fighter_connect_query(u32 param_1, u32 param_2)
+{
+    u32 slot_1 = DS_001077B0 + param_1 * 0x94u;
+    u32 slot_2 = DS_001077B0 + param_2 * 0x94u;
+    u32 state_1 = (u32)DSB(slot_1 + 0x5Fu);         /* 0x18975 */
+    u32 state_2 = (u32)DSB(slot_2 + 0x5Fu);         /* 0x1897C */
+    u32 char_1  = (u32)DSB(slot_1 + 0x7Au);         /* 0x18982 */
+    u32 char_2  = (u32)DSB(slot_2 + 0x7Au);         /* 0x1899B */
+    u32 row = DSD(DS_000A1290 + (char_2 + char_1 * 10u) * 4u);  /* 0x189A3 */
+    u32 word = DSD(row + state_1 * 8u                 /* 0x189AA */
+                   + (state_2 >= 0x20u ? 4u : 0u));   /* 0x189B3/0x189CB */
+    u32 bit = 1u << (state_2 & 0x1Fu);              /* 0x189BF/0x189D6 */
+    return (word & bit) != 0;                       /* 0x189C1/0x189D8 */
+}
+
 /* ---- 0x1958C the first per-frame pass ---------------------------------- */
 
 void fighter_pass_a(void)
@@ -326,12 +345,11 @@ void fighter_pass_a(void)
     /* 0x19632: either flag clear skips straight to the winner tail. */
     if (DSD(DS_00100AF8) == 0 || DSD(DS_00100AFC) == 0) goto tail;   /* 0x19720 */
 
-    /* PORT: 0x19653/0x19661 0x18950(0,1) and 0x18950(1,0) — the two
-     * reachability queries are named gaps (§7.6); the port takes both as 0, so
-     * the exact-tie branch below is reached. */
+    /* 0x19653/0x19661: the two move-connectivity queries decide the winner
+     * before the position compares. */
     {
-        u8 bl = 0;
-        u8 al = 0;
+        u8 bl = (u8)fighter_connect_query(0u, 1u);  /* 0x19653 0x18950(0,1) */
+        u8 al = (u8)fighter_connect_query(1u, 0u);  /* 0x19661 0x18950(1,0) */
 
         /* 0x19666: the two +0x40 bit-7 overrides. */
         if ((DSB(DS_001077F0) & 0x80u) != 0) {
