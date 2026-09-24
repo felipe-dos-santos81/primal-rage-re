@@ -465,16 +465,16 @@ int test_frontend(void)
      * palette_list_init (0x336C0) enqueues the initial 0x33734 record
      * { ptr = 0xBD470; first = 0; count = 1; flag = 0 } (0x336F6-0x3370A:
      * EBX = 0xBD470, EDX = 1, EAX = 0), so the loader draw's flush drains it
-     * alongside the font palette 0x80997C. The port previously omitted the
-     * enqueue; the record's data word is zero, so the upload is black (DAC[0])
-     * — the same value the port's gfx_dac clear leaves — but the record's
-     * presence is the raw-faithful observable. Seed the base record with a
-     * sentinel that differs from the post-condition, so the checks cannot pass
-     * on a never-written BSS zero. */
+     * (the raw's drain also carries the glyph walk's font palette 0x80997C).
+     * The port previously omitted the enqueue; the record's data word is zero,
+     * so the upload is black (DAC[0]) — the same value the port's gfx_dac clear
+     * leaves — but the record's presence is the raw-faithful observable. Seed
+     * the base record with a sentinel that differs from the post-condition, so
+     * the checks cannot pass on a never-written BSS zero. */
     {
-        u32 saved[5];
+        u32 saved[0xC0], saved_bd470 = DSD(DS_000BD470);   /* palette_list_init resets the whole list + ownership-table region and DS_000BD470; save it all. */
         const u32 saved_head = DSD(DS_00107798);
-        for (u32 k = 0; k < 5u; k++) saved[k] = DSD(DS_00107498 + k * 4u);
+        for (u32 k = 0; k < 0xC0u; k++) saved[k] = DSD(DS_00107498 + k * 4u);
         DSD(DS_00107498 + 0u)  = 0xDEADBEEFu;
         DSD(DS_00107498 + 4u)  = 0xDEADBEEFu;
         DSD(DS_00107498 + 8u)  = 0xDEADBEEFu;
@@ -492,8 +492,9 @@ int test_frontend(void)
         CHECK_EQ_INT((int)DSD(DS_00107498 + 4u), -1);   /* consumed */
         CHECK_EQ_INT((int)DSD(DS_00107798), (int)DS_00107498);
 
-        for (u32 k = 0; k < 5u; k++) DSD(DS_00107498 + k * 4u) = saved[k];
+        for (u32 k = 0; k < 0xC0u; k++) DSD(DS_00107498 + k * 4u) = saved[k];
         DSD(DS_00107798) = saved_head;
+        DSD(DS_000BD470) = saved_bd470;
     }
 
     const char *dump = getenv("PR_FRONTEND_DUMP");

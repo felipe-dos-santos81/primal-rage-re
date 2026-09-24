@@ -482,12 +482,11 @@ void effects_step(void)
  * are written). Registered so the existing update-table dispatch reaches it.
  *
  * PORT: the rest of the camera/scene layer (0x12CD4 the y-stepper, 0x1317C the
- * y-clamp, 0x13290/0x1333C the x-centering modes) is deliberately NOT ported.
- * Its only callers are the unported dispatcher chain 0x12D48 (modes 0x12DF0/
- * 0x12E3C) and 0x12DA8/0x131F8/0x13224, which no task in this plan owns; the
- * raw gives 0x12CD4 exactly one caller, 0x1317C at 0x131cb, and 0x1324C calls
- * nothing, so all four would be unreachable production surface. Deferred and
- * recorded as a gap in port/spec/game_flow.md. */
+ * y-clamp with its 0x131F8/0x13224 tails, 0x13290/0x1333C the x-centering modes,
+ * 0x12DA8 the y-commit) is now ported in port/src/game/camera.c, together with
+ * the 0x12D48 dispatcher (modes 0x12DF0/0x12E3C), and reached from flow.c:1346
+ * (the raw's 0x25422). 0x1324C calls nothing, so this module still owns only the
+ * shake decay. */
 void camera_shake_decay(void)
 {
     s16 vel = (s16)DSW(DS_000F0AF6);

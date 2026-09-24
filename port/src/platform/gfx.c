@@ -16,9 +16,11 @@ u8 gfx_dac[256][3];
  * acquired before the reset is found again and never re-enqueued, leaving the
  * DAC cleared (black). Pre-attract the table was empty at the title, so the
  * omission was invisible; the boot attract fills it. PORT: flow.c's game_init
- * and game/actors.c's actors_reset() (0x2BAF4) share this owner; the original's
- * trailing 0x33734 initial-palette enqueue has no VGA DAC to reset, so the port
- * just clears gfx_dac. */
+ * and game/actors.c's actors_reset() (0x2BAF4) share this owner; the raw's
+ * trailing 0x33734 initial-palette enqueue {0xBD470, 0, 1, 0} is reproduced
+ * below via palette_record (its data word is zero, so the upload is black, the
+ * same value the port's gfx_dac clear leaves), and the port's VGA-less model
+ * clears gfx_dac instead of resetting a DAC. */
 void palette_list_init(void)
 {
     mem_fill(DS_00107618, 0, 0x180u);   /* 0x336CF: the ownership table */

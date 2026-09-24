@@ -293,9 +293,11 @@ u32 palette_acquire(u32 handle)
  * against the resolved resource's leading colour count (`[EAX]`): when len is
  * short (0x3388D `jl`), it walks the table from descriptor+0x10 to the table
  * end (0x107798) and, while an entry's start is below the previous entry's end,
- * moves the start to that end and re-enqueues `{handle; start; len; 1}`;
- * otherwise, when the handle differs from the entry's, it re-points the entry
- * and enqueues `{handle; entry.start; count; 1}`. PORT: a failed resolve (NULL)
+ * moves the start to that end and re-enqueues the walked entry's own tuple
+ * `{p.handle; p.start; p.len; 1}` (raw 0x338DC `MOV EBX,[EAX]` — the entry's
+ * handle, not the `handle` argument); otherwise, when the handle differs from
+ * the entry's, it re-points the entry and enqueues
+ * `{handle; entry.start; count; 1}`. PORT: a failed resolve (NULL)
  * is treated as count 0, as gfx_flush_palette does, rather than the raw's
  * deref. */
 void palette_reflow(u32 descriptor, u32 handle)
