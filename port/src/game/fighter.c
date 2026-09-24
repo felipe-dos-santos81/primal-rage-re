@@ -362,11 +362,11 @@ void fighter_pass_a(void)
     }
 
 tail:
-    /* 0x19720: whichever flag survives runs 0x193B0 (a named gap §7.6). */
+    /* 0x19720: whichever flag survives runs 0x193B0 for that side. */
     if (DSD(DS_00100AF8) != 0 && DSB(DS_0010783A) != 0) {
-        /* PORT: 0x1974D 0x193B0(0) — named gap (§7.6). */
+        fighter_winner_body(0u);                        /* 0x1974D 0x193B0(0) */
     } else if (DSD(DS_00100AFC) != 0 && DSB(DS_001078CE) != 0) {
-        /* PORT: 0x1974D 0x193B0(1) — named gap (§7.6). */
+        fighter_winner_body(1u);                        /* 0x1974D 0x193B0(1) */
     }
 }
 
@@ -4247,4 +4247,183 @@ void fighter_reaction(u32 param_1, u32 param_2)
     if (fighter_3b6c4(side) != 0)                           /* 0x3B8AF/0x3B8B6 */
         DSW(ctx[5] + 0x34u) = DSW(ctx[4] + 0x34u);          /* 0x3B8C0/0x3B8C4 */
     DSB(param_1 + 0x41u) |= 0x80u;                          /* 0x3B8C8 */
+}
+
+/* ---- the 0x193B0 winner body (pose/freeze record §2.2) -------------------
+ * 0x193B0 runs for one side per frame from fighter_pass_a's tail (0x1974D): it
+ * latches the facing, clears both slots' +0x43 bits 0/1, runs the stance timer
+ * for the loser, then either the 0x3962C/0x396AC reaction gates or the +0x84
+ * count compare, and dispatches the winner's reaction through 0x3B714.
+ * Addresses, gates and the +0x84 store are from
+ * docs/superpowers/plans/2026-09-24-pose-freeze-derivations.md §2.2. */
+
+/* PORT: data-object addresses symbols.h does not name. */
+#define FIGHTER_104529  0x00104529u  /* 0x18B44: the dust-descriptor selector bit */
+#define FIGHTER_A17D4   0x000A17D4u  /* 0x18B44: the spawn position dword */
+#define FIGHTER_A17D6   0x000A17D6u  /* 0x18B44: the spawn position dword */
+#define FIGHTER_A17DC   0x000A17DCu  /* 0x18B44: the first dust descriptor */
+#define FIGHTER_A17F0   0x000A17F0u  /* 0x18B44: the second dust descriptor */
+#define FIGHTER_A1804   0x000A1804u  /* 0x18B44: the alternate first descriptor */
+
+/* 0x39278. Store `v + 1` into the DS_001088EC word (the 0x192DC pose-hold
+ * tick's only output). */
+static void fighter_39278(u32 v)
+{
+    DSW(DS_001088EC) = (u16)(v + 1u);                       /* 0x39278/0x39279 */
+}
+
+/* 0x3962C. 1 when the side's animation descriptor word (anim[2]+2) has bit 4
+ * set, the per-side 0x107D24 counter (bumped on entry) passes 1 and the
+ * 0x107D2C word is at least 1. EDX (param_2) selects the slot's +0x64 byte over
+ * the +0x5F stance byte; 0x193B0 passes 0. */
+static int fighter_3962c(u32 side, u32 param_2)
+{
+    u32 ctx[6];
+    u32 anim[3];
+    u8 b;
+    fighter_ctx_same(ctx, side);                            /* 0x39636 */
+    b = (param_2 != 0u) ? (u8)DSB(ctx[2] + 0x64u) : (u8)DSB(ctx[2] + 0x5Fu);
+    fighter_anim_triple(anim, ctx[0], (s32)b);              /* 0x3965C */
+    if ((DSW(anim[2] + 2u) & 0x10u) == 0u) return 0;        /* 0x39672 */
+    DSW(DS_00107D24 + side * 2u) =
+        (u16)(DSW(DS_00107D24 + side * 2u) + 1u);           /* 0x39679 */
+    if ((s32)DSD(DS_00107D22 + side * 2u) >> 16 <= 1) return 0;  /* 0x3968C */
+    if ((s32)DSD(DS_00107D2A + side * 2u) >> 16 < 1) return 0;   /* 0x3969A */
+    return 1;                                               /* 0x3969C */
+}
+
+/* 0x396AC. 1 when the side's stance byte is below 0x40, the 0x107A80
+ * [side*0x40 + b] counter (bumped here) passes the animation descriptor's high
+ * word, and the 0x107D2C word is at least 1. EDX selects +0x64 over +0x5F. */
+static int fighter_396ac(u32 side, u32 param_2)
+{
+    u32 ctx[6];
+    u32 anim[3];
+    u32 idx;
+    u8 b, v;
+    fighter_ctx_same(ctx, side);                            /* 0x396B7 */
+    b = (param_2 != 0u) ? (u8)DSB(ctx[2] + 0x64u) : (u8)DSB(ctx[2] + 0x5Fu);
+    if (b >= 0x40u) return 0;                               /* 0x396DD */
+    fighter_anim_triple(anim, ctx[0], (s32)b);              /* 0x396E8 */
+    idx = (u32)b + side * 0x40u;                            /* 0x396F3 */
+    v = (u8)(DSB(DS_00107A80 + idx) + 1u);                  /* 0x396FF */
+    DSB(DS_00107A80 + idx) = v;                             /* 0x39704 */
+    if ((s32)v <= ((s32)DSD(anim[2] + 2u) >> 16)) return 0; /* 0x39717 */
+    if ((s32)DSD(DS_00107D2A + side * 2u) >> 16 < 1) return 0;  /* 0x39729 */
+    return 1;                                               /* 0x3972B */
+}
+
+/* 0x18B44. The winner's impact-dust spawn: once per fight (DS_00100C1D), and
+ * not when the slot's +0x63 is 1, spawn the two dust actors (descriptor
+ * 0xA1804/0xA17DC then 0xA17F0) at the 0xA17D4/0xA17D6-derived position, layers
+ * 0xFE/0xFF. EAX is the slot; the raw's EDX (0x29A) is overwritten before use. */
+static void fighter_18b44(u32 slot)
+{
+    u32 desc;
+    if (DSB(slot + 0x63u) == 1u) return;                    /* 0x18B52 */
+    if (DSB(DS_00100C1D) != 0u) return;                     /* 0x18B5B */
+    DSB(DS_00100C1D) = 1u;                                  /* 0x18B5D */
+    desc = ((DSB(FIGHTER_104529) & 2u) != 0u)
+         ? FIGHTER_A1804 : FIGHTER_A17DC;                   /* 0x18B6B/0x18B6D */
+    (void)actor_spawn((const u32 *)(mem + desc),
+                      (u32)((s32)DSD(FIGHTER_A17D4) >> 16), 0xFEu,
+                      (u32)((s32)DSD(FIGHTER_A17D6) >> 16), 0u);  /* 0x18B99 */
+    (void)actor_spawn((const u32 *)(mem + FIGHTER_A17F0),
+                      (u32)((s32)DSD(FIGHTER_A17D4) >> 16), 0xFFu,
+                      (u32)((s32)DSD(FIGHTER_A17D6) >> 16), 0u);  /* 0x18BBC */
+}
+
+/* 0x19164. The winner's stance-timer seed: B5A[side] = truncate(max(rec+0x20,
+ * 5.0)), B5C[side] = 2 when rec+0x24 is outside (0, 17) else its truncation,
+ * rec+0x24 = 0, and B58[side] = slot+0x5F. The 0x61A4C runtime rounds toward
+ * zero (frontend-chain record §…), so C's (s32) cast is the same truncation. */
+static void fighter_19164(u32 side)
+{
+    u32 rec = DSD(DS_001077B0 + side * 0x94u);              /* 0x19175 */
+    union { float f; u32 u; } fu;
+    fu.u = DSD(rec + 0x20u);                                /* 0x19193/0x19196 */
+    DSB(DS_00100B5A + side) =
+        (u8)(s32)((fu.f >= 5.0f) ? fu.f : 5.0f);            /* 0x191A9 */
+    fu.u = DSD(rec + 0x24u);                                /* 0x191BD */
+    if (fu.f <= 0.0f || fu.f >= 17.0f)                      /* 0x191CC/0x191DA */
+        DSB(DS_00100B5C + side) = 2u;                       /* 0x191F4 */
+    else
+        DSB(DS_00100B5C + side) = (u8)(s32)fu.f;            /* 0x191EC */
+    DSD(rec + 0x24u) = 0;                                   /* 0x19210 */
+    DSB(DS_00100B58 + side) = DSB(DS_0010780F + side * 0x94u);  /* 0x1921E */
+}
+
+/* 0x192DC. The winner's pose-hold tick: run 0x39278(2) twice when the side's
+ * +0x5F is below 0x20, the other slot's +0x53 is 1 and the 0x100CE0 word is
+ * below 2, else once. */
+static void fighter_192dc(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x192E5 */
+    if ((u32)DSB(ctx[2] + 0x5Fu) < 0x20u                    /* 0x192FB */
+            && (u32)DSB(ctx[3] + 0x53u) == 1u               /* 0x19305 */
+            && (s32)DSD(DS_00100CDE + side * 2u) >> 16 < 2) {  /* 0x19313 */
+        fighter_39278(2u);                                  /* 0x19362 */
+        fighter_39278(2u);                                  /* 0x1936C */
+        return;
+    }
+    fighter_39278(2u);                                      /* 0x193A5 */
+}
+
+/* 0x193B0. The winner's per-frame body. EAX = side. */
+void fighter_winner_body(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x193B9 */
+    hit_flash_pair(ctx[0]);                                 /* 0x193C1 0x34D8C */
+    DSB(ctx[2] + 0x43u) &= 0xFCu;                           /* 0x193CA */
+    DSB(ctx[3] + 0x43u) &= 0xFCu;                           /* 0x193D2 */
+    hit_stance_timer(ctx[1]);                               /* 0x193DA 0x1922C */
+    if (fighter_3962c(ctx[0], 0u) != 0                       /* 0x193E4 */
+            || fighter_396ac(ctx[0], 0u) != 0) {             /* 0x19419 */
+        DSB(ctx[2] + 0x8Au) = 0;                            /* 0x193F1/0x19426 */
+        fighter_18b44(ctx[2]);                              /* 0x19401/0x19436 */
+        fighter_39a10(ctx[5], 0x29Au);                      /* 0x1940A/0x1943F */
+        return;
+    }
+    if ((u16)DSW(DS_00100B50 + side * 2u)
+            == (u16)DSW(ctx[2] + 0x84u)) return;            /* 0x19461 */
+    DSW(DS_00100B50 + side * 2u) = DSW(ctx[2] + 0x84u);     /* 0x19472 */
+    fighter_19164(ctx[0]);                                  /* 0x1947C */
+    DSB(ctx[2] + 0x8Au) = 0;                                /* 0x19485 */
+    if (DSB(ctx[3] + 0x54u) != 2u                           /* 0x19494 */
+            && DSB(ctx[3] + 0x52u) != 0x11u) {              /* 0x1949A */
+        fighter_3c148(ctx[1]);                              /* 0x194A0 */
+        fighter_3c16c(ctx[1]);                              /* 0x194A9 */
+    }
+    if (DSD(ctx[2] + 0x1Cu) == 0u) {                        /* 0x194B6 */
+        fighter_reaction(ctx[3], ctx[2]);                   /* 0x19526 */
+    } else {
+        if (DSB(ctx[5] + 0x4Bu) != 0u) {                    /* 0x194C1 */
+            u32 row = DSD(DS_001014F4) + (u32)DSB(ctx[5] + 0x4Bu) * 0x68u;
+            if (DSB(row + 0x60u) != 0u)                     /* 0x194E8 */
+                fighter_2bd44(ctx[5], row);                 /* 0x194EE */
+        }
+        DSB(ctx[3] + 0x90u) = 5u;                           /* 0x194F7 */
+        {
+            void (*fn)(u32) = (void (*)(u32))(void *)
+                fn_resolve(DSD(ctx[2] + 0x1Cu));
+            if (fn) fn(ctx[0]);                             /* 0x19505 */
+        }
+        DSD(ctx[2] + 0x18u) = 0;                            /* 0x1950C */
+        DSD(ctx[2] + 0x1Cu) = 0;                            /* 0x19517 */
+    }
+    if (DSD(ctx[3] + 0x14u) != 0u) {                        /* 0x1952F */
+        u32 r;
+        u32 (*fn)(void) = (u32 (*)(void))(void *)
+            fn_resolve(DSD(ctx[3] + 0x14u));
+        r = fn ? fn() : 0u;                                 /* 0x19537 */
+        if (r != 0u) DSD(ctx[3] + 0x14u) = 0;               /* 0x19542 */
+    }
+    DSD(ctx[3] + 0x18u) = 0;                                /* 0x1954D */
+    DSD(ctx[3] + 0x1Cu) = 0;                                /* 0x19558 */
+    DSD(ctx[3] + 0xCu) = 0;                                 /* 0x19563 */
+    DSB(ctx[3] + 0x43u) &= 0xF7u;                           /* 0x1956E */
+    DSB(ctx[2] + 0x8Au) = 0;                                /* 0x19576 */
+    fighter_192dc(ctx[0]);                                  /* 0x19580 */
 }

@@ -168,6 +168,12 @@ int  fighter_3b6c4(u32 side);                            /* 0x3B6C4 */
 void fighter_3b080(u32 side, u32 param_2, u32 param_3, u32 param_4); /* 0x3B080 */
 void fighter_3ae9c(u32 side, u8 param_2);                /* 0x3AE9C */
 
+/* 0x193B0. The winner's per-frame body fighter_pass_a's tail runs for one side
+ * when DS_00100AF8/DS_00100AFC survives and the side's +0x8A byte is set. EAX =
+ * side. It runs the facing latch, the 0x3962C/0x396AC reaction gates or the
+ * +0x84 count compare, and dispatches the winner's reaction through 0x3B714. */
+void fighter_winner_body(u32 side);                      /* 0x193B0 */
+
 /* 0x46534. Add `delta` to the per-side AI-difficulty accumulator at
  * DS_001082C8[side], clamp to [0, byte[0xC9408 + byte[0x10452C]]], then raise to
  * DS_001082D0. Called by 0x4F434. */
