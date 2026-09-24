@@ -6,6 +6,7 @@
  * entry, and 0x1324C (the shake decay) is registered by effects.c. */
 #include "game/camera.h"
 #include "game/actors.h"
+#include "game/fighter.h"
 #include "game/rng.h"
 #include "../mem.h"
 #include "../symbols.h"
@@ -23,6 +24,19 @@
 /* 0x10810D: the mode-3 single-player slot index. Ghidra emits it only as the
  * `ram0x0010810d` form, so gen_symbols.py has no DS_ name for it. */
 #define CAMERA_SLOT_INDEX3 0x0010810Du
+
+/* 0x80580: the 32-bit float `00 00 80 BF` = -1.0f the 0x164C0 last-frame test
+ * adds to the record's +0x24 before comparing with +0x20. Not a named global. */
+#define CAMERA_NEG_ONE 0x00080580u
+
+/* 0x98688 / 0x96108: the two 5-entry x 3-byte scan tables 0x16AFC / 0x164F4
+ * index by (character * 0x3C0 + slot+0x5F * 15). Not named globals. */
+#define CAMERA_CODE_TABLE_A 0x00098688u
+#define CAMERA_CODE_TABLE_B 0x00096108u
+
+/* 0xCC300: the per-character 256-dword screen-x table; the tails index it by
+ * (character << 8) + code. camera_screen_base reads the same base as char*0x400. */
+#define CAMERA_FRAME_TABLE 0x000CC300u
 
 /* ---- small pure helpers ------------------------------------------------- */
 
@@ -70,6 +84,187 @@ static u32 camera_res_off(const void *p)
     return p != NULL ? (u32)((const u8 *)p - mem) : 0u;
 }
 
+/* ---- the 0x17FA0 page-flag/visibility tail ------------------------------ */
+
+/* 0x164C0. 1 iff (rec+0x24) + (-1.0f) == rec+0x20 for slot[side]'s record. The
+ * raw loads the float at 0x80580 (`00 00 80 BF` = -1.0), adds it and FCOMPs
+ * against +0x20. */
+static int camera_frame_last(u32 side)
+{
+    u32 rec = DSD(DS_001077B0 + side * 0x94u);
+    float a = *(const float *)(mem + rec + 0x24u)
+              + *(const float *)(mem + CAMERA_NEG_ONE);
+    float b = *(const float *)(mem + rec + 0x20u);
+    return a == b;
+}
+
+/* 0x16734. The per-character sprite-id map: switch on slot[side]'s character
+ * (slot+0x7A), comparing the actor's sprite id (word[actor] & 0x7FFF) against
+ * the case's literal ids; returns a code 0xD2..0xDA or -1. Its only caller is
+ * 0x16AFC. 0x33A10's context supplies the self record (out[5]) and slot (out[3]). */
+int camera_sprite_code(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_swap(ctx, side);                    /* 0x33A10 */
+    u32 rec = ctx[5];                               /* 0x16741 */
+    u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
+    u32 u = (u32)DSW(actor) & 0x7FFFu;
+    u32 ch = (u32)DSB(ctx[3] + 0x7Au);              /* 0x16764 */
+
+    switch (ch) {
+    case 0:
+        if (u == 0xF9Fu) return 0xD8;
+        if (u == 0xFA1u) return 0xD5;
+        if (u == 0xFA2u) return 0xD6;
+        if (u >= 0xF9Cu && u <= 0xF9Eu) return 0xD7;
+        if (u >= 0xF98u && u <= 0xF9Bu) return 0xD4;
+        break;
+    case 1:
+        if (u == 0x134Fu || u == 0x1350u) return 0xD5;
+        if (u == 0x1351u || u == 0x1352u || u == 0x1353u) return 0xD4;
+        if (u == 0x1354u || u == 0x1355u) return 0xD4;
+        if (u == 0x1356u || u == 0x1357u || u == 0x1358u) return 0xD6;
+        break;
+    case 2:
+        if (u == 0xC48u || u == 0xC49u) return 0xD4;
+        if (u == 0xC50u) return 0xD5;
+        break;
+    case 3:
+        if (u == 0x1745u || u == 0x1746u || u == 0x1747u) return 0xD2;
+        if (u == 0x174Eu || u == 0x174Fu) return 0xD3;
+        if (u == 0x1750u) return 0xD5;
+        if (u == 0x1751u || u == 0x1752u) return 0xD6;
+        break;
+    case 4:
+        if (u == 0x2024u || u == 0x2025u) return 0xD8;
+        if (u == 0x2026u || u == 0x2027u || u == 0x2028u) return 0xD9;
+        if (u >= 0x2029u && u <= 0x202Bu) return 0xDA;
+        break;
+    case 5:
+        if (u == 0xFA1u || u == 0xFA2u) return 0xD3;
+        if (u >= 0xF98u && u <= 0xF9Bu) return 0xD5;
+        if (u >= 0xF9Cu && u <= 0xF9Fu) return 0xD4;
+        break;
+    case 6:
+        if (u == 0x134Fu || u == 0x1350u) return 0xD2;
+        if (u == 0x1351u || u == 0x1353u) return 0xD3;
+        if (u == 0x1352u || u == 0x1354u || u == 0x1355u || u == 0x1356u) return 0xD3;
+        if (u == 0x1357u || u == 0x1358u) return 0xD4;
+        break;
+    default:
+        break;
+    }
+    return -1;
+}
+
+/* 0x16AFC. The first page-flag tail 0x17FA0 calls for a side: write the side's
+ * screen box to `out` and return 1, or zero `out` and return 0. With a 0x16734
+ * code it reads the 0xCC300 frame table; otherwise it runs the per-side
+ * countdown (bits 2/3 of DS_00107EE0) and the 5-entry 0x98688 scan keyed by
+ * (slot+0x53, slot+0x5F, rec+0x63, 0x164C0), caching into 0xFD120..0xFD138. */
+int camera_page_tail_a(u32 side, u32 out)
+{
+    int code = camera_sprite_code(side);
+    if (code != -1) {                               /* 0x16b14 */
+        u32 ch = (u32)DSB(DS_0010782A + side * 0x94u);
+        u32 addr = CAMERA_FRAME_TABLE + ((ch << 8) + (u32)code) * 4u;
+        DSD(out) = DSD(addr);
+        if (!camera_actor_bit15_clear(side))
+            DSB(out) = (u8)(0x40u - DSB(addr) - DSB(addr + 2u));
+        return 1;
+    }
+
+    /* 0x16b62: the code-less path's per-side countdown, gated by 0x3C570. */
+    if (fighter_slot_flag(side == 0u ? 2u : 3u) == 0) {
+        s32 v = (s32)DSD(DS_000FD128 + side * 4u) - 1;
+        DSD(DS_000FD128 + side * 4u) = (u32)(v < 0 ? 0 : v);
+    }
+
+    {
+        u32 st = (u32)DSB(DS_00107803 + side * 0x94u);
+        if (st != 8u && st != 7u) return 0;         /* 0x16bce */
+    }
+    {
+        u32 s5f = (u32)DSB(DS_0010780F + side * 0x94u);
+        if (s5f == 0xFFu) return 0;                 /* 0x16bfd */
+        u32 ch = (u32)DSB(DS_0010782A + side * 0x94u);
+        u32 entry = CAMERA_CODE_TABLE_A + ch * 0x3C0u + s5f * 15u;
+        u32 rec = DSD(DS_001077B0 + side * 0x94u);
+        u32 r63 = (u32)DSB(rec + 0x63u);
+        for (u32 i = 0; i < 5u; i++) {              /* 0x16c35 */
+            if ((s32)r63 != (s32)(s8)DSB(entry + i * 3u)) continue;
+            if (!camera_frame_last(side)) continue;
+            u32 e1 = (u32)DSB(entry + i * 3u + 1u);
+            u32 addr = CAMERA_FRAME_TABLE + ((ch << 8) + e1) * 4u;
+            DSD(out) = DSD(addr);
+            if (!camera_actor_bit15_clear(side))
+                DSB(out) = (u8)(0x40u - DSB(addr) - DSB(addr + 2u));
+            DSD(DS_000FD138 + side * 4u) = DSD(out);            /* 0x16c98 */
+            DSD(DS_000FD128 + side * 4u) = (u32)DSB(entry + i * 3u + 2u);
+            DSD(DS_000FD120 + side * 4u) = e1;
+            DSD(DS_000FD130 + side * 4u) = DSD(DS_00100AF0 + side * 4u);
+            DSW(DS_00100B3C + side * 2u) = DSW(0x00107834u + side * 0x94u);
+            return 1;
+        }
+        /* 0x16d0c: the cached-box path. */
+        if ((s32)DSD(DS_000FD128 + side * 4u) <= 0) return 0;
+        if (DSB(DS_000FD138 + side * 4u + 2u) == 0u) return 0;
+        if (DSW(DS_00100B3C + side * 2u)
+            != DSW(0x00107834u + side * 0x94u)) return 0;
+        DSD(out) = DSD(DS_000FD138 + side * 4u);
+        return 1;
+    }
+}
+
+/* 0x164F4. The second page-flag tail 0x17FA0 calls: the 0x16AFC twin that
+ * skips 0x16734, uses bits 0/1 of DS_00107EE0, scans the 0x96108 table and
+ * caches into 0xFD140..0xFD158 (its cached-box path also requires rec+0x63 to
+ * be >= the matched value). Writes the side's screen box to `out`. */
+int camera_page_tail_b(u32 side, u32 out)
+{
+    if (fighter_slot_flag(side == 0u ? 0u : 1u) == 0) {      /* 0x16500 */
+        s32 v = (s32)DSD(DS_000FD148 + side * 4u) - 1;
+        DSD(DS_000FD148 + side * 4u) = (u32)(v < 0 ? 0 : v);
+    }
+
+    {
+        u32 st = (u32)DSB(DS_00107803 + side * 0x94u);
+        if (st != 8u && st != 7u) return 0;         /* 0x16567 */
+    }
+    {
+        u32 s5f = (u32)DSB(DS_0010780F + side * 0x94u);
+        if (s5f == 0xFFu) return 0;                 /* 0x16594 */
+        u32 ch = (u32)DSB(DS_0010782A + side * 0x94u);
+        u32 entry = CAMERA_CODE_TABLE_B + ch * 0x3C0u + s5f * 15u;
+        u32 rec = DSD(DS_001077B0 + side * 0x94u);
+        u32 r63 = (u32)DSB(rec + 0x63u);
+        for (u32 i = 0; i < 5u; i++) {              /* 0x165ca */
+            if ((s32)r63 != (s32)(s8)DSB(entry + i * 3u)) continue;
+            if (!camera_frame_last(side)) continue;
+            u32 e1 = (u32)DSB(entry + i * 3u + 1u);
+            u32 addr = CAMERA_FRAME_TABLE + ((ch << 8) + e1) * 4u;
+            DSD(out) = DSD(addr);
+            if (!camera_actor_bit15_clear(side))
+                DSB(out) = (u8)(0x40u - DSB(addr) - DSB(addr + 2u));
+            DSD(DS_000FD158 + side * 4u) = DSD(out);            /* 0x1662d */
+            DSD(DS_000FD148 + side * 4u) = (u32)DSB(entry + i * 3u + 2u);
+            DSD(DS_000FD140 + side * 4u) = e1;
+            DSD(DS_000FD150 + side * 4u) = DSD(DS_00100AF0 + side * 4u);
+            DSW(DS_00100B44 + side * 2u) = DSW(0x00107834u + side * 0x94u);
+            DSW(DS_00100B48 + side * 2u) = (u16)r63;
+            return 1;
+        }
+        /* 0x166b6: the cached-box path (the extra rec+0x63 >= cache check). */
+        if ((s32)DSD(DS_000FD148 + side * 4u) <= 0) return 0;
+        if (DSB(DS_000FD158 + side * 4u + 2u) == 0u) return 0;
+        if (DSW(0x00107834u + side * 0x94u)
+            != DSW(DS_00100B44 + side * 2u)) return 0;
+        if ((s32)r63 < (s32)(u32)DSW(DS_00100B48 + side * 2u)) return 0;
+        DSD(out) = DSD(DS_000FD158 + side * 4u);
+        return 1;
+    }
+}
+
 /* ---- the projection 0x17FA0 -------------------------------------------- */
 
 void camera_project(u32 side, u32 out_a, u32 out_b, u32 facing, u32 page_flag,
@@ -106,8 +301,7 @@ void camera_project(u32 side, u32 out_a, u32 out_b, u32 facing, u32 page_flag,
         /* 0x18070: *facing = (P->+0x28 & 0x4000) != 0. */
         DSB(facing) = (u8)((DSW(p + 0x28u) & 0x4000u) != 0);
 
-        /* 0x18092: *page_flag = 0; the 0x16AFC/0x164F4 tail that could raise it
-         * is an unported gap (§7.2), so the flag stays 0. */
+        /* 0x18092: *page_flag = 0; the 0x164F4 tail may raise it to 1 below. */
         DSB(page_flag) = 0;
 
         u32 actor = DSD(DS_001014EC) + (u32)DSW(p + 0x56u) * 0x20u;
@@ -117,6 +311,21 @@ void camera_project(u32 side, u32 out_a, u32 out_b, u32 facing, u32 page_flag,
             u32 base = (u32)DSW(actor) & 0x7FFFu;
             DSD(index_out) = base
                 - camera_char_const(DSB(DS_0010782A + side * 0x94u));
+        }
+
+        /* 0x180C9/0x18108: the page-flag/visibility tail. 0x16AFC copies
+         * DS_00100A78[side] into DS_00100AC0[side] (or zeroes it); 0x164F4 does
+         * the same from DS_00100A90[side] into DS_00100AC8[side] and raises
+         * *page_flag on success. Both read the just-written DS_00100AF0[side]. */
+        if (camera_page_tail_a(side, DS_00100A78 + side * 4u) != 0)
+            DSD(DS_00100AC0 + side * 4u) = DSD(DS_00100A78 + side * 4u);
+        else
+            mem_fill(DS_00100AC0 + side * 4u, 0, 4u);
+        if (camera_page_tail_b(side, DS_00100A90 + side * 4u) != 0) {
+            DSB(page_flag) = 1;
+            DSD(DS_00100AC8 + side * 4u) = DSD(DS_00100A90 + side * 4u);
+        } else {
+            mem_fill(DS_00100AC8 + side * 4u, 0, 4u);
         }
 
         /* 0x18140: out_a = ((s32)actor+4 + 0x20) >> 6, arithmetic. */

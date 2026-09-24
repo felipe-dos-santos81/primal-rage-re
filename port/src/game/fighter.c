@@ -278,8 +278,9 @@ void fighter_spawn(u32 side)
 }
 
 /* 0x3C570. Test-and-set bit `bit` of DS_00107EE0: 1 when it was already set,
- * else set it and return 0. */
-static int fighter_slot_flag(u32 bit)
+ * else set it and return 0. Exposed because the camera page tails (0x164F4/
+ * 0x16AFC) test bits 0..3 of the same word. */
+int fighter_slot_flag(u32 bit)
 {
     u32 m = 1u << (bit & 0xffu);
     if ((DSD(DS_00107EE0) & m) != 0) return 1;

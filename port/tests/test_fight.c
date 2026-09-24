@@ -129,8 +129,9 @@ static void check_projection(void)
         CHECK_EQ_INT((int)DSD(DS_00100B00), (int)s_pairs[i][3]);
     }
 
-    /* The facing byte is the record's +0x28 bit 0x4000; the page flag starts
-     * 0 (the 0x16AFC/0x164F4 tail is an unported gap). */
+    /* The facing byte is the record's +0x28 bit 0x4000; the page flag is
+     * zeroed at 0x18092 and stays 0 because the tail's state gate (slot+0x53
+     * not 7/8) rejects here. The 0xFF sentinel proves the tail zeroed it. */
     CHECK_EQ_INT((int)DSB(DS_00100B62), 1);
     CHECK_EQ_INT((int)DSB(DS_00100B60), 0);
     /* 0x100AF0 = (actor.word0 & 0x7FFF) - 0x17EEC(0) = 1 - 0x0EE4. */
@@ -3411,6 +3412,172 @@ static void check_winner_body(void)
     DSB(0x00107A80u + 0x40u) = sv_ac0;
 }
 
+/* ---- Task 6: the 0x17FA0 page-flag/visibility tail ---------------------- */
+
+/* 0x16734/0x164C0/0x16AFC/0x164F4 and the 0x17FA0 wiring. The per-character
+ * map is pinned directly; the two tails through the 0xCC300 frame table (the
+ * 0x16734 code path and the seeded 0x98688/0x96108 scan paths) and their
+ * cached-box fallbacks; and camera_project's copy-or-zero of 0x100AC0/
+ * 0x100AC8 plus the B60 raise. Every seed differs from the post-condition. */
+static void check_page_tail(void)
+{
+    u32 s0 = DS_001077B0;
+    u32 rec = FIGHT_RECS;
+    u32 a1 = FIGHT_ACTORS + 1u * 0x20u;
+    u8  s_fd[0x40], s_cc[0x400], s_ca[0x10];
+    u32 s_ee0 = DSD(DS_00107EE0);
+    u32 s_b8 = DSD(DS_001077B8), s_4c = DSD(DS_0010784C);
+    const u32 code_idx = 0x000CC300u + 0xD8u * 4u;   /* char 0, code 0xD8 */
+    const u32 scan_idx = 0x000CC300u + 0x01u * 4u;   /* char 0, e1 0x01 */
+
+    tf_snap(s_fd, DS_000FD120, sizeof s_fd);
+    tf_snap(s_cc, 0x000CC300u, sizeof s_cc);
+    tf_snap(s_ca, 0x00098688u, sizeof s_ca);
+
+    fight_reset_recs();
+    fight_reset_actors();
+    DSD(DS_001077B8) = 0;
+    DSD(DS_0010784C) = 0;
+    DSB(DS_0010782A) = 0;                   /* char 0 */
+    DSW(rec + 0x56u) = 1;                   /* actor index 1 */
+    DSW(a1) = 0xF9Fu;                       /* sprite id -> code 0xD8 */
+
+    /* 0x16734: the per-character sprite-id map. */
+    CHECK_EQ_INT(camera_sprite_code(0u), 0xD8);
+    DSW(a1) = 0xF9Cu; CHECK_EQ_INT(camera_sprite_code(0u), 0xD7);
+    DSW(a1) = 0xF98u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD4);
+    DSW(a1) = 0xFA1u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD5);
+    DSW(a1) = 0xFA2u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD6);
+    DSW(a1) = 0x1000u; CHECK_EQ_INT(camera_sprite_code(0u), -1);
+    DSW(a1) = 0x8000u | 0xF9Fu;             /* bit 15 is masked off */
+    CHECK_EQ_INT(camera_sprite_code(0u), 0xD8);
+    DSB(DS_0010782A) = 1;                   /* char 1 */
+    DSW(a1) = 0x134Fu; CHECK_EQ_INT(camera_sprite_code(0u), 0xD5);
+    DSW(a1) = 0x1351u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD4);
+    DSW(a1) = 0x1356u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD6);
+    DSW(a1) = 0x1000u; CHECK_EQ_INT(camera_sprite_code(0u), -1);
+    DSB(DS_0010782A) = 3;
+    DSW(a1) = 0x1745u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD2);
+    DSW(a1) = 0x174Eu; CHECK_EQ_INT(camera_sprite_code(0u), 0xD3);
+    DSW(a1) = 0x1750u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD5);
+    DSW(a1) = 0x1751u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD6);
+    DSB(DS_0010782A) = 4;
+    DSW(a1) = 0x2024u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD8);
+    DSW(a1) = 0x2026u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD9);
+    DSW(a1) = 0x202Au; CHECK_EQ_INT(camera_sprite_code(0u), 0xDA);
+    DSW(a1) = 0x202Cu; CHECK_EQ_INT(camera_sprite_code(0u), -1);
+    DSB(DS_0010782A) = 7;                   /* char 7: the default arm */
+    DSW(a1) = 0xF9Fu; CHECK_EQ_INT(camera_sprite_code(0u), -1);
+
+    /* 0x16AFC first branch: the 0x16734 code path copies the frame table. */
+    DSB(DS_0010782A) = 0;
+    DSW(a1) = 0xF9Fu;                       /* code 0xD8, actor bit 15 clear */
+    DSD(code_idx) = 0x00100A0Bu;
+    DSD(DS_00100A78) = 0xDEADBEEFu;
+    CHECK_EQ_INT(camera_page_tail_a(0u, DS_00100A78), 1);
+    CHECK_EQ_INT((int)DSD(DS_00100A78), 0x00100A0B);
+
+    /* The actor bit 15 mirrors the low byte: 0x00100A0B's bytes 0/2 are
+     * 0x0B/0x10, so 0x40 - 0x0B - 0x10 = 0x25. */
+    DSW(a1) = 0x8000u | 0xF9Fu;
+    DSD(DS_00100A78) = 0xDEADBEEFu;
+    CHECK_EQ_INT(camera_page_tail_a(0u, DS_00100A78), 1);
+    CHECK_EQ_INT((int)DSB(DS_00100A78), 0x25);
+
+    /* 0x16AFC's scan path (no 0x16734 code): the seeded 0x98688 entry 0
+     * (e0 5, e1 7, e2 9) matches rec+0x63 5 once 0x164C0 is true. */
+    DSW(a1) = 0x1000u;                      /* no code */
+    DSB(0x00098688u) = 5; DSB(0x00098688u + 1u) = 7; DSB(0x00098688u + 2u) = 9;
+    DSB(s0 + 0x53u) = 8;                    /* the 7/8 gate */
+    DSB(s0 + 0x5Fu) = 0;
+    DSB(rec + 0x63u) = 5;
+    DSD(rec + 0x24u) = 0x40000000u;         /* 2.0f */
+    DSD(rec + 0x20u) = 0x3F800000u;         /* 1.0f: 2.0 - 1.0 == 1.0 */
+    DSD(DS_000FD120) = 0;                   /* the cache sentinels */
+    DSD(DS_000FD128) = 0;
+    DSD(DS_000FD138) = 0;
+    DSW(s0 + 0x84u) = 0x7788u;
+    DSD(0x000CC31Cu) = 0x0BADF00Du;         /* char 0, e1 7 */
+    DSD(DS_00100A78) = 0xDEADBEEFu;
+    CHECK_EQ_INT(camera_page_tail_a(0u, DS_00100A78), 1);
+    CHECK_EQ_INT((int)DSD(DS_00100A78), 0x0BADF00D);
+    CHECK_EQ_INT((int)DSD(DS_000FD128), 9);         /* e2 */
+    CHECK_EQ_INT((int)DSD(DS_000FD120), 7);         /* e1 */
+    CHECK_EQ_INT((int)DSD(DS_000FD138), 0x0BADF00D);
+    CHECK_EQ_INT((int)DSW(DS_00100B3C), 0x7788);    /* slot+0x84 */
+
+    /* 0x164F4's 0x96108 scan path: char 0, slot+0x5F 0, rec+0x63 2 matches
+     * entry 0 (e0 2, e1 1, e2 3) once 0x164C0 is true. */
+    DSB(rec + 0x63u) = 2;
+    DSD(scan_idx) = 0x0BCD1234u;
+    DSD(DS_000FD148) = 0;
+    DSD(DS_00100A90) = 0xDEADBEEFu;
+    DSD(DS_00100AF0) = 0x00001234u;
+    CHECK_EQ_INT(camera_page_tail_b(0u, DS_00100A90), 1);
+    CHECK_EQ_INT((int)DSD(DS_00100A90), 0x0BCD1234);
+    CHECK_EQ_INT((int)DSD(DS_000FD148), 3);         /* e2 */
+    CHECK_EQ_INT((int)DSD(DS_000FD140), 1);         /* e1 */
+    CHECK_EQ_INT((int)DSD(DS_000FD150), 0x1234);    /* DS_00100AF0 */
+    CHECK_EQ_INT((int)DSW(DS_00100B44), 0x7788);
+    CHECK_EQ_INT((int)DSW(DS_00100B48), 2);
+    CHECK_EQ_INT((int)DSD(DS_000FD158), 0x0BCD1234);
+
+    /* The cached-box path: 0x164C0 now false, so the scan finds no match, but
+     * the cached countdown/box/slot+0x84 are intact. */
+    DSD(rec + 0x20u) = 0;
+    DSD(DS_00100A90) = 0xDEADBEEFu;
+    CHECK_EQ_INT(camera_page_tail_b(0u, DS_00100A90), 1);
+    CHECK_EQ_INT((int)DSD(DS_00100A90), 0x0BCD1234);
+
+    /* The cached path's rec+0x63 >= cache check: 0 < 2 rejects. */
+    DSB(rec + 0x63u) = 0;
+    DSD(DS_00100A90) = 0xDEADBEEFu;
+    CHECK_EQ_INT(camera_page_tail_b(0u, DS_00100A90), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100A90), (int)0xDEADBEEFu);
+
+    /* The 0x17FA0 wiring: tail_a's code path fills 0x100AC0, tail_b's scan
+     * path fills 0x100AC8 and raises DS_00100B60. */
+    DSB(DS_0010782A) = 0;
+    DSW(a1) = 0xF9Fu;                       /* code 0xD8 */
+    DSB(s0 + 0x53u) = 8;
+    DSB(s0 + 0x5Fu) = 0;
+    DSB(rec + 0x63u) = 2;
+    DSD(rec + 0x24u) = 0x40000000u;
+    DSD(rec + 0x20u) = 0x3F800000u;
+    DSD(scan_idx) = 0x0BCD1234u;
+    DSD(code_idx) = 0x00100A0Bu;
+    DSD(DS_00100AC0) = 0xDEADBEEFu;
+    DSD(DS_00100AC8) = 0xDEADBEEFu;
+    DSB(DS_00100B60) = 0;                   /* 0x18092 zeroes it first */
+    DSD(DS_00100B08) = 0;
+    DSD(DS_00100B00) = 0;
+    camera_project(0u, DS_00100B08, DS_00100B00, DS_00100B62,
+                   DS_00100B60, DS_00100AF0);
+    CHECK_EQ_INT((int)DSB(DS_00100B60), 1);          /* 0x18115 */
+    CHECK_EQ_INT((int)DSD(DS_00100AC0), 0x00100A0B); /* 0x16AFC copy */
+    CHECK_EQ_INT((int)DSD(DS_00100AC8), 0x0BCD1234); /* 0x164F4 copy */
+
+    /* The zero arm: with the state gate closed and no 0x16734 code, both tails
+     * return 0 and camera_project zeroes both boxes. */
+    DSB(s0 + 0x53u) = 0;
+    DSW(a1) = 0x1000u;
+    DSD(DS_00100AC0) = 0xDEADBEEFu;
+    DSD(DS_00100AC8) = 0xDEADBEEFu;
+    DSB(DS_00100B60) = 0xFFu;
+    camera_project(0u, DS_00100B08, DS_00100B00, DS_00100B62,
+                   DS_00100B60, DS_00100AF0);
+    CHECK_EQ_INT((int)DSB(DS_00100B60), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100AC0), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100AC8), 0);
+
+    tf_put(s_fd, DS_000FD120, sizeof s_fd);
+    tf_put(s_cc, 0x000CC300u, sizeof s_cc);
+    tf_put(s_ca, 0x00098688u, sizeof s_ca);
+    DSD(DS_00107EE0) = s_ee0;
+    DSD(DS_001077B8) = s_b8;
+    DSD(DS_0010784C) = s_4c;
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -3496,6 +3663,7 @@ int test_fight(void)
     check_reaction_predicates();
     check_reaction();
     check_winner_body();
+    check_page_tail();
 
     tf_put(s_f0ae0, 0x000F0AE0u, 0x20u);
     tf_put(s_proj, 0x00100A70u, 0xF4u);

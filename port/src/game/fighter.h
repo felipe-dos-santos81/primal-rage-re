@@ -35,6 +35,11 @@ int fighter_state_ok(u32 side);
  * (word[actor] & 0x8000) == 0 for slot[side]'s actor record. */
 int fighter_actor_bit15_clear(u32 side);
 
+/* 0x3C570. Test-and-set bit `bit` of DS_00107EE0: 1 when it was already set,
+ * else set it and return 0. The camera page tails test bits 0..3 and
+ * fighter_pass_b bit 5; fight_slot_clear (0x3C5CC) clears the word per frame. */
+int fighter_slot_flag(u32 bit);
+
 /* 0x18950. The move-connectivity query fighter_pass_a's winner gate makes: 1
  * when bit state(param_2) is set in the pair table row for characters
  * char(param_1)/char(param_2), at param_1's state record (the dword at
