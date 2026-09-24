@@ -135,3 +135,34 @@ subagent-driven development with a review per task, the ledger at
   Task 1 names it and Task 6 records it, without forcing a fix into this cycle.
 - **The deep callees' bodies are un-derived** until Task 1; their closure may
   re-scope that task.
+
+## Outcome (recorded, Task 6)
+
+**All four in-scope gaps are closed; no enforced oracle claim moved; every
+out-of-scope gap is carried with its owner.** The size gate did not trigger.
+
+* **The five `+0x52` handlers** — ported, dispatched, 29 `CHECK_EQ_INT` with six
+  mutation proofs.
+* **`0x349C8`'s bit-6/7 deep callees** — ported at the raw's sites, with the
+  minimal caller chain (5 functions / ~1 741 B) **ratified by the human** so the
+  callees stay reachable; 15 `CHECK_EQ_INT`, five mutation proofs.
+* **The loader flush scope** — the record's "scoped flush" was **refuted by the
+  raw** (`0x1C470` is a whole-list drain; the port's flush was already faithful);
+  the real gap, the missing initial record `{0xBD470, 0, 1, 0}`, shipped and
+  asserted.
+* **The attract/scene palette drivers** — `0x4F7F4`/`0x4F83C`/`0x33874` ported;
+  `0x4F83C` ships as an **accepted exception** (test-only; its callers are
+  unported; mandated by the representation rule, Q10); the attract claim is
+  unmoved (215).
+
+**The 169-tick hold** is a **real divergence** (the state-9 screen's animation
+stops ~169 ticks early), not the load/stall model; oracle-neutral, carried
+forward. **The size gate** did not trigger (union in-scope 15 f / 2 934 B).
+**No enforced claim moved**: title `54 clean, 55 splice, 2 transition, 0
+unexplained` + `54 clean, 57 splice, 0 unexplained`; attract `FIRST DIVERGENCE at
+capture frame 215`; front-end `[560..830]`/271 `0 unexplained`; smk `120/120` +
+`41/41`; C-vs-Python `9866 writes byte-exact`; `symbols.h` idempotent; 0 warnings.
+**Carried with owners:** the freeze and the demo oracle's `res is None` → cycle 4;
+the `0x13xxx` call sites → the interactive match; 831/832 (un-derivable); the
+interactive match (unowned); the audio gaps; the state-9 hold; `0x38154`; the
+flush-scope-vs-gate concern. The full inventory is the record §7.

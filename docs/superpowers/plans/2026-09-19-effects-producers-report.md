@@ -95,13 +95,18 @@ arm. Derivations §15/§16.
 
 * **No palette capture oracle.** The chain is proven port-side only; that the
   port's rendered colours equal the original's is not claimed (spec §7).
-* **No call-site wiring.** `0x29B74`, `0x41578` and `0x11F6C` remain unported, so
-  no shipped game path spawns types 0/2/4/6 yet. The end-to-end test is the only
-  live invocation.
-* **Camera/scene functions untouched.** `0x1317C`, `0x1324C`, `0x13290`,
-  `0x1333C` and their `DS_000F0AEC`/`DS_000F0AF0`/`DS_000F0AF4` state remain.
-* The `0x13xxx` effect **render** path is still unported, so an effect mutates
-  the palette but draws nothing.
+* **Call-site wiring (corrected 2026-09-23 by the fidelity-gaps Task 6).**
+  `0x29B74`/`0x41578` (the callers of `0x13D4C`) remain unported, but `0x11F6C`
+  **is** ported (4b-B) and calls `0x13E28` from the select state
+  (`flow.c:367`); `0x13B3C` is **dead** (zero callers and zero xrefs anywhere in
+  the image — see `2026-09-19-effects-producers-derivations.md` §7, corrected),
+  not merely unwired. So a shipped path spawns type 6, and the types-0/2 producer
+  cannot be spawned at all.
+* **Camera/scene functions (corrected 2026-09-23).** `0x1317C`, `0x13290`,
+  `0x1333C` (and `0x12CD4`, `0x12D48`, `0x12DA8`) are now ported in
+  `port/src/game/camera.c`; `0x1324C` remains in `effects.c` (dormant).
+* The `0x13xxx` effect **render** path is no longer a gap (no draw was missing);
+  its effect call sites are deferred as unreachable.
 
 ## 7. Verification
 

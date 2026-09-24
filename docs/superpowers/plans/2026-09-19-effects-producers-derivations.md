@@ -243,13 +243,18 @@ handle of `0` would read `blk+4`/`blk+8` and fail `+0x410`/`+0x414`.
 `0x13B3C` (file `0x66990`, size 308, next function `0x13C70`) copies a run of
 the resolved block into BOTH `+0x14` and `+0x414`, walking the source by a
 signed offset, and selects type 0 or 2 from a flag. Reproduction:
-`dis(0x13b3c, 308)` with the mapping above. **It is live despite having no
-call-graph caller**: its VA is an entry in the jump table at VA `0x23AC4` (file
-`0x76918`), whose seven dwords are `0x13b3c, 0x13b20, 0x13b27, 0x13b2e, 0x13b35,
-0x13b3c, 0x13b20` — `0x13B3C` is entry 0 and entry 5. That table is the switch
-reached from object-0 code that selects the type-0/2 variant (spec §5). Only
-types 1 and 5 are dead: no producer writes them (§4). There is no caller to
-corroborate the register roles, so they are read directly from the body.
+`dis(0x13b3c, 308)` with the mapping above. **It is dead** (corrected
+2026-09-23 by the fidelity-gaps Task 6): the original "**It is live despite
+having no call-graph caller**: its VA is an entry in the jump table at VA
+`0x23AC4` (file `0x76918`), whose seven dwords are `0x13b3c, 0x13b20, 0x13b27,
+0x13b2e, 0x13b35, 0x13b3c, 0x13b20`" was a mis-transcription — the seven dwords
+at `0x23AC4` are `0x23b3c, 0x23b20, 0x23b27, 0x23b2e, 0x23b35, 0x23b3c, 0x23b20`
+(`ghidra_read_memory 0x23AC4`), not `0x13b3c…`. That table's only xref is
+`0x23B18` (`JMP dword ptr CS:[EAX*4 + 0x23AC4]`), and `0x13B3C` has zero xrefs
+(`ghidra_get_xrefs_to 0x13B3C` = 0; `prage.functions.csv` `FUN_00013b3c`
+`n_callers = 0`; the bytes `3c b3 01 00` occur nowhere). Only types 1 and 5's
+step bodies and this producer are dead. There is no caller to corroborate the
+register roles, so they are read directly from the body.
 
 ## 8. Incoming registers (`0x13B3C`, file `0x66990`)
 

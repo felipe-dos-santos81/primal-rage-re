@@ -531,10 +531,10 @@ draws drain the accumulated records **including the arena's**:
 
 * `ghidra_disassemble_function 0x1C470` confirms the drain is
   `piVar7 = &DAT_00107498` → `DAT_00107798`, then `DAT_00107798 = &DAT_00107498`.
-* Live DOSBox-X poll (base `0x266000`, `/tmp/t4_dirty2.py`; the poll's
-  `/tmp/t4_dirty.csv`): the state-6 handler reads its files **incrementally**
-  (file reads gain `21`, `55`, `60`, `5`, `33`, `36`, `32`, `57`, `34` over
-  53.37→54.32 s), and the dirty list goes `{002a3470,0,1,0} {0080997c,1,1,1}`
+* Live DOSBox-X poll (base `0x266000`, `/tmp/t4_dirty_base.py`, which writes the
+  poll's `/tmp/t4_dirty.csv`): the state-6 handler reads its files
+  **incrementally** (file reads gain `21`, `55`, `60`, `5`, `33`, `36`, `32`,
+  `57`, `34` over 53.37→54.32 s), and the dirty list goes `{002a3470,0,1,0} {0080997c,1,1,1}`
   (the loader draw, 98.339 s) → `0` → **9 arena records** (98.379 s) → `0`
   (98.392 s, still inside the handler's blocking read: `1508` climbs 4→25 while
   `150C` is frozen at 3). So the arena records are drained by a **subsequent
@@ -656,13 +656,18 @@ changed entries onto the `DS_00107798` dirty list (`0x33879` = the head):
 
 The record's fields map to the port's `palette_record`/`gfx_flush_palette`
 tuple `{ptr; first; count; flag}`; `flag = 1` means "resolve `ptr`" in
-`gfx_flush_palette` (`gfx.c:97`). **The walk branch is the same reflow as
-`palette_acquire`'s tail (`actors.c:276-283`)**, so the descriptor's layout and
-the branch shapes are pinned; the **residual Task-5 verification** is the exact
-`[resolved]` semantics (the `0x1B544` return's `[EAX]` count, and its `EDX`
-preservation — `0x1B544` returns `CONCAT44(param_2, addr)`, so `EDX` is the
-incoming handle) and whether the reflow is byte-identical to `palette_acquire`'s
-tail. No `0xC98A0` read is needed for the descriptor.
+`gfx_flush_palette` (`gfx.c:97`). **The walk branch is NOT the same reflow as
+`palette_acquire`'s tail (`actors.c:276-283`)** — the first revision's claim was
+refuted by the raw and Task 5's port (§8.4): `0x33874` has **no zero-entry skip**
+(no `CMP [EAX],0` counterpart at `0x338C4`; `palette_acquire` has one at
+`0x337E9`) and its break is **`<=`** (`0x338D1 JLE`) where `palette_acquire`'s is
+**`==`** (`0x337FB JZ`), so `palette_reflow` implements `0x33874`'s own shape.
+The descriptor's layout and the branch shapes are pinned. The **residual Task-5
+verification** — the exact `[resolved]` semantics and whether the reflow is
+byte-identical to `palette_acquire`'s tail — is **resolved**: `0x1B544`
+preserves `EDX` (`PUSH EDX 0x1B546`; `POP EDX` at `0x1B578`/`0x1B5A2`/`0x1B608`),
+so `0x33897` compares the handle, and the walk is not byte-identical (above). No
+`0xC98A0` read is needed for the descriptor.
 
 ### 4.5 The `DS_00104AD0` bit-0 protocol and the `DS_001088F1` counter
 
@@ -830,34 +835,103 @@ change banked early; the record leaves the order to the reviewer.
 
 ---
 
-## 7. Named gaps
+## 7. Named gaps — the final inventory (Task 6)
 
-1. **The state-9 hold's screen animation ends ~169 ticks before the countdown
+**Closed in this cycle** (each with its assertion and the ladder's result):
+
+1. **The five unported `+0x52` handlers** (Task 2, `83253c2`/`a344f54`). Ported
+   and dispatched: `fighter_state_359e0` (state 1), `fighter_state_35c1c` +
+   `fighter_state_35d20` (2), `fighter_state_37464` (8), `fighter_state_33b00`
+   (19, with its inline `+0x8E` countdown wired in `fight.c`),
+   `fighter_state_35e6c` (20). Assertion: 29 `CHECK_EQ_INT` in
+   `test_fight.c:check_gap_handlers`, six mutation proofs reproduced. Ladder
+   green, every enforced claim unmoved. **Closed.**
+2. **`0x349C8`'s bit-6/7 deep callees** (Task 3, `019e404`/`7c0cd91`/`9b88b20`/
+   `15c08e1`/`847e228`). `0x385B0` wired at `0x36884` (under
+   `DSW(0x104B00) == 0x25`), `0x39A10` at `0x37D57`. The callees' call sites
+   live in their callers, so Task 3 ported the **minimal caller chain**
+   (`0x37178`/`0x36870`/`0x379C4`/`0x164E8` for bit 6, `0x37D18` for bit 7 — 5
+   functions / ~1 741 B) to keep them reachable, and the human **ratified** the
+   scope expansion (the reviewer audited it function-by-function: faithful,
+   needed, minimal). Assertion: 15 `CHECK_EQ_INT` in
+   `test_fight.c:check_deep_callees`, five mutation proofs. **Closed.**
+   (The record §2.3 had the callers out of scope; the ratification is the same
+   logic as the `0x13xxx` re-scope inverted — there the callers were unreachable,
+   so the work went out; here the callees must stay reachable, so the minimal
+   caller chain came in.)
+3. **The loader flush scope** (Task 4, `abd804d`). The record §3's premise — a
+   "scoped flush" boundary — was **refuted by the raw**: `0x1C470` is a
+   **whole-list drain** (`while (piVar7 != DAT_00107798)`, no scope parameter;
+   three call sites `0x1C6C6`/`0x25672`/`0x2EADB`), the original's loader draws
+   drain the accumulated records, and the port's unscoped flush was already
+   faithful (§3.5). The real gap was the **missing initial record**
+   `{0xBD470, 0, 1, 0}` (`0x336C0`'s `0x33734` enqueue: `EBX = 0xBD470`,
+   `EDX = 1`, `EAX = 0`), now enqueued via `palette_record`. Assertion:
+   `test_frontend.c:485-489` (seed `0xDEADBEEF`, post-condition `0xBD470`),
+   mutation reproduced (dropping the enqueue gives the five reported failures).
+   **Closed** (re-scoped by the raw; the raw wins).
+   *Carried concern (out of scope):* the record §3 conflates the flush scope with
+   the loader-frame **gate** — the raw's gate fails while the port's passes
+   because the port's payloads are resident (cycle-2 §9.6's read/gate model).
+   Named, not fixed here.
+4. **The attract/scene palette drivers** (Task 5, `5ba5904`). `0x4F7F4`
+   (`attract_palette_advance`), `0x4F83C` (`attract_palette_start` — a distinct
+   named function per the spec's representation rule, Q10) and `0x33874`
+   (`palette_reflow`) ported; `0x4F7F4` registered into `attract_scene_tick`.
+   37 assertions, 4 mutation proofs. The attract claim is **unmoved**
+   (`FIRST DIVERGENCE at capture frame 215`): `DS_00104AD0` bit 0 is never set at
+   runtime (image value 0; the only setter is `0x4F83C`, whose callers are
+   unported), so neither driver runs. **Closed.**
+   *Accepted exception (Task 5's I1):* `0x4F83C` ships with **no production
+   caller** (its four `0xE8916`-table callers are unported), so it is test-only —
+   the shape the repo's no-unreachable-code rule normally forbids. It is
+   brief-mandated (the spec's representation rule, Q10) and carried here as an
+   **explicit accepted exception**, not silently shipped; the reviewer required
+   it be carried as one.
+5. **`0x33874`'s residual semantics** (§4.4/§8.4). **Closed** by Task 5: the
+   descriptor is `DSD(0xF0A48)`, the handle `DSD(0xC98A0 + counter*4)`, the
+   resolver `0x1B544` preserves `EDX` (so `0x33897` compares the handle), and the
+   walk branch is **not** byte-identical to `palette_acquire`'s tail (no
+   zero-entry skip; break `<=` vs `==`). `palette_reflow` implements `0x33874`'s
+   own shape.
+
+**Carried forward (out of scope, with owners):**
+
+6. **The state-9 hold's screen animation ends ~169 ticks before the countdown
    exits** (§5). The port holds capture-830's frame byte-static for loop
    902..1069; the capture's state-9 screen animates until the loader at 831.
    **Owner:** the state-9 screen's actor-animation advance (the countdown's
    render content), not the load model and not one of the four in-scope gaps.
    Oracle-neutral (neither oracle covers port frames 259..480). Evidence: §5.1's
-   trace, the byte-identical `frame_0314.raw` ↔ `frame_0830.raw`.
-2. **`0x33874`'s residual semantics** (§4.4). The descriptor is
-   `DSD(0xF0A48)` (the palette ownership table entry, layout
-   `{handle; rc; start; len}` — the port's `palette_acquire`), the handle is
-   `DSD(0xC98A0 + counter*4)` (the ten-handle array), the resolver, the list
-   target, the two branch shapes and the appended tuple are all pinned. What
-   remains is the exact `[resolved]` count semantics (the `0x1B544` return) and
-   whether the walk branch is byte-identical to `palette_acquire`'s tail.
-   **Owner:** Task 5, verified against `palette_acquire` (`actors.c:276-283`)
-   before porting.
-3. **`0x349C8`'s bit-6/7 arms** (`0x37178`, `0x37D18`) remain unported
-   (`fighter.c:1320`/`:1324`); Task 3 ports their callees `0x385B0`/`0x39A10`
-   at the call sites. If the arms are needed for reachability, Task 3 records
-   the reachability gap (unreachable code is not shipped).
-4. **`0x38154`** (the `S+0x54 == 5` arm of `0x36638`/`0x385B0`) stays the
+   trace, the byte-identical `frame_0314.raw` ↔ `frame_0830.raw`. **Not closed;
+   out of this cycle's scope.**
+7. **`0x38154`** (the `S+0x54 == 5` arm of `0x36638`/`0x385B0`) stays the
    existing named gap (`fighter.c:1236`); no in-scope path reaches it.
-5. **Carried forward from cycle 3 (out of scope, with owners):** the
-   `0x19020`/`0x3Fxxx` freeze chain (cycle 4); the demo oracle's `res is None`
-   fallback (`tools/title_compare.py:484-514`, cycle 4); 831/832's held-frame
-   presentation (a host property); the interactive match; the audio gaps.
+8. **The pose/freeze subsystem** (`0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC`
+   → the pose family; 68 new funcs / 10 467 B) → **cycle 4** (cycle 3's record
+   §10; the size gate triggered).
+9. **The demo oracle's `res is None`** (`tools/title_compare.py:484-514`) →
+   **cycle 4**: it is the freeze's symptom — of the port's 398 distinct
+   demo-frame hashes exactly one appears in the whole 3617-frame capture, at
+   capture 830, which `capture_lo = 831` excludes. The oracle's report-only
+   fallback is correct behaviour and is not repaired.
+10. **The `0x13xxx` effect call sites** (`0x29B74`, `0x41578`) → **the
+    interactive match**: the caller functions are reachable only via `0x24C5C`'s
+    unported modes and the menu/match chain (`0x277C0`, `0x28788`, `0x27A2C`,
+    `0x416D4`, `0x41C28`, the input handlers); porting them alone ships
+    unreachable code.
+11. **831/832's held-frame presentation** — un-derivable (the post-read ISR tick
+    count is a host/emulator property, two live-RAM polls disagreeing Δ=2 vs
+    Δ=3; cycle-2 §9.6).
+12. **The interactive match** (the mode graph `DS_00104B00`, the `0x257A4` coin
+    divert, `0x1EEB0`, `0x1F458`, the player screens and human input) —
+    **unowned** by any cycle to date.
+13. **The audio gaps** — streamed Smacker audio (2b-ii) and the attract's
+    `0x2C3FC` voice calls remain.
+
+No gap is dropped and no claim is stronger than its evidence: the four in-scope
+gaps are closed with their assertions and the unmoved ladder; every out-of-scope
+item carries its owner.
 
 ---
 
@@ -1060,3 +1134,58 @@ more and wire the callees' real call chains:
   supply the cross-references.
 * **The size-gate computation** used `prage.calls.csv`/`prage.functions.csv`
   with the §6.1 method; the per-group roots are in §6.2.
+
+---
+
+## 10. Outcome (Task 6 — recorded)
+
+**The cycle closed all four in-scope gaps, moved no enforced oracle claim, and
+left every out-of-scope gap with its owner.** The size gate did not trigger (the
+union's in-scope closure is 15 functions / 2 934 B, §6.3).
+
+**The four gaps.**
+
+* **The five `+0x52` handlers (Task 2)** — ported and dispatched. 29
+  `CHECK_EQ_INT` (`test_fight.c:check_gap_handlers`), six mutation proofs.
+* **`0x349C8`'s bit-6/7 deep callees (Task 3)** — `0x385B0`/`0x39A10` wired at
+  the raw's sites (`0x36884`, `0x37D57`); the minimal caller chain (5 functions /
+  ~1 741 B) ported and **ratified by the human** so the callees stay reachable.
+  15 `CHECK_EQ_INT` (`test_fight.c:check_deep_callees`), five mutation proofs.
+* **The loader flush scope (Task 4)** — the record's "scoped flush" premise was
+  **refuted by the raw** (`0x1C470` is a whole-list drain; the port's unscoped
+  flush was already faithful) and the real gap — the missing initial record
+  `{0xBD470, 0, 1, 0}` — was shipped and asserted (`test_frontend.c:485-489`).
+* **The attract/scene palette drivers (Task 5)** — `0x4F7F4`/`0x4F83C`/`0x33874`
+  ported; `0x4F83C` is an **accepted exception** (test-only, its callers
+  unported; brief-mandated by the spec's representation rule, Q10). 37
+  assertions, four mutation proofs. The attract claim is unmoved (215).
+
+**The 169-tick hold's verdict (Task 1 §5).** A **real divergence**, not the
+load/stall model: the port holds capture-830's frame byte-static for loop
+902..1069 while the capture's state-9 screen animates to the loader at 831. Its
+owner is the state-9 screen's actor-animation advance; it is oracle-neutral and
+carried forward (named gap 6).
+
+**The size gate (§6).** No group becomes a follow-on: in-scope A 10 f / 2 223 B,
+B 2 f / 418 B, C 0, D 3 f / 293 B; union 15 f / 2 934 B — below both thresholds.
+The mechanical true-new (27 f / 4 490 B) crosses 4 KB only because of the shared
+resource-loader/runtime path (`0x1B544` et al.), which the port already replaces.
+
+**Claim-move policy.** No enforced claim moved — title
+`54 clean, 55 splice, 2 transition, 0 unexplained` and `54 clean, 57 splice,
+0 unexplained`; attract `FIRST DIVERGENCE at capture frame 215`; front-end
+`[560..830]` / 271 frames `0 unexplained`; smk `120/120` + `41/41`; C-vs-Python
+`9866 writes byte-exact`; `symbols.h` regenerates byte-identically; 0 warnings.
+
+**Corrections recorded (the raw wins).** §0.4 items 7–9 (the fix-round-1
+corrections); §1.6/§8.1 (the Task-2 handler recipes); §1.3/§8.2 (Task 3's
+`0x1078DC` deref and post-states); §3.5/§8.3 (Task 4's refuted scope); §4.4/§8.4
+(Task 5's walk shape). The stale documentation (the `0x13xxx` render path, the
+camera-chain deferral, `0x13B3C`'s deadness, `game_flow.md:240-247`) is corrected
+in Task 6's commit.
+
+**Out-of-scope gaps carried, with owners (§7):** the freeze (`0x19020` chain) and
+the demo oracle's `res is None` → cycle 4; the `0x13xxx` call sites → the
+interactive match; 831/832 (un-derivable); the interactive match (unowned); the
+audio gaps; the state-9 hold and `0x38154` (existing named gaps); Task 4's
+flush-scope-vs-gate concern (cycle-2's read/gate model).

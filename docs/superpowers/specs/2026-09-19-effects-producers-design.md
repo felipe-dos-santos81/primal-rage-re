@@ -124,9 +124,16 @@ Two specific raw-byte questions must be answered before coding:
   Recorded in the derivation doc; not encoded as a test (dead code is not
   testable, and asserting an absence would be the "test that asserts nothing"
   defect).
-* **`0x13B3C` is live** despite having no call-graph caller: its address is a
-  target in the jump table at VA `0x23AC4`, which is reached from obj-0 code.
-  The table is the switch that selects the type-0/2 variant.
+* **`0x13B3C` is dead** (corrected 2026-09-23 by the fidelity-gaps Task 6). The
+  original claim — "`0x13B3C` is live despite having no call-graph caller: its
+  address is a target in the jump table at VA `0x23AC4`" — is refuted by the raw:
+  the dwords at `0x23AC4` are `0x23B3C, 0x23B20, 0x23B27, 0x23B2E, 0x23B35,
+  0x23B3C, 0x23B20` (`ghidra_read_memory 0x23AC4`), not `0x13B3C`; that table's
+  only xref is `0x23B18`, and `0x13B3C` has **zero** xrefs
+  (`ghidra_get_xrefs_to 0x13B3C` = 0; `prage.functions.csv` `FUN_00013b3c`
+  `n_callers = 0`; the bytes `3c b3 01 00` occur nowhere in the image). So
+  `0x13B3C` is dead, and its ported body (`effects_spawn_scroll`) is faithful but
+  unreachable.
 
 ## 6. Oracle and Definition of Done
 

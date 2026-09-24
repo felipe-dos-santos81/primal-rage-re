@@ -194,9 +194,15 @@ producers now sit beside `0x13C70`: `0x13D4C` (type 4, darken-to-zero,
 `effects_spawn_scroll`). The free-list head is taken only by these four, so
 types 1 and 5 have no producer and are dead. An end-to-end unit test proves the
 headline chain — spawn → `effects_step` → palette dirty list → `gfx_flush_palette`
-→ `gfx_dac` — and the new producers are callable but not yet wired into game
-flow (`0x29B74`, `0x41578`, `0x11F6C` remain unported), so the `0x13xxx` effect
-**render** path stays a coverage gap. See
+→ `gfx_dac`. `0x13D4C` is called only from the unported effect call sites
+(`0x29B74`/`0x41578`); `0x13E28` is called from the ported select state
+`0x11F6C` (`flow.c:367`). **`0x13B3C` is dead, not merely unwired:** it has zero
+callers and zero cross-references anywhere in the image (`ghidra_get_xrefs_to
+0x13B3C` = 0; `prage.functions.csv` `FUN_00013b3c` `n_callers = 0`; the bytes
+`3c b3 01 00` occur nowhere) — the earlier "live via the jump table at `0x23AC4`"
+was a mis-transcription (that table's dwords are `0x23B3C`, `0x23B20`, …). The
+`0x13xxx` effect **render** path is no longer a gap (no draw was missing); its
+effect call sites are deferred as unreachable. See
 `docs/superpowers/plans/2026-09-19-effects-producers-report.md`.
 
 **EEPROM/config core — sub-project 4b-A, ported.** `port/src/game/config.{c,h}`
@@ -239,10 +245,13 @@ frames 0..214 and reports its first divergence at the last attract capture frame
 code pointer `0x10FA8`; the port now implements it (spawning the descriptor
 `0x9AD08` hand-off actor at layer `0xE4`, exactly the raw's `0x2AE14` call) and
 registers it in `actors_init`, so the logo's continuation runs and the matched
-prefix grew from frame 100 to the whole window. The remaining frame-215
-divergence is the next unregistered opcode-0x11 target — the palette-animation
-starter `0x4F83C` (and `0x10FC4`), reached later in the same stream — still
-declared gaps, as is the scene-palette driver `0x4F7F4`. The title window stays 0
+prefix grew from frame 100 to the whole window. The palette-animation starter
+`0x4F83C` (and `0x10FC4`) and the scene-palette driver `0x4F7F4`, once declared
+gaps here, are **ported** by the small-fidelity-gaps cycle (below) — as is the
+`0x33874` reflow — and registered through `attract_scene_tick`. They do not run
+at runtime (`DS_00104AD0` bit 0 is never set), so the frame-215 divergence is
+unmoved; its owner is the loader-frame DAC state / read-gate model (record §3.5),
+not these drivers. The title window stays 0
 unexplained on both captures. (Before the `0x11000` spawn-slot fix `e29f849` the
 boundary was frame 68, and before this hand-off it was frame 100.) The oracle also
 surfaced and fixed a real `0x336C0` bug — `palette_list_init` omitted the raw's
@@ -279,10 +288,12 @@ distinct logic frame or a 70.09 Hz scanout artifact). The effect call sites
 `0x29B74`/`0x41578` are **deferred**: the raw reaches them only through
 `0x24C5C`'s unported mode cases (`0x12`, `0x16..0x1B`) and the match/fight chain,
 and the port's `DS_00104B00` is fixed at 3, so wiring them would be a dispatch
-path nothing can reach. The match cycle's `0x1EA08` call sites, the unported half
-of `0x1EA08` itself, and the unowned camera chain
-(`0x12CD4`/`0x1317C`/`0x13290`/`0x1333C` and its `0x12D48` dispatcher) are
-declared gaps. See
+path nothing can reach. The match cycle's `0x1EA08` call sites and the unported
+half of `0x1EA08` itself remain declared gaps. The camera chain
+(`0x12CD4`/`0x1317C`/`0x13290`/`0x1333C`, their `0x12D48` dispatcher and the
+`0x12DA8`/`0x12DF0`/`0x12E3C` modes), once unowned here, is **ported** in
+`port/src/game/camera.c` and dispatched from `flow.c:1346` (`camera_dispatch()`).
+See
 `docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md` and
 `port/spec/game_flow.md`.
 
@@ -323,14 +334,16 @@ derivation record `docs/superpowers/plans/2026-09-21-demo-fight-closure-derivati
 
 **Combat/render fidelity — cycle 3 (branch `combat-fidelity`), the demo fight's palette and combat tail.** Cycle 3 closed three of cycle 2's residuals. The T-rex's colour difference was the **front-end dump driver's `DS_0010816A` seed** (0xFF → 0), not the engine: the acquisition sequences are identical and `0x41350` is faithful, so the T-rex's handle is now the original's `0x1BB9FCD8` at DAC range `start=142 len=31`. Seven of the twelve `0x34B14` `+0x52` handlers landed (`0x35F84`/`0x36430`/`0x399CC`/`0x361C8`/`0x36300`/`0x36710`/`0x364FC`); the state-7 entry's four missing RNG draws landed (the type-0 effect handler `0x4AAD0`/`0x4B144`, so the entry LCG now reaches `0x10F7DB07`, matching); and the demo-AI block state landed (`0x18540`/`0x18350`, so `cmd0@1072 = 0x4848` and `cmd1@1071 = 0x0002`, matching). The arena's byte-diff against capture 834 fell **42 667 B (22.2 %) → 18 294 B (9.5 %)**, the T-rex region 6 363 → 1 773 px and the raptor region 8 704 → 4 421 px, and the raptor's silhouette IoU rose **0.522 → 1.000**. **The Gate is UNMET overall:** the fight reaches the state-7 900-frame timer exit (`s7_last == 1969`) but its state machine is frozen from loop 1072 — the original's pose state `0x10`/`0x0A` is reached only through the unported `0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC` → pose-family chain (68 new funcs / 10 467 B; true new ≥ 11 012 B), so the pose subsystem is handed to **cycle 4**. The port's hit counter `+0x7C` is now 0 for the whole state-7 window: cycle 2's `+0x7C 0/0 → 1/1` was a by-product of the old diverged trajectory, and with the trajectory now matching the original's early path the hit requires the pose state the port cannot reach. Every enforced oracle claim is unmoved (`make verify` exit 0, 0 warnings). See `docs/superpowers/specs/2026-09-22-combat-fidelity-design.md` and the record `docs/superpowers/plans/2026-09-22-combat-fidelity-derivations.md`.
 
+**Small fidelity gaps — cycle (branch `fidelity-gaps`), the four off-demo-path residuals.** This cycle closed all four of cycle 3's small named gaps and moved no enforced oracle claim. The five remaining `+0x52` handlers landed (`0x359E0`/`0x35C1C`/`0x35D20`/`0x37464`/`0x33B00`/`0x35E6C`), with `0x349C8`'s bit-6/7 deep callees (`0x385B0`/`0x39A10`) wired at their raw sites (`0x36884`/`0x37D57`) via the minimal caller chain (5 functions / ~1 741 B, ratified by the human). The loader flush scope's record premise was **refuted by the raw** — `0x1C470` is a whole-list drain and the port's flush was already faithful; the real gap, the missing initial record `{0xBD470, 0, 1, 0}`, is now enqueued. The attract/scene palette drivers (`0x4F7F4`/`0x4F83C`/`0x33874`) are ported and registered; `0x4F83C` ships test-only (its `0xE8916`-table callers are unported) as an **explicit accepted exception** (spec representation rule, Q10). The 169-tick state-9 hold is a **real divergence** (the state-9 screen's animation stops ~169 ticks early, holding capture 830's frame byte-static), oracle-neutral and carried forward with its owner. The size gate did not trigger (union in-scope 15 functions / 2 934 B). Every enforced oracle claim is unmoved (`make verify` exit 0, 0 warnings). See `docs/superpowers/specs/2026-09-22-fidelity-gaps-design.md` and the record `docs/superpowers/plans/2026-09-22-fidelity-gaps-derivations.md`.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
 demo fight's residual pose subsystem (cycle 4's `0x19020` chain) and the
 interactive match cycle (the mode graph, `0x1EEB0`, the `0x1EA08` sites) remain;
-the attract's
-`0x2C3FC` voice calls and the `0x4F7F4`/`0x4F83C` scene-palette driver are
-declared gaps with `/* PORT: */` markers. The `0x13xxx` effect render path is no
-longer a gap (no draw was missing); its effect call sites are deferred as
-unreachable.
+the attract's `0x2C3FC` voice calls remain declared gaps with `/* PORT: */`
+markers. The `0x13xxx` effect render path is no longer a gap (no draw was
+missing); its effect call sites are deferred as unreachable. The `0x4F7F4`/
+`0x4F83C` scene-palette drivers and the `0x33874` reflow, once declared gaps, are
+ported by the small-fidelity-gaps cycle (below).
 
 ### Build and run
 
@@ -395,9 +408,11 @@ python3 tools/attract_compare.py --capture data/title-captures/title \
 The comparator matches capture frames 0..214 and reports its first divergence at
 the last attract capture frame 215 (raw 2180/2175) — the next unregistered
 animation inline code pointer after `0x10FA8` (the hand-off spawn, now
-implemented): the palette-animation starter `0x4F83C` and `0x10FC4`, each an
-individually explained, declared divergence, not a silent skip. The attract's
-scene-palette driver `0x4F7F4` is a declared gap too. The `PR_ATTRACT_DUMP` run
+implemented), an individually explained, declared divergence, not a silent skip.
+The palette-animation starter `0x4F83C`/`0x10FC4` and the scene-palette driver
+`0x4F7F4` are now ported (small-fidelity-gaps cycle); they do not run at runtime
+(`DS_00104AD0` bit 0 is never set), so the 215 divergence is unmoved. The
+`PR_ATTRACT_DUMP` run
 also writes the title window to `/tmp/pr_attract/title`, so `title_compare` can be
 run on the same dump.
 

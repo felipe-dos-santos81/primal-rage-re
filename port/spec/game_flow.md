@@ -237,14 +237,19 @@ attract subsystem is owned by `port/src/game/attract.{c,h}`:
   `config_set_credit_row_init()` (`0x20CCC` → `0x1D`).
 * **Handoff.** Phase 0xB with `DS_00108173 == 0` and `DS_000F0A5C == 0` sets
   `DS_000F0A64 = 1` (title); the boot cycle therefore reaches the title.
-* **Declared rendering gap.** `attract_scene_tick`'s only shipped callee
-  `0x4F7F4` (the `DS_000A8744[0]` effect-palette driver: it advances
-  `DS_001088F1` through the 10-entry table at `DS_000C98A0`, enqueues each entry
-  via `0x33874`, and clears `DS_00104AD0` bit 0 after 10 frames) is unported, as
-  is the starter `0x4F83C` that sets `DS_00104AD0 |= 1`. The port sets no mask
-  bit, so the attract's palette animation never renders; the attract oracle's
-  first divergence (`tools/attract_compare.py`, capture frame 68 raw 1626/1621)
-  is exactly this producer.
+* **The attract palette drivers — ported (small-fidelity-gaps cycle).**
+  `attract_scene_tick`'s only shipped callee `0x4F7F4` (the `DS_000A8744[0]`
+  effect-palette driver: it advances `DS_001088F1` through the 10-entry table at
+  `DS_000C98A0`, enqueues each entry via `0x33874`, and clears `DS_00104AD0` bit
+  0 after 10 frames) is ported as `attract_palette_advance` (registered into the
+  dispatch), as is the starter `0x4F83C` (`attract_palette_start`) and the
+  `0x33874` reflow (`palette_reflow`). Neither driver runs at runtime: the port
+  never sets `DS_00104AD0` bit 0 (its image value is 0 and only `0x4F83C` sets
+  it, whose `0xE8916`-table callers are unported), so the attract's palette
+  animation does not render and the attract oracle's first divergence
+  (`tools/attract_compare.py`, capture frame 215 raw 2180/2175) is unmoved. Its
+  owner is the loader-frame DAC state / read-gate model (record §3.5), not these
+  drivers.
 
 The attract and the title share one `game_init()` run: `PR_ATTRACT_DUMP`
 dumps every presented state-0 frame to `<dir>/attract/` and the post-attract
@@ -321,24 +326,33 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   complete: **`0x13C70` type 3**, **`0x13D4C` type 4** (`effects_spawn_darken`),
   **`0x13E28` type 6** (`effects_spawn_pulse`) and **`0x13B3C` types 0/2**
   (`effects_spawn_scroll`) are the only functions that take a free record and
-  write its type byte, so **types 1 and 5 have no producer and are dead**. An
+  write its type byte, so **types 1 and 5 have no producer and are dead**. The
+  `0x13B3C` producer is itself **dead**: it has zero callers and zero
+  cross-references anywhere in the image (`ghidra_get_xrefs_to 0x13B3C` = 0;
+  `prage.functions.csv` `FUN_00013b3c` `n_callers = 0`; the bytes `3c b3 01 00`
+  occur nowhere — the earlier "live via the jump table at `0x23AC4`" misread that
+  table's `0x23B3C` dwords as `0x13B3C`). The port's `effects_spawn_scroll` stays
+  faithful and test-driven, like the types-1/5 step bodies. An
   end-to-end unit test proves spawn → `effects_step` → palette dirty list →
   `gfx_dac` (the palette actually presented through `gfx_present`).
-* **The camera/scene layer — `0x1324C` ported, the rest deferred (unowned gap).**
-  `0x1324C` (screen-shake decay, update-table entry 0) lives in `effects.c` and
-  maintains `DS_000F0AF4`/`DS_000F0AF6`. It draws nothing: the plan's assumed "missing
-  draw" half of the effect render path **does not exist**, and none of the camera/scene
-  functions draws — the state is consumed by the existing render pass (`0x14328`) and the
-  actor-pset sync. `0x1324C` is **dormant**: no shipped store sets `DS_00104AE8` bit 0, so
-  it never runs; it is registered only so the existing update-table dispatch reaches it if
+* **The camera/scene layer — `0x1324C` ported, the camera chain now ported too
+  (small-fidelity-gaps cycle).** `0x1324C` (screen-shake decay, update-table
+  entry 0) lives in `effects.c` and maintains `DS_000F0AF4`/`DS_000F0AF6`. It
+  draws nothing: the plan's assumed "missing draw" half of the effect render path
+  **does not exist**, and none of the camera/scene functions draws — the state is
+  consumed by the existing render pass (`0x14328`) and the actor-pset sync.
+  `0x1324C` is **dormant**: no shipped store sets `DS_00104AE8` bit 0, so it never
+  runs; it is registered only so the existing update-table dispatch reaches it if
   bit 0 is ever set.
-  **Deferred and unowned by this plan:** `0x12CD4` (the camera-y stepper), `0x1317C`
-  (camera-y clamp), `0x13290` (mode-2 two-player centering) and `0x1333C` (mode-3
-  one-player centering), plus the dispatcher chain that is their only caller — `0x12D48`
-  with its modes `0x12DF0`/`0x12E3C`, and `0x12DA8`/`0x131F8`/`0x13224`. No task in this
-  plan owns that chain, and the raw gives `0x12CD4` exactly one caller (`0x1317C` at
-  `0x131cb`), so all four are unreachable in the port; shipping them would be dead
-  production surface. A later cycle must port the dispatcher chain first.
+  **Ported:** `0x12CD4` (the camera-y stepper, inlined into `camera_y_clamp`),
+  `0x1317C` (the camera-y clamp, with its `0x131F8`/`0x13224` tails), `0x13290`
+  (mode-2 two-player centering), `0x1333C` (mode-3 one-player centering), the
+  `0x12D48` dispatcher (modes `0x12DF0`/`0x12E3C`) and `0x12DA8`
+  (`camera_y_commit`) now live in `port/src/game/camera.c`; `flow.c:1346` calls
+  `camera_dispatch()` at the raw's `0x25422` site. The raw gives `0x12CD4`
+  exactly one caller (`0x1317C` at `0x131CB`), so the chain is self-contained.
+  The mode-1 `0x18714` updates and `0x17580`'s `0x140E4`/`0x170A0` tails remain
+  named gaps inside the ported functions (`camera.c`'s `/* PORT: */` notes).
   **The effect call sites are deferred too (front-end-chain Task 8).** The plan
   said `0x29B74` and `0x41578` register into the process tables; the raw refutes it.
   `0x29B74` is the mode-`0x17` handler stored at `DS_00104AE4`. The raw constant
@@ -367,7 +381,9 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   deleted or substituted. **A later cycle that makes `0x41578` reachable must port
   the comparison with it, including the never-true `0x88874B0` half** (register-
   level fidelity — not deleted and not substituted). No shipped path spawns types
-  0/2/4/6 yet; the producers
+  0/2/4 yet (`0x13D4C`'s callers `0x29B74`/`0x41578` are unported; `0x13B3C` is
+  dead — see the producer-set bullet above); type 6 (`0x13E28`) **is** spawned
+  from the ported select state (`flow.c:367`). The remaining producers
   remain a coverage gap carried by unit tests. Details:
   `../../docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md` §5,
   `../../docs/superpowers/plans/2026-09-19-effects-producers-report.md`.
@@ -990,8 +1006,53 @@ warnings: title `54 clean, 55 splice, 2 transition, 0 unexplained` and
 `54 clean, 57 splice, 0 unexplained`; attract `FIRST DIVERGENCE at capture frame
 215` (raw 2180/2175); front-end `[560..830]` / 271 frames: 117 clean, 153 splice,
 0 transition, `0 unexplained`; smk `120/120` + `41/41`; C-vs-Python `9866 writes
-byte-exact`; `symbols.h` regenerates byte-identically (1304 globals, 1206
-functions).
+  byte-exact`; `symbols.h` regenerates byte-identically (1304 globals, 1206
+  functions).
+
+## Small fidelity gaps — outcome (Task 6)
+
+The `fidelity-gaps` cycle (spec
+`../../docs/superpowers/specs/2026-09-22-fidelity-gaps-design.md`, record
+`../../docs/superpowers/plans/2026-09-22-fidelity-gaps-derivations.md`) closed
+**all four** of cycle 3's small named gaps and moved **no enforced oracle
+claim**. The size gate did not trigger (union in-scope 15 functions / 2 934 B).
+
+* **The five `+0x52` handlers** — `0x359E0` (state 1), `0x35C1C` + `0x35D20` (2),
+  `0x37464` (8), `0x33B00` (19), `0x35E6C` (20) ported and dispatched; 29
+  `CHECK_EQ_INT` with six mutation proofs.
+* **`0x349C8`'s bit-6/7 deep callees** — `0x385B0` wired at `0x36884` (under
+  `DSW(0x104B00) == 0x25`) and `0x39A10` at `0x37D57`, with the minimal caller
+  chain (5 functions / ~1 741 B) ported and **ratified by the human** so the
+  callees stay reachable; 15 `CHECK_EQ_INT`, five mutation proofs.
+* **The loader flush scope** — the record's "scoped flush" premise was **refuted
+  by the raw**: `0x1C470` is a whole-list drain (`0x1C6C6`/`0x25672`/`0x2EADB`,
+  no scope parameter) and the port's flush was already faithful; the real gap,
+  the missing initial record `{0xBD470, 0, 1, 0}` (`0x336C0`'s `0x33734`
+  enqueue), is now enqueued and asserted (`test_frontend.c:485-489`).
+* **The attract/scene palette drivers** — `0x4F7F4`/`0x4F83C`/`0x33874` ported
+  and registered through `attract_scene_tick`; `0x4F83C` ships **test-only** (its
+  `0xE8916`-table callers are unported) as an **explicit accepted exception**
+  (spec representation rule, Q10); the attract claim is unmoved (215).
+
+**The 169-tick hold's verdict.** A **real divergence**, not the load/stall
+model: the port holds capture-830's frame byte-static for loop 902..1069 while
+the capture's state-9 screen animates to the loader at 831. Its owner is the
+state-9 screen's actor-animation advance; oracle-neutral (neither oracle covers
+port frames 259..480) and carried forward.
+
+**Carried with owners (record §7).** The pose/freeze subsystem (`0x19020` chain)
+and the demo oracle's `res is None` → **cycle 4**; the `0x13xxx` call sites
+(`0x29B74`/`0x41578`) → **the interactive match**; 831/832's held-frame
+presentation (un-derivable); the interactive match (unowned); the audio gaps; the
+state-9 hold; `0x38154`; and the flush-scope-vs-gate concern (cycle-2's read/gate
+model).
+
+**Every enforced oracle claim is unmoved.** `make verify` exits 0 with 0
+warnings: title `54 clean, 55 splice, 2 transition, 0 unexplained` and
+`54 clean, 57 splice, 0 unexplained`; attract `FIRST DIVERGENCE at capture frame
+215`; front-end `[560..830]` / 271 frames `0 unexplained`; smk `120/120` +
+`41/41`; C-vs-Python `9866 writes byte-exact`; `symbols.h` regenerates
+byte-identically.
 
 ## Landmarks (verified)
 
