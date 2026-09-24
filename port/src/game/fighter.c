@@ -3716,12 +3716,12 @@ static void fighter_3a0fc(u32 side)
     off = DSD(DS_000F0AEC) + 0x3BC0u
         - (DSD(DS_00100AD8 + side * 4u) << 6);              /* 0x3A146..0x3A15C */
     off -= (u32)((s32)DSD(ctx[5] + 0x30u) >> 16);           /* 0x3A162/0x3A16F */
-    stream = DSD(anim[2] + 8u);                             /* 0x3A165/0x3A16C */
+    stream = DSD(anim[1] + 8u);                             /* 0x3A165/0x3A16C */
     if (stream != 0u && (u32)DSB(DS_00105B3A) < 3u) {       /* 0x3A171/0x3A17E */
         u32 a = actor_spawn((const u32 *)(mem + FIGHTER_BB09C),
-                            ctx[3] + 0x2Cu,
-                            off,
+                            DSD(ctx[3] + 0x2Cu),
                             (u32)((s32)DSD(ctx[5] + 0x30u) >> 16),
+                            off,
                             facing);                        /* 0x3A1A5 */
         actors_anim_begin(a, stream, 0x40400000u);          /* 0x3A1AA/0x3A1B1 */
     }
@@ -3741,9 +3741,9 @@ static void fighter_3a0fc(u32 side)
         }
         if (s != 0u) {                                      /* 0x3A223/0x3A225 */
             u32 a = actor_spawn((const u32 *)(mem + FIGHTER_BB0B0),
-                                ctx[3] + 0x2Cu,
-                                off,
+                                DSD(ctx[3] + 0x2Cu),
                                 (u32)((s32)DSD(ctx[5] + 0x30u) >> 16),
+                                off,
                                 0u);                        /* 0x3A241 */
             DSB(a + 0x59u) = 3u;                            /* 0x3A24D */
             actors_anim_begin(a, s, 0x40000000u);           /* 0x3A251 */
@@ -4156,7 +4156,7 @@ static void fighter_2bd44(u32 param_1, u32 param_2)
  * (out of scope), then spawn the 0xBB0B0 effect actor at the 0x100AD8-derived
  * offset and start the 0xE8E08/22/3C stream selected by word[anim[2]]; finally
  * nudge the slot's +0x5A through 0x392A0. EAX = side, EDX = &anim. */
-static void fighter_3ad98(u32 side, const u32 anim[3])
+void fighter_3ad98(u32 side, const u32 anim[3])
 {
     u32 ctx[6];
     u32 off;
@@ -4175,9 +4175,9 @@ static void fighter_3ad98(u32 side, const u32 anim[3])
     }
     if (stream != 0u) {                                     /* 0x3AE20/0x3AE22 */
         u32 a = actor_spawn((const u32 *)(mem + FIGHTER_BB0B0),
-                            ctx[3] + 0x2Cu,
-                            off,
+                            DSD(ctx[3] + 0x2Cu),
                             (u32)((s32)DSD(ctx[5] + 0x30u) >> 16),
+                            off,
                             0u);                            /* 0x3AE3C */
         DSB(a + 0x59u) = 3u;                                /* 0x3AE48 */
         actors_anim_begin(a, stream, 0x40000000u);          /* 0x3AE4C */

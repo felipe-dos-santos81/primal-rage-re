@@ -2825,7 +2825,7 @@ static void check_pose_entry(void)
     u32 r1 = FIGHT_RECS + 0x100u;
     u16 sv_w0 = DSW(0x000A6728u);
     u16 sv_w2 = DSW(0x000A6728u + 2u);
-    u32 sv_d8 = DSD(0x000A6728u + 8u);
+    u32 sv_d8 = DSD(0x000A3528u + 8u);
     u8  sv_b3 = DSB(0x000DE117u);
 
     fight_reset_recs();
@@ -2858,7 +2858,7 @@ static void check_pose_entry(void)
     DSD(0x00107D2Cu) = 0;
     DSW(0x000A6728u) = 0;                       /* key = 0, no effect spawn */
     DSW(0x000A6728u + 2u) = 0;                  /* ecx = 0 */
-    DSD(0x000A6728u + 8u) = 0;                  /* stream = 0 */
+    DSD(0x000A3528u + 8u) = 0;                  /* stream = 0 */
     DSB(0x000DE117u) = 0;                       /* edx3 = 0 */
 
     fighter_reaction_apply(s0, 0u);
@@ -2888,9 +2888,81 @@ static void check_pose_entry(void)
     CHECK_EQ_INT((int)DSD(s1 + 0x10u), 0x0003A43C);
     CHECK_EQ_INT((int)DSW(DS_00107D14 + 2u), (int)DSW(s1 + 0x2Cu));
 
+    /* The effect spawns 0x3A0FC/0x3AD98 (0x3A1A5/0x3A241/0x3AE3C): a non-zero
+     * stream makes each spawn land at the pool base. The raw passes a2 =
+     * *(slot+0x2C) (the value, not its address), a3 = the (rec+0x30)>>16 layer,
+     * a4 = the 0xF0AEC-derived offset, and 0x3A0FC reads the stream from
+     * anim[1]+8 (0x3A165), not anim[2]+8. A three-record scratch pool keeps the
+     * spawns off the real pool. */
+    {
+        u32 sv_pool = DSD(DS_001014F4);
+        u32 sv_free = DSD(DS_00105B3C);
+        u32 sv_free4 = DSD(DS_00105B3C + 4u);
+        u32 sv_act = DSD(DS_00105BCC);
+        u32 sv_act4 = DSD(DS_00105BCC + 4u);
+        u32 sv_d8b = DSD(0x000A3528u + 8u);
+        u32 pool = 0x003F21000u;
+        u32 r2 = pool + 0x68u;
+        u32 r3 = pool + 0xD0u;
+        u32 abuf = 0x003F22000u;
+        u32 anim[3];
+        u32 off;
+
+        DSD(DS_001014F4) = pool;
+        DSD(pool) = r2;                         /* the three-record free list */
+        DSD(pool + 4u) = DS_00105B3C;
+        DSD(r2) = r3;
+        DSD(r2 + 4u) = pool;
+        DSD(r3) = DS_00105B3C;
+        DSD(r3 + 4u) = r2;
+        DSD(DS_00105B3C) = pool;
+        DSD(DS_00105B3C + 4u) = r3;
+        DSD(DS_00105BCC) = DS_00105BCC;         /* the active-list sentinel */
+        DSD(DS_00105BCC + 4u) = DS_00105BCC;
+
+        DSB(s0 + 0x5Fu) = 0;
+        DSB(s1 + 0x5Fu) = 0;
+        DSD(s0 + 0x2Cu) = 0x12345678u;          /* the a2 value */
+        DSD(r0 + 0x30u) = 0x00070000u;          /* the a3 layer = 7 */
+        DSW(r1 + 0x28u) = 0;                    /* facing = 0x4000 */
+        DSD(0x000A3528u + 8u) = 0x000E8CBEu;    /* anim[1]+8 -> the first spawn */
+        DSW(0x000A6728u) = 1u;                  /* key = 1 -> the second spawn */
+        DSB(DS_00105B3A) = 0;
+        fighter_reaction_apply(s0, 0u);
+
+        off = DSD(DS_000F0AEC) + 0x3BC0u
+            - (DSD(DS_00100AD8 + 4u) << 6)
+            - (u32)((s32)DSD(r0 + 0x30u) >> 16);
+        CHECK_EQ_INT((int)DSD(pool + 0x18u), 0x12345678);   /* 0x3A1A5 a2 */
+        CHECK_EQ_INT((int)DSD(pool + 0x1Cu), (int)off);     /* 0x3A1A5 a4 */
+        CHECK_EQ_INT((int)DSW(pool + 0x32u), 7);            /* 0x3A1A5 a3 */
+        CHECK_EQ_INT((int)DSD(pool + 8u), 0x000E8CBEu + 2u);  /* anim[1]+8, +2 walk */
+        CHECK_EQ_INT((int)DSD(r2 + 0x18u), 0x12345678);     /* 0x3A241 a2 */
+        CHECK_EQ_INT((int)DSD(r2 + 0x1Cu), (int)off);       /* 0x3A241 a4 */
+        CHECK_EQ_INT((int)DSW(r2 + 0x32u), 7);              /* 0x3A241 a3 */
+
+        /* 0x3AD98: the same argument order with its own anim selector. */
+        mem_fill(abuf, 0, 0x10u);               /* its +4/+5 feed 0x392A0 */
+        anim[0] = abuf;
+        anim[1] = abuf;
+        anim[2] = abuf + 8u;
+        DSW(anim[2]) = 1u;                      /* stream = 0xE8E08 */
+        fighter_3ad98(0u, anim);
+        CHECK_EQ_INT((int)DSD(r3 + 0x18u), 0x12345678);     /* 0x3AE3C a2 */
+        CHECK_EQ_INT((int)DSD(r3 + 0x1Cu), (int)off);       /* 0x3AE3C a4 */
+        CHECK_EQ_INT((int)DSW(r3 + 0x32u), 7);              /* 0x3AE3C a3 */
+
+        DSD(0x000A3528u + 8u) = sv_d8b;
+        DSD(DS_001014F4) = sv_pool;
+        DSD(DS_00105B3C) = sv_free;
+        DSD(DS_00105B3C + 4u) = sv_free4;
+        DSD(DS_00105BCC) = sv_act;
+        DSD(DS_00105BCC + 4u) = sv_act4;
+    }
+
     DSW(0x000A6728u) = sv_w0;
     DSW(0x000A6728u + 2u) = sv_w2;
-    DSD(0x000A6728u + 8u) = sv_d8;
+    DSD(0x000A3528u + 8u) = sv_d8;
     DSB(0x000DE117u) = sv_b3;
 }
 
@@ -3055,7 +3127,7 @@ static void check_reaction(void)
     u8  sv_bdf2 = DSB(DS_000BEDF2);
     u16 sv_w0 = DSW(0x000A6728u);
     u16 sv_w2 = DSW(0x000A6728u + 2u);
-    u32 sv_d8 = DSD(0x000A6728u + 8u);
+    u32 sv_d8 = DSD(0x000A3528u + 8u);
     u8  sv_b117 = DSB(0x000DE117u);
 
     fight_reset_recs();
@@ -3085,7 +3157,7 @@ static void check_reaction(void)
     DSB(DS_000BEDF2) = 1;                    /* 0x3B080 no-op */
     DSW(0x000A6728u) = 0;                    /* key = 0, no effect spawn */
     DSW(0x000A6728u + 2u) = 3;               /* bits 0+1 -> 0x3B298 returns 0; ecx = 3 */
-    DSD(0x000A6728u + 8u) = 0;               /* stream = 0 */
+    DSD(0x000A3528u + 8u) = 0;               /* stream = 0 */
     DSB(0x000DE117u) = 0;                    /* edx3 = 0 */
     DSW(DS_00104B00) = 0;
     DSB(DS_00104B1D) = 0;
@@ -3136,7 +3208,7 @@ static void check_reaction(void)
     DSB(DS_000BEDF2) = sv_bdf2;
     DSW(0x000A6728u) = sv_w0;
     DSW(0x000A6728u + 2u) = sv_w2;
-    DSD(0x000A6728u + 8u) = sv_d8;
+    DSD(0x000A3528u + 8u) = sv_d8;
     DSB(0x000DE117u) = sv_b117;
 }
 
@@ -3175,7 +3247,7 @@ static void winner_body_setup(u32 s0, u32 s1, u32 r0, u32 r1)
     DSB(DS_000BEDF2) = 1;                    /* 0x3B080 no-op */
     DSW(0x000A6728u) = 0;                    /* key = 0, no effect spawn */
     DSW(0x000A6728u + 2u) = 3;               /* bits 0+1 -> 0x3B298 returns 0 */
-    DSD(0x000A6728u + 8u) = 0;
+    DSD(0x000A3528u + 8u) = 0;
     DSB(0x000DE117u) = 0;
     DSW(DS_00104B00) = 0;
     DSB(DS_00104B1D) = 0;
@@ -3225,7 +3297,7 @@ static void check_winner_body(void)
     u32 r1 = FIGHT_RECS + 0x100u;
     u16 sv_w0 = DSW(0x000A6728u);
     u16 sv_w2 = DSW(0x000A6728u + 2u);
-    u32 sv_d8 = DSD(0x000A6728u + 8u);
+    u32 sv_d8 = DSD(0x000A3528u + 8u);
     u8  sv_b117 = DSB(0x000DE117u);
     u8  sv_a80 = DSB(0x00107A80u);
     u8  sv_ac0 = DSB(0x00107A80u + 0x40u);
@@ -3274,7 +3346,7 @@ static void check_winner_body(void)
 
     DSW(0x000A6728u) = sv_w0;
     DSW(0x000A6728u + 2u) = sv_w2;
-    DSD(0x000A6728u + 8u) = sv_d8;
+    DSD(0x000A3528u + 8u) = sv_d8;
     DSB(0x000DE117u) = sv_b117;
     DSB(0x00107A80u) = sv_a80;
     DSB(0x00107A80u + 0x40u) = sv_ac0;

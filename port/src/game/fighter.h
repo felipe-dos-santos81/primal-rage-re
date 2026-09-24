@@ -162,6 +162,13 @@ int  fighter_3a280(u32 code);
  * Its new callees 0x3B080/0x3AE9C and the gates 0x39EFC/0x3B038/0x3B6C4 are
  * exposed for the reaction tests. */
 void fighter_reaction(u32 param_1, u32 param_2);         /* 0x3B714 */
+
+/* 0x3AD98. The winner's reaction-effect spawn 0x3B714 runs when the command
+ * dispatch returns non-zero: play the per-character voice (out of scope), spawn
+ * the 0xBB0B0 effect actor at the 0x100AD8-derived offset and start the
+ * 0xE8E08/22/3C stream selected by word[anim[2]], then nudge the slot's +0x5A
+ * through 0x392A0. EAX = side, EDX = &anim. */
+void fighter_3ad98(u32 side, const u32 anim[3]);         /* 0x3AD98 */
 int  fighter_39efc(u32 side);                            /* 0x39EFC */
 int  fighter_3b038(u32 side);                            /* 0x3B038 */
 int  fighter_3b6c4(u32 side);                            /* 0x3B6C4 */
