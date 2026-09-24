@@ -922,9 +922,13 @@ change banked early; the record leaves the order to the reviewer.
    out of this cycle's scope.**
 7. **`0x38154`** (the `S+0x54 == 5` arm of `0x36638`/`0x385B0`) stays the
    existing named gap (`fighter.c:1248`); no in-scope path reaches it.
-8. **The pose/freeze subsystem** (`0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC`
-   → the pose family; 68 new funcs / 10 467 B) → **cycle 4** (cycle 3's record
-   §10; the size gate triggered).
+8. **The pose/freeze subsystem** (`0x170A0`'s `AF8` → `0x193B0` → `0x3B714` →
+   `0x3AAFC` → the pose family; 68 new funcs / 13 131 B) → **cycle 4** (cycle 3's
+   record §10; the size gate triggered). *Correction (raw):* the demo's `AF8`
+   writer is `0x170A0` (`0x1756F`), not `0x19020` — the demo never sets
+   `slot+0x18`, so `0x19020`'s guard (`0x19032`/`0x19039`) returns without
+   writing — and the corrected union is `0x140E4` + `0x170A0` + `0x193B0`
+   (cycle 3's record §10.3/§10.4).
 9. **The demo oracle's `res is None`** (`tools/title_compare.py:484-514`) →
    **cycle 4**: it is the freeze's symptom — of the port's 398 distinct
    demo-frame hashes exactly one appears in the whole 3617-frame capture, at
@@ -1207,9 +1211,9 @@ corrections); §1.6/§8.1 (the Task-2 handler recipes); §1.3/§8.2 (Task 3's
 camera-chain deferral, `0x13B3C`'s deadness, `game_flow.md:240-247`) is corrected
 in Task 6's commit.
 
-**Out-of-scope gaps carried, with owners (§7):** the freeze (`0x19020` chain) and
-the demo oracle's `res is None` → cycle 4; the `0x13xxx` call sites → the
-interactive match; 831/832 (un-derivable); the interactive match (unowned); the
-audio gaps (the audio sub-project, 2b-ii); the state-9 hold and `0x38154`
-(existing named gaps); Task 4's flush-scope-vs-gate concern (cycle-2's read/gate
-model).
+**Out-of-scope gaps carried, with owners (§7):** the freeze (`0x170A0`/`AF8`
+chain; §7.8's correction) and the demo oracle's `res is None` → cycle 4; the
+`0x13xxx` call sites → the interactive match; 831/832 (un-derivable); the
+interactive match (unowned); the audio gaps (the audio sub-project, 2b-ii); the
+state-9 hold and `0x38154` (existing named gaps); Task 4's
+flush-scope-vs-gate concern (cycle-2's read/gate model).

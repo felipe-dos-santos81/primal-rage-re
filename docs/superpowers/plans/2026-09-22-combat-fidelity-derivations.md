@@ -478,10 +478,13 @@ after Task 3 lands is derived at its site, never fitted.
    `0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC` → the `0x3A504`/`0x3A650`/
    `0x3A79C`/`0x3A8E8` pose family, and `0x19020` is unported, so
    `DS_00100AF8`/`AFC` stay 0 and `fighter_pass_a`'s tail never runs. **Its
-   closure is 68 new funcs / 10 467 B — materially larger than a task (§10.4),
+   closure is 68 new funcs / 13 131 B — materially larger than a task (§10.4),
    so Task 4 landed no port.** The pose state is measured as
    `s7_saw10`/`s7_saw0a` (printed, not asserted). A follow-on cycle owns it,
    together with the `0x3Fxxx` closer script Task 3b re-scoped.
+   *Correction (§10.3/§10.4, raw):* the head of this chain is **`0x170A0`**, not
+   `0x19020` (the demo's `slot+0x18` guard is 0, so `0x19020` writes nothing),
+   and the corrected union is **68 f / 13 131 B**; see §10.3/§10.4.
 2. **The demo oracle's `res is None` fallback** (`tools/title_compare.py:484-514`)
    ignores the port, so the first-unexplained 832 is a capture-only figure and
    cannot move from a port change. Any cycle-3 Gate claim measured through the
@@ -597,10 +600,11 @@ record is therefore:
   "port's `+0x52=0`/cursor `0xD2140`" was the base commit's, before Tasks
   3b/3c).
 * **The residual is the exit to the pose state `0x10`/`0x0A`** (§10): the
-  `0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC` → pose-family chain, closure
-  68 new funcs / 10 467 B — **the Step-1 size gate triggers; no port landed**.
-  The assertion is therefore the measured-not-asserted `s7_saw10`/`s7_saw0a`,
-  not a fitted cursor or state.
+  `AF8` written by `0x170A0` feeding `0x193B0` → `0x3B714` → `0x3AAFC` → the
+  pose-family chain, closure 68 new funcs / 13 131 B — **the Step-1 size gate
+  triggers; no port landed**. The assertion is therefore the
+  measured-not-asserted `s7_saw10`/`s7_saw0a`, not a fitted cursor or state.
+  *(Correction §10.3: the `AF8` writer is `0x170A0`, not `0x19020`.)*
 
 ---
 
@@ -688,7 +692,9 @@ command words match (`cmd0 = 0x4848` at loop 1072, `cmd1 = 0x0002` at 1071).
 > `word[0xBDBE8]=3 <= slot+0x88` gate at `0x35498` returns after 3 frames), and
 > the port's animation cursor does **not** differ (it matches the original's
 > `0xD2316` at the 9/8 entry). The residual is the unported
-> `0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC` → pose-family chain; see §10.
+> `0x140E4`/`0x170A0` (`AF8`) → `0x193B0` → `0x3B714` → `0x3AAFC` → pose-family
+> chain; see §10. *(Correction §10.3: the `AF8` writer is `0x170A0`, not
+> `0x19020`.)*
 
 The port's slots reach the original's `+0x52=9, +0x53=8` no-op at loop 1072 but do
 **not** advance to the original's `+0x52=0x10, +0x53=0x0A` (measured original,
@@ -754,7 +760,7 @@ So the original's T-rex leaves 9/8 for the **pose state `0x10`/`0x0A`** (the
 (`s1`) follows the T-rex: its exit from 9/8 at `+0x88 = 0x1c` (t = 54.255) is the
 same pose machine, not a `0x3531C` arm.
 
-### 10.3 The owner: `0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC` → the pose family
+### 10.3 The owner: `0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC` → the pose family (*corrected below: the `AF8` writer is `0x170A0`*)
 
 The pose family's `+0x52 = 0x10` writers are reached only through this chain
 (`ghidra_get_function_callers`, exhaustive):
@@ -776,9 +782,12 @@ The pose family's `+0x52 = 0x10` writers are reached only through this chain
   (`ghidra_get_xrefs_to 0x100AF8` returns 15 refs — 12 writes, 3 reads; a Task 4
   fix-round-1 correction, re-derived at HEAD):
   * **`0x19020(side)`** (`0x1904C`/`0x1905C`): calls the callback at
-    `slot[side]+0x18` and sets `DS_00100AF8[side] = (result == 0)`. `0x19020` is
-    the port's named gap at `fighter.c:287`; `slot+0x18` is set to `0x3FD30` by
-    `0x3FF08` (Task 3b's closer chain, `0xA50C0`/`0x3FFDC`).
+    `slot[side]+0x18` and sets `DS_00100AF8[side] = (result == 0)` **only when
+    `slot+0x18 != 0`** (`0x19032 CMP dword ptr [EAX+0x1077C8],0x0; 0x19039 JZ
+    0x19062`; the correction below). `0x19020` is the port's named gap at
+    `fighter.c:287`; `slot+0x18` is set to `0x3FD30` by `0x3FF08` (Task 3b's
+    closer chain, `0xA50C0`/`0x3FFDC`), which the demo never reaches (`0x3FFDC`
+    has no code xref).
   * **`0x170A0`** (`0x1756F`): `MOV [EBP*4 + 0x100AF8], EAX` with
     `EAX = [0x100B54]` (`0x1756A`). `0x170A0`'s only caller is `0x17580`, which
     calls it once per side (`0x176AC` EAX=0, `0x176BF` EAX=1); `0x17580`'s
@@ -792,16 +801,52 @@ The pose family's `+0x52 = 0x10` writers are reached only through this chain
 
   **The operational conclusion survives** (`FUN_00026254`'s frame order:
   `0x262E9 CALL 0x17580` → `0x262EE CALL 0x1958C`): `0x17580`/`0x170A0`'s write
-  runs **before** `0x1958C`, and `0x1958C` calls `0x19020` at `0x195B6` inside
-  its loop **before** the tail gate reads `AF8` at `0x19632` — so the gate reads
-  `0x19020`'s value, and in the port (where `0x19020` is unported, so it never
-  runs) nothing sets `AF8` non-zero.
+  runs **before** `0x1958C`, so it is the value the tail gate reads at `0x19632`.
+  *Correction (see below):* the gate reads **`0x170A0`'s** value, not
+  `0x19020`'s — `0x1958C`'s `0x195B6` call of `0x19020` writes nothing while
+  `slot+0x18 == 0`, and in the port nothing sets `AF8` non-zero.
 
 **So the freeze's remaining layer is the `0x19020`/`0x3Fxxx` closer chain
 (Task 3b's re-scoped subsystem) feeding `0x193B0`/`0x3B714`/`0x3AAFC` and the
 pose family.** In the port `DS_00100AF8`/`AFC` are 0 at every state-7 frame
 (measured), so `fighter_pass_a`'s tail — and therefore `0x193B0` and the pose
 state — can never run.
+
+**Correction (raw; the `AF8` owner is `0x170A0`, not `0x19020`).** `0x19020`
+writes `AF8` **only when `slot+0x18 != 0`**: `0x19032 CMP dword ptr [EAX +
+0x1077C8],0x0; 0x19039 JZ 0x19062` guards both writes (`0x1904C` sets 1,
+`0x1905C` clears), so `slot+0x18 = 0` returns without touching `AF8`. `slot+0x18`
+is set to `0x3FD30` only by `0x3FF08` (`0x3FF77 MOV dword ptr [ECX+0x18],0x3FD30`),
+whose only xref is the `0x40026` call inside `0x3FFDC`
+(`ghidra_get_xrefs_to 0x3FF08`), and `0x3FFDC` has **no code xref**
+(`ghidra_get_xrefs_to 0x3FFDC` = 0) — so the demo never sets `slot+0x18` and
+`0x19020` writes nothing. **The demo's `AF8` writer is `0x170A0`**:
+`0x1756A MOV EAX,[0x00100B54]; 0x1756F MOV dword ptr [EBP*0x4 + 0x100AF8],EAX`
+(`AF8[side] = DS_00100B54`). `0x170A0`'s only caller is `0x17580`
+(`ghidra_get_function_callers 0x170A0` = 1), which calls it once per side at
+`0x176AC` (EAX=0) and `0x176BF` (EAX=1), gated on `0x140E4`'s box-overlap return
+(`0x17698 CALL 0x140E4; 0x1769D TEST AL,AL; 0x1769F JZ 0x176C4`) and
+`DS_00100B60`/`B61` (`0x176A1`/`0x176B1`). The path is `0x26254`
+(`0x262E9 CALL 0x17580`) → `0x17580` (`camera_decay`, ported at `camera.c:357`,
+called at `fight.c:942`) → `0x140E4` (388 B, unported) → `0x170A0(0/1)`. So the
+`0x1958C` tail gate reads `0x170A0`'s value; in the port `camera_decay` zeroes
+`AF8` (`camera.c:366`, `0x175EA`) but `0x140E4`/`0x170A0` are unported, so `AF8`
+stays 0 and the tail never runs — **the operational conclusion is unchanged,
+only its owner.**
+
+**Unpinned (named with evidence, not fitted).** Three links in this chain stay
+named gaps, not derived values: (1) the `0xA50C0` timed table's reach to
+`0x3FFDC` — `0xA50E4` (inside the table) holds `0x3FFDC`
+(`ghidra_search_byte_patterns dc ff 03 00`), but `0x3FFDC` has no code xref
+(`ghidra_get_xrefs_to 0x3FFDC` = 0) and there is no immediate or pointer to
+`0xA50C0` in the image (`ghidra_search_byte_patterns c0 50 0a 00` = none;
+`ghidra_search_instructions MOV,0xa50c0` = none), so the reach is unproven;
+(2) whether `DS_00100B54 != 0` on the demo's frames — `0x16DA4` (the `0x170A0`
+callee that writes `B54`) takes frame-built args and Ghidra drops ~40 unreachable
+blocks (`ghidra_decompile_function 0x16DA4`), so it is not statically pinned; the
+empirical `AF8 != 0` (§10.2) implies it is non-zero; (3) `LAB_0003A6D4` is absent
+from `prage.functions.csv` (it appears only as a data pointer, `prage.c:24880`),
+so its size and role are unnamed.
 
 ### 10.4 The closure size (the stop-condition measurement)
 
@@ -815,6 +860,9 @@ not the RNG (`0x5Dxxx`), not the five known stubs, and not named anywhere in
 | `0x3FD30` + `0x3FF08` + `0x3FFDC` (the closer script) | 303 / 44 324 B | 45 / 5 623 B |
 | **union** | 345 / 51 648 B | **68 funcs / 10 467 B** |
 
+*The closer-script row and the union row are **superseded** — the corrected
+union is at the end of this section.*
+
 **The "new" heuristic undercounts (a Task 4 fix-round-1 caveat): it treats a
 function merely *named in a comment* as ported.** `0x193B0` (475 B, a closure
 root) and `0x19020` (70 B) are **unported** — they are excluded only because
@@ -822,7 +870,8 @@ root) and `0x19020` (70 B) are **unported** — they are excluded only because
 true genuinely-new work is **≥ 11 012 B** (10 467 + 545). The size conclusion is
 unaffected.
 
-The union's genuinely-new work is **68 functions / ≥ 10 467 bytes** (of which
+The union's genuinely-new work (superseded — the corrected union is 68 f /
+13 131 B; see the correction below) is **68 functions / ≥ 10 467 bytes** (of which
 `0x18C14` 1035, `0x392A0` 907, `0x3AAFC` 667, `0x3B714` 449, `0x385B0` 384,
 `0x3A0FC` 355, `0x3AE9C` 294, `0x38ED0` 284, `0x192DC` 212, `0x19164` 198, the
 **four** 116-B pose-family members `0x3A504`/`0x3A650`/`0x3A79C`/`0x3A8E8`, …).
@@ -832,6 +881,22 @@ a task** — ~2.4× the handler tail's 36 / 4 335 (§2.4) and ~3.3× cycle 2's
 `+0x53` machine (26 / 3 153). Task 3b's first attempt already scoped the closer
 chain at 15–20 funcs / ~3–4 KB and was re-scoped for the same reason.
 **Task 4 triggers the brief's Step-1 size gate: no port was landed.**
+
+**Correction (raw; the closer-script row is the wrong union).** The `AF8` half is
+not `0x3FD30`/`0x3FF08`/`0x3FFDC` (that script never runs — §10.3's correction)
+but the **unfreeze half** `0x140E4` + `0x170A0` + callees. Re-measured by this
+section's method (`prage.calls.csv`/`prage.functions.csv`; the `new` heuristic
+matches the port's `0xADDR` comment form, so `flow.c`'s `FUN_0001cc28` — i.e.
+`0x1CC28` — is **not** counted named): the unfreeze half is **naive 32 f /
+5 332 B, true-new 34 f / 6 968 B** (the two added roots are the
+named-but-unported `0x140E4` 388 B + `0x170A0` 1 248 B); the **unfreeze ∪
+pose-entry** union (pose-entry = `0x193B0` + `0x3B714` + `0x3AAFC` + `0x3A79C`)
+is **naive 65 f / 11 020 B, true-new 68 f / 13 131 B** (true-new adds `0x140E4` +
+`0x170A0` + `0x193B0` = 2 111 B). The closer-script row and the union's old 68 f /
+10 467 B are superseded; `0x3FFDC` is not a `prage.functions.csv` row (not a
+Ghidra function) and `0x19020` (70 B) is not in the corrected union. The size
+conclusion is unchanged and stronger: 68 f / 13 131 B ≈ 3.0× the handler tail
+(§2.4) and ≈ 4.2× cycle 2's `+0x53` machine.
 
 ### 10.5 The measured effect on the arena (no code landed)
 
@@ -857,3 +922,17 @@ family, `0x3AAFC`, `0x3B714`, `0x193B0`, `0x367DC`, `0x39F40`, `0x193B0`;
 `/tmp/t4_orig.py` (DOSBox-X, base `0x266000`) and the port's env-gated
 `PR_T4_TRACE` (reverted). Frame diffs `/tmp/t1_diff.py` and the teal-mask IoU
 computed from `data/title-captures/frontend/frame_0834.raw`.
+
+**The §10.3/§10.4 correction's provenance (raw).** `ghidra_get_xrefs_to
+0x100AF8` (15 refs — the two `0x19020` writes at `0x1904C`/`0x1905C`, the
+`0x170A0` write at `0x1756F`, `0x175EA` in `0x17580`, `0x38625` in `0x385B0`,
+`0x36928` in `0x36870`, `0x18C49` in `0x18C14`, the `0x1958C` writes/reads);
+`ghidra_disassemble_function 0x19020`/`0x3FF08`/`0x17580`/`0x26254`;
+`ghidra_decompile_function 0x170A0`/`0x140E4`/`0x14080`/`0x3FD30`/`0x16DA4`;
+`ghidra_get_function_callers 0x170A0` (one: `0x17580`)/`0x140E4`/`0x3FF08`;
+`ghidra_get_xrefs_to 0x3FF08` (one: `0x40026`) and `0x3FFDC` (none);
+`ghidra_read_memory 0xA50C0` (the timed table; `0xA50E4` holds `0x3FFDC`) with
+`ghidra_search_byte_patterns dc ff 03 00` (one hit, `0xA50E4`) / `c0 50 0a 00`
+(none) / `ghidra_search_instructions MOV,0xa50c0` (none);
+`ghidra_get_function_by_address 0x3FFDC` (no function). The closure figures are
+re-derived from `prage.calls.csv`/`prage.functions.csv` (§10.4's method).
