@@ -3449,7 +3449,7 @@ int hit_chain_resolve(u32 side)
 
 /* 0x46534. Add `delta` to the per-side accumulator DS_001082C8[side], clamp
  * down to byte[0xC9408 + byte[0x10452C]], up to 0, then up to DS_001082D0. */
-static void fighter_46534(u32 side, s32 delta)
+void fighter_46534(u32 side, s32 delta)
 {
     s32 v = (s32)DSD(DS_001082C8 + side * 4u) + delta;      /* 0x4653C/0x46542 */
     u32 cap = (u32)DSB(FIGHTER_C9408 + (u32)DSB(DS_0010452C));   /* 0x46552 */
@@ -3495,7 +3495,7 @@ static int fighter_1a5ac(u32 side)
 /* 0x3A280. The reaction predicate: 1 when the byte is in 0x10..0x17 or
  * 0x20..0x3F. The raw's 0x3A260 jump table maps all eight 0x10..0x17 entries
  * to the `return 1` at 0x3A28A. */
-static int fighter_3a280(u32 code)
+int fighter_3a280(u32 code)
 {
     u8 a = (u8)code;
     if (a >= 0x20u && a <= 0x3Fu) return 1;                 /* 0x3A280/0x3A28A */

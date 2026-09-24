@@ -152,6 +152,14 @@ int fighter_1a640(u32 side);
  * stack argument = the reaction byte. */
 void fighter_reaction_apply(u32 slot, u32 reaction);
 
+/* 0x3A280. The reaction predicate: 1 for a byte in 0x10..0x17 or 0x20..0x3F. */
+int  fighter_3a280(u32 code);
+
+/* 0x46534. Add `delta` to the per-side AI-difficulty accumulator at
+ * DS_001082C8[side], clamp to [0, byte[0xC9408 + byte[0x10452C]]], then raise to
+ * DS_001082D0. Called by 0x4F434. */
+void fighter_46534(u32 side, s32 delta);
+
 /* 0x3C88C. The per-slot attack-frame state machine fight_slot_pass runs 2 x 32
  * times per arena frame. Reads DS_00107ED8 (slot index), DS_00107EDC (side) and
  * DS_00107EE4 (facing); phase 0 arms the hitbox (word[0x107D58 + side*0x40 +
