@@ -3488,19 +3488,10 @@ static int fighter_46190(void)
     return config_not_free_play() == 0u;                    /* 0x461A2/0x461AE */
 }
 
-/* 0x33A68. fighter_ctx_swap from a record pointer: out[0]=1-side, out[1]=side,
- * out[2]=slot[1-side], out[3]=slot[side], out[4]=rec[1-side], out[5]=rec[side],
- * with side = rec+0x51. */
+/* 0x33A68. fighter_ctx_swap from a record pointer: side = rec+0x51. */
 static void fighter_ctx_rec_swap(u32 out[6], u32 rec)
 {
-    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x33A69 */
-    u32 other = 1u - side;
-    out[0] = other;                                         /* 0x33A79 */
-    out[1] = side;
-    out[2] = DS_001077B0 + other * 0x94u;                   /* 0x33A96 */
-    out[3] = DS_001077B0 + side * 0x94u;                    /* 0x33AB7 */
-    out[4] = DSD(out[2]);                                   /* 0x33ABA */
-    out[5] = DSD(out[3]);                                   /* 0x33AC4 */
+    fighter_ctx_swap(out, (u32)DSB(rec + 0x51u));           /* 0x33A69 */
 }
 
 /* 0x1A5AC. 1 when the side's record +0x28 has bit 0x4000 clear. */
@@ -3575,9 +3566,12 @@ static void fighter_4f434(void)
     fighter_46534(opp, delta);                              /* 0x4F4DB/0x4F4DD */
 }
 
-/* 0x3A504. The pose setter with the 0x3A43C callback and the 0x107D14/0x107D10
- * pair. All four setters share this body; the callback and the pair differ. */
-static void fighter_pose_3a504(u32 side, u32 edx)
+/* The body the four pose setters 0x3A504/0x3A650/0x3A79C/0x3A8E8 share
+ * (0x3A50E..0x3A56B): zero rec_other+0x24, seed the self slot's
+ * +0x52/+0x53/+0x54/+0x10/+0x58/+0x7E, then latch the slot's +0x2C word and
+ * edx>>16 into the setter's glob_a/glob_b pair. */
+static void fighter_pose_commit(u32 side, u32 edx, u32 callback,
+                                u32 glob_a, u32 glob_b)
 {
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                            /* 0x3A50E */
@@ -3585,59 +3579,36 @@ static void fighter_pose_3a504(u32 side, u32 edx)
     DSB(ctx[3] + 0x52u) = 0x10u;                            /* 0x3A522 */
     DSB(ctx[3] + 0x53u) = 0x0Au;                            /* 0x3A52A */
     DSB(ctx[3] + 0x54u) = 0u;                               /* 0x3A532 */
-    DSD(ctx[3] + 0x10u) = 0x0003A43Cu;                      /* 0x3A53A */
+    DSD(ctx[3] + 0x10u) = callback;                         /* 0x3A53A */
     DSB(ctx[3] + 0x58u) = 0u;                               /* 0x3A545 */
     DSB(ctx[3] + 0x7Eu) = (u8)(DSB(DS_000BECF8) + (u8)edx); /* 0x3A549/0x3A554 */
-    DSW(DS_00107D14 + side * 2u) = DSW(ctx[3] + 0x2Cu);     /* 0x3A55F/0x3A563 */
-    DSW(DS_00107D10 + side * 2u) = (u16)(edx >> 16);        /* 0x3A56B */
+    DSW(glob_a + side * 2u) = DSW(ctx[3] + 0x2Cu);          /* 0x3A55F/0x3A563 */
+    DSW(glob_b + side * 2u) = (u16)(edx >> 16);             /* 0x3A56B */
+}
+
+/* 0x3A504. The pose setter with the 0x3A43C callback and the 0x107D14/0x107D10
+ * pair. */
+static void fighter_pose_3a504(u32 side, u32 edx)
+{
+    fighter_pose_commit(side, edx, 0x0003A43Cu, DS_00107D14, DS_00107D10);
 }
 
 /* 0x3A650. The pose setter with the 0x3A588 callback and 0x107D0C/0x107D00. */
 static void fighter_pose_3a650(u32 side, u32 edx)
 {
-    u32 ctx[6];
-    fighter_ctx_swap(ctx, side);                            /* 0x3A65A */
-    DSD(ctx[5] + 0x24u) = 0;                                /* 0x3A663 */
-    DSB(ctx[3] + 0x52u) = 0x10u;                            /* 0x3A66E */
-    DSB(ctx[3] + 0x53u) = 0x0Au;                            /* 0x3A676 */
-    DSB(ctx[3] + 0x54u) = 0u;                               /* 0x3A67E */
-    DSD(ctx[3] + 0x10u) = 0x0003A588u;                      /* 0x3A686 */
-    DSB(ctx[3] + 0x58u) = 0u;                               /* 0x3A691 */
-    DSB(ctx[3] + 0x7Eu) = (u8)(DSB(DS_000BECF8) + (u8)edx); /* 0x3A695/0x3A6A0 */
-    DSW(DS_00107D0C + side * 2u) = DSW(ctx[3] + 0x2Cu);     /* 0x3A6AB/0x3A6AF */
-    DSW(DS_00107D00 + side * 2u) = (u16)(edx >> 16);        /* 0x3A6B7 */
+    fighter_pose_commit(side, edx, 0x0003A588u, DS_00107D0C, DS_00107D00);
 }
 
 /* 0x3A79C. The pose setter with the 0x3A6D4 callback and 0x107D08/0x107D04. */
 static void fighter_pose_3a79c(u32 side, u32 edx)
 {
-    u32 ctx[6];
-    fighter_ctx_swap(ctx, side);                            /* 0x3A7A6 */
-    DSD(ctx[5] + 0x24u) = 0;                                /* 0x3A7AF */
-    DSB(ctx[3] + 0x52u) = 0x10u;                            /* 0x3A7BA */
-    DSB(ctx[3] + 0x53u) = 0x0Au;                            /* 0x3A7C2 */
-    DSB(ctx[3] + 0x54u) = 0u;                               /* 0x3A7CA */
-    DSD(ctx[3] + 0x10u) = 0x0003A6D4u;                      /* 0x3A7D2 */
-    DSB(ctx[3] + 0x58u) = 0u;                               /* 0x3A7DD */
-    DSB(ctx[3] + 0x7Eu) = (u8)(DSB(DS_000BECF8) + (u8)edx); /* 0x3A7E1/0x3A7EC */
-    DSW(DS_00107D08 + side * 2u) = DSW(ctx[3] + 0x2Cu);     /* 0x3A7F7/0x3A7FB */
-    DSW(DS_00107D04 + side * 2u) = (u16)(edx >> 16);        /* 0x3A803 */
+    fighter_pose_commit(side, edx, 0x0003A6D4u, DS_00107D08, DS_00107D04);
 }
 
 /* 0x3A8E8. The pose setter with the 0x3A820 callback and 0x107CF8/0x107CFC. */
 static void fighter_pose_3a8e8(u32 side, u32 edx)
 {
-    u32 ctx[6];
-    fighter_ctx_swap(ctx, side);                            /* 0x3A8F2 */
-    DSD(ctx[5] + 0x24u) = 0;                                /* 0x3A8FB */
-    DSB(ctx[3] + 0x52u) = 0x10u;                            /* 0x3A906 */
-    DSB(ctx[3] + 0x53u) = 0x0Au;                            /* 0x3A90E */
-    DSB(ctx[3] + 0x54u) = 0u;                               /* 0x3A916 */
-    DSD(ctx[3] + 0x10u) = 0x0003A820u;                      /* 0x3A91E */
-    DSB(ctx[3] + 0x58u) = 0u;                               /* 0x3A929 */
-    DSB(ctx[3] + 0x7Eu) = (u8)(DSB(DS_000BECF8) + (u8)edx); /* 0x3A92D/0x3A938 */
-    DSW(DS_00107CF8 + side * 2u) = DSW(ctx[3] + 0x2Cu);     /* 0x3A943/0x3A947 */
-    DSW(DS_00107CFC + side * 2u) = (u16)(edx >> 16);        /* 0x3A94F */
+    fighter_pose_commit(side, edx, 0x0003A820u, DS_00107CF8, DS_00107CFC);
 }
 
 /* 0x3AA54. The reaction-0x11 pose setter: seed the record's +0x44/+0x36/+0x34
@@ -3719,6 +3690,21 @@ static u32 fighter_36d20(u32 slot)
     return (u32)DSB(slot + 0x52u);                          /* 0x36D90/0x36D92 */
 }
 
+/* The 0xBB0B0 reaction-effect spawn 0x3A0FC/0x3AD98 share (0x3A241/0x3AE3C):
+ * spawn at `off` with a2 = *(ctx[3]+0x2C) and a3 = (ctx[5]+0x30)>>16, mark the
+ * actor +0x59 = 3, and start `stream` at 0x40000000. The callers differ only in
+ * how they select `stream`. */
+static void fighter_spawn_reaction_effect(const u32 ctx[6], u32 off, u32 stream)
+{
+    u32 a = actor_spawn((const u32 *)(mem + FIGHTER_BB0B0),
+                        DSD(ctx[3] + 0x2Cu),
+                        (u32)((s32)DSD(ctx[5] + 0x30u) >> 16),
+                        off,
+                        0u);
+    DSB(a + 0x59u) = 3u;
+    actors_anim_begin(a, stream, 0x40000000u);
+}
+
 /* 0x3A0FC. The winner's effect spawn: build the reaction animation triple,
  * spawn the 0xBB09C/0xBB0B0 effect actors at the 0xF0AEC-derived offset and
  * start the per-side 0xE8Dxx effect stream. EAX = 1-side from 0x3AAFC. */
@@ -3729,17 +3715,19 @@ static void fighter_3a0fc(u32 side)
     u32 facing;
     u32 off;
     u32 stream;
+    s32 layer;
     fighter_ctx_same(ctx, side);                            /* 0x3A108 */
     fighter_anim_triple(anim, side, (s32)DSB(ctx[2] + 0x5Fu));  /* 0x3A121 */
     facing = ((DSW(ctx[4] + 0x28u) & 0x4000u) != 0u) ? 0u : 0x4000u;  /* 0x3A126 */
     off = DSD(DS_000F0AEC) + 0x3BC0u
         - (DSD(DS_00100AD8 + side * 4u) << 6);              /* 0x3A146..0x3A15C */
-    off -= (u32)((s32)DSD(ctx[5] + 0x30u) >> 16);           /* 0x3A162/0x3A16F */
+    layer = (s32)DSD(ctx[5] + 0x30u) >> 16;                 /* 0x3A162/0x3A16F */
+    off -= (u32)layer;
     stream = DSD(anim[1] + 8u);                             /* 0x3A165/0x3A16C */
     if (stream != 0u && (u32)DSB(DS_00105B3A) < 3u) {       /* 0x3A171/0x3A17E */
         u32 a = actor_spawn((const u32 *)(mem + FIGHTER_BB09C),
                             DSD(ctx[3] + 0x2Cu),
-                            (u32)((s32)DSD(ctx[5] + 0x30u) >> 16),
+                            (u32)layer,
                             off,
                             facing);                        /* 0x3A1A5 */
         actors_anim_begin(a, stream, 0x40400000u);          /* 0x3A1AA/0x3A1B1 */
@@ -3758,15 +3746,8 @@ static void fighter_3a0fc(u32 side)
             else if (key == 3u) s = FIGHTER_E8DEE;          /* 0x3A21A */
             else                s = 0u;                     /* 0x3A221 */
         }
-        if (s != 0u) {                                      /* 0x3A223/0x3A225 */
-            u32 a = actor_spawn((const u32 *)(mem + FIGHTER_BB0B0),
-                                DSD(ctx[3] + 0x2Cu),
-                                (u32)((s32)DSD(ctx[5] + 0x30u) >> 16),
-                                off,
-                                0u);                        /* 0x3A241 */
-            DSB(a + 0x59u) = 3u;                            /* 0x3A24D */
-            actors_anim_begin(a, s, 0x40000000u);           /* 0x3A251 */
-        }
+        if (s != 0u)                                        /* 0x3A223/0x3A225 */
+            fighter_spawn_reaction_effect(ctx, off, s);     /* 0x3A241 */
     }
 }
 
@@ -4171,6 +4152,18 @@ static void fighter_2bd44(u32 param_1, u32 param_2)
     actor_set_dead(param_2);                                /* 0x2BD95 */
 }
 
+/* The record+0x4B indexing 0x3B714/0x193B0 share (0x3B844/0x194C1): when the
+ * index is non-zero and the DS_001014F4 row's +0x60 is set, run 0x2BD44 on it. */
+static void fighter_2bd44_by_index(u32 rec)
+{
+    u32 idx = (u32)DSB(rec + 0x4Bu);
+    if (idx != 0u) {
+        u32 row = DSD(DS_001014F4) + idx * 0x68u;
+        if (DSB(row + 0x60u) != 0u)
+            fighter_2bd44(rec, row);
+    }
+}
+
 /* 0x3AD98. The winner's reaction-effect spawn: play the per-character voice
  * (out of scope), then spawn the 0xBB0B0 effect actor at the 0x100AD8-derived
  * offset and start the 0xE8E08/22/3C stream selected by word[anim[2]]; finally
@@ -4192,15 +4185,8 @@ void fighter_3ad98(u32 side, const u32 anim[3])
     case 3u: stream = DS_000E8E3C; break;                   /* 0x3AE17 */
     default: stream = 0u; break;                            /* 0x3AE1E */
     }
-    if (stream != 0u) {                                     /* 0x3AE20/0x3AE22 */
-        u32 a = actor_spawn((const u32 *)(mem + FIGHTER_BB0B0),
-                            DSD(ctx[3] + 0x2Cu),
-                            (u32)((s32)DSD(ctx[5] + 0x30u) >> 16),
-                            off,
-                            0u);                            /* 0x3AE3C */
-        DSB(a + 0x59u) = 3u;                                /* 0x3AE48 */
-        actors_anim_begin(a, stream, 0x40000000u);          /* 0x3AE4C */
-    }
+    if (stream != 0u)                                       /* 0x3AE20/0x3AE22 */
+        fighter_spawn_reaction_effect(ctx, off, stream);    /* 0x3AE3C */
     {
         u32 d = (u32)DSB(ctx[3] + 0x5Au)
               + (u32)DSB(anim[0] + 4u);                     /* 0x3AE55..0x3AE6D */
@@ -4251,13 +4237,7 @@ void fighter_reaction(u32 param_1, u32 param_2)
     if (DSB(ctx[2] + 0x52u) == 4u)                          /* 0x3B826/0x3B82A */
         fighter_3ae9c(side, local_18);                      /* 0x3B834 */
     if (local_18 == 0u) {                                   /* 0x3B839/0x3B83E */
-        u32 rec_o = ctx[5];                                 /* 0x3B840 */
-        u32 idx = (u32)DSB(rec_o + 0x4Bu);                  /* 0x3B844 */
-        if (idx != 0u) {                                    /* 0x3B847/0x3B849 */
-            u32 row = DSD(DS_001014F4) + idx * 0x68u;       /* 0x3B84B..0x3B866 */
-            if (DSB(row + 0x60u) != 0u)                     /* 0x3B868/0x3B86C */
-                fighter_2bd44(rec_o, row);                  /* 0x3B872 */
-        }
+        fighter_2bd44_by_index(ctx[5]);                     /* 0x3B840..0x3B872 */
         fighter_reaction_apply(param_1, local_24);          /* 0x3B88D */
     } else {
         DSB(ctx[2] + 0x8Au) = 0;                            /* 0x3B898 */
@@ -4418,11 +4398,7 @@ void fighter_winner_body(u32 side)
     if (DSD(ctx[2] + 0x1Cu) == 0u) {                        /* 0x194B6 */
         fighter_reaction(ctx[3], ctx[2]);                   /* 0x19526 */
     } else {
-        if (DSB(ctx[5] + 0x4Bu) != 0u) {                    /* 0x194C1 */
-            u32 row = DSD(DS_001014F4) + (u32)DSB(ctx[5] + 0x4Bu) * 0x68u;
-            if (DSB(row + 0x60u) != 0u)                     /* 0x194E8 */
-                fighter_2bd44(ctx[5], row);                 /* 0x194EE */
-        }
+        fighter_2bd44_by_index(ctx[5]);                     /* 0x194C1..0x194EE */
         DSB(ctx[3] + 0x90u) = 5u;                           /* 0x194F7 */
         {
             void (*fn)(u32) = (void (*)(u32))(void *)

@@ -2874,6 +2874,40 @@ static void check_pose_accumulator(void)
     DSB(0x000C9408u) = saved_cap;
 }
 
+/* The pose-chain seed block check_pose_entry/check_reaction/winner_body_setup
+ * share: the two-slot reset plus the globals the 0x3AAFC/0x3B714 chain reads,
+ * held in their "off" state. Each caller adds the values its path needs. */
+static void pose_chain_setup(u32 s0, u32 s1, u32 r0, u32 r1)
+{
+    fight_reset_recs();
+    fight_reset_actors();
+    mem_fill(s0, 0, 0x94u);
+    mem_fill(s1, 0, 0x94u);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+
+    DSB(r0 + 0x51u) = 0;
+    DSB(r1 + 0x51u) = 1;
+    DSB(DS_0010782A) = 0;                       /* char(slot 0) */
+    DSB(DS_001078BE) = 0;                       /* char(slot 1) */
+    DSB(s0 + 0x54u) = 0;
+    DSB(s0 + 0x42u) = 0;
+    DSB(s1 + 0x42u) = 0;
+    DSW(s1 + 0x6Cu) = 0;
+    DSW(DS_00104B00) = 0;                       /* mode 0 (not 0x22/3) */
+    DSB(DS_00104B1D) = 0;                       /* mode2 0 -> the MELSE arm */
+    DSB(DS_00105B38) = 0;
+    DSB(DS_00105B36) = 1;                       /* skip the +0x5D clamp */
+    DSB(DS_00105B3A) = 0;
+    DSD(DS_00104ABC) = 0;                       /* skip 0x4F434 */
+    DSD(0x00107D2Au) = 0;                       /* k = 0, +0x14 gate clear */
+    DSD(0x00107D2Cu) = 0;
+    DSW(0x000A6728u) = 0;                       /* key = 0, no effect spawn */
+    DSD(0x000A3528u + 8u) = 0;                  /* stream = 0 */
+    DSB(0x000DE117u) = 0;                       /* edx3 = 0 */
+    DSB(s0 + 0x5Au) = 0;
+    DSB(s0 + 0x5Du) = 0;
+}
+
 /* §8.2 0x3AAFC: the pose dispatch through the 0x3A504/0x3A79C arms and the
  * side-1 mirror. The 0x3A280 predicate and the 0x3A0FC spawn are gated off by
  * seeding both +0x5F = 0xFF and the 0xA6728 descriptor to zero. */
@@ -2888,38 +2922,13 @@ static void check_pose_entry(void)
     u32 sv_d8 = DSD(0x000A3528u + 8u);
     u8  sv_b3 = DSB(0x000DE117u);
 
-    fight_reset_recs();
-    fight_reset_actors();
-    mem_fill(s0, 0, 0x94u);
-    mem_fill(s1, 0, 0x94u);
-    fight_reset_slot_pair(s0, s1, r0, r1);
+    pose_chain_setup(s0, s1, r0, r1);
 
-    DSW(DS_00104B00) = 0;                       /* mode 0 (not 0x22/3) */
-    DSB(DS_00104B1D) = 0;                       /* mode2 0 -> the MELSE arm */
-    DSB(DS_00105B38) = 0;
-    DSB(DS_00105B36) = 1;                       /* skip the +0x5D clamp */
-    DSB(DS_00105B3A) = 0;
-    DSD(DS_00104ABC) = 0;                       /* skip 0x4F434 */
-    DSB(DS_0010782A) = 0;                       /* char(slot 0) */
-    DSB(DS_001078BE) = 0;                       /* char(slot 1) */
-    DSB(r0 + 0x51u) = 0;
-    DSB(r1 + 0x51u) = 1;
     DSB(s0 + 0x5Fu) = 0xFFu;                    /* uVar2 = 0 */
     DSB(s1 + 0x5Fu) = 0xFFu;                    /* 0x3A280 -> 0 */
-    DSB(s0 + 0x54u) = 0;
     DSB(s0 + 0x53u) = 0;
     DSB(s0 + 0x41u) = 0;
-    DSB(s0 + 0x5Au) = 0;
-    DSB(s0 + 0x5Du) = 0;
-    DSB(s0 + 0x42u) = 0;
-    DSB(s1 + 0x42u) = 0;
-    DSW(s1 + 0x6Cu) = 0;
-    DSD(0x00107D2Au) = 0;                       /* k = 0, +0x14 gate clear */
-    DSD(0x00107D2Cu) = 0;
-    DSW(0x000A6728u) = 0;                       /* key = 0, no effect spawn */
     DSW(0x000A6728u + 2u) = 0;                  /* ecx = 0 */
-    DSD(0x000A3528u + 8u) = 0;                  /* stream = 0 */
-    DSB(0x000DE117u) = 0;                       /* edx3 = 0 */
 
     fighter_reaction_apply(s0, 0u);
     CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x10);   /* the 0x3A504 arm */
@@ -3190,23 +3199,14 @@ static void check_reaction(void)
     u32 sv_d8 = DSD(0x000A3528u + 8u);
     u8  sv_b117 = DSB(0x000DE117u);
 
-    fight_reset_recs();
-    fight_reset_actors();
-    mem_fill(s0, 0, 0x94u);
-    mem_fill(s1, 0, 0x94u);
-    fight_reset_slot_pair(s0, s1, r0, r1);
+    pose_chain_setup(s0, s1, r0, r1);
 
     DSD(DS_00107D50 + 4u) = 0;               /* the 0x3C59C bit for 1-side */
-    DSB(r0 + 0x51u) = 0;                     /* 0x3B714 side 0 */
-    DSB(r1 + 0x51u) = 1;                     /* 0x3AAFC side 1 */
-    DSB(DS_0010782A) = 0;                    /* char(slot 0) = 0 */
-    DSB(DS_001078BE) = 0;                    /* char(slot 1) = 0 */
     DSB(s0 + 0x5Fu) = 0;                     /* local_24 = 0 */
     DSB(s1 + 0x5Fu) = 0;
     DSB(s0 + 0x53u) = 0;                     /* 0x39EFC(1) = 0 */
     DSD(s1 + 0x10u) = 0;
     DSB(s1 + 0x58u) = 0;
-    DSB(s0 + 0x54u) = 0;
     DSB(s1 + 0x54u) = 0;                     /* 0x3B080 runs but is gated off */
     DSB(s0 + 0x52u) = 0;                     /* skip 0x3AE9C */
     DSB(s1 + 0x52u) = 0;
@@ -3215,23 +3215,7 @@ static void check_reaction(void)
     DSB(r1 + 0x4Bu) = 0;                     /* skip 0x2BD44 */
     DSB(s1 + 0x63u) = 0;                     /* 0x3B298's fight_command_map early-out */
     DSB(DS_000BEDF2) = 1;                    /* 0x3B080 no-op */
-    DSW(0x000A6728u) = 0;                    /* key = 0, no effect spawn */
     DSW(0x000A6728u + 2u) = 3;               /* bits 0+1 -> 0x3B298 returns 0; ecx = 3 */
-    DSD(0x000A3528u + 8u) = 0;               /* stream = 0 */
-    DSB(0x000DE117u) = 0;                    /* edx3 = 0 */
-    DSW(DS_00104B00) = 0;
-    DSB(DS_00104B1D) = 0;
-    DSB(DS_00105B38) = 0;
-    DSB(DS_00105B36) = 1;
-    DSB(DS_00105B3A) = 0;
-    DSD(DS_00104ABC) = 0;
-    DSD(0x00107D2Au) = 0;
-    DSD(0x00107D2Cu) = 0;
-    DSB(s0 + 0x5Au) = 0;
-    DSB(s0 + 0x5Du) = 0;
-    DSB(s0 + 0x42u) = 0;
-    DSB(s1 + 0x42u) = 0;
-    DSW(s1 + 0x6Cu) = 0;
     DSD(r1 + 0x24u) = 0xDEADBEEFu;           /* the pose setter clears it */
 
     fighter_reaction(s1, s0);
@@ -3280,24 +3264,15 @@ static void check_reaction(void)
  * runs and the winner's reaction dispatches through 0x3B714 -> 0x3AAFC. */
 static void winner_body_setup(u32 s0, u32 s1, u32 r0, u32 r1)
 {
-    fight_reset_recs();
-    fight_reset_actors();
-    mem_fill(s0, 0, 0x94u);
-    mem_fill(s1, 0, 0x94u);
-    fight_reset_slot_pair(s0, s1, r0, r1);
+    pose_chain_setup(s0, s1, r0, r1);
 
     DSD(DS_00107D50) = 0;                    /* the 0x3C59C bits for both sides */
     DSD(DS_00107D50 + 4u) = 0;
-    DSB(r0 + 0x51u) = 0;                     /* side(rec s0) = 0 */
-    DSB(r1 + 0x51u) = 1;                     /* side(rec s1) = 1 */
-    DSB(DS_0010782A) = 0;                    /* char(slot 0) = 0 */
-    DSB(DS_001078BE) = 0;                    /* char(slot 1) = 0 */
     DSB(s0 + 0x5Fu) = 0;                     /* b = 0 for 0x3962C/0x396AC */
     DSB(s1 + 0x5Fu) = 0;
     DSB(s1 + 0x53u) = 0;                     /* 0x39EFC(1) = 0 */
     DSD(s1 + 0x10u) = 0;
     DSB(s1 + 0x58u) = 0;
-    DSB(s0 + 0x54u) = 0;
     DSB(s1 + 0x54u) = 0;                     /* 0x3B080 runs but is gated off */
     DSB(s0 + 0x52u) = 0;                     /* skip 0x3AE9C */
     DSB(s1 + 0x52u) = 0;
@@ -3305,25 +3280,9 @@ static void winner_body_setup(u32 s0, u32 s1, u32 r0, u32 r1)
     DSB(s1 + 0x63u) = 0;
     DSB(r1 + 0x4Bu) = 0;                     /* skip 0x2BD44 */
     DSB(DS_000BEDF2) = 1;                    /* 0x3B080 no-op */
-    DSW(0x000A6728u) = 0;                    /* key = 0, no effect spawn */
     DSW(0x000A6728u + 2u) = 3;               /* bits 0+1 -> 0x3B298 returns 0 */
-    DSD(0x000A3528u + 8u) = 0;
-    DSB(0x000DE117u) = 0;
-    DSW(DS_00104B00) = 0;
-    DSB(DS_00104B1D) = 0;
-    DSB(DS_00105B38) = 0;
-    DSB(DS_00105B36) = 1;
-    DSB(DS_00105B3A) = 0;
-    DSD(DS_00104ABC) = 0;
-    DSD(0x00107D2Au) = 0;                    /* 0x3962C/0x396AC's +0x14 gate */
-    DSD(0x00107D2Cu) = 0;
     DSB(0x00107A80u) = 0;                    /* 0x396AC's per-side counter */
     DSB(0x00107A80u + 0x40u) = 0;
-    DSB(s0 + 0x5Au) = 0;
-    DSB(s0 + 0x5Du) = 0;
-    DSB(s0 + 0x42u) = 0;
-    DSB(s1 + 0x42u) = 0;
-    DSW(s1 + 0x6Cu) = 0;
     DSD(s0 + 0x1Cu) = 0;                     /* the 0x3B714 reaction arm */
     DSD(s1 + 0x14u) = 0;                     /* skip the +0x14 callback */
     DSD(s1 + 0x18u) = 0;

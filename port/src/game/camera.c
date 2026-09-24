@@ -65,6 +65,14 @@ static int camera_actor_bit15_clear(u32 side)
     return (DSW(actor) & 0x8000u) == 0;
 }
 
+/* A resolved resource pointer's mem[] offset, or 0 when 0x1B544 failed. The
+ * raw dereferences the pointer unconditionally; the port keeps its existing
+ * resource-failure guard (cf. camera_resolve_sprite). */
+static u32 camera_res_off(const void *p)
+{
+    return p != NULL ? (u32)((const u8 *)p - mem) : 0u;
+}
+
 /* 0x16308. res_resolve(DSD(0xA8B30 + (0x17EEC(side) + index) * 4)). The raw
  * tail-jumps 0x1B544; a failed resolve returns the 0 sentinel. */
 static u32 camera_resolve_sprite(u32 side, u32 index)
@@ -72,16 +80,7 @@ static u32 camera_resolve_sprite(u32 side, u32 index)
     u32 handle = DSD(DS_000A8B30
                      + (camera_char_const(DSB(DS_0010782A + side * 0x94u))
                         + index) * 4u);
-    const u8 *p = (const u8 *)res_resolve(handle);
-    return p != NULL ? (u32)(p - mem) : 0u;
-}
-
-/* A resolved resource pointer's mem[] offset, or 0 when 0x1B544 failed. The
- * raw dereferences the pointer unconditionally; the port keeps its existing
- * resource-failure guard (cf. camera_resolve_sprite). */
-static u32 camera_res_off(const void *p)
-{
-    return p != NULL ? (u32)((const u8 *)p - mem) : 0u;
+    return camera_res_off(res_resolve(handle));
 }
 
 /* ---- the 0x17FA0 page-flag/visibility tail ------------------------------ */
@@ -595,34 +594,39 @@ static int camera_rect_clip(int *out, const int *a, const int *b)
     return (out[2] >= out[0]) && (out[3] >= out[1]);
 }
 
-/* 0x140E4's per-actor rect (0x140EE..0x141A7 for the first actor,
- * 0x141AB..0x1425A for the second). The sprite origin comes from the
- * 0xA8B30 handle resolved by 0x1B544 with the raw index `word[actor] &
- * 0x7FFF` (no 0x17EEC character constant, unlike 0x16308). */
-static void camera_actor_rect(u32 actor_idx, int *rect)
+/* The sprite-origin rect 0x140E4/0x15C30 share: the 0xA8B30 handle is resolved
+ * by 0x1B544 with the raw index `word[actor] & 0x7FFF` (no 0x17EEC character
+ * constant, unlike 0x16308); the origin's +2/+4 halves and the bit-15 flip feed
+ * the 0xF3D/0xD56 projection of the actor's +4/+8 into x1/y1/x2/y2.
+ * PORT: the raw dereferences the sprite unconditionally; a failed resolve
+ * (res_resolve NULL) is treated as a zero-origin, zero-size sprite rather than
+ * reading mem[]. */
+static void camera_sprite_rect(u32 actor, int rect[4])
 {
-    u32 rec = DSD(DS_001014EC) + actor_idx * 0x20u;
-    u32 id = (u32)DSW(rec) & 0x7FFFu;
-    const u8 *sp = (const u8 *)res_resolve(DSD(DS_000A8B30 + id * 4u));
+    u32 off = camera_res_off(res_resolve(
+        DSD(DS_000A8B30 + ((u32)DSW(actor) & 0x7FFFu) * 4u)));
     s32 local_a = 0, local_b = 0, w = 0, h = 0;
-    if (sp != NULL) {
-        u32 off = (u32)(sp - mem);
+    if (off != 0u) {
         local_a = (s32)DSD(off + 2u) >> 16;         /* 0x14114/0x14123 */
         local_b = (s32)DSD(off + 4u) >> 16;         /* 0x1411A/0x1412B */
         w = (s32)(s16)DSW(off);                     /* 0x14132/0x14188 */
         h = (s32)DSD(off) >> 16;                    /* 0x14194/0x1419A */
-        if ((DSW(rec) & 0x8000u) != 0)              /* 0x14117/0x1412E */
+        if ((DSW(actor) & 0x8000u) != 0)            /* 0x14117/0x1412E */
             local_a = w - local_a - 1;              /* 0x14132..0x14137 */
     }
-    /* PORT: the raw dereferences the sprite unconditionally; a failed resolve
-     * (res_resolve NULL) is treated as a zero-origin, zero-size sprite rather
-     * than reading mem[]. */
-    s32 x1 = camera_project_axis((s32)DSD(rec + 4u), 0xF3Du) - local_a;
-    s32 y1 = camera_project_axis((s32)DSD(rec + 8u), 0xD56u) - local_b;
+    s32 x1 = camera_project_axis((s32)DSD(actor + 4u), 0xF3Du) - local_a;
+    s32 y1 = camera_project_axis((s32)DSD(actor + 8u), 0xD56u) - local_b;
     rect[0] = x1;                                   /* 0x1415B/0x1420D */
     rect[1] = y1;                                   /* 0x14180/0x14231 */
     rect[2] = x1 + w;                               /* 0x1418D/0x1423D */
     rect[3] = y1 + h;                               /* 0x141A7/0x14252 */
+}
+
+/* 0x140E4's per-actor rect (0x140EE..0x141A7 for the first actor,
+ * 0x141AB..0x1425A for the second). */
+static void camera_actor_rect(u32 actor_idx, int *rect)
+{
+    camera_sprite_rect(DSD(DS_001014EC) + actor_idx * 0x20u, rect);
 }
 
 /* 0x140E4. Returns 1 iff the two actors' screen boxes overlap. It writes no
@@ -886,24 +890,15 @@ static void camera_box_palette(u32 side, u32 *out_a, u32 *out_b, u32 index)
 }
 
 /* 0x15C30. Project the side's actor sprite rect and clip the 4-byte box at
- * `box` against it, scaled by the palette offsets 0x15B90 returns. `flag` is
- * the raw's ECX and is unread. */
-static void camera_box_clip(u32 side, u32 index, u8 *box, u32 flag)
+ * `box` against it, scaled by the palette offsets 0x15B90 returns. */
+static void camera_box_clip(u32 side, u32 index, u8 *box)
 {
-    (void)flag;
     u32 rec = DSD(DS_001077B0 + side * 0x94u);
     u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
-    const u8 *p = (const u8 *)res_resolve(
-        DSD(DS_000A8B30 + ((u32)DSW(actor) & 0x7FFFu) * 4u));
-    u32 sp = camera_res_off(p);
-    s32 local_b = (s32)DSD(sp + 4u) >> 16;         /* 0x15c76 */
-    s32 local_a = (s32)DSD(sp + 2u) >> 16;         /* 0x15c9a */
-    if ((DSW(actor) & 0x8000u) != 0)               /* 0x15c9d */
-        local_a = (s32)(s16)DSW(sp) - local_a - 1;
-    s32 x1 = camera_project_axis((s32)DSD(actor + 4u), 0xF3Du) - local_a;
-    s32 y1 = camera_project_axis((s32)DSD(actor + 8u), 0xD56u) - local_b;
-    s32 x2 = x1 + (s32)(s16)DSW(sp);               /* 0x15d08 */
-    s32 y2 = y1 + ((s32)DSD(sp) >> 16);            /* 0x15d19 */
+    int rect[4];
+    camera_sprite_rect(actor, rect);
+    s32 x1 = rect[0], y1 = rect[1];                /* 0x15c76..0x15d08 */
+    s32 x2 = rect[2], y2 = rect[3];                /* 0x15d19 */
 
     u32 out_a, out_b;
     camera_box_palette(side, &out_a, &out_b, index);
@@ -1015,9 +1010,7 @@ static void camera_winner_height(u32 flag, u32 af0_side, u32 af0_other,
         width_a = camera_sprite_height(side, af0_side, b10, DSD(DS_00100B18));
     if (arg2 == -1 || arg2 == 0)
         width_b = camera_sprite_height(other, af0_other, b30, DSD(DS_00100B18));
-    u32 acc = DSD(DS_00100B54);
     for (u32 row = 0; (s32)row < (s32)DSD(DS_00100B18); row++) {
-        DSD(DS_00100B54) = acc;                        /* 0x16e26 */
         camera_sprite_row(side, DS_00100BAE, width_a, row);
         camera_sprite_row(other, DS_00100B64, width_b, row);
         if (DSB(DS_00100B62 + side) != 0u)            /* 0x16f17 */
@@ -1027,7 +1020,6 @@ static void camera_winner_height(u32 flag, u32 af0_side, u32 af0_other,
         for (u32 i = 0; i < width_a; i++)              /* 0x16f48 */
             DSB(DS_00100BAE + i) = (u8)(DSB(DS_00100BAE + i)
                                          & DSB(DS_00100BD3 + i));
-        DSD(DS_00100B54) = acc;                        /* 0x16f79 */
         if (flag != 0u) {
             camera_bitplane_merge(DSD(DS_00100B38), DS_00100BAE, 0x25u,
                                   DS_00100BF8, 0x25u);    /* 0x16f9e */
@@ -1042,10 +1034,11 @@ static void camera_winner_height(u32 flag, u32 af0_side, u32 af0_other,
                                              & DSB(DS_00100BAE + i));
         }
         for (u32 i = 0; i < 0x25u; i++)                /* 0x17001 */
-            acc += DSB(CAMERA_POPCOUNT + DSB(DS_00100B89 + i));
+            DSD(DS_00100B54) = DSD(DS_00100B54)
+                + DSB(CAMERA_POPCOUNT + DSB(DS_00100B89 + i));
     }
     {
-        s32 t = (s32)((u32)acc << 12) / 0xF3D;         /* 0x1703e */
+        s32 t = (s32)(DSD(DS_00100B54) << 12) / 0xF3D; /* 0x1703e */
         t = (s32)((u32)t << 12) / 0xD56;               /* 0x17051 */
         DSD(DS_00100B54) = (u32)(t / 16);              /* 0x1706f */
     }
@@ -1071,12 +1064,12 @@ void camera_unfreeze(u32 side)
 
     u8 box_a[4];
     for (u32 i = 0; i < 4u; i++) box_a[i] = DSB(box_s + i);
-    camera_box_clip(side, DSD(DS_00100AF0 + side * 4u), box_a, 0u); /* 0x171cc */
+    camera_box_clip(side, DSD(DS_00100AF0 + side * 4u), box_a); /* 0x171cc */
     u32 sb1 = box_a[1];                                    /* [ESP+0xc] */
     u8 box_b[4] = { 0u, 0u, 0u, 0u };
     if (box_o != 0u) {
         for (u32 i = 0; i < 4u; i++) box_b[i] = DSB(box_o + i);
-        camera_box_clip(other, DSD(DS_00100AF0 + other * 4u), box_b, 0u); /* 0x1721a */
+        camera_box_clip(other, DSD(DS_00100AF0 + other * 4u), box_b); /* 0x1721a */
     }
     u32 ob1 = box_b[1];                                    /* [ESP+0x24] */
 
@@ -1110,7 +1103,7 @@ void camera_unfreeze(u32 side)
                                     DS_00100B1C, DS_00100B14, DS_00100B28,
                                     DS_00100B34, DS_00100B24);
         }
-        if ((r & 0xff) != 0) return;                       /* 0x1736c */
+        if (r != 0) return;                                 /* 0x1736c */
     }
 
     /* 0x17372: build the 0x25-byte bit-plane of the side's sprite. */
@@ -1132,7 +1125,7 @@ void camera_unfreeze(u32 side)
                                     - (s32)DSD(DS_00100B08 + other * 4u),
                                     DS_00100B1C, DS_00100B14, DS_00100B28,
                                     DS_00100B34, DS_00100B24);   /* 0x1743c */
-        if ((r & 0xff) != 0) return;                       /* 0x17446 */
+        if (r != 0) return;                                 /* 0x17446 */
     }
     {
         int r;
@@ -1149,7 +1142,7 @@ void camera_unfreeze(u32 side)
                                     DS_00100B18, DS_00100B10, DS_00100B2C,
                                     DS_00100B30, DS_00100B20);
         }
-        if ((r & 0xff) != 0) return;                       /* 0x174ef */
+        if (r != 0) return;                                 /* 0x174ef */
     }
 
     DSD(DS_00100B10) = DSD(DS_00100B10) + sb1;             /* 0x174f9 */
