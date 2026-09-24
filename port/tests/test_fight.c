@@ -352,6 +352,56 @@ static void check_decay(void)
     CHECK_EQ_INT((int)DSD(DS_00100B08), (int)0xFFFFF0C4u);   /* -0xF3C */
 }
 
+/* 0x140E4: the box-overlap bool and its 0x14080 intersection. Reuses the
+ * check_projection fake resource: the sprite table's index 1 (0xA8B34) holds
+ * the handle 0xF8045DC, whose resource entry 31 resolves into the scratch
+ * sprite (width 64, height 64, origin 0). The actor indices are the raw's
+ * table indices 1 and 2 (slot+0x56), not side numbers. */
+static void check_box_overlap(void)
+{
+    u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
+    u32 saved_actors = DSD(DS_001014EC);
+    u32 a0 = FIGHT_ACTORS + 1u * 0x20u;
+    u32 a1 = FIGHT_ACTORS + 2u * 0x20u;
+    u32 tab = FIGHT_RECS + 0x2000u;
+    u32 sbase = FIGHT_RECS + 0x1000u;
+    u32 sprite = sbase + (0xF8045DCu & 0x7FFFFFu);
+
+    mem_fill(tab, 0, 32u * 0x14u);
+    DSD(DS_001014E0) = tab;
+    DSD(DS_001014F0) = 32;
+    DSD(tab + 31u * 0x14u + 16u) = sbase;
+    mem_fill(sprite, 0, 8u);
+    DSW(sprite) = 0x40;                         /* (s16)word[sprite] = 64 */
+    DSB(sprite + 6u) = 0x40;                    /* DSD(sprite+4) >> 16 = 64 */
+    mem_fill(FIGHT_ACTORS, 0, 0x80);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+
+    /* Identical boxes: the max/min intersection is non-empty. */
+    DSW(a0) = 1; DSD(a0 + 4u) = 0; DSD(a0 + 8u) = 0;
+    DSW(a1) = 1; DSD(a1 + 4u) = 0; DSD(a1 + 8u) = 0;
+    CHECK_EQ_INT(camera_box_overlap(1, 2), 1);
+
+    /* A two-pixel x offset still overlaps (0x800 >> 6 = 2). */
+    DSD(a1 + 4u) = 0x00000080u;
+    CHECK_EQ_INT(camera_box_overlap(1, 2), 1);
+
+    /* The bit-15 origin flip (0x14132..0x14137) shifts actor 0 left by
+     * w - local_a - 1 = 63, so the same pair no longer overlaps. */
+    DSW(a0) = 0x8001;
+    CHECK_EQ_INT(camera_box_overlap(1, 2), 0);
+
+    /* Far apart: 0x14080's empty-intersection return. */
+    DSW(a0) = 1;
+    DSD(a1 + 4u) = 0x00080000u;
+    CHECK_EQ_INT(camera_box_overlap(1, 2), 0);
+    CHECK_EQ_INT(camera_box_overlap(2, 1), 0);
+
+    DSD(DS_001014E0) = saved_tab;
+    DSD(DS_001014F0) = saved_n;
+    DSD(DS_001014EC) = saved_actors;
+}
+
 /* 0x263F4: the arena frame's order and its two observable contracts. The two
  * latch sentinels differ from the values they copy, so a missing latch fails;
  * the 0x19068 pass stores a record float and clears the record's +0x20, so a
@@ -2538,6 +2588,7 @@ int test_fight(void)
     check_dust_gate();
     check_screen_base();
     check_decay();
+    check_box_overlap();
     check_arena_frame();
     check_arena_frame_live();
     check_pset_palette_zero_handle();

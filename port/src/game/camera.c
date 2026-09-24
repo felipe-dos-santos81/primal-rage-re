@@ -354,6 +354,71 @@ static s32 camera_scale(u32 x, u32 num)
     return (s32)(x * num + 0x800u) / 0x1000;
 }
 
+/* ---- 0x140E4 the box-overlap bool --------------------------------------- */
+
+/* The projection idiom 0x140E4/0x15C30/0x17FA0 share: ((s32)(x >> 6) * K +
+ * 0x800) / 0x1000 truncating toward zero (the raw's IMUL; ADD 0x800; SAR
+ * 0x1F; SHL 0xC; SBB; SAR 0xC sequence, 0x14140..0x14156). K is 0xF3D for x
+ * and 0xD56 for y. Reuses camera_scale's truncating divide. */
+static s32 camera_project_axis(s32 x, u32 k)
+{
+    return camera_scale((u32)(x >> 6), k);
+}
+
+/* 0x14080. Intersect `a` and `b` into `out` (left/top = max, right/bottom =
+ * min) and return 1 when the result is non-empty. The raw's caller passes
+ * out == a (0x1424E LEA EAX,[ESP+0x10], 0x14256 LEA EDX,[ESP+0x10] with
+ * EBX = ESP), so the intersection is computed in place. */
+static int camera_rect_clip(int *out, const int *a, const int *b)
+{
+    out[0] = (a[0] > b[0]) ? a[0] : b[0];
+    out[1] = (a[1] > b[1]) ? a[1] : b[1];
+    out[2] = (a[2] < b[2]) ? a[2] : b[2];
+    out[3] = (a[3] < b[3]) ? a[3] : b[3];
+    return (out[2] >= out[0]) && (out[3] >= out[1]);
+}
+
+/* 0x140E4's per-actor rect (0x140EE..0x141A7 for the first actor,
+ * 0x141AB..0x1425A for the second). The sprite origin comes from the
+ * 0xA8B30 handle resolved by 0x1B544 with the raw index `word[actor] &
+ * 0x7FFF` (no 0x17EEC character constant, unlike 0x16308). */
+static void camera_actor_rect(u32 actor_idx, int *rect)
+{
+    u32 rec = DSD(DS_001014EC) + actor_idx * 0x20u;
+    u32 id = (u32)DSW(rec) & 0x7FFFu;
+    const u8 *sp = (const u8 *)res_resolve(DSD(DS_000A8B30 + id * 4u));
+    s32 local_a = 0, local_b = 0, w = 0, h = 0;
+    if (sp != NULL) {
+        u32 off = (u32)(sp - mem);
+        local_a = (s32)DSD(off + 2u) >> 16;         /* 0x14114/0x14123 */
+        local_b = (s32)DSD(off + 4u) >> 16;         /* 0x1411A/0x1412B */
+        w = (s32)(s16)DSW(off);                     /* 0x14132/0x14188 */
+        h = (s32)DSD(off) >> 16;                    /* 0x14194/0x1419A */
+        if ((DSW(rec) & 0x8000u) != 0)              /* 0x14117/0x1412E */
+            local_a = w - local_a - 1;              /* 0x14132..0x14137 */
+    }
+    /* PORT: the raw dereferences the sprite unconditionally; a failed resolve
+     * (res_resolve NULL) is treated as a zero-origin, zero-size sprite rather
+     * than reading mem[]. */
+    s32 x1 = camera_project_axis((s32)DSD(rec + 4u), 0xF3Du) - local_a;
+    s32 y1 = camera_project_axis((s32)DSD(rec + 8u), 0xD56u) - local_b;
+    rect[0] = x1;                                   /* 0x1415B/0x1420D */
+    rect[1] = y1;                                   /* 0x14180/0x14231 */
+    rect[2] = x1 + w;                               /* 0x1418D/0x1423D */
+    rect[3] = y1 + h;                               /* 0x141A7/0x14252 */
+}
+
+/* 0x140E4. Returns 1 iff the two actors' screen boxes overlap. It writes no
+ * global of its own (0x1B544's handle expansion aside). 0x17580 uses it as the
+ * 0x17698 gate for the 0x170A0 tail. */
+int camera_box_overlap(u32 actor0, u32 actor1)
+{
+    int rect0[4], rect1[4];
+    camera_actor_rect(actor0, rect0);
+    camera_actor_rect(actor1, rect1);
+    return camera_rect_clip(rect0, rect0, rect1);
+}
+
 void camera_decay(void)
 {
     /* 0x17585: four 16-bit countdowns, decremented only when non-zero. */
@@ -370,9 +435,16 @@ void camera_decay(void)
     DSD(DS_00100B00) = (u32)camera_scale(DSD(DS_00100B00), 0xD56u);
     DSD(DS_00100B04) = (u32)camera_scale(DSD(DS_00100B04), 0xD56u);
 
-    /* PORT: 0x17698 0x140E4 (bool) and 0x176AC/0x176BF 0x170A0 are unported
-     * (the fighter screen-sync path); the DS_00100B60/61 tail is skipped and
-     * those bytes keep the values camera_project wrote. */
+    /* 0x17680..0x176C4: the 0x140E4 box-overlap gate. The raw reads slot0's
+     * actor index (0x17680/0x1768F) and slot1's (0x17685), and when the boxes
+     * overlap runs 0x170A0(0) for B60 != 0 (0x176AC) and 0x170A0(1) for
+     * B61 != 0 (0x176BF). PORT: 0x170A0 and its bit-plane callees are unported
+     * (the fighter screen-sync half; record §1.6) — the tail is skipped and
+     * AF8/AFC keep the zeroes above. */
+    if (camera_box_overlap(DSW(DSD(DS_001077B0) + 0x56u),
+                           DSW(DSD(DS_00107844) + 0x56u)) != 0) {
+        /* TODO(verify): 0x176AC/0x176BF 0x170A0(0)/0x170A0(1) — named gap. */
+    }
 }
 
 /* ---- 0x16D58 the per-side screen base ---------------------------------- */
