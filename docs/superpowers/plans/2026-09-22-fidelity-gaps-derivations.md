@@ -420,7 +420,7 @@ if (S[0x54] != 5) {                                                  // 0x386D9.
 ```
 
 **Callees:** `0x164E8`✗, `0x2BC30`✓, `0x38154`✗ (the `S+0x54 == 5` arm is
-already a named gap in the ported `0x36638`, `fighter.c:1236`).
+already a named gap in the ported `0x36638`, `fighter.c:1248`).
 
 ### 2.2 `0x39A10` — the timer write (`fighter_39a10(F, value)`)
 
@@ -812,8 +812,9 @@ inflates the group-D closure the spec already measured at "~3 functions / ~300 B
 of palette work" — the in-scope column reproduces it exactly.
 
 The in-scope genuinely-new per group is therefore: **A 10 f / 2 223 B, B 2 f /
-418 B, C 0, D 3 f / 293 B; union 15 f / 2 934 B** — below both thresholds
-(4 KB, 20 functions).
+418 B, C 0, D 3 f / 293 B; four-group union 15 f / 2 934 B**. With Task 3's
+ratified caller chain (5 f / 1 741 B) the **branch total is 20 f / 4 675 B**,
+which crosses the gate's ≥ ~4 KB line — see §6.3.
 
 ### 6.3 Verdicts
 
@@ -823,9 +824,23 @@ The in-scope genuinely-new per group is therefore: **A 10 f / 2 223 B, B 2 f /
   functions.
 * **D (the attract drivers): fits this cycle.** In-scope 3 f / 293 B (the
   spec's own measurement).
-* **No group becomes a follow-on cycle.** The union's in-scope work is
+* **No single group becomes a follow-on cycle.** The four groups' union is
   15 f / 2 934 B. The mechanical true-new (27 f / 4 490 B) crosses the 4 KB
   line only because of the shared resource-loader/runtime path named above.
+
+**The branch total crosses the gate (Task 6 correction).** Task 3 then added the
+**ratified caller chain** (`0x37178`/`0x36870`/`0x379C4`/`0x164E8` for bit 6,
+`0x37D18` for bit 7 — 5 functions / ~1 741 B, §7 item 2), which the §6.2 union
+above predates. The branch's genuinely-new closure is therefore **20 functions /
+4 675 B** (15 f / 2 934 B + 5 f / 1 741 B) — it **crosses the spec's ≥ ~4 KB
+line** and reaches the ~20-function threshold. The gate is written per group, and
+**no single group crossed**: the four groups were each task-sized (A 10/2 223,
+B 2/418, C 0, D 3/293) and the chain was 5/1 741. The chain was **ratified by the
+human** because the callees' real call sites live in those callers and the repo
+forbids shipping unreachable code. So the gate's purpose — catching a
+subsystem-sized group *before* porting — was served: the crossing is the sum of
+five task-sized pieces, not one oversized group. The §6.2 table stands as Task
+1's four-group measurement; the branch total is this paragraph's.
 
 **Task order (the record's authority):** A (2 223 B) and C (0 B) are
 independent; B (418 B) and D (293 B) are the smallest. The provisional
@@ -843,8 +858,8 @@ change banked early; the record leaves the order to the reviewer.
    and dispatched: `fighter_state_359e0` (state 1), `fighter_state_35c1c` +
    `fighter_state_35d20` (2), `fighter_state_37464` (8), `fighter_state_33b00`
    (19, with its inline `+0x8E` countdown wired in `fight.c`),
-   `fighter_state_35e6c` (20). Assertion: 29 `CHECK_EQ_INT` in
-   `test_fight.c:check_gap_handlers`, six mutation proofs reproduced. Ladder
+   `fighter_state_35e6c` (20). Assertion: 31 `CHECK_EQ_INT` in
+   `test_fight.c:check_gap_handlers`, seven mutation proofs reproduced. Ladder
    green, every enforced claim unmoved. **Closed.**
 2. **`0x349C8`'s bit-6/7 deep callees** (Task 3, `019e404`/`7c0cd91`/`9b88b20`/
    `15c08e1`/`847e228`). `0x385B0` wired at `0x36884` (under
@@ -906,7 +921,7 @@ change banked early; the record leaves the order to the reviewer.
    trace, the byte-identical `frame_0314.raw` ↔ `frame_0830.raw`. **Not closed;
    out of this cycle's scope.**
 7. **`0x38154`** (the `S+0x54 == 5` arm of `0x36638`/`0x385B0`) stays the
-   existing named gap (`fighter.c:1236`); no in-scope path reaches it.
+   existing named gap (`fighter.c:1248`); no in-scope path reaches it.
 8. **The pose/freeze subsystem** (`0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC`
    → the pose family; 68 new funcs / 10 467 B) → **cycle 4** (cycle 3's record
    §10; the size gate triggered).
@@ -927,7 +942,8 @@ change banked early; the record leaves the order to the reviewer.
     divert, `0x1EEB0`, `0x1F458`, the player screens and human input) —
     **unowned** by any cycle to date.
 13. **The audio gaps** — streamed Smacker audio (2b-ii) and the attract's
-    `0x2C3FC` voice calls remain.
+    `0x2C3FC` voice calls remain. **Owner:** the audio sub-project (2b-ii,
+    streamed Smacker audio; the voice subsystem `0x2C3FC` is still a stub).
 
 No gap is dropped and no claim is stronger than its evidence: the four in-scope
 gaps are closed with their assertions and the unmoved ladder; every out-of-scope
@@ -1140,13 +1156,14 @@ more and wire the callees' real call chains:
 ## 10. Outcome (Task 6 — recorded)
 
 **The cycle closed all four in-scope gaps, moved no enforced oracle claim, and
-left every out-of-scope gap with its owner.** The size gate did not trigger (the
-union's in-scope closure is 15 functions / 2 934 B, §6.3).
+left every out-of-scope gap with its owner.** The size gate was satisfied per
+group but the **branch total crosses it**: 20 functions / 4 675 B (§6.3) — no
+single group triggered, and the one expansion was human-ratified.
 
 **The four gaps.**
 
-* **The five `+0x52` handlers (Task 2)** — ported and dispatched. 29
-  `CHECK_EQ_INT` (`test_fight.c:check_gap_handlers`), six mutation proofs.
+* **The five `+0x52` handlers (Task 2)** — ported and dispatched. 31
+  `CHECK_EQ_INT` (`test_fight.c:check_gap_handlers`), seven mutation proofs.
 * **`0x349C8`'s bit-6/7 deep callees (Task 3)** — `0x385B0`/`0x39A10` wired at
   the raw's sites (`0x36884`, `0x37D57`); the minimal caller chain (5 functions /
   ~1 741 B) ported and **ratified by the human** so the callees stay reachable.
@@ -1166,10 +1183,16 @@ load/stall model: the port holds capture-830's frame byte-static for loop
 owner is the state-9 screen's actor-animation advance; it is oracle-neutral and
 carried forward (named gap 6).
 
-**The size gate (§6).** No group becomes a follow-on: in-scope A 10 f / 2 223 B,
-B 2 f / 418 B, C 0, D 3 f / 293 B; union 15 f / 2 934 B — below both thresholds.
-The mechanical true-new (27 f / 4 490 B) crosses 4 KB only because of the shared
-resource-loader/runtime path (`0x1B544` et al.), which the port already replaces.
+**The size gate (§6).** **No single group triggered it**: in-scope A 10 f /
+2 223 B, B 2 f / 418 B, C 0, D 3 f / 293 B, and Task 3's caller chain 5 f /
+1 741 B — each task-sized. The **branch total is 20 functions / 4 675 B**, which
+**crosses the gate's ≥ ~4 KB line** (and reaches the ~20-function threshold). The
+chain was **ratified by the human** (the callees' real call sites live in those
+callers; the repo forbids unreachable code), so the gate's purpose — catching a
+subsystem-sized group before porting — was served: the crossing is the sum of
+five task-sized pieces, not one oversized group. The mechanical true-new
+(27 f / 4 490 B) crosses 4 KB only because of the shared resource-loader/runtime
+path (`0x1B544` et al.), which the port already replaces.
 
 **Claim-move policy.** No enforced claim moved — title
 `54 clean, 55 splice, 2 transition, 0 unexplained` and `54 clean, 57 splice,
@@ -1187,5 +1210,6 @@ in Task 6's commit.
 **Out-of-scope gaps carried, with owners (§7):** the freeze (`0x19020` chain) and
 the demo oracle's `res is None` → cycle 4; the `0x13xxx` call sites → the
 interactive match; 831/832 (un-derivable); the interactive match (unowned); the
-audio gaps; the state-9 hold and `0x38154` (existing named gaps); Task 4's
-flush-scope-vs-gate concern (cycle-2's read/gate model).
+audio gaps (the audio sub-project, 2b-ii); the state-9 hold and `0x38154`
+(existing named gaps); Task 4's flush-scope-vs-gate concern (cycle-2's read/gate
+model).

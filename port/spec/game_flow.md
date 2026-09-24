@@ -1006,8 +1006,8 @@ warnings: title `54 clean, 55 splice, 2 transition, 0 unexplained` and
 `54 clean, 57 splice, 0 unexplained`; attract `FIRST DIVERGENCE at capture frame
 215` (raw 2180/2175); front-end `[560..830]` / 271 frames: 117 clean, 153 splice,
 0 transition, `0 unexplained`; smk `120/120` + `41/41`; C-vs-Python `9866 writes
-  byte-exact`; `symbols.h` regenerates byte-identically (1304 globals, 1206
-  functions).
+byte-exact`; `symbols.h` regenerates byte-identically (1304 globals, 1206
+functions).
 
 ## Small fidelity gaps — outcome (Task 6)
 
@@ -1015,11 +1015,13 @@ The `fidelity-gaps` cycle (spec
 `../../docs/superpowers/specs/2026-09-22-fidelity-gaps-design.md`, record
 `../../docs/superpowers/plans/2026-09-22-fidelity-gaps-derivations.md`) closed
 **all four** of cycle 3's small named gaps and moved **no enforced oracle
-claim**. The size gate did not trigger (union in-scope 15 functions / 2 934 B).
+claim**. No single group triggered the size gate, but the **branch total crosses
+it**: 20 functions / 4 675 B (the four groups 10/2 223, 2/418, 0, 3/293 plus the
+human-ratified caller chain 5/1 741).
 
 * **The five `+0x52` handlers** — `0x359E0` (state 1), `0x35C1C` + `0x35D20` (2),
-  `0x37464` (8), `0x33B00` (19), `0x35E6C` (20) ported and dispatched; 29
-  `CHECK_EQ_INT` with six mutation proofs.
+  `0x37464` (8), `0x33B00` (19), `0x35E6C` (20) ported and dispatched; 31
+  `CHECK_EQ_INT` with seven mutation proofs.
 * **`0x349C8`'s bit-6/7 deep callees** — `0x385B0` wired at `0x36884` (under
   `DSW(0x104B00) == 0x25`) and `0x39A10` at `0x37D57`, with the minimal caller
   chain (5 functions / ~1 741 B) ported and **ratified by the human** so the
@@ -1043,9 +1045,9 @@ port frames 259..480) and carried forward.
 **Carried with owners (record §7).** The pose/freeze subsystem (`0x19020` chain)
 and the demo oracle's `res is None` → **cycle 4**; the `0x13xxx` call sites
 (`0x29B74`/`0x41578`) → **the interactive match**; 831/832's held-frame
-presentation (un-derivable); the interactive match (unowned); the audio gaps; the
-state-9 hold; `0x38154`; and the flush-scope-vs-gate concern (cycle-2's read/gate
-model).
+presentation (un-derivable); the interactive match (unowned); the audio gaps (the
+audio sub-project, 2b-ii); the state-9 hold; `0x38154`; and the
+flush-scope-vs-gate concern (cycle-2's read/gate model).
 
 **Every enforced oracle claim is unmoved.** `make verify` exits 0 with 0
 warnings: title `54 clean, 55 splice, 2 transition, 0 unexplained` and

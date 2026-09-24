@@ -139,9 +139,10 @@ subagent-driven development with a review per task, the ledger at
 ## Outcome (recorded, Task 6)
 
 **All four in-scope gaps are closed; no enforced oracle claim moved; every
-out-of-scope gap is carried with its owner.** The size gate did not trigger.
+out-of-scope gap is carried with its owner.** No single group triggered the size
+gate; the **branch total crosses it** (20 f / 4 675 B).
 
-* **The five `+0x52` handlers** — ported, dispatched, 29 `CHECK_EQ_INT` with six
+* **The five `+0x52` handlers** — ported, dispatched, 31 `CHECK_EQ_INT` with seven
   mutation proofs.
 * **`0x349C8`'s bit-6/7 deep callees** — ported at the raw's sites, with the
   minimal caller chain (5 functions / ~1 741 B) **ratified by the human** so the
@@ -157,12 +158,18 @@ out-of-scope gap is carried with its owner.** The size gate did not trigger.
 
 **The 169-tick hold** is a **real divergence** (the state-9 screen's animation
 stops ~169 ticks early), not the load/stall model; oracle-neutral, carried
-forward. **The size gate** did not trigger (union in-scope 15 f / 2 934 B).
+forward. **The size gate:** no single group triggered it (the four groups were
+each task-sized — 10 f/2 223 B, 2 f/418 B, 0, 3 f/293 B — and Task 3's ratified
+caller chain 5 f/1 741 B), but the **branch total 20 f / 4 675 B crosses the
+≥ ~4 KB line**. The chain was **ratified by the human** (the callees' call sites
+live in those callers; the repo forbids unreachable code), so the gate's purpose
+— catching a subsystem-sized group before porting — was served.
 **No enforced claim moved**: title `54 clean, 55 splice, 2 transition, 0
 unexplained` + `54 clean, 57 splice, 0 unexplained`; attract `FIRST DIVERGENCE at
 capture frame 215`; front-end `[560..830]`/271 `0 unexplained`; smk `120/120` +
 `41/41`; C-vs-Python `9866 writes byte-exact`; `symbols.h` idempotent; 0 warnings.
 **Carried with owners:** the freeze and the demo oracle's `res is None` → cycle 4;
 the `0x13xxx` call sites → the interactive match; 831/832 (un-derivable); the
-interactive match (unowned); the audio gaps; the state-9 hold; `0x38154`; the
-flush-scope-vs-gate concern. The full inventory is the record §7.
+interactive match (unowned); the audio gaps (the audio sub-project, 2b-ii); the
+state-9 hold; `0x38154`; the flush-scope-vs-gate concern. The full inventory is
+the record §7.
