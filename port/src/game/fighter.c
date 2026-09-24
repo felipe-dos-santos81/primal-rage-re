@@ -1321,7 +1321,8 @@ tail:
 }
 
 /* 0x349C8. The +0x52 == 0 default handler. Its +0x42 bit 6/7 arms
- * (0x37178/0x37D18) are named gaps (§7.10); no demo writer sets either bit. */
+ * (0x37178/0x37D18) are ported (small-fidelity-gaps cycle, record §7 item 2);
+ * no demo writer sets either bit. */
 void fighter_state_default(u32 side)
 {
     u32 slot = DSD(DS_001077A8 + side * 4u);            /* 0x349CF */
