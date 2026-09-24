@@ -310,9 +310,9 @@ the `0x3C88C` hitbox machine and the `0x3CF38` hit chain — the chain now **fir
 and hits land (`+0x7C` 0/0 → 1/1), and the fight's last state change moved
 **1262 → 1400**. Its report-only oracle (`make demo-oracle`) measures the demo
 window `[843..3616]` (raw `3750..8409`), **2774 frames: 0 clean / 0 splice / 0
-transition / 2768 unexplained** (6 all-black frames excluded). **The first
-unexplained frame is capture 843 (raw 3750)** — the T-rex's animation pose, not
-the state-9 hold. (Amendment 5 of cycle 1's plan said the fight
+transition / 2768 unexplained** (6 all-black frames excluded). **The demo
+window's first unexplained frame is capture 843 (raw 3750)** — the T-rex's
+animation pose, not the state-9 hold. (Amendment 5 of cycle 1's plan said the fight
 begins at 839/28; Task 1 corrected it to **836/25**, and the final re-capture
 moved the loader text to 832 with the fight's first frames at 833/834 — record
 §9.1/§9.3.) Cycle 2 advanced the boundary 811 → 816 → 832: the

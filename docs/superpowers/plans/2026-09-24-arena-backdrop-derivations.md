@@ -107,9 +107,12 @@ make verify
    `0x88398`, `0x87EF8`, `0x88080`, `0x8839C`, `0x883C4` — each is the corrected
    value minus `0x80000`) and are corrected in §3.3 against Ghidra (`0xF0A78`,
    `0x104AE8`, `0x108398`, `0x107EF8`, `0x108080`, `0x10839C`, `0x1083C4`).
-   **The eighth, `0x10882E0`, is a transcription slip, not a pre-fixup form**:
-   the corrected value is `0x1082E0`, whose pre-fixup form is `0x882E0`;
-   `0x10882E0` is the fixup-applied value with an extra `0x80000`. The
+   **The eighth, `0x10882E0`, is a transcription slip (a digit transposition),
+   not a pre-fixup form**: the corrected value is `0x1082E0`, whose pre-fixup
+   form is `0x882E0`. The arithmetic rules out a fixup relation in both
+   directions: `0x10882E0 − 0x1082E0 = 0xF80000`, not `0x80000`, and
+   `0x1082E0 + 0x80000 = 0x1882E0`, not `0x10882E0` — the slip is the extra `8`
+   inserted after the leading `0x10`. The
    correction matters because the wrong forms land on **different, non-zero**
    globals (`DSB(0x88398)` reads `0x80`, `DSB(0x84AE8)` reads `0x72`) while the
    correct ones are zero, and `port/src/mem.h:22` is `DSB(o) = mem[o]` — a
@@ -151,6 +154,27 @@ make verify
     the 16-callback dispatch the five `cb = 0x127C0` spawns survive, but a
     targeted isolation (type 0x01 only killed) leaves **0 of 1381** dumped
     frames different. They change no oracle claim.
+
+13. **Every §3.3 re-insert is at the destination's head, not its tail (final
+    review C1).** `0x249B0` is **insert-after**: `0x249B1 MOV EBX,[EAX]`,
+    `0x249B3 MOV [EAX],EDX`, `0x249B5 MOV [EDX],EBX` — `EDX` (the node) becomes
+    `[EAX]` (the destination sentinel's next, i.e. the head). `0x249C0` is the
+    insert-before form (`0x249C1 MOV EBX,[EAX+0x4]`, `0x249C4 MOV [EAX+0x4],EDX`,
+    `0x249C7 MOV [EDX],EAX`). The first edition's §3.3 glosses said "insert
+    before"; **the raw wins**. The 11 call sites, each `MOV EAX,<destination
+    sentinel>` then `CALL 0x249B0` with `EDX` = the node: `0x127F4` (`0xF0AE0`),
+    `0x1281A` (`0xF0A78`), `0x1991C` (`0x100C28`), `0x19942` (`0x100C20`),
+    `0x28F96`/`0x2904E` (`0x104880`), `0x290EA` (`0x104888`), `0x48D0A`
+    (`0x108368`), `0x48D56` (`0x1082E0`), `0x4069E` (`0x107EF8`), `0x49494`
+    (`0x1083C4`) — proved by Ghidra `search_instructions CALL 0x000249b0`
+    (all 11 present) plus `disassemble_bytes` at `0x249B0`/`0x249C0` and at
+    `0x127C0`/`0x12800`/`0x49444` (the `MOV EAX,<sentinel>` before each call).
+    The port's helpers (`actors.c:29-46`) were already correct; the 11 callback
+    calls were flipped to `list_insert_after`. The consequence is observable
+    only when a destination pool holds ≥2 nodes. The §7.3 type-0x06 two-node
+    assertion now pins the raw post-state (the head node is re-inserted at the
+    head, so the list is unchanged) and §7.4's pop case seeds the destination
+    with a node so the re-insert end is observable.
 
 ---
 
@@ -490,22 +514,22 @@ returning a byte in `AL`. **Every data address below is Ghidra's
 
 | # | half | addr | types | size | body (raw, address-proved) |
 |---|---|---|---|---|---|
-| 1 | cb1 | `0x127C0` | 0x01 | 62 | pop the head of the `DS_000F0A78` list (unlink `0x249D0`); if empty return `0xFF`; else `rec2+8 = rec`, `rec+0x14 = rec2`, insert `rec2` before `0xF0AE0` (`0x249B0`), return 0. Proving: `0x127C4 MOV EDX,dword ptr [0x000F0A78]`, `0x127CA CMP EDX,0xF0A78`, `0x127EC MOV EAX,0xF0AE0`, `0x127F1 MOV [EBX+0x14],EDX`, `0x127E1 MOV EAX,0xFFFFFFFF` |
+| 1 | cb1 | `0x127C0` | 0x01 | 62 | pop the head of the `DS_000F0A78` list (unlink `0x249D0`); if empty return `0xFF`; else `rec2+8 = rec`, `rec+0x14 = rec2`, insert `rec2` after `0xF0AE0` (`0x249B0` — the destination head, §0.3.13), return 0. Proving: `0x127C4 MOV EDX,dword ptr [0x000F0A78]`, `0x127CA CMP EDX,0xF0A78`, `0x127EC MOV EAX,0xF0AE0`, `0x127F1 MOV [EBX+0x14],EDX`, `0x127E1 MOV EAX,0xFFFFFFFF` |
 | 2 | cb1 | `0x198E8` | 0x06/0x26/0x27/0x28 | 62 | the same with `DS_00100C20` and `0x100C28` (`0x198EC MOV EDX,dword ptr [0x00100C20]`, `0x198F2 CMP EDX,0x100C20`, `0x19914 MOV EAX,0x100C28`) |
 | 3 | cb1 | `0x28F64` | 0x19 | 182 | the same with `DS_00104888`/`0x104880` (`0x28F69`, `0x28F8F`), then `byte[rec2+0xC] = 0` (`0x28F9B`), `word[rec+0x32] = word[0xBD898]` (`0x28F9F`/`0x28FA8`), `byte[rec+0x29] \|= 0x10` (`0x28FAC`), `rec+0x14 = rec2` (`0x28FB2 MOV [EBX+0x14],ECX`, `EBX = rec`, `ECX = rec2`). **Tail** (`0x28FB5`–`0x29019`): `0x2BE5C(rec)` (`0x28FB5`); `ECX = rng_next(0x20)` (`0x28FBA`/`0x28FBF`); `EAX = rng_next(0x80)` (`0x28FC6`/`0x28FCB`); `ECX += 0x20` (`0x28FD4`); `EAX += 0xC0` (`0x28FD9`); `DX = word[rec+0x28] & 0x4000` (`0x28FD0`/`0x28FDE`/`0x28FE1`); if clear → `word[rec+0x34] = CX` (`0x28FF7`); if set → `word[rec+0x34] = -ECX` (`0x28FE9`–`0x28FED`) and `byte[rec+0x29] \|= 0x40` (`0x28FF1`); then `word[rec+0x44] = 0xC` (`0x28FFB`), `word[rec+0x36] = AX` (`0x29007`), `byte[DS_00104AE8] \|= 0x80` (`0x29001`/`0x2900B`/`0x29010`); return 0 (`0x2900E`). **Empty list → `0x28F86 MOV EAX,0xFFFFFFFF`, `0x28F8E RET` — the tail is not reached** |
 | 4 | cb1 | `0x2901C` | 0x0A | 179 | as #3's head (`0x29053`–`0x2906A`); **tail** (`0x2906D`–`0x290CE`): `0x2BE5C(rec)` (`0x2906D`); `ECX = rng_next(0x80)` (`0x29072`/`0x29077`); `EAX = rng_next(0x80)` (`0x2907E`/`0x29083`); `EAX += 0xC0` (`0x2908E`); `DX = word[rec+0x28] & 0x4000`; **reversed polarity** (`0x2909C JNZ`): if set → `word[rec+0x34] = CX` (`0x290AC`); if clear → `word[rec+0x34] = -ECX` (`0x2909E`–`0x290A2`) and `byte[rec+0x29] \|= 0x40` (`0x290A6`); then `word[rec+0x44] = 0xC` (`0x290B0`), `word[rec+0x36] = AX` (`0x290BC`), `byte[DS_00104AE8] \|= 0x80` (`0x290C5`); return 0 (`0x290C3`). **No `ECX += 0x20`** — #3 and #4 differ in the first rng range (`0x20` vs `0x80`) and the branch polarity. **Empty list → `0x2903E MOV EAX,0xFFFFFFFF`, `0x29046 RET` — the tail is not reached** |
 | 5 | cb1 | `0x48CD8` | 0x2D | 100 | the same with `DS_001082E0`/`0x108368` (`0x48CDD MOV EBX,dword ptr [0x001082E0]`, `0x48CE3 CMP EBX,0x1082E0`, `0x48D03 MOV EAX,0x108368`, `0x48D0A`), then `byte[DS_00104AE8] \|= 2` (`0x48D0F MOV AH,byte ptr [0x00104AE8]`, `0x48D22 OR AH,2`, `0x48D2A`), `byte[DS_00108398]++` (`0x48D19 MOV DL,byte ptr [0x00108398]`, `0x48D25 INC DL`, `0x48D30`), `byte[rec2+0xC] = 0` (`0x48D15`), `rec2+8 = rec` (`0x48D1F`) |
 | 6 | cb1 | `0x412F0` | 0x16 | 9 | `word[rec+0x34] = 0x200; return 0` (`0x412F0`/`0x412F6`) |
 | 7 | cb1 | `0x412FC` | **0x1B** | 9 | `word[rec+0x34] = 0x140; return 0` (`0x412FC`/`0x41302`) |
-| 8 | cb2 | `0x12800` | 0x01 | 41 | if `rec+0x14 != 0`: unlink it (`0x249D0`), insert before `0xF0A78` (`0x12812 MOV EAX,0xF0A78`, `0x249B0`), `rec+0x14 = 0` (`0x12804`–`0x1281F`) |
+| 8 | cb2 | `0x12800` | 0x01 | 41 | if `rec+0x14 != 0`: unlink it (`0x249D0`), insert after `0xF0A78` (`0x12812 MOV EAX,0xF0A78`, `0x249B0`; §0.3.13), `rec+0x14 = 0` (`0x12804`–`0x1281F`) |
 | 9 | cb2 | `0x19928` | 0x06/0x26/0x27/0x28 | 45 | the same with `0x100C20` (`0x1993A MOV EAX,0x100C20`) and `byte[rec+0x48] = 0` (`0x1994E`) |
 | 10 | cb2 | `0x290D0` | 0x0A/0x19 | 41 | the same with `0x104888` (`0x290E2 MOV EAX,0x104888`) |
 | 11 | cb2 | `0x40684` | 0x1A | 45 | the same with `0x107EF8` (`0x40696 MOV EAX,0x107EF8`) and `byte[rec+0x48] = 0` (`0x406AA`) |
 | 12 | cb2 | `0x3B9C4` | 0x02/0x03/0x04/0x05/0x08 | 19 | if `rec+0x14 != 0`: `[rec+0x14+8] = 0`, `byte[rec+0x14+0x64] = 0xFF` (`0x3B9C4`–`0x3B9D2`) |
 | 13 | cb2 | `0x3FC90` | 0x10 | 29 | if `rec+0x14 != 0`: `dword[0x108080 + byte[rec+0x14+0x51]*4] = 0` (`0x3FCA3 MOV dword ptr [EAX*0x4 + 0x108080], EBX`) |
 | 14 | cb2 | `0x3D784` | 0x09 | 10 | `EAX = 0x4F; jmp 0x2C3FC` (`0x3D784`/`0x3D789`) — a **tail call into the voice dispatcher** `FUN_0002c3fc` (1268 B, 206 callers), which the port carries as an out-of-scope stub (§4.3); its return (the table byte `DSB(0xBBdc8 + 0x4F*12) = 0x5`) is **not** tested by the cb2 dispatch |
-| 15 | cb2 | `0x48D3C` | 0x2D | 67 | if `rec+0x14 != 0`: unlink it, insert before `0x1082E0` (`0x48D4E MOV EAX,0x1082E0`), `rec+0x14 = 0`, `byte[DS_00108398]--` (`0x48D5B`/`0x48D61`/`0x48D6A`), and if it underflows to `0xFF` (`0x48D70`/`0x48D73`), `byte[DS_00104AE8] &= ~2` (`0x48D75 AND byte ptr [0x00104AE8],0xFD`) |
-| 16 | cb2 | `0x49444` | 0x20..0x25 | 97 | if `rec+0x14 != 0`: if `word[rec2+0x1C] & 2` (`0x49451`–`0x4945E`), `dword[0x10839C + ((s32)DSD(rec2+0x18) >> 16)*4] = 0` (`0x49468 MOV dword ptr [EAX*0x4 + 0x10839C], ECX`); if `DSD(rec2+0x10) != 0`, `set_dead` it (`0x49478 CALL 0x2B150`) and clear (`0x4947D`); unlink `rec+0x14`, insert before `0x1083C4` (`0x4948C MOV EAX,0x1083C4`), `rec+0x14 = 0` (`0x49499`) |
+| 15 | cb2 | `0x48D3C` | 0x2D | 67 | if `rec+0x14 != 0`: unlink it, insert after `0x1082E0` (`0x48D4E MOV EAX,0x1082E0`; §0.3.13), `rec+0x14 = 0`, `byte[DS_00108398]--` (`0x48D5B`/`0x48D61`/`0x48D6A`), and if it underflows to `0xFF` (`0x48D70`/`0x48D73`), `byte[DS_00104AE8] &= ~2` (`0x48D75 AND byte ptr [0x00104AE8],0xFD`) |
+| 16 | cb2 | `0x49444` | 0x20..0x25 | 97 | if `rec+0x14 != 0`: if `word[rec2+0x1C] & 2` (`0x49451`–`0x4945E`), `dword[0x10839C + ((s32)DSD(rec2+0x18) >> 16)*4] = 0` (`0x49468 MOV dword ptr [EAX*0x4 + 0x10839C], ECX`); if `DSD(rec2+0x10) != 0`, `set_dead` it (`0x49478 CALL 0x2B150`) and clear (`0x4947D`); unlink `rec+0x14`, insert after `0x1083C4` (`0x4948C MOV EAX,0x1083C4`; §0.3.13), `rec+0x14 = 0` (`0x49499`) |
 
 Registration: `fn_register(0x127C0, ...)` … `fn_register(0x49444, ...)` in
 `actors_init` (`actors.c:95`, next to the existing three animation-code
@@ -880,6 +904,10 @@ test file). Each assertion is raw-derived, seeded, and mutation-proven.
   assertion tests the wrong path.
 * **Assert:** for the 16 registered types the callback's `AL` decides
   visibility; for every stub type the record is visible (`rec+0x28 & 8 == 0`).
+* **Direction (final review I1, §0.3.13):** the destination is also seeded with
+  one node, so the popped node's re-insert end is observable — it must become
+  the destination sentinel's next (`0x249B0` insert-after); the insert-before
+  form puts it at the sentinel's prev and the assertion fails.
 * **Mutation proof:** swap any registered callback for the stub → the affected
   type's visibility flips and the assertion fails.
 
@@ -900,7 +928,9 @@ test file). Each assertion is raw-derived, seeded, and mutation-proven.
   + 0x20` (the first draw, **before** the second — the order is RNG-visible);
   `word[rec+0x44] == 0xC` (`0x28FFB`); `word[rec+0x36] == rng_next(0x80) + 0xC0`
   (`0x29007`); `byte[DS_00104AE8] & 0x80` (`0x29010`); `byte[rec+0x29] & 0x40
-  == 0` (the clear-arm does not set it).
+  == 0` (the clear-arm does not set it). `DS_000F0AF0` is seeded non-zero so
+  the `rec+0x18` assertion (`pset+4 + ramp*2 − 0x2A00`; the reached ramp entry
+  is 0) also fails if `0x2BE5C` takes its else arm (final review minor).
 * **Assert (`#3`, bit 14 set):** `word[rec+0x34] == -(rng_next(0x20) + 0x20)`
   (`0x28FEB`/`0x28FED`) and `byte[rec+0x29] & 0x40` (`0x28FF1`).
 * **Assert (`#4`, `0x2901C`, polarity reversed):** bit 14 **set** →

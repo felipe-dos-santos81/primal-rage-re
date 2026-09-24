@@ -883,7 +883,7 @@ is UNMET.** The measurement, reproduced by Task 8:
   exhibits **0/1068** demo port frames ([313..1380]).
 * Front-end window (enforced in `verify`): **[560..830]** (raw 3108..3472),
   **271 frames: 117 clean, 153 splice, 0 transition, 0 unexplained** — its
-  claim holds.
+  claim holds (cycle 5 supersedes: `[560..842]`/283/2).
 
 **The residual frames are named gaps, each with its evidence and the task that
 left it. No pin or value was fitted to force the Gate.** (Cycle 3's section below
