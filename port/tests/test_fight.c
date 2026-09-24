@@ -2760,6 +2760,140 @@ static void check_deep_callees(void)
     DSD(0x003F40000u) = s_tbl;
 }
 
+/* ---- Task 3a: the 0x3AAFC reaction/pose sub-tree (pose/freeze record §2) --
+ * The pose setters and the 0x39834/0x392A0 drivers are exercised through the
+ * 0x3AAFC entry; the two pure helpers are unit-tested directly. */
+
+/* §8.2 0x3A280: the reaction predicate boundaries. */
+static void check_pose_predicate(void)
+{
+    CHECK_EQ_INT(fighter_3a280(0x0Fu), 0);      /* below the 0x10 floor */
+    CHECK_EQ_INT(fighter_3a280(0x10u), 1);      /* the 0x10..0x17 jump table */
+    CHECK_EQ_INT(fighter_3a280(0x17u), 1);
+    CHECK_EQ_INT(fighter_3a280(0x18u), 0);      /* the 0x18..0x1F hole */
+    CHECK_EQ_INT(fighter_3a280(0x1Fu), 0);
+    CHECK_EQ_INT(fighter_3a280(0x20u), 1);      /* the 0x20..0x3F range */
+    CHECK_EQ_INT(fighter_3a280(0x3Fu), 1);
+    CHECK_EQ_INT(fighter_3a280(0x40u), 0);
+    CHECK_EQ_INT(fighter_3a280(0xFFu), 0);
+}
+
+/* §2.6 0x46534: the accumulator clamps. */
+static void check_pose_accumulator(void)
+{
+    u32 addr = DS_001082C8 + 4u;                /* side 1 */
+    s32 saved = (s32)DSD(addr);
+    u32 saved_lo = DSD(DS_001082D0);
+    u8 saved_idx = DSB(DS_0010452C);
+    u8 saved_cap = DSB(0x000C9408u);
+
+    DSB(DS_0010452C) = 0;                       /* index 0 */
+    DSB(0x000C9408u) = 10;                      /* cap 10 */
+    DSD(DS_001082D0) = 0;
+
+    DSD(addr) = 5;
+    fighter_46534(1u, 3);
+    CHECK_EQ_INT((int)DSD(addr), 8);            /* 5 + 3, under the cap */
+
+    DSD(addr) = 5;
+    fighter_46534(1u, 0x7F);
+    CHECK_EQ_INT((int)DSD(addr), 10);           /* clamped down to the cap */
+
+    DSD(addr) = 5;
+    fighter_46534(1u, -100);
+    CHECK_EQ_INT((int)DSD(addr), 0);            /* clamped up to 0 */
+
+    DSD(DS_001082D0) = 2;
+    DSD(addr) = 5;
+    fighter_46534(1u, -100);
+    CHECK_EQ_INT((int)DSD(addr), 2);            /* the DS_001082D0 floor */
+
+    DSD(addr) = (u32)saved;
+    DSD(DS_001082D0) = saved_lo;
+    DSB(DS_0010452C) = saved_idx;
+    DSB(0x000C9408u) = saved_cap;
+}
+
+/* §8.2 0x3AAFC: the pose dispatch through the 0x3A504/0x3A79C arms and the
+ * side-1 mirror. The 0x3A280 predicate and the 0x3A0FC spawn are gated off by
+ * seeding both +0x5F = 0xFF and the 0xA6728 descriptor to zero. */
+static void check_pose_entry(void)
+{
+    u32 s0 = DS_001077B0;
+    u32 s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS;
+    u32 r1 = FIGHT_RECS + 0x100u;
+    u16 sv_w0 = DSW(0x000A6728u);
+    u16 sv_w2 = DSW(0x000A6728u + 2u);
+    u32 sv_d8 = DSD(0x000A6728u + 8u);
+    u8  sv_b3 = DSB(0x000DE117u);
+
+    fight_reset_recs();
+    fight_reset_actors();
+    mem_fill(s0, 0, 0x94u);
+    mem_fill(s1, 0, 0x94u);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+
+    DSW(DS_00104B00) = 0;                       /* mode 0 (not 0x22/3) */
+    DSB(DS_00104B1D) = 0;                       /* mode2 0 -> the MELSE arm */
+    DSB(DS_00105B38) = 0;
+    DSB(DS_00105B36) = 1;                       /* skip the +0x5D clamp */
+    DSB(DS_00105B3A) = 0;
+    DSD(DS_00104ABC) = 0;                       /* skip 0x4F434 */
+    DSB(DS_0010782A) = 0;                       /* char(slot 0) */
+    DSB(DS_001078BE) = 0;                       /* char(slot 1) */
+    DSB(r0 + 0x51u) = 0;
+    DSB(r1 + 0x51u) = 1;
+    DSB(s0 + 0x5Fu) = 0xFFu;                    /* uVar2 = 0 */
+    DSB(s1 + 0x5Fu) = 0xFFu;                    /* 0x3A280 -> 0 */
+    DSB(s0 + 0x54u) = 0;
+    DSB(s0 + 0x53u) = 0;
+    DSB(s0 + 0x41u) = 0;
+    DSB(s0 + 0x5Au) = 0;
+    DSB(s0 + 0x5Du) = 0;
+    DSB(s0 + 0x42u) = 0;
+    DSB(s1 + 0x42u) = 0;
+    DSW(s1 + 0x6Cu) = 0;
+    DSD(0x00107D2Au) = 0;                       /* k = 0, +0x14 gate clear */
+    DSD(0x00107D2Cu) = 0;
+    DSW(0x000A6728u) = 0;                       /* key = 0, no effect spawn */
+    DSW(0x000A6728u + 2u) = 0;                  /* ecx = 0 */
+    DSD(0x000A6728u + 8u) = 0;                  /* stream = 0 */
+    DSB(0x000DE117u) = 0;                       /* edx3 = 0 */
+
+    fighter_reaction_apply(s0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x10);   /* the 0x3A504 arm */
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0x0A);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x10u), 0x0003A43C);
+    CHECK_EQ_INT((int)DSW(DS_00107D14), (int)DSW(s0 + 0x2Cu));
+    CHECK_EQ_INT((int)DSW(DS_00107D10), 0);     /* edx3 >> 16 */
+    CHECK_EQ_INT((int)DSW(s1 + 0x6Cu), 1);      /* other +0x6C++ */
+    CHECK_EQ_INT((int)(DSB(s1 + 0x42u) & 2u), 2);   /* other +0x42 bit 1 */
+    CHECK_EQ_INT((int)(DSB(s0 + 0x42u) & 1u), 1);   /* self +0x42 bit 0 */
+
+    /* ecx bit 3 selects the 0x3A79C variant. */
+    DSW(0x000A6728u + 2u) = 8;
+    fighter_reaction_apply(s0, 0u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x10u), 0x0003A6D4);
+    CHECK_EQ_INT((int)DSW(DS_00107D08), (int)DSW(s0 + 0x2Cu));
+    CHECK_EQ_INT((int)DSW(DS_00107D04), 0);
+
+    /* The side-1 mirror. */
+    DSW(0x000A6728u + 2u) = 0;
+    fighter_reaction_apply(s1, 0u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0x10);
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0x0A);
+    CHECK_EQ_INT((int)DSB(s1 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(s1 + 0x10u), 0x0003A43C);
+    CHECK_EQ_INT((int)DSW(DS_00107D14 + 2u), (int)DSW(s1 + 0x2Cu));
+
+    DSW(0x000A6728u) = sv_w0;
+    DSW(0x000A6728u + 2u) = sv_w2;
+    DSD(0x000A6728u + 8u) = sv_d8;
+    DSB(0x000DE117u) = sv_b3;
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -2838,6 +2972,9 @@ int test_fight(void)
     check_deep_callees();
     check_hud_pass_machine();
     check_anim_stream_args();
+    check_pose_predicate();
+    check_pose_accumulator();
+    check_pose_entry();
 
     tf_put(s_f0ae0, 0x000F0AE0u, 0x20u);
     tf_put(s_proj, 0x00100A70u, 0xF4u);
