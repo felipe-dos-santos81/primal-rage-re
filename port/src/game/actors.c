@@ -284,6 +284,39 @@ u32 palette_acquire(u32 handle)
     return e;
 }
 
+/* 0x33874. Re-point the palette-table entry `descriptor` at `handle` and reflow
+ * the entries after it. The two callers are the attract drivers
+ * (0x4F81F/0x4F872): EAX = the descriptor (an entry of the table at
+ * DS_00107618, `{handle; rc; start; len}`), EDX = the handle. 0x1B544
+ * (res_resolve) pushes EDX at entry and pops it at every return, so the raw's
+ * EDX is still the handle after the call. The raw compares the entry's len
+ * against the resolved resource's leading colour count (`[EAX]`): when len is
+ * short (0x3388D `jl`), it walks the table from descriptor+0x10 to the table
+ * end (0x107798) and, while an entry's start is below the previous entry's end,
+ * moves the start to that end and re-enqueues `{handle; start; len; 1}`;
+ * otherwise, when the handle differs from the entry's, it re-points the entry
+ * and enqueues `{handle; entry.start; count; 1}`. PORT: a failed resolve (NULL)
+ * is treated as count 0, as gfx_flush_palette does, rather than the raw's
+ * deref. */
+void palette_reflow(u32 descriptor, u32 handle)
+{
+    const u32 *res = res_resolve(handle);           /* 0x1B544 */
+    u32 count = res ? *res : 0;
+    if ((s32)DSD(descriptor + 0x0Cu) < (s32)count) {        /* 0x3388B 0x3388D */
+        u32 prev = descriptor;
+        for (u32 p = descriptor + 0x10u; p < DS_00107798; p += 0x10u) {
+            u32 next_start = DSD(prev + 0x08u) + DSD(prev + 0x0Cu);
+            if ((s32)next_start <= (s32)DSD(p + 0x08u)) break;   /* 0x338D1 */
+            DSD(p + 0x08u) = next_start;                        /* 0x338D3 */
+            palette_record(DSD(p), next_start, DSD(p + 0x0Cu), 1);
+            prev = p;                                           /* 0x338E8 */
+        }
+    } else if (handle != DSD(descriptor)) {                     /* 0x33897/0x33899 */
+        DSD(descriptor) = handle;                               /* 0x3389B */
+        palette_record(handle, DSD(descriptor + 0x08u), count, 1);
+    }
+}
+
 /* ---- animation-stream interpreter (0x29F34/0x29DB8/0x2A408/0x2B8F8/0x2B2A0) */
 
 static void set_dead(u32 rec);

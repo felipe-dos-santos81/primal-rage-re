@@ -357,6 +357,165 @@ int test_attract(void)
         DSD(DS_00104AD0) = saved_mask;
     }
 
+    /* 0x4F7F4/0x4F83C/0x33874: the attract palette drivers. The starter 0x4F83C
+     * sets DS_00104AD0 bit 0, zeroes DS_001088F1 and enqueues DS_000C98A0[0]
+     * through 0x33874 (EAX = the entry DS_000F0A48, EDX = the handle); the
+     * advance 0x4F7F4 steps the counter and enqueues DS_000C98A0[counter],
+     * clearing bit 0 once the counter reaches 10. The record's recipe seeds
+     * DS_000F0A48 = 1, which 0x33874 would treat as a table entry and walk from
+     * 0x11 to 0x107798; this test instead uses a scratch descriptor and
+     * overrides the array entries with non-resolving sentinels, so 0x33874's
+     * else branch runs with count 0 and no loader-presentation side effect. The
+     * descriptor's len is 0x7FFFFFFF (signed >= any count) to keep that branch;
+     * the raw's compare is signed (`jl`/`jle`). */
+    {
+        const u32 DESCRIPTOR = 0x3F00000u + 0x100u;
+        const u32 HANDLE0 = 0xC98A0u;     /* the ten-handle array, no symbol */
+        const u32 ENTRY_LO = 0x107778u;   /* ownership-table entries 22/23 */
+        const u32 ENTRY_HI = 0x107788u;
+        const u32 SENTINEL_HANDLE = 0xFFFFFFFFu;
+
+        const u32 saved48 = DSD(DS_000F0A48);
+        const u8  saved_f1 = DSB(DS_001088F1);
+        const u32 saved_ad0 = DSD(DS_00104AD0);
+        const u32 saved_h0 = DSD(HANDLE0);
+        const u32 saved_h3 = DSD(HANDLE0 + 3u * 4u);
+        const u32 saved_h9 = DSD(HANDLE0 + 9u * 4u);
+        const u32 saved_head = DSD(DS_00107798);
+        u32 saved_rec[4];
+        u32 saved_desc[4];
+        u32 saved_entry[8];
+        for (u32 k = 0; k < 4u; k++) {
+            saved_rec[k] = DSD(DS_00107498 + k * 4u);
+            saved_desc[k] = DSD(DESCRIPTOR + k * 4u);
+        }
+        for (u32 k = 0; k < 8u; k++) saved_entry[k] = DSD(ENTRY_LO + k * 4u);
+
+        /* A. 0x4F7F4 advances counter 3 -> 4 and enqueues handle[3]. */
+        DSD(DESCRIPTOR + 0u) = 0xDEAD0000u;   /* handle sentinel */
+        DSD(DESCRIPTOR + 4u) = 0;
+        DSD(DESCRIPTOR + 8u) = 0x1234u;       /* start */
+        DSD(DESCRIPTOR + 12u) = 0x7FFFFFFFu;  /* len: else branch */
+        DSD(DS_000F0A48) = DESCRIPTOR;
+        DSD(HANDLE0 + 3u * 4u) = SENTINEL_HANDLE;
+        DSB(DS_001088F1) = 3;
+        DSD(DS_00104AD0) = 0xFFFFu;
+        DSD(DS_00107798) = DS_00107498;
+        attract_palette_advance();
+        CHECK_EQ_INT((int)DSB(DS_001088F1), 4);
+        CHECK_EQ_INT((int)(DSD(DS_00104AD0) & 1u), 1);   /* still set */
+        CHECK_EQ_INT((int)DSD(DESCRIPTOR), (int)SENTINEL_HANDLE);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 0u), (int)SENTINEL_HANDLE);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 4u), 0x1234);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 8u), 0);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 12u), 1);
+        CHECK_EQ_INT((int)DSD(DS_00107798), (int)(DS_00107498 + 0x10u));
+
+        /* B. counter 9 -> 10 clears bit 0 (and still enqueues handle[9]). */
+        DSD(DESCRIPTOR + 0u) = 0xDEAD0000u;
+        DSD(DESCRIPTOR + 12u) = 0x7FFFFFFFu;
+        DSD(DS_000F0A48) = DESCRIPTOR;
+        DSD(HANDLE0 + 9u * 4u) = SENTINEL_HANDLE;
+        DSB(DS_001088F1) = 9;
+        DSD(DS_00104AD0) = 0xFFFFu;
+        DSD(DS_00107798) = DS_00107498;
+        attract_palette_advance();
+        CHECK_EQ_INT((int)DSB(DS_001088F1), 10);
+        CHECK_EQ_INT((int)(DSD(DS_00104AD0) & 1u), 0);   /* cleared */
+        CHECK_EQ_INT((int)DSD(DESCRIPTOR), (int)SENTINEL_HANDLE);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 0u), (int)SENTINEL_HANDLE);
+
+        /* C. entry 0 skips the body and clears bit 0. */
+        DSD(DS_000F0A48) = 0;
+        DSB(DS_001088F1) = 5;
+        DSD(DS_00104AD0) = 0xFFFFu;
+        DSD(DS_00107798) = DS_00107498;
+        attract_palette_advance();
+        CHECK_EQ_INT((int)DSB(DS_001088F1), 5);           /* unchanged */
+        CHECK_EQ_INT((int)(DSD(DS_00104AD0) & 1u), 0);
+        CHECK_EQ_INT((int)DSD(DS_00107798), (int)DS_00107498);   /* no enqueue */
+
+        /* D. 0x4F83C starts: bit 0 set, counter 1, handle[0] enqueued. */
+        DSD(DESCRIPTOR + 0u) = 0xDEAD0000u;
+        DSD(DESCRIPTOR + 12u) = 0x7FFFFFFFu;
+        DSD(DS_000F0A48) = DESCRIPTOR;
+        DSD(HANDLE0) = SENTINEL_HANDLE;
+        DSD(DS_00104AD0) = 0;
+        DSB(DS_001088F1) = 7;
+        DSD(DS_00107798) = DS_00107498;
+        attract_palette_start();
+        CHECK_EQ_INT((int)(DSD(DS_00104AD0) & 1u), 1);
+        CHECK_EQ_INT((int)DSB(DS_001088F1), 1);
+        CHECK_EQ_INT((int)DSD(DESCRIPTOR), (int)SENTINEL_HANDLE);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 0u), (int)SENTINEL_HANDLE);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 4u), 0x1234);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 8u), 0);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 12u), 1);
+
+        /* E. entry 0: bit 0 is cleared at function level (0x4F883), counter 0. */
+        DSD(DS_000F0A48) = 0;
+        DSD(DS_00104AD0) = 0;
+        DSB(DS_001088F1) = 7;
+        DSD(DS_00107798) = DS_00107498;
+        attract_palette_start();
+        CHECK_EQ_INT((int)(DSD(DS_00104AD0) & 1u), 0);
+        CHECK_EQ_INT((int)DSB(DS_001088F1), 0);
+        CHECK_EQ_INT((int)DSD(DS_00107798), (int)DS_00107498);   /* no enqueue */
+
+        /* F. 0x33874 else branch: handle differs -> re-point + enqueue. */
+        DSD(ENTRY_LO + 0u)  = 0xDEAD0000u;
+        DSD(ENTRY_LO + 4u)  = 0;
+        DSD(ENTRY_LO + 8u)  = 0x2000u;
+        DSD(ENTRY_LO + 12u) = 0x7FFFFFFFu;
+        DSD(DS_00107798) = DS_00107498;
+        palette_reflow(ENTRY_LO, 0xFEED0000u);
+        CHECK_EQ_INT((int)DSD(ENTRY_LO), (int)0xFEED0000u);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 0u), (int)0xFEED0000u);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 4u), 0x2000);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 8u), 0);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 12u), 1);
+
+        /* G. 0x33874 else branch: same handle -> no enqueue. */
+        DSD(ENTRY_LO + 0u)  = 0xFEED0000u;
+        DSD(ENTRY_LO + 12u) = 0x7FFFFFFFu;
+        DSD(DS_00107798) = DS_00107498;
+        palette_reflow(ENTRY_LO, 0xFEED0000u);
+        CHECK_EQ_INT((int)DSD(DS_00107798), (int)DS_00107498);
+
+        /* H. 0x33874 walk branch: len short -> move the next entry's start to
+         * prev.start + prev.len and re-enqueue it. */
+        DSD(ENTRY_LO + 0u)  = 0xDEAD0000u;
+        DSD(ENTRY_LO + 4u)  = 0;
+        DSD(ENTRY_LO + 8u)  = 0x2000u;
+        DSD(ENTRY_LO + 12u) = 0xFFFFFFFFu;   /* signed -1: len < count */
+        DSD(ENTRY_HI + 0u)  = 0xBEEF0000u;
+        DSD(ENTRY_HI + 4u)  = 0;
+        DSD(ENTRY_HI + 8u)  = 0x1000u;
+        DSD(ENTRY_HI + 12u) = 0x10u;
+        DSD(DS_00107798) = DS_00107498;
+        palette_reflow(ENTRY_LO, SENTINEL_HANDLE);
+        CHECK_EQ_INT((int)DSD(ENTRY_HI + 8u), 0x1FFF);   /* 0x2000 + (-1) */
+        CHECK_EQ_INT((int)DSD(ENTRY_LO), (int)0xDEAD0000u);    /* unchanged */
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 0u), (int)0xBEEF0000u);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 4u), 0x1FFF);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 8u), 0x10);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 12u), 1);
+
+        /* restore */
+        DSD(DS_000F0A48) = saved48;
+        DSB(DS_001088F1) = saved_f1;
+        DSD(DS_00104AD0) = saved_ad0;
+        DSD(HANDLE0) = saved_h0;
+        DSD(HANDLE0 + 3u * 4u) = saved_h3;
+        DSD(HANDLE0 + 9u * 4u) = saved_h9;
+        DSD(DS_00107798) = saved_head;
+        for (u32 k = 0; k < 4u; k++) {
+            DSD(DS_00107498 + k * 4u) = saved_rec[k];
+            DSD(DESCRIPTOR + k * 4u) = saved_desc[k];
+        }
+        for (u32 k = 0; k < 8u; k++) DSD(ENTRY_LO + k * 4u) = saved_entry[k];
+    }
+
     /* 0x11000 phase 0xC: countdown, then hand to DS_000F0A70.
      * 0x11000 phase 0xB: DS_000F0A48 = 0, DS_000F0A6F = 0, and the state handoff.
      * Both phases fall through to the 0x11550 tail, which only runs the 0x10F28

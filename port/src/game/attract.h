@@ -12,6 +12,17 @@
  * DS_000A8744 + i*4 with i the bit's byte offset. */
 void attract_scene_tick(void);
 
+/* 0x4F7F4. The attract palette advance: while the palette entry DS_000F0A48 is
+ * non-zero, enqueue the next handle DS_000C98A0[counter] through 0x33874 and
+ * step the counter; clear DS_00104AD0 bit 0 once the counter reaches 10. */
+void attract_palette_advance(void);
+
+/* 0x4F83C. The attract palette start (a distinct code-pointer target, RET at
+ * 0x4F88C): set DS_00104AD0 bit 0, zero the counter, and while the entry is
+ * non-zero enqueue DS_000C98A0[0] and set the counter to 1; clear bit 0 at
+ * function level when the counter is not < 10. */
+void attract_palette_start(void);
+
 /* 0x10EE4. Reset the state machine to attract: the clock helper 0x32970(0),
  * DS_00104B15 = 0 (0x4F1E4), actors_reset() (0x2BAF4 with eax = 1), then
  * DS_00104B00 = 3, DS_000F0A64 = 0, DS_000F0A71 = 0, DS_000F0A6F = 0. */

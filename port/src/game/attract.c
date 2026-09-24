@@ -14,10 +14,61 @@
 
 #include <stdio.h>
 
+/* PORT: symbols.h emits no name for the ten-handle attract palette animation
+ * array at 0xC98A0; use the raw address locally. */
+#define DS_000C98A0 0x000C98A0u
+
+/* 0x4F7F4. The attract palette advance. While the attract palette entry
+ * DS_000F0A48 is non-zero, enqueue the next handle DS_000C98A0[counter] through
+ * 0x33874 (EAX = the entry, EDX = the handle) and step the counter; once the
+ * counter reaches 10, clear DS_00104AD0 bit 0. An entry of zero skips the body
+ * and clears the bit (the raw's 0x4F7FD `jz 0x4F830`). */
+void attract_palette_advance(void)
+{
+    if (DSD(DS_000F0A48) != 0u) {
+        u32 handle = DSD(DS_000C98A0 + (u32)DSB(DS_001088F1) * 4u);  /* 0x4F810 */
+        DSB(DS_001088F1) = (u8)(DSB(DS_001088F1) + 1u);              /* 0x4F817 */
+        palette_reflow(DSD(DS_000F0A48), handle);                    /* 0x4F81F */
+        if ((u8)DSB(DS_001088F1) < 10u) return;                      /* 0x4F82E */
+    }
+    DSB(DS_00104AD0) &= 0xFEu;                                       /* 0x4F830 */
+}
+
+/* 0x4F83C. The attract palette start (a distinct code-pointer target with its
+ * own prologue and RET at 0x4F88C; referenced by the data pointers at 0xE8916,
+ * 0xE893C, 0xE8958 and 0xE896E). Set DS_00104AD0 bit 0, zero the counter, and
+ * while the entry is non-zero enqueue DS_000C98A0[0] and set the counter to 1;
+ * clear bit 0 at function level when the counter is not < 10 — the entry-zero
+ * path (0x4F85D `jz 0x4F883`) and a counter >= 10. */
+void attract_palette_start(void)
+{
+    DSB(DS_00104AD0) |= 0x01u;                            /* 0x4F83E..0x4F849 */
+    DSB(DS_001088F1) = 0;                                 /* 0x4F855 */
+    if (DSD(DS_000F0A48) != 0u) {
+        DSB(DS_001088F1) = 1;                             /* 0x4F86C */
+        palette_reflow(DSD(DS_000F0A48), DSD(DS_000C98A0));   /* 0x4F872 */
+        if ((u8)DSB(DS_001088F1) < 10u) return;           /* 0x4F881 */
+    }
+    DSB(DS_00104AD0) &= 0xFEu;                            /* 0x4F883 */
+}
+
+/* PORT: 0x4F7F4 is the only ported callee in the shipped DS_000A8744 table
+ * (entries 1..15 hold the 0x5D812 `xor eax,eax; ret` stub); register it so the
+ * generic fn_resolve dispatch below reaches it, as the raw's 0x292C1 indirect
+ * call does. One-time: fn_register appends unconditionally. */
+static void attract_register(void)
+{
+    static int done;
+    if (done) return;
+    done = 1;
+    fn_register(FN_0004F7F4, attract_palette_advance);
+}
+
 /* 0x292AC. Iterate the mask DS_00104AD0; for each set bit call the function
  * address at DS_000A8744 + i*4, where i is the byte offset (0, 4, 8, ...). */
 void attract_scene_tick(void)
 {
+    attract_register();
     u32 mask = DSD(DS_00104AD0);
     for (u32 i = 0; mask != 0; i += 4u, mask >>= 1) {
         if ((mask & 1u) == 0u) continue;

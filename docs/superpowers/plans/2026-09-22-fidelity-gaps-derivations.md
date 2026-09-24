@@ -987,6 +987,43 @@ more and wire the callees' real call chains:
   enqueue used `DSD(0xC98A0)`. Mutation: drop the `DS_001088F1=1` store →
   `7 != 1`.
 
+**Task-5 implementation corrections (the raw wins).**
+
+* **The `0x33874` walk is NOT byte-identical to `palette_acquire`'s tail**
+  (§4.4's residual). Two differences, both in `0x33874`'s disassembly:
+  (a) the walk has **no zero-entry skip** — `0x337E9`'s `CMP [EAX],0 / JZ
+  0x33825` has no counterpart at `0x338C4`; (b) the break is **`<=` (signed),
+  `0x338D1 JLE 0x338F7`**, whereas `palette_acquire` breaks on **`==`**
+  (`0x337FB JZ 0x3382F`). So `0x33874` reflows while `prev.start + prev.len >
+  next.start` and does not skip free entries; the port's `palette_reflow`
+  implements `0x33874`'s own shape, not `palette_acquire`'s.
+* **`0x1B544` preserves EDX** (§4.4 confirmed): `PUSH EDX` at `0x1B546` and
+  `POP EDX` at every return (`0x1B578`, `0x1B5A2`, `0x1B608`), so the `AND
+  EDX,0x7FFFFF` at `0x1B563` is internal and `0x33897` compares the **handle**,
+  not the offset. The `[EAX]` at `0x3388B` is the resolved resource's leading
+  word (the colour count), the same `*res_resolve(handle)` the port's
+  `palette_acquire` reads.
+* **The test recipe's `DS_000F0A48=1` is unsafe** (the carried no-image /
+  out-of-bounds warning). `0x33874` would treat mem offset 1 as a table entry
+  and either walk `0x11..0x107798` or write the low-memory vector area. The
+  shipped test uses a scratch descriptor at `0x3F00100` and overrides the
+  `0xC98A0` entries with non-resolving sentinels, so `0x33874`'s else branch
+  runs deterministically (NULL resolve → count 0) with no loader-presentation
+  side effect. The walk branch is driven directly with a fake descriptor/next
+  pair at the ownership table's tail (`0x107778`/`0x107788`).
+* **Wiring:** the record's "direct `0x4F7F4` call" is realized as a one-time
+  `fn_register(0x4F7F4, attract_palette_advance)` in `attract_scene_tick`
+  (`attract.c`); a direct entry-0 call would bypass the dispatch test's
+  registered probe (`test_attract.c`'s `scene_probe0`), which the table
+  override must still reach. `0x33874` is ported as `palette_reflow` beside its
+  siblings `palette_acquire`/`palette_release` in `actors.c`, not in
+  `attract.c` (the palette ownership table's owner).
+* **`0x4F83C` reachability:** its four `0xE8916`-table callers are unported, so
+  `0x4F83C` is not reached at runtime; the port exposes it and the test drives
+  it. `DS_00104AD0` bit 0 is never set in the shipped run (its image value is 0
+  and only `0x4F83C` sets it), so `0x4F7F4` is likewise not reached at runtime
+  and the attract claim is unmoved.
+
 ---
 
 ## 9. Provenance

@@ -59,6 +59,15 @@ void actor_set_dead(u32 rec);
  * Exposed for the attract phase-2 palette registration (0x11000). */
 u32 palette_acquire(u32 handle);
 
+/* 0x33874. Re-point the palette-table entry `descriptor` at `handle` (the
+ * attract drivers pass DS_000F0A48 and DS_000C98A0[counter]) and reflow the
+ * entries after it. When the entry's len is short of the resolved resource's
+ * colour count, the table is walked from descriptor+0x10 and each overlapping
+ * entry's start is moved to the previous end and re-enqueued; otherwise the
+ * entry is re-pointed and its range re-enqueued. Sibling of palette_acquire
+ * (0x33754) and palette_release (0x33864). */
+void palette_reflow(u32 descriptor, u32 handle);
+
 /* ---- animation-stream interpreter -------------------------------------- */
 
 /* 0x2A408. Read the record's next sprite id from its animation stream. The
