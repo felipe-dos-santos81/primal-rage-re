@@ -3425,6 +3425,21 @@ static void check_page_tail(void)
     DSW(a1) = 0x2026u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD9);
     DSW(a1) = 0x202Au; CHECK_EQ_INT(camera_sprite_code(0u), 0xDA);
     DSW(a1) = 0x202Cu; CHECK_EQ_INT(camera_sprite_code(0u), -1);
+    DSB(DS_0010782A) = 2;                   /* char 2 */
+    DSW(a1) = 0xC48u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD4);
+    DSW(a1) = 0xC50u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD5);
+    DSW(a1) = 0xC47u; CHECK_EQ_INT(camera_sprite_code(0u), -1);
+    DSB(DS_0010782A) = 5;                   /* char 5 */
+    DSW(a1) = 0xFA1u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD3);
+    DSW(a1) = 0xF98u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD5);
+    DSW(a1) = 0xF9Cu; CHECK_EQ_INT(camera_sprite_code(0u), 0xD4);
+    DSB(DS_0010782A) = 6;                   /* char 6 */
+    DSW(a1) = 0x134Fu; CHECK_EQ_INT(camera_sprite_code(0u), 0xD2);
+    DSW(a1) = 0x1352u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD2);
+    DSW(a1) = 0x1351u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD3);
+    DSW(a1) = 0x1353u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD3);
+    DSW(a1) = 0x1357u; CHECK_EQ_INT(camera_sprite_code(0u), 0xD4);
+    DSW(a1) = 0x1000u; CHECK_EQ_INT(camera_sprite_code(0u), -1);
     DSB(DS_0010782A) = 7;                   /* char 7: the default arm */
     DSW(a1) = 0xF9Fu; CHECK_EQ_INT(camera_sprite_code(0u), -1);
 

@@ -145,9 +145,9 @@ int camera_sprite_code(u32 side)
         if (u >= 0xF9Cu && u <= 0xF9Fu) return 0xD4;
         break;
     case 6:
-        if (u == 0x134Fu || u == 0x1350u) return 0xD2;
+        if (u == 0x134Fu || u == 0x1350u || u == 0x1352u) return 0xD2;
         if (u == 0x1351u || u == 0x1353u) return 0xD3;
-        if (u == 0x1352u || u == 0x1354u || u == 0x1355u || u == 0x1356u) return 0xD3;
+        if (u == 0x1354u || u == 0x1355u || u == 0x1356u) return 0xD3;
         if (u == 0x1357u || u == 0x1358u) return 0xD4;
         break;
     default:
