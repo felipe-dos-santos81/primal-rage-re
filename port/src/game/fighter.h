@@ -146,6 +146,12 @@ void fighter_state_35e6c(u32 slot, u32 rec);             /* 0x35E6C, +0x52=20 */
  * 0x1000 is set; 0x2000 in the mirror; else 0. The mirror of 0x1A5D4. */
 int fighter_1a640(u32 side);
 
+/* 0x3AAFC. The reaction applier / pose dispatcher 0x3B714 runs for the winner:
+ * the facing latch, the 0x39834 pose driver, the 0x3A0FC effect spawn, and the
+ * dispatch on the two reaction animation words and slot+0x54. EAX = slot, the
+ * stack argument = the reaction byte. */
+void fighter_reaction_apply(u32 slot, u32 reaction);
+
 /* 0x3C88C. The per-slot attack-frame state machine fight_slot_pass runs 2 x 32
  * times per arena frame. Reads DS_00107ED8 (slot index), DS_00107EDC (side) and
  * DS_00107EE4 (facing); phase 0 arms the hitbox (word[0x107D58 + side*0x40 +
