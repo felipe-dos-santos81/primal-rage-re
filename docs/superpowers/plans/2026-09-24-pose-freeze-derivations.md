@@ -512,8 +512,15 @@ demo's characters are `char_0 = 0`, `char_1 = 3`, so:
 
 Both rows read `0x9F290`/`0x9FE90` are **byte-identical**: each 8-byte record at
 offset `k*8` is `AA AA 00 00 00 00 00 00` (dword `0x0000AAAA`) when `k` is even
-and `00 00 FF 00 00 00 00 00` (dword `0x0000FF00`) when `k` is odd
-(`ghidra_read_memory 0x9F290` / `0x9FE90`, 128 B each).
+and `00 00 FF 00 00 00 00 00` when `k` is odd (`ghidra_read_memory 0x9F290` /
+`0x9FE90`, 128 B each; the raw file's obj-1 bytes at `0x9F290 + 0x46E54`).
+
+**Correction (Task 4; raw wins).** The odd record's low dword is
+**`0x00FF0000`** (little-endian `00 00 FF 00`, bits 16..23), not `0x0000FF00`
+(bits 8..15) — this record's first draft transcribed the hex string
+big-endian. Verified against the raw bytes at `0x9F290`/`0x9FE90` and the
+port's shipped row table (`DS_000A1290`; `test_fight.c`'s `check_connect_query`
+reads it). The correction propagates to §3.4, §3.5, §7.1 and §8.3.
 
 ### 3.3 The demo's runtime state (measured)
 
@@ -535,12 +542,13 @@ The T-rex's `0x0B` matches cycle-3 §10.2; the raptor's `0x01` matches cycle-3
 ### 3.4 The two returns
 
 * `0x18950(0,1)`: row `0x9F290`, offset `state_0*8 = 0x0B*8 = 0x58` → odd
-  record → dword `0x0000FF00`; bit `state_1 = 1` → `0xFF00 & 2 = 0` → **0**.
+  record → dword `0x00FF0000`; bit `state_1 = 1` → `0x00FF0000 & 2 = 0` → **0**.
 * `0x18950(1,0)`: row `0x9FE90`, offset `state_1*8 = 1*8 = 8` → odd record →
-  dword `0x0000FF00`; bit `state_0 = 0x0B = 11` → `0xFF00 & 0x800 = 0x800` →
-  **1**.
+  dword `0x00FF0000`; bit `state_0 = 0x0B = 11` → `0x00FF0000 & 0x800 = 0` →
+  **0**.
 
-So `bl = 0x18950(0,1) = 0`, `al = 0x18950(1,0) = 1`.
+So `bl = 0x18950(0,1) = 0`, `al = 0x18950(1,0) = 0` (Task 4's correction; the
+first draft's `(1,0) = 1` was the `0x0000FF00` misread, §3.2).
 
 ### 3.5 The verdict
 
@@ -555,12 +563,9 @@ The raw at `0x19692`..`0x196B7`:
 0x196AF AF8 = 0                      ; AL && !BL -> side 1 wins
 ```
 
-With `bl = 0`, `al = 1` and the `+0x40` overrides clear, the raw takes
-`0x196AF` → **`AF8 = 0` → side 1 (the raptor) wins**, and `0x1973F`/`0x19748`
-runs `0x193B0(1)`.
-
-The port's take-both-as-0 (`fighter.c:328-330`) reaches the position compares at
-`0x196BC`:
+With `bl = 0`, `al = 0` and the `+0x40` overrides clear, both `0x19694` and
+`0x196A9` jump to `0x196BC` — the position compares, the same place the port's
+old take-both-as-0 stub reached:
 
 ```
 0x196BC MOV AX,[0x00107838] ; = word[slot0+0x88]
@@ -569,29 +574,27 @@ The port's take-both-as-0 (`fighter.c:328-330`) reaches the position compares at
 0x196CE AFC = 0             ; word[slot0+0x88] < word[slot1+0x88] -> side 0 wins
 ```
 
-With `word[slot0+0x88] < word[slot1+0x88]`, the port zeroes `AFC` → **side 0
-(the T-rex) wins**.
+With `word[slot0+0x88] < word[slot1+0x88]` (§3.3), `0x196CE` zeroes `AFC` →
+**side 0 (the T-rex) wins**, and `0x19729`/`0x19732` runs `0x193B0(0)`. This is
+exactly the winner cycle-3 §10.2 measured.
 
-**The two differ.** The raw's `0x18950` queries gate the demo's winner: the raw
-makes the raptor the winner at the 9/8 hold, the port's assumption makes the
-T-rex. **`0x18950` is in scope (Task 4 exists).**
+**The raw does not differ from the port on the demo.** Both reach `0x196BC` and
+zero `AFC`, so **`0x18950` does not gate the demo's winner.** The scope verdict
+(`0x18950` in scope) was founded on the `0x0000FF00` misread; the corrected
+table makes the function behaviour-neutral for the demo while it closes a stub
+that was wrong in general (`bl=1,al=0` and `bl=0,al=1` are reachable for other
+character/state pairs — `test_fight.c`'s `check_connect_query` exercises
+`(bl,al) = (1,0)` at its wiring case). The port therefore stands as a
+**faithfulness fix**, ratified by the Task 4 reviewer: reachable, closes a named
+gap, and corrects a stub that was wrong for non-demo states.
 
-**The conflict (raw/measured vs raw/measured).** Cycle-3 §10.2 measured "the
-original's T-rex leaves 9/8 for the pose state" — i.e. side 0 wins — which
-contradicts the raw's `AF8 = 0` at the entry frame. Both are raw-derived. A
-**plausible reconciliation**: the winner is recomputed each frame, so if the
-raptor wins at loop 1072 and the T-rex at loop 1078, **both** pose, the raptor
-first — and §10.2's "T-rex **6 frames later**" (loop 1078) is the T-rex posing
-**second**, with the record not noting the raptor's earlier exit. The record
-does **not** fit either value: §7.1 carries the conflict, and Task 3/5 measures
-which side poses first (the `s7_saw10`/`s7_saw0a` counters name the slot). If
-the measurement shows side 0 poses first, the `0x18950` table/state derivation
-must be re-examined; if side 1 poses first, this section is confirmed and
-§10.2 was mislabelled.
+**The §7.1 "conflict" is resolved.** Cycle-3 §10.2's T-rex winner (side 0) and
+the raw agree; there was no conflict, only the transcription error. No
+reconciliation is needed.
 
 **Porting plan / test values** (§8.3): `fighter_connect_query` (`0x18950`)
 wired at `fighter.c:328`; seed the character table and the two state bytes;
-assert the return for the demo's `(0,1)`/`(1,0)` = `(0,1)`.
+assert the return for the demo's `(0,1)`/`(1,0)` = `(0,0)`.
 
 ---
 
@@ -697,7 +700,10 @@ Task 5 establishes the observable with:
    the state-7 entry at loop 1071). The comparison is a per-byte RGB24 diff of
    the 320×200 frame against `data/title-captures/frontend/frame_0834.raw`:
    cycle-3 §10.5 measured **18 294 B (9.5 %) / 6 194 px** at frame 482, entirely
-   the two fighters (left 1 549 px + right 4 645 px). The current diff is
+   the two fighters (the left/right split, left 1 549 px + right 4 645 px, is the
+   design's; cycle-3 §10.5's per-region split is T-rex 1 773 px + raptor
+   4 421 px). Task 5 measured both unchanged (left 1 549 + right 4 645;
+   18 294 B). The current diff is
    reproduced by the same per-byte count (a `python3` one-liner over the two
    files); the teal-mask silhouette IoU (region x 185..320, y 85..200; mask
    `g>90 && b>90 && g>r+30 && b>r+30`) is **1.000** at frame 482 (0.974 at 483).
@@ -706,19 +712,22 @@ Task 5 establishes the observable with:
    presentation is un-derivable; §7.6), and the later capture frames stay
    unexplained because the port dump is bounded by state 7's 900-frame timer
    (`test_frontend.c:738`, dump 0..1380) while the oracle window is
-   `[831..3616]`. The report names both.
+   `[831..3616]`. The report names both. **Measured (Task 5):** the first
+   unexplained is **832** (raw 3671), 2779 in the window — §10.3.
 
 ---
 
 ## 7. Named gaps
 
-1. **The winner gate's conflict (new; §3.5).** The raw's `0x18950` gives
-   `AF8 = 0` (side 1 / raptor wins) at the 9/8 hold; cycle-3 §10.2 measured the
-   T-rex (side 0) leaving 9/8. Both are raw/measured. **Owner:** Task 3 (the
-   `s7_saw10`/`s7_saw0a` counters name the slot) and Task 5 (the demo
-   measurement). Evidence: `0x18950` disassembly; `PTR_DAT_000a1290` at
-   `0xA1290`; the trace's `st0_5f=0x0B`, `st1_5f=0x01`, `w88_0 < w88_1`;
-   cycle-3 §10.2's table.
+1. **The winner gate's conflict — RESOLVED (Task 4; §3.5).** The first draft's
+   "the raw makes the raptor win" rested on the `0x0000FF00` misread of the odd
+   record (raw `0x00FF0000`, §3.2). With the corrected table both demo queries
+   return 0, the raw reaches the position compares at `0x196BC`, and `0x196CE`
+   zeroes `AFC` → side 0 (the T-rex), matching cycle-3 §10.2. There was no
+   conflict. `0x18950` therefore does not gate the demo; its port is a
+   faithfulness fix (Task 4, ratified). Evidence: the raw bytes at
+   `0x9F290`/`0x9FE90`; the trace's `st0_5f=0x0B`, `st1_5f=0x01`,
+   `w88_0 < w88_1`; cycle-3 §10.2's table.
 2. **The demo's per-side `slot+0x5F` states are measured, not derived.** The
    trace reads them from the port, which tracks the original (cycle-3 §3.3), but
    they are not statically pinned from the raw. **Owner:** Task 3's assertion
@@ -728,7 +737,8 @@ Task 5 establishes the observable with:
    (`0x175E4`). `0x16DA4`'s body is ~40 unreachable blocks to Ghidra, and its
    `0x1631C` → `0x41030` (361 B) sprite path is unported. **Owner:** Task 2's
    `camera_winner_height`; the test asserts `AF8[side] == DSD(0x100B54)`, not a
-   fitted `B54`.
+   fitted `B54`. **Measured (Task 5):** `B54 == 0` at every state-7 frame, because
+   its inputs `B18`/`B10`/`B30` are 0 (§7.11).
 4. **`LAB_0003A6D4`** (the `0x3A79C` pose callback) is absent from
    `prage.functions.csv` (a data pointer only, `prage.c:24880`); its size/role
    are unnamed. **Owner:** Task 3, if the `0x3A79C` arm is reached.
@@ -746,8 +756,64 @@ Task 5 establishes the observable with:
    The gate applies only to reachable work; no follow-on.
 10. **`0x2C3FC`** (the character voice, called from `0x3AAFC` and `0x3B714`) —
     the existing audio stub; out of scope.
+11. **The `0x17FA0` page-flag/visibility tail (`0x16AFC` 601 B + `0x164F4`
+    547 B) — the cycle's residual divergence (new; Task 5).** The demo's
+    `AF8`/`AFC` stay 0 at every state-7 frame because `camera_project`
+    (`0x17FA0`) hardcodes the page flag `DS_00100B60`/`B61` to 0
+    (`camera.c:111`) and never populates the visibility boxes
+    `DS_00100AC0`/`AC8`. Both are outputs of `0x17FA0`'s **unported** tail:
+    `0x16AFC` (reads `0x100A78[side]`) and `0x164F4` (reads `0x100A90[side]`)
+    return the booleans that set `B60`/`B61` and copy-or-zero
+    `0x100AC0`/`0x100AC8` (`0x180C9`/`0x18108`; demo-fight record §7.4 item 2).
+    With `0x100AC8[side] == 0`, `camera_unfreeze` returns at its visibility
+    gate (`0x1715e`/`0x17182`), so `B18`/`B10`/`B30` stay 0, `B54` stays 0
+    (§7.3), and `AF8`/`AFC` stay 0 — so `fighter_pass_a`'s tail never runs
+    `0x193B0` and the pose never runs. **Measured (Task 5):** for the whole
+    state-7 window `B60=B61=0`, `B54=0`, `B18=B10=B30=0`,
+    `0x100AC0=0x100AC8=0`; forcing `camera_unfreeze` (bypassing both the
+    overlap gate and `B60`/`B61`) still leaves `AF8=0`, because the visibility
+    gate rejects. The original's `AF8`/`AFC` are non-zero at the 9/8 hold
+    (cycle-3 §10.2), and the only writer path is `0x170A0` gated on
+    `B60`/`B61`, so the original's `0x164F4` returns non-zero there — its first
+    gate (`slot+0x53 ∈ {7,8}`) is satisfied by the hold's `slot+0x53 == 8`.
+    **Owner:** a follow-on — 2 functions /
+    1 148 B plus callees, **under** the size gate. Until it lands the cycle's
+    two halves are wired but gated off and the demo observable does not move.
+12. **The interactive match** — the mode graph (`DS_00104B00`), the `0x257A4`
+    coin divert, `0x1EEB0`, `0x1F458`, the player screens and human input —
+    implemented by no task in any demo-fight cycle. **Unowned**; the design
+    spec's Out section stands. Not a gap inside the demo window.
 
 No gap is dropped: every item is closed, re-scoped or carried with its owner.
+
+### 7.0 Deferred minors (carried; each with its owner/status)
+
+* **`camera.c` guard deviations** (`camera.c:575`/`623`): the bit-plane
+  shift/merge omits the raw's `rows > 0x25` upper-bound guard — unreachable per
+  the 0x25-byte buffers. **Owner:** a future camera pass; no effect at HEAD.
+* **`camera.c:853`** uses unsigned `(u32)DSW(...) > 1u` where the raw has a
+  signed `JG` at `0x170e2` — diverges only for `0x8000..0xFFFF`. **Owner:** a
+  future camera pass; unreachable in the demo (the countdowns are small).
+* **`camera_winner_height`** omits `0x16DA4`'s dead `arg6 ∈ {0,1,2,3}` arms —
+  unreachable from `0x170A0` (which passes `arg6 = -1`). **Owner:** Task 2's
+  port; presented as `0x16DA4`'s port.
+* **`camera_bitplane_accum`** lacks the `camera_res_off` NULL guard —
+  partial-install only. **Owner:** a future camera pass.
+* **`fighter_pass_a`'s tail wiring is unasserted** — `test_fight.c` calls
+  `fighter_winner_body` directly. **Owner:** the test suite; the tail is
+  exercised by the demo path but not by a unit assertion.
+* **Ported-but-live-pool functions are not unit-tested** —
+  `fighter_3a0fc`/`fighter_3ad98`/`fighter_18b44`/`fighter_2bd44` need the live
+  actor pool. **Owner:** a future fighter test that seeds the pool.
+* **`fighter.c` is 4 429 lines** — no `pose.c` seam was found clean enough to
+  split. **Owner:** a future refactor, only if a seam emerges.
+* **Test-seed hygiene (Task 4)** — `check_connect_query` mixes `DS_` symbols and
+  raw hex, and relies on state left by earlier cases (order coupling). The
+  unfreeze test's `unfreeze_seed_b` seeds `B08 = 0x1000` (a fitted input that
+  cancels a dropped term). **Owner:** the test suite; each is a hygiene item,
+  not a correctness gap.
+* **The demo's `slot+0x5F` states are measured, not derived** (§7.2) — the seed
+  dependency remains until the pose is reached.
 
 ---
 
@@ -792,16 +858,23 @@ every assertion must fail under a mutation of the code it tests.
 
 ### 8.3 Task 4 — the winner gate (`port/tests/test_fight.c`)
 
+The shipped `check_connect_query` (the record's first draft's `(1,0) == 1` and
+`AF8 == 0` case were the `0x0000FF00` misread, §3.2):
+
 * **The demo's returns.** Seed `byte[0x10782A] = 0` (slot0 char), `byte[0x1078BE] = 3`
   (slot1 char), `byte[0x10780F] = 0x0B` (slot0 state), `byte[0x1078A3] = 0x01`
-  (slot1 state). Assert `fighter_connect_query(0, 1) == 0` and
-  `fighter_connect_query(1, 0) == 1` (the demo's `(0,1)`).
-  Mutation: swapping the two char bytes or the two state bytes flips a return.
-* **The winner selection.** Seed `AF8 = AFC = 1`, `byte[0x10783A] = byte[0x1078CE] = 1`,
-  the above characters/states, `slot+0x40` bit 7 clear both, and
-  `word[0x107838] = 0 < word[0x1078CC] = 1`; call `fighter_pass_a`. Assert
-  `AF8 == 0` (the raw's `0x196AF`) and `AFC != 0`. Mutation: taking both queries
-  as 0 (the current stub) leaves `AFC == 0` and fails.
+  (slot1 state). Assert `fighter_connect_query(0, 1) == 0` **and**
+  `fighter_connect_query(1, 0) == 0` (the demo's `(0,0)`).
+* **The discriminating cases** (a stub returning 0 cannot satisfy them): with
+  `state0 = 0`, `state1 = 3` the even record `0x0000AAAA` has bit 3 set →
+  `fighter_connect_query(0, 1) == 1`; and with `char1 = 1`, `state1 = 0x29`
+  (≥ 0x20) the row's `+4` dword carries bit 9 → `1`, while `0x28` → `0`.
+* **The winner selection.** Seed `(state0, state1) = (0, 3)` → `(bl, al) =
+  (1, 0)`, the `+0x40` overrides clear, `AF8 = 0x1111`, `AFC = 0x2222`, and
+  `word[0x107838] = 1 > word[0x1078CC] = 0` (the position words favour side 1);
+  call `fighter_pass_a`. Assert `AF8 == 0x1111` (the raw's `0x1969A` zeroes
+  `AFC`, side 0 wins) and `AFC == 0`. Mutation: the take-both-as-0 stub would
+  zero `AF8` instead and fail.
 
 ---
 
@@ -825,7 +898,9 @@ every assertion must fail under a mutation of the code it tests.
 * **§3.** `ghidra_disassemble_function 0x18950`; `ghidra_decompile_function
   0x18950`; `ghidra_read_memory 0xA1290` (400 B — `PTR_DAT_000a1290`),
   `0x9F290`, `0x9FE90` (128 B each). The runtime states from the temporary
-  `test_frontend.c` trace (`/tmp/t1trace.txt`), reverted.
+  `test_frontend.c` trace (`/tmp/t1trace.txt`), reverted. The odd record's low
+  dword re-verified as `0x00FF0000` against the raw obj-1 bytes at
+  `0x9F290 + 0x46E54` / `0x9FE90 + 0x46E54` (Task 4).
 * **§4.** `ghidra_decompile_function 0x19020`; `ghidra_disassemble_function
   0x19020` (`0x19032 CMP dword ptr [EAX+0x1077c8],0x0; 0x19039 JZ 0x19062`);
   `ghidra_get_xrefs_to 0x3FF08` (one: `0x40026`), `0x3FFDC` (zero).
@@ -834,3 +909,88 @@ every assertion must fail under a mutation of the code it tests.
   `symbols.h`.
 * **§6.** `Makefile:196-205`; `tools/title_compare.py:481-514`;
   `test_frontend.c:738`.
+
+---
+
+## 10. Outcome (Task 5)
+
+### 10.1 The two halves and the gate
+
+* **The unfreeze half (Task 2, commits `f989248`..`0a32e09`).** `0x140E4`
+  (`camera_box_overlap`), `0x170A0` (`camera_unfreeze`) and 11 new callees
+  ported, one C function per original, in `camera.c`; the `0x17698`..`0x176BF`
+  tail wired into `camera_decay` (`camera.c:983-987`). Assertion
+  `check_unfreeze` (the overlap gate, the `B60`/`B61` gates, the
+  `0x170C5`/`0x170E2` guard, `AF8 == B54`); 5 mutation proofs. Ladder green.
+* **The pose-entry half (Task 3, commits `f082940`..`c4780c1`).** `0x193B0`
+  (`fighter_winner_body`), `0x3B714` (`fighter_reaction`), `0x3AAFC`
+  (`fighter_reaction_apply`) and the pose family plus their new callees ported
+  in `fighter.c`; the `0x193B0(0)`/`(1)` calls wired into `fighter_pass_a`'s
+  tail (`fighter.c:383-388`). Assertions `check_reaction_predicates`/
+  `check_reaction`/`check_winner_body`; 6+ mutation proofs. Ladder green.
+* **Task 4 (`c88e4e7`).** `0x18950` (`fighter_connect_query`) ported and wired
+  at its two call sites; assertion `check_connect_query`. Ladder green.
+
+### 10.2 The winner-gate verdict (corrected)
+
+Both demo queries return 0 (the raw `0x00FF0000` record, §3.2), so the raw
+reaches the position compares at `0x196BC`, and `0x196CE` zeroes `AFC` → side 0
+(the T-rex) — matching cycle-3 §10.2. `0x18950` does **not** gate the demo; its
+port is a **faithfulness fix** (reachable, closes a named gap, corrects a stub
+that was wrong for non-demo states), ratified by the Task 4 reviewer. The §7.1
+"conflict" is an artifact of the `0x0000FF00` misread and is resolved (§3.5).
+
+### 10.3 The measured observable — UNMOVED
+
+`make demo-oracle` (report-only, not in `verify`) still takes the `res is None`
+fallback (`tools/title_compare.py:484`):
+
+```
+title_compare: demo: front-end window distinct [560..830]; demo port frames [313..1380] (1068 frames)
+title_compare: demo: 2786 frames, all unexplained; port frames exhibited 0/1068
+title_compare: demo: window distinct [831..3616] (raw 3670..8409)
+title_compare: demo: 2786 frames in window: 0 clean, 0 splice, 0 transition, 2779 unexplained
+title_compare: demo: 7 all-black capture frame(s) excluded as artifacts
+title_compare: demo: first unexplained captured frame 832 (raw 3671); 2779 in the window
+```
+
+The 482/834 witness is **unchanged**: `frame_0482.raw` vs
+`frontend/frame_0834.raw` = **18 294 B (9.5 %) / 6 194 px** (left 1 549 + right
+4 645), capture 834 still the best match over 830..840 (next best 835 at
+36 723 B). The fighters hold at the 9/8 entry, exactly as before the cycle.
+
+**Why (measured).** `AF8`/`AFC` are 0 at every state-7 frame:
+`B60=B61=0`, `B54=0`, `B18=B10=B30=0`, `0x100AC0=0x100AC8=0`. The residual
+divergence is the unported `0x17FA0` page-flag/visibility tail
+(`0x16AFC`/`0x164F4`) — gap §7.11; forcing `camera_unfreeze` past both the
+overlap gate and `B60`/`B61` still leaves `AF8=0` because the visibility gate
+(`0x1715e`/`0x17182`) rejects. The cycle's two halves are wired but gated off.
+
+### 10.4 The size gate
+
+The union (68 f / 13 131 B) is over the gate and was already ratified as this
+cycle's scope; the winner gate (1 f / 152 B) is under it; no group grew past the
+record's measurement (§5.3). The residual `0x16AFC`/`0x164F4` (2 f / 1 148 B
+plus callees) is **under** the gate — a follow-on, not a new cycle.
+
+### 10.5 The ladder
+
+`make verify` **exit 0**, 0 C warnings; every enforced claim unmoved:
+
+* title `54 clean, 55 splice, 2 transition, 0 unexplained` and
+  `54 clean, 57 splice, 0 transition, 0 unexplained`;
+* attract `FIRST DIVERGENCE at capture frame 215` (both captures);
+* front-end `[560..830]` / 271 frames: 117 clean, 153 splice, 0 transition,
+  `0 unexplained`;
+* smk `120/120` + `41/41`;
+* `oracle C-vs-Python: 9866 writes byte-exact`;
+* `symbols.h` regenerates byte-identically (`1304 globals, 1206 functions`).
+
+No enforced claim moved, so the policy's claim-move clause is not exercised.
+
+### 10.6 The gap inventory
+
+§7: item 1 **resolved** (the winner-gate conflict); item 3 **measured**
+(`B54 == 0`); items 5/6/7/8/10 **carried** (out of scope, unchanged); item 11 is
+the cycle's **residual divergence**; item 12 the **unowned** interactive match;
+§7.0 the **deferred minors**. No gap is dropped.

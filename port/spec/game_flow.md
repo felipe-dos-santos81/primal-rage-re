@@ -1056,6 +1056,79 @@ warnings: title `54 clean, 55 splice, 2 transition, 0 unexplained` and
 `41/41`; C-vs-Python `9866 writes byte-exact`; `symbols.h` regenerates
 byte-identically.
 
+## Demo fight cycle 4 — pose/freeze outcome (Task 5)
+
+Cycle 4 (branch `pose-freeze`, spec
+`../../docs/superpowers/specs/2026-09-24-pose-freeze-design.md`, record
+`../../docs/superpowers/plans/2026-09-24-pose-freeze-derivations.md`) ported the
+freeze's two halves faithfully. **The demo observable did not move** — the
+cycle's Gate (leave the `res is None` fallback) is **UNMET**, and the residual
+divergence is named with its owner.
+
+**The two halves and the gate.**
+
+* **The unfreeze half** (`0x140E4` + `0x170A0` + 11 callees, one C function per
+  original, in `camera.c`), wired into `camera_decay` at the `0x17698`..`0x176BF`
+  tail (`camera.c:983-987`). Assertion `check_unfreeze` (the overlap gate, the
+  `B60`/`B61` gates, the `0x170C5`/`0x170E2` guard, `AF8 == B54`); 5 mutation
+  proofs.
+* **The pose-entry half** (`0x193B0` → `0x3B714` → `0x3AAFC` → the
+  `0x3A504`/`0x3A650`/`0x3A79C`/`0x3A8E8` pose family + new callees, in
+  `fighter.c`), wired into `fighter_pass_a`'s tail (`fighter.c:383-388`).
+  Assertions `check_reaction_predicates`/`check_reaction`/`check_winner_body`;
+  6+ mutation proofs.
+* **The winner gate (`0x18950`)** — a **faithfulness fix**. The record's first
+  draft misread the pair table's odd record as `0x0000FF00`; the raw bytes at
+  `0x9F290`/`0x9FE90` are little-endian **`0x00FF0000`** (bits 16..23). With the
+  correction both demo queries return 0, the raw reaches the position compares at
+  `0x196BC`, and `0x196CE` zeroes `AFC` → side 0 (the T-rex) — matching cycle 3
+  §10.2. The §7.1 "conflict" was a transcription artifact, now resolved;
+  `0x18950` does **not** gate the demo.
+
+**The measured observable (UNMOVED).** `make demo-oracle` still takes the
+`res is None` fallback (`tools/title_compare.py:484`): front-end window
+`[560..830]`, demo port frames `[313..1380]` (1068), **`0/1068` exhibited**;
+demo window `[831..3616]` (raw `3670..8409`), **2786 frames: 0 clean, 0 splice,
+0 transition, 2779 unexplained** (7 all-black excluded); **first unexplained
+captured frame 832 (raw 3671)**. The 482/834 witness is **unchanged**:
+`frame_0482.raw` vs `frontend/frame_0834.raw` = **18 294 B (9.5 %) / 6 194 px**
+(left 1 549 + right 4 645); capture 834 is still the best match over 830..840.
+
+**The residual divergence (owner: a follow-on).** `AF8`/`AFC` stay 0 at every
+state-7 frame because `camera_project` (`0x17FA0`) hardcodes the page flag
+`DS_00100B60`/`B61` to 0 (`camera.c:111`) and never populates the visibility
+boxes `0x100AC0`/`0x100AC8`. Both are outputs of `0x17FA0`'s **unported** tail
+`0x16AFC` (601 B) / `0x164F4` (547 B): the booleans that set `B60`/`B61` and
+copy-or-zero `0x100AC0`/`0x100AC8` (`0x180C9`/`0x18108`; demo-fight record §7.4
+item 2). With `0x100AC8[side] == 0`, `camera_unfreeze` returns at its visibility
+gate (`0x1715e`/`0x17182`), so `B18`/`B10`/`B30` stay 0, `B54` stays 0, `AF8`
+stays 0, and `fighter_pass_a`'s tail never runs `0x193B0`. Measured: for the
+whole state-7 window `B60=B61=0`, `B54=0`, `B18=B10=B30=0`,
+`0x100AC0=0x100AC8=0`; forcing `camera_unfreeze` past both the overlap gate and
+`B60`/`B61` still leaves `AF8=0` (the visibility gate rejects). The original's
+`AF8`/`AFC` are non-zero at the 9/8 hold (cycle 3 §10.2), and the only writer
+path is `0x170A0` gated on `B60`/`B61`, so the original's `0x164F4` returns
+non-zero there — its first gate (`slot+0x53 ∈ {7,8}`) is satisfied by the hold's
+`slot+0x53 == 8`. The tail is 2 functions / 1 148 B plus
+callees — **under** the size gate, a follow-on, not a new cycle.
+
+**The size gate.** The union (68 f / 13 131 B) is over the gate and was already
+ratified as this cycle's scope; the winner gate (1 f / 152 B) is under it; no
+group grew past the record's measurement.
+
+**Named gaps carried (record §7).** `0x19020` (confirmed no-op; `slot+0x18`
+never set), `0x38154`, the `0x3Fxxx` closer script (unreachable), 831/832's
+held-frame presentation (un-derivable), the `0x2C3FC` voice stub, and the
+interactive match (unowned). The cycle's residual is the `0x16AFC`/`0x164F4`
+page-flag tail (§7.11); the deferred minors are listed at record §7.0.
+
+**Every enforced oracle claim is unmoved.** `make verify` exits 0 with 0
+warnings: title `54 clean, 55 splice, 2 transition, 0 unexplained` and
+`54 clean, 57 splice, 0 unexplained`; attract `FIRST DIVERGENCE at capture frame
+215`; front-end `[560..830]` / 271 frames `0 unexplained`; smk `120/120` +
+`41/41`; C-vs-Python `9866 writes byte-exact`; `symbols.h` regenerates
+byte-identically (`1304 globals, 1206 functions`).
+
 ## Landmarks (verified)
 
 | Address | Meaning |
