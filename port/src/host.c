@@ -71,6 +71,7 @@ static SDL_Surface *g_scratch; /* RGB24 surface the game renders into */
 static int g_sdl_video;
 static int g_pending; /* a frame was submitted and awaits present */
 static int g_w, g_h;
+static int g_quit_requested; /* the user closed the window (SDL_EVENT_QUIT) */
 
 /* Monotonic, so a wall-clock step (NTP, manual set) cannot skew the tick base.
  * CLOCK_MONOTONIC is POSIX; the port already targets a POSIX host. */
@@ -116,9 +117,11 @@ static void drain_events(void)
     while (SDL_PollEvent(&e)) {
         switch (e.type) {
         case SDL_EVENT_QUIT:
-            /* PORT: closing the window maps onto ESC so the loop leaves through
-             * the same path as a keyed exit. */
-            input_push(0x01, 0x1B);
+            /* PORT: the original has no window, so a close request is the host's
+             * own quit signal and is recorded as one. Proxying it as an ESC key
+             * failed: a movie drains the same queue and only aborts on ESC, so
+             * the request was swallowed and the game ran on. */
+            g_quit_requested = 1;
             break;
         case SDL_EVENT_KEY_DOWN: {
             u8 scan, ascii;
@@ -170,6 +173,12 @@ void host_shutdown(void)
     if (g_sdl_video) { SDL_Quit(); g_sdl_video = 0; }
     g_pending = 0;
     g_w = g_h = 0;
+    g_quit_requested = 0;
+}
+
+int host_quit_requested(void)
+{
+    return g_quit_requested;
 }
 
 void host_present_rgb(const u8 *rgb, int w, int h)

@@ -13,6 +13,18 @@ void input_clear(void)
     g_count = 0;
 }
 
+int input_drain_esc(void)
+{
+    int esc = 0;
+    while (g_count != 0) {
+        u16 key = g_keys[g_head];
+        g_head = (g_head + 1) % INPUT_QUEUE_CAP;
+        g_count--;
+        if (key == INPUT_ESC) esc = 1;
+    }
+    return esc;
+}
+
 void input_push(u8 scan, u8 ascii)
 {
     if (g_count == INPUT_QUEUE_CAP) {

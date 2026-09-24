@@ -33,6 +33,18 @@ int input_check_key(void);
 /* Discards every queued key. */
 void input_clear(void);
 
+/* int 16h packs a key as (scan << 8) | ascii; ESC is scan 0x01 / ascii 0x1B,
+ * the key 0x249F0 turns into the quit flag DAT_000A81A8. */
+#define INPUT_ESC 0x011Bu
+
+/* PORT: the original drains int 16h every frame — 0x24C5C's keyboard loop
+ * peeks (AH=1) then reads (AH=0) until the queue is empty — and 0x249F0 turns
+ * the ESC read there into the quit flag. The port ports only that quit arm of
+ * the dispatch, so its quit test must drain: peeking would pin the oldest key,
+ * and any later ESC behind it could never be seen. Empties the queue and
+ * reports whether ESC was among the keys read. */
+int input_drain_esc(void);
+
 /* ---- game input bitfield (0x500C4 / 0x50161 / 0x4F644) ------------------
  * The original keeps a debounced key level in DAT_000E1C34, a hold latch in
  * DAT_000E1C38 and a repeat mask in DAT_000E1C3C, sampled from the key bitmap

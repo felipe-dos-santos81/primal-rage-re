@@ -1916,6 +1916,20 @@ int test_input(void)
         CHECK_EQ_INT(take(), ((i & 0xFF) << 8) | (i ^ 0x5A));
     CHECK(!input_has_key(), "ring held exactly 64 entries");
 
+    /* The quit test must read, not peek: the head advances only when a key is
+     * taken, so a key queued before the ESC — the shape a window close has
+     * after any earlier keypress — must not shadow it. A peek-only test sees
+     * the SPACE here and reports no quit. */
+    input_clear();
+    CHECK_EQ_INT(input_drain_esc(), 0);      /* empty queue: nothing to report */
+    input_push(0x39, ' ');                   /* SPACE, then ESC behind it */
+    input_push(0x01, 0x1B);
+    CHECK_EQ_INT(input_drain_esc(), 1);
+    CHECK(!input_has_key(), "drain emptied the queue");
+    input_push(0x1E, 'a');                   /* keys, but none is ESC */
+    CHECK_EQ_INT(input_drain_esc(), 0);
+    CHECK(!input_has_key(), "drain emptied the queue without ESC");
+
     {
         /* The input bitfield. 0x50161 is a level/latch selector over the raw
          * level word DAT_000E1C34; 0x4F644 turns it into the two masks the game

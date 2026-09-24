@@ -1291,9 +1291,13 @@ void game_loop(void)
             host_wait_vblank();
         }
 
-        if (input_check_key() == 0x011B) {   /* ESC: scan 0x01, ASCII 0x1B */
+        /* PORT: the original reads int 16h inside 0x24C5C's keyboard loop and
+         * quits from 0x249F0; the port ports only that quit arm and tests it
+         * here, so the test drains the queue (input_drain_esc) — the BIOS
+         * queue's head advances only on a read. A window close is the host's
+         * own request rather than a key. */
+        if (input_drain_esc() || host_quit_requested()) {  /* ESC: 0x011B */
             DSB(DS_000A81A8) = 1;
-            input_clear();
         }
     } while (DSB(DS_000A81A8) == 0);
 }

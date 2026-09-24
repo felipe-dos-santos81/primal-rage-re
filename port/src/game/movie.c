@@ -17,10 +17,6 @@
 #define MOVIE_H 200u
 #define MOVIE_PIXELS (MOVIE_W * MOVIE_H)
 
-/* PORT: int 16h packs a key as (scan << 8) | ascii; ESC is scan 0x01/ascii
- * 0x1B, the same code game_loop() tests. */
-#define MOVIE_ESC 0x011Bu
-
 static u32 s_presented;   /* frames presented by the last movie_play() */
 static u32 s_pace;        /* sub-tick pacing remainder, in us*60 */
 
@@ -110,10 +106,11 @@ int movie_play(const char *game_dir, const char *name)
 
         movie_pace(delay);
         host_pump();
-        if (input_check_key() == MOVIE_ESC) {
-            input_clear();
-            break;
-        }
+        /* Same quit arm as game_loop(): drain the queue, so a key queued before
+         * the ESC cannot pin the head and hide it (input.h INPUT_ESC). A window
+         * close must stop the movie too: the loop that honours it does not run
+         * while a movie plays. */
+        if (input_drain_esc() || host_quit_requested()) break;
     }
     return 1;
 }

@@ -37,6 +37,13 @@ void host_shutdown(void);
  * Safe before host_init() and with no window. */
 void host_pump(void);
 
+/* 1 once the user has closed the window (SDL_EVENT_QUIT), else 0. The window
+ * close is the host's own quit signal, not a game key: the port used to push an
+ * ESC into the int 16h queue, but a movie drains that queue and only aborts on
+ * ESC, so the request was swallowed and the game kept running. The loops that
+ * own the game's quit flag read this instead. Cleared by host_shutdown(). */
+int  host_quit_requested(void);
+
 /* Sleeps to the next 60 Hz tick boundary, then runs host_pump(). Maps the
  * original's `in(0x3DA) & 8` VBlank spin. Safe with no window (SDL_Delay before
  * SDL video init is fine). */
