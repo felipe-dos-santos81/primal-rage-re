@@ -375,10 +375,11 @@ def main():
                     help='front-end window (states 3/4): content-alignment '
                          'classification over the 120 s capture, dropping '
                          'all-black capture frames as artifacts; returns 1 on '
-                         'any unexplained frame (the enforced front-end gate). '
-                         'The window is derived from the port dump and coverage '
-                         'is ignored, so this cannot detect an under-rendering '
-                         'port')
+                         'any unexplained frame except the two named in '
+                         'FRONTEND_ALLOWED_UNEXPLAINED (the enforced front-end '
+                         'gate). The window is derived from the port dump and '
+                         'coverage is ignored, so this cannot detect an '
+                         'under-rendering port')
     ap.add_argument('--demo', action='store_true',
                     help='demo window (states 9/6/7): the same content-alignment '
                          'classification over the capture region after the '
