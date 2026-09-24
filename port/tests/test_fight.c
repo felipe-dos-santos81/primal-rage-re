@@ -402,6 +402,196 @@ static void check_box_overlap(void)
     DSD(DS_001014EC) = saved_actors;
 }
 
+/* The two B08/B00 pairs camera_decay scales: re-seeded before each call so the
+ * decayed values (0xF3D / 0xD56) and the 0x181D0 offsets (0) are pinned. */
+static void unfreeze_seed_b(void)
+{
+    DSD(DS_00100B08) = 0x1000;
+    DSD(DS_00100B0C) = 0x1000;
+    DSD(DS_00100B00) = 0x1000;
+    DSD(DS_00100B04) = 0x1000;
+}
+
+/* 0x17580/0x170A0: the unfreeze half. The 0x140E4 overlap gate selects the
+ * 0x170A0 calls; each side's call writes DS_00100AE0/AD8/AE8 (before the
+ * 0x16DA4 sprite path) and DS_00100AF8[side] = DS_00100B54. The AE0 sentinel
+ * distinguishes "0x170A0 ran" from "the gate or the guard returned", so the
+ * B60/B61 gates and the 0x170C5/0x170E2 guard are pinned without a fitted
+ * number. B54's value is the record's named gap §7.3, so the invariant
+ * AF8 == B54 and B54 != 0 are asserted instead. The fixture: both actors use
+ * sprite-table index 4 (0xA8B30[4]) resolved to a fake 8x8 sprite whose pixel
+ * stream is eight all-on rows, so 0x16DA4 accumulates a non-zero overlap. */
+static void check_unfreeze(void)
+{
+    u8  s_b[0x9C];                              /* 0x100B64..0x100C00 */
+    u8  s_row0[0x130], s_row1[0x130];          /* 0xFD160 / 0xFEDE0 rows */
+    u32 s_res_tab = DSD(DS_001014E0), s_res_cnt = DSD(DS_001014F0);
+    u32 s_actor_tab = DSD(DS_001014EC);
+    u32 s_824 = DSW(DS_00107824), s_826 = DSW(DS_00107826);
+    u32 s_8b8 = DSW(DS_001078B8), s_8ba = DSW(DS_001078BA);
+    u32 s_8b8s = DSW(DS_00107824 + 0x94u), s_8bas = DSW(DS_00107826 + 0x94u);
+    u32 s_8b8b = DSW(DS_001078B8 + 0x94u), s_8bab = DSW(DS_001078BA + 0x94u);
+    u8  s_60 = DSB(DS_00100B60), s_61 = DSB(DS_00100B61);
+    u8  s_2a = DSB(DS_0010782A), s_be = DSB(DS_001078BE);
+    u32 s_af0 = DSD(DS_00100AF0), s_af4 = DSD(DS_00100AF4);
+    u32 tab = FIGHT_RECS + 0x2000u;
+    u32 sbase = FIGHT_RECS + 0x1000u;
+    u32 pixelbase = FIGHT_RECS + 0x1800u;
+    u32 handle = DSD(DS_000A8B30 + 4u * 4u);
+    u32 sprite = sbase + (handle & 0x7FFFFFu);
+
+    tf_snap(s_b, DS_00100B64, sizeof s_b);
+    tf_snap(s_row0, 0x000FD160u, sizeof s_row0);
+    tf_snap(s_row1, 0x000FEDE0u, sizeof s_row1);
+
+    /* The two scratch records and actors. Actor word0 = 4 makes the sprite
+     * table index 4 (char 0's constant 0xEE4 + AF0) and 0x100AF0 the same. */
+    mem_fill(FIGHT_RECS, 0, 0x400);
+    fight_reset_bases();
+    fight_reset_actors();
+    DSW(FIGHT_RECS + 0x56u) = 1;
+    DSW(FIGHT_RECS + 0x100u + 0x56u) = 2;
+    DSW(FIGHT_RECS + 0x28u) = 0;
+    DSW(FIGHT_RECS + 0x100u + 0x28u) = 0;
+    DSW(FIGHT_ACTORS + 1u * 0x20u) = 4;
+    DSW(FIGHT_ACTORS + 2u * 0x20u) = 4;
+    DSD(FIGHT_ACTORS + 1u * 0x20u + 4u) = 0;
+    DSD(FIGHT_ACTORS + 1u * 0x20u + 8u) = 0x2000u;
+    DSD(FIGHT_ACTORS + 2u * 0x20u + 4u) = 0;
+    DSD(FIGHT_ACTORS + 2u * 0x20u + 8u) = 0x2000u;
+    /* The slot char bytes (real slot region) and the two 0x100AF0 indices:
+     * char 0's constant is 0xEE4, so index 4 - 0xEE4 makes the sprite-table
+     * index and the palette-table index both 4. */
+    DSB(DS_0010782A) = 0;
+    DSB(DS_001078BE) = 0;
+    DSD(DS_00100AF0) = (u32)(4 - 0x0EE4);
+    DSD(DS_00100AF4) = (u32)(4 - 0x0EE4);
+
+    /* The fake resource table: entry 31 = the sprite base, entry 30 = the
+     * pixel stream. The sprite's +8 names entry 30. */
+    mem_fill(tab, 0, 32u * 0x14u);
+    DSD(DS_001014E0) = tab;
+    DSD(DS_001014F0) = 32;
+    DSD(tab + 31u * 0x14u + 16u) = sbase;
+    DSD(tab + 30u * 0x14u + 16u) = pixelbase;
+    mem_fill(sprite, 0, 0x10);
+    DSD(sprite) = 0x00080008u;                  /* width 8, height 8 */
+    DSD(sprite + 8u) = 0x0F000000u;             /* entry 30, offset 0 */
+    mem_fill(pixelbase, 0, 0x60);
+    for (u32 r = 0; r < 8u; r++) DSB(pixelbase + r * 9u) = 0x08u;
+
+    /* The four screen boxes (0x100AC0/4/8/C): raw (0,36,2,3) clips to a
+     * positive 8x8 box against the sprite rect. */
+    for (u32 i = 0; i < 4u; i++) {
+        DSB(DS_00100AC0 + i * 4u + 0u) = 0;
+        DSB(DS_00100AC0 + i * 4u + 1u) = 36;
+        DSB(DS_00100AC0 + i * 4u + 2u) = 2;
+        DSB(DS_00100AC0 + i * 4u + 3u) = 3;
+    }
+    DSB(DS_00100B62) = 0;
+    DSB(DS_00100B63) = 0;
+    mem_fill(DS_00100BAE, 0xFF, 0x25u);
+    mem_fill(DS_00100B64, 0xFF, 0x25u);
+    mem_fill(DS_00100BD3, 0xFF, 0x25u);
+
+    unfreeze_seed_b();
+
+    /* A: disjoint boxes (actor 1 far right): the 0x140E4 gate fails, so no
+     * 0x170A0 runs and AE0 keeps its sentinel. */
+    DSD(FIGHT_ACTORS + 2u * 0x20u + 4u) = 0x00080000u;
+    DSB(DS_00100B60) = 1;
+    DSB(DS_00100B61) = 1;
+    DSD(DS_00100B54) = 0xDEADBEEFu;
+    DSD(DS_00100AF8) = 0xDEADBEEFu;
+    DSD(DS_00100AFC) = 0xDEADBEEFu;
+    DSD(DS_00100AE0) = 0xDEADBEEFu;
+    DSD(DS_00100AE0 + 4u) = 0xDEADBEEFu;
+    unfreeze_seed_b();
+    camera_decay();
+    CHECK_EQ_INT((int)DSD(DS_00100B54), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100AF8), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100AFC), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100AE0), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_00100AE0 + 4u), (int)0xDEADBEEFu);
+
+    /* B: overlap, B60 = 0, B61 = 1. Side 0's 0x170A0 is not called; side 1's
+     * runs and writes AE0[1] = B08[1] (0x1000 decays to 0xF3D) and AF8[1]. */
+    DSD(FIGHT_ACTORS + 2u * 0x20u + 4u) = 0;
+    DSB(DS_00100B60) = 0;
+    DSB(DS_00100B61) = 1;
+    DSW(DS_00107824) = 0; DSW(DS_00107826) = 0;
+    DSW(DS_00107824 + 0x94u) = 0; DSW(DS_00107826 + 0x94u) = 0;
+    DSD(DS_00100AE0) = 0xDEADBEEFu;
+    DSD(DS_00100AE0 + 4u) = 0xDEADBEEFu;
+    DSD(DS_00100B54) = 0xDEADBEEFu;
+    unfreeze_seed_b();
+    camera_decay();
+    CHECK_EQ_INT((int)DSD(DS_00100AE0), (int)0xDEADBEEFu);   /* 0x176A8 */
+    CHECK(DSD(DS_00100AE0 + 4u) != 0xDEADBEEFu, "B61 gate: side 1 0x170A0 ran");
+    CHECK_EQ_INT((int)DSD(DS_00100AE0 + 4u), 0xF3D);
+    CHECK(DSD(DS_00100B54) != 0u, "0x16DA4 accumulated a non-zero B54");
+    CHECK_EQ_INT((int)DSD(DS_00100AF8), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100AF8 + 4u), (int)DSD(DS_00100B54));
+
+    /* C: overlap, B60 = 1, B61 = 0: the mirror image. */
+    DSB(DS_00100B60) = 1;
+    DSB(DS_00100B61) = 0;
+    DSD(DS_00100AE0) = 0xDEADBEEFu;
+    DSD(DS_00100AE0 + 4u) = 0xDEADBEEFu;
+    unfreeze_seed_b();
+    camera_decay();
+    CHECK(DSD(DS_00100AE0) != 0xDEADBEEFu, "B60 gate: side 0 0x170A0 ran");
+    CHECK_EQ_INT((int)DSD(DS_00100AE0 + 4u), (int)0xDEADBEEFu);   /* 0x176B8 */
+    CHECK_EQ_INT((int)DSD(DS_00100AF8 + 4u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100AF8), (int)DSD(DS_00100B54));
+
+    /* D: both gates: both 0x170A0 calls run and AF8[0] == AF8[1] == B54. */
+    DSB(DS_00100B60) = 1;
+    DSB(DS_00100B61) = 1;
+    DSD(DS_00100AE0) = 0xDEADBEEFu;
+    DSD(DS_00100AE0 + 4u) = 0xDEADBEEFu;
+    unfreeze_seed_b();
+    camera_decay();
+    CHECK(DSD(DS_00100AE0) != 0xDEADBEEFu, "both: side 0 0x170A0 ran");
+    CHECK(DSD(DS_00100AE0 + 4u) != 0xDEADBEEFu, "both: side 1 0x170A0 ran");
+    CHECK_EQ_INT((int)DSD(DS_00100AF8), (int)DSD(DS_00100B54));
+    CHECK_EQ_INT((int)DSD(DS_00100AF8 + 4u), (int)DSD(DS_00100B54));
+
+    /* E: the 0x170C5 guard. Other side 0's countdown is 2, so camera_decay
+     * leaves 1 and side 1's 0x170A0 returns before writing AE0/AF8; side 0
+     * (other 1's countdown 0) still runs. */
+    DSB(DS_00100B60) = 1;
+    DSB(DS_00100B61) = 1;
+    DSW(DS_00107824) = 2; DSW(DS_00107826) = 0;
+    DSW(DS_00107824 + 0x94u) = 0; DSW(DS_00107826 + 0x94u) = 0;
+    DSD(DS_00100AE0) = 0xDEADBEEFu;
+    DSD(DS_00100AE0 + 4u) = 0xDEADBEEFu;
+    unfreeze_seed_b();
+    camera_decay();
+    CHECK(DSD(DS_00100AE0) != 0xDEADBEEFu, "guard: side 0 ran");
+    CHECK_EQ_INT((int)DSD(DS_00100AE0 + 4u), (int)0xDEADBEEFu);   /* 0x170C5 */
+    CHECK_EQ_INT((int)DSD(DS_00100AF8 + 4u), 0);
+
+    tf_put(s_b, DS_00100B64, sizeof s_b);
+    tf_put(s_row0, 0x000FD160u, sizeof s_row0);
+    tf_put(s_row1, 0x000FEDE0u, sizeof s_row1);
+    DSD(DS_001014E0) = s_res_tab;
+    DSD(DS_001014F0) = s_res_cnt;
+    DSD(DS_001014EC) = s_actor_tab;
+    DSW(DS_00107824) = (u16)s_824; DSW(DS_00107826) = (u16)s_826;
+    DSW(DS_001078B8) = (u16)s_8b8; DSW(DS_001078BA) = (u16)s_8ba;
+    DSW(DS_00107824 + 0x94u) = (u16)s_8b8s;
+    DSW(DS_00107826 + 0x94u) = (u16)s_8bas;
+    DSW(DS_001078B8 + 0x94u) = (u16)s_8b8b;
+    DSW(DS_001078BA + 0x94u) = (u16)s_8bab;
+    DSB(DS_00100B60) = s_60;
+    DSB(DS_00100B61) = s_61;
+    DSB(DS_0010782A) = s_2a;
+    DSB(DS_001078BE) = s_be;
+    DSD(DS_00100AF0) = s_af0;
+    DSD(DS_00100AF4) = s_af4;
+}
+
 /* 0x263F4: the arena frame's order and its two observable contracts. The two
  * latch sentinels differ from the values they copy, so a missing latch fails;
  * the 0x19068 pass stores a record float and clears the record's +0x20, so a
@@ -2589,6 +2779,7 @@ int test_fight(void)
     check_screen_base();
     check_decay();
     check_box_overlap();
+    check_unfreeze();
     check_arena_frame();
     check_arena_frame_live();
     check_pset_palette_zero_handle();

@@ -949,7 +949,7 @@ void camera_unfreeze(u32 side)
     }
     DSD(DS_00100B40) = DSD(DS_00100B1C);                   /* 0x17553 */
     {
-        u32 flag = (DSD(DS_00100B14) > DSD(DS_00100B34)) ? 1u : 0u; /* 0x1751d */
+        u32 flag = ((s32)DSD(DS_00100B14) > (s32)DSD(DS_00100B34)) ? 1u : 0u; /* 0x1751d */
         camera_winner_height(flag, DSD(DS_00100AF0 + side * 4u),
                              DSD(DS_00100AF0 + other * 4u),
                              DSD(DS_00100B10), DSD(DS_00100B30), -1, side); /* 0x17565 */
