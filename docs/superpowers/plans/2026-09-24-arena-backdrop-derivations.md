@@ -101,18 +101,21 @@ make verify
    flow's own counters; the record uses the *frame index* (port 482 ↔ capture
    834) as the content point, which is measurable, rather than a state word.
 
-8. **Six addresses in this record's first edition of §3.3 violated rule 6**
+8. **Eight address strings in this record's first edition of §3.3 violated rule 6**
    (the `0x127C0`, `0x48CD8`, `0x40684`, `0x3FC90`, `0x48D3C` and `0x49444`
-   rows quoted pre-fixup displacements: `0x70A78`, `0x10882E0`, `0x84AE8`,
-   `0x88398`, `0x87EF8`, `0x88080`, `0x8839C`, `0x883C4`). They are corrected in
-   §3.3 against Ghidra (`0xF0A78`, `0x1082E0`, `0x104AE8`, `0x108398`,
-   `0x107EF8`, `0x108080`, `0x10839C`, `0x1083C4`). The correction matters
-   because the wrong forms land on **different, non-zero** globals
-   (`DSB(0x88398)` reads `0x80`, `DSB(0x84AE8)` reads `0x72`) while the correct
-   ones are zero, and `port/src/mem.h:22` is `DSB(o) = mem[o]` — a transcription
-   of the wrong value would corrupt unrelated state. The same rule also caught
-   `0x2BE5C`'s `word[0x107900]` (first read as `0x87900`) and `#15`'s
-   `0x1082E0` (first read as `0x10882E0`).
+   rows). **Seven are genuine pre-fixup displacements** (`0x70A78`, `0x84AE8`,
+   `0x88398`, `0x87EF8`, `0x88080`, `0x8839C`, `0x883C4` — each is the corrected
+   value minus `0x80000`) and are corrected in §3.3 against Ghidra (`0xF0A78`,
+   `0x104AE8`, `0x108398`, `0x107EF8`, `0x108080`, `0x10839C`, `0x1083C4`).
+   **The eighth, `0x10882E0`, is a transcription slip, not a pre-fixup form**:
+   the corrected value is `0x1082E0`, whose pre-fixup form is `0x882E0`;
+   `0x10882E0` is the fixup-applied value with an extra `0x80000`. The
+   correction matters because the wrong forms land on **different, non-zero**
+   globals (`DSB(0x88398)` reads `0x80`, `DSB(0x84AE8)` reads `0x72`) while the
+   correct ones are zero, and `port/src/mem.h:22` is `DSB(o) = mem[o]` — a
+   transcription of the wrong value would corrupt unrelated state. The same rule
+   also caught `0x2BE5C`'s `word[0x107900]` (first read as `0x87900`, a genuine
+   pre-fixup form of `0x107900`).
 
 9. **`0x2C3FC` is not a stub.** The size-gate method's "five known stubs"
    (`0x2C3FC`, `0x2EA64`, `0x62002`/`0x62003`/`0x6201B`, cycle-3 §10.4) treats
@@ -462,8 +465,8 @@ returning a byte in `AL`. **Every data address below is Ghidra's
 |---|---|---|---|---|---|
 | 1 | cb1 | `0x127C0` | 0x01 | 62 | pop the head of the `DS_000F0A78` list (unlink `0x249D0`); if empty return `0xFF`; else `rec2+8 = rec`, `rec+0x14 = rec2`, insert `rec2` before `0xF0AE0` (`0x249B0`), return 0. Proving: `0x127C4 MOV EDX,dword ptr [0x000F0A78]`, `0x127CA CMP EDX,0xF0A78`, `0x127EC MOV EAX,0xF0AE0`, `0x127F1 MOV [EBX+0x14],EDX`, `0x127E1 MOV EAX,0xFFFFFFFF` |
 | 2 | cb1 | `0x198E8` | 0x06/0x26/0x27/0x28 | 62 | the same with `DS_00100C20` and `0x100C28` (`0x198EC MOV EDX,dword ptr [0x00100C20]`, `0x198F2 CMP EDX,0x100C20`, `0x19914 MOV EAX,0x100C28`) |
-| 3 | cb1 | `0x28F64` | 0x19 | 182 | the same with `DS_00104888`/`0x104880` (`0x28F69`, `0x28F8F`), then `byte[rec2+0xC] = 0` (`0x28F9B`), `word[rec+0x32] = word[0xBD898]` (`0x28F9F`/`0x28FA8`), `byte[rec+0x29] \|= 0x10` (`0x28FAC`), `rec2+0x14 = rec` (`0x28FB2`). **Tail** (`0x28FB5`–`0x29019`): `0x2BE5C(rec)` (`0x28FB5`); `ECX = rng_next(0x20)` (`0x28FBA`/`0x28FBF`); `EAX = rng_next(0x80)` (`0x28FC6`/`0x28FCB`); `ECX += 0x20` (`0x28FD4`); `EAX += 0xC0` (`0x28FD9`); `DX = word[rec+0x28] & 0x4000` (`0x28FD0`/`0x28FDE`/`0x28FE1`); if clear → `word[rec+0x34] = CX` (`0x28FF7`); if set → `word[rec+0x34] = -ECX` (`0x28FE9`–`0x28FED`) and `byte[rec+0x29] \|= 0x40` (`0x28FF1`); then `word[rec+0x44] = 0xC` (`0x28FFB`), `word[rec+0x36] = AX` (`0x29007`), `byte[DS_00104AE8] \|= 0x80` (`0x29001`/`0x2900B`/`0x29010`); return 0 (`0x2900E`) |
-| 4 | cb1 | `0x2901C` | 0x0A | 179 | as #3's head (`0x29053`–`0x2906A`); **tail** (`0x2906D`–`0x290CE`): `0x2BE5C(rec)` (`0x2906D`); `ECX = rng_next(0x80)` (`0x29072`/`0x29077`); `EAX = rng_next(0x80)` (`0x2907E`/`0x29083`); `EAX += 0xC0` (`0x2908E`); `DX = word[rec+0x28] & 0x4000`; **reversed polarity** (`0x2909C JNZ`): if set → `word[rec+0x34] = CX` (`0x290AC`); if clear → `word[rec+0x34] = -ECX` (`0x2909E`–`0x290A2`) and `byte[rec+0x29] \|= 0x40` (`0x290A6`); then `word[rec+0x44] = 0xC` (`0x290B0`), `word[rec+0x36] = AX` (`0x290BC`), `byte[DS_00104AE8] \|= 0x80` (`0x290C5`); return 0 (`0x290C3`). **No `ECX += 0x20`** — #3 and #4 differ in the first rng range (`0x20` vs `0x80`) and the branch polarity |
+| 3 | cb1 | `0x28F64` | 0x19 | 182 | the same with `DS_00104888`/`0x104880` (`0x28F69`, `0x28F8F`), then `byte[rec2+0xC] = 0` (`0x28F9B`), `word[rec+0x32] = word[0xBD898]` (`0x28F9F`/`0x28FA8`), `byte[rec+0x29] \|= 0x10` (`0x28FAC`), `rec+0x14 = rec2` (`0x28FB2 MOV [EBX+0x14],ECX`, `EBX = rec`, `ECX = rec2`). **Tail** (`0x28FB5`–`0x29019`): `0x2BE5C(rec)` (`0x28FB5`); `ECX = rng_next(0x20)` (`0x28FBA`/`0x28FBF`); `EAX = rng_next(0x80)` (`0x28FC6`/`0x28FCB`); `ECX += 0x20` (`0x28FD4`); `EAX += 0xC0` (`0x28FD9`); `DX = word[rec+0x28] & 0x4000` (`0x28FD0`/`0x28FDE`/`0x28FE1`); if clear → `word[rec+0x34] = CX` (`0x28FF7`); if set → `word[rec+0x34] = -ECX` (`0x28FE9`–`0x28FED`) and `byte[rec+0x29] \|= 0x40` (`0x28FF1`); then `word[rec+0x44] = 0xC` (`0x28FFB`), `word[rec+0x36] = AX` (`0x29007`), `byte[DS_00104AE8] \|= 0x80` (`0x29001`/`0x2900B`/`0x29010`); return 0 (`0x2900E`). **Empty list → `0x28F86 MOV EAX,0xFFFFFFFF`, `0x28F8E RET` — the tail is not reached** |
+| 4 | cb1 | `0x2901C` | 0x0A | 179 | as #3's head (`0x29053`–`0x2906A`); **tail** (`0x2906D`–`0x290CE`): `0x2BE5C(rec)` (`0x2906D`); `ECX = rng_next(0x80)` (`0x29072`/`0x29077`); `EAX = rng_next(0x80)` (`0x2907E`/`0x29083`); `EAX += 0xC0` (`0x2908E`); `DX = word[rec+0x28] & 0x4000`; **reversed polarity** (`0x2909C JNZ`): if set → `word[rec+0x34] = CX` (`0x290AC`); if clear → `word[rec+0x34] = -ECX` (`0x2909E`–`0x290A2`) and `byte[rec+0x29] \|= 0x40` (`0x290A6`); then `word[rec+0x44] = 0xC` (`0x290B0`), `word[rec+0x36] = AX` (`0x290BC`), `byte[DS_00104AE8] \|= 0x80` (`0x290C5`); return 0 (`0x290C3`). **No `ECX += 0x20`** — #3 and #4 differ in the first rng range (`0x20` vs `0x80`) and the branch polarity. **Empty list → `0x2903E MOV EAX,0xFFFFFFFF`, `0x29046 RET` — the tail is not reached** |
 | 5 | cb1 | `0x48CD8` | 0x2D | 100 | the same with `DS_001082E0`/`0x108368` (`0x48CDD MOV EBX,dword ptr [0x001082E0]`, `0x48CE3 CMP EBX,0x1082E0`, `0x48D03 MOV EAX,0x108368`, `0x48D0A`), then `byte[DS_00104AE8] \|= 2` (`0x48D0F MOV AH,byte ptr [0x00104AE8]`, `0x48D22 OR AH,2`, `0x48D2A`), `byte[DS_00108398]++` (`0x48D19 MOV DL,byte ptr [0x00108398]`, `0x48D25 INC DL`, `0x48D30`), `byte[rec2+0xC] = 0` (`0x48D15`), `rec2+8 = rec` (`0x48D1F`) |
 | 6 | cb1 | `0x412F0` | 0x16 | 9 | `word[rec+0x34] = 0x200; return 0` (`0x412F0`/`0x412F6`) |
 | 7 | cb1 | `0x412FC` | **0x1B** | 9 | `word[rec+0x34] = 0x140; return 0` (`0x412FC`/`0x41302`) |
@@ -512,9 +515,7 @@ mode-1 sibling of `actor_pset_point` (`0x2A690`) and calls `mode1_cursor`
 
 **Wiring site:** the two cb1 tails (#3/#4). The `0x37E40` caller is unported and
 stays out of scope — it is a *caller*, not a callee, so it does not enter the
-gate's closure. **Unit-test value:** seeded `DS_00104AE8 = 0`, `pset+4 = X`,
-`DS_000F0AF0 = Y`, `rec+0x28` bit 12 clear → `DSD(rec+0x18) == Y + X − 0x2A00`
-and `byte[rec+0x29] & 0x20 == 0`.
+gate's closure. **Unit-test value:** §7.5.
 
 ### 3.4 Which types are reachable (so nothing is left unregistered)
 
@@ -817,7 +818,12 @@ test file). Each assertion is raw-derived, seeded, and mutation-proven.
 ### 7.4 The dispatch's return contract (a table-driven case)
 
 * **Seed:** one record per distinct callback address, each with the type byte
-  the table maps to it (the §3.3 table).
+  the table maps to it (the §3.3 table); for the five cb1s that pop a list
+  (`#1`–`#5`) the corresponding head must be seeded non-empty
+  (`[0xF0A78] != 0xF0A78`, `[0x100C20] != 0x100C20`, `[0x104888] != 0x104888`,
+  `[0x1082E0] != 0x1082E0`) or the callback returns `0xFFFFFFFF` early
+  (`0x127E1`, `0x19909`, `0x28F86`, `0x2903E`, `0x48CFA`) and the visibility
+  assertion tests the wrong path.
 * **Assert:** for the 16 registered types the callback's `AL` decides
   visibility; for every stub type the record is visible (`rec+0x28 & 8 == 0`).
 * **Mutation proof:** swap any registered callback for the stub → the affected
@@ -827,8 +833,15 @@ test file). Each assertion is raw-derived, seeded, and mutation-proven.
 
 * **Seed:** a record with `rec+0x28` bit 14 **clear** and a sentinel
   `word[rec+0x34] = 0x7FFF`; `DS_00104AE8` seeded to a value with bit 7 clear;
-  `rec+0x14 = 0` (so the list arm is a no-op and the tail is reached);
-  `word[rec+0x56]` = a slot whose pset is seeded.
+  `word[rec+0x56]` = a slot whose pset is seeded; **and the head's list seeded
+  non-empty with a node actually linked into it** — `[0x104888]` must not be
+  its own sentinel (`0x104888`) and must be a node `0x249D0` can unlink, or the
+  head returns `0xFFFFFFFF` at `0x28F86`/`0x28F8E` (resp. `0x2903E`/`0x29046`)
+  **before** the tail at `0x28FB5`/`0x2906D`, and none of the assertions below is
+  reached. `rec+0x14` is *written* by the head (`0x28FB2`/`0x2906A`,
+  `rec+0x14 = rec2`), never read on that path, so seeding it does not reach the
+  tail. The path, per the raw: `0x28F75 JNZ` (non-sentinel) → `0x28F7D` unlink →
+  `0x28F84 JNZ` (non-zero) → `0x28F8F`–`0x28FB2` → `0x28FB5 CALL 0x2BE5C`.
 * **Assert (`#3`, `0x28F64`, bit 14 clear):** `word[rec+0x34] == rng_next(0x20)
   + 0x20` (the first draw, **before** the second — the order is RNG-visible);
   `word[rec+0x44] == 0xC` (`0x28FFB`); `word[rec+0x36] == rng_next(0x80) + 0xC0`
@@ -843,6 +856,11 @@ test file). Each assertion is raw-derived, seeded, and mutation-proven.
 * **Mutation proof:** swap the two arms' polarity in `#4` (or add `+0x20` to its
   first draw) → the assertion fails; seed bit 14 the other way and the same
   assertion flips.
+* **`0x2BE5C` (§3.3b):** seed `DS_00104AE8 = 0`, `pset+4 = X`, `DS_000F0AF0 = Y`,
+  `rec+0x28` bit 12 clear → `DSD(rec+0x18) == Y + X − 0x2A00` (`0x2BED7`–`0x2BEE7`)
+  and `byte[rec+0x29] & 0x20 == 0` (`0x2BEEA`). **Mutation proof:** set
+  `rec+0x28` bit 12 → the mode-1 arm runs (`0x2BEA9` `mode1_cursor`,
+  `0x2BEBC`, `0x2BED2`) and `DSD(rec+0x18)` no longer equals `Y + X − 0x2A00`.
 
 ---
 
