@@ -40,6 +40,50 @@ the capture.
    align, but the cycle does not assert it.
 4. **Assertions** mutation-proven, in the existing per-area files.
 
+## Outcome (Task 3, 2026-09-24)
+
+**Acceptance 1 — MET.** Measured on the shipped port (commit `1222d47`):
+port frame 482 ↔ capture 834 = **0 / 192 000 B (0 px)**, from 18 294 B /
+6 194 px; port 483–487 ↔ captures 835–839 are also **0 B each**. The six
+consecutive byte-exact frames are the cycle's gate.
+
+**Acceptance 2 — met with the recorded move.** The fix is faithful (one C
+function per original in `port/src/game/actors.c`, wired at the raw's call
+sites) and the ladder is green: title `54 clean, 55 splice, 2 transition, 0
+unexplained` + `54 clean, 57 splice, 0`; attract `FIRST DIVERGENCE at capture
+frame 215`; smk `120/120` + `41/41`; `oracle C-vs-Python: 9866 writes
+byte-exact`; `symbols.h` byte-identical; 0 warnings. The front-end claim moved
+to `[560..842]` / 283 / `2 unexplained (832, 833)` per the absorbed move above
+(the window is derived from the port's own dump, so a correct arena render
+necessarily extends it; the fix explains captures 834..842 — 834..839
+byte-exact at 0 B each, 840..842 splice-explained at the oracle's zero
+tolerance).
+
+**Acceptance 3 — the fallback is a consequence, not a gate.** `make demo-oracle`
+still takes the `res is None` fallback (report-only): demo port frames
+`[490..1380]`, `0/891` exhibited; window `[843..3616]` (raw `3750..8409`),
+2774 frames: 0 clean / 0 splice / 0 transition / 2768 unexplained (6 all-black
+excluded); **first unexplained captured frame 843 (raw 3750)** — the T-rex
+pose, a named out-of-scope residual (the record's §6.3).
+
+**Acceptance 4 — assertions mutation-proven** (`port/tests/test_fight.c`:
+`check_type_table`, `check_type_callbacks`, `check_type_teardown`,
+`check_arena_backdrop`).
+
+**The size gate did NOT trigger.** The shipped dispatch group's closure is
+25 f / 1 544 B and its naive-new = true-new 17 f / 1 148 B — under both lines
+(the record's §4.2/§4.3). The §4.3 sensitivity stands: counting the 1268-B
+voice dispatcher `0x2C3FC` would exceed the gate; `#14` is a tail call into
+the port's existing stub, so the voice subsystem stays out of scope.
+
+**Where the seam landed.** The design's Homes paragraph allowed "wherever the
+record's seam lands": it landed in `port/src/game/actors.c`'s `actor_spawn`
+tail (`0x2B0D4`), not `platform/render.c`. **The Evidence correction is now
+pinned:** the port *did* draw the scene actors; the missing layer was the crowd
+actor 0's mountain children (ids 756/757/758), killed by the stub-only
+predicate — cycle 4's owner attribution (the `0x38730` scroll/zoom path) was
+wrong. No render, sprite, layer, position or palette value changed.
+
 ## Evidence (measured before the design)
 
 - The gap is a **dark mountain/rock silhouette** on the horizon (y ≈ 85–140,

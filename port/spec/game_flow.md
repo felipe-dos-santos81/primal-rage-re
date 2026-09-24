@@ -523,12 +523,18 @@ demo-fight section below.
 3617 distinct post-logo frames, raw 1367..8409 after the demo-fight closure
 cycle's re-capture) reaches the front-end. With the state-3 render ported
 (`0x12484`) the `PR_FRONTEND_DUMP` driver emits the real zoom-out, and
-`tools/title_compare.py --frontend` aligns it: window distinct **[560..830]**
-(raw 3108..3472), **271 frames: 117 clean, 153 splice, 0 transition, 0
-unexplained** (the demo section below records why the window indices moved from
-the pre-Task-9 `[557..813]` / 257 frames). The claim that result supports is precise and narrow: **no
+`tools/title_compare.py --frontend` aligns it: window distinct **[560..842]**
+(raw 3108..3749), **283 frames: 125 clean, 154 splice, 0 transition, 2
+unexplained** — captures **832** and **833**, allowed by name in
+`FRONTEND_ALLOWED_UNEXPLAINED` with their reason (`title_compare.py:352-365`;
+the arena-backdrop cycle's absorbed claim move: the window is derived from the
+port's own dump, so a correct arena render necessarily extends it — the fix
+explains captures 834..842). Any other unexplained frame still fails. (The demo
+section below records why the window indices moved from the pre-Task-9
+`[557..813]` / 257 frames; the arena-backdrop outcome section below records the
+`[560..830]`/271 → `[560..842]`/283 move.) The claim that result supports is precise and narrow: **no
 content-bearing capture frame inside the window the port's own dump exhibits is
-unexplained.** The window is derived from the port's dump (`check_capture`'s
+unexplained** (the two named exceptions aside). The window is derived from the port's dump (`check_capture`'s
 `idx`→`a,b` mapping) and the branch discards `check_capture`'s `rc` (coverage and
 `endpoints BAD`), so `unexplained` is only ever evaluated inside that
 self-derived window. The oracle therefore **cannot detect a port that
@@ -537,9 +543,9 @@ under-renders the front-end**: a dump of 300 identical copies of port frame 0
 0 unexplained, exhibited 1/300), and a dump of only the first 12 real frames
 exits 0 (window `[557..569]`, 0 unexplained, exhibited 9/12). `frontend-oracle`
 keeps enforcing the gate (the Python compare exits non-zero on any unexplained
-frame) and remains a `verify` ladder step; it was proven to fail on an induced
-regression (exit 1 — the unexplained count is corruption-dependent, not a fixed
-2).
+frame outside the two named) and remains a `verify` ladder step; it was proven
+to fail on an induced regression (exit 1 — the unexplained count is
+corruption-dependent, not a fixed 2).
 
 Task 5 found and fixed a real port bug: the raw's `actors_reset` (`0x2BAF4`)
 calls `0x38B70` at `0x2BBDA`, which zeroes the 7-entry front-end row table
@@ -577,12 +583,13 @@ match and is not counted as unexplained; only all-zero frames are dropped, so a
 content-bearing frame that disagrees with the port still fails (a deliberately
 corrupted port frame is reported; the unexplained count is corruption-dependent
 and the tool returns 1, not a fixed 2). Sixteen all-black capture
-frames are excluded: distinct 0, 213, 353, 386, 420, 454, 488, 522, 558, 833,
-1876, 2088, 2128, 2392, 3426, 3552 (raw 1373, 2178, 2425, 2533, 2642, 2750,
-2859, 2968, 3114, 3675, 4792, 5401, 5807, 6758, 7810, 8202, in the Task 9
-re-capture). One of them,
-capture 558 (raw 3114), is the frame the earlier report named: a fully black
-frame between two identical state-3 entry frames (caps 557/559, raw 3113/3115,
+frames are excluded: distinct 0, 217, 357, 390, 424, 458, 491, 525, 561, 831,
+1885, 2095, 2133, 2383, 3406, 3543 (raw 1367, 2173, 2420, 2529, 2637, 2746,
+2855, 2963, 3109, 3670, 4793, 5401, 5807, 6758, 7846, 8247, in the capture
+current at the arena-backdrop cycle; the indices are host-timed and shift on a
+re-capture — the Task-9 list was 0, 213, 353, …, 3552). One of them,
+capture 561 (raw 3109), is the frame the earlier report named: a fully black
+frame between two identical state-3 entry frames (caps 560/562, raw 3108/3110,
 both byte-equal to port frame 0). It is produced by `0x52106`, which `0x2BAF4`
 calls at `0x2BBEA` (the `xor eax,eax` at `0x2BBE8` precedes it) when
 `param_1 != 0`: it clears both offscreen buffers, zeroes the VGA DAC, and blits
@@ -597,7 +604,7 @@ two concrete reasons. First, the port presents only once at end-of-frame
 Second, even a structural present/dump seam would not converge: an all-black
 *port* frame content-matches sixteen all-black *capture* frames (including
 pre-logo capture 0), which would explode the window to `[0..3569]` with ~3296
-unexplained. **What the investigation could not settle** is whether capture 558's
+unexplained. **What the investigation could not settle** is whether capture 561's
 black frame is a distinct logic frame of the original or a scanout/sampling
 artifact of its 70.09 Hz timing. The exclusion is therefore a choice made in the
 absence of that certainty; it is documented here rather than presented as
@@ -656,32 +663,43 @@ at loop 1070 (dumped 481), state 7 runs loop 1071..1969 (dumped 482..1380), and
 dump stops. The dump therefore holds **1381 frames** (dumped 0..1380); the 1400
 cap covers it with no truncation, and the 2000-frame loop clears the 1970 exit.
 
-**The demo window is report-only; its first unexplained frame is capture 832 —
-the lazy loader's `- LOADING -` screen, the last blocker before the fight.**
-`tools/title_compare.py --demo` locates the front-end window with the same
-content alignment, then classifies the capture region after it against the port
-dump frames after the last frame that window exhibits — the same
-clean/splice/transition/unexplained model, no second one. It reports and exits 0.
+**The demo window is report-only; its first unexplained frame is capture 843 —
+the T-rex's animation pose, after the arena-backdrop cycle explained the fight's
+opening frames.** `tools/title_compare.py --demo` locates the front-end window
+with the same content alignment, then classifies the capture region after it
+against the port dump frames after the last frame that window exhibits — the
+same clean/splice/transition/unexplained model, no second one. It reports and
+exits 0.
 
-* Front-end window (still enforced in `verify`): distinct **[560..830]** (raw
-  3108..3472), **271 frames: 117 clean, 153 splice, 0 transition, 0
-  unexplained**. The indices moved again from cycle 1's `[557..810]` / `254`
-  (`100 clean, 150 splice, 3 transition`) when Task 2's master-loop pin forced
-  the cycle's re-capture; the move is the **capture's, not the port's** (the
-  capture is host-timed and not reproducible — a
-  `title_capture.py --verify-reproducible` run of the pinned original gave 587
-  vs 588 distinct frames and a first divergence at distinct index 30), and the
-  oracle's claim is unchanged.
-* Demo window: distinct **[831..3616]** (raw **3670..8409**), **2786 frames:
-  0 clean, 0 splice, 0 transition, 2779 unexplained** (7 all-black capture
-  frames excluded as artifacts). Demo port frames **[313..1380]**, **0/1068
+* Front-end window (still enforced in `verify`): distinct **[560..842]** (raw
+  3108..3749), **283 frames: 125 clean, 154 splice, 0 transition, 2
+  unexplained** — captures **832** (the loader's `- LOADING -` screen) and
+  **833** (the dark arena with the `LOADING` text overlaid), allowed by name in
+  `FRONTEND_ALLOWED_UNEXPLAINED` (the arena-backdrop cycle's absorbed claim
+  move; their owners are the state-9 hold's animation and the presented
+  DAC/palette state). Any other unexplained frame fails. The indices moved
+  again from cycle 1's `[557..810]` / `254` (`100 clean, 150 splice, 3
+  transition`) when Task 2's master-loop pin forced the cycle's re-capture; the
+  move is the **capture's, not the port's** (the capture is host-timed and not
+  reproducible — a `title_capture.py --verify-reproducible` run of the pinned
+  original gave 587 vs 588 distinct frames and a first divergence at distinct
+  index 30), and the oracle's claim is unchanged.
+* Demo window: distinct **[843..3616]** (raw **3750..8409**), **2774 frames:
+  0 clean, 0 splice, 0 transition, 2768 unexplained** (6 all-black capture
+  frames excluded as artifacts). Demo port frames **[490..1380]**, **0/891
   exhibited**.
-* **First unexplained captured frame 832 (raw 3671).** Capture 831 is all-black
-  (the state-6 `0x2BAF4(1)` DAC blackout; the oracle drops it as an artifact);
-  832 is black except rows 192..197 — the lazy loader's `- LOADING -` string
-  (489) drawn at (0,192) through `0x1B3AC`/`0x1C500`/`0x1C65C`; 833 is a
-  capture-time tear and 834..836 are the fight's first arena frames (the
-  corrected profile, record §9.3).
+* **First unexplained captured frame 843 (raw 3750).** It is the T-rex's
+  animation pose (the arena-backdrop record's §6.3): the best byte splice (port
+  490) still differs by 16 064 bytes and the mask covers only the T-rex's body,
+  while the mountains, temple, sky, sea, HUD and text match. The front-end
+  window's boundary frames 832/833 remain its named, out-of-scope unexplained:
+  831 is all-black (the state-6 `0x2BAF4(1)` DAC blackout; the oracle drops it
+  as an artifact); 832 is black except rows 192..197 — the lazy loader's
+  `- LOADING -` string (489) drawn at (0,192) through
+  `0x1B3AC`/`0x1C500`/`0x1C65C`; 833 is the arena dark (a mid-fade presented
+  DAC) with the `LOADING` text overlaid; 834..842 are the fight's opening arena
+  frames, which the arena-backdrop cycle explains (834..839 byte-exact at 0 B
+  each).
 * **Cycle 2 advanced the boundary 811 → 816 → 832, then stopped there.** Task 3
   ported the state-9 globe's missing indirect-call target `0x12720` (the globe's
   fourth layer), so the state-9 hold now matches (captures 816..830 == port
@@ -691,14 +709,16 @@ clean/splice/transition/unexplained model, no second one. It reports and exits 0
   aperture; Task 5b the fighters' idle-animation tick; Tasks 6/6b the hitbox
   machine and the `0x3CF38` hit chain (which now **fires** and lands hits). None
   moved the first-unexplained past 832: 832 is the loader's presentation, and its
-  read-stall is the one piece proven un-derivable (closure outcome below).
+  read-stall is the one piece proven un-derivable (closure outcome below). (The
+  arena-backdrop cycle later moved it past 832 to **843** — the T-rex pose, the
+  cycle-5 outcome below.)
 * **The window is no longer non-discriminating.** Cycle 1's `--demo` window
   opened on the state-9 hold's first frame, so it read identically for correct or
   broken code. Task 3 made the state-9 hold match — the hold's frames
   (816..830) are clean inside the **front-end** window (`0 unexplained`) — so the
-  demo window's boundary (832, the loader's presentation) is a real content gap,
-  not a window-definition artifact; the demo window itself still reports
-  **0 clean** (above). Window re-anchoring was **removed from this cycle**
+  demo window's boundary (the loader's presentation at 832/833, then the T-rex
+  pose at 843) is a real content gap, not a window-definition artifact; the demo
+  window itself still reports **0 clean** (above). Window re-anchoring was **removed from this cycle**
   (design spec, "Removed from this cycle"): no new reference and no re-anchoring
   task, because porting the state-9 render made the **front-end** window's
   state-9 hold frames clean instead.
@@ -1112,7 +1132,10 @@ blood/reaction effect). The fighters now byte-match at 482/834.
 because the residual 18 294 B is **not** the fighters: it is the **arena
 backdrop's missing dark mountain silhouette** in `platform/render.c` (`0x38730` →
 `0x387F4`/`0x38890`/`0x38A38`, the scene actors `DS_000BDFBC`/`DS_000BDFC0`).
-That is the demo-fight-closure cycle's subsystem, not the tail.
+That is the demo-fight-closure cycle's subsystem, not the tail. **Cycle 5
+(below) corrected this attribution:** the port did draw the scene actors, and
+the missing layer was the crowd actor 0's mountain children, killed by
+`actor_spawn`'s tail (`0x2B0D4`) in `port/src/game/actors.c` — not `render.c`.
 
 **The size gate.** The union (68 f / 13 131 B) is over the gate and was already
 ratified as this cycle's scope; the winner gate (1 f / 152 B) and the Task-6 tail
@@ -1129,7 +1152,55 @@ warnings: title `54 clean, 55 splice, 2 transition, 0 unexplained` and
 `54 clean, 57 splice, 0 unexplained`; attract `FIRST DIVERGENCE at capture frame
 215`; front-end `[560..830]` / 271 frames `0 unexplained`; smk `120/120` +
 `41/41`; C-vs-Python `9866 writes byte-exact`; `symbols.h` regenerates
-byte-identically (`1304 globals, 1206 functions`).
+byte-identically (`1304 globals, 1206 functions`). (Cycle 5 below moves the
+front-end claim to `[560..842]` / 283 / 2 unexplained (832, 833); every other
+claim stays at these values.)
+
+## Demo fight cycle 5 — arena backdrop outcome (Task 3)
+
+Cycle 5 (branch `arena-backdrop`, spec
+`../../docs/superpowers/specs/2026-09-24-arena-backdrop-design.md`, record
+`../../docs/superpowers/plans/2026-09-24-arena-backdrop-derivations.md`) closed
+the state-7 arena's missing horizon layer. **The cycle's gate is MET** and the
+front-end claim moved once, absorbed by policy.
+
+**The layer and its owner.** Cycle 4's attribution was **wrong twice over**:
+the port *did* draw the arena's scene actors (layer 2 = sky, id 11232; layer 1
+= sea, id 11233), and the missing dark mountain silhouette was not
+`platform/render.c`'s scroll path. The missing layer was the crowd actor 0's
+**mountain children** (sprite ids 756/757/758, layer 94, `px` 152/320/440),
+which `actor_spawn` spawned and then killed because its tail (`0x2B0D4`) tested
+only for the stub `0x5D812` instead of calling the actor type's callback
+(`DSD(0xBB9DC + type*0xC)`) and testing `AL`. Type `0x1B`'s callback (`0x412FC`)
+returns 0 (visible), so the faithful dispatch revives the layer; the same
+predicate killed five type-0x01 demo spawns (measured: 0 of 1381 dumped frames
+differ). The port is `port/src/game/actors.c`'s 16 non-stub callbacks plus
+`0x2BE5C` and the `0x2B0D4`/`0x2B185` dispatches; the size gate did **not**
+trigger (closure 25 f / 1 544 B; 17 f / 1 148 B new; the `0x2C3FC` sensitivity
+stands as recorded).
+
+**The measurement.** Port 482 ↔ capture 834 = **0 / 192 000 B (0 px)**, from
+18 294 B / 6 194 px; port 483–487 ↔ captures 835–839 are also 0 B each. The
+report-only demo oracle still takes the `res is None` fallback: demo port frames
+`[490..1380]` (891), `0/891` exhibited; window `[843..3616]` (raw
+`3750..8409`), 2774 frames: 0 clean / 0 splice / 0 transition / 2768
+unexplained (6 all-black excluded); first unexplained **843 (raw 3750)** — the
+T-rex pose, out of scope.
+
+**The claim move.** Front-end `[560..830]` / 271 / `0 unexplained` →
+**`[560..842]` / 283 / `2 unexplained (832, 833)`** — absorbed (human-decided)
+in Task 2 with the claim updated in the same commit: the window is derived from
+the port's own dump, so a correct arena render necessarily extends it (the fix
+explains captures 834..842), and 832/833 are pre-existing, out-of-scope gaps
+with named owners (the state-9 hold's animation / the loader's presented DAC
+state), allowed by name in `tools/title_compare.py`'s
+`FRONTEND_ALLOWED_UNEXPLAINED`; any other unexplained frame still fails.
+
+**Every other enforced oracle claim is unmoved.** `make verify` exits 0 with 0
+warnings: title `54 clean, 55 splice, 2 transition, 0 unexplained` and
+`54 clean, 57 splice, 0 unexplained`; attract `FIRST DIVERGENCE at capture frame
+215`; smk `120/120` + `41/41`; C-vs-Python `9866 writes byte-exact`;
+`symbols.h` regenerates byte-identically (`1304 globals, 1206 functions`).
 
 ## Landmarks (verified)
 

@@ -271,20 +271,23 @@ palette path spawn → `effects_step` → dirty list → `gfx_flush_palette` →
 draws** — the plan's assumed missing draw does not exist; the camera state is
 consumed by the existing render pass and actor-pset sync. The front-end pixel
 oracle is **closed and enforced**: a 120 s pinned capture aligns the port's
-state-3 zoom to window `[560..830]` (raw `3108..3472`), **271 frames: 117 clean,
-153 splice, 0 transition, 0 unexplained** (the indices moved from `[557..813]` /
-257 frames when demo-fight cycle 1's pins forced a re-capture, and again to
-`[560..830]` / 271 when cycle 2's master-loop pin forced a second; the capture is
+state-3 zoom to window `[560..842]` (raw `3108..3749`), **283 frames: 125 clean,
+154 splice, 0 transition, 2 unexplained (832, 833)** — the two are allowed by
+name (the arena-backdrop cycle's absorbed claim move, below) and any other
+unexplained frame fails. (The indices moved from `[557..813]` / 257 frames when
+demo-fight cycle 1's pins forced a re-capture, to `[560..830]` / 271 when cycle
+2's master-loop pin forced a second, and the window's end grew to 842 in the
+arena-backdrop cycle, whose fix explains captures 834..842; the capture is
 host-timed and not reproducible, so its distinct-frame indices shift while the
-oracle's `0 unexplained` claim does not), and `make verify`'s `frontend-oracle`
-step exits non-zero on any unexplained frame. It proves exactly one thing: **no
-content-bearing capture frame inside the window the port's own dump exhibits is
-unexplained** — the window is derived from that dump and the coverage/`endpoints
-BAD` counts are ignored, so a port that **under-renders** the front-end (only the
-state-3 entry frame, or only the first 12 frames) still passes. Sixteen all-black
-capture frames are excluded as an explicit oracle-level choice, **not** a proven
-fact (the investigation could not settle whether capture 558's black frame is a
-distinct logic frame or a 70.09 Hz scanout artifact). The effect call sites
+oracle's claim does not.) It proves exactly one thing: **no content-bearing
+capture frame inside the window the port's own dump exhibits is unexplained**
+(the two named exceptions aside) — the window is derived from that dump and the
+coverage/`endpoints BAD` counts are ignored, so a port that **under-renders**
+the front-end (only the state-3 entry frame, or only the first 12 frames) still
+passes. Sixteen all-black capture frames are excluded as an explicit
+oracle-level choice, **not** a proven fact (the investigation could not settle
+whether capture 561's black frame is a distinct logic frame or a 70.09 Hz
+scanout artifact). The effect call sites
 `0x29B74`/`0x41578` are **deferred**: the raw reaches them only through
 `0x24C5C`'s unported mode cases (`0x12`, `0x16..0x1B`) and the match/fight chain,
 and the port's `DS_00104B00` is fixed at 3, so wiring them would be a dispatch
@@ -306,16 +309,21 @@ command generator (`0x47208`), the `+0x52` state machine (`0x3531C`/`0x350D0`),
 the `0x3C88C` hitbox machine and the `0x3CF38` hit chain — the chain now **fires**
 and hits land (`+0x7C` 0/0 → 1/1), and the fight's last state change moved
 **1262 → 1400**. Its report-only oracle (`make demo-oracle`) measures the demo
-window `[831..3616]` (raw `3670..8409`), **2786 frames: 0 clean / 0 splice / 0
-transition / 2779 unexplained** (7 all-black frames excluded). **The first
-unexplained frame is capture 832 (raw 3671)** — the lazy loader's `- LOADING -`
-screen, not the state-9 hold. (Amendment 5 of cycle 1's plan said the fight
+window `[843..3616]` (raw `3750..8409`), **2774 frames: 0 clean / 0 splice / 0
+transition / 2768 unexplained** (6 all-black frames excluded). **The first
+unexplained frame is capture 843 (raw 3750)** — the T-rex's animation pose, not
+the state-9 hold. (Amendment 5 of cycle 1's plan said the fight
 begins at 839/28; Task 1 corrected it to **836/25**, and the final re-capture
 moved the loader text to 832 with the fight's first frames at 833/834 — record
 §9.1/§9.3.) Cycle 2 advanced the boundary 811 → 816 → 832: the
 state-9 globe's fourth layer (`0x12720`) made the hold match, the `rle_row`
 mirror-window fix and the idle-animation tick (`0x37A58`) improved the arena, and
-the chain drives the fight past its former stall. **The cycle's Gate — 0
+the chain drives the fight past its former stall. The arena-backdrop cycle
+(cycle 5) then explained the fight's opening frames — captures 834..839
+byte-exact at 0 B each — and pushed the front-end window's end to 842, so the
+report-only demo window now opens on 843 (the loader frame 832 and the held
+dark-arena frame 833 are the front-end window's two named unexplained, above).
+**The cycle's Gate — 0
 unexplained frames — is UNMET**, and it is recorded as such: capture 832's
 read-stall is **proven un-derivable** (the port produces both held states but the
 gate passes on the loader frame, and the post-read ISR tick count is a
@@ -336,12 +344,14 @@ derivation record `docs/superpowers/plans/2026-09-21-demo-fight-closure-derivati
 
 **Small fidelity gaps — cycle (branch `fidelity-gaps`), the four off-demo-path residuals.** This cycle closed all four of cycle 3's small named gaps and moved no enforced oracle claim. The five remaining `+0x52` handlers landed (`0x359E0`/`0x35C1C`/`0x35D20`/`0x37464`/`0x33B00`/`0x35E6C`), with `0x349C8`'s bit-6/7 deep callees (`0x385B0`/`0x39A10`) wired at their raw sites (`0x36884`/`0x37D57`) via the minimal caller chain (5 functions / ~1 741 B, ratified by the human). The loader flush scope's record premise was **refuted by the raw** — `0x1C470` is a whole-list drain and the port's flush was already faithful; the real gap, the missing initial record `{0xBD470, 0, 1, 0}`, is now enqueued. The attract/scene palette drivers (`0x4F7F4`/`0x4F83C`/`0x33874`) are ported and registered; `0x4F83C` ships test-only (its `0xE8916`-table callers are unported) as an **explicit accepted exception** (spec representation rule, Q10). The 169-tick state-9 hold is a **real divergence** (the state-9 screen's animation stops ~169 ticks early, holding capture 830's frame byte-static), oracle-neutral and carried forward with its owner. No single group triggered the size gate, but the **branch total crosses it**: 20 functions / 4 675 B (the four groups 10/2 223, 2/418, 0, 3/293 plus the human-ratified caller chain 5/1 741). Every enforced oracle claim is unmoved (`make verify` exit 0, 0 warnings). See `docs/superpowers/specs/2026-09-22-fidelity-gaps-design.md` and the record `docs/superpowers/plans/2026-09-22-fidelity-gaps-derivations.md`.
 
-**Pose/freeze — cycle 4 (branch `pose-freeze`), the demo fight's 9/8 freeze.** This cycle ported the freeze's two halves faithfully and measured the demo observable. The **unfreeze half** (`0x140E4` + `0x170A0` + callees, wired into `camera_decay`) and the **pose-entry half** (`0x193B0` → `0x3B714` → `0x3AAFC` → the pose family, wired into `fighter_pass_a`'s tail) landed, plus `0x18950` (`fighter_connect_query`) as a **faithfulness fix**. The winner-gate record misread the pair table's odd record (`0x0000FF00` → `0x00FF0000`); corrected, both demo queries return 0 and the position compare picks side 0 (T-rex), matching cycle 3's measurement — the "conflict" was a transcription error, now resolved. **Task 5 measured the residual** as the `0x17FA0` page-flag/visibility tail (`0x16AFC` 601 B + `0x164F4` 547 B): `B60=B61=0`, `B54=0`, `B18=B10=B30=0`, `0x100AC0=0x100AC8=0` for the whole state-7 window, so `camera_unfreeze` returned at its visibility gate and `0x193B0` never ran. **Task 6 (`bfd22cb`) ported that tail** (`0x16AFC`/`0x164F4` plus `0x16734`/`0x164C0`), wired at the raw's `0x180C9`/`0x18108` site in `camera_project`; it now fires (`camera_page_tail_b(1)`, ~18 state-7 frames), `B61=1`, `camera_unfreeze(1)` writes `AF8[1] = 5/3/2`, `0x193B0` runs, and **892 port frames change from frame 489** (the winner's blood/reaction effect). The fighters now byte-match at 482/834; the oracle still takes the `res is None` fallback (`0/1068` exhibited, `0 clean / 0 splice / 0 transition / 2779 unexplained`, first 832) because the residual **18 294 B (9.5 %) / 6 194 px** is the **arena backdrop's missing dark mountain silhouette** in `platform/render.c` (`0x38730`/`0x387F4`/`0x38890`/`0x38A38`), owned by the demo-fight-closure subsystem. Every enforced oracle claim is unmoved (`make verify` exit 0, 0 warnings). See `docs/superpowers/specs/2026-09-24-pose-freeze-design.md` and the record `docs/superpowers/plans/2026-09-24-pose-freeze-derivations.md`.
+**Pose/freeze — cycle 4 (branch `pose-freeze`), the demo fight's 9/8 freeze.** This cycle ported the freeze's two halves faithfully and measured the demo observable. The **unfreeze half** (`0x140E4` + `0x170A0` + callees, wired into `camera_decay`) and the **pose-entry half** (`0x193B0` → `0x3B714` → `0x3AAFC` → the pose family, wired into `fighter_pass_a`'s tail) landed, plus `0x18950` (`fighter_connect_query`) as a **faithfulness fix**. The winner-gate record misread the pair table's odd record (`0x0000FF00` → `0x00FF0000`); corrected, both demo queries return 0 and the position compare picks side 0 (T-rex), matching cycle 3's measurement — the "conflict" was a transcription error, now resolved. **Task 5 measured the residual** as the `0x17FA0` page-flag/visibility tail (`0x16AFC` 601 B + `0x164F4` 547 B): `B60=B61=0`, `B54=0`, `B18=B10=B30=0`, `0x100AC0=0x100AC8=0` for the whole state-7 window, so `camera_unfreeze` returned at its visibility gate and `0x193B0` never ran. **Task 6 (`bfd22cb`) ported that tail** (`0x16AFC`/`0x164F4` plus `0x16734`/`0x164C0`), wired at the raw's `0x180C9`/`0x18108` site in `camera_project`; it now fires (`camera_page_tail_b(1)`, ~18 state-7 frames), `B61=1`, `camera_unfreeze(1)` writes `AF8[1] = 5/3/2`, `0x193B0` runs, and **892 port frames change from frame 489** (the winner's blood/reaction effect). The fighters now byte-match at 482/834; the oracle still takes the `res is None` fallback (`0/1068` exhibited, `0 clean / 0 splice / 0 transition / 2779 unexplained`, first 832) because the residual **18 294 B (9.5 %) / 6 194 px** is the **arena backdrop's missing dark mountain silhouette** in `platform/render.c` (`0x38730`/`0x387F4`/`0x38890`/`0x38A38`), owned by the demo-fight-closure subsystem. Every enforced oracle claim is unmoved (`make verify` exit 0, 0 warnings). See `docs/superpowers/specs/2026-09-24-pose-freeze-design.md` and the record `docs/superpowers/plans/2026-09-24-pose-freeze-derivations.md`. **Cycle 5 (below) corrected this residual's attribution:** the port did draw the arena's scene actors, and the missing layer was the crowd actor 0's mountain children, killed by `actor_spawn`'s tail (`0x2B0D4`) in `port/src/game/actors.c` — not `render.c`.
+
+**Arena backdrop — cycle 5 (branch `arena-backdrop`), the demo fight's state-7 mountain layer.** Cycle 4's residual attribution was **wrong twice over**: the port *did* draw the arena's scene actors (layer 2 = sky, layer 1 = sea), and the missing dark mountain silhouette was not `platform/render.c`'s scroll path. The missing layer was the crowd actor 0's **mountain children** (sprite ids 756/757/758, layer 94), spawned and then killed by `actor_spawn`'s tail (`0x2B0D4`), which tested only for the stub `0x5D812` instead of calling the actor type's callback (`DSD(0xBB9DC + type*0xC)`) and testing `AL`. Type `0x1B`'s callback (`0x412FC`) returns 0 (visible), so the faithful dispatch revives the layer — and the five type-0x01 demo spawns killed by the same predicate (measured: 0 of 1381 dumped frames differ). The cycle ported the 16 non-stub callbacks plus `0x2BE5C` in `port/src/game/actors.c`; the size gate did not trigger (closure 25 f / 1 544 B; 17 f / 1 148 B new). **The cycle's gate is MET:** port 482 ↔ capture 834 = **0 / 192 000 B (0 px)**, from 18 294 B / 6 194 px, and port 483–487 ↔ captures 835–839 are also 0 B each. The front-end claim moved `[560..830]`/271/`0 unexplained` → **`[560..842]`/283/`2 unexplained (832, 833)`** — absorbed per the policy because the window is derived from the port's own dump (the fix explains captures 834..842; 832/833 are the loader/held-frame gaps, allowed by name in `tools/title_compare.py`); title/attract/smk/C-vs-Python/`symbols.h` unmoved, `make verify` exit 0, 0 warnings. The demo oracle's report-only fallback stands: its first unexplained is now capture **843 (raw 3750)** — the T-rex pose. See `docs/superpowers/specs/2026-09-24-arena-backdrop-design.md` and the record `docs/superpowers/plans/2026-09-24-arena-backdrop-derivations.md`.
 
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
-demo fight's arena backdrop (the `platform/render.c` mountain silhouette,
-`0x38730`/`0x387F4`/`0x38890`/`0x38A38`; the `0x17FA0` page-flag tail itself is
-ported, Task 6) and the interactive match cycle (the mode graph, `0x1EEB0`, the
+demo fight's remaining arena divergence (the T-rex's animation pose, first
+unexplained at capture 843; owner: the `0x34B14`/pose-family selector) and the
+interactive match cycle (the mode graph, `0x1EEB0`, the
 `0x1EA08` sites) remain;
 the attract's `0x2C3FC` voice calls remain declared gaps with `/* PORT: */`
 markers. The `0x13xxx` effect render path is no longer a gap (no draw was

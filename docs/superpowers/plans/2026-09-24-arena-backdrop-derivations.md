@@ -721,8 +721,14 @@ python3 -c "a=open('/tmp/pr_frontend_dump/run1/frame_0482.raw','rb').read(); b=o
 ### 6.1 Closed by this cycle's fix (measured)
 
 * **The demo's state-7 arena backdrop** — the mountain silhouette. The port
-  renders it; port 482–487 byte-match captures 834–839. The README's gap
-  inventory entry and `pose-freeze-derivations.md` §11.4's residual are closed.
+  renders it; port 482–487 byte-match captures 834–839 at **0 / 192 000 B**
+  each (Task 3 re-measured on the shipped port, commit `1222d47`; §9). The
+  assertions are `port/tests/test_fight.c`'s `check_type_table`,
+  `check_type_callbacks`, `check_type_teardown` and `check_arena_backdrop`
+  (the §7.1/§7.2/§7.3/§7.4 seeds), each mutation-proven; the ladder is green
+  (§9). The README's gap inventory entry and `pose-freeze-derivations.md`
+  §11.4's residual are closed. **The owner is `port/src/game/actors.c`'s
+  `actor_spawn` tail (`0x2B0D4`), not `platform/render.c`** (§0.3.2).
 
 ### 6.2 Exposed by the fix: captures 832 and 833 (the front-end window's 2 unexplained)
 
@@ -747,8 +753,9 @@ Neither is this cycle's layer; both were carried in the design's Out list
 extending the window. The design's acceptance #2 assumed the claim would not
 move; it does. The justified readings:
 
-* the new window is *more* faithful — it explains 8 capture frames
-  (834–842) the old window did not, at 0 bytes of error;
+* the new window is *more* faithful — it explains the 9 capture frames
+  834–842 the old window did not (834–839 byte-exact at 0 B each; 840–842
+  splice-explained at the oracle's zero tolerance);
 * the 2 unexplained are pre-existing gaps with named owners, not regressions;
 * the cycle must either (a) also close 832/833 (out of the design's scope), or
   (b) update the front-end claim in the same commit with this record's reason
@@ -762,7 +769,10 @@ cycle's spec. Measured on the full 16-callback port: window `[560..842]`, 283
 frames, 2 unexplained (832, 833), `make verify` exit 0; title/attract/smk/
 C-vs-Python unmoved. The full port also revives the five type-0x01 demo spawns;
 measured, they change **0 of 1381** dumped frames (§0.3.12), so they move no
-claim.
+claim. **Task 3 re-measured the shipped port** (commit `1222d47`): window
+`[560..842]` (raw `3108..3749`), 283 frames: 125 clean, 154 splice, 0
+transition, 2 unexplained — `[(832, 3671), (833, 3740)]`, allowed by name —
+with the 16 all-black frames dropped as artifacts; §9.
 
 ### 6.3 The next residual: capture 843 (outside the window)
 
@@ -776,6 +786,11 @@ pose). Everything else matches: the mountains, temple, sky, sea, HUD, the
 derivable state"), i.e. the demo's state-7 pose advance. **Not this cycle's
 layer; re-scoped with its size unknown (out of scope).**
 
+**Task 3 confirmed it on the shipped port** (§9): the demo oracle's window is
+`[843..3616]` (raw `3750..8409`) and its first unexplained captured frame is
+**843 (raw 3750)** — the same T-rex pose, now the demo window's opening frame
+because the fix pushed the front-end window's end to 842.
+
 ### 6.4 Carried, untouched (each with its owner)
 
 * The state-9 hold's animation (`fidelity-gaps` §7.6) — the 169-tick static
@@ -788,8 +803,8 @@ layer; re-scoped with its size unknown (out of scope).**
 * The type-0x01 spawns the port still kills (5 in the demo, measured; their
   cb1 `0x127C0` is in this cycle's 16, so Task 2 fixes them too). **This is a
   second live consequence of the same predicate**, not a separate gap: after
-  Task 2 they spawn. Their effect on the demo frames after 489 is *not* measured
-  here (they occur after the arena in the demo run) and Task 2 must measure it.
+  Task 2 they spawn, and Task 2 measured their effect — **0 of 1381 dumped
+  frames differ** (§0.3.12) — so the revival moves no claim.
 
 ### 6.5 Named gaps of the derivation itself
 
@@ -962,3 +977,79 @@ test file). Each assertion is raw-derived, seeded, and mutation-proven.
 scene line) and `port/src/game/actors.c` (the `SPAWN` line and the temporary
 `tcb == 0x412FC / 0x412F0` dispatch). All reverted; `git status --short` is
 clean except this record.
+
+---
+
+## 9. Outcome (Task 3, 2026-09-24)
+
+**The cycle's gate is MET.** Measured on the shipped port (commit `1222d47`)
+through `make demo-oracle`'s `PR_FRONTEND_DET` dump (the §5.1 invocation) and
+the §5.2 per-pixel compare:
+
+| port frame ↔ capture frame | before | after |
+|---|---|---|
+| 482 ↔ 834 | 18 294 B / 6 194 px | **0 B / 0 px** |
+| 483 ↔ 835 | (differed) | **0 B / 0 px** |
+| 484 ↔ 836 | (differed) | **0 B / 0 px** |
+| 485 ↔ 837 | (differed) | **0 B / 0 px** |
+| 486 ↔ 838 | (differed) | **0 B / 0 px** |
+| 487 ↔ 839 | (differed) | **0 B / 0 px** |
+
+Six consecutive frames byte-exact, not one: the mountain layer, the temple, the
+sky, the sea, the HUD and the text all agree at the capture's own resolution.
+
+**The demo oracle's report (report-only; Acceptance #3).** It still takes the
+`res is None` fallback — the port's frames after the front-end window
+(`[490..1380]`, 891) explain **no** capture frame in `[843..3616]`:
+
+```
+title_compare: demo: front-end window distinct [560..842]; demo port frames [490..1380] (891 frames)
+title_compare: demo: 2774 frames, all unexplained; port frames exhibited 0/891
+title_compare: demo: window distinct [843..3616] (raw 3750..8409)
+title_compare: demo: 2774 frames in window: 0 clean, 0 splice, 0 transition, 2768 unexplained
+title_compare: demo: 6 all-black capture frame(s) excluded as artifacts
+title_compare: demo: first unexplained captured frame 843 (raw 3750); 2768 in the window
+```
+
+The first residual is the **T-rex pose at capture 843** (§6.3), out of scope,
+and the port's dump ends at 1380 while the capture runs to 3616. The fallback is
+a consequence, not a gate.
+
+**The enforced ladder** (`make verify`, exit 0, 0 C warnings):
+
+* title `54 clean, 55 splice, 2 transition, 0 unexplained` and `54 clean, 57
+  splice, 0` — unmoved;
+* attract `FIRST DIVERGENCE at capture frame 215` (raw 2180/2175) — unmoved;
+* **front-end `[560..842]` (raw `3108..3749`), 283 frames: 125 clean, 154
+  splice, 0 transition, 2 unexplained `[(832, 3671), (833, 3740)]`** — the one
+  absorbed move (§6.2), both allowed by name in `tools/title_compare.py`'s
+  `FRONTEND_ALLOWED_UNEXPLAINED` (the reason at `:352-365`); any other
+  unexplained frame still fails;
+* smk `120/120` + `41/41`; `oracle C-vs-Python: 9866 writes byte-exact`;
+  `symbols.h` regenerates byte-identically — unmoved.
+
+**The size gate: does NOT trigger.** The shipped group is the dispatch
+(cb1 + cb2): closure **25 f / 1 544 B**, naive-new = true-new **17 f /
+1 148 B** — under both lines (§4.2/§4.3). The §4.3 sensitivity stands: counting
+`0x2C3FC` (the 1268-B voice dispatcher, entered only through `#14`'s
+discarded-return tail call) would put the closure at 190 f / 22 795 B / 29 new,
+over the gate; `#14` is ported as a tail call into the port's existing
+`0x2C3FC` stub, so the voice subsystem stays out of scope.
+
+**The claim move and its reason.** The design's acceptance #2 ("every enforced
+claim unmoved") was false; the front-end claim moved `[560..830]` / 271 /
+`0 unexplained` → `[560..842]` / 283 / `2 unexplained (832, 833)`. The reason:
+the window is derived from the port's own dump, so a correct arena render
+necessarily extends it — the fix explains captures 834..842 (834..839
+byte-exact at 0 B each, 840..842 splice-explained), and 832/833 are
+pre-existing, out-of-scope gaps with named owners (§6.2). The move was absorbed
+(human-decided) in Task 2 with the claim updated in the same commit and the
+reason recorded in `tools/title_compare.py`.
+
+**The corrections this outcome carries.** Cycle 4's "the port never renders the
+arena backdrop" is **false**: the port spawned and drew both scene actors (sky
+id 11232, sea id 11233) — the missing layer was the crowd actor 0's mountain
+children (ids 756/757/758), killed by `actor_spawn`'s tail predicate
+(`0x2B0D4`), and the owner is `port/src/game/actors.c`, not
+`platform/render.c` (§0.3.1/§0.3.2). No render, sprite, layer, position or
+palette value changed.
