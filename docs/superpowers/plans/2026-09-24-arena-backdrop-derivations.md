@@ -101,6 +101,27 @@ make verify
    flow's own counters; the record uses the *frame index* (port 482 ↔ capture
    834) as the content point, which is measurable, rather than a state word.
 
+8. **Six addresses in this record's first edition of §3.3 violated rule 6**
+   (the `0x127C0`, `0x48CD8`, `0x40684`, `0x3FC90`, `0x48D3C` and `0x49444`
+   rows quoted pre-fixup displacements: `0x70A78`, `0x10882E0`, `0x84AE8`,
+   `0x88398`, `0x87EF8`, `0x88080`, `0x8839C`, `0x883C4`). They are corrected in
+   §3.3 against Ghidra (`0xF0A78`, `0x1082E0`, `0x104AE8`, `0x108398`,
+   `0x107EF8`, `0x108080`, `0x10839C`, `0x1083C4`). The correction matters
+   because the wrong forms land on **different, non-zero** globals
+   (`DSB(0x88398)` reads `0x80`, `DSB(0x84AE8)` reads `0x72`) while the correct
+   ones are zero, and `port/src/mem.h:22` is `DSB(o) = mem[o]` — a transcription
+   of the wrong value would corrupt unrelated state. The same rule also caught
+   `0x2BE5C`'s `word[0x107900]` (first read as `0x87900`) and `#15`'s
+   `0x1082E0` (first read as `0x10882E0`).
+
+9. **`0x2C3FC` is not a stub.** The size-gate method's "five known stubs"
+   (`0x2C3FC`, `0x2EA64`, `0x62002`/`0x62003`/`0x6201B`, cycle-3 §10.4) treats
+   `0x2C3FC` as one. The raw: `FUN_0002c3fc`, **1268 B, 206 callers, 8
+   callees** — the voice dispatcher, which the *port* has as an out-of-scope
+   stub. The exclusion is kept (it is the method's rule and the port's status),
+   but the record states the raw fact and the sensitivity in §4.3: counting it
+   would put the group **over** the gate (190 f / 22 795 B closure, 29 new).
+
 ---
 
 ## 1. The runtime differential (Step 1)
@@ -401,8 +422,14 @@ Replace the port's `if (DSD(DS_000BB9DC + type*0xC) == FN_0005D812)` test
 * `cb = DSD(0xBB9DC + (u32)DSB(rec+0x48) * 0xC)`; invoke it through
   `fn_resolve(cb)` with `(rec, slot)` — the same `fn_register`/`fn_resolve`
   mechanism the animation opcodes already use (`anim_indirect`, `actors.c:519`).
-* If the returned byte's low bit is non-zero: `DSB(rec+0x48) = 0`,
-  `DSW(rec+0x28) |= 8`, return 0.
+* If the returned byte is **non-zero, as a whole byte** (`0x2B0EF TEST AL,AL` /
+  `0x2B0F1 JZ 0x2B104`): `DSB(rec+0x48) = 0`, `DSW(rec+0x28) |= 8`, return 0.
+  The test is `AL != 0`, not "bit 0 set": `#12` (`0x3B9C4`) returns with
+  `EAX = rec2` (`0x3B9CB MOV dword ptr [EAX+8],0` on a mem[] offset), so its low
+  byte is arbitrary and a bit-0 test would call an even offset "visible". (For
+  the 0 / `0xFF` returns the two tests coincide, which is why the port's current
+  `== FN_0005D812` form has looked correct.) Only cb1's return is tested; the
+  cb2 dispatch (`0x2B185`) discards it.
 * Else: `DSB(rec+0x2b) |= 0x40`; `if ((a5 & 0x400) == 0) DSB(rec+0x4a) = 0`;
   `render_list_insert(pset)`; return `rec`.
 * **Unregistered callback:** the port must not guess. The raw would call
@@ -425,34 +452,69 @@ dispatch (0x2B185), clear 0x40 (0x2B18B), then the pset/palette work.
 
 ### 3.3 Piece 3 — the sixteen callbacks
 
-The type table's distinct non-stub callbacks. `cb1` = `0xBB9DC + t*0xC`;
-`cb2` = `0xBB9E0 + t*0xC`. All are register-argument (`EAX` = rec, `EDX` = slot
-for cb1; `EAX` = rec for cb2), returning a byte in `AL`.
+The type table's distinct non-stub callbacks. `cb1` = `DSD(0xBB9DC + t*0xC)`
+(the spawn check); `cb2` = `DSD(0xBB9E0 + t*0xC)` (the teardown). All are
+register-argument (`EAX` = rec, `EDX` = slot for cb1; `EAX` = rec for cb2),
+returning a byte in `AL`. **Every data address below is Ghidra's
+(fixup-applied) value**; the pre-fixup forms differ by `0x80000` (§0.3.6).
 
-| # | addr | types | size | body (raw, address-proved) |
-|---|---|---|---|---|
-| 1 | `0x127C0` | 0x01 | 62 | pop the head of the `DS_000F0A78` list (unlink `0x249D0`); if empty return `0xFF`; else `rec2+8 = rec`, `rec+0x14 = rec2`, insert `rec2` before `0xF0AE0` (`0x249B0`), return 0. Proving: `0x127C4 MOV EDX,[0x70A78]`, `0x127CA CMP EDX,0x70A78`, `0x127EC MOV EAX,0xF0AE0`, `0x127F1 MOV [EBX+0x14],EDX`, `0x127E1 MOV EAX,0xFFFFFFFF` |
-| 2 | `0x198E8` | 0x06/0x26/0x27/0x28 | 62 | the same with `DS_00100C20` and `0x100C28` (`0x198EC`, `0x19914`) |
-| 3 | `0x28F64` | 0x19 | 182 | the same with `DS_00104888`/`0x104880` (`0x28F69`, `0x28F8F`), then `byte[rec2+0xC] = 0` (`0x28F9B`), `word[rec+0x32] = word[0xBD898]` (`0x28F9F`/`0x28FA8`), `byte[rec+0x29] |= 0x10` (`0x28FAC`), `rec2+0x14 = rec` (`0x28FB2`) |
-| 4 | `0x2901C` | 0x0A | 179 | as #3 (`0x29057`–`0x2906A`) |
-| 5 | `0x48CD8` | 0x2D | 100 | the same with `DS_0010882E0`/`0x108368` (`0x48CDD`, `0x48D03`, `0x48D0A`), then `byte[0x84AE8] |= 2` (`0x48D0F`/`0x48D2A`), `byte[0x88398]++` (`0x48D19`/`0x48D30`), `byte[rec2+0xC] = 0` (`0x48D15`), `rec2+8 = rec` (`0x48D1F`) |
-| 6 | `0x412F0` | 0x16 | 9 | `word[rec+0x34] = 0x200; return 0` (`0x412F0`/`0x412F6`) |
-| 7 | `0x412FC` | **0x1B** | 9 | `word[rec+0x34] = 0x140; return 0` (`0x412FC`/`0x41302`) |
-| 8 | `0x12800` | 0x01 | 41 | if `rec+0x14 != 0`: unlink it (`0x249D0`), insert before `0xF0A78` (`0x249B0`), `rec+0x14 = 0` (`0x12804`–`0x1281F`) |
-| 9 | `0x19928` | 0x06/0x26/0x27/0x28 | 45 | the same with `0x100C20` and `byte[rec+0x48] = 0` (`0x1992C`–`0x1994E`) |
-| 10 | `0x290D0` | 0x0A/0x19 | 41 | the same with `0x104888` (`0x290D4`–`0x290EF`) |
-| 11 | `0x40684` | 0x1A | 45 | the same with `0x87EF8` and `byte[rec+0x48] = 0` (`0x40688`–`0x406AA`) |
-| 12 | `0x3B9C4` | 0x02/0x03/0x04/0x05/0x08 | 19 | if `rec+0x14 != 0`: `[rec+0x14+8] = 0`, `byte[rec+0x14+0x64] = 0xFF` (`0x3B9C4`–`0x3B9D2`) |
-| 13 | `0x3FC90` | 0x10 | 29 | if `rec+0x14 != 0`: `dword[0x88080 + byte[rec+0x14+0x51]*4] = 0` (`0x3FC92`–`0x3FCA3`) |
-| 14 | `0x3D784` | 0x09 | 10 | `EAX = 0x4F; jmp 0x2C3FC` (`0x3D784`/`0x3D789`) — the `0x2C3FC` voice/fatal stub |
-| 15 | `0x48D3C` | 0x2D | 67 | if `rec+0x14 != 0`: unlink it, insert before `0x10882E0`, `rec+0x14 = 0`, `byte[0x88398]--`, and if it underflows to `0xFF`, `byte[0x84AE8] &= ~2` (`0x48D40`–`0x48D75`) |
-| 16 | `0x49444` | 0x20..0x25 | 97 | if `rec+0x14 != 0`: if `word[rec2+0x1C] & 2`, `dword[0x8839C + (rec2+0x18>>16)*4] = 0`; if `rec2+0x10 != 0`, `set_dead(0x2B150)` on it and clear; unlink `rec+0x14`, insert before `0x883C4`, `rec+0x14 = 0` (`0x4944A`–`0x49499`) |
+| # | half | addr | types | size | body (raw, address-proved) |
+|---|---|---|---|---|---|
+| 1 | cb1 | `0x127C0` | 0x01 | 62 | pop the head of the `DS_000F0A78` list (unlink `0x249D0`); if empty return `0xFF`; else `rec2+8 = rec`, `rec+0x14 = rec2`, insert `rec2` before `0xF0AE0` (`0x249B0`), return 0. Proving: `0x127C4 MOV EDX,dword ptr [0x000F0A78]`, `0x127CA CMP EDX,0xF0A78`, `0x127EC MOV EAX,0xF0AE0`, `0x127F1 MOV [EBX+0x14],EDX`, `0x127E1 MOV EAX,0xFFFFFFFF` |
+| 2 | cb1 | `0x198E8` | 0x06/0x26/0x27/0x28 | 62 | the same with `DS_00100C20` and `0x100C28` (`0x198EC MOV EDX,dword ptr [0x00100C20]`, `0x198F2 CMP EDX,0x100C20`, `0x19914 MOV EAX,0x100C28`) |
+| 3 | cb1 | `0x28F64` | 0x19 | 182 | the same with `DS_00104888`/`0x104880` (`0x28F69`, `0x28F8F`), then `byte[rec2+0xC] = 0` (`0x28F9B`), `word[rec+0x32] = word[0xBD898]` (`0x28F9F`/`0x28FA8`), `byte[rec+0x29] \|= 0x10` (`0x28FAC`), `rec2+0x14 = rec` (`0x28FB2`). **Tail** (`0x28FB5`–`0x29019`): `0x2BE5C(rec)` (`0x28FB5`); `ECX = rng_next(0x20)` (`0x28FBA`/`0x28FBF`); `EAX = rng_next(0x80)` (`0x28FC6`/`0x28FCB`); `ECX += 0x20` (`0x28FD4`); `EAX += 0xC0` (`0x28FD9`); `DX = word[rec+0x28] & 0x4000` (`0x28FD0`/`0x28FDE`/`0x28FE1`); if clear → `word[rec+0x34] = CX` (`0x28FF7`); if set → `word[rec+0x34] = -ECX` (`0x28FE9`–`0x28FED`) and `byte[rec+0x29] \|= 0x40` (`0x28FF1`); then `word[rec+0x44] = 0xC` (`0x28FFB`), `word[rec+0x36] = AX` (`0x29007`), `byte[DS_00104AE8] \|= 0x80` (`0x29001`/`0x2900B`/`0x29010`); return 0 (`0x2900E`) |
+| 4 | cb1 | `0x2901C` | 0x0A | 179 | as #3's head (`0x29053`–`0x2906A`); **tail** (`0x2906D`–`0x290CE`): `0x2BE5C(rec)` (`0x2906D`); `ECX = rng_next(0x80)` (`0x29072`/`0x29077`); `EAX = rng_next(0x80)` (`0x2907E`/`0x29083`); `EAX += 0xC0` (`0x2908E`); `DX = word[rec+0x28] & 0x4000`; **reversed polarity** (`0x2909C JNZ`): if set → `word[rec+0x34] = CX` (`0x290AC`); if clear → `word[rec+0x34] = -ECX` (`0x2909E`–`0x290A2`) and `byte[rec+0x29] \|= 0x40` (`0x290A6`); then `word[rec+0x44] = 0xC` (`0x290B0`), `word[rec+0x36] = AX` (`0x290BC`), `byte[DS_00104AE8] \|= 0x80` (`0x290C5`); return 0 (`0x290C3`). **No `ECX += 0x20`** — #3 and #4 differ in the first rng range (`0x20` vs `0x80`) and the branch polarity |
+| 5 | cb1 | `0x48CD8` | 0x2D | 100 | the same with `DS_001082E0`/`0x108368` (`0x48CDD MOV EBX,dword ptr [0x001082E0]`, `0x48CE3 CMP EBX,0x1082E0`, `0x48D03 MOV EAX,0x108368`, `0x48D0A`), then `byte[DS_00104AE8] \|= 2` (`0x48D0F MOV AH,byte ptr [0x00104AE8]`, `0x48D22 OR AH,2`, `0x48D2A`), `byte[DS_00108398]++` (`0x48D19 MOV DL,byte ptr [0x00108398]`, `0x48D25 INC DL`, `0x48D30`), `byte[rec2+0xC] = 0` (`0x48D15`), `rec2+8 = rec` (`0x48D1F`) |
+| 6 | cb1 | `0x412F0` | 0x16 | 9 | `word[rec+0x34] = 0x200; return 0` (`0x412F0`/`0x412F6`) |
+| 7 | cb1 | `0x412FC` | **0x1B** | 9 | `word[rec+0x34] = 0x140; return 0` (`0x412FC`/`0x41302`) |
+| 8 | cb2 | `0x12800` | 0x01 | 41 | if `rec+0x14 != 0`: unlink it (`0x249D0`), insert before `0xF0A78` (`0x12812 MOV EAX,0xF0A78`, `0x249B0`), `rec+0x14 = 0` (`0x12804`–`0x1281F`) |
+| 9 | cb2 | `0x19928` | 0x06/0x26/0x27/0x28 | 45 | the same with `0x100C20` (`0x1993A MOV EAX,0x100C20`) and `byte[rec+0x48] = 0` (`0x1994E`) |
+| 10 | cb2 | `0x290D0` | 0x0A/0x19 | 41 | the same with `0x104888` (`0x290E2 MOV EAX,0x104888`) |
+| 11 | cb2 | `0x40684` | 0x1A | 45 | the same with `0x107EF8` (`0x40696 MOV EAX,0x107EF8`) and `byte[rec+0x48] = 0` (`0x406AA`) |
+| 12 | cb2 | `0x3B9C4` | 0x02/0x03/0x04/0x05/0x08 | 19 | if `rec+0x14 != 0`: `[rec+0x14+8] = 0`, `byte[rec+0x14+0x64] = 0xFF` (`0x3B9C4`–`0x3B9D2`) |
+| 13 | cb2 | `0x3FC90` | 0x10 | 29 | if `rec+0x14 != 0`: `dword[0x108080 + byte[rec+0x14+0x51]*4] = 0` (`0x3FCA3 MOV dword ptr [EAX*0x4 + 0x108080], EBX`) |
+| 14 | cb2 | `0x3D784` | 0x09 | 10 | `EAX = 0x4F; jmp 0x2C3FC` (`0x3D784`/`0x3D789`) — a **tail call into the voice dispatcher** `FUN_0002c3fc` (1268 B, 206 callers), which the port carries as an out-of-scope stub (§4.3); its return (the table byte `DSB(0xBBdc8 + 0x4F*12) = 0x5`) is **not** tested by the cb2 dispatch |
+| 15 | cb2 | `0x48D3C` | 0x2D | 67 | if `rec+0x14 != 0`: unlink it, insert before `0x1082E0` (`0x48D4E MOV EAX,0x1082E0`), `rec+0x14 = 0`, `byte[DS_00108398]--` (`0x48D5B`/`0x48D61`/`0x48D6A`), and if it underflows to `0xFF` (`0x48D70`/`0x48D73`), `byte[DS_00104AE8] &= ~2` (`0x48D75 AND byte ptr [0x00104AE8],0xFD`) |
+| 16 | cb2 | `0x49444` | 0x20..0x25 | 97 | if `rec+0x14 != 0`: if `word[rec2+0x1C] & 2` (`0x49451`–`0x4945E`), `dword[0x10839C + ((s32)DSD(rec2+0x18) >> 16)*4] = 0` (`0x49468 MOV dword ptr [EAX*0x4 + 0x10839C], ECX`); if `DSD(rec2+0x10) != 0`, `set_dead` it (`0x49478 CALL 0x2B150`) and clear (`0x4947D`); unlink `rec+0x14`, insert before `0x1083C4` (`0x4948C MOV EAX,0x1083C4`), `rec+0x14 = 0` (`0x49499`) |
 
 Registration: `fn_register(0x127C0, ...)` … `fn_register(0x49444, ...)` in
 `actors_init` (`actors.c:95`, next to the existing three animation-code
-registrations). No `symbols.h` change — the generator emits no names for these
-addresses, so the plan uses local `#define`s or the literals with the address in
-the header comment (the repo's rule for a generator gap).
+registrations). `symbols.h` names `0x49444` (`FN_00049444`, symbols.h:2026) and
+`0x2BE5C` (`FN_0002BE5C`, symbols.h:1670); the CSV lists both
+(`00049444,97,FUN_00049444,2,3,ok`; `0002be5c,151,FUN_0002be5c,3,1,ok`). The
+other 15 callbacks have no name in `symbols.h` and no CSV entry, so the plan
+uses local `#define`s (or the literals with the address in the header comment)
+for those — the repo's rule for a generator gap. **The CSV's callee edges are
+incomplete for this group**: it records no caller of `0x2BE5C` although the raw
+calls it at `0x28FB5`, `0x2906D` and `0x37FCF`, and no callee edge at all for
+the 15 unlisted callbacks — the closure's edges for the 16 roots therefore come
+from the disassembly (§4.1).
+
+### 3.3b `0x2BE5C` — the mode-1 position/pset updater (151 B)
+
+`FUN_0002be5c` (`prage.functions.csv`: 151 B, 3 callers, 1 callee). Called by
+the two cb1 tails above (`0x28FB5` in #3, `0x2906D` in #4) and by an **unported
+dispatcher at `0x37E40`** (`0x37FCF CALL 0x2BE5C`; Ghidra created no function
+there and the CSV has no entry between `0x37D18` and `0x380C4`). It is the
+mode-1 sibling of `actor_pset_point` (`0x2A690`) and calls `mode1_cursor`
+(`0x2A620`); both are already ported in `actors.c`. **Home:**
+`port/src/game/actors.c`. Body (Ghidra, fixup-applied):
+
+* `ECX = pset = DSD(0x1014EC) + word[rec+0x56]*0x20` (`0x2BE64`–`0x2BE71`);
+* `rec+0x1C = (DSD(0x000F0AEC) + 0x3BC0 − DSD(pset+8)) − ((s32)DSD(rec+0x30) >> 16)`
+  (`0x2BE73`–`0x2BE92`);
+* if `word[rec+0x28] & 0x1000` (`0x2BE95 AND AH,0x10`, `0x2BE9D JZ`):
+  * `DSD(pset+0x14) = DSD(pset+8)` (`0x2BEA4`), `mode1_cursor(rec, pset)` (`0x2BEA9`);
+  * `word[rec+0x46] = word[0x107900 + ((s32)DSD(rec+0x61) >> 24)*2]` (`0x2BEB4 MOV AX,word ptr [EAX*0x2 + 0x107900]`, `0x2BEBC`);
+  * `rec+0x18 = DSD(pset+4) + ((s32)DSD(rec+0x44) >> 16)*2 − 0x2A00` (`0x2BEC0`–`0x2BED2`);
+* else (`0x2BED7`): `rec+0x18 = DSD(0x000F0AF0) + (DSD(pset+4) − 0x2A00)` (`0x2BED7`–`0x2BEE7`);
+* `byte[rec+0x29] &= ~0x20` (`0x2BEEA`); return (`0x2BEF2`).
+
+**Wiring site:** the two cb1 tails (#3/#4). The `0x37E40` caller is unported and
+stays out of scope — it is a *caller*, not a callee, so it does not enter the
+gate's closure. **Unit-test value:** seeded `DS_00104AE8 = 0`, `pset+4 = X`,
+`DS_000F0AF0 = Y`, `rec+0x28` bit 12 clear → `DSD(rec+0x18) == Y + X − 0x2A00`
+and `byte[rec+0x29] & 0x20 == 0`.
 
 ### 3.4 Which types are reachable (so nothing is left unregistered)
 
@@ -500,13 +562,17 @@ in `port/src` except the generated `symbols.h`** (the naive heuristic: the
 address appears as `0xADDR` in a `.c`/`.h`). **"true-new"** = naive + the roots
 that are named-but-unported.
 
-**Method note (raw):** the 16 callbacks are **not in `prage.functions.csv`** —
-Ghidra created no function at those addresses because they are reachable only
-through the data table (`CALL dword ptr [EBX + 0xbb9dc]`). Their extents and
-callees were therefore derived by **control-flow-reachable disassembly** of the
-code object (all branches followed, terminated at `RET`), and their indirect
-calls/jumps were checked (none). This is a correction to the method's inputs,
-not to its rule.
+**Method note (raw):** **15 of the 16 callbacks are not in
+`prage.functions.csv`** — Ghidra created no function at those addresses because
+they are reachable only through the data table (`CALL dword ptr [EBX +
+0xbb9dc]`). The exception is `0x49444` (`00049444,97,FUN_00049444,2,3,ok`),
+whose flow-derived extent (97 B) and callees agree with the CSV, so the figures
+are unaffected. For the other 15 the extents and callees were derived by
+**control-flow-reachable disassembly** of the code object (all branches
+followed, terminated at `RET`), and their indirect calls/jumps were checked
+(none). The CSV is also missing the `0x2BE5C` callee edges (§3.3/§3.3b), which
+the disassembly supplies. This is a correction to the method's inputs, not to
+its rule.
 
 ### 4.2 Per group
 
@@ -534,6 +600,24 @@ The 8 already-ported closure members (`0x1C3D0`, `0x1C458`, `0x249B0`,
 * **The dispatch group is under the gate by both measures** — 17 new functions
   (< the ~20-function line) and 1 148 B (< the ~4 KB line). No follow-on cycle;
   the cycle proceeds to Task 2.
+* **The verdict's one sensitivity (raw correction to the method's inputs).** The
+  method excludes `0x2C3FC` as one of "the five known stubs". The raw says it is
+  **not a stub**: `FUN_0002c3fc`, **1268 B, 206 callers, 8 callees** — the voice
+  dispatcher, which the *port* carries as an out-of-scope stub
+  (`fidelity-gaps` §7.13; the port documents the same no-op at `fighter.c`'s
+  `0x37D5C`). It enters this group only through `#14` (`0x3D784`'s tail call),
+  a **cb2 whose return is discarded**. Measured both ways:
+  * with `0x2C3FC` excluded (the method as written): **25 f / 1 544 B** closure,
+    **17 f / 1 148 B** new — under the gate;
+  * with `0x2C3FC` counted (the raw's truth): **190 f / 22 795 B** closure,
+    **29 f / 2 752 B** new — **over the gate** (29 ≥ 20; the closure ≥ 4 KB).
+
+  The plan keeps it excluded, and `#14` is ported as the raw's tail call into the
+  port's *existing* `0x2C3FC` stub (a documented no-op, exactly as
+  `fighter_37d18` already does at `0x37D5C`), so the voice subsystem is not
+  pulled in. **If the cycle wants `#14` behaviourally faithful, the gate
+  triggers and the voice dispatcher becomes a follow-on cycle** — the figure is
+  recorded here so that decision is mechanical, not a judgement.
 * The 16-callback set is the *whole* faithful dispatch closure (both halves).
   The `cb1`-only group (8 f / 754 B) and the minimal fix (1 f / 9 B) are smaller
   but leave the teardown half unported and the port's stub-only test in place for
@@ -576,9 +660,31 @@ python3 -c "a=open('/tmp/pr_frontend_dump/run1/frame_0482.raw','rb').read(); b=o
    `41/41` and `oracle C-vs-Python: 9866 writes byte-exact`; `symbols.h`
    byte-identical; **front-end `[560..842]` / 283 / 2 unexplained (832, 833)** —
    MOVED (§6.2).
-5. **The instrumented differential** (Task 1's, reverted) is reproducible with
-   `PR_RL_DUMP=1` and the four lines of instrumentation quoted in §1.1/§1.4; it
-   is *not* part of the shipped tree.
+5. **The instrumented differential** (Task 1's, reverted; *not* part of the
+   shipped tree). The source, with `#include <stdio.h>`/`<stdlib.h>` added:
+
+   ```c
+   /* render.c, in render_list() before the clip computation */
+   if (getenv("PR_RL_DUMP"))
+       fprintf(stderr, "RL f=%u layer=%u pset=%08x id=%u pal=%08x px=%d py=%d x=%d y=%d W=%d H=%d\n",
+               DSD(DS_0010150C), layer, pset, DSW(pset + 0x00), DSD(pset + 0x18),
+               px, py, x, y, n.width, n.rows);
+   /* render.c, in render_scroll_setup() */
+   if (getenv("PR_RL_DUMP")) fprintf(stderr, "SCENE i=%u\n", i);
+   /* actors.c, in actor_spawn() just before the type test */
+   if (getenv("PR_RL_DUMP"))
+       fprintf(stderr, "SPAWN desc=%08x type=%02x cb=%08x id=%u a5=%08x\n",
+               (u32)((const u8 *)desc - mem), DSB(rec + 0x48),
+               DSD(DS_000BB9DC + (u32)DSB(rec + 0x48) * 0xCu), DSW(pset), a5);
+   ```
+
+   Task 1 additionally printed the pset's sprite-descriptor handle and its 12
+   bytes in the `RL` line, an `ACT` dump of the active list at frames 480–483,
+   and (for the fix's measurement only) treated `tcb == 0x412FC / 0x412F0` as
+   returning 0. Run with
+   `PR_FRONTEND_DET=/tmp/pr_rl PR_RL_DUMP=1 PR_GAME_DIR=data/game/C
+   ./build/run_tests`; the driver redirects the child's stderr into
+   `/tmp/pr_rl/run1.log`.
 
 ---
 
@@ -690,7 +796,9 @@ test file). Each assertion is raw-derived, seeded, and mutation-proven.
     `0xF0 − (a3>>6) + (slot>>24)`, `0x2492 >> 6 = 146`);
   * the parent's `word[rec+0x34] == 0x140` (the type-0x1B callback ran);
   * child A's `DSD(rec+0x32) >> 16 == 0xA8` (168) and child B's `== 0x120` (288)
-    — the stream's inline `a2` values at `0x0E8EB8`/`0x0E8EC0`;
+    — the stream's inline `a2` values at `0x0E8EB8` and `0x0E8EC2` (`DSW(0x0E8EB8)
+    = 0x00A8`; `DSW(0x0E8EC2) = 0x0120`; the word between them, `0x0E8EC0`, is
+    the second inline dword's high word `0x000C`);
   * the parent's `DSB(rec+0x4A) == 0` (the top-level spawn clears the parent slot
     at `0x2B116`) and each child's `DSB(rec+0x4A) == 7` (the parent slot);
   * all three nodes are in the render list (`render_list_count()` +3).
@@ -715,6 +823,27 @@ test file). Each assertion is raw-derived, seeded, and mutation-proven.
 * **Mutation proof:** swap any registered callback for the stub → the affected
   type's visibility flips and the assertion fails.
 
+### 7.5 The `#3`/`#4` tails and `0x2BE5C` (§3.3/§3.3b)
+
+* **Seed:** a record with `rec+0x28` bit 14 **clear** and a sentinel
+  `word[rec+0x34] = 0x7FFF`; `DS_00104AE8` seeded to a value with bit 7 clear;
+  `rec+0x14 = 0` (so the list arm is a no-op and the tail is reached);
+  `word[rec+0x56]` = a slot whose pset is seeded.
+* **Assert (`#3`, `0x28F64`, bit 14 clear):** `word[rec+0x34] == rng_next(0x20)
+  + 0x20` (the first draw, **before** the second — the order is RNG-visible);
+  `word[rec+0x44] == 0xC` (`0x28FFB`); `word[rec+0x36] == rng_next(0x80) + 0xC0`
+  (`0x29007`); `byte[DS_00104AE8] & 0x80` (`0x29010`); `byte[rec+0x29] & 0x40
+  == 0` (the clear-arm does not set it).
+* **Assert (`#3`, bit 14 set):** `word[rec+0x34] == -(rng_next(0x20) + 0x20)`
+  (`0x28FEB`/`0x28FED`) and `byte[rec+0x29] & 0x40` (`0x28FF1`).
+* **Assert (`#4`, `0x2901C`, polarity reversed):** bit 14 **set** →
+  `word[rec+0x34] == rng_next(0x80)` (`0x290AC`, no `+0x20`); bit 14 **clear** →
+  `word[rec+0x34] == -rng_next(0x80)` and `byte[rec+0x29] & 0x40` (`0x290A6`).
+  Both draws are `rng_next(0x80)` (`0x29072`/`0x2907E`).
+* **Mutation proof:** swap the two arms' polarity in `#4` (or add `+0x20` to its
+  first draw) → the assertion fails; seed bit 14 the other way and the same
+  assertion flips.
+
 ---
 
 ## 8. Provenance
@@ -729,6 +858,9 @@ test file). Each assertion is raw-derived, seeded, and mutation-proven.
 | `disassemble_bytes 0x48D94` | `JMP dword ptr CS:[EAX*0x4 + 0x48D80]` (fixup-applied; the pre-fixup read said `0x38D80`) |
 | `disassemble_bytes 0x412EC` | `0x412F0`/`0x412FC` (`MOV word [EAX+0x34], 0x200`/`0x140`, `XOR EAX,EAX`, `RET`) |
 | `disassemble_bytes 0x127C0`, `0x198E8`, `0x28F64`, `0x2901C`, `0x3FC90`, `0x3D784`, `0x3B9C4` | the callback bodies of §3.3 |
+| `disassemble_bytes 0x12800`, `0x19928`, `0x290D0`, `0x40684`, `0x48CD8`, `0x48D3C`, `0x49444` | the remaining callback bodies and the corrected data addresses of §3.3 (fix-round 1) |
+| `disassemble_bytes 0x2BE5C`, `0x37FC0` | `0x2BE5C`'s body (§3.3b) and its third caller at `0x37FCF` |
+| `read_memory 0x0E8EB2` | the animation stream's words (the `a2` values at `+0x06`/`+0x10`, the stop word `0x02F4` at `+0x14`) |
 | `read_memory 0xBDF7C`, `0xBDF9C`, `0xBDE50`, `0xBDEF0`, `0xA8B30`, `0xB3AA0`, `0xBBB1C`, `0xBBC18`, `0xC77EC`, `0xC7850`, `0xC7864`, `0xC7878`, `0xC7F78`, `0xBB9D8`, `0xBB9E0`, `0xBBD98`, `0xBBDA8`, `0x48D80` | the descriptor/tables/stream values of §2 |
 
 ### 8.2 The raw file and the local disassembler
