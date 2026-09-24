@@ -1085,42 +1085,44 @@ divergence is named with its owner.
   §10.2. The §7.1 "conflict" was a transcription artifact, now resolved;
   `0x18950` does **not** gate the demo.
 
-**The measured observable (UNMOVED).** `make demo-oracle` still takes the
-`res is None` fallback (`tools/title_compare.py:484`): front-end window
-`[560..830]`, demo port frames `[313..1380]` (1068), **`0/1068` exhibited**;
-demo window `[831..3616]` (raw `3670..8409`), **2786 frames: 0 clean, 0 splice,
-0 transition, 2779 unexplained** (7 all-black excluded); **first unexplained
-captured frame 832 (raw 3671)**. The 482/834 witness is **unchanged**:
-`frame_0482.raw` vs `frontend/frame_0834.raw` = **18 294 B (9.5 %) / 6 194 px**
-(left 1 549 + right 4 645); capture 834 is still the best match over 830..840.
+**The measured observable.** `make demo-oracle` still takes the `res is None`
+fallback (`tools/title_compare.py:484`): front-end window `[560..830]`, demo port
+frames `[313..1380]` (1068), **`0/1068` exhibited**; demo window `[831..3616]`
+(raw `3670..8409`), **2786 frames: 0 clean, 0 splice, 0 transition, 2779
+unexplained** (7 all-black excluded); **first unexplained captured frame 832
+(raw 3671)**. The 482/834 witness is **unchanged**: `frame_0482.raw` vs
+`frontend/frame_0834.raw` = **18 294 B (9.5 %) / 6 194 px** (left 1 549 + right
+4 645); capture 834 is still the best match over 830..840.
 
-**The residual divergence (owner: a follow-on).** `AF8`/`AFC` stay 0 at every
-state-7 frame because `camera_project` (`0x17FA0`) hardcodes the page flag
-`DS_00100B60`/`B61` to 0 (`camera.c:111`) and never populates the visibility
-boxes `0x100AC0`/`0x100AC8`. Both are outputs of `0x17FA0`'s **unported** tail
-`0x16AFC` (601 B) / `0x164F4` (547 B): the booleans that set `B60`/`B61` and
-copy-or-zero `0x100AC0`/`0x100AC8` (`0x180C9`/`0x18108`; demo-fight record §7.4
-item 2). With `0x100AC8[side] == 0`, `camera_unfreeze` returns at its visibility
-gate (`0x1715e`/`0x17182`), so `B18`/`B10`/`B30` stay 0, `B54` stays 0, `AF8`
-stays 0, and `fighter_pass_a`'s tail never runs `0x193B0`. Measured: for the
-whole state-7 window `B60=B61=0`, `B54=0`, `B18=B10=B30=0`,
-`0x100AC0=0x100AC8=0`; forcing `camera_unfreeze` past both the overlap gate and
-`B60`/`B61` still leaves `AF8=0` (the visibility gate rejects). The original's
-`AF8`/`AFC` are non-zero at the 9/8 hold (cycle 3 §10.2), and the only writer
-path is `0x170A0` gated on `B60`/`B61`, so the original's `0x164F4` returns
-non-zero there — its first gate (`slot+0x53 ∈ {7,8}`) is satisfied by the hold's
-`slot+0x53 == 8`. The tail is 2 functions / 1 148 B plus
-callees — **under** the size gate, a follow-on, not a new cycle.
+**The `0x17FA0` tail (Task 6, `bfd22cb`).** Task 5 measured `AF8`/`AFC` at 0 at
+every state-7 frame because `camera_project` (`0x17FA0`) hardcoded the page flag
+`DS_00100B60`/`B61` to 0 and never populated the visibility boxes
+`0x100AC0`/`0x100AC8` — both outputs of the tail `0x16AFC` (601 B) / `0x164F4`
+(547 B) (`0x180C9`/`0x18108`; demo-fight record §7.4 item 2). With
+`0x100AC8[side] == 0`, `camera_unfreeze` returned at its visibility gate
+(`0x1715e`/`0x17182`), so `B18`/`B10`/`B30` stayed 0, `B54` stayed 0, `AF8`
+stayed 0, and `fighter_pass_a`'s tail never ran `0x193B0`. **Task 6 ported the
+tail** (`0x16AFC`/`0x164F4` plus `0x16734`/`0x164C0`; record §11), wired at the
+raw's `0x180C9`/`0x18108` site. It now fires (`camera_page_tail_b(1)`, ~18
+state-7 frames), `B61 = 1`, `camera_unfreeze(1)` writes `AF8[1] = 5/3/2`,
+`0x193B0` runs, and **892 port frames change from frame 489** (the winner's
+blood/reaction effect). The fighters now byte-match at 482/834.
+
+**The residual (owner: demo-fight-closure).** The 482/834 witness is unchanged
+because the residual 18 294 B is **not** the fighters: it is the **arena
+backdrop's missing dark mountain silhouette** in `platform/render.c` (`0x38730` →
+`0x387F4`/`0x38890`/`0x38A38`, the scene actors `DS_000BDFBC`/`DS_000BDFC0`).
+That is the demo-fight-closure cycle's subsystem, not the tail.
 
 **The size gate.** The union (68 f / 13 131 B) is over the gate and was already
-ratified as this cycle's scope; the winner gate (1 f / 152 B) is under it; no
-group grew past the record's measurement.
+ratified as this cycle's scope; the winner gate (1 f / 152 B) and the Task-6 tail
+(4 f / 2 154 B) are under it; no group grew past the record's measurement.
 
 **Named gaps carried (record §7).** `0x19020` (confirmed no-op; `slot+0x18`
 never set), `0x38154`, the `0x3Fxxx` closer script (unreachable), 831/832's
 held-frame presentation (un-derivable), the `0x2C3FC` voice stub, and the
-interactive match (unowned). The cycle's residual is the `0x16AFC`/`0x164F4`
-page-flag tail (§7.11); the deferred minors are listed at record §7.0.
+interactive match (unowned). The `0x16AFC`/`0x164F4` page-flag tail (§7.11) is
+**ported** (Task 6); the deferred minors are listed at record §7.0.
 
 **Every enforced oracle claim is unmoved.** `make verify` exits 0 with 0
 warnings: title `54 clean, 55 splice, 2 transition, 0 unexplained` and

@@ -162,36 +162,41 @@ changed>`; never `git add -A`.
   window), but the front-end window's held frames (port 313..480 = capture 830)
   share the dump; a timing change would show there first.
 
-## Outcome (Task 5)
+## Outcome (Tasks 5–6)
 
-All five tasks landed. **The demo observable did not move** — acceptance point 2
+All six tasks landed. **The demo observable did not move** — acceptance point 2
 is **UNMET**, and its residual is named with its owner. Record:
-`../plans/2026-09-24-pose-freeze-derivations.md` §10.
+`../plans/2026-09-24-pose-freeze-derivations.md` §10 and §11.
 
-* **Acceptance 1 (faithful port) — MET.** The two halves (Tasks 2–3) and
-  `0x18950` (Task 4) are ported one C function per original, address-tagged,
-  wired at their call sites; assertions mutation-proven in `test_fight.c`.
-  `make verify` exits 0 with 0 warnings and every enforced claim unmoved: title
-  `54 clean, 55 splice, 2 transition, 0 unexplained` and
-  `54 clean, 57 splice, 0`; attract `FIRST DIVERGENCE at capture frame 215`;
-  front-end `[560..830]`/271 `0 unexplained`; smk `120/120` + `41/41`;
-  `oracle C-vs-Python: 9866 writes byte-exact`; `symbols.h` byte-identical.
+* **Acceptance 1 (faithful port) — MET.** The two halves (Tasks 2–3), `0x18950`
+  (Task 4) and the `0x17FA0` page-flag tail (Task 6) are ported one C function
+  per original, address-tagged, wired at their call sites; assertions
+  mutation-proven in `test_fight.c`. `make verify` exits 0 with 0 warnings and
+  every enforced claim unmoved: title `54 clean, 55 splice, 2 transition, 0
+  unexplained` and `54 clean, 57 splice, 0`; attract `FIRST DIVERGENCE at capture
+  frame 215`; front-end `[560..830]`/271 `0 unexplained`; smk `120/120` +
+  `41/41`; `oracle C-vs-Python: 9866 writes byte-exact`; `symbols.h`
+  byte-identical.
 * **Acceptance 2 (the demo observable) — UNMET.** `make demo-oracle` still takes
   the `res is None` fallback (`tools/title_compare.py:484`): `0/1068` port frames
   exhibited, `0 clean / 0 splice / 0 transition / 2779 unexplained`, first
   unexplained capture 832 (raw 3671). The 482/834 witness is unchanged at
-  **18 294 B (9.5 %) / 6 194 px** (left 1 549 + right 4 645). The residual
-  divergence is the unported `0x17FA0` page-flag/visibility tail (`0x16AFC`
-  601 B + `0x164F4` 547 B): it leaves `B60`/`B61`, `0x100AC0`/`0x100AC8`, `B54`
-  and therefore `AF8`/`AFC` at 0, so `0x193B0` never runs. **Owner:** a
-  follow-on — 2 functions / 1 148 B plus callees, **under** the size gate.
-  Record §7.11.
+  **18 294 B (9.5 %) / 6 194 px** (left 1 549 + right 4 645). **Task 6
+  (`bfd22cb`) ported the residual `0x17FA0` page-flag/visibility tail**
+  (`0x16AFC` 601 B + `0x164F4` 547 B, plus `0x16734`/`0x164C0`): it now fires
+  (`camera_page_tail_b(1)`, ~18 state-7 frames), `B61 = 1`, `camera_unfreeze(1)`
+  writes `AF8[1] = 5/3/2`, `0x193B0` runs, and **892 port frames change from
+  frame 489**. The fighters now byte-match at 482/834; the remaining residual is
+  the **arena backdrop** (a missing mountain silhouette) in `platform/render.c`
+  (`0x38730`/`0x387F4`/`0x38890`/`0x38A38`). **Owner:** the demo-fight-closure
+  subsystem. Record §7.11, §11.
 * **The winner gate (Task 4).** The record's odd-record dword `0x0000FF00` was
   corrected to `0x00FF0000`: both demo queries return 0, the position compare
   picks side 0 (T-rex) — matching cycle-3 §10.2 — and the §7.1 "conflict" is
   resolved. `0x18950` does not gate the demo; the port is a faithfulness fix.
 * **The size gate.** The union (68 f / 13 131 B) was already over the gate and
-  ratified as this cycle's scope; the winner gate (1 f / 152 B) is under it; no
-  group grew past the record's measurement. No follow-on cycle is created.
+  ratified as this cycle's scope; the winner gate (1 f / 152 B) and the Task-6
+  tail (4 f / 2 154 B) are under it; no group grew past the record's measurement.
+  No follow-on cycle is created.
 * **Claim policy.** No enforced claim moved, so the claim-move clause is not
   exercised.

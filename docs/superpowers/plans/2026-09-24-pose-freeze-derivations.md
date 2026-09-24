@@ -757,28 +757,23 @@ Task 5 establishes the observable with:
 10. **`0x2C3FC`** (the character voice, called from `0x3AAFC` and `0x3B714`) —
     the existing audio stub; out of scope.
 11. **The `0x17FA0` page-flag/visibility tail (`0x16AFC` 601 B + `0x164F4`
-    547 B) — the cycle's residual divergence (new; Task 5).** The demo's
-    `AF8`/`AFC` stay 0 at every state-7 frame because `camera_project`
-    (`0x17FA0`) hardcodes the page flag `DS_00100B60`/`B61` to 0
-    (`camera.c:111`) and never populates the visibility boxes
-    `DS_00100AC0`/`AC8`. Both are outputs of `0x17FA0`'s **unported** tail:
-    `0x16AFC` (reads `0x100A78[side]`) and `0x164F4` (reads `0x100A90[side]`)
-    return the booleans that set `B60`/`B61` and copy-or-zero
-    `0x100AC0`/`0x100AC8` (`0x180C9`/`0x18108`; demo-fight record §7.4 item 2).
-    With `0x100AC8[side] == 0`, `camera_unfreeze` returns at its visibility
-    gate (`0x1715e`/`0x17182`), so `B18`/`B10`/`B30` stay 0, `B54` stays 0
-    (§7.3), and `AF8`/`AFC` stay 0 — so `fighter_pass_a`'s tail never runs
-    `0x193B0` and the pose never runs. **Measured (Task 5):** for the whole
-    state-7 window `B60=B61=0`, `B54=0`, `B18=B10=B30=0`,
-    `0x100AC0=0x100AC8=0`; forcing `camera_unfreeze` (bypassing both the
-    overlap gate and `B60`/`B61`) still leaves `AF8=0`, because the visibility
-    gate rejects. The original's `AF8`/`AFC` are non-zero at the 9/8 hold
-    (cycle-3 §10.2), and the only writer path is `0x170A0` gated on
-    `B60`/`B61`, so the original's `0x164F4` returns non-zero there — its first
-    gate (`slot+0x53 ∈ {7,8}`) is satisfied by the hold's `slot+0x53 == 8`.
-    **Owner:** a follow-on — 2 functions /
-    1 148 B plus callees, **under** the size gate. Until it lands the cycle's
-    two halves are wired but gated off and the demo observable does not move.
+    547 B) — the cycle's residual divergence (new; Task 5), PORTED by Task 6
+    (`bfd22cb`; §11).** Task 5's premise — the demo's `AF8`/`AFC` stay 0 because
+    `camera_project` (`0x17FA0`) hardcodes the page flag `DS_00100B60`/`B61` to
+    0 (`camera.c:111`) and never populates the visibility boxes
+    `DS_00100AC0`/`AC8` — was measured correct: for the whole state-7 window
+    `B60=B61=0`, `B54=0`, `B18=B10=B30=0`, `0x100AC0=0x100AC8=0`, and forcing
+    `camera_unfreeze` past both the overlap gate and `B60`/`B61` still left
+    `AF8=0`. **Task 6 ported the tail** (the four functions of §11, wired at the
+    raw's `0x180C9`/`0x18108` site between the `0x180A1` `index_out` store and
+    `0x18140`). **Measured (Task 6):** `camera_page_tail_b(1)` now returns 1 for
+    ~18 state-7 frames, so `B61=1`, `0x100AC8[1]` is populated,
+    `camera_unfreeze(1)` writes `AF8[1] = 5/3/2`, `0x193B0` runs, and **892
+    port frames change from frame 489**. The fighters now byte-match at 482/834;
+    the residual 18 294 B is the **arena backdrop** (missing mountain
+    silhouette) in `platform/render.c` (`0x38730`/`0x387F4`/`0x38890`/`0x38A38`),
+    owned by the demo-fight-closure subsystem — not this tail. No gap is
+    dropped: the residual is re-scoped to that owner (§11.4).
 12. **The interactive match** — the mode graph (`DS_00104B00`), the `0x257A4`
     coin divert, `0x1EEB0`, `0x1F458`, the player screens and human input —
     implemented by no task in any demo-fight cycle. **Unowned**; the design
@@ -959,12 +954,21 @@ The 482/834 witness is **unchanged**: `frame_0482.raw` vs
 4 645), capture 834 still the best match over 830..840 (next best 835 at
 36 723 B). The fighters hold at the 9/8 entry, exactly as before the cycle.
 
-**Why (measured).** `AF8`/`AFC` are 0 at every state-7 frame:
-`B60=B61=0`, `B54=0`, `B18=B10=B30=0`, `0x100AC0=0x100AC8=0`. The residual
-divergence is the unported `0x17FA0` page-flag/visibility tail
+**Why (measured, Task 5; superseded by Task 6).** `AF8`/`AFC` are 0 at every
+state-7 frame: `B60=B61=0`, `B54=0`, `B18=B10=B30=0`, `0x100AC0=0x100AC8=0`. The
+residual divergence is the `0x17FA0` page-flag/visibility tail
 (`0x16AFC`/`0x164F4`) — gap §7.11; forcing `camera_unfreeze` past both the
 overlap gate and `B60`/`B61` still leaves `AF8=0` because the visibility gate
-(`0x1715e`/`0x17182`) rejects. The cycle's two halves are wired but gated off.
+(`0x1715e`/`0x17182`) rejects. The cycle's two halves were wired but gated off.
+
+**Task 6 (`bfd22cb`) ported the tail** (§11): `camera_page_tail_b(1)` returns 1
+for ~18 state-7 frames, `B61=1`, `0x100AC8[1]` is populated, `camera_unfreeze(1)`
+writes `AF8[1] = 5/3/2`, `0x193B0` runs, and **892 port frames change from frame
+489** (the winner's blood/reaction effect). The fallback above is unchanged only
+because the residual 18 294 B is the **arena backdrop** (a missing mountain
+silhouette) in `platform/render.c` (`0x38730`/`0x387F4`/`0x38890`/`0x38A38`),
+owned by the demo-fight-closure subsystem; the fighters now byte-match at
+482/834.
 
 ### 10.4 The size gate
 
@@ -991,6 +995,91 @@ No enforced claim moved, so the policy's claim-move clause is not exercised.
 ### 10.6 The gap inventory
 
 §7: item 1 **resolved** (the winner-gate conflict); item 3 **measured**
-(`B54 == 0`); items 5/6/7/8/10 **carried** (out of scope, unchanged); item 11 is
-the cycle's **residual divergence**; item 12 the **unowned** interactive match;
-§7.0 the **deferred minors**. No gap is dropped.
+(`B54 == 0`); items 5/6/7/8/10 **carried** (out of scope, unchanged); item 11
+**ported** (Task 6, §11); item 12 the **unowned** interactive match; §7.0 the
+**deferred minors**. No gap is dropped.
+
+---
+
+## 11. Task 6 — the 0x17FA0 page-flag/visibility tail (commit `bfd22cb`)
+
+**Scope and closure.** The four functions below are the whole tail. Ghidra xrefs
+show `0x16AFC` ← only `0x17FA0`, `0x164F4` ← only `0x17FA0`, `0x16734` ← only
+`0x16AFC`, and `0x164C0` ← `0x16AFC` + `0x164F4`. The port is one C function per
+original in `port/src/game/camera.c`; §7.11's "unported residual" is re-scoped to
+**ported (Task 6)**.
+
+### 11.1 The four functions
+
+| addr | size | port | role / written fields |
+|---|---|---|---|
+| `0x164C0` | 40 | `camera_frame_last` (static) | 1 iff `float[rec+0x24] + float[0x80580] == float[rec+0x20]`; `rec = DSD(0x1077B0 + side*0x94)`. `0x164d4 FLD [EAX+0x24]`; `0x164d7 FADD [0x80580]`; `0x164dd FCOMP [EAX+0x20]`; `0x164e3 SETZ AL`. |
+| `0x16734` | 966 | `camera_sprite_code` (public) | switch on `slot(1-side)+0x7A` (char 0..6); compare `word[actor] & 0x7FFF` against the case ids; return `0xD2..0xDA` or `-1`. `actor = DSD(0x1014EC) + word[rec+0x56]*0x20`. `0x1675d AND AH,0x7f`; `0x16764` (slot+0x7A). |
+| `0x16AFC` | 601 | `camera_page_tail_a` (public) | the page-flag tail filling `DS_00100A78[side]` |
+| `0x164F4` | 547 | `camera_page_tail_b` (public) | the twin filling `DS_00100A90[side]` |
+
+**`0x16AFC` body.** With a `0x16734` code it writes
+`out = 0xCC300[(char<<8) + code]` (`0x16b30 SHL EAX,0x8`; `0x16b39 ADD
+EDX,0xcc300`) and mirrors the low byte to `0x40 - b0 - b2` when `0x1A570(side) ==
+0`. Otherwise it runs the `0x3C570`-gated per-side countdown (`0x16b62`; bits 2/3
+selected at `0x16b6d`/`0x16b96`), requires `slot+0x53 ∈ {7,8}` (`0x16bce`) and
+`slot+0x5F != 0xFF` (`0x16bfd`), then scans the 5-entry `0x98688` table keyed by
+`(char, slot+0x5F)`, matching `rec+0x63` (`0x16c3d MOVSX [EBX]`, `0x16c40 MOVZX
+[ESI+0x63]`, `0x16c44 CMP`, `0x16c46 JNZ`) together with `0x164C0`. On a match it
+writes `out = 0xCC300[(char<<8) + e1]` and caches `0xFD120=e1`, `0xFD128=e2`,
+`0xFD130=0x100AF0[side]`, `0xFD138=out`, and `word[0x100B3C+side*2] =
+word[0x107834+side*0x94]` (`0x16c98`). The cached-box fallback (`0x16d0c`) needs
+countdown > 0, a present box, and `0x100B3C[side] == slot+0x84`.
+
+**`0x164F4` body.** The twin: bits 0/1 of `DS_00107EE0` (`0x1650b`/`0x1652f`),
+the `0x96108` table, cache `0xFD140..0xFD158`, `0x100B44`, `0x100B48`; its
+cached-box path adds `rec+0x63 >= word[0x100B48+side*2]` (`0x166f3 CMP DX,SI; JL
+0x1670c`).
+
+### 11.2 The data pins (read from the raw, Ghidra project `rage`, `/PRAGE.EXE`)
+
+| pin | bytes | proving address |
+|---|---|---|
+| `0x80580` | `00 00 80 BF` = −1.0f | `0x164d7 FADD float ptr [0x80580]` |
+| `0x98688` | entry 0 `FF C8 02`, entries 1..4 `FF 00 02` | `0x16c18 MOV EBX,0x98688`; index `char*0x3C0 + s5f*15` at `0x16c11`–`0x16c2c` |
+| `0x96108` | entry 0 `02 01 03`, entries 1..4 `FF 00 03` | `0x165af MOV EDX,0x96108`; index `char*0x3C0 + s5f*15` at `0x165a8`–`0x165b7` |
+| `0xCC300` | 256-dword per-character screen-x | `0x16b39`/`0x16604` (`ADD EDX,0xcc300`); `0x16b30 SHL EAX,0x8`; `0x16d78` reads the same base as `char*0x400` in `0x16d58` |
+
+The `char*0x3C0` index is the raw's `SHL 4; SUB; SHL 6` (×16 − ×1 = ×15, then
+×64) at `0x16c11`–`0x16c1d`; the `s5f*15` term is `0x16c22`–`0x16c2c`.
+
+### 11.3 Raw corrections (decompiler shapes)
+
+* `0x17FA0`'s tail passes **EAX = side, EDX = out** to `0x16AFC` (`0x180c0 MOV
+  EDX,0x100a78; ADD EDX,EBX; MOV EAX,ESI`) and to `0x164F4`
+  (`0x180ff`/`0x18106`); the decompiler showed zero-arg calls with `extraout_*`.
+* `0x16734` reads the self **record** at `[ESP+0x14]` (= `0x33A10`'s `ctx[5]`)
+  and the **slot** at `[ESP+0xC]` (`ctx[3]`).
+* Both tails read the just-written `DS_00100AF0[side]` (`0x16cc8`/`0x1666a`), so
+  the port places them after the `0x180A1` `index_out` store.
+* The decompiler's "unreachable block" elisions in `0x16734` (case 3's dead
+  `0x1695d`/`0x1696d`) are the `JNZ` tails of the same compare.
+* Task-6 fix round 1 (`6c11887`): case 6's `0x1352` returns `0xD2`, not `0xD3`
+  (`0x16a79 CMP EAX,0x1352`; `0x16a80 MOV EAX,0xd2`).
+
+### 11.4 The measurement (Task 6)
+
+`make demo-oracle` before (`d96b49b`) and after (`bfd22cb`): the `res is None`
+fallback is unchanged (`0/1068` exhibited, `2779 unexplained`, first 832), and
+the 482/834 diff is unchanged at **18 294 B / 6 194 px**. **But the tail is now
+live:** a temporary trace (reverted) shows `camera_page_tail_b(1)` returns 1 for
+~18 frames from state-7 frame ~7, so `B61 = 1`, `0x100AC8[1]` is populated,
+`camera_unfreeze(1)` runs and writes `AF8[1] = 5/3/2`, and `fighter_pass_a`'s
+tail runs `0x193B0(1)`. Frame-by-frame, **892 port frames change from port frame
+489** (the winner's blood/reaction effect). The residual 18 294 B is **not** the
+fighters: fighter-body samples match and the differing pixels are the **arena
+backdrop's dark mountain silhouette**, which the port never renders. **Owner:**
+the demo-fight-closure subsystem — `platform/render.c`'s scroll/zoom path
+(`0x38730` → `0x387F4`/`0x38890`/`0x38A38`, the scene actors
+`DS_000BDFBC`/`DS_000BDFC0`) and the actor draw.
+
+### 11.5 Gap inventory
+
+§7.11's `0x16AFC`/`0x164F4` residual is **ported (Task 6)**; the tail's own
+follow-on (the render.c backdrop) is re-scoped to the demo-fight-closure cycle.
+No gap is dropped.
