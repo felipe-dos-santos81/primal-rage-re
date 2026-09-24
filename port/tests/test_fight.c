@@ -3140,6 +3140,146 @@ static void check_reaction(void)
     DSB(0x000DE117u) = sv_b117;
 }
 
+/* ---- Task 3c: the 0x193B0 winner body (pose/freeze record §2.2) ---------- */
+
+/* Seed the two slots/records for the winner body's reaction path. Both arms of
+ * check_winner_body use this: the 0x3962C/0x396AC gates are held off (the
+ * animation descriptor's bit 4 clear, the 0x107D2C word 0) so the +0x84 compare
+ * runs and the winner's reaction dispatches through 0x3B714 -> 0x3AAFC. */
+static void winner_body_setup(u32 s0, u32 s1, u32 r0, u32 r1)
+{
+    fight_reset_recs();
+    fight_reset_actors();
+    mem_fill(s0, 0, 0x94u);
+    mem_fill(s1, 0, 0x94u);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+
+    DSD(DS_00107D50) = 0;                    /* the 0x3C59C bits for both sides */
+    DSD(DS_00107D50 + 4u) = 0;
+    DSB(r0 + 0x51u) = 0;                     /* side(rec s0) = 0 */
+    DSB(r1 + 0x51u) = 1;                     /* side(rec s1) = 1 */
+    DSB(DS_0010782A) = 0;                    /* char(slot 0) = 0 */
+    DSB(DS_001078BE) = 0;                    /* char(slot 1) = 0 */
+    DSB(s0 + 0x5Fu) = 0;                     /* b = 0 for 0x3962C/0x396AC */
+    DSB(s1 + 0x5Fu) = 0;
+    DSB(s1 + 0x53u) = 0;                     /* 0x39EFC(1) = 0 */
+    DSD(s1 + 0x10u) = 0;
+    DSB(s1 + 0x58u) = 0;
+    DSB(s0 + 0x54u) = 0;
+    DSB(s1 + 0x54u) = 0;                     /* 0x3B080 runs but is gated off */
+    DSB(s0 + 0x52u) = 0;                     /* skip 0x3AE9C */
+    DSB(s1 + 0x52u) = 0;
+    DSB(s0 + 0x63u) = 0;                     /* 0x3B298's fight_command_map early-out */
+    DSB(s1 + 0x63u) = 0;
+    DSB(r1 + 0x4Bu) = 0;                     /* skip 0x2BD44 */
+    DSB(DS_000BEDF2) = 1;                    /* 0x3B080 no-op */
+    DSW(0x000A6728u) = 0;                    /* key = 0, no effect spawn */
+    DSW(0x000A6728u + 2u) = 3;               /* bits 0+1 -> 0x3B298 returns 0 */
+    DSD(0x000A6728u + 8u) = 0;
+    DSB(0x000DE117u) = 0;
+    DSW(DS_00104B00) = 0;
+    DSB(DS_00104B1D) = 0;
+    DSB(DS_00105B38) = 0;
+    DSB(DS_00105B36) = 1;
+    DSB(DS_00105B3A) = 0;
+    DSD(DS_00104ABC) = 0;
+    DSD(0x00107D2Au) = 0;                    /* 0x3962C/0x396AC's +0x14 gate */
+    DSD(0x00107D2Cu) = 0;
+    DSB(0x00107A80u) = 0;                    /* 0x396AC's per-side counter */
+    DSB(0x00107A80u + 0x40u) = 0;
+    DSB(s0 + 0x5Au) = 0;
+    DSB(s0 + 0x5Du) = 0;
+    DSB(s0 + 0x42u) = 0;
+    DSB(s1 + 0x42u) = 0;
+    DSW(s1 + 0x6Cu) = 0;
+    DSD(s0 + 0x1Cu) = 0;                     /* the 0x3B714 reaction arm */
+    DSD(s1 + 0x14u) = 0;                     /* skip the +0x14 callback */
+    DSD(s1 + 0x18u) = 0;
+    DSD(s1 + 0x1Cu) = 0;
+    DSD(s1 + 0x0Cu) = 0;
+    DSB(s0 + 0x43u) = 0xFFu;                 /* the 0xFC mask sentinel */
+    DSB(s1 + 0x43u) = 0xFFu;
+    DSB(s0 + 0x8Au) = 0xEEu;                 /* cleared by 0x193B0 */
+    DSD(r1 + 0x24u) = 0xDEADBEEFu;           /* the pose setter clears it */
+    DSW(s0 + 0x84u) = 0x1234u;               /* sentinel, differs from 0x100B50 */
+    DSW(s1 + 0x84u) = 0x5678u;
+    DSW(DS_00100B50) = 0;                    /* sentinels, differ from +0x84 */
+    DSW(DS_00100B50 + 2u) = 0;
+    DSB(DS_00100B5A) = 0xEEu;                /* the 0x19164 sentinels */
+    DSB(DS_00100B5C) = 0xEEu;
+    DSB(DS_00100B58) = 0xEEu;
+    DSB(DS_00100B5A + 1u) = 0xEEu;
+    DSB(DS_00100B5C + 1u) = 0xEEu;
+    DSB(DS_00100B58 + 1u) = 0xEEu;
+    DSD(0x001088ECu) = 0xEEEEu;              /* the 0x192DC/0x39278 sentinel */
+}
+
+/* §8.2: the winner body's +0x84 count latch and the pose handoff through
+ * 0x3B714 -> 0x3AAFC -> the 0x3A504 setter, plus the 0x19164/0x192DC side
+ * effects. Every seed is a sentinel that differs from the post-condition. */
+static void check_winner_body(void)
+{
+    u32 s0 = DS_001077B0;
+    u32 s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS;
+    u32 r1 = FIGHT_RECS + 0x100u;
+    u16 sv_w0 = DSW(0x000A6728u);
+    u16 sv_w2 = DSW(0x000A6728u + 2u);
+    u32 sv_d8 = DSD(0x000A6728u + 8u);
+    u8  sv_b117 = DSB(0x000DE117u);
+    u8  sv_a80 = DSB(0x00107A80u);
+    u8  sv_ac0 = DSB(0x00107A80u + 0x40u);
+
+    /* --- side 0 wins: the pose lands on the other (side-1) slot. --- */
+    winner_body_setup(s0, s1, r0, r1);
+    /* r0+0x20 = 7.5f -> max(5, 7.5) -> truncate 7; r0+0x24 = 3.5f -> 3. */
+    DSD(r0 + 0x20u) = 0x40F00000u;
+    DSD(r0 + 0x24u) = 0x40600000u;
+
+    fighter_winner_body(0u);
+
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0x10);   /* the 0x3A504 pose on the other slot */
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0x0A);
+    CHECK_EQ_INT((int)DSB(s1 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(s1 + 0x10u), 0x0003A43C);
+    CHECK_EQ_INT((int)DSW(DS_00100B50), 0x1234);   /* the 0x19472 latch */
+    CHECK_EQ_INT((int)DSW(s0 + 0x84u), 0x1234);
+    CHECK_EQ_INT((int)DSB(s0 + 0x8Au), 0);         /* cleared at 0x19576 */
+    CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0xFC);      /* the 0xFC mask (0xFF & 0xFC) */
+    CHECK_EQ_INT((int)DSB(s1 + 0x43u), 0xF4);      /* 0xFC then &0xF7 at 0x1956E */
+    CHECK_EQ_INT((int)DSB(DS_00100B5A), 7);        /* 0x19164: truncate(max(5,7.5)) */
+    CHECK_EQ_INT((int)DSB(DS_00100B5C), 3);        /* 0x19164: truncate(3.5) */
+    CHECK_EQ_INT((int)DSB(DS_00100B58), 0);        /* = slot0+0x5F */
+    CHECK_EQ_INT((int)DSD(0x001088ECu), 3);        /* 0x192DC/0x39278: 2+1 */
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0);         /* 0x19164 zeroed it */
+
+    /* --- side 1 wins: the mirror pose lands on slot 0. --- */
+    winner_body_setup(s0, s1, r0, r1);
+    /* r1+0x20 = 0 -> the 5.0 floor; r1+0x24 = 0 -> the B5C = 2 arm. */
+    DSD(r1 + 0x20u) = 0;
+    DSD(r1 + 0x24u) = 0;
+
+    fighter_winner_body(1u);
+
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x10);   /* the mirror pose on slot 0 */
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0x0A);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x10u), 0x0003A43C);
+    CHECK_EQ_INT((int)DSW(DS_00100B50 + 2u), 0x5678);   /* the side-1 latch */
+    CHECK_EQ_INT((int)DSW(s1 + 0x84u), 0x5678);
+    CHECK_EQ_INT((int)DSB(DS_00100B5A + 1u), 5);   /* 0x19164: the 5.0 floor */
+    CHECK_EQ_INT((int)DSB(DS_00100B5C + 1u), 2);   /* 0x19164: rec+0x24 <= 0 */
+    CHECK_EQ_INT((int)DSB(DS_00100B58 + 1u), 0);   /* = slot1+0x5F */
+    CHECK_EQ_INT((int)DSD(0x001088ECu), 3);        /* 0x192DC/0x39278: 2+1 */
+
+    DSW(0x000A6728u) = sv_w0;
+    DSW(0x000A6728u + 2u) = sv_w2;
+    DSD(0x000A6728u + 8u) = sv_d8;
+    DSB(0x000DE117u) = sv_b117;
+    DSB(0x00107A80u) = sv_a80;
+    DSB(0x00107A80u + 0x40u) = sv_ac0;
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -3223,6 +3363,7 @@ int test_fight(void)
     check_pose_entry();
     check_reaction_predicates();
     check_reaction();
+    check_winner_body();
 
     tf_put(s_f0ae0, 0x000F0AE0u, 0x20u);
     tf_put(s_proj, 0x00100A70u, 0xF4u);
