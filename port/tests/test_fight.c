@@ -2894,6 +2894,252 @@ static void check_pose_entry(void)
     DSB(0x000DE117u) = sv_b3;
 }
 
+/* ---- Task 3b: the 0x3B714 reaction applier (pose/freeze record §2.3) ----- */
+
+/* §2.3: the reaction gates 0x39EFC/0x3B038/0x3B6C4 and the seeds 0x3B080/
+ * 0x3AE9C, unit-tested directly. All seeds are sentinels that differ from the
+ * post-conditions. */
+static void check_reaction_predicates(void)
+{
+    u32 s0 = DS_001077B0;
+    u32 s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS;
+    u32 r1 = FIGHT_RECS + 0x100u;
+    u32 sv_b018 = DSD(DS_000BE018);
+    u32 sv_bdee = DSD(DS_000BEDEE);
+    u8  sv_bdf2 = DSB(DS_000BEDF2);
+
+    fight_reset_recs();
+    fight_reset_actors();
+    mem_fill(s0, 0, 0x94u);
+    mem_fill(s1, 0, 0x94u);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSB(r0 + 0x51u) = 0;
+    DSB(r1 + 0x51u) = 1;
+
+    /* 0x39EFC: the 0x39CC8 pose triple. */
+    DSB(s1 + 0x53u) = 0x0A;
+    DSD(s1 + 0x10u) = 0x00039CC8u;
+    DSB(s1 + 0x58u) = 4u;
+    CHECK_EQ_INT(fighter_39efc(1u), 1);
+    DSB(s1 + 0x58u) = 5u;
+    CHECK_EQ_INT(fighter_39efc(1u), 0);
+    DSB(s1 + 0x58u) = 4u;
+    DSD(s1 + 0x10u) = 0x00039CC9u;
+    CHECK_EQ_INT(fighter_39efc(1u), 0);
+    DSD(s1 + 0x10u) = 0x00039CC8u;
+    DSB(s1 + 0x53u) = 0x0Bu;
+    CHECK_EQ_INT(fighter_39efc(1u), 0);
+
+    /* 0x3B038: the ±(BEDEE>>16 - BE018) window about BE018. */
+    DSD(DS_000BE018) = 0x1000;
+    DSD(DS_000BEDEE) = 0x0100u << 16;        /* k = 0x100 */
+    DSD(s0 + 0x2Cu) = 0x1000;                /* base - k = 0xF00 <= 0x1000 */
+    CHECK_EQ_INT(fighter_3b038(0u), 1);
+    DSD(s0 + 0x2Cu) = 0x800;                 /* neither arm holds */
+    CHECK_EQ_INT(fighter_3b038(0u), 0);
+    DSD(s0 + 0x2Cu) = 0xFFFFE000u;           /* k - base = -0xF00 >= -0x2000 */
+    CHECK_EQ_INT(fighter_3b038(0u), 1);
+
+    /* 0x3B6C4: the two mid-stance bytes and the actor bit-15 agreement. */
+    DSW(r0 + 0x56u) = 1;                     /* side 0's actor */
+    DSW(r1 + 0x56u) = 2;                     /* side 1's actor */
+    DSW(FIGHT_ACTORS + 1u * 0x20u) = 0;
+    DSW(FIGHT_ACTORS + 2u * 0x20u) = 0;
+    DSB(s0 + 0x53u) = 8u;
+    DSB(s0 + 0x54u) = 2u;
+    DSB(s1 + 0x54u) = 0u;
+    CHECK_EQ_INT(fighter_3b6c4(0u), 1);
+    DSB(s1 + 0x54u) = 2u;                    /* other+0x54 == 2 -> 0 (0x3B6EA) */
+    CHECK_EQ_INT(fighter_3b6c4(0u), 0);
+    DSB(s1 + 0x54u) = 0u;
+    DSW(FIGHT_ACTORS + 2u * 0x20u) = 0x8000u;/* bit 15 disagrees -> 0 */
+    CHECK_EQ_INT(fighter_3b6c4(0u), 0);
+    DSW(FIGHT_ACTORS + 2u * 0x20u) = 0;
+    DSB(s0 + 0x53u) = 7u;
+    CHECK_EQ_INT(fighter_3b6c4(0u), 0);
+
+    /* 0x3B080: the ±(param_2*2) seed and the 0x3B038-gated mirror. */
+    DSB(DS_000BEDF2) = 0;
+    DSB(s0 + 0x53u) = 0;
+    DSW(FIGHT_ACTORS + 2u * 0x20u) = 0;      /* 1-side bit 15 clear -> negate */
+
+    /* The 0x3B038(side) arm re-zeroes the primary side (0x3B0F8) and mirrors. */
+    DSD(s0 + 0x2Cu) = 0x1000;                /* 0x3B038(0) = 1 */
+    DSW(r0 + 0x34u) = 0x1111;
+    DSW(r1 + 0x34u) = 0x2222;
+    fighter_3b080(0u, 0x10u, 0x77u, 1u);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0);         /* re-zeroed at 0x3B0F8 */
+    CHECK_EQ_INT((int)DSB(r0 + 0x43u), 0);
+    CHECK_EQ_INT((int)DSW(r1 + 0x34u), 0x0020);    /* -v */
+    CHECK_EQ_INT((int)DSB(r1 + 0x43u), 0x77);
+
+    /* 0x3B038(side) == 0 leaves the primary write in place. */
+    DSD(s0 + 0x2Cu) = 0x800;                 /* 0x3B038(0) = 0 */
+    DSW(r1 + 0x34u) = 0x2222;
+    fighter_3b080(0u, 0x10u, 0x55u, 1u);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0xFFE0);    /* -0x20 */
+    CHECK_EQ_INT((int)DSB(r0 + 0x43u), 0x55);
+    CHECK_EQ_INT((int)DSW(r1 + 0x34u), 0x2222);    /* untouched */
+
+    /* param_4 == 0 also skips the mirror. */
+    DSD(s0 + 0x2Cu) = 0x1000;
+    DSW(r1 + 0x34u) = 0x2222;
+    fighter_3b080(0u, 0x10u, 0x66u, 0u);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0xFFE0);
+    CHECK_EQ_INT((int)DSB(r0 + 0x43u), 0x66);
+    CHECK_EQ_INT((int)DSW(r1 + 0x34u), 0x2222);
+
+    /* 1-side bit 15 set flips the sign. */
+    DSW(FIGHT_ACTORS + 2u * 0x20u) = 0x8000u;
+    fighter_3b080(0u, 0x10u, 0x77u, 0u);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0x0020);
+
+    /* the 0xBEDF2 gate returns before any write. */
+    DSB(DS_000BEDF2) = 1;
+    fighter_3b080(0u, 0x10u, 0x11u, 1u);
+    CHECK_EQ_INT((int)DSB(r0 + 0x43u), 0x77);
+
+    /* 0x3AE9C: the landing seed and the sign application. */
+    DSB(DS_000BEDF2) = 0;
+    DSW(r0 + 0x56u) = 1;
+    DSW(FIGHT_ACTORS + 1u * 0x20u) = 0;      /* bit 15 clear -> the sign-0 negate */
+    DSB(s0 + 0x7Au) = 1;                     /* char 1 */
+    DSB(s0 + 0x53u) = 0;                     /* != 7 */
+    DSB(s0 + 0x40u) = 0;                     /* facing bit clear */
+    DSW(r0 + 0x36u) = 0;                     /* g = 0 */
+    DSW(r0 + 0x34u) = 0;                     /* sign = 0 */
+    DSD(r0 + 0x42u) = 0;                     /* k = 0 < 0x1A */
+    fighter_3ae9c(0u, 0u);
+    CHECK_EQ_INT((int)DSW(r0 + 0x36u), (int)DSW(DS_000BEDDC + 2u));  /* ch 1 */
+    CHECK_EQ_INT((int)DSW(r0 + 0x44u), 0x1A);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0xFF9C);                 /* -0x64 */
+    DSW(r0 + 0x34u) = 0x1234;                /* the +0x53 == 7 guard */
+    DSW(r0 + 0x36u) = 0x5678;
+    DSB(s0 + 0x53u) = 7u;
+    fighter_3ae9c(0u, 0u);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0x1234);
+    CHECK_EQ_INT((int)DSW(r0 + 0x36u), 0x5678);
+    DSB(s0 + 0x53u) = 0;
+    DSW(r0 + 0x36u) = 1;                     /* g != 0 -> rec+0x34 = 0x64 */
+    DSW(r0 + 0x34u) = 3;                     /* sign = 1 */
+    fighter_3ae9c(0u, 0u);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0x64);
+    DSW(r0 + 0x36u) = 1;
+    DSW(r0 + 0x34u) = 0xFFFB;                /* -5, sign = -1 */
+    fighter_3ae9c(0u, 0u);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0xFF9C);   /* -(0x64) */
+    DSW(r0 + 0x36u) = 0;
+    DSW(r0 + 0x34u) = 0;
+    DSB(s0 + 0x40u) = 0x80u;                 /* facing bit -> 0x28 vs 0x3C */
+    fighter_3ae9c(0u, 1u);
+    CHECK_EQ_INT((int)DSW(r0 + 0x44u), 0x28);
+    DSW(r0 + 0x36u) = 0;
+    fighter_3ae9c(0u, 0u);
+    CHECK_EQ_INT((int)DSW(r0 + 0x44u), 0x3C);
+
+    DSD(DS_000BE018) = sv_b018;
+    DSD(DS_000BEDEE) = sv_bdee;
+    DSB(DS_000BEDF2) = sv_bdf2;
+}
+
+/* §8.2: the applier's own writes and the 0x3AAFC pose handoff. The 0x3B298
+ * dispatch is forced to 0 by seeding the reaction descriptor's bit pair, so the
+ * 0x3AAFC arm runs; the 0x3B080 seed is gated off by 0xBEDF2. */
+static void check_reaction(void)
+{
+    u32 s0 = DS_001077B0;
+    u32 s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS;
+    u32 r1 = FIGHT_RECS + 0x100u;
+    u8  sv_bdf2 = DSB(DS_000BEDF2);
+    u16 sv_w0 = DSW(0x000A6728u);
+    u16 sv_w2 = DSW(0x000A6728u + 2u);
+    u32 sv_d8 = DSD(0x000A6728u + 8u);
+    u8  sv_b117 = DSB(0x000DE117u);
+
+    fight_reset_recs();
+    fight_reset_actors();
+    mem_fill(s0, 0, 0x94u);
+    mem_fill(s1, 0, 0x94u);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+
+    DSD(DS_00107D50 + 4u) = 0;               /* the 0x3C59C bit for 1-side */
+    DSB(r0 + 0x51u) = 0;                     /* 0x3B714 side 0 */
+    DSB(r1 + 0x51u) = 1;                     /* 0x3AAFC side 1 */
+    DSB(DS_0010782A) = 0;                    /* char(slot 0) = 0 */
+    DSB(DS_001078BE) = 0;                    /* char(slot 1) = 0 */
+    DSB(s0 + 0x5Fu) = 0;                     /* local_24 = 0 */
+    DSB(s1 + 0x5Fu) = 0;
+    DSB(s0 + 0x53u) = 0;                     /* 0x39EFC(1) = 0 */
+    DSD(s1 + 0x10u) = 0;
+    DSB(s1 + 0x58u) = 0;
+    DSB(s0 + 0x54u) = 0;
+    DSB(s1 + 0x54u) = 0;                     /* 0x3B080 runs but is gated off */
+    DSB(s0 + 0x52u) = 0;                     /* skip 0x3AE9C */
+    DSB(s1 + 0x52u) = 0;
+    DSB(s1 + 0x65u) = 0xFFu;                 /* sentinel */
+    DSB(s1 + 0x41u) = 0;                     /* sentinel */
+    DSB(r1 + 0x4Bu) = 0;                     /* skip 0x2BD44 */
+    DSB(s1 + 0x63u) = 0;                     /* 0x3B298's fight_command_map early-out */
+    DSB(DS_000BEDF2) = 1;                    /* 0x3B080 no-op */
+    DSW(0x000A6728u) = 0;                    /* key = 0, no effect spawn */
+    DSW(0x000A6728u + 2u) = 3;               /* bits 0+1 -> 0x3B298 returns 0; ecx = 3 */
+    DSD(0x000A6728u + 8u) = 0;               /* stream = 0 */
+    DSB(0x000DE117u) = 0;                    /* edx3 = 0 */
+    DSW(DS_00104B00) = 0;
+    DSB(DS_00104B1D) = 0;
+    DSB(DS_00105B38) = 0;
+    DSB(DS_00105B36) = 1;
+    DSB(DS_00105B3A) = 0;
+    DSD(DS_00104ABC) = 0;
+    DSD(0x00107D2Au) = 0;
+    DSD(0x00107D2Cu) = 0;
+    DSB(s0 + 0x5Au) = 0;
+    DSB(s0 + 0x5Du) = 0;
+    DSB(s0 + 0x42u) = 0;
+    DSB(s1 + 0x42u) = 0;
+    DSW(s1 + 0x6Cu) = 0;
+    DSD(r1 + 0x24u) = 0xDEADBEEFu;           /* the pose setter clears it */
+
+    fighter_reaction(s1, s0);
+    CHECK_EQ_INT((int)DSB(s1 + 0x65u), 0);          /* = byte[s0+0x5F] */
+    CHECK_EQ_INT((int)(DSB(s1 + 0x41u) & 0x80u), 0x80);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0x10);       /* the 0x3A504 pose */
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0x0A);
+    CHECK_EQ_INT((int)DSB(s1 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(s1 + 0x10u), 0x0003A43C);
+    CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0);          /* the pose setter's write */
+    CHECK_EQ_INT((int)DSW(s0 + 0x6Cu), 1);          /* other +0x6C++ */
+
+    /* the 0x3C59C frame gate: the bit is now set, so the next call returns. */
+    DSB(s1 + 0x65u) = 0xAAu;
+    fighter_reaction(s1, s0);
+    CHECK_EQ_INT((int)DSB(s1 + 0x65u), 0xAA);
+
+    /* the local_24 == 0xFF path returns before the 0x62003 stub. */
+    DSD(DS_00107D50 + 4u) = 0;
+    DSB(s0 + 0x5Fu) = 0xFFu;
+    fighter_reaction(s1, s0);
+    CHECK_EQ_INT((int)DSB(s1 + 0x65u), 0xAA);
+
+    /* +0x52 == 4 seeds rec+0x34 and +0x4E to 0. */
+    DSD(DS_00107D50 + 4u) = 0;
+    DSB(s0 + 0x5Fu) = 0;
+    DSB(s1 + 0x52u) = 4u;
+    DSW(r1 + 0x34u) = 0x1234;
+    DSW(s1 + 0x4Eu) = 0x5678;
+    fighter_reaction(s1, s0);
+    CHECK_EQ_INT((int)DSW(r1 + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(s1 + 0x4Eu), 0);
+
+    DSB(DS_000BEDF2) = sv_bdf2;
+    DSW(0x000A6728u) = sv_w0;
+    DSW(0x000A6728u + 2u) = sv_w2;
+    DSD(0x000A6728u + 8u) = sv_d8;
+    DSB(0x000DE117u) = sv_b117;
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -2975,6 +3221,8 @@ int test_fight(void)
     check_pose_predicate();
     check_pose_accumulator();
     check_pose_entry();
+    check_reaction_predicates();
+    check_reaction();
 
     tf_put(s_f0ae0, 0x000F0AE0u, 0x20u);
     tf_put(s_proj, 0x00100A70u, 0xF4u);

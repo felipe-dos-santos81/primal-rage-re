@@ -4011,3 +4011,240 @@ void fighter_reaction_apply(u32 slot, u32 reaction)
         fighter_pose_3a504(side, edx3);                     /* 0x3AD7B */
     }
 }
+
+/* ---- the 0x3B714 reaction applier (pose/freeze record §2.3) --------------
+ * 0x3B714 runs for the winner after the 0x193B0 gate: it seeds the reaction
+ * state through 0x3B080/0x3AE9C, dispatches through 0x3AAFC (the reaction/pose
+ * applier above) or 0x3AD98 (the effect spawn), and copies the reaction record
+ * word on the 0x3B6C4 hold. Addresses, gates and the per-character tables are
+ * from docs/superpowers/plans/2026-09-24-pose-freeze-derivations.md §2.3/§2.6.
+ * The raw's ECX (local_1c, 4/9) is passed only to 0x3AAFC, which overwrites it
+ * before reading (0x3AB2D), so it is a dead argument and is not modelled. */
+
+/* PORT: data-object addresses symbols.h does not name. */
+#define FIGHTER_E9358   0x000E9358u  /* 0x3AD98: the per-character voice id table */
+
+/* 0x3B038. 1 when the side's slot+0x2C lies inside the window about the
+ * DS_000BE018 base: `base - (DS_000BEDEE>>16) <= x` or `(DS_000BEDEE>>16) - base
+ * >= x`. 0x3B080's second-side gate. */
+int fighter_3b038(u32 side)
+{
+    s32 base = (s32)DSD(DS_000BE018);                       /* 0x3B045 */
+    s32 k = (s32)DSD(DS_000BEDEE) >> 16;                    /* 0x3B04D/0x3B055 */
+    s32 x = (s32)DSD(DS_001077B0 + side * 0x94u + 0x2Cu);   /* 0x3B058 */
+    if (base - k <= x) return 1;                            /* 0x3B05E/0x3B062 */
+    if (k - base >= x) return 1;                            /* 0x3B06A/0x3B070 */
+    return 0;                                               /* 0x3B07A */
+}
+
+/* 0x39EFC. 1 when the side's slot is in the 0x39CC8 pose (slot+0x53 == 0x0A,
+ * +0x10 == 0x39CC8, +0x58 == 4). 0x3B714's early-out gate. */
+int fighter_39efc(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_swap(ctx, side);                            /* 0x39F04 */
+    u32 slot = ctx[3];
+    if (DSB(slot + 0x53u) != 0x0Au) return 0;               /* 0x39F0D/0x39F11 */
+    if (DSD(slot + 0x10u) != 0x00039CC8u) return 0;         /* 0x39F1A/0x39F21 */
+    if (DSB(slot + 0x58u) != 4u) return 0;                  /* 0x39F2A/0x39F2E */
+    return 1;                                               /* 0x39F37 */
+}
+
+/* 0x3B6C4. 1 when both slots are mid-stance (self+0x53 == 8, self+0x54 == 2,
+ * other+0x54 != 2) and the two sides' actor bit 15 agree. 0x3B714's tail
+ * copies self's rec+0x34 to the other record when this holds. */
+int fighter_3b6c4(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x3B6CC */
+    if (DSB(ctx[2] + 0x53u) != 8u) return 0;                /* 0x3B6D5/0x3B6D9 */
+    if (DSB(ctx[2] + 0x54u) != 2u) return 0;                /* 0x3B6DB/0x3B6E1 */
+    if (DSB(ctx[3] + 0x54u) == 2u) return 0;                /* 0x3B6E7/0x3B6EA */
+    if (fighter_actor_bit15_clear(ctx[0])                   /* 0x3B6EC */
+            != fighter_actor_bit15_clear(ctx[1])) return 0; /* 0x3B6F6/0x3B6FF */
+    return 1;                                               /* 0x3B703 */
+}
+
+/* 0x3B080. The reaction-facing seed: with byte[0xBEDF2] clear, set the side's
+ * rec+0x34 to ±(param_2*2) (the sign from the other side's actor bit 15) and
+ * rec+0x43 to param_3; when 0x3B038(side) and param_4 both hold, mirror the
+ * negated +0x34 and the same +0x43 onto the other side. EAX = side, EDX =
+ * param_2, EBX = param_3, ECX = param_4. */
+void fighter_3b080(u32 side, u32 param_2, u32 param_3, u32 param_4)
+{
+    s32 v;
+    if (DSB(DS_000BEDF2) != 0u) return;                     /* 0x3B08F/0x3B096 */
+    v = (s32)(param_2 * 2u);                                /* 0x3B0A1 */
+    if (fighter_actor_bit15_clear(1u - side) != 0)          /* 0x3B0AC/0x3B0B3 */
+        v = -v;                                             /* 0x3B0B5 */
+    fighter_3c148(side);                                    /* 0x3B0B9 */
+    DSW(DSD(DS_001077B0 + side * 0x94u) + 0x34u) = (u16)v;  /* 0x3B0D3 */
+    DSB(DSD(DS_001077B0 + side * 0x94u) + 0x43u) = (u8)param_3; /* 0x3B0E1 */
+    if (fighter_3b038(side) == 0) return;                   /* 0x3B0E6/0x3B0ED */
+    if (param_4 == 0u) return;                              /* 0x3B0EF/0x3B0F4 */
+    fighter_3c148(side);                                    /* 0x3B0F8 */
+    fighter_3c148(1u - side);                               /* 0x3B0FD */
+    DSW(DSD(DS_001077B0 + (1u - side) * 0x94u) + 0x34u) = (u16)(-v);  /* 0x3B11B */
+    DSB(DSD(DS_001077B0 + (1u - side) * 0x94u) + 0x43u) = (u8)param_3; /* 0x3B129 */
+}
+
+/* 0x3AE9C. The reaction landing/knockback seed 0x3B714 runs when the other
+ * slot's +0x52 == 4: with the side's slot+0x53 != 7, seed rec+0x36/+0x44/+0x34
+ * from the per-character table and the facing bit, then apply the sign of the
+ * original rec+0x34 (0x1A570 flips it when rec+0x34 was zero). EAX = side,
+ * DL = param_2 (the 0x3B298 result). */
+void fighter_3ae9c(u32 side, u8 param_2)
+{
+    u32 ctx[6];
+    u32 rec;
+    s32 sign;
+    int g;
+    fighter_ctx_same(ctx, side);                            /* 0x3AEA7 */
+    rec = ctx[4];                                           /* 0x3AEAC */
+    g = ((s16)DSW(rec + 0x36u) > 0);                        /* 0x3AEB0/0x3AEB4 */
+    {
+        s16 w34 = (s16)DSW(rec + 0x34u);                    /* 0x3AEC0 */
+        sign = (w34 < 0) ? -1 : ((w34 > 0) ? 1 : 0);        /* 0x3AEC4..0x3AEDC */
+    }
+    if (DSB(ctx[2] + 0x53u) != 7u) {                        /* 0x3AEE2/0x3AEE6 */
+        if (g) {
+            DSW(rec + 0x34u) = 0x64u;                       /* 0x3AEF0/0x3AEF4 */
+        } else {
+            u32 ch = (u32)DSB(ctx[2] + 0x7Au);              /* 0x3AEFF/0x3AF02 */
+            DSW(rec + 0x36u) = DSW(DS_000BEDDC + ch * 2u);  /* 0x3AF08/0x3AF10 */
+            DSW(rec + 0x34u) = 0x64u;                       /* 0x3AF18/0x3AF1C */
+            if ((DSB(ctx[2] + 0x40u) & 0x80u) != 0u) {      /* 0x3AF22/0x3AF2A */
+                DSW(rec + 0x44u) = (param_2 != 0u) ? 0x28u : 0x3Cu;  /* 0x3AF30/0x3AF3C */
+            } else {
+                s32 k = (s32)DSD(rec + 0x42u) >> 16;        /* 0x3AF48..0x3AF4F */
+                if (k > 0x1E) DSW(rec + 0x44u) = 0x1Eu;     /* 0x3AF52/0x3AF57 */
+                else if (k < 0x1A) DSW(rec + 0x44u) = 0x1Au;/* 0x3AF63/0x3AF68 */
+                if (param_2 != 0u)                          /* 0x3AF72/0x3AF74 */
+                    DSW(rec + 0x36u) = DSW(DS_000BEDDC + ch * 2u);  /* 0x3AF83/0x3AF8B */
+            }
+        }
+        if (sign == 0) {                                    /* 0x3AF93/0x3AF95 */
+            if (fighter_actor_bit15_clear(ctx[0]) != 0)     /* 0x3AF97/0x3AF9F */
+                DSW(rec + 0x34u) = (u16)(-(s16)DSW(rec + 0x34u));  /* 0x3AFA3/0x3AFA7 */
+        } else {
+            DSW(rec + 0x34u) =
+                (u16)((s16)DSW(rec + 0x34u) * (s16)sign);   /* 0x3AFAD..0x3AFB8 */
+        }
+    }
+}
+
+/* 0x2BD44. Copy param_2's +0x4B into param_1, re-arm param_2 as a live actor
+ * (clear +0x24, clear +0x2A bit 3, set +0x29 bit 3, clear +0x28 bits 2/4,
+ * +8 = 0x1E1), load its first sprite id through 0x2A408 into its actor row,
+ * then mark it dead. EAX = param_1 (the fighter record), EDX = param_2 (the
+ * 0x1014F4 row). */
+static void fighter_2bd44(u32 param_1, u32 param_2)
+{
+    u32 actor;
+    DSB(param_1 + 0x4Bu) = DSB(param_2 + 0x4Bu);            /* 0x2BD48/0x2BD4B */
+    DSD(param_2 + 0x24u) = 0;                               /* 0x2BD51 */
+    DSB(param_2 + 0x2Au) &= 0xF7u;                          /* 0x2BD58/0x2BD5B */
+    DSB(param_2 + 0x29u) |= 8u;                             /* 0x2BD68/0x2BD6F */
+    DSB(param_2 + 0x28u) &= 0xEBu;                          /* 0x2BD7A/0x2BD7F */
+    DSD(param_2 + 0x08u) = 0x1E1u;                          /* 0x2BD84 */
+    actor = DSD(DS_001014EC) + (u32)DSW(param_2 + 0x56u) * 0x20u;  /* 0x2BD6B/0x2BD78 */
+    DSW(actor) = (u16)anim_next_sprite_id(param_2, actor);  /* 0x2BD8B/0x2BD90 */
+    actor_set_dead(param_2);                                /* 0x2BD95 */
+}
+
+/* 0x3AD98. The winner's reaction-effect spawn: play the per-character voice
+ * (out of scope), then spawn the 0xBB0B0 effect actor at the 0x100AD8-derived
+ * offset and start the 0xE8E08/22/3C stream selected by word[anim[2]]; finally
+ * nudge the slot's +0x5A through 0x392A0. EAX = side, EDX = &anim. */
+static void fighter_3ad98(u32 side, const u32 anim[3])
+{
+    u32 ctx[6];
+    u32 off;
+    u32 stream;
+    fighter_ctx_swap(ctx, side);                            /* 0x3ADA5 */
+    /* PORT: 0x3ADC1 0x2C3FC(word[0xE9358 + byte[anim[0]+9]*2]) — the voice,
+     * out of scope (spec §7). */
+    off = DSD(DS_000F0AEC) + 0x3BC0u
+        - ((u32)DSD(DS_00100AD8 + ctx[0] * 4u) << 6);       /* 0x3ADC9..0x3ADDF */
+    off -= (u32)((s32)DSD(ctx[5] + 0x30u) >> 16);           /* 0x3ADE1..0x3ADF1 */
+    switch ((u16)DSW(anim[2])) {                            /* 0x3ADEE..0x3AE1E */
+    case 1u: stream = DS_000E8E08; break;                   /* 0x3AE09 */
+    case 2u: stream = DS_000E8E22; break;                   /* 0x3AE10 */
+    case 3u: stream = DS_000E8E3C; break;                   /* 0x3AE17 */
+    default: stream = 0u; break;                            /* 0x3AE1E */
+    }
+    if (stream != 0u) {                                     /* 0x3AE20/0x3AE22 */
+        u32 a = actor_spawn((const u32 *)(mem + FIGHTER_BB0B0),
+                            ctx[3] + 0x2Cu,
+                            off,
+                            (u32)((s32)DSD(ctx[5] + 0x30u) >> 16),
+                            0u);                            /* 0x3AE3C */
+        DSB(a + 0x59u) = 3u;                                /* 0x3AE48 */
+        actors_anim_begin(a, stream, 0x40000000u);          /* 0x3AE4C */
+    }
+    {
+        u32 d = (u32)DSB(ctx[3] + 0x5Au)
+              + (u32)DSB(anim[0] + 4u);                     /* 0x3AE55..0x3AE6D */
+        if (d >= 0x78u) {                                   /* 0x3AE70/0x3AE73 */
+            d = 0x77u - (u32)DSB(ctx[3] + 0x5Au);           /* 0x3AE75/0x3AE7A */
+            if (d < 1u) d = 0u;                             /* 0x3AE7C/0x3AE81 */
+        }
+        fighter_392a0(ctx[3], (s32)d, (s32)DSB(anim[0] + 5u));  /* 0x3AE87 */
+    }
+    DSB(ctx[3] + 0x41u) |= 0x80u;                           /* 0x3AE90 */
+}
+
+/* 0x3B714. The reaction applier 0x193B0 runs for the winner: EAX = param_1
+ * (the other slot), EDX = param_2 (the winner's slot). It runs the 0x3C59C
+ * frame gate, seeds the reaction state through 0x3B080/0x3AE9C, dispatches
+ * through 0x3AAFC (the pose applier) or 0x3AD98 (the effect spawn), and copies
+ * the reaction record word on the 0x3B6C4 hold. */
+void fighter_reaction(u32 param_1, u32 param_2)
+{
+    u32 ctx[6];
+    u32 anim[3];
+    u32 side;
+    u32 local_24;
+    u8 local_18;
+
+    side = (u32)DSB(DSD(param_2) + 0x51u);                  /* 0x3B720/0x3B727 */
+    fighter_ctx_same(ctx, side);                            /* 0x3B733/0x3B735 */
+    if (fighter_pass_flag(1u, ctx[1]) != 0) return;         /* 0x3B743/0x3B74A */
+    local_24 = (u32)DSB(param_2 + 0x5Fu);                   /* 0x3B752 */
+    if (local_24 == 0xFFu) {                                /* 0x3B755/0x3B75B */
+        /* PORT: 0x3B762 0x62003(1) — the error stub, out of scope. */
+        return;                                             /* 0x3B767 */
+    }
+    fighter_anim_triple(anim, side, (s32)local_24);         /* 0x3B770/0x3B776 */
+    if ((DSW(anim[2] + 2u) & 0x800u) != 0u) return;         /* 0x3B77B..0x3B78D */
+    if (fighter_39efc(ctx[1]) != 0                         /* 0x3B797/0x3B79C */
+            && (DSW(anim[2] + 2u) & 0x4000u) == 0u)
+        return;                                             /* 0x3B7B2 */
+    if (DSB(param_1 + 0x52u) == 4u) {                       /* 0x3B7BB/0x3B7BE */
+        DSW(DSD(param_1) + 0x34u) = 0;                      /* 0x3B7C6 */
+        DSW(param_1 + 0x4Eu) = 0;                           /* 0x3B7D0 */
+    }
+    DSB(param_1 + 0x65u) = DSB(param_2 + 0x5Fu);            /* 0x3B7E2 */
+    local_18 = (u8)fighter_command_dispatch(ctx[1], local_24);  /* 0x3B7E9 */
+    if (DSB(param_1 + 0x54u) != 2u)                         /* 0x3B7F5/0x3B7F8 */
+        fighter_3b080(ctx[1], (u32)DSB(anim[0] + 3u),
+                      (u32)DSB(anim[0] + 2u), 1u);          /* 0x3B81D */
+    if (DSB(ctx[2] + 0x52u) == 4u)                          /* 0x3B826/0x3B82A */
+        fighter_3ae9c(side, local_18);                      /* 0x3B834 */
+    if (local_18 == 0u) {                                   /* 0x3B839/0x3B83E */
+        u32 rec_o = ctx[5];                                 /* 0x3B840 */
+        u32 idx = (u32)DSB(rec_o + 0x4Bu);                  /* 0x3B844 */
+        if (idx != 0u) {                                    /* 0x3B847/0x3B849 */
+            u32 row = DSD(DS_001014F4) + idx * 0x68u;       /* 0x3B84B..0x3B866 */
+            if (DSB(row + 0x60u) != 0u)                     /* 0x3B868/0x3B86C */
+                fighter_2bd44(rec_o, row);                  /* 0x3B872 */
+        }
+        fighter_reaction_apply(param_1, local_24);          /* 0x3B88D */
+    } else {
+        DSB(ctx[2] + 0x8Au) = 0;                            /* 0x3B898 */
+        fighter_3ad98(ctx[1], anim);                        /* 0x3B8A7 */
+    }
+    if (fighter_3b6c4(side) != 0)                           /* 0x3B8AF/0x3B8B6 */
+        DSW(ctx[5] + 0x34u) = DSW(ctx[4] + 0x34u);          /* 0x3B8C0/0x3B8C4 */
+    DSB(param_1 + 0x41u) |= 0x80u;                          /* 0x3B8C8 */
+}

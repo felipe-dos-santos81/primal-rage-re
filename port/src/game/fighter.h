@@ -155,6 +155,19 @@ void fighter_reaction_apply(u32 slot, u32 reaction);
 /* 0x3A280. The reaction predicate: 1 for a byte in 0x10..0x17 or 0x20..0x3F. */
 int  fighter_3a280(u32 code);
 
+/* 0x3B714. The reaction applier the winner's 0x193B0 runs: EAX = param_1 (the
+ * other slot), EDX = param_2 (the winner's slot). It runs the 0x3C59C frame
+ * gate, seeds the reaction state through 0x3B080/0x3AE9C, then dispatches
+ * through 0x3AAFC (the reaction/pose applier) or 0x3AD98 (the effect spawn).
+ * Its new callees 0x3B080/0x3AE9C and the gates 0x39EFC/0x3B038/0x3B6C4 are
+ * exposed for the reaction tests. */
+void fighter_reaction(u32 param_1, u32 param_2);         /* 0x3B714 */
+int  fighter_39efc(u32 side);                            /* 0x39EFC */
+int  fighter_3b038(u32 side);                            /* 0x3B038 */
+int  fighter_3b6c4(u32 side);                            /* 0x3B6C4 */
+void fighter_3b080(u32 side, u32 param_2, u32 param_3, u32 param_4); /* 0x3B080 */
+void fighter_3ae9c(u32 side, u8 param_2);                /* 0x3AE9C */
+
 /* 0x46534. Add `delta` to the per-side AI-difficulty accumulator at
  * DS_001082C8[side], clamp to [0, byte[0xC9408 + byte[0x10452C]]], then raise to
  * DS_001082D0. Called by 0x4F434. */
