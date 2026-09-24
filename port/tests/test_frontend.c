@@ -459,6 +459,43 @@ int test_frontend(void)
         DSW(DS_00108860) = saved_860;
     }
 
+    /* Record §3: the loader draw's palette flush. The raw's loader draw
+     * (0x1C65C -> 0x1C470) and the master loop (0x25672) are the same
+     * whole-list drain; the scope is what is on the list at each call. The raw's
+     * palette_list_init (0x336C0) enqueues the initial 0x33734 record
+     * { ptr = 0xBD470; first = 0; count = 1; flag = 0 } (0x336F6-0x3370A:
+     * EBX = 0xBD470, EDX = 1, EAX = 0), so the loader draw's flush drains it
+     * alongside the font palette 0x80997C. The port previously omitted the
+     * enqueue; the record's data word is zero, so the upload is black (DAC[0])
+     * — the same value the port's gfx_dac clear leaves — but the record's
+     * presence is the raw-faithful observable. Seed the base record with a
+     * sentinel that differs from the post-condition, so the checks cannot pass
+     * on a never-written BSS zero. */
+    {
+        u32 saved[5];
+        const u32 saved_head = DSD(DS_00107798);
+        for (u32 k = 0; k < 5u; k++) saved[k] = DSD(DS_00107498 + k * 4u);
+        DSD(DS_00107498 + 0u)  = 0xDEADBEEFu;
+        DSD(DS_00107498 + 4u)  = 0xDEADBEEFu;
+        DSD(DS_00107498 + 8u)  = 0xDEADBEEFu;
+        DSD(DS_00107498 + 12u) = 0xDEADBEEFu;
+        DSD(DS_00107798) = DS_00107498 + 0x40u;   /* a sentinel head */
+
+        palette_list_init();                      /* 0x336C0 */
+        CHECK_EQ_INT((int)DSD(DS_00107798), (int)(DS_00107498 + 0x10u));
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 0u),  (int)DS_000BD470);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 4u),  0);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 8u),  1);
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 12u), 0);
+
+        gfx_flush_palette();                      /* the loader draw's 0x1C470 */
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 4u), -1);   /* consumed */
+        CHECK_EQ_INT((int)DSD(DS_00107798), (int)DS_00107498);
+
+        for (u32 k = 0; k < 5u; k++) DSD(DS_00107498 + k * 4u) = saved[k];
+        DSD(DS_00107798) = saved_head;
+    }
+
     const char *dump = getenv("PR_FRONTEND_DUMP");
     if (dump == NULL || dump[0] == '\0') {
         printf("test_frontend: PR_FRONTEND_DUMP unset, state-2 driver skipped\n");

@@ -25,6 +25,13 @@ void palette_list_init(void)
     DSD(DS_00107798) = DS_00107498;
     for (u32 i = 0; i < 0x180; i += 0x10) DSD(DS_0010749C + i) = 0xFFFFFFFFu;
     DSD(DS_000BD470) = 0;
+    /* 0x336F6-0x3370A: the raw's trailing 0x33734 initial-palette enqueue
+     * { ptr = 0xBD470, first = 0, count = 1, flag = 0 } (EBX = 0xBD470,
+     * EDX = 1, EAX = 0). The record's data word is zero, so it uploads black to
+     * DAC[0] — the same value the port's gfx_dac clear leaves — but the record
+     * is on the list the loader draw's 0x1C470 drains, so the port enqueues it
+     * for fidelity (record §3.4). */
+    palette_record(DS_000BD470, 0u, 1u, 0u);   /* 0x3370A 0x33734 */
     memset(gfx_dac, 0, sizeof gfx_dac);
 }
 

@@ -522,6 +522,46 @@ The pre-fix port fails it (the loader draw drains the arena's records and the
 gate list is empty). Mutation proof: revert the scope → the assertion fails.
 The measured oracle-neutrality (1381/1381) is re-confirmed on the ladder.
 
+### 3.5 Task-4 correction (the raw wins; measured)
+
+**§3.1's second half and §3.3 are refuted by the raw and by a live measurement.**
+The raw's `0x1C470` is a **whole-list** drain at every call (`0x1C470`..`0x1C510`,
+no scope parameter — §3.1's first sentence), and the original's state-6 loader
+draws drain the accumulated records **including the arena's**:
+
+* `ghidra_disassemble_function 0x1C470` confirms the drain is
+  `piVar7 = &DAT_00107498` → `DAT_00107798`, then `DAT_00107798 = &DAT_00107498`.
+* Live DOSBox-X poll (base `0x266000`, `/tmp/t4_dirty2.py`; the poll's
+  `/tmp/t4_dirty.csv`): the state-6 handler reads its files **incrementally**
+  (file reads gain `21`, `55`, `60`, `5`, `33`, `36`, `32`, `57`, `34` over
+  53.37→54.32 s), and the dirty list goes `{002a3470,0,1,0} {0080997c,1,1,1}`
+  (the loader draw, 98.339 s) → `0` → **9 arena records** (98.379 s) → `0`
+  (98.392 s, still inside the handler's blocking read: `1508` climbs 4→25 while
+  `150C` is frozen at 3). So the arena records are drained by a **subsequent
+  loader draw**, not "survive to the `0x25672` gate flush".
+
+The port's loader draws do the same (traced: `{0080997c}` → 5 arena records → 4
+→ 3 → 0 → 0), so **the port's loader flush scope is already faithful** and
+§3.3's boundary is **not shipped** — the raw does not need it (§3.3's own caveat:
+"the record must not ship a boundary that the raw does not need"). Implementing
+it literally drains nothing at the first draw and loses the font record (the
+boundary is captured before the glyph walk's own `0x80997C` acquire), so it is
+strictly less faithful.
+
+**The pinned divergence §3.4 names is the initial record.** The raw's
+`0x336C0` ends with a `0x33734` enqueue at `0x336F6`-`0x3370A`
+(`EBX = 0xBD470`, `EDX = 1`, `EAX = 0`: the tuple `{ ptr = 0xBD470; first = 0;
+count = 1; flag = 0 }`); the port's `palette_list_init` omitted it. The record's
+data word is zero (the raw `0xBD470` reads `00000000`), so the upload is black
+(DAC[0]) — the same value the port's `gfx_dac` clear leaves — but it is the
+record the raw's loader flush drains. Task 4 enqueues it
+(`palette_list_init`), so the loader draw's list is `{initial, font}` as the
+raw's.
+
+**Out of this task's scope:** the loader-frame **gate** (the raw's fails because
+the read blocks `150C`; the port's passes because its payloads are resident) is
+the read/gate model cycle-2 §9.6 measured and deferred — not the flush scope.
+
 ---
 
 ## 4. The attract/scene palette drivers (Step 4)
@@ -925,11 +965,16 @@ more and wire the callees' real call chains:
 
 ### 8.3 Task 4 — the loader flush scope (`port/tests/test_frontend.c`)
 
-* Drive the state-6 loader path; assert the loader draw's flush drained only
-  `{0x33734 initial, 0x80997C}` and the arena records
-  (`0x0A838B44`/`0x0105FF3C`/`0x1BB9FCD8`) survived to the `0x25672` gate flush
-  (§3.4). Mutation: revert the scope → the loader flush drains the arena
-  records and the assertion fails.
+* **Corrected by Task 4 (§3.5; the raw wins).** The recipe's "the arena records
+  survived to the `0x25672` gate flush" is refuted: the raw's loader draws drain
+  the accumulated arena records too. The shipped assertion is the raw's
+  **initial record**: seed the dirty list's base record with a sentinel that
+  differs from the post-condition (`0xDEADBEEF`), call `palette_list_init`
+  (`0x336C0`), and assert the base record is `{ DS_000BD470; 0; 1; 0 }` and the
+  head is `base + 0x10`; then call `gfx_flush_palette` (the loader draw's
+  `0x1C470`) and assert the record is consumed (`first = -1`) and the head is
+  the base. Mutation: drop the `0x33734` enqueue → `test_frontend.c:485`
+  (`1078424 != 1078440`), `:486` (`-559038737 != 775280`).
 
 ### 8.4 Task 5 — the attract drivers (`port/tests/test_attract.c`)
 
