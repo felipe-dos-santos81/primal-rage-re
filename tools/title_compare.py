@@ -368,6 +368,9 @@ def load_port(d, n):
 # The roar-timing fix (the pose setter's operand is the signed byte at the anim3
 # row's +6: 0x3AD27 `mov esi,[esi+3]` / 0x3AD2E `sar esi,0x18`) explains
 # captures 851..857, [560..850] -> [560..857] (291 -> 298); the set stays.
+# The 0x2A690 mode-1 x fix (0x2A733 reads the ramp word at rec+0x46, 0x2A6E0
+# the velocity word at rec+0x34) explains capture 858, [560..857] -> [560..858]
+# (298 -> 299); the set stays.
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

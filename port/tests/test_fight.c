@@ -4265,6 +4265,47 @@ static void check_type_callbacks(void)
         DSW(0x0010790Au) = saved_ramp;
         DSW(0x00107A4Cu) = saved_clamp;
     }
+
+    /* 0x2A690's two mode-1 x arms (rec+0x28 bit 12 set, rec+0x38 = 0 so
+     * 0x2A620 is skipped), seeded with the demo's f = 86 values (demo-pose
+     * record §12). Ramp arm (rec+0x64 >= 0): 0x2A72F stores the ramp entry at
+     * +0x46 and 0x2A733/0x2A739 read it back as [rec+0x44] >> 16; the low word
+     * +0x44 holds the sentinel 0x0777, so a +0x44 read gives -10240 + 0x2A00 -
+     * 0xEEE. Temple 0x02F2: entry -12 -> x = -10240 + 0x2A00 + 24 = 536.
+     * Velocity arm (rec+0x64 < 0, word +0x34 != 0): 0x2A6E0/0x2A6E9 read the
+     * word at +0x34 (320), not +0x32 (9362); with 0x107A46 = -10 the product
+     * -3200 truncates to -12 (0x2A6F4..0x2A6FC), so mountain 0x02F4 gives
+     * x = -4448 + 0x2A00 + 12 = 6316 (the +0x32 read gives 6669). */
+    {
+        u16 saved_ramp = DSW(0x00107906u);
+        u32 saved_a44 = DSD(DS_00107A44);
+        DSW(rec + 0x28) = 0x1000u;          /* bit 12: the mode-1 arms */
+        DSW(rec + 0x38) = 0;
+        DSW(rec + 0x32) = 0;
+
+        DSW(0x00107906u) = (u16)0xFFF4u;    /* ramp entry 3 = -12 */
+        DSB(rec + 0x64u) = 3;
+        DSD(rec + 0x44) = 0x55550777u;      /* +0x46 sentinel, +0x44 0x0777 */
+        DSD(rec + 0x18) = (u32)-10240;
+        DSD(pset + 4u) = 0xDEADBEEFu;
+        actor_pset_point(rec);
+        CHECK_EQ_INT((int)(s16)DSW(rec + 0x46u), -12);
+        CHECK_EQ_INT((int)DSD(pset + 4u), 536);
+
+        DSB(rec + 0x64u) = 0xFFu;
+        DSW(rec + 0x32) = 9362;
+        DSW(rec + 0x34) = 320;
+        DSW(DS_00107A44 + 2u) = (u16)0xFFF6u;   /* 0x107A46 = -10 */
+        DSD(rec + 0x18) = (u32)-4448;
+        DSD(pset + 4u) = 0xDEADBEEFu;
+        actor_pset_point(rec);
+        CHECK_EQ_INT((int)DSD(pset + 4u), 6316);
+
+        DSW(rec + 0x32) = 0;
+        DSW(rec + 0x34) = 0;
+        DSW(0x00107906u) = saved_ramp;
+        DSD(DS_00107A44) = saved_a44;
+    }
 }
 
 /* set_dead's cb2 dispatch (0x2B185) through four teardowns: 0x19928 (type

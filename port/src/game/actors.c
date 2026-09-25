@@ -1024,13 +1024,17 @@ void actor_pset_point(u32 rec)
         if ((s8)DSB(rec + 0x64) >= 0) {
             s32 idx = (s32)DSD(rec + 0x61) >> 24;    /* byte at rec+0x64 */
             DSW(rec + 0x46) = DSW(DS_00107900 + (u32)idx * 2u);
+            /* 0x2A733 `mov eax,[ebx+0x44]` / 0x2A739 `sar eax,0x10`: the
+             * signed word at +0x46, the ramp entry just stored (0x2A72F). */
             x = DSD(rec + 0x18) + 0x2a00u
-                - (u32)(((s32)(s16)DSW(rec + 0x44)) * 2);
+                - (u32)(((s32)DSD(rec + 0x44) >> 16) * 2);
         } else if (DSW(rec + 0x34) == 0) {
             x = DSD(rec + 0x18) + 0x2a00u
                 - (u32)((s32)DSD(DS_00107A44) >> 16);
         } else {
-            s32 p = ((s32)DSD(DS_00107A44) >> 16) * (s32)(s16)DSW(rec + 0x32);
+            /* 0x2A6E0 `mov eax,[ebx+0x32]` / 0x2A6E9 `sar eax,0x10`: the
+             * signed word at +0x34, the one 0x2A6D9 gates on. */
+            s32 p = ((s32)DSD(DS_00107A44) >> 16) * ((s32)DSD(rec + 0x32) >> 16);
             x = DSD(rec + 0x18) + 0x2a00u - (u32)(p / 256);
         }
     }
