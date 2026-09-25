@@ -373,6 +373,10 @@ def load_port(d, n):
 # (298 -> 299); the set stays. The 0x49C78 case-1 walk arrival (0x49D2F ->
 # 0x4AC38: the type-0x20 worshipper stops and begins its 0xC9544 stream)
 # explains capture 859, [560..858] -> [560..859] (299 -> 300); the set stays.
+# The 0x49C78 tail's 0x4A634 (called at 0x4A591; it clears each fighter slot's
+# +0x42 bits 0/1 every frame, so the roar's bit 0 no longer retargets the
+# worshipper at f = 88) explains captures 860..863, [560..859] -> [560..863]
+# (300 -> 304); the set stays.
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

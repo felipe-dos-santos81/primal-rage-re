@@ -1116,8 +1116,139 @@ static void check_effects_arrival(void)
     fight_effects_pass();
     CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 0);
 
+    /* The DS_001088C2 pre-gate (0x49D2F): with it set and 0xC9754[index]
+     * non-zero, 0x4BD4C retargets the entry to type 8 with the hold 4.0 before
+     * the arrival test, although d == step would arrive. The tail (0x4A5A0)
+     * clears DS_001088C2. With the 0xC9754 stream zero, 0x4BD4C declines and the
+     * entry arrives. */
+    {
+        u32 stream8 = FIGHT_RECS + 0x3840u;
+        u32 sv_tab8 = DSD(DS_000C9754);
+        DSW(stream8) = 0x0456u;             /* a literal sprite id */
+        DSD(DS_000C9754) = stream8;
+        DSB(entry + 0x1Eu) = 1;
+        DSD(rec + 0x18u) = 702;
+        DSD(rec + 0x32u) = 0xFF801234u;
+        DSD(rec + 0x24u) = 0x3F800000u;
+        DSW(pset) = 0x07E1u;
+        DSB(DS_001088C2) = 1;
+        fight_effects_pass();
+        CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+        CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40800000);
+        CHECK_EQ_INT((int)DSW(pset), 0x0456);
+        CHECK_EQ_INT((int)DSB(DS_001088C2), 0);
+
+        DSD(DS_000C9754) = 0;
+        DSB(entry + 0x1Eu) = 1;
+        DSD(rec + 0x32u) = 0xFF801234u;
+        DSD(rec + 0x24u) = 0x3F800000u;
+        DSB(DS_001088C2) = 1;
+        fight_effects_pass();
+        CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 0);
+        CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40A00000);
+        DSD(DS_000C9754) = sv_tab8;
+    }
+
     DSD(0x000C9544u) = sv_tab;
     DSD(DS_0010884C) = DS_0010884C;
+}
+
+/* 0x4A634, the effects pass's tail at 0x4A591: each side's slot +0x42 loses
+ * bits 0/1 and its 0x10889E/0x1088B2 bytes are zeroed, every frame (the list is
+ * empty here). With +0x42 bit 1 set, the side's 0x1088A8 byte draws rng(3) in
+ * 0x20..0x3F, or rng(2) and a second rng(2) when the first is non-zero in
+ * 0x10..0x17. The RNG state is the proof: seed 0x1234 steps to 0xBAC6D4B3 then
+ * 0x5589507A (its first rng(2) is 1); seed 0x1235 steps to 0x73D3E76C (its
+ * first rng(2) is 0). Each case seeds the other side's 0x1088A8 byte with a
+ * value that would draw differently, so a wrong side index fails. */
+static void check_effects_tail(void)
+{
+    u32 s0 = DS_001077B0;
+    u32 s1 = DS_001077B0 + 0x94u;
+    u8 sv_42a = DSB(s0 + 0x42u), sv_42b = DSB(s1 + 0x42u);
+    u8 sv_a8 = DSB(DS_001088A8), sv_a9 = DSB(DS_001088A8 + 1u);
+    u8 sv_9e[3], sv_b2[3];
+    u32 i;
+
+    for (i = 0; i < 3u; i++) {
+        sv_9e[i] = DSB(DS_0010889E + i);
+        sv_b2[i] = DSB(DS_001088B2 + i);
+    }
+    mem_fill(FIGHT_RECS, 0, 0x4000);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    fight_reset_bases();
+    DSW(DS_00104B00) = 3;
+    DSB(DS_001088BF) = 0;
+    DSB(DS_001088C2) = 0;
+    DSD(DS_0010884C) = DS_0010884C;
+
+    /* The clear, no draw: side 0 has bit 1 but 0x18 is in neither range; side
+     * 1 has 0x20 but no bit 1. The third bytes of both tables are untouched. */
+    DSB(s0 + 0x42u) = 0x5Bu;
+    DSB(s1 + 0x42u) = 0xA5u;
+    DSB(DS_001088A8) = 0x18u;
+    DSB(DS_001088A8 + 1u) = 0x20u;
+    DSB(DS_0010889E) = 0x11u;
+    DSB(DS_0010889E + 1u) = 0x22u;
+    DSB(DS_0010889E + 2u) = 0x77u;
+    DSB(DS_001088B2) = 0x33u;
+    DSB(DS_001088B2 + 1u) = 0x44u;
+    DSB(DS_001088B2 + 2u) = 0x88u;
+    rng_seed(0x1234u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(s0 + 0x42u), 0x58);
+    CHECK_EQ_INT((int)DSB(s1 + 0x42u), 0xA4);
+    CHECK_EQ_INT((int)DSB(DS_0010889E), 0);
+    CHECK_EQ_INT((int)DSB(DS_0010889E + 1u), 0);
+    CHECK_EQ_INT((int)DSB(DS_0010889E + 2u), 0x77);
+    CHECK_EQ_INT((int)DSB(DS_001088B2), 0);
+    CHECK_EQ_INT((int)DSB(DS_001088B2 + 1u), 0);
+    CHECK_EQ_INT((int)DSB(DS_001088B2 + 2u), 0x88);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0x1234);
+
+    /* 0x3F on side 1 draws one rng(3); side 0's 0x10 (no bit 1) draws none. */
+    DSB(s0 + 0x42u) = 0x00u;
+    DSB(s1 + 0x42u) = 0x02u;
+    DSB(DS_001088A8) = 0x10u;
+    DSB(DS_001088A8 + 1u) = 0x3Fu;
+    rng_seed(0x1234u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)0xBAC6D4B3u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x42u), 0);
+
+    /* 0x10 on side 1, first rng(2) = 1: a second rng(2). */
+    DSB(s1 + 0x42u) = 0x02u;
+    DSB(DS_001088A8) = 0x3Fu;
+    DSB(DS_001088A8 + 1u) = 0x10u;
+    rng_seed(0x1234u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0x5589507A);
+
+    /* 0x17 on side 0, first rng(2) = 0: no second draw. */
+    DSB(s0 + 0x42u) = 0x02u;
+    DSB(DS_001088A8) = 0x17u;
+    DSB(DS_001088A8 + 1u) = 0x05u;
+    rng_seed(0x1235u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0x73D3E76C);
+
+    /* 0x1F and 0x40 are in neither range. */
+    DSB(s0 + 0x42u) = 0x02u;
+    DSB(s1 + 0x42u) = 0x02u;
+    DSB(DS_001088A8) = 0x1Fu;
+    DSB(DS_001088A8 + 1u) = 0x40u;
+    rng_seed(0x1234u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0x1234);
+
+    DSB(s0 + 0x42u) = sv_42a;
+    DSB(s1 + 0x42u) = sv_42b;
+    DSB(DS_001088A8) = sv_a8;
+    DSB(DS_001088A8 + 1u) = sv_a9;
+    for (i = 0; i < 3u; i++) {
+        DSB(DS_0010889E + i) = sv_9e[i];
+        DSB(DS_001088B2 + i) = sv_b2[i];
+    }
 }
 
 /* 0x3B134: the command-word mapper's stance branch (record §8.13). The three
@@ -4614,6 +4745,7 @@ int test_fight(void)
     check_hud_latch();
     check_effects_rng();
     check_effects_arrival();
+    check_effects_tail();
     check_command_map();
     check_think_chain();
     check_attack_consume();

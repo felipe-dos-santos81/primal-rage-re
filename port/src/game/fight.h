@@ -41,8 +41,9 @@ void fight_command_map(u32 side, u32 edx_arg, u32 override);
 
 /* 0x49C78. The scene/effects pass. Cycle 1 ports the pass structure, the list
  * walk and the eight direct RNG call sites with their gates; the entry effect
- * bodies (0x4B69C/0x496DC/0x4A634/0x4987C/...) are a named gap (§7.4). When
- * the effect list at DS_0010884C is empty only the unconditional tail runs. */
+ * bodies (0x4B69C/0x496DC/0x4987C/...) are a named gap (§7.4). When the effect
+ * list at DS_0010884C is empty only the unconditional tail runs, which includes
+ * 0x4A634's slot +0x42 bit 0/1 reset. */
 void fight_effects_pass(void);
 
 /* 0x3C5CC. Zeroes the three slot-pass words. The arena frame's first call;

@@ -854,6 +854,38 @@ static void fight_4aad0(u32 entry, u32 index)
     }
 }
 
+/* 0x4A634. The effects pass's per-frame flag reset, called unconditionally at
+ * 0x4A591. For each side (EDX = side, EBX = side * 0x94): when the slot's +0x42
+ * bit 1 is set, the side's 0x1088A8 reaction byte picks the crowd voice, which
+ * draws rng(3) for 0x20..0x3F, or rng(2) and, when that is non-zero, rng(2)
+ * again for 0x10..0x17. Then it clears +0x42 bits 0/1 (`and al,0xfc`) and the
+ * side's 0x10889E/0x1088B2 bytes (0x4A6EE/0x4A6F4 store at +0x10889D/+0x1088B1
+ * after `inc edx`). */
+static void fight_4a634(void)
+{
+    u32 side;
+    for (side = 0; side < 2u; side++) {                     /* 0x4A6FA */
+        u32 slot = DS_001077B0 + side * 0x94u;              /* 0x4A6E8 */
+        if ((DSB(slot + 0x42u) & 2u) != 0u) {               /* 0x4A640 */
+            u32 r = (u32)DSB(DS_001088A8 + side);           /* 0x4A64F */
+            if (r >= 0x20u && r <= 0x3Fu) {                 /* 0x4A655/0x4A65A */
+                (void)rng_next(3u);                         /* 0x4A664 */
+                /* PORT: 0x4A6D2 0x2C3FC(0xCD/0xCE/0xCF by the draw) voice, out
+                 * of scope (spec §7). */
+            } else if (r >= 0x10u && r <= 0x17u) {          /* 0x4A692/0x4A697 */
+                if (rng_next(2u) != 0u) {                   /* 0x4A69E */
+                    (void)rng_next(2u);                     /* 0x4A6A9 */
+                    /* PORT: 0x4A6B7/0x4A6C8 0x2C3FC(0xC9 or 0xCA) and 0x4A6D2
+                     * 0x2C3FC(0xDA or 0xDB) voices, out of scope (spec §7). */
+                }
+            }
+        }
+        DSB(slot + 0x42u) &= 0xFCu;                         /* 0x4A6DD/0x4A6E0 */
+        DSB(DS_0010889E + side) = 0;                        /* 0x4A6EE */
+        DSB(DS_001088B2 + side) = 0;                        /* 0x4A6F4 */
+    }
+}
+
 void fight_effects_pass(void)
 {
     /* The raw's four frame locals (0x49C7E/0x49C8E). Only the mode-9 block reads
@@ -947,8 +979,7 @@ void fight_effects_pass(void)
      * issued in cycle 1. */
     /* PORT: 0x4A487..0x4A58F (mode 9 only) — named gap (§7.4). */
 
-    /* PORT: 0x4A591 0x4A634 — the mode tail is a named gap; its internal
-     * rng(3)/rng(2) draws are not issued (§7.4). */
+    fight_4a634();                              /* 0x4A591 */
     DSB(DS_001088C2) = 0;                       /* 0x4A5A0 */
 
     /* 0x4A5A6: the tail rng(2) behind the DS_001088BF 1..4 gate, for modes
