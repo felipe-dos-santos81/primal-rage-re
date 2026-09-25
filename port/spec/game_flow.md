@@ -523,9 +523,9 @@ demo-fight section below.
 3617 distinct post-logo frames, raw 1367..8409 after the demo-fight closure
 cycle's re-capture) reaches the front-end. With the state-3 render ported
 (`0x12484`) the `PR_FRONTEND_DUMP` driver emits the real zoom-out, and
-`tools/title_compare.py --frontend` aligns it: window distinct **[560..865]**
-(raw 3108..3772), **306 frames: 137 clean, 165 splice, 0 transition, 2
-unexplained** (the four classes sum to 304 of 306: the window's other two frames are the
+`tools/title_compare.py --frontend` aligns it: window distinct **[560..866]**
+(raw 3108..3773), **307 frames: 137 clean, 166 splice, 0 transition, 2
+unexplained** (the four classes sum to 305 of 307: the window's other two frames are the
 all-black captures 561 and 831, excluded as artifacts — the oracle's own list) — captures **832** and **833**, allowed by name in
 `FRONTEND_ALLOWED_UNEXPLAINED` with their reason (`title_compare.py:352-374`;
 the arena-backdrop cycle's absorbed claim move: the window is derived from the
@@ -542,7 +542,9 @@ the frame-858 fix (`0x2A690`'s mode-1 x operands) then explained 858: →
 explained 859: → `[560..859]`/300; the frame-860 fix (`0x49C78`'s tail reset
 `0x4A634`) then explained 860..863: → `[560..863]`/304; the frame-864 fix
 (state 6's `0x12750` node list and the driver's frame-counter seed) then
-explained 864/865: → `[560..865]`/306.) The claim that result supports is precise and narrow: **no
+explained 864/865: → `[560..865]`/306; the frame-866 fix (`0x36870`'s case 0
+restarting its own record, `0x36A8C`/`0x36AA1`) then explained 866: →
+`[560..866]`/307.) The claim that result supports is precise and narrow: **no
 content-bearing capture frame inside the window the port's own dump exhibits is
 unexplained** (the two named exceptions aside). The window is derived from the port's dump (`check_capture`'s
 `idx`→`a,b` mapping) and the branch discards `check_capture`'s `rc` (coverage and
@@ -673,18 +675,18 @@ at loop 1070 (dumped 481), state 7 runs loop 1071..1969 (dumped 482..1380), and
 dump stops. The dump therefore holds **1381 frames** (dumped 0..1380); the 1400
 cap covers it with no truncation, and the 2000-frame loop clears the 1970 exit.
 
-**The demo window is report-only; its first unexplained frame is capture 866 —
-the f = 92/93 tear, where both fighters and the ground scroll differ, after the
+**The demo window is report-only; its first unexplained frame is capture 867 —
+the raptor lowering out of its stance, which the port does not show, after the
 demo-pose cycle explained captures 843..850, the roar-timing fix 851..857, the
-frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863 and the
-frame-864 fix 864/865.** `tools/title_compare.py --demo` locates the front-end window
+frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863, the
+frame-864 fix 864/865 and the frame-866 fix 866.** `tools/title_compare.py --demo` locates the front-end window
 with the same content alignment, then classifies the capture region after it
 against the port dump frames after the last frame that window exhibits — the
 same clean/splice/transition/unexplained model, no second one. It reports and
 exits 0.
 
-* Front-end window (still enforced in `verify`): distinct **[560..865]** (raw
-  3108..3772), **306 frames: 137 clean, 165 splice, 0 transition, 2
+* Front-end window (still enforced in `verify`): distinct **[560..866]** (raw
+  3108..3773), **307 frames: 137 clean, 166 splice, 0 transition, 2
   unexplained** — captures **832** (the loader's `- LOADING -` screen) and
   **833** (the dark arena with the `LOADING` text overlaid), allowed by name in
   `FRONTEND_ALLOWED_UNEXPLAINED` (the arena-backdrop cycle's absorbed claim
@@ -696,10 +698,12 @@ exits 0.
   reproducible — a `title_capture.py --verify-reproducible` run of the pinned
   original gave 587 vs 588 distinct frames and a first divergence at distinct
   index 30), and the oracle's claim is unchanged.
-* Demo window: distinct **[866..3616]** (raw **3773..8409**), **2751 frames:
-  0 clean, 0 splice, 0 transition, 2745 unexplained** (6 all-black capture
-  frames excluded as artifacts). Demo port frames **[510..1380]** (871),
-  **0/871 exhibited**. (Measured on the frame-864 fix; before it: `[864..3616]`,
+* Demo window: distinct **[867..3616]** (raw **3774..8409**), **2750 frames:
+  0 clean, 0 splice, 0 transition, 2744 unexplained** (6 all-black capture
+  frames excluded as artifacts). Demo port frames **[511..1380]** (870),
+  **0/870 exhibited**. (Measured on the frame-866 fix; before it: `[866..3616]`,
+  2751 frames, port `[510..1380]`, first unexplained 866; before the frame-864
+  fix: `[864..3616]`,
   2753 frames, port `[508..1380]`, first unexplained 864; before the frame-860
   fix: `[860..3616]`,
   2757 frames, port `[505..1380]`, first unexplained 860; before the frame-859
@@ -710,13 +714,19 @@ exits 0.
   fix: `[851..3616]`, 2766 frames, port `[497..1380]`, first unexplained 851; before
   the demo-pose cycle: `[843..3616]`, 2774 frames, port `[490..1380]`, first
   unexplained 843.)
-* **First unexplained captured frame 866 (raw 3773)** (demo-pose record §15.5).
-  Capture 866 is the f = 92/93 tear: the best 509/510 splice (row 137) leaves
-  27 858 B / 9 891 px over both fighters and the ground, whose rows 185–199
-  match no port frame 508..511 at any shift in [−8, 8]. At f = 93 the port's
-  camera steps −500 → −256, the T-rex switches `0x907E` → `0x96B5` and its
-  shadow `0x9E04` leaves the list. The owner is not yet derived. (Before the
-  frame-864 fix this was capture 864: the grey flier `0x1282C` spawns from
+* **First unexplained captured frame 867 (raw 3774)** (demo-pose record §16.5).
+  Capture 867 is a tear: the best 510/511 splice (row 124) leaves 11 184 B /
+  3 955 px, all in x 185–319, rows 125–194, the raptor's body and legs. The
+  capture shows the raptor lowering out of its stance. The port holds the
+  stance `0x16B5` from f = 93 to f = 96, with side 1's slot at
+  `+0x52/+0x53/+0x54` = 3/4/2 from f = 94. No port frame 509..514 matches the
+  box at any shift in [−12, 12]. The owner is not yet derived. (Before the
+  frame-866 fix this was capture 866: `0x36870`'s case 0 restarted the other
+  side's record, so at f = 93 the raptor's `0x36870` opcode put the T-rex on
+  the raptor's stance `0xD2136` (`0x96B5`), whose `0x18540` anchor fell to 0 and
+  stepped the camera −500 → −256; the best 509/510 splice left 27 858 B /
+  9 891 px; the `0x36A8C`/`0x36AA1` operand fix, record §16, removed that.
+  Before the frame-864 fix this was capture 864: the grey flier `0x1282C` spawns from
   `0xBB254` was refused because state 6's `0x12750` node list was unported, and
   the driver's frame counter was unseeded, so the gate opened at f = 81 instead
   of f = 91; record §15. Before the frame-860 fix this was capture
@@ -755,8 +765,8 @@ exits 0.
   arena-backdrop cycle later moved it past 832 to **843** — the T-rex pose, the
   cycle-5 outcome below — the demo-pose cycle to **851**, cycle 6 below, and the
 roar-timing fix to **858**, the frame-858 fix to **859**, the frame-859
-fix to **860**, the frame-860 fix to **864**, and the frame-864 fix to
-**866**.)
+fix to **860**, the frame-860 fix to **864**, the frame-864 fix to
+**866**, and the frame-866 fix to **867**.)
 * **The window is no longer non-discriminating.** Cycle 1's `--demo` window
   opened on the state-9 hold's first frame, so it read identically for correct or
   broken code. Task 3 made the state-9 hold match — the hold's frames
@@ -764,7 +774,7 @@ fix to **860**, the frame-860 fix to **864**, and the frame-864 fix to
   demo window's boundary (the loader's presentation at 832/833, then the T-rex
   pose at 843, since moved to 851 by cycle 6 below, to 858 by the roar-timing
 fix, to 859 by the frame-858 fix, to 860 by the frame-859 fix, to 864 by
-the frame-860 fix and to 866 by the frame-864 fix) is a real content gap, not a window-definition artifact; the demo
+the frame-860 fix, to 866 by the frame-864 fix and to 867 by the frame-866 fix) is a real content gap, not a window-definition artifact; the demo
   window itself still reports **0 clean** (above). Window re-anchoring was **removed from this cycle**
   (design spec, "Removed from this cycle"): no new reference and no re-anchoring
   task, because porting the state-9 render made the **front-end** window's
@@ -1415,6 +1425,28 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   ratchet N is raised 864 → 866.
 * **Moved claim (allowed by the brief).** Front-end `[560..863]`/304 →
   **`[560..865]`/306: 137 clean, 165 splice, 0 transition, 2 unexplained
+  (832, 833)**. Nothing else moved.
+
+### Wrong record in `0x36870` case 0 (`2137bce`), capture 866
+
+* **Cause (raw).** `0x36870`'s `+0x54 == 0` arm restarts the calling side's
+  own record: `0x36A8C mov eax,[esp+0x10]` and `0x36AA1 mov edx,[esp+0x10]`
+  both read `rec_s` (`0x368E5` stored `[S]` there; `[esp+0x14]`, the other
+  record, is stored at `0x368EB` and never read). The port restarted the other
+  side's record. At f = 93 the raptor's own stream reaches its `0x36870`
+  opcode, so the port put the T-rex on the raptor's stance `0xC8950[3] =
+  0xD2136` (`0x16B5`, hflipped `0x96B5`). The T-rex's `0x18540` anchor then
+  fell out of range to 0 (`AB0` −448 → 320), which stepped the camera
+  −500 → −256.
+* **Fix.** Both operands now use `rec_s`. `check_deep_callees` case E is
+  mutation-proven: `rec_o` for either operand, the other slot's `+0x7A` and
+  `+0x4D = 0x14` each fail.
+* **Measured.** Capture 866 is now a 0 B splice of port 509/510 (row 96), from
+  27 858 B. The demo's first unexplained is now **867 (raw 3774)**, and the
+  fight window `[867..1884]` has 1018 frames, 0 explained. The ratchet N is
+  raised 866 → 867.
+* **Moved claim (allowed by the brief).** Front-end `[560..865]`/306 →
+  **`[560..866]`/307: 137 clean, 166 splice, 0 transition, 2 unexplained
   (832, 833)**. Nothing else moved.
 
 ## Landmarks (verified)

@@ -1950,3 +1950,150 @@ At f = 93 the port changes three things at once:
 The capture shows the T-rex still in its hit pose. The owner is **not
 derived**. The candidates are the f = 93 camera anchor and the T-rex's f = 93
 animation switch.
+(Derived since, §16: both are one port error, `0x36870`'s case 0 restarting
+the other side's record.)
+
+## 16. The wrong record in `0x36870`'s case 0 at capture 866 (roar-timing Task 6, `2137bce`)
+
+**Result in one line.** The f = 93 camera step and the T-rex's `0x96B5` are one
+error, and it is the port's. At f = 93 the raptor's (side 1, char 3) own stream
+reaches its `0x36870` opcode. `0x36870`'s `+0x54 == 0` arm restarts the calling
+side's **own** record at `0xC8950[char]` and sets its `+0x4D = 0x1E`. The port
+restarted the **other** side's record (`rec_o`). So the T-rex was put on the
+raptor's stance stream `0xD2136` (sprite `0x16B5`, hflipped `0x96B5`), and its
+`0x18540` anchor (sprite − `0xE6DD0`'s camera constant) fell out of range to 0.
+That gave `AB0` −448 → 320 and the camera −500 → −256. The fix is two operands in
+an already-ported function; the size gate does not apply. This supersedes
+§15.5's "owner not derived" for 866.
+
+### 16.1 The trace (measured, temporary, reverted)
+
+The trace was `getenv("PR_T6")`-gated and has been reverted. It printed lines
+from `actors_update` (both slots and records, f = 85..97) and from
+`actors_anim_begin`/`actors_anim_seek` for either fighter record, with a
+`backtrace()`. `git status` was clean afterwards.
+
+| f | side 0 (T-rex, char 0) | side 1 (raptor, char 3) |
+|---|---|---|
+| 92 | `0x907E`, stream `0xE734C`, anchor 410, `AB0` −448 | `0x1764`, stream `0xD2316`, `+0x52/+0x53` = 9/8 |
+| 93 (port) | **`0x96B5`, stream `0xD2136`**, anchor **0**, `AB0` **320** | `0x1764`, stream `0xD2326`, `+0x52/+0x53` = 0/0, `+0x5F` = `0xFF` |
+
+The one `actors_anim_begin` at f = 93 was `rec = 0x2A7ECB0` (the T-rex),
+`stream = 0xD2136`, hold 3.0. Its call chain was `game_loop` → `game_frame` →
+`fight_arena_frame` → `fight_hud_pass` → `actor_sync` (the **raptor's**
+record) → `frame_timer` → `spawn_anim_opcode` → `anim_indirect` →
+`anim_code_36870` → `fighter_36870`. `0xC8950[3] = 0xD2136` (`read_memory
+0xC8950`: `0xE6DD2, 0xE39D2, 0xECBDA, 0xD2136, …`), and `0xD2136`'s first word
+is the literal `0x16B5`. So the stream is the raptor's own stance; only the
+record was wrong.
+
+### 16.2 What capture 866 shows (measured)
+
+Capture 866 shows the T-rex still in its hit pose and the raptor changing
+(montage of captures 865..868 against ports 509..512). The raptor's `0x36870`
+restart is visible in the capture. The T-rex's switch and the camera step are
+not.
+
+### 16.3 The raw, re-read (Ghidra `disassemble_function 0x36870`; bytes by `read_memory` + capstone)
+
+```
+0x368e3 8b00           mov eax,[eax]            ; [S]  (EAX = [esp+8] = S)
+0x368e5 89442410       mov [esp+0x10],eax       ; rec_s
+0x368e9 8b02           mov eax,[edx]            ; [So] (EDX = So)
+0x368eb 89442414       mov [esp+0x14],eax       ; rec_o: no later read
+...
+0x36a72 8b542410       mov edx,[esp+0x10]
+0x36a76 8b442408       mov eax,[esp+0x8]
+0x36a7a e8b9fbffff     call 0x36638             ; (S, rec_s)
+0x36a7f 84c0 / 7536    test al,al / jnz 0x36ab9
+0x36a83 8b442408       mov eax,[esp+0x8]
+0x36a87 31d2           xor edx,edx
+0x36a89 8a507a         mov dl,[eax+0x7a]        ; S+0x7A
+0x36a8c 8b442410       mov eax,[esp+0x10]       ; rec_s
+0x36a90 8b149550890c00 mov edx,[edx*4+0xc8950]
+0x36a97 6800004040     push 0x40400000
+0x36a9c e88f51ffff     call 0x2bc30             ; RET 4 pops the hold
+0x36aa1 8b542410       mov edx,[esp+0x10]       ; rec_s again
+0x36aa5 b81e000000     mov eax,0x1e
+0x36aaa 88424d         mov [edx+0x4d],al
+0x36aad..0x36ab5       S+0x52 = 0, S+0x53 = 0
+```
+
+The stack frame is `[esp] = side`, `[esp+4] = other`, `[esp+8] = S`,
+`[esp+0xC] = So`, `[esp+0x10] = rec_s`, `[esp+0x14] = rec_o`. `[esp+0x14]` is
+stored at `0x368EB` and never read. The rest of `0x36870` was re-diffed against
+the port and matches: the jump table `0x3685C` (`read_memory`: `0x36A04`,
+`0x36B02`, `0x36B8B`, `0x36BC1`, `0x36BB8`), the `0x365C8`/`0x36638`/`0x36BC8`/
+`0x37D18` operands, the `0x36ADC..0x36AF6` `0x102900[rec_s+0x51]` restart with
+`0xE906A` at 1.0, case 1's `0xC89A0` and case 2's `0xC89F0`.
+
+### 16.4 The fix and its assertions
+
+* **Fix** (`port/src/game/fighter.c`, `fighter_36870`). The case-0
+  `actors_anim_begin` and the `+0x4D = 0x1E` store now use `rec_s`, with the
+  raw's `0x36A8C`/`0x36AA1` reads in a comment. The unused `rec_o` local is
+  gone (its `0x368E9` load is noted as dead), and the header comment is
+  corrected.
+* **Assertions** (`test_fight.c`, `check_deep_callees` case E). `fighter_36870`
+  is called with side 1's record, `S+0x54 = 0`, mode 3, `S+0x7A = 3` and
+  `So+0x7A = 0`. `0xC8950[3]` and `0xC8950[0]` point at distinct scratch
+  streams (literal ids `0x0123` and `0x0456`); both are saved and restored,
+  along with `0x100CE0`, `0x100AF8`, `0xFD148`, `0x107D20..0x107D2F` and
+  `0x107A80..0x107AFF`. The checks:
+  * `r1+8` is the char-3 stream, its pset is `0x0123`, `r1+0x4D = 0x1E`
+    (seeded `0x55`)
+  * `r0+8` keeps its sentinel `0xABCDEF`, its pset keeps `0x7777` and
+    `r0+0x4D` keeps `0x55`
+  * `S+0x52`/`+0x53` go from `0x66` to 0
+* **Mutations** (each reverted by the script; `fighter.c` was compared
+  byte-for-byte after the runs, and the suite then passed):
+
+  | mutation | failures |
+  |---|---|
+  | pre-fix (`rec_o` for both) | 6: `:3166` `11259375 != 66271232`, `:3167`, `:3168` `85 != 30`, `:3169`, `:3170`, `:3171` |
+  | `rec_o` for the begin only | 4: `:3166`, `:3167`, `:3169`, `:3170` |
+  | `rec_o` for `+0x4D` only | 2: `:3168`, `:3171` |
+  | `So+0x7A` for the table index | 2: `:3166` `66271248 != 66271232`, `:3167` `1110 != 291` |
+  | `+0x4D = 0x14` | 1: `:3168` `20 != 30` |
+
+### 16.5 Measured
+
+| measurement | before (`364cb3d`) | after (`2137bce`) |
+|---|---|---|
+| capture 866 ↔ port 509/510 | best splice 27 858 B / 9 891 px | **0 B** (splice at byte 92 874, row 96) |
+| port f = 93..96, side 0 | `0x96B5`, anchor 0, camera −256 | `0x907F`, `0x907F`, `0x9080`, `0x9080`; anchor 411/412 |
+| demo oracle first unexplained | 866 (raw 3773); `[866..3616]` 2751 / 2745 unexpl. | **867 (raw 3774)**; `[867..3616]` 2750 / 2744 unexpl. |
+| demo-fight ratchet | `[866..1884]` 1019, N = 866 | **`[867..1884]` 1018**, "ratchet improved: 867 > 866", **N raised to 867** |
+| front-end oracle | `[560..865]` / 306 / 137 clean, 165 splice, 0 transition, 2 unexpl. (832, 833) | **`[560..866]` / 307 / 137 clean, 166 splice, 0 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved, which is the move the brief allowed.
+These were unmoved:
+
+* title `54/55/2/0` and `54/57/0/0`, determinism 54
+* smk 120/120 and 41/41
+* attract 215/216 (expected divergence at 215)
+* C-vs-Python 9866
+* `symbols.h`
+
+The front-end "endpoints BAD" line is the same as before. The exhibition set
+grows by one port frame (0..510, 274 exhibited).
+
+**The new first unexplained frame, 867 (characterised, not fixed).** Capture
+867 is a tear. Its best splice, port 510/511 at byte 119 388 (row 124), leaves
+11 184 B / 3 955 px, all in x 185–319 and rows 125–194. That box is the
+raptor's body and legs. The T-rex, the ground and the camera now match. Captures
+868 and 869 keep the same box (14 505 B and 14 034 B), and 870 spreads over the
+whole frame (30 389 B). The capture shows the raptor lowering out of its stance.
+The port holds the stance sprite `0x16B5` from f = 93 through f = 96. No port
+frame 509..514 matches that box at any horizontal shift in [−12, 12]; the best
+is 3 955 px. Neither did the pre-fix port, whose raptor kept its old stream
+(best 4 514 px). In the port, side 1's slot reads `+0x52 = 3`, `+0x53 = 4`,
+`+0x54 = 2` from f = 94, and no animation start reaches its record until f = 97
+(`0xD2140`, `0x16D2`). The owner is **not derived**. The candidates are:
+
+* the side-1 `+0x52 == 3` / `+0x53 == 4` path at f = 94 (`0x3531C`'s dispatch
+  and `0x35D7C`), which should start the raptor's next animation
+* the command that set that state
+
+The named gaps §10 lists are not implicated at 867: the camera and side 0's
+anchor match the capture.
