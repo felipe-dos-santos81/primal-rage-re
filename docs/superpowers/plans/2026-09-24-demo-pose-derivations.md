@@ -867,3 +867,192 @@ from the post-state, and mutation-proven.
 * **The size-gate script** (the method of §4.1) over
   `port/decomp/prage.functions.csv`/`prage.calls.csv` + the `port/src` name
   scan.
+
+---
+
+## 9. The 43 px differential (Task 2b)
+
+**Result in one line.** The 43 px is **not** the T-rex's velocity: it is a
+transcription error in the ported pose handler `0x3A43C`. `0x2BC30` returns
+with `RET 4` (`0x2BCEF`), popping the `0x3A471 PUSH 0x40400000`, so every ESP
+offset from `0x3A48E` on names **ctx[1] (the side) and ctx[5] (rec_self)**; the
+port read ctx[0]/ctx[4] (the other side). With the raw's indices the handler
+re-anchors the T-rex (not the raptor) and reads `B[0] = 9` / `A[0] = -3968`
+(the setter's own globs), so the `hit_anchor_x` snap fires and places the
+T-rex 45 px right of the port's position. A second, adjacent gap — the
+`0x35829 0x186C4` re-latch of both slots at `fight_hud_pass`'s tail — then
+decides the camera: without it the camera reads the pre-snap `slot+0x34` and
+steps −339 at `f = 73`. With both, **port 490 ↔ capture 843 and 491 ↔ 844 are
+0 B**.
+
+### 9.1 Units and the per-frame port trace (measured, baseline `713e5f8`)
+
+Temporary `getenv("PR_2B")` trace (reverted): `fighter_3b080` after its
+`0x3B0D3` store, `motion_step` entry for the two fighter records,
+`camera_mode_track_pair` entry, `hit_record_x`, and a per-side line at the end
+of `game_frame`'s `DS_00104B15` tail. `f = DS_0010150C`; `dump = f + 417`
+re-derived (f=73's frame is dump 490, the first frame whose T-rex sprite is
+`0x1075`; 489 = f=72 byte-matches capture 842).
+
+`rec+0x18` is in 1/64 px; the pset x is `psx = rec+0x18 − cam + 0xA800`
+(every trace line satisfies it), so the screen column is `psx >> 6` less the
+sprite origin. `slot+0x2C = rec+0x18 + DS_00100AB0[side]` (`0x186D0`), where
+`AB0` is the **current sprite's anchor offset** (`0x18350`), not motion.
+
+| f | writer, in frame order | T-rex `rec+0x18` end | v (`rec+0x34`) end | `AB0` | `slot+0x2C`/`+0x34` end | cam `0xF0AF0` |
+|---|---|---|---|---|---|---|
+| 68–70 | — | −6144 | 0 | 0 | −6144 | 0 |
+| 71 | tail latch (new crouch sprite) | −6144 | 0 | 2176 | −3968 | 0 |
+| 72 | `fighter_pass_a` → `0x3B714` → `0x3B080` (v = −230, `+0x43 = 8`); setter `0x3A504` (`B[0]=9`, `A[0]=−3968`); `fight_hud_pass` → `0x35813` → `motion_step` (−230, drag → −222) | −6374 | −222 | 2176 | −4198 | 0 |
+| 73 | handler phase 1 (roar `0x1075`); motion (−222 → −214); tail latch | −6596 | −214 | −448 | −7044 | 0 |
+| 74 | motion; camera reads −7044 | −6810 | −206 | −448 | −7258 | −450 |
+| 75..80 | motion, drag +8/frame | −7016 … −7926 | −198 … −158 | −448 | −7464 … −8374 | −685 … −1160 |
+
+The velocity is **3.6 px/frame** (230/64), not 43. The record's §1.3 "43 px ≈
+one frame of motion (`slot+0x2C` falls ≈ `0xB1E`)" conflated `slot+0x2C`'s
+**anchor jump** at the sprite change (`AB0` 2176 → −448 = −2624 = 41 px) with
+motion. **Correction recorded.**
+
+### 9.2 The capture's T-rex x (measured)
+
+Per-frame shift search (`shift.py`, scratch): the T-rex's colours (40 RGB
+values present in the port's T-rex box and absent from the background band
+and the right half) are matched at every `dx ∈ [−80, 80]` against the capture;
+the background shift is the best `dx` of the top band (rows 0–59, x 40–279).
+
+| port ↔ capture | T-rex `dx` (match / pixels) | background `dx` |
+|---|---|---|
+| 489 ↔ 842 | 0 (3737/3737) | 0 |
+| 490 ↔ 843 | **+43** (3842/4368; ±1 px ≤ 1340) | 0 |
+| 490 ↔ 844 | +40 (3865/4368) | 0 |
+| 491 ↔ 844 | +36 (3841/4287) | 0 |
+| 491 ↔ 845 | +32; 492 ↔ 845 +31 (3441/4472) | 0 / −1 |
+| 493 ↔ 846 | +30 (3054/4676) | −2 |
+| 494 ↔ 848 | +28 (3515/4724) | −2 |
+| 496 ↔ 850 | +27 (3273/4788) | −2 |
+
+The capture's T-rex moves left at ≈ 3.5 px per 60 Hz frame — the port's own
+velocity — so the offset is a **constant displacement at f = 73**, not a
+velocity error (the "gap shrinks" in the Task 2 report was the pairing and the
+port's camera drag). The capture's background did not move at 843/844.
+
+### 9.3 The candidates
+
+* **(a) velocity applied one frame early — falsified.** Raw order:
+  `0x2647D 0x1958C` (`fighter_pass_a` → `0x193B0` → `0x3B714`, the seed) runs
+  before `0x2651B 0x35658` (`fight_hud_pass` → `0x35813 0x2A1FC`, the
+  integration), exactly the port's order (`fight_arena_frame`). A one-frame
+  shift of a 3.6 px/frame motion cannot make 43 px.
+* **(b) magnitude or sign — falsified.** `0x3B7FA..0x3B81D`: `EBX =
+  byte[anim[0]+2]` (`0x3B7FE`/`0x3B805`), `EDX = byte[anim[0]+3]`
+  zero-extended (`0x3B80B`/`0x3B817`), `ECX = 1`, `EAX = [ESP+0x28]`; gated by
+  `param_1+0x54 != 2` (`0x3B7F5`). `0x3B0A1 LEA EBX,[EAX*2]`,
+  `0x3B0AC CALL 0x1A570` on `1 − side`, `0x3B0B5 NEG EBX`, `0x3B0D3 MOV
+  [ECX+0x34],BX`, `0x3B0E1` `+0x43`; the mirror arm `0x3B0EF..0x3B129` (EDX =
+  1 − side survives the calls). `0x2A4FC` re-checked instruction by
+  instruction (`0x2A516..0x2A61A`): the integration, the `+0x42` accelerate
+  arm and the `0x2A567` `+0x43` drag match `motion_step`. The trace's −230 =
+  115 × 2 with the sign from the raptor's bit 15.
+* **(c) the camera — falsified as the owner.** The port's camera is 0 through
+  f = 73 and capture 843's background matches port 490 at `dx = 0`
+  (record §1.3: byte-exact outside the T-rex box). The camera mode 1 split arm
+  (`0x12ED7`, whose `0x18714` rec-x write the port skips, `camera.c` §7.5 gap)
+  never fires in f = 68..80 (pair distance ≤ 14 096 < `word[0x9AF28]` =
+  20 480), so that gap is inert here.
+* **(d) the raw shows: the handler's stack offsets — PINNED.** Raw
+  `0x3A43C` (capstone over `read_memory`, fixups applied):
+
+  ```
+  0x3a46d mov eax,[esp+0xc]        ; ctx[3] slot_self
+  0x3a471 push 0x40400000          ; ESP -= 4
+  0x3a47e mov edx,[eax*4+0xc8fe0]
+  0x3a485 mov eax,[esp+0x18]       ; ctx[5] rec_self (0x14 + 4)
+  0x3a489 call 0x2bc30             ; returns RET 4 (0x2BCEF): ESP += 4
+  0x3a48e mov edx,[esp+0x14]       ; ctx[5] rec_self
+  0x3a494 mov eax,[esp+4]          ; ctx[1] side
+  0x3a498 mov edx,[edx+0x18]
+  0x3a49b call 0x188ac             ; hit_anchor_set(side, rec_self+0x18, 0)
+  0x3a4a8 mov edx,[esp+4]          ; ctx[1] side
+  0x3a4ac mov ebx,[edx*2+0x107d12] ; >>16 = A[side] (0x107D14)
+  0x3a4b3 mov edx,[edx*2+0x107d0e] ; >>16 = B[side] (0x107D10)
+  0x3a4ea mov eax,[ecx+4]          ; ctx[1] side -> 0x188DC
+  ```
+
+  The stack must balance at `0x3A4FD ADD ESP,0x18`, which is only true if
+  `0x2BC30` pops its argument — and it does (`0x2BCEF RET 0x4`). The Task 2
+  port (and record §2.2) read `[esp+4]`/`[esp+0x14]` as if the push were
+  still there: ctx[0]/ctx[4], the **other** side. Consequences in the demo:
+  the handler re-anchored the raptor and read `B[1] = A[1] = 0` (the Task 2
+  trace's `b=0 a=0`), so the snap never fired. With the raw's indices:
+  `B[0] = 9` (the setter's `BX`, §0.4.4), `A[0] = −3968` (the setter's
+  `slot+0x2C` word at f = 72), `+0x90 = 0` opens the table gate, and
+  `hit_anchor_x(0, −3968)` writes `slot+0x2C = −3968` and `rec+0x18 =
+  −3968 − AB0(−448) = −3520` (the traced `hit_record_x` return). After the
+  f = 73 motion, `rec+0x18 = −3742` vs the port's −6596: **+2854 = +44.6 px**,
+  i.e. +45 columns at `>> 6`.
+
+  **The camera half: `0x35829 CALL 0x186C4`.** With the handler alone, port
+  490 ↔ 843 is 23 166 B / 8 352 px: the T-rex sits **−5 px** from the capture
+  and the camera stepped −339 at f = 73. Cause: `hit_anchor_set`'s own
+  `0x186D0` latch wrote `slot+0x34 = rec+0x18 + AB0 = −6374 − 448 = −6822`
+  before the snap; `hit_anchor_x` moves `+0x2C` but not `+0x34`; the tail's
+  `camera_dispatch` (`0x25422`, before the `0x25438` latch) reads −6822, beyond
+  the `0x1800` dead zone → `arg = −339`. The raw's `fight_hud_pass` tail is
+  `0x35818..0x35829`: `0x354F0(side)`, `0x354F0(1 − side)`, **`0x186C4`**, and
+  `0x186C4` is `XOR EAX,EAX; CALL 0x186D0; MOV EAX,1` falling into `0x186D0`
+  — a re-latch of both slots after the `0x35813` sync. It gives
+  `slot+0x34 = −3742 − 448 = −4190`, inside the dead zone: the camera stays 0,
+  as the capture shows. (The port had named `0x186C4` a skipped gap.)
+
+* **Also checked, inert here:** the `hit_record_x` (`0x18714`) omission of
+  `0x18540`/`0x18350` — made raw-faithful temporarily, 490 ↔ 843 unchanged
+  (22 919 B): at the f = 72/73 calls `DS_00100AF0[0] == slot+0x20` because the
+  preceding `0x186D0` latch has just run them; it first differs at f = 90.
+  `0x354F0` (the arena-wall clamp, `|slot+0x2C| > DS_000BE018 = 0x7C00`):
+  `|slot+0x2C| ≤ 8 374` over f = 68..80, so inert in this step; it stays a
+  named gap (`fight.c`).
+
+### 9.4 The fix and its measurement
+
+* `fighter_pose_3a43c`: `hit_anchor_set(ctx[1], DSD(ctx[5]+0x18), 0)`
+  (`0x3A48E..0x3A49B`); `B`/`A` indexed by `ctx[1]` (`0x3A4A8..0x3A4BF`).
+* `fighter_slot_latch_both` (`0x186C4`, 12 B, one new function) called at
+  `fight_hud_pass`'s `0x35829`. Size gate: 1 function / 12 B — does not trip.
+
+| measurement | before (`713e5f8`) | handler fix only | both |
+|---|---|---|---|
+| 490 ↔ 843 | 22 919 B / 7 879 px | 23 166 B / 8 352 px | **0 B** |
+| 491 ↔ 844 | — | — | **0 B** |
+| 492 ↔ 845 | — | — | 722 B / 254 px |
+| demo oracle first unexplained | 843 (raw 3750) | — | **851 (raw 3758)** |
+| front-end oracle window | `[560..842]` / 283 / 125 clean, 154 splice, 2 unexplained (832, 833) | — | **`[560..850]` / 291 / 130 clean, 157 splice, 0 transition, 2 unexplained (832, 833)** |
+
+**The enforced front-end claim moves** (the window's tail extends by the eight
+captures 843..850 the fix makes explained; the unexplained set is unchanged).
+Per the Global Constraints this is a **halt-and-report**: old
+`[560..842]`/283/`125 clean, 154 splice`, new `[560..850]`/291/`130 clean,
+157 splice`, evidence §9.3(d). The fix is held uncommitted pending the ruling
+(Task 2b report).
+The candidate is `.superpowers/sdd/2026-09-24-demo-pose/task-2b-fix.patch`
+(git-ignored ledger): the two code changes, the corrected §7.2/§7.3 test
+seeds (B/A at `0x107D10`/`0x107D14`, i.e. `side = 0`; the self record's
+`+0x1C`; "no snap" observed on `rec+0x18`, since `hit_anchor_set`'s relatch now
+rewrites `slot+0x2C`), and `check_hud_latch`. With it: `cmake --build build`
+0 warnings, `PR_ORACLE_REQUIRED=1 ./build/run_tests` all checks passed,
+`make verify` exit 0 with title `54/55/2/0` and `54/57/0/0`, attract 215/215,
+smk 120/120 + 41/41, C-vs-Python 9866, `symbols.h` byte-identical — only the
+front-end window line moved.
+
+### 9.5 The next residual (with the fix applied; characterised, not fixed)
+
+The demo oracle's first unexplained captured frame becomes **851** (raw 3758).
+Best port frame 497 (f = 80): **2 456 px**, bbox x 0..125, y 77..192 — the
+T-rex alone; the background matches (`dx = 0`). The capture's T-rex at 851
+matches port **496**'s sprite (f = 79) shifted −3 px (4 199/5 033), better than
+port 497's own sprite at `dx = 0` (3 076/5 042): the capture still shows the
+roar's previous frame, moved one frame of motion, while the port has already
+advanced the roar animation (`0x9076 → 0x9077` at f = 80, §1.1). The port's
+roar stream advances one frame early at f = 80. **Likely owner:** the roar
+stream's frame-hold timing — `0x39A34`'s `rec+0x24` rescale (−121 / 10 =
+−12.1 f, Task 2 report §3.4) consumed by `frame_timer` (`0x2AA70`), or the
+`+0x20`/`+0x24` hold that `actors_anim_begin` seeds (3.0 f). Named for Task 3.
