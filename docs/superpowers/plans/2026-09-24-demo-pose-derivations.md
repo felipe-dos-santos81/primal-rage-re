@@ -2287,3 +2287,205 @@ handlers (`D000` with the dword `0x00035E04`, where Ghidra has no function,
 the `DA00`/`DC00` pair, the `FF20`/`FF21`
 command tests against side 1's `0xA0A0`, and the `ED40` branch) and the
 raptor's position from f = 96 (`slot+0x2C` 5888 → 6528 at f = 97).
+(Derived since, §18: `D000 5E04 0003` is the one cause. Its target
+`0x35E04` was unregistered, so the port's dispatch skipped the raptor's
+launch. The `FF20`/`FF21` words are not command tests. They are the `0x1F`
+prefix with opcodes `0x20`/`0x21`, the `rec+0x18`/`rec+0x1C` adds from the
+`0xD17D8` table. The f = 97 in "5888 → 6528 at f = 97" is where Task 7's probe
+first saw the value. The latch writes it during f = 96, §18.1.)
+
+## 18. The raptor's launch at capture 870 (roar-timing Task 8, `0a8346b`)
+
+**Result in one line.** Capture 870 has one cause, and it is the port's. The
+raptor's attack stream `0xD2274` reaches `D000 5E04 0003` at `0xD2278` at
+f = 96. That is opcode `0x10`, mode `0x4000`, with the inline dword
+`0x00035E04`. The port had no function registered at `0x35E04`, so
+`anim_indirect`'s `fn_resolve` miss skipped the call. The raw `0x35E04` sets
+hold 3.0 and calls `0x3BC70`, which launches the raptor: state 4/0/2, gravity
+23, vertical speed 550, horizontal speed −150. So the capture shows the raptor
+in the air, and the port drew it on the ground. This takes two small functions
+(`0x35E04`, 60 B; `0x3BC70`, 112 B; `0x3BC70`'s one caller is `0x35E21`), so
+the size gate does not apply. This supersedes §17.5's "owner not derived" for
+870.
+
+### 18.1 The trace (measured, temporary, reverted)
+
+The trace was `getenv("PR_T8")`-gated and has been reverted:
+- a line per side at the end of `fight_hud_pass`, after the `0x186C4` latch, with slot `+0x52/+0x53/+0x54`, `+0x4E`, `rec+8`, the pset id, `rec+0x20/+0x24`, `rec+0x18/+0x1C`, `rec+0x34/+0x36/+0x44` and `slot+0x2C/+0x30`
+- a line per `spawn_anim_opcode` call for side 1's record
+- a line per `anim_indirect` call with its target and whether it resolved
+
+The arena-frame counter was offset from f by 65. It was aligned on the first
+`0x1746` (f = 94, §17.1).
+
+| f | side 1 (raptor), unmodified port (`d47de53`) |
+|---|---|
+| 95 | 3/4/2, `rec+8 = 0xD2276`, `0x1747`, `rec+0x18` 6592, `rec+0x1C` 0, `slot+0x2C` 5888 |
+| 96 | the walk runs `D000` (**`anim_indirect` target `0x35E04`, not resolved**), then `DA00`, `DC00`, `8E40`, `FF20`, `FF21`, `ED40`; 3/4/2, `0x174E`, `rec+0x18` 6592, `rec+0x1C` 5888, speeds 0/0/0, `slot+0x2C` 6528 |
+| 97..100 | 3/4/2, `0x174E`, position unchanged |
+| 101 | `0x174F`, `rec+0x18` 6720 |
+
+`slot+0x2C` becomes 6528 during f = 96. The `0x186C4` latch at the end of
+`fight_hud_pass` writes it (`0x35829`). A probe placed before the latch sees it
+first at f = 97. This reconciles §17.5 ("5888 → 6528 at f = 97") with the
+Task 7 report ("from f = 97"). The change belongs to f = 96.
+
+With the fix (same probe):
+
+| f | side 1 | `rec+0x18` | `rec+0x1C` | speeds `+0x34/+0x36/+0x44` |
+|---|---|---|---|---|
+| 96 | **4/0/2**, `0x174E` | 6442 | 6438 | −150 / 527 / 23 |
+| 97 | 4/0/2, `0x174E` | 6292 | 6965 | −150 / 504 / 23 |
+| 100 | 4/0/2, `0x174E` | 5842 | 8408 | −150 / 435 / 23 |
+| 101 | 4/0/2, `0x174F` | 5820 | 8843 | −150 / 412 / 23 |
+
+- At f = 96, `rec+0x1C` = 5888 + 550: one `0x2A4FC` step after the launch. `rec+0x18` = 6592 − 150.
+- At f = 101, `FF20`'s `0xD17D8[2]` adds +2·64.
+- Side 0 hits `0x35E04` too, on its own attack stream at f = 109.
+- No other unresolved `anim_indirect` target fires before f = 165 (`0x35938`, side 1).
+
+### 18.2 What captures 870..879 show (measured)
+
+A splice search took every port pair (p, p+1) for p in 505..529. The top came
+from p and the bottom from p+1, split at any pixel. The search ran against
+the fixed port's dump:
+
+- 870 = port 513 (f = 96), whole, 0 px
+- 871..875 = the splices 513/514 … 517/518, 0 px
+- 876 = port 518
+- 877..879 = the splices 518/519 … 520/521, 0 px
+
+So the capture shows the raptor launched at f = 96 and in the air from then on.
+It draws `0x174E` from `rec+0x18` 6442 and `rec+0x1C` 6438. Before the fix,
+capture 870 left 12 025 B / 4 306 px (§17.5).
+
+### 18.3 The raw, re-read (Ghidra `read_memory` + capstone; `disassemble_function 0x3BC70`)
+
+The stream (`read_memory 0xD2274`):
+
+```
+D2274 1746 1747
+D2278 D000 5E04 0003      op 0x10, mode 0x4000: DS_00105BD4 = 0x00035E04; call it
+D227E DA00 17D8 000D      op 0x1A: rec+0x0C = 0xD17D8 (00 5c 02 00 00 00 ff 00 ...)
+D2284 DC00 12D8 000D      op 0x1C: rec+0x10 = 0xD12D8 (02 02 02 03 03 04 05 04 ...)
+D228A 8E40                op 0x0E: var 0x40 = 0
+D228C FF20 0040 0000 1000 0x1F prefix, op 0x20: rec+0x18 += (s8)[rec+0x0C + 2*var40]*64
+D2294 FF21 0040 0000 2000 0x1F prefix, op 0x21: rec+0x1C += (s8)[rec+0x0C + 2*var40+1]*64
+D229C ED40 22B0 000D      id = word[0xD22B0 + 2*var40]
+D22A2 B840 000F 228C 000D op 0x18: var40++, loop to 0xD228C while 15 > var40
+D22AA 9B00 9E00 8100
+```
+
+`0x35E04` (no Ghidra function; bytes `53 52 8b 50 14 85 d2 74 30 …`; Ghidra
+`get_xrefs_to 0x35E04`: none, since it is reached only through the stream
+dword):
+
+```
+0x35e04 53 / 52              push ebx / push edx
+0x35e06 8b5014               mov edx,[eax+0x14]         ; the owner slot
+0x35e09 85d2 / 7430          test edx,edx / je 0x35e3d
+0x35e0d c7402000004040       mov dword [eax+0x20],0x40400000   ; 3.0f
+0x35e14 31db                 xor ebx,ebx
+0x35e16 d94020               fld dword [eax+0x20]
+0x35e19 8a5851               mov bl,[eax+0x51]          ; side
+0x35e1c d95824               fstp dword [eax+0x24]
+0x35e1f 89d8                 mov eax,ebx
+0x35e21 e84a5e0000           call 0x3bc70
+0x35e26 31c0 / 8a427a        xor eax,eax / mov al,[edx+0x7a]
+0x35e2b 668b0445a8da0b00     mov ax,[eax*2+0xbdaa8]     ; voice id (0x49 for char 3)
+0x35e33 25ffff0000           and eax,0xffff
+0x35e38 e8bf65ffff           call 0x2c3fc               ; voice
+0x35e3d 5a / 5b / c3
+```
+
+`0x3BC70` (`get_xrefs_to 0x3BC70`: one caller, `0x35E21`):
+
+```
+0x3bc74..0x3bc83   eax = 0x1077B0 + side*0x94      ; the slot
+0x3bc88  mov ebx,[ebx*4+0x107d40]                   ; the row 0x3BDDC stored
+0x3bc8f  mov byte [eax+0x54],2
+0x3bc93  mov byte [eax+0x52],4
+0x3bc97  mov byte [eax+0x53],0
+0x3bc9b  mov edx,[eax]                              ; the record
+0x3bc9d..0x3bca0  [edx+0x44] = word [ebx]           ; gravity
+0x3bca4..0x3bca8  [edx+0x36] = word [ebx+2]         ; vertical speed
+0x3bcac  mov cx,[eax+0x4e] / test cx,cx / jle 0x3bcc2
+0x3bcb5..0x3bcb9  [edx+0x34] = word [ebx+4]          ; +0x4E > 0
+0x3bcc2  jge 0x3bcd5
+0x3bcc4..0x3bccc  [edx+0x34] = -word [ebx+4]         ; +0x4E < 0 (neg edi)
+0x3bcd5  mov word [edx+0x34],0                       ; +0x4E == 0
+```
+
+The row is 3 words at `0xBEF28` or `0xBEF64` + char·6 (`0x3BED4`). For
+char 3 they read (23, 550, 150) and (35, 700, 336). The demo's row is
+0xBEF28's, whose gravity is 23 and vertical speed 550 (§18.1).
+
+### 18.4 The fix and its assertions
+
+* **Fix.**
+  * `port/src/game/fighter.c`: `fighter_35e04` (`0x35E04`) and the static `fighter_3bc70` (`0x3BC70`), transcribed as above. The `0x2C3FC` voice call is a `PORT:` out-of-scope note (spec §7), as at the other voice sites.
+  * `port/src/game/actors.c`: the `(rec, arg)` wrapper `anim_code_35E04` is registered with `fn_register(0x35E04u, …)`, as `0x36870`'s wrapper is.
+* **Assertions** (`test_fight.c`).
+  * `check_deep_callees` case H calls `fighter_35e04(r1)` on the scratch row (23, 550, 150). Seeded values: `rec+0x20`/`+0x24` `0x11111111`/`0x22222222`, speeds `0x5555`, slot bytes `0x66`, side 0's `+0x52`/`+0x44` sentinels. Checks: 3.0f in both holds, slot 2/4/0, `+0x44` 23, `+0x36` 550, `+0x34` −150 with `+0x4E` = −1, +150 with +1, 0 with 0; side 0 untouched; with `rec+0x14 = 0`, nothing written.
+  * `check_anim_hold_scaler` checks the registration (non-NULL and not the bare function). It then walks a scratch stream `D000 5E04 0003 1746` through `actors_anim_begin` at 1.0f and checks `rec+0x20` = 3.0f, slot `+0x52` = 4, `rec+0x36` = 550 and pset `0x1746`.
+  * Both restore `DS_00107D40` (8 B). The second also restores slot 0 (0x94 B), and case H restores `s1+0x4E`.
+* **Mutations.** A script applied each one. `fighter.c` and `actors.c` were restored and compared byte for byte, and the suite then passed.
+
+  | mutation | failures |
+  |---|---|
+  | `0x35E04` unregistered (pre-fix) | 4: `:3772` registration, `:3834` `1065353216 != 1077936128`, `:3835` `102 != 4`, `:3836` |
+  | no `0x3BC70` call | 10 |
+  | `0x3BC70(0)` instead of `rec+0x51` | 10 |
+  | no `rec+0x14` gate | 3 |
+  | hold 2.0f | 3 |
+  | `rec+0x24` not copied | 1 |
+  | no negation for `+0x4E` < 0 | 1 (`150 != -150`) |
+  | `+0x4E` == 0 keeps the row | 1 |
+  | `+0x44`/`+0x36` swapped | 3 |
+  | `+0x53` = 4 | 1 |
+  | `+0x54` = 1 | 1 |
+  | `+0x4E` read as the byte `+0x4F` | 1 |
+
+### 18.5 Measured
+
+| measurement | before (`d47de53`) | after (`0a8346b`) |
+|---|---|---|
+| capture 870 | best 512/513 splice, 12 025 B / 4 306 px | **0 B** (port 513) |
+| captures 871..879 | (not reached) | **0 B** (513/514 … 520/521 splices; 876 is port 518) |
+| port f = 96..101, side 1 | 3/4/2, `0x174E`/`0x174F` at `rec+0x18` 6592/6720, `rec+0x1C` 5888 | 4/0/2, `rec+0x18` 6442 → 5820, `rec+0x1C` 6438 → 8843 |
+| demo oracle first unexplained | 870 (raw 3777); `[870..3616]` 2747 / 2741 unexpl. | **880 (raw 3787)**; `[880..3616]` 2737 / 2731 unexpl.; demo port frames `[522..1380]` |
+| demo-fight ratchet | `[870..1884]` 1015, N = 870 | **`[880..1884]` 1005**, "ratchet improved: 880 > 870", **N = 880** |
+| front-end oracle | `[560..869]` / 310 / 138 clean, 168 splice, 0 transition, 2 unexpl. (832, 833) | **`[560..879]` / 320 / 140 clean, 176 splice, 0 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved, which is the move the brief allowed.
+These were unmoved:
+
+* title `54/55/2/0` and `54/57/0/0`, determinism 54
+* smk 120/120 and 41/41
+* attract 215/216 (expected divergence at 215)
+* C-vs-Python 9866
+* `symbols.h`
+
+The front-end "endpoints BAD" line is the same as before. The exhibition set
+grows to port frames 0..521 (285 exhibited). The ladder
+(`cmake --build build && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify
+&& make demo-oracle`) exited 0. The compiler gave 0 warnings.
+
+**The new first unexplained frame, 880 (characterised, not fixed).** Capture
+880 is a tear. Its best splice, port 521/522 (split at row 101), leaves
+6 073 px, all in x 0–149, rows 118–199. That is the T-rex (side 0). The capture
+shows it lowered, head and body down toward the ground line. The port draws it
+upright, sprite `0x8F35`. Captures 881..884 leave 8 207, 13 681, 12 517 and
+12 590 px and spread across the frame. Here is side 0 in the port's trace
+(§18.1's probe):
+
+* f = 97..100: the stance, 0/0/0, stream `0xE6DD2`, `0x8F02`
+* f = 101: state 5/0/1, stream `0xE6DEA`, `0x8F34`
+* f = 104: state 9/0/0, `0x8F35`
+* f = 107: state 3/4/2 on its own attack stream `0xC8B30[0] = 0xE6F28`, `0x8FA1`, which reaches `0x35E04` at f = 109
+
+No unresolved `anim_indirect` target fires on side 0 in f = 96..107. The owner
+is **not derived**. The candidates are:
+
+* side 0's f = 101 and f = 104 transitions (their `+0x52` writers and animation starts)
+* the command that side 0 receives while the raptor is in the air

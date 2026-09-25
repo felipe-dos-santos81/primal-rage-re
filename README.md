@@ -297,14 +297,16 @@ command generator `0x47208`, the `+0x52` state machine (`0x3531C`/`0x350D0`),
 the `0x3C88C` hitbox machine and the `0x3CF38` hit chain — the chain now
 **fires**, hits land (`+0x7C` 0/0 → 1/1), and the fight's last state change
 moved **1262 → 1400**. Its report-only oracle (`make demo-oracle`) measures the
-demo window `[870..3616]` (raw `3777..8409`), **2747 frames: 0 clean / 0 splice
-/ 0 transition / 2741 unexplained** (6 all-black frames excluded); the first
-unexplained frame is capture **870 (raw 3777)** — the raptor's pose after its
-`0x1746`/`0x1747` crouch, which the port draws as `0x174E` (moved from 843
+demo window `[880..3616]` (raw `3787..8409`), **2737 frames: 0 clean / 0 splice
+/ 0 transition / 2731 unexplained** (6 all-black frames excluded); the first
+unexplained frame is capture **880 (raw 3787)** — the T-rex's pose at f = 104/105,
+which the capture shows lowered while the port draws it upright (`0x8F35`)
+(moved from 843
 by the demo-pose cycle, then from 851 by the roar-timing fix, then from 858 by
 the frame-858 fix, then from 859 by the frame-859 fix, then from 860 by the
 frame-860 fix, then from 864 by the frame-864 fix, then from 866 by the
-frame-866 fix, then from 867 by the frame-867 fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
+frame-866 fix, then from 867 by the frame-867 fix, then from 870 by the
+frame-870 fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
 Task 1 corrected it to **836/25**, and the final re-capture moved the loader text
 to 832 with the fight's first frames at 833/834 — record §9.1/§9.3.) Cycle 2
 advanced the boundary 811 → 816 → 832: the state-9 globe's fourth layer
@@ -401,11 +403,21 @@ See §16 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.
 * **Residual (characterised, not fixed).** Capture 870 is a tear. The best 512/513 splice leaves 12 025 B / 4 306 px, 3 942 px of them in x 240–319, rows 28–197: the raptor, in a different pose from the port's `0x174E`. At f = 96 the port's raptor stream runs from `0x1747` through the opcodes `D000 5E04 0003`, `DA00 17D8 000D`, `DC00 12D8 000D`, `8E40`, `FF20`/`FF21` and `ED40 22B0 000D` to `0x174E`. The owner is not derived.
 
 See §17 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+(Derived since: the raptor's launch opcode's target `0x35E04` was unregistered; see below.)
+
+**The raptor's launch (`0x35E04`/`0x3BC70`, `0a8346b`), the demo fight's captures 870..879.** At f = 96 the raptor's attack stream `0xD2274` reaches `D000 5E04 0003` at `0xD2278`: opcode `0x10` with the inline dword `0x00035E04`. The port had nothing registered there, so the dispatch skipped the call. The raw `0x35E04` sets hold 3.0 and calls `0x3BC70`, which puts the slot in state 4/0/2 and loads the record's gravity, vertical speed and horizontal speed from the row `0x3BDDC` stored at `DS_00107D40` (the char-3 `0xBEF28` row: 23, 550, 150). The horizontal speed is negated because `slot+0x4E` = −1. So the raptor jumps, and the port kept it on the ground. Two small functions (60 B and 112 B) and one registration; no size gate. The `0x2C3FC` voice call stays a `PORT:` gap.
+
+* **Measured.** Capture 870 is now port 513 at 0 B, and 871..879 are 0 B splices of 513/514 … 520/521 (876 is port 518), from 12 025 B at 870. The demo oracle's first unexplained is now **880 (raw 3787)**. The demo window `[880..3616]` has 2737 frames, 2731 unexplained, and the fight window `[880..1884]` has 1005 frames, 0 explained. The ratchet N is raised **870 → 880** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..869]` / 310 → **`[560..879]` / 320 / `140 clean, 176 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 880 is a tear. The best 521/522 splice (row 101) leaves 6 073 px, all in x 0–149, rows 118–199: the T-rex, which the capture shows lowered while the port draws it upright (`0x8F35`). The owner is not derived.
+
+See §18 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
 
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
-demo fight's remaining arena divergence (first unexplained at capture 870
-after the frame-867 fix: the raptor's pose after its crouch, which the port
-draws as `0x174E` from f = 96, owner not yet derived) and the
+demo fight's remaining arena divergence (first unexplained at capture 880
+after the frame-870 fix: the T-rex's pose at f = 104/105, which the capture
+shows lowered while the port draws it upright as `0x8F35`, owner not yet
+derived) and the
 interactive match cycle (the mode graph, `0x1EEB0`, the `0x1EA08` sites) remain;
 the attract's `0x2C3FC` voice calls remain declared gaps with `/* PORT: */`
 markers.
