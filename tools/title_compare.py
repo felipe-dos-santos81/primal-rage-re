@@ -390,6 +390,11 @@ def load_port(d, n):
 # explain captures 867..869, [560..866] -> [560..869] (307 -> 310); the allowed
 # set stays (832, 833), and the exhibition set grows to port frames 0..512
 # (276 exhibited).
+# 0x35E04, the 0xD000 target of the characters' 0xC8B30 attack streams, and
+# its callee 0x3BC70 (hold 3.0, state 4/0/2, gravity and launch speeds from
+# the DS_00107D40 row) explain captures 870..879, [560..869] -> [560..879]
+# (310 -> 320); the allowed set stays (832, 833), and the exhibition set grows
+# to port frames 0..521 (285 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

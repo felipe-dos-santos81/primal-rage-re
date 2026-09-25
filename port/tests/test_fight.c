@@ -3271,6 +3271,74 @@ static void check_deep_callees(void)
         tf_put(sv_8f8, DS_001078F8, 2u);
     }
 
+    /* H: 0x35E04, the 0xD000 target at 0xD2278 in the raptor's 0xD2274
+     * attack stream. With rec+0x14 set it stores 3.0f into rec+0x20 and
+     * rec+0x24, then 0x3BC70(rec+0x51) sets the slot's +0x54/+0x52/+0x53 =
+     * 2/4/0 and loads rec+0x44/+0x36/+0x34 from the DS_00107D40[side] row.
+     * The row is the char-3 0xBEF28 row (read_memory 0xBEF3A: 23, 550, 150),
+     * copied into scratch. The slot's word +0x4E = -1 (the demo's f = 96
+     * raptor) negates the horizontal speed (0x3BCCA), +1 keeps it (0x3BCB9)
+     * and 0 zeroes it (0x3BCD5). The side comes from rec+0x51, so slot 0
+     * keeps its sentinels. Without rec+0x14, nothing is written (0x35E0B). */
+    {
+        u32 row = FIGHT_RECS + 0x3830u;
+        u8 sv_d40[8];
+        u16 sv_4e_1 = DSW(s1 + 0x4Eu);
+        tf_snap(sv_d40, DS_00107D40, 8u);
+        (void)tf_hit_fixture(0);
+        fight_reset_slot_pair(s0, s1, r0, r1);
+        DSW(row) = 23u;
+        DSW(row + 2u) = 550u;
+        DSW(row + 4u) = 150u;
+        DSD(DS_00107D40) = 0x00ABCDEFu;          /* side 0's row: unread */
+        DSD(DS_00107D40 + 4u) = row;
+        DSB(r1 + 0x51u) = 1;
+        DSD(r1 + 0x14u) = s1;
+        DSD(r1 + 0x20u) = 0x11111111u;
+        DSD(r1 + 0x24u) = 0x22222222u;
+        DSW(r1 + 0x44u) = 0x5555u;
+        DSW(r1 + 0x36u) = 0x5555u;
+        DSW(r1 + 0x34u) = 0x5555u;
+        DSB(s1 + 0x52u) = 0x66u;
+        DSB(s1 + 0x53u) = 0x66u;
+        DSB(s1 + 0x54u) = 0x66u;
+        DSB(s0 + 0x52u) = 0x66u;
+        DSW(r0 + 0x44u) = 0x5555u;
+        DSW(s1 + 0x4Eu) = 0xFFFFu;
+        fighter_35e04(r1);
+        CHECK_EQ_INT(DSD(r1 + 0x20u), 0x40400000u);
+        CHECK_EQ_INT(DSD(r1 + 0x24u), 0x40400000u);
+        CHECK_EQ_INT((int)DSB(s1 + 0x54u), 2);
+        CHECK_EQ_INT((int)DSB(s1 + 0x52u), 4);
+        CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0);
+        CHECK_EQ_INT((int)DSW(r1 + 0x44u), 23);
+        CHECK_EQ_INT((int)DSW(r1 + 0x36u), 550);
+        CHECK_EQ_INT((int)(s16)DSW(r1 + 0x34u), -150);
+        CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x66);
+        CHECK_EQ_INT((int)DSW(r0 + 0x44u), 0x5555);
+
+        DSW(r1 + 0x34u) = 0x5555u;
+        DSW(s1 + 0x4Eu) = 1u;
+        fighter_35e04(r1);
+        CHECK_EQ_INT((int)(s16)DSW(r1 + 0x34u), 150);
+        DSW(r1 + 0x34u) = 0x5555u;
+        DSW(s1 + 0x4Eu) = 0u;
+        fighter_35e04(r1);
+        CHECK_EQ_INT((int)DSW(r1 + 0x34u), 0);
+
+        DSD(r1 + 0x14u) = 0;
+        DSD(r1 + 0x20u) = 0x11111111u;
+        DSB(s1 + 0x52u) = 0x66u;
+        DSW(r1 + 0x44u) = 0x5555u;
+        fighter_35e04(r1);
+        CHECK_EQ_INT(DSD(r1 + 0x20u), 0x11111111u);
+        CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0x66);
+        CHECK_EQ_INT((int)DSW(r1 + 0x44u), 0x5555);
+
+        DSW(s1 + 0x4Eu) = sv_4e_1;
+        tf_put(sv_d40, DS_00107D40, 8u);
+    }
+
     DSD(DS_001078DC) = s_dc;
     DSD(s0 + 0x40u) = s_40_0;
     DSD(s1 + 0x40u) = s_40_1;
@@ -3701,6 +3769,9 @@ static void check_anim_hold_scaler(void)
     CHECK(fn_resolve(0x36870u) != (void (*)(void))fighter_36870,
           "0x36870 is registered through the (rec, arg) wrapper");
     CHECK(fn_resolve(0x3A43Cu) != NULL, "0x3A43C is registered");
+    CHECK(fn_resolve(0x35E04u) != NULL, "0x35E04 is registered");
+    CHECK(fn_resolve(0x35E04u) != (void (*)(void))fighter_35e04,
+          "0x35E04 is registered through the (rec, arg) wrapper");
 
     s[0] = 0xD100;                           /* opcode 0x11, mode 0x4000 */
     s[1] = 0x9A34;                           /* the inline code pointer */
@@ -3733,6 +3804,40 @@ static void check_anim_hold_scaler(void)
     DSB(linked + 0x7Eu) = 0x87;
     actors_anim_begin(rec, stream, 0x40E00000u);
     CHECK_EQ_INT((int)DSD(rec + 0x24u), (int)0xC141999Au);
+
+    /* The raptor's attack stream 0xD2274 at 0xD2278: `D000 5E04 0003` is
+     * opcode 0x10, mode 0x4000, the inline dword 0x00035E04. The begin's
+     * pre-walk dispatches it to 0x35E04, which overwrites the 1.0f frame bits
+     * with 3.0f and launches side 0 through 0x3BC70 (slot +0x52 = 4, rec+0x36
+     * from the row); an unregistered target would leave all three. */
+    {
+        u32 slot = DS_001077B0;
+        u32 row = FIGHT_RECS + 0x1C0u;
+        u8 sv_slot[0x94], sv_d40[8];
+        tf_snap(sv_slot, slot, 0x94u);
+        tf_snap(sv_d40, DS_00107D40, 8u);
+        DSD(slot) = rec;
+        DSB(slot + 0x52u) = 0x66u;
+        DSW(slot + 0x4Eu) = 1u;
+        DSW(row) = 23u;
+        DSW(row + 2u) = 550u;
+        DSW(row + 4u) = 150u;
+        DSD(DS_00107D40) = row;
+        DSD(rec + 0x14u) = slot;
+        DSB(rec + 0x51u) = 0;
+        DSW(rec + 0x36u) = 0x5555u;
+        s[0] = 0xD000;
+        s[1] = 0x5E04;
+        s[2] = 0x0003;
+        s[3] = 0x1746;
+        actors_anim_begin(rec, stream, 0x3F800000u);
+        CHECK_EQ_INT((int)DSD(rec + 0x20u), 0x40400000);
+        CHECK_EQ_INT((int)DSB(slot + 0x52u), 4);
+        CHECK_EQ_INT((int)DSW(rec + 0x36u), 550);
+        CHECK_EQ_INT((int)DSW(FIGHT_ACTORS), 0x1746);
+        tf_put(sv_slot, slot, 0x94u);
+        tf_put(sv_d40, DS_00107D40, 8u);
+    }
 }
 
 /* ---- Task 3b: the 0x3B714 reaction applier (pose/freeze record §2.3) ----- */

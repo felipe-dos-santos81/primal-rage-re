@@ -34,9 +34,10 @@ void fight_stance_pass(u32 side);
 /* 0x3B134. The command-word mapper: it writes word[DS_001088E0 + side*2].
  * `edx_arg` is the raw's EDX (the other slot's +0x5F stance byte on the
  * 0x1A978 path); `override` non-zero bypasses the rng(100) reaction gate.
- * `0x3AFC4`'s anim triple is selected here; the 0x8000 arm's 0x3BDDC consumer
- * is Task 4's and is a named gap (§7.16). Exposed because Task 4's 0x3B298
- * calls it. */
+ * `0x3AFC4`'s anim triple is selected here; the 0x8000 arm calls the 0x3BDDC
+ * consumer (fighter_attack_consume, 0x3B28C), which starts the 0xC8B30 attack
+ * stream through 0x3C480 (demo-pose record §17). Exposed because Task 4's
+ * 0x3B298 calls it. */
 void fight_command_map(u32 side, u32 edx_arg, u32 override);
 
 /* 0x49C78. The scene/effects pass. Cycle 1 ports the pass structure, the list

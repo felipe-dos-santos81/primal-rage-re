@@ -268,6 +268,12 @@ u32 hit_reaction_pick(u32 side, u32 stance);
  * rejects. */
 int fighter_attack_consume(u32 side);
 
+/* 0x35E04. The animation-opcode 0x10 target in the characters' 0xC8B30
+ * attack streams: with rec+0x14 set, hold 3.0f into rec+0x20/+0x24 and launch
+ * the side through 0x3BC70 (state 4/0/2; gravity, vertical and signed
+ * horizontal speed from the DS_00107D40 row). EAX = rec. */
+void fighter_35e04(u32 rec);
+
 /* The machine's and chain's per-function fixtures (record §7.1-§7.5, §7.7-§7.9
  * and §7.11) exercise these directly. */
 u32  hit_frame_desc(u32 side, u32 i);                 /* 0x3C600 */

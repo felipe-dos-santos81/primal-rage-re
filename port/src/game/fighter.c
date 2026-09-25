@@ -2880,6 +2880,50 @@ int fighter_attack_consume(u32 side)
     return 1;                                           /* 0x3BF57 */
 }
 
+/* 0x3BC70. The attack's launch; its one caller is 0x35E04 (0x35E21). EAX =
+ * side. It puts the slot in state 4 (+0x52 = 4, +0x53 = 0, +0x54 = 2) and
+ * loads the record's gravity +0x44, vertical speed +0x36 and horizontal
+ * speed +0x34 from the three-word row 0x3BDDC stored at DS_00107D40 + side*4
+ * (0xBEF28/0xBEF64 + char*6). The horizontal speed takes the sign of the
+ * slot's word +0x4E, and is 0 when that word is 0. */
+static void fighter_3bc70(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;              /* 0x3BC83 */
+    u32 row = DSD(DS_00107D40 + side * 4u);             /* 0x3BC88 */
+    u32 rec;
+    s16 dir;
+    DSB(slot + 0x54u) = 2u;                             /* 0x3BC8F */
+    DSB(slot + 0x52u) = 4u;                             /* 0x3BC93 */
+    DSB(slot + 0x53u) = 0;                              /* 0x3BC97 */
+    rec = DSD(slot);                                    /* 0x3BC9B */
+    DSW(rec + 0x44u) = DSW(row);                        /* 0x3BCA0 */
+    DSW(rec + 0x36u) = DSW(row + 2u);                   /* 0x3BCA8 */
+    dir = (s16)DSW(slot + 0x4Eu);                       /* 0x3BCAC */
+    if (dir > 0)
+        DSW(rec + 0x34u) = DSW(row + 4u);               /* 0x3BCB9 */
+    else if (dir < 0)
+        DSW(rec + 0x34u) = (u16)(0u - DSW(row + 4u));   /* 0x3BCCA neg edi */
+    else
+        DSW(rec + 0x34u) = 0;                           /* 0x3BCD5 */
+}
+
+/* 0x35E04. An animation-opcode 0x10 target: the words `D000 5E04 0003` in a
+ * character's 0xC8B30 attack stream (0xD2278 in the raptor's 0xD2274) load
+ * the dword 0x00035E04 into DS_00105BD4. EAX = rec; EDX is pushed and popped
+ * and only reused as the linked slot. With rec+0x14 (the owner slot) set it
+ * stores 3.0f into rec+0x20 and copies it into rec+0x24 (0x35E16 fld,
+ * 0x35E1C fstp), then launches the side's attack through 0x3BC70. */
+void fighter_35e04(u32 rec)
+{
+    u32 slot = DSD(rec + 0x14u);                        /* 0x35E06 */
+    if (slot == 0u) return;                             /* 0x35E0B */
+    DSD(rec + 0x20u) = 0x40400000u;                     /* 0x35E0D */
+    DSD(rec + 0x24u) = DSD(rec + 0x20u);                /* 0x35E1C */
+    fighter_3bc70((u32)DSB(rec + 0x51u));               /* 0x35E21 */
+    /* PORT: 0x35E38 0x2C3FC(word[0xBDAA8 + slot+0x7A*2]) voice, out of
+     * scope (spec §7). */
+}
+
 /* ---- the 0x3C88C hitbox machine and the 0x3CF38 hit chain ----------------
  * 0x3C88C is the per-slot attack-frame state machine that arms the hitboxes;
  * 0x3CF38 scans them, validates the hit against the target's stance and
@@ -3290,6 +3334,7 @@ static void hit_anim_start_a(u32 rec, u32 stream, u32 frame_bits)
     hit_anim_ctx(ctx, rec);                             /* 0x3C48E */
     hit_anchor_set(ctx[0], DSD(ctx[4] + 0x18u), 0u);    /* 0x3C49F */
     actors_anim_begin(rec, stream, frame_bits);         /* 0x3C4B3 */
+    /* TODO(verify): raw loads slot+0x2C at 0x3C4B0, before 0x2BC30 (§17.3). */
     hit_anchor_x(ctx[0], DSD(ctx[2] + 0x2Cu));          /* 0x3C4BD */
 }
 

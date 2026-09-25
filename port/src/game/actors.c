@@ -84,6 +84,7 @@ static void anim_code_12720(u32 rec, u32 arg);
 static void anim_code_37A58(u32 rec, u32 arg);
 static void anim_code_39A34(u32 rec, u32 arg);
 static void anim_code_36870(u32 rec, u32 arg);
+static void anim_code_35E04(u32 rec, u32 arg);
 
 /* The 0xBB9D8 type table's two callback halves (cb1 at 0xBB9DC, cb2 at
  * 0xBB9E0). actor_spawn's tail (0x2B0D4) calls cb1 with (rec, slot) and tests
@@ -130,6 +131,9 @@ int actors_init(void)
      * +0x54 machine. */
     fn_register(0x39A34u, (void (*)(void))anim_code_39A34);
     fn_register(0x36870u, (void (*)(void))anim_code_36870);
+    /* PORT: the characters' 0xC8B30 attack streams' 0xD000 target (opcode
+     * 0x10, mode 0x4000, dword 0x00035E04), the attack's launch. */
+    fn_register(0x35E04u, (void (*)(void))anim_code_35E04);
     /* PORT: the state-7 pose handler 0x3531C case 10 resolves from the slot's
      * +0x10 (the 0x3A504 setter writes it; the raw reaches it only through
      * that indirect call). */
@@ -674,6 +678,16 @@ static void anim_code_36870(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_36870(rec);
+}
+
+/* 0x35E04 — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x35E04 takes EAX = rec and only saves
+ * EDX (0x35E05 push, 0x35E3D pop), so this wrapper drops the operand and calls
+ * fighter_35e04(rec) unchanged. */
+static void anim_code_35E04(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_35e04(rec);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */
