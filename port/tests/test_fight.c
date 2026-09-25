@@ -3082,7 +3082,7 @@ static void pose_handler_seed(u32 s0, u32 s1, u32 r0, u32 r1)
     DSD(r0 + 8u) = 0xDEADBEEFu;              /* the stream sentinel */
     DSB(r0 + 0x52u) = 0x7F;                  /* the animation variable */
     DSD(r0 + 0x24u) = 0xDEADBEEFu;           /* the frame-hold sentinel */
-    DSD(r0 + 0x18u) = 0x5678;                /* hit_record_x's bit-3 source */
+    DSD(r0 + 0x18u) = 0x5678;                /* the hit_anchor_x write's sentinel */
     DSW(FIGHT_ACTORS) = 0xFFFFu;             /* the pset id sentinel */
     DSD(r1 + 0x1Cu) = 0xDEADBEEFu;           /* hit_anchor_set's y sentinel */
     DSB(s1 + 0x52u) = 0x07;
@@ -3100,6 +3100,9 @@ static void check_pose_handler(void)
     u32 r0 = FIGHT_RECS;
     u32 r1 = FIGHT_RECS + 0x100u;
     u16 sv_78f6 = DSW(DS_001078F6);
+    u32 sv_7a8 = DSD(DS_001077A8);
+    u32 sv_af0 = DSD(DS_00100AF0);
+    u32 sv_ab0 = DSD(DS_00100AB0);
 
     /* §7.1: phase 0 arms +0x58. The raw's phase dispatch returns for any
      * +0x58 above 1 (0x3A453/0x3A455), so the seed is 0 — which differs from
@@ -3123,15 +3126,27 @@ static void check_pose_handler(void)
     CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 0);          /* hit_anchor_set */
     CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x1234);     /* B[1] = 0: no snap */
 
-    /* §7.3: B[1] = 3, A[1] = 0x4321 and +0x90 = 0 open the snap; bit 3 makes
-     * hit_record_x take the record's own +0x18. */
+    /* §7.3: B[1] = 3, A[1] = 0x4321 and +0x90 = 0 open the snap. Slot+0x42 bit
+     * 3 is clear, so the raw's 0x18714 (0x1873D..0x18780) calls 0x18540, calls
+     * 0x18350 only when DS_00100AF0[side] != slot+0x20, then returns slot+0x2C
+     * - DS_00100AB0[side*8]. The port's hit_record_x omits the two calls (a
+     * named gap), so the seed makes both inert in the raw too: DS_001077A8[0] =
+     * 0 is 0x18540's early-out (0x1854F -> 0x18620, no write) and DS_00100AF0[0]
+     * = slot+0x20 skips 0x18350. The rec+0x18 write is then 0x4321 - 0x1000,
+     * distinct from its sentinel. (With bit 3 set, the record's own §7.3 seed,
+     * the write is the sentinel again, so the assertion could not fail.) */
     pose_handler_seed(s0, s1, r0, r1);
-    DSB(s0 + 0x42u) |= 0x08u;
+    DSD(DS_001077A8) = 0;
+    DSD(DS_00100AF0) = DSD(s0 + 0x20u);
+    DSD(DS_00100AB0) = 0x1000;
     DSW(0x00107D12u) = 3;
     DSW(0x00107D16u) = 0x4321;
     fighter_pose_3a43c(s0, 0u);
     CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x4321);
-    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x4321 - 0x1000);
+    DSD(DS_001077A8) = sv_7a8;               /* the seeds are scoped to this block */
+    DSD(DS_00100AF0) = sv_af0;
+    DSD(DS_00100AB0) = sv_ab0;
 
     /* §7.3: +0x90 in 1..4 is the table arm (no snap) even with B[1] = 3. */
     pose_handler_seed(s0, s1, r0, r1);
