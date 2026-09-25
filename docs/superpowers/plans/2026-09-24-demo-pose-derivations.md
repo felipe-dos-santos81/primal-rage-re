@@ -128,6 +128,52 @@ one-shot DAC dump and the `POSE_3A43C` gate trace). All reverted.
 7. **The demo's live-RAM trace was attempted, not obtained** (§1.6, the
    arena-backdrop §1.7 precedent).
 
+### 0.4 Corrections from Task 2's measurements (commits `6e78b31`/`e6451ed`)
+
+Task 2 ported `0x3A43C`, `0x39A34`, the two registrations and the `glob_b`
+store, and measured. Where its measurements or the raw contradict this record,
+**the measurement and the raw win**; each correction is also marked in place.
+Source: `.superpowers/sdd/2026-09-24-demo-pose/task-2-report.md` §2.5, §3, §4.
+
+1. **§1.2/§5.4/§6.2 — "the fix extends the front-end tail" is false.**
+   Measured on the stashed (unmodified) tree: port 488/489 **already**
+   byte-matched captures 841/842 (0 B each) before any Task 2 change, and the
+   front-end oracle's numbers are identical before and after
+   (`[560..842]` / 283 / `125 clean, 154 splice, 0 transition,
+   2 unexplained (832, 833)`). The §1.2 table's "(splice)" cells for the
+   unmodified port were not measured as direct pairs; they are 0 B. No
+   enforced claim moved, so no halt-and-report was needed.
+2. **§7.1 — the phase-0 seed `+0x58 = 0x7F` cannot fire phase 0.** The raw's
+   dispatch returns for any `+0x58 > 1` (`0x3A453 JBE` / `0x3A455 RET`). The
+   test seeds `+0x58 = 0` (distinct from the post-condition 1).
+3. **§7.3 — the mutation "flip `> 3` to `>= 3` with `+0x90 = 2`" cannot fail**:
+   `(u8)(2 - 1) >= 3` is false under both forms. The distinguishing seed is
+   `+0x90 = 4` (`(u8)(4 - 1) = 3`: `> 3` false, `>= 3` true); the test asserts
+   the `+0x90 = 4` arm does not snap. Also, the §7.3 "open" seed's
+   `slot+0x42` bit 3 makes `hit_record_x` return the record's own `+0x18`, so
+   deleting `hit_anchor_x` could not move the latch assertion; the test clears
+   bit 3 and seeds `DS_00100AB0 = 0x1000`, `DS_001077A8[0] = 0` (`0x1854F JZ
+   0x18620`, `0x18540`'s early-out) and `DS_00100AF0[0] = slot+0x20`
+   (`0x18759 JZ 0x18764`, skipping `0x18350`) so the raw and the port both
+   compute `0x4321 - 0x1000`.
+4. **§7.4 — the seed `slot+0x52 = 0x07` fires the `0x468D8` predicate**
+   (`0x4691E CMP byte [EAX*4+0x107802], 7`), so `0x36D98` writes
+   `+0x52 = 9` (`0x36E14`) before the setter reads it. The raw's at-call `BX`
+   is **9**, not 7; the test asserts `DSW(0x107D10) == 0x0009`. The second
+   call's `BX` is `0x10` (the first setter's `0x3A522` write), so
+   `0x107D04 == 0x10`. The demo's own run measures the same: the setter runs
+   exactly once, `f=72 side=0 cb=3a43c bx=9`.
+5. **§2.6 — the owner hypothesis for the 43 px is falsified by measurement.**
+   With all three pieces ported, the 843/490 compare is **22 919 B / 7 879 px**,
+   exactly the §1.2 temporary-port value. The two named suspects act **after**
+   the divergence: `0x39A34` runs once and its effect (one sprite per frame,
+   `0x9077..0x9080`) starts at `f≈80`; `0x36870` runs from `f≈90`; the
+   `glob_b` correction is inert here (the handler runs once with
+   `B[1] = 0`, so the snap never fires). The divergence frame is `f = 73`
+   (port 490). The 43 px is re-derived in **§9**.
+6. **§6.2 first bullet — re-owned** to the T-rex's node-x motion at the pose
+   entry (§9), not the two animation targets.
+
 ---
 
 ## 1. The runtime differential (Step 1)
@@ -200,6 +246,11 @@ So the fix **extends the byte-exact front-end tail by two frames** (captures
 840–842 become clean/splice-explained; the design's risk §"the fix may move the
 front-end claim's tail" is realized) and moves the first divergence to capture
 843, where the pose is now correct but the T-rex's **screen x** is wrong.
+
+**Correction (§0.4.1, Task 2 measured):** the tail claim is false — the
+unmodified port's 488/489 already byte-match captures 841/842 (0 B), and the
+front-end oracle is identical before and after. The fix changes the pose at
+843 only; it does not move the front-end claim.
 
 ### 1.3 The 843 divergence is the T-rex's screen x (measured)
 
@@ -389,6 +440,12 @@ re-measure before concluding. If the x still differs, the next suspects (with
 their evidence) are the pose setter's `glob_b` bug (§0.3.3) and the
 `0x36870` registration; the camera/scene path is **already ported** (the
 arena-backdrop cycle) and matches through 490, so it is not the cause.
+
+**Falsified (§0.4.5, Task 2 measured).** With `0x39A34`, both registrations and
+the `glob_b` fix ported, 843/490 is still 22 919 B / 7 879 px: `0x39A34` acts
+from `f≈80`, `0x36870` from `f≈90`, and the `glob_b` store is inert (the snap's
+`B[1] = 0` gate stays closed), all after the divergence at `f = 73`. The 43 px
+is re-derived in §9.
 
 **The `0x36870` registration's own live call (verified, §3.4).** The ported
 `fighter_36870`'s case-0 arm (`fighter.c`'s `0x36A1A`) calls `fighter_37d18`
@@ -619,6 +676,8 @@ python3 -c "a=open('/tmp/pr_frontend_dump/run1/frame_0490.raw','rb').read(); b=o
    halt-and-report and absorb the move in the same commit with this reason (the
    arena-backdrop §6.2 precedent: 832/833 allowed by name). Every other claim
    (title, attract, smk, C-vs-Python, `symbols.h`) must be unmoved.
+   **Correction (§0.4.1):** no move — 488/489 already matched 841/842 on the
+   unmodified port, and the front-end oracle is identical before and after.
 5. **The instrumented differential** (Task 1's, reverted; not part of the
    shipped tree): the `PR_POSE_DUMP` blocks of §0.2 — the per-side line at
    `fighter_state_3531c`'s head, the `POSE_3A43C` gate line, and the temporary
@@ -642,10 +701,14 @@ python3 -c "a=open('/tmp/pr_frontend_dump/run1/frame_0490.raw','rb').read(); b=o
 * **The T-rex's screen x at capture 843** (43 px ≈ one frame of world motion) —
   owner: the pose entry's per-frame position path, the two skipped animation
   targets (`0x39A34`, `0x36870`) first (§2.6). Task 2 measures after porting.
+  **Re-owned (§0.4.6):** Task 2 measured both targets acting after the
+  divergence; the owner is the T-rex's node-x motion at the pose entry (the
+  `0x3B080` velocity seed, the `0x2A4FC` integration) — see §9.
 * **The camera/scene drag from port 491** — a *consequence* of the x offset
   (the camera midpoint follows), not a separate owner; re-measured in Task 2.
 * **The front-end window's tail move** (captures 840–842 become clean) — the
   design's expected claim move; absorbed by Task 2 per §5.4.
+  **Closed as not-a-move (§0.4.1):** measured, the tail did not move.
 * **The `0x39F40`/`0x39CC8` pose family** (the death/fall poses and the
   `0x2C3FC(0x6C)` voice) — **not reached** by the demo's first fight (measured:
   `fighter_pose_start` never runs, the handler stays `0x3A43C` through
@@ -679,7 +742,8 @@ python3 -c "a=open('/tmp/pr_frontend_dump/run1/frame_0490.raw','rb').read(); b=o
 * **The 43 px mechanism is not yet pinned to one raw site** — the record names
   the two measured candidates (`0x39A34`'s hold rescale, `0x36870`'s `+0x54`
   machine) and the setter's `glob_b` bug; Task 2's re-measurement decides. This
-  is a named gap with its evidence, not a fitted value.
+  is a named gap with its evidence, not a fitted value. **Task 2 decided
+  (§0.4.5):** none of the three; see §9.
 * **The exact dump-index mapping** (`dump = f + 417` for this run) is derived
   from the pose-entry match; Task 2 should re-derive it from its own trace if it
   needs frame-level alignment.
@@ -699,6 +763,8 @@ from the post-state, and mutation-proven.
 * **Call:** the ported `fighter_pose_3a43c(slot, side)` (or through
   `fighter_state_3531c(side)` with `+0x53 = 0x0A`).
 * **Assert:** `DSB(slot+0x58) == 1`. Mutation: delete the store → fails.
+* **Correction (§0.4.2):** the seed `0x7F` returns at `0x3A455` without
+  writing; the valid seed is `+0x58 = 0`.
 
 ### 7.2 The pose handler — phase 1 (the animation start)
 
@@ -725,6 +791,10 @@ from the post-state, and mutation-proven.
   rec+0x18>` (the latch's post-state). Mutation: flip the gate's `> 3` to
   `>= 3` with `slot+0x90 = 2` seeded → the snap must not happen.
 * **Seed (closed):** `DSW(0x107D10 + other*2) = 5` → `slot+0x2C` unchanged.
+* **Correction (§0.4.3):** the `+0x90 = 2` mutation cannot fail; use
+  `+0x90 = 4`. Clear `slot+0x42` bit 3 and seed `DS_00100AB0 = 0x1000`,
+  `DS_001077A8[0] = 0`, `DS_00100AF0[0] = slot+0x20`, so the latch is
+  `0x4321 - 0x1000` under both the raw and the port.
 
 ### 7.4 The setter's `glob_b` correction (§0.3.3)
 
@@ -736,6 +806,9 @@ from the post-state, and mutation-proven.
   `check_pose_entry` assertion `DSW(0x107D10) == 0` (line 2957, "edx3 >> 16")
   is the port's wrong form and must be replaced by this seed + the raw
   evidence**; the mutation (restoring `edx >> 16`) then fails it.
+* **Correction (§0.4.4):** `+0x52 = 7` fires `0x468D8` (`0x4691E`), so
+  `0x36D98` writes `+0x52 = 9` (`0x36E14`) first: assert `0x0009`, and the
+  second call's `0x107D04 == 0x10`.
 
 ### 7.5 `0x39A34` — the hold scaler
 
