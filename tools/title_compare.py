@@ -575,7 +575,9 @@ def main():
     # a frame outside the port-exhibited window, or every frame when no port
     # frame is exhibited, is unexplained if it carries content. Enforced: no
     # unexplained frame below N, and the first unexplained frame is >= N. When
-    # N == end + 1 that is exactly "0 unexplained in the fight window".
+    # the window is fully explained (no unexplained frame) the claim is exactly
+    # "0 unexplained in the fight window" for any N <= end + 1; N == end + 1
+    # pins that, and a smaller N is reported so it can be raised.
     if a.demo_fight:
         if a.demo_fight_min_first is None:
             print("title_compare: demo-fight: --demo-fight-min-first N is "
@@ -655,11 +657,14 @@ def main():
             print("title_compare: demo-fight: FAIL: first unexplained %d < "
                   "ratchet N %d" % (first, ratchet))
             return 1
-        if first is None or first > ratchet:
+        if first is None:
+            print("title_compare: demo-fight: fully explained; the window "
+                  "claim is now exact%s"
+                  % ("" if ratchet == end + 1 else
+                     " — raise N to %d to pin it" % (end + 1)))
+        elif first > ratchet:
             print("title_compare: demo-fight: ratchet improved: first "
-                  "unexplained %s > %d — raise N"
-                  % (first if first is not None else 'none (window end %d)'
-                     % end, ratchet))
+                  "unexplained %d > %d — raise N" % (first, ratchet))
         return 0
 
     primary = a.capture[0]
