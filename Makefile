@@ -196,25 +196,25 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # frame). Claim: no captured frame below DEMO_FIGHT_MIN_FIRST is unexplained, and the
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
-# improves (the tool prints "ratchet improved ... raise N"). N = 866 was measured on
-# 60ad24b plus the commit that adds this line: state 6's 0x20DF4 now calls 0x12750
-# (0x20E33), which builds the 0xF0A78 node list the 0xBB254 flier's cb1 0x127C0
-# pops, and the front-end driver seeds the frame counter DS_000EF6DC to the
-# port's own boot-run count before state 2 (886), so 0x1282C's (& 0x3F) gate
-# spawns the grey flier at f = 91 as captures 864/865 show. `make demo-oracle`
-# printed
-# "title_compare: demo: first unexplained captured frame 866 (raw 3773); 2745 in the window",
-# and the demo-fight oracle printed "ratchet improved: first unexplained 866 > 864".
-# (Before it, N = 864, measured on b915712; N = 860 on afa47b3; N = 859 on
-# b2cb490; N = 858 on 594e4b9; N = 851 on dad2712.)
-# The two counts differ by scope: 2745 is --demo's window, [866..3616] to the capture's
-# end; 1019 is this oracle's fight window, [866..1884], cut at the first all-black frame.
-# Both share the first unexplained frame, 866. The tool also fails if N > window end + 1
+# improves (the tool prints "ratchet improved ... raise N"). N = 867 was measured on
+# 364cb3d plus the commit that adds this line: 0x36870's +0x54 == 0 arm now
+# restarts its own record rec_s at 0xC8950[char] and sets rec_s+0x4D = 0x1E
+# (0x36A8C/0x36AA1 read [esp+0x10], which 0x368E5 loaded from [S]); the port had
+# restarted the other side's record, so at f = 93 the raptor's 0x36870 opcode put
+# the T-rex on the raptor's stance 0x16B5 (hflipped 0x96B5) and dropped its
+# 0x18540 anchor to 0. `make demo-oracle` printed
+# "title_compare: demo: first unexplained captured frame 867 (raw 3774); 2744 in the window",
+# and the demo-fight oracle printed "ratchet improved: first unexplained 867 > 866".
+# (Before it, N = 866, measured on 7147288; N = 864 on b915712; N = 860 on
+# afa47b3; N = 859 on b2cb490; N = 858 on 594e4b9; N = 851 on dad2712.)
+# The two counts differ by scope: 2744 is --demo's window, [867..3616] to the capture's
+# end; 1018 is this oracle's fight window, [867..1884], cut at the first all-black frame.
+# Both share the first unexplained frame, 867. The tool also fails if N > window end + 1
 # or if the window collapses; a shrunk front-end window lowers fe_b+1, so the
 # ratchet itself fails (first unexplained < N).
-# At 866 == fe_b+1 the claim is currently only that the front-end window does not
+# At 867 == fe_b+1 the claim is currently only that the front-end window does not
 # shrink and the window start does not move. Skips without the capture.
-DEMO_FIGHT_MIN_FIRST = 866
+DEMO_FIGHT_MIN_FIRST = 867
 demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/title-captures/frontend)
 	@echo "== demo-fight oracle (ratchet on the first unexplained frame, N=$(DEMO_FIGHT_MIN_FIRST)) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \

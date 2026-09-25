@@ -2317,8 +2317,8 @@ static void fighter_379c4(u32 slot)
  * +0x65/+0x74/+0x0C..+0x1C, So+0x65/+0x66) and switches on S+0x54:
  *   0: mask S+0x40 to 0x7F7F; on S+0x42 bit 5 run 0x37D18; else 0x365C8 ->
  *      S+0x43 bit 0x40, then S+0x42 bit 4 / S+0x43 bit 2 -> 0x36BC8, then
- *      0x36638 -> (on 0) restart rec_o's animation, rec_o+0x4D = 0x1E, S+0x52/
- *      +0x53 = 0; in modes other than 3/0x22/0x24 also restart the side's
+ *      0x36638 -> (on 0) restart rec_s at 0xC8950[char], rec_s+0x4D = 0x1E,
+ *      S+0x52/+0x53 = 0; in modes other than 3/0x22/0x24 also restart the side's
  *      0x102900 record with the 0xE906A stream at 1.0;
  *   1: mask S+0x40/S+0x41 to 0x7F, S+0x68 = 0, 0x365C8 -> S+0x43 bit 0x40,
  *      0x36638 -> (on 0) S+0x52 = 5, S+0x53 = 0, rec_s+0x4D = 0x14,
@@ -2327,7 +2327,7 @@ static void fighter_379c4(u32 slot)
  *   3: nothing; 4: 0x379C4(S). EAX = rec. */
 void fighter_36870(u32 rec)
 {
-    u32 side, other, s, so, rec_s, rec_o;
+    u32 side, other, s, so, rec_s;
     if (DSW(DS_00104B00) == 0x25u) {                        /* 0x3687F */
         fighter_385b0(rec);                                 /* 0x36884 */
         return;
@@ -2337,7 +2337,7 @@ void fighter_36870(u32 rec)
     s = DS_001077B0 + side * 0x94u;                         /* 0x368BD */
     so = DS_001077B0 + other * 0x94u;                       /* 0x368DD */
     rec_s = DSD(s);                                         /* 0x368E3 */
-    rec_o = DSD(so);                                        /* 0x368E9 */
+    /* 0x368E9 stores [so] at [esp+0x14]; no later instruction reads it. */
     DSW(DS_00100CE0 + other * 2u) = 0;                      /* 0x368F9 */
     DSB(s + 0x90u) = 0;                                     /* 0x36908 */
     if ((DSB(s + 0x41u) & 4u) != 0u) {                      /* 0x3690F */
@@ -2391,10 +2391,13 @@ void fighter_36870(u32 rec)
             return;
         }
         if (fighter_state_36638(s, rec_s) == 0) {           /* 0x36A7A */
-            actors_anim_begin(rec_o, DSD(FIGHT_ANIM_367DC /* 0x36A9C */
+            /* 0x36A8C mov eax,[esp+0x10] and 0x36AA1 mov edx,[esp+0x10]:
+             * both read rec_s (0x368E5 stored [s] there; 0x2BC30's RET 4
+             * pops the pushed hold), so the side restarts its own stance. */
+            actors_anim_begin(rec_s, DSD(FIGHT_ANIM_367DC /* 0x36A9C */
                                        + (u32)DSB(s + 0x7Au) * 4u),
                               0x40400000u);
-            DSB(rec_o + 0x4Du) = 0x1Eu;                     /* 0x36AAA */
+            DSB(rec_s + 0x4Du) = 0x1Eu;                     /* 0x36AAA */
             DSB(s + 0x52u) = 0;                             /* 0x36AB1 */
             DSB(s + 0x53u) = 0;                             /* 0x36AB5 */
         }

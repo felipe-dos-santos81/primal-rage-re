@@ -3119,6 +3119,67 @@ static void check_deep_callees(void)
      * 0x25 arm) clears it, so this distinguishes the mode arm from the body. */
     CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0);
 
+    /* E: 0x36870's +0x54 == 0 arm restarts the calling side's own record
+     * (0x36A8C/0x36AA1 read [esp+0x10] = rec_s) at 0xC8950[S+0x7A] and sets
+     * its +0x4D = 0x1E; the other record is untouched. The demo's f = 93
+     * raptor (side 1, char 3) takes this arm from its own stream's 0x36870
+     * opcode. Mode 3 skips the 0x102900 restart; S+0x43 = 0 and So+0x43 = 0
+     * keep 0x365C8/0x36638 at 0 and 0x36BC8 out, so the arm is reached.
+     * The char-3 and char-0 table entries point at distinct scratch streams,
+     * so reading the other slot's +0x7A fails as well. */
+    {
+        u32 st3 = FIGHT_RECS + 0x3800u, st0 = FIGHT_RECS + 0x3810u;
+        u32 sv_c8950 = DSD(0x000C8950u), sv_c895c = DSD(0x000C895Cu);
+        u8 sv_ce0[4], sv_af8[8], sv_d148[8], sv_d20[0x10], sv_a80[0x80];
+        tf_snap(sv_ce0, DS_00100CE0, 4u);
+        tf_snap(sv_af8, DS_00100AF8, 8u);
+        tf_snap(sv_d148, DS_000FD148, 8u);
+        tf_snap(sv_d20, DS_00107D20, 0x10u);
+        tf_snap(sv_a80, 0x00107A80u, 0x80u);
+        (void)tf_hit_fixture(0);
+        fight_reset_slot_pair(s0, s1, r0, r1);
+        DSW(st3) = 0x0123u;                      /* literal sprite ids */
+        DSW(st0) = 0x0456u;
+        DSD(0x000C895Cu) = st3;                  /* 0xC8950[3] */
+        DSD(0x000C8950u) = st0;                  /* 0xC8950[0] */
+        DSW(DS_00104B00) = 3u;
+        DSW(DS_00107D2C) = 0;                    /* 0x39040(other) gate shut */
+        DSB(r0 + 0x51u) = 0;
+        DSB(r1 + 0x51u) = 1;
+        DSW(r0 + 0x56u) = 1;
+        DSW(r1 + 0x56u) = 2;
+        DSW(FIGHT_ACTORS + 0x20u) = 0x7777u;
+        DSW(FIGHT_ACTORS + 0x40u) = 0x7777u;
+        DSB(s0 + 0x7Au) = 0;
+        DSB(s1 + 0x7Au) = 3;
+        DSB(s1 + 0x54u) = 0;
+        DSB(s1 + 0x42u) = 0;
+        DSB(s1 + 0x43u) = 0;
+        DSB(s0 + 0x43u) = 0;
+        DSB(s1 + 0x52u) = 0x66u;
+        DSB(s1 + 0x53u) = 0x66u;
+        DSD(r0 + 8u) = 0x00ABCDEFu;
+        DSD(r1 + 8u) = 0x00ABCDEFu;
+        DSB(r0 + 0x4Du) = 0x55u;
+        DSB(r1 + 0x4Du) = 0x55u;
+        fighter_36870(r1);
+        CHECK_EQ_INT(DSD(r1 + 8u), st3);
+        CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 0x40u), 0x0123);
+        CHECK_EQ_INT((int)DSB(r1 + 0x4Du), 0x1E);
+        CHECK_EQ_INT(DSD(r0 + 8u), 0x00ABCDEFu);
+        CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 0x20u), 0x7777);
+        CHECK_EQ_INT((int)DSB(r0 + 0x4Du), 0x55);
+        CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0);
+        CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0);
+        DSD(0x000C8950u) = sv_c8950;
+        DSD(0x000C895Cu) = sv_c895c;
+        tf_put(sv_ce0, DS_00100CE0, 4u);
+        tf_put(sv_af8, DS_00100AF8, 8u);
+        tf_put(sv_d148, DS_000FD148, 8u);
+        tf_put(sv_d20, DS_00107D20, 0x10u);
+        tf_put(sv_a80, 0x00107A80u, 0x80u);
+    }
+
     DSD(DS_001078DC) = s_dc;
     DSD(s0 + 0x40u) = s_40_0;
     DSD(s1 + 0x40u) = s_40_1;

@@ -380,6 +380,9 @@ def load_port(d, n):
 # State 6's 0x12750 call (0x20E33: the 0xF0A78 node list 0x1282C's 0xBB254
 # flier needs) with the driver's frame-counter seed explains captures 864/865,
 # [560..863] -> [560..865] (304 -> 306); the set stays.
+# 0x36870's +0x54 == 0 arm restarting its own record rec_s (0x36A8C/0x36AA1
+# read [esp+0x10]), not the other side's, explains capture 866,
+# [560..865] -> [560..866] (306 -> 307); the set stays.
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

@@ -2767,15 +2767,17 @@ int test_frontend(void)
      * 1970, where the state drops to 0 and dumping stops. So the state>=3 dump
      * run is loop frames 589..1969, i.e. dumped frames 0..1380 (1381 frames); the
      * 1400 cap covers it and the 2000-frame loop clears the 1970 exit. The
-     * front-end window is distinct [560..865] (306 frames: 137 clean, 165
+     * front-end window is distinct [560..866] (307 frames: 137 clean, 166
      * splice, 0 transition, 2 unexplained; [560..842]/283 before the
      * demo-pose 0x3A43C/0x186C4 fix explained captures 843..850,
      * [560..850]/291 before the 0x3AD27 setter-operand fix explained
      * 851..857, [560..857]/298 before the 0x2A690 mode-1 x fix
      * explained 858, [560..858]/299 before the 0x49D2F walk-arrival
      * fix explained 859, [560..859]/300 before the 0x4A634 slot +0x42
-     * reset explained 860..863, and [560..863]/304 before state 6's 0x12750
-     * node list and the frame-counter seed explained 864/865). The
+     * reset explained 860..863, [560..863]/304 before state 6's 0x12750
+     * node list and the frame-counter seed explained 864/865, and
+     * [560..865]/306 before 0x36870's case-0 restart of its own record
+     * (0x36A8C/0x36AA1) explained 866). The
      * [557..810]/254 text here was
      * stale drift, already flagged in Task 2's review and corrected here; Task
      * 3c's camera-offset fix does not touch it. The arena-backdrop fix (the
@@ -2785,7 +2787,7 @@ int test_frontend(void)
      * and the two new unexplained frames (832, 833) are pre-existing,
      * out-of-scope gaps with named owners, allowed by name in
      * tools/title_compare.py. The window's exhibition set spans port frames
-     * 0..509 (273 exhibited). */
+     * 0..510 (274 exhibited). */
     {
         const char *dir = getenv("PR_GAME_DIR");
         if (dir == NULL || dir[0] == '\0') dir = "data/game/C";
