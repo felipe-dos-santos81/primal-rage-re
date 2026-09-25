@@ -196,17 +196,20 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # frame). Claim: no captured frame below DEMO_FIGHT_MIN_FIRST is unexplained, and the
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
-# improves (the tool prints "ratchet improved ... raise N"). N = 851 was measured on
-# the landed tree (dad2712) by `make demo-oracle`, which printed
-# "title_compare: demo: first unexplained captured frame 851 (raw 3758); 2760 in the window".
-# The two counts differ by scope: 2760 is --demo's window, [851..3616] to the capture's
-# end; 1034 is this oracle's fight window, [851..1884], cut at the first all-black frame.
-# Both share the first unexplained frame, 851. The tool also fails if N > window end + 1
+# improves (the tool prints "ratchet improved ... raise N"). N = 858 was measured on
+# the roar-timing fix (the 0x3AD27/0x3AD2E setter operand, branch roar-timing) by
+# `make demo-oracle`, which printed
+# "title_compare: demo: first unexplained captured frame 858 (raw 3765); 2753 in the window",
+# and `make demo-fight-oracle` printed "ratchet improved: first unexplained 858 > 851".
+# (Before it, N = 851, measured on dad2712.)
+# The two counts differ by scope: 2753 is --demo's window, [858..3616] to the capture's
+# end; 1027 is this oracle's fight window, [858..1884], cut at the first all-black frame.
+# Both share the first unexplained frame, 858. The tool also fails if N > window end + 1
 # or if the window collapses; a shrunk front-end window lowers fe_b+1, so the
 # ratchet itself fails (first unexplained < N).
-# At 851 == fe_b+1 the claim is currently only that the front-end window does not
+# At 858 == fe_b+1 the claim is currently only that the front-end window does not
 # shrink and the window start does not move. Skips without the capture.
-DEMO_FIGHT_MIN_FIRST = 851
+DEMO_FIGHT_MIN_FIRST = 858
 demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/title-captures/frontend)
 	@echo "== demo-fight oracle (ratchet on the first unexplained frame, N=$(DEMO_FIGHT_MIN_FIRST)) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \

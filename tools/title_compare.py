@@ -365,6 +365,9 @@ def load_port(d, n):
 # (Task 2b) extended the window again, [560..842] -> [560..850] (283 -> 291
 # frames): the 0x3A43C stack-offset fix (0x2BC30's RET 4 at 0x2BCEF) and the
 # 0x35829 0x186C4 re-latch explain captures 843..850; the set stays (832, 833).
+# The roar-timing fix (the pose setter's operand is the signed byte at the anim3
+# row's +6: 0x3AD27 `mov esi,[esi+3]` / 0x3AD2E `sar esi,0x18`) explains
+# captures 851..857, [560..850] -> [560..857] (291 -> 298); the set stays.
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

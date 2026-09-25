@@ -4051,7 +4051,9 @@ void fighter_reaction_apply(u32 slot, u32 reaction)
         return;
     }
     fighter_anim_triple(anim3, ctx[0], (s32)reaction);      /* 0x3AD1E */
-    edx3 = (u32)(s32)(s8)DSB(anim3[0] + 3u);                /* 0x3AD23..0x3AD2E */
+    /* 0x3AD27 loads the dword at anim3[0]+3 and 0x3AD2E shifts it right 24
+     * (arithmetic), so the operand is the signed byte at anim3[0]+6. */
+    edx3 = (u32)(s32)(s8)DSB(anim3[0] + 6u);                /* 0x3AD23..0x3AD2E */
     {
         u8 st = (u8)DSB(self + 0x54u);                      /* 0x3AD3A */
         if (st == 1u) {                                     /* 0x3AD43/0x3AD47 */

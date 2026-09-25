@@ -2986,7 +2986,7 @@ static void pose_chain_setup(u32 s0, u32 s1, u32 r0, u32 r1)
     DSD(0x00107D2Cu) = 0;
     DSW(0x000A6728u) = 0;                       /* key = 0, no effect spawn */
     DSD(0x000A3528u + 8u) = 0;                  /* stream = 0 */
-    DSB(0x000DE117u) = 0;                       /* edx3 = 0 */
+    DSB(0x000DE11Au) = 0;                       /* edx3 = 0 (the s8 at anim3[0]+6) */
     DSB(s0 + 0x5Au) = 0;
     DSB(s0 + 0x5Du) = 0;
 }
@@ -3003,7 +3003,10 @@ static void check_pose_entry(void)
     u16 sv_w0 = DSW(0x000A6728u);
     u16 sv_w2 = DSW(0x000A6728u + 2u);
     u32 sv_d8 = DSD(0x000A3528u + 8u);
-    u8  sv_b3 = DSB(0x000DE117u);
+    u8  sv_row[11];
+    u8  sv_7e0 = DSB(DS_000BECF8);
+    u32 i;
+    for (i = 0; i < 11u; i++) sv_row[i] = DSB(0x000DE114u + i);
 
     pose_chain_setup(s0, s1, r0, r1);
 
@@ -3021,9 +3024,19 @@ static void check_pose_entry(void)
      * the at-call value. */
     DSB(s0 + 0x52u) = 0x07;
     DSD(s0 + 0x2Cu) = 0x2222;
-    DSB(0x000DE117u) = 0xB0u;                   /* edx3 = 0xFFFFFFB0 */
+    /* The setter's EDX is the anim3 row's byte +6, sign-extended: 0x3AD27
+     * `mov esi,[esi+3]` (8b 76 03) loads the dword at row+3 and 0x3AD2E
+     * `sar esi,0x18` (c1 fe 18) keeps its top byte. The setter stores
+     * +0x7E = byte[0xBECF8] + CL (0x3A549/0x3A54E/0x3A554). Every byte of the
+     * row (0xDE114 for char 0, reaction 0) is distinct, so only +6 gives
+     * 0x14 + 0xB0 = 0xC4; the old +3 read gives 0x14 + 0x73 = 0x87. */
+    for (i = 0; i < 11u; i++) DSB(0x000DE114u + i) = (u8)(0x70u + i);
+    DSB(0x000DE11Au) = 0xB0u;                   /* edx3 = 0xFFFFFFB0 */
+    DSB(DS_000BECF8) = 0x14u;
+    DSB(s0 + 0x7Eu) = 0x5Au;                    /* sentinel */
 
     fighter_reaction_apply(s0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x7Eu), 0xC4);   /* 0x14 + byte[row+6] */
     CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x10);   /* the 0x3A504 arm */
     CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0x0A);
     CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
@@ -3126,7 +3139,8 @@ static void check_pose_entry(void)
     DSW(0x000A6728u) = sv_w0;
     DSW(0x000A6728u + 2u) = sv_w2;
     DSD(0x000A3528u + 8u) = sv_d8;
-    DSB(0x000DE117u) = sv_b3;
+    for (i = 0; i < 11u; i++) DSB(0x000DE114u + i) = sv_row[i];
+    DSB(DS_000BECF8) = sv_7e0;
 }
 
 /* ---- Task 2: the state-7 pose handler 0x3A43C (demo-pose record §7.1-§7.3) */
@@ -3319,8 +3333,9 @@ static void check_anim_hold_scaler(void)
     actors_anim_begin(rec, stream, 0x40E00000u);
     CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40E00000);
 
-    /* The +0x7E byte is signed (0x39A41 movsx, then FILD word): the demo's real
-     * value is 0x87 = -121, operand 10, so -121 / 10 = -12.1f. In single
+    /* The +0x7E byte is signed (0x39A41 movsx, then FILD word): 0x87 = -121
+     * (the value the port's pre-fix 0x3AD27 read gave the demo; the raw's is
+     * 0x11, see check_pose_entry), operand 10, so -121 / 10 = -12.1f. In single
      * precision that is 0xC141999A (python: struct.pack('<f', -121/10)); a
      * zero-extending read would give 135 / 10 = 13.5f (0x41580000).
      * rec+0x24 is seeded 0x40E00000 by the begin, which differs. */
@@ -3493,7 +3508,7 @@ static void check_reaction(void)
     u16 sv_w0 = DSW(0x000A6728u);
     u16 sv_w2 = DSW(0x000A6728u + 2u);
     u32 sv_d8 = DSD(0x000A3528u + 8u);
-    u8  sv_b117 = DSB(0x000DE117u);
+    u8  sv_b11a = DSB(0x000DE11Au);
 
     pose_chain_setup(s0, s1, r0, r1);
 
@@ -3549,7 +3564,7 @@ static void check_reaction(void)
     DSW(0x000A6728u) = sv_w0;
     DSW(0x000A6728u + 2u) = sv_w2;
     DSD(0x000A3528u + 8u) = sv_d8;
-    DSB(0x000DE117u) = sv_b117;
+    DSB(0x000DE11Au) = sv_b11a;
 }
 
 /* ---- Task 3c: the 0x193B0 winner body (pose/freeze record §2.2) ---------- */
@@ -3613,7 +3628,7 @@ static void check_winner_body(void)
     u16 sv_w0 = DSW(0x000A6728u);
     u16 sv_w2 = DSW(0x000A6728u + 2u);
     u32 sv_d8 = DSD(0x000A3528u + 8u);
-    u8  sv_b117 = DSB(0x000DE117u);
+    u8  sv_b11a = DSB(0x000DE11Au);
     u8  sv_a80 = DSB(0x00107A80u);
     u8  sv_ac0 = DSB(0x00107A80u + 0x40u);
 
@@ -3662,7 +3677,7 @@ static void check_winner_body(void)
     DSW(0x000A6728u) = sv_w0;
     DSW(0x000A6728u + 2u) = sv_w2;
     DSD(0x000A3528u + 8u) = sv_d8;
-    DSB(0x000DE117u) = sv_b117;
+    DSB(0x000DE11Au) = sv_b11a;
     DSB(0x00107A80u) = sv_a80;
     DSB(0x00107A80u + 0x40u) = sv_ac0;
 }
@@ -3681,7 +3696,7 @@ static void check_pass_a_tail(void)
     u16 sv_w0 = DSW(0x000A6728u);
     u16 sv_w2 = DSW(0x000A6728u + 2u);
     u32 sv_d8 = DSD(0x000A3528u + 8u);
-    u8  sv_b117 = DSB(0x000DE117u);
+    u8  sv_b11a = DSB(0x000DE11Au);
     u8  sv_a80 = DSB(0x00107A80u);
     u8  sv_ac0 = DSB(0x00107A80u + 0x40u);
 
@@ -3726,7 +3741,7 @@ static void check_pass_a_tail(void)
     DSW(0x000A6728u) = sv_w0;
     DSW(0x000A6728u + 2u) = sv_w2;
     DSD(0x000A3528u + 8u) = sv_d8;
-    DSB(0x000DE117u) = sv_b117;
+    DSB(0x000DE11Au) = sv_b11a;
     DSB(0x00107A80u) = sv_a80;
     DSB(0x00107A80u + 0x40u) = sv_ac0;
 }
