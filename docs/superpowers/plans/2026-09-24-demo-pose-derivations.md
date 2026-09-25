@@ -1401,7 +1401,7 @@ the `0x354F0` clamp and the split-arm write are inert at f = 87 (pair distance
 because side 0's `DS_00100AF0` anchor drops to 0 (`AB0` −448 → 320). This is
 past the current residual and was not compared against the capture.
 
-## 13. The worshipper's walk arrival at capture 859 (roar-timing Task 3)
+## 13. The worshipper's walk arrival at capture 859 (roar-timing Task 3, `afa47b3`)
 
 **Result in one line.** Capture 859 is the type-0x20 worshipper (record
 `0x2A7ED80`, fight-effect entry `0x1083CC`, sprite `0x07E1` in the port) reaching

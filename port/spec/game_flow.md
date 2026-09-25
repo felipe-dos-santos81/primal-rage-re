@@ -1321,7 +1321,7 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   **`[560..858]`/299: 134 clean, 161 splice, 0 transition, 2 unexplained
   (832, 833)**. Nothing else moved.
 
-### Walk arrival (frame 859), capture 859
+### Walk arrival (`afa47b3`), capture 859
 
 * **Cause (raw).** The scene/effects pass `0x49C78` dispatches a type-1
   (walking) fight-effect entry to `0x49D2F`. When `|actor+0x18 − entry+0x14|`
