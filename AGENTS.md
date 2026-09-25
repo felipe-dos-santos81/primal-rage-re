@@ -16,6 +16,7 @@ make check frames=60       # headless run → frames/frame_*.ppm/.pal/.idx
 make run                   # windowed
 make title-oracle          # pixel-exact oracles; each skips without its capture
 make attract-oracle smk-oracle frontend-oracle demo-oracle
+make demo-fight-oracle     # ratchet on the demo fight's first unexplained frame (N pinned in the Makefile); in make verify
 make audio-render          # FM music to a WAV (the windowed run is silent here)
 ```
 
@@ -121,7 +122,10 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
 - The byte-exact oracle lines are the regression gate and must not move; run
   `make verify` after any change that can affect rendering, timing or RNG. The
   **front-end oracle is the enforced one** (it does not need
-  `PR_ORACLE_REQUIRED`); the title/attract/smk ones skip without captures.
+  `PR_ORACLE_REQUIRED`); the title/attract/smk ones skip without captures. The
+  demo-fight ratchet (`make demo-fight-oracle`, in `make verify`) is enforced the
+  same way and skips without the capture; it fails if the first unexplained
+  fight-window frame moves earlier than its pinned N (raise N when it improves).
 - The front-end oracle's claim is narrow: it proves only that no content-bearing
   capture frame inside the window the port exhibits is unexplained. It **cannot**
   detect a port that under-renders, and its window is derived from the port's own

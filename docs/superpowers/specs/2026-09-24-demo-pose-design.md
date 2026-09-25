@@ -44,6 +44,13 @@ logo at capture 1886).
    (1885). It skips without the capture, like the front-end oracle. The full
    `--demo` window stays **report-only** (its tail — the logo, the title
    screens, fight 2 — is out of scope).
+   **Superseded (user-directed ruling, Task 3):** the enforced claim is a
+   **ratchet on the first unexplained fight-window frame**
+   (`--demo-fight-min-first`, N = 851, pinned in the `Makefile`), not "0
+   unexplained": it fails on an earlier first unexplained or a collapsed window
+   and passes a later one as an improvement. Acceptance 1's goal was **not
+   reached** (first unexplained 851, not 1886; the residual is named in the
+   Outcome below).
 4. **Assertions** mutation-proven, in the existing per-area files.
 
 ## Evidence (measured before the design)
@@ -140,11 +147,13 @@ porting.
 
 ## Verification
 
-- **The cycle's own gate:** the fight window `[843..1884]` has 0 unexplained,
-  and the demo oracle's first unexplained content-bearing frame is 1886 —
-  reported before and after.
-- **The enforced bounded claim:** `make demo-fight-oracle` (in `make verify`)
-  fails on any unexplained frame in the fight window; the window is derived
+- **The cycle's own gate (as designed; superseded, see the Outcome):** the fight
+  window `[843..1884]` has 0 unexplained, and the demo oracle's first
+  unexplained content-bearing frame is 1886. Measured instead: first
+  unexplained 851, 0 of 1034 fight-window frames explained; the residual is named.
+- **The enforced bounded claim (as ruled):** `make demo-fight-oracle` (in `make
+  verify`) is a ratchet: it fails when the first unexplained frame of the fight
+  window is earlier than N = 851 or the window collapses; the window is derived
   from the front-end pass and the capture's all-black artifact.
 - **Per task:** a raw-derived unit assertion with a **mutation proof** — the
   assertion must fail under a perturbation of the code it tests — and the

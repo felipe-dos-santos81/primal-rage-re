@@ -525,8 +525,9 @@ cycle's re-capture) reaches the front-end. With the state-3 render ported
 (`0x12484`) the `PR_FRONTEND_DUMP` driver emits the real zoom-out, and
 `tools/title_compare.py --frontend` aligns it: window distinct **[560..850]**
 (raw 3108..3757), **291 frames: 130 clean, 157 splice, 0 transition, 2
-unexplained** — captures **832** and **833**, allowed by name in
-`FRONTEND_ALLOWED_UNEXPLAINED` with their reason (`title_compare.py:352-365`;
+unexplained** (the four classes sum to 289: the window's other two frames are the
+all-black captures 561 and 831, excluded as artifacts — the oracle's own list) — captures **832** and **833**, allowed by name in
+`FRONTEND_ALLOWED_UNEXPLAINED` with their reason (`title_compare.py:350-368`;
 the arena-backdrop cycle's absorbed claim move: the window is derived from the
 port's own dump, so a correct arena render necessarily extends it — the fix
 explains captures 834..842). Any other unexplained frame still fails. (The demo
@@ -722,7 +723,7 @@ exits 0.
   broken code. Task 3 made the state-9 hold match — the hold's frames
   (816..830) are clean inside the **front-end** window (`0 unexplained`) — so the
   demo window's boundary (the loader's presentation at 832/833, then the T-rex
-  pose at 843) is a real content gap, not a window-definition artifact; the demo
+  pose at 843, since moved to 851 by cycle 6 below) is a real content gap, not a window-definition artifact; the demo
   window itself still reports **0 clean** (above). Window re-anchoring was **removed from this cycle**
   (design spec, "Removed from this cycle"): no new reference and no re-anchoring
   task, because porting the state-9 render made the **front-end** window's
@@ -888,7 +889,7 @@ is UNMET.** The measurement, reproduced by Task 8:
   exhibits **0/1068** demo port frames ([313..1380]).
 * Front-end window (enforced in `verify`): **[560..830]** (raw 3108..3472),
   **271 frames: 117 clean, 153 splice, 0 transition, 0 unexplained** — its
-  claim holds (cycle 5 supersedes: `[560..842]`/283/2).
+  claim holds (cycle 5 supersedes: `[560..842]`/283/2; cycle 6 moves it on to `[560..850]`/291/2).
 
 **The residual frames are named gaps, each with its evidence and the task that
 left it. No pin or value was fitted to force the Gate.** (Cycle 3's section below
@@ -1158,8 +1159,8 @@ warnings: title `54 clean, 55 splice, 2 transition, 0 unexplained` and
 215`; front-end `[560..830]` / 271 frames `0 unexplained`; smk `120/120` +
 `41/41`; C-vs-Python `9866 writes byte-exact`; `symbols.h` regenerates
 byte-identically (`1304 globals, 1206 functions`). (Cycle 5 below moves the
-front-end claim to `[560..842]` / 283 / 2 unexplained (832, 833); every other
-claim stays at these values.)
+front-end claim to `[560..842]` / 283 / 2 unexplained (832, 833), and cycle 6
+to `[560..850]` / 291 / 2; every other claim stays at these values.)
 
 ## Demo fight cycle 5 — arena backdrop outcome (Task 3)
 
