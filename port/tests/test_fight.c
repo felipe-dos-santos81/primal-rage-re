@@ -3180,6 +3180,17 @@ static void check_pose_handler(void)
     fighter_pose_3a43c(s0, 0u);
     CHECK_EQ_INT((int)DSB(s0 + 0x58u), 1);
 
+    /* 0x3A453/0x3A455: any +0x58 above 1 returns before touching anything. The
+     * seeds are sentinels that differ from what phases 0/1 would write. */
+    pose_handler_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x58u) = 3;
+    DSD(r0 + 8u) = 0xCAFEF00Du;
+    DSB(s0 + 0x90u) = 0x55;
+    fighter_pose_3a43c(s0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 3);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)0xCAFEF00Du);
+    CHECK_EQ_INT((int)DSB(s0 + 0x90u), 0x55);
+
     /* §7.2: phase 1 starts the char-0 stream, re-anchors the self record
      * (0x3A49B: 0x188AC(side, rec_self+0x18, 0)) and closes the B[0] = 0
      * gate. */
@@ -3242,7 +3253,11 @@ static void check_pose_handler(void)
     CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);
 
     /* The wiring: 0x3531C case 10 resolves slot+0x10 and calls it with the
-     * raw's (EAX = slot, EBX = side). */
+     * raw's (EAX = slot, EBX = side). The registration itself is asserted in
+     * check_anim_hold_scaler (which runs actors_init); register it here only
+     * when this check runs without it, so the wiring does not depend on order. */
+    if (fn_resolve(0x3A43Cu) == NULL)
+        fn_register(0x3A43Cu, (void (*)(void))fighter_pose_3a43c);
     pose_handler_seed(s0, s1, r0, r1);
     DSB(s0 + 0x53u) = 0x0A;
     DSD(s0 + 0x10u) = 0x0003A43Cu;
@@ -3276,6 +3291,11 @@ static void check_anim_hold_scaler(void)
     CHECK(actors_init() == 1, "actors_init validates the pools");
     CHECK(fn_resolve(0x39A34u) != NULL, "0x39A34 is registered");
     CHECK(fn_resolve(0x36870u) != NULL, "0x36870 is registered");
+    /* The registered target is the two-argument opcode-target wrapper, not the
+     * one-argument fighter_36870 itself (anim_indirect calls it as (rec, arg)). */
+    CHECK(fn_resolve(0x36870u) != (void (*)(void))fighter_36870,
+          "0x36870 is registered through the (rec, arg) wrapper");
+    CHECK(fn_resolve(0x3A43Cu) != NULL, "0x3A43C is registered");
 
     s[0] = 0xD100;                           /* opcode 0x11, mode 0x4000 */
     s[1] = 0x9A34;                           /* the inline code pointer */
@@ -3296,6 +3316,17 @@ static void check_anim_hold_scaler(void)
     DSD(rec + 0x14u) = 0;
     actors_anim_begin(rec, stream, 0x40E00000u);
     CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40E00000);
+
+    /* The +0x7E byte is signed (0x39A41 movsx, then FILD word): the demo's real
+     * value is 0x87 = -121, operand 10, so -121 / 10 = -12.1f. In single
+     * precision that is 0xC141999A (python: struct.pack('<f', -121/10)); a
+     * zero-extending read would give 135 / 10 = 13.5f (0x41580000).
+     * rec+0x24 is seeded 0x40E00000 by the begin, which differs. */
+    s[3] = 10;
+    DSD(rec + 0x14u) = linked;
+    DSB(linked + 0x7Eu) = 0x87;
+    actors_anim_begin(rec, stream, 0x40E00000u);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), (int)0xC141999Au);
 }
 
 /* ---- Task 3b: the 0x3B714 reaction applier (pose/freeze record §2.3) ----- */
