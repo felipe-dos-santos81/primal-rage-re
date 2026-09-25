@@ -625,9 +625,11 @@ def main():
         end = next((j for j in range(lo, len(frames)) if not any(frames[j])),
                    None)
         if end is None or end <= lo:
-            print("title_compare: demo-fight: fight window end not derivable "
-                  "(no all-black capture frame after %d)" % fe_b)
-            return 1 if required else 0
+            print("title_compare: demo-fight: FAIL: fight window collapsed or "
+                  "its end is not derivable (first all-black capture frame "
+                  "after %d: %s); \"first unexplained >= N\" cannot be shown "
+                  "with no classified fight frame" % (fe_b, end))
+            return 1
         hi = end - 1
         cls = [kinds[j][0] for j in range(lo, end)]
         print("title_compare: demo-fight: front-end window distinct [%d..%d]; "
@@ -637,6 +639,14 @@ def main():
               "splice, %d transition, %d unexplained"
               % (len(cls), cls.count('clean'), cls.count('splice'),
                  cls.count('transition'), cls.count('unexplained')))
+        if ratchet > end + 1:
+            print("title_compare: demo-fight: FAIL: N %d > window end + 1 (%d): "
+                  "N is unreachable" % (ratchet, end + 1))
+            return 1
+        if fe_b < ratchet - 1:
+            print("title_compare: demo-fight: FAIL: front-end window end %d < "
+                  "N-1 (%d): the front-end window shrank" % (fe_b, ratchet - 1))
+            return 1
         unexpl = [j for j in range(lo, end) if kinds[j][0] == 'unexplained']
         first = unexpl[0] if unexpl else None
         if first is not None:

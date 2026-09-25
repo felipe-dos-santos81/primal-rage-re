@@ -199,6 +199,10 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # improves (the tool prints "ratchet improved ... raise N"). N = 851 was measured on
 # the landed tree (dad2712) by `make demo-oracle`, which printed
 # "title_compare: demo: first unexplained captured frame 851 (raw 3758); 2760 in the window".
+# The two counts differ by scope: 2760 is --demo's window, [851..3616] to the capture's
+# end; 1034 is this oracle's fight window, [851..1884], cut at the first all-black frame.
+# Both share the first unexplained frame, 851. The tool also fails if fe_b < N-1
+# (front-end window shrank), if N > window end + 1, or if the window collapses.
 # At 851 == fe_b+1 the claim is currently only that the front-end window does not
 # shrink and the window start does not move. Skips without the capture.
 DEMO_FIGHT_MIN_FIRST = 851
@@ -224,7 +228,7 @@ audio-render: build ## Render the title FM music headlessly to a WAV (AUDIO_WAV,
 # The --check run must come first: test_gfx.c reads frame_0001/0009/0017/0025.idx
 # from the CWD, so the ladder has to produce them (frames >= 25) before the suite
 # consumes them — otherwise that four-frame comparison never runs.
-verify: build ## Full ladder: --check frames, oracle-required tests, symbols.h idempotence
+verify: build ## Full ladder: --check frames, oracle-required tests, front-end + demo-fight ratchet oracles, symbols.h idempotence
 	@echo "== headless frames (must precede the tests that read frames/frame_*.idx) =="
 	./$(BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(verify_frames)
 	@echo "== tests (oracles required; consume the captured frames) =="
