@@ -1400,3 +1400,138 @@ the `0x354F0` clamp and the split-arm write are inert at f = 87 (pair distance
 **Observed, not derived.** At f = 93 the port's camera steps −500 → −256
 because side 0's `DS_00100AF0` anchor drops to 0 (`AB0` −448 → 320). This is
 past the current residual and was not compared against the capture.
+
+## 13. The worshipper's walk arrival at capture 859 (roar-timing Task 3)
+
+**Result in one line.** Capture 859 is the type-0x20 worshipper (record
+`0x2A7ED80`, fight-effect entry `0x1083CC`, sprite `0x07E1` in the port) reaching
+the end of its walk at f = 87. The raw stops it there and starts its arrival
+stream. The port never did, because `0x49C78`'s **type-1 case** (`0x49D2F`) was
+an unported named gap (§7.4). That case and its callee `0x4AC38` are now ported:
+one new function and one case body, about 170 raw bytes, well inside the size
+gate. This supersedes §12.5's "owner not derived" for 859.
+
+### 13.1 The trace (measured, temporary, reverted)
+
+Three temporary traces were used and then reverted: `actor_sync` (gated by
+`PR_859`), `render_list` (`PR_859R`) and `fight_effects_pass` (`PR_859E`).
+`git status` was clean afterwards. Here `f = DS_0010150C` in state 7.
+
+* **The actor.** It is spawned at f = 35 by the crowd path with
+  `desc = 0xBB470`, stream `0xEE02C`, **type `0x20`** (the raw's `si = 0`),
+  `a2 = −7185` and `a3 = 0x82D`. At f = 65 `0x4B144` gives it a walk: entry
+  type 1, target `entry+0x14 = −4303`, `+0x34 = 0x80`, stream `0xC95D4[0]`.
+  The walk loops `0xEE138`: `cd40 07da` (id `0x07DA + var`),
+  `b840 0008 → 0xEE138` (opcode `0x18`, 8 frames), `8e40`, `c300 → 0xEE138`.
+  That is 8 sprites `0x07DA..0x07E1` at a hold of 3.0, with no exit in the
+  stream itself.
+* **In the port** the entry stayed type 1 from f = 66 to the end, so the walker
+  never stopped. At f = 86 `x18 = −4497` (distance 194) and at f = 87
+  `x18 = −4369` (distance **66 ≤ 0x80**), which is the raw's arrival frame. At
+  f = 88 it was still walking.
+* **Hypothesis tests (overrides, reverted).** Forcing the `0x07E1` pset to any
+  other walk id (`0x07D2..0x07E8`, `0x07AD`) or shifting it by ±1–3 px left
+  119–170 px. Forcing the T-rex (`0x107B`) or the neighbouring worshipper
+  (`0x0878`) made it worse. So the residual was not a pose or phase error
+  inside the walk.
+
+### 13.2 The raw, re-read (Ghidra, fixups applied)
+
+The jump table at `0x49C2C` sends type 1 to `0x49D2F` and type 2 to `0x49D90`.
+The listing below is capstone over `read_memory`:
+
+```
+0x49d2f 803dc288100000  cmp byte [0x1088c2],0
+0x49d36 7414            je  0x49d4c
+0x49d3f e808200000      call 0x4bd4c            ; retarget, type 8, if it fires
+0x49d44 85c0 / 0f851c070000  test eax,eax / jne 0x4a468
+0x49d4c 8b5108          mov edx,[ecx+8]         ; actor
+0x49d4f 8b4114          mov eax,[ecx+0x14]      ; target
+0x49d52 8b5218          mov edx,[edx+0x18]
+0x49d55 29c2            sub edx,eax
+0x49d59 7d02 / f7da     jge / neg edx           ; |x - target|
+0x49d60 6683783400      cmp word [eax+0x34],0
+0x49d67 8b4032          mov eax,[eax+0x32]      ; dword at +0x32 ...
+0x49d6a c1f810 / f7d8   sar eax,0x10 / neg eax  ; ... top word +0x34, negated if < 0
+0x49d71 8b4032 / c1f810 mov eax,[eax+0x32] / sar eax,0x10
+0x49d77 39c2            cmp edx,eax
+0x49d79 0f8fe9060000    jg  0x4a468             ; signed: stays walking if d > step
+0x49d86 e8ad0e0000      call 0x4ac38
+
+0x4ac38 53 / 89d3       push ebx / mov ebx,edx  ; EAX = entry, EDX = index
+0x4ac3e 806229bf        and byte [edx+0x29],0xbf
+0x4ac45 804a2910        or  byte [edx+0x29],0x10
+0x4ac4c 66c742340000    mov word [edx+0x34],0
+0x4ac55 66c742360000    mov word [edx+0x36],0
+0x4ac5e 66c742380000    mov word [edx+0x38],0
+0x4ac64 c6401e00        mov byte [eax+0x1e],0
+0x4ac68 8b149d44950c00  mov edx,[ebx*4+0xc9544]
+0x4ac72 680000a040      push 0x40a00000         ; hold 5.0
+0x4ac77 e8b40ffeff      call 0x2bc30
+```
+
+`0xC9544` holds `0xEE02C, 0xEE3E6, 0xEE726, 0xEEAE2, 0xEEED4, 0xEF28A` for types
+`0x20..0x25`. Entry 0 is the worshipper's own spawn stream (first sprite
+`0x0836`). `0x4BD4C` was already ported (`fight_4bd4c`).
+
+### 13.3 The fix and its assertions
+
+* **Fix** (`port/src/game/fight.c`). There is a new `fight_4ac38` (`0x4AC38`)
+  and a `case 1` in `fight_effects_pass` that transcribes `0x49D2F..0x49D8B`.
+  The type-2 case (`0x49D90`, a countdown into the same `0x4AC38`) is not
+  reached here and stays a named gap. Its sibling types 4..12 stay gaps as well.
+* **Assertions** (`test_fight.c`, `check_effects_arrival`, run after
+  `check_effects_rng`). `0xC9544[0]` is seeded with a scratch stream holding the
+  literal id `0x0123`, and it is saved and restored.
+  * Arrival with the demo's f = 87 values: `x = −4369`, target `−4303`,
+    `DSD(+0x32) = 0x00801234` (step `0x80`, low word sentinel `0x1234`),
+    `+0x36 = 0x5555`, `+0x38 = 0x6666`, `+0x29 = 0x4B`. It checks type 0, the
+    three velocity words 0, `+0x29 == 0x13` (0xBF/0x10 here, 0x08 by `0x2BC30`),
+    `rec+8 == stream`, `+0x24 == 0x40A00000` and pset id `0x0123`.
+  * Still walking: `x = −4497` (distance 194). It checks type 1, `+0x34 == 0x80`,
+    stream and pset unchanged.
+  * Leftward walker: `+0x34 = −0x80`, distance 100. It checks that it arrives.
+  * `d == step` (128) arrives.
+* **Mutations** (each reverted; the suite then passed):
+  * No case 1 (pre-fix): `test_fight.c:1083: 1 != 0`
+  * `(s16)DSW(+0x32)` for the step: `test_fight.c:1099: 0 != 1`
+  * No negation: `test_fight.c:1109: 1 != 0`
+  * `d < step`: `test_fight.c:1117: 1 != 0`
+  * Hold 3.0: `test_fight.c:1089: 1077936128 != 1084227584`
+  * No hflip clear: `test_fight.c:1087: 83 != 19`
+  * Each of the `0x4AC45`/`0x4AC55`/`0x4AC5E`/`0x4AC64` stores dropped: lines
+    1087/1085/1086/1083 fail.
+
+### 13.4 Measured
+
+| measurement | before (`5aa1ac6`) | after |
+|---|---|---|
+| capture 859 ↔ port 503/504 | best splice 449 B / 159 px | **0 B** (splice at byte 90 582, row 94) |
+| demo oracle first unexplained | 859 (raw 3766); `[859..3616]` 2758 / 2752 unexpl. | **860 (raw 3767)**; `[860..3616]` 2757 / 2751 unexpl. |
+| demo-fight ratchet | `[859..1884]` 1026, N = 859 | **`[860..1884]` 1025**, "ratchet improved: 860 > 859", **N raised to 860** |
+| front-end oracle | `[560..858]` / 299 / 134 clean, 161 splice, 0 transition, 2 unexpl. (832, 833) | **`[560..859]` / 300 / 134 clean, 162 splice, 0 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved. That is the move the brief allowed.
+
+**The new first unexplained frame, 860 (characterised, not fixed).** Capture
+860 (f = 88) is a tear. Its best splice, port 504/505 at byte 117 108 (row 121),
+leaves 476 B / 164 px, all in x 86–106, rows 136–172: the same worshipper. The
+capture still shows its arrival sprite `0x0836`. Forcing `0x0836` at f = 88
+gives 0 B. At f = 88 the port's entry is type 0 again, so `0x4AAD0` runs. Its
+`0x4AB7F test byte [slot+0x42],1` gate on the side-0 fighter slot `0x1077B0`
+fires (`+0x42 = 0x01`) and `0x4B430` retargets the actor. That sets entry
+type 8 and stream `0xC958C[0] = 0xEE0F0` (sprites `0x079F..`). The port matches
+the raw gate (`0x4AAD0` was re-diffed and matches). Suppressing that one gate
+(a temporary `PR_NO42` switch, reverted) made captures 860..863 explained at
+0 B. The first residual then moved to 864 (495 B, x 0–23, rows 99–118).
+So in the raw, bit 0 of `slot+0x42` is clear by f = 88. The port sets it at
+f = 72 (`0x3ABD0..0x3ABDA`, the roar reaction, which matches the raw) and
+never clears it. The owner, the raw clear that the port lacks, is **not
+derived**. The candidates come from a capstone sweep of byte writes to `+0x42`.
+The unported functions that store 0 or a register there are `0x361C8`,
+`0x370F0`, `0x37464`, `0x37B54`, `0x3C208`, `0x3C358`, `0x3D0C0`, `0x3EE00`,
+`0x3EA24`, `0x44798`, `0x4505C` and `0x48AAC`. The ported `0x3C148`,
+`0x385B0`, `0x36870` and `0x3BDDC` also clear it, but the port's trace shows
+`+0x42 = 0x01` on every frame from f = 72 through f = 100, so none of them
+fires in this window. The f = 93 camera step (§12.5) is still not
+compared.
