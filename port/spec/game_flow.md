@@ -523,8 +523,8 @@ demo-fight section below.
 3617 distinct post-logo frames, raw 1367..8409 after the demo-fight closure
 cycle's re-capture) reaches the front-end. With the state-3 render ported
 (`0x12484`) the `PR_FRONTEND_DUMP` driver emits the real zoom-out, and
-`tools/title_compare.py --frontend` aligns it: window distinct **[560..842]**
-(raw 3108..3749), **283 frames: 125 clean, 154 splice, 0 transition, 2
+`tools/title_compare.py --frontend` aligns it: window distinct **[560..850]**
+(raw 3108..3757), **291 frames: 130 clean, 157 splice, 0 transition, 2
 unexplained** — captures **832** and **833**, allowed by name in
 `FRONTEND_ALLOWED_UNEXPLAINED` with their reason (`title_compare.py:352-365`;
 the arena-backdrop cycle's absorbed claim move: the window is derived from the
@@ -532,7 +532,9 @@ port's own dump, so a correct arena render necessarily extends it — the fix
 explains captures 834..842). Any other unexplained frame still fails. (The demo
 section below records why the window indices moved from the pre-Task-9
 `[557..813]` / 257 frames; the arena-backdrop outcome section below records the
-`[560..830]`/271 → `[560..842]`/283 move.) The claim that result supports is precise and narrow: **no
+`[560..830]`/271 → `[560..842]`/283 move; the demo-pose cycle's `0x3A43C`
+stack-offset fix and `0x35829 0x186C4` re-latch then explained captures
+843..850: `[560..842]`/283 → `[560..850]`/291.) The claim that result supports is precise and narrow: **no
 content-bearing capture frame inside the window the port's own dump exhibits is
 unexplained** (the two named exceptions aside). The window is derived from the port's dump (`check_capture`'s
 `idx`→`a,b` mapping) and the branch discards `check_capture`'s `rc` (coverage and
@@ -671,8 +673,8 @@ against the port dump frames after the last frame that window exhibits — the
 same clean/splice/transition/unexplained model, no second one. It reports and
 exits 0.
 
-* Front-end window (still enforced in `verify`): distinct **[560..842]** (raw
-  3108..3749), **283 frames: 125 clean, 154 splice, 0 transition, 2
+* Front-end window (still enforced in `verify`): distinct **[560..850]** (raw
+  3108..3757), **291 frames: 130 clean, 157 splice, 0 transition, 2
   unexplained** — captures **832** (the loader's `- LOADING -` screen) and
   **833** (the dark arena with the `LOADING` text overlaid), allowed by name in
   `FRONTEND_ALLOWED_UNEXPLAINED` (the arena-backdrop cycle's absorbed claim

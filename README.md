@@ -256,12 +256,13 @@ spawn → `effects_step` → dirty list → `gfx_flush_palette` → `gfx_dac` �
 plan's assumed missing draw does not exist; the camera state feeds the existing
 render pass and actor-pset sync. The front-end pixel oracle is **closed and
 enforced**: a 120 s pinned capture aligns the port's state-3 zoom to window
-`[560..842]` (raw `3108..3749`), **283 frames: 125 clean, 154 splice, 0
+`[560..850]` (raw `3108..3757`), **291 frames: 130 clean, 157 splice, 0
 transition, 2 unexplained (832, 833)** — the two allowed by name (the
 arena-backdrop cycle's absorbed claim move, below); any other unexplained frame
-fails. (Indices moved `[557..813]`/257 → `[560..830]`/271 → `[560..842]`/283 as
-cycle 1's pins, cycle 2's master-loop pin and the arena-backdrop fix forced
-re-captures; the host-timed capture is not reproducible, so indices shift while
+fails. (Indices moved `[557..813]`/257 → `[560..830]`/271 → `[560..842]`/283 →
+`[560..850]`/291 as cycle 1's pins, cycle 2's master-loop pin and the
+arena-backdrop fix forced re-captures, and the demo-pose cycle's `0x3A43C`
+stack-offset fix + `0x186C4` re-latch explained captures 843..850; the host-timed capture is not reproducible, so indices shift while
 the claim does not.) It proves exactly one thing: **no content-bearing capture
 frame inside the window the port's own dump exhibits is unexplained** (the two
 named exceptions aside) — the window is derived from that dump and the

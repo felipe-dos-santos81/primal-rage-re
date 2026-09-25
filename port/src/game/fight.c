@@ -603,8 +603,9 @@ void fight_hud_pass(u32 side)
         DSB(fighter + 0x28u) = (u8)(DSB(fighter + 0x28u) | 1u); /* 0x35808..0x35810 */
         actor_sync(fighter);                    /* 0x35813 0x2A1FC */
     }
-    /* PORT: 0x3581C/0x35824 0x354F0(side)/(1-side) and 0x35829 0x186C4 are
-     * named gaps (§7.8) and skipped. */
+    /* PORT: 0x3581C/0x35824 0x354F0(side)/(1-side), the arena-wall clamp
+     * against DS_000BE018 (0x7C00), is a named gap (§7.8) and skipped. */
+    fighter_slot_latch_both();                  /* 0x35829 0x186C4 */
 }
 
 /* ---- 0x49C78 the scene/effects pass ------------------------------------ */

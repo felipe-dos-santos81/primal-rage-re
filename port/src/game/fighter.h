@@ -71,6 +71,10 @@ void fighter_pass_b(u32 arg);
  * latches slot+0x2C into slot+0x34. */
 void fighter_slot_latch(u32 side);
 
+/* 0x186C4. Latch side 0 then side 1 through 0x186D0 (fight_hud_pass's 0x35829
+ * tail). */
+void fighter_slot_latch_both(void);
+
 /* 0x33EB4. The demo-fight fighter spawn entry state 6 calls after each
  * character pick. It picks the 0x4000/0 stack argument by side, reads the
  * per-side initial x from DS_000BDA38 (a dword load shifted right 16), and runs
@@ -168,7 +172,7 @@ void fighter_reaction_apply(u32 slot, u32 reaction);
 
 /* 0x3A43C. The 0x3A504 pose family's per-frame handler: phase 0 arms +0x58;
  * phase 1 starts the self record's 0xC8FE0[char] stream at 3.0, re-anchors the
- * other record and snaps the self x to A[other] behind the B[other] and +0x90
+ * self record and snaps the self x to A[side] behind the B[side] and +0x90
  * gates. 0x3531C case 10 resolves it from slot+0x10; registered in actors_init.
  * EAX = slot (dead), EBX = side. */
 void fighter_pose_3a43c(u32 slot, u32 side);

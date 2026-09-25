@@ -361,7 +361,10 @@ def load_port(d, n):
 #         the presented DAC/palette state (demo-fight-closure §9.5,
 #         fidelity-gaps §7.11).
 # They are allowed by capture-frame index with this reason; any OTHER
-# unexplained frame in the window still fails the gate.
+# unexplained frame in the window still fails the gate. The demo-pose cycle
+# (Task 2b) extended the window again, [560..842] -> [560..850] (283 -> 291
+# frames): the 0x3A43C stack-offset fix (0x2BC30's RET 4 at 0x2BCEF) and the
+# 0x35829 0x186C4 re-latch explain captures 843..850; the set stays (832, 833).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

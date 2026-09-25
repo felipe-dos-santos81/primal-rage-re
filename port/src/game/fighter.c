@@ -168,6 +168,14 @@ void fighter_slot_latch(u32 side)
         DSD(slot + 0x34u) = DSD(slot + 0x2Cu);      /* 0x186B4 */
 }
 
+/* 0x186C4. Latch both slots: 0x186D0(0), then fall into 0x186D0 with EAX = 1
+ * (0x186CB). fight_hud_pass's tail (0x35829) calls it after the actor sync. */
+void fighter_slot_latch_both(void)
+{
+    fighter_slot_latch(0u);                         /* 0x186C4/0x186C6 */
+    fighter_slot_latch(1u);                         /* 0x186CB, falls into 0x186D0 */
+}
+
 /* 0x1CEBC. The audio gate the spawn tail tests: 1 when the AIL sequence handle
  * DS_001028C8 is live (non-zero) and its busy byte DS_001028DB is clear. The
  * port keeps its AIL handles outside mem[], so this is 0 and the tail's
@@ -3624,11 +3632,13 @@ static void fighter_pose_3a8e8(u32 side, u32 edx)
 
 /* 0x3A43C. The 0x3A504 pose family's per-frame handler 0x3531C case 10 calls
  * through slot+0x10. Phase 0 sets +0x58 = 1. Phase 1 starts the self record's
- * 0xC8FE0[char] stream at 3.0, re-anchors the other record's +0x18/+0x1C from
- * the other slot, sets +0x58 = 2 and +0x90 = 1, and — when B[other] is neither
- * 0 nor 5 and the (u8)(+0x90 - 1) > 3 table gate opens — snaps the self x to
- * A[other]. Phases above 1 return. The raw takes EAX = slot, EBX = side
- * (0x354E0); the ctx swap overwrites EAX, so only the side is read. */
+ * 0xC8FE0[char] stream at 3.0, re-anchors the self record (x kept, y = 0) and
+ * re-latches the self slot, sets +0x58 = 2 and +0x90 = 1, and — when B[side]
+ * is neither 0 nor 5 and the (u8)(+0x90 - 1) > 3 table gate opens — snaps the
+ * self x to A[side]. Phases above 1 return. The raw takes EAX = slot, EBX =
+ * side (0x354E0); the ctx swap overwrites EAX, so only the side is read.
+ * 0x2BC30 returns with RET 4 (0x2BCEF), popping the 0x3A471 push, so from
+ * 0x3A48E on the ESP offsets name ctx[1] (the side) and ctx[5] (rec_self). */
 void fighter_pose_3a43c(u32 slot, u32 side)
 {
     u32 ctx[6];
@@ -3645,11 +3655,11 @@ void fighter_pose_3a43c(u32 slot, u32 side)
                       DSD(FIGHT_ANIM_3A43C
                           + (u32)DSB(ctx[3] + 0x7Au) * 4u),
                       0x40400000u);
-    hit_anchor_set(ctx[0], DSD(ctx[4] + 0x18u), 0u);        /* 0x3A498/0x3A49B */
+    hit_anchor_set(ctx[1], DSD(ctx[5] + 0x18u), 0u);        /* 0x3A48E..0x3A49B */
     DSB(ctx[3] + 0x58u) = 2u;                               /* 0x3A4A4 */
     {
-        s32 b = (s32)(s16)DSW(DS_00107D10 + ctx[0] * 2u);   /* 0x3A4AC/0x3A4BF */
-        s32 a = (s32)(s16)DSW(DS_00107D14 + ctx[0] * 2u);   /* 0x3A4B3/0x3A4BC */
+        s32 b = (s32)(s16)DSW(DS_00107D10 + ctx[1] * 2u);   /* 0x3A4A8/0x3A4B3/0x3A4BC */
+        s32 a = (s32)(s16)DSW(DS_00107D14 + ctx[1] * 2u);   /* 0x3A4AC/0x3A4BF */
         if (b != 0 && b != 5) {                             /* 0x3A4C2/0x3A4C6 */
             if ((u8)(DSB(ctx[3] + 0x90u) - 1u) > 3u)        /* 0x3A4CF..0x3A4D9 */
                 hit_anchor_x(ctx[1], (u32)a);               /* 0x3A4E8/0x3A4ED */

@@ -917,6 +917,71 @@ static void check_hud_sync(void)
     CHECK_EQ_INT((int)DSB(fighter + 0x28u), 1);
 }
 
+/* 0x35829 0x186C4: after the 0x35813 sync, the HUD pass re-latches BOTH slots
+ * (0x186C4 = 0x186D0(0), then falls into 0x186D0 with EAX = 1). Slot+0x42 bit 3
+ * takes the clean rec+0x18 copy and slot+0x41 bit 7 latches +0x2C into +0x34
+ * (the camera's 0x12E3C input). The fighter carries an x velocity of 5
+ * (rec+0x34, 0x2A516's dword+0x32 >> 16), so the latched x is the post-sync
+ * 0xAAAF, not the pre-sync 0xAAAA: a latch before the sync fails. Side 1 has
+ * no camera-target record (the pass returns early for it) yet is latched,
+ * which is 0x186C4's second half. Sentinels differ from every post-state. */
+static void check_hud_latch(void)
+{
+    u32 rec = FIGHT_RECS + 0x400u;
+    u32 fighter = FIGHT_RECS + 0x500u;
+    u32 other = FIGHT_RECS + 0x600u;
+    u32 s0 = DS_001077B0;
+    u32 s1 = DS_001077B0 + 0x94u;
+    u32 sv_s0 = DSD(s0), sv_s1 = DSD(s1);
+    u8 sv_42a = DSB(s0 + 0x42u), sv_42b = DSB(s1 + 0x42u);
+    u8 sv_41a = DSB(s0 + 0x41u), sv_41b = DSB(s1 + 0x41u);
+    u8 sv_40a = DSB(s0 + 0x40u);
+
+    mem_fill(FIGHT_RECS + 0x400u, 0, 0x280);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSD(DS_001077A8) = rec;
+    DSD(DS_001077A8 + 4u) = 0;          /* side 1: no camera-target record */
+    DSD(rec) = fighter;                 /* the two-level pointer */
+    DSB(rec + 0x52u) = 0;               /* 0x34B6C does not dispatch to 0x1A978 */
+    DSB(rec + 0x53u) = 1;               /* 0x3531C case 1: a bare return */
+    DSD(DS_00104B00) = 3;               /* not 4: the mode-4 arm is skipped */
+    DSB(DS_00104B26) = 0;
+
+    DSW(fighter + 0x56u) = 0;           /* pset slot 0 */
+    DSW(fighter + 0x28u) = 0;           /* motion_step and pset_write run */
+    DSW(fighter + 0x2Au) = 0x8000u;     /* 0x2A501: the motion gate */
+    DSD(fighter + 0x18u) = 0x0000AAAAu;
+    DSD(fighter + 0x32u) = 0x00050000u; /* x velocity 5 (word +0x34) */
+    DSD(other + 0x18u) = 0x0000BBBBu;
+
+    DSD(s0) = fighter;
+    DSD(s1) = other;
+    DSB(s0 + 0x42u) = 0x08u;            /* bit 3: the clean copy */
+    DSB(s1 + 0x42u) = 0x08u;
+    DSB(s0 + 0x40u) = 0x80u;            /* 0x3BDF3: no attack consume */
+    DSB(s0 + 0x41u) = 0x80u;            /* bit 7: +0x34 latches +0x2C */
+    DSB(s1 + 0x41u) = 0x80u;
+    DSD(s0 + 0x2Cu) = 0xDEADu;
+    DSD(s0 + 0x34u) = 0xDEADu;
+    DSD(s1 + 0x2Cu) = 0xDEADu;
+    DSD(s1 + 0x34u) = 0xDEADu;
+
+    fight_hud_pass(0);
+    CHECK_EQ_INT((int)DSD(fighter + 0x18u), 0xAAAF);   /* the sync moved it */
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0xAAAF);
+    CHECK_EQ_INT((int)DSD(s0 + 0x34u), 0xAAAF);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0xBBBB);
+    CHECK_EQ_INT((int)DSD(s1 + 0x34u), 0xBBBB);
+
+    DSD(s0) = sv_s0;
+    DSD(s1) = sv_s1;
+    DSB(s0 + 0x42u) = sv_42a;
+    DSB(s1 + 0x42u) = sv_42b;
+    DSB(s0 + 0x41u) = sv_41a;
+    DSB(s1 + 0x41u) = sv_41b;
+    DSB(s0 + 0x40u) = sv_40a;
+}
+
 /* 0x49C78: the direct RNG call sites and their gates. A case-3 entry issues
  * exactly one rng(0x3C); the DS_001088BF tail issues one rng(2) only inside
  * 1..4. The RNG state is the proof; the sentinel seeds prove the gate. */
@@ -3067,9 +3132,11 @@ static void check_pose_entry(void)
 /* ---- Task 2: the state-7 pose handler 0x3A43C (demo-pose record §7.1-§7.3) */
 
 /* The §7.2 phase-1 seed: the slot enters with +0x58 = 1, char 0, the +0x90
- * gate open, and the other side's B/A words (the 0x3A504 setter's globs,
- * B = 0x107D10 + other*2, A = 0x107D14 + other*2) zeroed. Every seeded value
- * differs from its post-condition. */
+ * gate open, and the self side's B/A words (the 0x3A504 setter's globs,
+ * B = 0x107D10 + side*2, A = 0x107D14 + side*2) zeroed. 0x2BC30 returns with
+ * RET 4 (0x2BCEF), popping the 0x3A471 push, so 0x3A48E..0x3A4A8 read ctx[5]
+ * (rec_self) and ctx[1] (the side): record §9. Every seeded value differs from
+ * its post-condition. */
 static void pose_handler_seed(u32 s0, u32 s1, u32 r0, u32 r1)
 {
     pose_chain_setup(s0, s1, r0, r1);
@@ -3084,13 +3151,14 @@ static void pose_handler_seed(u32 s0, u32 s1, u32 r0, u32 r1)
     DSD(r0 + 0x24u) = 0xDEADBEEFu;           /* the frame-hold sentinel */
     DSD(r0 + 0x18u) = 0x5678;                /* the hit_anchor_x write's sentinel */
     DSW(FIGHT_ACTORS) = 0xFFFFu;             /* the pset id sentinel */
-    DSD(r1 + 0x1Cu) = 0xDEADBEEFu;           /* hit_anchor_set's y sentinel */
+    DSD(r0 + 0x1Cu) = 0xDEADBEEFu;           /* hit_anchor_set's y sentinel */
+    DSD(r1 + 0x1Cu) = 0xDEADBEEFu;           /* the other record: untouched */
     DSB(s1 + 0x52u) = 0x07;
-    DSW(0x00107D12u) = 0;                    /* B[1] = 0: the gate closed */
-    DSW(0x00107D16u) = 0;                    /* A[1] */
+    DSW(0x00107D10u) = 0;                    /* B[0] = 0: the gate closed */
+    DSW(0x00107D14u) = 0;                    /* A[0] */
 }
 
-/* §7.1-§7.3: the handler's phases, the animation start and the B[other]/+0x90
+/* §7.1-§7.3: the handler's phases, the animation start and the B[side]/+0x90
  * snap gate. The direct calls and the 0x3531C case-10 wiring are both covered;
  * the latter is the registration's end-to-end proof. */
 static void check_pose_handler(void)
@@ -3112,8 +3180,9 @@ static void check_pose_handler(void)
     fighter_pose_3a43c(s0, 0u);
     CHECK_EQ_INT((int)DSB(s0 + 0x58u), 1);
 
-    /* §7.2: phase 1 starts the char-0 stream, re-anchors the other record and
-     * closes the B[1] = 0 gate. */
+    /* §7.2: phase 1 starts the char-0 stream, re-anchors the self record
+     * (0x3A49B: 0x188AC(side, rec_self+0x18, 0)) and closes the B[0] = 0
+     * gate. */
     pose_handler_seed(s0, s1, r0, r1);
     fighter_pose_3a43c(s0, 0u);
     CHECK_EQ_INT((int)DSD(r0 + 8u), 0x000E7332);    /* 0xC8FE0[0] */
@@ -3123,10 +3192,11 @@ static void check_pose_handler(void)
     CHECK_EQ_INT((int)DSW(FIGHT_ACTORS), 0x1075);   /* the stream's first id */
     CHECK_EQ_INT((int)DSB(s0 + 0x58u), 2);
     CHECK_EQ_INT((int)DSB(s0 + 0x90u), 1);
-    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 0);          /* hit_anchor_set */
-    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x1234);     /* B[1] = 0: no snap */
+    CHECK_EQ_INT((int)DSD(r0 + 0x1Cu), 0);          /* hit_anchor_set */
+    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), (int)0xDEADBEEFu); /* not the other */
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);     /* B[0] = 0: no snap */
 
-    /* §7.3: B[1] = 3, A[1] = 0x4321 and +0x90 = 0 open the snap. Slot+0x42 bit
+    /* §7.3: B[0] = 3, A[0] = 0x4321 and +0x90 = 0 open the snap. Slot+0x42 bit
      * 3 is clear, so the raw's 0x18714 (0x1873D..0x18780) calls 0x18540, calls
      * 0x18350 only when DS_00100AF0[side] != slot+0x20, then returns slot+0x2C
      * - DS_00100AB0[side*8]. The port's hit_record_x omits the two calls (a
@@ -3139,8 +3209,8 @@ static void check_pose_handler(void)
     DSD(DS_001077A8) = 0;
     DSD(DS_00100AF0) = DSD(s0 + 0x20u);
     DSD(DS_00100AB0) = 0x1000;
-    DSW(0x00107D12u) = 3;
-    DSW(0x00107D16u) = 0x4321;
+    DSW(0x00107D10u) = 3;
+    DSW(0x00107D14u) = 0x4321;
     fighter_pose_3a43c(s0, 0u);
     CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x4321);
     CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x4321 - 0x1000);
@@ -3148,20 +3218,28 @@ static void check_pose_handler(void)
     DSD(DS_00100AF0) = sv_af0;
     DSD(DS_00100AB0) = sv_ab0;
 
-    /* §7.3: +0x90 in 1..4 is the table arm (no snap) even with B[1] = 3. */
+    /* §7.3: +0x90 in 1..4 is the table arm (no snap) even with B[0] = 3. */
     pose_handler_seed(s0, s1, r0, r1);
     DSB(s0 + 0x90u) = 4;
+    DSW(0x00107D10u) = 3;
+    DSW(0x00107D14u) = 0x4321;
+    fighter_pose_3a43c(s0, 0u);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);
+
+    /* §7.3: B[0] = 5 closes the snap. */
+    pose_handler_seed(s0, s1, r0, r1);
+    DSW(0x00107D10u) = 5;
+    DSW(0x00107D14u) = 0x4321;
+    fighter_pose_3a43c(s0, 0u);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);
+
+    /* §9: the B/A words are the self side's, not the other's: B[1] = 3 with
+     * A[1] = 0x4321 leaves the gate closed (B[0] = 0). */
+    pose_handler_seed(s0, s1, r0, r1);
     DSW(0x00107D12u) = 3;
     DSW(0x00107D16u) = 0x4321;
     fighter_pose_3a43c(s0, 0u);
-    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x1234);
-
-    /* §7.3: B[1] = 5 closes the snap. */
-    pose_handler_seed(s0, s1, r0, r1);
-    DSW(0x00107D12u) = 5;
-    DSW(0x00107D16u) = 0x4321;
-    fighter_pose_3a43c(s0, 0u);
-    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x1234);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);
 
     /* The wiring: 0x3531C case 10 resolves slot+0x10 and calls it with the
      * raw's (EAX = slot, EBX = side). */
@@ -4358,6 +4436,7 @@ int test_fight(void)
     check_fighter_pass_b();
     check_hud_pass();
     check_hud_sync();
+    check_hud_latch();
     check_effects_rng();
     check_command_map();
     check_think_chain();

@@ -30,7 +30,8 @@ logo at capture 1886).
    call site. `make verify` exits 0 with every enforced claim unmoved — title
    `54 clean, 55 splice, 2 transition, 0 unexplained` and
    `54 clean, 57 splice, 0`; attract `FIRST DIVERGENCE at capture frame 215`;
-   front-end `[560..842]` / 283 / `2 unexplained (832, 833)` allowed by name;
+   front-end `[560..850]` / 291 / `2 unexplained (832, 833)` allowed by name
+   (moved from `[560..842]` / 283 by Task 2b's ruled `0x3A43C`/`0x186C4` fix);
    smk `120/120` + `41/41`; `oracle C-vs-Python: 9866 writes byte-exact`;
    `symbols.h` byte-identical. 0 warnings. A correct fix that necessarily moves
    a claim is absorbed **in the same commit** with its reason recorded (the
