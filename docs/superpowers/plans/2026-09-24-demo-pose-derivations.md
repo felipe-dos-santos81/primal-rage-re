@@ -1243,3 +1243,160 @@ differ by 500–3 000 B from 859 on. The owner is **not derived**. The
 candidates are the fighters' upper-body animation or positions from f ≈ 86,
 and the backdrop/sky scroll that starts at f ≈ 86 in the port (port 503's rows
 0–66 differ from 502's by 24 201 B, while capture 858's equal 502's).
+
+---
+
+## 12. The mode-1 x operands at capture 858 (roar-timing Task 2, branch `frame-858`)
+
+**Result in one line.** Capture 858 is neither the fighters' animation nor the
+camera. It is the arena's **mode-1 props** (temple, crowd, mountains), which
+the port scrolled wrongly once the ramp became non-zero. The pset x writer
+`0x2A690` reads both mode-1 operands as the **high word of a dword load**, and
+the port read the low words: `+0x44` for the ramp entry at `+0x46`, and `+0x32`
+for the velocity word at `+0x34`. This supersedes §11.4's "owner not derived"
+for 858.
+
+### 12.1 The trace (measured, temporary, reverted)
+
+The trace was `getenv("PR_858")`-gated and has been reverted. It printed lines
+from `game_loop` around `0x389C4`/`0x38A38` and `game_frame`, from
+`camera_dispatch`'s call site, from `render_list` (each drawn pset) and from
+`actor_pset_point` (each mode-1 record). Here `f = DS_0010150C` in state 7 and
+`dump = f + 417`.
+
+* **Camera.** `DS_000F0AF0` is 0 through f = 84. At f = 85 `camera_mode_track_pair`
+  moves it to −86: the T-rex's `slot+0x34 = −6230` passes the `0x1800` dead zone
+  by 86 (`a = 0`, `l0 = −86`, pair distance 12 118 ≤ `0x3000`). Then f = 86..92
+  give −204, −259, −336, −383, −426, −465, −500.
+* **Ramp.** The fill runs before `game_frame` (`0x25601`/`0x25606`), so it sees
+  the previous frame's camera. At f = 86 it writes `0x107900[0] = −6`,
+  `[83] = −43`, `0x107A46 = −10`, `DS_00107A3E` 344 → 343 and `DS_00107A3A`
+  88 → 87. Up to f = 85 the table is all zero.
+* **Layers at f = 85 → 86** (render list):
+
+  | pset | layer | what | x f=85 → f=86 |
+  |---|---|---|---|
+  | `0x2BE1` | 1 | sea (sheared) | −328 → −327 |
+  | `0x2BE0` | 2 | sky | −84 → −83 |
+  | `0x02F4`, `0x02F5`, `0x02F6` | 94 | mountains (child of `0x02F4`) | 17 → 23, 174 → 180, 338 → 343 |
+  | `0x02F1`..`0x02F3`, `0x02EF`/`0x02F0` | 174..192 | temple, props | unchanged |
+  | `0x0878`, `0x07E1`, `0x8AAD`, `0x89CD` | 198..207 | crowd | their own walk only |
+
+* **The mode-1 records at f = 86** (`actor_pset_point`, `rec+0x28` bit 12 set):
+
+  | sprite | `+0x64` | `+0x32` | `+0x34` | `+0x44` word | `+0x46` word | port x |
+  |---|---|---|---|---|---|---|
+  | `0x02F4` mountain | −1 | 9362 | 320 | 0 | 0 | 6669 (6304 at f = 85) |
+  | `0x02F2` temple | 14 | 3904 | 0 | 0 | −12 | 512 (unchanged) |
+  | `0x0878` worshipper | 33 | 2688 | 128 | 0 | −21 | 7668 |
+
+  The ramp arm (`+0x64 ≥ 0`) subtracted `2 × word[+0x44] = 0`, so the temple,
+  props and crowd never scrolled. The velocity arm multiplied `0x107A46 = −10`
+  by `word[+0x32] = 9362`, giving −365, so the mountain jumped 365/64 = 5.7 px.
+
+### 12.2 What capture 858 shows (measured)
+
+Capture 858 is a tear frame: rows 0–66 equal port 502 and rows 67–199 come
+from the next frame. In rows 67–199, the sky, sea, fighters and ground match
+port 503. The mountains in rows 83–137 sit where port 502 has them (row-band
+offset 0), and so does the temple. Port 503 moves the mountains 6 px right.
+Captures 859 and 860 show the mountains 1 px right of 502 (region x 215–300,
+rows 40–90), with diffs growing row by row in rows 49–136 against port 504/505.
+That is what a ramp scroll of a few 1/64 px per frame gives, not a 5.7 px jump.
+
+### 12.3 The raw, re-read (Ghidra, fixups applied)
+
+`0x2A690` (capstone over `read_memory` and `disassemble_function`):
+
+```
+0x2a6d3 807b6400      cmp byte [ebx+0x64],0     ; ramp index
+0x2a6d7 7d48          jge 0x2a721
+0x2a6d9 66837b3400    cmp word [ebx+0x34],0     ; velocity word
+0x2a6de 742c          je  0x2a70c
+0x2a6e0 8b4332        mov eax,[ebx+0x32]        ; dword at +0x32 ...
+0x2a6e3 8b15447a1000  mov edx,[0x107a44]
+0x2a6e9 c1f810        sar eax,0x10              ; ... top word: +0x34
+0x2a6ec c1fa10        sar edx,0x10              ; 0x107A46
+0x2a6ef 0fafd0        imul edx,eax
+0x2a6f4 c1fa1f        sar edx,0x1f              ; 0x2A6F4..0x2A6FC: /256, truncating
+0x2a6f7 c1e208        shl edx,8
+0x2a6fa 1bc2          sbb eax,edx
+0x2a6fc c1f808        sar eax,8
+0x2a6ff..0x2a708      edi = [ebx+0x18] + 0x2a00 - eax
+0x2a70c..0x2a71d      edi = [ebx+0x18] + 0x2a00 - ([0x107a44] >> 16)
+0x2a721 8b4361        mov eax,[ebx+0x61]
+0x2a724 c1f818        sar eax,0x18              ; byte +0x64
+0x2a727 668b04450079  mov ax,[eax*2+0x107900]
+0x2a72f 66894346      mov [ebx+0x46],ax         ; the ramp entry, stored at +0x46
+0x2a733 8b4344        mov eax,[ebx+0x44]        ; dword at +0x44 ...
+0x2a736 8b7b18        mov edi,[ebx+0x18]
+0x2a739 c1f810        sar eax,0x10              ; ... top word: +0x46
+0x2a73c 81c7002a0000  add edi,0x2a00
+0x2a742 01c0          add eax,eax
+0x2a744 29c7          sub edi,eax
+```
+
+The port had `(s32)(s16)DSW(rec + 0x44)` and `(s32)(s16)DSW(rec + 0x32)`. The
+rest of `0x2A690` matches the port: the `0x2A6D9` gate, the `0x107A46` read,
+the truncating `/256`, the `0x2A70C` arm, the y (`0x2A765..0x2A7A2`), the
+layer (`0x2A7A5 cmp word [ebx+0x32],0` is a word compare and matches) and the
+tail. `0x2A620` (`mode1_cursor`) also matches: `pset+0x14`, `0x107A4C`, the
+`0x80` clamp. `0x2BE5C` already read `[rec+0x44] >> 16` (§0.3.11).
+
+With the raw's words at f = 86: the mountain gets `p = −10 × 320 = −3200`,
+`−3200 / 256 = −12`, so `x = −4448 + 0x2A00 + 12 = 6316` (0.19 px). The temple
+gets `x = −10240 + 0x2A00 + 24 = 536`.
+
+### 12.4 The fix and its assertions
+
+* **Fix.** Two operand reads in `actor_pset_point` (`port/src/game/actors.c`):
+  `(s32)DSD(rec + 0x44) >> 16` and `(s32)DSD(rec + 0x32) >> 16`, each with the
+  raw's address in a comment. No function was added, so the size gate does not
+  apply.
+* **Assertions** (`test_fight.c` `check_type_callbacks`, a new block after the
+  `0x2BE5C` one). Seeds are `rec+0x28 = 0x1000` and `rec+0x38 = 0`, with the
+  saved and restored ramp entry `0x107906` and `DS_00107A44`.
+  * Ramp arm: `+0x64 = 3`, entry `0xFFF4` (−12), `DSD(rec+0x44) = 0x55550777`
+    (the `+0x46` sentinel 0x5555 and the low word 0x0777), `rec+0x18 = −10240`,
+    `pset+4 = 0xDEADBEEF`. It checks `word[+0x46] == −12` and `pset+4 == 536`.
+  * Velocity arm: `+0x64 = 0xFF`, `+0x32 = 9362`, `+0x34 = 320`,
+    `0x107A46 = −10`, `rec+0x18 = −4448`. It checks `pset+4 == 6316`.
+* **Mutations** (each reverted; the suite then passed):
+  * Pre-fix `+0x44` read: `test_fight.c:4293: -3310 != 536`
+  * Pre-fix `+0x32` read: `test_fight.c:4302: 6669 != 6316`
+  * Unsigned `+0x46` word: `test_fight.c:4293: -130536 != 536`
+  * Flooring `p >> 8` for the truncating `/256`: `test_fight.c:4302: 6317 != 6316`
+
+### 12.5 Measured
+
+| measurement | before (`efdc214`) | after |
+|---|---|---|
+| capture 858 ↔ port 502/503 | best splice 13 617 B / 5 253 px | **0 B** (splice at byte 64 254, row 66) |
+| capture 859 ↔ port 504 | 8 339 px | 1 433 px; best splice 503/504 at byte 90 582 leaves 449 B / 159 px |
+| demo oracle first unexplained | 858 (raw 3765); `[858..3616]` 2759 / 2753 unexpl. | **859 (raw 3766)**; `[859..3616]` 2758 / 2752 unexpl. |
+| demo-fight ratchet | `[858..1884]` 1027, N = 858 | **`[859..1884]` 1026**, "ratchet improved: 859 > 858", **N raised to 859** |
+| front-end oracle | `[560..857]` / 298 / 134 clean, 160 splice, 0 transition, 2 unexpl. (832, 833) | **`[560..858]` / 299 / 134 clean, 161 splice, 0 transition, 2 unexpl. (832, 833)** |
+
+The front-end move is the one the brief allowed: the window comes from the
+port's own dump, and capture 858 is now explained. The unexplained set is
+unchanged. Title `54/55/2/0` and `54/57/0/0` (determinism 54), smk 120/120 and
+41/41, attract 215/216 (expected divergence at 215), C-vs-Python 9866 and
+`symbols.h` are unmoved.
+
+**The new first unexplained frame, 859 (characterised, not fixed).** Capture
+859 (f = 87) is a tear frame: its best splice, port 503/504 at byte 90 582
+(row 94), leaves 449 B / 159 px. All of it lies in x 86–111, rows 137–174. That
+is the worshipper behind the T-rex, sprite `0x07E1` at layer 208 (pset x 84,
+y 135, 26 × 40 at f = 87). The capture shows a different pose from port 504's,
+not a shift: the best offset over dx ∈ [−4, 4], dy ∈ [−2, 2] is (0, 0) at
+159 px. Ports 503 and 505 are worse at their best offsets (547 and 648 px). In the next captures the
+same box stays unexplained (254 px at 860 ↔ 505, 367 at 861 ↔ 506). The owner is
+**not derived**. The candidate is the crowd actor's animation timing (the
+`0x07E0` → `0x07E1` stream advanced at f = 86 in the port). The named gaps
+§10 lists are not implicated here: `hit_record_x/y` first differ at f = 90, and
+the `0x354F0` clamp and the split-arm write are inert at f = 87 (pair distance
+12 346 < `word[0x9AF28]` = 20 480; `|slot+0x2C| ≤ 6 458 < 0x7C00`).
+
+**Observed, not derived.** At f = 93 the port's camera steps −500 → −256
+because side 0's `DS_00100AF0` anchor drops to 0 (`AB0` −448 → 320). This is
+past the current residual and was not compared against the capture.
