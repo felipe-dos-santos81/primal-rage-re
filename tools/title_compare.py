@@ -643,10 +643,6 @@ def main():
             print("title_compare: demo-fight: FAIL: N %d > window end + 1 (%d): "
                   "N is unreachable" % (ratchet, end + 1))
             return 1
-        if fe_b < ratchet - 1:
-            print("title_compare: demo-fight: FAIL: front-end window end %d < "
-                  "N-1 (%d): the front-end window shrank" % (fe_b, ratchet - 1))
-            return 1
         unexpl = [j for j in range(lo, end) if kinds[j][0] == 'unexplained']
         first = unexpl[0] if unexpl else None
         if first is not None:

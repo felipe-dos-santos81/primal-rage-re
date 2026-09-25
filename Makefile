@@ -201,8 +201,9 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # "title_compare: demo: first unexplained captured frame 851 (raw 3758); 2760 in the window".
 # The two counts differ by scope: 2760 is --demo's window, [851..3616] to the capture's
 # end; 1034 is this oracle's fight window, [851..1884], cut at the first all-black frame.
-# Both share the first unexplained frame, 851. The tool also fails if fe_b < N-1
-# (front-end window shrank), if N > window end + 1, or if the window collapses.
+# Both share the first unexplained frame, 851. The tool also fails if N > window end + 1
+# or if the window collapses; a shrunk front-end window lowers fe_b+1, so the
+# ratchet itself fails (first unexplained < N).
 # At 851 == fe_b+1 the claim is currently only that the front-end window does not
 # shrink and the window start does not move. Skips without the capture.
 DEMO_FIGHT_MIN_FIRST = 851
