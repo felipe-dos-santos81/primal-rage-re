@@ -1701,3 +1701,196 @@ draws. The owner is **not derived**. Its candidates are:
 
 From capture 866 on, the fighters' rows (97–192) also diverge, by 27 645 B at
 866 ↔ 509/510.
+
+## 15. The grey flier at capture 864 (roar-timing Task 5, `7147288`)
+
+**Result in one line.** The grey figure at the left edge of captures 864/865 is
+the flying creature `0x1282C` spawns from descriptor `0xBB254` (type `0x01`,
+stream `0xE8A94`, sprites `0x0281..`, effects palette `0x105FF3C`). The port
+never showed it for two reasons. First, state 6's reset `0x20DF4` calls
+`0x12750` at `0x20E33`, and that call builds the node list the actor's cb1
+`0x127C0` pops. The port had left the call as part of the `0x20DF4` named gap,
+so every such spawn was refused. Second, the front-end driver entered state 2
+with the frame counter `DS_000EF6DC` at 0. The raw has counted every loop
+iteration since boot by then, so the spawn gate `(DS_000EF6DC & 0x3F) == 0`
+opened at the wrong frames. The fix is one new function of 0x4D raw bytes
+(`0x12750..0x1279C`), its call, and the driver seed, well inside the size gate.
+This supersedes §14.4's "owner not derived" for 864.
+
+### 15.1 The sprite (measured)
+
+* **Colours.** The figure's pixels (x 0–23, rows 99–118 of capture 864) are
+  DAC `81` (154,154,154), `82` (113,113,113), `109` (65,48,16) and black. At
+  f = 91 the port's palette table (`0x107618..`) maps `0x48..0x77` to entry
+  `0x107638`, handle `0x105FF3C`, which is the effects palette the blood splash
+  `0x8511` and ring `0x0089` use.
+* **Search.** A temporary hook (reverted) decoded every resolvable sprite id
+  `1..0x7FFF` at f = 91 through `sprite_blit` with pal `0x107638`: 18 360
+  sprites, 743 of which contain indices 81, 82 and 109. Each was then placed
+  over the box, with and without hflip, at every position. The only near-exact
+  fit is `0x8281` (`0x0281` hflipped, 31 × 20) at screen (−7, 99), with 1 px
+  left over. The next best leaves 157 px.
+* **Descriptor.** In the data object, `0x0281` is the first id of stream
+  `0xE8A94` (`cd40 0281 b840 0008 8a94 000e 8e40 c300 …`). Its only descriptor
+  is `0xBB254`: stream `0xE8A94`, type `0x01`, frame 4, `+6 = 0x11`,
+  flags `0x80`, handle `0x105FF3C`. Ghidra `get_xrefs_to 0xBB254` returns
+  `0x128B6` (in `0x1282C`, the port's `camera_dust_spawn`), `0x1295D` (in
+  `0x128D4`, reached only from `0x26C8C`, not in the demo frame) and the type
+  table `0xBB9E4`.
+
+### 15.2 Why the port never drew it (measured, temporary trace reverted)
+
+* **The list.** `camera_dust_spawn` did fire in the port: at f = 81,
+  `DS_000EF6DC = 0x440`, rng(7) = 0, and it called `actor_spawn(0xBB254,
+  −10240, 1482, 7292, 0x4000)`. That call returned 0. Type `0x01`'s cb1
+  `0x127C0` pops the `0xF0A78` list and returns `0xFF` when it is empty
+  (`0x127C4..0x127E8`). `DSD(0xF0A78)` was 0 because nothing had built the
+  list.
+* **Who builds it.** Ghidra `get_xrefs_to 0xF0A78` names only `0x12750` as a
+  writer. Its callers are `0x20E33`, in `0x20DF4` (the state-6 reset the port
+  transcribes in `game_state_6`), and `0x20EDA`, in the sibling reset
+  `0x20EB8`, which the demo does not reach.
+
+  ```
+  0x20e2e e85db50000  call 0x2c390
+  0x20e33 e81819ffff  call 0x12750      ; the node lists
+  0x20e38 e8c3840200  call 0x49300      ; fight_list_init (already ported)
+
+  0x12753 bae00a0f00  mov edx,0xf0ae0
+  0x12758 b9780a0f00  mov ecx,0xf0a78
+  0x1275d bb800a0f00  mov ebx,0xf0a80
+  0x12762 8915e40a0f00 mov [0xf0ae4],edx ; in-use sentinel: prev
+  0x12768 8915e00a0f00 mov [0xf0ae0],edx ;                  next
+  0x1276e 890d7c0a0f00 mov [0xf0a7c],ecx ; free sentinel:   prev
+  0x12774 890d780a0f00 mov [0xf0a78],ecx ;                  next
+  0x1277a 81fbe00a0f00 cmp ebx,0xf0ae0
+  0x12780 7317        jnc 0x12799
+  0x12782 b8780a0f00  mov eax,0xf0a78
+  0x12787 89da        mov edx,ebx
+  0x12789 83c30c      add ebx,0xc
+  0x1278c e82f220100  call 0x249c0      ; insert before the sentinel: tail-append
+  0x12791 81fbe00a0f00 cmp ebx,0xf0ae0
+  0x12797 72e9        jc 0x12782
+  ```
+
+  That is eight 12-byte nodes, `0xF0A80..0xF0AD4`, on the free list.
+  `0x127C0`/`0x12800` (`actor_type_127C0`/`actor_type_12800`) and
+  `0x1282C` were already ported and match the raw: `0x1282C` was re-diffed
+  instruction by instruction (`0x12834..0x128C5`).
+* **With the list built but the counter unseeded** (the fix alone), the flier
+  spawns at f = 81 and is visible from capture 858 on. That made 862..865
+  unexplained (370, 297, 764 and 741 B), and the ratchet would have failed.
+  So the spawn frame is wrong, and the gate's only input is `DS_000EF6DC`.
+
+### 15.3 The frame counter
+
+* **Raw.** `DS_000EF6DC` is a word, 0 in the image (Ghidra `read_memory
+  0xEF6DC`). Its only writer is `0x24C5C`'s per-iteration increment
+  (`0x24CCD mov di,[0xef6dc]` / `0x24CD4 inc edi` / `0x24CDB mov [0xef6dc],di`;
+  `get_xrefs_to` lists no other write). So it counts loop iterations since
+  boot.
+* **The driver.** The front-end driver (`test_game.c`) skips the boot attract
+  and the title and enters state 2 directly. It already re-seeds the LCG to the
+  attract's post-state (`FRONTEND_RNG_AFTER_ATTRACT`), but it left the counter
+  at 0, so its first state-2 frame counts 1.
+* **The port's own boot run.** `prageport --check 2500`, traced temporarily and
+  then reverted, runs state 0 for n = 1..690 and the title state 1 for
+  n = 691..886. The title is 1 phase-0 frame, 95 phase-1 steps of `0x10`
+  from `0x600`, and the `0x3E688` fade. The first state-2 frame counts 887,
+  so **886 iterations precede state 2**.
+* **Capture bound.** Each frontend capture frame was matched to the natural
+  run's frames, using `window.txt`'s raw index.
+  * Over the attract (n = 2..689), `raw − n·70.09/60.05` stays at
+    1365 ± 1, so the port's attract is iteration-exact.
+  * From the title's exact frame n = 769 (capture 309) through state 2
+    (capture 391, n = 980) and state 3 (capture 562, n = 1476), it stays at
+    1384.4..1387.2.
+  * The only uncounted time is n = 689..769. There the capture freezes over raw
+    2174..2192 (the title load), which is 16 game-frame times, and animates
+    continuously from 2192 on.
+  * So the original's count before state 2 lies in **886 + [−4, +17]**.
+* **Mod-64 pin.** The flier pins the count mod 64. With the counter seeded to
+  886, the gate opens at f = 91, and captures 864 and 865 become exact at 0 B.
+  A temporary probe (reverted) added k to the counter at the gate for
+  k = 53..57, the residues mod 64 around 886's 54. Only k = 54 explains both
+  frames: k = 53 leaves 864 at 495 B, k = 55 makes 863 unexplained (492 B) and
+  k = 56/57 make 862 unexplained. Within the capture's bound, 886 is the only
+  value with that residue. The value is the port's own boot-run count,
+  corroborated by the capture, and was not fitted.
+* **Side effect.** No other state-2..7 reader changes. The parity readers
+  (`fighter.c` `& 1`, `frame_timer`'s `& 1`) see an even offset. The overlay
+  blink (`& 0x20`/`& 0x1F`) is gated off by `CREDITS:5`. `0x128D4`'s `& 0xF`
+  is not in the demo frame.
+
+### 15.4 The fix and its assertions
+
+* **Fix.**
+  * `camera_dust_list_init` (`port/src/game/camera.c`, `0x12750`) is new and
+    exported in `camera.h`.
+  * `game_state_6` calls it at the raw position, before `fight_list_init`
+    (`0x20E33`, then `0x20E38`). The `PORT:` gap comment now names only the
+    remaining calls.
+  * The front-end driver seeds `DSW(DS_000EF6DC) = 886`
+    (`FRONTEND_FRAMES_BEFORE_STATE2`) beside its LCG seed.
+* **Assertions.**
+  * **`check_dust_list`** (`test_fight.c`) fills `0xF0A78..0xF0AE7` with
+    `0xA5`, then checks:
+    * both sentinels
+    * the eight-node order and prev links
+    * the untouched node `+8`
+    * the free tail `0xF0AD4`
+
+    It then checks that an `0xBB254` spawn is accepted: type 1, `+0x14 =
+    0xF0A80`, the node's owner is the record, the in-use head is `0xF0A80` and
+    the free head is `0xF0A8C`. On an empty free list the spawn returns 0. The
+    snapshot of `0xF0A78` grows from 0x10 to 0x68 bytes so that the nodes are
+    restored.
+  * **`check_state6`** fills the same range with `0xA5` before the state-6
+    step and checks the four sentinel links after it.
+  * **The driver** records the loop frame on which a type-`0x01` actor is first
+    live. It checks loop frame 1097 (dumped 508, capture 864), with
+    `DS_0010150C` reading 92 after that iteration; the spawn ran at f = 91
+    inside it. The sentinel is −1.
+* **Mutations.** Each was reverted by the script; the suite then passed.
+
+  | mutation | failures |
+  |---|---|
+  | no `0x12750` call in state 6 | `test_fight.c` state-6 links (4 lines); driver `-1 != 92`, `-1 != 1097` |
+  | head insert (`0x249B0`) instead of `0x249C0` | state-6 tail/head, `check_dust_list` order and tail |
+  | node stride `0x10` | order, tail, `n: 6 != 8` |
+  | bound one node past | links, `+8` of the ninth node, `n: 9 != 8` |
+  | no `0x12768` in-use next | `0xF0AE0` link in both checks |
+  | no `0x12762` in-use prev | `0xF0AE4` link in both checks |
+  | driver: no counter seed | `82 != 92`, `1087 != 1097` (spawn at f = 81) |
+  | driver: seed 885 / 887 | `93`/`91 != 92`, `1098`/`1096 != 1097` |
+
+### 15.5 Measured
+
+| measurement | before (`60ad24b`) | after (`7147288`) |
+|---|---|---|
+| capture 864 ↔ port 508 | 495 B / 165 px | **0 B** |
+| capture 865 ↔ port 508/509 | 498 B / 166 px | **0 B** (splice at byte 66 513, row 69) |
+| demo oracle first unexplained | 864 (raw 3771); `[864..3616]` 2753 / 2747 unexpl. | **866 (raw 3773)**; `[866..3616]` 2751 / 2745 unexpl. |
+| demo-fight ratchet | `[864..1884]` 1021, N = 864 | **`[866..1884]` 1019**, "ratchet improved: 866 > 864", **N raised to 866** |
+| front-end oracle | `[560..863]` / 304 / 136 clean, 164 splice, 0 transition, 2 unexpl. (832, 833) | **`[560..865]` / 306 / 137 clean, 165 splice, 0 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved, which is the move the brief allowed.
+
+**The new first unexplained frame, 866 (characterised, not fixed).** Capture
+866 is the f = 92/93 tear. Its best splice, port 509/510 at byte 131 847 (row
+137), leaves 27 858 B / 9 891 px spread over x 0–319 and rows 97–192. Both
+fighters and the ground differ. Against port 509 the capture differs in
+2 971 px above row 137 and 8 881 px below it. The ground rows 185–199 match
+no port frame from 508 to 511 at any horizontal shift in [−8, 8] (best 821 px
+against 509), so the scroll itself differs.
+
+At f = 93 the port changes three things at once:
+
+* its camera steps −500 → −256 (§12.5's still-uncompared jump: side 0's
+  `DS_00100AF0` anchor drops to 0)
+* the T-rex's sprite switches `0x907E` → `0x96B5` and moves to x −75
+* the shadow `0x9E04` leaves the list
+
+The capture shows the T-rex still in its hit pose. The owner is **not
+derived**. The candidates are the f = 93 camera anchor and the T-rex's f = 93
+animation switch.

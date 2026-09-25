@@ -523,8 +523,8 @@ demo-fight section below.
 3617 distinct post-logo frames, raw 1367..8409 after the demo-fight closure
 cycle's re-capture) reaches the front-end. With the state-3 render ported
 (`0x12484`) the `PR_FRONTEND_DUMP` driver emits the real zoom-out, and
-`tools/title_compare.py --frontend` aligns it: window distinct **[560..863]**
-(raw 3108..3770), **304 frames: 136 clean, 164 splice, 0 transition, 2
+`tools/title_compare.py --frontend` aligns it: window distinct **[560..865]**
+(raw 3108..3772), **306 frames: 137 clean, 165 splice, 0 transition, 2
 unexplained** (the four classes sum to 297: the window's other two frames are the
 all-black captures 561 and 831, excluded as artifacts — the oracle's own list) — captures **832** and **833**, allowed by name in
 `FRONTEND_ALLOWED_UNEXPLAINED` with their reason (`title_compare.py:352-374`;
@@ -540,7 +540,9 @@ stack-offset fix and `0x35829 0x186C4` re-latch then explained captures
 the frame-858 fix (`0x2A690`'s mode-1 x operands) then explained 858: →
 `[560..858]`/299; the frame-859 fix (`0x49C78`'s case-1 walk arrival) then
 explained 859: → `[560..859]`/300; the frame-860 fix (`0x49C78`'s tail reset
-`0x4A634`) then explained 860..863: → `[560..863]`/304.) The claim that result supports is precise and narrow: **no
+`0x4A634`) then explained 860..863: → `[560..863]`/304; the frame-864 fix
+(state 6's `0x12750` node list and the driver's frame-counter seed) then
+explained 864/865: → `[560..865]`/306.) The claim that result supports is precise and narrow: **no
 content-bearing capture frame inside the window the port's own dump exhibits is
 unexplained** (the two named exceptions aside). The window is derived from the port's dump (`check_capture`'s
 `idx`→`a,b` mapping) and the branch discards `check_capture`'s `rc` (coverage and
@@ -671,17 +673,18 @@ at loop 1070 (dumped 481), state 7 runs loop 1071..1969 (dumped 482..1380), and
 dump stops. The dump therefore holds **1381 frames** (dumped 0..1380); the 1400
 cap covers it with no truncation, and the 2000-frame loop clears the 1970 exit.
 
-**The demo window is report-only; its first unexplained frame is capture 864 —
-a grey figure at the left screen edge that the port does not draw, after the
+**The demo window is report-only; its first unexplained frame is capture 866 —
+the f = 92/93 tear, where both fighters and the ground scroll differ, after the
 demo-pose cycle explained captures 843..850, the roar-timing fix 851..857, the
-frame-858 fix 858, the frame-859 fix 859 and the frame-860 fix 860..863.** `tools/title_compare.py --demo` locates the front-end window
+frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863 and the
+frame-864 fix 864/865.** `tools/title_compare.py --demo` locates the front-end window
 with the same content alignment, then classifies the capture region after it
 against the port dump frames after the last frame that window exhibits — the
 same clean/splice/transition/unexplained model, no second one. It reports and
 exits 0.
 
-* Front-end window (still enforced in `verify`): distinct **[560..863]** (raw
-  3108..3770), **304 frames: 136 clean, 164 splice, 0 transition, 2
+* Front-end window (still enforced in `verify`): distinct **[560..865]** (raw
+  3108..3772), **306 frames: 137 clean, 165 splice, 0 transition, 2
   unexplained** — captures **832** (the loader's `- LOADING -` screen) and
   **833** (the dark arena with the `LOADING` text overlaid), allowed by name in
   `FRONTEND_ALLOWED_UNEXPLAINED` (the arena-backdrop cycle's absorbed claim
@@ -693,10 +696,12 @@ exits 0.
   reproducible — a `title_capture.py --verify-reproducible` run of the pinned
   original gave 587 vs 588 distinct frames and a first divergence at distinct
   index 30), and the oracle's claim is unchanged.
-* Demo window: distinct **[864..3616]** (raw **3771..8409**), **2753 frames:
-  0 clean, 0 splice, 0 transition, 2747 unexplained** (6 all-black capture
-  frames excluded as artifacts). Demo port frames **[508..1380]** (873),
-  **0/873 exhibited**. (Measured on the frame-860 fix; before it: `[860..3616]`,
+* Demo window: distinct **[866..3616]** (raw **3773..8409**), **2751 frames:
+  0 clean, 0 splice, 0 transition, 2745 unexplained** (6 all-black capture
+  frames excluded as artifacts). Demo port frames **[510..1380]** (871),
+  **0/871 exhibited**. (Measured on the frame-864 fix; before it: `[864..3616]`,
+  2753 frames, port `[508..1380]`, first unexplained 864; before the frame-860
+  fix: `[860..3616]`,
   2757 frames, port `[505..1380]`, first unexplained 860; before the frame-859
   fix: `[859..3616]`,
   2758 frames, port `[504..1380]`, first unexplained 859; before the frame-858
@@ -705,11 +710,16 @@ exits 0.
   fix: `[851..3616]`, 2766 frames, port `[497..1380]`, first unexplained 851; before
   the demo-pose cycle: `[843..3616]`, 2774 frames, port `[490..1380]`, first
   unexplained 843.)
-* **First unexplained captured frame 864 (raw 3771)** (demo-pose record §14.4).
-  Capture 864 (f = 91) matches port 508 except for 495 B / 165 px, all in
-  x 0–23, rows 99–118: a small grey figure at the left screen edge, persisting
-  through 865/866, that the port does not draw. The owner (an unported effect
-  type or spawn) is not yet derived. (Before the frame-860 fix this was capture
+* **First unexplained captured frame 866 (raw 3773)** (demo-pose record §15.5).
+  Capture 866 is the f = 92/93 tear: the best 509/510 splice (row 137) leaves
+  27 858 B / 9 891 px over both fighters and the ground, whose rows 185–199
+  match no port frame 508..511 at any shift in [−8, 8]. At f = 93 the port's
+  camera steps −500 → −256, the T-rex switches `0x907E` → `0x96B5` and its
+  shadow `0x9E04` leaves the list. The owner is not yet derived. (Before the
+  frame-864 fix this was capture 864: the grey flier `0x1282C` spawns from
+  `0xBB254` was refused because state 6's `0x12750` node list was unported, and
+  the driver's frame counter was unseeded, so the gate opened at f = 81 instead
+  of f = 91; record §15. Before the frame-860 fix this was capture
   860: the port kept the roar's side-0 slot `+0x42` bit 0 set, so `0x4AB7F`
   retargeted the worshipper to type 8 at f = 88, and the best 504/505 splice
   left 476 B / 164 px; porting the `0x4A634` tail reset, record §14, removed
@@ -745,15 +755,16 @@ exits 0.
   arena-backdrop cycle later moved it past 832 to **843** — the T-rex pose, the
   cycle-5 outcome below — the demo-pose cycle to **851**, cycle 6 below, and the
 roar-timing fix to **858**, the frame-858 fix to **859**, the frame-859
-fix to **860**, and the frame-860 fix to **864**.)
+fix to **860**, the frame-860 fix to **864**, and the frame-864 fix to
+**866**.)
 * **The window is no longer non-discriminating.** Cycle 1's `--demo` window
   opened on the state-9 hold's first frame, so it read identically for correct or
   broken code. Task 3 made the state-9 hold match — the hold's frames
   (816..830) are clean inside the **front-end** window (`0 unexplained`) — so the
   demo window's boundary (the loader's presentation at 832/833, then the T-rex
   pose at 843, since moved to 851 by cycle 6 below, to 858 by the roar-timing
-fix, to 859 by the frame-858 fix, to 860 by the frame-859 fix and to 864 by
-the frame-860 fix) is a real content gap, not a window-definition artifact; the demo
+fix, to 859 by the frame-858 fix, to 860 by the frame-859 fix, to 864 by
+the frame-860 fix and to 866 by the frame-864 fix) is a real content gap, not a window-definition artifact; the demo
   window itself still reports **0 clean** (above). Window re-anchoring was **removed from this cycle**
   (design spec, "Removed from this cycle"): no new reference and no re-anchoring
   task, because porting the state-9 render made the **front-end** window's
@@ -1374,6 +1385,32 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   `[864..1884]` has 1021 frames, 0 explained. The ratchet N is raised 860 → 864.
 * **Moved claim (allowed by the brief).** Front-end `[560..859]`/300 →
   **`[560..863]`/304: 136 clean, 164 splice, 0 transition, 2 unexplained
+  (832, 833)**. Nothing else moved.
+
+### Grey flier (`7147288`), captures 864/865
+
+* **Cause (raw).** The grey figure at the left edge of captures 864/865 is the
+  flier `0x1282C` spawns from `0xBB254` (type `0x01`, stream `0xE8A94`, sprite
+  `0x0281` hflipped at (−7, 99), effects palette `0x105FF3C`). Type `0x01`'s
+  cb1 `0x127C0` pops the `0xF0A78` node list. State 6's reset `0x20DF4` builds
+  it at `0x20E33` (`call 0x12750`), and the port had left that call in the
+  `0x20DF4` gap, so every spawn was refused. The gate
+  `(DS_000EF6DC & 0x3F) == 0` reads the loop counter `0x24C5C` increments
+  (`0x24CDB`, a word since boot). The front-end driver skipped the attract and
+  title with it at 0, so the gate would have opened at f = 81 rather than
+  f = 91.
+* **Fix.** `camera_dust_list_init` (`0x12750`), called before
+  `fight_list_init` as in the raw. The driver seeds the counter to 886, the
+  port's own boot-run count before state 2. The capture bounds that count to
+  886 + [−4, +17], and the flier pins it mod 64. `check_dust_list`,
+  `check_state6` and the driver's first-flier frame (loop 1097, capture 864)
+  are mutation-proven.
+* **Measured.** Captures 864 (port 508) and 865 (508/509 splice) are now
+  0 B, from 495 and 498 B. The demo's first unexplained is now **866 (raw
+  3773)**, and the fight window `[866..1884]` has 1019 frames, 0 explained. The
+  ratchet N is raised 864 → 866.
+* **Moved claim (allowed by the brief).** Front-end `[560..863]`/304 →
+  **`[560..865]`/306: 137 clean, 165 splice, 0 transition, 2 unexplained
   (832, 833)**. Nothing else moved.
 
 ## Landmarks (verified)
