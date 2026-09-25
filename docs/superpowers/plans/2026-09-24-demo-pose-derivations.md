@@ -101,11 +101,21 @@ one-shot DAC dump and the `POSE_3A43C` gate trace). All reverted.
    port's wrong value; it passes only because its seed (`edx3 = 0`,
    `slot+0x52 = 0`) makes both forms 0. **Task 2 must fix the store and update
    that assertion with this evidence** (§7.4).
-4. **`0x2C3FC` is not a stub** (arena-backdrop §0.3.9, re-confirmed): 1268 B,
-   206 callers — the voice dispatcher. It enters the closure only through the
-   *pruned* path `0x36870 → 0x37D18 → 0x2C3FC` (a voice call) and through
-   `0x39CC8` case 3's tail. The method keeps it excluded; §4 reports the
-   sensitivity.
+4. **`0x2C3FC` is not a stub — and its demo-reached calls are RNG- and
+   fight-state-neutral** (arena-backdrop §0.3.9, extended this cycle). The raw
+   is 1268 B / 206 callers — the voice dispatcher, which the port carries as an
+   out-of-scope no-op. The brief's Step-3 question is answered in **§3.4**: the
+   dispatcher consumes **no game RNG** (the LCG state `0xEF6D8` is read/written
+   only by `0x5D7DC` and the seeder `0x20C10`, and no member of `0x2C3FC`'s
+   190-function closure calls `0x5D7DC`) and writes **no fight-visible state**
+   (its writes land in the voice-state block `0x102860..0x1028DB`, whose only
+   xrefs are the `0x1Cxxx` voice family). The method's `0x5Dxxx`-is-the-RNG
+   exclusion mislabels the audio helpers (`0x5DD03` → `0x67FA0`, a field
+   getter; `0x5D86A` → `0x6616A`, a cleanup; `0x5DC0F`/`0x5DC8B`/`0x5DEAF`/
+   `0x5DEED` → the AIL sound driver). It enters the closure through the
+   `0x36870 → 0x37D18 → 0x2C3FC` path (made live by Task 2's registration) and
+   through `0x39CC8` case 3's tail (the design's family, not reached by the
+   demo). The method keeps it excluded; §4 reports the sensitivity.
 5. **The `0x36870` animation-opcode target is ported but never registered.**
    The roar stream reaches it (§2.5); the port's `anim_indirect`
    (`actors.c:565`) resolves through `fn_resolve` and skips an unregistered
@@ -380,6 +390,13 @@ their evidence) are the pose setter's `glob_b` bug (§0.3.3) and the
 `0x36870` registration; the camera/scene path is **already ported** (the
 arena-backdrop cycle) and matches through 490, so it is not the cause.
 
+**The `0x36870` registration's own live call (verified, §3.4).** The ported
+`fighter_36870`'s case-0 arm (`fighter.c`'s `0x36A1A`) calls `fighter_37d18`
+when `slot+0x42` bit 0x20 holds, and `0x37D18` (`0x37D5C`) is a `0x2C3FC`
+caller: so registering `0x36870` makes the voice path live. Its RNG- and
+fight-state-neutrality is proved in §3.4, so the registration does not grow the
+closure.
+
 ---
 
 ## 3. The porting plan (Step 3)
@@ -441,14 +458,57 @@ static void anim_code_39A34(u32 rec, u32 arg) { ... }
 (0x3AD2A/0x3AD31/0x3AD3D) */`. Update `check_pose_entry`'s `0x107D10`
 assertion with the raw evidence and add a distinguishing seed (§7.4).
 
-### 3.4 The `0x2C3FC(0x6C)` voice call — out of scope, unchanged
+### 3.4 The `0x2C3FC` voice calls — the RNG/fight-visible verdict
 
-`0x2C3FC(0x6C)` is the *`0x39CC8`* family's death-pose tail (`0x39ED5`/`0x39EDA`),
-**not** the `0x3A43C` family's. The demo's handler never calls it. The port's
-stub stays (the arena-backdrop §0.3.9 / `fidelity-gaps` §7.13 precedent), and
-the closure does **not** grow: `0x2C3FC` is pruned as one of the method's five
-stubs, and its raw truth (1268 B, 206 callers) would put the closure over the
-gate only if the cycle wanted its behaviour (§4.3).
+The brief's Step 3 asks whether the original's dispatcher consumes RNG or
+writes fight-visible state. **Verdict: neither, for every path the demo can
+reach; the stub stays and the closure does not grow.**
+
+* **The reached codes (raw).** `0x37D18`'s call (the path Task 2 makes live by
+  registering `0x36870`) passes `word[0xBDAD4 + char*2]` — char 0 (the T-rex)
+  = **0x92**, char 3 (the raptor) = **0xA1**; `0x35E6C`'s = **0x6D**;
+  `0x36710`'s = **0x6E**; `0x39040`'s `0x3923D` = **0xDA**/**0xDB** (the
+  `rng_next(2)` draw at `0x39228` picks one); `0x3531C`'s = **0xEC**/**0xE0**
+  (the inert `DS_001078F6` countdown); `0x3D784`'s = **0x4F**; the animation
+  opcode `0x2E` (`0x2B8D2`: `AND EAX,0xFFFF; CALL 0x2C3FC`) = the stream's
+  operand; `0x39CC8` case 3's = **0x6C** (the design's family, not reached by
+  the demo's handler). Every one of these is **type 2** in the dispatcher's
+  table `DS_000BBDC8 + code*12` (0x92/0xA1/0x6C/0x6D/0x6E/0xDA/0xDB) except
+  **0xEC** (type 1) and **0xE0**/**0x4F** (type 5, and 0x4F's arm calls
+  nothing).
+* **The type-2 arm's callees** (the dispatcher's `case 2`, `0x2C3FC`'s
+  decompilation): `0x1CE70` scans the voice table `0x10286C` and calls
+  `0x5DD03`; on a miss it calls `0x1CC28`, which allocates a voice entry in
+  `0x102860..0x102874` and calls `0x5DD03`/`0x5DC0F`/`0x5DC8B`/`0x1B544`
+  (the resource resolve, ported). The type-1 arm (`0x1CA14`) calls nothing.
+* **The decisive RNG check.** The game's LCG state `0xEF6D8` has exactly three
+  xrefs: `0x20C62` (WRITE, the seeder `FUN_00020C10`), `0x5D7E5` (READ) and
+  `0x5D7F6` (WRITE) — both in `0x5D7DC`, the game RNG. **No member of
+  `0x2C3FC`'s 190-function closure calls `0x5D7DC`** (the direct-caller set of
+  `0x5D7DC` intersected with the closure is empty). The 21 `0x5Dxxx` functions
+  the method's exclusion range treats as "the RNG" are the AIL sound driver's
+  helpers: `0x5DD03` → `0x67FA0` (a field getter: `return p ? p[4] : 0`),
+  `0x5D86A` → `0x6616A` (a cleanup loop), `0x5DEAF` → `0x6A8A0`,
+  `0x5DC0F`/`0x5DC8B`/`0x5DEED` likewise runtime wrappers. They draw from the
+  audio subsystem's own state, not `0xEF6D8`.
+* **The decisive fight-state check.** The dispatcher's writes land in the
+  voice-state block: the xrefs to `0x102860`, `0x1028C8` and `0x1028D4` are
+  only the `0x1Cxxx` voice family (`0x1CA14`, `0x1CA6C`, `0x1CB18`, `0x1CC28`,
+  `0x1CD9C`, `0x1CE04`, `0x1CE70`, `0x1CED4`, `0x1CF40`, `0x1D018`,
+  `0x1D1B0`). No fighter slot (`0x1077A8`/`0x1077B0`), record, camera
+  (`0x100AB0`), command word (`0x1088E0`), pset/render-list or actor/effect
+  state is written. The only in-range write in the closure is `0x2D498`'s
+  guarded store into `0x100CE3..0x1014DC` (the loader/voice buffers).
+* **Consequence.** The port's stubs are RNG- and fight-neutral: the fight's
+  byte-exact evolution (the LCG the oracles and `s7_entry_post` check) is
+  unaffected. The divergence the stub does cause is the **audio** (the voice
+  playback), already the audio sub-project's named gap (`fidelity-gaps`
+  §7.13). The callers' post-call fight-visible writes are already modelled by
+  the port (`0x37D18`'s `DS_001078DC = DS_000BD89C` at `fighter.c:2177`; the
+  `0x391FE`/`0x39228` draws around `0x3923D` at `fighter.c:2580`).
+  `0x2C3FC` stays pruned as one of the method's five stubs; its raw truth
+  (1268 B, 206 callers) would add 190 f / 22 795 B only if the cycle wanted
+  the voice behaviour (§4.3).
 
 ### 3.5 What must NOT change
 
@@ -515,7 +575,9 @@ new functions are **2 / 245 B** (`0x3A43C` 197 B + `0x39A34` 48 B), plus the
   `0x2C3FC` (the voice dispatcher, not a stub, §0.3.4) would add its 190 f /
   22 795 B subtree — the arena-backdrop §4.3's measured figure. It stays
   excluded because the port keeps the voice subsystem as an out-of-scope stub
-  and neither the `0x3A43C` chain nor the demo's path calls it.
+  **and** the path that reaches it (`0x36870 → 0x37D18 → 0x2C3FC`, made live by
+  Task 2's registration) is RNG- and fight-state-neutral (§3.4) — porting it
+  would add size without changing the fight's byte-exact evolution.
 * **Not in this cycle but now visible:** the fight window's continuation past
   capture 843 (the T-rex's position, the camera drag) — measured here (§2.6)
   and owned by the same pose/anim chain; if Task 2's re-measurement shows the
@@ -601,7 +663,9 @@ python3 -c "a=open('/tmp/pr_frontend_dump/run1/frame_0490.raw','rb').read(); b=o
 * The state-9 hold's animation (`fidelity-gaps` §7.6); the loader's presented
   DAC state (§7.11, the front-end's 832/833); the attract-215 presented-DAC
   mechanism (demo-fight-closure §9.5); the interactive match (§7.12); the audio
-  gaps (§7.13, the `0x2C3FC` voice calls stay stub calls); `0x38154`.
+  gaps (§7.13, the `0x2C3FC` voice calls stay stub calls — §3.4 proves they are
+  RNG- and fight-state-neutral, so only the voice *playback* is silenced);
+  `0x38154`.
 * `0x14590` (the pose-state predicate, 6 callers in `0x14xxx`) — the camera
   path's; not reached by the pose entry (measured, §1.5). Owner: the camera
   path.
@@ -702,14 +766,21 @@ from the post-state, and mutation-proven.
 ## 8. Provenance (Step 8)
 
 * **Ghidra** (project `rage`, `/PRAGE.EXE`, linear addresses):
-  `decompile_function` at `0x3A504`, `0x39F40`, `0x2BC30`;
+  `decompile_function` at `0x3A504`, `0x39F40`, `0x2BC30`, and — the §3.4
+  verdict — `0x2C3FC`, `0x1CA14`, `0x1CA6C`, `0x1CC28`, `0x1CE70`, `0x5D7DC`,
+  `0x5DD03`, `0x5D86A`, `0x5DEAF`, `0x67FA0`, `0x6616A`, `0x500BB`,
+  `0x1ADE4`, `0x2D498`, `0x2EA68`;
   `disassemble_bytes` at `0x3A43C` (197 B), `0x3A588`, `0x3A6D4`, `0x3A504`,
   `0x3A650`, `0x3A79C`, `0x39CC8` (and its `0x39CB4` table via `read_memory`),
   `0x39A10`/`0x39A34`, `0x3531C` (head + case 10 at `0x354DA`), `0x354B0`,
   `0x3AAFC`'s tail (`0x3AD00`..`0x3AD98`), `0x2BC30` (full), `0x2BCE0`'s
-  `RET 4`;
+  `RET 4`, `0x37D40` (the `0x37D5C` voice call), `0x2B8D2` (the anim opcode
+  `0x2E`), `0x39220` (the `0x3923D` codes 0xDA/0xDB);
   `get_function_by_address` at `0x188AC`/`0x188DC`/`0x2BC30`/`0x29A34`
-  (inside `FUN_000299e8`).
+  (inside `FUN_000299e8`);
+  `get_xrefs_to` at `0xEF6D8` (the LCG state: only `0x5D7DC` + `0x20C10`),
+  `0x5D7DC` (its direct callers), `0x102860`/`0x1028C8`/`0x1028D4` (the
+  voice-state block: only the `0x1Cxxx` family).
 * **The raw LE image** (Python, the port's page-map + fixup rule):
   the roar stream `0xE7332`'s words; `DS_000C8FE0`/`DS_000C9030`; the sprite
   table `DS_000A8B30`; the `S16REX.GRA` descriptors (`0x3A20F8` = id 0x1075,
