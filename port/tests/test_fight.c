@@ -1034,6 +1034,92 @@ static void check_effects_rng(void)
     CHECK_EQ_INT((int)DSB(DS_001088BF), 0);
 }
 
+/* 0x49C78 case 1 (0x49D2F) and its arrival 0x4AC38: a walking type-1 entry
+ * stops once |actor+0x18 - entry+0x14| is within one step, the magnitude of
+ * the velocity word +0x34 read as `[+0x32] >> 16`. The first seed is the demo's
+ * type-0x20 worshipper at f = 87 (x -4369, target -4303, step 0x80). The
+ * arrival zeroes +0x34/+0x36/+0x38, clears hflip, sets +0x29 bit 0x10, returns
+ * the entry to type 0 and begins the 0xC9544[index] stream with the hold 5.0.
+ * +0x32's low word holds 0x1234, so a word read of +0x32 (4660) arrives
+ * where the raw does not; the negative-velocity and d == step seeds pin the
+ * negation and the signed `jg`. */
+static void check_effects_arrival(void)
+{
+    u32 entry = FIGHT_RECS + 0x3000u;
+    u32 rec = FIGHT_RECS + 0x3100u;
+    u32 stream = FIGHT_RECS + 0x3800u;
+    u32 pset = FIGHT_ACTORS + 3u * 0x20u;
+    u32 sv_tab = DSD(0x000C9544u);       /* DS_000C9544: no symbols.h name */
+
+    mem_fill(FIGHT_RECS, 0, 0x4000);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    fight_reset_bases();
+    DSW(FIGHT_RECS + 0x56u) = 1;
+    DSW(FIGHT_RECS + 0x100u + 0x56u) = 2;
+    DSW(DS_00104B00) = 3;
+    DSB(DS_001088C2) = 0;
+    DSB(DS_001088BF) = 0;
+    DSW(stream) = 0x0123u;              /* a literal sprite id */
+    DSD(0x000C9544u) = stream;
+
+    DSD(DS_0010884C) = entry;
+    DSD(entry) = DS_0010884C;
+    DSD(entry + 8u) = rec;
+    DSB(rec + 0x48u) = 0x20;            /* the raw's `si` is 0 */
+    DSW(rec + 0x56u) = 3;
+
+    /* Arrival: d = 66 <= 0x80. */
+    DSB(entry + 0x1Eu) = 1;
+    DSD(entry + 0x14u) = (u32)-4303;
+    DSD(rec + 0x18u) = (u32)-4369;
+    DSD(rec + 0x08u) = 0xEE13Au;
+    DSD(rec + 0x24u) = 0x40400000u;
+    DSD(rec + 0x32u) = 0x00801234u;     /* +0x34 = 0x80, +0x32 = 0x1234 */
+    DSW(rec + 0x36u) = 0x5555u;
+    DSW(rec + 0x38u) = 0x6666u;
+    DSB(rec + 0x29u) = 0x4Bu;
+    DSW(pset) = 0x07E1u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x36u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x13);   /* 0x2BC30 also clears 0x08 */
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)stream);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40A00000);
+    CHECK_EQ_INT((int)DSW(pset), 0x0123);
+
+    /* Still walking: d = 194 > 0x80 (a word read of +0x32 would arrive). */
+    DSB(entry + 0x1Eu) = 1;
+    DSD(rec + 0x18u) = (u32)-4497;
+    DSD(rec + 0x08u) = 0xEE13Au;
+    DSD(rec + 0x32u) = 0x00801234u;
+    DSW(pset) = 0x07E1u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 1);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x80);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), 0xEE13A);
+    CHECK_EQ_INT((int)DSW(pset), 0x07E1);
+
+    /* A leftward walker: +0x34 = -0x80 gives the step 0x80; d = 100 arrives. */
+    DSD(entry + 0x14u) = 574;
+    DSD(rec + 0x18u) = 674;
+    DSD(rec + 0x32u) = 0xFF801234u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+
+    /* d == step arrives (the raw's `jg` leaves on d > step only). */
+    DSB(entry + 0x1Eu) = 1;
+    DSD(rec + 0x18u) = 702;
+    DSD(rec + 0x32u) = 0xFF801234u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 0);
+
+    DSD(0x000C9544u) = sv_tab;
+    DSD(DS_0010884C) = DS_0010884C;
+}
+
 /* 0x3B134: the command-word mapper's stance branch (record §8.13). The three
  * side-0 cases differ only in the other slot's +0x34 sign and +0x64 stance, so
  * a swapped branch or a missing table select fails; the side-1 case proves the
@@ -4527,6 +4613,7 @@ int test_fight(void)
     check_hud_sync();
     check_hud_latch();
     check_effects_rng();
+    check_effects_arrival();
     check_command_map();
     check_think_chain();
     check_attack_consume();

@@ -370,7 +370,9 @@ def load_port(d, n):
 # captures 851..857, [560..850] -> [560..857] (291 -> 298); the set stays.
 # The 0x2A690 mode-1 x fix (0x2A733 reads the ramp word at rec+0x46, 0x2A6E0
 # the velocity word at rec+0x34) explains capture 858, [560..857] -> [560..858]
-# (298 -> 299); the set stays.
+# (298 -> 299); the set stays. The 0x49C78 case-1 walk arrival (0x49D2F ->
+# 0x4AC38: the type-0x20 worshipper stops and begins its 0xC9544 stream)
+# explains capture 859, [560..858] -> [560..859] (299 -> 300); the set stays.
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

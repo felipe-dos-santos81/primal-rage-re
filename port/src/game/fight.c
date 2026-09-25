@@ -734,6 +734,27 @@ static int fight_4b5a8(u32 entry, u32 index)
     return 1;                                       /* 0x4B691 */
 }
 
+/* The 0xC9544 per-descriptor arrival-stream table (0x4AC68 `mov edx,[ebx*4 +
+ * 0xc9544]`); Ghidra emits it as DAT_000c9544, so gen_symbols.py has no DS_
+ * name. Entry 0 is 0xEE02C, the type-0x20 worshipper's spawn stream. */
+#define DS_000C9544 0x000C9544u
+
+/* 0x4AC38. The arrival: the entry's actor stops (the +0x34/+0x36/+0x38 words
+ * zeroed), clears its hflip (+0x29 &= 0xBF) and sets +0x29 bit 0x10, the entry
+ * returns to type 0 and the actor is pointed at the 0xC9544[index] stream with
+ * the hold 5.0 (`push 0x40a00000`, 0x4AC72). EAX = entry, EDX = index. */
+static void fight_4ac38(u32 entry, u32 index)
+{
+    u32 actor = DSD(entry + 8u);
+    DSB(actor + 0x29u) &= 0xBFu;                    /* 0x4AC3E */
+    DSB(actor + 0x29u) |= 0x10u;                    /* 0x4AC45 */
+    DSW(actor + 0x34u) = 0;                         /* 0x4AC4C */
+    DSW(actor + 0x36u) = 0;                         /* 0x4AC55 */
+    DSW(actor + 0x38u) = 0;                         /* 0x4AC5E */
+    DSB(entry + 0x1Eu) = 0;                         /* 0x4AC64 */
+    actors_anim_begin(actor, DSD(DS_000C9544 + index * 4u), 0x40A00000u); /* 0x4AC77 */
+}
+
 /* 0x4B144. The type-0 entry's distance resolution: it walks the entry's actor
  * toward DS_00108874 (the midpoint), drawing rng(2)/rng(0x1200) 1-3 times on
  * the way, then sets the entry's +0x14 and type 1 and retargets the actor at
@@ -854,8 +875,9 @@ void fight_effects_pass(void)
 
                 /* 0x49D03: AL = +0x1E; CMP AL,0xE; JA 0x49D1E. The jump table
                  * at 0x49C2C sends type 0 to the same 0x49D1E (0x4AAD0), so
-                 * both type 0 and >0xE take it; types 1,2,4..12 are their own
-                 * (unported) handlers and stay named gaps (§7.4). The `si` the
+                 * both type 0 and >0xE take it; type 1 (0x49D2F) is ported,
+                 * types 2,4..12 are their own (unported) handlers and stay
+                 * named gaps (§7.4). The `si` the
                  * handler indexes with is (u16)(actor+0x48 - 0x20) (0x49CE1). */
                 u8 type = DSB(entry + 0x1Eu);
                 u32 index = (u32)(u16)((u32)DSB(rec + 0x48u) - 0x20u);
@@ -863,6 +885,25 @@ void fight_effects_pass(void)
                     fight_4aad0(entry, index);  /* 0x49D1E */
                 } else {
                 switch (type) {
+                case 1: {
+                    /* 0x49D2F: the walk's arrival test. The actor stops once
+                     * |actor+0x18 - entry+0x14| is within one step, the
+                     * magnitude of the velocity word +0x34 (read as the high
+                     * word of the dword at +0x32, 0x49D67/0x49D71 `mov eax,
+                     * [eax+0x32]` then `sar eax,0x10`, negated when the word is
+                     * negative: 0x49D60 `cmp word [eax+0x34],0`). The compare
+                     * is signed (0x49D79 `jg`). */
+                    if (DSB(DS_001088C2) != 0u) {           /* 0x49D2F */
+                        if (fight_4bd4c(entry, index) != 0) break;  /* 0x49D3F */
+                    }
+                    s32 d = (s32)DSD(rec + 0x18u) - (s32)DSD(entry + 0x14u); /* 0x49D55 */
+                    if (d < 0) d = -d;                      /* 0x49D5B */
+                    s32 step = (s32)DSD(rec + 0x32u) >> 16; /* 0x49D6A/0x49D74 */
+                    if ((s16)DSW(rec + 0x34u) < 0) step = -step;    /* 0x49D6D */
+                    if (d <= step)                          /* 0x49D79 */
+                        fight_4ac38(entry, index);          /* 0x49D86 */
+                    break;
+                }
                 case 3:
                     /* 0x49DC8: the DS_000BD898 position gate; the rest of the
                      * body (0x49DDE..0x49E38) is the named gap (§7.4). */
@@ -889,7 +930,7 @@ void fight_effects_pass(void)
                     break;
                 }
                 default:
-                    /* PORT: types 1,2,4..12 are named gaps (§7.4). */
+                    /* PORT: types 2,4..12 are named gaps (§7.4). */
                     break;
                 }
                 }

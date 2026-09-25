@@ -2749,12 +2749,13 @@ int test_frontend(void)
      * 1970, where the state drops to 0 and dumping stops. So the state>=3 dump
      * run is loop frames 589..1969, i.e. dumped frames 0..1380 (1381 frames); the
      * 1400 cap covers it and the 2000-frame loop clears the 1970 exit. The
-     * front-end window is distinct [560..858] (299 frames: 134 clean, 161
+     * front-end window is distinct [560..859] (300 frames: 134 clean, 162
      * splice, 0 transition, 2 unexplained; [560..842]/283 before the
      * demo-pose 0x3A43C/0x186C4 fix explained captures 843..850,
      * [560..850]/291 before the 0x3AD27 setter-operand fix explained
-     * 851..857, and [560..857]/298 before the 0x2A690 mode-1 x fix
-     * explained 858). The [557..810]/254 text here was
+     * 851..857, [560..857]/298 before the 0x2A690 mode-1 x fix
+     * explained 858, and [560..858]/299 before the 0x49D2F walk-arrival
+     * fix explained 859). The [557..810]/254 text here was
      * stale drift, already flagged in Task 2's review and corrected here; Task
      * 3c's camera-offset fix does not touch it. The arena-backdrop fix (the
      * crowd actor 0's mountain layer, actor_spawn's per-type dispatch) extended
