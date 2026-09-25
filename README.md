@@ -256,13 +256,14 @@ spawn → `effects_step` → dirty list → `gfx_flush_palette` → `gfx_dac` �
 plan's assumed missing draw does not exist; the camera state feeds the existing
 render pass and actor-pset sync. The front-end pixel oracle is **closed and
 enforced**: a 120 s pinned capture aligns the port's state-3 zoom to window
-`[560..850]` (raw `3108..3757`), **291 frames: 130 clean, 157 splice, 0
+`[560..857]` (raw `3108..3764`), **298 frames: 134 clean, 160 splice, 0
 transition, 2 unexplained (832, 833)** — the two allowed by name (the
 arena-backdrop cycle's absorbed claim move, below); any other unexplained frame
 fails. (Indices moved `[557..813]`/257 → `[560..830]`/271 → `[560..842]`/283 →
-`[560..850]`/291 as cycle 1's pins, cycle 2's master-loop pin and the
-arena-backdrop fix forced re-captures, and the demo-pose cycle's `0x3A43C`
-stack-offset fix + `0x186C4` re-latch explained captures 843..850; the host-timed capture is not reproducible, so indices shift while
+`[560..850]`/291 → `[560..857]`/298 as cycle 1's pins, cycle 2's master-loop pin and the
+arena-backdrop fix forced re-captures, the demo-pose cycle's `0x3A43C`
+stack-offset fix + `0x186C4` re-latch explained captures 843..850, and the
+roar-timing fix (the `0x3AD27` pose-setter operand) explained 851..857; the host-timed capture is not reproducible, so indices shift while
 the claim does not.) It proves exactly one thing: **no content-bearing capture
 frame inside the window the port's own dump exhibits is unexplained** (the two
 named exceptions aside) — the window is derived from that dump and the
@@ -289,10 +290,11 @@ command generator `0x47208`, the `+0x52` state machine (`0x3531C`/`0x350D0`),
 the `0x3C88C` hitbox machine and the `0x3CF38` hit chain — the chain now
 **fires**, hits land (`+0x7C` 0/0 → 1/1), and the fight's last state change
 moved **1262 → 1400**. Its report-only oracle (`make demo-oracle`) measures the
-demo window `[851..3616]` (raw `3758..8409`), **2766 frames: 0 clean / 0 splice
-/ 0 transition / 2760 unexplained** (6 all-black frames excluded); the first
-unexplained frame is capture **851 (raw 3758)** — the T-rex's roar animation
-(moved from 843 by the demo-pose cycle), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
+demo window `[858..3616]` (raw `3765..8409`), **2759 frames: 0 clean / 0 splice
+/ 0 transition / 2753 unexplained** (6 all-black frames excluded); the first
+unexplained frame is capture **858 (raw 3765)** — the fighters' band at port
+503 (moved from 843 by the demo-pose cycle, then from 851 by the roar-timing
+fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
 Task 1 corrected it to **836/25**, and the final re-capture moved the loader text
 to 832 with the fight's first frames at 833/834 — record §9.1/§9.3.) Cycle 2
 advanced the boundary 811 → 816 → 832: the state-9 globe's fourth layer
@@ -334,9 +336,18 @@ demo's two state-6 character picks are **not** pinned — cycle 2 replaced cycle
 
 See `docs/superpowers/specs/2026-09-24-demo-pose-design.md` and the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
 
+**Roar timing (branch `roar-timing`), the demo fight's capture 851.** The roar's early frame advance was not the frame timer: `0x2AA70`, `0x39A34` and `0x2BC30` re-diff clean against the raw. The cause was the port's read of the pose setter's operand at `0x3AD23..0x3AD2E`: the raw is `mov esi,[esi+3]` / `sar esi,0x18` (`8b 76 03` / `c1 fe 18`), so the operand is the **signed byte at the anim3 row's +6**, and the port read +3. The demo's row `0xDE95F` (`08 18 08 73 02 0e fd 11`) gives −3, not 115, so the setter's `slot+0x7E` (`0x3A549..0x3A554`: `byte[0xBECF8] + CL`) is `0x11`, not `0x87`, and `0x39A34` sets the roar's frame hold to **+1.7**, not −12.1: each roar sprite holds about two frames instead of one. One line of code; no size gate.
+
+* **Measured.** Port 497 ↔ capture 851: 6 544 B / 2 456 px → **0 B**. Captures 851..857 are explained. The demo oracle's first unexplained is now **858 (raw 3765)**: the demo window `[858..3616]` has 2759 frames, 2753 unexplained, and the fight window `[858..1884]` has 1027 frames, 0 explained. The ratchet N is raised **851 → 858** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..850]` / 291 → **`[560..857]` / 298 / `134 clean, 160 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** In capture 858 (port 502/503, f ≈ 86), rows 175–199 match port 503 exactly. Rows 67–174, which hold the fighters and the backdrop band around them, match neither 502 nor 503. The best splice (502/503 at byte 131 205) leaves 13 617 B / 5 253 px, and the gap grows in the next captures.
+
+See §11 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
-demo fight's remaining arena divergence (the T-rex's animation pose, first
-unexplained at capture 851 after the demo-pose cycle; owner: the roar stream's frame-hold timing) and the
+demo fight's remaining arena divergence (first unexplained at capture 858
+after the roar-timing fix: the fighters' band at port 503, owner not yet
+derived) and the
 interactive match cycle (the mode graph, `0x1EEB0`, the `0x1EA08` sites) remain;
 the attract's `0x2C3FC` voice calls remain declared gaps with `/* PORT: */`
 markers.

@@ -1102,3 +1102,144 @@ frames (§7.11, 832/833; demo-fight-closure §9.5); the interactive match (§7.1
 audio gaps (§7.13, the `0x2C3FC` voice stub, RNG-neutral per §3.4); `0x38154`;
 `0x14590` (camera path).
 
+
+---
+
+## 11. The roar timing at capture 851 (roar-timing Task 1)
+
+**Result in one line.** The roar's early advance is **not** the frame timer. It
+is a transcription error in the operand the pose setter `0x3A504` receives:
+`0x3AAFC` loads it at `0x3AD23..0x3AD2E` as the **signed byte at the anim3
+row's +6**, and the port read +3. That makes the demo's `slot+0x7E` `0x87`
+instead of `0x11`, so `0x39A34` sets the roar's frame hold to −12.1, not +1.7.
+§9.5's named suspects (`0x39A34`, `0x2AA70`, the `actors_anim_begin` seed) are
+faithful; they only turned the wrong byte into the wrong timing. This
+**supersedes §9.5's and §10's "likely owner"**.
+
+### 11.1 The trace (measured, temporary, reverted)
+
+The trace was `getenv("PR_ROAR")`-gated and has been reverted. It printed lines
+from `actor_sync` around the `frame_timer` call, from `anim_code_39A34` after
+its store and from `actors_anim_begin`'s tail, all for the side-0 fighter
+record, plus the anim3 row at `fighter_reaction_apply`'s `0x3AD23` site. Here
+`f = DS_0010150C` and `dump = f + 417`. The table shows the unmodified port;
+each line is the state after that frame's sync.
+
+| f | writer | stream `rec+8` | sprite | `+0x20` | `+0x24` |
+|---|---|---|---|---|---|
+| 72 | setter `0x3A504`: `+0x24 = 0` (`0x3A517`), `slot+0x7E = 0x87` | (crouch) | `0x9022` | 4 | 0 |
+| 73 | handler phase 1 → `0x2BC30` (3.0f, `0x3A471`); timer 3 → 2 | `0xE7332` | `0x9075` | 2 | 3 |
+| 74 / 75 | timer | `0xE7332` | `0x9075` | 1 / 0 | 3 |
+| 76 | timer advances (old 0): `0xE7334` | `0xE7334` | `0x9076` | 2 | 3 |
+| 77 / 78 | timer | `0xE7334` | `0x9076` | 1 / 0 | 3 |
+| 79 | advance: `0xD100` → `0x39A34(rec, 10)`: `+0x24 = −121/10`; id `0x1077` | `0xE733E` | `0x9077` | −13.1 | −12.1 |
+| 80..88 | `+0x24 ≤ 0`, so each frame advances one sprite (`0x2AC2D` `JNC` → return) | … | `0x9078`..`0x9080` | −26.2 … | −12.1 |
+
+The anim3 row at f = 72 is `a0 = 0xDE95F`, with bytes
+`08 18 08 73 02 0e fd 11`. The port's operand was `(s8)byte[+3] = 0x73 = 115`.
+`0x3A549..0x3A554` store `slot+0x7E = byte[0xBECF8] + CL`, where
+`byte[0xBECF8] = 0x14` (read_memory `0xBECF8`: `14 00 00 0e`). That gives
+`0x14 + 0x73 = 0x87 = −121`.
+
+Captures 848, 849 and 850 match port 494, 495 and 496 cleanly, and 851 ↔ 497
+differs. So the port's sprite at dump 496 (`0x9077`, f = 79) is right, and the
+error is that `0x9077` holds only one frame: at f = 80 the port already shows
+`0x9078`. That matches §9.5's "the capture still shows the previous frame".
+
+### 11.2 The raw, re-read (Ghidra, fixups applied)
+
+* **`0x2AA70` (frame timer)** was checked instruction by instruction against
+  `frame_timer`. `0x2AB2E..0x2AB44` do `+0x20 -= 1` and return while the old
+  value is > 0 (`FLDZ; FCOMP [esp]; JC 0x2AC47`). The walk loop is
+  `0x2ABAB..0x2ABD4` (EBP = 2). The id path is `0x2A39C`. `0x2AC15..0x2AC21`
+  do `+0x20 = +0x24 + +0x20`. The tail returns if `+0x24 ≤ 0`
+  (`FLDZ; FCOMP [ecx+0x24]; JNC`) and reloops while `+0x20 < 0` (`JA 0x2AB4F`).
+  Operand widths, compare directions and float handling all match. **Faithful.**
+* **`0x39A34`** (48 B: `53 83ec08 89c3 8b4014 85c0 741d 660fbe407e 89442404
+  31c0 6689d0 890424 df442404 db0424 def9 d95b24 83c408 5b c3`) does
+  `movsx ax,[eax+0x7e]`, then `FILD word` (s16 of the s8), then `FILD dword` of
+  `(u16)dx`, then `FDIVP st(1),st` (value / operand), then `FSTP [ebx+0x24]`.
+  This is the port's `anim_code_39A34`. **Faithful.**
+* **`0x2BC30`** (`actors_anim_begin`): `0x2BC61 XOR EAX,EAX` /
+  `0x2BC66 AND EAX,0xFFFF` / `JZ 0x2BC87` always takes the frame-bits arm, which
+  stores `[esp+0x14]` into `+0x24` and `+0x20`. The pre-walk (`0x2BC96..0x2BCCA`)
+  and `RET 4` (`0x2BCEF`) are faithful. The roar stream's first word is the
+  literal `0x1075`, so nothing is pre-walked.
+* **`0x2A1FC`'s gate** `TEST [ebx+0x24],0x7FFFFFFF` (`0x2A22B`) is faithful.
+* **The roar stream `0xE7332`** reads `1075 1076 | D100 9A34 0003 000A |
+  1077..1080 | D500 6870 0003 | …`. So `0x39A34` runs at the second advance
+  and scales the hold of `0x1077..0x1080`.
+* **The pinned site: `0x3AD15..0x3AD34`** (capstone over `read_memory`):
+
+  ```
+  0x3ad15 8d5c2418    lea ebx,[esp+0x18]      ; the anim3 triple's buffer
+  0x3ad1e e8a1020000  call 0x3afc4            ; 0x3B010 mov [ebx],edx: anim3[0]
+  0x3ad23 8b742418    mov esi,[esp+0x18]      ; anim3[0], the 11-byte row
+  0x3ad27 8b7603      mov esi,[esi+3]         ; the DWORD at row+3 (bytes +3..+6)
+  0x3ad2a 8b5c240c    mov ebx,[esp+0xc]
+  0x3ad2e c1fe18      sar esi,0x18            ; its top byte, sign-extended: row+6
+  0x3ad31 8a5b52      mov bl,[ebx+0x52]
+  0x3ad34 89f2        mov edx,esi             ; -> 0x3A504/0x3A650/0x3A79C/0x3A8E8
+  ```
+
+  The port had `(s32)(s8)DSB(anim3[0] + 3u)`. The other readers of this row are
+  byte loads and match the port: `0x3985F mov bl,[ebx+1]`, `0x3AE51..0x3AE5A`
+  `mov dl,[ebx+4]` / `mov bl,[ebx+5]`, and `0x3B7FE`/`0x3B80B`
+  `mov bl,[ebx+2]` / `mov dl,[edx+3]`, which is §9.3(b)'s 115. So the error is
+  only at `0x3AD27`.
+
+With the raw's byte, the demo's operand is `(s8)0xFD = −3`. Then
+`slot+0x7E = 0x14 + 0xFD = 0x11`, and `0x39A34`'s hold is `17 / 10 = 1.7f`.
+
+### 11.3 The fix and its assertion
+
+* **Fix.** One line in `fighter_reaction_apply`:
+  `edx3 = (u32)(s32)(s8)DSB(anim3[0] + 6u)`, with the raw's reading in a
+  comment. It adds no new function, so the size gate does not apply.
+* **Measured trace after the fix.** At f = 79 the log shows
+  `39a34 … h24=1.7` and the sprite becomes `0x9077` with `+0x20 = 0.7`. At
+  f = 80 `0x9077` holds (`+0x20 = −0.3`). f = 81 shows `0x9078`, f = 83
+  `0x9079`, and f = 85 `0x907B`. At f = 85 `+0x20 = −0.2 < 0`, so the timer
+  reloops (`0x2AC3F JA`) and skips `0x107A`.
+* **Assertion (`test_fight.c` `check_pose_entry`).** The 11-byte row at
+  `0xDE114` (char 0, reaction 0) is seeded with distinct bytes `0x70 + i`, with
+  row+6 = `0xB0`, `byte[0xBECF8] = 0x14` and `slot+0x7E = 0x5A` as a sentinel.
+  After `fighter_reaction_apply(s0, 0)` the test checks
+  `DSB(s0 + 0x7E) == 0xC4`. The seeds and save/restores that set edx3 through
+  `pose_chain_setup` and the check_reaction/winner_body tests move from
+  `0xDE117` to `0xDE11A`. No existing assertion changed.
+  * Before the fix (the +3 read), `test_fight.c:3039: 135 != 196` (`0x87`).
+  * Mutation +7: `test_fight.c:3039: 139 != 196`.
+  * Mutation +5: `test_fight.c:3039: 137 != 196`.
+  * All three were reverted, and the suite then reported `all checks passed`.
+
+### 11.4 Measured
+
+| measurement | before (`895b42d`) | after |
+|---|---|---|
+| port 497 ↔ capture 851 | 6 544 B / 2 456 px | **0 B (clean)** |
+| captures 851..857 | unexplained | 851 clean 497, 852..854 splice (497..499), 855..857 clean 500..502 |
+| demo oracle first unexplained | 851 (raw 3758); window `[851..3616]` 2766 / 2760 unexpl. | **858 (raw 3765)**; `[858..3616]` 2759 / 2753 unexpl. |
+| demo-fight ratchet | `[851..1884]` 1034, N = 851 | **`[858..1884]` 1027**, "ratchet improved: 858 > 851", **N raised to 858** |
+| front-end oracle | `[560..850]` / 291 / 130 clean, 157 splice, 0 transition, 2 unexpl. (832, 833) | **`[560..857]` / 298 / 134 clean, 160 splice, 0 transition, 2 unexpl. (832, 833)** |
+
+The front-end move is the one the brief allowed: the window comes from the
+port's own dump, and captures 851..857 are now explained. The unexplained set
+is unchanged.
+
+**The new first unexplained frame, 858 (characterised, not fixed).** Capture
+857 matches port 502 (f = 85) cleanly. Capture 858 is a tear frame. Measured
+in row bands against the port, rows 0–66 equal port 502 (0 B) and rows 175–199
+equal port 503 (0 B). Rows 136–174 match 503 except one worshipper sprite near
+x 85–140 (1 114 B). Rows 67–135, which hold the fighters' upper bodies and the
+backdrop band around them, match neither frame: 3 957 + 9 522 B against 503
+and 7 185 + 5 521 B against 502. The best splice, 502/503 at byte 131 205
+(row 136), leaves 13 617 B / 5 253 px, with a bbox of x 4–319 and y 67–174.
+The difference mask covers the raptor's neck and back outline, the band around
+both heads and that worshipper. In the next captures the ground rows keep
+matching port N+1 exactly (859 ↔ 504, 860 ↔ 505 and 861 ↔ 506 in rows
+175–199). The fighters' rows diverge more each frame, and the sky rows 0–66
+differ by 500–3 000 B from 859 on. The owner is **not derived**. The
+candidates are the fighters' upper-body animation or positions from f ≈ 86,
+and the backdrop/sky scroll that starts at f ≈ 86 in the port (port 503's rows
+0–66 differ from 502's by 24 201 B, while capture 858's equal 502's).
