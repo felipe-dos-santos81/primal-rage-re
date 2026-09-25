@@ -6,6 +6,7 @@
  * entry, and 0x1324C (the shake decay) is registered by effects.c. */
 #include "game/camera.h"
 #include "game/actors.h"
+#include "game/effects.h"
 #include "game/fighter.h"
 #include "game/rng.h"
 #include "../mem.h"
@@ -1207,7 +1208,23 @@ void camera_screen_base(s32 side, s32 character)
     DSD(DS_00100A98 + (u32)s * 4u) = (u32)c * 0x3E8u + 0xC9BF0u;
 }
 
-/* ---- 0x1282C + 0x12DA8 -------------------------------------------------- */
+/* ---- 0x12750, 0x1282C + 0x12DA8 ------------------------------------------ */
+
+/* 0x12750. The type-0x01 node lists the 0xBB254 actor's cb1 0x127C0 pops from
+ * and its cb2 0x12800 returns to: it self-links the in-use sentinel 0xF0AE0
+ * (0x12762/0x12768) and the free sentinel 0xF0A78 (0x1276E/0x12774), then
+ * tail-appends the eight 12-byte nodes 0xF0A80..0xF0AD4 to the free list
+ * (0x12782 `mov eax,0xf0a78` / 0x12787 `mov edx,ebx` / 0x12789 `add ebx,0xc` /
+ * 0x1278C `call 0x249c0`, while EBX < 0xF0AE0). */
+void camera_dust_list_init(void)
+{
+    DSD(DS_000F0AE4) = DS_000F0AE0;                    /* 0x12762 */
+    DSD(DS_000F0AE0) = DS_000F0AE0;                    /* 0x12768 */
+    DSD(DS_000F0A7C) = DS_000F0A78;                    /* 0x1276E */
+    DSD(DS_000F0A78) = DS_000F0A78;                    /* 0x12774 */
+    for (u32 node = DS_000F0A80; node < DS_000F0AE0; node += 0xCu)  /* 0x1277A/0x12791 */
+        effects_list_insert_before(DS_000F0A78, node); /* 0x1278C 0x249C0 */
+}
 
 /* 0x1282C. The rare dust spawn: gated on (DS_000EF6DC & 0x3F) == 0, then
  * rng(7) & 3 == 0; draws rng(7)/rng(0x1300)/rng(0x2000) and spawns one actor

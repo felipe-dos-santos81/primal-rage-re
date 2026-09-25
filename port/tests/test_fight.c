@@ -1672,9 +1672,17 @@ static void check_state6(void)
      * of whatever an earlier check left here. */
     DSW(DS_000F0AFC) = 0x1234;
     DSD(DS_000F0AF0) = 0x1234;
+    /* Demo record §15: 0x20DF4's 0x12750 call (0x20E33) builds the type-0x01
+     * node lists; 0xA5 over both sentinels and the nodes differs from every
+     * link it writes. */
+    mem_fill(0x000F0A78u, 0xA5u, 0x70u);
     rng_seed(0x1234u);
     game_state_step();
 
+    CHECK_EQ_INT((int)DSD(DS_000F0AE0), (int)DS_000F0AE0);   /* 0x12750 */
+    CHECK_EQ_INT((int)DSD(DS_000F0AE4), (int)DS_000F0AE0);
+    CHECK_EQ_INT((int)DSD(DS_000F0A78), 0x000F0A80);
+    CHECK_EQ_INT((int)DSD(DS_000F0A7C), 0x000F0AD4);
     CHECK_EQ_INT((int)DSW(DS_000F0AFC), 0x400);   /* 0x12C70 */
     CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0);       /* 0x20E52 */
 
@@ -4611,6 +4619,55 @@ static void check_type_teardown(void)
     CHECK_EQ_INT((int)(DSB(rec + 0x2b) & 0x40u), 0);
 }
 
+/* 0x12750 (demo record §15): the type-0x01 node lists. Every byte of the two
+ * sentinels and the eight 12-byte nodes starts at 0xA5, so each link below
+ * must have been written, and the nodes' +8 (the owner field 0x127C0 writes)
+ * must not be. Then the 0xBB254 flier spawn 0x1282C issues is accepted:
+ * 0x127C0 pops the free head 0xF0A80 into the in-use list, where on the
+ * unbuilt (or empty) list it refuses the spawn. */
+static void check_dust_list(void)
+{
+    mem_fill(0x000F0A78u, 0xA5u, 0x70u);        /* 0xF0A78..0xF0AE7 */
+    camera_dust_list_init();
+    CHECK_EQ_INT((int)DSD(DS_000F0AE0), (int)DS_000F0AE0);   /* 0x12768 */
+    CHECK_EQ_INT((int)DSD(DS_000F0AE4), (int)DS_000F0AE0);   /* 0x12762 */
+    CHECK_EQ_INT((int)DSD(DS_000F0A7C), 0x000F0AD4);         /* the tail */
+    {
+        u32 prev = DS_000F0A78, n = 0, node = DSD(DS_000F0A78);
+        while (node != DS_000F0A78 && n < 9u) {
+            CHECK_EQ_INT((int)node, (int)(0x000F0A80u + n * 0xCu));
+            CHECK_EQ_INT((int)DSD(node + 4u), (int)prev);
+            CHECK_EQ_INT((int)DSD(node + 8u), (int)0xA5A5A5A5u);
+            prev = node;
+            node = DSD(node);
+            n++;
+        }
+        CHECK_EQ_INT((int)n, 8);
+    }
+
+    /* The spawn inserts at 0xF0AE0, so it runs only on a linked sentinel (an
+     * 0xA5 one would send the insert outside mem[]). */
+    if (DSD(DS_000F0AE0) != DS_000F0AE0 || DSD(DS_000F0AE4) != DS_000F0AE0)
+        return;
+    actors_reset();
+    u32 rec = actor_spawn((const u32 *)(mem + 0x000BB254u), 0xFFFFD800u,
+                          0x5CAu, 0x1C7Cu, 0x4000u);
+    CHECK(rec != 0, "the 0xBB254 spawn is accepted on the built list");
+    if (rec != 0) {
+        CHECK_EQ_INT((int)DSB(rec + 0x48u), 0x01);
+        CHECK_EQ_INT((int)DSD(rec + 0x14u), 0x000F0A80);
+        CHECK_EQ_INT((int)DSD(0x000F0A80u + 8u), (int)rec);
+        CHECK_EQ_INT((int)DSD(DS_000F0AE0), 0x000F0A80);
+        CHECK_EQ_INT((int)DSD(DS_000F0A78), 0x000F0A8C);
+    }
+
+    actors_reset();
+    arena_list_empty(0x000F0A78u);
+    rec = actor_spawn((const u32 *)(mem + 0x000BB254u), 0xFFFFD800u,
+                      0x5CAu, 0x1C7Cu, 0x4000u);
+    CHECK_EQ_INT((int)rec, 0);                  /* 0x127C0 returns 0xFF */
+}
+
 /* The cycle's own invariant (the record's §7.2): the crowd actor 0
  * (descriptor 0xC7850, type 0x1B) survives its type check and carries its two
  * mountain children (the stream's inline opcode-0x0C spawns, ids 757/758)
@@ -4693,7 +4750,7 @@ int test_fight(void)
     u8 s_8100[0x80];
     u8 s_5b[0x300];
     u8 s_9ad[0x10];
-    u8 s_f0a78[0x10];
+    u8 s_f0a78[0x68];
     u8 s_c20[0x10];
     u8 s_4880[0x10];
     u8 s_82e0[0x90];
@@ -4717,10 +4774,11 @@ int test_fight(void)
     tf_snap(s_8100, 0x00108100u, 0x80u);
     tf_snap(s_5b, 0x00105B00u, 0x300u);
     tf_snap(s_9ad, 0x0009AD50u, 0x10u);
-    /* The type-dispatch checks' list sentinels and the 0x2D counter; 0xF0AE0
-     * is covered by s_f0ae0 above, and s_4880 spans the 0x104880/0x104888
+    /* The type-dispatch checks' list sentinels (with the 0x12750 nodes
+     * 0xF0A80..0xF0ADF) and the 0x2D counter; 0xF0AE0 is covered by s_f0ae0
+     * above, and s_4880 spans the 0x104880/0x104888
      * sentinel pairs. */
-    tf_snap(s_f0a78, 0x000F0A78u, 0x10u);
+    tf_snap(s_f0a78, 0x000F0A78u, 0x68u);
     tf_snap(s_c20, 0x00100C20u, 0x10u);
     tf_snap(s_4880, 0x00104880u, 0x10u);
     tf_snap(s_82e0, 0x001082E0u, 0x90u);
@@ -4787,6 +4845,7 @@ int test_fight(void)
     check_type_table();
     check_type_callbacks();
     check_type_teardown();
+    check_dust_list();
     check_arena_backdrop();
 
     tf_put(s_f0ae0, 0x000F0AE0u, 0x20u);
@@ -4799,7 +4858,7 @@ int test_fight(void)
     tf_put(s_8100, 0x00108100u, 0x80u);
     tf_put(s_5b, 0x00105B00u, 0x300u);
     tf_put(s_9ad, 0x0009AD50u, 0x10u);
-    tf_put(s_f0a78, 0x000F0A78u, 0x10u);
+    tf_put(s_f0a78, 0x000F0A78u, 0x68u);
     tf_put(s_c20, 0x00100C20u, 0x10u);
     tf_put(s_4880, 0x00104880u, 0x10u);
     tf_put(s_82e0, 0x001082E0u, 0x90u);

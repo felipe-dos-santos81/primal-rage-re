@@ -786,13 +786,16 @@ static void game_state_6(void)
     /* PORT: 0x11AC4 0x20DF4(eax=draw1, edx=1) — a 155-byte reset. Its eight
      * pre-branch calls are 0x29B70, 0x2C390, 0x12750, 0x49300, 0x28E98, 0x34978,
      * 0x2C074 and 0x12C70, and 0x20E5C/0x20E63 also write the words
-     * DS_000F0AFA/DS_000F0AF8. Of these only 0x49300 is ported here
-     * (fight_list_init): it is the liveness precondition — it self-links the
+     * DS_000F0AFA/DS_000F0AF8. Of these 0x12750 and 0x49300 are ported here.
+     * 0x12750 (camera_dust_list_init) builds the type-0x01 node lists without
+     * which 0x1282C's spawn is refused (demo record §15). 0x49300
+     * (fight_list_init) is the liveness precondition — it self-links the
      * fight-effect list sentinel DS_0010884C that the 0x49C78 walk reads, so a
      * zero head would walk address 0 forever. 0x12C70 (camera_step_seed) is
      * called at its raw position below (0x20E6A); the rest, including the two
      * word stores DS_000F0AFA/DS_000F0AF8, stay a named gap (record §6.10) —
      * both stores are BSS-zero, so the port is net-faithful for them. */
+    camera_dust_list_init();                            /* 0x11AC4 0x12750 (0x20E33) */
     fight_list_init();                                  /* 0x11AC4 0x49300 */
     /* 0x20E4C/0x20E52: the reset zeroes the two camera words the projection
      * reads — 0x38A38's stride is DS_000F0AF0 << 8 and 0x2A620's shear base is

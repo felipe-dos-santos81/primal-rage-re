@@ -80,6 +80,13 @@ int camera_box_overlap(u32 actor0, u32 actor1);
  * 16-bit signed values; out of [0,1]x[0,0xA) writes nothing. */
 void camera_screen_base(s32 side, s32 character);
 
+/* 0x12750. Builds the type-0x01 node lists: the in-use sentinel 0xF0AE0 and the
+ * free sentinel 0xF0A78 self-linked, then the eight 12-byte nodes
+ * 0xF0A80..0xF0AD4 tail-appended to the free list. 0x127C0 (the 0xBB254 actor's
+ * cb1) pops that list, so without it 0x1282C's spawn is always refused. 0x20DF4
+ * (the state-6 fight reset) calls it at 0x20E33. */
+void camera_dust_list_init(void);
+
 /* 0x1282C then 0x12DA8, the pair 0x263F4 calls at the end of the frame: the
  * gated dust spawn (every 64th frame, then rng(7)&3 == 0) followed by the
  * selected-player-y commit and the camera-y clamp. */

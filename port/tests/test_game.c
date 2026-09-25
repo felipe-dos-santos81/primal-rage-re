@@ -2263,6 +2263,20 @@ int test_anim(void)
  * title. The assertion below fails if the re-seed or the state-6 draws move. */
 #define FRONTEND_RNG_AFTER_ATTRACT 0x4308698Bu
 
+/* The reference's frame counter DS_000EF6DC when its state 2 begins. The raw's
+ * only writer is 0x24C5C's per-iteration `inc` (0x24CCD..0x24CDB, a word, 0 in
+ * the image), so it counts every loop iteration since boot. The port's own boot
+ * run (prageport, the same loop) spends 690 frames in state 0 and 196 in the
+ * title state 1 (1 + 95 phase-1 steps of 0x10 from 0x600 + the 0x3E688 fade),
+ * so its first state-2 frame counts 887: 886 before it. The frontend capture's
+ * timing bounds the original to 886 + [-4, +17] (the attract is frame-exact:
+ * raw index - n * 70.09/60.05 stays 1365 +- 1 over n 2..689), and the grey
+ * flier of capture 864 pins it mod 64 (0x1282C spawns only on
+ * (DS_000EF6DC & 0x3F) == 0, which with this seed is state-7 f = 91; demo
+ * record §15). The driver enters at state 2, so it seeds the counter as it
+ * seeds the LCG. */
+#define FRONTEND_FRAMES_BEFORE_STATE2 886u
+
 int test_frontend(void)
 {
     int before = g_failures;
@@ -2749,14 +2763,16 @@ int test_frontend(void)
      * 1970, where the state drops to 0 and dumping stops. So the state>=3 dump
      * run is loop frames 589..1969, i.e. dumped frames 0..1380 (1381 frames); the
      * 1400 cap covers it and the 2000-frame loop clears the 1970 exit. The
-     * front-end window is distinct [560..863] (304 frames: 136 clean, 164
+     * front-end window is distinct [560..865] (306 frames: 137 clean, 165
      * splice, 0 transition, 2 unexplained; [560..842]/283 before the
      * demo-pose 0x3A43C/0x186C4 fix explained captures 843..850,
      * [560..850]/291 before the 0x3AD27 setter-operand fix explained
      * 851..857, [560..857]/298 before the 0x2A690 mode-1 x fix
      * explained 858, [560..858]/299 before the 0x49D2F walk-arrival
-     * fix explained 859, and [560..859]/300 before the 0x4A634 slot +0x42
-     * reset explained 860..863). The [557..810]/254 text here was
+     * fix explained 859, [560..859]/300 before the 0x4A634 slot +0x42
+     * reset explained 860..863, and [560..863]/304 before state 6's 0x12750
+     * node list and the frame-counter seed explained 864/865). The
+     * [557..810]/254 text here was
      * stale drift, already flagged in Task 2's review and corrected here; Task
      * 3c's camera-offset fix does not touch it. The arena-backdrop fix (the
      * crowd actor 0's mountain layer, actor_spawn's per-type dispatch) extended
@@ -2776,6 +2792,9 @@ int test_frontend(void)
         /* The attract runs before the reference's state 6; this driver skips it
          * by entering at state 2, so re-seed to the attract's post-state. */
         rng_seed(FRONTEND_RNG_AFTER_ATTRACT);
+        /* Likewise the frame counter: the attract and the title run before the
+         * reference's state 2 (the raw's word at 0xEF6DC). */
+        DSW(DS_000EF6DC) = (u16)FRONTEND_FRAMES_BEFORE_STATE2;
 
         /* Enter state 2 at phase 0, the entry game_state_title() leaves for. */
         DSW(DS_000F0A64) = 2;
@@ -2842,6 +2861,11 @@ int test_frontend(void)
          * character palette's DAC range, sampled from the palette table while
          * the state is 7. Sentinel 0 differs from the post-condition 142. */
         u32 s7_pal_start = 0, s7_pal_len = 0;
+        /* Demo record §15: the loop frame after which the first type-0x01
+         * actor (0x1282C's 0xBB254 flier) is live, and DS_0010150C then (the
+         * loop has already advanced it past the frame's own f). Sentinels -1:
+         * never seen. */
+        int s7_flier_f = -1, s7_flier_i = -1;
         int s7_pal_sampled = 0;
         for (int i = 0; i < 2000; i++) {
             /* The state-9 exit leaves DS_000F0A64 == 6 for the next iteration;
@@ -2910,6 +2934,15 @@ int test_frontend(void)
                         }
                     }
                     s7_pal_sampled = 1;
+                }
+                if (s7_flier_f < 0) {
+                    for (u32 r = actor_list_head(); r != 0; r = actor_next(r)) {
+                        if (DSB(r + 0x48u) == 0x01u) {
+                            s7_flier_f = (int)DSD(DS_0010150C);
+                            s7_flier_i = i;
+                            break;
+                        }
+                    }
                 }
                 u8 s0 = DSB(DS_001077B0 + 0x52u);
                 u8 s1 = DSB(DS_001077B0 + 0x94u + 0x52u);
@@ -3058,6 +3091,15 @@ int test_frontend(void)
          * (or never leaves) fails. The dump count above (1381) is the same
          * proof through the presented frames. */
         CHECK_EQ_INT(s7_last, 1969);
+        /* Demo record §15: the grey flier of captures 864/865 is 0x1282C's
+         * type-0x01 spawn. It is refused unless state 6's 0x20DF4 has built
+         * the 0xF0A78 node list (0x12750), and the 0x3F gate opens only on
+         * the frame counter's multiples of 64, which the seed above puts at
+         * f = 91: loop frame 1097, dumped frame 508, the frame capture 864
+         * shows (DS_0010150C reads 92 after it). Without 0x12750 no flier is
+         * ever live (-1); with the counter unseeded it spawns at f = 81. */
+        CHECK_EQ_INT(s7_flier_f, 92);
+        CHECK_EQ_INT(s7_flier_i, 1097);
         /* The +0x42 bit 6 measurement: neither slot's bit is set in the
          * state-7 window (checked per frame above), so 0x349C8's 0x349E6 arm
          * is never taken. This asserts only that bit, not 0x37178's

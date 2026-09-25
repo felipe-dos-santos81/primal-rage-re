@@ -377,6 +377,9 @@ def load_port(d, n):
 # +0x42 bits 0/1 every frame, so the roar's bit 0 no longer retargets the
 # worshipper at f = 88) explains captures 860..863, [560..859] -> [560..863]
 # (300 -> 304); the set stays.
+# State 6's 0x12750 call (0x20E33: the 0xF0A78 node list 0x1282C's 0xBB254
+# flier needs) with the driver's frame-counter seed explains captures 864/865,
+# [560..863] -> [560..865] (304 -> 306); the set stays.
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 
