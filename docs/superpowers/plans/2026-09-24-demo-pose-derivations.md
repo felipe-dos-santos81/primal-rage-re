@@ -1535,3 +1535,169 @@ The unported functions that store 0 or a register there are `0x361C8`,
 `+0x42 = 0x01` on every frame from f = 72 through f = 100, so none of them
 fires in this window. The f = 93 camera step (§12.5) is still not
 compared.
+
+## 14. The slot `+0x42` reset at capture 860 (roar-timing Task 4, `b915712`)
+
+**Result in one line.** The raw clears bit 0 of the side-0 slot's `+0x42` in the
+same frame it is set. The clear is the effects pass's own tail: `0x49C78` calls
+`0x4A634` unconditionally at `0x4A591`. `0x4A634` clears `+0x42` bits 0/1 of
+both fighter slots and zeroes the `0x10889E`/`0x1088B2` bytes every frame. The
+port had skipped the call as a named gap, "the mode tail". So the roar's bit 0,
+set at f = 72, stayed set, and at f = 88 `0x4AB7F` retargeted the worshipper to
+type 8. The fix is one function of 211 raw bytes, well inside the size gate.
+This supersedes §13.4's "owner not derived" and its twelve candidates.
+
+### 14.1 How it was found
+
+§13.4's sweep only looked at writes of the form `[reg+0x42]`. None of those
+clears bit 0 of a *slot* (`0x1077B0 + side·0x94`):
+
+* `0x3C148`, `0x385B0`, `0x36870` and `0x3BDDC` write the *record* (`[slot]`)
+  `+0x42`. For example, `0x3C155 mov eax,[eax*4+0x1077b0]` is followed by
+  `0x3C166 mov byte [eax+0x42],0`.
+* The read-modify-write sites (`0x362B7`, `0x37126`, `0x376B7`, `0x37CE2`,
+  `0x3C3AB`, `0x3EC89`, `0x44DF3`, `0x458CB`, `0x4890D`, `0x48C29`) only OR in
+  bits 2/3/7 or clear bit 2.
+
+A second capstone sweep over the raw code object looked for memory operands
+whose displacement covers the slot fields directly, pre-fixup `0x877F2` /
+`0x87886` (runtime `0x1077F2` / `0x107886`). It found one read-modify-write that
+clears bits 0/1: `0x4A6D7..0x4A6E0`. That code is inside `FUN_0004a634`, whose
+only caller is `0x4A591` in `FUN_00049c78` (Ghidra `get_xrefs_to`).
+
+### 14.2 The raw (Ghidra `read_memory`, fixups applied, capstone)
+
+```
+0x4a591 e89e000000      call 0x4a634            ; unconditional; mode 9 joins here too
+0x4a596..0x4a5a0        mov byte [0x1088c2],0   ; (bl = 0) the port's existing tail
+
+0x4a637 31d2 / 31db     xor edx,edx / xor ebx,ebx   ; EDX = side, EBX = side*0x94
+0x4a63b b902000000      mov ecx,2
+0x4a640 f683f277100002  test byte [ebx+0x1077f2],2  ; slot+0x42 bit 1
+0x4a647 0f848a000000    je 0x4a6d7
+0x4a64f 8a82a8881000    mov al,[edx+0x1088a8]       ; the side's reaction byte (zero-extended)
+0x4a655 83f820 / 7c30   cmp eax,0x20 / jl 0x4a68a
+0x4a65a 83f83f / 7f2b   cmp eax,0x3f / jg 0x4a68a
+0x4a65f b803000000      mov eax,3
+0x4a664 e873310100      call 0x5d7dc                ; rng(3) -> voice 0xCD/0xCE/0xCF
+0x4a675..0x4a688        (voice id by the draw) jmp 0x4a6d2
+0x4a692 83f810 / 7c40   cmp eax,0x10 / jl 0x4a6d7
+0x4a697 83f817 / 7f3b   cmp eax,0x17 / jg 0x4a6d7
+0x4a69c 89c8 / e839310100  mov eax,ecx / call 0x5d7dc   ; rng(2)
+0x4a6a3 85c0 / 7430     test eax,eax / je 0x4a6d7
+0x4a6a7 89c8 / e82e310100  mov eax,ecx / call 0x5d7dc   ; rng(2) again
+0x4a6b2..0x4a6cd        0x2C3FC(0xC9 or 0xCA), then eax = 0xDA or 0xDB
+0x4a6d2 e8251dfeff      call 0x2c3fc                ; voice
+0x4a6d7 8a83f2771000    mov al,[ebx+0x1077f2]
+0x4a6dd 24fc            and al,0xfc                 ; clear bits 0/1
+0x4a6df 42              inc edx
+0x4a6e0 8883f2771000    mov [ebx+0x1077f2],al
+0x4a6e6 30e4            xor ah,ah
+0x4a6e8 81c394000000    add ebx,0x94
+0x4a6ee 88a29d881000    mov [edx+0x10889d],ah       ; 0x10889E[side] = 0 (edx already +1)
+0x4a6f4 88a2b1881000    mov [edx+0x1088b1],ah       ; 0x1088B2[side] = 0
+0x4a6fa 83fa02 / 0f8c3dffffff  cmp edx,2 / jl 0x4a640
+```
+
+`0x2C3FC` is the voice subsystem. It is out of scope (spec §7) like every other
+voice call in the port. Its callees (`0x1CA14`..`0x1D244`) do not include
+`0x5D7DC`, so the draws are the only state that matters besides the clears.
+
+### 14.3 The fix and its assertions
+
+* **Fix** (`port/src/game/fight.c`). There is a new `fight_4a634`, and the
+  `/* PORT: 0x4A591 0x4A634 … named gap */` line in `fight_effects_pass` is
+  replaced by the call. It sits before `DS_001088C2 = 0` (`0x4A5A0`), as in the
+  raw. `fight.h`'s gap list no longer names `0x4A634`.
+* **Measured in the demo** (a temporary `fprintf`, reverted). The tail sees
+  set bits only at f = 72: `side 0 +0x42 = 0x01, 0x1088A8[0] = 0x0B` and
+  `side 1 +0x42 = 0x02, 0x1088A8[1] = 0x01`. Neither reaction byte is in
+  `0x10..0x17` or `0x20..0x3F`, so the demo draws no RNG here. The fix changes
+  exactly the clears.
+* **Assertions** (`test_fight.c`).
+  * The new `check_effects_tail` runs with an empty list and restores every
+    byte it seeds. Its sentinels are:
+    * `s0+0x42 = 0x5B` and `s1+0x42 = 0xA5`, which become `0x58` and `0xA4`
+    * `0x10889E[0..2] = 11 22 77` and `0x1088B2[0..2] = 33 44 88`, which become
+      `0 0 77` and `0 0 88`
+  * The RNG state is the proof of each draw. Seed `0x1234` steps to
+    `0xBAC6D4B3` and then `0x5589507A` (its first rng(2) is 1). Seed `0x1235`
+    steps to `0x73D3E76C` (its first rng(2) is 0). The cases are:
+
+    | reaction byte | draws |
+    |---|---|
+    | `0x18` with bit 1 | none |
+    | `0x20` without bit 1 | none |
+    | `0x3F` | one rng(3) |
+    | `0x10` | rng(2) = 1, then a second rng(2) |
+    | `0x17` | rng(2) = 0, no second draw |
+    | `0x1F`, `0x40` | none |
+
+    Each case seeds the other side's reaction byte with a value that would
+    draw differently.
+  * `check_effects_arrival` gains the missing `DS_001088C2` pre-gate cases
+    (`0x49D2F`). With `DS_001088C2 = 1` and a scratch `0xC9754[0]` stream (id
+    `0x0456`), a `d == step` walker is retargeted by `0x4BD4C`: type 8, hold
+    `0x40800000` and pset `0x0456`, and the tail zeroes `DS_001088C2`. With
+    `0xC9754[0] = 0` it arrives: type 0, hold 5.0. `0xC9754[0]` is saved and
+    restored.
+* **Mutations** (each reverted by the script; `fight.c` was compared
+  byte-for-byte after the runs, and the suite then passed):
+
+  | mutation | first failure |
+  |---|---|
+  | no `0x4A634` call (pre-fix) | `test_fight.c:1199: 91 != 88`, `:1200`, `:1201` |
+  | `&= 0xFE` | `:1199: 90 != 88`, `:1217: 2 != 0` |
+  | no rng(3) | `:1216: 4660 != -1161374541` |
+  | `<= 0x3E` | `:1216` |
+  | `>= 0x1F` | `:1242: -1161374541 != 4660` |
+  | `<= 0x18` | `:1207: 1435062394 != 4660` |
+  | `>= 0x11` | `:1225: 4660 != 1435062394` |
+  | second rng(2) always drawn | `:1233: -1615734229 != 1943267180` |
+  | the other side's reaction byte | `:1207`, `:1216`, `:1225` |
+  | no bit-1 gate | `:1207`, `:1216` |
+  | three sides | `:1203: 0 != 119`, `:1206: 0 != 136` |
+  | no `0x10889E` clear | `:1201`/`:1202` |
+  | no `0x1088B2` clear | `:1204`/`:1205` |
+  | no `DS_001088C2` → `0x4BD4C` pre-gate | `:1136: 0 != 8`, `:1137`, `:1138` |
+
+### 14.4 Measured
+
+| measurement | before (`bcf8ce5`) | after |
+|---|---|---|
+| capture 860 ↔ port 504/505 | 476 B / 164 px | **0 B** (splice at byte 117 108, row 121) |
+| captures 861..863 | unexplained | 861 splice 505/506 (row 149); 862 = port 506, 863 = port 507 (0 B) |
+| demo oracle first unexplained | 860 (raw 3767); `[860..3616]` 2757 / 2751 unexpl. | **864 (raw 3771)**; `[864..3616]` 2753 / 2747 unexpl. |
+| demo-fight ratchet | `[860..1884]` 1025, N = 860 | **`[864..1884]` 1021**, "ratchet improved: 864 > 860", **N raised to 864** |
+| front-end oracle | `[560..859]` / 300 / 134 clean, 162 splice, 0 transition, 2 unexpl. (832, 833) | **`[560..863]` / 304 / 136 clean, 164 splice, 0 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved, which is the move the brief allowed.
+These were unmoved:
+
+* title `54/55/2/0` and `54/57/0/0`, determinism 54
+* smk 120/120 and 41/41
+* attract 215/216 (expected divergence at 215)
+* C-vs-Python 9866
+* `symbols.h`
+
+The front-end "endpoints BAD" line is the same as on `bcf8ce5`.
+
+**The new first unexplained frame, 864 (characterised, not fixed).** Capture
+864 (f = 91) matches port 508 except for 495 B / 165 px in x 0–23, rows 99–118.
+§13.4's `PR_NO42` experiment had predicted this residual exactly. The capture
+shows a grey figure at the left screen edge in front of the temple columns. It
+is small, with a long thin horizontal limb reaching to x 0. It stays in
+captures 865 and 866 (498 B at 865 ↔ 508/509). The port draws no such
+figure in ports 508..511 (inspected at 4×). The changes against port 507 in
+that box (49 px at 508, 416–421 px at 509/510, 91–122 px from 511) are
+scene changes (the blood splash visibly moves at 510/511); none of them is the
+figure. So the raw has an actor (or an
+effect-list entry) visible from f = 91 that the port never spawns or never
+draws. The owner is **not derived**. Its candidates are:
+
+* an unported fight-effect type (2, 4..12, or the case-13/14 bodies §7.4 left
+  as gaps)
+* an unported spawn in the crowd/prop path
+
+From capture 866 on, the fighters' rows (97–192) also diverge, by 27 645 B at
+866 ↔ 509/510.

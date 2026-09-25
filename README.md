@@ -256,16 +256,17 @@ spawn → `effects_step` → dirty list → `gfx_flush_palette` → `gfx_dac` �
 plan's assumed missing draw does not exist; the camera state feeds the existing
 render pass and actor-pset sync. The front-end pixel oracle is **closed and
 enforced**: a 120 s pinned capture aligns the port's state-3 zoom to window
-`[560..859]` (raw `3108..3766`), **300 frames: 134 clean, 162 splice, 0
+`[560..863]` (raw `3108..3770`), **304 frames: 136 clean, 164 splice, 0
 transition, 2 unexplained (832, 833)** — the two allowed by name (the
 arena-backdrop cycle's absorbed claim move, below); any other unexplained frame
 fails. (Indices moved `[557..813]`/257 → `[560..830]`/271 → `[560..842]`/283 →
-`[560..850]`/291 → `[560..857]`/298 → `[560..858]`/299 → `[560..859]`/300 as cycle 1's pins, cycle 2's master-loop pin and the
+`[560..850]`/291 → `[560..857]`/298 → `[560..858]`/299 → `[560..859]`/300 → `[560..863]`/304 as cycle 1's pins, cycle 2's master-loop pin and the
 arena-backdrop fix forced re-captures, the demo-pose cycle's `0x3A43C`
 stack-offset fix + `0x186C4` re-latch explained captures 843..850, and the
 roar-timing fix (the `0x3AD27` pose-setter operand) explained 851..857, and the
 frame-858 fix (`0x2A690`'s mode-1 x operands) explained 858, and the
-frame-859 fix (`0x49C78`'s case-1 walk arrival) explained 859; the host-timed capture is not reproducible, so indices shift while
+frame-859 fix (`0x49C78`'s case-1 walk arrival) explained 859, and the
+frame-860 fix (`0x49C78`'s tail reset `0x4A634`) explained 860..863; the host-timed capture is not reproducible, so indices shift while
 the claim does not.) It proves exactly one thing: **no content-bearing capture
 frame inside the window the port's own dump exhibits is unexplained** (the two
 named exceptions aside) — the window is derived from that dump and the
@@ -292,12 +293,13 @@ command generator `0x47208`, the `+0x52` state machine (`0x3531C`/`0x350D0`),
 the `0x3C88C` hitbox machine and the `0x3CF38` hit chain — the chain now
 **fires**, hits land (`+0x7C` 0/0 → 1/1), and the fight's last state change
 moved **1262 → 1400**. Its report-only oracle (`make demo-oracle`) measures the
-demo window `[860..3616]` (raw `3767..8409`), **2757 frames: 0 clean / 0 splice
-/ 0 transition / 2751 unexplained** (6 all-black frames excluded); the first
-unexplained frame is capture **860 (raw 3767)** — the same worshipper retargeted
-one frame early at port 505 (moved from 843 by the demo-pose cycle, then from 851
-by the roar-timing fix, then from 858 by the frame-858 fix, then from 859 by the
-frame-859 fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
+demo window `[864..3616]` (raw `3771..8409`), **2753 frames: 0 clean / 0 splice
+/ 0 transition / 2747 unexplained** (6 all-black frames excluded); the first
+unexplained frame is capture **864 (raw 3771)** — a grey figure at the left
+screen edge (x 0–23, rows 99–118) that the port does not draw (moved from 843
+by the demo-pose cycle, then from 851 by the roar-timing fix, then from 858 by
+the frame-858 fix, then from 859 by the frame-859 fix, then from 860 by the
+frame-860 fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
 Task 1 corrected it to **836/25**, and the final re-capture moved the loader text
 to 832 with the fight's first frames at 833/834 — record §9.1/§9.3.) Cycle 2
 advanced the boundary 811 → 816 → 832: the state-9 globe's fourth layer
@@ -359,14 +361,22 @@ See §12 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.
 
 * **Measured.** Capture 859 is now a 0-byte splice of port 503/504 at byte 90 582 (row 94), from 449 B / 159 px. The demo oracle's first unexplained is now **860 (raw 3767)**. The demo window `[860..3616]` has 2757 frames, 2751 unexplained, and the fight window `[860..1884]` has 1025 frames, 0 explained. The ratchet N is raised **859 → 860** in the same commit.
 * **Claim move (the one the brief allowed).** Front-end `[560..858]` / 299 → **`[560..859]` / 300 / `134 clean, 162 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
-* **Residual (characterised, not fixed).** Capture 860 (f = 88) leaves 476 B / 164 px in x 86–106, rows 136–172: the same worshipper, which the capture still shows in its arrival sprite `0x0836`. In the port, `0x4AAD0`'s `0x4AB7F` gate reads bit 0 of the side-0 slot's `+0x42` and retargets the worshipper (type 8, `0xC958C[0]`). The roar reaction set that bit at f = 72, and the port never clears it. The raw clear is not derived.
+* **Residual (characterised, not fixed).** Capture 860 (f = 88) leaves 476 B / 164 px in x 86–106, rows 136–172: the same worshipper, which the capture still shows in its arrival sprite `0x0836`. In the port, `0x4AAD0`'s `0x4AB7F` gate reads bit 0 of the side-0 slot's `+0x42` and retargets the worshipper (type 8, `0xC958C[0]`). The roar reaction set that bit at f = 72, and the port never clears it. The raw clear is not derived. (Derived since: the effects pass's tail `0x4A634`; see the slot `+0x42` reset below.)
 
 See §13 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
 
+**Slot `+0x42` reset (`b915712`), the demo fight's capture 860.** The raw clears the roar's `+0x42` bit 0 in the frame that sets it. The scene/effects pass `0x49C78` ends with an unconditional `call 0x4A634` (`0x4A591`). For each fighter slot, `0x4A634` does `and al,0xfc` on `+0x42` (`0x4A6D7..0x4A6E0`: `8a 83 f2 77 10 00` / `24 fc` / `88 83 f2 77 10 00`) and zeroes the side's `0x10889E`/`0x1088B2` bytes. Before that, when bit 1 is set, the side's `0x1088A8` reaction byte draws the crowd-voice RNG: rng(3) for `0x20..0x3F`, or rng(2) plus a second rng(2) when the first is non-zero for `0x10..0x17`. The port had skipped the call as a named gap, so the bit set at f = 72 made `0x4AB7F` retarget the worshipper to type 8 at f = 88. One function (211 raw bytes); the demo's reaction bytes (`0x0B`, `0x01`) draw nothing here.
+
+* **Measured.** Capture 860 is now a 0-byte splice of port 504/505 at byte 117 108 (row 121), from 476 B / 164 px. Captures 861..863 are explained. The demo oracle's first unexplained is now **864 (raw 3771)**. The demo window `[864..3616]` has 2753 frames, 2747 unexplained, and the fight window `[864..1884]` has 1021 frames, 0 explained. The ratchet N is raised **860 → 864** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..859]` / 300 → **`[560..863]` / 304 / `136 clean, 164 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 864 (f = 91) matches port 508 except for 495 B / 165 px in x 0–23, rows 99–118. The capture shows a small grey figure at the left screen edge, which persists through 865/866. The port does not draw it. Its owner, an unported effect type or spawn, is not derived.
+
+See §14 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
-demo fight's remaining arena divergence (first unexplained at capture 860
-after the frame-859 fix: the worshipper retargeted at f = 88 by a fighter-slot
-`+0x42` bit the raw has cleared, owner not yet derived) and the
+demo fight's remaining arena divergence (first unexplained at capture 864
+after the frame-860 fix: a grey figure at the left screen edge from f = 91 that
+the port never draws, owner not yet derived) and the
 interactive match cycle (the mode graph, `0x1EEB0`, the `0x1EA08` sites) remain;
 the attract's `0x2C3FC` voice calls remain declared gaps with `/* PORT: */`
 markers.
