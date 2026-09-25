@@ -3256,6 +3256,8 @@ static void check_pose_handler(void)
      * raw's (EAX = slot, EBX = side). The registration itself is asserted in
      * check_anim_hold_scaler (which runs actors_init); register it here only
      * when this check runs without it, so the wiring does not depend on order. */
+    CHECK(fn_resolve(0x3A43Cu) == (void (*)(void))fighter_pose_3a43c,
+          "actors_init registered 0x3A43C as fighter_pose_3a43c");
     if (fn_resolve(0x3A43Cu) == NULL)
         fn_register(0x3A43Cu, (void (*)(void))fighter_pose_3a43c);
     pose_handler_seed(s0, s1, r0, r1);

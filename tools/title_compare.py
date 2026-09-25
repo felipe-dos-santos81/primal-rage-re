@@ -576,8 +576,10 @@ def main():
     # frame is exhibited, is unexplained if it carries content. Enforced: no
     # unexplained frame below N, and the first unexplained frame is >= N. When
     # the window is fully explained (no unexplained frame) the claim is exactly
-    # "0 unexplained in the fight window" for any N <= end + 1; N == end + 1
-    # pins that, and a smaller N is reported so it can be raised.
+    # "0 unexplained in the fight window" for any N <= end + 1. N == end already
+    # rejects every unexplained frame in [lo..end-1] (the frames below end); it
+    # differs from N == end + 1 only by admitting a first unexplained frame at
+    # `end` itself, which is outside the window. N == end + 1 is the exact pin.
     if a.demo_fight:
         if a.demo_fight_min_first is None:
             print("title_compare: demo-fight: --demo-fight-min-first N is "
@@ -661,7 +663,8 @@ def main():
             print("title_compare: demo-fight: fully explained; the window "
                   "claim is now exact%s"
                   % ("" if ratchet == end + 1 else
-                     " — raise N to %d to pin it" % (end + 1)))
+                     " — N = %d (window end + 1) is the exact pin"
+                     % (end + 1)))
         elif first > ratchet:
             print("title_compare: demo-fight: ratchet improved: first "
                   "unexplained %d > %d — raise N" % (first, ratchet))
