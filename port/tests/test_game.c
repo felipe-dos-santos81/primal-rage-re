@@ -2767,7 +2767,7 @@ int test_frontend(void)
      * 1970, where the state drops to 0 and dumping stops. So the state>=3 dump
      * run is loop frames 589..1969, i.e. dumped frames 0..1380 (1381 frames); the
      * 1400 cap covers it and the 2000-frame loop clears the 1970 exit. The
-     * front-end window is distinct [560..879] (320 frames: 140 clean, 176
+     * front-end window is distinct [560..890] (331 frames: 142 clean, 185
      * splice, 0 transition, 2 unexplained; [560..842]/283 before the
      * demo-pose 0x3A43C/0x186C4 fix explained captures 843..850,
      * [560..850]/291 before the 0x3AD27 setter-operand fix explained
@@ -2779,8 +2779,10 @@ int test_frontend(void)
      * [560..865]/306 before 0x36870's case-0 restart of its own record
      * (0x36A8C/0x36AA1) explained 866, and [560..866]/307 before 0x3BDDC's
      * 0x3C480 animation start with the full 0x18714 anchor path explained
-     * 867..869, and [560..869]/310 before the attack streams' 0xD000 target
-     * 0x35E04 and its 0x3BC70 launch explained 870..879). The
+     * 867..869, [560..869]/310 before the attack streams' 0xD000 target
+     * 0x35E04 and its 0x3BC70 launch explained 870..879, and [560..879]/320
+     * before 0x34E2C's reaction callback and the T-rex's 0x3E62C/0x3E524/
+     * 0x3E4E4 leap explained 880..890). The
      * [557..810]/254 text here was
      * stale drift, already flagged in Task 2's review and corrected here; Task
      * 3c's camera-offset fix does not touch it. The arena-backdrop fix (the
@@ -2790,7 +2792,7 @@ int test_frontend(void)
      * and the two new unexplained frames (832, 833) are pre-existing,
      * out-of-scope gaps with named owners, allowed by name in
      * tools/title_compare.py. The window's exhibition set spans port frames
-     * 0..521 (285 exhibited). */
+     * 0..530 (294 exhibited). */
     {
         const char *dir = getenv("PR_GAME_DIR");
         if (dir == NULL || dir[0] == '\0') dir = "data/game/C";

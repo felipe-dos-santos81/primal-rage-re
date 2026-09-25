@@ -274,6 +274,22 @@ int fighter_attack_consume(u32 side);
  * horizontal speed from the DS_00107D40 row). EAX = rec. */
 void fighter_35e04(u32 rec);
 
+/* 0x3E62C. The T-rex's reaction-0x2B callback (0x34E2C's *(u32*)0xA3884): the
+ * 0xE7BDE stream at hold 3.0 through 0x3C4CC, the x re-anchor, slot +0x57 = 2,
+ * state 9/7/2 and the +0x0C/+0x18/+0x1C callbacks 0x3E524/0x3E484/0x3E4C4.
+ * EAX = slot, EDX = rec (the EBX side is unused). */
+void fighter_3e62c(u32 slot, u32 rec, u32 side);
+
+/* 0x3E524. The slot +0x0C callback 0x3531C case 7 runs each frame after
+ * 0x3E62C: the +0x57 rise/fall/landing machine. EAX = slot, EDX = rec,
+ * EBX = side. */
+void fighter_3e524(u32 slot, u32 rec, u32 side);
+
+/* 0x3E4E4. The animation-opcode 0x15 target in the 0xE7BDE stream: with
+ * rec+0x14 set, restart at 0xE7BFA (hold 3.0), vertical speed 0x320, gravity
+ * 0x23, slot +0x57 = 0. EAX = rec. */
+void fighter_3e4e4(u32 rec);
+
 /* The machine's and chain's per-function fixtures (record §7.1-§7.5, §7.7-§7.9
  * and §7.11) exercise these directly. */
 u32  hit_frame_desc(u32 side, u32 i);                 /* 0x3C600 */

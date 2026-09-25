@@ -395,6 +395,11 @@ def load_port(d, n):
 # the DS_00107D40 row) explain captures 870..879, [560..869] -> [560..879]
 # (310 -> 320); the allowed set stays (832, 833), and the exhibition set grows
 # to port frames 0..521 (285 exhibited).
+# 0x34E2C's reaction callback (0x35045), the T-rex's reaction-0x2B callback
+# 0x3E62C with its 0x3531C case-7 callback 0x3E524 and the 0xE7BDE stream's
+# 0x3E4E4 leap explain captures 880..890, [560..879] -> [560..890]
+# (320 -> 331); the allowed set stays (832, 833), and the exhibition set grows
+# to port frames 0..530 (294 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

@@ -35,6 +35,10 @@ void fighter_385b0(u32 rec);                             /* 0x385B0 */
 static void fighter_379c4(u32 slot);                     /* 0x379C4 */
 static void fighter_164e8(u32 side);                     /* 0x164E8 */
 
+/* PORT: the register shape of the slot callbacks 0x34E2C (0x35045) and
+ * 0x3531C case 7 (0x35431) call: EAX = slot, EDX = rec, EBX = side. */
+typedef void (*fighter_slot_cb)(u32 slot, u32 rec, u32 side);
+
 /* ---- the shared per-fighter helpers ------------------------------------ */
 
 void fighter_ctx_swap(u32 out[6], u32 side)
@@ -2787,8 +2791,9 @@ void fighter_state_3531c(u32 side)
         DSB(slot + 0x41u) |= 0x80u;                         /* 0x3541B */
         DSB(slot + 0x43u) &= 0xCFu;                         /* 0x35422 */
         {
-            void (*fn)(void) = fn_resolve(DSD(slot + 0xCu));
-            if (fn) fn();                                   /* 0x35431 */
+            fighter_slot_cb fn = (fighter_slot_cb)(void *)
+                fn_resolve(DSD(slot + 0xCu));
+            if (fn) fn(slot, DSD(slot), side);              /* 0x35431 */
         }
         if (DSB(slot + 0x7Au) == 4u                         /* 0x3543C */
                 && (DSB(slot + 0x5Fu) == 0x21u
@@ -2920,8 +2925,8 @@ void fighter_35e04(u32 rec)
     DSD(rec + 0x20u) = 0x40400000u;                     /* 0x35E0D */
     DSD(rec + 0x24u) = DSD(rec + 0x20u);                /* 0x35E1C */
     fighter_3bc70((u32)DSB(rec + 0x51u));               /* 0x35E21 */
-    /* PORT: 0x35E38 0x2C3FC(word[0xBDAA8 + slot+0x7A*2]) voice, out of
-     * scope (spec §7). */
+    /* PORT: 0x35E38 0x2C3FC(word[0xBDAA8 + byte[slot+0x7A]*2]), slot =
+     * rec+0x14, the voice, out of scope (spec §7). */
 }
 
 /* ---- the 0x3C88C hitbox machine and the 0x3CF38 hit chain ----------------
@@ -3411,9 +3416,10 @@ void hit_sound(u32 ch)
 
 /* 0x34E2C. The reaction driver. With reaction == 0xFF it returns; otherwise it
  * resets the reaction state, plays the animation the (char, reaction) table
- * selects and drives the +0x52/+0x53 transitions. The 0xA3528 entry fields and
- * the *(u32*)anim[1] callback (0x3D17C) are the §6.9 gap, and the 0x2C3FC voice
- * is out of scope; the +0x5F stores stay. */
+ * selects and drives the +0x52/+0x53 transitions. The *(u32*)anim[1] callback
+ * runs through fn_resolve with the raw's registers (EAX = slot, EDX = rec,
+ * EBX = side); 0x3E62C is registered, 0x3D17C is still the §6.9 gap, and an
+ * unregistered callback is skipped. The 0x2C3FC voice is out of scope. */
 void hit_reaction_apply(u32 side, u32 reaction)
 {
     u32 slot = DS_001077B0 + side * 0x94u;
@@ -3466,10 +3472,120 @@ void hit_reaction_apply(u32 side, u32 reaction)
         }
     }
     if (callback != 0u) {                               /* 0x35017 */
-        /* PORT: 0x35032 the 0x2C3FC voice (out of scope) and 0x35045 the
-         * *(u32*)anim[1] callback 0x3D17C (§6.9 gap); the +0x5F store stays. */
+        /* PORT: 0x35032 the 0x2C3FC voice, out of scope (spec §7). */
         DSB(slot + 0x5Fu) = (u8)reaction;               /* 0x35042 */
+        {
+            fighter_slot_cb fn = (fighter_slot_cb)(void *)fn_resolve(callback);
+            if (fn) fn(slot, rec, side);                /* 0x35045 */
+        }
     }
+}
+
+/* PORT: data-object addresses symbols.h does not name. */
+#define FIGHT_ANIM_3E62C 0x000E7BDEu  /* 0x3E646: the reaction-0x2B stream */
+#define FIGHT_ANIM_3E4E4 0x000E7BFAu  /* 0x3E4F0: 0xE7BDE after its 0xD500 word */
+
+/* 0x3C190. The horizontal speed from a magnitude: the record's +0x34 is -v when
+ * the side's pset is not hflipped (0x1A570), else v. EAX = side, EDX = v. */
+static void fighter_3c190(u32 side, u32 v)
+{
+    u32 rec = DSD(DS_001077B0 + side * 0x94u);          /* 0x3C1AE/0x3C1B8 */
+    if (fighter_actor_bit15_clear(side) != 0)           /* 0x3C194 0x1A570 */
+        v = 0u - v;                                     /* 0x3C1B4 */
+    DSW(rec + 0x34u) = (u16)v;                          /* 0x3C1BE */
+}
+
+/* 0x3E62C. The T-rex's reaction-0x2B callback (*(u32*)0xA3884, the (char 0,
+ * 0x2B) entry of 0x34E2C's 0xA3528 table, whose stream word +4 is 0). EAX =
+ * slot, EDX = rec; the EBX 0x34E2C passes is overwritten at 0x3E632. It starts
+ * the 0xE7BDE stream at hold 3.0 through 0x3C4CC, re-anchors x at the slot's
+ * +0x2C read before that call, and arms the slot: +0x57 = 2, state 9/7/2, the
+ * +0x0C per-frame callback 0x3E524 (0x3531C case 7), the +0x18/+0x1C callbacks
+ * 0x3E484/0x3E4C4 and +0x41 bit 7. The raw returns AL = 1, which 0x34E2C
+ * ignores. */
+void fighter_3e62c(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    u32 x;
+    (void)side;
+    hit_anim_ctx(ctx, rec);                             /* 0x3E638 0x339AC */
+    x = DSD(ctx[2] + 0x2Cu);                            /* 0x3E64D */
+    hit_anim_start_b(rec, FIGHT_ANIM_3E62C, 0x40400000u);   /* 0x3E650 0x3C4CC */
+    hit_anchor_x(ctx[0], x);                            /* 0x3E65A 0x188DC */
+    DSB(slot + 0x57u) = 2u;                             /* 0x3E65F */
+    DSB(slot + 0x52u) = 9u;                             /* 0x3E663 */
+    DSB(slot + 0x53u) = 7u;                             /* 0x3E667 */
+    DSB(slot + 0x54u) = 2u;                             /* 0x3E66B */
+    DSD(slot + 0x0Cu) = 0x0003E524u;                    /* 0x3E66F */
+    /* PORT: 0x3E484/0x3E4C4 are stored as the raw stores them; their only
+     * callers are the 0x1975C think chain's named gaps (§7.12), so neither is
+     * ported. */
+    DSD(slot + 0x18u) = 0x0003E484u;                    /* 0x3E676 */
+    DSD(slot + 0x1Cu) = 0x0003E4C4u;                    /* 0x3E680 */
+    DSB(slot + 0x41u) |= 0x80u;                         /* 0x3E68A */
+}
+
+/* 0x3E524. The per-frame +0x0C callback 0x3E62C arms (0x3531C case 7: EAX =
+ * slot, EDX = rec, EBX = side). With the record's +0x63 >= 10 it clears the
+ * slot's +0x8A, then steps +0x57 through the jump table 0x3E514: 0 sets the
+ * horizontal speed to 10*v/7 of the vertical speed v through 0x3C190 and, once
+ * v < 0, moves to 1 with gravity 15 and no horizontal speed; 1 lands when the
+ * per-char word[0xBD882] >> 16 exceeds the slot's +0x30 or the vertical speed
+ * is 0 (+0x54 = 0, 0x188AC, 0x3C148, 0x3C16C, the 0xC8B58 stream at hold 3.0,
+ * +0x57 = 3); 2 and 3 return. */
+void fighter_3e524(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                        /* 0x3E534 0x33950 */
+    if ((u32)DSB(ctx[4] + 0x63u) >= 0x0Au)              /* 0x3E545 */
+        DSB(ctx[2] + 0x8Au) = 0;                        /* 0x3E54E */
+    switch (DSB(slot + 0x57u)) {                        /* 0x3E565 */
+    case 0u:                                            /* 0x3E56D */
+        {
+            s32 v = (s32)DSD(rec + 0x34u) >> 16;        /* 0x3E570 */
+            fighter_3c190(side, (u32)((v * 10) / 7));   /* 0x3E588 0x3C190 */
+        }
+        if ((s16)DSW(rec + 0x36u) >= 0) return;         /* 0x3E598 */
+        DSB(slot + 0x57u) = 1u;                         /* 0x3E5A0 */
+        DSW(DSD(slot) + 0x44u) = 0x000Fu;               /* 0x3E5A6 */
+        fighter_3c190(side, 0u);                        /* 0x3E5AE 0x3C190 */
+        return;
+    case 1u:                                            /* 0x3E5BA */
+        if (!((s32)DSD(FIGHT_LAND_THR + (u32)DSB(slot + 0x7Au) * 2u) >> 16
+                  > (s32)DSD(slot + 0x30u))             /* 0x3E5CE */
+                && DSW(rec + 0x36u) != 0u)              /* 0x3E5D5 */
+            return;
+        DSB(slot + 0x54u) = 0;                          /* 0x3E5DB */
+        hit_anchor_set(side, DSD(DSD(slot) + 0x18u), 0u);   /* 0x3E5E4 0x188AC */
+        fighter_3c148(side);                            /* 0x3E5EB */
+        fighter_3c16c(side);                            /* 0x3E5F2 */
+        hit_anim_start_b(DSD(slot), DSD(FIGHT_35E6C_ANIM
+                                        + (u32)DSB(slot + 0x7Au) * 4u),
+                         0x40400000u);                  /* 0x3E60A 0x3C4CC */
+        DSB(slot + 0x57u) = 3u;                         /* 0x3E60F */
+        return;
+    case 2u:
+    case 3u:                                            /* 0x3E624 */
+        return;
+    default:
+        /* PORT: 0x3E61F 0x62003, the runtime's error exit, out of scope. */
+        return;
+    }
+}
+
+/* 0x3E4E4. An animation-opcode 0x15 target: the words `D500 E4E4 0003` in the
+ * 0xE7BDE stream load the dword 0x0003E4E4 into DS_00105BD4. EAX = rec. With
+ * rec+0x14 (the owner slot) set it restarts the stream at 0xE7BFA (the word
+ * after that opcode) at hold 3.0 through 0x2BC30, sets the vertical speed
+ * 0x320 and gravity 0x23, and the slot's +0x57 = 0 (0x3E524's rise). */
+void fighter_3e4e4(u32 rec)
+{
+    u32 slot = DSD(rec + 0x14u);                        /* 0x3E4E9 */
+    if (slot == 0u) return;                             /* 0x3E4EE */
+    actors_anim_begin(rec, FIGHT_ANIM_3E4E4, 0x40400000u);  /* 0x3E4FA 0x2BC30 */
+    DSW(rec + 0x36u) = 0x0320u;                         /* 0x3E4FF */
+    DSW(rec + 0x44u) = 0x0023u;                         /* 0x3E505 */
+    DSB(slot + 0x57u) = 0;                              /* 0x3E50B */
 }
 
 /* 0x3CE58. Validate the hitbox and drive the reaction: the 0x3CE24 gate, the

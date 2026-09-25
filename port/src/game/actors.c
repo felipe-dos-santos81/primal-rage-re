@@ -85,6 +85,7 @@ static void anim_code_37A58(u32 rec, u32 arg);
 static void anim_code_39A34(u32 rec, u32 arg);
 static void anim_code_36870(u32 rec, u32 arg);
 static void anim_code_35E04(u32 rec, u32 arg);
+static void anim_code_3E4E4(u32 rec, u32 arg);
 
 /* The 0xBB9D8 type table's two callback halves (cb1 at 0xBB9DC, cb2 at
  * 0xBB9E0). actor_spawn's tail (0x2B0D4) calls cb1 with (rec, slot) and tests
@@ -134,6 +135,14 @@ int actors_init(void)
     /* PORT: the characters' 0xC8B30 attack streams' 0xD000 target (opcode
      * 0x10, mode 0x4000, dword 0x00035E04), the attack's launch. */
     fn_register(0x35E04u, (void (*)(void))anim_code_35E04);
+    /* PORT: the T-rex's reaction-0x2B stream 0xE7BDE's 0xD500 target (opcode
+     * 0x15, mode 0x4000, dword 0x0003E4E4), its leap. */
+    fn_register(0x3E4E4u, (void (*)(void))anim_code_3E4E4);
+    /* PORT: 0x34E2C's reaction callback 0x3E62C (*(u32*)0xA3884) and the slot
+     * +0x0C callback it stores, 0x3E524 (0x3531C case 7); both take the raw's
+     * (slot, rec, side) registers. */
+    fn_register(0x3E62Cu, (void (*)(void))fighter_3e62c);
+    fn_register(0x3E524u, (void (*)(void))fighter_3e524);
     /* PORT: the state-7 pose handler 0x3531C case 10 resolves from the slot's
      * +0x10 (the 0x3A504 setter writes it; the raw reaches it only through
      * that indirect call). */
@@ -688,6 +697,16 @@ static void anim_code_35E04(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_35e04(rec);
+}
+
+/* 0x3E4E4 — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x3E4E4 takes EAX = rec and only saves
+ * EDX (0x3E4E6 push, 0x3E50F pop) before loading it with the stream, so this
+ * wrapper drops the operand and calls fighter_3e4e4(rec) unchanged. */
+static void anim_code_3E4E4(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3e4e4(rec);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */

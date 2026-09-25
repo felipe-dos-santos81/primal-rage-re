@@ -3772,6 +3772,13 @@ static void check_anim_hold_scaler(void)
     CHECK(fn_resolve(0x35E04u) != NULL, "0x35E04 is registered");
     CHECK(fn_resolve(0x35E04u) != (void (*)(void))fighter_35e04,
           "0x35E04 is registered through the (rec, arg) wrapper");
+    CHECK(fn_resolve(0x3E4E4u) != NULL, "0x3E4E4 is registered");
+    CHECK(fn_resolve(0x3E4E4u) != (void (*)(void))fighter_3e4e4,
+          "0x3E4E4 is registered through the (rec, arg) wrapper");
+    CHECK(fn_resolve(0x3E62Cu) == (void (*)(void))fighter_3e62c,
+          "0x3E62C is registered as fighter_3e62c");
+    CHECK(fn_resolve(0x3E524u) == (void (*)(void))fighter_3e524,
+          "0x3E524 is registered as fighter_3e524");
 
     s[0] = 0xD100;                           /* opcode 0x11, mode 0x4000 */
     s[1] = 0x9A34;                           /* the inline code pointer */
@@ -3838,6 +3845,204 @@ static void check_anim_hold_scaler(void)
         tf_put(sv_slot, slot, 0x94u);
         tf_put(sv_d40, DS_00107D40, 8u);
     }
+}
+
+/* ---- roar-timing Task 9: the T-rex's reaction-0x2B leap (record §19) ------ */
+
+/* §19.3: 0x34E2C calls the (char, reaction) entry's *(u32*)anim[1] callback
+ * with EAX = slot, EDX = rec, EBX = side. For char 0, reaction 0x2B the entry
+ * is 0xA3884 (read_memory: 2c e6 03 00 00 00 00 00, callback 0x3E62C and no
+ * stream), so the demo's f = 105 T-rex runs 0x3E62C: the 0xE7BDE stream
+ * through 0x3C4CC at hold 3.0, the x re-anchor, slot +0x57 = 2, state 9/7/2 and
+ * the +0x0C callback 0x3E524 that 0x3531C case 7 then runs each frame. The
+ * 0xE7BDE stream's `D500 E4E4 0003` reaches 0x3E4E4, the leap. The
+ * registrations are asserted in check_anim_hold_scaler (which runs
+ * actors_init); they are made here only when this check runs without it. */
+static void check_trex_leap(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    u32 pset0 = FIGHT_ACTORS + 0x20u;
+    u16 sv_78f6 = DSW(DS_001078F6);
+    u8 sv_b00[4];
+    tf_snap(sv_b00, DS_00104B00, 4u);
+    if (fn_resolve(0x3E62Cu) == NULL)
+        fn_register(0x3E62Cu, (void (*)(void))fighter_3e62c);
+    if (fn_resolve(0x3E524u) == NULL)
+        fn_register(0x3E524u, (void (*)(void))fighter_3e524);
+
+    /* A: the 0x34E2C dispatch into 0x3E62C (0x35045). The slot is the demo's
+     * f = 105 T-rex: state 9/0/0, char 0. Slot +0x42 bit 3 makes 0x18714 and
+     * the 0x186D0 latch pass the record's +0x18 through, so the x 0x3E62C reads
+     * before 0x3C4CC (0x3E64D, X = 0x1111) differs from the one the 0x3C480
+     * latch leaves (the record's R = 0x2222): 0x188DC stores X only when it is
+     * read first. +0x52 = 9 sends 0x3C4CC to 0x3C480, whose 0x188AC zeroes
+     * rec+0x1C. The stream's `DC00 55B8 000E` loads rec+0x10 and replaces the
+ * 3.0 hold with byte[0xE55B8 + rec+0x52] = 1 (read_memory: 01 01 01 02 ...),
+ * and `CD40 11B3` gives id 0x11B3 + rec+0x52 (0). */
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSB(r0 + 0x51u) = 0;
+    DSB(r1 + 0x51u) = 1;
+    DSW(r0 + 0x56u) = 1;
+    DSW(pset0) = 0x0F35u;
+    DSB(s0 + 0x42u) = 0x08u;
+    DSB(s0 + 0x52u) = 9u;
+    DSB(s0 + 0x53u) = 0x66u;
+    DSB(s0 + 0x54u) = 0u;
+    DSB(s0 + 0x57u) = 0x66u;
+    DSB(s0 + 0x41u) = 0u;
+    DSD(s0 + 0x0Cu) = 0x11111111u;
+    DSD(s0 + 0x18u) = 0x22222222u;
+    DSD(s0 + 0x1Cu) = 0x33333333u;
+    DSD(s0 + 0x2Cu) = 0x1111u;
+    DSD(s1 + 0x2Cu) = 0x7000u;
+    DSD(r0 + 0x18u) = 0x2222u;
+    DSD(r0 + 0x1Cu) = 0x5555u;
+    DSD(r0 + 8u) = 0x00ABCDEFu;
+    DSB(s1 + 0x53u) = 0x66u;
+    hit_reaction_apply(0u, 0x2Bu);
+    CHECK_EQ_INT((int)DSB(s0 + 0x5Fu), 0x2B);
+    CHECK_EQ_INT((int)DSB(s0 + 0x57u), 2);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 2);
+    CHECK_EQ_INT((int)DSD(s0 + 0x0Cu), 0x0003E524);
+    CHECK_EQ_INT((int)DSD(s0 + 0x18u), 0x0003E484);
+    CHECK_EQ_INT((int)DSD(s0 + 0x1Cu), 0x0003E4C4);
+    CHECK_EQ_INT((int)(DSB(s0 + 0x41u) & 0x80u), 0x80);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x1111);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x2222);
+    CHECK_EQ_INT((int)DSD(r0 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 0x10u), 0x000E55B8);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x3F800000);   /* byte[0xE55B8+0] = 1 */
+    CHECK_EQ_INT((int)(DSW(pset0) & 0x7FFFu), 0x11B3);
+    CHECK((DSD(r0 + 8u) - 0x000E7BDEu) < 0x60u,
+          "0x3E62C starts the record on the 0xE7BDE stream");
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0x66);
+
+    /* B: 0x3531C case 7 (0x35431) runs the slot's +0x0C callback with EAX =
+     * slot, EDX = rec, EBX = side: 0x3E524's +0x57 = 0 arm sets the horizontal
+     * speed from the vertical one, 10 * 701 / 7 = 1001 (0x3E588 idiv
+     * truncates 1001.4), negated through 0x3C190 while the pset is unflipped
+     * (0x1A570), and keeps +0x57 while the vertical speed is >= 0. The record's
+     * +0x63 = 10 clears the slot's +0x8A (0x3E54E). A's 0x18B04 left the pset
+ * hflipped (0x1111 < the other slot's 0x7000), so it is cleared here. */
+    DSW(DS_001078F6) = 0;
+    DSW(pset0) = (u16)(DSW(pset0) & 0x7FFFu);
+    DSB(s0 + 0x57u) = 0u;
+    DSB(s0 + 0x8Au) = 1u;
+    DSB(r0 + 0x63u) = 10u;
+    DSB(s0 + 0x43u) = 0x30u;
+    DSW(r0 + 0x36u) = 701u;
+    DSW(r0 + 0x34u) = 0x5555u;
+    fighter_state_3531c(0u);
+    CHECK_EQ_INT((int)(s16)DSW(r0 + 0x34u), -1001);
+    CHECK_EQ_INT((int)DSB(s0 + 0x57u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x8Au), 0);
+    CHECK_EQ_INT((int)(DSB(s0 + 0x43u) & 0x30u), 0);
+    /* The hflipped pset keeps the sign (0x3C1B8); +0x63 = 9 keeps +0x8A. */
+    DSW(pset0) = (u16)(DSW(pset0) | 0x8000u);
+    DSB(s0 + 0x8Au) = 1u;
+    DSB(r0 + 0x63u) = 9u;
+    fighter_3e524(s0, r0, 0u);
+    CHECK_EQ_INT((int)(s16)DSW(r0 + 0x34u), 1001);
+    CHECK_EQ_INT((int)DSB(s0 + 0x8Au), 1);
+    /* Falling (v < 0): +0x57 = 1, gravity 15, no horizontal speed. */
+    DSW(r0 + 0x36u) = (u16)-3;
+    DSW(r0 + 0x44u) = 0x5555u;
+    fighter_3e524(s0, r0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x57u), 1);
+    CHECK_EQ_INT((int)DSW(r0 + 0x44u), 15);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0);
+
+    /* C: +0x57 = 1 lands when word[0xBD882 + char*2] >> 16 (char 0: the
+     * dword 0x16001180, 0x1600 = 5632) exceeds the slot's +0x30, or when the
+     * vertical speed is 0 (0x3E5CE/0x3E5D5). Landing: +0x54 = 0, 0x188AC
+     * zeroes rec+0x1C, 0x3C148 zeroes +0x34/+0x43/+0x42, 0x3C16C zeroes
+     * +0x36/+0x44, the 0xC8B58[0] stream (0xE6F82, first id 0x0FA7) starts at
+     * hold 3.0 and +0x57 = 3. +0x52 = 0 takes 0x3C4CC's plain 0x2BC30 arm. */
+    DSB(s0 + 0x52u) = 0u;
+    DSB(s0 + 0x57u) = 1u;
+    DSB(s0 + 0x54u) = 2u;
+    DSD(s0 + 0x30u) = 6000u;
+    DSW(r0 + 0x36u) = 5u;
+    DSW(r0 + 0x44u) = 0x5555u;
+    fighter_3e524(s0, r0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x57u), 1);                /* 5632 <= 6000, v != 0 */
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 2);
+    DSD(s0 + 0x30u) = 5632u;
+    fighter_3e524(s0, r0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x57u), 1);                /* `jg`: equal stays */
+    DSW(r0 + 0x36u) = 0u;
+    DSD(r0 + 0x1Cu) = 0x5555u;
+    DSB(r0 + 0x43u) = 0x66u;
+    DSW(r0 + 0x34u) = 0x5555u;
+    DSD(r0 + 0x24u) = 0x11111111u;
+    fighter_3e524(s0, r0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x57u), 3);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSB(r0 + 0x43u), 0);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(r0 + 0x44u), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)(DSW(pset0) & 0x7FFFu), 0x0FA7);
+    DSB(s0 + 0x57u) = 1u;
+    DSB(s0 + 0x54u) = 2u;
+    DSD(s0 + 0x30u) = 5631u;
+    DSW(r0 + 0x36u) = 5u;
+    fighter_3e524(s0, r0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x57u), 3);                /* 5632 > 5631 */
+    /* +0x57 = 3 and 2 return (0x3E624). */
+    DSB(s0 + 0x54u) = 2u;
+    DSW(r0 + 0x36u) = 701u;
+    DSW(r0 + 0x34u) = 0x5555u;
+    fighter_3e524(s0, r0, 0u);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0x5555);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 2);
+    DSB(s0 + 0x57u) = 2u;
+    DSD(s0 + 0x30u) = 0u;
+    fighter_3e524(s0, r0, 0u);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0x5555);
+    CHECK_EQ_INT((int)DSB(s0 + 0x57u), 2);
+
+    /* D: the 0xE7BDE stream's `D500 E4E4 0003` (opcode 0x15, mode 0x4000, the
+     * dword 0x0003E4E4) dispatched from a crafted walk: 0x3E4E4 restarts the
+     * record at 0xE7BFA, vertical speed 0x320, gravity 0x23, and slot +0x57 =
+     * 0. 0xE7BFA's `DA00 5FD8 000E` / `DC00 55D8 000E` load rec+0x0C/+0x10 and
+     * the hold byte[0xE55D8 + 0] = 5 (read_memory: 05 01 01 01 ...), which
+     * the crafted stream's own words cannot produce. Without rec+0x14 it
+     * writes nothing (0x3E4EE). */
+    {
+        u32 stream = FIGHT_RECS + 0x3900u;
+        DSW(stream) = 0xD500u;
+        DSW(stream + 2u) = 0xE4E4u;
+        DSW(stream + 4u) = 0x0003u;
+        DSW(stream + 6u) = 0x1746u;
+        DSD(r0 + 0x14u) = s0;
+        DSB(s0 + 0x57u) = 0x66u;
+        DSW(r0 + 0x36u) = 0x5555u;
+        DSW(r0 + 0x44u) = 0x5555u;
+        actors_anim_begin(r0, stream, 0x3F800000u);
+        CHECK_EQ_INT((int)DSW(r0 + 0x36u), 0x320);
+        CHECK_EQ_INT((int)DSW(r0 + 0x44u), 0x23);
+        CHECK_EQ_INT((int)DSB(s0 + 0x57u), 0);
+        CHECK_EQ_INT((int)DSD(r0 + 0x0Cu), 0x000E5FD8);
+        CHECK_EQ_INT((int)DSD(r0 + 0x10u), 0x000E55D8);
+        CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40A00000);   /* 5.0f */
+        CHECK((DSD(r0 + 8u) - 0x000E7BFAu) < 0x40u,
+              "0x3E4E4 restarts the record at 0xE7BFA");
+        DSD(r0 + 0x14u) = 0;
+        DSB(s0 + 0x57u) = 0x66u;
+        DSW(r0 + 0x36u) = 0x5555u;
+        fighter_3e4e4(r0);
+        CHECK_EQ_INT((int)DSB(s0 + 0x57u), 0x66);
+        CHECK_EQ_INT((int)DSW(r0 + 0x36u), 0x5555);
+    }
+
+    DSW(DS_001078F6) = sv_78f6;
+    tf_put(sv_b00, DS_00104B00, 4u);
 }
 
 /* ---- Task 3b: the 0x3B714 reaction applier (pose/freeze record §2.3) ----- */
@@ -5108,6 +5313,7 @@ int test_fight(void)
     check_pose_entry();
     check_pose_handler();
     check_anim_hold_scaler();
+    check_trex_leap();
     check_reaction_predicates();
     check_reaction();
     check_winner_body();
