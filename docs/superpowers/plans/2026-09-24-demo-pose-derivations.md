@@ -1031,10 +1031,20 @@ port's camera drag). The capture's background did not move at 843/844.
 captures 843..850 the fix makes explained; the unexplained set is unchanged).
 Per the Global Constraints this is a **halt-and-report**: old
 `[560..842]`/283/`125 clean, 154 splice`, new `[560..850]`/291/`130 clean,
-157 splice`, evidence §9.3(d). The fix is held uncommitted pending the ruling
-(Task 2b report).
-The candidate is `.superpowers/sdd/2026-09-24-demo-pose/task-2b-fix.patch`
-(git-ignored ledger): the two code changes, the corrected §7.2/§7.3 test
+157 splice`, evidence §9.3(d). **Ruling and landing:** the controller ruled
+to land the fix. It landed in **`dad2712`** (`game: fix the 0x3A43C stack
+offsets and port the 0x186C4 re-latch`), and the enforced front-end claim moved
+in that same commit: `[560..842]` / 283 / `125 clean, 154 splice, 0
+transition, 2 unexplained (832, 833)` became `[560..850]` / 291 / `130 clean,
+157 splice, 0 transition, 2 unexplained (832, 833)`. The reason is recorded in
+the commit and in every live copy of the claim: the window comes from the
+port's own dump, and the raw's `0x2BC30` `RET 4` (`0x2BCEF`) frame plus the
+`0x35829` `0x186C4` re-latch explain captures 843..850. The unexplained set is
+unchanged. On the landed tree, `make demo-oracle` gives
+`first unexplained captured frame 851 (raw 3758)`.
+Before the ruling, the fix was held as
+`.superpowers/sdd/2026-09-24-demo-pose/task-2b-fix.patch` (git-ignored ledger;
+now landed as `dad2712`). It contained the two code changes, the corrected §7.2/§7.3 test
 seeds (B/A at `0x107D10`/`0x107D14`, i.e. `side = 0`; the self record's
 `+0x1C`; "no snap" observed on `rec+0x18`, since `hit_anchor_set`'s relatch now
 rewrites `slot+0x2C`), and `check_hud_latch`. With it: `cmake --build build`
