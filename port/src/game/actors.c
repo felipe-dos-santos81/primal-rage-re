@@ -83,6 +83,7 @@ static void anim_code_10FA8(u32 rec, u32 arg);
 static void anim_code_12720(u32 rec, u32 arg);
 static void anim_code_37A58(u32 rec, u32 arg);
 static void anim_code_39A34(u32 rec, u32 arg);
+static void anim_code_36870(u32 rec, u32 arg);
 
 /* The 0xBB9D8 type table's two callback halves (cb1 at 0xBB9DC, cb2 at
  * 0xBB9E0). actor_spawn's tail (0x2B0D4) calls cb1 with (rec, slot) and tests
@@ -128,7 +129,7 @@ int actors_init(void)
      * 0x4000): the frame-hold scaler 0x39A34 and the already-ported 0x36870
      * +0x54 machine. */
     fn_register(0x39A34u, (void (*)(void))anim_code_39A34);
-    fn_register(0x36870u, (void (*)(void))fighter_36870);
+    fn_register(0x36870u, (void (*)(void))anim_code_36870);
     /* PORT: the state-7 pose handler 0x3531C case 10 resolves from the slot's
      * +0x10 (the 0x3A504 setter writes it; the raw reaches it only through
      * that indirect call). */
@@ -663,6 +664,16 @@ static void anim_code_39A34(u32 rec, u32 arg)
              / (float)(u16)arg;                             /* 0x39A4C/0x39A59 */
         DSD(rec + 0x24u) = fu.u;                            /* 0x39A5B */
     }
+}
+
+/* 0x36870 — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x36870 takes only EAX = rec (its first
+ * use of EDX at 0x36876 is `XOR EDX,EDX`, and it returns with a plain RET), so
+ * this wrapper drops the operand and calls fighter_36870(rec) unchanged. */
+static void anim_code_36870(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_36870(rec);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */

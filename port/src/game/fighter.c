@@ -3225,9 +3225,11 @@ static u32 hit_record_x(u32 side)
     u32 slot = DS_001077B0 + side * 0x94u;
     if ((DSB(slot + 0x42u) & 0x08u) != 0u)
         return DSD(DSD(slot) + 0x18u);                  /* 0x18738 */
-    /* PORT: 0x1873F 0x18540(side) and 0x1875F 0x18350(side, anchor) — the
-     * screen-anchor path is the same named gap as fighter_slot_latch's (§6.3);
-     * the raw's final `slot+0x2C - DS_00100AB0[side]` is kept. */
+    /* PORT: hit_record_x/y omit the raw's 0x18540(side) (0x1873F) and
+     * 0x18350(side, anchor) (0x1875F) calls (0x18714/0x18788); the divergence
+     * first shows at f = 90 (demo-pose record §9/§10). fighter_slot_latch
+     * implements those two calls; this path does not. The raw's final
+     * `slot+0x2C - DS_00100AB0[side]` is kept. */
     return DSD(slot + 0x2Cu) - DSD(DS_00100AB0 + side * 8u);
 }
 
