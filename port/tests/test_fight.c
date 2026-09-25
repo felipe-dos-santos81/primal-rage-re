@@ -1814,8 +1814,19 @@ static void check_game_frame_tail(void)
     DSB(DS_000F0AFE) = 4;
     DSD(DS_000F0AF0) = 0x7000u;
     DSD(DS_00104AE8) = 0;
+    /* 0x24CCD..0x24CDB: the frame counter is a word. 0xFFFF wraps to 0 and
+     * must not carry into the separate global at 0xEF6DE (sentinel 0x5A5A);
+     * a dword increment leaves 0x5A5B there. The wrap opens 0x1282C's gate,
+     * so its node list is seeded empty: the spawn is refused after its
+     * draws. */
+    DSW(DS_000EF6DC) = 0xFFFFu;
+    DSW(DS_000EF6DC + 2u) = 0x5A5Au;
+    DSD(0x000F0A78u) = 0x000F0A78u;
+    DSD(0x000F0A7Cu) = 0x000F0A78u;
     game_frame();
     CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x5D00);
+    CHECK_EQ_INT((int)DSW(DS_000EF6DC), 0);
+    CHECK_EQ_INT((int)DSW(DS_000EF6DC + 2u), 0x5A5A);
 
     (void)tf_demo_fixture();
     DSB(DS_00104B1D) = 1;
@@ -4665,7 +4676,9 @@ static void check_dust_list(void)
     arena_list_empty(0x000F0A78u);
     rec = actor_spawn((const u32 *)(mem + 0x000BB254u), 0xFFFFD800u,
                       0x5CAu, 0x1C7Cu, 0x4000u);
-    CHECK_EQ_INT((int)rec, 0);                  /* 0x127C0 returns 0xFF */
+    /* 0x127C0 returns 0xFFFFFFFF (0x127E1 `mov eax,-1`); the port's cb1
+     * convention is the u8 0xFF, which the spawn tests as non-zero. */
+    CHECK_EQ_INT((int)rec, 0);
 }
 
 /* The cycle's own invariant (the record's §7.2): the crowd actor 0

@@ -2263,18 +2263,22 @@ int test_anim(void)
  * title. The assertion below fails if the re-seed or the state-6 draws move. */
 #define FRONTEND_RNG_AFTER_ATTRACT 0x4308698Bu
 
-/* The reference's frame counter DS_000EF6DC when its state 2 begins. The raw's
- * only writer is 0x24C5C's per-iteration `inc` (0x24CCD..0x24CDB, a word, 0 in
- * the image), so it counts every loop iteration since boot. The port's own boot
- * run (prageport, the same loop) spends 690 frames in state 0 and 196 in the
- * title state 1 (1 + 95 phase-1 steps of 0x10 from 0x600 + the 0x3E688 fade),
- * so its first state-2 frame counts 887: 886 before it. The frontend capture's
- * timing bounds the original to 886 + [-4, +17] (the attract is frame-exact:
- * raw index - n * 70.09/60.05 stays 1365 +- 1 over n 2..689), and the grey
- * flier of capture 864 pins it mod 64 (0x1282C spawns only on
- * (DS_000EF6DC & 0x3F) == 0, which with this seed is state-7 f = 91; demo
- * record §15). The driver enters at state 2, so it seeds the counter as it
- * seeds the LCG. */
+/* PORT: the driver's alignment seed for the frame counter DS_000EF6DC at its
+ * state-2 entry. The driver enters at state 2 and skips the attract and the
+ * title, so it seeds the counter as it seeds the LCG, to the port's own natural
+ * boot count: the raw's only writer is 0x24C5C's per-iteration word `inc`
+ * (0x24CCD..0x24CDB, 0 in the image), and the port's continuous boot run spends
+ * 690 iterations in state 0 and 196 in the title state 1 (1 + 95 phase-1 steps
+ * of 0x10 from 0x600 + the 0x3E688 fade), 886 before its first state-2 frame.
+ * test_attract's PR_ATTRACT_DUMP run asserts both counts (690 at the title
+ * entry, this value at the state-2 handoff). With this seed 0x1282C's
+ * (DS_000EF6DC & 0x3F) == 0 gate spawns the grey flier at state-7 f = 91,
+ * which captures 864/865 show (demo record §15).
+ * TODO(verify): the original's live counter is unread (no live-RAM dump; demo
+ * record §1.6). The frontend capture's timing only bounds it to 882..903, and
+ * the mod-64 pin by the flier holds only if the port's modelled iteration count
+ * from state 2 to f = 91 is the original's, including the loader-stall ticks
+ * at 0x1B45F that game_flow.md's residual 1 records as un-derivable. */
 #define FRONTEND_FRAMES_BEFORE_STATE2 886u
 
 int test_frontend(void)
@@ -2781,7 +2785,7 @@ int test_frontend(void)
      * and the two new unexplained frames (832, 833) are pre-existing,
      * out-of-scope gaps with named owners, allowed by name in
      * tools/title_compare.py. The window's exhibition set spans port frames
-     * 0..496 (260 exhibited). */
+     * 0..509 (273 exhibited). */
     {
         const char *dir = getenv("PR_GAME_DIR");
         if (dir == NULL || dir[0] == '\0') dir = "data/game/C";
@@ -3932,8 +3936,33 @@ int test_attract(void)
             for (u32 i = 0; i < 26u; i++) (void)rng_next(0u);
             CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)handoff_lcg);
 
+            /* Demo record §15.3: the frame counter's boot counts that the
+             * front-end driver's FRONTEND_FRAMES_BEFORE_STATE2 seed takes from
+             * this run. 0x24C5C's word counter has counted the 690 attract
+             * iterations here (the title entry is the next iteration); the
+             * sentinel is the image's 0, which fails. */
+            CHECK_EQ_INT((int)DSW(DS_000EF6DC), 690);
+
             /* The title window joins the same run (no second game_init()). */
             test_title_window(dump);
+
+            /* Drive the title to its state-2 handoff (0x12459). The counter
+             * then holds the iterations before the first state-2 frame, the
+             * driver's seed. The title's 96-tick window plus its fade are
+             * bounded well inside the guard. These iterations also dump the
+             * title's last 100 frames into <dir>/title (196 frames, under the
+             * hook's 200 cap); tools/attract_compare.py's output is unchanged
+             * by them (compared before/after). */
+            {
+                int g2 = 0;
+                while (DSW(DS_000F0A64) != 2 && g2++ < 2000) {
+                    DSB(DS_000A81A8) = 1;
+                    game_loop();
+                }
+                CHECK_EQ_INT((int)DSW(DS_000F0A64), 2);
+                CHECK_EQ_INT((int)DSW(DS_000EF6DC),
+                             (int)FRONTEND_FRAMES_BEFORE_STATE2);
+            }
             game_shutdown();
         }
     }

@@ -1317,7 +1317,10 @@ void game_frame(void)
      * int 16h input loop and the 0x94-byte player records it consumes are the
      * interactive match's and stay a gap; this block is the demo's AI. */
     fighter_command_block();                           /* 0x24C73 */
-    DSD(DS_000EF6DC)++;                                /* frame counter */
+    /* 0x24CCD..0x24CDB: the frame counter is a word (`mov di,[0xef6dc]` /
+     * `inc edi` / `mov [0xef6dc],di`); 0xEF6DE is a separate global
+     * (0x1BE21/0x5D808), so the increment must not carry into it. */
+    DSW(DS_000EF6DC) = (u16)(DSW(DS_000EF6DC) + 1u);   /* 0x24CDB */
     run_process_table(DS_000A8644, DSD(DS_00104AE8));  /* update table */
     /* PORT: 0x24C5C's second 0x38990 per-frame service call is deferred. */
 

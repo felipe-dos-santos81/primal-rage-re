@@ -1210,9 +1210,10 @@ void camera_screen_base(s32 side, s32 character)
 
 /* ---- 0x12750, 0x1282C + 0x12DA8 ------------------------------------------ */
 
-/* 0x12750. The type-0x01 node lists the 0xBB254 actor's cb1 0x127C0 pops from
- * and its cb2 0x12800 returns to: it self-links the in-use sentinel 0xF0AE0
- * (0x12762/0x12768) and the free sentinel 0xF0A78 (0x1276E/0x12774), then
+/* 0x12750 — demo-pose derivations §15. The type-0x01 node lists the 0xBB254
+ * actor's cb1 0x127C0 pops from and its cb2 0x12800 returns to: it self-links
+ * the in-use sentinel 0xF0AE0 (0x12762/0x12768) and the free sentinel 0xF0A78
+ * (0x1276E/0x12774), then
  * tail-appends the eight 12-byte nodes 0xF0A80..0xF0AD4 to the free list
  * (0x12782 `mov eax,0xf0a78` / 0x12787 `mov edx,ebx` / 0x12789 `add ebx,0xc` /
  * 0x1278C `call 0x249c0`, while EBX < 0xF0AE0). */
