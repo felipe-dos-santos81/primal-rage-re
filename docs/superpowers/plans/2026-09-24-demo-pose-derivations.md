@@ -1246,7 +1246,7 @@ and the backdrop/sky scroll that starts at f ≈ 86 in the port (port 503's rows
 
 ---
 
-## 12. The mode-1 x operands at capture 858 (roar-timing Task 2, branch `frame-858`)
+## 12. The mode-1 x operands at capture 858 (roar-timing Task 2, `b2cb490`)
 
 **Result in one line.** Capture 858 is neither the fighters' animation nor the
 camera. It is the arena's **mode-1 props** (temple, crowd, mountains), which

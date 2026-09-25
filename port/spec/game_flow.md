@@ -1282,7 +1282,7 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   **`[560..857]`/298: 134 clean, 160 splice, 0 transition, 2 unexplained
   (832, 833)**. Nothing else moved.
 
-### Mode-1 x (branch `frame-858`), capture 858
+### Mode-1 x (`b2cb490`), capture 858
 
 * **Cause (raw).** The camera starts moving at f = 85 (`cx = −86`, the T-rex's
   `slot+0x34` passing the `0x1800` dead zone). From f = 86 the scroll fill
