@@ -2802,8 +2802,9 @@ void fighter_state_3531c(u32 side)
         return;
     case 10u:
         {
-            void (*fn)(void) = fn_resolve(DSD(slot + 0x10u));
-            if (fn) fn();                                   /* 0x354E2 */
+            void (*fn)(u32, u32) = (void (*)(u32, u32))(void *)
+                fn_resolve(DSD(slot + 0x10u));
+            if (fn) fn(slot, side);                         /* 0x354E2 */
         }
         return;
     case 1u: case 2u: case 3u: case 5u: case 6u:
@@ -3567,14 +3568,20 @@ static void fighter_4f434(void)
 }
 
 /* The body the four pose setters 0x3A504/0x3A650/0x3A79C/0x3A8E8 share
- * (0x3A50E..0x3A56B): zero rec_other+0x24, seed the self slot's
- * +0x52/+0x53/+0x54/+0x10/+0x58/+0x7E, then latch the slot's +0x2C word and
- * edx>>16 into the setter's glob_a/glob_b pair. */
+ * (0x3A50E..0x3A56B): zero rec_self+0x24 (0x3A513 reads ctx[5] at ESP+0x14),
+ * seed the self slot's +0x52/+0x53/+0x54/+0x10/+0x58/+0x7E, then latch the
+ * slot's +0x2C word and the caller's BX into the setter's glob_a/glob_b pair. */
 static void fighter_pose_commit(u32 side, u32 edx, u32 callback,
                                 u32 glob_a, u32 glob_b)
 {
     u32 ctx[6];
+    u32 bx;
     fighter_ctx_swap(ctx, side);                            /* 0x3A50E */
+    /* PORT: 0x3A56B stores BX. Every 0x3A5xx-family call site loads EBX as the
+     * self slot's +0x52 before the call (0x3AD2A/0x3AD31/0x3AD3D), and the
+     * 0x3A522 store below overwrites that byte, so read the caller's value
+     * here. */
+    bx = (u32)DSB(ctx[3] + 0x52u);
     DSD(ctx[5] + 0x24u) = 0;                                /* 0x3A517 */
     DSB(ctx[3] + 0x52u) = 0x10u;                            /* 0x3A522 */
     DSB(ctx[3] + 0x53u) = 0x0Au;                            /* 0x3A52A */
@@ -3583,7 +3590,7 @@ static void fighter_pose_commit(u32 side, u32 edx, u32 callback,
     DSB(ctx[3] + 0x58u) = 0u;                               /* 0x3A545 */
     DSB(ctx[3] + 0x7Eu) = (u8)(DSB(DS_000BECF8) + (u8)edx); /* 0x3A549/0x3A554 */
     DSW(glob_a + side * 2u) = DSW(ctx[3] + 0x2Cu);          /* 0x3A55F/0x3A563 */
-    DSW(glob_b + side * 2u) = (u16)(edx >> 16);             /* 0x3A56B */
+    DSW(glob_b + side * 2u) = (u16)bx;                      /* 0x3A56B */
 }
 
 /* 0x3A504. The pose setter with the 0x3A43C callback and the 0x107D14/0x107D10
@@ -3609,6 +3616,46 @@ static void fighter_pose_3a79c(u32 side, u32 edx)
 static void fighter_pose_3a8e8(u32 side, u32 edx)
 {
     fighter_pose_commit(side, edx, 0x0003A820u, DS_00107CF8, DS_00107CFC);
+}
+
+/* PORT: 0xC8FE0 (the 0x3A504 family's per-character animation-stream table)
+ * has no symbols.h name. */
+#define FIGHT_ANIM_3A43C  0x000C8FE0u
+
+/* 0x3A43C. The 0x3A504 pose family's per-frame handler 0x3531C case 10 calls
+ * through slot+0x10. Phase 0 sets +0x58 = 1. Phase 1 starts the self record's
+ * 0xC8FE0[char] stream at 3.0, re-anchors the other record's +0x18/+0x1C from
+ * the other slot, sets +0x58 = 2 and +0x90 = 1, and — when B[other] is neither
+ * 0 nor 5 and the (u8)(+0x90 - 1) > 3 table gate opens — snaps the self x to
+ * A[other]. Phases above 1 return. The raw takes EAX = slot, EBX = side
+ * (0x354E0); the ctx swap overwrites EAX, so only the side is read. */
+void fighter_pose_3a43c(u32 slot, u32 side)
+{
+    u32 ctx[6];
+    u8 phase;
+    (void)slot;
+    fighter_ctx_swap(ctx, side);                            /* 0x3A43C/0x3A443 */
+    phase = DSB(ctx[3] + 0x58u);                            /* 0x3A44C */
+    if (phase == 0u) {                                      /* 0x3A44F/0x3A459 */
+        DSB(ctx[3] + 0x58u) = 1u;                           /* 0x3A465 */
+        return;
+    }
+    if (phase != 1u) return;                                /* 0x3A453/0x3A455 */
+    actors_anim_begin(ctx[5],                                /* 0x3A47E/0x3A489 */
+                      DSD(FIGHT_ANIM_3A43C
+                          + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                      0x40400000u);
+    hit_anchor_set(ctx[0], DSD(ctx[4] + 0x18u), 0u);        /* 0x3A498/0x3A49B */
+    DSB(ctx[3] + 0x58u) = 2u;                               /* 0x3A4A4 */
+    {
+        s32 b = (s32)(s16)DSW(DS_00107D10 + ctx[0] * 2u);   /* 0x3A4AC/0x3A4BF */
+        s32 a = (s32)(s16)DSW(DS_00107D14 + ctx[0] * 2u);   /* 0x3A4B3/0x3A4BC */
+        if (b != 0 && b != 5) {                             /* 0x3A4C2/0x3A4C6 */
+            if ((u8)(DSB(ctx[3] + 0x90u) - 1u) > 3u)        /* 0x3A4CF..0x3A4D9 */
+                hit_anchor_x(ctx[1], (u32)a);               /* 0x3A4E8/0x3A4ED */
+        }
+    }
+    DSB(ctx[3] + 0x90u) = 1u;                               /* 0x3A4F6 */
 }
 
 /* 0x3AA54. The reaction-0x11 pose setter: seed the record's +0x44/+0x36/+0x34

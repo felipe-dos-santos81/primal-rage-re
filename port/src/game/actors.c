@@ -11,6 +11,7 @@
  * res_load_index (platform/res.c), so actors_init only validates them. */
 #include "game/actors.h"
 #include "game/effects.h"
+#include "game/fighter.h"
 #include "game/rng.h"
 #include "../mem.h"
 #include "../symbols.h"
@@ -81,6 +82,7 @@ static int in_pool(u32 rec)
 static void anim_code_10FA8(u32 rec, u32 arg);
 static void anim_code_12720(u32 rec, u32 arg);
 static void anim_code_37A58(u32 rec, u32 arg);
+static void anim_code_39A34(u32 rec, u32 arg);
 
 /* The 0xBB9D8 type table's two callback halves (cb1 at 0xBB9DC, cb2 at
  * 0xBB9E0). actor_spawn's tail (0x2B0D4) calls cb1 with (rec, slot) and tests
@@ -122,6 +124,15 @@ int actors_init(void)
     fn_register(0x10FA8u, (void (*)(void))anim_code_10FA8);
     fn_register(0x12720u, (void (*)(void))anim_code_12720);
     fn_register(0x37A58u, (void (*)(void))anim_code_37A58);
+    /* PORT: the roar stream's 0xD100/0xD500 targets (opcodes 0x11/0x15, mode
+     * 0x4000): the frame-hold scaler 0x39A34 and the already-ported 0x36870
+     * +0x54 machine. */
+    fn_register(0x39A34u, (void (*)(void))anim_code_39A34);
+    fn_register(0x36870u, (void (*)(void))fighter_36870);
+    /* PORT: the state-7 pose handler 0x3531C case 10 resolves from the slot's
+     * +0x10 (the 0x3A504 setter writes it; the raw reaches it only through
+     * that indirect call). */
+    fn_register(0x3A43Cu, (void (*)(void))fighter_pose_3a43c);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -635,6 +646,23 @@ static void anim_code_37A58(u32 rec, u32 arg)
     if (child != 0u)                                        /* 0x37B29 */
         DSB(DSD(DS_001014F4) + (u32)child * ACTOR_REC_SIZE + 0x52u)
             = DSB(rec + 0x52u);
+}
+
+/* 0x39A34. The roar stream's first opcode target (0xD100 = opcode 0x11, mode
+ * 0x4000, operand 0x000A): rescale the record's animation frame hold rec+0x24
+ * to the linked record's signed +0x7E over the opcode's zero-extended word
+ * operand. The linked record is rec+0x14, the record's owner slot (the 0x3A504
+ * setter writes its +0x7E). EAX = rec, EDX = operand. */
+static void anim_code_39A34(u32 rec, u32 arg)
+{
+    u32 linked = DSD(rec + 0x14u);                          /* 0x39A3A */
+    if (linked == 0u) return;                               /* 0x39A3F */
+    {
+        union { float f; u32 u; } fu;
+        fu.f = (float)(s16)(s8)DSB(linked + 0x7Eu)          /* 0x39A41/0x39A52 */
+             / (float)(u16)arg;                             /* 0x39A4C/0x39A59 */
+        DSD(rec + 0x24u) = fu.u;                            /* 0x39A5B */
+    }
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */

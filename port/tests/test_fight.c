@@ -2947,24 +2947,35 @@ static void check_pose_entry(void)
     DSB(s0 + 0x53u) = 0;
     DSB(s0 + 0x41u) = 0;
     DSW(0x000A6728u + 2u) = 0;                  /* ecx = 0 */
+    /* §7.4: the setter's glob_b latch is the caller's BX = slot+0x52 (raw
+     * 0x3A56B stores BX; EBX is loaded at 0x3AD2A/0x3AD31/0x3AD3D before the
+     * call), not edx3 >> 16. Seed +0x52 and edx3's high word differently so
+     * the two forms cannot both pass. The 0x07 seed makes the 0x468D8
+     * predicate fire (0x4691E compares +0x52 with 7), so the 0x39834 chain's
+     * 0x36D98 writes +0x52 = 9 (0x36E14) before the setter reads it: BX is 9,
+     * the at-call value. */
+    DSB(s0 + 0x52u) = 0x07;
+    DSD(s0 + 0x2Cu) = 0x2222;
+    DSB(0x000DE117u) = 0xB0u;                   /* edx3 = 0xFFFFFFB0 */
 
     fighter_reaction_apply(s0, 0u);
     CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x10);   /* the 0x3A504 arm */
     CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0x0A);
     CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
     CHECK_EQ_INT((int)DSD(s0 + 0x10u), 0x0003A43C);
-    CHECK_EQ_INT((int)DSW(DS_00107D14), (int)DSW(s0 + 0x2Cu));
-    CHECK_EQ_INT((int)DSW(DS_00107D10), 0);     /* edx3 >> 16 */
+    CHECK_EQ_INT((int)DSW(DS_00107D14), 0x2222);    /* A = slot+0x2C */
+    CHECK_EQ_INT((int)DSW(DS_00107D10), 0x0009);    /* BX = slot+0x52 at the call */
     CHECK_EQ_INT((int)DSW(s1 + 0x6Cu), 1);      /* other +0x6C++ */
     CHECK_EQ_INT((int)(DSB(s1 + 0x42u) & 2u), 2);   /* other +0x42 bit 1 */
     CHECK_EQ_INT((int)(DSB(s0 + 0x42u) & 1u), 1);   /* self +0x42 bit 0 */
 
-    /* ecx bit 3 selects the 0x3A79C variant. */
+    /* ecx bit 3 selects the 0x3A79C variant. The first call's setter wrote
+     * +0x52 = 0x10, so this call's BX is 0x10, not the seeded 0x07. */
     DSW(0x000A6728u + 2u) = 8;
     fighter_reaction_apply(s0, 0u);
     CHECK_EQ_INT((int)DSD(s0 + 0x10u), 0x0003A6D4);
     CHECK_EQ_INT((int)DSW(DS_00107D08), (int)DSW(s0 + 0x2Cu));
-    CHECK_EQ_INT((int)DSW(DS_00107D04), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107D04), 0x10);
 
     /* The side-1 mirror. */
     DSW(0x000A6728u + 2u) = 0;
@@ -3051,6 +3062,147 @@ static void check_pose_entry(void)
     DSW(0x000A6728u + 2u) = sv_w2;
     DSD(0x000A3528u + 8u) = sv_d8;
     DSB(0x000DE117u) = sv_b3;
+}
+
+/* ---- Task 2: the state-7 pose handler 0x3A43C (demo-pose record §7.1-§7.3) */
+
+/* The §7.2 phase-1 seed: the slot enters with +0x58 = 1, char 0, the +0x90
+ * gate open, and the other side's B/A words (the 0x3A504 setter's globs,
+ * B = 0x107D10 + other*2, A = 0x107D14 + other*2) zeroed. Every seeded value
+ * differs from its post-condition. */
+static void pose_handler_seed(u32 s0, u32 s1, u32 r0, u32 r1)
+{
+    pose_chain_setup(s0, s1, r0, r1);
+
+    DSB(s0 + 0x58u) = 1;                     /* phase 1 */
+    DSB(s0 + 0x7Au) = 0;                     /* char 0: the 0xC8FE0 table */
+    DSB(s0 + 0x90u) = 0;                     /* (u8)(0 - 1) > 3: the table arm */
+    DSD(s0 + 0x2Cu) = 0x1234;
+    DSW(r0 + 0x56u) = 0;                     /* the pset index */
+    DSD(r0 + 8u) = 0xDEADBEEFu;              /* the stream sentinel */
+    DSB(r0 + 0x52u) = 0x7F;                  /* the animation variable */
+    DSD(r0 + 0x24u) = 0xDEADBEEFu;           /* the frame-hold sentinel */
+    DSD(r0 + 0x18u) = 0x5678;                /* hit_record_x's bit-3 source */
+    DSW(FIGHT_ACTORS) = 0xFFFFu;             /* the pset id sentinel */
+    DSD(r1 + 0x1Cu) = 0xDEADBEEFu;           /* hit_anchor_set's y sentinel */
+    DSB(s1 + 0x52u) = 0x07;
+    DSW(0x00107D12u) = 0;                    /* B[1] = 0: the gate closed */
+    DSW(0x00107D16u) = 0;                    /* A[1] */
+}
+
+/* §7.1-§7.3: the handler's phases, the animation start and the B[other]/+0x90
+ * snap gate. The direct calls and the 0x3531C case-10 wiring are both covered;
+ * the latter is the registration's end-to-end proof. */
+static void check_pose_handler(void)
+{
+    u32 s0 = DS_001077B0;
+    u32 s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS;
+    u32 r1 = FIGHT_RECS + 0x100u;
+    u16 sv_78f6 = DSW(DS_001078F6);
+
+    /* §7.1: phase 0 arms +0x58. The raw's phase dispatch returns for any
+     * +0x58 above 1 (0x3A453/0x3A455), so the seed is 0 — which differs from
+     * the post-condition 1. */
+    pose_chain_setup(s0, s1, r0, r1);
+    DSB(s0 + 0x58u) = 0;
+    fighter_pose_3a43c(s0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 1);
+
+    /* §7.2: phase 1 starts the char-0 stream, re-anchors the other record and
+     * closes the B[1] = 0 gate. */
+    pose_handler_seed(s0, s1, r0, r1);
+    fighter_pose_3a43c(s0, 0u);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x000E7332);    /* 0xC8FE0[0] */
+    CHECK_EQ_INT((int)DSD(r0 + 0x20u), 0x40400000); /* 3.0f */
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSB(r0 + 0x52u), 0);          /* actors_anim_begin reset */
+    CHECK_EQ_INT((int)DSW(FIGHT_ACTORS), 0x1075);   /* the stream's first id */
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 2);
+    CHECK_EQ_INT((int)DSB(s0 + 0x90u), 1);
+    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 0);          /* hit_anchor_set */
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x1234);     /* B[1] = 0: no snap */
+
+    /* §7.3: B[1] = 3, A[1] = 0x4321 and +0x90 = 0 open the snap; bit 3 makes
+     * hit_record_x take the record's own +0x18. */
+    pose_handler_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x42u) |= 0x08u;
+    DSW(0x00107D12u) = 3;
+    DSW(0x00107D16u) = 0x4321;
+    fighter_pose_3a43c(s0, 0u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x4321);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5678);
+
+    /* §7.3: +0x90 in 1..4 is the table arm (no snap) even with B[1] = 3. */
+    pose_handler_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x90u) = 4;
+    DSW(0x00107D12u) = 3;
+    DSW(0x00107D16u) = 0x4321;
+    fighter_pose_3a43c(s0, 0u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x1234);
+
+    /* §7.3: B[1] = 5 closes the snap. */
+    pose_handler_seed(s0, s1, r0, r1);
+    DSW(0x00107D12u) = 5;
+    DSW(0x00107D16u) = 0x4321;
+    fighter_pose_3a43c(s0, 0u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x1234);
+
+    /* The wiring: 0x3531C case 10 resolves slot+0x10 and calls it with the
+     * raw's (EAX = slot, EBX = side). */
+    pose_handler_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x53u) = 0x0A;
+    DSD(s0 + 0x10u) = 0x0003A43Cu;
+    DSW(DS_001078F6) = 0;                    /* the +0xEC voice tick is inert */
+    fighter_state_3531c(0u);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x000E7332);
+    CHECK_EQ_INT((int)DSB(s0 + 0x58u), 2);
+
+    DSW(DS_001078F6) = sv_78f6;
+}
+
+/* ---- Task 2: the roar stream's frame-hold scaler 0x39A34 (record §7.5/§7.6) */
+
+/* §7.5/§7.6: the roar stream's first opcode (0xD100 = opcode 0x11, mode 0x4000)
+ * targets 0x39A34, which rescales the frame hold from the linked record's +0x7E
+ * over the operand. Driven through 0x2BC30's pre-walk, so the registration and
+ * the code are tested together; the crafted stream is the roar stream's shape
+ * (inline pointer at +2, operand at +6, literal id at +8). */
+static void check_anim_hold_scaler(void)
+{
+    u32 rec = FIGHT_RECS;
+    u32 linked = FIGHT_RECS + 0x100u;
+    u32 stream = FIGHT_RECS + 0x180u;
+    u16 *s = (u16 *)(mem + stream);
+
+    mem_fill(FIGHT_RECS, 0, 0x200);
+    mem_fill(FIGHT_ACTORS, 0, 0x80);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+
+    /* §7.6: the animation dispatcher resolves both new targets. */
+    CHECK(actors_init() == 1, "actors_init validates the pools");
+    CHECK(fn_resolve(0x39A34u) != NULL, "0x39A34 is registered");
+    CHECK(fn_resolve(0x36870u) != NULL, "0x36870 is registered");
+
+    s[0] = 0xD100;                           /* opcode 0x11, mode 0x4000 */
+    s[1] = 0x9A34;                           /* the inline code pointer */
+    s[2] = 0x0003;                           /* 0x00039A34 */
+    s[3] = 2;                                /* the operand: EDX = 2 */
+    s[4] = 0x1075;                           /* the literal id that ends the walk */
+
+    DSD(rec + 0x14u) = linked;
+    DSB(linked + 0x7Eu) = 6;
+    DSW(rec + 0x56u) = 0;
+    actors_anim_begin(rec, stream, 0x40E00000u);     /* 7.0f frame bits */
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000); /* 6 / 2 = 3.0f */
+    CHECK_EQ_INT((int)DSD(rec + 0x20u), 0x40E00000); /* untouched by the code */
+    CHECK_EQ_INT((int)DSW(FIGHT_ACTORS), 0x1075);    /* rec+0x56 = 0: its pset */
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)(stream + 8u));
+    /* §7.5's early-out: no linked record leaves the hold at the frame bits, so
+     * the assertion above distinguishes "wrote 3.0f" from "never touched it". */
+    DSD(rec + 0x14u) = 0;
+    actors_anim_begin(rec, stream, 0x40E00000u);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40E00000);
 }
 
 /* ---- Task 3b: the 0x3B714 reaction applier (pose/freeze record §2.3) ----- */
@@ -4223,6 +4375,8 @@ int test_fight(void)
     check_pose_predicate();
     check_pose_accumulator();
     check_pose_entry();
+    check_pose_handler();
+    check_anim_hold_scaler();
     check_reaction_predicates();
     check_reaction();
     check_winner_body();

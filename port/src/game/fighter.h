@@ -166,6 +166,13 @@ int fighter_1a640(u32 side);
  * stack argument = the reaction byte. */
 void fighter_reaction_apply(u32 slot, u32 reaction);
 
+/* 0x3A43C. The 0x3A504 pose family's per-frame handler: phase 0 arms +0x58;
+ * phase 1 starts the self record's 0xC8FE0[char] stream at 3.0, re-anchors the
+ * other record and snaps the self x to A[other] behind the B[other] and +0x90
+ * gates. 0x3531C case 10 resolves it from slot+0x10; registered in actors_init.
+ * EAX = slot (dead), EBX = side. */
+void fighter_pose_3a43c(u32 slot, u32 side);
+
 /* 0x3A280. The reaction predicate: 1 for a byte in 0x10..0x17 or 0x20..0x3F. */
 int  fighter_3a280(u32 code);
 
