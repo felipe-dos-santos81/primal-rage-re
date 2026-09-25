@@ -525,7 +525,7 @@ cycle's re-capture) reaches the front-end. With the state-3 render ported
 (`0x12484`) the `PR_FRONTEND_DUMP` driver emits the real zoom-out, and
 `tools/title_compare.py --frontend` aligns it: window distinct **[560..865]**
 (raw 3108..3772), **306 frames: 137 clean, 165 splice, 0 transition, 2
-unexplained** (the four classes sum to 297: the window's other two frames are the
+unexplained** (the four classes sum to 304 of 306: the window's other two frames are the
 all-black captures 561 and 831, excluded as artifacts — the oracle's own list) — captures **832** and **833**, allowed by name in
 `FRONTEND_ALLOWED_UNEXPLAINED` with their reason (`title_compare.py:352-374`;
 the arena-backdrop cycle's absorbed claim move: the window is derived from the
@@ -1402,7 +1402,11 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
 * **Fix.** `camera_dust_list_init` (`0x12750`), called before
   `fight_list_init` as in the raw. The driver seeds the counter to 886, the
   port's own boot-run count before state 2. The capture bounds that count to
-  886 + [−4, +17], and the flier pins it mod 64. `check_dust_list`,
+  886 + [−4, +17], and the flier pins it mod 64. The original's live counter
+  is unread (`TODO(verify)`), and the pin assumes the modelled state-2 → f = 91
+  iteration count, loader stall included. `test_attract` asserts 690 at the
+  title entry and 886 at the state-2 handoff. `game_frame` now increments the
+  counter as the raw's word (`0x24CDB`). `check_dust_list`,
   `check_state6` and the driver's first-flier frame (loop 1097, capture 864)
   are mutation-proven.
 * **Measured.** Captures 864 (port 508) and 865 (508/509 splice) are now

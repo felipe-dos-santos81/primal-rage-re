@@ -1814,13 +1814,58 @@ This supersedes §14.4's "owner not derived" for 864.
   A temporary probe (reverted) added k to the counter at the gate for
   k = 53..57, the residues mod 64 around 886's 54. Only k = 54 explains both
   frames: k = 53 leaves 864 at 495 B, k = 55 makes 863 unexplained (492 B) and
-  k = 56/57 make 862 unexplained. Within the capture's bound, 886 is the only
-  value with that residue. The value is the port's own boot-run count,
-  corroborated by the capture, and was not fitted.
-* **Side effect.** No other state-2..7 reader changes. The parity readers
-  (`fighter.c` `& 1`, `frame_timer`'s `& 1`) see an even offset. The overlay
-  blink (`& 0x20`/`& 0x1F`) is gated off by `CREDITS:5`. `0x128D4`'s `& 0xF`
-  is not in the demo frame.
+  k = 56/57 make 862 unexplained.
+* **Why the other 59 residues are excluded.** Only residues 53..57 were probed.
+  The rest are excluded by argument, not by run.
+  * **One opening per residue.** The flier can spawn only in state 7:
+    `0x1282C` runs in the arena frame, and the list is built in state 6. The
+    gate opens every 64 iterations, so each residue r gives exactly one
+    state-7 opening in f = 65..128.
+  * **The captured flier is the left-edge variant.** It is the hflipped
+    `0x8281` (`a5 = 0x4000`, x = camera − `0x2800`), showing its stream's first
+    sprite `0x0281` at (−7, 99) at f = 91. The probes show this variant on
+    screen from its spawn onward (k = 55 → capture 863, k = 56/57 → 862).
+  * **Openings at f = 65..90.** If such an opening spawns the flier, the flier
+    shows before capture 864. But captures 843..863 are all explained without
+    it. If the draw spawns nothing (rng(7) & 3 ≠ 0), the next opening is
+    f ≥ 129, and 864 has no flier.
+  * **Openings at f = 92..128.** These leave 864 without the flier.
+  * **Result.** Only the opening at f = 91 matches, which is r = 54. Within the
+    capture's bound (882..903), 886 is the only count with that residue.
+* **Caveat (`TODO(verify)` in `test_game.c`).** The original's live counter is
+  **unread**: there is no live-RAM dump (§1.6). The seed is the port's own
+  boot-run count, which is the driver's alignment, not a measured original
+  value. The capture bounds the original to 882..903. The mod-64 pin maps the
+  capture's spawn frame back to a state-2 count only through the port's
+  modelled iteration count from state 2 to f = 91. That count includes the
+  state-6 loader, whose read-stall tick count (`0x1B3AC`'s tail re-sync at
+  `0x1B45F`/`0x1B464`) `port/spec/game_flow.md`'s residual 1 records as
+  un-derivable. If the original ran a different number of iterations there,
+  its state-2 count differs from 886 by that amount mod 64, while the demo's
+  spawn frame still matches.
+* **Cross-check in-tree.** `test_attract`'s continuous `PR_ATTRACT_DUMP` run
+  asserts `DSW(DS_000EF6DC) == 690` at the title entry. It then drives the
+  title to its state-2 handoff (`0x12459`) and asserts
+  `== FRONTEND_FRAMES_BEFORE_STATE2` (886). This is the counter's counterpart
+  of the run's `handoff_lcg == 0x4308698B` check for the LCG seed.
+  * Mutations: a `+2` increment gives `1380 != 690` and `1772 != 886`. A title
+    step of `0x11` instead of `0x10` gives `881 != 886`.
+  * The extra title iterations dump 100 more title frames (196 in total, under
+    the hook's 200 cap). `tools/attract_compare.py`'s output is byte-identical
+    before and after.
+* **Side effect: the ported readers only.** Ghidra lists 28 references to
+  `0xEF6DC`: 27 reads and the one write. The claim here covers only the
+  **ported** readers:
+  * the parity readers (`frame_timer`'s `0x2AAFC`, the fighter's `0x375BF`
+    and the `0x35Axx` arm) see an even offset
+  * the overlay's `0x2BF27`/`0x2BFCE`/`0x2BFE8` blink is gated off by
+    `CREDITS:5`
+  * the anim-spawn child bit (`0x2B504`) sees parity only
+  * `0x1282C` is the gate this section is about
+
+  The unported readers, for example `0x128DC` (`0x128D4`, not in the demo
+  frame), `0x254B7`, `0x266AC`'s `0x2686F`/`0x2688D`, `0x27ACD`, `0x3838E` and
+  `0x44643`, are not measured under the seed.
 
 ### 15.4 The fix and its assertions
 
@@ -1875,6 +1920,17 @@ This supersedes §14.4's "owner not derived" for 864.
 | front-end oracle | `[560..863]` / 304 / 136 clean, 164 splice, 0 transition, 2 unexpl. (832, 833) | **`[560..865]` / 306 / 137 clean, 165 splice, 0 transition, 2 unexpl. (832, 833)** |
 
 Only the front-end window and N moved, which is the move the brief allowed.
+
+**Counter width (fix round 1).** `flow.c` incremented the counter as a dword
+(`DSD(DS_000EF6DC)++`), but the raw increments a word
+(`0x24CCD mov di,[0xef6dc]` / `0x24CD4 inc edi` / `0x24CDB mov [0xef6dc],di`),
+and `0xEF6DE` is a separate global (Ghidra: read at `0x1BE21`, written at
+`0x5D808`). The increment is now `DSW(DS_000EF6DC) = (u16)(DSW(...) + 1)`.
+`check_game_frame_tail` seeds `0xFFFF` with a `0x5A5A` sentinel at `0xEF6DE`
+and checks the wrap to 0 with the sentinel untouched. The dword mutation fails
+it with `23131 != 23130`. The two widths differ only on a wrap, and no oracle
+run reaches one. Re-measured on the full ladder, every enforced oracle is
+unmoved (fix-round report in `task-5-report.md`).
 
 **The new first unexplained frame, 866 (characterised, not fixed).** Capture
 866 is the f = 92/93 tear. Its best splice, port 509/510 at byte 131 847 (row
