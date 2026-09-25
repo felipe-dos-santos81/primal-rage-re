@@ -2489,3 +2489,301 @@ is **not derived**. The candidates are:
 
 * side 0's f = 101 and f = 104 transitions (their `+0x52` writers and animation starts)
 * the command that side 0 receives while the raptor is in the air
+
+(Derived since, §19: neither candidate. Side 0's f = 101 crouch and f = 104
+stand-up match the raw. At f = 105 the T-rex's `0x3CF38` chain drives reaction
+`0x2B`, whose `0x34E2C` entry holds only the callback `0x3E62C`. The port
+skipped that callback call.)
+
+## 19. The T-rex's reaction-0x2B leap at capture 880 (roar-timing Task 9, `cfff063`)
+
+**Result in one line.** Capture 880 has one cause, and it is the port's. At
+f = 105 the T-rex's `0x350D0` → `0x3CF38` chain finds hit-scan index 5 and
+drives reaction `0x2B` (`word[0xC61C8]` = `0x2B`) into `0x34E2C`. The
+(char 0, `0x2B`) entry at `0xA3884` has no stream, only the callback
+`*(u32*)0xA3884 = 0x0003E62C`, and the port skipped `0x34E2C`'s callback call
+at `0x35045`. The raw `0x3E62C` starts the `0xE7BDE` stream (`0x11B3`…, the
+lowered pose), puts the slot in state 9/7/2 with `+0x57 = 2`, and arms the
+`+0x0C` callback `0x3E524`, which `0x3531C` case 7 then runs every frame. The
+stream's `D500 E4E4 0003` reaches `0x3E4E4`, the leap. So the capture shows the
+T-rex lowering and then leaping, and the port stood it up. The closure is the
+callback call, `0x3E62C` (106 B), `0x3E524` (263 B), `0x3C190` (53 B),
+`0x3E4E4` (47 B) and three registrations. The size gate does not apply. This
+supersedes §18.5's "owner not derived" for 880.
+
+### 19.1 The trace (measured, temporary, reverted)
+
+The trace was `getenv("PR_T9")`-gated and has been reverted. `git status` was
+clean afterwards apart from the fix. It had these parts:
+
+- a line per side at the end of `fight_hud_pass`, after the `0x186C4` latch. It printed slot `+0x52/+0x53/+0x54`, `+0x43`, `+0x40`, `+0x5F`, the command word, `rec+8`, the pset id, `rec+0x20/+0x24`, `rec+0x18/+0x1C`, the speeds, `slot+0x2C/+0x30` and the side's AI block (`DS_001081F0` + side·0x40: state, active flag, move id, cursor, timer, step pointer).
+- a line per `0x46F4C` pick
+- a line per `0x34E2C` call, with the anim triple, the stream word and the callback dword
+- later, one line per `hit_scan` result and per `0x1975C` gate (for 891)
+
+The frame counter `f` is `DS_0010150C` itself, the same `f` §17/§18 use.
+
+| f | side 0 (T-rex), unmodified port (`38b3e74`) |
+|---|---|
+| 97..100 | 0/0/0 stance `0xE6DD2`, `0x8F02`; AI move 61 (`0x8A4D4`: `0000`×1, `FFFF`), command 0 |
+| 101 | AI move 17 (`0x8A73C`: `4040`×2, `0980`×2, `FFFF`); command `0x4040` → `0x349C8` crouch, 5/0/1, `0xE6DEA`, `0x8F34` |
+| 104 | command `0x0980`: `0x36430` (neither `0x40` nor `0x80` in the high byte) starts `0xC89C8` → 9/0/0, `0xE6E30`, `0x8F35` |
+| 105 | **`0x34E2C(0, 0x2B)`**: anim `0xDE2ED/0xA3884/0xA682A`, stream word 0, **callback `0x3E62C`**; the port stores `+0x5F = 0x2B` and does nothing else; 9/0/0, `0x8F35` |
+| 106 | 9/0/0, `0x8F34` (the stand-up stream) |
+| 107 | AI move 50 (`0xA0A0`): `0x3BDDC` → 3/4/2, `0xE6F28`, `0x8FA1` |
+
+`0x36430` (`disassemble_function 0x36430`) matches the port, so f = 104's
+stand-up is the raw's too. At f = 105 the path is `0x3531C` default →
+`0x350D0`. The high byte `0x09` of `0x0980` has bits in both `&3` and `&0xC`,
+so `bvar2` skips `0x3BDDC`. `0x3CF38`'s `hit_scan` then returns 5, and
+`0x3CE58` reads the reaction `word[0xC619C + (0·0x20 + 5)·8 + 4]`.
+`read_memory 0xC61C4` gives `1c 00 0c 00 2b 00 01 00`, so the reaction is
+`0x2B`.
+
+With the fix, the same probe gives:
+
+| f | side 0 |
+|---|---|
+| 105 | **9/7/2**, `rec+8 = 0xE7BE6`, `0x91B3`, `rec+0x1C` 0, `slot+0x2C` −6512 |
+| 106..111 | 9/7/2, `0x91B4` … `0x91B7` |
+| 112 | `rec+8 = 0xE7C1A`, `0x91B8`, speeds 0/765/35, `rec+0x1C` 6880 |
+| 113 | speeds 1092/730/35: the `+0x57 = 0` arm's 10·765/7 = 1092 (truncated), positive because the pset is hflipped; at 114, 10·730/7 = 1042 |
+| 118 | `0x91B9`, `rec+0x18` 4794, `rec+0x1C` 10945 |
+
+The sprite ids have the hflip bit set (`0x91B3` is `0x11B3`).
+
+### 19.2 What captures 880..890 show (measured)
+
+A splice search took every port pair (p, p+1) for p in 515..554. The top came
+from p and the bottom from p+1, split at any pixel. The search ran against
+the fixed port's dump:
+
+- 880 = the 521/522 splice (row 101), 0 px
+- 881, 882 = 522/523 and 523/524, 0 px
+- 883 = port 524, whole
+- 884..889 = the 524/525 … 529/530 splices, 0 px
+- 890 = port 530, whole
+
+Before the fix, 880 left 6 073 px (x 0–149, rows 118–199). Matching the
+T-rex's box, rows 110–199 and x 0–149, against any port frame 515..544 left
+at least 6 073 px for every capture 880..891. No pose in the unfixed port
+matched.
+
+### 19.3 The raw, re-read (Ghidra `disassemble_function` / `read_memory` + capstone)
+
+**`0x34E2C`'s callback call.** `disassemble_function 0x34E2C`:
+
+```
+0x34f71  mov eax,[esp+0x1c] / mov eax,[eax] / mov [esp+0x24],eax  ; *(u32*)anim[1]
+0x35012  cmp dword [esp+0x24],0 / je 0x35049
+0x35019..0x35032  the 0xE9308 voice through 0x2C3FC
+0x35037  mov eax,[esp+0x8]      ; the slot (0x1077B0 + side*0x94)
+0x3503b  mov ebx,[esp]          ; side
+0x3503e  mov edx,[esp+0x10]     ; the slot's record
+0x35042  mov [eax+0x5f],cl      ; +0x5F = reaction
+0x35045  call dword [esp+0x24]
+```
+
+`read_memory 0xA3884` gives `2c e6 03 00 00 00 00 00 cc 8c 0e 00 56 8e 0e 00`.
+So the callback is `0x3E62C` and the stream pointer is 0.
+
+**`0x3E62C`.** It has no Ghidra xrefs; the table dword is its only reference.
+`read_memory 0x3E62C`, 106 B:
+
+```
+0x3e632  mov ebx,eax ; mov ecx,edx       ; EBX = slot (the caller's EBX is lost), ECX = rec
+0x3e638  call 0x339ac                    ; ctx from rec
+0x3e63d  push 0x40400000
+0x3e642  mov esi,[esp+0xc]               ; ctx[2], the slot
+0x3e646  mov edx,0xe7bde
+0x3e64d  mov esi,[esi+0x2c]              ; x, read before the call
+0x3e650  call 0x3c4cc                    ; (rec, 0xE7BDE, 3.0)
+0x3e655  mov eax,[esp] ; mov edx,esi ; call 0x188dc    ; (ctx[0], x)
+0x3e65f  mov byte [ebx+0x57],2 ; [ebx+0x52],9 ; [ebx+0x53],7 ; [ebx+0x54],2
+0x3e66f  mov dword [ebx+0xc],0x3e524 ; [ebx+0x18],0x3e484 ; [ebx+0x1c],0x3e4c4
+0x3e687  or ah,0x80 -> [ebx+0x41]
+0x3e68d  mov al,1 ; ret
+```
+
+**`0x3531C` case 7.** The `+0x0C` call is at `0x35431`:
+`mov eax,ecx ; call [ecx+0xc]`. Here ECX is the slot from
+`DS_001077A8[side]`, EDX is still `[ecx]` (loaded at `0x35396`), and EBX is the
+side (`0x35325`).
+
+**`0x3E524`** (`get_function_callees`: `0x33950`, `0x3C190`, `0x188AC`,
+`0x3C148`, `0x3C16C`, `0x3C4CC`, `0x62003`). Its jump table is at `0x3E514`;
+`read_memory` gives `6d e5 03 00 ba e5 03 00 24 e6 03 00 24 e6 03 00`.
+
+```
+0x3e534  call 0x33950 (side)
+0x3e53d  if byte [ctx[4]+0x63] >= 10: byte [ctx[2]+0x8a] = 0
+0x3e555  switch byte [slot+0x57] (> 3 -> 0x62003)
+case 0 (0x3e56d): edx = [rec+0x34] >> 16 ; edx = 10*edx ; idiv 7 ; 0x3C190(side, q)
+                  if word [rec+0x36] >= 0: return
+                  slot+0x57 = 1 ; word [[slot]+0x44] = 0xF ; 0x3C190(side, 0)
+case 1 (0x3e5ba): if (dword [0xBD882 + char*2] >> 16) > slot+0x30: land (jg)
+                  elif word [rec+0x36] != 0: return
+                  land: slot+0x54 = 0 ; 0x188AC(side, [[slot]+0x18], 0) ; 0x3C148 ; 0x3C16C
+                        0x3C4CC([slot], [0xC8B58 + char*4], 3.0) ; slot+0x57 = 3
+case 2, 3 (0x3e624): return
+```
+
+**`0x3C190`:** `0x1A570(side)` is 1 when the pset is not hflipped. In that case
+the value is negated (`0x3C1B4 neg edx`). Then `word [rec+0x34] = dx`.
+
+**`0x3E4E4`:** `read_memory 0xE7BDE` gives this stream:
+
+```
+DC00 55B8 000E   CD40 11B3   B840 0005 7BE4 000E   9E00
+D500 E4E4 0003   8E40 DA00 5FD8 000E DC00 55D8 000E FF20 ... ED40 7C2A 000E ...
+```
+
+`D500 E4E4 0003` is opcode `0x15`, mode `0x4000`, with the dword `0x0003E4E4`.
+`0x3E4E4` checks `ecx = [eax+0x14]`, then calls
+`0x2BC30(rec, 0xE7BFA, 3.0)`. `0xE7BFA` is the word after the opcode. It then
+stores `word [rec+0x36] = 0x320`, `word [rec+0x44] = 0x23` and
+`byte [ecx+0x57] = 0`.
+
+**`0x3E484`/`0x3E4C4`.** The raw's `+0x18`/`+0x1C` callbacks are only called
+from the `0x1975C` think chain. In the port that chain is named gaps (§7.12):
+the decomp at `prage.c:6190` shows `(**(code **)(local_18 + 0x1c))()`. So
+they are stored and not ported.
+
+### 19.4 The fix and its assertions
+
+* **Fix.**
+  * `port/src/game/fighter.c`:
+    * `hit_reaction_apply` calls the callback through `fn_resolve` with `(slot, rec, side)`. A new `fighter_slot_cb` typedef carries a `PORT:` note on the register shape.
+    * `fighter_state_3531c` case 7 calls `+0x0C` with the same shape. It called it with no arguments before, and no registered target existed.
+    * `fighter_3e62c`, `fighter_3e524`, `fighter_3e4e4` and the static `fighter_3c190` are transcribed as above.
+    * The `0xE7BDE`/`0xE7BFA` stream addresses are local `#define`s.
+  * `port/src/game/actors.c`:
+    * `0x3E62C` and `0x3E524` are registered as the bare functions, because the call sites use the register shape.
+    * `0x3E4E4` is registered through the `(rec, arg)` wrapper `anim_code_3E4E4`.
+  * The review nit in `fighter_35e04`'s voice note now reads `word[0xBDAA8 + byte[slot+0x7A]*2]`, with slot = `rec+0x14`.
+* **Assertions** (`test_fight.c`):
+  * `check_anim_hold_scaler` checks the three registrations. `0x3E4E4` must go through the wrapper; `0x3E62C` and `0x3E524` must be the functions themselves.
+  * The new `check_trex_leap` has four parts:
+    * **A** drives `hit_reaction_apply(0, 0x2B)` on the real `0xA3884` entry. The slot is in state 9/0/0, and `+0x42` bit 3 makes the x path pass `rec+0x18` through. The seeded slot x is `0x1111` and the record's is `0x2222`, so the value `0x3E62C` reads first differs from the one the `0x3C480` latch leaves. It checks:
+      * `+0x5F` = `0x2B`, `+0x57` = 2, state 9/7/2
+      * the three callback dwords and `+0x41` bit 7
+      * `slot+0x2C` = `0x1111`, `rec+0x18` = `0x2222`
+      * `rec+0x1C` = 0 (the `0x3C480` arm)
+      * `rec+0x10` = `0xE55B8`
+      * the hold 1.0f (`byte[0xE55B8]` = 1 replaces the 3.0 argument)
+      * pset `0x11B3`, `rec+8` inside `0xE7BDE`
+      * side 1 untouched
+    * **B** runs `fighter_state_3531c(0)` with `+0x53 = 7`. It checks:
+      * `rec+0x34` = −1001 (10·701/7, truncated, negated while unflipped)
+      * `+0x57` kept at 0
+      * `+0x8A` cleared by `rec+0x63` = 10
+      * `+0x43` bits `0x30` cleared
+      * when flipped, +1001, and `+0x63` = 9 keeps `+0x8A`
+      * when falling, `+0x57` = 1, gravity 15, `+0x34` = 0
+    * **C** checks the landing gate `0x1600` > `slot+0x30`:
+      * 6000 does not land, and neither does the equal value 5632 (`jg`)
+      * speed 0 lands, and 5631 lands
+      * landing zeroes `+0x54`, `rec+0x1C`, `+0x43`, `+0x34` and `+0x44`
+      * it gives hold 3.0f and pset `0x0FA7` (`0xC8B58[0]` = `0xE6F82`) and sets `+0x57` = 3
+      * `+0x57` = 3 and 2 return with nothing written
+    * **D** walks the crafted stream `D500 E4E4 0003 1746`. It checks:
+      * speed `0x320`, gravity `0x23`, `+0x57` = 0
+      * `rec+0x0C`/`+0x10` = `0xE5FD8`/`0xE55D8`
+      * hold 5.0f (`byte[0xE55D8]` = 5)
+      * `rec+8` inside `0xE7BFA`
+      * without `rec+0x14`, nothing is written
+* **Mutations.** A script applied each one. `fighter.c` and `actors.c` were restored and compared byte for byte (`cmp` OK), and the suite then passed. Counts are real `FAIL` lines, without the `FAILURES:` total. The line numbers are `test_fight.c` lines at `cfff063`; the first batch ran before the five case-2 lines were added at `:4005`, and its later line numbers are restated at `cfff063`.
+
+  | mutation | failures |
+  |---|---|
+  | `0x34E2C` callback not called (pre-fix) | 15 (first `:3906` `102 != 2`) |
+  | `0x3E62C` unregistered | 1 (`:3779`) |
+  | `0x3E524` unregistered | 1 (`:3781`) |
+  | `0x3E4E4` unregistered | 8 (`:3775`, `:4028` `21845 != 800`, …) |
+  | case 7 callback not called | 2 (`:3940`, `:3942`) |
+  | x read after `0x3C4CC` | 1 (`:3914` `8738 != 4369`) |
+  | `0x3E62C` through `0x2BC30` instead of `0x3C4CC` | 1 (`:3916`) |
+  | `0x3E62C` `+0x53` = 8 | 3 |
+  | `0x3E62C` `+0x57` = 0 | 1 |
+  | `0x3E62C` without `+0x41` bit 7 | 1 |
+  | `0x3C190` sign inverted | 2 |
+  | case 0 quotient off by one | 2 |
+  | case 0 `v` read as the word `+0x34` | 2 |
+  | case 0 gravity `0x23` | 1 |
+  | case 0 without the zero horizontal speed | 1 |
+  | `+0x63` gate `> 10` | 1 |
+  | case 1 `>=` instead of `>` | 5 |
+  | case 1 without the speed-0 landing | 8 |
+  | case 1 without `0x3C148` / `0x3C16C` / `0x188AC` | 2 / 1 / 1 |
+  | case 1 `+0x57` = 2 | 2 |
+  | case 1 keeps `+0x54` | 1 |
+  | case 2 runs case 0 / case 1 | 1 / 2 |
+  | `0x3E4E4` without its gate | 2 |
+  | `0x3E4E4` speed `0x300` | 1 |
+  | `0x3E4E4` without the restart | 4 |
+
+### 19.5 Measured
+
+| measurement | before (`38b3e74`) | after (`cfff063`) |
+|---|---|---|
+| capture 880 | best 521/522 splice, 6 073 px | **0 px** (521/522 splice, row 101) |
+| captures 881..890 | 8 207 … 18 881 px | **0 px** (883 is port 524, 890 is port 530) |
+| port f = 105..112, side 0 | 9/0/0 `0x8F35` → `0x8F34`, then 3/4/2 at f = 107 | 9/7/2, `0x91B3` … `0x91B8`, leap at f = 112 |
+| demo oracle first unexplained | 880 (raw 3787); `[880..3616]` 2737 / 2731 unexpl.; port `[522..1380]` | **891 (raw 3798)**; `[891..3616]` 2726 / 2720 unexpl.; port `[531..1380]` (850, 0 exhibited) |
+| demo-fight ratchet | `[880..1884]` 1005, N = 880 | **`[891..1884]` 994**, "ratchet improved: 891 > 880", **N = 891** |
+| front-end oracle | `[560..879]` / 320 / 140 clean, 176 splice, 0 transition, 2 unexpl. (832, 833) | **`[560..890]` / 331 / 142 clean, 185 splice, 0 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved, which is the move the brief allowed.
+These were unmoved:
+
+* title `54/55/2/0` and `54/57/0/0`, determinism 54
+* smk 120/120 and 41/41
+* attract 215/216 (expected divergence at 215)
+* C-vs-Python 9866
+* `symbols.h`
+
+The front-end "endpoints BAD" line is the same as before. The exhibition set
+grows to port frames 0..530 (294 exhibited). The ladder was:
+
+```
+cmake --build build --clean-first && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify && make demo-oracle
+```
+
+It exited 0, with 0 compiler warnings in the clean rebuild. The 240
+case-insensitive "warning" hits in the verify log are the usual `gra_extract.py`
+ResourceWarnings.
+
+**Unresolved code targets after the fix (a temporary `PR_T9` probe on
+`anim_indirect` and the `0x35045` call, reverted).**
+
+* The animation-opcode target **`0x35938`** is first hit at **f = 173** on
+  side 1 (50 hits in the run; Task 8 measured f = 165 before this fix moved the
+  run), and `0x3640C` at f = 712.
+* The reaction callbacks `0x3D17C` (reaction `0x20`, first at f = 350, 3 hits),
+  `0x3ECF8` (reaction `0x2C`, f = 688) and `0x3C0A4` (reaction `0x3E`, f = 832)
+  are still unregistered, so they are skipped.
+
+None of these fires before 891's frame (f = 114).
+
+**The new first unexplained frame, 891 (characterised, not fixed).** Capture
+891 is a tear. Its best splice, port 530/531 (split at row 29), leaves 2 188 px
+in x 100–287, rows 29–199:
+
+* the raptor, which the capture shows struck in mid-air by the leaping T-rex, with a red hit spray and a different pose (the port's `0x1753` flies on untouched)
+* a worshipper at the bottom left
+
+Captures 892 onwards differ across the whole frame (37 649 px at 892, then about
+45 000–52 000). In the port at f = 114, the T-rex (`slot+0x2C` 934 → 3760 by
+f = 117) closes on the raptor (4190 → 3740). Yet side 1's `0x3CF38`
+`hit_scan` returns −1 at every f = 105..125, and `DS_00100AD0` stays 0 on both
+sides through f = 120. `get_xrefs_to 0x100AD0/0x100AD4` names its writers:
+`0x17CB0` (`0x17CDC`/`0x17CE2`) and `0x176CC` (`0x178EF`, which stores the
+overlap count `DAT_00100B54` from the fighters' sprite-overlap test).
+`0x17CB0` calls `0x176CC` at `0x17D0E`/`0x17D21`, and `0x1975C` calls
+`0x17CB0` first, at `0x19763` (demo-fight record §5.1). The port's `fighter_think` does
+not call it, so the whole `0x3B464` think chain never runs. That chain holds
+the `+0x18`/`+0x1C` callbacks `0x3E484`/`0x3E4C4` that `0x3E62C` armed. The
+owner is **not derived**. The candidate is that unported collision step
+(`0x17CB0` → `0x176CC` → `0x140E4`, `0x15C30`, `0x17EEC`, `0x181D0`,
+`0x16DA4`, …) with the `0x3B464` chain's §7.12 gaps. By its callee list it
+likely exceeds the size gate.
