@@ -3180,6 +3180,97 @@ static void check_deep_callees(void)
         tf_put(sv_a80, 0x00107A80u, 0x80u);
     }
 
+    /* F: 0x3BDDC's attack transition starts the slot's record on
+     * 0xC8B30[slot+0x7A] at hold 1.0 through 0x3C480 (0x3BEF7..0x3BF05), and
+     * 0x3C480's 0x188DC tail re-derives rec+0x18 through 0x18714, which runs
+     * 0x18540 and (anchor != slot+0x20) 0x18350 for the NEW sprite without
+     * storing slot+0x20. The demo's f = 94 raptor (side 1, char 3) moves from
+     * the stance 0x16B5 (anchor 0x16B5 - word[0xD2134] = 0; 0xD033B+0: fc 30,
+     * x = -4) to 0x1746 (anchor 145; 0xD033B+290: f5 32, x = -11): the 0x188AC
+     * latch gives slot+0x2C = 6144 - 256 = 5888, then rec+0x18 = 5888 + 704 =
+     * 6592. The char-0 entry points at a distinct stream, so indexing by the
+     * other slot's +0x7A fails; S+0x53 = 1 skips the 0x3CF38 chain (0x3BE55). */
+    {
+        u32 st3 = FIGHT_RECS + 0x3800u, st0 = FIGHT_RECS + 0x3810u;
+        u32 st3f = FIGHT_RECS + 0x3820u;
+        u32 sv_b30 = DSD(0x000C8B30u), sv_b3c = DSD(0x000C8B3Cu);
+        u8 sv_af0[8], sv_ab0[0x10], sv_d40[8], sv_8f8[2];
+        tf_snap(sv_af0, DS_00100AF0, 8u);
+        tf_snap(sv_ab0, DS_00100AB0, 0x10u);
+        tf_snap(sv_d40, DS_00107D40, 8u);
+        tf_snap(sv_8f8, DS_001078F8, 2u);
+        (void)tf_hit_fixture(0);
+        fight_reset_slot_pair(s0, s1, r0, r1);
+        DSW(st3) = 0x1746u;                      /* literal sprite ids */
+        DSW(st0) = 0x0456u;
+        DSD(0x000C8B3Cu) = st3;                  /* 0xC8B30[3] */
+        DSD(0x000C8B30u) = st0;                  /* 0xC8B30[0] */
+        DSB(r0 + 0x51u) = 0;
+        DSB(r1 + 0x51u) = 1;
+        DSW(r0 + 0x56u) = 1;
+        DSW(r1 + 0x56u) = 2;
+        DSW(FIGHT_ACTORS + 0x20u) = 0x7777u;
+        DSW(FIGHT_ACTORS + 0x40u) = 0x16B5u;     /* the stance, anchor 0 */
+        DSB(s0 + 0x7Au) = 0;
+        DSB(s1 + 0x7Au) = 3;
+        DSB(s1 + 0x53u) = 1;
+        DSW(DS_001088E2) = 0x8000u;
+        DSD(r1 + 8u) = 0x00ABCDEFu;
+        DSD(r0 + 8u) = 0x00ABCDEFu;
+        DSD(r1 + 0x24u) = 0x11111111u;
+        DSD(r1 + 0x18u) = 6144u;
+        DSD(r1 + 0x1Cu) = 0x5555u;
+        DSD(s1 + 0x20u) = 0x77u;                 /* != either anchor */
+        DSD(DS_00100AF0) = 0x99u;                /* side 0's words untouched */
+        DSD(DS_00100AB0) = 0x88u;
+        CHECK_EQ_INT(fighter_attack_consume(1u), 1);
+        CHECK_EQ_INT(DSD(r1 + 8u), st3);
+        CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 0x40u), 0x1746);
+        CHECK_EQ_INT(DSD(r1 + 0x24u), 0x3F800000u);
+        CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 0);   /* 0x3C497 xor ebx,ebx */
+        CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 5888);
+        CHECK_EQ_INT((int)DSD(r1 + 0x18u), 6592);
+        CHECK_EQ_INT((int)DSD(DS_00100AF0 + 4u), 145);
+        CHECK_EQ_INT((int)DSD(DS_00100AB0 + 8u), -704);
+        CHECK_EQ_INT((int)DSD(DS_00100AB0 + 12u), 3200);
+        CHECK_EQ_INT((int)DSD(s1 + 0x20u), 0);   /* the latch's, not 0x18714's */
+        CHECK_EQ_INT(DSD(r0 + 8u), 0x00ABCDEFu);
+        CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 0x20u), 0x7777);
+        CHECK_EQ_INT((int)DSD(DS_00100AF0), 0x99);
+        CHECK_EQ_INT((int)DSD(DS_00100AB0), 0x88);
+        CHECK_EQ_INT((int)DSB(s1 + 0x52u), 3);
+
+        /* G: from the hflipped stance 0x96B5 (anchor 0, so the latch's 0x18350
+         * negates x: DS_00100AB0 = +256) to the unflipped literal 0x16B5 (anchor
+         * 0 again). The anchor equals the latched slot+0x20, so 0x18757 skips
+         * 0x18350: DS_00100AB0 keeps +256 and rec+0x18 round-trips to 6144.
+         * Calling 0x18350 anyway would un-negate it (-256) and give 6656. */
+        (void)tf_hit_fixture(0);
+        fight_reset_slot_pair(s0, s1, r0, r1);
+        DSW(st3f) = 0x16B5u;
+        DSD(0x000C8B3Cu) = st3f;
+        DSB(r1 + 0x51u) = 1;
+        DSW(r1 + 0x56u) = 2;
+        DSW(FIGHT_ACTORS + 0x40u) = 0x96B5u;
+        DSB(s1 + 0x7Au) = 3;
+        DSB(s1 + 0x53u) = 1;
+        DSW(DS_001088E2) = 0x8000u;
+        DSD(r1 + 0x18u) = 6144u;
+        DSD(s1 + 0x20u) = 0x77u;
+        CHECK_EQ_INT(fighter_attack_consume(1u), 1);
+        CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 0x40u), 0x16B5);
+        CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 6400);
+        CHECK_EQ_INT((int)DSD(DS_00100AB0 + 8u), 256);
+        CHECK_EQ_INT((int)DSD(r1 + 0x18u), 6144);
+
+        DSD(0x000C8B30u) = sv_b30;
+        DSD(0x000C8B3Cu) = sv_b3c;
+        tf_put(sv_af0, DS_00100AF0, 8u);
+        tf_put(sv_ab0, DS_00100AB0, 0x10u);
+        tf_put(sv_d40, DS_00107D40, 8u);
+        tf_put(sv_8f8, DS_001078F8, 2u);
+    }
+
     DSD(DS_001078DC) = s_dc;
     DSD(s0 + 0x40u) = s_40_0;
     DSD(s1 + 0x40u) = s_40_1;
@@ -3521,8 +3612,9 @@ static void check_pose_handler(void)
     /* §7.3: B[0] = 3, A[0] = 0x4321 and +0x90 = 0 open the snap. Slot+0x42 bit
      * 3 is clear, so the raw's 0x18714 (0x1873D..0x18780) calls 0x18540, calls
      * 0x18350 only when DS_00100AF0[side] != slot+0x20, then returns slot+0x2C
-     * - DS_00100AB0[side*8]. The port's hit_record_x omits the two calls (a
-     * named gap), so the seed makes both inert in the raw too: DS_001077A8[0] =
+     * - DS_00100AB0[side*8]. The seed makes both calls inert (the port's
+     * hit_record_x omitted them until demo record §17, and the seed keeps this
+     * block independent of them): DS_001077A8[0] =
      * 0 is 0x18540's early-out (0x1854F -> 0x18620, no write) and DS_00100AF0[0]
      * = slot+0x20 skips 0x18350. The rec+0x18 write is then 0x4321 - 0x1000,
      * distinct from its sentinel. (With bit 3 set, the record's own §7.3 seed,

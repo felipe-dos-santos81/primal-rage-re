@@ -260,11 +260,12 @@ u32 hit_reaction_pick(u32 side, u32 stance);
 
 /* 0x3BDDC. The attack/command consumer the mapper's 0x8000 arm calls behind
  * 0x3BDB0. Reads the side's command word DS_001088E0/E2; when bit 15 is set it
- * clears the record's +0x34/+0x43/+0x42, sets the slot's +0x5F to 0xFF and
- * writes the attack state (DS_00107802/03/04, DS_00107D40 + side*4,
- * DS_001078F8 + side, DS_001077FE + side*0x94). Returns 1 on the transition,
- * 0 when the slot's +0x40 bit 7 or the command's bit 15 rejects. Its 0x3CF38
- * gate and 0x3C480 continuation are named gaps (§7.6/§7.16). */
+ * clears the record's +0x34/+0x43/+0x42, sets the slot's +0x5F to 0xFF and,
+ * unless the 0x3CF38 chain hits, starts the record's 0xC8B30[char] animation
+ * through 0x3C480 and writes the attack state (DS_00107802/03/04,
+ * DS_00107D40 + side*4, DS_001078F8 + side, DS_001077FE + side*0x94). Returns
+ * 1 on the transition, 0 when the slot's +0x40 bit 7 or the command's bit 15
+ * rejects. */
 int fighter_attack_consume(u32 side);
 
 /* The machine's and chain's per-function fixtures (record §7.1-§7.5, §7.7-§7.9

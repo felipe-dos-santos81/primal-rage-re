@@ -2014,6 +2014,7 @@ static void hit_facing_flag(u32 side);                      /* 0x18B04 */
 #define FIGHT_D24_BASE   0x00107D24u  /* 0x107D24: per-side word, 0x38BC8 clears */
 #define FIGHT_D2C_BASE   0x00107D2Cu  /* 0x107D2C: the per-side round word */
 #define FIGHT_ANIM_367DC 0x000C8950u  /* 0xC8950: 0x367DC's per-character anim */
+#define FIGHT_ANIM_3BDDC 0x000C8B30u  /* 0xC8B30: 0x3BDDC's per-character anim */
 #define FIGHT_ANIM_36BC8 0x000C8A18u  /* 0xC8A18: 0x36BC8's per-character anim */
 #define FIGHT_367DC_STREAM 0x000E906Au /* 0xE906A: 0x367DC's second-call stream */
 #define FIGHT_36BC8_STREAM 0x000E906Eu /* 0xE906E: 0x36BC8's second-call stream */
@@ -2392,8 +2393,9 @@ void fighter_36870(u32 rec)
         }
         if (fighter_state_36638(s, rec_s) == 0) {           /* 0x36A7A */
             /* 0x36A8C mov eax,[esp+0x10] and 0x36AA1 mov edx,[esp+0x10]:
-             * both read rec_s (0x368E5 stored [s] there; 0x2BC30's RET 4
-             * pops the pushed hold), so the side restarts its own stance. */
+             * both read rec_s (0x368E5 stored [s] there; 0x2BC30's RET 4 at
+             * 0x2BCEF pops the pushed hold), so the side restarts its own
+             * stance. */
             actors_anim_begin(rec_s, DSD(FIGHT_ANIM_367DC /* 0x36A9C */
                                        + (u32)DSB(s + 0x7Au) * 4u),
                               0x40400000u);
@@ -2831,10 +2833,11 @@ void fighter_state_3531c(u32 side)
  * and the side's command word has bit 15 set, it clears the record's
  * +0x34/+0x43/+0x42, sets the slot's +0x5F to 0xFF, and (unless 0x3CF38
  * returns non-zero) writes the attack state: the 0xBEF28/0xBEF64 table at
- * DS_00107D40 + side*4, the slot's +0x52/+0x53/+0x54, DS_001078F8+side and the
+ * DS_00107D40 + side*4, the record's 0xC8B30[char] animation at hold 1.0
+ * through 0x3C480, the slot's +0x52/+0x53/+0x54, DS_001078F8+side and the
  * slot's +0x4E from the command's 0x1000/0x2000 bits. Returns 1 on the attack
  * transition, 0 when either the slot's +0x40 bit 7 or the command's bit 15
- * rejects. Its 0x3CF38 gate and 0x3C480 continuation are named gaps (§7.6/§7.16). */
+ * rejects. */
 int fighter_attack_consume(u32 side)
 {
     u32 ctx[6];
@@ -2858,7 +2861,10 @@ int fighter_attack_consume(u32 side)
                                                        : 0xBEF28u;  /* 0x3BE7F */
     u32 ch = DSB(self + 0x7Au);                         /* 0x3BEF4 */
     DSD(DS_00107D40 + side * 4u) = base + ch * 6u;      /* 0x3BED4 */
-    /* PORT: 0x3BF00 0x3C480(rec, DS_000C8B30[ch], 0x3F800000) — gap (§7.16). */
+    /* 0x3BEF7 mov eax,[ebx] (the slot's record), 0x3BEF9 mov edx,
+     * [edx*4+0xc8b30] (EDX = slot+0x7A), 0x3BF00 push 0x3f800000 (hold 1.0). */
+    hit_anim_start_a(DSD(self), DSD(FIGHT_ANIM_3BDDC + ch * 4u),
+                     0x3F800000u);                      /* 0x3BF05 0x3C480 */
 
     DSB(self + 0x52u) = 3u;                             /* 0x3BF0A */
     DSB(self + 0x54u) = 2u;                             /* 0x3BF10 */
@@ -3222,31 +3228,40 @@ void hit_anchor_set(u32 side, u32 x, u32 y)
 }
 
 /* 0x18714. The record-x the 0x188DC tail writes: slot+0x42 bit 3 set takes the
- * record's +0x18; otherwise slot+0x2C minus DS_00100AB0[side]. */
+ * record's +0x18; otherwise it re-derives the screen anchor (0x18540, and
+ * 0x18350 when the anchor differs from slot+0x20, which it does not store)
+ * and returns slot+0x2C minus DS_00100AB0[side]. */
 static u32 hit_record_x(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;
     if ((DSB(slot + 0x42u) & 0x08u) != 0u)
         return DSD(DSD(slot) + 0x18u);                  /* 0x18738 */
-    /* PORT: hit_record_x/y omit the raw's 0x18540(side) (0x1873F) and
-     * 0x18350(side, anchor) (0x1875F) calls (0x18714/0x18788); the divergence
-     * first shows at f = 90 (demo-pose record §9/§10). fighter_slot_latch
-     * implements those two calls; this path does not. The raw's final
-     * `slot+0x2C - DS_00100AB0[side]` is kept. */
-    return DSD(slot + 0x2Cu) - DSD(DS_00100AB0 + side * 8u);
+    fighter_18540(side);                                /* 0x1873F */
+    {
+        u32 anchor = DSD(DS_00100AF0 + side * 4u);      /* 0x18751 */
+        if (anchor != DSD(slot + 0x20u))                /* 0x18757 */
+            fighter_18350(side, anchor);                /* 0x1875F */
+    }
+    return DSD(slot + 0x2Cu) - DSD(DS_00100AB0 + side * 8u);    /* 0x18780 */
 }
 
 /* 0x18788. The record-y twin of 0x18714: slot+0x42 bit 3 set takes the record's
- * +0x1C; otherwise slot+0x30 minus DS_00100AB4[side]. */
+ * +0x1C; otherwise the same 0x18540/0x18350 anchor path, then slot+0x30 minus
+ * DS_00100AB4[side]. Its only caller, 0x1883C, latches both slots first
+ * (0x186D0 stores the same anchor in slot+0x20), so the anchor path cannot
+ * change anything there; it is transcribed as the raw has it. */
 static u32 hit_record_y(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;
     if ((DSB(slot + 0x42u) & 0x08u) != 0u)
         return DSD(DSD(slot) + 0x1Cu);                  /* 0x187AC */
-    /* PORT: 0x187B3 0x18540(side) and 0x187D3 0x18350(side, anchor) — the same
-     * screen-anchor path as hit_record_x's (0x18714); the raw's final
-     * `slot+0x30 - DS_00100AB4[side]` is kept. */
-    return DSD(slot + 0x30u) - DSD(DS_00100AB4 + side * 8u);
+    fighter_18540(side);                                /* 0x187B3 */
+    {
+        u32 anchor = DSD(DS_00100AF0 + side * 4u);      /* 0x187C5 */
+        if (anchor != DSD(slot + 0x20u))                /* 0x187CB */
+            fighter_18350(side, anchor);                /* 0x187D3 */
+    }
+    return DSD(slot + 0x30u) - DSD(DS_00100AB4 + side * 8u);    /* 0x187F4 */
 }
 
 /* 0x188DC. Set slot+0x2C to x, then write the record's +0x18 from 0x18714. */

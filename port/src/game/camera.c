@@ -446,8 +446,9 @@ static void camera_x_commit(s32 arg)
 
 /* 0x12E3C. Mode 1: track the pair, front/back ordered. The exact 0x18714
  * updates are a named gap (§7.5): the raw pulls the separated slot toward its
- * +0x38 latch and rewrites the record's +0x18 through the unported 0x18714;
- * those calls are skipped, the rest of the selection is transcribed. */
+ * +0x38 latch and rewrites the record's +0x18 through 0x18714 (fighter.c's
+ * static hit_record_x, not called from here); those calls are skipped, the
+ * rest of the selection is transcribed. */
 static void camera_mode_track_pair(void)
 {
     s32 cam = (s32)DSD(DS_000F0AF0);
@@ -474,8 +475,8 @@ static void camera_mode_track_pair(void)
                 DSD(sa + 0x34u) = (u32)latch;
                 DSD(sa + 0x2cu) = (u32)latch;
                 la = latch;
-                /* PORT: 0x18714(side a) is unported (gap §7.5); the raw's
-                 * `rec+0x18 = result` update is skipped here. */
+                /* PORT: 0x18714(side a) is not called here (gap §7.5); the
+                 * raw's `rec+0x18 = result` update is skipped. */
             }
         }
         {
@@ -484,7 +485,7 @@ static void camera_mode_track_pair(void)
                 DSD(sb + 0x34u) = (u32)latch;
                 DSD(sb + 0x2cu) = (u32)latch;
                 lb = latch;
-                /* PORT: 0x18714(side b) is unported (gap §7.5); skipped. */
+                /* PORT: 0x18714(side b) is not called here (gap §7.5); skipped. */
             }
         }
         diff = la - lb;

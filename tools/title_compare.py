@@ -382,7 +382,14 @@ def load_port(d, n):
 # [560..863] -> [560..865] (304 -> 306); the set stays.
 # 0x36870's +0x54 == 0 arm restarting its own record rec_s (0x36A8C/0x36AA1
 # read [esp+0x10]), not the other side's, explains capture 866,
-# [560..865] -> [560..866] (306 -> 307); the set stays.
+# [560..865] -> [560..866] (306 -> 307); the allowed set stays (832, 833),
+# while the window's exhibition set grows to port frames 0..510 (274
+# exhibited).
+# 0x3BDDC's 0x3C480 animation start (0x3BF05, 0xC8B30[char] at hold 1.0) and
+# the full 0x18714/0x18788 anchor path (0x18540, 0x18350 on an anchor change)
+# explain captures 867..869, [560..866] -> [560..869] (307 -> 310); the allowed
+# set stays (832, 833), and the exhibition set grows to port frames 0..512
+# (276 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 
