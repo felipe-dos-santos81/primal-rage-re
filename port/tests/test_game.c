@@ -2760,7 +2760,7 @@ int test_frontend(void)
      * and the two new unexplained frames (832, 833) are pre-existing,
      * out-of-scope gaps with named owners, allowed by name in
      * tools/title_compare.py. The window's exhibition set spans port frames
-     * 0..489 (253 exhibited). */
+     * 0..496 (260 exhibited). */
     {
         const char *dir = getenv("PR_GAME_DIR");
         if (dir == NULL || dir[0] == '\0') dir = "data/game/C";

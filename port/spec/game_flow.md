@@ -665,9 +665,9 @@ at loop 1070 (dumped 481), state 7 runs loop 1071..1969 (dumped 482..1380), and
 dump stops. The dump therefore holds **1381 frames** (dumped 0..1380); the 1400
 cap covers it with no truncation, and the 2000-frame loop clears the 1970 exit.
 
-**The demo window is report-only; its first unexplained frame is capture 843 —
-the T-rex's animation pose, after the arena-backdrop cycle explained the fight's
-opening frames.** `tools/title_compare.py --demo` locates the front-end window
+**The demo window is report-only; its first unexplained frame is capture 851 —
+the T-rex's roar animation, after the demo-pose cycle explained captures
+843..850.** `tools/title_compare.py --demo` locates the front-end window
 with the same content alignment, then classifies the capture region after it
 against the port dump frames after the last frame that window exhibits — the
 same clean/splice/transition/unexplained model, no second one. It reports and
@@ -686,14 +686,17 @@ exits 0.
   reproducible — a `title_capture.py --verify-reproducible` run of the pinned
   original gave 587 vs 588 distinct frames and a first divergence at distinct
   index 30), and the oracle's claim is unchanged.
-* Demo window: distinct **[843..3616]** (raw **3750..8409**), **2774 frames:
-  0 clean, 0 splice, 0 transition, 2768 unexplained** (6 all-black capture
-  frames excluded as artifacts). Demo port frames **[490..1380]**, **0/891
-  exhibited**.
-* **First unexplained captured frame 843 (raw 3750).** It is the T-rex's
-  animation pose (the arena-backdrop record's §6.3): the best byte splice (port
-  490) still differs by 16 064 bytes and the mask covers only the T-rex's body,
-  while the mountains, temple, sky, sea, HUD and text match. The front-end
+* Demo window: distinct **[851..3616]** (raw **3758..8409**), **2766 frames:
+  0 clean, 0 splice, 0 transition, 2760 unexplained** (6 all-black capture
+  frames excluded as artifacts). Demo port frames **[497..1380]** (884),
+  **0/884 exhibited**. (Measured on the demo-pose landed tree; before that
+  cycle: `[843..3616]`, 2774 frames, port `[490..1380]`, first unexplained 843.)
+* **First unexplained captured frame 851 (raw 3758).** It is the T-rex's roar
+  animation (demo-pose record §9.5): port 497 (f = 80) differs by 6 544 B /
+  2 456 px, the T-rex alone; the port advances the roar one frame early
+  (`0x9076 → 0x9077`). (At the arena-backdrop cycle this was capture 843 /
+  raw 3750, the T-rex's pose — port 490 differed by 16 064 bytes; the
+  mountains, temple, sky, sea, HUD and text matched.) The front-end
   window's boundary frames 832/833 remain its named, out-of-scope unexplained:
   831 is all-black (the state-6 `0x2BAF4(1)` DAC blackout; the oracle drops it
   as an artifact); 832 is black except rows 192..197 — the lazy loader's
@@ -713,7 +716,7 @@ exits 0.
   moved the first-unexplained past 832: 832 is the loader's presentation, and its
   read-stall is the one piece proven un-derivable (closure outcome below). (The
   arena-backdrop cycle later moved it past 832 to **843** — the T-rex pose, the
-  cycle-5 outcome below.)
+  cycle-5 outcome below — and the demo-pose cycle to **851**, cycle 6 below.)
 * **The window is no longer non-discriminating.** Cycle 1's `--demo` window
   opened on the state-9 hold's first frame, so it read identically for correct or
   broken code. Task 3 made the state-9 hold match — the hold's frames
@@ -1203,6 +1206,41 @@ warnings: title `54 clean, 55 splice, 2 transition, 0 unexplained` and
 `54 clean, 57 splice, 0 unexplained`; attract `FIRST DIVERGENCE at capture frame
 215`; smk `120/120` + `41/41`; C-vs-Python `9866 writes byte-exact`;
 `symbols.h` regenerates byte-identically (`1304 globals, 1206 functions`).
+
+### Demo pose — cycle 6 (branch `demo-pose`), the T-rex pose handler
+
+**Outcome: the goal (the whole fight window `[843..1884]` at 0 unexplained; first
+unexplained 843 → 1886) was partly reached; the residual is named.**
+
+* **What landed.** The pose handler `0x3A43C` (the derivation record corrected the
+  design's `0x39CC8`) and the frame-hold scaler `0x39A34`; then, from the 43 px
+  differential (record §9), `0x3A43C`'s context reads at the raw `RET 4` stack
+  offsets (`0x2BC30`/`0x2BCEF`: `side = ctx[1]`, `rec_self = ctx[5]`) and the
+  `0x186C4` two-slot re-latch at `0x35829`.
+* **Size gate.** Did not trigger: genuinely-new closure 2 f / 245 B (record §4).
+* **Measured.** Direct pairs port 490 ↔ capture 843, 491 ↔ 844, 496 ↔ 850 are
+  **0 B** (port 490 ↔ 843 was 16 101 B / 5 793 px before, 22 919 B / 7 879 px
+  with the handler alone). The demo oracle's first unexplained moved **843 → 851
+  (raw 3758)**; the fight window `[851..1884]` (raw `3758..4791`) holds 1034
+  frames, **0 explained**.
+* **Moved claim.** Front-end `[560..842]`/283 → **`[560..850]`/291: 130 clean,
+  157 splice, 0 transition, 2 unexplained (832, 833)**, ruled and absorbed in the
+  same commit as the fix (raw `0x2BC30` `RET 4` + `0x35829` `CALL 0x186C4`).
+* **New enforced line.** `make demo-fight-oracle` (in `make verify`) is a
+  **ratchet** on the first unexplained fight-window frame: it fails when that
+  frame is earlier than N = 851 (pinned in the `Makefile` with its provenance) or
+  the window collapses; a later frame passes as an improvement and N is raised.
+  It outputs `first unexplained captured frame 851 (raw 3758); 1034 unexplained
+  in the fight window; ratchet N 851`. Near-vacuous today (0/1034 explained); it
+  guards the front-end window's end and the fight window's start.
+* **Residual (owner named).** Capture 851: the port advances the T-rex's roar one
+  frame early at f = 80; likely owner the roar stream's frame-hold timing
+  (`0x39A34`'s `rec+0x24`, read by `frame_timer` `0x2AA70`; record §9.5).
+* **Open named gaps.** `0x354F0` arena-wall clamp; `hit_record_x/y` omit the
+  raw's `0x18540`/`0x18350` calls (first differs at f = 90); the camera split-arm
+  `0x18714` write; the sibling pose handlers `0x3A588`/`0x3A6D4`/`0x3A820` and the
+  `0x39F40`/`0x39CC8` family (unreached in the first fight); the `0x2C3FC` voice
+  stub (RNG- and fight-state-neutral, record §3.4). Carried items: record §6.3.
 
 ## Landmarks (verified)
 

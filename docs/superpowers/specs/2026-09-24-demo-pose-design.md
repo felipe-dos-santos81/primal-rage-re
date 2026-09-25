@@ -190,3 +190,34 @@ never `git add -A`.
 - **The fight window's end is capture-derived** (the first all-black artifact
   after the front-end window). If a later cycle changes what the port exhibits,
   the window is re-derived from the same rule, not hard-coded.
+
+## Outcome (Task 4, measured on the landed tree)
+
+**Goal partly reached; the residual is named.** Acceptance 1 (the fight window
+`[843..1884]` at 0 unexplained; first unexplained 843 -> 1886) was **not**
+reached. Acceptance 2 and 4 were, Acceptance 3 in a narrower form.
+
+- **The pose handler.** The record corrected the design's handler `0x39CC8` to
+  `0x3A43C`; Task 2 ported it with `0x39A34`, and Task 2b's differential found the
+  43 px offset in raw (`0x3A43C` read `ctx[0]`/`ctx[4]` where the raw `RET 4` at
+  `0x2BCEF` gives `ctx[1]`/`ctx[5]`, plus the missing `0x186C4` re-latch at
+  `0x35829`). Direct pairs port 490 <-> capture 843, 491 <-> 844, 496 <-> 850 are
+  **0 B** (16 101 B / 5 793 px before; 22 919 B / 7 879 px with the handler alone).
+- **Measured window.** Demo oracle: front-end `[560..850]`, demo port frames
+  `[497..1380]` (884, 0 exhibited), window `[851..3616]` (raw `3758..8409`), 2766
+  frames, 0 clean / 0 splice / 0 transition / 2760 unexplained, **first
+  unexplained 851 (raw 3758)** (843 before). Fight window `[851..1884]`: 1034
+  frames, 0 explained.
+- **Size gate.** Did not trigger (Task 1 §4: genuinely-new closure 2 f / 245 B).
+- **Moved claim.** Front-end `[560..842]`/283 -> `[560..850]`/291, `130 clean, 157
+  splice, 0 transition, 2 unexplained (832, 833)`, ruled and absorbed in `dad2712`.
+- **Enforced line (Acceptance 3, as ruled).** `make demo-fight-oracle` in `make
+  verify` is a ratchet on the first unexplained frame (N = 851, pinned in the
+  `Makefile`), not "0 unexplained in the window": it fails on an earlier first
+  unexplained or a collapsed window, passes a later one as an improvement. Near-
+  vacuous today (0/1034 explained).
+- **Residual.** Capture 851 (port 497, f = 80; 6 544 B / 2 456 px, the T-rex
+  alone): the port advances the roar one frame early. Owner: the roar stream's
+  frame-hold timing (`0x39A34`'s `rec+0x24` via `frame_timer` `0x2AA70`; record §9.5).
+- **Named gaps and carried items:** record §6 (updated).
+

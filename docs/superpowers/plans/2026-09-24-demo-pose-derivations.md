@@ -1066,3 +1066,39 @@ roar stream advances one frame early at f = 80. **Likely owner:** the roar
 stream's frame-hold timing — `0x39A34`'s `rec+0x24` rescale (−121 / 10 =
 −12.1 f, Task 2 report §3.4) consumed by `frame_timer` (`0x2AA70`), or the
 `+0x20`/`+0x24` hold that `actors_anim_begin` seeds (3.0 f). Named for Task 3.
+
+---
+
+## 10. Outcome and the gap inventory (Task 4, measured on the landed tree)
+
+Measured (`make demo-oracle`, `make demo-fight-oracle`, and the direct compare of
+`/tmp/pr_frontend_dump/run1` frames against the capture): port 490 <-> capture 843,
+491 <-> 844, 496 <-> 850 = **0 B**; port 497 <-> capture 851 = 6 544 B / 2 456 px.
+Demo window `[851..3616]`, 2766 frames, 2760 unexplained, first unexplained **851
+(raw 3758)**; fight window `[851..1884]` 1034 frames, 0 explained; ratchet N = 851.
+This supersedes §6.1-§6.4's "expected"/"Task 2 measures" wording.
+
+**Closed.**
+* The T-rex's pose freeze (`0x3A43C`): assertions in `test_fight.c` (mutation-proven,
+  Task 2 report §2), ladder green at `dad2712`.
+* The 43 px x offset (§9): `0x3A43C`'s stack offsets + the `0x186C4` re-latch;
+  490 <-> 843 = 0 B. The front-end window's tail move was real after all, by this fix:
+  `[560..842]`/283 -> `[560..850]`/291 (§0.4.1's "not-a-move" applied to the handler
+  alone).
+* The camera/scene drag from port 491: a consequence of the x offset, gone with it.
+
+**Re-scoped.**
+* Capture 851 (the residual): the port's roar animation advances one frame early at
+  f = 80 (§9.5); owner: the roar stream's frame-hold timing. Not fixed; next cycle.
+* `hit_record_x/y` (`0x18714`/`0x18788`) omit `0x18540`/`0x18350` (inert until f = 90);
+  the `0x354F0` arena-wall clamp; the camera split-arm `0x18714` write: named, inert
+  in the window so far.
+* The sibling pose handlers `0x3A588`/`0x3A6D4`/`0x3A820` and the `0x39F40`/`0x39CC8`
+  family: not reached in the demo's first fight (measured); owner: the pose family.
+
+**Carried, untouched** (owners as §6.3): the demo loop's other content (logo, title
+screens, fight 2); the state-9 hold animation (fidelity-gaps §7.6); the presented-DAC
+frames (§7.11, 832/833; demo-fight-closure §9.5); the interactive match (§7.12); the
+audio gaps (§7.13, the `0x2C3FC` voice stub, RNG-neutral per §3.4); `0x38154`;
+`0x14590` (camera path).
+
