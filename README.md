@@ -256,11 +256,11 @@ spawn → `effects_step` → dirty list → `gfx_flush_palette` → `gfx_dac` �
 plan's assumed missing draw does not exist; the camera state feeds the existing
 render pass and actor-pset sync. The front-end pixel oracle is **closed and
 enforced**: a 120 s pinned capture aligns the port's state-3 zoom to window
-`[560..866]` (raw `3108..3773`), **307 frames: 137 clean, 166 splice, 0
+`[560..869]` (raw `3108..3776`), **310 frames: 138 clean, 168 splice, 0
 transition, 2 unexplained (832, 833)** — the two allowed by name (the
 arena-backdrop cycle's absorbed claim move, below); any other unexplained frame
 fails. (Indices moved `[557..813]`/257 → `[560..830]`/271 → `[560..842]`/283 →
-`[560..850]`/291 → `[560..857]`/298 → `[560..858]`/299 → `[560..859]`/300 → `[560..863]`/304 → `[560..865]`/306 → `[560..866]`/307 as cycle 1's pins, cycle 2's master-loop pin and the
+`[560..850]`/291 → `[560..857]`/298 → `[560..858]`/299 → `[560..859]`/300 → `[560..863]`/304 → `[560..865]`/306 → `[560..866]`/307 → `[560..869]`/310 as cycle 1's pins, cycle 2's master-loop pin and the
 arena-backdrop fix forced re-captures, the demo-pose cycle's `0x3A43C`
 stack-offset fix + `0x186C4` re-latch explained captures 843..850, and the
 roar-timing fix (the `0x3AD27` pose-setter operand) explained 851..857, and the
@@ -268,8 +268,9 @@ frame-858 fix (`0x2A690`'s mode-1 x operands) explained 858, and the
 frame-859 fix (`0x49C78`'s case-1 walk arrival) explained 859, and the
 frame-860 fix (`0x49C78`'s tail reset `0x4A634`) explained 860..863, and the
 frame-864 fix (state 6's `0x12750` node list and the driver's frame-counter
-seed) explained 864/865, and the frame-866 fix (`0x36870`'s case 0 restarting
-its own record) explained 866; the host-timed capture is not reproducible, so indices shift while
+seed) explained 864/865, the frame-866 fix (`0x36870`'s case 0 restarting
+its own record) explained 866, and the frame-867 fix (`0x3BDDC`'s `0x3C480`
+animation start and the full `0x18714` anchor path) explained 867..869; the host-timed capture is not reproducible, so indices shift while
 the claim does not.) It proves exactly one thing: **no content-bearing capture
 frame inside the window the port's own dump exhibits is unexplained** (the two
 named exceptions aside) — the window is derived from that dump and the
@@ -296,14 +297,14 @@ command generator `0x47208`, the `+0x52` state machine (`0x3531C`/`0x350D0`),
 the `0x3C88C` hitbox machine and the `0x3CF38` hit chain — the chain now
 **fires**, hits land (`+0x7C` 0/0 → 1/1), and the fight's last state change
 moved **1262 → 1400**. Its report-only oracle (`make demo-oracle`) measures the
-demo window `[867..3616]` (raw `3774..8409`), **2750 frames: 0 clean / 0 splice
-/ 0 transition / 2744 unexplained** (6 all-black frames excluded); the first
-unexplained frame is capture **867 (raw 3774)** — the raptor lowering out of
-its stance, which the port does not show (moved from 843
+demo window `[870..3616]` (raw `3777..8409`), **2747 frames: 0 clean / 0 splice
+/ 0 transition / 2741 unexplained** (6 all-black frames excluded); the first
+unexplained frame is capture **870 (raw 3777)** — the raptor's pose after its
+`0x1746`/`0x1747` crouch, which the port draws as `0x174E` (moved from 843
 by the demo-pose cycle, then from 851 by the roar-timing fix, then from 858 by
 the frame-858 fix, then from 859 by the frame-859 fix, then from 860 by the
 frame-860 fix, then from 864 by the frame-864 fix, then from 866 by the
-frame-866 fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
+frame-866 fix, then from 867 by the frame-867 fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
 Task 1 corrected it to **836/25**, and the final re-capture moved the loader text
 to 832 with the fight's first frames at 833/834 — record §9.1/§9.3.) Cycle 2
 advanced the boundary 811 → 816 → 832: the state-9 globe's fourth layer
@@ -340,7 +341,7 @@ demo's two state-6 character picks are **not** pinned — cycle 2 replaced cycle
 * **Residual.** Capture 851 (port 497 = f 80): the port advances the T-rex's roar animation one frame early (`0x9076 → 0x9077`); likely owner the roar stream's frame-hold timing (`0x39A34`'s `rec+0x24`, read by `frame_timer` `0x2AA70`).
 * **Claim move (ruled, absorbed in the same commit `dad2712`).** Front-end `[560..842]` / 283 → **`[560..850]` / 291 / `130 clean, 157 splice, 0 transition, 2 unexplained (832, 833)`**. The four classes sum to 289 of the 291 frames: the two all-black captures 561 and 831 are excluded as artifacts.
 * **New enforced line — a ratchet.** `make demo-fight-oracle` (in `make verify`) fails if the first unexplained fight-window frame is earlier than N = **851** (pinned in the `Makefile` with its provenance) or the fight window collapses; a later first-unexplained passes as an improvement and N is then raised. It is honestly near-vacuous today (0/1034 explained: it guards the front-end window's end and the fight window's start) and becomes a real regression guard as fight frames are explained.
-* **Named gaps still open.** The roar animation timing at f = 80; the `0x354F0` arena-wall clamp; `hit_record_x/y` (`0x18714`/`0x18788`) omitting the raw's `0x18540`/`0x18350` calls (first differs at f = 90); the camera split-arm `0x18714` write; the sibling pose handlers `0x3A588`/`0x3A6D4`/`0x3A820` and the `0x39F40`/`0x39CC8` pose family (unreached in the demo's first fight); the `0x2C3FC` voice stays a stub (RNG- and fight-state-neutral, record §3.4).
+* **Named gaps still open.** The roar animation timing at f = 80; the `0x354F0` arena-wall clamp; `hit_record_x/y` (`0x18714`/`0x18788`) omitting the raw's `0x18540`/`0x18350` calls (first differs at f = 90; closed since, record §17); the camera split-arm `0x18714` write; the sibling pose handlers `0x3A588`/`0x3A6D4`/`0x3A820` and the `0x39F40`/`0x39CC8` pose family (unreached in the demo's first fight); the `0x2C3FC` voice stays a stub (RNG- and fight-state-neutral, record §3.4).
 * **Unmoved.** Every other enforced claim (title, attract 215, smk, C-vs-Python 9866, `symbols.h`).
 
 See `docs/superpowers/specs/2026-09-24-demo-pose-design.md` and the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
@@ -389,14 +390,22 @@ See §15 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.
 
 * **Measured.** Capture 866 is now a 0 B splice of port 509/510 (row 96), from 27 858 B / 9 891 px. The demo oracle's first unexplained is now **867 (raw 3774)**. The demo window `[867..3616]` has 2750 frames, 2744 unexplained, and the fight window `[867..1884]` has 1018 frames, 0 explained. The ratchet N is raised **866 → 867** in the same commit.
 * **Claim move (the one the brief allowed).** Front-end `[560..865]` / 306 → **`[560..866]` / 307 / `137 clean, 166 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
-* **Residual (characterised, not fixed).** Capture 867 is a tear. The best 510/511 splice (row 124) leaves 11 184 B / 3 955 px, all in x 185–319, rows 125–194: the raptor's body and legs. The capture shows the raptor lowering out of its stance. The port holds the stance `0x16B5` from f = 93 to f = 96, while side 1's slot reads `+0x52/+0x53/+0x54` = 3/4/2 from f = 94. The owner is not derived.
+* **Residual (characterised, not fixed).** Capture 867 is a tear. The best 510/511 splice (row 124) leaves 11 184 B / 3 955 px, all in x 185–319, rows 125–194: the raptor's body and legs. The capture shows the raptor lowering out of its stance. The port holds the stance `0x16B5` from f = 93 to f = 96, while side 1's slot reads `+0x52/+0x53/+0x54` = 3/4/2 from f = 94. The owner is not derived. (Derived since: `0x3BDDC`'s unported `0x3C480` call and `0x18714`'s omitted anchor calls; see below.)
 
 See §16 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
 
+**The raptor's crouch and its anchor (`a76414d`), the demo fight's captures 867..869.** At f = 94 side 1's command `0xA0A0` reaches `0x3BDDC`, which moves the raptor to state 3/4/2. Before those stores the raw calls `0x3C480(rec, [0xC8B30 + char·4], 1.0f)` (`0x3BEF7..0x3BF05`), starting the crouch stream `0xD2274` (`0x1746`, `0x1747`, …); the port had that call as a gap, so the raptor held its stance `0x16B5`. `0x3C480`'s `0x188DC` tail then re-derives `rec+0x18` through `0x18714`, which runs `0x18540` and, on an anchor change, `0x18350` before subtracting the new `DS_00100AB0`; the port omitted both calls (a named gap since the demo-pose cycle), so the new sprite's anchor x (−11 against the stance's −4) never moved `rec+0x18`: the raptor stood 7 px left (6144 instead of 6592). One call added and one function's two calls ported (`0x18788` likewise); no size gate.
+
+* **Measured.** Captures 867, 868 and 869 are now 0 B (510/511 and 511/512 splices, then port 512), from 11 184 / 14 505 / 14 034 B. The demo oracle's first unexplained is now **870 (raw 3777)**. The demo window `[870..3616]` has 2747 frames, 2741 unexplained, and the fight window `[870..1884]` has 1015 frames, 0 explained. The ratchet N is raised **867 → 870** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..866]` / 307 → **`[560..869]` / 310 / `138 clean, 168 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 870 is a tear. The best 512/513 splice leaves 12 025 B / 4 306 px, 3 942 px of them in x 240–319, rows 28–197: the raptor, in a different pose from the port's `0x174E`. At f = 96 the port's raptor stream runs from `0x1747` through the opcodes `D000 5E04 0003`, `DA00 17D8 000D`, `DC00 12D8 000D`, `8E40`, `FF20`/`FF21` and `ED40 22B0 000D` to `0x174E`. The owner is not derived.
+
+See §17 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
-demo fight's remaining arena divergence (first unexplained at capture 867
-after the frame-866 fix: the raptor lowering out of its stance from f = 94,
-which the port does not show, owner not yet derived) and the
+demo fight's remaining arena divergence (first unexplained at capture 870
+after the frame-867 fix: the raptor's pose after its crouch, which the port
+draws as `0x174E` from f = 96, owner not yet derived) and the
 interactive match cycle (the mode graph, `0x1EEB0`, the `0x1EA08` sites) remain;
 the attract's `0x2C3FC` voice calls remain declared gaps with `/* PORT: */`
 markers.

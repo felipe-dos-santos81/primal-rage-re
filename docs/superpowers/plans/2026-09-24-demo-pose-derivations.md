@@ -2097,3 +2097,193 @@ is 3 955 px. Neither did the pre-fix port, whose raptor kept its old stream
 
 The named gaps §10 lists are not implicated at 867: the camera and side 0's
 anchor match the capture.
+(Derived since, §17: `0x3BDDC`'s unported `0x3C480` call, plus `0x18714`'s
+omitted `0x18540`/`0x18350` calls; the second is one of §10's named gaps after
+all, reached here through `0x3C480`'s `0x188DC` tail.)
+
+## 17. The raptor's crouch and its anchor at capture 867 (roar-timing Task 7, `a76414d`)
+
+**Result in one line.** Capture 867 has two causes, both the port's. At f = 94
+side 1's command reaches `0x3BDDC`, whose raw calls
+`0x3C480(rec, [0xC8B30 + slot+0x7A·4], 1.0f)` (`0x3BEF7..0x3BF05`) before
+storing state 3/4/2; the port had that call as a gap (§7.16 of the
+demo-fight record), so the raptor held its stance `0x16B5`. With the call in,
+the sprites are right (`0x1746` at f = 94, `0x1747` at f = 95) but 7 px left:
+`0x3C480`'s `0x188DC` tail reaches `0x18714`, whose `0x18540`/`0x18350` calls
+(§10's named gap "`hit_record_x/y` omit `0x18540`/`0x18350`") re-derive
+`DS_00100AB0` for the new sprite. Both are small (one call; two calls in each
+of two already-ported functions); the size gate does not apply. This
+supersedes §16.5's "owner not derived" for 867.
+
+### 17.1 The trace (measured, temporary, reverted)
+
+`getenv("PR_T7")`-gated lines after `fight_hud_pass`'s `actor_sync` (slot
+`+0x52/+0x53/+0x54`, `+0x5F`, the command word, `rec+8`, the pset sprite,
+`rec+0x20/+0x24`, `slot+0x2C`, `rec+0x18`, pset x) and at `fighter_attack_consume`'s
+transition. Reverted; `git status` was clean afterwards apart from the fix.
+
+| f | side 1 (raptor, char 3), unmodified port (`980a52e`) |
+|---|---|
+| 93 | 0/0/0, stream `0xD2136`, `0x16B5`, `slot+0x2C` 5760, `rec+0x18` 6144 |
+| 94 | **`0x3BDDC` fires**: `cmd = 0xA0A0`, ch 3, `0xC8B30[3] = 0xD2274`; 3/4/2, stream still `0xD2136`, `0x16B5` |
+| 95..96 | 3/4/2, `0x16B5` (the stance's hold runs out) |
+| 97 | 3/4/2, stream `0xD2140`, `0x16D2` (the stance stream's own next sprite) |
+
+The caller is `0x349C8`'s `0x34A9F` (`+0x52 == 0`). `0x35D7C` (the
+`+0x52 == 3` handler) was re-diffed against `disassemble_function 0x35D7C` and
+matches the port.
+
+### 17.2 What captures 867..869 show (measured)
+
+A temporary render hook (reverted) decoded every char-3 sprite id
+`0x1600..0x17FF` at the raptor's f = 94 and f = 95 screen position into a
+scratch buffer (`sprite_blit_at`, sentinel 0x00 and 0xFF passes for the mask),
+and a Python fit composited each over the port frame with the raptor removed
+(`PR_T7F` forcing id 0, reverted), at every dx ∈ [−8, 8], dy ∈ [−6, 6], using
+the palette read off the port's own raptor pixels.
+
+* Capture 867, rows 125–194 (the half after the tear): best **`0x1746` at
+  dx = +7, dy = 0**, 592 px left (palette entries the fit could not map; the
+  next best is 2 450 px).
+* Capture 868, rows 60–194 against f = 95: best **`0x1747` at dx = +7, dy = 0**,
+  550 px; the next best is 2 640 px.
+
+So the raw shows the crouch stream from f = 94 at one sprite per frame, and the
+raptor 7 px (448 units) right of where the port draws it.
+
+### 17.3 The raw, re-read (Ghidra, fixups applied)
+
+`disassemble_function 0x3BDDC`:
+
+```
+0x3bee8 bbb0771000     mov ebx,0x1077b0
+0x3bef0 01c3           add ebx,eax              ; the slot (EAX = side*0x94)
+0x3bef4 8a537a         mov dl,[ebx+0x7a]        ; char
+0x3bef7 8b03           mov eax,[ebx]            ; the slot's record
+0x3bef9 8b1495308b0c00 mov edx,[edx*4+0xc8b30]  ; 0xC8B30[char]
+0x3bf00 680000803f     push 0x3f800000          ; hold 1.0
+0x3bf05 e876050000     call 0x3c480
+0x3bf0a c6435203       mov byte [ebx+0x52],3
+```
+
+`read_memory 0xC8B30`: `0xE6F28, 0xE3AF0, 0xECCEC, 0xD2274, …`; `0xD2274`
+reads `1746 1747 D000 5E04 0003 DA00 17D8 000D DC00 12D8 000D 8E40 …`. The
+rest of `0x3BDDC` matches the port (the `0x3BE55` `slot+0x53` gate, the
+`0x10782A` table index, the `0x107D40` store, the `+0x4E` arms).
+
+`0x3C480` (port `hit_anim_start_a`) and `0x339AC` (`hit_anim_ctx`) match the
+port: `0x188AC(side, rec+0x18, 0)` (`0x3C497 xor ebx,ebx`: `rec+0x1C = 0`),
+`0x2BC30`, then `0x188DC(side, slot+0x2C)`. (The raw loads `slot+0x2C` at
+`0x3C4B0`, before `0x2BC30`; the port reads it after. They differ only if
+`0x2BC30`'s pre-walk runs an opcode that writes `slot+0x2C`; `0xD2274` starts
+with a literal id, so nothing is pre-walked here. Not changed; noted.)
+
+`disassemble_function 0x18714` (`0x18788` is the same with `+0x1C`, `0x1077E0`
+and `0x100AB4`):
+
+```
+0x18729 f682f277100008 test byte [edx+0x1077f2],8   ; slot+0x42 bit 3
+0x18730 740b           je 0x1873d
+0x18732..0x1873b       eax = [[slot]+0x18]; jmp 0x18782
+0x1873f e8fcfdffff     call 0x18540                 ; the anchor for the CURRENT sprite
+0x1874b 8bb2d0771000   mov esi,[edx+0x1077d0]       ; slot+0x20
+0x18751 8b88f00a1000   mov ecx,[eax+0x100af0]       ; DS_00100AF0[side]
+0x18757 39f1 / 7409    cmp ecx,esi / je 0x18764
+0x1875f e8ecfbffff     call 0x18350                 ; (side, anchor); slot+0x20 not stored
+0x18772 8b3cddb00a1000 mov edi,[ebx*8+0x100ab0]
+0x18779 8b0485dc771000 mov eax,[eax*4+0x1077dc]     ; slot+0x2C
+0x18780 29f8           sub eax,edi
+```
+
+Ghidra `get_xrefs_to 0x18788` lists one caller, `0x18896` in `0x1883C`, which
+latches both slots first (`0x186D0` stores the anchor into `slot+0x20`), so
+`0x18788`'s two calls cannot change anything there. It is transcribed as the
+raw has it, and no assertion can observe it.
+
+Char-3 anchor data (`read_memory`): `word[0xD2134] = 0x16B5`,
+`0xE6DB4[3] = 0x2AE`; `0xD033B + 2·0` = `fc 30` (x −4, y 48) for `0x16B5`;
+`0xD033B + 2·145` = `f5 32` (x −11, y 50) for `0x1746` and `0x1747`. So
+`0x188AC`'s latch gives `slot+0x2C = 6144 − 256 = 5888`, and `0x18714` returns
+`5888 + 704 = 6592`: +448 units, the capture's 7 px.
+
+### 17.4 The fix and its assertions
+
+* **Fix** (`port/src/game/fighter.c`).
+  * `fighter_attack_consume` calls
+    `hit_anim_start_a(DSD(self), DSD(0xC8B30 + ch·4), 0x3F800000)` at the raw
+    position, before the 3/4/2 stores (`FIGHT_ANIM_3BDDC`). The header comments
+    here and in `fighter.h` no longer name the call as a gap.
+  * `hit_record_x`/`hit_record_y` call `fighter_18540(side)` and, when
+    `DS_00100AF0[side] != slot+0x20`, `fighter_18350(side, anchor)`, as the raw
+    does. The `PORT:` omission comments are gone; `camera.c`'s split-arm gap
+    comments no longer call `0x18714` unported (they still skip its call).
+* **Assertions** (`test_fight.c`, `check_deep_callees` cases F and G). Both
+  save and restore `0xC8B30[0]`, `0xC8B30[3]`, `DS_00100AF0..+7`,
+  `DS_00100AB0..+0xF`, `DS_00107D40..+7` and `DS_001078F8..+1`.
+  * F: side 1, char 3, `S+0x53 = 1` (skips the `0x3CF38` chain at `0x3BE55`),
+    command `0x8000`, pset `0x16B5`, `rec+0x18 = 6144`, `rec+0x1C = 0x5555`,
+    `S+0x20 = 0x77`; `0xC8B30[3]` and `0xC8B30[0]` point at scratch streams
+    with literals `0x1746` and `0x0456`. Checks: `rec+8` is the char-3 stream,
+    pset `0x1746`, `rec+0x24 = 1.0f`, `rec+0x1C = 0`, `S+0x2C = 5888`,
+    `rec+0x18 = 6592`, `DS_00100AF0[1] = 145`, `DS_00100AB0[1] = −704`,
+    `DS_00100AB4[1] = 3200`, `S+0x20 = 0` (the latch's, not `0x18714`'s),
+    side 0's record/pset/`AF0`/`AB0` sentinels unchanged, `S+0x52 = 3`.
+  * G: pset `0x96B5` (hflipped stance, anchor 0: the latch's `0x18350`
+    negates x, `AB0 = +256`), stream literal `0x16B5` (anchor 0 again). The
+    anchor equals the latched `slot+0x20`, so `0x18757` skips `0x18350`:
+    `S+0x2C = 6400`, `AB0[1] = +256`, `rec+0x18 = 6144`.
+* **Mutations** (each applied by a script, `fighter.c` restored and compared
+  byte for byte afterwards, the suite then passed):
+
+  | mutation | failures |
+  |---|---|
+  | no `0x3C480` call (pre-fix) | ≥ 8, first `:3227` `11259375 != 66271232` |
+  | `0xC8B30` indexed by the other slot's `+0x7A` | 7, first `:3227` `66271248 != 66271232` |
+  | the other slot's record | ≥ 8, first `:3227` |
+  | hold 3.0 | 1: `:3229` `1077936128 != 1065353216` |
+  | `0x18714` without `0x18540`/`0x18350` (pre-fix) | 4: `:3232` `6144 != 6592`, `:3233`, `:3234`, `:3235` |
+  | `0x18714` without `0x18350` | 3: `:3232`, `:3234`, `:3235` |
+  | `0x18714` always calls `0x18350` | 3: `:3263` `-256 != 256`, `:3264` `6656 != 6144`, `:3629` (§7.3's pose snap, `17505 != 13089`) |
+  | `0x18714` stores `slot+0x20` | 1: `:3236` `145 != 0` |
+  | `0x18788` without `0x18540`/`0x18350` | 0 (inert through `0x1883C`, above) |
+
+### 17.5 Measured
+
+| measurement | before (`980a52e`) | after (`a76414d`) |
+|---|---|---|
+| capture 867 ↔ port 510/511 | 11 184 B / 3 955 px | **0 B** |
+| capture 867, `0x3C480` call alone | — | 9 597 B / 3 380 px (the 7 px offset) |
+| captures 868, 869 | 14 505 B, 14 034 B | **0 B** (511/512 splice; port 512) |
+| port f = 94..96, side 1 | `0x16B5`, `rec+0x18` 6144 | `0x1746`, `0x1747`, `0x174E`; `rec+0x18` 6592 |
+| demo oracle first unexplained | 867 (raw 3774); `[867..3616]` 2750 / 2744 unexpl. | **870 (raw 3777)**; `[870..3616]` 2747 / 2741 unexpl. |
+| demo-fight ratchet | `[867..1884]` 1018, N = 867 | **`[870..1884]` 1015**, "ratchet improved: 870 > 867", **N = 870** |
+| front-end oracle | `[560..866]` / 307 / 137 clean, 166 splice, 0 transition, 2 unexpl. (832, 833) | **`[560..869]` / 310 / 138 clean, 168 splice, 0 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved, which is the move the brief allowed.
+These were unmoved:
+
+* title `54/55/2/0` and `54/57/0/0`, determinism 54
+* smk 120/120 and 41/41
+* attract 215/216 (expected divergence at 215)
+* C-vs-Python 9866
+* `symbols.h`
+
+The front-end "endpoints BAD" line is the same as before. The exhibition set
+grows to port frames 0..512 (276 exhibited).
+
+**The new first unexplained frame, 870 (characterised, not fixed).** Capture
+870 is a tear. Its best splice, port 512/513 (split at row 49), leaves
+12 025 B / 4 306 px. Of these, 3 942 px lie in x 240–319, rows 28–197: the
+raptor, which the capture shows in a different pose from the port's `0x174E`
+(against port 511..515 the box leaves 7 495, 7 369, 3 951, 4 031 and
+4 100 px). The rest is 285 px around a worshipper (x 92–239, rows 138–197) and
+79 px at the left edge (x 0–44). Capture 871 differs across the frame
+(30 449 px). In the port, the raptor's stream advances at f = 96 from `0x1747`
+(`0xD2276`) through `D000 5E04 0003`, `DA00 17D8 000D`, `DC00 12D8 000D`,
+`8E40`, `FF20 0040 0000 1000`, `FF21 0040 0000 2000` and `ED40 22B0 000D` to
+`0x174E` (the word at `0xD22B0`) with hold 2, after which `rec+8` reads
+`0xD22A0`. The owner is **not derived**. The candidates are those opcodes'
+handlers (`D000` with the dword `0x00035E04`, where Ghidra has no function,
+the `DA00`/`DC00` pair, the `FF20`/`FF21`
+command tests against side 1's `0xA0A0`, and the `ED40` branch) and the
+raptor's position from f = 96 (`slot+0x2C` 5888 → 6528 at f = 97).
