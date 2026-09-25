@@ -392,6 +392,19 @@ def main():
                          'all-black artifact drop as --frontend. Report-only: '
                          'prints the window, the counts and the first '
                          'unexplained frame, and always exits 0')
+    ap.add_argument('--demo-fight', action='store_true',
+                    help='demo fight window [fe_b+1 .. first all-black capture '
+                         'frame): the --demo classification, enforced as a '
+                         'RATCHET. Claim: every content-bearing captured frame '
+                         'in [fe_b+1 .. min(N, window_end)) is explained '
+                         '(clean/splice/transition) and the first unexplained '
+                         'frame in the window is >= N (--demo-fight-min-first). '
+                         'Not "the fight is reproduced": the window is not '
+                         'fully explained, N is the measured first unexplained '
+                         'frame. Returns 1 on a violation')
+    ap.add_argument('--demo-fight-min-first', type=int, default=None,
+                    metavar='N',
+                    help='the ratchet N for --demo-fight (required with it)')
     a = ap.parse_args()
     required = os.environ.get('PR_ORACLE_REQUIRED') == '1'
 
@@ -552,6 +565,95 @@ def main():
                   % (unexpl[0], raws[unexpl[0]], len(unexpl)))
         else:
             print("title_compare: demo: 0 unexplained")
+        return 0
+
+    # Demo-fight mode (demo-pose Task 3): the --demo classification as a ratchet
+    # on the first unexplained captured frame. The fight window is
+    # [fe_b+1 .. end-1], `end` being the first all-black capture frame at or
+    # after fe_b+1 (the capture's artifact run; the same exclusion --frontend
+    # makes). Every frame is classified by the same check_capture/explain path;
+    # a frame outside the port-exhibited window, or every frame when no port
+    # frame is exhibited, is unexplained if it carries content. Enforced: no
+    # unexplained frame below N, and the first unexplained frame is >= N. When
+    # N == end + 1 that is exactly "0 unexplained in the fight window".
+    if a.demo_fight:
+        if a.demo_fight_min_first is None:
+            print("title_compare: demo-fight: --demo-fight-min-first N is "
+                  "required")
+            return 1
+        ratchet = a.demo_fight_min_first
+        capture = a.capture[0]
+        if not os.path.isdir(capture):
+            print("title_compare: no capture at %s (%s)"
+                  % (capture, 'FAIL (required)' if required else 'skipped'))
+            return 1 if required else 0
+        if not os.path.isdir(a.port):
+            print("title_compare: no port dump at %s" % a.port)
+            return 1
+        n = a.frames or len([f for f in os.listdir(a.port)
+                             if f.endswith('.raw')])
+        port, port_rows = load_port(a.port, n)
+        if port is None:
+            return 1
+        fe_rc, fe_res = check_capture(capture, port, port_rows, n, 'frontend',
+                                      a.verbose, detail=False, skip_black=True,
+                                      quiet=True)
+        if fe_res is None or not fe_res['covered']:
+            print("title_compare: demo-fight: front-end window not derivable "
+                  "(rc %d); no fight window" % fe_rc)
+            return 1 if required else 0
+        fe_a, fe_b = fe_res['window']
+        port_lo = max(fe_res['covered']) + 1
+        if port_lo >= n:
+            print("title_compare: demo-fight: no port frames after the "
+                  "front-end window")
+            return 1
+        rc, res = check_capture(capture, port[port_lo:], port_rows[port_lo:],
+                                n - port_lo, 'demo', a.verbose, detail=False,
+                                skip_black=True, capture_lo=fe_b + 1, quiet=True)
+        if res is None:
+            frames = load_frames(capture, 'demo')
+            if frames is None:
+                return 1
+            kinds = [('excluded', None) if j <= fe_b else
+                     (('unexplained', None) if any(frames[j])
+                      else ('artifact', None)) for j in range(len(frames))]
+        else:
+            frames, kinds = res['frames'], res['kinds']
+        raws = raw_map(capture) or list(range(len(frames)))
+        lo = fe_b + 1
+        end = next((j for j in range(lo, len(frames)) if not any(frames[j])),
+                   None)
+        if end is None or end <= lo:
+            print("title_compare: demo-fight: fight window end not derivable "
+                  "(no all-black capture frame after %d)" % fe_b)
+            return 1 if required else 0
+        hi = end - 1
+        cls = [kinds[j][0] for j in range(lo, end)]
+        print("title_compare: demo-fight: front-end window distinct [%d..%d]; "
+              "fight window distinct [%d..%d] (raw %s..%s)"
+              % (fe_a, fe_b, lo, hi, raws[lo], raws[hi]))
+        print("title_compare: demo-fight: %d frames in window: %d clean, %d "
+              "splice, %d transition, %d unexplained"
+              % (len(cls), cls.count('clean'), cls.count('splice'),
+                 cls.count('transition'), cls.count('unexplained')))
+        unexpl = [j for j in range(lo, end) if kinds[j][0] == 'unexplained']
+        first = unexpl[0] if unexpl else None
+        if first is not None:
+            print("title_compare: demo-fight: first unexplained captured frame "
+                  "%d (raw %s); %d unexplained in the fight window; ratchet N "
+                  "%d" % (first, raws[first], len(unexpl), ratchet))
+        else:
+            print("title_compare: demo-fight: 0 unexplained in the fight window")
+        if first is not None and first < ratchet:
+            print("title_compare: demo-fight: FAIL: first unexplained %d < "
+                  "ratchet N %d" % (first, ratchet))
+            return 1
+        if first is None or first > ratchet:
+            print("title_compare: demo-fight: ratchet improved: first "
+                  "unexplained %s > %d — raise N"
+                  % (first if first is not None else 'none (window end %d)'
+                     % end, ratchet))
         return 0
 
     primary = a.capture[0]

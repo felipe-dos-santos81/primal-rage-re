@@ -44,7 +44,7 @@ chunk ?= 0
 .PHONY: help deps build test verify check smk-oracle run clean \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original title-pin title-capture \
-        title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle
+        title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -191,6 +191,28 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 	@$(PYTHON) tools/title_compare.py --demo --capture $(TITLE_CAPTURES)/frontend \
 		--port $(FRONTEND_DUMP)/run1
 
+# Demo-fight oracle (a RATCHET, enforced in verify): the same dump and classification
+# as demo-oracle, restricted to the fight window [fe_b+1 .. first all-black capture
+# frame). Claim: no captured frame below DEMO_FIGHT_MIN_FIRST is unexplained, and the
+# first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
+# not yet explained, so N is the measured first unexplained frame, raised as the port
+# improves (the tool prints "ratchet improved ... raise N"). N = 851 was measured on
+# the landed tree (dad2712) by `make demo-oracle`, which printed
+# "title_compare: demo: first unexplained captured frame 851 (raw 3758); 2760 in the window".
+# At 851 == fe_b+1 the claim is currently only that the front-end window does not
+# shrink and the window start does not move. Skips without the capture.
+DEMO_FIGHT_MIN_FIRST = 851
+demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/title-captures/frontend)
+	@echo "== demo-fight oracle (ratchet on the first unexplained frame, N=$(DEMO_FIGHT_MIN_FIRST)) =="
+	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
+		rm -rf $(FRONTEND_DUMP); \
+		PR_FRONTEND_DET=$(FRONTEND_DUMP) PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
+	else \
+		echo "demo-fight-oracle: no capture at $(TITLE_CAPTURES)/frontend, fight window not compared"; \
+	fi
+	@$(PYTHON) tools/title_compare.py --demo-fight --demo-fight-min-first $(DEMO_FIGHT_MIN_FIRST) \
+		--capture $(TITLE_CAPTURES)/frontend --port $(FRONTEND_DUMP)/run1
+
 # Headless FM render: on hosts where SDL audio cannot open, the windowed run is
 # silent, so this plays the title bank through the sequencer + OPL core + mixer
 # and writes a 16-bit stereo WAV at the OPL rate for listening in any player.
@@ -212,6 +234,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, symbols.h i
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory title-oracle
 	@echo "== front-end oracle (pixel-exact, states 3/4; enforced) =="
 	@$(MAKE) --no-print-directory frontend-oracle
+	@echo "== demo-fight oracle (ratchet on the first unexplained frame) =="
+	@$(MAKE) --no-print-directory demo-fight-oracle
 	@echo "== attract prefix oracle (pixel-exact) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory attract-oracle
 	@echo "== gra_extract oracle tests (real assets required) =="
