@@ -194,6 +194,13 @@ int actors_init(void)
      * (slot, rec, side) registers. */
     fn_register(0x3C0A4u, (void (*)(void))reaction_cb_3C0A4);
     fn_register(0x3BF70u, (void (*)(void))reaction_cb_3BF70);
+    /* PORT: 0x34E2C's reaction callback 0x3E3A8 (*(u32*)0xA3870, the T-rex's
+     * reaction 0x2A), called at 0x35045 with the (slot, rec, side) registers;
+     * its AL is ignored there (0x35049 only adds to ESP). */
+    fn_register(0x3E3A8u, (void (*)(void))fighter_3e3a8);
+    /* PORT: the slot +0x0C callback 0x3E3A8 stores, 0x3E328 (0x3531C case
+     * 7), with the same (slot, rec, side) registers. */
+    fn_register(0x3E328u, (void (*)(void))fighter_3e328);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */

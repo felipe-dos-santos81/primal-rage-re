@@ -194,30 +194,32 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # Demo-fight oracle (a RATCHET, enforced in verify): the same dump and classification
 # as demo-oracle, restricted to the fight window [fe_b+1 .. first all-black capture
 # frame). Claim: no captured frame below DEMO_FIGHT_MIN_FIRST is unexplained, and the
-# first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
-# not yet explained, so N is the measured first unexplained frame, raised as the port
-# improves (the tool prints "ratchet improved ... raise N"). N = 1881 was measured on
-# bcce10b (the commit that raised it, on 5bf6e7f): 0x39040's combo text, 0x38D90 (the hit
-# count, the HIT glyph and "COMBO" down the text grid's column 2 through the
-# 0x2F4D0/0x2EFD4 number formatter and the vertical 0x2F20C) and the combo-name
-# check 0x38FEC/0x38ED0, which the port skipped as a named gap; at f = 860 the
-# T-rex's second hit draws "2 HIT COMBO" (capture 1763).
-# `make demo-oracle` printed
-# "title_compare: demo: first unexplained captured frame 1881 (raw 4788); 1730 in the window",
-# and the demo-fight oracle printed "ratchet improved: first unexplained 1881 > 1763".
-# (Before it, N = 1763, measured on c7320b2; N = 1750 on 2287114; N = 1715 on 1268371; N = 1659 on cc38a38; N = 1563 on 27c95c0; N = 1546 on 219691e; N = 1481 on 3d64c61; N = 1478 on 4065c1d; N = 1411 on c78dc97; N = 1358 on b5a48a0; N = 998 on
+# first unexplained frame is >= it. N = 1886 was measured on the commit that raised
+# it (on 9abbdd0): 0x34E2C's reaction callback 0x3E3A8 (the T-rex's reaction 0x2A at
+# f = 962: the 0xC8950 stream at hold 2.0, state 9/7/0 and the +0x0C callback
+# 0x3E328), and the front-end driver's dump of loop frame 1970, the last frame the
+# state-7 handler presents (0x11BCC's timer exit drops the state to 0 inside it;
+# the dump is now 1382 frames, 0..1381). Together they explain captures 1881..1884:
+# the front-end window reaches [560..1884], the frame before 1885, the capture's
+# first all-black frame after the demo. That is the end of the demo-fight capture,
+# so the fight window is empty and title_compare prints "fight window empty ... 0
+# unexplained in the fight window", "fully explained". N = 1886 = end + 1 is the
+# exact pin: the claim is now "every content-bearing capture frame up to 1885 is
+# explained". It can still fail: a shrink of the front-end window (which the
+# front-end oracle, whose window is derived from the port's own dump, cannot see)
+# reopens the fight window, and a frame there that the port frames after the
+# window do not explain is below N. The capture holds no later fight, so N cannot
+# rise further with this capture.
+# (Before it, N = 1881, measured on bcce10b; N = 1763 on c7320b2; N = 1750 on 2287114; N = 1715 on 1268371; N = 1659 on cc38a38; N = 1563 on 27c95c0; N = 1546 on 219691e; N = 1481 on 3d64c61; N = 1478 on 4065c1d; N = 1411 on c78dc97; N = 1358 on b5a48a0; N = 998 on
 # ff38dcc; N = 992 on 3fee8d0; N = 950 on a51685d; N = 892 on 6a48972; N = 891 on
 # cfff063; N = 880 on 0a8346b; N = 870 on a76414d; N = 867 on 2137bce; N = 866 on
 # 7147288; N = 864 on b915712; N = 860 on afa47b3; N = 859 on b2cb490; N = 858 on
 # 594e4b9; N = 851 on dad2712.)
-# The two counts differ by scope: 1730 is --demo's window, [1881..3616] to the capture's
-# end; 4 is this oracle's fight window, [1881..1884], cut at the first all-black frame.
-# Both share the first unexplained frame, 1881. The tool also fails if N > window end + 1
-# or if the window collapses; a shrunk front-end window lowers fe_b+1, so the
-# ratchet itself fails (first unexplained < N).
-# At 1881 == fe_b+1 the claim is currently only that the front-end window does not
-# shrink and the window start does not move. Skips without the capture.
-DEMO_FIGHT_MIN_FIRST = 1881
+# `make demo-oracle` now reports the region after the front-end window, [1885..3616],
+# with no port frame left (the dump ends with the demo): first unexplained 1886, the
+# capture's next cycle. The tool also fails if N > window end + 1, or if the window
+# collapses with an unexplained front-end frame outside the two allowed by name.
+DEMO_FIGHT_MIN_FIRST = 1886
 demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/title-captures/frontend)
 	@echo "== demo-fight oracle (ratchet on the first unexplained frame, N=$(DEMO_FIGHT_MIN_FIRST)) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \

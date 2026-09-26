@@ -480,6 +480,15 @@ def load_port(d, n):
 # (1203 -> 1321; still the same 3 transition frames); the allowed set stays
 # (832, 833), and the exhibition set grows to port frames 0..1378 (1142
 # exhibited).
+# 0x34E2C's reaction callback 0x3E3A8 (unregistered before; at f = 962 the
+# T-rex's reaction 0x2A starts the 0xC8950 stream at hold 2.0) and the dump of
+# loop frame 1970 (the last frame the state-7 handler presents; the driver
+# dumped only frames whose iteration ended in a state >= 3) explain captures
+# 1881..1884 (1 clean, 3 splice), [560..1880] -> [560..1884] (1321 -> 1325;
+# still the same 3 transition frames). 1885 is the capture's first all-black
+# frame after the demo, so the window now holds the whole demo fight; the
+# allowed set stays (832, 833), and the exhibition set is port frames
+# 0..1381, the whole 1382-frame dump (1145 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 
@@ -514,9 +523,12 @@ def main():
                          'in [fe_b+1 .. min(N, window_end)) is explained '
                          '(clean/splice/transition) and the first unexplained '
                          'frame in the window is >= N (--demo-fight-min-first). '
-                         'Not "the fight is reproduced": the window is not '
-                         'fully explained, N is the measured first unexplained '
-                         'frame. Returns 1 on a violation')
+                         'Not "the fight is reproduced": N is the measured '
+                         'first unexplained frame. When the front-end window '
+                         'reaches the frame before the first all-black frame '
+                         'the fight window is empty and the claim is "0 '
+                         'unexplained up to it", pinned by N = its index + 1. '
+                         'Returns 1 on a violation')
     ap.add_argument('--demo-fight-min-first', type=int, default=None,
                     metavar='N',
                     help='the ratchet N for --demo-fight (required with it)')
@@ -632,16 +644,21 @@ def main():
               "port frames [%d..%d] (%d frames)"
               % (fe_a, fe_b, port_lo, n - 1, len(demo_port)))
         if not demo_port:
+            # The front-end window exhibits the dump's last frame: nothing is
+            # left to explain the region after it, so it is reported below as
+            # unexplained content, the same as when no demo frame matches.
             print("title_compare: demo: no port frames after the front-end window")
-            return 0
-        rc, res = check_capture(capture, demo_port, port_rows[port_lo:],
-                                len(demo_port), 'demo', a.verbose, detail=False,
-                                skip_black=True, capture_lo=fe_b + 1)
+            res = None
+        else:
+            rc, res = check_capture(capture, demo_port, port_rows[port_lo:],
+                                    len(demo_port), 'demo', a.verbose,
+                                    detail=False, skip_black=True,
+                                    capture_lo=fe_b + 1)
         if res is None:
             # No capture frame after the front-end window explains any demo port
-            # frame. Still report the region and its first content-bearing frame
-            # (the report-only contract), skipping all-black artifacts exactly
-            # as the classification does.
+            # frame (or there is none). Still report the region and its first
+            # content-bearing frame (the report-only contract), skipping
+            # all-black artifacts exactly as the classification does.
             frames = load_frames(capture, 'demo')
             if frames is None:
                 return 1
@@ -724,12 +741,17 @@ def main():
         fe_a, fe_b = fe_res['window']
         port_lo = max(fe_res['covered']) + 1
         if port_lo >= n:
+            # The front-end window exhibits the dump's last frame, so no port
+            # frame is left for the fight window: every content-bearing frame in
+            # it is unexplained (the fallback below).
             print("title_compare: demo-fight: no port frames after the "
                   "front-end window")
-            return 1
-        rc, res = check_capture(capture, port[port_lo:], port_rows[port_lo:],
-                                n - port_lo, 'demo', a.verbose, detail=False,
-                                skip_black=True, capture_lo=fe_b + 1, quiet=True)
+            res = None
+        else:
+            rc, res = check_capture(capture, port[port_lo:],
+                                    port_rows[port_lo:], n - port_lo, 'demo',
+                                    a.verbose, detail=False, skip_black=True,
+                                    capture_lo=fe_b + 1, quiet=True)
         if res is None:
             frames = load_frames(capture, 'demo')
             if frames is None:
@@ -743,6 +765,29 @@ def main():
         lo = fe_b + 1
         end = next((j for j in range(lo, len(frames)) if not any(frames[j])),
                    None)
+        fe_rest = [j for j in fe_res['unexpl']
+                   if j not in FRONTEND_ALLOWED_UNEXPLAINED]
+        if end == lo and not fe_rest:
+            # The front-end window reaches the frame before the first all-black
+            # capture frame: the whole fight is inside it and explained (no
+            # unexplained frame there but the two allowed by name). The
+            # fight window is empty, so the claim is exactly "0 unexplained up
+            # to `end`", pinned by N == end + 1; a shrink of the front-end
+            # window reopens the fight window and fails below N.
+            print("title_compare: demo-fight: front-end window distinct "
+                  "[%d..%d]; fight window empty: the front-end window reaches "
+                  "the first all-black capture frame %d (raw %s)"
+                  % (fe_a, fe_b, end, raws[end]))
+            if ratchet > end + 1:
+                print("title_compare: demo-fight: FAIL: N %d > window end + 1 "
+                      "(%d): N is unreachable" % (ratchet, end + 1))
+                return 1
+            print("title_compare: demo-fight: 0 unexplained in the fight window")
+            print("title_compare: demo-fight: fully explained; the window "
+                  "claim is now exact%s"
+                  % ("" if ratchet == end + 1 else
+                     " — N = %d (window end + 1) is the exact pin" % (end + 1)))
+            return 0
         if end is None or end <= lo:
             print("title_compare: demo-fight: FAIL: fight window collapsed or "
                   "its end is not derivable (first all-black capture frame "

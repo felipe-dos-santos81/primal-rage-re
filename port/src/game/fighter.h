@@ -393,6 +393,20 @@ void fighter_3e4e4(u32 rec);
  * 0x19505 with EAX = side: 0x3B714(slot[1-side], slot[side]). */
 void fighter_3e4c4(u32 side);
 
+/* 0x3E3A8. The T-rex's reaction-0x2A callback (0x34E2C's *(u32*)0xA3870):
+ * ctx = 0x33950(side); ctx[4] on the 0xC8950[char] stream at hold 2.0 through
+ * 0x3C4CC, ctx[2]'s state 9/7/0, the +0x0C/+0x18/+0x1C callbacks
+ * 0x3E328/0x3E1D0/0x3E244, +0x57 = 0 and +0x41 bit 7. EBX = side (the EAX
+ * slot and EDX rec are overwritten). */
+void fighter_3e3a8(u32 slot, u32 rec, u32 side);
+
+/* 0x3E328. The slot +0x0C callback 0x3531C case 7 runs each frame after
+ * 0x3E3A8: ctx = 0x33950(side); ctx[2]'s +0x57 steps 0 -> 1 once +0x86 >> 16
+ * exceeds 3, and 1 -> 2 with +0x8A = 0, the 0xE84B6 stream at hold 4.0 on
+ * ctx[4] through 0x3C4CC, 0x3E0F0's child (+0x53 = 1) and +0x52 = 9. EBX =
+ * side (the EAX slot and EDX rec are overwritten). */
+void fighter_3e328(u32 slot, u32 rec, u32 side);
+
 /* 0x3B938. Burst slot `slot`'s projectile (slot+0x08): restart it on the
  * burst stream (0xE1898 at 2.0 when its +0x48 is 4, else the per-character
  * 0xBDFC8/0xBDFF0 stream and hold), detach it (+0x48, +0x34/+0x36 and

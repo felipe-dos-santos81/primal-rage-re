@@ -2764,11 +2764,17 @@ int test_frontend(void)
      * The 2000-iteration loop and the 1400-frame cap are sized from the demo's
      * state-7 exit: state 3 is entered at loop frame 589, state 6 runs at loop
      * frame 1070 (dumped frame 481), and 0x11BCC's timer exit runs at loop frame
-     * 1970, where the state drops to 0 and dumping stops. So the state>=3 dump
-     * run is loop frames 589..1969, i.e. dumped frames 0..1380 (1381 frames); the
-     * 1400 cap covers it and the 2000-frame loop clears the 1970 exit. The
-     * front-end window is distinct [560..1880] (1321 frames: 516 clean, 798
-     * splice, 3 transition, 2 unexplained; [560..1762]/1203 before 0x39040's
+     * 1970, where the state drops to 0. A frame is dumped when its iteration
+     * starts or ends in a state >= 3, so loop frame 1970 (state 7 in, 0 out),
+     * the last frame the state-7 handler presents, is dumped and 1971 is not.
+     * The dump run is loop frames 589..1970, i.e. dumped frames 0..1381 (1382
+     * frames); the 1400 cap covers it and the 2000-frame loop clears the 1970
+     * exit. The front-end window is distinct [560..1884] (1325 frames: 517
+     * clean, 801 splice, 3 transition, 2 unexplained), up to the capture's
+     * first all-black frame after the demo, 1885 ([560..1880]/1321 with the
+     * 1381-frame dump before 0x34E2C's reaction callback 0x3E3A8 (the T-rex's
+     * reaction 0x2A at f = 962) and the loop-frame-1970 dump explained
+     * 1881..1884; [560..1762]/1203 before 0x39040's
      * combo text 0x38D90/0x38FEC (the "2 HIT COMBO" at f = 860) explained
      * 1763..1880; [560..1749]/1190 before 0x34E2C's reaction callback 0x3C0A4
      * (the T-rex's reversed-facing attack through 0x3BF70 at f = 850)
@@ -2921,6 +2927,7 @@ int test_frontend(void)
                 s7_pre_seen = 1;
             }
             DSB(DS_000A81A8) = 1;          /* exactly one game_loop iteration */
+            u16 state_in = DSW(DS_000F0A64);   /* the state this frame starts in */
             game_loop();
             if (s7_pre_seen && !s7_post_seen) {
                 s7_entry_post = DSD(DS_000EF6D8);
@@ -3015,7 +3022,7 @@ int test_frontend(void)
              * before the swap). A frame counts as dumped only when all 192000
              * bytes were written, so the count below cannot pass on a short or
              * missing file; one failure stops further attempts. */
-            if (DSW(DS_000F0A64) >= 3u && !dump_failed &&
+            if ((state_in >= 3u || DSW(DS_000F0A64) >= 3u) && !dump_failed &&
                 dumped < (int)raw_cap) {
                 const u8 *fb = gfx_display();
                 if (fb == NULL) fb = mem + DSD(DS_000E87A0);
@@ -3047,12 +3054,13 @@ int test_frontend(void)
          * window is asserted to reach state 3, not to end in it; the state it
          * ends in is whatever 0x12658's actor timing produces. The demo adds
          * states 9/6/7: state 7 runs its 900-frame timer and 0x11BCC's exit
-         * lands at loop frame 1970, so the state>=3 dump window is loop frames
-         * 589..1969 (1381 frames, dump 0..1380). The 1400 cap covers it; the
-         * 2000-frame loop clears the 1970 exit. */
+         * lands at loop frame 1970, whose frame the state-7 handler still
+         * presents, so the dump window is loop frames 589..1970 (1382 frames,
+         * dump 0..1381). The 1400 cap covers it; the 2000-frame loop clears the
+         * 1970 exit. */
         CHECK_EQ_INT((int)seen_entries, 0x3F);
         CHECK(reached3, "the window reaches state 3");
-        CHECK_EQ_INT(dumped, (int)(raw_cap < 1381 ? raw_cap : 1381));
+        CHECK_EQ_INT(dumped, (int)(raw_cap < 1382 ? raw_cap : 1382));
 
         /* Alignment: the driver's state-6 entry sits at the attract's
          * post-state, and the two picks drawn from it (plus the dust builder's
@@ -3123,8 +3131,8 @@ int test_frontend(void)
         /* The Gate's first claim: the fight reaches the state-7 900-frame timer
          * exit. State 7 is entered at loop 1070 and left at 1970 (the timer's
          * 0x11BCC arm), so its last frame is 1969; a fight that stalls earlier
-         * (or never leaves) fails. The dump count above (1381) is the same
-         * proof through the presented frames. */
+         * (or never leaves) fails. The dump count above (1382, through the
+         * exit frame 1970) is the same proof through the presented frames. */
         CHECK_EQ_INT(s7_last, 1969);
         /* Demo record §15: the grey flier of captures 864/865 is 0x1282C's
          * type-0x01 spawn. It is refused unless state 6's 0x20DF4 has built

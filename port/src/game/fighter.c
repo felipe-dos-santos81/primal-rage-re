@@ -363,7 +363,9 @@ void fighter_pass_a(void)
          * f = 106..114, the frames the T-rex holds the 0x3E484 hook (record
          * §19.6.2: DS_00100AF8's zero-ness agrees with the raw's). A run where
          * the other slot has +0x74/+0x76 live or +0x42 bit 3 set while the hook
-         * is held would diverge. */
+         * is held would diverge. The T-rex also holds 0x3E3A8's hook 0x3E1D0
+         * at f = 963, the demo's last fight frame (record §34); that call is
+         * not evaluated, and the captures to the demo's end are explained. */
 
         /* 0x195BB: a side whose slot state byte is 0x0A is out. */
         if (DSB(DS_00107803 + side * 0x94u) == 0x0Au)
@@ -3716,6 +3718,8 @@ void hit_reaction_apply(u32 side, u32 reaction)
 #define FIGHT_1080AC     0x001080ACu  /* 0x3D1E0: a word per side, read by 0x3D26C */
 #define FIGHT_DESC_3D214 0x000BB27Cu  /* 0x3D235: the emitter descriptor (stream 0xE8598) */
 #define FIGHT_DESC_3D26C 0x000BB268u  /* 0x3D2ED: the projectile descriptor (stream 0xE85BC, type 2) */
+#define FIGHT_ANIM_3E328 0x000E84B6u  /* 0x3E372: 0x3E328's +0x57 == 1 stream */
+#define FIGHT_DESC_3E0F0 0x000C760Cu  /* 0x3E120/0x3E142: [side] child descriptor */
 
 /* 0x3C190. The horizontal speed from a magnitude: the record's +0x34 is -v when
  * the side's pset is not hflipped (0x1A570), else v. EAX = side, EDX = v. */
@@ -3979,6 +3983,94 @@ void fighter_3e4c4(u32 side)
     u32 ctx[6];
     fighter_ctx_same(ctx, side);                        /* 0x3E4CC 0x33950 */
     fighter_reaction(ctx[3], ctx[2]);                   /* 0x3E4D9 0x3B714 */
+}
+
+/* 0x3E3A8. The T-rex's reaction-0x2A callback (*(u32*)0xA3870, the (char 0,
+ * 0x2A) entry of 0x34E2C's 0xA3528 table, whose stream word +4 is 0). The
+ * context is 0x33950(EBX = side); EAX and EDX are overwritten at 0x3E3AB/
+ * 0x3E3AD. It starts ctx[4] on the 0xC8950[ctx[2]+0x7A] stream at hold 2.0
+ * through 0x3C4CC, then arms ctx[2]: state 9/7/0, the +0x0C per-frame callback
+ * 0x3E328 (0x3531C case 7), the +0x18/+0x1C callbacks 0x3E1D0 (0x1958C's
+ * 0x19020 hook) and 0x3E244 (0x193B0's 0x19505 call), +0x57 = 0 and +0x41
+ * bit 7. The raw returns AL = 1, which 0x34E2C ignores. */
+void fighter_3e3a8(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    (void)slot;
+    (void)rec;
+    fighter_ctx_same(ctx, side);                        /* 0x3E3AF 0x33950 */
+    hit_anim_start_b(ctx[4], DSD(FIGHT_ANIM_367DC
+                                 + (u32)DSB(ctx[2] + 0x7Au) * 4u),
+                     0x40000000u);                      /* 0x3E3B8..0x3E3D0 0x3C4CC */
+    DSB(ctx[2] + 0x53u) = 7u;                           /* 0x3E3D9 */
+    DSB(ctx[2] + 0x52u) = 9u;                           /* 0x3E3E1 */
+    DSB(ctx[2] + 0x54u) = 0;                            /* 0x3E3E9 */
+    DSD(ctx[2] + 0x0Cu) = 0x0003E328u;                  /* 0x3E3F1 */
+    /* PORT: 0x3E1D0 and 0x3E244 are stored but not ported. 0x3E1D0's only
+     * caller 0x19020 (0x1958C's 0x195B6 hook, §7.6 gap) and its callee 0x18C14
+     * are unported (record §19.6), so the port skips it at f = 963 (0x1958C
+     * runs before f = 962's reaction).
+     * 0x3E244 needs the unported 0x3C208/0x3C358, and its caller, 0x193B0's
+     * +0x1C call, is not reached in the port's run before the demo ends
+     * (record §34). 0x3E328 is ported and registered. */
+    DSD(ctx[2] + 0x18u) = 0x0003E1D0u;                  /* 0x3E3FC */
+    DSD(ctx[2] + 0x1Cu) = 0x0003E244u;                  /* 0x3E407 */
+    DSB(ctx[2] + 0x57u) = 0;                            /* 0x3E412 */
+    DSB(ctx[2] + 0x41u) |= 0x80u;                       /* 0x3E41A */
+}
+
+/* 0x29C08. The palette handle for (side, char): DSD(DSD(0xA8A98 + char*4) +
+ * DSB(0x105B34 + side)*4). EAX = side, EDX = char. */
+static u32 fighter_29c08(u32 side, u32 ch)
+{
+    u32 row = DSD(DS_000A8A98 + ch * 4u);               /* 0x29C08 */
+    return DSD(row + (u32)DSB(DS_00105B34 + side) * 4u);   /* 0x29C0F..0x29C1A */
+}
+
+/* 0x3E0F0. Spawn the side's 0xC760C descriptor as the record's child: the
+ * descriptor's +0x10 gets 0x29C08(side, char) for side = rec+0x51, then
+ * 0x2AE14(desc, 0, 0, 0, rec+0x56 | 0x400); the record's +0x4B takes the
+ * child's +0x56 byte and the child's +0x60 = 1. EAX = rec; returns the child. */
+static u32 fighter_3e0f0(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                   /* 0x3E0F8 */
+    u32 pal = fighter_29c08(side, (u32)DSB(DS_0010782A + side * 0x94u));   /* 0x3E10D/0x3E116 */
+    u32 child;
+    DSD(DSD(FIGHT_DESC_3E0F0 + (u32)DSB(rec + 0x51u) * 4u) + 0x10u) = pal;   /* 0x3E11D..0x3E127 */
+    child = actor_spawn((const u32 *)(mem + DSD(FIGHT_DESC_3E0F0
+                                                + (u32)DSB(rec + 0x51u) * 4u)),
+                        0u, 0u, 0u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));   /* 0x3E12A..0x3E149 0x2AE14 */
+    DSB(rec + 0x4Bu) = DSB(child + 0x56u);              /* 0x3E14E/0x3E151 */
+    DSB(child + 0x60u) = 1u;                            /* 0x3E154 */
+    return child;
+}
+
+/* 0x3E328. The per-frame +0x0C callback 0x3E3A8 arms (0x3531C case 7). The
+ * context is 0x33950(EBX = side); EAX and EDX are overwritten at 0x3E32B/
+ * 0x3E32D. It steps ctx[2]'s +0x57: 0 moves to 1 once the +0x86 dword >> 16
+ * exceeds 3; 1 clears +0x8A, starts ctx[4] on the 0xE84B6 stream at hold 4.0
+ * through 0x3C4CC, spawns 0x3E0F0's child and sets the child's +0x53 = 1,
+ * then ctx[2]'s +0x52 = 9 and +0x57 = 2; 2 and above return. */
+void fighter_3e328(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    u8 st;
+    (void)slot;
+    (void)rec;
+    fighter_ctx_same(ctx, side);                        /* 0x3E32F 0x33950 */
+    st = DSB(ctx[2] + 0x57u);                           /* 0x3E338 */
+    if (st == 0u) {                                     /* 0x3E345 */
+        if ((s32)DSD(ctx[2] + 0x86u) >> 16 > 3)         /* 0x3E34D..0x3E359 */
+            DSB(ctx[2] + 0x57u) = 1u;                   /* 0x3E35F */
+        return;
+    }
+    if (st != 1u) return;                               /* 0x3E33F/0x3E341 */
+    DSB(ctx[2] + 0x8Au) = 0;                            /* 0x3E36B */
+    hit_anim_start_b(ctx[4], FIGHT_ANIM_3E328, 0x40800000u);   /* 0x3E372..0x3E380 0x3C4CC */
+    DSB(fighter_3e0f0(ctx[4]) + 0x53u) = 1u;            /* 0x3E389/0x3E38E */
+    DSB(ctx[2] + 0x52u) = 9u;                           /* 0x3E396 */
+    DSB(ctx[2] + 0x57u) = 2u;                           /* 0x3E39E */
 }
 
 /* 0x3CE58. Validate the hitbox and drive the reaction: the 0x3CE24 gate, the
