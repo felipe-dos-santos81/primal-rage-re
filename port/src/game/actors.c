@@ -200,7 +200,8 @@ int actors_init(void)
     fn_register(0x3BF70u, (void (*)(void))reaction_cb_3BF70);
     /* PORT: 0x34E2C's reaction callback 0x3E3A8 (*(u32*)0xA3870, the T-rex's
      * reaction 0x2A), called at 0x35045 with the (slot, rec, side) registers;
-     * 0x34E2C passes it through; its callers do not test it. */
+     * 0x34E2C returns its AL (0x35045..0x3504F); 0x3CE58 overwrites it at
+     * 0x3CF33 and 0x350D0's tail (0x352CD) returns it. */
     fn_register(0x3E3A8u, (void (*)(void))fighter_3e3a8);
     /* PORT: the slot +0x0C callback 0x3E3A8 stores, 0x3E328 (0x3531C case
      * 7), with the same (slot, rec, side) registers. */
@@ -226,6 +227,9 @@ int actors_init(void)
      * (dwords at 0xD2EB0, 0xD2EBC, 0xD2EF2, 0xD2EFE), opcode 0x11, mode
      * 0x4000. */
     fn_register(0x1490Cu, (void (*)(void))fighter_1490c);
+    /* PORT: 0x14814 is also a reaction callback itself (*(u32*)0xA46D0,
+     * character 3's reaction 0x22), same registers. */
+    fn_register(0x14814u, (void (*)(void))fighter_14814);
     fn_register(0x1461Cu, (void (*)(void))fighter_1461c);
     fn_register(0x145CCu, (void (*)(void))fighter_145cc);
     fn_register(0x145E4u, (void (*)(void))fighter_145e4);

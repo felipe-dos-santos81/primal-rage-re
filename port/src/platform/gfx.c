@@ -174,9 +174,10 @@ u8 *gfx_aperture(void) { return g_aperture; }
  * rule); the VBlank spin has nothing to wait for here. It has 7 callers. The
  * ported ones pass 0: 0x2BAF4's param_1 != 0 arm (0x2BBE8 `xor eax,eax`) and
  * the movie player 0x1C740's entry and exit (0x1C74D/0x1C873). The unported
- * ones do not: 0x32E93, 0x330B1 and 0x332E4 pass 0x2EDE0's return after a
- * `test eax,0x1000000` (0x330B1 also after `test eax,0x2000000`) has found
- * a bit set, and 0x32BF5 is a loop head (0x32F43 `jl`) whose first pass
+ * ones need not: 0x32E93 and 0x332E4 pass 0x2EDE0's return after a
+ * `test eax,0x1000000` has found bit 24 set; 0x330B1 passes 0x2EDE0's return
+ * either with bit 25 clear (0x33097 `je`, which can be 0) or, on the other
+ * path, after `test eax,0x1000000` (0x330A2) has found bit 24 set; and 0x32BF5 is a loop head (0x32F43 `jl`) whose first pass
  * carries the function's incoming EAX (0x32BE5). */
 void gfx_screen_reset(u32 ticks)
 {

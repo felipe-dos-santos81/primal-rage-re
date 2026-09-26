@@ -7286,7 +7286,7 @@ static void check_char3_reaction(void)
     u32 sv_14ec = DSD(DS_001014EC);
     u16 sv_st[5];
     u8 sv_b00[4], sv_tab[28], sv_a80[0x80], sv_d2c[4], sv_d20[4], sv_fd[0x18];
-    u8 sv_f8[2], sv_hud[10], sv_ae9, sv_c1d, sv_af8[8], sv_e0[4];
+    u8 sv_f8[2], sv_hud[10], sv_ae9, sv_c1d, sv_af8[8], sv_e0[4], sv_d28[4];
     u32 i;
     typedef void (*anim_fn)(u32 rec, u32 arg);
     anim_fn f37;
@@ -7302,11 +7302,14 @@ static void check_char3_reaction(void)
     tf_snap(sv_hud, DS_001088E8, 10u);
     tf_snap(sv_af8, DS_00100AF8, 8u);
     tf_snap(sv_e0, DS_001088E0, 4u);
+    tf_snap(sv_d28, DS_00107D28, 4u);
     sv_ae9 = DSB(DS_00104AE9);
     sv_c1d = DSB(DS_00100C1D);
 
     CHECK(fn_resolve(0x1490Cu) == (void (*)(void))fighter_1490c,
           "0x1490C is registered as fighter_1490c");
+    CHECK(fn_resolve(0x14814u) == (void (*)(void))fighter_14814,
+          "0x14814 is registered as fighter_14814");
     CHECK(fn_resolve(0x1461Cu) == (void (*)(void))fighter_1461c,
           "0x1461C is registered as fighter_1461c");
     CHECK(fn_resolve(0x145CCu) == (void (*)(void))fighter_145cc,
@@ -7343,6 +7346,22 @@ static void check_char3_reaction(void)
     CHECK_EQ_INT((int)DSB(s1 + 0x68u), 0x44);
     CHECK_EQ_INT((int)DSD(r1 + 8u), 0x00ABCDEF);
     CHECK_EQ_INT((int)DSD(s1 + 0x0Cu), 0x11111111);
+
+    /* A2: 0x14814's own entrance, *(u32*)0xA46D0 (`14 48 01 00 00 00 00 00`:
+     * character 3's reaction 0x22, no stream), through 0x34E2C. The counter
+     * 0x107A80[0x22] goes to 1 (the word at 0xA6C78 is 1: false), so 0xD2E9A
+     * and the slot armed as in A, and FD11C[0] goes from its sentinel to 0:
+     * no 0x1490C follows to set it. */
+    c3_seed(s0, s1, r0, r1, st);
+    DSW(DS_001088E0) = 0;
+    hit_reaction_apply(0u, 0x22u);
+    CHECK_EQ_INT((int)DSB(DS_00107A80 + 0x22u), 1);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x000D2E9A);
+    CHECK_EQ_INT((int)DSB(s0 + 0x5Fu), 0x22);
+    CHECK_EQ_INT((int)DSD(s0 + 0x0Cu), 0x0001461C);
+    CHECK_EQ_INT((int)DSB(DS_000FD11C), 0);
+    CHECK_EQ_INT((int)DSB(DS_000FD11C + 1u), 0x66);
+    CHECK_EQ_INT((int)DSD(FIGHT_FD108_T), 0x2000);
 
     /* B: direct, EBX = 1 unread (side 0 from rec+0x51). +0x5F = 0xFF keeps
      * 0x396AC out (b >= 0x40, no bump). The other slot in the knockback pose
@@ -7453,6 +7472,7 @@ static void check_char3_reaction(void)
     CHECK_EQ_INT((int)DSB(s0 + 0x57u), 2);
     DSB(s0 + 0x57u) = 1u;
     DSW(DS_000FD114) = 0u;
+    DSW(r0 + 0x34u) = 0x7777u;
     fighter_1461c(s1, r1, 0u);
     CHECK_EQ_INT((int)(s16)DSW(DS_000FD114), -1);
     CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0x0060);
@@ -7524,11 +7544,22 @@ static void check_char3_reaction(void)
      * 0x33A10(1)'s ctx[0] = side 0 (the 0x107D2C word + 1). */
     c3_seed(s0, s1, r0, r1, st);
     DSB(s0 + 0x5Fu) = 0x27u;
+    DSB(s1 + 0x5Fu) = 0x25u;
+    DSB(s0 + 0x64u) = 0x21u;
     DSW(DS_00107D2C) = 7u;
     DSW(DS_00107D2C + 2u) = 9u;
+    DSD(DS_00107D28) = 0x5A5A5A5Au;
     fighter_145e4(0u);
     CHECK_EQ_INT((int)DSW(DS_00107D2C), 8);
     CHECK_EQ_INT((int)DSW(DS_00107D2C + 2u), 9);
+    CHECK_EQ_INT((int)DSD(DS_00107D28), 0x27);                  /* 0x39953 */
+    /* F2: 0x145FC `and edx,0xff` zero-extends the byte. 0xA7 is outside
+     * 0x3AFC4's 0..0x3F (the raw's 0x62003 error; the port's zero triple),
+     * but 0x39834 still stores b at 0x39953. */
+    DSB(s0 + 0x5Fu) = 0xA7u;
+    DSD(DS_00107D28) = 0x5A5A5A5Au;
+    fighter_145e4(0u);
+    CHECK_EQ_INT((int)DSD(DS_00107D28), 0xA7);
 
     /* G: 0x37CD4 as anim_indirect calls it, (rec, operand): toggles the
      * slot's +0x42 bit 3 with +0x74 = 0x378 / 0; no slot, no write. */
@@ -7553,6 +7584,7 @@ static void check_char3_reaction(void)
     DSB(DS_00100C1D) = sv_c1d;
     DSB(DS_00104AE9) = sv_ae9;
     tf_put(sv_e0, DS_001088E0, 4u);
+    tf_put(sv_d28, DS_00107D28, 4u);
     tf_put(sv_af8, DS_00100AF8, 8u);
     tf_put(sv_hud, DS_001088E8, 10u);
     tf_put(sv_f8, DS_001078F8, 2u);

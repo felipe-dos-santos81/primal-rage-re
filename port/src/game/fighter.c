@@ -3787,7 +3787,9 @@ int fighter_3c0a4(u32 slot, u32 rec, u32 side)
  * +0x2C read before that call, and arms the slot: +0x57 = 2, state 9/7/2, the
  * +0x0C per-frame callback 0x3E524 (0x3531C case 7), the +0x18/+0x1C callbacks
  * 0x3E484 (0x1958C's 0x19020 hook) and 0x3E4C4 (0x193B0's 0x19505 call) and
- * +0x41 bit 7. The raw returns AL = 1, which 0x34E2C ignores. */
+ * +0x41 bit 7. The raw returns AL = 1; 0x34E2C returns it
+ * (0x35045..0x3504F): 0x3CE58 overwrites it at 0x3CF33, 0x350D0's tail
+ * (0x352CD) returns it. */
 void fighter_3e62c(u32 slot, u32 rec, u32 side)
 {
     u32 ctx[6];
@@ -3813,8 +3815,9 @@ void fighter_3e62c(u32 slot, u32 rec, u32 side)
  * slot's +0x08 non-zero it returns at once. Otherwise it starts the 0xE84C8
  * stream at hold 3.0 through 0x3C4CC, puts the slot in state 0xB/6/0, clears
  * the +0x0C/+0x18/+0x1C callbacks, moves +0x5F to +0x64 (+0x5F = 0xFF) and
- * stores 0x100 in the word 0x1080AC[rec+0x51]. The raw returns AL (0 or 1),
- * which 0x34E2C ignores. */
+ * stores 0x100 in the word 0x1080AC[rec+0x51]. The raw returns AL (0 or 1);
+ * 0x34E2C returns it (0x35045..0x3504F): 0x3CE58 overwrites it at 0x3CF33,
+ * 0x350D0's tail (0x352CD) returns it. */
 void fighter_3d17c(u32 slot, u32 rec, u32 side)
 {
     u32 i = (u32)DSB(rec + 0x51u);                      /* 0x3D183 movzx */
@@ -3982,7 +3985,9 @@ void fighter_3e4c4(u32 side)
  * through 0x3C4CC, then arms ctx[2]: state 9/7/0, the +0x0C per-frame callback
  * 0x3E328 (0x3531C case 7), the +0x18/+0x1C callbacks 0x3E1D0 (0x1958C's
  * 0x19020 hook) and 0x3E244 (0x193B0's 0x19505 call), +0x57 = 0 and +0x41
- * bit 7. The raw returns AL = 1, which 0x34E2C ignores. */
+ * bit 7. The raw returns AL = 1; 0x34E2C returns it
+ * (0x35045..0x3504F): 0x3CE58 overwrites it at 0x3CF33, 0x350D0's tail
+ * (0x352CD) returns it. */
 void fighter_3e3a8(u32 slot, u32 rec, u32 side)
 {
     u32 ctx[6];
@@ -4152,7 +4157,10 @@ static void fighter_146f0(u32 rec)
     /* PORT: 0x14807 0x2C3FC(0xB1) voice, out of scope (spec §7). */
 }
 
-/* 0x14814. EAX = slot, EDX = rec; the context is 0x339AC(rec). When
+/* 0x14814. Character 3's reaction-0x22 callback (*(u32*)0xA46D0, the
+ * (char 3, 0x22) entry of 0x34E2C's 0xA3528 table), and 0x1490C's first
+ * call. EAX = slot, EDX = rec; EBX is pushed at 0x14814 and overwritten at
+ * 0x14819 before any read. The context is 0x339AC(rec). When
  * 0x396AC(ctx[0], 0) holds: 0x18B44(ctx[2]), the 0xD2E86 stream through
  * 0x3C4CC at the 0x9AFE4 hold, and the slot in state 9/4/0. Otherwise: the
  * 0xD2EDC stream (with ctx[3]'s +0x68 decremented) when 0x14590(ctx[0])
@@ -4160,11 +4168,14 @@ static void fighter_146f0(u32 rec)
  * with +0x57 = 0, the +0x0C/+0x18/+0x1C callbacks 0x1461C/0x145CC/0x145E4
  * and +0x40 |= 0x48000; the record's +0x55 = 0; the side's FD108 dword =
  * 0x2000 when ctx[2]'s x (+0x2C) is above ctx[3]'s (signed), else 0x1000;
- * the side's FD11C byte = 0. The raw returns AL = 1 on both paths. */
-static void fighter_14814(u32 slot, u32 rec)
+ * the side's FD11C byte = 0 (through 0xA46D0 that 0 stays, so 0x146F0 later
+ * takes its 0x3C480 arm; 0x1490C overwrites it with 1). The raw returns
+ * AL = 1 on both paths. */
+void fighter_14814(u32 slot, u32 rec, u32 side)
 {
     u32 ctx[6];
     u32 stream;
+    (void)side;
     hit_anim_ctx(ctx, rec);                                 /* 0x1481F 0x339AC */
     /* PORT: 0x14829 0x2C3FC(0xB0) voice, out of scope (spec §7). */
     if (fighter_396ac(ctx[0], 0u) != 0) {                   /* 0x1482E..0x1483A */
@@ -4202,14 +4213,16 @@ static void fighter_14814(u32 slot, u32 rec)
 /* 0x1490C. The character-3 reaction-0x27 callback (*(u32*)0xA4734, the
  * (char 3, 0x27) entry of 0x34E2C's 0xA3528 table), which the second demo's
  * first state-7 frame reaches. EAX = slot, EDX = rec; the EBX 0x34E2C passes
- * is pushed and never read. 0x14814(slot, rec), then the side's (0x339AC(rec)
- * ctx[0]) FD11C byte = 1. The raw returns AL = 1, which 0x34E2C ignores. */
+ * is pushed and never read. 0x14814(slot, rec, EBX = rec), then the side's (0x339AC(rec)
+ * ctx[0]) FD11C byte = 1. The raw returns AL = 1; 0x34E2C returns it
+ * (0x35045..0x3504F): 0x3CE58 overwrites it at 0x3CF33, 0x350D0's tail
+ * (0x352CD) returns it. */
 void fighter_1490c(u32 slot, u32 rec, u32 side)
 {
     u32 ctx[6];
     (void)side;
     hit_anim_ctx(ctx, rec);                                 /* 0x14917 0x339AC */
-    fighter_14814(slot, rec);                               /* 0x14920 */
+    fighter_14814(slot, rec, rec);                          /* 0x14913..0x14920: EBX = rec */
     DSB(DS_000FD11C + ctx[0]) = 1u;                         /* 0x14925..0x1492A */
 }
 

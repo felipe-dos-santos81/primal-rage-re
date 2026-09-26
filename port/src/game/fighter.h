@@ -432,6 +432,12 @@ u32 fighter_3e1d0(u32 side);
  * then the side's 0xFD11C byte = 1. */
 void fighter_1490c(u32 slot, u32 rec, u32 side);
 
+/* 0x14814. Character 3's reaction-0x22 callback (*(u32*)0xA46D0), same
+ * (slot, rec, side) registers (EBX unread): starts the reaction stream, arms
+ * the slot (+0x0C 0x1461C, +0x18 0x145CC, +0x1C 0x145E4) and zeroes the
+ * side's 0xFD11C byte. */
+void fighter_14814(u32 slot, u32 rec, u32 side);
+
 /* 0x1461C. The slot +0x0C callback 0x14814 stores (0x3531C case 7), same
  * (slot, rec, side) registers: the +0x57 step machine 0..3. */
 void fighter_1461c(u32 slot, u32 rec, u32 side);
