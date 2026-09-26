@@ -177,8 +177,9 @@ u8 *gfx_aperture(void) { return g_aperture; }
  * ones need not: 0x32E93 and 0x332E4 pass 0x2EDE0's return after a
  * `test eax,0x1000000` has found bit 24 set; 0x330B1 passes 0x2EDE0's return
  * either with bit 25 clear (0x33097 `je`, which can be 0) or, on the other
- * path, after `test eax,0x1000000` (0x330A2) has found bit 24 set; and 0x32BF5 is a loop head (0x32F43 `jl`) whose first pass
- * carries the function's incoming EAX (0x32BE5). */
+ * path, after `test eax,0x1000000` (0x330A2) has found bit 24 set; and
+ * 0x32BF5 is a loop head (0x32F43 `jl`) whose first pass carries the
+ * function's incoming EAX (0x32BE5). */
 void gfx_screen_reset(u32 ticks)
 {
     DSD(DS_00101508) = ticks;

@@ -85,6 +85,13 @@ void fighter_slot_latch_both(void);
  * res_resolve tail are named gaps (§10.4/§10.5). */
 void fighter_spawn(u32 side);
 
+/* 0x34978. The fighter-slot reset 0x20DF4 calls at 0x20E42 before state 6
+ * spawns the fighters: the two slot pointers DS_001077A8[0..1] (0x654C7, a
+ * two-dword fill), the word DS_001078F6 and the live-fighter count
+ * DS_001078FA, which 0x33C78 increments per spawn and 0x1958C/0x34D8C gate on
+ * == 2. */
+void fighter_slots_reset(void);
+
 /* 0x1975C. The think step the arena frame calls at 0x264CC. It runs the
  * projectile collision step 0x17CB0 (camera.h), then, for each thrower whose
  * DS_00100AD0 overlap count exceeds 2, applies the projectile hit to the struck

@@ -2350,9 +2350,11 @@ static void fe_cyc2_dump(void)
 /* The driver's loop: FE_DEMO_LOOPS covers the first demo's 0x11BCC exit at
  * loop 1970 (the run's length before the cycle-2 dump); FE_LOOPS reaches the
  * second attract cycle's state-6 handoff (loop 2782) and the second demo's
- * first frames. */
+ * first 116 frames. FE_LOOPS is a measurement window, not a raw value: 2900
+ * (2800 before record §38) keeps the second demo's first unexplained capture
+ * frame, 2461 (about loop 2848), inside the cycle-2 dump. */
 #define FE_DEMO_LOOPS 2000
-#define FE_LOOPS 2800
+#define FE_LOOPS 2900
 
 int test_frontend(void)
 {
@@ -2848,7 +2850,7 @@ int test_frontend(void)
      * The dump run is loop frames 589..1970, i.e. dumped frames 0..1381 (1382
      * frames); the 1400 cap covers it and FE_DEMO_LOOPS clears the 1970
      * exit. The exit frame closes this dump: the loop runs on to FE_LOOPS
-     * (2800) and writes every later presented frame to <dump>/cycle2 instead
+     * (2900) and writes every later presented frame to <dump>/cycle2 instead
      * (fe_cyc2_dump; record §36), the attract's second cycle, which the
      * capture shows from 1886 to its second demo at 2385. The per-frame
      * measurements and end-of-run reads below keep the FE_DEMO_LOOPS window. The front-end window is distinct [560..1884] (1325 frames: 517
@@ -3007,6 +3009,9 @@ int test_frontend(void)
         movie_set_screen_hook(fe_cyc2_dump);
         int c2_start = -1, c2_proj54 = -1, c2_flash_i = -1;
         int c2_state6_i = -1, c2_f0a72 = -1;
+        /* The live-fighter count DS_001078FA after the second demo's 6 -> 7
+         * loop (record §38). -1: never sampled. */
+        int c2_state7_i = -1, c2_fa = -1;
         /* The picks, variant and handle as the first demo left them, read
          * where the driver's run used to end (loop FE_DEMO_LOOPS - 1); the
          * second demo's state 6 draws new picks. 0xFF/0 sentinels. */
@@ -3164,14 +3169,20 @@ int test_frontend(void)
                     c2_state6_i = i;
                     c2_f0a72 = (int)DSB(DS_000F0A72);
                 }
+                if (c2_state6_i >= 0 && c2_state7_i < 0
+                        && DSW(DS_000F0A64) == 7u) {
+                    c2_state7_i = i;
+                    c2_fa = (int)DSB(DS_001078FA);
+                }
             }
         }
         movie_set_screen_hook(NULL);
         fe_cyc2_on = 0;
         if (log != NULL) fclose(log);
         printf("test_frontend: cycle 2 from loop %d, %d frames; A54@1971 %d, "
-               "4F83C@%d, state 6@%d (F0A72 %d)\n", c2_start, fe_cyc2_n,
-               c2_proj54, c2_flash_i, c2_state6_i, c2_f0a72);
+               "4F83C@%d, state 6@%d (F0A72 %d), state 7@%d (78FA %d)\n",
+               c2_start, fe_cyc2_n, c2_proj54, c2_flash_i, c2_state6_i,
+               c2_f0a72, c2_state7_i, c2_fa);
 
         /* The raw's timeline: six entries, each drawn then paused, then state 3.
          * Entry k is drawn on frame 1+93k; after the sixth, 0x1E pause frames
@@ -3191,25 +3202,31 @@ int test_frontend(void)
         CHECK_EQ_INT(dumped, (int)(raw_cap < 1382 ? raw_cap : 1382));
 
         /* The second attract cycle (derivation record §36). The cycle-2 dump
-         * starts after the exit frame, at loop 1971, and holds 995 frames:
-         * loops 1971..2799 (829) and, inside loop 1971, the 166 screens
+         * starts after the exit frame, at loop 1971, and holds 1095 frames:
+         * loops 1971..2899 (929) and, inside loop 1971, the 166 screens
          * 0x1C740 writes (TWI5: the entry blank, 121 frames, the exit blank;
          * TWG: the same with 41). A player that drops TWI5's 121st frame
-         * writes 994; one with no screen hook 829. 0x2BAF4's 0x4F228 call
+         * writes 1094; one with no screen hook 929. 0x2BAF4's 0x4F228 call
          * (0x2BBC4) clears the projection gate DS_00107A54 the demo's state 6
          * set (0x387E2), so it is 0 after loop 1971 (1 without it). The
          * lightning stream 0xE890A's 0x4F83C sets DS_00104AD0 bit 0 first at
          * loop 2547 (never without its registration). With the boot attract's
          * cycle counter (FRONTEND_ATTRACT_CYCLE_AFTER_BOOT), phase 0xB hands off
          * to state 6 at loop 2782 with DS_000F0A72 = 5 (0x1150E); with the
-         * counter left at 4 it hands off to the title and never reaches 6. */
+         * counter left at 4 it hands off to the title and never reaches 6.
+         * Record §38: state 6's 0x20DF4 zeroes the live-fighter count
+         * DS_001078FA through 0x34978 (0x20E42) before its two spawns, so the
+         * second demo's 6 -> 7 loop (2783) leaves it at 2; without the reset
+         * the first demo's 2 grows to 4 and 0x1958C/0x34D8C never run. */
         CHECK(!fe_cyc2_failed, "cycle-2 frames write to the dump");
         CHECK_EQ_INT(c2_start, 1971);
-        CHECK_EQ_INT(fe_cyc2_n, 995);
+        CHECK_EQ_INT(fe_cyc2_n, 1095);
         CHECK_EQ_INT(c2_proj54, 0);
         CHECK_EQ_INT(c2_flash_i, 2547);
         CHECK_EQ_INT(c2_state6_i, 2782);
         CHECK_EQ_INT(c2_f0a72, 5);
+        CHECK_EQ_INT(c2_state7_i, 2783);
+        CHECK_EQ_INT(c2_fa, 2);
 
         /* Alignment: the driver's state-6 entry sits at the attract's
          * post-state, and the two picks drawn from it (plus the dust builder's

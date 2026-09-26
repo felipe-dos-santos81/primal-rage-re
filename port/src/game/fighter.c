@@ -318,6 +318,15 @@ void fighter_spawn(u32 side)
     fighter_spawn_slot(side, a2, a3, a5);
 }
 
+/* 0x34978 — record §38. */
+void fighter_slots_reset(void)
+{
+    DSD(DS_001077A8) = 0;                           /* 0x34986 0x654C7, ECX=2 */
+    DSD(DS_001077A8 + 4u) = 0;
+    DSW(DS_001078F6) = 0;                           /* 0x3498F */
+    DSB(DS_001078FA) = 0;                           /* 0x34996 */
+}
+
 /* 0x3C570. Test-and-set bit `bit` of DS_00107EE0: 1 when it was already set,
  * else set it and return 0. Exposed because the camera page tails (0x164F4/
  * 0x16AFC) test bits 0..3 of the same word. */
@@ -4213,8 +4222,8 @@ void fighter_14814(u32 slot, u32 rec, u32 side)
 /* 0x1490C. The character-3 reaction-0x27 callback (*(u32*)0xA4734, the
  * (char 3, 0x27) entry of 0x34E2C's 0xA3528 table), which the second demo's
  * first state-7 frame reaches. EAX = slot, EDX = rec; the EBX 0x34E2C passes
- * is pushed and never read. 0x14814(slot, rec, EBX = rec), then the side's (0x339AC(rec)
- * ctx[0]) FD11C byte = 1. The raw returns AL = 1; 0x34E2C returns it
+ * is pushed and never read. 0x14814(slot, rec, EBX = rec), then the side's
+ * (0x339AC(rec) ctx[0]) FD11C byte = 1. The raw returns AL = 1; 0x34E2C returns it
  * (0x35045..0x3504F): 0x3CE58 overwrites it at 0x3CF33, 0x350D0's tail
  * (0x352CD) returns it. */
 void fighter_1490c(u32 slot, u32 rec, u32 side)

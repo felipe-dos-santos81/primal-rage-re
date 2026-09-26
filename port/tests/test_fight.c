@@ -2635,6 +2635,12 @@ static void check_state6(void)
      * node lists; 0xA5 over both sentinels and the nodes differs from every
      * link it writes. */
     mem_fill(0x000F0A78u, 0xA5u, 0x70u);
+    /* Record §38: 0x20DF4's 0x34978 (0x20E42) zeroes the live-fighter count
+     * DS_001078FA and the word DS_001078F6 before the two spawns. Seeded with
+     * the first demo's leftover count 2 and a sentinel, the spawns must count
+     * 0 -> 2 (4 without the reset) and the word must read 0. */
+    DSB(DS_001078FA) = 2;
+    DSW(DS_001078F6) = 0x1234;
     rng_seed(0x1234u);
     game_state_step();
 
@@ -2705,6 +2711,7 @@ static void check_state6(void)
     CHECK(DSD(DS_001077B0) != 0, "P0 spawn produced a record");
     CHECK(DSD(DS_001077B0 + 0x94u) != 0, "P1 spawn produced a record");
     CHECK_EQ_INT((int)DSB(DS_001078FA), 2);
+    CHECK_EQ_INT((int)DSW(DS_001078F6), 0);
 
     /* 0x20DF4's third branch call (0x20E86): 0x412A0/0x2C320 spawn the scene
      * draw1 selects. The first prop triple's a2 must be a live record's, and a
@@ -2724,6 +2731,35 @@ static void check_state6(void)
             CHECK_EQ_INT((int)DSD(DS_00105C08),
                          (int)DSD(DS_000BBDA8 + draw1 * 4u));
     }
+}
+
+/* 0x34978 (record §38): the two slot pointers DS_001077A8[0..1] (0x654C7 with
+ * ECX = 2 dwords), the word DS_001078F6 and the byte DS_001078FA go to 0; the
+ * neighbours DS_001077A4, the slot at DS_001077B0, DS_001078F4, DS_001078F8
+ * and DS_001078FB keep their sentinels (a three-dword fill or a dword store at
+ * 0x1078F8/0x1078FA would change them). */
+static void check_slots_reset(void)
+{
+    u8 s_a[0x10], s_f[0x08];
+    tf_snap(s_a, DS_001077A8 - 4u, sizeof s_a);
+    tf_snap(s_f, DS_001078F6 - 2u, sizeof s_f);
+    mem_fill(DS_001077A8 - 4u, 0x5Au, sizeof s_a);
+    mem_fill(DS_001078F6 - 2u, 0xA5u, sizeof s_f);
+
+    fighter_slots_reset();
+
+    CHECK_EQ_INT((int)DSD(DS_001077A8), 0);
+    CHECK_EQ_INT((int)DSD(DS_001077A8 + 4u), 0);
+    CHECK_EQ_INT((int)DSW(DS_001078F6), 0);
+    CHECK_EQ_INT((int)DSB(DS_001078FA), 0);
+    CHECK_EQ_INT((int)DSD(DS_001077A8 - 4u), 0x5A5A5A5A);
+    CHECK_EQ_INT((int)DSD(DS_001077B0), 0x5A5A5A5A);
+    CHECK_EQ_INT((int)DSW(DS_001078F6 - 2u), 0xA5A5);
+    CHECK_EQ_INT((int)DSW(DS_001078F6 + 2u), 0xA5A5);
+    CHECK_EQ_INT((int)DSB(DS_001078FA + 1u), 0xA5);
+
+    tf_put(s_a, DS_001077A8 - 4u, sizeof s_a);
+    tf_put(s_f, DS_001078F6 - 2u, sizeof s_f);
 }
 
 /* Case 7: the pre-decrement timer. With timer 2 one call runs the arena and
@@ -9939,6 +9975,7 @@ int test_fight(void)
     check_health_bars();
     check_slot_latch();
     check_state6();
+    check_slots_reset();
     check_state7();
     check_game_frame_tail();
     check_list_init();
