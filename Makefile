@@ -197,7 +197,8 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
 # improves (the tool prints "ratchet improved ... raise N"). N = 998 was measured on
-# 5b79136 with the walk entry 0x35938 ported and registered: the T-rex's stream
+# ff38dcc (the commit that raised it, on 5b79136): the walk entry 0x35938 is
+# ported and registered: the T-rex's stream
 # reaches `D500 5938 0003` at 0xE6EE8 at f = 201, and 0x35938 puts it in state
 # 1/0 with rec+8 seeked to the literal id 0x0F80 of 0x35C1C's table 0xC8AE0[0],
 # so the state-1 handler 0x359E0 walks it; the port skipped the unregistered
