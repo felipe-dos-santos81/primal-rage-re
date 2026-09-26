@@ -5227,9 +5227,6 @@ void fighter_winner_body(u32 side)
  * the characters' 0xBEEF8 widths, 0x3BAEC moves each side away from the other
  * by half the penetration through 0x3B9D8 (0x1883C re-derives the record). */
 
-/* PORT: data-object addresses symbols.h does not name. */
-#define FIGHTER_D338C   0x000D338Cu  /* 0x3BB90/0x4FB20: side 0's latched y */
-
 /* 0x3B8D8. 1 when the side's slot+0x2C moved by `delta` reaches the arena
  * wall: x >= DS_000BE018 or x <= -DS_000BE018. EAX = side, EDX = delta. */
 static int fighter_3b8d8(u32 side, s32 delta)
@@ -5321,17 +5318,17 @@ static u32 fighter_4fb20(void)
     adx = dx < 0 ? (s32)(0u - (u32)dx) : dx;            /* 0x4FB3C/0x4FB40 */
     DSD(DS_000D3398) = (u32)adx;                        /* 0x4FB42 */
     if (adx > w) return 0u;                             /* 0x4FB47/0x4FB49 */
-    dy = (s32)(DSD(FIGHTER_D338C) - DSD(DS_000D3394));  /* 0x4FB4B/0x4FB51 */
+    dy = (s32)(DSD(DS_000D338C) - DSD(DS_000D3394));  /* 0x4FB4B/0x4FB51 */
     DSD(DS_000D33A4) = (u32)dy;                         /* 0x4FB57 */
     ady = dy < 0 ? (s32)(0u - (u32)dy) : dy;            /* 0x4FB5D/0x4FB61 */
     DSD(DS_000D339C) = (u32)ady;                        /* 0x4FB63 */
     if (ady > w) return 0u;                             /* 0x4FB69/0x4FB6B */
     if (ady <= adx) {                                   /* 0x4FB6D/0x4FB6F */
         q = ady >> 2;                                   /* 0x4FB71 */
-        d = q + (q >> 1) + adx;                         /* 0x4FB76..0x4FB7A */
+        d = (s32)((u32)q + (u32)(q >> 1) + (u32)adx);   /* 0x4FB76..0x4FB7A */
     } else {
         q = adx >> 2;                                   /* 0x4FB7E */
-        d = q + (q >> 1) + ady;                         /* 0x4FB83..0x4FB87 */
+        d = (s32)((u32)q + (u32)(q >> 1) + (u32)ady);   /* 0x4FB83..0x4FB87 */
     }
     if (w > d) return (u32)d;                           /* 0x4FB89/0x4FB8B */
     return 0u;                                          /* 0x4FB8D */
@@ -5352,7 +5349,7 @@ u32 fighter_body_push(void)
     if ((DSB(s0 + 0x42u) & 4u) != 0u) return 0u;        /* 0x3BBD8 */
     if ((DSB(s1 + 0x42u) & 4u) != 0u) return 0u;        /* 0x3BBE2 */
     DSD(DS_000D3388) = DSD(s0 + 0x2Cu);                 /* 0x3BBEF */
-    DSD(FIGHTER_D338C) = DSD(s0 + 0x30u);               /* 0x3BBF7 */
+    DSD(DS_000D338C) = DSD(s0 + 0x30u);                /* 0x3BBF7 */
     DSD(DS_000D3390) = DSD(s1 + 0x2Cu);                 /* 0x3BBFF */
     DSD(DS_000D3394) = DSD(s1 + 0x30u);                 /* 0x3BC09 */
     w1 = DSW(DS_000BEEF8 + (u32)DSB(s1 + 0x7Au) * 4u);  /* 0x3BC16 */

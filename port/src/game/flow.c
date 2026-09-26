@@ -1350,7 +1350,7 @@ void game_frame(void)
     /* 0x24C5C's DS_00104B15 tail (0x25414): the demo fight's post-update. It is
      * armed by state 6 and cleared by the 0x11BCC timer exit. The per-side loop
      * gates on the camera-target table DS_001077A8[side], which 0x33C78 (the
-     * unported fighter spawn) fills. */
+     * fighter spawn) fills. */
     if (DSB(DS_00104B15) != 0) {                       /* 0x25414 */
         (void)fighter_body_push();                     /* 0x2541D 0x3BB90 */
         camera_dispatch();                             /* 0x25422 0x12D48 */

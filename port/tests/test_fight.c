@@ -6926,7 +6926,7 @@ static void check_body_push(void)
     CHECK_EQ_INT((int)fighter_body_push(), 1);
     CHECK_EQ_INT((int)DSB(DS_00107D30), 0);
     CHECK_EQ_INT((int)DSD(DS_000D3388), 3436);
-    CHECK_EQ_INT((int)DSD(0x000D338Cu), 11393);
+    CHECK_EQ_INT((int)DSD(DS_000D338C), 11393);
     CHECK_EQ_INT((int)DSD(DS_000D3390), 2500);
     CHECK_EQ_INT((int)DSD(DS_000D3394), 9932);
     CHECK_EQ_INT((int)DSW(DS_000D33A8), 1920);
