@@ -316,6 +316,25 @@ void fighter_35e04(u32 rec);
  * EAX = slot, EDX = rec (the EBX side is unused). */
 void fighter_3e62c(u32 slot, u32 rec, u32 side);
 
+/* 0x3D17C. The T-rex's reaction-0x20 callback (0x34E2C's *(u32*)0xA37A8):
+ * unless the slot's +0x08 is set, the 0xE84C8 stream at hold 3.0 through
+ * 0x3C4CC, state 0xB/6/0, the +0x0C/+0x18/+0x1C callbacks cleared, +0x64 =
+ * +0x5F, +0x5F = 0xFF and the word 0x1080AC[rec+0x51] = 0x100. EAX = slot,
+ * EDX = rec (the EBX side is unused). */
+void fighter_3d17c(u32 slot, u32 rec, u32 side);
+
+/* 0x3D214. The opcode-0x11 target of the reaction-0x20 stream (0xE84CC):
+ * with rec+0x14 set, spawns the emitter 0xBB27C as the record's child (slot in
+ * its +0x14, +0x59 = 2, +0x60 = 1; its index into the record's +0x4B). EAX =
+ * rec. */
+void fighter_3d214(u32 rec);
+
+/* 0x3D26C. The opcode-0x11 target of the emitter's stream (0xE85A8): with the
+ * emitter's +0x14 (the slot) set, spawns the projectile 0xBB268 beside the
+ * slot's record into the slot's +0x08, at the horizontal speed of the word
+ * 0x1080AC[side]. EAX = the emitter. */
+void fighter_3d26c(u32 rec);
+
 /* 0x3E524. The slot +0x0C callback 0x3531C case 7 runs each frame after
  * 0x3E62C: the +0x57 rise/fall/landing machine. EAX = slot, EDX = rec,
  * EBX = side. */

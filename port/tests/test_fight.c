@@ -2402,6 +2402,9 @@ static void check_hit_reaction_drive(void)
     (void)tf_hit_fixture(0);
     DSB(DS_001077B0 + 0x7Cu) = 0;
     DSB(DS_001077B0 + 0x52u) = 0x55;            /* §7.4: unchanged, not 0 */
+    /* Reaction 0x20's callback 0x3D17C (record §25) returns at 0x3D187 with a
+     * live projectile in slot +0x08, so +0x5F keeps 0x34E2C's 0x20. */
+    DSD(DS_001077B0 + 0x08u) = 0x00ABCDEFu;
     DSW(DS_00107D58) = 8;
     DSW(DS_001077B0 + 0x84u) = 0x10;
     CHECK_EQ_INT(hit_reaction_drive(0u, 0u), 1);
@@ -2444,6 +2447,7 @@ static void check_hit_chain(void)
     (void)tf_hit_fixture(0);
     DSW(DS_00107D58) = 8;                       /* armed hitbox 0 */
     DSB(DS_001077B0 + 0x7Cu) = 0;
+    DSD(DS_001077B0 + 0x08u) = 0x00ABCDEFu;     /* 0x3D17C returns (§25) */
     CHECK_EQ_INT(hit_chain_resolve(0u), 1);
     CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x55u), 0);
     CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x5Fu), 0x20);
@@ -3906,6 +3910,14 @@ static void check_anim_hold_scaler(void)
     CHECK(fn_resolve(0x4AC18u) != NULL, "0x4AC18 is registered");
     CHECK(fn_resolve(0x4AC18u) != (void (*)(void))fight_4ac18,
           "0x4AC18 is registered through the (rec, arg) wrapper");
+    CHECK(fn_resolve(0x3D17Cu) == (void (*)(void))fighter_3d17c,
+          "0x3D17C is registered as fighter_3d17c");
+    CHECK(fn_resolve(0x3D214u) != NULL, "0x3D214 is registered");
+    CHECK(fn_resolve(0x3D214u) != (void (*)(void))fighter_3d214,
+          "0x3D214 is registered through the (rec, arg) wrapper");
+    CHECK(fn_resolve(0x3D26Cu) != NULL, "0x3D26C is registered");
+    CHECK(fn_resolve(0x3D26Cu) != (void (*)(void))fighter_3d26c,
+          "0x3D26C is registered through the (rec, arg) wrapper");
 
     s[0] = 0xD100;                           /* opcode 0x11, mode 0x4000 */
     s[1] = 0x9A34;                           /* the inline code pointer */
@@ -5202,6 +5214,298 @@ static void check_worshipper_arrival(void)
     DSD(0x000C9744u) = sv_80;
     DSD(0x000C9344u) = sv_s80;
     DSD(DS_001014EC) = sv_14ec;
+}
+
+/* ---- roar-timing Task 15: the T-rex's reaction-0x20 breath (record §25) --- */
+
+/* The demo's f = 559 T-rex (the PR_T15 trace): side 0, char 0, state 9/0/0,
+ * slot +0x08 = 0. Every field 0x3D17C writes is a sentinel that differs from
+ * its post-condition; side 1's slot and record are seeded the same way. The
+ * words 0x1080AC/0x1080AE hold sentinels. */
+static void tb_seed(u32 s0, u32 s1, u32 r0, u32 r1)
+{
+    u32 s[2], r[2], i;
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    s[0] = s0; s[1] = s1; r[0] = r0; r[1] = r1;
+    for (i = 0; i < 2u; i++) {
+        DSB(r[i] + 0x51u) = (u8)i;
+        DSW(r[i] + 0x56u) = (u16)(1u + i);
+        DSD(r[i] + 8u) = 0x00ABCDEFu;
+        DSD(r[i] + 0x1Cu) = 0x5555u;
+        DSD(r[i] + 0x24u) = 0x11111111u;
+        DSW(FIGHT_ACTORS + (1u + i) * 0x20u) = 0x0F35u;
+        DSB(s[i] + 0x52u) = 9u;
+        DSB(s[i] + 0x53u) = 0x66u;
+        DSB(s[i] + 0x54u) = 0x66u;
+        DSD(s[i] + 0x08u) = 0;
+        DSD(s[i] + 0x0Cu) = 0x11111111u;
+        DSD(s[i] + 0x18u) = 0x22222222u;
+        DSD(s[i] + 0x1Cu) = 0x33333333u;
+        DSB(s[i] + 0x5Fu) = 0x3Cu;
+        DSB(s[i] + 0x64u) = 0x77u;
+    }
+    DSW(0x001080ACu) = 0x5555u;
+    DSW(0x001080AEu) = 0x6666u;
+}
+
+/* The count of records on the active list. */
+static u32 tb_active(void)
+{
+    u32 n = 0, r;
+    for (r = actor_list_head(); r != 0; r = actor_next(r)) n++;
+    return n;
+}
+
+/* §25: 0x34E2C's (char 0, reaction 0x20) entry 0xA37A8 reads `7c d1 03 00 00
+ * 00 00 00`: the callback 0x3D17C and no stream. 0x3D17C (EAX = slot, EDX =
+ * rec) returns when the slot's +0x08 (the live projectile) is set; otherwise
+ * it starts the 0xE84C8 stream (EDX from 0x3D198, preserved by the voice
+ * call) at hold 3.0 through 0x3C4CC, sets state 0xB/6/0, clears +0x0C/+0x18/
+ * +0x1C, moves +0x5F to +0x64 and stores 0x100 in word 0x1080AC[rec+0x51].
+ * The stream's `D100 D214 0003` reaches 0x3D214 (the emitter 0xBB27C), whose
+ * stream 0xE8598's `D100 D26C 0003` reaches 0x3D26C (the projectile 0xBB268
+ * into the slot's +0x08). The registrations are asserted in
+ * check_anim_hold_scaler; they are made here only when missing. */
+static void check_trex_breath(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    u32 pset1 = FIGHT_ACTORS + 0x20u, pset2 = FIGHT_ACTORS + 0x40u;
+    u32 em = FIGHT_RECS + 0x3800u;
+    u32 sv_14ec = DSD(DS_001014EC);
+    u16 sv_ac = DSW(0x001080ACu), sv_ae = DSW(0x001080AEu);
+    u16 sv_78f6 = DSW(DS_001078F6);
+    u8 sv_b00[4];
+    tf_snap(sv_b00, DS_00104B00, 4u);
+    if (fn_resolve(0x3D17Cu) == NULL)
+        fn_register(0x3D17Cu, (void (*)(void))fighter_3d17c);
+
+    /* A: the demo's f = 559 through 0x34E2C (0x35045). +0x52 = 9 sends
+     * 0x3C4CC to 0x3C480, whose 0x188AC zeroes rec+0x1C. The stream's first
+     * word is the literal id 0x1131, so the record stays at 0xE84C8 with the
+     * hold 3.0. 0x34E2C stored +0x5F = 0x20 (0x35042) before the call. */
+    tb_seed(s0, s1, r0, r1);
+    hit_reaction_apply(0u, 0x20u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x0B);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 6);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x0Cu), 0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x18u), 0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x5Fu), 0xFF);
+    CHECK_EQ_INT((int)DSB(s0 + 0x64u), 0x20);
+    CHECK_EQ_INT((int)DSW(0x001080ACu), 0x0100);
+    CHECK_EQ_INT((int)DSW(0x001080AEu), 0x6666);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x000E84C8);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSD(r0 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)(DSW(pset1) & 0x7FFFu), 0x1131);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s1 + 0x64u), 0x77);
+    CHECK_EQ_INT((int)DSD(r1 + 8u), 0x00ABCDEF);
+
+    /* B: a live projectile (slot +0x08 != 0, 0x3D187) writes nothing. */
+    tb_seed(s0, s1, r0, r1);
+    DSD(s0 + 0x08u) = 0x00ABCDEFu;
+    fighter_3d17c(s0, r0, 0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0x66);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0x66);
+    CHECK_EQ_INT((int)DSD(s0 + 0x0Cu), 0x11111111);
+    CHECK_EQ_INT((int)DSD(s0 + 0x18u), 0x22222222);
+    CHECK_EQ_INT((int)DSD(s0 + 0x1Cu), 0x33333333);
+    CHECK_EQ_INT((int)DSB(s0 + 0x5Fu), 0x3C);
+    CHECK_EQ_INT((int)DSB(s0 + 0x64u), 0x77);
+    CHECK_EQ_INT((int)DSW(0x001080ACu), 0x5555);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x11111111);
+
+    /* C: the word index is rec+0x51 (0x3D183), not the EBX side: side 1's
+     * record with EBX = 0 writes 0x1080AE. +0x52 = 0 takes 0x3C4CC's plain
+     * 0x2BC30 arm (rec+0x1C kept). +0x64 takes the old +0x5F, 0x3C. */
+    tb_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x52u) = 0u;
+    fighter_3d17c(s1, r1, 0u);
+    CHECK_EQ_INT((int)DSW(0x001080AEu), 0x0100);
+    CHECK_EQ_INT((int)DSW(0x001080ACu), 0x5555);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0x0B);
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 6);
+    CHECK_EQ_INT((int)DSB(s1 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSB(s1 + 0x5Fu), 0xFF);
+    CHECK_EQ_INT((int)DSB(s1 + 0x64u), 0x3C);
+    CHECK_EQ_INT((int)DSD(r1 + 8u), 0x000E84C8);
+    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 0x5555);
+    CHECK_EQ_INT((int)(DSW(pset2) & 0x7FFFu), 0x1131);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s0 + 0x64u), 0x77);
+
+    /* D: 0x3D214 (EAX = rec, a pool record here) spawns the emitter 0xBB27C
+     * (stream 0xE8598, type 0) as the record's child: a5 = rec+0x56 | 0x400,
+     * so +0x4A is the parent's index and +0x28 has 0x400. The emitter gets the
+     * slot in +0x14 and +0x60 = 1, and its index goes into the record's +0x4B.
+     * (0x3D214's +0x59 = 2 is not asserted: the spawn walk's `9302` at
+     * 0xE8598, opcode 0x13, already stores 2.) The walk then stops on `CD40
+     * 03E8` (opcode 0x0D), leaving rec+8 at the operand word 0xE859C. Side 0
+     * keeps the descriptor's +0x2E = 8 and +0x4E = 0; side 1 adds 4 and sets
+     * +0x4E. The record's own +0x60 is seeded so that pointing +0x4B at the
+     * record fails. */
+    tb_seed(s0, s1, r0, r1);
+    actors_reset();
+    {
+        u32 f[2], e, i, n;
+        for (i = 0; i < 2u; i++) {
+            f[i] = actor_alloc(0);
+            DSW(f[i] + 0x56u) = (u16)actor_index(f[i]);
+            DSD(f[i] + 0x14u) = i == 0u ? s0 : s1;
+            DSB(f[i] + 0x51u) = (u8)i;
+            DSB(f[i] + 0x4Bu) = 0x77u;
+            DSB(f[i] + 0x60u) = 0x66u;
+        }
+        n = tb_active();
+        fighter_3d214(f[0]);
+        CHECK_EQ_INT((int)tb_active(), (int)(n + 1u));
+        e = actor_record((u32)DSB(f[0] + 0x4Bu));
+        CHECK(e != 0u && e != f[0] && e != f[1],
+              "0x3D214 stores the new emitter's index in rec+0x4B");
+        if (e != 0u) {
+            CHECK_EQ_INT((int)DSD(e + 0x14u), (int)s0);
+            CHECK_EQ_INT((int)DSB(e + 0x60u), 1);
+            CHECK_EQ_INT((int)DSB(e + 0x4Eu), 0);
+            CHECK_EQ_INT((int)DSW(e + 0x2Eu), 0x0008);
+            CHECK_EQ_INT((int)DSD(e + 8u), 0x000E859C);
+            CHECK_EQ_INT((int)DSB(e + 0x48u), 0);
+            CHECK_EQ_INT((int)DSB(e + 0x4Au), (int)(actor_index(f[0]) & 0x7Fu));
+            CHECK_EQ_INT((int)(DSW(e + 0x28u) & 0x0400u), 0x0400);
+        }
+        CHECK_EQ_INT((int)DSB(f[0] + 0x60u), 0x66);
+        fighter_3d214(f[1]);
+        e = actor_record((u32)DSB(f[1] + 0x4Bu));
+        CHECK(e != 0u && e != f[0] && e != f[1],
+              "0x3D214 (side 1) stores the new emitter's index in rec+0x4B");
+        if (e != 0u) {
+            CHECK_EQ_INT((int)DSD(e + 0x14u), (int)s1);
+            CHECK_EQ_INT((int)DSB(e + 0x4Eu), 1);
+            CHECK_EQ_INT((int)DSW(e + 0x2Eu), 0x000C);
+            CHECK_EQ_INT((int)DSB(e + 0x4Au), (int)(actor_index(f[1]) & 0x7Fu));
+        }
+        /* No slot (rec+0x14 = 0, 0x3D220): no spawn, +0x4B kept. */
+        DSD(f[0] + 0x14u) = 0;
+        DSB(f[0] + 0x4Bu) = 0x77u;
+        n = tb_active();
+        fighter_3d214(f[0]);
+        CHECK_EQ_INT((int)tb_active(), (int)n);
+        CHECK_EQ_INT((int)DSB(f[0] + 0x4Bu), 0x77);
+
+        /* E: through the dispatcher: `D100 D214 0003 0000` (0xE84CA's words;
+         * opcode 0x11, mode 0x4000) walked by 0x2BC30 spawns the emitter. An
+         * unregistered target leaves +0x4B at 0x77 and the list unchanged. */
+        {
+            u32 st = FIGHT_RECS + 0x3900u;
+            DSW(st) = 0xD100u;
+            DSW(st + 2u) = 0xD214u;
+            DSW(st + 4u) = 0x0003u;
+            DSW(st + 6u) = 0x0000u;
+            DSW(st + 8u) = 0x1131u;
+            DSD(f[0] + 0x14u) = s0;
+            n = tb_active();
+            actors_anim_begin(f[0], st, 0x3F800000u);
+            CHECK_EQ_INT((int)tb_active(), (int)(n + 1u));
+            e = actor_record((u32)DSB(f[0] + 0x4Bu));
+            CHECK(e != 0u && DSB(f[0] + 0x4Bu) != 0x77u,
+                  "the dispatched 0x3D214 spawns the emitter");
+            if (e != 0u) CHECK_EQ_INT((int)DSB(e + 0x60u), 1);
+        }
+    }
+
+    /* F: 0x3D26C (EAX = the emitter, only its +0x14 is read) spawns the
+     * projectile 0xBB268 (stream 0xE85BC, type 2; its walk stops on `CD40
+     * 03F0`'s operand word 0xE85C0) into slot +0x08 beside the
+     * slot's record. Side 0, pset unflipped (0x1A570 = 1): x = 28250 - 0x1800,
+     * y = 0x40 + 0x1600, the speed -word[0x1080AC] = -0x100; a3 = +0x30 >> 16
+     * = 5 goes to +0x32 (the descriptor's +0x28 bit 13 is clear); +0x28 bit 14
+     * gives a5 = 0x4000, which 0x2AE14 ORs into the record's +0x28 (0x80 |
+     * 0x4000). */
+    tb_seed(s0, s1, r0, r1);
+    actors_reset();
+    DSW(0x001080ACu) = 0x0100u;
+    DSW(0x001080AEu) = 0x0234u;
+    DSD(em + 0x14u) = s0;
+    DSD(r0 + 0x18u) = 28250u;
+    DSD(r0 + 0x1Cu) = 0x40u;
+    DSD(r0 + 0x30u) = 0x00050000u;
+    DSW(r0 + 0x28u) = 0x4000u;
+    DSD(s0 + 0x08u) = 0x00ABCDEFu;
+    fighter_3d26c(em);
+    {
+        u32 p = DSD(s0 + 0x08u);
+        CHECK(p != 0x00ABCDEFu && actor_index(p) != 0xFFFFFFFFu,
+              "0x3D26C stores the projectile in slot+0x08");
+        if (actor_index(p) != 0xFFFFFFFFu) {
+            CHECK_EQ_INT((int)DSD(p + 0x18u), 28250 - 0x1800);
+            CHECK_EQ_INT((int)DSD(p + 0x1Cu), 0x1640);
+            CHECK_EQ_INT((int)DSW(p + 0x34u), 0xFF00);
+            CHECK_EQ_INT((int)DSD(p + 0x14u), (int)s0);
+            CHECK_EQ_INT((int)DSW(p + 0x32u), 5);
+            CHECK_EQ_INT((int)DSW(p + 0x28u), 0x4080);
+            CHECK_EQ_INT((int)DSB(p + 0x48u), 2);
+            CHECK_EQ_INT((int)DSW(p + 0x2Eu), 0x0008);
+            CHECK_EQ_INT((int)DSB(p + 0x4Eu), 0);
+            CHECK_EQ_INT((int)DSD(p + 8u), 0x000E85C0);
+        }
+    }
+    /* Side 0, pset hflipped (0x1A570 = 0): x + 0x1800, speed +0x100; +0x28
+     * without bit 14 gives a5 = 0 (+0x28 = 0x80). */
+    DSW(pset1) = (u16)(DSW(pset1) | 0x8000u);
+    DSW(r0 + 0x28u) = 0;
+    DSD(s0 + 0x08u) = 0x00ABCDEFu;
+    fighter_3d26c(em);
+    {
+        u32 p = DSD(s0 + 0x08u);
+        CHECK(p != 0x00ABCDEFu && actor_index(p) != 0xFFFFFFFFu,
+              "0x3D26C (hflipped) stores the projectile in slot+0x08");
+        if (actor_index(p) != 0xFFFFFFFFu) {
+            CHECK_EQ_INT((int)DSD(p + 0x18u), 28250 + 0x1800);
+            CHECK_EQ_INT((int)DSW(p + 0x34u), 0x0100);
+            CHECK_EQ_INT((int)DSW(p + 0x28u), 0x0080);
+        }
+    }
+    /* Side 1 (rec+0x51 = 1), unflipped: the speed is -word[0x1080AE] =
+     * -0x234, and the projectile's +0x2E gets 4 more and +0x4E is set. */
+    DSD(em + 0x14u) = s1;
+    DSD(r1 + 0x18u) = 9000u;
+    DSD(r1 + 0x1Cu) = 0u;
+    DSD(s1 + 0x08u) = 0x00ABCDEFu;
+    fighter_3d26c(em);
+    {
+        u32 p = DSD(s1 + 0x08u);
+        CHECK(p != 0x00ABCDEFu && actor_index(p) != 0xFFFFFFFFu,
+              "0x3D26C (side 1) stores the projectile in slot+0x08");
+        if (actor_index(p) != 0xFFFFFFFFu) {
+            CHECK_EQ_INT((int)DSD(p + 0x18u), 9000 - 0x1800);
+            CHECK_EQ_INT((int)DSW(p + 0x34u), 0xFDCC);
+            CHECK_EQ_INT((int)DSD(p + 0x14u), (int)s1);
+            CHECK_EQ_INT((int)DSW(p + 0x2Eu), 0x000C);
+            CHECK_EQ_INT((int)DSB(p + 0x4Eu), 1);
+        }
+    }
+    /* No slot (the emitter's +0x14 = 0, 0x3D27A): nothing is spawned. */
+    DSD(em + 0x14u) = 0;
+    DSD(s0 + 0x08u) = 0x00ABCDEFu;
+    {
+        u32 n = tb_active();
+        fighter_3d26c(em);
+        CHECK_EQ_INT((int)tb_active(), (int)n);
+        CHECK_EQ_INT((int)DSD(s0 + 0x08u), 0x00ABCDEF);
+    }
+
+    actors_reset();
+    DSD(em + 0x14u) = 0;
+    DSD(DS_001014EC) = sv_14ec;
+    DSW(0x001080ACu) = sv_ac;
+    DSW(0x001080AEu) = sv_ae;
+    DSW(DS_001078F6) = sv_78f6;
+    tf_put(sv_b00, DS_00104B00, 4u);
 }
 
 /* ---- Task 3b: the 0x3B714 reaction applier (pose/freeze record §2.3) ----- */
@@ -6516,6 +6820,7 @@ int test_fight(void)
     check_knockdown_floor();
     check_walk_entry();
     check_worshipper_arrival();
+    check_trex_breath();
     check_reaction_predicates();
     check_reaction();
     check_winner_body();

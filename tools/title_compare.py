@@ -429,6 +429,11 @@ def load_port(d, n):
 # +0x18) explain captures 1358..1410, [560..1357] -> [560..1410] (798 -> 851;
 # still the same 3 transition frames); the allowed set stays (832, 833), and
 # the exhibition set grows to port frames 0..976 (740 exhibited).
+# The T-rex's reaction-0x20 callback 0x3D17C (f = 559) and its stream's
+# emitter/projectile targets 0x3D214/0x3D26C explain captures 1411..1477,
+# [560..1410] -> [560..1477] (851 -> 918; still the same 3 transition
+# frames); the allowed set stays (832, 833), and the exhibition set grows to
+# port frames 0..1033 (797 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

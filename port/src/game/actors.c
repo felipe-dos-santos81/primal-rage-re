@@ -91,6 +91,8 @@ static void anim_code_347B8(u32 rec, u32 arg);
 static void anim_code_346F8(u32 rec, u32 arg);
 static void anim_code_35938(u32 rec, u32 arg);
 static void anim_code_4AC18(u32 rec, u32 arg);
+static void anim_code_3D214(u32 rec, u32 arg);
+static void anim_code_3D26C(u32 rec, u32 arg);
 
 /* The 0xBB9D8 type table's two callback halves (cb1 at 0xBB9DC, cb2 at
  * 0xBB9E0). actor_spawn's tail (0x2B0D4) calls cb1 with (rec, slot) and tests
@@ -148,6 +150,14 @@ int actors_init(void)
      * (slot, rec, side) registers. */
     fn_register(0x3E62Cu, (void (*)(void))fighter_3e62c);
     fn_register(0x3E524u, (void (*)(void))fighter_3e524);
+    /* PORT: 0x34E2C's reaction callback 0x3D17C (*(u32*)0xA37A8, the T-rex's
+     * reaction 0x20), same (slot, rec, side) registers. */
+    fn_register(0x3D17Cu, (void (*)(void))fighter_3d17c);
+    /* PORT: its stream 0xE84C8's 0xD100 target 0x3D214 (the emitter) and the
+     * emitter stream 0xE8598's 0xD100 target 0x3D26C (the projectile), opcode
+     * 0x11, mode 0x4000. */
+    fn_register(0x3D214u, (void (*)(void))anim_code_3D214);
+    fn_register(0x3D26Cu, (void (*)(void))anim_code_3D26C);
     /* PORT: the +0x1C callback 0x3E62C also stores, 0x3E4C4, called by
      * 0x193B0 at 0x19505 as fn(side). */
     fn_register(0x3E4C4u, (void (*)(void))fighter_3e4c4);
@@ -776,6 +786,28 @@ static void anim_code_4AC18(u32 rec, u32 arg)
 {
     (void)arg;
     fight_4ac18(rec);
+}
+
+/* 0x3D214 — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x3D214 takes EAX = rec and does not
+ * read EDX (it pushes EBX, ECX, EDX, ESI and EDI at 0x3D214..0x3D218 and
+ * zeroes EDX at 0x3D233 before any read), so this wrapper drops the operand
+ * and calls fighter_3d214(rec) unchanged. */
+static void anim_code_3D214(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3d214(rec);
+}
+
+/* 0x3D26C — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x3D26C takes EAX = rec and does not
+ * read EDX (it pushes EBX, ECX, EDX, ESI, EDI and EBP at 0x3D26C..0x3D271 and
+ * zeroes EDX at 0x3D282 before any read), so this wrapper drops the operand
+ * and calls fighter_3d26c(rec) unchanged. */
+static void anim_code_3D26C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3d26c(rec);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */
