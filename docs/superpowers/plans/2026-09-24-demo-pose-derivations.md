@@ -5094,7 +5094,8 @@ and at `0x4B7F5` when the side's slot `+0x5F` ≠ `0xC97F2[(s8) slot+0x7A]`
 at the fighter's `0xC977D/0xC977E` offsets, type 8 on `0xC97AC[ch][si]`,
 `0x2BD20`, the fighter on `0xC9790[ch]` at `0xC97C8[ch]`, a voice).
 
-`0x4B470` (EAX = entry, EDX = si): the voice `0x2C3FC(si < 3 ? 0xD1 : 0xD0)`;
+`0x4B470` (EAX = entry, EDX = si; three callers: `0x4B69C` at `0x4B779`,
+case 8's held body at `0x4A10B`, and `0x4D7A4` at `0x4D873`): the voice `0x2C3FC(si < 3 ? 0xD1 : 0xD0)`;
 `0x4B4B1 0x2BC30(rec, 0xC9604[si], 3.0)`; when `+0x10` is 0,
 `0x4B4D2 0x2AE14(0xBB920[si], rec+0x18, rec+0x30 >> 16, 0; 0)` into `+0x10`;
 unless mode `0x22` (`0x4B4E5`): on the first hit (`+0x1F` = 1)
@@ -5122,8 +5123,10 @@ Case 8, `0x4A08A`: nothing without `+0x1C` bit 6. Tables (`read_memory`):
 `fight_4b69c`, `fight_4b788` (the three return-1 gates and the return-0 gates;
 the grab body is a named gap), `fight_4b470` (the voice a `PORT:` note; the
 eighth-hit tail's `0x4BD98`/`0x4CB18` a named gap behind its gates), case 6
-and case 8's bit-6 gate (its held body a named gap: bit 6 is set only by the
-grab). The prelude runs before the type is read. About 0x7F0 raw bytes
+and case 8's bit-6 gate (its held body a named gap: bit 6 is set by the grab
+arms — `0x4B788`'s, and `0x4D898`'s (`0x4D963 or byte [ecx+0x1c],0x40`) in
+`0x4D2D0`'s pass, reached through `0x4D7A4` from `0x26C8C`/`0x26F58`, not the
+`0x263F4` path, and not ported). The prelude runs before the type is read. About 0x7F0 raw bytes
 (`0x4B69C` 0xE9, `0x17D30` 0x19D, `0x1790C` 0x2BB, `0x4B788`'s gates 0xB5,
 `0x4B470` 0x138, case 6 0xB1, case 8's gate 0x13): five functions and two
 cases, every callee already ported — inside the size gate.

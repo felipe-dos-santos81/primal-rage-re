@@ -1970,6 +1970,10 @@ static void ph_seed(u32 p, u32 p2, int both)
     DSB(DS_00100B63) = 0xA5u;
     DSW(DS_00104B00) = 3;
     DSD(DS_00100B54) = 0xDEADBEEFu;
+    DSD(DS_00100B1C) = 0xDEADBEEFu;
+    DSD(DS_00100B18) = 0xDEADBEEFu;
+    DSD(DS_00100B30) = 0xDEADBEEFu;
+    DSD(DS_00100B10) = 0xDEADBEEFu;
 }
 
 /* 0x17D30 / 0x1790C and the effects pass's trample (record §29). The point
@@ -2002,6 +2006,8 @@ static void check_point_trample(void)
     u32 held_byte = DSD(DS_001014F4) + 2u * 0x68u + 0x4Bu;
     u8 sv_held = DSB(held_byte);
     u32 sh_fake = FIGHT_RECS + 0x3200u;     /* a scratch shadow record */
+    u32 sv_84c = DSD(DS_0010884C), sv_rng = DSD(DS_000EF6D8);
+    u8 sv_8bf = DSB(DS_001088BF), sv_8c2 = DSB(DS_001088C2);
     u32 i, sh;
 
     tf_snap(sv_slots, DS_001077B0, sizeof sv_slots);
@@ -2170,11 +2176,24 @@ static void check_point_trample(void)
     CHECK(sh != 0u, "0x4B470 spawned the shadow into +0x10");
     if (sh != 0u) CHECK_EQ_INT((int)DSW(sh + 0x2Cu), 0x0777);
     CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0x1234);
+    /* The shadow's pset index comes from the process-wide free list; the
+     * fixture's psets are 1 and 2 (the fighters) and 5 (the worshipper), so a
+     * shadow there would have rewritten one after the hit test. */
+    if (sh != 0u)
+        CHECK(DSW(sh + 0x56u) != 1u && DSW(sh + 0x56u) != 2u
+              && DSW(sh + 0x56u) != 5u,
+              "the shadow's pset is none of the fixture's psets 1, 2, 5");
 
     /* H: case 6 airborne: the shadow follows the x dword and the y word +0x32;
      * +0x36 = 0x100 with the height 0x1000 stays up (0xF0) and +0x1C bit 7
      * stays clear; +0x36 = -0x20 falls on (-0x30) and sets bit 7 again. The
-     * point is moved off both fighters so the prelude misses. */
+     * point is moved off both fighters so the prelude misses; the fighters'
+     * psets 1 and 2 are re-seeded as pc_seed has them. */
+    for (i = 1; i <= 2u; i++) {
+        DSW(FIGHT_ACTORS + i * 0x20u) = 4;
+        DSD(FIGHT_ACTORS + i * 0x20u + 4u) = 0;
+        DSD(FIGHT_ACTORS + i * 0x20u + 8u) = 0x2000u;
+    }
     DSD(ps5 + 4u) = 0; DSD(ps5 + 8u) = 0;
     DSD(rec + 0x18u) = 0x4321u;
     DSD(rec + 0x30u) = 0x06660000u;
@@ -2276,7 +2295,10 @@ static void check_point_trample(void)
     CHECK_EQ_INT((int)DSB(DS_001088AE), 7);
 #undef TR_SEED
 
-    DSD(DS_0010884C) = DS_0010884C;
+    DSD(DS_0010884C) = sv_84c;
+    DSD(DS_000EF6D8) = sv_rng;
+    DSB(DS_001088BF) = sv_8bf;
+    DSB(DS_001088C2) = sv_8c2;
     DSB(held_byte) = sv_held;
     DSB(DS_001088AE) = sv_ae0;
     DSB(DS_001088AE + 1u) = sv_ae1;

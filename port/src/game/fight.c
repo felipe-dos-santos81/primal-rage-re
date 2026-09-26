@@ -1184,7 +1184,8 @@ void fight_effects_pass(void)
                 }
                 case 8:
                     /* 0x4A08A: the held worshipper. Without +0x1C bit 6 (set
-                     * only by 0x4B788's grab arm) it does nothing. */
+                     * by the grab arms: 0x4B788's, and 0x4D898's at 0x4D963 in
+                     * 0x4D2D0's pass, not ported) it does nothing. */
                     if ((DSB(entry + 0x1Cu) & 0x40u) == 0u)  /* 0x4A097 */
                         break;
                     /* PORT: 0x4A09D..0x4A110, the held body (0x4AF04, the
