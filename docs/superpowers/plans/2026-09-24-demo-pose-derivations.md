@@ -3517,6 +3517,18 @@ and `anim_indirect` printed every opcode-target call (frame, target, record,
 | 208 | `D500 7068` → `0x36870`: state `00`, x 13 706 | 8 714 | `01`, x 16 650 | 10 186 |
 | 209..219 | the `00`/`0E` loop again (miss at 211, 221, …) | 8 714 → 9 127 | `01`, x 16 650 → 17 994 | 10 506 → 11 850 |
 
+**`rec+0x28` at f = 201.** `0x35938` leaves `0x0905` (`0x0101 | 0x804`, as
+check A's direct call gives from `0x0115`), and the trace's `0x0901` is read
+after the rest of that frame's record sync. A temporary watch (reverted) on
+the T-rex's `rec+0x28` at f = 200..202 logged: the seek inside `0x35938`
+`0901 → 0901`, the opcode target `0101 → 0905`, then `0x2A39C` `0905 → 0901`,
+and `0901` at the end of `fight_arena_frame`. The raw per-record sync
+`0x2A1FC` (the port's `actor_sync`) runs `0x2AA70` (the frame timer, which
+dispatches the opcode) and then tests `rec+0x28` bit 2 (`0x2A262 and al,4`)
+and, when set, calls `0x2A39C` (`0x2A26E`), whose `0x2A3B2 and ah,0xfb`
+clears it while reloading the id. So both values are right: `0x35938`'s
+`|= 0x804` sets bit 2 to request exactly that reload.
+
 On `5b79136` the whole run missed `0x35938` 61 times, from both fighters'
 streams (`rec+8` after the dword: `0xE6EEC` 12, `0xE6E9C` 28, `0xD21CA` 15,
 `0xD222A` 6); with the fix it is called 10 times (f = 201, 293, 330, 399, …,
@@ -3586,13 +3598,16 @@ walks straight into `0x35938` loads id + 2 (asserted in §22.3 E).
   was right). (5) `check_knockdown_floor` part D asserts the stun spawn's
   ECX layer directly: the descriptor's `+0x08` word is `0x2200`
   (`read_memory 0xBDB3C`/`0xBDB78`), bit 13 set, so `0x2AE14` stores ECX =
-  `0xFF` in the record's `+0x49` (seeded `0x77`).
+  `0xFF` (`0x3420D mov ecx,0xff`) in the record's `+0x49`, seeded `0x77`
+  in part D's per-side setup (fix round 1, `c36880f`: the seed had landed in
+  `check_knockback_pose`, so side 1 inherited side 0's `0xFF`).
 * **Assertions** (`test_fight.c`): the registration (through the wrapper) in
   `check_anim_hold_scaler`, and the new `check_walk_entry` with `we_seed`
-  (the demo T-rex at f = 201: side 0, char 0, `0x0E`/`0x66`/0, `+0x43`
+  (the demo T-rex at f = 201: side 0, char 0, `0x0E`/`0x66` with `+0x54` a
+  `0x22` sentinel for the trace's 0 (fix round 1), `+0x43`
   `0x81`, `rec+0x52` 0, `rec+0x58` `0xFF`, hold 2.0, `rec+0x28` `0x0101`;
   side 1 seeded to prove it untouched):
-  * A, the direct call: state 1/0 with `+0x54` kept, `rec+8` and the pset id
+  * A, the direct call: state 1/0 with `+0x54` kept (`0x22`), `rec+8` and the pset id
     `0x0F80`, `rec+0x28` `0x0115` → `0x0905` (the seek's bits 2/4 cleared,
     then `0x804`), `rec+0x52` 0, `rec+0x20`/`+0x24` 0, `rec+0x58` 1; side 1
     untouched
@@ -3624,6 +3639,8 @@ walks straight into `0x35938` loads id + 2 (asserted in §22.3 E).
   | `rec+0x28 |= 0x800` / no `|= 0x804` | 1 / 1 |
   | slot of the other side (from `rec+0x51`) | 24 |
   | `0x34168` layer ECX `0xFE` (minor 5) | 2 |
+  | fix round 1: `0x2AE14` skips the `+0x49` layer store | 9 (both sides of part D, `0x77` ≠ `0xFF`, plus seven `test_game.c` layer checks) |
+  | fix round 1: the state-1 arm also writes `+0x54` = 0 | 1 |
 
 ### 22.4 Measured
 
