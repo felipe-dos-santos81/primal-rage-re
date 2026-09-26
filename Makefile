@@ -257,9 +257,10 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # explained, and the second demo diverges from 2386. It fails if an unexplained frame
 # appears below N, N exceeds the capture's end + 1, or N is at or below the region's
 # start. Like the front-end oracle, its window comes from the port's own dump, so it
-# cannot detect an under-rendering port. Re-measured unchanged on a7ccc86 (character
-# 3's reaction 0x1490C, record §37: the second demo's frames change, 2386 stays the
-# first unexplained). (Before it, N = 2384, measured on fc8e775.)
+# cannot detect an under-rendering port. Re-measured unchanged on a7ccc86 and on
+# 65f4084 (review round 1: 0x14814 registered; character 3's reaction 0x1490C, record
+# §37: the second demo's frames change, 2386 stays the first unexplained). (Before it,
+# N = 2384, measured on fc8e775.)
 ATTRACT2_MIN_FIRST = 2386
 attract2-oracle: build ## Attract cycle-2 ratchet after the demo (skips without data/title-captures/frontend)
 	@echo "== attract cycle-2 oracle (ratchet on the first unexplained frame, N=$(ATTRACT2_MIN_FIRST)) =="

@@ -613,7 +613,8 @@ The new ratchet `make attract2-oracle` (`--attract2`, in `make verify`) finds ca
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
 demo fight's remaining divergences (the capture's fight is explained up to its
 first all-black frame 1885 after the frame-1881 fix, and the attract's second
-cycle up to 2383; the second demo diverges from 2386;
+cycle up to 2385 with the LOADING frame 2384 allowed by name; the second
+demo diverges from 2386;
 `0x3B464`'s `0x235C4` arm, the effects pass's types 2, 7 and 9..12, the
 grab arm of `0x4B788`, `0x4B470`'s eighth-hit tail and case 8's held body are
 named gaps, as are `0x3E244` and `0x3ECF8`/`0x3C048`; `0x370F0` is still

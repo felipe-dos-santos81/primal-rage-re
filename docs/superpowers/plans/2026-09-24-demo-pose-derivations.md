@@ -6560,9 +6560,10 @@ calls `0x52106(0)` again at `0x1C873`, inside the opened arm.
 
 The ported callers pass 0: `0x2BAF4` at `0x2BBE8`/`0x2BBEA`, and `0x1C740`'s
 two. (Corrected in Task 27, §37.1: an earlier text said every caller passes 0.
-`0x52106` has 7 callers, and the three unported sites `0x32E93`, `0x330B1` and
-`0x332E4` pass `0x2EDE0`'s return after a bit test has found it non-zero.
-`0x32BF5` passes its function's EAX.)
+`0x52106` has 7 callers. The unported sites `0x32E93` and `0x332E4` pass
+`0x2EDE0`'s return after a bit test has found it non-zero; `0x330B1` passes it
+either with bit 25 clear, possibly 0, or with bit 24 set (§37.1). `0x32BF5`
+passes its function's EAX.)
 
 **`0x4F228`**:
 - `xor ah,ah; xor edx,edx; xor ebx,ebx`
@@ -6665,11 +6666,13 @@ differ on it. N stays 2386.
 
 - **`0x52106`'s callers.** `get_xrefs_to 0x52106` lists 7 calls:
   `0x2BBEA`, `0x1C74D`, `0x1C873`, `0x32BF5`, `0x32E93`, `0x330B1` and
-  `0x332E4`. The ported three pass 0. The others do not:
+  `0x332E4`. The ported three pass 0. The others need not:
   - `0x32E93` and `0x332E4` follow `call 0x2EDE0; test eax,0x1000000; je`
     (`0x32E83..0x32E8D`, `0x332CC..0x332D6`), so EAX has bit 24 set.
-  - `0x330B1` is reached after `test eax,0x2000000` (`0x33092`) or
-    `test eax,0x1000000` (`0x330A2`) found a bit set.
+  - `0x330B1` has two paths. `0x33092 test eax,0x2000000; 0x33097 je 0x330AD`
+    reaches it with bit 25 clear, so EAX can be 0. The fall-through path
+    calls `0x2EDE0` again and reaches it only after `0x330A2 test
+    eax,0x1000000; je 0x33204` has found bit 24 set.
   - `0x32BF5` is a loop head (`0x32F43 jl`). Its first pass carries the
     function's incoming EAX (`0x32BE5 mov [esp+0x2c],eax`, then no write to
     EAX before `0x32F43`).
@@ -6724,7 +6727,8 @@ On `7f42495`'s dump, which is byte-identical to `01a7f70`'s, the region is
 
 - **`0x1490C`** (EAX = slot, EDX = rec, EBX pushed and not read):
   - `0x339AC(rec)` builds the context.
-  - `0x14814(slot, rec)`.
+  - `0x14814(slot, rec)`, with EBX = rec (`0x14913`); `0x14814` pushes EBX
+    and overwrites it at `0x14819` before any read.
   - `0x1492A mov [eax+0xFD11C],dl` with DL = 1 sets FD11C[side].
   - It returns AL = 1.
 - **`0x14814`**:
@@ -6744,8 +6748,14 @@ On `7f42495`'s dump, which is byte-identical to `01a7f70`'s, the region is
     - The record's +0x55 = 0.
     - FD108[side] is `0x2000` when ctx[2]'s +0x2C is above ctx[3]'s
       (signed, `0x148DE jle`), else `0x1000`.
-    - FD11C[side] = 0. `0x1490C` then overwrites it with 1, so through the
-      only caller this store is invisible.
+    - FD11C[side] = 0. Through `0x1490C`, which overwrites it with 1, this
+      store is invisible. But `0x14814` has a second entrance: the dword
+      `0x00014814` at `0xA46D0` (`14 48 01 00 00 00 00 00`, record 226 =
+      3 * 64 + `0x22`) makes it character 3's reaction `0x22` callback,
+      which `0x34E2C` calls directly (§25's f = 625 miss). Through that
+      entrance FD11C stays 0, so `0x146F0` later takes its `0x3C480` arm.
+      (Corrected in review round 1: an earlier text called `0x1490C` the
+      only caller.)
 - **`0x14590`**: `0x33950(side)`. When ctx[3] +0x10 == `0x39CC8` or
   ctx[3] +0x52 == `0x11`, it returns whether the side's `0x107D2C` word is
   greater than 0 (signed, `0x145BC jle`). Otherwise it returns 0.
@@ -6803,8 +6813,10 @@ On `7f42495`'s dump, which is byte-identical to `01a7f70`'s, the region is
 
 **The fix** (`a7ccc86`) is 8 functions in `fighter.c` (`fighter_14590`,
 `_3f720`, `_146f0`, `_14814`, `_1490c`, `_1461c`, `_145cc`, `_145e4`) and
-`anim_code_37CD4` in `actors.c`. Five of them are registered: `0x1490C`,
-`0x1461C`, `0x145CC`, `0x145E4` and `0x37CD4`. That is about 0x300 bytes of
+`anim_code_37CD4` in `actors.c`. Six of them are registered: `0x1490C`,
+`0x14814` (review round 1: its `0xA46D0` entrance, with the (slot, rec,
+side) shape and side unread), `0x1461C`, `0x145CC`, `0x145E4` and
+`0x37CD4`. That is about 0x300 bytes of
 raw code, inside the gate. The voices are `PORT:` (spec §7), as in the other
 reaction callbacks.
 
@@ -6814,6 +6826,10 @@ checks:
 - A: through `0x34E2C` (reaction `0x27`, character 3): the counter bump, the
   stream, the hold, the pset, state 9/7/0, the callbacks, +0x40, +0x55,
   FD108 = `0x2000`, FD11C, and the other side's sentinels.
+- A2 (review round 1): through `0x34E2C` with reaction `0x22`, the
+  registered `0x14814` entrance: the counter `0x107A80[0x22]` (threshold
+  word `0xA6C78` = 1), the stream `0xD2E9A`, the arming, and FD11C[0] from
+  its sentinel to 0.
 - B/B2: the `0x14590` arms (`0x39CC8`, `0x11`, the word at 0), FD108 =
   `0x1000`, and EBX unread.
 - C: the `0x396AC`-true arm, with hold `0x40200000` and state 9/4/0.
@@ -6821,12 +6837,17 @@ checks:
   - case 0 with and without bit 3, and both loads, with `0x4F944`'s HUD
     writes
   - case 1 with both `0x189FC` results (`0xFF9C`, `0x20`), the 1 -> 0 exit,
-    and n = 0 -> 1
+    and n = 0 -> 1 (with rec +0x34 re-seeded, review round 1)
   - case 2 through `0x146F0` in both arms (x minus and plus `0x1180`, the
     anchor y `0x3200`, +0x36/+0x44, `0x1078F8`, `0x3C148`)
   - case 3 returning
 - E: `0x145CC` through `0x19020`.
-- F: `0x145E4`'s `0x39834(1, ...)`, which counts on side 0.
+- F: `0x145E4`'s `0x39834(1, ...)`, which counts on side 0, and (review
+  round 1) its second operand through `0x39953`'s store `DS_00107D28 = b`:
+  ctx[2]'s +0x5F (0x27), not ctx[3]'s or +0x64; and `0x145FC and edx,0xff`
+  zero-extends (0xA7 stays 0xA7; 0xA7 is outside `0x3AFC4`'s 0..0x3F,
+  which is the raw's `0x62003` error and the port's zero triple, but the
+  store at `0x39953` still happens).
 - G: `0x37CD4` as `anim_indirect` calls it.
 
 **Mutations.** `scratchpad/t27/mut/mut27.py` made 37 single-site edits:
@@ -6834,7 +6855,10 @@ checks:
 FD11C arm calling `0x3C480` in place of `0x3C520`. Both begin the same
 stream. The only state they leave differently is rec +0x1C, which the
 following `0x1890C` sets absolutely (`y - AB4[side]` after its latch). The
-sources were restored and checked with `cmp`.
+sources were restored and checked with `cmp`. Review round 1 added 7
+(`0x14814`'s registration, its FD11C store removed and changed, `0x145E4`'s
+ctx[3], +0x64 and sign extension, and `0x3F720`'s call skipped at n = 0):
+all 7 fail 1..6 assertions (`mut27d.log`).
 
 **Measured (the dump with the fix).**
 
@@ -6873,3 +6897,7 @@ second-demo frames are in the dump (cycle-2 978..994, `FE_LOOPS` = 2800).
 3. Check the raptor stream's opcodes before the first sprite: `0xDC00`
    (operand `0xD1658`), `0xED40` (the sprite list `0xD2F1E`) and `0xB840`.
 4. Raise `FE_LOOPS` only when a frame after 2386 can be explained.
+5. Known entrances to this family: `0x1490C` (character 3, `0x27`,
+   `0xA4734`) and `0x14814` itself (character 3, `0x22`, `0xA46D0`), both
+   registered now. `0x14814` was reached at f = 625 in an earlier run of the
+   first demo (§25) and is not reached in the current 2800-loop run.
