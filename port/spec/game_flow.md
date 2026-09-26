@@ -907,20 +907,23 @@ exits 0.
   stream (table `0x34780`, corrected since: `0x34780` or `0x3479C`, chosen by
   `0x340BC` at `0x3485F`); the port now runs it, and the demo raptor lies on
   `0x3479C[3]` = `0xD28FC` until its `0x346F8` get-up at f = 206.)
-  **Named gaps, measured (record §19.6.2):** the `0x1958C` hook `0x19020` →
-  `0x3E484` (`slot+0x18`) needs the unported `0x18C14`; its closure is 1 408 B
-  in 6 functions, and it is inert in this run (evaluated on the port's state,
-  it gives the port's `DS_00100AF8` zero-ness at f = 106..114, the only frames
-  it is set). The `0x1975C` collision step `0x17CB0` → `0x176CC`/`0x17BC8`
+  **The `0x1958C` hook `0x19020` is ported (record §35):** it calls the
+  slot's `+0x18` hook, `0x3E484` or `0x3E1D0`, both through `0x18C14`
+  (`0x19020`, `0x3E484`, `0x3E1D0`, `0x18BD4`, `0x18C14`, `0x189FC`,
+  `0x18A4C`: 7 functions). In this run it runs on 37 frames (`0x3E484` at
+  f = 106..114, 219..227, 332..340 and 760..768, `0x3E1D0` at f = 963) and
+  leaves the dump byte-identical: the port's `DS_00100AF8` zero-ness already
+  matched the raw's on every one of them (record §19.6.2 measured
+  f = 106..114 first). The `0x1975C` collision step `0x17CB0` → `0x176CC`/`0x17BC8`
   and the `0x3B464`/`0x3B938`/`0x3A95C` hit it wakes are ported (§26);
   `0x3B464`'s `0x235C4` arm (projectile `+0x48` = 8) stays a named gap, not
   reached. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
   frame-1881 fix): none in the fight; `0x3E3A8` (f = 962, the `(char 0,
   0x2A)` callback) and its `+0x0C` callback `0x3E328` (f = 963) are now ported
-  and registered, while its `+0x18`/`+0x1C` callbacks `0x3E1D0`/`0x3E244`
-  are stored but not ported (`0x3E1D0` is reached only through the
-  `0x19020` gap, which skips it at f = 963; `0x3E244` is not reached in
-  the port's run). (On the
+  and registered; its `+0x18` hook `0x3E1D0` is ported with `0x19020`
+  (record §35: at f = 963 its `+0x86 >> 16` is 0, so it returns 1 without
+  `0x18C14`), while its `+0x1C` callback `0x3E244` is stored but not ported
+  (not reached in the port's run). (On the
   frame-1750 fix: `0x3E3A8` (f = 962), skipped; `0x3C0A4` (f = 850, the
   reaction-`0x3E` callback, now ported), `0x14F50` (f = 929) and `0x3A820`
   (f = 962/963 on the frame-1715 fix) no longer miss; `0x4AC80` (f = 820 and 841
@@ -1805,7 +1808,7 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   fail. `fighter_3c190` now reads the record after `0x1A570`, as the raw
   does; the difference is not observable. `0x3E484` stays a `PORT:` gap: it
   needs `0x18C14` (1 035 B), for a closure of 1 408 B in 6 functions, and
-  it is inert in this run.
+  it is inert in this run. (Since ported with `0x19020`, record §35.)
 * **Measured.** Capture 891 is now 0 px. The demo's first unexplained is now
   **892 (raw 3799)**, and the fight window `[892..1884]` has 993 frames,
   0 explained. The ratchet N is raised 891 → 892.
@@ -2227,7 +2230,7 @@ record §34).**
   `fighter_3e0f0`/`fighter_29c08` in `fighter.c`; `0x3E1D0` (needs the
   unported `0x19020`/`0x18C14`) and `0x3E244` (needs `0x3C208`/`0x3C358`)
   are stored but not ported (the `0x19020` gap skips `0x3E1D0` at f =
-  963, unevaluated). The front-end driver dumps a frame whose
+  963, unevaluated; `0x3E1D0` since ported, record §35). The front-end driver dumps a frame whose
   iteration starts or ends in a state >= 3 (1382 frames). `title_compare.py`
   `--demo`/`--demo-fight` report the region after a front-end window that
   exhibits the whole dump as unexplained content, and `--demo-fight` treats a
@@ -2247,6 +2250,34 @@ record §34).**
   (832, 833)**; the three transition frames are the same as before, and the
   exhibition set is the whole dump (port frames 0..1381, 1145 exhibited).
   Nothing else moved.
+
+### The slot `+0x18` hook `0x19020` (`ec8e132`), no capture moved
+
+* **Survey.** No oracle-visible unexplained frame has a raw-code owner.
+  Attract 215 and front-end 832 are the lazy loader's 498-byte `- LOADING -`
+  frame, and 833 is the arena mid-fade under the same text. Holding that
+  frame needs the stall's post-read ISR ticks ("Captures 831/832" above), which
+  cannot be derived. A whole-run `fn_resolve`-miss probe found every named gap
+  unreached except `0x1958C`'s `0x19020` hook. It runs on 37 frames:
+  `0x3E484` at f = 106..114, 219..227, 332..340 and 760..768, and `0x3E1D0`
+  at f = 963.
+* **Raw.** `0x19020` calls the slot's `+0x18` hook with EAX = side and stores
+  `result == 0` in `DS_00100AF8[side]`. Both hooks fill 16 check flags
+  (`0x18BD4`) and run `0x18C14`. For each flag, 2 skips the check, 0 fails it
+  when the condition holds and 1 fails it when the condition does not hold.
+  0 is returned only when every check passes. `0x3E1D0` first returns 1
+  unless its `+0x86 >> 16` is in 1..3.
+* **Fix.** `fighter_19020`, `fighter_3e484`, `fighter_3e1d0` (registered),
+  `fighter_18c14` (all 16 flags), and the static `fighter_18bd4`,
+  `fighter_189fc` and `fighter_18a4c`: 7 functions. `fighter_pass_a` calls
+  `0x19020` at `0x195B6` in place of the §7.6 gap. New `check_slot_hook`
+  (`test_fight.c`): of 59 mutations, 57 fail it, and the 2 survivors are
+  equivalent.
+* **Measured.** The front-end dump is byte-identical (all 1382 frames and
+  `select.log`). The port's `DS_00100AF8` already had the raw's zero-ness on
+  all 37 hook frames, so nothing moved. Every oracle is unchanged: title
+  54/55/2/0 and 54/57/0/0, attract 215, front-end `[560..1884]`/1325
+  517/801/3/2, demo-fight N = 1886, smk, C-vs-Python 9866 and `symbols.h`.
 
 ## Landmarks (verified)
 

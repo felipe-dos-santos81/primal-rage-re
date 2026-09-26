@@ -210,7 +210,9 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # front-end oracle, whose window is derived from the port's own dump, cannot see)
 # reopens the fight window, and a frame there that the port frames after the
 # window do not explain is below N. The capture holds no later fight, so N cannot
-# rise further with this capture.
+# rise further with this capture. Re-measured unchanged on ec8e132 (the slot
+# +0x18 hook 0x19020 with 0x3E484/0x3E1D0 and 0x18C14, record §35: the dump is
+# byte-identical).
 # (Before it, N = 1881, measured on bcce10b; N = 1763 on c7320b2; N = 1750 on 2287114; N = 1715 on 1268371; N = 1659 on cc38a38; N = 1563 on 27c95c0; N = 1546 on 219691e; N = 1481 on 3d64c61; N = 1478 on 4065c1d; N = 1411 on c78dc97; N = 1358 on b5a48a0; N = 998 on
 # ff38dcc; N = 992 on 3fee8d0; N = 950 on a51685d; N = 892 on 6a48972; N = 891 on
 # cfff063; N = 880 on 0a8346b; N = 870 on a76414d; N = 867 on 2137bce; N = 866 on

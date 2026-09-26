@@ -6238,3 +6238,200 @@ movie. The port's dump ends with the demo at loop 1970. The state drops to
 sub-machine `0x11000`), and the driver stops dumping, so no port frame is
 compared there. This is a dump-window boundary, not a derived port defect.
 Whether the port reproduces the attract's second cycle is not measured.
+
+## 35. The slot `+0x18` hook `0x19020` and its targets `0x3E484`/`0x3E1D0` (roar-timing Task 25, `ec8e132`)
+
+**Result in one line.** After §34 no oracle-visible unexplained frame has a
+raw-code owner, and every named gap but one is unreached in the demo run.
+The one that runs is `0x1958C`'s `0x19020` hook (§7.6, §19.6): 37 frames
+call it. It is now ported with both hooks the run stores and the check
+walk `0x18C14` they share, 7 functions. It moves no frame: the dump is
+byte-identical, as the evaluation predicted.
+
+### 35.1 The survey (baseline `a9a2e07`)
+
+`make verify` (EXIT 0) and `make demo-oracle`:
+- title: `[216..326]`, 54/55/2/0 and 54/57/0/0; determinism 54; smk
+  120/120, 41/41; C-vs-Python 9866.
+- attract: 215/216 explained on both captures; capture 215 (raw
+  2180/2175) differs from the best splice by 498 B from row 192.
+- front-end: `[560..1884]`/1325: 517 clean, 801 splice, 3 transition,
+  2 unexplained allowed by name (832, 833); 16 all-black captures excluded.
+- demo-fight: fight window empty, 0 unexplained, N = 1886.
+- demo (report-only): `[1885..3616]`, 1726 unexplained, first 1886, the
+  next attract cycle, which the dump does not cover (§34.5).
+
+Attract 215 and front-end 832 are both the lazy loader's 498-byte
+`- LOADING -` frame (rows 192..197), and 833 is the arena mid-fade under the
+same text. The frame is in the port's buffer. It is not presented because
+the `0x25643` tick gate passes in the same iteration. Holding it needs the
+read stall's post-read PIT ticks (`0x1BDF4`), a host property that the
+game_flow "Captures 831/832" section proves cannot be derived. So none of
+the three has a raw-code owner.
+
+A temporary `PR_T25` probe (reverted; dump byte-identical to the baseline)
+printed every `fn_resolve` miss with `DS_0010150C`, and every frame on which
+a slot's `+0x18` is set at `fighter_pass_a`'s `0x195B6` gap.
+- Misses: `0x29B74` and `0x41578` once each, the stub `0x5D812` (36 164),
+  and the null probes (49). `0x3E244`, `0x3640C`, `0x235C4`, `0x370F0`,
+  the grab arms and tails, `0x3C048` and the worshipper types 2/7/9..12 are
+  not reached.
+- The hook is set on 37 frames, all for side 0:
+  - `0x3E484` at f = 106..114, 219..227, 332..340 and 760..768 (four
+    reaction-`0x2B` leaps)
+  - `0x3E1D0` at f = 963
+
+A scan of the code object for `mov dword [reg+0x18], imm32` with a code
+address (fixups applied) finds the fighter hook stores `0x3D484`,
+`0x3D858`, `0x3DD14`, `0x3E1D0`, `0x3E484`, `0x3E924`, `0x3ED78`,
+`0x3EFE0`, `0x3F1F0` (at `0x3F439` and `0x40C68`), `0x3F4B8`, `0x3F7F4` and
+`0x3FD30`. Only `0x3E1D0` and `0x3E484` are stored in this run.
+
+### 35.2 The raw (Ghidra `read_memory` + capstone, fixups applied)
+
+**`0x19020`** (70 B, §19.6.1). When `DSD(0x1077C8 + side*0x94)` is set, it
+calls it with EAX = side (`0x1903F`). A zero result stores 1 in
+`DS_00100AF8[side]` (`0x1904C`), and any other result stores 0 (`0x1905C`).
+
+**`0x3E484`** (63 B, §19.6.1). ctx = `0x33950(side)`, 16 flags =
+`0x18BD4`, flag 1 = 0, 8 = 0 and 0 = 1 (`0x3E4A4`/`0x3E4A8`/`0x3E4B0`).
+Then `0x18C14(ctx[0], flags, EBX = 0, ECX = 0)`, whose result it returns.
+
+**`0x3E1D0`** (`0x3E1D0..0x3E242`, 116 B). ctx = `0x33950(side)`, flags =
+`0x18BD4`. Then flags 1, 8, 4 and 0xE = 0 (`0x3E1EC`..`0x3E1F8`), 5 = 1
+(`0x3E1FC`, `mov ah,1`), and 7 and 0xD = 0 (`0x3E204`/`0x3E208`). With
+`t = (s32)DSD(ctx[2]+0x86) >> 16` (`sar`, `0x3E212`), `t > 3` (`jg`) or
+`t < 1` returns 1 (`0x3E21F`). Otherwise it returns `0x18C14(ctx[0], flags,
+EBX = 0xC75F5, ECX = 0xC75FF)` (`0x3E226..0x3E237`).
+
+**`0x18BD4`** (64 B) stores 2 in all 16 flag bytes.
+
+**`0x18C14`** (`0x18C14..0x1901E`, 1035 B). ESI = flags, EDI = EBX
+(box a), EBX = ECX (box b).
+- A zero box selects the defaults `0xA1818`/`0xA1822` (`0x18C38`/
+  `0x18C41`).
+- The local `[esp+0x18]` is set to 1 only for side != `0x29A` (`0x18C26`),
+  and `0x19005` returns 0 only when it is set.
+- ctx = `0x33950(side)`.
+
+For each flag, 2 skips the check (`cmp al,1; jne`). The other values run
+it. The checks, in the raw's order:
+
+| flag | check | returns 1 when |
+|---|---|---|
+| 0 | `(s32)AF8[side] <= 0` (`setle`, `0x18C51`) | 0 and false: rewrite 4 (`0x18C7C`); 1 and true: rewrite 3 (`0x18C6B`) |
+| 1 | ctx[3] words `+0x74`/`+0x76` | 0: `+0x74 != 0` or `+0x76 > 1`; 1: `+0x74 < 1` or `+0x76 < 2` |
+| 0xF | ctx[2] `+0x43` bit 2 | 0: set; 1: clear |
+| 2 / 3 / 6 | ctx[3] `+0x54` == 0 / 1 / 7 | 0: equal; 1: not equal |
+| 5 | `0x1DDF4(ctx[1], box a, box b)` (EAX, EDX = EDI, EBX) | 0: non-zero; 1: zero |
+| 7 | ctx[3] `+0x62` | 0: non-zero; 1: zero. Either way ctx[2] `+0x8A` = 0 and `0x18B44(ctx[2])` |
+| 8 | ctx[3] `+0x42` bit 3 | 0: set; 1: clear |
+| 9 | `0x189FC(ctx[1])` | 0: non-zero; 1: zero |
+| 0xA | `0x18A4C(ctx[0])` | 0: non-zero; 1: zero |
+| 0xB | ctx[4] `+0x61` | 0: non-zero; 1: zero |
+| 0xD | `0x39EFC(ctx[1])` | 0: non-zero; 1: zero. Either way `+0x8A` = 0 and `0x18B44(ctx[2])` |
+| 0xC | ctx[3] `+0x53 == 0x0A` | 0: equal; 1: not equal |
+| 0xE | `r = 0x3B298(ctx[1], ctx[2] +0x5F)`, called for every value but 2 | 0: `r != 0` (`+0x8A` = 0); 1: always (`+0x8A` = r when r = 0, else 0) |
+| 4 | ctx[3] `+0x54 == 2` | 0: equal; 1: not equal |
+
+At the end it returns 0 when `[esp+0x18]` is set (`0x1900C`), else 1.
+
+**`0x189FC`** (78 B). ctx = `0x33A10(side)`. When `0x1A570(ctx[0])` holds,
+it returns `(s32)ctx[3]+0x2C < (s32)ctx[2]+0x2C` (`jge`, `0x18A23`).
+Otherwise it returns `>` (`jle`, `0x18A3A`).
+
+**`0x18A4C`** (98 B). ctx = `0x33950(side)`, and `c0`/`c1` are the two
+sides' `0x1A570`.
+- With `c0`: it returns 1 when `0x189FC(ctx[1])` holds and `!c1`.
+- Without `c0`: it returns 1 when `0x189FC(ctx[1])` holds and `c1`.
+
+This is symmetric in the side, as the mutations confirmed (§35.3).
+
+The box tables (`read_memory`): `0xC75F5` holds `6e` for chars 0..6,
+`0xC75FF` holds `63`, and `0xA1818` and `0xA1822` hold `e7`. Every other
+callee is already ported: `0x33950`, `0x33A10`, `0x1A570`, `0x1DDF4`
+(`hit_geometry`), `0x39EFC`, `0x3B298` (`fighter_command_dispatch`) and
+`0x18B44`.
+
+**Evaluated on the demo's state (the probe).**
+- `0x3E484` returns 1 whenever `AF8[0]` = 0, and the port's `AF8[0]` stays
+  0.
+- It returns 0 on each leap's last frame (f = 114, 227, 340 and 768). There
+  `AF8[0]` is 6, 14, 3 and 24, and the other slot's `+0x74`, `+0x76` and
+  `+0x42` are all 0. The raw's `AF8[0]` becomes 1 where the port kept the
+  old value. That is the same zero-ness and sign.
+- `0x3E1D0` at f = 963 sees `+0x86` = `0x00000001` (`>> 16` = 0: the
+  `0x3531C` case-7 read later in the frame sees `0x10001`, §34.1). So it
+  returns 1 without `0x18C14`, and `AF8[0]` stays 0, which it already was.
+
+`get_xrefs_to 0x100AF8` gives the readers `0x19632` and `0x19720`
+(`!= 0`) and `0x18C49` (`<= 0`). The writers `0x175EA`, `0x1756F`,
+`0x36928` and `0x38625` store 0 or `DS_00100B54`. No reader tells 1 from
+6. §19.6.2's measurement (f = 106..114) now covers every hook frame of the
+run.
+
+### 35.3 The fix and its assertions
+
+The fix is in `fighter.c`:
+- the static `fighter_189fc`, `fighter_18a4c` and `fighter_18bd4`
+- the exported `fighter_18c14` (all 16 flags, not the demo's reduction),
+  `fighter_19020`, `fighter_3e484` and `fighter_3e1d0`
+- the `fighter_hook_cb` register shape (EAX = side, EAX returned)
+- the defines `FIGHTER_A1818`/`A1822`/`C75F5`/`C75FF`
+
+`fighter_pass_a` calls `fighter_19020(side)` at `0x195B6`, which replaces
+the §7.6 `PORT:` gap and its f = 963 `TODO(verify)`. `actors.c` registers
+`0x3E484` and `0x3E1D0`. That is 7 functions, about 1.5 KB of raw code,
+inside the gate.
+
+Two deviations are marked `PORT:`:
+- An unregistered hook is skipped and leaves `AF8[side]` alone. That is
+  the port's behaviour before, and no unregistered hook is stored in this
+  run.
+- For side `0x29A`, the raw reads an uninitialised stack byte at
+  `0x19005`. The port returns 1, and no caller the port reaches passes that
+  side.
+
+`0x3E244` stays stored and unported (not reached). The `test_game.c`
+comments that said `0x19020` is unported and the pose is unreachable are
+corrected: the driver prints `pose10 1, pose0a 1`.
+
+`check_slot_hook` (in `test_fight.c`, after `check_trex_grab`) seeds with
+`sh_seed` and `sh_walk`. It checks:
+- every flag in both values, and in each "self vs other" read
+- the rewrites of flag 0
+- 0x18B44 (through `DS_00100C1D` 0 -> 1) and `+0x8A`
+- 0xE's call, seen through `0x3B2D6`'s copy, with value 3
+- the orders 0xD < 0xC, 0xE < 4, 7 < 8 and 5 < 7
+- 0x3E484 in the demo's f = 106/114 states and for side 1
+- 0x3E1D0's `+0x86` gate (0, 1, 3, 4, -1 and 2.FFFF), its box-table
+  boundaries (7040/7041 on `0xC75F5`, 6336/6337 on `0xC75FF`), and its
+  flags 1/8/0xD/0xE/4 past flag 7
+- 0x19020 (unset, unregistered `0x3D484`, both results, side 1)
+- `fighter_pass_a`'s `0x195B6`
+- the two registrations and the four box-table bytes
+
+**Mutations.** `scratchpad/t25/mut25.py` made 59 single-site edits:
+- In round 1, 50 failed and 9 survived.
+- The assertions added for 7 of them (default box b, `+0x76` = 1 under flag
+  1 = 1, the side-1 hook with slot 0 cleared, 0x3E1D0's flags past 7) make
+  all 7 fail in round 2.
+- The 2 survivors are equivalent mutants:
+  - `0x18A4C(ctx[1])`, because `0x18A4C` is side-symmetric
+  - dropping `0x19020`'s zero test, because `fn_resolve(0)` is NULL
+
+Sources restored and checked with `cmp`.
+
+### 35.4 Measured
+
+| measurement | before (`a9a2e07`) | after (`ec8e132`) |
+|---|---|---|
+| front-end dump | 1382 frames | **byte-identical** (all frames, `select.log`) |
+| `0x19020` hook calls | 0 (gap) | 37: `0x3E484` x36 (32 `AF8` 0 -> 0; f = 114/227/340/768 6/14/3/24 -> 1), `0x3E1D0` x1 (0 -> 0) |
+| every oracle | as §35.1 | unchanged |
+
+Nothing moved, as predicted. The demo-fight ratchet stays exhausted at N =
+1886. The remaining unported `+0x18` hooks (`0x3D484` .. `0x3FD30`) and the
+`+0x1C` callback `0x3E244` are not stored or not reached in this run. When a later run
+reaches one, `0x19020` resolves it and skips it with `AF8[side]` unchanged,
+as before.
