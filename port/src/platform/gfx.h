@@ -39,6 +39,11 @@ void palette_record(u32 ptr, u32 first, u32 count, u32 flag);
  * The loader's text blit draws into this buffer (see sprite_blit_at). */
 u8 *gfx_aperture(void);
 
+/* 0x52106: both tick counters = ticks, both offscreen buffers (DS_001014E8/
+ * E4) and the aperture filled with the dword ticks, the DAC (gfx_dac)
+ * blacked. */
+void gfx_screen_reset(u32 ticks);
+
 /* Writes w*h bytes of palette indices into the aperture (when 320x200) and hands
  * the aperture converted through gfx_dac to host_present_rgb(). */
 void gfx_present(const u8 *indices, int w, int h);

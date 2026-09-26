@@ -22,6 +22,7 @@
 #include "game/config.h"
 #include "game/fight.h"
 #include "game/attract.h"
+#include "game/movie.h"
 #include <string.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -747,8 +748,19 @@ int test_actors(void)
     CHECK(DSD(DS_001014EC) != 0, "pset pool allocated by res_load_index");
     CHECK(actors_init() == 1, "actors_init validates the two pools");
 
-    /* A fresh reset frees every record and leaves both lists empty. */
+    /* A fresh reset frees every record and leaves both lists empty. It also
+     * runs 0x4F228 with EAX = 0 (0x2BBC0/0x2BBC4): the projection gate
+     * DS_00107A54, DS_00107A55 and the words DS_00107A3A/38 go to 0 (the
+     * demo's state 6 leaves the gate at 1; record §36). */
+    DSB(DS_00107A54) = 1u;
+    DSB(DS_00107A55) = 0x99u;
+    DSW(DS_00107A3A) = 0x1234u;
+    DSW(DS_00107A38) = 0x4321u;
     actors_reset();
+    CHECK_EQ_INT((int)DSB(DS_00107A54), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107A55), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107A3A), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107A38), 0);
     CHECK_EQ_INT((int)actor_list_head(), 0);
     CHECK(actor_alloc(0) != 0, "alloc after reset returns a record");
 
@@ -2281,6 +2293,67 @@ int test_anim(void)
  * at 0x1B45F that game_flow.md's residual 1 records as un-derivable. */
 #define FRONTEND_FRAMES_BEFORE_STATE2 886u
 
+/* PORT: the driver's alignment seed for the attract cycle counter DS_000F0A5C
+ * at its state-2 entry, the boot attract's post-state. 0x10E80 stores 4
+ * (game_state_init), and the boot attract's one phase 2 wraps it to 0
+ * (0x11089 `inc`, 0x110A1 `jl`, 0x110A5 store 0); the title and states 2..7
+ * never write it. The driver skips the boot attract, so it seeds 0, and the
+ * next attract (after the demo's exit) counts 1: phase 9 takes its 0x78 arm,
+ * phase 0xA spawns the lightning actor 0x9AD30 and phase 0xB hands off to
+ * state 6 with DS_000F0A72 = 5 (0x1150E), the second demo the capture shows
+ * from 2385. Left at 4, it wraps to 0 and hands off to the title. */
+#define FRONTEND_ATTRACT_CYCLE_AFTER_BOOT 0u
+
+/* The cycle-2 dump: every frame the driver's run presents after the demo's
+ * exit frame (loop 1970), written to <dump>/cycle2/frame_%04d.raw in order.
+ * That is the loop's presented frame per iteration (the same rule as the
+ * front-end dump) and, inside the iteration that plays the logos, each screen
+ * 0x1C740 writes (movie_set_screen_hook: the entry/exit blanks and every
+ * frame). A separate directory keeps these frames out of the front-end and
+ * demo-fight windows, whose alignment would otherwise match the attract's
+ * second cycle against the capture's first (frames 1..~560). */
+static char fe_cyc2_dir[1300];
+static int fe_cyc2_on;
+static int fe_cyc2_n;
+static int fe_cyc2_failed;
+
+/* Writes the displayed screen (the aperture after the last gfx_present or
+ * 0x52106, else DS_000E87A0) as RGB24 through gfx_dac; 1 when all 192000
+ * bytes were written. */
+static int fe_write_frame(const char *path)
+{
+    const u8 *fb = gfx_display();
+    if (fb == NULL) fb = mem + DSD(DS_000E87A0);
+    FILE *fr = fopen(path, "wb");
+    int ok = fr != NULL;
+    if (fr != NULL) {
+        for (u32 b = 0; b < 320u * 200u; b++) {
+            if (fwrite(gfx_dac[fb[b]], 1, 3, fr) != 3) {
+                ok = 0;
+                break;
+            }
+        }
+        if (fclose(fr) != 0) ok = 0;
+    }
+    return ok;
+}
+
+static void fe_cyc2_dump(void)
+{
+    if (!fe_cyc2_on || fe_cyc2_failed) return;
+    char path[1400];
+    snprintf(path, sizeof path, "%s/frame_%04d.raw", fe_cyc2_dir, fe_cyc2_n);
+    if (fe_write_frame(path)) fe_cyc2_n++;
+    else fe_cyc2_failed = 1;
+}
+
+/* The driver's loop: FE_DEMO_LOOPS covers the first demo's 0x11BCC exit at
+ * loop 1970 (the run's length before the cycle-2 dump); FE_LOOPS reaches the
+ * second attract cycle's state-6 handoff (loop 2782) and the second demo's
+ * first frames. */
+#define FE_DEMO_LOOPS 2000
+#define FE_LOOPS 2800
+
 int test_frontend(void)
 {
     int before = g_failures;
@@ -2761,7 +2834,7 @@ int test_frontend(void)
      * whole window, through the demo, so two runs can be diffed; the frame dump
      * is capped by PR_FRONTEND_DUMP_FRAMES (default 1400).
      *
-     * The 2000-iteration loop and the 1400-frame cap are sized from the demo's
+     * FE_DEMO_LOOPS (2000) and the 1400-frame cap are sized from the demo's
      * state-7 exit: state 3 is entered at loop frame 589, state 6 runs at loop
      * frame 1070 (dumped frame 481), and 0x11BCC's timer exit runs at loop frame
      * 1970, where the state drops to 0. game_frame (0x24C5C) runs before the
@@ -2773,8 +2846,12 @@ int test_frontend(void)
      * that starts in state 7 and exits it, is dumped, and 1971 on, which start
      * in state 0, are not in the state >= 3 window.
      * The dump run is loop frames 589..1970, i.e. dumped frames 0..1381 (1382
-     * frames); the 1400 cap covers it and the 2000-frame loop clears the 1970
-     * exit. The front-end window is distinct [560..1884] (1325 frames: 517
+     * frames); the 1400 cap covers it and FE_DEMO_LOOPS clears the 1970
+     * exit. The exit frame closes this dump: the loop runs on to FE_LOOPS
+     * (2800) and writes every later presented frame to <dump>/cycle2 instead
+     * (fe_cyc2_dump; record §36), the attract's second cycle, which the
+     * capture shows from 1886 to its second demo at 2385. The per-frame
+     * measurements and end-of-run reads below keep the FE_DEMO_LOOPS window. The front-end window is distinct [560..1884] (1325 frames: 517
      * clean, 801 splice, 3 transition, 2 unexplained), up to the capture's
      * first all-black frame after the demo, 1885 ([560..1880]/1321 with the
      * 1381-frame dump before 0x34E2C's reaction callback 0x3E3A8 (the T-rex's
@@ -2841,6 +2918,8 @@ int test_frontend(void)
         /* Likewise the frame counter: the attract and the title run before the
          * reference's state 2 (the raw's word at 0xEF6DC). */
         DSW(DS_000EF6DC) = (u16)FRONTEND_FRAMES_BEFORE_STATE2;
+        /* Likewise the attract cycle counter (the boot attract's post-state). */
+        DSB(DS_000F0A5C) = (u8)FRONTEND_ATTRACT_CYCLE_AFTER_BOOT;
 
         /* Enter state 2 at phase 0, the entry game_state_title() leaves for. */
         DSW(DS_000F0A64) = 2;
@@ -2913,7 +2992,27 @@ int test_frontend(void)
          * never seen. */
         int s7_flier_f = -1, s7_flier_i = -1;
         int s7_pal_sampled = 0;
-        for (int i = 0; i < 2000; i++) {
+        /* The cycle-2 dump (fe_cyc2_dump) and its samples: the loop the
+         * cycle-2 dump starts at (-1 before the exit frame), DS_00107A54 after
+         * loop 1971 (the logos' iteration: 0x11000 phase 0's actors_reset),
+         * the first cycle-2 loop whose post-state has DS_00104AD0 bit 0 (the
+         * lightning stream's 0x4F83C) and the first whose post-state is 6,
+         * with DS_000F0A72 then. Sentinels -1 differ from every value
+         * asserted below. */
+        snprintf(fe_cyc2_dir, sizeof fe_cyc2_dir, "%s/cycle2", dump);
+        mkdir(fe_cyc2_dir, 0777);
+        fe_cyc2_on = 0;
+        fe_cyc2_n = 0;
+        fe_cyc2_failed = 0;
+        movie_set_screen_hook(fe_cyc2_dump);
+        int c2_start = -1, c2_proj54 = -1, c2_flash_i = -1;
+        int c2_state6_i = -1, c2_f0a72 = -1;
+        /* The picks, variant and handle as the first demo left them, read
+         * where the driver's run used to end (loop FE_DEMO_LOOPS - 1); the
+         * second demo's state 6 draws new picks. 0xFF/0 sentinels. */
+        u32 end_pick0 = 0xFFu, end_pick1 = 0xFFu, end_variant = 0xFFu;
+        u32 end_handle = 0;
+        for (int i = 0; i < FE_LOOPS; i++) {
             /* The state-9 exit leaves DS_000F0A64 == 6 for the next iteration;
              * nothing draws between the hold and the state-6 handler, so this
              * is the state-6 entry's LCG state. */
@@ -2959,9 +3058,19 @@ int test_frontend(void)
                 }
                 dust_sampled = 1;
             }
-            if (DSW(DS_000F0A64) == 3u) reached3 = 1;
-            if (DSB(DS_000F0A6E) < 6u) seen_entries |= 1u << DSB(DS_000F0A6E);
-            if (DSW(DS_000F0A64) == 7u) {
+            /* The measurements below keep the first demo's window, loops
+             * 0..FE_DEMO_LOOPS-1: the second demo (from loop 2782) must not
+             * satisfy or overwrite them. */
+            if (i < FE_DEMO_LOOPS && DSW(DS_000F0A64) == 3u) reached3 = 1;
+            if (i < FE_DEMO_LOOPS && DSB(DS_000F0A6E) < 6u)
+                seen_entries |= 1u << DSB(DS_000F0A6E);
+            if (i == FE_DEMO_LOOPS - 1) {
+                end_pick0 = DSB(DS_0010816A);
+                end_pick1 = DSB(DS_0010816A + 1u);
+                end_variant = DSB(DS_00105B34);
+                end_handle = DSD(0xA8A28u + DSB(DS_00105B34) * 4u);
+            }
+            if (i < FE_DEMO_LOOPS && DSW(DS_000F0A64) == 7u) {
                 /* The Gate's second claim: the T-rex character palette's DAC
                  * range. The palette table (DS_00107618, 0x10-byte entries
                  * {handle; rc; start; len}) is populated by the arena's spawn
@@ -3029,29 +3138,40 @@ int test_frontend(void)
              * before the swap). A frame counts as dumped only when all 192000
              * bytes were written, so the count below cannot pass on a short or
              * missing file; one failure stops further attempts. */
-            if ((state_in >= 3u || DSW(DS_000F0A64) >= 3u) && !dump_failed &&
-                dumped < (int)raw_cap) {
-                const u8 *fb = gfx_display();
-                if (fb == NULL) fb = mem + DSD(DS_000E87A0);
+            if (fe_cyc2_on) {
+                fe_cyc2_dump();
+            } else if ((state_in >= 3u || DSW(DS_000F0A64) >= 3u) &&
+                       !dump_failed && dumped < (int)raw_cap) {
                 char path[1300];
                 snprintf(path, sizeof path, "%s/frame_%04d.raw", dump, dumped);
-                FILE *fr = fopen(path, "wb");
-                int ok = fr != NULL;
-                if (fr != NULL) {
-                    for (u32 b = 0; b < 320u * 200u; b++) {
-                        if (fwrite(gfx_dac[fb[b]], 1, 3, fr) != 3) {
-                            ok = 0;
-                            break;
-                        }
-                    }
-                    if (fclose(fr) != 0) ok = 0;
-                }
+                int ok = fe_write_frame(path);
                 CHECK(ok, "front-end frame writes to the dump");
                 if (ok) dumped++;
                 else dump_failed = 1;
             }
+            /* The exit frame (an iteration that starts in state >= 3 and ends
+             * below it: loop 1970) closes the front-end dump; every later
+             * presented frame goes to the cycle-2 dump. */
+            if (!fe_cyc2_on && state_in >= 3u && DSW(DS_000F0A64) < 3u) {
+                fe_cyc2_on = 1;
+                c2_start = i + 1;
+            }
+            if (i == 1971) c2_proj54 = (int)DSB(DS_00107A54);
+            if (c2_start > 0 && i >= c2_start) {
+                if (c2_flash_i < 0 && (DSB(DS_00104AD0) & 1u) != 0u)
+                    c2_flash_i = i;
+                if (c2_state6_i < 0 && DSW(DS_000F0A64) == 6u) {
+                    c2_state6_i = i;
+                    c2_f0a72 = (int)DSB(DS_000F0A72);
+                }
+            }
         }
+        movie_set_screen_hook(NULL);
+        fe_cyc2_on = 0;
         if (log != NULL) fclose(log);
+        printf("test_frontend: cycle 2 from loop %d, %d frames; A54@1971 %d, "
+               "4F83C@%d, state 6@%d (F0A72 %d)\n", c2_start, fe_cyc2_n,
+               c2_proj54, c2_flash_i, c2_state6_i, c2_f0a72);
 
         /* The raw's timeline: six entries, each drawn then paused, then state 3.
          * Entry k is drawn on frame 1+93k; after the sixth, 0x1E pause frames
@@ -3063,11 +3183,33 @@ int test_frontend(void)
          * states 9/6/7: state 7 runs its 900-frame timer and 0x11BCC's exit
          * lands at loop frame 1970, an iteration that starts in state 7, so
          * its presented frame is dumped: loop frames 589..1970 (1382 frames,
-         * dump 0..1381). The 1400 cap covers it; the 2000-frame loop clears the
-         * 1970 exit. */
+         * dump 0..1381). The 1400 cap covers it; FE_DEMO_LOOPS clears the
+         * 1970 exit, and the second demo's states 6/7 (loop 2782 on) go to the
+         * cycle-2 dump, not here. */
         CHECK_EQ_INT((int)seen_entries, 0x3F);
         CHECK(reached3, "the window reaches state 3");
         CHECK_EQ_INT(dumped, (int)(raw_cap < 1382 ? raw_cap : 1382));
+
+        /* The second attract cycle (derivation record §36). The cycle-2 dump
+         * starts after the exit frame, at loop 1971, and holds 995 frames:
+         * loops 1971..2799 (829) and, inside loop 1971, the 166 screens
+         * 0x1C740 writes (TWI5: the entry blank, 121 frames, the exit blank;
+         * TWG: the same with 41). A player that drops TWI5's 121st frame
+         * writes 994; one with no screen hook 829. 0x2BAF4's 0x4F228 call
+         * (0x2BBC4) clears the projection gate DS_00107A54 the demo's state 6
+         * set (0x387E2), so it is 0 after loop 1971 (1 without it). The
+         * lightning stream 0xE890A's 0x4F83C sets DS_00104AD0 bit 0 first at
+         * loop 2547 (never without its registration). With the boot attract's
+         * cycle counter (FRONTEND_ATTRACT_CYCLE_AFTER_BOOT), phase 0xB hands off
+         * to state 6 at loop 2782 with DS_000F0A72 = 5 (0x1150E); with the
+         * counter left at 4 it hands off to the title and never reaches 6. */
+        CHECK(!fe_cyc2_failed, "cycle-2 frames write to the dump");
+        CHECK_EQ_INT(c2_start, 1971);
+        CHECK_EQ_INT(fe_cyc2_n, 995);
+        CHECK_EQ_INT(c2_proj54, 0);
+        CHECK_EQ_INT(c2_flash_i, 2547);
+        CHECK_EQ_INT(c2_state6_i, 2782);
+        CHECK_EQ_INT(c2_f0a72, 5);
 
         /* Alignment: the driver's state-6 entry sits at the attract's
          * post-state, and the two picks drawn from it (plus the dust builder's
@@ -3077,13 +3219,13 @@ int test_frontend(void)
          * the characters. */
         CHECK(seen6, "the driver reaches state 6");
         CHECK_EQ_INT((int)entry_lcg, (int)FRONTEND_RNG_AFTER_ATTRACT);
-        CHECK_EQ_INT((int)DSB(DS_0010816A), 0);
-        CHECK_EQ_INT((int)DSB(DS_0010816A + 1u), 3);
+        CHECK_EQ_INT((int)end_pick0, 0);
+        CHECK_EQ_INT((int)end_pick1, 3);
         /* Record §7.1: the seed's consequence — the T-rex's variant is 1 and
          * its handle 0x1BB9FCD8 (0xA8A28[1]). The old 0xFF seed left variant 0
          * and 0x1BB9FD58, so this fails under that mutation. */
-        CHECK_EQ_INT((int)DSB(DS_00105B34), 1);
-        CHECK_EQ_INT((int)DSD(0xA8A28u + DSB(DS_00105B34) * 4u), 0x1BB9FCD8);
+        CHECK_EQ_INT((int)end_variant, 1);
+        CHECK_EQ_INT((int)end_handle, 0x1BB9FCD8);
         /* The Gate's second claim: the T-rex's character palette lands at the
          * raw's DAC range (record §1.2/§1.3, entry 6: start=142 len=31 in both
          * trees). A palette table that assigns a different range — e.g. a
@@ -3702,6 +3844,45 @@ int test_attract(void)
         CHECK_EQ_INT((int)(DSD(DS_00104AD0) & 1u), 0);
         CHECK_EQ_INT((int)DSB(DS_001088F1), 0);
         CHECK_EQ_INT((int)DSD(DS_00107798), (int)DS_00107498);   /* no enqueue */
+
+        /* E2. The lightning stream 0xE890A's opcode-0x11 targets (record §36),
+         * registered by actors_init and called as anim_indirect calls them,
+         * (rec, operand). 0x4F83C through its wrapper: D's post-state from an
+         * operand the raw ignores. 0x10FC4 (`mov dword [eax+0x18],0`) clears
+         * only the record's +0x18. actors_init registers both; the shared
+         * suite's test_actors runs it, the isolated PR_ATTRACT_DUMP run does
+         * not before this check (its pool is absent too). */
+        if (DSD(DS_001014F4) != 0) {
+            typedef void (*anim_fn)(u32 rec, u32 arg);
+            anim_fn f4f = (anim_fn)(void *)fn_resolve(0x4F83Cu);
+            anim_fn f10 = (anim_fn)(void *)fn_resolve(0x10FC4u);
+            CHECK(f4f != NULL, "0x4F83C is a registered stream target");
+            CHECK(f10 != NULL, "0x10FC4 is a registered stream target");
+            if (f4f != NULL) {
+                DSD(DESCRIPTOR + 0u) = 0xDEAD0000u;
+                DSD(DESCRIPTOR + 12u) = 0x7FFFFFFFu;
+                DSD(DS_000F0A48) = DESCRIPTOR;
+                DSD(HANDLE0) = SENTINEL_HANDLE;
+                DSD(DS_00104AD0) = 0x80u;
+                DSB(DS_001088F1) = 7;
+                DSD(DS_00107798) = DS_00107498;
+                f4f(0x3200000u, 0x1234u);
+                CHECK_EQ_INT((int)DSD(DS_00104AD0), 0x81);
+                CHECK_EQ_INT((int)DSB(DS_001088F1), 1);
+                CHECK_EQ_INT((int)DSD(DS_00107498 + 0u), (int)SENTINEL_HANDLE);
+                CHECK_EQ_INT((int)DSD(DS_00107798), (int)(DS_00107498 + 0x10u));
+            }
+            if (f10 != NULL) {
+                const u32 rec = 0x3200000u;
+                DSD(rec + 0x14u) = 0x11111111u;
+                DSD(rec + 0x18u) = 0x22222222u;
+                DSD(rec + 0x1Cu) = 0x33333333u;
+                f10(rec, 0xFFFFu);
+                CHECK_EQ_INT((int)DSD(rec + 0x18u), 0);
+                CHECK_EQ_INT((int)DSD(rec + 0x14u), 0x11111111);
+                CHECK_EQ_INT((int)DSD(rec + 0x1Cu), 0x33333333);
+            }
+        }
 
         /* F. 0x33874 else branch: handle differs -> re-point + enqueue. */
         DSD(ENTRY_LO + 0u)  = 0xDEAD0000u;

@@ -165,6 +165,26 @@ static int g_aperture_valid;
 
 u8 *gfx_aperture(void) { return g_aperture; }
 
+/* 0x52106 — game_flow "Boot logos". Stores EAX into both tick counters
+ * (0x52108/0x5210D), fills the two offscreen buffers DS_001014E8/E4 with the
+ * dword EDX = EAX through 0x51F72 (0xFA00 bytes each, 0x52112..0x52123), waits
+ * for VBlank and writes 256 black entries to the DAC (0x52133..0x52149, AL =
+ * 0), then fills the VGA aperture with the same dword (0x5214C 0x51F72).
+ * PORT: the DAC is gfx_dac and the aperture is g_aperture (the aperture
+ * rule); the VBlank spin has nothing to wait for here. Every caller passes 0:
+ * 0x2BAF4's param_1 != 0 arm (0x2BBE8 `xor eax,eax`) and the movie player
+ * 0x1C740's entry and exit. */
+void gfx_screen_reset(u32 ticks)
+{
+    DSD(DS_00101508) = ticks;
+    DSD(DS_0010150C) = ticks;
+    u32 a = DSD(DS_001014E8), b = DSD(DS_001014E4);
+    for (u32 i = 0; i < 0xFA00u; i += 4u) DSD(a + i) = ticks;
+    for (u32 i = 0; i < 0xFA00u; i += 4u) DSD(b + i) = ticks;
+    memset(gfx_dac, 0, sizeof gfx_dac);
+    for (u32 i = 0; i < 0xFA00u; i += 4u) memcpy(g_aperture + i, &ticks, 4u);
+}
+
 const u8 *gfx_display(void)
 {
     return g_aperture_valid ? g_aperture : NULL;

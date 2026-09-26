@@ -730,6 +730,64 @@ int test_gfx(void)
     CHECK_EQ_INT(DSD(REC + 4), 0xFFFFFFFFu);
     CHECK_EQ_INT(DSD(HEAD), REC);
 
+    /* 0x52106 (gfx_screen_reset): both tick counters take EAX, the two
+     * offscreen buffers and the aperture are filled with the dword EAX
+     * (0x51F72 with EDX = EAX), and the DAC is blacked (AL = 0 at 0x5213D).
+     * Buffers at scratch addresses with 0xAB sentinels, one byte past each
+     * 0xFA00-byte fill; the DAC and the aperture seeded non-zero. */
+    {
+        const u32 buf_a = SCRATCH + 0x10000u, buf_b = SCRATCH + 0x20000u;
+        const u32 s_e8 = DSD(DS_001014E8), s_e4 = DSD(DS_001014E4);
+        const u32 s_08 = DSD(DS_00101508), s_0c = DSD(DS_0010150C);
+        static u8 s_dac[256][3], s_ap[320 * 200];
+        memcpy(s_dac, gfx_dac, sizeof s_dac);
+        memcpy(s_ap, gfx_aperture(), sizeof s_ap);
+
+        DSD(DS_001014E8) = buf_a;
+        DSD(DS_001014E4) = buf_b;
+        mem_fill(buf_a, 0xAB, 0xFA04u);
+        mem_fill(buf_b, 0xAB, 0xFA04u);
+        DSD(DS_00101508) = 0x1111u;
+        DSD(DS_0010150C) = 0x2222u;
+        memset(gfx_dac, 0x3F, sizeof gfx_dac);
+        memset(gfx_aperture(), 0x77, 320 * 200);
+
+        gfx_screen_reset(0x12345678u);
+        u32 ap0, apl;
+        memcpy(&ap0, gfx_aperture(), 4);
+        memcpy(&apl, gfx_aperture() + 0xF9FCu, 4);
+        CHECK_EQ_INT((int)DSD(DS_00101508), 0x12345678);
+        CHECK_EQ_INT((int)DSD(DS_0010150C), 0x12345678);
+        CHECK_EQ_INT((int)DSD(buf_a), 0x12345678);
+        CHECK_EQ_INT((int)DSD(buf_a + 0xF9FCu), 0x12345678);
+        CHECK_EQ_INT((int)DSB(buf_a + 0xFA00u), 0xAB);
+        CHECK_EQ_INT((int)DSD(buf_b), 0x12345678);
+        CHECK_EQ_INT((int)DSD(buf_b + 0xF9FCu), 0x12345678);
+        CHECK_EQ_INT((int)DSB(buf_b + 0xFA00u), 0xAB);
+        CHECK_EQ_INT((int)ap0, 0x12345678);
+        CHECK_EQ_INT((int)apl, 0x12345678);
+        CHECK_EQ_INT(gfx_dac[0][0], 0);
+        CHECK_EQ_INT(gfx_dac[128][1], 0);
+        CHECK_EQ_INT(gfx_dac[255][2], 0);
+
+        /* Every caller passes 0: the screen and both buffers go black. */
+        gfx_dac[7][0] = 0x3F;
+        gfx_screen_reset(0u);
+        CHECK_EQ_INT((int)DSD(DS_00101508), 0);
+        CHECK_EQ_INT((int)DSD(DS_0010150C), 0);
+        CHECK_EQ_INT((int)DSD(buf_a + 0x8000u), 0);
+        CHECK_EQ_INT((int)DSD(buf_b + 0x8000u), 0);
+        CHECK_EQ_INT((int)gfx_aperture()[0x8000u], 0);
+        CHECK_EQ_INT(gfx_dac[7][0], 0);
+
+        DSD(DS_001014E8) = s_e8;
+        DSD(DS_001014E4) = s_e4;
+        DSD(DS_00101508) = s_08;
+        DSD(DS_0010150C) = s_0c;
+        memcpy(gfx_dac, s_dac, sizeof s_dac);
+        memcpy(gfx_aperture(), s_ap, sizeof s_ap);
+    }
+
     return g_failures - before;
 }
 
@@ -1846,6 +1904,41 @@ static void check_scroll_projection(void)
     for (u32 i = 0; i < 0x40; i++) DSW(DS_00107900 + i * 2u) = tbl[i];
 }
 
+/* 0x4F228 (render_projection_reset): DS_00107A54 = 0 (AH zeroed at 0x4F22A),
+ * DS_00107A55 = the caller's AL, and the words DS_00107A3A/DS_00107A38 = 0.
+ * Every target seeded with a value its post-condition differs from, and the
+ * neighbours DS_00107A53/56, DS_00107A3C and DS_00107A36 kept. */
+static void check_projection_reset(void)
+{
+    u8 s53 = DSB(DS_00107A54 - 1u), s54 = DSB(DS_00107A54);
+    u8 s55 = DSB(DS_00107A55), s56 = DSB(DS_00107A55 + 1u);
+    u16 s36 = DSW(DS_00107A38 - 2u), s38 = DSW(DS_00107A38);
+    u16 s3a = DSW(DS_00107A3A), s3c = DSW(DS_00107A3C);
+
+    DSB(DS_00107A54 - 1u) = 0x5Au;
+    DSB(DS_00107A54) = 1u;
+    DSB(DS_00107A55) = 0xEEu;
+    DSB(DS_00107A55 + 1u) = 0xA5u;
+    DSW(DS_00107A38 - 2u) = 0x6666u;
+    DSW(DS_00107A38) = 0x4321u;
+    DSW(DS_00107A3A) = 0x1234u;
+    DSW(DS_00107A3C) = 0x7777u;
+    render_projection_reset(0x3Cu);
+    CHECK_EQ_INT((int)DSB(DS_00107A54), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107A55), 0x3C);
+    CHECK_EQ_INT((int)DSW(DS_00107A3A), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107A38), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107A54 - 1u), 0x5A);
+    CHECK_EQ_INT((int)DSB(DS_00107A55 + 1u), 0xA5);
+    CHECK_EQ_INT((int)DSW(DS_00107A38 - 2u), 0x6666);
+    CHECK_EQ_INT((int)DSW(DS_00107A3C), 0x7777);
+
+    DSB(DS_00107A54 - 1u) = s53; DSB(DS_00107A54) = s54;
+    DSB(DS_00107A55) = s55; DSB(DS_00107A55 + 1u) = s56;
+    DSW(DS_00107A38 - 2u) = s36; DSW(DS_00107A38) = s38;
+    DSW(DS_00107A3A) = s3a; DSW(DS_00107A3C) = s3c;
+}
+
 int test_render(void)
 {
     check_list_order();
@@ -1854,6 +1947,7 @@ int test_render(void)
     check_layer_modes();
     check_end_to_end();
     check_scroll_projection();
+    check_projection_reset();
     return 0;
 }
 

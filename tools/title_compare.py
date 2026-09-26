@@ -533,6 +533,22 @@ def main():
     ap.add_argument('--demo-fight-min-first', type=int, default=None,
                     metavar='N',
                     help='the ratchet N for --demo-fight (required with it)')
+    ap.add_argument('--attract2', action='store_true',
+                    help='the attract\'s second cycle after the demo: the '
+                         'capture region from the first all-black frame after '
+                         'the front-end window to the capture\'s end, '
+                         'classified (clean/splice/transition/unexplained, '
+                         'all-black frames dropped) against the cycle-2 dump '
+                         'only (<port>/cycle2), enforced as a RATCHET. Claim: '
+                         'every content-bearing captured frame in [start .. '
+                         'N) is explained and the first unexplained frame is '
+                         '>= N (--attract2-min-first). The window is derived '
+                         'from content alignment against the port\'s own '
+                         'dump, so it cannot detect an under-rendering port. '
+                         'Returns 1 on a violation')
+    ap.add_argument('--attract2-min-first', type=int, default=None,
+                    metavar='N',
+                    help='the ratchet N for --attract2 (required with it)')
     a = ap.parse_args()
     required = os.environ.get('PR_ORACLE_REQUIRED') == '1'
 
@@ -616,7 +632,10 @@ def main():
     # the last frame the front-end window exhibits. The classification is the
     # same `check_capture`/`explain` path — no second model — and the all-black
     # artifact drop is kept. It is a report: it never returns 1, so it cannot
-    # gate the ladder until a later cycle promotes it.
+    # gate the ladder until a later cycle promotes it. It reads only the
+    # top-level dump, which ends with the demo's exit frame, so the region after
+    # the demo has no port frame here; --attract2 classifies that region against
+    # the cycle-2 dump (<port>/cycle2).
     if a.demo:
         capture = a.capture[0]
         if not os.path.isdir(capture):
@@ -828,6 +847,103 @@ def main():
                      % (end + 1)))
         elif first > ratchet:
             print("title_compare: demo-fight: ratchet improved: first "
+                  "unexplained %d > %d — raise N" % (first, ratchet))
+        return 0
+
+    # Attract cycle-2 mode (roar-timing Task 26): after the demo's exit frame
+    # the front-end driver writes every presented frame to <port>/cycle2 (the
+    # logos' screens included), a separate dump so the front-end and demo-fight
+    # windows are unchanged. The region starts at the first all-black capture
+    # frame after the front-end window (the end of the demo-fight window) and
+    # runs to the capture's end. It is classified by the same
+    # check_capture/explain path against the cycle-2 frames only; a
+    # content-bearing frame no port frame explains is unexplained. Enforced:
+    # no unexplained frame below N and the first unexplained frame >= N.
+    if a.attract2:
+        if a.attract2_min_first is None:
+            print("title_compare: attract2: --attract2-min-first N is required")
+            return 1
+        ratchet = a.attract2_min_first
+        capture = a.capture[0]
+        if not os.path.isdir(capture):
+            print("title_compare: no capture at %s (%s)"
+                  % (capture, 'FAIL (required)' if required else 'skipped'))
+            return 1 if required else 0
+        c2dir = os.path.join(a.port, 'cycle2')
+        if not os.path.isdir(a.port) or not os.path.isdir(c2dir):
+            print("title_compare: no cycle-2 dump at %s" % c2dir)
+            return 1
+        n = len([f for f in os.listdir(a.port) if f.endswith('.raw')])
+        port, port_rows = load_port(a.port, n)
+        if port is None:
+            return 1
+        fe_rc, fe_res = check_capture(capture, port, port_rows, n, 'frontend',
+                                      a.verbose, detail=False, skip_black=True,
+                                      quiet=True)
+        if fe_res is None or not fe_res['covered']:
+            print("title_compare: attract2: front-end window not derivable "
+                  "(rc %d)" % fe_rc)
+            return 1
+        fe_a, fe_b = fe_res['window']
+        frames = fe_res['frames']
+        raws = raw_map(capture) or list(range(len(frames)))
+        lo = next((j for j in range(fe_b + 1, len(frames))
+                   if not any(frames[j])), None)
+        if lo is None:
+            print("title_compare: attract2: FAIL: no all-black capture frame "
+                  "after the front-end window [%d..%d]" % (fe_a, fe_b))
+            return 1
+        hi = len(frames) - 1
+        del port, port_rows, fe_res, frames
+        n2 = len([f for f in os.listdir(c2dir) if f.endswith('.raw')])
+        c2, c2_rows = load_port(c2dir, n2)
+        if c2 is None or n2 < 2:
+            print("title_compare: attract2: FAIL: the cycle-2 dump holds %d "
+                  "frame(s)" % n2)
+            return 1
+        rc, res = check_capture(capture, c2, c2_rows, n2, 'attract2',
+                                a.verbose, detail=False, skip_black=True,
+                                capture_lo=lo, quiet=True)
+        if res is None:
+            frames = load_frames(capture, 'attract2')
+            if frames is None:
+                return 1
+            kinds = [('excluded', None) if j < lo else
+                     (('unexplained', None) if any(frames[j])
+                      else ('artifact', None)) for j in range(len(frames))]
+            win = None
+        else:
+            kinds, win = res['kinds'], res['window']
+        cls = [kinds[j][0] for j in range(lo, hi + 1)]
+        print("title_compare: attract2: front-end window distinct [%d..%d]; "
+              "cycle-2 region [%d..%d] (raw %s..%s); cycle-2 dump %d frames"
+              % (fe_a, fe_b, lo, hi, raws[lo], raws[hi], n2))
+        if win is not None:
+            print("title_compare: attract2: exhibited window distinct [%d..%d] "
+                  "(raw %s..%s)" % (win[0], win[1], raws[win[0]], raws[win[1]]))
+        print("title_compare: attract2: %d frames in region: %d clean, %d "
+              "splice, %d transition, %d unexplained, %d all-black"
+              % (len(cls), cls.count('clean'), cls.count('splice'),
+                 cls.count('transition'), cls.count('unexplained'),
+                 cls.count('artifact')))
+        if ratchet > hi + 1:
+            print("title_compare: attract2: FAIL: N %d > region end + 1 (%d): "
+                  "N is unreachable" % (ratchet, hi + 1))
+            return 1
+        unexpl = [j for j in range(lo, hi + 1) if kinds[j][0] == 'unexplained']
+        first = unexpl[0] if unexpl else None
+        if first is None:
+            print("title_compare: attract2: 0 unexplained in the region")
+        else:
+            print("title_compare: attract2: first unexplained captured frame "
+                  "%d (raw %s); %d unexplained in the region; ratchet N %d"
+                  % (first, raws[first], len(unexpl), ratchet))
+        if first is not None and first < ratchet:
+            print("title_compare: attract2: FAIL: first unexplained %d < "
+                  "ratchet N %d" % (first, ratchet))
+            return 1
+        if first is not None and first > ratchet:
+            print("title_compare: attract2: ratchet improved: first "
                   "unexplained %d > %d — raise N" % (first, ratchet))
         return 0
 

@@ -44,7 +44,8 @@ chunk ?= 0
 .PHONY: help deps build test verify check smk-oracle run clean \
         re-info re-gra re-render re-symbols re-cluster re-extract re-extract-test \
         re-decompile re-analyze re-oracle re-original title-pin title-capture \
-        title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle
+        title-oracle attract-oracle frontend-capture frontend-oracle demo-oracle demo-fight-oracle \
+        attract2-oracle attract2-compare
 
 # ── Environment ──────────────────────────────────────────────────────────────
 
@@ -234,6 +235,39 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 	@$(PYTHON) tools/title_compare.py --demo-fight --demo-fight-min-first $(DEMO_FIGHT_MIN_FIRST) \
 		--capture $(TITLE_CAPTURES)/frontend --port $(FRONTEND_DUMP)/run1
 
+# Attract cycle-2 oracle (a RATCHET, enforced in verify; roar-timing Task 26, record
+# §36): the same PR_FRONTEND_DUMP run. After the demo's exit frame (loop 1970) the
+# driver writes every presented frame to run1/cycle2 (loops 1971..2799, and inside
+# loop 1971 the 166 screens the logo player 0x1C740 writes: its 0x52106 blanks and
+# every TWI5/TWG frame), a separate dump so the front-end and demo-fight windows do
+# not change. title_compare --attract2 classifies the capture from the first
+# all-black frame after the front-end window (1885) to its end against those frames
+# only. Claim: no captured frame below ATTRACT2_MIN_FIRST is unexplained, and the
+# first unexplained frame is >= it. N = 2384 is the measured first unexplained frame: captures
+# 1886..2383 (the TWI5/TWG logos, the attract's second cycle with its lightning
+# flashes, and the title card) are explained; 2384 is the `- LOADING -` frame before
+# the second demo (the loader's read-stall class, like front-end 832 and attract 215:
+# no raw-code owner, record §35.1), and the second demo diverges from 2386. It fails
+# if an unexplained frame appears below N or N exceeds the capture's end + 1. Like
+# the front-end oracle, its window comes from the port's own dump, so it cannot
+# detect an under-rendering port.
+ATTRACT2_MIN_FIRST = 2384
+attract2-oracle: build ## Attract cycle-2 ratchet after the demo (skips without data/title-captures/frontend)
+	@echo "== attract cycle-2 oracle (ratchet on the first unexplained frame, N=$(ATTRACT2_MIN_FIRST)) =="
+	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
+		rm -rf $(FRONTEND_DUMP); \
+		PR_FRONTEND_DET=$(FRONTEND_DUMP) PR_GAME_DIR=$(GAME_DIR) ./$(BUILD_DIR)/run_tests; \
+	else \
+		echo "attract2-oracle: no capture at $(TITLE_CAPTURES)/frontend, cycle 2 not compared"; \
+	fi
+	@$(MAKE) --no-print-directory attract2-compare
+
+# The --attract2 comparison alone, on the dump the last front-end run left (verify
+# runs it right after demo-fight-oracle, which made that dump).
+attract2-compare:
+	@$(PYTHON) tools/title_compare.py --attract2 --attract2-min-first $(ATTRACT2_MIN_FIRST) \
+		--capture $(TITLE_CAPTURES)/frontend --port $(FRONTEND_DUMP)/run1
+
 # Headless FM render: on hosts where SDL audio cannot open, the windowed run is
 # silent, so this plays the title bank through the sequencer + OPL core + mixer
 # and writes a 16-bit stereo WAV at the OPL rate for listening in any player.
@@ -245,7 +279,7 @@ audio-render: build ## Render the title FM music headlessly to a WAV (AUDIO_WAV,
 # The --check run must come first: test_gfx.c reads frame_0001/0009/0017/0025.idx
 # from the CWD, so the ladder has to produce them (frames >= 25) before the suite
 # consumes them — otherwise that four-frame comparison never runs.
-verify: build ## Full ladder: --check frames, oracle-required tests, front-end + demo-fight ratchet oracles, symbols.h idempotence
+verify: build ## Full ladder: --check frames, oracle-required tests, front-end + demo-fight + attract cycle-2 ratchet oracles, symbols.h idempotence
 	@echo "== headless frames (must precede the tests that read frames/frame_*.idx) =="
 	./$(BUILD_DIR)/prageport --game-dir $(GAME_DIR) --check $(verify_frames)
 	@echo "== tests (oracles required; consume the captured frames) =="
@@ -257,6 +291,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@$(MAKE) --no-print-directory frontend-oracle
 	@echo "== demo-fight oracle (ratchet on the first unexplained frame) =="
 	@$(MAKE) --no-print-directory demo-fight-oracle
+	@echo "== attract cycle-2 oracle (ratchet; the demo-fight run's dump) =="
+	@$(MAKE) --no-print-directory attract2-compare
 	@echo "== attract prefix oracle (pixel-exact) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory attract-oracle
 	@echo "== gra_extract oracle tests (real assets required) =="

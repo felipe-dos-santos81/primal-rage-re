@@ -80,4 +80,9 @@ void render_scroll_fill(void);
  * passes the state-6 RNG draw as `i`. */
 void render_scroll_setup(u32 i);
 
+/* 0x4F228. The projection reset: DS_00107A54 = 0 (the per-frame 0x389C4/
+ * 0x38A38 gate in the master loop), DS_00107A55 = al, and the words
+ * DS_00107A3A and DS_00107A38 = 0. */
+void render_projection_reset(u8 al);
+
 #endif /* PR_RENDER_H */

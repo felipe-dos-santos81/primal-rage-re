@@ -329,3 +329,17 @@ void render_scroll_setup(u32 i)
     render_scroll_fill();                               /* 0x387DD (0x38A38) */
     DSB(DS_00107A54) = 1;                               /* 0x387E2 */
 }
+
+/* 0x4F228. Disables the scroll/zoom projection: DS_00107A54 = 0 (0x4F22A
+ * `xor ah,ah`, stored at 0x4F230), DS_00107A55 = the caller's AL (0x4F236), and
+ * the two projection words DS_00107A3A and DS_00107A38 = 0 (0x4F23B/0x4F242,
+ * from the zeroed EDX/EBX). EBX and EDX are pushed and restored. The call site
+ * the port reaches, 0x2BAF4 (actors_reset) at 0x2BBC4, zeroes EAX first
+ * (0x2BBC0), so AL is 0 there. */
+void render_projection_reset(u8 al)
+{
+    DSB(DS_00107A54) = 0;
+    DSB(DS_00107A55) = al;
+    DSW(DS_00107A3A) = 0;
+    DSW(DS_00107A38) = 0;
+}

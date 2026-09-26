@@ -47,11 +47,40 @@ static void movie_pace(u32 delay_us)
     while (ticks-- != 0) host_wait_vblank();
 }
 
+/* PORT: the dump seam. 0x1C740 writes the screen inside one master-loop
+ * iteration (its own VBlank-gated blits, not the 0x25643 present), so a driver
+ * that dumps once per iteration cannot see those screens. When set, the hook
+ * runs after each screen the player writes: the entry and exit blanks
+ * (0x52106) and each frame's present. NULL (the default) does nothing. */
+static void (*s_screen_hook)(void);
+
+void movie_set_screen_hook(void (*hook)(void)) { s_screen_hook = hook; }
+
+static void movie_screen_changed(void)
+{
+    if (s_screen_hook != NULL) s_screen_hook();
+}
+
+/* 0x1C740 — game_flow "Boot logos". 0x52106(0) at entry blanks the screen and
+ * zeroes the tick counters; the open/decode loop runs every frame
+ * uVar7 = 1..piVar3[3]: palette (0x65340, after a VBlank spin), decode
+ * (0x64130), blit of the frame's dirty rectangles (0x64ED8/0x50D23), advance
+ * (0x643CC) unless it is the last, and the per-frame wait (0x65240); the
+ * key test (0x62756/0x50161) leaves the loop. The close (0x63CE8) is followed
+ * by 0x52106(0) again, inside the opened arm. So the last frame is blitted too
+ * and then blanked: capture 1886 is the blank spliced into TWI5 frame 0, and
+ * capture 2094 is TWI5 frame 119 spliced into frame 120 (the 121st) before
+ * the exit blank (capture 2095).
+ * PORT: the raw's DS_000A81A8 and 0x62756 skip tests at entry are not
+ * modelled (the port's loop exit flag and key poll); ESC leaves the loop. */
 int movie_play(const char *game_dir, const char *name)
 {
     s_presented = 0;
     s_pace = 0;
     if (game_dir == NULL || name == NULL || name[0] == '\0') return 0;
+
+    gfx_screen_reset(0u);                          /* 0x1C74D 0x52106 */
+    movie_screen_changed();
 
     u32 off = 0, size = 0;
     if (!res_load_file(game_dir, name, &off, &size)) {
@@ -75,34 +104,13 @@ int movie_play(const char *game_dir, const char *name)
     }
 
     u8 *draw = mem + DSD(DS_000E87A4);
-    static u8 last[MOVIE_PIXELS];
 
     for (u32 i = 0; i < n; i++) {
-        int final = (n > 1u && i + 1u == n);
-        if (final) {
-            /* The original decodes every payload frame but shows the final one
-             * only when it is a ring/hold frame — the image already on screen.
-             * Decode it into `last`, seeded from the current draw buffer so its
-             * deltas reference the right previous frame, then keep the drawn
-             * image only when the final frame is a hold.
-             * TODO(verify): the original's 0x1C740 player-loop semantics are
-             * unproven (no working scriptable DOSBox-X debugger); this
-             * fixed-profile rule reproduces the settled capture counts (TWI5
-             * 120 of 121, TWG 41 of 41) via the trailing ring/hold evidence in
-             * the task-5 ledger. */
-            memcpy(last, draw, wh);
-            if (!smk_decode_frame(&m, last)) return 0;
-            if (memcmp(last, draw, wh) == 0) {
-                smk_palette_to(&m, gfx_dac);
-                movie_present(w, h);
-                s_presented++;
-            }
-        } else {
-            if (!smk_decode_frame(&m, draw)) return 0;
-            smk_palette_to(&m, gfx_dac);
-            movie_present(w, h);
-            s_presented++;
-        }
+        if (!smk_decode_frame(&m, draw)) return 0;
+        smk_palette_to(&m, gfx_dac);
+        movie_present(w, h);
+        s_presented++;
+        movie_screen_changed();
 
         movie_pace(delay);
         host_pump();
@@ -112,5 +120,7 @@ int movie_play(const char *game_dir, const char *name)
          * while a movie plays. */
         if (input_drain_esc() || host_quit_requested()) break;
     }
+    gfx_screen_reset(0u);                          /* 0x1C873 0x52106 */
+    movie_screen_changed();
     return 1;
 }

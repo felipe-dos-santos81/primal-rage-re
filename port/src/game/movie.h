@@ -15,10 +15,14 @@
  * arguments, or a frame that failed to decode). ESC ends the movie cleanly. */
 int movie_play(const char *game_dir, const char *name);
 
-/* PORT: presented-frame count of the last movie_play() call — the trailing
- * ring/hold rule is the player's, so a test asserts the count the player really
+/* PORT: presented-frame count of the last movie_play() call — the player
+ * presents every decoded frame, so a test asserts the count the player really
  * presented (like game_audio_ticks() for the audio service). 0 before any play
  * and after a skip. */
 u32 movie_frames_presented(void);
+
+/* PORT: a dump seam. The hook runs after each screen the player writes (the
+ * 0x52106 entry and exit blanks and every presented frame); NULL clears it. */
+void movie_set_screen_hook(void (*hook)(void));
 
 #endif /* PR_MOVIE_H */

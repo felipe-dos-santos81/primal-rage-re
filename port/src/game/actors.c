@@ -10,6 +10,7 @@
  * themselves when the list is empty. The two pools are allocated by
  * res_load_index (platform/res.c), so actors_init only validates them. */
 #include "game/actors.h"
+#include "game/attract.h"
 #include "game/effects.h"
 #include "game/fighter.h"
 #include "game/fight.h"
@@ -95,6 +96,8 @@ static void anim_code_4AC18(u32 rec, u32 arg);
 static void anim_code_4AC80(u32 rec, u32 arg);
 static void anim_code_3D214(u32 rec, u32 arg);
 static void anim_code_3D26C(u32 rec, u32 arg);
+static void anim_code_4F83C(u32 rec, u32 arg);
+static void anim_code_10FC4(u32 rec, u32 arg);
 static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side);
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side);
 
@@ -205,6 +208,13 @@ int actors_init(void)
      * 0x3E1D0, called by 0x19020 at 0x1903F as fn(side) with EAX returned. */
     fn_register(0x3E484u, (void (*)(void))fighter_3e484);
     fn_register(0x3E1D0u, (void (*)(void))fighter_3e1d0);
+    /* PORT: the attract lightning stream 0xE890A (descriptor 0x9AD30, the
+     * phase-0xA actor 0x11000 spawns at 0x11478 when DS_000F0A5C != 0): its
+     * 0xD100 targets 0x4F83C (the palette flash start, dwords at 0xE8916,
+     * 0xE893C, 0xE8958 and 0xE896E) and 0x10FC4 (dword at 0xE892E), opcode
+     * 0x11, mode 0x4000. */
+    fn_register(0x4F83Cu, (void (*)(void))anim_code_4F83C);
+    fn_register(0x10FC4u, (void (*)(void))anim_code_10FC4);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -273,8 +283,7 @@ void actors_reset(void)
          rec += ACTOR_REC_SIZE)
         list_insert_before(DS_00105B3C, rec);
     effects_init();                             /* 0x2BBB8 (0x13ADC) */
-    /* PORT: 0x4F228(0,0) zeroes the input/mouse state at DS_00107A38/3A and
-     * DS_00107A54/55; input state is owned by platform/input.c. */
+    render_projection_reset(0u);                    /* 0x2BBC0/0x2BBC4 0x4F228 */
     DSD(DS_00105B44) = 0;
     DSD(DS_00105B48) = 0;
     render_list_init();                             /* 0x1C350 */
@@ -282,18 +291,9 @@ void actors_reset(void)
     mem_fill(DS_00105F38, 0, 0x14D4u);              /* 0x2F920 */
     /* 0x2BAF4's param_1 != 0 arm: 0x52106 clears both offscreen buffers, blacks
      * the DAC and clears the screen aperture, and zeroes the tick counters.
-     * PORT: the VGA DAC clear is palette_list_init's gfx_dac memset; the literal
-     * 0xA0000 clear (0x5214C-0x52151 `mov eax,0xa0000; call 0x51f72`) is
-     * gfx_aperture(), the port's model of that screen. The param_1 == 0 arm
-     * (copy DS_000E87A0 into DS_000E87A4) is unreachable from the title path and
-     * is not transcribed. */
-    /* PORT: 0x52106 stores its param_1 into both tick counters; the call site
-     * (0x2BBEA) zeroes EAX first, so param_1 is provably 0. */
-    DSD(DS_00101508) = 0;
-    DSD(DS_0010150C) = 0;
-    mem_fill(DSD(DS_001014E8), 0, 0xFA00u);
-    mem_fill(DSD(DS_001014E4), 0, 0xFA00u);
-    memset(gfx_aperture(), 0, 0xFA00u);          /* 0x5214C 0x51F72 */
+     * The param_1 == 0 arm (copy DS_000E87A0 into DS_000E87A4) is unreachable
+     * from the title path and is not transcribed. */
+    gfx_screen_reset(0);                            /* 0x2BBE8/0x2BBEA 0x52106 */
     palette_list_init();                            /* 0x336C0 */
     DSB(DS_00105BED) = 1;
     /* PORT: 0x2EA30() restores the lock state saved before the counter zeroing;
@@ -664,6 +664,26 @@ static void anim_code_10FA8(u32 rec, u32 arg)
     (void)rec;
     (void)arg;
     actor_spawn((const u32 *)(mem + 0x9AD08u), 0, 0xE4, 0, 0);
+}
+
+/* 0x4F83C — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x4F83C reads neither (it pushes EBX and
+ * EDX, overwrites DL from DS_00104AD0 at 0x4F83E and zeroes AH at 0x4F847
+ * before any use, and reloads EAX from DS_000F0A48 at 0x4F867), so this
+ * wrapper drops both and calls attract_palette_start() unchanged. */
+static void anim_code_4F83C(u32 rec, u32 arg)
+{
+    (void)rec;
+    (void)arg;
+    attract_palette_start();
+}
+
+/* 0x10FC4. The animation opcode 0x11 target at 0xE892E on the attract
+ * lightning stream: `mov dword [eax+0x18],0; ret` with EAX = rec. */
+static void anim_code_10FC4(u32 rec, u32 arg)
+{
+    (void)arg;
+    DSD(rec + 0x18u) = 0;
 }
 
 /* 0x12720. The animation opcode 0x11 target reached on the globe's first

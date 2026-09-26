@@ -7,6 +7,9 @@
 #include "platform/smacker.h"
 #include "test.h"
 #include "game/movie.h"
+#include "platform/gfx.h"
+#include "mem.h"
+#include "symbols.h"
 #include "host.h"
 #include <dirent.h>
 #include <stdio.h>
@@ -187,11 +190,13 @@ int test_smacker(void)
 
     /* Task 5: every frame of both movies decodes in bounds (no dropping) and
      * the palette ends populated. The decoder's count equals the header (TWI5
-     * 121, TWG 41). The original presents only a prefix (settled by re-capture,
-     * commit 199cad1): TWI5 120 of 121 - its 121st payload frame is real and
-     * never presented - and TWG 41 of 41. That presentation rule is the
-     * player's (Task 7), not the test's; here the oracle compares the captured
-     * prefix via `smk_compare.py --frames <capture count>`. With PR_SMK_DUMP
+     * 121, TWG 41). The collapsed smk capture holds a prefix (settled by
+     * re-capture, commit 199cad1): TWI5 120 of 121 whole frames - its 121st
+     * payload frame is blitted but blanked by 0x52106 before a whole scanout
+     * (record §36, front-end capture 2094) - and TWG 41 of 41. That
+     * presentation rule is the player's (Task 7), not the test's; here the
+     * oracle compares the captured prefix via `smk_compare.py --frames
+     * <capture count>`. With PR_SMK_DUMP
      * set, write every decoded frame as RGB24. */
     const char *dump = getenv("PR_SMK_DUMP");
     char dump_sub[600];
@@ -243,14 +248,41 @@ int test_smacker(void)
 /* ---- test_movie.c ---- */
 
 /* The player owns the boot-logos presentation rule. The decoder decodes every
- * payload frame; the original presents TWI5 120 of 121 (its 121st payload frame
- * is real and never shown) and TWG 41 of 41 (its 41st is a hold of the 40th, so
- * the held image is displayed). `movie_frames_presented()` reports the count the
- * last movie_play() actually presented, so the rule is asserted on the real
- * playback, not on a helper.
+ * payload frame, and 0x1C740 blits every one (its loop runs uVar7 = 1..count,
+ * the last frame included), then blanks the screen with 0x52106(0): TWI5
+ * presents 121 (its 121st frame is on screen only until the exit blank, which
+ * is why the collapsed smk capture holds 120 whole frames while the front-end
+ * capture's 2094 splices frame 119 into it; record §36) and TWG 41.
+ * `movie_frames_presented()` reports the count the last movie_play() actually
+ * presented, so the rule is asserted on the real playback, not on a helper.
+ * The screen hook sees every screen the player writes: the entry blank, each
+ * frame, and the exit blank.
  * A headless gate must not pace against the wall clock: the suite never opens a
  * window, so the movie's real-time tick budget (TWI5 ~515 ticks) must not be
  * spent waiting. Pacing is re-enabled when a window is open (windowed run). */
+static int g_movie_hook;
+static int g_movie_hook_first_lit, g_movie_hook_second_lit;
+static int g_movie_hook_last_lit;
+
+/* 1 when the displayed screen holds a non-zero index or the DAC a non-zero
+ * colour for index 0 (the blanks clear both). */
+static int movie_screen_lit(void)
+{
+    const u8 *ap = gfx_aperture();
+    for (u32 i = 0; i < 320u * 200u; i++)
+        if (ap[i] != 0) return 1;
+    return gfx_dac[0][0] | gfx_dac[0][1] | gfx_dac[0][2] ? 1 : 0;
+}
+
+static void movie_hook(void)
+{
+    int lit = movie_screen_lit();
+    if (g_movie_hook == 0) g_movie_hook_first_lit = lit;
+    if (g_movie_hook == 1) g_movie_hook_second_lit = lit;
+    g_movie_hook_last_lit = lit;
+    g_movie_hook++;
+}
+
 int test_movie(void)
 {
     int before = g_failures;
@@ -260,25 +292,49 @@ int test_movie(void)
         return 0;
     }
 
+    /* 0x52106 at entry and exit: seed the tick counters, the DAC and the
+     * aperture non-zero; the hook records the calls and whether the screen was
+     * black on the first and last. */
+    movie_set_screen_hook(movie_hook);
+    DSD(DS_00101508) = 0x55u;
+    DSD(DS_0010150C) = 0x66u;
+    memset(gfx_dac, 0x2A, sizeof gfx_dac);
+    memset(gfx_aperture(), 0x11, 320 * 200);
+    g_movie_hook = 0;
     u32 ticks0 = host_tick_count();
     CHECK_EQ_INT(movie_play(dir, "twi5.smk"), 1);
-    CHECK_EQ_INT((int)movie_frames_presented(), 120);
+    CHECK_EQ_INT((int)movie_frames_presented(), 121);
     CHECK((host_tick_count() - ticks0) < 100,
           "headless playback does not sleep on the VBlank clock");
+    CHECK_EQ_INT(g_movie_hook, 123);
+    CHECK_EQ_INT(g_movie_hook_first_lit, 0);
+    CHECK_EQ_INT(g_movie_hook_second_lit, 1);
+    CHECK_EQ_INT(g_movie_hook_last_lit, 0);
+    CHECK_EQ_INT((int)DSD(DS_00101508), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010150C), 0);
+    CHECK_EQ_INT(gfx_dac[200][1], 0);
+    CHECK_EQ_INT((int)gfx_aperture()[1000], 0);
 
+    g_movie_hook = 0;
     CHECK_EQ_INT(movie_play(dir, "twg.smk"), 1);
     CHECK_EQ_INT((int)movie_frames_presented(), 41);
+    CHECK_EQ_INT(g_movie_hook, 43);
 
     /* A missing name is a clean skip: return 1, message, no crash, nothing
      * presented. The name is lowercase while the file is uppercase; the scan
      * inside res_load_file handles the case mismatch, so a missing name is a
      * genuine miss, not a case artefact. */
+    g_movie_hook = 0;
     CHECK_EQ_INT(movie_play(dir, "no-such-movie.smk"), 1);
     CHECK_EQ_INT((int)movie_frames_presented(), 0);
+    CHECK_EQ_INT(g_movie_hook, 1);          /* the entry blank only */
 
     /* Invalid arguments are a hard failure (0), never a crash. */
+    g_movie_hook = 0;
     CHECK_EQ_INT(movie_play(NULL, "twi5.smk"), 0);
     CHECK_EQ_INT(movie_play(dir, NULL), 0);
+    CHECK_EQ_INT(g_movie_hook, 0);
+    movie_set_screen_hook(NULL);
 
     return g_failures - before;
 }
