@@ -426,6 +426,23 @@ u32 fighter_3e484(u32 side);
  * 0xC75F5/0xC75FF box tables. EAX = side. */
 u32 fighter_3e1d0(u32 side);
 
+/* 0x1490C. The character-3 reaction-0x27 callback (*(u32*)0xA4734), called
+ * by 0x34E2C at 0x35045 with (slot, rec, side): 0x14814 starts the reaction
+ * stream and arms the slot (+0x0C 0x1461C, +0x18 0x145CC, +0x1C 0x145E4),
+ * then the side's 0xFD11C byte = 1. */
+void fighter_1490c(u32 slot, u32 rec, u32 side);
+
+/* 0x1461C. The slot +0x0C callback 0x14814 stores (0x3531C case 7), same
+ * (slot, rec, side) registers: the +0x57 step machine 0..3. */
+void fighter_1461c(u32 slot, u32 rec, u32 side);
+
+/* 0x145CC. The +0x18 hook 0x14814 stores: returns 1. EAX = side. */
+u32 fighter_145cc(u32 side);
+
+/* 0x145E4. The +0x1C callback 0x14814 stores: 0x39834(ctx[1], ctx[2]'s
+ * +0x5F) on 0x33950(side). EAX = side. */
+void fighter_145e4(u32 side);
+
 /* 0x3B938. Burst slot `slot`'s projectile (slot+0x08): restart it on the
  * burst stream (0xE1898 at 2.0 when its +0x48 is 4, else the per-character
  * 0xBDFC8/0xBDFF0 stream and hold), detach it (+0x48, +0x34/+0x36 and

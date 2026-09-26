@@ -98,6 +98,7 @@ static void anim_code_3D214(u32 rec, u32 arg);
 static void anim_code_3D26C(u32 rec, u32 arg);
 static void anim_code_4F83C(u32 rec, u32 arg);
 static void anim_code_10FC4(u32 rec, u32 arg);
+static void anim_code_37CD4(u32 rec, u32 arg);
 static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side);
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side);
 
@@ -215,6 +216,20 @@ int actors_init(void)
      * 0x11, mode 0x4000. */
     fn_register(0x4F83Cu, (void (*)(void))anim_code_4F83C);
     fn_register(0x10FC4u, (void (*)(void))anim_code_10FC4);
+    /* PORT: 0x34E2C's reaction callback 0x1490C (*(u32*)0xA4734, character
+     * 3's reaction 0x27, reached on the second demo's first state-7 frame),
+     * called at 0x35045 with the (slot, rec, side) registers, and the three
+     * callbacks its 0x14814 stores: +0x0C 0x1461C (0x3531C case 7, same
+     * registers), the +0x18 hook 0x145CC (0x19020, fn(side) with EAX
+     * returned) and +0x1C 0x145E4 (0x193B0's 0x19505, fn(side)). Its streams
+     * 0xD2E9A/0xD2EDC/0xD2EBA/0xD2EFC carry the 0xD100 target 0x37CD4
+     * (dwords at 0xD2EB0, 0xD2EBC, 0xD2EF2, 0xD2EFE), opcode 0x11, mode
+     * 0x4000. */
+    fn_register(0x1490Cu, (void (*)(void))fighter_1490c);
+    fn_register(0x1461Cu, (void (*)(void))fighter_1461c);
+    fn_register(0x145CCu, (void (*)(void))fighter_145cc);
+    fn_register(0x145E4u, (void (*)(void))fighter_145e4);
+    fn_register(0x37CD4u, (void (*)(void))anim_code_37CD4);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -684,6 +699,23 @@ static void anim_code_10FC4(u32 rec, u32 arg)
 {
     (void)arg;
     DSD(rec + 0x18u) = 0;
+}
+
+/* 0x37CD4 — the animation-opcode target shape (the 0xD100 target of the
+ * 0x1490C family's streams, 0xD2EB0 onward). EAX = rec; EDX is pushed at
+ * 0x37CD4 and never read. With the record's +0x14 (its slot) set, it toggles
+ * the slot's +0x42 bit 3 and sets the slot's +0x74 word to 0x378 when the bit
+ * is now set, else 0. */
+static void anim_code_37CD4(u32 rec, u32 arg)
+{
+    u32 slot = DSD(rec + 0x14u);                        /* 0x37CD5 */
+    (void)arg;
+    if (slot == 0u) return;                             /* 0x37CD8 */
+    DSB(slot + 0x42u) = (u8)(DSB(slot + 0x42u) ^ 8u);   /* 0x37CDC..0x37CE2 */
+    if ((DSB(slot + 0x42u) & 8u) != 0u)                 /* 0x37CE5 */
+        DSW(slot + 0x74u) = 0x0378u;                    /* 0x37CEA */
+    else
+        DSW(slot + 0x74u) = 0u;                         /* 0x37CF2 */
 }
 
 /* 0x12720. The animation opcode 0x11 target reached on the globe's first
