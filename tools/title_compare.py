@@ -456,6 +456,12 @@ def load_port(d, n):
 # [560..1658] (1003 -> 1099; still the same 3 transition frames); the allowed
 # set stays (832, 833), and the exhibition set grows to port frames 0..1188
 # (952 exhibited).
+# The fighters' body push 0x3BB90 (game_frame's 0x2541D: 0x4FB20's distance
+# against the 0xBEEF8 widths, 0x3BAEC/0x3B9D8 push each side away by half;
+# first at f = 772, the T-rex's leap onto the raptor) explains captures
+# 1659..1714, [560..1658] -> [560..1714] (1099 -> 1155; still the same 3
+# transition frames); the allowed set stays (832, 833), and the exhibition
+# set grows to port frames 0..1236 (1000 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

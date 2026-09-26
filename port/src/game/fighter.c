@@ -5220,3 +5220,148 @@ void fighter_winner_body(u32 side)
     DSB(ctx[2] + 0x8Au) = 0;                                /* 0x19576 */
     fighter_192dc(ctx[0]);                                  /* 0x19580 */
 }
+
+/* ---- 0x3BB90 the fighters' body push (game_frame's 0x2541D) --------------
+ * The raw runs it every frame of the demo fight, from the DS_00104B15 tail
+ * before 0x12D48. When the two latched slot points are closer than the sum of
+ * the characters' 0xBEEF8 widths, 0x3BAEC moves each side away from the other
+ * by half the penetration through 0x3B9D8 (0x1883C re-derives the record). */
+
+/* PORT: data-object addresses symbols.h does not name. */
+#define FIGHTER_D338C   0x000D338Cu  /* 0x3BB90/0x4FB20: side 0's latched y */
+
+/* 0x3B8D8. 1 when the side's slot+0x2C moved by `delta` reaches the arena
+ * wall: x >= DS_000BE018 or x <= -DS_000BE018. EAX = side, EDX = delta. */
+static int fighter_3b8d8(u32 side, s32 delta)
+{
+    s32 x = (s32)DSD(DS_001077B0 + side * 0x94u + 0x2Cu) + delta;  /* 0x3B8E7/0x3B8F4 */
+    s32 wall = (s32)DSD(DS_000BE018);                   /* 0x3B8EE */
+    if (x >= wall) return 1;                            /* 0x3B8F6 */
+    if (x <= -wall) return 1;                           /* 0x3B8FE/0x3B900 */
+    return 0;                                           /* 0x3B908 */
+}
+
+/* 0x3B9D8. Push one side away from the other by half of `pen` (EDX's low word
+ * sign-extended, 0x3BA39/0x3BA6E; the halves truncate toward zero, the
+ * `sar edx,0x1f / sub / sar 1` idiom). EAX = side. A side whose slot+0x42 bit
+ * 5 is set is not pushed. Both slots take +0x41 bit 7 (the 0x186D0 +0x34
+ * latch). When the other slot's +0x43 bit 1 is set the side moves by the other
+ * slot's word +0x4C instead and DS_00107D30 is raised. Otherwise the side
+ * moves away (0x3B8D8 wall test), or, at the wall, the other side is moved.
+ * With the side's +0x54 == 2 a record speed toward the other is zeroed. */
+static void fighter_3b9d8(u32 side, s32 pen)
+{
+    u32 ctx[6];
+    s32 half;
+    fighter_ctx_same(ctx, side);                        /* 0x3B9E3 0x33950 */
+    if ((DSB(ctx[2] + 0x42u) & 0x20u) != 0u) return;    /* 0x3B9EC */
+    DSB(ctx[2] + 0x41u) |= 0x80u;                       /* 0x3B9F6 */
+    DSB(ctx[3] + 0x41u) |= 0x80u;                       /* 0x3B9FE */
+    if ((DSB(ctx[3] + 0x43u) & 0x02u) != 0u) {          /* 0x3BA06 */
+        fighter_1883c(ctx[0], (u32)((s32)DSD(ctx[3] + 0x4Au) >> 16), 0u); /* 0x3BA19 */
+        DSB(DS_00107D30) = 1u;                          /* 0x3BA1E */
+        return;
+    }
+    if ((s32)DSD(ctx[2] + 0x2Cu) >= (s32)DSD(ctx[3] + 0x2Cu)) {       /* 0x3BA34 */
+        half = pen / 2;                                 /* 0x3BA3C..0x3BA45 */
+        if (fighter_3b8d8(ctx[0], half) != 0)           /* 0x3BA4E */
+            fighter_1883c(ctx[1], (u32)(-pen / 2), 0u); /* 0x3BA57..0x3BAAA */
+        else
+            fighter_1883c(ctx[0], (u32)half, 0u);       /* 0x3BAA3/0x3BAAA */
+    } else {
+        half = -pen / 2;                                /* 0x3BA71..0x3BA7C */
+        if (fighter_3b8d8(ctx[0], half) != 0)           /* 0x3BA85 */
+            fighter_1883c(ctx[1], (u32)(pen / 2), 0u);  /* 0x3BA8E..0x3BAAA */
+        else
+            fighter_1883c(ctx[0], (u32)half, 0u);       /* 0x3BAA3/0x3BAAA */
+    }
+    if (DSB(ctx[2] + 0x54u) != 2u) return;              /* 0x3BAB3 */
+    if ((s32)DSD(ctx[2] + 0x2Cu) < (s32)DSD(ctx[3] + 0x2Cu)) {        /* 0x3BAC0 */
+        if ((s16)DSW(ctx[4] + 0x34u) > 0) return;       /* 0x3BAC9 */
+    } else {
+        if ((s16)DSW(ctx[4] + 0x34u) < 0) return;       /* 0x3BAD6 */
+    }
+    DSW(ctx[4] + 0x34u) = 0;                            /* 0x3BADD */
+}
+
+/* 0x3BAEC. Push both sides apart by `pen` (AX, sign-extended at 0x3BB37/
+ * 0x3BB4C). Nothing when either slot's +0x42 bit 2 is set. Side 1 goes first
+ * when only side 0's +0x43 bit 1 is set, else side 0 first. Each slot's
+ * +0x40 bit 15, read before the pushes, is ORed back afterwards. */
+static void fighter_3baec(s32 pen)
+{
+    u32 keep0, keep1;
+    if ((DSB(DS_001077B0 + 0x42u) & 4u) != 0u) return;          /* 0x3BAF0 */
+    if ((DSB(DS_001077B0 + 0x94u + 0x42u) & 4u) != 0u) return;  /* 0x3BAFD */
+    keep0 = DSW(DS_001077F0) & 0x8000u;                 /* 0x3BB0A/0x3BB1E/0x3BB26 */
+    keep1 = DSW(DS_00107884) & 0x8000u;                 /* 0x3BB11/0x3BB20 */
+    if ((DSB(DS_001077B0 + 0x43u) & 2u) != 0u                   /* 0x3BB29 */
+            && (DSB(DS_001077B0 + 0x94u + 0x43u) & 2u) == 0u) { /* 0x3BB2E */
+        fighter_3b9d8(1u, pen);                         /* 0x3BB41 */
+        fighter_3b9d8(0u, pen);                         /* 0x3BB5F */
+    } else {
+        fighter_3b9d8(0u, pen);                         /* 0x3BB53 */
+        fighter_3b9d8(1u, pen);                         /* 0x3BB5F */
+    }
+    DSD(DS_001077F0) |= keep0;                          /* 0x3BB6F/0x3BB7E */
+    DSD(DS_00107884) |= keep1;                          /* 0x3BB7C/0x3BB84 */
+}
+
+/* 0x4FB20. The body distance of the two latched points (DS_000D3388/D338C and
+ * DS_000D3390/D3394) against the width sum DS_000D33A8: 0 when either axis
+ * distance exceeds it, else the octagonal estimate max + min/4 + min/8 (both
+ * shifts arithmetic, the second on the first's result), and 0 unless it is
+ * below the width sum. Writes the signed and absolute axis distances. */
+static u32 fighter_4fb20(void)
+{
+    s32 w = (s32)DSW(DS_000D33A8);                      /* 0x4FB25 */
+    s32 dx = (s32)(DSD(DS_000D3388) - DSD(DS_000D3390));    /* 0x4FB2C/0x4FB31 */
+    s32 dy, adx, ady, q, d;
+    DSD(DS_000D33A0) = (u32)dx;                         /* 0x4FB37 */
+    adx = dx < 0 ? (s32)(0u - (u32)dx) : dx;            /* 0x4FB3C/0x4FB40 */
+    DSD(DS_000D3398) = (u32)adx;                        /* 0x4FB42 */
+    if (adx > w) return 0u;                             /* 0x4FB47/0x4FB49 */
+    dy = (s32)(DSD(FIGHTER_D338C) - DSD(DS_000D3394));  /* 0x4FB4B/0x4FB51 */
+    DSD(DS_000D33A4) = (u32)dy;                         /* 0x4FB57 */
+    ady = dy < 0 ? (s32)(0u - (u32)dy) : dy;            /* 0x4FB5D/0x4FB61 */
+    DSD(DS_000D339C) = (u32)ady;                        /* 0x4FB63 */
+    if (ady > w) return 0u;                             /* 0x4FB69/0x4FB6B */
+    if (ady <= adx) {                                   /* 0x4FB6D/0x4FB6F */
+        q = ady >> 2;                                   /* 0x4FB71 */
+        d = q + (q >> 1) + adx;                         /* 0x4FB76..0x4FB7A */
+    } else {
+        q = adx >> 2;                                   /* 0x4FB7E */
+        d = q + (q >> 1) + ady;                         /* 0x4FB83..0x4FB87 */
+    }
+    if (w > d) return (u32)d;                           /* 0x4FB89/0x4FB8B */
+    return 0u;                                          /* 0x4FB8D */
+}
+
+/* 0x3BB90. The per-frame body push; returns the raw's AL (1 when pushed). */
+u32 fighter_body_push(void)
+{
+    u32 s0, s1, w0, w1, d;
+    DSB(DS_00107D30) = 0u;                              /* 0x3BB95 */
+    if (DSB(DS_001078FA) != 2u) return 0u;              /* 0x3BBA2 */
+    s0 = DSD(DS_001077A8);                              /* 0x3BBAB */
+    if (s0 == 0u) return 0u;                            /* 0x3BBB3 */
+    s1 = DSD(DS_001077AC);                              /* 0x3BBB9 */
+    if (s1 == 0u) return 0u;                            /* 0x3BBC1 */
+    fighter_slot_latch(0u);                             /* 0x3BBC9 0x186D0 */
+    fighter_slot_latch(1u);                             /* 0x3BBD3 0x186D0 */
+    if ((DSB(s0 + 0x42u) & 4u) != 0u) return 0u;        /* 0x3BBD8 */
+    if ((DSB(s1 + 0x42u) & 4u) != 0u) return 0u;        /* 0x3BBE2 */
+    DSD(DS_000D3388) = DSD(s0 + 0x2Cu);                 /* 0x3BBEF */
+    DSD(FIGHTER_D338C) = DSD(s0 + 0x30u);               /* 0x3BBF7 */
+    DSD(DS_000D3390) = DSD(s1 + 0x2Cu);                 /* 0x3BBFF */
+    DSD(DS_000D3394) = DSD(s1 + 0x30u);                 /* 0x3BC09 */
+    w1 = DSW(DS_000BEEF8 + (u32)DSB(s1 + 0x7Au) * 4u);  /* 0x3BC16 */
+    w0 = DSW(DS_000BEEF8 + (u32)DSB(s0 + 0x7Au) * 4u);  /* 0x3BC1E */
+    if (DSB(s0 + 0x54u) == 2u) w0 >>= 1;                /* 0x3BC26/0x3BC2C */
+    if (DSB(s1 + 0x54u) == 2u) w1 >>= 1;                /* 0x3BC2F/0x3BC35 */
+    DSW(DS_000D33A8) = (u16)(w0 + w1);                  /* 0x3BC38/0x3BC3A */
+    d = fighter_4fb20() & 0xFFFFu;                      /* 0x3BC40/0x3BC45 */
+    if (d == 0u) return 0u;                             /* 0x3BC48 */
+    fighter_3baec((s32)(s16)(u16)((u32)DSW(DS_000D33A8) - d));  /* 0x3BC4A..0x3BC5C */
+    return 1u;                                          /* 0x3BC61 */
+}

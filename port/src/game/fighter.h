@@ -243,6 +243,16 @@ void fighter_3ae9c(u32 side, u8 param_2);                /* 0x3AE9C */
  * +0x84 count compare, and dispatches the winner's reaction through 0x3B714. */
 void fighter_winner_body(u32 side);                      /* 0x193B0 */
 
+/* 0x3BB90. The fighters' body push the game_frame DS_00104B15 tail runs at
+ * 0x2541D, before 0x12D48. Clears DS_00107D30; with DS_001078FA == 2 and both
+ * DS_001077A8 slots live it re-latches both slots (0x186D0), and unless either
+ * slot's +0x42 bit 2 is set it copies their +0x2C/+0x30 to DS_000D3388..D3394,
+ * sums the 0xBEEF8 character widths (halved for a side whose +0x54 is 2) into
+ * DS_000D33A8, and when 0x4FB20's body distance is non-zero pushes the sides
+ * apart by the penetration (0x3BAEC -> 0x3B9D8 per side -> 0x1883C). Returns
+ * 1 when it pushed, else 0 (the 0x2541D caller ignores it). */
+u32 fighter_body_push(void);
+
 /* 0x46534. Add `delta` to the per-side AI-difficulty accumulator at
  * DS_001082C8[side], clamp to [0, byte[0xC9408 + byte[0x10452C]]], then raise to
  * DS_001082D0. Called by 0x4F434. */

@@ -2782,10 +2782,13 @@ static void check_game_frame_tail(void)
     DSW(DS_000EF6DC + 2u) = 0x5A5Au;
     DSD(0x000F0A78u) = 0x000F0A78u;
     DSD(0x000F0A7Cu) = 0x000F0A78u;
+    /* 0x2541D: the tail's 0x3BB90 body push clears DS_00107D30 first. */
+    DSB(DS_00107D30) = 1u;
     game_frame();
     CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x5D00);
     CHECK_EQ_INT((int)DSW(DS_000EF6DC), 0);
     CHECK_EQ_INT((int)DSW(DS_000EF6DC + 2u), 0x5A5A);
+    CHECK_EQ_INT((int)DSB(DS_00107D30), 0);
 
     (void)tf_demo_fixture();
     DSB(DS_00104B1D) = 1;
@@ -2796,8 +2799,10 @@ static void check_game_frame_tail(void)
     DSB(DS_000F0AFE) = 4;
     DSD(DS_000F0AF0) = 0x7000u;
     DSD(DS_00104AE8) = 0;
+    DSB(DS_00107D30) = 1u;
     game_frame();
     CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x7000);
+    CHECK_EQ_INT((int)DSB(DS_00107D30), 1);    /* the tail (and 0x3BB90) skipped */
 }
 
 /* 0x49300, state 6's fight-effect list init. It self-links the 0x1083C4 and
@@ -6855,6 +6860,248 @@ static void check_pass_a_tail(void)
     DSB(0x00107A80u + 0x40u) = sv_ac0;
 }
 
+/* ---- the 0x3BB90 body push ----------------------------------------------- */
+
+/* The body-push fixture: both slots live (DS_001078FA = 2), chars 0 and 3
+ * (0xBEEF8 widths 0x800/0x700), +0x54 = 2 on both (halved: w = 0x400 + 0x380
+ * = 1920), +0x40..+0x43 clear, and the latched points (x0, y0) and (x1, y1).
+ * The latch runs the anchor path (+0x42 bit 3 clear): the zeroed actor's
+ * sprite 0 is below either character's camera constant, so 0x18540 clamps the
+ * anchor to 0 = slot+0x20 and 0x18350 does not run; the seeded DS_00100AB0/AB4
+ * offsets are the demo's f = 772 ones (192/448 and 64/3200), so each record's
+ * +0x18/+0x1C is the point minus them. The speeds are the demo's (T-rex -842,
+ * raptor -160), DS_00107D30 is 1 and the 0xD3388..0xD33A8 scratch 0xA5. */
+static void bp_seed(s32 x0, s32 y0, s32 x1, s32 y1)
+{
+    u32 s0 = DS_001077B0;
+    u32 s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS;
+    u32 r1 = FIGHT_RECS + 0x100u;
+    fight_reset_recs();
+    fight_reset_actors();
+    mem_fill(s0, 0, 0x94u * 2u);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSB(DS_001078FA) = 2u;
+    DSB(s0 + 0x7Au) = 0u;
+    DSB(s1 + 0x7Au) = 3u;
+    DSB(s0 + 0x54u) = 2u;
+    DSB(s1 + 0x54u) = 2u;
+    DSD(DS_00100AB0) = 192u;
+    DSD(DS_00100AB4) = 448u;
+    DSD(DS_00100AB0 + 8u) = 64u;
+    DSD(DS_00100AB4 + 8u) = 3200u;
+    DSD(r0 + 0x18u) = (u32)(x0 - 192);
+    DSD(r0 + 0x1Cu) = (u32)(y0 - 448);
+    DSD(r1 + 0x18u) = (u32)(x1 - 64);
+    DSD(r1 + 0x1Cu) = (u32)(y1 - 3200);
+    DSD(s0 + 0x2Cu) = 0xDEADBEEFu;
+    DSD(s1 + 0x2Cu) = 0xDEADBEEFu;
+    DSW(r0 + 0x34u) = (u16)-842;
+    DSW(r1 + 0x34u) = (u16)-160;
+    DSB(DS_00107D30) = 1u;
+    mem_fill(DS_000D3388, 0xA5, 0x24u);
+}
+
+/* 0x3BB90 -> 0x4FB20 -> 0x3BAEC -> 0x3B9D8/0x3B8D8 -> 0x1883C. A: the demo's
+ * f = 772 (the capture-1659 push): the points (3436, 11393)/(2500, 9932) give
+ * dx 936, dy 1461, the estimate 1461 + 234 + 117 = 1812 < 1920, pen 108;
+ * side 0 (right) moves +54, side 1 -54, and side 1's speed (left of the other,
+ * not > 0) is zeroed while side 0's (right, < 0) is kept. B..D pin 0x4FB20's
+ * three gates and its estimate, E the other branch with an odd pen, one halved
+ * width and the truncating halves, F..G the +0x42 bit-2/bit-5 gates, H the
+ * +0x43 bit-1 arm and 0x3BAEC's order, I the two walls, K equal x, J the
+ * entry gates.
+ * Every asserted field is seeded to differ from its post-condition. */
+static void check_body_push(void)
+{
+    u32 s0 = DS_001077B0;
+    u32 s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS;
+    u32 r1 = FIGHT_RECS + 0x100u;
+    u8 sv_scratch[0x24];
+    tf_snap(sv_scratch, DS_000D3388, 0x24u);
+
+    /* A: the demo push. */
+    bp_seed(3436, 11393, 2500, 9932);
+    CHECK_EQ_INT((int)fighter_body_push(), 1);
+    CHECK_EQ_INT((int)DSB(DS_00107D30), 0);
+    CHECK_EQ_INT((int)DSD(DS_000D3388), 3436);
+    CHECK_EQ_INT((int)DSD(0x000D338Cu), 11393);
+    CHECK_EQ_INT((int)DSD(DS_000D3390), 2500);
+    CHECK_EQ_INT((int)DSD(DS_000D3394), 9932);
+    CHECK_EQ_INT((int)DSW(DS_000D33A8), 1920);
+    CHECK_EQ_INT((int)DSD(DS_000D33A0), 936);
+    CHECK_EQ_INT((int)DSD(DS_000D3398), 936);
+    CHECK_EQ_INT((int)DSD(DS_000D33A4), 1461);
+    CHECK_EQ_INT((int)DSD(DS_000D339C), 1461);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 3490);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 3298);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 2446);
+    CHECK_EQ_INT((int)DSD(r1 + 0x18u), 2382);
+    CHECK_EQ_INT((int)DSD(r0 + 0x1Cu), 10945);
+    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 6732);
+    CHECK_EQ_INT((int)(s16)DSW(r0 + 0x34u), -842);
+    CHECK_EQ_INT((int)(s16)DSW(r1 + 0x34u), 0);
+    CHECK_EQ_INT((int)(DSB(s0 + 0x41u) & 0x80u), 0x80);
+    CHECK_EQ_INT((int)(DSB(s1 + 0x41u) & 0x80u), 0x80);
+    /* The speed gate's other arms: the left side's +160 (> 0) is kept, the
+     * right side's +7 (not < 0) is zeroed. */
+    bp_seed(3436, 11393, 2500, 9932);
+    DSW(r0 + 0x34u) = 7u;
+    DSW(r1 + 0x34u) = 160u;
+    CHECK_EQ_INT((int)fighter_body_push(), 1);
+    CHECK_EQ_INT((int)(s16)DSW(r0 + 0x34u), 0);
+    CHECK_EQ_INT((int)(s16)DSW(r1 + 0x34u), 160);
+
+    /* B: |dx| = 1920 = w passes the `jg` gate (dy is written) but the estimate
+     * 1920 + 1 is not below w; |dx| = 1921 returns before dy is read. */
+    bp_seed(3436, 11393, 1516, 11388);
+    CHECK_EQ_INT((int)fighter_body_push(), 0);
+    CHECK_EQ_INT((int)DSD(DS_000D3398), 1920);
+    CHECK_EQ_INT((int)DSD(DS_000D33A4), 5);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 3436);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 3244);
+    CHECK_EQ_INT((int)(s16)DSW(r1 + 0x34u), -160);
+    CHECK_EQ_INT((int)(DSB(s1 + 0x41u) & 0x80u), 0);
+    bp_seed(3436, 11393, 1515, 11388);
+    CHECK_EQ_INT((int)fighter_body_push(), 0);
+    CHECK_EQ_INT((int)DSD(DS_000D33A0), 1921);
+    CHECK_EQ_INT((int)DSD(DS_000D33A4), (int)0xA5A5A5A5u);
+    /* |dx| 1919, |dy| 5: the estimate 1919 + 1 = 1920 equals w, no push. */
+    bp_seed(3436, 11393, 1517, 11388);
+    CHECK_EQ_INT((int)fighter_body_push(), 0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 3436);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 1517);
+
+    /* C: |dy| = 1921 (y0 below y1: dy -1921) fails the second gate. */
+    bp_seed(3436, 8000, 3336, 9921);
+    CHECK_EQ_INT((int)fighter_body_push(), 0);
+    CHECK_EQ_INT((int)DSD(DS_000D33A4), -1921);
+    CHECK_EQ_INT((int)DSD(DS_000D339C), 1921);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 3336);
+
+    /* D: |dx| = |dy| = 1200: 300 + 150 + 1200 = 1650, pen 270, halves 135;
+     * |dx| = |dy| = 1400: 350 + 175 + 1400 = 1925 >= 1920, no push. */
+    bp_seed(3400, 9000, 2200, 7800);
+    CHECK_EQ_INT((int)fighter_body_push(), 1);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 3535);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 2065);
+    bp_seed(3400, 9000, 2000, 7600);
+    CHECK_EQ_INT((int)fighter_body_push(), 0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 3400);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 2000);
+
+    /* E: side 1 on the right, |dx| 2000 > |dy| 404: 2000 + 101 + 50 = 2151;
+     * only side 0's width halved, w = 0x400 + 0x700 = 2816 (side 1's halved
+     * instead gives 2944, both 1920 < 2151), pen 665 (odd): side 0 moves
+     * -665/2 = -332 (truncating toward zero), side 1 +332. Side 0 (left, speed
+     * -100, not > 0) is zeroed; side 1's +0x54 is 0, so its +50 stays. */
+    bp_seed(1000, 5000, 3000, 5404);
+    DSB(s1 + 0x54u) = 0u;
+    DSW(r0 + 0x34u) = (u16)-100;
+    DSW(r1 + 0x34u) = 50u;
+    CHECK_EQ_INT((int)fighter_body_push(), 1);
+    CHECK_EQ_INT((int)DSW(DS_000D33A8), 2816);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 668);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 476);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 3332);
+    CHECK_EQ_INT((int)(s16)DSW(r0 + 0x34u), 0);
+    CHECK_EQ_INT((int)(s16)DSW(r1 + 0x34u), 50);
+
+    /* F: +0x42 bit 2 on either slot returns after the 0x186D0 latches (the
+     * +0x2C sentinels are re-latched) and before the scratch copy. */
+    bp_seed(3436, 11393, 2500, 9932);
+    DSB(s0 + 0x42u) = 0x04u;
+    CHECK_EQ_INT((int)fighter_body_push(), 0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 3436);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 2500);
+    CHECK_EQ_INT((int)DSD(DS_000D3388), (int)0xA5A5A5A5u);
+    bp_seed(3436, 11393, 2500, 9932);
+    DSB(s1 + 0x42u) = 0x04u;
+    CHECK_EQ_INT((int)fighter_body_push(), 0);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 2500);
+    CHECK_EQ_INT((int)DSD(DS_000D3390), (int)0xA5A5A5A5u);
+
+    /* G: +0x42 bit 5 on side 0: side 0 is neither moved nor speed-gated (its
+     * +5, right of the other and not < 0, would be zeroed), side 1 still moves
+     * -54 and raises both +0x41 bit 7 (slot 1's at 0x3B9F6, slot 0's at
+     * 0x3B9FE). */
+    bp_seed(3436, 11393, 2500, 9932);
+    DSB(s0 + 0x42u) = 0x20u;
+    DSW(r0 + 0x34u) = 5u;
+    CHECK_EQ_INT((int)fighter_body_push(), 1);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 3436);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 2446);
+    CHECK_EQ_INT((int)(s16)DSW(r0 + 0x34u), 5);
+    CHECK_EQ_INT((int)(DSB(s0 + 0x41u) & 0x80u), 0x80);
+    CHECK_EQ_INT((int)(DSB(s1 + 0x41u) & 0x80u), 0x80);
+
+    /* H: the other slot's +0x43 bit 1 moves the side by that slot's word
+     * +0x4C and raises DS_00107D30. Slot 1's bit alone keeps side 0 first:
+     * side 0 goes to 3436 - 2000 = 1436, then side 1 (now right) +54. Slot 0's
+     * bit alone puts side 1 first: side 1 to 2500 + 2000 = 4500, then side 0
+     * (now left) -54 and its -842 zeroed. The other order gives 2446 / 3490. */
+    bp_seed(3436, 11393, 2500, 9932);
+    DSB(s1 + 0x43u) = 0x02u;
+    DSW(s1 + 0x4Cu) = (u16)-2000;
+    CHECK_EQ_INT((int)fighter_body_push(), 1);
+    CHECK_EQ_INT((int)DSB(DS_00107D30), 1);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 1436);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 2554);
+    CHECK_EQ_INT((int)(s16)DSW(r1 + 0x34u), -160);
+    bp_seed(3436, 11393, 2500, 9932);
+    DSB(s0 + 0x43u) = 0x02u;
+    DSW(s0 + 0x4Cu) = 2000u;
+    CHECK_EQ_INT((int)fighter_body_push(), 1);
+    CHECK_EQ_INT((int)DSB(DS_00107D30), 1);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 4500);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 3382);
+    CHECK_EQ_INT((int)(s16)DSW(r0 + 0x34u), 0);
+
+    /* I: the walls (DS_000BE018 = 0x7C00), with dy 1462: 1462 + 234 + 117 =
+     * 1813, pen 107 (odd, halves +53/-53 truncating). Side 0 at 0x7C00 - 53
+     * would reach the wall (`jl` fails at equality), so side 1 takes -53
+     * twice and side 0 stays; one unit further in, side 0 moves. Side 1 at
+     * -0x7C00 + 53 reaches the left wall (`jg` fails at equality), so side 0
+     * takes +53 twice. */
+    bp_seed(0x7C00 - 53, 11393, 0x7C00 - 53 - 936, 9931);
+    CHECK_EQ_INT((int)fighter_body_push(), 1);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x7C00 - 53);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0x7C00 - 53 - 936 - 106);
+    bp_seed(0x7C00 - 54, 11393, 0x7C00 - 54 - 936, 9931);
+    CHECK_EQ_INT((int)fighter_body_push(), 1);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x7C00 - 1);
+    bp_seed(-0x7C00 + 53 + 936, 11393, -0x7C00 + 53, 9931);
+    CHECK_EQ_INT((int)fighter_body_push(), 1);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), -0x7C00 + 53);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), -0x7C00 + 53 + 936 + 106);
+
+    /* K: equal x (the `jl` at 0x3BA37 fails, so side 0 counts as the right
+     * one): dx 0, dy 1000, pen 920; side 0 +460, then side 1 (now left) -460. */
+    bp_seed(3000, 9000, 3000, 8000);
+    CHECK_EQ_INT((int)fighter_body_push(), 1);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 3460);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 2540);
+
+    /* J: DS_001078FA != 2 or a dead slot returns before the latch, after
+     * clearing DS_00107D30. */
+    bp_seed(3436, 11393, 2500, 9932);
+    DSB(DS_001078FA) = 1u;
+    CHECK_EQ_INT((int)fighter_body_push(), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107D30), 0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), (int)0xDEADBEEFu);
+    bp_seed(3436, 11393, 2500, 9932);
+    DSD(DS_001077AC) = 0u;
+    CHECK_EQ_INT((int)fighter_body_push(), 0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), (int)0xDEADBEEFu);
+    bp_seed(3436, 11393, 2500, 9932);
+    DSD(DS_001077A8) = 0u;
+    CHECK_EQ_INT((int)fighter_body_push(), 0);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), (int)0xDEADBEEFu);
+
+    tf_put(sv_scratch, DS_000D3388, 0x24u);
+}
+
 /* ---- Task 6: the 0x17FA0 page-flag/visibility tail ---------------------- */
 
 /* 0x16734/0x164C0/0x16AFC/0x164F4 and the 0x17FA0 wiring. The per-character
@@ -7737,6 +7984,7 @@ int test_fight(void)
     check_reaction();
     check_winner_body();
     check_pass_a_tail();
+    check_body_push();
     check_page_tail();
     check_type_table();
     check_type_callbacks();

@@ -1352,7 +1352,7 @@ void game_frame(void)
      * gates on the camera-target table DS_001077A8[side], which 0x33C78 (the
      * unported fighter spawn) fills. */
     if (DSB(DS_00104B15) != 0) {                       /* 0x25414 */
-        /* PORT: 0x3BB90 is cycle 2's; see the spec's cycle split. */
+        (void)fighter_body_push();                     /* 0x2541D 0x3BB90 */
         camera_dispatch();                             /* 0x25422 0x12D48 */
         for (u32 side = 0; side < 2u; side++) {        /* 0x2542D */
             if (DSD(DS_001077A8 + side * 4u) == 0) continue;
