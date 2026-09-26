@@ -631,6 +631,29 @@ void fighter_block_end(u32 rec)
     }
 }
 
+/* 0x1A734 — record §39. */
+void fighter_block_hit(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_swap(ctx, side);                        /* 0x1A73C 0x33A10 */
+    hit_facing_flag(ctx[1]);                            /* 0x1A745 0x18B04 */
+    DSB(ctx[3] + 0x61u) = 0x0Cu;                        /* 0x1A74E */
+    if ((s8)DSB(ctx[3] + 0x61u) > (s8)DSB(ctx[3] + 0x60u)   /* 0x1A75D jle */
+            && DSB(ctx[3] + 0x62u) != 0u)               /* 0x1A762 */
+        DSB(ctx[3] + 0x61u) = DSB(ctx[3] + 0x60u);      /* 0x1A76C/0x1A76F */
+    if ((DSB(ctx[3] + 0x43u) & 0x20u) != 0u) {          /* 0x1A779 */
+        DSB(ctx[3] + 0x54u) = 0;                        /* 0x1A77E */
+        hit_anim_start_a(ctx[5], DSD(FIGHT_BLOCK_ANIM0
+                         + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                         0x40400000u);                  /* 0x1A786..0x1A7C1 */
+    } else if ((DSB(ctx[3] + 0x43u) & 0x10u) != 0u) {   /* 0x1A79C */
+        DSB(ctx[3] + 0x54u) = 1u;                       /* 0x1A7A1 */
+        hit_anim_start_a(ctx[5], DSD(FIGHT_BLOCK_ANIM1
+                         + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                         0x40400000u);                  /* 0x1A7A9..0x1A7C1 */
+    }
+}
+
 /* 0x1AB5C. The facing word 0x3B298 compares against: it ORs seven input-ring
  * reads with the side's command word, then returns the 0x1000/0x2000/0x3000
  * facing base, or 0 when 0x1AB10 rejects the fighter. The raw returns EDX (the
@@ -709,8 +732,8 @@ static int fighter_frame_flag(u32 bit, u32 index)
 
 /* 0x3B298. The command/state dispatch: run the mapper, copy the other slot's
  * +0x84 into this slot's +0x86, then scan the input ring for the facing word.
- * Returns 1 when the scan sets the slot's +0x43 bit, else 0. 0x1A734 is a gap
- * (§7.11). */
+ * Returns 1 when the scan sets the slot's +0x43 bit, else 0; then it has also
+ * run 0x1A734 (record §39). */
 static int fighter_command_dispatch(u32 side, u32 edx_arg)
 {
     u32 ctx[6];
@@ -756,7 +779,7 @@ static int fighter_command_dispatch(u32 side, u32 edx_arg)
     } else {
         return 0;                                         /* 0x3B44A */
     }
-    /* PORT: 0x3B443 0x1A734(ctx[1]) — named gap (§7.11). */
+    fighter_block_hit(ctx[1]);                            /* 0x3B443 0x1A734 */
     return 1;                                             /* 0x3B448 */
 }
 

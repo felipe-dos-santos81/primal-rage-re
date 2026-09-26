@@ -2350,11 +2350,11 @@ static void fe_cyc2_dump(void)
 /* The driver's loop: FE_DEMO_LOOPS covers the first demo's 0x11BCC exit at
  * loop 1970 (the run's length before the cycle-2 dump); FE_LOOPS reaches the
  * second attract cycle's state-6 handoff (loop 2782) and the second demo's
- * first 316 frames. FE_LOOPS is a measurement window, not a raw value: 3100
- * (2800 before record §38) keeps the second demo's first unexplained capture
- * frame, 2674 (about loop 3031), inside the cycle-2 dump. */
+ * first 416 frames. FE_LOOPS is a measurement window, not a raw value: 3200
+ * (3100 before record §39, 2800 before §38) keeps the second demo's first
+ * unexplained capture frame, 2763 (loop 3116), inside the cycle-2 dump. */
 #define FE_DEMO_LOOPS 2000
-#define FE_LOOPS 3100
+#define FE_LOOPS 3200
 
 int test_frontend(void)
 {
@@ -3015,6 +3015,9 @@ int test_frontend(void)
         /* The first second-demo loop whose post-state has side 0 (the
          * raptor) in the block state +0x52 = 6 (0x1A7CC; record §38). */
         int c2_block_i = -1;
+        /* The ape's (side 1) record stream and +0x52 after loop 3040 (the
+         * poll's f = 3927). Sentinels that no stream takes. */
+        u32 c2_ape_st = 0xFFFFFFFFu, c2_ape_52 = 0xFFu;
         /* The picks, variant and handle as the first demo left them, read
          * where the driver's run used to end (loop FE_DEMO_LOOPS - 1); the
          * second demo's state 6 draws new picks. 0xFF/0 sentinels. */
@@ -3180,6 +3183,11 @@ int test_frontend(void)
                 if (c2_state7_i >= 0 && c2_block_i < 0
                         && DSB(DS_001077B0 + 0x52u) == 6u)
                     c2_block_i = i;
+                if (i == 3040) {
+                    u32 rec1 = DSD(DS_001077B0 + 0x94u);
+                    c2_ape_st = DSD(rec1 + 8u);
+                    c2_ape_52 = DSB(rec1 + 0x52u);
+                }
             }
         }
         movie_set_screen_hook(NULL);
@@ -3187,8 +3195,9 @@ int test_frontend(void)
         if (log != NULL) fclose(log);
         printf("test_frontend: cycle 2 from loop %d, %d frames; A54@1971 %d, "
                "4F83C@%d, state 6@%d (F0A72 %d), state 7@%d (78FA %d), "
-               "block@%d\n", c2_start, fe_cyc2_n, c2_proj54, c2_flash_i,
-               c2_state6_i, c2_f0a72, c2_state7_i, c2_fa, c2_block_i);
+               "block@%d, ape@3040 %05X/%u\n", c2_start, fe_cyc2_n, c2_proj54,
+               c2_flash_i, c2_state6_i, c2_f0a72, c2_state7_i, c2_fa,
+               c2_block_i, (unsigned)c2_ape_st, (unsigned)c2_ape_52);
 
         /* The raw's timeline: six entries, each drawn then paused, then state 3.
          * Entry k is drawn on frame 1+93k; after the sixth, 0x1E pause frames
@@ -3208,11 +3217,11 @@ int test_frontend(void)
         CHECK_EQ_INT(dumped, (int)(raw_cap < 1382 ? raw_cap : 1382));
 
         /* The second attract cycle (derivation record §36). The cycle-2 dump
-         * starts after the exit frame, at loop 1971, and holds 1295 frames:
-         * loops 1971..3099 (1129) and, inside loop 1971, the 166 screens
+         * starts after the exit frame, at loop 1971, and holds 1395 frames:
+         * loops 1971..3199 (1229) and, inside loop 1971, the 166 screens
          * 0x1C740 writes (TWI5: the entry blank, 121 frames, the exit blank;
          * TWG: the same with 41). A player that drops TWI5's 121st frame
-         * writes 1294; one with no screen hook 1129. 0x2BAF4's 0x4F228 call
+         * writes 1394; one with no screen hook 1229. 0x2BAF4's 0x4F228 call
          * (0x2BBC4) clears the projection gate DS_00107A54 the demo's state 6
          * set (0x387E2), so it is 0 after loop 1971 (1 without it). The
          * lightning stream 0xE890A's 0x4F83C sets DS_00104AD0 bit 0 first at
@@ -3226,10 +3235,15 @@ int test_frontend(void)
          * the first demo's 2 grows to 4 and 0x1958C/0x34D8C never run.
          * The raptor blocks the ape's punch at loop 2848 (f = 3735, the
          * DOSBox-X live-RAM poll's first +0x52 = 6 for side 0): 0x1AB5C's arm
-         * calls 0x1A7CC; without it the raptor never blocks (-1). */
+         * calls 0x1A7CC; without it the raptor never blocks (-1).
+         * Record §39: at loop 3040 (f = 3927) the ape has blocked since
+         * f = 3915. 0x3B298 sets its +0x43 bit 0x20 and calls 0x1A734
+         * (0x3B443), which restarts 0xC8F40[1] = 0xE3F5E at +0x52 = 0
+         * whatever the bit was, as the poll's original does. Without it
+         * the stream runs on at 0xE3F66 (+0x52 = 2). */
         CHECK(!fe_cyc2_failed, "cycle-2 frames write to the dump");
         CHECK_EQ_INT(c2_start, 1971);
-        CHECK_EQ_INT(fe_cyc2_n, 1295);
+        CHECK_EQ_INT(fe_cyc2_n, 1395);
         CHECK_EQ_INT(c2_proj54, 0);
         CHECK_EQ_INT(c2_flash_i, 2547);
         CHECK_EQ_INT(c2_state6_i, 2782);
@@ -3237,6 +3251,8 @@ int test_frontend(void)
         CHECK_EQ_INT(c2_state7_i, 2783);
         CHECK_EQ_INT(c2_fa, 2);
         CHECK_EQ_INT(c2_block_i, 2848);
+        CHECK_EQ_INT((int)c2_ape_st, 0x000E3F5E);
+        CHECK_EQ_INT((int)c2_ape_52, 0);
 
         /* Alignment: the driver's state-6 entry sits at the attract's
          * post-state, and the two picks drawn from it (plus the dust builder's

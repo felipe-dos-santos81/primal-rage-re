@@ -109,6 +109,13 @@ void fighter_block_start(u32 side);
  * +0x43 &= 0xCF and +0x52/+0x53/+0x62/+0x60 = 9/0/0/0. */
 void fighter_block_end(u32 rec);
 
+/* 0x1A734. EAX = side; its only caller is 0x3B298 (0x3B443), right after it
+ * set +0x43 bit 0x20 or 0x10. 0x18B04, +0x61 = 0x0C (capped at +0x60 when
+ * 0x0C > (s8)+0x60 and +0x62 != 0), then, ungated, restart the block stream
+ * at 3.0 through 0x3C480: bit 0x20 set gives +0x54 = 0 and 0xC8F40[char],
+ * else bit 0x10 set gives +0x54 = 1 and 0xC8F90[char]. */
+void fighter_block_hit(u32 side);
+
 /* 0x1975C. The think step the arena frame calls at 0x264CC. It runs the
  * projectile collision step 0x17CB0 (camera.h), then, for each thrower whose
  * DS_00100AD0 overlap count exceeds 2, applies the projectile hit to the struck

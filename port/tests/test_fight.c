@@ -7539,6 +7539,53 @@ static void check_block(void)
     CHECK_EQ_INT((int)DSD(r0 + 8u), (int)bst);
     CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0x20);
 
+    /* H: 0x1A734 (record §39), 0x3B298's call at 0x3B443. +0x61 = 0x0C,
+     * capped at +0x60 when 0x0C > (s8)+0x60 and +0x62 != 0; then, whatever
+     * the stream, bit 0x20 restarts 0xC8F40[3] with +0x54 = 0 and bit 0x10
+     * restarts 0xC8F90[3] with +0x54 = 1, at 3.0. Its 0x18B04 is side 0's:
+     * side 0's record +0x18 takes 0x18714's x, side 1's keeps its sentinel. */
+    DSB(s0 + 0x43u) = 0x2Au; DSB(s0 + 0x54u) = 1u;
+    DSB(s0 + 0x60u) = 5u; DSB(s0 + 0x61u) = 0x77u; DSB(s0 + 0x62u) = 1u;
+    DSD(r0 + 8u) = 0x00ABCDEFu; DSD(r0 + 0x24u) = 0x11111111u;
+    DSW(pset1) = 0x0F35u;
+    DSD(r0 + 0x18u) = 0x5A5A5A5Au;
+    DSD(r1 + 0x18u) = 0x5A5A5A5Au;
+    fighter_block_hit(0u);
+    CHECK(DSD(r0 + 0x18u) != 0x5A5A5A5Au,
+          "0x1A734's 0x18B04 rewrites side 0's record +0x18");
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), (int)hit_record_x(0u));
+    CHECK_EQ_INT((int)DSB(s0 + 0x61u), 5);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)bst);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)(DSW(pset1) & 0x7FFFu), 0x1400);
+    CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0x2A);
+    CHECK_EQ_INT((int)DSD(r1 + 0x18u), 0x5A5A5A5A);
+    /* H2: bit 0x10 alone, +0x60 = 0x20 above 0x0C: no cap. */
+    DSB(s0 + 0x43u) = 0x10u; DSB(s0 + 0x54u) = 0u;
+    DSB(s0 + 0x60u) = 0x20u; DSB(s0 + 0x61u) = 0x77u;
+    DSD(r0 + 8u) = 0x00ABCDEFu;
+    fighter_block_hit(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x61u), 0x0C);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 1);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)(bst + 0x10u));
+    CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0x10);
+    /* H3: the compare is signed (`jle`): +0x60 = 0x80 (-128) caps +0x61 to
+     * 0x80; with +0x62 = 0 it stays 0x0C. */
+    DSB(s0 + 0x60u) = 0x80u; DSB(s0 + 0x61u) = 0x77u;
+    fighter_block_hit(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x61u), 0x80);
+    DSB(s0 + 0x62u) = 0u; DSB(s0 + 0x60u) = 5u; DSB(s0 + 0x61u) = 0x77u;
+    fighter_block_hit(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x61u), 0x0C);
+    /* H4: neither bit: no stream, +0x54 kept. */
+    DSB(s0 + 0x43u) = 0x0Au; DSB(s0 + 0x54u) = 7u;
+    DSD(r0 + 8u) = 0x00ABCDEFu;
+    fighter_block_hit(0u);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 7);
+    CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0x0A);
+
     for (i = 0; i < 4u; i++) tf_put(sv_bt + i * 4u, tabs[i] + 3u * 4u, 4u);
     tf_put(sv_ab0, 0x00100AB0u, 0x10u);
     tf_put(sv_af0, 0x00100AF0u, 8u);
