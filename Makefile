@@ -197,7 +197,7 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
 # improves (the tool prints "ratchet improved ... raise N"). N = 1763 was measured on
-# the commit that raised it (on 1bb5b9e): 0x34E2C's reaction callback 0x3C0A4 (the
+# c7320b2 (the commit that raised it, on 1bb5b9e): 0x34E2C's reaction callback 0x3C0A4 (the
 # T-rex's reaction-0x3E record 0xA3A00, no code reference), which the port had not
 # registered. At f = 850 it runs 0x3BF70, the forced attack (the 0xC8B30[char]
 # stream at hold 2.0 through 0x3C4CC, the 0xBEFA0 row in DS_00107D40, state 3/4/2),

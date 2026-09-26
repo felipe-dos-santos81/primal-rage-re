@@ -5572,3 +5572,192 @@ against port 1267, the f = 850 state:
 
 f = 850 is the run's `0x3C0A4` `fn_resolve` miss (no code cross-reference;
 §30.4), which makes that miss the candidate owner. It is not derived.
+
+(Derived since, §32: the candidate holds. `0x3C0A4` is `0x34E2C`'s
+reaction-`0x3E` callback. At f = 850 it starts the T-rex's `0xC8B30` attack
+through `0x3BF70` and turns its `+0x4E` facing; the port skipped it, so the
+T-rex kept its place and pose. Porting it explains 1750..1762.)
+
+## 32. The reaction callbacks `0x3C0A4`/`0x3BF70` at capture 1750 (roar-timing Task 22, `c7320b2`)
+
+**Result in one line.** Capture 1750 has one cause, and it is the port's.
+`0x34E2C`'s `(char, reaction)` table holds `0x3C0A4` as reaction `0x3E`'s
+callback, and the port had not registered it, so the `0x35045` call
+skipped it. At f = 850 the T-rex (side 0) takes reaction `0x3E`.
+`0x3C0A4` runs `0x3BF70`, the forced attack: the `0xC8B30[char]` stream at
+hold 2.0 through `0x3C4CC`, the `0xBEFA0` row in `DS_00107D40`, and state
+3/4/2. It then turns the slot's `+0x4E` facing the other way. The port left
+the T-rex where it was. This explains captures 1750..1762.
+
+### 32.1 The measurement (temporary, reverted)
+
+A `PR_T22` trace printed each `fn_resolve` miss with its return address
+(`dladdr`) and `DS_0010150C`. It was reverted from a pre-trace copy of
+`mem.c`.
+- `0x3C0A4` misses once, at f = 850, from `hit_reaction_apply` (`0x34E2C`).
+  That is the reaction callback call at `0x35045` (`call [esp+0x24]`), with
+  EAX = ctx[2] (the slot, `0x35037`), EBX = ctx[0] (the side, `0x3503B`) and
+  EDX = ctx[4] (the record, `0x3503E`).
+- The later misses were `0x14F50` (f = 929, the same site), `0x3A820`
+  (f = 962/963, `0x3531C`), the front-end `0x29B74`/`0x41578`, and the stub
+  `0x5D812`. `0x3BF70` does not miss.
+
+A second trace in `fighter_3c0a4`, after the fix, shows one call at f = 850:
+- slot `0x1077B0` (side 0, char 0), and `0x3BF70` returned 1
+- the side's pset is flipped (`0x1A570` = 0), so `0x3BF70` wrote `+0x4E` = 1
+  and `0x3C0A4` changed it to `0xFFFF`
+- the slot's `+0x52` was 3 after the call, and the record's stream was at
+  `0xE6F28` (`0xC8B30[0]`)
+
+With the fix, port frames 0..1266 are byte-identical to the unfixed dump.
+Port 1267 (f = 850) is the first that differs, and captures 1750..1762
+splice at 0 px.
+
+### 32.2 The raw (Ghidra `read_memory` + capstone, fixups applied)
+
+Neither `0x3C0A4` nor `0x3BF70` is a Ghidra function.
+
+**Where the callbacks live.** A scan for the dword `0x0003C0A4` over both
+objects finds seven sites: `0xA3A00`, `0xA3F00`, `0xA4400`, `0xA4900`,
+`0xA4E00`, `0xA5300` and `0xA5800`. They are one per character, at stride
+`0x500` (64 records of `0x14` bytes) in `0x34E2C`'s `0xA3528` table.
+`0xA3A00` = `0xA3528 + 0x3E * 0x14` is char 0's reaction `0x3E`, and its
+stream word `+4` is 0. The dword `0x0003BF70` is in the next record of
+each character (reaction `0x3F`, `0xA3A14`, also with no stream), and
+`0x0003C048` is in the previous one (reaction `0x3D`). `get_xrefs_to` finds
+no code reference to `0x3C0A4` or `0x3C048`. `0x3BF70` has two calls, at
+`0x3C05E` (in `0x3C048`) and `0x3C0BD` (in `0x3C0A4`).
+
+**`0x3C0A4`** (`0x3C0A4..0x3C0E9`, 0x46 bytes). The registers are EAX =
+slot (moved to ESI), EDX = rec (EDI) and EBX = side (ECX).
+- `0x3C0B4` builds `0x33950(esp, side)`. The context is not read.
+- `0x3C0BD` calls `0x3BF70(slot, rec, side)`, and DL keeps the result.
+- When the result is non-zero, `0x3C0CA` calls `0x1A570(side)`. Non-zero
+  gives word `slot+0x4E` = 1 (`0x3C0D3`), and zero gives `0xFFFF`
+  (`0x3C0DB`). This is the reverse of `0x3BF70`'s sense.
+- It returns AL = DL.
+
+**`0x3BF70`** (`0x3BF70..0x3C046`, 0xD7 bytes). The registers are EAX =
+slot (moved to ECX), EDX = rec (ESI) and EBX = side.
+- ctx = `0x33950(side)`. When `ctx[2]+0x40` bit 7 is set, it returns AL = 0
+  (`0x3BF86`/`0x3BF8C`). The side's slot is tested, not the EAX slot.
+- The side's record (`DSD(0x1077B0 + side*0x94)`, `0x3BFA4`) gets word
+  `+0x34` = 0 and bytes `+0x43`/`+0x42` = 0 (`0x3BFAB..0x3BFB5`).
+- `ctx[2]+0x5F` = `0xFF` (`0x3BFBF`).
+- `DSD(0x107D40 + side*4)` = `0xBEFA0 + 6 * DSB(0x10782A + side*0x94)`
+  (`0x3BFD3..0x3BFEA`). `0x3BFD1`'s `xor edx,ebx` zeroes EDX first, because
+  EDX = EBX at `0x3BFBD`. The byte is the side's char. `0xBEFA0` is a third
+  7×3-word row table after `0xBEF28` and `0xBEF64`; the T-rex's row is
+  `0x34`, `0x2D8`, `0x156`.
+- `0x3C4CC(rec, DSD(0xC8B30 + 4 * DSB(slot+0x7A)), 2.0)`
+  (`0x3BFF3..0x3C004`). This uses the EAX slot's char. `0x3C4CC` returns
+  with `ret 4` (`0x3C51C`), and it reads `+0x52` before the next write.
+- The EAX slot gets `+0x52` = 3, `+0x54` = 2, `+0x53` = 4 and `+0x40 |=
+  0x80` (`0x3C009..0x3C01D`). Byte `0x1078F8+side` = 1 (`0x3C020`).
+- `0x1A570(side)` (`0x3C028`): non-zero gives `slot+0x4E` = `0xFFFF`
+  (`0x3C031`), and zero gives 1 (`0x3C039`).
+- It returns AL = 1.
+
+`0x33950` changes EDX (`0x3399B..0x339A5`), and both routines reload it.
+This is `0x3BDDC`'s attack state (§17) without the command word or the
+`0x3CF38` chain. The attack stream's `0xD000` target `0x35E04` (§18) then
+launches it with the `0xBEFA0` row.
+
+### 32.3 The fix and its assertions
+
+The fix adds `fighter_3bf70` and `fighter_3c0a4` to `fighter.c`, after
+`fighter_3c190`, with a local `FIGHT_ROW_3BF70` = `0xBEFA0` (`symbols.h`
+names no global there). Both are exported in `fighter.h`. `actors.c` gets
+the void wrappers `reaction_cb_3BF70`/`reaction_cb_3C0A4` and registers
+both. The wrappers drop AL, which the `0x35045` call ignores (`0x35049`
+only adds to ESP). That is 0x11D raw bytes in two new functions, and every
+callee (`0x33950`, `0x3C4CC`, `0x1A570`) was already ported, so the change
+is inside the size gate. `0x3C048` (reaction `0x3D`) does not run in the
+demo and is not ported.
+
+`check_reaction_attack` is new in `test_fight.c`. Its fixture `ra_seed`
+extends `tb_seed` with sentinels in:
+- both records' `+0x34`/`+0x43`/`+0x42`
+- the slots' `+0x40`/`+0x4E`, `+0x52` = 0 and `+0x7A` = chars 1 and 2
+- `DS_00107D40` and the two `DS_001078F8` bytes
+- crafted literal-id streams (id `0x1100` + char) in the seven `0xC8B30`
+  entries
+
+The parts:
+- **A/A2.** `0x3BF70`, unflipped and flipped. The flip comes from the
+  record's `+0x29` bit 6 through the begin, over an unflipped seeded pset,
+  so `0x1A570` must follow `0x3C4CC`.
+- **B.** `0x3C0A4` in both senses.
+- **C.** The bit-7 reject, for both routines: nothing is written.
+- **D/D2.** EAX = slot 1, EDX = rec 1, EBX = side 0. The gate, the cleared
+  record, `+0x5F`, the row, `DS_001078F8` and `0x1A570` are side 0's. The
+  stream, the state, `+0x40` and `+0x4E` are slot 1's. `0x3C4CC` takes its
+  `0x3C480` arm by record 1's side (`+0x52` = 9), so `+0x1C` is zeroed.
+- **E.** Side 1 on its own slot: `DS_00107D44` and `DS_001078F9`.
+- **F.** Through `hit_reaction_apply`, reactions `0x3E` and `0x3F` on the
+  real `0xA3A00`/`0xA3A14` records.
+
+The registration check asserts that both addresses resolve to wrappers.
+The table, the globals and the fixture state are restored afterwards.
+
+**Mutations.** `scratchpad/mut22.py` made 37 single-site edits in
+`fighter.c` and `actors.c`. Each was built and run, and both files were
+then restored with `cmp`. 36 fail 1..17 assertions. The 37th, the
+`0x3BF70` wrapper passing `DSD(slot)` for rec, is equivalent at the only
+call site, because `0x35045`'s EDX is ctx[4] = `[ctx[2]]`
+(`0x3399B..0x3399D`), the EAX slot's own record.
+
+**Task 21's parked minors** are fixed in `1bb5b9e`:
+- `check_worshipper_arrival` E and `check_worshipper_landing` E now seed
+  and restore linear byte `0x1C`. In `0x4AC80`'s E it is 0, bit 5 clear, so
+  a missing entry test writes `+0x1E`.
+- The dead fallback `fn_register(0x4AC80, fight_4ac80)` is gone. Removing
+  the real registration now also fails part F.
+- The `0x4FB4B`/`0x3BBF7` comment columns in `fighter.c` are realigned.
+
+The `fight.c` minors are still parked, since this task did not touch
+`fight.c`. They are the `0x4AAD0` flag-0 test, the s32 band arithmetic at
+`0x4ACFA..0x4AD37`, and the `0x4B3F0`/`0x4AC80` comments.
+
+### 32.4 Measured
+
+| measurement | before (`4944d2b`) | after (`c7320b2`) |
+|---|---|---|
+| captures 1750..1762 | 1750 5 544 px | **all explained** |
+| demo oracle first unexplained | 1750 (raw 4657); `[1750..3616]` 1867 / 1861 unexpl. | **1763 (raw 4670)**; `[1763..3616]` 1854 / 1848 unexpl.; port `[1278..1380]` (103, 0 exhibited) |
+| demo-fight ratchet | `[1750..1884]` 135, N = 1750 | **`[1763..1884]` 122**, "ratchet improved: first unexplained 1763 > 1750", **N = 1763** |
+| front-end oracle | `[560..1749]` / 1190 / 468 clean, 715 splice, 3 transition, 2 unexpl. | **`[560..1762]` / 1203 / 473 clean, 723 splice, 3 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved. The three transition frames are the
+same (`port832@row177`, `port862@row189`, `port906@row31`). The exhibition
+set grows to port frames 0..1277 (1041 exhibited). The ladder
+`cmake --build build --clean-first && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify`
+exited 0 with 0 compiler warnings on the `c7320b2` tree, with N = 1763 in
+the Makefile. Unmoved: title `54/55/2/0` and `54/57/0/0`, determinism 54;
+smk 120/120 and 41/41; attract 215/216 (expected divergence at 215);
+C-vs-Python 9866; `symbols.h`.
+
+**Unresolved code targets after the fix.** The same probe found:
+- the new miss `0x3E3A8` at f = 962, from `hit_reaction_apply`
+- the front-end `0x29B74`/`0x41578`, and the stub `0x5D812`
+
+`0x3C0A4`, `0x14F50` and `0x3A820` no longer miss. The T-rex's changed
+fight from f = 850 no longer reaches the old two.
+
+### 32.5 The new first unexplained frame, 1763 (characterised, not fixed)
+
+Captures 1750..1762 splice at 0 px. Capture 1763's best splice, port
+1277/1278 at row 130, leaves 153 px, all in x 15–22, rows 53–98. Captures
+1764..1766 leave the same 153 px in the same box. Every differing capture
+pixel is green (0, 203, 0). The capture draws a vertical "2 HIT COMBO" at
+the left edge, and the port draws nothing there. The rest of the frame,
+including both fighters and the camera, matches.
+
+"COMBO" is at `0xBE01D`, and its `0x1B`-prefixed string at `0xBE01C` has
+one cross-reference, `0x38E1D` in `0x38D90`. `0x38D90`'s one caller is
+`0x39040`, and a temporary trace shows the port's `fighter_39040` gated
+body running once, at f = 860 (port 1277), for side 0 with
+`DSW(0x107D2C)` = 2: the T-rex's second hit. The port skips `0x390E8`'s
+`0x38D90(side)` and `0x390EF`'s `0x38FEC(side)` as a `PORT:` named gap,
+the `0x2F4D0`/`0x2EFD4` text-grid formatter that `fighter_39040`'s
+comment declares. That draw is the candidate owner. It is not derived.
