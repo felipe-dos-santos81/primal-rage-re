@@ -347,6 +347,7 @@ void hit_anim_ctx(u32 out[6], u32 rec);               /* 0x339AC */
 int  hit_reaction_allow(u32 side, u32 reaction);      /* 0x4CE70 */
 int  hit_geometry(u32 side, u32 table, u32 idx);      /* 0x1DDF4 */
 void hit_anchor_set(u32 side, u32 x, u32 y);          /* 0x188AC */
+u32  hit_record_x(u32 side);                          /* 0x18714 */
 void hit_anchor_x(u32 side, u32 x);                   /* 0x188DC */
 void hit_anchor_y(u32 side, u32 y);                   /* 0x1890C */
 void hit_sound(u32 ch);                               /* 0x32BAC */

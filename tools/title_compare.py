@@ -424,6 +424,11 @@ def load_port(d, n):
 # [560..997] -> [560..1357] (438 -> 798; 3 transition frames, all in the new
 # span); the allowed set stays (832, 833), and the exhibition set grows to
 # port frames 0..930 (694 exhibited).
+# The camera split arm's 0x18714 writes (0x12E3C pulls the outward-moving
+# T-rex back to its +0x38 latch at f = 514/515 and rewrites its record's
+# +0x18) explain captures 1358..1410, [560..1357] -> [560..1410] (798 -> 851;
+# still the same 3 transition frames); the allowed set stays (832, 833), and
+# the exhibition set grows to port frames 0..976 (740 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

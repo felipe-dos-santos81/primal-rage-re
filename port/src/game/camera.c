@@ -444,11 +444,12 @@ static void camera_x_commit(s32 arg)
     }
 }
 
-/* 0x12E3C. Mode 1: track the pair, front/back ordered. The exact 0x18714
- * updates are a named gap (§7.5): the raw pulls the separated slot toward its
- * +0x38 latch and rewrites the record's +0x18 through 0x18714 (fighter.c's
- * static hit_record_x, not called from here); those calls are skipped, the
- * rest of the selection is transcribed. */
+/* 0x12E3C. Mode 1: track the pair, front/back ordered. When the pair's +0x34
+ * latches are more than word[0x9AF28] (0x5000) apart, the raw pulls a slot
+ * that moved outward back to its +0x38 latch (slot a when +0x34 < +0x38, slot b
+ * when +0x34 > +0x38), storing +0x34 and +0x2C, and rewrites that slot's
+ * record +0x18 through 0x18714 (hit_record_x) at 0x12F02/0x12F22, so the
+ * record itself stops at the split distance. */
 static void camera_mode_track_pair(void)
 {
     s32 cam = (s32)DSD(DS_000F0AF0);
@@ -475,8 +476,7 @@ static void camera_mode_track_pair(void)
                 DSD(sa + 0x34u) = (u32)latch;
                 DSD(sa + 0x2cu) = (u32)latch;
                 la = latch;
-                /* PORT: 0x18714(side a) is not called here (gap §7.5); the
-                 * raw's `rec+0x18 = result` update is skipped. */
+                DSD(DSD(sa) + 0x18u) = hit_record_x(a);        /* 0x12F02/0x12F09 */
             }
         }
         {
@@ -485,7 +485,7 @@ static void camera_mode_track_pair(void)
                 DSD(sb + 0x34u) = (u32)latch;
                 DSD(sb + 0x2cu) = (u32)latch;
                 lb = latch;
-                /* PORT: 0x18714(side b) is not called here (gap §7.5); skipped. */
+                DSD(DSD(sb) + 0x18u) = hit_record_x(b);        /* 0x12F22/0x12F29 */
             }
         }
         diff = la - lb;

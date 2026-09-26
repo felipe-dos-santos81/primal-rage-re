@@ -220,6 +220,117 @@ static void check_dispatch(void)
     CHECK_EQ_INT((int)DSB(DS_000F0AFE), 4);
 }
 
+/* Seed one side for 0x12E3C's split arm: slot +0x34/+0x38 (the +0x34 latch
+ * and its previous-frame copy), char 0, the actor sprite id that 0x18540 turns
+ * into `anchor` (word[0xE6DD0] = 0x0EE4 is char 0's constant), slot+0x20 unlike
+ * the anchor so 0x18350 re-derives DS_00100AB0/AB4, and sentinels in +0x2C,
+ * the record's +0x18, DS_00100AF0 and DS_00100AB0/AB4. */
+static void cs_seed(u32 side, s32 s34, s32 s38, u32 anchor)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    u32 rec = FIGHT_RECS + side * 0x100u;
+    DSD(slot) = rec;
+    DSD(DS_001077A8 + side * 4u) = slot;
+    DSB(slot + 0x7Au) = 0;
+    DSB(slot + 0x42u) = 0;
+    DSD(slot + 0x20u) = 0xFFFFFFFFu;
+    DSD(slot + 0x2Cu) = 0x7770u + side;
+    DSD(slot + 0x34u) = (u32)s34;
+    DSD(slot + 0x38u) = (u32)s38;
+    DSW(rec + 0x56u) = (u16)(side + 1u);
+    DSW(FIGHT_ACTORS + (side + 1u) * 0x20u) = (u16)(DSW(0x000E6DD0u) + anchor);
+    DSD(rec + 0x18u) = 0x5550u + side;
+    DSD(DS_00100AF0 + side * 4u) = 0x3330u + side;
+    DSD(0x00100AB0u + side * 8u) = 0x1230u + side;
+    DSD(0x00100AB4u + side * 8u) = 0x4560u + side;
+}
+
+/* 0x12E3C's split arm (demo-pose record §24). When the pair's +0x34 latches
+ * are more than word[0x9AF28] = 0x5000 apart, a slot that moved outward past
+ * its +0x38 latch is pulled back: +0x34 and +0x2C take the latch
+ * (0x12EF6/0x12EF9, 0x12F16/0x12F19), then 0x18714 (EAX = that slot's side,
+ * 0x12EFC/0x12F1C) rewrites its record's +0x18 (0x12F09/0x12F29). The anchors
+ * 370 and 381 read (5, 9) and (4, 48) at 0xCEB00 + anchor*2, so AB0 is 320 for
+ * side 0 and 256 for side 1. */
+static void check_camera_split(void)
+{
+    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+
+    fight_reset_recs();
+    fight_reset_actors();
+
+    /* A, the demo at f = 514: side 0 (the T-rex, slot b) 26674 against its
+     * latch 26456; side 1 (the raptor, slot a) 6148 at its latch. 26674 - 6148
+     * = 20526 > 0x5000. */
+    cs_seed(0, 26674, 26456, 370);
+    cs_seed(1, 6148, 6148, 381);
+    DSB(DS_000F0AFE) = 1;
+    DSD(DS_000F0AF0) = 0x4000;
+    DSW(DS_000F0AFC) = 0x400;
+    camera_dispatch();
+    CHECK_EQ_INT((int)DSD(s0 + 0x34u), 26456);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 26456);
+    CHECK_EQ_INT((int)DSD(p0 + 0x18u), 26456 - 320);
+    CHECK_EQ_INT((int)DSD(DS_00100AF0), 370);
+    CHECK_EQ_INT((int)DSD(0x00100AB0u), 320);
+    CHECK_EQ_INT((int)DSD(0x00100AB4u), 576);
+    CHECK_EQ_INT((int)DSD(s0 + 0x20u), -1);             /* 0x18714 stores no anchor */
+    CHECK_EQ_INT((int)DSD(s1 + 0x34u), 6148);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0x7771);
+    CHECK_EQ_INT((int)DSD(p1 + 0x18u), 0x5551);
+    CHECK_EQ_INT((int)DSD(DS_00100AF4), 0x3331);
+    CHECK_EQ_INT((int)DSD(0x00100AB8u), 0x1231);
+    /* d0 = 26456 - 0x4000 -> 3928, d1 = 6148 - 0x4000 -> -4092; the split
+     * pair is 20308 > 0x3000 apart, so the midpoint -82 is committed. */
+    CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x4000 - 82);
+
+    /* B, slot a: side 1 (the lower +0x34) moved left past its latch. EAX is
+     * side 1, so its own anchor 381 (AB0 256) gives 6148 - 256; side 0 stays. */
+    cs_seed(0, 27000, 27000, 370);
+    cs_seed(1, 6000, 6148, 381);
+    DSD(DS_000F0AF0) = 0x4000;
+    DSW(DS_000F0AFC) = 0x400;
+    camera_dispatch();
+    CHECK_EQ_INT((int)DSD(s1 + 0x34u), 6148);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 6148);
+    CHECK_EQ_INT((int)DSD(p1 + 0x18u), 6148 - 256);
+    CHECK_EQ_INT((int)DSD(DS_00100AF4), 381);
+    CHECK_EQ_INT((int)DSD(0x00100AB8u), 256);
+    CHECK_EQ_INT((int)DSD(0x00100ABCu), 48 * 64);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x7770);
+    CHECK_EQ_INT((int)DSD(p0 + 0x18u), 0x5550);
+    CHECK_EQ_INT((int)DSD(DS_00100AF0), 0x3330);
+    CHECK_EQ_INT((int)DSD(0x00100AB0u), 0x1230);
+
+    /* C, the gate is `jle` (0x12EE4): exactly 0x5000 apart does not split. */
+    cs_seed(0, 6148 + 0x5000, 26456, 370);
+    cs_seed(1, 6148, 6148, 381);
+    DSD(DS_000F0AF0) = 0x4000;
+    DSW(DS_000F0AFC) = 0x400;
+    camera_dispatch();
+    CHECK_EQ_INT((int)DSD(s0 + 0x34u), 6148 + 0x5000);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x7770);
+    CHECK_EQ_INT((int)DSD(p0 + 0x18u), 0x5550);
+    CHECK_EQ_INT((int)DSD(DS_00100AF0), 0x3330);
+
+    /* D, slot+0x42 bit 3 makes 0x18714 return the record's own +0x18
+     * (0x18729/0x18738): the slot is still pulled back, the record is not. */
+    cs_seed(0, 26674, 26456, 370);
+    cs_seed(1, 6148, 6148, 381);
+    DSB(s0 + 0x42u) = 0x08;
+    DSD(DS_000F0AF0) = 0x4000;
+    DSW(DS_000F0AFC) = 0x400;
+    camera_dispatch();
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 26456);
+    CHECK_EQ_INT((int)DSD(p0 + 0x18u), 0x5550);
+    CHECK_EQ_INT((int)DSD(DS_00100AF0), 0x3330);
+
+    DSB(DS_000F0AFE) = 4;
+    fight_reset_recs();
+    fight_reset_actors();
+}
+
 /* 0x12DA8/0x1317C/0x12CD4 exercised through camera_scene_step: the selected
  * player y commits to DS_001078F4 and camera y steps toward the curve target. */
 static void check_y_commit(void)
@@ -6348,6 +6459,7 @@ int test_fight(void)
 
     check_projection();
     check_dispatch();
+    check_camera_split();
     check_y_commit();
     check_dust_gate();
     check_screen_base();

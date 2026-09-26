@@ -1719,7 +1719,6 @@ static void fighter_state_35b7c(u32 slot, u32 rec);         /* 0x35B7C */
 void fighter_state_35d20(u32 slot, u32 rec);                /* 0x35D20 */
 static void fighter_1883c(u32 side, u32 a, u32 b);          /* 0x1883C */
 static void fighter_36e78(u32 slot);                        /* 0x36E78 */
-static u32  hit_record_x(u32 side);                         /* 0x18714 */
 static u32  hit_record_y(u32 side);                         /* 0x18788 */
 static void hit_facing_flag(u32 side);                      /* 0x18B04 */
 
@@ -3330,7 +3329,7 @@ void hit_anchor_set(u32 side, u32 x, u32 y)
  * record's +0x18; otherwise it re-derives the screen anchor (0x18540, and
  * 0x18350 when the anchor differs from slot+0x20, which it does not store)
  * and returns slot+0x2C minus DS_00100AB0[side]. */
-static u32 hit_record_x(u32 side)
+u32 hit_record_x(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;
     if ((DSB(slot + 0x42u) & 0x08u) != 0u)
