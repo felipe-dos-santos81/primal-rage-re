@@ -256,11 +256,11 @@ spawn → `effects_step` → dirty list → `gfx_flush_palette` → `gfx_dac` �
 plan's assumed missing draw does not exist; the camera state feeds the existing
 render pass and actor-pset sync. The front-end pixel oracle is **closed and
 enforced**: a 120 s pinned capture aligns the port's state-3 zoom to window
-`[560..1658]` (raw `3108..4565`), **1099 frames: 447 clean, 645 splice, 3
+`[560..1714]` (raw `3108..4621`), **1155 frames: 455 clean, 693 splice, 3
 transition, 2 unexplained (832, 833)** — the two allowed by name (the
 arena-backdrop cycle's absorbed claim move, below); any other unexplained frame
 fails. (Indices moved `[557..813]`/257 → `[560..830]`/271 → `[560..842]`/283 →
-`[560..850]`/291 → `[560..857]`/298 → `[560..858]`/299 → `[560..859]`/300 → `[560..863]`/304 → `[560..865]`/306 → `[560..866]`/307 → `[560..869]`/310 → `[560..879]`/320 → `[560..890]`/331 → `[560..891]`/332 → `[560..949]`/390 → `[560..991]`/432 → `[560..997]`/438 → `[560..1357]`/798 → `[560..1410]`/851 → `[560..1477]`/918 → `[560..1480]`/921 → `[560..1545]`/986 → `[560..1562]`/1003 → `[560..1658]`/1099 as cycle 1's pins, cycle 2's master-loop pin and the
+`[560..850]`/291 → `[560..857]`/298 → `[560..858]`/299 → `[560..859]`/300 → `[560..863]`/304 → `[560..865]`/306 → `[560..866]`/307 → `[560..869]`/310 → `[560..879]`/320 → `[560..890]`/331 → `[560..891]`/332 → `[560..949]`/390 → `[560..991]`/432 → `[560..997]`/438 → `[560..1357]`/798 → `[560..1410]`/851 → `[560..1477]`/918 → `[560..1480]`/921 → `[560..1545]`/986 → `[560..1562]`/1003 → `[560..1658]`/1099 → `[560..1714]`/1155 as cycle 1's pins, cycle 2's master-loop pin and the
 arena-backdrop fix forced re-captures, the demo-pose cycle's `0x3A43C`
 stack-offset fix + `0x186C4` re-latch explained captures 843..850, and the
 roar-timing fix (the `0x3AD27` pose-setter operand) explained 851..857, and the
@@ -287,7 +287,8 @@ explained 1411..1477, and the frame-1478 fix (the projectile collision step
 frame-1481 fix (`0x349C8`'s `0x34A8D` command gate) explained 1481..1545, and the
 frame-1546 fix (the effects pass's worshipper fall/lie/climb, `0x49C78` cases
 3..5) explained 1546..1562, and the frame-1563 fix (the effects pass's
-per-entry prelude `0x4B69C`, the worshippers' trample) explained 1563..1658; the host-timed capture is not reproducible, so indices shift while
+per-entry prelude `0x4B69C`, the worshippers' trample) explained 1563..1658, and the
+frame-1659 fix (game_frame's fighters' body push `0x3BB90`) explained 1659..1714; the host-timed capture is not reproducible, so indices shift while
 the claim does not.) It proves exactly one thing: **no content-bearing capture
 frame inside the window the port's own dump exhibits is unexplained** (the two
 named exceptions aside) — the window is derived from that dump and the
@@ -314,11 +315,11 @@ command generator `0x47208`, the `+0x52` state machine (`0x3531C`/`0x350D0`),
 the `0x3C88C` hitbox machine and the `0x3CF38` hit chain — the chain now
 **fires**, hits land (`+0x7C` 0/0 → 1/1), and the fight's last state change
 moved **1262 → 1400**. Its report-only oracle (`make demo-oracle`) measures the
-demo window `[1659..3616]` (raw `4566..8409`), **1958 frames: 0 clean / 0 splice
-/ 0 transition / 1952 unexplained** (6 all-black frames excluded); the first
-unexplained frame is capture **1659 (raw 4566)** — 57 px in x 111–124, rows
-135–142, on the top-left edge of the dark ring, and from 1660 the gold
-fighter's leap and the camera y (f ≈ 771; not derived)
+demo window `[1715..3616]` (raw `4622..8409`), **1902 frames: 0 clean / 0 splice
+/ 0 transition / 1896 unexplained** (6 all-black frames excluded); the first
+unexplained frame is capture **1715 (raw 4622)** — 383 px, almost all in x
+40–99, rows 144–190: a standing worshipper sits elsewhere in the port (f = 820,
+the first unregistered `0x4AC80` call; not derived)
 (moved from 843
 by the demo-pose cycle, then from 851 by the roar-timing fix, then from 858 by
 the frame-858 fix, then from 859 by the frame-859 fix, then from 860 by the
@@ -330,7 +331,7 @@ frame-950 fix, then from 992 by the frame-992 fix, then from 998 by the
 frame-998 fix, then from 1358 by the frame-1358 fix, then from 1411 by the
 frame-1411 fix, then from 1478 by the frame-1478 fix, then from 1481 by the
 frame-1481 fix, then from 1546 by the frame-1546 fix, then from 1563 by the
-frame-1563 fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
+frame-1563 fix, then from 1659 by the frame-1659 fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
 Task 1 corrected it to **836/25**, and the final re-capture moved the loader text
 to 832 with the fight's first frames at 833/834 — record §9.1/§9.3.) Cycle 2
 advanced the boundary 811 → 816 → 832: the state-9 globe's fourth layer
@@ -549,13 +550,22 @@ See §28 of the record.
 
 See §29 of the record.
 
+**The fighters' body push (`1268371`), the demo fight's captures 1659..1714.** game_frame's `DS_00104B15` tail calls `0x3BB90` at `0x2541D`, before `0x12D48`; the port had only a `PORT:` note (`port/spec/game_flow.md`'s "cycle 2 landed `0x3BB90`" was stale). `0x3BB90` latches both slots and, when the two latched points are closer than the sum of the characters' `0xBEEF8` widths (halved for `+0x54` = 2), takes `0x4FB20`'s distance estimate (max + min/4 + min/8) and pushes the sides apart by the penetration: `0x3BAEC` runs `0x3B9D8` per side, which moves the side half of it away from the other through `0x1883C` (or the other side at the `0x7C00` wall, `0x3B8D8`) and zeroes a speed that does not point away when `+0x54` is 2. The fighters first overlap at f = 772, the T-rex's leap onto the raptor: capture 1659's residual is the T-rex's claw 1 px left in the port (and the raptor 1 px right), not the dark ring. The fix ports the five functions in `fighter.c` (every callee was already ported) and wires the call in `flow.c`. New `check_body_push` in `test_fight.c` and a wiring assertion in `check_game_frame_tail`; 46 of 47 mutations fail them, and the 47th (`0x4FB20`'s |dy| gate) is equivalent.
+
+* **Measured.** Captures 1659..1714 are now explained; port frames 0..1188 are byte-identical to before, and 1189 (the f = 772 state) is the first that differs. The demo oracle's first unexplained is now **1715 (raw 4622)**. The demo window `[1715..3616]` has 1902 frames, 1896 unexplained, and the fight window `[1715..1884]` has 170 frames, 0 explained. The ratchet N is raised **1659 → 1715** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1658]` / 1099 → **`[560..1714]` / 1155 / `455 clean, 693 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1715's best 1236/1237 splice (row 144) leaves 383 px, almost all in x 40–99, rows 144–190: a standing worshipper at x ≈ 45–60 in the capture is at x ≈ 75–88 in port 1237 and gone from 1238. Port 1237 is the f = 820 state, the run's first unregistered `0x4AC80` call (a worshipper stream callback); not derived.
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x4AC80` (f = 820 and 841) and `0x3C0A4` (f = 850, no code xref). `0x3BF70` no longer misses.
+
+See §30 of the record.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
-demo fight's remaining arena divergence (first unexplained at capture 1659
-after the frame-1563 fix: the dark ring's edge, then the gold fighter's leap
-and the camera y, not derived; the unported `0x19020`/`0x3E484` hook,
+demo fight's remaining arena divergence (first unexplained at capture 1715
+after the frame-1659 fix: a standing worshipper out of place at f = 820, not
+derived; the unported `0x19020`/`0x3E484` hook,
 `0x3B464`'s `0x235C4` arm, the effects pass's types 2, 7 and 9..12, the
 grab arm of `0x4B788`, `0x4B470`'s eighth-hit tail and case 8's held body are
-named gaps; the unregistered code targets `0x4AC80` (f = 820) and `0x3BF70`
+named gaps; the unregistered code targets `0x4AC80` (f = 820) and `0x3C0A4`
 (f = 850) are later known gaps, and `0x370F0` is still unregistered; not
 reached in this run) and
 the

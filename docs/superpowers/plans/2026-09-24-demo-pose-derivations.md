@@ -5208,3 +5208,185 @@ between port 1191's and 1192's and the gold fighter's tail is lower). Port 1188 
 f ≈ 771 state. The owner is **not derived**; no `fn_resolve` miss falls
 before f = 820 (`0x4AC80`, a worshipper stream callback reached after the
 trample).
+
+(Derived since, §30: the residual is not the ring. It is the gold fighter's
+(the T-rex's) claw, 1 px left of the capture's, and the raptor 1 px right:
+the two fighters are pushed apart in the raw. The owner is game_frame's
+body push `0x3BB90` at `0x2541D`, which the port did not call; its first
+push in the run is at f = 772, the T-rex's leap onto the raptor. Porting it
+explains 1659..1714.)
+
+## 30. The fighters' body push `0x3BB90` at capture 1659 (roar-timing Task 20, `1268371`)
+
+**Result in one line.** Capture 1659 has one cause, and it is the port's.
+game_frame's `DS_00104B15` tail calls `0x3BB90` at `0x2541D`, before
+`0x12D48`, every frame of the demo fight; the port had the call as a
+`PORT:` note ("cycle 2's") and no code. `0x3BB90` latches both slots, and
+when the two latched points (slot `+0x2C`/`+0x30`) are closer than the sum
+of the characters' `0xBEEF8` widths (each halved when the side's `+0x54` is
+2), `0x4FB20`'s distance estimate gives the penetration and `0x3BAEC` moves
+each side away from the other by half through `0x3B9D8` → `0x1883C`. The
+first push in the run is at f = 772 (port frame 1189), the T-rex's
+reaction-`0x2B` leap onto the flying raptor: width 1920, distance 1812,
+penetration 108, so the T-rex moves +54 and the raptor −54 and the
+raptor's speed is zeroed. Before f = 772 the fighters never overlap, so
+the missing call moved nothing, which is why it went unnoticed. This
+explains captures 1659..1714. `game_flow.md`'s "Cycle 2 landed ... `0x3BB90`,
+`0x4FB20`, `0x3BAEC`, `0x3B9D8`" was stale: none of the four was in
+`port/src`.
+
+### 30.1 The measurement (temporary, reverted)
+
+Capture 1659's 57 px (x 111–124, rows 135–142, below the 1188/1189 split
+row 135, so they compare against port 1189) are gold claw pixels, not the
+ring: 49 of the 57 capture pixels appear in port 1189 one pixel to the
+left. In capture 1660 (split 1189/1190 row 163) a colour-split match over
+the rows from port 1189 puts the gold fighter 1 px left in the port (2 999
+of 3 074 gold pixels at dx −1) and the teal raptor 1 px right (672 of 715
+at dx +1); in capture 1661 the gold fighter is 17 px left in the port with
+the background at (0, 0), so the camera is the same. The fighters' own
+streams agree: the capture's poses at f = 772/773 are the port's (the
+`0xE5FD8`-driven frames `0x11B9`/`0x11BA`).
+
+A `PR_T20` trace (in `fight_arena_frame`, `fight_hud_pass`, `game_frame`,
+`fighter_pass_a` and the stream dispatcher; reverted) gives port 1188/1189
+= f 771/772 (the T-rex's stream step to the upright frame is at f = 773 =
+port 1190, confirming the offset 417). The T-rex (side 0) is in state
+9/7/2 with `0x3E524` case 0 setting its speed to 10·v/7 each frame; the
+raptor (side 1) flies at −160 per frame in state 17 → 16. The winner body
+at f = 768 froze the T-rex's stream (`rec+0x24` = 0) until pass_b's
+`0x1910E` arm at f = 772. The raw steps the capture implies are, at f =
+772, [−800, −672] for the T-rex (port −842), and at f = 773 [−287, −161]
+(port −1240 = speed −792 + the stream's op-`0x20` dx −7 from the
+`0xE5FD8` table). The `0x19020`/`0x3E484` hook is inert again (f =
+760..768: the other slot's `+0x74`, `+0x76` and `+0x42` are 0, and
+`AF8[0]` is 24 at 768, so the raw's 1 and the port's 24 are both
+non-zero).
+
+With the fix, a probe at `0x3BC45` shows the first non-zero distance at f
+= 772 (w 1920 = `0x800 >> 1` + `0x700 >> 1`, both `+0x54` = 2; d 1812),
+then f = 773/774/775 and 895/897/900. Port frames 0..1188 are
+byte-identical to the unfixed dump; captures 1655..1680 splice at 0 px.
+
+### 30.2 The raw (Ghidra `disassemble_function` / `read_memory` + capstone, fixups applied)
+
+`0x25414 cmp byte [0x104b15],0` / `je 0x2545c`; `0x2541D e8 6e 67 01 00
+call 0x3bb90`; `0x25422 call 0x12d48`; then the per-side `0x186D0` /
+`0x2A690` loop and `0x33F08`. `0x3BB90`'s only other caller is `0x25509`,
+the `DS_00104B00` = `0x21` arm of the same function (unported with that
+mode).
+
+`0x3BB90`: `0x3BB95` `DS_00107D30` = 0; `0x3BBA2` return 0 unless `byte
+[0x1078fa]` = 2; `0x3BBAB`/`0x3BBB9` EDX = `[0x1077a8]`, EBX = `[0x1077ac]`,
+each non-zero; `0x3BBC9`/`0x3BBD3` `0x186D0(0)`, `0x186D0(1)` (it saves
+EBX/EDX); `0x3BBD8`/`0x3BBE2` return 0 when either slot's `+0x42` bit 2 is
+set; `0x3BBEF..0x3BC09` `0xD3388/0xD338C/0xD3390/0xD3394` = slot 0 `+0x2C`,
+`+0x30`, slot 1 `+0x2C`, `+0x30`; `0x3BC16/0x3BC1E` the words
+`0xBEEF8[char·4]` (`read_memory`: `0x800, 0x700, 0x900, 0x700, 0x900,
+0x580, 0x600` for chars 0..6), each `shr 1` when its side's `+0x54` is 2,
+summed into the word `0xD33A8`; `0x3BC40 call 0x4fb20`, `test ax,ax` →
+return 0; else `0x3BC5C 0x3BAEC(word 0xD33A8 − d)`, return 1.
+
+`0x4FB20`: dx = `0xD3388` − `0xD3390` → `0xD33A0`, |dx| → `0xD3398`, `jg`
+return 0 when |dx| > w; dy likewise → `0xD33A4`/`0xD339C`, return 0 when
+|dy| > w; then `sar 2` of the smaller, `sar 1` of that, plus the larger
+(`0x4FB6D cmp ebx,eax / jg` picks the branch: |dy| ≤ |dx| uses |dy|'s
+shifts); return that when w > it, else 0.
+
+`0x3BAEC` (AX = penetration, `movsx`): returns when slot 0's or slot 1's
+`+0x42` bit 2 is set; saves each slot's word `+0x40` bit 15; side 1 first
+(`0x3B9D8(1)`, then `(0)`) when slot 0's `+0x43` bit 1 is set and slot 1's
+is not, else side 0 first; ORs the saved bits back into the dwords
+`0x1077F0`/`0x107884`.
+
+`0x3B9D8` (EAX = side, EDX = penetration): `0x33950` context; returns when
+the side's `+0x42` bit 5 is set; `+0x41 |= 0x80` on both slots; when the
+other slot's `+0x43` bit 1 is set, `0x1883C(side, [other+0x4a] >> 16, 0)`
+and `DS_00107D30` = 1; otherwise the half penetration (the truncating
+`sar edx,0x1f / sub / sar 1`) away from the other (`0x3BA37 jl`: equal x
+counts as the right side), unless `0x3B8D8` says that reaches the wall, in
+which case the other side takes the opposite half; then, when the side's
+`+0x54` is 2, the record's word `+0x34` is zeroed unless it points away
+from the other (right side and < 0, or left side and > 0).
+
+`0x3B8D8` (EAX = side, EDX = delta): 1 when slot `+0x2C` + delta ≥
+`[0xbe018]` (`0x7C00`) or ≤ −`0x7C00`.
+
+`get_xrefs_to`: `0x107D30` is written by `0x3BB90` and `0x3B9D8` only (no
+reader); `0xD3388..0xD33A8` belong to `0x3BB90`/`0x4FB20` only.
+
+### 30.3 The fix and its assertions
+
+`fighter.c` gains `fighter_body_push` (`0x3BB90`, exported) and the statics
+`fighter_4fb20`, `fighter_3baec`, `fighter_3b9d8` and `fighter_3b8d8`
+(`0xD338C` is a local `#define`); `flow.c` calls it at `0x2541D`. About
+0x33A raw bytes in five functions (`0x3BB90` 0xDD, `0x4FB20` 0x75,
+`0x3BAEC` 0xA3, `0x3B9D8` 0x111, `0x3B8D8` 0x34), every callee already ported (`0x186D0`,
+`0x1883C`, `0x33950`): inside the size gate.
+
+New `check_body_push` in `test_fight.c` (fixture `bp_seed`: both slots
+live, chars 0/3, `+0x54` = 2, the anchor path with the demo's f = 772
+`DS_00100AB0/AB4` offsets 192/448 and 64/3200, the demo's speeds −842/−160,
+`DS_00107D30` = 1, the scratch `0xA5`). A: the demo's f = 772 push (the
+four scratch points, w 1920, dx/dy 936/1461, the side-0 +54 and side-1 −54
+on the slots and records, the raptor's speed zeroed and the T-rex's kept,
+both `+0x41` bit 7, `DS_00107D30` cleared), plus the speed gate's other
+arms (+160 on the left kept, +7 on the right zeroed). B/C/D: the `|dx|`
+gate at equality (dy still written) and past it (dy not read), the
+estimate equal to w (no push), the `|dy|` gate, and the estimate at 1650
+(push 135) and 1925 (none). E: the other branch with one halved width
+(2816) and an odd penetration (665: −332/+332). F/G: `+0x42` bit 2 on each
+slot (after the latches, before the scratch copy) and bit 5 on side 0. H:
+the `+0x43` bit-1 arm and `0x3BAEC`'s order both ways. I: both walls at
+equality and one unit inside, with an odd penetration (107). K: equal x.
+J: `DS_001078FA` and each `DS_001077A8` slot. `check_game_frame_tail`
+asserts the call (its `DS_00107D30` sentinel is cleared with the tail and
+kept without it). The `0xD3388` scratch is restored.
+
+Mutations (`scratchpad/mut20.py`, 47 single-site edits in `fighter.c` and
+`flow.c`, each built and run, then `cmp`-restored): 46 fail 1..54
+assertions after two assertions were added for the first run's survivors
+(the side's own `+0x41` store and the `> 0` keep arm). The 47th, dropping
+`0x4FB20`'s `|dy| > w` gate, is equivalent: past it the estimate is at
+least |dy| > w, so the final gate returns 0 and nothing is written after
+it. Also unobservable, so not asserted: `0x3BAEC`'s own `+0x42` bit-2
+gates (`0x3BB90` returned on the same bits first), its "slot 1's bit
+clear" order term (with both bits set both calls take the additive `+0x4C`
+arm) and the bit-15 OR-back (nothing in the push clears the bit).
+
+### 30.4 Measured
+
+| measurement | before (`6d8c382`) | after (`1268371`) |
+|---|---|---|
+| captures 1659..1714 | 1659 57 px; 1660 5 279; 1661 10 954; 1662 42 868 | **all explained** |
+| demo oracle first unexplained | 1659 (raw 4566); `[1659..3616]` 1958 / 1952 unexpl. | **1715 (raw 4622)**; `[1715..3616]` 1902 / 1896 unexpl.; port `[1237..1380]` (144, 0 exhibited) |
+| demo-fight ratchet | `[1659..1884]` 226, N = 1659 | **`[1715..1884]` 170**, "ratchet improved: first unexplained 1715 > 1659", **N = 1715** |
+| front-end oracle | `[560..1658]` / 1099 / 447 clean, 645 splice, 3 transition, 2 unexpl. | **`[560..1714]` / 1155 / 455 clean, 693 splice, 3 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved. The three transition frames are the
+same (`port832@row177`, `port862@row189`, `port906@row31`). The exhibition
+set grows to port frames 0..1236 (1000 exhibited). The ladder
+`cmake --build build --clean-first && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify`
+exited 0 with 0 compiler warnings, with N = 1715 in the Makefile. Unmoved: title
+`54/55/2/0` and `54/57/0/0`, determinism 54; smk 120/120 and 41/41; attract
+215/216 (expected divergence at 215); C-vs-Python 9866; `symbols.h`; the
+front-end "endpoints BAD" line.
+
+**Unresolved code targets after the fix** (a temporary whole-run probe in
+`fn_resolve`, reverted): `0x4AC80` (f = 820 and 841, as before) and
+`0x3C0A4` (f = 850; no code cross-reference in Ghidra; it missed at f = 850
+on the frame-1481 fix's run too), plus the known front-end sites
+`0x29B74`/`0x41578`, the stub `0x5D812` and `fn_resolve(0)` (f = 617..767).
+`0x3BF70` (f = 850 on the frame-1563 fix) no longer misses: the run moved
+from f = 772.
+
+### 30.5 The new first unexplained frame, 1715 (characterised, not fixed)
+
+Captures 1659..1714 splice at 0 px. Capture 1715's best splice, port
+1236/1237 row 144, leaves 383 px, almost all in x 40–99, rows 144–190: a
+standing teal-clad worshipper at x ≈ 45–60 in the capture sits at x ≈
+75–88 in port 1237 and is gone from port 1238; a lying worshipper beside
+it matches. Port 1237 is the f = 820 state, and f = 820 is the first
+`fn_resolve` miss of the run (§29.4: `0x4AC80`, a worshipper stream
+callback with no code cross-reference, EAX = the actor, its entry at
+`+0x14`). That callback is the candidate owner; it is not derived.

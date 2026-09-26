@@ -197,7 +197,7 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
 # improves (the tool prints "ratchet improved ... raise N"). N = 1715 was measured on
-# the commit that raised it, on 6d8c382: game_frame's DS_00104B15 tail calls the
+# 1268371 (the commit that raised it, on 6d8c382): game_frame's DS_00104B15 tail calls the
 # fighters' body push 0x3BB90 at 0x2541D (before 0x12D48), and the port did not.
 # When the two latched slot points are closer than the sum of the 0xBEEF8 character
 # widths (halved for +0x54 == 2), 0x4FB20's distance estimate gives the penetration
