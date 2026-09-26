@@ -241,7 +241,7 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 
 # Attract cycle-2 oracle (a RATCHET, enforced in verify; roar-timing Task 26, record
 # §36): the same PR_FRONTEND_DUMP run. After the demo's exit frame (loop 1970) the
-# driver writes every presented frame to run1/cycle2 (loops 1971..2899, and inside
+# driver writes every presented frame to run1/cycle2 (loops 1971..3099, and inside
 # loop 1971 the 166 screens the logo player 0x1C740 writes: its 0x52106 blanks and
 # every TWI5/TWG frame), a separate dump so the front-end and demo-fight windows do
 # not change. title_compare --attract2 classifies the capture from the first all-black
@@ -251,17 +251,18 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # allowed by name (title_compare's ATTRACT2_ALLOWED_UNEXPLAINED, record §37): it is
 # byte-identical to front-end capture 832, the loader's read-stall frame with no
 # raw-code owner (record §35.1), and the allowance holds only while that identity
-# does. N = 2461 was measured on the commit that set it (on 741a5f5; record §38):
-# state 6's 0x34978 now resets the live-fighter count DS_001078FA, so the second
-# demo's fighter passes 0x1958C/0x34D8C run, captures 2386..2460 are explained, and
-# the second demo diverges from 2461 (the ape's punch lands on the raptor). The
-# driver's loop (FE_LOOPS, a measurement window) runs to 2900 so that 2461 lies
-# inside the dump. It fails if an unexplained frame appears below N, N exceeds the
-# capture's end + 1, or N is at or below the region's start. Like the front-end
-# oracle, its window comes from the port's own dump, so it cannot detect an
-# under-rendering port. (Before it, N = 2386, measured on c0edb4c and re-measured
-# unchanged on a7ccc86 and 65f4084; before that N = 2384, measured on fc8e775.)
-ATTRACT2_MIN_FIRST = 2461
+# does. N = 2674 was measured on the commit that set it (on 5448e09; record §38):
+# the raptor's block (0x1AB5C's arm 0x1A7CC, with 0x1A6AC/0x1A8F4/0x1A640 in the
+# +0x52 == 6 handler 0x1A978) explains captures 2461..2673, and the second demo
+# diverges from 2674. The driver's loop (FE_LOOPS, a measurement window) runs to
+# 3100 so that 2674 lies inside the dump. It fails if an unexplained frame appears
+# below N, N exceeds the capture's end + 1, or N is at or below the region's start.
+# Like the front-end oracle, its window comes from the port's own dump, so it cannot
+# detect an under-rendering port. (Before it, N = 2461, measured on 5448e09: state
+# 6's 0x34978 reset of the live-fighter count DS_001078FA explained 2386..2460;
+# before that N = 2386, measured on c0edb4c and re-measured unchanged on a7ccc86 and
+# 65f4084; before that N = 2384, measured on fc8e775.)
+ATTRACT2_MIN_FIRST = 2674
 attract2-oracle: build ## Attract cycle-2 ratchet after the demo (skips without data/title-captures/frontend)
 	@echo "== attract cycle-2 oracle (ratchet on the first unexplained frame, N=$(ATTRACT2_MIN_FIRST)) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \

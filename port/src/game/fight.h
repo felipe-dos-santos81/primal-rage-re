@@ -28,8 +28,9 @@ void fight_hud_pass(u32 side);
 
 /* 0x1A978. The per-side stance/command pass, reached from 0x34B6C. It calls the
  * command mapper 0x3B134 behind the 0x5f/0x62 gate and maintains the stance
- * bytes +0x61/+0x60/+0x54/+0x53. Its helpers 0x1A6AC/0x1A640/0x1A8F4 are gaps
- * (§7.11) and are skipped. Exposed because Task 4's 0x34B6C path shares it. */
+ * bytes +0x61/+0x60/+0x54/+0x53 through its helpers 0x1A6AC/0x1A640/0x1A8F4
+ * (fighter.c; record §38, which closes the §7.11 gap). It is the +0x52 == 6
+ * (block) handler. Exposed because Task 4's 0x34B6C path shares it. */
 void fight_stance_pass(u32 side);
 
 /* 0x3B134. The command-word mapper: it writes word[DS_001088E0 + side*2].

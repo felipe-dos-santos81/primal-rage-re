@@ -7302,6 +7302,233 @@ static void c3_seed(u32 s0, u32 s1, u32 r0, u32 r1, u32 st)
     for (i = 0; i < 5u; i++) DSW(c3_streams[i]) = (u16)(0x1300u + i);
 }
 
+/* Record §38: the block family 0x1AB5C's arm reaches. 0x1A7CC (EAX = side):
+ * +0x43 &= 0xFD, 0x18B04, +0x61/+0x60/+0x62 = 0/0x1E/1, +0x60 = byte +0xA of
+ * the other side's 0x3AFC4 record (its +0x5F <= 0x3F), 0x1A6AC(slot, rec),
+ * then the other side's 0x100CE0 word + 1 = k: k in 0..6 scales +0x60 by
+ * the word at 0xA2C4C + 2k (percent), else +0x60 = 2; +0x52/+0x53 = 6/1.
+ * 0x1A6AC starts 0xC8F40[char] (+0x54 0, +0x43 bit 0x20 clear) or
+ * 0xC8F90[char] (+0x54 1, bit 0x10 clear) at 3.0 through 0x3C480 and sets
+ * that bit alone of the pair. 0x1A8F4 (EDX = rec) restarts 0xC8F68[char]
+ * (0xC8FB8[char] for +0x54 1) through 0x2BC30 with 9/0 and +0x62/+0x60 = 0.
+ * 0x1A640 is the held-back direction. The four char-3 table entries are
+ * pointed at crafted one-word streams and restored. */
+static void check_block(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    u32 pset1 = FIGHT_ACTORS + 0x20u;
+    u32 st = FIGHT_RECS + 0x3A00u;
+    u32 bst = FIGHT_RECS + 0x3B00u;
+    static const u32 tabs[4] = { 0x000C8F40u, 0x000C8F90u, 0x000C8F68u,
+                                 0x000C8FB8u };
+    u32 sv_14ec = DSD(DS_001014EC);
+    u8 sv_b00[4], sv_tab[28], sv_ce0[4], sv_e0[4], sv_bt[16];
+    u32 i, tri0, k;
+    s32 want;
+
+    tf_snap(sv_b00, DS_00104B00, 4u);
+    tf_snap(sv_tab, 0x000C8950u, 28u);
+    tf_snap(sv_ce0, DS_00100CE0, 4u);
+    tf_snap(sv_e0, DS_001088E0, 4u);
+    for (i = 0; i < 4u; i++) tf_snap(sv_bt + i * 4u, tabs[i] + 3u * 4u, 4u);
+
+    /* A: 0x1A7CC for side 0 (character 3). The other side (character 2)
+     * has +0x5F = 0x3C, so +0x60 starts from byte +0xA of 0xDE114 + 11 *
+     * (2 * 64 + 0x3C); its counter goes 1 -> 2, so k = 2 and the percentage
+     * is the word at 0xA2C50 (0x55). */
+    c3_seed(s0, s1, r0, r1, st);
+    for (i = 0; i < 4u; i++) {
+        DSW(bst + i * 0x10u) = (u16)(0x1400u + i);
+        DSD(tabs[i] + 3u * 4u) = bst + i * 0x10u;
+    }
+    DSB(s0 + 0x43u) = 0x1Au;
+    DSB(s0 + 0x54u) = 0u;
+    DSB(s0 + 0x61u) = 0x55u;
+    DSB(s0 + 0x62u) = 0u;
+    DSW(DS_00100CE0) = 0x0005u;
+    DSW(DS_00100CE0 + 2u) = 0x0001u;
+    fighter_block_start(0u);
+    tri0 = 0x000DE114u + 11u * ((2u << 6) + 0x3Cu);
+    k = 2u;
+    want = (s32)(s8)DSB(tri0 + 0x0Au) * (s32)(s16)DSW(DS_000A2C4A + 2u + k * 2u)
+         / 100;
+    CHECK_EQ_INT((int)DSW(DS_000A2C4A + 2u + k * 2u), 0x55);
+    CHECK_EQ_INT((int)DSB(s0 + 0x60u), (int)(u8)want);
+    CHECK_EQ_INT((int)DSW(DS_00100CE0 + 2u), 2);
+    CHECK_EQ_INT((int)DSW(DS_00100CE0), 5);
+    CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0x28);
+    CHECK_EQ_INT((int)DSB(s0 + 0x61u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x62u), 1);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 6);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 1);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)bst);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)(DSW(pset1) & 0x7FFFu), 0x1400);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0);
+    CHECK_EQ_INT((int)DSD(r1 + 8u), 0x00ABCDEF);
+
+    /* A2: k = 7 (6 + 1) and k = -1 (0xFFFE + 1) both give +0x60 = 2. */
+    DSW(DS_00100CE0 + 2u) = 0x0006u;
+    DSB(s0 + 0x43u) = 0x20u;                /* 0x1A6AC skips: bit 0x20 set */
+    DSD(r0 + 8u) = 0x00ABCDEFu;
+    fighter_block_start(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x60u), 2);
+    CHECK_EQ_INT((int)DSW(DS_00100CE0 + 2u), 7);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0x20);
+    DSW(DS_00100CE0 + 2u) = 0xFFFEu;
+    fighter_block_start(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x60u), 2);
+    CHECK_EQ_INT((int)DSW(DS_00100CE0 + 2u), 0xFFFF);
+    /* A3: the other side's +0x5F above 0x3F (0x1A810 `jg`) skips both
+     * record reads, even with its +0x64 below 0x40 (0x0C, whose record byte
+     * +0xA is 33, not 0x1E), leaving +0x60 at 0x1E
+     * before the scaling: k = 1 is 100 percent. */
+    DSW(DS_00100CE0 + 2u) = 0u;
+    DSB(s1 + 0x5Fu) = 0x40u;
+    DSB(s1 + 0x64u) = 0x0Cu;                /* its record byte +0xA is 33 */
+    fighter_block_start(0u);
+    CHECK_EQ_INT((int)DSB(0x000DE114u + 11u * ((2u << 6) + 0x0Cu) + 0x0Au), 33);
+    CHECK_EQ_INT((int)DSW(DS_000A2C4A + 2u + 2u), 0x64);
+    CHECK_EQ_INT((int)DSB(s0 + 0x60u), 0x1E);
+    /* A4: the other side as character 6 with +0x5F = 0x24, whose record byte
+     * +0xA is 55; k = 2 gives 55 * 0x55 / 100 = 46 (the raw's idiv by 100,
+     * not 99, which would give 47). */
+    DSB(s1 + 0x7Au) = 6u;
+    DSB(s1 + 0x5Fu) = 0x24u;
+    DSW(DS_00100CE0 + 2u) = 1u;
+    fighter_block_start(0u);
+    tri0 = 0x000DE114u + 11u * ((6u << 6) + 0x24u);
+    CHECK_EQ_INT((int)(s8)DSB(tri0 + 0x0Au), 55);
+    CHECK_EQ_INT((int)DSB(s0 + 0x60u), 46);
+    DSB(s1 + 0x7Au) = 2u;
+    DSB(s1 + 0x5Fu) = 0x3Cu;
+
+    /* B: 0x1A6AC with +0x54 = 1: bit 0x10 clear starts 0xC8F90[3]; bit 0x10
+     * set leaves the record. */
+    DSB(s0 + 0x54u) = 1u;
+    DSB(s0 + 0x43u) = 0x2Au;
+    DSD(r0 + 8u) = 0x00ABCDEFu;
+    fighter_block_anim(s0, r0);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)(bst + 0x10u));
+    CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0x1A);
+    DSD(r0 + 8u) = 0x00ABCDEFu;
+    fighter_block_anim(s0, r0);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0x1A);
+    /* B2: +0x54 = 2 starts nothing. */
+    DSB(s0 + 0x54u) = 2u;
+    DSB(s0 + 0x43u) = 0u;
+    fighter_block_anim(s0, r0);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0);
+
+    /* C: 0x1A8F4 from rec+0x51 (side 0): +0x54 = 0 -> 0xC8F68[3], 1 ->
+     * 0xC8FB8[3], at 3.0, 9/0, +0x62/+0x60 = 0, +0x43 &= 0xCF. */
+    DSB(s0 + 0x54u) = 0u;
+    DSB(s0 + 0x43u) = 0xFFu;
+    DSB(s0 + 0x52u) = 6u; DSB(s0 + 0x53u) = 1u;
+    DSB(s0 + 0x62u) = 1u; DSB(s0 + 0x60u) = 7u;
+    fighter_block_end(r0);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)(bst + 0x20u));
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)(DSW(pset1) & 0x7FFFu), 0x1402);
+    CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0xCF);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x62u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x60u), 0);
+    DSB(s0 + 0x54u) = 1u;
+    fighter_block_end(r0);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)(bst + 0x30u));
+
+    /* D: 0x1A640 on slot 0's record +0x28 bit 0x4000 and command word. */
+    DSW(r0 + 0x28u) &= 0xBFFFu;
+    DSW(DS_001088E0) = 0x1000u;
+    CHECK_EQ_INT((int)fighter_block_dir(0u), 0x1000);
+    DSW(DS_001088E0) = 0x2000u;
+    CHECK_EQ_INT((int)fighter_block_dir(0u), 0);
+    DSW(r0 + 0x28u) |= 0x4000u;
+    CHECK_EQ_INT((int)fighter_block_dir(0u), 0x2000);
+    DSW(DS_001088E0) = 0x1000u;
+    CHECK_EQ_INT((int)fighter_block_dir(0u), 0);
+
+    /* E: 0x1A978 (the +0x52 == 6 handler) with +0x62 = 0 and +0x63 set:
+     * +0x60 decrements; held back with no 0x8000/0x000F bits and +0x60 still
+     * >= 1 keeps the block; releasing it (0x1A640 = 0) ends it (0x1A8F4). */
+    DSW(r0 + 0x28u) &= 0xBFFFu;
+    DSW(DS_001088E0) = 0x1000u;
+    DSB(s1 + 0x5Fu) = 0xFFu;
+    DSB(s1 + 0x64u) = 0xFFu;
+    DSB(s0 + 0x63u) = 1u;
+    DSB(s0 + 0x54u) = 0u;
+    DSB(s0 + 0x52u) = 6u; DSB(s0 + 0x62u) = 0u; DSB(s0 + 0x60u) = 5u;
+    DSD(r0 + 8u) = 0x00ABCDEFu;
+    fight_stance_pass(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x60u), 4);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 6);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x00ABCDEF);
+    DSW(DS_001088E0) = 0x1008u;             /* a 0x000F bit ends it */
+    fight_stance_pass(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)(bst + 0x20u));
+    DSB(s0 + 0x52u) = 6u; DSB(s0 + 0x60u) = 5u;
+    DSW(DS_001088E0) = 0x9000u;             /* the 0x8000 bit ends it */
+    fight_stance_pass(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    DSB(s0 + 0x52u) = 6u; DSB(s0 + 0x60u) = 1u;
+    DSW(DS_001088E0) = 0x1000u;             /* +0x60 0 with no attacker */
+    fight_stance_pass(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    DSB(s0 + 0x52u) = 6u; DSB(s0 + 0x60u) = 5u;
+    DSW(DS_001088E0) = 0u;                  /* not held back */
+    fight_stance_pass(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+
+    /* F: the +0x62 arm's 0x1AA5F: the other side's +0x8A is cleared only
+     * when self+0x86 equals other+0x84. */
+    DSB(s0 + 0x62u) = 1u; DSB(s0 + 0x60u) = 1u;
+    DSW(s0 + 0x86u) = 0x1234u; DSW(s1 + 0x84u) = 0x1234u;
+    DSB(s1 + 0x8Au) = 0x77u;
+    fight_stance_pass(0u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x8Au), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x60u), 0x28);
+    CHECK_EQ_INT((int)DSB(s0 + 0x62u), 0);
+    DSB(s0 + 0x62u) = 1u; DSB(s0 + 0x60u) = 1u;
+    DSW(s1 + 0x84u) = 0x4321u;
+    DSB(s1 + 0x8Au) = 0x77u;
+    fight_stance_pass(0u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x8Au), 0x77);
+
+    /* G: the +0x61 timer arm (+0x63 clear, +0x61 1 -> 0): command bit 0x4000
+     * with +0x54 != 1 sets +0x54 = 1 and calls 0x1A6AC (0xC8F90[3]); bit
+     * 0x4000 clear with +0x54 != 0 sets 0 and calls it (0xC8F40[3]). */
+    DSB(s0 + 0x63u) = 0u;
+    DSB(s0 + 0x62u) = 1u; DSB(s0 + 0x60u) = 9u;
+    DSB(s0 + 0x61u) = 1u; DSB(s0 + 0x54u) = 0u; DSB(s0 + 0x43u) = 0u;
+    DSW(DS_001088E0) = 0x4000u;
+    DSD(r0 + 8u) = 0x00ABCDEFu;
+    fight_stance_pass(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 1);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)(bst + 0x10u));
+    CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0x10);
+    DSB(s0 + 0x61u) = 1u; DSB(s0 + 0x43u) = 0u;
+    DSW(DS_001088E0) = 0u;
+    DSD(r0 + 8u) = 0x00ABCDEFu;
+    fight_stance_pass(0u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)bst);
+    CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0x20);
+
+    for (i = 0; i < 4u; i++) tf_put(sv_bt + i * 4u, tabs[i] + 3u * 4u, 4u);
+    tf_put(sv_e0, DS_001088E0, 4u);
+    tf_put(sv_ce0, DS_00100CE0, 4u);
+    tf_put(sv_tab, 0x000C8950u, 28u);
+    tf_put(sv_b00, DS_00104B00, 4u);
+    DSD(DS_001014EC) = sv_14ec;
+}
+
 /* 0x1490C (*(u32*)0xA4734 reads `0c 49 01 00 00 00 00 00`: character 3's
  * reaction 0x27, no stream; 0xA4734 - 0xA3528 = 231 records of 0x14 = 3*64 +
  * 0x27), reached on the second demo's first state-7 frame. EAX = slot, EDX =
@@ -10012,6 +10239,7 @@ int test_fight(void)
     check_reaction_attack();
     check_trex_grab();
     check_char3_reaction();
+    check_block();
     check_slot_hook();
     check_reaction_predicates();
     check_reaction();

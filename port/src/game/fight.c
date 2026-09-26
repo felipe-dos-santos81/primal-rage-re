@@ -352,11 +352,11 @@ void fight_stance_pass(u32 side)
             if ((DSW(DS_001088E0 + ctx[1] * 2u) & 0x4000u) != 0) {
                 if (DSB(self + 0x54u) != 1) {
                     DSB(self + 0x54u) = 1;                   /* 0x1A9F0 */
-                    /* PORT: 0x1AA24 0x1A6AC(self, ctx[5]) — named gap (§7.11). */
+                    fighter_block_anim(self, ctx[5]);        /* 0x1AA24 0x1A6AC */
                 }
             } else if (DSB(self + 0x54u) != 0) {
                 DSB(self + 0x54u) = 0;                       /* 0x1AA18 */
-                /* PORT: 0x1AA24 0x1A6AC — named gap (§7.11). */
+                fighter_block_anim(self, ctx[5]);            /* 0x1AA24 0x1A6AC */
             }
         }
     }
@@ -365,7 +365,9 @@ void fight_stance_pass(u32 side)
     if (DSB(self + 0x62u) != 0) {
         DSB(self + 0x60u) = (u8)(DSB(self + 0x60u) - 1u);    /* 0x1AA35 */
         if (((s32)DSD(self + 0x5du) >> 24) < 1) {            /* 0x1AA4A */
-            if (DSW(self + 0x86u) != DSW(other + 0x84u))     /* 0x1AA5F */
+            /* 0x1AA5F `cmp dx,[other+0x84]; jne 0x1AA6F`: the store runs
+             * when the words are equal (record §38 corrects `!=`). */
+            if (DSW(self + 0x86u) == DSW(other + 0x84u))     /* 0x1AA5F */
                 DSB(other + 0x8au) = 0;                      /* 0x1AA68 */
             DSB(self + 0x62u) = 0;                           /* 0x1AA73 */
             DSB(self + 0x60u) = 0x28;                        /* 0x1AA7B */
@@ -373,9 +375,16 @@ void fight_stance_pass(u32 side)
         }
     } else {
         DSB(self + 0x60u) = (u8)(DSB(self + 0x60u) - 1u);    /* 0x1AA8C */
-        /* PORT: 0x1AA8F..0x1AB04. 0x1A640(side) and 0x1A8F4(self, ctx[5]) are
-         * named gaps (§7.11); the raw's branch selects between them, so with
-         * both unported the arm reduces to the +0x60 decrement. */
+        {
+            u16 cmd = DSW(DS_001088E0 + ctx[1] * 2u);        /* 0x1AAA2 */
+            if (fighter_block_dir(ctx[1]) == 0u              /* 0x1AA93/0x1AA9A */
+                    || (cmd & 0x8000u) != 0u                 /* 0x1AAAB/0x1AAB3 */
+                    || (cmd & 0x000Fu) != 0u                 /* 0x1AABE/0x1AAC5 */
+                    || (((s32)DSD(self + 0x5du) >> 24) < 1   /* 0x1AAD1 */
+                        && DSB(other + 0x5fu) == 0xFFu       /* 0x1AAE2 */
+                        && DSB(other + 0x64u) == 0xFFu))     /* 0x1AAF5 */
+                fighter_block_end(ctx[5]);                   /* 0x1AB04 0x1A8F4 */
+        }
     }
 }
 

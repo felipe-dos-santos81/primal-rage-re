@@ -543,10 +543,108 @@ static int fighter_input_scan(u32 side, s32 n1, s32 n2, u32 mask)
     return 0;                                   /* 0x464FB */
 }
 
+/* PORT: data-object tables symbols.h does not name (record §38). */
+#define FIGHT_BLOCK_ANIM0  0x000C8F40u  /* 0x1A6AC: per-char stream, +0x54 0 */
+#define FIGHT_BLOCK_ANIM1  0x000C8F90u  /* 0x1A6AC: per-char stream, +0x54 1 */
+#define FIGHT_BLOCK_END0   0x000C8F68u  /* 0x1A8F4: per-char stream */
+#define FIGHT_BLOCK_END1   0x000C8FB8u  /* 0x1A8F4: per-char stream, +0x54 1 */
+
+static void hit_anim_start_a(u32 rec, u32 stream, u32 frame_bits); /* 0x3C480 */
+
+/* 0x1A640 — record §38. */
+u32 fighter_block_dir(u32 side)
+{
+    u32 rec = DSD(DS_001077B0 + side * 0x94u);          /* 0x1A650 */
+    u16 cmd = DSW(DS_001088E0 + side * 2u);             /* 0x1A670/0x1A68B */
+    if ((DSW(rec + 0x28u) & 0x4000u) == 0u)             /* 0x1A657..0x1A66E */
+        return (cmd & 0x1000u) != 0u ? 0x1000u : 0u;    /* 0x1A679..0x1A683 */
+    return (cmd & 0x2000u) != 0u ? 0x2000u : 0u;        /* 0x1A694..0x1A69E */
+}
+
+/* 0x1A6AC — record §38. */
+void fighter_block_anim(u32 slot, u32 rec)
+{
+    u32 ctx[6];
+    fighter_ctx_swap(ctx, DSB(rec + 0x51u));            /* 0x1A6B7 0x33A68 */
+    hit_facing_flag(ctx[1]);                            /* 0x1A6C0 0x18B04 */
+    if (DSB(slot + 0x54u) == 0u) {                      /* 0x1A6C8 jbe */
+        if ((DSB(slot + 0x43u) & 0x20u) != 0u) return;  /* 0x1A6D2 */
+        hit_anim_start_a(rec, DSD(FIGHT_BLOCK_ANIM0
+                         + (u32)DSB(slot + 0x7Au) * 4u),
+                         0x40400000u);                  /* 0x1A6DD..0x1A6EB */
+        DSB(slot + 0x43u) = (u8)((DSB(slot + 0x43u) & 0xCFu) | 0x20u);
+    } else if (DSB(slot + 0x54u) == 1u) {               /* 0x1A6CC */
+        if ((DSB(slot + 0x43u) & 0x10u) != 0u) return;  /* 0x1A700 */
+        hit_anim_start_a(rec, DSD(FIGHT_BLOCK_ANIM1
+                         + (u32)DSB(slot + 0x7Au) * 4u),
+                         0x40400000u);                  /* 0x1A70B..0x1A719 */
+        DSB(slot + 0x43u) = (u8)((DSB(slot + 0x43u) & 0xCFu) | 0x10u);
+    }
+}
+
+/* 0x1A7CC — record §38. */
+void fighter_block_start(u32 side)
+{
+    u32 ctx[6], tri[3];
+    fighter_ctx_swap(ctx, side);                        /* 0x1A7D5 0x33A10 */
+    DSB(ctx[3] + 0x43u) &= 0xFDu;                       /* 0x1A7DE */
+    hit_facing_flag(ctx[1]);                            /* 0x1A7E6 0x18B04 */
+    DSB(ctx[3] + 0x61u) = 0;                            /* 0x1A7EF */
+    DSB(ctx[3] + 0x60u) = 0x1Eu;                        /* 0x1A7F7 */
+    DSB(ctx[3] + 0x62u) = 1u;                           /* 0x1A7FF */
+    if (DSB(ctx[2] + 0x5Fu) <= 0x3Fu) {                 /* 0x1A810 jg */
+        fighter_anim_triple(tri, ctx[0], (s32)DSB(ctx[2] + 0x5Fu));  /* 0x1A81C */
+        if (DSB(ctx[2] + 0x5Fu) < 0x40u) {              /* 0x1A82D */
+            DSB(ctx[3] + 0x60u) = DSB(tri[0] + 0x0Au);  /* 0x1A83A/0x1A83D */
+        } else if (DSB(ctx[2] + 0x64u) < 0x40u) {       /* 0x1A84F */
+            /* PORT: 0x1A842..0x1A86B cannot run: +0x5F <= 0x3F was just
+             * tested. Kept verbatim. */
+            fighter_anim_triple(tri, ctx[0], (s32)DSB(ctx[2] + 0x64u));
+            DSB(ctx[3] + 0x60u) = DSB(tri[0] + 0x0Au);  /* 0x1A868/0x1A86B */
+        }
+    }
+    fighter_block_anim(ctx[3], ctx[5]);                 /* 0x1A876 0x1A6AC */
+    {
+        u32 o = ctx[0] * 2u;
+        s32 k;
+        DSW(DS_00100CE0 + o) = (u16)(DSW(DS_00100CE0 + o) + 1u);   /* 0x1A880 */
+        k = (s32)DSD(DS_00100CDE + o) >> 16;            /* 0x1A887/0x1A88D */
+        if ((u32)k >= 7u || (s16)DSW(DS_00100CE0 + o) < 0) {  /* 0x1A893/0x1A89D */
+            DSB(ctx[3] + 0x60u) = 2u;                   /* 0x1A8A3 */
+        } else {
+            s32 pct = (s32)DSD(DS_000A2C4A + (u32)k * 2u) >> 16;  /* 0x1A8B9 */
+            s32 t = (s32)DSD(ctx[3] + 0x5Du) >> 24;     /* 0x1A8B6/0x1A8C0 */
+            DSB(ctx[3] + 0x60u) = (u8)((pct * t) / 100);    /* 0x1A8C6..0x1A8DB */
+        }
+    }
+    DSB(ctx[3] + 0x52u) = 6u;                           /* 0x1A8E2 */
+    DSB(ctx[3] + 0x53u) = 1u;                           /* 0x1A8EA */
+}
+
+/* 0x1A8F4 — record §38. */
+void fighter_block_end(u32 rec)
+{
+    u32 ctx[6];
+    fighter_ctx_swap(ctx, DSB(rec + 0x51u));            /* 0x1A8F9 0x33A68 */
+    {
+        u32 slot = ctx[3];
+        u32 tab = (DSB(slot + 0x54u) == 1u) ? FIGHT_BLOCK_END1
+                                             : FIGHT_BLOCK_END0;  /* 0x1A905 */
+        actors_anim_begin(ctx[5], DSD(tab + (u32)DSB(slot + 0x7Au) * 4u),
+                          0x40400000u);                 /* 0x1A944 0x2BC30 */
+        DSB(slot + 0x43u) &= 0xCFu;                     /* 0x1A94D */
+        DSB(slot + 0x52u) = 9u;                         /* 0x1A955 */
+        DSB(slot + 0x53u) = 0;                          /* 0x1A95D */
+        DSB(slot + 0x62u) = 0;                          /* 0x1A965 */
+        DSB(slot + 0x60u) = 0;                          /* 0x1A96D */
+    }
+}
+
 /* 0x1AB5C. The facing word 0x3B298 compares against: it ORs seven input-ring
  * reads with the side's command word, then returns the 0x1000/0x2000/0x3000
  * facing base, or 0 when 0x1AB10 rejects the fighter. The raw returns EDX (the
- * base), not the accumulated OR. 0x18B04/0x1A7CC are gaps (§7.12). */
+ * base), not the accumulated OR. The block arm calls 0x18B04 and 0x1A7CC
+ * (record §38). */
 static u32 fighter_input_mask(u32 side)
 {
     u32 ctx[6];
@@ -569,7 +667,7 @@ static u32 fighter_input_mask(u32 side)
     if (DSB(ctx[2] + 0x5fu) != 0xFFu) {         /* 0x1ABEB */
         if (((u16)mask & (u16)base) != 0) {     /* 0x1ABFC */
             bl = 1;                             /* 0x1AC04 */
-            /* PORT: 0x1AC06 0x18B04(side) — named gap (§7.12). */
+            hit_facing_flag(ctx[1]);            /* 0x1AC06 0x18B04 */
         }
     } else if (DSB(ctx[2] + 0x64u) != 0xFFu) {  /* 0x1AC19 */
         u32 rec2 = DSD(ctx[2] + 0x08u);         /* 0x1AC24 */
@@ -584,7 +682,7 @@ static u32 fighter_input_mask(u32 side)
     if (bl == 0 && DSB(ctx[3] + 0x53u) != 1u)   /* 0x1AC52/0x1AC5E */
         return base;                            /* 0x1AC7F */
     DSB(ctx[3] + 0x54u) = (u8)((mask & 0x4000u) != 0);   /* 0x1AC73 */
-    /* PORT: 0x1AC7A 0x1A7CC(side) — named gap (§7.12). */
+    fighter_block_start(ctx[1]);                /* 0x1AC7A 0x1A7CC */
     return base;                                /* 0x1AC7F */
 }
 

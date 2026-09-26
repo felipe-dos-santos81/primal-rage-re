@@ -92,6 +92,28 @@ void fighter_spawn(u32 side);
  * == 2. */
 void fighter_slots_reset(void);
 
+/* 0x1A640. The block direction: 0x1000 when slot[side]'s record +0x28 bit
+ * 0x4000 is clear and the side's command word has 0x1000, 0x2000 when the bit
+ * is set and the word has 0x2000, else 0. */
+u32 fighter_block_dir(u32 side);
+
+/* 0x1A6AC. EAX = slot, EDX = rec. 0x18B04 for rec+0x51's side, then with
+ * slot+0x54 == 0 (1) and slot+0x43 bit 0x20 (0x10) clear, start the stream
+ * 0xC8F40[char] (0xC8F90[char]) through 0x3C480 at 3.0 and set that bit
+ * alone of the pair. */
+void fighter_block_anim(u32 slot, u32 rec);
+
+/* 0x1A7CC. The block start 0x1AB5C calls (0x1AC7A): +0x43 bit 1 off,
+ * 0x18B04, +0x61/+0x60/+0x62 = 0/0x1E/1, +0x60 from the other side's move
+ * record (0x3AFC4 triple[0] + 0xA), 0x1A6AC, the other side's 0x100CE0
+ * counter and its 0xA2C4C percentage of +0x60, then +0x52/+0x53 = 6/1. */
+void fighter_block_start(u32 side);
+
+/* 0x1A8F4. EDX = rec (EAX unread). The block end: restart the stance stream
+ * 0xC8F68[char] (0xC8FB8[char] when +0x54 == 1) at 3.0 through 0x2BC30, then
+ * +0x43 &= 0xCF and +0x52/+0x53/+0x62/+0x60 = 9/0/0/0. */
+void fighter_block_end(u32 rec);
+
 /* 0x1975C. The think step the arena frame calls at 0x264CC. It runs the
  * projectile collision step 0x17CB0 (camera.h), then, for each thrower whose
  * DS_00100AD0 overlap count exceeds 2, applies the projectile hit to the struck
