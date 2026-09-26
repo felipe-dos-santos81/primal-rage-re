@@ -7042,8 +7042,9 @@ only the `0x5D812` stub, so the owner is an unported path.
 through the existing `fighter_ctx_rec_swap`. They are wired at
 `0x1AC06`/`0x1AC7A` and `0x1AA24` (twice)/`0x1AB04`, and `0x1AA93` calls the
 existing `fighter_1a640`, with the `0x1AA5F` correction. That is 3 new
-functions, about `0x250` raw bytes, inside the gate. (`9469a30` had added a
-duplicate `fighter_block_dir` for `0x1A640`; `9db3951` removed it.)
+functions, about `0x234` raw bytes (corrected in §39.5), inside the gate.
+(`9469a30` had added a duplicate `fighter_block_dir` for `0x1A640`; `9db3951`
+removed it.)
 
 ### 38.4 The assertions and mutations
 
@@ -7093,7 +7094,8 @@ current first unexplained frame inside the dump: 2461 is about loop 2848,
 and 2674 about loop 3031. One run of the driver takes about 50 s at 3100
 loops (47 s at 2800).
 
-**2674, characterised.** From about capture 2670 the whole scene is offset:
+**2674, characterised.** (Corrected in §39.1: the scene is not offset, and
+2674 is the ape's pose.) From about capture 2670 the whole scene is offset:
 the background and both fighters shift, and the diffs span rows 65..199 and
 all columns. That is a camera or position difference. The polled fields do
 not include positions or the camera, and they stay equal through f = 3926.
@@ -7146,3 +7148,118 @@ port runs on at `0xE3F66` (`+0x52` 2, id `0x1422`).
 - The `0x1A842..0x1A86B` comment is now a plain address comment (it marks a
   verbatim transcription, not a deviation), and the `0x1490C` header is
   rewrapped to 80 columns.
+
+## 39. The ape's block restart `0x1A734` at capture 2674 (roar-timing Task 29, `c9875d1`)
+
+**Result in one line.** Capture 2674 is not a scene offset. The second demo's
+positions and camera equal the original's frame for frame, and 2674 differs
+only in the ape's pose: at f = 3927 the original restarts the ape's block
+stream through `0x1A734`, which `0x3B298` calls at `0x3B443` and which was a
+named gap (§7.11 of the demo-fight record). With it 2674..2762 are explained
+(N = 2763, `c9875d1`).
+
+### 39.1 The poll, extended
+
+`scratchpad/t29/dbpoll.py` is §38.1's poll with more fields. Per slot it adds
+`+0x2C/+0x30/+0x34/+0x38` and `+0x43`, and the record's `+0x18/+0x1C`.
+Globally it adds the camera `DS_000F0AF0`/`DS_000F0AEC`, its mode bytes
+`DS_000F0AFE`/`DS_000F0AFF`, `0x100AB0..0x100ABF`, `DS_001078F2` and the
+dword at `0x100CE0`. The data base was `0x266000` again. A port probe
+(reverted) prints the same line after each driver loop.
+
+- **Positions and the camera match** through the whole run the port logged
+  (f = 3986, loop 3099). §38.5's step 1 expected a difference at or before
+  f = 3918. There is none.
+- The only difference that is not a sampling tear is the ape's (side 1)
+  record at f = 3927 (loop 3040). The original restarts its block stream at
+  `0xE3F5E` (`rec+0x52` 0, sprite `0x941E`). The port runs on at `0xE3F66`
+  (`+0x52` 2, `0x9422`). The word `0x100CE0[0]` goes 1 -> 2 on that frame
+  in both. The ape's `0x1A7CC` increments the other side's word, so it ran
+  in both. The ape's `+0x43` reads `0xA0`
+  before and after in both, and `0x1A6AC` skips while bit `0x20` is set. So
+  the restart is not `0x1A6AC`'s.
+
+**A correction to §38.5.** Its "whole scene offset from about 2670" came from
+a capture-to-port frame mapping about 8 frames off. Searching the whole
+cycle-2 dump (rows 60..179), each of captures 2655..2673 equals one port
+frame exactly (2672 = cycle-2 frame 1233, 0 px). Capture 2674 against frame
+1235 (loop 3040 = f 3927) differs in 4985 px. The difference is the ape's
+body, plus a tear strip at the right edge. The background and the raptor
+match.
+
+### 39.2 `0x1A734` (Ghidra disassembly)
+
+`0x3B298` (`fighter_command_dispatch`) sets `+0x43 = (+0x43 & 0xCF) | 0x20`
+(`0x3B405/0x3B40D`) or `| 0x10` (`0x3B433/0x3B43B`). Both arms then fall
+into `0x3B43F`: `mov eax,[esp+4]` (ctx[1], the side) and `call 0x1A734` at
+`0x3B443`. The port had a `PORT:` comment there.
+
+`0x1A734` (151 bytes, `0x1A734..0x1A7CA`; EAX = side, EDX pushed):
+- `0x33A10` builds the context (ctx[1] the side, ctx[3] its slot, ctx[5] its
+  record), then `0x18B04(ctx[1])`.
+- `+0x61` = `0x0C` (`0x1A74E`). When `(s8)+0x61 > (s8)+0x60` (`0x1A75D cmp
+  al,[edx+0x60]; jle`) and `+0x62 != 0` (`0x1A762`), `+0x61` = `+0x60`.
+- With bit `0x20` of `+0x43` (`0x1A779`): `+0x54` = 0 and `0x3C480(ctx[5],
+  0xC8F40[char], 0x40400000)`. Otherwise, with bit `0x10` (`0x1A79C`):
+  `+0x54` = 1 and the same with `0xC8F90[char]`. `char` is `+0x7A`. The push
+  shifts the frame by 4, so `[esp+0x18]` at `0x1A7BD` is ctx[5].
+- The restart is not gated on the bit it tests, which is the difference from
+  `0x1A6AC`. `0xC8F40[1]` = `0xE3F5E` (§38.3), the poll's value.
+
+**Only caller.** `get_xrefs_to(0x1A734)` gives one reference, the call at
+`0x3B443`. A rel32 scan of the code object finds only that call. No dword
+`0x1A734` appears in the code or the data object.
+
+**The fix** (`c9875d1`): `fighter_block_hit` (fighter.c), called at `0x3B443`.
+That is one new function of 151 raw bytes. The demo-fight record's §7.11
+listed `0x1A6AC`, `0x1A640`, `0x1A8F4` and `0x1A734`. With §38 and this one,
+all four are ported and wired.
+
+### 39.3 The assertions and mutations
+
+- `check_block` H (test_fight.c): both arms (the streams, `+0x54`, the
+  3.0 hold and the pset id), the cap, the signed compare (`+0x60 = 0x80`
+  caps to `0x80`), the `+0x62` gate, and neither bit set (no stream,
+  `+0x54` kept). It also asserts the `0x18B04` side: side 0's record `+0x18`
+  takes `hit_record_x(0)`, and side 1's keeps its sentinel.
+- The driver: after loop 3040 the ape's record `+0x08` is `0xE3F5E` and its
+  `+0x52` is 0 (the poll's f = 3927). There are 1395 cycle-2 frames.
+
+**Mutations** (`scratchpad/t29/mut29.py`): 18 edits. 17 fail. In the first
+pass, dropping `0x1A745`'s `0x18B04` survived, so H now asserts the record's
+`+0x18`, and that kills it. The context-builder edit first ran in driver
+mode, where the unit tests do not run. In unit mode it fails 13 assertions.
+The one survivor is equivalent: `>` -> `>=` at `0x1A75D`. When `+0x60` is
+`0x0C`, the copy writes the value that is already there.
+
+### 39.4 Measured
+
+| measurement | before (`2cb9a41`) | `c9875d1` |
+|---|---|---|
+| `FE_LOOPS`, cycle-2 frames | 3100, 1295 | 3200, 1395 |
+| attract2 `[1885..3616]` clean/splice/trans/unexpl/black | 547/270/7/902/6 | 575/291/7/853/6 |
+| attract2 first unexplained (2384 allowed) | 2674 | **2763** (raw 7182) |
+| front-end `[560..1884]`, demo-fight | 517/801/3/2; empty, N 1886 | unchanged |
+| polled logic (with positions and camera) equal to the original through | f = 3926 | f = 4002 |
+
+`FE_LOOPS` is a measurement window. A probe at 3840 loops found 2763 at
+loop 3116, and 3200 keeps it inside the dump.
+
+**2763, characterised.** At f = 4003 (loop 3116) the original's raptor enters
+9/7/0 on stream `0xD3028` under command `0x0510`. The port's raptor stays in
+its stance. A `fn_resolve` miss probe (reverted) misses `0x14E44` at loop
+3116. That is the dword at `0xA46E4`, the reaction table `0xA3528` + 227 *
+`0x14`: character 3's reaction `0x23`. Ghidra has no function at
+`0x14E44`. The same probe misses `0x15350` (`0xA470C`, character 3's `0x25`)
+at loops 3256 and 3343, and `0x3C32C` at 3448.
+
+**The staged next step.** Decode `0x14E44` from `read_memory` + capstone,
+since Ghidra has no function there, in the shape of the `0x1490C` family
+(§37), and register it.
+
+### 39.5 §38.3's byte count
+
+§38.3 said the block family was about `0x250` raw bytes. The functions are
+134 (`0x1A6AC`), 296 (`0x1A7CC`) and 129 (`0x1A8F4`) bytes, `0x22F` in all.
+With alignment padding they span `0x234` bytes (`0x1A6AC..0x1A734`,
+`0x1A7CC..0x1A8F4` and `0x1A8F4..0x1A978`). §38.3 now says about `0x234`.

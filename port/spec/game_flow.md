@@ -733,13 +733,13 @@ boot cycle's phase 2 wraps it to 0), so the second cycle reaches phase `0xA`'s
 lightning and hands off to a second demo at loop 2782 (`DS_000F0A72` = 5), as
 the capture does from 2385. `make attract2-oracle` (`--attract2`, in `make
 verify`) classifies captures 1885..3616 against `cycle2/` only, with the ratchet
-N = 2674 (record §38). Capture 2384, the `- LOADING -` frame before the second demo, is
+N = 2763 (record §39). Capture 2384, the `- LOADING -` frame before the second demo, is
 allowed by name: it is byte-identical to front-end capture 832 (record §37).
 
 **The demo window is report-only; its first unexplained frame is capture 1886 —
 the capture's next cycle after the demo, with no port frame left in the
 top-level dump (`make attract2-oracle` classifies that region against
-`cycle2/`: first unexplained 2674, with 2384 allowed by name) — after the
+`cycle2/`: first unexplained 2763, with 2384 allowed by name) — after the
 demo-pose cycle explained captures 843..850, the roar-timing fix 851..857, the
 frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863, the
 frame-864 fix 864/865, the frame-866 fix 866, the frame-867 fix 867..869 and
@@ -2390,11 +2390,17 @@ record §34).**
   ported and wired (`9469a30`, `9db3951`), and `0x1AA5F`'s store now runs
   when the words are equal, as the raw's `jne` says. 2461..2673 explained,
   N = 2674.
-* **2674.** From about capture 2670 the whole scene is offset (background
-  and both fighters), a camera or position difference. The polled fields do
-  not include positions; they stay equal through f = 3926. The first polled
-  difference is f = 3927 (loop 3040): the original restarts the ape's block
-  stream at `0xE3F5E`, the port runs on at `0xE3F66`. See record §38.5.
+* **2674: the block restart `0x1A734`.** The poll, extended with the
+  positions and the camera, matches the port through f = 3986, so 2674 is
+  not a scene offset (§38.5's reading came from a frame mapping about 8
+  frames off). It differs only in the ape's pose. At f = 3927 (loop 3040)
+  `0x3B298` sets the ape's +0x43 bit 0x20 and calls `0x1A734` (`0x3B443`),
+  which restarts its block stream at `0xE3F5E` whatever the bit. That call
+  was a named gap. Ported (`c9875d1`): 2674..2762 explained, N = 2763.
+* **2763.** At f = 4003 (loop 3116) the original's raptor enters 9/7/0 on
+  stream `0xD3028`. The port misses `fn_resolve(0x14E44)` there: character
+  3's reaction `0x23` (the dword at `0xA46E4`), which Ghidra has no function
+  for. See record §39.4.
 
 ## Landmarks (verified)
 
