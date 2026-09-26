@@ -400,6 +400,10 @@ def load_port(d, n):
 # 0x3E4E4 leap explain captures 880..890, [560..879] -> [560..890]
 # (320 -> 331); the allowed set stays (832, 833), and the exhibition set grows
 # to port frames 0..530 (294 exhibited).
+# The T-rex's slot +0x1C callback 0x3E4C4 (0x193B0's 0x19505 call) explains
+# capture 891, [560..890] -> [560..891] (331 -> 332); the allowed set stays
+# (832, 833), and the exhibition set grows to port frames 0..531 (295
+# exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

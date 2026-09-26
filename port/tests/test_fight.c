@@ -3779,6 +3779,8 @@ static void check_anim_hold_scaler(void)
           "0x3E62C is registered as fighter_3e62c");
     CHECK(fn_resolve(0x3E524u) == (void (*)(void))fighter_3e524,
           "0x3E524 is registered as fighter_3e524");
+    CHECK(fn_resolve(0x3E4C4u) == (void (*)(void))fighter_3e4c4,
+          "0x3E4C4 is registered as fighter_3e4c4");
 
     s[0] = 0xD100;                           /* opcode 0x11, mode 0x4000 */
     s[1] = 0x9A34;                           /* the inline code pointer */
@@ -3878,8 +3880,8 @@ static void check_trex_leap(void)
      * latch leaves (the record's R = 0x2222): 0x188DC stores X only when it is
      * read first. +0x52 = 9 sends 0x3C4CC to 0x3C480, whose 0x188AC zeroes
      * rec+0x1C. The stream's `DC00 55B8 000E` loads rec+0x10 and replaces the
- * 3.0 hold with byte[0xE55B8 + rec+0x52] = 1 (read_memory: 01 01 01 02 ...),
- * and `CD40 11B3` gives id 0x11B3 + rec+0x52 (0). */
+     * 3.0 hold with byte[0xE55B8 + rec+0x52] = 1 (read_memory: 01 01 01 02
+     * ...), and `CD40 11B3` gives id 0x11B3 + rec+0x52 (0). */
     (void)tf_hit_fixture(0);
     fight_reset_slot_pair(s0, s1, r0, r1);
     DSB(r0 + 0x51u) = 0;
@@ -3927,7 +3929,7 @@ static void check_trex_leap(void)
      * truncates 1001.4), negated through 0x3C190 while the pset is unflipped
      * (0x1A570), and keeps +0x57 while the vertical speed is >= 0. The record's
      * +0x63 = 10 clears the slot's +0x8A (0x3E54E). A's 0x18B04 left the pset
- * hflipped (0x1111 < the other slot's 0x7000), so it is cleared here. */
+     * hflipped (0x1111 < the other slot's 0x7000), so it is cleared here. */
     DSW(DS_001078F6) = 0;
     DSW(pset0) = (u16)(DSW(pset0) & 0x7FFFu);
     DSB(s0 + 0x57u) = 0u;
@@ -4372,6 +4374,33 @@ static void check_winner_body(void)
     CHECK_EQ_INT((int)DSB(DS_00100B5C + 1u), 2);   /* 0x19164: rec+0x24 <= 0 */
     CHECK_EQ_INT((int)DSB(DS_00100B58 + 1u), 0);   /* = slot1+0x5F */
     CHECK_EQ_INT((int)DSD(0x001088ECu), 3);        /* 0x192DC/0x39278: 2+1 */
+
+    /* --- side 0 wins with the T-rex's +0x1C = 0x3E4C4 (record §19.6): the
+     * 0x194B6 non-zero arm sets the other slot's +0x90 = 5 (0x194F7), calls
+     * the callback with EAX = side (0x19505), and zeroes +0x18/+0x1C. 0x3E4C4
+     * applies 0x3B714(slot[1], slot[0]), so the pose lands on slot 1 as the
+     * +0x1C == 0 arm's does; unresolved, nothing would. The registration is
+     * asserted in check_anim_hold_scaler; it is made here only when missing. */
+    if (fn_resolve(0x3E4C4u) == NULL)
+        fn_register(0x3E4C4u, (void (*)(void))fighter_3e4c4);
+    winner_body_setup(s0, s1, r0, r1);
+    DSD(r0 + 0x20u) = 0x40F00000u;
+    DSD(r0 + 0x24u) = 0x40600000u;
+    DSD(s0 + 0x18u) = 0x0003E484u;
+    DSD(s0 + 0x1Cu) = 0x0003E4C4u;
+    DSB(s1 + 0x90u) = 0xEEu;
+    DSB(s0 + 0x52u) = 0x66u;                   /* slot 0 keeps its sentinel */
+
+    fighter_winner_body(0u);
+
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0x10);   /* the pose, through 0x3E4C4 */
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0x0A);
+    CHECK_EQ_INT((int)DSD(s1 + 0x10u), 0x0003A43C);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x66);
+    CHECK_EQ_INT((int)DSB(s1 + 0x90u), 5);
+    CHECK_EQ_INT((int)DSD(s0 + 0x18u), 0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSW(DS_00100B50), 0x1234);
 
     DSW(0x000A6728u) = sv_w0;
     DSW(0x000A6728u + 2u) = sv_w2;

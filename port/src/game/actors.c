@@ -143,6 +143,9 @@ int actors_init(void)
      * (slot, rec, side) registers. */
     fn_register(0x3E62Cu, (void (*)(void))fighter_3e62c);
     fn_register(0x3E524u, (void (*)(void))fighter_3e524);
+    /* PORT: the +0x1C callback 0x3E62C also stores, 0x3E4C4, called by
+     * 0x193B0 at 0x19505 as fn(side). */
+    fn_register(0x3E4C4u, (void (*)(void))fighter_3e4c4);
     /* PORT: the state-7 pose handler 0x3531C case 10 resolves from the slot's
      * +0x10 (the 0x3A504 setter writes it; the raw reaches it only through
      * that indirect call). */

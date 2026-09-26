@@ -290,6 +290,10 @@ void fighter_3e524(u32 slot, u32 rec, u32 side);
  * 0x23, slot +0x57 = 0. EAX = rec. */
 void fighter_3e4e4(u32 rec);
 
+/* 0x3E4C4. The slot +0x1C callback 0x3E62C arms, called by 0x193B0 at
+ * 0x19505 with EAX = side: 0x3B714(slot[1-side], slot[side]). */
+void fighter_3e4c4(u32 side);
+
 /* The machine's and chain's per-function fixtures (record §7.1-§7.5, §7.7-§7.9
  * and §7.11) exercise these directly. */
 u32  hit_frame_desc(u32 side, u32 i);                 /* 0x3C600 */

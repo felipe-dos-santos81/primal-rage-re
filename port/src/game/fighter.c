@@ -331,7 +331,9 @@ void fighter_pass_a(void)
 
         /* PORT: 0x195B6 0x19020(side) — the per-slot hook is a named gap
          * (§7.6); the raw calls a function pointer at slot+0x18 and writes
-         * DS_00100AF8[side] from its result. */
+         * DS_00100AF8[side] = 1 on a zero result, 0 otherwise. Its one demo
+         * target, 0x3E484 (0x3E62C stores it), needs the unported 0x18C14
+         * (demo-pose record §19.6). */
 
         /* 0x195BB: a side whose slot state byte is 0x0A is out. */
         if (DSB(DS_00107803 + side * 0x94u) == 0x0Au)
@@ -3489,8 +3491,9 @@ void hit_reaction_apply(u32 side, u32 reaction)
  * the side's pset is not hflipped (0x1A570), else v. EAX = side, EDX = v. */
 static void fighter_3c190(u32 side, u32 v)
 {
+    int unflipped = fighter_actor_bit15_clear(side);    /* 0x3C194 0x1A570 */
     u32 rec = DSD(DS_001077B0 + side * 0x94u);          /* 0x3C1AE/0x3C1B8 */
-    if (fighter_actor_bit15_clear(side) != 0)           /* 0x3C194 0x1A570 */
+    if (unflipped != 0)
         v = 0u - v;                                     /* 0x3C1B4 */
     DSW(rec + 0x34u) = (u16)v;                          /* 0x3C1BE */
 }
@@ -3501,8 +3504,8 @@ static void fighter_3c190(u32 side, u32 v)
  * the 0xE7BDE stream at hold 3.0 through 0x3C4CC, re-anchors x at the slot's
  * +0x2C read before that call, and arms the slot: +0x57 = 2, state 9/7/2, the
  * +0x0C per-frame callback 0x3E524 (0x3531C case 7), the +0x18/+0x1C callbacks
- * 0x3E484/0x3E4C4 and +0x41 bit 7. The raw returns AL = 1, which 0x34E2C
- * ignores. */
+ * 0x3E484 (0x1958C's 0x19020 hook) and 0x3E4C4 (0x193B0's 0x19505 call) and
+ * +0x41 bit 7. The raw returns AL = 1, which 0x34E2C ignores. */
 void fighter_3e62c(u32 slot, u32 rec, u32 side)
 {
     u32 ctx[6];
@@ -3517,9 +3520,9 @@ void fighter_3e62c(u32 slot, u32 rec, u32 side)
     DSB(slot + 0x53u) = 7u;                             /* 0x3E667 */
     DSB(slot + 0x54u) = 2u;                             /* 0x3E66B */
     DSD(slot + 0x0Cu) = 0x0003E524u;                    /* 0x3E66F */
-    /* PORT: 0x3E484/0x3E4C4 are stored as the raw stores them; their only
-     * callers are the 0x1975C think chain's named gaps (§7.12), so neither is
-     * ported. */
+    /* PORT: 0x3E484 is stored but not ported: its caller 0x19020 (0x1958C's
+     * 0x195B6 hook, §7.6 gap) and its callee 0x18C14 are unported (record
+     * §19.6). 0x3E4C4 is ported and registered. */
     DSD(slot + 0x18u) = 0x0003E484u;                    /* 0x3E676 */
     DSD(slot + 0x1Cu) = 0x0003E4C4u;                    /* 0x3E680 */
     DSB(slot + 0x41u) |= 0x80u;                         /* 0x3E68A */
@@ -3586,6 +3589,17 @@ void fighter_3e4e4(u32 rec)
     DSW(rec + 0x36u) = 0x0320u;                         /* 0x3E4FF */
     DSW(rec + 0x44u) = 0x0023u;                         /* 0x3E505 */
     DSB(slot + 0x57u) = 0;                              /* 0x3E50B */
+}
+
+/* 0x3E4C4. The slot +0x1C callback 0x3E62C arms; 0x193B0 calls it at 0x19505
+ * with EAX = side (its ctx[0]). It builds 0x33950's context for that side and
+ * applies 0x3B714(ctx[3], ctx[2]), the same call 0x193B0's +0x1C == 0 arm
+ * makes at 0x19526. */
+void fighter_3e4c4(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                        /* 0x3E4CC 0x33950 */
+    fighter_reaction(ctx[3], ctx[2]);                   /* 0x3E4D9 0x3B714 */
 }
 
 /* 0x3CE58. Validate the hitbox and drive the reaction: the 0x3CE24 gate, the
