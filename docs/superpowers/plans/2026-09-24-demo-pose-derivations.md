@@ -3907,3 +3907,207 @@ the air only at f = 521 (`0x14/04/02`), then 9/0/0 at f = 522. The raptor
 sits in 9/8. No `fn_resolve` miss other than the stub `0x5D812` falls in
 f = 1..558 (the first is `0x3D17C` at f = 559), so this is not an
 unregistered target. It is **not derived here**, and no candidate owner is named.
+(Derived since, §24: the T-rex is not airborne too long. From f = 515 the
+capture draws it two frames' worth of x (436) to the left, because the
+mode-1 camera's split arm `0x12E3C` pulls it back to its `+0x38` latch and
+rewrites its record's `+0x18` through `0x18714`; the port clamped only the
+slot.)
+
+## 24. The camera split arm's `0x18714` writes at capture 1358 (roar-timing Task 14, `c78dc97`)
+
+**Result in one line.** Capture 1358 has one cause, and it is the port's. At
+the end of f = 514 and f = 515 the fighters' `+0x34` latches are 20 526
+apart (T-rex 26 674, raptor 6 148), more than `word[0x9AF28]` = `0x5000`
+(20 480). The mode-1 camera `0x12E3C` then pulls the T-rex (slot b, the
+right one, `+0x34` > `+0x38`) back to its `+0x38` latch, storing `+0x34`
+and `+0x2C`, and rewrites the T-rex record's `+0x18` through `0x18714`
+(`0x12F22`/`0x12F29`). The port stored the slot fields but skipped the two
+`0x18714` calls, a named gap since the demo-fight cycle (demo-fight record
+§2.6/§7.5). The next latch then rebuilt `+0x2C` from the unclamped record,
+so the clamp had no lasting effect, and the port's T-rex ran two frames'
+worth of x (2 × 218 = 436) further right. `0x18714` was already ported
+(`hit_record_x`), so the fix is two calls. It explains captures
+1358..1410. §23.5's "stays in the air" reading was wrong: the landing is
+not late, the T-rex is misplaced in x.
+
+### 24.1 The measurement (temporary, reverted)
+
+**Stale probe lists re-run first.** A whole-run `fn_resolve` probe on
+`306eacf`'s behaviour (temporary, in `mem.c`, reverted) gives exactly
+§23.4's list: `0x3D17C` (3 hits, first f = 559), `0x14EF8` (f = 582),
+`0x3640C` (f = 741), `0x3A588` (180 hits, first f = 784), plus
+`0x29B74`/`0x41578` and the stub `0x5D812`. Nothing but the stub misses
+before f = 559, so 1358 is not an unregistered target.
+
+**The capture.** A splice search (`splice.py`, top from port N and bottom
+from N + 1, split at any pixel; scratchpad) on the `306eacf` dump:
+
+| capture | best splice | residual |
+|---|---|---|
+| 1354..1357 | 927/928 … 929/930 | 0 px |
+| 1358 | 930/931 (row 39) | 2 743 px, the T-rex, rows 39–128 |
+| 1359 / 1360 / 1361 | 931/932, 932/933, 933/934 | 5 249 / 11 355 / 24 335 px |
+| 1362+ | – | ≥ 9 952 px, the whole frame |
+
+On 1358 against port 931, the regions outside the T-rex are equal (x 0–79,
+rows 60–198: 0 px; x 80–229: 0 px), so the camera and the raptor agree. A
+shift search on the T-rex's gold pixels (x 250–315, rows 40–134; R > 90,
+G > 60, R − B > 40, G − B > 20) matches port 931's T-rex exactly (0
+mismatches over 425 + 347 pixels) at dx = −4, dy = 0. On a larger box
+(x 236–311, rows 35–189, which also holds sand) the best shift for 13 of
+the 15 captures 1358..1372 is dx −4 or −3 at dy 0, before and after the
+landing, though not exact there; 1367 and 1369 fit best at dx 0 against
+another port frame. So the capture draws the same sprite in the same pose,
+only further left. That rules out a pose, hold or landing cause.
+
+**The port** (`PR_T14` probes at the end of `fight_arena_frame`, in
+`0x34E2C`, in `0x3531C` case 8, in the animation dispatcher for the T-rex's
+record, and in `fn_resolve`; all reverted). The T-rex, side 0:
+
+| f | state | slot `+0x2C` | `rec+0x18` | notes |
+|---|---|---|---|---|
+| 507 | 4/0/2 | 25 148 | 25 020 | the jump from `0x3BC70`, vx 218, gravity 28 |
+| 508 | 4/8/2 | 25 366 | 25 046 | reaction `0x17` in the air (`0x34E2C` → `0x3C520`, stream `0xE7284`, hold 2.0); the raptor takes `0x10` at f = 509 |
+| 509..520 | 4/8/2 | +218 per frame | +218 per frame | `rec+8` held at `0xE72A2` by `B840 000E 000E7290`; its `FF20`/`FF21` read `0xE5B58`, which is all zero |
+| 521 | `0x14`/4/2 | 27 982 | 27 662 | the `0x35F84` landing gate |
+
+The raptor's latch stays at 6 148 through f = 515 and moves to 7 748 at
+f = 516, when its reaction stream re-anchors it. The case-8 gate
+(`word[0xBDBE8]` = 3) runs `0x3CF38` only at f = 509/510, and it finds no
+hit. `DS_00100B5A` is 0 for both sides throughout, and the anchor table
+`0xCEB00` reads (5, 9) for all of the T-rex's anchors 360..380, so neither
+the stance timer nor an anchor change moves it.
+
+### 24.2 The raw (Ghidra `disassemble_function 0x12E3C`, `read_memory`)
+
+```
+0x12ed7  movzx ebp, word [0x9af28]        ; 0x5000
+0x12ee2  cmp eax, ebp ; jle 0x12f44       ; |slot0+0x34 - slot1+0x34| > 0x5000
+0x12ee6  eax = [edx+0x34] ; ebp = [edx+0x38] ; [0xF0AF0] = ebx
+0x12ef2  cmp eax, ebp ; jge 0x12f0c       ; slot a (the lower +0x34): pulled back when +0x34 < +0x38
+0x12ef6  89 6a 34   mov [edx+0x34], ebp
+0x12ef9  89 6a 2c   mov [edx+0x2c], ebp
+0x12efc  89 f8      mov eax, edi          ; EAX = a
+0x12efe  89 6c bc 08  mov [esp+edi*4+8], ebp
+0x12f02  e8 0d 58 00 00  call 0x18714
+0x12f07  8b 12      mov edx, [edx]        ; slot a's record
+0x12f09  89 42 18   mov [edx+0x18], eax
+0x12f0c  eax = [ecx+0x34] ; edx = [ecx+0x38] ; cmp ; jle 0x12f2c   ; slot b: when +0x34 > +0x38
+0x12f16  89 51 34 / 89 51 2c / 89 f0 (EAX = b) / 89 54 b4 08
+0x12f22  e8 ed 57 00 00  call 0x18714
+0x12f27  8b 11      mov edx, [ecx]
+0x12f29  89 42 18   mov [edx+0x18], eax
+```
+
+`read_memory 0x9AF28` gives `00 50 00 17 …`, the word `0x5000`. Here
+a = `(slot0+0x34 >= slot1+0x34)` (`0x12E50 setge`), EDX = slot a and ECX =
+slot b. `0x18714` saves and restores EBX, ECX, EDX, ESI and EDI
+(`0x18714..0x18718`, `0x18782..0x18786`), so EDX/ECX still hold the slots
+after the call. With `+0x42` bit 3 clear, it returns
+`slot+0x2C − DS_00100AB0[side]` after `0x18540` and, on an anchor change,
+`0x18350` (§17). Since `+0x2C` has just been set to the latch, the record
+lands at `latch − AB0`, and the next `0x186D0` latch keeps it there.
+
+`get_xrefs_to 0x18714` lists seven calls: `0x12F02`, `0x12F22` (this
+function), `0x13087`, `0x130E5` (`0x12FD8`), `0x18886` (`0x1883C`), `0x18AD0`
+(`0x18B04`) and `0x188F8` (`0x188DC`). `0x12FD8`, the other camera caller, is
+reached only from `0x24C5C` at `0x25513`/`0x25598`, for `DS_00104B00` =
+`0x21` or `0x25` (the decompiled `0x24C5C`); the demo runs 3, so it stays
+unported. `0x12E3C` runs from the `0x25422` camera dispatch in the
+`DS_00104B15` tail, after `actors_update`.
+
+The `+0x38` latch is the previous frame's `+0x34` (`0x2642C`/`0x2643A`,
+`fight_arena_frame`). So the clamp holds the T-rex where it was one frame
+earlier. It bites at the end of f = 514 and of f = 515. At f = 516 the
+raptor's latch moves to 7 748, and the pair is 18 926 apart, so it stops.
+
+### 24.3 The fix and its assertions
+
+* **Fix** (`c78dc97`):
+  * `camera.c`'s `camera_mode_track_pair` now writes
+    `DSD(DSD(sa) + 0x18) = hit_record_x(a)` after the slot-a stores and
+    `DSD(DSD(sb) + 0x18) = hit_record_x(b)` after the slot-b stores, in the
+    raw's order. The two `PORT:` gap notes are gone, and the header comment
+    states the arm.
+  * `fighter.c`'s `hit_record_x` (`0x18714`) is no longer static; it is
+    declared in `fighter.h`.
+* **Assertions** (`test_fight.c`, the new `check_camera_split` with its
+  `cs_seed`). Each case seeds both sides: `+0x34`/`+0x38`, char 0, the actor
+  sprite id `word[0xE6DD0]` (`0x0EE4`) + the anchor, slot `+0x20` =
+  `0xFFFFFFFF` (so `0x18350` re-derives AB0), `+0x42` = 0, and sentinels in
+  `+0x2C`, `rec+0x18`, `DS_00100AF0` and `DS_00100AB0/AB4`. The anchors are
+  370 → (5, 9), AB0 320, for side 0, and 381 → (4, 48), AB0 256, for side 1,
+  so a wrong side argument changes the value.
+  * **A, the demo at f = 514:** 26 674/26 456 against 6 148/6 148. Side 0's
+    `+0x34` and `+0x2C` become 26 456, `rec+0x18` becomes 26 136, AF0 370,
+    AB0/AB4 320/576, and `+0x20` stays −1. Side 1's `+0x2C`, `rec+0x18`, AF0
+    and AB0 keep their sentinels. The camera commits `0x4000 − 82`.
+  * **B, slot a:** side 1 at 6 000 against its latch 6 148, side 0 at
+    27 000/27 000. Side 1 gets 6 148, `rec+0x18` 5 892, AF0 381 and
+    AB0/AB4 256/3 072; side 0's sentinels stay.
+  * **C, the `jle` gate:** exactly `0x5000` apart does not split. Nothing is
+    written.
+  * **D:** with `+0x42` bit 3 set, the slot is still pulled back, but
+    `rec+0x18` and AF0 keep their sentinels.
+* **Mutations** (`mut14.py`; `camera.c` was restored byte for byte, and the
+  suite passed afterwards). Counts are real `FAIL` lines, excluding the
+  summary line.
+
+  | mutation | failures |
+  |---|---|
+  | no call in arm a | 4 |
+  | no call in arm b | 4 |
+  | arm a passes b | 6 |
+  | arm b passes a | 7 |
+  | arm b writes slot a's record | 2 |
+  | arm b calls before its `+0x2C` store | 1 |
+  | gate `>=` instead of `>` | 4 |
+
+### 24.4 Measured
+
+Port frames 0..930 are byte-identical to `306eacf`'s, and 931 (f = 515) is
+the first that differs. With the fix, the T-rex's `rec+0x18` (probed at the
+end of `fight_arena_frame`, before the `0x25422` camera tail) reads 26 354
+at f = 515 and f = 516, then +218 per frame, landing at f = 521
+at 27 226 (27 662 before). Captures 1358..1410 are explained: the splice
+search gives 0 px for every capture 1354..1372.
+
+| measurement | before (`306eacf`) | after (`c78dc97`) |
+|---|---|---|
+| captures 1358..1410 | 1358 2 743 px; 1359 5 249; 1360 11 355; 1361 24 335; whole frame from 1362 | **all explained** |
+| demo oracle first unexplained | 1358 (raw 4265); `[1358..3616]` 2259 / 2253 unexpl.; port `[931..1380]` | **1411 (raw 4318)**; `[1411..3616]` 2206 / 2200 unexpl.; port `[977..1380]` (404, 0 exhibited) |
+| demo-fight ratchet | `[1358..1884]` 527, N = 1358 | **`[1411..1884]` 474**, "ratchet improved: first unexplained 1411 > 1358", **N = 1411** |
+| front-end oracle | `[560..1357]` / 798 / 307 clean, 484 splice, 3 transition, 2 unexpl. | **`[560..1410]` / 851 / 337 clean, 507 splice, 3 transition, 2 unexpl. (832, 833)** |
+
+The three transition frames are the same as before (`port832@row177`,
+`port862@row189`, `port906@row31`). Only the front-end window and N moved.
+Unmoved: title `54/55/2/0` and `54/57/0/0`, determinism 54; smk 120/120 and
+41/41; attract 215/216 (expected divergence at 215); C-vs-Python 9866;
+`symbols.h`; the front-end "endpoints BAD" line. The exhibition set grows to
+port frames 0..976 (740 exhibited). The ladder
+`cmake --build build --clean-first && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify && make demo-oracle`
+exited 0 with 0 compiler warnings and "all checks passed", with N = 1411 in
+the Makefile.
+
+**Unresolved code targets after the fix** (a temporary whole-run probe in
+`fn_resolve`, reverted):
+* `0x3D17C` (3 hits, first f = 559)
+* `0x3A588` (157 hits, first f = 807)
+* the known front-end sites `0x29B74`/`0x41578` and the stub `0x5D812`
+
+`0x14EF8` and `0x3640C` no longer miss in this run.
+
+### 24.5 The new first unexplained frame, 1411 (characterised, not fixed)
+
+Capture 1410 is a 975/976 splice (row 195). Capture 1411's best splice,
+port 975/976 (row 0), leaves 6 363 px in rows 90–192. Both fighters differ:
+the raptor at the left and the T-rex at the right. From there the residual
+grows to 10 914 px at 1413 and 13 407 px at 1416. Port frame 976 is f = 560.
+At f = 559 the T-rex (side 0, state 9/0/0) takes reaction `0x20` in
+`0x34E2C`. Its `(char 0, 0x20)` entry at `0xA37A8` reads `7c d1 03 00 00 00
+00 00`, the callback `0x0003D17C` with no stream. `0x3D17C` is still
+unregistered (the §6.9 gap; `get_xrefs_to 0x3D17C` returns 0), and it is the
+run's first `fn_resolve` miss after the stub (f = 559). So the port only
+stores `+0x5F` = `0x20`, and at f = 560 the T-rex is back in `0/0/0` on the
+stance stream `0xE6DD2`. The unregistered reaction callback `0x3D17C` is the
+candidate owner. It is **not derived here**.

@@ -197,7 +197,8 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
 # improves (the tool prints "ratchet improved ... raise N"). N = 1411 was measured on
-# 306eacf with the camera split arm's 0x18714 writes ported: at f = 514/515 of the
+# c78dc97 (the commit that raised it, on 306eacf): the camera split arm's 0x18714
+# writes are ported: at f = 514/515 of the
 # demo the pair's +0x34 latches are more than word[0x9AF28] = 0x5000 apart, and
 # 0x12E3C pulls the outward-moving T-rex back to its +0x38 latch and rewrites its
 # record's +0x18 through 0x18714 (0x12F22/0x12F29); the port clamped only the slot,
