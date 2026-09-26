@@ -3610,6 +3610,61 @@ static void fighter_3c190(u32 side, u32 v)
     DSW(rec + 0x34u) = (u16)v;                          /* 0x3C1BE */
 }
 
+/* PORT: a data-object address symbols.h does not name. */
+#define FIGHT_ROW_3BF70 0x000BEFA0u  /* 0x3BFE5: the third 7x3-word row table */
+
+/* 0x3BF70. The forced attack: 0x34E2C's reaction callback 0x3F (*(u32*)0xA3A14
+ * for the T-rex) and 0x3C0A4's/0x3C048's core. EAX = slot, EDX = rec, EBX =
+ * side. With the side's slot +0x40 bit 7 clear it starts the 0xC8B30 attack at
+ * hold 2.0 through 0x3C4CC with the 0xBEFA0 row, state 3/4/2, and slot +0x4E
+ * facing the side's flip; returns 1, else 0. */
+int fighter_3bf70(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                        /* 0x3BF7D 0x33950 */
+    if ((DSB(ctx[2] + 0x40u) & 0x80u) != 0u) return 0;  /* 0x3BF86/0x3BF8C */
+    {
+        u32 r = DSD(DS_001077B0 + ctx[0] * 0x94u);      /* 0x3BFA4 */
+        DSW(r + 0x34u) = 0;                             /* 0x3BFAB */
+        DSB(r + 0x43u) = 0;                             /* 0x3BFB1 */
+        DSB(r + 0x42u) = 0;                             /* 0x3BFB5 */
+    }
+    DSB(ctx[2] + 0x5Fu) = 0xFFu;                        /* 0x3BFBF */
+    DSD(DS_00107D40 + side * 4u) = FIGHT_ROW_3BF70
+        + (u32)DSB(DS_0010782A + side * 0x94u) * 6u;    /* 0x3BFD3..0x3BFEA */
+    hit_anim_start_b(rec, DSD(FIGHT_ANIM_3BDDC + (u32)DSB(slot + 0x7Au) * 4u),
+                     0x40000000u);                      /* 0x3BFF3..0x3C004 0x3C4CC */
+    DSB(slot + 0x52u) = 3u;                             /* 0x3C009 */
+    DSB(slot + 0x54u) = 2u;                             /* 0x3C00D */
+    DSB(slot + 0x53u) = 4u;                             /* 0x3C014 */
+    DSB(slot + 0x40u) |= 0x80u;                         /* 0x3C011/0x3C018/0x3C01D */
+    DSB(DS_001078F8 + side) = 1u;                       /* 0x3C020 */
+    if (fighter_actor_bit15_clear(side) != 0)           /* 0x3C028 0x1A570 */
+        DSW(slot + 0x4Eu) = 0xFFFFu;                    /* 0x3C031 */
+    else
+        DSW(slot + 0x4Eu) = 1u;                         /* 0x3C039 */
+    return 1;                                           /* 0x3C03F */
+}
+
+/* 0x3C0A4. The backward forced attack: 0x34E2C's reaction callback 0x3E
+ * (*(u32*)0xA3A00 for the T-rex, one per character at stride 0x500). EAX =
+ * slot, EDX = rec, EBX = side. 0x3BF70, then slot +0x4E the other way: 1 when
+ * 0x1A570(side) is non-zero, else 0xFFFF. Returns 0x3BF70's AL. */
+int fighter_3c0a4(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    int r;
+    fighter_ctx_same(ctx, side);                        /* 0x3C0B4 0x33950 */
+    r = fighter_3bf70(slot, rec, side);                 /* 0x3C0BD */
+    if (r != 0) {                                       /* 0x3C0C4 */
+        if (fighter_actor_bit15_clear(side) != 0)       /* 0x3C0CA 0x1A570 */
+            DSW(slot + 0x4Eu) = 1u;                     /* 0x3C0D3 */
+        else
+            DSW(slot + 0x4Eu) = 0xFFFFu;                /* 0x3C0DB */
+    }
+    return r;                                           /* 0x3C0E1 */
+}
+
 /* 0x3E62C. The T-rex's reaction-0x2B callback (*(u32*)0xA3884, the (char 0,
  * 0x2B) entry of 0x34E2C's 0xA3528 table, whose stream word +4 is 0). EAX =
  * slot, EDX = rec; the EBX 0x34E2C passes is overwritten at 0x3E632. It starts

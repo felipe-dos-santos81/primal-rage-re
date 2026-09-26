@@ -94,6 +94,8 @@ static void anim_code_4AC18(u32 rec, u32 arg);
 static void anim_code_4AC80(u32 rec, u32 arg);
 static void anim_code_3D214(u32 rec, u32 arg);
 static void anim_code_3D26C(u32 rec, u32 arg);
+static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side);
+static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side);
 
 /* The 0xBB9D8 type table's two callback halves (cb1 at 0xBB9DC, cb2 at
  * 0xBB9E0). actor_spawn's tail (0x2B0D4) calls cb1 with (rec, slot) and tests
@@ -185,6 +187,12 @@ int actors_init(void)
      * 0xEE3BC..0xEF608; the first after the 0xD500 word at 0xEE3BA), opcode
      * 0x15, mode 0x4000: the climb, walk or hold for the actor's +0x14 entry. */
     fn_register(0x4AC80u, (void (*)(void))anim_code_4AC80);
+    /* PORT: 0x34E2C's reaction callbacks 0x3C0A4 and 0x3BF70 (the records of
+     * reactions 0x3E and 0x3F, *(u32*)0xA3A00 and 0xA3A14 for the T-rex, one
+     * pair per character at stride 0x500), called at 0x35045 with the raw's
+     * (slot, rec, side) registers. */
+    fn_register(0x3C0A4u, (void (*)(void))reaction_cb_3C0A4);
+    fn_register(0x3BF70u, (void (*)(void))reaction_cb_3BF70);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -825,6 +833,21 @@ static void anim_code_3D26C(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_3d26c(rec);
+}
+
+/* 0x3BF70 — the reaction-callback shape. PORT: 0x34E2C's call at 0x35045
+ * (EAX = slot, EDX = rec, EBX = side) ignores the returned AL (0x35049 adds to
+ * ESP and returns), so this wrapper drops fighter_3bf70's result. */
+static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side)
+{
+    (void)fighter_3bf70(slot, rec, side);
+}
+
+/* 0x3C0A4 — the reaction-callback shape. PORT: the same 0x35045 call, whose
+ * AL is ignored; this wrapper drops fighter_3c0a4's result. */
+static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side)
+{
+    (void)fighter_3c0a4(slot, rec, side);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */

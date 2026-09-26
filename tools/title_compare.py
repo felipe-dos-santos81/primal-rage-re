@@ -468,6 +468,12 @@ def load_port(d, n):
 # [560..1749] (1155 -> 1190; still the same 3 transition frames); the allowed
 # set stays (832, 833), and the exhibition set grows to port frames 0..1266
 # (1030 exhibited).
+# 0x34E2C's reaction callback 0x3C0A4 (unregistered before; at f = 850 it
+# starts the T-rex's 0xC8B30 attack through 0x3BF70 with the 0xBEFA0 row and
+# turns its +0x4E facing) explains captures 1750..1762, [560..1749] ->
+# [560..1762] (1190 -> 1203; still the same 3 transition frames); the allowed
+# set stays (832, 833), and the exhibition set grows to port frames 0..1277
+# (1041 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 
