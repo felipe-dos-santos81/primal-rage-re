@@ -1206,7 +1206,7 @@ left it. No pin or value was fitted to force the Gate.** (Cycle 3's section belo
 updates items 2–4: the "palette order" premise is refuted — the acquisition
 sequences are identical and the T-rex's colour difference was the front-end dump
 driver's `DS_0010816A` seed; the pose residual and the stall tail are one
-subsystem, the unported `0x19020` chain.)
+subsystem, the unported `0x19020` chain; since ported, record §35.)
 
 1. **Captures 831/832 — the loader read-stall / the presented DAC-palette state
    at the state-6 entry** (Tasks 5a/5c). Proven **un-derivable**. The port
@@ -1458,8 +1458,9 @@ the missing layer was the crowd actor 0's mountain children, killed by
 ratified as this cycle's scope; the winner gate (1 f / 152 B) and the Task-6 tail
 (4 f / 2 154 B) are under it; no group grew past the record's measurement.
 
-**Named gaps carried (record §7).** `0x19020` (confirmed no-op; `slot+0x18`
-never set), `0x38154`, the `0x3Fxxx` closer script (unreachable), 831/832's
+**Named gaps carried (record §7).** `0x19020` (confirmed no-op in that run;
+the "`slot+0x18` never set" of that time is false since record §19, where
+`0x3E62C` stores `0x3E484` at f = 106; since ported, record §35), `0x38154`, the `0x3Fxxx` closer script (unreachable), 831/832's
 held-frame presentation (un-derivable), the `0x2C3FC` voice stub, and the
 interactive match (unowned). The `0x16AFC`/`0x164F4` page-flag tail (§7.11) is
 **ported** (Task 6); the deferred minors are listed at record §7.0.
@@ -2271,7 +2272,7 @@ record §34).**
   `fighter_18c14` (all 16 flags), and the static `fighter_18bd4`,
   `fighter_189fc` and `fighter_18a4c`: 7 functions. `fighter_pass_a` calls
   `0x19020` at `0x195B6` in place of the §7.6 gap. New `check_slot_hook`
-  (`test_fight.c`): of 59 mutations, 57 fail it, and the 2 survivors are
+  (`test_fight.c`): of 64 mutations, 62 fail it, and the 2 survivors are
   equivalent.
 * **Measured.** The front-end dump is byte-identical (all 1382 frames and
   `select.log`). The port's `DS_00100AF8` already had the raw's zero-ness on

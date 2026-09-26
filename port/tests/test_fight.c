@@ -7295,13 +7295,16 @@ static void check_slot_hook(void)
     u16 sv_ac = DSW(0x001080ACu), sv_ae = DSW(0x001080AEu);
     u16 sv_w2 = DSW(DS_000A6728 + 2u);
     u8 sv_b00[4], sv_af8[8], sv_c1d = DSB(DS_00100C1D);
-    u8 sv_7a8[8], sv_ab0[16];
+    u8 sv_7a8[8], sv_ab0[16], sv_ring[0x50], sv_8e0[4];
+    u8 sv_78fa = DSB(DS_001078FA);
     u8 flags[16];
     u32 i;
     tf_snap(sv_b00, DS_00104B00, 4u);
     tf_snap(sv_af8, DS_00100AF8, 8u);
     tf_snap(sv_7a8, DS_001077A8, 8u);
     tf_snap(sv_ab0, DS_00100AB0, 16u);
+    tf_snap(sv_ring, DS_00108270, 0x50u);
+    tf_snap(sv_8e0, DS_001088E0, 4u);
 
     CHECK(fn_resolve(0x3E484u) == (void (*)(void))fighter_3e484,
           "0x3E484 is registered as fighter_3e484");
@@ -7509,9 +7512,10 @@ static void check_slot_hook(void)
     CHECK_EQ_INT(fighter_18c14(0u, flags, 0u, 0u), 1);
     CHECK_EQ_INT((int)DSB(s0 + 0x8Au), 0);
 
-    /* M: flag 0xE, 0x3B298(ctx[1], self +0x5F) held at 0 (the other slot's
-     * +0x63 = 0 makes 0x3B149's map return, 0xA6728's word +2 = 3 returns 0).
-     * The call is seen through its 0x3B2D6 copy: other +0x86 = self +0x84. */
+    /* M: flag 0xE, 0x3B298(ctx[1], self +0x5F) first held at 0 (the other
+     * slot's +0x63 = 0 makes 0x3B149's map return, 0xA6728's word +2 = 3
+     * returns 0). The call is seen through its 0x3B2D6 copy: other +0x86 =
+     * self +0x84. M2 below makes it return 1. */
     sh_seed(s0, s1, r0, r1);
     DSB(s1 + 0x63u) = 0;
     DSW(DS_000A6728 + 2u) = 3u;
@@ -7526,6 +7530,32 @@ static void check_slot_hook(void)
     CHECK_EQ_INT((int)DSW(s1 + 0x86u), 0x1234);
     CHECK_EQ_INT(sh_walk(0u, 0xEu, 1u, 0u, 0u), 1);
     CHECK_EQ_INT((int)DSB(s0 + 0x8Au), 0);
+    /* M2: 0x3B298 returns 1 (as check_think_chain's A2): 0xA6728's word +2 =
+     * 0 lets the scan run, the ring is empty and side 1's command word 0x1000
+     * overlaps 0x1AB5C's facing base 0x3000 (both +0x2C are 0), so 0x3B40D
+     * sets the other slot's +0x43 bit 5 and it returns 1. Flag 0 then fires
+     * with +0x8A = 0 (0x18FC9), flag 1 fires the same way, and 3 calls but
+     * falls through. */
+    DSW(DS_000A6728 + 2u) = 0;
+    mem_fill(DS_00108270, 0, 0x50u);
+    DSW(DS_001088E0) = 0;
+    DSW(DS_001088E2) = 0x1000u;
+    DSB(s0 + 0x8Au) = 0x77u;
+    CHECK_EQ_INT(sh_walk(0u, 0xEu, 2u, 0u, 0u), 0);
+    CHECK_EQ_INT((int)(DSB(s1 + 0x43u) & 0x30u), 0);
+    CHECK_EQ_INT(sh_walk(0u, 0xEu, 0u, 0u, 0u), 1);
+    CHECK_EQ_INT((int)(DSB(s1 + 0x43u) & 0x30u), 0x20);
+    CHECK_EQ_INT((int)DSB(s0 + 0x8Au), 0);
+    DSB(s0 + 0x8Au) = 0x77u;
+    DSB(s1 + 0x43u) = 0;
+    CHECK_EQ_INT(sh_walk(0u, 0xEu, 3u, 0u, 0u), 0);
+    CHECK_EQ_INT((int)(DSB(s1 + 0x43u) & 0x30u), 0x20);
+    CHECK_EQ_INT((int)DSB(s0 + 0x8Au), 0x77);
+    CHECK_EQ_INT(sh_walk(0u, 0xEu, 1u, 0u, 0u), 1);
+    CHECK_EQ_INT((int)DSB(s0 + 0x8Au), 0);
+    DSW(DS_001088E2) = 0;
+    DSW(DS_000A6728 + 2u) = 3u;
+    DSB(s1 + 0x43u) = 0;
     /* the order: 0xE before 4, 7 before 8, 5 before 7. */
     DSB(s0 + 0x8Au) = 0x77u;
     DSB(s1 + 0x54u) = 2u;
@@ -7705,6 +7735,9 @@ static void check_slot_hook(void)
     fighter_pass_a();
     CHECK_EQ_INT((int)DSD(DS_00100AF8), 0);
 
+    tf_put(sv_8e0, DS_001088E0, 4u);
+    tf_put(sv_ring, DS_00108270, 0x50u);
+    DSB(DS_001078FA) = sv_78fa;
     tf_put(sv_ab0, DS_00100AB0, 16u);
     tf_put(sv_7a8, DS_001077A8, 8u);
     DSB(DS_00100C1D) = sv_c1d;

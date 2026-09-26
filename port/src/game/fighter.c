@@ -3802,8 +3802,6 @@ void fighter_3e62c(u32 slot, u32 rec, u32 side)
     DSB(slot + 0x53u) = 7u;                             /* 0x3E667 */
     DSB(slot + 0x54u) = 2u;                             /* 0x3E66B */
     DSD(slot + 0x0Cu) = 0x0003E524u;                    /* 0x3E66F */
-    /* PORT: both callbacks are ported and registered: 0x3E484 (0x1958C's
-     * 0x19020 hook) and 0x3E4C4. */
     DSD(slot + 0x18u) = 0x0003E484u;                    /* 0x3E676 */
     DSD(slot + 0x1Cu) = 0x0003E4C4u;                    /* 0x3E680 */
     DSB(slot + 0x41u) |= 0x80u;                         /* 0x3E68A */
@@ -5429,8 +5427,10 @@ static void fighter_18bd4(u8 flags[16])
  * flag bytes, EBX/ECX = two per-character box tables (0 selects 0xA1818/
  * 0xA1822). Each flag is 2 to skip its check; 0 returns 1 when the check's
  * condition holds, 1 when it fails (flag 0 inverted: it also rewrites the flag
- * byte to 4 or 3). Seven checks also clear ctx[2]'s +0x8A, three of them
- * running 0x18B44 on ctx[2]. Returns 0 only when every check passes. The
+ * byte to 4 or 3). Flags 7, 0xD and 0xE clear ctx[2]'s +0x8A when they fire
+ * (six store sites: 0x18DE7, 0x18E0F, 0x18F08, 0x18F34, 0x18FB0, 0x18FC9);
+ * flags 7 and 0xD also run 0x18B44 on ctx[2] (four call sites: 0x18DF1,
+ * 0x18E1A, 0x18F13, 0x18F3F). Returns 0 only when every check passes. The
  * checks, in the raw's order, on 0x33950's context: 0 DS_00100AF8[side] <= 0;
  * 1 ctx[3] words +0x74/+0x76; 0xF ctx[2] +0x43 bit 2; 2/3 ctx[3] +0x54 == 0/1;
  * 5 0x1DDF4(ctx[1], box a, box b); 6 ctx[3] +0x54 == 7; 7 ctx[3] +0x62;

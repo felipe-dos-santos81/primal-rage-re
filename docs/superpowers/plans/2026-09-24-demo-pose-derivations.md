@@ -6365,8 +6365,10 @@ callee is already ported: `0x33950`, `0x33A10`, `0x1A570`, `0x1DDF4`
   returns 1 without `0x18C14`, and `AF8[0]` stays 0, which it already was.
 
 `get_xrefs_to 0x100AF8` gives the readers `0x19632` and `0x19720`
-(`!= 0`) and `0x18C49` (`<= 0`). The writers `0x175EA`, `0x1756F`,
-`0x36928` and `0x38625` store 0 or `DS_00100B54`. No reader tells 1 from
+(`!= 0`) and `0x18C49` (`<= 0`). Besides `0x19020` and `0x1958C`'s own
+writers (`0x195C6`, `0x19618`, `0x196B1`, `0x196DE`, `0x19705`, `0x19719`),
+the other writers `0x175EA`, `0x1756F`, `0x36928` and `0x38625` store 0 or
+`DS_00100B54`. No reader tells 1 from
 6. §19.6.2's measurement (f = 106..114) now covers every hook frame of the
 run.
 
@@ -6394,11 +6396,18 @@ Two deviations are marked `PORT:`:
 
 `0x3E244` stays stored and unported (not reached). The `test_game.c`
 comments that said `0x19020` is unported and the pose is unreachable are
-corrected: the driver prints `pose10 1, pose0a 1`.
+corrected. The driver's `pose10 1, pose0a 1` were already 1 before this fix:
+the pose became reachable when `0x193B0`'s chain was ported, and the dump is
+byte-identical with `0x19020`.
 
 `check_slot_hook` (in `test_fight.c`, after `check_trex_grab`) seeds with
 `sh_seed` and `sh_walk`. It checks:
-- every flag in both values, and in each "self vs other" read
+- every flag in both values, and in each "self vs other" read. For flag 0xE
+  the fix round (review round 1) added M2: `0x3B298` returns 1 through a
+  seeded command word (side 1's `0x1000` against `0x1AB5C`'s base `0x3000`,
+  as `check_think_chain`'s A2), so flag 0xE = 0 fires and the `0x18FC9`
+  store is asserted. The `0x18FB0` store (flag 1 with r = 0) writes r, so
+  its value is 0 either way.
 - the rewrites of flag 0
 - 0x18B44 (through `DS_00100C1D` 0 -> 1) and `+0x8A`
 - 0xE's call, seen through `0x3B2D6`'s copy, with value 3
@@ -6421,6 +6430,22 @@ corrected: the driver prints `pose10 1, pose0a 1`.
   - dropping `0x19020`'s zero test, because `fn_resolve(0)` is NULL
 
 Sources restored and checked with `cmp`.
+
+**Review round 1.** Flag 0xE's `r != 0` arm (`0x18FC1..0x18FD0`) was
+unexercised: `0x3B298` was held at 0, so flag 0xE = 0 never fired. M2 adds
+it, and 5 new mutations of that arm (dropping the `0x18FC9` store or its
+return, narrowing it to flag 0 or flag 1, widening it to flag 3) all fail.
+The full re-run of all 64 fails 62; the 2 survivors are the equivalent
+mutants above.
+
+**What the test restores.** It restores the globals it seeds itself:
+`DS_00100AF8`/`AFC`, `DS_001077A8`, `DS_00100AB0`/`AB4`, `DS_00100C1D`,
+`DS_001078FA`, `DS_001088E0`/`E2`, the ring `DS_00108270`, the `0xA6728`
+word, `DS_001014EC`, `0x1080AC`/`AE` and `DS_00104B00`. It leaves what
+`tf_hit_fixture`/`tb_seed` write (the slot pair, the fixture records and
+actors, `DS_00100B5A`/`B5E`, `DS_00107EE4`, `DS_00107ED8`/`EDC`), as
+`check_trex_grab` does. It also leaves the two dust actors that part G's
+`0x18B44` spawns.
 
 ### 35.4 Measured
 

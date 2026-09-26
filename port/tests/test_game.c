@@ -2885,10 +2885,11 @@ int test_frontend(void)
         /* Task 4: the pose state 0x10/0x0A is measured but NOT asserted. The
          * original's T-rex reaches it at the 6th frame of its 9/8 hold
          * (0x3AAFC -> the 0x3A504/0x3A650/0x3A79C/0x3A8E8 pose family). Task 4
-         * found the port could not (its derivation record §10.4); the port now
-         * runs fighter_pass_a's tail 0x193B0 -> 0x3B714 -> 0x3AAFC, and the
-         * per-slot hook 0x19020 is ported (demo-pose record §35), so the
-         * printed pose10/pose0a are 1. Measured so the next task can see it,
+         * found the port could not (its derivation record §10.4). The port
+         * reached it once fighter_pass_a's tail 0x193B0 -> 0x3B714 -> 0x3AAFC
+         * was ported, and the printed pose10/pose0a were already 1 before the
+         * per-slot hook 0x19020 was ported (demo-pose record §35: the dump is
+         * byte-identical with it). Measured so the next task can see it,
          * exactly as s7_hit is. */
         int s7_saw10 = 0, s7_saw0a = 0;
         int s7_last = -1;              /* the last loop frame the state is 7 */
@@ -3099,7 +3100,8 @@ int test_frontend(void)
          * 0x35803 call leaves +0x52 at 0x0E. Task 4 corrected the residual: the
          * slot's exit from 9/8 to the pose state 0x10/0x0A is the
          * 0x1958C -> 0x193B0 -> 0x3B714 -> 0x3AAFC -> pose-family chain, which
-         * the port now runs (0x19020 included, record §35). Task 1 §3.3's "the animation cursor differs" is stale: the port's
+         * the port now runs (0x19020 included, record §35). Task 1 §3.3's
+         * "the animation cursor differs" is stale: the port's
          * raptor cursor now matches (0xD2316 at the 9/8 entry) and its
          * silhouette matches capture 834. The pose state is measured by
          * s7_saw10/s7_saw0a, not asserted (Task 4 record §10). */
