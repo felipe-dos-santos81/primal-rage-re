@@ -187,8 +187,9 @@ void fighter_pose_3a43c(u32 slot, u32 side);
 void fighter_39cc8(u32 slot, u32 side);
 
 /* 0x347B8. The knockdown floor, an animation-opcode 0x15 target in the
- * characters' knockdown streams (the raptor's landing stream 0xD2ADA at
- * 0xD2B00; the dword 0x000347B8 occurs 53 times in the data): +0x74 = 0x29A, the record's speeds cleared,
+ * characters' knockdown streams (the raptor's landing stream 0xD2ADA: the
+ * D500 word at 0xD2B00, the dword 0x000347B8 at 0xD2B02; the dword occurs 53
+ * times in the data): +0x74 = 0x29A, the record's speeds cleared,
  * state 9/0x0B/0, then (through the 0x340BC stun gate and 0x34168) the
  * character's floor stream at hold 3.0; game mode 7 may freeze the side
  * instead. EAX = rec. */
@@ -203,6 +204,14 @@ int  fighter_340bc(u32 side);
  * streams' lying loop (the raptor's 0xD28FC at 0xD2912; 13 data sites): the side's word +0x76 = word[0xBDBE6] + 1, then
  * 0x36870(rec). EAX = rec. */
 void fighter_346f8(u32 rec);
+
+/* 0x35938. The walk entry, an animation-opcode 0x15 target (14 data sites,
+ * two per character; the T-rex's D500 word at 0xE6EE8): with
+ * rec+0x14 set, state 1/0 (state 8 when +0x54 is 4), rec+8 seeked to the
+ * literal sprite id of 0x35C1C's +0x43-selected frame table at the record's
+ * frame rec+0x52, then rec+0x52 = 0, rec+0x20 = rec+0x24 = 0, rec+0x58 = 1,
+ * rec+0x28 |= 0x804. EAX = rec. */
+void fighter_35938(u32 rec);
 
 /* 0x3A280. The reaction predicate: 1 for a byte in 0x10..0x17 or 0x20..0x3F. */
 int  fighter_3a280(u32 code);

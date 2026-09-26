@@ -413,6 +413,11 @@ def load_port(d, n):
 # the landed raptor lying on its floor stream, and explains captures 950..991,
 # [560..949] -> [560..991] (390 -> 432); the allowed set stays (832, 833), and
 # the exhibition set grows to port frames 0..617 (381 exhibited).
+# The walk entry 0x35938 (the T-rex's stream's opcode-0x15 target at f = 201)
+# starts its state-1 walk, which moves the camera and the fighters, and
+# explains captures 992..997, [560..991] -> [560..997] (432 -> 438); the
+# allowed set stays (832, 833), and the exhibition set grows to port frames
+# 0..622 (386 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

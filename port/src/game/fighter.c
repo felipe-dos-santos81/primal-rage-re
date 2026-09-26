@@ -1774,6 +1774,42 @@ int fighter_state_35c1c(u32 slot, u32 rec)
     return r;
 }
 
+/* 0x35938. The walk entry, an animation-opcode 0x15 target: the words
+ * `D500 5938 0003` occur at 14 data sites, two per character (the T-rex's
+ * D500 word at 0xE6EE8, the dword at 0xE6EEA, which it reaches in state 0x0E
+ * at f = 201 in the demo). No Ghidra function, no code xrefs. EAX = rec;
+ * EBX, ECX and EDX are pushed, and DL (0x35948) or EDX (0x3596F/0x35993) is
+ * written before any read. With rec+0x14 (the owner
+ * slot) set: state 8 when +0x54 is 4 (+0x53 kept), else state 1 with +0x53
+ * cleared; then rec+0x29 bit 3 (rec+8 holds a literal sprite id), the seek to
+ * the +0x43-selected frame table's entry for the record's frame rec+0x52
+ * (0x35C1C's two tables), and the frame reset: rec+0x52 = 0, speed rec+0x20 =
+ * 0 copied into the hold rec+0x24 (fld/fstp of +0.0), step rec+0x58 = 1 and
+ * rec+0x28 |= 0x804. */
+void fighter_35938(u32 rec)
+{
+    u32 slot = DSD(rec + 0x14u);                        /* 0x3593D */
+    u32 base;
+    if (slot == 0u) return;                             /* 0x35942 */
+    if (DSB(slot + 0x54u) == 4u) {                      /* 0x3594B */
+        DSB(slot + 0x52u) = 8u;                         /* 0x3595A */
+    } else {
+        DSB(slot + 0x52u) = 1u;                         /* 0x35950 */
+        DSB(slot + 0x53u) = 0u;                         /* 0x35954 */
+    }
+    base = (DSB(slot + 0x43u) & 2u) != 0u
+        ? DSD(FIGHT_35C1C_SEEK_A + (u32)DSB(slot + 0x7Au) * 4u)  /* 0x35975 */
+        : DSD(FIGHT_35C1C_SEEK_B + (u32)DSB(slot + 0x7Au) * 4u); /* 0x35993 */
+    DSB(rec + 0x29u) |= 8u;                             /* 0x3597F/0x359A3 */
+    actors_anim_seek(rec, (u32)DSW(base
+        + (u32)(s8)DSB(rec + 0x52u) * 2u));             /* 0x359B2 0x2BCF4 */
+    DSB(rec + 0x52u) = 0u;                              /* 0x359B7 */
+    DSD(rec + 0x20u) = 0u;                              /* 0x359BB */
+    DSB(rec + 0x58u) = 1u;                              /* 0x359C2 */
+    DSD(rec + 0x24u) = DSD(rec + 0x20u);                /* 0x359CA fld, 0x359D3 fstp */
+    DSW(rec + 0x28u) |= 0x0804u;                        /* 0x359C6..0x359D6 */
+}
+
 /* 0x35B7C. Enter the +0x52 = 2 approach: clear +0x53 unless 0x0D, set the
  * +0x58 frame step from the frame position, and hand off to 0x35C1C/0x35D20. */
 static void fighter_state_35b7c(u32 slot, u32 rec)
@@ -4152,8 +4188,9 @@ static void fighter_34168(u32 side)
 
 /* 0x347B8. The knockdown floor: an animation-opcode 0x15 target (the words
  * `D500 47B8 0003`; the dword 0x000347B8 occurs 53 times in the data, one of
- * them 0xD2B00 in the raptor's landing stream 0xD2ADA). No Ghidra function. EAX = rec; EDX is pushed and
- * reloaded. In game mode 7 (DS_00104B00) it may instead freeze the side
+ * them at 0xD2B02 in the raptor's landing stream 0xD2ADA, after the D500 word
+ * at 0xD2B00). No Ghidra function. EAX = rec; EDX is pushed and reloaded. In
+ * game mode 7 (DS_00104B00) it may instead freeze the side
  * (0x3480F: hold 0, state 9/3/3); otherwise 0x39A10(rec, 0x29A), 0x3C148,
  * 0x3C16C, state 9/0x0B/0, +0x43 bits 0..1 cleared, then, through the 0x340BC
  * gate, the stun start 0x34168 and the 0x34780[char] stream or the

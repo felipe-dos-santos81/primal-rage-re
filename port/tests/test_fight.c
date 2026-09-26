@@ -3789,6 +3789,9 @@ static void check_anim_hold_scaler(void)
     CHECK(fn_resolve(0x346F8u) != NULL, "0x346F8 is registered");
     CHECK(fn_resolve(0x346F8u) != (void (*)(void))fighter_346f8,
           "0x346F8 is registered through the (rec, arg) wrapper");
+    CHECK(fn_resolve(0x35938u) != NULL, "0x35938 is registered");
+    CHECK(fn_resolve(0x35938u) != (void (*)(void))fighter_35938,
+          "0x35938 is registered through the (rec, arg) wrapper");
 
     s[0] = 0xD100;                           /* opcode 0x11, mode 0x4000 */
     s[1] = 0x9A34;                           /* the inline code pointer */
@@ -4304,6 +4307,7 @@ static void check_knockback_pose(void)
             DSD(DS_00105BCC + 4u) = DS_00105BCC;
             DSD(pool + 0x18u) = 0x77777777u;
             DSD(pool + 0x1Cu) = 0x77777777u;
+            DSB(pool + 0x49u) = 0x77u;
             DSW(pool + 0x32u) = 0x7777u;
 
             kb_seed(s0, s1, r0, r1);
@@ -4657,6 +4661,10 @@ static void check_knockdown_floor(void)
                          side ? 0x11111111 : 0x22222222);
             CHECK_EQ_INT((int)DSD(pool + 0x18u), side ? 0x4200 : 0x200);
             CHECK_EQ_INT((int)DSD(pool + 0x1Cu), 0xD80);
+            /* ECX = 0xFF (0x34211) is the spawn's layer: the descriptor's
+             * +0x08 word 0x2200 (read_memory 0xBDB3C/0xBDB78) has bit 13
+             * set, so 0x2AE14 stores it in the record's +0x49 byte. */
+            CHECK_EQ_INT((int)DSB(pool + 0x49u), 0xFF);
             CHECK_EQ_INT((int)DSB(me + 0x5Du), 0);
             CHECK_EQ_INT((int)DSB(oth + 0x5Du), 0x66);
             CHECK_EQ_INT((int)DSB(me + 0x43u), 0xF8);
@@ -4755,6 +4763,150 @@ static void check_knockdown_floor(void)
     DSB(DS_00104B16) = sv_b16;
     DSB(DS_001078FF) = sv_8ff;
     DSB(DS_00104AE9) = sv_ae9;
+}
+
+/* ---- roar-timing Task 12: the walk entry 0x35938 (record §22) ----------- */
+
+/* The demo T-rex at f = 201: side 0, char 0, state 0x0E/0/0 with +0x43 = 0x81
+ * (bit 1 clear, so 0x35C1C's default table 0xC8AE0), frame rec+0x52 = 0, step
+ * rec+0x58 = 0xFF, hold 2.0 and rec+0x28 = 0x0101 (the PR_T12 trace). Every
+ * field 0x35938 writes is a sentinel that differs from its post-condition; the
+ * raptor's side 1 is seeded to prove it is not touched. */
+static void we_seed(u32 s0, u32 s1, u32 r0, u32 r1)
+{
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSB(r0 + 0x51u) = 0;
+    DSB(r1 + 0x51u) = 1;
+    DSW(r0 + 0x56u) = 1;
+    DSW(r1 + 0x56u) = 2;
+    DSD(r0 + 0x14u) = s0;
+    DSD(r1 + 0x14u) = s1;
+    DSB(s0 + 0x7Au) = 0;
+    DSB(s1 + 0x7Au) = 3;
+    DSB(s0 + 0x52u) = 0x0Eu;
+    DSB(s0 + 0x53u) = 0x66u;
+    DSB(s0 + 0x54u) = 0;
+    DSB(s0 + 0x43u) = 0x81u;
+    DSB(s1 + 0x52u) = 0x09u;
+    DSB(s1 + 0x53u) = 0x0Bu;
+    DSB(s1 + 0x54u) = 0x66u;
+    DSB(r0 + 0x52u) = 0;
+    DSB(r0 + 0x58u) = 0xFFu;
+    DSD(r0 + 0x20u) = 0x40000000u;
+    DSD(r0 + 0x24u) = 0x40000000u;
+    DSW(r0 + 0x28u) = 0x0101u;
+    DSD(r0 + 8u) = 0x00ABCDEFu;
+    DSD(r1 + 8u) = 0x00ABCDEFu;
+    DSD(r1 + 0x24u) = 0x11111111u;
+    DSW(FIGHT_ACTORS + 0x20u) = 0x7777u;
+    DSW(FIGHT_ACTORS + 0x40u) = 0x7777u;
+}
+
+/* §22: 0x35938. The seek tables are 0x35C1C's (read_memory): 0xC8AE0[0] =
+ * 0xE6EF8 (words 0x0F80 0x0F81 0x0F82 0x0F83, and 0x0003 at 0xE6EF6, the
+ * dword 0x00036870's high word before it), 0xC8A68[0] = 0xE6EA8 (0x0F66) and
+ * 0xC8AE0[3] = 0xD2238 (0x1727). */
+static void check_walk_entry(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    u32 pset0 = FIGHT_ACTORS + 0x20u, pset1 = FIGHT_ACTORS + 0x40u;
+    u32 stream = FIGHT_RECS + 0x3900u;
+    if (fn_resolve(0x35938u) == NULL)
+        fn_register(0x35938u, (void (*)(void))fighter_35938);
+
+    /* A: the demo's f = 201, called directly: state 1/0 (+0x54 kept), rec+8
+     * the literal id 0x0F80 (0xC8AE0[0] at frame 0) with rec+0x29 bit 3, the
+     * seek's +0x28 bits 2/4 cleared then 0x804 set, frame 0, speed and hold
+     * 0, step 1. Side 1 is untouched. */
+    we_seed(s0, s1, r0, r1);
+    DSW(r0 + 0x28u) = 0x0115u;
+    fighter_35938(r0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 1);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x0F80);
+    CHECK_EQ_INT((int)(DSW(pset0) & 0x7FFFu), 0x0F80);
+    CHECK_EQ_INT((int)DSW(r0 + 0x28u), 0x0905);
+    CHECK_EQ_INT((int)DSB(r0 + 0x52u), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 0x20u), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0);
+    CHECK_EQ_INT((int)DSB(r0 + 0x58u), 1);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0x0B);
+    CHECK_EQ_INT((int)DSD(r1 + 8u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)DSW(pset1), 0x7777);
+
+    /* B: the frame index is the record's signed rec+0x52 (0x3597C/0x359A0
+     * `sar 0x18`): 3 reads 0x0F83, -1 reads 0xE6EF6 (0x0003), not 0xE6EF8 +
+     * 0x1FE; +0x43 bit 1 selects 0xC8A68 (0x0F66); char 3 reads 0xD2238. */
+    we_seed(s0, s1, r0, r1);
+    DSB(r0 + 0x52u) = 3u;
+    fighter_35938(r0);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x0F83);
+    CHECK_EQ_INT((int)DSB(r0 + 0x52u), 0);
+    we_seed(s0, s1, r0, r1);
+    DSB(r0 + 0x52u) = 0xFFu;
+    fighter_35938(r0);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x0003);
+    we_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x43u) = 0x83u;
+    fighter_35938(r0);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x0F66);
+    we_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x43u) = 0x81u;
+    fighter_35938(r1);
+    CHECK_EQ_INT((int)DSD(r1 + 8u), 0x1727);
+    CHECK_EQ_INT((int)(DSW(pset1) & 0x7FFFu), 0x1727);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 1);
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x0E);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x00ABCDEF);
+
+    /* C: +0x54 == 4 (0x3594B) takes state 8 and keeps +0x53; the rest of the
+     * entry runs. */
+    we_seed(s0, s1, r0, r1);
+    DSB(s0 + 0x54u) = 4u;
+    fighter_35938(r0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 8);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0x66);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 4);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x0F80);
+    CHECK_EQ_INT((int)DSB(r0 + 0x58u), 1);
+
+    /* D: no owner slot (rec+0x14 = 0, 0x35942) writes nothing. */
+    we_seed(s0, s1, r0, r1);
+    DSD(r0 + 0x14u) = 0;
+    fighter_35938(r0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x0E);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0x66);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)DSW(r0 + 0x28u), 0x0101);
+    CHECK_EQ_INT((int)DSD(r0 + 0x20u), 0x40000000);
+    CHECK_EQ_INT((int)DSB(r0 + 0x58u), 0xFF);
+    CHECK_EQ_INT((int)DSW(pset0), 0x7777);
+
+    /* E: through the dispatcher: `D500 5938 0003` (opcode 0x15, mode 0x4000)
+     * walked by 0x2BC30, which stores its 1.0 hold first and, on the opcode's
+     * status 2, adds 2 to rec+8 (0x2BCC0) before reading the id, so the
+     * literal id it loads is 0x0F82. An unregistered target would leave
+     * state 0x0E and the 1.0 hold. */
+    we_seed(s0, s1, r0, r1);
+    DSW(stream) = 0xD500u;
+    DSW(stream + 2u) = 0x5938u;
+    DSW(stream + 4u) = 0x0003u;
+    DSW(stream + 6u) = 0x1746u;
+    actors_anim_begin(r0, stream, 0x3F800000u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 1);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 0x20u), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x0F82);
+    CHECK_EQ_INT((int)(DSW(pset0) & 0x7FFFu), 0x0F82);
+
+    DSD(r0 + 0x14u) = 0;
+    DSD(r1 + 0x14u) = 0;
 }
 
 /* ---- Task 3b: the 0x3B714 reaction applier (pose/freeze record §2.3) ----- */
@@ -6066,6 +6218,7 @@ int test_fight(void)
     check_trex_leap();
     check_knockback_pose();
     check_knockdown_floor();
+    check_walk_entry();
     check_reaction_predicates();
     check_reaction();
     check_winner_body();

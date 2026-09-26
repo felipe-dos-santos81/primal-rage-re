@@ -88,6 +88,7 @@ static void anim_code_35E04(u32 rec, u32 arg);
 static void anim_code_3E4E4(u32 rec, u32 arg);
 static void anim_code_347B8(u32 rec, u32 arg);
 static void anim_code_346F8(u32 rec, u32 arg);
+static void anim_code_35938(u32 rec, u32 arg);
 
 /* The 0xBB9D8 type table's two callback halves (cb1 at 0xBB9DC, cb2 at
  * 0xBB9E0). actor_spawn's tail (0x2B0D4) calls cb1 with (rec, slot) and tests
@@ -160,6 +161,9 @@ int actors_init(void)
      * mode 0x4000. */
     fn_register(0x347B8u, (void (*)(void))anim_code_347B8);
     fn_register(0x346F8u, (void (*)(void))anim_code_346F8);
+    /* PORT: the walk entry 0x35938, the 0xD500 target of 14 stream sites
+     * (the T-rex's at 0xE6EE8), opcode 0x15, mode 0x4000. */
+    fn_register(0x35938u, (void (*)(void))anim_code_35938);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -723,9 +727,10 @@ static void anim_code_3E4E4(u32 rec, u32 arg)
 }
 
 /* 0x347B8 — the animation-opcode target shape. PORT: anim_indirect calls every
- * code pointer as (rec, arg); the raw 0x347B8 takes EAX = rec and only saves
- * EDX (0x347BA push, popped before each RET) before reloading it, so this
- * wrapper drops the operand and calls fighter_347b8(rec) unchanged. */
+ * code pointer as (rec, arg); the raw 0x347B8 takes EAX = rec and does not
+ * read EDX (it pushes EBX, ECX, EDX and ESI at 0x347B8..0x347BB and zeroes
+ * EDX at 0x347CE before any read), so this wrapper drops the operand and
+ * calls fighter_347b8(rec) unchanged. */
 static void anim_code_347B8(u32 rec, u32 arg)
 {
     (void)arg;
@@ -733,13 +738,25 @@ static void anim_code_347B8(u32 rec, u32 arg)
 }
 
 /* 0x346F8 — the animation-opcode target shape. PORT: anim_indirect calls every
- * code pointer as (rec, arg); the raw 0x346F8 takes EAX = rec and only saves
- * EDX (0x346F9 push, 0x3477A pop) before reloading it, so this wrapper drops
- * the operand and calls fighter_346f8(rec) unchanged. */
+ * code pointer as (rec, arg); the raw 0x346F8 takes EAX = rec and does not
+ * read EDX (it pushes EBX and EDX at 0x346F8/0x346F9 and overwrites EDX with
+ * EAX at 0x346FD before any read), so this wrapper drops the operand and
+ * calls fighter_346f8(rec) unchanged. */
 static void anim_code_346F8(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_346f8(rec);
+}
+
+/* 0x35938 — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x35938 takes EAX = rec and does not
+ * read EDX (it pushes EBX, ECX and EDX at 0x35938..0x3593A and writes DL at
+ * 0x35948 or EDX at 0x3596F/0x35993 before any read), so this wrapper drops
+ * the operand and calls fighter_35938(rec) unchanged. */
+static void anim_code_35938(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_35938(rec);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */
