@@ -196,29 +196,30 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # frame). Claim: no captured frame below DEMO_FIGHT_MIN_FIRST is unexplained, and the
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
-# improves (the tool prints "ratchet improved ... raise N"). N = 1563 was measured on
-# 27c95c0 (the commit that raised it, on f49384c): the effects pass 0x49C78's cases 3..5 are
-# ported: 0x49DB3 lands a falling worshipper once its y is <= the word 0xBD898
-# (0x400) on the 0xC9634[si] crouch stream (hflip OR-ed when 0x2BE1C > 0, velocities
-# zeroed, a rng(0x3C) + 0x3C lie timer, +0x1C |= 0x80, type 4); 0x49E5A/0x49EC0 are
-# the lie timer and the climb back to type 0. The port had only the gate and the
-# draw, so the two side-1 worshippers scared at f ~ 650 never crouched (f = 675/676).
+# improves (the tool prints "ratchet improved ... raise N"). N = 1659 was measured on
+# the commit that raised it, on d9c5a1f: the effects pass 0x49C78's per-entry prelude
+# 0x4B69C is ported with its point test 0x17D30/0x1790C, 0x4B788's trample gates,
+# the trample 0x4B470 and case 6 (0x49F11, the tumble and landing). A lying worshipper
+# (+0x1C bit 7) whose pset point falls in a fighter's 0x100AC8 box is thrown on the
+# 0xC9604[si] stream with a shadow actor (0xBB920[si]), +0x36 = 0x240, type 6. The
+# port had no prelude, so the gold fighter's tail at f = 689 left both side-1
+# worshippers lying (capture 1563).
 # `make demo-oracle` printed
-# "title_compare: demo: first unexplained captured frame 1563 (raw 4470); 2048 in the window",
-# and the demo-fight oracle printed "ratchet improved: first unexplained 1563 > 1546".
-# (Before it, N = 1546, measured on 219691e; N = 1481 on 3d64c61; N = 1478 on 4065c1d; N = 1411 on c78dc97; N = 1358 on b5a48a0; N = 998 on
+# "title_compare: demo: first unexplained captured frame 1659 (raw 4566); 1952 in the window",
+# and the demo-fight oracle printed "ratchet improved: first unexplained 1659 > 1563".
+# (Before it, N = 1563, measured on 27c95c0; N = 1546 on 219691e; N = 1481 on 3d64c61; N = 1478 on 4065c1d; N = 1411 on c78dc97; N = 1358 on b5a48a0; N = 998 on
 # ff38dcc; N = 992 on 3fee8d0; N = 950 on a51685d; N = 892 on 6a48972; N = 891 on
 # cfff063; N = 880 on 0a8346b; N = 870 on a76414d; N = 867 on 2137bce; N = 866 on
 # 7147288; N = 864 on b915712; N = 860 on afa47b3; N = 859 on b2cb490; N = 858 on
 # 594e4b9; N = 851 on dad2712.)
-# The two counts differ by scope: 2048 is --demo's window, [1563..3616] to the capture's
-# end; 322 is this oracle's fight window, [1563..1884], cut at the first all-black frame.
-# Both share the first unexplained frame, 1563. The tool also fails if N > window end + 1
+# The two counts differ by scope: 1952 is --demo's window, [1659..3616] to the capture's
+# end; 226 is this oracle's fight window, [1659..1884], cut at the first all-black frame.
+# Both share the first unexplained frame, 1659. The tool also fails if N > window end + 1
 # or if the window collapses; a shrunk front-end window lowers fe_b+1, so the
 # ratchet itself fails (first unexplained < N).
-# At 1563 == fe_b+1 the claim is currently only that the front-end window does not
+# At 1659 == fe_b+1 the claim is currently only that the front-end window does not
 # shrink and the window start does not move. Skips without the capture.
-DEMO_FIGHT_MIN_FIRST = 1563
+DEMO_FIGHT_MIN_FIRST = 1659
 demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/title-captures/frontend)
 	@echo "== demo-fight oracle (ratchet on the first unexplained frame, N=$(DEMO_FIGHT_MIN_FIRST)) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \

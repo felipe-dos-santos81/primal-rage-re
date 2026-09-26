@@ -39,6 +39,11 @@
  * (character << 8) + code. camera_screen_base reads the same base as char*0x400. */
 #define CAMERA_FRAME_TABLE 0x000CC300u
 
+/* 0x104B1A: the byte 0x17D30 reads in mode 0x22 to pick the one side it tests
+ * (0x17DD5 `cmp byte [0x104b1a],0`, 0x17E48 `mov dl,[0x104b1a]`). gen_symbols.py
+ * emits no DS_ name for it. */
+#define CAMERA_MODE22_SIDE 0x00104B1Au
+
 /* ---- small pure helpers ------------------------------------------------- */
 
 /* 0x17EEC. The per-character ground constant for character index `ch` (the
@@ -1329,6 +1334,96 @@ void camera_projectile_step(void)
     if (clash != 0u) return;                                   /* 0x17D01 */
     if (DSD(DS_001077B8) != 0u) camera_projectile_hit(0u);     /* 0x17D0E */
     if (DSD(DS_0010784C) != 0u) camera_projectile_hit(1u);     /* 0x17D21 */
+}
+
+/* ---- the point-against-fighter test 0x17D30 ----------------------------- */
+
+/* 0x1790C — demo-pose record §29. The point (x, y) (already in the 0x100B08/
+ * 0x100B00 screen units) against side `side`'s 0x100AC8 box: the 0x176CC shape
+ * with the point as a 0x30 x 0x30 (tall) or 0x30 x 0x38 box. The box is clipped
+ * by 0x15C30 against the side's own projected sprite; the side's bit-plane is
+ * the box's columns (0x61A70/0x15F48/0x15FD4); the three 0x181D0 syncs are
+ * box-x vs point-x, sprite-x vs point-x and box-y vs point-y; the overlap row
+ * is the 0xA1746 (tall, mode 3) or 0xA1740 (mode 2) constant. 1 iff the
+ * DS_00100B54 count is positive. */
+static int camera_point_side(u32 side, s32 x, s32 y, u32 tall)
+{
+    u32 box_s = DS_00100AC8 + side * 4u;                       /* 0x1791F */
+    if ((u32)DSB(box_s + 2u) < 1u || (u32)DSB(box_s + 3u) < 1u) /* 0x17934/0x1793E */
+        return 0;
+    u32 sp = camera_resolve_sprite(side, DSD(DS_00100AF0 + side * 4u)); /* 0x17957..0x17965 */
+    u8 box[4];
+    for (u32 i = 0; i < 4u; i++) box[i] = DSB(box_s + i);     /* 0x17972..0x17994 */
+    camera_box_clip(side, DSD(DS_00100AF0 + side * 4u), box); /* 0x1799F */
+    if (camera_sync_visible((u32)box[2], 0x30u,
+                            ((s32)box[0] + (s32)DSD(DS_00100B08 + side * 4u)) - x,
+                            DS_00100B1C, DS_00100B14, DS_00100B28,
+                            DS_00100B34, DS_00100B24) != 0)    /* 0x179E8 */
+        return 0;
+    {
+        s32 w = (s32)(s16)DSW(sp);                             /* 0x179FC */
+        u32 bw = (u32)(w / 8);
+        if ((w % 8) != 0) bw++;                                /* 0x17A20 */
+        mem_fill(DS_00100BD3, 0, 0x25u);                      /* 0x17A38 */
+        camera_bitplane_pixel((u32)box[2], bw, DS_00100BD3, 0xFFu); /* 0x17A49 */
+        if (box[0] != 0u)                                      /* 0x17A4E */
+            camera_bitplane_shift((u32)box[0], DS_00100BD3, bw,
+                                  DS_00100BD3, bw);            /* 0x17A61 */
+    }
+    s32 dy = y - ((s32)DSD(DS_00100B00 + side * 4u) + (s32)box[1]); /* 0x17A79/0x17A85 */
+    if (camera_sync_visible((u32)(s32)(s16)DSW(sp), 0x30u,
+                            (s32)DSD(DS_00100B08 + side * 4u) - x,
+                            DS_00100B1C, DS_00100B14, DS_00100B28,
+                            DS_00100B34, DS_00100B24) != 0)    /* 0x17AB4 */
+        return 0;
+    if (camera_sync_visible((u32)box[3], tall != 0u ? 0x30u : 0x38u, -dy,
+                            DS_00100B18, DS_00100B10, DS_00100B2C,
+                            DS_00100B30, DS_00100B20) != 0)    /* 0x17B0B */
+        return 0;
+    DSD(DS_00100B10) = DSD(DS_00100B10) + (u32)box[1];         /* 0x17B38 */
+    u32 flag = ((s32)DSD(DS_00100B14) > (s32)DSD(DS_00100B34)) ? 1u : 0u; /* 0x17B40 */
+    {
+        s32 d = (s32)DSD(DS_00100B14) - (s32)DSD(DS_00100B34);
+        if (d < 0) d = -d;
+        DSD(DS_00100B38) = (u32)d;                             /* 0x17B58 */
+    }
+    DSD(DS_00100B40) = DSD(DS_00100B1C);                       /* 0x17B5E */
+    camera_winner_height(flag, DSD(DS_00100AF0 + side * 4u), 0u,
+                         DSD(DS_00100B10), DSD(DS_00100B30),
+                         tall != 0u ? 3 : 2, side);            /* 0x17BAC */
+    return (s32)DSD(DS_00100B54) > 0 ? 1 : 0;                  /* 0x17BB8 */
+}
+
+/* 0x17D30 — demo-pose record §29. The point (x, y) (sign-extended words, world
+ * units) against both fighters: x/64 - 0x18 and y/64 - 0x38 (0x30 when `tall`,
+ * the BX word, is non-zero), the 0x100BD3 plane filled (0x15F48), then side 0
+ * with DS_00100B63 cleared and side 1 with DS_00100B62 cleared (0x1790C); mode
+ * 0x22 tests only the side DS_00104B1A names. Bit 0/1 of the result is side
+ * 0/1's hit. DS_00100B08/B0C/B00/B04 and the two flip bytes are restored. */
+u32 camera_point_hit(s32 x, s32 y, u32 tall)
+{
+    u32 s08 = DSD(DS_00100B08), s0c = DSD(DS_00100B0C);         /* 0x17D3D..0x17D4C */
+    u32 s00 = DSD(DS_00100B00), s04 = DSD(DS_00100B04);         /* 0x17D50..0x17D60 */
+    s32 px = (s32)(s16)x / 64 - 0x18;                          /* 0x17D64..0x17D88 */
+    s32 py = (s32)(s16)y / 64 - ((u16)tall != 0u ? 0x30 : 0x38); /* 0x17D74..0x17D97 */
+    u32 hit = 0;
+    u32 t = ((u16)tall != 0u) ? 1u : 0u;                       /* 0x17DEB/0x17E60 */
+    camera_bitplane_pixel(0x128u, 0x25u, DS_00100BD3, 0xFFu);  /* 0x17DAE */
+    u8 s63 = DSB(DS_00100B63);                                 /* 0x17DB5 */
+    DSB(DS_00100B63) = 0;                                      /* 0x17DCA */
+    if (!(DSW(DS_00104B00) == 0x22u && DSB(CAMERA_MODE22_SIDE) != 0u)) /* 0x17DD0/0x17DD5 */
+        if (camera_point_side(0u, px, py, t) != 0) hit |= 1u;  /* 0x17DFB/0x17E0E */
+    u8 s62 = DSB(DS_00100B62);                                 /* 0x17E1D */
+    DSB(DS_00100B62) = 0;                                      /* 0x17E2D */
+    DSB(DS_00100B63) = s63;                                    /* 0x17E3C */
+    if (!(DSW(DS_00104B00) == 0x22u && DSB(CAMERA_MODE22_SIDE) != 1u)) /* 0x17E41/0x17E4E */
+        if (camera_point_side(1u, px, py, t) != 0) hit |= 2u;  /* 0x17E70/0x17E86 */
+    DSD(DS_00100B08) = s08;                                    /* 0x17E96 */
+    DSD(DS_00100B0C) = s0c;                                    /* 0x17EA4 */
+    DSB(DS_00100B62) = s62;                                    /* 0x17EAE */
+    DSD(DS_00100B00) = s00;                                    /* 0x17EB3 */
+    DSD(DS_00100B04) = s04;                                    /* 0x17EBF */
+    return hit;
 }
 
 /* ---- 0x16D58 the per-side screen base ---------------------------------- */

@@ -450,6 +450,12 @@ def load_port(d, n):
 # climb) explain captures 1546..1562, [560..1545] -> [560..1562] (986 ->
 # 1003; still the same 3 transition frames); the allowed set stays (832,
 # 833), and the exhibition set grows to port frames 0..1105 (869 exhibited).
+# The effects pass's per-entry prelude 0x4B69C (a lying worshipper inside a
+# fighter's 0x100AC8 box, 0x17D30/0x1790C, is trampled by 0x4B470 and flies
+# as case 6; f = 689) explains captures 1563..1658, [560..1562] ->
+# [560..1658] (1003 -> 1099; still the same 3 transition frames); the allowed
+# set stays (832, 833), and the exhibition set grows to port frames 0..1188
+# (952 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

@@ -78,6 +78,14 @@ void camera_unfreeze(u32 side);
  * DS_00100B54 into DS_00100AD0[side]). */
 void camera_projectile_step(void);
 
+/* 0x17D30. The point (x, y) (the sign-extended words, world units; `tall` the
+ * BX word) against both fighters' 0x100AC8 boxes through 0x1790C: bit 0 = side
+ * 0 hit, bit 1 = side 1 hit. Writes the 0x100B10..0x100B54 sync/overlap
+ * scratch and the 0x100BD3 plane; restores 0x100B00..0x100B0C and the two flip
+ * bytes 0x100B62/0x100B63. The effects pass's per-entry prelude 0x4B69C calls
+ * it with the worshipper's pset point. */
+u32 camera_point_hit(s32 x, s32 y, u32 tall);
+
 /* 0x140E4. 1 iff the two actors' screen boxes overlap. `actor0`/`actor1` are
  * the raw's actor-table indices (slot+0x56), not side numbers. Writes no
  * global; camera_decay's 0x17698 gate. */

@@ -1949,6 +1949,354 @@ static void check_projectile_step(void)
     tf_put(sv_ring, DS_00108270, sizeof sv_ring);
 }
 
+/* §29's fixture on pc_seed's: side 0's 0x100AC8 box is the raw (0, 36, 2, 3)
+ * and side 1's is empty unless `both`; the screen x/y of the side(s) under
+ * test is 100. 0x15C30 clips (0, 36, 2, 3) to (0, 1, 8, 7): the palette pair
+ * at 0xD5100 + 2 * (0xEE4 + AF0 = 4) is (0x00, 0x80), so dx = 0 and dy =
+ * 107 - scale(0x80, 0xD56) = 0 against the sprite rect (0, 107, 8, 115); the
+ * scaled box (0, 108, 8, 9) keeps x and loses 107 rows on top and 2 below. */
+static void ph_seed(u32 p, u32 p2, int both)
+{
+    pc_seed(p, p2);
+    mem_fill(DS_00100AC0, 0, 16u);
+    DSB(DS_00100AC8 + 1u) = 36; DSB(DS_00100AC8 + 2u) = 2; DSB(DS_00100AC8 + 3u) = 3;
+    DSD(DS_00100B08) = 100; DSD(DS_00100B00) = 100;
+    DSD(DS_00100B0C) = 0x200u; DSD(DS_00100B04) = 0x200u;
+    if (both) {
+        DSB(DS_00100AC8 + 4u + 1u) = 36; DSB(DS_00100AC8 + 4u + 2u) = 2; DSB(DS_00100AC8 + 4u + 3u) = 3;
+        DSD(DS_00100B0C) = 100; DSD(DS_00100B04) = 100;
+    }
+    DSB(DS_00100B62) = 0x5Au;
+    DSB(DS_00100B63) = 0xA5u;
+    DSW(DS_00104B00) = 3;
+    DSD(DS_00100B54) = 0xDEADBEEFu;
+}
+
+/* 0x17D30 / 0x1790C and the effects pass's trample (record §29). The point
+ * x = (100 + 0x18) * 64, y = (100 + 0x38) * 64 lands on side 0's screen
+ * point: the x syncs see p3 = box0 + 100 - 100 = 0 (B1C = 8, the box) and
+ * 100 - 100 = 0 (B1C = 8, the sprite), the y sync p3 = box1 + 100 - 100 = 1
+ * (B18 = 7, B30 = 1, B10 = 0 then + box1 = 1). 0x16DA4 mode 2 ANDs each of
+ * the 7 decoded rows (0xFF) with the 0xFF column plane (0x15F48 of the 8-bit
+ * box) and 0xA1740's first byte 0x0F: 7 x 4 = 28 -> (28 << 12) / 0xF3D = 29
+ * -> (29 << 12) / 0xD56 = 34 -> 34 / 16 = 2 = B54 > 0, a hit. Mode 3 (tall)
+ * reads 0xA1746's first byte 0x00, so B54 = 0 there. */
+static void check_point_trample(void)
+{
+    u8 sv_slots[0x128], sv_g[0x1B0], sv_rows0[0x130], sv_rows1[0x130];
+    u8 sv_7d[0x40], sv_7a80[0x80];
+    u32 sv_res_tab = DSD(DS_001014E0), sv_res_cnt = DSD(DS_001014F0);
+    u32 sv_actor_tab = DSD(DS_001014EC);
+    u16 sv_4b00 = DSW(DS_00104B00);
+    u8 sv_1a = DSB(0x00104B1Au), sv_3a = DSB(DS_00105B3A);
+    u8 sv_ae0 = DSB(DS_001088AE), sv_ae1 = DSB(DS_001088AE + 1u);
+    u32 sv_t[10];
+    const u32 tabs[5] = { 0x000C9604u, 0x000BB920u, 0x000C973Cu, 0x000C9544u, 0 };
+    u32 p = FIGHT_RECS + 0x200u, p2 = FIGHT_RECS + 0x300u;
+    u32 entry = FIGHT_RECS + 0x3000u, rec = FIGHT_RECS + 0x3100u;
+    u32 st_tumble = FIGHT_RECS + 0x3800u, st_land = FIGHT_RECS + 0x3840u;
+    u32 st_idle = FIGHT_RECS + 0x3880u, st_wrong = FIGHT_RECS + 0x38C0u;
+    u32 desc3 = FIGHT_RECS + 0x3900u, desc0 = FIGHT_RECS + 0x3920u;
+    u32 ps5 = FIGHT_ACTORS + 5u * 0x20u;
+    s32 x_hit = (100 + 0x18) * 64, y_hit = (100 + 0x38) * 64;
+    u32 held_byte = DSD(DS_001014F4) + 2u * 0x68u + 0x4Bu;
+    u8 sv_held = DSB(held_byte);
+    u32 sh_fake = FIGHT_RECS + 0x3200u;     /* a scratch shadow record */
+    u32 i, sh;
+
+    tf_snap(sv_slots, DS_001077B0, sizeof sv_slots);
+    tf_snap(sv_g, DS_00100A70, sizeof sv_g);
+    tf_snap(sv_rows0, 0x000FD160u, sizeof sv_rows0);
+    tf_snap(sv_rows1, 0x000FEDE0u, sizeof sv_rows1);
+    tf_snap(sv_7d, DS_00107D20, sizeof sv_7d);
+    tf_snap(sv_7a80, DS_00107A80, sizeof sv_7a80);
+    for (i = 0; i < 4u; i++) {
+        sv_t[i * 2u] = DSD(tabs[i]);
+        sv_t[i * 2u + 1u] = DSD(tabs[i] + 12u);
+    }
+
+    /* A: the hit, side 0 only. The flip bytes and the saved B08..B04 come back. */
+    ph_seed(p, p2, 0);
+    CHECK_EQ_INT((int)camera_point_hit(x_hit, y_hit, 0u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00100B54), 2);
+    CHECK_EQ_INT((int)DSD(DS_00100B1C), 8);
+    CHECK_EQ_INT((int)DSD(DS_00100B18), 7);
+    CHECK_EQ_INT((int)DSD(DS_00100B30), 1);
+    CHECK_EQ_INT((int)DSD(DS_00100B10), 1);         /* 0x17B38 + box1 */
+    CHECK_EQ_INT((int)DSB(DS_00100B62), 0x5A);      /* 0x17EAE */
+    CHECK_EQ_INT((int)DSB(DS_00100B63), 0xA5);      /* 0x17E3C */
+
+    /* B: 0x40 screen units right of the box: the first x sync is empty and
+     * nothing is written. */
+    ph_seed(p, p2, 0);
+    CHECK_EQ_INT((int)camera_point_hit(x_hit + 0x40 * 64, y_hit, 0u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100B54), (int)0xDEADBEEFu);
+    /* The first x sync measures the box from its clipped left edge: the raw
+     * (1, 36, 1, 3) clips to (4, 1, 4, 7), and px = 100 - 0x2E puts that edge
+     * at p3 = 4 + 0x2E = 0x32, past the 0x30 point box, so the sync returns
+     * before writing B1C (without box0, p3 = 0x2E would be visible). */
+    ph_seed(p, p2, 0);
+    DSB(DS_00100AC8) = 1; DSB(DS_00100AC8 + 2u) = 1;
+    DSD(DS_00100B1C) = 0xDEADBEEFu;
+    CHECK_EQ_INT((int)camera_point_hit((100 - 0x2E + 0x18) * 64, y_hit, 0u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100B1C), (int)0xDEADBEEFu);
+
+    /* C: both boxes: 3. Mode 0x22 tests only the side DS_00104B1A names. */
+    ph_seed(p, p2, 1);
+    CHECK_EQ_INT((int)camera_point_hit(x_hit, y_hit, 0u), 3);
+    DSW(DS_00104B00) = 0x22u;
+    DSB(0x00104B1Au) = 1;
+    CHECK_EQ_INT((int)camera_point_hit(x_hit, y_hit, 0u), 2);
+    DSB(0x00104B1Au) = 0;
+    CHECK_EQ_INT((int)camera_point_hit(x_hit, y_hit, 0u), 1);
+    DSB(0x00104B1Au) = sv_1a;
+
+    /* D: `tall` (BX != 0): y - 0x30 and the 0x30-row box, and the mode-3 row
+     * 0xA1746 whose first byte is 0, so no overlap; the same y without it is a
+     * hit (y sync p3 = 1 + 100 - 92 = 9: B30 = 9, B18 = 7). */
+    ph_seed(p, p2, 0);
+    CHECK_EQ_INT((int)camera_point_hit(x_hit, (100 + 0x30) * 64, 1u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100B54), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100B30), 1);
+    CHECK_EQ_INT((int)camera_point_hit(x_hit, (100 + 0x30) * 64, 0u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00100B30), 9);
+    /* The non-tall box is 0x38 rows: y = (49 + 0x38) * 64 gives the y sync
+     * p3 = 1 + 100 - 49 = 0x34, visible only below 0x38: B18 = 0x38 - 0x34 = 4
+     * rows (1..4) x 4 = 16 -> 16 -> 19 -> B54 = 1, a hit (0x30 rows would
+     * leave none). */
+    ph_seed(p, p2, 0);
+    CHECK_EQ_INT((int)camera_point_hit(x_hit, (49 + 0x38) * 64, 0u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00100B18), 4);
+    CHECK_EQ_INT((int)DSD(DS_00100B54), 1);
+
+    /* The effects-pass fixture: one entry (si = 3, side byte 1) whose actor's
+     * pset (index 5) holds the point; the four tables' entries 0 and 3 are
+     * distinct scratch streams / descriptors (a wrong index fails). The two
+     * descriptors copy 0xBB920[3]'s 0xBB560 but carry a distinct +0x0C word,
+     * which 0x2AE14 stores into the shadow's +0x2C. */
+    DSW(st_tumble) = 0x0456u;
+    DSW(st_land) = 0x0321u;
+    DSW(st_idle) = 0x0987u;
+    DSW(st_wrong) = 0x0BADu;
+    for (i = 0; i < 0x14u; i++) {
+        DSB(desc3 + i) = DSB(0x000BB560u + i);
+        DSB(desc0 + i) = DSB(0x000BB560u + i);
+    }
+    DSW(desc3 + 0x0Cu) = 0x0777u;
+    DSW(desc0 + 0x0Cu) = 0x0111u;
+    DSD(0x000C9604u) = st_wrong;  DSD(0x000C9604u + 12u) = st_tumble;
+    DSD(0x000BB920u) = desc0;     DSD(0x000BB920u + 12u) = desc3;
+    DSD(0x000C973Cu) = st_wrong;  DSD(0x000C973Cu + 12u) = st_land;
+    DSD(0x000C9544u) = st_wrong;  DSD(0x000C9544u + 12u) = st_idle;
+    DSB(DS_00105B3A) = 0;
+
+#define TR_SEED(bit7) do {                                              \
+        ph_seed(p, p2, 0);                                              \
+        mem_fill(entry, 0, 0x40u); mem_fill(rec, 0, 0x68u);             \
+        DSD(DS_0010884C) = entry; DSD(entry) = DS_0010884C;             \
+        DSD(entry + 8u) = rec; DSD(entry + 0xCu) = DS_001077B0 + 0x94u; \
+        DSB(entry + 0x21u) = 1; DSB(entry + 0x1Eu) = 4;                 \
+        DSW(entry + 0x18u) = 50; DSB(entry + 0x1Cu) = (bit7) ? 0x85u : 0x05u; \
+        DSB(entry + 0x20u) = 0x77u; DSB(entry + 0x1Fu) = 0;             \
+        DSD(entry + 0x10u) = 0;                                         \
+        DSB(rec + 0x48u) = 0x23u; DSW(rec + 0x56u) = 5;                 \
+        DSD(rec + 0x18u) = 0x1234u; DSD(rec + 0x30u) = 0x05000000u;     \
+        DSW(rec + 0x34u) = 0x1111u; DSW(rec + 0x36u) = 0x2222u;         \
+        DSD(ps5 + 4u) = (u32)x_hit; DSD(ps5 + 8u) = (u32)y_hit;         \
+        DSB(DS_001088BF) = 0; DSB(DS_001088C2) = 0;                     \
+    } while (0)
+
+    /* E: +0x1C bit 7 clear: 0x4B69C returns at once (B54 keeps its sentinel)
+     * and case 4 counts the lie timer down. */
+    TR_SEED(0);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_00100B54), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 4);
+    CHECK_EQ_INT((int)DSW(entry + 0x18u), 49);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Fu), 0);
+
+    /* F: the fighter in its grab move 0xC97F2[0] = 0x2D with +0x52 = 4 inside
+     * [0xC97E4[0], 0xC97EB[0]] = [3, 6]: 0x4B788 returns 0 (its grab arm is
+     * the named gap), so no trample and case 4 runs. */
+    TR_SEED(1);
+    DSB(DS_001077B0 + 0x5Fu) = 0x2Du;
+    DSB(FIGHT_RECS + 0x52u) = 4;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_00100B54), 2);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 4);
+    CHECK_EQ_INT((int)DSW(entry + 0x18u), 49);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x85);
+    CHECK_EQ_INT((int)DSB(entry + 0x20u), 0x77);
+    /* The same grab move tramples when DS_00105B3A > 1 (0x4B7A0) or the other
+     * side's slot +0x54 is 3 (0x4B7E0). */
+    TR_SEED(1);
+    DSB(DS_001077B0 + 0x5Fu) = 0x2Du;
+    DSB(FIGHT_RECS + 0x52u) = 4;
+    DSB(DS_00105B3A) = 2;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+    DSB(DS_00105B3A) = 0;
+    actor_set_dead(DSD(entry + 0x10u));
+    actor_free(DSD(entry + 0x10u));
+    TR_SEED(1);
+    DSB(DS_001077B0 + 0x5Fu) = 0x2Du;
+    DSB(FIGHT_RECS + 0x52u) = 4;
+    DSB(DS_001077B0 + 0x94u + 0x54u) = 3;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+    actor_set_dead(DSD(entry + 0x10u));
+    actor_free(DSD(entry + 0x10u));
+
+    /* G: the demo's trample (f = 689): side 0 not in its grab move. 0x4B69C
+     * sets +0x20 = 0 and +0x1F = 1; 0x4B470 starts the 0xC9604[3] stream at
+     * 3.0, spawns the shadow from 0xBB920[3] into +0x10, throws the actor away
+     * from side 0 (actor word bit 15 clear: 0x1A570 = 1 -> +0x34 = -0x80) with
+     * +0x36 = 0x240, clears +0x1C bit 7 and makes the entry type 6 — which the
+     * dispatch then runs in the same pass (+0x36 = 0x230), so case 4's timer
+     * is not decremented. */
+    TR_SEED(1);
+    rng_seed(0x1234u);
+    fight_effects_pass();
+    sh = DSD(entry + 0x10u);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+    CHECK_EQ_INT((int)DSB(entry + 0x20u), 0);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Fu), 1);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x05);
+    CHECK_EQ_INT((int)DSW(entry + 0x18u), 50);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_tumble);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFF80);
+    CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x0230);
+    CHECK(sh != 0u, "0x4B470 spawned the shadow into +0x10");
+    if (sh != 0u) CHECK_EQ_INT((int)DSW(sh + 0x2Cu), 0x0777);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0x1234);
+
+    /* H: case 6 airborne: the shadow follows the x dword and the y word +0x32;
+     * +0x36 = 0x100 with the height 0x1000 stays up (0xF0) and +0x1C bit 7
+     * stays clear; +0x36 = -0x20 falls on (-0x30) and sets bit 7 again. The
+     * point is moved off both fighters so the prelude misses. */
+    DSD(ps5 + 4u) = 0; DSD(ps5 + 8u) = 0;
+    DSD(rec + 0x18u) = 0x4321u;
+    DSD(rec + 0x30u) = 0x06660000u;
+    DSD(rec + 0x1Cu) = 0x1000u;
+    DSW(rec + 0x36u) = 0x0100u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+    CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x00F0);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x05);
+    if (sh != 0u) {
+        CHECK_EQ_INT((int)DSD(sh + 0x18u), 0x4321);
+        CHECK_EQ_INT((int)DSW(sh + 0x32u), 0x0666);
+    }
+    DSW(rec + 0x36u) = 0xFFE0u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x36u), 0xFFD0);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x85);
+
+    /* I: the landing: -0x10 + 0x10 = 0 is not above zero. The shadow dies
+     * (+0x28 bit 3) and +0x10 clears; 0xC973C[3] at 2.0 and type 8; the
+     * height, +0x36, +0x34 and +0x1F are zeroed. */
+    DSB(entry + 0x1Cu) = 0x05u;
+    DSD(rec + 0x1Cu) = 0x10u;
+    DSW(rec + 0x36u) = 0xFFF0u;
+    DSW(rec + 0x34u) = 0xFF80u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSD(entry + 0x10u), 0);
+    if (sh != 0u) CHECK_EQ_INT((int)(DSB(sh + 0x28u) & 0x08u), 0x08);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_land);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSD(rec + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x36u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Fu), 0);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x85);
+    if (sh != 0u) actor_free(sh);
+    /* With 0xC973C[3] = 0 the landing takes 0xC9544[3] at 3.0 as type 4. */
+    DSB(entry + 0x1Eu) = 6;
+    DSD(0x000C973Cu + 12u) = 0;
+    DSD(rec + 0x1Cu) = 0;
+    DSW(rec + 0x36u) = 0;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 4);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_idle);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+    DSD(0x000C973Cu + 12u) = st_land;
+
+    /* J: a second hit (+0x1F 1 -> 2) reverses the current +0x34 (0x4B50F):
+     * -0x80 -> 0x80 and anything else -> -0x80; +0x10 already holds a shadow,
+     * so none is spawned. Both sides touching counts as side 0 (0x4B6F5). */
+    TR_SEED(1);
+    ph_seed(p, p2, 1);
+    DSD(ps5 + 4u) = (u32)x_hit; DSD(ps5 + 8u) = (u32)y_hit;
+    DSD(entry + 0x10u) = sh_fake;
+    DSB(entry + 0x1Fu) = 1;
+    DSD(rec + 0x32u) = 0xFF800000u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+    CHECK_EQ_INT((int)DSB(entry + 0x20u), 0);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Fu), 2);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x0080);
+    CHECK_EQ_INT((int)DSD(entry + 0x10u), (int)sh_fake);
+    DSD(entry + 0x10u) = 0;
+    TR_SEED(1);
+    DSD(entry + 0x10u) = sh_fake;
+    DSB(entry + 0x1Fu) = 1;
+    DSD(rec + 0x32u) = 0x00800000u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFF80);
+    /* Mode 0x22 leaves +0x34 as it was (0x4B4E5); side 0 is DS_00104B1A's. */
+    TR_SEED(1);
+    DSD(entry + 0x10u) = sh_fake;
+    DSW(DS_00104B00) = 0x22u;
+    DSB(0x00104B1Au) = 0;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x1111);
+    DSB(0x00104B1Au) = sv_1a;
+    DSW(DS_00104B00) = 3;
+
+    /* K: a held actor (+0x4A = 2) is released first (0x4B720): the held
+     * record's +0x4B, the actor's +0x29 bit 6 and +0x4A, the entry's +0x1C
+     * bit 6, and DS_001088AE[+0x21] counts one. */
+    TR_SEED(1);
+    DSD(entry + 0x10u) = sh_fake;
+    DSB(entry + 0x1Cu) = 0xC5u;
+    DSB(rec + 0x4Au) = 2;
+    DSB(rec + 0x29u) = 0x40u;
+    DSB(held_byte) = 0x99u;
+    DSB(DS_001088AE + 1u) = 5;
+    DSB(DS_001088AE) = 7;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(held_byte), 0);
+    CHECK_EQ_INT((int)DSB(rec + 0x4Au), 0);
+    CHECK_EQ_INT((int)(DSB(rec + 0x29u) & 0x40u), 0);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x05);
+    CHECK_EQ_INT((int)DSB(DS_001088AE + 1u), 6);
+    CHECK_EQ_INT((int)DSB(DS_001088AE), 7);
+#undef TR_SEED
+
+    DSD(DS_0010884C) = DS_0010884C;
+    DSB(held_byte) = sv_held;
+    DSB(DS_001088AE) = sv_ae0;
+    DSB(DS_001088AE + 1u) = sv_ae1;
+    DSB(DS_00105B3A) = sv_3a;
+    DSW(DS_00104B00) = sv_4b00;
+    for (i = 0; i < 4u; i++) {
+        DSD(tabs[i]) = sv_t[i * 2u];
+        DSD(tabs[i] + 12u) = sv_t[i * 2u + 1u];
+    }
+    tf_put(sv_slots, DS_001077B0, sizeof sv_slots);
+    tf_put(sv_g, DS_00100A70, sizeof sv_g);
+    tf_put(sv_rows0, 0x000FD160u, sizeof sv_rows0);
+    tf_put(sv_rows1, 0x000FEDE0u, sizeof sv_rows1);
+    tf_put(sv_7d, DS_00107D20, sizeof sv_7d);
+    tf_put(sv_7a80, DS_00107A80, sizeof sv_7a80);
+    DSD(DS_001014E0) = sv_res_tab;
+    DSD(DS_001014F0) = sv_res_cnt;
+    DSD(DS_001014EC) = sv_actor_tab;
+}
+
 /* 0x3BDDC: the attack/command consumer (record §8.17). Input A drives the
  * transition; B/C prove the +0x40 and command-bit-15 gates; D adds the
  * table-select and the 0x1000/0x2000 command bits. The ring is seeded so
@@ -7325,6 +7673,7 @@ int test_fight(void)
     check_command_map();
     check_think_chain();
     check_projectile_step();
+    check_point_trample();
     check_attack_consume();
     check_char_select();
     check_health_bars();

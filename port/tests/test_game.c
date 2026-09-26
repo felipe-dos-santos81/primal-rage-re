@@ -2767,8 +2767,10 @@ int test_frontend(void)
      * 1970, where the state drops to 0 and dumping stops. So the state>=3 dump
      * run is loop frames 589..1969, i.e. dumped frames 0..1380 (1381 frames); the
      * 1400 cap covers it and the 2000-frame loop clears the 1970 exit. The
-     * front-end window is distinct [560..1562] (1003 frames: 413 clean, 583
-     * splice, 3 transition, 2 unexplained; [560..1545]/986 before the effects
+     * front-end window is distinct [560..1658] (1099 frames: 447 clean, 645
+     * splice, 3 transition, 2 unexplained; [560..1562]/1003 before the effects
+     * pass's per-entry prelude 0x4B69C (the worshippers' trample: 0x17D30,
+     * 0x4B470 and case 6) explained 1563..1658; [560..1545]/986 before the effects
      * pass's worshipper fall/lie/climb cases 3..5 (0x49DB3/0x49E5A/0x49EC0)
      * explained 1546..1562; [560..1480]/921 before 0x349C8's
      * 0x34A8D command gate explained 1481..1545; [560..1477]/918 before the
