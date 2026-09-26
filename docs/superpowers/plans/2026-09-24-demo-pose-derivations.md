@@ -4111,3 +4111,272 @@ run's first `fn_resolve` miss after the stub (f = 559). So the port only
 stores `+0x5F` = `0x20`, and at f = 560 the T-rex is back in `0/0/0` on the
 stance stream `0xE6DD2`. The unregistered reaction callback `0x3D17C` is the
 candidate owner. It is **not derived here**.
+(Derived since, §25: the owner is `0x3D17C`, as named. Porting it with its
+stream's two opcode targets `0x3D214`/`0x3D26C` explains captures
+1411..1477.)
+
+## 25. The T-rex's reaction-0x20 breath `0x3D17C` at capture 1411 (roar-timing Task 15, `4065c1d`)
+
+**Result in one line.** Capture 1411 has one cause, and it is the port's:
+§24.5's candidate is the owner. At f = 559 `0x34E2C` applies reaction `0x20`
+to the T-rex. Its `(char 0, 0x20)` entry `0xA37A8` holds only the callback
+`0x3D17C`, which the port had not registered, so it skipped it and the T-rex
+fell back into its stance at f = 560. The raw `0x3D17C` starts the breath
+stream `0xE84C8` (state `0xB/6/0`) and stores `0x100` in the word
+`0x1080AC[side]`. That stream's `D100` target `0x3D214` spawns an emitter
+(`0xBB27C`), whose own `D100` target `0x3D26C` spawns the projectile
+(`0xBB268`, the purple ring) into the slot's `+0x08` at the speed
+`−0x1080AC[side]`. The closure is three functions (112 + 88 + 186 B); their
+callees are already ported (`0x3C4CC`, `0x2AE14`, `0x1A570`) or the
+out-of-scope voice `0x2C3FC`. Porting them explains captures 1411..1477.
+
+### 25.1 The measurement (temporary, reverted)
+
+**Stale probe list re-run first.** A whole-run `fn_resolve` probe on
+`db2f0f1` (temporary, in `mem.c`, reverted) gives exactly §24.4's list:
+`0x3D17C` (3 hits, f = 559, 642, 716), `0x3A588` (157 hits, first f = 807),
+plus `0x29B74`/`0x41578` and the stub `0x5D812`. A probe in
+`hit_reaction_apply` shows the three `0x3D17C` misses are the T-rex's
+reaction `0x20`, each in state `9/0/0` with slot `+0x08` = 0.
+
+**The capture.** `splice.py` on `db2f0f1`'s dump: 1408..1410 splice at 0 px;
+1411 (975/976, row 0) leaves 6 363 px in rows 90–192, 1412 6 961 px, 1413
+10 914 px and 1416 13 407 px. Side by side (1411/976, 1414/980, 1418/984),
+the capture's T-rex opens into the breath pose at 1411 and a purple ring
+leaves its mouth from 1414, while the port's T-rex stands. (The raptor's
+share of 1411's residual is a splice artefact: it is gone once the T-rex is
+fixed.)
+
+**The port** (`PR_T15` probes at the end of `fight_arena_frame`, in
+`hit_reaction_apply`, `fn_resolve` and `anim_indirect`; all reverted):
+`f=559 react side=0 r=20 st=09/00/00 s8=0`, then `MISS 3d17c`. The T-rex ends
+f = 559 in `09/00/00` with `+0x5F` `0x20`, and at f = 560 it is in `00/00/00`
+on the stance stream `0xE6DD2`, hold 3.0.
+
+**Staged.** With only `0x3D17C` registered, captures 1411..1413 are
+explained, 1414..1417 leave 168 px each (x ≈ 211–225, rows 98–123: the
+ring), and `0x3D214` misses at f = 562, 675 and 741. With `0x3D214` and
+`0x3D26C` registered too, every capture 1411..1440 splices at 0 px.
+
+### 25.2 The raw (Ghidra `read_memory`, fixups applied; capstone)
+
+`0x3D17C` has no Ghidra function; `get_xrefs_to 0x3D17C` returns 0, and the
+dword `0x0003D17C` occurs once in the data object, at `0xA37A8`.
+`read_memory 0x3D17C` begins `53 51 56 89 c3 89 d1 0f b6 72 51 83 78 08 00
+74 06`.
+
+```
+0x3d17c  push ebx ; push ecx ; push esi
+0x3d17f  ebx = eax (slot) ; ecx = edx (rec)
+0x3d183  0f b6 72 51     movzx esi, byte [edx+0x51]   ; the record's side
+0x3d187  83 78 08 00     cmp dword [eax+8], 0 ; je 0x3d193
+0x3d18d  xor al,al ; pop esi/ecx/ebx ; ret            ; a live projectile
+0x3d193  b8 91 00 00 00 / ba c8 84 0e 00 / e8 5a f2 fe ff
+                         ; 0x2C3FC(0x91), EDX = 0xE84C8
+0x3d1a2  mov eax,ecx ; 68 00 00 40 40 push 3.0 ; e8 1e f3 ff ff call 0x3C4CC
+0x3d1ae  c6 43 52 0b / c6 43 53 06 / c6 43 54 00      ; state 0xB/6/0
+0x3d1ba  c7 43 0c 00000000 / 0x3d1c1 +0x18 / 0x3d1c8 +0x1C = 0
+0x3d1cf  8a 43 5f  al = [slot+0x5f] ; 0x3d1d2 c6 43 5f ff ; 0x3d1db 88 43 64
+0x3d1d6  edx = 0x100 ; 0x3d1de mov al,1
+0x3d1e0  66 89 14 75 ac 80 10 00   mov word [esi*2+0x1080ac], dx
+0x3d1e8  pop esi/ecx/ebx ; ret
+```
+
+* **EDX reaches `0x3C4CC` as the stream.** `0x2C3FC` pushes EBX, EDX and EDI
+  (`0x2C3FC..0x2C3FE`), and each of the 30 RETs in its 1 268 B follows a
+  `pop edx`. So `0x3C4CC` (EAX = rec, EDX = stream, the pushed hold;
+  `0x3C4D0 mov ebx,edx`) gets EDX = `0xE84C8`. With the slot's `+0x52` still
+  9, it takes the `0x3C480` arm (the anchor re-latch).
+* **The index is the record's side.** It is read from `rec+0x51` at
+  `0x3D183`. The EBX side that `0x34E2C` passes is overwritten at `0x3D17F`.
+* **The return is ignored.** `0x34E2C`'s `0x35045 call [esp+0x24]` is followed
+  by `add esp,0x28 ; pop ; ret`. Neither of its callers reads EAX: `0x352CD`
+  (→ `0x352D2 add esp,0x30`) and `0x3CF2E` (→ `0x3CF33 mov al,1`).
+* **The twin.** `0x3D10C` is the same body, storing `0x80`
+  (`0xA37BC`, the next table entry). It is not reached in this demo.
+* **`0x1080AC`.** `get_xrefs_to 0x1080AC` lists `0x3D170` (the twin),
+  `0x3D1E0` (this function), and `0x3D294`/`0x3D2AC` (`0x3D26C`). No
+  `symbols.h` name exists, so the port uses a local `#define`.
+
+**The stream `0xE84C8`** (`read_memory`): `1131 D100 D214 0003 0000 1132 DC00
+5558 000E ED40 84F0 000E B840 0012 84DA 000E 9E00 D000 6870 0003 …`. That is
+the literal id `0x1131`, then opcode `0x11` (mode `0x4000`) with the dword
+`0x0003D214` at `0xE84CC`, and later `D000 6870 0003` (`0x36870`, already
+registered). The data scan finds `0x0003D214` only at `0xE84CC`.
+
+**`0x3D214`** (88 B):
+
+```
+0x3d214  push ebx, ecx, edx, esi, edi ; esi = eax (rec)
+0x3d21b  8b 78 14   edi = [eax+0x14] (the slot) ; test ; je 0x3d265
+0x3d222  ax = [eax+0x56] ; or ah,4 ; and eax,0xffff   ; a5 = rec+0x56 | 0x400
+0x3d22e  ecx = 0 ; ebx = 0 ; push eax ; 0x3d233 xor edx,edx ; eax = 0xBB27C
+0x3d23a  call 0x2AE14
+0x3d23f  c6 40 59 02   [new+0x59] = 2
+0x3d243  dl = [new+0x56] ; 0x3d246 [new+0x14] = edi ; 0x3d249 [rec+0x4b] = dl
+0x3d24c  c6 40 60 01   [new+0x60] = 1
+0x3d250  cmp byte [rec+0x51],0 ; je 0x3d265
+0x3d256  dx = [new+0x2e] ; 0x3d25a [new+0x4e] = 1 ; add edx,4 ; 0x3d261 [new+0x2e] = dx
+```
+
+**The emitter.** Its descriptor `0xBB27C` reads `98 85 0e 00 00 00 08 00 00
+01 20 00 00 10 00 00 3c ff 05 01`: the stream `0xE8598`, type 0, `+0x2E` = 8
+and flags `0x0100`. The stream `0xE8598` reads `9302 CD40 03E8 B840 0003
+000E859A D100 D26C 0003 0000 CD40 03E8 B840 0008 000E85AE 8000`:
+* opcode `0x13` (`+0x59` = 2, so `0x3D214`'s own store is redundant in the demo)
+* the id `0x3E8` and a 3-pass loop
+* `0x3D26C` (the dword at `0xE85A8`, its only data site)
+* an 8-pass loop, then opcode 0, which kills the emitter
+
+**`0x3D26C`** (186 B):
+
+```
+0x3d26c  push ebx..ebp ; sub esp,4
+0x3d275  8b 70 14   esi = [eax+0x14] (the slot) ; test ; je 0x3d31c
+0x3d280  edi = [esi] (the fighter record) ; 0x3d282 xor edx,edx ; dl = [edi+0x51]
+0x3d289  call 0x1A570 (EAX = side)      ; AL = 1 when the pset is not hflipped
+0x3d28e  add edx,edx
+         AL != 0: 0x3d294 ax = [edx+0x1080ac] ; neg -> [esp] ; edx = 0xFFFFE800
+         AL == 0: 0x3d2ac ax = [edx+0x1080ac] -> [esp] ;       edx = 0x1800
+0x3d2bb  ax = [edi+0x28] ; al = 0 ; ah &= 0x40 ; -> eax = 0x4000 or 0      ; a5
+0x3d2d5  movsx edx,dx ; ecx = [edi+0x30] sar 16 (a3) ; ebx = [edi+0x1c] + 0x1600 (a4)
+         edx += [edi+0x18] (a2) ; push eax ; eax = 0xBB268 ; 0x3d2f2 call 0x2AE14
+0x3d2fa  [esi+8] = eax ; 0x3d2fd word [eax+0x34] = dx (the speed) ; 0x3d304 [[esi+8]+0x14] = esi
+0x3d307  cmp byte [edi+0x51],0 ; je ; 0x3d310 add word [+0x2e],4 ; 0x3d318 [+0x4e] = 1
+```
+
+* **The sign.** `0x1A570` ends `0x1A5A4 sete al`, so AL = 1 when the pset
+  word's bit 15 is clear. That is the port's `fighter_actor_bit15_clear`.
+* **The projectile.** Its descriptor `0xBB268` reads `bc 85 0e 00 02 02 08 00
+  80 00 20 00 00 10 00 00 3c ff 05 01`: the stream `0xE85BC`, type 2, frame 2.
+  Type 2's cb2 is `0x3B9C4`, already registered. When the projectile dies, it
+  clears the slot's `+0x08` and sets `+0x64` = `0xFF`, and that re-opens
+  `0x3D17C`'s gate.
+* **EDX is never an input.** Both targets push EDX and overwrite it before
+  any read (`0x3D233`, `0x3D282 xor edx,edx`), so the `(rec, arg)` wrappers
+  drop the operand.
+
+### 25.3 The fix and its assertions
+
+* **Fix** (`port/src/game/fighter.c`, `fighter.h`, `actors.c`):
+  * `fighter_3d17c`, `fighter_3d214` and `fighter_3d26c` (exported).
+  * `actors.c` registers `0x3D17C` directly, as it does `0x3E62C` (the
+    `(slot, rec, side)` callback shape). `0x3D214`/`0x3D26C` go through the
+    `anim_code_3D214`/`anim_code_3D26C` `(rec, arg)` wrappers.
+  * The data addresses are local `#define`s, because `symbols.h` names none:
+    `0xE84C8`, `0x1080AC`, `0xBB27C` and `0xBB268`.
+  * `hit_reaction_apply`'s header no longer calls `0x3D17C` a gap.
+* **Assertions** (`test_fight.c`):
+  * The three registrations are checked in `check_anim_hold_scaler`.
+  * The new `check_trex_breath` uses `tb_seed`: both sides' slots and records
+    carry sentinels in every field `0x3D17C` writes, and `0x1080AC`/`AE`
+    carry sentinels too. Its parts:
+    * A, the demo's f = 559 through `hit_reaction_apply(0, 0x20)`: state
+      `0xB/6/0`, the three callbacks 0, `+0x5F` `0xFF`, `+0x64` `0x20`,
+      `0x1080AC` = `0x100` (`AE` kept), `rec+8` = `0xE84C8`, hold 3.0, id
+      `0x1131`, and `rec+0x1C` = 0 (the `0x3C480` arm). Side 1 is untouched.
+    * B: a live projectile writes nothing.
+    * C: side 1's record with EBX = 0 writes `0x1080AE`, `+0x64` takes the
+      old `+0x5F`, and `+0x52` = 0 takes `0x3C4CC`'s plain arm.
+    * D, `0x3D214` on pool records, per side: the emitter is a child
+      (`+0x4A`, `+0x28` bit `0x400`), with `+0x14`, `+0x60`, `+0x2E`/`+0x4E`,
+      `rec+8` = `0xE859C` (the walk stops on `CD40 03E8`'s operand) and its
+      index in `rec+0x4B`. It also covers the no-slot return. Its `+0x59` is
+      not asserted, because the walk's opcode `0x13` stores 2 anyway.
+    * E: `D100 D214 0003 0000` walked by `0x2BC30` spawns the emitter.
+    * F, `0x3D26C` in three cases, plus the no-slot return: side 0
+      unflipped, side 0 hflipped and side 1. Each asserts x ∓ `0x1800`, y +
+      `0x1600`, the speed `∓0x1080AC[side]`, `+0x32` = a3, `+0x28`
+      (`a5` = `0x4000` or 0), type 2, `rec+8` = `0xE85C0`, and `+0x2E`/`+0x4E`
+      for side 1.
+  * **Two existing checks adjusted.** `check_hit_reaction_drive` part A and
+    `check_hit_chain` drive char 0's reaction `0x20` through `0x34E2C` and
+    assert `+0x5F` = `0x20` (and `+0x52` kept). They now seed slot `+0x08`
+    non-zero, so that `0x3D17C` takes its `0x3D187` return. Their assertions
+    are unchanged and remain true to the raw.
+* **Mutations** (`mut15.py`, 26 of them). Each was applied to `fighter.c` or
+  `actors.c` in turn; the suite was rebuilt and run each time. Both files were
+  restored and `cmp`-verified, and the suite then passed. Counts are real
+  `FAIL` lines:
+
+  | mutation | failures |
+  |---|---|
+  | `0x3D17C` unregistered | 1 (the registration check; the test's fallback registers it) |
+  | no `+0x08` gate / gate on `+0x0C` | 14 / 24 |
+  | index from the EBX side | 2 |
+  | stores `0x80` | 2 |
+  | `+0x64` after `+0x5F` = `0xFF` / no `+0x64` | 2 / 2 |
+  | begins without `0x3C4CC` / hold 2.0 | 1 / 1 |
+  | `+0x53` = 7 / keeps `+0x18` | 2 / 1 |
+  | `0x3D214` unregistered | 4 |
+  | `0x3D214` no slot gate / a5 without `0x400` | 2 / 2 |
+  | `0x3D214` side test inverted / no `+0x60` / `+0x4B` = the record's own index | 4 / 2 / 10 |
+  | `0x3D26C` unregistered / no slot gate | 1 / 1 |
+  | `0x3D26C` sign by side / offsets swapped / no `+0x1600` | 4 / 2 / 1 |
+  | `0x3D26C` a5 always `0x4000` / word index 0 / no `+0x14` / side 1 without +4 | 1 / 1 / 2 / 1 |
+
+  The `+0x30` shift (`sar` against `shr`) is not distinguishable through the
+  16-bit `+0x32`, so it is not asserted.
+
+### 25.4 Measured
+
+Port frames 0..975 are byte-identical to `db2f0f1`'s, and 976 (f = 560) is
+the first that differs. Temporary probes (reverted) show the calls:
+* `0x3D17C` at f = 559, 672 and 738. At f = 738 it returns at `0x3D187`,
+  because slot `+0x08` still holds the projectile, so the gate runs in the
+  demo.
+* `0x3D214` at f = 562 and 675.
+* `0x3D26C` at f = 572 and 685.
+
+| measurement | before (`db2f0f1`) | after (`4065c1d`) |
+|---|---|---|
+| captures 1411..1477 | 1411 6 363 px; 1412 6 961; 1413 10 914; 1416 13 407 | **all explained** |
+| demo oracle first unexplained | 1411 (raw 4318); `[1411..3616]` 2206 / 2200 unexpl.; port `[977..1380]` | **1478 (raw 4385)**; `[1478..3616]` 2139 / 2133 unexpl.; port `[1034..1380]` (347, 0 exhibited) |
+| demo-fight ratchet | `[1411..1884]` 474, N = 1411 | **`[1478..1884]` 407**, "ratchet improved: first unexplained 1478 > 1411", **N = 1478** |
+| front-end oracle | `[560..1410]` / 851 / 337 clean, 507 splice, 3 transition, 2 unexpl. | **`[560..1477]` / 918 / 382 clean, 529 splice, 3 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved. The three transition frames are the
+same as before (`port832@row177`, `port862@row189`, `port906@row31`). Unmoved:
+title `54/55/2/0` and `54/57/0/0`, determinism 54; smk 120/120 and 41/41;
+attract 215/216 (expected divergence at 215); C-vs-Python 9866; `symbols.h`;
+the front-end "endpoints BAD" line. The exhibition set grows to port frames
+0..1033 (797 exhibited). The ladder
+`cmake --build build --clean-first && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify`
+exited 0 with 0 compiler warnings and "all checks passed", with N = 1478 in
+the Makefile.
+
+**Unresolved code targets after the fix** (a temporary whole-run probe in
+`fn_resolve`, reverted):
+* `0x14814` (f = 625): the `(char 3, 0x22)` reaction callback at `0xA46D0`,
+  reached by the raptor's reaction `0x22` that frame
+* `0x3ECF8` (f = 888): the `(char 0, 0x2C)` callback at `0xA3898`
+* the known front-end sites `0x29B74`/`0x41578` and the stub `0x5D812`
+
+`0x3D17C` no longer misses, and `0x3A588` is no longer reached. The run moved,
+so these frames are not comparable one for one with §24.4's. The projectile
+stream's `D100 7CFC 0003` (`0x37CFC`, unregistered) is not reached.
+
+### 25.5 The new first unexplained frame, 1478 (characterised, not fixed)
+
+Capture 1477 is a 1032/1033 splice. Capture 1478's best splice, port
+1033/1034 (row 103), leaves 7 749 px in rows 103–195; 1479 leaves 13 638 px
+and 1480 14 417 px, and from there it covers the whole frame. Side by side
+(1478/1034, 1480/1036, 1483/1038), the capture's ring reaches the raptor at
+the left edge and bursts into a vertical flash as the raptor recoils. The
+port's ring flies on through the raptor's head, and the raptor keeps its
+pose. The T-rex at the right edge differs too. The port takes reaction
+`0x08` for it at f = 619, and that part is not separated here.
+
+Port frame 1034 is f = 618. A `PR_T15` trace (temporary, reverted) follows
+the projectile: slot 0's `+0x08`, the pool record `0x2A809F0`, type 2, its
+stream looping at `0xE85CE`. It moves −256 per frame: x 11 098 at f = 615,
+10 586 at f = 617 and 10 330 at f = 618, against the raptor's record x of
+10 052. No hit is tested, and no `fn_resolve` miss falls in f = 560..624
+(the next is `0x14814` at f = 625).
+
+The candidate owner is the unported collision step `0x17CB0`. `0x1975C` calls
+it first (`0x19763`), and the port's `fighter_think` omits that call. After
+`0x15F48` it tests two live projectiles through `0x17BC8` (when both
+`[0x1077B8]` and `[0x10784C]` are set), then each side's projectile through
+`0x176CC` (`0x17D0E` for `[0x1077B8]`, `0x17D21` for `[0x10784C]`). §19.6
+sized it at 1 070 B in 4 functions. It is **not derived here**.

@@ -197,7 +197,8 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
 # improves (the tool prints "ratchet improved ... raise N"). N = 1478 was measured on
-# db2f0f1 with the T-rex's reaction-0x20 breath ported: at f = 559 of the demo
+# 4065c1d (the commit that raised it, on db2f0f1): the T-rex's reaction-0x20 breath
+# is ported: at f = 559 of the demo
 # 0x34E2C runs the (char 0, 0x20) callback 0x3D17C (*(u32*)0xA37A8), which starts
 # the 0xE84C8 stream (state 0xB/6/0); its 0xD100 target 0x3D214 spawns the emitter
 # 0xBB27C, whose 0xD100 target 0x3D26C spawns the projectile 0xBB268 into the
