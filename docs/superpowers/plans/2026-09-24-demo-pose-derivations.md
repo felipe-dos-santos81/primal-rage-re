@@ -6036,23 +6036,39 @@ left and failed ("no port frames after the front-end window").
 
 **The exit frame.** The driver dumped a frame only when the state after the
 iteration was >= 3. `0x11BCC`'s timer exit drops `DS_000F0A64` to 0 inside
-loop 1970, so that frame was never dumped, although the iteration started in
-state 7 and presented a new frame. A temporary `PR_T24X` gate dumped every
-frame after state 3 to the 1400 cap:
-- Port 1381 (loop 1970) has 63 328 non-black px, and it differs from 1380.
-  Port 1382 (loop 1971) has 15 600, 1383 is black, and 1384..1399 have 166
-  px each.
-- The hash log agrees: loop 1970's buffer changes, and loops 1971..1973 are
-  all-zero (the FNV-1a of 64 000 zero bytes is 952198597).
-- 0..1381 (1382 frames) gives the front-end window `[560..1884]`, 1325
-  frames. That is every capture up to 1885.
-- 0..1382 makes the content alignment run away to `[560..2132]` with 244
-  unexplained frames, and the whole cap gives `[1..2134]`. So only the exit
-  frame is legitimate.
+`game_frame` (`0x24C5C`) in loop 1970, and `0x24C5C` runs before the
+`0x25643` present in the same iteration. So loop 1970's presented frame was
+never dumped, although its iteration started in state 7.
 
-The rule is now to dump a frame whose iteration starts or ends in a state
->= 3. The start is unchanged (loop 589 ends in state 3), and the end gains
-loop 1970. This follows from the loop, with no fitted count.
+The port already has a convention for this. The title and attract dump hooks
+(`flow.c`, `state_before`, at the `0x25680` copy) credit each presented
+frame to the state that started its iteration. The attract's phase-`0xB`
+handoff sets state 1 inside `game_frame` in the same way, and its frame is
+still an attract frame. The front-end driver now applies that rule with
+`state_in`, read before `game_loop()`. It keeps the post-state only for the
+entry: loop 589 starts in state 2 and ends in state 3, and it was already
+dumped frame 0. So a frame is dumped when its iteration starts or ends in a
+state >= 3. The start is unchanged, and the end gains loop 1970, the frame
+presented in the iteration that starts in state 7 and exits it. Loop 1971 on
+start in state 0 (the attract sub-machine `0x11000`), so they are not in the
+state >= 3 window. This says nothing about what the raw presents there.
+
+The measurement (temporary `PR_T24X` and `PR_T24R` gates, reverted):
+- Port 1381 (loop 1970) has 63 328 non-black px, and it differs from 1380.
+  With it, the dump is 0..1381 (1382 frames), and the front-end window
+  becomes `[560..1884]`, 1325 frames: every capture up to 1885.
+- For reference only, outside the window: the frame presented at loop 1971
+  has 15 600 non-zero pixels, at 1972 none, and from 1973 on 166.
+- The select.log hash is not a hash of the presented frame. It is taken on
+  `DS_000E87A4` after `game_loop()` returns, and after `swap_buffers`
+  (`0x256AA`) that is the next draw buffer. The just-presented buffer is
+  `DS_000E87A0`, the one the dump writes. `PR_T24R` shows the difference.
+  At loop 1971, `DS_000E87A0` (= the aperture) has 15 600 non-zero bytes
+  and `DS_000E87A4` has 0. At 1972 both are 0, and at 1973 they have 166
+  and 0. So the log's all-zero hashes for loops 1971..1973 (the FNV-1a of
+  64 000 zero bytes is 952198597) do not contradict the 15 600-px frame. An
+  earlier draft of this section read them as the presented frames, which
+  was wrong. The `test_game.c` comment on the hash is corrected.
 
 A final probe on the fixed tree (dump byte-identical to the one without it)
 finds only the front-end `0x29B74`/`0x41578`, the stub `0x5D812` and the
@@ -6061,9 +6077,10 @@ pre-existing `fn_resolve(0)` probes.
 ### 34.2 The raw (Ghidra `read_memory` + capstone, fixups applied)
 
 Neither `0x3E3A8` nor `0x3E328` is a Ghidra function, and `get_xrefs_to`
-finds no code reference to either. The pre-fixup dword `0x0002E3A8` in the
-data object is at `0xA3870` = `0xA3528 + 0x2A * 0x14`, and `read_memory`
-there gives `a8 e3 03 00 00 00 00 00`: the callback and no stream. The
+finds no code reference to either. The callback dword is at `0xA3870` =
+`0xA3528 + 0x2A * 0x14`, and `read_memory` (fixups applied) there gives `a8
+e3 03 00 00 00 00 00`: the fixed-up `0x0003E3A8` and no stream. (A scan of
+the raw file, before fixups, finds it as the object offset `0x0002E3A8`.) The
 sibling `0x3ECF8` is at `0xA3898` (reaction `0x2C`).
 
 **`0x3E3A8`** (`0x3E3A8..0x3E423`, 0x7C bytes).

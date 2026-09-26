@@ -2764,9 +2764,14 @@ int test_frontend(void)
      * The 2000-iteration loop and the 1400-frame cap are sized from the demo's
      * state-7 exit: state 3 is entered at loop frame 589, state 6 runs at loop
      * frame 1070 (dumped frame 481), and 0x11BCC's timer exit runs at loop frame
-     * 1970, where the state drops to 0. A frame is dumped when its iteration
-     * starts or ends in a state >= 3, so loop frame 1970 (state 7 in, 0 out),
-     * the last frame the state-7 handler presents, is dumped and 1971 is not.
+     * 1970, where the state drops to 0. game_frame (0x24C5C) runs before the
+     * 0x25643 present in the same iteration, and the title/attract dump hooks
+     * (flow.c, state_before) credit each presented frame to the state that
+     * started its iteration; this driver does the same with state_in, and
+     * keeps the post-state for the entry (loop 589 ends in state 3). So loop
+     * frame 1970 (state 7 in, 0 out), the frame presented in the iteration
+     * that starts in state 7 and exits it, is dumped, and 1971 on, which start
+     * in state 0, are not in the state >= 3 window.
      * The dump run is loop frames 589..1970, i.e. dumped frames 0..1381 (1382
      * frames); the 1400 cap covers it and the 2000-frame loop clears the 1970
      * exit. The front-end window is distinct [560..1884] (1325 frames: 517
@@ -3009,7 +3014,9 @@ int test_frontend(void)
                     s7_saw42_40 = 1;
             }
             if (log != NULL) {
-                /* Hash the presented index buffer without reading pixels. */
+                /* Hash DS_000E87A4 read after game_loop: after the swap that
+                 * is the next draw buffer, not the just-presented one (which
+                 * is DS_000E87A0, the one the dump below writes). */
                 const u8 *fb = mem + DSD(DS_000E87A4);
                 u32 h = 2166136261u;
                 for (u32 b = 0; b < 320u * 200u; b++) h = (h ^ fb[b]) * 16777619u;
@@ -3054,8 +3061,8 @@ int test_frontend(void)
          * window is asserted to reach state 3, not to end in it; the state it
          * ends in is whatever 0x12658's actor timing produces. The demo adds
          * states 9/6/7: state 7 runs its 900-frame timer and 0x11BCC's exit
-         * lands at loop frame 1970, whose frame the state-7 handler still
-         * presents, so the dump window is loop frames 589..1970 (1382 frames,
+         * lands at loop frame 1970, an iteration that starts in state 7, so
+         * its presented frame is dumped: loop frames 589..1970 (1382 frames,
          * dump 0..1381). The 1400 cap covers it; the 2000-frame loop clears the
          * 1970 exit. */
         CHECK_EQ_INT((int)seen_entries, 0x3F);

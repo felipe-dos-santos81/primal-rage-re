@@ -126,10 +126,10 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
   demo-fight ratchet (`make demo-fight-oracle`, in `make verify`) is enforced the
   same way and skips without the capture; it fails if the first unexplained
   fight-window frame moves earlier than its pinned N (raise N when it improves).
-  The capture's demo fight is now explained to its end (the first all-black
-  frame after it, 1885), so the fight window is empty and N = 1886 (= 1885 + 1)
-  is the exact pin: it can rise no further with this capture, and it fails if
-  the front-end window shrinks and leaves a fight frame unexplained.
+  When the fight window is empty (the front-end window reaches the capture's
+  first all-black frame), N = that frame + 1 is the exact pin, and a
+  front-end window shrink that leaves a fight frame unexplained still fails
+  the ratchet. The current N and its provenance are in the Makefile.
 - The front-end oracle's claim is narrow: it proves only that no content-bearing
   capture frame inside the window the port exhibits is unexplained. It **cannot**
   detect a port that under-renders, and its window is derived from the port's own

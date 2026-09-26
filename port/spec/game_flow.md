@@ -699,15 +699,17 @@ belong to the *next* attract loop, not this demo run.
 the RGB dump at 1400 frames (`PR_FRONTEND_DUMP_FRAMES`, default 1400). The
 measurement that sizes it: state 3 enters at loop 589 (dumped frame 0), state 6
 at loop 1070 (dumped 481), state 7 runs loop 1071..1969 (dumped 482..1380), and
-`0x11BCC`'s exit is loop 1970, where `DS_000F0A64` drops to 0 inside the
-iteration whose frame the state-7 handler still presents. A frame is dumped when
-its iteration starts or ends in a state >= 3, so loop 1970 is dumped (1381) and
-1971 is not. The dump therefore holds **1382 frames** (dumped 0..1381); the 1400
+`0x11BCC`'s exit is loop 1970, where `DS_000F0A64` drops to 0 inside
+`game_frame` (`0x24C5C`), which runs before the `0x25643` present in the same
+iteration. The title/attract dump hooks (`flow.c`, `state_before`) credit each
+presented frame to the state that started its iteration, and the front-end
+driver now does the same (`state_in`), keeping the post-state only for the entry
+(loop 589 ends in state 3). So loop 1970, the frame presented in the iteration
+that starts in state 7 and exits it, is dumped (1381), and loop 1971 on, which
+start in state 0, are not in the state >= 3 window. The dump therefore holds **1382 frames** (dumped 0..1381); the 1400
 cap covers it with no truncation, and the 2000-frame loop clears the 1970 exit.
 (Before the frame-1881 fix the gate read only the state after the iteration, so
-loop 1970 was dropped and the dump held 1381 frames. Dumping further is not
-legitimate: loop 1971's frame is partly black, 1972 on are black or near-black,
-and dumping them makes the content alignment run far past the demo.)
+loop 1970 was dropped and the dump held 1381 frames.)
 
 **The demo window is report-only; its first unexplained frame is capture 1886 —
 the capture's next cycle after the demo, with no port frame left — after the

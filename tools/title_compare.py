@@ -482,8 +482,9 @@ def load_port(d, n):
 # exhibited).
 # 0x34E2C's reaction callback 0x3E3A8 (unregistered before; at f = 962 the
 # T-rex's reaction 0x2A starts the 0xC8950 stream at hold 2.0) and the dump of
-# loop frame 1970 (the last frame the state-7 handler presents; the driver
-# dumped only frames whose iteration ended in a state >= 3) explain captures
+# loop frame 1970 (the frame presented in the iteration that starts in state 7
+# and exits it; the driver dumped only frames whose iteration ended in a state
+# >= 3) explain captures
 # 1881..1884 (1 clean, 3 splice), [560..1880] -> [560..1884] (1321 -> 1325;
 # still the same 3 transition frames). 1885 is the capture's first all-black
 # frame after the demo, so the window now holds the whole demo fight; the

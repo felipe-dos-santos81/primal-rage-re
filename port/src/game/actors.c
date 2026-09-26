@@ -196,7 +196,7 @@ int actors_init(void)
     fn_register(0x3BF70u, (void (*)(void))reaction_cb_3BF70);
     /* PORT: 0x34E2C's reaction callback 0x3E3A8 (*(u32*)0xA3870, the T-rex's
      * reaction 0x2A), called at 0x35045 with the (slot, rec, side) registers;
-     * its AL is ignored there (0x35049 only adds to ESP). */
+     * 0x34E2C passes it through; its callers do not test it. */
     fn_register(0x3E3A8u, (void (*)(void))fighter_3e3a8);
     /* PORT: the slot +0x0C callback 0x3E3A8 stores, 0x3E328 (0x3531C case
      * 7), with the same (slot, rec, side) registers. */
