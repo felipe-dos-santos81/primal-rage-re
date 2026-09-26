@@ -59,6 +59,16 @@ void fight_effects_pass(void);
  * (0x4AC19/0x4AC1A) before any read. */
 void fight_4ac18(u32 rec);
 
+/* 0x4AC80. The worshipper landing streams' 0xD500 target (opcode 0x15, mode
+ * 0x4000; the dword 0x0004AC80 at 6 sites in 0xEE3BC..0xEF608, the first after
+ * the 0xD500 word at 0xEE3BA). EAX = the actor record; with its +0x14 entry
+ * non-zero it ends the landing: by the entry's +0x1C bit 5 and DS_001088C5 the
+ * worshipper walks beside or is held by the DS_00108868 record, releases the
+ * DS_00108864 entry, is held through 0x4B3F0/0x4B430 (modes 8/9/0x17), or
+ * climbs (type 5, the 0xC95EC stream). EDX is pushed and overwritten
+ * (0x4AC82/0x4AC8B) before any read. */
+void fight_4ac80(u32 rec);
+
 /* 0x3C5CC. Zeroes the three slot-pass words. The arena frame's first call;
  * exposed because 0x3C570's bit test reads DS_00107EE0 and a test may seed it. */
 void fight_slot_clear(void);

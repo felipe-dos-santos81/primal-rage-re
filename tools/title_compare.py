@@ -462,6 +462,12 @@ def load_port(d, n):
 # 1659..1714, [560..1658] -> [560..1714] (1099 -> 1155; still the same 3
 # transition frames); the allowed set stays (832, 833), and the exhibition
 # set grows to port frames 0..1236 (1000 exhibited).
+# The worshipper landing streams' opcode-0x15 target 0x4AC80 (unregistered
+# before; at f = 820 and 841 it starts each landed worshipper's climb: the
+# 0xC95EC stream, type 5) explains captures 1715..1749, [560..1714] ->
+# [560..1749] (1155 -> 1190; still the same 3 transition frames); the allowed
+# set stays (832, 833), and the exhibition set grows to port frames 0..1266
+# (1030 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

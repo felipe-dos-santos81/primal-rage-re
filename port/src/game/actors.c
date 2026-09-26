@@ -91,6 +91,7 @@ static void anim_code_347B8(u32 rec, u32 arg);
 static void anim_code_346F8(u32 rec, u32 arg);
 static void anim_code_35938(u32 rec, u32 arg);
 static void anim_code_4AC18(u32 rec, u32 arg);
+static void anim_code_4AC80(u32 rec, u32 arg);
 static void anim_code_3D214(u32 rec, u32 arg);
 static void anim_code_3D26C(u32 rec, u32 arg);
 
@@ -180,6 +181,10 @@ int actors_init(void)
      * 0xEE09E..0xEF62E; the first after the 0xD500 word at 0xEE09C), opcode
      * 0x15, mode 0x4000: the arrival 0x4AC38 for the actor's +0x14 entry. */
     fn_register(0x4AC18u, (void (*)(void))anim_code_4AC18);
+    /* PORT: the worshipper landing streams' 0xD500 target 0x4AC80 (6 sites in
+     * 0xEE3BC..0xEF608; the first after the 0xD500 word at 0xEE3BA), opcode
+     * 0x15, mode 0x4000: the climb, walk or hold for the actor's +0x14 entry. */
+    fn_register(0x4AC80u, (void (*)(void))anim_code_4AC80);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -787,6 +792,17 @@ static void anim_code_4AC18(u32 rec, u32 arg)
 {
     (void)arg;
     fight_4ac18(rec);
+}
+
+/* 0x4AC80 — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x4AC80 takes EAX = rec and does not
+ * read EDX (it pushes EDX at 0x4AC82 and loads EDX from rec+0x14 at 0x4AC8B
+ * before any read), so this wrapper drops the operand and calls
+ * fight_4ac80(rec) unchanged. */
+static void anim_code_4AC80(u32 rec, u32 arg)
+{
+    (void)arg;
+    fight_4ac80(rec);
 }
 
 /* 0x3D214 — the animation-opcode target shape. PORT: anim_indirect calls every

@@ -4818,6 +4818,9 @@ static void check_anim_hold_scaler(void)
     CHECK(fn_resolve(0x4AC18u) != NULL, "0x4AC18 is registered");
     CHECK(fn_resolve(0x4AC18u) != (void (*)(void))fight_4ac18,
           "0x4AC18 is registered through the (rec, arg) wrapper");
+    CHECK(fn_resolve(0x4AC80u) != NULL, "0x4AC80 is registered");
+    CHECK(fn_resolve(0x4AC80u) != (void (*)(void))fight_4ac80,
+          "0x4AC80 is registered through the (rec, arg) wrapper");
     CHECK(fn_resolve(0x3D17Cu) == (void (*)(void))fighter_3d17c,
           "0x3D17C is registered as fighter_3d17c");
     CHECK(fn_resolve(0x3D214u) != NULL, "0x3D214 is registered");
@@ -6121,6 +6124,322 @@ static void check_worshipper_arrival(void)
     DSD(0x000C9540u) = sv_m1;
     DSD(0x000C9744u) = sv_80;
     DSD(0x000C9344u) = sv_s80;
+    DSD(DS_001014EC) = sv_14ec;
+}
+
+/* ---- roar-timing Task 21: the worshipper landing target 0x4AC80 (§31) ---- */
+
+/* The demo's f = 820 worshipper (the PR_T21 trace): entry 0x108438, index 4,
+ * +0x1C = 0x80, type 8, side (+0x21) 1, mode 3, DS_001088C5 = 0. wa_seed's
+ * records plus: the entry's slot (+0xC) and its fighter record (+0x28 word),
+ * +0x1C = 0xD0 (bits 7, 6 and 4: the 0x3F mask keeps only bit 4), +0x21 = 1,
+ * the actor's +0x55 = 0x5A, a DS_00108868 base record (pset 5) and a
+ * DS_00108864 held entry whose written fields are sentinels, and crafted
+ * literal-id streams in the four tables (C955C 0x03xx, C958C 0x04xx, C95D4
+ * 0x05xx, C95EC 0x06xx; index = +0x48 - 0x20). */
+#define WL_BASE   (FIGHT_RECS + 0x3300u)
+#define WL_FREC   (FIGHT_RECS + 0x3340u)
+#define WL_HELD   (FIGHT_RECS + 0x3380u)
+#define WL_SLOT   (FIGHT_RECS + 0x33C0u)
+static void wl_seed(u32 entry, u32 rec, u32 oth)
+{
+    wa_seed(entry, rec, oth);
+    DSB(entry + 0x1Eu) = 2u;
+    DSB(entry + 0x1Cu) = 0xD0u;
+    DSB(entry + 0x21u) = 1u;
+    DSD(entry + 0x14u) = 0x00C0FFEEu;
+    DSD(entry + 0xCu) = WL_SLOT;
+    DSD(WL_SLOT) = WL_FREC;
+    DSW(WL_FREC + 0x28u) = 0x4000u;
+    DSB(rec + 0x55u) = 0x5Au;
+    DSB(oth + 0x55u) = 0x5Au;
+    DSW(WL_BASE + 0x56u) = 5u;
+    DSD(FIGHT_ACTORS + 5u * 0x20u + 4u) = 0x10000u;
+    DSD(FIGHT_ACTORS + 3u * 0x20u + 4u) = 0x10000u - 0x1741u;
+    DSW(WL_HELD + 0x18u) = 0x1234u;
+    DSB(WL_HELD + 0x1Cu) = 0xFFu;
+    DSB(WL_HELD + 0x1Eu) = 6u;
+    DSB(DS_001088C5) = 0;
+    DSD(DS_00108868) = WL_BASE;
+    DSD(DS_00108864) = WL_HELD;
+    DSW(DS_00104B00) = 3u;
+    DSW(DS_00104B00 + 2u) = 0x1234u;
+    DSB(DS_00104B16) = 0;
+}
+
+/* §31: 0x4AC80 (EAX = rec) loads the entry from rec+0x14 (0x4AC8B) and
+ * returns when it is 0; the index is the 32-bit (u8)+0x48 - 0x20; the entry's
+ * actor (+8) loses bit 6 and gains bit 4 of +0x29 (0x4ACA0/0x4ACA7). Then:
+ * +0x1C bit 5 clear, the climb (0xC95EC at 3.0 on the actor; +0x38 = 0x40 and
+ * +0x34 = -0x40/+0x40 by the fighter record's +0x28 bit 0x4000 on EAX's rec;
+ * type 5; +0x1C &= 0x3F) or, in modes 8/9/0x17, the stop and 0x4B3F0 (side ==
+ * DS_00104B16) / 0x4B430 with EBX = 1; bit 5 set with DS_001088C5 = 0, the
+ * DS_00108864 release; bit 5 set with DS_001088C5 != 0, the walk to 0x1740
+ * beside the DS_00108868 record (0xC95D4, type 1) or the hold (0xC958C, type
+ * 8, +0x55 = 1) when no band matches. */
+static void check_worshipper_landing(void)
+{
+    u32 entry = FIGHT_RECS + 0x3000u;
+    u32 rec = FIGHT_RECS + 0x3100u;
+    u32 oth = FIGHT_RECS + 0x3200u;
+    u32 st = FIGHT_RECS + 0x3800u;           /* the crafted streams, 0x10 apart */
+    u32 pset3 = FIGHT_ACTORS + 3u * 0x20u, pset4 = FIGHT_ACTORS + 4u * 0x20u;
+    static const u32 tabs[4] = { 0x000C955Cu, 0x000C958Cu, 0x000C95D4u, 0x000C95ECu };
+    u8 sv_tab[0x200], sv_4b00[4], sv_c5 = DSB(DS_001088C5), sv_b16 = DSB(DS_00104B16);
+    u8 sv_pset5[0x20];
+    u32 sv_68 = DSD(DS_00108868), sv_64 = DSD(DS_00108864);
+    u32 sv_14ec = DSD(DS_001014EC), t, i;
+    memcpy(sv_tab, mem + 0x000C9540u, sizeof sv_tab);
+    memcpy(sv_4b00, mem + DS_00104B00, sizeof sv_4b00);
+    memcpy(sv_pset5, mem + FIGHT_ACTORS + 5u * 0x20u, sizeof sv_pset5);
+    if (fn_resolve(0x4AC80u) == NULL)
+        fn_register(0x4AC80u, (void (*)(void))fight_4ac80);
+    for (t = 0; t < 4u; t++)
+        for (i = 0; i < 6u; i++) {
+            u32 sp = st + (t * 8u + i) * 0x10u;
+            DSW(sp) = (u16)(0x0300u + t * 0x100u + i);     /* literal ids */
+            DSW(sp + 2u) = (u16)(0x0B00u + t * 0x100u + i);
+            DSD(tabs[t] + i * 4u) = sp;
+        }
+
+    /* A: the demo's f = 820 climb, index 4 (+0x48 = 0x24): the actor takes
+     * 0xC95EC[4] at 3.0, +0x38 = 0x40, +0x34 = -0x40 (fighter +0x28 bit
+     * 0x4000), +0x36 kept, +0x29 0x4B -> 0x13 (bit 3 by 0x2BC30), type 5, +0x1C
+     * 0xD0 -> 0x10. The entry's +0x14, the actor's +0x55, the held entry and
+     * DS_00108864 are untouched. */
+    wl_seed(entry, rec, oth);
+    DSB(rec + 0x48u) = 0x24u;
+    fight_4ac80(rec);
+    CHECK_EQ_INT((int)DSD(rec + 8u), (int)(st + (3u * 8u + 4u) * 0x10u));
+    CHECK_EQ_INT((int)DSW(pset3), 0x0604);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0x40);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFFC0);
+    CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x2222);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x13);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 5);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x10);
+    CHECK_EQ_INT((int)DSD(entry + 0x14u), 0x00C0FFEE);
+    CHECK_EQ_INT((int)DSB(rec + 0x55u), 0x5A);
+    CHECK_EQ_INT((int)DSW(WL_HELD + 0x18u), 0x1234);
+    CHECK_EQ_INT((int)DSB(WL_HELD + 0x1Eu), 6);
+    CHECK_EQ_INT((int)DSD(DS_00108864), (int)WL_HELD);
+
+    /* A2: fighter +0x28 = 0xBFFF (every bit but 0x4000): +0x34 = 0x40;
+     * +0x48 = 0x1F gives index 0xFFFFFFFF, which reads 0xC95E8 = 0xC95D4[5]. */
+    wl_seed(entry, rec, oth);
+    DSW(WL_FREC + 0x28u) = 0xBFFFu;
+    DSB(rec + 0x48u) = 0x1Fu;
+    fight_4ac80(rec);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x40);
+    CHECK_EQ_INT((int)DSW(pset3), 0x0505);
+
+    /* A3: with entry+8 = oth the stream, +0x29 and type go to oth while the
+     * +0x38/+0x34 stores go to EAX's rec (0x4AE6B `[ebx+0x38]`); the index is
+     * rec's +0x48 (0x21), not oth's 0x22. */
+    wl_seed(entry, rec, oth);
+    DSD(entry + 8u) = oth;
+    DSB(rec + 0x48u) = 0x21u;
+    fight_4ac80(rec);
+    CHECK_EQ_INT((int)DSW(pset4), 0x0601);
+    CHECK_EQ_INT((int)DSD(oth + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSB(oth + 0x29u), 0x13);
+    CHECK_EQ_INT((int)DSW(oth + 0x34u), 0x1111);
+    CHECK_EQ_INT((int)DSW(oth + 0x38u), 0x3333);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFFC0);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0x40);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x4B);
+    CHECK_EQ_INT((int)DSW(pset3), 0x7777);
+
+    /* B: modes 8, 9 and 0x17 stop the actor (+0x38/+0x34/+0x36 = 0) and hold
+     * it: side 1 != DS_00104B16 0 takes 0x4B430 (0xC958C), side equal takes
+     * 0x4B3F0 (0xC955C), both with +0x55 = 1 and type 8 at 3.0; the climb's
+     * stores do not happen. The word DS_00104B02 = 0x1234 proves the mode is a
+     * word. Modes 7 and 0x18 climb. */
+    {
+        static const u16 modes[5] = { 8u, 9u, 0x17u, 7u, 0x18u };
+        for (i = 0; i < 5u; i++) {
+            wl_seed(entry, rec, oth);
+            DSB(rec + 0x48u) = 0x22u;
+            DSW(DS_00104B00) = modes[i];
+            fight_4ac80(rec);
+            if (i < 3u) {
+                CHECK_EQ_INT((int)DSW(pset3), 0x0402);
+                CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+                CHECK_EQ_INT((int)DSB(rec + 0x55u), 1);
+                CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+                CHECK_EQ_INT((int)DSW(rec + 0x36u), 0);
+                CHECK_EQ_INT((int)DSW(rec + 0x38u), 0);
+                CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0xD0);
+            } else {
+                CHECK_EQ_INT((int)DSW(pset3), 0x0602);
+                CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 5);
+            }
+        }
+    }
+    wl_seed(entry, rec, oth);
+    DSB(rec + 0x48u) = 0x22u;
+    DSW(DS_00104B00) = 9u;
+    DSB(DS_00104B16) = 1u;
+    fight_4ac80(rec);
+    CHECK_EQ_INT((int)DSW(pset3), 0x0302);
+    CHECK_EQ_INT((int)DSB(rec + 0x55u), 1);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+
+    /* B2: an empty hold stream (0xC958C[2] = 0): 0x4B430 returns 0, so only
+     * the stop happens; the type, +0x55 and the stream stay. */
+    wl_seed(entry, rec, oth);
+    DSB(rec + 0x48u) = 0x22u;
+    DSW(DS_00104B00) = 0x17u;
+    DSD(0x000C958Cu + 2u * 4u) = 0;
+    fight_4ac80(rec);
+    CHECK_EQ_INT((int)DSW(pset3), 0x7777);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 2);
+    CHECK_EQ_INT((int)DSB(rec + 0x55u), 0x5A);
+    CHECK_EQ_INT((int)DSW(rec + 0x36u), 0);
+    DSD(0x000C958Cu + 2u * 4u) = st + (1u * 8u + 2u) * 0x10u;
+
+    /* C: +0x1C bit 5 with DS_001088C5 = 0 releases the DS_00108864 entry
+     * (+0x18 word 0, +0x1C &= 0xDF, type 4) and zeroes DS_00108864; the own
+     * entry keeps its type, +0x1C and streams; only +0x29 changes (0x4B ->
+     * 0x1B, no 0x2BC30). */
+    wl_seed(entry, rec, oth);
+    DSB(entry + 0x1Cu) = 0xF0u;
+    fight_4ac80(rec);
+    CHECK_EQ_INT((int)DSW(WL_HELD + 0x18u), 0);
+    CHECK_EQ_INT((int)DSB(WL_HELD + 0x1Cu), 0xDF);
+    CHECK_EQ_INT((int)DSB(WL_HELD + 0x1Eu), 4);
+    CHECK_EQ_INT((int)DSD(DS_00108864), 0);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 2);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0xF0);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x1B);
+    CHECK_EQ_INT((int)DSW(pset3), 0x7777);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x1111);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0x3333);
+
+    /* D: bit 5 with DS_001088C5 != 0, base 0x10000 (pset 5), index 0: the
+     * bands. Walks set +0x14, type 1, the 0xC95D4 stream at 3.0 and +0x36 = 0,
+     * +0x34 = 0x40 toward a larger target (bit 6 clear) else -0x40 with bit 6
+     * set (0x2BC30 then marks the pset id with bit 15); no band holds
+     * (0xC958C, type 8, +0x55 = 1, +0x14 kept). */
+    {
+        static const s32 dpos[12] = { -0x1741, -0x1740, -0xBA0, -0xB9F, -1, 0,
+                                       1, 0xB9F, 0xBA0, 0x1740, 0x1741, -0x7000 };
+        static const s32 dtgt[12] = { -0x1740, 0, 0, -0x1740, -0x1740, 0,
+                                       0x1740, 0x1740, 0, 0, 0x1740, -0x1740 };
+        for (i = 0; i < 12u; i++) {
+            s32 pos = 0x10000 + dpos[i];
+            wl_seed(entry, rec, oth);
+            DSB(entry + 0x1Cu) = 0x20u;
+            DSB(DS_001088C5) = 1u;
+            DSD(FIGHT_ACTORS + 3u * 0x20u + 4u) = (u32)pos;
+            fight_4ac80(rec);
+            CHECK_EQ_INT((int)DSW(rec + 0x36u), 0);
+            CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+            CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x20);
+            CHECK_EQ_INT((int)DSB(WL_HELD + 0x1Eu), 6);
+            if (dtgt[i] != 0) {
+                s32 tg = 0x10000 + dtgt[i];
+                CHECK_EQ_INT((int)DSD(entry + 0x14u), (int)tg);
+                CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 1);
+                CHECK_EQ_INT((int)DSW(pset3), pos < tg ? 0x0500 : 0x8500);
+                CHECK_EQ_INT((int)DSB(rec + 0x55u), 0x5A);
+                CHECK_EQ_INT((int)DSW(rec + 0x34u), pos < tg ? 0x40 : 0xFFC0);
+                CHECK_EQ_INT((int)DSB(rec + 0x29u), pos < tg ? 0x13 : 0x53);
+            } else {
+                CHECK_EQ_INT((int)DSD(entry + 0x14u), 0x00C0FFEE);
+                CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+                CHECK_EQ_INT((int)DSW(pset3), 0x0400);
+                CHECK_EQ_INT((int)DSB(rec + 0x55u), 1);
+                CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x1111);
+            }
+        }
+    }
+
+    /* D2: signed bands: base 0x2000 and pos -0x100 (below base - 0x1740 only
+     * as signed, 0x4ACFA `jge`) walks to 0x8C0, toward the larger target (the
+     * 0x4AD4F `jge` signed too); base 0x1740 and pos -5 computes the target 0
+     * and so holds (0x4AD3B `test eax,eax`). */
+    wl_seed(entry, rec, oth);
+    DSB(entry + 0x1Cu) = 0x20u;
+    DSB(DS_001088C5) = 0x80u;
+    DSD(FIGHT_ACTORS + 5u * 0x20u + 4u) = 0x2000u;
+    DSD(FIGHT_ACTORS + 3u * 0x20u + 4u) = (u32)-0x100;
+    fight_4ac80(rec);
+    CHECK_EQ_INT((int)DSD(entry + 0x14u), 0x8C0);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x40);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x13);
+    wl_seed(entry, rec, oth);
+    DSB(entry + 0x1Cu) = 0x20u;
+    DSB(DS_001088C5) = 1u;
+    DSD(FIGHT_ACTORS + 5u * 0x20u + 4u) = 0x1740u;
+    DSD(FIGHT_ACTORS + 3u * 0x20u + 4u) = (u32)-5;
+    fight_4ac80(rec);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSW(pset3), 0x0400);
+
+    /* D3: the walk acts on entry+8 (oth, pset 4 at the base - 0x1741), with
+     * rec's index 0x21; rec is untouched. */
+    wl_seed(entry, rec, oth);
+    DSB(entry + 0x1Cu) = 0x20u;
+    DSB(DS_001088C5) = 1u;
+    DSD(entry + 8u) = oth;
+    DSB(rec + 0x48u) = 0x21u;
+    DSD(FIGHT_ACTORS + 4u * 0x20u + 4u) = 0x10000u + 0xB9Fu;
+    fight_4ac80(rec);
+    CHECK_EQ_INT((int)DSD(entry + 0x14u), 0x11740);
+    CHECK_EQ_INT((int)DSW(pset4), 0x0501);
+    CHECK_EQ_INT((int)DSW(oth + 0x34u), 0x40);
+    CHECK_EQ_INT((int)DSW(oth + 0x36u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x1111);
+    CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x2222);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x4B);
+    CHECK_EQ_INT((int)DSW(pset3), 0x7777);
+
+    /* E: no entry (rec+0x14 = 0, 0x4AC90) writes nothing. Without the test
+     * the body would run on entry 0: its +0x1E byte (linear 0x1E, seeded 0x5A
+     * here) and its actor DSD(8) (seeded 0); both restored. */
+    wl_seed(entry, rec, oth);
+    DSD(rec + 0x14u) = 0;
+    {
+        u8 sv_1e = DSB(0x1Eu);
+        u32 sv_8 = DSD(8u);
+        DSB(0x1Eu) = 0x5Au;
+        DSD(8u) = 0;
+        fight_4ac80(rec);
+        CHECK_EQ_INT((int)DSB(0x1Eu), 0x5A);
+        DSB(0x1Eu) = sv_1e;
+        DSD(8u) = sv_8;
+    }
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 2);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x4B);
+    CHECK_EQ_INT((int)DSW(pset3), 0x7777);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x1111);
+
+    /* F: through the dispatcher: `D500 AC80 0004` (0xEE3BA's words; opcode
+     * 0x15, mode 0x4000) walked by 0x2BC30 with the hold 1.0. The target's
+     * nested 0x2BC30 begins 0xC95EC[0] at 3.0 (id 0x0600); the outer one then
+     * loads the next word, 0x0B00 + 3 * 0x100. An unregistered target would
+     * leave type 2, the 1.0 hold and the id 0x1746 after the dword. */
+    wl_seed(entry, rec, oth);
+    DSW(st + 0x300u) = 0xD500u;
+    DSW(st + 0x302u) = 0xAC80u;
+    DSW(st + 0x304u) = 0x0004u;
+    DSW(st + 0x306u) = 0x1746u;
+    actors_anim_begin(rec, st + 0x300u, 0x3F800000u);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 5);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSW(pset3), 0x0E00);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0x40);
+
+    memcpy(mem + 0x000C9540u, sv_tab, sizeof sv_tab);
+    memcpy(mem + DS_00104B00, sv_4b00, sizeof sv_4b00);
+    memcpy(mem + FIGHT_ACTORS + 5u * 0x20u, sv_pset5, sizeof sv_pset5);
+    DSB(DS_001088C5) = sv_c5;
+    DSB(DS_00104B16) = sv_b16;
+    DSD(DS_00108868) = sv_68;
+    DSD(DS_00108864) = sv_64;
     DSD(DS_001014EC) = sv_14ec;
 }
 
@@ -7979,6 +8298,7 @@ int test_fight(void)
     check_knockdown_floor();
     check_walk_entry();
     check_worshipper_arrival();
+    check_worshipper_landing();
     check_trex_breath();
     check_reaction_predicates();
     check_reaction();

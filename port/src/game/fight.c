@@ -662,27 +662,29 @@ static s32 fight_2be4c(u32 rec, s32 value)
 }
 
 /* 0x4B3F0. When the 0xC955C[index] stream is set, point the entry's actor at it
- * and set the entry's type to 8. The raw's EBX selects actor+0x55; every
- * 0x4AAD0 call site zeroes it (0x4AAFC, 0x4AB18, 0x4AB6D, 0x4AB97), so the port
- * writes 0. */
-static int fight_4b3f0(u32 entry, u32 index)
+ * and set the entry's type to 8. EAX = entry, EDX = index, EBX = the flag: the
+ * actor's +0x55 byte becomes 1 when EBX is non-zero (0x4B3FA `test ebx,ebx`,
+ * 0x4B401), else 0 (0x4B40A). Every 0x4AAD0 call site zeroes EBX (0x4AAFC,
+ * 0x4AB18, 0x4AB6D, 0x4AB97); 0x4AC80 passes 1 (0x4AE2B). */
+static int fight_4b3f0(u32 entry, u32 index, u32 flag)
 {
     u32 stream = DSD(DS_000C955C + index * 4u);     /* 0x4B3F0 */
     if (stream == 0u) return 0;                     /* 0x4B3F8 */
     u32 actor = DSD(entry + 8u);
-    DSB(actor + 0x55u) = 0;                         /* 0x4B407 (EBX == 0) */
+    DSB(actor + 0x55u) = (flag != 0u) ? 1u : 0u;    /* 0x4B3FA..0x4B40A */
     DSB(entry + 0x1Eu) = 8u;                        /* 0x4B40E */
     actors_anim_begin(actor, stream, 0x40400000u);  /* 0x4B421 */
     return 1;                                       /* 0x4B426 */
 }
 
-/* 0x4B430. As 0x4B3F0 but over the 0xC958C table. */
-static int fight_4b430(u32 entry, u32 index)
+/* 0x4B430. As 0x4B3F0 but over the 0xC958C table (the flag test at 0x4B43A,
+ * 0x4AC80's EBX = 1 at 0x4AE41). */
+static int fight_4b430(u32 entry, u32 index, u32 flag)
 {
     u32 stream = DSD(DS_000C958C + index * 4u);     /* 0x4B430 */
     if (stream == 0u) return 0;                     /* 0x4B438 */
     u32 actor = DSD(entry + 8u);
-    DSB(actor + 0x55u) = 0;                         /* 0x4B44A (EBX == 0) */
+    DSB(actor + 0x55u) = (flag != 0u) ? 1u : 0u;    /* 0x4B43A..0x4B44A */
     DSB(entry + 0x1Eu) = 8u;                        /* 0x4B44E */
     actors_anim_begin(actor, stream, 0x40400000u);  /* 0x4B461 */
     return 1;                                       /* 0x4B466 */
@@ -774,6 +776,96 @@ void fight_4ac18(u32 rec)
     fight_4ac38(entry, (u32)DSB(rec + 0x48u) - 0x20u); /* 0x4AC25..0x4AC2D */
 }
 
+/* The 0xC95D4 walk- and 0xC958C/0xC955C held-stream tables are defined above;
+ * 0x4AC80 also reads DS_00108868 (a record, written only by 0x4BD98 at
+ * 0x4BEA3) and DS_00108864 (an entry, written by 0x4BD98/0x4CD98/0x4C784/
+ * 0x27BA4 and by 0x4AC80 itself at 0x4ADE1). */
+
+/* 0x4AC80 — demo-pose record §31. The worshipper landing streams' opcode-0x15
+ * target (the dword 0x0004AC80 after the 0xD500 word at 0xEE3BA, 0xEE6FA,
+ * 0xEEAB6, 0xEEEA8, 0xEF25E and 0xEF606). EAX = the record; its +0x14 entry,
+ * when non-zero, is ECX and the index is the 32-bit (u8)+0x48 - 0x20 (0x4AC98..
+ * 0x4ACB1). The entry's actor (+8) loses its hflip and gains +0x29 bit 4. Then
+ * by the entry's +0x1C bit 5 and DS_001088C5: set and non-zero, the actor walks
+ * to 0x1740 beside the DS_00108868 record (type 1, the 0xC95D4 stream) or, when
+ * it already stands there, is held (type 8, the 0xC958C stream, +0x55 = 1);
+ * set and zero, the DS_00108864 entry is released (type 4, bit 5 cleared) and
+ * DS_00108864 zeroed; clear, in modes 8/9/0x17 the actor stops and 0x4B3F0 or
+ * 0x4B430 (EBX = 1) hold it, otherwise it climbs as the effects pass's case 4
+ * does (the 0xC95EC stream, type 5, +0x1C &= 0x3F). */
+void fight_4ac80(u32 rec)
+{
+    u32 entry = DSD(rec + 0x14u);                   /* 0x4AC8B */
+    if (entry == 0u) return;                        /* 0x4AC90 */
+    u32 index = (u32)DSB(rec + 0x48u) - 0x20u;      /* 0x4AC98..0x4ACB1 */
+    DSB(DSD(entry + 8u) + 0x29u) &= 0xBFu;          /* 0x4ACA0 */
+    DSB(DSD(entry + 8u) + 0x29u) |= 0x10u;          /* 0x4ACA7 */
+    u32 bit5 = (u32)DSB(entry + 0x1Cu) & 0x20u;     /* 0x4ACBC..0x4ACC4 */
+    if (DSB(DS_001088C5) != 0u && bit5 != 0u) {     /* 0x4ACB6/0x4ACC9 */
+        s32 pos = fight_2be00(DSD(entry + 8u));     /* 0x4ACD2 */
+        s32 base = fight_2be00(DSD(DS_00108868));   /* 0x4ACE0 */
+        s32 target = 0;                             /* 0x4ACF3 */
+        if (pos < base - 0x1740)                    /* 0x4ACFA */
+            target = base - 0x1740;                 /* 0x4ACFC */
+        else if (pos > base - 0xBA0 && pos < base)  /* 0x4AD0A/0x4AD0E */
+            target = base - 0x1740;                 /* 0x4AD10 */
+        else if (pos > base + 0x1740)               /* 0x4AD21 */
+            target = base + 0x1740;                 /* 0x4AD37 */
+        else if (pos < base + 0xBA0 && pos > base)  /* 0x4AD2F/0x4AD35 */
+            target = base + 0x1740;                 /* 0x4AD37 */
+        u32 stream;
+        if (target != 0) {                          /* 0x4AD3B */
+            DSD(entry + 0x14u) = (u32)target;       /* 0x4AD3D */
+            DSB(entry + 0x1Eu) = 1u;                /* 0x4AD43 */
+            if (fight_2be00(DSD(entry + 8u)) < (s32)DSD(entry + 0x14u)) { /* 0x4AD4F */
+                DSW(DSD(entry + 8u) + 0x34u) = 0x0040u;     /* 0x4AD54 */
+                DSB(DSD(entry + 8u) + 0x29u) &= 0xBFu;      /* 0x4AD5D */
+            } else {
+                DSW(DSD(entry + 8u) + 0x34u) = 0xFFC0u;     /* 0x4AD66 */
+                DSB(DSD(entry + 8u) + 0x29u) |= 0x40u;      /* 0x4AD6F */
+            }
+            stream = DSD(DS_000C95D4 + index * 4u); /* 0x4AD73 */
+        } else {
+            /* PORT: 0x4AD81 0x2C3FC(0xC8) voice, out of scope (spec §7). */
+            DSB(entry + 0x1Eu) = 8u;                /* 0x4AD89 */
+            DSB(DSD(entry + 8u) + 0x55u) = 1u;      /* 0x4AD8D */
+            stream = DSD(DS_000C958C + index * 4u); /* 0x4AD91 */
+        }
+        actors_anim_begin(DSD(entry + 8u), stream, 0x40400000u); /* 0x4ADA0 */
+        DSW(DSD(entry + 8u) + 0x36u) = 0;           /* 0x4ADA8 */
+        return;
+    }
+    if (bit5 != 0u) {                               /* 0x4ADC5 */
+        u32 held = DSD(DS_00108864);                /* 0x4ADC7 */
+        u8 bh = DSB(held + 0x1Cu);                  /* 0x4ADCC */
+        DSW(held + 0x18u) = 0;                      /* 0x4ADCF */
+        DSB(held + 0x1Cu) = (u8)(bh & 0xDFu);       /* 0x4ADD5/0x4ADD8 */
+        DSB(held + 0x1Eu) = 4u;                     /* 0x4ADDD */
+        DSD(DS_00108864) = 0;                       /* 0x4ADE1 */
+        return;
+    }
+    u16 mode = DSW(DS_00104B00);                    /* 0x4ADF1 */
+    if (mode == 8u || mode == 9u || mode == 0x17u) {    /* 0x4ADF7..0x4AE04 */
+        DSW(DSD(entry + 8u) + 0x38u) = 0;           /* 0x4AE09 */
+        DSW(DSD(entry + 8u) + 0x34u) = 0;           /* 0x4AE12 */
+        DSW(DSD(entry + 8u) + 0x36u) = 0;           /* 0x4AE1B */
+        if (DSB(DS_00104B16) == DSB(entry + 0x21u)) /* 0x4AE26 */
+            (void)fight_4b3f0(entry, index, 1u);    /* 0x4AE32 */
+        else
+            (void)fight_4b430(entry, index, 1u);    /* 0x4AE48 */
+        return;
+    }
+    actors_anim_begin(DSD(entry + 8u), DSD(DS_000C95EC + index * 4u),
+                      0x40400000u);                 /* 0x4AE66 */
+    DSW(rec + 0x38u) = 0x0040u;                     /* 0x4AE6B */
+    if ((DSW(DSD(DSD(entry + 0xCu)) + 0x28u) & 0x4000u) != 0u) /* 0x4AE84 */
+        DSW(rec + 0x34u) = 0xFFC0u;                 /* 0x4AE86 */
+    else
+        DSW(rec + 0x34u) = 0x0040u;                 /* 0x4AE8E */
+    DSB(entry + 0x1Eu) = 5u;                        /* 0x4AE97 */
+    DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) & 0x3Fu); /* 0x4AE9B/0x4AE9E */
+}
+
 /* 0x4B144. The type-0 entry's distance resolution: it walks the entry's actor
  * toward DS_00108874 (the midpoint), drawing rng(2)/rng(0x1200) 1-3 times on
  * the way, then sets the entry's +0x14 and type 1 and retargets the actor at
@@ -844,10 +936,10 @@ static void fight_4aad0(u32 entry, u32 index)
     }
     u32 slot = DSD(entry + 0xCu);                   /* 0x4AAEF */
     if (DSB(slot + 0x54u) == 3u) {                  /* 0x4AAF2 */
-        if (fight_4b430(entry, index) != 0) return; /* 0x4AAFE */
+        if (fight_4b430(entry, index, 0u) != 0) return; /* 0x4AAFE */
     }
     if (DSB(slot + 0x54u) == 4u) {                  /* 0x4AB0E */
-        if (fight_4b3f0(entry, index) != 0) return; /* 0x4AB1A */
+        if (fight_4b3f0(entry, index, 0u) != 0) return; /* 0x4AB1A */
     }
     if (DSB(DS_001088C2) != 0u) {                   /* 0x4AB27 */
         if (fight_4bd4c(entry, index) != 0) return; /* 0x4AB34 */
@@ -855,11 +947,11 @@ static void fight_4aad0(u32 entry, u32 index)
     if (fight_4b5a8(entry, index) != 0) return;     /* 0x4AB45 */
     if ((DSB(slot + 0x42u) & 2u) != 0u
             || DSB(DS_001088B2 + (u32)DSB(entry + 0x21u)) != 0u) {
-        if (fight_4b3f0(entry, index) != 0) return; /* 0x4AB6F */
+        if (fight_4b3f0(entry, index, 0u) != 0) return; /* 0x4AB6F */
     }
     if ((DSB(slot + 0x42u) & 1u) != 0u
             || DSB(DS_0010889E + (u32)DSB(entry + 0x21u)) != 0u) {
-        if (fight_4b430(entry, index) != 0) return; /* 0x4AB99 */
+        if (fight_4b430(entry, index, 0u) != 0) return; /* 0x4AB99 */
     }
     {
         s32 d = fight_2be1c(DSD(entry + 8u), DSD(slot));    /* 0x4ABAE */
