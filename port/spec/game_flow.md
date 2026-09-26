@@ -208,10 +208,13 @@ its movie path is a licensed Smacker-library open/decode loop (`0x6345C`
 open/decode, `0x63180` stream setup). The port ports the player (video only)
 and wires `movie_play("twi5.smk")` then `movie_play("twg.smk")` at that case-0
 site (`port/src/game/attract.c`, `attract_step` phase 0), decoding into
-`DAT_000E87A4` and presenting through `gfx_present`. The original presents TWI5
-120 of 121 frames and TWG 41 of 41; the rule that decides presentation is the
-player's and is content-based (`TODO(verify)` on the original loop's exact
-semantics). Streamed Smacker audio is sub-project 2b-ii and not ported. See
+`DAT_000E87A4` and presenting through `gfx_present`. `0x1C740` blits every
+frame, the last included, between two `0x52106(0)` calls (`0x1C74D`,
+`0x1C873`). Those calls blank the screen and the DAC and zero the tick
+counters. So TWI5 presents 121 frames and TWG 41. The collapsed smk capture
+holds TWI5's first 120 only, because the 121st is blanked before a whole
+scanout; the front-end capture's 2094 splices it (demo-pose record §36, which
+settles the old `TODO(verify)`). Streamed Smacker audio is sub-project 2b-ii and not ported. See
 `../../docs/superpowers/plans/2026-09-17-smacker-video-report.md` and
 `../../docs/superpowers/plans/2026-09-19-attract-report.md`.
 
@@ -711,8 +714,26 @@ cap covers it with no truncation, and the 2000-frame loop clears the 1970 exit.
 (Before the frame-1881 fix the gate read only the state after the iteration, so
 loop 1970 was dropped and the dump held 1381 frames.)
 
+**The attract's second cycle (roar-timing Task 26, demo-pose record §36).** The
+exit frame closes that dump. The loop now runs to 2800, and every frame
+presented after loop 1970 goes to a separate `cycle2/` dump (995 frames). That
+is one frame per iteration for loops 1971..2799, plus the 166 screens the logo
+player `0x1C740` writes inside loop 1971 (its `0x52106` blanks and every TWI5
+and TWG frame, through the `PORT:` seam `movie_set_screen_hook`). Every
+earlier measurement keeps the loop-0..1999 window. A separate dump is needed:
+in one dump the second cycle's frames content-match the capture's first
+attract, and the front-end window grew to `[1..2231]`. The driver seeds
+`DS_000F0A5C` = 0, the boot attract's post-state (`0x10E80` stores 4 and the
+boot cycle's phase 2 wraps it to 0), so the second cycle reaches phase `0xA`'s
+lightning and hands off to a second demo at loop 2782 (`DS_000F0A72` = 5), as
+the capture does from 2385. `make attract2-oracle` (`--attract2`, in `make
+verify`) classifies captures 1885..3616 against `cycle2/` only, with the ratchet
+N = 2384.
+
 **The demo window is report-only; its first unexplained frame is capture 1886 —
-the capture's next cycle after the demo, with no port frame left — after the
+the capture's next cycle after the demo, with no port frame left in the
+top-level dump (`make attract2-oracle` classifies that region against
+`cycle2/`: first unexplained 2384) — after the
 demo-pose cycle explained captures 843..850, the roar-timing fix 851..857, the
 frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863, the
 frame-864 fix 864/865, the frame-866 fix 866, the frame-867 fix 867..869 and
@@ -2279,6 +2300,41 @@ record §34).**
   all 37 hook frames, so nothing moved. Every oracle is unchanged: title
   54/55/2/0 and 54/57/0/0, attract 215, front-end `[560..1884]`/1325
   517/801/3/2, demo-fight N = 1886, smk, C-vs-Python 9866 and `symbols.h`.
+
+### The attract's second cycle (`fc8e775`), captures 1886..2383
+
+* **Measured first.** The capture runs past the demo into the attract's
+  second cycle: the two logos (1886..2132), the attract, the title card with
+  lightning, and a second demo from 2385. The driver's dump stopped at the
+  exit frame (loop 1970), because its rule is the state >= 3 window. Dumping
+  the later frames into the same dump would grow the front-end window to
+  `[1..2231]`, since the second cycle matches the capture's first. So they go
+  to a separate `cycle2/` dump (the "Dump length" paragraph above).
+* **Owners (record §36).**
+  * The logo player `0x1C740` blanks the screen with `0x52106(0)` before and
+    after each movie, and blits every frame. The port did neither. Captures
+    1885, 2095 and 2133 are the blanks, 1886 splices the blank into TWI5
+    frame 0, and 2094 splices TWI5 frame 119 into frame 120.
+  * `0x2BAF4` calls `0x4F228` at `0x2BBC4`, which clears the projection gate
+    `DS_00107A54` (and `DS_00107A55`, `DS_00107A3A`/`38`). The port skipped
+    it, so the gate the demo's state 6 set stayed on and the attract drew the
+    wall full screen.
+  * The lightning stream `0xE890A` (the phase-`0xA` actor `0x9AD30`) calls
+    `0x4F83C` (the palette flash) and `0x10FC4` through opcode `0x11`, and
+    neither was registered.
+  * The driver seeds `DS_000F0A5C` to the boot attract's post-state 0.
+* **Fix.** `gfx_screen_reset` (`0x52106`), `render_projection_reset`
+  (`0x4F228`), `anim_code_4F83C`/`anim_code_10FC4` (registered),
+  `movie_play` per `0x1C740`, and the `PORT:` seam `movie_set_screen_hook`.
+  New assertions are in `test_gfx`, `test_render`, `test_actors`,
+  `test_attract`, `test_movie` and the driver; all 24 mutations fail them.
+* **Measured.** The front-end dump is byte-identical (1382 frames), and the
+  front-end and demo-fight oracles are unchanged. The new `make
+  attract2-oracle` (`--attract2`, in `make verify`) classifies captures
+  1885..3616 against `cycle2/`. 1885..2383 (499 frames) have 0 unexplained:
+  354 clean, 138 splice, 3 transition, 4 all-black. The first unexplained is
+  **2384 (raw 6759)**, the `- LOADING -` frame before the second demo (no
+  raw-code owner, like 832). N = 2384. The second demo diverges from 2386.
 
 ## Landmarks (verified)
 

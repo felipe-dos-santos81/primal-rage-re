@@ -6460,3 +6460,189 @@ Nothing moved, as predicted. The demo-fight ratchet stays exhausted at N =
 `+0x1C` callback `0x3E244` are not stored or not reached in this run. When a later run
 reaches one, `0x19020` resolves it and skips it with `AF8[side]` unchanged,
 as before.
+
+## 36. The attract's second cycle after the demo: `0x52106`/`0x1C740`, `0x4F228`, the lightning stream (roar-timing Task 26, `fc8e775`)
+
+**Result in one line.** The front-end capture runs on past the demo into the
+attract's second cycle: the two logos, the attract, the title card with
+lightning, and a second demo from 2385. The port now dumps that cycle into a
+separate `cycle2/` dump, and with four faithful fixes captures 1886..2383 are
+explained. The new first unexplained frame is 2384, the `- LOADING -` frame
+before the second demo. A new ratchet pins N = 2384.
+
+### 36.1 Why the dump stopped at loop 1970
+
+The front-end driver dumped a frame when its iteration started or ended in a
+state >= 3 (§34.1). 0x11BCC drops the state to 0 inside loop 1970, so loops
+1971 on fall outside that rule. That rule was the front-end/demo window, not
+an alignment trick. The capture holds 3617 frames (0..3616), and 1886..3616
+follow the demo.
+
+Dumping those frames into the same dump is not legitimate. A probe (`PR_T26`,
+reverted) dumped every frame after the state-3 entry for 3700 loops (3111
+frames). The front-end window then grew to `[1..2231]`, because the attract's
+second-cycle frames content-match the capture's own first attract (capture
+1..~560). So the extension writes the frames presented after the exit frame
+to `<dump>/cycle2/` and classifies them separately. It keeps the same loop
+convention: one frame per iteration, credited to the state that started it.
+
+Inside loop 1971 the attract's phase 0 plays both logos through `0x1C740`,
+which writes the screen itself (VBlank-gated blits, not the `0x25643`
+present). A per-iteration dump cannot see those screens, so the player gets
+a `PORT:` dump seam (`movie_set_screen_hook`). It runs after each screen the
+player writes, and the driver appends each one to `cycle2/` in order.
+
+### 36.2 The measurement (probes reverted)
+
+- **The phase byte.** 0x11BCC (`read_memory 0x11BCC`: `xor ah,ah; mov
+  [0x104B1B],ah; mov [0x104B15],ah; mov ax,[0xF0A6C]; mov [0xF0A64],ax; call
+  0x29D60; mov eax,0x100; jmp 0x2C3FC`) leaves `DS_000F0A6F` at 0. So loop
+  1971 runs `0x11000` phase 0, which plays both movies.
+- **The capture's logo region** (md5 against `data/smk-captures`): 1885 is
+  black. 1886 splices black (row 0) into TWI5 frame 0 from byte 960. 1887..2094
+  are TWI5 frames 0..119, clean or spliced, about 2 capture frames per movie
+  frame. 2094 is `twi5[119][0..b) ++ twi5[120][b..)` with b in
+  91687..150111. 2095 is black. 2096..2132 are TWG frames 0..34; the capture
+  skips 13..15, and frames 35..40 are holds equal to 28. 2133 is black. 2134 is
+  the credits on black, the collapsed phase-`0xC` countdown. 2135 on is the
+  jungle fade-in, the same as capture 2.
+- **The first divergence after the logos.** With the logo frames dumped, the
+  port's loop 2155 (the first post-countdown frame) drew the wall texture
+  full screen and no jungle, where capture 2135 shows the dim jungle. A
+  data-object diff at attract phase 3 (the boot attract against the second
+  cycle; `PR_T26DS`, reverted) found the projection gate `DS_00107A54` = 1 in
+  the second cycle. The demo's state 6 sets it (`0x20E7F` -> `0x38730`,
+  `0x387E2`), and the port never cleared it.
+- **The cycle counter.** The port's second cycle took phase 9's `0xF0` arm and
+  handed off to the title. `0x10E80` stores `DS_000F0A5C` = 4, and the boot
+  attract's phase 2 wraps it to 0 (`0x11089` inc, `0x110A1` jl, `0x110A5`
+  store). The driver skips the boot attract, so it kept 4, and cycle 2 wrapped
+  it to 0. In the raw, cycle 2 counts 1: phase 9 takes its `0x78` arm, phase
+  `0xA` spawns the lightning actor `0x9AD30` (`0x11478`), and phase `0xB`
+  hands off to state 6 with `DS_000F0A72` = 5 (`0x1150E`). The capture shows
+  that second demo from 2385.
+- **The lightning.** With the gate and the counter fixed, 2134..2303 are
+  explained. 2304..2309 and 2315..2322 are white flashes on the title card.
+  `0x9AD30`'s stream is `0xE890A` (its first dword). It holds
+  `D100 F83C 0004 0000` (opcode `0x11`, target `0x4F83C`; the dwords are at
+  `0xE8916`, `0xE893C`, `0xE8958` and `0xE896E`) and `D100 0FC4 0001 0000`
+  (dword at `0xE892E`, target `0x10FC4`). Neither target was registered, so
+  `anim_indirect` skipped both. Registering `0x4F83C` explained 2304..2309, and
+  `0x10FC4` explained 2315..2322 as well.
+- **What is left.** 2383 is black. 2384 is the `- LOADING -` frame before the
+  second demo, the loader's read-stall class. Like attract 215 and front-end
+  832 it has no raw-code owner (§35.1). 2385 is the second demo's first frame,
+  which the port matches (loop 2783, the state-6 -> 7 iteration; same stage
+  and characters). From 2386 on the second demo diverges. Its state-7 run
+  misses `0x1490C`, `0x15350`, `0x3640C` and `0x3C32C`.
+
+In every probe the dump's frames 0..1381 stayed byte-identical.
+
+### 36.3 The raw (Ghidra decompile/disassembly, `read_memory`, fixups applied)
+
+**`0x1C740`** (the logo player). It calls `0x52106(0)` at `0x1C74D`. Then
+`0x62756` and `DS_000A81A8` gate the open (`0x6345C`) and the setup
+(`0x649B0`, into `DAT_000E87A4`). The loop runs uVar7 = 1..`piVar3[3]`:
+- VBlank, then the palette (`0x65340`) when `piVar3[0x1A]` is set
+- decode (`0x64130`) and the dirty-rectangle blits (`0x64ED8`/`0x50D23`)
+- `0x643CC` only when uVar7 is not the last frame
+- the wait loop (`0x62756`/`0x50161`/`0x65240`); a key leaves the loop
+
+The last frame is decoded and blitted as well. After the close (`0x63CE8`) it
+calls `0x52106(0)` again at `0x1C873`, inside the opened arm.
+
+**`0x52106`**:
+- `0x52108`/`0x5210D`: both tick counters = EAX.
+- `0x52112`..`0x52123`: EDX = EAX, and `0x51F72` fills `DS_001014E8` and
+  `DS_001014E4` with the dword EDX (200 rows of 0x140 bytes = 0xFA00).
+- `0x52133`..`0x52149`: 256 zero DAC entries after a VBlank spin.
+- `0x5214C`: `0x51F72` fills 0xA0000 with the same dword.
+
+Every caller passes 0: `0x2BAF4` at `0x2BBE8`/`0x2BBEA`, and `0x1C740`'s two.
+
+**`0x4F228`**:
+- `xor ah,ah; xor edx,edx; xor ebx,ebx`
+- `mov [0x107A54],ah`, `mov [0x107A55],al`, `mov word [0x107A3A],dx`,
+  `mov word [0x107A38],bx`
+- EBX and EDX are pushed and restored.
+
+Its callers are `0x2BAF4` at `0x2BBC4` (after `xor eax,eax` at `0x2BBC0`),
+`0x20C10` at `0x20C49`, and `0x43818` at `0x43822`. `actors_reset` had
+skipped it under a `PORT:` note that called it input state. These are the
+render projection's gate and words, which `render.c` owns.
+
+**`0x4F83C`** (ported as `attract_palette_start`; fidelity-gaps record §4.7).
+It reads neither EAX nor EDX before it overwrites them: `0x4F83E` loads DL,
+`0x4F847` zeroes AH, and `0x4F867` loads EAX. **`0x10FC4`** is
+`mov dword [eax+0x18],0; ret`, with EAX = rec.
+
+### 36.4 The fix and its assertions
+
+- `gfx.c`: `gfx_screen_reset` (`0x52106`). `actors_reset` calls it in place
+  of its inline copy (the same writes).
+- `render.c`: `render_projection_reset` (`0x4F228`). `actors_reset` calls it
+  at `0x2BBC4` with 0.
+- `actors.c`: the wrappers `anim_code_4F83C` and `anim_code_10FC4`, both
+  registered.
+- `movie.c`: `0x52106` at `0x1C74D` and `0x1C873`. Every decoded frame is
+  presented, which replaces the "final frame only when a hold" rule and its
+  `TODO(verify)`: TWI5 presents 121, TWG 41. Also the `PORT:` seam
+  `movie_set_screen_hook`.
+- The driver (`test_game.c`):
+  - `FRONTEND_ATTRACT_CYCLE_AFTER_BOOT` = 0 is the boot attract's post-state,
+    like the RNG and frame-counter seeds.
+  - The loop runs to `FE_LOOPS` = 2800. Every earlier measurement and
+    end-of-run read keeps the `FE_DEMO_LOOPS` = 2000 window. The picks, the
+    variant and the handle are read at loop 1999, where the run used to end,
+    because the second demo draws new picks.
+  - The cycle-2 dump: 829 loop frames (1971..2799) plus 166 player screens
+    (2 x (blank + frames + blank)) = 995.
+
+That is 5 functions (4 ported, 1 seam), about 130 lines, inside the gate.
+
+The assertions:
+- `test_gfx`: `0x52106`'s dword fill, counters, DAC and aperture, with
+  sentinels past each fill, for EAX = 0x12345678 and 0.
+- `test_render` `check_projection_reset`: the four targets and the neighbours
+  `0x107A53`/`56`/`36`/`3C`.
+- `test_actors`: the four targets through `actors_reset`.
+- `test_attract` E2: both registrations, called as `anim_indirect` calls them.
+- `test_movie`: 121/41 presented and 123/43 hook calls. The first screen is
+  black, the second lit and the last black. The counters, the DAC and the
+  aperture are zero after the play. A missing movie gets 1 call (the entry
+  blank), and invalid arguments get 0.
+- The driver: cycle 2 from loop 1971; 995 frames; `DS_00107A54` = 0 after
+  loop 1971; `DS_00104AD0` bit 0 first at loop 2547; state 6 at loop 2782
+  with `DS_000F0A72` = 5.
+
+**Mutations.** `scratchpad/t26/mut/mut26.py` made 24 single-site edits in
+`gfx.c`, `render.c`, `actors.c`, `movie.c` and the driver seed: 20 at unit
+level and 4 through the driver. All 24 fail 1..8 assertions. The sources were
+restored and checked with `cmp`.
+
+### 36.5 Measured
+
+| measurement | before (`6d2c4a3`) | after (`fc8e775`) |
+|---|---|---|
+| front-end dump | 1382 frames | **byte-identical** (0..1381) |
+| front-end oracle | `[560..1884]`/1325: 517/801/3/2 (832, 833) | unchanged |
+| demo-fight ratchet | fight window empty, N = 1886 | unchanged |
+| capture after the demo | not compared (no port frame) | **`--attract2`**: region `[1885..3616]`, 1732 frames: 355 clean, 138 splice, 3 transition, 1230 unexplained, 6 all-black |
+| captures 1885..2383 | — | **499: 354 clean, 138 splice, 3 transition, 4 all-black, 0 unexplained** |
+| attract2 first unexplained | — | **2384 (raw 6759)**, N = 2384 |
+
+The three transition frames are 1949 (cycle-2 frames 35/36, row 6), 2230
+(501/502, row 155) and 2288 (625/626, row 101). 2385 is clean (cycle-2 frame
+978).
+
+**What the new ratchet proves.** Every content-bearing capture frame from
+1885 to 2383 is explained by the cycle-2 dump. That covers both logos, the
+attract's second cycle and its title card with the lightning. The cycle-2
+window is derived from the port's own dump by content alignment, the same as
+the front-end oracle's, so it cannot see a port that under-renders.
+
+**The staged next step.** The second demo (DS_000F0A72 = 5; from 2386) is the
+next owner. Its state 7 reaches `0x1490C`, `0x15350`, `0x3640C` and
+`0x3C32C`, none of them registered. 2384 is a loader frame with no raw-code
+owner, so N can move past it only when a frame after it is explained and
+2384 is allowed by name with this reason, as 832 is.

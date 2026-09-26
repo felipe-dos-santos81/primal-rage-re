@@ -602,9 +602,18 @@ See §34 of the record.
 
 **The slot `+0x18` hook `0x19020` (`ec8e132`), no capture moved.** A survey after the frame-1881 fix found no oracle-visible unexplained frame with a raw-code owner: attract 215 and front-end 832 are the lazy loader's 498-byte `- LOADING -` frame, and 833 is the arena mid-fade under the same text. Holding that frame needs the loader stall's post-read ISR ticks, which cannot be derived. A whole-run probe found every named gap unreached except `0x1958C`'s per-slot hook `0x19020` (§7.6), which runs on 37 demo frames: `0x3E484` in the four reaction-`0x2B` leaps and `0x3E1D0` at f = 963. It is now ported with both hooks and the check walk they share: `0x19020`, `0x3E484`, `0x3E1D0`, `0x18BD4`, `0x18C14` (all 16 flags), `0x189FC` and `0x18A4C`, 7 functions. The hook's result sets `DS_00100AF8[side]`. The port's value already had the raw's zero-ness on all 37 frames, so the front-end dump is byte-identical and every oracle is unchanged. New `check_slot_hook` in `test_fight.c`. Of 64 mutations, 62 fail it; the 2 survivors are equivalent (`0x18A4C` is symmetric in the side, and `fn_resolve(0)` is NULL). See §35 of the record.
 
+**The attract's second cycle after the demo (`fc8e775`), captures 1886..2383.** The front-end capture runs past the demo into the attract's second cycle: the two logos, the attract, the title card with lightning, and a second demo from 2385. The driver's dump ends with the demo's exit frame, so nothing was compared there. Dumping the later frames into the same dump is not legitimate, because they content-match the capture's first attract and would grow the front-end window to `[1..2231]`. So the driver now runs to loop 2800 and writes every frame presented after loop 1970 to a separate `cycle2/` dump (995 frames). That includes the 166 screens the logo player writes inside one iteration, through a `PORT:` seam. Four raw owners were then pinned and ported:
+* The logo player `0x1C740` blanks the screen with `0x52106(0)` before and after each movie and blits every frame, TWI5's 121st included. The port had neither (captures 1885/1886, 2094/2095, 2133).
+* `0x2BAF4` calls `0x4F228` at `0x2BBC4`, which clears the projection gate `DS_00107A54` that the demo's state 6 had set.
+* The lightning stream `0xE890A` has opcode-`0x11` targets `0x4F83C` (the palette flash) and `0x10FC4`, and neither was registered.
+* The driver seeds the attract cycle counter `DS_000F0A5C` to the boot attract's post-state 0.
+
+The new ratchet `make attract2-oracle` (`--attract2`, in `make verify`) finds captures 1885..2383 (499 frames) at 0 unexplained: 354 clean, 138 splice, 3 transition, 4 all-black. The first unexplained is **2384**, the `- LOADING -` frame before the second demo, which has no raw-code owner (like 832). N = 2384. The front-end dump is byte-identical, and the front-end and demo-fight oracles are unchanged. All 24 mutations fail the new assertions. See §36 of the record.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
 demo fight's remaining divergences (the capture's fight is explained up to its
-first all-black frame 1885 after the frame-1881 fix;
+first all-black frame 1885 after the frame-1881 fix, and the attract's second
+cycle up to 2383; the second demo diverges from 2386;
 `0x3B464`'s `0x235C4` arm, the effects pass's types 2, 7 and 9..12, the
 grab arm of `0x4B788`, `0x4B470`'s eighth-hit tail and case 8's held body are
 named gaps, as are `0x3E244` and `0x3ECF8`/`0x3C048`; `0x370F0` is still

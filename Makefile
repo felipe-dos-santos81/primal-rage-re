@@ -221,8 +221,10 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # 594e4b9; N = 851 on dad2712.)
 # `make demo-oracle` now reports the region after the front-end window, [1885..3616],
 # with no port frame left (the dump ends with the demo): first unexplained 1886, the
-# capture's next cycle. The tool also fails if N > window end + 1, or if the window
-# collapses with an unexplained front-end frame outside the two allowed by name.
+# capture's next cycle (the top-level dump ends with the demo; attract2-oracle below
+# classifies that region against the cycle2/ dump). The tool also fails if N > window
+# end + 1, or if the window collapses with an unexplained front-end frame outside the
+# two allowed by name.
 DEMO_FIGHT_MIN_FIRST = 1886
 demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/title-captures/frontend)
 	@echo "== demo-fight oracle (ratchet on the first unexplained frame, N=$(DEMO_FIGHT_MIN_FIRST)) =="
@@ -243,7 +245,8 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # not change. title_compare --attract2 classifies the capture from the first
 # all-black frame after the front-end window (1885) to its end against those frames
 # only. Claim: no captured frame below ATTRACT2_MIN_FIRST is unexplained, and the
-# first unexplained frame is >= it. N = 2384 is the measured first unexplained frame: captures
+# first unexplained frame is >= it. N = 2384 was measured on fc8e775 (the commit that set it, on
+# 6d2c4a3): captures
 # 1886..2383 (the TWI5/TWG logos, the attract's second cycle with its lightning
 # flashes, and the title card) are explained; 2384 is the `- LOADING -` frame before
 # the second demo (the loader's read-stall class, like front-end 832 and attract 215:

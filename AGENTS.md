@@ -17,6 +17,7 @@ make run                   # windowed
 make title-oracle          # pixel-exact oracles; each skips without its capture
 make attract-oracle smk-oracle frontend-oracle demo-oracle
 make demo-fight-oracle     # ratchet on the demo fight's first unexplained frame (N pinned in the Makefile); in make verify
+make attract2-oracle       # ratchet on the attract's second cycle after the demo (N pinned in the Makefile); in make verify
 make audio-render          # FM music to a WAV (the windowed run is silent here)
 ```
 
@@ -130,6 +131,13 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
   first all-black frame), N = that frame + 1 is the exact pin, and a
   front-end window shrink that leaves a fight frame unexplained still fails
   the ratchet. The current N and its provenance are in the Makefile.
+  The attract cycle-2 ratchet (`make attract2-oracle`; in `make verify` as
+  `attract2-compare` on the demo-fight run's dump) is enforced the same way.
+  It classifies the capture after the demo (from its first all-black frame) against
+  the driver's separate `cycle2/` dump only. That dump holds the frames presented
+  after the exit frame, the logo player's screens included. Keep them out of
+  the top-level dump, or the front-end window matches them against the
+  capture's first attract.
 - The front-end oracle's claim is narrow: it proves only that no content-bearing
   capture frame inside the window the port exhibits is unexplained. It **cannot**
   detect a port that under-renders, and its window is derived from the port's own
