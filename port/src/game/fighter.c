@@ -64,6 +64,10 @@ typedef void (*fighter_slot_cb)(u32 slot, u32 rec, u32 side);
  * once. */
 typedef u32 (*fighter_slot14_cb)(u32 slot);
 
+/* PORT: the register shape of the slot +0x18 hook 0x19020 calls at 0x1903F:
+ * EAX = side, EAX returned (zero sets DS_00100AF8[side] to 1). */
+typedef u32 (*fighter_hook_cb)(u32 side);
+
 /* ---- the shared per-fighter helpers ------------------------------------ */
 
 void fighter_ctx_swap(u32 out[6], u32 side)
@@ -354,18 +358,7 @@ void fighter_pass_a(void)
         u32 ctx[6];
         fighter_ctx_same(ctx, side);                /* 0x195AF 0x33950 */
 
-        /* PORT: 0x195B6 0x19020(side) — the per-slot hook is a named gap
-         * (§7.6); the raw calls a function pointer at slot+0x18 and writes
-         * DS_00100AF8[side] = 1 on a zero result, 0 otherwise. Its one demo
-         * target, 0x3E484 (0x3E62C stores it), needs the unported 0x18C14
-         * (demo-pose record §19.6). */
-        /* TODO(verify): the gap is proven inert only for this demo run's
-         * f = 106..114, the frames the T-rex holds the 0x3E484 hook (record
-         * §19.6.2: DS_00100AF8's zero-ness agrees with the raw's). A run where
-         * the other slot has +0x74/+0x76 live or +0x42 bit 3 set while the hook
-         * is held would diverge. The T-rex also holds 0x3E3A8's hook 0x3E1D0
-         * at f = 963, the demo's last fight frame (record §34); that call is
-         * not evaluated, and the captures to the demo's end are explained. */
+        fighter_19020(side);                        /* 0x195B6 0x19020 */
 
         /* 0x195BB: a side whose slot state byte is 0x0A is out. */
         if (DSB(DS_00107803 + side * 0x94u) == 0x0Au)
@@ -3809,9 +3802,8 @@ void fighter_3e62c(u32 slot, u32 rec, u32 side)
     DSB(slot + 0x53u) = 7u;                             /* 0x3E667 */
     DSB(slot + 0x54u) = 2u;                             /* 0x3E66B */
     DSD(slot + 0x0Cu) = 0x0003E524u;                    /* 0x3E66F */
-    /* PORT: 0x3E484 is stored but not ported: its caller 0x19020 (0x1958C's
-     * 0x195B6 hook, §7.6 gap) and its callee 0x18C14 are unported (record
-     * §19.6). 0x3E4C4 is ported and registered. */
+    /* PORT: both callbacks are ported and registered: 0x3E484 (0x1958C's
+     * 0x19020 hook) and 0x3E4C4. */
     DSD(slot + 0x18u) = 0x0003E484u;                    /* 0x3E676 */
     DSD(slot + 0x1Cu) = 0x0003E4C4u;                    /* 0x3E680 */
     DSB(slot + 0x41u) |= 0x80u;                         /* 0x3E68A */
@@ -4006,13 +3998,10 @@ void fighter_3e3a8(u32 slot, u32 rec, u32 side)
     DSB(ctx[2] + 0x52u) = 9u;                           /* 0x3E3E1 */
     DSB(ctx[2] + 0x54u) = 0;                            /* 0x3E3E9 */
     DSD(ctx[2] + 0x0Cu) = 0x0003E328u;                  /* 0x3E3F1 */
-    /* PORT: 0x3E1D0 and 0x3E244 are stored but not ported. 0x3E1D0's only
-     * caller 0x19020 (0x1958C's 0x195B6 hook, §7.6 gap) and its callee 0x18C14
-     * are unported (record §19.6), so the port skips it at f = 963 (0x1958C
-     * runs before f = 962's reaction).
-     * 0x3E244 needs the unported 0x3C208/0x3C358, and its caller, 0x193B0's
-     * +0x1C call, is not reached in the port's run before the demo ends
-     * (record §34). 0x3E328 is ported and registered. */
+    /* PORT: 0x3E244 is stored but not ported: it needs the unported
+     * 0x3C208/0x3C358, and its caller, 0x193B0's +0x1C call, is not reached in
+     * the port's run before the demo ends (record §34). 0x3E1D0 (0x1958C's
+     * 0x19020 hook) and 0x3E328 are ported and registered. */
     DSD(ctx[2] + 0x18u) = 0x0003E1D0u;                  /* 0x3E3FC */
     DSD(ctx[2] + 0x1Cu) = 0x0003E244u;                  /* 0x3E407 */
     DSB(ctx[2] + 0x57u) = 0;                            /* 0x3E412 */
@@ -5393,6 +5382,252 @@ static void fighter_18b44(u32 slot)
     (void)actor_spawn((const u32 *)(mem + FIGHTER_A17F0),
                       (u32)((s32)DSD(FIGHTER_A17D4) >> 16), 0xFFu,
                       (u32)((s32)DSD(FIGHTER_A17D6) >> 16), 0u);  /* 0x18BBC */
+}
+
+#define FIGHTER_A1818   0x000A1818u  /* 0x18C38: 0x18C14's default first box table */
+#define FIGHTER_A1822   0x000A1822u  /* 0x18C41: 0x18C14's default second box table */
+#define FIGHTER_C75F5   0x000C75F5u  /* 0x3E22B: 0x3E1D0's first box table (EBX) */
+#define FIGHTER_C75FF   0x000C75FFu  /* 0x3E226: 0x3E1D0's second box table (ECX) */
+
+/* 0x189FC. The facing test on 0x33A10's context for EAX = side: with ctx[0]'s
+ * actor bit 15 clear, 1 when ctx[3]'s x (+0x2C) is below ctx[2]'s, else 1
+ * when it is above (signed); 0 otherwise. */
+static int fighter_189fc(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_swap(ctx, side);                            /* 0x18A04 0x33A10 */
+    if (fighter_actor_bit15_clear(ctx[0]))                  /* 0x18A0C 0x1A570 */
+        return (s32)DSD(ctx[3] + 0x2Cu)
+             < (s32)DSD(ctx[2] + 0x2Cu);                    /* 0x18A20 jge */
+    return (s32)DSD(ctx[3] + 0x2Cu)
+         > (s32)DSD(ctx[2] + 0x2Cu);                        /* 0x18A37 jle */
+}
+
+/* 0x18A4C. 1 when 0x189FC(ctx[1]) holds and ctx[1]'s actor bit 15 differs
+ * from ctx[0]'s (0x33950 context for EAX = side), else 0. */
+static int fighter_18a4c(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x18A54 0x33950 */
+    if (fighter_actor_bit15_clear(ctx[0])) {                /* 0x18A5C 0x1A570 */
+        if (!fighter_189fc(ctx[1])) return 0;               /* 0x18A69 */
+        if (fighter_actor_bit15_clear(ctx[1])) return 0;    /* 0x18A76 */
+        return 1;                                           /* 0x18A7F */
+    }
+    if (!fighter_189fc(ctx[1])) return 0;                   /* 0x18A8A */
+    if (!fighter_actor_bit15_clear(ctx[1])) return 0;       /* 0x18A97 */
+    return 1;                                               /* 0x18AA0 */
+}
+
+/* 0x18BD4. Fill the 16 check flags with 2 ("skip"). EAX = the flag bytes. */
+static void fighter_18bd4(u8 flags[16])
+{
+    for (u32 i = 0; i < 16u; i++) flags[i] = 2u;            /* 0x18BD4..0x18C0F */
+}
+
+/* 0x18C14. The guarded-check walk the slot hooks use. EAX = side, EDX = 16
+ * flag bytes, EBX/ECX = two per-character box tables (0 selects 0xA1818/
+ * 0xA1822). Each flag is 2 to skip its check; 0 returns 1 when the check's
+ * condition holds, 1 when it fails (flag 0 inverted: it also rewrites the flag
+ * byte to 4 or 3). Seven checks also clear ctx[2]'s +0x8A, three of them
+ * running 0x18B44 on ctx[2]. Returns 0 only when every check passes. The
+ * checks, in the raw's order, on 0x33950's context: 0 DS_00100AF8[side] <= 0;
+ * 1 ctx[3] words +0x74/+0x76; 0xF ctx[2] +0x43 bit 2; 2/3 ctx[3] +0x54 == 0/1;
+ * 5 0x1DDF4(ctx[1], box a, box b); 6 ctx[3] +0x54 == 7; 7 ctx[3] +0x62;
+ * 8 ctx[3] +0x42 bit 3; 9 0x189FC(ctx[1]); 0xA 0x18A4C(ctx[0]); 0xB ctx[4]
+ * +0x61; 0xD 0x39EFC(ctx[1]); 0xC ctx[3] +0x53 == 0x0A; 0xE 0x3B298(ctx[1],
+ * ctx[2] +0x5F); 4 ctx[3] +0x54 == 2. */
+int fighter_18c14(u32 side, u8 flags[16], u32 box_a, u32 box_b)
+{
+    u32 ctx[6];
+    u8 f;
+    int le;
+    /* PORT: 0x18C26 sets the local [esp+0x18] to 1 only for side != 0x29A, and
+     * 0x19005 returns 0 only when it is non-zero. For side 0x29A the raw
+     * reads an uninitialised stack byte; the port treats it as 0 (return 1).
+     * Every caller the port reaches passes side 0 or 1. */
+    int live = (side != 0x29Au);                            /* 0x18C1F/0x18C26 */
+    fighter_ctx_same(ctx, side);                            /* 0x18C2F 0x33950 */
+    if (box_a == 0) box_a = FIGHTER_A1818;                  /* 0x18C34/0x18C38 */
+    if (box_b == 0) box_b = FIGHTER_A1822;                  /* 0x18C3D/0x18C41 */
+
+    le = (s32)DSD(DS_00100AF8 + ctx[0] * 4u) <= 0;          /* 0x18C49 setle */
+    f = flags[0];                                           /* 0x18C58 */
+    if (f == 0) {
+        if (!le) { flags[0] = 4u; return 1; }               /* 0x18C73..0x18C7C */
+    } else if (f == 1) {
+        if (le) { flags[0] = 3u; return 1; }                /* 0x18C62..0x18C6B */
+    }
+
+    f = flags[1];                                           /* 0x18C84 */
+    if (f == 0) {
+        if (DSW(ctx[3] + 0x74u) != 0) return 1;             /* 0x18CC0 ja */
+        if (DSW(ctx[3] + 0x76u) > 1u) return 1;             /* 0x18CD4 jg */
+    } else if (f == 1) {
+        if (DSW(ctx[3] + 0x74u) < 1u) return 1;             /* 0x18C9C jl */
+        if (DSW(ctx[3] + 0x76u) < 2u) return 1;             /* 0x18CB2 jge */
+    }
+
+    f = flags[0xF];                                         /* 0x18CDD */
+    if (f == 0) {
+        if (DSB(ctx[2] + 0x43u) & 4u) return 1;             /* 0x18D01 */
+    } else if (f == 1) {
+        if ((DSB(ctx[2] + 0x43u) & 4u) == 0) return 1;      /* 0x18CEC */
+    }
+
+    f = flags[2];                                           /* 0x18D0B */
+    if (f == 0) {
+        if (DSB(ctx[3] + 0x54u) == 0) return 1;             /* 0x18D2F */
+    } else if (f == 1) {
+        if (DSB(ctx[3] + 0x54u) != 0) return 1;             /* 0x18D1A */
+    }
+
+    f = flags[3];                                           /* 0x18D39 */
+    if (f == 0) {
+        if (DSB(ctx[3] + 0x54u) == 1u) return 1;            /* 0x18D5D */
+    } else if (f == 1) {
+        if (DSB(ctx[3] + 0x54u) != 1u) return 1;            /* 0x18D48 */
+    }
+
+    f = flags[5];                                           /* 0x18D67 */
+    if (f == 0) {
+        if (hit_geometry(ctx[1], box_a, box_b)) return 1;   /* 0x18D92 0x1DDF4 */
+    } else if (f == 1) {
+        if (!hit_geometry(ctx[1], box_a, box_b)) return 1;  /* 0x18D78 0x1DDF4 */
+    }
+
+    f = flags[6];                                           /* 0x18D9F */
+    if (f == 0) {
+        if (DSB(ctx[3] + 0x54u) == 7u) return 1;            /* 0x18DC3 */
+    } else if (f == 1) {
+        if (DSB(ctx[3] + 0x54u) != 7u) return 1;            /* 0x18DAE */
+    }
+
+    f = flags[7];                                           /* 0x18DCD */
+    if ((f == 0 && DSB(ctx[3] + 0x62u) != 0)                /* 0x18E05 */
+            || (f == 1 && DSB(ctx[3] + 0x62u) == 0)) {      /* 0x18DDC */
+        DSB(ctx[2] + 0x8Au) = 0;                            /* 0x18DE7/0x18E0F */
+        fighter_18b44(ctx[2]);                              /* 0x18DF1/0x18E1A */
+        return 1;
+    }
+
+    f = flags[8];                                           /* 0x18E2A */
+    if (f == 0) {
+        if (DSB(ctx[3] + 0x42u) & 8u) return 1;             /* 0x18E4E */
+    } else if (f == 1) {
+        if ((DSB(ctx[3] + 0x42u) & 8u) == 0) return 1;      /* 0x18E39 */
+    }
+
+    f = flags[9];                                           /* 0x18E58 */
+    if (f == 0) {
+        if (fighter_189fc(ctx[1])) return 1;                /* 0x18E7F */
+    } else if (f == 1) {
+        if (!fighter_189fc(ctx[1])) return 1;               /* 0x18E67 */
+    }
+
+    f = flags[0xA];                                         /* 0x18E8C */
+    if (f == 0) {
+        if (fighter_18a4c(ctx[0])) return 1;                /* 0x18EB1 */
+    } else if (f == 1) {
+        if (!fighter_18a4c(ctx[0])) return 1;               /* 0x18E9A */
+    }
+
+    f = flags[0xB];                                         /* 0x18EBE */
+    if (f == 0) {
+        if (DSB(ctx[4] + 0x61u) != 0) return 1;             /* 0x18EE2 */
+    } else if (f == 1) {
+        if (DSB(ctx[4] + 0x61u) == 0) return 1;             /* 0x18ECD */
+    }
+
+    f = flags[0xD];                                         /* 0x18EEC */
+    if ((f == 0 && fighter_39efc(ctx[1]))                   /* 0x18F27 */
+            || (f == 1 && !fighter_39efc(ctx[1]))) {        /* 0x18EFB */
+        DSB(ctx[2] + 0x8Au) = 0;                            /* 0x18F08/0x18F34 */
+        fighter_18b44(ctx[2]);                              /* 0x18F13/0x18F3F */
+        return 1;
+    }
+
+    f = flags[0xC];                                         /* 0x18F4F */
+    if (f == 0) {
+        if (DSB(ctx[3] + 0x53u) == 0x0Au) return 1;         /* 0x18F73 */
+    } else if (f == 1) {
+        if (DSB(ctx[3] + 0x53u) != 0x0Au) return 1;         /* 0x18F5E */
+    }
+
+    f = flags[0xE];                                         /* 0x18F7D */
+    if (f != 2u) {
+        u8 r = (u8)fighter_command_dispatch(ctx[1],
+                                            DSB(ctx[2] + 0x5Fu));   /* 0x18F94 0x3B298 */
+        if (f == 1u && r == 0) {
+            DSB(ctx[2] + 0x8Au) = r;                        /* 0x18FB0 */
+            return 1;
+        }
+        if ((f == 0 || f == 1u) && r != 0) {
+            DSB(ctx[2] + 0x8Au) = 0;                        /* 0x18FC9 */
+            return 1;
+        }
+    }
+
+    f = flags[4];                                           /* 0x18FDB */
+    if (f == 0) {
+        if (DSB(ctx[3] + 0x54u) == 2u) return 1;            /* 0x18FFF */
+    } else if (f == 1) {
+        if (DSB(ctx[3] + 0x54u) != 2u) return 1;            /* 0x18FEA */
+    }
+
+    return live ? 0 : 1;                                    /* 0x19005..0x19014 */
+}
+
+/* 0x19020. The per-slot hook 0x1958C calls at 0x195B6: when the side's slot
+ * +0x18 is set, call it with EAX = side, then DS_00100AF8[side] = 1 on a zero
+ * result and 0 otherwise. */
+void fighter_19020(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    fighter_hook_cb fn;
+    if (DSD(slot + 0x18u) == 0) return;                     /* 0x19032/0x19039 */
+    fn = (fighter_hook_cb)(void *)fn_resolve(DSD(slot + 0x18u));
+    /* PORT: an unregistered hook is skipped and leaves DS_00100AF8[side]
+     * unchanged; every hook this run stores (0x3E484, 0x3E1D0) is registered. */
+    if (fn == NULL) return;
+    DSD(DS_00100AF8 + side * 4u) = (fn(side) == 0) ? 1u : 0u;  /* 0x1903F..0x1905C */
+}
+
+/* 0x3E484. The slot +0x18 hook 0x3E62C (reaction 0x2B) stores: 0x18C14 with
+ * flag 0 = 1, flags 1 and 8 = 0 and the default box tables (EBX = ECX = 0). */
+u32 fighter_3e484(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    fighter_ctx_same(ctx, side);                            /* 0x3E490 0x33950 */
+    fighter_18bd4(flags);                                   /* 0x3E49B 0x18BD4 */
+    flags[1] = 0;                                           /* 0x3E4A4 */
+    flags[8] = 0;                                           /* 0x3E4A8 */
+    flags[0] = 1u;                                          /* 0x3E4B0 */
+    return (u32)fighter_18c14(ctx[0], flags, 0u, 0u);       /* 0x3E4B7 0x18C14 */
+}
+
+/* 0x3E1D0. The slot +0x18 hook 0x3E3A8 (reaction 0x2A) stores: 1 unless the
+ * slot's +0x86 >> 16 (signed) is in 1..3, else 0x18C14 with flag 5 = 1, flags
+ * 1, 4, 7, 8, 0xD and 0xE = 0 and the 0xC75F5/0xC75FF box tables. */
+u32 fighter_3e1d0(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    s32 t;
+    fighter_ctx_same(ctx, side);                            /* 0x3E1DA 0x33950 */
+    fighter_18bd4(flags);                                   /* 0x3E1E3 0x18BD4 */
+    flags[1] = 0;                                           /* 0x3E1EC */
+    flags[8] = 0;                                           /* 0x3E1F0 */
+    flags[4] = 0;                                           /* 0x3E1F4 */
+    flags[0xE] = 0;                                         /* 0x3E1F8 */
+    flags[5] = 1u;                                          /* 0x3E1FC */
+    flags[7] = 0;                                           /* 0x3E204 */
+    flags[0xD] = 0;                                         /* 0x3E208 */
+    t = (s32)DSD(ctx[2] + 0x86u) >> 16;                     /* 0x3E20C/0x3E212 sar */
+    if (t > 3 || t < 1) return 1u;                          /* 0x3E215..0x3E21F */
+    return (u32)fighter_18c14(ctx[0], flags,
+                              FIGHTER_C75F5, FIGHTER_C75FF);    /* 0x3E226..0x3E237 */
 }
 
 /* 0x19164. The winner's stance-timer seed: B5A[side] = truncate(max(rec+0x20,

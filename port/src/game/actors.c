@@ -201,6 +201,10 @@ int actors_init(void)
     /* PORT: the slot +0x0C callback 0x3E3A8 stores, 0x3E328 (0x3531C case
      * 7), with the same (slot, rec, side) registers. */
     fn_register(0x3E328u, (void (*)(void))fighter_3e328);
+    /* PORT: the slot +0x18 hooks 0x3E62C and 0x3E3A8 store, 0x3E484 and
+     * 0x3E1D0, called by 0x19020 at 0x1903F as fn(side) with EAX returned. */
+    fn_register(0x3E484u, (void (*)(void))fighter_3e484);
+    fn_register(0x3E1D0u, (void (*)(void))fighter_3e1d0);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */

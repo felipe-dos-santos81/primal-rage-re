@@ -51,9 +51,9 @@ int fighter_connect_query(u32 param_1, u32 param_2);
 /* 0x1958C. The first per-frame fighter pass. Gated on DS_001078FA == 2; per
  * side it calls 0x33950/0x19020/0x3AFC4, clears DS_00100AF8/AFC entries, then
  * picks a winner from the two 0x18950 reachabilities and, on an exact tie,
- * draws rng(2) at 0x19714. 0x19020 is a named gap (§7.6); 0x193B0 is ported
- * (fighter_winner_body) and wired at this pass's 0x1974D tail. The gates, the
- * flag stores and the RNG site are ported. */
+ * draws rng(2) at 0x19714. 0x19020 (the slot +0x18 hook) and 0x193B0
+ * (fighter_winner_body, wired at this pass's 0x1974D tail) are ported. The
+ * gates, the flag stores and the RNG site are ported. */
 void fighter_pass_a(void);
 
 /* 0x19068. The second per-frame fighter pass, called with arg = 0 by the
@@ -406,6 +406,25 @@ void fighter_3e3a8(u32 slot, u32 rec, u32 side);
  * ctx[4] through 0x3C4CC, 0x3E0F0's child (+0x53 = 1) and +0x52 = 9. EBX =
  * side (the EAX slot and EDX rec are overwritten). */
 void fighter_3e328(u32 slot, u32 rec, u32 side);
+
+/* 0x18C14. The guarded-check walk: EAX = side, EDX = 16 flag bytes (2 skips a
+ * check, 0 returns 1 when it holds, 1 when it fails; flag 0 is inverted and
+ * rewritten to 4/3), EBX/ECX = two box tables (0 selects 0xA1818/0xA1822).
+ * Returns 0 only when every check passes. */
+int fighter_18c14(u32 side, u8 flags[16], u32 box_a, u32 box_b);
+
+/* 0x19020. 0x1958C's per-slot hook call (0x195B6): with the side's slot +0x18
+ * set, DS_00100AF8[side] = (hook(side) == 0) ? 1 : 0. */
+void fighter_19020(u32 side);
+
+/* 0x3E484. The +0x18 hook 0x3E62C stores: 0x18C14 with flags 0 = 1, 1 = 0,
+ * 8 = 0 and the default box tables. EAX = side. */
+u32 fighter_3e484(u32 side);
+
+/* 0x3E1D0. The +0x18 hook 0x3E3A8 stores: 1 unless the slot's +0x86 >> 16 is
+ * in 1..3, else 0x18C14 with flags 5 = 1, 1/4/7/8/0xD/0xE = 0 and the
+ * 0xC75F5/0xC75FF box tables. EAX = side. */
+u32 fighter_3e1d0(u32 side);
 
 /* 0x3B938. Burst slot `slot`'s projectile (slot+0x08): restart it on the
  * burst stream (0xE1898 at 2.0 when its +0x48 is 4, else the per-character

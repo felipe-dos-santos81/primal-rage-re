@@ -2884,13 +2884,12 @@ int test_frontend(void)
         int s7_saw14 = 0, s7_saw09 = 0, s7_hit = 0, s7_last_change = 0;
         /* Task 4: the pose state 0x10/0x0A is measured but NOT asserted. The
          * original's T-rex reaches it at the 6th frame of its 9/8 hold
-         * (0x3AAFC -> the 0x3A504/0x3A650/0x3A79C/0x3A8E8 pose family), but the
-         * port cannot: 0x19020 (fighter_pass_a's per-slot hook, fighter.c:287)
-         * is unported, so DS_00100AF8/AFC stay 0 and fighter_pass_a's tail never
-         * runs 0x193B0 -> 0x3B714 -> 0x3AAFC. The divergence is a subsystem (68
-         * new funcs / 10467 B, Task 4's derivation record §10.4), so the
-         * pose state is a named gap, not a fitted value. Measured so the next
-         * task can see it, exactly as s7_hit is. */
+         * (0x3AAFC -> the 0x3A504/0x3A650/0x3A79C/0x3A8E8 pose family). Task 4
+         * found the port could not (its derivation record §10.4); the port now
+         * runs fighter_pass_a's tail 0x193B0 -> 0x3B714 -> 0x3AAFC, and the
+         * per-slot hook 0x19020 is ported (demo-pose record §35), so the
+         * printed pose10/pose0a are 1. Measured so the next task can see it,
+         * exactly as s7_hit is. */
         int s7_saw10 = 0, s7_saw0a = 0;
         int s7_last = -1;              /* the last loop frame the state is 7 */
         int s7_saw42_40 = 0;           /* the +0x42 bit 6 arm was ever set */
@@ -3099,12 +3098,11 @@ int test_frontend(void)
          * no-op (the demo-AI's aligned command word 0x4848, Task 3c). A missing
          * 0x35803 call leaves +0x52 at 0x0E. Task 4 corrected the residual: the
          * slot's exit from 9/8 to the pose state 0x10/0x0A is the
-         * 0x19020 -> 0x193B0 -> 0x3B714 -> 0x3AAFC -> pose-family chain, which
-         * the port cannot run (0x19020 is unported, so DS_00100AF8/AFC stay 0).
-         * Task 1 §3.3's "the animation cursor differs" is stale: the port's
+         * 0x1958C -> 0x193B0 -> 0x3B714 -> 0x3AAFC -> pose-family chain, which
+         * the port now runs (0x19020 included, record §35). Task 1 §3.3's "the animation cursor differs" is stale: the port's
          * raptor cursor now matches (0xD2316 at the 9/8 entry) and its
          * silhouette matches capture 834. The pose state is measured by
-         * s7_saw10/s7_saw0a and is a named gap (Task 4 record §10). */
+         * s7_saw10/s7_saw0a, not asserted (Task 4 record §10). */
         CHECK(s7_saw14, "state-7 slot 0's +0x52 enters the 0x0E no-op");
         CHECK(s7_saw09, "state-7 slot 0's +0x52 reaches the 9/8 no-op");
         printf("test_frontend: state-7 last +0x52 change at loop frame %d\n",
