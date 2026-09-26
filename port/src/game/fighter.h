@@ -186,6 +186,24 @@ void fighter_pose_3a43c(u32 slot, u32 side);
  * in actors_init. EAX = slot (dead), EBX = side. */
 void fighter_39cc8(u32 slot, u32 side);
 
+/* 0x347B8. The knockdown floor, an animation-opcode 0x15 target in the
+ * characters' knockdown streams (the raptor's landing stream 0xD2ADA at
+ * 0xD2B00; the dword 0x000347B8 occurs 53 times in the data): +0x74 = 0x29A, the record's speeds cleared,
+ * state 9/0x0B/0, then (through the 0x340BC stun gate and 0x34168) the
+ * character's floor stream at hold 3.0; game mode 7 may freeze the side
+ * instead. EAX = rec. */
+void fighter_347b8(u32 rec);
+
+/* 0x340BC. The stun gate 0x347B8 asks: 1 when the side's word +0x8C <= 0,
+ * neither slot's +0x63 is set and the side's +0x5A is in 0x55..0x77 and more
+ * than 0x3C above the other side's. EAX = side. */
+int  fighter_340bc(u32 side);
+
+/* 0x346F8. The get-up, an animation-opcode 0x15 target after the floor
+ * streams' lying loop (the raptor's 0xD28FC at 0xD2912; 13 data sites): the side's word +0x76 = word[0xBDBE6] + 1, then
+ * 0x36870(rec). EAX = rec. */
+void fighter_346f8(u32 rec);
+
 /* 0x3A280. The reaction predicate: 1 for a byte in 0x10..0x17 or 0x20..0x3F. */
 int  fighter_3a280(u32 code);
 

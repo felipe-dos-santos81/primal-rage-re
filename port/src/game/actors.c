@@ -86,6 +86,8 @@ static void anim_code_39A34(u32 rec, u32 arg);
 static void anim_code_36870(u32 rec, u32 arg);
 static void anim_code_35E04(u32 rec, u32 arg);
 static void anim_code_3E4E4(u32 rec, u32 arg);
+static void anim_code_347B8(u32 rec, u32 arg);
+static void anim_code_346F8(u32 rec, u32 arg);
 
 /* The 0xBB9D8 type table's two callback halves (cb1 at 0xBB9DC, cb2 at
  * 0xBB9E0). actor_spawn's tail (0x2B0D4) calls cb1 with (rec, slot) and tests
@@ -153,6 +155,11 @@ int actors_init(void)
     /* PORT: the knockback pose's handler 0x39CC8, which the setter 0x39F40
      * stores in slot+0x10 at 0x39F8F; same case-10 shape as 0x3A43C. */
     fn_register(0x39CC8u, (void (*)(void))fighter_39cc8);
+    /* PORT: the landing streams' 0xD500 target 0x347B8 (the knockdown floor)
+     * and the floor streams' 0xD500 target 0x346F8 (the get-up), opcode 0x15,
+     * mode 0x4000. */
+    fn_register(0x347B8u, (void (*)(void))anim_code_347B8);
+    fn_register(0x346F8u, (void (*)(void))anim_code_346F8);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -713,6 +720,26 @@ static void anim_code_3E4E4(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_3e4e4(rec);
+}
+
+/* 0x347B8 — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x347B8 takes EAX = rec and only saves
+ * EDX (0x347BA push, popped before each RET) before reloading it, so this
+ * wrapper drops the operand and calls fighter_347b8(rec) unchanged. */
+static void anim_code_347B8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_347b8(rec);
+}
+
+/* 0x346F8 — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x346F8 takes EAX = rec and only saves
+ * EDX (0x346F9 push, 0x3477A pop) before reloading it, so this wrapper drops
+ * the operand and calls fighter_346f8(rec) unchanged. */
+static void anim_code_346F8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_346f8(rec);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */

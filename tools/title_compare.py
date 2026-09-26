@@ -409,6 +409,10 @@ def load_port(d, n):
 # and explains captures 892..949, [560..891] -> [560..949] (332 -> 390); the
 # allowed set stays (832, 833), and the exhibition set grows to port frames
 # 0..581 (345 exhibited).
+# The knockdown floor 0x347B8 (the landing stream's opcode-0x15 target) keeps
+# the landed raptor lying on its floor stream, and explains captures 950..991,
+# [560..949] -> [560..991] (390 -> 432); the allowed set stays (832, 833), and
+# the exhibition set grows to port frames 0..617 (381 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

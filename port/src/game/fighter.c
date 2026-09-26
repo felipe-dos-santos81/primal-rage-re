@@ -39,6 +39,14 @@ static void fighter_164e8(u32 side);                     /* 0x164E8 */
  * 0x3531C case 7 (0x35431) call: EAX = slot, EDX = rec, EBX = side. */
 typedef void (*fighter_slot_cb)(u32 slot, u32 rec, u32 side);
 
+/* PORT: the register shape of the slot +0x14 callback 0x1952F (0x19537),
+ * 0x350D0 (0x3514C) and 0x35050 (0x350B8) call: EAX = EDX = the slot, EAX
+ * returned (non-zero zeroes the field). The raw writers store 0x29D04
+ * (0x22B6F in 0x22B28, and 0x22CD7), which reads EAX as the slot (0x29D16
+ * `mov ebx,[eax]`, 0x29D25 `mov cl,[eax+0x7a]`), so the port passes the slot
+ * once. */
+typedef u32 (*fighter_slot14_cb)(u32 slot);
+
 /* ---- the shared per-fighter helpers ------------------------------------ */
 
 void fighter_ctx_swap(u32 out[6], u32 side)
@@ -2710,12 +2718,11 @@ void fighter_state_350d0(u32 side)
     slot = ctx[2];
     rec = ctx[4];
     if (DSD(slot + 0x14u) != 0u) {                          /* 0x35144 */
-        /* PORT: 0x3514C. The raw calls the slot+0x14 callback and zeroes the
-         * field when it returns non-zero; the port's fn_resolve callbacks are
-         * void and no ported writer registers one (the spawn zeroes it), so the
-         * field is left as-is. */
-        void (*fn)(void) = fn_resolve(DSD(slot + 0x14u));
-        if (fn) fn();
+        u32 r;
+        fighter_slot14_cb fn = (fighter_slot14_cb)(void *)
+            fn_resolve(DSD(slot + 0x14u));
+        r = fn ? fn(slot) : 0u;                             /* 0x3514C */
+        if (r != 0u) DSD(slot + 0x14u) = 0;                 /* 0x35157 */
     }
     if ((DSB(slot + 0x43u) & 4u) != 0u
             && DSB(slot + 0x54u) != 2u) {                   /* 0x3515E */
@@ -3908,19 +3915,18 @@ static s32 fighter_39b14(s32 a, s32 b)
     return (s32)((u32)a * (u32)b);                      /* 0x39B14 */
 }
 
-/* 0x35050. The slot +0x14 callback 0x39CC8 runs first: with slot[side]+0x14
- * set, call it and zero the field when it returns non-zero. */
+/* 0x35050. The slot +0x14 callback runs, called first by the +0x10 handler
+ * 0x39CC8 (0x39CD9) and by 0x22C60: with slot[side]+0x14 set, call it with the
+ * slot and zero the field when it returns non-zero. No ported writer stores a
+ * non-zero +0x14 (the spawn zeroes it at 0x33DFE). */
 static void fighter_35050(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x35062..0x35078 */
     if (DSD(slot + 0x14u) != 0u) {                      /* 0x350B0 */
-        /* PORT: the raw calls with EAX = EDX = the slot (0x350B6). No ported
-         * writer stores a non-zero +0x14 (the spawn zeroes it at 0x33DFE), so
-         * this takes the 0x1952F call's shape. */
         u32 r;
-        u32 (*fn)(void) = (u32 (*)(void))(void *)
+        fighter_slot14_cb fn = (fighter_slot14_cb)(void *)
             fn_resolve(DSD(slot + 0x14u));
-        r = fn ? fn() : 0u;                             /* 0x350B8 */
+        r = fn ? fn(slot) : 0u;                         /* 0x350B6/0x350B8 */
         if (r != 0u) DSD(slot + 0x14u) = 0;             /* 0x350C1 */
     }
 }
@@ -4070,6 +4076,140 @@ void fighter_39cc8(u32 slot, u32 side)
     default:                                            /* 0x39CE7 ja 0x39EF4 */
         return;
     }
+}
+
+/* PORT: data-object addresses with no symbols.h name (the knockdown floor). */
+#define FIGHTER_BDBC8   0x000BDBC8u  /* 0x3421E: the per-char stun-actor descriptor */
+#define FIGHTER_BDBE6   0x000BDBE6u  /* 0x34761: the get-up +0x76 base word */
+#define FIGHTER_E4290   0x000E4290u  /* 0x34962: the char > 6 floor stream */
+
+/* The 0x347B8 floor streams, one per character 0..6, from its two jump tables
+ * (read_memory 0x34780: 80 48 03 00 8a 48 .. bc 48 03 00, the stun arm;
+ * 0x3479C: de 48 03 00 62 49 03 00 f4 48 .. 4c 49 03 00, the plain arm). Each
+ * case loads EDX with the stream (`mov edx,imm32`) and pushes 3.0 for 0x2BC30;
+ * the plain arm's char 1 case is 0x34962, the char > 6 default. */
+static const u32 fighter_347b8_stun[7] = {
+    0x000E7656u,    /* 0x34880 */
+    0x000E42F6u,    /* 0x3488A */
+    0x000ED302u,    /* 0x34894 */
+    0x000D2940u,    /* 0x3489E */
+    0x000EAF0Eu,    /* 0x348A8 */
+    0x000D45D0u,    /* 0x348B2 */
+    0x000E0EF4u,    /* 0x348BC */
+};
+static const u32 fighter_347b8_plain[7] = {
+    0x000E761Au,    /* 0x348DE */
+    FIGHTER_E4290,  /* 0x34962 */
+    0x000ED2CEu,    /* 0x348F4 */
+    0x000D28FCu,    /* 0x3490A */
+    0x000EAEDEu,    /* 0x34920 */
+    0x000D4594u,    /* 0x34936 */
+    0x000E0E8Eu,    /* 0x3494C */
+};
+
+/* 0x340BC. The stun gate 0x347B8 asks (0x34858). EAX = side. 1 when the
+ * side's word +0x8C is not positive, neither slot's +0x63 is set, and the
+ * side's +0x5A is above 0x54, more than 0x3C above the other side's and below
+ * 0x78; else 0. */
+int fighter_340bc(u32 side)
+{
+    u32 me = DS_001077B0 + side * 0x94u;                /* 0x340CF..0x340E5 */
+    u32 oth = DS_001077B0 + (1u - side) * 0x94u;        /* 0x340C1..0x34105 */
+    u32 a;
+    if ((s16)DSW(me + 0x8Cu) > 0) return 0;             /* 0x3411D jg */
+    if (DSB(me + 0x63u) != 0u) return 0;                /* 0x34127 */
+    if (DSB(oth + 0x63u) != 0u) return 0;               /* 0x34131 */
+    a = (u32)DSB(me + 0x5Au);                           /* 0x3413D */
+    if ((s32)a <= 0x54) return 0;                       /* 0x34140 jle */
+    if ((s32)a - (s32)DSB(oth + 0x5Au) <= 0x3C) return 0;  /* 0x3414B..0x34155 jle */
+    if ((s32)a >= 0x78) return 0;                       /* 0x34157 jge */
+    return 1;                                           /* 0x3415C */
+}
+
+/* 0x34168. The stun start 0x347B8 runs when 0x340BC passes (0x34863). EAX =
+ * side. The side's word +0x8C = 0x4B0, the 0xBDBC8[char] actor spawned
+ * (EDX = 0x200 for side 0 else 0x4200, ECX = 0xFF, EBX = 0xD80, pushed 0) and
+ * stored at DS_001077A0[side]; side 1's spawn takes the pset word 0x74 through
+ * 0x2A17C. Then +0x5D = 0, +0x43 bit 2 cleared, DS_001078FF = side and
+ * DS_00104AE9 bit 0 set. */
+static void fighter_34168(u32 side)
+{
+    u32 me = DS_001077B0 + side * 0x94u;                /* 0x34185..0x3419B */
+    u32 a2, act;
+    DSW(me + 0x8Cu) = 0x04B0u;                          /* 0x341D9 */
+    a2 = side == 0u ? 0x200u : 0x4200u;                 /* 0x341E2..0x341ED */
+    act = actor_spawn((const u32 *)(mem + DSD(FIGHTER_BDBC8
+                                              + (u32)DSB(me + 0x7Au) * 4u)),
+                      a2, 0xFFu, 0xD80u, 0u);           /* 0x34204..0x34225 0x2AE14 */
+    DSD(DS_001077A0 + side * 4u) = act;                 /* 0x34235 */
+    if (side != 0u)                                     /* 0x3423B */
+        actor_pset_palette(act, 0x74u, 0u);             /* 0x34246 0x2A17C */
+    DSB(me + 0x5Du) = 0;                                /* 0x34252 */
+    DSB(me + 0x43u) &= 0xFBu;                           /* 0x3424F..0x34259 */
+    DSB(DS_001078FF) = (u8)side;                        /* 0x34269 */
+    DSB(DS_00104AE9) |= 1u;                             /* 0x3425C..0x3426E */
+}
+
+/* 0x347B8. The knockdown floor: an animation-opcode 0x15 target (the words
+ * `D500 47B8 0003`; the dword 0x000347B8 occurs 53 times in the data, one of
+ * them 0xD2B00 in the raptor's landing stream 0xD2ADA). No Ghidra function. EAX = rec; EDX is pushed and
+ * reloaded. In game mode 7 (DS_00104B00) it may instead freeze the side
+ * (0x3480F: hold 0, state 9/3/3); otherwise 0x39A10(rec, 0x29A), 0x3C148,
+ * 0x3C16C, state 9/0x0B/0, +0x43 bits 0..1 cleared, then, through the 0x340BC
+ * gate, the stun start 0x34168 and the 0x34780[char] stream or the
+ * 0x3479C[char] stream, at hold 3.0. */
+void fighter_347b8(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                   /* 0x347BE */
+    u32 slot = DS_001077B0 + side * 0x94u;              /* 0x347C2..0x347E2 */
+    u32 ch, stream;
+    if ((u32)DSW(DS_00104B00) == 7u) {                  /* 0x347DB/0x347E4 */
+        u32 b = (u32)DSB(DS_00104B16);                  /* 0x347EB */
+        int freeze;
+        if (b == 2u) {                                  /* 0x347F1 */
+            freeze = side != DSD(DS_00104AD4);          /* 0x347F6 */
+            if (!freeze) DSB(slot + 0x41u) |= 0x10u;    /* 0x347FE */
+        } else {
+            freeze = b == (side ^ 1u);                  /* 0x34807..0x3480B */
+        }
+        if (freeze) {
+            DSD(rec + 0x24u) = 0;                       /* 0x3480F */
+            DSB(slot + 0x54u) = 3u;                     /* 0x34816 */
+            DSB(slot + 0x52u) = 9u;                     /* 0x3481A */
+            DSB(slot + 0x53u) = 3u;                     /* 0x3481E */
+            return;
+        }
+    }
+    fighter_39a10(rec, 0x029Au);                        /* 0x3482E */
+    fighter_3c148(side);                                /* 0x34835 */
+    fighter_3c16c(side);                                /* 0x3483C */
+    DSB(slot + 0x54u) = 0;                              /* 0x34841 */
+    DSB(slot + 0x52u) = 9u;                             /* 0x34845 */
+    DSB(slot + 0x53u) = 0x0Bu;                          /* 0x3484C */
+    DSB(slot + 0x43u) &= 0xFCu;                         /* 0x34849..0x34855 */
+    if (fighter_340bc(side)) {                          /* 0x34858/0x3485F */
+        fighter_34168(side);                            /* 0x34863 */
+        ch = (u32)DSB(slot + 0x7Au);                    /* 0x34868 */
+        stream = ch > 6u ? FIGHTER_E4290                /* 0x3486D ja 0x34962 */
+                         : fighter_347b8_stun[ch];      /* 0x34878 table 0x34780 */
+    } else {
+        ch = (u32)DSB(slot + 0x7Au);                    /* 0x348C6 */
+        stream = ch > 6u ? FIGHTER_E4290                /* 0x348CB ja 0x34962 */
+                         : fighter_347b8_plain[ch];     /* 0x348D6 table 0x3479C */
+    }
+    actors_anim_begin(rec, stream, 0x40400000u);        /* 0x34967..0x3496E 0x2BC30 */
+}
+
+/* 0x346F8. The get-up: an animation-opcode 0x15 target (`D500 46F8 0003`
+ * after a floor stream's lying loop, 0xD2912 in the raptor's 0xD28FC; 13 data
+ * sites). No
+ * Ghidra function. EAX = rec; EDX is pushed and popped. The side's word +0x76
+ * = word[0xBDBE6] + 1, then 0x36870(rec). */
+void fighter_346f8(u32 rec)
+{
+    u32 slot = DS_001077B0 + (u32)DSB(rec + 0x51u) * 0x94u;  /* 0x34701..0x3472B */
+    DSW(slot + 0x76u) = (u16)(DSW(FIGHTER_BDBE6) + 1u);      /* 0x34761..0x3476C */
+    fighter_36870(rec);                                      /* 0x34772 */
 }
 
 /* 0x3AA54. The reaction-0x11 pose setter: seed the record's +0x44/+0x36/+0x34
@@ -4873,9 +5013,9 @@ void fighter_winner_body(u32 side)
     }
     if (DSD(ctx[3] + 0x14u) != 0u) {                        /* 0x1952F */
         u32 r;
-        u32 (*fn)(void) = (u32 (*)(void))(void *)
+        fighter_slot14_cb fn = (fighter_slot14_cb)(void *)
             fn_resolve(DSD(ctx[3] + 0x14u));
-        r = fn ? fn() : 0u;                                 /* 0x19537 */
+        r = fn ? fn(ctx[3]) : 0u;                           /* 0x19535/0x19537 */
         if (r != 0u) DSD(ctx[3] + 0x14u) = 0;               /* 0x19542 */
     }
     DSD(ctx[3] + 0x18u) = 0;                                /* 0x1954D */

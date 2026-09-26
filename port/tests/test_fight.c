@@ -3783,6 +3783,12 @@ static void check_anim_hold_scaler(void)
           "0x3E4C4 is registered as fighter_3e4c4");
     CHECK(fn_resolve(0x39CC8u) == (void (*)(void))fighter_39cc8,
           "0x39CC8 is registered as fighter_39cc8");
+    CHECK(fn_resolve(0x347B8u) != NULL, "0x347B8 is registered");
+    CHECK(fn_resolve(0x347B8u) != (void (*)(void))fighter_347b8,
+          "0x347B8 is registered through the (rec, arg) wrapper");
+    CHECK(fn_resolve(0x346F8u) != NULL, "0x346F8 is registered");
+    CHECK(fn_resolve(0x346F8u) != (void (*)(void))fighter_346f8,
+          "0x346F8 is registered through the (rec, arg) wrapper");
 
     s[0] = 0xD100;                           /* opcode 0x11, mode 0x4000 */
     s[1] = 0x9A34;                           /* the inline code pointer */
@@ -4057,9 +4063,11 @@ static void check_trex_leap(void)
 #define KB_STUB_14 0x7FFF0000u
 static int kb_stub_calls;
 static u32 kb_stub_ret;
-static u32 kb_stub_14(void)
+static u32 kb_stub_arg;
+static u32 kb_stub_14(u32 slot)
 {
     kb_stub_calls++;
+    kb_stub_arg = slot;
     return kb_stub_ret;
 }
 
@@ -4359,8 +4367,10 @@ static void check_knockback_pose(void)
     DSD(s1 + 0x14u) = KB_STUB_14;
     kb_stub_calls = 0;
     kb_stub_ret = 1;
+    kb_stub_arg = 0x5555u;
     fighter_39cc8(s1, 1u);
     CHECK_EQ_INT(kb_stub_calls, 1);
+    CHECK_EQ_INT((int)kb_stub_arg, (int)s1);             /* EAX = the slot */
     CHECK_EQ_INT((int)DSD(s1 + 0x14u), 0);
     DSD(s1 + 0x14u) = KB_STUB_14;
     kb_stub_ret = 0;
@@ -4371,10 +4381,380 @@ static void check_knockback_pose(void)
     DSD(s0 + 0x14u) = KB_STUB_14;
     fighter_39cc8(s1, 1u);
     CHECK_EQ_INT(kb_stub_calls, 2);
+    DSD(s0 + 0x14u) = 0;
+
+    /* 0x350D0 makes the same call at 0x3514C (EAX = EDX = its own slot, a
+     * non-zero return zeroes the field at 0x35157) before its +0x78 early
+     * return (0x35199). */
+    kb_seed(s0, s1, r0, r1);
+    DSD(s1 + 0x14u) = KB_STUB_14;
+    DSB(s1 + 0x43u) = 0;
+    DSW(s1 + 0x78u) = 1u;
+    kb_stub_calls = 0;
+    kb_stub_ret = 1;
+    kb_stub_arg = 0x5555u;
+    fighter_state_350d0(1u);
+    CHECK_EQ_INT(kb_stub_calls, 1);
+    CHECK_EQ_INT((int)kb_stub_arg, (int)s1);
+    CHECK_EQ_INT((int)DSD(s1 + 0x14u), 0);
+    DSW(s1 + 0x78u) = 0;
+
+    /* A second character whose divisors differ (read_memory: 0xBED10[0] = 5,
+     * 0xBED38[0] = 8; the ground word[0xBD884] = 0x1600 as for char 3), so the
+     * launch hold n / 0xBED10 (12 / 5 = 0x4019999A) and the fall hold
+     * m / 0xBED38 (20 / 8 = 0x40200000) each fail if the tables are swapped
+     * (12 / 8, 20 / 5). The streams are 0xBED60[0] = 0xE7748 and 0xBED88[0] =
+     * 0xE777A. */
+    kb_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x7Au) = 0;
+    DSB(s1 + 0x58u) = 1;
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0x4019999A);      /* 12 / 5 */
+    CHECK((DSD(r1 + 8u) - 0x000E7748u) < 0x40u,
+          "0x39B30 starts the 0xBED60[0] stream");
+    kb_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x7Au) = 0;
+    DSB(s1 + 0x58u) = 2;
+    DSW(r1 + 0x36u) = (u16)-62;
+    DSD(s1 + 0x30u) = 5632u + 12993u;
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0x40200000);      /* 20 / 8 */
+    CHECK((DSD(r1 + 8u) - 0x000E777Au) < 0x40u,
+          "0x39CC8 case 2 starts the 0xBED88[0] stream");
 
     DSW(DS_001078F6) = sv_78f6;
     tf_put(sv_b00, DS_00104B00, 4u);
     tf_put(sv_a60, 0x00107A60u, 0x20u);
+}
+
+/* ---- roar-timing Task 11: the knockdown floor 0x347B8 (record §21) -------- */
+
+/* The demo raptor at f = 165: side 1, char 3, still in the knockback pose
+ * 0x10/0x0A with the landing's +0x74 counting down, +0x5A = 22 against the
+ * T-rex's 9 and its own +0x63 = 1 (the PR_T11 trace), so 0x340BC fails. Every
+ * field 0x347B8/0x34168/0x346F8 write is a sentinel that differs from its
+ * post-condition. */
+static void kf_seed(u32 s0, u32 s1, u32 r0, u32 r1)
+{
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSB(r0 + 0x51u) = 0;
+    DSB(r1 + 0x51u) = 1;
+    DSW(r0 + 0x56u) = 1;
+    DSW(r1 + 0x56u) = 2;
+    DSB(s0 + 0x7Au) = 0;
+    DSB(s1 + 0x7Au) = 3;
+    DSB(s1 + 0x52u) = 0x10u;
+    DSB(s1 + 0x53u) = 0x0Au;
+    DSB(s1 + 0x54u) = 2u;
+    DSB(s0 + 0x52u) = 0x10u;
+    DSB(s0 + 0x53u) = 0x0Au;
+    DSB(s0 + 0x54u) = 2u;
+    DSB(s0 + 0x43u) = 0xFFu;
+    DSB(s1 + 0x43u) = 0xFFu;
+    DSB(s0 + 0x41u) = 0;
+    DSB(s1 + 0x41u) = 0;
+    DSB(s0 + 0x5Du) = 0x66u;
+    DSB(s1 + 0x5Du) = 0x66u;
+    DSW(s0 + 0x74u) = 0x2222u;
+    DSW(s1 + 0x74u) = 0x1234u;
+    DSB(s0 + 0x5Au) = 9u;
+    DSB(s1 + 0x5Au) = 22u;
+    DSB(s0 + 0x63u) = 1u;
+    DSB(s1 + 0x63u) = 1u;
+    DSW(s0 + 0x8Cu) = 0;
+    DSW(s1 + 0x8Cu) = 0;
+    DSW(r0 + 0x34u) = 0x5555u;
+    DSW(r0 + 0x36u) = 0x5555u;
+    DSW(r0 + 0x44u) = 0x5555u;
+    DSW(r1 + 0x34u) = 0x5555u;
+    DSW(r1 + 0x36u) = 0x5555u;
+    DSW(r1 + 0x44u) = 0x5555u;
+    DSB(r1 + 0x42u) = 0x66u;
+    DSB(r1 + 0x43u) = 0x66u;
+    DSD(r0 + 0x10u) = 0x33333333u;
+    DSD(r1 + 0x10u) = 0x33333333u;
+    DSD(r0 + 0x24u) = 0x11111111u;
+    DSD(r1 + 0x24u) = 0x11111111u;
+    DSD(r0 + 8u) = 0x00ABCDEFu;
+    DSD(r1 + 8u) = 0x00ABCDEFu;
+    DSD(DS_001077A0) = 0x11111111u;
+    DSD(DS_001077A0 + 4u) = 0x22222222u;
+    DSB(DS_001078FF) = 0x66u;
+    DSB(DS_00104AE9) = 0x02u;
+    DSB(DS_00104B16) = 0;
+    DSD(DS_00104AD4) = 0x66u;
+}
+
+/* §21: 0x347B8, its gate 0x340BC, the stun start 0x34168 and the get-up
+ * 0x346F8. The floor streams and their first DC00 operand (which 0x2BC30's
+ * walk stores in rec+0x10) are from read_memory: 0xD28FC `DC00 1478 000D`
+ * (the raptor's plain arm, 0x3479C[3]), 0xD2940 `DC00 1618 000D` (its stun
+ * arm, 0x34780[3]), 0xE761A `DC00 5598 000E` (0x3479C[0]), 0xE7656
+ * `DC00 57F8 000E` (0x34780[0]) and 0xE4290 `DC00 2528 000E` (0x3479C[1] and
+ * the char > 6 default). Both raptor streams take the hold byte 2 (0xD1478 /
+ * 0xD1618: 02 02 ..) and the first id 0x18B9 from their ED40 tables. */
+static void check_knockdown_floor(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    u32 pset1 = FIGHT_ACTORS + 0x40u;
+    u32 stream = FIGHT_RECS + 0x3900u;
+    u8 sv_b00[4], sv_7a0[8], sv_ad4[4];
+    u8 sv_b16 = DSB(DS_00104B16);
+    u8 sv_8ff = DSB(DS_001078FF);
+    u8 sv_ae9 = DSB(DS_00104AE9);
+    tf_snap(sv_b00, DS_00104B00, 4u);
+    tf_snap(sv_7a0, DS_001077A0, 8u);
+    tf_snap(sv_ad4, DS_00104AD4, 4u);
+    if (fn_resolve(0x347B8u) == NULL)
+        fn_register(0x347B8u, (void (*)(void))fighter_347b8);
+    if (fn_resolve(0x346F8u) == NULL)
+        fn_register(0x346F8u, (void (*)(void))fighter_346f8);
+
+    /* A: the gate 0x340BC, side 1 against side 0. Passing: +0x8C = 0, both
+     * +0x63 clear, +0x5A 0x60 against 0x20. Each bound: +0x8C 1 fails and -1
+     * passes (signed `jg`), either +0x63 fails, 0x54 fails and 0x55 passes
+     * (`jle`), a lead of 0x3C fails and 0x3D passes (`jle`), 0x78 fails and
+     * 0x77 passes (`jge`). Side 0 reads its own slot. The demo seed fails. */
+    kf_seed(s0, s1, r0, r1);
+    CHECK_EQ_INT(fighter_340bc(1u), 0);
+    DSB(s0 + 0x63u) = 0;
+    DSB(s1 + 0x63u) = 0;
+    DSB(s1 + 0x5Au) = 0x60u;
+    DSB(s0 + 0x5Au) = 0x20u;
+    CHECK_EQ_INT(fighter_340bc(1u), 1);
+    CHECK_EQ_INT(fighter_340bc(0u), 0);
+    DSW(s1 + 0x8Cu) = 1u;
+    CHECK_EQ_INT(fighter_340bc(1u), 0);
+    DSW(s1 + 0x8Cu) = 0xFFFFu;
+    CHECK_EQ_INT(fighter_340bc(1u), 1);
+    DSW(s1 + 0x8Cu) = 0;
+    DSB(s1 + 0x63u) = 1u;
+    CHECK_EQ_INT(fighter_340bc(1u), 0);
+    DSB(s1 + 0x63u) = 0;
+    DSB(s0 + 0x63u) = 1u;
+    CHECK_EQ_INT(fighter_340bc(1u), 0);
+    DSB(s0 + 0x63u) = 0;
+    DSB(s0 + 0x5Au) = 0;
+    DSB(s1 + 0x5Au) = 0x54u;
+    CHECK_EQ_INT(fighter_340bc(1u), 0);
+    DSB(s1 + 0x5Au) = 0x55u;
+    CHECK_EQ_INT(fighter_340bc(1u), 1);
+    DSB(s1 + 0x5Au) = 0x60u;
+    DSB(s0 + 0x5Au) = 0x24u;
+    CHECK_EQ_INT(fighter_340bc(1u), 0);
+    DSB(s0 + 0x5Au) = 0x23u;
+    CHECK_EQ_INT(fighter_340bc(1u), 1);
+    DSB(s0 + 0x5Au) = 0;
+    DSB(s1 + 0x5Au) = 0x78u;
+    CHECK_EQ_INT(fighter_340bc(1u), 0);
+    DSB(s1 + 0x5Au) = 0x77u;
+    CHECK_EQ_INT(fighter_340bc(1u), 1);
+    DSB(s0 + 0x5Au) = 0x60u;
+    DSB(s1 + 0x5Au) = 0x20u;
+    CHECK_EQ_INT(fighter_340bc(0u), 1);
+    CHECK_EQ_INT(fighter_340bc(1u), 0);
+
+    /* B: the demo's f = 165 through the dispatcher: the landing stream's
+     * `D500 47B8 0003` (opcode 0x15, mode 0x4000) reaches 0x347B8 in mode 3.
+     * +0x74 = 0x29A (0x39A10), the record's speeds and +0x42/+0x43 cleared
+     * (0x3C148/0x3C16C), state 9/0x0B/0, the slot's +0x43 bits 0..1 cleared,
+     * the gate fails so 0x34168 does not run, and the plain 0xD28FC stream
+     * starts at hold 3.0, replaced by its 2.0. */
+    kf_seed(s0, s1, r0, r1);
+    DSW(stream) = 0xD500u;
+    DSW(stream + 2u) = 0x47B8u;
+    DSW(stream + 4u) = 0x0003u;
+    DSW(stream + 6u) = 0x1746u;
+    actors_anim_begin(r1, stream, 0x3F800000u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0x0B);
+    CHECK_EQ_INT((int)DSB(s1 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSB(s1 + 0x43u), 0xFC);
+    CHECK_EQ_INT((int)DSW(s1 + 0x74u), 0x029A);
+    CHECK_EQ_INT((int)DSW(s0 + 0x74u), 0x2222);
+    CHECK_EQ_INT((int)DSW(r1 + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(r1 + 0x36u), 0);
+    CHECK_EQ_INT((int)DSW(r1 + 0x44u), 0);
+    CHECK_EQ_INT((int)DSB(r1 + 0x42u), 0);
+    CHECK_EQ_INT((int)DSB(r1 + 0x43u), 0);
+    CHECK_EQ_INT((int)DSW(r0 + 0x36u), 0x5555);
+    CHECK_EQ_INT((int)DSD(r1 + 0x10u), 0x000D1478);
+    CHECK((DSD(r1 + 8u) - 0x000D28FCu) < 0x40u,
+          "0x347B8 starts the 0x3479C[3] floor stream");
+    CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)(DSW(pset1) & 0x7FFFu), 0x18B9);
+    CHECK_EQ_INT((int)DSW(s1 + 0x8Cu), 0);
+    CHECK_EQ_INT((int)DSD(DS_001077A0 + 4u), 0x22222222);
+    CHECK_EQ_INT((int)DSB(DS_001078FF), 0x66);
+    CHECK_EQ_INT((int)DSB(s1 + 0x5Du), 0x66);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x10);
+
+    /* C: the plain table by character: 0 -> 0xE761A, 1 -> 0xE4290 (the case
+     * shares the default's 0x34962), 7 -> the default 0xE4290. */
+    kf_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x7Au) = 0;
+    fighter_347b8(r1);
+    CHECK_EQ_INT((int)DSD(r1 + 0x10u), 0x000E5598);
+    kf_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x7Au) = 1;
+    fighter_347b8(r1);
+    CHECK_EQ_INT((int)DSD(r1 + 0x10u), 0x000E2528);
+    kf_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x7Au) = 7;
+    fighter_347b8(r1);
+    CHECK_EQ_INT((int)DSD(r1 + 0x10u), 0x000E2528);
+
+    /* D: the stun arm. The gate passes, so 0x34168 runs before the 0x34780
+     * stream: +0x8C = 0x4B0, the 0xBDBC8[char] actor spawned (EDX = 0x4200
+     * for side 1, 0x200 for side 0; EBX = 0xD80 lands in its +0x1C) and
+     * stored at DS_001077A0[side], side 1's pset word 0x74 | 0x800 (0x2A17C:
+     * the spawn's +0x5F = 1), +0x5D = 0, +0x43 bit 2 cleared on top of
+     * 0x347B8's bits 0..1, DS_001078FF = side, DS_00104AE9 bit 0. A
+     * three-record scratch pool keeps the spawn off the real pool; its
+     * record 0's pset is FIGHT_ACTORS + 0 (the two fighters use 1 and 2). */
+    {
+        u32 sv_pool = DSD(DS_001014F4);
+        u32 sv_free = DSD(DS_00105B3C);
+        u32 sv_free4 = DSD(DS_00105B3C + 4u);
+        u32 sv_act = DSD(DS_00105BCC);
+        u32 sv_act4 = DSD(DS_00105BCC + 4u);
+        u32 pool = 0x003F21000u;
+        u32 p2 = pool + 0x68u;
+        u32 p3 = pool + 0xD0u;
+        u32 side;
+        for (side = 0; side < 2u; side++) {
+            u32 me = side ? s1 : s0, oth = side ? s0 : s1;
+            u32 rec = side ? r1 : r0;
+            DSD(DS_001014F4) = pool;
+            DSD(pool) = p2;
+            DSD(pool + 4u) = DS_00105B3C;
+            DSD(p2) = p3;
+            DSD(p2 + 4u) = pool;
+            DSD(p3) = DS_00105B3C;
+            DSD(p3 + 4u) = p2;
+            DSD(DS_00105B3C) = pool;
+            DSD(DS_00105B3C + 4u) = p3;
+            DSD(DS_00105BCC) = DS_00105BCC;
+            DSD(DS_00105BCC + 4u) = DS_00105BCC;
+            DSD(pool + 0x18u) = 0x77777777u;
+            DSD(pool + 0x1Cu) = 0x77777777u;
+
+            kf_seed(s0, s1, r0, r1);
+            DSW(FIGHT_ACTORS + 2u) = 0x7777u;
+            DSB(s0 + 0x63u) = 0;
+            DSB(s1 + 0x63u) = 0;
+            DSB(me + 0x5Au) = 0x60u;
+            DSB(oth + 0x5Au) = 0x20u;
+            fighter_347b8(rec);
+            CHECK_EQ_INT((int)DSB(me + 0x52u), 9);
+            CHECK_EQ_INT((int)DSB(me + 0x53u), 0x0B);
+            CHECK_EQ_INT((int)DSW(me + 0x8Cu), 0x04B0);
+            CHECK_EQ_INT((int)DSW(oth + 0x8Cu), 0);
+            CHECK_EQ_INT((int)DSD(DS_001077A0 + side * 4u), (int)pool);
+            CHECK_EQ_INT((int)DSD(DS_001077A0 + (1u - side) * 4u),
+                         side ? 0x11111111 : 0x22222222);
+            CHECK_EQ_INT((int)DSD(pool + 0x18u), side ? 0x4200 : 0x200);
+            CHECK_EQ_INT((int)DSD(pool + 0x1Cu), 0xD80);
+            CHECK_EQ_INT((int)DSB(me + 0x5Du), 0);
+            CHECK_EQ_INT((int)DSB(oth + 0x5Du), 0x66);
+            CHECK_EQ_INT((int)DSB(me + 0x43u), 0xF8);
+            CHECK_EQ_INT((int)DSB(DS_001078FF), (int)side);
+            CHECK_EQ_INT((int)DSB(DS_00104AE9), 0x03);
+            if (side) {
+                CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 2u), 0x0874);
+                CHECK_EQ_INT((int)DSD(r1 + 0x10u), 0x000D1618);
+                CHECK((DSD(r1 + 8u) - 0x000D2940u) < 0x40u,
+                      "0x347B8 starts the 0x34780[3] stun stream");
+            } else {
+                CHECK(DSW(FIGHT_ACTORS + 2u) != 0x0874u,
+                      "0x34168 runs 0x2A17C for side 1 only");
+                CHECK_EQ_INT((int)DSD(r0 + 0x10u), 0x000E57F8);
+            }
+        }
+        DSD(DS_001014F4) = sv_pool;
+        DSD(DS_00105B3C) = sv_free;
+        DSD(DS_00105B3C + 4u) = sv_free4;
+        DSD(DS_00105BCC) = sv_act;
+        DSD(DS_00105BCC + 4u) = sv_act4;
+    }
+
+    /* E: game mode 7 (0x347E4). With DS_00104B16 = 2 a side other than
+     * DS_00104AD4 freezes (0x3480F: hold 0, state 9/3/3, nothing else), the
+     * named side gets +0x41 bit 4 and the normal floor; with another value
+     * the side freezes when it equals side ^ 1. */
+    kf_seed(s0, s1, r0, r1);
+    DSW(DS_00104B00) = 7u;
+    DSB(DS_00104B16) = 2u;
+    DSD(DS_00104AD4) = 0;
+    fighter_347b8(r1);
+    CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 3);
+    CHECK_EQ_INT((int)DSB(s1 + 0x54u), 3);
+    CHECK_EQ_INT((int)DSW(s1 + 0x74u), 0x1234);
+    CHECK_EQ_INT((int)DSW(r1 + 0x36u), 0x5555);
+    CHECK_EQ_INT((int)DSD(r1 + 8u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)(DSB(s1 + 0x41u) & 0x10u), 0);
+    kf_seed(s0, s1, r0, r1);
+    DSW(DS_00104B00) = 7u;
+    DSB(DS_00104B16) = 2u;
+    DSD(DS_00104AD4) = 1u;
+    fighter_347b8(r1);
+    CHECK_EQ_INT((int)(DSB(s1 + 0x41u) & 0x10u), 0x10);
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0x0B);
+    CHECK_EQ_INT((int)DSW(s1 + 0x74u), 0x029A);
+    kf_seed(s0, s1, r0, r1);
+    DSW(DS_00104B00) = 7u;
+    DSB(DS_00104B16) = 0u;
+    fighter_347b8(r1);
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 3);
+    CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0);
+    kf_seed(s0, s1, r0, r1);
+    DSW(DS_00104B00) = 7u;
+    DSB(DS_00104B16) = 1u;
+    fighter_347b8(r1);
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0x0B);
+    CHECK_EQ_INT((int)(DSB(s1 + 0x41u) & 0x10u), 0);
+    kf_seed(s0, s1, r0, r1);
+    DSW(DS_00104B00) = 7u;
+    DSB(DS_00104B16) = 1u;
+    fighter_347b8(r0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 3);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0);
+
+    /* F: the get-up through the dispatcher: the floor stream's `D500 46F8
+     * 0003` reaches 0x346F8: +0x76 = word[0xBDBE6] + 1 (read_memory: 03 00,
+     * so 4), then 0x36870, which clears +0x74, +0x10 and sets +0x5F = 0xFF;
+     * +0x54 = 3 is its empty case. The walk then goes on to the id. */
+    kf_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x54u) = 3u;
+    DSW(s1 + 0x76u) = 0x5555u;
+    DSW(s0 + 0x76u) = 0x2222u;
+    DSD(s1 + 0x10u) = 0x00039CC8u;
+    DSB(s1 + 0x5Fu) = 0x66u;
+    DSW(stream) = 0xD500u;
+    DSW(stream + 2u) = 0x46F8u;
+    DSW(stream + 4u) = 0x0003u;
+    DSW(stream + 6u) = 0x1746u;
+    actors_anim_begin(r1, stream, 0x3F800000u);
+    CHECK_EQ_INT((int)DSW(s1 + 0x76u), 4);
+    CHECK_EQ_INT((int)DSW(s1 + 0x74u), 0);
+    CHECK_EQ_INT((int)DSD(s1 + 0x10u), 0);
+    CHECK_EQ_INT((int)DSB(s1 + 0x5Fu), 0xFF);
+    CHECK_EQ_INT((int)(DSW(pset1) & 0x7FFFu), 0x1746);
+    CHECK_EQ_INT((int)DSW(s0 + 0x76u), 0x2222);
+    DSD(s1 + 0x10u) = 0;
+    DSW(s0 + 0x76u) = 0;
+    DSW(s1 + 0x76u) = 0;
+
+    tf_put(sv_b00, DS_00104B00, 4u);
+    tf_put(sv_7a0, DS_001077A0, 8u);
+    tf_put(sv_ad4, DS_00104AD4, 4u);
+    DSB(DS_00104B16) = sv_b16;
+    DSB(DS_001078FF) = sv_8ff;
+    DSB(DS_00104AE9) = sv_ae9;
 }
 
 /* ---- Task 3b: the 0x3B714 reaction applier (pose/freeze record §2.3) ----- */
@@ -4668,9 +5048,20 @@ static void check_winner_body(void)
     /* r0+0x20 = 7.5f -> max(5, 7.5) -> truncate 7; r0+0x24 = 3.5f -> 3. */
     DSD(r0 + 0x20u) = 0x40F00000u;
     DSD(r0 + 0x24u) = 0x40600000u;
+    /* The other slot's +0x14 callback (0x1952F): EAX = EDX = that slot
+     * (0x19535), zeroed on a non-zero return (0x19542). */
+    if (fn_resolve(KB_STUB_14) == NULL)
+        fn_register(KB_STUB_14, (void (*)(void))kb_stub_14);
+    DSD(s1 + 0x14u) = KB_STUB_14;
+    kb_stub_calls = 0;
+    kb_stub_ret = 1;
+    kb_stub_arg = 0x5555u;
 
     fighter_winner_body(0u);
 
+    CHECK_EQ_INT(kb_stub_calls, 1);
+    CHECK_EQ_INT((int)kb_stub_arg, (int)s1);
+    CHECK_EQ_INT((int)DSD(s1 + 0x14u), 0);
     CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0x10);   /* the 0x3A504 pose on the other slot */
     CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0x0A);
     CHECK_EQ_INT((int)DSB(s1 + 0x54u), 0);
@@ -5674,6 +6065,7 @@ int test_fight(void)
     check_anim_hold_scaler();
     check_trex_leap();
     check_knockback_pose();
+    check_knockdown_floor();
     check_reaction_predicates();
     check_reaction();
     check_winner_body();
