@@ -71,6 +71,13 @@ void camera_decay(void);
  * hit-stun/recovery countdowns. */
 void camera_unfreeze(u32 side);
 
+/* 0x17CB0. The projectile collision step fighter_think (0x1975C) runs first:
+ * zero DS_00100AD0/AD4, then test two live projectiles against each other
+ * (0x17BC8, which bursts/kills both on a hit) or each side's live projectile
+ * against the other fighter (0x176CC, which writes the overlap count
+ * DS_00100B54 into DS_00100AD0[side]). */
+void camera_projectile_step(void);
+
 /* 0x140E4. 1 iff the two actors' screen boxes overlap. `actor0`/`actor1` are
  * the raw's actor-table indices (slot+0x56), not side numbers. Writes no
  * global; camera_decay's 0x17698 gate. */

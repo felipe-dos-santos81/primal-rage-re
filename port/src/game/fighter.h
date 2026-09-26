@@ -85,11 +85,12 @@ void fighter_slot_latch_both(void);
  * res_resolve tail are named gaps (§10.4/§10.5). */
 void fighter_spawn(u32 side);
 
-/* 0x1975C. The think step the arena frame calls at 0x264CC. It iterates the two
- * sides and, for each whose DS_00100AD0 count exceeds 2, runs the per-fighter
- * think driver 0x3B464. The raw takes no argument (the brief's u8 side is a
- * correction); the driver, the command dispatch and the command consumer are
- * ported, and the unported branch targets are named gaps (§7.12). */
+/* 0x1975C. The think step the arena frame calls at 0x264CC. It runs the
+ * projectile collision step 0x17CB0 (camera.h), then, for each thrower whose
+ * DS_00100AD0 overlap count exceeds 2, applies the projectile hit to the struck
+ * side through the driver 0x3B464 and bursts the projectile (0x3B938). The raw
+ * takes no argument; 0x3B464's 0x235C4 arm (projectile +0x48 == 8) is the one
+ * named gap left (demo-pose record §26). */
 void fighter_think(void);
 
 /* 0x47208. One side's CPU-AI command word for this frame: classify the slot
@@ -348,6 +349,18 @@ void fighter_3e4e4(u32 rec);
 /* 0x3E4C4. The slot +0x1C callback 0x3E62C arms, called by 0x193B0 at
  * 0x19505 with EAX = side: 0x3B714(slot[1-side], slot[side]). */
 void fighter_3e4c4(u32 side);
+
+/* 0x3B938. Burst slot `slot`'s projectile (slot+0x08): restart it on the
+ * burst stream (0xE1898 at 2.0 when its +0x48 is 4, else the per-character
+ * 0xBDFC8/0xBDFF0 stream and hold), detach it (+0x48, +0x34/+0x36 and
+ * slot+0x08 zeroed) and set slot+0x64 = 0xFF. Called by 0x1975C and 0x17BC8. */
+void fighter_3b938(u32 slot);
+
+/* 0x3A95C. The projectile-hit stagger 0x3B464 runs for the struck side:
+ * re-anchor the record at its own x (0x188AC), put the slot in 0x10/0x0A/0
+ * with no +0x10 handler, start the per-character 0xC8FE0 stream at 3.0 and
+ * set slot+0x7E = byte[0xBECF8] + b. EAX = side, EDX = b. */
+void fighter_3a95c(u32 side, u32 b);
 
 /* The machine's and chain's per-function fixtures (record §7.1-§7.5, §7.7-§7.9
  * and §7.11) exercise these directly. */

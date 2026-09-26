@@ -286,9 +286,10 @@ u32 actor_alloc(u32 flag)
     u32 rec = DSD(DS_00105B3C);
     list_unlink(rec);
     if (flag & 0x400u)
-        /* TODO(verify): transcribed but unreached by this cycle's only caller:
-         * every title 0x2AE14 call passes a5 = 0, so the low 16 bits — and thus
-         * bit 0x400 — are clear. */
+        /* 0x2ACB6..0x2ACD7: `xor cl,cl ; and ch,4` leaves CX = flag & 0x400,
+         * and non-zero calls 0x249C0 (insert before the sentinel: the tail).
+         * Reached in the demo by 0x3D214's child spawn (a5 = rec+0x56 |
+         * 0x400, demo-pose record §25/§26). */
         list_insert_before(DS_00105BCC, rec);
     else
         list_insert_after(DS_00105BCC, rec);

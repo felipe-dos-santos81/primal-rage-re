@@ -434,6 +434,11 @@ def load_port(d, n):
 # [560..1410] -> [560..1477] (851 -> 918; still the same 3 transition
 # frames); the allowed set stays (832, 833), and the exhibition set grows to
 # port frames 0..1033 (797 exhibited).
+# The projectile collision step 0x17CB0/0x176CC (f = 617: the breath ring
+# hits the raptor, which 0x3B464/0x3A95C stagger, and 0x3B938 bursts it)
+# explains captures 1478..1480, [560..1477] -> [560..1480] (918 -> 921; still
+# the same 3 transition frames); the allowed set stays (832, 833), and the
+# exhibition set grows to port frames 0..1035 (799 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

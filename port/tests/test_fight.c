@@ -1416,16 +1416,18 @@ static void check_command_map(void)
     CHECK_EQ_INT((int)DSW(DS_001088E0), 0x1234);
 }
 
-/* 0x1975C/0x3B464/0x3B298: one fighter_think() must run both think drivers.
- * The 0x3B464 tail is unconditional (slot+0x64 <- 0xFF and slot+0x41 |= 0x80)
- * once the driver's gates pass, and 0x3B298's entry copy is
- * word[slot[side]+0x86] = word[slot[1-side]+0x84]. The seeds differ from every
- * post-condition, so a missing driver or a skipped side fails. Gate A is left
- * off so no rng(100) roll is consumed. */
+/* §26: 0x1975C's first call is the projectile collision step 0x17CB0, which
+ * zeroes DS_00100AD0/AD4 before 0x176CC writes them. So seeded counts with no
+ * live projectile (slot+0x08 = 0) run no think driver: every seed below keeps
+ * its sentinel (the pre-§26 port, which skipped 0x17CB0, ran both drivers and
+ * wrote +0x64/+0x41/+0x67/+0x86). */
 static void check_think_chain(void)
 {
-    u32 r0 = FIGHT_RECS + 0x300u, r1 = FIGHT_RECS + 0x320u;
+    u8 sv_slots[0x128];
+    u8 sv_ad[8];
 
+    tf_snap(sv_slots, DS_001077B0, sizeof sv_slots);
+    tf_snap(sv_ad, DS_00100AD0, sizeof sv_ad);
     mem_fill(FIGHT_RECS, 0, 0x800);
     fight_reset_bases();
     DSD(DS_00100AD0) = 3;
@@ -1439,19 +1441,11 @@ static void check_think_chain(void)
     DSB(0x001078ABu) = 0xAAu;
     DSD(DS_00107D50) = 0;
     DSD(DS_00107D54) = 0;
-    /* 0x3B134's gate A off, so the mapper returns without the rng roll. */
     DSB(0x001077B0u + 0x63u) = 0;
     DSB(0x00107844u + 0x63u) = 0;
-    /* 0x1AB5C/0x1AB10 state bytes. */
-    DSB(0x001077B0u + 0x54u) = 0;
-    DSB(0x001077B0u + 0x53u) = 0;
-    DSB(0x00107844u + 0x54u) = 0;
-    DSB(0x00107844u + 0x53u) = 0;
-    /* The +0x48 switch reads the other slot's secondary record. */
-    DSD(0x001077B8u) = r0;
-    DSD(0x0010784Cu) = r1;
-    DSB(r0 + 0x48u) = 0;
-    DSB(r1 + 0x48u) = 0;
+    /* No live projectile on either side. */
+    DSD(0x001077B8u) = 0;
+    DSD(0x0010784Cu) = 0;
     /* The entry-copy sentinels. */
     DSW(0x00107834u) = 0x1111u;         /* slot0 +0x84 */
     DSW(0x001078C8u) = 0x2222u;         /* slot1 +0x84 */
@@ -1460,15 +1454,284 @@ static void check_think_chain(void)
 
     fighter_think();
 
-    CHECK_EQ_INT((int)DSB(0x00107814u), 0xFF);      /* slot0 +0x64 */
-    CHECK_EQ_INT((int)DSB(0x001078A8u), 0xFF);      /* slot1 +0x64 */
-    CHECK_EQ_INT((int)DSB(0x001077F1u) & 0x80, 0x80);
-    CHECK_EQ_INT((int)DSB(0x00107885u) & 0x80, 0x80);
-    CHECK_EQ_INT((int)DSB(0x00107817u), 1);         /* slot0 +0x67 */
-    CHECK_EQ_INT((int)DSB(0x001078ABu), 1);         /* slot1 +0x67 */
-    /* i=0 thinks side 1: slot1+0x86 <- slot0+0x84; i=1 thinks side 0. */
-    CHECK_EQ_INT((int)DSW(0x001078CAu), 0x1111);
-    CHECK_EQ_INT((int)DSW(0x00107836u), 0x2222);
+    CHECK_EQ_INT((int)DSD(DS_00100AD0), 0);         /* 0x17CDC */
+    CHECK_EQ_INT((int)DSD(DS_00100AD0 + 4u), 0);    /* 0x17CE2 */
+    CHECK_EQ_INT((int)DSB(0x00107814u), 0);         /* slot0 +0x64 kept */
+    CHECK_EQ_INT((int)DSB(0x001078A8u), 0);         /* slot1 +0x64 kept */
+    CHECK_EQ_INT((int)DSB(0x001077F1u), 0);
+    CHECK_EQ_INT((int)DSB(0x00107885u), 0);
+    CHECK_EQ_INT((int)DSB(0x00107817u), 0xAA);      /* slot0 +0x67 kept */
+    CHECK_EQ_INT((int)DSB(0x001078ABu), 0xAA);      /* slot1 +0x67 kept */
+    CHECK_EQ_INT((int)DSW(0x001078CAu), 0x4444);
+    CHECK_EQ_INT((int)DSW(0x00107836u), 0x3333);
+
+    tf_put(sv_slots, DS_001077B0, sizeof sv_slots);
+    tf_put(sv_ad, DS_00100AD0, sizeof sv_ad);
+}
+
+/* The §26 collision fixture: check_unfreeze's fake 8x8 all-on sprite (sprite
+ * table index 4) for both fighters' actors 1/2 and the projectiles' actors 3/4,
+ * every actor at (0, 0x2000). Slot 0 throws the projectile P (record +0x56 =
+ * 3). The collision globals are seeded so the 0x176CC syncs are exact:
+ * AA8[0] = B08[1] (DS_00100B0C) and AA0[0] = B00[1] (DS_00100B04), so both p3
+ * are 0 and 0x181D0 clips the 0x20 box to the sprite's 8 x 8. */
+static void pc_seed(u32 p, u32 p2)
+{
+    u32 tab = FIGHT_RECS + 0x2000u;
+    u32 sbase = FIGHT_RECS + 0x1000u;
+    u32 pixelbase = FIGHT_RECS + 0x1800u;
+    u32 handle = DSD(DS_000A8B30 + 4u * 4u);
+    u32 sprite = sbase + (handle & 0x7FFFFFu);
+    u32 i;
+
+    mem_fill(FIGHT_RECS, 0, 0x2400u);
+    mem_fill(FIGHT_ACTORS, 0, 0x100u);
+    fight_reset_bases();
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSW(FIGHT_RECS + 0x56u) = 1;
+    DSW(FIGHT_RECS + 0x100u + 0x56u) = 2;
+    DSW(p + 0x56u) = 3;
+    DSW(p2 + 0x56u) = 4;
+    for (i = 1; i <= 4u; i++) {
+        DSW(FIGHT_ACTORS + i * 0x20u) = 4;
+        DSD(FIGHT_ACTORS + i * 0x20u + 4u) = 0;
+        DSD(FIGHT_ACTORS + i * 0x20u + 8u) = 0x2000u;
+    }
+    mem_fill(tab, 0, 32u * 0x14u);
+    DSD(DS_001014E0) = tab;
+    DSD(DS_001014F0) = 32;
+    DSD(tab + 31u * 0x14u + 16u) = sbase;
+    DSD(tab + 30u * 0x14u + 16u) = pixelbase;
+    DSD(sprite) = 0x00080008u;                  /* width 8, height 8 */
+    DSD(sprite + 8u) = 0x0F000000u;             /* entry 30, offset 0 */
+    for (i = 0; i < 8u; i++) DSB(pixelbase + i * 9u) = 0x08u;
+
+    mem_fill(DS_001077B0 + 4u, 0, 0x90u);
+    mem_fill(DS_001077B0 + 0x94u + 4u, 0, 0x90u);
+    DSB(DS_0010782A) = 0;                       /* both char 0 */
+    DSB(DS_001078BE) = 0;
+    DSD(DS_00100AF0) = (u32)(4 - 0x0EE4);
+    DSD(DS_00100AF4) = (u32)(4 - 0x0EE4);
+    mem_fill(DS_00100AC0, 0, 16u);              /* no boxes: {0,0,0x20,0x20} */
+    DSD(DS_00100AA8) = 0x100u; DSD(DS_00100AAC) = 0x100u;
+    DSD(DS_00100AA0) = 0x80u;  DSD(DS_00100AA4) = 0x80u;
+    DSD(DS_00100B08) = 0x111u; DSD(DS_00100B0C) = 0x100u;
+    DSD(DS_00100B00) = 0x99u;  DSD(DS_00100B04) = 0x80u;
+    DSB(DS_00100B62) = 0x5Au;                   /* 0x178CF clears, 0x178FA restores */
+    DSB(DS_00100B63) = 0;
+    mem_fill(DS_00100B64, 0, 0x9Cu);            /* 0x100B64..0x100C00 row buffers */
+    DSB(DS_00100B5A) = 0; DSB(DS_00100B5A + 1u) = 0;
+    DSD(DS_00100AD0) = 0xDEADBEEFu;
+    DSD(DS_00100AD0 + 4u) = 0xDEADBEEFu;
+
+    /* The thrower (slot 0): the reaction in +0x64, P in +0x08. */
+    DSB(DS_001077B0 + 0x64u) = 0x20u;
+    DSB(DS_001077B0 + 0x67u) = 0xAAu;
+    DSD(DS_001077B0 + 0x08u) = p;
+    DSW(DS_001077B0 + 0x84u) = 0x1111u;
+    DSW(DS_001077B0 + 0x86u) = 0x3333u;
+    /* The struck side (slot 1). */
+    DSB(DS_001077B0 + 0x94u + 0x64u) = 0xFFu;
+    DSB(DS_001077B0 + 0x94u + 0x67u) = 0xAAu;
+    DSW(DS_001077B0 + 0x94u + 0x86u) = 0x4444u;
+    DSD(DS_001077B0 + 0x94u + 0x08u) = 0;
+    DSD(DS_00107D50) = 0;
+    DSD(DS_00107D54) = 0;
+    DSW(0x00107D2Cu) = 0;                       /* 0x3962C/0x396AC: k < 1 */
+    DSW(DS_001088EC) = 0x7777u;
+    /* 0x3B298's block test sees no input: an empty ring, no command word and
+     * 0x3B3B2's word[0x100CE0] = 0. */
+    mem_fill(DS_00108270, 0, 0x50u);
+    DSW(DS_001088E0) = 0;
+    DSW(DS_001088E2) = 0;
+    DSW(0x00100CE0u) = 0;
+    DSB(DS_001077B0 + 0x8Au) = 0x55u;
+
+    DSB(p + 0x48u) = 8u;                        /* 0x3B543: the 0x1922C arm */
+    DSW(p + 0x34u) = 0x1234u;
+    DSW(p + 0x36u) = 0x1234u;
+}
+
+/* §26: 0x17CB0 -> 0x176CC -> 0x1975C -> 0x3B464 -> 0x3B938 on the fixture,
+ * plus 0x17BC8's clash, the 0x176CC guard and 0x3B938/0x3A95C directly.
+ * The overlap count is derived from the raw: the projectile row is 0xA173C's
+ * `ff ff ff ff` (0x16DA4 mode 0), ANDed with the 0xFF plane 0x17CB0 fills
+ * (0x15F48); the other's decoded row is 0xFF in byte 0 and the seeded 0 in the
+ * rest, so each of the 8 rows (B18 = 8) adds popcount 8: 64. Then
+ * (64 << 12) / 0xF3D = 67, (67 << 12) / 0xD56 = 80, 80 / 16 = 5 (0x1703E..
+ * 0x1706F), so AD0[0] = 5 > 2 and the think step runs for thrower 0. */
+static void check_projectile_step(void)
+{
+    u8 sv_slots[0x128], sv_g[0x1B0], sv_rows0[0x130], sv_rows1[0x130];
+    u8 sv_7d[0x40], sv_7a80[0x80];
+    u32 sv_res_tab = DSD(DS_001014E0), sv_res_cnt = DSD(DS_001014F0);
+    u32 sv_actor_tab = DSD(DS_001014EC);
+    u16 sv_88ec = DSW(DS_001088EC), sv_88e0 = DSW(DS_001088E0);
+    u16 sv_88e2 = DSW(DS_001088E2), sv_ce0 = DSW(0x00100CE0u);
+    u8 sv_ring[0x50];
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r1 = FIGHT_RECS + 0x100u;
+    u32 p = FIGHT_RECS + 0x200u, p2 = FIGHT_RECS + 0x300u;
+
+    tf_snap(sv_slots, DS_001077B0, sizeof sv_slots);
+    tf_snap(sv_g, DS_00100A70, sizeof sv_g);
+    tf_snap(sv_rows0, 0x000FD160u, sizeof sv_rows0);
+    tf_snap(sv_rows1, 0x000FEDE0u, sizeof sv_rows1);
+    tf_snap(sv_7d, DS_00107D20, sizeof sv_7d);
+    tf_snap(sv_7a80, DS_00107A80, sizeof sv_7a80);
+    tf_snap(sv_ring, DS_00108270, sizeof sv_ring);
+
+    /* A: the hit. 0x176CC writes AD0[0] = B54 = 5 and restores B62[0]; the
+     * think step applies the hit to side 1 through 0x3B464 (P +0x48 = 8: the
+     * 0x1922C arm, then the tail) and bursts P through 0x3B938 (char 0: the
+     * 0xBDFC8 stream 0xE85E0, whose walk stops on `CD40 03FA`'s operand word
+     * 0xE85E4, at hold byte[0xBDFF0] = 2 -> 2.0f). */
+    pc_seed(p, p2);
+    fighter_think();
+    CHECK_EQ_INT((int)DSD(DS_00100AD0), 5);
+    CHECK_EQ_INT((int)DSD(DS_00100B54), 5);
+    CHECK_EQ_INT((int)DSD(DS_00100AD0 + 4u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100B1C), 8);         /* 0x181D0 x extent */
+    CHECK_EQ_INT((int)DSD(DS_00100B18), 8);         /* 0x181D0 y extent */
+    CHECK_EQ_INT((int)DSB(DS_00100B62), 0x5A);
+    CHECK_EQ_INT((int)DSB(s1 + 0x67u), 1);          /* 0x197E8 */
+    CHECK_EQ_INT((int)DSB(s0 + 0x67u), 0xAA);
+    CHECK_EQ_INT((int)(DSB(s1 + 0x41u) & 0x80u), 0x80);   /* 0x3B6B0 */
+    CHECK_EQ_INT((int)DSW(s1 + 0x86u), 0x1111);     /* 0x3B2D6 */
+    CHECK_EQ_INT((int)DSW(s0 + 0x86u), 0x3333);
+    CHECK_EQ_INT((int)DSB(s0 + 0x64u), 0xFF);       /* 0x3B6B8/0x3B985 */
+    CHECK_EQ_INT((int)DSD(s0 + 0x08u), 0);          /* 0x3B9A4 */
+    CHECK_EQ_INT((int)DSB(p + 0x48u), 0);           /* 0x3B989 */
+    CHECK_EQ_INT((int)DSW(p + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(p + 0x36u), 0);
+    CHECK_EQ_INT((int)DSD(p + 8u), 0x000E85E4);
+    CHECK_EQ_INT((int)DSD(p + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSW(DS_001088EC), 3);         /* 0x197FF 0x39278(2) */
+    CHECK_EQ_INT((int)(DSB(s1 + 0x43u) & 0x30u), 0);    /* no block */
+    CHECK_EQ_INT((int)DSB(s0 + 0x8Au), 0x55);
+
+    /* A2: the same hit blocked. The command word 0x1000 overlaps 0x1AB5C's
+     * facing base 0x3000 (both +0x2C are 0) without bits 14/15, so 0x3B298
+     * sets +0x43 bit 5 and returns 1: 0x3B669 clears the thrower's +0x8A and
+     * the 0x3B080/0x3AD98 arm replaces the +0x48 switch; the tail and the
+     * 0x3B938 burst still run. */
+    pc_seed(p, p2);
+    DSW(DS_001088E2) = 0x1000u;
+    fighter_think();
+    CHECK_EQ_INT((int)DSD(DS_00100AD0), 5);
+    CHECK_EQ_INT((int)(DSB(s1 + 0x43u) & 0x30u), 0x20);   /* 0x3B40D */
+    CHECK_EQ_INT((int)DSB(s0 + 0x8Au), 0);          /* 0x3B669 */
+    CHECK_EQ_INT((int)(DSB(s1 + 0x41u) & 0x80u), 0x80);
+    CHECK_EQ_INT((int)DSB(s0 + 0x64u), 0xFF);
+    CHECK_EQ_INT((int)DSD(s0 + 0x08u), 0);
+
+    /* B: the 0x17700 guard: the struck side's +0x74 countdown is non-zero, so
+     * 0x176CC returns, AD0 stays at 0x17CDC's 0 and nothing thinks. */
+    pc_seed(p, p2);
+    DSW(s1 + 0x74u) = 1u;
+    fighter_think();
+    CHECK_EQ_INT((int)DSD(DS_00100AD0), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x64u), 0x20);
+    CHECK_EQ_INT((int)DSD(s0 + 0x08u), (int)p);
+    CHECK_EQ_INT((int)DSB(s1 + 0x67u), 0xAA);
+    CHECK_EQ_INT((int)DSW(DS_001088EC), 0x7777);
+
+    /* C: 0x17BC8, both projectiles live and on top of each other: the 0x20
+     * boxes clip to 0x20 x 0x20 (B1C/B18 > 0), so side 0's P bursts (0x3B938)
+     * and side 1's P2 dies (0x2B150 sets +0x28 bit 3); 0x17D01 then skips
+     * 0x176CC, so AD0/AD4 stay 0 and nothing thinks. */
+    pc_seed(p, p2);
+    DSD(s1 + 0x08u) = p2;
+    DSB(s1 + 0x64u) = 0x20u;
+    camera_projectile_step();
+    CHECK_EQ_INT((int)DSD(DS_00100B1C), 0x20);
+    CHECK_EQ_INT((int)DSD(DS_00100B18), 0x20);
+    CHECK_EQ_INT((int)DSD(s0 + 0x08u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x64u), 0xFF);
+    CHECK_EQ_INT((int)(DSB(p2 + 0x28u) & 0x08u), 0x08);
+    CHECK_EQ_INT((int)(DSB(p + 0x28u) & 0x08u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100AD0), 0);
+    CHECK_EQ_INT((int)DSD(DS_00100AD0 + 4u), 0);
+    CHECK_EQ_INT((int)DSB(s1 + 0x67u), 0xAA);
+
+    /* F: the 0x181D0 offsets. y: AA0[0] = B00[1] + 4 gives dy = -4, so the
+     * y sync's p3 = +4 clips 0x20 to 4 rows starting at the other's row 4
+     * (B18 = 4, B30 = 4): 4 x 8 = 32 -> (32 << 12) / 0xF3D = 33 -> (33 << 12)
+     * / 0xD56 = 39 -> 39 / 16 = 2, which the (signed) > 2 gate rejects. */
+    pc_seed(p, p2);
+    DSD(DS_00100AA0) = 0x80u + 4u;              /* B00[1] = B04 = 0x80 */
+    fighter_think();
+    CHECK_EQ_INT((int)DSD(DS_00100B18), 4);
+    CHECK_EQ_INT((int)DSD(DS_00100B30), 4);
+    CHECK_EQ_INT((int)DSD(DS_00100AD0), 2);
+    CHECK_EQ_INT((int)DSB(s0 + 0x64u), 0x20);
+    CHECK_EQ_INT((int)DSD(s0 + 0x08u), (int)p);
+    /* x: AA8[0] = B08[1] + 4, so p3 = +4: B1C = 4, B34 = 4, B14 = 0, and
+     * B38 = 4 shifts the other's row left 4 bits (0x1617C) before the AND:
+     * 8 rows x popcount(0xF0) = 32 -> 2 again. */
+    pc_seed(p, p2);
+    DSD(DS_00100AA8) = 0x100u + 4u;             /* B08[1] = B0C = 0x100 */
+    camera_projectile_step();
+    CHECK_EQ_INT((int)DSD(DS_00100B1C), 4);
+    CHECK_EQ_INT((int)DSD(DS_00100B34), 4);
+    CHECK_EQ_INT((int)DSD(DS_00100B38), 4);
+    CHECK_EQ_INT((int)DSD(DS_00100AD0), 2);
+
+    /* D: 0x3B938 directly. +0x48 == 4 takes 0xE1898 at 2.0 (its walk stops on
+     * `CD40 0463`'s operand, 0xE189A); char 1 with +0x48 = 2 takes
+     * 0xBDFC8[1] = 0xE4FCE (a literal first word) at byte[0xBDFF1] = 1 -> 1.0. */
+    pc_seed(p, p2);
+    DSB(p + 0x48u) = 4u;
+    fighter_3b938(s0);
+    CHECK_EQ_INT((int)DSD(p + 8u), 0x000E189A);
+    CHECK_EQ_INT((int)DSD(p + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSB(p + 0x48u), 0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x08u), 0);
+    pc_seed(p, p2);
+    DSB(p + 0x48u) = 2u;
+    DSB(s0 + 0x7Au) = 1u;
+    fighter_3b938(s0);
+    CHECK_EQ_INT((int)DSD(p + 8u), 0x000E4FCE);
+    CHECK_EQ_INT((int)DSD(p + 0x24u), 0x3F800000);
+    CHECK_EQ_INT((int)DSB(s0 + 0x64u), 0xFF);
+
+    /* E: 0x3A95C (side 1, b = 5), the grounded stagger 0x3B5A9 runs: the
+     * raptor (char 3) restarts on 0xC8FE0[3] = 0xD267E (a literal first word;
+     * the demo's f = 617 record +8) at 3.0, state 0x10/0x0A/0, +0x10 cleared,
+     * +0x7E = byte[0xBECF8] (0x14) + 5, and 0x188AC's y 0 in rec+0x1C. */
+    pc_seed(p, p2);
+    DSB(s1 + 0x7Au) = 3u;
+    DSB(s1 + 0x52u) = 0x66u; DSB(s1 + 0x53u) = 0x66u; DSB(s1 + 0x54u) = 0x66u;
+    DSD(s1 + 0x10u) = 0x00039CC8u;
+    DSB(s1 + 0x7Eu) = 0x66u;
+    DSD(r1 + 0x18u) = 9000u;
+    DSD(r1 + 0x1Cu) = 0x5555u;
+    fighter_3a95c(1u, 5u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0x10);
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0x0A);
+    CHECK_EQ_INT((int)DSB(s1 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(s1 + 0x10u), 0);
+    CHECK_EQ_INT((int)DSB(s1 + 0x7Eu), 0x19);
+    CHECK_EQ_INT((int)DSD(r1 + 8u), 0x000D267E);
+    CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSD(r1 + 0x18u), 9000);
+    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x52u), 0);  /* side 0 untouched */
+
+    tf_put(sv_slots, DS_001077B0, sizeof sv_slots);
+    tf_put(sv_g, DS_00100A70, sizeof sv_g);
+    tf_put(sv_rows0, 0x000FD160u, sizeof sv_rows0);
+    tf_put(sv_rows1, 0x000FEDE0u, sizeof sv_rows1);
+    tf_put(sv_7d, DS_00107D20, sizeof sv_7d);
+    tf_put(sv_7a80, DS_00107A80, sizeof sv_7a80);
+    DSD(DS_001014E0) = sv_res_tab;
+    DSD(DS_001014F0) = sv_res_cnt;
+    DSD(DS_001014EC) = sv_actor_tab;
+    DSW(DS_001088EC) = sv_88ec;
+    DSW(DS_001088E0) = sv_88e0;
+    DSW(DS_001088E2) = sv_88e2;
+    DSW(0x00100CE0u) = sv_ce0;
+    tf_put(sv_ring, DS_00108270, sizeof sv_ring);
 }
 
 /* 0x3BDDC: the attack/command consumer (record §8.17). Input A drives the
@@ -2398,6 +2661,7 @@ static void check_hit_reactions(void)
 static void check_hit_reaction_drive(void)
 {
     u16 saved_react = DSW(0x000C619Cu + 4u);
+    u16 saved_ac = DSW(0x001080ACu);            /* the last block's 0x3D1E0 store */
 
     (void)tf_hit_fixture(0);
     DSB(DS_001077B0 + 0x7Cu) = 0;
@@ -2439,6 +2703,7 @@ static void check_hit_reaction_drive(void)
     CHECK_EQ_INT((int)DSB(FIGHT_RECS + 0x100u + 0x59u), 0xFF);
     CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x59u), 0x55);
     CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x59u), 0x55);
+    DSW(0x001080ACu) = saved_ac;
 }
 
 /* §7.1 0x3CF38: a resolved hit consumes the hitbox and drives the reaction. */
@@ -5362,6 +5627,12 @@ static void check_trex_breath(void)
             DSB(f[i] + 0x4Bu) = 0x77u;
             DSB(f[i] + 0x60u) = 0x66u;
         }
+        /* Every free record's +0x48 gets a sentinel, so the emitter's +0x48
+         * = 0 below is the descriptor's type byte, not the pool's zero. */
+        for (i = 0; i < ACTOR_POOL_RECORDS; i++) {
+            u32 fr = actor_record(i);
+            if (fr != 0u && fr != f[0] && fr != f[1]) DSB(fr + 0x48u) = 0x5Au;
+        }
         n = tb_active();
         fighter_3d214(f[0]);
         CHECK_EQ_INT((int)tb_active(), (int)(n + 1u));
@@ -6784,6 +7055,7 @@ int test_fight(void)
     check_effects_tail();
     check_command_map();
     check_think_chain();
+    check_projectile_step();
     check_attack_consume();
     check_char_select();
     check_health_bars();

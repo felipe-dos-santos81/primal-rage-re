@@ -1007,7 +1007,11 @@ done:
 /* 0x16DA4. The DS_00100B54 writer: decode the two fighters' sprite rows, AND
  * their bit-planes, weight the overlap with the popcount table, and scale the
  * sum down. Args: flag = (B14 > B34), af0_side/af0_other the two 0x100AF0
- * indices, b10/b30 the two row-frame bases, arg2 the raw's -1, side the side. */
+ * indices, b10/b30 the two row-frame bases, arg2 the raw's mode, side the side.
+ * arg2 selects the rows: -1 (0x170A0) decodes both sprites; 0 (0x176CC, a
+ * projectile) replaces the side's row with the 4 bytes at 0xA173C; 1 copies
+ * those 4 bytes into the other's row before its 4-byte row copy; 2 and 3 use
+ * the 6 bytes at 0xA1740 / 0xA1746 for the other's row (0x16E2C..0x16F0E). */
 static void camera_winner_height(u32 flag, u32 af0_side, u32 af0_other,
                                  u32 b10, u32 b30, s32 arg2, u32 side)
 {
@@ -1019,8 +1023,29 @@ static void camera_winner_height(u32 flag, u32 af0_side, u32 af0_other,
     if (arg2 == -1 || arg2 == 0)
         width_b = camera_sprite_height(other, af0_other, b30, DSD(DS_00100B18));
     for (u32 row = 0; (s32)row < (s32)DSD(DS_00100B18); row++) {
-        camera_sprite_row(side, DS_00100BAE, width_a, row);
-        camera_sprite_row(other, DS_00100B64, width_b, row);
+        if (arg2 == 0) {                               /* 0x16e2e */
+            for (u32 i = 0; i < 4u; i++)
+                DSB(DS_00100BAE + i) = DSB(DS_000A173C + i);   /* 0x16e45 */
+            width_a = 4u;                              /* 0x16e4f */
+        } else {
+            camera_sprite_row(side, DS_00100BAE, width_a, row);   /* 0x16e6a */
+        }
+        if (arg2 == 1) {                               /* 0x16e74 */
+            for (u32 i = 0; i < 4u; i++)
+                DSB(DS_00100B64 + i) = DSB(DS_000A173C + i);   /* 0x16e90 */
+            width_b = 4u;                              /* 0x16e9a */
+        }
+        if (arg2 == 2) {                               /* 0x16ea5 */
+            for (u32 i = 0; i < 6u; i++)
+                DSB(DS_00100B64 + i) = DSB(DS_000A1740 + i);   /* 0x16ebc */
+            width_b = 6u;                              /* 0x16ec6 */
+        } else if (arg2 == 3) {                        /* 0x16ed3 */
+            for (u32 i = 0; i < 6u; i++)
+                DSB(DS_00100B64 + i) = DSB(DS_000A1746 + i);   /* 0x16eea */
+            width_b = 6u;                              /* 0x16ef4 */
+        } else {
+            camera_sprite_row(other, DS_00100B64, width_b, row);  /* 0x16f0e */
+        }
         if (DSB(DS_00100B62 + side) != 0u)            /* 0x16f17 */
             camera_bitrev(DS_00100BAE, width_a);
         if (DSB(DS_00100B62 + other) != 0u)           /* 0x16f2e */
@@ -1195,6 +1220,115 @@ void camera_decay(void)
         if (DSB(DS_00100B60) != 0) camera_unfreeze(0u);    /* 0x176AC */
         if (DSB(DS_00100B61) != 0) camera_unfreeze(1u);    /* 0x176BF */
     }
+}
+
+/* ---- the projectile collision step 0x17CB0 ------------------------------ */
+
+/* 0x176CC — demo-pose record §26. Side `side`'s live projectile (slot+0x08)
+ * against the other fighter: the 0x170A0 shape with the projectile in the
+ * side's place. Guarded on the other side's two countdowns and the 0x140E4
+ * box overlap; the other's box is its DS_00100AC0 box clipped by 0x15C30, or
+ * {0, 0, 0x20, 0x20} when that box is empty. The projectile is a 0x20 x 0x20
+ * box at DS_00100AA8/AA0[side] (0x17FA0's projectile anchor); its row is the
+ * 0xA173C constant (0x16DA4 mode 0), with DS_00100B62[side] cleared for the
+ * call. Writes DS_00100AD0[side] = DS_00100B54. 0x176F3's 0x33950 context is
+ * never read. */
+static void camera_projectile_hit(u32 side)
+{
+    u32 other = 1u - side;
+    if (DSW(DS_00107824 + other * 0x94u) != 0u) return;       /* 0x17700 */
+    if ((u32)DSW(DS_00107826 + other * 0x94u) > 1u) return;   /* 0x17712 */
+    if (camera_box_overlap(DSW(DSD(DS_001077B8 + side * 0x94u) + 0x56u),
+                           DSW(DSD(DS_001077B0 + other * 0x94u) + 0x56u))
+            == 0)
+        return;                                                /* 0x1774F */
+
+    u8 box[4];
+    {
+        u32 box_o = DS_00100AC0 + other * 4u;                  /* 0x1775C */
+        if (DSB(box_o + 2u) >= 1u && DSB(box_o + 3u) >= 1u) {  /* 0x17767/0x17771 */
+            for (u32 i = 0; i < 4u; i++) box[i] = DSB(box_o + i);   /* 0x17798..0x177BA */
+            camera_box_clip(other, DSD(DS_00100AF0 + other * 4u), box); /* 0x177C4 */
+        } else {
+            box[0] = 0; box[1] = 0; box[2] = 0x20u; box[3] = 0x20u;  /* 0x17786..0x17792 */
+        }
+    }
+    u32 sp = camera_resolve_sprite(other, DSD(DS_00100AF0 + other * 4u)); /* 0x177DF..0x177ED */
+    s32 dy = (s32)DSD(DS_00100B00 + other * 4u) + (s32)box[1]
+             - (s32)DSD(DS_00100AA0 + side * 4u);              /* 0x1782E/0x1783C */
+    if (camera_sync_visible(0x20u, (u32)(s32)(s16)DSW(sp),
+                            (s32)DSD(DS_00100AA8 + side * 4u)
+                            - ((s32)box[0]
+                               + (s32)DSD(DS_00100B08 + other * 4u)),
+                            DS_00100B1C, DS_00100B14, DS_00100B28,
+                            DS_00100B34, DS_00100B24) != 0)    /* 0x17844 */
+        return;
+    if (camera_sync_visible(0x20u, (u32)((s32)DSD(sp) >> 16), -dy,
+                            DS_00100B18, DS_00100B10, DS_00100B2C,
+                            DS_00100B30, DS_00100B20) != 0)    /* 0x1787E */
+        return;
+
+    u32 flag = ((s32)DSD(DS_00100B14) > (s32)DSD(DS_00100B34)) ? 1u : 0u; /* 0x17897 */
+    {
+        s32 d = (s32)DSD(DS_00100B14) - (s32)DSD(DS_00100B34);
+        if (d < 0) d = -d;
+        DSD(DS_00100B38) = (u32)d;                             /* 0x178A8 */
+    }
+    DSD(DS_00100B40) = DSD(DS_00100B1C);                       /* 0x178B7 */
+    {
+        u8 saved = DSB(DS_00100B62 + side);                    /* 0x178BF */
+        DSB(DS_00100B62 + side) = 0;                           /* 0x178CF */
+        camera_winner_height(flag, 0xFFFFFFFFu, DSD(DS_00100AF0 + other * 4u),
+                             DSD(DS_00100B10), DSD(DS_00100B30), 0,
+                             side);                            /* 0x178E5 */
+        DSD(DS_00100AD0 + side * 4u) = DSD(DS_00100B54);       /* 0x178EF */
+        DSB(DS_00100B62 + side) = saved;                       /* 0x178FA */
+    }
+}
+
+/* 0x17BC8 — demo-pose record §26. Both projectiles live: when their 0x20 x
+ * 0x20 boxes at DS_00100AA8/AA0 and DS_00100AAC/AA4 overlap (0x140E4 and the
+ * two 0x181D0 syncs, with non-empty extents), burst side 0's (0x3B938), kill
+ * side 1's (0x2B150) and return 1; else 0. */
+static int camera_projectile_clash(void)
+{
+    if (camera_box_overlap(DSW(DSD(DS_001077B8) + 0x56u),
+                           DSW(DSD(DS_0010784C) + 0x56u)) == 0)
+        return 0;                                              /* 0x17BF1 */
+    if (camera_sync_visible(0x20u, 0x20u,
+                            (s32)DSD(DS_00100AA8) - (s32)DSD(DS_00100AAC),
+                            DS_00100B1C, DS_00100B14, DS_00100B28,
+                            DS_00100B34, DS_00100B24) != 0)    /* 0x17C35 */
+        return 0;
+    if (camera_sync_visible(0x20u, 0x20u,
+                            (s32)DSD(DS_00100AA0) - (s32)DSD(DS_00100AA4),
+                            DS_00100B18, DS_00100B10, DS_00100B2C,
+                            DS_00100B30, DS_00100B20) != 0)    /* 0x17C65 */
+        return 0;
+    if ((s32)DSD(DS_00100B1C) <= 0) return 0;                  /* 0x17C78 */
+    if ((s32)DSD(DS_00100B18) <= 0) return 0;                  /* 0x17C81 */
+    /* PORT: 0x17C88 0x2C3FC(0x64) — voice, out of scope (spec §7). */
+    fighter_3b938(DS_001077B0);                                /* 0x17C92 */
+    actor_set_dead(DSD(DS_0010784C));                          /* 0x17C9C 0x2B150 */
+    return 1;
+}
+
+/* 0x17CB0 — demo-pose record §26. The projectile collision step 0x1975C runs
+ * first: fill the 0x25-byte DS_00100BD3 plane with 0xFF (0x15F48), zero
+ * DS_00100AD0/AD4, test two live projectiles against each other (0x17BC8),
+ * and, unless they clashed, each side's projectile against the other fighter
+ * (0x176CC). */
+void camera_projectile_step(void)
+{
+    u8 clash = 0;                                              /* 0x17CC7 */
+    camera_bitplane_pixel(0x128u, 0x25u, DS_00100BD3, 0xFFu);  /* 0x17CCF */
+    DSD(DS_00100AD0) = 0;                                      /* 0x17CDC */
+    DSD(DS_00100AD4) = 0;                                      /* 0x17CE2 */
+    if (DSD(DS_001077B8) != 0u && DSD(DS_0010784C) != 0u)      /* 0x17CEA/0x17CF3 */
+        clash = (u8)camera_projectile_clash();                 /* 0x17CF5 */
+    if (clash != 0u) return;                                   /* 0x17D01 */
+    if (DSD(DS_001077B8) != 0u) camera_projectile_hit(0u);     /* 0x17D0E */
+    if (DSD(DS_0010784C) != 0u) camera_projectile_hit(1u);     /* 0x17D21 */
 }
 
 /* ---- 0x16D58 the per-side screen base ---------------------------------- */

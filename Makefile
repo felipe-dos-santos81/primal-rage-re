@@ -196,30 +196,29 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # frame). Claim: no captured frame below DEMO_FIGHT_MIN_FIRST is unexplained, and the
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
-# improves (the tool prints "ratchet improved ... raise N"). N = 1478 was measured on
-# 4065c1d (the commit that raised it, on db2f0f1): the T-rex's reaction-0x20 breath
-# is ported: at f = 559 of the demo
-# 0x34E2C runs the (char 0, 0x20) callback 0x3D17C (*(u32*)0xA37A8), which starts
-# the 0xE84C8 stream (state 0xB/6/0); its 0xD100 target 0x3D214 spawns the emitter
-# 0xBB27C, whose 0xD100 target 0x3D26C spawns the projectile 0xBB268 into the
-# slot's +0x08; the port skipped the unregistered callback, so the T-rex went
-# back to its stance and no projectile flew.
+# improves (the tool prints "ratchet improved ... raise N"). N = 1481 was measured on
+# the commit that raised it, on 8f2d86b: the projectile collision step is ported:
+# 0x1975C's first call 0x17CB0 runs 0x176CC, which at f = 617 of the demo finds the
+# T-rex's breath projectile (slot 0's +0x08) over the raptor and writes the overlap
+# count DS_00100AD0[0] = 17; the think step then applies the hit to the raptor
+# through 0x3B464 (the 0x3A95C stagger) and bursts the projectile (0x3B938). The
+# port had skipped 0x17CB0, so AD0 stayed 0 and the ring flew through the raptor.
 # `make demo-oracle` printed
-# "title_compare: demo: first unexplained captured frame 1478 (raw 4385); 2133 in the window",
-# and the demo-fight oracle printed "ratchet improved: first unexplained 1478 > 1411".
-# (Before it, N = 1411, measured on c78dc97; N = 1358 on b5a48a0; N = 998 on
+# "title_compare: demo: first unexplained captured frame 1481 (raw 4388); 2130 in the window",
+# and the demo-fight oracle printed "ratchet improved: first unexplained 1481 > 1478".
+# (Before it, N = 1478, measured on 4065c1d; N = 1411 on c78dc97; N = 1358 on b5a48a0; N = 998 on
 # ff38dcc; N = 992 on 3fee8d0; N = 950 on a51685d; N = 892 on 6a48972; N = 891 on
 # cfff063; N = 880 on 0a8346b; N = 870 on a76414d; N = 867 on 2137bce; N = 866 on
 # 7147288; N = 864 on b915712; N = 860 on afa47b3; N = 859 on b2cb490; N = 858 on
 # 594e4b9; N = 851 on dad2712.)
-# The two counts differ by scope: 2133 is --demo's window, [1478..3616] to the capture's
-# end; 407 is this oracle's fight window, [1478..1884], cut at the first all-black frame.
-# Both share the first unexplained frame, 1478. The tool also fails if N > window end + 1
+# The two counts differ by scope: 2130 is --demo's window, [1481..3616] to the capture's
+# end; 404 is this oracle's fight window, [1481..1884], cut at the first all-black frame.
+# Both share the first unexplained frame, 1481. The tool also fails if N > window end + 1
 # or if the window collapses; a shrunk front-end window lowers fe_b+1, so the
 # ratchet itself fails (first unexplained < N).
-# At 1478 == fe_b+1 the claim is currently only that the front-end window does not
+# At 1481 == fe_b+1 the claim is currently only that the front-end window does not
 # shrink and the window start does not move. Skips without the capture.
-DEMO_FIGHT_MIN_FIRST = 1478
+DEMO_FIGHT_MIN_FIRST = 1481
 demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/title-captures/frontend)
 	@echo "== demo-fight oracle (ratchet on the first unexplained frame, N=$(DEMO_FIGHT_MIN_FIRST)) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \

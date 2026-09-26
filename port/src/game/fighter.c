@@ -7,6 +7,7 @@
  * and is called back from fight.c's 0x3B134. */
 #include "game/fighter.h"
 #include "game/fight.h"
+#include "game/camera.h"
 #include "game/actors.h"
 #include "game/config.h"
 #include "game/rng.h"
@@ -19,6 +20,9 @@
 #define FIGHTER_SPAWN_X   0x000BDA38u   /* 0x33EC4: per-side initial x dword */
 #define FIGHTER_DESC_A    0x000BB7E0u   /* 0x33CC8: [char*2 + side] fighter */
 #define FIGHTER_DESC_B    0x000BB8D0u   /* 0x33D38: [char] secondary actor */
+#define FIGHTER_E1898     0x000E1898u   /* 0x3B94D: the +0x48 == 4 burst stream */
+#define FIGHTER_BDFC8     0x000BDFC8u   /* 0x3B976: [char] projectile burst stream */
+#define FIGHTER_C8FE0     0x000C8FE0u   /* 0x3A9B2: [char] projectile-hit stream */
 
 /* 0x29BC8. The character-palette acquire the spawn (0x33E1E) and the +0x52
  * handler block (0x33B00/0x36E78) share; defined with that block. */
@@ -34,6 +38,18 @@ void fighter_37178(u32 slot);                            /* 0x37178 */
 void fighter_385b0(u32 rec);                             /* 0x385B0 */
 static void fighter_379c4(u32 slot);                     /* 0x379C4 */
 static void fighter_164e8(u32 side);                     /* 0x164E8 */
+
+/* The winner-body helpers the think chain 0x1975C/0x3B464 shares; defined with
+ * the 0x193B0 and 0x3B714 blocks below. */
+static void hit_stance_timer(u32 side);                  /* 0x1922C */
+static void hit_facing_flag(u32 side);                   /* 0x18B04 */
+static int fighter_3962c(u32 side, u32 param_2);         /* 0x3962C */
+static int fighter_396ac(u32 side, u32 param_2);         /* 0x396AC */
+static void fighter_18b44(u32 slot);                     /* 0x18B44 */
+static void fighter_39278(u32 v);                        /* 0x39278 */
+static void fighter_39834(u32 side, s32 b);              /* 0x39834 */
+static u32 fighter_36d20(u32 slot);                      /* 0x36D20 */
+static void fighter_2bd44_by_index(u32 rec);             /* 0x3B4D4 = 0x3B844 */
 
 /* PORT: the register shape of the slot callbacks 0x34E2C (0x35045) and
  * 0x3531C case 7 (0x35431) call: EAX = slot, EDX = rec, EBX = side. */
@@ -650,9 +666,14 @@ static int fighter_command_dispatch(u32 side, u32 edx_arg)
     return 1;                                             /* 0x3B448 */
 }
 
-/* 0x3B464. The per-fighter think driver. ctx[0]=1-side, ctx[1]=side,
- * ctx[2]=&slot[1-side], ctx[3]=&slot[side], ctx[4]=rec_other, ctx[5]=rec_self.
- * The unported branch targets are named gaps (§7.12). */
+/* 0x3B464. The per-fighter think driver: the projectile hit 0x1975C applies
+ * to the struck side. ctx[0]=1-side (the thrower), ctx[1]=side,
+ * ctx[2]=&slot[1-side], ctx[3]=&slot[side], ctx[4]=rec_other, ctx[5]=rec_self;
+ * the thrower's slot+0x64 carries the reaction (0x3D17C's old +0x5F).
+ * The command dispatch is the block test: a block runs the 0x3B080 seed and
+ * the 0x3AD98 effect; otherwise the thrower's projectile +0x48 selects 0x36D20
+ * (5), 0x1922C/0x235C4 (8) or the 0x39834 pose driver with the airborne
+ * 0x39F40 pose or the grounded 0x3A95C stagger (demo-pose record §26). */
 static void fighter_think_side(u32 side)
 {
     u32 ctx[6];
@@ -667,97 +688,135 @@ static void fighter_think_side(u32 side)
 
     if (fighter_command_dispatch(ctx[1], stance) != 0) { /* 0x3B4C7 */
         DSB(ctx[2] + 0x8Au) = 0;                        /* 0x3B669 */
-        if (DSB(ctx[3] + 0x54u) != 2u) {
-            /* PORT: 0x3B69A 0x3B080(side, anim[0]+2, anim[0]+3, 0) §7.12. */
-        }
-        /* PORT: 0x3B6A7 0x3AD98(side, &anim) — named gap (§7.12). */
+        if (DSB(ctx[3] + 0x54u) != 2u)                  /* 0x3B674 */
+            fighter_3b080(ctx[1], (u32)DSB(anim[0] + 3u),
+                          (u32)DSB(anim[0] + 2u), 0u);  /* 0x3B69A */
+        fighter_3ad98(ctx[1], anim);                    /* 0x3B6A7 */
         goto tail;
     }
 
-    /* 0x3B4D4: the record's +0x4B indexes the 0x68-stride table at
-     * DS_001014F4; a non-zero +0x60 at that entry runs 0x2BD44. */
-    {
-        u8 idx = DSB(ctx[5] + 0x4Bu);                   /* 0x3B4D8 */
-        if (idx != 0) {
-            u32 t = DSD(DS_001014F4) + (u32)idx * 0x68u;/* 0x3B4E7..0x3B4FE */
-            if (DSB(t + 0x60u) != 0) {
-                /* PORT: 0x3B50A 0x2BD44(rec_self) — named gap (§7.12). */
-            }
-        }
+    fighter_2bd44_by_index(ctx[5]);                     /* 0x3B4D4..0x3B50A */
+    if (DSD(ctx[3] + 0x14u) != 0u) {                    /* 0x3B513 */
+        u32 r;
+        fighter_slot14_cb fn = (fighter_slot14_cb)(void *)
+            fn_resolve(DSD(ctx[3] + 0x14u));
+        r = fn ? fn(ctx[3]) : 0u;                       /* 0x3B51B */
+        if (r != 0u) DSD(ctx[3] + 0x14u) = 0;           /* 0x3B526 */
     }
-    /* 0x3B50F: the slot's +0x14 callback pointer. */
-    if (DSD(ctx[3] + 0x14u) != 0) {
-        /* PORT: 0x3B51B call [ctx[3]+0x14] — named gap (unresolved pointer). */
-    }
-    /* 0x3B52D: the other slot's secondary record +0x48. */
     {
-        u32 r1 = DSD(ctx[2] + 0x08u);                   /* 0x3B531 */
-        u8 a48 = DSB(r1 + 0x48u);                       /* 0x3B534 */
-        if (a48 == 5) {                                 /* 0x3B53B */
-            /* PORT: 0x3B638 0x36D20(ctx[3]) — named gap (§7.12). */
-            DSD(ctx[3] + 0x18u) = 0;                    /* 0x3B63D */
+        u8 a48 = DSB(DSD(ctx[2] + 0x08u) + 0x48u);      /* 0x3B531/0x3B534 */
+        if (a48 == 5u) {                                /* 0x3B53B */
+            (void)fighter_36d20(ctx[3]);                /* 0x3B638 */
+            DSD(ctx[3] + 0x18u) = 0;                    /* 0x3B641 */
             DSD(ctx[3] + 0x1Cu) = 0;                    /* 0x3B648 */
             goto tail;
         }
-        if (a48 == 8) {                                 /* 0x3B543 */
-            /* PORT: 0x3B657 0x1922C(side); 0x3B65E 0x235C4(side) — §7.12. */
+        if (a48 == 8u) {                                /* 0x3B543 */
+            hit_stance_timer(side);                     /* 0x3B657 0x1922C */
+            /* PORT: 0x3B65E 0x235C4(side) — named gap (demo-pose record §26:
+             * no demo projectile has +0x48 == 8). */
             goto tail;
         }
     }
 
-    /* PORT: 0x3B54F 0x39834(side, stance) — named gap (§7.12). */
+    fighter_39834(ctx[1], (s32)stance);                 /* 0x3B54F */
     if (DSB(ctx[3] + 0x54u) == 2u) {                    /* 0x3B558 */
-        /* PORT: 0x3B56C 0x18B04(side) — named gap (§7.12). */
-        fighter_pose_start(side, 0xFFFFFFB0u, 0x64u, 0x0Fu, 0x14u);  /* 0x3B57C */
-        goto middle;                                    /* 0x3B619 */
+        hit_facing_flag(ctx[1]);                        /* 0x3B56C 0x18B04 */
+        fighter_pose_start(ctx[1], 0xFFFFFFB0u, 0x64u, 0x0Fu, 0x14u);  /* 0x3B57C */
+        goto middle;                                    /* 0x3B581 */
     }
-    fighter_anim_triple(anim, ctx[0], (s32)stance);     /* 0x3B58F */
-    /* PORT: 0x3B5A9 0x3A95C(side, (s8)anim[0]+6, ctx[3]+0x2C) — §7.12. */
     {
+        u32 anim2[3];
+        fighter_anim_triple(anim2, ctx[0], (s32)stance);/* 0x3B58F */
+        u32 x = DSD(ctx[3] + 0x2Cu);                    /* 0x3B5A6 */
+        /* 0x3B59C loads the dword at anim2[0]+3 and 0x3B5A3 shifts it right 24
+         * (arithmetic), so the operand is the signed byte at anim2[0]+6. */
+        fighter_3a95c(ctx[1], (u32)(s32)(s8)DSB(anim2[0] + 6u));   /* 0x3B5A9 */
         u8 st = (u8)DSB(ctx[2] + 0x64u);                /* 0x3B5B2 */
-        if (st != 0 && st != 5) {                       /* 0x3B5BE */
+        if (st != 0u && st != 5u) {                     /* 0x3B5BE/0x3B5C3 */
             u8 v = (u8)(DSB(ctx[3] + 0x90u) - 1u);      /* 0x3B5CF */
-            if (v > 3u) {
-                /* PORT: 0x3B5E5 0x188DC(side) — named gap (§7.12). */
-            }
+            /* 0x3B5DA: v <= 3 jumps through 0x3B454, whose four entries are
+             * all 0x3B5EA, so only v > 3 re-anchors x (EBX survives 0x3A95C). */
+            if (v > 3u)
+                hit_anchor_x(ctx[1], x);                /* 0x3B5E5 0x188DC */
         }
     }
-    if (DSB(ctx[3] + 0x54u) != 2u) {
-        /* PORT: 0x3B614 0x3B080(side, anim[0]+2, anim[0]+3, 0) — §7.12. */
-    }
+    if (DSB(ctx[3] + 0x54u) != 2u)                      /* 0x3B5EE */
+        fighter_3b080(ctx[1], (u32)DSB(anim[0] + 3u),
+                      (u32)DSB(anim[0] + 2u), 0u);      /* 0x3B614 */
 middle:
     DSD(ctx[3] + 0x18u) = 0;                            /* 0x3B61D */
-    DSD(ctx[3] + 0x1Cu) = 0;                            /* 0x3B624 */
+    DSD(ctx[3] + 0x1Cu) = 0;                            /* 0x3B628 */
 tail:
     DSB(ctx[3] + 0x41u) |= 0x80u;                       /* 0x3B6B0 */
     DSB(ctx[2] + 0x64u) = 0xFFu;                        /* 0x3B6B8 */
 }
 
-/* PORT: 0x1975C is unexercised by the attract demo. Every writer of slot+0x64
- * in the image sets 0xFF (0x33CFB spawn, 0x33B00 case 19 only, 0x3B6B8/0x3B985/
- * 0x3B9D2), and the only non-0xFF writer 0x2A620 writes an actor record, not the
- * slot, so 0x3B464 returns at 0x3B49F for both demo fighters and 0x3B134
- * (fight_command_map) is unreachable from the demo. This chain is owned by the
- * interactive match; its unit tests are its only evidence
- * (docs/superpowers/plans/2026-09-21-demo-fight-closure-derivations.md §8). */
-/* 0x1975C. The think step: for each index whose DS_00100AD0 count exceeds 2,
- * run the think driver. The raw loops i in {0,1}, gates on DS_00100AD0[i], but
- * passes ctx[1] (=1-i) to 0x1922C and 0x3B464; the port keeps that flip. */
+/* 0x1975C. The think step: run the projectile collision step 0x17CB0, then,
+ * for each thrower i whose DS_00100AD0[i] overlap count exceeds 2 (signed),
+ * the struck side's stance timer, the thrower's two 0x3962C/0x396AC hold gates
+ * (either ends the whole step after 0x18B44), the struck side's think driver
+ * 0x3B464, the projectile burst 0x3B938 and 0x39278(2). ctx = 0x33950(i):
+ * ctx[0]=i, ctx[1]=1-i, ctx[2]=&slot[i], ctx[3]=&slot[1-i]. */
 void fighter_think(void)
 {
-    for (u32 i = 0; i < 2u; i++) {                      /* 0x19770 */
+    camera_projectile_step();                           /* 0x19763 0x17CB0 */
+    for (u32 i = 0; i < 2u; i++) {                      /* 0x19772/0x19808 */
         u32 ctx[6];
         fighter_ctx_same(ctx, i);                       /* 0x19778 */
-        if (DSD(DS_00100AD0 + ctx[0] * 4u) <= 2u)       /* 0x19780/0x19787 */
+        if ((s32)DSD(DS_00100AD0 + ctx[0] * 4u) <= 2)   /* 0x19780/0x19787 */
             continue;
-        /* PORT: 0x19791 0x1922C(ctx[1]) — named gap (§7.12). */
-        /* PORT: 0x1979B 0x3962C(ctx[0]) — named gap (§7.12); the raw's true
-         * branch clears slot+0x8A, calls 0x18B44 and ends the whole step. */
-        /* PORT: 0x197BF 0x396AC(ctx[0]) — named gap, same shape. */
+        hit_stance_timer(ctx[1]);                       /* 0x19791 0x1922C */
+        if (fighter_3962c(ctx[0], 1u) != 0              /* 0x1979B */
+                || fighter_396ac(ctx[0], 1u) != 0) {    /* 0x197BF */
+            DSB(ctx[2] + 0x8Au) = 0;                    /* 0x197A8/0x197CC */
+            fighter_18b44(ctx[2]);                      /* 0x197B3/0x197D7 */
+            return;                                     /* 0x197B8/0x197E3 */
+        }
         DSB(ctx[3] + 0x67u) = 1;                        /* 0x197E8 */
         fighter_think_side(ctx[1]);                     /* 0x197EF 0x3B464 */
-        /* PORT: 0x197F8 0x3B938(ctx[2]); 0x197FF 0x39278 — named gaps. */
+        fighter_3b938(ctx[2]);                          /* 0x197F8 */
+        fighter_39278(2u);                              /* 0x197FF */
     }
+}
+
+/* 0x3B938 — demo-pose record §26. EAX = the thrower's slot. */
+void fighter_3b938(u32 slot)
+{
+    if (DSB(DSD(slot + 0x08u) + 0x48u) == 4u) {         /* 0x3B945/0x3B948 */
+        actors_anim_begin(DSD(slot + 0x08u), FIGHTER_E1898,
+                          0x40000000u);                 /* 0x3B97D */
+    } else {
+        u32 ch = (u32)DSB(slot + 0x7Au);                /* 0x3B95D */
+        union { float f; u32 u; } fu;
+        /* 0x3B96B: FILD of the zero-extended table byte, stored as a float. */
+        fu.f = (float)(s16)DSB(DS_000BDFF0 + ch);
+        actors_anim_begin(DSD(slot + 0x08u), DSD(FIGHTER_BDFC8 + ch * 4u),
+                          fu.u);                        /* 0x3B97D */
+    }
+    DSB(slot + 0x64u) = 0xFFu;                          /* 0x3B985 */
+    DSB(DSD(slot + 0x08u) + 0x48u) = 0;                 /* 0x3B989 */
+    DSW(DSD(slot + 0x08u) + 0x34u) = 0;                 /* 0x3B990 */
+    DSW(DSD(slot + 0x08u) + 0x36u) = 0;                 /* 0x3B999 */
+    DSD(slot + 0x08u) = 0;                              /* 0x3B9A4 */
+    /* PORT: 0x3B9B8 0x2C3FC(word[0xBDFFA + slot+0x7A * 2]) — voice, out of
+     * scope (spec §7). */
+}
+
+/* 0x3A95C — demo-pose record §26. */
+void fighter_3a95c(u32 side, u32 b)
+{
+    u32 ctx[6];
+    fighter_ctx_swap(ctx, side);                        /* 0x3A967 */
+    hit_anchor_set(ctx[1], DSD(ctx[5] + 0x18u), 0u);    /* 0x3A979 0x188AC */
+    DSB(ctx[3] + 0x52u) = 0x10u;                        /* 0x3A982 */
+    DSB(ctx[3] + 0x53u) = 0x0Au;                        /* 0x3A98A */
+    DSB(ctx[3] + 0x54u) = 0;                            /* 0x3A992 */
+    DSD(ctx[3] + 0x10u) = 0;                            /* 0x3A99A */
+    actors_anim_begin(ctx[5],
+                      DSD(FIGHTER_C8FE0 + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                      0x40400000u);                     /* 0x3A9BD 0x2BC30 */
+    DSB(ctx[3] + 0x7Eu) = (u8)(DSB(DS_000BECF8) + (u8)b);   /* 0x3A9C2..0x3A9CD */
 }
 
 /* ---- 0x47208 the demo/CPU-AI command generator -------------------------
