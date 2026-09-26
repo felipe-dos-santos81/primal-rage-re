@@ -523,9 +523,9 @@ demo-fight section below.
 3617 distinct post-logo frames, raw 1367..8409 after the demo-fight closure
 cycle's re-capture) reaches the front-end. With the state-3 render ported
 (`0x12484`) the `PR_FRONTEND_DUMP` driver emits the real zoom-out, and
-`tools/title_compare.py --frontend` aligns it: window distinct **[560..991]**
-(raw 3108..3898), **432 frames: 170 clean, 258 splice, 0 transition, 2
-unexplained** (the four classes sum to 430 of 432: the window's other two frames are the
+`tools/title_compare.py --frontend` aligns it: window distinct **[560..1357]**
+(raw 3108..4264), **798 frames: 307 clean, 484 splice, 3 transition, 2
+unexplained** (the four classes sum to 796 of 798: the window's other two frames are the
 all-black captures 561 and 831, excluded as artifacts — the oracle's own list) — captures **832** and **833**, allowed by name in
 `FRONTEND_ALLOWED_UNEXPLAINED` with their reason (`title_compare.py:352-374`;
 the arena-backdrop cycle's absorbed claim move: the window is derived from the
@@ -553,7 +553,11 @@ fix (`0x34E2C`'s reaction callback and the T-rex's `0x3E62C`/`0x3E524`/
 fix (the T-rex's `+0x1C` callback `0x3E4C4`) then explained 891: →
 `[560..891]`/332; the frame-892 fix (the knockback pose's handler `0x39CC8`)
 then explained 892..949: → `[560..949]`/390; the frame-950 fix (the knockdown
-floor `0x347B8`) then explained 950..991: → `[560..991]`/432.)
+floor `0x347B8`) then explained 950..991: → `[560..991]`/432; the frame-992
+fix (the T-rex's walk entry `0x35938`) then explained 992..997: →
+`[560..997]`/438; the frame-998 fix (the worshipper arrival target
+`0x4AC18`) then explained 998..1357: → `[560..1357]`/798, whose three
+transition frames all lie in that new span.)
 The claim that result supports is precise and narrow: **no
 content-bearing capture frame inside the window the port's own dump exhibits is
 unexplained** (the two named exceptions aside). The window is derived from the port's dump (`check_capture`'s
@@ -761,7 +765,9 @@ exits 0.
   animation-opcode target `0x4AC18` (24 data sites in `0xEE09E..0xEF62E`; it
   re-animates the `rec+0x14` effects-list entry through `0x4AC38`), the
   candidate owner; the port now runs it, and the same fix also explains the
-  second divergence from capture 1007 (the raptor's leap after its get-up).)
+  second divergence from capture 1007: the T-rex (side 0) leaves state 1
+  at f = 214, the first RNG draw after the worshipper's two extra
+  `rng(0x1200)` draws at f = 207; it was first misattributed to the raptor.)
   (Before the frame-992 fix this was capture 992 (§21.5, derived in §22): capture 992
   was a tear: the best port 617/618 splice (row 134) leaves
   6 342 px in x 64–319, rows 134–192; 993 leaves 13 800 px and from 994 the
@@ -1757,7 +1763,8 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   its 32-bit zero-extended width and its source record), the `entry+8`
   target, the no-entry return and the dispatcher; every mutation fails it.
 * **Measured.** Captures 998..1357 are explained, including the second
-  divergence from 1007. The demo's first unexplained is now **1358 (raw
+  divergence from 1007: the T-rex's, which the extra RNG draws at f = 207
+  reach at the next draw, f = 214. The demo's first unexplained is now **1358 (raw
   4265)**, and the fight window `[1358..1884]` has 527 frames, 0 explained.
   The ratchet N is raised 998 → 1358.
 * **Moved claim (allowed by the brief).** Front-end `[560..997]`/438 →

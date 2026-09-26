@@ -3689,6 +3689,8 @@ closure is not measured. From capture 1007 (port 630, f = 214) a second,
 whole-frame divergence joins: the port's raptor, back up from its get-up at
 f = 206, enters state 3 at f = 207 and 4 at f = 209 and leaps forward, and the
 capture's raptor rises differently; not characterised further.
+(Corrected in §23.4: the 1007 divergence is the T-rex's, side 0, not the
+raptor's. It follows from the RNG draws `0x4AC18` adds at f = 207.)
 (Derived since, §23: `0x4AC18` is the cause, and porting it explains
 captures 998..1357, including the 1007 divergence.)
 
@@ -3850,10 +3852,29 @@ exhibition set grows to port frames 0..930 (694 exhibited). The ladder
 exited 0 with 0 compiler warnings and "all checks passed", with N = 1358 in the
 Makefile.
 
-**The 1007 divergence.** §22.5's second divergence (the raptor's leap from
-capture 1007) is explained by the same fix. The mechanism was not traced.
-The fix changes everything from f = 207 on, including the shared RNG: the
-worshipper's type-0 handler draws through `0x4B144`.
+**The 1007 divergence.** §22.5 attributed it to the raptor's leap. That
+was wrong: it belongs to the T-rex, and the same fix explains it through the
+shared RNG. The mechanism was measured with temporary probes in `rng_next`
+and at the end of `fight_arena_frame` (both reverted), over f = 200..220 on
+two builds: with the fix, and with only `0x4AC18`'s registration removed.
+
+* **f = 207.** The fixed port makes 3 draws, against 1 in the unfixed one.
+  Both builds make the `rng(0x64)` draw. The fixed build adds the
+  worshipper's two `rng(0x1200)` draws in `0x4B144`, which run after its
+  entry returns to type 0.
+* **f = 208..213.** No other draw differs, and both fighters' `+0x52/+0x53/+0x54`
+  are identical in both builds.
+* **f = 214, the next draw.** This is exactly the capture-1007 frame (port
+  630). Both builds draw `rng(0x64)`, but from different generator states.
+  * Side 0, the T-rex, leaves state 1 in the fixed port: `00/00/00` at
+    f = 214, `05/00/01` at 215, `09/00/00` at 217, then `09/07/02` from
+    218.
+  * In the unfixed port side 0 stays in `01/00/00`.
+  * Side 1's states are the same in both builds (`04/08/02` at f = 213/214).
+
+The dumped port frames are identical through 622, and the first difference
+is `frame_0623` (f = 207). The worshipper's walk accounts for the pixels from
+there. The T-rex's divergence from f = 214 accounts for capture 1007.
 
 **Unresolved code targets after the fix** (a temporary whole-run probe in
 `fn_resolve`, reverted):

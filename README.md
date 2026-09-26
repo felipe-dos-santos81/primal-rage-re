@@ -256,11 +256,11 @@ spawn → `effects_step` → dirty list → `gfx_flush_palette` → `gfx_dac` �
 plan's assumed missing draw does not exist; the camera state feeds the existing
 render pass and actor-pset sync. The front-end pixel oracle is **closed and
 enforced**: a 120 s pinned capture aligns the port's state-3 zoom to window
-`[560..991]` (raw `3108..3898`), **432 frames: 170 clean, 258 splice, 0
+`[560..1357]` (raw `3108..4264`), **798 frames: 307 clean, 484 splice, 3
 transition, 2 unexplained (832, 833)** — the two allowed by name (the
 arena-backdrop cycle's absorbed claim move, below); any other unexplained frame
 fails. (Indices moved `[557..813]`/257 → `[560..830]`/271 → `[560..842]`/283 →
-`[560..850]`/291 → `[560..857]`/298 → `[560..858]`/299 → `[560..859]`/300 → `[560..863]`/304 → `[560..865]`/306 → `[560..866]`/307 → `[560..869]`/310 → `[560..879]`/320 → `[560..890]`/331 → `[560..891]`/332 → `[560..949]`/390 → `[560..991]`/432 as cycle 1's pins, cycle 2's master-loop pin and the
+`[560..850]`/291 → `[560..857]`/298 → `[560..858]`/299 → `[560..859]`/300 → `[560..863]`/304 → `[560..865]`/306 → `[560..866]`/307 → `[560..869]`/310 → `[560..879]`/320 → `[560..890]`/331 → `[560..891]`/332 → `[560..949]`/390 → `[560..991]`/432 → `[560..997]`/438 → `[560..1357]`/798 as cycle 1's pins, cycle 2's master-loop pin and the
 arena-backdrop fix forced re-captures, the demo-pose cycle's `0x3A43C`
 stack-offset fix + `0x186C4` re-latch explained captures 843..850, and the
 roar-timing fix (the `0x3AD27` pose-setter operand) explained 851..857, and the
@@ -276,7 +276,10 @@ frame-880 fix (`0x34E2C`'s reaction callback and the T-rex's `0x3E62C` leap)
 explained 880..890, and the frame-891 fix (the T-rex's `+0x1C` callback
 `0x3E4C4`) explained 891, and the frame-892 fix (the knockback pose's handler
 `0x39CC8`) explained 892..949, and the frame-950 fix (the knockdown floor
-`0x347B8`) explained 950..991; the host-timed capture is not reproducible, so indices shift while
+`0x347B8`) explained 950..991, and the frame-992 fix (the T-rex's walk entry
+`0x35938`) explained 992..997, and the frame-998 fix (the worshipper arrival
+target `0x4AC18`) explained 998..1357, whose three transition frames all lie
+in that new span; the host-timed capture is not reproducible, so indices shift while
 the claim does not.) It proves exactly one thing: **no content-bearing capture
 frame inside the window the port's own dump exhibits is unexplained** (the two
 named exceptions aside) — the window is derived from that dump and the
@@ -466,7 +469,7 @@ See §21 of the record.
 
 * **Measured.** Captures 992..997 are now explained (clean or splice). The demo oracle's first unexplained is now **998 (raw 3905)**. The demo window `[998..3616]` has 2619 frames, 2613 unexplained, and the fight window `[998..1884]` has 887 frames, 0 explained. The ratchet N is raised **992 → 998** in the same commit.
 * **Claim move (the one the brief allowed).** Front-end `[560..991]` / 432 → **`[560..997]` / 438 / `172 clean, 262 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
-* **Residual (characterised, not fixed).** Capture 997 is a splice; 998's best 622/623 splice (row 107) leaves 259 px, all in the left-edge worshipper (x < 40), and 999..1006 leave 481–651 px there: the capture's worshipper turns and walks while the port's keeps cheering. Port frame 622 is f = 206, the first miss after the fix: a pool record's stream (`rec+8` `0xEE0A0`) reaches the unregistered animation-opcode target `0x4AC18` (24 data sites in `0xEE09E..0xEF62E`; it re-animates the `rec+0x14` effects-list entry through `0x4AC38`). That is the candidate owner; it is not derived here. From capture 1007 (f = 214) a second whole-frame divergence joins (the raptor's leap after its get-up).
+* **Residual (characterised, not fixed).** Capture 997 is a splice; 998's best 622/623 splice (row 107) leaves 259 px, all in the left-edge worshipper (x < 40), and 999..1006 leave 481–651 px there: the capture's worshipper turns and walks while the port's keeps cheering. Port frame 622 is f = 206, the first miss after the fix: a pool record's stream (`rec+8` `0xEE0A0`) reaches the unregistered animation-opcode target `0x4AC18` (24 data sites in `0xEE09E..0xEF62E`; it re-animates the `rec+0x14` effects-list entry through `0x4AC38`). That is the candidate owner; it is not derived here. From capture 1007 (f = 214) a second whole-frame divergence joins (called the raptor's leap here, corrected below to the T-rex's).
 * **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x4AC18` (first f = 206, 8 hits), `0x3640C` (f = 304), `0x3C0A4` (f = 333), `0x14EF8` (f = 400) and `0x3A820` (first f = 473, 491 hits). `0x370F0` is still unregistered; it is not reached (no longer misses) in this run. `0x34530` is unregistered and not reached.
 
 See §22 of the record.
@@ -474,7 +477,7 @@ See §22 of the record.
 
 **The worshipper arrival target (`0x4AC18`, `b5a48a0`), the demo fight's captures 998..1357.** At f = 206 the left-edge worshipper's cheer stream (its fight-effect entry in type 8) reaches `D500 AC18 0004` at `0xEE09C`, and the port's `fn_resolve(0x4AC18)` returned NULL, so the dispatcher walked on into the next cheer stream and the worshipper kept cheering while the capture's turned and walked. The raw `0x4AC18` (29 B, no Ghidra function; the dword occurs 24 times in `0xEE09E..0xEF62E`) calls the already-ported arrival `0x4AC38` for the actor's `+0x14` entry with the index `(u32)(u8)rec+0x48 − 0x20`: the entry returns to type 0 and its actor begins the `0xC9544[index]` stream at the hold 5.0, after which the type-0 handler `0x4AAD0` walks it. One function, its callee already ported.
 
-* **Measured.** Captures 998..1357 are now explained (clean, splice or transition), including the second divergence from 1007 (the raptor's leap). The demo oracle's first unexplained is now **1358 (raw 4265)**. The demo window `[1358..3616]` has 2259 frames, 2253 unexplained, and the fight window `[1358..1884]` has 527 frames, 0 explained. The ratchet N is raised **998 → 1358** in the same commit.
+* **Measured.** Captures 998..1357 are now explained (clean, splice or transition), including the second divergence from 1007. That one is not the raptor's leap, as the frame-992 characterisation said, but the T-rex's (side 0). With the fix, the port makes 3 RNG draws at f = 207 instead of 1 (the worshipper's two `rng(0x1200)` in `0x4B144`). Both fighters' states stay identical until the next draw at f = 214, which is exactly the capture-1007 frame. There the T-rex leaves state 1 (→ 0 → 5 → `09/07/02`) in the fixed port and stays in 1 in the unfixed one, while side 1 is the same in both builds. The dumped port frames are identical through 622, and the first difference is frame 623. The demo oracle's first unexplained is now **1358 (raw 4265)**. The demo window `[1358..3616]` has 2259 frames, 2253 unexplained, and the fight window `[1358..1884]` has 527 frames, 0 explained. The ratchet N is raised **998 → 1358** in the same commit.
 * **Claim move (the one the brief allowed).** Front-end `[560..997]` / 438 → **`[560..1357]` / 798 / `307 clean, 484 splice, 3 transition, 2 unexplained (832, 833)`**. The three transition frames all lie in the new span; port frames 0..622 are byte-identical to before. Nothing else moved.
 * **Residual (characterised, not fixed).** Capture 1357 is a splice; 1358's best 930/931 splice (row 39) leaves 2 743 px in the T-rex at the right edge, growing to the whole frame from 1362. The capture's T-rex comes down from its leap and stands by 1361, while the port's (side 0, state 4/8/2 from f = 508) stays in the air until f = 521. No `fn_resolve` miss other than the stub `0x5D812` falls before f = 559, so it is not an unregistered target; no candidate owner is named.
 * **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x3D17C` (first f = 559, 3 hits), `0x14EF8` (f = 582), `0x3640C` (f = 741) and `0x3A588` (first f = 784, 180 hits). `0x3C0A4` and `0x3A820` are no longer reached. `0x370F0` is still unregistered; it is not reached (no longer misses) in this run. `0x34530` is unregistered and not reached.
