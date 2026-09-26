@@ -3250,3 +3250,229 @@ only miss near that frame). `0x347B8` has no Ghidra function; with
 the table at `0x34780`. That is the candidate owner (the raptor held down in
 state 9/0x0B instead of finishing the stand-up stream); it is **not derived
 here**, and its closure is not measured.
+
+**Correction (roar-timing Task 11, raw wins).** `0x347B8` does not take its
+stream from `0x34780` alone: at `0x3485F` (`test al,al ; je 0x348C6`) the
+`0x340BC` result picks the table. Non-zero runs `0x34168` and jumps through
+`0x34780` (`0x34878`); zero jumps through `0x3479C` (`0x348D6`). The demo
+raptor takes the zero arm (§21.2), so its stream is `0x3479C[3]` = `0xD28FC`,
+not `0x34780[3]` = `0xD2940`.
+
+## 21. The knockdown floor `0x347B8` at capture 950 (roar-timing Task 11, `3fee8d0`)
+
+**Result in one line.** Capture 950 has one cause, and it is the port's. At
+f = 165 the landed raptor's stream `0xD2ADA` reaches `D500 47B8 0003` at
+`0xD2B00` (opcode `0x15`, mode `0x4000`, the dword `0x000347B8`), and the
+port's `fn_resolve(0x347B8)` returned NULL, so the dispatcher skipped it and
+walked on into the ids `0x18B3..` that follow, which play as a get-up. The raw
+`0x347B8` puts the slot in state 9/`0x0B`/0 and restarts the record on the
+per-character floor stream `0x3479C[3]` = `0xD28FC`, a 20-pass lying loop
+that ends in the second opcode-`0x15` target `0x346F8` (the get-up) at
+f = 206. Porting `0x347B8` (448 B), its gate `0x340BC` (172 B), the stun start
+`0x34168` (276 B) and `0x346F8` (133 B), 1 029 B in 4 functions with all their
+callees already ported, explains captures 950..991.
+
+### 21.1 The measurement and the trace (temporary, reverted)
+
+**The capture.** Per-capture nearest port frame (`near.py`, whole frame) on
+`f1023d5`: 950/581 16 754 px, 952/583 5 132, 953/584 3 205, 960/590 2 799,
+968/597 1 788, 975/603 4 376, 983/610 4 642, each residual in the raptor's box
+(x ≈ 100–300, rows ≈ 115–199). Side by side the capture's raptor lies flat on
+the sand through 950..967 while the port's rises.
+
+**The port.** A `getenv("PR_T11")` line at the end of `fight_arena_frame`
+printed per side `+0x52/+0x53/+0x54`, `+0x5A`, `+0x8C`, `+0x63`, `+0x43`,
+`+0x58`, `+0x10`, `+0x0C`, `rec+8`, `rec+0x24`, `+0x2C/+0x30`, `+0x74` and the
+other side's `+0x5A` for f = 140..320, and `anim_indirect` printed every
+`fn_resolve` miss with its target, record, `rec+8` and operand. Both have been
+reverted. On `f1023d5` the raptor (side 1) sat in 0x10/0x0A/0 with `+0x58` = 4
+from its landing at f = 147; at f = 165 the miss line read
+`tgt=347b8 rec8=d2b04 arg=10`, and its `rec+8` then walked
+`0xD2B06`, `0xD2B08`, … `0xD2B14` (the ids `0x18B3..0x18B8`, `CD40 1912`).
+The gate's inputs at f = 165: `+0x8C` 0, the raptor's `+0x63` = 1, its `+0x5A`
+= 22 against the T-rex's 9.
+
+### 21.2 The raw (Ghidra `read_memory` + capstone, fixups applied)
+
+`0x347B8` has no Ghidra function and no code xrefs; a scan of the data object
+(`read_memory 0x80000..0x10B0CF`) finds the dword `0x000347B8` 53 times
+(`0xD273C` … `0xED49A`, including `0xD2B02`), `0x000346F8` 13 times (including
+`0xD2914`) and `0x00034530` once (`0xD2958`). `get_xrefs_to` gives
+`0x340BC` one caller (`0x34858`) and `0x34168` one (`0x34863`).
+
+```
+0x347b8  push ebx,ecx,edx,esi ; ebx = rec ; esi = byte [rec+0x51] (side)
+         ecx = 0x1077B0 + side*0x94 (slot) ; eax = side*0x94
+0x347db  if word [0x104B00] == 7:                                   ; 0x347e4 jne 0x34827
+           dl = byte [0x104B16]
+           if dl == 2: if esi != dword [0x104AD4]: goto freeze      ; 0x347f6 jne 0x3480f
+                       byte [slot+0x41] |= 0x10 ; goto floor        ; 0x347fe (0x1077F1 + eax)
+           elif dl == (side ^ 1): goto freeze                       ; 0x34807..0x3480d
+           else goto floor
+freeze   0x3480f  dword [rec+0x24] = 0 ; +0x54 = 3 ; +0x52 = 9 ; +0x53 = 3 ; ret
+floor    0x34827  0x39A10(rec, 0x29A) ; 0x3C148(side) ; 0x3C16C(side)
+         0x34841  +0x54 = 0 ; +0x52 = 9 ; +0x53 = 0x0B ; +0x43 &= 0xFC
+         0x34858  if 0x340BC(side): 0x34168(side) ; stream = jmp [0x34780 + char*4]
+                  else:                     stream = jmp [0x3479C + char*4]
+                  (char > 6: 0x34962, edx = 0xE4290, both arms)
+         0x34967  0x2BC30(rec, stream, push 3.0) ; ret
+```
+
+The two jump tables (`read_memory 0x34780`, 0x38 bytes) and each case's
+`mov edx,imm32`:
+
+| char | `0x34780` (stun) | `0x3479C` (plain) |
+|---|---|---|
+| 0 | `0x34880` → `0xE7656` | `0x348DE` → `0xE761A` |
+| 1 | `0x3488A` → `0xE42F6` | `0x34962` → `0xE4290` |
+| 2 | `0x34894` → `0xED302` | `0x348F4` → `0xED2CE` |
+| 3 | `0x3489E` → `0xD2940` | `0x3490A` → `0xD28FC` |
+| 4 | `0x348A8` → `0xEAF0E` | `0x34920` → `0xEAEDE` |
+| 5 | `0x348B2` → `0xD45D0` | `0x34936` → `0xD4594` |
+| 6 | `0x348BC` → `0xE0EF4` | `0x3494C` → `0xE0E8E` |
+
+`0x340BC` (EAX = side; `[esp+8]` = its slot, `[esp+0xC]` the other's): 0 when
+`word [me+0x8C]` > 0 (`jg`, signed), `[me+0x63]` ≠ 0, `[oth+0x63]` ≠ 0,
+`[me+0x5A]` ≤ 0x54 (`jle`), `[me+0x5A] − [oth+0x5A]` ≤ 0x3C (`jle`) or
+`[me+0x5A]` ≥ 0x78 (`jge`); else 1. The demo raptor fails at `+0x63`, and
+also at `+0x5A` = 22.
+
+`0x34168` (EAX = side): `word [me+0x8C]` = `0x4B0`; `0x2AE14(desc =
+[0xBDBC8 + char*4], EDX = side ? 0x4200 : 0x200, ECX = 0xFF, EBX = 0xD80,
+push 0)` (`0x2AE14` ends `ret 4` at `0x2B14A`, so `[esp+0x18]` is the side
+again after it); `[0x1077A0 + side*4]` = the returned record; for side ≠ 0
+`0x2A17C(record, 0x74, 0)`; `[me+0x5D]` = 0; `[me+0x43]` &= `0xFB`;
+`byte [0x1078FF]` = side; `byte [0x104AE9]` |= 1. `read_memory 0xBDBC8`:
+`0xBDB3C`, `0xBDB50`, `0xBDB64`, `0xBDB78`, `0xBDB8C`, `0xBDBA0`, `0xBDBB4`.
+
+`0x346F8` (EAX = rec): `word [slot(rec+0x51)+0x76]` = `word [0xBDBE6]` + 1
+(`read_memory`: `03 00`, so 4), then `0x36870(rec)`.
+
+**The streams.** `0xD28FC`: `DC00 000D1478` (hold bytes `02 02 …`),
+`ED40 000D2918` (ids `0x18B9..0x18CC` by variable), `B840 0014 000D2902`
+(20 passes back to the `ED40`), `9E00`, `D500 000346F8`. `0xD2940` (stun):
+`DC00 000D1618`, `ED40 000D295C`, `B840 0020 000D2946`, `9E00`,
+`D500 00034530` (unregistered; not reached in the demo).
+
+### 21.3 The fix and its assertions
+
+* **Fix** (`port/src/game/fighter.c`, `fighter.h`, `actors.c`):
+  `fighter_347b8(rec)`, `fighter_340bc(side)` (exported for the gate test),
+  the static `fighter_34168(side)` and `fighter_346f8(rec)`; the two jump
+  tables are `static const` arrays with each case's address; `0xBDBC8`,
+  `0xBDBE6` and `0xE4290` are local `#define`s. `actors.c` registers
+  `0x347B8` and `0x346F8` through `(rec, arg)` wrappers (both raws save EDX
+  and read only EAX).
+* **Review minors from frame 892.** The slot `+0x14` callback now takes the
+  slot at all three raw call sites (`0x19537`, `0x3514C`, `0x350B8`: EAX = EDX
+  = slot, zeroed on a non-zero return), through one `fighter_slot14_cb`
+  typedef whose `PORT:` note names the raw writers (`0x22B6F` in `0x22B28`,
+  and `0x22CD7`) and their target `0x29D04`, which reads EAX as the slot
+  (`0x29D16`, `0x29D25`). `0x350D0`'s site used to call `void (*)(void)` and
+  never zeroed the field; it now matches the raw. `fighter_35050`'s header
+  names both callers (`0x39CD9`, `0x22C60`) and no longer calls `0x39CC8` a
+  `+0x14` callback. `check_knockback_pose` zeroes `s0+0x14` at its end and
+  gains a char-0 seed (`0xBED10[0]` = 5, `0xBED38[0]` = 8: holds 12/5 =
+  `0x4019999A` and 20/8 = `0x40200000`).
+* **Assertions** (`test_fight.c`): the registrations (through wrappers) in
+  `check_anim_hold_scaler`; the new `check_knockdown_floor`:
+  * A, the gate: the demo seed fails; each bound (`+0x8C` 1 fails and −1
+    passes, either `+0x63`, 0x54/0x55, a lead of 0x3C/0x3D, 0x78/0x77) and
+    the side's own slot
+  * B, f = 165 through the dispatcher (`D500 47B8 0003` walked by
+    `actors_anim_begin`): 9/`0x0B`/0, `+0x43` `0xFF` → `0xFC`, `+0x74`
+    `0x29A` (the other side's kept), the record's speeds and `+0x42/+0x43`
+    zeroed, `rec+0x10` = `0xD1478`, `rec+8` in `0xD28FC`, hold 2.0 (the
+    stream's), id `0x18B9`; `+0x8C`, `DS_001077A0[1]`, `DS_001078FF` and
+    `+0x5D` untouched
+  * C, the plain table: char 0 → `0xE761A` (`rec+0x10` `0xE5598`), 1 and 7
+    → `0xE4290` (`0xE2528`)
+  * D, the stun arm on both sides in a three-record scratch pool: `+0x8C`
+    `0x4B0`, `DS_001077A0[side]` = the spawn (the other entry kept), its
+    `+0x18` = `0x4200`/`0x200` and `+0x1C` = `0xD80`, `+0x5D` 0, `+0x43`
+    `0xF8`, `DS_001078FF` = side, `DS_00104AE9` `0x02` → `0x03`; side 1's
+    spawn pset word `0x874` (`0x74` | `0x800`, the spawn's `+0x5F` = 1) and
+    the `0xD2940` stream (`rec+0x10` `0xD1618`); side 0 not `0x874` and
+    `0xE7656` (`0xE57F8`)
+  * E, mode 7: `B16` = 2 with `AD4` ≠ side freezes (hold 0, 9/3/3, nothing
+    else), `AD4` = side sets `+0x41` bit 4 and floors; `B16` = side ^ 1
+    freezes (both sides), another value floors
+  * F, `0x346F8` through the dispatcher: `+0x76` 4 (the other side's kept),
+    `0x36870`'s `+0x74`/`+0x10` cleared and `+0x5F` `0xFF`, the walk goes on
+    to the next id
+  * the `+0x14` shape: `kb_stub_14` records its argument; `0x35050`,
+    `0x350D0` and `0x193B0` each pass the slot and zero the field on 1
+* **Mutations.** A script applied each one to `fighter.c`/`actors.c`, rebuilt
+  and ran the suite; both files were restored and compared byte for byte
+  (identical), and the suite then passed. Counts are real `FAIL` lines.
+
+  | mutation | failures |
+  |---|---|
+  | `0x347B8` / `0x346F8` unregistered | 1 / 1 (the registration checks; the test's fallback registers them) |
+  | gate `+0x8C` `>= 0` / unsigned | 25 / 1 |
+  | gate without `me+0x63` / `oth+0x63` | 1 / 1 |
+  | gate `< 0x54` / `< 0x3C` / `> 0x78` | 1 / 1 / 1 |
+  | gate reads the other slot as its own | 26 |
+  | `0x34168` EDX sides swapped / ECX, EBX swapped | 2 / 2 |
+  | `0x34168` without `+0x8C` / `+0x5D` / `+0x43` mask / `DS_001078FF` | 2 / 2 / 2 / 2 |
+  | `0x34168` `DS_00104AE9 = 1` | 2 |
+  | `0x34168` `0x2A17C` on both sides / on side 0 only | 1 / 2 |
+  | `0x34168` stores into the other side's `DS_001077A0` | 4 |
+  | `0x347B8` mode test `!= 7` | 39 |
+  | mode 7: `AD4 ==` freezes / no `+0x41` bit 4 / `B16 == side` | 10 / 1 / 5 |
+  | freeze without hold 0 / `+0x54 = 0` / falls through | 3 / 1 / 10 |
+  | floor without `0x39A10` / `0x3C148` / `0x3C16C` | 2 / 3 / 2 |
+  | floor keeps `+0x54` / `+0x53 = 0x0A` / `+0x43 &= 0xFE` | 1 / 5 / 3 |
+  | gate inverted / no `0x34168` / tables swapped | 29 / 17 / 3 |
+  | default at char > 7 / plain[1] = `0xE42F6` | 1 / 1 |
+  | floor hold 1.0 instead of 3.0 | 0 (not observable: every floor stream's `DC00` replaces the hold) |
+  | `0x346F8` without `+1` / other side / no `0x36870` | 1 / 2 / 3 |
+  | `0x35050` / `0x350D0` passes the side | 1 / 1 |
+  | `0x350D0` / `0x193B0` never zeroes `+0x14` | 1 / 1 |
+  | `0x193B0` passes its own slot (`ctx[2]`) | 1 |
+  | `0x39B30` divides by `0xBED38` / case 2 by `0xBED10` | 1 / 1 |
+
+### 21.4 Measured
+
+With the fix, the `PR_T11` trace (temporary, reverted) reads: f = 165
+state 9/`0x0B`/0, `+0x74` 666, `rec+8` `0xD2906` (the lying loop) at hold 2.0
+through f = 205; f = 206 `0x346F8` → `0x36870` (`+0x74` 0, `+0x10` 0), then
+9/8 from f = 207. The whole-run miss probe now lists `0x35938` (61 hits, first
+f = 201), `0x4AC18` (f = 206, 302, 362) and `0x3640C` (f = 598); `0x347B8`,
+`0x346F8` and `0x370F0` no longer miss.
+
+| measurement | before (`f1023d5`) | after (`3fee8d0`) |
+|---|---|---|
+| captures 950..991 | 950: best 581/582 splice, 1 731 px; 951..983 1 788–16 754 px nearest-frame | **all explained** (clean or splice) |
+| demo oracle first unexplained | 950 (raw 3857); `[950..3616]` 2667 / 2661 unexpl.; port `[582..1380]` | **992 (raw 3899)**; `[992..3616]` 2625 / 2619 unexpl.; port `[618..1380]` (763, 0 exhibited) |
+| demo-fight ratchet | `[950..1884]` 935, N = 950 | **`[992..1884]` 893**, "ratchet improved: first unexplained 992 > 950", **N = 992** |
+| front-end oracle | `[560..949]` / 390 / 150 clean, 236 splice, 0 transition, 2 unexpl. | **`[560..991]` / 432 / 170 clean, 258 splice, 0 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved. Unmoved: title `54/55/2/0` and
+`54/57/0/0`, determinism 54; smk 120/120 and 41/41; attract 215/216
+(expected divergence at 215); C-vs-Python 9866; `symbols.h`; the front-end
+"endpoints BAD" line. The exhibition set grows to port frames 0..617 (381
+exhibited). The ladder, on `3fee8d0`'s tree,
+`cmake --build build --clean-first && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify && make demo-oracle`
+exited 0 with 0 compiler warnings and "all checks passed".
+
+**Not confirmed by the oracle.** `0x346F8` runs at f = 206 (port frame 622),
+after the new first unexplained frame; its effect is asserted by the unit
+test only.
+
+### 21.5 The new first unexplained frame, 992 (characterised, not fixed)
+
+Capture 991 is a clean 616/617 splice. Capture 992 is a tear: its best
+splice, port 617/618 (split at row 134), leaves 6 342 px in x 64–319, rows
+134–192; 993's best (618/619, row 188) leaves 13 800 px in rows 84–199, and
+from 994 the residual covers the whole frame (37 260 px). A background shift
+search (rows 60–119, x 40–279) puts the capture's scene 1 px right of the
+port's at 991/992 and 1–2 px left from 994 to 1 000, with 2 094–4 615 px of
+that band still differing at the best shift (the fighters and the parallax
+layers): a horizontal camera and position divergence, not the raptor's lying
+pose. Port frame 617 is f = 201, the frame of
+the first `fn_resolve` miss after this fix: the T-rex's record (side 0,
+`rec+8` `0xE6EEC`) reaches the unregistered animation-opcode target
+`0x35938` (operand `0x0C`), which then misses 61 times through the run. That is
+the candidate owner; the next miss, `0x4AC18` at f = 206, is also inside
+993..996. Neither is derived here, and the closure is not measured.

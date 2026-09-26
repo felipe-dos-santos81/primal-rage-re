@@ -197,8 +197,8 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
 # improves (the tool prints "ratchet improved ... raise N"). N = 992 was measured on
-# f1023d5 with the knockdown floor 0x347B8 and the get-up 0x346F8 ported and
-# registered: the struck raptor's landing stream 0xD2ADA reaches
+# 3fee8d0 (the commit that raised it, on f1023d5): the knockdown floor 0x347B8
+# and the get-up 0x346F8 are ported and registered: the struck raptor's landing stream 0xD2ADA reaches
 # `D500 47B8 0003` at f = 165, and 0x347B8 puts it in state 9/0x0B/0 on its
 # lying stream 0xD28FC (0x3479C[3]) until 0x346F8 at f = 206; the port
 # skipped the unregistered target, so the raptor played on and got up.
