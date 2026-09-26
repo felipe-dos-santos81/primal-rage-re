@@ -4623,3 +4623,140 @@ raptor is in the `0x3A95C` stagger (`rec+0x34` −200, −190, … per frame, no
 `9/8/1`). The owner is **not derived**; the candidates are the struck
 raptor's knock-back (`0x39834`'s `0x392A0`/`0x3B080` seeds or the `0xD267E`
 stream's velocity) and the T-rex's reaction `0x08`.
+
+## 27. The `0x349C8` command gate at capture 1481 (roar-timing Task 17, `219691e`)
+
+**Result in one line.** Capture 1481 has one cause, and it is the port's:
+neither §26.5 candidate. `0x349C8` (the `+0x52` == 0 handler) returns at
+`0x34A8D` when the side's command word has a bit in both `(cmd>>8)&3` and
+`(cmd>>8)&0xC`; the port only skipped the `0x3BDDC` consume there and still
+ran the `0x4000` arm and `0x35838`. At f = 619 the T-rex's word `0x6F6F`
+took the port's `0x4000` arm, which restarted its record on `0xC8978[0]`
+(sprite `0x0F02` → `0x0F34`); the reaction-`0x08` hit that follows in the
+same frame (`0x350D0` → `0x34E2C` → `0x18B04`) re-derived its record x from
+the new sprite's anchor, 64 units (1 px) left of the raw's. A one-line gate;
+no new function. This explains captures 1481..1545.
+
+### 27.1 The measurement (temporary, reverted)
+
+**Where the capture differs.** Captures 1476..1480 splice at 0 px (1480 is
+port 1035 exactly). 1481's best splice, 1035/1036 row 0, leaves 3 626 px,
+all in the two fighters: the burst, the worshippers, the HUD and every
+background band match port 1036 exactly, so the camera is not the owner.
+The T-rex's reaction-`0x08` crouch first shows in port 1036, whose state the
+per-frame probe prints as f = 619; a zoomed crop shows the capture's T-rex
+in the same crouch sprite, 1 px to the right; the raptor is 1 px left.
+
+**Checkpoints** (temporary `PR_T17` prints between every call of
+`fight_arena_frame` and inside `fight_hud_pass`, reverted): the raptor's
+record x moves only by its `0x2A4FC` velocity from f = 617 on
+(−220, −210, … with the `+0x43` = 10 friction) — nothing re-anchors it. The
+T-rex's record x moves 28 250 → 28 186 (−64) at f = 619 inside
+`fight_hud_pass(0)`: `fight_health_sync(0)` → `0x349C8` changes its actor's
+sprite `0x0F02` → `0x0F34` (stream `0xE6DD2` → `0xE6DEA`, the `0xC8978[0]`
+start, `+0x52/+0x54` = 5/1); then `0x3531C` → `0x350D0` → `0x34E2C(8)` →
+`0x18B04` → `0x18714`/`0x18540` recompute the anchor from `0x0F34`
+(`DS_00100AF0[0]` 30 → 80, `DS_00100AB0[0]` −320 → −256) and write
+rec+0x18 = slot+0x2C (27 930) − (−256) = 28 186. With sprite `0x0F02` the
+anchor stays 30 = slot+0x20, `0x18350` is skipped, AB0 stays −320 and
+rec+0x18 stays 28 250: exactly the capture's 1 px.
+
+**Checked and matching** (Ghidra `disassemble_function` / `read_memory` +
+capstone): `0x188DC`, `0x188AC`, `0x18714`, `0x18540` (and its `0x18524`
+table), `0x18B04` with its shared tail `0x18AAE..0x18AF5`, `0x2A4FC` (the
+velocity and the `+0x43` friction), `0x3B464`'s middle and tail (`0x3B612
+xor ecx,ecx`: no mirror onto the thrower), `0x3531C`'s case 10 (`0x354DA`
+null-checks `+0x10`), `0x354F0` (the ±`0x7C00` wall clamp, not reached:
+both fighters inside), and `0x350D0`'s own command gate (`0x35209 75 1C
+jne 0x35227` skips only the consume, as the port has it).
+
+### 27.2 The raw
+
+`0x349C8`, after the `0x365C8`/`0x36638` calls:
+
+```
+0x34A62  66 8B 04 7D E0 88 10 00   mov ax, [edi*2 + 0x1088E0]
+0x34A6A  89 C2                     mov edx, eax
+0x34A6C  30 C2                     xor dl, al
+0x34A6E  80 E6 03                  and dh, 3
+0x34A71  81 E2 FF FF 00 00         and edx, 0xFFFF
+0x34A77  74 10                     je 0x34A89
+0x34A79  30 C0                     xor al, al
+0x34A7B  80 E4 0C                  and ah, 0xC
+0x34A7E  25 FF FF 00 00            and eax, 0xFFFF
+0x34A83  74 04                     je 0x34A89
+0x34A85  B0 01                     mov al, 1
+0x34A87  EB 02                     jmp 0x34A8B
+0x34A89  30 C0                     xor al, al
+0x34A8B  84 C0                     test al, al
+0x34A8D  0F 85 78 00 00 00         jne 0x34B0B        ; the epilogue
+0x34A93  66 8B 14 7D E0 88 10 00   mov dx, [edi*2 + 0x1088E0]
+0x34A9D  30 D2                     xor dl, dl
+0x34A9F  E8 38 73 00 00            call 0x3BDDC
+0x34AA7  84 C0                     test al, al
+0x34AA9  75 60                     jne 0x34B0B
+0x34AAB  ...                       cmd & 0x4000 -> 0x2BC30(0xC8978[ch], 2.0), +0x52 = 5, +0x54 = 1
+0x34ADD  ...                       (+0x53 == 0 && cmd & 0x1000) || cmd & 0x2000 -> 0x35838
+0x34B0B  5F 5E 5A 59 5B C3         pop edi/esi/edx/ecx/ebx; ret
+```
+
+So all three arms sit behind `0x34A8D`. The port's `if (!bvar2) { consume }`
+followed by the unconditional arms is the defect. `0x6F6F`: `0x6F & 3` = 3,
+`0x6F & 0xC` = 0xC, so the raw returns at `0x34A8D`.
+
+### 27.3 The fix and its assertions
+
+`fighter_state_default` returns when `bvar2` holds (`/* 0x34A8D jne
+0x34B0B */`), before the consume and both arms; the header comment names the
+gate. New case I in `test_fight.c`'s `check_deep_callees`: side 1 (char 3)
+with `0xC8978[3]`/`[0]` pointed at distinct scratch streams, So+0x43 = 0 and
+S+0x43 = 0 (so `0x365C8`/`0x36638` return 0), sentinels `+0x52`/`+0x54` =
+`0x66`, rec+8 = `0xABCDEF`, rec+0x20 = `0x11111111`, actor sprite `0x7777`.
+Command `0x6F6F`: every sentinel survives. Command `0x4040` (`(cmd>>8)&3` = 0,
+bit 15 clear so `0x3BDDC` returns 0): the `0x4000` arm runs (`+0x52/+0x54` =
+5/1, rec+8 = the char-3 stream, rec+0x20 = 2.0, sprite `0x0123`). The table
+entries and `DS_001088E2` are restored; the slot region is the enclosing
+test's snapshot.
+
+Mutations (each run, then reverted): removing the gate fails the five
+`0x6F6F` assertions; an unconditional return fails the five `0x4040`
+assertions (and three existing `test_fight` checks at 2444..2452).
+
+### 27.4 Measured
+
+Port frames 0..1035 are byte-identical to `0f4d415`'s, and 1036 (the f = 619
+state) is the first that differs.
+
+| measurement | before (`0f4d415`) | after (`219691e`) |
+|---|---|---|
+| captures 1481..1545 | 1481 3 626 px; 1482 3 615; 1483 2 001 | **all explained** |
+| demo oracle first unexplained | 1481 (raw 4388); `[1481..3616]` 2136 / 2130 unexpl. | **1546 (raw 4453)**; `[1546..3616]` 2071 / 2065 unexpl.; port `[1092..1380]` (289, 0 exhibited) |
+| demo-fight ratchet | `[1481..1884]` 404, N = 1481 | **`[1546..1884]` 339**, "ratchet improved: first unexplained 1546 > 1481", **N = 1546** |
+| front-end oracle | `[560..1480]` / 921 / 383 clean, 531 splice, 3 transition, 2 unexpl. | **`[560..1545]` / 986 / 410 clean, 569 splice, 3 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved. The three transition frames are the
+same (`port832@row177`, `port862@row189`, `port906@row31`). The exhibition
+set grows to port frames 0..1091 (855 exhibited). The ladder
+`cmake --build build --clean-first && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify`
+exited 0 with 0 compiler warnings, with N = 1546 in the Makefile. Unmoved: title
+`54/55/2/0` and `54/57/0/0`, determinism 54; smk 120/120 and 41/41; attract
+215/216 (expected divergence at 215); C-vs-Python 9866; `symbols.h`; the
+front-end "endpoints BAD" line.
+
+**Unresolved code targets after the fix** (a temporary whole-run probe in
+`fn_resolve`, reverted): `0x3C0A4` (f = 850), `0x3ECF8` (f = 887) and
+`0x3E3A8` (f = 896), plus the known front-end sites `0x29B74`/`0x41578` and
+the stub `0x5D812`. `0x3C048` (f = 652 in §26.4) no longer misses: the run
+moved from f = 619, so these frames are not comparable one for one with
+§26.4's.
+
+### 27.5 The new first unexplained frame, 1546 (characterised, not fixed)
+
+Captures 1542..1545 splice at 0 px (1088/1089 row 148, 1088/1089, 1089/1090,
+1090/1091 row 40). Capture 1546's best splice, port 1091/1092 row 67, leaves
+148 px, all in x 221–234, rows 180–199: a small teal-clad worshipper beside
+the right-hand group. In the capture it has dropped into a crouch (a smaller,
+lower figure) while in the port it keeps its upright pose; 1547 leaves 297 px (x 209–235, rows 177–199), 1548 323
+and 1549/1550 372 px (x 209–237, rows 175–199), with the capture's figure
+lying lower each frame. The fighters, the burst and the background match.
+Port 1091 is the f ≈ 674 state. The owner is **not derived**; no `fn_resolve` miss falls in f = 620..849.

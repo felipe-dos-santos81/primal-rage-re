@@ -310,12 +310,11 @@ command generator `0x47208`, the `+0x52` state machine (`0x3531C`/`0x350D0`),
 the `0x3C88C` hitbox machine and the `0x3CF38` hit chain — the chain now
 **fires**, hits land (`+0x7C` 0/0 → 1/1), and the fight's last state change
 moved **1262 → 1400**. Its report-only oracle (`make demo-oracle`) measures the
-demo window `[1481..3616]` (raw `4388..8409`), **2136 frames: 0 clean / 0 splice
-/ 0 transition / 2130 unexplained** (6 all-black frames excluded); the first
-unexplained frame is capture **1481 (raw 4388)** — after the breath ring hits
-the raptor (f = 617), the capture's two fighters stand about 1 px further apart
-and the T-rex's pose drifts (the raptor's knock-back or the T-rex's reaction
-`0x08` at f = 619 are the candidates; not derived)
+demo window `[1546..3616]` (raw `4453..8409`), **2071 frames: 0 clean / 0 splice
+/ 0 transition / 2065 unexplained** (6 all-black frames excluded); the first
+unexplained frame is capture **1546 (raw 4453)** — a small teal-clad worshipper
+at x ≈ 209–237 drops into a crouch in the capture while the port's stays
+upright (f ≈ 674; not derived)
 (moved from 843
 by the demo-pose cycle, then from 851 by the roar-timing fix, then from 858 by
 the frame-858 fix, then from 859 by the frame-859 fix, then from 860 by the
@@ -325,7 +324,8 @@ frame-870 fix, then from 880 by the frame-880 fix, then from 891 by the
 frame-891 fix, then from 892 by the frame-892 fix, then from 950 by the
 frame-950 fix, then from 992 by the frame-992 fix, then from 998 by the
 frame-998 fix, then from 1358 by the frame-1358 fix, then from 1411 by the
-frame-1411 fix, then from 1478 by the frame-1478 fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
+frame-1411 fix, then from 1478 by the frame-1478 fix, then from 1481 by the
+frame-1481 fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
 Task 1 corrected it to **836/25**, and the final re-capture moved the loader text
 to 832 with the fight's first frames at 833/834 — record §9.1/§9.3.) Cycle 2
 advanced the boundary 811 → 816 → 832: the state-9 globe's fourth layer
@@ -517,13 +517,21 @@ See §25 of the record.
 
 See §26 of the record.
 
+**The `0x349C8` command gate (`219691e`), the demo fight's captures 1481..1545.** `0x349C8` (the `+0x52` == 0 handler) returns at `0x34A8D` (`0F 85 78 00 00 00  jne 0x34B0B`) when the side's command word has a bit in both `(cmd>>8)&3` and `(cmd>>8)&0xC`; the `0x3BDDC` consume, the `0x4000` arm and `0x35838` all sit behind that gate. The port skipped only the consume. At f = 619 the T-rex's word `0x6F6F` took the port's `0x4000` arm, which restarted its record on `0xC8978[0]` (sprite `0x0F02` → `0x0F34`), and the reaction-`0x08` hit's `0x18B04` then re-derived its record x from the new sprite's anchor, 64 units (1 px) left of the raw's. A one-line gate, no new function; new case I in `check_deep_callees`.
+
+* **Measured.** Captures 1481..1545 are now explained; port frames 0..1035 are byte-identical to before, and 1036 (the f = 619 state) is the first that differs. The demo oracle's first unexplained is now **1546 (raw 4453)**. The demo window `[1546..3616]` has 2071 frames, 2065 unexplained, and the fight window `[1546..1884]` has 339 frames, 0 explained. The ratchet N is raised **1481 → 1546** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1480]` / 921 → **`[560..1545]` / 986 / `410 clean, 569 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1546's best 1091/1092 splice (row 67) leaves 148 px in x 221–234, rows 180–199: a small teal-clad worshipper crouches in the capture and not in the port; 1547 leaves 297 px and 1549 372 px. The fighters, the burst and the background match. Port 1091 is the f ≈ 674 state; not derived.
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x3C0A4` (f = 850), `0x3ECF8` (f = 887) and `0x3E3A8` (f = 896). `0x3C048` no longer misses. `0x370F0` and `0x34530` are unregistered and not reached.
+
+See §27 of the record.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
-demo fight's remaining arena divergence (first unexplained at capture 1481
-after the frame-1478 fix: from f ≈ 619 the capture's fighters stand about
-1 px further apart; the struck raptor's knock-back and the T-rex's reaction
-`0x08` are the candidates, not derived; the unported `0x19020`/`0x3E484` hook
+demo fight's remaining arena divergence (first unexplained at capture 1546
+after the frame-1481 fix: a small worshipper crouches in the capture and not
+in the port, not derived; the unported `0x19020`/`0x3E484` hook
 and `0x3B464`'s `0x235C4` arm are named gaps; the unregistered code targets
-`0x3C048` (f = 652) and `0x3E3A8` (f = 920) are later known gaps, and `0x370F0` is still unregistered; not
+`0x3C0A4` (f = 850), `0x3ECF8` (f = 887) and `0x3E3A8` (f = 896) are later known gaps, and `0x370F0` is still unregistered; not
 reached in this run) and
 the
 interactive match cycle (the mode graph, `0x1EEB0`, the `0x1EA08` sites) remain;

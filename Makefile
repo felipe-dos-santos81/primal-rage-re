@@ -197,7 +197,7 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
 # improves (the tool prints "ratchet improved ... raise N"). N = 1546 was measured on
-# the commit that raised it, on 0f4d415: 0x349C8's command gate is ported: a command
+# 219691e (the commit that raised it, on 0f4d415): 0x349C8's command gate is ported: a command
 # word with a bit in both (cmd>>8)&3 and (cmd>>8)&0xC returns at 0x34A8D
 # (`jne 0x34B0B`) before the 0x3BDDC consume, the 0x4000 arm and 0x35838. At f = 619
 # of the demo the T-rex's word 0x6F6F took the port's 0x4000 arm (sprite 0x0F02 ->
