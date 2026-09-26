@@ -474,6 +474,12 @@ def load_port(d, n):
 # [560..1762] (1190 -> 1203; still the same 3 transition frames); the allowed
 # set stays (832, 833), and the exhibition set grows to port frames 0..1277
 # (1041 exhibited).
+# 0x39040's combo text 0x38D90 and combo-name check 0x38FEC (a named gap
+# before; at f = 860 the T-rex's second hit draws "2 HIT COMBO" down the text
+# grid's column 2) explain captures 1763..1880, [560..1762] -> [560..1880]
+# (1203 -> 1321; still the same 3 transition frames); the allowed set stays
+# (832, 833), and the exhibition set grows to port frames 0..1378 (1142
+# exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

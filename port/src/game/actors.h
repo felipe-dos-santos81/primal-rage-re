@@ -121,6 +121,19 @@ void text_cursor_set(s32 col, s32 row, const u8 *s, u32 mode);
 void text_cells_release(s32 col, s32 row, const u8 *s, u32 mode);
 /* 0x2F4BC. 0x2F198 with the cursor saved and restored afterwards. */
 void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode);
+/* 0x2F20C. 0x2F198's vertical twin (0x2F830 with the stack byte 1); the cursor
+ * gets {row, col + glyph count}. */
+void text_vertical_set(s32 col, s32 row, const u8 *s, u32 mode);
+/* 0x2F314. EAX = col, EDX = row, EBX = string: releases strlen(s) cells going
+ * down one row per cell, stopping after a row above 0x1E. */
+void text_cells_release_vertical(s32 col, s32 row, const u8 *s);
+/* 0x2EFD4 (with 0x2EF24). "%i" of `value` into `dest`, fitted to `width` by
+ * `pad` (0 '0'-left, 1 ' '-left, 2 ' '-right, 3 none); returns the digit
+ * count. */
+s32 text_number_format(s32 value, u8 *dest, s32 width, u32 pad);
+/* 0x2F4D0. EAX = col, EDX = row, EBX = value, ECX = width, stack pad and mode:
+ * 0x2EFD4 then 0x2F198 with the cursor saved and restored. */
+void text_number_draw(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode);
 /* 0x2F830. EAX = string, EDX = mode, ECX = row, EBX = col, and a stack byte
  * `vertical` (0x2F198 passes 0; 0x2F20C passes 1). All-spaces clears the run
  * through 0x2F280; otherwise it lays each character out through 0x2F5A0 and

@@ -859,7 +859,7 @@ static void game_state_6(void)
  * descriptor, then builds the per-character rows and spawns the selected
  * character's actor. The build reads its strings and its selection key from the
  * paged resource reader 0x2DBC4/0x2DB58 (not modelled) and formats them through
- * 0x2F4D0 (0x2EFD4, also not modelled), so only the three calls before the
+ * 0x2F4D0 (0x2EFD4; both ported for 0x38D90 since), so only the three calls before the
  * resource read are transcribed. Task 6 wires only this state-5 call site;
  * 0x1EA08's other four callers (0x11A30 and three in FUN_0001EEB0, the match
  * sub-state machine) belong to the match cycle and stay unwired. */
@@ -872,8 +872,8 @@ static void frontend_match_start(void)
      * a string blob whose [esi+0x16] selects the character descriptor from
      * 0xA7DCC (the guard at 0x1EB0A keeps indices 0..6), and 0x2F4D0/0x2F4BC
      * draw the formatted rows before 0x2AE14/0x2A17C spawn the selected actor.
-     * The port does not model the paged resource reader 0x2DB58/0x2DBC4 or the
-     * 0x2EFD4 formatter, so the blob, the `local` index, the string draws and
+     * The port does not model the paged resource reader 0x2DB58/0x2DBC4 (the
+     * 0x2EFD4 formatter is ported), so the blob, the `local` index, the string draws and
      * the actor spawn are a declared gap
      * (docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md §7.1,
      * §7.2); spawning descriptor 0 would be a fitted constant. */

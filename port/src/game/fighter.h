@@ -296,7 +296,24 @@ int fighter_34ddc(u32 side);
 /* 0x34E20. 1 when the reaction byte is below 0x18. */
 int fighter_34e20(u32 reaction);
 
-/* 0x39040. The per-side round/timer pass; its tail clears the +0x107D2C/
+/* 0x38C5C. Clear side's combo text cells (rows 8, 9..14 and 0x10). */
+void fighter_38c5c(u32 side);
+/* 0x38D24. Count down the 0x107D18 combo-text timer; the step reaching zero
+ * clears the text and redraws string 0xE5 on rows 6/7. */
+void fighter_38d24(u32 side);
+/* 0x38D90. Draw side's combo text: the hit count and "\x1bCOMBO" down col
+ * side*0x25 + 2 from row 8, and (slot+0x63 clear) the 0x107D20 value and "%"
+ * on row 0x10. */
+void fighter_38d90(u32 side);
+/* 0x38ED0. EAX = side, EDX = a 0x44-byte combo record: 1 (and, with slot+0x63
+ * clear, the record's name strings on rows 6/7) when its 0x107A80 needs and a
+ * hit-count threshold are met, else 0. */
+u8 fighter_38ed0(u32 side, u32 rec);
+/* 0x38FEC. Walk the character's combo records through 0x38ED0 until one
+ * names a combo. */
+void fighter_38fec(u32 side);
+
+/* 0x39040. The per-side combo pass; its tail clears the +0x107D2C/
  * 0x107D20/0x107D24 words and the 0x107A80 table. */
 void fighter_39040(u32 side);
 
@@ -328,8 +345,8 @@ void fighter_35e04(u32 rec);
 void fighter_3e62c(u32 slot, u32 rec, u32 side);
 
 /* 0x3BF70. The forced attack, 0x34E2C's reaction callback 0x3F (*(u32*)0xA3A14
- * for the T-rex): unless the side's slot +0x40 bit 7 is set, the record's
- * +0x34/+0x43/+0x42 cleared, slot +0x5F = 0xFF, DS_00107D40 + side*4 = the
+ * for the T-rex): unless the side's slot +0x40 bit 7 is set, the side's
+ * record's (ctx[4], DSD(0x1077B0 + side*0x94)) +0x34/+0x43/+0x42 cleared, slot +0x5F = 0xFF, DS_00107D40 + side*4 = the
  * 0xBEFA0 row, the 0xC8B30[char] attack at hold 2.0 through 0x3C4CC, state
  * 3/4/2, slot +0x40 bit 7, DS_001078F8 + side = 1 and slot +0x4E = 0xFFFF when
  * 0x1A570(side) is non-zero, else 1. Returns 1, or 0 on the bit-7 reject.

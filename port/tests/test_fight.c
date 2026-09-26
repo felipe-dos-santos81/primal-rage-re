@@ -3918,8 +3918,12 @@ static void check_hud_pass_machine(void)
     DSD(DS_00104B00) = 3;
     DSW(DS_001088E0) = 0x8000u;
     DSD(DS_00107D50) = 0;                       /* the preamble gate is fresh */
+    DSW(DS_00107D18) = 2;                       /* 0x357F5 0x38D24 counts it */
+    DSW(DS_00107D18 + 2u) = 5;                  /* side 1's is not touched */
 
     fight_hud_pass(0u);
+    CHECK_EQ_INT((int)DSW(DS_00107D18), 1);
+    CHECK_EQ_INT((int)DSW(DS_00107D18 + 2u), 5);
     CHECK_EQ_INT((int)DSB(p0 + 0x52u), 3);      /* the machine drove it */
     CHECK_EQ_INT((int)DSB(p0 + 0x54u), 2);
     CHECK_EQ_INT((int)DSB(p0 + 0x53u), 4);
@@ -8407,6 +8411,287 @@ static void check_arena_backdrop(void)
     }
 }
 
+/* ---- the combo text (record §33) ---------------------------------------- */
+
+/* The record in text-grid cell (row, col), and its mode-0 glyph sprite id. */
+static u32 ct_cell(s32 row, s32 col)
+{
+    return DSD(DS_00105F38 + (u32)row * 0xacu + (u32)col * 4u);
+}
+
+static u32 ct_sprite(s32 row, s32 col)
+{
+    u32 r = ct_cell(row, col);
+    return r != 0 ? (u32)(DSW(actor_pset(r)) & 0x7fffu) : 0u;
+}
+
+/* Plant a non-glyph record (sprite 0x2C11) in cell (row, col). */
+static u32 ct_plant(s32 row, s32 col)
+{
+    u32 r = actor_spawn((const u32 *)(mem + 0x9AC30u), 0x4840u, 0xE0u,
+                        0x1B00u, 0u);
+    DSD(DS_00105F38 + (u32)row * 0xacu + (u32)col * 4u) = r;
+    return r;
+}
+
+/* 0x38C5C/0x38D24/0x38D90/0x38ED0/0x38FEC and 0x39040's two calls. Glyph
+ * sprite ids are the font table's at 0xBCD7C: '0'.. = 0x3F45.. ('2' 0x3F47,
+ * '5' 0x3F4A, '6' 0x3F4B), '%' 0x3F3A, the 0x1B HIT glyph 0x3F30, 'A'.. = 0x3F56..
+ * ('B' 0x3F57, 'C' 0x3F58, 'E' 0x3F5A, 'M' 0x3F62, 'O' 0x3F64, 'P' 0x3F65,
+ * 'S' 0x3F68, 'T' 0x3F69). String 0xE5 is 60 spaces; the T-rex's combo records at
+ * 0xBE024 (7) name 0xE6/0xE7 at 7 hits, 0xE8 "EXTRA CRUNCHY"/0xE9 " " at 6,
+ * 0xEA/0xEB at 4 when 0x107A80[side][42] >= 1; record 1 (0xBE068) needs
+ * [36] and names 0xEE "SUPER EAR"/0xEF "SPLITTER" at 6. Planted records
+ * (sprite 0x2C11) are the sentinels for every cleared cell. Runs on the real
+ * actor pool, after test_fight's restores. */
+static void check_combo_text(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u8 sv_slots[0x128], sv_d00[0x40], sv_a80[0x80];
+    u32 sv_cur = DSD(DS_00105F34);
+    u8 sv_8b6 = DSB(DS_001088B6), sv_8b7 = DSB(DS_001088B6 + 1u);
+    u32 sv_rng = DSD(DS_000EF6D8), sv_frame = DSD(DS_000EF6DC);
+    u32 sv_mode = DSD(DS_00104B00);
+    tf_snap(sv_slots, s0, 0x128u);
+    tf_snap(sv_d00, 0x00107D00u, 0x40u);
+    tf_snap(sv_a80, DS_00107A80, 0x80u);
+
+    /* --- A. 0x38D90 side 0, slot+0x63 clear: hits 2 at row 8, the HIT glyph
+     * and COMBO down col 2 from row 9, " 75" and "%" on row 0x10. --- */
+    actors_reset();
+    DSB(s0 + 0x63u) = 0;
+    DSW(0x00107D2Cu) = 2;
+    DSW(DS_00107D20) = 75;
+    ct_plant(8, 3);                 /* 0x38C5C's row-8 run: cols 2, 3 */
+    ct_plant(0x10, 4);              /* row 0x10 runs: cols 0..5 */
+    ct_plant(0x10, 5);
+    ct_plant(6, 0);                 /* string 0xE5 clears rows 6/7 */
+    ct_plant(7, 5);
+    ct_plant(15, 2);                /* below COMBO: nothing reaches it */
+    DSD(DS_00105F34) = 0x55555555u;
+    fighter_38d90(0u);
+    CHECK_EQ_INT((int)ct_sprite(8, 2), 0x3f47);
+    CHECK_EQ_INT((int)ct_cell(8, 3), 0);
+    CHECK_EQ_INT((int)ct_sprite(9, 2), 0x3f30);
+    CHECK_EQ_INT((int)ct_sprite(10, 2), 0x3f58);
+    CHECK_EQ_INT((int)ct_sprite(11, 2), 0x3f64);
+    CHECK_EQ_INT((int)ct_sprite(12, 2), 0x3f62);
+    CHECK_EQ_INT((int)ct_sprite(13, 2), 0x3f57);
+    CHECK_EQ_INT((int)ct_sprite(14, 2), 0x3f64);
+    CHECK_EQ_INT((int)ct_sprite(15, 2), 0x2c11);
+    CHECK_EQ_INT((int)ct_cell(9, 3), 0);
+    CHECK_EQ_INT((int)ct_cell(0x10, 0), 0);
+    CHECK_EQ_INT((int)ct_sprite(0x10, 1), 0x3f4c);
+    CHECK_EQ_INT((int)ct_sprite(0x10, 2), 0x3f4a);
+    CHECK_EQ_INT((int)ct_sprite(0x10, 3), 0x3f3a);
+    CHECK_EQ_INT((int)ct_cell(0x10, 4), 0);
+    CHECK_EQ_INT((int)ct_cell(0x10, 5), 0);
+    CHECK_EQ_INT((int)ct_cell(6, 0), 0);
+    CHECK_EQ_INT((int)ct_cell(7, 5), 0);
+    CHECK_EQ_INT((int)DSW(DS_00105F34), 9);         /* 0x2F20C's cursor */
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2u), 8);    /* col 2 + 6 glyphs */
+
+    /* --- A2. slot+0x63 set: no row-0x10 draw; the planted cells are still
+     * cleared by 0x38C5C. --- */
+    actors_reset();
+    DSB(s0 + 0x63u) = 1;
+    ct_plant(0x10, 1);
+    ct_plant(0x10, 3);
+    fighter_38d90(0u);
+    CHECK_EQ_INT((int)ct_sprite(8, 2), 0x3f47);
+    CHECK_EQ_INT((int)ct_cell(0x10, 1), 0);
+    CHECK_EQ_INT((int)ct_cell(0x10, 3), 0);
+
+    /* --- B. side 1: col 0x25 + 2 = 39, its own hit count, +0x63 and 0x107D22.
+     * Side 0's words are sentinels that would draw other digits. --- */
+    actors_reset();
+    DSB(s0 + 0x63u) = 1;
+    DSB(s1 + 0x63u) = 0;
+    DSW(0x00107D2Cu) = 7;
+    DSW(0x00107D2Eu) = 3;
+    DSW(DS_00107D20) = 2;
+    DSW(DS_00107D20 + 2u) = 5;
+    fighter_38d90(1u);
+    CHECK_EQ_INT((int)ct_sprite(8, 39), 0x3f48);
+    CHECK_EQ_INT((int)ct_sprite(9, 39), 0x3f30);
+    CHECK_EQ_INT((int)ct_sprite(14, 39), 0x3f64);
+    CHECK_EQ_INT((int)ct_cell(8, 2), 0);
+    CHECK_EQ_INT((int)ct_cell(0x10, 37), 0);
+    CHECK_EQ_INT((int)ct_cell(0x10, 38), 0);
+    CHECK_EQ_INT((int)ct_sprite(0x10, 39), 0x3f4a);
+    CHECK_EQ_INT((int)ct_sprite(0x10, 40), 0x3f3a);
+
+    /* --- C. 0x38D24: the timer counts down; only the step reaching zero
+     * clears (0x38C5C + the 0xE5 rows); zero stays zero. --- */
+    actors_reset();
+    DSW(DS_00107D18) = 3;
+    DSW(DS_00107D18 + 2u) = 9;
+    ct_plant(8, 2);
+    ct_plant(6, 0);
+    ct_plant(12, 2);                /* 0x2F314's six rows 9..14 */
+    ct_plant(14, 2);
+    ct_plant(15, 2);
+    fighter_38d24(0u);
+    CHECK_EQ_INT((int)DSW(DS_00107D18), 2);
+    CHECK_EQ_INT((int)ct_sprite(8, 2), 0x2c11);
+    fighter_38d24(0u);
+    CHECK_EQ_INT((int)DSW(DS_00107D18), 1);
+    CHECK_EQ_INT((int)DSW(DS_00107D18 + 2u), 9);
+    CHECK_EQ_INT((int)ct_sprite(8, 2), 0x2c11);
+    CHECK_EQ_INT((int)ct_sprite(12, 2), 0x2c11);
+    fighter_38d24(0u);
+    CHECK_EQ_INT((int)DSW(DS_00107D18), 0);
+    CHECK_EQ_INT((int)ct_cell(8, 2), 0);
+    CHECK_EQ_INT((int)ct_cell(6, 0), 0);
+    CHECK_EQ_INT((int)ct_cell(12, 2), 0);
+    CHECK_EQ_INT((int)ct_cell(14, 2), 0);
+    CHECK_EQ_INT((int)ct_sprite(15, 2), 0x2c11);
+    ct_plant(8, 2);
+    fighter_38d24(0u);
+    CHECK_EQ_INT((int)DSW(DS_00107D18), 0);
+    CHECK_EQ_INT((int)ct_sprite(8, 2), 0x2c11);
+    /* Side 1 counts its own word and clears its own column. The row-7 0xE5
+     * clear (60 cells from col 0) runs on through col 0x2B, which is row 8's
+     * col 0, and then row 8's cols 0..15 (0x2F280's wrap): (8, 15) goes,
+     * (8, 16) stays. */
+    DSW(DS_00107D18 + 2u) = 1;
+    ct_plant(8, 38);                /* side 1's runs: row 8 cols 39/40 */
+    ct_plant(8, 39);
+    ct_plant(8, 40);
+    ct_plant(0x10, 42);             /* row 0x10 cols 37..42 */
+    ct_plant(8, 15);
+    ct_plant(8, 16);
+    fighter_38d24(1u);
+    CHECK_EQ_INT((int)DSW(DS_00107D18 + 2u), 0);
+    CHECK_EQ_INT((int)ct_sprite(8, 38), 0x2c11);
+    CHECK_EQ_INT((int)ct_cell(8, 39), 0);
+    CHECK_EQ_INT((int)ct_cell(8, 40), 0);
+    CHECK_EQ_INT((int)ct_cell(0x10, 42), 0);
+    CHECK_EQ_INT((int)ct_cell(8, 15), 0);
+    CHECK_EQ_INT((int)ct_sprite(8, 16), 0x2c11);
+
+    /* --- D. 0x38ED0/0x38FEC: the T-rex's records. --- */
+    mem_fill(DS_00107A80, 0, 0x80u);
+    DSB(s0 + 0x7Au) = 0;
+    DSB(s0 + 0x63u) = 0;
+    /* D1. 6 hits and [42] = 1: record 0's second threshold names row 6
+     * "EXTRA CRUNCHY" (col (0x2b - 13) >> 1 = 15) and row 7 " " (a clear). */
+    actors_reset();
+    DSW(0x00107D2Cu) = 6;
+    DSB(DS_00107A80 + 42u) = 1;
+    ct_plant(7, 21);
+    CHECK_EQ_INT((int)fighter_38ed0(0u, 0x000BE024u), 1);
+    CHECK_EQ_INT((int)ct_sprite(6, 15), 0x3f5a);
+    CHECK_EQ_INT((int)ct_cell(7, 21), 0);
+    /* D2. 7 hits: the first threshold, 0xE6 "TAKE A BITE" at col 16. */
+    actors_reset();
+    DSW(0x00107D2Cu) = 7;
+    CHECK_EQ_INT((int)fighter_38ed0(0u, 0x000BE024u), 1);
+    CHECK_EQ_INT((int)ct_sprite(6, 16), 0x3f69);
+    /* D3. 3 hits: no threshold, 0 and nothing drawn. */
+    actors_reset();
+    DSW(0x00107D2Cu) = 3;
+    ct_plant(6, 0);
+    CHECK_EQ_INT((int)fighter_38ed0(0u, 0x000BE024u), 0);
+    CHECK_EQ_INT((int)ct_sprite(6, 0), 0x2c11);
+    /* D4. [42] below the need: 0 at the list, before any threshold. */
+    DSW(0x00107D2Cu) = 7;
+    DSB(DS_00107A80 + 42u) = 0;
+    CHECK_EQ_INT((int)fighter_38ed0(0u, 0x000BE024u), 0);
+    CHECK_EQ_INT((int)ct_sprite(6, 0), 0x2c11);
+    /* D5. slot+0x63 set: 1 but no draw. */
+    DSB(DS_00107A80 + 42u) = 1;
+    DSB(s0 + 0x63u) = 1;
+    CHECK_EQ_INT((int)fighter_38ed0(0u, 0x000BE024u), 1);
+    CHECK_EQ_INT((int)ct_sprite(6, 0), 0x2c11);
+    DSB(s0 + 0x63u) = 0;
+    /* D6. 0x38FEC: record 0 fails its [42] need, record 1 ([36]) names 0xEE
+     * "SUPER EAR" (col 17) and 0xEF "SPLITTER" (col 17). */
+    actors_reset();
+    DSW(0x00107D2Cu) = 6;
+    DSB(DS_00107A80 + 42u) = 0;
+    DSB(DS_00107A80 + 36u) = 1;
+    fighter_38fec(0u);
+    CHECK_EQ_INT((int)ct_sprite(6, 17), 0x3f68);
+    CHECK_EQ_INT((int)ct_sprite(7, 17), 0x3f68);
+    CHECK_EQ_INT((int)ct_sprite(7, 18), 0x3f65);     /* 'P' */
+    /* D7. Side 1 reads its own 0x107A80 half, hit count, +0x63 and char;
+     * side 0's are set to name a combo and must not. */
+    actors_reset();
+    DSB(DS_00107A80 + 36u) = 0;
+    DSB(DS_00107A80 + 42u) = 1;
+    DSW(0x00107D2Cu) = 7;
+    DSB(s1 + 0x7Au) = 0;
+    DSB(s1 + 0x63u) = 0;
+    DSW(0x00107D2Eu) = 6;
+    ct_plant(6, 16);
+    CHECK_EQ_INT((int)fighter_38ed0(1u, 0x000BE024u), 0);
+    CHECK_EQ_INT((int)ct_sprite(6, 16), 0x2c11);
+    DSB(DS_00107A80 + 0x40u + 42u) = 1;
+    CHECK_EQ_INT((int)fighter_38ed0(1u, 0x000BE024u), 1);
+    CHECK_EQ_INT((int)ct_sprite(6, 15), 0x3f5a);   /* 6 hits: EXTRA CRUNCHY */
+    DSB(s1 + 0x63u) = 1;
+    ct_plant(6, 0);
+    CHECK_EQ_INT((int)fighter_38ed0(1u, 0x000BE024u), 1);
+    CHECK_EQ_INT((int)ct_sprite(6, 0), 0x2c11);
+    /* D8. 0x38FEC by char: side 0 as char 1 walks 0xBEB90[1]'s records,
+     * which do not use id 42, so the T-rex names are not drawn. */
+    actors_reset();
+    DSB(s0 + 0x7Au) = 1;
+    mem_fill(DS_00107A80, 0, 0x40u);
+    DSB(DS_00107A80 + 42u) = 1;
+    DSW(0x00107D2Cu) = 7;
+    ct_plant(6, 16);
+    fighter_38fec(0u);
+    CHECK_EQ_INT((int)ct_sprite(6, 16), 0x2c11);
+    DSB(s0 + 0x7Au) = 0;
+    /* D9. The walk stops at the first record that names: with [42] and [36]
+     * both met, record 0 draws "EXTRA CRUNCHY" (col 15..27) and " " on row 7;
+     * record 1's "SUPER EAR"/"SPLITTER" (col 17) must not follow. */
+    actors_reset();
+    DSB(DS_00107A80 + 36u) = 1;
+    DSW(0x00107D2Cu) = 6;
+    ct_plant(7, 17);
+    fighter_38fec(0u);
+    CHECK_EQ_INT((int)ct_sprite(6, 17), 0x3f69);     /* 'T' of EXTRA */
+    CHECK_EQ_INT((int)ct_cell(7, 17), 0);
+    DSB(DS_00107A80 + 36u) = 0;
+
+    /* --- E. 0x39040 draws through 0x38D90 and 0x38FEC and sets the 0xB4
+     * timer; its tail zeroes the hit count. Mode 3 keeps 0x41310 out, and
+     * 0x107D20 = 0x10 takes the rng arm (the rng words are restored). --- */
+    actors_reset();
+    mem_fill(DS_00107A80, 0, 0x80u);
+    DSB(DS_00107A80 + 42u) = 1;
+    DSB(s0 + 0x63u) = 0;
+    DSD(s0 + 0x3Cu) = 0;
+    DSW(DS_00104B00) = 3;
+    DSW(0x00107D2Cu) = 6;
+    DSW(DS_00107D20) = 0x10;
+    DSW(DS_00107D18) = 0x1234u;
+    fighter_39040(0u);
+    CHECK_EQ_INT((int)ct_sprite(9, 2), 0x3f30);
+    CHECK_EQ_INT((int)ct_sprite(0x10, 1), 0x3f46);     /* " 16" */
+    CHECK_EQ_INT((int)ct_sprite(0x10, 2), 0x3f4b);
+    CHECK_EQ_INT((int)ct_sprite(6, 15), 0x3f5a);       /* 0x38FEC: EXTRA CRUNCHY */
+    /* 0x38ED0's row-7 0xE5 clear wraps over row 8's cols 0..15, so the '6'
+     * that 0x38D90 put at (8, 2) is gone again. */
+    CHECK_EQ_INT((int)ct_cell(8, 2), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107D18), 0xB4);
+    CHECK_EQ_INT((int)DSW(0x00107D2Cu), 0);
+
+    actors_reset();
+    tf_put(sv_slots, s0, 0x128u);
+    tf_put(sv_d00, 0x00107D00u, 0x40u);
+    tf_put(sv_a80, DS_00107A80, 0x80u);
+    DSD(DS_00105F34) = sv_cur;
+    DSB(DS_001088B6) = sv_8b6;
+    DSB(DS_001088B6 + 1u) = sv_8b7;
+    DSD(DS_000EF6D8) = sv_rng;
+    DSD(DS_000EF6DC) = sv_frame;
+    DSD(DS_00104B00) = sv_mode;
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -8555,6 +8840,8 @@ int test_fight(void)
     DSB(0x0010810Du) = s_810d;
     DSD(DS_000EF6D8) = s_rng;
     DSD(DS_000EF6DC) = s_frame;
+
+    check_combo_text();
 
     return g_failures - before;
 }

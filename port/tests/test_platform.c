@@ -2174,6 +2174,147 @@ static u32 grid(s32 row, s32 col)
     return DSD(DS_00105F38 + (u32)row * 0xacu + (u32)col * 4u);
 }
 
+/* The mode-0 glyph's sprite id in cell (row, col), or 0 for an empty cell. */
+static u32 grid_sprite(s32 row, s32 col)
+{
+    u32 r = grid(row, col);
+    return r != 0 ? (u32)(DSW(actor_pset(r)) & 0x7fffu) : 0u;
+}
+
+/* 0x2EFD4/0x2F4D0/0x2F20C/0x2F314 (record §33). Mode-0 sprite ids come from
+ * the font table at 0xBCD7C: '0'..'9' = 0x3F45..0x3F4E, 'A' 0x3F56, 'B'
+ * 0x3F57, 'C' 0x3F58, the 0x1B HIT glyph 0x3F30. Every destination byte, cell
+ * and cursor word is seeded with a sentinel that differs from its result. */
+static void check_text_vertical_number(void)
+{
+    u8 d[8];
+
+    /* 0x2EFD4. Pad 3 copies the digits alone and terminates at dest[len]. */
+    memset(d, 0xEE, sizeof d);
+    CHECK_EQ_INT(text_number_format(2, d, 2, 3u), 1);
+    CHECK_EQ_INT(d[0], '2');
+    CHECK_EQ_INT(d[1], 0);
+    CHECK_EQ_INT(d[2], 0xEE);
+    /* Pad 1 right-justifies with spaces, pad 0 with '0', pad 2 left-justifies;
+     * all terminate at dest[width]. */
+    memset(d, 0xEE, sizeof d);
+    CHECK_EQ_INT(text_number_format(7, d, 3, 1u), 1);
+    CHECK_EQ_INT(memcmp(d, "  7", 4), 0);
+    CHECK_EQ_INT(d[4], 0xEE);
+    memset(d, 0xEE, sizeof d);
+    CHECK_EQ_INT(text_number_format(7, d, 3, 0u), 1);
+    CHECK_EQ_INT(memcmp(d, "007", 4), 0);
+    memset(d, 0xEE, sizeof d);
+    CHECK_EQ_INT(text_number_format(7, d, 3, 2u), 1);
+    CHECK_EQ_INT(memcmp(d, "7  ", 4), 0);
+    /* The sign is one of the digits: '0' fills in front of it. */
+    memset(d, 0xEE, sizeof d);
+    CHECK_EQ_INT(text_number_format(-5, d, 3, 0u), 2);
+    CHECK_EQ_INT(memcmp(d, "0-5", 4), 0);
+    /* width <= len keeps the last `width` characters, whatever the pad. */
+    memset(d, 0xEE, sizeof d);
+    CHECK_EQ_INT(text_number_format(12345, d, 3, 1u), 5);
+    CHECK_EQ_INT(memcmp(d, "345", 4), 0);
+    memset(d, 0xEE, sizeof d);
+    CHECK_EQ_INT(text_number_format(42, d, 2, 3u), 2);
+    CHECK_EQ_INT(memcmp(d, "42", 3), 0);
+    memset(d, 0xEE, sizeof d);
+    CHECK_EQ_INT(text_number_format(42, d, 2, 4u), 2);  /* width == len */
+    CHECK_EQ_INT(memcmp(d, "42", 3), 0);
+    /* A pad above 3 writes the terminator alone. */
+    memset(d, 0xEE, sizeof d);
+    CHECK_EQ_INT(text_number_format(7, d, 3, 4u), 1);
+    CHECK_EQ_INT(d[0], 0xEE);
+    CHECK_EQ_INT(d[2], 0xEE);
+    CHECK_EQ_INT(d[3], 0);
+
+    /* 0x2F4D0: 0x2EFD4 then 0x2F198, the cursor restored. Width 3, pad 1:
+     * "  7" leaves cols 4/5 empty and puts '7' at col 6. */
+    actors_reset();
+    DSD(DS_00105F34) = 0x12345678u;
+    text_number_draw(4, 5, 7, 3, 1u, 0u);
+    CHECK_EQ_INT((int)grid(5, 4), 0);
+    CHECK_EQ_INT((int)grid(5, 5), 0);
+    CHECK_EQ_INT((int)grid_sprite(5, 6), 0x3f4c);
+    CHECK_EQ_INT((int)DSD(DS_00105F34), 0x12345678);
+    /* Pad 3, width 2: "2" at the column itself. */
+    actors_reset();
+    text_number_draw(4, 5, 2, 2, 3u, 0u);
+    CHECK_EQ_INT((int)grid_sprite(5, 4), 0x3f47);
+    CHECK_EQ_INT((int)grid(5, 5), 0);
+
+    /* 0x2F20C lays the string down a column (the vertical byte 1) and sets the
+     * cursor to {row, col + count}. */
+    actors_reset();
+    DSD(DS_00105F34) = 0x7777u | (0x7777u << 16);
+    text_vertical_set(5, 3, (const u8 *)"\x1b" "CB", 0u);
+    CHECK_EQ_INT((int)grid_sprite(3, 5), 0x3f30);
+    CHECK_EQ_INT((int)grid_sprite(4, 5), 0x3f58);
+    CHECK_EQ_INT((int)grid_sprite(5, 5), 0x3f57);
+    CHECK_EQ_INT((int)grid(3, 6), 0);
+    CHECK_EQ_INT((int)DSW(DS_00105F34), 3);
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), 8);    /* col 5 + 3 glyphs */
+    /* col -1 centres by width: (0x2b - 3) >> 1 = 20. */
+    actors_reset();
+    text_vertical_set(-1, 2, (const u8 *)"ABC", 0u);
+    CHECK_EQ_INT((int)grid_sprite(2, 20), 0x3f56);
+    CHECK_EQ_INT((int)grid_sprite(4, 20), 0x3f58);
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), 23);
+    /* row -1 reuses the cursor: row = low word, col = high word. */
+    actors_reset();
+    DSW(DS_00105F34) = 6;
+    DSW(DS_00105F34 + 2) = 9;
+    text_vertical_set(0, -1, (const u8 *)"A", 0u);
+    CHECK_EQ_INT((int)grid_sprite(6, 9), 0x3f56);
+    CHECK_EQ_INT((int)DSW(DS_00105F34), 6);
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), 10);
+
+    /* 0x2F314 releases strlen(s) cells down the column, not across. */
+    actors_reset();
+    text_vertical_set(3, 9, (const u8 *)"ABC", 0u);
+    text_cursor_set(4, 9, (const u8 *)"A", 0u);
+    text_vertical_set(3, 12, (const u8 *)"A", 0u);
+    u32 keep = grid(12, 3);
+    CHECK(keep != 0, "the cell below the run");
+    text_cells_release_vertical(3, 9, (const u8 *)"   ");
+    CHECK_EQ_INT((int)grid(9, 3), 0);
+    CHECK_EQ_INT((int)grid(10, 3), 0);
+    CHECK_EQ_INT((int)grid(11, 3), 0);
+    CHECK_EQ_INT((int)grid(12, 3), (int)keep);
+    CHECK(grid(9, 4) != 0, "the neighbouring column is kept");
+    /* It stops after the cell of a row above 0x1E: from row 0x1E a count of 3
+     * releases row 0x1E and the dword past the grid's last row (row 0x1F), and
+     * leaves the record planted at row 0x20 alone. */
+    actors_reset();
+    {
+        u32 past = DS_00105F38 + 0x1fu * 0xacu + 3u * 4u;
+        u32 past2 = past + 0xacu;
+        u32 sv = DSD(past), sv2 = DSD(past2);
+        u32 above = actor_spawn((const u32 *)(mem + 0x9AC30u), 0x4840u,
+                                0xE0u, 0x1B00u, 0u);
+        u32 last = actor_spawn((const u32 *)(mem + 0x9AC30u), 0x4840u,
+                               0xE0u, 0x1B00u, 0u);
+        u32 planted = actor_spawn((const u32 *)(mem + 0x9AC30u), 0x4840u,
+                                  0xE0u, 0x1B00u, 0u);
+        u32 planted2 = actor_spawn((const u32 *)(mem + 0x9AC30u), 0x4840u,
+                                   0xE0u, 0x1B00u, 0u);
+        CHECK(above != 0 && last != 0 && planted != 0 && planted2 != 0,
+              "the planted records");
+        DSD(DS_00105F38 + 0x1du * 0xacu + 3u * 4u) = above;
+        DSD(DS_00105F38 + 0x1eu * 0xacu + 3u * 4u) = last;
+        DSD(past) = planted;
+        DSD(past2) = planted2;
+        text_cells_release_vertical(3, 0x1e, (const u8 *)"abc");
+        CHECK_EQ_INT((int)grid(0x1e, 3), 0);
+        CHECK_EQ_INT((int)grid(0x1d, 3), (int)above);
+        CHECK_EQ_INT((int)DSD(past), 0);
+        CHECK_EQ_INT((int)DSD(past2), (int)planted2);
+        DSD(past) = sv;
+        DSD(past2) = sv2;
+    }
+    actors_reset();
+}
+
 int test_text(void)
 {
     int before = g_failures;
@@ -2262,6 +2403,8 @@ int test_text(void)
     text_cursor_set(0, 0, (const u8 *)"\"", 3);
     CHECK_EQ_INT((int)grid(0, 0), 0);
     CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), 0);
+
+    check_text_vertical_number();
 
     return g_failures - before;
 }

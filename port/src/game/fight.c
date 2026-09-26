@@ -598,8 +598,9 @@ void fight_hud_pass(u32 side)
     {
         u32 fighter = DSD(rec);                 /* 0x357E4 ebx = [eax] */
         DSD(rec + 0x28u) = DSD(fighter + 0x18u);          /* 0x357E6/0x357E9 */
-        /* PORT: 0x357EE 0x34038(side) and 0x357F5 0x38D24(side) run before the
-         * spine; both are named gaps (§7.8) and are skipped. */
+        /* PORT: 0x357EE 0x34038(side) runs before the spine; it is a named
+         * gap (§7.8) and is skipped. */
+        fighter_38d24(side);                    /* 0x357F5 0x38D24 */
         fight_health_sync(side);                /* 0x357FC 0x34B6C */
         fighter_state_3531c(side);              /* 0x35803 0x3531C */
         DSB(fighter + 0x28u) = (u8)(DSB(fighter + 0x28u) | 1u); /* 0x35808..0x35810 */
@@ -665,7 +666,8 @@ static s32 fight_2be4c(u32 rec, s32 value)
  * and set the entry's type to 8. EAX = entry, EDX = index, EBX = the flag: the
  * actor's +0x55 byte becomes 1 when EBX is non-zero (0x4B3FA `test ebx,ebx`,
  * 0x4B401), else 0 (0x4B40A). Every 0x4AAD0 call site zeroes EBX (0x4AAFC,
- * 0x4AB18, 0x4AB6D, 0x4AB97); 0x4AC80 passes 1 (0x4AE2B). */
+ * 0x4AB18, 0x4AB6D, 0x4AB97); 0x4AC80 passes 1 (0x4AE2B, call 0x4AE32), as
+ * does 0x49C78's 0x4B430 call (0x4A143/0x4A14F). */
 static int fight_4b3f0(u32 entry, u32 index, u32 flag)
 {
     u32 stream = DSD(DS_000C955C + index * 4u);     /* 0x4B3F0 */
@@ -677,8 +679,9 @@ static int fight_4b3f0(u32 entry, u32 index, u32 flag)
     return 1;                                       /* 0x4B426 */
 }
 
-/* 0x4B430. As 0x4B3F0 but over the 0xC958C table (the flag test at 0x4B43A,
- * 0x4AC80's EBX = 1 at 0x4AE41). */
+/* 0x4B430. As 0x4B3F0 but over the 0xC958C table (the flag test at 0x4B43A).
+ * EBX = 1 at 0x4AC80's 0x4AE41 (call 0x4AE48) and at 0x49C78's 0x4A143 (call
+ * 0x4A14F); 0x4AAD0's 0x4AAFC/0x4AB97 zero it. */
 static int fight_4b430(u32 entry, u32 index, u32 flag)
 {
     u32 stream = DSD(DS_000C958C + index * 4u);     /* 0x4B430 */
@@ -790,9 +793,10 @@ void fight_4ac18(u32 rec)
  * to 0x1740 beside the DS_00108868 record (type 1, the 0xC95D4 stream) or, when
  * it already stands there, is held (type 8, the 0xC958C stream, +0x55 = 1);
  * set and zero, the DS_00108864 entry is released (type 4, bit 5 cleared) and
- * DS_00108864 zeroed; clear, in modes 8/9/0x17 the actor stops and 0x4B3F0 or
- * 0x4B430 (EBX = 1) hold it, otherwise it climbs as the effects pass's case 4
- * does (the 0xC95EC stream, type 5, +0x1C &= 0x3F). */
+ * DS_00108864 zeroed; clear, in modes 8/9/0x17 the actor stops and, by
+ * DS_00104B16 against the entry's +0x21 (0x4AE26), 0x4B3F0 (equal) or 0x4B430
+ * holds it with EBX = 1; otherwise it climbs as the effects pass's case 4 does
+ * (the 0xC95EC stream, type 5, +0x1C &= 0x3F). */
 void fight_4ac80(u32 rec)
 {
     u32 entry = DSD(rec + 0x14u);                   /* 0x4AC8B */
@@ -804,15 +808,21 @@ void fight_4ac80(u32 rec)
     if (DSB(DS_001088C5) != 0u && bit5 != 0u) {     /* 0x4ACB6/0x4ACC9 */
         s32 pos = fight_2be00(DSD(entry + 8u));     /* 0x4ACD2 */
         s32 base = fight_2be00(DSD(DS_00108868));   /* 0x4ACE0 */
+        /* 0x4ACED..0x4AD27: the `sub`/`add` wrap in 32 bits before the signed
+         * compares, so the bands are computed in u32. */
+        s32 lo = (s32)((u32)base - 0x1740u);        /* 0x4ACED */
+        s32 mid_lo = (s32)((u32)base - 0xBA0u);     /* 0x4AD02 */
+        s32 hi = (s32)((u32)base + 0x1740u);        /* 0x4AD19 */
+        s32 mid_hi = (s32)((u32)base + 0xBA0u);     /* 0x4AD27 */
         s32 target = 0;                             /* 0x4ACF3 */
-        if (pos < base - 0x1740)                    /* 0x4ACFA */
-            target = base - 0x1740;                 /* 0x4ACFC */
-        else if (pos > base - 0xBA0 && pos < base)  /* 0x4AD0A/0x4AD0E */
-            target = base - 0x1740;                 /* 0x4AD10 */
-        else if (pos > base + 0x1740)               /* 0x4AD21 */
-            target = base + 0x1740;                 /* 0x4AD37 */
-        else if (pos < base + 0xBA0 && pos > base)  /* 0x4AD2F/0x4AD35 */
-            target = base + 0x1740;                 /* 0x4AD37 */
+        if (pos < lo)                               /* 0x4ACFA */
+            target = lo;                            /* 0x4ACFC */
+        else if (pos > mid_lo && pos < base)        /* 0x4AD0A/0x4AD0E */
+            target = lo;                            /* 0x4AD10 */
+        else if (pos > hi)                          /* 0x4AD21 */
+            target = hi;                            /* 0x4AD37 */
+        else if (pos < mid_hi && pos > base)        /* 0x4AD2F/0x4AD35 */
+            target = hi;                            /* 0x4AD37 */
         u32 stream;
         if (target != 0) {                          /* 0x4AD3B */
             DSD(entry + 0x14u) = (u32)target;       /* 0x4AD3D */

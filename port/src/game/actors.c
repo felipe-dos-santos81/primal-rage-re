@@ -20,6 +20,7 @@
 #include "platform/render.h"
 #include "platform/res.h"
 #include "platform/sprite.h"
+#include <stdio.h>
 #include <string.h>
 
 /* symbols.h emits no name for the type-0x2D teardown's counter at 0x108398. */
@@ -2254,4 +2255,100 @@ void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode)
     u32 save = DSD(DS_00105F34);
     text_cursor_set(col, row, s, mode);
     DSD(DS_00105F34) = save;
+}
+
+/* 0x2F20C. 0x2F198's vertical twin: the same register shape, cursor reload
+ * (0x2F228/0x2F22E) and centring (0x2F241..0x2F257), then 0x2F830 with the
+ * stack byte 1 (0x2F259 `push 1`). The cursor gets {row, col + glyph count}
+ * (0x2F26E..0x2F274): the column, not the row, takes the extent. Its one
+ * caller is 0x38D90. */
+void text_vertical_set(s32 col, s32 row, const u8 *s, u32 mode)
+{
+    if (row == -1) {
+        col = (s16)DSW(DS_00105F34 + 2);                /* 0x2F228/0x2F234 */
+        row = (s16)DSW(DS_00105F34);                    /* 0x2F22E/0x2F237 */
+    } else if (col == -1) {
+        s32 w = text_width(s, mode);                    /* 0x2F24A 0x2F0F0 */
+        col = (0x2b - w) >> 1;                          /* 0x2F24F/0x2F251 */
+        if (col < 0) col = 0;                           /* 0x2F255 */
+    }
+    s32 extent = text_render(s, mode, row, col, 1u);    /* 0x2F269 0x2F830 */
+    DSW(DS_00105F34) = (u16)row;                        /* 0x2F270 */
+    DSW(DS_00105F34 + 2) = (u16)(col + extent);         /* 0x2F274 */
+}
+
+/* 0x2F314. EAX = col, EDX = row, EBX = string. The vertical twin of 0x2F280:
+ * the count is strlen (0x2F31F..0x2F328 `repne scasb`, no 0x2F0F0 and no mode;
+ * ECX is overwritten), and the walk goes down one row per cell, releasing each
+ * non-empty record through 0x2AD40. It stops after the cell of a row above
+ * 0x1E (0x2F36D `cmp ecx,0x1e; jg`). Its one caller is 0x38C5C. */
+void text_cells_release_vertical(s32 col, s32 row, const u8 *s)
+{
+    s32 count = (s32)strlen((const char *)s);           /* 0x2F31F..0x2F328 */
+    u32 idx = (u32)row * 0xacu + (u32)col * 4u;         /* 0x2F335..0x2F341 */
+    for (s32 i = 0; i < count; i++) {                   /* 0x2F331/0x2F37A */
+        u32 rec = DSD(DS_00105F38 + idx);               /* 0x2F343 */
+        if (rec != 0) {
+            release_record(rec, actor_pset(rec));       /* 0x2F360 0x2AD40 */
+            DSD(DS_00105F38 + idx) = 0;                 /* 0x2F367 */
+        }
+        if (row > 0x1e) return;                         /* 0x2F36D */
+        idx += 0xacu;                                   /* 0x2F372 */
+        row++;                                          /* 0x2F379 */
+    }
+}
+
+/* 0x2EFD4 (with 0x2EF24). EAX = value, EDX = dest, EBX = width, ECX = pad.
+ * 0x2EF24 formats the value with the libc sprintf 0x65546 and the format
+ * "%i" at 0x80B40 into a 0x0C-byte stack buffer and returns its length L.
+ * When width <= L (0x2EFEF `jg`) the last `width` characters are copied
+ * (0x2EFF3..0x2F00A). Otherwise pad selects the jump table at 0x2EFC4:
+ * 0 right-justifies with '0' (0x2F026, 0x61A70 = memset), 1 right-justifies
+ * with ' ' (0x2F059), 2 left-justifies with ' ' (0x2F08C), 3 copies the digits
+ * alone (0x2F0C2); a pad above 3 (0x2F015 `ja`) writes nothing but the
+ * terminator. The terminator goes at dest[width], or dest[L] for pad 3
+ * (0x2F0D8). Returns L. */
+s32 text_number_format(s32 value, u8 *dest, s32 width, u32 pad)
+{
+    char buf[16];
+    s32 len = (s32)snprintf(buf, sizeof buf, "%i", (int)value); /* 0x2EF24 */
+    s32 gap = width - len;                                  /* 0x2EFE9 */
+    s32 end = width;
+    if (gap <= 0) {
+        for (s32 i = 0; i < width; i++)
+            dest[i] = (u8)buf[i - gap];                     /* 0x2EFF3..0x2F00A */
+    } else if (pad <= 3u) {                                 /* 0x2F012 */
+        switch (pad) {
+        case 0u:
+        case 1u:
+            memcpy(dest + gap, buf, (size_t)len);           /* 0x2F026/0x2F059 */
+            memset(dest, pad == 0u ? 0x30 : 0x20, (size_t)gap); /* 0x2F041/0x2F074 */
+            break;
+        case 2u:
+            memcpy(dest, buf, (size_t)len);                 /* 0x2F08C..0x2F0A1 */
+            memset(dest + len, 0x20, (size_t)gap);          /* 0x2F0AA */
+            break;
+        default:
+            memcpy(dest, buf, (size_t)len);                 /* 0x2F0C2..0x2F0D7 */
+            end = len;                                      /* 0x2F0D8 */
+            break;
+        }
+    }
+    dest[end] = 0;                                          /* 0x2F0DC..0x2F0E4 */
+    return len;
+}
+
+/* 0x2F4D0. EAX = col, EDX = row, EBX = value, ECX = width, and two stack
+ * dwords: pad ([esp+0x24], the last pushed) and mode ([esp+0x28]); `ret 8`.
+ * Formats the value through 0x2EFD4 into a 0x14-byte stack buffer and draws it
+ * with 0x2F198, the cursor saved (0x2F4E4) and restored (0x2F4FE). */
+void text_number_draw(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
+{
+    /* PORT: the original's buffer is uninitialised stack; the port zeroes it,
+     * which only a pad above 3 (no caller) could observe. */
+    u8 buf[0x14] = {0};
+    u32 save = DSD(DS_00105F34);                            /* 0x2F4E4 */
+    (void)text_number_format(value, buf, width, pad);       /* 0x2F4EA 0x2EFD4 */
+    text_cursor_set(col, row, buf, mode);                   /* 0x2F4F9 0x2F198 */
+    DSD(DS_00105F34) = save;                                /* 0x2F4FE */
 }

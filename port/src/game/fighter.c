@@ -11,6 +11,7 @@
 #include "game/actors.h"
 #include "game/config.h"
 #include "game/rng.h"
+#include "game/flow.h"
 #include "../mem.h"
 #include "../symbols.h"
 #include <string.h>
@@ -2127,7 +2128,13 @@ static void hit_facing_flag(u32 side);                      /* 0x18B04 */
 /* PORT: data-object addresses symbols.h does not name. */
 #define FIGHT_STUN_BASE  0x00107A80u  /* 0x107A80: 0x40-byte per-side table */
 #define FIGHT_D24_BASE   0x00107D24u  /* 0x107D24: per-side word, 0x38BC8 clears */
-#define FIGHT_D2C_BASE   0x00107D2Cu  /* 0x107D2C: the per-side round word */
+#define FIGHT_D2C_BASE   0x00107D2Cu  /* 0x107D2C: the per-side combo hit count */
+#define FIGHT_TXT_2SP    0x00080BE0u  /* 0x38C7F: "  " */
+#define FIGHT_TXT_6SP    0x00080BE4u  /* 0x38C95: six spaces */
+#define FIGHT_TXT_3SP    0x00080BECu  /* 0x38CAB/0x38CC1: "   " */
+#define FIGHT_TXT_PCT    0x00080BF0u  /* 0x38EB5: "%" */
+#define FIGHT_TXT_COMBO  0x000BE01Cu  /* 0x38E1D: "\x1bCOMBO" */
+#define FIGHT_COMBO_TABLE 0x000BEB90u /* 0x39014: [char] combo records */
 #define FIGHT_ANIM_367DC 0x000C8950u  /* 0xC8950: 0x367DC's per-character anim */
 #define FIGHT_ANIM_3BDDC 0x000C8B30u  /* 0xC8B30: 0x3BDDC's per-character anim */
 #define FIGHT_ANIM_36BC8 0x000C8A18u  /* 0xC8A18: 0x36BC8's per-character anim */
@@ -2658,11 +2665,123 @@ void fighter_37178(u32 slot)
     (void)fighter_state_36638(s, rec_s);                    /* 0x37456 */
 }
 
-/* 0x39040. The per-side round/timer pass. Gated on DSW(0x107D2C + side*2) > 1;
- * the body updates the round resource byte, slot+0x81's band, the 0x107D18
- * timer, the 0x41310/0x4F944 counters and (in the non-0x63 arm) the 0x1088BF
- * roll, and draws the round text through 0x38D90/0x38FEC (the 0x2F4D0/0x2EFD4
- * text-grid formatter is a declared gap, record §7.8 / frontend §7.2). The tail
+/* 0x38C5C. Clear side's combo text: 0x2F280 over the two row-8 cells from
+ * col side*0x25 + 2 (0x80BE0, two spaces), 0x2F314 down the six row-9..14
+ * cells of that column (0x80BE4, six spaces) and 0x2F280 over row 0x10's
+ * cols side*0x25 .. +5 (0x80BEC, three spaces, twice). Mode 0x2000 is a
+ * strlen mode for 0x2F280; 0x2F314 ignores its ECX. */
+void fighter_38c5c(u32 side)
+{
+    s32 c = (s32)side * 0x25;                                   /* 0x38C64..0x38C70 */
+    text_cells_release(c + 2, 8, mem + FIGHT_TXT_2SP, 0x2000u); /* 0x38C8B 0x2F280 */
+    text_cells_release_vertical(c + 2, 9, mem + FIGHT_TXT_6SP); /* 0x38CA1 0x2F314 */
+    text_cells_release(c, 0x10, mem + FIGHT_TXT_3SP, 0x2000u);  /* 0x38CB7 0x2F280 */
+    text_cells_release(c + 3, 0x10, mem + FIGHT_TXT_3SP, 0x2000u); /* 0x38CCD 0x2F280 */
+}
+
+/* 0x38D24. The combo text's display timer, called from 0x35658 (0x357F5) and
+ * 0x384F8. When DSW(0x107D18 + side*2) is non-zero it is
+ * decremented, and the step that reaches zero clears the text (0x38C5C) and
+ * redraws string 0xE5 centred on rows 6 and 7 in mode 0x3000 (0x1C500 keeps
+ * EDX and ECX: `push edx` at 0x1C501, 0x474E4's `push ecx` at 0x474E4). */
+void fighter_38d24(u32 side)
+{
+    u16 t = DSW(DS_00107D18 + side * 2u);                       /* 0x38D2E */
+    if (t == 0u) return;                                        /* 0x38D35 */
+    t = (u16)(t - 1u);                                          /* 0x38D3C */
+    DSW(DS_00107D18 + side * 2u) = t;                           /* 0x38D3E */
+    if (t != 0u) return;                                        /* 0x38D45 */
+    fighter_38c5c(side);                                        /* 0x38D47 */
+    text_cursor_hold(-1, 6, game_string_get(0xe5u), 0x3000u);   /* 0x38D5B/0x38D67 */
+    text_cursor_hold(-1, 7, game_string_get(0xe5u), 0x3000u);   /* 0x38D7B/0x38D87 */
+}
+
+/* 0x38D90. Draw side's combo text: clear it (0x38C5C), redraw string 0xE5 on
+ * rows 6/7, then the hit count (s16)DSW(0x107D2C + side*2) at row 8, col
+ * side*0x25 + 2 (0x2F4D0: width 2, pad 3, mode 0x1000; 0x38DFE `sar ebx,0x10`
+ * of the dword at 0x107D2A), and the string 0xBE01C ("\x1bCOMBO", 0x1B being
+ * the HIT glyph) down the same column from row 9 (0x2F20C). With slot+0x63
+ * clear (0x38E3E, 0x107813 + side*0x94) it also draws (s16)DSW(0x107D20 +
+ * side*2) at row 0x10, col side*0x25 (width 3, pad 1, mode 0x2000) and "%"
+ * (0x80BF0) at col side*0x25 + 3. The `cmp edx,0x64`/`cmp edx,0xa` at
+ * 0x38E5C/0x38E89/0x38E8E feed no branch: both arms pass col EDI - 2. */
+void fighter_38d90(u32 side)
+{
+    s32 c = (s32)side * 0x25;
+    fighter_38c5c(side);                                        /* 0x38D98 */
+    text_cursor_hold(-1, 6, game_string_get(0xe5u), 0x3000u);   /* 0x38DAC/0x38DB8 */
+    text_cursor_hold(-1, 7, game_string_get(0xe5u), 0x3000u);   /* 0x38DCC/0x38DD8 */
+    text_number_draw(c + 2, 8, (s32)(s16)DSW(FIGHT_D2C_BASE + side * 2u),
+                     2, 3u, 0x1000u);                           /* 0x38E13 0x2F4D0 */
+    text_vertical_set(c + 2, 9, mem + FIGHT_TXT_COMBO, 0x1000u); /* 0x38E29 0x2F20C */
+    if (DSB(DS_001077B0 + side * 0x94u + 0x63u) != 0u) return;  /* 0x38E3E */
+    text_number_draw(c, 0x10, (s32)(s16)DSW(DS_00107D20 + side * 2u),
+                     3, 1u, 0x2000u);                           /* 0x38E79/0x38EAB 0x2F4D0 */
+    text_cursor_hold(c + 3, 0x10, mem + FIGHT_TXT_PCT, 0x2000u); /* 0x38EC2 0x2F4BC */
+}
+
+/* 0x38ED0. EAX = side, EDX = one 0x44-byte combo record. Its byte list at
+ * +0x1B (up to 0x14 ids, 0xFF-terminated) must each have
+ * DSB(0x107A80 + side*0x40 + id) >= the paired need byte at +0x2F (0x38FC3..
+ * 0x38FD5), else 0. At the terminator, the first of the three thresholds
+ * +0x18.. at or below the hit count (s16)DSW(0x107D2C + side*2) (0x38F12
+ * `cmp dx,cx; jg`) names the combo: with slot+0x63 clear it redraws string
+ * 0xE5 on rows 6/7 and then draws string dword +4*i on row 6 and dword
+ * +0xC+4*i on row 7, centred in mode 0x3000; returns 1 either way. No
+ * threshold met, or 0x14 ids with no terminator, returns 0. */
+u8 fighter_38ed0(u32 side, u32 rec)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                                /* 0x38EDF 0x33950 */
+    for (u32 i = 0; i < 0x14u; i++) {                           /* 0x38FD9 */
+        u32 id = DSB(rec + 0x1bu + i);                          /* 0x38EEE */
+        if (id != 0xffu) {                                      /* 0x38EF1 */
+            if ((u32)DSB(FIGHT_STUN_BASE + ctx[0] * 0x40u + id)
+                < (u32)DSB(rec + 0x2fu + i))                    /* 0x38FC3..0x38FD5 */
+                return 0;
+            continue;
+        }
+        for (u32 j = 0; j < 3u; j++) {                          /* 0x38FAE */
+            if ((s16)DSB(rec + 0x18u + j)
+                > (s16)DSW(FIGHT_D2C_BASE + ctx[0] * 2u))       /* 0x38F12 */
+                continue;
+            if (DSB(ctx[2] + 0x63u) == 0u) {                    /* 0x38F1F */
+                text_cursor_hold(-1, 6, game_string_get(0xe5u), 0x3000u); /* 0x38F40 */
+                text_cursor_hold(-1, 7, game_string_get(0xe5u), 0x3000u); /* 0x38F60 */
+                text_cursor_hold(-1, 6, game_string_get(DSD(rec + j * 4u)),
+                                 0x3000u);                      /* 0x38F6A/0x38F7E */
+                text_cursor_hold(-1, 7, game_string_get(DSD(rec + 0xcu + j * 4u)),
+                                 0x3000u);                      /* 0x38F88/0x38F9D */
+            }
+            return 1;                                           /* 0x38FA2 */
+        }
+        return 0;                                               /* 0x38FB7 */
+    }
+    return 0;                                                   /* 0x38FE2 */
+}
+
+/* 0x38FEC. Walk side's character's combo records (DSD(0xBEB90 + char*4),
+ * stride 0x44) through 0x38ED0 until one names a combo. The count is the
+ * dword at 0xBEBB6 + char*2 `sar 0x10` (0x39008/0x39011), i.e. the signed
+ * word at 0xBEBB8 + char*2. */
+void fighter_38fec(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                                /* 0x38FF7 0x33950 */
+    u32 ch = DSB(ctx[2] + 0x7au);                               /* 0x39000 */
+    s32 n = (s32)DSD(DS_000BEBB6 + ch * 2u) >> 16;             /* 0x39008/0x39011 */
+    u32 rec = DSD(FIGHT_COMBO_TABLE + ch * 4u);                 /* 0x39014 */
+    for (s32 i = 0; i < n; i++) {                               /* 0x3901B/0x39031 */
+        if (fighter_38ed0(ctx[0], rec) != 0u) return;           /* 0x39024/0x39029 */
+        rec += 0x44u;                                           /* 0x3902E */
+    }
+}
+
+/* 0x39040. The per-side combo pass. Gated on the hit count
+ * DSW(0x107D2C + side*2) > 1; the body updates the combo resource byte,
+ * slot+0x81's band, the 0x107D18 display timer, the 0x41310/0x4F944 counters
+ * and (in the non-0x63 arm) the 0x1088BF roll, and draws the combo text
+ * through 0x38D90 and the combo-name check 0x38FEC (record §33). The tail
  * always clears DSW(0x107D2C/0x107D20/0x107D24 + side*2) and the 0x40-byte
  * table at 0x107A80 + side*0x40. */
 void fighter_39040(u32 side)
@@ -2682,9 +2801,8 @@ void fighter_39040(u32 side)
             }
         }
         DSW(DS_00107D18 + side * 2u) = 0xB4u;               /* 0x390E1 */
-        /* PORT: 0x390E8 0x38D90(side) and 0x390EF 0x38FEC(side) are the
-         * round-text draws; 0x38D90 reaches the unmodelled 0x2F4D0/0x2EFD4
-         * formatter (named gap, record §7.8). */
+        fighter_38d90(side);                                /* 0x390E8 */
+        fighter_38fec(side);                                /* 0x390EF */
         DSW(DS_00107D1C + side * 2u) = DSW(DS_00107D20 + side * 2u); /* 0x390FB */
         DSB(slot + 0x7Bu) = (u8)(DSB(slot + 0x7Bu) + 1u);   /* 0x39110 */
         if (DSB(slot + 0x63u) == 0u) {                      /* 0x39117 */
@@ -3646,10 +3764,10 @@ int fighter_3bf70(u32 slot, u32 rec, u32 side)
     return 1;                                           /* 0x3C03F */
 }
 
-/* 0x3C0A4. The backward forced attack: 0x34E2C's reaction callback 0x3E
- * (*(u32*)0xA3A00 for the T-rex, one per character at stride 0x500). EAX =
- * slot, EDX = rec, EBX = side. 0x3BF70, then slot +0x4E the other way: 1 when
- * 0x1A570(side) is non-zero, else 0xFFFF. Returns 0x3BF70's AL. */
+/* 0x3C0A4. The reversed-facing forced attack: 0x34E2C's reaction callback
+ * 0x3E (*(u32*)0xA3A00 for the T-rex, one per character at stride 0x500).
+ * EAX = slot, EDX = rec, EBX = side. 0x3BF70, then slot +0x4E the other way:
+ * 1 when 0x1A570(side) is non-zero, else 0xFFFF. Returns 0x3BF70's AL. */
 int fighter_3c0a4(u32 slot, u32 rec, u32 side)
 {
     u32 ctx[6];

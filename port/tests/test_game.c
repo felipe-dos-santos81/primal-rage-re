@@ -2767,10 +2767,12 @@ int test_frontend(void)
      * 1970, where the state drops to 0 and dumping stops. So the state>=3 dump
      * run is loop frames 589..1969, i.e. dumped frames 0..1380 (1381 frames); the
      * 1400 cap covers it and the 2000-frame loop clears the 1970 exit. The
-     * front-end window is distinct [560..1762] (1203 frames: 473 clean, 723
-     * splice, 3 transition, 2 unexplained; [560..1749]/1190 before 0x34E2C's
-     * reaction callback 0x3C0A4 (the T-rex's backward attack through 0x3BF70
-     * at f = 850) explained 1750..1762; [560..1714]/1155 before the
+     * front-end window is distinct [560..1880] (1321 frames: 516 clean, 798
+     * splice, 3 transition, 2 unexplained; [560..1762]/1203 before 0x39040's
+     * combo text 0x38D90/0x38FEC (the "2 HIT COMBO" at f = 860) explained
+     * 1763..1880; [560..1749]/1190 before 0x34E2C's reaction callback 0x3C0A4
+     * (the T-rex's reversed-facing attack through 0x3BF70 at f = 850)
+     * explained 1750..1762; [560..1714]/1155 before the
      * worshipper landing target 0x4AC80 (the climb at f = 820 and 841)
      * explained 1715..1749; [560..1658]/1099 before the fighters' body
      * push 0x3BB90 (0x4FB20/0x3BAEC/0x3B9D8, game_frame's 0x2541D)
