@@ -252,11 +252,12 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # byte-identical to front-end capture 832, the loader's read-stall frame with no
 # raw-code owner (record §35.1), and the allowance holds only while that identity
 # does. N = 2674 was measured on 9469a30 (the commit that set it, on 5448e09; §38):
-# the raptor's block (0x1AB5C's arm 0x1A7CC, with 0x1A6AC/0x1A8F4/0x1A640 in the
-# +0x52 == 6 handler 0x1A978) explains captures 2461..2673, and the second demo
-# diverges from 2674. The driver's loop (FE_LOOPS, a measurement window) runs to
-# 3100 so that 2674 lies inside the dump. It fails if an unexplained frame appears
-# below N, N exceeds the capture's end + 1, or N is at or below the region's start.
+# the raptor's block (0x1AB5C's arm 0x1A7CC, with 0x1A6AC/0x1A8F4 and the wired
+# 0x1A640 in the +0x52 == 6 handler 0x1A978) explains captures 2461..2673, and
+# the second demo diverges from 2674. The driver's loop (FE_LOOPS, a measurement
+# window) runs to 3100 so that 2674 lies inside the dump. It fails if an
+# unexplained frame appears below N, N exceeds the capture's end + 1, or N is at
+# or below the region's start.
 # Like the front-end oracle, its window comes from the port's own dump, so it cannot
 # detect an under-rendering port. (Before it, N = 2461, measured on 5448e09: state
 # 6's 0x34978 reset of the live-fighter count DS_001078FA explained 2386..2460;

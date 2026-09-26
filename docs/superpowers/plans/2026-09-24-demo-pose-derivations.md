@@ -6910,8 +6910,9 @@ live-RAM poll), and the owner is state 6's unported reset call `0x34978`,
 which restarts the live-fighter count. With it the second demo's fighter
 passes run and 2386..2460 are explained (N = 2461, `5448e09`). At 2461 the
 raptor blocks the ape's punch through the block family `0x1A7CC`/`0x1A6AC`/
-`0x1A640`/`0x1A8F4`, which were named gaps. With them 2461..2673 are
-explained (N = 2674, `9469a30`).
+`0x1A8F4`, which were named gaps, plus the already-ported `0x1A640` whose
+call in `0x1A978` was unwired. With them 2461..2673 are explained
+(N = 2674, `9469a30`; corrected in review round 1, §38.6).
 
 ### 38.1 The ground truth: a DOSBox-X live-RAM poll
 
@@ -7015,7 +7016,10 @@ only the `0x5D812` stub, so the owner is an unported path.
     and `| 0x10`.
 - **`0x1A640`** (EAX = side): the record's `+0x28` bit `0x4000` clear gives
   `0x1000` when the command word has `0x1000`. Set, it gives `0x2000` when
-  the word has `0x2000`. Otherwise 0. EDX is pushed and popped.
+  the word has `0x2000`. Otherwise 0. EDX is pushed and popped. It was
+  already ported as `fighter_1a640` (its callers `0x359E0`, `0x36430` and
+  `0x364FC` use it); only its call in `0x1A978` (`0x1AA93`) was unwired, and
+  the old `PORT:` comment there was stale (review round 1).
 - **`0x1A8F4`** (EDX = rec; EAX is overwritten at `0x1A8F7`):
   - `0x2BC30(ctx[5], 0xC8F68[char], 3.0)`, or `0xC8FB8[char]` when
     `+0x54` == 1.
@@ -7033,11 +7037,13 @@ only the `0x5D812` stub, so the owner is an unported path.
   0xED04C 0xD2636 0xEAB94 0xD4258 0xE0B70`; `0xC8F68[3]` = `0xD2650`;
   `0xC8F90[3]` = `0xD265A`; `0xC8FB8[3]` = `0xD2674`.
 
-**The fix** (`9469a30`): `fighter_block_dir`, `fighter_block_anim`,
-`fighter_block_start` and `fighter_block_end` in fighter.c (0x33A68 is
-`fighter_ctx_swap` on `rec+0x51`). They are wired at `0x1AC06`/`0x1AC7A` and
-`0x1AA24` (twice)/`0x1AB04`, with the `0x1AA5F` correction. That is 4
-functions, about `0x2A0` raw bytes, inside the gate.
+**The fix** (`9469a30`, corrected in `9db3951`): `fighter_block_anim`,
+`fighter_block_start` and `fighter_block_end` in fighter.c, with `0x33A68`
+through the existing `fighter_ctx_rec_swap`. They are wired at
+`0x1AC06`/`0x1AC7A` and `0x1AA24` (twice)/`0x1AB04`, and `0x1AA93` calls the
+existing `fighter_1a640`, with the `0x1AA5F` correction. That is 3 new
+functions, about `0x250` raw bytes, inside the gate. (`9469a30` had added a
+duplicate `fighter_block_dir` for `0x1A640`; `9db3951` removed it.)
 
 ### 38.4 The assertions and mutations
 
@@ -7055,7 +7061,7 @@ functions, about `0x2A0` raw bytes, inside the gate.
     `0x24` (byte 55: 46, where `/99` gives 47).
   - B/B2: `0x1A6AC`'s two arms and its skips.
   - C: `0x1A8F4`'s two tables and its stores.
-  - D: `0x1A640`'s four cases.
+  - D: `0x1A640`'s four cases, through `fighter_1a640`.
   - E: the `+0x62 == 0` arm, held and released (a `0x000F` bit, `0x8000`,
     `+0x60` 0 with no attacker, and not held back).
   - F: `0x1AA5F`, equal and unequal.
@@ -7105,3 +7111,38 @@ port runs on at `0xE3F66` (`+0x52` 2, id `0x1422`).
    `0xC8F40`.
 3. The block family's `0x100CE0` counter is also written by `0x36870`
    (`0x368F9`) and `0x392A0` (`0x3931F`), both ported.
+
+### 38.6 Review round 1 (`9db3951`)
+
+- **`0x1A640` was ported twice.** `fighter_block_dir` duplicated
+  `fighter_1a640`. It is removed; `0x1A978`'s `0x1AA93` calls
+  `fighter_1a640(ctx[1])`, and check_block D asserts through it. The claims
+  that `0x1A640` was a named gap (§38 opening, §38.3, README, `game_flow.md`)
+  are corrected: only its call site was unwired. The demo-fight record's
+  §7.11 also lists `0x1A734`, which stays a named gap (`0x3B443`), so §38
+  closes the block helpers of §7.11, not §7.11 as a whole (`fight.h`).
+- **`0x33A68`.** `0x1A6AC` and `0x1A8F4` now call the existing
+  `fighter_ctx_rec_swap` instead of inlining it.
+- **check_block's shared state.** It now snapshots and restores what
+  `c3_seed` and the block path write: the five stream words (`0xD2E86`,
+  `0xD2E9A`, `0xD2EDC`, `0xD2EBA`, `0xD2EFC`), `0x107A80[0x80]`, `0x107D2C`,
+  `FD108..FD11F`, `0x1078F8`, `0x1080AC/AE` (`tb_seed`), and `0x18B04` ->
+  `0x18714`'s `0x100AF0..0x100AF7` and `0x100AB0..0x100ABF`. A temporary
+  whole-data-object diff around `check_block` (reverted) left only the two
+  fighter slots' fixture bytes, which `check_char3_reaction` does not
+  restore either.
+- **Mutations re-run** (`scratchpad/t28/mut28c.py`): 7 edits on
+  `fighter_1a640`, its `0x1AA93` call and the two `0x33A68` sites. 6 failed
+  at once. The survivor built `0x1A6AC`'s context from the wrong side, so its
+  `0x18B04` ran for the other side; B now seeds side 1's record `+0x18` and
+  asserts it unchanged, which kills it (1 new assertion). mut28b's two
+  `fighter_block_dir` edits no longer apply. The block family's count is
+  now 3 + 43 applicable edits, all failing except the one equivalent
+  (`0x1AC06`).
+- **Other writers of `DS_001078FA`.** Besides `0x33C78` (increment) and
+  `0x34978` (reset), `0x296B8` and `0x274FC` write it, and so do four
+  unowned sites: `0x25BC5`, `0x270C7`, `0x269A5` and `0x295CB`. They lie in
+  the interactive modes, which the demo does not run.
+- The `0x1A842..0x1A86B` comment is now a plain address comment (it marks a
+  verbatim transcription, not a deviation), and the `0x1490C` header is
+  rewrapped to 80 columns.

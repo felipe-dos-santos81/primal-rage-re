@@ -2384,8 +2384,10 @@ record §34).**
 * **2461: the block.** At f = 3735 (loop 2848) the original's raptor blocks
   the ape's punch (6/1/0, stream `0xD2636`). `0x1AB5C`'s block arm calls
   `0x18B04` and the block start `0x1A7CC`, and the +0x52 = 6 handler
-  `0x1A978` calls `0x1A6AC`, `0x1A640` and `0x1A8F4`. All were named gaps
-  (§7.11/§7.12); they are ported (`9469a30`), and `0x1AA5F`'s store now runs
+  `0x1A978` calls `0x1A6AC`, `0x1A640` and `0x1A8F4`. `0x1A7CC`, `0x1A6AC`
+  and `0x1A8F4` and the two `0x1AB5C` calls were named gaps (§7.11/§7.12);
+  `0x1A640` was already ported and only its call was unwired. They are
+  ported and wired (`9469a30`, `9db3951`), and `0x1AA5F`'s store now runs
   when the words are equal, as the raw's `jne` says. 2461..2673 explained,
   N = 2674.
 * **2674.** From about capture 2670 the whole scene is offset (background
