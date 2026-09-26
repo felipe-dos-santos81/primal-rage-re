@@ -197,9 +197,9 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
 # improves (the tool prints "ratchet improved ... raise N"). N = 950 was measured on
-# the tree of the commit that raises it (base 74e0158 plus the port of 0x39CC8):
-# the knockback pose's per-frame handler 0x39CC8, which 0x39F40 stores in
-# slot+0x10 at 0x39F8F, is ported and registered. 0x3531C case 10 calls it
+# a51685d (the commit that raised it, on 74e0158): the knockback pose's
+# per-frame handler 0x39CC8, which 0x39F40 stores in slot+0x10 at 0x39F8F, is
+# ported and registered. 0x3531C case 10 calls it
 # (0x354E2); its phase 1 (0x39B30) launches the struck raptor (gravity 62,
 # vertical 744, horizontal 160) and phase 3 lands it. At f = 114 the port's
 # fn_resolve returned NULL, so the raptor hung in the air and the camera,
