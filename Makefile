@@ -197,7 +197,7 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
 # improves (the tool prints "ratchet improved ... raise N"). N = 1481 was measured on
-# the commit that raised it, on 8f2d86b: the projectile collision step is ported:
+# 3d64c61 (the commit that raised it, on 8f2d86b): the projectile collision step is ported:
 # 0x1975C's first call 0x17CB0 runs 0x176CC, which at f = 617 of the demo finds the
 # T-rex's breath projectile (slot 0's +0x08) over the raptor and writes the overlap
 # count DS_00100AD0[0] = 17; the think step then applies the hit to the raptor

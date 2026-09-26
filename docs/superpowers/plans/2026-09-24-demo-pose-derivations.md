@@ -4380,3 +4380,246 @@ it first (`0x19763`), and the port's `fighter_think` omits that call. After
 `[0x1077B8]` and `[0x10784C]` are set), then each side's projectile through
 `0x176CC` (`0x17D0E` for `[0x1077B8]`, `0x17D21` for `[0x10784C]`). §19.6
 sized it at 1 070 B in 4 functions. It is **not derived here**.
+(Derived since, §26: the owner is `0x17CB0`, as named. Porting it with its
+`0x176CC`/`0x17BC8` tests and the `0x3B464`/`0x3B938` hit it wakes explains
+captures 1478..1480.)
+
+## 26. The projectile collision step `0x17CB0` at capture 1478 (roar-timing Task 16, `3d64c61`)
+
+**Result in one line.** Capture 1478 has one cause, and it is the port's:
+§25.5's candidate is the owner. `0x1975C`'s first call, `0x19763 call
+0x17CB0`, was not ported, so `DS_00100AD0/AD4` (the per-thrower projectile
+overlap counts) stayed 0 and the think step never applied a projectile hit.
+With `0x17CB0` → `0x176CC` ported, at f = 617 the T-rex's breath ring
+(slot 0's `+0x08`) over the raptor gives `AD0[0]` = 17 > 2; `0x1975C` then
+runs `0x3B464` for the raptor (the `0x39834` pose driver and the grounded
+`0x3A95C` stagger, stream `0xC8FE0[3]` = `0xD267E`) and bursts the ring
+(`0x3B938`, stream `0xBDFC8[0]` = `0xE85E0`). This explains captures
+1478..1480. The new closure is `0x17CB0` 125 B, `0x176CC` 574 B, `0x17BC8`
+231 B, `0x3B938` 140 B and `0x3A95C` 122 B (1 192 B in 5 functions), plus
+the mode-0..3 row arms of the already-ported `0x16DA4`; every other callee
+was already ported. §19.6's "4 functions" missed `0x3A95C`, which the woken
+`0x3B464` reaches at `0x3B5A9`.
+
+### 26.1 The measurement (temporary, reverted)
+
+**Stale probe list re-run first.** A whole-run `fn_resolve` probe on
+`8f2d86b` (temporary `PR_T16`, in `mem.c`, reverted) gives exactly §25.4's
+list: `0x14814` (f = 625), `0x3ECF8` (f = 888), `0x29B74`/`0x41578` and the
+stub `0x5D812`. Nothing misses in f = 560..624, so 1478 is not an
+unregistered target.
+
+**The port** (`PR_T16` probe at the end of `fight_arena_frame`, reverted):
+slot 0's projectile `0x2A809F0` (type 2, `+0x48` = 2, `+0x56` = `0x54`)
+moves −256 per frame, x 11 098 at f = 615 to 10 330 at f = 618, against the
+raptor's record x 10 052; `DS_00100AD0/AD4` read 0/0 on every frame and the
+T-rex's slot `+0x64` stays `0x20` (from `0x3D17C`, §25).
+
+**Staged, after the port** (the same probe plus prints in `fighter_think`,
+reverted): at f = 617 `think i=0 ad0=17`, `0x3B464` for side 1 with stance
+`0x20`, `+0x54` 0, projectile `+0x48` 2, no block. The raptor ends f = 617 in
+`0x10/0x0A/0` on `0xD267E` with `rec+0x34` = −210, then −200, −190, … per
+frame; the T-rex's `+0x08` is 0 and `+0x64` `0xFF`. `0x1975C`'s loop runs
+exactly once in the whole run.
+
+### 26.2 The raw (Ghidra `disassemble_function`, `read_memory` + capstone)
+
+`0x1975C` (`get_xrefs_to`: `0x264CC`, plus `0x29B2F`/`0x2633D`/`0x26629`/
+`0x274C7` in unported modes):
+
+```
+0x19763  call 0x17cb0
+0x19778  call 0x33950                 ; ctx(i): ctx[0]=i, ctx[1]=1-i, ctx[2]=&slot[i], ctx[3]=&slot[1-i]
+0x19780  cmp esi(2),[eax*4+0x100ad0] ; jge 0x19804   (signed: runs when AD0[i] > 2)
+0x19791  call 0x1922c (ctx[1])
+0x1979b  call 0x3962c (ctx[0], edx=1) ; true: [ctx[2]+0x8a]=0, 0x18b44(ctx[2]), return
+0x197bf  call 0x396ac (ctx[0], edx=1) ; same
+0x197e8  mov [ctx[3]+0x67],cl(1) ; 0x197ef call 0x3b464 (ctx[1])
+0x197f8  call 0x3b938 (ctx[2]) ; 0x197ff call 0x39278 (esi=2)
+```
+
+`0x17CB0`: `0x15F48(0x128, 0x25, 0x100BD3, 0xFF)` (0x25 bytes of `0xFF`),
+`[0x100AD0]` = `[0x100AD4]` = 0 (`0x17CDC`/`0x17CE2`); with both
+`[0x1077B8]` and `[0x10784C]` set, `AL = 0x17BC8()`; unless AL,
+`0x176CC(0)` for `[0x1077B8]` (`0x17D0E`) and `0x176CC(1)` for `[0x10784C]`
+(`0x17D21`).
+
+`0x176CC` (574 B; EAX = side, EDI = 1 − side): the other slot's `+0x74`
+word (`[ecx+0x107824]`, `ja`) and `+0x76` word (`> 1`) guards; the
+`0x140E4` overlap of the projectile's actor (`[side*0x94+0x1077B8]+0x56`)
+and the other fighter's (`[ecx+0x1077B0]+0x56`); the other's
+`DS_00100AC0` box through `0x15C30` when its bytes 2/3 are ≥ 1, else
+`{0, 0, 0x20, 0x20}` (`0x17784..0x17792`); the other's sprite through
+`0x17EEC`/`0xA8B30`/`0x1B544`; then two `0x181D0` syncs:
+
+```
+0x17844  181D0(0x20, (s16)w, AA8[side] - (box0 + B08[other]), B1C, B14, B28, B34, B24)
+0x1787e  181D0(0x20, h, -(B00[other] + box1 - AA0[side]),     B18, B10, B2C, B30, B20)
+0x17897  flag = B14 > B34 ; 0x178a8 B38 = |B14 - B34| ; 0x178b7 B40 = B1C
+0x178bf  save byte[side+0x100b62] ; 0x178cf clear it
+0x178e5  16DA4(flag, EDX = -1, EBX = AF0[other], ECX = B10, push B30, push 0, push side)
+0x178ef  AD0[side] = B54 ; 0x178fa restore byte[side+0x100b62]
+```
+
+`AA0/AA8` (side 0) and `AA4/AAC` (side 1) are the projectile anchors
+`0x17FA0` already writes (`get_xrefs_to 0x100AA0`: `0x17FDD` write,
+`0x17C0E`/`0x17827` reads). The `0x33950` context at `0x176F3` is never read.
+
+`0x16DA4`'s mode argument (`[esp+0x28]`): `-1` (`0x170A0`) decodes both
+sprites; `0` replaces the side's row with the 4 bytes at `0xA173C` (`ff ff
+ff ff`, `0x16E2C..0x16E4F`, width 4); `1` copies them into the other's row
+before its row copy (`0x16E74`); `2`/`3` use the 6 bytes at `0xA1740`/
+`0xA1746` for the other's row (`0x16EA5`/`0x16ED3`). The port had only the
+`-1` arm. (`get_xrefs_to 0x16DA4`: `0x17565` in `0x170A0`, `0x178E5` in
+`0x176CC`, `0x17BAC` in the unported `0x1790C`.)
+
+`0x17BC8` (231 B): `0x140E4` of the two projectiles' actors; `0x181D0(0x20,
+0x20, AA8 − AAC, B1C, B14, B28, B34, B24)` and `0x181D0(0x20, 0x20, AA0 −
+AA4, B18, B10, B2C, B30, B20)`; `B1C > 0` and `B18 > 0` (`jle`); then the
+voice `0x2C3FC(0x64)`, `0x3B938(0x1077B0)`, `0x2B150([0x10784C])`, AL = 1.
+
+`0x3B938` (140 B; EAX = the thrower's slot, ECX = its `+0x08`): `+0x48` =
+4 starts `0xE1898` at 2.0; else `0xBDFC8[slot+0x7A]` at the float of the
+byte `0xBDFF0[slot+0x7A]` (`0x3B96B fild word`), both through `0x2BC30`;
+then slot `+0x64` = `0xFF`, the projectile's `+0x48` = 0, `+0x34/+0x36` =
+0, slot `+0x08` = 0, and the voice `0x2C3FC(word[0xBDFFA + char*2])`.
+`read_memory 0xBDFC8`: `e0850e00 ce4f0e00 e0850e00 80310d00 …`; `0xBDFF0`:
+`02 01 02 02 02 01 01 02 02 02`.
+
+`0x3B464` (608 B), the woken arms (§7.12's gaps): the block arm
+(`0x3B298` true) clears the thrower's `+0x8A` (`0x3B669`) and runs
+`0x3B080(side, byte[anim0+3], byte[anim0+2], 0)` when `+0x54` ≠ 2, then
+`0x3AD98(side, &anim)`. Otherwise: `0x2BD44` by the record's `+0x4B`
+(`0x3B4D4..0x3B50A`), the slot's `+0x14` callback (`0x3B51B`, cleared on
+non-zero), then the projectile's `+0x48`: 5 → `0x36D20(slot)`, 8 →
+`0x1922C(side)` + `0x235C4(side)`, else `0x39834(side, stance)` and either
+(`+0x54` = 2) `0x18B04` + `0x39F40(side, −0x50, 0x64, 0xF, 0x14)` or
+`0x3A95C(side, (s8)byte[anim2[0]+6], EBX = slot+0x2C)`, then, when the
+thrower's `+0x64` is neither 0 nor 5 and `(u8)(+0x90 − 1) > 3`,
+`0x188DC(side, EBX)` (the jump table `0x3B454` holds `0x3B5EA` four times,
+so `≤ 3` does nothing), and `0x3B080(…, 0)` when `+0x54` ≠ 2.
+
+`0x3A95C` (122 B; EAX = side, EDX = b): `0x33A10` context,
+`0x188AC(side, rec+0x18, 0)`, slot `+0x52/+0x53/+0x54` = `0x10/0x0A/0`,
+`+0x10` = 0, `0x2BC30(rec, 0xC8FE0[char], 3.0)`, `+0x7E` = `byte[0xBECF8]`
+(`0x14`) + b. `0x2BC30` saves ECX, so CL is still b at `0x3A9CB`.
+
+### 26.3 The fix and its assertions
+
+* **Fix** (`3d64c61`):
+  * `camera.c`: `camera_projectile_step` (`0x17CB0`, exported),
+    `camera_projectile_hit` (`0x176CC`) and `camera_projectile_clash`
+    (`0x17BC8`); `camera_winner_height` (`0x16DA4`) gains the mode 0..3 row
+    arms.
+  * `fighter.c`: `fighter_think` calls `0x17CB0` first, uses the signed
+    gate, and runs `0x1922C`, the `0x3962C`/`0x396AC` hold gates with
+    `0x18B44`, `0x3B938` and `0x39278`; `fighter_think_side` wires every
+    `0x3B464` arm above except `0x235C4` (still a `PORT:` gap: no demo
+    projectile has `+0x48` = 8). New `fighter_3b938` and `fighter_3a95c`.
+    The stale "every writer of slot+0x64 sets 0xFF / unexercised by the
+    demo" note is gone (`0x3D17C` writes the old `+0x5F`).
+  * Data addresses as local `#define`s: `0xE1898`, `0xBDFC8`, `0xC8FE0`.
+  * `actors.c`: `actor_alloc`'s `TODO(verify)` on the `0x400` tail-insert
+    arm is replaced by the raw's `0x2ACB6..0x2ACD7` (`and ch,4`; non-zero →
+    `0x249C0`); `0x3D214`'s child spawn reaches it in the demo.
+* **Assertions** (`test_fight.c`):
+  * `check_think_chain` now asserts the raw: with seeded `AD0/AD4` = 3 and
+    no projectile, `0x17CB0` zeroes them and no driver runs (every sentinel
+    kept). Its previous assertions (both drivers ran) were true only
+    because the port skipped `0x17CB0`.
+  * The new `check_projectile_step` with `pc_seed` (check_unfreeze's fake
+    8 x 8 all-on sprite for the four actors, every collision global
+    seeded, the slots, rows, `0x107D20..`, `0x107A80..`, the input ring
+    and `0x100CE0` saved and restored):
+    * A, the hit: `AD0[0]` = `B54` = 5, derived from the raw: 8 rows of
+      popcount 8 = 64, `(64 << 12) / 0xF3D` = 67, `(67 << 12) / 0xD56` = 80,
+      80 / 16 = 5; `AD4` 0, `B1C`/`B18` 8, `B62[0]` restored to `0x5A`; the
+      struck `+0x67`/`+0x41`/`+0x86`, the thrower's `+0x64`/`+0x08`/`+0x8A`,
+      the projectile's `+0x48/+0x34/+0x36`, its stream `0xE85E4` at 2.0 and
+      `DS_001088EC` = 3.
+    * A2, the block arm (command word `0x1000`): `+0x43` bit 5, the
+      thrower's `+0x8A` cleared, the tail and the burst.
+    * B, the `0x17700` guard; C, the `0x17BC8` clash (`B1C`/`B18` `0x20`,
+      side 0 burst, side 1 dead); D, `0x3B938` directly (the `+0x48` = 4
+      arm `0xE189A` at 2.0; char 1: `0xE4FCE` at 1.0); E, `0x3A95C`
+      directly (the raptor's `0xD267E` at 3.0, `0x10/0x0A/0`, `+0x7E` =
+      `0x19`); F, the two `0x181D0` offsets (a 4-px y or x offset gives
+      `B18`/`B30` = 4 or `B1C`/`B34`/`B38` = 4 and `AD0` = 2, which the gate
+      rejects).
+  * Carry-overs: `check_hit_reaction_drive` restores the word `0x1080AC`
+    its last block's `0x3D17C` writes; `check_trex_breath` part D seeds every
+    free pool record's `+0x48` to `0x5A`, so the emitter's `+0x48` = 0 is
+    the descriptor's type byte (removing `actor_spawn`'s `+0x48` store makes
+    part D fail).
+* **Mutations** (`mut16.py`, 29; `camera.c`/`fighter.c` restored and
+  `cmp`-verified, the suite passed afterwards). Real `FAIL` lines:
+
+  | mutation | failures |
+  |---|---|
+  | no `0x17CB0` call / no `AD0` zero / no `0x15F48` fill | 35 / 7 / 21 |
+  | `0x176CC` guard off / mode −1 / row not `0xA173C` / `AD0` to the other side | 5 / 21 / 21 / 21 |
+  | `0x176CC` `B62` not restored | 1 |
+  | `0x176CC` y sign / x sign | 5 / 3 |
+  | clash skipped / no kill / no burst / `0x176CC` after a clash | 7 / 1 / 2 / 3 |
+  | gate `> 5` instead of `> 2` | 16 |
+  | no `0x3B938` in the step / no `0x39278` | 7 / 1 |
+  | `0x3B938`: no `+0x48` = 4 arm / constant hold / no `+0x64` / no `+0x34` | 1 / 1 / 2 / 1 |
+  | `0x3B464`: no `+0x8A` clear / `+0x48` = 8 arm without the tail | 1 / 1 |
+  | `0x3A95C`: `+0x7E` without b / no `+0x54` / no `0x188AC` / `ctx_same` | 1 / 1 / 1 / 9 |
+
+  One mutation survives, as it must: not clearing `B62[side]` for the call
+  cannot be seen, because `0xA173C`'s `ff ff ff ff` is invariant under
+  `0x15EC0`'s bit reversal.
+
+### 26.4 Measured
+
+Port frames 0..1033 are byte-identical to `8f2d86b`'s, and 1034 (f = 618)
+is the first that differs. The whole-run probe shows one think pass, at
+f = 617.
+
+| measurement | before (`8f2d86b`) | after (`3d64c61`) |
+|---|---|---|
+| captures 1478..1480 | 1478 7 749 px; 1479 13 638; 1480 14 417 | **all explained** (0 px splices) |
+| demo oracle first unexplained | 1478 (raw 4385); `[1478..3616]` 2139 / 2133 unexpl.; port `[1034..1380]` | **1481 (raw 4388)**; `[1481..3616]` 2136 / 2130 unexpl.; port `[1036..1380]` (345, 0 exhibited) |
+| demo-fight ratchet | `[1478..1884]` 407, N = 1478 | **`[1481..1884]` 404**, "ratchet improved: first unexplained 1481 > 1478", **N = 1481** |
+| front-end oracle | `[560..1477]` / 918 / 382 clean, 529 splice, 3 transition, 2 unexpl. | **`[560..1480]` / 921 / 383 clean, 531 splice, 3 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved. The three transition frames are the
+same (`port832@row177`, `port862@row189`, `port906@row31`). Unmoved: title
+`54/55/2/0` and `54/57/0/0`, determinism 54; smk 120/120 and 41/41;
+attract 215/216 (expected divergence at 215); C-vs-Python 9866;
+`symbols.h`; the front-end "endpoints BAD" line. The exhibition set grows
+to port frames 0..1035 (799 exhibited). The ladder
+`cmake --build build --clean-first && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify`
+exited 0 with 0 compiler warnings, with N = 1481 in the Makefile.
+
+**Unresolved code targets after the fix** (a temporary whole-run probe in
+`fn_resolve`, reverted):
+* `0x3C048` (f = 652): the reaction-`0x3D` callback of every character
+  (`0xA39EC`, `0xA3EEC`, … `0xA57EC`, i.e. `0xA3528 + (char·0x40 + 0x3D)·20`)
+* `0x3E3A8` (f = 920): the `(char 0, 0x2A)` callback at `0xA3870`
+* the known front-end sites `0x29B74`/`0x41578` and the stub `0x5D812`
+
+`0x14814` and `0x3ECF8` no longer miss; the run moved from f = 618, so these
+frames are not comparable one for one with §25.4's.
+
+### 26.5 The new first unexplained frame, 1481 (characterised, not fixed)
+
+Captures 1478..1480 splice at 0 px (1033/1034 row 103, 1034/1035 row 127,
+1034/1035). Capture 1481's best splice, port 1035/1036 (row 0), leaves
+3 626 px in rows 86–192, almost all in the two fighters (against port
+1036: x 0–79 1 578 px, x 240–319 2 038 px, x 80–199 0 px, x 200–239 10 px;
+the background rows 45–75 match port 1036 exactly);
+1482 leaves 3 615 px, 1483 2 001, 1485 4 503, and 1499 14 719. A shift
+search per fighter on 1481 against port 1036 (f = 620) puts the capture's
+raptor 1 px left (teal mask over x 0–69, rows 60–189: 84 mismatches at
+dx −1 against 450 at dx 0) and the T-rex 1 px right (gold mask over x
+236–317, rows 40–189: 170 mismatches at dx +1 against 473 at dx 0, not
+exact: the pose also differs slightly); at 1482 the raptor matches port 1037
+exactly and the T-rex leaves 158. So from f ≈ 619 the capture's fighters
+stand slightly further apart and the T-rex's frames drift. In the port the
+raptor is in the `0x3A95C` stagger (`rec+0x34` −200, −190, … per frame, no
+`+0x10` handler) and the T-rex takes reaction `0x08` at f = 619 (state
+`9/8/1`). The owner is **not derived**; the candidates are the struck
+raptor's knock-back (`0x39834`'s `0x392A0`/`0x3B080` seeds or the `0xD267E`
+stream's velocity) and the T-rex's reaction `0x08`.

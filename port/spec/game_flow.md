@@ -525,9 +525,9 @@ demo-fight section below.
 3617 distinct post-logo frames, raw 1367..8409 after the demo-fight closure
 cycle's re-capture) reaches the front-end. With the state-3 render ported
 (`0x12484`) the `PR_FRONTEND_DUMP` driver emits the real zoom-out, and
-`tools/title_compare.py --frontend` aligns it: window distinct **[560..1477]**
-(raw 3108..4384), **918 frames: 382 clean, 529 splice, 3 transition, 2
-unexplained** (the four classes sum to 916 of 918: the window's other two frames are the
+`tools/title_compare.py --frontend` aligns it: window distinct **[560..1480]**
+(raw 3108..4387), **921 frames: 383 clean, 531 splice, 3 transition, 2
+unexplained** (the four classes sum to 919 of 921: the window's other two frames are the
 all-black captures 561 and 831, excluded as artifacts — the oracle's own list) — captures **832** and **833**, allowed by name in
 `FRONTEND_ALLOWED_UNEXPLAINED` with their reason (`title_compare.py:352-374`;
 the arena-backdrop cycle's absorbed claim move: the window is derived from the
@@ -563,7 +563,9 @@ transition frames all lie in that new span; the frame-1358 fix (the camera
 split arm's `0x18714` record writes) then explained 1358..1410: →
 `[560..1410]`/851; the frame-1411 fix (the T-rex's reaction-`0x20` callback
 `0x3D17C` and its `0x3D214`/`0x3D26C` targets) then explained 1411..1477: →
-`[560..1477]`/918.)
+`[560..1477]`/918; the frame-1478 fix (the projectile collision step
+`0x17CB0` and the hit it wakes in `0x1975C`/`0x3B464`) then explained
+1478..1480: → `[560..1480]`/921.)
 The claim that result supports is precise and narrow: **no
 content-bearing capture frame inside the window the port's own dump exhibits is
 unexplained** (the two named exceptions aside). The window is derived from the port's dump (`check_capture`'s
@@ -695,23 +697,24 @@ at loop 1070 (dumped 481), state 7 runs loop 1071..1969 (dumped 482..1380), and
 dump stops. The dump therefore holds **1381 frames** (dumped 0..1380); the 1400
 cap covers it with no truncation, and the 2000-frame loop clears the 1970 exit.
 
-**The demo window is report-only; its first unexplained frame is capture 1478 —
-the T-rex's breath projectile passing through the raptor at f ≈ 618 (the
-capture's hits it), after the
+**The demo window is report-only; its first unexplained frame is capture 1481 —
+the two fighters about 1 px further apart in the capture from f ≈ 619, after
+the breath ring hits the raptor — after the
 demo-pose cycle explained captures 843..850, the roar-timing fix 851..857, the
 frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863, the
 frame-864 fix 864/865, the frame-866 fix 866, the frame-867 fix 867..869 and
 the frame-870 fix 870..879, the frame-880 fix 880..890, the frame-891 fix
 891, the frame-892 fix 892..949, the frame-950 fix 950..991 and the
 frame-992 fix 992..997, the frame-998 fix 998..1357, the frame-1358
-fix 1358..1410 and the frame-1411 fix 1411..1477.** `tools/title_compare.py --demo` locates the front-end window
+fix 1358..1410, the frame-1411 fix 1411..1477 and the frame-1478 fix
+1478..1480.** `tools/title_compare.py --demo` locates the front-end window
 with the same content alignment, then classifies the capture region after it
 against the port dump frames after the last frame that window exhibits — the
 same clean/splice/transition/unexplained model, no second one. It reports and
 exits 0.
 
-* Front-end window (still enforced in `verify`): distinct **[560..1477]** (raw
-  3108..4384), **918 frames: 382 clean, 529 splice, 3 transition, 2
+* Front-end window (still enforced in `verify`): distinct **[560..1480]** (raw
+  3108..4387), **921 frames: 383 clean, 531 splice, 3 transition, 2
   unexplained** (the three transition frames all lie in the span 998..1357
   that the frame-998 fix added) — captures **832** (the loader's `- LOADING -` screen) and
   **833** (the dark arena with the `LOADING` text overlaid), allowed by name in
@@ -724,11 +727,12 @@ exits 0.
   reproducible — a `title_capture.py --verify-reproducible` run of the pinned
   original gave 587 vs 588 distinct frames and a first divergence at distinct
   index 30), and the oracle's claim is unchanged.
-* Demo window: distinct **[1478..3616]** (raw **4385..8409**), **2139 frames:
-  0 clean, 0 splice, 0 transition, 2133 unexplained** (6 all-black capture
-  frames excluded as artifacts). Demo port frames **[1034..1380]** (347),
-  **0/347 exhibited**. (Measured on the frame-1411 fix; before it:
-  `[1411..3616]`, 2206 frames, port `[977..1380]`, first unexplained 1411;
+* Demo window: distinct **[1481..3616]** (raw **4388..8409**), **2136 frames:
+  0 clean, 0 splice, 0 transition, 2130 unexplained** (6 all-black capture
+  frames excluded as artifacts). Demo port frames **[1036..1380]** (345),
+  **0/345 exhibited**. (Measured on the frame-1478 fix; before it:
+  `[1478..3616]`, 2139 frames, port `[1034..1380]`, first unexplained 1478;
+  before the frame-1411 fix: `[1411..3616]`, 2206 frames, port `[977..1380]`, first unexplained 1411;
   before the frame-1358 fix: `[1358..3616]`, 2259 frames, port `[931..1380]`, first unexplained 1358;
   before the frame-998 fix: `[998..3616]`,
   2619 frames, port `[623..1380]`, first unexplained 998; before the frame-992
@@ -759,8 +763,16 @@ exits 0.
   fix: `[851..3616]`, 2766 frames, port `[497..1380]`, first unexplained 851; before
   the demo-pose cycle: `[843..3616]`, 2774 frames, port `[490..1380]`, first
   unexplained 843.)
-* **First unexplained captured frame 1478 (raw 4385)** (demo-pose record §25.5).
-  Capture 1478's best port 1033/1034 splice (row 103) leaves 7 749 px in rows
+* **First unexplained captured frame 1481 (raw 4388)** (demo-pose record §26.5).
+  Capture 1481's best port 1035/1036 splice (row 0) leaves 3 626 px in rows
+  86–192, almost all in the two fighters; the background matches port 1036
+  (f = 620). A per-fighter shift search puts the capture's raptor 1 px left
+  and its T-rex 1 px right (the T-rex's pose also differs slightly); 1482
+  leaves 3 615 px. In the port the raptor is in the `0x3A95C` stagger and
+  the T-rex takes reaction `0x08` at f = 619. The candidates are the struck
+  raptor's knock-back and the T-rex's reaction `0x08`; not derived. (Before
+  the frame-1478 fix this was capture 1478 (§25.5, derived in §26): capture
+  1478's best port 1033/1034 splice (row 103) leaves 7 749 px in rows
   103–195; from 1480 the residual covers the whole frame. Port frame 1034 is
   f = 618. The capture's breath ring reaches the raptor at the left edge and
   bursts as the raptor recoils; the port's ring (slot 0's `+0x08`, −256 per
@@ -768,8 +780,9 @@ exits 0.
   never tested against the raptor. No `fn_resolve` miss falls in f =
   560..624. The candidate owner is the unported collision step `0x17CB0`
   (`0x1975C`'s first call, `0x19763`), whose `0x176CC`/`0x17BC8` test the
-  slots' `+0x08` projectiles; not derived. The T-rex at the right edge also
-  differs (reaction `0x08` at f = 619); not separated. (Before the
+  slots' `+0x08` projectiles; it is the owner: the port skipped
+  `0x19763 call 0x17CB0`, so `DS_00100AD0` stayed 0 and the think step never
+  applied the hit, which it now does at f = 617.) (Before the
   frame-1411 fix this was capture 1411 (§24.5, derived in §25): at f = 559
   the T-rex's reaction `0x20` reached the unregistered callback `0x3D17C`
   (entry `0xA37A8`), so the port put the T-rex back in its stance instead of
@@ -815,13 +828,14 @@ exits 0.
   `0x3E484` (`slot+0x18`) needs the unported `0x18C14`; its closure is 1 408 B
   in 6 functions, and it is inert in this run (evaluated on the port's state,
   it gives the port's `DS_00100AF8` zero-ness at f = 106..114, the only frames
-  it is set). The `0x1975C` collision step `0x17CB0` → `0x176CC` (with
-  `0x17BC8` and the §7.12 gap `0x3B938`: 1 070 B in 4 functions; its other
-  callees are ported) leaves `DS_00100AD0` at 0, and is the candidate owner
-  of capture 1478. **Known later gaps** (a whole-run `fn_resolve`-miss probe
-  on the frame-1411 fix): the reaction callbacks `0x14814` (f = 625, the
-  `(char 3, 0x22)` entry `0xA46D0`) and `0x3ECF8` (f = 888, the `(char 0,
-  0x2C)` entry `0xA3898`), both skipped; `0x3D17C` no longer misses and
+  it is set). The `0x1975C` collision step `0x17CB0` → `0x176CC`/`0x17BC8`
+  and the `0x3B464`/`0x3B938`/`0x3A95C` hit it wakes are ported (§26);
+  `0x3B464`'s `0x235C4` arm (projectile `+0x48` = 8) stays a named gap, not
+  reached. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
+  frame-1478 fix): the reaction callbacks `0x3C048` (f = 652, reaction
+  `0x3D` of every character, `0xA39EC` + char·`0x500`) and `0x3E3A8`
+  (f = 920, the `(char 0, 0x2A)` entry `0xA3870`), both skipped; `0x14814`
+  and `0x3ECF8` no longer miss; `0x3D17C` no longer misses and
   `0x3A588` is no longer reached; `0x14EF8` and the animation-opcode target
   `0x3640C` (which the frame-998 fix's run still missed at f = 582 and
   f = 741) no longer miss, nor do `0x4AC18` and `0x35938`; `0x3C0A4` and
@@ -906,7 +920,8 @@ fix to **860**, the frame-860 fix to **864**, the frame-864 fix to
 frame-870 fix to **880**, the frame-880 fix to **891**, the frame-891
 fix to **892**, the frame-892 fix to **950**, the frame-950 fix to
 **992**, the frame-992 fix to **998**, the frame-998 fix to **1358**, the
-frame-1358 fix to **1411**, and the frame-1411 fix to **1478**.)
+frame-1358 fix to **1411**, the frame-1411 fix to **1478**, and the
+frame-1478 fix to **1481**.)
 * **The window is no longer non-discriminating.** Cycle 1's `--demo` window
   opened on the state-9 hold's first frame, so it read identically for correct or
   broken code. Task 3 made the state-9 hold match — the hold's frames
@@ -914,7 +929,7 @@ frame-1358 fix to **1411**, and the frame-1411 fix to **1478**.)
   demo window's boundary (the loader's presentation at 832/833, then the T-rex
   pose at 843, since moved to 851 by cycle 6 below, to 858 by the roar-timing
 fix, to 859 by the frame-858 fix, to 860 by the frame-859 fix, to 864 by
-the frame-860 fix, to 866 by the frame-864 fix, to 867 by the frame-866 fix, to 870 by the frame-867 fix, to 880 by the frame-870 fix, to 891 by the frame-880 fix, to 892 by the frame-891 fix, to 950 by the frame-892 fix, to 992 by the frame-950 fix, to 998 by the frame-992 fix, to 1358 by the frame-998 fix, to 1411 by the frame-1358 fix and to 1478 by the frame-1411 fix) is a real content gap, not a window-definition artifact; the demo
+the frame-860 fix, to 866 by the frame-864 fix, to 867 by the frame-866 fix, to 870 by the frame-867 fix, to 880 by the frame-870 fix, to 891 by the frame-880 fix, to 892 by the frame-891 fix, to 950 by the frame-892 fix, to 992 by the frame-950 fix, to 998 by the frame-992 fix, to 1358 by the frame-998 fix, to 1411 by the frame-1358 fix, to 1478 by the frame-1411 fix and to 1481 by the frame-1478 fix) is a real content gap, not a window-definition artifact; the demo
   window itself still reports **0 clean** (above). Window re-anchoring was **removed from this cycle**
   (design spec, "Removed from this cycle"): no new reference and no re-anchoring
   task, because porting the state-9 render made the **front-end** window's
@@ -1854,6 +1869,35 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   The ratchet N is raised 1411 → 1478.
 * **Moved claim (allowed by the brief).** Front-end `[560..1410]`/851 →
   **`[560..1477]`/918: 382 clean, 529 splice, 3 transition, 2 unexplained
+  (832, 833)**; the three transition frames are the same as before. Nothing
+  else moved.
+
+**The projectile collision step (`3d64c61`, demo-pose record §26).**
+* **Cause.** `0x1975C`'s first call `0x19763 call 0x17CB0` was unported, so
+  `DS_00100AD0/AD4` stayed 0 and the think step never ran: at f = 617 the
+  T-rex's breath ring flew through the raptor.
+* **Raw.** `0x17CB0` fills the 0x25-byte `0x100BD3` plane with `0xFF`
+  (`0x15F48`), zeroes `AD0/AD4`, then tests two live projectiles (`0x17BC8`:
+  `0x3B938` bursts side 0's, `0x2B150` kills side 1's) or each side's
+  projectile against the other fighter (`0x176CC`: the `0x170A0` shape, the
+  projectile a `0x20` box at `DS_00100AA8/AA0[side]`, `0x16DA4` mode 0 with
+  the row `0xA173C`), writing `AD0[side]` = `DS_00100B54`. `0x1975C` then,
+  per thrower with `AD0` > 2 (signed), runs `0x1922C`, the `0x3962C`/`0x396AC`
+  gates (true: `0x18B44` and stop), `0x3B464` for the struck side (block:
+  `0x3B080`/`0x3AD98`; else `0x2BD44`, the `+0x14` callback, the projectile's
+  `+0x48` switch, `0x39834` and `0x39F40` or the `0x3A95C` stagger with
+  `0x188DC`), `0x3B938` and `0x39278(2)`.
+* **Fix.** `camera_projectile_step`/`_hit`/`_clash` in `camera.c` (plus the
+  `0x16DA4` mode arms), `fighter_think`/`fighter_think_side` wired, new
+  `fighter_3b938`/`fighter_3a95c`; `0x235C4` stays a named gap.
+  `check_think_chain` asserts the raw zeroing; new `check_projectile_step`;
+  every mutation but the unobservable `B62` clear fails it.
+* **Measured.** Captures 1478..1480 are explained; port frames 0..1033 are
+  byte-identical to before. The demo's first unexplained is now **1481 (raw
+  4388)**, and the fight window `[1481..1884]` has 404 frames, 0 explained.
+  The ratchet N is raised 1478 → 1481.
+* **Moved claim (allowed by the brief).** Front-end `[560..1477]`/918 →
+  **`[560..1480]`/921: 383 clean, 531 splice, 3 transition, 2 unexplained
   (832, 833)**; the three transition frames are the same as before. Nothing
   else moved.
 
