@@ -315,12 +315,13 @@ command generator `0x47208`, the `+0x52` state machine (`0x3531C`/`0x350D0`),
 the `0x3C88C` hitbox machine and the `0x3CF38` hit chain — the chain now
 **fires**, hits land (`+0x7C` 0/0 → 1/1), and the fight's last state change
 moved **1262 → 1400**. Its report-only oracle (`make demo-oracle`) measures the
-demo window `[1763..3616]` (raw `4670..8409`), **1854 frames: 0 clean / 0 splice
-/ 0 transition / 1848 unexplained** (6 all-black frames excluded); the first
-unexplained frame is capture **1763 (raw 4670)** — 153 px in x 15–22, rows
-53–98: the capture's green vertical "2 HIT COMBO" text, which `0x39040`
-draws through `0x38D90` at f = 860 and the port skips as a named gap; not
-derived)
+demo window `[1881..3616]` (raw `4788..8409`), **1736 frames: 0 clean / 0 splice
+/ 0 transition / 1730 unexplained** (6 all-black frames excluded); the first
+unexplained frame is capture **1881 (raw 4788)** — 3 791 px in x 0–204, rows
+137–192: below the splice row the capture's gold T-rex drops into a new
+pose at f = 962 (port frame 1379, the dump's second-to-last), while the
+port's stays upright; f = 962 is the run's `0x3E3A8` miss, a reaction
+callback `hit_reaction_apply` skips; not derived)
 (moved from 843
 by the demo-pose cycle, then from 851 by the roar-timing fix, then from 858 by
 the frame-858 fix, then from 859 by the frame-859 fix, then from 860 by the
@@ -333,7 +334,8 @@ frame-998 fix, then from 1358 by the frame-1358 fix, then from 1411 by the
 frame-1411 fix, then from 1478 by the frame-1478 fix, then from 1481 by the
 frame-1481 fix, then from 1546 by the frame-1546 fix, then from 1563 by the
 frame-1563 fix, then from 1659 by the frame-1659 fix, then from 1715 by the
-frame-1715 fix, then from 1750 by the frame-1750 fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
+frame-1715 fix, then from 1750 by the frame-1750 fix, then from 1763 by the
+frame-1763 fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
 Task 1 corrected it to **836/25**, and the final re-capture moved the loader text
 to 832 with the fight's first frames at 833/834 — record §9.1/§9.3.) Cycle 2
 advanced the boundary 811 → 816 → 832: the state-9 globe's fourth layer
@@ -579,14 +581,24 @@ See §31 of the record.
 
 See §32 of the record.
 
+**The combo text `0x38D90`/`0x38FEC` (`bcce10b`), the demo fight's captures 1763..1880.** `0x39040` draws the combo text through `0x38D90` and checks the combo names through `0x38FEC`, and the port skipped both as a `PORT:` named gap. At f = 860 the T-rex's second hit draws "2", the HIT glyph (`0x1B`) and "COMBO" (`0xBE01C`) down the text grid's column 2 (rows 8..14). The glyph grid and the string table were already ported, so the gap was ten functions: `0x2F4D0`/`0x2EFD4`/`0x2EF24` (the `"%i"` number formatter), `0x2F20C`/`0x2F314` (vertical draw and clear), `0x38C5C`/`0x38D90`/`0x38D24` (the combo text, its clear and its 180-frame timer, now wired at `fight_hud_pass`'s `0x357F5`) and `0x38FEC`/`0x38ED0` (the per-character combo names on rows 6/7). New `check_text_vertical_number` in `test_platform.c` and `check_combo_text` in `test_fight.c`; all 55 mutations fail them.
+
+* **Measured.** Captures 1763..1880 are now explained; port frames 0..1276 are byte-identical to before, and 1277 (f = 860) differs in exactly the capture's 153 px. The demo oracle's first unexplained is now **1881 (raw 4788)**. The demo window `[1881..3616]` has 1736 frames, 1730 unexplained, and the fight window `[1881..1884]` has 4 frames, 0 explained. The ratchet N is raised **1763 → 1881** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1762]` / 1203 → **`[560..1880]` / 1321 / `516 clean, 798 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before, and port frames 0..1378 are exhibited (1142). Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1881's best 1378/1379 splice (row 137) leaves 3 791 px in x 0–204, rows 137–192, and 1882..1884 leave 8 429..11 140 px. Below the split the capture's gold T-rex drops into a new pose, lower, legs apart and its tail flat on the sand, while port 1379 (f = 962) keeps it upright as in 1880; the raptor, the worshippers and the camera match. f = 962 is the run's `0x3E3A8` miss (a `hit_reaction_apply` reaction callback, unregistered). Not derived. The port's dump ends at frame 1380, so the fight window holds only 4 captures.
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x3E3A8` (f = 962), unchanged.
+
+See §33 of the record.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
-demo fight's remaining arena divergence (first unexplained at capture 1763
-after the frame-1750 fix: the "2 HIT COMBO" text `0x39040`'s `0x38D90` draws
-at f = 860, a named gap, not derived; the unported `0x19020`/`0x3E484` hook,
+demo fight's remaining arena divergence (first unexplained at capture 1881
+after the frame-1763 fix: the T-rex's new pose at f = 962, where the
+unregistered reaction callback `0x3E3A8` misses, not derived; the unported `0x19020`/`0x3E484` hook,
 `0x3B464`'s `0x235C4` arm, the effects pass's types 2, 7 and 9..12, the
 grab arm of `0x4B788`, `0x4B470`'s eighth-hit tail and case 8's held body are
-named gaps; the unregistered code target `0x3E3A8` (f = 962) is a later
-known gap, and `0x370F0` is still unregistered; not reached in this run) and
+named gaps; the unregistered code target `0x3E3A8` (f = 962) is the
+candidate owner of 1881, and `0x370F0` is still unregistered; not reached in
+this run) and
 the
 interactive match cycle (the mode graph, `0x1EEB0`, the `0x1EA08` sites) remain;
 the attract's `0x2C3FC` voice calls remain declared gaps with `/* PORT: */`

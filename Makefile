@@ -197,7 +197,7 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
 # improves (the tool prints "ratchet improved ... raise N"). N = 1881 was measured on
-# the commit that raised it (on 5bf6e7f): 0x39040's combo text, 0x38D90 (the hit
+# bcce10b (the commit that raised it, on 5bf6e7f): 0x39040's combo text, 0x38D90 (the hit
 # count, the HIT glyph and "COMBO" down the text grid's column 2 through the
 # 0x2F4D0/0x2EFD4 number formatter and the vertical 0x2F20C) and the combo-name
 # check 0x38FEC/0x38ED0, which the port skipped as a named gap; at f = 860 the

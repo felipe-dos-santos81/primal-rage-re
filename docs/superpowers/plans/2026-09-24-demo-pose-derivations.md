@@ -5672,8 +5672,8 @@ the void wrappers `reaction_cb_3BF70`/`reaction_cb_3C0A4` and registers
 both. The wrappers drop AL, which the `0x35045` call ignores (`0x35049`
 only adds to ESP). That is 0x11D raw bytes in two new functions, and every
 callee (`0x33950`, `0x3C4CC`, `0x1A570`) was already ported, so the change
-is inside the size gate. `0x3C048` (reaction `0x3D`) does not run in the
-demo and is not ported.
+is inside the size gate. `0x3C048` (reaction `0x3D`) is not reached in the
+current run and is not ported.
 
 `check_reaction_attack` is new in `test_fight.c`. Its fixture `ra_seed`
 extends `tb_seed` with sentinels in:
@@ -5761,3 +5761,229 @@ body running once, at f = 860 (port 1277), for side 0 with
 `0x38D90(side)` and `0x390EF`'s `0x38FEC(side)` as a `PORT:` named gap,
 the `0x2F4D0`/`0x2EFD4` text-grid formatter that `fighter_39040`'s
 comment declares. That draw is the candidate owner. It is not derived.
+
+(Derived since, §33: the candidate holds. `0x38D90` draws the hit count,
+the HIT glyph and "COMBO" down the text grid's column 2, and `0x38FEC`
+checks the combo names; the port skipped both. Porting them, with the
+`0x2F4D0`/`0x2EFD4` formatter and the vertical `0x2F20C`/`0x2F314`,
+explains 1763..1880.)
+
+## 33. The combo text `0x38D90`/`0x38FEC` at capture 1763 (roar-timing Task 23, `bcce10b`)
+
+**Result in one line.** Capture 1763 has one cause, and it is the port's.
+`0x39040` draws the combo text through `0x38D90` and checks the combo
+names through `0x38FEC`, and the port skipped both as a `PORT:` named gap
+(the "`0x2F4D0`/`0x2EFD4` text-grid formatter"). At f = 860 the T-rex
+(side 0) lands its second hit, and the raw draws "2", the HIT glyph and
+"COMBO" down the text grid's column 2. The closure is small: the glyph
+grid (`0x2F0F0`/`0x2F198`/`0x2F280`/`0x2F4BC`/`0x2F5A0`/`0x2F830`) and the
+string table (`0x1C500`/`0x474E4`) were already ported, so the gap was ten
+functions. This explains captures 1763..1880.
+
+### 33.1 The measurement (temporary, reverted)
+
+A `PR_T23` trace printed each `fn_resolve` miss with `DS_0010150C`, and
+the new routines' inputs. It was reverted from pre-trace copies of `mem.c`
+and `fighter.c`, and the dump with the trace is byte-identical to the one
+without it.
+- `0x38D90` runs once, at f = 860 (port frame 1277), for side 0, with the
+  hit count `DSW(0x107D2C)` = 2, `DSW(0x107D20)` = 28 and slot `+0x63` = 1.
+  So the raw draws no "28%" row.
+- `0x38FEC` walks all seven T-rex records, and none names a combo: every
+  threshold (7, 6, 4) is above 2 hits.
+- `0x38D24`'s timer (`0xB4`, set at `0x390E1`) does not reach 0 before the
+  dump ends.
+- The only code-target miss left is `0x3E3A8`, at f = 962.
+
+With the fix, port frames 0..1276 are byte-identical to Task 22's dump.
+Port 1277 (f = 860) differs in exactly 153 px, in x 15–22 and rows 53–98,
+which is the capture's miss box. Frames 1277..1380 all differ, because the
+text stays up.
+
+### 33.2 The raw (Ghidra disassembly, fixups applied)
+
+**`0x38D90`** (`0x38D90..0x38ECD`). EAX = side, kept in EBP; c = side *
+0x25.
+- `0x38D98` calls `0x38C5C(side)`, the clear.
+- `0x38DAC`/`0x38DCC` call `0x1C500(0xE5)`, and `0x2F4BC(-1, 6 / 7, s,
+  0x3000)` draws it centred on rows 6 and 7. `0x1C500` keeps EDX and ECX
+  (`push edx` at `0x1C501`, and `0x474E4` saves ECX at `0x474E4`).
+  String `0xE5` is 60 spaces, so both draws are clears.
+- `0x38E13` calls `0x2F4D0(c + 2, 8, value, 2)` with the stack pad 3 and
+  mode `0x1000` (pushed `0x1000`, then 3). The value is the hit count,
+  `[esi+0x107D2A] sar 0x10` with ESI = side * 2, i.e. the signed word at
+  `0x107D2C + side*2`.
+- `0x38E29` calls `0x2F20C(c + 2, 9, 0xBE01C, 0x1000)`. The string is
+  `1B 43 4F 4D 42 4F` ("\x1bCOMBO"), and `0x1B` is the font's HIT glyph.
+- When slot `+0x63` (`0x107813 + side*0x94`, `0x38E3E`) is 0, it calls
+  `0x2F4D0(c, 0x10, (s16)DSW(0x107D20 + side*2), 3)` with pad 1 and mode
+  `0x2000`, then `0x2F4BC(c + 3, 0x10, 0x80BF0 "%", 0x2000)`. The `cmp
+  edx,0x64` at `0x38E5C` and `cmp edx,0xa`/`cmp edx,0x64` at
+  `0x38E89`/`0x38E8E` feed no branch: both arms pass col EDI - 2 = c.
+
+**`0x38C5C`** (`0x38C5C..0x38CD8`). c = side * 0x25.
+`0x2F280(c + 2, 8, 0x80BE0 "  ", 0x2000)`,
+`0x2F314(c + 2, 9, 0x80BE4 (six spaces))`,
+`0x2F280(c, 0x10, 0x80BEC "   ", 0x2000)` and
+`0x2F280(c + 3, 0x10, 0x80BEC, 0x2000)`.
+
+**`0x38D24`** (`0x38D24..0x38D8F`). When `DSW(0x107D18 + side*2)` is non-zero
+(`0x38D35`), it is decremented (`0x38D3E`). The step that reaches 0
+(`0x38D45`) calls `0x38C5C(side)` and redraws string `0xE5` on rows 6 and 7.
+Its callers are `0x35658` (`0x357F5`, the port's `fight_hud_pass`) and
+`0x384F8` (from `0x266AC`, not in the demo).
+
+**`0x38FEC`** (`0x38FEC..0x3903C`). ctx = `0x33950(side)`, char =
+`DSB(ctx[2] + 0x7A)`. The count is the dword at `0xBEBB6 + char*2` `sar
+0x10` (`0x39008`/`0x39011`), i.e. the signed word at `0xBEBB8 + char*2`.
+The records are `DSD(0xBEB90 + char*4)`, stride `0x44`. It calls
+`0x38ED0(ctx[0], rec)` for each until AL is non-zero (`0x39029`).
+
+**`0x38ED0`** (`0x38ED0..0x38FEB`). EAX = side, EDX = the record.
+- For i = 0..0x13, the id byte `rec[0x1B + i]`:
+  - not `0xFF`: when `DSB(0x107A80 + side*0x40 + id)` is below
+    `rec[0x2F + i]` (`0x38FC3..0x38FD5`), it returns 0.
+  - `0xFF`: for j = 0..2, the first threshold `rec[0x18 + j]` at or below
+    the hit count (`0x38F12` `cmp dx,cx; jg`) names the combo. With slot
+    `+0x63` clear it redraws `0xE5` on rows 6/7, then string `DSD(rec +
+    4j)` on row 6 and `DSD(rec + 0xC + 4j)` on row 7, centred, mode
+    `0x3000`. It returns 1 either way (`0x38FA2`). No threshold met
+    returns 0.
+- 0x14 ids with no terminator return 0.
+- The T-rex's first record (`0xBE024`) has thresholds 7/6/4, the list
+  [42] with need 1, and the names `0xE6`/`0xE7` ("TAKE A BITE"/"OUTTA
+  CRIME!"), `0xE8`/`0xE9` ("EXTRA CRUNCHY"/" ") and `0xEA`/`0xEB`
+  ("CRUNCHY"/" ").
+
+**`0x2F4D0`** (`0x2F4D0..0x2F50A`, `ret 8`). EAX = col, EDX = row, EBX =
+value, ECX = width, `[esp+0x24]` = pad (the last push) and `[esp+0x28]` =
+mode. It saves the cursor `DS_00105F34` (`0x2F4E4`), formats into a
+0x14-byte stack buffer through `0x2EFD4(value, buf, width, pad)`, draws with
+`0x2F198(col, row, buf, mode)` and restores the cursor (`0x2F4FE`).
+
+**`0x2EFD4`** (`0x2EFD4..0x2F0EE`). EAX = value, EDX = dest, EBX = width,
+ECX = pad. `0x2EF24` is `sprintf(buf, "%i", value)` (format at `0x80B40`,
+libc `0x65546`) into a 0x0C-byte stack buffer, and it returns the length L.
+- width ≤ L (`0x2EFEF`): the last `width` characters.
+- pad > 3 (`0x2F015` `ja`): nothing but the terminator.
+- The jump table at `0x2EFC4`: 0 right-justifies with '0' (`0x2F026`,
+  memset `0x61A70`), 1 with ' ' (`0x2F059`), 2 left-justifies with ' '
+  (`0x2F08C`), 3 copies the digits alone (`0x2F0C2`).
+- The terminator goes at dest[width], or at dest[L] for pad 3 (`0x2F0D8`).
+  It returns L.
+
+**`0x2F20C`** (`0x2F20C..0x2F27E`). `0x2F198`'s vertical twin: the same
+cursor reload for row -1 and centring for col -1, then `0x2F830` with the
+stack byte 1 (`0x2F259`). The cursor gets {row, col + glyph count}
+(`0x2F270`/`0x2F274`). Its one caller is `0x38D90`.
+
+**`0x2F314`** (`0x2F314..0x2F384`). EAX = col, EDX = row, EBX = string.
+The count is `strlen` (`repne scasb`; no `0x2F0F0` and no mode; ECX is
+overwritten). It releases each non-empty cell down the column through
+`0x2AD40`, and it stops after the cell of a row above `0x1E` (`0x2F36D`
+`cmp ecx,0x1e; jg`, tested after the release). Its one caller is
+`0x38C5C`.
+
+The glyphs are 8×8 in the `0xBCD7C` font ('2' `0x3F47`, HIT `0x3F30`,
+'C' `0x3F58`, 'O' `0x3F64`, 'M' `0x3F62`, 'B' `0x3F57`), so the run fills
+rows 8..14 of column 2. That is 7 rows of 8 × `0xD56`/`0x1000` ≈ 6.7 px,
+46 px in all: the capture's rows 53–98.
+
+Two raw behaviours show up only in the tests. String `0xE5`'s clear from
+col 0 runs 60 cells through `0x2F280`, whose wrap (col `0x2B` is the next
+row's col 0, and then that row again from 0) also clears the next row's
+cols 0..15. So the row-7 clear takes side 0's hit count at (8, 2) with it
+whenever `0x38ED0` names a combo or `0x38D24` fires. And vertical text
+that starts at row `0x1E` would make `0x2F830` write the byte before the
+string (`m[k - 1]` with k = 0). `0x38D90`'s rows are 8..14, so that is
+never reached.
+
+### 33.3 The fix and its assertions
+
+`actors.c` gets `text_vertical_set` (`0x2F20C`),
+`text_cells_release_vertical` (`0x2F314`), `text_number_format` (`0x2EFD4`
+with `0x2EF24`; `snprintf "%i"`) and `text_number_draw` (`0x2F4D0`), all
+exported. `fighter.c` gets `fighter_38c5c`, `fighter_38d24`,
+`fighter_38d90`, `fighter_38ed0` and `fighter_38fec`, with local defines for
+the five strings and `0xBEB90`. `fighter_39040` now calls `0x38D90` and
+`0x38FEC` where the `PORT:` gap was, and `fight_hud_pass` calls `0x38D24` at
+`0x357F5` (`0x34038` stays a gap). That is ten functions and about 0x5E0 raw
+bytes, inside the size gate. The `0x2F4D0` buffer is zeroed (`PORT:`): the
+raw's is uninitialised stack, which only a pad above 3 could show.
+
+The tests:
+- **`check_text_vertical_number`** (`test_platform.c`, from `test_text`).
+  `0x2EFD4` over every pad, truncation, pad > 3 and width = L. `0x2F4D0`'s
+  cells and cursor restore. `0x2F20C`'s column, centring and cursor
+  reload. `0x2F314`'s column-only release and its row-`0x1E` stop (it
+  releases the dword past the grid's last row and stops before the next).
+- **`check_combo_text`** (`test_fight.c`, after `test_fight`'s restores so
+  the real actor pool is in place). `0x38D90` in both `+0x63` arms and for
+  side 1. `0x38D24`'s countdown, clear and side 1. `0x38ED0`/`0x38FEC`'s
+  thresholds, needs, `+0x63`, side-1 indexing, char, and the stop at the
+  first record that names. `0x39040`'s two calls and the `0xB4` timer.
+- **`check_hud_pass_machine`** seeds `DSW(0x107D18)` = 2/5 and asserts 1/5
+  (the `0x357F5` wiring).
+
+Every cleared cell is seeded with a planted non-glyph record (sprite
+`0x2C11`), and "kept" is asserted by sprite id. A released record is
+reused by the next glyph spawn, so a pointer comparison could not fail.
+
+**Mutations.** `scratchpad/mut23.py` made 55 single-site edits in
+`actors.c`, `fighter.c` and `fight.c`. The first sweep killed 49. The six
+survivors were test gaps: the pointer-equality checks above, and the
+missing width = L pad-4, timer-3, row-12/14/15 and side-1 col-38/40/`0x10`,42
+cases and a two-namer case. With those added, all 55 fail 1..11 assertions.
+
+**Parked minors.**
+- The record's §32.3 wording is now "not reached in the current run".
+- "backward" is now "reversed-facing" in `fighter.c` and `test_game.c`.
+- `fighter.h`'s `0x3BF70` comment names the side's record (ctx[4]).
+- `fight.c`'s `0x4AC80` bands are computed in u32 (`0x4ACED..0x4AD27`
+  wrap before the signed compares).
+- The `0x4B3F0`/`0x4B430` comments name every EBX = 1 site (`0x4AE2B`,
+  `0x4AE41`, and `0x49C78`'s `0x4A143`/`0x4A14F`).
+- The `0x4AC80` header names the `DS_00104B16`-against-`+0x21` choice
+  (`0x4AE26`).
+
+The `0x4AAD0` flag-0 test stays parked. `fight_4aad0` is static, and only
+a type-0 entry through `fight_effects_pass` reaches it, which is not a
+trivial harness.
+
+### 33.4 Measured
+
+| measurement | before (`5bf6e7f`) | after (`bcce10b`) |
+|---|---|---|
+| captures 1763..1880 | 1763 153 px | **all explained** |
+| demo oracle first unexplained | 1763 (raw 4670); `[1763..3616]` 1854 / 1848 unexpl.; port `[1278..1380]` | **1881 (raw 4788)**; `[1881..3616]` 1736 / 1730 unexpl.; port `[1379..1380]` (2, 0 exhibited) |
+| demo-fight ratchet | `[1763..1884]` 122, N = 1763 | **`[1881..1884]` 4**, "ratchet improved: first unexplained 1881 > 1763", **N = 1881** |
+| front-end oracle | `[560..1762]` / 1203 / 473 clean, 723 splice, 3 transition, 2 unexpl. | **`[560..1880]` / 1321 / 516 clean, 798 splice, 3 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved. The three transition frames are the
+same (`port832@row177`, `port862@row189`, `port906@row31`). The exhibition
+set grows to port frames 0..1378 (1142 exhibited); the dump ends at 1380.
+The ladder
+`cmake --build build --clean-first && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify`
+exited 0 with 0 compiler warnings on the `bcce10b` tree, with N = 1881 in
+the Makefile. Unmoved: title `54/55/2/0` and `54/57/0/0`, determinism 54;
+smk 120/120 and 41/41; attract 215/216 (expected divergence at 215);
+C-vs-Python 9866; `symbols.h`.
+
+**Unresolved code targets after the fix.** The same probe finds only
+`0x3E3A8` (f = 962, from `hit_reaction_apply`), the front-end
+`0x29B74`/`0x41578` and the stub `0x5D812`, as before. It also prints
+`fn_resolve(0)` once a frame at f = 617..648 and from f = 751 on: a null
+callback probe that was already there and draws nothing.
+
+### 33.5 The new first unexplained frame, 1881 (characterised, not fixed)
+
+Captures 1763..1880 splice at 0 px. Capture 1881's best splice, port
+1378/1379 at row 137, leaves 3 791 px in x 0–204, rows 137–192. Captures
+1882..1884 leave 8 429, 10 839 and 11 140 px in x 0–319, rows 67–194, and
+1885 is the first all-black frame, so the fight window holds only these 4.
+Below the split the capture's gold T-rex drops into a new pose: lower, legs
+apart, its tail flat on the sand. Port 1379 (f = 962) keeps it upright, as
+in 1880. The raptor, the worshippers, the combo text and the camera match.
+f = 962 is the run's one remaining code-target miss, `0x3E3A8`, a reaction
+callback that `hit_reaction_apply` skips because it is unregistered. That
+is the candidate owner. It is not derived.
