@@ -5318,7 +5318,7 @@ static u32 fighter_4fb20(void)
     adx = dx < 0 ? (s32)(0u - (u32)dx) : dx;            /* 0x4FB3C/0x4FB40 */
     DSD(DS_000D3398) = (u32)adx;                        /* 0x4FB42 */
     if (adx > w) return 0u;                             /* 0x4FB47/0x4FB49 */
-    dy = (s32)(DSD(DS_000D338C) - DSD(DS_000D3394));  /* 0x4FB4B/0x4FB51 */
+    dy = (s32)(DSD(DS_000D338C) - DSD(DS_000D3394));    /* 0x4FB4B/0x4FB51 */
     DSD(DS_000D33A4) = (u32)dy;                         /* 0x4FB57 */
     ady = dy < 0 ? (s32)(0u - (u32)dy) : dy;            /* 0x4FB5D/0x4FB61 */
     DSD(DS_000D339C) = (u32)ady;                        /* 0x4FB63 */
@@ -5349,7 +5349,7 @@ u32 fighter_body_push(void)
     if ((DSB(s0 + 0x42u) & 4u) != 0u) return 0u;        /* 0x3BBD8 */
     if ((DSB(s1 + 0x42u) & 4u) != 0u) return 0u;        /* 0x3BBE2 */
     DSD(DS_000D3388) = DSD(s0 + 0x2Cu);                 /* 0x3BBEF */
-    DSD(DS_000D338C) = DSD(s0 + 0x30u);                /* 0x3BBF7 */
+    DSD(DS_000D338C) = DSD(s0 + 0x30u);                 /* 0x3BBF7 */
     DSD(DS_000D3390) = DSD(s1 + 0x2Cu);                 /* 0x3BBFF */
     DSD(DS_000D3394) = DSD(s1 + 0x30u);                 /* 0x3BC09 */
     w1 = DSW(DS_000BEEF8 + (u32)DSB(s1 + 0x7Au) * 4u);  /* 0x3BC16 */

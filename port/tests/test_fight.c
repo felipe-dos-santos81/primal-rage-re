@@ -6079,18 +6079,22 @@ static void check_worshipper_arrival(void)
 
     /* E: no entry (rec+0x14 = 0, 0x4AC1F) writes nothing. Without the test
      * 0x4AC38 would run on entry 0: its +0x1E byte (linear 0x1E, seeded 0x5A
-     * here and restored) and the begin's rec+8 store into actor DSD(8). */
+     * here and restored) and the begin's rec+8 store into actor DSD(8). Entry
+     * 0's +0x1C (linear 0x1C) is seeded too, so no part of the body reads an
+     * unseeded byte; all three are restored. */
     wa_seed(entry, rec, oth);
     DSD(rec + 0x14u) = 0;
     {
-        u8 sv_1e = DSB(0x1Eu);
+        u8 sv_1e = DSB(0x1Eu), sv_1c = DSB(0x1Cu);
         u32 sv_8 = DSD(8u);
         DSB(0x1Eu) = 0x5Au;
+        DSB(0x1Cu) = 0;
         DSD(8u) = 0;
         fight_4ac18(rec);
         CHECK_EQ_INT((int)DSB(0x1Eu), 0x5A);
         CHECK_EQ_INT((int)DSD(8u), 0);
         DSB(0x1Eu) = sv_1e;
+        DSB(0x1Cu) = sv_1c;
         DSD(8u) = sv_8;
     }
     CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
@@ -6192,8 +6196,6 @@ static void check_worshipper_landing(void)
     memcpy(sv_tab, mem + 0x000C9540u, sizeof sv_tab);
     memcpy(sv_4b00, mem + DS_00104B00, sizeof sv_4b00);
     memcpy(sv_pset5, mem + FIGHT_ACTORS + 5u * 0x20u, sizeof sv_pset5);
-    if (fn_resolve(0x4AC80u) == NULL)
-        fn_register(0x4AC80u, (void (*)(void))fight_4ac80);
     for (t = 0; t < 4u; t++)
         for (i = 0; i < 6u; i++) {
             u32 sp = st + (t * 8u + i) * 0x10u;
@@ -6399,17 +6401,21 @@ static void check_worshipper_landing(void)
 
     /* E: no entry (rec+0x14 = 0, 0x4AC90) writes nothing. Without the test
      * the body would run on entry 0: its +0x1E byte (linear 0x1E, seeded 0x5A
-     * here) and its actor DSD(8) (seeded 0); both restored. */
+     * here) and its actor DSD(8) (seeded 0). Its +0x1C (linear 0x1C) is
+     * seeded 0, bit 5 clear, so that body takes the climb or the mode hold,
+     * both of which write +0x1E; all three are restored. */
     wl_seed(entry, rec, oth);
     DSD(rec + 0x14u) = 0;
     {
-        u8 sv_1e = DSB(0x1Eu);
+        u8 sv_1e = DSB(0x1Eu), sv_1c = DSB(0x1Cu);
         u32 sv_8 = DSD(8u);
         DSB(0x1Eu) = 0x5Au;
+        DSB(0x1Cu) = 0;
         DSD(8u) = 0;
         fight_4ac80(rec);
         CHECK_EQ_INT((int)DSB(0x1Eu), 0x5A);
         DSB(0x1Eu) = sv_1e;
+        DSB(0x1Cu) = sv_1c;
         DSD(8u) = sv_8;
     }
     CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 2);
