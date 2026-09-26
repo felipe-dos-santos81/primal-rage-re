@@ -2644,10 +2644,13 @@ D500 E4E4 0003   8E40 DA00 5FD8 000E DC00 55D8 000E FF20 ... ED40 7C2A 000E ...
 stores `word [rec+0x36] = 0x320`, `word [rec+0x44] = 0x23` and
 `byte [ecx+0x57] = 0`.
 
-**`0x3E484`/`0x3E4C4`.** The raw's `+0x18`/`+0x1C` callbacks are only called
-from the `0x1975C` think chain. In the port that chain is named gaps (§7.12):
-the decomp at `prage.c:6190` shows `(**(code **)(local_18 + 0x1c))()`. So
-they are stored and not ported.
+**`0x3E484`/`0x3E4C4`.** (Corrected in §19.6; the first version of this
+paragraph said their only callers were the `0x1975C` think chain, which is
+wrong.) `get_function_callers` gives `0x1958C` (the port's `fighter_pass_a`)
+as the only caller of both `0x19020` and `0x193B0`. `0x19020` calls
+`[slot+0x18]` at `0x1903F`, and `0x193B0` calls `[slot+0x1C]` at `0x19505`.
+`0x3E4C4` is ported in §19.6. `0x3E484` stays a named gap there, with
+evidence that it is inert in the demo.
 
 ### 19.4 The fix and its assertions
 
@@ -2781,9 +2784,202 @@ sides through f = 120. `get_xrefs_to 0x100AD0/0x100AD4` names its writers:
 overlap count `DAT_00100B54` from the fighters' sprite-overlap test).
 `0x17CB0` calls `0x176CC` at `0x17D0E`/`0x17D21`, and `0x1975C` calls
 `0x17CB0` first, at `0x19763` (demo-fight record §5.1). The port's `fighter_think` does
-not call it, so the whole `0x3B464` think chain never runs. That chain holds
-the `+0x18`/`+0x1C` callbacks `0x3E484`/`0x3E4C4` that `0x3E62C` armed. The
-owner is **not derived**. The candidate is that unported collision step
-(`0x17CB0` → `0x176CC` → `0x140E4`, `0x15C30`, `0x17EEC`, `0x181D0`,
-`0x16DA4`, …) with the `0x3B464` chain's §7.12 gaps. By its callee list it
-likely exceeds the size gate.
+not call it, so the whole `0x3B464` think chain never runs. The owner is
+**not derived**. The candidate named here was that unported collision step.
+(Derived since, §19.6: capture 891 is the T-rex's winner body at f = 114,
+whose `+0x1C` callback `0x3E4C4` the port resolved to NULL; the collision
+step is not 891's owner. This paragraph's closure estimate was also
+overstated: of the callees it listed, `0x140E4`, `0x15C30`, `0x17EEC`,
+`0x181D0` and `0x16DA4` are already ported. §19.6 measures the closure.)
+
+## 19.6 Fix round: `0x3E4C4`, `0x3E484` and capture 891 (roar-timing Task 9, `6a48972`)
+
+**Result in one line.** Capture 891 has one cause, and it is the port's. At
+f = 114 `0x1958C`'s tail runs the winner body `0x193B0` for the T-rex. Its
+slot `+0x1C` holds `0x3E4C4`, which `0x3E62C` stored at `0x3E680`. The port's
+`fn_resolve` returned NULL, so it skipped the reaction that the raw applies
+through `0x3B714`, and the raptor was not struck. This corrects §19.3/§19.5:
+the callbacks' callers are `0x1958C`'s `0x19020` and `0x193B0`, not the
+`0x1975C` think chain. Porting `0x3E4C4` (31 B; its callee is already ported)
+explains 891. `0x3E484` stays a named gap, and it is inert in the demo (below).
+
+### 19.6.1 The raw (Ghidra, fixups applied)
+
+`get_function_callers FUN_00019020` and `get_function_callers FUN_000193b0`
+each return one caller, `FUN_0001958c`.
+
+`0x19020` (70 B, `read_memory` + capstone):
+
+```
+0x19032  cmp dword [eax+0x1077c8],0 ; je 0x19062   ; slot+0x18 (0x1077B0 + side*0x94 + 0x18)
+0x1903b  mov ebx,eax ; mov eax,edx                 ; EAX = side
+0x1903f  call dword [ebx+0x1077c8]
+0x19048  test eax,eax ; jne 0x1905a
+0x1904c  mov dword [edx*4+0x100af8],1 ; ret        ; zero result: AF8[side] = 1
+0x1905a  mov dword [edx*4+0x100af8],0              ; non-zero:    AF8[side] = 0
+```
+
+`0x193B0`'s `+0x1C` arm (`0x194B6`..`0x19526`):
+
+```
+0x194f7  mov byte [ctx[3]+0x90],5
+0x194fe  mov edx,[esp+8] ; mov eax,[esp]           ; EDX = ctx[2], EAX = ctx[0] = side
+0x19505  call dword [edx+0x1c]
+0x1950c  [ctx[2]+0x18] = 0 ; 0x19517 [ctx[2]+0x1c] = 0
+0x19520  mov edx,eax ; mov eax,[esp+0xc] ; 0x19526 call 0x3b714   ; the +0x1C == 0 arm
+```
+
+`0x3E4C4` (31 B):
+
+```
+0x3e4c8  mov edx,eax ; mov eax,esp ; call 0x33950  ; ctx for side (ctx[2] = slot[side], ctx[3] = slot[1-side])
+0x3e4d1  mov edx,[esp+8] ; mov eax,[esp+0xc]
+0x3e4d9  call 0x3b714                              ; 0x3B714(ctx[3], ctx[2])
+```
+
+This is the same call as `0x19526`, which the port already runs as
+`fighter_reaction(ctx[3], ctx[2])`.
+
+`0x3E484` (63 B):
+
+```
+0x3e48a  mov edx,eax ; mov eax,esp ; xor ecx,ecx ; call 0x33950   ; ctx for side
+0x3e495  lea eax,[esp+0x18] ; xor ebx,ebx ; call 0x18bd4          ; 16 flag bytes = 2
+0x3e4a0  flags[0] = 1, flags[1] = 0, flags[8] = 0
+0x3e4b4  mov eax,[esp] ; call 0x18c14                             ; (side, flags, EBX = 0, ECX = 0)
+```
+
+Its result is `0x18C14`'s EAX. `0x18C14` (1035 B, unported; the demo-fight
+record §5.7 placed it off the demo path, which `0x3E484` now contradicts) walks
+16 flag bytes. For each byte, 2 skips the check. 1 returns 1 when the
+condition holds. 0 returns 1 (`0x19014`) when the condition fails. Only the
+all-checks-pass path returns 0 (`0x1900C`, with `[esp+0x18]` = 1 for side
+≠ `0x29A`). With `0x3E484`'s flags it reduces to three checks:
+
+* flag 0 = 1 (`0x18C46`): return 1 when `DS_00100AF8[side]` ≤ 0 (`setle`)
+* flag 1 = 0 (`0x18CBC`): return 1 when the other slot's word `+0x74` ≠ 0 (`ja`) or its word `+0x76` > 1 (`jg`)
+* flag 8 = 0 (`0x18E4A`): return 1 when the other slot's `+0x42` bit 3 is set
+
+Otherwise it returns 0.
+
+`get_xrefs_to 0x100AF8` names only two readers: `0x1958C` (`0x19632`, `0x19720`,
+both `!= 0` tests) and `0x18C14` (`0x18C49`, `<= 0`). The value itself is
+never read, only its zero-ness and sign.
+
+### 19.6.2 `0x3E484` is inert in the demo (measured; temporary trace, reverted)
+
+A `PR_T9` probe at `0x195B6` evaluated the reduction above on the port's state
+whenever the slot's `+0x18` was set, over the whole run, both before and after
+the `0x3E4C4` fix:
+
+| f | hook | `AF8[0]` | other `+0x74/+0x76/+0x42` | raw `0x18C14` → raw `AF8[0]` | port `AF8[0]` |
+|---|---|---|---|---|---|
+| 106..113 | `0x3E484` | 0 | 0 / 0 / `0x00` | 1 → 0 | 0 |
+| 114 | `0x3E484` | 6 | 0 / 0 / `0x00` | 0 → 1 | 6 (non-zero) |
+
+The raw's and the port's `AF8[0]` agree in zero-ness on every frame, and no
+reader distinguishes 1 from 6. So leaving `0x19020`/`0x3E484` unported changes
+nothing in this run.
+
+**The gap, measured.** Its closure is:
+
+* `0x19020` 70 B
+* `0x3E484` 63 B
+* `0x18BD4` 64 B
+* `0x18C14` 1035 B
+* its unported callees `0x189FC` 78 B and `0x18A4C` 98 B
+
+That is 1 408 B in 6 functions. `0x18C14`'s other callees are already ported:
+`0x1DDF4`, `0x39EFC`, `0x3B298`, `0x18B44`, `0x33950`, and through
+`0x189FC`/`0x18A4C` also `0x1A570` and `0x33A10`. The closure is inside the
+size gate. It is not ported here because it moves no measured frame, and
+`0x18C14` has 37 call sites whose flag sets each need their own derivation.
+It stays a `PORT:` gap at `fighter_pass_a`'s `0x195B6` note and at
+`fighter_3e62c`'s store.
+
+**The collision step (§19.5's candidate), measured.** `DS_00100AD0` stays 0
+because `0x1975C`'s `0x19763 call 0x17CB0` is unported. The genuinely new
+closure (`get_function_callees`, sizes from `prage.functions.csv`) is:
+
+* `0x17CB0` 125 B
+* `0x176CC` 574 B
+* `0x17BC8` 231 B
+* `0x3B938` 140 B, a §7.12 gap that `0x17BC8` and `0x1975C` both call
+
+That is 1 070 B in 4 functions. Their other callees are already ported:
+`0x140E4`, `0x15C30`, `0x16DA4`, `0x17EEC`, `0x181D0`, `0x15F48`, `0x1B544`,
+`0x2B150` and `0x33950`, and `0x2C3FC` is the voice, out of scope. This is
+also inside the size gate. Note that `fighter_think_side` returns at
+`0x3B49F` while the other slot's `+0x64` is `0xFF`, which it is in the demo
+through f = 120 (the probe), so a live `DS_00100AD0` would reach `0x1922C`,
+`0x3962C`/`0x396AC`, `0x3B938` and `0x39278` but not the rest of `0x3B464`.
+
+### 19.6.3 The fix and its assertions
+
+* **Fix** (`6a48972`):
+  * `fighter_3e4c4(side)` in `fighter.c` (`0x3E4C4`), registered bare at `0x3E4C4` in `actors.c`, because `0x193B0` already calls `fn(ctx[0])`.
+  * `fighter_3c190` now calls `0x1A570` before it reads the slot's record, in the raw's order (`0x3C194`, then `0x3C1AE`). This is not observable: `0x1A570` writes nothing, and a mutation back to the old order fails 0 checks.
+  * The `PORT:` notes at `0x195B6` and in `fighter_3e62c` now name `0x19020`/`0x18C14` instead of the think chain.
+  * Two `test_fight.c` comments had continuation lines at column 1; they are re-indented. No `fighter.c` block comment had that defect (an `awk` scan of every indented block comment in the touched files found none).
+* **Assertions.**
+  * `check_anim_hold_scaler`: `0x3E4C4` is registered as `fighter_3e4c4`.
+  * `check_winner_body` adds a third block, side 0 winning with `+0x18/+0x1C` = `0x3E484`/`0x3E4C4`. It checks:
+    * the pose lands on slot 1 through `0x3E4C4`: `+0x52` = `0x10`, `+0x53` = `0x0A`, `+0x10` = `0x3A43C`
+    * slot 0's `+0x52` sentinel `0x66` is kept
+    * slot 1's `+0x90` = 5 (from the `0xEE` sentinel)
+    * slot 0's `+0x18`/`+0x1C` are zeroed
+    * the `0x19472` latch reads `0x1234`
+* **Mutations.** A script applied each one. `fighter.c` and `actors.c` were restored and compared byte for byte, and the suite then passed.
+
+  | mutation | failures |
+  |---|---|
+  | `0x3E4C4` unregistered (pre-fix) | 1 (the registration check; the test's fallback registers it for the body) |
+  | `0x3B714` arguments swapped | 4 (`:4396` `0 != 16`, …) |
+  | `ctx_swap` instead of `ctx_same` | 4 |
+  | empty body | 3 |
+  | `0x3C190` back to the old read order | 0 (not observable, as stated) |
+
+### 19.6.4 Measured
+
+| measurement | before (`c07f71c`) | after (`6a48972`) |
+|---|---|---|
+| capture 891 | best 530/531 splice, 2 188 px | **0 px** (530/531 splice, row 28) |
+| demo oracle first unexplained | 891 (raw 3798); `[891..3616]` 2726 / 2720 unexpl.; port `[531..1380]` | **892 (raw 3799)**; `[892..3616]` 2725 / 2719 unexpl.; port `[532..1380]` (849, 0 exhibited) |
+| demo-fight ratchet | `[891..1884]` 994, N = 891 | **`[892..1884]` 993**, "ratchet improved: 892 > 891", **N = 892** |
+| front-end oracle | `[560..890]` / 331 / 142 clean, 185 splice, 0 transition, 2 unexpl. | **`[560..891]` / 332 / 142 clean, 186 splice, 0 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved. These were unmoved:
+
+* title `54/55/2/0` and `54/57/0/0`, determinism 54
+* smk 120/120 and 41/41
+* attract 215/216
+* C-vs-Python 9866
+* `symbols.h`
+* "endpoints BAD"
+
+The exhibition set grows to port frames 0..531 (295 exhibited).
+
+**The new first unexplained frame, 892 (characterised, not fixed).** Capture
+892 is a tear. Its best splice, port 531/532 (split at row 56), leaves 35 921 px
+across rows 56–199. From 892 on, the whole scene differs because the
+capture's camera drops relative to the port's. A shift search over the
+background (x 20–119, rows 60–179, dx and dy in [−12, 12]) gives the best
+match at dx = 0 and these dy:
+
+| capture | port frame | dy |
+|---|---|---|
+| 892 (lower half) | 532 | +3 |
+| 893 | 533 | +5 |
+| 894 | 534 | +7 (next best +4) |
+| 896 | 536 | +11 |
+
+So the capture's view moves down by a few pixels per frame after the
+raptor is struck at f = 114, and the port's camera does not. The fighters
+differ as well. The owner is **not derived**. The candidates are:
+
+* the camera's vertical follow of the two airborne fighters after the hit
+* the reaction `0x3B714` applied (the struck raptor's new state and speeds)
+
+The unported `0x19020`/`0x3E484` hook is not a candidate. The winner body
+cleared the T-rex's `+0x18`/`+0x1C` at f = 114 (`0x1950C`/`0x19517`), and the
+whole-run probe shows no hook set after that frame.
