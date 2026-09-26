@@ -197,7 +197,7 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
 # improves (the tool prints "ratchet improved ... raise N"). N = 1750 was measured on
-# the commit that raised it (on 71c61b2): the six worshipper landing streams end in
+# 2287114 (the commit that raised it, on 71c61b2): the six worshipper landing streams end in
 # the opcode-0x15 target 0x4AC80 (D500 AC80 0004), which the port had not
 # registered. At f = 820 and 841 it ends each trampled side-1 worshipper's type-8
 # landing with the climb (the 0xC95EC stream, +0x38 = 0x40, type 5, +0x1C &= 0x3F);

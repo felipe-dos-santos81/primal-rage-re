@@ -5347,7 +5347,7 @@ Mutations (`scratchpad/mut20.py`, 47 single-site edits in `fighter.c` and
 `flow.c`, each built and run, then `cmp`-restored): 46 fail 1..54
 assertions after two assertions were added for the first run's survivors
 (the side's own `+0x41` store and the `> 0` keep arm). The 47th, dropping
-`0x4FB20`'s `|dy| > w` gate, is equivalent: past it the estimate is at
+`0x4FB20`'s `|dy| > w` gate, is equivalent in the reachable domain: past it the estimate is at
 least |dy| > w, so the final gate returns 0 and nothing is written after
 it. Also unobservable, so not asserted: `0x3BAEC`'s own `+0x42` bit-2
 gates (`0x3BB90` returned on the same bits first), its "slot 1's bit
@@ -5390,3 +5390,185 @@ it matches. Port 1237 is the f = 820 state, and f = 820 is the first
 `fn_resolve` miss of the run (§29.4: `0x4AC80`, a worshipper stream
 callback with no code cross-reference, EAX = the actor, its entry at
 `+0x14`). That callback is the candidate owner; it is not derived.
+
+(Derived since, §31: the owner is `0x4AC80`, the worshipper landing
+streams' opcode-`0x15` target. At f = 820 and 841 it ends a landed
+worshipper's type-8 landing with the climb (type 5, the `0xC95EC` stream);
+the port skipped it, so the worshipper stayed on its landing stream. Porting
+it explains 1715..1749.)
+
+## 31. The worshipper landing target `0x4AC80` at capture 1715 (roar-timing Task 21, `2287114`)
+
+**Result in one line.** Capture 1715 has one cause, and it is the port's.
+The six worshipper landing streams end in `D500 AC80 0004` (opcode `0x15`,
+mode `0x4000`), and the port had not registered `0x4AC80`, so
+`anim_indirect` skipped it. In the demo the call comes at f = 820 and 841,
+once for each side-1 worshipper that the trample (§29) threw and case 6
+landed as type 8 on its `0xC973C` stream. Both calls take `0x4AC80`'s
+climb arm: the worshipper takes its `0xC95EC` rising stream with `+0x38` =
+`0x40`, the entry becomes type 5 and `+0x1C` is masked with `0x3F`. Case 5
+(§28) then brings it back to its standing stream. The port left both
+worshippers on the landing stream in type 8. This explains captures
+1715..1749.
+
+### 31.1 The measurement (temporary, reverted)
+
+A `PR_T21` trace (in `fight_4ac80`, `fight_arena_frame` and `fn_resolve`;
+reverted from pre-trace copies) shows the two calls:
+- f = 820 (arena frame 756): entry `0x108438`, index 4, `+0x1C` = `0x80`,
+  type 8, side (`+0x21`) 1
+- f = 841: entry `0x108414`, index 3, the same flags
+
+Both have `+0x1C` bit 5 clear, `DS_00104B00` = 3 and `DS_001088C5` = 0.
+
+With the fix, port frames 0..1236 are byte-identical to `0d7c865`'s dump.
+Port 1237 (f = 820) is the first that differs, and captures 1715..1749
+splice at 0 px.
+
+### 31.2 The raw (Ghidra `read_memory` + capstone, fixups applied)
+
+`0x4AC80` is not a Ghidra function. It spans `0x4AC80..0x4AEAA` (0x22B
+bytes) and returns at `0x4ADB7`, `0x4ADF0`, `0x4AE40`, `0x4AE56` and
+`0x4AEAA`. A scan for the dword `0x0004AC80` over the code object and the
+data object finds six sites, each after a `0xD500` word: `0xEE3BC`,
+`0xEE6FC`, `0xEEAB8`, `0xEEEAA`, `0xEF260` and `0xEF608`. There is no code
+reference. Each site closes one of the six `0xC973C[i]` streams, the case-6
+landing streams, 0x22 bytes after its start (`read_memory` of `0xC973C`:
+`0xEE39A`, `0xEE6DA`, `0xEEA96`, `0xEEE88`, `0xEF23E`, `0xEF5E6`).
+
+**Entry.** EAX = the record. EDX is pushed at `0x4AC82` and loaded from
+`rec+0x14` at `0x4AC8B` before any read. The routine returns when that entry
+is 0 (`0x4AC90`). The index is the 32-bit `(u8)rec+0x48 − 0x20` (`0x4AC98`
+`xor edx,edx` / `0x4AC9A mov dl` / `0x4ACB1 sub edx,0x20`). The entry's
+actor (`+8`) gets `+0x29 &= 0xBF` and then `|= 0x10` (`0x4ACA0`/`0x4ACA7`).
+
+**Arm selection.** The byte `DS_001088C5` (`0x4ACAB`) and the entry's
+`+0x1C` bit 5 (`0x4ACBC..0x4ACC9`, `and al,0x20`) pick one of three arms:
+
+- **Bit 5 set, `DS_001088C5` ≠ 0** (`0x4ACCF..0x4ADB7`). Let pos =
+  `0x2BE00(actor)` and base = `0x2BE00([0x108868])`. The walk target is
+  - base − `0x1740` when pos < base − `0x1740`, or when base − `0xBA0` <
+    pos < base
+  - base + `0x1740` when pos > base + `0x1740`, or when base < pos < base +
+    `0xBA0`
+  - 0 otherwise
+
+  All compares are signed (`jge`/`jle`/`jg`). A non-zero target is stored
+  in `+0x14` and the entry becomes type 1. The actor's `+0x34` is `0x40`
+  with bit 6 clear when pos < target (`0x4AD4F jge`), else `0xFFC0` with
+  bit 6 set, and the stream is `0xC95D4[i]`. A zero target calls
+  `0x2C3FC(0xC8)` (a voice), sets type 8 and actor `+0x55` = 1, and takes
+  the `0xC958C[i]` stream. Both then begin the stream at 3.0 and zero
+  `+0x36`.
+- **Bit 5 set, `DS_001088C5` = 0** (`0x4ADC7..0x4ADF0`). The `DS_00108864`
+  entry gets word `+0x18` = 0, `+0x1C &= 0xDF` and type 4, and
+  `DS_00108864` is cleared.
+- **Bit 5 clear** (`0x4ADF1..0x4AEAA`). The word `DS_00104B00` is
+  zero-extended; EAX's high half is already 0 from `0x4ADC0`.
+  - Modes 8, 9 and `0x17`: the actor's `+0x38`, `+0x34` and `+0x36` are
+    zeroed. Then `0x4B3F0` runs when the byte `DS_00104B16` equals the
+    entry's `+0x21`, else `0x4B430`, both with EBX = 1 (`0x4AE2B`,
+    `0x4AE41`).
+  - Any other mode: the climb. The actor begins `0xC95EC[i]` at 3.0. EBX
+    (the record, not the actor) gets `+0x38` = `0x40` (`0x4AE6B`) and
+    `+0x34` = `0xFFC0` or `0x40` by the fighter record's `+0x28` bit
+    `0x4000` (`0x4AE86`/`0x4AE8E`). The entry becomes type 5, and `+0x1C &=
+    0x3F` (`0x4AE9B`) clears bits 7 and 6, where case 4 at `0x49EB8` clears
+    only bit 7.
+
+**Correction (raw wins).** The port's `fight_4b3f0`/`fight_4b430` wrote a
+hard-coded 0 into the actor's `+0x55`. The raw tests EBX (`0x4B3FA`/`0x4B43A`
+`test ebx,ebx`) and writes 1 when EBX is non-zero (`0x4B401`/`0x4B441`).
+`0x4AAD0`'s four calls zero EBX (`0x4AAFC`, `0x4AB18`, `0x4AB6D`, `0x4AB97`
+`xor ebx,ebx`; re-read), so their behaviour does not change.
+
+**Globals** (`get_xrefs_to`):
+- `DS_001088C5` is written only by `0x4BD98` and `0x4CD98`.
+- `DS_00108868` is written only by `0x4BD98` (`0x4BEA3`).
+- `DS_00108864` is written by `0x4BD98`, `0x4CD98`, `0x4C784`, `0x27BA4` and
+  `0x4AC80` itself.
+
+All of these writers are unported apart from `0x4AC80`. In the demo only the
+climb arm runs.
+
+### 31.3 The fix and its assertions
+
+The fix adds `fight_4ac80` to `fight.c` (exported) and the wrapper
+`anim_code_4AC80` with `fn_register(0x4AC80)` to `actors.c`.
+`fight_4b3f0`/`fight_4b430` take the raw's EBX flag, and `0x4AAD0`'s calls
+pass 0. That is 0x22B raw bytes in one new function, and every callee
+(`0x2BE00`, `0x2BC30`, `0x4B3F0`, `0x4B430`) was already ported, so the
+change is inside the size gate.
+
+`check_worshipper_landing` is new in `test_fight.c`. Its fixture `wl_seed`
+extends `wa_seed` with the entry's slot and fighter record, `+0x1C` =
+`0xD0`, side 1, actor `+0x55` = `0x5A`, a `DS_00108868` base record (pset 5),
+a `DS_00108864` held entry with sentinel fields, the mode word with
+`DS_00104B02` = `0x1234`, and crafted literal-id streams in the four tables.
+The parts:
+- **A.** The demo's f = 820 climb (index 4).
+- **A2.** The `+0x28` bit `0x4000` arm, and index `0xFFFFFFFF`.
+- **A3.** `entry+8` ≠ rec: the stream and `+0x29` go to the actor, and
+  `+0x38`/`+0x34` go to EAX's record.
+- **B.** Modes 8, 9 and `0x17` hold through `0x4B430` (side ≠
+  `DS_00104B16`) and through `0x4B3F0` (side equal), with `+0x55` = 1.
+  Modes 7 and `0x18` climb.
+- **B2.** An empty hold stream.
+- **C.** The `DS_00108864` release.
+- **D.** The twelve band points at base `0x10000`: each band edge and one
+  unit inside it, plus a far point.
+- **D2.** The signed compare (base `0x2000`, pos −`0x100`), and the zero
+  target that holds (base `0x1740`, pos −5).
+- **D3.** The walk on `entry+8`.
+- **E.** No entry.
+- **F.** The call through the dispatcher (`D500 AC80 0004`).
+
+The registration check also asserts that `0x4AC80` resolves to the
+`(rec, arg)` wrapper. The tables, the mode word, pset 5 and the globals are
+restored afterwards.
+
+**Mutations.** `scratchpad/mut21.py` made 59 single-site edits in
+`fight.c` and `actors.c`. Each was built and run, and both files were then
+restored with `cmp`. 58 fail 1..115 assertions. The 59th, `0x4AD4F`'s `jge` taken at equality (`<` made `<=`), is equivalent in the reachable domain: every band's target differs from pos (pos < base − `0x1740` = target; base − `0xBA0` < pos < base against base − `0x1740`; pos > base + `0x1740` = target; base < pos < base + `0xBA0` against base + `0x1740`), so pos = target never reaches the compare. Not asserted: `0x4AAD0`'s EBX = 0 (its hard-coded 0 is unchanged and no existing test drives its hold arms), and `0x4AD81`'s voice `0x2C3FC(0xC8)`, a `PORT:` skip like every other voice (spec §7).
+
+### 31.4 Measured
+
+| measurement | before (`0d7c865`) | after (`2287114`) |
+|---|---|---|
+| captures 1715..1749 | 1715 383 px | **all explained** |
+| demo oracle first unexplained | 1715 (raw 4622); `[1715..3616]` 1902 / 1896 unexpl. | **1750 (raw 4657)**; `[1750..3616]` 1867 / 1861 unexpl.; port `[1267..1380]` (114, 0 exhibited) |
+| demo-fight ratchet | `[1715..1884]` 170, N = 1715 | **`[1750..1884]` 135**, "ratchet improved: first unexplained 1750 > 1715", **N = 1750** |
+| front-end oracle | `[560..1714]` / 1155 / 455 clean, 693 splice, 3 transition, 2 unexpl. | **`[560..1749]` / 1190 / 468 clean, 715 splice, 3 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved. The three transition frames are the
+same (`port832@row177`, `port862@row189`, `port906@row31`). The exhibition
+set grows to port frames 0..1266 (1030 exhibited). The ladder
+`cmake --build build --clean-first && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify`
+exited 0 with 0 compiler warnings on `2287114`, with N = 1750 in the Makefile. Unmoved: title
+`54/55/2/0` and `54/57/0/0`, determinism 54; smk 120/120 and 41/41; attract
+215/216 (expected divergence at 215); C-vs-Python 9866; `symbols.h`; the
+front-end "endpoints BAD" line.
+
+**Unresolved code targets after the fix.** A temporary whole-run probe in
+`fn_resolve` (reverted) found:
+- `0x3C0A4` at f = 850, as before
+- new later misses: `0x14F50` (f = 929) and `0x3A820` (f = 962/963)
+- the known front-end sites `0x29B74`/`0x41578`, the stub `0x5D812`, and
+  `fn_resolve(0)`
+
+`0x4AC80` no longer misses.
+
+### 31.5 The new first unexplained frame, 1750 (characterised, not fixed)
+
+Captures 1715..1749 splice at 0 px. Capture 1750's best splice, port
+1266/1267 at row 153, leaves 5 544 px in x 0–286, rows 153–199. Captures
+1751 and 1752 leave 10 703 and 11 165 px. Below row 153 the capture compares
+against port 1267, the f = 850 state:
+- The capture's gold T-rex keeps port 1266's place and upright pose.
+- Port 1267 has the T-rex further left in another pose, and port 1268 has
+  it crouched.
+- The unshifted comparison of rows 153–199 is the best match (63%), so the
+  camera is not the cause.
+
+f = 850 is the run's `0x3C0A4` `fn_resolve` miss (no code cross-reference;
+§30.4), which makes that miss the candidate owner. It is not derived.

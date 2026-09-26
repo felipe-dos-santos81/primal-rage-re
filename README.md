@@ -315,11 +315,11 @@ command generator `0x47208`, the `+0x52` state machine (`0x3531C`/`0x350D0`),
 the `0x3C88C` hitbox machine and the `0x3CF38` hit chain — the chain now
 **fires**, hits land (`+0x7C` 0/0 → 1/1), and the fight's last state change
 moved **1262 → 1400**. Its report-only oracle (`make demo-oracle`) measures the
-demo window `[1715..3616]` (raw `4622..8409`), **1902 frames: 0 clean / 0 splice
-/ 0 transition / 1896 unexplained** (6 all-black frames excluded); the first
-unexplained frame is capture **1715 (raw 4622)** — 383 px, almost all in x
-40–99, rows 144–190: a standing worshipper sits elsewhere in the port (f = 820,
-the first unregistered `0x4AC80` call; not derived)
+demo window `[1750..3616]` (raw `4657..8409`), **1867 frames: 0 clean / 0 splice
+/ 0 transition / 1861 unexplained** (6 all-black frames excluded); the first
+unexplained frame is capture **1750 (raw 4657)** — 5 544 px in x 0–286, rows
+153–199: the gold T-rex's place and pose differ at f = 850, the run's
+unregistered `0x3C0A4` call; not derived)
 (moved from 843
 by the demo-pose cycle, then from 851 by the roar-timing fix, then from 858 by
 the frame-858 fix, then from 859 by the frame-859 fix, then from 860 by the
@@ -331,7 +331,8 @@ frame-950 fix, then from 992 by the frame-992 fix, then from 998 by the
 frame-998 fix, then from 1358 by the frame-1358 fix, then from 1411 by the
 frame-1411 fix, then from 1478 by the frame-1478 fix, then from 1481 by the
 frame-1481 fix, then from 1546 by the frame-1546 fix, then from 1563 by the
-frame-1563 fix, then from 1659 by the frame-1659 fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
+frame-1563 fix, then from 1659 by the frame-1659 fix, then from 1715 by the
+frame-1715 fix), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
 Task 1 corrected it to **836/25**, and the final re-capture moved the loader text
 to 832 with the fight's first frames at 833/834 — record §9.1/§9.3.) Cycle 2
 advanced the boundary 811 → 816 → 832: the state-9 globe's fourth layer
@@ -550,7 +551,7 @@ See §28 of the record.
 
 See §29 of the record.
 
-**The fighters' body push (`1268371`), the demo fight's captures 1659..1714.** game_frame's `DS_00104B15` tail calls `0x3BB90` at `0x2541D`, before `0x12D48`; the port had only a `PORT:` note (`port/spec/game_flow.md`'s "cycle 2 landed `0x3BB90`" was stale). `0x3BB90` latches both slots and, when the two latched points are closer than the sum of the characters' `0xBEEF8` widths (halved for `+0x54` = 2), takes `0x4FB20`'s distance estimate (max + min/4 + min/8) and pushes the sides apart by the penetration: `0x3BAEC` runs `0x3B9D8` per side, which moves the side half of it away from the other through `0x1883C` (or the other side at the `0x7C00` wall, `0x3B8D8`) and zeroes a speed that does not point away when `+0x54` is 2. The fighters first overlap at f = 772, the T-rex's leap onto the raptor: capture 1659's residual is the T-rex's claw 1 px left in the port (and the raptor 1 px right), not the dark ring. The fix ports the five functions in `fighter.c` (every callee was already ported) and wires the call in `flow.c`. New `check_body_push` in `test_fight.c` and a wiring assertion in `check_game_frame_tail`; 46 of 47 mutations fail them, and the 47th (`0x4FB20`'s |dy| gate) is equivalent.
+**The fighters' body push (`1268371`), the demo fight's captures 1659..1714.** game_frame's `DS_00104B15` tail calls `0x3BB90` at `0x2541D`, before `0x12D48`; the port had only a `PORT:` note (`port/spec/game_flow.md`'s "cycle 2 landed `0x3BB90`" was stale). `0x3BB90` latches both slots and, when the two latched points are closer than the sum of the characters' `0xBEEF8` widths (halved for `+0x54` = 2), takes `0x4FB20`'s distance estimate (max + min/4 + min/8) and pushes the sides apart by the penetration: `0x3BAEC` runs `0x3B9D8` per side, which moves the side half of it away from the other through `0x1883C` (or the other side at the `0x7C00` wall, `0x3B8D8`) and zeroes a speed that does not point away when `+0x54` is 2. The fighters first overlap at f = 772, the T-rex's leap onto the raptor: capture 1659's residual is the T-rex's claw 1 px left in the port (and the raptor 1 px right), not the dark ring. The fix ports the five functions in `fighter.c` (every callee was already ported) and wires the call in `flow.c`. New `check_body_push` in `test_fight.c` and a wiring assertion in `check_game_frame_tail`; 46 of 47 mutations fail them, and the 47th (`0x4FB20`'s |dy| gate) is equivalent in the reachable domain.
 
 * **Measured.** Captures 1659..1714 are now explained; port frames 0..1188 are byte-identical to before, and 1189 (the f = 772 state) is the first that differs. The demo oracle's first unexplained is now **1715 (raw 4622)**. The demo window `[1715..3616]` has 1902 frames, 1896 unexplained, and the fight window `[1715..1884]` has 170 frames, 0 explained. The ratchet N is raised **1659 → 1715** in the same commit.
 * **Claim move (the one the brief allowed).** Front-end `[560..1658]` / 1099 → **`[560..1714]` / 1155 / `455 clean, 693 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before. Nothing else moved.
@@ -559,14 +560,23 @@ See §29 of the record.
 
 See §30 of the record.
 
+**The worshipper landing target (`2287114`), the demo fight's captures 1715..1749.** The six worshipper landing streams end in `D500 AC80 0004` (opcode `0x15`, mode `0x4000`), and the port had not registered `0x4AC80`, so `anim_indirect` skipped it. At f = 820 and 841 it ends each trampled side-1 worshipper's type-8 landing with the climb: the `0xC95EC` rising stream at 3.0, the record's `+0x38` = `0x40` and `+0x34` = ±`0x40` by the fighter's `+0x28` bit `0x4000`, type 5 and `+0x1C &= 0x3F`; case 5 then stands it up. The port left both on the landing stream. `0x4AC80`'s other arms (the `DS_001088C5` walk or hold beside the `DS_00108868` record, the `DS_00108864` release, and the mode 8/9/`0x17` hold through `0x4B3F0`/`0x4B430` with EBX = 1) are ported too but not reached; `0x4B3F0`/`0x4B430` now take the raw's EBX flag for `+0x55` (the port had hard-coded 0). New `check_worshipper_landing` in `test_fight.c`; 58 of 59 mutations fail it, and the 59th (`0x4AD4F` at equality) is equivalent in the reachable domain. Task 20's parked minors are tidied in `71c61b2`.
+
+* **Measured.** Captures 1715..1749 are now explained; port frames 0..1236 are byte-identical to before, and 1237 (the f = 820 state) is the first that differs. The demo oracle's first unexplained is now **1750 (raw 4657)**. The demo window `[1750..3616]` has 1867 frames, 1861 unexplained, and the fight window `[1750..1884]` has 135 frames, 0 explained. The ratchet N is raised **1715 → 1750** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1714]` / 1155 → **`[560..1749]` / 1190 / `468 clean, 715 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1750's best 1266/1267 splice (row 153) leaves 5 544 px in x 0–286, rows 153–199 (1751 and 1752 leave 10 703 and 11 165): below the split the capture's gold T-rex keeps port 1266's place and upright pose, while port 1267 (f = 850) has it further left in another pose, and the camera matches. f = 850 is the run's `0x3C0A4` miss; not derived.
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x3C0A4` (f = 850, no code xref), `0x14F50` (f = 929) and `0x3A820` (f = 962/963). `0x4AC80` no longer misses.
+
+See §31 of the record.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
-demo fight's remaining arena divergence (first unexplained at capture 1715
-after the frame-1659 fix: a standing worshipper out of place at f = 820, not
+demo fight's remaining arena divergence (first unexplained at capture 1750
+after the frame-1715 fix: the gold T-rex's place and pose at f = 850, not
 derived; the unported `0x19020`/`0x3E484` hook,
 `0x3B464`'s `0x235C4` arm, the effects pass's types 2, 7 and 9..12, the
 grab arm of `0x4B788`, `0x4B470`'s eighth-hit tail and case 8's held body are
-named gaps; the unregistered code targets `0x4AC80` (f = 820) and `0x3C0A4`
-(f = 850) are later known gaps, and `0x370F0` is still unregistered; not
+named gaps; the unregistered code targets `0x3C0A4` (f = 850), `0x14F50`
+(f = 929) and `0x3A820` (f = 962) are later known gaps, and `0x370F0` is still unregistered; not
 reached in this run) and
 the
 interactive match cycle (the mode graph, `0x1EEB0`, the `0x1EA08` sites) remain;
