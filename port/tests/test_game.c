@@ -2850,7 +2850,7 @@ int test_frontend(void)
      * The dump run is loop frames 589..1970, i.e. dumped frames 0..1381 (1382
      * frames); the 1400 cap covers it and FE_DEMO_LOOPS clears the 1970
      * exit. The exit frame closes this dump: the loop runs on to FE_LOOPS
-     * (3100) and writes every later presented frame to <dump>/cycle2 instead
+     * (3200) and writes every later presented frame to <dump>/cycle2 instead
      * (fe_cyc2_dump; record §36), the attract's second cycle, which the
      * capture shows from 1886 to its second demo at 2385. The per-frame
      * measurements and end-of-run reads below keep the FE_DEMO_LOOPS window. The front-end window is distinct [560..1884] (1325 frames: 517
@@ -3015,7 +3015,7 @@ int test_frontend(void)
         /* The first second-demo loop whose post-state has side 0 (the
          * raptor) in the block state +0x52 = 6 (0x1A7CC; record §38). */
         int c2_block_i = -1;
-        /* The ape's (side 1) record stream and +0x52 after loop 3040 (the
+        /* The ape's (side 1) record stream and rec+0x52 after loop 3040 (the
          * poll's f = 3927). Sentinels that no stream takes. */
         u32 c2_ape_st = 0xFFFFFFFFu, c2_ape_52 = 0xFFu;
         /* The picks, variant and handle as the first demo left them, read
@@ -3240,7 +3240,7 @@ int test_frontend(void)
          * f = 3915. 0x3B298 sets its +0x43 bit 0x20 and calls 0x1A734
          * (0x3B443), which restarts 0xC8F40[1] = 0xE3F5E at +0x52 = 0
          * whatever the bit was, as the poll's original does. Without it
-         * the stream runs on at 0xE3F66 (+0x52 = 2). */
+         * the stream runs on at 0xE3F66 (rec+0x52 = 2). */
         CHECK(!fe_cyc2_failed, "cycle-2 frames write to the dump");
         CHECK_EQ_INT(c2_start, 1971);
         CHECK_EQ_INT(fe_cyc2_n, 1395);
