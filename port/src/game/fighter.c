@@ -4189,8 +4189,8 @@ static void fighter_34168(u32 side)
 /* 0x347B8. The knockdown floor: an animation-opcode 0x15 target (the words
  * `D500 47B8 0003`; the dword 0x000347B8 occurs 53 times in the data, one of
  * them at 0xD2B02 in the raptor's landing stream 0xD2ADA, after the D500 word
- * at 0xD2B00). No Ghidra function. EAX = rec; EDX is pushed and reloaded. In
- * game mode 7 (DS_00104B00) it may instead freeze the side
+ * at 0xD2B00). No Ghidra function. EAX = rec; EDX is pushed and zeroed
+ * (0x347CE xor edx,edx) before any read. In game mode 7 (DS_00104B00) it may instead freeze the side
  * (0x3480F: hold 0, state 9/3/3); otherwise 0x39A10(rec, 0x29A), 0x3C148,
  * 0x3C16C, state 9/0x0B/0, +0x43 bits 0..1 cleared, then, through the 0x340BC
  * gate, the stun start 0x34168 and the 0x34780[char] stream or the

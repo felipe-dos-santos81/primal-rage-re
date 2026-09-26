@@ -707,9 +707,10 @@ static void anim_code_36870(u32 rec, u32 arg)
 }
 
 /* 0x35E04 — the animation-opcode target shape. PORT: anim_indirect calls every
- * code pointer as (rec, arg); the raw 0x35E04 takes EAX = rec and only saves
- * EDX (0x35E05 push, 0x35E3D pop), so this wrapper drops the operand and calls
- * fighter_35e04(rec) unchanged. */
+ * code pointer as (rec, arg); the raw 0x35E04 takes EAX = rec and does not
+ * read EDX (it pushes EBX and EDX at 0x35E04/0x35E05 and loads EDX from
+ * rec+0x14 at 0x35E06 before any read), so this wrapper drops the operand
+ * and calls fighter_35e04(rec) unchanged. */
 static void anim_code_35E04(u32 rec, u32 arg)
 {
     (void)arg;
@@ -717,9 +718,10 @@ static void anim_code_35E04(u32 rec, u32 arg)
 }
 
 /* 0x3E4E4 — the animation-opcode target shape. PORT: anim_indirect calls every
- * code pointer as (rec, arg); the raw 0x3E4E4 takes EAX = rec and only saves
- * EDX (0x3E4E6 push, 0x3E50F pop) before loading it with the stream, so this
- * wrapper drops the operand and calls fighter_3e4e4(rec) unchanged. */
+ * code pointer as (rec, arg); the raw 0x3E4E4 takes EAX = rec and does not
+ * read EDX (it pushes EBX, ECX and EDX at 0x3E4E4..0x3E4E6 and loads EDX
+ * with the stream at 0x3E4F0 before any read), so this wrapper drops the
+ * operand and calls fighter_3e4e4(rec) unchanged. */
 static void anim_code_3E4E4(u32 rec, u32 arg)
 {
     (void)arg;

@@ -4307,7 +4307,6 @@ static void check_knockback_pose(void)
             DSD(DS_00105BCC + 4u) = DS_00105BCC;
             DSD(pool + 0x18u) = 0x77777777u;
             DSD(pool + 0x1Cu) = 0x77777777u;
-            DSB(pool + 0x49u) = 0x77u;
             DSW(pool + 0x32u) = 0x7777u;
 
             kb_seed(s0, s1, r0, r1);
@@ -4644,6 +4643,7 @@ static void check_knockdown_floor(void)
             DSD(DS_00105BCC + 4u) = DS_00105BCC;
             DSD(pool + 0x18u) = 0x77777777u;
             DSD(pool + 0x1Cu) = 0x77777777u;
+            DSB(pool + 0x49u) = 0x77u;
 
             kf_seed(s0, s1, r0, r1);
             DSW(FIGHT_ACTORS + 2u) = 0x7777u;
@@ -4661,7 +4661,7 @@ static void check_knockdown_floor(void)
                          side ? 0x11111111 : 0x22222222);
             CHECK_EQ_INT((int)DSD(pool + 0x18u), side ? 0x4200 : 0x200);
             CHECK_EQ_INT((int)DSD(pool + 0x1Cu), 0xD80);
-            /* ECX = 0xFF (0x34211) is the spawn's layer: the descriptor's
+            /* ECX = 0xFF (0x3420D) is the spawn's layer: the descriptor's
              * +0x08 word 0x2200 (read_memory 0xBDB3C/0xBDB78) has bit 13
              * set, so 0x2AE14 stores it in the record's +0x49 byte. */
             CHECK_EQ_INT((int)DSB(pool + 0x49u), 0xFF);
@@ -4767,11 +4767,13 @@ static void check_knockdown_floor(void)
 
 /* ---- roar-timing Task 12: the walk entry 0x35938 (record §22) ----------- */
 
-/* The demo T-rex at f = 201: side 0, char 0, state 0x0E/0/0 with +0x43 = 0x81
+/* The demo T-rex at f = 201: side 0, char 0, state 0x0E with +0x43 = 0x81
  * (bit 1 clear, so 0x35C1C's default table 0xC8AE0), frame rec+0x52 = 0, step
  * rec+0x58 = 0xFF, hold 2.0 and rec+0x28 = 0x0101 (the PR_T12 trace). Every
- * field 0x35938 writes is a sentinel that differs from its post-condition; the
- * raptor's side 1 is seeded to prove it is not touched. */
+ * field 0x35938 writes is a sentinel that differs from its post-condition, and
+ * so are +0x53 (0x66) and +0x54 (0x22 for the trace's 0: neither 0 nor the
+ * 0x3594B arm's 4, so a stray write of either is seen); the raptor's side 1 is
+ * seeded to prove it is not touched. */
 static void we_seed(u32 s0, u32 s1, u32 r0, u32 r1)
 {
     (void)tf_hit_fixture(0);
@@ -4786,7 +4788,7 @@ static void we_seed(u32 s0, u32 s1, u32 r0, u32 r1)
     DSB(s1 + 0x7Au) = 3;
     DSB(s0 + 0x52u) = 0x0Eu;
     DSB(s0 + 0x53u) = 0x66u;
-    DSB(s0 + 0x54u) = 0;
+    DSB(s0 + 0x54u) = 0x22u;
     DSB(s0 + 0x43u) = 0x81u;
     DSB(s1 + 0x52u) = 0x09u;
     DSB(s1 + 0x53u) = 0x0Bu;
@@ -4825,7 +4827,7 @@ static void check_walk_entry(void)
     fighter_35938(r0);
     CHECK_EQ_INT((int)DSB(s0 + 0x52u), 1);
     CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0);
-    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0x22);
     CHECK_EQ_INT((int)DSD(r0 + 8u), 0x0F80);
     CHECK_EQ_INT((int)(DSW(pset0) & 0x7FFFu), 0x0F80);
     CHECK_EQ_INT((int)DSW(r0 + 0x28u), 0x0905);
