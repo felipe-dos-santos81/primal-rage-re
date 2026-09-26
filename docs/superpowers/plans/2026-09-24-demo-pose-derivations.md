@@ -5875,14 +5875,18 @@ libc `0x65546`) into a 0x0C-byte stack buffer, and it returns the length L.
 **`0x2F20C`** (`0x2F20C..0x2F27E`). `0x2F198`'s vertical twin: the same
 cursor reload for row -1 and centring for col -1, then `0x2F830` with the
 stack byte 1 (`0x2F259`). The cursor gets {row, col + glyph count}
-(`0x2F270`/`0x2F274`). Its one caller is `0x38D90`.
+(`0x2F270`/`0x2F274`). `get_xrefs_to` finds two call sites: `0x38E29` in
+`0x38D90`, and `0x31DE6` (mode ECX = `0x4000`), which sits in no Ghidra
+function. Only `0x38D90`'s is ported.
 
 **`0x2F314`** (`0x2F314..0x2F384`). EAX = col, EDX = row, EBX = string.
 The count is `strlen` (`repne scasb`; no `0x2F0F0` and no mode; ECX is
 overwritten). It releases each non-empty cell down the column through
 `0x2AD40`, and it stops after the cell of a row above `0x1E` (`0x2F36D`
-`cmp ecx,0x1e; jg`, tested after the release). Its one caller is
-`0x38C5C`.
+`cmp ecx,0x1e; jg`, tested after the release). `get_xrefs_to` finds two
+call sites: `0x38CA1` in `0x38C5C`, and `0x31C45` (its string from
+`0x1C500(0x22C)` at `0x31C38`), which sits in no Ghidra function. Only
+`0x38C5C`'s is ported.
 
 The glyphs are 8×8 in the `0xBCD7C` font ('2' `0x3F47`, HIT `0x3F30`,
 'C' `0x3F58`, 'O' `0x3F64`, 'M' `0x3F62`, 'B' `0x3F57`), so the run fills
@@ -5933,7 +5937,8 @@ reused by the next glyph spawn, so a pointer comparison could not fail.
 `actors.c`, `fighter.c` and `fight.c`. The first sweep killed 49. The six
 survivors were test gaps: the pointer-equality checks above, and the
 missing width = L pad-4, timer-3, row-12/14/15 and side-1 col-38/40/`0x10`,42
-cases and a two-namer case. With those added, all 55 fail 1..11 assertions.
+cases and a two-namer case. With those added, all 55 fail 1..16 assertions
+(`scratchpad/mut23c.log`).
 
 **Parked minors.**
 - The record's §32.3 wording is now "not reached in the current run".
@@ -5941,8 +5946,13 @@ cases and a two-namer case. With those added, all 55 fail 1..11 assertions.
 - `fighter.h`'s `0x3BF70` comment names the side's record (ctx[4]).
 - `fight.c`'s `0x4AC80` bands are computed in u32 (`0x4ACED..0x4AD27`
   wrap before the signed compares).
-- The `0x4B3F0`/`0x4B430` comments name every EBX = 1 site (`0x4AE2B`,
-  `0x4AE41`, and `0x49C78`'s `0x4A143`/`0x4A14F`).
+- The `0x4B3F0`/`0x4B430` comments name every call site from
+  `get_xrefs_to`, with its EBX. EBX = 1: `0x4AC80`'s `0x4AE32`/`0x4AE48`,
+  `0x49C78`'s `0x4A14F` (`0x4B430`), and `FUN_0004a708`'s `0x4A75C`
+  (`0x4B3F0`, `0x4A751`) and `0x4A76E` (`0x4B430`, `0x4A763`). EBX = 0:
+  `0x4AAD0`'s four, `0x4BFA7`/`0x4BFC3`, `0x4C5D3`/`0x4C5E7` and
+  `0x4D27A`/`0x4D2A0` (review round 1 added `FUN_0004a708` and the zeroing
+  sites).
 - The `0x4AC80` header names the `DS_00104B16`-against-`+0x21` choice
   (`0x4AE26`).
 

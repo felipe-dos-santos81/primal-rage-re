@@ -665,9 +665,10 @@ static s32 fight_2be4c(u32 rec, s32 value)
 /* 0x4B3F0. When the 0xC955C[index] stream is set, point the entry's actor at it
  * and set the entry's type to 8. EAX = entry, EDX = index, EBX = the flag: the
  * actor's +0x55 byte becomes 1 when EBX is non-zero (0x4B3FA `test ebx,ebx`,
- * 0x4B401), else 0 (0x4B40A). Every 0x4AAD0 call site zeroes EBX (0x4AAFC,
- * 0x4AB18, 0x4AB6D, 0x4AB97); 0x4AC80 passes 1 (0x4AE2B, call 0x4AE32), as
- * does 0x49C78's 0x4B430 call (0x4A143/0x4A14F). */
+ * 0x4B401), else 0 (0x4B40A). EBX = 1 at 0x4AC80's call 0x4AE32 (0x4AE2B)
+ * and FUN_0004a708's call 0x4A75C (0x4A751); the other callers zero it:
+ * 0x4AAD0's 0x4AB1A/0x4AB6F (0x4AB18/0x4AB6D), 0x4BFA7 (0x4BFA5), 0x4C5D3
+ * (0x4C5D1) and 0x4D27A (0x4D278). */
 static int fight_4b3f0(u32 entry, u32 index, u32 flag)
 {
     u32 stream = DSD(DS_000C955C + index * 4u);     /* 0x4B3F0 */
@@ -680,8 +681,10 @@ static int fight_4b3f0(u32 entry, u32 index, u32 flag)
 }
 
 /* 0x4B430. As 0x4B3F0 but over the 0xC958C table (the flag test at 0x4B43A).
- * EBX = 1 at 0x4AC80's 0x4AE41 (call 0x4AE48) and at 0x49C78's 0x4A143 (call
- * 0x4A14F); 0x4AAD0's 0x4AAFC/0x4AB97 zero it. */
+ * EBX = 1 at 0x4AC80's call 0x4AE48 (0x4AE41), 0x49C78's call 0x4A14F
+ * (0x4A143) and FUN_0004a708's call 0x4A76E (0x4A763); the other callers zero
+ * it: 0x4AAD0's 0x4AAFE/0x4AB99 (0x4AAFC/0x4AB97), 0x4BFC3 (0x4BFC1), 0x4C5E7
+ * (0x4C5E5) and 0x4D2A0 (0x4D29E). */
 static int fight_4b430(u32 entry, u32 index, u32 flag)
 {
     u32 stream = DSD(DS_000C958C + index * 4u);     /* 0x4B430 */

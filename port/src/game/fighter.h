@@ -346,10 +346,11 @@ void fighter_3e62c(u32 slot, u32 rec, u32 side);
 
 /* 0x3BF70. The forced attack, 0x34E2C's reaction callback 0x3F (*(u32*)0xA3A14
  * for the T-rex): unless the side's slot +0x40 bit 7 is set, the side's
- * record's (ctx[4], DSD(0x1077B0 + side*0x94)) +0x34/+0x43/+0x42 cleared, slot +0x5F = 0xFF, DS_00107D40 + side*4 = the
- * 0xBEFA0 row, the 0xC8B30[char] attack at hold 2.0 through 0x3C4CC, state
- * 3/4/2, slot +0x40 bit 7, DS_001078F8 + side = 1 and slot +0x4E = 0xFFFF when
- * 0x1A570(side) is non-zero, else 1. Returns 1, or 0 on the bit-7 reject.
+ * record's (ctx[4], DSD(0x1077B0 + side*0x94)) +0x34/+0x43/+0x42 cleared,
+ * slot +0x5F = 0xFF, DS_00107D40 + side*4 = the 0xBEFA0 row, the
+ * 0xC8B30[char] attack at hold 2.0 through 0x3C4CC, state 3/4/2, slot +0x40
+ * bit 7, DS_001078F8 + side = 1 and slot +0x4E = 0xFFFF when 0x1A570(side) is
+ * non-zero, else 1. Returns 1, or 0 on the bit-7 reject.
  * EAX = slot, EDX = rec, EBX = side. */
 int fighter_3bf70(u32 slot, u32 rec, u32 side);
 

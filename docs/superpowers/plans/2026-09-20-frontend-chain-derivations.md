@@ -401,6 +401,9 @@ character's actor.
   `0x2F198` — "draw formatted text at (col,row)". Its `EAX`/`EDX` are the col/row
   that reach `0x2F198`; `EBX`/`ECX` and the two stack words feed the formatter
   `0x2EFD4`, whose exact output is **not decoded** (named gap §7.2).
+  (Derived since, demo-pose record §33: `0x2EFD4` is `"%i"` of EBX fitted to
+  width ECX by the stack pad 0..3; `0x2F4D0`/`0x2EFD4` are ported as
+  `text_number_draw`/`text_number_format`.)
 * `0x38B18` (file `0x8B96C`, `prage.c:23798`) — `frontend_spawn_row`. The binding is
   pinned by the raw, not assumed: `0x38B1B mov esi,eax` (descriptor),
   `0x38B1D mov ebp,edx` (a2), `0x38B51 shl ebx,3` (a3<<3), `0x38B54 lea edx,[ebp*8]`
@@ -825,7 +828,9 @@ the port should follow the raw order.
    `0x2F198`; the exact output of `0x2EFD4` (a `sprintf`-style formatter) is not
    decoded — only its col/row pass-through to `0x2F198` and its call sites are
    pinned. The `0x1EA08` draws therefore have exact `(col,row,table)` inputs but
-   un-asserted formatted output.
+   un-asserted formatted output. (Derived since, demo-pose record §33: the
+   formatter is decoded and ported; the `0x1EA08` draws stay a gap on the
+   `0x2DB58` resource reader.)
 3. **The assets named by the two list handles `0x3E688` and `0x88874B0`.** They are
    resource handles in the `0x1B544` space; the index/offset decode is pinned
    (`0x3E688`: index 0 offset `0x3E688`; `0x88874B0`: index 17 offset `0x874B0`) but

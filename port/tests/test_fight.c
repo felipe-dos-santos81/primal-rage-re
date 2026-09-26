@@ -8462,7 +8462,10 @@ static void check_combo_text(void)
     DSB(s0 + 0x63u) = 0;
     DSW(0x00107D2Cu) = 2;
     DSW(DS_00107D20) = 75;
-    ct_plant(8, 3);                 /* 0x38C5C's row-8 run: cols 2, 3 */
+    ct_plant(8, 3);                 /* cleared by 0x38C5C's row-8 run
+                                     * and again by the 0xE5 row-7 clear's wrap
+                                     * (row 8 cols 0..15), so it does not
+                                     * isolate 0x38C5C; part C does */
     ct_plant(0x10, 4);              /* row 0x10 runs: cols 0..5 */
     ct_plant(0x10, 5);
     ct_plant(6, 0);                 /* string 0xE5 clears rows 6/7 */
@@ -8575,7 +8578,9 @@ static void check_combo_text(void)
     DSB(s0 + 0x7Au) = 0;
     DSB(s0 + 0x63u) = 0;
     /* D1. 6 hits and [42] = 1: record 0's second threshold names row 6
-     * "EXTRA CRUNCHY" (col (0x2b - 13) >> 1 = 15) and row 7 " " (a clear). */
+     * "EXTRA CRUNCHY" (col (0x2b - 13) >> 1 = 15) and row 7 " " (a clear).
+     * The (7, 21) plant is cleared by the 0xE5 row-7 clear before the " "
+     * draw, so it shows only that row 7 ends empty, not the " " itself. */
     actors_reset();
     DSW(0x00107D2Cu) = 6;
     DSB(DS_00107A80 + 42u) = 1;
@@ -8647,7 +8652,10 @@ static void check_combo_text(void)
     DSB(s0 + 0x7Au) = 0;
     /* D9. The walk stops at the first record that names: with [42] and [36]
      * both met, record 0 draws "EXTRA CRUNCHY" (col 15..27) and " " on row 7;
-     * record 1's "SUPER EAR"/"SPLITTER" (col 17) must not follow. */
+     * record 1's "SUPER EAR"/"SPLITTER" (col 17) must not follow. The row-6
+     * 'T' is the discriminating check; the (7, 17) plant goes with the 0xE5
+     * row-7 clear either way and stays empty only while "SPLITTER" is not
+     * drawn. D6 covers record 1's names. */
     actors_reset();
     DSB(DS_00107A80 + 36u) = 1;
     DSW(0x00107D2Cu) = 6;

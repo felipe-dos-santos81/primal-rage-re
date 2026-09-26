@@ -2260,8 +2260,9 @@ void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode)
 /* 0x2F20C. 0x2F198's vertical twin: the same register shape, cursor reload
  * (0x2F228/0x2F22E) and centring (0x2F241..0x2F257), then 0x2F830 with the
  * stack byte 1 (0x2F259 `push 1`). The cursor gets {row, col + glyph count}
- * (0x2F26E..0x2F274): the column, not the row, takes the extent. Its one
- * caller is 0x38D90. */
+ * (0x2F26E..0x2F274): the column, not the row, takes the extent. Two call
+ * sites (get_xrefs_to): 0x38E29 in 0x38D90 and 0x31DE6 (mode ECX = 0x4000),
+ * which sits in no Ghidra function; only 0x38D90's is ported. */
 void text_vertical_set(s32 col, s32 row, const u8 *s, u32 mode)
 {
     if (row == -1) {
@@ -2281,7 +2282,9 @@ void text_vertical_set(s32 col, s32 row, const u8 *s, u32 mode)
  * the count is strlen (0x2F31F..0x2F328 `repne scasb`, no 0x2F0F0 and no mode;
  * ECX is overwritten), and the walk goes down one row per cell, releasing each
  * non-empty record through 0x2AD40. It stops after the cell of a row above
- * 0x1E (0x2F36D `cmp ecx,0x1e; jg`). Its one caller is 0x38C5C. */
+ * 0x1E (0x2F36D `cmp ecx,0x1e; jg`). Two call sites (get_xrefs_to): 0x38CA1
+ * in 0x38C5C and 0x31C45 (the string from 0x1C500(0x22C) at 0x31C38), which
+ * sits in no Ghidra function; only 0x38C5C's is ported. */
 void text_cells_release_vertical(s32 col, s32 row, const u8 *s)
 {
     s32 count = (s32)strlen((const char *)s);           /* 0x2F31F..0x2F328 */
