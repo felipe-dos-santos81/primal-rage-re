@@ -550,22 +550,13 @@ static int fighter_input_scan(u32 side, s32 n1, s32 n2, u32 mask)
 #define FIGHT_BLOCK_END1   0x000C8FB8u  /* 0x1A8F4: per-char stream, +0x54 1 */
 
 static void hit_anim_start_a(u32 rec, u32 stream, u32 frame_bits); /* 0x3C480 */
-
-/* 0x1A640 — record §38. */
-u32 fighter_block_dir(u32 side)
-{
-    u32 rec = DSD(DS_001077B0 + side * 0x94u);          /* 0x1A650 */
-    u16 cmd = DSW(DS_001088E0 + side * 2u);             /* 0x1A670/0x1A68B */
-    if ((DSW(rec + 0x28u) & 0x4000u) == 0u)             /* 0x1A657..0x1A66E */
-        return (cmd & 0x1000u) != 0u ? 0x1000u : 0u;    /* 0x1A679..0x1A683 */
-    return (cmd & 0x2000u) != 0u ? 0x2000u : 0u;        /* 0x1A694..0x1A69E */
-}
+static void fighter_ctx_rec_swap(u32 out[6], u32 rec);           /* 0x33A68 */
 
 /* 0x1A6AC — record §38. */
 void fighter_block_anim(u32 slot, u32 rec)
 {
     u32 ctx[6];
-    fighter_ctx_swap(ctx, DSB(rec + 0x51u));            /* 0x1A6B7 0x33A68 */
+    fighter_ctx_rec_swap(ctx, rec);                     /* 0x1A6B7 0x33A68 */
     hit_facing_flag(ctx[1]);                            /* 0x1A6C0 0x18B04 */
     if (DSB(slot + 0x54u) == 0u) {                      /* 0x1A6C8 jbe */
         if ((DSB(slot + 0x43u) & 0x20u) != 0u) return;  /* 0x1A6D2 */
@@ -597,8 +588,8 @@ void fighter_block_start(u32 side)
         if (DSB(ctx[2] + 0x5Fu) < 0x40u) {              /* 0x1A82D */
             DSB(ctx[3] + 0x60u) = DSB(tri[0] + 0x0Au);  /* 0x1A83A/0x1A83D */
         } else if (DSB(ctx[2] + 0x64u) < 0x40u) {       /* 0x1A84F */
-            /* PORT: 0x1A842..0x1A86B cannot run: +0x5F <= 0x3F was just
-             * tested. Kept verbatim. */
+            /* 0x1A842..0x1A86B: unreachable, +0x5F <= 0x3F was just
+             * tested; transcribed as the raw has it. */
             fighter_anim_triple(tri, ctx[0], (s32)DSB(ctx[2] + 0x64u));
             DSB(ctx[3] + 0x60u) = DSB(tri[0] + 0x0Au);  /* 0x1A868/0x1A86B */
         }
@@ -625,7 +616,7 @@ void fighter_block_start(u32 side)
 void fighter_block_end(u32 rec)
 {
     u32 ctx[6];
-    fighter_ctx_swap(ctx, DSB(rec + 0x51u));            /* 0x1A8F9 0x33A68 */
+    fighter_ctx_rec_swap(ctx, rec);                     /* 0x1A8F9 0x33A68 */
     {
         u32 slot = ctx[3];
         u32 tab = (DSB(slot + 0x54u) == 1u) ? FIGHT_BLOCK_END1
@@ -4321,9 +4312,9 @@ void fighter_14814(u32 slot, u32 rec, u32 side)
  * (char 3, 0x27) entry of 0x34E2C's 0xA3528 table), which the second demo's
  * first state-7 frame reaches. EAX = slot, EDX = rec; the EBX 0x34E2C passes
  * is pushed and never read. 0x14814(slot, rec, EBX = rec), then the side's
- * (0x339AC(rec) ctx[0]) FD11C byte = 1. The raw returns AL = 1; 0x34E2C returns it
- * (0x35045..0x3504F): 0x3CE58 overwrites it at 0x3CF33, 0x350D0's tail
- * (0x352CD) returns it. */
+ * (0x339AC(rec) ctx[0]) FD11C byte = 1. The raw returns AL = 1; 0x34E2C
+ * returns it (0x35045..0x3504F): 0x3CE58 overwrites it at 0x3CF33, 0x350D0's
+ * tail (0x352CD) returns it. */
 void fighter_1490c(u32 slot, u32 rec, u32 side)
 {
     u32 ctx[6];

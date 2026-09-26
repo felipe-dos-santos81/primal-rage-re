@@ -7324,9 +7324,23 @@ static void check_block(void)
                                  0x000C8FB8u };
     u32 sv_14ec = DSD(DS_001014EC);
     u8 sv_b00[4], sv_tab[28], sv_ce0[4], sv_e0[4], sv_bt[16];
+    /* c3_seed's and the block path's shared state (the stream words, the
+     * 0x396AC counters, 0x107D2C, FD108..FD11F, 0x1078F8, tb_seed's
+     * 0x1080AC/AE, and 0x18B04 -> 0x18714's 0x100AF0/0x100AB0 writes). */
+    u16 sv_st[5];
+    u8 sv_a80[0x80], sv_d2c[4], sv_fd[0x18], sv_f8[2], sv_0ac[4];
+    u8 sv_af0[8], sv_ab0[0x10];
     u32 i, tri0, k;
     s32 want;
 
+    for (i = 0; i < 5u; i++) sv_st[i] = DSW(c3_streams[i]);
+    tf_snap(sv_a80, DS_00107A80, 0x80u);
+    tf_snap(sv_d2c, DS_00107D2C, 4u);
+    tf_snap(sv_fd, FIGHT_FD108_T, 0x18u);
+    tf_snap(sv_f8, DS_001078F8, 2u);
+    tf_snap(sv_0ac, 0x001080ACu, 4u);
+    tf_snap(sv_af0, 0x00100AF0u, 8u);
+    tf_snap(sv_ab0, 0x00100AB0u, 0x10u);
     tf_snap(sv_b00, DS_00104B00, 4u);
     tf_snap(sv_tab, 0x000C8950u, 28u);
     tf_snap(sv_ce0, DS_00100CE0, 4u);
@@ -7406,13 +7420,16 @@ static void check_block(void)
     DSB(s1 + 0x5Fu) = 0x3Cu;
 
     /* B: 0x1A6AC with +0x54 = 1: bit 0x10 clear starts 0xC8F90[3]; bit 0x10
-     * set leaves the record. */
+     * set leaves the record. Its 0x18B04 is side 0's (0x33A68 from rec+0x51),
+     * so side 1's record +0x18 keeps its sentinel. */
     DSB(s0 + 0x54u) = 1u;
     DSB(s0 + 0x43u) = 0x2Au;
     DSD(r0 + 8u) = 0x00ABCDEFu;
+    DSD(r1 + 0x18u) = 0x5A5A5A5Au;
     fighter_block_anim(s0, r0);
     CHECK_EQ_INT((int)DSD(r0 + 8u), (int)(bst + 0x10u));
     CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0x1A);
+    CHECK_EQ_INT((int)DSD(r1 + 0x18u), 0x5A5A5A5A);
     DSD(r0 + 8u) = 0x00ABCDEFu;
     fighter_block_anim(s0, r0);
     CHECK_EQ_INT((int)DSD(r0 + 8u), 0x00ABCDEF);
@@ -7443,16 +7460,17 @@ static void check_block(void)
     fighter_block_end(r0);
     CHECK_EQ_INT((int)DSD(r0 + 8u), (int)(bst + 0x30u));
 
-    /* D: 0x1A640 on slot 0's record +0x28 bit 0x4000 and command word. */
+    /* D: 0x1A640 (fighter_1a640, 0x1AA93's call) on slot 0's record +0x28
+     * bit 0x4000 and command word. */
     DSW(r0 + 0x28u) &= 0xBFFFu;
     DSW(DS_001088E0) = 0x1000u;
-    CHECK_EQ_INT((int)fighter_block_dir(0u), 0x1000);
+    CHECK_EQ_INT(fighter_1a640(0u), 0x1000);
     DSW(DS_001088E0) = 0x2000u;
-    CHECK_EQ_INT((int)fighter_block_dir(0u), 0);
+    CHECK_EQ_INT(fighter_1a640(0u), 0);
     DSW(r0 + 0x28u) |= 0x4000u;
-    CHECK_EQ_INT((int)fighter_block_dir(0u), 0x2000);
+    CHECK_EQ_INT(fighter_1a640(0u), 0x2000);
     DSW(DS_001088E0) = 0x1000u;
-    CHECK_EQ_INT((int)fighter_block_dir(0u), 0);
+    CHECK_EQ_INT(fighter_1a640(0u), 0);
 
     /* E: 0x1A978 (the +0x52 == 6 handler) with +0x62 = 0 and +0x63 set:
      * +0x60 decrements; held back with no 0x8000/0x000F bits and +0x60 still
@@ -7522,6 +7540,14 @@ static void check_block(void)
     CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0x20);
 
     for (i = 0; i < 4u; i++) tf_put(sv_bt + i * 4u, tabs[i] + 3u * 4u, 4u);
+    tf_put(sv_ab0, 0x00100AB0u, 0x10u);
+    tf_put(sv_af0, 0x00100AF0u, 8u);
+    tf_put(sv_0ac, 0x001080ACu, 4u);
+    tf_put(sv_f8, DS_001078F8, 2u);
+    tf_put(sv_fd, FIGHT_FD108_T, 0x18u);
+    tf_put(sv_d2c, DS_00107D2C, 4u);
+    tf_put(sv_a80, DS_00107A80, 0x80u);
+    for (i = 0; i < 5u; i++) DSW(c3_streams[i]) = sv_st[i];
     tf_put(sv_e0, DS_001088E0, 4u);
     tf_put(sv_ce0, DS_00100CE0, 4u);
     tf_put(sv_tab, 0x000C8950u, 28u);

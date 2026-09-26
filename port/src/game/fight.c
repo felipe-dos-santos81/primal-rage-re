@@ -377,7 +377,7 @@ void fight_stance_pass(u32 side)
         DSB(self + 0x60u) = (u8)(DSB(self + 0x60u) - 1u);    /* 0x1AA8C */
         {
             u16 cmd = DSW(DS_001088E0 + ctx[1] * 2u);        /* 0x1AAA2 */
-            if (fighter_block_dir(ctx[1]) == 0u              /* 0x1AA93/0x1AA9A */
+            if (fighter_1a640(ctx[1]) == 0                   /* 0x1AA93/0x1AA9A */
                     || (cmd & 0x8000u) != 0u                 /* 0x1AAAB/0x1AAB3 */
                     || (cmd & 0x000Fu) != 0u                 /* 0x1AABE/0x1AAC5 */
                     || (((s32)DSD(self + 0x5du) >> 24) < 1   /* 0x1AAD1 */

@@ -92,11 +92,6 @@ void fighter_spawn(u32 side);
  * == 2. */
 void fighter_slots_reset(void);
 
-/* 0x1A640. The block direction: 0x1000 when slot[side]'s record +0x28 bit
- * 0x4000 is clear and the side's command word has 0x1000, 0x2000 when the bit
- * is set and the word has 0x2000, else 0. */
-u32 fighter_block_dir(u32 side);
-
 /* 0x1A6AC. EAX = slot, EDX = rec. 0x18B04 for rec+0x51's side, then with
  * slot+0x54 == 0 (1) and slot+0x43 bit 0x20 (0x10) clear, start the stream
  * 0xC8F40[char] (0xC8F90[char]) through 0x3C480 at 3.0 and set that bit
