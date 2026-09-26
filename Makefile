@@ -197,7 +197,7 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
 # improves (the tool prints "ratchet improved ... raise N"). N = 1563 was measured on
-# the commit that raised it, on f49384c: the effects pass 0x49C78's cases 3..5 are
+# 27c95c0 (the commit that raised it, on f49384c): the effects pass 0x49C78's cases 3..5 are
 # ported: 0x49DB3 lands a falling worshipper once its y is <= the word 0xBD898
 # (0x400) on the 0xC9634[si] crouch stream (hflip OR-ed when 0x2BE1C > 0, velocities
 # zeroed, a rng(0x3C) + 0x3C lie timer, +0x1C |= 0x80, type 4); 0x49E5A/0x49EC0 are

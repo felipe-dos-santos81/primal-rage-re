@@ -4761,3 +4761,243 @@ lower figure) while in the port it keeps its upright pose; 1547 leaves 297 px (x
 and 1549/1550 372 px (x 209–237, rows 175–199), with the capture's figure
 lying lower each frame. The fighters, the burst and the background match.
 Port 1091 is the f ≈ 674 state. The owner is **not derived**; no `fn_resolve` miss falls in f = 620..849.
+
+(Derived since, §28: the owner is the effects pass's case 3 `0x49DB3`,
+which lands the two side-1 worshippers on their `0xC9634` crouch stream at
+f = 675/676; the port had only its gate and draw. Porting cases 3..5
+explains 1546..1562.)
+
+## 28. The worshippers' fall, lie and climb (`0x49C78` cases 3..5) at capture 1546 (roar-timing Task 18, `27c95c0`)
+
+**Result in one line.** Capture 1546 has one cause, and it is the port's: the
+effects pass `0x49C78`'s type-3 handler (`0x49DB3`) was ported only as its
+`DS_000BD898` gate and the `rng(0x3C)` draw. The two side-1 worshippers
+`0x4B5A8` scared at f ≈ 650 (their slot 1 in state 7/2: type 3, `+0x38` =
+−64) fall 64 units a
+frame; the raw lands each one when its y reaches `0x400` — the `0xC9634[si]`
+crouch stream at 2.0, the velocities zeroed, a `rng(0x3C) + 0x3C` lie timer
+and type 4 — while the port kept the entry at type 3, kept the upright
+stream, and drew `rng(0x3C)` again on every later frame. Entry `0x108414`
+lands at f = 675 (port frame 1092) and `0x108438` at f = 676. The fix ports
+case 3 whole and, because it hands the entry to them, cases 4 (`0x49E5A`, the
+lie timer and the rise) and 5 (`0x49EC0`, the climb back to type 0); no new
+callee (`0x496AC`, `0x2BE1C`, `0x2BC30` and `0x5D7DC` were ported). `0x496AC`
+is signed in the raw; the port's `fight_dust_clamp` compared unsigned (the
+same result for y ≥ 0) and is corrected. This explains captures 1546..1562.
+
+### 28.1 The measurement (temporary, reverted)
+
+Captures 1542..1545 splice at 0 px. A temporary `PR_T18` print of every
+effects-list entry in `fight_effects_pass` (entry, type, `si`, the actor's x,
+its y `+0x30 >> 16`, `+0x38`, the pset screen x/y, `+0x1A`/`+0x1C`, the
+slot's `+0x52/+0x53/+0x54/+0x42` and the `0x1088B6/0x1088B2/0x10889E` bytes)
+for f = 600..700 (dump reverted) shows four entries: `0x1083CC`/`0x1083F0`
+(side 0, types 1/0, screen x 254..280) and `0x108414`/`0x108438` (side 1,
+`si` 3/4). The side-1 pair turned type 3 at f ≈ 650 (`+0x38` = `0xFFC0`,
+`+0x1A` = 2120/2633, slot 1's `+0x52/+0x53` = 7/2), and their y falls 64 per
+frame. At f = 673..675 their screen x is 234..236 and 224..226 — capture
+1546's residual box (x 221–234). `0x108414`'s y is 1032 at f = 674 and 968
+at f = 675; `0x108438`'s 1033 at f = 675 and 969 at f = 676.
+
+### 28.2 The raw (Ghidra `read_memory` + capstone, fixups applied)
+
+The jump table `0x49C2C` (`read_memory`) sends type 3 to `0x49DB3`, 4 to
+`0x49E5A`, 5 to `0x49EC0`. `DS_000BD898` is the word `0x0400` (`00 04`).
+
+```
+0x49DB3  8B 41 08                   mov eax, dword ptr [ecx + 8]
+0x49DB6  8B 40 30                   mov eax, dword ptr [eax + 0x30]
+0x49DB9  C1 F8 10                   sar eax, 0x10
+0x49DBC  E8 EB F8 FF FF             call 0x496ac
+0x49DC1  8B 51 08                   mov edx, dword ptr [ecx + 8]
+0x49DC4  66 89 42 2C                mov word ptr [edx + 0x2c], ax
+0x49DC8  31 C0                      xor eax, eax
+0x49DCA  8B 53 30                   mov edx, dword ptr [ebx + 0x30]
+0x49DCD  66 A1 98 D8 0B 00          mov ax, word ptr [0xbd898]
+0x49DD3  C1 FA 10                   sar edx, 0x10
+0x49DD6  39 C2                      cmp edx, eax
+0x49DD8  0F 8F 8A 06 00 00          jg 0x4a468
+0x49DDE  8B 51 0C                   mov edx, dword ptr [ecx + 0xc]
+0x49DE1  8B 41 08                   mov eax, dword ptr [ecx + 8]
+0x49DE4  8B 12                      mov edx, dword ptr [edx]
+0x49DE6  E8 31 20 FE FF             call 0x2be1c
+0x49DEB  8D 53 28                   lea edx, [ebx + 0x28]
+0x49DEE  85 C0                      test eax, eax
+0x49DF0  7E 0A                      jle 0x49dfc
+0x49DF2  C7 44 24 04 00 40 00 00    mov dword ptr [esp + 4], 0x4000
+0x49DFA  EB 06                      jmp 0x49e02
+0x49DFC  31 FF                      xor edi, edi
+0x49DFE  89 7C 24 04                mov dword ptr [esp + 4], edi
+0x49E02  31 C0                      xor eax, eax
+0x49E04  8B 7C 24 04                mov edi, dword ptr [esp + 4]
+0x49E08  66 8B 02                   mov ax, word ptr [edx]
+0x49E0B  09 F8                      or eax, edi
+0x49E0D  66 89 02                   mov word ptr [edx], ax
+0x49E10  31 C0                      xor eax, eax
+0x49E12  66 89 F0                   mov ax, si
+0x49E15  8B 14 85 34 96 0C 00       mov edx, dword ptr [eax*4 + 0xc9634]
+0x49E1C  8B 41 08                   mov eax, dword ptr [ecx + 8]
+0x49E1F  68 00 00 00 40             push 0x40000000
+0x49E24  E8 07 1E FE FF             call 0x2bc30
+0x49E29  66 C7 43 38 00 00          mov word ptr [ebx + 0x38], 0
+0x49E2F  B8 3C 00 00 00             mov eax, 0x3c
+0x49E34  66 C7 43 34 00 00          mov word ptr [ebx + 0x34], 0
+0x49E3A  E8 9D 39 01 00             call 0x5d7dc
+0x49E3F  05 3C 00 00 00             add eax, 0x3c
+0x49E44  8A 51 1C                   mov dl, byte ptr [ecx + 0x1c]
+0x49E47  C6 41 1E 04                mov byte ptr [ecx + 0x1e], 4
+0x49E4B  80 CA 80                   or dl, 0x80
+0x49E4E  66 89 41 18                mov word ptr [ecx + 0x18], ax
+0x49E52  88 51 1C                   mov byte ptr [ecx + 0x1c], dl
+0x49E55  E9 0E 06 00 00             jmp 0x4a468
+0x49E5A  66 8B 41 18                mov ax, word ptr [ecx + 0x18]
+0x49E5E  48                         dec eax
+0x49E5F  66 89 41 18                mov word ptr [ecx + 0x18], ax
+0x49E63  66 85 C0                   test ax, ax
+0x49E66  0F 8F FC 05 00 00          jg 0x4a468
+0x49E6C  31 D2                      xor edx, edx
+0x49E6E  66 89 F2                   mov dx, si
+0x49E71  8B 41 08                   mov eax, dword ptr [ecx + 8]
+0x49E74  8B 14 95 EC 95 0C 00       mov edx, dword ptr [edx*4 + 0xc95ec]
+0x49E7B  68 00 00 40 40             push 0x40400000
+0x49E80  E8 AB 1D FE FF             call 0x2bc30
+0x49E85  66 C7 43 38 40 00          mov word ptr [ebx + 0x38], 0x40
+0x49E8B  8B 41 0C                   mov eax, dword ptr [ecx + 0xc]
+0x49E8E  8B 00                      mov eax, dword ptr [eax]
+0x49E90  66 8B 40 28                mov ax, word ptr [eax + 0x28]
+0x49E94  30 C0                      xor al, al
+0x49E96  80 E4 40                   and ah, 0x40
+0x49E99  25 FF FF 00 00             and eax, 0xffff
+0x49E9E  74 08                      je 0x49ea8
+0x49EA0  66 C7 43 34 C0 FF          mov word ptr [ebx + 0x34], 0xffc0
+0x49EA6  EB 06                      jmp 0x49eae
+0x49EA8  66 C7 43 34 40 00          mov word ptr [ebx + 0x34], 0x40
+0x49EAE  8A 61 1C                   mov ah, byte ptr [ecx + 0x1c]
+0x49EB1  C6 41 1E 05                mov byte ptr [ecx + 0x1e], 5
+0x49EB5  80 E4 7F                   and ah, 0x7f
+0x49EB8  88 61 1C                   mov byte ptr [ecx + 0x1c], ah
+0x49EBB  E9 A8 05 00 00             jmp 0x4a468
+0x49EC0  8B 41 08                   mov eax, dword ptr [ecx + 8]
+0x49EC3  8B 40 30                   mov eax, dword ptr [eax + 0x30]
+0x49EC6  C1 F8 10                   sar eax, 0x10
+0x49EC9  E8 DE F7 FF FF             call 0x496ac
+0x49ECE  8B 51 08                   mov edx, dword ptr [ecx + 8]
+0x49ED1  66 89 42 2C                mov word ptr [edx + 0x2c], ax
+0x49ED5  66 8B 43 32                mov ax, word ptr [ebx + 0x32]
+0x49ED9  66 3B 41 1A                cmp ax, word ptr [ecx + 0x1a]
+0x49EDD  0F 8C 85 05 00 00          jl 0x4a468
+0x49EE3  31 D2                      xor edx, edx
+0x49EE5  66 89 F2                   mov dx, si
+0x49EE8  8B 41 08                   mov eax, dword ptr [ecx + 8]
+0x49EEB  8B 14 95 44 95 0C 00       mov edx, dword ptr [edx*4 + 0xc9544]
+0x49EF2  68 00 00 40 40             push 0x40400000
+0x49EF7  E8 34 1D FE FF             call 0x2bc30
+0x49EFC  66 C7 43 38 00 00          mov word ptr [ebx + 0x38], 0
+0x49F02  66 C7 43 34 00 00          mov word ptr [ebx + 0x34], 0
+0x49F08  C6 41 1E 00                mov byte ptr [ecx + 0x1e], 0
+```
+
+`EBX` is the entry's actor (`0x49CD8 mov ebx,[ecx+8]`), `ECX` the entry and
+`SI` the `si` index (`0x49CE1`). `0x496AC`:
+
+```
+0x496AD  3D 00 0B 00 00   cmp eax, 0xb00 ; jl 0x496bb   -> 0xC00 when >= 0xB00
+0x496BB  3D 00 04 00 00   cmp eax, 0x400 ; jg 0x496c9   -> 0xF80 when <= 0x400
+0x496C9  (0xB00 - eax) sar 1 + 0xC00
+```
+
+So the port's case 3 (`if (y <= (s16)BD898) rng(0x3C)`) had the gate and the
+draw only: no `+0x2C` write, no landing, no type change — the landed entry
+stayed type 3 and drew `rng(0x3C)` on every later frame. Cases 4 and 5 were
+the `default:` gap. The tables (`read_memory`): `0xC9634` = `0xEE1B2,
+0xEE53C, 0xEE8CE, 0xEEC96, 0xEF060, 0xEF42A`; `0xC95EC` = `0xEE14C, 0xEE4FE,
+0xEE868, 0xEEC30, 0xEEFFA, 0xEF3EC`; `0xC9544` = `0xEE02C, 0xEE3E6, 0xEE726,
+0xEEAE2, 0xEEED4, 0xEF28A`.
+
+### 28.3 The fix and its assertions
+
+`fight_effects_pass` gains cases 3, 4 and 5 transcribed from the listing
+(the gate word zero-extended, the counter and the climb compare signed, the
+hflip an OR before `0x2BC30`); `fight_dust_clamp` (`0x496AC`) takes an `s32`
+and compares signed. The dispatch comments now name types 2 and 6..12 as the
+remaining gaps. New `check_effects_fall` in `test_fight.c` (entry `si` = 3,
+the three tables' entries 0 and 3 pointed at distinct literal-sprite scratch
+streams, restored after; `DS_000BD898` seeded then restored):
+
+* case 3 still falling (y `0x800`, and `0x401`): only `+0x2C` moves (`0xD80`);
+  type, `+0x38`, the timer sentinel `0x7777`, the stream, the pset and the RNG
+  state are kept;
+* the landing at y `0x400` with `0x2BE1C` > 0: type 4, `+0x28` = `0x4001`
+  (`0x0011 | 0x4000`, then `0x2BC30`'s `and word [rec+0x28], 0xF7EB`), the
+  `0xC9634[3]` stream at 2.0 with the pset sprite `0x8321` (the hflip bit, so
+  the OR precedes `0x2BC30`), `+0x34`/`+0x38` = 0, the timer =
+  `rng(0x3C) + 0x3C` from the seeded state, `+0x1C` = `0x85`, `+0x2C` =
+  `0xF80`;
+* `0x2BE1C` < 0 keeps hflip as it was (set stays set, clear stays clear), and
+  y = −0x100 gives `+0x2C` = `0xF80` (signed `0x496AC`; unsigned gives
+  `0xC00`);
+* `DS_000BD898` = `0x8000` with y = `0x100` lands (zero-extended gate);
+* case 4: 2 → 1 stays, 1 → 0 rises (`0xC95EC[3]` at 3.0, `+0x38` = `0x40`,
+  `+0x34` = `0x40` with the fighter's `+0x28` bit `0x4000` clear, `+0x1C`
+  `0x85` → `0x05`, type 5, no draw); `0x8001` → `0x8000` rises at once
+  (signed) and the set bit gives `+0x34` = `0xFFC0`;
+* case 5: y `0x800` < `+0x1A` `0x900` keeps climbing (`+0x2C` = `0xD80`),
+  y `0x900` arrives (`0xC9544[3]` at 3.0, `+0x2C` = `0xD00`, velocities 0,
+  type 0); `+0x32` = `0x8000` stays below `0x100` (signed).
+
+`check_effects_rng`'s case-3 entry now lands, so it gains seeds only (the
+entry's `+0x0C` slot and a literal-sprite `0xC9634[0]` stream, restored); its
+assertions are unchanged and still hold (the landing draws exactly one
+`rng(0x3C)`).
+
+Mutations (31, each built and run, then `cmp`-restored): every one fails
+1..9 assertions — the `+0x2C` writes (cases 3, 5), the gate `>=`, the gate
+sign-extended, no hflip, hflip assigned instead of OR-ed, hflip after
+`0x2BC30`, table index 0 (each case), the holds, each velocity store, no
+`+0x3C`, no draw, no type 4/5/0, the `+0x1C` set and clear, the case-4
+counter unsigned or `>= 0`, the facing inverted, the case-5 compare unsigned
+or `<=`, and `0x496AC` unsigned.
+
+### 28.4 Measured
+
+Port frames 0..1091 are byte-identical to the pre-fix dump, and 1092 (the
+f = 675 state) is the first that differs. Captures 1546..1562 splice at 0 px
+(1546 is port 1091/1092 row 67).
+
+| measurement | before (`f49384c`) | after (`27c95c0`) |
+|---|---|---|
+| captures 1546..1562 | 1546 148 px; 1547 297; 1549 372 | **all explained** |
+| demo oracle first unexplained | 1546 (raw 4453); `[1546..3616]` 2071 / 2065 unexpl. | **1563 (raw 4470)**; `[1563..3616]` 2054 / 2048 unexpl.; port `[1106..1380]` (275, 0 exhibited) |
+| demo-fight ratchet | `[1546..1884]` 339, N = 1546 | **`[1563..1884]` 322**, "ratchet improved: first unexplained 1563 > 1546", **N = 1563** |
+| front-end oracle | `[560..1545]` / 986 / 410 clean, 569 splice, 3 transition, 2 unexpl. | **`[560..1562]` / 1003 / 413 clean, 583 splice, 3 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved. The three transition frames are the
+same (`port832@row177`, `port862@row189`, `port906@row31`). The exhibition
+set grows to port frames 0..1105 (869 exhibited). The ladder
+`cmake --build build --clean-first && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify`
+exited 0 with 0 compiler warnings, with N = 1563 in the Makefile. Unmoved: title
+`54/55/2/0` and `54/57/0/0`, determinism 54; smk 120/120 and 41/41; attract
+215/216 (expected divergence at 215); C-vs-Python 9866; `symbols.h`; the
+front-end "endpoints BAD" line.
+
+**Unresolved code targets after the fix** (a temporary whole-run probe in
+`fn_resolve`, reverted): `0x14F50` (f = 865 and 871; Ghidra
+`get_xrefs_to` lists no code reference, so it is reached through data), plus
+the known front-end sites `0x29B74`/`0x41578` and the stub `0x5D812`, and
+`fn_resolve(0)` (a null lookup at f = 617, 49 calls, before the first frame
+this fix changes). `0x3C0A4`, `0x3ECF8` and `0x3E3A8` (§27.4) no longer
+miss: the run moved from f = 675.
+
+### 28.5 The new first unexplained frame, 1563 (characterised, not fixed)
+
+Captures 1546..1562 splice at 0 px. Capture 1563's best splice, port
+1106/1107 row 154, leaves 514 px in x 37–232, rows 158–191, in two places:
+x 200–232 (≈ 370 px), a worshipper beside the right-hand (gold) fighter drawn
+in a different pose in the capture, and x 37–70, rows ≈ 180–191 (≈ 144 px),
+a dark blob under the left (blue) fighter whose shape differs. 1564 leaves
+514 px, 1565 498, 1566 284 and 1568 522. Port 1106 is the f ≈ 689 state. The
+owner is **not derived**. A candidate, not a derivation: the worshippers
+landed by this fix now carry the entry's `+0x1C` bit 7 (type 4), and that
+bit gates the effects pass's unported per-entry prelude `0x4B69C`
+(`0x4B6AC and al,0x80`), which runs `0x17D30` — a point test against both
+fighters' boxes through `0x1790C` — and on a hit `0x4B788`/`0x4B470`.
