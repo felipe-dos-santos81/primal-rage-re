@@ -439,6 +439,12 @@ def load_port(d, n):
 # explains captures 1478..1480, [560..1477] -> [560..1480] (918 -> 921; still
 # the same 3 transition frames); the allowed set stays (832, 833), and the
 # exhibition set grows to port frames 0..1035 (799 exhibited).
+# 0x349C8's command gate (0x34A8D returns on a word with a bit in both
+# (cmd>>8)&3 and (cmd>>8)&0xC, so the T-rex's f = 619 word 0x6F6F no longer
+# restarts its animation before the reaction-0x08 hit re-derives its x)
+# explains captures 1481..1545, [560..1480] -> [560..1545] (921 -> 986; still
+# the same 3 transition frames); the allowed set stays (832, 833), and the
+# exhibition set grows to port frames 0..1091 (855 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

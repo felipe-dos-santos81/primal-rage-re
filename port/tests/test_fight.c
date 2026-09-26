@@ -3719,6 +3719,59 @@ static void check_deep_callees(void)
         tf_put(sv_d40, DS_00107D40, 8u);
     }
 
+    /* I: 0x349C8's command gate (demo-pose record §27). A command with a bit
+     * in both (cmd>>8)&3 and (cmd>>8)&0xC returns at 0x34A8D (`jne 0x34B0B`),
+     * so 0x6F6F (the demo T-rex's f = 619 word) runs neither the 0x4000 arm
+     * nor 0x35838: the sentinels survive. 0x4040 ((cmd>>8)&3 == 0) passes the
+     * gate; bit 15 clear makes 0x3BDDC return 0, so the 0x4000 arm starts
+     * 0xC8978[slot+0x7A] and sets +0x52/+0x54 = 5/1. So+0x43 = 0 keeps 0x365C8
+     * at 0 and S+0x43 = 0 keeps 0x36638 at 0. The char-0 entry points at a
+     * distinct stream, so indexing by the other slot's +0x7A fails. */
+    {
+        u32 st3 = FIGHT_RECS + 0x3840u, st0 = FIGHT_RECS + 0x3850u;
+        u32 sv_978 = DSD(0x000C8978u), sv_984 = DSD(0x000C8984u);
+        u16 sv_cmd = DSW(DS_001088E2);
+        (void)tf_hit_fixture(0);
+        fight_reset_slot_pair(s0, s1, r0, r1);
+        DSW(st3) = 0x0123u;                      /* literal sprite ids */
+        DSW(st0) = 0x0456u;
+        DSD(0x000C8984u) = st3;                  /* 0xC8978[3] */
+        DSD(0x000C8978u) = st0;                  /* 0xC8978[0] */
+        DSB(r1 + 0x51u) = 1;
+        DSW(r1 + 0x56u) = 2;
+        DSB(s0 + 0x7Au) = 0;
+        DSB(s1 + 0x7Au) = 3;
+        DSB(s0 + 0x43u) = 0;
+        DSB(s1 + 0x43u) = 0;
+        DSB(s1 + 0x42u) = 0;
+        DSB(s1 + 0x53u) = 0;
+        DSD(s1 + 0x40u) = 0;
+        DSB(s1 + 0x52u) = 0x66u;
+        DSB(s1 + 0x54u) = 0x66u;
+        DSD(r1 + 8u) = 0x00ABCDEFu;
+        DSD(r1 + 0x20u) = 0x11111111u;
+        DSW(FIGHT_ACTORS + 0x40u) = 0x7777u;
+        DSW(DS_001088E2) = 0x6F6Fu;
+        fighter_state_default(1u);
+        CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0x66);
+        CHECK_EQ_INT((int)DSB(s1 + 0x54u), 0x66);
+        CHECK_EQ_INT(DSD(r1 + 8u), 0x00ABCDEFu);
+        CHECK_EQ_INT(DSD(r1 + 0x20u), 0x11111111u);
+        CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 0x40u), 0x7777);
+
+        DSW(DS_001088E2) = 0x4040u;
+        fighter_state_default(1u);
+        CHECK_EQ_INT((int)DSB(s1 + 0x52u), 5);
+        CHECK_EQ_INT((int)DSB(s1 + 0x54u), 1);
+        CHECK_EQ_INT(DSD(r1 + 8u), st3);
+        CHECK_EQ_INT(DSD(r1 + 0x20u), 0x40000000u);
+        CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 0x40u), 0x0123);
+
+        DSD(0x000C8978u) = sv_978;
+        DSD(0x000C8984u) = sv_984;
+        DSW(DS_001088E2) = sv_cmd;
+    }
+
     DSD(DS_001078DC) = s_dc;
     DSD(s0 + 0x40u) = s_40_0;
     DSD(s1 + 0x40u) = s_40_1;

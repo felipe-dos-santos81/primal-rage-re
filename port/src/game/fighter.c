@@ -1428,7 +1428,10 @@ tail:
 
 /* 0x349C8. The +0x52 == 0 default handler. Its +0x42 bit 6/7 arms
  * (0x37178/0x37D18) are ported (small-fidelity-gaps cycle, record §7 item 2);
- * no demo writer sets either bit. */
+ * no demo writer sets either bit. A command word with a bit in both
+ * (cmd>>8)&3 and (cmd>>8)&0xC returns at 0x34A8D (`jne 0x34B0B`): the 0x3BDDC
+ * consume, the 0x4000 arm and the 0x35838 arm all sit behind that gate
+ * (demo-pose record §27). */
 void fighter_state_default(u32 side)
 {
     u32 slot = DSD(DS_001077A8 + side * 4u);            /* 0x349CF */
@@ -1460,9 +1463,8 @@ void fighter_state_default(u32 side)
     {
         u16 cmd = DSW(DS_001088E0 + side * 2u);         /* 0x34A62 */
         int bvar2 = ((cmd >> 8) & 3u) != 0u && ((cmd >> 8) & 0xCu) != 0u;
-        if (!bvar2) {
-            if (fighter_attack_consume(side) != 0) return;   /* 0x34A9F */
-        }
+        if (bvar2) return;                              /* 0x34A8D jne 0x34B0B */
+        if (fighter_attack_consume(side) != 0) return;  /* 0x34A9F */
         if ((cmd & 0x4000u) != 0u) {                    /* 0x34AB5 */
             actors_anim_begin(rec,
                 DSD(0x000C8978u + (u32)DSB(slot + 0x7Au) * 4u), 0x40000000u);
