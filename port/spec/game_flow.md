@@ -698,7 +698,7 @@ phase at `0x1150E`/`0x11517`/`0x1151F`, `port/src/game/attract.c:304-307`)
 belong to the *next* attract loop, not this demo run.
 
 **Dump length.** `make demo-oracle` runs the same `PR_FRONTEND_DUMP` run as
-`frontend-oracle`. The driver loops 2800 frames from the state-2 entry
+`frontend-oracle`. The driver loops 3100 frames from the state-2 entry
 (`FE_LOOPS`; its measurements and end-of-run reads keep the first 2000,
 `FE_DEMO_LOOPS`) and caps the top-level RGB dump at 1400 frames (`PR_FRONTEND_DUMP_FRAMES`, default 1400). The
 measurement that sizes it: state 3 enters at loop 589 (dumped frame 0), state 6
@@ -712,15 +712,17 @@ driver now does the same (`state_in`), keeping the post-state only for the entry
 that starts in state 7 and exits it, is dumped (1381), and loop 1971 on, which
 start in state 0, are not in the state >= 3 window. The dump therefore holds **1382 frames** (dumped 0..1381); the 1400
 cap covers it with no truncation, and the 2000-loop window clears the 1970 exit.
-Loops 1971..2799 (the attract's second cycle and the second demo, record §36)
+Loops 1971..3099 (the attract's second cycle and the second demo, record §36)
 go to the separate `cycle2/` dump.
 (Before the frame-1881 fix the gate read only the state after the iteration, so
 loop 1970 was dropped and the dump held 1381 frames.)
 
 **The attract's second cycle (roar-timing Task 26, demo-pose record §36).** The
-exit frame closes that dump. The loop now runs to 2800, and every frame
-presented after loop 1970 goes to a separate `cycle2/` dump (995 frames). That
-is one frame per iteration for loops 1971..2799, plus the 166 screens the logo
+exit frame closes that dump. The loop now runs to 3100 (a measurement window:
+2800 in Task 26, raised in Task 28 so that the second demo's first
+unexplained frame stays inside the dump, record §38), and every frame
+presented after loop 1970 goes to a separate `cycle2/` dump (1295 frames).
+That is one frame per iteration for loops 1971..3099, plus the 166 screens the logo
 player `0x1C740` writes inside loop 1971 (its `0x52106` blanks and every TWI5
 and TWG frame, through the `PORT:` seam `movie_set_screen_hook`). Every
 earlier measurement keeps the loop-0..1999 window. A separate dump is needed:
@@ -731,13 +733,13 @@ boot cycle's phase 2 wraps it to 0), so the second cycle reaches phase `0xA`'s
 lightning and hands off to a second demo at loop 2782 (`DS_000F0A72` = 5), as
 the capture does from 2385. `make attract2-oracle` (`--attract2`, in `make
 verify`) classifies captures 1885..3616 against `cycle2/` only, with the ratchet
-N = 2386. Capture 2384, the `- LOADING -` frame before the second demo, is
+N = 2674 (record §38). Capture 2384, the `- LOADING -` frame before the second demo, is
 allowed by name: it is byte-identical to front-end capture 832 (record §37).
 
 **The demo window is report-only; its first unexplained frame is capture 1886 —
 the capture's next cycle after the demo, with no port frame left in the
 top-level dump (`make attract2-oracle` classifies that region against
-`cycle2/`: first unexplained 2386, with 2384 allowed by name) — after the
+`cycle2/`: first unexplained 2674, with 2384 allowed by name) — after the
 demo-pose cycle explained captures 843..850, the roar-timing fix 851..857, the
 frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863, the
 frame-864 fix 864/865, the frame-866 fix 866, the frame-867 fix 867..869 and
@@ -2363,6 +2365,34 @@ record §34).**
   the state-6 -> 7 frame. Rows 128 on hold both fighters in poses that no
   port frame shows. The ape (character 1, stream `0xE3AF0`, state 3/4/2) is
   not touched by this fix. That divergence is the next owner (record §37.5).
+
+### The second demo's fighter passes and the raptor's block (roar-timing Task 28), captures 2386..2673
+
+* **Ground truth.** A DOSBox-X live-RAM poll of the pinned original (a
+  `memory file`, data base found from `"RAGE.S16"` and checked against
+  `0x9AFD8`) logged, per logic frame, the state, LCG, command words, both
+  slots' `+0x52/+0x53/+0x54`, streams and sprite ids, and the AI blocks. The
+  second demo's logic matched the port line for line from f = 3669, so 2386
+  was a drawing difference: its rows 128 on hold the next frame's
+  silhouettes with other interior pixels.
+* **2386: state 6's `0x34978`.** `0x20DF4` calls it at `0x20E42`. It zeroes
+  the slot pointers `DS_001077A8[0..1]`, the word `DS_001078F6` and the
+  live-fighter count `DS_001078FA`, which each spawn increments and which
+  `0x1958C` and `0x34D8C` require to be 2. The port kept the first demo's 2,
+  so the second demo counted 4 and both passes stopped. Ported as
+  `fighter_slots_reset` (`5448e09`): 2386..2460 explained, N = 2461.
+* **2461: the block.** At f = 3735 (loop 2848) the original's raptor blocks
+  the ape's punch (6/1/0, stream `0xD2636`). `0x1AB5C`'s block arm calls
+  `0x18B04` and the block start `0x1A7CC`, and the +0x52 = 6 handler
+  `0x1A978` calls `0x1A6AC`, `0x1A640` and `0x1A8F4`. All were named gaps
+  (§7.11/§7.12); they are ported (`9469a30`), and `0x1AA5F`'s store now runs
+  when the words are equal, as the raw's `jne` says. 2461..2673 explained,
+  N = 2674.
+* **2674.** From about capture 2670 the whole scene is offset (background
+  and both fighters), a camera or position difference. The polled fields do
+  not include positions; they stay equal through f = 3926. The first polled
+  difference is f = 3927 (loop 3040): the original restarts the ape's block
+  stream at `0xE3F5E`, the port runs on at `0xE3F66`. See record §38.5.
 
 ## Landmarks (verified)
 

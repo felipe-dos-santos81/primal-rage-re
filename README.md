@@ -610,11 +610,13 @@ See §34 of the record.
 
 The new ratchet `make attract2-oracle` (`--attract2`, in `make verify`) finds captures 1885..2383 (499 frames) at 0 unexplained: 354 clean, 138 splice, 3 transition, 4 all-black. The first unexplained is **2384**, the `- LOADING -` frame before the second demo, which has no raw-code owner (like 832). N = 2384. The front-end dump is byte-identical, and the front-end and demo-fight oracles are unchanged. All 24 mutations fail the new assertions. See §36 of the record.
 
+**The second demo's fighter passes and the raptor's block (`5448e09`, `9469a30`), captures 2386..2673.** A DOSBox-X live-RAM poll of the pinned original showed the second demo's logic equal to the port's frame for frame, so capture 2386 was a drawing difference. The owner is state 6's reset call `0x34978` (`0x20DF4` at `0x20E42`). It zeroes the live-fighter count `DS_001078FA`, which each spawn increments and which the fighter passes `0x1958C`/`0x34D8C` require to be 2. The port kept the first demo's 2, so the second demo counted 4 and the passes stopped. With it, 2386..2460 are explained. At 2461 the raptor blocks the ape's punch. `0x1AB5C`'s block arm (`0x18B04`, the block start `0x1A7CC`) and the block handler's helpers `0x1A6AC`/`0x1A640`/`0x1A8F4` were named gaps and are now ported. A raw-wins fix came with them: at `0x1AA5F` the store runs when the words are equal. The driver's measurement window grows to 3100 loops, and the attract2 ratchet moves 2386 -> 2461 -> **2674**. From about 2670 the scene is offset (camera or positions), and the ape's block stream restarts in the original at f = 3927. The front-end and demo-fight oracles are unchanged. Of 45 mutations, 44 fail the new assertions; the survivor is equivalent. See §38 of the record.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
 demo fight's remaining divergences (the capture's fight is explained up to its
 first all-black frame 1885 after the frame-1881 fix, and the attract's second
-cycle up to 2385 with the LOADING frame 2384 allowed by name; the second
-demo diverges from 2386;
+cycle up to 2673 with the LOADING frame 2384 allowed by name; the second
+demo diverges from 2674;
 `0x3B464`'s `0x235C4` arm, the effects pass's types 2, 7 and 9..12, the
 grab arm of `0x4B788`, `0x4B470`'s eighth-hit tail and case 8's held body are
 named gaps, as are `0x3E244` and `0x3ECF8`/`0x3C048`; `0x370F0` is still

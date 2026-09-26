@@ -6901,3 +6901,207 @@ second-demo frames are in the dump (cycle-2 978..994, `FE_LOOPS` = 2800).
    `0xA4734`) and `0x14814` itself (character 3, `0x22`, `0xA46D0`), both
    registered now. `0x14814` was reached at f = 625 in an earlier run of the
    first demo (§25) and is not reached in the current 2800-loop run.
+
+## 38. The second demo's fighter passes (`0x34978`) and the raptor's block (`0x1A7CC` family), captures 2386..2673 (roar-timing Task 28, `5448e09`, `9469a30`)
+
+**Result in one line.** Capture 2386 was not a pose difference: the
+original's second-demo logic equals the port's frame for frame (a DOSBox-X
+live-RAM poll), and the owner is state 6's unported reset call `0x34978`,
+which restarts the live-fighter count. With it the second demo's fighter
+passes run and 2386..2460 are explained (N = 2461, `5448e09`). At 2461 the
+raptor blocks the ape's punch through the block family `0x1A7CC`/`0x1A6AC`/
+`0x1A640`/`0x1A8F4`, which were named gaps. With them 2461..2673 are
+explained (N = 2674, `9469a30`).
+
+### 38.1 The ground truth: a DOSBox-X live-RAM poll
+
+The §37.5 plan guessed that the fighters' poses differ. A measurement of the
+original settles it. `scratchpad/t28/dbpoll.py` runs the pinned original
+(`make title-pin`, the same binary the front-end capture was taken from)
+under DOSBox-X with `-set "dosbox memory file=..."` and no input, as
+`make frontend-capture` does. It finds the data object's base from the
+string `"RAGE.S16"` (data VA `0x8002D`) and checks it against the parameter
+words at `0x9AFD8` (`14 00 04 00 80 11 00 32`). The base was `0x266000`
+(delta `0x1E6000`) in both runs. It then polls the guest RAM every ~0.5 ms
+and logs, per logic frame (`DS_000EF6DC`) while the state is >= 6, the last
+sample before the counter changes:
+- the state, `DS_000F0A72`, the LCG `DS_000EF6D8`, the command words
+  `DS_001088E0/E2` and `DS_00104B1B`
+- per slot: `+0x52/+0x53/+0x54`, `+0x57`, `+0x63`, `+0x41`, `+0x7A`, the
+  record's stream `+0x08`, timer `+0x20`, `+0x52` and the pset sprite id
+- both AI blocks `0x1081F0 + side * 0x40`
+
+A port probe (reverted) prints the same fields after each driver loop.
+Findings:
+- The first demo's f = 1956..1960 match the port exactly (LCG
+  `0x8612D6C5` -> `0x10F7DB07`, commands `1010/0002`, the T-rex 0E/00/00 then
+  09/08/00, the raptor 09/08/00 on `0xD2316`).
+- The second demo's f = 3669..3734 match too, including the ape's stale AI
+  block: side 1 is still active on the first demo's raptor move (step
+  `0x93068`, move `0x0C`), so the ape's first command `A0A0` is that stale
+  move in the original as well. `0x46670`, the only other writer of the AI
+  blocks' `+0/+4/+0x2E`, is reached only from `0x20EF8` <- `0x25C1C`/
+  `0x26A50`, which are `0x24C5C` mode cases other than 3. So the staleness
+  is faithful.
+- The only differences in the AI fields are one frame early, because the
+  command block runs before `0x24CDB` increments the counter. The stream
+  field reads negative when `rec+0x08` holds an id rather than a pointer.
+  Both are sampling artifacts.
+
+So 2386's difference is drawing, not logic. Per pixel: its rows 89..127
+equal port frame 978, rows 191 on equal 979, and rows 128..188 carry 979's
+silhouettes with other interior pixels. The RGB deltas are symmetric, and no
+shift within +-16 explains them.
+
+### 38.2 `0x34978` (raw, `read_memory` + capstone)
+
+`0x20DF4` (state 6's reset, `0x11AC4`) makes its pre-branch calls in this
+order: `0x29B70`, `0x2C390`, `0x12750`, `0x49300`, `0x28E98`, `0x34978`
+(`0x20E42`), `0x2C074`. It also stores `[0xF0A48]`, `[0x100B4C]`,
+`[0x104AE8]`, byte `[0x1088EC]` and byte `[0x104B15]` = 0.
+
+`0x34978`:
+- `mov ecx,2; mov eax,0x1077A8; xor edx,edx; call 0x654C7`. `0x654C7` is a
+  dword fill: it stores one dword at a time while `al & 0x1F` is non-zero
+  (`0xA8`, then `0xAC`), so exactly `DS_001077A8[0]` and `[1]`.
+- `mov word [0x1078F6],dx` and `mov byte [0x1078FA],ah` (0).
+
+`DS_001078FA` is the live-fighter count. `0x33C78` (`fighter_spawn_slot`)
+increments it per spawn (`0x33CDA..0x33CEA`). `0x1958C` (`fighter_pass_a`,
+`0x1959C`) and `0x34D8C` run only when it is 2. The first demo starts from
+BSS 0 and counts 2. The port had no reset, so the second demo counted 4.
+
+**The fix** (`5448e09`): `fighter_slots_reset` (fighter.c), called from
+`game_state_6` after `fight_list_init`, at the raw's position. The other
+unported parts of `0x20DF4` stay a named gap:
+- `0x2C390` and `0x2C074` touch only globals the port never reads
+  (`0x105C0C`/`0x105C14`, `0x105BF0`/`0x105BF4`).
+- `0x28E98` re-links the `0x104880`/`0x104888` lists that type-`0x0A`/`0x19`
+  actors use. None is spawned in the measured windows.
+
+### 38.3 The block family (raw, `read_memory` + capstone)
+
+With `0x34978`, the second demo's logic matches the poll until f = 3735
+(loop 2848). There the original's raptor goes to 6/1/0 on stream `0xD2636`
+(`*(u32*)0xC8F4C` = `0xC8F40[3]`) with an extra LCG draw, against the ape's
+punch. The port stayed 9/0/0. A `fn_resolve` miss probe over the run finds
+only the `0x5D812` stub, so the owner is an unported path.
+
+- **`0x1AB5C`** (`fighter_input_mask`). The block arm calls `0x18B04(side)`
+  at `0x1AC06` (when the other's `+0x5F != 0xFF` and the mask overlaps the
+  facing base; BL = 1 first). It then calls `0x1A7CC(side)` at `0x1AC7A`
+  after the `+0x54` store. Both were `PORT:` gaps (§7.12). `0x18B04` pushes
+  EBX, so BL survives.
+- **`0x1A7CC`** (EAX = side, `0x33A10` context):
+  - `+0x43 &= 0xFD`, then `0x18B04(ctx[1])`.
+  - `+0x61/+0x60/+0x62` = 0/`0x1E`/1.
+  - When the other's `+0x5F <= 0x3F` (`0x1A810 jg`, a byte), `0x3AFC4
+    (ctx[0], +0x5F)` and `+0x60` = byte `+0xA` of `triple[0]`. The `+0x64`
+    alternative (`0x1A842..0x1A86B`) cannot run, because `+0x5F < 0x40` was
+    just tested. It is transcribed verbatim.
+  - `0x1A6AC(ctx[3], ctx[5])`.
+  - The other side's word `0x100CE0[ctx[0]]` + 1 = k (read back as the
+    dword at `0x100CDE` `sar 16`). With k in 0..6 (`0x1A893 jae`,
+    `0x1A89D jge`), `+0x60` = `(s16)word[0xA2C4C + 2k]` * `(s8)+0x60` / 100
+    (`idiv`). Otherwise it is 2. The table at `0xA2C4C` is `0064 0064 0055
+    0041 0032 001E 0014`.
+  - `+0x52/+0x53` = 6/1.
+- **`0x1A6AC`** (EAX = slot, EDX = rec; `0x33A68` builds `0x33A10`'s
+  context from `rec+0x51`):
+  - `0x18B04(ctx[1])`.
+  - With `+0x54` == 0 (`jbe`) and `+0x43` bit `0x20` clear, `0x3C480(rec,
+    0xC8F40[char], 3.0)`, then `+0x43 = (+0x43 & 0xCF) | 0x20`.
+  - With `+0x54` == 1 and bit `0x10` clear, the same with `0xC8F90[char]`
+    and `| 0x10`.
+- **`0x1A640`** (EAX = side): the record's `+0x28` bit `0x4000` clear gives
+  `0x1000` when the command word has `0x1000`. Set, it gives `0x2000` when
+  the word has `0x2000`. Otherwise 0. EDX is pushed and popped.
+- **`0x1A8F4`** (EDX = rec; EAX is overwritten at `0x1A8F7`):
+  - `0x2BC30(ctx[5], 0xC8F68[char], 3.0)`, or `0xC8FB8[char]` when
+    `+0x54` == 1.
+  - `+0x43 &= 0xCF`, and `+0x52/+0x53/+0x62/+0x60` = 9/0/0/0.
+- **`0x1A978`**, the `+0x52 == 6` handler (`0x34C73`). `0x1AA24` calls
+  `0x1A6AC(self, ctx[5])` after both `+0x54` stores. In the `+0x62 == 0`
+  arm (`0x1AA8C..0x1AB04`), `0x1A8F4(ctx[5])` runs when `0x1A640(side)` is
+  0, or the command has `0x8000`, or it has a `0x000F` bit, or (`(s8)+0x60
+  < 1` and the other's `+0x5F` and `+0x64` are both `0xFF`).
+- **A raw-wins correction.** At `0x1AA5F` the raw has `cmp dx,[other+0x84];
+  jne 0x1AA6F`, so `other+0x8A = 0` runs when `self+0x86 == other+0x84`.
+  The port had `!=`. No block happened in the first demo, so no run had
+  reached it.
+- **Tables** (read from the data object): `0xC8F40` = `0xE72EA 0xE3F5E
+  0xED04C 0xD2636 0xEAB94 0xD4258 0xE0B70`; `0xC8F68[3]` = `0xD2650`;
+  `0xC8F90[3]` = `0xD265A`; `0xC8FB8[3]` = `0xD2674`.
+
+**The fix** (`9469a30`): `fighter_block_dir`, `fighter_block_anim`,
+`fighter_block_start` and `fighter_block_end` in fighter.c (0x33A68 is
+`fighter_ctx_swap` on `rec+0x51`). They are wired at `0x1AC06`/`0x1AC7A` and
+`0x1AA24` (twice)/`0x1AB04`, with the `0x1AA5F` correction. That is 4
+functions, about `0x2A0` raw bytes, inside the gate.
+
+### 38.4 The assertions and mutations
+
+- `check_state6` now seeds `DS_001078FA = 2` (the first demo's leftover) and
+  `DS_001078F6 = 0x1234`, and asserts 2 and 0.
+- `check_slots_reset`: the four targets, and the neighbours `0x1077A4`,
+  `0x1077B0`, `0x1078F4`, `0x1078F8` and `0x1078FB`.
+- `check_block` (test_fight.c, after `check_char3_reaction`). The char-3
+  entries of the four tables point at crafted one-word streams, restored
+  afterwards.
+  - A..A4: `0x1A7CC`'s `+0x43`, `+0x61/+0x62/+0x52/+0x53`, the stream and
+    hold, the other side's counter, and `+0x60` for k = 2 (from the
+    record's byte and the `0xA2C4C` word, both read from the data), k = 7,
+    k = -1, the `jg` skip with `+0x64 < 0x40`, and character 6's move
+    `0x24` (byte 55: 46, where `/99` gives 47).
+  - B/B2: `0x1A6AC`'s two arms and its skips.
+  - C: `0x1A8F4`'s two tables and its stores.
+  - D: `0x1A640`'s four cases.
+  - E: the `+0x62 == 0` arm, held and released (a `0x000F` bit, `0x8000`,
+    `+0x60` 0 with no attacker, and not held back).
+  - F: `0x1AA5F`, equal and unequal.
+  - G: the `+0x61` arm's two `0x1A6AC` calls.
+- The driver: the second demo's 6 -> 7 at loop 2783 with `DS_001078FA` = 2,
+  the raptor's first block at loop 2848 (the poll's f = 3735), and 1295
+  cycle-2 frames.
+
+**Mutations.** `scratchpad/t28/mut28.py` made 10 edits (`0x34978`) and
+`mut28b.py` made 35 (the block family). After three assertions were added
+(A3's `+0x64`, A4, and E's `0x8000`), 44 fail 1..6 assertions. The one
+survivor is equivalent: dropping `0x1AC06`'s `0x18B04`. BL = 1 always leads
+to `0x1A7CC`, which calls `0x18B04` for the same side twice more, and
+nothing between them changes the positions it reads. The sources were
+restored and checked with `cmp`.
+
+### 38.5 Measured
+
+| measurement | before (`741a5f5`) | `5448e09` | `9469a30` |
+|---|---|---|---|
+| `FE_LOOPS`, cycle-2 frames | 2800, 995 | 2900, 1095 | 3100, 1295 |
+| attract2 `[1885..3616]` clean/splice/trans/unexpl/black | 355/138/3/1230/6 | 383/182/6/1155/6 | 547/270/7/902/6 |
+| attract2 first unexplained (2384 allowed) | 2386 | **2461** | **2674** (raw 7093) |
+| front-end `[560..1884]`, demo-fight | 517/801/3/2; empty, N 1886 | unchanged | unchanged |
+| polled logic equal to the original through | f = 3734 | f = 3734 | f = 3926 |
+
+`FE_LOOPS` is a measurement window, not a raw value. Each value keeps the
+current first unexplained frame inside the dump: 2461 is about loop 2848,
+and 2674 about loop 3031. One run of the driver takes about 50 s at 3100
+loops (47 s at 2800).
+
+**2674, characterised.** From about capture 2670 the whole scene is offset:
+the background and both fighters shift, and the diffs span rows 65..199 and
+all columns. That is a camera or position difference. The polled fields do
+not include positions or the camera, and they stay equal through f = 3926.
+The first polled difference is f = 3927 (loop 3040): the original restarts
+the ape's block stream at `0xE3F5E` (`rec+0x52` 0, id `0x141E`), while the
+port runs on at `0xE3F66` (`+0x52` 2, id `0x1422`).
+
+**The staged next step.**
+1. Extend the poll with both records' `+0x2C/+0x30`, the slots' `+0x2C` and
+   the camera words (`DS_00100AB0`, `DS_000F0AEC`/`F0AF0`). Find the first
+   frame where they differ; it should lie at or before f = 3918.
+2. Find who restarts the ape's block stream at f = 3927. `0x1A6AC` skips
+   while `+0x43` bit `0x20` is set, so look for a writer that clears it
+   (`0x1AB9F`, `0x1A8F4`) or another `0x3C480`/`0x2BC30` caller with
+   `0xC8F40`.
+3. The block family's `0x100CE0` counter is also written by `0x36870`
+   (`0x368F9`) and `0x392A0` (`0x3931F`), both ported.
