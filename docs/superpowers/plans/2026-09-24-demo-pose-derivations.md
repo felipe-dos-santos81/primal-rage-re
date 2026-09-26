@@ -5997,3 +5997,227 @@ in 1880. The raptor, the worshippers, the combo text and the camera match.
 f = 962 is the run's one remaining code-target miss, `0x3E3A8`, a reaction
 callback that `hit_reaction_apply` skips because it is unregistered. That
 is the candidate owner. It is not derived.
+
+(Derived since, §34: the candidate holds. `0x3E3A8` is the T-rex's reaction
+`0x2A` callback; registering it explains 1881/1882, and dumping the exit
+frame (loop 1970), which the driver had dropped, explains 1883/1884.)
+
+## 34. The reaction callback `0x3E3A8` and the exit frame at capture 1881 (roar-timing Task 24, `8d538d5`)
+
+**Result in one line.** Capture 1881 has one cause, and it is the port's.
+`0x34E2C`'s `(char 0, 0x2A)` record `0xA3870` holds `0x3E3A8` as its
+callback, and the port had not registered it, so the `0x35045` call skipped
+it. At f = 962 the T-rex (side 0) takes reaction `0x2A`, and `0x3E3A8`
+restarts its `0xC8950` stream at hold 2.0 with state 9/7/0. Captures 1883
+and 1884 also need the exit frame (loop 1970), which the front-end driver
+did not dump. With both, captures 1881..1884 are explained. 1885 is the
+capture's first all-black frame after the demo, so the capture's demo fight
+is explained to its end.
+
+### 34.1 The measurement (temporary, reverted)
+
+A `PR_T24` trace printed each `fn_resolve` miss with `DS_0010150C`, and the
+new routine's inputs. It was reverted from pre-trace copies of `mem.c` and
+`fighter.c`.
+- `0x3E3A8` runs once, at f = 962, from `hit_reaction_apply`, for side 0
+  (slot `0x1077B0`, char 0). The slot's `+0x52` is 9 before the call, so
+  `0x3C4CC` takes its `0x3C480` arm. The stream is `0xC8950[0]` =
+  `0xE6DD2`.
+- At f = 963, `0x3531C` case 7 resolves `+0x0C` = `0x3E328` with `+0x57` =
+  0 and `+0x86` = `0x10001` (`>> 16` = 1, not above 3). With only `0x3E3A8`
+  registered, that was the run's one new miss. The demo's fight logic ends
+  there.
+
+With the fix, port frames 0..1378 are byte-identical to Task 23's dump.
+Port 1379 (f = 962) is the first that differs. The front-end window grows
+to `[560..1882]`: captures 1881/1882 are explained. But that window now
+exhibits the dump's last frame, 1380, so `--demo-fight` had no port frame
+left and failed ("no port frames after the front-end window").
+
+**The exit frame.** The driver dumped a frame only when the state after the
+iteration was >= 3. `0x11BCC`'s timer exit drops `DS_000F0A64` to 0 inside
+loop 1970, so that frame was never dumped, although the iteration started in
+state 7 and presented a new frame. A temporary `PR_T24X` gate dumped every
+frame after state 3 to the 1400 cap:
+- Port 1381 (loop 1970) has 63 328 non-black px, and it differs from 1380.
+  Port 1382 (loop 1971) has 15 600, 1383 is black, and 1384..1399 have 166
+  px each.
+- The hash log agrees: loop 1970's buffer changes, and loops 1971..1973 are
+  all-zero (the FNV-1a of 64 000 zero bytes is 952198597).
+- 0..1381 (1382 frames) gives the front-end window `[560..1884]`, 1325
+  frames. That is every capture up to 1885.
+- 0..1382 makes the content alignment run away to `[560..2132]` with 244
+  unexplained frames, and the whole cap gives `[1..2134]`. So only the exit
+  frame is legitimate.
+
+The rule is now to dump a frame whose iteration starts or ends in a state
+>= 3. The start is unchanged (loop 589 ends in state 3), and the end gains
+loop 1970. This follows from the loop, with no fitted count.
+
+A final probe on the fixed tree (dump byte-identical to the one without it)
+finds only the front-end `0x29B74`/`0x41578`, the stub `0x5D812` and the
+pre-existing `fn_resolve(0)` probes.
+
+### 34.2 The raw (Ghidra `read_memory` + capstone, fixups applied)
+
+Neither `0x3E3A8` nor `0x3E328` is a Ghidra function, and `get_xrefs_to`
+finds no code reference to either. The pre-fixup dword `0x0002E3A8` in the
+data object is at `0xA3870` = `0xA3528 + 0x2A * 0x14`, and `read_memory`
+there gives `a8 e3 03 00 00 00 00 00`: the callback and no stream. The
+sibling `0x3ECF8` is at `0xA3898` (reaction `0x2C`).
+
+**`0x3E3A8`** (`0x3E3A8..0x3E423`, 0x7C bytes).
+- `0x3E3AB mov edx,ebx` / `0x3E3AD mov eax,esp`: ctx = `0x33950(side)`.
+  EAX and EDX are overwritten.
+- `0x3E3B8` pushes `0x40000000` (2.0). The stream is `DSD(0xC8950 + 4 *
+  ctx[2]+0x7A)` (`0x3E3C5`, ctx[2] loaded before the push), and EAX =
+  `[esp+0x14]` = ctx[4] (`0x3E3CC`, after the push). Then it calls
+  `0x3C4CC`.
+- ctx[2] gets `+0x53` = 7 (`0x3E3D9`), `+0x52` = 9 (`0x3E3E1`), `+0x54` = 0
+  (`0x3E3E9`), `+0x0C` = `0x3E328` (`0x3E3F1`), `+0x18` = `0x3E1D0`
+  (`0x3E3FC`), `+0x1C` = `0x3E244` (`0x3E407`), `+0x57` = 0 (`0x3E412`) and
+  `+0x41 |= 0x80` (`0x3E41A`).
+- It returns AL = 1, which `0x35049` ignores.
+
+**`0x3E328`** (`0x3E328..0x3E3A5`, the `+0x0C` callback, `0x3531C` case 7
+at `0x35431`). ctx = `0x33950(EBX)`, and the byte is ctx[2]'s `+0x57`
+(`0x3E338`).
+- 0 (`0x3E345`): when `(s32)DSD(ctx[2]+0x86) >> 16 > 3` (`sar` at
+  `0x3E353`, `jle` at `0x3E359`), `+0x57` = 1 (`0x3E35F`).
+- 1 (`0x3E33F jbe`): ctx[2]'s `+0x8A` = 0 (`0x3E36B`), then
+  `0x3C4CC(ctx[4], 0xE84B6, 4.0)` (`0x3E372..0x3E380`), then
+  `0x3E0F0(ctx[4])`. The returned child gets `+0x53` = 1 (`0x3E38E`: EAX is
+  `0x3E0F0`'s return). Then ctx[2]'s `+0x52` = 9 and `+0x57` = 2.
+- Above 1: it returns (`0x3E341`).
+
+**`0x3E0F0`** (`0x3E0F0..0x3E15C`). EAX = rec, and side = rec`+0x51`.
+- `0x29C08(side, DSB(0x10782A + side*0x94))` (`0x3E10D`/`0x3E116`; EDX is
+  zeroed by `xor edx,ebx` with EDX = EBX). The result is stored at
+  `DSD(0xC760C + side*4) + 0x10` (`0x3E120`/`0x3E127`).
+- `0x2AE14(DSD(0xC760C + side*4), 0, 0, 0, (u16)(rec+0x56 | 0x400))`
+  (`0x3E12A..0x3E149`).
+- rec`+0x4B` = the child's `+0x56` byte, and the child's `+0x60` = 1. It
+  returns the child.
+- `0xC760C` holds `0xBB3F8`/`0xBB40C`. Both descriptors' stream is
+  `0xE8472`, which holds no `0xD0xx`/`0xD1xx`/`0xD5xx` word.
+
+**`0x29C08`** (0x16 bytes): `DSD(DSD(0xA8A98 + char*4) + DSB(0x105B34 +
+side)*4)`. `0xA8A98[c]` = `0xA8A28 + 16c`: four handles per character, one
+per variant.
+
+**Not ported.**
+- `0x3E1D0` is the `+0x18` hook. `0x19020` (`0x1903F call [ebx+0x1077C8]`,
+  EAX = side; its one caller is `0x1958C`) calls it. When `+0x86 >> 16` is
+  in 1..3 it calls `0x18C14` (1035 bytes, 7 callees) with the `0xC75F5`/
+  `0xC75FF` boxes. `0x19020` is the port's §7.6 named gap. `0x1958C` runs
+  before the hit chain in `0x263F4` (`0x2647D`), so in the raw the hook first
+  runs at f = 963. The port skips it there. That is not evaluated, and the
+  captures to the demo's end are explained.
+- `0x3E244` is the `+0x1C` callback, called by `0x193B0` at `0x19505`
+  (`call [edx+0x1C]`, EAX = ctx[0]). It needs `0x3C208` (292 bytes, 8
+  callees), `0x3C358`, `0x18AF8` and the `0x2C3FC` voice. It is not reached
+  in the port's run.
+
+The streams:
+- `0xE84B6`'s only code target is `D500 6870 0003`, and `0x36870` is
+  registered.
+- `0xE6DD2`, the T-rex's `0xC8950` stream, holds `D000 7A58 0003`
+  (`0x37A58`, registered) and `D000 640C 0003` (`0x3640C`, unregistered but
+  not reached, since it does not miss).
+
+### 34.3 The fix and its assertions
+
+The fix is in `fighter.c`:
+- `fighter_3e3a8` and `fighter_3e328`, exported and registered in
+  `actors.c`
+- the static `fighter_3e0f0` and `fighter_29c08`
+- the defines `FIGHT_ANIM_3E328` (`0xE84B6`) and `FIGHT_DESC_3E0F0`
+  (`0xC760C`)
+
+`0x3E1D0`/`0x3E244` are stored under a `PORT:` comment. The `0x19020` gap's
+`TODO(verify)` now names the f = 963 hook. That is four functions and about
+0x1D5 raw bytes, inside the size gate.
+
+The front-end driver (`test_game.c`) records `state_in` before
+`game_loop()` and dumps when `state_in >= 3 || state >= 3`. Its dump count
+is now 1382, and the old gate's 1381 fails the `CHECK_EQ_INT`.
+
+`title_compare.py` changes:
+- `--demo` and `--demo-fight` no longer stop when the front-end window
+  exhibits the dump's last frame. The region after it is classified by the
+  existing no-match fallback (content-bearing = unexplained).
+- `--demo-fight` treats `end == lo` (the front-end window reaches the frame
+  before the first all-black capture frame) with no unexplained front-end
+  frame outside `FRONTEND_ALLOWED_UNEXPLAINED` as an empty fight window.
+  That prints "0 unexplained" and passes for N <= end + 1.
+
+It was shown to fail with N = 1886:
+- the pre-fix dump: "first unexplained 1881 < 1886"
+- the fix with the 1381-frame dump: fight window `[1883..1884]`, "1883 <
+  1886"
+- N = 1887: "N is unreachable"
+
+`check_trex_grab` is new in `test_fight.c`, after `check_reaction_attack`.
+Its fixture `tg_seed` extends `tb_seed` with sentinels in the slots' `+0x41`,
+`+0x52` = 0, `+0x57`, `+0x7A` (chars 1/2), `+0x86` and `+0x8A`, and with
+crafted literal-id streams (id `0x1200` + char) in the seven `0xC8950`
+entries. The parts:
+- **A.** Through `hit_reaction_apply(0, 0x2A)` on the real `0xA3870`.
+- **B.** EAX = slot 1, EDX = rec 1, EBX = side 0: every write is side 0's.
+- **C.** Side 1.
+- **D.** `0x3E328`'s first arm, with `+0x86 >> 16` = 3 and negative kept and
+  4 moving, read from ctx[2], not EAX.
+- **E.** `+0x57` = 2 and 5 return and spawn nothing.
+- **F/F2.** The second arm with pool records. The `0x29C08` values are
+  literals from `read_memory 0xA8A58`: char 3 variant 1 = `0x10A50EF0`,
+  char 2 variant 3 = `0x20A13DE0`. Also the child's `+0x53`/`+0x60`/
+  `+0x4B`/`a5`, and the other side's descriptor kept.
+- **G.** Through `fighter_state_3531c` case 7.
+
+Both registrations are asserted, and every global the test touches is
+restored.
+
+**Mutations.** `scratchpad/mut24.py` made 36 single-site edits in
+`fighter.c` and `actors.c`, and all 36 fail 1..19 assertions
+(`mut24.log`). The sources were restored and checked with `cmp`.
+
+### 34.4 Measured
+
+| measurement | before (`9abbdd0`) | after (`8d538d5`) |
+|---|---|---|
+| captures 1881..1884 | 1881 3 791 px; 1882..1884 8 429..11 140 px | **all explained** (1 clean, 3 splice) |
+| front-end dump | 1381 frames (0..1380) | **1382 (0..1381)**, the exit frame added |
+| demo oracle first unexplained | 1881 (raw 4788); `[1881..3616]` 1736 / 1730 unexpl.; port `[1379..1380]` | **1886 (raw 4795)**; `[1885..3616]` 1732 / 1726 unexpl.; no port frame left |
+| demo-fight ratchet | `[1881..1884]` 4, N = 1881 | **fight window empty** (front-end reaches 1884; 1885 all-black), "0 unexplained", **N = 1886** (= end + 1) |
+| front-end oracle | `[560..1880]` / 1321 / 516 clean, 798 splice, 3 transition, 2 unexpl. | **`[560..1884]` / 1325 / 517 clean, 801 splice, 3 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved. The three transition frames are the
+same (`port832@row177`, `port862@row189`, `port906@row31`). The exhibition
+set is the whole dump, port frames 0..1381 (1145 exhibited). The ladder
+`cmake --build build && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify`
+exited 0 with 0 compiler warnings, with N = 1886 in the Makefile. Unmoved:
+title `54/55/2/0` and `54/57/0/0`, determinism 54; smk 120/120 and 41/41;
+attract 215/216 (expected divergence at 215); C-vs-Python 9866;
+`symbols.h`.
+
+**The end of the demo-fight capture.** The capture holds no fight frame
+after 1884, so N can rise no further with this capture. What the ratchet
+still proves is narrow: every content-bearing capture frame from the
+front-end window's start up to the all-black 1885 is explained. A shrink of
+the front-end window reopens the fight window and fails below N, and the
+front-end oracle alone cannot see that, because its window is derived from
+the port's own dump. It does not prove that the fight is reproduced beyond
+the capture, or that the port's last-frame state matches the raw's (the
+`0x19020` hook at f = 963 is not evaluated).
+
+### 34.5 The new first unexplained frame, 1886 (characterised, not fixed)
+
+Capture 1885 is all-black, and 1886 is the first content-bearing frame
+after the demo. From 1886 on, the capture shows the next attract cycle's
+logo: a shaded red sphere on white. By 1930 it has shrunk, with the
+"...ME WARNER" lettering sweeping in, i.e. the Time Warner Interactive logo
+movie. The port's dump ends with the demo at loop 1970. The state drops to
+0 (`0x11BCC` restores `DS_000F0A64` = `DS_000F0A6C` = 0, the attract
+sub-machine `0x11000`), and the driver stops dumping, so no port frame is
+compared there. This is a dump-window boundary, not a derived port defect.
+Whether the port reproduces the attract's second cycle is not measured.

@@ -194,8 +194,8 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # Demo-fight oracle (a RATCHET, enforced in verify): the same dump and classification
 # as demo-oracle, restricted to the fight window [fe_b+1 .. first all-black capture
 # frame). Claim: no captured frame below DEMO_FIGHT_MIN_FIRST is unexplained, and the
-# first unexplained frame is >= it. N = 1886 was measured on the commit that raised
-# it (on 9abbdd0): 0x34E2C's reaction callback 0x3E3A8 (the T-rex's reaction 0x2A at
+# first unexplained frame is >= it. N = 1886 was measured on 8d538d5 (the commit that
+# raised it, on 9abbdd0): 0x34E2C's reaction callback 0x3E3A8 (the T-rex's reaction 0x2A at
 # f = 962: the 0xC8950 stream at hold 2.0, state 9/7/0 and the +0x0C callback
 # 0x3E328), and the front-end driver's dump of loop frame 1970, the last frame the
 # state-7 handler presents (0x11BCC's timer exit drops the state to 0 inside it;

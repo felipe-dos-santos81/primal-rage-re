@@ -666,7 +666,7 @@ window the port's own dump exhibits (`check_capture` derives that window from it
 `idx`→`a,b` mapping, then the branch discards `rc`). `check_capture`'s `rc`
 additionally counts port frames that no capture frame exhibits (coverage) and
 `endpoints BAD`; the front-end branch ignores both. The demo-fight cycle raised
-the dump to 1381 frames, so the 120 s capture (3617 distinct post-logo frames)
+the dump to 1381 frames (1382 since the frame-1881 fix), so the 120 s capture (3617 distinct post-logo frames)
 now runs past the dump instead of ending before it; but that is not the whole
 story: the ignored coverage is exactly what lets a port that **under-renders**
 the front-end pass (counterexamples above). Passing the gate therefore means "no
@@ -699,12 +699,18 @@ belong to the *next* attract loop, not this demo run.
 the RGB dump at 1400 frames (`PR_FRONTEND_DUMP_FRAMES`, default 1400). The
 measurement that sizes it: state 3 enters at loop 589 (dumped frame 0), state 6
 at loop 1070 (dumped 481), state 7 runs loop 1071..1969 (dumped 482..1380), and
-`0x11BCC`'s exit is loop 1970, where `DS_000F0A64` drops to 0 so the `state >= 3`
-dump stops. The dump therefore holds **1381 frames** (dumped 0..1380); the 1400
+`0x11BCC`'s exit is loop 1970, where `DS_000F0A64` drops to 0 inside the
+iteration whose frame the state-7 handler still presents. A frame is dumped when
+its iteration starts or ends in a state >= 3, so loop 1970 is dumped (1381) and
+1971 is not. The dump therefore holds **1382 frames** (dumped 0..1381); the 1400
 cap covers it with no truncation, and the 2000-frame loop clears the 1970 exit.
+(Before the frame-1881 fix the gate read only the state after the iteration, so
+loop 1970 was dropped and the dump held 1381 frames. Dumping further is not
+legitimate: loop 1971's frame is partly black, 1972 on are black or near-black,
+and dumping them makes the content alignment run far past the demo.)
 
-**The demo window is report-only; its first unexplained frame is capture 1881 —
-the T-rex's new pose at f = 962 — after the
+**The demo window is report-only; its first unexplained frame is capture 1886 —
+the capture's next cycle after the demo, with no port frame left — after the
 demo-pose cycle explained captures 843..850, the roar-timing fix 851..857, the
 frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863, the
 frame-864 fix 864/865, the frame-866 fix 866, the frame-867 fix 867..869 and
@@ -715,15 +721,16 @@ fix 1358..1410, the frame-1411 fix 1411..1477, the frame-1478 fix
 1478..1480, the frame-1481 fix 1481..1545, the frame-1546 fix
 1546..1562, the frame-1563 fix 1563..1658, the frame-1659 fix
 1659..1714, the frame-1715 fix 1715..1749, the frame-1750 fix
-1750..1762 and the frame-1763 fix 1763..1880.** `tools/title_compare.py --demo` locates the front-end window
+1750..1762, the frame-1763 fix 1763..1880 and the frame-1881 fix 1881..1884.** `tools/title_compare.py --demo` locates the front-end window
 with the same content alignment, then classifies the capture region after it
 against the port dump frames after the last frame that window exhibits — the
 same clean/splice/transition/unexplained model, no second one. It reports and
 exits 0.
 
-* Front-end window (still enforced in `verify`): distinct **[560..1880]** (raw
-  3108..4787), **1321 frames: 516 clean, 798 splice, 3 transition, 2
-  unexplained** (the three transition frames all lie in the span 998..1357
+* Front-end window (still enforced in `verify`): distinct **[560..1884]** (raw
+  3108..4791), **1325 frames: 517 clean, 801 splice, 3 transition, 2
+  unexplained**, reaching the frame before 1885, the capture's first all-black
+  frame after the demo fight, and exhibiting the whole dump (the three transition frames all lie in the span 998..1357
   that the frame-998 fix added) — captures **832** (the loader's `- LOADING -` screen) and
   **833** (the dark arena with the `LOADING` text overlaid), allowed by name in
   `FRONTEND_ALLOWED_UNEXPLAINED` (the arena-backdrop cycle's absorbed claim
@@ -735,10 +742,13 @@ exits 0.
   reproducible — a `title_capture.py --verify-reproducible` run of the pinned
   original gave 587 vs 588 distinct frames and a first divergence at distinct
   index 30), and the oracle's claim is unchanged.
-* Demo window: distinct **[1881..3616]** (raw **4788..8409**), **1736 frames:
-  0 clean, 0 splice, 0 transition, 1730 unexplained** (6 all-black capture
-  frames excluded as artifacts). Demo port frames **[1379..1380]** (2),
-  **0/2 exhibited**. (Measured on the frame-1763 fix; before it:
+* Demo window: distinct **[1885..3616]** (raw **4793..8409**), **1732 frames:
+  0 clean, 0 splice, 0 transition, 1726 unexplained** (6 all-black capture
+  frames excluded as artifacts). No demo port frame is left (`[1382..1381]`, 0):
+  the front-end window exhibits the whole dump, which ends with the demo, and
+  `--demo` reports the region's content-bearing frames as unexplained.
+  (Measured on the frame-1881 fix; before it: `[1881..3616]`, 1736 frames, port
+  `[1379..1380]`, first unexplained 1881; before the frame-1763 fix:
   `[1763..3616]`, 1854 frames, port `[1278..1380]`, first unexplained 1763;
   before the frame-1750 fix:
   `[1750..3616]`, 1867 frames, port `[1267..1380]`, first unexplained 1750;
@@ -783,7 +793,13 @@ exits 0.
   fix: `[851..3616]`, 2766 frames, port `[497..1380]`, first unexplained 851; before
   the demo-pose cycle: `[843..3616]`, 2774 frames, port `[490..1380]`, first
   unexplained 843.)
-* **First unexplained captured frame 1881 (raw 4788)** (demo-pose record §33.5).
+* **First unexplained captured frame 1886 (raw 4795)**: the first
+  content-bearing frame after the capture's all-black 1885, i.e. after the
+  demo. The demo fight is explained to its end (demo-pose record §34): at f =
+  962 `0x34E2C`'s reaction-`0x2A` callback `0x3E3A8` starts the T-rex's
+  `0xC8950` stream at hold 2.0 and state 9/7/0, and the exit frame (loop 1970)
+  is dumped, so captures 1881..1884 are 1 clean and 3 splice frames. (Before the
+  frame-1881 fix this was capture 1881 (§33.5, derived in §34).
   Captures 1763..1880 splice at 0 px. Capture 1881's best port 1378/1379
   splice (row 137) leaves 3 791 px in x 0–204, rows 137–192; 1882..1884
   leave 8 429..11 140 px. Below the split the capture's gold T-rex drops
@@ -791,7 +807,7 @@ exits 0.
   port 1379 (f = 962) keeps it upright; the raptor, the worshippers and the
   camera match. f = 962 is the run's `0x3E3A8` miss (a `hit_reaction_apply`
   reaction callback, unregistered): the candidate owner, not derived. The
-  port's dump ends at frame 1380, so the fight window holds 4 captures.
+  port's dump ended at frame 1380, so the fight window held 4 captures.)
   (Before the frame-1763 fix this was capture 1763 (§32.5, derived in §33):
   the green vertical "2 HIT COMBO" that `0x39040` draws through `0x38D90`
   at f = 860, 153 px in x 15–22, rows 53–98, which the port skipped as a
@@ -897,7 +913,13 @@ exits 0.
   and the `0x3B464`/`0x3B938`/`0x3A95C` hit it wakes are ported (§26);
   `0x3B464`'s `0x235C4` arm (projectile `+0x48` = 8) stays a named gap, not
   reached. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
-  frame-1750 fix): `0x3E3A8` (f = 962), skipped; `0x3C0A4` (f = 850, the
+  frame-1881 fix): none in the fight; `0x3E3A8` (f = 962, the `(char 0,
+  0x2A)` callback) and its `+0x0C` callback `0x3E328` (f = 963) are now ported
+  and registered, while its `+0x18`/`+0x1C` callbacks `0x3E1D0`/`0x3E244`
+  are stored but not ported (`0x3E1D0` is reached only through the
+  `0x19020` gap, which skips it at f = 963; `0x3E244` is not reached in
+  the port's run). (On the
+  frame-1750 fix: `0x3E3A8` (f = 962), skipped; `0x3C0A4` (f = 850, the
   reaction-`0x3E` callback, now ported), `0x14F50` (f = 929) and `0x3A820`
   (f = 962/963 on the frame-1715 fix) no longer miss; `0x4AC80` (f = 820 and 841
   on the frame-1659 fix) no longer misses; `0x3BF70` (f = 850 on the frame-1563 fix) no
@@ -912,7 +934,7 @@ exits 0.
   f = 741) no longer miss, nor do `0x4AC18` and `0x35938`; `0x3A820` is not reached in
   this run; `0x370F0` is still unregistered; not
   reached (no longer misses) in this run; and `0x347B8`'s stun-stream target
-  `0x34530` is unregistered but not reached. (Before the
+  `0x34530` is unregistered but not reached.) (Before the
   frame-892 fix this was capture 892: the best 531/532 splice left
   35 921 px, and from it on the capture's whole scene sat lower than the
   port's (dy = +3, +5, +7, +11 px at 892, 893, 894, 896). The reaction had put
@@ -995,7 +1017,8 @@ frame-1358 fix to **1411**, the frame-1411 fix to **1478**, the
 frame-1478 fix to **1481**, the frame-1481 fix to **1546**, the
 frame-1546 fix to **1563**, the frame-1563 fix to **1659**, the
 frame-1659 fix to **1715**, the frame-1715 fix to **1750**, the
-frame-1750 fix to **1763**, and the frame-1763 fix to **1881**.)
+frame-1750 fix to **1763**, the frame-1763 fix to **1881**, and the
+frame-1881 fix to **1886**, past the demo fight's end.)
 * **The window is no longer non-discriminating.** Cycle 1's `--demo` window
   opened on the state-9 hold's first frame, so it read identically for correct or
   broken code. Task 3 made the state-9 hold match — the hold's frames
@@ -1003,7 +1026,7 @@ frame-1750 fix to **1763**, and the frame-1763 fix to **1881**.)
   demo window's boundary (the loader's presentation at 832/833, then the T-rex
   pose at 843, since moved to 851 by cycle 6 below, to 858 by the roar-timing
 fix, to 859 by the frame-858 fix, to 860 by the frame-859 fix, to 864 by
-the frame-860 fix, to 866 by the frame-864 fix, to 867 by the frame-866 fix, to 870 by the frame-867 fix, to 880 by the frame-870 fix, to 891 by the frame-880 fix, to 892 by the frame-891 fix, to 950 by the frame-892 fix, to 992 by the frame-950 fix, to 998 by the frame-992 fix, to 1358 by the frame-998 fix, to 1411 by the frame-1358 fix, to 1478 by the frame-1411 fix, to 1481 by the frame-1478 fix, to 1546 by the frame-1481 fix, to 1563 by the frame-1546 fix, to 1659 by the frame-1563 fix, to 1715 by the frame-1659 fix, to 1750 by the frame-1715 fix, to 1763 by the frame-1750 fix and to 1881 by the frame-1763 fix) is a real content gap, not a window-definition artifact; the demo
+the frame-860 fix, to 866 by the frame-864 fix, to 867 by the frame-866 fix, to 870 by the frame-867 fix, to 880 by the frame-870 fix, to 891 by the frame-880 fix, to 892 by the frame-891 fix, to 950 by the frame-892 fix, to 992 by the frame-950 fix, to 998 by the frame-992 fix, to 1358 by the frame-998 fix, to 1411 by the frame-1358 fix, to 1478 by the frame-1411 fix, to 1481 by the frame-1478 fix, to 1546 by the frame-1481 fix, to 1563 by the frame-1546 fix, to 1659 by the frame-1563 fix, to 1715 by the frame-1659 fix, to 1750 by the frame-1715 fix, to 1763 by the frame-1750 fix, to 1881 by the frame-1763 fix and past the fight's end, to 1886, by the frame-1881 fix) is a real content gap, not a window-definition artifact; the demo
   window itself still reports **0 clean** (above). Window re-anchoring was **removed from this cycle**
   (design spec, "Removed from this cycle"): no new reference and no re-anchoring
   task, because porting the state-9 render made the **front-end** window's
@@ -2181,6 +2204,47 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   **`[560..1880]`/1321: 516 clean, 798 splice, 3 transition, 2 unexplained
   (832, 833)**; the three transition frames are the same as before. Nothing
   else moved.
+
+**The reaction callback `0x3E3A8` and the exit frame (`8d538d5`, demo-pose
+record §34).**
+* **Cause.** `0x34E2C`'s `(char 0, 0x2A)` record `0xA3870` holds the
+  callback `0x3E3A8` and no stream; the port had not registered it, so the
+  `0x35045` call skipped it. At f = 962 the T-rex (side 0) takes reaction
+  `0x2A` (capture 1881: the T-rex drops into a new pose). Separately, the
+  front-end driver dumped only frames whose iteration ended in a state >= 3,
+  so the exit frame (loop 1970) that captures 1883/1884 need was missing.
+* **Raw.** `0x3E3A8` builds `0x33950(EBX = side)`, starts ctx[4] on
+  `0xC8950[char]` at hold 2.0 through `0x3C4CC`, and writes ctx[2]'s state
+  9/7/0, `+0x0C` = `0x3E328`, `+0x18` = `0x3E1D0`, `+0x1C` = `0x3E244`,
+  `+0x57` = 0 and `+0x41` bit 7. `0x3E328` (`0x3531C` case 7) steps `+0x57`
+  0 → 1 once `+0x86 >> 16` exceeds 3, then 1 → 2 with the `0xE84B6` stream at
+  hold 4.0, `0x3E0F0`'s child (the side's `0xC760C` descriptor, its `+0x10`
+  palette from `0x29C08`) and `+0x52` = 9. The port's last `0x3531C` call
+  is at f = 963, with `+0x86 >> 16` = 1, so only the first arm runs.
+* **Fix.** `fighter_3e3a8`/`fighter_3e328` (registered) and the static
+  `fighter_3e0f0`/`fighter_29c08` in `fighter.c`; `0x3E1D0` (needs the
+  unported `0x19020`/`0x18C14`) and `0x3E244` (needs `0x3C208`/`0x3C358`)
+  are stored but not ported (the `0x19020` gap skips `0x3E1D0` at f =
+  963, unevaluated). The front-end driver dumps a frame whose
+  iteration starts or ends in a state >= 3 (1382 frames). `title_compare.py`
+  `--demo`/`--demo-fight` report the region after a front-end window that
+  exhibits the whole dump as unexplained content, and `--demo-fight` treats a
+  front-end window that reaches the frame before the first all-black capture
+  frame as an empty, fully explained fight window. New `check_trex_grab`
+  (`test_fight.c`); all 36 mutations fail it.
+* **Measured.** Port frames 0..1378 are byte-identical to before. Captures
+  1881..1884 are explained (1 clean, 3 splice); 1885 is the capture's first
+  all-black frame after the demo, the end of the demo-fight capture. The
+  demo's first unexplained is now **1886 (raw 4795)**, after the demo, and
+  the fight window is empty. The ratchet N is raised 1881 → **1886** (= 1885
+  + 1, the exact pin); it can rise no further with this capture, and it
+  still fails if the front-end window shrinks and leaves a fight frame
+  unexplained.
+* **Moved claim (allowed by the brief).** Front-end `[560..1880]`/1321 →
+  **`[560..1884]`/1325: 517 clean, 801 splice, 3 transition, 2 unexplained
+  (832, 833)**; the three transition frames are the same as before, and the
+  exhibition set is the whole dump (port frames 0..1381, 1145 exhibited).
+  Nothing else moved.
 
 ## Landmarks (verified)
 
