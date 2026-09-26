@@ -197,7 +197,7 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
 # improves (the tool prints "ratchet improved ... raise N"). N = 1659 was measured on
-# the commit that raised it, on d9c5a1f: the effects pass 0x49C78's per-entry prelude
+# cc38a38 (the commit that raised it, on d9c5a1f): the effects pass 0x49C78's per-entry prelude
 # 0x4B69C is ported with its point test 0x17D30/0x1790C, 0x4B788's trample gates,
 # the trample 0x4B470 and case 6 (0x49F11, the tumble and landing). A lying worshipper
 # (+0x1C bit 7) whose pset point falls in a fighter's 0x100AC8 box is thrown on the

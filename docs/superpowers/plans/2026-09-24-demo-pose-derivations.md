@@ -5001,3 +5001,207 @@ landed by this fix now carry the entry's `+0x1C` bit 7 (type 4), and that
 bit gates the effects pass's unported per-entry prelude `0x4B69C`
 (`0x4B6AC and al,0x80`), which runs `0x17D30` — a point test against both
 fighters' boxes through `0x1790C` — and on a hit `0x4B788`/`0x4B470`.
+
+(Derived since, §29: the candidate holds. The effects pass's prelude
+`0x4B69C` finds both landed side-1 worshippers inside side 0's `0x100AC8`
+box at f = 689 (the gold fighter's tail) and tramples them through
+`0x4B470`; the port had no prelude. Porting it with its point test, the
+trample and case 6 explains 1563..1658.)
+
+## 29. The worshippers' trample (`0x4B69C`, `0x17D30`/`0x1790C`, `0x4B470`, case 6) at capture 1563 (roar-timing Task 19, `cc38a38`)
+
+**Result in one line.** Capture 1563 has one cause, and it is the port's: the
+§28.5 candidate. `0x49C78` calls `0x4B69C(entry, si)` for every entry before
+its type dispatch (`0x49CFE`), and the port did not. An entry whose `+0x1C`
+bit 7 is set (a worshipper lying after case 3's landing, or falling from a
+trample) tests its actor's pset point against both fighters (`0x17D30`,
+which runs `0x1790C` per side); on a hit that `0x4B788` does not claim for a
+grab, `0x4B470` tramples it: the `0xC9604[si]` tumble stream at 3.0, a shadow
+actor from `0xBB920[si]`, `+0x34` = ±`0x80`, `+0x36` = `0x240`, type 6. Case 6
+(`0x49F11`) flies it and lands it on `0xC973C[si]` at 2.0 as type 8. At
+f = 689 both side-1 worshippers (`0x108438`, `0x108414`, type 4) fall inside
+side 0's box — the gold fighter's tail sweep — so the capture's worshipper is
+thrown (x 200–232). The pre-fix and post-fix port frames 1107 differ in
+exactly capture 1563's two regions (x 37–64, rows 182–191, 144 px; x 199–232,
+rows 158–187, 370 px), so the dark blob is drawn by the new path too (the
+tumble streams and the two `0xBB920` shadow actors are its only new sprites;
+which one draws the blob is not attributed further). This explains captures
+1563..1658.
+
+### 29.1 The measurement (temporary, reverted)
+
+A temporary `PR_T19` print in `fight_effects_pass` computed
+`camera_point_hit` (the port of `0x17D30`, written first) for every entry with
+`+0x1C` bit 7 on the pre-fix tree and printed the `0x4B788` gate inputs. The
+first non-zero result is at f = 689 (port frame 1106, capture 1563's splice):
+both side-1 entries (`si` 4/3, type 4, lie timers 84/87) return 1 (side 0),
+with slot 0's `+0x5F` = `0x17` against its grab move `0xC97F2[ch]` = `0x2D`
+(so `0x4B788` returns 1: trample), `DS_00105B3A` = 0 and the other side's
+`+0x54` = 0. With the fix, the same print showed `TRAMPLE` for both at
+f = 689 and nowhere else in the run, and probes at the named gaps (the grab
+arm, the eighth-hit tail, case 8's held body, the default types) never fired.
+
+### 29.2 The raw (Ghidra `disassemble_function` / `read_memory` + capstone, fixups applied)
+
+`0x49CD1..0x49CFE` (the call): `mov di, si` after `movzx si, byte [ebx+0x48]`
+/ `sub esi, 0x20` — the u16 `si` — then `mov edx, edi` / `mov eax, ecx` /
+`call 0x4b69c`; `0x49D03 mov al, [ecx+0x1e]` reads the type after it.
+
+`0x4B69C`: `0x4B6A6..0x4B6B3` return unless `word [entry+0x1c] & 0x80`;
+`0x4B6B9..0x4B6DD` the actor's pset (`[0x1014EC] + (rec+0x56) << 5`), its words
+`+4` (x) and `+8` (y) sign-extended; `0x4B6E0 xor ebx,ebx`; `call 0x17d30`;
+zero returns; `0x4B6F2 cmp eax,2 / jle` else 1 (both sides count as side 0);
+`0x4B705 call 0x4b788` (EAX = hit, EDX = entry, EBX = si), zero returns;
+`0x4B713` `+0x20` = hit − 1, `0x4B716 inc byte [ecx+0x1f]`; when the actor's
+`+0x4A` is set (`0x4B71C`): `[0x1014F4] + k * 0x68 + 0x4B` = 0 (`0x4B73B`,
+`13k * 8`), `+0x2A &= 0xF7`, `+0x29 &= 0xBF`, `+0x4A` = 0, the entry's `+0x1C
+&= 0xBF`, `inc byte [0x1088ae + side]`, `[0x1088b2 + side]` = 1; then
+`0x4B779 call 0x4b470` (EAX = entry, EDX = si).
+
+`0x17D30` (EAX = x, EDX = y, EBX = `tall`): saves `0x100B08/0B0C/0B00/0B04`;
+x and y divided by 64 with the Watcom truncating idiom (`sar edx,0x1f; shl
+edx,6; sbb eax,edx; sar eax,6`), x − `0x18`, y − `0x38` (`0x30` when `BX` ≠
+0); `0x17DAE` `0x15F48(0x128, 0x25, 0x100BD3, 0xFF)`; saves and clears
+`0x100B63`, tests side 0 through `0x1790C(0, x, y, tall)` unless mode `0x22`
+and `byte [0x104b1a]` ≠ 0 (bit 0); saves and clears `0x100B62`, restores
+`0x100B63`, tests side 1 unless mode `0x22` and `[0x104b1a]` ≠ 1 (bit 1);
+restores the four dwords and `0x100B62`.
+
+`0x1790C` (EAX = side, EDX = x, EBX = y, ECX = `tall`) is `0x176CC`'s shape with
+the point as the other box: `0x17934/0x1793E` need the side's `0x100AC8` box
+`+2`/`+3` ≥ 1; `0x17957..0x17965` the side's sprite (`0x16308`); the box copy
+clipped by `0x15C30`; `0x179E8 0x181D0(box2, 0x30, box0 + B08[side] − x, B1C;
+B14, B28, B34, B24)` (`RET 0x10`; `ECX` = `0x100B1C` survives `0x15C30`'s
+`push ecx`); the column plane (`0x61A70` zero, `0x15F48(box2, ⌈w/8⌉)`,
+`0x15FD4` by box0 when non-zero); `0x17AB4 0x181D0(w, 0x30, B08[side] − x,
+…)`; `0x17B0B 0x181D0(box3, tall ? 0x30 : 0x38, box1 + B00[side] − y, B18;
+B10, B2C, B30, B20)`; `B10 += box1`, the `setg` flag `B14 > B34`, `B38 =
+|B14 − B34|`, `B40 = B1C`; `0x17BAC 0x16DA4(flag, AF0[side], 0, B10; B30,
+tall ? 3 : 2, side)` (mode 2/3: the other row is `0xA1740`/`0xA1746`,
+`0f ff ff ff ff f0` / `00 ff ff ff ff 00`); `0x17BB8` 1 iff `B54 > 0`.
+Every callee was already ported (`camera_box_clip`, `camera_sync_visible`,
+`camera_bitplane_pixel/shift`, `camera_winner_height`, `camera_resolve_sprite`).
+`0x1790C` has one caller (`0x17D30`); `0x17D30` has five (`0x129FC`,
+`0x4B69C`, `0x4C60C`, `0x4D7A4`, `0x4E5A4`).
+
+`0x4B788` (EAX = hit, EDX = entry, EBX = si) returns 1 at `0x4B7A0` when
+`byte [0x105b3a]` > 1, at `0x4B7E0` when the other side's slot `+0x54` is 3,
+and at `0x4B7F5` when the side's slot `+0x5F` ≠ `0xC97F2[(s8) slot+0x7A]`
+(`2d` for chars 0..6); otherwise it returns 0 — at once when the entry's
+`+0x1C` bit 6 is set, the fighter record's `+0x52` is outside the signed
+`[0xC97E4[ch], 0xC97EB[ch]]` or its `+0x4B` is set, else after the grab
+(`0x4B83D..0x4B98F`: `+0x1C |= 0x40`, the shadow killed, the worshipper placed
+at the fighter's `0xC977D/0xC977E` offsets, type 8 on `0xC97AC[ch][si]`,
+`0x2BD20`, the fighter on `0xC9790[ch]` at `0xC97C8[ch]`, a voice).
+
+`0x4B470` (EAX = entry, EDX = si): the voice `0x2C3FC(si < 3 ? 0xD1 : 0xD0)`;
+`0x4B4B1 0x2BC30(rec, 0xC9604[si], 3.0)`; when `+0x10` is 0,
+`0x4B4D2 0x2AE14(0xBB920[si], rec+0x18, rec+0x30 >> 16, 0; 0)` into `+0x10`;
+unless mode `0x22` (`0x4B4E5`): on the first hit (`+0x1F` = 1)
+`0x1A570(+0x20)` true gives `+0x34` = `0xFF80`, false `0x80`; on a later hit
+`[rec+0x32] >> 16` = −`0x80` gives `0x80`, else `0xFF80`; `+0x36` = `0x240`,
+type 6, `+0x1C &= 0x7F`; then the eighth-hit tail (`0x4B547..0x4B59E`: not
+`0x104B1D` 2/3, `0x104AFC` = 0, `0x1088C1` = 0, `[0x1088ef] >> 24` > 1,
+`+0x1F` > 7, `0x1088C5` = 0, `0x108864` = 0 → `0x4BD98`, `0x4CB18`).
+
+Case 6, `0x49F11`: `+0x36` < 0 sets `+0x1C` bit 7; the shadow (`+0x10`)
+takes `rec+0x18` and the word `rec+0x32`; `[rec+0x34] >> 16` + `rec+0x1C` > 0
+subtracts `0x10` from `+0x36` (`0x49FB8`); otherwise the shadow dies
+(`0x2B150`) and `+0x10` clears, the actor takes `0xC973C[si]` at 2.0 as type
+8 (or, when that entry is 0, `0xC9544[si]` at 3.0 as type 4), and `+0x1C`
+(the height dword), `+0x36`, `+0x34` and the entry's `+0x1F` are zeroed.
+Case 8, `0x4A08A`: nothing without `+0x1C` bit 6. Tables (`read_memory`):
+`0xC9604` = `0xEE160, 0xEE512, 0xEE87C, 0xEEC44, 0xEF00E, 0xEF400`;
+`0xBB920` = `0xBB524, 0xBB538, 0xBB54C, 0xBB560, 0xBB574, 0xBB588`;
+`0xC973C` = `0xEE39A, 0xEE6DA, 0xEEA96, 0xEEE88, 0xEF23E, 0xEF5E6`.
+
+### 29.3 The fix and its assertions
+
+`camera.c` gains `camera_point_side` (`0x1790C`) and `camera_point_hit`
+(`0x17D30`, exported; `0x104B1A` is a local `#define`). `fight.c` gains
+`fight_4b69c`, `fight_4b788` (the three return-1 gates and the return-0 gates;
+the grab body is a named gap), `fight_4b470` (the voice a `PORT:` note; the
+eighth-hit tail's `0x4BD98`/`0x4CB18` a named gap behind its gates), case 6
+and case 8's bit-6 gate (its held body a named gap: bit 6 is set only by the
+grab). The prelude runs before the type is read. About 0x7F0 raw bytes
+(`0x4B69C` 0xE9, `0x17D30` 0x19D, `0x1790C` 0x2BB, `0x4B788`'s gates 0xB5,
+`0x4B470` 0x138, case 6 0xB1, case 8's gate 0x13): five functions and two
+cases, every callee already ported — inside the size gate.
+
+New `check_point_trample` in `test_fight.c` (fixture `ph_seed` on
+`pc_seed`'s 8x8 sprite; side 0's box raw (0, 36, 2, 3) clips to (0, 1, 8, 7)):
+`camera_point_hit` at side 0's screen point returns 1 with B54 = 2 (7 rows ×
+popcount(`0xFF & 0x0F`) = 28 → 29 → 34 → 2), B1C 8, B18 7, B30 1, B10 1 and the
+flip bytes restored; a point `0x40` units right returns 0 and writes nothing;
+box (4, 1, 4, 7) at p3 = `0x32` misses before writing B1C; both boxes give 3,
+mode `0x22` with `0x104B1A` = 1/0 gives 2/1; `tall` misses on the `0xA1746`
+row (B54 = 0) where the same y without it hits (B30 9); y at p3 = `0x34`
+hits only with the `0x38`-row box (B18 4, B54 1). Through
+`fight_effects_pass`: bit 7 clear skips the test (B54 sentinel) and case 4
+counts; the grab move with `+0x52` in range does not trample; `0x105B3A` = 2
+and the other `+0x54` = 3 do; the demo's trample (`+0x20` 0, `+0x1F` 1,
+`+0x1C` `0x05`, the lie timer untouched because the type is read after the
+prelude, `0xC9604[3]` at 3.0, `+0x34` `0xFF80`, `+0x36` `0x230` after case 6's
+first step, the shadow from `0xBB920[3]` by its `+0x2C` word, no RNG draw);
+case 6 airborne (the shadow follows, `0x100` → `0xF0`, `-0x20` → `-0x30` and
+bit 7 set again); the landing (shadow dead, `0xC973C[3]` at 2.0, type 8, the
+four zeroes) and its `0xC9544[3]` fallback; the second hit's reversal both
+ways and no second shadow; both sides as side 0; mode `0x22` keeps `+0x34`;
+the `+0x4A` release. The tables' entries 0 and 3, `0x104B00`, `0x104B1A`,
+`0x105B3A`, `0x1088AE`, the held record's `+0x4B` and pc_seed's regions are
+restored; the spawned shadows are killed and freed.
+
+Mutations (`scratchpad/mut19.py`, 50 single-site edits plus one by hand,
+each built and run, then `cmp`-restored): every one fails 1..43 assertions —
+in `0x17D30` the `- 0x18`, the `tall` y offset, the `0x30`/`0x38` row box
+swapped, mode 2/3 swapped, no `B10 += box1`, either flip byte not restored,
+either mode-`0x22` gate inverted or retargeted, side 1 reported as bit 0, `>=
+0` for `> 0`, box0 dropped from the first x sync, box1 dropped from dy; in
+`fight.c` no bit-7 gate, no hit clamp, each of `0x4B788`'s three return-1
+gates removed, `+0x20` = hit, no `+0x1F` count, table index 0 for
+`0xC9604`/`0xBB920`/`0xC973C`/`0xC9544`, no spawn store, the first-hit arms
+swapped, the reversal compare inverted, no mode-`0x22` gate, no `+0x36`, no
+type 6, no `+0x1C &= 0x7F`, no prelude, the type read before the prelude, no
+bit-7 set in case 6, no shadow follow (x, y), `>= 0` for the landing, no
+gravity, no shadow kill or clear, type 4 / 3.0 for the `0xC973C` landing,
+none of the four zeroes, and each of the five `+0x4A` release writes.
+### 29.4 Measured
+
+Port frames 0..1105 are byte-identical to the pre-fix dump, and 1106 (the
+f = 689 state) is the first that differs. Captures 1563..1658 splice at 0 px
+(1563 is port 1106/1107 row 154).
+
+| measurement | before (`d9c5a1f`) | after (`cc38a38`) |
+|---|---|---|
+| captures 1563..1658 | 1563 514 px; 1564 514; 1566 284 | **all explained** |
+| demo oracle first unexplained | 1563 (raw 4470); `[1563..3616]` 2054 / 2048 unexpl. | **1659 (raw 4566)**; `[1659..3616]` 1958 / 1952 unexpl.; port `[1189..1380]` (192, 0 exhibited) |
+| demo-fight ratchet | `[1563..1884]` 322, N = 1563 | **`[1659..1884]` 226**, "ratchet improved: first unexplained 1659 > 1563", **N = 1659** |
+| front-end oracle | `[560..1562]` / 1003 / 413 clean, 583 splice, 3 transition, 2 unexpl. | **`[560..1658]` / 1099 / 447 clean, 645 splice, 3 transition, 2 unexpl. (832, 833)** |
+
+Only the front-end window and N moved. The three transition frames are the
+same (`port832@row177`, `port862@row189`, `port906@row31`). The exhibition
+set grows to port frames 0..1188 (952 exhibited). The ladder
+`cmake --build build --clean-first && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify`
+exited 0 with 0 compiler warnings, with N = 1659 in the Makefile. Unmoved: title
+`54/55/2/0` and `54/57/0/0`, determinism 54; smk 120/120 and 41/41; attract
+215/216 (expected divergence at 215); C-vs-Python 9866; `symbols.h`; the
+front-end "endpoints BAD" line.
+
+**Unresolved code targets after the fix** (a temporary whole-run probe in
+`fn_resolve`, reverted): `0x4AC80` (f = 820 and 841; Ghidra `get_xrefs_to`
+lists no reference: a worshipper stream callback, EAX = the actor, its entry
+at `+0x14`) and `0x3BF70` (f = 850), plus the known front-end sites
+`0x29B74`/`0x41578`, the stub `0x5D812` and `fn_resolve(0)` (f = 617..767).
+`0x14F50` (§28.4) no longer misses: the run moved from f = 689.
+
+### 29.5 The new first unexplained frame, 1659 (characterised, not fixed)
+
+Captures 1563..1658 splice at 0 px. Capture 1659's best splice, port
+1188/1189 row 135, leaves 57 px in x 111–124, rows 135–142: the top-left
+edge of the dark ring (the blue-black vortex left of the worshippers) differs.
+From 1660 the gold fighter's leap and then the camera y diverge: 1660 leaves
+5 279 px, 1661 10 954 and 1662 42 868 (at 1662 the capture's view sits
+between port 1191's and 1192's and the gold fighter's tail is lower). Port 1188 is the
+f ≈ 771 state. The owner is **not derived**; no `fn_resolve` miss falls
+before f = 820 (`0x4AC80`, a worshipper stream callback reached after the
+trample).
