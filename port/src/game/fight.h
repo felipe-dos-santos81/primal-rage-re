@@ -47,6 +47,16 @@ void fight_command_map(u32 side, u32 edx_arg, u32 override);
  * 0x4A634's slot +0x42 bit 0/1 reset. */
 void fight_effects_pass(void);
 
+/* 0x4AC18. The worshipper streams' 0xD500 target (opcode 0x15, mode 0x4000;
+ * the dword 0x0004AC18 at 24 sites in 0xEE09E..0xEF62E, the first after the
+ * 0xD500 word at 0xEE09C). EAX = the actor record: with its +0x14 fight-effect
+ * entry (0x49617 stores it) non-zero, it calls 0x4AC38(entry, (u32)(u8)
+ * rec+0x48 - 0x20), which zeroes the actor's +0x34/+0x36/+0x38, clears its
+ * +0x29 bit 6 and sets bit 4, returns the entry to type 0 and begins the
+ * 0xC9544[index] stream with the hold 5.0. EDX is pushed and overwritten
+ * (0x4AC19/0x4AC1A) before any read. */
+void fight_4ac18(u32 rec);
+
 /* 0x3C5CC. Zeroes the three slot-pass words. The arena frame's first call;
  * exposed because 0x3C570's bit test reads DS_00107EE0 and a test may seed it. */
 void fight_slot_clear(void);

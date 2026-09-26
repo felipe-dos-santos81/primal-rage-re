@@ -418,6 +418,12 @@ def load_port(d, n):
 # explains captures 992..997, [560..991] -> [560..997] (432 -> 438); the
 # allowed set stays (832, 833), and the exhibition set grows to port frames
 # 0..622 (386 exhibited).
+# The worshipper arrival target 0x4AC18 (the left-edge worshipper's cheer
+# stream's opcode-0x15 target at f = 206) returns its entry to type 0 and
+# its actor to the 0xC9544 stream, and explains captures 998..1357,
+# [560..997] -> [560..1357] (438 -> 798; 3 transition frames, all in the new
+# span); the allowed set stays (832, 833), and the exhibition set grows to
+# port frames 0..930 (694 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

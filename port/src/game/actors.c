@@ -12,6 +12,7 @@
 #include "game/actors.h"
 #include "game/effects.h"
 #include "game/fighter.h"
+#include "game/fight.h"
 #include "game/rng.h"
 #include "../mem.h"
 #include "../symbols.h"
@@ -89,6 +90,7 @@ static void anim_code_3E4E4(u32 rec, u32 arg);
 static void anim_code_347B8(u32 rec, u32 arg);
 static void anim_code_346F8(u32 rec, u32 arg);
 static void anim_code_35938(u32 rec, u32 arg);
+static void anim_code_4AC18(u32 rec, u32 arg);
 
 /* The 0xBB9D8 type table's two callback halves (cb1 at 0xBB9DC, cb2 at
  * 0xBB9E0). actor_spawn's tail (0x2B0D4) calls cb1 with (rec, slot) and tests
@@ -164,6 +166,10 @@ int actors_init(void)
     /* PORT: the walk entry 0x35938, the 0xD500 target of 14 stream sites
      * (the T-rex's at 0xE6EE8), opcode 0x15, mode 0x4000. */
     fn_register(0x35938u, (void (*)(void))anim_code_35938);
+    /* PORT: the worshipper streams' 0xD500 target 0x4AC18 (24 sites in
+     * 0xEE09E..0xEF62E; the first after the 0xD500 word at 0xEE09C), opcode
+     * 0x15, mode 0x4000: the arrival 0x4AC38 for the actor's +0x14 entry. */
+    fn_register(0x4AC18u, (void (*)(void))anim_code_4AC18);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -759,6 +765,17 @@ static void anim_code_35938(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_35938(rec);
+}
+
+/* 0x4AC18 — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x4AC18 takes EAX = rec and does not
+ * read EDX (it pushes EBX and EDX at 0x4AC18/0x4AC19 and loads EDX from
+ * rec+0x14 at 0x4AC1A before any read), so this wrapper drops the operand
+ * and calls fight_4ac18(rec) unchanged. */
+static void anim_code_4AC18(u32 rec, u32 arg)
+{
+    (void)arg;
+    fight_4ac18(rec);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */

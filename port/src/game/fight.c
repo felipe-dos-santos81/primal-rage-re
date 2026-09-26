@@ -755,6 +755,17 @@ static void fight_4ac38(u32 entry, u32 index)
     actors_anim_begin(actor, DSD(DS_000C9544 + index * 4u), 0x40A00000u); /* 0x4AC77 */
 }
 
+/* 0x4AC18 — demo-pose record §23. The worshipper streams' opcode-0x15 target:
+ * the arrival 0x4AC38 for the actor's own +0x14 entry, indexed by the actor's
+ * +0x48 descriptor byte less 0x20 (0x4AC25 `mov dl,[eax+0x48]`, 0x4AC28 `sub
+ * edx,0x20`, a 32-bit index, unlike the effects pass's u16 `si`). */
+void fight_4ac18(u32 rec)
+{
+    u32 entry = DSD(rec + 0x14u);                   /* 0x4AC1A */
+    if (entry == 0u) return;                        /* 0x4AC1F */
+    fight_4ac38(entry, (u32)DSB(rec + 0x48u) - 0x20u); /* 0x4AC25..0x4AC2D */
+}
+
 /* 0x4B144. The type-0 entry's distance resolution: it walks the entry's actor
  * toward DS_00108874 (the midpoint), drawing rng(2)/rng(0x1200) 1-3 times on
  * the way, then sets the entry's +0x14 and type 1 and retargets the actor at
