@@ -404,6 +404,11 @@ def load_port(d, n):
 # capture 891, [560..890] -> [560..891] (331 -> 332); the allowed set stays
 # (832, 833), and the exhibition set grows to port frames 0..531 (295
 # exhibited).
+# The knockback pose's handler 0x39CC8 (0x39F40's slot+0x10, run by 0x3531C
+# case 10) launches and lands the struck raptor, which the camera follows,
+# and explains captures 892..949, [560..891] -> [560..949] (332 -> 390); the
+# allowed set stays (832, 833), and the exhibition set grows to port frames
+# 0..581 (345 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

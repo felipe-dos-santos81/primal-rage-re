@@ -3781,6 +3781,8 @@ static void check_anim_hold_scaler(void)
           "0x3E524 is registered as fighter_3e524");
     CHECK(fn_resolve(0x3E4C4u) == (void (*)(void))fighter_3e4c4,
           "0x3E4C4 is registered as fighter_3e4c4");
+    CHECK(fn_resolve(0x39CC8u) == (void (*)(void))fighter_39cc8,
+          "0x39CC8 is registered as fighter_39cc8");
 
     s[0] = 0xD100;                           /* opcode 0x11, mode 0x4000 */
     s[1] = 0x9A34;                           /* the inline code pointer */
@@ -4045,6 +4047,334 @@ static void check_trex_leap(void)
 
     DSW(DS_001078F6) = sv_78f6;
     tf_put(sv_b00, DS_00104B00, 4u);
+}
+
+/* ---- roar-timing Task 10: the knockback pose handler 0x39CC8 (record §20) - */
+
+/* A stand-in slot +0x14 target for 0x35050: the raw has no ported writer of a
+ * non-zero +0x14, so the call is driven through a test-only registration at an
+ * address outside the code object (0x10000..0x73B14). */
+#define KB_STUB_14 0x7FFF0000u
+static int kb_stub_calls;
+static u32 kb_stub_ret;
+static u32 kb_stub_14(void)
+{
+    kb_stub_calls++;
+    return kb_stub_ret;
+}
+
+/* The demo raptor at f = 114: side 1, char 3, in the 0x39F40 pose 0x10/0x0A
+ * with +0x10 = 0x39CC8. Slot +0x42 bit 3 makes the 0x186D0 latch copy the
+ * record's +0x18/+0x1C into the slot's +0x2C/+0x30, so the y anchors are
+ * observable on rec+0x1C. The four pose words are 0x3AAFC's 0x3AC89 call
+ * (EDX = 0xFFFFFFB0, EBX = 0x46, ECX = 0x0C, frame 0x14) as 0x39F40 stores
+ * them for side 1 (0x107A68/0x107A78/0x107A60/0x107A70 + 4); side 0's words
+ * are distinct sentinels, so a read of the wrong side changes every result. */
+static void kb_seed(u32 s0, u32 s1, u32 r0, u32 r1)
+{
+    (void)tf_hit_fixture(0);
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSB(r0 + 0x51u) = 0;
+    DSB(r1 + 0x51u) = 1;
+    DSW(r1 + 0x56u) = 2;
+    DSB(s1 + 0x7Au) = 3;
+    DSB(s1 + 0x42u) = 0x08u;
+    DSB(s1 + 0x52u) = 0x10u;
+    DSB(s1 + 0x53u) = 0x0Au;
+    DSB(s1 + 0x54u) = 2u;
+    DSD(s1 + 0x10u) = 0x00039CC8u;
+    DSB(s1 + 0x41u) = 0;
+    DSB(s1 + 0x68u) = 1;
+    DSW(s1 + 0x74u) = 0x1234u;
+    DSW(s0 + 0x74u) = 0x2222u;
+    DSD(s1 + 0x14u) = 0;
+    DSD(r1 + 0x18u) = 0x4321u;
+    DSD(r1 + 0x1Cu) = 3000u;
+    DSD(r1 + 0x30u) = 0x00090000u;
+    DSW(r1 + 0x28u) = 0;                     /* pset unflipped (bit 14 clear) */
+    DSW(r1 + 0x34u) = 0x5555u;
+    DSW(r1 + 0x36u) = 0x5555u;
+    DSW(r1 + 0x44u) = 0x5555u;
+    DSB(r1 + 0x43u) = 0x66u;
+    DSB(r1 + 0x63u) = 0x55u;
+    DSD(r1 + 8u) = 0x00ABCDEFu;
+    DSD(r1 + 0x24u) = 0x11111111u;
+    fighter_slot_latch(1u);                  /* slot+0x2C/+0x30 = 0x4321/3000 */
+    DSD(0x00107A60u) = 0x10u;                /* side 0: n */
+    DSD(0x00107A64u) = 0x0Cu;                /* side 1: n */
+    DSD(0x00107A68u) = 0xFFFFFF00u;          /* side 0: h */
+    DSD(0x00107A6Cu) = 0xFFFFFFB0u;          /* side 1: h = -80 */
+    DSD(0x00107A70u) = 0x08u;                /* side 0: m */
+    DSD(0x00107A74u) = 0x14u;                /* side 1: m */
+    DSD(0x00107A78u) = 0x20u;                /* side 0: a */
+    DSD(0x00107A7Cu) = 0x46u;                /* side 1: a */
+}
+
+/* §20: 0x39CC8's +0x58 machine for the demo raptor, char 3. Expected values
+ * are from the raw tables (read_memory): 0xBED10[3] = 7, 0xBED38[3] = 7,
+ * 0xBED60/88/B0[3] = 0xD2A6E/0xD2AA4/0xD2ADA (whose ED40 indirections give
+ * the first ids 0x17F5/0x18AD/0x18B3), word[0xBD884 + 3*2] = 0x1600 = 5632,
+ * word[0xBECFA + 3*2] = 2560. Launch: hold 12/7 (0x3FDB6DB7), gravity
+ * 0x39AC8(70, 12) = 8960/144 = 62, vertical 62*12 = 744, horizontal
+ * -80*64/32 = -160, negated while unflipped (0x3C190). Fall: hold 20/7
+ * (0x4036DB6E), gravity 0x39AC8(|dy/64|, 20). */
+static void check_knockback_pose(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    u32 pset1 = FIGHT_ACTORS + 0x40u;
+    u16 sv_78f6 = DSW(DS_001078F6);
+    u8 sv_b00[4], sv_a60[0x20];
+    tf_snap(sv_b00, DS_00104B00, 4u);
+    tf_snap(sv_a60, 0x00107A60u, 0x20u);
+    if (fn_resolve(0x39CC8u) == NULL)
+        fn_register(0x39CC8u, (void (*)(void))fighter_39cc8);
+
+    /* Phase 0 (0x39CFE): +0x58 = 1 and nothing else. */
+    kb_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x58u) = 0;
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x58u), 1);
+    CHECK_EQ_INT((int)DSW(r1 + 0x36u), 0x5555);
+
+    /* Phase 1 through 0x3531C case 10 (0x354E2), airborne (+0x54 = 2): 0x39B30
+     * starts the stream through 0x3C520 and, the ground 5632 being above the
+     * slot's +0x30 = 3000, re-anchors y to it through 0x1890C (0x39BF0). */
+    kb_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x58u) = 1;
+    DSW(DS_001078F6) = 0;
+    fighter_state_3531c(1u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x58u), 2);
+    CHECK((DSD(r1 + 8u) - 0x000D2A6Eu) < 0x40u,
+          "0x39B30 starts the 0xBED60[3] stream");
+    CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0x3FDB6DB7);      /* 12 / 7 */
+    CHECK_EQ_INT((int)(DSW(pset1) & 0x7FFFu), 0x17F5);
+    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 5632);
+    CHECK_EQ_INT((int)DSW(r1 + 0x44u), 62);
+    CHECK_EQ_INT((int)DSW(r1 + 0x36u), 744);
+    CHECK_EQ_INT((int)(s16)DSW(r1 + 0x34u), 160);
+    CHECK_EQ_INT((int)DSB(r1 + 0x43u), 0);
+    CHECK_EQ_INT((int)DSB(r1 + 0x63u), 0);
+    CHECK_EQ_INT((int)(DSB(s1 + 0x41u) & 0x80u), 0x80);
+    CHECK_EQ_INT((int)DSB(s1 + 0x68u), 2);
+    CHECK_EQ_INT((int)DSW(s1 + 0x74u), 0x1234);          /* +0x68 < 3 */
+
+    /* Airborne above the ground: no re-anchor. The flipped pset keeps -160,
+     * and the third launch sets the side's +0x74 word (0x39CA7). */
+    kb_seed(s0, s1, r0, r1);
+    DSD(r1 + 0x1Cu) = 9000u;
+    fighter_slot_latch(1u);
+    DSW(r1 + 0x28u) = 0x4000u;
+    DSB(s1 + 0x68u) = 2;
+    DSB(s1 + 0x58u) = 1;
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 9000);
+    CHECK_EQ_INT((int)(s16)DSW(r1 + 0x34u), -160);
+    CHECK_EQ_INT((int)DSB(s1 + 0x68u), 3);
+    CHECK_EQ_INT((int)DSW(s1 + 0x74u), 0x029A);
+    CHECK_EQ_INT((int)DSW(s0 + 0x74u), 0x2222);
+
+    /* Grounded (+0x54 != 2): 0x3C480 zeroes y, then 0x39BC5 re-anchors it to
+     * the ground unconditionally (the airborne case above keeps 9000). */
+    kb_seed(s0, s1, r0, r1);
+    DSD(r1 + 0x1Cu) = 9000u;
+    fighter_slot_latch(1u);
+    DSB(s1 + 0x54u) = 0;
+    DSB(s1 + 0x58u) = 1;
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 5632);
+    CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0x3FDB6DB7);
+
+    /* The grounded anchor is unconditional (0x39BC5): with slot +0x42 bit 3
+     * clear the latch adds the side's DS_00100AB4 offset, here 8000, so after
+     * 0x3C480 zeroes y the slot's +0x30 is 8000 > 5632 and only the
+     * unconditional 0x1890C moves rec+0x1C (to 5632 - 8000). DS_001077A8[1] =
+     * 0 is 0x18540's early-out and DS_00100AF0[1] = slot+0x20 skips 0x18350,
+     * so the offsets stay as seeded. */
+    {
+        u8 sv_ab0[0x10], sv_af0[8];
+        u32 sv_7ac = DSD(DS_001077A8 + 4u);
+        tf_snap(sv_ab0, DS_00100AB0, 0x10u);
+        tf_snap(sv_af0, DS_00100AF0, 8u);
+        kb_seed(s0, s1, r0, r1);
+        DSD(DS_001077A8 + 4u) = 0;
+        DSD(DS_00100AF0 + 4u) = DSD(s1 + 0x20u);
+        DSD(DS_00100AB0 + 8u) = 0;
+        DSD(DS_00100AB4 + 8u) = 8000u;
+        DSB(s1 + 0x42u) = 0;
+        DSD(r1 + 0x1Cu) = 9000u;
+        DSB(s1 + 0x54u) = 0;
+        DSB(s1 + 0x58u) = 1;
+        fighter_39cc8(s1, 1u);
+        CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 5632 - 8000);
+        CHECK_EQ_INT((int)DSD(s1 + 0x30u), 5632);
+        DSD(DS_001077A8 + 4u) = sv_7ac;
+        tf_put(sv_ab0, DS_00100AB0, 0x10u);
+        tf_put(sv_af0, DS_00100AF0, 8u);
+    }
+
+    /* Phase 2 waits while the vertical speed is >= 0 (0x39D26 setl). */
+    kb_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x58u) = 2;
+    DSW(r1 + 0x36u) = 0;
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x58u), 2);
+    CHECK_EQ_INT((int)DSW(r1 + 0x44u), 0x5555);
+    CHECK_EQ_INT((int)DSB(r1 + 0x63u), 0x55);
+
+    /* Falling from 12 993 above the ground (dy/64 = 203.02, truncated to
+     * 203): gravity 203*128/400 = 64.96 -> 64 (0x39AC8 keeps q), the
+     * 0xBED88[3] stream at hold 20/7, +0x58 = 3. */
+    kb_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x58u) = 2;
+    DSW(r1 + 0x36u) = (u16)-62;
+    DSD(s1 + 0x30u) = 5632u + 12993u;
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x58u), 3);
+    CHECK_EQ_INT((int)DSW(r1 + 0x44u), 64);
+    CHECK_EQ_INT((int)DSB(r1 + 0x63u), 0);
+    CHECK((DSD(r1 + 8u) - 0x000D2AA4u) < 0x40u,
+          "0x39CC8 case 2 starts the 0xBED88[3] stream");
+    CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0x4036DB6E);      /* 20 / 7 */
+    CHECK_EQ_INT((int)(DSW(pset1) & 0x7FFFu), 0x18AD);
+    /* Below the ground: -12993/64 truncates to -203 (a floor would give -204
+     * and gravity 65), and its magnitude is taken (no abs: 0xFFC0). */
+    kb_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x58u) = 2;
+    DSW(r1 + 0x36u) = (u16)-62;
+    DSD(s1 + 0x30u) = (u32)(5632 - 12993);
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT((int)DSW(r1 + 0x44u), 64);
+    /* 204 * 64 above the ground: 0x39AC8 gives 204*128/400 = 65.28 -> 65. */
+    kb_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x58u) = 2;
+    DSW(r1 + 0x36u) = (u16)-62;
+    DSD(s1 + 0x30u) = 5632u + 204u * 64u;
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT((int)DSW(r1 + 0x44u), 65);
+
+    /* Phase 3, no landing: the ground 5632 is compared with the slot's +0x30
+     * before the 0x186D0 latch (0x39E03, then 0x39E0C). 6000 does not land
+     * even though the latch then lowers +0x30 to the record's 1000. */
+    kb_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x58u) = 3;
+    DSD(s1 + 0x30u) = 6000u;
+    DSD(r1 + 0x1Cu) = 1000u;
+    DSB(r1 + 0x28u) = 0;
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x58u), 3);
+    CHECK_EQ_INT((int)(DSB(r1 + 0x28u) & 0x20u), 0x20);
+    CHECK_EQ_INT((int)DSD(s1 + 0x30u), 1000);            /* the latch ran */
+    CHECK_EQ_INT((int)DSB(r1 + 0x63u), 0x55);
+
+    /* Phase 3, landing at the equal value (setge) and with a record above the
+     * ground (the pre-latch compare): the 0xBEDB0[3] stream at 3.0, y to 2560,
+     * rec+0x43 = 0x14, the side's +0x74 = 0x29A, +0x58 = 4, speeds zeroed and
+     * the 0xBB1DC dust at (slot+0x2C, rec+0x30 >> 16, 0). A three-record
+     * scratch pool keeps the spawn off the real pool. */
+    {
+        u32 sv_pool = DSD(DS_001014F4);
+        u32 sv_free = DSD(DS_00105B3C);
+        u32 sv_free4 = DSD(DS_00105B3C + 4u);
+        u32 sv_act = DSD(DS_00105BCC);
+        u32 sv_act4 = DSD(DS_00105BCC + 4u);
+        u32 pool = 0x003F21000u;
+        u32 p2 = pool + 0x68u;
+        u32 p3 = pool + 0xD0u;
+        int pass;
+        for (pass = 0; pass < 2; pass++) {
+            DSD(DS_001014F4) = pool;
+            DSD(pool) = p2;
+            DSD(pool + 4u) = DS_00105B3C;
+            DSD(p2) = p3;
+            DSD(p2 + 4u) = pool;
+            DSD(p3) = DS_00105B3C;
+            DSD(p3 + 4u) = p2;
+            DSD(DS_00105B3C) = pool;
+            DSD(DS_00105B3C + 4u) = p3;
+            DSD(DS_00105BCC) = DS_00105BCC;
+            DSD(DS_00105BCC + 4u) = DS_00105BCC;
+            DSD(pool + 0x18u) = 0x77777777u;
+            DSD(pool + 0x1Cu) = 0x77777777u;
+            DSW(pool + 0x32u) = 0x7777u;
+
+            kb_seed(s0, s1, r0, r1);
+            DSB(s1 + 0x58u) = 3;
+            if (pass == 0) {
+                DSD(s1 + 0x30u) = 5632u;             /* equal: lands */
+            } else {
+                DSD(s1 + 0x30u) = 5000u;             /* below, pre-latch */
+                DSD(r1 + 0x1Cu) = 9000u;             /* the latch's value */
+            }
+            DSB(r1 + 0x28u) = 0;
+            fighter_39cc8(s1, 1u);
+            CHECK_EQ_INT((int)DSB(s1 + 0x58u), 4);
+            CHECK_EQ_INT((int)DSB(r1 + 0x63u), 0);
+            CHECK((DSD(r1 + 8u) - 0x000D2ADAu) < 0x40u,
+                  "0x39CC8 lands on the 0xBEDB0[3] stream");
+            CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0x40400000);
+            CHECK_EQ_INT((int)(DSW(pset1) & 0x7FFFu), 0x18B3);
+            CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 2560);
+            CHECK_EQ_INT((int)DSD(r1 + 0x18u), 0x4321);
+            CHECK_EQ_INT((int)DSW(r1 + 0x36u), 0);
+            CHECK_EQ_INT((int)DSW(r1 + 0x44u), 0);
+            CHECK_EQ_INT((int)DSB(r1 + 0x43u), 0x14);
+            CHECK_EQ_INT((int)DSW(s1 + 0x74u), 0x029A);
+            CHECK_EQ_INT((int)DSW(s0 + 0x74u), 0x2222);
+            CHECK_EQ_INT((int)(DSB(r1 + 0x28u) & 0x20u), 0x20);
+            CHECK_EQ_INT((int)DSD(pool + 0x18u), 0x4321);
+            CHECK_EQ_INT((int)DSW(pool + 0x32u), 9);
+            CHECK_EQ_INT((int)DSD(pool + 0x1Cu), 0);
+        }
+        DSD(DS_001014F4) = sv_pool;
+        DSD(DS_00105B3C) = sv_free;
+        DSD(DS_00105B3C + 4u) = sv_free4;
+        DSD(DS_00105BCC) = sv_act;
+        DSD(DS_00105BCC + 4u) = sv_act4;
+    }
+
+    /* Phase 4 clears the record's +0x28 bit 5 and the slot's +0x54; any
+     * higher phase returns (0x39CE7). */
+    kb_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x58u) = 4;
+    DSB(r1 + 0x28u) = 0xFFu;
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT((int)DSB(r1 + 0x28u), 0xDF);
+    CHECK_EQ_INT((int)DSB(s1 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSB(s1 + 0x58u), 4);
+    DSB(s1 + 0x58u) = 5;
+    DSB(r1 + 0x28u) = 0xFFu;
+    DSB(s1 + 0x54u) = 2;
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT((int)DSB(r1 + 0x28u), 0xFF);
+    CHECK_EQ_INT((int)DSB(s1 + 0x54u), 2);
+
+    /* 0x35050 first (0x39CD9): the side's own slot +0x14 target runs and is
+     * cleared when it returns non-zero, kept when it returns zero; the other
+     * slot's +0x14 is not called. */
+    if (fn_resolve(KB_STUB_14) == NULL)
+        fn_register(KB_STUB_14, (void (*)(void))kb_stub_14);
+    kb_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x58u) = 5;
+    DSD(s1 + 0x14u) = KB_STUB_14;
+    kb_stub_calls = 0;
+    kb_stub_ret = 1;
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT(kb_stub_calls, 1);
+    CHECK_EQ_INT((int)DSD(s1 + 0x14u), 0);
+    DSD(s1 + 0x14u) = KB_STUB_14;
+    kb_stub_ret = 0;
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT(kb_stub_calls, 2);
+    CHECK_EQ_INT((int)DSD(s1 + 0x14u), (int)KB_STUB_14);
+    DSD(s1 + 0x14u) = 0;
+    DSD(s0 + 0x14u) = KB_STUB_14;
+    fighter_39cc8(s1, 1u);
+    CHECK_EQ_INT(kb_stub_calls, 2);
+
+    DSW(DS_001078F6) = sv_78f6;
+    tf_put(sv_b00, DS_00104B00, 4u);
+    tf_put(sv_a60, 0x00107A60u, 0x20u);
 }
 
 /* ---- Task 3b: the 0x3B714 reaction applier (pose/freeze record §2.3) ----- */
@@ -5343,6 +5673,7 @@ int test_fight(void)
     check_pose_handler();
     check_anim_hold_scaler();
     check_trex_leap();
+    check_knockback_pose();
     check_reaction_predicates();
     check_reaction();
     check_winner_body();

@@ -177,6 +177,15 @@ void fighter_reaction_apply(u32 slot, u32 reaction);
  * EAX = slot (dead), EBX = side. */
 void fighter_pose_3a43c(u32 slot, u32 side);
 
+/* 0x39CC8. The 0x39F40 knockback pose's per-frame handler (slot+0x10, which
+ * 0x39F40 stores at 0x39F8F): the slot +0x14 callback through 0x35050, then a
+ * +0x58 machine. 0 arms; 1 launches through 0x39B30 (gravity, vertical and
+ * signed horizontal speed from the DS_00107A60/68/70/78 words); 2 waits for the
+ * fall and re-times it to the ground; 3 lands (the 0xBEDB0 stream, the 0xBB1DC
+ * dust); 4 clears +0x54. 0x3531C case 10 resolves it from slot+0x10; registered
+ * in actors_init. EAX = slot (dead), EBX = side. */
+void fighter_39cc8(u32 slot, u32 side);
+
 /* 0x3A280. The reaction predicate: 1 for a byte in 0x10..0x17 or 0x20..0x3F. */
 int  fighter_3a280(u32 code);
 

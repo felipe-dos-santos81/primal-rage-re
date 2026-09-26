@@ -334,6 +334,11 @@ void fighter_pass_a(void)
          * DS_00100AF8[side] = 1 on a zero result, 0 otherwise. Its one demo
          * target, 0x3E484 (0x3E62C stores it), needs the unported 0x18C14
          * (demo-pose record §19.6). */
+        /* TODO(verify): the gap is proven inert only for this demo run's
+         * f = 106..114, the frames the T-rex holds the 0x3E484 hook (record
+         * §19.6.2: DS_00100AF8's zero-ness agrees with the raw's). A run where
+         * the other slot has +0x74/+0x76 live or +0x42 bit 3 set while the hook
+         * is held would diverge. */
 
         /* 0x195BB: a side whose slot state byte is 0x0A is out. */
         if (DSB(DS_00107803 + side * 0x94u) == 0x0Au)
@@ -3861,6 +3866,210 @@ void fighter_pose_3a43c(u32 slot, u32 side)
         }
     }
     DSB(ctx[3] + 0x90u) = 1u;                               /* 0x3A4F6 */
+}
+
+/* ---- the 0x39F40 knockback pose's handler 0x39CC8 ---------------------- */
+
+/* PORT: data-object addresses symbols.h does not name. */
+#define FIGHTER_BED38   0x000BED38u  /* 0x39D51: case-2 hold divisor */
+#define FIGHTER_BED60   0x000BED60u  /* 0x39B83: the launch stream */
+#define FIGHTER_BED88   0x000BED88u  /* 0x39DC7: the fall stream */
+#define FIGHTER_BEDB0   0x000BEDB0u  /* 0x39E39: the landing stream */
+#define FIGHTER_BD884   0x000BD884u  /* 0x39D6C: the per-char ground word */
+#define FIGHTER_BB1DC   0x000BB1DCu  /* 0x39EC2: the landing dust descriptor */
+
+/* The x87 hold idiom 0x39B30/0x39CC8 share (0x39B64..0x39B7A,
+ * 0x39D51..0x39D89): FILD den, FILD num, FDIVRP ST(1) (ST(1) = ST(0) / ST(1),
+ * i.e. num / den), FSTP to a float that is pushed as 0x2BC30's hold. A quotient
+ * of two 32-bit integers rounds to the same float from double as from the x87
+ * extended format, so the double division is exact to the raw. */
+static u32 fighter_hold_ratio(s32 num, s32 den)
+{
+    union { float f; u32 u; } fu;
+    fu.f = (float)((double)num / (double)den);
+    return fu.u;
+}
+
+/* 0x39AC8. The gravity that covers `a` in `n` frames: q = (a * 128) / (n * n)
+ * on the sign-extended words (IDIV truncates), then q when q + 0.5 (the double
+ * at 0x80BFA) is below (s16)q + 1 (FCOMPP, JC), else q + 1. */
+static s32 fighter_39ac8(s32 a, s32 n)
+{
+    s32 nn = (s32)((u32)(s32)(s16)n * (u32)(s32)(s16)n);  /* 0x39ACC..0x39AD1 */
+    s32 q = ((s32)(s16)a * 128) / nn;                   /* 0x39AD4..0x39ADF */
+    if ((double)q + 0.5 < (double)((s32)(s16)q + 1))    /* 0x39AE7..0x39B01 */
+        return q;                                       /* 0x39B0B */
+    return q + 1;                                       /* 0x39B03/0x39B05 */
+}
+
+/* 0x39B14. IMUL EAX, EDX. */
+static s32 fighter_39b14(s32 a, s32 b)
+{
+    return (s32)((u32)a * (u32)b);                      /* 0x39B14 */
+}
+
+/* 0x35050. The slot +0x14 callback 0x39CC8 runs first: with slot[side]+0x14
+ * set, call it and zero the field when it returns non-zero. */
+static void fighter_35050(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;              /* 0x35062..0x35078 */
+    if (DSD(slot + 0x14u) != 0u) {                      /* 0x350B0 */
+        /* PORT: the raw calls with EAX = EDX = the slot (0x350B6). No ported
+         * writer stores a non-zero +0x14 (the spawn zeroes it at 0x33DFE), so
+         * this takes the 0x1952F call's shape. */
+        u32 r;
+        u32 (*fn)(void) = (u32 (*)(void))(void *)
+            fn_resolve(DSD(slot + 0x14u));
+        r = fn ? fn() : 0u;                             /* 0x350B8 */
+        if (r != 0u) DSD(slot + 0x14u) = 0;             /* 0x350C1 */
+    }
+}
+
+/* 0x39B30. The knockback launch 0x39CC8's phase 1 runs. From 0x39F40's four
+ * words (DS_00107A68 = h, DS_00107A78 = a, DS_00107A60 = n, DS_00107A70 = m;
+ * the raw reads each as the dword 2 below shifted right 16): clear the record's
+ * speeds, start the 0xBED60[char] stream at hold n / 0xBED10[char] (0x3C520
+ * while airborne, else 0x3C480 plus the ground re-anchor), re-anchor y up to
+ * the ground when below it, then gravity g = 0x39AC8(a, n), vertical speed
+ * g * n and horizontal speed h * 64 / (n + m) through 0x3C190; clear the
+ * record's +0x63, set the slot's +0x41 bit 7 and count +0x68 (at 3 the slot's
+ * +0x74 word = 0x29A). EAX = side. */
+static void fighter_39b30(u32 side)
+{
+    u32 ctx[6];
+    u32 slot, rec, ch, hold;
+    fighter_ctx_swap(ctx, side);                        /* 0x39B3A */
+    slot = ctx[3];
+    rec = ctx[5];
+    fighter_3c148(ctx[1]);                              /* 0x39B43 */
+    fighter_3c16c(ctx[1]);                              /* 0x39B4C */
+    ch = (u32)DSB(slot + 0x7Au);                        /* 0x39B55 */
+    hold = fighter_hold_ratio((s32)DSD(DS_00107A60 + ctx[1] * 4u),
+                              (s32)DSD(DS_000BED10 + ch * 4u));  /* 0x39B64..0x39B7A */
+    if (DSB(slot + 0x54u) == 2u) {                      /* 0x39B77/0x39B7E */
+        hit_anim_start_c(rec, DSD(FIGHTER_BED60 + ch * 4u), hold);  /* 0x39B91 */
+    } else {
+        hit_anim_start_a(rec, DSD(FIGHTER_BED60 + ch * 4u), hold);  /* 0x39BA6 */
+        hit_anchor_y(ctx[1], (u32)((s32)DSD(DS_000BD882 + ch * 2u) >> 16));  /* 0x39BC5 */
+    }
+    {
+        s32 ground = (s32)DSD(DS_000BD882
+                              + (u32)DSB(slot + 0x7Au) * 2u) >> 16;  /* 0x39BCE..0x39BE5 */
+        if (ground > (s32)DSD(slot + 0x30u))            /* 0x39BE8 jle */
+            hit_anchor_y(ctx[1], (u32)ground);          /* 0x39BF0 */
+    }
+    {
+        s32 g = fighter_39ac8((s32)(s16)DSW(DS_00107A78 + ctx[1] * 4u),
+                              (s32)(s16)DSW(DS_00107A60 + ctx[1] * 4u));  /* 0x39BF9..0x39C0D */
+        DSW(rec + 0x44u) = (u16)g;                      /* 0x39C16 */
+    }
+    DSW(rec + 0x36u) = (u16)fighter_39b14(
+        (s32)DSD(rec + 0x42u) >> 16,
+        (s32)(s16)DSW(DS_00107A60 + ctx[1] * 4u));      /* 0x39C22..0x39C3B */
+    {
+        u16 h = DSW(DS_00107A68 + ctx[1] * 4u);         /* 0x39C43 */
+        u16 n = DSW(DS_00107A60 + ctx[1] * 4u);         /* 0x39C4B */
+        u16 m = DSW(DS_00107A70 + ctx[1] * 4u);         /* 0x39C53 */
+        s32 den = (s32)(s16)(u16)(n + m);               /* 0x39C60/0x39C65 */
+        s32 q = ((s32)(s16)h * 64) / den;               /* 0x39C5D..0x39C6D */
+        fighter_3c190(ctx[1], (u32)(s32)(s16)q);        /* 0x39C6F/0x39C76 */
+    }
+    DSB(rec + 0x63u) = 0;                               /* 0x39C7F */
+    DSB(slot + 0x41u) |= 0x80u;                         /* 0x39C87 */
+    DSB(slot + 0x68u) = (u8)(DSB(slot + 0x68u) + 1u);   /* 0x39C8F */
+    if ((u32)DSB(slot + 0x68u) >= 3u)                   /* 0x39C9E */
+        DSW(slot + 0x74u) = 0x029Au;                    /* 0x39CA7 */
+}
+
+/* 0x39CC8. The per-frame handler 0x39F40 stores in slot+0x10 (0x39F8F); it has
+ * no Ghidra function (its jump table is at 0x39CB4). 0x3531C case 10 calls it
+ * with EAX = slot, EBX = side; the 0x33A10 context overwrites EAX, so only the
+ * side is read. It runs 0x35050, then switches on the slot's +0x58: 0 arms 1;
+ * 1 launches through 0x39B30 and sets 2; 2 waits for a negative vertical speed,
+ * then re-times the fall to the ground (gravity 0x39AC8(|dy/64|, m), the
+ * 0xBED88[char] stream at hold m / 0xBED38[char]) and sets 3; 3 sets the
+ * record's +0x28 bit 5 and, once the ground word is at or above the slot's
+ * +0x30 (compared before the 0x186D0 latch), lands: the 0xBEDB0[char] stream
+ * at hold 3.0 with the x kept, y re-anchored to word[0xBECFA + char*2], the
+ * record's +0x43 = 0x14, the side's +0x74 word = 0x29A, +0x58 = 4 and the
+ * 0xBB1DC dust at (slot+0x2C, rec+0x30 >> 16); 4 clears +0x28 bit 5 and the
+ * slot's +0x54. */
+void fighter_39cc8(u32 slot, u32 side)
+{
+    u32 ctx[6];
+    u32 sl, rec, ch;
+    (void)slot;
+    fighter_ctx_swap(ctx, side);                        /* 0x39CD0 0x33A10 */
+    fighter_35050(ctx[1]);                              /* 0x39CD9 */
+    sl = ctx[3];
+    rec = ctx[5];
+    switch (DSB(sl + 0x58u)) {                          /* 0x39CE2 table 0x39CB4 */
+    case 0u:                                            /* 0x39CFA */
+        DSB(sl + 0x58u) = 1u;                           /* 0x39CFE */
+        return;
+    case 1u:                                            /* 0x39D07 */
+        fighter_39b30(ctx[1]);                          /* 0x39D0B */
+        DSB(sl + 0x58u) = 2u;                           /* 0x39D14 */
+        return;
+    case 2u:                                            /* 0x39D1D */
+        {
+            u32 hold;
+            s32 d;
+            if ((s16)DSW(rec + 0x36u) >= 0) return;     /* 0x39D21 setl */
+            DSB(rec + 0x63u) = 0;                       /* 0x39D35 */
+            DSB(sl + 0x58u) = 3u;                       /* 0x39D3D */
+            ch = (u32)DSB(sl + 0x7Au);                  /* 0x39D45 */
+            hold = fighter_hold_ratio((s32)DSD(DS_00107A70 + ctx[1] * 4u),
+                                      (s32)DSD(FIGHTER_BED38 + ch * 4u));  /* 0x39D51..0x39D89 */
+            d = (s32)(s16)(u16)(DSW(sl + 0x30u)
+                                - DSW(FIGHTER_BD884 + ch * 2u));   /* 0x39D6C..0x39D79 */
+            d /= 64;                                    /* 0x39D7C..0x39D86 */
+            if ((s16)d < 0) d = -(s32)(s16)d;           /* 0x39D8D..0x39D95 */
+            else d = (s32)(s16)d;                       /* 0x39D99 */
+            DSW(rec + 0x44u) = (u16)fighter_39ac8(
+                (s32)(s16)d,
+                (s32)(s16)DSW(DS_00107A70 + ctx[1] * 4u));   /* 0x39D9E..0x39DB6 */
+            actors_anim_begin(rec, DSD(FIGHTER_BED88
+                                       + (u32)DSB(sl + 0x7Au) * 4u),
+                              hold);                    /* 0x39DC0..0x39DD2 0x2BC30 */
+        }
+        return;
+    case 3u:                                            /* 0x39DDC */
+        {
+            u32 x;
+            int land;
+            DSB(rec + 0x28u) |= 0x20u;                  /* 0x39DE0 */
+            ch = (u32)DSB(sl + 0x7Au);                  /* 0x39DE8 */
+            land = ((s32)DSD(DS_000BD882 + ch * 2u) >> 16)
+                   >= (s32)DSD(sl + 0x30u);             /* 0x39DF0..0x39E03 setge */
+            fighter_slot_latch(ctx[1]);                 /* 0x39E0C 0x186D0 */
+            if (!land) return;                          /* 0x39E13 */
+            DSB(rec + 0x63u) = 0;                       /* 0x39E1D */
+            x = DSD(sl + 0x2Cu);                        /* 0x39E2E */
+            actors_anim_begin(rec, DSD(FIGHTER_BEDB0 + ch * 4u),
+                              0x40400000u);             /* 0x39E44 0x2BC30 */
+            fighter_slot_latch(ctx[1]);                 /* 0x39E4D */
+            fighter_3c16c(ctx[1]);                      /* 0x39E56 */
+            hit_anchor_y(ctx[1], (u32)((s32)DSD(DS_000BECF8
+                                                + (u32)DSB(sl + 0x7Au) * 2u) >> 16));  /* 0x39E5F..0x39E72 */
+            hit_anchor_x(ctx[1], x);                    /* 0x39E7D */
+            DSB(rec + 0x43u) = 0x14u;                   /* 0x39E86 */
+            DSW(DS_00107824 + (u32)DSB(rec + 0x51u) * 0x94u) = 0x029Au;  /* 0x39EA6 */
+            DSB(sl + 0x58u) = 4u;                       /* 0x39EB4 */
+            (void)actor_spawn((const u32 *)(mem + FIGHTER_BB1DC),
+                              DSD(sl + 0x2Cu),
+                              (u32)((s32)DSD(rec + 0x30u) >> 16),
+                              0u, 0u);                  /* 0x39EB8..0x39ED0 0x2AE14 */
+            /* PORT: 0x39EDA 0x2C3FC(0x6C) — voice, out of scope (spec §7). */
+        }
+        return;
+    case 4u:                                            /* 0x39EE4 */
+        DSB(rec + 0x28u) &= 0xDFu;                      /* 0x39EE8 */
+        DSB(sl + 0x54u) = 0;                            /* 0x39EF0 */
+        return;
+    default:                                            /* 0x39CE7 ja 0x39EF4 */
+        return;
+    }
 }
 
 /* 0x3AA54. The reaction-0x11 pose setter: seed the record's +0x44/+0x36/+0x34

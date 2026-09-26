@@ -150,6 +150,9 @@ int actors_init(void)
      * +0x10 (the 0x3A504 setter writes it; the raw reaches it only through
      * that indirect call). */
     fn_register(0x3A43Cu, (void (*)(void))fighter_pose_3a43c);
+    /* PORT: the knockback pose's handler 0x39CC8, which the setter 0x39F40
+     * stores in slot+0x10 at 0x39F8F; same case-10 shape as 0x3A43C. */
+    fn_register(0x39CC8u, (void (*)(void))fighter_39cc8);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
