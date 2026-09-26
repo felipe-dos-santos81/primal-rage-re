@@ -731,12 +731,13 @@ boot cycle's phase 2 wraps it to 0), so the second cycle reaches phase `0xA`'s
 lightning and hands off to a second demo at loop 2782 (`DS_000F0A72` = 5), as
 the capture does from 2385. `make attract2-oracle` (`--attract2`, in `make
 verify`) classifies captures 1885..3616 against `cycle2/` only, with the ratchet
-N = 2384.
+N = 2386. Capture 2384, the `- LOADING -` frame before the second demo, is
+allowed by name: it is byte-identical to front-end capture 832 (record §37).
 
 **The demo window is report-only; its first unexplained frame is capture 1886 —
 the capture's next cycle after the demo, with no port frame left in the
 top-level dump (`make attract2-oracle` classifies that region against
-`cycle2/`: first unexplained 2384) — after the
+`cycle2/`: first unexplained 2386, with 2384 allowed by name) — after the
 demo-pose cycle explained captures 843..850, the roar-timing fix 851..857, the
 frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863, the
 frame-864 fix 864/865, the frame-866 fix 866, the frame-867 fix 867..869 and
@@ -2338,6 +2339,30 @@ record §34).**
   354 clean, 138 splice, 3 transition, 4 all-black. The first unexplained is
   **2384 (raw 6759)**, the `- LOADING -` frame before the second demo (no
   raw-code owner, like 832). N = 2384. The second demo diverges from 2386.
+
+### The second demo's first state-7 frame (roar-timing Task 27), capture 2386
+
+* **2384.** Capture 2384 is byte-identical to front-end capture 832, the
+  loader's `- LOADING -` frame the front-end oracle allows by name.
+  `title_compare --attract2` now allows it the same way, only while that
+  identity holds (`ATTRACT2_ALLOWED_UNEXPLAINED`). The first unexplained
+  frame moves to 2386 and N = 2386 (`c0edb4c`). The tool also fails when N
+  is at or below the region's start.
+* **The owner that was missing.** A `fn_resolve` miss log over the 2800
+  loops found one non-stub miss: `0x1490C` at loop 2784, the second demo's
+  first state-7 loop. It is character 3's (the raptor's) reaction 0x27, at
+  `*(u32*)0xA4734` in the `0xA3528` reaction table. It is now ported with its
+  closure (record §37): `0x14814`, `0x14590`, the slot callbacks `0x1461C`
+  (+0x0C), `0x145CC` (+0x18 hook) and `0x145E4` (+0x1C), `0x146F0`,
+  `0x3F720`, and the stream target `0x37CD4`. After it the run has no
+  non-stub miss.
+* **Measured.** The front-end and demo-fight dumps and every earlier oracle
+  are unchanged. The second demo's frames change: the raptor now plays the
+  reaction and its later poses follow the capture. The attract2 counts do not
+  move, and 2386 stays the first unexplained frame. Its rows 0..127 equal
+  the state-6 -> 7 frame. Rows 128 on hold both fighters in poses that no
+  port frame shows. The ape (character 1, stream `0xE3AF0`, state 3/4/2) is
+  not touched by this fix. That divergence is the next owner (record §37.5).
 
 ## Landmarks (verified)
 

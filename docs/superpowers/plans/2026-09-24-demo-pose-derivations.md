@@ -6558,7 +6558,11 @@ calls `0x52106(0)` again at `0x1C873`, inside the opened arm.
 - `0x52133`..`0x52149`: 256 zero DAC entries after a VBlank spin.
 - `0x5214C`: `0x51F72` fills 0xA0000 with the same dword.
 
-Every caller passes 0: `0x2BAF4` at `0x2BBE8`/`0x2BBEA`, and `0x1C740`'s two.
+The ported callers pass 0: `0x2BAF4` at `0x2BBE8`/`0x2BBEA`, and `0x1C740`'s
+two. (Corrected in Task 27, §37.1: an earlier text said every caller passes 0.
+`0x52106` has 7 callers, and the three unported sites `0x32E93`, `0x330B1` and
+`0x332E4` pass `0x2EDE0`'s return after a bit test has found it non-zero.
+`0x32BF5` passes its function's EAX.)
 
 **`0x4F228`**:
 - `xor ah,ah; xor edx,edx; xor ebx,ebx`
@@ -6646,3 +6650,226 @@ next owner. Its state 7 reaches `0x1490C`, `0x15350`, `0x3640C` and
 `0x3C32C`, none of them registered. 2384 is a loader frame with no raw-code
 owner, so N can move past it only when a frame after it is explained and
 2384 is allowed by name with this reason, as 832 is.
+
+## 37. The second demo: capture 2384 allowed by name, character 3's reaction `0x1490C` (roar-timing Task 27, `c0edb4c`, `a7ccc86`)
+
+**Result in one line.** Capture 2384 is byte-identical to front-end capture
+832, so it is allowed by name the same way, and the attract2 ratchet moves
+to N = 2386 (`c0edb4c`). The second demo's first state-7 frame reaches
+character 3's reaction callback `0x1490C`, which was not registered. It is
+now ported with its closure (`a7ccc86`). The raptor's later poses follow the
+capture, but 2386 stays the first unexplained frame, because both fighters
+differ on it. N stays 2386.
+
+### 37.1 The parked corrections (`7f42495`)
+
+- **`0x52106`'s callers.** `get_xrefs_to 0x52106` lists 7 calls:
+  `0x2BBEA`, `0x1C74D`, `0x1C873`, `0x32BF5`, `0x32E93`, `0x330B1` and
+  `0x332E4`. The ported three pass 0. The others do not:
+  - `0x32E93` and `0x332E4` follow `call 0x2EDE0; test eax,0x1000000; je`
+    (`0x32E83..0x32E8D`, `0x332CC..0x332D6`), so EAX has bit 24 set.
+  - `0x330B1` is reached after `test eax,0x2000000` (`0x33092`) or
+    `test eax,0x1000000` (`0x330A2`) found a bit set.
+  - `0x32BF5` is a loop head (`0x32F43 jl`). Its first pass carries the
+    function's incoming EAX (`0x32BE5 mov [esp+0x2c],eax`, then no write to
+    EAX before `0x32F43`).
+  `gfx.c`, `test_platform.c` and §36.3 now say this.
+- **`game_init`.** `0x20C10` makes `0x20C47 xor eax,eax; 0x20C49 call
+  0x4F228`. `game_init` now calls `render_projection_reset(0)`. The four
+  targets are already 0 there: the front-end `select.log` is byte-identical,
+  and the title oracle is unchanged.
+- **Stale claims.** In `test_video.c`, TWI5's last frame is presented
+  (§36.2, capture 2094); the smacker capture just does not hold it. In
+  `game_flow.md`, the driver loops 2800 with a 2000-loop measurement window.
+- **The E2 gate.** Outside the isolated `PR_ATTRACT_DUMP` run, `test_attract`
+  now requires the pool, so E2 cannot skip silently.
+- **The Makefile.** The demo-fight provenance comment is rewrapped. The words
+  are unchanged.
+
+### 37.2 Capture 2384 (`c0edb4c`)
+
+`frame_2384.raw` and `frame_0832.raw` in `data/title-captures/frontend` are
+byte-identical (0 differing bytes). 832 is the front-end oracle's allowed
+LOADING frame (the loader's read-stall class, no raw-code owner, §35.1). So
+`title_compare --attract2` allows 2384 by index through
+`ATTRACT2_ALLOWED_UNEXPLAINED = {2384: 832}`. The allowance holds only while
+the two captures stay byte-identical. Otherwise the tool fails. The tool
+also fails now when N is at or below the region's start, because such an N
+guards no frame (tested with N = 1885).
+
+On `7f42495`'s dump, which is byte-identical to `01a7f70`'s, the region is
+`[1885..3616]`: 355 clean, 138 splice, 3 transition, 1230 unexplained,
+6 all-black. 2384 is allowed, and the first unexplained frame is 2386
+(raw 6794). N = 2386.
+
+### 37.3 The measurement (probes reverted)
+
+- **The miss log.** A temporary `fn_resolve` hook logged every miss with the
+  driver's loop index. In 2800 loops the only miss other than the
+  type-table stub `0x5D812` is `0x1490C`, once, at loop 2784. That loop is
+  the second demo's first state-7 iteration; loop 2783 is the state-6 -> 7
+  frame, cycle-2 frame 978, which is capture 2385. `0x15350`, `0x3640C` and
+  `0x3C32C` (named in §36.5) are not reached before loop 2800.
+- **Where the pointers live.** A read of the data object (Ghidra
+  `read_memory`, fixups applied) finds the dword `0x0001490C` once, at
+  `0xA4734`, which reads `0c 49 01 00 00 00 00 00`. That is a callback with
+  no stream. `0xA4734 - 0xA3528` = `0x120C` = 231 records of `0x14` =
+  3 * 64 + `0x27`, so it is character 3's reaction `0x27` in `0x34E2C`'s
+  table. `0x15350` is at `0xA470C` (character 3, `0x25`). `0x3640C` has 7
+  stream sites and `0x3C32C` has 9.
+- **The fighters.** Side 0 is character 3 (the green raptor). Side 1 is
+  character 1 (the white ape).
+
+### 37.4 The raw (Ghidra `read_memory` + capstone, fixups applied)
+
+- **`0x1490C`** (EAX = slot, EDX = rec, EBX pushed and not read):
+  - `0x339AC(rec)` builds the context.
+  - `0x14814(slot, rec)`.
+  - `0x1492A mov [eax+0xFD11C],dl` with DL = 1 sets FD11C[side].
+  - It returns AL = 1.
+- **`0x14814`**:
+  - `0x339AC(rec)`, then the voice `0x2C3FC(0xB0)` (out of scope, spec §7).
+  - With `0x396AC(ctx[0], 0)` true:
+    - `0x18B44(ctx[2])`. It pushes and pops EDX, so 0xD2E86 survives.
+    - `0x3C4CC(rec, 0xD2E86, [0x9AFE4])`. The hold is the dword at
+      `0x9AFE4` = `0x40200000`.
+    - The slot state is 9/4/0.
+  - Otherwise:
+    - The stream is `0xD2EDC` when `0x14590(ctx[0])` holds, with ctx[3]
+      +0x68 decremented (`0x1487F`). Otherwise it is `0xD2E9A`.
+    - It starts through `0x3C4CC` at hold 1.0.
+    - The slot's +0x57 = 0 and its state is 9/7/0.
+    - The slot's +0x0C/+0x18/+0x1C = `0x1461C`/`0x145CC`/`0x145E4`.
+    - The slot's +0x40 dword `or 0x48000`.
+    - The record's +0x55 = 0.
+    - FD108[side] is `0x2000` when ctx[2]'s +0x2C is above ctx[3]'s
+      (signed, `0x148DE jle`), else `0x1000`.
+    - FD11C[side] = 0. `0x1490C` then overwrites it with 1, so through the
+      only caller this store is invisible.
+- **`0x14590`**: `0x33950(side)`. When ctx[3] +0x10 == `0x39CC8` or
+  ctx[3] +0x52 == `0x11`, it returns whether the side's `0x107D2C` word is
+  greater than 0 (signed, `0x145BC jle`). Otherwise it returns 0.
+- **`0x1461C`** (EAX = slot, EDX = rec, EBX = side; `0x33950(side)`). The
+  jump table at `0x1460C` holds `0x1464A`, `0x14699`, `0x146D7` and
+  `0x146E8`. It switches on ctx[2] +0x57:
+  - 0 waits for +0x42 bit 3. Then it sets +0x57 = 1 and sets FD114[side]
+    to the word at `0x9AFDA` (4), with `0x4F944(1)`, when `0x14590` holds.
+    Otherwise it uses the word at `0x9AFD8` (`0x14`).
+  - 1 decrements FD114 and calls `0x3F720(ctx[0], old)`. Once the new value
+    is below 1 (`0x146BA` reads it as the dword at `0xFD112` >> 16), it sets
+    +0x57 = 2.
+  - 2 calls `0x146F0(slot, rec)`, then sets +0x57 = 3.
+  - Anything above that returns.
+- **`0x146F0`**. It overwrites EAX without reading it (`0x146F8`) and uses
+  `0x339AC(rec)`:
+  - The stream is `0xD2EFC` or `0xD2EBA`, chosen by `0x14590`.
+  - The direction bits are the `0x1088E0` word, ORed with FD108 unless
+    `ch & 0x30`.
+  - With FD11C[side] set:
+    - `0x3C148`.
+    - `0x3C520` at 1.0.
+    - `0x1890C(ctx[0], [0x9AFDC] >> 16 = 0x3200)`.
+    - ctx[2] +0x54 = 2.
+    - The record's +0x36 = `[0x9AFE0]` * 3 and +0x44 = `[0x9AFE0]`
+      (`0x19`).
+    - `0x1078F8[side]` = 1.
+  - Otherwise `0x3C480` at 1.0.
+  - Then `0x3C148` and `0x188DC(ctx[0], ...)`. The value is ctx[3] +0x2C
+    minus `[0x9AFDA] >> 16` (`0x1180`) when `ch & 0x20`, else plus it.
+  - Then `0x18B04(ctx[0])`, ctx[2] +0x42 `and 0xFB`, and +0x57 = 3.
+  - The voice `0x2C3FC(0xB1)` is out of scope.
+  - `0x3C148`, `0x3C480`, `0x3C520` and `0x1890C` preserve ECX, so the bits
+    survive.
+- **`0x3F720`** (EAX = side, EDX = n):
+  - `0x33950`, and n < 1 becomes 1.
+  - `0x187FC` is called once for the sign and once for the value. Then
+    `idiv` gives |d| / n.
+  - `0x189FC(ctx[1])` preserves EDX. When it returns 0, the value is 100.
+  - Then `0x3C190(ctx[0], v)`.
+- **`0x145CC`**: `0x33950(side)`, then EAX = 1.
+- **`0x145E4`**: `0x39834(ctx[1], ctx[2] +0x5F)` on `0x33950(side)`.
+- **`0x37CD4`** (an anim target: EAX = rec; EDX is pushed and not read).
+  When the record's +0x14 (its slot) is set, it XORs the slot's +0x42 with
+  8. Then the slot's +0x74 = `0x378` when bit 3 is now set, else 0. Its
+  dwords are at `0xD2EB0`, `0xD2EBC`, `0xD2EF2`, `0xD2EFE` (and `0xD2F80`,
+  `0xD2F8C`, `0xD2FC2`, `0xD2FCE`, `0xD4B9C`, `0xD4BA8`).
+- **Parameter words** (`read_memory 0x9AFD8`, 16 bytes): `0014 0004 1180
+  3200 0019 DC00 0000 4020`.
+- **`0x396AC`'s threshold** for (character 3, `0x27`) is the word at
+  `0xA6C96` = 1. So the first reaction bumps `0x107A80[0x27]` to 1 and
+  takes the false arm, and a second one takes the true arm.
+
+### 37.5 The fix, its assertions, and 2386
+
+**The fix** (`a7ccc86`) is 8 functions in `fighter.c` (`fighter_14590`,
+`_3f720`, `_146f0`, `_14814`, `_1490c`, `_1461c`, `_145cc`, `_145e4`) and
+`anim_code_37CD4` in `actors.c`. Five of them are registered: `0x1490C`,
+`0x1461C`, `0x145CC`, `0x145E4` and `0x37CD4`. That is about 0x300 bytes of
+raw code, inside the gate. The voices are `PORT:` (spec §7), as in the other
+reaction callbacks.
+
+**`check_char3_reaction`** (in `test_fight.c`, after `check_trex_grab`)
+patches the five stream heads to plain frame words and restores them. It
+checks:
+- A: through `0x34E2C` (reaction `0x27`, character 3): the counter bump, the
+  stream, the hold, the pset, state 9/7/0, the callbacks, +0x40, +0x55,
+  FD108 = `0x2000`, FD11C, and the other side's sentinels.
+- B/B2: the `0x14590` arms (`0x39CC8`, `0x11`, the word at 0), FD108 =
+  `0x1000`, and EBX unread.
+- C: the `0x396AC`-true arm, with hold `0x40200000` and state 9/4/0.
+- D: `0x1461C` with EAX/EDX from the other side:
+  - case 0 with and without bit 3, and both loads, with `0x4F944`'s HUD
+    writes
+  - case 1 with both `0x189FC` results (`0xFF9C`, `0x20`), the 1 -> 0 exit,
+    and n = 0 -> 1
+  - case 2 through `0x146F0` in both arms (x minus and plus `0x1180`, the
+    anchor y `0x3200`, +0x36/+0x44, `0x1078F8`, `0x3C148`)
+  - case 3 returning
+- E: `0x145CC` through `0x19020`.
+- F: `0x145E4`'s `0x39834(1, ...)`, which counts on side 0.
+- G: `0x37CD4` as `anim_indirect` calls it.
+
+**Mutations.** `scratchpad/t27/mut/mut27.py` made 37 single-site edits:
+36 fail 1..16 assertions. One survives, and it is equivalent: `0x146F0`'s
+FD11C arm calling `0x3C480` in place of `0x3C520`. Both begin the same
+stream. The only state they leave differently is rec +0x1C, which the
+following `0x1890C` sets absolutely (`y - AB4[side]` after its latch). The
+sources were restored and checked with `cmp`.
+
+**Measured (the dump with the fix).**
+
+| measurement | before (`c0edb4c`) | after (`a7ccc86`) |
+|---|---|---|
+| fn_resolve misses (non-stub), 2800 loops | `0x1490C` at loop 2784 | none |
+| front-end / demo-fight | `[560..1884]` 517/801/3/2; empty, N 1886 | unchanged |
+| attract2 `[1885..3616]` | 355/138/3/1230/6, first 2386 | **unchanged**, first 2386 |
+| sum of best-match pixel diffs, captures 2386..2402 | 439742 | 419003 |
+
+`select.log` changes only from loop 2784.
+
+**2386, characterised.** Capture 2386's rows 0..127 equal cycle-2 frame 978
+(the state-6 -> 7 frame). Its rows 128 on hold both fighters in poses that
+no port frame 978..994 shows. The raptor region differs from frame 979 in
+2128 pixels and the ape region in 1892. No shift within +-8 pixels explains
+either, and the background rows match. The port's state after loop 2784
+(probe, reverted):
+- The raptor takes reaction `0x27` on the false arm: 9/7/0, stream
+  `0xD2E9A`.
+- The ape is at +0x52/53/54 = 3/4/2 on stream `0xE3AF0` at hold 1.0, and
+  jumps (+0x52 = 4) after loop 2786.
+
+The capture agrees on the later course: the ape jumps at 2389 (about port
+frame 981.4), and the raptor curls at 2393 (port 985). The first state-7
+frame's poses still differ, and the ape is not touched by this fix. Only 16
+second-demo frames are in the dump (cycle-2 978..994, `FE_LOOPS` = 2800).
+
+**The staged next step.**
+1. Identify the two sprites in capture 2386's rows 128 on. Render the
+   ape's `0xE3AF0` frames and the raptor's `0xD2E9A`/`0xD2F1E` sequence
+   (`0x181F..0x1825`) with `tools/gra_render.py` and match the crops.
+2. Trace who starts the ape's `0xE3AF0` at loop 2784 (the demo AI's first
+   command). Compare with the first demo's first state-7 frame, which is
+   explained (Task 3b).
+3. Check the raptor stream's opcodes before the first sprite: `0xDC00`
+   (operand `0xD1658`), `0xED40` (the sprite list `0xD2F1E`) and `0xB840`.
+4. Raise `FE_LOOPS` only when a frame after 2386 can be explained.
