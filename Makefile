@@ -197,7 +197,8 @@ demo-oracle: build ## Demo window report, states 9/6/7 (skips without data/title
 # first unexplained frame is >= it. It is NOT "the fight is reproduced": the window is
 # not yet explained, so N is the measured first unexplained frame, raised as the port
 # improves (the tool prints "ratchet improved ... raise N"). N = 1358 was measured on
-# 0e489c6 with the worshipper arrival target 0x4AC18 ported and registered: the
+# b5a48a0 (the commit that raised it, on 0e489c6): the worshipper arrival
+# target 0x4AC18 is ported and registered: the
 # left-edge worshipper's cheer stream reaches `D500 AC18 0004` at 0xEE09C at
 # f = 206, and 0x4AC18 runs the arrival 0x4AC38 for the actor's +0x14 entry
 # (type 0, the 0xC9544[+0x48 - 0x20] stream at the hold 5.0), after which the

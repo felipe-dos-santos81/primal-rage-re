@@ -3689,3 +3689,200 @@ closure is not measured. From capture 1007 (port 630, f = 214) a second,
 whole-frame divergence joins: the port's raptor, back up from its get-up at
 f = 206, enters state 3 at f = 207 and 4 at f = 209 and leaps forward, and the
 capture's raptor rises differently; not characterised further.
+(Derived since, §23: `0x4AC18` is the cause, and porting it explains
+captures 998..1357, including the 1007 divergence.)
+
+## 23. The worshipper arrival target `0x4AC18` at capture 998 (roar-timing Task 13, `b5a48a0`)
+
+**Result in one line.** Capture 998 has one cause, and it is the port's. At
+f = 206 the left-edge worshipper's actor (pool record `0x2A7ED80`, its
+fight-effect entry `0x1083CC` in type 8, a cheer) reaches `D500 AC18 0004` at
+`0xEE09C` (opcode `0x15`, mode `0x4000`, the dword `0x0004AC18` at
+`0xEE09E`). The port's `fn_resolve(0x4AC18)` returned NULL, so the dispatcher
+skipped it and walked on into the next cheer stream at `0xEE0A2`, and the
+worshipper kept cheering. The raw `0x4AC18` calls the already-ported arrival
+`0x4AC38` for the actor's `+0x14` entry: the entry returns to type 0, and the
+actor begins its `0xC9544` stream. The entry's type-0 handler `0x4AAD0` then
+walks it. Porting `0x4AC18` (29 B, one function, its only callee already
+ported) explains captures 998..1357.
+
+### 23.1 The measurement and the trace (temporary, reverted)
+
+**The capture.** `splice.py` on `0e489c6` (port frames 615..640): 996 and 997
+explained; 998 622/623 (row 107) 259 px; 999..1006 481–651 px on consecutive
+splices, all in the left-edge worshipper (x ≈ 0–33, rows ≈ 130–176, plus a
+few pixels of the splice row); 1007 3 514 px and 1008 11 573 px (whole
+frame).
+
+**The port.** Two `getenv("PR_T13")` probes printed data, and both have been
+reverted:
+* One sat at the end of `fight_arena_frame`. For f = 195..240 it printed the
+  camera, `DS_00108874` and every `DS_0010884C` entry: type, actor, `rec+8`,
+  x, `+0x34`, `+0x29`, `+0x48`, hold, `entry+0x14`/`+0x21` and the actor's
+  `+0x14`.
+* One sat in `anim_indirect`. It printed every opcode-target call: frame,
+  target, record, `rec+8`, operand, `rec+0x14`, `rec+0x48`, and whether the
+  target resolved or missed.
+
+At f = 204..206 the entry `0x1083CC` (side 0) was in type 8 with its actor
+`0x2A7ED80` at x −3 729, `+0x34` 0, `+0x48` `0x20`, `rec+8` `0xEE090`..`0xEE0A0`
+and hold 3.0. The miss line read
+`f=206 tgt=4ac18 rec=2a7ed80 rec8=ee0a0 arg=e r14=1083cc r48=20 MISS`, and
+`rec+8` then walked `0xEE0A4`, `0xEE0A6` (the stream at `0xEE0A2`, the next
+cheer), with the entry in type 8 through f = 240.
+The actor's `+0x14` is the entry (`0x49617`), and `entry+8` is the actor
+(`0x49614`). On `0e489c6` the whole run missed `0x4AC18` 8 times (f = 206,
+302, 343, 351, 362, 411, 451, 481) from four worshippers (`+0x48` `0x20`,
+`0x21`, `0x23`, `0x24`).
+
+### 23.2 The raw (local dump of Ghidra `read_memory`, fixups applied; capstone)
+
+`0x4AC18` has no Ghidra function, and `get_xrefs_to 0x4AC18` returns no
+references (0). `read_memory 0x4AC18` begins `53 52 8b 50 14 85 d2 74 11 89 d3
+31 d2 8a 50 48`. A scan of the data object finds the dword `0x0004AC18` 24
+times, each after a `D500` word: `0xEE09E`, `0xEE0EC`, `0xEE10A`, `0xEE3E2`,
+`0xEE42E`, `0xEE47C`, `0xEE4AC`, `0xEE722`, `0xEE798`, `0xEE7E6`, `0xEE816`,
+`0xEEADE`, `0xEEB3C`, `0xEEB8A`, `0xEEBDE`, `0xEEED0`, `0xEEF30`, `0xEEF7E`,
+`0xEEFB8`, `0xEF286`, `0xEF2FE`, `0xEF34C`, `0xEF39A`, `0xEF62E`.
+`read_memory 0xEE09C` gives `00 d5 18 ac 04 00 40 cd`.
+
+```
+0x4ac18  push ebx ; push edx
+0x4ac1a  edx = [eax+0x14] (the entry) ; test ; je 0x4ac32 (return)
+0x4ac21  ebx = edx ; edx = 0 ; dl = [eax+0x48] ; edx -= 0x20 ; eax = ebx
+0x4ac2d  call 0x4ac38                       ; EAX = entry, EDX = index
+0x4ac32  pop edx ; pop ebx ; ret
+```
+
+The index is `(u32)(u8)[rec+0x48] − 0x20`, a 32-bit value (`xor edx,edx`
+then `mov dl`, zero-extended). It is read from EAX's record, not from
+`entry+8`. The effects pass's own index is the u16 `si` (`0x49CE1`); the
+two agree for `+0x48` ≥ `0x20`. EDX is pushed and overwritten
+(`0x4AC1A`) before any read, so the port's `(rec, arg)` wrapper drops the
+operand.
+
+`0x4AC38` was already ported as `fight_4ac38`, for the effects pass's
+type-1 arrival at `0x49D86`. It is unchanged:
+* `entry+8`'s actor: `+0x29 &= 0xBF`, `|= 0x10`, `+0x34/+0x36/+0x38` = 0
+* `entry+0x1E` = 0
+* `0x2BC30(actor, [0xC9544 + index*4], push 5.0)`
+
+`get_xrefs_to 0x4AC38` lists nine calls:
+* `0x4AC2D` (this function)
+* `0x49D86` and `0x49DA9` (`0x49C78`)
+* `0x4C074` and `0x4C097` (`0x4BF18`)
+* `0x4D382`, `0x4D412`, `0x4D435` and `0x4D6E0` (`0x4D2D0`)
+
+`read_memory 0xC9544` begins `0xEE02C`, `0xEE3E6`, `0xEE726`, `0xEEAE2`,
+`0xEEED4`, `0xEF28A`, one idle stream per worshipper descriptor.
+
+**Dispatch.** Opcode `0x15` (`0x2B5E3`) returns 2. In the per-frame walk
+(`0x2AA70`) that returns before the id path, so the id that `0x4AC38`'s nested
+`0x2BC30` loaded stands. In a `0x2BC30` begin, the status-2 arm adds 2 to
+`rec+8` (`0x2BCC0 add dword [ecx+8],2`) after the nested begin, so it loads
+the new stream's second word (asserted in §23.3 F).
+
+### 23.3 The fix and its assertions
+
+* **Fix** (`port/src/game/fight.c`, `fight.h`, `actors.c`):
+  * `fight_4ac18(rec)` (exported) sits next to the static `fight_4ac38`.
+  * It is registered at `0x4AC18` through the `anim_code_4AC18` `(rec, arg)`
+    wrapper. For that, `actors.c` now includes `game/fight.h`.
+* **Assertions** (`test_fight.c`):
+  * The registration (through the wrapper) is checked in
+    `check_anim_hold_scaler`.
+  * The new `check_worshipper_arrival` uses `wa_seed`: the demo worshipper at
+    f = 206, with entry type 8, `+0x48` `0x20`, and sentinels in `rec+8`, the
+    hold 3.0, `+0x34/+0x36/+0x38`, `+0x29` `0x4B` and the pset word. A second
+    actor `oth` is seeded too. The `0xC9544` table and the dwords at
+    `0xC9540`/`0xC9744`/`0xC9344` hold crafted literal-id streams and are
+    restored afterwards. Its parts:
+    * A, the direct call: the entry goes to type 0, the speeds to 0 and
+      `+0x29` to `0x13`. `rec+8` is the index-0 stream, the hold is 5.0 and
+      the pset id is `0x0120`. `oth` is untouched.
+    * B: `+0x48` `0x22` begins `0xC9544[2]`.
+    * C: with `entry+8` = `oth`, the arrival acts on `oth` using `rec`'s
+      `+0x48` (`0x21`), and `rec` is untouched.
+    * D, the index width: `0x1F` reads `0xC9540` (index −1), and `0xA0` reads
+      `0xC9744`, not the sign-extended `0xC9344`.
+    * E: `rec+0x14` = 0 writes nothing, including linear `0x1E`/`8`, which the
+      missing test would write through entry 0.
+    * F, through the dispatcher (`D500 AC18 0004` walked by `0x2BC30` at 1.0):
+      type 0, hold 5.0, `rec+8` = the stream + 2, pset id `0x0220`.
+* **Mutations.** `mut13.py` applied each one to `fight.c`/`actors.c`,
+  rebuilt and ran the suite. Both files were restored byte for byte, and the
+  suite then passed. Counts are real `FAIL` lines (the summary line
+  excluded).
+
+  | mutation | failures |
+  |---|---|
+  | `0x4AC18` unregistered | 1 (the registration check; the test's fallback registers it) |
+  | no `rec+0x14` = 0 return | 2 |
+  | index without `− 0x20` | 12 |
+  | index sign-extended / u16 | 2 / 2 |
+  | index from `entry+8`'s `+0x48` / from `rec+0x49` | 2 / 12 |
+  | acts on `rec`, not `entry+8` | 12 |
+  | entry from `rec+0x10` | 27 |
+  | `0x4AC38` hold 4.0 / keeps the entry type | 5 / 7 |
+
+### 23.4 Measured
+
+With the fix, port frames 0..622 are byte-identical to `0e489c6`'s, and
+623 (f = 207) is the first that differs. The `anim_indirect` probe shows
+`0x4AC18` called 3 times (f = 206, 439, 849), all resolved. The only
+opcode-target miss left is `0x3640C` (f = 741).
+
+| measurement | before (`0e489c6`) | after (`b5a48a0`) |
+|---|---|---|
+| captures 998..1357 | 998 259 px; 999..1006 481–651 px; 1007 3 514; 1008 11 573 | **all explained** (998..1010 splices at 0 px; the front-end window now ends at 1357) |
+| demo oracle first unexplained | 998 (raw 3905); `[998..3616]` 2619 / 2613 unexpl.; port `[623..1380]` | **1358 (raw 4265)**; `[1358..3616]` 2259 / 2253 unexpl.; port `[931..1380]` (450, 0 exhibited) |
+| demo-fight ratchet | `[998..1884]` 887, N = 998 | **`[1358..1884]` 527**, "ratchet improved: first unexplained 1358 > 998", **N = 1358** |
+| front-end oracle | `[560..997]` / 438 / 172 clean, 262 splice, 0 transition, 2 unexpl. | **`[560..1357]` / 798 / 307 clean, 484 splice, 3 transition, 2 unexpl. (832, 833)** |
+
+The three transition frames (`port832@row177`, `port862@row189`,
+`port906@row31`) all lie in the new span. Port frames 0..622 are unchanged,
+so the old window's classification is unchanged. Only the front-end window
+and N moved. Unmoved: title `54/55/2/0` and `54/57/0/0`, determinism 54;
+smk 120/120 and 41/41; attract 215/216 (expected divergence at 215);
+C-vs-Python 9866; `symbols.h`; the front-end "endpoints BAD" line. The
+exhibition set grows to port frames 0..930 (694 exhibited). The ladder
+`cmake --build build --clean-first && PR_ORACLE_REQUIRED=1 ./build/run_tests && make verify && make demo-oracle`
+exited 0 with 0 compiler warnings and "all checks passed", with N = 1358 in the
+Makefile.
+
+**The 1007 divergence.** §22.5's second divergence (the raptor's leap from
+capture 1007) is explained by the same fix. The mechanism was not traced.
+The fix changes everything from f = 207 on, including the shared RNG: the
+worshipper's type-0 handler draws through `0x4B144`.
+
+**Unresolved code targets after the fix** (a temporary whole-run probe in
+`fn_resolve`, reverted):
+* `0x3D17C` (3 hits, first f = 559)
+* `0x14EF8` (f = 582)
+* `0x3640C` (f = 741)
+* `0x3A588` (180 hits, first f = 784)
+* the known front-end sites `0x29B74`/`0x41578` and the stub `0x5D812`
+
+`0x4AC18` no longer misses. `0x3C0A4` and `0x3A820` are no longer reached in
+this run. `0x370F0` and `0x34530` are still unregistered and not reached.
+The run moved, so these frames differ from §22.4's.
+
+### 23.5 The new first unexplained frame, 1358 (characterised, not fixed)
+
+Capture 1357 is a 929/930 splice (row 12). Capture 1358's best splice, port
+930/931 (row 39), leaves 2 743 px in rows 39–128, in the T-rex at the right
+edge. From there the residual grows: 1359 leaves 5 249 px, 1360 11 355 px,
+1361 24 335 px, and from 1362 it covers the whole frame. A background shift
+search (rows 60–119) matches at dx 0 / dy 0 except dx 1–3 / dy 1 at
+1360/1361. Side by side (1358/931, 1361/934, 1364/936), the capture's T-rex
+comes down from its leap and stands with its tail out by 1361, while the
+port's is still in the air.
+
+Port frame 930 is f = 514. A `PR_T13` fighter trace (temporary, reverted)
+shows the T-rex (side 0) in state 4/0/2 up to f = 507. At f = 508 it enters
+4/8/2 with hold 2.0 and `rec+8` fixed at `0xE72A2`: the `B840 000E 000E7290`
+loop over `FF20`/`FF21` variable writes. It moves +218 per frame and leaves
+the air only at f = 521 (`0x14/04/02`), then 9/0/0 at f = 522. The raptor
+sits in 9/8. No `fn_resolve` miss other than the stub `0x5D812` falls in
+f = 1..558 (the first is `0x3D17C` at f = 559), so this is not an
+unregistered target. It is **not derived here**, and no candidate owner is named.
