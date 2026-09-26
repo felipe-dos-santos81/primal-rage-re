@@ -525,9 +525,9 @@ demo-fight section below.
 3617 distinct post-logo frames, raw 1367..8409 after the demo-fight closure
 cycle's re-capture) reaches the front-end. With the state-3 render ported
 (`0x12484`) the `PR_FRONTEND_DUMP` driver emits the real zoom-out, and
-`tools/title_compare.py --frontend` aligns it: window distinct **[560..1480]**
-(raw 3108..4387), **921 frames: 383 clean, 531 splice, 3 transition, 2
-unexplained** (the four classes sum to 919 of 921: the window's other two frames are the
+`tools/title_compare.py --frontend` aligns it: window distinct **[560..1545]**
+(raw 3108..4452), **986 frames: 410 clean, 569 splice, 3 transition, 2
+unexplained** (the four classes sum to 984 of 986: the window's other two frames are the
 all-black captures 561 and 831, excluded as artifacts — the oracle's own list) — captures **832** and **833**, allowed by name in
 `FRONTEND_ALLOWED_UNEXPLAINED` with their reason (`title_compare.py:352-374`;
 the arena-backdrop cycle's absorbed claim move: the window is derived from the
@@ -565,7 +565,8 @@ split arm's `0x18714` record writes) then explained 1358..1410: →
 `0x3D17C` and its `0x3D214`/`0x3D26C` targets) then explained 1411..1477: →
 `[560..1477]`/918; the frame-1478 fix (the projectile collision step
 `0x17CB0` and the hit it wakes in `0x1975C`/`0x3B464`) then explained
-1478..1480: → `[560..1480]`/921.)
+1478..1480: → `[560..1480]`/921; the frame-1481 fix (`0x349C8`'s `0x34A8D`
+command gate) then explained 1481..1545: → `[560..1545]`/986.)
 The claim that result supports is precise and narrow: **no
 content-bearing capture frame inside the window the port's own dump exhibits is
 unexplained** (the two named exceptions aside). The window is derived from the port's dump (`check_capture`'s
@@ -698,7 +699,7 @@ dump stops. The dump therefore holds **1381 frames** (dumped 0..1380); the 1400
 cap covers it with no truncation, and the 2000-frame loop clears the 1970 exit.
 
 **The demo window is report-only; its first unexplained frame is capture 1546 —
-a small teal-clad worshipper at x ≈ 209–237 drops into a crouch in the capture
+a small teal-clad worshipper at x ≈ 221–234 drops into a crouch in the capture
 while the port's stays upright — after the
 demo-pose cycle explained captures 843..850, the roar-timing fix 851..857, the
 frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863, the
@@ -846,8 +847,9 @@ exits 0.
   misses; `0x3D17C` no longer misses and
   `0x3A588` is no longer reached; `0x14EF8` and the animation-opcode target
   `0x3640C` (which the frame-998 fix's run still missed at f = 582 and
-  f = 741) no longer miss, nor do `0x4AC18` and `0x35938`; `0x3C0A4` and
-  `0x3A820` are no longer reached in this run; `0x370F0` is still unregistered; not
+  f = 741) no longer miss, nor do `0x4AC18` and `0x35938`; `0x3C0A4` is
+  reached again and misses at f = 850 (above); `0x3A820` is not reached in
+  this run; `0x370F0` is still unregistered; not
   reached (no longer misses) in this run; and `0x347B8`'s stun-stream target
   `0x34530` is unregistered but not reached. (Before the
   frame-892 fix this was capture 892: the best 531/532 splice left

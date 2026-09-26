@@ -256,11 +256,11 @@ spawn → `effects_step` → dirty list → `gfx_flush_palette` → `gfx_dac` �
 plan's assumed missing draw does not exist; the camera state feeds the existing
 render pass and actor-pset sync. The front-end pixel oracle is **closed and
 enforced**: a 120 s pinned capture aligns the port's state-3 zoom to window
-`[560..1480]` (raw `3108..4387`), **921 frames: 383 clean, 531 splice, 3
+`[560..1545]` (raw `3108..4452`), **986 frames: 410 clean, 569 splice, 3
 transition, 2 unexplained (832, 833)** — the two allowed by name (the
 arena-backdrop cycle's absorbed claim move, below); any other unexplained frame
 fails. (Indices moved `[557..813]`/257 → `[560..830]`/271 → `[560..842]`/283 →
-`[560..850]`/291 → `[560..857]`/298 → `[560..858]`/299 → `[560..859]`/300 → `[560..863]`/304 → `[560..865]`/306 → `[560..866]`/307 → `[560..869]`/310 → `[560..879]`/320 → `[560..890]`/331 → `[560..891]`/332 → `[560..949]`/390 → `[560..991]`/432 → `[560..997]`/438 → `[560..1357]`/798 → `[560..1410]`/851 → `[560..1477]`/918 → `[560..1480]`/921 as cycle 1's pins, cycle 2's master-loop pin and the
+`[560..850]`/291 → `[560..857]`/298 → `[560..858]`/299 → `[560..859]`/300 → `[560..863]`/304 → `[560..865]`/306 → `[560..866]`/307 → `[560..869]`/310 → `[560..879]`/320 → `[560..890]`/331 → `[560..891]`/332 → `[560..949]`/390 → `[560..991]`/432 → `[560..997]`/438 → `[560..1357]`/798 → `[560..1410]`/851 → `[560..1477]`/918 → `[560..1480]`/921 → `[560..1545]`/986 as cycle 1's pins, cycle 2's master-loop pin and the
 arena-backdrop fix forced re-captures, the demo-pose cycle's `0x3A43C`
 stack-offset fix + `0x186C4` re-latch explained captures 843..850, and the
 roar-timing fix (the `0x3AD27` pose-setter operand) explained 851..857, and the
@@ -283,7 +283,8 @@ in that new span, and the frame-1358 fix (the camera split arm's `0x18714`
 record writes) explained 1358..1410, and the frame-1411 fix (the T-rex's
 reaction-`0x20` callback `0x3D17C` and its `0x3D214`/`0x3D26C` targets)
 explained 1411..1477, and the frame-1478 fix (the projectile collision step
-`0x17CB0` and the hit it wakes in `0x1975C`/`0x3B464`) explained 1478..1480; the host-timed capture is not reproducible, so indices shift while
+`0x17CB0` and the hit it wakes in `0x1975C`/`0x3B464`) explained 1478..1480, and the
+frame-1481 fix (`0x349C8`'s `0x34A8D` command gate) explained 1481..1545; the host-timed capture is not reproducible, so indices shift while
 the claim does not.) It proves exactly one thing: **no content-bearing capture
 frame inside the window the port's own dump exhibits is unexplained** (the two
 named exceptions aside) — the window is derived from that dump and the
@@ -313,7 +314,7 @@ moved **1262 → 1400**. Its report-only oracle (`make demo-oracle`) measures th
 demo window `[1546..3616]` (raw `4453..8409`), **2071 frames: 0 clean / 0 splice
 / 0 transition / 2065 unexplained** (6 all-black frames excluded); the first
 unexplained frame is capture **1546 (raw 4453)** — a small teal-clad worshipper
-at x ≈ 209–237 drops into a crouch in the capture while the port's stays
+at x ≈ 221–234 drops into a crouch in the capture while the port's stays
 upright (f ≈ 674; not derived)
 (moved from 843
 by the demo-pose cycle, then from 851 by the roar-timing fix, then from 858 by

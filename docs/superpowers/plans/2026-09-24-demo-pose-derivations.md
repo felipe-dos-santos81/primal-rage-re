@@ -4693,6 +4693,7 @@ jne 0x35227` skips only the consume, as the port has it).
 0x34A93  66 8B 14 7D E0 88 10 00   mov dx, [edi*2 + 0x1088E0]
 0x34A9D  30 D2                     xor dl, dl
 0x34A9F  E8 38 73 00 00            call 0x3BDDC
+0x34AA4  80 E6 F0                  and dh, 0xF0
 0x34AA7  84 C0                     test al, al
 0x34AA9  75 60                     jne 0x34B0B
 0x34AAB  ...                       cmd & 0x4000 -> 0x2BC30(0xC8978[ch], 2.0), +0x52 = 5, +0x54 = 1
