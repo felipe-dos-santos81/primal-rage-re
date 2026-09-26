@@ -492,6 +492,14 @@ def load_port(d, n):
 # 0..1381, the whole 1382-frame dump (1145 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
+# The attract cycle-2 region's named, absorbed unexplained frame (roar-timing
+# Task 27, record §37): capture 2384 is the `- LOADING -` frame before the
+# second demo, byte-identical to front-end capture 832 (the loader's LOADING
+# frame above: no raw-code owner, the loader's read-stall class, record
+# §35.1/§36.2). It is allowed by capture-frame index only while it stays
+# byte-identical to its twin; any other unexplained frame still counts.
+ATTRACT2_ALLOWED_UNEXPLAINED = {2384: 832}
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -930,7 +938,26 @@ def main():
             print("title_compare: attract2: FAIL: N %d > region end + 1 (%d): "
                   "N is unreachable" % (ratchet, hi + 1))
             return 1
+        if ratchet <= lo:
+            print("title_compare: attract2: FAIL: N %d <= region start %d: "
+                  "the ratchet guards no frame" % (ratchet, lo))
+            return 1
         unexpl = [j for j in range(lo, hi + 1) if kinds[j][0] == 'unexplained']
+        allowed = []
+        for j, twin in sorted(ATTRACT2_ALLOWED_UNEXPLAINED.items()):
+            if j not in unexpl:
+                continue
+            if (load(os.path.join(capture, 'frame_%04d.raw' % j)) !=
+                    load(os.path.join(capture, 'frame_%04d.raw' % twin))):
+                print("title_compare: attract2: FAIL: allowed frame %d is no "
+                      "longer byte-identical to capture %d" % (j, twin))
+                return 1
+            allowed.append(j)
+        if allowed:
+            print("title_compare: attract2: %d unexplained captured frame(s) "
+                  "allowed by name: %s"
+                  % (len(allowed), [(j, raws[j]) for j in allowed]))
+        unexpl = [j for j in unexpl if j not in allowed]
         first = unexpl[0] if unexpl else None
         if first is None:
             print("title_compare: attract2: 0 unexplained in the region")

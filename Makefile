@@ -247,16 +247,19 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # not change. title_compare --attract2 classifies the capture from the first
 # all-black frame after the front-end window (1885) to its end against those frames
 # only. Claim: no captured frame below ATTRACT2_MIN_FIRST is unexplained, and the
-# first unexplained frame is >= it. N = 2384 was measured on fc8e775 (the commit that set it, on
-# 6d2c4a3): captures
-# 1886..2383 (the TWI5/TWG logos, the attract's second cycle with its lightning
-# flashes, and the title card) are explained; 2384 is the `- LOADING -` frame before
-# the second demo (the loader's read-stall class, like front-end 832 and attract 215:
-# no raw-code owner, record §35.1), and the second demo diverges from 2386. It fails
-# if an unexplained frame appears below N or N exceeds the capture's end + 1. Like
-# the front-end oracle, its window comes from the port's own dump, so it cannot
-# detect an under-rendering port.
-ATTRACT2_MIN_FIRST = 2384
+# first unexplained frame is >= it. Capture 2384, the `- LOADING -` frame before the
+# second demo, is allowed by name (title_compare's ATTRACT2_ALLOWED_UNEXPLAINED,
+# record §37): it is byte-identical to front-end capture 832, the loader's
+# read-stall frame with no raw-code owner (record §35.1), and the allowance holds
+# only while that identity does. N = 2386 was measured by the commit that set it
+# (on 7f42495): captures 1886..2383 (the TWI5/TWG logos, the attract's second cycle
+# with its lightning flashes, and the title card) and 2385 (the second demo's first
+# frame) are explained, and the second demo diverges from 2386. It fails if an
+# unexplained frame appears below N, N exceeds the capture's end + 1, or N is at or
+# below the region's start. Like the front-end oracle, its window comes from the
+# port's own dump, so it cannot detect an under-rendering port. (Before it, N = 2384,
+# measured on fc8e775.)
+ATTRACT2_MIN_FIRST = 2386
 attract2-oracle: build ## Attract cycle-2 ratchet after the demo (skips without data/title-captures/frontend)
 	@echo "== attract cycle-2 oracle (ratchet on the first unexplained frame, N=$(ATTRACT2_MIN_FIRST)) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
