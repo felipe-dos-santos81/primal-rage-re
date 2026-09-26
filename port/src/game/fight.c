@@ -142,18 +142,20 @@ static u32 fight_dust_value(u32 side, u32 ch)
     return DSD(DS_000A8B14 + ch * 4u);
 }
 
-/* 0x496AC. The clamp the dust actor's +0x2C receives. The argument is the y:
+/* 0x496AC. The clamp the dust actor's +0x2C receives (and the effects pass's
+ * cases 3 and 5, 0x49DBC/0x49EC9). The compares are signed (0x496AD `cmp
+ * eax,0xb00` / `jl`, 0x496BB `cmp eax,0x400` / `jg`). The argument is the y:
  * 0x49629/0x49642 read `[ESP+0x4]` after 0x2AE14's `RET 0x4` (0x2B14A) has
  * popped the 0x49603 `PUSH 0x0`, so ESP is back at the frame base and
  * `[ESP+0x4]` is the value 0x49605 wrote (`ESP=S-4`, `[ESP+8]` = EBX = the y of
  * 0x49601). The step lives at `[ESP]` (0x495F9) and is not read here. The
  * original's entries confirm it: `entry+0x1a` = 0x0a49/0x0848/0x0a80/0x082d
  * and `actor+0x2c` = 0xc5b/0xd5c/0xc40/0xd69 = the raw's `(0xb00-y)>>1 + 0xc00`. */
-static u16 fight_dust_clamp(u32 v)
+static u16 fight_dust_clamp(s32 v)
 {
-    if (v > 0xaffu) return 0xc00u;
-    if (v < 0x401u) return 0xf80u;
-    return (u16)(((0xb00u - v) >> 1) + 0xc00u);
+    if (v >= 0xb00) return 0xc00u;
+    if (v <= 0x400) return 0xf80u;
+    return (u16)(((0xb00 - v) >> 1) + 0xc00);
 }
 
 /* 0x494A8. The dust/effect entry builder. 0x33C78 calls it at 0x33E43 when
@@ -213,7 +215,7 @@ void fight_dust_build(u32 side)
          * DS_001088B2/DS_0010889E tables with it. */
         DSB(entry + 0x21u) = (u8)side;          /* 0x49626 */
         DSD(entry + 0x0Cu) = slot;              /* 0x4962D */
-        DSW(actor + 0x2Cu) = fight_dust_clamp(y);      /* 0x49638 */
+        DSW(actor + 0x2Cu) = fight_dust_clamp((s32)y); /* 0x49638 */
         DSW(entry + 0x1Cu) = 0;                 /* 0x4963C */
         DSD(entry + 0x10u) = 0;                 /* 0x49646 */
         DSW(entry + 0x1Au) = (u16)y;            /* 0x4964D */
@@ -739,6 +741,12 @@ static int fight_4b5a8(u32 entry, u32 index)
  * name. Entry 0 is 0xEE02C, the type-0x20 worshipper's spawn stream. */
 #define DS_000C9544 0x000C9544u
 
+/* The 0xC9634 landing- and 0xC95EC rising-stream tables of the effects pass's
+ * cases 3 and 4 (0x49E15 `mov edx,[eax*4 + 0xc9634]`, 0x49E74 `mov edx,[edx*4 +
+ * 0xc95ec]`); Ghidra emits them as DAT_, so gen_symbols.py has no DS_ name. */
+#define DS_000C9634 0x000C9634u
+#define DS_000C95EC 0x000C95ECu
+
 /* 0x4AC38. The arrival: the entry's actor stops (the +0x34/+0x36/+0x38 words
  * zeroed), clears its hflip (+0x29 &= 0xBF) and sets +0x29 bit 0x10, the entry
  * returns to type 0 and the actor is pointed at the 0xC9544[index] stream with
@@ -918,10 +926,11 @@ void fight_effects_pass(void)
 
                 /* 0x49D03: AL = +0x1E; CMP AL,0xE; JA 0x49D1E. The jump table
                  * at 0x49C2C sends type 0 to the same 0x49D1E (0x4AAD0), so
-                 * both type 0 and >0xE take it; type 1 (0x49D2F) is ported,
-                 * types 2,4..12 are their own (unported) handlers and stay
-                 * named gaps (§7.4). The `si` the
-                 * handler indexes with is (u16)(actor+0x48 - 0x20) (0x49CE1). */
+                 * both type 0 and >0xE take it; types 1 (0x49D2F) and 3..5
+                 * (0x49DB3, 0x49E5A, 0x49EC0) are ported, types 2,6..12 are
+                 * their own (unported) handlers and stay named gaps (§7.4).
+                 * The `si` the handler indexes with is (u16)(actor+0x48 -
+                 * 0x20) (0x49CE1). */
                 u8 type = DSB(entry + 0x1Eu);
                 u32 index = (u32)(u16)((u32)DSB(rec + 0x48u) - 0x20u);
                 if (type == 0u || type > 0xEu) {
@@ -948,11 +957,63 @@ void fight_effects_pass(void)
                     break;
                 }
                 case 3:
-                    /* 0x49DC8: the DS_000BD898 position gate; the rest of the
-                     * body (0x49DDE..0x49E38) is the named gap (§7.4). */
+                    /* 0x49DB3: the fall. The actor's +0x2C follows its y
+                     * (0x496AC); once the y is at or below the zero-extended
+                     * word DS_000BD898 (0x49DCD `mov ax,[0xbd898]` after `xor
+                     * eax,eax`, 0x49DD6 signed `cmp`/0x49DD8 `jg`) it lands:
+                     * hflip when 0x2BE1C > 0 (an OR only, 0x49E0B), the
+                     * 0xC9634[si] stream at 2.0 (`push 0x40000000`), the
+                     * velocities +0x38/+0x34 zeroed, the entry's +0x18 word
+                     * timer = rng(0x3C) + 0x3C, +0x1C |= 0x80 and type 4. */
+                    DSW(rec + 0x2Cu) = fight_dust_clamp((s32)DSD(rec + 0x30u) >> 16); /* 0x49DC4 */
                     if ((s32)DSD(rec + 0x30u) >> 16
-                            <= (s32)(s16)DSW(DS_000BD898))
-                        (void)rng_next(0x3Cu);  /* 0x49E3A */
+                            > (s32)(u32)DSW(DS_000BD898))           /* 0x49DD8 */
+                        break;
+                    if (fight_2be1c(rec, DSD(DSD(entry + 0xCu))) > 0) /* 0x49DE6 */
+                        DSW(rec + 0x28u) = (u16)(DSW(rec + 0x28u) | 0x4000u); /* 0x49E0D */
+                    actors_anim_begin(rec, DSD(DS_000C9634 + index * 4u),
+                                      0x40000000u);         /* 0x49E24 */
+                    DSW(rec + 0x38u) = 0;                   /* 0x49E29 */
+                    DSW(rec + 0x34u) = 0;                   /* 0x49E34 */
+                    DSW(entry + 0x18u) = (u16)(rng_next(0x3Cu) + 0x3Cu); /* 0x49E3A 0x49E4E */
+                    DSB(entry + 0x1Eu) = 4u;                /* 0x49E47 */
+                    DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) | 0x80u); /* 0x49E52 */
+                    break;
+                case 4: {
+                    /* 0x49E5A: the lie. The entry's +0x18 word counts down
+                     * (signed, 0x49E66 `jg`); at zero the actor takes the
+                     * 0xC95EC[si] stream at 3.0, sets +0x38 = 0x40 and +0x34 =
+                     * -0x40 when the fighter record's +0x28 word has bit 0x4000
+                     * (0x49E94/0x49E96), else 0x40; +0x1C loses bit 0x80 and
+                     * the entry becomes type 5. */
+                    u16 t = (u16)(DSW(entry + 0x18u) - 1u);  /* 0x49E5E */
+                    DSW(entry + 0x18u) = t;                  /* 0x49E5F */
+                    if ((s16)t > 0) break;                   /* 0x49E66 */
+                    actors_anim_begin(rec, DSD(DS_000C95EC + index * 4u),
+                                      0x40400000u);          /* 0x49E80 */
+                    DSW(rec + 0x38u) = 0x0040u;              /* 0x49E85 */
+                    if ((DSW(DSD(DSD(entry + 0xCu)) + 0x28u) & 0x4000u) != 0u) /* 0x49E96 */
+                        DSW(rec + 0x34u) = 0xFFC0u;          /* 0x49EA0 */
+                    else
+                        DSW(rec + 0x34u) = 0x0040u;          /* 0x49EA8 */
+                    DSB(entry + 0x1Eu) = 5u;                 /* 0x49EB1 */
+                    DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) & 0x7Fu); /* 0x49EB8 */
+                    break;
+                }
+                case 5:
+                    /* 0x49EC0: the climb. +0x2C follows the y (0x496AC); once
+                     * the y word +0x32 is back at the entry's +0x1A (signed,
+                     * 0x49EDD `jl`), the actor takes the 0xC9544[si] stream at
+                     * 3.0, stops (+0x38/+0x34 zeroed) and the entry returns to
+                     * type 0. */
+                    DSW(rec + 0x2Cu) = fight_dust_clamp((s32)DSD(rec + 0x30u) >> 16); /* 0x49ED1 */
+                    if ((s16)DSW(rec + 0x32u) < (s16)DSW(entry + 0x1Au)) /* 0x49ED9 */
+                        break;
+                    actors_anim_begin(rec, DSD(DS_000C9544 + index * 4u),
+                                      0x40400000u);          /* 0x49EF7 */
+                    DSW(rec + 0x38u) = 0;                    /* 0x49EFC */
+                    DSW(rec + 0x34u) = 0;                    /* 0x49F02 */
+                    DSB(entry + 0x1Eu) = 0;                  /* 0x49F08 */
                     break;
                 case 13: {
                     /* PORT: 0x4A24A..0x4A2F4. The case-13 body (0x2BE1C,
@@ -973,7 +1034,7 @@ void fight_effects_pass(void)
                     break;
                 }
                 default:
-                    /* PORT: types 2,4..12 are named gaps (§7.4). */
+                    /* PORT: types 2,6..12 are named gaps (§7.4). */
                     break;
                 }
                 }

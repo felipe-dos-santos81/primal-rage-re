@@ -445,6 +445,11 @@ def load_port(d, n):
 # explains captures 1481..1545, [560..1480] -> [560..1545] (921 -> 986; still
 # the same 3 transition frames); the allowed set stays (832, 833), and the
 # exhibition set grows to port frames 0..1091 (855 exhibited).
+# The effects pass's cases 3..5 (0x49DB3 lands a falling worshipper at y <=
+# 0x400 on its 0xC9634 crouch stream, 0x49E5A/0x49EC0 its lie timer and
+# climb) explain captures 1546..1562, [560..1545] -> [560..1562] (986 ->
+# 1003; still the same 3 transition frames); the allowed set stays (832,
+# 833), and the exhibition set grows to port frames 0..1105 (869 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
 

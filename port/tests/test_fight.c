@@ -1100,9 +1100,14 @@ static void check_effects_rng(void)
 {
     u32 entry = FIGHT_RECS + 0x3000u;
     u32 rec = FIGHT_RECS + 0x3100u;
+    u32 stream = FIGHT_RECS + 0x3800u;
+    u32 sv_tab = DSD(0x000C9634u);       /* the case-3 landing stream table */
     u32 saved;
 
     mem_fill(FIGHT_RECS, 0, 0x4000);
+    DSW(stream) = 0x0123u;              /* a literal sprite id: the landing's
+                                         * 0x2BC30 walks no RNG opcode */
+    DSD(0x000C9634u) = stream;
     DSD(DS_001014EC) = FIGHT_ACTORS;
     fight_reset_bases();
     DSW(FIGHT_RECS + 0x56u) = 1;
@@ -1116,6 +1121,7 @@ static void check_effects_rng(void)
     DSD(entry) = DS_0010884C;
     DSB(entry + 0x21u) = 0;
     DSD(entry + 8u) = rec;
+    DSD(entry + 0xCu) = DS_001077B0;    /* the landing's 0x2BE1C fighter */
     DSB(entry + 0x1Eu) = 3;
     DSB(rec + 0x48u) = 0x20;            /* the raw's `si` is 0 */
     DSD(rec + 0x30u) = 0;               /* the 0xBD898 gate passes */
@@ -1143,6 +1149,8 @@ static void check_effects_rng(void)
     fight_effects_pass();
     CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)saved);
     CHECK_EQ_INT((int)DSB(DS_001088BF), 0);
+
+    DSD(0x000C9634u) = sv_tab;
 }
 
 /* 0x49C78 case 1 (0x49D2F) and its arrival 0x4AC38: a walking type-1 entry
@@ -1261,6 +1269,213 @@ static void check_effects_arrival(void)
     }
 
     DSD(0x000C9544u) = sv_tab;
+    DSD(DS_0010884C) = DS_0010884C;
+}
+
+/* 0x49C78 cases 3, 4 and 5 (0x49DB3, 0x49E5A, 0x49EC0): a scared worshipper's
+ * fall, lie and climb (record §28; the demo's side-1 worshippers land at f =
+ * 675/676). The entry's `si` is 3 (+0x48 = 0x23) and the three stream tables'
+ * entries 0 and 3 hold distinct literal sprite ids, so a wrong index fails.
+ * Case 3 sets +0x2C = 0x496AC(y) every frame and lands at y <= the
+ * zero-extended word DS_000BD898: hflip OR-ed in when 0x2BE1C(actor, fighter)
+ * > 0, the 0xC9634[si] stream at 2.0, +0x38/+0x34 zeroed, the entry's +0x18 =
+ * rng(0x3C) + 0x3C, +0x1C |= 0x80, type 4. Case 4 counts +0x18 down (signed)
+ * and at zero takes the 0xC95EC[si] stream at 3.0, +0x38 = 0x40, +0x34 = -0x40
+ * or 0x40 by the fighter's +0x28 bit 0x4000, clears +0x1C bit 7, type 5. Case
+ * 5 sets +0x2C and, once the y word +0x32 >= the entry's +0x1A (signed), takes
+ * the 0xC9544[si] stream at 3.0, zeroes +0x38/+0x34 and returns to type 0. */
+static void check_effects_fall(void)
+{
+    u32 entry = FIGHT_RECS + 0x3000u;
+    u32 rec = FIGHT_RECS + 0x3100u;
+    u32 fighter = FIGHT_RECS;           /* DSD(DS_001077B0) after the reset */
+    u32 st_land = FIGHT_RECS + 0x3800u, st_rise = FIGHT_RECS + 0x3840u;
+    u32 st_idle = FIGHT_RECS + 0x3880u, st_wrong = FIGHT_RECS + 0x38C0u;
+    u32 pset = FIGHT_ACTORS + 3u * 0x20u;
+    u32 sv_l0 = DSD(0x000C9634u), sv_l3 = DSD(0x000C9634u + 12u);
+    u32 sv_r0 = DSD(0x000C95ECu), sv_r3 = DSD(0x000C95ECu + 12u);
+    u32 sv_i0 = DSD(0x000C9544u), sv_i3 = DSD(0x000C9544u + 12u);
+    u16 sv_898 = DSW(DS_000BD898);
+    u32 expect_t;
+
+    mem_fill(FIGHT_RECS, 0, 0x4000);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    fight_reset_bases();
+    DSW(fighter + 0x56u) = 1;
+    DSW(FIGHT_RECS + 0x100u + 0x56u) = 2;
+    DSW(DS_00104B00) = 3;
+    DSB(DS_001088C2) = 0;
+    DSB(DS_001088BF) = 0;
+    DSW(st_land) = 0x0321u;
+    DSW(st_rise) = 0x0654u;
+    DSW(st_idle) = 0x0987u;
+    DSW(st_wrong) = 0x0BADu;
+    DSD(0x000C9634u) = st_wrong;
+    DSD(0x000C9634u + 12u) = st_land;
+    DSD(0x000C95ECu) = st_wrong;
+    DSD(0x000C95ECu + 12u) = st_rise;
+    DSD(0x000C9544u) = st_wrong;
+    DSD(0x000C9544u + 12u) = st_idle;
+
+    DSD(DS_0010884C) = entry;
+    DSD(entry) = DS_0010884C;
+    DSD(entry + 8u) = rec;
+    DSD(entry + 0xCu) = DS_001077B0;    /* the slot: its +0 is `fighter` */
+    DSB(rec + 0x48u) = 0x23;            /* `si` = 3 */
+    DSW(rec + 0x56u) = 3;
+
+    /* Still falling: y = 0x800 > 0x400. Only +0x2C moves, to 0x496AC(0x800) =
+     * (0xB00 - 0x800) / 2 + 0xC00 = 0xD80; no draw. */
+    DSB(entry + 0x1Eu) = 3;
+    DSW(entry + 0x18u) = 0x7777u;
+    DSB(entry + 0x1Cu) = 0x05u;
+    DSD(rec + 0x30u) = 0x08000000u;
+    DSW(rec + 0x2Cu) = 0x9999u;
+    DSW(rec + 0x28u) = 0x0011u;
+    DSW(rec + 0x34u) = 0x0040u;
+    DSW(rec + 0x38u) = 0xFFC0u;
+    DSD(rec + 0x08u) = 0xEEFD4u;
+    DSW(pset) = 0x07E1u;
+    rng_seed(0x1234u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x2Cu), 0xD80);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 3);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0xFFC0);
+    CHECK_EQ_INT((int)DSW(entry + 0x18u), 0x7777);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), 0xEEFD4);
+    CHECK_EQ_INT((int)DSW(pset), 0x07E1);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0x1234);
+
+    /* y = 0x401: one above the gate, still falling. */
+    DSD(rec + 0x30u) = 0x04010000u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 3);
+
+    /* The landing at y = 0x400 (the gate is `jg`): 0x2BE1C = 0x5000 - 0x1000
+     * > 0 ORs in hflip before 0x2BC30 (0x49E0D, then 0x49E24), whose `and
+     * word [rec+0x28], 0xF7EB` leaves 0x0011 | 0x4000 = 0x4001, and whose first
+     * sprite id then carries the hflip bit 0x8000; +0x2C = 0xF80 (y <= 0x400). */
+    DSD(rec + 0x30u) = 0x04000000u;
+    DSD(FIGHT_ACTORS + 3u * 0x20u + 4u) = 0x5000u;  /* the actor's 0x2BE00 */
+    DSD(FIGHT_ACTORS + 1u * 0x20u + 4u) = 0x1000u;  /* the fighter's 0x2BE00 */
+    rng_seed(0x1234u);
+    expect_t = rng_next(0x3Cu) + 0x3Cu;
+    rng_seed(0x1234u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 4);
+    CHECK_EQ_INT((int)DSW(rec + 0x28u), 0x4001);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_land);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSW(pset), 0x8321);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0);
+    CHECK_EQ_INT((int)DSW(entry + 0x18u), (int)expect_t);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x85);
+    CHECK_EQ_INT((int)DSW(rec + 0x2Cu), 0xF80);
+
+    /* A landing with 0x2BE1C < 0 keeps hflip as it was (OR only): set stays
+     * set, clear stays clear. y = -0x100 is signed: 0x496AC gives 0xF80. */
+    DSD(FIGHT_ACTORS + 3u * 0x20u + 4u) = 0x1000u;
+    DSD(FIGHT_ACTORS + 1u * 0x20u + 4u) = 0x5000u;
+    DSD(rec + 0x30u) = 0xFF000000u;
+    DSW(rec + 0x2Cu) = 0x9999u;
+    DSB(entry + 0x1Eu) = 3;
+    DSW(rec + 0x28u) = 0x4011u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 4);
+    CHECK_EQ_INT((int)DSW(rec + 0x28u), 0x4001);
+    CHECK_EQ_INT((int)DSW(rec + 0x2Cu), 0xF80);
+    DSB(entry + 0x1Eu) = 3;
+    DSW(rec + 0x28u) = 0x0011u;
+    DSW(pset) = 0x07E1u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x28u), 0x0001);
+    CHECK_EQ_INT((int)DSW(pset), 0x0321);
+
+    /* The gate word is zero-extended: with DS_000BD898 = 0x8000, y = 0x100
+     * lands (a sign-extended -0x8000 would not). */
+    DSW(DS_000BD898) = 0x8000u;
+    DSD(rec + 0x30u) = 0x01000000u;
+    DSB(entry + 0x1Eu) = 3;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 4);
+    DSW(DS_000BD898) = sv_898;
+
+    /* Case 4, the countdown: 2 -> 1 stays; 1 -> 0 rises. The fighter's +0x28
+     * bit 0x4000 clear gives +0x34 = 0x40. */
+    DSB(entry + 0x1Eu) = 4;
+    DSW(entry + 0x18u) = 2;
+    DSB(entry + 0x1Cu) = 0x85u;
+    DSW(fighter + 0x28u) = 0x0000u;
+    DSD(rec + 0x08u) = st_land;
+    DSW(pset) = 0x07E1u;
+    DSW(rec + 0x34u) = 0x1111u;
+    DSW(rec + 0x38u) = 0x2222u;
+    rng_seed(0x1234u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(entry + 0x18u), 1);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 4);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_land);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0x2222);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(entry + 0x18u), 0);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 5);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_rise);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSW(pset), 0x0654);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0x40);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x40);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x05);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0x1234);
+
+    /* The fighter's +0x28 bit 0x4000 set gives +0x34 = -0x40; the counter is
+     * signed: 0x8001 - 1 = 0x8000 < 0 rises at once. */
+    DSB(entry + 0x1Eu) = 4;
+    DSW(entry + 0x18u) = 0x8001u;
+    DSW(fighter + 0x28u) = 0x4000u;
+    DSW(rec + 0x34u) = 0x1111u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 5);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFFC0);
+
+    /* Case 5, the climb: y 0x800 < +0x1A 0x900 keeps climbing (+0x2C =
+     * 0xD80); y 0x900 arrives (+0x2C = 0xD00). */
+    DSB(entry + 0x1Eu) = 5;
+    DSW(entry + 0x1Au) = 0x0900u;
+    DSD(rec + 0x30u) = 0x08000000u;
+    DSW(rec + 0x2Cu) = 0x9999u;
+    DSD(rec + 0x08u) = st_rise;
+    DSW(pset) = 0x07E1u;
+    DSW(rec + 0x34u) = 0x0040u;
+    DSW(rec + 0x38u) = 0x0040u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 5);
+    CHECK_EQ_INT((int)DSW(rec + 0x2Cu), 0xD80);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_rise);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0x40);
+    DSD(rec + 0x30u) = 0x09000000u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x2Cu), 0xD00);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_idle);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSW(pset), 0x0987);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0);
+
+    /* The y compare is signed: +0x32 = 0x8000 (negative) stays below 0x100. */
+    DSB(entry + 0x1Eu) = 5;
+    DSW(entry + 0x1Au) = 0x0100u;
+    DSD(rec + 0x30u) = 0x80000000u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 5);
+
+    DSD(0x000C9634u) = sv_l0;
+    DSD(0x000C9634u + 12u) = sv_l3;
+    DSD(0x000C95ECu) = sv_r0;
+    DSD(0x000C95ECu + 12u) = sv_r3;
+    DSD(0x000C9544u) = sv_i0;
+    DSD(0x000C9544u + 12u) = sv_i3;
     DSD(DS_0010884C) = DS_0010884C;
 }
 
@@ -7105,6 +7320,7 @@ int test_fight(void)
     check_hud_latch();
     check_effects_rng();
     check_effects_arrival();
+    check_effects_fall();
     check_effects_tail();
     check_command_map();
     check_think_chain();
