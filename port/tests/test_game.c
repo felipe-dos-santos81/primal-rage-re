@@ -3851,7 +3851,10 @@ int test_attract(void)
          * operand the raw ignores. 0x10FC4 (`mov dword [eax+0x18],0`) clears
          * only the record's +0x18. actors_init registers both; the shared
          * suite's test_actors runs it, the isolated PR_ATTRACT_DUMP run does
-         * not before this check (its pool is absent too). */
+         * not before this check (its pool is absent too). Outside that run
+         * the gate must be open, so E2 cannot skip silently. */
+        if (getenv("PR_ATTRACT_DUMP") == NULL)
+            CHECK(DSD(DS_001014F4) != 0, "E2 runs in the shared suite");
         if (DSD(DS_001014F4) != 0) {
             typedef void (*anim_fn)(u32 rec, u32 arg);
             anim_fn f4f = (anim_fn)(void *)fn_resolve(0x4F83Cu);

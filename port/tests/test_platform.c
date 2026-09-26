@@ -770,7 +770,8 @@ int test_gfx(void)
         CHECK_EQ_INT(gfx_dac[128][1], 0);
         CHECK_EQ_INT(gfx_dac[255][2], 0);
 
-        /* Every caller passes 0: the screen and both buffers go black. */
+        /* The ported callers (0x2BAF4, 0x1C740) pass 0: the screen and both
+         * buffers go black. */
         gfx_dac[7][0] = 0x3F;
         gfx_screen_reset(0u);
         CHECK_EQ_INT((int)DSD(DS_00101508), 0);

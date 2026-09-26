@@ -1130,6 +1130,7 @@ void game_init(void)
     surface_setup();        /* 0x51F45 */
     palette_list_init();    /* 0x336C0 */
     render_list_init();     /* 0x1C350 */
+    render_projection_reset(0u);    /* 0x20C47 `xor eax,eax`, 0x20C49 0x4F228 */
     rng_seed(0xABCDu);      /* PORT: 0x20C10 seeds the LCG with a hardcoded 0xABCD. */
     /* PORT: 0x20C5D-0x20CC2: DS_00104528 = 0x2D974(0x29) and the three globals
      * derived from v. The master init 0x2F9CC (0x20C15) runs 0x13ADC

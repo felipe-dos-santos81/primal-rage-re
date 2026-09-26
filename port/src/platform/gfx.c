@@ -171,9 +171,13 @@ u8 *gfx_aperture(void) { return g_aperture; }
  * for VBlank and writes 256 black entries to the DAC (0x52133..0x52149, AL =
  * 0), then fills the VGA aperture with the same dword (0x5214C 0x51F72).
  * PORT: the DAC is gfx_dac and the aperture is g_aperture (the aperture
- * rule); the VBlank spin has nothing to wait for here. Every caller passes 0:
- * 0x2BAF4's param_1 != 0 arm (0x2BBE8 `xor eax,eax`) and the movie player
- * 0x1C740's entry and exit. */
+ * rule); the VBlank spin has nothing to wait for here. It has 7 callers. The
+ * ported ones pass 0: 0x2BAF4's param_1 != 0 arm (0x2BBE8 `xor eax,eax`) and
+ * the movie player 0x1C740's entry and exit (0x1C74D/0x1C873). The unported
+ * ones do not: 0x32E93, 0x330B1 and 0x332E4 pass 0x2EDE0's return after a
+ * `test eax,0x1000000` (0x330B1 also after `test eax,0x2000000`) has found
+ * a bit set, and 0x32BF5 is a loop head (0x32F43 `jl`) whose first pass
+ * carries the function's incoming EAX (0x32BE5). */
 void gfx_screen_reset(u32 ticks)
 {
     DSD(DS_00101508) = ticks;

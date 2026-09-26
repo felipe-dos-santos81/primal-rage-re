@@ -698,8 +698,9 @@ phase at `0x1150E`/`0x11517`/`0x1151F`, `port/src/game/attract.c:304-307`)
 belong to the *next* attract loop, not this demo run.
 
 **Dump length.** `make demo-oracle` runs the same `PR_FRONTEND_DUMP` run as
-`frontend-oracle`. The driver loops 2000 frames from the state-2 entry and caps
-the RGB dump at 1400 frames (`PR_FRONTEND_DUMP_FRAMES`, default 1400). The
+`frontend-oracle`. The driver loops 2800 frames from the state-2 entry
+(`FE_LOOPS`; its measurements and end-of-run reads keep the first 2000,
+`FE_DEMO_LOOPS`) and caps the top-level RGB dump at 1400 frames (`PR_FRONTEND_DUMP_FRAMES`, default 1400). The
 measurement that sizes it: state 3 enters at loop 589 (dumped frame 0), state 6
 at loop 1070 (dumped 481), state 7 runs loop 1071..1969 (dumped 482..1380), and
 `0x11BCC`'s exit is loop 1970, where `DS_000F0A64` drops to 0 inside
@@ -710,7 +711,9 @@ driver now does the same (`state_in`), keeping the post-state only for the entry
 (loop 589 ends in state 3). So loop 1970, the frame presented in the iteration
 that starts in state 7 and exits it, is dumped (1381), and loop 1971 on, which
 start in state 0, are not in the state >= 3 window. The dump therefore holds **1382 frames** (dumped 0..1381); the 1400
-cap covers it with no truncation, and the 2000-frame loop clears the 1970 exit.
+cap covers it with no truncation, and the 2000-loop window clears the 1970 exit.
+Loops 1971..2799 (the attract's second cycle and the second demo, record §36)
+go to the separate `cycle2/` dump.
 (Before the frame-1881 fix the gate read only the state after the iteration, so
 loop 1970 was dropped and the dump held 1381 frames.)
 

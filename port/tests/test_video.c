@@ -34,10 +34,12 @@ static u32 count_raw(const char *dir)
     return n;
 }
 
-/* The capture holds the frames the original presents: a prefix of the decoded
- * sequence (settled by re-capture, commit 199cad1: TWI5 120 of 121, TWG 41 of
- * 41; TWI5's last payload frame is real and never presented). Absent capture:
- * skip unless PR_ORACLE_REQUIRED=1, then fail (the 2a gate). */
+/* The capture holds a prefix of the decoded sequence (settled by re-capture,
+ * commit 199cad1: TWI5 120 of 121, TWG 41 of 41). TWI5's last payload frame is
+ * real and the original does present it (0x1C740 blits the last frame; the
+ * front-end capture's 2094 splices it, record §36.2), but this capture does
+ * not hold it. Absent capture: skip unless PR_ORACLE_REQUIRED=1, then
+ * fail (the 2a gate). */
 static void check_capture(const char *movie, u32 expected, u32 decoded)
 {
     char dir[512];
