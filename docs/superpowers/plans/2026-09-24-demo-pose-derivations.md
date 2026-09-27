@@ -13958,3 +13958,8 @@ fixed:
      start menu (§47-B.6 item 4).
 
   Both need input, so no oracle capture reaches them.
+
+## 48-R. Character 4's remaining reaction callbacks `0x44F64`, `0x450E8`, `0x455A0`, `0x44970`, `0x45878`, `0x44CFC` and `0x44B10` (named-gap batch 11, branch `gap11-char4`)
+
+Scaffold; the sections below are filled as the work lands. The gap is named
+in §48-A.2/§48-A.7 (branch `frame-3593`).
