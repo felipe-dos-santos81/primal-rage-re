@@ -392,7 +392,9 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   there and enter mode `0x1A` (`0x4F980`). The mode `0x1A`/`0x1B` handlers
   `0x4F9A0`/`0x4F9C8` then dispatch it. The port registers `0x43738` (demo-pose
   record §42-F). The two hooks (themselves `DS_00104AE4` values, stored by
-  `0x42CB4`, `0x28DA4` and the unreferenced stub `0x42FB0`), `0x4F980` and
+  `0x42CB4`, `0x28DA4` and the unreferenced stub `0x42FB0`; `0x28DA4` is
+  ported as `flow_player_join`, record §48-Q, but its callers, modes 6 and
+  `0xC`, reach it only through the unported `0x28CC8`), `0x4F980` and
   both handlers with their wipes `0x4F9E4`/`0x4FA88` are ported and the hooks
   registered (record §43-B), and each handler's `call [0x104AE4]` goes through
   `fn_resolve`. A miss is skipped. That is a no-op only for `0x29D60`/`0x5D812`.
@@ -406,9 +408,22 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   skip test `0x4F790` and `0x4F778` (record §46-G).
   `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
-  - it dispatches cases 3, `0x10`, `0x11`, `0x14`, `0x17`, `0x1A` and
-    `0x1B`, and cases 1/2/`0x20` run the bare `ret` `0x29B70`;
-  - the other 38 cases are named gaps.
+  - it dispatches cases 3, `0xD`, `0x10`, `0x11`, `0x14`, `0x17`, `0x1A`,
+    `0x1B` and `0x32`, and cases 1/2/`0x20` run the bare `ret` `0x29B70`;
+  - the other 36 cases are named gaps.
+  - Cases `0xD` and `0x32` are `0x274FC`/`0x296B8` (`game_mode_0d_step`/
+    `game_mode_32_step`, record §48-Q). Each runs the arena frame's tail
+    steps (`0x3C5CC`, `0x16D58` per side, the two position latches, `0x35658`
+    per side, `0x19068(1)`, `0x12DA8`) and sets `DS_00104AEC` bit 1. When
+    `DS_00104B0C` is set it counts a round in `DS_00104B21`. On the final
+    round it draws the result (`0x28130`), gives the bonus (mode `0xD` only)
+    and runs the winner's crowd `0x4DBEC`, then mode `0xF`/`0x33`. Otherwise
+    it replaces the loser with the next character (`0x2716C`'s random pick or
+    `0x292D4` from the team list at `DS_00108134`), runs that character's
+    entrance `0xA8628[c]` (only character 1's, `0x24568`, is ported) and the
+    HUD resets `0x1D764`/`0x1D838`, then mode `0xC`/`0x31`. No ported path
+    stores mode `0xD` or `0x32`, and `0x2C2B0`, `0x1D2F0` and six of the seven
+    entrances are named gaps.
   - Case `0x10` is `0x438B4` (`fight_mode_10_step`, record §47-M). It
     branches on the byte `DS_00108174`. With 0 it runs the character
     select's per-frame pass `0x43B24` (`0x44798` when `DS_00104B1D == 3`),
@@ -1030,9 +1045,10 @@ exits 0.
   and registered as well (§43-C); the demo reaches none of them.
   Character 1's entrance `0x24568` (entry 1 of the per-character table
   `0xA8628`), its stream `0xE453A`'s `0xD500` target `0x246D4` and that
-  target's `0x3BCE0` are ported and registered (§46-C); the table's three
-  dispatchers, in the mode 5/`0x0D`/`0x32` handlers `0x25C88`/`0x274FC`/
-  `0x296B8`, are not, so no port path reaches them. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
+  target's `0x3BCE0` are ported and registered (§46-C). Of the table's
+  three dispatchers, the mode `0x0D`/`0x32` handlers `0x274FC`/`0x296B8`
+  are ported (record §48-Q) but no ported path stores either mode, and mode
+  5's `0x25C88` is not, so no port path the oracles run reaches them. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
   frame-1881 fix): none in the fight; `0x3E3A8` (f = 962, the `(char 0,
   0x2A)` callback) and its `+0x0C` callback `0x3E328` (f = 963) are now ported
   and registered; its `+0x18` hook `0x3E1D0` is ported with `0x19020`

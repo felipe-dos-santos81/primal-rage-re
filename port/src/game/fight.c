@@ -193,7 +193,7 @@ void fight_select_marker_spawn(u32 side, u32 cls, u32 y)
  * character], a2 = side ? 0x4200 : 0x200, a3 = 0xFD, a4 = y, a5 = 0) into
  * DS_001028E0[side]. Callers: 0x27770 (0x274FC) and 0x298F3 (0x296B8) with
  * y = the word at 0xA76D0 (0x980), and the unported 0x1D9D5 (0x1D890),
- * 0x1DBFA, 0x1DDBF (0x1DC6C) and 0x25F47 (0x25C88). */
+ * 0x1DBFA (0x1DAE8), 0x1DDBF (0x1DC6C) and 0x25F47 (0x25C88). */
 void fight_hud_badge_spawn(u32 side, u32 ch, u32 y)
 {
     u32 rec = DSD(DS_001028E0 + side * 4u);             /* 0x1D840/0x1D847 */
@@ -211,8 +211,8 @@ void fight_hud_badge_spawn(u32 side, u32 ch, u32 y)
  * store, written at 0x1D78E), 0x1D2F0(0, side), then the record
  * DS_001028F8[side] begins the stream 0xE904C at 1.0 (0x3F800000 pushed,
  * 0x2BC30). EBX/ECX/EDX are pushed and popped. Callers: 0x27752 (0x274FC),
- * 0x298DE (0x296B8), and the unported 0x279B6 (0x277C0) and 0x27F01
- * (0x27A2C). */
+ * 0x298DE (0x296B8), and the unported 0x279B6 (0x2791C) and 0x27F01
+ * (0x27ED8). */
 void fight_hud_side_reset(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x1D767..0x1D773 */

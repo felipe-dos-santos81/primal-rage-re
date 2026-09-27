@@ -357,8 +357,9 @@ int actors_init(void)
     fn_register(0x236D8u, (void (*)(void))anim_code_236D8);
     fn_register(0x2372Cu, (void (*)(void))anim_code_2372C);
     /* PORT: record §46-C. Character 1's entry 0x24568 of the per-character
-     * table 0xA8628 (the dword at 0xA862C), fn(side): its three dispatchers
-     * 0x25F27/0x27732/0x2989C (modes 5, 0xD and 0x32) are unported. And the
+     * table 0xA8628 (the dword at 0xA862C), fn(side): of its three dispatchers
+     * 0x25F27/0x27732/0x2989C (modes 5, 0xD and 0x32) the last two are
+     * ported (record §48-Q), through fn_resolve. And the
      * 0xD500 target 0x246D4 of its stream 0xE453A (the dword at 0xE4544),
      * opcode 0x15. */
     fn_register(0x24568u, (void (*)(void))fighter_24568);

@@ -19007,6 +19007,7 @@ static void q_4dbec_seed(u32 pos, u32 y0, u32 seed)
     DSW(DS_00104B00) = 0xDu;
     DSB(0x0010810Du) = 0u;
     DSW(DS_00108860) = 100u;
+    DSW(DS_00108860 + 2u) = 0x30u;      /* side 1's range differs */
     DSD(MZ_PS(1) + 4u) = pos;
     DSD(FIGHT_RECS + 0x44u) = 0u;
     DSD(FIGHT_RECS + 0x30u) = y0 << 16;
@@ -19205,7 +19206,8 @@ static void q_seed_replace(u32 *r4, u32 *r5, u32 *r6)
 }
 
 /* The glyph cells of text row `row`: q_row_cells counts them; q_row_ref
- * compares them (sprite ids) with a redraw of string `id` from an empty row
+ * compares them (sprite ids and pset palettes) with a redraw of string `id`
+ * from an empty row
  * through 0x2F4BC with `mode` (0x2F510's 0x4000 is 0x4002 there), leaving the
  * row redrawn. */
 static int q_row_cells(s32 row)
@@ -19216,15 +19218,25 @@ static int q_row_cells(s32 row)
     return n;
 }
 
+static u32 q_cell_pal(s32 row, s32 col)
+{
+    u32 r = ct_cell(row, col);
+    return r != 0u ? DSD(actor_pset(r) + 0x18u) : 0u;
+}
+
 static int q_row_ref(s32 row, u32 id, u32 mode)
 {
-    u32 got[0x2B];
+    u32 got[0x2B], pal[0x2B];
     s32 c;
     int same = 1;
-    for (c = 0; c < 0x2B; c++) got[c] = ct_sprite(row, c);
+    for (c = 0; c < 0x2B; c++) {
+        got[c] = ct_sprite(row, c);
+        pal[c] = q_cell_pal(row, c);
+    }
     mem_fill(DS_00105F38 + (u32)row * 0xACu, 0, 0xACu);
     text_cursor_hold(-1, row, game_string_get(id), mode);
-    for (c = 0; c < 0x2B; c++) if (ct_sprite(row, c) != got[c]) same = 0;
+    for (c = 0; c < 0x2B; c++)
+        if (ct_sprite(row, c) != got[c] || q_cell_pal(row, c) != pal[c]) same = 0;
     return same && q_row_cells(row) != 0;
 }
 
@@ -19418,9 +19430,16 @@ static void check_33c18_callers_b(void)
             DSB(DS_00104B0C) = 1u;
             DSB(0x0010810Du) = 0u;
             DSB(0x00104529u) = i == 0u ? 2u : 0u;
+            /* 0x28130: "NO WINNERS" on row 8 in the text-arm runs (in the
+             * spawn run its glyphs would take the pool head first). */
+            DSD(DS_00104AD4) = i == 0u ? 0x55u : 2u;
             head = DSD(DS_00105B3C);
+            mem_fill(DS_00105F38 + 8u * 0xACu, 0, 0xACu);
             mem_fill(DS_00105F38 + 0xBu * 0xACu, 0, 2u * 0xACu + 0xACu);
             game_mode_0d_step();
+            memcpy(want, mem + DS_00102760, sizeof want);
+            if (i != 0u) CHECK(q_row_ref(8, 0x42u, 0x4002u), "0x28130 drew row 8");
+            else CHECK_EQ_INT(q_row_cells(8), 0);
             CHECK_EQ_INT((int)DSD(ct + 0x3Cu), (int)(1000u + add[i]));
             CHECK_EQ_INT((int)DSD(DS_001077B0 + 0x3Cu), (int)sc[i]);
             CHECK_EQ_INT((int)DSB(DS_00104B21), 7);
@@ -19442,7 +19461,6 @@ static void check_33c18_callers_b(void)
                 CHECK_EQ_INT((int)DSW(DS_00105F34), 0x7777);
             } else {
                 CHECK_EQ_INT((int)DSW(DS_00105F34), 0xD);
-                memcpy(want, mem + DS_00102760, sizeof want);
                 CHECK(want[0] != 0u, "string 0x40 is not empty");
                 CHECK(memcmp(want, game_string_get(0x40u), sizeof want) == 0,
                       "the last string drawn is 0x40");
@@ -19458,7 +19476,7 @@ static void check_33c18_callers_b(void)
     q_seed_replace(&r4, &r5, &r6);
     DSB(DS_00104B02 + 3u) = 0x20u;
     DSB(DS_00104B09) = 1u;
-    DSB(DS_00104AF0) = 0u;
+    DSB(DS_00104AF0) = 3u;              /* one short of 4: no final arm */
     DSB(DS_00104AF1) = 1u;
     DSB(0x00108134u + 4u + 1u) = 5u;
     DSB(0x00108134u + 4u + 2u) = 3u;
@@ -19470,7 +19488,7 @@ static void check_33c18_callers_b(void)
     q_check_replace(r4, r5, r6);
     CHECK_EQ_INT((int)DSB(DS_00104B21), 4);
     CHECK_EQ_INT((int)DSB(DS_00104AF1), 2);
-    CHECK_EQ_INT((int)DSB(DS_00104AF0), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104AF0), 3);
     CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x63u), 0);
     CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x63u), 0x77);
     CHECK_EQ_INT((int)DSB(DS_001078BE), 3);
@@ -19495,8 +19513,12 @@ static void check_33c18_callers_b(void)
             DSB(FIGHT_RECS + (u32)b09[i] * 0x100u + 0x48u) = 0x77u;
             r4 = actor_alloc(0);
             DSD(DS_001077B4 + (u32)b09[i] * 0x94u) = r4;
+            DSD(DS_00104AD4) = 2u;
+            mem_fill(DS_00105F38 + 8u * 0xACu, 0, 0xACu);
             mem_fill(DS_00105F38 + 0xBu * 0xACu, 0, 0xACu);
             game_mode_32_step();
+            memcpy(want, mem + DS_00102760, sizeof want);
+            CHECK(q_row_ref(8, 0x42u, 0x4002u), "0x28130 drew row 8");
             CHECK_EQ_INT((int)DSB(FIGHT_RECS + (u32)b09[i] * 0x100u + 0x48u), 0);
             CHECK_EQ_INT((int)(DSB(r4 + 0x28u) & 8u), 8);
             CHECK_EQ_INT((int)DSB(DS_00104AF0 + b09[i]), (int)((b09[i] ? f1[i] : f0[i]) + 1u));
@@ -19511,7 +19533,6 @@ static void check_33c18_callers_b(void)
             CHECK_EQ_INT((int)DSB(DS_00104B21), 4);
             CHECK_EQ_INT((int)DSB(DS_00104B0A), 0);
             CHECK_EQ_INT((int)DSW(DS_00105F34), 0xB);
-            memcpy(want, mem + DS_00102760, sizeof want);
             CHECK(want[0] != 0u, "the winner string is not empty");
             CHECK(memcmp(want, game_string_get(sid[i]), sizeof want) == 0,
                   "the last string drawn is 0x65 / 0x66");

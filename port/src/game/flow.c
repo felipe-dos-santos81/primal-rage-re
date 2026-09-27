@@ -830,7 +830,7 @@ void game_coin_divert(u32 players)
 
 /* 0x4651C — record §48-Q. The 0x46504 latch reversed: DS_001082C8 =
  * DS_001082C0 and DS_001082CC = DS_001082C4 (two dword copies through EAX).
- * Callers: 0x28E07 (0x28DA4) and 0x27E74 (0x27A2C, mode 0xE's handler). */
+ * Callers: 0x28E07 (0x28DA4) and the unported 0x27E74 (0x27DC8). */
 void flow_1082c8_restore(void)
 {
     DSD(DS_001082C8) = DSD(DS_001082C0);                /* 0x4651C/0x46521 */

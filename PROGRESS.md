@@ -654,3 +654,20 @@ the attract's `0x2C3FC` voice calls remain declared gaps with `/* PORT: */`
 markers.
 
 **The coin/start chain wired (record §48-W).** `game_state_step` (`0x11D04`) now calls `game_coin_divert` (`0x257A4`) at both raw call sites. The coin/start arm passes the accepted mask (`0x11D41`) and returns, and state 8 passes 3 (`0x11EB8`) and falls into the shared tails. Both were confirmed in Ghidra's disassembly: `0x32970`, the run clock and still a named gap, pushes and pops EDX, so the mask reaches `0x257A4`. Nothing else in `0x11D04` differed. Under real input a credited start now leaves mode 3 for `0x1A`, `0x1B` and then `0x10`, whose character-select pass is still a gap (§47-M.5). On the no-input path neither site fires. `DS_001088E4` stays 0, and state 8 needs `DS_00108173 != 0`, which no instruction stores. A headless 8000-frame run is byte-identical before and after, and a probe shows no divert. `test_frontend`'s coin block now checks both sites and saves and restores the data object and pools around them: 11 of 11 mutations fail it.
+
+**`0x33C18`'s other callers (record §48-Q).** Modes `0xD` and `0x32` are
+ported (`0x274FC`/`0x296B8`, `game_mode_0d_step`/`game_mode_32_step`), and
+`game_frame` dispatches both. Each runs the arena frame's tail steps. On a
+set `DS_00104B0C` it either replaces the losing side's character or ends the
+match. The replacement uses `0x2716C`'s random pick or `0x292D4`'s team list,
+then the character's entrance `0xA8628[c]`, of which only character 1's is
+ported. The match end draws the result (`0x28130`), adds the bonus (mode
+`0xD` only) and runs the winner's crowd `0x4DBEC`. Also ported: `0x28DA4`,
+the join (`flow_player_join`, unwired because its mode-6/`0xC` callers need
+the unported `0x28CC8`), plus `0x4651C`, `0x32B00`, `0x1D764` and `0x1D838`.
+`0x25A84` has no entrance, so it stays unported. `0x43D60`/`0x4434C` belong to
+the character select pass and are left to that branch. Named gaps: `0x2C2B0`,
+`0x1D2F0`, six of the seven entrances, the voices, `0x32970` and the
+`0x2DAE4`/`0x2E934` audit. No ported path stores mode `0xD` or `0x32`, and the
+headless 8000-frame run is byte-identical. New `check_33c18_callers_a`/`_b`
+in `test_fight.c`.
