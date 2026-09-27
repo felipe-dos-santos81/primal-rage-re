@@ -19397,6 +19397,317 @@ static void check_update_48f98(void)
     tf_put(low, 0u, sizeof low);
 }
 
+/* ---- roar-timing Task 36: character 4's curl 0x45AD0 (record §48-A) ------ */
+
+#define C4_CURL     0x000EB64Eu   /* 0x45AD0's curl stream head */
+#define C4_UNCURL   0x000EB692u   /* 0x45A70's/0x45A34's uncurl stream head */
+
+/* Record §48-A. 0x45AD0 (*(u32*)0xA4C0C reads `d0 5a 04 00 00 00 00 00`:
+ * character 4's reaction 0x25, no stream; Ghidra has no function there): EAX
+ * = slot, EDX = rec, EBX unread; 0xEB64E at hold 2.0 through 0x3C4CC, 9/7/1,
+ * +0x57 = 0, +0x0C/+0x18/+0x1C = 0x45A70/0x459F4/0x45A34, rec+0x4C = 0x78;
+ * +0x42 untouched. 0x45A70 (+0x0C, EBX = side): nothing once +0x57 != 0 or
+ * with DS_001077A8[side ^ 1] = 0; the curl holds (+0x4C decremented, kept
+ * while positive as a signed byte) only while the command word has 0x600
+ * and that slot's +0x42 bit 0x10 is clear; else 0xEB692 at 2.0 through
+ * 0x2BC30 and +0x57 = 1. 0x459F4 (+0x18): 0x3E484's body. 0x45A34 (+0x1C):
+ * 0x3B714(other slot, slot), 0xEB692 on the record at 2.0, +0x57 = 1.
+ * 0x459D0 (the 0xD100 target at 0xEB66E/0xEB684): rec+0x63 = 1. The two
+ * stream heads are patched to plain frame words and restored. */
+static void check_char4_curl(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    u32 st = FIGHT_RECS + 0x3A00u;
+    u32 pset1 = FIGHT_ACTORS + 0x20u, pset2 = FIGHT_ACTORS + 0x40u;
+    u16 sv_curl = DSW(C4_CURL), sv_uncurl = DSW(C4_UNCURL), sv_st[5];
+    u32 sv_14ec = DSD(DS_001014EC);
+    u16 sv_ac = DSW(0x001080ACu), sv_ae = DSW(0x001080AEu);
+    u16 sv_w0 = DSW(0x000A6728u), sv_w2 = DSW(0x000A6728u + 2u);
+    u32 sv_d8 = DSD(0x000A3528u + 8u), sv_rng = DSD(DS_000EF6D8);
+    u8 sv_bdf2 = DSB(DS_000BEDF2), sv_b11a = DSB(0x000DE11Au);
+    u8 sv_c1d = DSB(DS_00100C1D), sv_ae8 = DSB(DS_00104AE8);
+    u8 sv_slots[0x130], sv_b00[4], sv_tab[28], sv_a80[0x80], sv_d20[0x10];
+    u8 sv_fd[0x18], sv_f8[2], sv_af8[8], sv_ab0[16], sv_e0[4], sv_8a8[2];
+    u8 sv_ring[0x50], sv_ce0[4], sv_d148[8], sv_d50[8], sv_78f2[8];
+    u8 sv_misc[0x40], sv_b5a[6], sv_d58[0x180], sv_ed8[0x10];
+    u8 sv_78fa = DSB(DS_001078FA);
+    u32 i;
+    typedef void (*anim_fn)(u32 rec, u32 arg);
+    anim_fn f459d0;
+
+    for (i = 0; i < 5u; i++) sv_st[i] = DSW(c3_streams[i]);
+    tf_snap(sv_slots, DS_001077A8, 0x130u);
+    tf_snap(sv_b00, DS_00104B00, 4u);
+    tf_snap(sv_tab, 0x000C8950u, 28u);
+    tf_snap(sv_a80, DS_00107A80, 0x80u);
+    tf_snap(sv_d20, DS_00107D20, 0x10u);
+    tf_snap(sv_fd, FIGHT_FD108_T, 0x18u);
+    tf_snap(sv_f8, DS_001078F8, 2u);
+    tf_snap(sv_af8, DS_00100AF8, 8u);
+    tf_snap(sv_ab0, DS_00100AB0, 16u);
+    tf_snap(sv_e0, DS_001088E0, 4u);
+    tf_snap(sv_8a8, DS_001088A8, 2u);
+    tf_snap(sv_ring, DS_00108270, 0x50u);
+    tf_snap(sv_ce0, DS_00100CE0, 4u);
+    tf_snap(sv_d148, DS_000FD148, 8u);
+    tf_snap(sv_d50, DS_00107D50, 8u);
+    tf_snap(sv_78f2, DS_001078F2, 8u);
+    tf_snap(sv_misc, 0x00104B00u, 0x40u);
+    tf_snap(sv_b5a, DS_00100B5A, 6u);
+    tf_snap(sv_d58, 0x00107D58u, 0x180u);
+    tf_snap(sv_ed8, DS_00107ED8, 0x10u);
+
+    CHECK(fn_resolve(0x45AD0u) == (void (*)(void))fighter_45ad0,
+          "0x45AD0 is registered as fighter_45ad0");
+    CHECK(fn_resolve(0x45A70u) == (void (*)(void))fighter_45a70,
+          "0x45A70 is registered as fighter_45a70");
+    CHECK(fn_resolve(0x459F4u) == (void (*)(void))fighter_459f4,
+          "0x459F4 is registered as fighter_459f4");
+    CHECK(fn_resolve(0x45A34u) == (void (*)(void))fighter_45a34,
+          "0x45A34 is registered as fighter_45a34");
+    f459d0 = (anim_fn)(void *)fn_resolve(0x459D0u);
+    CHECK(f459d0 != NULL, "0x459D0 is a registered stream target");
+    /* The (char 4, 0x25) entry of 0xA3528 and the stream's two 0xD100 sites. */
+    CHECK_EQ_INT((int)DSD(0x000A4C0Cu), 0x00045AD0);
+    CHECK_EQ_INT((int)DSD(0x000A4C10u), 0);
+    CHECK_EQ_INT((int)DSW(0x000EB66Cu), 0xD100);
+    CHECK_EQ_INT((int)DSD(0x000EB66Eu), 0x000459D0);
+    CHECK_EQ_INT((int)DSD(0x000EB684u), 0x000459D0);
+
+    /* A: 0x45AD0 through 0x34E2C (0x35045) for character 4, reaction 0x25. */
+    c3_seed(s0, s1, r0, r1, st);
+    DSB(s0 + 0x7Au) = 4u;
+    DSW(C4_CURL) = 0x1340u;
+    DSW(DS_001088E0) = 0;
+    DSB(s0 + 0x42u) = 0x09u;
+    DSB(r0 + 0x4Cu) = 0x11u;
+    DSB(r1 + 0x4Cu) = 0x22u;
+    hit_reaction_apply(0u, 0x25u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x5Fu), 0x25);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)C4_CURL);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)(DSW(pset1) & 0x7FFFu), 0x1340);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 1);
+    CHECK_EQ_INT((int)DSB(s0 + 0x57u), 0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x0Cu), 0x00045A70);
+    CHECK_EQ_INT((int)DSD(s0 + 0x18u), 0x000459F4);
+    CHECK_EQ_INT((int)DSD(s0 + 0x1Cu), 0x00045A34);
+    CHECK_EQ_INT((int)DSB(r0 + 0x4Cu), 0x78);
+    CHECK_EQ_INT((int)DSB(s0 + 0x42u), 0x09);
+    CHECK_EQ_INT((int)DSB(r1 + 0x4Cu), 0x22);
+    CHECK_EQ_INT((int)DSD(s1 + 0x0Cu), 0x11111111);
+    CHECK_EQ_INT((int)DSD(s1 + 0x18u), 0x22222222);
+    CHECK_EQ_INT((int)DSD(r1 + 8u), 0x00ABCDEF);
+    /* A2: direct on side 1 (EBX = 0 unread). */
+    c3_seed(s0, s1, r0, r1, st);
+    DSW(C4_CURL) = 0x1341u;
+    DSB(r0 + 0x4Cu) = 0x11u;
+    DSB(r1 + 0x4Cu) = 0x22u;
+    fighter_45ad0(s1, r1, 0u);
+    CHECK_EQ_INT((int)DSD(r1 + 8u), (int)C4_CURL);
+    CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)(DSW(pset2) & 0x7FFFu), 0x1341);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(s1 + 0x54u), 1);
+    CHECK_EQ_INT((int)DSB(s1 + 0x57u), 0);
+    CHECK_EQ_INT((int)DSD(s1 + 0x0Cu), 0x00045A70);
+    CHECK_EQ_INT((int)DSD(s1 + 0x18u), 0x000459F4);
+    CHECK_EQ_INT((int)DSD(s1 + 0x1Cu), 0x00045A34);
+    CHECK_EQ_INT((int)DSB(r1 + 0x4Cu), 0x78);
+    CHECK_EQ_INT((int)DSB(r0 + 0x4Cu), 0x11);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)DSB(s0 + 0x57u), 0x99);
+
+    /* B: 0x45A70 on side 0 (the other slot is DS_001077A8[1] = slot 1). The
+     * rows: +0x57, the command word, slot 1's +0x42 and +0x4C before; then
+     * +0x4C after and whether the uncurl started. */
+    {
+        static const u8  g57[12] = { 1u, 0x99u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u };
+        static const u16 gcmd[12] = { 0x0600u, 0x0600u, 0x0600u, 0x06FFu, 0x0600u,
+                                      0x0600u, 0x0600u, 0x0400u, 0x0200u, 0x0600u,
+                                      0xF9FFu, 0x0680u };
+        static const u8  g42[12] = { 0u, 0u, 0u, 0xEFu, 0u, 0u, 0u, 0u, 0u, 0x10u, 0u, 0u };
+        static const u8  g4c[12] = { 2u, 2u, 2u, 2u, 1u, 0x80u, 0x81u, 5u, 5u, 5u, 5u, 0x79u };
+        static const u8  w4c[12] = { 2u, 2u, 1u, 1u, 0u, 0x7Fu, 0x80u, 5u, 5u, 5u, 5u, 0x78u };
+        static const u8  wun[12] = { 0u, 0u, 0u, 0u, 1u, 0u, 1u, 1u, 1u, 1u, 1u, 0u };
+        u32 k;
+        for (k = 0; k < 12u; k++) {
+            c3_seed(s0, s1, r0, r1, st);
+            DSW(C4_UNCURL) = 0x1342u;
+            DSB(s0 + 0x57u) = g57[k];
+            DSW(DS_001088E0) = gcmd[k];
+            DSW(DS_001088E0 + 2u) = 0x0600u;
+            DSB(s1 + 0x42u) = g42[k];
+            DSB(r0 + 0x4Cu) = g4c[k];
+            fighter_45a70(s0, r0, 0u);
+            CHECK_EQ_INT((int)DSB(r0 + 0x4Cu), (int)w4c[k]);
+            CHECK_EQ_INT((int)DSD(r0 + 8u),
+                         wun[k] ? (int)C4_UNCURL : 0x00ABCDEF);
+            CHECK_EQ_INT((int)DSD(r0 + 0x24u),
+                         wun[k] ? 0x40000000 : 0x11111111);
+            CHECK_EQ_INT((int)DSB(s0 + 0x57u), wun[k] ? 1 : (int)g57[k]);
+            if (wun[k]) CHECK_EQ_INT((int)(DSW(pset1) & 0x7FFFu), 0x1342);
+            CHECK_EQ_INT((int)DSD(r1 + 8u), 0x00ABCDEF);
+        }
+    }
+    /* B2: no other slot (DS_001077A8[1] = 0): nothing, even with the curl
+     * released. */
+    c3_seed(s0, s1, r0, r1, st);
+    DSD(DS_001077A8 + 4u) = 0;
+    DSB(s0 + 0x57u) = 0;
+    DSW(DS_001088E0) = 0;
+    DSB(r0 + 0x4Cu) = 5u;
+    fighter_45a70(s0, r0, 0u);
+    CHECK_EQ_INT((int)DSB(r0 + 0x4Cu), 5);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)DSB(s0 + 0x57u), 0);
+    /* B3: side 1 reads DS_001088E2 and DS_001077A8[0] (slot 0's +0x42). */
+    c3_seed(s0, s1, r0, r1, st);
+    DSW(C4_UNCURL) = 0x1343u;
+    DSB(s1 + 0x57u) = 0;
+    DSW(DS_001088E0) = 0;
+    DSW(DS_001088E0 + 2u) = 0x0600u;
+    DSB(s0 + 0x42u) = 0;
+    DSB(s1 + 0x42u) = 0x10u;
+    DSB(r1 + 0x4Cu) = 3u;
+    fighter_45a70(s1, r1, 1u);
+    CHECK_EQ_INT((int)DSB(r1 + 0x4Cu), 2);
+    CHECK_EQ_INT((int)DSD(r1 + 8u), 0x00ABCDEF);
+    DSB(s0 + 0x42u) = 0x10u;
+    fighter_45a70(s1, r1, 1u);
+    CHECK_EQ_INT((int)DSB(r1 + 0x4Cu), 2);
+    CHECK_EQ_INT((int)DSD(r1 + 8u), (int)C4_UNCURL);
+    CHECK_EQ_INT((int)(DSW(pset2) & 0x7FFFu), 0x1343);
+    CHECK_EQ_INT((int)DSB(s1 + 0x57u), 1);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), 0x00ABCDEF);
+    /* B4: DS_001077A8[1] = 0 does not stop side 1, whose other slot is 0. */
+    c3_seed(s0, s1, r0, r1, st);
+    DSD(DS_001077A8 + 4u) = 0;
+    DSB(s1 + 0x57u) = 0;
+    DSW(DS_001088E0 + 2u) = 0;
+    DSB(r1 + 0x4Cu) = 3u;
+    fighter_45a70(s1, r1, 1u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x57u), 1);
+
+    /* C: 0x459F4 (flags 0 = 1, 1 = 0, 8 = 0), as check_hit_helpers' N for
+     * 0x3E484. */
+    sh_seed(s0, s1, r0, r1);
+    DSB(s1 + 0x54u) = 2u;
+    DSB(s1 + 0x62u) = 1u;
+    DSB(s1 + 0x53u) = 0x0Au;
+    DSD(DS_00100AF8) = 0;
+    CHECK_EQ_INT((int)fighter_459f4(0u), 1);
+    DSD(DS_00100AF8) = 6u;
+    CHECK_EQ_INT((int)fighter_459f4(0u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x8Au), 0x77);
+    DSW(s1 + 0x76u) = 2u;
+    CHECK_EQ_INT((int)fighter_459f4(0u), 1);
+    DSW(s1 + 0x76u) = 1u;
+    CHECK_EQ_INT((int)fighter_459f4(0u), 0);
+    DSB(s1 + 0x42u) = 8u;
+    CHECK_EQ_INT((int)fighter_459f4(0u), 1);
+    DSB(s1 + 0x42u) = 0;
+    DSD(DS_00100AFC) = 0;
+    CHECK_EQ_INT((int)fighter_459f4(1u), 1);
+    DSD(DS_00100AFC) = 9u;
+    CHECK_EQ_INT((int)fighter_459f4(1u), 0);
+    /* C2: through 0x19020: DS_00100AF8[0] = (hook == 0). */
+    DSD(s0 + 0x18u) = 0x000459F4u;
+    DSD(DS_00100AF8) = 6u;
+    fighter_19020(0u);
+    CHECK_EQ_INT((int)DSD(DS_00100AF8), 1);
+
+    /* D: 0x45A34(0) is 0x3B714(slot 1, slot 0) (check_char3_2425's G seeds:
+     * slot 1 takes the 0x3A504 pose), then record 0 on 0xEB692 at 2.0 and
+     * slot 0's +0x57 = 1. */
+    pose_chain_setup(s0, s1, r0, r1);
+    DSD(DS_00107D50 + 4u) = 0;
+    DSB(s0 + 0x5Fu) = 0;
+    DSB(s1 + 0x5Fu) = 0;
+    DSB(s0 + 0x53u) = 0;
+    DSD(s1 + 0x10u) = 0;
+    DSB(s1 + 0x58u) = 0;
+    DSB(s1 + 0x54u) = 0;
+    DSB(s0 + 0x52u) = 0;
+    DSB(s1 + 0x52u) = 0;
+    DSB(s1 + 0x65u) = 0xFFu;
+    DSB(s0 + 0x65u) = 0xFFu;
+    DSB(s1 + 0x41u) = 0;
+    DSB(r1 + 0x4Bu) = 0;
+    DSB(s1 + 0x63u) = 0;
+    DSB(DS_000BEDF2) = 1;
+    DSW(0x000A6728u + 2u) = 3;
+    DSD(r1 + 0x24u) = 0xDEADBEEFu;
+    DSD(r0 + 8u) = 0x00ABCDEFu;
+    DSD(r0 + 0x24u) = 0x11111111u;
+    DSB(s0 + 0x57u) = 0x5Au;
+    DSB(s1 + 0x57u) = 0x6Bu;
+    DSW(C4_UNCURL) = 0x1344u;
+    fighter_45a34(0u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x65u), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x65u), 0xFF);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0x10);
+    CHECK_EQ_INT((int)DSD(s1 + 0x10u), 0x0003A43C);
+    CHECK_EQ_INT((int)DSW(s0 + 0x6Cu), 1);
+    CHECK_EQ_INT((int)DSD(r0 + 8u), (int)C4_UNCURL);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSB(s0 + 0x57u), 1);
+    CHECK_EQ_INT((int)DSB(s1 + 0x57u), 0x6B);
+
+    /* E: 0x459D0 through the stream-target wrapper: rec+0x63 = 1 only. */
+    if (f459d0 != NULL) {
+        DSB(r0 + 0x62u) = 0x11u;
+        DSB(r0 + 0x63u) = 0x5Au;
+        DSB(r0 + 0x64u) = 0x22u;
+        DSB(r1 + 0x63u) = 0x33u;
+        f459d0(r0, 0xFFFFu);
+        CHECK_EQ_INT((int)DSB(r0 + 0x63u), 1);
+        CHECK_EQ_INT((int)DSB(r0 + 0x62u), 0x11);
+        CHECK_EQ_INT((int)DSB(r0 + 0x64u), 0x22);
+        CHECK_EQ_INT((int)DSB(r1 + 0x63u), 0x33);
+    }
+
+    tf_put(sv_ed8, DS_00107ED8, 0x10u);
+    tf_put(sv_d58, 0x00107D58u, 0x180u);
+    tf_put(sv_b5a, DS_00100B5A, 6u);
+    DSB(DS_001078FA) = sv_78fa;
+    tf_put(sv_misc, 0x00104B00u, 0x40u);
+    tf_put(sv_78f2, DS_001078F2, 8u);
+    tf_put(sv_d50, DS_00107D50, 8u);
+    tf_put(sv_d148, DS_000FD148, 8u);
+    tf_put(sv_ce0, DS_00100CE0, 4u);
+    tf_put(sv_ring, DS_00108270, 0x50u);
+    tf_put(sv_8a8, DS_001088A8, 2u);
+    tf_put(sv_e0, DS_001088E0, 4u);
+    tf_put(sv_ab0, DS_00100AB0, 16u);
+    tf_put(sv_af8, DS_00100AF8, 8u);
+    tf_put(sv_f8, DS_001078F8, 2u);
+    tf_put(sv_fd, FIGHT_FD108_T, 0x18u);
+    tf_put(sv_d20, DS_00107D20, 0x10u);
+    tf_put(sv_a80, DS_00107A80, 0x80u);
+    tf_put(sv_tab, 0x000C8950u, 28u);
+    tf_put(sv_b00, DS_00104B00, 4u);
+    tf_put(sv_slots, DS_001077A8, 0x130u);
+    DSB(DS_00104AE8) = sv_ae8;
+    DSB(DS_00100C1D) = sv_c1d;
+    DSB(0x000DE11Au) = sv_b11a;
+    DSB(DS_000BEDF2) = sv_bdf2;
+    DSD(DS_000EF6D8) = sv_rng;
+    DSD(0x000A3528u + 8u) = sv_d8;
+    DSW(0x000A6728u) = sv_w0;
+    DSW(0x000A6728u + 2u) = sv_w2;
+    DSW(0x001080ACu) = sv_ac;
+    DSW(0x001080AEu) = sv_ae;
+    for (i = 0; i < 5u; i++) DSW(c3_streams[i]) = sv_st[i];
+    DSW(C4_UNCURL) = sv_uncurl;
+    DSW(C4_CURL) = sv_curl;
+    DSD(DS_001014EC) = sv_14ec;
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -19553,6 +19864,7 @@ int test_fight(void)
     check_flyers_4987c();
     check_volleyball();
     check_update_48f98();
+    check_char4_curl();
 
     tf_put(s_f0ae0, 0x000F0AE0u, 0x20u);
     tf_put(s_proj, 0x00100A70u, 0xF4u);
