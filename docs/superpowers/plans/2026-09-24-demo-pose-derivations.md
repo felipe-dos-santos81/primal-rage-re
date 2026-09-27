@@ -7650,3 +7650,150 @@ and checked with `cmp`.
   (the batch controller runs the ladder after merging).
 - No gap remains inside `0x3A6D4`. Its siblings `0x3A588` (the `0x3A650`
   setter) and `0x3A820` (the `0x3A8E8` setter) are separate batch items.
+
+## 41-B. The raptor's throw `0x14D7C`, the placement `0x3C208` and the stream target `0x14E80` (named-gap batch, branch `gap-3c208`)
+
+**Result in one line.** The two named gaps §40.3 left in character 3's grab,
+the `+0x1C` throw `0x14D7C` and the grab stream's second `0xD100` target
+`0x14E80`, are ported and registered, with the placement `0x3C208` the throw
+calls and its unported callees `0x18AF8` and `0x3B90C` (`0x3B8D8` was ported
+in §30). None of them is reached in the port's run, so no oracle moves.
+
+### 41-B.1 The raw (Ghidra `read_memory` + capstone, fixups applied)
+
+Ghidra has functions at `0x3C208`, `0x14D7C` (`FUN_00014d7c`), `0x3B90C`
+(`FUN_0003b90c`) and `0x18AF8` (`FUN_00018af8`), all in the checked-in
+decomp export; the decompilations agree with the disassembly below. Only
+`0x14E80` has no Ghidra function.
+
+- **`0x3C208`** (292 bytes, `0x3C208..0x3C32B`; EAX = side, EDX = dist):
+  - `0x186D0(0)`, `0x186D0(1)`, `0x18AF8()`. All three keep EDX (`0x186D0`
+    and `0x18B04` push it), so the `test edx,edx` at `0x3C24D` tests the
+    argument: EDI = |dist|.
+  - `mov eax,[0x1077B0]` (the side-0 record, the slot's `+0`): word `+0x34`,
+    bytes `+0x43`, `+0x42` = 0 (`0x3C22C..0x3C236`); the same for
+    `[0x107844]` (`0x3C23F..0x3C249`). These are record fields, not slot
+    fields.
+  - ECX = 1 - side (`0x3C253`/`0x3C25D`). `0x187FC` is called once for the
+    sign and once for the value (EAX = |d|; `0x187FC` and `0x186D0` keep ECX).
+    ESI = |(|d| - EDI)|.
+  - `cmp edx,edi; jl 0x3C29D` (signed). Not below: `0x1A570(side)` (EAX =
+    EBX) non-zero gives `0x1883C(other, ESI, EBX = 0)` (`0x3C31B`), else
+    `0x1883C(other, -ESI, 0)` (`0x3C290..0x3C298`).
+  - Below (`0x3C29D`): EBP = other * `0x94`. With `0x1A570(side)` non-zero
+    ESI is negated (`0x3C2B9`). `0x3B8D8(other, ESI)` = 0 goes to the
+    `0x1883C(other, ESI, 0)` tail. Otherwise `0x188DC(other, 0x3B90C(other,
+    ESI))` and `0x188DC(side, [EBP + 0x1077DC] ± EDI)`: `+` on the
+    `0x1A570` arm (`0x3C2E2`), `-` on the other (`0x3C312`). `[EBP +
+    0x1077DC]` is the other slot's `+0x2C`, read after the first `0x188DC`
+    wrote it. `0x188DC` keeps EBX/ECX and does not touch EBP; `0x18714` keeps
+    EBX/ECX/EDX/ESI/EDI.
+- **`0x18AF8`** (12 bytes): `xor eax,eax; call 0x18B04; mov eax,1` and falls
+  into `0x18B04`. So `0x18B04(0)`, `0x18B04(1)` (the port's
+  `hit_facing_flag`).
+- **`0x3B90C`** (44 bytes; EAX = side, EDX = delta): x = slot `+0x2C` +
+  delta; W = `[0xBE018]`; `jge` gives W, else `neg edx`, `jg` gives x, else
+  -W. Its twin `0x3B8D8` returns AL = 1 for the same x at or past either
+  wall, so through `0x3C208` the clamp always returns ±W.
+- **`0x14D7C`** (199 bytes, `0x14D7C..0x14E42`; EAX = side):
+  - `0x33950(side)` context: `0x18B04(ctx[1])` (`0x14D90`) on the slots as
+    they are (no latch first).
+  - `mov eax,[ebx*2 + 0x107D2A]; sar eax,16; cmp eax,4; jl`: the side's
+    `0x107D2C` word, signed, at least 4 sets `DS_001088BF` = 4.
+  - `0x39A10(ctx[4], 0x309)`, `0x39A10(ctx[5], 0x309)`.
+  - EDX = `[0x9AFA2 + 2 * byte ctx[3]+0x7A] sar 16`, the s16 at `0x9AFA4 +
+    2c` (`read_memory 0x9AFA4`: `2D00 2D00 2D00 3840 2F80 2D00 29C0` for
+    c = 0..6); `0x3C208(side, EDX)` (`0x14DDF`).
+  - `0x39834(ctx[1], byte ctx[2]+0x5F)`.
+  - `0x2BC30(ctx[5], [0xC91C0 + 4 * byte ctx[3]+0x7A], 3.0)` (`push
+    0x40400000`, then `[esp+0x18]` = ctx[5]). The char byte is read again at
+    `0x14E03`. `read_memory 0xC91C0`: `0xE756A 0xE41E0 0xED21E 0xD284C
+    0xEAE36 0xD44E4 0xE0DDE`.
+  - ctx[3] `+0x41 |= 0x80`, `+0x52` = 9, `+0x53` = 4, then the voice
+    `0x2C3FC(0xB3)` (out of scope, spec §7).
+- **`0x14E80`** (36 bytes; EAX = rec, EDX pushed and popped): `al = [eax +
+  0x51]; xor al,1; and eax,0xff`, EAX = `DS_001077A8[that]`; 0 returns; else
+  the slot's record `+0x55` = 1 and the slot's word `+0x74` = 0.
+
+### 41-B.2 Entrances
+
+A rel32 (`E8`/`E9`/`0F 8x`) and rel8 scan of the code object and a dword scan
+of both objects (dumped through `read_memory`), cross-checked with
+`get_xrefs_to`:
+
+- `0x3C208`: 10 `call`s, `0x14DDF`, `0x21257`, `0x22466`, `0x225D4`,
+  `0x3E2AF`, `0x401CC`, `0x44C0E`, `0x47ADB`, `0x47D90`, `0x48112`; no dword.
+  Only `0x14DDF` is in ported code; `0x3E2AF` is in the unported `0x3E244`,
+  the other eight in code the port does not have.
+- `0x18AF8`: 10 `call`s (`0x21239`, `0x21B1D`, `0x21BFE`, `0x22595`,
+  `0x3C222`, `0x3E2B4`, `0x3E9B9`, `0x44C13`, `0x479AC`, `0x47D95`), no
+  dword. (`prage.functions.csv`'s "1 caller" undercounts.)
+- `0x3B90C`: `0x3C2CC` and `0x3C2FC` only. `0x3B8D8`: `0x3BA4E`, `0x3BA85`
+  (§30) and `0x3C2BF`, `0x3C2EF`.
+- `0x14D7C`: no rel32; one dword, at `0x14E71` (the `0x14E44` store),
+  `get_xrefs_to`: `0x14E6E` DATA.
+- `0x14E80`: no rel32, no dword in the code object; one dword in the data
+  object, `0xD3056` (`get_xrefs_to` is empty).
+
+### 41-B.3 The port
+
+- `fighter.c`: `fighter_3c208` (public), `fighter_3b90c` (public for its
+  unit test), `fighter_18af8` (static) next to `fighter_3b8d8`;
+  `fighter_14d7c` (public) after `fighter_14e44`. The table bases are local
+  `#define`s (`FIGHT_DIST_14D7C` = `0x9AFA2`, the dword the raw reads;
+  `FIGHT_ANIM_14D7C` = `0xC91C0`).
+- `actors.c`: `anim_code_14E80`, and `fn_register` of `0x14D7C`
+  (`fn(side)`, as `0x193B0`'s `0x19505` calls it) and `0x14E80` (the
+  opcode-`0x11` `(rec, operand)` shape).
+- `0x3E244` still needs the unported `0x3C358` (and is not reached); its
+  `PORT:` note in `fighter_3e3a8` is updated.
+
+### 41-B.4 The assertions and mutations
+
+`check_throw_3c208` (`test_fight.c`, after `check_body_push`) saves and
+restores the slots, `DS_001077A8`, `DS_00104B00`, `0x100AF0..0x100AF7`,
+`DS_00100AB0..ABF`, `0xD3388..0xD33AB`, `0x107D20..0x107D33`,
+`0x100B5A..0x100B5F`, `0x107ED8..0x107EE4`, `0x107D58..0x107ED7`, the
+`c3_seed` globals, `DS_001088BF`, `DS_001078FA`, the `0xEAE36` stream head
+and `mem[0..0x77]`. A temporary whole-data-object diff around it (reverted)
+first found `0x100B5A/B` and `0x107D30`; after widening the saves it was
+empty. `check_char3_grab`'s two "stays unregistered" checks become
+registration checks.
+
+- A..G: `0x3C208` on `bp_seed` positions (walls `0x7C00`): the far arm both
+  ways and for side 1, the record clears and `0x18AF8`'s facing bits (and
+  mode `0x22`), the magnitude of a negative dist, the `jl` at equality at the
+  right wall, the closer arm both ways, and both wall clamps with the side's
+  `0x188DC` placement.
+- H: `0x3B90C` directly, including x = ±W and ±(W + 1).
+- I: `0x14D7C(0)` for the raptor throwing character 4 (distance `0x2F80`,
+  stream `0xEAE36` patched to a plain frame word): the other side's stale
+  slot `+0x2C` shows that `0x18B04(1)` runs before any latch; the
+  `0x1088BF` gate at 3, 4 and `0x8004` (signed); both `+0x74`; `0x39834`'s
+  count; the other record's stream and 3.0 hold; 9/4 and `+0x41` bit 7.
+- J: `0x14E80` both ways, and no other slot (a pointer planted at `mem[0]`
+  is not followed).
+
+**Mutations** (`scratchpad/g3c208/mut.py`, `mut.log`, `mut2.log`): 71
+single-site edits over `0x3B90C` (6 + 1), `0x18AF8` (2), `0x3C208` (30),
+`0x14D7C` (24), `0x14E80` (6) and the two registrations, each rebuilt and
+run with `PR_ORACLE_REQUIRED=1`. The first run had 70; 69 failed at once (2..35
+`FAIL` lines). The survivor moved `0x3B90C`'s `jge` to `x > W + 1`, which
+differs from the raw only at x = W + 1; H now asserts ±(W + 1) (one past each
+wall). The second run re-ran that mutation and `ret wall` and added its
+mirror (`x > -W - 2`); all three fail. All 71 fail.
+The sources were restored and the suite re-run green.
+
+### 41-B.5 Measured and remaining gaps
+
+- Build with 0 warnings; `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all
+  checks pass. The oracle drivers were not run in this batch (shared
+  `/tmp/pr_frontend_dump`); none of the new code is reached in the port's
+  run (§40.3's probe: `0x14CC4` misses at f = 4020, and `0x14E80` lies past
+  the loop the miss restart cuts), so the front-end, demo-fight and attract2
+  lines are expected unchanged.
+- Remaining named gaps: `0x3E244` (needs `0x3C358`). `0x3C208`'s other
+  nine call sites (`0x3E2AF` in `0x3E244` among them) and `0x18AF8`'s other
+  nine lie in code the port does not have (no `port/src` reference to any of
+  those addresses or their functions). The `0x2C3FC(0xB3)` voice is out of
+  scope.

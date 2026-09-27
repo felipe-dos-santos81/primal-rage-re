@@ -2257,7 +2257,8 @@ record §34).**
   is at f = 963, with `+0x86 >> 16` = 1, so only the first arm runs.
 * **Fix.** `fighter_3e3a8`/`fighter_3e328` (registered) and the static
   `fighter_3e0f0`/`fighter_29c08` in `fighter.c`; `0x3E1D0` (needs the
-  unported `0x19020`/`0x18C14`) and `0x3E244` (needs `0x3C208`/`0x3C358`)
+  unported `0x19020`/`0x18C14`) and `0x3E244` (needs `0x3C208`/`0x3C358`;
+  `0x3C208` since ported, record §41-B)
   are stored but not ported (the `0x19020` gap skips `0x3E1D0` at f =
   963, unevaluated; `0x3E1D0` since ported, record §35). The front-end driver dumps a frame whose
   iteration starts or ends in a state >= 3 (1382 frames). `title_compare.py`
@@ -2405,8 +2406,8 @@ record §34).**
   with capstone and ported with the `+0x18` hook it stores, `0x14CC4`, and
   its stream's `0xD100` target `0x14EA4` (record §40). The hook finds no grab
   at f = 4020 and restarts the miss stream `0xD3062`, as the poll shows.
-  Its `+0x1C` throw `0x14D7C` (which needs the unported `0x3C208`) and the
-  stream target `0x14E80` are not reached and stay named gaps. The poll
+  Its `+0x1C` throw `0x14D7C` and the stream target `0x14E80` are not
+  reached (both since ported with `0x3C208`, record §41-B). The poll
   matches through f = 4179. Ported (`ce5f295`): 2763..2949 explained,
   N = 2950.
 * **2950: the stance return `0x3C32C`.** At f = 4180 (loop 3293) the
