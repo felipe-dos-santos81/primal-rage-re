@@ -670,6 +670,12 @@ Every caller that puts the port in mode `0x1A` is unported mode code, so no orac
 
 **The `0x24C5C` mode switch (record §47-B).** `game_frame` is `0x24C5C`, and it now carries the raw's whole mode switch: jump table `0x24B8C`, 52 entries, read as the word `DS_00104B00` (it used to read a dword). Case 3 runs `0x11D04` as before and case `0x11` stores its hook `0x259CC` and mode `0x17` inline. Cases `0x14`, `0x1A` and `0x1B` call `game_hook_25ae8`, `frontend_mode_1a_step` and `frontend_mode_1b_step`, and the other 40 cases are named gaps. Case `0x17` is wired once `gap7-mode17` merges. No ported path leaves mode 3. The raw leaves it three ways, all unported: Enter in the keyboard loop gives `0x27`, and the coin/start arm and state 8 of `0x11D04` both call `0x257A4`. So the hooks still run only in unit tests, and a headless 8000-frame run is byte-identical before and after. §47-B.6 scopes the follow-up (`0x257A4` with `0x33C18`/`0x46594`, then mode `0x10`'s `0x438B4`). New `check_mode_switch` in `test_fight.c`: 14 of 14 mutations fail it.
 
+**The mode-`0x10` handler `0x438B4` (record §47-M).** `0x438B4` is ported from the raw and unit-tested as `fight_mode_10_step`, with its join test `0x43928` (`fight_char_join`). `0x11F28`, the coin/start poll, was already ported as `frontend_coin_poll` and is now exported. `game_frame` dispatches case `0x10` to it, which leaves 38 named-gap cases. The handler branches on the byte `DS_00108174`:
+- 1 runs the join test, the skip test `0x4F790` and the countdown `DS_0010816C`, then copies `DS_00108172` into `DS_00108174`;
+- 0 runs the character select's per-frame pass `0x43B24` (`0x44798` when `DS_00104B1D == 3`). That pass is a named gap: about 1300 unported instructions with its callees.
+
+No instruction stores a non-zero value to `DS_00108174` by displacement, so 0 is the arm the character screen runs. The record also corrects §47-B.2: `0x43D7E` is a per-side byte store, so nothing writes `DS_00108173`. No ported path stores mode `0x10`, and a headless 8000-frame run is byte-identical before and after. New `check_mode_10_step` in `test_fight.c`: 27 of 27 mutations fail it.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
 demo fight's remaining divergences (the capture's fight is explained up to its
 first all-black frame 1885 after the frame-1881 fix, and the attract's second
