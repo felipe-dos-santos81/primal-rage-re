@@ -758,6 +758,71 @@ void game_hook_270bc(void)
     DSD(DS_00104AE4) = FN_0005D812;                     /* 0x2712C */
 }
 
+/* ---- the coin/start divert 0x257A4 and its callee 0x46594 (record §47-C) -- */
+
+#define FN_0004367C 0x0004367Cu   /* no symbols.h name: fight_hook_4367c */
+#define DS_00104B1B 0x00104B1Bu   /* no symbols.h name */
+
+/* 0x46594 — record §47-C. Only caller 0x257F7 (0x257A4). With the byte
+ * DS_00108173 != 0, DS_001082C8 = 7 (EDX) and DS_001082CC = 4 (EBX);
+ * otherwise both = the byte 0xC93F8[b] (`xor eax,eax; mov al,[0x10452c]; mov
+ * al,[eax+0xc93f8]; and eax,0xff`), b = DS_0010452C. Then DS_001082D0 = the
+ * byte 0xC9388[7b] (`lea eax,[edx*8]; sub eax,edx`) and the 0x46504 latch
+ * inline: DS_001082C0 = DS_001082C8, DS_001082C4 = DS_001082CC. EBX/EDX are
+ * pushed and popped; EAX (DS_001082CC) is dead at 0x257FC. */
+void flow_1082c8_init(void)
+{
+    if (DSB(DS_00108173) != 0u) {                       /* 0x46596/0x4659D */
+        DSD(DS_001082C8) = 7u;                          /* 0x465A9 */
+        DSD(DS_001082CC) = 4u;                          /* 0x465AF */
+    } else {
+        u32 v = DSB(DS_000C93F8 + DSB(DS_0010452C));    /* 0x465B7..0x465C4 */
+        DSD(DS_001082CC) = v;                           /* 0x465C9 */
+        DSD(DS_001082C8) = v;                           /* 0x465CE */
+    }
+    u32 b = DSB(DS_0010452C);                           /* 0x465D3/0x465D5 */
+    DSD(DS_001082D0) = DSB(DS_000C9388 + b * 7u);       /* 0x465DB..0x465EF */
+    DSD(DS_001082C0) = DSD(DS_001082C8);                /* 0x465F4/0x465F9 */
+    DSD(DS_001082C4) = DSD(DS_001082CC);                /* 0x465FE/0x46603 */
+}
+
+/* 0x257A4 — record §47-C. The coin/start divert. EAX (`players`) is copied to
+ * EDX (0x257A6), which 0x2C3FC and 0x2BAF4 push and pop, so the 0x257E0 byte
+ * store DS_00104B1F = DL is the argument. The first 0x33C18 call runs with EDX
+ * still the argument (it reads only EAX), the second after `xor edx,edx`;
+ * EDX = 0 and ECX = 7 (0x257BB) survive 0x33C18/0x46594 into 0x65490, the
+ * memset (EAX = dst, EDX = the fill dword, ECX = the count), which clears the
+ * seven bytes DS_00104B02..0x104B08: the mode word's upper half and the four
+ * bytes after it. Then the hook 0x4367C (EDX, 0x25806) and 0x4F980 arms mode
+ * 0x1A with the return mode 0x10. Callers: 0x11D41 (0x11D04's coin arm,
+ * EAX = the accepted mask), 0x11EB8 (0x11D04's state 8, EAX = 3), the eight
+ * game-start modes 0x28..0x2F of 0x24C5C (0x24F5C..0x25194) and the
+ * unentered stub 0x11CC8 (`jmp` at 0x11CD4). */
+void game_coin_divert(u32 players)
+{
+    /* PORT: 0x257AD 0x2C3FC(0x100) voice, not wired (record §45-A). */
+    actors_reset_al(0u);                                /* 0x257B2/0x257B4 0x2BAF4 */
+    DSB(DS_00104B17) = 0u;                              /* 0x257C0 (AH) */
+    DSB(DS_00104B19) = 0u;                              /* 0x257C6 */
+    DSB(DS_00104B11) = 0u;                              /* 0x257CC */
+    DSB(DS_00104B1B) = 0u;                              /* 0x257D2 */
+    DSB(DS_00104B15) = 0u;                              /* 0x257D8 */
+    DSB(DS_00104B1F) = (u8)players;                     /* 0x257E0 (DL) */
+    fight_char_reset(0u);                               /* 0x257DE/0x257E6 0x33C18 */
+    fight_char_reset(1u);                               /* 0x257EB/0x257F2 0x33C18 */
+    flow_1082c8_init();                                 /* 0x257F7 0x46594 */
+    mem_fill(DS_00104B02, 0u, 7u);                      /* 0x257FC/0x25801 0x65490 */
+    DSD(DS_00104AE4) = FN_0004367C;                     /* 0x25806/0x25810 */
+    frontend_wipe_arm(0x10u);                           /* 0x2580B/0x25816 0x4F980 */
+    /* PORT: 0x25820 0x2C3FC(0x53) voice, not wired (record §45-A). Its EAX is
+     * 0x257A4's return value, which no caller reads: 0x11EB8 is followed by
+     * 0x10DB0, which loads AH first and never reads AL; 0x11D41 returns
+     * through 0x11D04 into case 3's `jmp 0x2540F`, and the game-start cases
+     * jump there too. In that tail 0x2A31C, 0x3BB90 and 0x12D48 write EAX (or
+     * AL) before reading it, the mode tail 0x2545C loads AX and compares only
+     * AX, and 0x255CC reloads EAX (0x25621) after 0x24C5C returns. */
+}
+
 /* ---- the remaining DS_00104AE4 values (record §46-F) --------------------- */
 
 #define FN_00025BBC 0x00025BBCu   /* no symbols.h name: game_hook_25bbc */

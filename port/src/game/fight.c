@@ -642,8 +642,12 @@ void fight_dust_build(u32 side)
 
 /* ---- 0x33C18 the character select's slot reset -------------------------- */
 
-/* 0x33C18. Clear the per-side character fields and reset the 0x108860 word. */
-static void fight_char_reset(u32 side)
+/* 0x33C18 — record §47-C. Clear the per-side character fields and reset the
+ * 0x108860 word to 100 (EBX). The slot is 0x1077B0 + side * 0x94 (`shl 3; add;
+ * shl 2; add; shl 2`); EDX = EAX indexes the word. Only EAX is read (EBX/EDX
+ * are pushed and popped). Ported callers: 0x41354 (0x41350) and 0x257E6/
+ * 0x257F2 (0x257A4). */
+void fight_char_reset(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;
     DSB(slot + 0x7Fu) = 0;                      /* 0x33C2E */

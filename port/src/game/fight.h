@@ -214,5 +214,8 @@ void fight_hook_4367c(void);
  * seven stage bytes DS_00108106 and the count DS_00108111 = 0. */
 void fight_hook_4142c(void);
 void fight_stage_marks_clear(void);
+/* 0x33C18 (record §47-C). The slot `side`'s +0x7F/+0x80/+0x82/+0x5B bytes
+ * and +0x3C dword = 0, and the word DS_00108860[side] = 100. */
+void fight_char_reset(u32 side);
 
 #endif /* PRAGE_GAME_FIGHT_H */

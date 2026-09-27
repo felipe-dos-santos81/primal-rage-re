@@ -11,7 +11,11 @@
 /* Validates the two pools res_load_index already allocated. Returns 0 when
  * either base is zero or outside mem[]. */
 int  actors_init(void);
+/* 0x2BAF4 with EAX = 1 (the 34 callers other than 0x257A4). */
 void actors_reset(void);
+/* 0x2BAF4 with AL = al: non-zero runs 0x52106/0x336C0, zero copies the
+ * 0xFA00-byte buffer [0xE87A0] into [0xE87A4] instead (record §47-C). */
+void actors_reset_al(u32 al);
 /* 0x38B70. Zeroes the actor cursors and the two 7-dword arrays DS_00107A00 and
  * the front-end row table DS_00107A1C; actors_reset calls it (0x2BBDA). */
 void actor_cursor_reset(void);
