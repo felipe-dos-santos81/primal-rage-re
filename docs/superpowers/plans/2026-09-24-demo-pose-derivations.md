@@ -11207,6 +11207,12 @@ occupied cell before it spawns), and a `>=` for the insert's stored-count
 test and the move's `>` are equivalent on the image (stored count = count in
 all three descriptors; a move of 0 bytes), so they were not run.
 
+In driver mode (`scratchpad/t34/mutdrv.sh`), `game_init` without the
+`0x1E824` call fails the attract2 ratchet: 950/554/15/207/6, first
+unexplained 3408 < N 3545, the counts before the task. The unit tests stay
+green there, because both checks call `hiscore_init` themselves: the call
+site is covered by the driver alone.
+
 ### 46-A.5 Measured
 
 | measurement | before (`1151646`) | `1251af7` |
