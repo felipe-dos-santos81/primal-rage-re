@@ -707,6 +707,11 @@ cmake -S port -B build && cmake --build build     # or: make build
 ./build/prageport --game-dir data/game/C --check 60
 ```
 
+The window opens at 1024x768 (4:3, the original's CRT aspect) and is
+user-resizable; the 320x200 frame is scaled to fill it (nearest-neighbour, to
+keep the pixels hard). This is host policy, not from the original — see the
+`PORT:` note in `host.c`.
+
 The windowed run opens the audio device with the window at the FM core's native
 49716 Hz stereo rate; if no device can be started it prints SDL's reason and
 continues silently (audio is otherwise unconditional — there is no sound flag).
