@@ -5997,6 +5997,148 @@ static void check_mode_17_hooks(void)
     memcpy(gfx_dac, s_dac, sizeof s_dac);
 }
 
+/* Record §47-B: game_frame's mode switch (0x24C5C, table 0x24B8C) on the word
+ * DS_00104B00. The upper word 0x104B02 holds 0xBEEF throughout, so a dword
+ * (or byte) read of the mode dispatches nothing (or the wrong case). The
+ * update table, the command block and the DS_00104B15 tail are gated off. */
+static void ms_seed(u32 mode_dword)
+{
+    DSD(DS_00104AE8) = 0u;                  /* no update-table bit */
+    DSB(DS_00104B19 + 2u) = 0u;             /* 0x24C7C: no command block */
+    DSB(DS_00104B15) = 0u;                  /* no 0x25414 tail */
+    DSD(DS_00104B00) = mode_dword;
+}
+
+static void check_mode_switch(void)
+{
+    static u8 s_data[0x10B0D0u - 0x80000u];
+    static u8 s_rec[0xEBA0u], s_pset[0x4880u];
+    static u8 s_bufa[0xFA00u], s_bufb[0xFA00u], s_ap[0xFA00u];
+    static u8 s_dac[sizeof gfx_dac];
+    static u8 s_res[0x14u * 128u];
+    u32 rec_pool = DSD(DS_001014F4), pset_pool = DSD(DS_001014EC);
+    u32 bufa = DSD(DS_001014E8), bufb = DSD(DS_001014E4);
+    u32 res_tab = DSD(DS_001014E0);
+    u32 res_len = DSD(DS_001014F0) * 0x14u;
+    CHECK(rec_pool != 0u && pset_pool != 0u && bufa != 0u && bufb != 0u,
+          "the mode switch needs the pools and buffers");
+    CHECK(res_len != 0u && res_len <= sizeof s_res, "the resource table fits");
+    if (rec_pool == 0u || pset_pool == 0u || bufa == 0u || bufb == 0u ||
+        res_len == 0u || res_len > sizeof s_res)
+        return;
+    tf_snap(s_data, 0x80000u, sizeof s_data);
+    tf_snap(s_rec, rec_pool, sizeof s_rec);
+    tf_snap(s_pset, pset_pool, sizeof s_pset);
+    tf_snap(s_bufa, bufa, sizeof s_bufa);
+    tf_snap(s_bufb, bufb, sizeof s_bufb);
+    tf_snap(s_res, res_tab, res_len);
+    memcpy(s_ap, gfx_aperture(), sizeof s_ap);
+    memcpy(s_dac, gfx_dac, sizeof s_dac);
+#define MS_RESTORE() do { tf_put(s_data, 0x80000u, sizeof s_data);  \
+        tf_put(s_rec, rec_pool, sizeof s_rec);                        \
+        tf_put(s_pset, pset_pool, sizeof s_pset); } while (0)
+
+    /* (a) Case 3 runs 0x11D04: state 9 counts its timer down (5 -> 4) with
+     * the coin poll, the two tails and the overlay skipped. The word 0x0103
+     * (low byte 3, above 0x33) and the 0x29B70 cases 1, 2 and 0x20 leave the
+     * timer alone. */
+    {
+        static const u32 none[] = { 0xBEEF0103u, 0xBEEF0001u, 0xBEEF0002u,
+                                    0xBEEF0020u };
+        MS_RESTORE();
+        DSB(DS_00104B1D) = 1u;
+        DSB(DS_000F0A71) = 1u;
+        DSB(DS_0009AD58) = 1u;
+        DSW(DS_000F0A64) = 9u;
+        DSW(DS_000F0A6A) = 5u;
+        ms_seed(0xBEEF0003u);
+        game_frame();
+        CHECK_EQ_INT((int)DSW(DS_000F0A6A), 4);
+        CHECK_EQ_INT((int)DSW(DS_000F0A64), 9);
+        for (u32 i = 0; i < sizeof none / sizeof none[0]; i++) {
+            DSW(DS_000F0A6A) = 5u;
+            ms_seed(none[i]);
+            game_frame();
+            CHECK_EQ_INT((int)DSW(DS_000F0A6A), 5);
+            CHECK_EQ_INT((int)DSD(DS_00104B00), (int)none[i]);
+        }
+    }
+
+    /* (b) Case 0x11 (0x2538F, inline): DS_00104AFE = 0xF0, DS_001088EE = 0,
+     * the hook 0x259CC and mode 0x17, the mode's upper word kept. */
+    MS_RESTORE();
+    DSW(DS_00104AFE) = 0x7777u;
+    DSW(DS_001088EE) = 0x7777u;
+    DSW(DS_001088EE + 2u) = 0x6666u;
+    DSD(DS_00104AE4) = 0xDEADBEEFu;
+    ms_seed(0xBEEF0011u);
+    game_frame();
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xF0);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0);
+    CHECK_EQ_INT((int)DSW(DS_001088EE + 2u), 0x6666);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x259CC);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0017u);
+
+    /* (c) Case 0x14 calls 0x25AE8: DS_00104B1D == 0 gives the hook 0x10E80,
+     * mode 0x17 and the countdowns 0xB4, and DS_00104B14 = 0. */
+    MS_RESTORE();
+    game_string_table_load("data/game/C");
+    mem_fill(DS_00105F38 + 0xDu * 0xACu, 0, 3u * 0xACu);
+    DSB(DS_00104B14) = 0x77u;
+    DSB(DS_00104B1D) = 0u;
+    DSD(DS_00104AE4) = 0xDEADBEEFu;
+    DSW(DS_001088EE) = 0x7777u;
+    DSW(DS_00104AFE) = 0x7777u;
+    ms_seed(0xBEEF0014u);
+    game_frame();
+    CHECK_EQ_INT((int)DSB(DS_00104B14), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x10E80);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0xB4);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xB4);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0017u);
+
+    /* (d) Case 0x1A calls 0x4F9A0: with the wipe-in counter past 0x10 the
+     * record is dropped, the render gate set, the hook (0x29D60, a `ret`)
+     * skipped, the counter cleared and the mode becomes 0x1B. */
+    MS_RESTORE();
+    actors_reset();
+    DSD(DS_000C98F0) = actor_alloc(0);
+    DSD(DS_00104AE4) = 0x29D60u;
+    DSB(DS_001088F5) = 0x11u;
+    DSB(DS_001088F4) = 0x77u;
+    ms_seed(0xBEEF001Au);
+    game_frame();
+    CHECK_EQ_INT((int)DSD(DS_000C98F0), 0);
+    CHECK_EQ_INT((int)DSB(DS_001088F4), 1);
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF001Bu);
+
+    /* (e) Case 0x1B calls 0x4F9C8: the wipe-out finishes and the mode takes
+     * the saved word DS_00104AFA (0x26, a table entry that runs nothing). */
+    MS_RESTORE();
+    actors_reset();
+    DSD(DS_000C98F0) = actor_alloc(0);
+    DSD(DS_00104AE4) = 0x29D60u;
+    DSB(DS_001088F5) = 0x11u;
+    DSB(DS_001088F4) = 0x77u;
+    DSW(DS_00104AFA) = 0x26u;
+    ms_seed(0xBEEF001Bu);
+    game_frame();
+    CHECK_EQ_INT((int)DSD(DS_000C98F0), 0);
+    CHECK_EQ_INT((int)DSB(DS_001088F4), 0x77);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0026u);
+#undef MS_RESTORE
+
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    tf_put(s_bufa, bufa, sizeof s_bufa);
+    tf_put(s_bufb, bufb, sizeof s_bufb);
+    tf_put(s_res, res_tab, res_len);
+    memcpy(gfx_aperture(), s_ap, sizeof s_ap);
+    memcpy(gfx_dac, s_dac, sizeof s_dac);
+}
+
 /* 0x24C73/0x47208: the demo's CPU-AI command generator. A live pair of slots
  * (think gate armed, idle state, a legal character) must produce a non-zero
  * command word, and the two sides must be able to differ. The command words are
@@ -19272,6 +19414,7 @@ int test_fight(void)
     check_char_screen_modes();
     check_mode_1a_hooks();
     check_mode_17_hooks();
+    check_mode_switch();
 
     return g_failures - before;
 }
