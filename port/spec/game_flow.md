@@ -698,7 +698,7 @@ phase at `0x1150E`/`0x11517`/`0x1151F`, `port/src/game/attract.c:304-307`)
 belong to the *next* attract loop, not this demo run.
 
 **Dump length.** `make demo-oracle` runs the same `PR_FRONTEND_DUMP` run as
-`frontend-oracle`. The driver loops 3500 frames from the state-2 entry
+`frontend-oracle`. The driver loops 3900 frames from the state-2 entry
 (`FE_LOOPS`; its measurements and end-of-run reads keep the first 2000,
 `FE_DEMO_LOOPS`) and caps the top-level RGB dump at 1400 frames (`PR_FRONTEND_DUMP_FRAMES`, default 1400). The
 measurement that sizes it: state 3 enters at loop 589 (dumped frame 0), state 6
@@ -712,17 +712,18 @@ driver now does the same (`state_in`), keeping the post-state only for the entry
 that starts in state 7 and exits it, is dumped (1381), and loop 1971 on, which
 start in state 0, are not in the state >= 3 window. The dump therefore holds **1382 frames** (dumped 0..1381); the 1400
 cap covers it with no truncation, and the 2000-loop window clears the 1970 exit.
-Loops 1971..3499 (the attract's second cycle and the second demo, record §36)
+Loops 1971..3899 (the attract's second cycle, the second demo and the third
+cycle's first 215 loops, record §36)
 go to the separate `cycle2/` dump.
 (Before the frame-1881 fix the gate read only the state after the iteration, so
 loop 1970 was dropped and the dump held 1381 frames.)
 
 **The attract's second cycle (roar-timing Task 26, demo-pose record §36).** The
-exit frame closes that dump. The loop now runs to 3500 (a measurement window:
-2800 in Task 26, raised in Tasks 28, 29, 30 and 31 (3500 keeps 3099, loop 3422, inside the dump) so that the second demo's first
+exit frame closes that dump. The loop now runs to 3900 (a measurement window:
+2800 in Task 26, raised in Tasks 28, 29, 30, 31 and 32 (3900 keeps 3257, loop 3556, inside the dump and reaches past the capture's last frame 3616) so that the second demo's first
 unexplained frame stays inside the dump, record §38), and every frame
-presented after loop 1970 goes to a separate `cycle2/` dump (1695 frames).
-That is one frame per iteration for loops 1971..3499, plus the 166 screens the logo
+presented after loop 1970 goes to a separate `cycle2/` dump (2095 frames).
+That is one frame per iteration for loops 1971..3899, plus the 166 screens the logo
 player `0x1C740` writes inside loop 1971 (its `0x52106` blanks and every TWI5
 and TWG frame, through the `PORT:` seam `movie_set_screen_hook`). Every
 earlier measurement keeps the loop-0..1999 window. A separate dump is needed:
@@ -733,13 +734,13 @@ boot cycle's phase 2 wraps it to 0), so the second cycle reaches phase `0xA`'s
 lightning and hands off to a second demo at loop 2782 (`DS_000F0A72` = 5), as
 the capture does from 2385. `make attract2-oracle` (`--attract2`, in `make
 verify`) classifies captures 1885..3616 against `cycle2/` only, with the ratchet
-N = 3099 (record §41). Capture 2384, the `- LOADING -` frame before the second demo, is
+N = 3257 (record §42). Capture 2384, the `- LOADING -` frame before the second demo, is
 allowed by name: it is byte-identical to front-end capture 832 (record §37).
 
 **The demo window is report-only; its first unexplained frame is capture 1886 —
 the capture's next cycle after the demo, with no port frame left in the
 top-level dump (`make attract2-oracle` classifies that region against
-`cycle2/`: first unexplained 3099, with 2384 allowed by name) — after the
+`cycle2/`: first unexplained 3257, with 2384 allowed by name) — after the
 demo-pose cycle explained captures 843..850, the roar-timing fix 851..857, the
 frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863, the
 frame-864 fix 864/865, the frame-866 fix 866, the frame-867 fix 867..869 and
@@ -2429,9 +2430,25 @@ record §34).**
   poll matches through f = 4308, and `0x3A6D4` (§40.5's miss on the
   diverged path) is no longer reached. Ported (`fcce893`): 2950..3098
   explained, N = 3099.
-* **3099.** At f = 4309 (loop 3422) the original's raptor enters 9/7/0 on
-  stream `0xD311C`. The port misses `fn_resolve(0x15350)` there: character
-  3's reaction `0x25` (the dword at `0xA470C`). See record §41.4.
+* **3099: character 3's reactions `0x25`/`0x24`, `0x2910C` and the
+  opcode-`0x0C` hflip.** At f = 4309 (loop 3422) the original's raptor
+  enters 9/7/0 on stream `0xD311C`; the port missed `fn_resolve(0x15350)`,
+  character 3's reaction `0x25` (the dword at `0xA470C`), and at f = 4438
+  `0x151C0` (reaction `0x24`, `0xA46F8`). Both are decoded from
+  `read_memory` (Ghidra has no functions there) and ported with the
+  callbacks they store (`0x152D4`, `0x15208`, `0x1527C`; `0x15160`,
+  `0x151A0`) and their streams' `0xD100` targets (`0x153D8`, `0x1543C`, and
+  the child stream's `0x37CFC`). The hit at f = 4425 then needed the
+  process-table entry 7 `0x2910C` (§41-D's named gap: the type-`0x0A`/
+  `0x19` particles' poses and landings) and a raw-wins fix: the opcode-`0x0C`
+  spawn passes the parent's `+0x28 & 0x4000` as a5 (`0x2B4C4`), where the
+  port passed `0x40`, so the blood flew the wrong way. The poll matches the
+  port through f = 4570, the demo's last frame. Ported (`b947895`):
+  3099..3256 explained, N = 3257 (record §42).
+* **3257.** The loader's `- LOADING -` overlay on the game frame: the
+  original lazily loads `s16spisd.gra` (INDEX entry 64) for the sound
+  module at f = 4444, which the port's out-of-scope voice path `0x2C3FC`
+  never asks for. A named gap (record §42.3).
 
 ## Landmarks (verified)
 
