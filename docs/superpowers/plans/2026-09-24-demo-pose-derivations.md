@@ -7423,3 +7423,106 @@ missing `0x3A6D4` (a code pointer stored at `0x3A7D5`) from loop 3295.
 register it as the opcode-`0x15` target (EAX = rec). Then re-run the poll
 comparison past f = 4180; `0x3A6D4` should drop out once the raptor returns
 to its stance.
+
+## 41. The raptor's stance return `0x3C32C` at capture 2950 (roar-timing Task 31, `fcce893`)
+
+**Result in one line.** At f = 4180 (loop 3293) the original's raptor ends
+its reaction stream `0xD24F0` on the `0xD500` target `0x3C32C`, which was not
+registered. It is now ported. The live-RAM poll matches the port through
+f = 4308, 2950..3098 are explained, and N = 3099 (`fcce893`). `0x3A6D4`,
+which §40.5's probe missed on the diverged path, is no longer reached and is
+not ported.
+
+### 41.1 The raw (Ghidra `read_memory` + capstone, fixups applied)
+
+Ghidra has no function at `0x3C32C`. The bytes `0x3C32C..0x3C355` (42 bytes)
+decode cleanly up to the `ret`; `0x3C356` is `mov eax,eax` padding and
+`0x3C358` starts another function (`scratchpad/t31/d3c32c.txt`).
+
+- `push ebx; push edx; mov edx,eax` (EAX = rec; EDX only saves it, so the
+  operand is never read).
+- `xor ebx,ebx; mov bl,[eax+0x51]` (the side), then `eax = side * 37`
+  (`lea eax,[ebx*8]; add eax,ebx; shl eax,2; add eax,ebx`).
+- `xor bl,bl; mov [eax*4 + 0x107804],bl` (`0x3C343/0x3C345`): the byte at
+  `0x107804 + side * 0x94`, the side's slot `+0x54`, is set to 0.
+- `mov eax,edx; call 0x36870` (`0x3C34C/0x3C34E`), `pop edx; pop ebx; ret`.
+
+So `0x3C32C` forces the slot's `+0x54` to 0 before `0x36870`, whose
+`+0x54 == 0` arm restarts the side's record on its stance `0xC8950[char]` at
+3.0 and sets state 0/0 (§7 of the demo-fight record; `check_deep_callees` E).
+For the raptor that is `0xD2136`, the poll's value.
+
+### 41.2 Entrances
+
+- The data object holds the dword `0x0003C32C` 9 times: `0xD24FE`,
+  `0xE4856`, `0xE48A0`, `0xE492E`, `0xEA92A`, `0xEA9DE`, `0xEB4A0`, `0xECEFC`
+  and `0xECF58`. Each follows a `0xD500` word (opcode `0x15`, mode `0x4000`),
+  so each is the same animation-opcode target and one registration covers
+  all 9.
+- The code object holds no such dword and no `call`/`jmp`/`jcc` rel32 to it.
+  `get_xrefs_to 0x3C32C` is empty.
+- `0x36870` was already ported (`fighter_36870`) and registered as its own
+  `0xD500` target.
+
+### 41.3 The fix, its assertions and mutations
+
+`anim_code_3C32C` (actors.c) clears `DS_00107804 + side * 0x94` and calls
+`fighter_36870(rec)`; it is registered next to `0x14EA4`.
+
+- `check_stance_return` (`test_fight.c`, after `check_char3_grab`) calls the
+  registered target as `anim_indirect` does, `(rec, 0xFFFFFFFF)`, for each
+  side. Both slots' `+0x54` are seeded 3, whose `0x36870` case returns at
+  once, so only the clear reaches the stance arm. It asserts the clear, the
+  restart (the stream `0xC8950[char]`, the pset's sprite id, `+0x4D` =
+  `0x1E`, state 0/0) and the other side's sentinels. It snapshots and
+  restores the slots with `DS_001077A8`, `DS_001014EC`, `DS_00104B00`,
+  `DS_00107D2C`, `DS_00100CE0`, `DS_00100AF8`, `DS_000FD148`, `DS_00107D20`,
+  `0x107A80` and the two `0xC8950` entries. A temporary whole-data-object
+  diff around it (reverted) was empty. The same diff found 37 bytes when the
+  slot restore was dropped, so it would have seen a leak.
+- The driver: after loop 3293 the raptor's record is at `0xD2136`, its slot
+  `+0x52/+0x53/+0x54/+0x41` are 0, and `DS_00100AB0` is `0xFFFFFF00`. There
+  are 1695 cycle-2 frames.
+
+**Mutations** (`scratchpad/t31/mut31.py`, `mut31.log`): 11 single-site
+edits, 10 in unit mode and the registration again in driver mode. All 11
+fail. In unit mode 1..14 assertions fail: dropping the clear, writing the
+side or 1, a fixed or the other slot, the neighbouring byte, a wrong side
+byte, dropping or reordering the `0x36870` call, and the registration. In
+driver mode the loop-3293 samples read `0xD2500`, `0x09080080` and
+`0x180`. The sources were restored and checked with `cmp`.
+
+### 41.4 Measured
+
+| measurement | before (`38c4efc`) | `fcce893` |
+|---|---|---|
+| `FE_LOOPS`, cycle-2 frames | 3300, 1495 | 3500, 1695 |
+| attract2 `[1885..3616]` clean/splice/trans/unexpl/black | 684/369/7/666/6 | 771/430/8/517/6 |
+| attract2 first unexplained (2384 allowed) | 2950 | **3099** (raw 7539) |
+| front-end `[560..1884]`, demo-fight | 517/801/3/2; empty, N 1886 | unchanged |
+| polled logic (with positions and camera) equal to the original through | f = 4179 | f = 4308 |
+| non-stub `fn_resolve` misses, 3840 loops (probe) | `0x3C32C` 3293, `0x3A6D4` 3295 on | `0x15350` 3422, `0x151C0` 3551 |
+
+The probe (`scratchpad/t31/probe.py`, reverted and checked with `cmp`) is
+§39.1's poll print, `FE_LOOPS` 3840 and a `fn_resolve` miss print with the
+frame counter. The poll comparison ignores the command-word tear at f = 4132,
+as before. `FE_LOOPS` is a measurement window: 3500 keeps 3099 (loop 3422)
+inside the dump, and the 3840-loop probe dump gives the same first
+unexplained frame and counts.
+
+**3099, characterised.** Capture 3098 equals the splice of cycle-2 frames
+1615/1616 (0 bytes). Capture 3099 differs from its best splice (1616/1617,
+row 193) in 4854 bytes, rows 180..196. Frame 1617 is loop 3422 (f = 4309).
+There the original's raptor enters 9/7/0 on stream `0xD311C` with `+0x57` =
+0. The port's stays in 9/0/0 with `+0x57` = 3 and misses
+`fn_resolve(0x15350)`: the callback of character 3's reaction `0x25` (the
+dword at `0xA470C` reads `50 53 01 00 00 00 00 00`, the callback and no
+stream word), which §39.4's probe had already missed at loops 3256
+and 3343 before the grab was ported. On the diverged path it later misses
+`0x151C0` (loop 3551). The grab's throw `0x14D7C` and stream target
+`0x14E80` are still not reached.
+
+**The staged next step.** Decode `0x15350` from `read_memory` with capstone
+(`decompile_function 0x15350` finds no function), in the shape of `0x14E44`
+(§40), and register it as the reaction-`0x25` callback. Then re-run the poll
+comparison past f = 4309.
