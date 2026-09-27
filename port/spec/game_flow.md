@@ -2529,7 +2529,7 @@ record §34).**
 * **Result.** 3257 = port 1757 (1756 with the text), clean; 2384 and 3407 are
   clean against text-on-black screens. First unexplained **3408**: the
   high-score table the attract shows after the second demo, which the port
-  does not draw (record §45-A.3). N = 3408.
+  did not draw then (record §45-A.3; since drawn, record §46-A). N = 3408.
 
 ### The attract's high-score screen (record §46-A)
 

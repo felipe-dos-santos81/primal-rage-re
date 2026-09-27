@@ -11181,8 +11181,11 @@ demo fight, which lies past the driver's window. N 3408 -> 3545 (`1251af7`).
   `DS_00105DD8` bits 6/7 only; the read's decode, terminator, return and
   miss; a second init keeps a non-zero table and champion; the insert's move
   (to its last byte), drop, big-endian value, space/NUL packing, dirty bit
-  and bounds; `0x1E988`'s two thresholds; the `0x2000` (audit due / not due)
-  and `0x4000` arms. It saves and restores `DS_00105D88..+0x1C0`, the name
+  and bounds; table 2's insert and its dirty bit (bit 8, `DS_00105DD9` bit 0);
+  `0x1E988`'s two thresholds; the audit due with bits `0x2000` and `0x4000`
+  clear (the normal path: table and both fields kept); bit `0x2000` (set in
+  the original's `0x142095`) with the audit due and not due; and the `0x4000`
+  arm. It saves and restores `DS_00105D88..+0x1C0`, the name
   buffers, `DS_00104528` and a scratch source.
 - `check_hiscore_screen` (`test_game.c`, in `test_flow` on the live
   resources): after `0x1E824` and `0x1EA08`, every rank, name and score cell
@@ -11195,9 +11198,9 @@ demo fight, which lies past the driver's window. N 3408 -> 3545 (`1251af7`).
   restores the data object, the INDEX table, both pools, the DAC and the
   aperture.
 
-**Mutations** (`scratchpad/t34/mut34.py`, `mut34.log`): 51 single-site
-edits in unit mode, each source restored. 49 fail an assertion after the
-second test round; the first round's survivors were #12 (the move one byte
+**Mutations** (`scratchpad/t34/mut34.py`, `mut34.log`): 54 single-site
+edits in unit mode, each source restored. 52 fail an assertion after the
+review round (#51..#53, below); the first round's survivors were #12 (the move one byte
 short: the moved block's last byte was zero in both records) and #42 (no
 `break` in the selection: the image's only repeated string is `X`, above 6
 either way), killed by the last-byte sentinel and the aimed string 1. Two
@@ -11212,6 +11215,11 @@ In driver mode (`scratchpad/t34/mutdrv.sh`), `game_init` without the
 unexplained 3408 < N 3545, the counts before the task. The unit tests stay
 green there, because both checks call `hiscore_init` themselves: the call
 site is covered by the driver alone.
+
+Review round 1 (`task-34-review.md`) added #51 (`0x1E824` consults
+`0x1E988` whatever bit `0x2000`), #52 (the dirty-bit byte index `>> 4`) and
+#53 (no dirty bit for table 2); each is killed by the new cases, and #51 by
+the bit-`0x2000`-clear case alone, which no test ran before.
 
 ### 46-A.5 Measured
 
@@ -11250,3 +11258,18 @@ s3545.png`), which no port frame shows.
   oracles exercise.
 - The match cycle's table writers (`0x20517`/`0x2056D`, `0x20710`, `0x305FC`)
   and `0x1EA08`'s four other callers are not ported.
+
+### 46-A.7 Review round 1 (`task-34-review.md`)
+
+- `0x1E824`'s comment said the reset path always writes the champion; with
+  bit `0x40` clear the raw returns at `0x1E8B9` -> `0x1E912`, as the code
+  does. The comment is corrected; no code changed.
+- The test comments called `0x142095`'s bit `0x2000` clear; it is set
+  (`DS_00104529` = `0x20`, 46-A.1), so `| 0x2000u` was a no-op and no test ran
+  with the bit clear. The bit-clear, audit-due case is added (46-A.4).
+- `game_flow.md` and the README said the port "does not draw" the table;
+  both now say it did not then and is since drawn.
+- Table 2's insert and dirty bit are now tested.
+- The front-end record (§7.1, §7.2, §8.5) and the demo-fight record (§10.9)
+  carry "superseded by §46-A" notes where they call `0x2DBC4`/`0x2DB58` a
+  paged resource reader.

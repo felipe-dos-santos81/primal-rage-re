@@ -1878,7 +1878,9 @@ constant, not a callee return. (Task 5 left it unwritten rather than guess it.)
 ### 10.9 The resource question (Task 6 Step 2) — answered
 
 **The spawn populates the live-slot count and both slot records without the
-paged-resource reader `0x2DBC4`/`0x2DB58`.** Evidence:
+paged-resource reader `0x2DBC4`/`0x2DB58`.** (Demo-pose record §46-A: those two
+are the high-score tables' read and locate, not a resource reader; the
+conclusion here is unchanged.) Evidence:
 
 1. The liveness stores (`0x33CA0`, `0x33CB8`, `0x33CD8`) precede every call in
    `0x33C78` except the two `0x2AE14` spawns, whose descriptors are file-backed
