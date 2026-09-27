@@ -3373,7 +3373,11 @@ int test_frontend(void)
         CHECK_EQ_INT((int)DSB(DS_00104B1F), 3);
         CHECK_EQ_INT((int)DSW(DS_000F0A6A), 2);
 
-        /* State 8 (0x11EAC), no event: 0x257A4(3), then the shared tails. */
+        /* State 8 (0x11EAC), no event: 0x257A4(3), then the shared tails. The
+         * held pause chord (DS_001088D8 bytes +3 & 0x20, +1 & 0x10) makes
+         * 0x10DB0 store state 4. It runs after 0x257A4 has cleared
+         * DS_00104B1B (DS_00104B19 + 2), so it takes the arm that leaves
+         * DS_000F0A6C alone; tails first would store 4 there too. */
         tf_put(s_data, 0x80000u, sizeof s_data);
         DSB(DS_00104B1D) = 0;
         DSB(DS_00105D60) = 0;
@@ -3386,14 +3390,18 @@ int test_frontend(void)
         DSW(DS_00104B00) = 3u;
         DSD(DS_00104AE4) = 0xDEADBEEFu;
         DSW(DS_00104AFA) = 0x7777u;
-        DSW(DS_000F0A64) = 8; DSW(DS_000F0A6A) = 2;
+        DSB(DS_000F0A71) = 0;
+        DSD(DS_001088D8) = 0x20001000u;
+        DSB(DS_00104B19 + 2u) = 0x77u;
+        DSW(DS_000F0A64) = 8; DSW(DS_000F0A6A) = 2; DSW(DS_000F0A6C) = 0x7777u;
         game_state_step();
         CHECK_EQ_INT((int)DSB(DS_00104B1F), 3);
         CHECK_EQ_INT((int)DSD(DS_00104B00), 0x1A);
         CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x4367C);
         CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x10);
-        CHECK_EQ_INT((int)DSD(DS_00105C00), 5);
-        CHECK_EQ_INT((int)DSW(DS_000F0A64), 8);
+        CHECK_EQ_INT((int)DSW(DS_000F0A64), 4);
+        CHECK_EQ_INT((int)DSB(DS_000F0A71), 1);
+        CHECK_EQ_INT((int)DSW(DS_000F0A6C), 0x7777);
 
         DSD(DS_00105C00) = saved_c00; DSD(DS_001088E4) = saved_e4;
         DSB(DS_00104B1D) = saved_1d;  DSB(DS_00104B1F) = saved_1f;
