@@ -551,6 +551,38 @@ u32 fighter_29d04(u32 slot);
  * bit 6, the record's +0x53 = 0 and DS_000F0AFE = 2. */
 void fighter_370f0(u32 rec);
 
+/* 0x3C358 (record §42-B). The hold state after a throw placement (EAX =
+ * side): the side's slot 9/7 with +0x42 bit 2, the other slot 0x10/0x0A with
+ * +0x54 and +0x0C cleared, both slot records' +0x34/+0x43/+0x42 and both
+ * context records' +0x1C cleared. 6 call sites (0x3E244's 0x3E2D7 among
+ * them). */
+void fighter_3c358(u32 side);
+
+/* 0x3E244 (record §42-B). The +0x1C callback 0x3E3A8 stores (0x193B0's
+ * 0x19505, EAX = side): the flash pair, the side's record on 0xE843A and the
+ * other's on 0xC90F8[its char] at 2.0, 0x3E0F0's child, 0x3C208 at the
+ * other's 0xC759C distance, 0x18AF8, 0x39834, 0x3C358, both slots' +0x74 =
+ * 0x309, then +0x57 = 2 and the other slot's +0x53 = 0x0F. */
+void fighter_3e244(u32 side);
+
+/* 0x36280 (record §42-B). The 0xD000 target of the 0xC90A8/0xC90D0 fall
+ * streams (EAX = rec): with an owner slot, the landing (+0x58, 0x188AC,
+ * +0x54, +0x42 bit 2, the record's +0x36/+0x24) and a 0xBB1DC spawn. */
+void fighter_36280(u32 rec);
+
+/* 0x48AAC and 0x48D94 (record §42-B). Character 2's two finisher +0x0C
+ * callbacks (0x3531C case 7: EAX = slot, EDX = rec, EBX = side), stored by
+ * 0x48BE0 and 0x48F54; each ends in 0x370F0 on the other record. */
+void fighter_48aac(u32 slot, u32 rec, u32 side);
+void fighter_48d94(u32 slot, u32 rec, u32 side);
+
+/* 0x48BE0 and 0x48F54 (record §42-B). Character 2's finisher entries (the
+ * 0xBDAE4/0xBDB00 tables), called by 0x379C4 through DS_001078E8 with EAX =
+ * slot, EDX = rec: the record's stream at 2.0 and the slot 7/9/0 with the
+ * +0x0C callback 0x48AAC/0x48D94; non-zero return. */
+int fighter_48be0(u32 slot, u32 rec);
+int fighter_48f54(u32 slot, u32 rec);
+
 /* The machine's and chain's per-function fixtures (record §7.1-§7.5, §7.7-§7.9
  * and §7.11) exercise these directly. */
 u32  hit_frame_desc(u32 side, u32 i);                 /* 0x3C600 */
