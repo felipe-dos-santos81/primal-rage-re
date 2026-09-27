@@ -3271,10 +3271,16 @@ int test_frontend(void)
     /* 0x11F28 / 0x11D04: the coin path. The mask table DS_0009ACBC lives in
      * the data object; test_le() maps PRAGE.EXE in the shared suite, but the
      * PR_FRONTEND_DUMP branch runs this file alone, so map it here to read the
-     * shipped masks. An accepted coin debits one credit through 0x2CA7C and
-     * returns early, so the frame's state dispatch is skipped; a rejected poll
-     * leaves the credit alone and runs the dispatch (state 9's countdown is the
-     * observable that the dispatch ran or was skipped). */
+     * shipped masks. An accepted coin debits one credit through 0x2CA7C, calls
+     * 0x257A4 with the accepted mask (0x11D41) and returns early, so the
+     * frame's state dispatch is skipped; a rejected poll leaves the credit
+     * alone and runs the dispatch (state 9's countdown is the observable that
+     * the dispatch ran or was skipped). State 8 calls 0x257A4 with 3 (0x11EB8).
+     * Record §48-W. 0x257A4 rewrites the data object and, when the pools exist
+     * (the unit suite; the isolated PR_FRONTEND_DUMP run reaches here before
+     * game_init() and 0x2BAF4 returns at once), both pools and the 0xFA00-byte
+     * copy [0xE87A0] -> [0xE87A4], pointed at a scratch area here. All of it
+     * is saved and restored. */
     {
         const char *gdir = getenv("PR_GAME_DIR");
         char exe[560];
@@ -3285,6 +3291,16 @@ int test_frontend(void)
                   "PRAGE.EXE maps for the coin mask table");
     }
     {
+        static u8 s_data[0x10B0D0u - 0x80000u];
+        static u8 s_rec[0xEBA0u], s_pset[0x4880u], s_scr[0x20000u];
+        const u32 cw_src = 0x3D00000u, cw_dst = 0x3D10000u;
+        const u32 rec_pool = DSD(DS_001014F4), pset_pool = DSD(DS_001014EC);
+        tf_snap(s_data, 0x80000u, sizeof s_data);
+        if (rec_pool != 0u) tf_snap(s_rec, rec_pool, sizeof s_rec);
+        if (pset_pool != 0u) tf_snap(s_pset, pset_pool, sizeof s_pset);
+        tf_snap(s_scr, cw_src, sizeof s_scr);
+        DSD(DS_000E87A0) = cw_src;
+        DSD(DS_000E87A4) = cw_dst;
         const u32 saved_c00 = DSD(DS_00105C00);
         const u32 saved_e4  = DSD(DS_001088E4);
         const u8  saved_1d  = DSB(DS_00104B1D);
@@ -3306,29 +3322,88 @@ int test_frontend(void)
         DSD(DS_001082DC) = 0;          /* no localisation table: empty strings */
 
         /* Reject: no newly-pressed bit -> no debit, state 9's countdown runs. */
+        DSD(DS_00104B00) = 3u;
+        DSD(DS_00104AE4) = 0xDEADBEEFu;
         DSD(DS_001088E4) = 0u;
         DSW(DS_000F0A64) = 9; DSW(DS_000F0A6A) = 2; DSW(DS_000F0A6C) = 3;
         game_state_step();
         CHECK_EQ_INT((int)DSD(DS_00105C00), 5);
         CHECK_EQ_INT((int)DSW(DS_000F0A6A), 1);
 
-        /* Accept event 0: one credit debited, dispatch skipped (countdown held). */
+        /* The reject leaves 0x257A4's outputs alone: the mode dword and the
+         * hook keep their seeds. */
+        CHECK_EQ_INT((int)DSD(DS_00104B00), 3);
+        CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+
+        /* Accept event 0: one credit debited, dispatch skipped (countdown held),
+         * and 0x257A4(1): DS_00104B1F = the mask, the hook 0x4367C and mode
+         * 0x1A with the return mode 0x10. */
+        DSW(DS_00104B00) = 3u;
+        DSD(DS_00104AE4) = 0xDEADBEEFu;
+        DSW(DS_00104AFA) = 0x7777u;
         DSD(DS_001088E4) = DSD(DS_0009ACBC);
         DSW(DS_000F0A6A) = 2;
         game_state_step();
         CHECK_EQ_INT((int)DSD(DS_00105C00), 4);
         CHECK_EQ_INT((int)DSW(DS_000F0A6A), 2);
+        CHECK_EQ_INT((int)DSB(DS_00104B1F), 1);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), 0x1A);
+        CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x4367C);
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x10);
 
-        /* Accept event 1: likewise. */
+        /* Accept event 1: likewise, with the mask 2. 0x2CA7C debits only
+         * while DS_00104B1F == 0, which 0x257A4 has just set, so re-arm it as
+         * a fresh frame in mode 3 would find it. */
+        DSB(DS_00104B1F) = 0;
+        DSW(DS_00104B00) = 3u;
         DSD(DS_001088E4) = DSD(DS_0009ACBC + 4u);
         game_state_step();
         CHECK_EQ_INT((int)DSD(DS_00105C00), 3);
+        CHECK_EQ_INT((int)DSB(DS_00104B1F), 2);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), 0x1A);
+
+        /* Both events in one frame: both polls debit (DS_00104B1F is still 0
+         * until 0x257A4 runs) and the mask is 1 | 2 (0x11D31 `or dl,2`). */
+        DSB(DS_00104B1F) = 0;
+        DSW(DS_00104B00) = 3u;
+        DSD(DS_001088E4) = DSD(DS_0009ACBC) | DSD(DS_0009ACBC + 4u);
+        DSW(DS_000F0A6A) = 2;
+        game_state_step();
+        CHECK_EQ_INT((int)DSD(DS_00105C00), 1);
+        CHECK_EQ_INT((int)DSB(DS_00104B1F), 3);
+        CHECK_EQ_INT((int)DSW(DS_000F0A6A), 2);
+
+        /* State 8 (0x11EAC), no event: 0x257A4(3), then the shared tails. */
+        tf_put(s_data, 0x80000u, sizeof s_data);
+        DSB(DS_00104B1D) = 0;
+        DSB(DS_00105D60) = 0;
+        DSD(DS_00105C00) = 5u;
+        DSD(DS_001082DC) = 0;
+        DSD(DS_000E87A0) = cw_src;
+        DSD(DS_000E87A4) = cw_dst;
+        DSD(DS_001088E4) = 0u;
+        DSB(DS_00104B1F) = 0x77u;
+        DSW(DS_00104B00) = 3u;
+        DSD(DS_00104AE4) = 0xDEADBEEFu;
+        DSW(DS_00104AFA) = 0x7777u;
+        DSW(DS_000F0A64) = 8; DSW(DS_000F0A6A) = 2;
+        game_state_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B1F), 3);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), 0x1A);
+        CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x4367C);
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x10);
+        CHECK_EQ_INT((int)DSD(DS_00105C00), 5);
+        CHECK_EQ_INT((int)DSW(DS_000F0A64), 8);
 
         DSD(DS_00105C00) = saved_c00; DSD(DS_001088E4) = saved_e4;
         DSB(DS_00104B1D) = saved_1d;  DSB(DS_00104B1F) = saved_1f;
         DSB(DS_00105D60) = saved_60;  DSD(DS_001082DC) = saved_dc;
         DSW(DS_000F0A64) = saved_64;  DSW(DS_000F0A6A) = saved_6a;
         DSW(DS_000F0A6C) = saved_6c;
+        tf_put(s_data, 0x80000u, sizeof s_data);
+        if (rec_pool != 0u) tf_put(s_rec, rec_pool, sizeof s_rec);
+        if (pset_pool != 0u) tf_put(s_pset, pset_pool, sizeof s_pset);
+        tf_put(s_scr, cw_src, sizeof s_scr);
     }
 
     /* 0x4F1D0 zeroes the two origin words; 0x4F1E4 writes DS_00104B15. They are
