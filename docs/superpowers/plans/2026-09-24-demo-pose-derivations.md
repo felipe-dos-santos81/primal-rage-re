@@ -1530,7 +1530,9 @@ never clears it. The owner, the raw clear that the port lacks, is **not
 derived**. The candidates come from a capstone sweep of byte writes to `+0x42`.
 The unported functions that store 0 or a register there are `0x361C8`,
 `0x370F0`, `0x37464`, `0x37B54`, `0x3C208`, `0x3C358`, `0x3D0C0`, `0x3EE00`,
-`0x3EA24`, `0x44798`, `0x4505C` and `0x48AAC`. The ported `0x3C148`,
+`0x3EA24`, `0x44798`, `0x4505C` and `0x48AAC` (`0x37B54` is wrong, the
+raw wins: it writes only `[[slot]+0x53]`; the `+0x42` write in that range is
+`0x37CE2`, in `0x37CD4`; §46-D.6). The ported `0x3C148`,
 `0x385B0`, `0x36870` and `0x3BDDC` also clear it, but the port's trace shows
 `+0x42 = 0x01` on every frame from f = 72 through f = 100, so none of them
 fires in this window. The f = 93 camera step (§12.5) is still not
@@ -7999,7 +8001,7 @@ entry `0x19`'s is `0xA89AC` (`0xBBB04`; byte 4 `0x19`).
   (reached through `0x490A1 jle 0x490F9`). `0x48F98` and `0x28F08` are
   process-table entries 1 and 10 (the dwords at `0xA8648`/`0xA866C`, their
   only references). Neither is registered in the port, so the port cannot
-  spawn type `0x19`.
+  spawn type `0x19` (both since ported and registered, §46-D).
 - **The scene tables.** The crowd table's `e+0xA` indices over all eight
   scenes (`0xBBD98`/`0xBBDA8`) are `7, 0xB..0xD, 0xF, 0x11, 0x12, 0x14,
   0x16..0x18, 0x1B..0x1F, 0x29, 0x2A, 0x2E, 0x2F`. Their descriptors' type
@@ -8057,8 +8059,8 @@ port `0x2910C` (done in §42-A).
 
 **Named gaps.**
 - The type-`0x19` spawners `0x48F98`/`0x28F08` (process entries 1/10) are
-  unregistered. (`0x2910C`, process entry 7, was too; §42-A ports and
-  registers it.)
+  unregistered (since ported and registered, §46-D). (`0x2910C`, process
+  entry 7, was too; §42-A ports and registers it.)
 - In `0x20DF4`: the calls `0x29B70`, `0x2C390` and `0x2C074`, the five zero
   stores (dword `[0xF0A48]` at `0x20DFB`, dword `[0x100B4C]`, dword
   `[0x104AE8]`, byte `[0x1088EC]`, byte `[0x104B15]` at
@@ -9417,7 +9419,8 @@ The sources were restored by the script and checked with `cmp`.
     `0x48F54`'s `0xEDCA4`), so `0x48D94` waits at 0 in the port.
   - The process-table entries the finishers enable: `0x48AAC` sets
     `DS_00104AE9` bit 2 (entry 10, `0x28F08`) and the type-0x2D cb1 sets
-    `DS_00104AE8` bit 1 (entry 1, `0x48F98`); both are unregistered (§41-D).
+    `DS_00104AE8` bit 1 (entry 1, `0x48F98`); both are unregistered (§41-D;
+    since ported and registered, §46-D).
   - The other five `0x3C358` callers (`0x2127A`, `0x225AE`, `0x44C36`,
     `0x47AA5`, `0x47DB3`) lie in code the port does not have.
   - The voices `0x2C3FC(0x6F/0x59/0x4B/0xEF)` and the `0xC75AA` character
@@ -9736,7 +9739,7 @@ missed one: the review found that `0x22CE4`'s `0x39834(ctx[1], ...)` ->
     (`0xA3D48`, reaction `0x28`), `0x230F0` (`0xA3D0C`, `0x25`) and `0x23130`
     (`0xA3CA8`, `0x20`), are unported. They were not part of this item.
   - The type-`0x19` spawners `0x48F98`/`0x28F08` (update-table entries 1/10,
-    §41-D.5) are outside this item.
+    §41-D.5) are outside this item (since ported and registered, §46-D).
 
 ## 43-B. The mode `0x1A`/`0x1B` wipe and the `DS_00104AE4` hooks `0x28D68`/`0x28D80` (named-gap batch 3, branch `gap3-modes`)
 
@@ -11816,7 +11819,7 @@ absolute operand at `0x104AE8..0x104AEB` finds these writes of bit 1
   cleared by `0x48B89` (`0x48AAC`) and `0x40165`. `0x4013C` lies in
   `0x400EC`, the `0xD100` target at `0xE86F6`; `0x40165` lies in `0x40148`,
   the `0xD100` target at `0xE8716`. Neither is ported (out of this item's
-  scope; `0x40148` calls the unported `0x37D18`).
+  scope; `0x40148` calls `0x37D18`, which is ported as `fighter_37d18`).
 - The whole-dword stores (`0x20E1C`, `0x20EC3`, `0x28DC4`, `0x2BB13`,
   `0x41435`) all store 0 (an `xor` of the source register just before).
 - The other read-modify-writes touch other bits: `0x104AE8` 0x01 (the
@@ -11874,7 +11877,8 @@ a write through a zero slot would land.
   cursor with `+0x24` = `0x40000000`.
 - **`0x37B54`, through its registration.**
   - `+0x51` 0 marks record 5, `+0x51` 1 marks record 4, and the other
-    record keeps its sentinel.
+    record keeps its sentinel. `+0x52` is seeded non-zero (1, `0x80`), so
+    only the byte index reaches the slot table.
   - With a zero slot the whole reference state is unchanged.
 - **Phase 0.**
   - Actors at +`0x1000` (the edge), +`0x1001` and -`0x1000`, a phase-2
@@ -11884,11 +11888,14 @@ a write through a zero slot would land.
   - With bit 7 preset there is no `0x37B54`. With `DS_00104AD4` = 1 the
     other record is marked.
 - **Phase 1 beyond `0x1000`.**
-  - At -`0x1001` and +`0x2000`, `+0x34` `0x4001` -> `0x8002` and `0xFFF0`
-    -> `0xFFE0`, and `0x108397` 2 -> 0.
-  - A phase-3 actor holds.
-  - With `DS_001078FD` = 0 the watched record moves, and the rng is
-    untouched.
+  - At -`0x1001` and +`0x2000` from the watched record, `+0x34` `0x4001` ->
+    `0x8002` and `0xFFF0` -> `0xFFE0`; with the next item's two actors,
+    `0x108397` goes 2 - 3 + 1 = 0.
+  - A phase-3 actor holds, and nothing draws.
+- **The watched slot.** With `DS_001078FD` = 0 the watched record is record
+  4 (x `0x90000`). A phase-0 actor at `0x90000` starts `0xEDD20` and calls
+  `0x37B54`, and a phase-1 actor at record 5's x `0x20000` starts `0xEDCEA`.
+  Under slot 1 both outcomes would flip.
 - **Phase 1 within `0x1000`, and `0x28F08`.**
   - When the gate draw is not 0, the whole state equals one draw.
   - When it is 0, the whole state equals the port's `0x2AE14` run from the
@@ -11896,37 +11903,44 @@ a write through a zero slot would land.
     from it with a3/a4 swapped. This is done for a5 `0x4000` and 0, and for
     `0x28F08` with `DS_00104AD4` 0 and 1. The spawned record is the free
     one, with type `0x19` and `+0x28` bit 14 = a5.
+  - `0x28F08` with a zero slot 1 spawns anyway, from `mem[0x2C]` (x) and
+    the dword at `mem[0]` (`0x40`, so the height comes from `mem[0x70]`),
+    as the untested raw pointer does. The test saves `mem[0..0xFF]` and
+    puts it back after `q42_restore`.
 - **The rng seeds** sit at the gate's edge: the zero draw is one that
   `rng(r + 1)` would not give, and the one draw is one that `rng(r - 1)`
   would make 0. So a gate on any other range fails.
 
 Mutations (each built and run with `PR_ORACLE_REQUIRED=1`; the count is the
-suite's FAIL lines). All 42 fail, and every source was restored.
+suite's FAIL lines, re-measured after review round 1's test additions). All
+45 fail, and every source was restored.
 - `0x37B54`:
-  - `^1` dropped: 9;
+  - `^1` dropped: 10;
   - null check dropped: 1;
-  - store 2: 4;
-  - `+0x52`: 4;
+  - store 2: 5;
+  - `+0x52`: 5;
+  - a word index (`DSW(rec + 0x51)`) for the byte: 2;
   - unregistered: 1.
 - `0x48F98`, phase 0:
   - edge `>=`: 8;
-  - no `abs`: 6;
+  - no `abs`: 9;
   - the watched slot read from `DS_00104AD4`: 15;
+  - the watched slot hard-coded to 1: 9;
   - `sar` for the halving: 1;
-  - no `0x108397` increment: 2;
-  - no phase increment: 3;
-  - the once-gate inverted: 4;
-  - no `0x108396` set: 1;
+  - no `0x108397` increment: 3;
+  - no phase increment: 4;
+  - the once-gate inverted: 6;
+  - no `0x108396` set: 2;
   - `0x37B54`'s slot from `DS_001078FD`: 2;
-  - `0xEDCEA` for `0xEDD20`: 4;
+  - `0xEDCEA` for `0xEDD20`: 5;
   - 3.0 for 2.0: 1.
 - `0x48F98`, phase 1:
   - edge `>=`: 12;
-  - no doubling: 2;
+  - no doubling: 3;
   - no decrement: 1;
   - decrement by 2: 1;
-  - no phase increment: 2;
-  - `0xEDD20` for `0xEDCEA`: 2;
+  - no phase increment: 3;
+  - `0xEDD20` for `0xEDCEA`: 3;
   - 3.0 for 2.0: 1;
   - phases above 1 treated as 1: 1.
 - `0x48F98`, the spawn:
@@ -11937,22 +11951,24 @@ suite's FAIL lines). All 42 fail, and every source was restored.
   - a2 from `+0x1C`: 2;
   - a3/a4 swapped: 4;
   - `>> 15`: 2;
-  - unregistered: 34.
+  - unregistered: 42.
 - `0x28F08`:
-  - `^1` dropped: 2;
+  - `^1` dropped: 3;
   - `rng(5)`: 1;
-  - `rng(7)`: 7;
-  - the gate inverted: 8;
-  - a4 0: 2;
-  - a2 from `+0x28`: 2;
-  - y from the slot, not its record: 2;
-  - a5 inverted: 4;
-  - a3/a4 swapped: 4;
-  - unregistered: 9.
+  - `rng(7)`: 9;
+  - the gate inverted: 10;
+  - a4 0: 3;
+  - a2 from `+0x28`: 3;
+  - the height from the slot, not its record: 3;
+  - a5 inverted: 5;
+  - a3/a4 swapped: 5;
+  - a zero-slot `return` added: 2;
+  - unregistered: 11.
 
 The first run left two survivors, `rng(0x10)` and `rng(5)`: the first seeds
 drew the same zero/non-zero outcome on both ranges. The edge seeds kill
-them.
+them. Review round 1 found three more (the hard-coded watched slot, the word
+index, the zero-slot `return`); the tests added in 46-D.6 kill them.
 
 ### 46-D.5 Measured and remaining gaps
 
@@ -11970,8 +11986,39 @@ type-`0x19` spawns (and their draws) now happen as in the raw.
 Remaining named gaps:
 - the voices `0x2C3FC(0xF0)`/`(0xF1)` (§45-A's rule);
 - `0x400EC`/`0x40148`, the `0xD100` targets that set and clear entry 10's
-  bit (dwords `0xE86F6`/`0xE8716`), and `0x40148`'s callee `0x37D18`;
+  bit (dwords `0xE86F6`/`0xE8716`);
 - `0x37B54`'s other callers `0x45B43`/`0x45FD3`, in code the port does not
   have;
 - the finisher flow that reaches all of this (`0x37774`/`0x37898`, the
   `0xC9288`/`0xC92B0`/`0xC92D8` readers, `DS_001078E4`; §42-B).
+
+### 46-D.6 Review round 1 (`gap5-48f98-review.md`)
+
+No port behaviour changed; the fixes are in the tests and the record.
+- **The watched slot `DS_001078FD` was not pinned.** Hard-coding it to 1
+  survived: every scenario used FD = 1 except C, whose actors were far from
+  both records. C's comment also described a "node 3" that did not exist,
+  and 46-D.4 claimed the case was tested. C now has a phase-0 actor at
+  record 4's x and a phase-1 actor at record 5's x (46-D.4, "The watched
+  slot"); the mutation fails 9.
+- **`0x37B54`'s byte index was not pinned.** The test comment claimed a
+  seeded `+0x52`, but none was seeded. `+0x52` is now 1/`0x80`; a word index
+  fails 2.
+- **`mem[0..0xFF]`** was zeroed by `r46_seed` and not restored. The test now
+  saves it at entry and puts it back after `q42_restore`.
+- **`0x37D18` is ported** (`fighter_37d18`, called at `0x34A29`). 46-D.2
+  and 46-D.5 called it unported; corrected. `0x40148` itself stays
+  unported.
+- **Stale "unregistered" text** at §41-D (twice), §42-B and §42-A now
+  carries "(since ported and registered, §46-D)".
+- **Raw-wins correction (§13's `+0x42` sweep).** §13 listed `0x37B54` among
+  the unported functions that store 0 or a register to `slot+0x42`. The raw
+  disagrees: `0x37B54..0x37B6F` writes only `[[slot]+0x53]` (`0x37B6B`). The
+  `+0x42` read-modify-write in that range is `0x37CDC`/`0x37CE2`, inside
+  `0x37CD4` (`0x37CD4..0x37CF1`, an animation target, since ported). The
+  misattribution came from taking the nearest preceding Ghidra function:
+  Ghidra has none between `0x37B70` and `0x37D18`. §13's list now says so.
+- Recommended, done: `0x28F08` with a zero slot 1 is tested (it reads
+  `mem[0x2C]` and the dword at `mem[0]`, as the raw does); a zero-slot
+  `return` fails 2. The port's comments now call a3 the height (`+0x32`) and
+  a4 the y (`+0x1C`): `0x28F08`'s y is `0xC00`, and `0x48F98`'s is 0.
