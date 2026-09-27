@@ -81,7 +81,7 @@ frame loop is reached through `0x20C10`:
   by `0x24C5C`) and `PTR_FUN_000A86C4`/`_DAT_00104AEC` (render, walked by
   `0x255CC`). This is the engine's extension seam. The port registers the
   update table's entries 0 (`0x1324C`), 5 (`0x22FE8`) and 7 (`0x2910C`,
-  demo-pose record §42-A).
+  demo-pose record §42-A), and 1 (`0x48F98`) and 10 (`0x28F08`, §46-D).
 * **Tick** — `DAT_00105D88` is incremented by the 9-byte handler `0x2D62C`
   (`DAT_00105D88++`); `main` locks that code page and the `DAT_00105D88` data
   page. **Tick rate = 60 Hz (measured + static).** Static: `0x32B00` converts a

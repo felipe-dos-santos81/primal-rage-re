@@ -11726,3 +11726,252 @@ Five corrections, none of which changes behaviour:
 - `check_state6`'s comment said `0x1088EC` was outside `test_fight`'s restore
   windows. It is inside `s_88` (`0x108840..0x10893F`); only `0xF0A48` is
   outside.
+
+## 46-D. The type-`0x19` spawners `0x48F98`/`0x28F08` (update-table entries 1 and 10) and `0x37B54` (named-gap batch 5, branch `gap5-48f98`)
+
+**Result in one line.** §41-D.5 named the update table's entries 1
+(`0x48F98`) and 10 (`0x28F08`) as unregistered, so the port could not spawn
+type `0x19`. Both are now ported, registered and unit-tested. So is their
+one unported callee, `0x37B54`, which is also registered as the `0xD000`
+target it is in two streams. That is 3 functions and 559 raw bytes
+(439 + 92 + 28). Every other callee was already ported: `0x2BC30`
+(`actors_anim_begin`), `0x2AE14` (`actor_spawn`) and `0x5D7DC`
+(`rng_next`). The two voice calls are `PORT:` notes (§45-A's rule). No port
+path enables either entry or starts either `0x37B54` stream, so no oracle is
+expected to move (46-D.5).
+
+### 46-D.1 The raw (Ghidra `read_memory` + capstone, fixups applied; Ghidra has no function at `0x48F98` or `0x28F08`)
+
+**`0x48F98`** (`0x48F98..0x4914E`, `push ebx/ecx/edx/esi`). It walks the
+type-`0x2D` in-use list `0x108368` (the sentinel `0x48C4C` self-links). ESI
+= the node's next, read at `0x48FB1` before any call. The node's `+0x0C`
+byte is the phase (`cmp al,1; jb; jbe`, `0x48FB3..0x48FBD`). Phases above 1
+go straight to the loop tail `0x4913C`.
+- The distance, in both phases: `|[node+8]+0x18 - [0x1077B0 +
+  byte [0x1078FD] * 0x94]+0x18|`. That is the actor's x against the record
+  of slot `DS_001078FD` (`imul edx,edx,0x94; mov edx,[edx+0x1077B0]`). The
+  dword is negated when negative (`jge; neg`) and compared **signed** with
+  `0x1000` (`jg`/`jle`).
+- **Phase 0** (`0x48FCA..0x49077`). Beyond `0x1000` (`jg 0x4913C`) it skips.
+  Otherwise:
+  - `0x2BC30(actor, 0xEDD20, 0x40000000)` (stream `0xEDD20` at 2.0);
+  - the actor's word `+0x34` = `cwd; sub ax,dx; sar ax,1`, a signed halving
+    toward 0 (-3 -> -1, not -2);
+  - AL = `[0x108396] & 0x80` (read first); then `inc byte [0x108397]` and
+    the node's `+0x0C` += 1;
+  - when AL was 0: `0x37B54([0x1077B0 + [0x104AD4] * 0x94])` (a 32-bit
+    `imul` of the dword), `or byte [0x108396],0x80`, and the voice
+    `0x2C3FC(0xF0)`. Its return is not read.
+- **Phase 1** (`0x49078..0x4913B`).
+  - Beyond `0x1000`: `0x2BC30(actor, 0xEDCEA, 0x40000000)`; the word
+    `+0x34` = `add edx,edx` of it (the low 16 bits of the doubled word);
+    `[0x108397]` -= 1; the node's `+0x0C` += 1; and, when the new
+    `[0x108397]` is <= 0 **signed** (`test dl,dl; jg`), the voice
+    `0x2C3FC(0xF1)`.
+  - Within `0x1000` (`jle 0x490F9`): when `rng(0x14)` != 0 it skips.
+    Otherwise it draws a5 = `rng(2)` ? `0x4000` : 0 and calls
+    `0x2AE14(0xA89AC, EDX = actor+0x18, ECX = actor+0x30 SAR 16, EBX = 0,
+    [esp] = a5)`. That is the `0x4912D` immediate §41-D.5 found.
+
+`0x108396`/`0x108397` are the bytes `0x48C4C` zeroes (§42-B). `0x48CD8`, the
+type-`0x2D` cb1, sets `DS_00104AE8` bit 1 (`0x48D22`), and `0x48D3C` clears
+it when the count `0x108398` underflows (`0x48D75`).
+
+**`0x28F08`** (`0x28F08..0x28F63`, `push ebx/ecx/edx`). EDX =
+`[0x104AD4]` with `xor dl,1` (the dword with its low bit flipped), then EDX
+= `[edx*4 + 0x1077A8]`, the other side's slot pointer. It is read before
+the draws and never tested for 0. When `rng(6)` != 0 it returns. Otherwise
+a5 = `rng(2)` ? `0x4000` : 0, and it calls `0x2AE14(0xA89AC, EDX =
+slot+0x2C, ECX = [slot]+0x30 SAR 16, EBX = 0xC00, [esp] = a5)` (the
+`0x28F54` immediate). `0x2AE14` pops its stack argument (no `add esp`
+follows either call).
+
+**`0x37B54`** (`0x37B54..0x37B6F`, 28 bytes). `mov al,[eax+0x51]; xor al,1;
+and eax,0xff; mov eax,[eax*4+0x1077A8]; test; jz; mov eax,[eax]; mov byte
+[eax+0x53],1; ret`. That is the other side's slot pointer; when it is not 0,
+its record's `+0x53` = 1. Ghidra has this function (`FUN_00037b54`,
+`__regparm3`), and its decompile agrees.
+
+**`[0x104AD4]`'s values.** It holds -1, 0, 1 or 2 (46-B.3). The port keeps
+the raw's 32-bit arithmetic in both functions (`(DSD ^ 1) * 4` and
+`DSD * 0x94`, wrapping), so -1 and 2 read the same addresses the raw does:
+`0x1077A0`/`0x1077B4` in `0x28F08`, and `0x10771C`/`0x1078D8` in
+`0x48F98`'s `0x37B54` argument.
+
+### 46-D.2 Entrances (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object and a dword scan of both fixed-up objects)
+
+| address | references |
+|---|---|
+| `0x48F98` | data dword `0xA8648` only (= `0xA8644` + 1*4; Ghidra: the same, DATA) |
+| `0x28F08` | data dword `0xA866C` only (= `0xA8644` + 10*4; Ghidra: the same, DATA) |
+| `0xA8648`, `0xA866C` | none (the table is indexed from `0xA8644`) |
+| `0x37B54` | rel32 `call` at `0x45B43`, `0x45FD3` and `0x4904F` (Ghidra: the same three); data dwords `0xE8564` and `0xEDAFC`, each after a `0xD000` word (`0xE8562`/`0xEDAFA`) |
+
+**What enables the entries.** A capstone sweep of the code object for every
+absolute operand at `0x104AE8..0x104AEB` finds these writes of bit 1
+(entry 1) and bit 10 (`0x104AE9` bit 2):
+- bit 1: set only by `0x48D22` (`0x48CD8`), cleared only by `0x48D75`
+  (`0x48D3C`);
+- bit 10: set by `0x48B3C` (`0x48AAC`, ported, §42-B) and `0x4013C`, and
+  cleared by `0x48B89` (`0x48AAC`) and `0x40165`. `0x4013C` lies in
+  `0x400EC`, the `0xD100` target at `0xE86F6`; `0x40165` lies in `0x40148`,
+  the `0xD100` target at `0xE8716`. Neither is ported (out of this item's
+  scope; `0x40148` calls the unported `0x37D18`).
+- The whole-dword stores (`0x20E1C`, `0x20EC3`, `0x28DC4`, `0x2BB13`,
+  `0x41435`) all store 0 (an `xor` of the source register just before).
+- The other read-modify-writes touch other bits: `0x104AE8` 0x01 (the
+  `0x13268..0x13275` clear), 0x04, 0x10, 0x20, 0x40 and 0x80; `0x104AE9` 0x01, 0x02, 0x08, 0x10, 0x20, 0x40 and
+  0x80.
+
+**Reach in the port.** `0xC950C`, the only type-`0x2D` descriptor (the type
+table's entry `0x2D` at `0xBBBF4`; its other reference is the `0x48E7E`
+immediate in `0x48D94`), is spawned only by `0x48D94`'s state 2.
+`0x48D94` and `0x48AAC` are reached only through `DS_001078E8`, which the
+unported `0x37774`/`0x37898` fill (§42-B). So no port path sets either
+bit. The two `0x37B54` stream sites are reached as follows:
+- `0xEDAFA` is in `0xEDAB2` (`0xEDAB2..0xEDAF9` is five loops, one `8E40`
+  word and the `D000 0x489DC` at `0xEDAF4`). `0xEDAB2` is the stream of
+  `0xC9288[2]`, `0xC92B0[2]`, `0xC9288[7]` and `0xC92B0[7]` (dwords
+  `0xC9290`, `0xC92B8`, `0xC92A4` and `0xC92CC`).
+- `0xE8562` is in `0xE8550` (after a `9301` word and eight sprite words).
+  `0xE8550` is the stream of descriptor `0xBB114`, which stream `0xE8616`
+  (`0xC9288[0]`) spawns at `0xE8646` (`CC01 000BB114`).
+
+The readers of `0xC9288`/`0xC92B0`/`0xC92D8` (`0x3769B`, `0x377DD`,
+`0x37902`) are unported finisher code: `0x3769B` stores to `DS_001078E4`.
+The port reads `0x1078E4` only in `0x379C4`'s arm, and no port path writes
+it.
+
+### 46-D.3 The port
+
+- `actors.c`, after `actor_type_0a19_update` (`0x2910C`), has:
+  - `fighter_37b54` and its `(rec, arg)` wrapper `anim_code_37B54`, which
+    drops the arg the raw never reads;
+  - `actor_type_2d_update` (`0x48F98`) and `actor_type_19_spawn`
+    (`0x28F08`), `fn()` like the other update-table entries (the EAX index
+    is not read).
+- Local `#define`s name `0xA89AC`, `0xEDD20`, `0xEDCEA`, `0x108396` and
+  `0x108397`, which `symbols.h` does not name.
+- The distance is computed only for phases 0 and 1, as in the raw, so a
+  held node's `+8` is never dereferenced.
+- The registration block appends the three after §46-C's.
+- The voices `0xF0`/`0xF1` are `PORT:` notes ("not wired (record §45-A)").
+  Because they are unwired, phase 1's signed `[0x108397]` <= 0 test (which
+  only gates `0xF1`) has no port effect. The decrement it tests is kept.
+
+### 46-D.4 The assertions and mutations
+
+`check_update_48f98` (`test_fight.c`, after `check_volleyball`) saves and
+restores the data object and the scratch records and psets (the §42-A
+`q42_save`/`q42_restore`). Every scenario starts from that snapshot
+(`r46_seed`). The reference-state compare also covers `mem[0..0xFF]`, where
+a write through a zero slot would land.
+- **The data.** `0xA8648` = `0x48F98`, `0xA866C` = `0x28F08`, `0xE8564`/
+  `0xEDAFC` = `0x37B54` after `0xD000` words, `0xA89AC`'s type byte `0x19`,
+  and all three resolve.
+- **The streams.** The cursors `0x2BC30` leaves on `0xEDD20` and `0xEDCEA`
+  (a scratch record) differ, and each start is checked against its own
+  cursor with `+0x24` = `0x40000000`.
+- **`0x37B54`, through its registration.**
+  - `+0x51` 0 marks record 5, `+0x51` 1 marks record 4, and the other
+    record keeps its sentinel.
+  - With a zero slot the whole reference state is unchanged.
+- **Phase 0.**
+  - Actors at +`0x1000` (the edge), +`0x1001` and -`0x1000`, a phase-2
+    actor, and `+0x34` = -3 -> -1, 5 -> 2 and `0x8000` -> `0xC000`.
+  - `0x108397` `0x7F` -> `0x82`, `0x108396` 5 -> `0x85`, and `0x37B54`'s
+    target, with no spawn.
+  - With bit 7 preset there is no `0x37B54`. With `DS_00104AD4` = 1 the
+    other record is marked.
+- **Phase 1 beyond `0x1000`.**
+  - At -`0x1001` and +`0x2000`, `+0x34` `0x4001` -> `0x8002` and `0xFFF0`
+    -> `0xFFE0`, and `0x108397` 2 -> 0.
+  - A phase-3 actor holds.
+  - With `DS_001078FD` = 0 the watched record moves, and the rng is
+    untouched.
+- **Phase 1 within `0x1000`, and `0x28F08`.**
+  - When the gate draw is not 0, the whole state equals one draw.
+  - When it is 0, the whole state equals the port's `0x2AE14` run from the
+    same state after the two draws with the raw's arguments, and differs
+    from it with a3/a4 swapped. This is done for a5 `0x4000` and 0, and for
+    `0x28F08` with `DS_00104AD4` 0 and 1. The spawned record is the free
+    one, with type `0x19` and `+0x28` bit 14 = a5.
+- **The rng seeds** sit at the gate's edge: the zero draw is one that
+  `rng(r + 1)` would not give, and the one draw is one that `rng(r - 1)`
+  would make 0. So a gate on any other range fails.
+
+Mutations (each built and run with `PR_ORACLE_REQUIRED=1`; the count is the
+suite's FAIL lines). All 42 fail, and every source was restored.
+- `0x37B54`:
+  - `^1` dropped: 9;
+  - null check dropped: 1;
+  - store 2: 4;
+  - `+0x52`: 4;
+  - unregistered: 1.
+- `0x48F98`, phase 0:
+  - edge `>=`: 8;
+  - no `abs`: 6;
+  - the watched slot read from `DS_00104AD4`: 15;
+  - `sar` for the halving: 1;
+  - no `0x108397` increment: 2;
+  - no phase increment: 3;
+  - the once-gate inverted: 4;
+  - no `0x108396` set: 1;
+  - `0x37B54`'s slot from `DS_001078FD`: 2;
+  - `0xEDCEA` for `0xEDD20`: 4;
+  - 3.0 for 2.0: 1.
+- `0x48F98`, phase 1:
+  - edge `>=`: 12;
+  - no doubling: 2;
+  - no decrement: 1;
+  - decrement by 2: 1;
+  - no phase increment: 2;
+  - `0xEDD20` for `0xEDCEA`: 2;
+  - 3.0 for 2.0: 1;
+  - phases above 1 treated as 1: 1.
+- `0x48F98`, the spawn:
+  - `rng(0x10)` for `rng(0x14)`: 1;
+  - `rng(0x15)`: 7;
+  - `rng(3)` for the a5 draw: 2;
+  - a5 inverted: 4;
+  - a2 from `+0x1C`: 2;
+  - a3/a4 swapped: 4;
+  - `>> 15`: 2;
+  - unregistered: 34.
+- `0x28F08`:
+  - `^1` dropped: 2;
+  - `rng(5)`: 1;
+  - `rng(7)`: 7;
+  - the gate inverted: 8;
+  - a4 0: 2;
+  - a2 from `+0x28`: 2;
+  - y from the slot, not its record: 2;
+  - a5 inverted: 4;
+  - a3/a4 swapped: 4;
+  - unregistered: 9.
+
+The first run left two survivors, `rng(0x10)` and `rng(5)`: the first seeds
+drew the same zero/non-zero outcome on both ranges. The edge seeds kill
+them.
+
+### 46-D.5 Measured and remaining gaps
+
+Not measured with the drivers (this batch does not run them). The claim
+that no oracle moves rests on 46-D.2's reach argument:
+- the two bits' only port-reachable setters are in `0x48CD8` (spawned only
+  by `0x48D94`) and `0x48AAC`, both behind the unported `0x37774`/`0x37898`;
+- the two `0x37B54` stream sites are reached only through the unported
+  `0xC9288`/`0xC92B0` readers.
+
+Before this change, the port's `run_process_table` skipped entries 1 and 10
+through the `fn_resolve` miss. If a later port reaches either, the
+type-`0x19` spawns (and their draws) now happen as in the raw.
+
+Remaining named gaps:
+- the voices `0x2C3FC(0xF0)`/`(0xF1)` (§45-A's rule);
+- `0x400EC`/`0x40148`, the `0xD100` targets that set and clear entry 10's
+  bit (dwords `0xE86F6`/`0xE8716`), and `0x40148`'s callee `0x37D18`;
+- `0x37B54`'s other callers `0x45B43`/`0x45FD3`, in code the port does not
+  have;
+- the finisher flow that reaches all of this (`0x37774`/`0x37898`, the
+  `0xC9288`/`0xC92B0`/`0xC92D8` readers, `DS_001078E4`; §42-B).
