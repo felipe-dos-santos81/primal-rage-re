@@ -4,6 +4,9 @@
 #include "../mem.h"
 #include "../symbols.h"
 
+#include <stddef.h>
+#include <string.h>
+
 /* 0x2D974. The walk mirrors the raw exactly (spec §3): the descriptor gives a bit
  * position and a width; the value is assembled from the byte/nibble array ending
  * at DS_00105DE1 + ((bitpos + width) >> 1) and walking downward, with the final
@@ -195,6 +198,94 @@ void config_validate(void)
         /* 0x2D962 calls 0x2DAE4(0x24) only when DS_00105DA4 + DS_00105DA5 != 0;
          * both are 0 on this path, and 0x2DAE4 is a deferred no-op (spec §7). */
     }
+}
+
+/* ---- high-score tables (record §46-A) ------------------------------------- */
+
+/* 0x2DB58 — record §46-A. EAX = rec, EDX = table, ECX = size_out, EBX =
+ * left_out. The descriptor is the 8-byte 0x2D3FC[table]: +0 the count, +4 the
+ * value bytes, +6 the name bytes; the RAM block is [0x2D478 + 8*table]. */
+u32 hiscore_locate(u32 rec, u32 table, u32 *left_out, u32 *size_out)
+{
+    if (table >= 3u) return 0u;                              /* 0x2DB5F `jc` */
+    u32 desc = DS_0002D3FC + table * 8u;                     /* 0x2DB68 */
+    u32 count = DSW(desc);                                   /* 0x2DB77 */
+    if (rec >= count) return 0u;                             /* 0x2DB7A `jc` */
+    u32 size = (u32)DSW(desc + 4u) + (u32)DSW(desc + 6u);    /* 0x2DB8D..0x2DB9B */
+    if (left_out != NULL) *left_out = (count - rec) * size;  /* 0x2DBA4/0x2DBA7 */
+    if (size_out != NULL) *size_out = size;                  /* 0x2DBAD */
+    return rec * size + DSD(DS_0002D478 + table * 8u);       /* 0x2DBAF..0x2DBB9 */
+}
+
+/* 0x2DBC4 — record §46-A. EAX = rec, EDX = table. The value bytes are read
+ * big-endian into DS_00105EFC, each name word gives three 5-bit characters
+ * (+0x40, or a space for 0) at DS_00105F00, NUL-terminated. Returns 0x105EFC,
+ * or 0 when 0x2DB58 finds no record. */
+u32 hiscore_read(u32 rec, u32 table)
+{
+    u32 p = hiscore_locate(rec, table, NULL, NULL);          /* 0x2DBD1 */
+    if (p == 0u) return 0u;                                  /* 0x2DBDA */
+    u32 desc = DS_0002D3FC + table * 8u;                     /* 0x2DBE0 */
+    u32 value = 0u;
+    for (u32 n = DSW(desc + 4u); n != 0u; n--)               /* 0x2DBF5..0x2DC00 */
+        value = (value << 8) | DSB(p++);
+    u32 out = DS_00105F00;                                   /* 0x2DC02 */
+    DSD(DS_00105EFC) = value;                                /* 0x2DC07 */
+    for (u32 n = DSW(desc + 6u); n != 0u; n -= 2u) {         /* 0x2DC0C..0x2DC8D */
+        u32 w = (u32)DSB(p) | ((u32)DSB(p + 1u) << 8);       /* 0x2DC25..0x2DC2D */
+        p += 2u;
+        for (u32 k = 0u; k < 3u; k++) {                      /* 0x2DC32/0x2DC54/0x2DC75 */
+            DSB(out++) = (u8)((w & 0x1Fu) != 0u ? (w & 0x1Fu) + 0x40u : 0x20u);
+            w >>= 5;
+        }
+    }
+    DSB(out) = 0u;                                           /* 0x2DC94 */
+    return DS_00105EFC;                                      /* 0x2DC8F */
+}
+
+/* 0x2DCA0 — record §46-A. EAX = rec, EDX = src (a u32 value, then the name),
+ * EBX = table. Inserts the record: the records from `rec` move down one
+ * (0x653A1, a memmove; the last drops), then the value is stored big-endian
+ * and the name packed three characters to a word. Returns 1, or 0 when 0x2DB58
+ * finds no record. */
+u32 hiscore_insert(u32 rec, u32 src, u32 table)
+{
+    u32 left = 0u, size = 0u;
+    u32 p = hiscore_locate(rec, table, &left, &size);        /* 0x2DCBB */
+    if (p == 0u) return 0u;                                  /* 0x2DCC4 */
+    u32 desc = DS_0002D3FC + table * 8u;                     /* 0x2DCCD */
+    if ((u32)DSW(desc + 2u) > rec)                           /* 0x2DCE4 `jbe` */
+        DSB(DS_00105DD8 + ((table + 6u) >> 3)) |=
+            (u8)(1u << ((table + 6u) & 7u));                 /* 0x2DCE8..0x2DD00 */
+    if ((s32)left > (s32)size)                               /* 0x2DD0A `jle` */
+        memmove(mem + p + size, mem + p, left - size);       /* 0x2DD1B 0x653A1 */
+    u32 nval = DSW(desc + 4u);
+    u32 value = DSD(src);                                    /* 0x2DD26 */
+    for (u32 n = nval; n != 0u; n--) {                       /* 0x2DD2F..0x2DD37 */
+        DSB(p + n - 1u) = (u8)value;
+        value >>= 8;
+    }
+    p += nval;                                               /* 0x2DD45 */
+    u32 s = src + 4u;                                        /* 0x2DD47 */
+    for (u32 n = DSW(desc + 6u); n != 0u; n -= 2u) {         /* 0x2DD4A..0x2DDB6 */
+        u32 w = 0u;
+        for (u32 k = 0u; k < 3u; k++) {                      /* 0x2DD52/0x2DD6E/0x2DD8B */
+            s32 c = (s8)DSB(s);                              /* movsx */
+            if (c != 0 && c != 0x20) {
+                w |= ((u32)c & 0x1Fu) << (5u * k);
+                s++;
+            } else if (c == 0x20) {
+                s++;
+            }
+        }
+        DSB(p) = (u8)w;                                      /* 0x2DDA9 */
+        DSB(p + 1u) = (u8)(w >> 8);                          /* 0x2DDB0 */
+        p += 2u;
+    }
+    /* PORT: 0x2DDCD 0x2D4EC(table + 6), run when rec is below the stored count,
+     * rewrites the storage image's check bytes; a no-op here, as in 0x2DA0C
+     * (spec §7). */
+    return 1u;                                               /* 0x2DDD2 */
 }
 
 /* ---- credit layer -------------------------------------------------------- */

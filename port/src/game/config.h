@@ -38,6 +38,24 @@ void config_set_defaults(void);
  * defaults path, as on a fresh machine. */
 void config_validate(void);
 
+/* ---- high-score tables (0x2DB58/0x2DBC4/0x2DCA0; record §46-A) ----------
+ * Three packed tables described by the obj-0 descriptors at 0x2D3FC and kept
+ * in the data object at [0x2D478 + 8*table]: 0 = the ten scores (0x105E34),
+ * 1 = the champion (0x105EAC), 2 = a 5-byte block (0x105EC8). */
+
+/* 0x2DB58. The address of record `rec` of `table`, or 0 past the count or the
+ * three tables. When non-NULL, *left_out = (count - rec) * record size (EBX)
+ * and *size_out = the record size (ECX). */
+u32 hiscore_locate(u32 rec, u32 table, u32 *left_out, u32 *size_out);
+
+/* 0x2DBC4. Decodes record `rec` of `table` into DS_00105EFC (the value) and
+ * DS_00105F00 (the name, NUL-terminated); returns 0x105EFC, or 0. */
+u32 hiscore_read(u32 rec, u32 table);
+
+/* 0x2DCA0. Inserts the record at `src` (u32 value, then the name) as record
+ * `rec` of `table`, moving the later records down one; returns 1, or 0. */
+u32 hiscore_insert(u32 rec, u32 src, u32 table);
+
 /* ---- credit layer (0x2Cxxx) ---------------------------------------------
  * The credit counter DS_00105C00, the FREE PLAY flag DS_00105D60 and the
  * debit-suppression flag DS_00104B1F. Read and written where the raw does. */
