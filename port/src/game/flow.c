@@ -1074,8 +1074,9 @@ u32 hiscore_audit_reset_due(void)
  * after DS_00104528 is read. Blanks three 0x24-byte name buffers, then fills
  * the factory table 0 and, when table 1 is empty, the champion 0xA7D74. With
  * DS_00104529 bit 0x40, or bit 0x20 and 0x1E988, it clears fields 0x27/0x26,
- * forces the defaults, clears bit 0x40 back into field 0x29 and always writes
- * the champion. */
+ * forces the defaults and, only when bit 0x40 was set, clears it back into
+ * field 0x29 and writes the champion over any value (bit 0x40 clear returns
+ * at 0x1E8B9 -> 0x1E912 with the champion kept). */
 void hiscore_init(void)
 {
     for (u32 k = 0u; k < 2u; k++)                               /* 0x1E82B..0x1E856 */

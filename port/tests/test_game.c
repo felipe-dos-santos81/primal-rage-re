@@ -2276,8 +2276,9 @@ static void check_hiscore(void)
     CHECK_EQ_INT((int)size, 5);
     CHECK_EQ_INT((int)hiscore_locate(0u, 3u, &left, &size), 0);
 
-    /* 0x1E824 on zeroed tables with the original's DS_00104528 (0x142095: bits
-     * 0x4000/0x2000 clear) writes the original's bytes, blanks the three name
+    /* 0x1E824 on zeroed tables with the original's DS_00104528 (0x142095: bit
+     * 0x4000 clear, bit 0x2000 set, the audit not due: fields 0x27/0x26 are
+     * below 2000/200) writes the original's bytes, blanks the three name
      * buffers and raises DS_00105DD8 bits 6 and 7 only. */
     mem_fill(HS_T0, 0, 153u);
     mem_fill(nb, 0x5A, sizeof snb);
@@ -2340,6 +2341,25 @@ static void check_hiscore(void)
     CHECK_EQ_INT((int)hiscore_insert(9u, HS_SCRATCH, 0u), 1);
     CHECK_EQ_INT((int)DSB(HS_T0 + 111u), 4);
     CHECK_EQ_INT((int)DSB(HS_T0 + 120u + 3u), 0x21);     /* table 1 untouched */
+    /* Table 2 (0x105EC8, 3 value bytes, one name word): its dirty bit is
+     * table + 6 = 8, bit 0 of DS_00105DD9. */
+    {
+        u8 s_c8[5];
+        memcpy(s_c8, mem + 0x105EC8u, 5u);
+        mem_fill(0x105EC8u, 0xEE, 5u);
+        DSB(DS_00105DD8) = 0u;
+        DSB(DS_00105DD8 + 1u) = 0u;
+        DSB(0x105ECDu) = 0x3Cu;
+        CHECK_EQ_INT((int)hiscore_insert(0u, HS_SCRATCH, 2u), 1);
+        CHECK_EQ_INT((int)DSB(0x105EC8u), 0x02);
+        CHECK_EQ_INT((int)DSB(0x105EC9u), 0x03);
+        CHECK_EQ_INT((int)DSB(0x105ECAu), 0x04);
+        CHECK_EQ_INT((int)DSW(0x105ECBu), 0x0801);
+        CHECK_EQ_INT((int)DSB(0x105ECDu), 0x3C);         /* one record, no move */
+        CHECK_EQ_INT((int)DSB(DS_00105DD8), 0);
+        CHECK_EQ_INT((int)DSB(DS_00105DD8 + 1u), 0x01);
+        memcpy(mem + 0x105EC8u, s_c8, 5u);
+    }
 
     /* 0x1E988: field 0x27 >= 2000 and field 0x26 >= 200. */
     config_field_set(0x27u, 2000u);
@@ -2351,10 +2371,20 @@ static void check_hiscore(void)
     config_field_set(0x27u, 1999u);
     CHECK_EQ_INT((int)hiscore_audit_reset_due(), 0);
 
-    /* Bit 0x2000 with the audit due: fields 0x27/0x26 cleared, the defaults
-     * forced over the edited table, the champion kept (bit 0x4000 clear). */
+    /* The audit due with bits 0x2000 and 0x4000 clear: 0x1E988 is not
+     * consulted, the normal path keeps the edited table and both fields. */
     config_field_set(0x27u, 2000u);
-    DSD(DS_00104528) = 0x142095u | 0x2000u;
+    DSB(HS_T0 + 12u + 3u) = 0x81u;
+    DSD(DS_00104528) = 0x142095u & ~0x2000u;
+    hiscore_init();
+    CHECK_EQ_INT((int)DSB(HS_T0 + 12u + 3u), 0x81);
+    CHECK_EQ_INT((int)config_field_get(0x27u), 2000);
+    CHECK_EQ_INT((int)config_field_get(0x26u), 200);
+
+    /* Bit 0x2000 (set in 0x142095) with the audit due: fields 0x27/0x26
+     * cleared, the defaults forced over the edited table, the champion kept
+     * (bit 0x4000 clear). */
+    DSD(DS_00104528) = 0x142095u;
     hiscore_init();
     CHECK(hs_match(HS_T0, hs_orig, 120u), "the forced defaults");
     CHECK_EQ_INT((int)config_field_get(0x27u), 0);
