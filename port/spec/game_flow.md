@@ -965,7 +965,10 @@ exits 0.
   reaches none of them, and `0x4D7A4`'s caller `0x4D2D0` is not ported.
   The second freeze `0x22CE4` and character 1's
   reactions `0x29`/`0x2A` (`0x22F74`, `0x2365C`) are ported too (§42-A),
-  with update-table entry 5 `0x22FE8`; the demo reaches none of them either. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
+  with update-table entry 5 `0x22FE8`; the demo reaches none of them either.
+  Character 1's reactions `0x20`/`0x25`/`0x28` (`0x23130`, `0x230F0`,
+  `0x23178`) and `0x2365C`'s stream chain `0x236D8` -> `0x2372C` are ported
+  and registered as well (§43-C); the demo reaches none of them. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
   frame-1881 fix): none in the fight; `0x3E3A8` (f = 962, the `(char 0,
   0x2A)` callback) and its `+0x0C` callback `0x3E328` (f = 963) are now ported
   and registered; its `+0x18` hook `0x3E1D0` is ported with `0x19020`
