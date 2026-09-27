@@ -5793,10 +5793,6 @@ int fighter_2365c(u32 slot, u32 rec, u32 side)
             + (((u32)DSB(rec + 0x51u) ^ 1u) & 0xFFu) * 0x94u;  /* 0x2366E..0x23685 */
     if (DSD(other + 0x10u) == 0x00022BECu) return 0;    /* 0x2368A..0x23693 */
     hit_anim_start_b(rec, FIGHT_ANIM_2365C, 0x40400000u);   /* 0x23698..0x236A4 0x3C4CC */
-    /* PORT: 0xE4996's 0xD100 target 0x236D8 (at 0xE49A2, the dword at 0xE49A4
-     * its only reference) is unregistered, so anim_indirect skips it: it
-     * spawns the 0xBB3BC actor, whose stream 0xE4F94 carries the unported
-     * 0xD100 target 0x2372C (also called at 0x2463E). Named gap, §42-A.5. */
     DSB(slot + 0x52u) = 0x0Bu;                          /* 0x236A9 */
     DSB(slot + 0x53u) = 6u;                             /* 0x236AD */
     DSB(slot + 0x54u) = 0;                              /* 0x236B1 */
@@ -5806,6 +5802,131 @@ int fighter_2365c(u32 slot, u32 rec, u32 side)
     DSB(slot + 0x5Fu) = 0xFFu;                          /* 0x236C7 */
     /* PORT: 0x236CB 0x2C3FC(0xB4) — voice, out of scope (spec §7). */
     return 1;                                           /* 0x236D0 */
+}
+
+/* ---- character 1's reactions 0x20/0x25/0x28 and the 0x2365C stream chain
+ * 0x236D8 -> 0x2372C (record §43-C) ---- */
+
+/* PORT: data-object addresses symbols.h does not name. */
+#define FIGHT_ANIM_230F0   0x000E483Eu  /* 0x23102: the reaction-0x25 stream */
+#define FIGHT_ANIM_23130   0x000E4872u  /* 0x2314F: the reaction-0x20 stream */
+#define FIGHT_ANIM_23178   0x000E48DCu  /* 0x23197: the reaction-0x28 stream */
+#define FIGHT_DESC_236D8   0x000BB3BCu  /* 0x236F9: the child actor (stream 0xE4F94) */
+#define FIGHT_DESC_2372C   0x000BB3D0u  /* 0x2378E: the type-8 projectile (stream 0xE4FB8) */
+
+/* 0x230F0 — record §43-C. Character 1's reaction-0x25 callback (*(u32*)
+ * 0xA3D0C, its only reference; the entry's stream dword is 0), called by
+ * 0x34E2C at 0x35045 with EAX = slot, EDX = rec, EBX = side. The 0x33950
+ * context it builds from EBX is never read (0x33950 writes only the context).
+ * The 0xE483E stream at 3.0 through 0x3C4CC, which reads the slot's +0x52
+ * before this callback stores it, then state 9/7/0 and +0x0C = 0; AL = 1. */
+int fighter_230f0(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                        /* 0x230FD 0x33950 */
+    hit_anim_start_b(rec, FIGHT_ANIM_230F0, 0x40400000u);   /* 0x23102..0x2310E 0x3C4CC */
+    DSB(slot + 0x52u) = 9u;                             /* 0x23113 */
+    DSB(slot + 0x53u) = 7u;                             /* 0x23117 */
+    DSB(slot + 0x54u) = 0;                              /* 0x2311B */
+    DSD(slot + 0x0Cu) = 0;                              /* 0x23121 */
+    return 1;                                           /* 0x2311F */
+}
+
+/* 0x23130 — record §43-C. Character 1's reaction-0x20 callback (*(u32*)
+ * 0xA3CA8, its only reference), same registers and dead context as 0x230F0.
+ * State 9/7/0 and +0x0C = 0 are stored first, so 0x3C4CC sees +0x52 = 9 and
+ * takes its 0x3C480 arm for the 0xE4872 stream at 3.0; AL = 1. */
+int fighter_23130(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                        /* 0x2313D 0x33950 */
+    DSB(slot + 0x52u) = 9u;                             /* 0x23142 */
+    DSB(slot + 0x53u) = 7u;                             /* 0x2314B */
+    DSB(slot + 0x54u) = 0;                              /* 0x23154 */
+    DSD(slot + 0x0Cu) = 0;                              /* 0x2315A */
+    hit_anim_start_b(rec, FIGHT_ANIM_23130, 0x40400000u);   /* 0x23146..0x23161 0x3C4CC */
+    /* PORT: 0x23166 0x2C3FC(0x7C) — voice, out of scope (spec §7). */
+    return 1;                                           /* 0x23170 */
+}
+
+/* 0x23178 — record §43-C. Character 1's reaction-0x28 callback (*(u32*)
+ * 0xA3D48, its only reference): 0x23130's body with the 0xE48DC stream. */
+int fighter_23178(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                        /* 0x23185 0x33950 */
+    DSB(slot + 0x52u) = 9u;                             /* 0x2318A */
+    DSB(slot + 0x53u) = 7u;                             /* 0x23193 */
+    DSB(slot + 0x54u) = 0;                              /* 0x2319C */
+    DSD(slot + 0x0Cu) = 0;                              /* 0x231A2 */
+    hit_anim_start_b(rec, FIGHT_ANIM_23178, 0x40400000u);   /* 0x2318E..0x231A9 0x3C4CC */
+    /* PORT: 0x231AE 0x2C3FC(0x7C) — voice, out of scope (spec §7). */
+    return 1;                                           /* 0x231B8 */
+}
+
+/* 0x236D8 — record §43-C. The animation-opcode 0x11 target in 0x2365C's
+ * stream 0xE4996 (the dword at 0xE49A4 after the 0xD100 word at 0xE49A2, its
+ * only reference). EAX = rec; EDX is pushed at 0x236DA and zeroed at 0x236F7
+ * before any read. With the record's +0x14 (its slot) set, it spawns 0xBB3BC
+ * as a child of the record (a5 = the record's +0x56 | 0x400, the other
+ * arguments 0) with +0x59 = 2, +0x14 = the slot and the record's +0x24 frame
+ * rate; for side 1 (rec+0x51) the child's +0x2E gets 4 more and its +0x4E is
+ * set. The spawn result is used unchecked, as in the raw. */
+void fighter_236d8(u32 rec)
+{
+    u32 slot = DSD(rec + 0x14u);                        /* 0x236DF */
+    u32 e;
+    if (slot == 0u) return;                             /* 0x236E2 */
+    e = actor_spawn((const u32 *)(mem + FIGHT_DESC_236D8), 0u, 0u, 0u,
+                    (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));   /* 0x236E6..0x236FE 0x2AE14 */
+    DSB(e + 0x59u) = 2u;                                /* 0x23703 */
+    DSD(e + 0x14u) = slot;                              /* 0x23707 */
+    DSD(e + 0x24u) = DSD(rec + 0x24u);                  /* 0x2370A/0x2370D */
+    if (DSB(rec + 0x51u) != 0u) {                       /* 0x23710 */
+        DSB(e + 0x4Eu) = 1u;                            /* 0x2371A */
+        DSW(e + 0x2Eu) = (u16)(DSW(e + 0x2Eu) + 4u);    /* 0x23716..0x23721 */
+    }
+}
+
+/* 0x2372C — record §43-C. The animation-opcode 0x11 target in 0x236D8's
+ * child stream 0xE4F94 (the dword at 0xE4FA4 after the 0xD100 word at
+ * 0xE4FA2), also called at 0x2463E (inside 0x24568, the 0xA8628 table's entry
+ * 1) with EAX = a fighter record. EAX = rec; EDX is pushed and overwritten
+ * before any read. With rec's +0x14 (the slot) set, it spawns the type-8
+ * projectile 0xBB3D0 beside the slot's record: x = its +0x18 -/+ 0xC00 (minus
+ * when rec's own +0x28 lacks bit 14), a3 = its +0x30 >> 16, y = its +0x1C +
+ * 0x1480 and a5 = 0x4000 when its +0x28 has bit 14. The projectile goes into
+ * the slot's +0x08 with the word +0x34 = -/+0x113 (the same sign rule) and
+ * +0x14 = the slot; for side 1 its +0x2E gets 4 more and its +0x4E is set. */
+void fighter_2372c(u32 rec)
+{
+    u32 slot = DSD(rec + 0x14u);                        /* 0x23732 */
+    u32 frec, a5, p;
+    u16 speed;
+    s32 off;
+    if (slot == 0u) return;                             /* 0x23735 */
+    if ((DSW(rec + 0x28u) & 0x4000u) == 0u) {           /* 0x2373D..0x2374B */
+        speed = 0xFEEDu;                                /* 0x2374D */
+        off = -0xC00;                                   /* 0x23752 */
+    } else {
+        speed = 0x0113u;                                /* 0x23759 */
+        off = 0xC00;                                    /* 0x2375E */
+    }
+    frec = DSD(slot);                                   /* 0x23763 */
+    a5 = (DSW(frec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u;   /* 0x23765..0x2377F */
+    frec = DSD(slot);                                   /* 0x23780 */
+    p = actor_spawn((const u32 *)(mem + FIGHT_DESC_2372C),
+                    DSD(frec + 0x18u) + (u32)off,
+                    (u32)((s32)DSD(frec + 0x30u) >> 16),
+                    DSD(frec + 0x1Cu) + 0x1480u, a5);   /* 0x23782..0x2379E 0x2AE14 */
+    DSD(slot + 0x08u) = p;                              /* 0x237A3 */
+    DSW(p + 0x34u) = speed;                             /* 0x237A6 */
+    DSD(DSD(slot + 0x08u) + 0x14u) = slot;              /* 0x237AA/0x237AD */
+    if (DSB(DSD(slot) + 0x51u) != 0u) {                 /* 0x237B0/0x237B2 */
+        DSW(DSD(slot + 0x08u) + 0x2Eu) =
+            (u16)(DSW(DSD(slot + 0x08u) + 0x2Eu) + 4u); /* 0x237B8/0x237BB */
+        DSB(DSD(slot + 0x08u) + 0x4Eu) = 1u;            /* 0x237C0/0x237C3 */
+    }
 }
 
 /* 0x3AAFC. The reaction applier / pose dispatcher 0x3B714 runs for the winner.

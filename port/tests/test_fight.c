@@ -12233,6 +12233,298 @@ static void check_char1_reactions(void)
     q42_restore();
 }
 
+/* Record §43-C. Character 1's reaction callbacks 0x230F0 (0x25, *(u32*)
+ * 0xA3D0C), 0x23130 (0x20, 0xA3CA8) and 0x23178 (0x28, 0xA3D48), EAX = slot,
+ * EDX = rec, EBX unread (its 0x33950 context is dead): state 9/7/0, +0x0C = 0
+ * and the 0xE483E/0xE4872/0xE48DC stream at 3.0 through 0x3C4CC, which reads
+ * the slot's +0x52. 0x230F0 starts the stream first: a +0x52 = 0 seed takes
+ * 0x3C4CC's plain 0x2BC30 arm and keeps rec+0x1C. 0x23130/0x23178 store +0x52
+ * = 9 first: 0x3C4CC takes its 0x3C480 arm, whose 0x188AC zeroes rec+0x1C.
+ * Each stream opens with `DC00 <table>` (opcode 0x1C): rec+0x10 = the table
+ * (0xE22C8/0xE22E8/0xE2328) and the 3.0 hold is replaced by its first byte
+ * (2/1/2). The walk stops on the first sprite: 0xE483E's `ED40` table sprite
+ * at 0xE4844 leaves rec+8 = 0xE4848; 0xE4872 runs `DA00`, two `FF2x` and
+ * reaches `ED40` at 0xE488E (rec+8 = 0xE4892), and 0xE48DC's `C300` jumps
+ * to 0xE4872's `FF20` at 0xE487E, so it ends there too. */
+static void check_char1_reactions_b(void)
+{
+    typedef void (*react_fn)(u32 slot, u32 rec, u32 side);
+    react_fn f0, f30, f78;
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FZ_POOL, r1 = FZ_POOL + ACTOR_REC_SIZE;
+
+    q42_save();
+    f0 = (react_fn)(void *)fn_resolve(0x230F0u);
+    f30 = (react_fn)(void *)fn_resolve(0x23130u);
+    f78 = (react_fn)(void *)fn_resolve(0x23178u);
+    CHECK(f0 != NULL, "0x230F0 is a registered reaction callback");
+    CHECK(f30 != NULL, "0x23130 is a registered reaction callback");
+    CHECK(f78 != NULL, "0x23178 is a registered reaction callback");
+    CHECK_EQ_INT((int)DSD(0x000A3D0Cu), 0x000230F0);
+    CHECK_EQ_INT((int)DSD(0x000A3CA8u), 0x00023130);
+    CHECK_EQ_INT((int)DSD(0x000A3D48u), 0x00023178);
+    CHECK_EQ_INT((int)DSD(0x000A3D0Cu + 4u), 0);   /* no table stream */
+    CHECK_EQ_INT((int)DSD(0x000A3CA8u + 4u), 0);
+    CHECK_EQ_INT((int)DSD(0x000A3D48u + 4u), 0);
+
+    /* A: 0x230F0 through its registration on slot 1/record 1, EBX = 0.
+     * +0x52 = 0 is read by 0x3C4CC before the store: rec+0x1C kept. */
+    q42_fz_seed(r0, r1);
+    DSD(r1 + 0x1Cu) = 0x5555u;
+    DSB(s1 + 0x52u) = 0;
+    if (f0 != NULL) f0(s1, r1, 0u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(s1 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(s1 + 0x0Cu), 0);
+    CHECK_EQ_INT((int)DSD(r1 + 0x10u), 0x000E22C8);
+    CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSD(r1 + 0x08u), 0x000E4848);
+    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 0x5555);
+    CHECK_EQ_INT((int)DSB(s1 + 0x5Fu), 0x29);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x55);
+    CHECK_EQ_INT((int)DSD(s0 + 0x0Cu), 0x0C0C0C0C);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x11111111);
+    /* A2: +0x52 = 0x55 (not in 0x3C4CC's plain set) takes 0x3C480. */
+    q42_fz_seed(r0, r1);
+    DSD(r1 + 0x1Cu) = 0x5555u;
+    CHECK_EQ_INT(fighter_230f0(s1, r1, 1u), 1);
+    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 0);
+
+    /* B: 0x23130 through its registration on slot 0/record 0, EBX = 1. The
+     * +0x52 = 0 seed is overwritten with 9 before 0x3C4CC: rec+0x1C zeroed. */
+    q42_fz_seed(r0, r1);
+    DSD(r0 + 0x1Cu) = 0x5555u;
+    DSB(s0 + 0x52u) = 0;
+    if (f30 != NULL) f30(s0, r0, 1u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(s0 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x0Cu), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 0x10u), 0x000E22E8);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x3F800000);
+    CHECK_EQ_INT((int)DSD(r0 + 0x08u), 0x000E4892);
+    CHECK_EQ_INT((int)DSD(r0 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0x55);
+    CHECK_EQ_INT((int)DSD(s1 + 0x0Cu), 0x0C0C0C0C);
+    CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0x11111111);
+    q42_fz_seed(r0, r1);
+    CHECK_EQ_INT(fighter_23130(s0, r0, 0u), 1);
+
+    /* C: 0x23178 through its registration on slot 1/record 1, the same
+     * order as 0x23130, with the 0xE48DC stream. */
+    q42_fz_seed(r0, r1);
+    DSD(r1 + 0x1Cu) = 0x5555u;
+    DSB(s1 + 0x52u) = 0;
+    if (f78 != NULL) f78(s1, r1, 0u);
+    CHECK_EQ_INT((int)DSB(s1 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s1 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSB(s1 + 0x54u), 0);
+    CHECK_EQ_INT((int)DSD(s1 + 0x0Cu), 0);
+    CHECK_EQ_INT((int)DSD(r1 + 0x10u), 0x000E2328);
+    CHECK_EQ_INT((int)DSD(r1 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSD(r1 + 0x08u), 0x000E4892);
+    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x55);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x11111111);
+    q42_fz_seed(r0, r1);
+    CHECK_EQ_INT(fighter_23178(s1, r1, 0u), 1);
+
+    /* D: 0x34E2C (0x35045) dispatching character 1's reaction 0x25 to
+     * 0x230F0 through the 0xA3528 table: slot 0's +0x7A = 1. */
+    q42_fz_seed(r0, r1);
+    DSB(s0 + 0x7Au) = 1u;
+    hit_reaction_apply(0u, 0x25u);
+    CHECK_EQ_INT((int)DSB(s0 + 0x5Fu), 0x25);
+    CHECK_EQ_INT((int)DSB(s0 + 0x52u), 9);
+    CHECK_EQ_INT((int)DSB(s0 + 0x53u), 7);
+    CHECK_EQ_INT((int)DSD(s0 + 0x0Cu), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSD(r0 + 0x08u), 0x000E4848);
+
+    q42_restore();
+}
+
+/* Record §43-C. 0x236D8 (0xE4996's 0xD100 target; EAX = rec, EDX unread):
+ * with rec+0x14 (the slot) set, the 0xBB3BC child of rec (a5 = rec+0x56 |
+ * 0x400: +0x4A = the parent's index, +0x28 bit 10, +0x49 = the parent pset's
+ * layer + the walk's +0x59, the parent's +0x4F + 1) with +0x14 = the slot and
+ * rec's +0x24; side 1 adds 4 to +0x2E and sets +0x4E. Its stream 0xE4F94
+ * opens `9302 CD40 071D`, so the spawn walk leaves +8 at 0xE4F98. (That
+ * `9302`, opcode 0x13, already stores +0x59 = 2, so dropping 0x236D8's own
+ * store is equivalent; a wrong value still fails.) 0x2372C (0xE4F94's 0xD100 target
+ * and 0x2463E's call; EAX = rec, EDX unread): with rec+0x14 set, the type-8
+ * 0xBB3D0 projectile into slot+0x08 at the slot record's x -/+0xC00 (minus
+ * while REC's +0x28 lacks bit 14), y + 0x1480, a3 = +0x30 >> 16 and a5 =
+ * 0x4000 from the SLOT RECORD's +0x28 bit 14; +0x34 = -/+0x113 (rec's bit),
+ * +0x14 = the slot, side 1 +0x2E + 4 and +0x4E = 1. 0xE4FB8 opens `9302 CD40
+ * 072A`: +8 = 0xE4FBC. The pool is FZ_POOL (r0 index 0, r1 index 1), and the
+ * one free record p is what the spawn pops. */
+static void check_char1_chain(void)
+{
+    typedef void (*anim_fn)(u32 rec, u32 arg);
+    anim_fn fd8, f2c;
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FZ_POOL, r1 = FZ_POOL + ACTOR_REC_SIZE;
+    u32 e = FZ_POOL + 2u * ACTOR_REC_SIZE;
+    u32 p = FZ_POOL + 3u * ACTOR_REC_SIZE;
+    u32 st = FIGHT_RECS + 0x4800u;
+
+    q42_save();
+    fd8 = (anim_fn)(void *)fn_resolve(0x236D8u);
+    f2c = (anim_fn)(void *)fn_resolve(0x2372Cu);
+    CHECK(fd8 != NULL, "0x236D8 is registered");
+    CHECK(fn_resolve(0x236D8u) != (void (*)(void))fighter_236d8,
+          "0x236D8 is registered through the (rec, arg) wrapper");
+    CHECK(f2c != NULL, "0x2372C is registered");
+    CHECK(fn_resolve(0x2372Cu) != (void (*)(void))fighter_2372c,
+          "0x2372C is registered through the (rec, arg) wrapper");
+    CHECK_EQ_INT((int)DSW(0x000E49A2u), 0xD100);
+    CHECK_EQ_INT((int)DSD(0x000E49A4u), 0x000236D8);
+    CHECK_EQ_INT((int)DSW(0x000E4FA2u), 0xD100);
+    CHECK_EQ_INT((int)DSD(0x000E4FA4u), 0x0002372C);
+    CHECK_EQ_INT((int)DSD(0x000BB3BCu), 0x000E4F94);
+    CHECK_EQ_INT((int)DSD(0x000BB3D0u), 0x000E4FB8);
+    CHECK_EQ_INT((int)DSB(0x000BB3D0u + 4u), 8);
+
+    /* A: 0x236D8 on record 1 (side 1, pool index 1) through its
+     * registration. */
+    q42_fz_seed(r0, r1);
+    DSW(r1 + 0x56u) = 1u;
+    DSD(r1 + 0x14u) = s1;
+    DSD(r1 + 0x24u) = 0x3FC00000u;
+    DSW(FIGHT_ACTORS + 0x20u + 0x0Eu) = 0x30u;  /* the parent pset's layer */
+    DSB(r1 + 0x4Fu) = 0x10u;
+    q42_one_actor(p);
+    if (fd8 != NULL) fd8(r1, 0xDEADu);
+    CHECK_EQ_INT((int)DSD(DS_00105BCC), (int)p);
+    CHECK_EQ_INT((int)DSD(p + 0x08u), 0x000E4F98);
+    CHECK_EQ_INT((int)DSD(p + 0x14u), (int)s1);
+    CHECK_EQ_INT((int)DSD(p + 0x24u), 0x3FC00000);
+    CHECK_EQ_INT((int)DSB(p + 0x59u), 2);
+    CHECK_EQ_INT((int)DSB(p + 0x4Au), 1);
+    CHECK_EQ_INT((int)(DSW(p + 0x28u) & 0x0400u), 0x0400);
+    CHECK_EQ_INT((int)DSB(p + 0x49u), 0x32);   /* 0x2A820: parent layer + the walk's +0x59 */
+    CHECK_EQ_INT((int)DSB(r1 + 0x4Fu), 0x11);
+    CHECK_EQ_INT((int)DSW(p + 0x2Eu), 0x000C);
+    CHECK_EQ_INT((int)DSB(p + 0x4Eu), 1);
+    /* B: record 0 (side 0, pool index 0): +0x2E kept at 8, +0x4E clear. */
+    q42_fz_seed(r0, r1);
+    DSW(r0 + 0x56u) = 0;
+    DSD(r0 + 0x14u) = s0;
+    DSD(r0 + 0x24u) = 0x3F400000u;
+    q42_one_actor(p);
+    fighter_236d8(r0);
+    CHECK_EQ_INT((int)DSD(DS_00105BCC), (int)p);
+    CHECK_EQ_INT((int)DSD(p + 0x14u), (int)s0);
+    CHECK_EQ_INT((int)DSD(p + 0x24u), 0x3F400000);
+    CHECK_EQ_INT((int)DSB(p + 0x4Au), 0);
+    CHECK_EQ_INT((int)DSW(p + 0x2Eu), 0x0008);
+    CHECK_EQ_INT((int)DSB(p + 0x4Eu), 0);
+    /* C: no slot (rec+0x14 = 0, 0x236E4): nothing is spawned. */
+    q42_fz_seed(r0, r1);
+    DSW(r1 + 0x56u) = 1u;
+    DSD(r1 + 0x14u) = 0;
+    DSB(r1 + 0x4Fu) = 0x10u;
+    q42_one_actor(p);
+    fighter_236d8(r1);
+    CHECK_EQ_INT((int)DSD(DS_00105BCC), (int)DS_00105BCC);
+    CHECK_EQ_INT((int)DSD(DS_00105B3C), (int)p);
+    CHECK_EQ_INT((int)DSB(r1 + 0x4Fu), 0x10);
+    /* D: through the dispatcher: `D100 36D8 0002 0000` (0xE49A2's words;
+     * opcode 0x11, mode 0x4000) walked by 0x2BC30 spawns the child. */
+    q42_fz_seed(r0, r1);
+    DSW(r1 + 0x56u) = 1u;
+    DSD(r1 + 0x14u) = s1;
+    q42_one_actor(p);
+    DSW(st) = 0xD100u;
+    DSW(st + 2u) = 0x36D8u;
+    DSW(st + 4u) = 0x0002u;
+    DSW(st + 6u) = 0x0000u;
+    DSW(st + 8u) = 0x1131u;
+    actors_anim_begin(r1, st, 0x3F800000u);
+    CHECK_EQ_INT((int)DSD(DS_00105BCC), (int)p);
+    CHECK_EQ_INT((int)DSD(p + 0x14u), (int)s1);
+
+    /* E: 0x2372C through its registration on the child e (slot 0; e's +0x28
+     * bit 14 clear, record 0's set): x 0x5000 - 0xC00, y 0x40 + 0x1480,
+     * height 5, speed 0xFEED, a5 = 0x4000 into +0x28 (0x80 | 0x4000). */
+    q42_fz_seed(r0, r1);
+    mem_fill(e, 0, ACTOR_REC_SIZE);
+    DSD(e + 0x14u) = s0;
+    DSD(r0 + 0x18u) = 0x5000u;
+    DSD(r0 + 0x1Cu) = 0x40u;
+    DSD(r0 + 0x30u) = 0x00050000u;
+    DSW(r0 + 0x28u) = 0x4000u;
+    DSD(s0 + 0x08u) = 0x00ABCDEFu;
+    DSD(s1 + 0x08u) = 0x00FEDCBAu;
+    q42_one_actor(p);
+    if (f2c != NULL) f2c(e, 0xDEADu);
+    CHECK_EQ_INT((int)DSD(s0 + 0x08u), (int)p);
+    CHECK_EQ_INT((int)DSD(s1 + 0x08u), 0x00FEDCBA);
+    CHECK_EQ_INT((int)DSD(DS_00105BCC), (int)p);
+    CHECK_EQ_INT((int)DSD(p + 0x18u), 0x4400);
+    CHECK_EQ_INT((int)DSD(p + 0x1Cu), 0x14C0);
+    CHECK_EQ_INT((int)DSW(p + 0x32u), 5);
+    CHECK_EQ_INT((int)DSW(p + 0x34u), 0xFEED);
+    CHECK_EQ_INT((int)DSD(p + 0x14u), (int)s0);
+    CHECK_EQ_INT((int)DSW(p + 0x28u), 0x4080);
+    CHECK_EQ_INT((int)DSB(p + 0x48u), 8);
+    CHECK_EQ_INT((int)DSD(p + 0x08u), 0x000E4FBC);
+    CHECK_EQ_INT((int)DSW(p + 0x2Eu), 0x0008);
+    CHECK_EQ_INT((int)DSB(p + 0x4Eu), 0);
+    /* F: the sign from e's own +0x28 (set), a5 from record 0's (clear). */
+    q42_fz_seed(r0, r1);
+    mem_fill(e, 0, ACTOR_REC_SIZE);
+    DSD(e + 0x14u) = s0;
+    DSW(e + 0x28u) = 0x4000u;
+    DSD(r0 + 0x18u) = 0x5000u;
+    DSW(r0 + 0x28u) = 0;
+    q42_one_actor(p);
+    fighter_2372c(e);
+    CHECK_EQ_INT((int)DSD(p + 0x18u), 0x5C00);
+    CHECK_EQ_INT((int)DSW(p + 0x34u), 0x0113);
+    CHECK_EQ_INT((int)DSW(p + 0x28u), 0x0080);
+    /* G: slot 1 (record 1's +0x51 = 1): +0x2E + 4, +0x4E set, slot 0 kept. */
+    q42_fz_seed(r0, r1);
+    mem_fill(e, 0, ACTOR_REC_SIZE);
+    DSD(e + 0x14u) = s1;
+    DSD(r1 + 0x18u) = 0x7000u;
+    DSD(s0 + 0x08u) = 0x00ABCDEFu;
+    q42_one_actor(p);
+    fighter_2372c(e);
+    CHECK_EQ_INT((int)DSD(s1 + 0x08u), (int)p);
+    CHECK_EQ_INT((int)DSD(s0 + 0x08u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)DSD(p + 0x14u), (int)s1);
+    CHECK_EQ_INT((int)DSD(p + 0x18u), 0x6400);
+    CHECK_EQ_INT((int)DSW(p + 0x2Eu), 0x000C);
+    CHECK_EQ_INT((int)DSB(p + 0x4Eu), 1);
+    /* H: no slot (rec+0x14 = 0, 0x23737): nothing is spawned or stored. */
+    q42_fz_seed(r0, r1);
+    mem_fill(e, 0, ACTOR_REC_SIZE);
+    DSD(s0 + 0x08u) = 0x00ABCDEFu;
+    q42_one_actor(p);
+    fighter_2372c(e);
+    CHECK_EQ_INT((int)DSD(s0 + 0x08u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)DSD(DS_00105BCC), (int)DS_00105BCC);
+    /* I: through the dispatcher: `D100 372C 0002 0000` (0xE4FA2's words). */
+    q42_fz_seed(r0, r1);
+    mem_fill(e, 0, ACTOR_REC_SIZE);
+    DSW(e + 0x56u) = 2u;
+    DSD(e + 0x14u) = s0;
+    DSD(s0 + 0x08u) = 0x00ABCDEFu;
+    q42_one_actor(p);
+    DSW(st) = 0xD100u;
+    DSW(st + 2u) = 0x372Cu;
+    DSW(st + 4u) = 0x0002u;
+    DSW(st + 6u) = 0x0000u;
+    DSW(st + 8u) = 0x1131u;
+    actors_anim_begin(e, st, 0x3F800000u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x08u), (int)p);
+
+    q42_restore();
+}
+
 /* ---- Task 3b: the 0x3B714 reaction applier (pose/freeze record §2.3) ----- */
 
 /* §2.3: the reaction gates 0x39EFC/0x3B038/0x3B6C4 and the seeds 0x3B080/
@@ -15262,6 +15554,8 @@ int test_fight(void)
     check_freeze_22ce4();
     check_hook_22d8c();
     check_char1_reactions();
+    check_char1_reactions_b();
+    check_char1_chain();
     check_reaction_predicates();
     check_reaction();
     check_winner_body();
