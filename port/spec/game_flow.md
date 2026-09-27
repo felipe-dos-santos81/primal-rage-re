@@ -1212,7 +1212,11 @@ reads `DS_0010884C` as a circular-list head and loops until it returns to the
 sentinel; with the global left at 0 the walk never terminates and the demo hangs
 on its first state-7 frame. `fight_list_init` ports `0x49300` verbatim (from the
 raw disassembly), so the walk is a no-op on the empty list exactly as the
-original's is. `0x20DF4`'s other resets remain a named gap.
+original's is. `0x20DF4`'s other resets remain a named gap. (Since then
+`0x12750`, `0x34978` and `0x28E98` — the type-`0x0A`/`0x19` node lists at
+`0x104880`/`0x104888`, `actor_type_0a19_list_init`, demo-pose record §41-D —
+are ported too; `0x29B70`, `0x2C390`, `0x2C074` and the two word stores
+`DS_000F0AFA`/`DS_000F0AF8` remain the gap.)
 
 ## Demo fight cycle 2 — closure outcome (Task 8)
 

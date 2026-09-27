@@ -58,6 +58,11 @@ void actor_set_dead(u32 rec);
  * rec+0x18 from pset+4 and the 16.16 rec+0x44) or the DS_000F0AF0 form, and
  * clears rec+0x29 bit 5. Exposed for its unit test. */
 void actor_mode1_pset(u32 rec);
+/* 0x28E98. Self-link the type-0x0A/0x19 sentinels 0x104880 (in use) and
+ * 0x104888 (free) and append the sixteen nodes 0x104780..0x104870 to the free
+ * list in address order. State 6's reset 0x20DF4 calls it at 0x20E3D; without
+ * it 0x28F64/0x2901C find the free list empty and refuse the spawn. */
+void actor_type_0a19_list_init(void);
 
 /* 0x33754. Acquire a reference to palette resource `handle` in the table at
  * DS_00107618 and enqueue its DAC range via palette_record (0x33734). Returns

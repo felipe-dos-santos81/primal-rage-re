@@ -333,9 +333,10 @@ void render_scroll_setup(u32 i)
 /* 0x4F228. Disables the scroll/zoom projection: DS_00107A54 = 0 (0x4F22A
  * `xor ah,ah`, stored at 0x4F230), DS_00107A55 = the caller's AL (0x4F236), and
  * the two projection words DS_00107A3A and DS_00107A38 = 0 (0x4F23B/0x4F242,
- * from the zeroed EDX/EBX). EBX and EDX are pushed and restored. The call site
- * the port reaches, 0x2BAF4 (actors_reset) at 0x2BBC4, zeroes EAX first
- * (0x2BBC0), so AL is 0 there. */
+ * from the zeroed EDX/EBX). EBX and EDX are pushed and restored. All three raw
+ * call sites zero EAX first, so AL is 0 at each: 0x2BAF4 (actors_reset) at
+ * 0x2BBC4 (0x2BBC0), 0x20C10 (game_init) at 0x20C49 (0x20C47) and 0x43818
+ * (fight_char_screen_setup) at 0x43822 (0x4381B). */
 void render_projection_reset(u8 al)
 {
     DSB(DS_00107A54) = 0;

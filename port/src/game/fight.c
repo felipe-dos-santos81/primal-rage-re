@@ -12,6 +12,7 @@
 #include "game/rng.h"
 #include "../mem.h"
 #include "../symbols.h"
+#include "platform/render.h"
 
 /* 0x10810D: the mode-3 single-player slot index, written by 0x41350. Ghidra
  * emits it only as the `ram0x0010810d` form, so gen_symbols.py has no DS_ name
@@ -108,6 +109,37 @@ void fight_scene_props(u32 scene)
         }
     }
     fight_scene_crowd(scene);                       /* 0x412D8 */
+}
+
+/* ---- 0x43818 the per-side character screen's setup ---------------------- */
+
+/* 0x43818 — demo-pose record §41-D. The setup 0x43738 (at 0x43778) and
+ * 0x444C8 (at 0x44508) run before they fill each side's character entries
+ * (0x43964/0x43A08). EAX = 0 into 0x4F228 (0x4381B), then 0x2BAF4 with EAX = 1
+ * (actors_reset's arm), the ret-only 0x29D60, three 0x2AE14 spawns and four
+ * 0x33754 acquires. ECX = 0xE0 (0x4381D) and EBX = 0 (0x4382C) reach the first
+ * spawn intact: 0x4F228 never writes ECX, 0x2BAF4 pushes and pops both, and
+ * 0x29D60 is a bare `ret`. Each spawn pushes a5 = 0 and 0x2AE14 pops it (`ret 4`,
+ * 0x2B14A). The EAX left by the last acquire is dead: both callers overwrite
+ * EAX next (0x4377F, 0x4450F). 0x43738/0x444C8 are 0x24C5C-mode code the port
+ * does not reach, so this function has no port caller yet. */
+#define DS_000C885C 0x000C885Cu   /* no symbols.h name: the first descriptor */
+#define DS_000C87F8 0x000C87F8u   /* no symbols.h name: the per-side descriptor */
+void fight_char_screen_setup(void)
+{
+    render_projection_reset(0u);                        /* 0x43822 0x4F228 */
+    actors_reset();                                     /* 0x4382E 0x2BAF4 */
+    /* 0x43833 0x29D60 is a ret-only no-op. */
+    (void)actor_spawn((const u32 *)(mem + DS_000C885C),
+                      0u, 0xE0u, 0u, 0u);               /* 0x43841 0x2AE14 */
+    DSD(DS_0010814C) = actor_spawn((const u32 *)(mem + DS_000C87F8),
+                                   0x1500u, 0xE2u, 0x3900u, 0u);  /* 0x4385C/0x43872 */
+    DSD(DS_00108150) = actor_spawn((const u32 *)(mem + DS_000C87F8),
+                                   0x3F00u, 0xE2u, 0x3900u, 0u);  /* 0x4387C/0x43881 */
+    (void)palette_acquire(0x098EC50Cu);                 /* 0x4388B 0x33754 */
+    (void)palette_acquire(0x098EC514u);                 /* 0x43895 0x33754 */
+    (void)palette_acquire(0x008099ACu);                 /* 0x4389F 0x33754 */
+    (void)palette_acquire(0x00809984u);                 /* 0x438A9 0x33754 */
 }
 
 /* ---- 0x494A8 the dust builder (state 6's fighter spawn) ----------------- */

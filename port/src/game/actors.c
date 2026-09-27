@@ -1765,6 +1765,22 @@ static u8 actor_type_2901C(u32 rec, u32 slot)
     return 0;
 }
 
+/* 0x28E98 — demo-pose record §41-D. The type-0x0A/0x19 node lists: self-link
+ * the in-use sentinel 0x104880 and the free sentinel 0x104888, then append the
+ * sixteen 0x10-byte nodes 0x104780..0x104870 to the free list in address order
+ * (0x249C0 inserts before the sentinel), so 0x28F64/0x2901C pop 0x104780
+ * first. Only the nodes' {next; prev} dwords are written. State 6's reset
+ * 0x20DF4 calls it at 0x20E3D. */
+void actor_type_0a19_list_init(void)
+{
+    DSD(DS_00104884) = DS_00104880;                     /* 0x28EAA */
+    DSD(DS_00104880) = DS_00104880;                     /* 0x28EB0 */
+    DSD(DS_0010488C) = DS_00104888;                     /* 0x28EB6 */
+    DSD(DS_00104888) = DS_00104888;                     /* 0x28EBC */
+    for (u32 node = DS_00104780; node < DS_00104880; node += 0x10u)  /* 0x28EC2/0x28ED9 */
+        list_insert_before(DS_00104888, node);          /* 0x28ED4 0x249C0 */
+}
+
 /* 0x290D0. Types 0x0A/0x19's teardown: return the node to 0x104888. */
 static void actor_type_290D0(u32 rec)
 {
