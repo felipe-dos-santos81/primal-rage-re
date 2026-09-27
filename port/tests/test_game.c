@@ -521,8 +521,9 @@ static void check_sound_voice(void)
     CHECK_EQ_INT((int)sound_voice(0x4Du), 0);
     CHECK(!sv_loaded(36u) && !sv_loaded(64u), "0x4D's first sample plays");
     sv_status(3u, 2);
-    /* Ids 0x46 and 0x5D: both samples are s16sound's (entry 5); each tests
-     * the second of its pair. */
+    /* Ids 0x46 and 0x5D: both samples are s16sound's (entry 5). 0x46 tests
+     * the second of its pair (0x2886158), 0x5D its first (0x281A726); the
+     * pair's other handle playing does not refuse the voice. */
     sv_seed();
     sv_unload(5u);
     CHECK_EQ_INT((int)sound_voice(0x46u), 1);
@@ -3924,7 +3925,10 @@ int test_frontend(void)
          * drew each: s16title (loop 1973), the second demo's state-6 entry
          * (s16stone, s16kon, s16konsd, s16konsh in loop 2783), s16spisd (loop
          * 3557, capture 3257) and s16hghsc (loop 3684). 2095 presented
-         * frames + 7 = 2102. */
+         * frames + 7 = 2102. The first pins a known divergence, not the
+         * original: the original reads s16title at boot, the port at the
+         * title state (record §45-A's named gap). A fix of that gap removes
+         * this screen; it is not a regression. */
         {
             static const int ld_loop[7] = { 1973, 2783, 2783, 2783, 2783, 3557, 3684 };
             static const int ld_frame[7] = { 168, 979, 980, 981, 982, 1757, 1885 };

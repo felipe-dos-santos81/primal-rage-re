@@ -10558,8 +10558,13 @@ read-stall rate of §9.6 is re-derived from the bytes the original reads.
 and 1 sites). `0x1CD9C` is also called from `0x1D220`/`0x1D250`, the pause
 toggles, which are unported. `0x1CA40` is also called from `0x1D1B0`. `0x1CEBC` is called
 only at `0x33E48`. A rel32 scan of the code object finds 299 `call`s and 4
-`jmp`s to `0x2C3FC` (the listing caps at 300 references from 104 functions).
-Only `0x1546E` is wired here; the rest keep their `PORT:` comments.
+`jmp`s to `0x2C3FC`, 303 sites. Ghidra's list is complete at 300 references
+from 104 functions (`total` 300 at `limit` 1000); the three it has no xref
+for are `0x11C38` (a call, in the ported `0x11BCC`), `0x1550B` (a `jmp`) and
+`0x30B34` (a call). No dword points at `0x2C3FC`. Only `0x1546E` is wired
+here; the other 302 keep their `PORT:` comments, which now read "not wired
+(record §45-A)" where they said "out of scope (spec §7)": the dispatcher is
+ported, the call is not.
 
 ### 45-A.3 The measurement
 
@@ -10584,9 +10589,14 @@ Only `0x1546E` is wired here; the rest keep their `PORT:` comments.
    was `game_audio_init` first, then `mem_load_le`, which rewrote the data
    object's BSS: the store was lost, and so were `DS_00101504/10/14`,
    `DS_000A2CAC` and `DS_000A2CB1` (the image holds zeros there).
-4. **The port after the fix.** It reads the same entries in the same order at
-   the same frames: 21, 55, 60, 5, 33, 36, 32, 57, 34 at f 1957; 27, 49, 54,
-   51 at f 3670; 64 at f 4444; 20 at f 4571.
+4. **The port after the fix.** Its sound banks and fight reads are the
+   original's, in the same order at the same frames: 21, 55, 60, 5, 33, 36,
+   32, 57, 34 at f 1957; 27, 49, 54, 51 at f 3670; 64 at f 4444; 20 at
+   f 4571. Two reads differ, neither a sound bank: s16title (7), which the
+   original reads at boot and the port at the title state (cycle 2's loop
+   1973, f 2860), and s16slabs/s16attrc (0, 8), which the original reads at
+   f 691 in state 1 and the port at f 887 in state 2. The second predates this
+   task (the front-end dump's allowed 832/833 are probably those screens).
 5. **The screen.** 0x1B3AC draws the text through `0x51ED8` onto the aperture,
    which holds the last presented frame, and the gate presents the next frame
    in the same master-loop iteration (§35.1). A per-iteration dump never
@@ -10619,10 +10629,19 @@ Only `0x1546E` is wired here; the rest keep their `PORT:` comments.
   covered six reads, not three. The original re-syncs after each one at
   ticks 3, 31, 32, 36, 54 and 55, the values §9.6's own `150C` distribution
   lists. The reads are s16beach 233128 + s16rex 3812084 + s16rexsd 81192 +
-  s16sound 587966 + s16cob 2438316 + s16cobsd 145435 = 7298121 bytes, and
-  7298121 / 55 = **132693 bytes/tick** (it was 117882). Only the tick pair
-  moves. The flier's `DS_0010150C` reads 93 (92 before); its frame (loop 1097,
+  s16sound 586942 + s16cob 2438316 + s16cobsd 145435 = 7297097 bytes (each
+  size is its INDEX entry's, `res_size()`), and 7297097 / 55 = 132674.49,
+  floored as 117882 was: **132674 bytes/tick**. Only the tick pair moves.
+  The flier's `DS_0010150C` reads 93 (92 before); its frame (loop 1097,
   `DS_000EF6DC`'s gate) does not move.
+- **Named gap: the tick model's drift.** The per-read ceiling does not
+  reproduce the original's tick after each read. At the first demo's state-6
+  entry the port's re-syncs land at 2, 31, 32, 37, 56 and 58 (the original's
+  3, 31, 32, 36, 54, 55), and the state-7 reads at 61, 63 and 65 (58, 59,
+  61): up to 4 ticks late, where the pre-change model was 56 against 55 and
+  60/62/64, up to 3. No frame depends on the absolute tick, because the
+  loader's re-sync makes the gate pass either way; a closer model needs the
+  reads' own timing, which the poll does not resolve below a tick.
 
 ### 45-A.5 The port
 
@@ -10643,10 +10662,17 @@ handle (`PORT:`: every reader tests it for zero). `game_shutdown` clears it
 - `DS_001028C0`/`C4` stay 0. The port's music runs through `s_music_request`,
   so the dispatcher's music arms (`0x1CA14`'s store, `0x1CA6C`'s stop) are
   inert in runs.
-- The other 303 `0x2C3FC` call sites are not wired. Every bank read the
-  original makes in the window is accounted for above.
+- The other 302 `0x2C3FC` call sites are not wired. They are reached (the
+  original's f 4443 slots hold other voices' handles, queued at `0x1957`),
+  but in the captured window they read no bank that is not already loaded:
+  every sound-bank read the original makes there is accounted for above. In
+  the original, `0x1CE70` makes a repeat `0x4D` return 0 while the pair
+  plays; the port returns 1 (no slot state), which `0x1546E` ignores.
 - The original reads `s16title` (7) at boot; the port reads it at the title
-  state (loop 1973 in cycle 2).
+  state (loop 1973 in cycle 2). The driver pins that screen as a known
+  divergence. The port reads entries 0 and 8 at f 887 (state 2) where the
+  original does at f 691 (state 1), predating this task.
+- The tick model's drift (45-A.4).
 - The front-end dump has no loader seam, so 832/833 stay allowed by name.
 - 3408, the high-score screen.
 
@@ -10668,7 +10694,7 @@ handle (`PORT:`: every reader tests it for zero). `game_shutdown` clears it
   `game_audio_init` and 0 after `game_shutdown`.
 - `test_res`: the seam runs once per first read, with the 166 text pixels on
   the aperture and before the stall; not on a second resolve or when unset.
-  The rate pin is 132693.
+  The rate pin is 132674.
 - `check_spawn_sound` (`test_fight.c`, first in `test_fight` while the
   shipped INDEX is in place): characters 0..6 each read only their own bank
   and s16sound; no DIG driver, or paused samples, read neither; `0x1543C`
@@ -10703,7 +10729,7 @@ no spawn bank read (#75), and the old rate (#76, the flier's tick 100).
 | attract2 `[1885..3616]` clean/splice/trans/unexpl/black | 946/554/15/211/6 (2384 allowed) | 950/554/15/207/6 (none allowed) |
 | attract2 first unexplained | 3257 (raw 7697) | **3408** (raw 7896) |
 | front-end `[560..1884]`, demo-fight | 517/801/3/2; empty, N 1886 | unchanged (top-level dump byte-identical) |
-| sound banks read (entries 5/36/54/60/64) | none | as the original, same frames |
+| sound banks read (entries 5/36/54/60/64) | none | as the original, same frames (ticks drift, 45-A.4) |
 
 `make verify` on `b05adcc` (EXIT 0, 0 compiler warnings):
 - title 54/55/2/0 and 54/57/0/0, determinism 54;
@@ -10713,3 +10739,22 @@ no spawn bank read (#75), and the old rate (#76, the flier's tick 100).
 - attract2 950/554/15/207/6, first unexplained 3408 (raw 7896) = N;
 - attract prefix 215/215;
 - symbols.h idempotent.
+
+### 45-A.8 Review round 1 (`task-33-review.md`)
+
+- The rate used s16sound = 587966; INDEX entry 5, the file and `res_size(5)`
+  say 586942. Corrected to 7297097 bytes, 132674 bytes/tick (`res.h`,
+  `res.c`, `test_res`'s pin, 45-A.4). No tick in the run changes: each of the
+  run's 21 reads has the same ceiling at both rates.
+- The tick model's drift is now a named gap (45-A.4, `res.c`).
+- The call sites are 303, so 302 are unwired; Ghidra's 300 are complete and
+  the three it lacks are named (45-A.2). The 61 `PORT:` comments in
+  `port/src` and four `game_flow.md` lines that called the voice "out of
+  scope" now say "not wired (record §45-A)".
+- The load claim is narrowed to the sound banks and the fight reads; the
+  s16title and entries 0/8 differences are stated (45-A.3).
+- `test_res`'s seam block now restores the data object (the tick pair,
+  `DS_001014FC`, the row pointer, the palette records), entries 4 and 6's
+  +0xC, the aperture and the DAC.
+- Two test comments: `0x5D` tests its first sample, not its second; the
+  driver's loop-1973 screen is a pinned known divergence.

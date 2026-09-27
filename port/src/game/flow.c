@@ -360,7 +360,7 @@ void frontend_darken_marked(void)
         e = frontend_list_next(e);                      /* 0x415A9 */
     }
     config_play_time_close(DSD(DS_00104ABC), DSB(DS_00104B19));  /* 0x415CD */
-    /* PORT: 0x415DC 0x2C3FC(0x33, EDX = 0x78) voice, out of scope (spec §7).
+    /* PORT: 0x415DC 0x2C3FC(0x33, EDX = 0x78) voice, not wired (record §45-A).
      * EBX (0), ECX (0x13), EDX (0x78) and ESI (0x15) survive 0x32A3C (pushes
      * EBX/ECX/ESI) and 0x2C3FC (pushes EBX/EDX/EDI, never names ECX/ESI)
      * into the stores below. */
@@ -403,7 +403,7 @@ void frontend_char_screen_hook(void)
  * pops EBX, EDX and EDI (record §42-E.2). */
 void frontend_char_screen_hook_voice(void)
 {
-    /* PORT: 0x28D8B 0x2C3FC(0x2E) voice, out of scope (spec §7). */
+    /* PORT: 0x28D8B 0x2C3FC(0x2E) voice, not wired (record §45-A). */
     DSD(DS_00104AE4) = FN_00043738;                     /* 0x28D95 */
     frontend_wipe_arm(0x10u);                           /* 0x28D9B 0x4F980 */
 }
@@ -861,7 +861,7 @@ static void game_state_4(void)
 {
     switch (DSW(DS_0009AD98)) {
     case 0:
-        /* PORT: 0x2C3FC(0x100) voice, out of scope (spec §7). */
+        /* PORT: 0x2C3FC(0x100) voice, not wired (record §45-A). */
         frontend_input_reset();                                 /* 0x4F1E4 (eax = 0) */
         actors_reset();                                         /* 0x2BAF4 (eax = 1) */
         config_set_credit_row(0x1du);                           /* 0x2C06C (eax = 0x1D) */
@@ -880,7 +880,7 @@ static void game_state_4(void)
         DSW(DS_0009AD98) = 4;                                   /* 0x116B2 */
         return;
     case 1:
-        /* PORT: 0x2C3FC(0x100) voice, out of scope (spec §7). */
+        /* PORT: 0x2C3FC(0x100) voice, not wired (record §45-A). */
         frontend_input_reset();                                 /* 0x4F1E4 (eax = 0) */
         actors_reset();                                         /* 0x2BAF4 (eax = 1) */
         (void)actor_spawn((const u32 *)(mem + 0x9AD84u),        /* 0x2AE14 */
@@ -902,7 +902,7 @@ static void game_state_4(void)
         DSW(DS_000F0A74) = 2;                                   /* 0x11832 */
         return;
     case 2:
-        /* PORT: 0x2C3FC(0x100) voice, out of scope (spec §7). */
+        /* PORT: 0x2C3FC(0x100) voice, not wired (record §45-A). */
         frontend_input_reset();                                 /* 0x4F1E4 (eax = 0) */
         actors_reset();                                         /* 0x2BAF4 (eax = 1) */
         (void)actor_spawn((const u32 *)(mem + 0x9AD84u),        /* 0x2AE14 */
@@ -952,7 +952,7 @@ static void game_state_4(void)
  * character (draw1 + draw2) % 7. Exactly two draws, in that order. */
 static void game_state_6(void)
 {
-    /* PORT: 0x2C3FC(0x100) voice, out of scope (spec §7). */
+    /* PORT: 0x2C3FC(0x100) voice, not wired (record §45-A). */
     /* 0x29D60 is a ret-only no-op. */
     config_set_credit_row(0x1Du);                       /* 0x11AA3 0x2C06C */
 
@@ -1925,8 +1925,8 @@ void game_state_step(void)
             game_state_4();   /* 0x11578 */
             break;
         case 5:
-            /* PORT: 0x2C3FC(0x100 / ecx = 0x12C) voice/sample cancel, out of
-             * scope (spec §7). */
+            /* PORT: 0x2C3FC(0x100 / ecx = 0x12C) voice/sample cancel, not wired
+             * (record §45-A). */
             frontend_match_start();                     /* 0x1EA08 */
             config_set_credit_row(0x1Du);               /* 0x2C06C */
             /* PORT: 0x32970(eax = 0), the run-clock/tick update, is out of scope
@@ -1950,8 +1950,8 @@ void game_state_step(void)
                 DSB(DS_00104B19 + 2u) = 0;              /* 0x11BCE */
                 DSB(DS_00104B15) = 0;                   /* 0x11BD4 */
                 DSW(DS_000F0A64) = DSW(DS_000F0A6C);    /* 0x11BE0 */
-                /* PORT: 0x29D60 is a ret-only no-op; 0x2C3FC(0x100) voice, out
-                 * of scope (spec §7). */
+                /* PORT: 0x29D60 is a ret-only no-op; 0x2C3FC(0x100) voice, not wired
+                 * (record §45-A). */
             } else {
                 fight_arena_frame();                    /* 0x11E8F 0x263F4 */
                 fight_health_bars();                    /* 0x11E94 0x33F08 */

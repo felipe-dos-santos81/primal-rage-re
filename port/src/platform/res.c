@@ -31,14 +31,21 @@ static u32 g_heap = RES_HEAP;
  * the bytes read at the rate measured from the DOSBox-X live-RAM poll (record
  * §9.6, corrected by §45-A): the demo's state-6 entry blocks 55 ticks, and in
  * them it reads s16beach (233128) + s16rex (3812084) + s16rexsd (81192) +
- * s16sound (587966) + s16cob (2438316) + s16cobsd (145435) = 7298121 bytes,
- * i.e. 132693 bytes/tick (the original's re-syncs after each read land at
- * ticks 3, 31, 32, 36, 54 and 55). §9.6 named only the three banks the port
- * read then; the two fighter spawns' sound banks (0x33E51) and s16sound
- * (0x33EA1) are read inside the same 55 ticks. The two 9->6 entries measured
- * 55 and 56 ticks; the 7->6 entry, which reads a smaller set, 27. Rounded up
- * per read. This is a *derived* rate, not a fitted per-frame constant. The
- * macro lives in res.h so test_res.c pins the exact tick delta it produces. */
+ * s16sound (586942) + s16cob (2438316) + s16cobsd (145435) = 7297097 bytes
+ * (each size is its INDEX entry's, res_size()), i.e. 132674 bytes/tick,
+ * floored. §9.6 named only the three banks the port read then; the two
+ * fighter spawns' sound banks (0x33E51) and s16sound (0x33EA1) are read inside
+ * the same 55 ticks. The two 9->6 entries measured 55 and 56 ticks; the 7->6
+ * entry, which reads a smaller set, 27. Rounded up per read. This is a
+ * *derived* rate, not a fitted per-frame constant. The macro lives in res.h so
+ * test_res.c pins the exact tick delta it produces.
+ * Named gap (record §45-A): the per-read model does not reproduce the
+ * original's tick after each read. The original re-syncs at ticks 3, 31, 32,
+ * 36, 54 and 55 and its state-7 reads land at 58, 59 and 61; the port's
+ * ceiling per read gives 2, 31, 32, 37, 56 and 58, then 61, 63 and 65, a
+ * drift of up to 4 ticks (up to 3 before §45-A added the sound banks). No
+ * frame depends on the absolute tick: the re-sync makes the gate pass either
+ * way. */
 
 /* 0x1B3AC's presentation head (0x1B3B8-0x1B3F8). `draw` is the original's BL:
  * 0 from the init walk's call (0x1B250), 1 from the lazy resolve (0x1B5E9).

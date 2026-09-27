@@ -7,11 +7,11 @@
 #include "types.h"
 
 /* The loader read-stall rate: payload bytes read per timer tick, derived from
- * the DOSBox-X live-RAM poll (record §9.6 as corrected by §45-A: 7298121 bytes
+ * the DOSBox-X live-RAM poll (record §9.6 as corrected by §45-A: 7297097 bytes
  * block 55 ticks). The port models 0x1B3AC's blocking read with this rate in
  * res.c; test_res.c pins the exact tick delta it produces, so the value cannot
  * drift unnoticed. */
-#define RES_READ_BYTES_PER_TICK 132693u
+#define RES_READ_BYTES_PER_TICK 132674u
 
 /* Builds the entry table in mem[] the way 0x1B120 does and loads each
  * resource's bytes from disk. game_dir holds the INDEX-listed files;

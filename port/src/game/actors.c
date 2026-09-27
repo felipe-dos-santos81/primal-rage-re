@@ -1509,9 +1509,9 @@ static u32 spawn_anim_opcode(u32 rec, u32 index, u32 flag)
         return 0;
     }
     case 0x2e:                                      /* 0x2B8D2 */
-        /* PORT: 0x2B2A0's opcode 0x2E calls 0x2C3FC (1268-byte effect/voice
-         * subsystem), out of this cycle's scope. Not silently dropped: the call
-         * is documented here and listed in the Task 7 report. */
+        /* PORT: 0x2B2A0's opcode 0x2E calls 0x2C3FC (the voice dispatcher,
+         * sound_voice), not wired (record §45-A). Not silently dropped: the
+         * call is documented here and listed in the Task 7 report. */
         return 0;
     default:                                        /* 0x2B8E8 */
         /* PORT: table opcodes 0x23 and 0x24 both point at 0x2B8E8, as does
@@ -2132,7 +2132,7 @@ void actor_type_2d_list_init(void)
     DSB(DS_00108398) = 0;                               /* 0x48C97 */
     DSB(DS_00108398 - 1u) = 0;                          /* 0x48C9D: 0x108397 */
     DSB(DS_00108398 - 2u) = 0;                          /* 0x48CA3: 0x108396 */
-    /* PORT: 0x48CAE 0x2C3FC(0xEF) voice, out of scope (spec §7). */
+    /* PORT: 0x48CAE 0x2C3FC(0xEF) voice, not wired (record §45-A). */
 }
 
 /* 0x290D0. Types 0x0A/0x19's teardown: return the node to 0x104888. */
@@ -2260,12 +2260,12 @@ static void actor_type_3B9C4(u32 rec)
 }
 
 /* 0x3D784. Type 0x09's teardown: `mov eax,0x4f; jmp 0x2c3fc`, the 1268-byte
- * voice dispatcher the port carries as an out-of-scope stub. cb2's return is
- * discarded. */
+ * voice dispatcher (sound_voice), not wired here (record §45-A). cb2's return
+ * is discarded. */
 static void actor_type_3D784(u32 rec)
 {
     (void)rec;
-    /* PORT: 0x2C3FC(0x4F) voice, out of scope (spec §7). */
+    /* PORT: 0x2C3FC(0x4F) voice, not wired (record §45-A). */
 }
 
 /* 0x3FC90. Type 0x10's teardown: clear the 0x108080 table entry named by the

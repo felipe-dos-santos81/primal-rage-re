@@ -406,8 +406,8 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   file's `0x8915C` bytes, just as `0x3E688` is index 0 (`s16slabs.gra`). Both
   halves are ported and both are live. `0x41578` also calls `0x32A3C`
   (`config_play_time_close`), which zeroes `DS_0010746C[mode & 3]`; its
-  `0x32970` run clock, its `0x2DAE4` audit adds and `0x41578`'s voice
-  `0x2C3FC(0x33)` are out of scope (spec §7). No shipped path spawns types
+  `0x32970` run clock and its `0x2DAE4` audit adds are out of scope (spec
+  §7), and `0x41578`'s voice `0x2C3FC(0x33)` is not wired (record §45-A). No shipped path spawns types
   0/2/4 yet (`0x13D4C`'s callers `0x29B74`/`0x41578` are not reached; `0x13B3C` is
   dead — see the producer-set bullet above); type 6 (`0x13E28`) **is** spawned
   from the ported select state (`flow.c:367`). The remaining producers
@@ -526,7 +526,8 @@ states 6/7 section below). Each state is a phase machine driven by its own
   `config_set_credit_row(0x1D)` (`0x2C06C`), then the raw's five stores in raw
   order: `DS_000F0A6F` (`0x11E11`), `DS_000F0A72` (`0x11E17`), `DS_000F0A6A`
   (`0x11E1D`), `DS_000F0A6C` (`0x11E2E`), `DS_000F0A64` (`0x11E35`). The `0x2C3FC`
-  voice cancel and the `0x32970` run clock are out of scope and skipped.
+  voice cancel is not wired (record §45-A) and the `0x32970` run clock is out
+  of scope; both are skipped.
 
 **Gaps this section leaves.** `frontend_match_start` is ported only through its
 three pinnable pre-resource calls (`0x4F1E4`, `0x2BAF4`, `0x38B18(0xA7B6C)`); the
@@ -1719,7 +1720,7 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   `0x10889E`/`0x1088B2` bytes. Before the clear, when `+0x42` bit 1 is set, the
   side's `0x1088A8` reaction byte draws the crowd-voice RNG: rng(3) in
   `0x20..0x3F`, or rng(2) and, when that is non-zero, rng(2) again in
-  `0x10..0x17`. The voices (`0x2C3FC`) are out of scope. The port skipped the
+  `0x10..0x17`. The voices (`0x2C3FC`) are not wired (record §45-A). The port skipped the
   call, so at f = 88 `0x4AB7F` still saw bit 0 and retargeted the worshipper to
   type 8.
 * **Fix.** `fight_4a634` and its call before `DS_001088C2 = 0` (`0x4A5A0`). In
@@ -1823,7 +1824,7 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   the slot's `+0x54/+0x52/+0x53` = 2/4/0 and loads `rec+0x44/+0x36/+0x34`
   from the `DS_00107D40` row (`0xBEF28` + char·6: 23, 550, 150), the
   horizontal speed signed by the slot's word `+0x4E` (−1 here). Its
-  `0x2C3FC` voice call is out of scope (spec §7).
+  `0x2C3FC` voice call is not wired (record §45-A).
 * **Fix.** `fighter_35e04`/`fighter_3bc70`, registered through the
   `(rec, arg)` wrapper `anim_code_35E04`. `check_deep_callees` case H and a
   stream walk in `check_anim_hold_scaler` are mutation-proven: the missing
@@ -2514,9 +2515,11 @@ record §34).**
   (flow.c), the spawn tail, the handle's stand-in, and the image mapped
   before the init chain. The last one also keeps `DS_00101504/10/14`,
   `DS_000A2CAC` and `DS_000A2CB1`, which the late map had zeroed. A DOSBox-X
-  INDEX poll gives the same reads on the same frames in both. The seam
+  INDEX poll gives the same sound-bank and fight reads on the same frames in
+  both (s16title and entries 0/8 load at other frames, record §45-A.3). The seam
   `res_set_screen_hook` dumps the screen into `cycle2/`. The §9.6 rate becomes
-  132693 bytes/tick (six reads in the 55 ticks, not three).
+  132674 bytes/tick (six reads in the 55 ticks, not three; the per-read model's
+  ticks drift up to 4 from the original's, a named gap).
 * **Result.** 3257 = port 1757 (1756 with the text), clean; 2384 and 3407 are
   clean against text-on-black screens. First unexplained **3408**: the
   high-score table the attract shows after the second demo, which the port

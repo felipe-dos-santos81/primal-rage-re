@@ -245,7 +245,7 @@ void fight_char_select_actor(u32 side)
  * which push and pop them. */
 void fight_char_screen_open(void)
 {
-    /* PORT: 0x43741 0x2C3FC(0x30) voice, out of scope (spec §7). */
+    /* PORT: 0x43741 0x2C3FC(0x30) voice, not wired (record §45-A). */
     effects_clear();                                    /* 0x43746 0x13DF0 */
     attract_config_volumes_unscaled();                  /* 0x43750 0x2C8F0(-1) */
     DSB(DS_00104B1B) = 0u;                              /* 0x43757 */
@@ -277,7 +277,7 @@ void fight_char_screen_open(void)
  * Its only caller is 0x4462B (in 0x4454C). */
 void fight_char_screen_open_both(void)
 {
-    /* PORT: 0x444D1 0x2C3FC(0x30) voice, out of scope (spec §7). */
+    /* PORT: 0x444D1 0x2C3FC(0x30) voice, not wired (record §45-A). */
     effects_clear();                                    /* 0x444D6 0x13DF0 */
     attract_config_volumes_unscaled();                  /* 0x444E0 0x2C8F0(-1) */
     DSB(DS_00104B1B) = 0u;                              /* 0x444E7 */
@@ -1033,7 +1033,7 @@ void fight_4ac80(u32 rec)
             }
             stream = DSD(DS_000C95D4 + index * 4u); /* 0x4AD73 */
         } else {
-            /* PORT: 0x4AD81 0x2C3FC(0xC8) voice, out of scope (spec §7). */
+            /* PORT: 0x4AD81 0x2C3FC(0xC8) voice, not wired (record §45-A). */
             DSB(entry + 0x1Eu) = 8u;                /* 0x4AD89 */
             DSB(DSD(entry + 8u) + 0x55u) = 1u;      /* 0x4AD8D */
             stream = DSD(DS_000C958C + index * 4u); /* 0x4AD91 */
@@ -1188,13 +1188,13 @@ static void fight_4a634(void)
             u32 r = (u32)DSB(DS_001088A8 + side);           /* 0x4A64F */
             if (r >= 0x20u && r <= 0x3Fu) {                 /* 0x4A655/0x4A65A */
                 (void)rng_next(3u);                         /* 0x4A664 */
-                /* PORT: 0x4A6D2 0x2C3FC(0xCD/0xCE/0xCF by the draw) voice, out
-                 * of scope (spec §7). */
+                /* PORT: 0x4A6D2 0x2C3FC(0xCD/0xCE/0xCF by the draw) voice, not wired
+                 * (record §45-A). */
             } else if (r >= 0x10u && r <= 0x17u) {          /* 0x4A692/0x4A697 */
                 if (rng_next(2u) != 0u) {                   /* 0x4A69E */
                     (void)rng_next(2u);                     /* 0x4A6A9 */
                     /* PORT: 0x4A6B7/0x4A6C8 0x2C3FC(0xC9 or 0xCA) and 0x4A6D2
-                     * 0x2C3FC(0xDA or 0xDB) voices, out of scope (spec §7). */
+                     * 0x2C3FC(0xDA or 0xDB) voices, not wired (record §45-A). */
                 }
             }
         }
@@ -1292,7 +1292,7 @@ static int fight_4b788(u32 hit, u32 entry, u32 index)
     actors_anim_begin(DSD(slot), DSD(DS_000C9790 + (u32)ch * 4u),
                       DSD(DS_000C97C8 + (u32)ch * 4u));         /* 0x4B96B */
     /* PORT: 0x4B98F 0x2C3FC(0xD4 for (u8)+0x48 - 0x20 < 3, else 0xD5) — voice,
-     * out of scope (spec §7). */
+     * not wired (record §45-A). */
     return 0;                                                   /* 0x4B994 */
 }
 
@@ -1366,7 +1366,7 @@ static void fight_4bd98(u32 entry)
 void fight_4cb18(u32 entry, u32 index, u32 flag, u32 side)
 {
     /* PORT: 0x4CB3E 0x2C3FC(0xD1 for (u8)+0x48 - 0x20 < 3, else 0xD0) — voice,
-     * out of scope (spec §7). */
+     * not wired (record §45-A). */
     actors_anim_begin(DSD(entry + 8u), DSD(DS_000C9604 + index * 4u),
                       0x40400000u);                             /* 0x4CB52 */
     s32 d = (s32)(DSD(DS_001077E4) - DSD(DS_00107878));         /* 0x4CB63 */
@@ -1421,8 +1421,8 @@ static int fight_4af04(u32 side)
  * launch). EAX = entry, EDX = si. */
 static void fight_4b470(u32 entry, u32 index)
 {
-    /* PORT: 0x4B497 0x2C3FC(0xD1 for si < 3, else 0xD0) — voice, out of scope
-     * (spec §7). */
+    /* PORT: 0x4B497 0x2C3FC(0xD1 for si < 3, else 0xD0) — voice, not wired
+     * (record §45-A). */
     u32 rec = DSD(entry + 8u);
     actors_anim_begin(rec, DSD(DS_000C9604 + index * 4u), 0x40400000u); /* 0x4B4B1 */
     if (DSD(entry + 0x10u) == 0u) {                             /* 0x4B4BB */
@@ -1637,7 +1637,7 @@ int fight_4d898(u32 hit, u32 entry, u32 index)
     actors_anim_begin(DSD(slot), DSD(DS_000C9790 + (u32)ch * 4u),
                       DSD(DS_000C97C8 + (u32)ch * 4u));         /* 0x4DA9A */
     /* PORT: 0x4DABE 0x2C3FC(0xD4 for (u8)+0x48 - 0x20 < 3, else 0xD5) — voice,
-     * out of scope (spec §7). */
+     * not wired (record §45-A). */
     {
         u32 dst = DS_001077B0 + (u32)DSB(DS_00104B1A) * 0x94u;  /* 0x4DB0B/0x4DB64 */
         u32 add;
@@ -1895,7 +1895,8 @@ void fight_effects_pass(void)
                     if (x > 0 && x < 0x5400
                             && (DSB(entry + 0x1Cu) & 4u) == 0u) {   /* 0x49FCA..0x49FE1 */
                         DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) | 4u); /* 0x49FEE */
-                        /* PORT: 0x49FF1 0x2C3FC(0xDE) voice, out of scope (spec §7). */
+                        /* PORT: 0x49FF1 0x2C3FC(0xDE) voice, not wired
+                         * (record §45-A). */
                     }
                     if (x >= 0 && x <= 0x5400
                             && (DSB(entry + 0x1Cu) & 1u) != 0u) {   /* 0x49FF6..0x4A00F */
