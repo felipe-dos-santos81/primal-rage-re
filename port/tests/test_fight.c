@@ -5936,6 +5936,7 @@ static void check_mode_17_hooks(void)
         if (p != 0u && p != 0xDEADBEEFu) {
             CHECK_EQ_INT((int)DSD(p + 0x08u), 0x3F12);
             CHECK_EQ_INT((int)DSD(p + 0x18u), 0x2A00);
+            CHECK_EQ_INT((int)DSD(p + 0x1Cu), 0x1B00);
             CHECK_EQ_INT((int)DSB(p + 0x49u), 0xE0);
             for (u32 i = 0; i < 7u; i++) {
                 u32 c = DSD(DS_001080C0 + i * 4u);
@@ -5945,6 +5946,7 @@ static void check_mode_17_hooks(void)
                              (int)DSD(DSD(0x000C85BCu + i * 4u)));
                 CHECK_EQ_INT((int)DSB(c + 0x49u), 0xE2);
                 CHECK_EQ_INT((int)DSW(c + 0x34u), 0);
+                CHECK_EQ_INT((int)DSW(c + 0x36u), 0);
                 CHECK_EQ_INT((int)DSB(c + 0x4Au), (int)(DSW(p + 0x56u) & 0x7Fu));
                 CHECK((DSW(c + 0x28u) & 0x400u) != 0u, "a child (a5 | 0x400)");
             }
