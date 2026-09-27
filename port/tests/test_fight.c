@@ -18395,17 +18395,24 @@ static u32 r46_node(u32 i, u8 ph, u32 x, u16 vx)
     return rec;
 }
 
-/* The first seed from 1 whose rng(r1) draw is (zero == z1) and whose next
- * rng(2) draw is (non-zero == nz2). */
+/* The first seed from 1 whose rng(r1) draw sits at the gate's edge and whose
+ * next rng(2) draw is (non-zero == nz2): with z1 a 0 that rng(r1 + 1) would
+ * not give, else a 1 that rng(r1 - 1) would make 0. A gate on any other
+ * range then flips the outcome of one of the two. */
 static u32 r46_rng_seed(u32 r1, int z1, int nz2)
 {
     u32 s;
-    for (s = 1u; s < 0x10000u; s++) {
-        u32 a, b;
+    for (s = 1u; s < 0x100000u; s++) {
+        u32 a, b, lo, hi;
+        rng_seed(s);
+        lo = rng_next(r1 - 1u);
+        rng_seed(s);
+        hi = rng_next(r1 + 1u);
         rng_seed(s);
         a = rng_next(r1);
         b = rng_next(2u);
-        if ((a == 0u) == (z1 != 0) && (b != 0u) == (nz2 != 0)) return s;
+        if (z1 ? (a != 0u || hi == 0u) : (a != 1u || lo != 0u)) continue;
+        if ((b != 0u) == (nz2 != 0)) return s;
     }
     return 0u;
 }
