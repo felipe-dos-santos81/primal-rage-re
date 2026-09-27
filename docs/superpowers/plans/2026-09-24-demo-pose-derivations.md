@@ -8285,9 +8285,12 @@ it in the image is now accounted for (§42-E.4). One old claim is corrected:
   `0x4F373`, `0x4F6F1`, `0x4F70D`, `0x4F9AA` and `0x4F9D1`. Those sites are
   in `0x4F2B0`, `0x4F318`, `0x4F6E8`, `0x4F704`, `0x4F9A0` and `0x4F9C8`,
   which `0x24C5C` calls at `0x253E7..0x2540A` (and `0x4F318` also at
-  `0x425E5`). None of these callers reads EAX after the call: they either
-  reload it (`mov ax,[0x104afa]`) or clear AH. So the handler's C type is
-  `void(void)`.
+  `0x425E5`). Some callers let the handler's EAX escape. `0x4F373` (`pop
+  edx; pop ebx; ret`) and `0x4F70D` (`ret`) return straight to `0x24C5C`, and
+  `0x4F9B0` clears only AH. The C type `void(void)` still holds, because both
+  values the code stores into `DS_00104AE4` return EAX = 0. `0x29B74` leaves
+  its loop only when `test eax,eax` is zero, and its tail never writes EAX.
+  `0x5D812` is `xor eax,eax`. So no consumer can see a difference.
 
 ### 42-E.2 `0x41578` and the handle correction
 
@@ -8302,11 +8305,14 @@ it in the image is now accounted for (§42-E.4). One old claim is corrected:
   byte `[0x104B25]` = AH (0).
 - **The registers survive.** `0x32A3C` pushes EBX, ECX and ESI. `0x2C3FC`
   pushes EBX, EDX and EDI, and all 30 of its `ret`s are preceded by
-  `pop edi; pop edx; pop ebx`. It never names ECX or ESI itself. Its
-  callees were not all audited. The first one checked, `0x1CC28`, pushes
-  ECX and ESI, and ECX was already recorded as preserved (§41-C). Keeping
-  ECX and ESI live across both calls is the compiler's own reliance on the
-  callee-saves convention, and the port reproduces that.
+  `pop edi; pop edx; pop ebx`. It never names ECX or ESI itself. The review
+  audited every function reachable from it: the direct callees `0x1CA14`,
+  `0x1CA6C`, `0x1CC28`, `0x1CD9C`, `0x1CE04`, `0x1CE70`, `0x1D238`,
+  `0x1D244`, and all of their descendants. Each one either pushes ECX and
+  ESI at entry or never writes them. The AIL code that does write ECX sits
+  under `0x1CA40` and `0x1CA6C`, and both push ECX. So the stores' BX (0),
+  CX (`0x13`), DX (`0x78`, reloaded at `0x415D7` after `0x32A3C` clobbers
+  EDX) and SI (`0x15`) hold.
 - **Entrances.** Four rel32 `call`s: `0x41755` (in `0x416D4`) and `0x41DE6`,
   `0x42337`, `0x42352` (in `0x41C28`). No `jmp`/`jcc`. No dword `0x00041578`
   in either object, so the function stays unregistered.
@@ -8357,10 +8363,11 @@ it in the image is now accounted for (§42-E.4). One old claim is corrected:
 - **Every holder** (a dword scan of both objects, fixups applied): 142
   dwords in the data object and 4 immediates in the code object. There is no
   rel32 entrance.
-  - Update table `DS_000A8644`: 15 entries (3, `0x12..0x1F`). Render table
-    `DS_000A86C4`: 28 entries (2, `5..0x1F`). Both are dispatched by
-    `mov eax,ebx; call [eax+table]` (`0x25623` for the render table), and
-    the return is discarded.
+  - Update table `DS_000A8644`: 15 entries (3, `0x12..0x1F`), dispatched by
+    `0x24CED mov eax,edx; 0x24CEF call [eax+0xa8644]`. Render table
+    `DS_000A86C4`: 28 entries (2, `5..0x1F`), dispatched by
+    `0x25621 mov eax,ebx; 0x25623 call [eax+0xa86c4]`. The return is
+    discarded at both.
   - Attract table `DS_000A8744`: 31 entries (`1..0x1F`), dispatched at
     `0x292C1`. The return is discarded.
   - Type table `0xBB9DC`: 38 cb1 and 26 cb2 slots. cb1 is called at

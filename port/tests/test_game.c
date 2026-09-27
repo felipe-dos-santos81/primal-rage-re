@@ -2804,8 +2804,9 @@ int test_frontend(void)
         CHECK_EQ_INT((int)DSB(DS_00104B15), 0);   /* 0x1EA08 ran 0x4F1E4 */
         CHECK_EQ_INT((int)DSB(DS_00105C05), 0x1D);  /* 0x2C06C ran */
         /* Task 8: the ported state-5 path does not arm the 0x29B74 handler
-         * (its DS_00104AE4 stores are unported) and does not leave mode 3 (so the six call dword [0x104ae4]
-         * sites and the four 0x41578 sites stay unreachable). */
+         * (its DS_00104AE4 stores are unported) and does not leave mode 3
+         * (so the six call dword [0x104ae4] sites and the four 0x41578
+         * sites stay unreachable). */
         CHECK(DSD(DS_00104AE4) == 0xDEADBEEFu,
               "state 5 does not arm the 0x29B74 handler");
         CHECK_EQ_INT((int)DSW(DS_00104B00), 3);

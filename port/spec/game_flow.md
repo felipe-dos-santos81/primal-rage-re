@@ -1422,7 +1422,7 @@ port frames 259..480) and carried forward.
 
 **Carried with owners (record §7).** The pose/freeze subsystem (`0x19020` chain)
 and the demo oracle's `res is None` → **cycle 4**; the `0x13xxx` call sites
-(`0x29B74`/`0x41578`) → **the interactive match**; 831/832's held-frame
+(`0x29B74`/`0x41578`, since ported, §42-E) → **the interactive match**; 831/832's held-frame
 presentation (un-derivable); the interactive match (unowned); the audio gaps (the
 audio sub-project, 2b-ii); the state-9 hold; `0x38154`; and the
 flush-scope-vs-gate concern (cycle-2's read/gate model).

@@ -255,9 +255,15 @@ void config_set_credit_row_init(void)
 void config_play_time_close(u32 mode, u32 flag)
 {
     u32 idx = mode & 3u;                                /* 0x32A43 */
-    /* PORT: 0x32A4A 0x32970(EAX = 0), the run clock (it adds the elapsed
-     * DS_00105D88 ticks into these accumulators), is out of scope (spec §7);
-     * the host clock owns wall time. It preserves EDX (0x32972 push). */
+    /* PORT: 0x32A4A 0x32970(EAX = 0), the run clock, is out of scope (spec
+     * §7); the host clock owns wall time. Its stores, for a later port:
+     * DS_0010747C = DS_00105D88; the elapsed ticks added into
+     * DS_0010746C[k + 1] for each set bit k of DS_00107494, into
+     * DS_00107484 and into DS_00107488[DS_00107494]; at DS_00107484 >=
+     * 0x3840 it zeroes it and, for each DS_00107488[i] > 0xE10 (i = 0..2),
+     * keeps the remainder mod 0xE10 and posts 0x2DAE4(3 + i, quotient);
+     * and DS_00107494 = AL = 0 (0x32A28), clearing the mode mask. It
+     * preserves EDX (0x32972 push). */
     u32 ticks = DSD(DS_0010746C + idx * 4u);            /* 0x32A4F */
     DSD(DS_0010746C + idx * 4u) = 0u;                   /* 0x32A56 */
     (void)ticks;
