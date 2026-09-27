@@ -5610,6 +5610,391 @@ static void check_mode_1a_hooks(void)
     memcpy(gfx_dac, s_dac, sizeof s_dac);
 }
 
+/* Record §46-F: the seven remaining DS_00104AE4 values 0x259CC, 0x26978,
+ * 0x27134, 0x24B54, 0x25AE8, 0x4142C and 0x10E80, with 0x2C304, 0x413C8 and
+ * 0x4246C. The same snapshot as check_mode_1a_hooks. The config field 0x29 is
+ * 32 bits wide (descriptor 0x2D3A4 = 0x1D980: width 8 nibbles, no trailing
+ * byte). The descriptors 0xC86F0/0xC86DC carry ids 0x2BEF/0x3F12. */
+static void mt_seed_arm(void)
+{
+    DSD(DS_00104AE4) = 0xDEADBEEFu;
+    DSB(DS_001088F5) = 0x77u;
+    DSW(DS_00104AFA) = 0x7777u;
+    DSD(DS_00104B00) = 0xBEEF7777u;
+    DSB(DS_00104B25) = 0x77u;
+}
+
+/* One actor record the hook's 0x2BAF4 must drop (id 0x7777). */
+static void mt_seed_record(void)
+{
+    actors_reset();
+    DSD(actor_alloc(0) + 0x08u) = 0x7777u;
+}
+
+static u32 mt_record_seen(void)
+{
+    for (u32 r = actor_list_head(); r != 0; r = actor_next(r))
+        if (DSD(r + 0x08u) == 0x7777u) return 1u;
+    return 0u;
+}
+
+static void check_mode_17_hooks(void)
+{
+    static u8 s_data[0x10B0D0u - 0x80000u];
+    static u8 s_rec[0xEBA0u], s_pset[0x4880u];
+    static u8 s_bufa[0xFA00u], s_bufb[0xFA00u], s_ap[0xFA00u];
+    static u8 s_dac[sizeof gfx_dac];
+    static u8 s_res[0x14u * 128u];
+    u32 rec_pool = DSD(DS_001014F4), pset_pool = DSD(DS_001014EC);
+    u32 bufa = DSD(DS_001014E8), bufb = DSD(DS_001014E4);
+    u32 res_tab = DSD(DS_001014E0);
+    u32 res_len = DSD(DS_001014F0) * 0x14u;
+    CHECK(rec_pool != 0u && pset_pool != 0u && bufa != 0u && bufb != 0u,
+          "the mode 0x17 hooks need the pools and buffers");
+    CHECK(res_len != 0u && res_len <= sizeof s_res, "the resource table fits");
+    if (rec_pool == 0u || pset_pool == 0u || bufa == 0u || bufb == 0u ||
+        res_len == 0u || res_len > sizeof s_res)
+        return;
+    tf_snap(s_data, 0x80000u, sizeof s_data);
+    tf_snap(s_rec, rec_pool, sizeof s_rec);
+    tf_snap(s_pset, pset_pool, sizeof s_pset);
+    tf_snap(s_bufa, bufa, sizeof s_bufa);
+    tf_snap(s_bufb, bufb, sizeof s_bufb);
+    tf_snap(s_res, res_tab, res_len);
+    memcpy(s_ap, gfx_aperture(), sizeof s_ap);
+    memcpy(s_dac, gfx_dac, sizeof s_dac);
+#define MT_RESTORE() do { tf_put(s_data, 0x80000u, sizeof s_data);  \
+        tf_put(s_rec, rec_pool, sizeof s_rec);                        \
+        tf_put(s_pset, pset_pool, sizeof s_pset); } while (0)
+
+    /* (a) The seven values resolve (code immediates only, §46-F.2). */
+    CHECK(fn_resolve(0x259CCu) == game_hook_259cc, "0x259CC resolves");
+    CHECK(fn_resolve(0x10E80u) == game_state_init, "0x10E80 resolves");
+    CHECK(fn_resolve(0x24B54u) == game_hook_24b54, "0x24B54 resolves");
+    CHECK(fn_resolve(0x27134u) == game_hook_27134, "0x27134 resolves");
+    CHECK(fn_resolve(0x4142Cu) == fight_hook_4142c, "0x4142C resolves");
+    CHECK(fn_resolve(0x25AE8u) == game_hook_25ae8, "0x25AE8 resolves");
+    CHECK(fn_resolve(0x26978u) == game_hook_26978, "0x26978 resolves");
+
+    /* (b) 0x259CC, DS_00104B1D != 3: the stage's byte, the zero stores,
+     * DS_00104AD4 = -1, DS_00104ADC from bits 20..21 of the config field
+     * 0x29 (2 -> 5), the hook 0x25BBC and mode 0x1A with 5; DS_00104B14 = 0
+     * and DS_00104B21 untouched. */
+    MT_RESTORE();
+    config_field_set(0x29u, 0x00230000u);
+    for (u32 i = 0; i < 8u; i++) DSB(DS_00108106 + i) = 0x81u;
+    DSW(DS_00104AFC) = 3u;
+    DSB(DS_00104B1E) = 0x77u;
+    DSB(DS_00104AF3) = 0x77u;
+    DSB(DS_00104AF2) = 0x77u;
+    DSB(DS_00104AF2 - 1u) = 0x66u;
+    DSB(DS_00104B14) = 0x77u;
+    DSD(DS_00104AD4) = 0x12345678u;
+    DSD(DS_00104AC8) = 0xDEADBEEFu;
+    DSD(DS_00104ADC) = 0xDEADBEEFu;
+    DSB(DS_00104B21) = 0x77u;
+    DSB(DS_00104B1D) = 0u;
+    mt_seed_arm();
+    game_hook_259cc();
+    for (u32 i = 0; i < 8u; i++)
+        CHECK_EQ_INT((int)DSB(DS_00108106 + i), i == 3u ? 0 : 0x81);
+    CHECK_EQ_INT((int)DSB(DS_00104B1E), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104AF3), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104AF2), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104AF2 - 1u), 0x66);
+    CHECK_EQ_INT((int)DSB(DS_00104B14), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104AD4), -1);
+    CHECK_EQ_INT((int)DSD(DS_00104AC8), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104ADC), 5);
+    CHECK_EQ_INT((int)DSB(DS_00104B21), 0x77);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 1);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x25BBC);
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 5);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF001Au);
+    /* The mask: bits 20..21 only (0x00CF0000 -> 1, 0x00100000 -> 3). */
+    config_field_set(0x29u, 0x00CF0000u);
+    game_hook_259cc();
+    CHECK_EQ_INT((int)DSD(DS_00104ADC), 1);
+    config_field_set(0x29u, 0x00100000u);
+    game_hook_259cc();
+    CHECK_EQ_INT((int)DSD(DS_00104ADC), 3);
+    /* DS_00104B1D == 3: mode 0x1A with 0x30, then DS_00104B14 = 1 and
+     * DS_00104B21 = 0. */
+    DSB(DS_00104B1D) = 3u;
+    DSB(DS_00104B14) = 0x77u;
+    DSB(DS_00104B21) = 0x77u;
+    mt_seed_arm();
+    game_hook_259cc();
+    CHECK_EQ_INT((int)DSB(DS_00104B14), 1);
+    CHECK_EQ_INT((int)DSB(DS_00104B21), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 1);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x25BBC);
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x30);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF001Au);
+
+    /* (c) 0x26978 and 0x27134 arm mode 0x1A with 0x23 / 5 and their hooks;
+     * 0x27134 zeroes DS_00104B1E/AF3/AF2, 0x26978 does not. */
+    MT_RESTORE();
+    DSB(DS_00104B1E) = 0x77u;
+    DSB(DS_00104AF3) = 0x77u;
+    DSB(DS_00104AF2) = 0x77u;
+    mt_seed_arm();
+    game_hook_26978();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 1);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x26998);
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x23);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF001Au);
+    CHECK_EQ_INT((int)DSB(DS_00104B1E), 0x77);
+    CHECK_EQ_INT((int)DSB(DS_00104AF3), 0x77);
+    mt_seed_arm();
+    game_hook_27134();
+    CHECK_EQ_INT((int)DSB(DS_00104B1E), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104AF3), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104AF2), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 1);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x270BC);
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 5);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF001Au);
+
+    /* (d) 0x24B54: 0x4F1E4 (DS_00104B15 = 0), 0x2BAF4 (the record is gone),
+     * the mode word 0x27 (the upper word kept), the bytes DS_00104B1D and
+     * DS_00104B1F = 0 with DS_00104B1E between them untouched, and the dword
+     * DS_00104AB8 = 0. */
+    MT_RESTORE();
+    mt_seed_record();
+    DSB(DS_00104B15) = 0x77u;
+    DSD(DS_00104B00) = 0xBEEF7777u;
+    DSB(DS_00104B1D) = 0x77u;
+    DSB(DS_00104B1E) = 0x66u;
+    DSB(DS_00104B1F) = 0x77u;
+    DSB(DS_00104B1F + 1u) = 0x66u;
+    DSD(DS_00104AB8) = 0xDEADBEEFu;
+    game_hook_24b54();
+    CHECK_EQ_INT((int)mt_record_seen(), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B15), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0027u);
+    CHECK_EQ_INT((int)DSB(DS_00104B1D), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B1E), 0x66);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F + 1u), 0x66);
+    CHECK_EQ_INT((int)DSD(DS_00104AB8), 0);
+
+    /* (e) 0x10E80 (game_state_init) and 0x2C304: the same resets as 0x24B54
+     * for mode 3, the word DS_000F0A64, the bytes DS_000F0A71/6F, the dword
+     * DS_000F0A5C = 4, DS_00105C00 = ((field & 0xF0000) >> 16) + 1 (3 + 1),
+     * DS_00104AB8 = 0 and the byte DS_00104B1F = 0. */
+    MT_RESTORE();
+    config_field_set(0x29u, 0x00F30000u);
+    mt_seed_record();
+    DSB(DS_00104B15) = 0x77u;
+    DSD(DS_00104B00) = 0xBEEF7777u;
+    DSD(DS_000F0A64) = 0xBEEF7777u;
+    DSB(DS_000F0A71) = 0x77u;
+    DSD(DS_000F0A5C) = 0xDEADBEEFu;
+    DSB(DS_000F0A6F) = 0x77u;
+    DSD(DS_00105C00) = 0xDEADBEEFu;
+    DSD(DS_00104AB8) = 0xDEADBEEFu;
+    DSB(DS_00104B1E) = 0x66u;
+    DSB(DS_00104B1F) = 0x77u;
+    DSB(DS_00104B1F + 1u) = 0x66u;
+    game_state_init();
+    CHECK_EQ_INT((int)mt_record_seen(), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B15), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0003u);
+    CHECK_EQ_INT((int)DSD(DS_000F0A64), (int)0xBEEF0000u);
+    CHECK_EQ_INT((int)DSB(DS_000F0A71), 0);
+    CHECK_EQ_INT((int)DSD(DS_000F0A5C), 4);
+    CHECK_EQ_INT((int)DSB(DS_000F0A6F), 0);
+    CHECK_EQ_INT((int)DSD(DS_00105C00), 4);
+    CHECK_EQ_INT((int)DSD(DS_00104AB8), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B1E), 0x66);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F + 1u), 0x66);
+    config_field_set(0x29u, 0x000A0000u);
+    DSD(DS_00105C00) = 0xDEADBEEFu;
+    config_credits_init();
+    CHECK_EQ_INT((int)DSD(DS_00105C00), 0xB);
+
+    /* (f) 0x4246C: the seven stage bytes and DS_00108111 = 0, their
+     * neighbours DS_00108105, DS_0010810D, DS_00108110 and DS_00108112 kept. */
+    MT_RESTORE();
+    for (u32 i = 0; i < 0x10u; i++) DSB(DS_00108104 + i) = 0x77u;
+    fight_stage_marks_clear();
+    for (u32 i = 0; i < 0x10u; i++) {
+        u32 a = DS_00108104 + i;
+        int zero = (a >= DS_00108106 && a < DS_00108106 + 7u) || a == DS_00108111;
+        CHECK_EQ_INT((int)DSB(a), zero ? 0 : 0x77);
+    }
+
+    /* (g) 0x25AE8, DS_00104B1D == 0: DS_00104B14 = 0, 0x4F1E4, 0x2BAF4,
+     * DS_00104ABC = 1 (DS_00104B1F != 3), string 0x52 at row 0xE (the same
+     * glyphs as a direct 0x2F510 call, which ORs the class bit 2 into 0x4000;
+     * 0x2F4BC with 0x4000 draws others), 0x4246C, then mode
+     * 0x17 with the countdowns 0xB4 and the hook 0x10E80. */
+    MT_RESTORE();
+    game_string_table_load("data/game/C");
+    const u8 *s52 = game_string_get(0x52u);
+    CHECK(s52[0] != 0u, "string 0x52 is not empty");
+    mt_seed_record();
+    DSB(DS_00104B14) = 0x77u;
+    DSB(DS_00104B15) = 0x77u;
+    DSB(DS_00104B1D) = 0u;
+    DSB(DS_00104B1F) = 2u;
+    DSD(DS_00104ABC) = 0xDEADBEEFu;
+    for (u32 i = 0; i < 0x10u; i++) DSB(DS_00108104 + i) = 0x77u;
+    mt_seed_arm();
+    DSW(DS_001088EE) = 0x7777u;
+    DSW(DS_00104AFE) = 0x7777u;
+    mem_fill(DS_00105F38 + 0xDu * 0xACu, 0, 3u * 0xACu);
+    game_hook_25ae8();
+    CHECK_EQ_INT((int)mt_record_seen(), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B14), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B15), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104ABC), 1);
+    CHECK_EQ_INT((int)DSB(DS_00108106), 0);             /* 0x4246C */
+    CHECK_EQ_INT((int)DSB(DS_00108111), 0);
+    CHECK_EQ_INT((int)DSB(DS_00108104 + 1u), 0x77);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x10E80);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0xB4);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xB4);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0017u);
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0x77);          /* no 0x4F980 */
+    {
+        u32 g[43], n = 0;
+        for (u32 c = 0; c < 43u; c++) {
+            u32 r = chs_grid(0xEu, c);
+            g[c] = r != 0u ? DSD(r + 0x08u) : 0u;
+            if (g[c] != 0u) n++;
+            CHECK_EQ_INT((int)chs_grid(0xDu, c), 0);
+            CHECK_EQ_INT((int)chs_grid(0xFu, c), 0);
+        }
+        CHECK(n != 0u, "0x25AE8 drew string 0x52 at row 0xE");
+        mem_fill(DS_00105F38 + 0xEu * 0xACu, 0, 0xACu);
+        text_cursor_hold_font2(-1, 0xE, game_string_get(0x52u), 0x4000u);
+        u32 same = 1;
+        for (u32 c = 0; c < 43u; c++) {
+            u32 r = chs_grid(0xEu, c);
+            if ((r != 0u ? DSD(r + 0x08u) : 0u) != g[c]) same = 0;
+        }
+        CHECK_EQ_INT((int)same, 1);
+        mem_fill(DS_00105F38 + 0xEu * 0xACu, 0, 0xACu);
+        text_cursor_hold(-1, 0xE, game_string_get(0x52u), 0x4000u);
+        u32 diff = 0;
+        for (u32 c = 0; c < 43u; c++) {
+            u32 r = chs_grid(0xEu, c);
+            if ((r != 0u ? DSD(r + 0x08u) : 0u) != g[c]) diff = 1;
+        }
+        CHECK(diff != 0u, "0x2F4BC's mode 0x4000 (no class bit) draws other glyphs");
+    }
+    /* DS_00104B1D != 0 and DS_00104B1F == 3: DS_00104ABC = 2 and the hook
+     * 0x24B54. */
+    mt_seed_record();
+    DSB(DS_00104B1D) = 1u;
+    DSB(DS_00104B1F) = 3u;
+    DSD(DS_00104ABC) = 0xDEADBEEFu;
+    mt_seed_arm();
+    DSW(DS_001088EE) = 0x7777u;
+    DSW(DS_00104AFE) = 0x7777u;
+    game_hook_25ae8();
+    CHECK_EQ_INT((int)DSD(DS_00104ABC), 2);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x24B54);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0xB4);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xB4);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0017u);
+
+    /* (h) 0x4142C: DS_00104AE8 = 0, 0x4F1E4, 0x2BAF4, the 0x38B18 row
+     * (0xC86F0, id 0x2BEF), 0x413C8's spawns (0xC86DC, id 0x3F12, at x
+     * 0x2A00 on layer 0xE0 into DS_001080F4; seven children of it on layer
+     * 0xE2 into DS_001080C0[0..6], each with the id of 0xC85BC[i]'s
+     * descriptor), the four zero bytes, DS_00108112 = 0, DS_00104B25 = 8,
+     * mode 0x12, the countdown 0x1E and DS_00104B23 = 0. */
+    MT_RESTORE();
+    mt_seed_record();
+    DSD(DS_00104AE8) = 0xDEADBEEFu;
+    DSB(DS_00104B15) = 0x77u;
+    mem_fill(DS_00107A1C, 0u, 0x1Cu);
+    mem_fill(DS_001080C0 - 4u, 0x77u, 0x24u);
+    DSD(DS_001080F4) = 0xDEADBEEFu;
+    for (u32 i = 0; i < 0x10u; i++) DSB(DS_00108104 + i) = 0x77u;
+    DSD(DS_00104B00) = 0xBEEF7777u;
+    DSW(DS_00104AFE) = 0x7777u;
+    DSB(DS_00104B25) = 0x77u;
+    DSB(DS_00104B23) = 0x77u;
+    fight_hook_4142c();
+    CHECK_EQ_INT((int)mt_record_seen(), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B15), 0);
+    {
+        u32 row = DSD(DS_00107A1C);
+        CHECK(row != 0u, "0x38B18 filled the row table");
+        if (row != 0u) CHECK_EQ_INT((int)DSD(row + 0x08u), 0x2BEF);
+        u32 p = DSD(DS_001080F4);
+        CHECK(p != 0u && p != 0xDEADBEEFu, "0x413C8's parent spawn");
+        if (p != 0u && p != 0xDEADBEEFu) {
+            CHECK_EQ_INT((int)DSD(p + 0x08u), 0x3F12);
+            CHECK_EQ_INT((int)DSD(p + 0x18u), 0x2A00);
+            CHECK_EQ_INT((int)DSB(p + 0x49u), 0xE0);
+            for (u32 i = 0; i < 7u; i++) {
+                u32 c = DSD(DS_001080C0 + i * 4u);
+                CHECK(c != 0u && c != 0x77777777u, "0x413C8's child spawn");
+                if (c == 0u || c == 0x77777777u) continue;
+                CHECK_EQ_INT((int)DSD(c + 0x08u),
+                             (int)DSD(DSD(0x000C85BCu + i * 4u)));
+                CHECK_EQ_INT((int)DSB(c + 0x49u), 0xE2);
+                CHECK_EQ_INT((int)DSW(c + 0x34u), 0);
+                CHECK_EQ_INT((int)DSB(c + 0x4Au), (int)(DSW(p + 0x56u) & 0x7Fu));
+                CHECK((DSW(c + 0x28u) & 0x400u) != 0u, "a child (a5 | 0x400)");
+            }
+        }
+        CHECK_EQ_INT((int)DSD(DS_001080C0 - 4u), 0x77777777);
+        CHECK_EQ_INT((int)DSD(DS_001080C0 + 0x1Cu), 0x77777777);
+    }
+    for (u32 i = 0; i < 0x10u; i++) {
+        u32 a = DS_00108104 + i;
+        int zero = a == DS_00108104 || a == DS_00108104 + 1u || a == DS_0010810F
+                   || a == DS_00108111 || a == DS_00108112;
+        CHECK_EQ_INT((int)DSB(a), zero ? 0 : 0x77);
+    }
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 8);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0012u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x1E);
+    CHECK_EQ_INT((int)DSB(DS_00104B23), 0);
+
+    /* (i) The chain: 0x259CC as mode 0x17's hook installs 0x25BBC for mode
+     * 0x1A; 18 wipe-in frames run it (the round byte 0 -> 1, both fighters,
+     * the hook 0x5D812, mode 0x1B). */
+    MT_RESTORE();
+    mh_seed_fighters();
+    DSB(DS_00104B1D) = 0u;
+    DSD(DS_000C98F0) = 0u;
+    config_field_set(0x29u, 0u);
+    game_hook_259cc();
+    CHECK_EQ_INT((int)DSB(DS_00104B1E), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104ADC), 1);
+    for (u32 k = 1; k <= 17u; k++) frontend_mode_1a_step();
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x25BBC);
+    frontend_mode_1a_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B1E), 1);
+    CHECK_EQ_INT((int)DSD(DS_001077A8), (int)DS_001077B0);
+    CHECK_EQ_INT((int)DSD(DS_001077A8 + 4u), (int)(DS_001077B0 + 0x94u));
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x5D812);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x1B);
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 5);
+#undef MT_RESTORE
+
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    tf_put(s_bufa, bufa, sizeof s_bufa);
+    tf_put(s_bufb, bufb, sizeof s_bufb);
+    tf_put(s_res, res_tab, res_len);
+    memcpy(gfx_aperture(), s_ap, sizeof s_ap);
+    memcpy(gfx_dac, s_dac, sizeof s_dac);
+}
+
 /* 0x24C73/0x47208: the demo's CPU-AI command generator. A live pair of slots
  * (think gate armed, idle state, a legal character) must produce a non-zero
  * command word, and the two sides must be able to differ. The command words are
@@ -18494,6 +18879,7 @@ int test_fight(void)
     check_char_screen_open();
     check_char_screen_modes();
     check_mode_1a_hooks();
+    check_mode_17_hooks();
 
     return g_failures - before;
 }
