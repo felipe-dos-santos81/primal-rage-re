@@ -2409,6 +2409,12 @@ static void check_grab_arms(void)
     u32 link2 = DSD(DS_001014F4) + 2u * 0x68u + 0x4Bu;
     u8 sv_link2 = DSB(link2);
     u32 slot1 = DS_001077B0 + 0x94u;
+    u32 entry2 = FIGHT_RECS + 0x3040u, rec2 = FIGHT_RECS + 0x3300u;
+    u32 st_c955c = FIGHT_RECS + 0x38C0u;
+    u32 ps6 = FIGHT_ACTORS + 6u * 0x20u;
+    u32 sv_c955c = DSD(DS_000C955C + 12u);
+    u32 sv_15e8 = DSD(0x001015E8u);
+    u16 sv_763c = DSW(0x0010763Cu);
     u32 a1, a2, i;
 
     tf_snap(sv_slots, DS_001077B0, sizeof sv_slots);
@@ -2424,6 +2430,24 @@ static void check_grab_arms(void)
     DSW(st_tumble) = 0x0456u;
     DSW(st_hold0) = 0x0321u;
     DSW(st_hold1) = 0x0654u;
+    DSW(st_c955c) = 0x0789u;
+    DSD(DS_000C955C + 12u) = st_c955c;
+
+/* A second, type-0 entry of side 1 after `entry` in the list (si 3, pset 6
+ * at x 0x1000, 0x4B5A8's and 0x4AAD0's other gates closed, DS_001088B2
+ * both sides 0), to observe DS_001088B2[1] within the pass. */
+#define GR_SECOND() do {                                                \
+        mem_fill(entry2, 0, 0x40u); mem_fill(rec2, 0, 0x68u);           \
+        DSD(entry) = entry2; DSD(entry2) = DS_0010884C;                 \
+        DSD(entry2 + 8u) = rec2; DSD(entry2 + 0xCu) = slot1;            \
+        DSB(entry2 + 0x21u) = 1;                                        \
+        DSB(rec2 + 0x48u) = 0x23u; DSW(rec2 + 0x56u) = 6;               \
+        DSD(rec2 + 0x08u) = 0x0BADu; DSB(rec2 + 0x55u) = 0x77u;         \
+        DSD(ps6 + 4u) = 0x1000u;                                        \
+        DSB(DS_001088B2) = 0; DSB(DS_001088B2 + 1u) = 0;                \
+        DSB(DS_0010889E) = 0; DSB(DS_0010889E + 1u) = 0;                \
+        DSB(DS_001088B6 + (u32)DSB(fr1 + 0x51u)) = 0;                   \
+    } while (0)
 
 /* Side 0's character with the anchor that keeps its sprite handle index 4
  * (0x100AF0 + 0x17EEC(ch) = 4, as pc_seed has it for character 0). */
@@ -2598,6 +2622,46 @@ static void check_grab_arms(void)
         CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_tumble);
         CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
         CHECK_EQ_INT((int)DSD(entry + 0x10u), (int)sh_fake);
+        /* The release's DS_001088B2[1] = 1 is read in the same pass, before
+         * 0x4A634 clears it, by a later type-0 entry of side 1: 0x4AAD0's
+         * 0x4AB60 gate takes 0x4B3F0 (type 8 on 0xC955C[3], +0x55 = 0).
+         * Without the store (DS_001088B2 seeded 0) the entry stays type 0: its
+         * distance 0x1000 from side 1's record keeps 0x4B144 out. */
+        GR_SEED(0x45u);
+        DSB(entry + 0x1Eu) = 8; DSB(entry + 0x20u) = 0;
+        DSB(entry + 0x1Fu) = 3; DSB(rec + 0x4Au) = 1;
+        DSD(fr0 + 8u) = 0xE7B51u;
+        GR_SECOND();
+        fight_effects_pass();
+        CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+        CHECK_EQ_INT((int)DSB(entry2 + 0x1Eu), 8);
+        CHECK_EQ_INT((int)DSD(rec2 + 0x08u), (int)st_c955c);
+        CHECK_EQ_INT((int)DSB(rec2 + 0x55u), 0);
+        CHECK_EQ_INT((int)DSB(DS_001088B2 + 1u), 0);
+        /* The control: no release (the holder still in its hold), no store,
+         * and the second entry stays type 0. */
+        GR_SEED(0x45u);
+        DSB(entry + 0x1Eu) = 8; DSB(entry + 0x20u) = 0;
+        DSB(entry + 0x1Fu) = 3; DSB(rec + 0x4Au) = 1;
+        DSD(fr0 + 8u) = 0xE7B50u;
+        GR_SECOND();
+        fight_effects_pass();
+        CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+        CHECK_EQ_INT((int)DSB(entry2 + 0x1Eu), 0);
+        CHECK_EQ_INT((int)DSD(rec2 + 0x08u), 0x0BAD);
+        CHECK_EQ_INT((int)DSB(rec2 + 0x55u), 0x77);
+        /* 0x4B69C's release store (0x4B76E, record §29) the same way: side 0
+         * out of its grab move tramples the held entry (+0x4A = 1) and the
+         * later side-1 type-0 entry sees DS_001088B2[1]. */
+        GR_SEED(0xC5u);
+        DSB(DS_001077B0 + 0x5Fu) = 0;
+        DSB(rec + 0x4Au) = 1;
+        GR_SECOND();
+        fight_effects_pass();
+        CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+        CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x05);
+        CHECK_EQ_INT((int)DSB(entry2 + 0x1Eu), 8);
+        CHECK_EQ_INT((int)DSD(rec2 + 0x08u), (int)st_c955c);
         /* No +0x4A link: nothing, even out of the hold. */
         GR_SEED(0x45u);
         DSB(entry + 0x1Eu) = 8; DSB(entry + 0x20u) = 0;
@@ -2629,10 +2693,12 @@ static void check_grab_arms(void)
         DSB(DS_001077B0 + 0x5Fu) = 0;                                   \
         DSB(entry + 0x1Fu) = 7; DSB(DS_001088F2) = 2;                   \
     } while (0)
+/* actor_alloc pops the free list's head and actor_free pushes there, so the
+ * second spawn is freed first: the free list keeps its order. */
 #define GR_FREE_SPAWNS() do {                                           \
         a1 = DSD(DS_00108868); a2 = DSD(DS_0010886C);                   \
-        if (a1 != 0x11111111u && a1 != 0u) { actor_set_dead(a1); actor_free(a1); } \
         if (a2 != 0x22222222u && a2 != 0u) { actor_set_dead(a2); actor_free(a2); } \
+        if (a1 != 0x11111111u && a1 != 0u) { actor_set_dead(a1); actor_free(a1); } \
     } while (0)
     GR_EIGHTH();
     rng_seed(0x4321u);
@@ -2948,9 +3014,16 @@ static void check_grab_arms(void)
 #undef GR_FREE_SPAWNS
 #undef GR_SEED
 #undef GR_CHAR
+#undef GR_SECOND
 
     gr_unpatch();
     DSB(link2) = sv_link2;
+    DSD(DS_000C955C + 12u) = sv_c955c;
+    /* The spawns' side effects outside the fixture: 0x1015E8 is render node
+     * 21's pset field (the 8-byte node pool at DS_0010153C) and 0x10763C is
+     * the refcount of the palette table's third entry (DS_00107618 + 0x20). */
+    DSD(0x001015E8u) = sv_15e8;
+    DSW(0x0010763Cu) = sv_763c;
     DSD(0x000C9604u + 12u) = sv_tumble;
     DSB(DS_00105B3A) = sv_3a;
     DSD(DS_000EF6D8) = sv_rng;

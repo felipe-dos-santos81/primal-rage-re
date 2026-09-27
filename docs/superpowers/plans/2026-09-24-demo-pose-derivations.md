@@ -8391,9 +8391,25 @@ adjustment), hit 2's slot, `0x4D7A4`'s missing gates, bit 7, both sides, the
 release without the `0x1088B2` store, the full grab with its award, every
 `0x4D880` weight, the cap for both awards, and character 1 with `0xB`.
 
-`0x1088B2[+0x21]` = 1 in case 8 cannot be asserted through the pass
-(`0x4A634` clears it at the pass's end, as for `0x4B69C`'s store in §29); the
-type-6 store in `0x4BD98` is always overwritten by `0x4CB18`'s.
+The `0x1088B2[+0x21]` = 1 stores of case 8's release (`0x4A100`) and of
+`0x4B69C`'s (`0x4B76E`, §29) are cleared by `0x4A634` only after the list
+walk (`0x4A591`), but inside the walk `0x4AAD0` reads the byte for a later
+type-0 entry of the same side (`0x4AB60`) and then takes `0x4B3F0`. The test
+adds such an entry (`GR_SECOND`: side 1, si 3, `0xC955C[3]` a scratch
+stream, 0x1000 from side 1's record so `0x4B144` stays out) after the
+released one and asserts it becomes type 8 on `0xC955C[3]` with `+0x55` = 0,
+for both stores, with a control where the holder still holds (type 0, the
+stream untouched). The type-6 store in `0x4BD98` is always overwritten by
+`0x4CB18`'s.
+
+`check_grab_arms` frees the two `0x4BD98` spawns second-first, so the actor
+free list `0x105B3C` keeps its order (a whole-`mem[]` diff around the test
+shows the list's first three records `0x2A7E1C8, 0x2A7E230, 0x2A7E298`
+before and after). It also restores the render node 21 pset field `0x1015E8`
+(the node pool `0x10153C`) and the palette table's third refcount `0x10763C`
+(`0x107618 + 0x24`), which the spawns and kills change; the diff then shows
+only the fixture scratch, the two freed pool records' contents and the
+pset-sync scratch `0x105BDC`/`0x105BE0`.
 
 **Mutations** (`scratchpad/grab_mut.py`, `grab_mutlist.py`, `grab_mut2.out`):
 146 single-site edits of the new code, its wiring and `0x2BD20` (each
@@ -8403,12 +8419,15 @@ scale and cap, each `0x4AF04` edge and two swapped ranges). The first sweep
 left five survivors (`0x4D898`'s `+0x52` bounds and `+0x4B` gate, then
 untested) and one crash (`0x4D7A4` without its `+0x20` store left the seed
 `0x77` as `0x1A570`'s side); the test gained those gates and a valid `+0x20`
-seed (1). On the re-run 144 fail 1..46 assertions, none crashes, and two
-survive, both equivalent or unobservable: calling `0x4CB18` before
-`0x4BD98` (the two write disjoint state apart from type 6, and `0x4CB18`'s
-`&= 0x7F` leaves `0x4BD98`'s bit 5), and dropping case 8's `0x1088B2` store
-(cleared by `0x4A634` in the same pass). The sources were restored by the
-script.
+seed (1). On that re-run 144 failed and two survived: calling `0x4CB18`
+before `0x4BD98`, and dropping case 8's `0x1088B2` store, then wrongly called
+unobservable. The review showed the store is read within the pass (above);
+with the second entry added, that mutation fails 3 assertions and dropping
+`0x4B69C`'s `0x4B76E` store fails 2 (`grab_mutlist2.py`). On the final
+re-run (`grab_mut3.out`) 145 of the 146 fail 1..46 assertions and none crashes. The one survivor is equivalent: the
+two functions write disjoint state apart from type 6, `0x4CB18`'s `&= 0x7F`
+leaves `0x4BD98`'s bit 5, and their `0x2BC30` pre-walks act on different
+records. The sources were restored by the script.
 
 ### 42-C.5 Measured and remaining gaps
 

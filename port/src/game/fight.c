@@ -1257,12 +1257,15 @@ static int fight_4af04(u32 side)
     return 1;                                                   /* 0x4B01E */
 }
 
-/* 0x4B470 — demo-pose record §29. The trample: the entry's actor takes the
+/* 0x4B470 — demo-pose record §29, §42-C. The trample: the entry's actor takes the
  * 0xC9604[si] tumble stream at 3.0, gets a shadow actor (0x2AE14 from
  * 0xBB920[si] at its x and y) when +0x10 has none, is thrown (+0x34 = ±0x80, away
  * from the hitter on the first hit (0x1A570 of the +0x20 side), else reversed
  * from its current +0x34; not in mode 0x22) with +0x36 = 0x240, and the entry
- * becomes type 6 with +0x1C bit 7 cleared. EAX = entry, EDX = si. */
+ * becomes type 6 with +0x1C bit 7 cleared. Then the eighth-hit tail: with
+ * DS_00104B1D not 2/3, DS_00104AFC, DS_001088C1, DS_001088C5 and DS_00108864
+ * clear, [0x1088EF] >> 24 > 1 and +0x1F > 7, 0x4BD98 then 0x4CB18 (the
+ * launch). EAX = entry, EDX = si. */
 static void fight_4b470(u32 entry, u32 index)
 {
     /* PORT: 0x4B497 0x2C3FC(0xD1 for si < 3, else 0xD0) — voice, out of scope
