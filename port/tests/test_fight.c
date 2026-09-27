@@ -18307,6 +18307,352 @@ static void check_char1_entry(void)
 #undef CE_104B03
 #undef CE_DECOY
 
+/* ---- §46-D: update-table entries 1 (0x48F98) and 10 (0x28F08), 0x37B54 --- */
+
+#define R46_NODE(i) (DS_001082E8 + (u32)(i) * 0x10u)    /* the type-0x2D nodes */
+#define R46_REC(i)  (Q42_POOL + (u32)(i) * ACTOR_REC_SIZE)
+#define R46_108396  0x00108396u
+#define R46_108397  0x00108397u
+#define R46_DESC19  0x000A89ACu
+
+/* A reference state: the data object, the scratch records and psets, and
+ * mem[0..0xFF] (where a write through a zero slot would land). */
+static u8 s_r46_data[0x10B0D0u - 0x80000u];
+static u8 s_r46_recs[Q42_RECS];
+static u8 s_r46_acts[Q42_ACTS];
+static u8 s_r46_low[0x100];
+
+static void r46_snap(void)
+{
+    tf_snap(s_r46_data, 0x80000u, sizeof s_r46_data);
+    tf_snap(s_r46_recs, FIGHT_RECS, Q42_RECS);
+    tf_snap(s_r46_acts, FIGHT_ACTORS, Q42_ACTS);
+    tf_snap(s_r46_low, 0u, sizeof s_r46_low);
+}
+
+/* 1 when the live state equals the reference state. */
+static int r46_same(void)
+{
+    return memcmp(mem + 0x80000u, s_r46_data, sizeof s_r46_data) == 0
+        && memcmp(mem + FIGHT_RECS, s_r46_recs, sizeof s_r46_recs) == 0
+        && memcmp(mem + FIGHT_ACTORS, s_r46_acts, sizeof s_r46_acts) == 0
+        && memcmp(mem, s_r46_low, sizeof s_r46_low) == 0;
+}
+
+/* The data object as q42_save() found it (so every run starts from the same
+ * render list and counters), then records 0..7 of Q42_POOL zeroed with their
+ * +0x56 index and sentinels in
+ * +0x08/+0x24/+0x53; the type-0x2D in-use list empty; slots 0/1 on records 4
+ * and 5 (x 0x90000 and 0x20000, +0x51 0 and 1, +0x30 0x0140ABCD and
+ * 0x0100ABCD), DS_001078FD = 1, DS_00104AD4 = 0, 0x108396 = 5, 0x108397 =
+ * 0x7F; the actor free list holds record 6 alone and the type-0x19 free list
+ * the node 0x104780 alone. */
+static void r46_seed(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u, i;
+    tf_put(s_q42_data, 0x80000u, sizeof s_q42_data);
+    q42_lists();
+    for (i = 0; i < 8u; i++) {
+        u32 rec = R46_REC(i);
+        mem_fill(rec, 0, ACTOR_REC_SIZE);
+        DSW(rec + 0x56u) = (u16)i;
+        DSD(rec + 0x08u) = 0x00ABCDEFu;
+        DSD(rec + 0x24u) = 0x11111111u;
+        DSB(rec + 0x53u) = 0x77u;
+    }
+    DSD(DS_00108368) = DS_00108368;
+    DSD(DS_0010836C) = DS_00108368;
+    DSD(DS_001077A8) = s0;
+    DSD(DS_001077A8 + 4u) = s1;
+    DSD(s0) = R46_REC(4);
+    DSD(s1) = R46_REC(5);
+    DSD(s0 + 0x2Cu) = 0x2C2C0000u;
+    DSD(s1 + 0x2Cu) = 0x00031234u;
+    DSB(R46_REC(5) + 0x51u) = 1u;
+    DSD(R46_REC(4) + 0x18u) = 0x00090000u;
+    DSD(R46_REC(5) + 0x18u) = 0x00020000u;
+    DSD(R46_REC(4) + 0x30u) = 0x0140ABCDu;
+    DSD(R46_REC(5) + 0x30u) = 0x0100ABCDu;
+    DSB(DS_001078FD) = 1u;
+    DSD(DS_00104AD4) = 0u;
+    DSB(R46_108396) = 0x05u;
+    DSB(R46_108397) = 0x7Fu;
+    DSD(DS_000F0AF0) = 0u;
+    q42_one_actor(R46_REC(6));
+    q42_append(DS_00104888, Q42_NODE(0));
+    mem_fill(0u, 0, 0x100u);
+}
+
+/* Type-0x2D node i on record i, phase `ph`, x `x`, word +0x34 `vx`. */
+static u32 r46_node(u32 i, u8 ph, u32 x, u16 vx)
+{
+    u32 node = R46_NODE(i), rec = R46_REC(i);
+    DSD(rec + 0x18u) = x;
+    DSW(rec + 0x34u) = vx;
+    DSD(node + 8u) = rec;
+    DSB(node + 0x0Cu) = ph;
+    q42_append(DS_00108368, node);
+    return rec;
+}
+
+/* The first seed from 1 whose rng(r1) draw is (zero == z1) and whose next
+ * rng(2) draw is (non-zero == nz2). */
+static u32 r46_rng_seed(u32 r1, int z1, int nz2)
+{
+    u32 s;
+    for (s = 1u; s < 0x10000u; s++) {
+        u32 a, b;
+        rng_seed(s);
+        a = rng_next(r1);
+        b = rng_next(2u);
+        if ((a == 0u) == (z1 != 0) && (b != 0u) == (nz2 != 0)) return s;
+    }
+    return 0u;
+}
+
+/* Phase-1 node 0 within reach of record 5 (x 0x1F000, height 0x180). */
+static void r46_d_setup(void)
+{
+    u32 r0;
+    r46_seed();
+    r0 = r46_node(0, 1u, 0x0001F000u, 0x0040u);
+    DSD(r0 + 0x30u) = 0x0180ABCDu;
+}
+
+/* The expected spawn: from `seed`, the gate draw rng(r1) and the a5 draw
+ * rng(2), then 0x2AE14(0xA89AC, a2, a3, a4, a5). */
+static void r46_mirror(u32 seed, u32 r1, u32 a2, u32 a3, u32 a4, u32 a5)
+{
+    rng_seed(seed);
+    (void)rng_next(r1);
+    (void)rng_next(2u);
+    (void)actor_spawn((const u32 *)(mem + R46_DESC19), a2, a3, a4, a5);
+}
+
+/* Record §46-D. 0x37B54 (EAX = rec): the slot DS_001077A8[(rec+0x51) ^ 1]'s
+ * record +0x53 = 1, skipped for a zero slot; also through its registration
+ * as the 0xD000 target (rec, arg). 0x48F98 (update-table entry 1, through
+ * its registration) over the type-0x2D list 0x108368 against slot
+ * DS_001078FD's record: phase 0 within 0x1000 starts 0xEDD20 at 2.0, halves
+ * +0x34 toward 0, bumps 0x108397 and the phase, and the first such node
+ * (0x108396 bit 7 clear) calls 0x37B54 on slot DS_00104AD4's record and sets
+ * the bit; phase 1 beyond 0x1000 starts 0xEDCEA at 2.0, doubles +0x34, drops
+ * 0x108397 and bumps the phase; within 0x1000 it spawns 0xA89AC on
+ * rng(0x14) == 0 at (x, +0x30 SAR 16, 0) with a5 = rng(2) ? 0x4000 : 0;
+ * phases above 1 hold. 0x28F08 (entry 10) spawns 0xA89AC on rng(6) == 0 at
+ * (slot +0x2C, its record's +0x30 SAR 16, 0xC00) from the slot
+ * DS_001077A8[DS_00104AD4 ^ 1], a5 as above. A spawn is checked against the
+ * port's 0x2AE14 run from the same state with the raw's arguments. */
+static void check_update_48f98(void)
+{
+    typedef void (*proc_fn)(void);
+    typedef void (*anim_fn)(u32 rec, u32 arg);
+    proc_fn p1, p10;
+    anim_fn a37;
+    u32 r0, r1, r2, r3, r4, near_p, far_p, seed, i;
+    u32 f0 = R46_REC(4), f1 = R46_REC(5), sp = R46_REC(6);
+
+    q42_save();
+    p1 = (proc_fn)fn_resolve(0x48F98u);
+    p10 = (proc_fn)fn_resolve(0x28F08u);
+    a37 = (anim_fn)(void *)fn_resolve(0x37B54u);
+    CHECK(p1 != NULL, "0x48F98 (update-table entry 1) is registered");
+    CHECK(p10 != NULL, "0x28F08 (update-table entry 10) is registered");
+    CHECK(a37 != NULL, "0x37B54 (the 0xD000 target) is registered");
+    CHECK_EQ_INT((int)DSD(0x000A8644u + 1u * 4u), 0x00048F98);
+    CHECK_EQ_INT((int)DSD(0x000A8644u + 10u * 4u), 0x00028F08);
+    CHECK_EQ_INT((int)DSD(0x000E8564u), 0x00037B54);
+    CHECK_EQ_INT((int)DSD(0x000EDAFCu), 0x00037B54);
+    CHECK_EQ_INT((int)DSW(0x000E8562u), 0xD000);
+    CHECK_EQ_INT((int)DSW(0x000EDAFAu), 0xD000);
+    CHECK_EQ_INT((int)DSB(R46_DESC19 + 4u), 0x19);
+
+    /* The cursor 0x2BC30 leaves on each stream (a scratch record), so a
+     * start is told apart from the other stream and from no start. */
+    r46_seed();
+    actors_anim_begin(R46_REC(7), 0x000EDD20u, 0x40000000u);
+    near_p = DSD(R46_REC(7) + 0x08u);
+    actors_anim_begin(R46_REC(7), 0x000EDCEAu, 0x40000000u);
+    far_p = DSD(R46_REC(7) + 0x08u);
+    CHECK(near_p != far_p, "0xEDD20 and 0xEDCEA leave different cursors");
+
+    /* A: 0x37B54 on record 4 (+0x51 0): slot 1's record 5 takes +0x53 = 1;
+     * on record 5 (+0x51 1) slot 0's record 4; through the registration with
+     * +0x51 = 0x100 in the dword (the byte index); a zero slot writes
+     * nothing. */
+    if (a37 != NULL) {
+        r46_seed();
+        a37(f0, 0x1234u);
+        CHECK_EQ_INT((int)DSB(f1 + 0x53u), 1);
+        CHECK_EQ_INT((int)DSB(f0 + 0x53u), 0x77);
+        r46_seed();
+        a37(f1, 0u);
+        CHECK_EQ_INT((int)DSB(f0 + 0x53u), 1);
+        CHECK_EQ_INT((int)DSB(f1 + 0x53u), 0x77);
+        r46_seed();
+        DSD(DS_001077A8 + 4u) = 0u;
+        r46_snap();
+        a37(f0, 0u);
+        CHECK(r46_same(), "0x37B54 with a zero slot writes nothing");
+    }
+
+    /* B: phase 0. Record 5 (slot DS_001078FD = 1) is at x 0x20000. Node 0 at
+     * +0x1000 (the edge, near; +0x34 -3 -> -1), node 1 at +0x1001 (far),
+     * node 2 at -0x1000 (near; +0x34 5 -> 2), node 3 at the same x in phase
+     * 2 (holds), node 4 near with +0x34 0x8000 -> 0xC000. The first near node
+     * calls 0x37B54 on slot DS_00104AD4 = 0's record 4, so record 5 takes
+     * +0x53 = 1 and record 4 keeps 0x77. */
+    r46_seed();
+    r0 = r46_node(0, 0u, 0x00021000u, 0xFFFDu);
+    r1 = r46_node(1, 0u, 0x00021001u, 0x0040u);
+    r2 = r46_node(2, 0u, 0x0001F000u, 0x0005u);
+    r3 = r46_node(3, 2u, 0x00020000u, 0x0040u);
+    r4 = r46_node(4, 0u, 0x00020000u, 0x8000u);
+    if (p1 != NULL) p1();
+    CHECK_EQ_INT((int)DSD(r0 + 0x08u), (int)near_p);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0xFFFF);
+    CHECK_EQ_INT((int)DSB(R46_NODE(0) + 0x0Cu), 1);
+    CHECK_EQ_INT((int)DSD(r1 + 0x08u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)DSW(r1 + 0x34u), 0x0040);
+    CHECK_EQ_INT((int)DSB(R46_NODE(1) + 0x0Cu), 0);
+    CHECK_EQ_INT((int)DSD(r2 + 0x08u), (int)near_p);
+    CHECK_EQ_INT((int)DSW(r2 + 0x34u), 0x0002);
+    CHECK_EQ_INT((int)DSB(R46_NODE(2) + 0x0Cu), 1);
+    CHECK_EQ_INT((int)DSD(r3 + 0x08u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)DSB(R46_NODE(3) + 0x0Cu), 2);
+    CHECK_EQ_INT((int)DSD(r4 + 0x08u), (int)near_p);
+    CHECK_EQ_INT((int)DSW(r4 + 0x34u), 0xC000);
+    CHECK_EQ_INT((int)DSB(R46_NODE(4) + 0x0Cu), 1);
+    CHECK_EQ_INT((int)DSB(R46_108397), 0x82);
+    CHECK_EQ_INT((int)DSB(R46_108396), 0x85);
+    CHECK_EQ_INT((int)DSB(f1 + 0x53u), 1);
+    CHECK_EQ_INT((int)DSB(f0 + 0x53u), 0x77);
+    CHECK_EQ_INT((int)DSD(DS_00105BCC), (int)DS_00105BCC);   /* no spawn */
+    /* B2: 0x108396 bit 7 already set: no 0x37B54 (record 5 keeps 0x77). */
+    r46_seed();
+    DSB(R46_108396) = 0x80u;
+    r0 = r46_node(0, 0u, 0x00020000u, 0x0010u);
+    if (p1 != NULL) p1();
+    CHECK_EQ_INT((int)DSD(r0 + 0x08u), (int)near_p);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0x0008);
+    CHECK_EQ_INT((int)DSB(R46_108397), 0x80);
+    CHECK_EQ_INT((int)DSB(R46_108396), 0x80);
+    CHECK_EQ_INT((int)DSB(f1 + 0x53u), 0x77);
+    CHECK_EQ_INT((int)DSB(f0 + 0x53u), 0x77);
+    /* B3: DS_00104AD4 = 1: 0x37B54 on record 5, so record 4 takes it. */
+    r46_seed();
+    DSD(DS_00104AD4) = 1u;
+    r0 = r46_node(0, 0u, 0x00020000u, 0x0010u);
+    if (p1 != NULL) p1();
+    CHECK_EQ_INT((int)DSB(f0 + 0x53u), 1);
+    CHECK_EQ_INT((int)DSB(f1 + 0x53u), 0x77);
+
+    /* C: phase 1 beyond 0x1000: node 0 at -0x1001 (+0x34 0x4001 -> 0x8002),
+     * node 1 at +0x2000 (+0x34 0xFFF0 -> 0xFFE0); 0x108397 2 -> 0; node 2
+     * in phase 3 holds. DS_001078FD = 0 moves the watched record to record 4
+     * (x 0x90000), so node 3 at 0x90000 is within reach and draws. */
+    r46_seed();
+    DSB(DS_001078FD) = 0u;
+    DSB(R46_108397) = 2u;
+    r0 = r46_node(0, 1u, 0x0008EFFFu, 0x4001u);
+    r1 = r46_node(1, 1u, 0x00092000u, 0xFFF0u);
+    r2 = r46_node(2, 3u, 0x00090000u, 0x0040u);
+    rng_seed(0x1234u);
+    if (p1 != NULL) p1();
+    CHECK_EQ_INT((int)DSD(r0 + 0x08u), (int)far_p);
+    CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40000000);
+    CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0x8002);
+    CHECK_EQ_INT((int)DSB(R46_NODE(0) + 0x0Cu), 2);
+    CHECK_EQ_INT((int)DSD(r1 + 0x08u), (int)far_p);
+    CHECK_EQ_INT((int)DSW(r1 + 0x34u), 0xFFE0);
+    CHECK_EQ_INT((int)DSB(R46_NODE(1) + 0x0Cu), 2);
+    CHECK_EQ_INT((int)DSD(r2 + 0x08u), 0x00ABCDEF);
+    CHECK_EQ_INT((int)DSB(R46_NODE(2) + 0x0Cu), 3);
+    CHECK_EQ_INT((int)DSB(R46_108397), 0);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0x1234);    /* no draw */
+    CHECK_EQ_INT((int)DSB(R46_108396), 0x05);
+
+    /* D: phase 1 within 0x1000 (node 0 at +0x1000): rng(0x14) != 0 draws
+     * once and does nothing else. */
+    seed = r46_rng_seed(0x14u, 0, 1);
+    CHECK(seed != 0u, "a seed with rng(0x14) != 0");
+    r46_seed();
+    r0 = r46_node(0, 1u, 0x00021000u, 0x0040u);
+    DSD(R46_REC(0) + 0x30u) = 0x0180ABCDu;
+    rng_seed(seed);
+    (void)rng_next(0x14u);
+    r46_snap();
+    rng_seed(seed);
+    if (p1 != NULL) p1();
+    CHECK(r46_same(), "0x48F98 phase 1 near with rng(0x14) != 0: one draw only");
+    /* D2/D3: rng(0x14) == 0 with rng(2) != 0 (a5 0x4000) and == 0 (a5 0):
+     * the spawn equals 0x2AE14(0xA89AC, x 0x1F000, 0x180, 0, a5) run from the
+     * same state after the two draws, and differs from it with a3/a4
+     * swapped; the actor comes off the free list with type 0x19. */
+    for (i = 0; i < 2u; i++) {
+        u32 a5 = i == 0u ? 0x4000u : 0u;
+        seed = r46_rng_seed(0x14u, 1, i == 0u);
+        CHECK(seed != 0u, "a seed with rng(0x14) == 0");
+        r46_d_setup();
+        rng_seed(seed);
+        if (p1 != NULL) p1();
+        CHECK_EQ_INT((int)DSD(DS_00105BCC), (int)sp);
+        CHECK_EQ_INT((int)DSB(sp + 0x48u), 0x19);
+        CHECK_EQ_INT((int)(DSW(sp + 0x28u) & 0x4000u), (int)a5);
+        CHECK_EQ_INT((int)DSB(R46_NODE(0) + 0x0Cu), 1);
+        CHECK_EQ_INT((int)DSD(R46_REC(0) + 0x08u), 0x00ABCDEF);
+        r46_snap();
+        r46_d_setup();
+        r46_mirror(seed, 0x14u, 0x0001F000u, 0x180u, 0u, a5);
+        CHECK(r46_same(), "0x48F98's spawn equals 0x2AE14 with the raw's arguments");
+        r46_d_setup();
+        r46_mirror(seed, 0x14u, 0x0001F000u, 0u, 0x180u, a5);
+        CHECK(!r46_same(), "0x48F98's spawn: a3/a4 swapped differ");
+    }
+
+    /* E: 0x28F08 with DS_00104AD4 = 0 reads slot 1 (x 0x31234, record 5's
+     * height 0x100); rng(6) != 0 draws once only. */
+    seed = r46_rng_seed(6u, 0, 1);
+    CHECK(seed != 0u, "a seed with rng(6) != 0");
+    r46_seed();
+    rng_seed(seed);
+    (void)rng_next(6u);
+    r46_snap();
+    r46_seed();
+    rng_seed(seed);
+    if (p10 != NULL) p10();
+    CHECK(r46_same(), "0x28F08 with rng(6) != 0: one draw only");
+    /* E2/E3: rng(6) == 0, a5 0x4000 then 0; DS_00104AD4 = 1 in E3 reads slot
+     * 0 (x 0x2C2C0000, record 4's height 0x140). Checked against 0x2AE14
+     * with (x, height, 0xC00, a5), and against a3/a4 swapped. */
+    for (i = 0; i < 2u; i++) {
+        u32 a5 = i == 0u ? 0x4000u : 0u;
+        u32 x = i == 0u ? 0x00031234u : 0x2C2C0000u;
+        u32 y = i == 0u ? 0x100u : 0x140u;
+        seed = r46_rng_seed(6u, 1, i == 0u);
+        CHECK(seed != 0u, "a seed with rng(6) == 0");
+        r46_seed();
+        DSD(DS_00104AD4) = i;
+        rng_seed(seed);
+        if (p10 != NULL) p10();
+        CHECK_EQ_INT((int)DSD(DS_00105BCC), (int)sp);
+        CHECK_EQ_INT((int)DSB(sp + 0x48u), 0x19);
+        CHECK_EQ_INT((int)(DSW(sp + 0x28u) & 0x4000u), (int)a5);
+        r46_snap();
+        r46_seed();
+        DSD(DS_00104AD4) = i;
+        r46_mirror(seed, 6u, x, y, 0x0C00u, a5);
+        CHECK(r46_same(), "0x28F08's spawn equals 0x2AE14 with the raw's arguments");
+        r46_seed();
+        DSD(DS_00104AD4) = i;
+        r46_mirror(seed, 6u, x, 0x0C00u, y, a5);
+        CHECK(!r46_same(), "0x28F08's spawn: a3/a4 swapped differ");
+    }
+
+    q42_restore();
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -18462,6 +18808,7 @@ int test_fight(void)
     check_mode22_pass();
     check_flyers_4987c();
     check_volleyball();
+    check_update_48f98();
 
     tf_put(s_f0ae0, 0x000F0AE0u, 0x20u);
     tf_put(s_proj, 0x00100A70u, 0xF4u);
