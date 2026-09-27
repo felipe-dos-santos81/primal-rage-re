@@ -11943,4 +11943,236 @@ s3545.png`), which no port frame shows.
 
 ## 46-F. The seven remaining `DS_00104AE4` values `0x259CC`, `0x10E80`, `0x24B54`, `0x27134`, `0x4142C`, `0x25AE8` and `0x26978` (named-gap batch 6, branch `gap6-hooks2`)
 
-(In progress.)
+**Result in one line.** The seven `DS_00104AE4` values that §46-B.3 left
+unregistered are ported, registered and unit-tested, with the callees they
+need: `0x2C304` (`config.c`), `0x413C8` and `0x4246C` (`fight.c`). Six of them
+are mode-`0x17` hooks: every storer also stores mode `0x17`, whose handler
+`0x4F318` calls the hook when its countdown runs out. `0x10E80` is also the
+boot's last init call, which the port had transcribed only in part as
+`game_state_init`; it is now ported whole. That is the one change a ported
+path reaches, and a headless 8000-frame run gives byte-identical `.idx`/`.pal`
+frames before and after (46-F.5).
+
+### 46-F.1 The raw (`read_memory` + capstone; fixups applied)
+
+- **`0x259CC`** (to `0x25A82`) pushes EBX/ECX/EDX/ESI. EAX = the zero-extended
+  word `[0x104AFC]`, EBX = -1 (`0x259D2`), DL = CL = 0. In order:
+  - byte `[0x108106 + stage]` = DL (`0x259E1`), byte `[0x104B1E]` = DL;
+  - `0x2D974(0x29)` (it pushes EBX/ECX/EDX/ESI), `and eax,0x300000`;
+  - bytes `[0x104AF3]`, `[0x104AF2]` = DL, byte `[0x104B14]` = CL, dword
+    `[0x104AD4]` = EBX = -1 (`0x25A0E`; §46-B.3's -1 writer);
+  - CH = byte `[0x104B1D]` (`0x25A17`), dword `[0x104AC8]` = 0 and dword
+    `[0x104ADC]` = `((v & 0x300000) >> 20) * 2 + 1` (`sar eax,0x14; add
+    eax,eax; inc eax`);
+  - CH == 3: byte `[0x104B25]` = 1, `[0x104AE4]` = `0x25BBC` (`0x25A46`),
+    `0x4F980(0x30)`, then byte `[0x104B14]` = DL = 1 and byte `[0x104B21]` =
+    CL = 0 (`0x4F980` pushes only EDX);
+  - otherwise byte `[0x104B25]` = 1, `[0x104AE4]` = `0x25BBC` (`0x25A73`) and
+    `0x4F980(5)`.
+- **`0x26978`**: byte `[0x104B25]` = 1, `[0x104AE4]` = `0x26998` (`0x2698B`),
+  `0x4F980(0x23)`.
+- **`0x27134`**: bytes `[0x104B1E]`, `[0x104AF3]`, `[0x104AF2]` = AH = 0,
+  byte `[0x104B25]` = BL = 1, `[0x104AE4]` = `0x270BC` (`0x2715C`),
+  `0x4F980(5)`.
+- **`0x24B54`** (to `0x24B89`): `0x4F1E4` (EAX = 0; it pushes EDX), EDX =
+  `0x27`, `0x2BAF4(1)` (it pushes EDX), word `[0x104B00]` = DX = `0x27`,
+  bytes `[0x104B1D]`, `[0x104B1F]` = AH = 0, dword `[0x104AB8]` = 0.
+- **`0x25AE8`** (to `0x25BBB`) pushes EBX/ECX/EDX/ESI:
+  - the voice `0x100`, byte `[0x104B14]` = AH = 0, `0x4F1E4`, `0x2BAF4(1)`;
+  - dword `[0x104ABC]` = `([0x104B1F] == 3) + 1` (`cmp eax,3; sete al; and
+    eax,0xff; inc eax`);
+  - EBX = `0x1C500(0x52)` (the string buffer `0x102760`) with EDX = `0xE`
+    and ECX = `0x4000` set before it. `0x1C500` pushes EBX/EDX and `0x474E4`
+    pushes ECX, so `0x2F510` gets col -1, row `0xE`, that string and mode
+    `0x4000` (it ORs in 2);
+  - `0x4246C`, the voice `0x3D`;
+  - byte `[0x104B1D]` == 0: `[0x104AE4]` = `0x10E80`, words `[0x1088EE]` =
+    `[0x104AFE]` = `0xB4`, word `[0x104B00]` = `0x17`. Otherwise the same
+    with `0x24B54` (the stores in another order).
+- **`0x4142C`** (to `0x414B2`) pushes EBX/ECX/EDX. EDX = EAX = ECX = 0:
+  - dword `[0x104AE8]` = 0, `0x4F1E4`, `0x2BAF4(1)` with EBX = 0
+    (`0x41445`);
+  - `0x38B18(0xC86F0)` with EDX = EBX = 0 (EDX kept by the two calls), then
+    `0x413C8`;
+  - bytes `[0x10810F]`, `[0x108111]`, `[0x108104]`, `[0x108105]` = AH = 0,
+    the voice `0x32` (after `xor dl,dl`; `0x2C3FC` pushes EDX), byte
+    `[0x108112]` = DL = 0;
+  - byte `[0x104B25]` = CL = 8, word `[0x104B00]` = `0x12`, word
+    `[0x104AFE]` = `0x1E`, byte `[0x104B23]` = CH = 0.
+- **`0x413C8`** pushes EBX/ECX/EDX/ESI/EDI. `0x2AE14(0xC86DC)` with a2 =
+  `0x2A00`, a3 = `0xE0`, a4 = `0x1B00`, a5 = 0 into `[0x1080F4]`; then for
+  ESI = 0, 4, .. `0x18`: `0x2AE14([0xC85BC + ESI])` with a2 = a4 = EDI = 0,
+  a3 = `0xE2` and a5 = `([[0x1080F4] + 0x56] | 0x400) & 0xFFFF` (the parent
+  is reloaded each pass), stored at `[ESI + 0x1080BC]` after `add esi,4`,
+  i.e. `0x1080C0[i]`.
+- **`0x4246C`**: `0x65490(0x108106, 0, 7)` and byte `[0x108111]` = AH = 0.
+  `0x65490` is a byte fill (EAX = dst, EDX = the pattern, rotated by 8 per
+  byte until aligned, ECX = the count; Ghidra decompiles it), so with EDX = 0
+  it zeroes `0x108106..0x10810C`.
+- **`0x10E80`** (to `0x10EE1`) pushes EBX/EDX:
+  - `0x32970(0)`, then EAX = 0, EDX = 3 and `0x4F1E4`, `0x2BAF4(1)` with EBX
+    = 0;
+  - word `[0x104B00]` = DX = 3, word `[0xF0A64]` = BX = 0, byte `[0xF0A71]`
+    = AH = 0, **dword** `[0xF0A5C]` = 4, byte `[0xF0A6F]` = DL = 0;
+  - `0x2C304`, dword `[0x104AB8]` = EBX = 0, byte `[0x104B1F]` = DH = 0.
+- **`0x2C304`**: `[0x105C00]` = `((0x2D974(0x29) & 0xF0000) >> 16) + 1`
+  (`sar eax,0x10`).
+- The field `0x29` is 32 bits wide: its descriptor at `0x2D3A4` is
+  `0x1D980` (width `((d >> 14) & 7) + 1` = 8 nibbles, bit position `0x66`, no
+  trailing byte).
+
+### 46-F.2 Entrances (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object, a dword scan of both fixed-up objects)
+
+| target | rel32 | dwords | storer (the `[0x104AE4]` store, its function) |
+|---|---|---|---|
+| `0x259CC` | none | code `0x25395`, `0x4179A`, `0x418CA`, `0x423AD`; no data | `0x253AE` (`0x24C5C` mode `0x11`, case `0x2538F`), `0x417A5` (`0x41760`), `0x418D5` (`0x41878`, no Ghidra function), `0x423C4` (`0x41C28`) |
+| `0x10E80` | `0x20CE6` (`0x20C10`) | code `0x24E0F`, `0x25B60`; no data | `0x25B6E` (`0x25AE8`); `0x24E0F` is a compare in `0x24C5C` |
+| `0x24B54` | none | code `0x25B8E`; no data | `0x25B97` (`0x25AE8`) |
+| `0x27134` | none | code `0x27064`, `0x2722A`; no data | `0x27074` (`0x26F58`), `0x27233` (`0x271E0`) |
+| `0x4142C` | none | code `0x28BBC`; no data | `0x28BC6` (`0x28788`) |
+| `0x25AE8` | `0x253D9` (`0x24C5C` mode `0x14`) | code `0x296A4`, `0x42ED0`; no data | `0x296AF` (`0x29638`), `0x42ED9` (`0x42CB4`) |
+| `0x26978` | none | code `0x41849`; no data | `0x41854` (`0x417C4`) |
+| `0x413C8` | `0x41456` only | none | |
+| `0x4246C` | `0x25B47`, `0x28B37` (`0x28788`) | none | |
+| `0x2C304` | `0x10ECC`, `0x2CBB4` | none | |
+| `0x4F318` | `0x253EE` (mode `0x17`), `0x425E5` | none | |
+
+Ghidra's `get_xrefs_to` agrees on every row (DATA references at the
+immediates' instruction starts; `0x418C9` has no function). Each storer also
+stores the mode word `[0x104B00]` = `0x17` and the countdown words
+`[0x104AFE]`/`[0x1088EE]`. Mode `0x17`'s handler `0x4F318` (table `0x24B8C`
+entry `0x253EE`) counts `[0x1088EE]`, then `[0x104AFE]`, down and at 0 stores
+`[0x1088EE]` = -1 and calls `[0x104AE4]` (`0x4F373`). Unlike mode `0x16`'s
+`0x4F2B0` it does not restore the mode, so every hook sets the next mode
+itself: `0x1A` through `0x4F980` (`0x259CC`, `0x26978`, `0x27134`), `0x27`
+(`0x24B54`), 3 (`0x10E80`), `0x12` (`0x4142C`), or `0x17` again (`0x25AE8`,
+which installs `0x10E80` or `0x24B54`). `0x24C5C`'s compare at `0x24E09`
+skips the block at `0x24E19` (byte `[0x104B22]` = 1, `0x1D250`) in modes 3
+and `0x27`, and in mode `0x17` while the hook is `0x10E80`.
+
+Every storer is unported (none has a port header). So is `0x4F318`, and
+`game_frame` dispatches mode 3 only (§43-B.5). The six hooks other than
+`0x10E80` are therefore reachable only from the unit tests. `0x10E80` is
+reached at boot through `game_init`.
+
+### 46-F.3 The port
+
+- `flow.c`, after `game_hook_270bc`: `game_hook_259cc`, `game_hook_26978`,
+  `game_hook_27134`, `game_hook_24b54` and `game_hook_25ae8`, in raw order.
+  Local names with no `symbols.h` entry: `FN_00025BBC`, `FN_00026998`,
+  `FN_000270BC`, `FN_00024B54`.
+- `fight.c`, after `fight_hook_4367c`: `fight_413c8` (static),
+  `fight_stage_marks_clear` (`0x4246C`) and `fight_hook_4142c`. Local names:
+  `DS_000C86F0`, `DS_000C86DC`, `DS_000C85BC`, `DS_00108105`. `0x65490` is
+  written as the seven byte stores it makes with a zero pattern.
+- `config.c`: `config_credits_init` (`0x2C304`).
+- **`game_state_init` is now `0x10E80` whole** and no longer static. The old
+  body stored the mode as a dword and `DS_000F0A5C` as a byte. It also left
+  out `0x4F1E4`, `0x2BAF4`, `0x2C304`, `DS_00104AB8` and `DS_00104B1F`.
+  `game_init` carried the `0x2C304` derivation inline under a `PORT:` note;
+  it now runs as the call at `0x10ECC`. Nothing between the old place and
+  `game_state_init` reads `DS_00105C00` (`config_set_credit_row_init` writes
+  `DS_00105C05`; the string table load reads neither). This is also the raw
+  order: `0x20CCC` runs before `0x20CE6`. `0x32970(0)` is a `PORT:` note (the
+  run clock, spec §7, as at its other ported call sites).
+- The voices (`0x100`, `0x3D`, `0x32`) are `PORT:` notes, "not wired"
+  (§45-A).
+- `actors_init` registers the seven values. The `PORT:` notes of
+  `0x4F9A0`/`0x4F9C8` no longer list unregistered values: every non-trivial
+  value the image stores in `DS_00104AE4` is now registered.
+
+### 46-F.4 The assertions and mutations
+
+`check_mode_17_hooks` (`test_fight.c`, after `check_mode_1a_hooks`) takes the
+same snapshot and restores it between runs and at the end. The config field
+`0x29` lives in the data object, so the snapshot restores it too.
+- **(a)** `fn_resolve` of the seven values returns their ports.
+- **(b)** `0x259CC` from sentinels, with the field `0x29` = `0x00230000`:
+  - the stage's byte only (its neighbours keep `0x81`);
+  - the zero stores, with `0x104AF1` intact, `DS_00104AD4` = -1,
+    `DS_00104AC8` = 0 and `DS_00104ADC` = 5;
+  - `DS_00104B21` untouched, the hook `0x25BBC`, and `0x4F980`'s arm with 5
+    (the mode word stored with its upper half kept);
+  - the mask: `0x00CF0000` gives 1 and `0x00100000` gives 3;
+  - `DS_00104B1D` = 3: return mode `0x30`, `DS_00104B14` = 1, `DS_00104B21`
+    = 0.
+- **(c)** `0x26978` (the hook `0x26998`, return mode `0x23`, and no
+  `0x104B1E`/`AF3` stores) and `0x27134` (the three zero stores, the hook
+  `0x270BC`, return mode 5).
+- **(d)** `0x24B54`: a seeded record is dropped, `DS_00104B15` = 0, the mode
+  word `0x27` with the upper half `0xBEEF` kept, the bytes `0x104B1D`/`1F`
+  with `0x104B1E` and `0x104B20` intact, and `DS_00104AB8` = 0.
+- **(e)** `game_state_init` with the field = `0x00F30000`: the same resets,
+  the words `0x104B00` = 3 and `0xF0A64` = 0 with their upper halves kept,
+  the dword `0xF0A5C` = 4, `DS_00105C00` = 4. Then `0x2C304` alone with
+  `0x000A0000` gives `0xB`.
+- **(f)** `0x4246C` over a `0x77` field `0x108104..0x108113`: only the
+  seven stage bytes and `0x108111` become 0.
+- **(g)** `0x25AE8`:
+  - with `DS_00104B1D` = 0 and `DS_00104B1F` = 2: the record is dropped,
+    `DS_00104B14`/`15` = 0, `DS_00104ABC` = 1, `0x4246C` ran (with
+    `0x108105` intact), the hook `0x10E80`, both countdowns `0xB4`, and mode
+    `0x17` with its upper half kept. `DS_001088F5` keeps its sentinel (no
+    `0x4F980`);
+  - string `0x52` drawn at row `0xE` (rows `0xD`/`0xF` empty). It gives the
+    same glyph ids as a direct `0x2F510` call, and other ids than `0x2F4BC`
+    with mode `0x4000`, which has no class bit;
+  - with `DS_00104B1D` = 2 and `DS_00104B1F` = 3: `DS_00104ABC` = 2 and the
+    hook `0x24B54`.
+- **(h)** `0x4142C`:
+  - the record is dropped, `DS_00104AE8` = 0, and the `0x38B18` row has id
+    `0x2BEF`;
+  - `0x413C8`'s parent has id `0x3F12`, x `0x2A00`, `+0x1C` = `0x1B00` and
+    layer `0xE0`. The seven children in `0x1080C0[0..6]` carry the ids of
+    `0xC85BC[i]`'s descriptors, layer `0xE2`, `+0x34` = `+0x36` = 0, the
+    parent's index in `+0x4A` and the child bit `0x400`. The dwords at
+    `0x1080BC` and `0x1080DC` keep their sentinels;
+  - over a `0x77` field `0x108104..0x108113`, exactly `0x108104`, `05`,
+    `0F`, `11` and `12` become 0;
+  - `DS_00104B25` = 8, mode `0x12` (the upper half kept), the countdown
+    `0x1E` and `DS_00104B23` = 0.
+- **(i)** The chain: `0x259CC` arms mode `0x1A` with `0x25BBC`, and the 18th
+  `frontend_mode_1a_step` runs it (the round byte 0 -> 1, both fighters'
+  camera targets, the hook `0x5D812`, mode `0x1B`, return mode 5).
+
+**Mutations** (`.superpowers/g6/mut.py`/`mut.log` and `mut2.py`/`mut2.log`,
+git-ignored): 97 single-site edits of the new code, plus one variant. Each
+dropped store or call, changed constant or width (`DSW` -> `DSD`, `DSB` ->
+`DSW`), shifted index, swapped hook value, changed compare and dropped
+registration was tried once. 96 fail at least one assertion; one is
+equivalent:
+- M77 drops `0x4142C`'s `[0x104AE8]` store. `0x2BAF4` at `0x41447` zeroes
+  `0x104AE8` too (`actors_reset`, as §46-B.3 notes for state 6) before any
+  read, so the store's value cannot be observed.
+
+The first run left one survivor that was not equivalent. M42 turned
+`0x25AE8`'s `DS_00104B1D == 0` into `!= 1`, which (g) could not tell apart
+with the values 0 and 1. Its second arm now seeds 2, and M42 and the variant
+`< 3` then fail. Five entries of the first run did not apply (a whitespace
+mismatch in the script). They were run again with the right text in
+`mut2.py`, and all five fail.
+
+### 46-F.5 Measured and remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests` (and with `PR_GAME_DIR` set): all
+  checks passed, with 0 compiler warnings. The branch did not run `make
+  verify` or the drivers, as the brief requires.
+- **The boot change.** `prageport --check 8000` was run from scratch
+  directories, once with the base binary (`c4557ba`) and once with this
+  branch's. All 16000 `frame_*.idx`/`.pal` files are byte-identical. At boot
+  the fields `game_state_init` now also writes already hold what it stores:
+  the upper halves of `0x104B00`/`0xF0A5C`, `DS_00104AB8`, `DS_00104B1F` and
+  `DS_00104B15` are 0 in the image, and the actor pool is empty. So no oracle
+  is expected to move; the drivers call the same `game_init`.
+- Remaining named gaps:
+  - the storers (`0x24C5C`'s modes `0x11` and `0x14`, `0x41760`, `0x41878`,
+    `0x41C28`, `0x417C4`, `0x26F58`, `0x271E0`, `0x28788`, `0x29638`,
+    `0x42CB4`) and the mode-`0x17` handler `0x4F318` (with `0x4F790`), so
+    `game_frame` still reaches none of the six hooks;
+  - `0x10E80`'s `0x32970(0)` (spec §7) and the voices (§45-A);
+  - `0x2C304`'s other caller `0x2CBB4` and `0x4246C`'s other caller
+    `0x28B37`, both unported;
+  - `0x24C5C`'s `0x24DE9` block with its `0x10E80` compare (a keyboard path
+    of the unported frame prologue);
+  - the `game_frame` switch still reads `DS_00104B00` as a dword (§43-B.5).
+    The hooks store words, so the upper half is whatever `0x104B02` holds.
