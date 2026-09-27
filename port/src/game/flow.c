@@ -1115,6 +1115,14 @@ void game_audio_init(void)
     AIL_set_preference(1, 0x2b11);  /* 11025 Hz sample rate */
     AIL_set_preference(3, 0x14);
     HDIGDRIVER dig = AIL_install_DIG_INI();
+    /* 0x1CF8E: the DIG driver handle is stored at DS_001028C8, which every
+     * sample path tests (0x1CEBC, 0x1CC28, 0x1CE70, 0x1CE04, 0x1CD9C).
+     * PORT: the handle is the port's host object (ail.c) and does not fit a
+     * mem[] dword, so the port stores 1 as its non-zero stand-in. Every reader
+     * tests it against zero; the one call that passes it on, 0x5DBCB below,
+     * the port makes with its own handle. 0x1D0BC, which zeroes it when no
+     * sample buffer can be allocated, is not ported (see game_init). */
+    DSD(DS_001028C8) = (dig != NULL) ? 1u : 0u;
     if (dig != NULL) {
         for (int i = 0; i < 4; i++) {
             s_samples[i] = AIL_allocate_sample_handle(dig);
@@ -1266,6 +1274,251 @@ void game_audio_service(void)
 u32 game_audio_ticks(void) { return s_audio_ticks; }
 int game_music_notes_seen(void) { return s_music_notes; }
 
+/* ---- the sound module (0x1CA14..0x1D244) and the voice dispatcher 0x2C3FC --
+ *
+ * The four sample slots are 0x18-byte records at DS_00102860: +0x00 the AIL
+ * sample handle (0x1CF40), +0x04 the queued resource handle (0x1CC28), +0x08
+ * its loop byte, +0x0C the playing resource handle (0x1CB18), +0x10 the slot's
+ * buffer (0x1D0BC), +0x14 the queue time (0x500BB). DS_001028C8 is the DIG
+ * driver handle, DS_001028C0 the MDI sequence handle, DS_001028DB the sample
+ * pause byte (0x1D220), DS_001028DA the music one.
+ * PORT: the AIL handles are the port's host objects (flow.c's s_samples and
+ * s_sequence, in 0x1CF40's allocation order), so a slot's +0x00 is not in
+ * mem[]: slot i's handle is s_samples[i]. The port stores 1 for DS_001028C8
+ * (game_audio_init) and leaves DS_001028C0/C4 at 0: its music is started by
+ * s_music_request, not through DS_001028CC, so the dispatcher's music arms
+ * (0x1CA14's store, 0x1CA40's status) stay inert, as without an MDI driver.
+ * Named gap (spec §7): 0x1CC28's slot choice and 0x1CB18's start (the sample
+ * copy into the slot's 0x1D0BC buffer, which the port does not allocate), so
+ * no port path writes a slot's +0x04/+0x0C/+0x14. */
+
+#define SND_SLOT_STRIDE 0x18u
+#define SND_SLOT_END    0x60u
+#define SND_VOICE_REC   0x0Cu
+
+/* 0x1D238. Clears the music pause byte DS_001028DA (0x1D23A). */
+static void snd_music_unpause(void)
+{
+    DSB(DS_001028DA) = 0;                                  /* 0x1D23A */
+}
+
+/* 0x1D244. Clears the sample pause byte DS_001028DB (0x1D246). */
+static void snd_sample_unpause(void)
+{
+    DSB(DS_001028DB) = 0;                                  /* 0x1D246 */
+}
+
+/* 0x1CA14. EAX = the song handle, DL = its byte. Stores both as the current
+ * song (DS_001028D4/DS_001028D9); unless the music is paused (DS_001028DA ==
+ * 1) or there is no sequence handle (DS_001028C0), it becomes the pending
+ * song DS_001028CC and AL = 1. */
+static u32 snd_music_request(u32 song, u32 b)
+{
+    DSB(DS_001028D9) = (u8)b;                              /* 0x1CA14 */
+    DSD(DS_001028D4) = song;                               /* 0x1CA22 */
+    if (DSB(DS_001028DA) == 1u) return 0;                  /* 0x1CA27 */
+    if (DSD(DS_001028C0) == 0u) return 0;                  /* 0x1CA2C */
+    DSD(DS_001028CC) = song;                               /* 0x1CA35 */
+    return 1;
+}
+
+/* 0x1CA40. AL = 1 when the sequence DS_001028C0 plays (0x5DEED status 4).
+ * PORT: the sequence handle is s_sequence; DS_001028C0 is 0 in the port, so
+ * the status arm runs only when a caller has stored one. */
+static u32 snd_music_playing(void)
+{
+    if (DSD(DS_001028C0) == 0u) return 0;                  /* 0x1CA40 */
+    return AIL_sequence_status(s_sequence) == 4 ? 1u : 0u; /* 0x5DEED */
+}
+
+/* 0x1CA6C. Clears the current song (DS_001028D4 = 0, DS_001028D9 = 0); when
+ * the sequence plays, the pending song DS_001028CC = 0 and 0x5DEAF stops it
+ * (AL = 1). The caller's EAX/EDX are passed to 0x1CA40, which reads neither. */
+static u32 snd_music_stop(void)
+{
+    DSD(DS_001028D4) = 0;                                  /* 0x1CA7A */
+    DSB(DS_001028D9) = 0;                                  /* 0x1CA80 */
+    if (DSD(DS_001028C0) == 0u) return 0;                  /* 0x1CA86 */
+    if (snd_music_playing() == 0u) return 0;               /* 0x1CA8A */
+    DSD(DS_001028CC) = 0;                                  /* 0x1CAA1 */
+    AIL_stop_sequence(s_sequence);                         /* 0x1CAA7 0x5DEAF */
+    return 1;
+}
+
+struct AIL_SAMPLE *sound_slot_handle(u32 i)
+{
+    return (i < 4u) ? s_samples[i] : NULL;
+}
+
+/* 0x5DD03 on slot `off`'s handle (s_samples[off / 0x18]). */
+static s32 snd_slot_status(u32 off)
+{
+    return AIL_sample_status(s_samples[off / SND_SLOT_STRIDE]);
+}
+
+/* 0x1CE70. AL = 1 when a slot plays the resource handle `h` (its +0x0C is
+ * `h` and 0x5DD03 reports 4); a slot whose +0x0C is `h` but has stopped gets
+ * +0x0C = 0 and the scan goes on. AL = 0 without a DIG driver. */
+static u32 snd_sample_playing(u32 h)
+{
+    if (DSD(DS_001028C8) == 0u) return 0;                  /* 0x1CE78 */
+    for (u32 off = 0; off < SND_SLOT_END; off += SND_SLOT_STRIDE) {
+        if (DSD(DS_0010286C + off) != h) continue;         /* 0x1CE83 */
+        if (snd_slot_status(off) == 4) return 1;           /* 0x1CE92/0x1CE9A */
+        DSD(DS_0010286C + off) = 0;                        /* 0x1CEA5 */
+    }
+    return 0;
+}
+
+/* 0x1CE04. Stops the first slot playing `h`: a slot whose +0x0C is `h` and
+ * whose 0x5DD03 status is not 2 is ended (0x5DC8B) and re-inited (0x5DC0F),
+ * its +0x0C = 0, AL = 1. AL = 0 when none (or no DIG driver). */
+static u32 snd_sample_stop(u32 h)
+{
+    if (DSD(DS_001028C8) == 0u) return 0;                  /* 0x1CE0C */
+    for (u32 off = 0; off < SND_SLOT_END; off += SND_SLOT_STRIDE) {
+        if (DSD(DS_0010286C + off) != h) continue;         /* 0x1CE17 */
+        if (snd_slot_status(off) == 2) continue;           /* 0x1CE26/0x1CE2E */
+        AIL_stop_sample(s_samples[off / SND_SLOT_STRIDE]); /* 0x1CE3A 0x5DC8B */
+        AIL_init_sample(s_samples[off / SND_SLOT_STRIDE]); /* 0x1CE49 0x5DC0F */
+        DSD(DS_0010286C + off) = 0;                        /* 0x1CE53 */
+        return 1;
+    }
+    return 0;
+}
+
+/* 0x1CD9C. Without a DIG driver AL = 0. Otherwise every slot's +0x04 and
+ * +0x0C are cleared and a slot whose status is not 2 is ended and re-inited;
+ * AL = 1. */
+static u32 snd_samples_stop_all(void)
+{
+    if (DSD(DS_001028C8) == 0u) return 0;                  /* 0x1CDA2 */
+    for (u32 off = 0; off < SND_SLOT_END; off += SND_SLOT_STRIDE) {
+        DSD(DS_00102864 + off) = 0;                        /* 0x1CDB5 */
+        DSD(DS_0010286C + off) = 0;                        /* 0x1CDBC */
+        if (snd_slot_status(off) == 2) continue;           /* 0x1CDC2/0x1CDCA */
+        AIL_stop_sample(s_samples[off / SND_SLOT_STRIDE]); /* 0x1CDD6 0x5DC8B */
+        AIL_init_sample(s_samples[off / SND_SLOT_STRIDE]); /* 0x1CDE5 0x5DC0F */
+    }
+    return 1;
+}
+
+/* 0x1CC28. EAX = the resource handle of a sample, DL = its loop byte. Without
+ * a DIG driver (DS_001028C8) or while samples are paused (DS_001028DB) AL = 0
+ * and nothing is read. Otherwise it reads the time (0x500BB) and resolves the
+ * handle through 0x1B544 (0x1CC5D): the resolve is what reads a sound bank the
+ * first time a voice names it (the loader's `- LOADING -` screen, record
+ * §45-A). It then queues the sample on a slot (AL = 1).
+ * PORT: the slot choice (0x1CC62..0x1CD8D: a free slot for a sample of at most
+ * 0x6000 bytes, else slot 0 or the oldest, ended and re-inited, then +0x04 =
+ * `h`, +0x08 = the loop byte, +0x14 = the time) is the named gap above; its
+ * result, AL = 1, is kept. */
+static u32 snd_sample_queue(u32 h, u32 loop)
+{
+    (void)loop;
+    if (DSD(DS_001028C8) == 0u) return 0;                  /* 0x1CC37 */
+    if (DSB(DS_001028DB) != 0u) return 0;                  /* 0x1CC44 */
+    (void)res_resolve(h);                                  /* 0x1CC5D 0x1B544 */
+    return 1;
+}
+
+/* 0x2C3FC — the voice dispatcher. EAX = the voice id (0 does nothing; 0x100
+ * is id 0's record); the record is the 12-byte DS_000BBDC8[id]: +0 the case,
+ * +4 a handle, +8 a byte. Cases (jump table 0x2C3E0): 0 nothing; 1 the handle
+ * becomes the current voice DS_00105D5C and a music request (0x1CA14); 2 the
+ * sample is queued unless it plays; 3 the paired samples of ids 0x46, 0x4D and
+ * 0x5D; 4 a restart of the music and the samples; 5 the stops; 6 and above
+ * nothing. AL = 1, or 0 for id 0, a case above 5 (case 6's 0x2C8E8 and the
+ * `ja`), a playing sample in cases 2/3, or an unlisted case-3 id. EBX, EDX and
+ * EDI are preserved; the callers read AL at most. */
+u32 sound_voice(u32 id)
+{
+    if (id == 0u) return 0;                                /* 0x2C401 */
+    if (id == 0x100u) id = 0;                              /* 0x2C409/0x2C410 */
+    u32 rec = DS_000BBDC8 + id * SND_VOICE_REC;            /* 0x2C412..0x2C41B */
+    u32 h = DSD(rec + 4u);
+    u32 b = DSB(rec + 8u);
+    switch (DSB(rec)) {                                    /* 0x2C422/0x2C42F */
+    case 0:                                                /* 0x2C8DD */
+        return 1;
+    case 1:                                                /* 0x2C437 */
+        DSD(DS_00105D5C) = h;                              /* 0x2C447 */
+        snd_music_request(DSD(DS_00105D5C), b);            /* 0x2C463 0x1CA14 */
+        return 1;
+    case 2:                                                /* 0x2C473 */
+        if (snd_sample_playing(h) != 0u) return 0;         /* 0x2C483/0x2C48A */
+        snd_sample_queue(h, b);                            /* 0x2C4B6 0x1CC28 */
+        return 1;
+    case 3:                                                /* 0x2C4C6 */
+        if (id == 0x46u) {                                 /* 0x2C4D7 */
+            if (snd_sample_playing(0x2886158u) != 0u) return 0;   /* 0x2C4E5 */
+            snd_sample_queue(0x28847C9u, 0);               /* 0x2C4F9 */
+            snd_sample_queue(0x2886158u, 0);               /* 0x2C505 */
+            return 1;
+        }
+        if (id == 0x4Du) {                                 /* 0x2C4CB */
+            if (snd_sample_playing(0x1201D606u) != 0u) return 0;  /* 0x2C51A */
+            snd_sample_queue(0x1201D606u, 0);              /* 0x2C52E */
+            snd_sample_queue(0x2001513Cu, 0);              /* 0x2C53A */
+            return 1;
+        }
+        if (id == 0x5Du) {                                 /* 0x2C4CD */
+            if (snd_sample_playing(0x281A726u) != 0u) return 0;   /* 0x2C54F */
+            snd_sample_queue(0x281A726u, 0);               /* 0x2C563 */
+            snd_sample_queue(0x2819183u, 0);               /* 0x2C56F */
+            return 1;
+        }
+        return 0;                                          /* 0x2C8E8 */
+    case 4:                                                /* 0x2C89B */
+        snd_music_unpause();                               /* 0x2C89B 0x1D238 */
+        snd_sample_unpause();                              /* 0x2C8A0 0x1D244 */
+        DSD(DS_00105D5C) = 0x21u;                          /* 0x2C8AC */
+        snd_music_request(0x2803E64u, 0);                  /* 0x2C8B6 0x1CA14 */
+        if (snd_sample_playing(0x180122FDu) == 0u) {       /* 0x2C8C0/0x2C8C7 */
+            snd_samples_stop_all();                        /* 0x2C8C9 0x1CD9C */
+            snd_sample_queue(0x180122FDu, 1);              /* 0x2C8D8 */
+        }
+        return 1;
+    case 5: {                                              /* 0x2C57F */
+        u32 cur = DSD(DS_00105D5C);
+        switch (id) {
+        case 0x00:                                         /* 0x2C694/0x2C69C */
+            snd_music_stop();                              /* 0x1CA6C */
+            snd_samples_stop_all();                        /* 0x2C6A1 0x1CD9C */
+            break;
+        case 0x22:                                         /* 0x2C6B1..0x2C6E2 */
+            if ((cur >= 0x1Bu && cur <= 0x21u) || cur == 0x25u || cur == 0x26u)
+                snd_music_stop();                          /* 0x2C6E8 */
+            break;
+        case 0x2B: if (cur == 0x2Au) snd_music_stop(); break;        /* 0x2C6F8 */
+        case 0x2D: if (cur == 0x2Cu) snd_music_stop(); break;        /* 0x2C715 */
+        case 0x2F:                                         /* 0x2C732 */
+            if (cur == 0x2Eu || cur == 0x30u) snd_music_stop();
+            break;
+        case 0x33: if (cur == 0x32u) snd_music_stop(); break;        /* 0x2C756 */
+        case 0x3C: if (cur == 0x3Bu) snd_music_stop(); break;        /* 0x2C773 */
+        case 0x3F: snd_sample_stop(0x1800EBC9u); break;              /* 0x2C790 */
+        case 0x41: snd_sample_stop(0x383B6F4u); break;               /* 0x2C7A5 */
+        case 0x43: snd_sample_stop(0x3837440u); break;               /* 0x2C7BA */
+        case 0x4C: snd_sample_stop(0x22008696u); break;              /* 0x2C7CF */
+        case 0x4F: snd_sample_stop(0x1501053Cu); break;              /* 0x2C7E4 */
+        case 0x55: if (cur == 0x54u) snd_music_stop(); break;        /* 0x2C7F9 */
+        case 0x57: if (cur == 0x56u) snd_music_stop(); break;        /* 0x2C816 */
+        case 0x5B: snd_sample_stop(0x1B01AF00u); break;              /* 0x2C82F */
+        case 0xE0: if (cur == 0xDFu) snd_music_stop(); break;        /* 0x2C844 */
+        case 0xE2:                                         /* 0x2C860 */
+            if (cur == 0xE1u || cur == 0xE3u) snd_music_stop();
+            break;
+        case 0xF1: snd_sample_stop(0x22018405u); break;              /* 0x2C886 */
+        default: break;                                    /* 0x2C890 */
+        }
+        return 1;
+    }
+    default:                                               /* 0x2C8E8, `ja` */
+        return 0;
+    }
+}
+
 /* ---- the exported flow -------------------------------------------------- */
 
 void game_set_game_dir(const char *dir)
@@ -1280,6 +1533,24 @@ void game_init(void)
 {
     char index_path[512];
     snprintf(index_path, sizeof index_path, "%s/INDEX", s_game_dir);
+
+    /* PORT: the DOS/4GW loader maps both LE objects before 0x1BEC4 runs. The
+     * port reimplements the code object but the data object at DATA_BASE holds
+     * the title descriptors and tables 0x121A0 reads; res_load_index only loads
+     * the INDEX resources, so map the image here. The resource heap starts at
+     * RES_HEAP (= the data object's end), so the two regions never overlap.
+     * The image is mapped first, as the loader does: mapped after the chain
+     * below, it overwrote that chain's stores with the image's zeros
+     * (DS_00101504/10/14, DS_000A2CAC, 0x1CF40's DS_000A2CB1 and DS_001028C8;
+     * record §45-A). */
+    {
+        char exe_path[512];
+        snprintf(exe_path, sizeof exe_path, "%s/PRAGE.EXE", s_game_dir);
+        if (!mem_load_le(exe_path, NULL)) {
+            game_fatal("PRAGE.EXE image load failed");
+            return;
+        }
+    }
 
     /* 0x1BEC4 init chain, in order. */
     /* PORT: the argc==2 argv probe (0x623B0, "-f") has no host equivalent. */
@@ -1297,19 +1568,6 @@ void game_init(void)
     if (int10h_query() != 0x13) { game_fatal("no VGA 320x200 mode"); return; }
 
     /* PORT: DPMI locks 0x10C30/0x10D34/0x1ADAC/0x1ADE4/0x10D0C are no-ops. */
-    /* PORT: the DOS/4GW loader maps both LE objects before 0x1BEC4 runs. The
-     * port reimplements the code object but the data object at DATA_BASE holds
-     * the title descriptors and tables 0x121A0 reads; res_load_index only loads
-     * the INDEX resources, so map the image here. The resource heap starts at
-     * RES_HEAP (= the data object's end), so the two regions never overlap. */
-    {
-        char exe_path[512];
-        snprintf(exe_path, sizeof exe_path, "%s/PRAGE.EXE", s_game_dir);
-        if (!mem_load_le(exe_path, NULL)) {
-            game_fatal("PRAGE.EXE image load failed");
-            return;
-        }
-    }
     if (res_load_index(s_game_dir, index_path) <= 0) {
         game_fatal("resource INDEX load failed");
         return;
@@ -1375,6 +1633,7 @@ void game_shutdown(void)
      * ordering; clearing DS_000A2CB1 makes game_audio_init() idempotent. */
     if (DSB(DS_000A2CB1)) {
         DSB(DS_000A2CB1) = 0;
+        DSD(DS_001028C8) = 0;          /* 0x1D0A9, after the voices stop */
         AIL_stop_sequence(s_sequence);
         AIL_shutdown();     /* 0x5d86a */
     }

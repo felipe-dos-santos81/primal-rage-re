@@ -14,6 +14,7 @@
 #include "platform/audio/ail.h"
 #include "platform/audio/mixer.h"
 #include "platform/audio/patches.h"
+#include "platform/audio/sequencer.h"
 #include "platform/render.h"
 #include "platform/res.h"
 #include "test.h"
@@ -352,6 +353,347 @@ static void check_scroll_setup(void)
     DSW(DS_00107900 + 0x53u * 2u) = saved_shear53;
 }
 
+/* ---- the voice dispatcher 0x2C3FC and the sound module (record §45-A) ---- */
+
+static int sv_hook_n;
+static void sv_hook(void) { sv_hook_n++; }
+
+/* Clears entry e's loaded bit (0x20000000 in its +0xC). */
+static void sv_unload(u32 e)
+{
+    DSD(DSD(DS_001014E0) + e * 20u + 12u) &= ~0x20000000u;
+}
+
+static int sv_loaded(u32 e)
+{
+    return (DSD(DSD(DS_001014E0) + e * 20u + 12u) & 0x20000000u) != 0u;
+}
+
+/* Seeds the sound module's state with sentinels that differ from every
+ * post-condition asserted below: the DIG handle set, no pause, no sequence,
+ * the current/pending song words, and each slot's queued (+0x04) and playing
+ * (+0x0C) handles. */
+static void sv_seed(void)
+{
+    DSD(DS_001028C8) = 1u;
+    DSB(DS_001028DB) = 0;
+    DSB(DS_001028DA) = 0;
+    DSD(DS_001028C0) = 0;
+    DSD(DS_001028CC) = 0x5E5E5E5Eu;
+    DSD(DS_001028D4) = 0xD4D4D4D4u;
+    DSB(DS_001028D9) = 0x99u;
+    DSD(DS_00105D5C) = 0x5C5C5C5Cu;
+    for (u32 i = 0; i < 4u; i++) {
+        DSD(DS_00102864 + i * 0x18u) = 0x44440000u + i;
+        DSD(DS_0010286C + i * 0x18u) = 0xCC000000u + i;
+    }
+    DSD(DS_001014FC) = 0;
+    sv_hook_n = 0;
+}
+
+/* Forces slot i's AIL status: 2 (inited) or 4 (playing a short buffer). */
+static void sv_status(u32 i, int st)
+{
+    static const u8 pcm[64] = { 0x80 };
+    struct AIL_SAMPLE *h = sound_slot_handle(i);
+    AIL_init_sample(h);
+    if (st == 4) {
+        AIL_set_sample_address(h, pcm, sizeof pcm);
+        AIL_start_sample(h);
+    }
+    CHECK_EQ_INT((int)AIL_sample_status(h), st);
+}
+
+/* 0x2C3FC over the shipped records at DS_000BBDC8 and the sound module's
+ * slot scans on the live AIL handles game_audio_init allocated. Snapshots
+ * and restores the data object, the INDEX table, both pools, the DAC and the
+ * aperture (each first read draws the loader screen). */
+static void check_sound_voice(void)
+{
+    static u8 sv_data[0x8B0D0], sv_idx[256u * 20u], sv_pa[0x4880], sv_pb[0xEBA0];
+    static u8 sv_ap[320u * 200u], sv_dac[256][3];
+    const u32 idx = DSD(DS_001014E0), nidx = res_count() * 20u;
+    const u32 pa = DSD(DS_001014EC), pb = DSD(DS_001014F4);
+    u32 i;
+
+    CHECK(nidx <= sizeof sv_idx, "the INDEX table fits the snapshot");
+    for (i = 0; i < 4u; i++)
+        CHECK(sound_slot_handle(i) != NULL, "game_audio_init allocated slot handles");
+    CHECK(sound_slot_handle(4u) == NULL, "slot 4 is out of range");
+    tf_snap(sv_data, DATA_BASE, 0x8B0D0u);
+    tf_snap(sv_idx, idx, nidx);
+    tf_snap(sv_pa, pa, 0x4880u);
+    tf_snap(sv_pb, pb, 0xEBA0u);
+    memcpy(sv_ap, gfx_aperture(), sizeof sv_ap);
+    memcpy(sv_dac, gfx_dac, sizeof sv_dac);
+    res_set_screen_hook(sv_hook);
+    for (i = 0; i < 4u; i++) sv_status(i, 2);
+
+    /* A: id 0 (0x2C401): AL = 0, nothing written. Case 0 (0x29's record):
+     * AL = 1, nothing written. Case 6 (id 1): AL = 0. */
+    sv_seed();
+    CHECK_EQ_INT((int)sound_voice(0u), 0);
+    CHECK_EQ_INT((int)DSD(DS_001028D4), (int)0xD4D4D4D4u);
+    CHECK_EQ_INT((int)DSB(DS_000BBDC8 + 0x29u * 12u), 0);
+    CHECK_EQ_INT((int)sound_voice(0x29u), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028D4), (int)0xD4D4D4D4u);
+    CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x5C5C5C5C);
+    CHECK_EQ_INT((int)DSB(DS_000BBDC8 + 1u * 12u), 6);
+    CHECK_EQ_INT((int)sound_voice(1u), 0);
+
+    /* B: case 1 (id 0x21: 0x2803E64, byte 1): the voice word, 0x1CA14's song
+     * and byte; no sequence handle, so DS_001028CC keeps its sentinel. With
+     * one (and the music unpaused) it becomes the pending song; paused, not. */
+    CHECK_EQ_INT((int)sound_voice(0x21u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x2803E64);
+    CHECK_EQ_INT((int)DSD(DS_001028D4), 0x2803E64);
+    CHECK_EQ_INT((int)DSB(DS_001028D9), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028CC), 0x5E5E5E5E);
+    DSD(DS_001028C0) = 0x1234u;
+    CHECK_EQ_INT((int)sound_voice(0x21u), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028CC), 0x2803E64);
+    DSD(DS_001028CC) = 0x5E5E5E5Eu;
+    DSB(DS_001028DA) = 1u;
+    CHECK_EQ_INT((int)sound_voice(0x21u), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028CC), 0x5E5E5E5E);
+
+    /* C: case 2 (id 0x3E: 0x1800EBC9, s16havsd = entry 48). Not playing:
+     * 0x1CC28 resolves it, the bank's first read (the loader screen). */
+    sv_seed();
+    sv_unload(48u);
+    CHECK_EQ_INT((int)sound_voice(0x3Eu), 1);
+    CHECK(sv_loaded(48u), "case 2 reads the voice's bank");
+    CHECK_EQ_INT(sv_hook_n, 1);
+    CHECK_EQ_INT((int)DSD(DS_001014FC), 1);
+    /* Playing on slot 2 (+0x0C = the handle, status 4): AL = 0, no read. */
+    sv_seed();
+    sv_unload(48u);
+    DSD(DS_0010286C + 2u * 0x18u) = 0x1800EBC9u;
+    sv_status(2u, 4);
+    CHECK_EQ_INT((int)sound_voice(0x3Eu), 0);
+    CHECK(!sv_loaded(48u), "a playing sample is not queued again");
+    CHECK_EQ_INT((int)DSD(DS_0010286C + 2u * 0x18u), 0x1800EBC9);
+    /* Without a DIG driver 0x1CE70 answers 0 unscanned and 0x1CC28 reads
+     * nothing: AL = 1 and the bank stays unread. */
+    DSD(DS_001028C8) = 0;
+    CHECK_EQ_INT((int)sound_voice(0x3Eu), 1);
+    CHECK(!sv_loaded(48u), "no DIG driver, no read");
+    /* The sample pause byte DS_001028DB blocks the read too. */
+    DSD(DS_001028C8) = 1u;
+    DSB(DS_001028DB) = 1u;
+    sv_status(2u, 2);
+    CHECK_EQ_INT((int)sound_voice(0x3Eu), 1);
+    CHECK(!sv_loaded(48u), "paused samples, no read");
+    /* 0x1CE70 clears a stopped slot's +0x0C and scans on: slot 0 stopped and
+     * slot 1 playing the handle answer 1, with slot 0 cleared. */
+    sv_seed();
+    DSD(DS_0010286C) = 0x1800EBC9u;
+    DSD(DS_0010286C + 0x18u) = 0x1800EBC9u;
+    sv_status(0u, 2);
+    sv_status(1u, 4);
+    CHECK_EQ_INT((int)sound_voice(0x3Eu), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010286C), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010286C + 0x18u), 0x1800EBC9);
+    /* A stopped slot alone: cleared, and the voice is queued. */
+    sv_seed();
+    sv_unload(48u);
+    DSD(DS_0010286C + 0x18u) = 0x1800EBC9u;
+    sv_status(1u, 2);
+    CHECK_EQ_INT((int)sound_voice(0x3Eu), 1);
+    CHECK_EQ_INT((int)DSD(DS_0010286C + 0x18u), 0);
+    CHECK(sv_loaded(48u), "a stopped sample is queued again");
+
+    /* D: case 3, id 0x4D: 0x1201D606 (s16cobsd, 36) and 0x2001513C (s16spisd,
+     * 64), each read the first time (two loader screens). */
+    sv_seed();
+    sv_unload(36u);
+    sv_unload(64u);
+    CHECK_EQ_INT((int)DSB(DS_000BBDC8 + 0x4Du * 12u), 3);
+    CHECK_EQ_INT((int)sound_voice(0x4Du), 1);
+    CHECK(sv_loaded(36u) && sv_loaded(64u), "0x4D reads s16cobsd and s16spisd");
+    CHECK_EQ_INT(sv_hook_n, 2);
+    /* 0x1201D606 playing: AL = 0 and neither is read. */
+    sv_seed();
+    sv_unload(36u);
+    sv_unload(64u);
+    DSD(DS_0010286C + 3u * 0x18u) = 0x1201D606u;
+    sv_status(3u, 4);
+    CHECK_EQ_INT((int)sound_voice(0x4Du), 0);
+    CHECK(!sv_loaded(36u) && !sv_loaded(64u), "0x4D's first sample plays");
+    sv_status(3u, 2);
+    /* Ids 0x46 and 0x5D: both samples are s16sound's (entry 5); each tests
+     * the second of its pair. */
+    sv_seed();
+    sv_unload(5u);
+    CHECK_EQ_INT((int)sound_voice(0x46u), 1);
+    CHECK(sv_loaded(5u), "0x46 reads s16sound");
+    sv_seed();
+    DSD(DS_0010286C) = 0x2886158u;
+    sv_status(0u, 4);
+    CHECK_EQ_INT((int)sound_voice(0x46u), 0);
+    DSD(DS_0010286C) = 0x28847C9u;
+    CHECK_EQ_INT((int)sound_voice(0x46u), 1);
+    sv_seed();
+    sv_unload(5u);
+    CHECK_EQ_INT((int)sound_voice(0x5Du), 1);
+    CHECK(sv_loaded(5u), "0x5D reads s16sound");
+    sv_seed();
+    DSD(DS_0010286C) = 0x281A726u;
+    sv_status(0u, 4);
+    CHECK_EQ_INT((int)sound_voice(0x5Du), 0);
+    DSD(DS_0010286C) = 0x2819183u;
+    CHECK_EQ_INT((int)sound_voice(0x5Du), 1);
+    sv_status(0u, 2);
+    /* An unlisted case-3 id (0x47's record retyped for the test): AL = 0. */
+    sv_seed();
+    DSB(DS_000BBDC8 + 0x47u * 12u) = 3u;
+    sv_unload(5u);
+    CHECK_EQ_INT((int)sound_voice(0x47u), 0);
+    CHECK(!sv_loaded(5u), "an unlisted case-3 id reads nothing");
+
+    /* E: case 4 (id 3): both pauses cleared, voice 0x21, 0x1CA14(0x2803E64,
+     * 0), and, 0x180122FD not playing, every slot cleared (0x1CD9C: a playing
+     * one stopped) and 0x180122FD queued (s16havsd, entry 48). */
+    sv_seed();
+    DSB(DS_001028DA) = 1u;
+    DSB(DS_001028DB) = 1u;
+    sv_unload(48u);
+    sv_status(0u, 4);
+    CHECK_EQ_INT((int)DSB(DS_000BBDC8 + 3u * 12u), 4);
+    {
+        int voices = mixer_active_voices();
+        CHECK_EQ_INT((int)sound_voice(3u), 1);
+        CHECK_EQ_INT(mixer_active_voices(), voices - 1);   /* 0x1CDD6 0x5DC8B */
+    }
+    CHECK_EQ_INT((int)DSB(DS_001028DA), 0);
+    CHECK_EQ_INT((int)DSB(DS_001028DB), 0);
+    CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x21);
+    CHECK_EQ_INT((int)DSD(DS_001028D4), 0x2803E64);
+    CHECK_EQ_INT((int)DSB(DS_001028D9), 0);
+    for (i = 0; i < 4u; i++) {
+        CHECK_EQ_INT((int)DSD(DS_00102864 + i * 0x18u), 0);
+        CHECK_EQ_INT((int)DSD(DS_0010286C + i * 0x18u), 0);
+    }
+    CHECK_EQ_INT((int)AIL_sample_status(sound_slot_handle(0u)), 2);
+    CHECK(sv_loaded(48u), "case 4 queues 0x180122FD");
+    /* 0x180122FD playing: the slots are kept and nothing is read. */
+    sv_seed();
+    sv_unload(48u);
+    DSD(DS_0010286C + 0x18u) = 0x180122FDu;
+    sv_status(1u, 4);
+    CHECK_EQ_INT((int)sound_voice(3u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00102864), 0x44440000);
+    CHECK_EQ_INT((int)DSD(DS_0010286C + 0x18u), 0x180122FD);
+    CHECK(!sv_loaded(48u), "case 4 with 0x180122FD playing reads nothing");
+    CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x21);
+    sv_status(1u, 2);
+
+    /* F: case 5, id 0x100 (id 0's record): 0x1CA6C clears the song words and
+     * 0x1CD9C every slot's handles; without a DIG driver only the former. */
+    sv_seed();
+    CHECK_EQ_INT((int)sound_voice(0x100u), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028D4), 0);
+    CHECK_EQ_INT((int)DSB(DS_001028D9), 0);
+    CHECK_EQ_INT((int)DSD(DS_00102864 + 0x30u), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010286C + 0x48u), 0);
+    sv_seed();
+    DSD(DS_001028C8) = 0;
+    CHECK_EQ_INT((int)sound_voice(0x100u), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028D4), 0);
+    CHECK_EQ_INT((int)DSD(DS_00102864), 0x44440000);
+    CHECK_EQ_INT((int)DSD(DS_0010286C), (int)0xCC000000u);
+    /* 0x1CA6C with a sequence handle and the title music playing: the pending
+     * song cleared and the sequence stopped (0x5DEAF); stopped, kept. */
+    CHECK(seq_playing(), "the title music plays before the 0x1CA6C case");
+    sv_seed();
+    DSD(DS_001028C0) = 0x1234u;
+    CHECK_EQ_INT((int)sound_voice(0x100u), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028CC), 0);
+    CHECK(!seq_playing(), "0x1CA6C stops the playing sequence");
+    sv_seed();
+    DSD(DS_001028C0) = 0x1234u;
+    CHECK_EQ_INT((int)sound_voice(0x100u), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028CC), 0x5E5E5E5E);
+    /* The music stops, each keyed on the current voice DS_00105D5C: a listed
+     * voice clears DS_001028D4, any other keeps it. */
+    {
+        static const u16 stops[][2] = {
+            { 0x22, 0x1B }, { 0x22, 0x21 }, { 0x22, 0x25 }, { 0x22, 0x26 },
+            { 0x2B, 0x2A }, { 0x2D, 0x2C }, { 0x2F, 0x2E }, { 0x2F, 0x30 },
+            { 0x33, 0x32 }, { 0x3C, 0x3B }, { 0x55, 0x54 }, { 0x57, 0x56 },
+            { 0xE0, 0xDF }, { 0xE2, 0xE1 }, { 0xE2, 0xE3 },
+        };
+        static const u16 keeps[][2] = {
+            { 0x22, 0x1A }, { 0x22, 0x22 }, { 0x22, 0x24 }, { 0x22, 0x27 },
+            { 0x2B, 0x2B }, { 0x2D, 0x2D }, { 0x2F, 0x2F }, { 0x2F, 0x31 },
+            { 0x33, 0x33 }, { 0x3C, 0x3C }, { 0x55, 0x55 }, { 0x57, 0x57 },
+            { 0xE0, 0xE0 }, { 0xE2, 0xE2 }, { 0xE2, 0xE4 },
+        };
+        for (i = 0; i < sizeof stops / sizeof stops[0]; i++) {
+            sv_seed();
+            DSD(DS_00105D5C) = stops[i][1];
+            CHECK_EQ_INT((int)sound_voice(stops[i][0]), 1);
+            CHECK_EQ_INT((int)DSD(DS_001028D4), 0);
+        }
+        for (i = 0; i < sizeof keeps / sizeof keeps[0]; i++) {
+            sv_seed();
+            DSD(DS_00105D5C) = keeps[i][1];
+            CHECK_EQ_INT((int)sound_voice(keeps[i][0]), 1);
+            CHECK_EQ_INT((int)DSD(DS_001028D4), (int)0xD4D4D4D4u);
+        }
+    }
+    /* G: the sample stops (0x1CE04): slot 1 playing the id's handle is ended,
+     * re-inited and its +0x0C cleared; one already stopped (status 2) is
+     * left as it is. The song words are untouched. */
+    {
+        static const u32 ce04[][2] = {
+            { 0x3F, 0x1800EBC9u }, { 0x41, 0x383B6F4u }, { 0x43, 0x3837440u },
+            { 0x4C, 0x22008696u }, { 0x4F, 0x1501053Cu }, { 0x5B, 0x1B01AF00u },
+            { 0xF1, 0x22018405u },
+        };
+        for (i = 0; i < sizeof ce04 / sizeof ce04[0]; i++) {
+            sv_seed();
+            DSD(DS_0010286C + 0x18u) = ce04[i][1];
+            sv_status(1u, 4);
+            int voices = mixer_active_voices();
+            CHECK_EQ_INT((int)sound_voice(ce04[i][0]), 1);
+            CHECK_EQ_INT((int)DSD(DS_0010286C + 0x18u), 0);
+            CHECK_EQ_INT((int)AIL_sample_status(sound_slot_handle(1u)), 2);
+            CHECK_EQ_INT(mixer_active_voices(), voices - 1);   /* 0x5DC8B */
+            CHECK_EQ_INT((int)DSD(DS_001028D4), (int)0xD4D4D4D4u);
+            sv_seed();
+            DSD(DS_0010286C + 0x18u) = ce04[i][1];
+            sv_status(1u, 2);
+            CHECK_EQ_INT((int)sound_voice(ce04[i][0]), 1);
+            CHECK_EQ_INT((int)DSD(DS_0010286C + 0x18u), (int)ce04[i][1]);
+        }
+        /* Only the first playing match is stopped (0x1CE5B returns). */
+        sv_seed();
+        DSD(DS_0010286C + 0x18u) = 0x1800EBC9u;
+        DSD(DS_0010286C + 0x30u) = 0x1800EBC9u;
+        sv_status(1u, 4);
+        sv_status(2u, 4);
+        CHECK_EQ_INT((int)sound_voice(0x3Fu), 1);
+        CHECK_EQ_INT((int)DSD(DS_0010286C + 0x18u), 0);
+        CHECK_EQ_INT((int)DSD(DS_0010286C + 0x30u), 0x1800EBC9);
+        /* Without a DIG driver nothing is stopped. */
+        sv_seed();
+        DSD(DS_001028C8) = 0;
+        DSD(DS_0010286C + 0x30u) = 0x1800EBC9u;
+        CHECK_EQ_INT((int)sound_voice(0x3Fu), 1);
+        CHECK_EQ_INT((int)DSD(DS_0010286C + 0x30u), 0x1800EBC9);
+    }
+
+    for (i = 0; i < 4u; i++) sv_status(i, 2);
+    res_set_screen_hook(NULL);
+    memcpy(gfx_dac, sv_dac, sizeof sv_dac);
+    memcpy(gfx_aperture(), sv_ap, sizeof sv_ap);
+    tf_put(sv_pb, pb, 0xEBA0u);
+    tf_put(sv_pa, pa, 0x4880u);
+    tf_put(sv_idx, idx, nidx);
+    tf_put(sv_data, DATA_BASE, 0x8B0D0u);
+}
+
 int test_flow(void)
 {
     int before = g_failures;
@@ -445,7 +787,11 @@ int test_flow(void)
      * The title state above asked for music; the master-loop service inherits
      * that request, loads the S16TITLE bank and ticks it. */
     game_set_game_dir("data/game/C");
+    /* 0x1CF8E: the DIG driver handle lands at DS_001028C8 (the port's non-zero
+     * stand-in, record §45-A); 0x1D0A9 clears it at the teardown below. */
+    DSD(DS_001028C8) = 0;
     game_audio_init();
+    CHECK_EQ_INT((int)DSD(DS_001028C8), 1);
     /* The init chain must load the FM patch bank (FAT.OPL): the sequencer maps
      * every program change through it, and without it a key-on carries no
      * operator setup, so the OPL core renders silence for the whole run (the
@@ -478,8 +824,29 @@ int test_flow(void)
     }
     CHECK(game_audio_ticks() > 0, "audio service advances the sequencer");
     CHECK(game_music_notes_seen(), "title music keys notes without a device");
+    /* The voice dispatcher 0x2C3FC and the sound module, on the live handles
+     * game_audio_init allocated (record §45-A). */
+    check_sound_voice();
+
     game_shutdown();                         /* release handles for later tests */
     CHECK_EQ_INT((int)DSB(DS_000A2CB1), 0);  /* teardown clears the enable flag */
+    CHECK_EQ_INT((int)DSD(DS_001028C8), 0);  /* 0x1D0A9 */
+    /* 0x1CE70 tests status 4 exactly: a released handle (status 0) is not
+     * playing, so its slot's +0x0C is cleared and the voice goes on to
+     * 0x1CC28, which the pause byte stops before any read (AL = 1). */
+    {
+        u32 s_c8 = DSD(DS_001028C8), s_6c = DSD(DS_0010286C);
+        u8 s_db = DSB(DS_001028DB);
+        CHECK_EQ_INT((int)AIL_sample_status(sound_slot_handle(0u)), 0);
+        DSD(DS_001028C8) = 1u;
+        DSB(DS_001028DB) = 1u;
+        DSD(DS_0010286C) = 0x1800EBC9u;
+        CHECK_EQ_INT((int)sound_voice(0x3Eu), 1);
+        CHECK_EQ_INT((int)DSD(DS_0010286C), 0);
+        DSD(DS_001028C8) = s_c8;
+        DSB(DS_001028DB) = s_db;
+        DSD(DS_0010286C) = s_6c;
+    }
 
     /* Task 9: the state-9 countdown's faithfulness and its no-draw invariant. */
     check_state9_countdown();
@@ -2465,6 +2832,29 @@ static void fe_cyc2_dump(void)
     else fe_cyc2_failed = 1;
 }
 
+/* The loader's `- LOADING -` screens in the cycle-2 dump (res.c's seam, record
+ * §45-A): the loop that drew each and the cycle-2 frame index it was written
+ * at. fe_loop_i is the driver's current loop. */
+static int fe_loop_i;
+static int fe_ld_n;
+static int fe_ld_loop[16], fe_ld_frame[16];
+
+static void fe_cyc2_loader(void)
+{
+    if (fe_cyc2_on && !fe_cyc2_failed && fe_ld_n < 16) {
+        fe_ld_loop[fe_ld_n] = fe_loop_i;
+        fe_ld_frame[fe_ld_n] = fe_cyc2_n;
+        fe_ld_n++;
+    }
+    fe_cyc2_dump();
+}
+
+/* 1 when INDEX entry e carries 0x1B3AC's loaded bit. */
+static int fe_entry_read(u32 e)
+{
+    return (DSD(DSD(DS_001014E0) + e * 20u + 12u) & 0x20000000u) != 0u;
+}
+
 /* The driver's loop: FE_DEMO_LOOPS covers the first demo's 0x11BCC exit at
  * loop 1970 (the run's length before the cycle-2 dump); FE_LOOPS reaches the
  * second attract cycle's state-6 handoff (loop 2782), the whole second demo
@@ -3126,6 +3516,15 @@ int test_frontend(void)
         fe_cyc2_n = 0;
         fe_cyc2_failed = 0;
         movie_set_screen_hook(fe_cyc2_dump);
+        res_set_screen_hook(fe_cyc2_loader);
+        fe_ld_n = 0;
+        /* Record §45-A: the sound banks' first reads. The first demo's
+         * state-6 loop (1070) reads s16rexsd (60), s16sound (5) and s16cobsd
+         * (36) through the two spawns' tails (bits 0..2, sampled after loops
+         * 1069 and 1070); the second demo's (its handler runs in loop 2783)
+         * s16konsd (54, after 2782 and 2783); loop 3557's voice 0x4D s16spisd
+         * (64, after 3556 and 3557). -1: never sampled. */
+        int sd1[2] = { -1, -1 }, sd2[2] = { -1, -1 }, sd64[2] = { -1, -1 };
         int c2_start = -1, c2_proj54 = -1, c2_flash_i = -1;
         int c2_state6_i = -1, c2_f0a72 = -1;
         /* The live-fighter count DS_001078FA after the second demo's 6 -> 7
@@ -3189,7 +3588,13 @@ int test_frontend(void)
             }
             DSB(DS_000A81A8) = 1;          /* exactly one game_loop iteration */
             u16 state_in = DSW(DS_000F0A64);   /* the state this frame starts in */
+            fe_loop_i = i;
             game_loop();
+            if (i == 1069 || i == 1070)
+                sd1[i - 1069] = fe_entry_read(60u) | fe_entry_read(5u) << 1
+                              | fe_entry_read(36u) << 2;
+            if (i == 2782 || i == 2783) sd2[i - 2782] = fe_entry_read(54u);
+            if (i == 3556 || i == 3557) sd64[i - 3556] = fe_entry_read(64u);
             if (s7_pre_seen && !s7_post_seen) {
                 s7_entry_post = DSD(DS_000EF6D8);
                 s7_post_seen = 1;
@@ -3394,6 +3799,13 @@ int test_frontend(void)
             }
         }
         movie_set_screen_hook(NULL);
+        res_set_screen_hook(NULL);
+        printf("test_frontend: sound banks @1069/1070 %d/%d, @2782/2783 %d/%d, "
+               "@3556/3557 %d/%d; loader screens %d:", sd1[0], sd1[1], sd2[0],
+               sd2[1], sd64[0], sd64[1], fe_ld_n);
+        for (int k = 0; k < fe_ld_n && k < 16; k++)
+            printf(" %d@%d", fe_ld_loop[k], fe_ld_frame[k]);
+        printf("\n");
         fe_cyc2_on = 0;
         if (log != NULL) fclose(log);
         printf("test_frontend: cycle 2 from loop %d, %d frames; A54@1971 %d, "
@@ -3499,7 +3911,55 @@ int test_frontend(void)
          * on 0xE3AAC. */
         CHECK(!fe_cyc2_failed, "cycle-2 frames write to the dump");
         CHECK_EQ_INT(c2_start, 1971);
-        CHECK_EQ_INT(fe_cyc2_n, 2095);
+        CHECK_EQ_INT(fe_cyc2_n, 2102);
+        /* Record §45-A. The sound banks' first reads: none before, all after
+         * each loop (0x33E51's tails, 0x2C3FC(0x4D)). */
+        CHECK_EQ_INT(sd1[0], 0);
+        CHECK_EQ_INT(sd1[1], 7);
+        CHECK_EQ_INT(sd2[0], 0);
+        CHECK_EQ_INT(sd2[1], 1);
+        CHECK_EQ_INT(sd64[0], 0);
+        CHECK_EQ_INT(sd64[1], 1);
+        /* The seven loader screens the cycle-2 dump holds, with the loop that
+         * drew each: s16title (loop 1973), the second demo's state-6 entry
+         * (s16stone, s16kon, s16konsd, s16konsh in loop 2783), s16spisd (loop
+         * 3557, capture 3257) and s16hghsc (loop 3684). 2095 presented
+         * frames + 7 = 2102. */
+        {
+            static const int ld_loop[7] = { 1973, 2783, 2783, 2783, 2783, 3557, 3684 };
+            static const int ld_frame[7] = { 168, 979, 980, 981, 982, 1757, 1885 };
+            CHECK_EQ_INT(fe_ld_n, 7);
+            for (int k = 0; k < 7 && k < fe_ld_n; k++) {
+                CHECK_EQ_INT(fe_ld_loop[k], ld_loop[k]);
+                CHECK_EQ_INT(fe_ld_frame[k], ld_frame[k]);
+            }
+        }
+        /* Capture 3257's screen: loop 3557's loader screen (cycle-2 frame
+         * 1757) is the frame presented before it (1756) with the `- LOADING -`
+         * text over it: every differing pixel is in the text's box, rows
+         * 192..197, columns 0..85. */
+        {
+            char pa[1400], pb[1400];
+            static u8 fa[192000], fb[192000];
+            snprintf(pa, sizeof pa, "%s/frame_%04d.raw", fe_cyc2_dir, 1756);
+            snprintf(pb, sizeof pb, "%s/frame_%04d.raw", fe_cyc2_dir, 1757);
+            FILE *xa = fopen(pa, "rb"), *xb = fopen(pb, "rb");
+            int ok = xa != NULL && xb != NULL
+                  && fread(fa, 1, sizeof fa, xa) == sizeof fa
+                  && fread(fb, 1, sizeof fb, xb) == sizeof fb;
+            if (xa != NULL) fclose(xa);
+            if (xb != NULL) fclose(xb);
+            CHECK(ok, "cycle-2 frames 1756/1757 read back");
+            int in_box = 0, out_box = 0;
+            for (int px = 0; ok && px < 64000; px++) {
+                if (memcmp(fa + px * 3, fb + px * 3, 3) == 0) continue;
+                int y = px / 320, x = px % 320;
+                if (y >= 192 && y <= 197 && x <= 85) in_box++;
+                else out_box++;
+            }
+            CHECK(in_box > 0, "the loader text is over frame 1756");
+            CHECK_EQ_INT(out_box, 0);
+        }
         CHECK_EQ_INT(c2_proj54, 0);
         CHECK_EQ_INT(c2_flash_i, 2547);
         CHECK_EQ_INT(c2_state6_i, 2782);
@@ -3615,9 +4075,12 @@ int test_frontend(void)
          * the 0xF0A78 node list (0x12750), and the 0x3F gate opens only on
          * the frame counter's multiples of 64, which the seed above puts at
          * f = 91: loop frame 1097, dumped frame 508, the frame capture 864
-         * shows (DS_0010150C reads 92 after it). Without 0x12750 no flier is
-         * ever live (-1); with the counter unseeded it spawns at f = 81. */
-        CHECK_EQ_INT(s7_flier_f, 92);
+         * shows (DS_0010150C reads 93 after it: the tick pair carries the
+         * state-6 entry's read stall, res.c; 92 before record §45-A added the
+         * spawns' sound-bank reads and re-derived the rate). Without 0x12750
+         * no flier is ever live (-1); with the counter unseeded it spawns at
+         * f = 81. */
+        CHECK_EQ_INT(s7_flier_f, 93);
         CHECK_EQ_INT(s7_flier_i, 1097);
         /* The +0x42 bit 6 measurement: neither slot's bit is set in the
          * state-7 window (checked per frame above), so 0x349C8's 0x349E6 arm

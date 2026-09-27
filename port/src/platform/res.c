@@ -29,12 +29,16 @@ static u32 g_heap = RES_HEAP;
  * DS_00101508 alone, so the master loop's gate (0x25643) fails for the read's
  * duration. The port's payloads are resident, so the duration is modelled from
  * the bytes read at the rate measured from the DOSBox-X live-RAM poll (record
- * §9.6): the demo's state-6 entry reads s16beach (233128) + s16rex (3812084) +
- * s16cob (2438316) = 6483528 bytes and blocks 55 ticks, i.e. 117882 bytes/tick.
- * The two 9->6 entries measured 55 and 56 ticks; the 7->6 entry, which reads a
- * smaller set, 27. Rounded up per read. This is a *derived* rate, not a fitted
- * per-frame constant. The macro lives in res.h so test_res.c pins the exact
- * tick delta it produces. */
+ * §9.6, corrected by §45-A): the demo's state-6 entry blocks 55 ticks, and in
+ * them it reads s16beach (233128) + s16rex (3812084) + s16rexsd (81192) +
+ * s16sound (587966) + s16cob (2438316) + s16cobsd (145435) = 7298121 bytes,
+ * i.e. 132693 bytes/tick (the original's re-syncs after each read land at
+ * ticks 3, 31, 32, 36, 54 and 55). §9.6 named only the three banks the port
+ * read then; the two fighter spawns' sound banks (0x33E51) and s16sound
+ * (0x33EA1) are read inside the same 55 ticks. The two 9->6 entries measured
+ * 55 and 56 ticks; the 7->6 entry, which reads a smaller set, 27. Rounded up
+ * per read. This is a *derived* rate, not a fitted per-frame constant. The
+ * macro lives in res.h so test_res.c pins the exact tick delta it produces. */
 
 /* 0x1B3AC's presentation head (0x1B3B8-0x1B3F8). `draw` is the original's BL:
  * 0 from the init walk's call (0x1B250), 1 from the lazy resolve (0x1B5E9).
@@ -50,11 +54,24 @@ static u32 g_heap = RES_HEAP;
  * DS_00101508 (the stall above) and then applies the same re-sync. Without it
  * the gate would fail for the stall's ticks and the loader's frame — which the
  * capture holds (the attract's 498-byte frame at capture 1, the title's first
- * frames) — would never be presented. */
+ * frames) — would never be presented.
+ *
+ * PORT: the dump seam. The text goes straight to the VGA aperture (0x51ED8),
+ * over whatever frame the screen holds, and stays there for the read: the
+ * original shows that screen until the next present, inside one master-loop
+ * iteration, so a driver that dumps once per iteration cannot see it (capture
+ * 3257, record §45-A). When set, the hook runs right after the text is on the
+ * aperture, as movie.c's does for 0x1C740's screens. NULL (the default) does
+ * nothing. */
+static void (*s_screen_hook)(void);
+
+void res_set_screen_hook(void (*hook)(void)) { s_screen_hook = hook; }
+
 static void res_load_present(u32 draw, u32 index)
 {
     if (draw != 0u) {
         text_blit_string(game_string_get(0x1E9u), 0, 0xE6);   /* 0x1B3EA/0x1B3EF */
+        if (s_screen_hook != NULL) s_screen_hook();
         /* PORT: the read's stall, advanced on the tick counter the gate reads. */
         u32 size = res_size(index);
         DSD(DS_00101508) += (size + RES_READ_BYTES_PER_TICK - 1u) / RES_READ_BYTES_PER_TICK;

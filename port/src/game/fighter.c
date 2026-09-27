@@ -13,6 +13,7 @@
 #include "game/rng.h"
 #include "game/flow.h"
 #include "game/effects.h"
+#include "platform/res.h"
 #include "../mem.h"
 #include "../symbols.h"
 #include <string.h>
@@ -211,10 +212,9 @@ void fighter_slot_latch_both(void)
     fighter_slot_latch(1u);                         /* 0x186CB, falls into 0x186D0 */
 }
 
-/* 0x1CEBC. The audio gate the spawn tail tests: 1 when the AIL sequence handle
- * DS_001028C8 is live (non-zero) and its busy byte DS_001028DB is clear. The
- * port keeps its AIL handles outside mem[], so this is 0 and the tail's
- * res_resolve calls (named gap, §10.4) are skipped. */
+/* 0x1CEBC. The audio gate the spawn tail tests: 1 when the DIG driver handle
+ * DS_001028C8 is set (game_audio_init stores the port's stand-in, record
+ * §45-A) and the sample pause byte DS_001028DB is clear. */
 static int fighter_spawn_audio_gate(void)
 {
     if (DSD(DS_001028C8) == 0) return 0;            /* 0x1CEC3 */
@@ -304,9 +304,15 @@ static void fighter_spawn_slot(u32 side, u32 a2, u32 a3, u32 a5)
     if (DSB(DS_00104B14) == 0)
         fight_dust_build(side);                     /* 0x33E43 0x494A8 */
     if (fighter_spawn_audio_gate()) {               /* 0x33E48 0x1CEBC */
-        /* PORT: 0x33E51..0x33EA6 resolves DS_000BDB1C[char] then the fixed
-         * 0x287B2F5 through res_resolve; both are unported audio resources and
-         * neither return is read, so the tail is a named gap (§10.4). */
+        /* 0x33E51..0x33E98: the character's sound bank, DS_000BDB1C[ch] for
+         * ch 0..6 (jump table 0x33C5C; `cmp dl,6; ja` leaves EAX = 0 above),
+         * resolved when non-zero, then the fixed 0x287B2F5 (s16sound.gra).
+         * Neither return is read: the resolve is the bank's first read, as the
+         * original's live INDEX shows at each spawn (record §45-A). */
+        u32 c = (u32)DSB(slot + 0x7Au);             /* 0x33E51 */
+        u32 bank = (c <= 6u) ? DSD(DS_000BDB1C + c * 4u) : 0u;
+        if (bank != 0u) (void)res_resolve(bank);    /* 0x33E98..0x33E9C */
+        (void)res_resolve(0x287B2F5u);              /* 0x33EA1/0x33EA6 */
     }
 }
 

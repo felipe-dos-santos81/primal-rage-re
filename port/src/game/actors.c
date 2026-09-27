@@ -939,7 +939,8 @@ static void anim_code_153D8(u32 rec, u32 arg)
  * in character 3's reaction-0x24 stream 0xD3078, and 0xD3266). EAX = rec;
  * EDX is pushed at 0x1543E and never read. It spawns the descriptor 0xBB3A8
  * with a2 = a3 = a4 = 0 and a5 = the record's +0x56 | 0x400; the record's
- * +0x4B = the child's +0x56 byte and the child's +0x60 = 1. */
+ * +0x4B = the child's +0x56 byte and the child's +0x60 = 1; then the voice
+ * 0x2C3FC(0x4D). */
 static void anim_code_1543C(u32 rec, u32 arg)
 {
     u32 child;
@@ -948,7 +949,10 @@ static void anim_code_1543C(u32 rec, u32 arg)
                         (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));  /* 0x15442..0x1545A 0x2AE14 */
     DSB(rec + 0x4Bu) = DSB(child + 0x56u);              /* 0x1545F/0x15462 */
     DSB(child + 0x60u) = 1u;                            /* 0x15465 */
-    /* PORT: 0x1546E 0x2C3FC(0x4D) voice, out of scope (spec §7). */
+    /* 0x15469/0x1546E: the voice 0x4D (case 3: s16cobsd's 0x1201D606 and
+     * s16spisd's 0x2001513C). Its first call reads s16spisd, the capture's
+     * `- LOADING -` frame 3257 (record §45-A). AL is not read. */
+    (void)sound_voice(0x4Du);
 }
 
 /* 0x37CFC — the animation-opcode target shape (the 0xD100 target at 0xD3192

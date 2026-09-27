@@ -7,10 +7,11 @@
 #include "types.h"
 
 /* The loader read-stall rate: payload bytes read per timer tick, derived from
- * the DOSBox-X live-RAM poll (record §9.6: 6483528 bytes block 55 ticks). The
- * port models 0x1B3AC's blocking read with this rate in res.c; test_res.c pins
- * the exact tick delta it produces, so the value cannot drift unnoticed. */
-#define RES_READ_BYTES_PER_TICK 117882u
+ * the DOSBox-X live-RAM poll (record §9.6 as corrected by §45-A: 7298121 bytes
+ * block 55 ticks). The port models 0x1B3AC's blocking read with this rate in
+ * res.c; test_res.c pins the exact tick delta it produces, so the value cannot
+ * drift unnoticed. */
+#define RES_READ_BYTES_PER_TICK 132693u
 
 /* Builds the entry table in mem[] the way 0x1B120 does and loads each
  * resource's bytes from disk. game_dir holds the INDEX-listed files;
@@ -39,5 +40,10 @@ u32 res_handle(u32 index, u32 offset);
 /* handle -> pointer, matching 0x1B544. NULL when the index is out of range or
  * the entry has no data block. */
 void *res_resolve(u32 handle);
+
+/* PORT: the dump seam for the loader's `- LOADING -` screen. The hook runs on
+ * a lazy resolve's presentation, right after the text is on the aperture
+ * (gfx_aperture()); NULL (the default) disables it. */
+void res_set_screen_hook(void (*hook)(void));
 
 #endif /* PR_RES_H */

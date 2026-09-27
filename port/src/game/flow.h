@@ -96,6 +96,16 @@ void frontend_mode_1b_step(void);
  * reloads the resource index). No device is opened here. */
 void game_audio_init(void);
 
+/* 0x2C3FC: the voice dispatcher over the 12-byte records at DS_000BBDC8
+ * (flow.c). Returns AL: 1, or 0 for id 0, a record case above 5, a playing
+ * sample in cases 2/3 or an unlisted case-3 id. */
+u32 sound_voice(u32 id);
+
+/* PORT: slot i's AIL sample handle (0..3), which the original keeps at
+ * DS_00102860 + i*0x18 and the port in flow.c; NULL out of range. Exposed so
+ * a unit test can set the status the sound module's slot scans read. */
+struct AIL_SAMPLE *sound_slot_handle(u32 i);
+
 /* 0x1CF20: the master loop's per-frame audio service — starts pending music,
  * advances the sequencer two ticks (120 Hz; the loop is 60 Hz) and, when a
  * device is open, renders and submits one frame of mixed stereo audio. Exposed

@@ -16068,6 +16068,125 @@ static void check_combo_text(void)
     DSD(DS_00104B00) = sv_mode;
 }
 
+/* ---- the spawn's sound banks and the voice 0x4D (record §45-A) ---------- */
+
+/* The INDEX entries DS_000BDB1C names for characters 0..6 (the sd banks). */
+static const u8 sb_bank[7] = { 60, 54, 68, 36, 64, 42, 48 };
+
+static int sb_loaded(u32 e)
+{
+    return (DSD(DSD(DS_001014E0) + e * 20u + 12u) & 0x20000000u) != 0u;
+}
+
+static void sb_unload(u32 e)
+{
+    DSD(DSD(DS_001014E0) + e * 20u + 12u) &= ~0x20000000u;
+}
+
+static int sb_hook_n;
+static void sb_hook(void) { sb_hook_n++; }
+
+/* 0x33C78's tail (0x33E48..0x33EA6): with the DIG driver set and samples not
+ * paused, the spawn reads the character's sound bank DS_000BDB1C[ch] and
+ * s16sound (0x287B2F5, entry 5); with either gate closed it reads neither.
+ * And 0x1543C's voice 0x4D: s16cobsd (36) and s16spisd (64) read on its first
+ * call, nothing without the DIG driver. Every scenario starts from the same
+ * snapshot (the data object, the INDEX table, both pools, the DAC and the
+ * aperture), restored at the end. */
+static void check_spawn_sound(void)
+{
+    static u8 sd[0x8B0D0], si[256u * 20u], spa[0x4880], spb[0xEBA0];
+    static u8 sap[320u * 200u], sdac[256][3];
+    const u32 idx = DSD(DS_001014E0), nidx = res_count() * 20u;
+    const u32 pa = DSD(DS_001014EC), pb = DSD(DS_001014F4);
+    u32 ch, k;
+
+    CHECK(nidx <= sizeof si, "the INDEX table fits the snapshot");
+    tf_snap(sd, DATA_BASE, 0x8B0D0u);
+    tf_snap(si, idx, nidx);
+    tf_snap(spa, pa, 0x4880u);
+    tf_snap(spb, pb, 0xEBA0u);
+    memcpy(sap, gfx_aperture(), sizeof sap);
+    memcpy(sdac, gfx_dac, sizeof sdac);
+
+    /* A: each character 0..6 on side 0, gates open: its bank and s16sound
+     * are read, no other character's bank. */
+    for (ch = 0; ch < 7u; ch++) {
+        tf_put(sd, DATA_BASE, 0x8B0D0u);
+        tf_put(si, idx, nidx);
+        actors_reset();
+        for (k = 0; k < 7u; k++) sb_unload(sb_bank[k]);
+        sb_unload(5u);
+        DSB(DS_0010816A) = (u8)ch;
+        DSD(DS_001028C8) = 1u;
+        DSB(DS_001028DB) = 0;
+        fighter_spawn(0u);
+        CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x7Au), (int)ch);
+        for (k = 0; k < 7u; k++)
+            CHECK_EQ_INT(sb_loaded(sb_bank[k]), k == ch ? 1 : 0);
+        CHECK_EQ_INT(sb_loaded(5u), 1);
+    }
+    /* B: no DIG driver (0x1CEBC's first test), then paused samples (its
+     * second): neither bank is read. */
+    for (k = 0; k < 2u; k++) {
+        tf_put(sd, DATA_BASE, 0x8B0D0u);
+        tf_put(si, idx, nidx);
+        actors_reset();
+        sb_unload(36u);
+        sb_unload(5u);
+        DSB(DS_0010816A) = 3u;
+        DSD(DS_001028C8) = (k == 0u) ? 0u : 1u;
+        DSB(DS_001028DB) = (k == 0u) ? 0u : 1u;
+        fighter_spawn(0u);
+        CHECK_EQ_INT(sb_loaded(36u), 0);
+        CHECK_EQ_INT(sb_loaded(5u), 0);
+    }
+
+    /* C: 0x1543C's voice 0x4D on a pool record: the two banks, each read
+     * once (two loader screens); a second call reads nothing. */
+    tf_put(sd, DATA_BASE, 0x8B0D0u);
+    tf_put(si, idx, nidx);
+    actors_reset();
+    {
+        typedef void (*anim_fn)(u32 rec, u32 arg);
+        anim_fn f154 = (anim_fn)(void *)fn_resolve(0x1543Cu);
+        u32 r = actor_alloc(0);
+        CHECK(f154 != NULL && r != 0u, "0x1543C and a pool record");
+        if (f154 != NULL && r != 0u) {
+            DSW(r + 0x56u) = (u16)actor_index(r);
+            sb_unload(36u);
+            sb_unload(64u);
+            DSD(DS_001028C8) = 1u;
+            DSB(DS_001028DB) = 0;
+            for (k = 0; k < 4u; k++) DSD(DS_0010286C + k * 0x18u) = 0;
+            sb_hook_n = 0;
+            res_set_screen_hook(sb_hook);
+            f154(r, 0u);
+            CHECK_EQ_INT(sb_loaded(36u), 1);
+            CHECK_EQ_INT(sb_loaded(64u), 1);
+            CHECK_EQ_INT(sb_hook_n, 2);
+            f154(r, 0u);
+            CHECK_EQ_INT(sb_hook_n, 2);
+            sb_unload(36u);
+            sb_unload(64u);
+            DSD(DS_001028C8) = 0;
+            f154(r, 0u);
+            CHECK_EQ_INT(sb_loaded(36u), 0);
+            CHECK_EQ_INT(sb_loaded(64u), 0);
+            CHECK_EQ_INT(sb_hook_n, 2);
+            res_set_screen_hook(NULL);
+        }
+    }
+
+    actors_reset();
+    memcpy(gfx_dac, sdac, sizeof sdac);
+    memcpy(gfx_aperture(), sap, sizeof sap);
+    tf_put(spb, pb, 0xEBA0u);
+    tf_put(spa, pa, 0x4880u);
+    tf_put(si, idx, nidx);
+    tf_put(sd, DATA_BASE, 0x8B0D0u);
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -16116,6 +16235,9 @@ int test_fight(void)
     tf_snap(s_82e0, 0x001082E0u, 0x90u);
     s_8398 = DSB(0x00108398u);
 
+    /* First, while the shipped INDEX is still in place (the fixtures below
+     * zero its pointer). */
+    check_spawn_sound();
     check_projection();
     check_dispatch();
     check_camera_split();

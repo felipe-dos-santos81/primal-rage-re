@@ -492,13 +492,12 @@ def load_port(d, n):
 # 0..1381, the whole 1382-frame dump (1145 exhibited).
 FRONTEND_ALLOWED_UNEXPLAINED = (832, 833)
 
-# The attract cycle-2 region's named, absorbed unexplained frame (roar-timing
-# Task 27, record §37): capture 2384 is the `- LOADING -` frame before the
-# second demo, byte-identical to front-end capture 832 (the loader's LOADING
-# frame above: no raw-code owner, the loader's read-stall class, record
-# §35.1/§36.2). It is allowed by capture-frame index only while it stays
-# byte-identical to its twin; any other unexplained frame still counts.
-ATTRACT2_ALLOWED_UNEXPLAINED = {2384: 832}
+# The attract cycle-2 region's frames allowed by name, each mapped to a capture
+# it must stay byte-identical to. Capture 2384, the `- LOADING -` frame before
+# the second demo (roar-timing Task 27, record §37: {2384: 832}), is explained
+# since the cycle-2 dump holds the loader's screens (record §45-A), so the set is
+# empty; any unexplained frame counts.
+ATTRACT2_ALLOWED_UNEXPLAINED = {}
 
 
 def main():
