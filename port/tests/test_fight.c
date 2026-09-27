@@ -20491,6 +20491,13 @@ static void check_33c18_callers_b(void)
             head = DSD(DS_00105B3C);
             mem_fill(DS_00105F38 + 8u * 0xACu, 0, 0xACu);
             mem_fill(DS_00105F38 + 0xBu * 0xACu, 0, 2u * 0xACu + 0xACu);
+            /* 0x2C2B0 (record §48-T, check_2c2b0) finds nothing to release:
+             * row 0x1D empty, DS_00105BF0[1] 0 and its sprite-form position
+             * on that row. */
+            mem_fill(DS_00105F38 + 0x1Du * 0xACu, 0, 0xACu);
+            DSD(DS_00105BF0 + 4u) = 0u;
+            DSB(DS_00105C06) = 0u;
+            DSB(DS_00105C07) = 0x1Du;
             game_mode_0d_step();
             memcpy(want, mem + DS_00102760, sizeof want);
             if (i != 0u) CHECK(q_row_ref(8, 0x42u, 0x4002u), "0x28130 drew row 8");
@@ -20629,6 +20636,158 @@ static void check_33c18_callers_b(void)
                       "the second string is 0xA89FC's");
             CHECK_EQ_INT(q_row_cells(0xB), 0);
         }
+    }
+    mz_restore();
+}
+
+/* ---- record §48-T: 0x2C2B0, the side prompts' erase ---------------------- */
+
+/* Whether the planted record `r` still sits in cell (row, col), alive. */
+static int t_kept(u32 r, s32 row, s32 col)
+{
+    return ct_cell(row, col) == r && (DSB(r + 0x28u) & 8u) == 0u;
+}
+
+/* Whether the cell (row, col) was emptied and its record `r` released. */
+static int t_gone(u32 r, s32 row, s32 col)
+{
+    return ct_cell(row, col) == 0u && (DSB(r + 0x28u) & 8u) == 8u;
+}
+
+static void check_2c2b0(void)
+{
+    u32 k[8], b0, b1, i;
+    size_t w48;
+    if (!mz_save()) { CHECK(0, "the §48-T snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+    w48 = strlen((const char *)game_string_get(0x48u));
+
+    /* The image values the checks rely on: the col bytes 0xBAB58 (side 0 at
+     * col 3, side 1 at 0x18) and string 0x48 ("PRESS START") 14 wide. */
+    CHECK_EQ_INT((int)DSB(DS_000BAB58), 3);
+    CHECK_EQ_INT((int)DSB(DS_000BAB58 + 1u), 0x18);
+    CHECK_EQ_INT((int)w48, 14);
+
+    /* (a) The text form (DS_00104529 bit 1 clear), side 1, row 0x1D,
+     * DS_00105BF8 = 3: cols 0x18..0x1A of row 0x1D are released, cols 0x17
+     * and 0x1B stay. The "INSERT 1 COIN" position (5, 0x1B) and the sprite
+     * slot DS_00105BF0[1] are not touched, nor the cursor. */
+    q_mode_seed(0xDu);
+    mem_fill(DS_00105F38 + 0x1Bu * 0xACu, 0, 3u * 0xACu);
+    for (i = 0; i < 5u; i++) k[i] = ct_plant(0x1D, (s32)(0x17u + i));
+    k[5] = ct_plant(0x1B, 5);
+    b1 = actor_alloc(0);
+    DSD(DS_00105BF0 + 4u) = b1;
+    DSD(DS_00105BF8) = 3u;
+    DSB(DS_00105C06) = 5u;
+    DSB(DS_00105C07) = 0x1Bu;
+    DSD(DS_00105F34) = 0x12345678u;
+    for (i = 0; i < 6u; i++) CHECK_EQ_INT((int)(DSB(k[i] + 0x28u) & 8u), 0);
+    CHECK_EQ_INT((int)(DSB(b1 + 0x28u) & 8u), 0);
+    DSB(0x00104529u) = 0xFDu;
+    prompt_side_erase(1, 0x1D);
+    CHECK(t_kept(k[0], 0x1D, 0x17), "col 0x17 stays");
+    CHECK(t_gone(k[1], 0x1D, 0x18), "col 0x18 released");
+    CHECK(t_gone(k[2], 0x1D, 0x19), "col 0x19 released");
+    CHECK(t_gone(k[3], 0x1D, 0x1A), "col 0x1A released");
+    CHECK(t_kept(k[4], 0x1D, 0x1B), "col 0x1B stays");
+    CHECK(t_kept(k[5], 0x1B, 5), "the coin position stays without the bit");
+    CHECK_EQ_INT((int)DSD(DS_00105BF0 + 4u), (int)b1);
+    CHECK_EQ_INT((int)(DSB(b1 + 0x28u) & 8u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00105F34), 0x12345678);
+    CHECK_EQ_INT((int)DSD(DS_00105BF8), 3);
+
+    /* (b) The sprite form (bit 1 set), side 0, row 0x1D, DS_00105BF8 = 0x14,
+     * the coin position (0x10, 0x1B). 0x2C088 kills DS_00105BF0[0] (zeroed;
+     * DS_00105BF0[1] kept) and releases string 0x48's 14 cells there (col
+     * 0x10); the first 0x2F388 releases 0x14 from col 0x10, so col 0x10 + 14
+     * = 30 goes only by it (the side's col 3 + 0x14 stops at 22), col 36
+     * stays; the second releases 0x14 from side 0's col 3 on row 0x1D (cols 3
+     * and 22 go, 2 and 23 stay, and side 1's col 0x18 stays). Each release
+     * goes to the head of the free list DS_00105B3C, so the list reads the
+     * releases backwards: col 22, col 3 (row 0x1D), col 30, col 0x10. */
+    q_mode_seed(0xDu);
+    mem_fill(DS_00105F38 + 0x1Bu * 0xACu, 0, 3u * 0xACu);
+    k[0] = ct_plant(0x1B, 0x10);
+    k[1] = ct_plant(0x1B, (s32)(0x10u + w48));
+    k[2] = ct_plant(0x1B, 36);
+    k[3] = ct_plant(0x1D, 2);
+    k[4] = ct_plant(0x1D, 3);
+    k[5] = ct_plant(0x1D, 22);
+    k[6] = ct_plant(0x1D, 23);
+    k[7] = ct_plant(0x1D, 0x18);
+    b0 = actor_alloc(0);
+    b1 = actor_alloc(0);
+    DSD(DS_00105BF0) = b0;
+    DSD(DS_00105BF0 + 4u) = b1;
+    DSD(DS_00105BF8) = 0x14u;
+    DSB(DS_00105C06) = 0x10u;
+    DSB(DS_00105C07) = 0x1Bu;
+    DSB(0x00104529u) = 0x02u;
+    for (i = 0; i < 8u; i++) CHECK_EQ_INT((int)(DSB(k[i] + 0x28u) & 8u), 0);
+    prompt_side_erase(0, 0x1D);
+    CHECK_EQ_INT((int)DSD(DS_00105BF0), 0);
+    CHECK_EQ_INT((int)(DSB(b0 + 0x28u) & 8u), 8);
+    CHECK_EQ_INT((int)DSD(DS_00105BF0 + 4u), (int)b1);
+    CHECK_EQ_INT((int)(DSB(b1 + 0x28u) & 8u), 0);
+    CHECK(t_gone(k[0], 0x1B, 0x10), "the coin position's first cell");
+    CHECK(t_gone(k[1], 0x1B, (s32)(0x10u + w48)), "past 0x48's width: 0x2F388's");
+    CHECK(t_kept(k[2], 0x1B, 36), "past DS_00105BF8 cells");
+    CHECK_EQ_INT((int)DSD(DS_00105B3C), (int)k[5]);
+    CHECK_EQ_INT((int)DSD(k[5]), (int)k[4]);
+    CHECK_EQ_INT((int)DSD(k[4]), (int)k[1]);
+    CHECK_EQ_INT((int)DSD(k[1]), (int)k[0]);
+    CHECK(t_kept(k[3], 0x1D, 2), "row 0x1D col 2 stays");
+    CHECK(t_gone(k[4], 0x1D, 3), "row 0x1D col 3");
+    CHECK(t_gone(k[5], 0x1D, 22), "row 0x1D col 22");
+    CHECK(t_kept(k[6], 0x1D, 23), "row 0x1D col 23 stays");
+    CHECK(t_kept(k[7], 0x1D, 0x18), "side 1's col stays");
+
+    /* (c) 0x274FC's final arm calls it with the loser (s8)(DS_0010810D ^ 1)
+     * and row 0x1D, the text form: DS_0010810D 0 releases side 1's col 0x18
+     * (DS_00105BF8 = 1; 0x19 stays) and keeps side 0's col 3; 1 the reverse.
+     * The slots' +0x3C 1211 keep 0x41310 out; 0x28130 draws "NO WINNERS"
+     * (string 0x42) on row 8 (DS_00104AD4 2). The released record heads the
+     * free list, so its cell is checked emptied only: the call comes after
+     * 0x28130 (0x275A3 then 0x275B7), so the record is not one of row 8's
+     * glyphs but is taken again by string 0x3F on row 0xB. */
+    for (i = 0; i < 2u; i++) {
+        u32 rel, c8 = 0u, cb = 0u;
+        s32 c;
+        q_mode_seed(0xDu);
+        DSD(DS_001077B0 + 0x3Cu) = 1211u;
+        DSD(DS_001077B0 + 0x94u + 0x3Cu) = 1211u;
+        DSB(DS_00104B21) = 6u;
+        DSB(DS_00104B0C) = 1u;
+        DSB(0x0010810Du) = (u8)i;
+        DSD(DS_00104AD4) = 2u;
+        mem_fill(DS_00105F38 + 8u * 0xACu, 0, 0xACu);
+        mem_fill(DS_00105F38 + 0xBu * 0xACu, 0, 3u * 0xACu);
+        mem_fill(DS_00105F38 + 0x1Du * 0xACu, 0, 0xACu);
+        k[0] = ct_plant(0x1D, 3);
+        k[1] = ct_plant(0x1D, 0x18);
+        k[2] = ct_plant(0x1D, 0x19);
+        DSD(DS_00105BF8) = 1u;
+        game_mode_0d_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B21), 7);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), 0x2020000F);
+        if (i == 0u) {
+            CHECK(t_kept(k[0], 0x1D, 3), "winner 0: side 0's col stays");
+            CHECK_EQ_INT((int)ct_cell(0x1D, 0x18), 0);
+            rel = k[1];
+        } else {
+            CHECK_EQ_INT((int)ct_cell(0x1D, 3), 0);
+            CHECK(t_kept(k[1], 0x1D, 0x18), "winner 1: side 1's col stays");
+            rel = k[0];
+        }
+        CHECK(t_kept(k[2], 0x1D, 0x19), "one cell only");
+        for (c = 0; c < 0x2B; c++) {
+            if (ct_cell(8, c) == rel) c8++;
+            if (ct_cell(0xB, c) == rel) cb++;
+        }
+        CHECK(q_row_cells(8) != 0, "0x28130 drew row 8");
+        CHECK_EQ_INT((int)c8, 0);
+        CHECK_EQ_INT((int)cb, 1);
     }
     mz_restore();
 }
@@ -23880,6 +24039,7 @@ int test_fight(void)
     check_mode_10_step();
     check_33c18_callers_a();
     check_33c18_callers_b();
+    check_2c2b0();
     check_char_select_pass();
     check_char_team_pass();
 
