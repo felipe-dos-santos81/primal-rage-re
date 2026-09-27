@@ -482,8 +482,25 @@ void fighter_145e4(u32 side);
 
 /* 0x14E44. Character 3's reaction-0x23 callback (*(u32*)0xA46E4), same
  * (slot, rec, side) registers (EBX unread): the 0xD3026 grab stream at 2.0,
- * state 9/7/0, +0x18 0x14CC4, +0x1C 0x14D7C (not ported) and +0x42 bit 2. */
+ * state 9/7/0, +0x18 0x14CC4, +0x1C 0x14D7C and +0x42 bit 2. */
 void fighter_14e44(u32 slot, u32 rec, u32 side);
+
+/* 0x14D7C. The +0x1C throw 0x14E44 stores (0x193B0's 0x19505, EAX = side):
+ * 0x18B04 for the other side, the 0x1088BF = 4 gate, both slots' +0x74 =
+ * 0x309, 0x3C208 at the other character's 0x9AFA4 distance, 0x39834, the
+ * other record on 0xC91C0[its char] at 3.0 and the other slot in 9/4 with
+ * +0x41 bit 7. */
+void fighter_14d7c(u32 side);
+
+/* 0x3C208. Place the other side |dist| from `side` (0x1883C by the gap, or
+ * at the wall through 0x3B8D8/0x3B90C/0x188DC), after latching both slots,
+ * 0x18AF8's facing flags and clearing both records' +0x34/+0x42/+0x43.
+ * EAX = side, EDX = dist. 10 call sites (0x14D7C's 0x14DDF among them). */
+void fighter_3c208(u32 side, s32 dist);
+
+/* 0x3B90C. The side's slot+0x2C plus `delta`, clamped to +/-DS_000BE018 (the
+ * arena wall). EAX = side, EDX = delta; 0x3C208's two calls only. */
+s32 fighter_3b90c(u32 side, s32 delta);
 
 /* 0x14CC4. The +0x18 hook 0x14E44 stores: 1 while the record's +0x61 is
  * clear; else the 0x18C14 checks and the 0x187FC range 0x1900..0x3200 decide

@@ -4123,8 +4123,9 @@ void fighter_3e3a8(u32 slot, u32 rec, u32 side)
     DSB(ctx[2] + 0x54u) = 0;                            /* 0x3E3E9 */
     DSD(ctx[2] + 0x0Cu) = 0x0003E328u;                  /* 0x3E3F1 */
     /* PORT: 0x3E244 is stored but not ported: it needs the unported
-     * 0x3C208/0x3C358, and its caller, 0x193B0's +0x1C call, is not reached in
-     * the port's run before the demo ends (record §34). 0x3E1D0 (0x1958C's
+     * 0x3C358 (0x3C208 and 0x18AF8 are ported, record §41-B), and its caller,
+     * 0x193B0's +0x1C call, is not reached in the port's run before the demo
+     * ends (record §34). 0x3E1D0 (0x1958C's
      * 0x19020 hook) and 0x3E328 are ported and registered. */
     DSD(ctx[2] + 0x18u) = 0x0003E1D0u;                  /* 0x3E3FC */
     DSD(ctx[2] + 0x1Cu) = 0x0003E244u;                  /* 0x3E407 */
@@ -4409,6 +4410,9 @@ void fighter_145e4(u32 side)
  * reaction-0x23 grab, *(u32*)0xA46E4). */
 #define FIGHT_ANIM_14E44   0x000D3026u  /* 0x14E49: 0x14E44's grab stream */
 #define FIGHT_ANIM_14CC4   0x000D3062u  /* 0x14D55: 0x14CC4's miss stream */
+#define FIGHT_ANIM_14D7C   0x000C91C0u  /* 0x14E0B: [char] 0x14D7C's thrown stream */
+#define FIGHT_DIST_14D7C   0x0009AFA2u  /* 0x14DD3: the dword at 0x9AFA2 + 2c, sar 16:
+                                         * [char] the s16 at 0x9AFA4 + 2c */
 
 /* 0x14E44. Character 3's reaction-0x23 callback (*(u32*)0xA46E4, the (char 3,
  * 0x23) entry of 0x34E2C's 0xA3528 table; Ghidra has no function here). EAX =
@@ -4426,12 +4430,36 @@ void fighter_14e44(u32 slot, u32 rec, u32 side)
     DSB(slot + 0x54u) = 0u;                                 /* 0x14E5C */
     DSB(slot + 0x53u) = 7u;                                 /* 0x14E60 */
     DSD(slot + 0x18u) = 0x00014CC4u;                        /* 0x14E64 */
-    /* PORT: 0x14D7C (the throw) is stored but not ported: it needs the
-     * unported 0x3C208, and its caller, 0x193B0's +0x1C call (0x19505), runs
-     * only after 0x14CC4 returns 0; in the second demo the grab misses
-     * (record §40). */
     DSD(slot + 0x1Cu) = 0x00014D7Cu;                        /* 0x14E6E */
     DSB(slot + 0x42u) |= 4u;                                /* 0x14E6B..0x14E78 */
+}
+
+/* 0x14D7C. The slot +0x1C throw 0x14E44 stores, called by 0x193B0 at 0x19505
+ * with EAX = side (its ctx[0]); Ghidra's FUN_00014d7c. The context is
+ * 0x33950(side): 0x18B04 for the other side, 0x1088BF = 4 when the side's
+ * 0x107D2C word is at least 4 (signed), both records' slot +0x74 = 0x309
+ * (0x39A10), 0x3C208(side, the s16 at 0x9AFA4 + 2 * the other slot's char),
+ * 0x39834(other, the slot's +0x5F), the other record on 0xC91C0[the other
+ * slot's char] at 3.0 (0x2BC30), and the other slot's +0x41 bit 7 and state
+ * 9/4. The char byte is read again at 0x14E03, after 0x39834. */
+void fighter_14d7c(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x14D83..0x14D87 0x33950 */
+    hit_facing_flag(ctx[1]);                                /* 0x14D8C/0x14D90 0x18B04 */
+    if ((s32)DSD(DS_00107D2A + side * 2u) >> 16 >= 4)       /* 0x14D95..0x14DA2 */
+        DSB(DS_001088BF) = 4u;                              /* 0x14DA4 */
+    fighter_39a10(ctx[4], 0x309u);                          /* 0x14DAB..0x14DB4 */
+    fighter_39a10(ctx[5], 0x309u);                          /* 0x14DB9..0x14DC2 */
+    fighter_3c208(side, (s32)DSD(FIGHT_DIST_14D7C
+            + (u32)DSB(ctx[3] + 0x7Au) * 2u) >> 16);        /* 0x14DC7..0x14DDF */
+    fighter_39834(ctx[1], (s32)(u32)DSB(ctx[2] + 0x5Fu));   /* 0x14DE4..0x14DF5 */
+    actors_anim_begin(ctx[5], DSD(FIGHT_ANIM_14D7C
+            + (u32)DSB(ctx[3] + 0x7Au) * 4u), 0x40400000u); /* 0x14DFA..0x14E16 0x2BC30 */
+    DSB(ctx[3] + 0x41u) |= 0x80u;                           /* 0x14E1F */
+    DSB(ctx[3] + 0x52u) = 9u;                               /* 0x14E27 */
+    DSB(ctx[3] + 0x53u) = 4u;                               /* 0x14E2F */
+    /* PORT: 0x14E38 0x2C3FC(0xB3) voice, out of scope (spec §7). */
 }
 
 /* 0x3CE58. Validate the hitbox and drive the reaction: the 0x3CE24 gate, the
@@ -6148,6 +6176,94 @@ static int fighter_3b8d8(u32 side, s32 delta)
     if (x >= wall) return 1;                            /* 0x3B8F6 */
     if (x <= -wall) return 1;                           /* 0x3B8FE/0x3B900 */
     return 0;                                           /* 0x3B908 */
+}
+
+/* 0x3B90C. The side's slot+0x2C moved by `delta`, clamped to the arena wall:
+ * DS_000BE018 when x >= it, -DS_000BE018 when x <= its negation, else x.
+ * EAX = side, EDX = delta; the add wraps (32 bits). Its only callers are
+ * 0x3C208's 0x3C2CC/0x3C2FC. */
+s32 fighter_3b90c(u32 side, s32 delta)
+{
+    s32 x = (s32)(DSD(DS_001077B0 + side * 0x94u + 0x2Cu)
+                  + (u32)delta);                        /* 0x3B91B/0x3B928 */
+    s32 wall = (s32)DSD(DS_000BE018);                   /* 0x3B922 */
+    if (x >= wall) return wall;                         /* 0x3B92A/0x3B92C -> 0x3B934 */
+    if (x > (s32)(0u - (u32)wall)) return x;            /* 0x3B92E..0x3B932 */
+    return (s32)(0u - (u32)wall);                       /* 0x3B934 */
+}
+
+/* 0x18AF8. The facing flag for both sides: `xor eax,eax; call 0x18B04`, then
+ * `mov eax,1` falls into 0x18B04 at 0x18B04. EAX is not a result (0x3C208
+ * reloads it at 0x3C227). */
+static void fighter_18af8(void)
+{
+    hit_facing_flag(0u);                                /* 0x18AF8/0x18AFA */
+    hit_facing_flag(1u);                                /* 0x18AFF, fall-through */
+}
+
+/* 0x3C208. Put the other side `dist` (its magnitude) away from the side.
+ * EAX = side, EDX = dist. Both slots are latched (0x186D0), 0x18AF8 sets both
+ * facing flags, and both records' word +0x34 and bytes +0x43/+0x42 are
+ * cleared (the records the slots' +0 point at, 0x3C227/0x3C23A). With the
+ * slots' |0x187FC()| (called once for the sign and once for the value) at
+ * least |dist|, the other side moves by the difference through 0x1883C,
+ * +gap when 0x1A570(side) holds, else -gap. Closer, the other side moves by
+ * -gap when 0x1A570(side) holds, else +gap: through 0x1883C unless 0x3B8D8
+ * says that reaches the wall, in which case the other side is clamped to the
+ * wall (0x3B90C) and the side is placed |dist| from it instead, the other's
+ * new x plus |dist| when 0x1A570(side) holds, else minus. The callees keep
+ * EDX (0x186D0/0x18B04 push it), so 0x3C24D tests the argument itself. */
+void fighter_3c208(u32 side, s32 dist)
+{
+    u32 other;
+    u32 want = (u32)dist;
+    u32 d;
+    u32 gap;
+    u32 rec;
+    fighter_slot_latch(0u);                             /* 0x3C211/0x3C213 0x186D0 */
+    fighter_slot_latch(1u);                             /* 0x3C218/0x3C21D 0x186D0 */
+    fighter_18af8();                                    /* 0x3C222 */
+    rec = DSD(DS_001077B0);                             /* 0x3C227 */
+    DSW(rec + 0x34u) = 0;                               /* 0x3C22C */
+    DSB(rec + 0x43u) = 0;                               /* 0x3C232 */
+    DSB(rec + 0x42u) = 0;                               /* 0x3C236 */
+    rec = DSD(DS_00107844);                             /* 0x3C23A */
+    DSW(rec + 0x34u) = 0;                               /* 0x3C23F */
+    DSB(rec + 0x43u) = 0;                               /* 0x3C245 */
+    DSB(rec + 0x42u) = 0;                               /* 0x3C249 */
+    if (dist < 0) want = 0u - want;                     /* 0x3C24D..0x3C251 */
+    other = 1u - side;                                  /* 0x3C253/0x3C25D */
+    if (ai_distance() < 0)                              /* 0x3C258..0x3C261 0x187FC */
+        d = 0u - (u32)ai_distance();                    /* 0x3C263/0x3C268 */
+    else
+        d = (u32)ai_distance();                         /* 0x3C26C */
+    gap = d - want;                                     /* 0x3C271/0x3C273 */
+    if ((s32)gap < 0) gap = 0u - gap;                   /* 0x3C277..0x3C27B */
+    if ((s32)d >= (s32)want) {                          /* 0x3C27D/0x3C27F */
+        if (fighter_actor_bit15_clear(side))            /* 0x3C281..0x3C28A 0x1A570 */
+            fighter_1883c(other, gap, 0u);              /* 0x3C31B..0x3C321 */
+        else
+            fighter_1883c(other, 0u - gap, 0u);         /* 0x3C290..0x3C298, 0x3C321 */
+        return;
+    }
+    if (fighter_actor_bit15_clear(side)) {              /* 0x3C2A6..0x3C2B7 0x1A570 */
+        gap = 0u - gap;                                 /* 0x3C2B9 */
+        if (fighter_3b8d8(other, (s32)gap) == 0) {      /* 0x3C2BB..0x3C2C6 */
+            fighter_1883c(other, gap, 0u);              /* 0x3C31B..0x3C321 */
+            return;
+        }
+        hit_anchor_x(other, (u32)fighter_3b90c(other, (s32)gap));   /* 0x3C2C8..0x3C2D5 0x188DC */
+        hit_anchor_x(side, DSD(DS_001077B0 + other * 0x94u + 0x2Cu)
+                           + want);                     /* 0x3C2DA..0x3C2E4 0x188DC */
+        return;
+    }
+    if (fighter_3b8d8(other, (s32)gap) == 0) {          /* 0x3C2EB..0x3C2F6 */
+        fighter_1883c(other, gap, 0u);                  /* 0x3C31B..0x3C321 */
+        return;
+    }
+    hit_anchor_x(other, (u32)fighter_3b90c(other, (s32)gap));   /* 0x3C2F8..0x3C305 0x188DC */
+    hit_anchor_x(side, DSD(DS_001077B0 + other * 0x94u + 0x2Cu)
+                       - want);                         /* 0x3C30A..0x3C314 0x188DC */
 }
 
 /* 0x3B9D8. Push one side away from the other by half of `pen` (EDX's low word
