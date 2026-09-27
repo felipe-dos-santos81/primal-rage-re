@@ -931,6 +931,44 @@ void flow_player_join(u32 side)
 #define DS_00107885 0x00107885u   /* no symbols.h name: slot 1's +0x41 */
 #define DS_00108134 0x00108134u   /* no symbols.h name: DS_00108131's high byte */
 
+/* ---- 0x28CC8, the join poll of modes 6 and 0xC (record §48-J) ------------ */
+
+/* 0x28CC8 — record §48-J. Loops ECX = side 0..1 (EBX = side + 1) and skips a
+ * side whose bit side + 1 is set in DS_00104B1F (0x28CD7 `test eax,ebx`, AL
+ * zero-extended). The first side without its bit decides:
+ * - no credit (0x2C060 == 0): 0x2C1C8(side, 0x1D) (EBX = 0 is not read), 0;
+ * - its start mask 0x9ACBC[side] newly pressed in DS_001088E4: 0x2C2B0(side,
+ *   0x1D), DS_00104B1F |= side + 1, then 0x2CA7C(1), and side + 1 (EBX);
+ * - otherwise 0x2C178(side, 0x3A00 with the DS_00104529 bit 1, else 0x1D), 0.
+ * With both bits set it returns 0 and draws nothing. The join stores
+ * DS_00104B1F (0x28D13) before 0x2CA7C tests it (0x2CA93), so the spend never
+ * debits: the credit is only required, by 0x2C060. EBX/ECX survive 0x2C060
+ * (0x2CAA8 writes EAX only, 0x2CA2C pushes and pops EDX), 0x2C2B0 (pushes
+ * and pops them) and 0x2CA7C (EAX only). EBX/ECX/EDX are pushed and popped.
+ * Callers: 0x2525F (mode 6) and 0x25349 (mode 0xC), each passing the result
+ * minus one to 0x28DA4. */
+u32 flow_join_poll(void)
+{
+    for (u32 side = 0; side < 2u; side++) {             /* 0x28CCB, 0x28D56..0x28D5A */
+        u32 bit = side + 1u;                            /* 0x28CCF */
+        if ((DSB(DS_00104B1F) & bit) != 0u) continue;   /* 0x28CCD..0x28CD9 */
+        if (config_credit_ready() == 0u) {              /* 0x28CDF 0x2C060 */
+            prompt_insert_coin(side, 0x1D);             /* 0x28D42..0x28D4B 0x2C1C8 */
+            return 0u;                                  /* 0x28D50 */
+        }
+        if ((DSD(DS_0009ACBC + side * 4u) & DSD(DS_001088E4)) != 0u) {  /* 0x28CE8..0x28CF4 */
+            prompt_side_erase((s32)side, 0x1D);         /* 0x28CFD 0x2C2B0 */
+            DSB(DS_00104B1F) = (u8)(DSB(DS_00104B1F) | bit);   /* 0x28D02..0x28D13 */
+            (void)config_credit_spend(1u);              /* 0x28D0E/0x28D19 0x2CA7C */
+            return bit;                                 /* 0x28D1E */
+        }
+        prompt_press_start(side, (DSB(DS_00104529) & 2u) != 0u
+                                     ? 0x3A00 : 0x1D);  /* 0x28D24..0x28D3B 0x2C178 */
+        return 0u;                                      /* 0x28D40 -> 0x28D60 */
+    }
+    return 0u;                                          /* 0x28D60 */
+}
+
 /* 0x28130 — record §48-Q. The match-result caption on the dword
  * DS_00104AD4 (0x2813C `jz` on -1, then the unsigned 0x28144 `jc`/`jbe` and
  * 0x28152 `jz` against 1 and 2):
@@ -2110,8 +2148,8 @@ void prompt_insert_coin(u32 side, s32 row)
  * and col are the caller's; DS_00105BF8 is reloaded before each 0x2F388.
  * The side is used whole in `[esi+0xBAB58]` and 0x2C088's `[eax*4+0x105BF0]`,
  * so a negative one reads below both tables. Callers: 0x275B7 (0x274FC, side
- * (s8)(DS_0010810D ^ 1) by `movsx`, row 0x1D) and the unported 0x26D4C,
- * 0x27DC8, 0x28CC8 and 0x42FE0. */
+ * (s8)(DS_0010810D ^ 1) by `movsx`, row 0x1D), 0x28CFD (0x28CC8, record
+ * §48-J) and the unported 0x26D4C, 0x27DC8 and 0x42FE0. */
 void prompt_side_erase(s32 side, s32 row)
 {
     if ((DSB(DS_00104529) & 2u) != 0u) {                /* 0x2C2B7/0x2C2BE */
@@ -3102,14 +3140,38 @@ void game_frame(void)
     case 0x05u:
         game_mode_05_step();                           /* 0x2524C 0x25C88 */
         break;
-    case 0x04u:
     case 0x06u:
+        /* 0x25256 (record §48-J): with DS_00104B1D == 0, 0x28CC8's non-zero
+         * result r joins side r - 1 through 0x28DA4 (`dec eax`). */
+        if (DSB(DS_00104B1D) == 0u) {                  /* 0x25256/0x2525D */
+            u32 r = flow_join_poll();                  /* 0x2525F 0x28CC8 */
+            if (r != 0u) {                             /* 0x25264/0x25266 */
+                flow_player_join(r - 1u);              /* 0x25268/0x25269 0x28DA4 */
+                break;                                 /* 0x2526E */
+            }
+        }
+        /* PORT: 0x2525D/0x25266 jump to case 4's 0x25242, 0x26254 (the fight
+         * frame, mode 4's handler), a named gap (record §48-J). */
+        break;
+    case 0x0Cu: {
+        /* 0x25349 (record §48-J): 0x28CC8 with no DS_00104B1D test; a
+         * non-zero result r joins side r - 1 through 0x28DA4. */
+        u32 r = flow_join_poll();                      /* 0x25349 0x28CC8 */
+        if (r != 0u) {                                 /* 0x2534E/0x25350 */
+            flow_player_join(r - 1u);                  /* 0x25352/0x25353 0x28DA4 */
+            break;                                     /* 0x25358 */
+        }
+        /* PORT: 0x2535D 0x27380 (mode 0xC's arena frame) is a named gap
+         * (record §48-J); its callees 0x3CB68, 0x1DA08 and 0x272DC are
+         * unported. */
+        break;
+    }
+    case 0x04u:
     case 0x07u:
     case 0x08u:
     case 0x09u:
     case 0x0Au:
     case 0x0Bu:
-    case 0x0Cu:
     case 0x0Eu:
     case 0x0Fu:
     case 0x12u:
@@ -3139,9 +3201,9 @@ void game_frame(void)
     case 0x33u:
         /* PORT: named gaps, each case's body unported (record §47-B.1 has
          * the entry and callees of every one):
-         * 4 0x26254; 6 0x28CC8/0x28DA4 else 0x26254; 7 0x282C4;
+         * 4 0x26254; 7 0x282C4;
          * 8 0x28468; 9 0x28788; 0xA 0x28BD4; 0xB 0x26254 + 0x28C38;
-         * 0xC 0x28CC8/0x28DA4 else 0x27380; 0xE 0x27A2C;
+         * 0xE 0x27A2C;
          * 0xF 0x277C0; 0x12 0x41C28; 0x13 0x424E8;
          * 0x15 0x4F24C; 0x16 0x4F2B0; 0x18 0x4F6E8;
          * 0x19 0x4F704; 0x1E 0x1EEB0; 0x1F 0x208F8; 0x21 0x26540;
@@ -3154,9 +3216,9 @@ void game_frame(void)
          * record §47-M) as fight_mode_10_step, and cases 0xD (0x274FC) and
          * 0x32 (0x296B8, record §48-Q) as game_mode_0d_step and
          * game_mode_32_step, and case 5 (0x25C88, record §48-U) as
-         * game_mode_05_step. Cases 6 and 0xC reach 0x28DA4
-         * (flow_player_join, record §48-Q) only through the unported
-         * 0x28CC8. */
+         * game_mode_05_step. Cases 6 and 0xC run 0x28CC8 (flow_join_poll)
+         * and 0x28DA4 (flow_player_join) above (record §48-J); their other
+         * arms, 0x26254 and 0x27380, are named gaps there. */
         break;
     case 0x00u:
     case 0x1Cu:

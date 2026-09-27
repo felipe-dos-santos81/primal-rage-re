@@ -393,8 +393,8 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   `0x4F9A0`/`0x4F9C8` then dispatch it. The port registers `0x43738` (demo-pose
   record §42-F). The two hooks (themselves `DS_00104AE4` values, stored by
   `0x42CB4`, `0x28DA4` and the unreferenced stub `0x42FB0`; `0x28DA4` is
-  ported as `flow_player_join`, record §48-Q, but its callers, modes 6 and
-  `0xC`, reach it only through the unported `0x28CC8`), `0x4F980` and
+  ported as `flow_player_join`, record §48-Q, and modes 6 and `0xC` reach it
+  through the join poll `0x28CC8`, `flow_join_poll`, record §48-J), `0x4F980` and
   both handlers with their wipes `0x4F9E4`/`0x4FA88` are ported and the hooks
   registered (record §43-B), and each handler's `call [0x104AE4]` goes through
   `fn_resolve`. A miss is skipped. That is a no-op only for `0x29D60`/`0x5D812`.
@@ -408,9 +408,24 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   skip test `0x4F790` and `0x4F778` (record §46-G).
   `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
-  - it dispatches cases 3, 5, `0xD`, `0x10`, `0x11`, `0x14`, `0x17`, `0x1A`,
-    `0x1B` and `0x32`, and cases 1/2/`0x20` run the bare `ret` `0x29B70`;
-  - the other 35 cases are named gaps.
+  - it dispatches cases 3, 5, 6, `0xC`, `0xD`, `0x10`, `0x11`, `0x14`, `0x17`,
+    `0x1A`, `0x1B` and `0x32`, and cases 1/2/`0x20` run the bare `ret`
+    `0x29B70`;
+  - the other 33 cases are named gaps.
+  - Cases 6 and `0xC` run the join poll `0x28CC8` (`flow_join_poll`, record
+    §48-J); case 6 runs it only with `DS_00104B1D == 0`. The first side whose
+    bit is clear in `DS_00104B1F` gets the "INSERT 1 COIN" (no credit) or
+    "PRESS START" prompt at row `0x1D`, or joins on its newly pressed start.
+    A join erases the side's prompt through `0x2C2B0` (`prompt_side_erase`,
+    record §48-T) and sets the bit (the `0x2CA7C` spend after it therefore
+    never debits, the same guard `0x2CA48` uses), and the case passes side
+    to `0x28DA4` (`flow_player_join`, mode `0x17` with the hook `0x28D80`).
+    With no join, case 6 falls back to case 4's fight frame `0x26254`, and
+    case `0xC` runs its arena frame `0x27380`; both are named gaps. Modes 6
+    and `0xC` are stored by `0x25C88` (mode 5, record §48-U), and by the
+    unported `0x4CD98`, `0x4F0FC` and `0x2791C`, and by `0x274FC` (mode
+    `0xD`). So under real input a credited join from the character screen
+    now reaches mode 5, then this poll, for real — not only in unit tests.
   - Cases `0xD` and `0x32` are `0x274FC`/`0x296B8` (`game_mode_0d_step`/
     `game_mode_32_step`, record §48-Q). Each runs the arena frame's tail
     steps (`0x3C5CC`, `0x16D58` per side, the two position latches, `0x35658`

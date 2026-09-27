@@ -15466,3 +15466,230 @@ of 12 and 2 of 10 runs). lldb puts it in `check_projectile_step`
   `0x2B150` on a zero `DS_00104AC0`/`DS_00104ACC` (case 3 run without
   cases 1 and 2) would write the raw's `mem[0x28]` as the port's does; the
   raw's sub-state order (1, 4, 2, 4, 3) always fills both first.
+
+## 48-J. The join poll `0x28CC8` and modes 6/`0xC`'s join arms (named-gap batch 13, branch `gap13-28cc8`)
+
+**Result in one line.** `0x28CC8` is ported from the raw as `flow_join_poll`
+(`flow.c`), and `game_frame` now dispatches cases 6 and `0xC` to it, passing
+a non-zero result minus one to `0x28DA4` (`flow_player_join`, §48-Q). So the
+join is finally reachable from the mode switch. Two things stay named gaps:
+the two "no join" arms, case 4's `0x26254` (the fight frame) and `0x27380`
+(mode `0xC`'s arena frame). No path the port runs without input stores mode
+6 or `0xC`, and a headless 8000-frame run is byte-identical before and after
+(48-J.5).
+
+**Merge-time correction (§48-T/§48-U landed first).** This section was
+written before `gap13-2c2b0` (§48-T) and `gap13-mode5` (§48-U) merged. Both
+claims below that assumed `0x2C2B0` was unported and that modes 6/`0xC`
+were reachable "only in unit tests" no longer hold: the join now calls
+`prompt_side_erase` (wired at merge time, one line in `flow_join_poll`),
+and mode 5 (`0x25C88`) stores modes 6/`0xC` for real, so a credited join
+from the character screen reaches this poll under real input. The review
+that caught this (`.superpowers/sdd/2026-09-25-roar-timing/gap13-28cc8-review.md`)
+found that leaving the eraser unwired would corrupt a live character-select
+actor in the sprite-prompt config, once a stale `DS_00105BF0` record
+survived the mode-`0x10` wipe past the join.
+
+(§48-Q names this follow-up. `git log --all` and the ledger show §48-A/Q/R/S/W
+in use, and §48-U is on the parallel `gap13-entrances`. Batch 13 runs in
+parallel, so this section takes J, for "join".)
+
+### 48-J.1 The raw (Ghidra `disassemble_function` `0x28CC8`, `read_memory` + capstone over `0x25242..0x25367`; fixups applied)
+
+The two cases (jump table `0x24B8C`):
+
+```
+25256 cmp byte ptr [0x104b1d], 0      ; case 6
+2525D jne 0x25242                     ;   -> case 4: call 0x26254
+2525F call 0x28cc8
+25264 test eax, eax
+25266 je 0x25242                      ;   -> case 4
+25268 dec eax
+25269 call 0x28da4
+2526E jmp 0x2540f
+25349 call 0x28cc8                    ; case 0xC (no DS_00104B1D test)
+2534E test eax, eax
+25350 je 0x2535d
+25352 dec eax
+25353 call 0x28da4
+25358 jmp 0x2540f
+2535D call 0x27380
+```
+
+`0x28CC8` (to `0x28D65`, 55 instructions; EBX/ECX/EDX pushed and popped):
+
+```
+28CCB xor ecx,ecx                     ; side
+28CCD xor eax,eax
+28CCF lea ebx,[ecx+1]                 ; the side's bit
+28CD2 mov al,[0x104b1f]
+28CD7 test eax,ebx
+28CD9 jnz 0x28d56                     ; joined: next side
+28CDF call 0x2c060                    ; a credit (or free play)?
+28CE6 jz 0x28d42
+28CE8 mov eax,[0x1088e4]              ; newly pressed
+28CED test [ecx*4+0x9acbc],eax        ; the side's start mask
+28CF4 jz 0x28d24
+28CF6 mov edx,0x1d ; mov eax,ecx ; call 0x2c2b0
+28D02 mov al,cl ; mov dl,[0x104b1f] ; inc al ; or dl,al
+28D0E mov eax,1 ; mov [0x104b1f],dl ; call 0x2ca7c
+28D1E mov eax,ebx ; ret               ; side + 1
+28D24 test byte [0x104529],2 ; jz -> edx = 0x1d ; else edx = 0x3a00
+28D39 mov eax,ecx ; call 0x2c178 ; jmp 0x28d60   ; PRESS START, 0
+28D42 mov edx,0x1d ; mov eax,ecx ; xor ebx,ebx ; call 0x2c1c8
+28D50 xor eax,eax ; ret               ; INSERT 1 COIN, 0
+28D56 inc ecx ; cmp ecx,2 ; jl 0x28ccd
+28D60 xor eax,eax ; ret
+```
+
+The details that differ from a plain reading:
+- **The first side without its bit decides.** Each of the three arms
+  returns, so side 1 is polled only when side 0's bit is set. With both set
+  it returns 0 and draws nothing. The test is `test eax,ebx` on the
+  zero-extended byte, so bits above 1 of `DS_00104B1F` are ignored and kept
+  by the `or`.
+- **The join never debits a credit.** `DS_00104B1F` is stored at `0x28D13`,
+  before the `0x2CA7C(1)` call. `0x2CA7C` (`read_memory` + capstone at
+  `0x2CA7C..0x2CAA7`) debits only when `[0x104B1F] == 0` (`0x2CA93 cmp;
+  jne 0x2CAA2`), and the bit just stored makes it non-zero. So the credit is
+  only required, through `0x2C060`. The character select's `0x43B24` spends
+  through `0x11F28` before it sets the bit, so it does debit. `0x28CC8`
+  drops `0x2CA7C`'s return value (`mov eax,ebx`). With the debit suppressed,
+  the call has no effect here: its guard `n > credits` only returns.
+- **The registers.** `0x2C060` is `call 0x2CAA8; jmp 0x2CA2C`. `0x2CAA8`
+  writes only EAX, and `0x2CA2C` pushes and pops EDX. `0x2C2B0` pushes and
+  pops EBX/ECX/ESI, and `0x2CA7C` writes only EAX. So ECX (the side) and EBX
+  (side + 1) survive every call. `0x2C1C8` gets EBX = 0, which it does not
+  read (§48-S).
+- **The masks.** `0x9ACBC` holds the dwords `0x01000000` (side 0) and
+  `0x100` (side 1) (`read_memory`). They are the same masks `0x11F28` tests.
+
+### 48-J.2 Entrances and reachability (`get_xrefs_to`; every store to the mode word decoded)
+
+| target | callers |
+|---|---|
+| `0x28CC8` | `0x2525F` (case 6), `0x25349` (case `0xC`) |
+| `0x28DA4` | `0x25269` (case 6), `0x25353` (case `0xC`) |
+| `0x26254` | `0x25242` (case 4, also case 6's fall-back), `0x25287` (case `0xB`) |
+| `0x27380` | `0x2535D` (case `0xC`) |
+
+**Who stores mode 6 or `0xC`.** Ghidra lists 76 writes among the 123
+references to `0x104B00`. Each store's source was decoded: an immediate, or
+the register traced back to its last definition (`modew2.py`). Mode 6:
+`0x25F6B` (`0x25C88`, mode 5's handler, immediate), `0x4CDA8` (`0x4CD98`,
+EDX = 6 at `0x4CD9B`) and `0x4F1A3` (`0x4F0FC`, immediate). Mode `0xC`:
+`0x25F20` (`0x25C88`, ESI = `0xC`), `0x277B5` (`0x274FC`, EDX = `0xC`, ported
+in §48-Q) and `0x27A15` (`0x2791C`, EDX = `0xC`). The four wipe returns
+(`0x4F24C`/`0x4F2B0`/`0x4F6E8`/`0x4F9C8`) store the saved word
+`DS_00104AFA`. Of its 21 writers, 20 store `0x13`, `0x1E`, `0x1F`, `0x30` or 5
+(the same trace). The 21st, `0x4F980`, stores its EAX, and its 11 callers
+pass `0x10`, `0x11`, `0x30`, 5 or `0x23`. So neither mode comes back through
+a wipe. Of the six direct stores, only `0x274FC` is ported, and no ported
+path stores its mode `0xD` (§48-Q). `0x25C88` (mode 5) is a named gap here.
+The parallel `gap13-mode5` batch may port it; after that merge, modes 6 and
+`0xC` become reachable under real input.
+
+**Probed, not assumed.** A throwaway `stderr` build (never committed) logged
+every mode word value the first time `game_frame` saw it, and every frame in
+mode 6 or `0xC`, over `prageport --check 8000`. The only mode was 3, from the
+first frame, and no frame was in mode 6 or `0xC`.
+
+### 48-J.3 The port
+
+- `flow.c`: `flow_join_poll` (`0x28CC8`), after `0x28130`'s `#define` block
+  (it uses `DS_00104529`). Its callees were already ported:
+  `config_credit_ready` (`0x2C060`), `config_credit_spend` (`0x2CA7C`),
+  `prompt_insert_coin` (`0x2C1C8`) and `prompt_press_start` (`0x2C178`).
+  `PORT:` note: `0x28CFD`'s `0x2C2B0(side, 0x1D)` is a named gap. That
+  eraser releases the side's last prompt cells. With the `DS_00104529` bit 1
+  it runs `0x2C088`, then `0x2F388` at `DS_00105C06`/`07`. In every case it
+  then runs `0x2F388` at the side's col byte `0xBAB58[side]`, row EDX, count
+  `DS_00105BF8`. It is 20 instructions and its callees are ported. It is left
+  out only because the parallel `gap13-2c2b0` batch ports it; after that
+  merge, the call at `0x28CFD` needs one line.
+- `game_frame`: case 6 (`0x25256`) and case `0xC` (`0x25349`) leave the
+  named-gap list. Each has a `PORT:` note for its other arm: `0x26254` for
+  case 6, reached on `DS_00104B1D != 0` or a zero result, and `0x27380` for
+  case `0xC`. The mode-switch comment and `flow.h` (the prototype, and the
+  prompt helpers' caller list) are updated.
+
+`0x27380` (to `0x274FB`, Ghidra `disassemble_function`) was examined for
+scope. It restores the `DS_00104AF6` pset word that case `0xC`'s mode tail
+(`0x25487`) saved, then runs the arena frame's steps. Most are ported
+(`0x3C5CC`, `0x16D58`, `0x17FA0`, `0x17580`, `0x1958C`, `0x19068`,
+`0x1975C`, `0x35658`, `0x12DA8`). Three are not: `0x3CB68` (27
+instructions, calling `0x1A570` and `0x3C88C`), `0x1DA08` (38, calling
+`0x2BC30`) and `0x272DC` (41, calling `0x2C3FC`, `0x27254` and `0x278B0`).
+`0x26254` (97 instructions) is the real fight frame: it adds `0x49C78`,
+`0x1282C`, the round-end `0x27FA8` and `0x4E11C`. Both are the match loop,
+which is outside this batch.
+
+### 48-J.4 The assertions and mutations (`check_join_poll` in `test_fight.c`)
+
+The snapshot is `check_char_select_pass`'s: the data object, both pools,
+both buffers, the resource table, the aperture and the DAC. `jp_open` builds
+the character screen with `cs_open`, sets `DS_00104B1F`, empties row `0x1D`,
+sets phase 0, and seeds sentinels into `DS_00105BF8`, `DS_00105C06`/`07` and
+both `DS_00105BF0` slots. The groups:
+- the mask dwords `0x9ACBC[0..1]` and the col bytes `0xBAB58`;
+- **(a)** no credit with both starts pressed. For `DS_00104B1F` 0, 4 (no side
+  bit) and 1: result 0, no bit, and "INSERT 1 COIN" at the polled side's col
+  (3, 3, `0x18`), row `0x1D`, mode `0x3000` (`cs_row_ref`, by sprite id and
+  palette), with length 13;
+- **(b)** a credit with no start, only the other side's start, or the start
+  held but not newly pressed (`DS_001088D8`): "PRESS START" at the polled
+  side's col, row `0x1D`, mode `0x1000`, length 14, no credit spent. This
+  includes `DS_00104B1F` 2 with side 1's start, which shows that side 1 is
+  not polled;
+- **(c)** the sprite prompt (`DS_00104528 = 0x200`): `0xBAB60` at x
+  `0x1500`/`0x4000`, y `0x3A00`, in `DS_00105BF0[side]`; the other slot
+  keeps its sentinel and row `0x1D` stays empty;
+- **(d)** five joins: `DS_00104B1F` 0/1/5/2/0 with the matching start (5
+  credits, exactly 1 credit, or free play with 0). Results 1/2/2/1/1,
+  `DS_00104B1F` 1/3/7/3/1, the credit count unchanged, and no prompt drawn;
+- **(e)** both bits set: 0, nothing drawn or spent;
+- **(f)** `game_frame` cases 6 and `0xC` with no credit. Each draws "INSERT 1
+  COIN" and keeps the mode dword. With `DS_00104B1D = 1`, case 6 draws
+  nothing (its `0x26254` arm), but case `0xC` still does;
+- **(g)** `game_frame` joins with the start pressed through `0x4F644` (the
+  level `DS_000E1C34`, latch 0). Case 6 joins side 1 and case `0xC` side 0.
+  The checks: `DS_001088E4`, no debit, `DS_00104B1F` 3, the mode dword
+  `0xBEEF0017`, the hook `0x28D80`, `DS_00104ABC` 2, and the joining side's
+  slot reset (`cd_check_slot`) with the other side's `+0x5B` zeroed and
+  `+0x7F` kept. With `DS_00104B1D = 1`, case 6 joins nothing and resets no
+  slot.
+
+**Mutations** (`scratchpad/g13cc8/mut.py`, `mut.log`; one single-site edit
+per build, the source restored after each). **All 36 mutations fail the
+suite:** J1..J25 over `0x28CC8` and G1..G11 over the two cases. Four of them
+(J1, J11, G5, G11) first ended in `SIGBUS` on a run. The unmodified suite
+also bus-errors about one run in six (the known, pre-existing
+`fighter_18350` crash). The script now reruns a crash up to six times, and
+on the rerun all four fail with FAIL lines (24, 51, 7 and 10). J16 (the spend
+before the store) is the one that pins the credit order. Two edits are
+equivalent and were not counted: removing `0x2CA7C` or changing its
+argument (the debit is suppressed, so it has no effect), and the `break`
+after each case's join (only a comment follows it).
+
+### 48-J.5 Measured, remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, with no
+  compiler warnings.
+- **Frames.** `prageport --check 8000` was run from two scratch directories,
+  once with the base binary (`afc3948`) and once with this branch's, both
+  from the same CMake configuration. `diff -rq` finds all 24000
+  `frame_*.ppm`/`.pal`/`.idx` files byte-identical, and the two run logs
+  are identical.
+- `make verify`: green. Front-end 517 clean / 801 splice / 3 transition / 2
+  unexplained (the two allowed by name), demo-fight fully explained at
+  N = 1886, attract2 0 unexplained over its 1732-frame region, and
+  `symbols.h` regenerates byte-identically. The first run died in the
+  smk-oracle step with the known intermittent bus error. The rerun passed.
+- **Remaining named gaps (as merged, see the correction above):**
+  - `0x26254`, the fight frame (case 6's fall-back and case 4), and case
+    `0xC`'s `0x27380` with its unported `0x3CB68`, `0x1DA08` and `0x272DC`;
+  - the four other stores of modes 6/`0xC` (all but `0x274FC`'s and mode
+    5's `0x25C88`, both now ported): `0x4CD98`, `0x4F0FC` and `0x2791C`.
+    Mode 5 (§48-U) does store modes 6/`0xC`, so the join poll is reachable
+    under real input, not only in unit tests; no oracle-covered path
+    presses a real join, so the 8000-frame probe still sees mode 3 alone.

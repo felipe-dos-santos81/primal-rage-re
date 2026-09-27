@@ -102,10 +102,10 @@ void frontend_mode_17_step(void);
  * spent through 0x2CA7C), else 0. Also 0x43928's poll (record §47-M). */
 u32 frontend_coin_poll(u32 code);
 /* Record §48-S. The unjoined side's blinking prompt on the character screen
- * (0x432A0's callees; also called by the unported 0x27A2C, 0x28CC8 and
- * 0x424E8, and by 0x2C2B0 since record §48-T). 0x2C178: "PRESS START"
- * (string 0x48, or the 0xBAB60 sprite with the DS_00104529 bit 1) for
- * `side` through 0x2C0F4, which draws on the
+ * (0x432A0's callees; also called by 0x28CC8, record §48-J, and by 0x2C2B0
+ * since record §48-T; the unported 0x27A2C and 0x424E8 are the rest).
+ * 0x2C178: "PRESS START" (string 0x48, or the 0xBAB60 sprite with the
+ * DS_00104529 bit 1) for `side` through 0x2C0F4, which draws on the
  * blink phase DS_000EF6DC & 0x1F == 0 and erases through 0x2C088 on phase
  * 0x18. 0x2C1C8 (falling into 0x2C1D4): "INSERT 1 COIN" (strings 0x49, the
  * image string 0x809C4 and 0x4B) on the same phases, erased by 0x2F388. */
@@ -259,6 +259,13 @@ void flow_1082c8_restore(void);
 void flow_side_char_set(u32 side, u32 ch);
 void flow_side_char_random(u32 side);
 void flow_player_join(u32 side);
+/* Record §48-J. 0x28CC8: the join poll of modes 6 and 0xC. The first side
+ * whose bit side + 1 is clear in DS_00104B1F gets "INSERT 1 COIN" (no credit)
+ * or "PRESS START" at row 0x1D (y 0x3A00 for the sprite prompt), or, on its
+ * newly pressed start mask 0x9ACBC[side], joins: the bit is set and side + 1
+ * returned (the 0x2CA7C spend then never debits). 0 otherwise. game_frame's
+ * cases 6 and 0xC pass a non-zero result minus one to 0x28DA4. */
+u32 flow_join_poll(void);
 /* 0x28130: the match-result caption on DS_00104AD4 (and DS_00104B16).
  * 0x274FC/0x296B8: the handlers of modes 0xD and 0x32, dispatched by
  * game_frame: the arena frame's tail steps, then on DS_00104B0C the next
