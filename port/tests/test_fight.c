@@ -6311,6 +6311,211 @@ static void check_mode_switch(void)
     memcpy(gfx_dac, s_dac, sizeof s_dac);
 }
 
+/* Record §47-M: the mode 0x10 handler 0x438B4 and its join test 0x43928.
+ * m10_seed sets the sub-state DS_00108174, the side bytes DS_00108170[0..1]
+ * with 0x77 either side, the byte DS_00108172 (0x5A, what a finished pass
+ * copies), the countdown word DS_0010816C with 0x66 above it, the credit
+ * layer (no free play, `credits`, DS_00104B1F = b1f) and the pressed/held
+ * words DS_001088E4/DS_001088D8. The image masks: 0x9ACBC = 0x01000000 (side
+ * 0) and 0x100 (side 1); 0xC9898 = 0x0F000000 and 0xF00. */
+static void m10_seed(u32 b1d, u32 sub, u32 cd, u32 credits, u32 b1f,
+                     u32 pressed, u32 held)
+{
+    DSB(DS_00104B1D) = (u8)b1d;
+    DSB(DS_00108174) = (u8)sub;
+    DSB(DS_00108174 + 1u) = 0x77u;
+    DSB(DS_00108170 - 1u) = 0x77u;
+    DSB(DS_00108170) = 0u;
+    DSB(DS_00108170 + 1u) = 0u;
+    DSB(DS_00108172) = 0x5Au;
+    DSB(DS_00108172 + 1u) = 0x77u;
+    DSW(DS_0010816C) = (u16)cd;
+    DSB(DS_0010816C + 2u) = 0x66u;
+    DSB(DS_00105D60) = 0u;
+    DSD(DS_00105C00) = credits;
+    DSB(DS_00104B1F) = (u8)b1f;
+    DSD(DS_001088E4) = pressed;
+    DSD(DS_001088D8) = held;
+}
+
+static void check_mode_10_step(void)
+{
+    static u8 s_data[0x10B0D0u - 0x80000u];
+    static u8 s_rec[0xEBA0u], s_pset[0x4880u];
+    static u8 s_bufa[0xFA00u], s_bufb[0xFA00u], s_ap[0xFA00u];
+    static u8 s_dac[sizeof gfx_dac];
+    static u8 s_res[0x14u * 128u];
+    u32 rec_pool = DSD(DS_001014F4), pset_pool = DSD(DS_001014EC);
+    u32 bufa = DSD(DS_001014E8), bufb = DSD(DS_001014E4);
+    u32 res_tab = DSD(DS_001014E0);
+    u32 res_len = DSD(DS_001014F0) * 0x14u;
+    CHECK(rec_pool != 0u && pset_pool != 0u && bufa != 0u && bufb != 0u,
+          "mode 0x10 needs the pools and buffers");
+    CHECK(res_len != 0u && res_len <= sizeof s_res, "the resource table fits");
+    if (rec_pool == 0u || pset_pool == 0u || bufa == 0u || bufb == 0u ||
+        res_len == 0u || res_len > sizeof s_res)
+        return;
+    tf_snap(s_data, 0x80000u, sizeof s_data);
+    tf_snap(s_rec, rec_pool, sizeof s_rec);
+    tf_snap(s_pset, pset_pool, sizeof s_pset);
+    tf_snap(s_bufa, bufa, sizeof s_bufa);
+    tf_snap(s_bufb, bufb, sizeof s_bufb);
+    tf_snap(s_res, res_tab, res_len);
+    memcpy(s_ap, gfx_aperture(), sizeof s_ap);
+    memcpy(s_dac, gfx_dac, sizeof s_dac);
+    CHECK_EQ_INT((int)DSD(DS_0009ACBC), 0x01000000);
+    CHECK_EQ_INT((int)DSD(DS_0009ACBC + 4u), 0x100);
+#define M10_RESTORE() tf_put(s_data, 0x80000u, sizeof s_data)
+
+    /* (a) 0x43928. Both sides pressed with 5 credits and DS_00104B1F = 0:
+     * side 0 is debited (B1F still 0), then side 1 is not (B1F is 1 by then),
+     * so 4 credits are left; both bytes 1, B1F = 3, neighbours kept. */
+    M10_RESTORE();
+    m10_seed(0u, 1u, 5u, 5u, 0u, 0x01000100u, 0u);
+    fight_char_join();
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 3);
+    CHECK_EQ_INT((int)DSB(DS_00108170), 1);
+    CHECK_EQ_INT((int)DSB(DS_00108170 + 1u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00105C00), 4);
+    CHECK_EQ_INT((int)DSB(DS_00108170 - 1u), 0x77);
+    CHECK_EQ_INT((int)DSB(DS_00108172), 0x5A);
+    CHECK_EQ_INT((int)DSB(DS_00108174), 1);
+
+    /* (a2) Side 1's byte already 5: it is not polled (B1F gets no bit 2 and
+     * the byte stays 5); side 0 joins with B1F = 0x40 kept in the or, and no
+     * debit since B1F is non-zero. */
+    M10_RESTORE();
+    m10_seed(0u, 1u, 5u, 5u, 0x40u, 0x01000100u, 0u);
+    DSB(DS_00108170 + 1u) = 5u;
+    fight_char_join();
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 0x41);
+    CHECK_EQ_INT((int)DSB(DS_00108170), 1);
+    CHECK_EQ_INT((int)DSB(DS_00108170 + 1u), 5);
+    CHECK_EQ_INT((int)DSD(DS_00105C00), 5);
+
+    /* (a3) Only side 1's mask pressed: bit 2 and byte 1 for side 1 only. */
+    M10_RESTORE();
+    m10_seed(0u, 1u, 5u, 5u, 0u, 0x100u, 0u);
+    fight_char_join();
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 2);
+    CHECK_EQ_INT((int)DSB(DS_00108170), 0);
+    CHECK_EQ_INT((int)DSB(DS_00108170 + 1u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00105C00), 4);
+
+    /* (a4) No credit: both pressed, nothing joins. */
+    M10_RESTORE();
+    m10_seed(0u, 1u, 5u, 0u, 0x40u, 0x01000100u, 0u);
+    fight_char_join();
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 0x40);
+    CHECK_EQ_INT((int)DSB(DS_00108170), 0);
+    CHECK_EQ_INT((int)DSB(DS_00108170 + 1u), 0);
+
+    /* (b) 0x438B4, DS_00104B1D = 0, sub-state 1, no input: the countdown
+     * word runs 2 -> 1 (sub-state kept), then 1 -> 0 and the sub-state takes
+     * DS_00108172. The byte above the countdown keeps 0x66. */
+    M10_RESTORE();
+    m10_seed(0u, 1u, 2u, 0u, 0x40u, 0u, 0u);
+    fight_mode_10_step();
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 1);
+    CHECK_EQ_INT((int)DSB(DS_00108174), 1);
+    fight_mode_10_step();
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 0);
+    CHECK_EQ_INT((int)DSB(DS_00108174), 0x5A);
+    CHECK_EQ_INT((int)DSB(DS_0010816C + 2u), 0x66);
+    CHECK_EQ_INT((int)DSB(DS_00108174 + 1u), 0x77);
+
+    /* (b2) The test is signed on the new word: 0x8000 - 1 = 0x7FFF > 0 keeps
+     * the sub-state; 0 - 1 = 0xFFFF (-1) ends it. */
+    M10_RESTORE();
+    m10_seed(0u, 1u, 0x8000u, 0u, 0x40u, 0u, 0u);
+    fight_mode_10_step();
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 0x7FFF);
+    CHECK_EQ_INT((int)DSB(DS_00108174), 1);
+    DSW(DS_0010816C) = 0u;
+    fight_mode_10_step();
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 0xFFFF);
+    CHECK_EQ_INT((int)DSB(DS_00108174), 0x5A);
+
+    /* (c) 0x4F790 non-zero ends the pass at once, the countdown untouched:
+     * side 0's mask 0x01000000 newly pressed (AL 1, no credit so no join),
+     * then the held mask 0x0F000000 (AL 2). */
+    M10_RESTORE();
+    m10_seed(0u, 1u, 9u, 0u, 0x40u, 0x01000000u, 0u);
+    fight_mode_10_step();
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 9);
+    CHECK_EQ_INT((int)DSB(DS_00108174), 0x5A);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 0x40);
+    M10_RESTORE();
+    m10_seed(0u, 1u, 9u, 0u, 0x40u, 0u, 0x0F000000u);
+    fight_mode_10_step();
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 9);
+    CHECK_EQ_INT((int)DSB(DS_00108174), 0x5A);
+
+    /* (d) DS_00104B1D == 3: no input returns with no countdown (9 kept,
+     * sub-state 1 even with the word at 1); a press ends the pass. */
+    M10_RESTORE();
+    m10_seed(3u, 1u, 1u, 0u, 0x40u, 0u, 0u);
+    fight_mode_10_step();
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 1);
+    CHECK_EQ_INT((int)DSB(DS_00108174), 1);
+    m10_seed(3u, 1u, 9u, 0u, 0x40u, 0x100u, 0u);
+    fight_mode_10_step();
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 9);
+    CHECK_EQ_INT((int)DSB(DS_00108174), 0x5A);
+
+    /* (e) The join runs inside the pass (both DS_00104B1D copies): side 1
+     * pressed with credits joins (B1F |= 2), and the same press (in 0xF00)
+     * ends the pass. */
+    for (u32 b1d = 0u; b1d <= 3u; b1d += 3u) {
+        M10_RESTORE();
+        m10_seed(b1d, 1u, 9u, 5u, 0x40u, 0x100u, 0u);
+        fight_mode_10_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B1F), 0x42);
+        CHECK_EQ_INT((int)DSB(DS_00108170), 0);
+        CHECK_EQ_INT((int)DSB(DS_00108170 + 1u), 1);
+        CHECK_EQ_INT((int)DSB(DS_00108174), 0x5A);
+        CHECK_EQ_INT((int)DSW(DS_0010816C), 9);
+    }
+
+    /* (f) Sub-state 0 (the 0x43B24/0x44798 gap) and 2 run nothing in either
+     * copy: with credits and both presses available, no side joins, the
+     * countdown keeps 1 and the sub-state is not copied. */
+    {
+        static const u32 subs[] = { 0u, 2u };
+        for (u32 i = 0; i < 2u; i++) {
+            for (u32 b1d = 0u; b1d <= 3u; b1d += 3u) {
+                M10_RESTORE();
+                m10_seed(b1d, subs[i], 1u, 5u, 0x40u, 0x01000100u, 0u);
+                fight_mode_10_step();
+                CHECK_EQ_INT((int)DSB(DS_00108174), (int)subs[i]);
+                CHECK_EQ_INT((int)DSW(DS_0010816C), 1);
+                CHECK_EQ_INT((int)DSB(DS_00104B1F), 0x40);
+                CHECK_EQ_INT((int)DSB(DS_00108170), 0);
+            }
+        }
+    }
+
+    /* (g) game_frame routes the word 0x10 (dword 0xBEEF0010) to 0x438B4:
+     * the countdown runs 2 -> 1 and the mode is kept. */
+    M10_RESTORE();
+    m10_seed(0u, 1u, 2u, 0u, 0x40u, 0u, 0u);
+    ms_seed(0xBEEF0010u);
+    game_frame();
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 1);
+    CHECK_EQ_INT((int)DSB(DS_00108174), 1);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0010u);
+#undef M10_RESTORE
+
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    tf_put(s_bufa, bufa, sizeof s_bufa);
+    tf_put(s_bufb, bufb, sizeof s_bufb);
+    tf_put(s_res, res_tab, res_len);
+    memcpy(gfx_aperture(), s_ap, sizeof s_ap);
+    memcpy(gfx_dac, s_dac, sizeof s_dac);
+}
+
 /* 0x24C73/0x47208: the demo's CPU-AI command generator. A live pair of slots
  * (think gate armed, idle state, a legal character) must produce a non-zero
  * command word, and the two sides must be able to differ. The command words are
@@ -19588,6 +19793,7 @@ int test_fight(void)
     check_mode_17_hooks();
     check_mode_17_step();
     check_mode_switch();
+    check_mode_10_step();
 
     return g_failures - before;
 }
