@@ -7263,3 +7263,163 @@ since Ghidra has no function there, in the shape of the `0x1490C` family
 134 (`0x1A6AC`), 296 (`0x1A7CC`) and 129 (`0x1A8F4`) bytes, `0x22F` in all.
 With alignment padding they span `0x234` bytes (`0x1A6AC..0x1A734`,
 `0x1A7CC..0x1A8F4` and `0x1A8F4..0x1A978`). §38.3 now says about `0x234`.
+
+## 40. The raptor's grab `0x14E44` at capture 2763 (roar-timing Task 30, `ce5f295`)
+
+**Result in one line.** At f = 4003 (loop 3116) the original's raptor takes
+character 3's reaction `0x23`, whose callback `0x14E44` was not registered.
+It is now ported with the `+0x18` hook it stores, `0x14CC4`, and its grab
+stream's `0xD100` target `0x14EA4`. The live-RAM poll matches the port through
+f = 4179, 2763..2949 are explained, and N = 2950 (`ce5f295`). The throw
+`0x14D7C` and the stream target `0x14E80` are not reached and stay named gaps.
+
+### 40.1 The raw (Ghidra `read_memory` + capstone, fixups applied)
+
+Ghidra has no function at `0x14E44`. The bytes `0x14E44..0x14E7E` decode
+cleanly between the `ret`/`nop` of the preceding code and `0x14E80`
+(`scratchpad/t30/d14e44.txt`).
+
+- **The reaction record.** `read_memory 0xA46E4` reads `44 4e 01 00 00 00 00
+  00 ...`: the callback `0x14E44` and no stream word. `0xA46E4 - 0xA3528` =
+  227 records of `0x14` = 3 * 64 + `0x23`. So `0x34E2C` only stores `+0x5F`
+  and calls the callback at `0x35045` with EAX = slot, EDX = rec, EBX =
+  side.
+- **`0x14E44`** (59 bytes):
+  - `push ebx; mov ebx,eax` (EBX is overwritten before any read), then
+    `0x3C4CC(rec, 0xD3026, 0x40000000)` (`0x14E47..0x14E53`). `0x3C4CC` ends
+    `ret 4` and preserves EBX.
+  - The slot's `+0x52` = 9 (`0x14E58`), `+0x54` = 0 (`0x14E5C`), `+0x53` = 7
+    (`0x14E60`).
+  - `+0x18` = `0x14CC4` (`0x14E64`), `+0x1C` = `0x14D7C` (`0x14E6E`), and
+    `+0x42 |= 4` (`0x14E6B..0x14E78`).
+  - `mov al,1; pop ebx; ret`. It writes neither `+0x0C` nor `+0x57`; the poll
+    shows the raptor's `+0x57` still 3 from reaction `0x27` (§37).
+- **`0x14CC4`** (the `+0x18` hook, 181 bytes; EAX = side, `0x19020`'s call):
+  - `0x33950(side)`. When ctx[4]'s (the side's record) byte `+0x61` is 0
+    (`0x14CD7`), it returns 1.
+  - Otherwise `0x18BD4` fills 16 flag bytes with 2 (`lea eax,[esp+0x18];
+    mov cl,1; call 0x18BD4`). `0x18BD4` is 16 byte stores through EAX and
+    `ret`, so CL is still 1. Then flags 1, 8, 4, 0xE and 0xD = DH = 0 and
+    flag 9 = CL = 1 (`0x14CF9..0x14D0D`), and `0x18C14(ctx[0], flags, EBX
+    = 0, ECX = 0)` (the default box tables).
+  - A 0 result goes to the distance: `0x187FC` is called once for the sign
+    and once for the value (`0x14D22..0x14D34`). |d| > `0x3200` (`jg`) or
+    |d| < `0x1900` (`jl`) gives 1, else 0.
+  - A 1 (from either) starts `0x2BC30(ctx[4], 0xD3062, 0x40400000)`
+    (`0x14D55..0x14D63`; `0x2BC30` ends `ret 4`, so `[esp+0x10]` is ctx[4]
+    again at `0x14D68`).
+  - ctx[4]'s `+0x61` = 0 and the result is returned. `0x19020` stores
+    `DS_00100AF8[side]` = (result == 0).
+- **`0x14EA4`** (81 bytes; the `0xD100` target, EAX = rec; EDX is pushed,
+  used as scratch and popped):
+  - The other side's slot pointer `DS_001077A8[rec+0x51 ^ 1]`; 0 returns.
+  - `ebx = [rec+0x4F] sar 24`, the signed byte `+0x52`; `mov bx, word
+    [ebx*2 + 0x9AFA8]`; `shl ebx,6`; `movsx edx,bx`. So the step is
+    (s16)(word << 6).
+  - With `0x1A570(rec+0x51)` non-zero it adds the step to the other slot's
+    record's `+0x18`; else it subtracts it.
+  - The words at `0x9AFA8` read `2D00 3840 2F80 2D00 29C0` and then zeros
+    (`read_memory`). The raptor's record `+0x52` is 8 when the port reaches
+    it at f = 4019, so the step there is 0.
+- **The streams** (`read_memory 0xD3026`, words): `CD40 1835`, `B840 0008
+  000D3026` (the head loop), `8201`, `D100 00014EA4 0000` at `0xD3034`,
+  `CD40 1835`, `B840 0014 000D3034` (a loop back to the `D100`), `CD40 1835`,
+  `B840 0020 000D3048`, `D100 00014E80 0000` at `0xD3054`, `D500 00036870`.
+  The miss stream `0xD3062` starts `8F40 000B CD40 1835 B940 ...`.
+
+### 40.2 Entrances
+
+- `0x14E44`: the data object holds the dword once, at `0xA46E4`. The code
+  object holds no such dword and no `call`/`jmp`/`jcc` rel32 to it.
+  `get_xrefs_to 0x14E44` is empty (Ghidra has no function there).
+- `0x14CC4`: one dword, the `0x14E44` store (`0x14E67`); none in the data
+  object, no rel32. `get_xrefs_to` gives the same one DATA reference
+  (`0x14E64`).
+- `0x14D7C`: one dword at `0x14E71`, likewise (`get_xrefs_to`: `0x14E6E`).
+- `0x14EA4`: one dword, at `0xD3036` in the grab stream. `0x14E80`: one, at
+  `0xD3056`. Neither appears in the code object.
+
+### 40.3 The named gaps
+
+- **`0x14D7C`** (the `+0x1C` throw, EAX = side; `0x193B0` calls it at
+  `0x19505` only for a winner, and 0x14CC4 must return 0 for that):
+  `0x33950`, `0x18B04(ctx[1])`, `0x1088BF` = 4 when the side's `0x107D2C`
+  word is at least 4, `0x39A10(ctx[4], 0x309)` and `0x39A10(ctx[5],
+  0x309)`, `0x3C208(side, (s16)word[0x9AFA4 + 2 * ctx[3]'s char])`,
+  `0x39834(ctx[1], ctx[2]'s +0x5F)`, `0x2BC30(ctx[5], 0xC91C0[ctx[3]'s
+  char], 3.0)`, ctx[3]'s `+0x41 |= 0x80` and state 9/4, and the voice
+  `0x2C3FC(0xB3)`. `0x3C208` (10 call sites) is unported and needs the
+  unported `0x18AF8`, `0x3B8D8` and `0x3B90C`.
+- **`0x14E80`** (the second `0xD100` target): the other slot's record
+  `+0x55` = 1 and the other slot's `+0x74` = 0. It lies after the `0xD3034`
+  loop, which the hook's miss restart cuts.
+- A `fn_resolve` miss probe over 3840 loops (reverted) reaches neither. In
+  the second demo the hook returns 1 at f = 4020 (loop 3133) and the raptor
+  runs the miss stream, as the poll shows (`0xD3068`, the ape still 6/1/1).
+
+### 40.4 The assertions and mutations
+
+`check_char3_grab` (`test_fight.c`, after `check_slot_hook`) patches the two
+stream heads to plain frame words and restores them. It snapshots and
+restores the two slots, `DS_001077A8`, the `c3_seed` globals, `0x100AB0..
+0x100ABF`, `DS_00100AF8/AFC`, the command words, `DS_001088A8`,
+`0xA6728 + 2` and `0x1080AC/AE`. A temporary whole-data-object diff around it
+(reverted) first found `DS_001088A8` (`0x34E2C`'s store); after adding it
+the diff was empty.
+- A/A2: `0x14E44` through `0x34E2C` (reaction `0x23`, character 3) and
+  directly with EBX = 1: `+0x5F`, the stream and its 2.0 hold, the sprite,
+  9/7/0, `+0x18`/`+0x1C`, `+0x42` (`0x09` -> `0x0D`, `0x04` kept), and
+  `+0x0C`/`+0x57` and the other side's sentinels unchanged.
+- B..B6: `0x14CC4`. B: `+0x61` = 0 returns 1 before `0x18C14` (its flag-0xE
+  mark stays) and the other record's `+0x61` is not the gate. B2: every check
+  passes and |d| = `0x2000` gives 0 with `+0x61` cleared. B3: the edges
+  `0x3200`/`0x1900` in, `0x3201`/`0x18FF` out (the miss stream at 3.0). B4:
+  a negative d. B5: flags 1, 4, 8, 9 and 0xD each fire (1 and the miss
+  stream). B6: through `0x19020`.
+- C: `0x14EA4` as `anim_indirect` calls it: the 16-bit truncation (index 1
+  gives `0x1000`, not `0xE1000`), the sign (index 2 gives `-0x2000`), the
+  subtract arm, a negative index (`0x9AFA6`), side 1 on actor 1's bit, and no
+  other slot.
+- The driver: after loop 3116 the raptor's record is at `0xD3028` with slot
+  state 9/7/0 and hook `0x14CC4`; after loop 3133 at `0xD3068`; 1495 cycle-2
+  frames.
+
+**Mutations** (`scratchpad/t30/mut30.py`, `mut30.log`): 41 single-site
+edits, 39 in unit mode and the two registrations of `0x14E44`/`0x14CC4`
+again in driver mode. 40 failed at once (1..17 assertions; in driver mode
+the loop-3116/3133 samples fail). The survivor dropped `0x14EA4`'s
+null-slot return: C's "no other slot" case could not see the dereference of
+slot 0. C now plants a pointer to the side-0 record at `mem[0]` (restored)
+and asserts that record's x unchanged, which kills it. All 41 fail. The
+sources were restored and checked with `cmp`.
+
+### 40.5 Measured
+
+| measurement | before (`c0ec8b1`) | `ce5f295` |
+|---|---|---|
+| `FE_LOOPS`, cycle-2 frames | 3200, 1395 | 3300, 1495 |
+| attract2 `[1885..3616]` clean/splice/trans/unexpl/black | 575/291/7/853/6 | 684/369/7/666/6 |
+| attract2 first unexplained (2384 allowed) | 2763 | **2950** (raw 7389) |
+| front-end `[560..1884]`, demo-fight | 517/801/3/2; empty, N 1886 | unchanged |
+| polled logic (with positions and camera) equal to the original through | f = 4002 | f = 4179 |
+| non-stub `fn_resolve` misses, 3840 loops (probe) | `0x14E44` 3116, ... | `0x3C32C` 3293, `0x3A6D4` 3295 on |
+
+The poll comparison ignores the one-frame command-word tears (f = 3912,
+3929, 4051, 4056, 4132). `0x15350`, which §39.4's probe missed at loops 3256
+and 3343, is no longer reached.
+
+**2950, characterised.** Capture 2949 equals the splice of cycle-2 frames
+1486/1487 (row 191, 0 px). Capture 2950 differs from its best splice
+(1488/1489, row 144) in 4949 px, rows 88..192. Frame 1488 is loop 3293
+(f = 4180). There the original's raptor leaves its reaction stream `0xD24F0`
+for its stance: 00/00/00, stream `0xD2136` at 3.0, `+0x41` = 0 and
+`DS_00100AB0` = `0xFFFFFF00`. The port misses `fn_resolve(0x3C32C)`: the
+`0xD500` target at `0xD24FC` (the dword at `0xD24FE`, one of 9 sites) in
+that stream. It runs on at `0xD2500` in 9/8/0 and later enters 0x10/0x0A,
+missing `0x3A6D4` (a code pointer stored at `0x3A7D5`) from loop 3295.
+
+**The staged next step.** Ghidra has no function at `0x3C32C` (nor at
+`0x3A6D4`), so decode it from `read_memory` with capstone, as here, and
+register it as the opcode-`0x15` target (EAX = rec). Then re-run the poll
+comparison past f = 4180; `0x3A6D4` should drop out once the raptor returns
+to its stance.

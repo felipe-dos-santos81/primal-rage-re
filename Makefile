@@ -251,7 +251,7 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # allowed by name (title_compare's ATTRACT2_ALLOWED_UNEXPLAINED, record §37): it is
 # byte-identical to front-end capture 832, the loader's read-stall frame with no
 # raw-code owner (record §35.1), and the allowance holds only while that identity
-# does. N = 2950 was measured on the commit that set it (on c0ec8b1; record §40):
+# does. N = 2950 was measured on ce5f295 (the commit that set it, on c0ec8b1; §40):
 # character 3's reaction-0x23 callback 0x14E44 (the raptor's grab at loop 3116)
 # and its +0x18 hook 0x14CC4 (the miss at loop 3133) explain captures 2763..2949
 # (its stream target 0x14EA4, also ported, moves nothing there), and the second
