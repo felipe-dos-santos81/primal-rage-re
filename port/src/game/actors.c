@@ -14,6 +14,7 @@
 #include "game/effects.h"
 #include "game/fighter.h"
 #include "game/fight.h"
+#include "game/flow.h"
 #include "game/rng.h"
 #include "../mem.h"
 #include "../symbols.h"
@@ -289,6 +290,11 @@ int actors_init(void)
     fn_register(0x48CD8u, (void (*)(void))actor_type_48CD8);
     fn_register(0x48D3Cu, (void (*)(void))actor_type_48D3C);
     fn_register(0x49444u, (void (*)(void))actor_type_49444);
+    /* The DS_00104AE4 countdown handler 0x29B74 (record §42-E): four live
+     * code stores (0x277C0, 0x28788) and one in the dead 0x2861C region put
+     * it there, and six `call [0x104ae4]` sites run it, all unported;
+     * registered so a ported dispatch resolves it. */
+    fn_register(0x29B74u, frontend_darken_all);
     return 1;
 }
 

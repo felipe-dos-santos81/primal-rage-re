@@ -328,6 +328,49 @@ u32 frontend_resource_known(u32 rec)
     }
 }
 
+/* 0x29B74 — derivation record §42-E. The DS_00104AE4 countdown handler (the
+ * dispatchers 0x4F2B0/0x4F318/0x4F6E8/0x4F704/0x4F9A0/0x4F9C8 call it when
+ * DS_00104AFE runs out). EAX is never read: 0x13DF0 comes first and the walk
+ * starts from `xor eax,eax`. */
+void frontend_darken_all(void)
+{
+    effects_clear();                                    /* 0x29B77 0x13DF0 */
+    u32 e = frontend_list_next(0u);                     /* 0x29B7E */
+    while (e != 0u) {                                   /* 0x29B85/0x29BA0 */
+        (void)effects_spawn_darken(e, 3u);              /* 0x29B90 0x13D4C */
+        e = frontend_list_next(e);                      /* 0x29B97 */
+    }
+    DSW(DS_001088EE) = 0x78u;                           /* 0x29BAC */
+    DSW(DS_00104AFE) = 0x78u;                           /* 0x29BB3 */
+    DSW(DS_00104B00) = 0x15u;                           /* 0x29BBA */
+}
+
+/* 0x41578 — derivation record §42-E. Darken only the list entries whose +0
+ * resource handle is 0x0003E688 (s16slabs.gra, index 0) or 0x088874B0
+ * (s16win.gra, index 0x11, offset 0x874B0), close the play-time audit, and arm
+ * the next countdown. Direct-called only (0x41755 in 0x416D4; 0x41DE6,
+ * 0x42337, 0x42352 in 0x41C28). */
+void frontend_darken_marked(void)
+{
+    u32 e = frontend_list_next(0u);                     /* 0x4157E */
+    while (e != 0u) {                                   /* 0x41585/0x415B2 */
+        u32 h = DSD(e);                                 /* 0x41589 */
+        if (h == 0x0003E688u || h == 0x088874B0u)       /* 0x4158B/0x41593 */
+            (void)effects_spawn_darken(e, 2u);          /* 0x415A2 0x13D4C */
+        e = frontend_list_next(e);                      /* 0x415A9 */
+    }
+    config_play_time_close(DSD(DS_00104ABC), DSB(DS_00104B19));  /* 0x415CD */
+    /* PORT: 0x415DC 0x2C3FC(0x33, EDX = 0x78) voice, out of scope (spec §7).
+     * EBX (0), ECX (0x13), EDX (0x78) and ESI (0x15) survive 0x32A3C (pushes
+     * EBX/ECX/ESI) and 0x2C3FC (pushes EBX/EDX/EDI, never names ECX/ESI)
+     * into the stores below. */
+    DSW(DS_00104AFE) = 0x78u;                           /* 0x415E1 */
+    DSW(DS_001088EE) = 0u;                              /* 0x415E8 */
+    DSW(DS_00104AFA) = 0x13u;                           /* 0x415EF */
+    DSW(DS_00104B00) = 0x15u;                           /* 0x415F8 */
+    DSB(DS_00104B25) = 0u;                              /* 0x415FF (AH = 0) */
+}
+
 /* 0x11F6C: the six-entry selector. Phase 0 draws the first entry then falls
  * into phase 1 (no jump between 0x11FD4 and 0x11FDA); phase 1 draws an entry;
  * phase 4 pauses on DS_000F0A68; phase 2 advances the entry and leaves for
@@ -1353,12 +1396,13 @@ void game_frame(void)
     default:
         /* PORT: 0x24C5C's case 1/2/4..0x33 modes drive menus, attract, fight
          * and diagnostics; deferred to sub-projects 4/5. The effect call sites
-         * 0x29B74 (the DS_00104AE4 mode-0x17 handler, six `call [0x104ae4]`
-         * sites) and 0x41578 (four direct calls) live only in those unported
-         * modes — 0x24C5C cases 0x12 and 0x16..0x1b — plus the unported
-         * match/fight chain, so they are deferred with them (UNOWNED BY THIS
-         * PLAN; see port/spec/game_flow.md). DS_00104B00 is fixed at 3 by
-         * 0x10E80, so no reachable path enters those cases; nothing is wired. */
+         * 0x29B74 (frontend_darken_all, the DS_00104AE4 countdown handler)
+         * and 0x41578 (frontend_darken_marked) are ported (record §42-E), but
+         * their callers are not: the six `call [0x104ae4]` dispatchers
+         * (0x4F2B0..0x4F9C8, called at 0x253E7..0x2540A in these cases), the
+         * direct call 0x27B17 and the four 0x41578 sites in 0x416D4/0x41C28.
+         * DS_00104B00 is fixed at 3 by 0x10E80, so no reachable path enters
+         * those cases. */
         break;
     }
 

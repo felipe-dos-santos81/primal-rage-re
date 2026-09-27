@@ -183,8 +183,8 @@ producers now sit beside `0x13C70`: `0x13D4C` (type 4, darken-to-zero,
 `effects_spawn_scroll`). The free-list head is taken only by these four, so types
 1 and 5 have no producer and are dead. An end-to-end unit test proves the chain
 spawn → `effects_step` → palette dirty list → `gfx_flush_palette` → `gfx_dac`.
-`0x13D4C` is called only from the unported effect call sites
-(`0x29B74`/`0x41578`); `0x13E28` from the ported select state `0x11F6C`
+`0x13D4C` is called only from the effect call sites `0x29B74`/`0x41578`
+(ported and unit-tested, callers unported; record §42-E); `0x13E28` from the ported select state `0x11F6C`
 (`flow.c:367`). **`0x13B3C` is dead, not merely unwired:** zero callers and zero
 cross-references anywhere in the image (`ghidra_get_xrefs_to 0x13B3C` = 0;
 `prage.functions.csv` `FUN_00013b3c` `n_callers = 0`; the bytes `3c b3 01 00`
@@ -297,9 +297,10 @@ front-end (only the state-3 entry frame, or only the first 12 frames) still
 passes. Sixteen all-black capture frames are excluded as an explicit oracle-level
 choice, **not** a proven fact (capture 561's black frame may be a distinct logic
 frame or a 70.09 Hz scanout artifact). The effect call sites `0x29B74`/`0x41578`
-are **deferred**: reachable only through `0x24C5C`'s unported mode cases
-(`0x12`, `0x16..0x1B`) and the match/fight chain, and `DS_00104B00` is fixed at
-3 — a dispatch path nothing can reach. The match cycle's `0x1EA08` call sites
+are **ported but unreachable** (demo-pose record §42-E): their callers live only
+in `0x24C5C`'s unported mode cases (`0x12`, `0x16..0x1B`) and the match/fight
+chain, and `DS_00104B00` is fixed at 3. `0x29B74` is registered for a future
+`DS_00104AE4` dispatch; both are unit-tested. The match cycle's `0x1EA08` call sites
 and the unported half of `0x1EA08` remain declared gaps. The camera chain
 (`0x12CD4`/`0x1317C`/`0x13290`/`0x1333C`, `0x12D48` dispatcher,
 `0x12DA8`/`0x12DF0`/`0x12E3C` modes) is **ported** in `port/src/game/camera.c`,
@@ -596,7 +597,7 @@ See §33 of the record.
 * **Measured.** Port frames 0..1378 are byte-identical to before, and 1379 (f = 962) is the first that differs. Captures 1881..1884 are now explained (1 clean, 3 splice), so the front-end window holds the whole demo fight, up to 1885, the capture's first all-black frame after it. The demo oracle's first unexplained is now **1886 (raw 4795)**, the capture's next cycle, with no port frame left. The demo-fight ratchet prints "fight window empty ... 0 unexplained in the fight window" and N is raised **1881 → 1886** (= the all-black frame 1885 + 1, the exact pin) in the same commit.
 * **Claim move (the one the brief allowed).** Front-end `[560..1880]` / 1321 → **`[560..1884]` / 1325 / `517 clean, 801 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before, and the exhibition set is the whole dump, port frames 0..1381 (1145 exhibited). Nothing else moved.
 * **The end of the demo-fight capture.** The capture has no fight frame after 1884, so N cannot rise further with it. What the ratchet still proves: every content-bearing capture frame from the front-end window's start up to 1885 is explained, and a shrink of the front-end window (which the front-end oracle, whose window is derived from the port's own dump, cannot detect) reopens the fight window and fails below N.
-* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** None new in this run: `0x3E3A8` and `0x3E328` no longer miss; the front-end `0x29B74`/`0x41578` and the stub `0x5D812` remain.
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** None new in this run: `0x3E3A8` and `0x3E328` no longer miss; the front-end `0x29B74`/`0x41578` (since ported, §42-E) and the stub `0x5D812` remain.
 
 See §34 of the record.
 
