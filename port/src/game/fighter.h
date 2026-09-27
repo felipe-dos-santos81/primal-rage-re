@@ -551,6 +551,41 @@ u32 fighter_29d04(u32 slot);
  * bit 6, the record's +0x53 = 0 and DS_000F0AFE = 2. */
 void fighter_370f0(u32 rec);
 
+/* 0x22CE4. The second way into the 0x22BEC freeze (0x22E44's call): 0x33ACC,
+ * 0x39834 with the other slot's +0x5F, the other slot's +0x57 = 2, the side's
+ * slot in 0x10/0x0A with +0x10 0x22BEC and +0x5F = 0xFF, 0x22B28, then
+ * 0x10476A[side ^ 1] = 1. EAX = side. */
+void fighter_22ce4(u32 side);
+
+/* 0x22D8C. The +0x18 hook 0x22F74 stores (0x19020, fn(side)): 1 while the
+ * other slot is frozen or the side's 0x104750 tick is outside 3 (6 with the
+ * slot's +0x76 zero)..0x10, else 0x18C14 on the 0xA8314/0xA8328 box tables. */
+u32 fighter_22d8c(u32 side);
+
+/* 0x22E44. The +0x1C callback 0x22F74 stores (0x193B0's 0x19505, fn(side)):
+ * +0x57 = 2, the other side frozen through 0x22CE4, +0x74 = 0x29A, the
+ * 0xBB3E4 projectile in 0x104728[side] and the update table's bit 5. */
+void fighter_22e44(u32 side);
+
+/* 0x22F14. The +0x0C callback 0x22F74 stores (0x3531C case 7; only EBX =
+ * side is read): the 0x104750 tick, and +0x57 1 -> 2 past 0x10. */
+void fighter_22f14(u32 slot, u32 rec, u32 side);
+
+/* 0x22F74. Character 1's reaction-0x29 callback (*(u32*)0xA3D5C): arms the
+ * slot with 0x22D8C/0x22E44/0x22F14, +0x57 = 1, state 9/7/0, zeroes the
+ * 0x104750 tick and starts 0xE4952 at 3.0. Returns 1. */
+int fighter_22f74(u32 slot, u32 rec, u32 side);
+
+/* 0x22FE8. The update table's entry 5: retire each side's 0x104728
+ * projectile on the 0xE8E66 stream once its gate allows, clearing bit 5 when
+ * both are gone. */
+void fighter_22fe8(void);
+
+/* 0x2365C. Character 1's reaction-0x2A callback (*(u32*)0xA3D70): 0 while the
+ * slot holds a projectile or the other slot is frozen (0x22BEC), else the
+ * 0xE4996 stream at 3.0, state 0x0B/6/0 and +0x5F moved to +0x64; 1. */
+int fighter_2365c(u32 slot, u32 rec, u32 side);
+
 /* The machine's and chain's per-function fixtures (record §7.1-§7.5, §7.7-§7.9
  * and §7.11) exercise these directly. */
 u32  hit_frame_desc(u32 side, u32 i);                 /* 0x3C600 */
