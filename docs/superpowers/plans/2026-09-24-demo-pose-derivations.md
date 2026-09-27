@@ -7423,3 +7423,180 @@ missing `0x3A6D4` (a code pointer stored at `0x3A7D5`) from loop 3295.
 register it as the opcode-`0x15` target (EAX = rec). Then re-run the poll
 comparison past f = 4180; `0x3A6D4` should drop out once the raptor returns
 to its stance.
+
+## 41-C. The projectile freeze `0x235C4` and the stream target `0x370F0` (named-gap batch, branch `gap-235c4`)
+
+**Result in one line.** The two named gaps `0x235C4` (`0x3B464`'s projectile
+`+0x48` == 8 arm, record §26) and `0x370F0` (the unregistered stream target
+§20.4 saw once at f = 291) are ported from the raw with their unported
+callees `0x33ACC`, `0x22B28`, `0x22BEC` and `0x29D04`. The demo reaches none
+of them, so they are unit-tested; no oracle is expected to move.
+
+### 41-C.1 The raw (Ghidra decompile/disassembly, `read_memory` + capstone, fixups applied)
+
+Ghidra has functions at `0x235C4`, `0x22B28`, `0x33ACC` and `0x370F0`, and none
+at `0x22BEC` or `0x29D04`; those two were decoded with capstone from
+`read_memory` (`scratchpad/g235/d22bec.txt`, `d29d04.txt`).
+
+- **`0x235C4`** (151 bytes; EAX = side; `push ebx; push edx`, EDX then
+  overwritten): the `0x33A10` context on the stack (`mov edx,eax; mov
+  eax,esp`). EBX = `0x104658 + side * 0x68` (`0x235D6..0x235EC`: `(side * 3
+  * 4 + side) * 8`), EDX = `0x104530 + side * 0x94` (`0x235EE..0x23604`),
+  `0x33ACC(side)` (`0x2360A`). Then `0x39834(side, EDX = 0x2A)`
+  (`0x2360F..0x23618`), and on ctx[3] (`[esp+0xC]`, &slot[side]): `+0x52` =
+  0x10, `+0x53` = 0x0A, `+0x10` = `0x22BEC`, `+0x18` = 0, `+0x1C` = 0
+  (`0x23621..0x23647`). Last, `0x22B28(EAX = &ctx)` (`0x23650`).
+- **`0x33ACC`** (51 bytes; EAX = side, EDX = dst, EBX = dst2): `rep movsd`
+  of 0x25 dwords from `0x1077B0 + side * 0x94` to EDX, then 0x1A dwords from
+  `[0x1077B0 + side * 0x94]` (the slot's record) to EBX. Ghidra's decompile
+  shows the EBX use as `unaff_EBX`.
+- **`0x22B28`** (179 bytes; EAX = &ctx, kept in ECX; `0x13C70`, `0x3C16C`,
+  `0x3C148` and `0x2C3FC` all preserve ECX):
+  - `0x13C70(EAX = [DS_001014EC + word[rec + 0x56] * 0x20 + 0x18], DL = 1,
+    EBX = 0x105FDB0)` (`0x22B2D..0x22B67`), rec = `[0x1077B0 + ctx[1] *
+    0x94]`. The bytes at `0x22B59` read `bb b0 fd 05 01`: an immediate, a
+    resource handle (index 2, offset `0x5FDB0`), not a fixup.
+  - ctx[3]'s `+0x14` = `0x29D04` (`0x22B6F`); word `0x10474C[ctx[1]]` = 0
+    (`0x22B7B`); `0x3C16C(ctx[1])`, `0x3C148(ctx[1])`; ctx[5]'s `+0x24` = 0
+    (`0x22B96`); ctx[3]'s `+0x58` = 1, `+0x43 &= 0xFD` (`0x22BA0/0x22BA7`);
+    the voice `0x2C3FC(0xB5)` (`0x22BB0`).
+  - `0x10476C[ctx[1]]` = 1 when ctx[2]'s (the other slot's) `+0x53` is 0x0A,
+    else 0 (`0x22BB5..0x22BD1`).
+- **`0x22BEC`** (247 bytes; `push ecx; sub esp,0x1C; mov edx,ebx; mov
+  eax,esp; call 0x33A10`: only EBX = side is read; `0x3531C` case 10 calls
+  it at `0x354E2` with EAX = ECX = slot):
+  - word `0x10474C[side]` += 1 (`0x22BFF`), then the switch on ctx[3]'s
+    `+0x58` (`cmp dl,3; ja 0x22CDE`; table `0x22BDC` reads `0x22CDE`,
+    `0x22C24`, `0x22C5C`, `0x22CDE`).
+  - Phase 1 (`0x22C24`): a second `+= 1` when `0x10476C[side]` != 0
+    (EAX still holds side * 2), then `mov eax,[side*2 + 0x10474A]; sar
+    eax,16; cmp eax,0x78; jle`: when the signed word exceeds 0x78, `+0x58` =
+    2.
+  - Phase 2 (`0x22C5C`): `0x35050(side)`; AL = (ctx[3]'s `+0x14` == 0), kept
+    at `[esp+0x18]`; ECX = ctx[3]'s `+0x2C` (`0x22CB0`, before the call);
+    `0x33B00(side, 0x104530 + side * 0x94, EBX = 0x104658 + side * 0x68)`
+    (`0x22CB3`; `0x33B00` pushes ECX); `0x188DC(side, EDX = ECX)`;
+    `0x39280(side)`; and, when the saved flag is 0 (`+0x14` still set after
+    `0x35050`), `+0x14` = `0x29D04` (`0x22CD7`).
+- **`0x29D04`** (93 bytes; EAX = slot): `cmp byte [0x9AF3D],0; je` else
+  `xor eax,eax; ret`. Then EBX = `[[slot] + 0x51]` (the side), CL = slot
+  `+0x7A`, EDX = EBX ^ EBX = 0 then DL = `0x105B34[side]`, ECX =
+  `[0xA8A98 + char * 4]`, EAX = `[0x1077B0 + side * 0x94]`, EBX =
+  `[ECX + EDX * 4]`, EDX = 0, `call 0x2A17C`, `mov eax,1`. It is `0x29BC8`'s
+  lookup inlined, gated on no live palette effect (`DS_0009AF3D` is
+  `0x13C70`'s count).
+- **`0x370F0`** (118 bytes; EAX = rec, EDX pushed, DL loaded at `0x37105`
+  and masked at `0x3710B` before use): self = `DS_001077A8[rec + 0x51]`,
+  other = `DS_001077A8[(rec + 0x51) ^ 1]`; either 0 returns. Self `+0x54`
+  = 3, `+0x42 |= 4`, `+0x52` = 0x0A. With `DS_00104B14` != 0 (CH), `0x2BC30(
+  rec, [0xBDC2C + self+0x7A * 4], 1.0)` and return. Else other `+0x42 |=
+  0x40`, `mov [ebx+0x53],ch` with CH = 0 (the RECORD's `+0x53`, EBX = rec;
+  Ghidra's decompile agrees), `DS_000F0AFE` = 2.
+- `0x39834`, `0x3C16C`, `0x3C148`, `0x13C70`, `0x35050`, `0x33B00`,
+  `0x188DC`, `0x39280`, `0x2A17C` and `0x2BC30` were already ported; the
+  voice `0x2C3FC(0xB5)` stays a `PORT:` stub (spec §7).
+
+### 41-C.2 Entrances (`get_xrefs_to`, a rel32 scan and a dword scan of both objects)
+
+- `0x235C4`: one rel32 `call` at `0x3B65E` (`0x3B464`, ECX = side); no dword.
+- `0x22B28`: `call`s at `0x23650` (`0x235C4`) and `0x22D78` (`0x22CE4`).
+- `0x33ACC`: `call`s at `0x2360A`, `0x22D2D` (`0x22CE4`) and `0x27272`
+  (`0x27254`).
+- `0x22BEC`: no rel32. Code dwords at `0x22D67` and `0x23634` (the `+0x10`
+  stores of `0x22CE4` and `0x235C4`) and at `0x22DDE`, `0x23094`, `0x2368D`,
+  `0x468AC`, `0x468EF` (`cmp [reg+0x10],0x22BEC` identity tests; the port's
+  `0x46898`/`0x468D8` already test it). None in the data object. So it runs
+  only through `0x3531C` case 10.
+- `0x29D04`: no rel32; code dwords at `0x22B72` and `0x22CDA` only (the two
+  `+0x14` stores above), none in data.
+- `0x370F0`: rel32 `call`s at `0x48BC3` (`0x48AAC`) and `0x48F36`
+  (`0x48D94`), both unported; 21 data dwords, each the operand of a `D000`
+  or `D100` stream word: `0xD2B20`/`0xD2BF4`/`0xD2C10`, `0xD47A6`/`0xD4876`/
+  `0xD4892`, `0xE10DA`/`0xE11A6`/`0xE11C2`, `0xE44A0`/`0xE4570`/`0xE458C`,
+  `0xE780C`/`0xE793C`/`0xE7958`, `0xEB0EA`/`0xEB1B0`/`0xEB1CC`,
+  `0xED4BA`/`0xED5B4`/`0xED5D0`. The `0xBDC2C` table it indexes reads
+  `0xE7914 0xE4548 0xED58C 0xD2BCC 0xEB188 0xD484E 0xE117E 0xBB150`, and
+  each character's second and third sites follow its own `0xBDC2C` stream.
+- Related, not callees and not ported: `0x22CE4` (a second setter of the
+  same freeze, called at `0x22E64`: `0x33ACC`, `0x39834(side, the other
+  slot's +0x5F)`, the other slot's `+0x57` = 2, 0x10/0x0A/`0x22BEC`, its own
+  `+0x5F` = 0xFF, `0x22B28`, and byte `0x10476A + (side ^ 1)` = 1), the
+  `+0x18` hook `0x22D8C` (stored at
+  `0x22F87`), and the reaction callback `0x2365C` (`*(u32*)0xA3D70`,
+  character 1's reaction 0x2A), which returns 0 while the other slot's
+  `+0x10` is `0x22BEC`.
+
+### 41-C.3 The port
+
+- `fighter.c`: `fighter_33acc`, `fighter_22b28` (static) and the exported
+  `fighter_235c4`, `fighter_22bec`, `fighter_29d04`, `fighter_370f0`.
+  `fighter_think_side` calls `fighter_235c4(side)` after `0x1922C` in place
+  of the `PORT:` gap. Local `#define`s name `0x104530`, `0x104658`, the
+  handle `0x105FDB0` and `0xBDC2C` (no `symbols.h` names).
+- `actors.c`: `fn_register` of `0x22BEC` (the case-10 `(slot, side)` shape,
+  as `0x39CC8`), `0x29D04` (the `+0x14` `fn(slot)` shape) and `0x370F0`
+  through the wrapper `anim_code_370F0(rec, arg)`, which drops the operand.
+
+### 41-C.4 The assertions and mutations
+
+`check_freeze_235c4` (`test_fight.c`, after `check_char3_grab`; 106
+assertions) runs on its own pool records `r0`/`r1` (`DS_001014F4` = r0, so
+`0x2A17C` finds the psets), with every written field on a sentinel, the
+snapshot area on `0xEE`, `DS_001014F0` = 0 (`res_resolve` returns NULL) and a
+crafted effect free list. It saves and restores the slots, `DS_001077A8`,
+`0x104530..0x104727`, `0x10474C`, `0x10476C`, `0xFCCE0..0xFCCEF`,
+`0x9AF3C/3D`, the palette table `0x107618..0x10779B`, `0xA8A98[0..2]`,
+`0x105B34`, `0x107D20..0x107D5F`, `0x104B00`, `0x100AF0..0x100AF7`,
+`DS_001014EC/F0/F4`, `0xBDC2C[2]`, `DS_001078F6`, `DS_00104B14` and
+`DS_000F0AFE`. A temporary whole-data-object diff around it (reverted) first
+found `0x100AF4` (`0x188DC`'s `0x18714` latch); after adding it the diff was
+empty.
+- A/A2: `0x235C4` for side 1 and side 0: both snapshot halves byte-equal to
+  the pre-call slot and record, the other side's halves still `0xEE`,
+  `DS_00107D28` = 0x2A (`0x39834`'s `0x39953` store), 0x10/0x0A, `+0x10`,
+  `+0x14`, `+0x18`/`+0x1C`, `+0x58`, `+0x43`, the record's `+0x24`/`+0x34`/
+  `+0x36`/`+0x42`/`+0x43`/`+0x44`, both per-side words and bytes, the
+  spawned effect (its source is side 1's pset `+0x18`, byte 1,
+  `DS_0009AF3D` + 1), and no spawn on an empty free list.
+- B..B5: `0x22BEC` through `0x3531C` case 10 (phase 0 ticks only), phase 1's
+  0x78 edge, the signed 0x7FFF -> 0x8000 hold, the double tick and its side,
+  phases 3 and 5, and phase 2: the restore from side 1's half (side 0's is
+  marked `+0x52` = 0x0C), the live x 0x4000 kept over the snapshot's
+  0x1000, `+0x5A` kept, `+0x5D` cleared, and `+0x14` re-armed only while
+  `0x29D04` returns 0.
+- C: `0x29D04`: a live effect returns 0 with the pset untouched; otherwise
+  the `0xA8A98[2]` row's entry `0x105B34[1]` (a handle palette entry 0
+  holds) replaces the pset's old entry (released) and 1 is returned.
+- D..D3: `0x370F0` through its registered target: each missing
+  `DS_001077A8` slot returns; with `DS_00104B14` = 0 the other slot's bit 6,
+  the record's (not the slot's) `+0x53` and `DS_000F0AFE` = 2; with it set,
+  `0xBDC2C[slot char 2]` (patched to a one-word stream) at 1.0.
+- `check_projectile_step` A (`pc_seed`'s `+0x48` = 8) now also asserts the
+  struck side's 0x10/0x0A, `+0x10` = `0x22BEC` and `+0x58` = 1. It seeds an
+  empty effect free list (`0x13C79` then never reads `pc_seed`'s zero pset
+  entry) and saves/restores the snapshot area and the two per-side arrays; a
+  whole-data-object diff around it is the same before and after the wiring.
+
+**Mutations** (`scratchpad/g235/mut.py`, `mut.log`): 59 single-site edits of
+the new code, its registrations and the `0x3B65E` call (copy sizes and
+sources, each side index, each constant, each dropped store or call, the
+signedness and edge of the 0x78 test, the phase table, the palette gate and
+lookup, the `0x370F0` gates and targets, the wrapper's record). The first
+sweep killed all 59, but 7 only by a crash (a restore from the `0xEE`
+snapshot, a zero effect source, a call through the unregistered target), so
+the test gained valid snapshot images (`fz_snap_live`), a second pset source
+at `+0x1C` and NULL-guarded target calls. On the re-run all 59 fail 1..18
+assertions and none crashes. The sources were restored by the script.
+
+### 41-C.5 Measured and remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 0 compiler
+  warnings. The drivers and `make verify` were not run (the batch controller
+  runs them after the merge).
+- No oracle is expected to move. The demo never reaches `0x3B464` with a
+  `+0x48` == 8 projectile (record §26). The last whole-run `fn_resolve`
+  probes (§35, §40) no longer reach `0x370F0`. The controller's ladder is
+  the check.
+- Remaining named gaps: the voice `0x2C3FC(0xB5)` in `0x22B28` (spec §7); the
+  unported siblings `0x22CE4`, `0x22D8C` and `0x2365C` and the other
+  `0x370F0` callers `0x48AAC`/`0x48D94`.
