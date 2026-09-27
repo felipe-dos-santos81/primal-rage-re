@@ -296,6 +296,72 @@ void fight_char_screen_open_both(void)
     DSD(DS_00104AE4) = FN_00029D60;                     /* 0x44541 */
 }
 
+/* ---- mode 0x10: the handler 0x438B4 and its join test 0x43928 (§47-M) ---- */
+
+/* 0x43928 — record §47-M. For each side 0..1 (EDX, 0x4392C..0x4395E) whose
+ * byte DS_00108170[side] is 0, 0x11F28 (the coin/start poll, EAX = side) is
+ * run; when it accepts, DS_00104B1F |= side + 1 (0x43942..0x4394E, AL = DL +
+ * 1 or'd into BL) and DS_00108170[side] = 1 (BH, 0x43954). A side whose byte
+ * is non-zero is not polled. EBX/EDX are pushed and popped; EAX (the last
+ * 0x11F28 result, or the side) is not read by 0x438B4's `call 0x4f790`. */
+void fight_char_join(void)
+{
+    for (u32 side = 0; side < 2u; side++) {             /* 0x4392C/0x4395A/0x4395B */
+        if (DSB(DS_00108170 + side) != 0u) continue;    /* 0x4392E/0x43935 */
+        if (frontend_coin_poll(side) == 0u) continue;   /* 0x43939/0x4393E */
+        DSB(DS_00104B1F) = (u8)(DSB(DS_00104B1F) | (side + 1u));  /* 0x43942..0x4394E */
+        DSB(DS_00108170 + side) = 1u;                   /* 0x43954 (BH) */
+    }
+}
+
+/* 0x438B4 — record §47-M. The mode 0x10 handler (0x24C5C case 0x10, the jump
+ * table 0x24B8C entry 0x25385, its only caller). It branches on the byte
+ * DS_00108174 (`test al,al; jbe` is == 0), with two copies of the same body
+ * split on DS_00104B1D == 3:
+ * - 0: 0x44798 (DS_00104B1D == 3) or 0x43B24 (otherwise), the character
+ *   select's per-frame input, a named gap below;
+ * - 1: 0x43928, then 0x4F790's AL. When AL is non-zero, DS_00108174 takes the
+ *   byte DS_00108172 (0x4391C/0x43921). When it is 0, the DS_00104B1D == 3 copy
+ *   returns; the other decrements the word DS_0010816C (`dec edx` on the
+ *   loaded DX, stored as a word) and takes DS_00108172 once the new value is
+ *   <= 0 (signed, `test dx,dx; jg`);
+ * - anything else: return.
+ * EDX is pushed and popped; the returned EAX is dead (record §47-C.2: the
+ * 0x2540F tail writes EAX before reading it). */
+void fight_mode_10_step(void)
+{
+    u32 sub = DSB(DS_00108174);                         /* 0x438BE / 0x438E4 */
+    if (DSB(DS_00104B1D) == 3u) {                       /* 0x438B5/0x438BC */
+        if (sub == 0u) {                                /* 0x438C3/0x438C5 */
+            /* PORT: 0x438CD 0x44798, the DS_00104B1D == 3 character select's
+             * per-frame pass (to 0x4493A), is a named gap (record §47-M.5): it
+             * and its callees 0x44638, 0x4418C, 0x442A0 and 0x4434C are
+             * unported. */
+            return;
+        }
+        if (sub != 1u) return;                          /* 0x438C7/0x438C9 */
+        fight_char_join();                              /* 0x438D4 0x43928 */
+        if ((frontend_skip_check() & 0xFFu) == 0u)      /* 0x438D9 0x4F790, 0x438DE */
+            return;                                     /* 0x438E0 jz 0x43926 */
+    } else {
+        if (sub == 0u) {                                /* 0x438E9/0x438EB */
+            /* PORT: 0x438F3 0x43B24, the character select's per-frame pass (to
+             * 0x43D09), is a named gap (record §47-M.5): it and its callees
+             * 0x432A0, 0x435AC, 0x43464, 0x43EA0, 0x43FBC, 0x43D60 and 0x43AAC
+             * are unported. */
+            return;
+        }
+        if (sub != 1u) return;                          /* 0x438ED/0x438EF */
+        fight_char_join();                              /* 0x438FA 0x43928 */
+        if ((frontend_skip_check() & 0xFFu) == 0u) {    /* 0x438FF 0x4F790, 0x43904 */
+            u16 dx = (u16)(DSW(DS_0010816C) - 1u);      /* 0x43908/0x4390F */
+            DSW(DS_0010816C) = dx;                      /* 0x43910 */
+            if ((s16)dx > 0) return;                    /* 0x43917/0x4391A */
+        }
+    }
+    DSB(DS_00108174) = DSB(DS_00108172);                /* 0x4391C/0x43921 */
+}
+
 /* ---- the mode-0x1A hooks 0x430E8/0x4367C, 0x430C0 and 0x4454C (§46-B) -- */
 
 #define DS_000C8364 0x000C8364u   /* no symbols.h name: descriptor, id 0x351 */

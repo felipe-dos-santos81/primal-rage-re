@@ -404,9 +404,17 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   skip test `0x4F790` and `0x4F778` (record §46-G).
   `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
-  - it dispatches cases 3, `0x11`, `0x14`, `0x17`, `0x1A` and `0x1B`, and
-    cases 1/2/`0x20` run the bare `ret` `0x29B70`;
-  - the other 39 cases are named gaps.
+  - it dispatches cases 3, `0x10`, `0x11`, `0x14`, `0x17`, `0x1A` and
+    `0x1B`, and cases 1/2/`0x20` run the bare `ret` `0x29B70`;
+  - the other 38 cases are named gaps.
+  - Case `0x10` is `0x438B4` (`fight_mode_10_step`, record §47-M). It
+    branches on the byte `DS_00108174`. With 0 it runs the character
+    select's per-frame pass `0x43B24` (`0x44798` when `DS_00104B1D == 3`),
+    which is a named gap. With 1 it runs the join test `0x43928`, the skip test
+    `0x4F790` and the countdown `DS_0010816C`, then copies `DS_00108172`
+    into `DS_00108174`. No instruction stores a non-zero value there by
+    displacement (record §47-M.2), so the value-0 gap is the arm the character
+    screen actually runs.
 
   Still, only `0x4F980` stores mode `0x1A`, and its eleven callers are
   unported; no ported path stores mode `0x17` outside `0x4F318`'s own chain.

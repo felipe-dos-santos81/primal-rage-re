@@ -13147,6 +13147,12 @@ Two things keep state 8 out of the port's runs:
     (`0x43B24`), and `0x443F9`/`0x4443F` (`0x4434C`, whose index is its EAX
     argument, not bounded here).
 
+  (Corrected in §47-M.2: `0x43D7E` is `mov byte [ebx+0x108170],ah`, a
+  per-side byte store, not a dword store at `0x43D7F`. `0x4434C`'s only
+  caller `0x44908` passes the 0..1 loop index. So no instruction found writes
+  `0x108173`, and no fill routine reaches it. Copies through heap or stack
+  pointers and file reads are not fully closed.)
+
   So every displacement-addressed store that can reach `0x108173` is
   unported. The scan did not cover block fills (`rep stos`, the `0x65490`
   `memset`) through a computed pointer. The 5000-frame run below never
@@ -13273,12 +13279,18 @@ chain is `0x11D04` (coin poll accepted) → `0x257A4` → mode `0x1A` (hook
    Then `game_state_step`'s accepted arm and its case 8 call it.
    `0x32970(0)` (the run clock, spec §7) stays out of scope. State 8 also
    needs `DS_00108173` set, and only the unported character-select code
-   writes that byte (47-B.2). **Since ported (§47-C):** `0x257A4` itself,
-   `0x33C18` and `0x46594`. `game_state_step`'s accepted arm and state 8
-   still don't call it.
+   writes that byte (47-B.2). (Corrected in §47-M.2: no instruction found
+   writes `0x108173`, and no fill routine reaches it, because `0x43D7E` is a
+   per-side byte store. Copies through heap or stack pointers and file reads
+   are not fully closed.) **Since ported (§47-C):** `0x257A4` itself,
+   `0x33C18` and `0x46594`. **Since ported (§47-M):** mode `0x10`'s handler
+   `0x438B4`. `game_state_step`'s accepted arm and state 8 still don't call
+   `0x257A4`.
 2. **Mode `0x10`'s handler `0x438B4`** (`..0x43927`), with its callee
    `0x4F790` (§46-G). Without it the credited start ends in a mode that
-   draws nothing after the wipe.
+   draws nothing after the wipe. **Since ported (§47-M):** `0x438B4` and its
+   join test `0x43928`, and case `0x10` is dispatched. The real
+   character-select pass (`0x43B24`/`0x44798`) stays a named gap.
 3. Mode **`0x17`** follows only later in the match flow. The storers are
    §46-G.2's list: mode `0x12`'s `0x41C28`, mode `0x13`'s `0x424E8`/`0x42CB4`,
    `0x26F58`, `0x28788` and others. So `0x17` has no short path. It belongs
@@ -13574,6 +13586,375 @@ M2 was first run with a pattern that also matched state 6's `DS_001082C8 =
   - `0x33C18`'s eight unported callers (47-C.2);
   - `0x65490`'s other callers `0x41682` and `0x61A80`;
   - the game-start cases `0x28..0x2F` (§47-B.1), which end in `0x257A4`;
-  - mode `0x10`'s handler `0x438B4`;
+  - mode `0x10`'s handler `0x438B4` (since ported, §47-M);
   - `DS_00108173`, which gates `0x46594`'s first arm, has no ported writer
     (§47-B.2). That arm is reached only in unit tests.
+
+## 47-M. The mode-`0x10` handler `0x438B4` and its join test `0x43928` (named-gap batch 10, branch `gap10-mode10`)
+
+**Result in one line.** `0x438B4`, the mode-`0x10` handler, is ported as
+`fight_mode_10_step` (`fight.c`) with its join test `0x43928`
+(`fight_char_join`). `game_frame` now dispatches case `0x10` to it, so 38
+table entries remain named gaps. `0x11F28` was already ported as
+`flow.c`'s static `frontend_coin_poll`; it is verified here and exported.
+**The arm the character screen runs is still a gap.** `0x438B4` branches on
+the byte `DS_00108174`:
+- 0 runs the character select's per-frame pass, `0x43B24` or `0x44798`
+  (about 1300 instructions with their callees, all unported). This is the
+  named gap of 47-M.5;
+- 1 runs the join test, the skip test and a countdown, all ported.
+
+No instruction stores a non-zero value to `DS_00108174` by displacement
+(47-M.2). The ported code is exact but, in the raw, runs only if a block
+write sets that byte. No ported path stores mode `0x10` at runtime, and a
+headless 8000-frame run is byte-identical before and after (47-M.5).
+
+(§47-C is `gap9-257a4`'s. The batch-10 branches run in parallel, so this
+section takes the free letter M, for mode `0x10`, rather than the next letter
+in sequence.)
+
+### 47-M.1 The raw (Ghidra `disassemble_function`, `read_memory` + capstone, fixups applied)
+
+- **`0x438B4`** (Ghidra `FUN_000438b4`, to `0x43927`) pushes EDX. The jump
+  table entry `0x24B8C[0x10]` is `0x25385`: `call 0x438b4; jmp 0x2540f`.
+  - `0x438B5 cmp byte [0x104b1d],3; jnz 0x438e4` splits two copies of one
+    body. Each loads `al,[0x108174]` (`0x438BE`/`0x438E4`) and then tests it
+    with `test al,al; jbe`. CF is 0 after `test`, so `jbe` means AL == 0.
+  - **AL == 0**: `call 0x44798` (`0x438CD`, the `DS_00104B1D == 3` copy) or
+    `call 0x43B24` (`0x438F3`), then return.
+  - **AL != 1** (`cmp al,1; jz`): return.
+  - **AL == 1**: `call 0x43928`, `call 0x4F790` and `test al,al`:
+    - in the `DS_00104B1D == 3` copy, AL = 0 returns (`0x438E0 jz 0x43926`)
+      and AL != 0 goes to `0x4391C`;
+    - in the other copy, AL != 0 goes to `0x4391C`. AL = 0 does `mov dx,[0x10816c];
+      dec edx; mov [0x10816c],dx; test dx,dx; jg 0x43926`: the word is
+      decremented, and the copy is skipped while the new value is > 0,
+      signed;
+    - `0x4391C mov al,[0x108172]; mov [0x108174],al`.
+  - `0x4F790` takes no argument (§46-G). The EAX that `0x43928` leaves is not
+    read.
+  - **Ghidra's decompiler folds `0x4391C`** to `DAT_00108174 = '\0'`: the image
+    holds 0 at `0x108172`, and nothing stores there (47-M.2). The
+    disassembly has the copy, so the port copies the byte.
+- **`0x43928`** (Ghidra `FUN_00043928`, to `0x43962`) pushes EBX/EDX:
+  - `mov bh,1; xor edx,edx`, then for EDX = 0..1 (`inc edx; cmp edx,2; jl`):
+    if `[edx+0x108170] == 0` and `0x11F28(EAX = EDX)` is non-zero:
+    - `mov al,dl; mov bl,[0x104b1f]; inc al; or bl,al; mov [0x104b1f],bl`:
+      `DS_00104B1F |= side + 1`;
+    - `0x43954 mov [edx+0x108170],bh`: the side byte = 1.
+  - A side whose byte is non-zero is not polled, so no credit is spent for
+    it.
+- **`0x11F28`** (to `0x11F56`) pushes EDX and does `mov edx,eax`. If
+  `0x2C060` (`config_credit_ready`) returns 0, it returns 0. If `[edx*4 +
+  0x9ACBC]` and `[0x1088E4]` have no common bit, it returns 0
+  (`0x11F53`). Otherwise it calls `0x2CA7C(1)` and returns 1, ignoring
+  what `0x2CA7C` returned. The masks are `0x9ACBC` = `0x01000000` (side 0)
+  and `0x100` (side 1). `0x2CA7C` debits only while `DS_00104B1F == 0`
+  (`config_credit_spend`). So in `0x43928`, once side 0 has set its bit in
+  `DS_00104B1F`, side 1's join is not debited in the same pass. The port's
+  `frontend_coin_poll` is exactly this.
+- **The dead copy `0x4493C..0x44965`.** It follows `0x4493B nop`, after
+  `0x44798`'s `ret` at `0x4493A`. It repeats `0x438B4`'s `DS_00104B1D == 3`
+  body: `mov al,[0x108174]; test al,al; jbe 0x44798` (a tail jump),
+  `cmp al,1; jne ret; call 0x43928; call 0x4F790; test al,al; je ret; mov
+  al,[0x108172]; mov [0x108174],al; ret`. No rel32 and no dword reaches
+  `0x4493B`, `0x4493C` or `0x44940`, and Ghidra has no function there, so it
+  is dead. Its `call 0x4F790` at `0x44952` is the one §46-G.2 called dead
+  code. Its `call 0x43928` at `0x4494D` and its `jbe` at `0x44943` are the
+  extra rel32 hits in 47-M.2.
+
+### 47-M.2 Entrances and the sub-state byte (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object, a dword scan of both fixed-up objects; the objects dumped through `read_memory`)
+
+| target | rel32 | dwords | Ghidra |
+|---|---|---|---|
+| `0x438B4` | `0x25385` (the jump table's case `0x10` body) | none | the same one, from `FUN_00024c5c` |
+| `0x43928` | `0x438D4`, `0x438FA`, `0x4494D` (the dead copy) | none | `0x438D4`, `0x438FA` |
+| `0x11F28` | `0x11D15`, `0x11D28`, `0x43939`, `0x43B4E` | none | the same 4 |
+| `0x43B24` | `0x438F3` | none | the same |
+| `0x44798` | `0x438CD`, and the `jbe` at `0x44943` (the dead copy) | none | `0x438CD` |
+| `0x4F790` | `0x438D9`, `0x438FF`, `0x44952` (dead), `0x4F25A`, `0x4F2BE`, `0x4F326` | none | all but `0x44952` |
+
+So `0x438B4` is entered only through the mode switch, which the port has as
+`game_frame`. `0x43928` is reached only from `0x438B4`, the dead copy aside.
+`0x11F28`'s other callers are `0x11D04`'s coin arm (ported:
+`game_state_step`'s two polls) and the unported `0x43B24`.
+
+**Who writes `DS_00108174` and `DS_00108172`.** Ghidra's references and a
+decode of every code occurrence of the displacements `0x10816A..0x108175`
+give:
+- `DS_00108174`: `0x4380B` (`0x43738`, ported, 0), `0x4453B` (`0x444C8`,
+  ported, 0), and the copies `0x43921` (here) and `0x44960` (the dead
+  copy);
+- `DS_00108172`: read at `0x4391C` and `0x4495B` only. There is no store,
+  and the image holds 0 there;
+- the byte stores into the side table `[reg + 0x108170]` all index a side
+  0..1:
+  - `0x43790`/`0x437A6` and `0x44511`, ported, each in a 0..1 loop;
+  - `0x43954`, now ported, in a 0..1 loop;
+  - `0x43B77` (`0x43B24`), in a 0..1 loop;
+  - `0x43D7E` (`0x43D60`, `mov byte [ebx+0x108170],ah`, AH = 2). EBX is the
+    argument, and `0x43D60`'s only callers `0x43AD3` (`0x43AAC`) and
+    `0x43CC1` (`0x43B24`) pass the 0..1 loop index;
+  - `0x443F9` (AH = 2) and `0x4443F` (DL = 3), both in `0x4434C`, indexed
+    by its argument ECX. Its only caller `0x44908` (`0x44798`) passes the
+    0..1 loop index.
+- the indexed stores whose displacement lies below `0x108170`. Reaching
+  `0x108172` would take an index of 8 from `0x10816A` and 4 from
+  `0x10816E`. The index was bounded at each caller (Ghidra's instruction
+  starts):
+  - `[reg + 0x10816A]`:
+    - `0x2719C` (`0x2716C`, ECX = EAX). Its callers `0x2705E`, `0x2722E`
+      and `0x27700` pass `[0x104AD4] ^ 1`, the same XORed with DH = 1, and
+      the byte `[0x104B12]`. The stores to the dword `[0x104AD4]` are 0, 2
+      or a register (`0x288F3` stores 2), so XOR 1 gives at most 3;
+    - `0x292E8` (`0x292D4`, EBX = EAX), from `0x29871` only. There EAX is
+      the zero-extended byte `[0x104B09]` (`0x29780`), which also indexes the
+      two per-side counters `0x104AF0`/`0x104AF1` (`0x29785`, and the `cmp`s
+      at `0x2979D`/`0x297B0`). So it is used as a side, though no
+      range check was found;
+    - `0x4136D` (`0x41350`, EBX = the side). Its callers pass 0, 1,
+      `[0x104AD4] ^ 1` or `(DS_00104B1F - 1) ^ 1` with `DS_00104B1F` != 3;
+    - `0x43D74` (`0x43D60`), where the side is 0..1 as above;
+  - `[reg + 0x10816E]`:
+    - `0x41390` (`0x41350`), the side as above;
+    - `0x43E63` (`0x43D60`, EBX 0..1);
+    - `0x444AB` (`0x4434C`, ECX 0..1);
+    - `0x445D1` (`0x4454C`, `mov byte [esi+0x10816e],0xff`, ESI 0..1:
+      `inc esi; cmp esi,2; jl` at `0x44610..0x4461F`);
+  - `[eax + 0x10816D]`: `0x436B1`/`0x43707` (the `0x4367C` region) and
+    `0x44568` (`0x4454C`, storing `0xFF`). Each loop is `inc eax` before the
+    store and `cmp eax,2; jl` after it, so EAX = 1..2. They write
+    `0x10816E`/`0x10816F`, and no displacement names those bytes;
+  - the review of this branch (`gap10-mode10-review.md`, check 2) also
+    bounded the `[reg*4 + 0x108144]`, `0x108154`/`0x10815C`, `0x10813C`,
+    `[edx + 0x108166]` and `0x108114`/`0x108134` table stores. None reaches
+    past `0x10813B`, or past `0x108167` for `0x108166`.
+
+  No displacement names `0x10816F`, `0x108171` or `0x108175`.
+
+**Block fills.** The fill routine `0x65490` has 4 callers (rel32; no dword):
+- `0x41682` and `0x4247A`, which fill `0x108106` for 7 bytes;
+- `0x25801`, which fills `0x104B02` for 7 bytes;
+- the C `memset` `0x61A70`.
+
+`0x61A70` has 46 callers (rel32; no dword; Ghidra agrees). The review checked
+every one. No immediate base covers `0x108174`: the nearest are `0x107618 +
+0x180`, `0x105F38 + 0x14D4` and `0x108DAC`. The others fill through heap, pool
+or stack pointers. The `rep stos`/`rep movs` sites are in the runtime and AIL
+region (from `0x5E000` up) or copy the `0x94`-byte fighter slots.
+
+So **no instruction stores a non-zero value to `DS_00108174`, or anything to
+`DS_00108172`, and no fill routine reaches either byte**. Two things are not
+closed: copies through heap or stack pointers, and file reads. Nothing found
+points either of them at `0x1081xx`. Every entry to the character screen,
+`0x43738` and `0x444C8`, leaves the sub-state at 0. So mode `0x10` runs
+`0x43B24` or `0x44798` on every frame, and the ported sub-state-1 arm runs
+only in unit tests.
+
+**Correction to 47-B.2.** 47-B.2 said that `0x108173` is "the top byte of the
+dword `[0x108170]`, which only the unported `0x43D7F` (in `0x43D60`) writes
+whole", and that `0x4434C`'s index is "not bounded here". The raw
+disagrees:
+- `0x43D7E` is `88 a3 70 81 10 00`, `mov byte ptr [ebx+0x108170],ah`, a
+  byte store per side. The displacement starts at `0x43D80`, and 47-B.2's
+  decode began inside the instruction;
+- `0x4434C`'s only caller passes 0..1.
+
+So every indexed store into `[reg + 0x108170]` reaches only
+`0x108170`/`0x108171`, and the lower tables stop at `0x10816F`. **No
+instruction found stores `0x108173`, and no fill routine reaches it.** The
+conclusion of 47-B.2 still holds and is stronger: state 8 cannot be reached
+except through a copy by heap or stack pointer or a file read, the gaps left
+open above. 47-B.2 and 47-B.6 now carry a marker pointing here.
+
+**Mode `0x10` in the port.** In the raw, `0x4F980`'s eleven callers load
+EAX with the return mode (the last `mov eax,imm` before each call):
+- `0x11`: `0x1F44D`, `0x43AEE`, `0x43C1E`, `0x4482A`;
+- `0x10`: `0x25816` (`0x257A4`), `0x28D79` (`0x28D68`), `0x28D9B`
+  (`0x28D80`);
+- `0x30`: `0x25A4C`;
+- 5: `0x25A79`, `0x27162`;
+- `0x23`: `0x26991`.
+
+In this branch the only ported code that arms mode `0x10` is:
+- `frontend_wipe_arm(0x10)` inside the hooks `0x28D68`/`0x28D80`. They are
+  registered, but only the unported `0x42CB4`, `0x28DA4` and the dead stub
+  `0x42FB0` install them (§43-B);
+- mode `0x1B`'s copy of `DS_00104AFA`, whose ported writers are `0x4F98E`
+  (`frontend_wipe_arm`) and `0x415EF` (`frontend_darken_marked`, `0x13`).
+
+`gap9-257a4`'s `game_coin_divert` (`0x257A4`) also arms `0x10`, but it has
+no caller (§47-C.3). On the no-input path the mode stays 3 (47-B.2), so
+wiring case `0x10` cannot move an oracle. 47-M.5 measures this.
+
+### 47-M.3 The port
+
+- `fight.c` `fight_char_join()` is `0x43928`: the 0..1 loop, the side-byte
+  test, `frontend_coin_poll(side)`, then `DS_00104B1F |= side + 1` and the
+  side byte = 1, in raw order.
+- `fight.c` `fight_mode_10_step()` is `0x438B4`, with both copies of the
+  body:
+  - value 0 returns through a `PORT:` named-gap note in each copy, naming
+    `0x44798`/`0x43B24` and their direct callees;
+  - otherwise the order and the tests are the raw's, and the countdown is a
+    word and signed (`(s16)dx > 0`);
+  - both are declared in `fight.h`, after `0x444C8`.
+- `flow.c`:
+  - `frontend_coin_poll` (`0x11F28`) is no longer `static`. It is declared in
+    `flow.h`, and its comment names the four callers and the ignored
+    `0x2CA7C` result. Its body is unchanged;
+  - `game_frame`'s switch has `case 0x10u: fight_mode_10_step(); /* 0x25385
+    0x438B4 */`. `0x10` leaves the named-gap case list and its `PORT:`
+    comment.
+- `port/spec/game_flow.md` lists case `0x10` as dispatched (38 gaps left).
+
+### 47-M.4 The assertions and mutations
+
+`check_mode_10_step` (`test_fight.c`, after `check_mode_switch`) takes
+`check_mode_switch`'s snapshot: the data object, both pools, both buffers,
+the resource table, the aperture and the DAC. The data object is restored
+before each group, and everything is restored at the end. `m10_seed` sets
+these sentinels:
+- the sub-state, with 0x77 after it;
+- the side bytes = 0, with 0x77 before them;
+- `DS_00108172` = `0x5A`, with 0x33 after it;
+- the countdown word, with 0x66 after it;
+- no free play, the credits and `DS_00104B1F`;
+- the pressed and held words.
+
+It first checks the two image masks at `0x9ACBC`.
+- **(a)** `0x43928`, both sides pressed, 5 credits, `DS_00104B1F` = 0:
+  `DS_00104B1F` = 3, both bytes 1, 4 credits (side 1 is not debited), and
+  the neighbours are kept.
+- **(a2)** Side 1's byte already 5: side 1 is not polled
+  (`DS_00104B1F` = `0x41`, the byte is still 5), and there is no debit with
+  `DS_00104B1F` non-zero.
+- **(a3)** Only side 1 pressed: `DS_00104B1F` = 2 and side 1 only.
+- **(a4)** No credit: nothing joins.
+- **(b)** `DS_00104B1D` = 0, sub-state 1, no input: the countdown goes 2 → 1
+  (the sub-state is kept), then 1 → 0 and the sub-state = `0x5A`. The bytes
+  after the countdown and after the sub-state keep their sentinels.
+- **(b2)** It is signed: `0x8000` → `0x7FFF` keeps the sub-state, and 0 →
+  `0xFFFF` ends it.
+- **(c)** A new press of side 0's mask (AL 1, no credit so no join), then the
+  held mask `0x0F000000` (AL 2): each ends the pass at once, and the
+  countdown keeps 9.
+- **(d)** `DS_00104B1D == 3`, no input: no countdown (the word keeps 1) and
+  the sub-state stays 1. A press ends the pass.
+- **(e)** Both copies: side 1 pressed with credits joins (`DS_00104B1F` =
+  `0x42`), and the same press ends the pass.
+- **(f)** Sub-states 0 (the gap) and 2 in both copies: nothing joins, the
+  countdown keeps 1 and the sub-state is not copied.
+- **(g)** `game_frame` with the mode dword `0xBEEF0010`: the countdown goes
+  2 → 1 and the mode is kept.
+
+**Mutations** (`scratchpad/g10m/mut.py`, `mut.log`; one single-site edit per
+build, the source restored after each). **All 27 fail the suite.** The full
+set was re-run on the final test (`11ccda2`), and the table lists every
+failing group:
+
+| # | mutation | failing groups |
+|---|---|---|
+| M1 | the side-byte test inverted | (a), (a2), (a3), (e) |
+| M2 | the poll's result ignored | (a3), (a4), (c), (e) |
+| M3 | the bit `side + 2` | (a2), (a3), (e) |
+| M4 | `=` for `\|=` | (a), (a2), (e) |
+| M5 | the `DS_00104B1F` store dropped | (a), (a2), (a3), (e) |
+| M6 | the side-byte store dropped | (a), (a2), (a3), (e) |
+| M7 | the side byte stored as a word | (a) (`DS_00108172`), (a2), (e) |
+| M8 | one side only | (a), (a3), (e) |
+| M9 | `DS_00104B1D == 1` for `== 3` | (d) |
+| M10, M11 | either copy's `sub != 1` return dropped | (f) |
+| M12, M13 | either copy's sub-state-0 arm running the join | (f) |
+| M14 | the `DS_00104B1D == 3` copy's AL = 0 return dropped | (d) |
+| M15, M16 | either copy's `0x43928` dropped | (e) |
+| M17 | the other copy's skip test inverted | (b), (b2), (c), (e), (g) |
+| M18 | the `DS_00104B1D == 3` copy's skip test inverted | (d), (e) |
+| M19 | a decrement of 2 | (b), (b2), (g) |
+| M20 | the countdown store dropped | (b), (b2), (g) |
+| M21 | the countdown stored as a dword | (b) (the byte after it) |
+| M22 | the test unsigned | (b2) |
+| M23 | `>= 0` for `> 0` | (b) |
+| M24, M26 | the copy as 0, the copy dropped | (b), (b2), (c), (d), (e) |
+| M25 | the copy as a word | (b) (`DS_00108175`) |
+| M27 | case `0x10` not dispatched | (g) |
+
+The first run had three mutations that did not fail the suite, and each was
+fixed:
+- `sub > 1` for `sub != 1` in either copy. This is equivalent, because
+  value 0 has already returned. It was replaced by M12/M13;
+- M14 as first written left an empty `if` and did not build. It became `;`;
+- M25, the word copy, survived because `DS_00108173` and `DS_00108175` had
+  the same sentinel. The test now seeds `0x33` at `DS_00108173`.
+
+### 47-M.5 Measured, remaining gaps and the follow-up
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, with 0
+  compiler warnings. As the brief requires, the branch ran neither `make
+  verify` nor the drivers.
+- **Frames.** `prageport --check 8000` was run from two scratch directories,
+  once with the base binary (`154933f`) and once with this branch's
+  (`11ccda2`). All 24000 `frame_*.ppm`/`.pal`/`.idx` files are
+  byte-identical (`diff -rq`). No oracle is expected to move.
+- **Remaining named gaps:**
+  - **`0x43B24`** (to `0x43D09`), the character select's per-frame pass
+    for `DS_00104B1D != 3`. It is a 0..1 loop over the sides, switching on
+    the side byte:
+    - 0: the poll `0x11F28`. If it accepts, `0x43964`/`0x43A08` (ported),
+      `DS_00104B1F |= side + 1` and byte 1 (`0x43B77`). Otherwise
+      `0x432A0`, which calls `0x2C060`, `0x2C178` and `0x2C1C8`;
+    - 1: `0x435AC` when `DS_00104B1D == 1` and `side + 1 !=
+      [0x104AB8]`, else `0x43464`;
+    - 2: once the other side's byte is 0 or 2, the hook `0x430E8` and
+      `0x4F980(0x11)`, and it returns.
+
+    For a side byte of 1, or above 2, bits 4..7 of the word
+    `DS_001088E0[side]` then move the cursor byte `DS_00108166[side]`,
+    followed by `0x43EA0`/`0x43FBC`, and its bit 0 runs `0x43D60`. After the loop, `DS_00105C04` resets the countdown to `0xF`,
+    and `0x43AAC` runs when `[0xEF6DC] & 0x3F == 0`. Its unported callees
+    are:
+
+    | function | instructions |
+    |---|---|
+    | `0x432A0` | 31 |
+    | `0x435AC` | 63 |
+    | `0x43464` | 92 |
+    | `0x43EA0` | 64 |
+    | `0x43FBC` | 37 |
+    | `0x43D60` | 86 |
+    | `0x43AAC` | 40 |
+    | `0x432EC` | 70 |
+    | `0x433DC` | 41 |
+    | `0x43D0C` | 26 |
+    | `0x4248C` | 25 |
+    | `0x2C178` (and `0x2C0F4`) | 19 |
+    | `0x2C1C8` | 3 |
+    | `0x2E934` (and `0x2E180`) | 42 |
+    | `0x65624` | 17 |
+    | `0x2C088`, `0x2F280` | |
+
+    That is about 770 instructions with `0x43B24` itself. `0x33C18` is
+    ported (`fight_char_reset`).
+  - **`0x44798`** (to `0x4493A`), the `DS_00104B1D == 3` pass: the same
+    stick and button handling with `0x4418C`/`0x442A0`/`0x4434C`, `0x44638`
+    for a side byte of 1, and a versus arm for both bytes 3. That arm copies
+    `DS_00108134`/`DS_00108138` into `DS_0010816A`/`DS_0010816B`, then sets
+    the hook `0x430E8` and calls `0x4F980(0x11)`. Its callees are `0x44638`
+    (99), `0x4418C` (61), `0x442A0` (42), `0x4434C` (118), `0x44054` (20)
+    and `0x4408C` (69), about 510 instructions.
+  - The voices inside both (§45-A's rule).
+- **Why they were not ported here.** Both are the interactive character
+  select: cursor, portraits, per-side confirmation and the versus
+  hand-off. Porting them is a subsystem, not a handler. The brief says to
+  name such a subsystem rather than half-port it. A half-port would leave
+  states the raw never has, the precedent of 47-B.3. With the sub-state at 0
+  (47-M.2), case `0x10` in the port still draws nothing new after the wipe
+  until `0x43B24` lands.
+- **The follow-up:**
+  1. `0x43B24` and its callees (the table above). It is reachable after
+     `gap9-257a4` merges and `game_state_step`'s coin arm calls
+     `game_coin_divert` (§47-C.5);
+  2. then `0x44798` for the `DS_00104B1D == 3` route. That route needs the
+     start menu (§47-B.6 item 4).
+
+  Both need input, so no oracle capture reaches them.
