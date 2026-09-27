@@ -255,7 +255,10 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # 0x2DCA0, their boot fill 0x1E824 (0x1E918's ten factory records and the champion
 # 0xA7D74) and the rest of 0x1EA08 (the rows through 0x2F4D0/0x2F4BC and the
 # champion's figure 0x2AE14/0x2A17C) draw the attract's high-score screen and explain
-# 3408..3544. (Before it, N = 3408, measured on b05adcc (on 54394e9; §45-A): the voice
+# 3408..3542. 3543/3544 (black, `- LOADING -` on black) match earlier port screens,
+# not the port's hand-off: the dump ends at loop 3899 inside the high-score screen
+# (loops 3685..3899), about 85 ticks before the original leaves it. 3545 (raw 8338)
+# is the third demo fight, past the driver's window. (Before it, N = 3408, measured on b05adcc (on 54394e9; §45-A): the voice
 # dispatcher 0x2C3FC with the sound module's sample path, 0x1543C's voice 0x4D
 # (its first read of s16spisd.gra draws the loader's text over the game frame at
 # loop 3557), the fighter spawns' sound-bank reads (0x33E51), the DIG driver

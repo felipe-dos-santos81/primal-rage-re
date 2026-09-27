@@ -2547,8 +2547,11 @@ record §34).**
 * **Port.** `hiscore_locate`/`hiscore_read`/`hiscore_insert` (config.c),
   `hiscore_fill_defaults`/`hiscore_audit_reset_due`/`hiscore_init` and the
   whole `frontend_match_start` (flow.c); `game_init` calls `hiscore_init`.
-* **Result.** 3408..3544 are explained (3408 = port 1886, clean). First
-  unexplained **3545** (raw 8338). N = 3545.
+* **Result.** 3408..3542 are explained (3408 = port 1886, clean). 3543/3544
+  (black, `- LOADING -` on black) match earlier port screens: the driver's dump
+  ends at loop 3899 inside the high-score screen, about 85 ticks before the
+  original leaves it. First unexplained **3545** (raw 8338), the third demo
+  fight, past the driver's window. N = 3545.
 
 ## Landmarks (verified)
 
