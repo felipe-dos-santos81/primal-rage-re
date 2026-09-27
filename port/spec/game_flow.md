@@ -426,12 +426,17 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     entrances are named gaps.
   - Case `0x10` is `0x438B4` (`fight_mode_10_step`, record §47-M). It
     branches on the byte `DS_00108174`. With 0 it runs the character
-    select's per-frame pass `0x43B24` (`0x44798` when `DS_00104B1D == 3`),
-    which is a named gap. With 1 it runs the join test `0x43928`, the skip test
-    `0x4F790` and the countdown `DS_0010816C`, then copies `DS_00108172`
-    into `DS_00108174`. No instruction stores a non-zero value there by
-    displacement (record §47-M.2), so the value-0 gap is the arm the character
-    screen actually runs.
+    select's per-frame pass `0x43B24` (`fight_char_select_pass`), or
+    `0x44798` (`fight_char_team_pass`) when `DS_00104B1D == 3`; both are
+    ported with their callees (record §48-S), and their voices and the
+    character-pick audit count `0x2E934` are named gaps. With 1 it runs the
+    join test `0x43928`, the skip test `0x4F790` and the countdown
+    `DS_0010816C`, then copies `DS_00108172` into `DS_00108174`. No
+    instruction stores a non-zero value there by displacement (record
+    §47-M.2), so the value-0 arm is the one the character screen actually
+    runs. It confirms a side (stick and button 0 of `DS_001088E0`) or times
+    out (`0x43AAC`), then installs the versus hook `0x430E8` and arms mode
+    `0x1A` returning to `0x11`.
 
   Still, only `0x4F980` stores mode `0x1A`; no ported path stores mode
   `0x17` outside `0x4F318`'s own chain. The route in is `0x257A4`

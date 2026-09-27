@@ -1032,8 +1032,9 @@ void game_mode_0d_step(void)
         /* PORT: 0x2759E 0x2C3FC(0x2A) voice, not wired (record §45-A). */
         flow_match_result_text();                       /* 0x275A3 0x28130 */
         /* PORT: 0x275B7 0x2C2B0((s8)(DS_0010810D ^ 1), 0x1D) is a named gap
-         * (record §48-Q): its callees 0x2C088 (with DS_00104529 bit 1) and
-         * 0x2F388 (the credit text) are unported. */
+         * (record §48-Q). Its callees 0x2C088 (with DS_00104529 bit 1) and
+         * 0x2F388 (the credit text) are ported since record §48-S, but
+         * 0x2C2B0 itself is still unwired here. */
         if ((DSB(DS_00104529) & 2u) != 0u) {            /* 0x275BC/0x275C3 */
             (void)actor_spawn((const u32 *)(mem + DS_000A8998), 0x2A00u,
                               0xFFu, 0x1800u, 0u);      /* 0x275C5..0x275DB 0x2AE14 */
@@ -1772,6 +1773,117 @@ static void flow_105bf0_clear(void)
 {
     DSD(DS_00105BF4) = 0u;                              /* 0x2C077 */
     DSD(DS_00105BF0) = 0u;                              /* 0x2C07D */
+}
+
+/* ---- the character select's side prompts 0x2C088..0x2C1D4 (record §48-S) -- */
+
+#define DS_000BAB5A 0x000BAB5Au   /* no symbols.h name: [side] the prompt sprite's x */
+#define DS_000BAB60 0x000BAB60u   /* no symbols.h name: the prompt sprite's descriptor */
+#define DS_000809C4 0x000809C4u   /* no symbols.h name: the string "1" */
+
+/* 0x2C088 — record §48-S. EAX = col, EDX = row, EBX = side. With the
+ * DS_00104529 bit 1 (the sprite prompts): the side's sprite DS_00105BF0[side],
+ * when set, is marked dead (0x2B150) and the slot zeroed (ECX = 0), then
+ * string 0x48's cells are released at the position 0x2C1D4 last drew
+ * (DS_00105C06/DS_00105C07, `movzx`/`mov dl` after `xor edx,edx`), not at the
+ * caller's. Otherwise at the caller's col/row. The mode is 0x1000 (ECX);
+ * 0x1C500 pushes and pops EBX/EDX. */
+void prompt_press_start_clear(s32 col, s32 row, u32 side)
+{
+    if ((DSB(DS_00104529) & 2u) != 0u) {                /* 0x2C08E */
+        u32 rec = DSD(DS_00105BF0 + side * 4u);         /* 0x2C09E */
+        if (rec != 0u) {                                /* 0x2C0A4 */
+            actor_set_dead(rec);                        /* 0x2C0AC 0x2B150 */
+            DSD(DS_00105BF0 + side * 4u) = 0u;          /* 0x2C0B1 */
+        }
+        const u8 *s = game_string_get(0x48u);           /* 0x2C0C3 0x1C500 */
+        text_cells_release((s32)DSB(DS_00105C06), (s32)DSB(DS_00105C07),
+                           s, 0x1000u);                 /* 0x2C0C8..0x2C0EA 0x2F280 */
+        return;
+    }
+    text_cells_release(col, row, game_string_get(0x48u), 0x1000u);  /* 0x2C0E1/0x2C0EA */
+}
+
+/* 0x2C0F4 — record §48-S. EAX = col (or x), EDX = row (or y), EBX = side,
+ * ECX = `sprite`. On the blink phase DS_000EF6DC & 0x1F (the word, 0x2C0FC):
+ * - 0: with `sprite`, the prompt sprite 0xBAB60 is spawned at (a2 = col,
+ *   a3 = 0xFF, a4 = row, a5 = ECX, which is the phase, 0) into
+ *   DS_00105BF0[side]; otherwise string 0x48 is drawn by 0x2F198 at col/row
+ *   with mode 0x1000. Either way DS_00105BF8 = strlen(string 0x48)
+ *   (0x2C149..0x2C15F);
+ * - 0x18: 0x2C088(col, row, side);
+ * - otherwise nothing. */
+void prompt_press_start_blink(s32 col, s32 row, u32 side, u32 sprite)
+{
+    u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x2C0FC..0x2C108 */
+    if (phase != 0u) {                                  /* 0x2C10E */
+        if (phase == 0x18u)                             /* 0x2C168 */
+            prompt_press_start_clear(col, row, side);   /* 0x2C16F 0x2C088 */
+        return;
+    }
+    if (sprite != 0u) {                                 /* 0x2C110 */
+        DSD(DS_00105BF0 + side * 4u) = actor_spawn(
+            (const u32 *)(mem + DS_000BAB60), (u32)col, 0xFFu, (u32)row,
+            phase);                                     /* 0x2C119..0x2C128 0x2AE14 */
+    } else {
+        text_cursor_set(col, row, game_string_get(0x48u), 0x1000u);  /* 0x2C131..0x2C144 */
+    }
+    DSD(DS_00105BF8) = (u32)strlen((const char *)game_string_get(0x48u));  /* 0x2C149..0x2C15F */
+}
+
+/* 0x2C178 — record §48-S. EAX = side, EDX = row (or y). With the DS_00104529
+ * bit 1: 0x2C0F4 with the x word 0xBAB5A[side] (`mov esi,[eax*2+0xbab58];
+ * sar esi,0x10`, signed) and ECX = 1; otherwise with the col byte
+ * 0xBAB58[side] (`movzx`) and ECX = 0. EBX = side in both. */
+void prompt_press_start(u32 side, s32 row)
+{
+    if ((DSB(DS_00104529) & 2u) != 0u)                  /* 0x2C17B */
+        prompt_press_start_blink((s16)DSW(DS_000BAB5A + side * 2u), row,
+                                 side, 1u);             /* 0x2C184..0x2C1A4 */
+    else
+        prompt_press_start_blink((s32)DSB(DS_000BAB58 + side), row,
+                                 side, 0u);             /* 0x2C197..0x2C1A4 */
+}
+
+/* 0x2C1D4 — record §48-S. EAX = col, EDX = row. On the blink phase
+ * DS_000EF6DC & 0x1F:
+ * - 0: the 0x14-byte stack buffer takes string 0x49, then the image string
+ *   at 0x809C4 ("1"), then string 0x4B (a strcpy and two strcats,
+ *   0x2C1F3..0x2C275); 0x2F198 draws it at col/row with mode 0x3000, then
+ *   DS_00105C06 = col, DS_00105BF8 = its length and DS_00105C07 = row (bytes
+ *   and a dword, 0x2C286..0x2C2A3);
+ * - 0x18 (0x2C1AD, the code just after 0x2C178's `ret`): 0x2F388 releases
+ *   DS_00105BF8 cells at col/row;
+ * - otherwise nothing.
+ * PORT: the raw's buffer is [esp..esp+0x13], with the saved col and row at
+ * [esp+0x14]/[esp+0x18], and the copies are unbounded. The port bounds them
+ * to the 0x14 bytes. ENGLISH.TXT's "INSERT " + "1" + " COIN" is 13 characters,
+ * so the bound is not reached. */
+void prompt_insert_coin_blink(s32 col, s32 row)
+{
+    u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x2C1E2..0x2C1EC */
+    if (phase != 0u) {                                  /* 0x2C1F1 */
+        if (phase == 0x18u)                             /* 0x2C1AD */
+            text_cells_release_count(col, row, (s32)DSD(DS_00105BF8));  /* 0x2C1B2..0x2C1BC 0x2F388 */
+        return;
+    }
+    char buf[0x14];
+    snprintf(buf, sizeof buf, "%s", (const char *)game_string_get(0x49u));  /* 0x2C1FA */
+    size_t n = strlen(buf);
+    snprintf(buf + n, sizeof buf - n, "%s", (const char *)(mem + DS_000809C4));  /* 0x2C21B */
+    n = strlen(buf);
+    snprintf(buf + n, sizeof buf - n, "%s", (const char *)game_string_get(0x4Bu));  /* 0x2C24B */
+    text_cursor_set(col, row, (const u8 *)buf, 0x3000u);  /* 0x2C276..0x2C281 0x2F198 */
+    DSB(DS_00105C06) = (u8)col;                         /* 0x2C294 */
+    DSD(DS_00105BF8) = (u32)strlen(buf);                /* 0x2C286..0x2C28F, 0x2C29D */
+    DSB(DS_00105C07) = (u8)row;                         /* 0x2C2A3 */
+}
+
+/* 0x2C1C8 — record §48-S. EAX = side, EDX = row: EAX = the col byte
+ * 0xBAB58[side] (`and eax,0xff`), then a `nop` falls through into 0x2C1D4. */
+void prompt_insert_coin(u32 side, s32 row)
+{
+    prompt_insert_coin_blink((s32)DSB(DS_000BAB58 + side), row);  /* 0x2C1C8..0x2C1D3 */
 }
 
 /* 0x20DF4 — record §46-B. The fight reset. EAX = the stage (DS_00104AFC's
