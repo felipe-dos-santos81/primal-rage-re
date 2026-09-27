@@ -11945,3 +11945,11 @@ s3545.png`), which no port frame shows.
 
 **Status: in progress.** Scaffolding; the sections below are filled as the
 evidence lands.
+
+Progress (evidence so far, driver run with FE_LOOPS 4300 in the worktree):
+the high-score screen ends at loop 3985 (state 5 -> state 9 hold 0x12C ->
+state 6), the third demo's state-6 entry draws six loader screens (cycle-2
+frames 2187..2192), and captures 3546..3592 are explained by the port's third
+demo fight. Capture 3545 is byte-exact `2192[:120000] + 2193[120000:172800] +
+2194[172800:]` (rows 125 and 180): a three-frame splice, which the two-frame
+splice model cannot express. The next divergence is 3593 (fight content).
