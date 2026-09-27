@@ -1108,9 +1108,10 @@ void game_mode_0d_step(void)
         void (*fn)(u32) = (void (*)(u32))(void *)
             fn_resolve(DSD(DS_000A8628 + ch * 4u));
         if (fn) fn(s);                                  /* 0x27732 */
-        /* PORT: the entrances of characters 0 and 2..6 (0x40CB0, 0x49150,
-         * 0x15A34, 0x45FE8, 0x40E64, 0x24804) are unported and unregistered,
-         * so for them the call is a named gap; character 1's (0x24568) runs. */
+        /* PORT: all seven entries of 0xA8628 are ported and registered
+         * (0x24568, record §46-C; 0x40CB0, 0x49150, 0x15A34, 0x45FE8,
+         * 0x40E64 and 0x24804, record §48-V), so the guard only skips a
+         * character byte outside 0..6, which the raw would call through. */
     }
     DSB(DS_000F0AFF) = DSB(DS_0010810D);                /* 0x27739/0x2773E */
     DSB(DS_000F0AFE) = 0u;                              /* 0x2774C (CL) */
@@ -1204,8 +1205,8 @@ void game_mode_32_step(void)
         void (*fn)(u32) = (void (*)(u32))(void *)
             fn_resolve(DSD(DS_000A8628 + ch * 4u));
         if (fn) fn(s);                                  /* 0x2989C */
-        /* PORT: as in 0x274FC, only character 1's entrance (0x24568) is
-         * ported; for the others the call is a named gap. */
+        /* PORT: as in 0x274FC, all seven entrances are registered (records
+         * §46-C and §48-V); the guard only skips a character outside 0..6. */
     }
     s = DSB(DS_00104B09);                               /* 0x298A3 */
     DSB(DS_00107813 + s * 0x94u) = 0u;                  /* 0x298B9/0x298BB (DL ^ BL) */

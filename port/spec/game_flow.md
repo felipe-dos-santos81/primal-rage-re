@@ -438,11 +438,11 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     `0x28130`; `0x296B8` has no such call. Otherwise
     it replaces the loser with the next character (`0x2716C`'s random pick or
     `0x292D4` from the team list at `DS_00108134`), runs that character's
-    entrance `0xA8628[c]` (only character 1's, `0x24568`, is ported) and the
-    HUD resets `0x1D764`/`0x1D838`, then mode `0xC`/`0x31`. No ported path
-    stores mode `0xD` or `0x32`, and six of the seven entrances are named
-    gaps (`0x2C2B0` ported by record §48-T; `0x1D764`'s bar draw `0x1D2F0`
-    ported by record §48-U).
+    entrance `0xA8628[c]` (all seven are ported and registered: `0x24568`,
+    record §46-C, and the other six, record §48-V) and the HUD resets
+    `0x1D764`/`0x1D838`, then mode `0xC`/`0x31`. No ported path stores mode
+    `0xD` or `0x32` (`0x2C2B0` ported by record §48-T; `0x1D764`'s bar draw
+    `0x1D2F0` ported by record §48-U).
   - Case 5 is `0x25C88` (`game_mode_05_step`, record §48-U), the round
     start. After the slot pass `0x3CB68` it steps the byte `DS_00104B25`:
     1 spawns the HUD (`0x25C1C`: `0x1D890`, or `0x1DC6C` when
@@ -1088,7 +1088,25 @@ exits 0.
   three dispatchers, the mode `0x0D`/`0x32` handlers `0x274FC`/`0x296B8`
   are ported (record §48-Q), and so is mode 5's `0x25C88` (record §48-U), but
   no ported path the oracles run stores any of the three modes, so none of
-  the three dispatchers is reached. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
+  the three dispatchers is reached.
+  The table's other six entries are ported and registered too (§48-V):
+  `0x40CB0` (character 0), `0x49150` (2), `0x15A34` (3), `0x45FE8` (4),
+  `0x40E64` (5) and `0x24804` (6), each with its entrance stream's `0xD500`
+  target (`0x40C34`, `0x492A8`, `0x159A8`, `0x46138`, `0x40E14`, `0x24964`)
+  and that target's callees (`0x488B8`, `0x45878`, `0x3DFC0`, `0x23530`;
+  character 6's entrance also calls `0x24754`). The table has seven dwords
+  with stride 4 (the dispatchers' `call [reg*4 + 0xA8628]`); the dword after
+  it, `0xA8644`, starts the update table, so there is no eighth character.
+  Each entrance is its own copy of `0x24568`'s shape with its own placement
+  offset (`0x3000` or `0x5000`), stream, blink byte `DS_00104B02 + c` and
+  state stores; character 0's passes y = `0x4C00` to the spawn core
+  `0x33C78`, which now threads it through. Each stream is a sprite, a hold
+  and the `0xD500` target, which puts the fighter into a reaction pose
+  (`+0x5F` = `0x26`/`0x22`/`0x24`, or the plain 9/7/0 of characters 3 and
+  5). `0x488B8` and `0x23530` are also character 2's reaction-`0x22` and
+  character 6's reaction-`0x24` callbacks. The slot callbacks those poses
+  store (`0x3F360`/`0x3F1F0`/`0x3F284`, `0x48668`/`0x487D4`/`0x486F8`,
+  `0x233A8`/`0x23250`/`0x232B4`) are named gaps. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
   frame-1881 fix): none in the fight; `0x3E3A8` (f = 962, the `(char 0,
   0x2A)` callback) and its `+0x0C` callback `0x3E328` (f = 963) are now ported
   and registered; its `+0x18` hook `0x3E1D0` is ported with `0x19020`
