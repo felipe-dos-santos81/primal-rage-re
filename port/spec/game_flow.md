@@ -389,9 +389,12 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   there and enter mode `0x1A` (`0x4F980`). The mode `0x1A`/`0x1B` handlers
   `0x4F9A0`/`0x4F9C8` then dispatch it. The port registers `0x43738` (demo-pose
   record §42-F). The two hooks (themselves `DS_00104AE4` values, stored by
-  `0x42CB4` and `0x28DA4`), `0x4F980` and both handlers with their wipes
-  `0x4F9E4`/`0x4FA88` are ported and the hooks registered (record §43-B), and
-  each handler's `call [0x104AE4]` goes through `fn_resolve`. `game_frame`
+  `0x42CB4`, `0x28DA4` and the unreferenced stub `0x42FB0`), `0x4F980` and
+  both handlers with their wipes `0x4F9E4`/`0x4FA88` are ported and the hooks
+  registered (record §43-B), and each handler's `call [0x104AE4]` goes through
+  `fn_resolve`. A miss is skipped. That is a no-op only for `0x29D60`/`0x5D812`:
+  the hooks the other `0x4F980` callers install (`0x430E8`, `0x4367C`,
+  `0x25BBC`, `0x26998`, `0x270BC`) are unported named gaps. `game_frame`
   still does not dispatch cases `0x1A`/`0x1B`: only `0x4F980` stores mode
   `0x1A`, and its eleven callers are unported (the nearest, `0x257A4`, is the
   coin divert `0x11D04` reaches at `0x11D41` and in state 8, both stubbed), so

@@ -388,9 +388,10 @@ void frontend_wipe_arm(u32 ret_mode)
     DSW(DS_00104B00) = 0x1Au;                           /* 0x4F994 */
 }
 
-/* 0x28D68 — record §43-B. A DS_00104AE4 hook itself (stored by 0x42CB4 at
- * 0x42D04/0x42D40/0x42D8F/0x42FBD): the hook becomes 0x43738 (0x28D73) and
- * 0x4F980 arms mode 0x1A with the return mode 0x10 (0x28D79). */
+/* 0x28D68 — record §43-B. A DS_00104AE4 hook itself, stored by 0x42CB4 (at
+ * 0x42D04/0x42D40/0x42D8F) and by the unreferenced stub 0x42FB0 (at 0x42FBD;
+ * no rel32 or dword enters it): the hook becomes 0x43738 (0x28D73) and 0x4F980
+ * arms mode 0x1A with the return mode 0x10 (0x28D79). */
 void frontend_char_screen_hook(void)
 {
     DSD(DS_00104AE4) = FN_00043738;                     /* 0x28D73 */
@@ -471,10 +472,16 @@ void frontend_mode_1a_step(void)
 {
     if (frontend_wipe_in() == 0u) return;               /* 0x4F9A1/0x4F9A8 */
     /* PORT: `call dword [0x104ae4]` goes through the registry and a miss is
-     * skipped. The two values the image stores there that stay unregistered
-     * are no-ops: 0x29D60 (a bare `ret`, stored by 0x43738/0x444C8) and
-     * 0x5D812 (`xor eax,eax; ret`, record §42-E.4). The returned EAX is dead:
-     * `xor ah,ah` and byte/word stores of AH/DX follow. */
+     * skipped. A miss is a no-op only for 0x29D60 (a bare `ret`, stored by
+     * 0x43738/0x444C8) and 0x5D812 (`xor eax,eax; ret`, record §42-E.4). The
+     * image stores 13 other unregistered, non-trivial values there. Five are
+     * the hooks 0x4F980's own callers install just before arming mode 0x1A,
+     * so this call would reach them; they are named gaps (record §43-B.3):
+     * 0x430E8 (stored at 0x1F447/0x43AE8/0x43C18/0x44824), 0x4367C (0x25810),
+     * 0x25BBC (0x25A46/0x25A73), 0x26998 (0x2698B) and 0x270BC (0x2715C).
+     * TODO(verify): once cases 0x1A/0x1B are dispatched, a miss on any value
+     * but the two no-ops is a missing port, not a skip. The returned EAX is
+     * dead: `xor ah,ah` and byte/word stores of AH/DX follow. */
     void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
     if (hook != NULL) hook();                           /* 0x4F9AA */
     DSB(DS_001088F5) = 0u;                              /* 0x4F9B7 */
@@ -487,7 +494,9 @@ void frontend_mode_1a_step(void)
 void frontend_mode_1b_step(void)
 {
     if (frontend_wipe_out() == 0u) return;              /* 0x4F9C8/0x4F9CF */
-    /* PORT: the registry call and the no-op misses of 0x4F9A0; EAX is
+    /* PORT: the registry call of 0x4F9A0, with the same misses: only
+     * 0x29D60/0x5D812 are no-ops, and the five named-gap hooks listed there
+     * (0x430E8, 0x4367C, 0x25BBC, 0x26998, 0x270BC) would be skipped. EAX is
      * overwritten by the 0x4F9D7 load. */
     void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
     if (hook != NULL) hook();                           /* 0x4F9D1 */
@@ -1535,8 +1544,8 @@ void game_frame(void)
          * 0x4F980 stores mode 0x1A, and its eleven callers (0x1F44D, 0x25816,
          * 0x25A4C, 0x25A79, 0x26991, 0x27162, 0x28D79, 0x28D9B, 0x43AEE,
          * 0x43C1E, 0x4482A) sit in unported code or in the two hooks, whose
-         * storers 0x42CB4 (mode 0x13's 0x424E8) and 0x28DA4 (cases 6/0xC)
-         * are unported. */
+         * storers 0x42CB4 (mode 0x13's 0x424E8), 0x28DA4 (cases 6/0xC) and
+         * the unreferenced stub 0x42FB0 are unported. */
         break;
     }
 

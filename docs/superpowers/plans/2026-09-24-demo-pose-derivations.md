@@ -8596,6 +8596,10 @@ Two immediates load the setters' addresses:
   `0x42CF4`, `0x42D35`, `0x42D7D`, `0x42FB7`).
 - `0x28D80` is loaded into ESI before `call 0x2DAE4` (`0x28E4E`).
 
+(Superseded by §43-B: both are themselves `DS_00104AE4` hooks, and each
+immediate above is followed by a store into `DS_00104AE4`. `0x42FB7` is in
+the unreferenced stub `0x42FB0`, not in `0x42CB4`.)
+
 The other entrances:
 
 | target | rel32 calls | dwords |
@@ -9752,8 +9756,9 @@ into `DS_00104AE4`, then call `0x4F980(0x10)`", and lists the code that loads
 the setters as their callers. The raw shows that both are **themselves
 `DS_00104AE4` values**, with no rel32 entrance. Every immediate that loads them
 is followed by a store into `DS_00104AE4`: `0x42CF3 mov ebx` → `0x42D04`,
-`0x42D34 mov edx` → `0x42D40`, `0x42D7C mov ecx` → `0x42D8F`, `0x42FB6 mov edx`
-→ `0x42FBD` (all in `0x42CB4`), and `0x28E4E mov esi` → `0x28E60` (in
+`0x42D34 mov edx` → `0x42D40`, `0x42D7C mov ecx` → `0x42D8F` (these three in
+`0x42CB4`), `0x42FB6 mov edx` → `0x42FBD` (in the unreferenced stub
+`0x42FB0`, §43-B.2), and `0x28E4E mov esi` → `0x28E60` (in
 `0x28DA4`, which also stores CX, loaded with `0x17` at `0x28E3A`, as the
 mode at `0x28E66`). So the chain is: a
 dispatcher calls the hook `0x28D68`/`0x28D80`, which installs `0x43738` and
@@ -9818,7 +9823,7 @@ arms mode `0x1A`. Then `0x4F9A0` calls `0x43738` through the same pointer.
 
 | target | rel32 | dwords |
 |---|---|---|
-| `0x28D68` | none | code `0x42CF4`, `0x42D35`, `0x42D7D`, `0x42FB7` (in `0x42CB4`); none in data |
+| `0x28D68` | none | code `0x42CF4`, `0x42D35`, `0x42D7D` (in `0x42CB4`) and `0x42FB7` (in the stub `0x42FB0`); none in data |
 | `0x28D80` | none | code `0x28E4F` (in `0x28DA4`); none in data |
 | `0x4F980` | `0x1F44D` (`0x1EEB0`), `0x25816` (`0x257A4`), `0x25A4C`, `0x25A79`, `0x26991`, `0x27162`, `0x28D79`, `0x28D9B`, `0x43AEE` (`0x43AAC`), `0x43C1E` (`0x43B24`), `0x4482A` (`0x44798`) | none |
 | `0x4F9A0` | `0x25403` only | none |
@@ -9827,13 +9832,15 @@ arms mode `0x1A`. Then `0x4F9A0` calls `0x43738` through the same pointer.
 | `0x4FA88` | `0x4F9C8` only | none |
 | `0x10D70` | `0x1D3F5`, `0x1D42C`, `0x1D458` (`0x1D2F0`), `0x1D4C6` (`0x1D464`), `0x1DAE0` (`0x1DA84`), `0x4FA79`, `0x4FB14` | none |
 | `0xC98F0` | only inside `0x4F9E4`/`0x4FA88` (10 code immediates) | none |
+| `0x257A4` | `0x11D41`, `0x11EB8` (in `0x11D04`); `jmp` at `0x11CD4` (the stub `0x11CC8`); `0x24F5C`, `0x24FBA`, `0x25014`, `0x25067`, `0x250C4`, `0x25121`, `0x2517D`, `0x25194` (in `0x24C5C`) | none |
 | `0x1088F5` | only `0x4F980`, `0x4F9A0`, `0x4F9E4`, `0x4FA88` (6 immediates, plus the two `[0x1088F2]` dword reads) | none |
 
 **Why the dispatch is not wired.** The only store of mode `0x1A` is
 `0x4F980`. None of its eleven callers runs in the port:
-- `0x28D79`/`0x28D9B` are the two hooks. Their storers `0x42CB4` (called only
-  at `0x425DE`, in `0x424E8`, mode `0x13`, `0x253C4`) and `0x28DA4` (called at
-  `0x25269`/`0x25353`, cases 6 and `0xC`) are unported.
+- `0x28D79`/`0x28D9B` are the two hooks. Their storers are all unported:
+  `0x42CB4` (called only at `0x425DE`, in `0x424E8`, mode `0x13`, `0x253C4`),
+  `0x28DA4` (called at `0x25269`/`0x25353`, cases 6 and `0xC`), and the
+  unreferenced stub `0x42FB0` (below).
 - `0x25816` is in `0x257A4`, the coin divert. It stores the hook `0x4367C`,
   which is unported and has no Ghidra function. `0x11D04` reaches it at
   `0x11D41`, after a coin is accepted, and at `0x11EB8`, in state 8
@@ -9846,6 +9853,22 @@ arms mode `0x1A`. Then `0x4F9A0` calls `0x43738` through the same pointer.
   `0x1E`), `0x26991`, `0x27162`, `0x25A4C`/`0x25A79`, and `0x43AAC`/
   `0x43B24`/`0x44798`.
 
+**The fourth `0x28D68` storer.** Ghidra's `FUN_00042cb4` ends at `0x42F5C`,
+and `get_xrefs_to 0x28D68` lists only its three DATA references (`0x42CF3`/
+`0x42D34`/`0x42D7C`). The fourth immediate (`0x42FB6`) sits in a separate
+stub, `0x42FB0`, which Ghidra has no function for: `push edx; call 0x42FE0;
+mov edx,0x28d68; mov ah,5; mov [0x104ae4],edx; mov edx,0x78; mov
+[0x104b25],ah; mov word [0x1088ee],dx; mov word [0x104afe],dx; pop edx; ret`.
+Nothing enters it: there is no rel32 to `0x42FB0`/`0x42FB1`/`0x42FB6` and no
+dword of it in either object. So `0x28D68` has three storers: `0x42CB4`,
+`0x28DA4` and the unreferenced `0x42FB0`.
+
+**`0x257A4`'s other entrances** (the table row above) are all unported too:
+- the tail `jmp` at `0x11CD4`, from the stub `0x11CC8`, which has no rel32 or
+  dword entrance;
+- eight calls in `0x24C5C`'s mode cases `0x28`..`0x2F` (jump-table entries
+  `0x24F09`..`0x2519E`).
+
 So `DS_00104B00` never becomes `0x1A` on a ported path. `game_frame` keeps its
 `switch` on mode 3 and names cases `0x1A`/`0x1B` in its `PORT:` note.
 
@@ -9856,11 +9879,31 @@ So `DS_00104B00` never becomes `0x1A` on a ported path. `game_frame` keeps its
   `s8` and compared `> 0x10`. The done arm of `0x4F9E4` calls
   `actors_reset()`, the EAX = 1 arm of `0x2BAF4`.
 - The hook call is `fn_resolve(DSD(DS_00104AE4))`, and a miss is skipped
-  (`PORT:`). The two stored values that stay unregistered are no-ops:
-  `0x29D60` (a bare `ret`, stored by `0x43738`/`0x444C8`, so it is the hook
-  `0x4F9C8` calls after the character screen) and `0x5D812` (§42-E.4). EAX is
-  dead after both calls: `xor ah,ah` plus AH/DX stores at `0x4F9B0`, and the
-  load at `0x4F9D7`.
+  (`PORT:`). A miss is a no-op only for `0x29D60` (a bare `ret`, stored by
+  `0x43738`/`0x444C8`, so it is the hook `0x4F9C8` calls after the character
+  screen) and `0x5D812` (§42-E.4).
+  - **Correction (review):** the first version of this record said those two
+    were the only unregistered values the image stores in `DS_00104AE4`. That
+    is false. There are 13 more unregistered, non-trivial ones: `0x430E8`,
+    `0x4367C`, `0x25BBC`, `0x26998`, `0x270BC`, `0x259CC`, `0x10E80`,
+    `0x24B54`, `0x27134`, `0x4142C`, `0x25AE8`, `0x26978` and `0x430C0`.
+  - Five of them are the hooks that `0x4F980`'s own callers install just
+    before arming mode `0x1A`, so `0x4F9A0`/`0x4F9C8` would call them. They
+    are the chain's named gaps:
+
+    | installs the hook | calls `0x4F980` | hook |
+    |---|---|---|
+    | `0x1F447`, `0x43AE8`, `0x43C18`, `0x44824` | `0x1F44D`, `0x43AEE`, `0x43C1E`, `0x4482A` | `0x430E8` |
+    | `0x25810` | `0x25816` | `0x4367C` |
+    | `0x25A46`/`0x25A73` | `0x25A4C`/`0x25A79` | `0x25BBC` |
+    | `0x2698B` | `0x26991` | `0x26998` |
+    | `0x2715C` | `0x27162` | `0x270BC` |
+
+  - The silent skip is harmless today, because nothing dispatches modes
+    `0x1A`/`0x1B`. Both handlers carry a `TODO(verify)`: once the dispatch is
+    wired, a miss on any value but the two no-ops is a missing port.
+  - EAX is dead after both calls: `xor ah,ah` plus AH/DX stores at `0x4F9B0`,
+    and the load at `0x4F9D7`.
 - The voice `0x2C3FC(0x2E)` in `0x28D80` is a `PORT:` note (spec §7).
 - `actors.c`: `actor_pset_word_set` (`0x10D70`) after `actor_set_dead`. It has
   no pool check, as in the raw. `fn_register(0x28D68/0x28D80)` is at the end
@@ -9940,10 +9983,15 @@ no reset after it) fails 2 assertions.
 - Remaining named gaps:
   - the `game_frame` cases `0x1A`/`0x1B` (they wait for a ported caller of
     `0x4F980`);
-  - `0x4F980`'s other callers, most directly the coin divert `0x257A4` with
-    its hook `0x4367C` (no Ghidra function), and `0x11D04`'s two stubbed
-    routes into it (`0x11D41`, state 8 at `0x11EB8`);
-  - the hooks' storers `0x42CB4` (mode `0x13`) and `0x28DA4` (cases 6/`0xC`);
+  - the five hooks `0x4F980`'s callers install, which the mode `0x1A`/`0x1B`
+    handlers would call (§43-B.3): `0x430E8`, `0x4367C` (no Ghidra function),
+    `0x25BBC`, `0x26998` and `0x270BC`;
+  - `0x4F980`'s other callers, most directly the coin divert `0x257A4`, with
+    `0x11D04`'s two stubbed routes into it (`0x11D41`, and state 8 at
+    `0x11EB8`) and its other entrances (the stub `0x11CC8`'s `jmp`, and
+    `0x24C5C`'s mode cases `0x28`..`0x2F`);
+  - the hooks' storers `0x42CB4` (mode `0x13`), `0x28DA4` (cases 6/`0xC`)
+    and the unreferenced stub `0x42FB0`;
   - `0x10D70`'s other callers `0x1D2F0`/`0x1D464`/`0x1DA84`;
   - `0x2C3FC(0x2E)`, the voice (spec §7);
   - the port's `game_frame` switch reads `DS_00104B00` as a dword, where the

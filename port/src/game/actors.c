@@ -336,9 +336,9 @@ int actors_init(void)
      * registered so a ported dispatch resolves it. */
     fn_register(0x29B74u, frontend_darken_all);
     /* PORT: record §43-B. The DS_00104AE4 hooks 0x28D68 (code immediates at
-     * 0x42CF4/0x42D35/0x42D7D/0x42FB7, each stored by 0x42CB4) and 0x28D80
-     * (the immediate at 0x28E4F, stored by 0x28DA4); no dword in the data
-     * object. */
+     * 0x42CF4/0x42D35/0x42D7D, stored by 0x42CB4, and 0x42FB7, stored by the
+     * unreferenced stub 0x42FB0) and 0x28D80 (the immediate at 0x28E4F,
+     * stored by 0x28DA4); no dword in the data object. */
     fn_register(0x28D68u, frontend_char_screen_hook);
     fn_register(0x28D80u, frontend_char_screen_hook_voice);
     return 1;
