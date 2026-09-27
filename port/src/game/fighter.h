@@ -682,6 +682,32 @@ void fighter_24568(u32 side);
 void fighter_246d4(u32 rec);
 void fighter_3bce0(u32 side);
 
+/* The other six entries of 0xA8628 (EAX = side), each with its entrance
+ * stream's 0xD500 target (EAX = rec) and that target's callees. §48-U.
+ * Character 0: 0x40CB0 (the 0x3000 placement, y = 0x4C00) and 0x40C34.
+ * Character 2: 0x49150, 0x492A8 and 0x488B8 (also its reaction-0x22
+ * callback, (slot, rec, side)). Character 3: 0x15A34 and 0x159A8.
+ * Character 4: 0x45FE8 and 0x46138 (which calls 0x45878). Character 5:
+ * 0x40E64, 0x40E14 and 0x3DFC0 (slot, rec). Character 6: 0x24804, its
+ * direct callee 0x24754 (side), 0x24964 and 0x23530 (also its reaction-0x24
+ * callback, (slot, rec, side)). */
+void fighter_40cb0(u32 side);
+void fighter_40c34(u32 rec);
+void fighter_49150(u32 side);
+void fighter_492a8(u32 rec);
+void fighter_488b8(u32 slot, u32 rec, u32 side);
+void fighter_15a34(u32 side);
+void fighter_159a8(u32 rec);
+void fighter_45fe8(u32 side);
+void fighter_46138(u32 rec);
+void fighter_40e64(u32 side);
+void fighter_40e14(u32 rec);
+void fighter_3dfc0(u32 slot, u32 rec);
+void fighter_24804(u32 side);
+void fighter_24754(u32 side);
+void fighter_24964(u32 rec);
+void fighter_23530(u32 slot, u32 rec, u32 side);
+
 /* The machine's and chain's per-function fixtures (record §7.1-§7.5, §7.7-§7.9
  * and §7.11) exercise these directly. */
 u32  hit_frame_desc(u32 side, u32 i);                 /* 0x3C600 */

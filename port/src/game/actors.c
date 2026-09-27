@@ -151,6 +151,12 @@ static void anim_code_37C24(u32 rec, u32 arg);
 static void anim_code_3E480(u32 rec, u32 arg);
 static void anim_code_385B0(u32 rec, u32 arg);
 static void anim_code_246D4(u32 rec, u32 arg);
+static void anim_code_40C34(u32 rec, u32 arg);
+static void anim_code_492A8(u32 rec, u32 arg);
+static void anim_code_159A8(u32 rec, u32 arg);
+static void anim_code_46138(u32 rec, u32 arg);
+static void anim_code_40E14(u32 rec, u32 arg);
+static void anim_code_24964(u32 rec, u32 arg);
 static void actor_type_2d_update(void);
 static void actor_type_19_spawn(void);
 static void anim_code_37B54(u32 rec, u32 arg);
@@ -415,6 +421,28 @@ int actors_init(void)
      * opcode 0x15. */
     fn_register(0x24568u, (void (*)(void))fighter_24568);
     fn_register(0x246D4u, (void (*)(void))anim_code_246D4);
+    /* PORT: record §48-U. The other six entries of 0xA8628 (the dwords at
+     * 0xA8628 and 0xA8630..0xA8640), fn(side) like 0x24568, reached through
+     * the same dispatchers; each entrance stream's 0xD500 target, opcode 0x15
+     * (the dwords at 0xE7910, 0xED588, 0xD2BC8, 0xEB184, 0xD484A and
+     * 0xE117A), through (rec, arg) wrappers; and 0x488B8/0x23530, which those
+     * targets call and which are also character 2's reaction-0x22 and
+     * character 6's reaction-0x24 callbacks (the dwords at 0xA41D0 and
+     * 0xA55F8), the (slot, rec, side) registers. */
+    fn_register(0x40CB0u, (void (*)(void))fighter_40cb0);
+    fn_register(0x49150u, (void (*)(void))fighter_49150);
+    fn_register(0x15A34u, (void (*)(void))fighter_15a34);
+    fn_register(0x45FE8u, (void (*)(void))fighter_45fe8);
+    fn_register(0x40E64u, (void (*)(void))fighter_40e64);
+    fn_register(0x24804u, (void (*)(void))fighter_24804);
+    fn_register(0x40C34u, (void (*)(void))anim_code_40C34);
+    fn_register(0x492A8u, (void (*)(void))anim_code_492A8);
+    fn_register(0x159A8u, (void (*)(void))anim_code_159A8);
+    fn_register(0x46138u, (void (*)(void))anim_code_46138);
+    fn_register(0x40E14u, (void (*)(void))anim_code_40E14);
+    fn_register(0x24964u, (void (*)(void))anim_code_24964);
+    fn_register(0x488B8u, (void (*)(void))fighter_488b8);
+    fn_register(0x23530u, (void (*)(void))fighter_23530);
     /* PORT: record §46-D. The update table's entries 1 (0x48F98, the type-0x2D
      * node walk; dword at 0xA8648) and 10 (0x28F08, the type-0x19 spawner;
      * dword at 0xA866C), fn() with the unread EAX index; and the 0xD000
@@ -1464,6 +1492,60 @@ static void anim_code_246D4(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_246d4(rec);
+}
+
+/* 0x40C34 — the animation-opcode target shape (record §48-U). PORT: the raw
+ * pushes EDX at 0x40C36 and overwrites it at 0x40C46 before any read, so this
+ * wrapper drops the operand. */
+static void anim_code_40C34(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_40c34(rec);
+}
+
+/* 0x492A8 — the animation-opcode target shape (record §48-U). PORT: the raw
+ * pushes EDX at 0x492AA and overwrites it at 0x492B2 before any read, so this
+ * wrapper drops the operand. */
+static void anim_code_492A8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_492a8(rec);
+}
+
+/* 0x159A8 — the animation-opcode target shape (record §48-U). PORT: the raw
+ * pushes EDX at 0x159A9 and overwrites it at 0x159EB before any read, so this
+ * wrapper drops the operand. */
+static void anim_code_159A8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_159a8(rec);
+}
+
+/* 0x46138 — the animation-opcode target shape (record §48-U). PORT: the raw
+ * pushes EDX at 0x4613A and overwrites it at 0x46142 before any read, so this
+ * wrapper drops the operand. */
+static void anim_code_46138(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_46138(rec);
+}
+
+/* 0x40E14 — the animation-opcode target shape (record §48-U). PORT: the raw
+ * pushes EDX at 0x40E15 and overwrites it at 0x40E16 before any read, so this
+ * wrapper drops the operand. */
+static void anim_code_40E14(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_40e14(rec);
+}
+
+/* 0x24964 — the animation-opcode target shape (record §48-U). PORT: the raw
+ * pushes EDX at 0x24965 and overwrites it at 0x2496D before any read, so this
+ * wrapper drops the operand. */
+static void anim_code_24964(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_24964(rec);
 }
 
 /* 0x459D0 — the animation-opcode target shape (record §48-A; the 0xD100
