@@ -12474,4 +12474,192 @@ mismatch in the script). They were run again with the right text in
 
 ## 46-G. The mode-`0x17` handler `0x4F318` and its callee `0x4F790` (named-gap batch 7, branch `gap7-mode17`)
 
-(In progress.)
+**Result in one line.** Mode `0x17`'s handler `0x4F318`, its skip test
+`0x4F790` and that function's callee `0x4F778` are ported (`flow.c`) and
+unit-tested. `game_frame` still does not dispatch case `0x17`, for the reason
+it does not dispatch `0x1A`/`0x1B` (§43-B.5): no ported path stores mode
+`0x17` except the hook `0x25AE8`, and that hook itself is reached only through
+`0x4F318` or unported code. So the six mode-`0x17` hooks of §46-F still run
+only in unit tests, and no oracle is expected to move.
+
+(This section takes the letter after §46-F. §46-E is absent from the record;
+it is left free in case an earlier batch holds it.)
+
+### 46-G.1 The raw (Ghidra `disassemble_function`/`decompile_function`, fixups applied)
+
+- **`0x4F318`** (to `0x4F37B`) pushes EBX/EDX:
+  - DX = the word `[0x1088EE]` (`0x4F31A`). If it is not 0, `[0x1088EE]` =
+    DX - 1 (`0x4F34B mov ebx,edx; dec ebx; mov [0x1088ee],bx`);
+  - if it is 0, `0x4F790` runs and `and eax,0xff`. AL = 2 stores DX into
+    `[0x104AFE]` (`0x4F335`). DX is still 0, because `0x4F790` pushes and
+    pops EDX. AL = 1 subtracts `0x3C` from the word `[0x104AFE]`
+    (`0x4F341 sub word [0x104afe],0x3c`). The two compares are sequential
+    (`cmp eax,2; jnz; ...; cmp eax,1; jnz`), but they cannot both hold;
+  - then AX = `[0x104AFE]` and `[0x104AFE]` = AX - 1 (`0x4F355..0x4F35E`).
+    `test ax,ax; jg 0x4F379` returns when the **old** value is > 0 (signed).
+    Otherwise `[0x1088EE]` = `0xFFFF` (`0x4F36A`) and then `call dword
+    [0x104AE4]` (`0x4F373`).
+  - The handler never writes the mode word. Every hook stores the next mode
+    itself (§46-F.2).
+- **`0x4F790`** (to `0x4F7F0`) pushes EBX/ECX/EDX/EDI:
+  - EBX = `[0x1088D8]` (the held bits, `input.c`'s `0x4F644`). For EAX = 0,
+    4: ECX = the dword `[0xC9898 + EAX]`. If `(EBX & ECX) == ECX`, AL = 2
+    and the function exits through `0x4F7E6 mov [0x1088d8],ebx`;
+  - otherwise EAX = `[0x1088E4]` (the newly pressed bits), EDI = `[0xC9898]`,
+    `[0x1088D8]` = EBX (`0x4F7C1`), and AL = `setnz (EAX & EDI)`. If AL is 0,
+    `0x4F778(1)` runs. If that returns AL = 0, the function goes to `0x4F7E0`
+    with AL = 0. Otherwise AL = 1 (`0x4F7DE`). Both paths end with
+    `0x4F7E0 mov ebx,[0x1088d8]` and `0x4F7E6 mov [0x1088d8],ebx`;
+  - so both stores to `[0x1088D8]` write back the value just read (no
+    interrupt handler writes it; `0x4F644` runs from `0x24C5C`).
+- **`0x4F778`** pushes EDX. EDX = EAX * 4, EAX = `[0x1088E4]`, `test
+  [EDX + 0xC9898],eax; setnz al`.
+- **`0xC9898`** holds two dwords (`read_memory`): `0x0F000000` and
+  `0x00000F00`. These are the four button bits of each player's byte in the
+  `0x4F644` layout (bytes 3 and 1).
+- **Return width.** In the match path EAX = 2, because the index (0 or 4)
+  fits in AL. In the other path EAX's upper bytes are `[0x1088E4]`'s. Every
+  caller of `0x4F790` reads AL only: `and eax,0xff` at `0x4F25F`,
+  `0x4F2C3` and `0x4F32B`, and `test al,al` at `0x438DE`, `0x43904` and
+  `0x44957`. So do both outside callers of `0x4F778` (`and eax,0xff` at
+  `0x27AC8`, `0x42E06`). The port returns AL.
+
+### 46-G.2 Entrances (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object, a dword scan of both fixed-up objects)
+
+| target | rel32 | dwords | Ghidra |
+|---|---|---|---|
+| `0x4F318` | `0x253EE` (`0x24C5C`, table `0x24B8C` entry `0x17`), `0x425E5` (`0x424E8`) | none | agrees |
+| `0x4F790` | `0x438D9`, `0x438FF` (`0x438B4`), `0x44952`, `0x4F25A` (`0x4F24C`), `0x4F2BE` (`0x4F2B0`), `0x4F326` (`0x4F318`) | none | agrees; it has no function at `0x44952`, so it lists 5 |
+| `0x4F778` | `0x27AC3` (`0x27A2C`), `0x42E01` (`0x42CB4`), `0x4F7D5` (`0x4F790`) | none | agrees |
+| `0xC9898` | none | code `0x4F787`, `0x4F7A0`, `0x4F7BD` (the three displacements); no data | agrees |
+
+`0x24C5C` reads the mode as a **word** (`0x24EEC mov ax,[0x104b00]; cmp
+ax,0x33; ja 0x2540F; and eax,0xffff; jmp [eax*4+0x24B8C]`). Case `0x17` is
+`0x253EE call 0x4F318; jmp 0x2540F`, and `0x2540F` is the `0x2A31C` tail
+(`actors_update`). The other callers are reached from `0x24C5C` alone:
+- `0x424E8` (mode `0x13`, `0x253C4`);
+- `0x438B4` (mode `0x10`, `0x25385`);
+- `0x4F24C` (mode `0x15`, `0x253E0`);
+- `0x4F2B0` (mode `0x16`, `0x253E7`);
+- `0x27A2C` and `0x42CB4`, the latter being `0x424E8`'s callee.
+
+None of them is ported (no port header), nor is the function around
+`0x44952`.
+
+**Who stores mode `0x17`.** A linear capstone sweep lists every `mov
+[0x104b00]` that has an immediate `0x17` within the 25 instructions before it.
+Each hit was then read by hand, and `0x42EF7` (DX = `0x1E`) is a false
+positive. The storers:
+- `0x24C5C`'s mode `0x11` case (`0x253B4`);
+- `0x26F58` (`0x2707A`), `0x271E0` (`0x27247`), `0x277C0` (`0x2789D`, mode
+  `0xF`);
+- the dead region at `0x2861C` (`0x2864F`, no rel32 or dword enters it,
+  game_flow.md);
+- `0x28788` (`0x28995`, `0x28ACE`, `0x28B71`, `0x28BC0`), `0x28DA4`
+  (`0x28E66`), `0x29638` (`0x296A8`);
+- `0x41760` (`0x417B0`), `0x417C4` (`0x41866`), `0x41878` (`0x418E0`, no
+  Ghidra function), `0x41C28` (`0x423CA`), `0x42CB4` (`0x42EDE`);
+- `0x25AE8` (`0x25B82`, `0x25BA2`).
+
+The sweep would miss a mode computed from a table. None was found, and the
+limit is recorded here. Only `0x25AE8` is ported (§46-F), and it is entered
+at `0x253D9` (mode `0x14`), at `0x296AF`/`0x42ED9` (as a hook, unported
+storers) or through `0x4F318` itself. **No ported path can set mode
+`0x17`.**
+
+### 46-G.3 The port
+
+- `flow.c`, after `frontend_mode_1b_step`:
+  - `frontend_buttons_pressed` (`0x4F778`);
+  - `frontend_skip_check` (`0x4F790`), with the two write-backs of
+    `DS_001088D8` transcribed;
+  - `frontend_mode_17_step` (`0x4F318`). Its `call [0x104AE4]` goes through
+    `fn_resolve` and skips a miss, as `0x4F9A0`/`0x4F9C8` do (a `PORT:`
+    note). Every value the image stores there is registered.
+- All names come from `symbols.h` (`DS_000C9898`, `DS_001088D8`,
+  `DS_001088E4`, `DS_001088EE`, `DS_00104AFE`). No local `#define` was
+  needed.
+- **`game_frame` is not wired for case `0x17`.** Wiring it alone would make
+  it the only front-end mode case the port dispatches. The hooks it calls
+  would then hand over to modes `0x1A`, `0x27`, `0x12` and 3, and of those
+  only mode 3 is dispatched. The switch also still reads the mode as a dword
+  (§43-B.5). No reachable path sets mode `0x17` (46-G.2), so a case there
+  would never be entered. The `game_frame` default-arm note now names
+  `frontend_mode_17_step` next to the `0x1A`/`0x1B` handlers.
+
+### 46-G.4 The assertions and mutations
+
+`check_mode_17_step` (`test_fight.c`, after `check_mode_17_hooks`) snapshots
+the data object and restores it at the end. `ms_step` seeds sentinels in the
+words either side of `DS_001088EE` and `DS_00104AFE` (`0x104AFC` and the
+mode word, dword `0xBEEF7777`). The hook is `0x26978`, which stores only data
+(§46-F.1), so a fired hook shows as `DS_00104AE4` = `0x26998`, mode word
+`0xBEEF001A`, `DS_00104B25` = 1, `DS_001088F5` = 0 and `DS_00104AFA` =
+`0x23`. `ms_fired` also checks that the neighbours and both input dwords are
+unchanged.
+- **(a)** The two masks at `0xC9898`, and `0x4F778` on each (a bit of
+  mask 1 is not one of mask 0, and the other way round).
+- **(b)** `0x4F790` over 10 input pairs:
+  - either mask held whole gives 2, including over a press, with
+    `0xFFFFFFFF`, and with mask 1 whole and mask 0 partial;
+  - partial holds of both masks give 0;
+  - a press in either mask gives 1;
+  - a press outside both masks, or no input, gives 0;
+  - `DS_001088D8` is unchanged every time.
+- **(c)** `DS_001088EE` = 5: it becomes 4, `DS_00104AFE` `0x10 -> 0xF`, not
+  fired. The held mask 0 would have zeroed the countdown, so this shows the
+  skip test did not run.
+- **(d)** `DS_001088EE` = 0, no input: only the decrement.
+- **(e)** A press takes `0x3C` more:
+  - `0x100 -> 0xC3` for a press in either mask;
+  - `0x3D -> 0`, not fired;
+  - `0x3C -> 0xFFFF`, fired, with `DS_001088EE` = `0xFFFF`.
+- **(f)** A held mask 1: `0x100 -> 0xFFFF`, fired.
+- **(g)** The signed test on the old value, with `DS_001088EE` = 3:
+  - 1 does not fire (`DS_001088EE` 2);
+  - 0 fires, and the decremented `DS_001088EE` is overwritten with `0xFFFF`;
+  - `0x8000` fires (`-> 0x7FFF`);
+  - `0x7FFF` does not.
+- **(h)** `DS_001088EE` = `0xFFFF` counts down to `0xFFFE` without the skip
+  test. An unregistered hook value is skipped (`0xFFFF` stored, the value
+  kept).
+- **(i)** The order of the `0xFFFF` store and the hook. `0x29B74`
+  (`frontend_darken_all`) re-arms `DS_001088EE` = `0x78`, `DS_00104AFE` =
+  `0x78` and mode `0x15` (the upper half kept). The list it walks is emptied,
+  and the effect pool guard `DS_000FCCE0` = 0, so it spawns and tears down
+  nothing.
+
+**Mutations** (`.superpowers/g7m17/mut.py`/`mut.log` in the worktree,
+git-ignored): 30 single-site edits of the new code, each one rebuilt and run
+against the whole of `run_tests`. They are: every dropped store or call,
+both word -> dword widenings, `jg` -> `jge`, signed -> unsigned, testing the
+new value instead of the old, `0x3C` -> `0x3B`, `dx - 1` -> `dx - 2`, the
+mask index, `whole` -> `any`, the return values, the `0x4F778` argument and
+polarity, pressed -> held, and moving the `0xFFFF` store after the hook.
+- The first run left four survivors. M26 (the `0xFFFF` store after the
+  hook) was not equivalent: `0x26978` does not touch `DS_001088EE`. (i) was
+  added for it, and M26 now fails.
+- 27 of 30 fail. The other three are equivalent:
+  - M27 and M28 drop the two write-backs of `DS_001088D8`, each of which
+    stores the value just read;
+  - M29 drops `& 0xFF` on a result that is already 0, 1 or 2.
+
+### 46-G.5 Measured and remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests` (and with `PR_GAME_DIR` set): all
+  checks passed, with 0 compiler warnings. The branch did not run `make
+  verify` or the drivers, as the brief requires.
+- No oracle is expected to move. No ported function calls the three new
+  functions, and `game_frame` does not dispatch case `0x17`. The boot and
+  every ported path execute the same code as before.
+- Remaining named gaps:
+  - the `game_frame` case `0x17` (with `0x1A`/`0x1B`, §43-B.5). It waits for
+    a ported storer of mode `0x17` (46-G.2), and the switch should then read
+    the word;
+  - `0x4F318`'s other caller `0x424E8` (mode `0x13`), and `0x4F790`'s other
+    callers `0x438B4` (mode `0x10`), the code at `0x44952`, `0x4F24C` (mode
+    `0x15`) and `0x4F2B0` (mode `0x16`), all unported. `0x4F778`'s other
+    callers are `0x27A2C` and `0x42CB4`. Modes `0x15`/`0x16` reuse
+    `0x4F790` and would be the natural next step: `0x29B74` and `0x41578`
+    already store mode `0x15`;
+  - the storers of mode `0x17` listed in 46-G.2.

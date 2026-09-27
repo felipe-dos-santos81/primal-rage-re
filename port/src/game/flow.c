@@ -2283,7 +2283,11 @@ void game_frame(void)
          * 0x25A4C, 0x25A79, 0x26991, 0x27162, 0x28D79, 0x28D9B, 0x43AEE,
          * 0x43C1E, 0x4482A) sit in unported code or in the two hooks, whose
          * storers 0x42CB4 (mode 0x13's 0x424E8), 0x28DA4 (cases 6/0xC) and
-         * the unreferenced stub 0x42FB0 are unported. */
+         * the unreferenced stub 0x42FB0 are unported. The mode 0x17 handler
+         * 0x4F318 (case 0x17, 0x253EE) is ported as frontend_mode_17_step
+         * (record §46-G) and not dispatched either: of the mode's storers
+         * only the hook 0x25AE8 is ported, and it is reached only through
+         * 0x4F318 or unported code. */
         break;
     }
 
