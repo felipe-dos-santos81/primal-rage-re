@@ -45,7 +45,8 @@ void game_frame(void);
 
 /* 0x11D04: switch(DS_000F0A64). States 0/1/2 and the front-end states 3/4/5 are
  * ported; 6/7/8 (the fight engine) and state 9's semantics beyond the countdown
- * handoff carry PORT markers naming the sub-project that owns them. */
+ * handoff carry PORT markers naming the sub-project that owns them. The coin
+ * arm and state 8 call 0x257A4 (game_coin_divert, record §48-W). */
 void game_state_step(void);
 
 /* 0x33904: the fixed 0x10-stride list iterator at DS_00107608..DS_00107798.
@@ -223,8 +224,9 @@ void frontend_match_start(void);
 /* Record §47-C. 0x257A4: the coin/start divert (`players` is the raw's EAX,
  * stored as DS_00104B1F): 0x2BAF4(0), the byte resets, 0x33C18 per side,
  * 0x46594, the 7-byte clear of DS_00104B02, the hook 0x4367C and mode 0x1A
- * with the return mode 0x10. Not yet called: its callers (0x11D04's coin arm
- * and state 8, the game-start modes 0x28..0x2F) wait on the mode switch.
+ * with the return mode 0x10. Called by game_state_step's coin arm (the
+ * accepted mask) and state 8 (3) (record §48-W); the game-start modes
+ * 0x28..0x2F, its other callers, are named gaps of the mode switch.
  * 0x46594: the DS_001082C8/CC/D0 values from the byte DS_0010452C (or 7/4
  * when DS_00108173 != 0), latched into DS_001082C0/C4. */
 void game_coin_divert(u32 players);
