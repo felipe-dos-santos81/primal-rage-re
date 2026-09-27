@@ -11943,13 +11943,136 @@ s3545.png`), which no port frame shows.
 
 ## 47-A. Capture 3545, after the attract's high-score screen (roar-timing Task 35, branch `frame-3545`)
 
-**Status: in progress.** Scaffolding; the sections below are filled as the
-evidence lands.
+**Result in one line.** 3545 needed no new port code. The driver's window
+(FE_LOOPS 3900) ended inside the high-score screen; at 4100 the dump holds the
+screen's end and the third demo, and 3543..3592 are the port's own frames.
+3545 itself is a *three*-frame splice at the load boundary: the last loader
+screen, the load frame's present and the next frame, all inside one capture
+scan. The raw's tick re-sync after a read explains why that can happen there
+and only there. `title_compare --attract2` now allows 3545 by name as exactly
+that shape, and the first unexplained frame is 3593, a fight divergence in
+the third demo. N 3545 -> 3593 (`41db901`).
 
-Progress (evidence so far, driver run with FE_LOOPS 4300 in the worktree):
-the high-score screen ends at loop 3985 (state 5 -> state 9 hold 0x12C ->
-state 6), the third demo's state-6 entry draws six loader screens (cycle-2
-frames 2187..2192), and captures 3546..3592 are explained by the port's third
-demo fight. Capture 3545 is byte-exact `2192[:120000] + 2193[120000:172800] +
-2194[172800:]` (rows 125 and 180): a three-frame splice, which the two-frame
-splice model cannot express. The next divergence is 3593 (fight content).
+### 47-A.1 The window (driver runs in the worktree, dumps in the scratchpad)
+
+- State 5 (`0x11D04` case 5, loop 3684) draws the high-score screen and arms
+  the state-9 hold `DS_000F0A6A = 0x12C` with `DS_000F0A6C = 6`
+  (`0x11E1D`/`0x11E2E`). The hold ends after loop 3984 (state 9 -> 6), and
+  loop 3985 is the third demo's state-6 entry. It goes straight on to state 7
+  in the same loop, as the second demo's loop 2783 does.
+- Loop 3985 reads six files, each drawing a `- LOADING -` screen
+  (cycle-2 frames 2187..2192). Their INDEX entries first carry the loaded bit
+  after it and not after 3984: s16caves (22), s16dia (37), s16diash (39),
+  s16diasd (42), s16spi (61), s16spish (62). s16spisd (64) is already loaded
+  (loop 3557's voice, §45-A). The capture shows the matching fight: the red
+  tyrannosaur (s16dia) against the spiked quadruped (s16spi) in the caves.
+- Loop 3985's present is cycle-2 frame 2193; loop 3986's is 2194.
+- Capture 3546 = cycle-2 2194, clean. From there to 3592 every capture frame is
+  clean, a two-frame splice or a transition (3585, row 63) against 2194..2233.
+  The capture's last frame, 3616, lies near loop 4046 (70 capture frames at
+  the 60.05/70.09 ratio from 3546 = loop 3986). So FE_LOOPS = 4100 covers it.
+  That is a measurement window, not a raw value. The old comment's estimate
+  (3616 near loop 3865, counted from the exit's capture frame 3406) was wrong:
+  the capture keeps only *distinct* frames, so the static high-score screen
+  contributes few frames.
+- 3543 (black) and 3544 (`- LOADING -` on black) now match the port's own
+  loader screens (3544 = cycle-2 2187, clean). §46-A.6 had them matching
+  earlier port screens only because the old window ended inside the
+  high-score screen.
+
+### 47-A.2 Capture 3545: a three-frame splice
+
+- Byte-exact: `3545 = c2[2192][0:120000] + c2[2193][120000:172800] +
+  c2[2194][172800:192000]`. Both cuts fall on row boundaries: rows 0..124,
+  125..179 and 180..199. The middle band can also be read as starting at
+  byte 120000 and ending anywhere up to byte 172812, where 2193 and 2194 still
+  agree. The two-frame model (A: `N[..b) ++ N+1[b..)`, B: one transition row)
+  cannot express it, and no two adjacent frames explain it.
+- **Why the raw allows it at a load and not elsewhere** (Ghidra
+  `disassemble_function 0x255CC`, `0x1B3AC`):
+  - The master loop presents only at the gate `0x25643`: `cmp [0x10150C],
+    [0x101508]; jnz 0x256AF`. The copy is at `0x25680` (full, when
+    `DS_001014FC` is set) or `0x501A3`.
+  - After `inc [0x10150C]` (`0x256C0`) it spins, at `0x256C6..0x256DB`, only
+    while `[0x10150C] - 1 == [0x101508]`, that is, until the timer ISR's next
+    tick. In steady state each present therefore lands one iteration's work
+    after an ISR tick, one tick after the previous present.
+  - The loader's read (`0x1B3AC`) ends with `mov eax,[0x101508]; mov
+    [0x10150C],eax` (`0x1B45F`/`0x1B464`, bytes `a1 08 15 10 00 a3 0c 15 10
+    00`). That re-sync happens whenever the read completes, so the load
+    frame's present has an arbitrary phase against the ISR tick. The next
+    present follows at the next ISR tick plus one iteration.
+  - The gap between those two presents can be much shorter than a tick. Here
+    it is about 55 of the 200 source rows of one 70 Hz scan: about 110 of 449
+    scanlines, roughly 3.5 ms.
+- The three frames are exactly what that predicts: the aperture holds the
+  last loader screen (2192) until the load frame's copy, then the load
+  frame's present (2193, loop 3985), then the next (2194, loop 3986).
+- It is **not** a new model clause. `ATTRACT2_SPLICE3_ALLOWED = (3545,)`
+  names the frame. The check accepts only a byte-exact
+  `N[:b1] ++ N+1[b1:b2] ++ N+2[b2:]` with `0 < b1 < b2 < 192000`, where N is
+  a loader screen the driver lists in `cycle2/loader.txt` and N+1 is not. A
+  named frame that fails this check fails the oracle. Any other three-frame
+  frame stays unexplained.
+
+### 47-A.3 Changes
+
+- `port/tests/test_game.c`:
+  - FE_LOOPS 3900 -> 4100.
+  - The driver writes `cycle2/loader.txt` (the loader screens' cycle-2
+    indices, `CHECK`ed).
+  - The cycle-2 count goes 2102 -> 2308. That is 2295 presented frames:
+    loops 1971..4099 plus the 166 logo-player screens, plus 13 loader
+    screens.
+  - The loader-screen table goes from 7 to 13 entries (six at loop 3985,
+    frames 2187..2192).
+  - New samples:
+    - `sd3`: the six entries' loaded bits after loops 3984/3985, `0` then
+      `0x3F`.
+    - `c2_s6c_i`/`c2_s6c_f`: the first loop after 3684 that starts in state
+      6 is 3985, and its present is written at 2193.
+- `tools/title_compare.py`: `ATTRACT2_SPLICE3_ALLOWED` and `splice3()`, used
+  only by `--attract2`.
+- `tools/tests/test_title_compare.py`: `Splice3Test`, five cases: the exact
+  splice, N not a loader screen, N+1 a loader screen, a foreign byte in the
+  middle band, and a two-frame splice.
+- `Makefile`: N 3545 -> 3593, with the comments.
+
+### 47-A.4 Mutations (each run, each killed)
+
+- `splice3` in the unit suite, 4 of 4 killed:
+  - the `N + 1 in loaders` guard dropped;
+  - the middle-band equality dropped;
+  - `b1 < b2` changed to `b1 <= b2`;
+  - iterating every N instead of the loader screens.
+- The oracle on the real dump, 3 of 3 killed:
+  - 2192 removed from `loader.txt` fails with "allowed frame 3545 is not a
+    three-frame splice from a loader screen";
+  - `loader.txt` absent fails the same way;
+  - 3545 not named fails with "first unexplained 3545 < ratchet N 3593".
+- Driver: the FE_LOOPS 4300 probe run failed the count assertions (2508 !=
+  2102, 13 != 7). The new samples are seeded -1, and loop 3984's `sd3[0] =
+  0` is asserted against loop 3985's `0x3F`.
+
+### 47-A.5 Measurement
+
+`make verify` on this branch: see 47-A.7.
+
+### 47-A.6 Remaining gaps
+
+- **3593 (raw 8386), the third demo's fight.**
+  - Capture 3593 matches cycle-2 2234 in rows 0..156, and rows 157..193
+    match no port frame. From 3596 on, the difference is confined to the
+    left fighter, s16spi (3596 against 2237: x 0..157, y 110..191).
+  - In the capture that fighter curls into its spiked ball and hits the
+    tyrannosaur, which flies back bleeding (3602..3610). The port's fighter
+    stays upright.
+  - A temporary `fn_resolve` miss log over the whole 4100-loop run (reverted)
+    shows no miss other than the type-table stub `0x5D812`, the zero address
+    and the two early-boot misses (`0x45AD0`, `0x41578`). So this is not an
+    unregistered callback.
+  - The cause needs a live-RAM poll of the original's third demo: the
+    fighters' `+0x52/+0x53/+0x54`, the demo command words `DS_001088E0`, and
+    the LCG `DS_000EF6D8` from loop 3985.
+- §46-A.6's first gap (the window ending inside the high-score screen) is
+  closed by 47-A.1.
