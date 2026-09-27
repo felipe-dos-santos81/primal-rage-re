@@ -361,8 +361,9 @@ void frontend_darken_marked(void)
     }
     config_play_time_close(DSD(DS_00104ABC), DSB(DS_00104B19));  /* 0x415CD */
     /* PORT: 0x415DC 0x2C3FC(0x33, EDX = 0x78) voice, out of scope (spec §7).
-     * EBX (0), ECX (0x13), EDX (0x78) and ESI (0x15) survive 0x32A3C and
-     * 0x2C3FC into the stores below (both push what they change). */
+     * EBX (0), ECX (0x13), EDX (0x78) and ESI (0x15) survive 0x32A3C (pushes
+     * EBX/ECX/ESI) and 0x2C3FC (pushes EBX/EDX/EDI, never names ECX/ESI)
+     * into the stores below. */
     DSW(DS_00104AFE) = 0x78u;                           /* 0x415E1 */
     DSW(DS_001088EE) = 0u;                              /* 0x415E8 */
     DSW(DS_00104AFA) = 0x13u;                           /* 0x415EF */

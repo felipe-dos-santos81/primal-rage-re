@@ -358,9 +358,10 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   functions (`camera.c`'s `/* PORT: */` notes). The mode-1 split arm's two
   `0x18714` record writes (`0x12F02`/`0x12F22`) were one too until the
   frame-1358 fix ported them (demo-pose record §24).
-  **The effect call sites are deferred too (front-end-chain Task 8).** The plan
-  said `0x29B74` and `0x41578` register into the process tables; the raw refutes it.
-  `0x29B74` is the mode-`0x17` handler stored at `DS_00104AE4`. The raw constant
+  **The effect call sites are ported; their callers are not (front-end-chain
+  Task 8, record §42-E).** The plan said `0x29B74` and `0x41578` register into
+  the process tables; the raw refutes it. `0x29B74` (`frontend_darken_all`) is
+  the `DS_00104AE4` countdown handler. The raw constant
   `74 9b 02 00` occurs **five** times, each storing `0x29B74` into `DS_00104AE4`:
   `0x2788B`→`0x278A4` in `FUN_000277C0` (mode `0xF`); `0x2861E`→`0x2862A` in the
   un-emitted region starting at `0x2861C` (after `FUN_00028468`'s `ret` at
@@ -369,24 +370,29 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   (`mov edi`), `0x28B3C`→`0x28B57` (`mov esi`), all three in `FUN_00028788`
   (mode 9). It is dispatched by six
   `call dword [0x104AE4]` sites (`0x4F302`, `0x4F373`, `0x4F6F1`, `0x4F70D`,
-  `0x4F9AA`, `0x4F9D1`) plus one direct `call 0x29B74` at `0x27B17`; `0x41578` is
+  `0x4F9AA`, `0x4F9D1`, in `0x4F2B0`/`0x4F318`/`0x4F6E8`/`0x4F704`/`0x4F9A0`/
+  `0x4F9C8`, which `0x24C5C` calls at `0x253E7..0x2540A`) plus one direct
+  `call 0x29B74` at `0x27B17`. The "no handler" value of `DS_00104AE4` is the
+  stub `0x5D812` (`xor eax,eax; ret`), stored by `mov edx,0x5d812` at `0x25C04`,
+  `0x26A27`, `0x27122` and `0x29626`. `0x41578` (`frontend_darken_marked`) is
   direct-called from four sites (`0x41755`, `0x41DE6`, `0x42337`, `0x42352` in
-  `0x416D4`/`0x41C28`). Every one of the live sites is reached only through
-  `0x24C5C`'s **unported mode cases** (`0x12`, `0x13`, `0x16..0x1B`, `0xE`, `0xF`, `9`) and
-  the unported match/fight chain; the `0x2861C` region is dead outright. The port's
-  `DS_00104B00` is fixed at 3 by `0x10E80`, so none
-  is reachable from the ported states 3/4/5. They are **deferred and unowned by
-  this plan** — no dispatch path is shipped, and `port/tests/test_game.c` pins
-  that no handler is registered and that state 5 neither arms `DS_00104AE4` nor
-  leaves mode 3. `0x41578`'s register-level comparison against `0x88874B0` is
-  **dead in the port's flat model**: `0x88874B0` is above `MEM_SIZE`
-  (`0x4000000`) and outside both LE objects, so that half of the predicate can
-  never match. Because the four `0x41578` sites are themselves unreachable, no
-  port code holds the comparison; the raw fact is recorded here rather than
-  deleted or substituted. **A later cycle that makes `0x41578` reachable must port
-  the comparison with it, including the never-true `0x88874B0` half** (register-
-  level fidelity — not deleted and not substituted). No shipped path spawns types
-  0/2/4 yet (`0x13D4C`'s callers `0x29B74`/`0x41578` are unported; `0x13B3C` is
+  `0x416D4`/`0x41C28`). Every live caller is reached only through `0x24C5C`'s
+  **unported mode cases** and the unported match/fight chain; the `0x2861C`
+  region is dead outright. The port's `DS_00104B00` is fixed at 3 by
+  `0x10E80`, so neither function is reachable: both are unit-tested
+  (`test_effects`), and `0x29B74` is registered in `actors_init` for a future
+  `DS_00104AE4` dispatch. `port/tests/test_game.c` pins that state 5 neither
+  arms `DS_00104AE4` nor leaves mode 3. **Correction (record §42-E):** this
+  bullet used to call `0x41578`'s compare against `0x88874B0` dead because the
+  value is above `MEM_SIZE`. It is not an address. The compare is on the list
+  entry's `+0` **resource handle** (`index << 23 | offset`, `0x1B544`), and
+  `0x088874B0` is index `0x11` (`s16win.gra`) offset `0x874B0`, inside that
+  file's `0x8915C` bytes, just as `0x3E688` is index 0 (`s16slabs.gra`). Both
+  halves are ported and both are live. `0x41578` also calls `0x32A3C`
+  (`config_play_time_close`), which zeroes `DS_0010746C[mode & 3]`; its
+  `0x32970` run clock, its `0x2DAE4` audit adds and `0x41578`'s voice
+  `0x2C3FC(0x33)` are out of scope (spec §7). No shipped path spawns types
+  0/2/4 yet (`0x13D4C`'s callers `0x29B74`/`0x41578` are not reached; `0x13B3C` is
   dead — see the producer-set bullet above); type 6 (`0x13E28`) **is** spawned
   from the ported select state (`flow.c:367`). The remaining producers
   remain a coverage gap carried by unit tests. Details:

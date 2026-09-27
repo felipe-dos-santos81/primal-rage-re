@@ -8254,3 +8254,184 @@ script.
 - Remaining named gaps: the voice `0x2C3FC(0xB5)` in `0x22B28` (spec §7); the
   unported siblings `0x22CE4`, `0x22D8C` and `0x2365C` and the other
   `0x370F0` callers `0x48AAC`/`0x48D94`.
+
+## 42-E. The front-end darken sites `0x29B74`/`0x41578`, the audit close `0x32A3C`, and the stub `0x5D812` (named-gap batch 2, branch `gap2-frontend`)
+
+**Result in one line.** `0x29B74` is ported as `frontend_darken_all` and
+`0x41578` as `frontend_darken_marked` (both `flow.c`). Their one unported
+callee with state, `0x32A3C`, is ported as `config_play_time_close`
+(`config.c`). `0x29B74` is registered in `actors_init` because it is a
+`DS_00104AE4` pointer. No oracle path reaches any of them: every caller is
+unported `0x24C5C`-mode code, so they are unit-tested only. The stub
+`0x5D812` is `xor eax,eax; ret`. It stays unregistered, and every holder of
+it in the image is now accounted for (§42-E.4). One old claim is corrected:
+`0x41578`'s `0x88874B0` compare is live, not dead (§42-E.2).
+
+### 42-E.1 `0x29B74` (Ghidra disassembly, fixups applied)
+
+- `push ebx; push ecx; push edx`, then `0x29B77 call 0x13DF0` (effects
+  clear). EAX is never read: the walk starts with `0x29B7C xor eax,eax`.
+- `0x29B7E call 0x33904`. EBX holds the cursor. The loop `0x29B89..0x29BA0`
+  runs `0x13D4C(EAX = entry, EDX = 3)` for **every** live entry, with no
+  predicate, then `0x33904(entry)`.
+- `0x29BAC`/`0x29BB3`: word `[0x1088EE]` = word `[0x104AFE]` = `0x78`.
+  `0x29BBA`: word `[0x104B00]` = `0x15`. Then `pop edx/ecx/ebx; ret`.
+- **Entrances.** `get_xrefs_to` and a rel32 scan agree: one `call` at
+  `0x27B17` (in `0x27A2C`), plus five dword immediates `74 9b 02 00` in code,
+  at `0x2788C` (in `0x277C0`), `0x2861F` (the dead `0x2861C` region, which has
+  no rel32 and no dword entrance), and `0x28979`/`0x28A9E`/`0x28B3D` (in
+  `0x28788`). Each one is stored into `DS_00104AE4`. There is no dword in the
+  data object. `DS_00104AE4` is called by `call [0x104ae4]` at `0x4F302`,
+  `0x4F373`, `0x4F6F1`, `0x4F70D`, `0x4F9AA` and `0x4F9D1`. Those sites are
+  in `0x4F2B0`, `0x4F318`, `0x4F6E8`, `0x4F704`, `0x4F9A0` and `0x4F9C8`,
+  which `0x24C5C` calls at `0x253E7..0x2540A` (and `0x4F318` also at
+  `0x425E5`). None of these callers reads EAX after the call: they either
+  reload it (`mov ax,[0x104afa]`) or clear AH. So the handler's C type is
+  `void(void)`.
+
+### 42-E.2 `0x41578` and the handle correction
+
+- `push ebx/ecx/edx/esi`. `0x33904(0)`, then the loop `0x41589..0x415B2`:
+  `edx = [entry]`, `cmp edx,0x3e688; je`, `cmp edx,0x88874b0; jne skip`, then
+  `0x13D4C(entry, 2)`, and `0x33904(entry)`. There is no effects clear.
+- `ECX = 0x13`, `ESI = 0x15`, `EDX = byte [0x104B19]`, `EAX = [0x104ABC]`,
+  `EBX = 0`, `call 0x32A3C` (`0x415CD`). Then `0x2C3FC(0x33, EDX = 0x78)`
+  (`0x415DC`, the voice, out of scope, spec §7).
+- Stores: word `[0x104AFE]` = DX (`0x78`), word `[0x1088EE]` = BX (0), word
+  `[0x104AFA]` = CX (`0x13`), `xor ah,ah`, word `[0x104B00]` = SI (`0x15`),
+  byte `[0x104B25]` = AH (0).
+- **The registers survive.** `0x32A3C` pushes EBX, ECX and ESI. `0x2C3FC`
+  pushes EBX, EDX and EDI, and all 30 of its `ret`s are preceded by
+  `pop edi; pop edx; pop ebx`. It never names ECX or ESI itself. Its
+  callees were not all audited. The first one checked, `0x1CC28`, pushes
+  ECX and ESI, and ECX was already recorded as preserved (§41-C). Keeping
+  ECX and ESI live across both calls is the compiler's own reliance on the
+  callee-saves convention, and the port reproduces that.
+- **Entrances.** Four rel32 `call`s: `0x41755` (in `0x416D4`) and `0x41DE6`,
+  `0x42337`, `0x42352` (in `0x41C28`). No `jmp`/`jcc`. No dword `0x00041578`
+  in either object, so the function stays unregistered.
+- **Correction: the `0x88874B0` half is live.** `port/spec/game_flow.md`
+  called it dead because `0x88874B0` is above `MEM_SIZE`. But the compare
+  reads `[entry]`, the `0x33754` palette-table entry's `+0` **resource
+  handle** (`index << 23 | offset`, decoded by `0x1B544`'s `shr eax,0x17` /
+  `and edx,0x7fffff`). It is not an address. `0x088874B0` is index `0x11`,
+  `s16win.gra` (INDEX size `0x8915C`), offset `0x874B0`. `0x0003E688` is
+  index 0, `s16slabs.gra` (size `0x3E924`), offset `0x3E688`. The data
+  object holds `0x088874B0` once, at `0xC86EC`. That is `+0x10` (the palette
+  handle) of the descriptor `0xC86DC`, which `0x413C8` spawns
+  (`0x413DE mov eax,0xc86dc; call 0x2AE14`). So an actor of that descriptor
+  puts the handle in the list, and `0x41578` darkens it. `0x3E688` is
+  `+0x10` of `0xC86F0` (at `0xC8700`). That is the row the function-less
+  block around `0x4144C` passes to `0x38B18`, the same block that calls
+  `0x413C8` at `0x41456`. The port keeps both halves. The unit test seeds
+  both handles and a third that must not match.
+
+### 42-E.3 `0x32A3C` (the play-time audit close)
+
+- `push ebx/ecx/esi`, then `ECX = EDX` (the flag), `EDX = EAX & 3`,
+  `EAX = 0`, `ESI = 0`, `call 0x32970` (the run clock; it pushes EDX, so
+  EDX survives).
+- `0x32A4F`/`0x32A56`: `EBX = [0x10746C + idx*4]`, then that dword = 0.
+  `0x32A5F`: idx 0 exits here.
+- idx 1: flag 0 → `0x2DAE4(8, 1)`, `0x2DAE4(0xA, t)`; flag ≠ 0 →
+  `0x2DAE4(6, 1)`, `0x2DAE4(0xB, 1)`, `0x2DAE4(0xC, t)`; then
+  `0x2DAE4(0x12, t)`. idx 2/3: `0x2DAE4(flag ? 7 : 9, 1)`,
+  `0x2DAE4(0x13, t)`. Here t = ticks / `0x3C` (unsigned `div`).
+- `0x32970` adds the elapsed `DS_00105D88` ticks into
+  `DS_00107470 + 4k` for each set bit k of `DS_00107494` (that is,
+  `DS_0010746C[k+1]`), so these are per-mode play-time accumulators. The
+  port already leaves `0x32970` out of scope (the host owns wall time;
+  `attract.c`, `flow.c`), and `0x2DAE4` is a deferred audit no-op
+  (`config.c`, eeprom-config design). So the port runs only the take-and-zero
+  and lists the audit arms in a `PORT:` note.
+- Entrances (xrefs and rel32 agree): `0x27094` (`0x26F58`), `0x27886`
+  (`0x277C0`), `0x289AF`/`0x28AD5`/`0x28B78` (`0x28788`), `0x28656` (the dead
+  `0x2861C` region), `0x415CD` (`0x41578`) and `0x4240E` (`0x41C28`). Only
+  `0x41578` is ported.
+
+### 42-E.4 The stub `0x5D812`
+
+- The bytes are `33 c0 c3`: `xor eax,eax; ret`. They sit between `0x5D808`'s
+  `ret` (`0x5D811`) and the `push ebx` at `0x5D815` that starts the next
+  function. The only effect is EAX = 0.
+- **Every holder** (a dword scan of both objects, fixups applied): 142
+  dwords in the data object and 4 immediates in the code object. There is no
+  rel32 entrance.
+  - Update table `DS_000A8644`: 15 entries (3, `0x12..0x1F`). Render table
+    `DS_000A86C4`: 28 entries (2, `5..0x1F`). Both are dispatched by
+    `mov eax,ebx; call [eax+table]` (`0x25623` for the render table), and
+    the return is discarded.
+  - Attract table `DS_000A8744`: 31 entries (`1..0x1F`), dispatched at
+    `0x292C1`. The return is discarded.
+  - Type table `0xBB9DC`: 38 cb1 and 26 cb2 slots. cb1 is called at
+    `0x2B0E9` and its AL is tested (`0x2B0EF test al,al`). cb2 is called at
+    `0x2B185`, and the return is discarded (`0x2B18B`).
+  - Scene table `0xC7F58`: entries 3, 4, 6 and 7 (the others are
+    `0x412EC`, a bare `ret`). It is called at `0x412DD` (in `0x412A0`,
+    not issued by the port, `fight.c`) and at `0x425D1` (unported).
+  - `DS_00104AE4` "no handler": `mov edx,0x5d812` at `0x25C04`, `0x26A27`,
+    `0x27122` and `0x29626`, each followed by `mov [0x104ae4],edx`, all
+    unported.
+- **Port decision: document and keep the stub unregistered.** The only
+  reader of its return is cb1's `test al,al`, and the port's identity test
+  (`cb == FN_0005D812` → AL = 0, visible) reproduces it. Everywhere else the
+  return is discarded, so skipping a `fn_resolve` miss leaves the state
+  identical. A registration would have to be called through `u8(u32,u32)`
+  (cb1), `void(u32)` (cb2) and `void(void)` (process, attract and
+  `DS_00104AE4`) pointer types. The port's registry calls each function
+  through one exact type, so a single registration cannot serve all five
+  table types. Consequence for the probes: the stub's `fn_resolve` misses
+  (36 164 in §35) are expected and are not a gap. A future `DS_00104AE4`
+  dispatch must treat `0x5D812` as "no handler" in the same way.
+- `check_type_table` (`test_fight.c`) now pins the five bytes
+  `0x5D811..0x5D815` and the four code immediates (with their `0xBA`
+  `mov edx` opcodes). This also proves that the port's fixups rewrite
+  `0x4D812` to `0x5D812`.
+
+### 42-E.5 Tests and mutations
+
+- `test_effects` (`test_game.c`): a five-slot list (A `0x1111`, B `0x3E688`,
+  dead C `0x3E688`, D `0x088874B0`, E `0x2222`), the resource count forced
+  to 0 (so there is no lazy load and no copy), and one earlier live effect.
+  - `0x29B74`: count 4 (the clear ran), records E, D, B, A from the head,
+    each type 4 byte 3, and no fifth record. `0x1088EE`/`0x104AFE` = `0x78`.
+    `DS_00104B00` = `0xDEAD0015`, which proves a word store.
+  - `0x41578`: count 3 (no clear), D then B at byte 2, then the earlier
+    effect. `DS_0010746C` is seeded `0x1000..0x1003` with mode 5, and only
+    index 1 is zeroed. The five stores are checked against sentinels.
+  - `0x32A3C` alone: mode 4 zeroes index 0, and indices 1..3 are untouched.
+  - Every touched global is saved and restored: the list, the resource
+    table, the eight globals and the accumulators.
+- `test_actors`: `fn_resolve(0x29B74) == frontend_darken_all` after
+  `actors_init`. `test_frontend`'s old "0x29B74/0x41578 not registered" guard
+  keeps only its `0x41578` half, because `0x29B74` is now registered on
+  purpose. This is the one assertion removed, and it is replaced by the
+  `test_actors` check.
+- **Mutations** (`scratchpad/gap2fe/mutate.py`, `mutations.txt`), 16
+  single-site edits, each killed (1..5 assertions):
+  - `0x29B74`: no clear; byte 3→2; a handle predicate; a dword mode store;
+    the `0x1088EE` value.
+  - `0x41578`: the `0x88874B0` half dropped; a clear added; byte 2→3; no
+    `0x32A3C`; no `0x104B25` store; the `0x104AFA` value; `0x1088EE` =
+    `0x78`.
+  - `0x32A3C`: no `& 3`; mode 0 skips the zeroing.
+  - The `0x29B74` registration dropped, and a wrong stub-immediate address.
+  The script restored the sources, and the suite passed afterwards.
+
+### 42-E.6 Measured and remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 0 compiler
+  warnings. The drivers and `make verify` were not run (the controller runs
+  them after the merge).
+- No oracle is expected to move. Nothing in the ported frame path calls the
+  new functions. The one new registration (`0x29B74`) is reachable only
+  through `DS_00104AE4`, which no ported code dispatches. So the only
+  whole-run probe change is that `0x29B74` can no longer miss.
+- Remaining named gaps:
+  - The unported callers: the six `DS_00104AE4` dispatchers `0x4F2B0`..
+    `0x4F9C8`, `0x27A2C`, the `0x277C0`/`0x28788` stores, and `0x416D4`/
+    `0x41C28`.
+  - `0x2C3FC(0x33)` (the voice, spec §7).
+  - `0x32A3C`'s `0x32970` run clock and its `0x2DAE4` audit adds (spec §7).
+  - The descriptor spawns `0x413C8` and the `0x4144C` block, which produce
+    the two handles.

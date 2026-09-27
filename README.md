@@ -183,8 +183,8 @@ producers now sit beside `0x13C70`: `0x13D4C` (type 4, darken-to-zero,
 `effects_spawn_scroll`). The free-list head is taken only by these four, so types
 1 and 5 have no producer and are dead. An end-to-end unit test proves the chain
 spawn → `effects_step` → palette dirty list → `gfx_flush_palette` → `gfx_dac`.
-`0x13D4C` is called only from the unported effect call sites
-(`0x29B74`/`0x41578`); `0x13E28` from the ported select state `0x11F6C`
+`0x13D4C` is called only from the effect call sites `0x29B74`/`0x41578`
+(ported and unit-tested, callers unported; record §42-E); `0x13E28` from the ported select state `0x11F6C`
 (`flow.c:367`). **`0x13B3C` is dead, not merely unwired:** zero callers and zero
 cross-references anywhere in the image (`ghidra_get_xrefs_to 0x13B3C` = 0;
 `prage.functions.csv` `FUN_00013b3c` `n_callers = 0`; the bytes `3c b3 01 00`
@@ -297,9 +297,10 @@ front-end (only the state-3 entry frame, or only the first 12 frames) still
 passes. Sixteen all-black capture frames are excluded as an explicit oracle-level
 choice, **not** a proven fact (capture 561's black frame may be a distinct logic
 frame or a 70.09 Hz scanout artifact). The effect call sites `0x29B74`/`0x41578`
-are **deferred**: reachable only through `0x24C5C`'s unported mode cases
-(`0x12`, `0x16..0x1B`) and the match/fight chain, and `DS_00104B00` is fixed at
-3 — a dispatch path nothing can reach. The match cycle's `0x1EA08` call sites
+are **ported but unreachable** (demo-pose record §42-E): their callers live only
+in `0x24C5C`'s unported mode cases (`0x12`, `0x16..0x1B`) and the match/fight
+chain, and `DS_00104B00` is fixed at 3. `0x29B74` is registered for a future
+`DS_00104AE4` dispatch; both are unit-tested. The match cycle's `0x1EA08` call sites
 and the unported half of `0x1EA08` remain declared gaps. The camera chain
 (`0x12CD4`/`0x1317C`/`0x13290`/`0x1333C`, `0x12D48` dispatcher,
 `0x12DA8`/`0x12DF0`/`0x12E3C` modes) is **ported** in `port/src/game/camera.c`,
