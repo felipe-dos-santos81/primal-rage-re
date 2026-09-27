@@ -744,10 +744,13 @@ loop 1970 was dropped and the dump held 1381 frames.)
 exit frame closes that dump. The loop now runs to 3900 (a measurement window:
 2800 in Task 26, raised in Tasks 28, 29, 30, 31 and 32 (3900 keeps 3257, loop 3556, inside the dump and reaches past the capture's last frame 3616) so that the second demo's first
 unexplained frame stays inside the dump, record §38), and every frame
-presented after loop 1970 goes to a separate `cycle2/` dump (2095 frames).
+presented after loop 1970 goes to a separate `cycle2/` dump (2102 frames).
 That is one frame per iteration for loops 1971..3899, plus the 166 screens the logo
 player `0x1C740` writes inside loop 1971 (its `0x52106` blanks and every TWI5
-and TWG frame, through the `PORT:` seam `movie_set_screen_hook`). Every
+and TWG frame, through the `PORT:` seam `movie_set_screen_hook`), plus the
+seven `- LOADING -` screens the loader draws over the held frame inside an
+iteration (the `PORT:` seam `res_set_screen_hook`, record §45-A: loop 1973,
+four in loop 2783, loop 3557 and loop 3684). Every
 earlier measurement keeps the loop-0..1999 window. A separate dump is needed:
 in one dump the second cycle's frames content-match the capture's first
 attract, and the front-end window grew to `[1..2231]`. The driver seeds
@@ -756,13 +759,13 @@ boot cycle's phase 2 wraps it to 0), so the second cycle reaches phase `0xA`'s
 lightning and hands off to a second demo at loop 2782 (`DS_000F0A72` = 5), as
 the capture does from 2385. `make attract2-oracle` (`--attract2`, in `make
 verify`) classifies captures 1885..3616 against `cycle2/` only, with the ratchet
-N = 3257 (record §44-A). Capture 2384, the `- LOADING -` frame before the second demo, is
-allowed by name: it is byte-identical to front-end capture 832 (record §37).
+N = 3408 (record §45-A). Capture 2384, the `- LOADING -` frame before the second demo, was
+allowed by name (record §37) until the loader screens explained it.
 
 **The demo window is report-only; its first unexplained frame is capture 1886 —
 the capture's next cycle after the demo, with no port frame left in the
 top-level dump (`make attract2-oracle` classifies that region against
-`cycle2/`: first unexplained 3257, with 2384 allowed by name) — after the
+`cycle2/`: first unexplained 3408) — after the
 demo-pose cycle explained captures 843..850, the roar-timing fix 851..857, the
 frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863, the
 frame-864 fix 864/865, the frame-866 fix 866, the frame-867 fix 867..869 and
@@ -1290,6 +1293,10 @@ subsystem, the unported `0x19020` chain; since ported, record §35.)
    interrupt (`0x1BE0E`/`0x1BE10`) whose count is post-read CPU work ÷
    cycles-per-tick, a host/emulator property, and the two live-RAM polls
    disagree (Δ=2 vs Δ=3). **No constant was shipped.**
+   (Record §45-A later added a dump seam, `res_set_screen_hook`, that writes
+   the loader's screen as it stands on the aperture, without any tick model.
+   Only the cycle-2 dump uses it, which explains captures 2384 and 3257 there;
+   the front-end dump does not, so 832/833 stay allowed by name.)
 2. **The palette order** (Task 5b). `palette_acquire` assigns DAC ranges in
    acquisition order; the character palette (`0x1BB9FD58`, DAC range
    `start=142`) differs while the backdrop palette matches, so the T-rex's
@@ -2489,10 +2496,31 @@ record §34).**
   port passed `0x40`, so the blood flew the wrong way. The poll matches the
   port through f = 4570, the demo's last frame. Ported (`b947895`):
   3099..3256 explained, N = 3257 (record §44-A).
-* **3257.** The loader's `- LOADING -` overlay on the game frame: the
+* **3257, since explained (record §45-A).** The loader's `- LOADING -` overlay on the game frame: the
   original lazily loads `s16spisd.gra` (INDEX entry 64) for the sound
   module at f = 4444, which the port's out-of-scope voice path `0x2C3FC`
   never asks for. A named gap (record §44-A.3).
+
+### The voice path's loader screen (`b05adcc`), captures 3257..3407
+
+* **Raw.** `0x1543C`'s tail plays `0x2C3FC(0x4D)`: case 3 checks
+  `0x1CE70(0x1201D606)` and queues `0x1201D606` and `0x2001513C` through
+  `0x1CC28`. That function resolves each handle (`0x1B544`) before it picks a
+  slot, and its first resolve of s16spisd (entry 64) runs `0x1B3AC`, which
+  draws the text onto the aperture over the frame the screen holds. The
+  fighter spawn's tail `0x33E51` resolves the character's sound bank and
+  s16sound when the DIG driver `DS_001028C8` is set (`0x1CF8E`).
+* **Port.** The dispatcher and the sound module's memory-visible parts
+  (flow.c), the spawn tail, the handle's stand-in, and the image mapped
+  before the init chain. The last one also keeps `DS_00101504/10/14`,
+  `DS_000A2CAC` and `DS_000A2CB1`, which the late map had zeroed. A DOSBox-X
+  INDEX poll gives the same reads on the same frames in both. The seam
+  `res_set_screen_hook` dumps the screen into `cycle2/`. The §9.6 rate becomes
+  132693 bytes/tick (six reads in the 55 ticks, not three).
+* **Result.** 3257 = port 1757 (1756 with the text), clean; 2384 and 3407 are
+  clean against text-on-black screens. First unexplained **3408**: the
+  high-score table the attract shows after the second demo, which the port
+  does not draw (record §45-A.3). N = 3408.
 
 ## Landmarks (verified)
 

@@ -251,7 +251,7 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # over the held frame inside an iteration (res.c's seam, record §45-A). Capture 2384,
 # the `- LOADING -` frame before the second demo, was allowed by name (record §37)
 # until those screens explained it; ATTRACT2_ALLOWED_UNEXPLAINED is now empty.
-# N = 3408 was measured on the commit that set it (on 54394e9; §45-A): the voice
+# N = 3408 was measured on b05adcc (the commit that set it, on 54394e9; §45-A): the voice
 # dispatcher 0x2C3FC with the sound module's sample path, 0x1543C's voice 0x4D
 # (its first read of s16spisd.gra draws the loader's text over the game frame at
 # loop 3557), the fighter spawns' sound-bank reads (0x33E51), the DIG driver
