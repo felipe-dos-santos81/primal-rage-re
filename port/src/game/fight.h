@@ -139,11 +139,31 @@ void fight_char_screen_open_both(void);
 /* Record §47-M. 0x43928: each side whose DS_00108170 byte is 0 is polled by
  * 0x11F28; an accepted side sets its bit side + 1 in DS_00104B1F and its byte
  * to 1. 0x438B4: the mode 0x10 handler (0x24C5C at 0x25385), on the byte
- * DS_00108174: 0 is the character select's per-frame pass 0x43B24/0x44798
- * (a named gap), 1 is the join test, 0x4F790 and the countdown DS_0010816C
- * that ends in DS_00108174 = DS_00108172. */
+ * DS_00108174: 0 is the character select's per-frame pass 0x43B24 (record
+ * §48-S; 0x44798 for DS_00104B1D == 3 is a named gap), 1 is the join test,
+ * 0x4F790 and the countdown DS_0010816C that ends in DS_00108174 =
+ * DS_00108172. */
 void fight_char_join(void);
 void fight_mode_10_step(void);
+
+/* Record §48-S. 0x43B24, the character select's per-frame pass, and its
+ * callees: 0x432A0 the unjoined side's prompt; 0x432EC/0x433DC erase and
+ * 0x43464/0x435AC blink the joined side's text; 0x43EA0 the portrait
+ * highlight; 0x43FBC the side's fighter; 0x43D0C the confirm button (0..3);
+ * 0x4248C drops a side's stage marks; 0x43D60 the confirm; 0x43AAC the
+ * countdown step (1 when it ran out). */
+void fight_char_prompt(u32 side);
+void fight_char_text_clear(u32 side, u32 flag);
+void fight_char_opp_text_clear(u32 side, u32 flag);
+void fight_char_text_blink(u32 side);
+void fight_char_opp_text_blink(u32 side);
+void fight_char_portrait(u32 side);
+void fight_char_fighter(u32 side);
+u32  fight_char_button(u32 side);
+void fight_stage_mark_drop(u32 cls, u32 side);
+void fight_char_confirm(u32 side);
+u32  fight_char_countdown(void);
+void fight_char_select_pass(void);
 
 /* 0x494A8. The dust/effect entry builder the fighter spawn (0x33C78) calls at
  * 0x33E43 when DS_00104B14 == 0. Each iteration moves one node from the free

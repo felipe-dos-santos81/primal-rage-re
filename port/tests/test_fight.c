@@ -6731,13 +6731,15 @@ static void check_mode_10_step(void)
         CHECK_EQ_INT((int)DSW(DS_0010816C), 9);
     }
 
-    /* (f) Sub-state 0 (the 0x43B24/0x44798 gap) and 2 run nothing in either
-     * copy: with credits and both presses available, no side joins, the
-     * countdown keeps 1 and the sub-state is not copied. */
+    /* (f) Sub-state 2 in either copy, and sub-state 0 in the DS_00104B1D == 3
+     * copy (the 0x44798 gap), run nothing: with credits and both presses
+     * available, no side joins, the countdown keeps 1 and the sub-state is
+     * not copied. Record §48-S: sub-state 0 in the other copy now runs
+     * 0x43B24 (group (h) and check_char_select_pass). */
     {
         static const u32 subs[] = { 0u, 2u };
         for (u32 i = 0; i < 2u; i++) {
-            for (u32 b1d = 0u; b1d <= 3u; b1d += 3u) {
+            for (u32 b1d = subs[i] == 0u ? 3u : 0u; b1d <= 3u; b1d += 3u) {
                 M10_RESTORE();
                 m10_seed(b1d, subs[i], 1u, 5u, 0x40u, 0x01000100u, 0u);
                 fight_mode_10_step();
@@ -6758,7 +6760,669 @@ static void check_mode_10_step(void)
     CHECK_EQ_INT((int)DSW(DS_0010816C), 1);
     CHECK_EQ_INT((int)DSB(DS_00108174), 1);
     CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0010u);
+
+    /* (h) Record §48-S: sub-state 0 with DS_00104B1D != 3 now runs 0x43B24.
+     * Its tail is visible with no side acting: both side bytes 5 (no arm, no
+     * stick), DS_00105C04 set, so the countdown word becomes 0xF and the flag
+     * is cleared; the frame counter 1 keeps 0x43AAC out. */
+    M10_RESTORE();
+    m10_seed(0u, 0u, 0x1234u, 5u, 0x40u, 0u, 0u);
+    DSB(DS_00108170) = 5u;
+    DSB(DS_00108170 + 1u) = 5u;
+    DSB(DS_00105C04) = 1u;
+    DSW(DS_000EF6DC) = 1u;
+    DSW(DS_001088E0) = 0u;
+    DSW(DS_001088E0 + 2u) = 0u;
+    fight_mode_10_step();
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 0xF);
+    CHECK_EQ_INT((int)DSB(DS_00105C04), 0);
+    CHECK_EQ_INT((int)DSB(DS_00108174), 0);
 #undef M10_RESTORE
+
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    tf_put(s_bufa, bufa, sizeof s_bufa);
+    tf_put(s_bufb, bufb, sizeof s_bufb);
+    tf_put(s_res, res_tab, res_len);
+    memcpy(gfx_aperture(), s_ap, sizeof s_ap);
+    memcpy(gfx_dac, s_dac, sizeof s_dac);
+}
+
+/* Record §48-S: the character select's pass 0x43B24 and its callees. */
+
+/* The sprite id in text cell (row, col), or 0 for an empty cell. */
+static u32 cs_sprite(u32 row, u32 col)
+{
+    u32 r = chs_grid(row, col);
+    return r != 0u ? DSD(r + 0x08u) : 0u;
+}
+
+/* The non-empty cells of text row `row`. */
+static u32 cs_row_count(u32 row)
+{
+    u32 n = 0;
+    for (u32 c = 0; c < 0x2Bu; c++) if (chs_grid(row, c) != 0u) n++;
+    return n;
+}
+
+/* 1 when text row `row` holds exactly what 0x2F198 draws for `s` at `col`
+ * with `mode` from an empty row (compared by sprite id; the row is left
+ * redrawn). */
+static int cs_row_ref(u32 row, s32 col, const u8 *s, u32 mode)
+{
+    u32 got[0x2B];
+    int same = 1;
+    for (u32 c = 0; c < 0x2Bu; c++) got[c] = cs_sprite(row, c);
+    mem_fill(DS_00105F38 + row * 0xACu, 0, 0xACu);
+    text_cursor_set(col, (s32)row, s, mode);
+    for (u32 c = 0; c < 0x2Bu; c++) if (cs_sprite(row, c) != got[c]) same = 0;
+    return same;
+}
+
+/* A character screen built by 0x43738 (chs_seed's sentinels, characters
+ * ch0/ch1, DS_00104B1F = b1f), then the pass's inputs set to rest: the frame
+ * counter 1 (blink phase 1, no countdown step), no stick or button, the
+ * text prompts (DS_00104528 = 0), no credit, DS_00104B1D = 0, no DS_00105C04,
+ * and cm_seed_arm's hook and mode sentinels. */
+static void cs_open(u8 ch0, u8 ch1, u8 b1f)
+{
+    chs_seed(ch0, ch1, b1f, 0u);
+    fight_char_screen_open();
+    DSW(DS_000EF6DC) = 1u;
+    DSW(DS_001088E0) = 0u;
+    DSW(DS_001088E0 + 2u) = 0u;
+    DSD(DS_001088E4) = 0u;
+    DSD(DS_001088D8) = 0u;
+    DSD(DS_00104528) = 0u;
+    DSB(DS_00105D60) = 0u;
+    DSD(DS_00105C00) = 0u;
+    DSB(DS_00104B1D) = 0u;
+    DSD(DS_00104AB8) = 0u;
+    DSB(DS_00105C04) = 0u;
+    cm_seed_arm();
+}
+
+static void check_char_select_pass(void)
+{
+    static u8 s_data[0x10B0D0u - 0x80000u];
+    static u8 s_rec[0xEBA0u], s_pset[0x4880u];
+    static u8 s_bufa[0xFA00u], s_bufb[0xFA00u], s_ap[0xFA00u];
+    static u8 s_dac[sizeof gfx_dac];
+    static u8 s_res[0x14u * 128u];
+    u32 rec_pool = DSD(DS_001014F4), pset_pool = DSD(DS_001014EC);
+    u32 bufa = DSD(DS_001014E8), bufb = DSD(DS_001014E4);
+    u32 res_tab = DSD(DS_001014E0);
+    u32 res_len = DSD(DS_001014F0) * 0x14u;
+    CHECK(rec_pool != 0u && pset_pool != 0u && bufa != 0u && bufb != 0u,
+          "0x43B24 needs the pools and buffers");
+    CHECK(res_len != 0u && res_len <= sizeof s_res, "the resource table fits");
+    if (rec_pool == 0u || pset_pool == 0u || bufa == 0u || bufb == 0u ||
+        res_len == 0u || res_len > sizeof s_res)
+        return;
+    game_string_table_load("data/game/C");
+    tf_snap(s_data, 0x80000u, sizeof s_data);
+    tf_snap(s_rec, rec_pool, sizeof s_rec);
+    tf_snap(s_pset, pset_pool, sizeof s_pset);
+    tf_snap(s_bufa, bufa, sizeof s_bufa);
+    tf_snap(s_bufb, bufb, sizeof s_bufb);
+    tf_snap(s_res, res_tab, res_len);
+    memcpy(s_ap, gfx_aperture(), sizeof s_ap);
+    memcpy(s_dac, gfx_dac, sizeof s_dac);
+#define CS_RESTORE() do {                                               \
+        tf_put(s_data, 0x80000u, sizeof s_data);                        \
+        tf_put(s_rec, rec_pool, sizeof s_rec);                          \
+        tf_put(s_pset, pset_pool, sizeof s_pset);                       \
+    } while (0)
+
+    /* The strings the pass draws (ENGLISH.TXT) and the raw tables it reads. */
+    CHECK(strcmp((const char *)game_string_get(0x37u), "SELECT CHARACTER") == 0,
+          "string 0x37");
+    CHECK(strcmp((const char *)game_string_get(0x39u), " ") == 0, "string 0x39");
+    CHECK(strcmp((const char *)game_string_get(0x236u), "SELECT OPPONENT") == 0,
+          "string 0x236");
+    CHECK_EQ_INT((int)strlen((const char *)game_string_get(0x48u)), 14);
+    CHECK_EQ_INT((int)DSW(DS_000BAB58), 0x1803);        /* cols 3, 0x18 */
+    CHECK_EQ_INT((int)DSW(DS_000C894C), 3);
+    CHECK_EQ_INT((int)DSW(DS_000C894C + 2u), 0x18);
+
+    /* (a) Byte 0, accepted: side 0's start (0x01000000) with 5 credits and
+     * DS_00104B1F = 0 spawns its entry (character 3: x 0x3580) and fighter
+     * (x 0x1500), DS_00104B1F = 1, byte 1 and one credit spent. Side 1 (byte
+     * 5, no stick) is untouched. The tail: DS_00105C04 resets the countdown
+     * to 0xF and is cleared. */
+    CS_RESTORE();
+    cs_open(3u, 6u, 0u);
+    DSB(DS_00108170 + 1u) = 5u;
+    DSD(DS_00105C00) = 5u;
+    DSD(DS_001088E4) = 0x01000000u;
+    DSB(DS_00105C04) = 1u;
+    DSW(DS_0010816C) = 0x1234u;
+    fight_char_select_pass();
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 1);
+    CHECK_EQ_INT((int)DSB(DS_00108170), 1);
+    CHECK_EQ_INT((int)DSB(DS_00108170 + 1u), 5);
+    CHECK_EQ_INT((int)DSD(DS_00105C00), 4);
+    CHECK_EQ_INT((int)DSD(DSD(DS_00108154) + 0x18u), 0x3580);
+    CHECK_EQ_INT((int)DSD(DSD(DS_0010813C) + 0x18u), 0x1500);
+    CHECK_EQ_INT((int)DSD(DS_00108154 + 4u), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 0xF);
+    CHECK_EQ_INT((int)DSB(DS_00105C04), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+
+    /* (a2) Byte 0, no credit: "INSERT 1 COIN" (strings 0x49, 0x809C4, 0x4B)
+     * drawn on blink phase 0 (the counter 0x20: phase 0, no countdown step)
+     * at side 0's col 3, row 0x1B, mode 0x3000; its length 13, col and row
+     * kept. On phase 0x18 (0x38) 0x2F388 releases those 13 cells: live
+     * records at cols 2 and 16 stay. The side byte stays 0 and no bit is set
+     * in DS_00104B1F. */
+    CS_RESTORE();
+    cs_open(3u, 6u, 0u);
+    DSB(DS_00108170 + 1u) = 5u;
+    DSD(DS_00105BF8) = 0xDEADu;
+    DSB(DS_00105C06) = 0x77u;
+    DSB(DS_00105C07) = 0x77u;
+    DSW(DS_000EF6DC) = 0x20u;
+    fight_char_select_pass();
+    CHECK_EQ_INT((int)DSD(DS_00105BF8), 13);
+    CHECK_EQ_INT((int)DSB(DS_00105C06), 3);
+    CHECK_EQ_INT((int)DSB(DS_00105C07), 0x1B);
+    CHECK_EQ_INT((int)DSB(DS_00108170), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 0);
+    CHECK_EQ_INT((int)cs_row_ref(0x1Bu, 3, (const u8 *)"INSERT 1 COIN", 0x3000u), 1);
+    {
+        u32 k2 = actor_alloc(0), k16 = actor_alloc(0);
+        DSD(DS_00105F38 + 0x1Bu * 0xACu + 2u * 4u) = k2;
+        DSD(DS_00105F38 + 0x1Bu * 0xACu + 16u * 4u) = k16;
+        DSW(DS_000EF6DC) = 0x38u;
+        fight_char_select_pass();
+        CHECK_EQ_INT((int)cs_row_count(0x1Bu), 2);
+        CHECK_EQ_INT((int)chs_grid(0x1Bu, 2u), (int)k2);
+        CHECK_EQ_INT((int)chs_grid(0x1Bu, 16u), (int)k16);
+    }
+
+    /* (a3) Byte 0 with a credit but no start: "PRESS START" (string 0x48)
+     * at col 3, row 0x1B, mode 0x1000, length 14; phase 0x18 releases it
+     * through 0x2C088 at the caller's col/row. */
+    CS_RESTORE();
+    cs_open(3u, 6u, 0u);
+    DSB(DS_00108170 + 1u) = 5u;
+    DSD(DS_00105C00) = 5u;
+    DSW(DS_000EF6DC) = 0x20u;
+    fight_char_select_pass();
+    CHECK_EQ_INT((int)DSD(DS_00105BF8), 14);
+    CHECK_EQ_INT((int)DSD(DS_00105C00), 5);
+    CHECK(cs_row_count(0x1Bu) != 0u, "PRESS START drawn");
+    CHECK_EQ_INT((int)cs_row_ref(0x1Bu, 3, game_string_get(0x48u), 0x1000u), 1);
+    DSW(DS_000EF6DC) = 0x38u;
+    fight_char_select_pass();
+    CHECK_EQ_INT((int)cs_row_count(0x1Bu), 0);
+
+    /* (a4) The sprite prompts (DS_00104528 bit 0x200): phase 0 spawns 0xBAB60
+     * at x 0xBAB5A[side] (0x1500 / 0x4000), y 0x3700 into DS_00105BF0[side];
+     * phase 0x18 marks it dead, zeroes the slot and releases string 0x48's
+     * cells at DS_00105C06/DS_00105C07 (seeded 5, 0x1D), not at the side's
+     * col 3 row 0x1B (a live record there stays). */
+    CS_RESTORE();
+    cs_open(3u, 6u, 0u);
+    DSB(DS_00108170 + 1u) = 5u;
+    DSD(DS_00105C00) = 5u;
+    DSD(DS_00104528) = 0x200u;
+    DSD(DS_00105BF0) = 0u;
+    DSD(DS_00105BF0 + 4u) = 0xDEADBEEFu;
+    DSW(DS_000EF6DC) = 0x20u;
+    fight_char_select_pass();
+    {
+        u32 spr = DSD(DS_00105BF0);
+        CHECK(spr != 0u, "the prompt sprite is spawned");
+        CHECK_EQ_INT((int)DSD(spr + 0x18u), 0x1500);
+        CHECK_EQ_INT((int)DSD(spr + 0x1Cu), 0x3700);
+        CHECK_EQ_INT((int)DSB(spr + 0x49u), 0xFF);
+        CHECK_EQ_INT((int)DSD(DS_00105BF0 + 4u), (int)0xDEADBEEFu);
+        CHECK_EQ_INT((int)DSD(DS_00105BF8), 14);
+        CHECK_EQ_INT((int)cs_row_count(0x1Bu), 0);
+        u32 k = actor_alloc(0), k2 = actor_alloc(0);
+        DSD(DS_00105F38 + 0x1Bu * 0xACu + 3u * 4u) = k;
+        DSD(DS_00105F38 + 0x1Du * 0xACu + 5u * 4u) = k2;
+        DSB(DS_00105C06) = 5u;
+        DSB(DS_00105C07) = 0x1Du;
+        DSW(DS_000EF6DC) = 0x38u;
+        fight_char_select_pass();
+        CHECK_EQ_INT((int)DSD(DS_00105BF0), 0);
+        CHECK_EQ_INT((int)(DSB(spr + 0x28u) & 8u), 8);
+        CHECK_EQ_INT((int)chs_grid(0x1Bu, 3u), (int)k);
+        CHECK_EQ_INT((int)chs_grid(0x1Du, 5u), 0);
+    }
+    DSW(DS_000EF6DC) = 0x20u;
+    DSD(DS_00105BF0 + 4u) = 0u;
+    prompt_press_start(1u, 0x3700);
+    CHECK_EQ_INT((int)DSD(DSD(DS_00105BF0 + 4u) + 0x18u), 0x4000);
+
+    /* (b) Byte 1 (side 0 joined): 0x43464 on phase 0 draws strings 0x36
+     * (" "), 0x37 and 0x38 at col 3, rows 0x1A..0x1C (string 0x39 is " ",
+     * shorter than 2, so r = 0x1C and 0x39 is not drawn); side 1 draws the
+     * same at col 0x18. Phase 0x18 releases them. */
+    CS_RESTORE();
+    cs_open(3u, 6u, 3u);
+    DSW(DS_000EF6DC) = 0x20u;
+    fight_char_select_pass();
+    CHECK(cs_row_count(0x1Bu) != 0u && cs_row_count(0x1Cu) != 0u, "text drawn");
+    CHECK_EQ_INT((int)cs_row_count(0x1Au), 0);
+    CHECK_EQ_INT((int)cs_row_count(0x1Du), 0);
+    {
+        u32 g1b[0x2B], g1c[0x2B];
+        for (u32 c = 0; c < 0x2Bu; c++) { g1b[c] = cs_sprite(0x1Bu, c); g1c[c] = cs_sprite(0x1Cu, c); }
+        mem_fill(DS_00105F38 + 0x1Bu * 0xACu, 0, 2u * 0xACu);
+        text_cursor_set(3, 0x1B, game_string_get(0x37u), 0x1000u);
+        text_cursor_set(0x18, 0x1B, game_string_get(0x37u), 0x1000u);
+        text_cursor_set(3, 0x1C, game_string_get(0x38u), 0x1000u);
+        text_cursor_set(0x18, 0x1C, game_string_get(0x38u), 0x1000u);
+        u32 same = 1;
+        for (u32 c = 0; c < 0x2Bu; c++)
+            if (cs_sprite(0x1Bu, c) != g1b[c] || cs_sprite(0x1Cu, c) != g1c[c]) same = 0;
+        CHECK_EQ_INT((int)same, 1);
+    }
+    DSW(DS_000EF6DC) = 0x38u;
+    fight_char_select_pass();
+    CHECK_EQ_INT((int)cs_row_count(0x1Bu), 0);
+    CHECK_EQ_INT((int)cs_row_count(0x1Cu), 0);
+
+    /* (b2) The sprite form: phase 0 runs 0x432EC(side, 0) and spawns 0xC8934
+     * at x 0xC8948[side] (0x1500), y 0x3700 into DS_00108144[side]. On phase
+     * 0x18 the flag DS_00104528 & 0x200 marks that record dead (the slot
+     * keeps it) and runs 0x2C088, which kills DS_00105BF0[side]. */
+    CS_RESTORE();
+    cs_open(3u, 6u, 1u);
+    DSB(DS_00108170 + 1u) = 5u;
+    DSD(DS_00104528) = 0x200u;
+    DSW(DS_000EF6DC) = 0x20u;
+    fight_char_select_pass();
+    {
+        u32 spr = DSD(DS_00108144), bf0 = actor_alloc(0);
+        CHECK(spr != 0u, "the joined side's sprite is spawned");
+        CHECK_EQ_INT((int)DSD(spr + 0x18u), 0x1500);
+        CHECK_EQ_INT((int)DSD(spr + 0x1Cu), 0x3700);
+        CHECK_EQ_INT((int)DSD(DS_00108144 + 4u), 0);
+        CHECK_EQ_INT((int)cs_row_count(0x1Bu), 0);
+        DSD(DS_00105BF0) = bf0;
+        DSW(DS_000EF6DC) = 0x38u;
+        fight_char_select_pass();
+        CHECK_EQ_INT((int)DSD(DS_00108144), (int)spr);
+        CHECK_EQ_INT((int)(DSB(spr + 0x28u) & 8u), 8);
+        CHECK_EQ_INT((int)DSD(DS_00105BF0), 0);
+        CHECK_EQ_INT((int)(DSB(bf0 + 0x28u) & 8u), 8);
+    }
+    /* Without the flag bit, phase 0x18 leaves both records. */
+    CS_RESTORE();
+    cs_open(3u, 6u, 1u);
+    DSB(DS_00108170 + 1u) = 5u;
+    {
+        u32 spr = actor_alloc(0), bf0 = actor_alloc(0);
+        DSD(DS_00108144) = spr;
+        DSD(DS_00105BF0) = bf0;
+        DSW(DS_000EF6DC) = 0x38u;
+        fight_char_select_pass();
+        CHECK_EQ_INT((int)(DSB(spr + 0x28u) & 8u), 0);
+        CHECK_EQ_INT((int)DSD(DS_00105BF0), (int)bf0);
+    }
+
+    /* (c) DS_00104B1D == 1: side 0 is not DS_00104AB8's (2), so 0x435AC
+     * draws strings 0x235 (" ") and 0x236 at rows 0x1B/0x1C, col 3; with
+     * DS_00104AB8 = 1 it is 0x43464 (string 0x37 at row 0x1B). Phase 0x18
+     * erases 0x435AC's text through 0x433DC; with the flag it also kills
+     * DS_00108144[0]. */
+    CS_RESTORE();
+    cs_open(3u, 6u, 1u);
+    DSB(DS_00108170 + 1u) = 5u;
+    DSB(DS_00104B1D) = 1u;
+    DSD(DS_00104AB8) = 2u;
+    DSD(DS_00105BF0) = 0u;
+    DSW(DS_000EF6DC) = 0x20u;
+    fight_char_select_pass();
+    CHECK_EQ_INT((int)cs_row_count(0x1Bu), 0);
+    CHECK_EQ_INT((int)cs_row_ref(0x1Cu, 3, game_string_get(0x236u), 0x1000u), 1);
+    {
+        u32 spr = actor_alloc(0);
+        DSD(DS_00108144) = spr;
+        DSD(DS_00104528) = 0x200u;
+        DSW(DS_000EF6DC) = 0x38u;
+        fight_char_select_pass();
+        CHECK_EQ_INT((int)cs_row_count(0x1Cu), 0);
+        CHECK_EQ_INT((int)(DSB(spr + 0x28u) & 8u), 8);
+    }
+    CS_RESTORE();
+    cs_open(3u, 6u, 1u);
+    DSB(DS_00108170 + 1u) = 5u;
+    DSB(DS_00104B1D) = 1u;
+    DSD(DS_00104AB8) = 1u;
+    DSW(DS_000EF6DC) = 0x20u;
+    fight_char_select_pass();
+    CHECK_EQ_INT((int)cs_row_ref(0x1Bu, 3, game_string_get(0x37u), 0x1000u), 1);
+
+    /* (d) Byte 2: with the other byte 0 or 2, the hook 0x430E8 and 0x4F980
+     * (0x11), and the pass returns before its tail (DS_00105C04 stays set);
+     * with the other byte 1 or 3, nothing (the tail runs). */
+    {
+        static const u8 pairs[][3] = {
+            /* byte0, byte1, fires */
+            { 2u, 0u, 1u }, { 2u, 2u, 1u }, { 0u, 2u, 1u },
+            { 2u, 1u, 0u }, { 1u, 2u, 0u }, { 3u, 2u, 0u },
+        };
+        for (u32 i = 0; i < sizeof pairs / sizeof pairs[0]; i++) {
+            CS_RESTORE();
+            cs_open(3u, 6u, 0u);
+            DSD(DS_00105C00) = 5u;
+            DSB(DS_00108170) = pairs[i][0];
+            DSB(DS_00108170 + 1u) = pairs[i][1];
+            DSB(DS_00105C04) = 1u;
+            fight_char_select_pass();
+            if (pairs[i][2] != 0u) {
+                CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x430E8);
+                cm_check_arm(0x11u);
+                CHECK_EQ_INT((int)DSB(DS_00105C04), 1);
+            } else {
+                CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+                CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEFBEEFu);
+                CHECK_EQ_INT((int)DSB(DS_00105C04), 0);
+            }
+        }
+    }
+
+    /* (e) The stick, on side 0 (byte 5: no blink arm) from each cursor, then
+     * 0x43EA0/0x43FBC for the new one: the entry's x/y, the panel's sprite
+     * id and palette, the fighter's x/y, +0x2C and palette, the marker. A
+     * zero stick runs neither (the seeded entry x stays). */
+    {
+        static const u8 moves[][3] = {
+            /* cursor, stick, result */
+            { 5u, 0x10u, 6u }, { 6u, 0x10u, 6u }, { 0u, 0x20u, 0u },
+            { 3u, 0x20u, 2u }, { 2u, 0x40u, 6u }, { 3u, 0x40u, 6u },
+            { 5u, 0x40u, 5u }, { 1u, 0x40u, 5u }, { 5u, 0x80u, 1u },
+            { 3u, 0x80u, 3u }, { 4u, 0x30u, 4u }, { 1u, 0xF0u, 1u },
+        };
+        static const u16 ent_x[7] = { 0x1000, 0x1C80, 0x2900, 0x3580, 0x1640, 0x22C0, 0x2F40 };
+        static const u16 ent_y[7] = { 0x0540, 0x0540, 0x0540, 0x0540, 0x0EC0, 0x0EC0, 0x0EC0 };
+        static const u16 panel[7] = { 0x32C, 0x32E, 0x32F, 0x32D, 0x332, 0x330, 0x331 };
+        static const u8 cls_of[7] = { 0, 2, 3, 1, 6, 4, 5 };
+        static const u16 c2c[7] = { 0xC00, 0xC00, 0xC00, 0xC00, 0xC00, 0xA00, 0xA00 };
+        static const u32 cpal[7] = { 0x098ECC8Cu, 0x098EC18Cu, 0x098ECD8Cu, 0x098EC10Cu,
+                                     0x098ECD0Cu, 0x098ECC0Cu, 0x098EC20Cu };
+        for (u32 i = 0; i < sizeof moves / sizeof moves[0]; i++) {
+            u32 ch = moves[i][2], cls = cls_of[ch];
+            CS_RESTORE();
+            cs_open(moves[i][0], 6u, 3u);
+            DSB(DS_00108170) = 5u;
+            DSB(DS_00108170 + 1u) = 5u;
+            DSW(DS_001088E0) = moves[i][1];
+            u32 m_old = DSD(DS_001028E0);
+            fight_char_select_pass();
+            u32 e = DSD(DS_00108154), p = DSD(DS_0010815C);
+            u32 a = DSD(DS_0010813C), m = DSD(DS_001028E0);
+            CHECK_EQ_INT((int)DSB(DS_00108166), (int)ch);
+            CHECK_EQ_INT((int)DSB(DS_00108166 + 1u), 6);
+            CHECK_EQ_INT((int)DSD(e + 0x18u), (int)ent_x[ch]);
+            CHECK_EQ_INT((int)DSD(e + 0x1Cu), (int)ent_y[ch]);
+            CHECK_EQ_INT((int)(DSB(e + 0x28u) & 4u), 4);
+            CHECK_EQ_INT((int)DSD(p + 0x08u), (int)panel[ch]);
+            CHECK_EQ_INT((int)chs_pal_handle(p), (int)DSD(0x000C8908u + ch * 4u));
+            CHECK_EQ_INT((int)DSD(a + 0x18u), 0x1500);
+            CHECK_EQ_INT((int)DSD(a + 0x1Cu), 0x3200);
+            CHECK_EQ_INT((int)DSW(a + 0x2Cu), (int)c2c[cls]);
+            CHECK_EQ_INT((int)chs_pal_handle(a), (int)cpal[cls]);
+            CHECK(DSD(a + 0x08u) - DSD(0x000BB988u + cls * 4u) < 0x40u,
+                  "the fighter runs the class's select stream 0xBB988[cls]");
+            CHECK_EQ_INT((int)DSD(a + 0x24u), 0x40400000);
+            CHECK(m != m_old, "0x1D7B8 respawned the marker");
+            CHECK_EQ_INT((int)DSD(m + 0x1Cu), 0x1800);
+            CHECK_EQ_INT((int)DSD(m + 0x18u), 0x200);
+            CHECK_EQ_INT((int)DSB(DS_00108170), 5);
+        }
+        /* No stick: nothing is re-pointed (the entry's x is seeded). */
+        CS_RESTORE();
+        cs_open(5u, 6u, 3u);
+        DSB(DS_00108170) = 5u;
+        DSB(DS_00108170 + 1u) = 5u;
+        DSD(DSD(DS_00108154) + 0x18u) = 0x7777u;
+        DSD(DSD(DS_0010813C) + 0x18u) = 0x7777u;
+        fight_char_select_pass();
+        CHECK_EQ_INT((int)DSD(DSD(DS_00108154) + 0x18u), 0x7777);
+        CHECK_EQ_INT((int)DSD(DSD(DS_0010813C) + 0x18u), 0x7777);
+        /* Side 1's stick moves side 1's cursor with its own fighter x. */
+        CS_RESTORE();
+        cs_open(5u, 2u, 3u);
+        DSB(DS_00108170) = 5u;
+        DSB(DS_00108170 + 1u) = 5u;
+        DSW(DS_001088E0 + 2u) = 0x10u;
+        fight_char_select_pass();
+        CHECK_EQ_INT((int)DSB(DS_00108166), 5);
+        CHECK_EQ_INT((int)DSB(DS_00108166 + 1u), 3);
+        CHECK_EQ_INT((int)DSD(DSD(DS_00108154 + 4u) + 0x18u), 0x3580);
+        CHECK_EQ_INT((int)DSD(DSD(DS_0010813C + 4u) + 0x18u), 0x3F00);
+        CHECK_EQ_INT((int)DSD(DSD(DS_001028E0 + 4u) + 0x18u), 0x4200);
+    }
+
+    /* (f) 0x43EA0's highlight, with the other side's byte 1: equal cursors
+     * give the side's entry +8 = 0xC88D4[side] and the other's 0xC88CC[other]
+     * with +0x28 bit 4; different cursors give the side's +8 = 0xC88CC[side]
+     * and leave the other's; the other's byte not 1 leaves both. */
+    {
+        CS_RESTORE();
+        cs_open(4u, 4u, 3u);
+        u32 e0 = DSD(DS_00108154), e1 = DSD(DS_00108154 + 4u);
+        DSD(e0 + 8u) = 0x7777u; DSD(e1 + 8u) = 0x7777u; DSB(e1 + 0x28u) = 0u;
+        fight_char_portrait(0u);
+        CHECK_EQ_INT((int)DSD(e0 + 8u), 0x334);
+        CHECK_EQ_INT((int)DSD(e1 + 8u), 0x335);
+        CHECK_EQ_INT((int)(DSB(e1 + 0x28u) & 4u), 4);
+        DSD(e0 + 8u) = 0x7777u; DSD(e1 + 8u) = 0x7777u;
+        fight_char_portrait(1u);
+        CHECK_EQ_INT((int)DSD(e1 + 8u), 0x336);
+        CHECK_EQ_INT((int)DSD(e0 + 8u), 0x333);
+        DSB(DS_00108166 + 1u) = 2u;
+        DSD(e0 + 8u) = 0x7777u; DSD(e1 + 8u) = 0x7777u;
+        fight_char_portrait(0u);
+        CHECK_EQ_INT((int)DSD(e0 + 8u), 0x333);
+        CHECK_EQ_INT((int)DSD(e1 + 8u), 0x7777);
+        DSB(DS_00108170 + 1u) = 2u;
+        DSD(e0 + 8u) = 0x7777u;
+        fight_char_portrait(0u);
+        CHECK_EQ_INT((int)DSD(e0 + 8u), 0x7777);
+        CHECK_EQ_INT((int)DSD(e0 + 0x18u), 0x1640);
+    }
+
+    /* (g) The confirm (bit 0) through the pass, side 0 on character 5
+     * (class 4), side 1 byte 5 with DS_0010816E[1] = 0xFF. Button 0x200 -> 1,
+     * 0x400 -> 2, 0x800 -> 3, none -> 0, 0x600 -> 1 (the first bit wins).
+     * The class, byte 2, the fighter slot byte 0x107813, the new class in
+     * DS_0010816E, the matching stage marks (low 7 bits == 4) zeroed with
+     * the count 7 -> 4, the entry marked dead and the text released. */
+    {
+        static const u16 btn[][2] = {
+            { 0x201u, 1u }, { 0x401u, 2u }, { 0x801u, 3u }, { 0x001u, 0u }, { 0x601u, 1u },
+        };
+        static const u8 marks[7] = { 0x04u, 0x84u, 0x44u, 0x03u, 0x14u, 0x77u, 0x04u };
+        static const u8 after[7] = { 0x00u, 0x00u, 0x44u, 0x03u, 0x14u, 0x77u, 0x00u };
+        for (u32 i = 0; i < sizeof btn / sizeof btn[0]; i++) {
+            CS_RESTORE();
+            cs_open(5u, 6u, 3u);
+            DSB(DS_00108170 + 1u) = 5u;
+            DSB(DS_0010816A) = 0x77u;
+            DSB(DS_0010816E) = 0xFFu;
+            DSB(DS_0010816E + 1u) = 0xFFu;
+            DSB(DS_00105B34) = 0x77u;
+            DSB(DS_00105B34 + 1u) = 0x66u;
+            DSB(DS_00107813) = 0x77u;
+            DSB(DS_00107813 + 0x94u) = 0x77u;
+            for (u32 k = 0; k < 7u; k++) DSB(DS_00108106 + k) = marks[k];
+            DSB(DS_00108111) = 7u;
+            DSB(DS_001077B0 + 0x7Fu) = 0x77u;
+            DSW(DS_001088E0) = btn[i][0];
+            DSW(DS_000EF6DC) = 0x20u;
+            fight_char_text_blink(0u);
+            CHECK(cs_row_count(0x1Bu) != 0u, "the text to release is drawn");
+            u32 e = DSD(DS_00108154);
+            DSW(DS_000EF6DC) = 1u;
+            fight_char_select_pass();
+            CHECK_EQ_INT((int)DSB(DS_0010816A), 4);
+            CHECK_EQ_INT((int)DSB(DS_00108170), 2);
+            CHECK_EQ_INT((int)DSB(DS_00107813), 0);
+            CHECK_EQ_INT((int)DSB(DS_00107813 + 0x94u), 0x77);
+            CHECK_EQ_INT((int)DSB(DS_00105B34), (int)btn[i][1]);
+            CHECK_EQ_INT((int)DSB(DS_00105B34 + 1u), 0x66);
+            CHECK_EQ_INT((int)DSB(DS_0010816E), 4);
+            CHECK_EQ_INT((int)DSB(DS_0010816E + 1u), 0xFF);
+            for (u32 k = 0; k < 7u; k++) CHECK_EQ_INT((int)DSB(DS_00108106 + k), (int)after[k]);
+            CHECK_EQ_INT((int)DSB(DS_00108111), 4);
+            CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x7Fu), 0x77);  /* no 0x33C18 */
+            CHECK_EQ_INT((int)(DSB(e + 0x28u) & 8u), 8);
+            CHECK_EQ_INT((int)cs_row_count(0x1Bu), 0);
+            CHECK_EQ_INT((int)cs_row_count(0x1Cu), 0);
+        }
+    }
+
+    /* (g2) The palette clash. Side 0 confirms class 4 with button b; when
+     * side 1 already has class 4 with the same button, side 0 takes 1 if
+     * side 1's is 0, else 0. Side 1's class is its DS_0010816E byte, or, with
+     * that byte 0xFF, its DS_0010816A byte while its side byte is 2. */
+    {
+        static const u8 cases[][6] = {
+            /* o16E, o16A, obyte, oB34, cmd button bit, expect */
+            { 4u, 0x77u, 5u, 2u, 0x04u, 0u },   /* same class, same button 2 */
+            { 4u, 0x77u, 5u, 0u, 0x00u, 1u },   /* same class, both 0 */
+            { 4u, 0x77u, 5u, 3u, 0x04u, 2u },   /* other button: kept */
+            { 3u, 0x77u, 5u, 2u, 0x04u, 2u },   /* other class: kept */
+            { 0xFFu, 4u, 2u, 3u, 0x08u, 0u },   /* 0xFF arm, byte 2 */
+            { 0xFFu, 4u, 2u, 0u, 0x00u, 1u },
+            { 0xFFu, 4u, 1u, 3u, 0x08u, 3u },   /* byte not 2: kept */
+            { 0xFFu, 3u, 2u, 3u, 0x08u, 3u },   /* other class: kept */
+        };
+        for (u32 i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+            CS_RESTORE();
+            cs_open(5u, 6u, 3u);
+            DSB(DS_0010816E) = 0xFFu;
+            DSB(DS_0010816E + 1u) = cases[i][0];
+            DSB(DS_0010816A + 1u) = cases[i][1];
+            DSB(DS_00108170 + 1u) = cases[i][2];
+            DSB(DS_00105B34 + 1u) = cases[i][3];
+            DSW(DS_001088E0) = (u16)((u16)cases[i][4] << 8);
+            fight_char_confirm(0u);
+            CHECK_EQ_INT((int)DSB(DS_00105B34), (int)cases[i][5]);
+            CHECK_EQ_INT((int)DSB(DS_00105B34 + 1u), (int)cases[i][3]);
+        }
+    }
+
+    /* (g3) The previous class: DS_0010816E[0] = 2 (not 4) runs 0x33C18 (the
+     * slot's +0x7F = 0, DS_00108860[0] = 100) before the marks; DS_0010816E[0]
+     * = 4 (the same class) skips 0x33C18, the marks and the store. */
+    CS_RESTORE();
+    cs_open(5u, 6u, 3u);
+    DSB(DS_0010816E) = 2u;
+    DSB(DS_0010816E + 1u) = 0xFFu;
+    DSB(DS_001077B0 + 0x7Fu) = 0x77u;
+    DSW(DS_00108860) = 0x7777u;
+    DSB(DS_00108106) = 0x04u;
+    DSB(DS_00108111) = 3u;
+    fight_char_confirm(0u);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x7Fu), 0);
+    CHECK_EQ_INT((int)DSW(DS_00108860), 100);
+    CHECK_EQ_INT((int)DSB(DS_00108106), 0);
+    CHECK_EQ_INT((int)DSB(DS_00108111), 2);
+    CHECK_EQ_INT((int)DSB(DS_0010816E), 4);
+    CS_RESTORE();
+    cs_open(5u, 6u, 3u);
+    DSB(DS_0010816E) = 4u;
+    DSB(DS_0010816E + 1u) = 0xFFu;
+    DSB(DS_001077B0 + 0x7Fu) = 0x77u;
+    DSW(DS_00108860) = 0x7777u;
+    DSB(DS_00108106) = 0x04u;
+    DSB(DS_00108111) = 3u;
+    fight_char_confirm(0u);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x7Fu), 0x77);
+    CHECK_EQ_INT((int)DSW(DS_00108860), 0x7777);
+    CHECK_EQ_INT((int)DSB(DS_00108106), 4);
+    CHECK_EQ_INT((int)DSB(DS_00108111), 3);
+    CHECK_EQ_INT((int)DSB(DS_00108170), 2);
+
+    /* (g4) 0x4248C for side 1: the key is class | 0x40. */
+    CS_RESTORE();
+    for (u32 k = 0; k < 7u; k++) DSB(DS_00108106 + k) = (u8)(k == 2u ? 0xC5u : k == 4u ? 0x45u : 0x05u);
+    DSB(DS_00108111) = 0x10u;
+    fight_stage_mark_drop(5u, 1u);
+    for (u32 k = 0; k < 7u; k++)
+        CHECK_EQ_INT((int)DSB(DS_00108106 + k), (k == 2u || k == 4u) ? 0 : 5);
+    CHECK_EQ_INT((int)DSB(DS_00108111), 0x0E);
+
+    /* (h) 0x43AAC: 3 -> 2 redraws "02" at row 1 ('2' is sprite 0x3FA2 at
+     * col 0x15) and returns 0; 1 -> 0 confirms each byte-1 side (side 0 ->
+     * byte 2; side 1's byte 5 stays), sets the hook 0x430E8, arms mode 0x1A
+     * returning to 0x11 and returns 1; the word test is signed (0x8001 ->
+     * 0x8000 ends it). Through the pass it runs only when the counter's low
+     * 6 bits are 0. */
+    CS_RESTORE();
+    cs_open(5u, 6u, 1u);
+    DSB(DS_00108170 + 1u) = 5u;
+    DSW(DS_0010816C) = 3u;
+    CHECK_EQ_INT((int)fight_char_countdown(), 0);
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 2);
+    CHECK_EQ_INT((int)cs_sprite(1u, 0x15u), 0x3FA2);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSB(DS_00108170), 1);
+    DSW(DS_0010816C) = 1u;
+    CHECK_EQ_INT((int)fight_char_countdown(), 1);
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 0);
+    CHECK_EQ_INT((int)DSB(DS_00108170), 2);
+    CHECK_EQ_INT((int)DSB(DS_00108170 + 1u), 5);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x430E8);
+    cm_check_arm(0x11u);
+    CS_RESTORE();
+    cs_open(5u, 6u, 0u);
+    DSW(DS_0010816C) = 0x8001u;
+    CHECK_EQ_INT((int)fight_char_countdown(), 1);
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 0x8000);
+    CS_RESTORE();
+    cs_open(5u, 6u, 3u);
+    DSB(DS_00108170) = 5u;
+    DSB(DS_00108170 + 1u) = 5u;
+    DSW(DS_0010816C) = 9u;
+    DSW(DS_000EF6DC) = 0x41u;
+    fight_char_select_pass();
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 9);
+    DSW(DS_000EF6DC) = 0x40u;
+    fight_char_select_pass();
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 8);
+
+    /* (i) 0x2F388: a negative col centres `count` cells ((0x2B - 5) >> 1 =
+     * 0x13); col 0x2A with 3 cells releases (r, 0x2A), then col 0x2B, which is
+     * (r + 1, 0), wraps and releases (r + 1, 0) again, leaving (r + 1, 1); a
+     * count above 0x2B centres to col 0 with 0x2A cells. */
+    CS_RESTORE();
+    {
+        u32 r = 0x10u, k[6];
+        mem_fill(DS_00105F38 + r * 0xACu, 0, 3u * 0xACu);
+        for (u32 j = 0; j < 6u; j++) k[j] = actor_alloc(0);
+        DSD(DS_00105F38 + r * 0xACu + 0x12u * 4u) = k[0];
+        DSD(DS_00105F38 + r * 0xACu + 0x13u * 4u) = k[1];
+        DSD(DS_00105F38 + r * 0xACu + 0x17u * 4u) = k[2];
+        DSD(DS_00105F38 + r * 0xACu + 0x18u * 4u) = k[3];
+        text_cells_release_count(-1, (s32)r, 5);
+        CHECK_EQ_INT((int)chs_grid(r, 0x12u), (int)k[0]);
+        CHECK_EQ_INT((int)chs_grid(r, 0x13u), 0);
+        CHECK_EQ_INT((int)chs_grid(r, 0x17u), 0);
+        CHECK_EQ_INT((int)chs_grid(r, 0x18u), (int)k[3]);
+        DSD(DS_00105F38 + r * 0xACu + 0x2Au * 4u) = k[1];
+        DSD(DS_00105F38 + (r + 1u) * 0xACu) = k[2];
+        DSD(DS_00105F38 + (r + 1u) * 0xACu + 4u) = k[4];
+        text_cells_release_count(0x2A, (s32)r, 3);
+        CHECK_EQ_INT((int)chs_grid(r, 0x2Au), 0);
+        CHECK_EQ_INT((int)chs_grid(r + 1u, 0u), 0);
+        CHECK_EQ_INT((int)chs_grid(r + 1u, 1u), (int)k[4]);
+        DSD(DS_00105F38 + (r + 1u) * 0xACu + 0x29u * 4u) = k[5];
+        DSD(DS_00105F38 + (r + 1u) * 0xACu + 0x2Au * 4u) = k[1];
+        text_cells_release_count(-1, (s32)(r + 1u), 0x40);
+        CHECK_EQ_INT((int)cs_row_count(r + 1u), 1);
+        CHECK_EQ_INT((int)chs_grid(r + 1u, 0x2Au), (int)k[1]);
+    }
+#undef CS_RESTORE
 
     tf_put(s_data, 0x80000u, sizeof s_data);
     tf_put(s_rec, rec_pool, sizeof s_rec);
@@ -20361,6 +21025,7 @@ int test_fight(void)
     check_mode_switch();
     check_coin_divert();
     check_mode_10_step();
+    check_char_select_pass();
 
     return g_failures - before;
 }

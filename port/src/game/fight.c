@@ -9,12 +9,15 @@
 #include "game/camera.h"
 #include "game/actors.h"
 #include "game/attract.h"
+#include "game/config.h"
 #include "game/effects.h"
 #include "game/flow.h"
 #include "game/rng.h"
 #include "../mem.h"
 #include "../symbols.h"
 #include "platform/render.h"
+
+#include <string.h>
 
 /* 0x10810D: the mode-3 single-player slot index, written by 0x41350. Ghidra
  * emits it only as the `ram0x0010810d` form, so gen_symbols.py has no DS_ name
@@ -318,8 +321,8 @@ void fight_char_join(void)
  * table 0x24B8C entry 0x25385, its only caller). It branches on the byte
  * DS_00108174 (`test al,al; jbe` is == 0), with two copies of the same body
  * split on DS_00104B1D == 3:
- * - 0: 0x44798 (DS_00104B1D == 3) or 0x43B24 (otherwise), the character
- *   select's per-frame input, a named gap below;
+ * - 0: 0x44798 (DS_00104B1D == 3, a named gap below) or 0x43B24
+ *   (otherwise, record §48-S), the character select's per-frame pass;
  * - 1: 0x43928, then 0x4F790's AL. When AL is non-zero, DS_00108174 takes the
  *   byte DS_00108172 (0x4391C/0x43921). When it is 0, the DS_00104B1D == 3 copy
  *   returns; the other decrements the word DS_0010816C (`dec edx` on the
@@ -334,9 +337,9 @@ void fight_mode_10_step(void)
     if (DSB(DS_00104B1D) == 3u) {                       /* 0x438B5/0x438BC */
         if (sub == 0u) {                                /* 0x438C3/0x438C5 */
             /* PORT: 0x438CD 0x44798, the DS_00104B1D == 3 character select's
-             * per-frame pass (to 0x4493A), is a named gap (record §47-M.5): it
-             * and its callees 0x44638, 0x4418C, 0x442A0 and 0x4434C are
-             * unported. */
+             * per-frame pass (to 0x4493A), is a named gap (records §47-M.5,
+             * §48-S.5): it and its callees 0x44638, 0x4418C, 0x442A0,
+             * 0x4434C, 0x44054 and 0x4408C are unported. */
             return;
         }
         if (sub != 1u) return;                          /* 0x438C7/0x438C9 */
@@ -345,10 +348,7 @@ void fight_mode_10_step(void)
             return;                                     /* 0x438E0 jz 0x43926 */
     } else {
         if (sub == 0u) {                                /* 0x438E9/0x438EB */
-            /* PORT: 0x438F3 0x43B24, the character select's per-frame pass (to
-             * 0x43D09), is a named gap (record §47-M.5): it and its callees
-             * 0x432A0, 0x435AC, 0x43464, 0x43EA0, 0x43FBC, 0x43D60 and 0x43AAC
-             * are unported. */
+            fight_char_select_pass();                   /* 0x438F3 0x43B24 */
             return;
         }
         if (sub != 1u) return;                          /* 0x438ED/0x438EF */
@@ -360,6 +360,369 @@ void fight_mode_10_step(void)
         }
     }
     DSB(DS_00108174) = DSB(DS_00108172);                /* 0x4391C/0x43921 */
+}
+
+/* ---- mode 0x10 sub-state 0: the character select's pass 0x43B24 (§48-S) - */
+
+#define DS_00104529 0x00104529u   /* no symbols.h name: DS_00104528's second byte */
+#define DS_000C8934 0x000C8934u   /* no symbols.h name: the joined side's prompt sprite */
+#define DS_000C8948 0x000C8948u   /* no symbols.h name: [side] that sprite's x word */
+#define DS_000C888A 0x000C888Au   /* no symbols.h name: [char] the cursor voice word */
+#define DS_000BB988 0x000BB988u   /* no symbols.h name: [class] the select stream */
+#define DS_000BB9B0 0x000BB9B0u   /* no symbols.h name: [class] the select palette */
+#define FN_000430E8 0x000430E8u   /* no symbols.h name: the versus-screen hook */
+
+/* 0x432A0 — record §48-S. EAX = side (kept in ECX). The unjoined side's
+ * prompt: when 0x2C060 reports a credit, 0x2C178 with EDX = 0x3700 (the
+ * DS_00104529 bit 1, the sprite prompt's y) or 0x1B (the text row); with no
+ * credit, 0x2C1C8 with EDX = 0x1B (EBX = 0 is not read). */
+void fight_char_prompt(u32 side)
+{
+    if (config_credit_ready() != 0u) {                  /* 0x432A5/0x432AA */
+        if ((DSB(DS_00104529) & 2u) != 0u)              /* 0x432AE */
+            prompt_press_start(side, 0x3700);           /* 0x432B7..0x432BE 0x2C178 */
+        else
+            prompt_press_start(side, 0x1B);             /* 0x432C7..0x432CE 0x2C178 */
+        return;
+    }
+    prompt_insert_coin(side, 0x1B);                     /* 0x432D7..0x432E0 0x2C1C8 */
+}
+
+/* 0x432EC — record §48-S. EAX = side, EDX = `flag`. With `flag`, the side's
+ * prompt sprite DS_00108144[side], when set, is marked dead (0x2B150; the
+ * slot is not zeroed) and 0x2C088 runs with col = row = 0 and EBX = side.
+ * Then strings 0x36, 0x37, 0x38 are released at the col word 0xC894C[side],
+ * rows r - 2, r - 1 and r, and string 0x39 at r + 1 when it is at least 2
+ * long, with mode 0x1000. r is 0x1B, or 0x1C when string 0x39 is shorter
+ * than 2 (0x65624 is strlen; the compare is signed). */
+void fight_char_text_clear(u32 side, u32 flag)
+{
+    s32 row = 0x1B;                                     /* 0x432F3 */
+    if (flag != 0u) {                                   /* 0x432F8 */
+        u32 rec = DSD(DS_00108144 + side * 4u);         /* 0x432FF */
+        if (rec != 0u) actor_set_dead(rec);             /* 0x43305/0x4330B 0x2B150 */
+        prompt_press_start_clear(0, 0, side);           /* 0x43310..0x43316 0x2C088 */
+    }
+    if ((s32)strlen((const char *)game_string_get(0x39u)) < 2) row = 0x1C;  /* 0x4331B..0x4332F */
+    s32 col = (s32)DSW(DS_000C894C + side * 2u);        /* 0x43349 */
+    text_cells_release(col, row - 2, game_string_get(0x36u), 0x1000u);  /* 0x43330..0x43354 */
+    text_cells_release(col, row - 1, game_string_get(0x37u), 0x1000u);  /* 0x43359..0x43376 */
+    text_cells_release(col, row, game_string_get(0x38u), 0x1000u);      /* 0x4337B..0x43397 */
+    if ((s32)strlen((const char *)game_string_get(0x39u)) >= 2)          /* 0x4339C..0x433AE */
+        text_cells_release(col, row + 1, game_string_get(0x39u), 0x1000u);  /* 0x433B0..0x433CF */
+}
+
+/* 0x433DC — record §48-S. EAX = side, EDX = `flag`: 0x432EC's `flag` arm,
+ * then strings 0x235 and 0x236 released at the col word 0xC894C[side], rows
+ * 0x1B and 0x1C, mode 0x1000. */
+void fight_char_opp_text_clear(u32 side, u32 flag)
+{
+    if (flag != 0u) {                                   /* 0x433E2 */
+        u32 rec = DSD(DS_00108144 + side * 4u);         /* 0x433E9 */
+        if (rec != 0u) actor_set_dead(rec);             /* 0x433EF/0x433F5 0x2B150 */
+        prompt_press_start_clear(0, 0, side);           /* 0x433FA..0x43400 0x2C088 */
+    }
+    s32 col = (s32)DSW(DS_000C894C + side * 2u);        /* 0x43422 */
+    text_cells_release(col, 0x1B, game_string_get(0x235u), 0x1000u);  /* 0x43405..0x4342D */
+    text_cells_release(col, 0x1C, game_string_get(0x236u), 0x1000u);  /* 0x43432..0x43457 */
+}
+
+/* 0x43464 — record §48-S. EAX = side. The joined side's blinking text, on the
+ * phase DS_000EF6DC & 0x1F:
+ * - 0: with the DS_00104529 bit 1, 0x432EC(side, 0) and the sprite 0xC8934
+ *   at (a2 = 0xC8948[side], a3 0xFF, a4 0x3700, a5 0) into
+ *   DS_00108144[side]; otherwise strings 0x36..0x38 (and 0x39 when at least
+ *   2 long) drawn by 0x2F198 where 0x432EC releases them;
+ * - 0x18: 0x432EC(side, DS_00104528 & 0x200). */
+void fight_char_text_blink(u32 side)
+{
+    u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x4346C..0x4347B */
+    if (phase != 0u) {                                  /* 0x43480 */
+        if (phase == 0x18u)                             /* 0x4358B */
+            fight_char_text_clear(side, DSD(DS_00104528) & 0x200u);  /* 0x43590..0x4359E */
+        return;
+    }
+    if ((DSB(DS_00104529) & 2u) != 0u) {                /* 0x43486 */
+        fight_char_text_clear(side, 0u);                /* 0x4348F..0x43493 0x432EC */
+        DSD(DS_00108144 + side * 4u) = actor_spawn(
+            (const u32 *)(mem + DS_000C8934),
+            DSW(DS_000C8948 + side * 2u), 0xFFu, 0x3700u, 0u);  /* 0x43498..0x434BC */
+        return;
+    }
+    s32 row = 0x1B;                                     /* 0x43474 */
+    if ((s32)strlen((const char *)game_string_get(0x39u)) < 2) row = 0x1C;  /* 0x434C8..0x434DC */
+    s32 col = (s32)DSW(DS_000C894C + side * 2u);        /* 0x434F5 */
+    text_cursor_set(col, row - 2, game_string_get(0x36u), 0x1000u);  /* 0x434E1..0x43500 */
+    text_cursor_set(col, row - 1, game_string_get(0x37u), 0x1000u);  /* 0x43505..0x43522 */
+    text_cursor_set(col, row, game_string_get(0x38u), 0x1000u);      /* 0x43527..0x43543 */
+    if ((s32)strlen((const char *)game_string_get(0x39u)) >= 2)      /* 0x43548..0x4355A */
+        text_cursor_set(col, row + 1, game_string_get(0x39u), 0x1000u);  /* 0x4355C..0x4357F */
+}
+
+/* 0x435AC — record §48-S. EAX = side. 0x43464's twin for the side that is
+ * not DS_00104AB8's with DS_00104B1D == 1: on phase 0 the same sprite (after
+ * 0x432EC(side, 0)) or strings 0x235/0x236 drawn at rows 0x1B/0x1C; on phase
+ * 0x18, 0x433DC(side, DS_00104528 & 0x200). */
+void fight_char_opp_text_blink(u32 side)
+{
+    u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x435B3..0x435BD */
+    if (phase != 0u) {                                  /* 0x435C2 */
+        if (phase == 0x18u)                             /* 0x4365D */
+            fight_char_opp_text_clear(side, DSD(DS_00104528) & 0x200u);  /* 0x43662..0x43670 */
+        return;
+    }
+    if ((DSB(DS_00104529) & 2u) != 0u) {                /* 0x435C8/0x435D5 */
+        fight_char_text_clear(side, 0u);                /* 0x435DF..0x435E8 0x432EC */
+        DSD(DS_00108144 + side * 4u) = actor_spawn(
+            (const u32 *)(mem + DS_000C8934),
+            DSW(DS_000C8948 + side * 2u), 0xFFu, 0x3700u, 0u);  /* 0x435ED..0x43602 */
+        return;
+    }
+    s32 col = (s32)DSW(DS_000C894C + side * 2u);        /* 0x43621 */
+    text_cursor_set(col, 0x1B, game_string_get(0x235u), 0x1000u);  /* 0x4360B..0x4362C */
+    text_cursor_set(col, 0x1C, game_string_get(0x236u), 0x1000u);  /* 0x43631..0x43652 */
+}
+
+/* 0x43EA0 — record §48-S. EAX = side (ECX), the other side EAX ^ 1. When the
+ * other side's byte DS_00108170 is 1: with both cursors DS_00108166 equal, the
+ * side's entry DS_00108154[side] takes +8 = 0xC88D4[side] and the other's
+ * +8 = 0xC88CC[other] and +0x28 |= 4; otherwise the side's +8 =
+ * 0xC88CC[side]. Then, with ch the side's signed cursor, the entry's +0x18 =
+ * 0xC8898[ch] and +0x1C = 0xC88A6[ch] (zero-extended words stored as dwords),
+ * +0x28 |= 4, the panel DS_0010815C[side] re-pointed at 0xC88DC[ch] (0x2BCF4)
+ * with the pset word 0xC88F8[ch] and palette 0xC8908[ch] (0x2A17C), and the
+ * voice 0xC888A[ch]. */
+void fight_char_portrait(u32 side)
+{
+    u32 other = side ^ 1u;                              /* 0x43EA6 */
+    if (DSB(DS_00108170 + other) == 1u) {               /* 0x43EAA/0x43EB0 */
+        if (DSB(DS_00108166 + side) == DSB(DS_00108166 + other)) {  /* 0x43EB5..0x43ECA */
+            DSD(DSD(DS_00108154 + side * 4u) + 8u) =
+                DSD(DS_000C88D4 + side * 4u);           /* 0x43ECC..0x43ED8 */
+            DSD(DSD(DS_00108154 + other * 4u) + 8u) =
+                DSD(DS_000C88CC + other * 4u);          /* 0x43EDB..0x43EE9 */
+            DSB(DSD(DS_00108154 + other * 4u) + 0x28u) |= 4u;  /* 0x43EEC/0x43EF3 */
+        } else {
+            DSD(DSD(DS_00108154 + side * 4u) + 8u) =
+                DSD(DS_000C88CC + side * 4u);           /* 0x43EF9..0x43F05 */
+        }
+    }
+    s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x43F08/0x43F0E */
+    DSD(DSD(DS_00108154 + side * 4u) + 0x18u) =
+        DSW(DS_000C8898 + (u32)(ch * 2));               /* 0x43F11..0x43F25 */
+    DSD(DSD(DS_00108154 + side * 4u) + 0x1Cu) =
+        DSW(DS_000C88A6 + (u32)(ch * 2));               /* 0x43F28..0x43F45 */
+    DSB(DSD(DS_00108154 + side * 4u) + 0x28u) |= 4u;    /* 0x43F48/0x43F4F */
+    actors_anim_seek(DSD(DS_0010815C + side * 4u),
+                     DSD(DS_000C88DC + (u32)(ch * 4)));  /* 0x43F53..0x43F6A 0x2BCF4 */
+    actor_pset_palette(DSD(DS_0010815C + side * 4u),
+                       DSW(DS_000C88F8 + (u32)(ch * 2)),
+                       DSD(DS_000C8908 + (u32)(ch * 4)));  /* 0x43F6F..0x43F96 0x2A17C */
+    /* PORT: 0x43FB1 0x2C3FC(0xC888A[ch]) voice, not wired (record §45-A). */
+}
+
+/* 0x43FBC — record §48-S. EAX = side. With ch the side's signed cursor and
+ * cls the signed byte 0xC8882[ch], the side's fighter DS_0010813C[side] takes
+ * +0x18 = 0xC88B4[side] and +0x1C = 0xC88B8[side] (zero-extended words stored
+ * as dwords), the stream 0xBB988[cls] at 3.0 (0x2BC30, `push 0x40400000`),
+ * the pset word 0x1C with the palette 0xBB9B0[cls] (0x2A17C); then the marker
+ * 0x1D7B8(side, cls) with EBX = 0x1800, and the fighter's +0x2C word =
+ * 0xC8924[cls]. */
+void fight_char_fighter(u32 side)
+{
+    s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x43FC2/0x43FD1 */
+    s32 cls = (s8)DSB(DS_000C8882 + (u32)ch);           /* 0x43FDC/0x43FF6 */
+    DSD(DSD(DS_0010813C + side * 4u) + 0x18u) =
+        DSW(DS_000C88B4 + side * 2u);                   /* 0x43FC8..0x43FE2 */
+    DSD(DSD(DS_0010813C + side * 4u) + 0x1Cu) =
+        DSW(DS_000C88B8 + side * 2u);                   /* 0x43FE5..0x43FF9 */
+    actors_anim_begin(DSD(DS_0010813C + side * 4u),
+                      DSD(DS_000BB988 + (u32)(cls * 4)),
+                      0x40400000u);                     /* 0x43FFC..0x4400F 0x2BC30 */
+    actor_pset_palette(DSD(DS_0010813C + side * 4u), 0x1Cu,
+                       DSD(DS_000BB9B0 + (u32)(cls * 4)));  /* 0x44014..0x44027 0x2A17C */
+    fight_select_marker_spawn(side, (u32)cls, 0x1800u); /* 0x4402C..0x44035 0x1D7B8 */
+    DSW(DSD(DS_0010813C + side * 4u) + 0x2Cu) =
+        DSW(DS_000C8924 + (u32)(cls * 2));              /* 0x4403A..0x44049 */
+}
+
+/* 0x43D0C — record §48-S. EAX = side. The confirm button in the command word
+ * DS_001088E0[side]: 1 for bit 0x200, else 2 for 0x400, else 3 for 0x800,
+ * else 0 (the `and eax,0xffff` result, 0x43D51). */
+u32 fight_char_button(u32 side)
+{
+    u16 w = DSW(DS_001088E0 + side * 2u);               /* 0x43D0F */
+    if ((w & 0x200u) != 0u) return 1u;                  /* 0x43D16..0x43D23 */
+    if ((w & 0x400u) != 0u) return 2u;                  /* 0x43D2A..0x43D3E */
+    if ((w & 0x800u) != 0u) return 3u;                  /* 0x43D45..0x43D58 */
+    return 0u;                                          /* 0x43D5D */
+}
+
+/* 0x4248C — record §48-S. EAX = cls, EDX = side. Each of the seven stage
+ * bytes DS_00108106 whose low 7 bits equal cls | side << 6 (`shl dl,6`, `or
+ * ch,dl`) becomes (b & 0x7F) ^ that value, i.e. 0, and the byte count
+ * DS_00108111 is decremented once per match (0x4249F..0x424C6). */
+void fight_stage_mark_drop(u32 cls, u32 side)
+{
+    u8 count = DSB(DS_00108111);                        /* 0x4248E */
+    u8 key = (u8)((u8)cls | (u8)(side << 6));           /* 0x42494..0x4249D */
+    for (u32 i = 0; i < 7u; i++) {                      /* 0x424C0..0x424C4 */
+        u8 b = (u8)(DSB(DS_00108106 + i) & 0x7Fu);      /* 0x4249F/0x424A5 */
+        if (b == key) {                                 /* 0x424B2 */
+            count--;                                    /* 0x424B8 */
+            DSB(DS_00108106 + i) = (u8)(b ^ key);       /* 0x424B6/0x424BA */
+        }
+    }
+    DSB(DS_00108111) = count;                           /* 0x424C6 */
+}
+
+/* 0x43D60 — record §48-S. EAX = side (EBX). The confirm: the class
+ * DS_0010816A[side] = 0xC8882[cursor], the side byte = 2 (AH), the fighter
+ * slot byte DS_00107813 + side * 0x94 = 0 (`lea`/`shl` to side * 37, `[eax*4
+ * + 0x107813]`), and DS_00105B34[side] = 0x43D0C(side). When the other side
+ * already has that class (its DS_0010816E byte, or, while that byte is
+ * 0xFF, its DS_0010816A byte with its side byte 2) with the same button,
+ * DS_00105B34[side] becomes 1 if the other's is 0, else 0. Unless the side's
+ * DS_0010816E byte is not 0xFF and already equals the class (0x43E43 jz
+ * 0x43E69): a non-0xFF previous class runs 0x33C18 first, then 0x4248C(class,
+ * side) and DS_0010816E[side] = the class. Last, the audit count, the entry
+ * DS_00108154[side] marked dead (0x2B150), 0x432EC(side, 0) and the 0x6C
+ * voice. */
+void fight_char_confirm(u32 side)
+{
+    s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x43D65/0x43D6B */
+    DSB(DS_0010816A + side) = DSB(DS_000C8882 + (u32)ch);  /* 0x43D6E/0x43D74 */
+    DSB(DS_00108170 + side) = 2u;                       /* 0x43D7A/0x43D7E */
+    DSB(DS_00107813 + side * 0x94u) = 0u;               /* 0x43D84..0x43D94 */
+    u32 btn = fight_char_button(side);                  /* 0x43D9D 0x43D0C */
+    DSB(DS_00105B34 + side) = (u8)btn;                  /* 0x43DA4 */
+    u32 other = side ^ 1u;                              /* 0x43DAA/0x43DAC */
+    int clash;
+    if ((s8)DSB(DS_0010816E + other) != -1) {           /* 0x43DAE..0x43DBA */
+        clash = DSB(DS_0010816A + side) == DSB(DS_0010816E + other)  /* 0x43DBC/0x43DC2 */
+             && (u32)DSB(DS_00105B34 + other) == btn;   /* 0x43DCA..0x43DD2 */
+    } else {
+        clash = DSB(DS_00108170 + other) == 2u          /* 0x43DE8..0x43DF0 */
+             && DSB(DS_0010816A + other) == DSB(DS_0010816A + side)  /* 0x43DF5/0x43DFB */
+             && (u32)DSB(DS_00105B34 + other) == btn;   /* 0x43E03..0x43E0B */
+    }
+    if (clash)
+        DSB(DS_00105B34 + side) = DSB(DS_00105B34 + other) == 0u ? 1u : 0u;  /* 0x43DD6..0x43E23 */
+    if ((s8)DSB(DS_0010816E + side) == -1
+        || DSB(DS_0010816E + side) != DSB(DS_0010816A + side)) {  /* 0x43E29..0x43E43 */
+        if ((s8)DSB(DS_0010816E + side) != -1)          /* 0x43E32 */
+            fight_char_reset(side);                     /* 0x43E45/0x43E47 0x33C18 */
+        fight_stage_mark_drop(DSB(DS_0010816A + side), side);  /* 0x43E4C..0x43E58 0x4248C */
+        DSB(DS_0010816E + side) = DSB(DS_0010816A + side);     /* 0x43E5D/0x43E63 */
+    }
+    /* PORT: 0x43E77 0x2E934(2, (s8)DS_0010816A[side]), the character-pick
+     * audit count (0x2E180/0x2E034 into the config region, 0x2D4EC), is a
+     * named gap with the other audit adds (spec §7, record §48-S). */
+    actor_set_dead(DSD(DS_00108154 + side * 4u));       /* 0x43E7C/0x43E83 0x2B150 */
+    fight_char_text_clear(side, 0u);                    /* 0x43E88..0x43E8C 0x432EC */
+    /* PORT: 0x43E96 0x2C3FC(0x6C) voice, not wired (record §45-A). */
+}
+
+/* 0x43AAC — record §48-S. The countdown step 0x43B24 runs every 64th frame:
+ * the word DS_0010816C is decremented (`dec edx`, stored as a word). While
+ * it stays > 0 (signed) it is redrawn by 0x2F528 at col 0x13, row 1, width 2,
+ * pad 0, mode 0x4000 (EBX = `[0x10816a] sar 0x10`, the signed word) and AL =
+ * 0 is returned. Otherwise each side whose byte is 1 is confirmed (0x43D60),
+ * the hook becomes 0x430E8, 0x4F980 arms mode 0x1A returning to 0x11, and AL
+ * = 1. */
+u32 fight_char_countdown(void)
+{
+    u16 dx = (u16)(DSW(DS_0010816C) - 1u);              /* 0x43AAF/0x43AB6 */
+    DSW(DS_0010816C) = dx;                              /* 0x43AB7 */
+    if ((s16)dx > 0) {                                  /* 0x43ABE/0x43AC1 */
+        text_number_draw_font2(0x13, 1, (s16)DSW(DS_0010816C), 2,
+                               0u, 0x4000u);            /* 0x43AF9..0x43B18 0x2F528 */
+        return 0u;                                      /* 0x43B1D */
+    }
+    for (u32 side = 0; side < 2u; side++)               /* 0x43AC3..0x43ADC */
+        if (DSB(DS_00108170 + side) == 1u)              /* 0x43AC5..0x43ACF */
+            fight_char_confirm(side);                   /* 0x43AD3 0x43D60 */
+    DSD(DS_00104AE4) = FN_000430E8;                     /* 0x43AE8 */
+    frontend_wipe_arm(0x11u);                           /* 0x43AEE 0x4F980 */
+    return 1u;                                          /* 0x43AF3 */
+}
+
+/* 0x43B24 — record §48-S. The character select's per-frame pass (mode 0x10,
+ * sub-state 0, DS_00104B1D != 3). Its only caller is 0x438F3 (0x438B4). For
+ * side 0..1 (EDX; EBX = side * 2), on the side byte DS_00108170:
+ * - 0: the poll 0x11F28(side); accepted, 0x43964, 0x43A08, DS_00104B1F |=
+ *   side + 1 and the byte = 1; refused, the prompt 0x432A0;
+ * - 1: 0x435AC with DS_00104B1D == 1 and side + 1 != the dword
+ *   DS_00104AB8, else 0x43464; then the stick and confirm below;
+ * - 2: when the other side's byte is 0 or 2, the hook 0x430E8 and 0x4F980
+ *   (0x11), and the pass returns at once; otherwise the next side;
+ * - above 2: the stick and confirm only.
+ * The stick is bits 4..7 of the command word DS_001088E0[side] (`and al,0xf0`
+ * with AH cleared): 0x10 moves the cursor DS_00108166[side] right while it is
+ * < 6, 0x20 left while it is > 0, 0x40 down 4 while it is < 4 and then clamps
+ * a cursor >= 7 to 6, 0x80 up 4 while it is >= 4, any other non-zero value
+ * leaves it (all signed, re-read each time); every non-zero value then runs
+ * 0x43EA0 and 0x43FBC. Bit 0 of the word confirms through 0x43D60. After the
+ * loop, a set DS_00105C04 resets the countdown DS_0010816C to 0xF and is
+ * cleared, and 0x43AAC runs when DS_000EF6DC & 0x3F == 0 (its AL is not
+ * read). */
+void fight_char_select_pass(void)
+{
+    for (u32 side = 0; side < 2u; side++) {             /* 0x43B27..0x43CCD */
+        u8 b = DSB(DS_00108170 + side);                 /* 0x43B2B */
+        if (b == 0u) {                                  /* 0x43B33/0x43B44 */
+            if (frontend_coin_poll(side) != 0u) {       /* 0x43B4E/0x43B55 */
+                fight_char_entry_spawn(side);           /* 0x43B59 0x43964 */
+                fight_char_select_actor(side);          /* 0x43B60 0x43A08 */
+                DSB(DS_00104B1F) = (u8)(DSB(DS_00104B1F) | (side + 1u));  /* 0x43B65..0x43B71 */
+                DSB(DS_00108170 + side) = 1u;           /* 0x43B77 */
+            } else {
+                fight_char_prompt(side);                /* 0x43B85 0x432A0 */
+            }
+            continue;                                   /* 0x43B7E/0x43B8A */
+        }
+        if (b == 1u) {                                  /* 0x43B35 */
+            if (DSB(DS_00104B1D) == 1u
+                && side + 1u != DSD(DS_00104AB8))       /* 0x43B8F..0x43BA3 */
+                fight_char_opp_text_blink(side);        /* 0x43BA7 0x435AC */
+            else
+                fight_char_text_blink(side);            /* 0x43BB0 0x43464 */
+        } else if (b == 2u) {                           /* 0x43B37/0x43B39 */
+            u8 o = DSB(DS_00108170 + (side ^ 1u));      /* 0x43BF0..0x43BF4 */
+            if (o != 0u && o != 2u) continue;           /* 0x43BFA..0x43C08 */
+            DSD(DS_00104AE4) = FN_000430E8;             /* 0x43C0E/0x43C18 */
+            frontend_wipe_arm(0x11u);                   /* 0x43C1E 0x4F980 */
+            return;                                     /* 0x43C23 */
+        }
+        u32 stick = (u32)DSW(DS_001088E0 + side * 2u) & 0xF0u;  /* 0x43BB5..0x43BC2 */
+        if (stick != 0u) {                              /* 0x43BC5/0x43BC7 */
+            if (stick == 0x10u) {                       /* 0x43C27/0x43C75 */
+                if ((s8)DSB(DS_00108166 + side) < 6)    /* 0x43C7E */
+                    DSB(DS_00108166 + side)++;          /* 0x43C83 */
+            } else if (stick == 0x20u) {                /* 0x43BD3/0x43C8B */
+                s8 c = (s8)DSB(DS_00108166 + side);
+                if (c > 0) DSB(DS_00108166 + side) = (u8)(c - 1);  /* 0x43C91..0x43C99 */
+            } else if (stick == 0x40u) {                /* 0x43BE3/0x43C49 */
+                if ((s8)DSB(DS_00108166 + side) < 4)    /* 0x43C52 */
+                    DSB(DS_00108166 + side) = (u8)(DSB(DS_00108166 + side) + 4u);  /* 0x43C57 */
+                if ((s8)DSB(DS_00108166 + side) >= 7)   /* 0x43C5E..0x43C6A */
+                    DSB(DS_00108166 + side) = 6u;       /* 0x43C6C */
+            } else if (stick == 0x80u) {                /* 0x43BE9/0x43C32 */
+                if ((s8)DSB(DS_00108166 + side) >= 4)   /* 0x43C3B */
+                    DSB(DS_00108166 + side) = (u8)(DSB(DS_00108166 + side) - 4u);  /* 0x43C40 */
+            }
+            fight_char_portrait(side);                  /* 0x43CA1 0x43EA0 */
+            fight_char_fighter(side);                   /* 0x43CA8 0x43FBC */
+        }
+        if ((DSW(DS_001088E0 + side * 2u) & 1u) != 0u)  /* 0x43CAD..0x43CBD */
+            fight_char_confirm(side);                   /* 0x43CC1 0x43D60 */
+    }
+    if (DSB(DS_00105C04) != 0u) {                       /* 0x43CD3 */
+        DSW(DS_0010816C) = 0xFu;                        /* 0x43CE3 */
+        DSB(DS_00105C04) = 0u;                          /* 0x43CEA */
+    }
+    if ((DSW(DS_000EF6DC) & 0x3Fu) == 0u)               /* 0x43CF0..0x43CFF */
+        (void)fight_char_countdown();                   /* 0x43D01 0x43AAC */
 }
 
 /* ---- the mode-0x1A hooks 0x430E8/0x4367C, 0x430C0 and 0x4454C (§46-B) -- */

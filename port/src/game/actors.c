@@ -2999,6 +2999,35 @@ void text_cells_release(s32 col, s32 row, const u8 *s, u32 mode)
     }
 }
 
+/* 0x2F388 — record §48-S. 0x2F280 with the count given (EBX, kept at
+ * [esp+4]) instead of measured: EAX = col (a negative col centres the run,
+ * `(0x2b - count) >> 1`, and when that is negative too the run is col 0 for
+ * 0x2A cells, 0x2F397..0x2F3AB), EDX = row. The same walk as 0x2F280
+ * (0x2F3C1..0x2F40F): each non-empty cell of DS_00105F38 is released through
+ * 0x2AD40 and zeroed, and the column wraps to the next row after 0x2A. */
+void text_cells_release_count(s32 col, s32 row, s32 count)
+{
+    if (col < 0) {                                      /* 0x2F393 */
+        col = (0x2b - count) >> 1;                      /* 0x2F397..0x2F39E */
+        if (col < 0) {                                  /* 0x2F3A0 */
+            col = 0;                                    /* 0x2F3A9 */
+            count = 0x2a;                               /* 0x2F3AB */
+        }
+    }
+    if (count <= 0) return;                             /* 0x2F3B7 */
+    u32 rowbase = (u32)row * 0xacu;                     /* 0x2F3BB */
+    for (s32 i = 0; i < count; i++) {                   /* 0x2F40C..0x2F40F */
+        u32 idx = (u32)col * 4u + rowbase;              /* 0x2F3C1/0x2F3C8 */
+        u32 rec = DSD(DS_00105F38 + idx);               /* 0x2F3CA */
+        if (rec != 0) {                                 /* 0x2F3D0 */
+            release_record(rec, actor_pset(rec));       /* 0x2F3EB 0x2AD40 */
+            DSD(DS_00105F38 + idx) = 0;                 /* 0x2F3F2 */
+        }
+        if (col <= 0x2a) col++;                         /* 0x2F3F8/0x2F407 */
+        else { rowbase += 0xacu; col = 0; }             /* 0x2F3FD/0x2F403 */
+    }
+}
+
 /* 0x2F4BC (`push esi; mov esi,[0x85f34]; call 0x2F198; mov [0x85f34],esi`).
  * 0x2F198 with the cursor saved and restored. Its eight callers are not in
  * this cycle, so the port takes the arguments explicitly. */
