@@ -13301,3 +13301,11 @@ follow-up must re-run the 8000-frame comparison above to confirm that.
 ## 48-A. Capture 3593, the third demo's spiked-ball fight divergence (roar-timing Task 36, branch `frame-3593`)
 
 *Scaffold: investigation in progress.*
+
+- First finding (a temporary `fn_resolve` miss log with the frame counter,
+  reverted): the port misses `0x45AD0` at f = 4914 (loop 4027), the first
+  frame where the DOSBox-X poll and the port diverge (the original's left
+  fighter, character 4, enters 9/7/1 on stream `0xEB64E`; the port stays
+  9/0/0). `0x45AD0` is character 4's reaction-`0x25` callback (the dword at
+  `0xA4C0C` = `0xA3528 + (4*64 + 0x25)*20`). §47-A.6 listed it as an
+  "early-boot" miss; it is not (raw wins).
