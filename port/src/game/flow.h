@@ -69,6 +69,27 @@ void frontend_darken_all(void);
  * Direct-called only, from unported callers (record §42-E). */
 void frontend_darken_marked(void);
 
+/* Record §43-B: the mode 0x1A/0x1B wipe and the DS_00104AE4 hook. None is
+ * reached by a ported path (nothing sets mode 0x1A: 0x4F980's eleven callers
+ * and the two hooks' storers are unported, and game_frame dispatches mode 3
+ * only), so they are unit-tested.
+ * 0x4F980: DS_001088F5 = 0, DS_00104AFA = ret_mode, DS_00104B00 = 0x1A. */
+void frontend_wipe_arm(u32 ret_mode);
+/* 0x28D68/0x28D80: DS_00104AE4 hooks; the hook becomes 0x43738 and 0x4F980
+ * arms mode 0x1A returning to 0x10 (0x28D80 plays the 0x2E voice first).
+ * Registered in actors_init. */
+void frontend_char_screen_hook(void);
+void frontend_char_screen_hook_voice(void);
+/* 0x4F9E4/0x4FA88: one wipe-in / wipe-out frame over the actor DS_000C98F0;
+ * 1 when the 17-frame sprite run is done, else 0. */
+u32 frontend_wipe_in(void);
+u32 frontend_wipe_out(void);
+/* 0x4F9A0/0x4F9C8: the mode 0x1A/0x1B handlers (0x24C5C at 0x25403/0x2540A).
+ * Each runs its wipe; when it is done, the DS_00104AE4 hook, then mode 0x1B /
+ * the saved DS_00104AFA. */
+void frontend_mode_1a_step(void);
+void frontend_mode_1b_step(void);
+
 /* 0x1CF40: the init chain's audio calls — AIL_startup, the shipped preferences,
  * four sample handles, the sequence handle and the 60 Hz timer slot. Called by
  * game_main(); exported so tests can run it without the full init chain (which

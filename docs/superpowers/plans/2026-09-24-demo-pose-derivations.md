@@ -9733,3 +9733,221 @@ missed one: the review found that `0x22CE4`'s `0x39834(ctx[1], ...)` ->
     (`0xA3CA8`, `0x20`), are unported. They were not part of this item.
   - The type-`0x19` spawners `0x48F98`/`0x28F08` (update-table entries 1/10,
     §41-D.5) are outside this item.
+
+## 43-B. The mode `0x1A`/`0x1B` wipe and the `DS_00104AE4` hooks `0x28D68`/`0x28D80` (named-gap batch 3, branch `gap3-modes`)
+
+**Result in one line.** The hook installers `0x28D68`/`0x28D80`, the mode
+`0x1A` arm `0x4F980`, the mode `0x1A`/`0x1B` handlers `0x4F9A0`/`0x4F9C8`
+and the callees they needed (the wipes `0x4F9E4`/`0x4FA88` and `0x10D70`) are
+ported: `frontend_char_screen_hook`, `frontend_char_screen_hook_voice`,
+`frontend_wipe_arm`, `frontend_mode_1a_step`, `frontend_mode_1b_step`,
+`frontend_wipe_in`, `frontend_wipe_out` (`flow.c`) and `actor_pset_word_set`
+(`actors.c`). Both hooks are registered. Each handler's `call [0x104AE4]` goes
+through `fn_resolve`. **The dispatch in `game_frame` is not wired**: nothing on
+a ported path stores mode `0x1A` (§43-B.2), so cases `0x1A`/`0x1B` stay a named
+gap and the chain is unit-tested only.
+
+**Correction to §42-F.2.** It says `0x28D68` and `0x28D80` "store the address
+into `DS_00104AE4`, then call `0x4F980(0x10)`", and lists the code that loads
+the setters as their callers. The raw shows that both are **themselves
+`DS_00104AE4` values**, with no rel32 entrance. Every immediate that loads them
+is followed by a store into `DS_00104AE4`: `0x42CF3 mov ebx` → `0x42D04`,
+`0x42D34 mov edx` → `0x42D40`, `0x42D7C mov ecx` → `0x42D8F`, `0x42FB6 mov edx`
+→ `0x42FBD` (all in `0x42CB4`), and `0x28E4E mov esi` → `0x28E60` (in
+`0x28DA4`, which also stores CX, loaded with `0x17` at `0x28E3A`, as the
+mode at `0x28E66`). So the chain is: a
+dispatcher calls the hook `0x28D68`/`0x28D80`, which installs `0x43738` and
+arms mode `0x1A`. Then `0x4F9A0` calls `0x43738` through the same pointer.
+
+### 43-B.1 The raw (Ghidra `disassemble_function`; `read_memory` + capstone where Ghidra has no function; fixups applied)
+
+- **`0x28D68`** (no Ghidra function): `push edx; mov edx,0x43738; mov
+  eax,0x10; mov [0x104ae4],edx; call 0x4F980; pop edx; ret`.
+- **`0x28D80`** (no Ghidra function): `push edx; mov eax,0x2e; mov
+  edx,0x43738; call 0x2C3FC` (the voice; it pushes EBX/EDX/EDI, §42-E.2, so
+  EDX survives); `mov eax,0x10; mov [0x104ae4],edx; call 0x4F980; pop edx;
+  ret`.
+- **`0x4F980`**: `push edx; xor dl,dl; mov [0x1088f5],dl; mov edx,0x1a; mov
+  [0x104afa],ax; mov word [0x104b00],dx; pop edx; ret`. Both stores are words.
+- **`0x4F9A0`**: `push edx; call 0x4F9E4; test eax,eax; jz ret; call
+  [0x104ae4]; xor ah,ah; mov edx,0x1b; mov [0x1088f5],ah; mov word
+  [0x104b00],dx; pop edx; ret`.
+- **`0x4F9C8`**: `call 0x4FA88; test eax,eax; jz ret; call [0x104ae4]; mov
+  ax,[0x104afa]; mov [0x104b00],ax; ret`.
+- **`0x4F9E4`** (the wipe-in step; it pushes and pops EBX/ECX/EDX/ESI):
+  - If `[0xC98F0]` == 0: `ecx = 0xFF; push edx` (0, the a5); `eax = 0xC98F4;
+    xor ebx,ebx; call 0x2AE14`. So the spawn is (a2 = EDX = 0, a3 = 0xFF,
+    a4 = 0, a5 = 0), stored to `[0xC98F0]`, then `[0x10150C]` =
+    `[0x101508]`.
+  - `mov eax,[0x1088f2]; sar eax,0x18; cmp eax,0x10; jle`. This is the
+    signed byte `0x1088F5`.
+  - Above `0x10`: `0x2B150([0xC98F0])`, `ecx = 0`, `eax = 1`, `[0xC98F0]` =
+    0, `call 0x2BAF4` (EAX = 1, the arm `actors_reset` ports), byte
+    `[0x1088F4]` = 1, return 1.
+  - Otherwise: `al = [0x1088F5]`, `ebx = [0xC98F0]`, `movsx esi,al`, `push
+    ebx`, `si = [esi*2+0xC991C]`, `and esi,0xffff`, `inc al`, `[0x1088F5]` =
+    al, `eax = esi`, `call 0x10D70`, return 0.
+- **`0x4FA88`** (the wipe-out step) is the same shape with the descriptor
+  `0xC9908` and the table `0xC993E`. There are two differences:
+  - The spawn arm also clears byte `[0x1088F4]` (`0x4FAB7 xor ah,ah; 0x4FAB9`),
+    so only on the spawn frame.
+  - The done arm returns 1 with no `0x2BAF4` and no `0x1088F4` store.
+- **`0x10D70`**: `ebx = [esp+4]` (the record), then
+  `edx = [0x1014EC] + word [ebx+0x56] << 5`, `and byte [ebx+0x28],0xfb`,
+  `mov [edx],ax`. Then `bx = [ebx+0x28]; xor bl,bl; and bh,0x40`. If that
+  is non-zero it does `or ah,0x80`, else `and ah,0x7f`. Then `mov [edx],ax;
+  ret 4`. The first store is overwritten at the same address with no read in
+  between, so the port keeps only the second.
+- **Tables** (data object):
+
+| address | contents |
+|---|---|
+| `0xC98F0` | 0 (the wipe actor's slot, BSS-like) |
+| `0xC98F4` | desc `0x2DD9, 0, 0x802800, 0x1000, 0x3E638` |
+| `0xC9908` | desc `0x2DE9, 0, 0x802800, 0x1000, 0x3E638` |
+| `0xC991C` | 17 words `0x2DD9..0x2DE8, 0x3F13` |
+| `0xC993E` | 17 words `0x2DE9..0x2DF8, 0x3F14` |
+
+  The counter runs 0..0x10, one word per frame. The 18th frame (counter
+  0x11) is the done frame.
+- **The `0x24C5C` cases** (jump table `0x24B8C`, on the word `[0x104B00]`,
+  `cmp ax,0x33; ja`): entry `0x1A` = `0x25403` (`call 0x4F9A0`), entry
+  `0x1B` = `0x2540A` (`call 0x4F9C8`). Both then jump to `0x2540F`.
+
+### 43-B.2 Entrances (`get_xrefs_to`, a rel32 call/jmp/jcc scan of the code object, a dword scan of both objects)
+
+| target | rel32 | dwords |
+|---|---|---|
+| `0x28D68` | none | code `0x42CF4`, `0x42D35`, `0x42D7D`, `0x42FB7` (in `0x42CB4`); none in data |
+| `0x28D80` | none | code `0x28E4F` (in `0x28DA4`); none in data |
+| `0x4F980` | `0x1F44D` (`0x1EEB0`), `0x25816` (`0x257A4`), `0x25A4C`, `0x25A79`, `0x26991`, `0x27162`, `0x28D79`, `0x28D9B`, `0x43AEE` (`0x43AAC`), `0x43C1E` (`0x43B24`), `0x4482A` (`0x44798`) | none |
+| `0x4F9A0` | `0x25403` only | none |
+| `0x4F9C8` | `0x2540A` only | none |
+| `0x4F9E4` | `0x4F9A1` only | none |
+| `0x4FA88` | `0x4F9C8` only | none |
+| `0x10D70` | `0x1D3F5`, `0x1D42C`, `0x1D458` (`0x1D2F0`), `0x1D4C6` (`0x1D464`), `0x1DAE0` (`0x1DA84`), `0x4FA79`, `0x4FB14` | none |
+| `0xC98F0` | only inside `0x4F9E4`/`0x4FA88` (10 code immediates) | none |
+| `0x1088F5` | only `0x4F980`, `0x4F9A0`, `0x4F9E4`, `0x4FA88` (6 immediates, plus the two `[0x1088F2]` dword reads) | none |
+
+**Why the dispatch is not wired.** The only store of mode `0x1A` is
+`0x4F980`. None of its eleven callers runs in the port:
+- `0x28D79`/`0x28D9B` are the two hooks. Their storers `0x42CB4` (called only
+  at `0x425DE`, in `0x424E8`, mode `0x13`, `0x253C4`) and `0x28DA4` (called at
+  `0x25269`/`0x25353`, cases 6 and `0xC`) are unported.
+- `0x25816` is in `0x257A4`, the coin divert. It stores the hook `0x4367C`,
+  which is unported and has no Ghidra function. `0x11D04` reaches it at
+  `0x11D41`, after a coin is accepted, and at `0x11EB8`, in state 8
+  (`0x11CDC[8]` = `0x11EAC`). The port stubs both. `game_state_step` returns
+  after `frontend_coin_poll` accepts, with a `PORT:` note, and state 8 is
+  empty. State 8 is also unreachable in the port: attract phase `0xB` enters
+  it only when `DS_00108173` != 0, and no ported code writes that byte (its
+  image value is 0; its writers are in unported code).
+- The rest are in unported mode or select-screen code: `0x1EEB0` (mode
+  `0x1E`), `0x26991`, `0x27162`, `0x25A4C`/`0x25A79`, and `0x43AAC`/
+  `0x43B24`/`0x44798`.
+
+So `DS_00104B00` never becomes `0x1A` on a ported path. `game_frame` keeps its
+`switch` on mode 3 and names cases `0x1A`/`0x1B` in its `PORT:` note.
+
+### 43-B.3 The port
+
+- `flow.c`, after `frontend_darken_marked`, has one C function per original.
+  The spawns pass `actor_spawn(desc, 0, 0xFF, 0, 0)`. The counter is read as
+  `s8` and compared `> 0x10`. The done arm of `0x4F9E4` calls
+  `actors_reset()`, the EAX = 1 arm of `0x2BAF4`.
+- The hook call is `fn_resolve(DSD(DS_00104AE4))`, and a miss is skipped
+  (`PORT:`). The two stored values that stay unregistered are no-ops:
+  `0x29D60` (a bare `ret`, stored by `0x43738`/`0x444C8`, so it is the hook
+  `0x4F9C8` calls after the character screen) and `0x5D812` (§42-E.4). EAX is
+  dead after both calls: `xor ah,ah` plus AH/DX stores at `0x4F9B0`, and the
+  load at `0x4F9D7`.
+- The voice `0x2C3FC(0x2E)` in `0x28D80` is a `PORT:` note (spec §7).
+- `actors.c`: `actor_pset_word_set` (`0x10D70`) after `actor_set_dead`. It has
+  no pool check, as in the raw. `fn_register(0x28D68/0x28D80)` is at the end
+  of `actors_init`.
+- `0x10D70`'s other callers (`0x1D2F0`, `0x1D464`, `0x1DA84`) stay unported.
+
+### 43-B.4 The assertions and mutations
+
+`check_char_screen_modes` (`test_fight.c`, run after
+`check_char_screen_open`) uses the same snapshot: the data object, both pools,
+both buffers, the resource table, the DAC and the aperture. Its runs:
+- **(a)** `fn_resolve(0x28D68/0x28D80)` returns the ports.
+- **(b)** `0x4F980(0x1234)` alone, then each hook, from sentinels:
+  - `0x1088F5` becomes 0 and its neighbours `0x1088F4`/`0x1088F6` are
+    untouched;
+  - the `0x104AF8` dword becomes `ret_mode << 16 | 0xA5A5`, a word store;
+  - `0x104B00` becomes `0xBEEF001A`, a word store;
+  - `DS_00104AE4` becomes `0x43738` for the hooks and is untouched for the
+    bare arm.
+- **(c)** `0x10D70` alone:
+  - `+0x28` = `0x4004` with word `0x1234` gives `0x9234` and `+0x28` =
+    `0x4000`;
+  - `+0x28` = `0x2804` with word `0x8123` gives `0x0123` (bit 15 cleared, and
+    bit 13 is not the source);
+  - pset `+2` is untouched.
+- **(d)** The whole chain from `0x28D68`, with `chs_seed(3, 6, 2, 1)`:
+  - Frame 1 spawns id `0x2DD9` (`+0x49` = `0xFF`), resyncs `0x10150C` to
+    `0x123` and sets the counter to 1.
+  - Frame 2 gives `0x2DDA | 0x8000`, after `+0x28` bits 14 and 2 are seeded;
+    bit 2 is cleared.
+  - Frame 17 gives `0x3F13 | 0x8000` and counter `0x11`. There is no resync,
+    the mode is still `0x1A`, the gate keeps its sentinel, and the hook has
+    not run (`DS_00104AE4` is still `0x43738`, `0x108174` is still `0x77`).
+  - Frame 18: the slot is 0, the gate is 1, the counter is 0, the mode is
+    `0x1B` and `AFA` is `0x10`. `0x43738`'s whole result holds
+    (`chs_check_common`, and `chs_check_side` for side 1), with 9 records
+    active and both tick counters zeroed by `0x52106`.
+  - The `0x1B` wipe: id `0x2DE9`, the gate cleared and the resync on the spawn
+    frame only (sentinels `0x55`/`0x300` are kept on later frames), and
+    `0x3F14` at frame 17.
+  - `DS_00104AE4` = `0x29B74` (visible: `DS_00104AFE` = `0x78`, mode `0x15`).
+    It stays unrun on frames 2..17. On frame 18 it runs, and the mode then
+    becomes `0x10` (the copy comes after the hook). The actor is dead, and the
+    active count stays 10 (no `0x2BAF4`).
+- **(e)** A done frame of `0x4F9A0` with the no-op hook `0x29D60`: the active
+  list is empty (`0x4F9E4`'s own `0x2BAF4`), `0x10150C` is 0, and the mode
+  dword is `0xBEEF001B`.
+- **(f)** The signed counter: `0xFF` is not done, becomes 0, and writes the
+  word before the table (`0xC991A` = 3).
+
+**Mutations** (`scratchpad/g3m/mut.py`, `mut.log`): 38 single-site edits.
+37 fail 2..60 assertions. They cover:
+- each store and its width, the hook value, the return mode;
+- the resyncs, the signedness and the threshold, the tables and descriptors,
+  a3;
+- the `0x2BAF4` (dropped, or added to the wipe-out), the gate value and its
+  placement;
+- the kill and the slot clear in the wipe-out;
+- the hook dropped, called every frame, or called after the mode copy;
+- the three `0x10D70` operations and both registrations.
+
+One survivor, `M12b`, is equivalent: it drops the `0x2B150` in `0x4F9E4`'s
+done arm. The next call, `0x2BAF4`, zeroes the record and pset pools,
+re-inits the render list and the palette ownership table (`0x336C0`), so
+nothing `0x2B150` wrote survives. Its `cb2` arm needs `+0x2B` bit 6, which the
+descriptor's flags `0x802800` do not set. The same kill in `0x4FA88` (`M33`,
+no reset after it) fails 2 assertions.
+
+### 43-B.5 Measured and remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, with 0
+  compiler warnings. `make verify` and the drivers were not run, as the brief
+  requires.
+- No oracle is expected to move. No ported path reaches the new functions or
+  sets mode `0x1A` (§43-B.2). The two new registrations are code immediates
+  only, so no stream walk resolves them.
+- Remaining named gaps:
+  - the `game_frame` cases `0x1A`/`0x1B` (they wait for a ported caller of
+    `0x4F980`);
+  - `0x4F980`'s other callers, most directly the coin divert `0x257A4` with
+    its hook `0x4367C` (no Ghidra function), and `0x11D04`'s two stubbed
+    routes into it (`0x11D41`, state 8 at `0x11EB8`);
+  - the hooks' storers `0x42CB4` (mode `0x13`) and `0x28DA4` (cases 6/`0xC`);
+  - `0x10D70`'s other callers `0x1D2F0`/`0x1D464`/`0x1DA84`;
+  - `0x2C3FC(0x2E)`, the voice (spec §7);
+  - the port's `game_frame` switch reads `DS_00104B00` as a dword, where the
+    raw reads a word (`0x24EEC mov ax,[0x104b00]`). This is harmless while
+    `0x104B02` stays 0 on ported paths, but `0x257A4` passes that
+    address to `0x65490` (`0x257FC mov eax,0x104b02`). Any future wiring of these
+    cases should switch on the word.

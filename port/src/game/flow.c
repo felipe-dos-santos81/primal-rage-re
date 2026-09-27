@@ -371,6 +371,129 @@ void frontend_darken_marked(void)
     DSB(DS_00104B25) = 0u;                              /* 0x415FF (AH = 0) */
 }
 
+/* ---- the mode 0x1A/0x1B wipe and the DS_00104AE4 hook (record §43-B) ---- */
+
+#define DS_000C98F4 0x000C98F4u   /* no symbols.h name: the wipe-in descriptor */
+#define DS_000C9908 0x000C9908u   /* no symbols.h name: the wipe-out descriptor */
+#define DS_000C991C 0x000C991Cu   /* no symbols.h name: 17 wipe-in sprite words */
+#define DS_000C993E 0x000C993Eu   /* no symbols.h name: 17 wipe-out sprite words */
+
+/* 0x4F980 — record §43-B. Arm mode 0x1A: the wipe counter DS_001088F5 = 0
+ * (0x4F983), the return mode DS_00104AFA = AX (0x4F98E, a word) and the mode
+ * DS_00104B00 = 0x1A (0x4F994, a word). EDX is pushed and popped. */
+void frontend_wipe_arm(u32 ret_mode)
+{
+    DSB(DS_001088F5) = 0u;                              /* 0x4F983 */
+    DSW(DS_00104AFA) = (u16)ret_mode;                   /* 0x4F98E */
+    DSW(DS_00104B00) = 0x1Au;                           /* 0x4F994 */
+}
+
+/* 0x28D68 — record §43-B. A DS_00104AE4 hook itself (stored by 0x42CB4 at
+ * 0x42D04/0x42D40/0x42D8F/0x42FBD): the hook becomes 0x43738 (0x28D73) and
+ * 0x4F980 arms mode 0x1A with the return mode 0x10 (0x28D79). */
+void frontend_char_screen_hook(void)
+{
+    DSD(DS_00104AE4) = FN_00043738;                     /* 0x28D73 */
+    frontend_wipe_arm(0x10u);                           /* 0x28D79 0x4F980 */
+}
+
+/* 0x28D80 — record §43-B. 0x28D68 with the voice first; stored as the hook by
+ * 0x28DA4 (0x28E4E/0x28E60). EDX (0x43738) survives 0x2C3FC, which pushes and
+ * pops EBX, EDX and EDI (record §42-E.2). */
+void frontend_char_screen_hook_voice(void)
+{
+    /* PORT: 0x28D8B 0x2C3FC(0x2E) voice, out of scope (spec §7). */
+    DSD(DS_00104AE4) = FN_00043738;                     /* 0x28D95 */
+    frontend_wipe_arm(0x10u);                           /* 0x28D9B 0x4F980 */
+}
+
+/* 0x4F9E4 — record §43-B. One wipe-in frame. The first frame (DS_000C98F0 ==
+ * 0) spawns 0xC98F4 (a2 = EDX = 0, a3 = 0xFF, a4 = EBX = 0, a5 = the pushed
+ * EDX = 0) into DS_000C98F0 and resyncs the frame counter DS_0010150C to the
+ * tick DS_00101508. While the signed counter byte DS_001088F5 (0x4FA13 `mov
+ * eax,[0x1088f2]; sar eax,0x18`) is <= 0x10 (`jle`), 0x10D70 gives the record
+ * the sprite word 0xC991C[counter] (zero-extended, 0x4FA64), the counter is
+ * incremented (stored at 0x4FA72, before the call) and 0 returns. Past 0x10
+ * the record is killed, DS_000C98F0 = 0, 0x2BAF4 runs with EAX = 1, the render
+ * gate DS_001088F4 = 1 and 1 returns. */
+u32 frontend_wipe_in(void)
+{
+    if (DSD(DS_000C98F0) == 0u) {                       /* 0x4F9EE */
+        DSD(DS_000C98F0) = actor_spawn((const u32 *)(mem + DS_000C98F4),
+                                       0u, 0xFFu, 0u, 0u);  /* 0x4F9FF/0x4FA04 */
+        DSD(DS_0010150C) = DSD(DS_00101508);            /* 0x4FA09/0x4FA0E */
+    }
+    s8 n = (s8)DSB(DS_001088F5);                        /* 0x4FA13/0x4FA18 */
+    if ((s32)n > 0x10) {                                /* 0x4FA1B/0x4FA1E */
+        actor_set_dead(DSD(DS_000C98F0));               /* 0x4FA25 0x2B150 */
+        DSD(DS_000C98F0) = 0u;                          /* 0x4FA31 */
+        actors_reset();                                 /* 0x4FA37 0x2BAF4 (eax = 1) */
+        DSB(DS_001088F4) = 1u;                          /* 0x4FA3C */
+        return 1u;                                      /* 0x4FA43 */
+    }
+    u32 rec = DSD(DS_000C98F0);                         /* 0x4FA52 */
+    u32 word = DSW(DS_000C991C + (u32)((s32)n * 2));    /* 0x4FA5C/0x4FA64 */
+    DSB(DS_001088F5) = (u8)(n + 1);                     /* 0x4FA6A/0x4FA72 */
+    actor_pset_word_set(rec, word);                     /* 0x4FA79 0x10D70 */
+    return 0u;                                          /* 0x4FA7E */
+}
+
+/* 0x4FA88 — record §43-B. One wipe-out frame: 0x4F9E4 with the descriptor
+ * 0xC9908 and the words 0xC993E, the render gate DS_001088F4 cleared on the
+ * spawn frame only (0x4FAB9, inside the DS_000C98F0 == 0 arm), and no 0x2BAF4
+ * and no gate store when the counter passes 0x10. */
+u32 frontend_wipe_out(void)
+{
+    if (DSD(DS_000C98F0) == 0u) {                       /* 0x4FA92 */
+        DSD(DS_000C98F0) = actor_spawn((const u32 *)(mem + DS_000C9908),
+                                       0u, 0xFFu, 0u, 0u);  /* 0x4FAA3/0x4FAA8 */
+        DSD(DS_0010150C) = DSD(DS_00101508);            /* 0x4FAAD/0x4FAB2 */
+        DSB(DS_001088F4) = 0u;                          /* 0x4FAB9 */
+    }
+    s8 n = (s8)DSB(DS_001088F5);                        /* 0x4FABF/0x4FAC4 */
+    if ((s32)n > 0x10) {                                /* 0x4FAC7/0x4FACA */
+        actor_set_dead(DSD(DS_000C98F0));               /* 0x4FAD1 0x2B150 */
+        DSD(DS_000C98F0) = 0u;                          /* 0x4FADD */
+        return 1u;                                      /* 0x4FAD8 */
+    }
+    u32 rec = DSD(DS_000C98F0);                         /* 0x4FAED */
+    u32 word = DSW(DS_000C993E + (u32)((s32)n * 2));    /* 0x4FAF7/0x4FAFF */
+    DSB(DS_001088F5) = (u8)(n + 1);                     /* 0x4FB05/0x4FB0D */
+    actor_pset_word_set(rec, word);                     /* 0x4FB14 0x10D70 */
+    return 0u;                                          /* 0x4FB19 */
+}
+
+/* 0x4F9A0 — record §43-B. The mode 0x1A handler (0x24C5C case 0x1A, the jump
+ * table 0x24B8C entry 0x25403): once 0x4F9E4 reports the wipe done, the hook
+ * runs, the counter DS_001088F5 = 0 (AH after `xor ah,ah`) and the mode
+ * becomes 0x1B (a word). */
+void frontend_mode_1a_step(void)
+{
+    if (frontend_wipe_in() == 0u) return;               /* 0x4F9A1/0x4F9A8 */
+    /* PORT: `call dword [0x104ae4]` goes through the registry and a miss is
+     * skipped. The two values the image stores there that stay unregistered
+     * are no-ops: 0x29D60 (a bare `ret`, stored by 0x43738/0x444C8) and
+     * 0x5D812 (`xor eax,eax; ret`, record §42-E.4). The returned EAX is dead:
+     * `xor ah,ah` and byte/word stores of AH/DX follow. */
+    void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
+    if (hook != NULL) hook();                           /* 0x4F9AA */
+    DSB(DS_001088F5) = 0u;                              /* 0x4F9B7 */
+    DSW(DS_00104B00) = 0x1Bu;                           /* 0x4F9BD */
+}
+
+/* 0x4F9C8 — record §43-B. The mode 0x1B handler (entry 0x2540A): once 0x4FA88
+ * reports the wipe done, the hook runs again and the mode takes the word
+ * DS_00104AFA that 0x4F980 saved. */
+void frontend_mode_1b_step(void)
+{
+    if (frontend_wipe_out() == 0u) return;              /* 0x4F9C8/0x4F9CF */
+    /* PORT: the registry call and the no-op misses of 0x4F9A0; EAX is
+     * overwritten by the 0x4F9D7 load. */
+    void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
+    if (hook != NULL) hook();                           /* 0x4F9D1 */
+    DSW(DS_00104B00) = DSW(DS_00104AFA);                /* 0x4F9D7/0x4F9DD */
+}
+
 /* 0x11F6C: the six-entry selector. Phase 0 draws the first entry then falls
  * into phase 1 (no jump between 0x11FD4 and 0x11FDA); phase 1 draws an entry;
  * phase 4 pauses on DS_000F0A68; phase 2 advances the entry and leaves for
@@ -1402,11 +1525,18 @@ void game_frame(void)
          * and diagnostics; deferred to sub-projects 4/5. The effect call sites
          * 0x29B74 (frontend_darken_all, the DS_00104AE4 countdown handler)
          * and 0x41578 (frontend_darken_marked) are ported (record §42-E), but
-         * their callers are not: the six `call [0x104ae4]` dispatchers
+         * their callers are not: the `call [0x104ae4]` dispatchers
          * (0x4F2B0..0x4F9C8, called at 0x253E7..0x2540A in these cases), the
          * direct call 0x27B17 and the four 0x41578 sites in 0x416D4/0x41C28.
          * DS_00104B00 is fixed at 3 by 0x10E80, so no reachable path enters
-         * those cases. */
+         * those cases. The mode 0x1A/0x1B handlers 0x4F9A0/0x4F9C8 (cases
+         * 0x1A/0x1B, table 0x24B8C) are ported as frontend_mode_1a_step/
+         * frontend_mode_1b_step (record §43-B) but not dispatched here: only
+         * 0x4F980 stores mode 0x1A, and its eleven callers (0x1F44D, 0x25816,
+         * 0x25A4C, 0x25A79, 0x26991, 0x27162, 0x28D79, 0x28D9B, 0x43AEE,
+         * 0x43C1E, 0x4482A) sit in unported code or in the two hooks, whose
+         * storers 0x42CB4 (mode 0x13's 0x424E8) and 0x28DA4 (cases 6/0xC)
+         * are unported. */
         break;
     }
 
