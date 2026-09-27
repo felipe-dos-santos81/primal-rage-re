@@ -11068,7 +11068,7 @@ target its entrance stream reaches, `0x246D4`, and that target's callee
 `0x3BCE0`: 3 functions and 661 raw bytes (363 + 128 + 170), with no
 unported callee except the voice. The three dispatch sites are not ported.
 Each lies in an interactive mode's handler (modes 5, `0x0D` and `0x32`). The
-port's `0x24C5C` never runs those modes, and the handlers need 14 unported
+port's `0x24C5C` never runs those modes, and the handlers need 13 unported
 callees. They remain a named gap, with the evidence in 46-C.2. No port path
 reaches any of the new code, so no oracle is expected to move (46-C.5).
 
@@ -11096,8 +11096,17 @@ reaches any of the new code, so no oracle is expected to move (46-C.5).
   - **The spawn.** `0x33C78(EAX = side, EDX = x, ECX = word [0xBD898], EBX =
     0, push a5 & 0xFFFF)` (`0x245E7..0x245FD`). `0x33C78` hands the
     caller's EBX to `0x2AE14` untouched (no write to EBX between `0x33C78`
-    and `0x33CD3`). Both of its callers zero it (`0x245EF` and `0x33ED7`),
-    which is why the port's `fighter_spawn_slot` passes 0.
+    and `0x33CD3`), where it becomes the record's y (`+0x1C`). `0x33C78` has
+    nine callers (`get_xrefs_to` and the rel32 scan agree): `0x15AC9`,
+    `0x245FD`, `0x24899`, `0x33EE0`, `0x357D6`, `0x40D48`, `0x40EF9`,
+    `0x4607D` and `0x491E5`. Eight zero EBX. `0x40D48` does not: it is in
+    `0x40CB0` (entry 0 of `0xA8628`), and both of its placement arms pass
+    through `mov ebx, 0x4C00` at `0x40D2F`. The port's `fighter_spawn_slot`
+    passes a literal 0, which is correct for its two port callers, `0x33EB4`
+    (`0x33ED7`) and `0x24568` (`0x245EF`). A port of `0x40CB0` must pass EBX
+    through. `fighter.c` carries a `PORT:` note there, and 46-C.5 names the
+    gap. (Corrected in review round 1: the first version said `0x33C78` had
+    two callers.)
   - **The record.** `0x2BC30(slot record, 0xE453A, 0x40800000)`
     (`0x24613..0x24623`), `0x39A10(record, 0x309)` (`0x24628..0x24633`), and
     `0x2372C(record)` (`0x24638/0x2463E`). The record is re-read from
@@ -11182,18 +11191,19 @@ The three dispatch sites:
 
 **Why the dispatchers stay a gap.**
 - The port's `game_frame` dispatches only case 3 of `0x24C5C`.
-- Beyond the handlers' own 2208 bytes, they call 14 unported functions, 2475
+- Beyond the handlers' own 2208 bytes, they call 13 unported functions, 2384
   bytes before their own callees:
-  - `0x25C88`: `0x3CB68` (91), `0x25C1C` (91), `0x256F4` (173), `0x4F37C`
-    (182), `0x32970` (203), `0x32B00` (73), `0x32B4C` (70) and `0x1D838`
-    (87);
+  - `0x25C88`: `0x25C1C` (91), `0x256F4` (173), `0x4F37C` (182), `0x32970`
+    (203), `0x32B00` (73), `0x32B4C` (70) and `0x1D838` (87);
   - `0x274FC`: `0x28130` (404), `0x2C2B0` (82), `0x4DBEC` (755, the
     mode-`0x0D`/`0x32` spawner of §42-D.2), `0x2716C` (115), `0x1D764` (82)
     and `0x1D838`;
   - `0x296B8`: `0x28130`, `0x4DBEC`, `0x292D4` (67), `0x1D764` and `0x1D838`.
 - The handlers' ported callees are `0x2AE14`, `0x2C3FC`, `0x2F4BC`,
   `0x2B150`, `0x3C5CC`, `0x16D58`, `0x35658`, `0x19068`, `0x12DA8`,
-  `0x1C500`, `0x2F198`, `0x41310`, `0x46534` and `0x33C18`.
+  `0x1C500`, `0x2F198`, `0x41310`, `0x46534`, `0x33C18` and `0x3CB68`
+  (`fight_slot_pass`). The first version counted `0x3CB68` as unported
+  (14 functions, 2475 bytes); corrected in review round 1.
 
 That is the interactive match flow (continue/challenger, team and endurance
 modes), a sub-project of its own. Ported, the dispatch is one line:
@@ -11202,9 +11212,12 @@ modes), a sub-project of its own. Ported, the dispatch is one line:
 ### 46-C.3 The port
 
 - `fighter.c` has `fighter_24568`, `fighter_246d4` and `fighter_3bce0`, right
-  after `fighter_2372c`, with local `#define`s for `0xE453A`, `0xC8B30` and
-  `0x104B03` (`symbols.h` names none of the three). `fighter.h` declares
-  them after `fighter_2372c`.
+  after `fighter_2372c`, with local `#define`s for `0xE453A` and `0x104B03`
+  (`symbols.h` names neither). The stance table `0xC8B30` reuses the file's
+  existing `FIGHT_ANIM_3BDDC`, which `0x3BDDC` also reads. `fighter.h`
+  declares them after `fighter_2372c`.
+  - `fighter_spawn_slot` (`0x33C78`) gains a `PORT:` note at its
+    `actor_spawn`: the EBX pass-through and `0x40D48`'s `0x4C00` (46-C.1).
   - `fighter_24568` calls the static spawn core `fighter_spawn_slot`
     (`0x33C78`) directly.
   - The voice `0x2C3FC(0xB4)` is a `PORT:` note, "not wired (record §45-A)",
@@ -11241,7 +11254,9 @@ sides set to character 1 and the audio gate closed (`DS_001028C8` = 0).
   whose pset bit 15 is the opposite of `DS_0010810D`'s side, so `0x1A570` on
   the wrong side fails. Each row checks:
   - the spawned record: its slot, `DS_001077A8`, character, `+0x51`, x, the
-    a5 bit, `+8` = `0xE453A` and `+0x20`/`+0x24` = 4.0;
+    word `+0x32` = the layer `word [0xBD898]` (seeded `0x0500` on the
+    "right" row, so a literal `0x400` fails too), the a5 bit, `+8` =
+    `0xE453A` and `+0x20`/`+0x24` = 4.0;
   - the slot: `+0x74` = `0x309`, `+0x41` bit 0, `+0x52`/`+0x53`/`+0x64`, the
     exact `+0x40` (`0x80081000`, or `0x80081100` with the blink; the spawn
     leaves `0x80000000`) and `+0x63` against a sentinel;
@@ -11259,15 +11274,19 @@ sides set to character 1 and the audio gate closed (`DS_001028C8` = 0).
   from `0xFFFFFFFF`, `DS_000F0AFE` and `DS_000F0AFC` against sentinels, and
   side 1's word kept.
 
-`check_char1_entry` has 55 assertion sites.
+`check_char1_entry` has 56 assertion sites.
 
-**Mutations** (`scratchpad/g5-24568/mut.py`, final run `mut3.out`): 54
-single-site edits of the new code, its registrations and the wrapper. They
-cover every store, constant, side index, gate and bit test of the three
-functions, both arms' offsets, compares and signedness, the bound read, the
-mask's source, the spawn's x, the stream and rate, the `0x39A10` value, the
-`0x2372C` call, both registrations and the wrapper's call.
-- 51 fail an assertion (1..31 each), with no fault.
+**Mutations** (`scratchpad/g5-24568/mut.py`; `mut3.out`, plus `mut4.out` for
+review round 1): 56 single-site edits of the new code, its registrations and
+the wrapper. They cover every store, constant, side index, gate and bit test
+of the three functions, both arms' offsets, compares and signedness, the
+bound read, the mask's source, the spawn's x and layer, the stream and rate,
+the `0x39A10` value, the `0x2372C` call, both registrations and the
+wrapper's call.
+- 53 fail an assertion (1..31 each), with no fault. That includes the two
+  added in review round 1, which fail 11 and 1: the spawn's layer as a
+  literal 0, and as a literal `0x400`. The first version's sweep missed the
+  layer argument; review round 1 found that it survived.
 - 2 hang, and the script kills them at 90 s: the unsigned forms of the two
   compares (#30, #35). On the signed rows neither arm then passes, so the
   loop spins, which is the raw's own behaviour for an unplaceable x. They
@@ -11300,11 +11319,17 @@ the intended changes.
   current pins. The controller's ladder is the check.
 - **Base fix.** The base `1151646` did not compile: the frame-3257 merge
   dropped `check_volleyball`'s closing brace in `test_fight.c`. `0e49057`
-  restores it. §46-B's branch carries the same one-line fix.
+  restores it. §46-B's branch carries the same one-line fix, and main has
+  it since `df59113` (the same blob).
 - **Named gaps.**
   - The dispatchers `0x25F27`/`0x27732`/`0x2989C` and their handlers
-    `0x25C88`/`0x274FC`/`0x296B8` (modes 5, `0x0D`, `0x32`), with the 14
+    `0x25C88`/`0x274FC`/`0x296B8` (modes 5, `0x0D`, `0x32`), with the 13
     unported callees of 46-C.2. This is the interactive match flow.
+  - `0x33C78`'s EBX. The raw hands the caller's EBX to `0x2AE14` as the
+    record's y. `fighter_spawn_slot` passes 0, which is right for its port
+    callers. `0x40D48` (in `0x40CB0`) passes `0x4C00`, so a port of `0x40CB0`
+    must thread EBX through. The `PORT:` note at `fighter_spawn_slot`'s
+    `actor_spawn` records this.
   - The other six entries of `0xA8628`: `0x40CB0`, `0x49150`, `0x15A34`,
     `0x45FE8`, `0x40E64` and `0x24804`. They are the other characters'
     entrances, reached only through the same dispatchers.
