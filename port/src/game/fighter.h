@@ -120,8 +120,8 @@ void fighter_block_hit(u32 side);
  * projectile collision step 0x17CB0 (camera.h), then, for each thrower whose
  * DS_00100AD0 overlap count exceeds 2, applies the projectile hit to the struck
  * side through the driver 0x3B464 and bursts the projectile (0x3B938). The raw
- * takes no argument; 0x3B464's 0x235C4 arm (projectile +0x48 == 8) is the one
- * named gap left (demo-pose record §26). */
+ * takes no argument; 0x3B464's projectile +0x48 == 8 arm runs 0x1922C and
+ * 0x235C4 (demo-pose record §26, §41-C). */
 void fighter_think(void);
 
 /* 0x47208. One side's CPU-AI command word for this frame: classify the slot
@@ -525,6 +525,31 @@ void fighter_3b938(u32 slot);
  * with no +0x10 handler, start the per-character 0xC8FE0 stream at 3.0 and
  * set slot+0x7E = byte[0xBECF8] + b. EAX = side, EDX = b. */
 void fighter_3a95c(u32 side, u32 b);
+
+/* 0x235C4. 0x3B464's projectile +0x48 == 8 arm (0x3B65E, its only caller):
+ * snapshot the side's slot and record (0x33ACC into 0x104530/0x104658), the
+ * 0x39834 pose driver with reaction 0x2A, then state 0x10/0x0A with the +0x10
+ * handler 0x22BEC, +0x18/+0x1C cleared, and 0x22B28's freeze. EAX = side. */
+void fighter_235c4(u32 side);
+
+/* 0x22BEC. The +0x10 handler 0x235C4 stores (0x3531C case 10; EAX = slot,
+ * EBX = side, only the side is read): the per-side 0x10474C tick, and the
+ * +0x58 phases 1 (hold until the tick passes 0x78, at double speed while
+ * 0x10476C[side] is set) and 2 (restore the 0x33ACC snapshot through 0x33B00
+ * and re-arm 0x29D04 while the +0x14 callback is still pending). */
+void fighter_22bec(u32 slot, u32 side);
+
+/* 0x29D04. The slot +0x14 callback 0x22B28 and 0x22BEC store (EAX = slot):
+ * 0 while a palette effect is live (DS_0009AF3D), else the side's character
+ * palette through 0x2A17C and 1. */
+u32 fighter_29d04(u32 slot);
+
+/* 0x370F0. The 0xD000/0xD100 stream target of 21 stream sites (EAX = rec),
+ * also called by 0x48AAC and 0x48D94: with both DS_001077A8 slots set, the
+ * record's slot takes +0x54 = 3, +0x42 bit 2 and +0x52 = 0x0A; then either
+ * the 0xBDC2C[char] stream at 1.0 (DS_00104B14 set) or the other slot's +0x42
+ * bit 6, the record's +0x53 = 0 and DS_000F0AFE = 2. */
+void fighter_370f0(u32 rec);
 
 /* The machine's and chain's per-function fixtures (record §7.1-§7.5, §7.7-§7.9
  * and §7.11) exercise these directly. */

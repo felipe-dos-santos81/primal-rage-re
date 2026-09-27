@@ -519,7 +519,7 @@ See §24 of the record.
 
 See §25 of the record.
 
-**The projectile collision step (`3d64c61`), the demo fight's captures 1478..1480.** `0x1975C`'s first call `0x17CB0` was unported, so `DS_00100AD0/AD4` (the per-thrower projectile overlap counts) stayed 0, the think step never ran and the T-rex's breath ring flew through the raptor. The raw `0x17CB0` fills the `0x100BD3` plane, zeroes `AD0/AD4`, and tests either two live projectiles against each other (`0x17BC8`: burst side 0's through `0x3B938`, kill side 1's) or each side's projectile against the other fighter (`0x176CC`: the `0x170A0` shape with the projectile as a `0x20` box and `0x16DA4`'s mode-0 row `0xA173C`), writing the overlap count into `AD0[side]`. At f = 617 it gives `AD0[0]` = 17, and `0x1975C` applies the hit to the raptor through `0x3B464` (the `0x39834` pose driver and the `0x3A95C` stagger) and bursts the ring (`0x3B938`). New: `0x17CB0`, `0x176CC`, `0x17BC8`, `0x3B938`, `0x3A95C` (1 192 B) and `0x16DA4`'s mode arms; `0x3B464`'s §7.12 gaps are wired except `0x235C4` (projectile `+0x48` = 8, not in the demo). `check_think_chain` now asserts the raw zeroing; new `check_projectile_step`.
+**The projectile collision step (`3d64c61`), the demo fight's captures 1478..1480.** `0x1975C`'s first call `0x17CB0` was unported, so `DS_00100AD0/AD4` (the per-thrower projectile overlap counts) stayed 0, the think step never ran and the T-rex's breath ring flew through the raptor. The raw `0x17CB0` fills the `0x100BD3` plane, zeroes `AD0/AD4`, and tests either two live projectiles against each other (`0x17BC8`: burst side 0's through `0x3B938`, kill side 1's) or each side's projectile against the other fighter (`0x176CC`: the `0x170A0` shape with the projectile as a `0x20` box and `0x16DA4`'s mode-0 row `0xA173C`), writing the overlap count into `AD0[side]`. At f = 617 it gives `AD0[0]` = 17, and `0x1975C` applies the hit to the raptor through `0x3B464` (the `0x39834` pose driver and the `0x3A95C` stagger) and bursts the ring (`0x3B938`). New: `0x17CB0`, `0x176CC`, `0x17BC8`, `0x3B938`, `0x3A95C` (1 192 B) and `0x16DA4`'s mode arms; `0x3B464`'s §7.12 gaps are wired except `0x235C4` (projectile `+0x48` = 8, not in the demo; ported later, record §41-C). `check_think_chain` now asserts the raw zeroing; new `check_projectile_step`.
 
 * **Measured.** Captures 1478..1480 are now explained; port frames 0..1033 are byte-identical to before, and 1034 (f = 618) is the first that differs. The demo oracle's first unexplained is now **1481 (raw 4388)**. The demo window `[1481..3616]` has 2136 frames, 2130 unexplained, and the fight window `[1481..1884]` has 404 frames, 0 explained. The ratchet N is raised **1478 → 1481** in the same commit.
 * **Claim move (the one the brief allowed).** Front-end `[560..1477]` / 918 → **`[560..1480]` / 921 / `383 clean, 531 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before. Nothing else moved.
@@ -620,16 +620,19 @@ The new ratchet `make attract2-oracle` (`--attract2`, in `make verify`) finds ca
 
 **The raptor's stance return (`fcce893`), captures 2950..3098.** At f = 4180 the original's raptor ends its reaction stream `0xD24F0` on the `0xD500` target `0x3C32C` (the dword at `0xD24FE`, one of 9 such sites; Ghidra has no function there). Decoded from `read_memory` with capstone, it clears the slot's `+0x54` and runs the already-ported `0x36870`, whose `+0x54 == 0` arm restarts the stance `0xD2136`. It is now ported and registered. The poll matches the port through f = 4308, and `0x3A6D4`, which the previous probe missed on the diverged path, is no longer reached. The driver's window grows to 3500 loops, and the attract2 ratchet moves 2950 -> **3099**. At 3099 (f = 4309) the original's raptor starts character 3's reaction `0x25`, whose callback `0x15350` is not registered. The other oracles are unchanged. All 11 mutations of the new code fail an assertion. See §41 of the record.
 
+**The projectile freeze `0x235C4` and the stream target `0x370F0` (record §41-C).** Two named gaps no demo frame reaches, ported from the raw and unit-tested. `0x3B464`'s projectile `+0x48` = 8 arm now calls `0x235C4` after `0x1922C`: it snapshots the struck side's slot and record (`0x33ACC` into `0x104530`/`0x104658`), runs the `0x39834` pose driver with reaction `0x2A`, and puts the slot in 0x10/0x0A with the `+0x10` handler `0x22BEC`; `0x22B28` spawns a palette effect on the fighter's pset entry, stores the `+0x14` callback `0x29D04` and stops the record's motion. `0x22BEC` holds for `0x78` ticks of the per-side word `0x10474C` (two per frame while `0x10476C[side]` is set), then restores the snapshot through `0x33B00`, keeping the live x; `0x29D04` re-acquires the character palette once no palette effect is live. `0x370F0` is the target of 21 `0xD000`/`0xD100` stream sites (three per character) and is also called by the unported `0x48AAC`/`0x48D94`. `0x22BEC`, `0x29D04` and `0x370F0` are now registered code targets. No oracle is expected to move, because the demo reaches none of them. All 59 mutations of the new code fail the suite. See §41-C of the record.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
 demo fight's remaining divergences (the capture's fight is explained up to its
 first all-black frame 1885 after the frame-1881 fix, and the attract's second
 cycle up to 3098 with the LOADING frame 2384 allowed by name; the second
 demo diverges from 3099 at the unregistered `0x15350`; the grab's throw
 `0x14D7C` and stream target `0x14E80` are ported but not reached (§41-B);
-`0x3B464`'s `0x235C4` arm, the effects pass's types 2, 7 and 9..12, the
+the effects pass's types 2, 7 and 9..12, the
 grab arm of `0x4B788`, `0x4B470`'s eighth-hit tail and case 8's held body are
-named gaps, as are `0x3E244` and `0x3ECF8`/`0x3C048`; `0x370F0` is still
-unregistered; not reached in this run) and
+named gaps, as are `0x3E244` and `0x3ECF8`/`0x3C048`; `0x3B464`'s `0x235C4`
+arm and the stream target `0x370F0` are ported (record §41-C) but not reached
+in the demo) and
 the
 interactive match cycle (the mode graph, `0x1EEB0`, the `0x1EA08` sites) remain;
 the attract's `0x2C3FC` voice calls remain declared gaps with `/* PORT: */`

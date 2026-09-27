@@ -943,8 +943,9 @@ exits 0.
   matched the raw's on every one of them (record §19.6.2 measured
   f = 106..114 first). The `0x1975C` collision step `0x17CB0` → `0x176CC`/`0x17BC8`
   and the `0x3B464`/`0x3B938`/`0x3A95C` hit it wakes are ported (§26);
-  `0x3B464`'s `0x235C4` arm (projectile `+0x48` = 8) stays a named gap, not
-  reached. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
+  `0x3B464`'s `0x235C4` arm (projectile `+0x48` = 8) is ported with its
+  `+0x10` handler `0x22BEC` and `+0x14` callback `0x29D04` (record §41-C);
+  the demo does not reach it. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
   frame-1881 fix): none in the fight; `0x3E3A8` (f = 962, the `(char 0,
   0x2A)` callback) and its `+0x0C` callback `0x3E328` (f = 963) are now ported
   and registered; its `+0x18` hook `0x3E1D0` is ported with `0x19020`
@@ -964,7 +965,7 @@ exits 0.
   `0x3A588` is no longer reached; `0x14EF8` and the animation-opcode target
   `0x3640C` (which the frame-998 fix's run still missed at f = 582 and
   f = 741) no longer miss, nor do `0x4AC18` and `0x35938`; `0x3A820` is not reached in
-  this run; `0x370F0` is still unregistered; not
+  this run; `0x370F0` (registered since record §41-C) is not
   reached (no longer misses) in this run; and `0x347B8`'s stun-stream target
   `0x34530` is unregistered but not reached.) (Before the
   frame-892 fix this was capture 892: the best 531/532 splice left
@@ -1268,7 +1269,8 @@ subsystem, the unported `0x19020` chain; since ported, record §35.)
 4. **The fight's stall tail** (Task 6b). At loop 1400, side 1 lands on
    `+0x52 = 9` with `+0x53 = 8` where the original is at `+0x52 = 4`; closing it
    needs the unported `0x34B14` handlers (§7.10: `0x35F84`, `0x36870`,
-   `0x235C4`, `0x370F0`, …) plus the `0x3C88C` re-arm. `0x34038`/`0x354F0`
+   `0x235C4`, `0x370F0`, …; `0x235C4` and `0x370F0` are ported by record
+   §41-C) plus the `0x3C88C` re-arm. `0x34038`/`0x354F0`
    remain named gaps (`0x38D24` is ported by the frame-1763 fix, record §33,
    and `0x186C4` runs).
 5. **The interactive match is UNOWNED.** The mode graph (`DS_00104B00`), the
@@ -2029,7 +2031,8 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   `0x188DC`), `0x3B938` and `0x39278(2)`.
 * **Fix.** `camera_projectile_step`/`_hit`/`_clash` in `camera.c` (plus the
   `0x16DA4` mode arms), `fighter_think`/`fighter_think_side` wired, new
-  `fighter_3b938`/`fighter_3a95c`; `0x235C4` stays a named gap.
+  `fighter_3b938`/`fighter_3a95c`; `0x235C4` stayed a named gap (ported
+  later, record §41-C).
   `check_think_chain` asserts the raw zeroing; new `check_projectile_step`;
   every mutation but the unobservable `B62` clear fails it.
 * **Measured.** Captures 1478..1480 are explained; port frames 0..1033 are

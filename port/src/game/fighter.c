@@ -12,6 +12,7 @@
 #include "game/config.h"
 #include "game/rng.h"
 #include "game/flow.h"
+#include "game/effects.h"
 #include "../mem.h"
 #include "../symbols.h"
 #include <string.h>
@@ -790,7 +791,8 @@ static int fighter_command_dispatch(u32 side, u32 edx_arg)
  * The command dispatch is the block test: a block runs the 0x3B080 seed and
  * the 0x3AD98 effect; otherwise the thrower's projectile +0x48 selects 0x36D20
  * (5), 0x1922C/0x235C4 (8) or the 0x39834 pose driver with the airborne
- * 0x39F40 pose or the grounded 0x3A95C stagger (demo-pose record §26). */
+ * 0x39F40 pose or the grounded 0x3A95C stagger (demo-pose record §26,
+ * §41-C). */
 static void fighter_think_side(u32 side)
 {
     u32 ctx[6];
@@ -830,8 +832,7 @@ static void fighter_think_side(u32 side)
         }
         if (a48 == 8u) {                                /* 0x3B543 */
             hit_stance_timer(side);                     /* 0x3B657 0x1922C */
-            /* PORT: 0x3B65E 0x235C4(side) — named gap (demo-pose record §26:
-             * no demo projectile has +0x48 == 8). */
+            fighter_235c4(side);                        /* 0x3B65E (record §41-C) */
             goto tail;
         }
     }
@@ -4810,8 +4811,9 @@ static s32 fighter_39b14(s32 a, s32 b)
 
 /* 0x35050. The slot +0x14 callback runs, called first by the +0x10 handler
  * 0x39CC8 (0x39CD9) and by 0x22C60: with slot[side]+0x14 set, call it with the
- * slot and zero the field when it returns non-zero. No ported writer stores a
- * non-zero +0x14 (the spawn zeroes it at 0x33DFE). */
+ * slot and zero the field when it returns non-zero. The spawn zeroes +0x14 at
+ * 0x33DFE; the ported non-zero writers are 0x22B28 (0x22B6F) and 0x22BEC
+ * (0x22CD7), both storing 0x29D04 (record §41-C). */
 static void fighter_35050(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x35062..0x35078 */
@@ -5412,6 +5414,144 @@ static void fighter_39834(u32 side, s32 b)
         DSW(DS_00107824 + (u32)DSB(ctx[5] + 0x51u) * 0x94u) = 0x29Au;  /* 0x399A4 */
     if (DSD(DS_00104ABC) == 1u && DSB(DS_00104B14) == 0u)   /* 0x399AC/0x399BE */
         fighter_4f434();                                    /* 0x399BE */
+}
+
+/* ---- the projectile +0x48 == 8 freeze 0x235C4 and 0x370F0 (record §41-C) -- */
+
+/* PORT: data-object addresses and a resource handle symbols.h does not name. */
+#define FIGHTER_SNAP_SLOT 0x00104530u   /* 0x235FC: 0x33ACC's slot copy, 0x94/side */
+#define FIGHTER_SNAP_REC  0x00104658u   /* 0x235E4: 0x33ACC's record copy, 0x68/side */
+#define FIGHTER_22B28_PAL 0x0105FDB0u   /* 0x22B59: the 0x13C70 handle (EBX) */
+#define FIGHTER_BDC2C     0x000BDC2Cu   /* 0x3713E: [char] 0x370F0 stream */
+
+/* 0x33ACC — record §41-C. Copy slot[side]'s 0x94 bytes to `dst` (EDX) and its record's 0x68
+ * bytes to `dst2` (EBX). EAX = side. */
+static void fighter_33acc(u32 side, u32 dst, u32 dst2)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;              /* 0x33AD1..0x33AE2 */
+    memcpy(mem + dst, mem + slot, 0x94u);               /* 0x33AE9 rep movsd 0x25 */
+    memcpy(mem + dst2, mem + DSD(slot), 0x68u);         /* 0x33AF2/0x33AF9 rep movsd 0x1A */
+}
+
+/* 0x22B28 — record §41-C. The freeze start 0x235C4 (0x23650) and 0x22CE4 (0x22D78) run on
+ * their 0x33A10 context (EAX = &ctx; ECX keeps it across the calls): a
+ * palette effect on the side's pset entry, the +0x14 callback 0x29D04, the
+ * 0x10474C tick at 0, the record's motion cleared (0x3C16C, 0x3C148, +0x24
+ * hold 0), +0x58 = 1, +0x43 bit 1 cleared, and 0x10476C[side] = (the other
+ * slot's +0x53 == 0x0A). */
+static void fighter_22b28(const u32 ctx[6])
+{
+    u32 rec = DSD(DS_001077B0 + ctx[1] * 0x94u);        /* 0x22B2D..0x22B3E */
+    u32 src = DSD(DSD(DS_001014EC)
+                  + (u32)DSW(rec + 0x56u) * 0x20u + 0x18u);   /* 0x22B45..0x22B5E */
+    (void)effects_spawn(src, 1u, FIGHTER_22B28_PAL);    /* 0x22B59..0x22B67 0x13C70 */
+    DSD(ctx[3] + 0x14u) = 0x00029D04u;                  /* 0x22B6F */
+    DSW(DS_0010474C + ctx[1] * 2u) = 0;                 /* 0x22B7B */
+    fighter_3c16c(ctx[1]);                              /* 0x22B86 */
+    fighter_3c148(ctx[1]);                              /* 0x22B8E */
+    DSD(ctx[5] + 0x24u) = 0;                            /* 0x22B96 */
+    DSB(ctx[3] + 0x58u) = 1u;                           /* 0x22BA0 */
+    DSB(ctx[3] + 0x43u) &= 0xFDu;                       /* 0x22BA7 */
+    /* PORT: 0x22BB0 0x2C3FC(0xB5) — voice, out of scope (spec §7). */
+    DSB(DS_0010476C + ctx[1]) =
+        (DSB(ctx[2] + 0x53u) == 0x0Au) ? 1u : 0u;       /* 0x22BB8..0x22BD1 */
+}
+
+/* 0x235C4 — record §41-C. 0x3B464's +0x48 == 8 arm (EAX = side; EDX is
+ * pushed and overwritten): the 0x33ACC snapshot, the 0x39834 pose driver with
+ * reaction 0x2A, state 0x10/0x0A with the +0x10 handler 0x22BEC, and 0x22B28. */
+void fighter_235c4(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_swap(ctx, side);                        /* 0x235CD 0x33A10 */
+    fighter_33acc(ctx[1], FIGHTER_SNAP_SLOT + ctx[1] * 0x94u,
+                  FIGHTER_SNAP_REC + ctx[1] * 0x68u);   /* 0x235D2..0x2360A */
+    fighter_39834(ctx[1], 0x2A);                        /* 0x2360F..0x23618 */
+    DSB(ctx[3] + 0x52u) = 0x10u;                        /* 0x23621 */
+    DSB(ctx[3] + 0x53u) = 0x0Au;                        /* 0x23629 */
+    DSD(ctx[3] + 0x10u) = 0x00022BECu;                  /* 0x23631 */
+    DSD(ctx[3] + 0x18u) = 0;                            /* 0x2363C */
+    DSD(ctx[3] + 0x1Cu) = 0;                            /* 0x23647 */
+    fighter_22b28(ctx);                                 /* 0x23650 */
+}
+
+/* 0x22BEC — record §41-C. The +0x10 handler 0x235C4 stores; Ghidra has no
+ * function there. The jump table at 0x22BDC reads 0x22CDE, 0x22C24, 0x22C5C,
+ * 0x22CDE, so phases 0 and 3 (and, through 0x22C10's `ja`, every phase above
+ * 3) return after the tick. The x 0x188DC re-anchors to is read before 0x33B00 (ECX at
+ * 0x22CB0) and the +0x14 test after 0x35050. */
+void fighter_22bec(u32 slot, u32 side)
+{
+    u32 ctx[6];
+    (void)slot;
+    fighter_ctx_swap(ctx, side);                        /* 0x22BF4 0x33A10 */
+    DSW(DS_0010474C + ctx[1] * 2u) =
+        (u16)(DSW(DS_0010474C + ctx[1] * 2u) + 1u);     /* 0x22BFF */
+    switch (DSB(ctx[3] + 0x58u)) {                      /* 0x22C0A..0x22C1C */
+    case 1u:
+        if (DSB(DS_0010476C + ctx[1]) != 0u)            /* 0x22C28 */
+            DSW(DS_0010474C + ctx[1] * 2u) =
+                (u16)(DSW(DS_0010474C + ctx[1] * 2u) + 1u);   /* 0x22C31 */
+        if ((s16)DSW(DS_0010474C + ctx[1] * 2u) > 0x78) /* 0x22C3C..0x22C49 */
+            DSB(ctx[3] + 0x58u) = 2u;                   /* 0x22C53 */
+        return;
+    case 2u: {
+        int pending;
+        u32 x;
+        fighter_35050(ctx[1]);                          /* 0x22C60 */
+        pending = DSD(ctx[3] + 0x14u) != 0u;            /* 0x22C69/0x22C6D sete */
+        x = DSD(ctx[3] + 0x2Cu);                        /* 0x22CA6/0x22CB0 */
+        fighter_state_33b00(ctx[1], FIGHTER_SNAP_SLOT + ctx[1] * 0x94u,
+                            FIGHTER_SNAP_REC + ctx[1] * 0x68u);   /* 0x22CB3 */
+        hit_anchor_x(ctx[1], x);                        /* 0x22CBE 0x188DC */
+        fighter_state_39280(ctx[1]);                    /* 0x22CC7 */
+        if (pending)                                    /* 0x22CCC/0x22CD1 */
+            DSD(ctx[3] + 0x14u) = 0x00029D04u;          /* 0x22CD7 */
+        return;
+    }
+    default:                                            /* 0x22CDE */
+        return;
+    }
+}
+
+/* 0x29D04 — record §41-C. The slot +0x14 callback 0x22B28 stores (no Ghidra
+ * function). The handle lookup is 0x29BC8's, inlined: the character is the
+ * slot's +0x7A and the side the slot's record's +0x51, whose DS_001077B0 slot
+ * gives the record 0x2A17C is called on (EDX = 0). */
+u32 fighter_29d04(u32 slot)
+{
+    u32 side;
+    u32 handle;
+    if (DSB(DS_0009AF3D) != 0u) return 0u;              /* 0x29D07..0x29D15 */
+    side = (u32)DSB(DSD(slot) + 0x51u);                 /* 0x29D16..0x29D1B */
+    handle = DSD(DSD(DS_000A8A98 + (u32)DSB(slot + 0x7Au) * 4u)
+                 + (u32)DSB(DS_00105B34 + side) * 4u);  /* 0x29D25..0x29D4C */
+    actor_pset_palette(DSD(DS_001077B0 + side * 0x94u), 0u, handle);  /* 0x29D45/0x29D51 0x2A17C */
+    return 1u;                                          /* 0x29D56 */
+}
+
+/* 0x370F0 — record §41-C. EAX = rec; EDX is pushed and only its low byte
+ * written (0x37105) and masked before use. */
+void fighter_370f0(u32 rec)
+{
+    u32 self = DSD(DS_001077A8 + (u32)DSB(rec + 0x51u) * 4u);   /* 0x370F5..0x370FA */
+    u32 other;
+    if (self == 0u) return;                             /* 0x37101/0x37103 */
+    other = DSD(DS_001077A8
+                + (((u32)DSB(rec + 0x51u) ^ 1u) & 0xFFu) * 4u);  /* 0x37105..0x37111 */
+    if (other == 0u) return;                            /* 0x37118/0x3711A */
+    DSB(self + 0x54u) = 3u;                             /* 0x3711F */
+    DSB(self + 0x42u) |= 4u;                            /* 0x3711C..0x37126 */
+    DSB(self + 0x52u) = 0x0Au;                          /* 0x3712F */
+    if (DSB(DS_00104B14) != 0u) {                       /* 0x37129/0x37133 */
+        actors_anim_begin(rec,
+                          DSD(FIGHTER_BDC2C + (u32)DSB(self + 0x7Au) * 4u),
+                          0x3F800000u);                 /* 0x37137..0x3714A 0x2BC30 */
+        return;
+    }
+    DSB(other + 0x42u) |= 0x40u;                        /* 0x37153 */
+    DSB(rec + 0x53u) = 0;                               /* 0x37159 (CH = 0) */
+    DSB(DS_000F0AFE) = 2u;                              /* 0x3715C */
 }
 
 /* 0x3AAFC. The reaction applier / pose dispatcher 0x3B714 runs for the winner.
