@@ -102,9 +102,10 @@ void frontend_mode_17_step(void);
  * spent through 0x2CA7C), else 0. Also 0x43928's poll (record §47-M). */
 u32 frontend_coin_poll(u32 code);
 /* Record §48-S. The unjoined side's blinking prompt on the character screen
- * (0x432A0's callees; also called by the unported 0x27A2C, 0x28CC8, 0x424E8
- * and 0x2C2B0). 0x2C178: "PRESS START" (string 0x48, or the 0xBAB60 sprite
- * with the DS_00104529 bit 1) for `side` through 0x2C0F4, which draws on the
+ * (0x432A0's callees; also called by the unported 0x27A2C, 0x28CC8 and
+ * 0x424E8, and by 0x2C2B0 since record §48-T). 0x2C178: "PRESS START"
+ * (string 0x48, or the 0xBAB60 sprite with the DS_00104529 bit 1) for
+ * `side` through 0x2C0F4, which draws on the
  * blink phase DS_000EF6DC & 0x1F == 0 and erases through 0x2C088 on phase
  * 0x18. 0x2C1C8 (falling into 0x2C1D4): "INSERT 1 COIN" (strings 0x49, the
  * image string 0x809C4 and 0x4B) on the same phases, erased by 0x2F388. */
@@ -113,6 +114,11 @@ void prompt_press_start_blink(s32 col, s32 row, u32 side, u32 sprite);
 void prompt_press_start(u32 side, s32 row);
 void prompt_insert_coin_blink(s32 col, s32 row);
 void prompt_insert_coin(u32 side, s32 row);
+/* 0x2C2B0 (record §48-T): erase `side`'s prompts at `row` outright — with the
+ * DS_00104529 bit 1, 0x2C088 and DS_00105BF8 cells at the last "INSERT 1
+ * COIN" position; then, either way, DS_00105BF8 cells at the side's col byte
+ * 0xBAB58[side]. */
+void prompt_side_erase(s32 side, s32 row);
 
 /* 0x1CF40: the init chain's audio calls — AIL_startup, the shipped preferences,
  * four sample handles, the sequence handle and the 60 Hz timer slot. Called by

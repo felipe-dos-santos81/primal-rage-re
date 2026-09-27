@@ -15034,3 +15034,159 @@ three edits that did not build, and each was fixed:
   - `0x2F388`'s and the prompt helpers' other callers (`0x27A2C`,
     `0x2791C`, `0x28CC8`, `0x424E8`, `0x2C2B0` and the text/menu code) stay
     unported. The helpers themselves are ported and exported for them.
+
+## 48-T. `0x2C2B0`, the side prompts' erase (named-gap batch 13, branch `gap13-2c2b0`)
+
+**Result in one line.** `0x2C2B0`, the last unported call in mode `0xD`'s
+match end (§48-Q's named gap), is ported from the raw as `prompt_side_erase`
+(`flow.c`, declared in `flow.h`) and called by `game_mode_0d_step` at the
+raw's `0x275B7`, right after `0x28130`. Its two callees, `0x2C088` and
+`0x2F388`, were already ported (§48-S), so the whole tree is now in the port.
+A probe shows that no oracle path reaches mode `0xD`, and a headless
+8000-frame run is byte-identical before and after (48-T.4).
+
+(`git log --all` shows §48-U claimed by two batch-13 branches and no §48-T,
+so this section takes T. It is renamed at merge time if another branch takes
+T too.)
+
+### 48-T.1 The raw (`mem_load_le` + fixups replicated in a scratch dumper, capstone over `0x2C2B0..0x2C301`)
+
+Ghidra's MCP instance was not reachable in this session, so the bytes were
+read from the port's own loader (`mem_load_le`, which applies the LE fixups)
+and disassembled with capstone. The pre-fixup file bytes show the same code
+with every data displacement 0x80000 lower (`[0x84529]`, `[esi+0x3AB58]`,
+`[0x85BF8]`), which is the fixup trap AGENTS.md warns about. The fixed-up
+function is 21 instructions:
+
+```
+0x2C2B0 push ebx / push ecx / push esi
+0x2C2B3 mov esi,eax              ; side
+0x2C2B5 mov ecx,edx              ; row
+0x2C2B7 test byte [0x104529],2
+0x2C2BE je 0x2C2E9
+0x2C2C0 xor eax,eax / mov ebx,esi / mov al,[esi+0xBAB58]
+0x2C2CA call 0x2C088             ; EAX col byte, EDX row, EBX side
+0x2C2CF mov ebx,[0x105BF8] / xor edx,edx / xor eax,eax
+        mov dl,[0x105C07] / mov al,[0x105C06]
+0x2C2E4 call 0x2F388
+0x2C2E9 mov ebx,[0x105BF8] / xor eax,eax / mov edx,ecx
+        mov al,[esi+0xBAB58]
+0x2C2F9 call 0x2F388
+0x2C2FE pop esi / pop ecx / pop ebx / ret
+```
+
+So, with `DS_00104529` bit 1 (the sprite prompts), `0x2C088` runs on the
+side's col byte `0xBAB58[side]` (3 or `0x18`), `row` and `side`, and then
+`0x2F388` releases `DS_00105BF8` cells at `DS_00105C06`/`DS_00105C07`, the
+position `0x2C1D4` last drew "INSERT 1 COIN" at. Then, with or without the
+bit, `0x2F388` releases `DS_00105BF8` cells at the side's col byte and `row`.
+Decompiled, it is `if (bit) { 0x2C088(); 0x2F388(); } 0x2F388();`, as
+`prage.c` has it. Only the registers needed checking:
+- `0x2C088` pushes and pops ECX and ESI (`0x2C088`/`0x2C089`,
+  `0x2C0EF`/`0x2C0F0`), so the second `0x2F388` still gets the caller's row
+  (`mov edx,ecx`) and side. `0x2F388` pushes and pops ECX/ESI/EDI/EBP too.
+- `DS_00105BF8` is reloaded before each `0x2F388`, and nothing between them
+  writes it.
+- Under the bit, `0x2C088` ignores its EAX/EDX: it releases at
+  `DS_00105C06`/`DS_00105C07` (§48-S.1). The col byte and row passed to it
+  are therefore dead. The port passes them anyway, as the raw does.
+- The side is used as a whole register (`[esi+0xBAB58]`, and
+  `[eax*4+0x105BF0]` inside `0x2C088`). `0x274FC` passes it through `movsx`
+  (`0x275A8 mov al,[0x10810D]; xor al,1; mov edx,0x1D; movsx eax,al`), so a
+  `DS_0010810D` of `0x80..0xFF` would index below both tables. The port
+  keeps that behaviour: `prompt_side_erase` takes an `s32` and indexes with
+  its `u32` wrap.
+
+### 48-T.2 Entrances (a rel32 CALL/JMP/Jcc scan of the fixed-up code object, a dword scan of both fixed-up objects)
+
+| target | rel32 | dwords |
+|---|---|---|
+| `0x2C2B0` | `0x26DBF`, `0x26DCE` (`0x26D4C`), `0x275B7` (`0x274FC`), `0x27E52`, `0x27E61` (`0x27DC8`), `0x28CFD` (`0x28CC8`), `0x43092` (`0x42FE0`) | none |
+| `0x2C088` | `0x27960`, `0x2C16F`, `0x2C2CA`, `0x43316`, `0x43400` | none |
+| `0x2F388` | 22, `0x2690D` .. `0x4F19E` (with `0x2C2E4`, `0x2C2F9`) | none |
+
+The last two rows match 48-S.2. `prage.calls.csv` lists the same five
+calling functions for `0x2C2B0`. Every call site passes row `0x1D` except
+`0x42FE0`'s, which passes `0x1C` (`0x43089 mov edx,0x1c`). `0x26D4C` and
+`0x27DC8` erase both sides (EAX 0 then 1), `0x28CC8` erases ECX's side, and
+`0x274FC` erases the loser's. `0x296B8` (mode `0x32`) has no call, so the
+brief's "both handlers" does not apply: only mode `0xD`'s final round erases
+the prompt. Of the five callers only `0x274FC` is ported. `0x26D4C`,
+`0x27DC8`, `0x28CC8` and `0x42FE0` stay unported mode handlers, outside this
+batch.
+
+### 48-T.3 The port and the assertions
+
+- `flow.c`: `prompt_side_erase` (`0x2C2B0`) after `prompt_insert_coin`.
+  `game_mode_0d_step` calls it with `(s8)(DS_0010810D ^ 1)` and row `0x1D`
+  where §48-Q's `PORT:` gap note was. `flow.h` declares it, and the §48-S
+  prompt comment no longer lists `0x2C2B0` among the unported callers.
+- `test_fight.c`: the new `check_2c2b0`, run by `test_fight` after
+  `check_33c18_callers_b`, uses the §48-Q snapshot (`mz_save`/`mz_restore`)
+  and `q_mode_seed`. Released cells are checked as emptied *and* their
+  records marked dead (`+0x28` bit 3). Planted records (`ct_plant`) sit just
+  outside each range as sentinels.
+  - The image values `0xBAB58` = 3/`0x18` and string `0x48`'s length 14.
+  - **(a)** The text form, side 1: `DS_00105BF8` cells from col `0x18` go,
+    cols `0x17` and `0x1B` stay. The coin position, `DS_00105BF0[1]` and the
+    cursor are untouched. The bit byte is `0xFD`, so every other bit is set.
+  - **(b)** The sprite form, side 0, with the coin position at (`0x10`,
+    `0x1B`) and `DS_00105BF8` = `0x14`. `DS_00105BF0[0]` is killed and
+    zeroed, and `[1]` is kept. Col `0x10 + 14` goes only through the middle
+    `0x2F388`, and col 36 stays. On row `0x1D`, cols 3..22 go and 2, 23 and
+    `0x18` stay. The free list `DS_00105B3C` reads the releases backwards
+    (col 22, col 3, col 30, col `0x10`), which fixes the order of the
+    middle and final calls.
+  - **(c)** Through `game_mode_0d_step`'s final round, with winners 0 and 1:
+    only the loser's col is emptied on row `0x1D`, and one cell only. The
+    released record heads the free list, so the order against `0x28130` is
+    visible: it is not one of row 8's "NO WINNERS" glyphs, but exactly one of
+    row `0xB`'s (string `0x3F`, drawn after the call).
+- `check_33c18_callers_b` (h), the existing final-round check, now empties
+  row `0x1D`, zeroes `DS_00105BF0[1]` and points the coin position at that
+  row, so the new call releases nothing there. Before, its free-list head
+  depended on whatever earlier tests left on row `0x1D`. No assertion
+  changed.
+
+**Mutations** (scratch `g13-2c2b0/mut.py`, `mut.log`, `mut_rerun.log`; one
+textual edit of `flow.c` per build, restored after each; a kill needs a
+`FAIL` line). Of 27 mutants, 24 fail the suite, and the three survivors are
+equivalent:
+- `0x2C088`'s col argument set to 0, and its row argument set to 0. Under the
+  bit, `0x2C088` releases at `DS_00105C06`/`DS_00105C07` and never reads
+  them.
+- The middle `0x2F388` moved before `0x2C088`. Both walk the same cells from
+  the same start, left to right, so either order releases in column order.
+  `0x2C088`'s other effect, the sprite kill, touches no cell.
+
+Six mutants first ended in the known intermittent SIGBUS (the parked
+`fighter_18350` crash) with no `FAIL` line. The script now retries those, and
+on the rerun each failed with `FAIL` lines, apart from the equivalent one
+above. The first run's survivors, now killed, were: the call moved before
+`0x28130` (killed by (c)'s row-8/row-`0xB` check), the middle call's col
+taken from the side (killed by the coin col moving to `0x10`), and the final
+call moved before the branch (killed by the free-list order).
+
+### 48-T.4 Measured, oracle risk, remaining gaps
+
+- **The oracle risk, probed rather than assumed.** A throwaway `stderr` build
+  of this branch (never committed) logged each mode word the first time
+  `game_frame` saw it, plus every entry to `game_mode_0d_step`,
+  `game_mode_32_step` and `prompt_side_erase`, over `prageport --check
+  8000`. The only mode was 3, from frame 1, and none of the three functions
+  was entered. So no covered path reaches the new call.
+- **Frames.** `prageport --check 8000` was run from separate scratch
+  directories with the base binary (`afc3948`) and this branch's (`ce82455`),
+  both Debug builds. `diff -rq` finds all 24000 `frame_*.ppm`/`.pal`/`.idx`
+  files byte-identical. The probe's Release build's frames match them too.
+- **The gate.** `PR_ORACLE_REQUIRED=1 ./build/run_tests` passes all checks,
+  with 0 compiler warnings, and so does `make verify` on `ce82455` (a Debug
+  build). Front-end: 517 clean, 801 splice, 3 transition, 2 unexplained
+  allowed by name. Demo-fight: `N=1886`, fully explained. Attract cycle 2:
+  0 unexplained in `[1885..3616]` (`N=3617`). symbols.h regenerates
+  byte-identically.
+- **Remaining named gaps:** none inside `0x2C2B0`'s tree. `0x2C2B0`'s
+  other callers `0x26D4C`, `0x27DC8`, `0x28CC8` and `0x42FE0` are unported
+  mode handlers. Mode `0xD`'s own remaining gaps are unchanged from §48-Q:
+  the voices `0x2C3FC` (`0x2759E`, `0x277B0`; §45-A) and the entrances of
+  characters 0 and 2..6 (whose port §48-U is taking up on another branch).

@@ -417,12 +417,15 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     per side, `0x19068(1)`, `0x12DA8`) and sets `DS_00104AEC` bit 1. When
     `DS_00104B0C` is set it counts a round in `DS_00104B21`. On the final
     round it draws the result (`0x28130`), gives the bonus (mode `0xD` only)
-    and runs the winner's crowd `0x4DBEC`, then mode `0xF`/`0x33`. Otherwise
+    and runs the winner's crowd `0x4DBEC`, then mode `0xF`/`0x33`. Mode
+    `0xD`'s final round also erases the loser's prompts on row `0x1D`
+    through `0x2C2B0` (`prompt_side_erase`, record §48-T), right after
+    `0x28130`; `0x296B8` has no such call. Otherwise
     it replaces the loser with the next character (`0x2716C`'s random pick or
     `0x292D4` from the team list at `DS_00108134`), runs that character's
     entrance `0xA8628[c]` (only character 1's, `0x24568`, is ported) and the
     HUD resets `0x1D764`/`0x1D838`, then mode `0xC`/`0x31`. No ported path
-    stores mode `0xD` or `0x32`, and `0x2C2B0`, `0x1D2F0` and six of the seven
+    stores mode `0xD` or `0x32`, and `0x1D2F0` and six of the seven
     entrances are named gaps.
   - Case `0x10` is `0x438B4` (`fight_mode_10_step`, record §47-M). It
     branches on the byte `DS_00108174`. With 0 it runs the character

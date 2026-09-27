@@ -1031,10 +1031,8 @@ void game_mode_0d_step(void)
         u32 rem;
         /* PORT: 0x2759E 0x2C3FC(0x2A) voice, not wired (record §45-A). */
         flow_match_result_text();                       /* 0x275A3 0x28130 */
-        /* PORT: 0x275B7 0x2C2B0((s8)(DS_0010810D ^ 1), 0x1D) is a named gap
-         * (record §48-Q). Its callees 0x2C088 (with DS_00104529 bit 1) and
-         * 0x2F388 (the credit text) are ported since record §48-S, but
-         * 0x2C2B0 itself is still unwired here. */
+        prompt_side_erase((s32)(s8)(DSB(DS_0010810D) ^ 1u),
+                          0x1D);                        /* 0x275A8..0x275B7 0x2C2B0 */
         if ((DSB(DS_00104529) & 2u) != 0u) {            /* 0x275BC/0x275C3 */
             (void)actor_spawn((const u32 *)(mem + DS_000A8998), 0x2A00u,
                               0xFFu, 0x1800u, 0u);      /* 0x275C5..0x275DB 0x2AE14 */
@@ -1884,6 +1882,31 @@ void prompt_insert_coin_blink(s32 col, s32 row)
 void prompt_insert_coin(u32 side, s32 row)
 {
     prompt_insert_coin_blink((s32)DSB(DS_000BAB58 + side), row);  /* 0x2C1C8..0x2C1D3 */
+}
+
+/* 0x2C2B0 — record §48-T. EAX = side (kept in ESI), EDX = row (kept in ECX);
+ * EBX/ECX/ESI are pushed and popped. The erase of `side`'s prompts, both
+ * forms. With the DS_00104529 bit 1 (the sprite prompts): 0x2C088 with EAX =
+ * the col byte 0xBAB58[side] (`xor eax,eax; mov al`), EDX = row and EBX =
+ * side, then 0x2F388 releases DS_00105BF8 cells at DS_00105C06/DS_00105C07
+ * (`xor`, then `mov al`/`mov dl`), the last "INSERT 1 COIN" position. Then,
+ * either way, 0x2F388 releases DS_00105BF8 cells at the col byte and `row`.
+ * 0x2C088 pushes and pops ECX/ESI, so the second call's EDX (`mov edx,ecx`)
+ * and col are the caller's; DS_00105BF8 is reloaded before each 0x2F388.
+ * The side is used whole in `[esi+0xBAB58]` and 0x2C088's `[eax*4+0x105BF0]`,
+ * so a negative one reads below both tables. Callers: 0x275B7 (0x274FC, side
+ * (s8)(DS_0010810D ^ 1) by `movsx`, row 0x1D) and the unported 0x26D4C,
+ * 0x27DC8, 0x28CC8 and 0x42FE0. */
+void prompt_side_erase(s32 side, s32 row)
+{
+    if ((DSB(DS_00104529) & 2u) != 0u) {                /* 0x2C2B7/0x2C2BE */
+        prompt_press_start_clear((s32)DSB(DS_000BAB58 + (u32)side), row,
+                                 (u32)side);            /* 0x2C2C0..0x2C2CA 0x2C088 */
+        text_cells_release_count((s32)DSB(DS_00105C06), (s32)DSB(DS_00105C07),
+                                 (s32)DSD(DS_00105BF8));    /* 0x2C2CF..0x2C2E4 0x2F388 */
+    }
+    text_cells_release_count((s32)DSB(DS_000BAB58 + (u32)side), row,
+                             (s32)DSD(DS_00105BF8));    /* 0x2C2E9..0x2C2F9 0x2F388 */
 }
 
 /* 0x20DF4 — record §46-B. The fight reset. EAX = the stage (DS_00104AFC's
