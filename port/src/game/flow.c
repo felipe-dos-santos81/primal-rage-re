@@ -2453,7 +2453,9 @@ void game_state_step(void)
         if (accepted != 0u) {
             /* PORT: the raw then calls 0x32970(eax=0) and 0x257a4(eax=accepted)
              * and returns from 0x11D04, so the state dispatch below is skipped
-             * for that frame. Both divert handlers are unported (out of scope). */
+             * for that frame. 0x32970 is unported (out of scope); 0x257A4 is
+             * ported as game_coin_divert (record §47-C) but not called here
+             * until game_frame dispatches the mode 0x1A it arms (§47-B). */
             return;
         }
     }

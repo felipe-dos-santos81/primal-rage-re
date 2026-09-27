@@ -12895,5 +12895,278 @@ polarity, pressed -> held, and moving the `0xFFFF` store after the hook.
 
 ## 47-C. The coin/start divert `0x257A4` and its callees `0x33C18`, `0x46594` and `0x2BAF4`'s EAX = 0 arm (named-gap batch 9, branch `gap9-257a4`)
 
-(In progress. §47-A is capture 3545's and §47-B is `gap8-24c5c`'s, which is
-not merged into this branch's base `072b261`.)
+**Result in one line.** `0x257A4`, the coin/start divert, is ported as
+`game_coin_divert` (`flow.c`) with its unported callee `0x46594`
+(`flow_1082c8_init`). `0x33C18` was already ported as the static
+`fight_char_reset` (`fight.c`, 0x41350's callee); it is verified here and
+exported. `0x257A4` is also the only caller of `0x2BAF4` with EAX = 0, an arm
+the port's `actors_reset` did not have. It is now `actors_reset_al` (`actors.c`),
+and `actors_reset` calls it with 1. **Nothing calls `game_coin_divert` yet**:
+its callers are `0x11D04`'s coin arm and state 8, and the game-start modes
+`0x28..0x2F`. Wiring them needs the mode switch of §47-B (branch
+`gap8-24c5c`, under review and not in this branch's base `072b261`). That is
+the follow-up (47-C.5). No ported path runs the new code, so no oracle is
+expected to move.
+
+(§47-A is capture 3545's and §47-B is `gap8-24c5c`'s. §47-C is the next free
+letter in `git log --all`.)
+
+### 47-C.1 The raw (Ghidra `disassemble_function`, `read_memory` + capstone, fixups applied)
+
+- **`0x257A4`** (Ghidra `FUN_000257a4`, to `0x25827`) pushes ECX/EDX and runs,
+  in order:
+  - `0x257A6 mov edx,eax`: EDX holds the argument;
+  - `0x2C3FC(0x100)`, the voice (EDX is the argument, which `0x2C3FC` pushes
+    and pops, §46-B.1);
+  - `0x257B2 xor eax,eax; call 0x2BAF4`: **`0x2BAF4` with EAX = 0**. It
+    pushes EDX (`0x2BAF6`), so DL is still the argument afterwards;
+  - `xor ah,ah; mov ecx,7`, then the bytes `[0x104B17]`, `[0x104B19]`,
+    `[0x104B11]`, `[0x104B1B]`, `[0x104B15]` = AH = 0 (`0x257C0..0x257D8`), in
+    that order;
+  - `0x257E0`: `[0x104B1F]` = DL, the argument's low byte;
+  - `0x33C18` with EAX = 0 (EDX still the argument, which it does not read),
+    then `0x33C18` with EAX = 1 and EDX = 0 (`0x257F0 xor edx,edx`);
+  - `0x46594`;
+  - `0x65490` with EAX = `0x104B02`, EDX = 0 and ECX = 7. `0x33C18` and
+    `0x46594` push and pop EDX and never name ECX, so the 0 and the 7 are
+    still there;
+  - `[0x104AE4]` = `0x4367C` (`0x25806 mov edx,0x4367c`, stored at
+    `0x25810`), and `0x4F980` with EAX = `0x10`, which arms mode `0x1A`
+    with the return mode `0x10`;
+  - `0x2C3FC(0x53)`, the voice. Its EAX is `0x257A4`'s return value.
+- **`0x65490`** is the runtime's `memset`. It takes EAX = the destination,
+  EDX = the fill (the stores use DL, DH and EDX, with a `ror edx,8` per
+  leading byte, so the caller passes the byte replicated) and ECX = the
+  count. It stores up to three leading bytes to a 4-byte boundary, then
+  `0x654C7` stores the dwords, then up to three trailing bytes. The
+  `cmp byte [eax],dl` at `0x65494` is a read with no effect. At `0x104B02`
+  (aligned 2) with ECX = 7 it writes 2 bytes, 1 dword and 1 byte:
+  `0x104B02..0x104B08`. That is the upper half of the mode dword
+  `[0x104B00]` and the bytes `0x104B04..0x104B08`.
+- **`0x33C18`** (Ghidra `FUN_00033c18`, to `0x33C5A`) pushes EBX/EDX, sets
+  EDX = EAX and EAX = `0x1077B0 + EAX * 0x94` (`shl eax,3; add eax,edx; shl
+  eax,2; add eax,edx; shl eax,2`, which is 148 = `0x94`). Then the bytes
+  `+0x7F`, `+0x80` = 0, the dword `+0x3C` = 0, the byte `+0x82` = 0, EBX =
+  `0x64`, the byte `+0x5B` = 0 and the word `[0x108860 + EDX * 2]` = BX = 100.
+  EAX (the slot) is returned; `0x257A4` does not read it. The port's
+  `fight_char_reset` has exactly these six stores, in this order.
+- **`0x46594`** (Ghidra `FUN_00046594`, to `0x4660A`) pushes EBX/EDX:
+  - with the byte `[0x108173]` != 0: `[0x1082C8]` = 7 (EDX) and `[0x1082CC]`
+    = 4 (EBX). Ghidra's decompiler drops this arm ("Removing unreachable
+    block (ram,0x0004659f)"), because the image holds 0 at `0x108173`. The
+    disassembly has it, so the port keeps it;
+  - otherwise `xor eax,eax; mov al,[0x10452c]; mov al,[eax+0xc93f8]; and
+    eax,0xff`, and both `[0x1082CC]` and `[0x1082C8]` = that byte;
+  - then `xor edx,edx; mov dl,[0x10452c]; lea eax,[edx*8]; sub eax,edx`, and
+    `[0x1082D0]` = the byte at `0xC9388 + 7b`, masked `0xFF`;
+  - then `[0x1082C0]` = `[0x1082C8]` and `[0x1082C4]` = `[0x1082CC]`, the
+    same two copies as `0x46504` (§46-B.1), inline.
+
+  The tables, read from the image:
+  - `0xC93F8`[0..15] = 0, 0, 1, 1, 2, 2, 3, 4, 4, 4, 5, 5, 5, 6, 6, 7;
+  - `0xC9388` is 16 rows of 7 bytes, and `0x46594` reads column 0: 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 3, 4.
+
+  `[0x10452C]` is `(field 0x29 & 0xF0) >> 4`, which the game-start cases
+  `0x28..0x2F` store (§47-B.1), so b is 0..15 there. `test_fight.c`'s
+  command-generator fixture calls `DS_001082C8` "difficulty"; that name is not
+  pinned here.
+- **`0x2BAF4`'s AL.** `0x2BAFD mov [esp],al` saves AL, and `0x2BBBD mov
+  dl,[esp]` reloads it after the free-list rebuild and `0x13ADC`. `0x4F228`,
+  `0x1C350`, `0x38B70` and `0x2F920` each push and pop EDX (disassembled), so
+  `0x2BBE4 test dl,dl` tests the saved AL:
+  - non-zero: `0x52106` with EAX = 0, then `0x336C0`. This is the arm the
+    port had;
+  - zero (`0x2BBF6..0x2BC16`): ECX = `0xFA00`, ESI = `[0xE87A0]`, EDI =
+    `[0xE87A4]`, `f2 a5` (`repne movsd`, which runs as `rep movsd`) for ECX
+    >> 2 dwords, then `f2 a4` for ECX & 3 = 0 bytes. That is a 64000-byte
+    copy from `[0xE87A0]` to `[0xE87A4]`, with **no `0x52106` and no
+    `0x336C0`**;
+  - both arms then store `[0x105BED]` = 1 (`0x2BC1B`) and call `0x2EA30`.
+
+### 47-C.2 Entrances (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object, a dword scan of both fixed-up objects; the objects dumped through `read_memory`)
+
+| target | rel32 | dwords | Ghidra |
+|---|---|---|---|
+| `0x257A4` | `0x11CD4` (`jmp`), `0x11D41`, `0x11EB8`, `0x24F5C`, `0x24FBA`, `0x25014`, `0x25067`, `0x250C4`, `0x25121`, `0x2517D`, `0x25194` | none | the same 11; `0x11CD4` has no function |
+| `0x33C18` | `0x257E6`, `0x257F2`, `0x25A9C`, `0x27171`, `0x2771D`, `0x28E12`, `0x292D7`, `0x2988E`, `0x41354`, `0x43E47`, `0x4448F` | none | the same 11 |
+| `0x46594` | `0x257F7` only | none | the same |
+| `0x65490` | `0x25801`, `0x41682`, `0x4247A`, `0x61A80` | none | |
+| `0x2BAF4` | 35 calls | none | 35 references |
+
+So:
+- `0x46594` has one caller, `0x257A4`.
+- **`0x257A4` is the only caller of `0x2BAF4` with EAX = 0.** The
+  instructions before the other 34 calls were decoded: each loads `mov
+  eax,1`. The last load is at `0x10E95`, `0x10EF9`, `0x1103A`, `0x1106B`,
+  `0x110BF`, `0x115AB`, `0x116D5`, `0x11855`, `0x11C92`, `0x11F8E`,
+  `0x11FDA`, `0x121E4`, `0x1249F`, `0x1EA1F`, `0x1ED4E`, `0x1F134`,
+  `0x1F17A`, `0x1F265`, `0x1F388`, `0x1F3E0`, `0x20942`, `0x20C4E`,
+  `0x20E73`, `0x24B5C`, `0x25B05`, `0x2F9A8`, `0x2F9E2`, `0x2FE9D`,
+  `0x41440`, `0x42514`, `0x42E6E`, `0x43827`, `0x4F21A` and `0x4FA2C`. Only
+  `0x257B2` has `xor eax,eax`. The port's `actors_reset()` (AL = 1) is
+  therefore right for every other caller.
+- Of `0x33C18`'s callers, `0x41354` (`fight_char_select`) and now `0x257E6`/
+  `0x257F2` are ported. The other eight are in unported functions
+  (`0x25A84`, `0x2716C`, `0x274FC`, `0x28DA4`, `0x292D4`, `0x296B8`,
+  `0x43D60`, `0x4434C`).
+- `0x257A4`'s callers are the ones §47-B.2 lists, plus one detail. The
+  `jmp` at `0x11CD4` ends the stub `0x11CC8..0x11CD8` (`xor eax,eax; call
+  0x32970; mov eax,3; jmp 0x257A4`). No rel32 and no dword enters
+  `0x11CC8` or `0x11CC7`, so the stub is dead: a copy of state 8's head
+  `0x11EAC..0x11EB8`.
+- **The return value is dead.** `0x257A4` returns the EAX of `0x2C3FC(0x53)`.
+  None of its callers reads it:
+  - after `0x11EB8`, `0x10DB0` loads AH (`0x10DB1`) and never reads AL;
+  - `0x11D41` is followed by `0x11D04`'s epilogue, which returns into case
+    3's `jmp 0x2540F`;
+  - the game-start cases `jmp 0x2540F` directly;
+  - in the `0x2540F` tail, `0x2A31C`, `0x3BB90` and `0x12D48` write EAX (or
+    AL) before reading it. The mode tail `0x2545C` loads AX (`mov
+    ax,[0x104b00]`) and compares only AX. `0x255CC` reloads EAX (`0x25621`)
+    after `0x24C5C` returns.
+
+### 47-C.3 The port
+
+- `flow.c` `game_coin_divert(players)` is `0x257A4` in raw order:
+  - `actors_reset_al(0)`;
+  - the five byte stores and `DS_00104B1F` = `(u8)players`;
+  - `fight_char_reset(0)`, `fight_char_reset(1)` and `flow_1082c8_init()`;
+  - `mem_fill(DS_00104B02, 0, 7)` for `0x65490`;
+  - `DS_00104AE4` = `0x4367C` and `frontend_wipe_arm(0x10)`.
+
+  The two voices are `PORT:` notes, "not wired" (§45-A). The second note
+  records why the return value is dead (47-C.2). New local defines:
+  `FN_0004367C` and `DS_00104B1B` (`symbols.h` has no names for them).
+  `fight.c` already had its own local `DS_00104B1B`.
+- `flow.c` `flow_1082c8_init()` is `0x46594`, both arms. The latch is inline,
+  as in the raw; it does not call `flow_1082c8_latch`.
+- `fight.c` `fight_char_reset` (`0x33C18`) is no longer `static`. It is
+  declared in `fight.h`, and its header names the record and its callers.
+  Its body is unchanged.
+- `actors.c`:
+  - `actors_reset_al(al)` is `0x2BAF4`. It is the old `actors_reset` body,
+    with the `test dl,dl` branch on `al & 0xFF` (only AL is saved);
+  - the non-zero arm keeps `gfx_screen_reset(0)` and `palette_list_init()`;
+  - the zero arm is `memcpy(mem + [0xE87A4], mem + [0xE87A0], 0xFA00)`.
+    Both pointers hold the two offscreen buffers (`flow.c` assigns and swaps
+    them), never the aperture, so the aperture rule holds;
+  - `actors_reset()` is `actors_reset_al(1)`. Its `PORT:` note says why the
+    name is kept: 34 of the 35 callers pass EAX = 1;
+  - the old comment said the EAX = 0 arm was "unreachable from the title
+    path and not transcribed". That is replaced.
+- **Not done, and why.** `game_state_step`'s coin arm keeps its `PORT:`
+  stub, and case 8 is unchanged. The brief keeps the wiring for after
+  `gap8-24c5c`: until `game_frame` dispatches mode `0x1A` (§47-B), a call
+  would arm a mode nothing runs. The stub's note now names
+  `game_coin_divert`. `0x32970(0)` (the run clock, spec §7) stays out of
+  scope.
+
+### 47-C.4 The assertions and mutations
+
+`check_coin_divert` (`test_fight.c`, after `check_mode_17_step`) takes
+`check_mode_1a_hooks`'s snapshot: the data object, both pools, both buffers,
+the resource table, the DAC and the aperture. It also saves a
+`0x20000`-byte scratch area at `0x3D00000` (`CD_SRC`; `CD_DST` = `CD_SRC` +
+`0x10000`), above the resource heap. The copy's `[0xE87A0]`/`[0xE87A4]` point
+there, so the byte after the 64000 copied bytes is not a pool byte that
+`0x2BAF4` clears itself. Everything is restored between runs and at the end.
+- The image's table bytes the runs use: `0xC93F8[0xE]` = 6, `[0xC]` = 5,
+  `0xC9388[7·0xE]` = 3, `[7·0xC]` = 2.
+- **(a)** `0x46594` with `DS_00108173` = 0 and b = `0xE` (the dword
+  `0x7777770E`, so a wider read would miss): C8 = CC = C0 = C4 = 6, D0 = 3.
+  The dwords either side keep their sentinels.
+- **(b)** `DS_00108173` = `0x80`, b = `0xC`: C8 = C0 = 7, CC = C4 = 4, D0 = 2.
+- **(c)** `0x33C18(1)`: side 1's four bytes, dword and word (100) change.
+  Side 0, the bytes `+0x81`/`+0x83`/`+0x5A`/`+0x5C` of both slots and the
+  word `0x108864` keep their sentinels.
+- **(d)** `0x2BAF4` with EAX = `0x100` (AL = 0):
+  - the two seeded records are freed;
+  - the copy's first, middle and last bytes arrive, and the byte after the
+    destination keeps `0x99`;
+  - the DAC and the aperture keep their seeds (no `0x52106`), and
+    `DS_00105BED` = 1.
+
+  With EAX = `0x201` (AL = 1): the DAC is blacked and the destination is not
+  copied.
+- **(e)** `0x257A4(2)`, with sentinels in `0x104B00..0x104B21` and the mode
+  dword `0xBEEF0003`:
+  - the seeded record is freed and the copy made, with the DAC kept;
+  - the mode dword is exactly `0x1A`: the upper half was cleared by
+    `0x65490`, the low word stored by `0x4F980`;
+  - the dword `0x104B04` and the byte `0x104B08` are 0, and `0x104B09` keeps
+    `0x66`;
+  - the five bytes are 0 and their neighbours `0x104B10`/`12`/`16`/`18`/`1A`/
+    `1C`/`1E`/`20` keep `0x66`;
+  - `DS_00104B1F` = 2;
+  - both slots are cleared (100 in both words, `0x108864` kept);
+  - the latch is 6/6/3;
+  - the hook is `0x4367C` and `fn_resolve` gives `fight_hook_4367c`;
+    `DS_00104AFA` = `0x10` and `DS_001088F5` = 0.
+- **(f)** `0x257A4(0x12345601)` stores only DL: `DS_00104B1F` = 1, with
+  `0x104B1E`/`0x104B20` kept. With `DS_00108173` = 1 the latch is 7/4/2.
+
+**Mutations** (`scratchpad/g9/mut.py`, `mut.log`; one single-site edit per
+build, source restored after each). **All 49 fail the suite**; none
+survives:
+
+| # | mutation | failing group |
+|---|---|---|
+| M1 | `0x46594`'s arm test inverted | (a), (b) |
+| M2, M3 | the 7 / 4 of the first arm | (b) |
+| M4 | the C8/CC byte from `0xC9388` | (a), (b) |
+| M5, M6 | the CC / C8 store dropped | (a) |
+| M7 | the row stride 8 | (a), (b) |
+| M8 | the D0 store dropped | (a), (b) |
+| M9, M10, M11 | the C0 / C4 latch dropped, C0 from CC | (a), (b) |
+| M12 | `0x2BAF4` with 1 in `0x257A4` | (e): the DAC, the copy |
+| M13 | `0x2BAF4` dropped from `0x257A4` | (e): the record, the copy |
+| M14..M18 | each of the five byte stores dropped | (e) |
+| M19, M20 | `DS_00104B1F` from the second byte, stored as a word | (e), (f) |
+| M21, M22 | either `0x33C18` call dropped | (e) |
+| M23 | `0x46594` dropped | (e) |
+| M24..M27 | the fill 6 / 8 bytes, from `0x104B03`, dropped | (e) |
+| M28 | the hook `0x43738` | (e) |
+| M29, M30 | the return mode `0x11`, `0x4F980` dropped | (e) |
+| M31 | `test dl,dl` on the whole EAX | (d) |
+| M32, M33 | always / never the copy arm | (d), (e); M33 fails 54 lines across the suite |
+| M34, M35 | the copy `0xF9FF` / `0xFA01` bytes | (d) |
+| M36, M37 | the copy reversed, dropped | (d), (e) |
+| M38 | the `[0x105BED]` = 1 store dropped | (d) |
+| M39 | `actors_reset()` with AL = 0 | 52 lines across the suite |
+| M40..M45 | each `0x33C18` store dropped, the `+0x3C` store as a word | (c), (e) |
+| M46..M48 | 99, a dword store, the word stride 4 | (c), (e), and `check_char_select`'s `0x108860` lines |
+| M49 | the slot stride `0x90` | (c), (e) |
+
+M2 was first run with a pattern that also matched state 6's `DS_001082C8 =
+7` (`0x11AE3`), so it was skipped. It was re-run on the `0x465A9` line alone.
+
+### 47-C.5 Measured, remaining gaps and the follow-up
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, with 0
+  compiler warnings. As the brief requires, the branch ran neither `make
+  verify` nor the drivers.
+- **No oracle is expected to move.** `game_coin_divert` and
+  `flow_1082c8_init` have no caller in the port. `fight_char_reset`'s body
+  is unchanged. `actors_reset()` runs the same code as before for all its
+  callers: AL = 1 takes the arm that was there, and only the dead `else` is
+  new.
+- **The follow-up, once `gap8-24c5c` lands:**
+  - `game_state_step`'s coin arm calls `game_coin_divert(accepted)` and
+    returns. State 8 calls it with 3, then runs its shared tails (`0x10DB0`,
+    `0x10E18`, `0x2BF08`, …);
+  - the case-3 dispatch then reaches mode `0x1A` (`frontend_mode_1a_step`
+    runs `fight_hook_4367c`), then `0x1B`, then mode `0x10`. Mode `0x10`'s
+    handler `0x438B4` is unported (§47-B.6), so the credited start would end
+    in a mode that draws nothing after the wipe;
+  - re-run the 8000-frame comparison: the no-input path never accepts a
+    coin, so it should stay byte-identical.
+- Remaining named gaps:
+  - `0x32970(0)` before each call site (the run clock);
+  - the voices `0x2C3FC(0x100)`/`(0x53)` (§45-A's rule);
+  - `0x33C18`'s eight unported callers (47-C.2);
+  - `0x65490`'s other callers `0x41682` and `0x61A80`;
+  - the game-start cases `0x28..0x2F` (§47-B.1), which end in `0x257A4`;
+  - mode `0x10`'s handler `0x438B4`;
+  - `DS_00108173`, which gates `0x46594`'s first arm, has no ported writer
+    (§47-B.2). That arm is reached only in unit tests.
