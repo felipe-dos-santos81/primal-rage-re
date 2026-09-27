@@ -12054,9 +12054,23 @@ the third demo. N 3545 -> 3593 (`41db901`).
   2102, 13 != 7). The new samples are seeded -1, and loop 3984's `sd3[0] =
   0` is asserted against loop 3985's `0x3F`.
 
-### 47-A.5 Measurement
+### 47-A.5 Measurement (`make verify` on `b18303a`, dumps redirected to the scratchpad): EXIT 0, 0 warnings
 
-`make verify` on this branch: see 47-A.7.
+- title 54/55/2/0 and 54/57/0/0; determinism 54;
+- smk and the oracle-required suite: all checks passed;
+- front-end 517/801/3/2 (832 and 833 allowed), unchanged;
+- demo-fight empty, N 1886, unchanged;
+- attract2: cycle-2 dump 2308 frames; region 1732 frames: 1069 clean, 616
+  splice, 16 transition, 25 unexplained (3545 among them, allowed by name as
+  the three-frame splice 2192/2193/2194 at bytes 120000/172800), 6
+  all-black; first unexplained 3593 (raw 8386) = N;
+- attract prefix 215/216 (the expected divergence at 215);
+- gra_extract 32 OK; symbols.h idempotent.
+
+Against §46-A (1051/588/15/72/6 on a 2102-frame dump), 18 more frames are
+clean, 28 more are splices and one more (3585) is a transition. 47 fewer are
+unexplained: 3543..3592 minus the black 3543 and 3545, which is still counted
+unexplained but allowed by name.
 
 ### 47-A.6 Remaining gaps
 
