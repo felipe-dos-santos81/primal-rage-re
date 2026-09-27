@@ -11213,14 +11213,14 @@ assertion changed.
   |---|---|---|
   | `0x430E8` | `0x1F447`, `0x43AE8`, `0x43C18`, `0x44824` | `0x11` |
   | `0x4367C` | `0x25810` (after `0x65490(0x104B02)`) | `0x10` |
-  | `0x25BBC` | `0x25A46` | `0x30` |
-  | `0x25BBC` | `0x25A73` | 5 |
+  | `0x25BBC` | `0x25A46` (in `0x259CC`, the arm with byte CH == 3) | `0x30` |
+  | `0x25BBC` | `0x25A73` (in `0x259CC`, the other arm) | 5 |
   | `0x25BBC` | `0x285CB`, `0x285F3` (in `0x28468`) | none: that path stores mode `0x16` and `[0x104AFA]` = `0x30` itself (`0x285DC`/`0x285E3`) |
   | `0x26998` | `0x2698B` (in `0x26978`) | `0x23` |
   | `0x270BC` | `0x2715C` (in `0x27134`, which zeroes `[0x104B1E]`, `[0x104AF3]`, `[0x104AF2]` first) | 5 |
 
-  `0x26978` and `0x27134` are themselves `DS_00104AE4` values (§43-B.3's
-  list). **Correction to §43-B.3:** that table omits `0x25BBC`'s two storers
+  `0x259CC`, `0x26978` and `0x27134` are themselves `DS_00104AE4` values
+  (§43-B.3's list). **Correction to §43-B.3:** that table omits `0x25BBC`'s two storers
   in `0x28468`. They are found by the dword scan (`0x285C0`/`0x285ED`) and
   by Ghidra's `get_xrefs_to`.
 
@@ -11291,8 +11291,136 @@ immediates' instruction starts (`0x1F43D`, `0x43ADE`, `0x43C0E`, `0x44815`,
 
 ### 46-B.4 The assertions and mutations
 
-(See 46-B.4 below the measurement; filled in with the mutation run.)
+`check_mode_1a_hooks` (`test_fight.c`, run after `check_char_screen_modes`)
+takes the same snapshot (the data object, both pools, both buffers, the
+resource table, the DAC and the aperture) and restores it between runs and at
+the end. Fighter runs seed `DS_001028C8` = 0 (no sound bank is read) and
+`DS_00104B14` = 1 (the value `0x25A51` stores after arming), so no dust is
+built.
+- **(a)** `fn_resolve` of the six hooks returns their ports.
+- **(b)** `0x20DF4(9, 0)`, from sentinels:
+  - every pre-branch store is checked, the byte `[0x1088EC]` with its
+    neighbour intact;
+  - the `0x105C0C` sentinel and the `0x105C14` list (16 nodes in order,
+    closed, with the sentinel's prev at `0x105D48`);
+  - the `0x2C074` pair with its neighbours, `0xF0AEC`/`F0` and the words
+    `0xF0AF8`/`FA`;
+  - the `0x12C70` seed and one link from each of `0x12750`, `0x49300`,
+    `0x28E98` and `0x34978`;
+  - no `0x2BAF4` (two seeded records survive) and no `0x38730`
+    (`DS_00107A40` keeps its sentinel).
+- **(c)** `0x20DF4(9, 1)`:
+  - `0x38730` runs on the clamped 7: `DS_00107A40` = `0xBDDFC[7]` = `0x50`,
+    not `[9]` = `0x700`;
+  - the seeded record is gone and the scene spawned;
+  - `(6, 1)` gives `0x40`.
+- **(d)** `0x25BBC`:
+  - the round byte wraps `0xFF` to 0, `0x104B13` = 0;
+  - two spawns counted, both slot pointers and characters;
+  - scene 2 (`0x74`), `[0xF0A48]` = 0, the `0x46504` pair, the hook `0x5D812`.
+- **(e)** `0x26998`:
+  - side 1 when `DS_001078A7` == 0: its `+0x5B` goes `0x77` to `0x78`
+    (capped), slot 0's is untouched, `0x104B13` is not stored, one spawn;
+  - side 0 otherwise: `0x10` to `0x12`;
+  - `0xFF` to 1: the wrap is not capped.
+- **(f)** `0x270BC`: side = the signed byte `DS_0010810D` = 1. `0x104B0A` = 0,
+  `0x104B0B` = that slot's `+0x5B`, and the `0x46504` pair keeps its
+  sentinels.
+- **(g)** `0x4367C` with `DS_00104B1D` = 3 runs `0x4454C`'s second arm:
+  - the stores per side, the eight `0xFF` bytes and eight zero dwords;
+  - the neighbours `0x108110`, `0x10816D` and `0x105B33` are untouched, and
+    there is no step;
+  - `0x444C8`, not `0x43738`: `DS_0010816C` keeps its sentinel, and both
+    `DS_00108170` bytes are 1.
+- **(h)** `0x4454C`'s first arm: the copies from `0x108168`/`9`, and the step
+  6 to 0 carries 2 to 3.
+- **(i)** `0x4367C`'s own arms end in `0x43738` (countdown 5 / `0xF`):
+  - the copies from `0x108168`/`9` and 5 to 6 with no carry;
+  - the double wrap 6/6 to 0/0;
+  - the `0xC887F` arm (0, 5) with no step.
+- **(j)** `0x430E8`, with `DS_00104B1D` = 1, `DS_00104B1F` = 2 and
+  `DS_00104AB8` = 1:
+  - `0x25848` runs on the old `DS_00104B1F` (the model's rng(6) +
+    `0xA87C4[3]` + 1), and then the copy gives 1;
+  - side 0's think gate `0x107813` = 1;
+  - `0x4F200`'s `0x2BAF4` drops a seeded record, and `0x107A55`/`54` are 0;
+  - the six spawns: ids `0x351`/`0x352`, layers `0xF0`/`0xF1`, x `0x2A00`,
+    the children's a2/a3/a4 in `+0x34`/`+0x49`/`+0x36`, and spawns 5 and 6's
+    parents pa/pb (`+0x4A`);
+  - spawn 6's `+0x2E` = spawn 5's + 4 (same descriptor, characters 3/3) and
+    only spawn 6's `+0x4E` = 1;
+  - the `0x38B18` row (id `0x3F11`) and the hook `0x430C0`.
+- **(k)** `DS_00104B1D` = 0, `DS_00104B1F` = 2: arm 0 reads
+  `DS_0010816B`, and `0x41350` stores `0xC835A[stage]` for side 0 only.
+  `0x1078A7` is untouched with `DS_00108173` == 0.
+- **(k2)** `DS_00104B1F` = 3: no `0x41350` and both think gates come from
+  `0x430E8`. Characters 0/6: spawns 3 and 4 (found by parent) have different
+  `+8`.
+- **(l)** `0x25848`'s other arms:
+  - rng(7);
+  - the reduction at exactly 7 (a seed found by stepping the model);
+  - arm 2 stores nothing;
+  - the rng(2)-th zero byte;
+  - the first non-matching byte (`0x42` = `DS_001078BE` | `0x40` is skipped);
+  - the `DS_00104AD4` == 2 step (6 to 0, 3 to 4);
+  - the frame byte `[DS_00104AD4 ^ 1]` for `DS_00104AD4` = 0 and 1.
+- **(m)** The chain:
+  - `DS_00104AE4` = `0x430E8` with `frontend_wipe_arm(0x2A)`;
+  - 18 `frontend_mode_1a_step` frames run the hook (`0x430C0` installed, mode
+    `0x1B`);
+  - 17 `0x1B` frames draw nothing at row 2, and the 18th draws "VS" at row 2,
+    col `0x13` (rows 1/3 are empty) and returns to mode `0x2A`;
+  - the glyph equals a direct `0x2F198` call with mode `0x4002` and differs
+    from mode `0x4000`'s.
+
+`check_state6` also seeds `[0xF0A48]`, byte `[0x1088EC]` = 3, the
+`0x2C074` pair and the `0x105C0C` sentinel before state 6 and checks that
+`0x20DF4` zeroed or relinked them. It restores `[0xF0A48]`/`[0x1088EC]`,
+which lie outside `test_fight`'s restore windows.
+
+**Mutations** (`scratchpad/g5hook/mut.py`, `mut.log`/`mut2.log`): 76
+single-site edits of the new code. 73 fail at least one assertion (M7, which
+drops the `0x2C390` call, fails by a crash: run (b) walks the unlinked `0xA5`
+fill). The three survivors are equivalent:
+- M15 drops `0x4F200`'s `[0x107A55]` store, M16 its `[0x107A54]` store, and
+  M18 its `0x4F1D0` call;
+- the `0x2BAF4` that follows in the same function reaches `0x4F228`
+  (`0x2BBC4`), which rewrites `0x107A54` = 0, `0x107A55` = AL = 0 and the
+  words `0x107A38`/`0x107A3A` = 0 before any read, whatever `0x4F200`'s EAX.
+
+The first run left five survivors that were not equivalent. Assertions were
+added for each, and each mutation then failed:
+- M24, the reduction's `>=`;
+- M54, `c1` read from `0x10816A`;
+- M73, `0x430E8`'s `0x1078A7` store, masked in (j) by `0x41350`'s side-1
+  gate;
+- M76, `pb` from spawn 1;
+- M8 (a build error in the first run).
 
 ### 46-B.5 Measured and remaining gaps
 
-(Filled in below.)
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, with 0
+  compiler warnings. `make verify` and the drivers were not run, as the brief
+  requires.
+- **State 6's change.** The headless `prageport --check 8000` was run from a
+  scratch directory, with the base binary (`1151646` plus the test brace) and
+  with this branch's. It gives byte-identical `frame_*.idx`/`.pal` for all
+  8000 frames. A probe build (not committed) printed state 6's entries at
+  ticks 1957, 3670, 4872 and 6585, with byte `[0x1088EC]` = 3 before the
+  last three. Zeroing it has no visible effect in that window. No oracle is
+  expected to move, but the front-end/demo-fight/attract2 drivers were not
+  run. The controller's ladder is the check.
+- The hooks themselves stay unreachable: modes `0x1A`/`0x1B` are not
+  dispatched (§43-B.5), and `0x25BBC`'s mode-`0x16` path (`0x28468`) is
+  unported.
+- Remaining named gaps:
+  - the voices, including `0x4F714`'s stage voice (§45-A's rule);
+  - `0x25848`'s last arm for `[0x104AD4]` other than 0/1/2 (46-B.3);
+  - `0x25848`'s other callers `0x4177D`, `0x418A8` and `0x42390`, and
+    `0x20DF4`'s callers `0x25A95` and `0x295E4`;
+  - the storers of the five hooks (`0x1EEB0`, `0x43AAC`, `0x43B24`,
+    `0x44798`, `0x257A4`, `0x259CC`, `0x26978`, `0x27134`,
+    `0x28468`);
+  - the 7 `DS_00104AE4` values still unregistered (46-B.3);
+  - the `game_frame` cases `0x1A`/`0x1B`, which still switch on a dword where
+    the raw reads a word (§43-B.5).

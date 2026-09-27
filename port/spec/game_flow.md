@@ -392,9 +392,11 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   `0x42CB4`, `0x28DA4` and the unreferenced stub `0x42FB0`), `0x4F980` and
   both handlers with their wipes `0x4F9E4`/`0x4FA88` are ported and the hooks
   registered (record §43-B), and each handler's `call [0x104AE4]` goes through
-  `fn_resolve`. A miss is skipped. That is a no-op only for `0x29D60`/`0x5D812`:
-  the hooks the other `0x4F980` callers install (`0x430E8`, `0x4367C`,
-  `0x25BBC`, `0x26998`, `0x270BC`) are unported named gaps. `game_frame`
+  `fn_resolve`. A miss is skipped. That is a no-op only for `0x29D60`/`0x5D812`.
+  The hooks the other `0x4F980` callers install (`0x430E8`, `0x4367C`,
+  `0x25BBC`, `0x26998`, `0x270BC`) and `0x430C0`, which `0x430E8` installs,
+  are ported and registered (record §46-B); 7 other stored values are not.
+  `game_frame`
   still does not dispatch cases `0x1A`/`0x1B`: only `0x4F980` stores mode
   `0x1A`, and its eleven callers are unported (the nearest, `0x257A4`, is the
   coin divert `0x11D04` reaches at `0x11D41` and in state 8, both stubbed), so
@@ -1253,13 +1255,14 @@ reads `DS_0010884C` as a circular-list head and loops until it returns to the
 sentinel; with the global left at 0 the walk never terminates and the demo hangs
 on its first state-7 frame. `fight_list_init` ports `0x49300` verbatim (from the
 raw disassembly), so the walk is a no-op on the empty list exactly as the
-original's is. `0x20DF4`'s other resets remain a named gap. (Since then
-`0x12750`, `0x34978` and `0x28E98` — the type-`0x0A`/`0x19` node lists at
-`0x104880`/`0x104888`, `actor_type_0a19_list_init`, demo-pose record §41-D —
-are ported too. The gap that remains is the calls `0x29B70`, `0x2C390` and
-`0x2C074`, the five zero stores to dword `[0xF0A48]` (`0x20DFB`), dword
-`[0x100B4C]`, dword `[0x104AE8]`, byte `[0x1088EC]` and byte `[0x104B15]`
-(`0x20E16..0x20E28`), and the two word stores `DS_000F0AFA`/`DS_000F0AF8`.)
+original's is. (Since then `0x12750`, `0x34978` and `0x28E98` — the
+type-`0x0A`/`0x19` node lists at `0x104880`/`0x104888`,
+`actor_type_0a19_list_init`, demo-pose record §41-D — were ported, and
+record §46-B ports `0x20DF4` whole as `game_fight_reset`, which state 6 now
+calls: the calls `0x29B70` (a bare `ret`), `0x2C390` and `0x2C074`, the zero
+stores to `[0xF0A48]`, `[0x100B4C]`, `[0x104AE8]`, byte `[0x1088EC]` and byte
+`[0x104B15]`, and the words `DS_000F0AFA`/`DS_000F0AF8` are no longer a gap. A
+headless 8000-frame run is byte-identical before and after.)
 
 ## Demo fight cycle 2 — closure outcome (Task 8)
 
