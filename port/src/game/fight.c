@@ -8,6 +8,7 @@
 #include "game/fighter.h"
 #include "game/camera.h"
 #include "game/actors.h"
+#include "game/attract.h"
 #include "game/effects.h"
 #include "game/rng.h"
 #include "../mem.h"
@@ -121,8 +122,9 @@ void fight_scene_props(u32 scene)
  * spawn intact: 0x4F228 never writes ECX, 0x2BAF4 pushes and pops both, and
  * 0x29D60 is a bare `ret`. Each spawn pushes a5 = 0 and 0x2AE14 pops it (`ret 4`,
  * 0x2B14A). The EAX left by the last acquire is dead: both callers overwrite
- * EAX next (0x4377F, 0x4450F). 0x43738/0x444C8 are 0x24C5C-mode code the port
- * does not reach, so this function has no port caller yet. */
+ * EAX next (0x4377F, 0x4450F). Its callers fight_char_screen_open (0x43738)
+ * and fight_char_screen_open_both (0x444C8) are 0x24C5C-mode code no driver
+ * reaches (record §42-F). */
 #define DS_000C885C 0x000C885Cu   /* no symbols.h name: the first descriptor */
 #define DS_000C87F8 0x000C87F8u   /* no symbols.h name: the per-side descriptor */
 void fight_char_screen_setup(void)
@@ -140,6 +142,158 @@ void fight_char_screen_setup(void)
     (void)palette_acquire(0x098EC514u);                 /* 0x43895 0x33754 */
     (void)palette_acquire(0x008099ACu);                 /* 0x4389F 0x33754 */
     (void)palette_acquire(0x00809984u);                 /* 0x438A9 0x33754 */
+}
+
+/* ---- 0x43738/0x444C8 the character screen's entry (record §42-F) -------- */
+
+#define DS_000C8870 0x000C8870u   /* no symbols.h name: [side] entry descriptor */
+#define DS_000C8878 0x000C8878u   /* no symbols.h name: [side] panel descriptor */
+#define DS_000C88DC 0x000C88DCu   /* no symbols.h name: [char] panel sprite id */
+#define DS_000C88F8 0x000C88F8u   /* no symbols.h name: [char] pset word */
+#define DS_000C8908 0x000C8908u   /* no symbols.h name: [char] palette handle */
+#define DS_000BB938 0x000BB938u   /* no symbols.h name: [class][side] descriptor */
+#define DS_000A78B0 0x000A78B0u   /* no symbols.h name: [class] marker descriptor */
+#define DS_00104B1B 0x00104B1Bu   /* no symbols.h name */
+#define FN_HOOK_NOP 0x00029D60u   /* 0x29D60, a bare `ret` */
+
+/* 0x1D810 — record §42-F. EAX = side. When DS_001028E0[side] holds a record,
+ * 0x2B150 marks it dead and the slot is zeroed (ECX = 0 at 0x1D826; 0x2B150
+ * pushes and pops EBX, ECX and EDX). */
+void fight_select_marker_release(u32 side)
+{
+    u32 rec = DSD(DS_001028E0 + side * 4u);             /* 0x1D81A */
+    if (rec == 0u) return;                              /* 0x1D822 */
+    actor_set_dead(rec);                                /* 0x1D828 0x2B150 */
+    DSD(DS_001028E0 + side * 4u) = 0u;                  /* 0x1D82D */
+}
+
+/* 0x1D7B8 — record §42-F. EAX = side, EDX = class, EBX = the y (the caller's
+ * a4, passed through: 0x1D7B8 never writes EBX, and 0x2B150 preserves it).
+ * The 0x1D810 release, then 0x2AE14(0xA78B0[class], a2 = side ? 0x4200 :
+ * 0x200, a3 = 0xFD, a4 = y, a5 = 0) into DS_001028E0[side]. */
+void fight_select_marker_spawn(u32 side, u32 cls, u32 y)
+{
+    u32 rec = DSD(DS_001028E0 + side * 4u);             /* 0x1D7C7 */
+    if (rec != 0u) {                                    /* 0x1D7CD */
+        actor_set_dead(rec);                            /* 0x1D7D5 0x2B150 */
+        DSD(DS_001028E0 + side * 4u) = 0u;              /* 0x1D7DA (EBP = 0) */
+    }
+    DSD(DS_001028E0 + side * 4u) = actor_spawn(
+        (const u32 *)(mem + DSD(DS_000A78B0 + cls * 4u)),
+        side != 0u ? 0x4200u : 0x200u, 0xFDu, y, 0u);   /* 0x1D7FE/0x1D803 */
+}
+
+/* 0x43964 — record §42-F. EAX = side; the character is the signed byte
+ * DS_00108166[side] (0x43972 reads the dword at 0x108163 + side, 0x4397C `sar
+ * esi,0x18`). Two spawns, a5 = 0 (each `push 0` popped by 0x2AE14's `ret 4`):
+ * 0xC8870[side] at (0xC8898[ch], a3 0xFF, 0xC88A6[ch]) into DS_00108154[side],
+ * and 0xC8878[side] at (0, a3 0xFE, 0) into DS_0010815C[side]. The second is
+ * re-pointed at the sprite id 0xC88DC[ch] (0x2BCF4) and given the pset word
+ * 0xC88F8[ch] and the palette 0xC8908[ch] (0x2A17C). The words are
+ * zero-extended (`xor ebx,ebx`/`xor edx,edx` before each `mov bx`/`mov dx`). */
+void fight_char_entry_spawn(u32 side)
+{
+    s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x43972/0x4397C */
+    DSD(DS_00108154 + side * 4u) = actor_spawn(
+        (const u32 *)(mem + DSD(DS_000C8870 + side * 4u)),
+        DSW(DS_000C8898 + (u32)(ch * 2)), 0xFFu,
+        DSW(DS_000C88A6 + (u32)(ch * 2)), 0u);          /* 0x43996/0x439A6 */
+    DSD(DS_0010815C + side * 4u) = actor_spawn(
+        (const u32 *)(mem + DSD(DS_000C8878 + side * 4u)),
+        0u, 0xFEu, 0u, 0u);                             /* 0x439B4/0x439B9 */
+    actors_anim_seek(DSD(DS_0010815C + side * 4u),
+                     DSD(DS_000C88DC + (u32)(ch * 4)));  /* 0x439D7 0x2BCF4 */
+    actor_pset_palette(DSD(DS_0010815C + side * 4u),
+                       DSW(DS_000C88F8 + (u32)(ch * 2)),
+                       DSD(DS_000C8908 + (u32)(ch * 4)));  /* 0x439FD 0x2A17C */
+}
+
+/* 0x43A08 — record §42-F. EAX = side, the character as in 0x43964 and its
+ * class the signed byte 0xC8882[ch] (0x43A19, 0x43A51 `movsx ebp,cl`). The
+ * spawn 0xBB938[class * 2 + side] at (0xC88B4[side], a3 0xFF, 0xC88B8[side])
+ * with a5 = side ? 0 : 0x4000 (0x43A21..0x43A3B) into DS_0010813C[side], its
+ * +0x4D = 0x1E (0x43A7D); then 0x1D7B8(side, class) with EBX = 0x1800
+ * (0x43A78), DS_0010814C[side]'s +0x29 |= 8 (0x43A8F) and that record
+ * re-pointed at the sprite id 0x32B (0x43A9E 0x2BCF4). */
+void fight_char_select_actor(u32 side)
+{
+    s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x43A10/0x43A16 */
+    s32 cls = (s8)DSB(DS_000C8882 + (u32)ch);           /* 0x43A19/0x43A51 */
+    u32 rec = actor_spawn(
+        (const u32 *)(mem + DSD(DS_000BB938 + side * 4u + (u32)(cls * 8))),
+        DSW(DS_000C88B4 + side * 2u), 0xFFu,
+        DSW(DS_000C88B8 + side * 2u),
+        side == 0u ? 0x4000u : 0u);                     /* 0x43A60 0x2AE14 */
+    DSD(DS_0010813C + side * 4u) = rec;                 /* 0x43A65 */
+    DSB(rec + 0x4Du) = 0x1Eu;                           /* 0x43A7D */
+    fight_select_marker_spawn(side, (u32)cls, 0x1800u); /* 0x43A84 0x1D7B8 */
+    DSB(DSD(DS_0010814C + side * 4u) + 0x29u) |= 8u;    /* 0x43A8F */
+    actors_anim_seek(DSD(DS_0010814C + side * 4u), 0x32Bu);  /* 0x43A9E 0x2BCF4 */
+}
+
+/* 0x43738 — record §42-F. The character screen's entry: the 0x104AE4 frame
+ * hook 0x28D68/0x28D80 install, also called directly at 0x4372E. The shared
+ * prologue (0x2C3FC voice, 0x13DF0, 0x2C8F0(-1), DS_00104B1B/DS_00104B24 = 0,
+ * 0x1D810 for both sides, 0x43818), then per side: when DS_00104B1F has the
+ * bit side + 1 (0x4377F `lea eax,[edx+1]`, 0x43788 `test ecx,eax`: 1 for
+ * side 0, 2 for side 1) DS_00108170[side] = 1, 0x43964 and 0x43A08, else
+ * DS_00108170[side] = 0; either way DS_00108144[side] = 0 (EBX = 0 from
+ * 0x43771 advanced by 4 before the 0x437B2 store at EBX + 0x108140). The
+ * countdown DS_0010816C = DS_00108173 ? 5 : 0xF is drawn by 0x2F528 at col
+ * 0x13, row 1, width 2, pad 0, mode 0x4000 (the value is the signed word,
+ * 0x437EE/0x437F6 `sar ebx,0x10`). Last, the hook becomes 0x29D60 and
+ * DS_00108174 = 0. EDX (0 from 0x43765) and EBX survive 0x1D810 and 0x43818,
+ * which push and pop them. */
+void fight_char_screen_open(void)
+{
+    /* PORT: 0x43741 0x2C3FC(0x30) voice, out of scope (spec §7). */
+    effects_clear();                                    /* 0x43746 0x13DF0 */
+    attract_config_volumes_unscaled();                  /* 0x43750 0x2C8F0(-1) */
+    DSB(DS_00104B1B) = 0u;                              /* 0x43757 */
+    DSB(DS_00104B24) = 0u;                              /* 0x4375D */
+    fight_select_marker_release(0u);                    /* 0x43767 0x1D810 */
+    fight_select_marker_release(1u);                    /* 0x43773 0x1D810 */
+    fight_char_screen_setup();                          /* 0x43778 0x43818 */
+    for (u32 side = 0; side < 2u; side++) {             /* 0x437B1..0x437BB */
+        if ((DSB(DS_00104B1F) & (side + 1u)) != 0u) {   /* 0x43782..0x4378A */
+            DSB(DS_00108170 + side) = 1u;               /* 0x43790 */
+            fight_char_entry_spawn(side);               /* 0x43796 0x43964 */
+            fight_char_select_actor(side);              /* 0x4379D 0x43A08 */
+        } else {
+            DSB(DS_00108170 + side) = 0u;               /* 0x437A6 */
+        }
+        DSD(DS_00108144 + side * 4u) = 0u;              /* 0x437B2 */
+    }
+    DSW(DS_0010816C) = DSB(DS_00108173) != 0u ? 5u : 0xFu;  /* 0x437C6/0x437D1 */
+    text_number_draw_font2(0x13, 1, (s16)DSW(DS_0010816C), 2,
+                           0u, 0x4000u);                /* 0x437FE 0x2F528 */
+    DSD(DS_00104AE4) = FN_HOOK_NOP;                     /* 0x43805 */
+    DSB(DS_00108174) = 0u;                              /* 0x4380B */
+}
+
+/* 0x444C8 — record §42-F. 0x43738's prologue (0x444CC..0x44508), then both
+ * sides unconditionally: DS_00108170[side] = 1, 0x43964, 0x43A08 and
+ * DS_00108144[side] = 0 (EBX advanced by 4 at 0x4451E before the 0x44529
+ * store). No countdown draw; DS_00108174 = 0 and the hook becomes 0x29D60.
+ * Its only caller is 0x4462B (in 0x4454C). */
+void fight_char_screen_open_both(void)
+{
+    /* PORT: 0x444D1 0x2C3FC(0x30) voice, out of scope (spec §7). */
+    effects_clear();                                    /* 0x444D6 0x13DF0 */
+    attract_config_volumes_unscaled();                  /* 0x444E0 0x2C8F0(-1) */
+    DSB(DS_00104B1B) = 0u;                              /* 0x444E7 */
+    DSB(DS_00104B24) = 0u;                              /* 0x444ED */
+    fight_select_marker_release(0u);                    /* 0x444F7 0x1D810 */
+    fight_select_marker_release(1u);                    /* 0x44503 0x1D810 */
+    fight_char_screen_setup();                          /* 0x44508 0x43818 */
+    for (u32 side = 0; side < 2u; side++) {             /* 0x44528..0x44532 */
+        DSB(DS_00108170 + side) = 1u;                   /* 0x44511 */
+        fight_char_entry_spawn(side);                   /* 0x44517 0x43964 */
+        fight_char_select_actor(side);                  /* 0x44521 0x43A08 */
+        DSD(DS_00108144 + side * 4u) = 0u;              /* 0x44529 */
+    }
+    DSB(DS_00108174) = 0u;                              /* 0x4453B */
+    DSD(DS_00104AE4) = FN_HOOK_NOP;                     /* 0x44541 */
 }
 
 /* ---- 0x494A8 the dust builder (state 6's fighter spawn) ----------------- */

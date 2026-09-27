@@ -3730,6 +3730,19 @@ int test_attract(void)
         CHECK_EQ_INT((int)DSD(DS_000A2CB8), 0);
         CHECK_EQ_INT((int)DSD(DS_000A2CB4), 0);
 
+        /* 0x2C8F0(eax = -1), record §42-F: each field halved with `sar 1`
+         * (0x2C910/0x2C92D), no 0x2A scale. Scale 0 is seeded so a scaled
+         * arm would read 0; m 0xA1 -> 0x50, s 0x41 -> 0x20 (odd, so the
+         * halving truncates). */
+        config_field_set(0x2Au, 0u);
+        config_field_set(0x35u, 0x00A1u);
+        config_field_set(0x37u, 0x0041u);
+        DSD(DS_000A2CB8) = 0xDEADBEEFu;
+        DSD(DS_000A2CB4) = 0xDEADBEEFu;
+        attract_config_volumes_unscaled();
+        CHECK_EQ_INT((int)DSD(DS_000A2CB8), 0x50);
+        CHECK_EQ_INT((int)DSD(DS_000A2CB4), 0x20);
+
         config_field_set(0x2Au, saved2a);
         config_field_set(0x35u, saved35);
         config_field_set(0x37u, saved37);

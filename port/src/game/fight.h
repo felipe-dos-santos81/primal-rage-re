@@ -102,6 +102,38 @@ void fight_scene_props(u32 scene);
  * code the port does not reach. */
 void fight_char_screen_setup(void);
 
+/* 0x1D810. Mark the side's marker record DS_001028E0[side] dead (0x2B150) and
+ * zero the slot; a zero slot is left alone. */
+void fight_select_marker_release(u32 side);
+
+/* 0x1D7B8. The 0x1D810 release, then spawn the class's marker 0xA78B0[cls] at
+ * x = side ? 0x4200 : 0x200, a3 0xFD, the caller's y (EBX) into
+ * DS_001028E0[side]. */
+void fight_select_marker_spawn(u32 side, u32 cls, u32 y);
+
+/* 0x43964. Spawn the side's entry 0xC8870[side] at the character's
+ * (0xC8898, 0xC88A6) into DS_00108154[side] and its panel 0xC8878[side] into
+ * DS_0010815C[side], re-pointed at 0xC88DC[ch] with 0xC88F8[ch]/0xC8908[ch]
+ * as its pset word and palette. The character is (s8)DS_00108166[side]. */
+void fight_char_entry_spawn(u32 side);
+
+/* 0x43A08. Spawn the character class's side actor 0xBB938[class][side] into
+ * DS_0010813C[side] (+0x4D = 0x1E; side 0 with the a5 0x4000 flip), the marker
+ * (0x1D7B8 with y 0x1800), and re-point DS_0010814C[side] at 0x32B with +0x29
+ * bit 3. */
+void fight_char_select_actor(u32 side);
+
+/* 0x43738. The character screen's entry (the DS_00104AE4 hook 0x28D68/0x28D80
+ * install; registered): the shared prologue and 0x43818, then 0x43964/0x43A08
+ * for each side whose bit side + 1 is set in DS_00104B1F, the countdown
+ * DS_0010816C (5 or 0xF by DS_00108173) drawn at col 0x13 row 1, and the hook
+ * reset to 0x29D60. */
+void fight_char_screen_open(void);
+
+/* 0x444C8. 0x43738 with both sides filled unconditionally and no countdown.
+ * Only 0x4454C calls it (0x4462B). */
+void fight_char_screen_open_both(void);
+
 /* 0x494A8. The dust/effect entry builder the fighter spawn (0x33C78) calls at
  * 0x33E43 when DS_00104B14 == 0. Each iteration moves one node from the free
  * fight-effect list (DS_001083C4) to the active one (DS_0010884C), picks a

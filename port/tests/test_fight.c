@@ -1,6 +1,7 @@
 /* port/tests/test_fight.c */
 #include "game/actors.h"
 #include "game/camera.h"
+#include "game/config.h"
 #include "game/fight.h"
 #include "game/fighter.h"
 #include "game/flow.h"
@@ -3144,6 +3145,288 @@ static void check_char_screen_setup(void)
         if (res != NULL) CHECK_EQ_INT((int)DSD(e + 12u), (int)*res);
     }
     CHECK_EQ_INT((int)DSD(DS_00107618 + 0x50u), 0);
+
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    tf_put(s_bufa, bufa, sizeof s_bufa);
+    tf_put(s_bufb, bufb, sizeof s_bufb);
+    tf_put(s_res, res_tab, res_len);
+    memcpy(gfx_aperture(), s_ap, sizeof s_ap);
+    memcpy(gfx_dac, s_dac, sizeof s_dac);
+}
+
+/* Record §42-F: the character screen's entries 0x43738/0x444C8 and their
+ * callees 0x43964, 0x43A08, 0x1D810, 0x1D7B8 and 0x2F528. */
+static u32 chs_grid(u32 row, u32 col)
+{
+    return DSD(DS_00105F38 + row * 0xACu + col * 4u);
+}
+
+static u32 chs_pal_handle(u32 rec)
+{
+    u32 e = DSD(actor_pset(rec) + 0x18u);
+    return e != 0u ? DSD(e) : 0u;
+}
+
+/* The seeds every run starts from: sentinels in each global the entries write,
+ * the two marker slots holding live records, an effect count and lock the
+ * 0x13DF0 clear must zero, and volumes the 0x2C8F0(-1) arm must replace. */
+static void chs_seed(u8 ch0, u8 ch1, u8 b1f, u8 b173)
+{
+    actors_reset();
+    DSD(DS_001028E0) = actor_alloc(0);
+    DSD(DS_001028E0 + 4u) = actor_alloc(0);
+    DSB(DS_00108166) = ch0;
+    DSB(DS_00108166 + 1u) = ch1;
+    DSB(DS_00104B1F) = b1f;
+    DSB(DS_00108173) = b173;
+    for (u32 o = 0; o < 8u; o += 4u) {
+        DSD(DS_0010813C + o) = 0xDEADBEEFu;
+        DSD(DS_00108144 + o) = 0xDEADBEEFu;
+        DSD(DS_00108154 + o) = 0xDEADBEEFu;
+        DSD(DS_0010815C + o) = 0xDEADBEEFu;
+    }
+    DSW(DS_00108170) = 0x7777u;
+    DSB(DS_00108174) = 0x77u;
+    DSW(DS_0010816C) = 0x7777u;
+    DSD(DS_00104AE4) = 0xDEADBEEFu;
+    DSB(0x00104B1Bu) = 0x77u;
+    DSB(DS_00104B24) = 0x77u;
+    DSB(DS_0009AF3C) = 1u;
+    DSB(DS_0009AF3D) = 5u;
+    config_field_set(0x2Au, 0u);
+    config_field_set(0x35u, 0x00A1u);
+    config_field_set(0x37u, 0x0041u);
+    DSD(DS_000A2CB8) = 0xDEADBEEFu;
+    DSD(DS_000A2CB4) = 0xDEADBEEFu;
+    DSD(DS_00105F34) = 0x12345678u;
+    DSD(DS_00105F38 + 1u * 0xACu + 0x13u * 4u) = 0xDEADBEEFu;
+    DSD(DS_00105F38 + 1u * 0xACu + 0x15u * 4u) = 0xDEADBEEFu;
+}
+
+/* The prologue and tail both entries share. The seeded marker slots point at
+ * base and base + 0x68, where 0x43818's rebuild then places its first two
+ * records: without the 0x1D810 releases the later 0x1D7B8 would mark those
+ * live records dead through the stale slot, so all three stay undead with
+ * their descriptors' palette (0xC885C/0xC87F8 +0x10 = 0x098EC71C). */
+static void chs_check_common(u32 base)
+{
+    for (u32 k = 0; k < 3u; k++) {
+        u32 r = base + k * ACTOR_REC_SIZE;
+        CHECK_EQ_INT((int)(DSB(r + 0x28u) & 8u), 0);
+        CHECK_EQ_INT((int)chs_pal_handle(r), 0x098EC71C);
+    }
+    CHECK_EQ_INT((int)DSB(0x00104B1Bu), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B24), 0);
+    CHECK_EQ_INT((int)DSB(DS_0009AF3C), 0);             /* 0x13DF0 */
+    CHECK_EQ_INT((int)DSB(DS_0009AF3D), 0);
+    CHECK_EQ_INT((int)DSD(DS_000A2CB8), 0x50);          /* 0xA1 >> 1 */
+    CHECK_EQ_INT((int)DSD(DS_000A2CB4), 0x20);          /* 0x41 >> 1 */
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x29D60);
+    CHECK_EQ_INT((int)DSB(DS_00108174), 0);
+    CHECK_EQ_INT((int)DSD(DS_00108144), 0);
+    CHECK_EQ_INT((int)DSD(DS_00108144 + 4u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00105F34), 0x12345678);
+}
+
+/* One filled side. `base` is the first of its four records (0x43964's two,
+ * 0x43A08's, 0x1D7B8's, in spawn order). The expected values are the raw
+ * tables' (tabs dumped from the data object, record §42-F): x/y 0xC8898/
+ * 0xC88A6, sprite ids 0xC88DC, pset words 0xC88F8, palettes 0xC8908, the
+ * class byte 0xC8882, the side actor 0xBB938 and the marker 0xA78B0. */
+static void chs_check_side(u32 side, u32 base, u32 x, u32 y, u32 panel_id,
+                          u32 panel_word, u32 panel_pal, u32 act_pal,
+                          u32 act_2c, u32 marker_id)
+{
+    u32 e = base, p = base + ACTOR_REC_SIZE;
+    u32 a = base + 2u * ACTOR_REC_SIZE, m = base + 3u * ACTOR_REC_SIZE;
+    CHECK_EQ_INT((int)DSB(DS_00108170 + side), 1);
+    CHECK_EQ_INT((int)DSD(DS_00108154 + side * 4u), (int)e);
+    CHECK_EQ_INT((int)DSD(DS_0010815C + side * 4u), (int)p);
+    CHECK_EQ_INT((int)DSD(DS_0010813C + side * 4u), (int)a);
+    CHECK_EQ_INT((int)DSD(DS_001028E0 + side * 4u), (int)m);
+    /* 0x43964's entry: 0xC8870[side] = 0xC880C/0xC8820, ids 0x333/0x335. */
+    CHECK_EQ_INT((int)DSD(e + 0x08u), side == 0u ? 0x333 : 0x335);
+    CHECK_EQ_INT((int)DSD(e + 0x18u), (int)x);
+    CHECK_EQ_INT((int)DSD(e + 0x1Cu), (int)y);
+    CHECK_EQ_INT((int)DSB(e + 0x49u), 0xFF);
+    CHECK_EQ_INT((int)chs_pal_handle(e), side == 0u ? 0x098EC50C : 0x098EC514);
+    /* Its panel: 0xC8878[side], a3 0xFE at (0, 0), re-pointed and repaletted. */
+    CHECK_EQ_INT((int)DSD(p + 0x08u), (int)panel_id);
+    CHECK_EQ_INT((int)(DSW(actor_pset(p)) & 0x7FFFu), (int)panel_id);
+    CHECK_EQ_INT((int)DSD(p + 0x18u), 0);
+    CHECK_EQ_INT((int)DSD(p + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSB(p + 0x49u), 0xFE);
+    CHECK_EQ_INT((int)DSW(actor_pset(p) + 2u), (int)(panel_word | 0x800u));
+    CHECK_EQ_INT((int)chs_pal_handle(p), (int)panel_pal);
+    /* 0x43A08's side actor: 0xBB938[class][side]; the side's desc[1] byte 2
+     * (0x00000300 / 0x00040300) is rec+0x2E, the class's desc+0xC rec+0x2C. */
+    CHECK_EQ_INT((int)DSD(a + 0x18u), side == 0u ? 0x1500 : 0x3F00);
+    CHECK_EQ_INT((int)DSD(a + 0x1Cu), 0x3200);
+    CHECK_EQ_INT((int)DSB(a + 0x49u), 0xFF);
+    CHECK_EQ_INT((int)DSB(a + 0x4Du), 0x1E);
+    CHECK_EQ_INT((int)(DSW(a + 0x28u) & 0x4000u), side == 0u ? 0x4000 : 0);
+    CHECK_EQ_INT((int)DSW(a + 0x2Eu), side == 0u ? 0 : 4);
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), (int)act_2c);
+    CHECK_EQ_INT((int)chs_pal_handle(a), (int)act_pal);
+    /* 0x1D7B8's marker: 0xA78B0[class], a3 0xFD, y = 0x43A08's EBX 0x1800. */
+    CHECK_EQ_INT((int)DSD(m + 0x08u), (int)marker_id);
+    CHECK_EQ_INT((int)DSD(m + 0x18u), side == 0u ? 0x200 : 0x4200);
+    CHECK_EQ_INT((int)DSD(m + 0x1Cu), 0x1800);
+    CHECK_EQ_INT((int)DSB(m + 0x49u), 0xFD);
+    /* 0x43818's per-side record, re-pointed at 0x32B. */
+    CHECK_EQ_INT((int)DSD(DSD(DS_0010814C + side * 4u) + 0x08u), 0x32B);
+}
+
+static u32 chs_active_count(void)
+{
+    u32 n = 0;
+    for (u32 r = actor_list_head(); r != 0; r = actor_next(r)) n++;
+    return n;
+}
+
+/* Everything the entries write is saved and restored, as for 0x43818: the
+ * data object (every global, the config fields, the effect pool, the text
+ * grid), both pools, both offscreen buffers, the resource table, the DAC and
+ * the aperture. Each run starts from the snapshot. The pool rebuild in 0x43818
+ * makes the spawns land at base + k * 0x68 in call order: 0x43818's three,
+ * then per filled side 0x43964's two, 0x43A08's one and 0x1D7B8's one, then
+ * the countdown's glyphs. No RNG draw is expected on any path. */
+static void check_char_screen_open(void)
+{
+    static u8 s_data[0x10B0D0u - 0x80000u];
+    static u8 s_rec[0xEBA0u], s_pset[0x4880u];
+    static u8 s_bufa[0xFA00u], s_bufb[0xFA00u], s_ap[0xFA00u];
+    static u8 s_dac[sizeof gfx_dac];
+    static u8 s_res[0x14u * 128u];
+    u32 rec_pool = DSD(DS_001014F4), pset_pool = DSD(DS_001014EC);
+    u32 bufa = DSD(DS_001014E8), bufb = DSD(DS_001014E4);
+    u32 res_tab = DSD(DS_001014E0);
+    u32 res_len = DSD(DS_001014F0) * 0x14u;
+    CHECK(rec_pool != 0u && pset_pool != 0u && bufa != 0u && bufb != 0u,
+          "0x43738 needs the pools and buffers");
+    CHECK(res_len != 0u && res_len <= sizeof s_res, "the resource table fits");
+    CHECK(DSD(DS_000FCCE0) != 0u, "the effect pool is built (0x13DF0 runs)");
+    if (rec_pool == 0u || pset_pool == 0u || bufa == 0u || bufb == 0u ||
+        res_len == 0u || res_len > sizeof s_res)
+        return;
+    tf_snap(s_data, 0x80000u, sizeof s_data);
+    tf_snap(s_rec, rec_pool, sizeof s_rec);
+    tf_snap(s_pset, pset_pool, sizeof s_pset);
+    tf_snap(s_bufa, bufa, sizeof s_bufa);
+    tf_snap(s_bufb, bufb, sizeof s_bufb);
+    tf_snap(s_res, res_tab, res_len);
+    memcpy(s_ap, gfx_aperture(), sizeof s_ap);
+    memcpy(s_dac, gfx_dac, sizeof s_dac);
+    const u32 R = ACTOR_REC_SIZE;
+    u32 rng0;
+
+    /* The hook: 0x28D68/0x28D80 store 0x43738 (dwords 0x28D6A/0x28D87). */
+    CHECK(fn_resolve(0x43738u) == fight_char_screen_open,
+          "0x43738 resolves to its port");
+
+    /* (a) 0x43738, DS_00104B1F = 2: side 1 only (its bit is side + 1 = 2),
+     * character 6 (class 5); DS_00108173 != 0: the countdown is 5, drawn "05".
+     * Side 0 keeps its sentinels, and its marker slot (a live record) is
+     * zeroed by 0x1D810(0). */
+    chs_seed(3u, 6u, 2u, 1u);
+    rng0 = DSD(DS_000EF6D8);
+    fight_char_screen_open();
+    chs_check_common(rec_pool);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)rng0);
+    CHECK_EQ_INT((int)DSB(DS_00108170), 0);
+    CHECK_EQ_INT((int)DSD(DS_00108154), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_0010815C), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_0010813C), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_001028E0), 0);
+    chs_check_side(1u, rec_pool + 3u * R, 0x2F40u, 0x0EC0u, 0x331u, 0x2Cu,
+                  0x098ECC0Cu, 0x098ECC0Cu, 0x0A00u, 0x402Fu);
+    CHECK_EQ_INT((int)DSD(DSD(DS_0010814C) + 0x08u), 0x32A);  /* side 0 as 0x43818 left it */
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 5);
+    /* 0x2F528: "05" in the 0xBD048 font at row 1: '0' (class 0, sprite
+     * 0x3FA0) at col 0x13; the glyphs are 16 wide, so '5' (0x3FA5) at 0x15. */
+    CHECK_EQ_INT((int)chs_grid(1u, 0x13u), (int)(rec_pool + 7u * R));
+    CHECK_EQ_INT((int)chs_grid(1u, 0x14u), 0);
+    CHECK_EQ_INT((int)chs_grid(1u, 0x15u), (int)(rec_pool + 8u * R));
+    CHECK_EQ_INT((int)DSD(rec_pool + 7u * R + 0x08u), 0x3FA0);
+    CHECK_EQ_INT((int)DSD(rec_pool + 8u * R + 0x08u), 0x3FA5);
+    CHECK_EQ_INT((int)chs_pal_handle(rec_pool + 7u * R), 0x008099AC);
+    CHECK_EQ_INT((int)chs_active_count(), 9);
+
+    /* (b) 0x43738, DS_00104B1F = 0xFD: side 0 only (bit 1 set, bit 2 clear),
+     * character 3 (class 1); DS_00108173 == 0: the countdown is 0xF, "15". */
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    chs_seed(3u, 6u, 0xFDu, 0u);
+    rng0 = DSD(DS_000EF6D8);
+    fight_char_screen_open();
+    chs_check_common(rec_pool);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)rng0);
+    chs_check_side(0u, rec_pool + 3u * R, 0x3580u, 0x0540u, 0x32Du, 0x18u,
+                  0x098EC18Cu, 0x098EC18Cu, 0x0C00u, 0x402Du);
+    CHECK_EQ_INT((int)DSB(DS_00108170 + 1u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00108154 + 4u), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_0010815C + 4u), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_0010813C + 4u), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_001028E0 + 4u), 0);
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 0xF);
+    CHECK_EQ_INT((int)DSD(chs_grid(1u, 0x13u) + 0x08u), 0x3FA1);
+    CHECK_EQ_INT((int)DSD(chs_grid(1u, 0x15u) + 0x08u), 0x3FA5);
+    CHECK_EQ_INT((int)chs_active_count(), 9);
+
+    /* (c) 0x444C8: both sides whatever DS_00104B1F holds (0), characters 5
+     * (class 4) and 0 (class 0); no countdown: DS_0010816C keeps its sentinel
+     * and the countdown cells stay empty (0x43818's 0x2BAF4 cleared the
+     * seeded grid). */
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    chs_seed(5u, 0u, 0u, 1u);
+    rng0 = DSD(DS_000EF6D8);
+    fight_char_screen_open_both();
+    chs_check_common(rec_pool);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)rng0);
+    chs_check_side(0u, rec_pool + 3u * R, 0x22C0u, 0x0EC0u, 0x330u, 0x28u,
+                  0x098ECD0Cu, 0x098ECD0Cu, 0x0C00u, 0x402Cu);
+    chs_check_side(1u, rec_pool + 7u * R, 0x1000u, 0x0540u, 0x32Cu, 0x1Cu,
+                  0x098ECC8Cu, 0x098ECC8Cu, 0x0C00u, 0x4030u);
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 0x7777);
+    CHECK_EQ_INT((int)chs_grid(1u, 0x13u), 0);
+    CHECK_EQ_INT((int)chs_grid(1u, 0x15u), 0);
+    CHECK_EQ_INT((int)chs_active_count(), 11);
+
+    /* (d) The callees alone. 0x1D810 on an empty slot touches nothing; on a
+     * live record it sets the dead bit (+0x28 bit 3) and zeroes the slot.
+     * 0x43A08's +0x29 |= 8 is invisible after 0x43818 (desc 0xC87F8's flags
+     * 0x2800 already carry it), so it is checked on a cleared bit. */
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    actors_reset();
+    {
+        u32 r = actor_alloc(0);
+        DSD(DS_001028E0) = 0u;
+        DSD(DS_001028E0 + 4u) = r;
+        DSB(r + 0x28u) = 0u;
+        fight_select_marker_release(0u);
+        CHECK_EQ_INT((int)DSD(DS_001028E0), 0);
+        CHECK_EQ_INT((int)DSD(DS_001028E0 + 4u), (int)r);
+        CHECK_EQ_INT((int)DSB(r + 0x28u), 0);
+        fight_select_marker_release(1u);
+        CHECK_EQ_INT((int)DSD(DS_001028E0 + 4u), 0);
+        CHECK_EQ_INT((int)(DSB(r + 0x28u) & 8u), 8);
+    }
+    fight_char_screen_setup();
+    DSB(DS_00108166 + 1u) = 2u;                         /* class 3 */
+    DSB(DSD(DS_00108150) + 0x29u) = 0u;
+    fight_char_select_actor(1u);
+    CHECK_EQ_INT((int)(DSB(DSD(DS_00108150) + 0x29u) & 8u), 8);
+    CHECK_EQ_INT((int)DSD(DS_0010813C + 4u), (int)(rec_pool + 3u * R));
+    CHECK_EQ_INT((int)chs_pal_handle(rec_pool + 3u * R), 0x098EC10C);
+    CHECK_EQ_INT((int)DSD(DS_001028E0 + 4u), (int)(rec_pool + 4u * R));
+    CHECK_EQ_INT((int)DSD(rec_pool + 4u * R + 0x08u), 0x4032);   /* 0xA7860 */
 
     tf_put(s_data, 0x80000u, sizeof s_data);
     tf_put(s_rec, rec_pool, sizeof s_rec);
@@ -11828,6 +12111,7 @@ int test_fight(void)
     /* After the restores above: it needs the real resource table, which the
      * earlier fixtures replace, and it saves and restores all it writes. */
     check_char_screen_setup();
+    check_char_screen_open();
 
     return g_failures - before;
 }

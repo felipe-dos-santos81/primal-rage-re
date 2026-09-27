@@ -270,6 +270,10 @@ int actors_init(void)
     fn_register(0x22BECu, (void (*)(void))fighter_22bec);
     fn_register(0x29D04u, (void (*)(void))fighter_29d04);
     fn_register(0x370F0u, (void (*)(void))anim_code_370F0);
+    /* PORT: the DS_00104AE4 frame hook 0x43738 (record §42-F), stored by
+     * 0x28D68/0x28D80 (dwords at 0x28D6A/0x28D87); both setters and the
+     * `call [0x104ae4]` dispatch are unported mode code. */
+    fn_register(0x43738u, fight_char_screen_open);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -2538,4 +2542,20 @@ void text_number_draw(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
     (void)text_number_format(value, buf, width, pad);       /* 0x2F4EA 0x2EFD4 */
     text_cursor_set(col, row, buf, mode);                   /* 0x2F4F9 0x2F198 */
     DSD(DS_00105F34) = save;                                /* 0x2F4FE */
+}
+
+/* 0x2F528 — record §42-F. 0x2F4D0 with the mode ORed with 2 (0x2F54A `or
+ * ebp,2`): the same registers, the pad at [esp+0x28] (the last pushed) and the
+ * mode at [esp+0x2C], a 0x14-byte buffer at ESP with the cursor saved above
+ * it at [esp+0x14] (0x2F544) and restored (0x2F563); `ret 8`. */
+void text_number_draw_font2(s32 col, s32 row, s32 value, s32 width, u32 pad,
+                            u32 mode)
+{
+    /* PORT: the original's buffer is uninitialised stack; the port zeroes it,
+     * which only a pad above 3 could observe. */
+    u8 buf[0x14] = {0};
+    u32 save = DSD(DS_00105F34);                            /* 0x2F53A/0x2F544 */
+    (void)text_number_format(value, buf, width, pad);       /* 0x2F54D 0x2EFD4 */
+    text_cursor_set(col, row, buf, mode | 2u);              /* 0x2F55A 0x2F198 */
+    DSD(DS_00105F34) = save;                                /* 0x2F563 */
 }
