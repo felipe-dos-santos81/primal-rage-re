@@ -8357,7 +8357,7 @@ void fighter_4579c(u32 slot, u32 rec, u32 side)
 }
 
 /* 0x45878 — record §48-R. Character 4's reaction-0x24 callback (*(u32*)
- * 0xA4BF8), also called by 0x46138 (0x46148, the 0xD000 target at 0xEB184,
+ * 0xA4BF8), also called by 0x46138 (0x46148, the 0xD500 target at 0xEB184,
  * unported) with EBX = 0. EAX = slot, EDX = rec; EBX unread. The record on
  * 0xEB58C at 3.0 through 0x2BC30 with its +0x53/+0x59 = 1, the slot in state
  * 9/7/1 with +0x57 = 0, +0x0C/+0x18/+0x1C = 0x4579C/0x45640/0x456A8, the word

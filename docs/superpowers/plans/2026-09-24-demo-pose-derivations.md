@@ -14152,9 +14152,13 @@ side, [1] = other, [2]/[3] their slots, [4]/[5] their records):
     unless ctx[3]'s `+0x54 == 2`; ctx[2]'s `+0x8A = 0`; both slots' `+0x42
     &= 0xFB`; `0x3AD98(ctx[1], triple)`; returns 1.
 
-  The `+0x54 == 2` gate cannot close after a non-zero `0x3B298`: that call
-  returns 1 only through `0x1AB10` (the slot's `+0x54 <= 1`), and `0x1AC73`
-  stores 0 or 1 there.
+  The `+0x54 == 2` gate cannot close after a non-zero `0x3B298`. That call
+  returns 1 only at `0x3B448`. Just before, `0x3B40D` or `0x3B43B` sets
+  exactly one of that slot's `+0x43` bits `0x20`/`0x10`, and `0x3B443`
+  calls `0x1A734`, which stores its `+0x54 = 0` (`0x1A77E`, bit `0x20`) or
+  `1` (`0x1A7A1`, bit `0x10`). **Correction (review):** the first version of
+  this record cited `0x1AB10`/`0x1AC73`. `0x1AC73` runs earlier, and
+  `0x1A734` overwrites what it stores.
 
 ### 48-R.2 Entrances (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object, a dword scan of both fixed-up objects; the objects dumped through `read_memory`)
 
@@ -14199,7 +14203,8 @@ the displacement bytes of rel32 calls, `e8 xx xx 04 00`). Their values
 `0x455A2`, `0x44D49`, `0x44B34`, `0x44BE9`, `0x45885`, `0x45090`, `0x45383`,
 `0x45783`, `0x44E04`) all fall inside function bodies; none is an entry
 listed here. **`0x45878` has a second
-entrance.** `0x46138`, the `0xD000` target at `0xEB184`, calls it with EBX
+entrance.** `0x46138`, the `0xD500` target at `0xEB184` (the opcode word
+at `0xEB182` is `0xD500`), calls it with EBX
 = 0, then sets the slot's `+0x5F = 0x24`, `+0x8A = 1`, `+0x74 = 0`, `+0x40 &=
 0xFFF7EFFF` and the bytes `0xF0AFE = 1`, `0xF0AFC = 0x100`. It is not
 character-4 reaction code and stays a named gap (48-R.5).
@@ -14274,23 +14279,35 @@ the hooks and `0x3A2A0`, `sh_seed` and `pose_chain_setup` with sentinels.
 
 **Mutations** (`mut.py` in the session scratchpad: one source edit, a
 rebuild, `PR_ORACLE_REQUIRED=1 ./build/run_tests`, then the edit is
-reverted). 191 mutations were run over every function, its gates, constants,
-signs and argument orders, the registrations and the wrappers. 185 fail the
-suite. The 6 that survive are equivalent, which is why none of them has an
-assertion:
-- `0x3C0EC`'s `+0x34` negation: both callers call `0x3C190` next, and it
-  overwrites `+0x34`;
-- `0x3F6F4`'s clamp to 0: its only result reaches `0x3F720`, which clamps
-  n < 1 to 1 itself;
-- `0x44BAC` starting ctx[4] through `0x3C4CC` instead of `0x2BC30`, or ctx[5]
-  through `0x3C4CC` instead of `0x3C480`: the anchor writes of `0x3C480`
-  (`0x188AC`, `0x188DC`) are redone by `0x3C208`'s latches, and `0x3C358`
-  clears the `+0x1C` they write, so the state after the callback is the
-  same. The raw's choice is transcribed from `0x44BCF`/`0x44BF0`;
-- `0x451EC`'s own `+0x18 = 0`: `0x3A2A0` clears the same slot's `+0x18` at
-  `0x3A2F0`;
-- `0x45908`'s `rec+0x1C = 0`: its `0x3C480` runs `0x188AC(side, x, 0)` on
-  the same record.
+reverted). 193 mutations were run over every function, its gates, constants,
+signs and argument orders, the registrations and the wrappers. 188 fail the
+suite. Five survive:
+- deleting `0x3A2A0`'s `+0x54 == 2` gate. It cannot close (48-R.1), so no
+  assertion can kill it.
+- four equivalent mutants, which is why none of them has an assertion:
+  - `0x3C0EC`'s `+0x34` negation: both callers call `0x3C190` next, and it
+    overwrites `+0x34`;
+  - `0x3F6F4`'s clamp to 0: its only result reaches `0x3F720`, which clamps
+    n < 1 to 1 itself;
+  - `0x451EC`'s own `+0x18 = 0`: `0x3A2A0` clears the same slot's `+0x18` at
+    `0x3A2F0`;
+  - `0x45908`'s `rec+0x1C = 0`: its `0x3C480` runs `0x188AC(side, x, 0)` on
+    the same record.
+
+**Correction (review).** The first version counted 191 mutations, 185 of
+them failing, and listed six survivors as equivalent. Two of them were not:
+- `0x44BAC` starting ctx[4] through `0x3C4CC` instead of `0x2BC30`;
+- ctx[5] through `0x3C4CC` instead of `0x3C480`.
+
+`0x3C480`'s `0x188AC` zeroes the record's `+0x1C` before `0x3C208`'s
+latches store `slot+0x30 = rec+0x1C + DS_00100AB4[side]`. `0x3C358` clears
+the records' `+0x1C` later, but never re-latches. The test now seeds the
+thrower's `+0x52 = 9` (what `0x44CFC` leaves) and asserts the latched y:
+9000 on the thrower's slot, 3200 (448 mirrored) on the other. Both mutants
+now fail. Two mutants were added:
+- `0x3C1C8`'s `<` to `<=`. The raw's `jge` sends equal x to `+v`; a
+  case-3 row at x `0x80` now kills it;
+- the gate deletion above.
 
 Four first-attempt edits matched twice (shared text with `0x3B714`'s
 `0x3B080` call and with other `0x39A10`/command-word reads). They were
@@ -14304,21 +14321,31 @@ re-anchored on their address comments and all four fail the suite.
 - **Frames.** `prageport --check 8000` was run from two scratch directories,
   once with the base binary (`e12fd9d`) and once with this branch's
   (`d0e67f0`). All 24000 `frame_*.ppm`/`.pal`/`.idx` files are
-  byte-identical (`diff -rq`).
-- **Oracles.** §48-A.1's `fn_resolve` miss log over the whole 4100-loop
-  driver run (the front-end/attract window) shows one miss besides the stub,
-  the zero address and the boot miss `0x41578`: `0x45AD0`. So no character-4
-  callback, slot callback or stream target registered here is resolved in any
-  oracle window, including `0x37C24` through `0xE1684`. The direct callees
-  (`0x3A2A0`, `0x3C0EC`, `0x3C1C8`, `0x3F6F4`) are reached only from them. No
-  oracle is expected to move. This was not re-measured here, because the
-  driver is the controller's to run.
+  byte-identical (`diff -rq`). Both binaries lack §48-A, so this says
+  nothing about main after the merge.
+- **Oracles.** Two pieces of evidence:
+  - §48-A.1's `fn_resolve` miss log over the whole 4100-loop driver run (the
+    front-end/attract window) shows one miss besides the stub, the zero
+    address and the boot miss `0x41578`: `0x45AD0`. That log was taken
+    before `0x45AD0` was registered, so it covers the run only up to
+    f = 4914.
+  - From f = 4914 on, the port runs §48-A's code. There the coverage is
+    §48-A.6's live-RAM poll, which matches the port through f = 4986, the
+    driver's last frame. The poll shows no slot state from these reactions
+    (none of their state bytes or callbacks), so none of them fires.
+
+  So no character-4 callback, slot callback or stream target registered here
+  is expected to be resolved in any oracle window, including `0x37C24`
+  through `0xE1684`. The direct callees (`0x3A2A0`, `0x3C0EC`, `0x3C1C8`,
+  `0x3F6F4`) are reached only from them. No oracle is expected to move.
+  **The controller's post-merge `make verify` is the real gate.** The driver
+  is the controller's to run, so it was not re-measured here.
 - **Remaining named gaps:**
   - the voices (`0x2C3FC`) in `0x3A2A0`, `0x449B8`/`0x44A64`, `0x44BAC`,
     `0x450E8`, `0x45238` and `0x45908`, by §45-A's rule;
   - the `0x62003(1)` error exits of `0x44E64`, `0x4505C`, `0x452E4` and
     `0x45454` (out of scope, as elsewhere);
-  - `0x46138`, the `0xD000` target at `0xEB184` that calls `0x45878`
+  - `0x46138`, the `0xD500` target at `0xEB184` that calls `0x45878`
     (48-R.2). It is not a reaction callback and is not reached;
   - `0x20FE0`, `0x3A2A0`'s fourth caller, and the five other `0x3F6F4`
     callers (`0x233E5`, `0x23439`, `0x3FA3D`, `0x48815`, `0x48868`), are

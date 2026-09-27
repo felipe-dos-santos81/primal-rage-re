@@ -20232,8 +20232,14 @@ static void check_char4_react_a(void)
     /* G: 0x44BAC(0), side 0 throwing side 1 (character 2 here, whose
      * 0xC9314 word is patched to 0x1100 so it differs from 0xC759C's 0x1280):
      * x 5000/1000, want 0x1100 = 4352, d = 4000: the closer arm moves side 1
-     * by -352 to 648. */
+     * by -352 to 648. The thrower's +0x52 is 9, as 0x44CFC leaves it, so a
+     * 0x3C4CC in place of 0x44BCF's 0x2BC30 would take 0x3C480. The start
+     * calls show in the latched y: 0x2BC30 keeps record 0's +0x1C (9000 - 448),
+     * so 0x3C208's latch gives slot 0 +0x30 = 9000; 0x3C480's 0x188AC zeroes
+     * record 1's +0x1C first, so slot 1 latches 0 + 3200. 0x3C358 clears the
+     * records' +0x1C afterwards but does not re-latch. */
     g2h_seed(0u);
+    DSB(s0 + 0x52u) = 9u;
     DSB(s1 + 0x7Au) = 2u;
     DSW(0x000C9314u + 4u) = 0x1100u;
     DSW(0x000EB3F4u) = 0;
@@ -20251,6 +20257,8 @@ static void check_char4_react_a(void)
     CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 648);                /* 0x3C208 */
     CHECK_EQ_INT((int)DSD(r1 + 0x18u), 648 - 64);
     CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 5000);
+    CHECK_EQ_INT((int)DSD(s0 + 0x30u), 9000);               /* 0x2BC30 */
+    CHECK_EQ_INT((int)DSD(s1 + 0x30u), 3200);               /* 0x3C480 */
     CHECK_EQ_INT((int)DSD(DS_00107D28), 0x27);              /* 0x39834 */
     CHECK_EQ_INT((int)DSW(DS_00107D2C), 4);
     CHECK_EQ_INT((int)DSW(DS_00107D2C + 2u), 9);
@@ -20267,8 +20275,10 @@ static void check_char4_react_a(void)
     CHECK_EQ_INT((int)DSB(s0 + 0x57u), 2);
     CHECK_EQ_INT((int)DSB(s1 + 0x57u), 0x9A);
     CHECK_EQ_INT((int)DSB(s1 + 0x53u), 0x0F);
-    /* G2: the mirror, 0x44BAC(1) with side 0 character 2. */
+    /* G2: the mirror, 0x44BAC(1) with side 0 character 2 (slot 1 latches
+     * 9000, slot 0 0 + 448). */
     g2h_seed(1u);
+    DSB(s1 + 0x52u) = 9u;
     DSB(s0 + 0x7Au) = 2u;
     DSW(0x000C9314u + 4u) = 0x1100u;
     DSW(0x000EB3F4u) = 0;
@@ -20279,6 +20289,8 @@ static void check_char4_react_a(void)
     CHECK_EQ_INT((int)DSD(r0 + 8u), (int)(G2_ST + 0x20u));
     CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 648);
     CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 5000);
+    CHECK_EQ_INT((int)DSD(s1 + 0x30u), 9000);
+    CHECK_EQ_INT((int)DSD(s0 + 0x30u), 448);
     CHECK_EQ_INT((int)DSB(s1 + 0x57u), 2);
     CHECK_EQ_INT((int)DSB(s0 + 0x53u), 0x0F);
     CHECK_EQ_INT((int)DSB(s0 + 0x57u), 0x99);
@@ -20539,8 +20551,10 @@ static void check_char4_react_b(void)
      * clear seeds record 1's +0x43 = 0x09 (anim[0] = 0xDE114) and +0x34 =
      * -0xE6 (0x1A570(0) holds); both slots' +0x42 bit 2 and slot 0's +0x8A/
      * +0x18 are cleared; no pose word is written; returns 1. (The 0x3A384
-     * +0x54 == 2 gate cannot close here: 0x3B298 returns 1 only through
-     * 0x1AB10, which needs that slot's +0x54 <= 1, and 0x1AC73 stores 0/1.) */
+     * +0x54 == 2 gate cannot close here: 0x3B298 returns 1 only at 0x3B448,
+     * after 0x3B40D or 0x3B43B sets exactly one of that slot's +0x43 bits
+     * 0x20/0x10 and 0x3B443's 0x1A734 stores its +0x54 = 0 (0x1A77E) or 1
+     * (0x1A7A1).) */
     {
         sh_seed(s0, s1, r0, r1);
         DSB(s1 + 0x63u) = 0;
@@ -20860,15 +20874,17 @@ static void check_char4_react_c(void)
     /* case 3. Rows: the spawn gates (slot 0's +0x52, the mode, the other
      * slot's +0x53, byte 0x105B3A) and x0 against x1 for 0x3C1C8. */
     {
-        static const u8  g52[6] = { 0x13u, 0u, 0u, 0u, 0u, 0u };
-        static const u16 gmd[6] = { 3u, 3u, 0x25u, 3u, 3u, 3u };
-        static const u8  g53[6] = { 0x0Au, 0x0Au, 0x0Au, 0x0Bu, 0x0Au, 0x0Au };
-        static const u8  gb3a[6] = { 0u, 0u, 0u, 0u, 2u, 1u };
-        static const u32 gx0[6] = { 0x100u, 0x100u, 0x100u, 0x100u, 0x100u, 0x7Fu };
-        static const u8  wsp[6] = { 0u, 1u, 0u, 0u, 0u, 1u };
-        static const u16 w34[6] = { 0x3434u, 0x012Cu, 0x012Cu, 0x012Cu,
-                                    0x012Cu, 0xFED4u };
-        for (k = 0; k < 6u; k++) {
+        static const u8  g52[7] = { 0x13u, 0u, 0u, 0u, 0u, 0u, 0u };
+        static const u16 gmd[7] = { 3u, 3u, 0x25u, 3u, 3u, 3u, 3u };
+        static const u8  g53[7] = { 0x0Au, 0x0Au, 0x0Au, 0x0Bu, 0x0Au, 0x0Au,
+                                    0x0Au };
+        static const u8  gb3a[7] = { 0u, 0u, 0u, 0u, 2u, 1u, 0u };
+        static const u32 gx0[7] = { 0x100u, 0x100u, 0x100u, 0x100u, 0x100u,
+                                    0x7Fu, 0x80u };    /* 0x80: equal x, jge */
+        static const u8  wsp[7] = { 0u, 1u, 0u, 0u, 0u, 1u, 1u };
+        static const u16 w34[7] = { 0x3434u, 0x012Cu, 0x012Cu, 0x012Cu,
+                                    0x012Cu, 0xFED4u, 0x012Cu };
+        for (k = 0; k < 7u; k++) {
             c4r_seed();
             c4r_words();
             c4r_pool();
