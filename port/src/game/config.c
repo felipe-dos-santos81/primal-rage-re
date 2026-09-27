@@ -339,6 +339,13 @@ void config_set_credit_row_init(void)
     DSB(DS_00105C05) = 0x1Du;
 }
 
+/* 0x2C304 — record §46-F. `mov eax,0x29; call 0x2D974; and eax,0xf0000; sar
+ * eax,0x10; inc eax; mov [0x105c00],eax`. */
+void config_credits_init(void)
+{
+    DSD(DS_00105C00) = ((config_field_get(0x29u) & 0xF0000u) >> 16) + 1u;  /* 0x2C309..0x2C317 */
+}
+
 /* 0x32A3C — derivation record §42-E. EAX = the mode (only its low two bits
  * index, 0x32A43 `and edx,3`), EDX = the flag, kept in ECX (0x32A3F). Takes
  * the per-mode tick accumulator DS_0010746C[mode & 3] and zeroes it

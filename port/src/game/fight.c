@@ -458,6 +458,69 @@ void fight_hook_4367c(void)
     fight_char_screen_open();                           /* 0x4372E 0x43738 */
 }
 
+/* ---- the DS_00104AE4 hook 0x4142C and its callees (record §46-F) -------- */
+
+#define DS_000C86F0 0x000C86F0u   /* no symbols.h name: descriptor, id 0x2BEF */
+#define DS_000C86DC 0x000C86DCu   /* no symbols.h name: descriptor, id 0x3F12 */
+#define DS_000C85BC 0x000C85BCu   /* no symbols.h name: 7 descriptor pointers */
+#define DS_00108105 0x00108105u   /* no symbols.h name: the byte after DS_00108104 */
+
+/* 0x413C8 — record §46-F. Only caller 0x41456 (0x4142C). 0x2AE14 spawns
+ * 0xC86DC (a2 0x2A00, a3 0xE0, a4 0x1B00, a5 0) into DS_001080F4; then for
+ * i = 0..6 (ESI += 4 until 0x1C) 0xC85BC[i] with a2 = a4 = 0 (EDI), a3 0xE2
+ * and a5 = the +0x56 word of DS_001080F4's record | 0x400 (reloaded each
+ * pass, `or ah,4; and eax,0xffff`), stored at DS_001080C0[i] (`mov
+ * [esi+0x1080bc],eax` after the add). */
+static void fight_413c8(void)
+{
+    DSD(DS_001080F4) = actor_spawn((const u32 *)(mem + DS_000C86DC),
+                                   0x2A00u, 0xE0u, 0x1B00u, 0u);  /* 0x413E3/0x413EA */
+    for (u32 i = 0; i < 7u; i++) {                      /* 0x413F1..0x41423 */
+        u32 p = (DSW(DSD(DS_001080F4) + 0x56u) | 0x400u) & 0xFFFFu;  /* 0x413F1..0x41402 */
+        DSD(DS_001080C0 + i * 4u) =
+            actor_spawn((const u32 *)(mem + DSD(DS_000C85BC + i * 4u)),
+                        0u, 0xE2u, 0u, p);              /* 0x41415/0x4141A */
+    }
+}
+
+/* 0x4246C — record §46-F. 0x65490 (a byte fill: EAX = dst, DL = the byte,
+ * ECX = the count) zeroes the seven stage bytes DS_00108106..0x10810C, then
+ * the byte DS_00108111 = 0 (AH). Callers: 0x25B47 (0x25AE8) and the unported
+ * 0x28B37 (0x28788). */
+void fight_stage_marks_clear(void)
+{
+    for (u32 i = 0; i < 7u; i++)                        /* 0x4247A 0x65490 */
+        DSB(DS_00108106 + i) = 0u;
+    DSB(DS_00108111) = 0u;                              /* 0x42481 */
+}
+
+/* 0x4142C — record §46-F. A DS_00104AE4 hook, stored only at 0x28BC6
+ * (0x28788) with mode 0x17. DS_00104AE8 = 0, 0x4F1E4, 0x2BAF4 with EAX = 1,
+ * 0x38B18(0xC86F0) with EDX = EBX = 0 (EDX zeroed at 0x4142F and kept by the
+ * two calls, which push it; EBX at 0x41445), 0x413C8; then the bytes
+ * DS_0010810F, DS_00108111, DS_00108104 and DS_00108105 = 0 (AH), the 0x32
+ * voice, DS_00108112 = DL = 0 (0x2C3FC pushes EDX), DS_00104B25 = CL = 8, the
+ * mode word DS_00104B00 = 0x12, the countdown word DS_00104AFE = 0x1E and
+ * DS_00104B23 = CH = 0. */
+void fight_hook_4142c(void)
+{
+    DSD(DS_00104AE8) = 0u;                              /* 0x41435 */
+    frontend_input_reset();                             /* 0x4143B 0x4F1E4 */
+    actors_reset();                                     /* 0x41447 0x2BAF4 (eax = 1) */
+    frontend_spawn_row((const u32 *)(mem + DS_000C86F0), 0u, 0u);  /* 0x41451 0x38B18 */
+    fight_413c8();                                      /* 0x41456 0x413C8 */
+    DSB(DS_0010810F) = 0u;                              /* 0x41464 */
+    DSB(DS_00108111) = 0u;                              /* 0x4146A */
+    DSB(DS_00108104) = 0u;                              /* 0x41470 */
+    DSB(DS_00108105) = 0u;                              /* 0x41476 */
+    /* PORT: 0x41483 0x2C3FC(0x32) voice, not wired (record §45-A). */
+    DSB(DS_00108112) = 0u;                              /* 0x41488 */
+    DSB(DS_00104B25) = 8u;                              /* 0x4148E */
+    DSW(DS_00104B00) = 0x12u;                           /* 0x41494 */
+    DSW(DS_00104AFE) = 0x1Eu;                           /* 0x414A2 */
+    DSB(DS_00104B23) = 0u;                              /* 0x414A9 */
+}
+
 /* ---- 0x494A8 the dust builder (state 6's fighter spawn) ----------------- */
 
 /* 0x49388. The dust descriptor picker. The draw's range is the raw's

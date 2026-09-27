@@ -84,6 +84,10 @@ void config_set_credit_row(u8 row);
 /* 0x2BF00. The init-time row write: 0x1D. One caller, 0x20CCC in 0x20C10. */
 void config_set_credit_row_init(void);
 
+/* 0x2C304 (record §46-F). DS_00105C00 = ((0x2D974(0x29) & 0xF0000) >> 16) +
+ * 1. Callers: 0x10ECC (0x10E80, game_state_init) and the unported 0x2CBB4. */
+void config_credits_init(void);
+
 /* 0x32A3C. The play-time audit close: zeroes the per-mode tick accumulator
  * DS_0010746C[mode & 3]. Its run-clock call 0x32970 and its 0x2DAE4 audit adds
  * are out of scope / deferred (spec §7). Callers: 0x41578 (ported) and the
