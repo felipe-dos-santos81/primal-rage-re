@@ -1,0 +1,653 @@
+# Progress
+
+The detailed, running status of the reverse engineering and port: what's been
+decoded, what's been ported and verified, and the named gaps left at each
+step. This grows with every task; `README.md` stays a short pointer here.
+
+Each paragraph corresponds to a stretch of work, generally cross-referencing
+a derivation record section (`§NN-X`) in
+`docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`, which holds the
+underlying raw-byte evidence.
+
+**Reverse engineering.** `PRAGE.EXE` loads and analyses cleanly: **~1350
+functions**, 0 failures. LE layout and `INDEX` verified; `S16*.GRA` chunk types
+2/5/6 decoded (`FORMATS.md`); the per-sprite sub-palette/DAC base and descriptor
+`x`/`y` anchor are `likely`, not proven. Pinned: `0x624D4` (entry/startup),
+`0x1BEC4` (game main), the `0x255CC` → `0x24C5C` → `0x11D04` frame loop, the
+60.05 Hz tick and the literal-`0xA0000` write path — see
+`port/spec/game_flow.md`.
+
+**SDL3 port — sub-project 1, engine core: boot → title screen, running.** The
+engine is reimplemented in C over a flat `mem[]` holding the original LE data
+image at its original addresses; assets come from `data/game/C/` at runtime;
+SDL3 lives only in `host.c`/`main.c`. Ported and verified: the LE loader +
+fixups (byte-exact against Ghidra's image), the `INDEX` resource manager,
+`fn_resolve` code-address mapping, GRA decode (exact-consumption primary —
+18,201/18,202 descriptors across all 69 files — and byte-identical to
+`tools/gra_render.py` for the four full-screen `S16TITLE` frames `{10,12,13,18}`
+only; palette bank flattened, sub-palette choice `likely`), the palette flush
+(`0x1C470`), the process-table scheduler and the `0x255CC`/`0x24C5C`/`0x11D04`
+loop. Boot runs the original's state-0 attract first (4d below). The title state
+runs the real `0x121A0` actor composite through the display list; `make
+title-oracle` drives the continuous run to the pinned title window (port frames
+1..95 exhibited by both captures, start-of-window transition disclosed, zero
+unexplained frames) — see 4a-ii/4a-iii below.
+
+**Audio — sub-project 2a, AIL/Miles, running.** The game's own audio path runs
+with no DOS driver: `0x1CF40` AIL init completes; the title/attract XMIDI bank
+decodes and sequences into OPL register writes through a vendored FM core; one
+located announcer sample plays through the game's sample request/play path;
+mixed stereo frames reach SDL audio when a device opens. FM data is byte-exact
+against an independent Python decoder (9866 OPL register writes, zero
+differences) under a **symmetric oracle** (both streams anchored at their first
+key-on), with the captured original trace as the reference. `SBPRO2.MDI`'s
+MIDI-controller path is reproduced — channel handler `0x3b54`, mask-driven
+family re-apply `0x3184`, the driver's `0x35fa` frequency routine (retiring the
+hand-fitted note table), the total-level/pan/mod folds — closing both named
+divergences: the mid-note frequency change (a bend re-applies the frequency
+family) and the total-level term (the driver's TL law; the engine's sequence
+volume scales CC7). The first difference advanced from C write 302 to **C write
+430**; what remains is an **intra-tick write-order** difference (same registers
+and values each tick, different order; per-tick write multisets identical),
+carrier TL on MIDI channels 1 and 4 (engine per-channel volume provably
+unpinnable — one sequence volume, one timer tick), and the `0xBD` rhythm
+register. The 9866 (port) / 6903 (reduced capture) counts are not a like-for-like
+gap. Remaining differences are named or excluded with cause, never tuned. **No
+audibility claim**: the oracle is the register write stream, not rendered audio;
+the render is FM music only, without the title announcer sample. The windowed
+run is silent where SDL audio cannot start (here `-66681`); `make audio-render`
+plays the title bank through sequencer + OPL core + mixer to a 16-bit stereo WAV
+at the OPL rate (`AUDIO_WAV`, default `/tmp/pr_title_fm.wav`; `AUDIO_SECONDS`,
+default 12) — the path is real, only the device missing. See
+`docs/superpowers/plans/2026-09-16-audio-ail-port-report.md` and
+`docs/superpowers/plans/2026-09-18-opl-driver-report.md`.
+
+**Video — sub-project 2b-i, Smacker logos, running.** The two boot movies
+(`twi5.smk`, `twg.smk`) decode with an in-repo, clean-room SMK2 decoder and play
+on the boot path at the attract machine's phase 0 (`0x11000` case 0) before the
+title. Both movies' presented frames are **pixel-exact** against DOSBox-X
+captures of the original (RGB24, palette included): TWI5 120/120, TWG 41/41; the
+container layout reconciles byte-exactly on both files. The decoder is
+allocation-free and fixed-profile (rejects everything else by name); the player
+owns the content-based presentation rule, which carries a `TODO(verify)` on the
+original's `0x1C740` loop. See
+`docs/superpowers/plans/2026-09-17-smacker-video-report.md`.
+
+**Sprite compositor — sub-project 4a-i, ported.** The display list composites
+into the back buffer as `0x14328` does: display node and builder (`0x14268`),
+span blitter (`0x51E5C`), all six reachable renderers (RLE, clipped, mirrored,
+raw, mode-1 shear), the 580-node sorted list, and the projection/clip driver. The
+RLE renderer is byte-identical to sub-project 1's already-verified decoder on 32
+real sprites; the clipped/mirrored/shear renderers are proven by hand-computed
+tests, not an emulator (the DOSBox title oracle is 4a-ii's). `game_loop` calls
+the compositor in the original's order — a proven no-op until 4a-ii populates the
+list. See `docs/superpowers/plans/2026-09-17-sprite-compositor-report.md`.
+
+**Actor system and title — sub-project 4a-ii, ported.** The engine runs its own
+actor pool and real title state: the `0x68`-byte records and their lists, spawn
+`0x2AE14`, the pset sync, the motion step, the animation-stream interpreter
+(`0x2A408`/`0x29F34`/`0x29DB8` and the 47-opcode dispatcher `0x2B2A0`), the text
+grid and glyph renderer, the `0x5D7DC` LCG, and `0x121A0` with its `ENGLISH.TXT`
+caption. `make title-oracle` proves the composite against two independent
+captures of the overlay-live original (four behaviour pins retained): the capture
+is a byte-offset splice of two adjacent port frames because the original updates
+the aperture at `0x255CC` with no retrace wait while DX-CAPTURE samples at
+70.09 Hz, and every captured frame is explained with zero pixel tolerance and
+zero unexplained frames. The oracle forced three defect fixes (the `0x33754`
+palette-table entry, the 6-bit VGA DAC, the 16.16 actor velocity). One confirmed
+finding contradicts the earlier RE: the in-window opcode-8 count is 0, so pin
+site 4 is inert and the `task-2-anchor-re.md` account of the title's
+nondeterminism is wrong. See
+`docs/superpowers/plans/2026-09-17-actor-system-report.md`.
+
+**Title-path residuals — sub-project 4a-iii, ported.** 4a-ii's oracle proved a
+**pinned** original (`tools/title_pin.py` also ret'd `0x2BF08`, hiding the
+overlay); 4a-iii removed that inert site, re-captured the true original,
+diagnosed the per-frame divergence (`CREDITS:5`, rows 7–12), and ported
+`0x2BF08`'s four-branch message/text tick (`DS_00105C05` seeded then, now
+produced by the attract's `0x2C06C(1)`; `DS_00105C00` derives from the config
+module) plus the `0x13xxx` effect-list slice — spawn `0x13C70`, free-list build
+`0x13ADC`, clear `0x13DF0`, teardown `0x13420`, step/age `0x134C0` — in
+`port/src/game/effects.{c,h}`. The oracle is green against the overlay-live
+original (four behaviour pins retained; 0 unexplained, port frames 95/96
+exhibited) and turns red when `0x2BF08` is stubbed out, so it proves the overlay.
+`0x13C70`'s spawn is a **declared coverage gap**: it fills a record, but the
+effect render path is unported, so the spawn alone draws nothing and the oracle
+stays green either way; once `0x134C0` is ported the spawn jointly explains
+frame 95 (removing it reverts frame 95 to `missing`, which the oracle discloses
+rather than fails), so the spawn's own gate is Task 5's unit tests. The `0x134C0`
+step (ported when the wiring exposed a count-drain stall past the window) is
+unit-proven to drain and oracle-consistent. See
+`docs/superpowers/plans/2026-09-18-title-residuals-report.md`.
+
+**Effect producers — sub-project 4a-iv, ported.** The three missing `0x13xxx`
+producers now sit beside `0x13C70`: `0x13D4C` (type 4, darken-to-zero,
+`effects_spawn_darken`), `0x13E28` (type 6, darken toward a target,
+`effects_spawn_pulse`) and `0x13B3C` (types 0/2, signed-offset scroll,
+`effects_spawn_scroll`). The free-list head is taken only by these four, so types
+1 and 5 have no producer and are dead. An end-to-end unit test proves the chain
+spawn → `effects_step` → palette dirty list → `gfx_flush_palette` → `gfx_dac`.
+`0x13D4C` is called only from the effect call sites `0x29B74`/`0x41578`
+(ported and unit-tested, callers unported; record §42-E); `0x13E28` from the ported select state `0x11F6C`
+(`flow.c:367`). **`0x13B3C` is dead, not merely unwired:** zero callers and zero
+cross-references anywhere in the image (`ghidra_get_xrefs_to 0x13B3C` = 0;
+`prage.functions.csv` `FUN_00013b3c` `n_callers = 0`; the bytes `3c b3 01 00`
+occur nowhere) — the earlier "live via the jump table at `0x23AC4`" was a
+mis-transcription (that table's dwords are `0x23B3C`, `0x23B20`, …). The effect
+**render** path is no longer a gap (no draw was missing); its call sites are
+deferred as unreachable. See
+`docs/superpowers/plans/2026-09-19-effects-producers-report.md`.
+
+**EEPROM/config core — sub-project 4b-A, ported.** `port/src/game/config.{c,h}`
+ports the packed field layer (`0x2D974`/`0x2DA0C`), the menu-default parser
+(`0x2CCD0`), the defaults writer (`0x2CADC`) and the magic validate (`0x2D6F8`).
+The descriptor table and config bytes come from the loaded image; the storage
+layer and save/load I/O stay declared no-ops, so validate takes the
+fresh-machine defaults path. `game_init` derives `DS_00104528` and the three
+`0x20C9F`–`0x20CC2` globals from field `0x29`, and `0x2C304` derives the credit
+counter `DS_00105C00 = 5` — the unseed the title oracle validates (0
+unexplained). The storage path remains a 4b gap; 4b-B ports the credit countdown
+and the front-end input/select path. See
+`docs/superpowers/plans/2026-09-19-eeprom-config-report.md`.
+
+**Front-end input, credits and the select state — sub-project 4b-B, ported.**
+`port/src/platform/input.c` samples the host key bitmap into the `0x500C4`
+debounced level (`0x50161` selector); `0x4F644` builds the newly-pressed and held
+masks each frame before the state machine. `config.c`'s credit layer
+(`0x2C060`/`0x2CA48`/`0x2CA7C`/`0x2C06C`/`0x2BF00`) is driven by `0x11F28`
+(`frontend_coin_poll`); the `0x11F6C` select state (`0x33904`/`0x1C6D4`) is
+live, its exit advancing `DS_000F0A64` to state 3 (ported in the front-end-chain
+cycle below). See `docs/superpowers/plans/2026-09-19-frontend-input-report.md`.
+
+**Attract/boot subsystem — sub-project 4d, ported.** The port boots through
+state 0's attract, as the original does. `port/src/game/attract.{c,h}` owns the
+13-phase `0x11000` machine (its phase 0 plays the two Smacker logos), the
+per-state tails `0x10DB0`/`0x10E18`, the reset/scheduler `0x10EE4`/`0x10F28` and
+the per-bit scene tick `0x292AC`; `render.c` owns the scroll/zoom projection
+`0x389C4`/`0x38A38`; `flow.c` keeps only the state dispatch. `game_state_init`
+enters state 0; the deleted `DS_00105C05 = 1` stand-in is replaced by the
+attract's own `0x2C06C(1)` (the captured title row 1). Proof: one continuous
+headless run aligned to the post-logo captures (attract prefix, capture frames
+`0..215`, plus the title window in one `game_init()`), an env-gated
+`PR_ATTRACT_DUMP` driver with a run-to-run frame-hash log, and raw-derived unit
+tests; `tools/attract_compare.py` matches capture frames 0..214, first
+divergence at the last attract frame 215 (raw 2180/2175). The RAGE-logo
+actor's animation reaches opcode 0x11's inline code pointer `0x10FA8`; the port
+implements it (spawning the descriptor `0x9AD08` hand-off actor at layer `0xE4`,
+exactly the raw's `0x2AE14` call) and registers it in `actors_init`, so the
+logo's continuation runs and the matched prefix grew from frame 100 to the whole
+window. The palette-animation starter `0x4F83C` (and `0x10FC4`) and the
+scene-palette driver `0x4F7F4` — once declared gaps here, ported by the
+small-fidelity-gaps cycle below, as is the `0x33874` reflow — are registered
+through `attract_scene_tick` but do not run (`DS_00104AD0` bit 0 is never set),
+so the frame-215 divergence is unmoved; its owner is the loader-frame DAC state
+/ read-gate model (record §3.5), not these drivers. The title window stays 0
+unexplained on both captures. (The `0x11000` spawn-slot fix `e29f849` moved the
+boundary from frame 68; the hand-off moved it from frame 100.) The oracle also
+surfaced and fixed a real `0x336C0` bug: `palette_list_init` omitted the raw's
+palette ownership-table clear at `0x87618`, which the attract's earlier palette
+acquires exposed. See `docs/superpowers/plans/2026-09-19-attract-report.md`.
+
+**Front-end chain — states 3/4/5, ported.** `port/src/game/flow.c` ports the
+states after the select carousel: state 3 (`0x12484`, the post-select
+presentation and its `0x12658` handoff), state 4 (`0x11578`, the 8/12/13-line
+credit roll) and state 5 (the inline `0x11D04` match-start block), so the port
+advances carousel → 3 → 4 → 5 → 9 → 6 unaided. `effects.c` owns the `0x13xxx`
+effect render path: `0x1324C` (screen-shake decay) is update-table entry 0 but
+**dormant** (no shipped store sets `DS_00104AE8` bit 0); the palette path
+spawn → `effects_step` → dirty list → `gfx_flush_palette` → `gfx_dac` →
+`gfx_present` is proven end to end. **No camera/scene function draws** — the
+plan's assumed missing draw does not exist; the camera state feeds the existing
+render pass and actor-pset sync. The front-end pixel oracle is **closed and
+enforced**: a 120 s pinned capture aligns the port's state-3 zoom to window
+`[560..1714]` (raw `3108..4621`), **1155 frames: 455 clean, 693 splice, 3
+transition, 2 unexplained (832, 833)** — the two allowed by name (the
+arena-backdrop cycle's absorbed claim move, below); any other unexplained frame
+fails. (Indices moved `[557..813]`/257 → `[560..830]`/271 → `[560..842]`/283 →
+`[560..850]`/291 → `[560..857]`/298 → `[560..858]`/299 → `[560..859]`/300 → `[560..863]`/304 → `[560..865]`/306 → `[560..866]`/307 → `[560..869]`/310 → `[560..879]`/320 → `[560..890]`/331 → `[560..891]`/332 → `[560..949]`/390 → `[560..991]`/432 → `[560..997]`/438 → `[560..1357]`/798 → `[560..1410]`/851 → `[560..1477]`/918 → `[560..1480]`/921 → `[560..1545]`/986 → `[560..1562]`/1003 → `[560..1658]`/1099 → `[560..1714]`/1155 as cycle 1's pins, cycle 2's master-loop pin and the
+arena-backdrop fix forced re-captures, the demo-pose cycle's `0x3A43C`
+stack-offset fix + `0x186C4` re-latch explained captures 843..850, and the
+roar-timing fix (the `0x3AD27` pose-setter operand) explained 851..857, and the
+frame-858 fix (`0x2A690`'s mode-1 x operands) explained 858, and the
+frame-859 fix (`0x49C78`'s case-1 walk arrival) explained 859, and the
+frame-860 fix (`0x49C78`'s tail reset `0x4A634`) explained 860..863, and the
+frame-864 fix (state 6's `0x12750` node list and the driver's frame-counter
+seed) explained 864/865, the frame-866 fix (`0x36870`'s case 0 restarting
+its own record) explained 866, and the frame-867 fix (`0x3BDDC`'s `0x3C480`
+animation start and the full `0x18714` anchor path) explained 867..869, the
+frame-870 fix (the `0x35E04`/`0x3BC70` launch) explained 870..879, and the
+frame-880 fix (`0x34E2C`'s reaction callback and the T-rex's `0x3E62C` leap)
+explained 880..890, and the frame-891 fix (the T-rex's `+0x1C` callback
+`0x3E4C4`) explained 891, and the frame-892 fix (the knockback pose's handler
+`0x39CC8`) explained 892..949, and the frame-950 fix (the knockdown floor
+`0x347B8`) explained 950..991, and the frame-992 fix (the T-rex's walk entry
+`0x35938`) explained 992..997, and the frame-998 fix (the worshipper arrival
+target `0x4AC18`) explained 998..1357, whose three transition frames all lie
+in that new span, and the frame-1358 fix (the camera split arm's `0x18714`
+record writes) explained 1358..1410, and the frame-1411 fix (the T-rex's
+reaction-`0x20` callback `0x3D17C` and its `0x3D214`/`0x3D26C` targets)
+explained 1411..1477, and the frame-1478 fix (the projectile collision step
+`0x17CB0` and the hit it wakes in `0x1975C`/`0x3B464`) explained 1478..1480, and the
+frame-1481 fix (`0x349C8`'s `0x34A8D` command gate) explained 1481..1545, and the
+frame-1546 fix (the effects pass's worshipper fall/lie/climb, `0x49C78` cases
+3..5) explained 1546..1562, and the frame-1563 fix (the effects pass's
+per-entry prelude `0x4B69C`, the worshippers' trample) explained 1563..1658, and the
+frame-1659 fix (game_frame's fighters' body push `0x3BB90`) explained 1659..1714; the host-timed capture is not reproducible, so indices shift while
+the claim does not.) It proves exactly one thing: **no content-bearing capture
+frame inside the window the port's own dump exhibits is unexplained** (the two
+named exceptions aside) — the window is derived from that dump and the
+coverage/`endpoints BAD` counts are ignored, so a port that **under-renders** the
+front-end (only the state-3 entry frame, or only the first 12 frames) still
+passes. Sixteen all-black capture frames are excluded as an explicit oracle-level
+choice, **not** a proven fact (capture 561's black frame may be a distinct logic
+frame or a 70.09 Hz scanout artifact). The effect call sites `0x29B74`/`0x41578`
+are **ported but unreachable** (demo-pose record §42-E): their callers live only
+in `0x24C5C`'s mode cases (`0x12`, `0x16..0x1B`; of these, `game_frame`
+dispatches only `0x1A`/`0x1B`) and the match/fight chain, and no ported path
+moves `DS_00104B00` off 3 (record §47-B). `0x29B74` is registered for a future
+`DS_00104AE4` dispatch; both are unit-tested. The match cycle's `0x1EA08` call sites
+and the unported half of `0x1EA08` remain declared gaps. The camera chain
+(`0x12CD4`/`0x1317C`/`0x13290`/`0x1333C`, `0x12D48` dispatcher,
+`0x12DA8`/`0x12DF0`/`0x12E3C` modes) is **ported** in `port/src/game/camera.c`,
+dispatched from `flow.c:1346` (`camera_dispatch()`). See
+`docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md` and
+`port/spec/game_flow.md`.
+
+**Attract demo fight — cycles 1/2 (motion, closure), ported.** States 6/7 (the
+CPU-vs-CPU demo, **not** the interactive match): state 3's `0x12658` handoff
+enters the 240-frame state-9 hold; state 6 picks the two characters from the
+shared RNG and spawns them; state 7 runs the arena with the ported CPU-AI
+command generator `0x47208`, the `+0x52` state machine (`0x3531C`/`0x350D0`),
+the `0x3C88C` hitbox machine and the `0x3CF38` hit chain — the chain now
+**fires**, hits land (`+0x7C` 0/0 → 1/1), and the fight's last state change
+moved **1262 → 1400**. Its report-only oracle (`make demo-oracle`) measures the
+region after the front-end window, `[1885..3616]` (raw `4793..8409`), **1732
+frames: 0 clean / 0 splice / 0 transition / 1726 unexplained** (6 all-black
+frames excluded); the first unexplained frame is capture **1886 (raw 4795)**.
+That is the capture after the demo: the front-end window now reaches
+`[560..1884]`, the frame before 1885, the capture's first all-black frame after
+the demo fight, and the port's dump ends with the demo (loop frame 1970, the
+state-7 exit), so no port frame is left to compare there
+(moved from 843
+by the demo-pose cycle, then from 851 by the roar-timing fix, then from 858 by
+the frame-858 fix, then from 859 by the frame-859 fix, then from 860 by the
+frame-860 fix, then from 864 by the frame-864 fix, then from 866 by the
+frame-866 fix, then from 867 by the frame-867 fix, then from 870 by the
+frame-870 fix, then from 880 by the frame-880 fix, then from 891 by the
+frame-891 fix, then from 892 by the frame-892 fix, then from 950 by the
+frame-950 fix, then from 992 by the frame-992 fix, then from 998 by the
+frame-998 fix, then from 1358 by the frame-1358 fix, then from 1411 by the
+frame-1411 fix, then from 1478 by the frame-1478 fix, then from 1481 by the
+frame-1481 fix, then from 1546 by the frame-1546 fix, then from 1563 by the
+frame-1563 fix, then from 1659 by the frame-1659 fix, then from 1715 by the
+frame-1715 fix, then from 1750 by the frame-1750 fix, then from 1763 by the
+frame-1763 fix, then from 1881 by the frame-1881 fix, which also dumps the
+exit frame), not the state-9 hold. (Cycle 1's Amendment 5 said the fight begins at 839/28;
+Task 1 corrected it to **836/25**, and the final re-capture moved the loader text
+to 832 with the fight's first frames at 833/834 — record §9.1/§9.3.) Cycle 2
+advanced the boundary 811 → 816 → 832: the state-9 globe's fourth layer
+(`0x12720`) made the hold match, the `rle_row` mirror-window fix and the
+idle-animation tick (`0x37A58`) improved the arena, and the chain drives the
+fight past its former stall. **The Gate — 0 unexplained frames — is UNMET**,
+recorded as such: capture 832's read-stall is **proven un-derivable** (the port
+produces both held states but the gate passes on the loader frame; the post-read
+ISR tick count is a host/emulator property with two live-RAM polls disagreeing,
+Δ=2 vs Δ=3), and the residuals are the palette-order subsystem, the fighters'
+animation poses and the fight's stall tail (the unported `0x34B14` handlers). No
+pin or value was fitted to force the Gate. The state-9 hold draws no RNG; the
+demo's two state-6 character picks are **not** pinned — cycle 2 replaced cycle
+1's fitted picks with a source-level pin on the master loop's host-timed draws
+(`0x256B1`/`0x256D6` → non-advancing), so the oracle validates the picks. The
+**interactive match** (the mode graph, the `0x257A4` coin divert, `0x1EEB0`,
+`0x1F458`, the player screens and human input) remains **unowned**. See
+`port/spec/game_flow.md`, the design spec
+`docs/superpowers/specs/2026-09-21-demo-fight-closure-design.md` and the record
+`docs/superpowers/plans/2026-09-21-demo-fight-closure-derivations.md`.
+
+**Combat/render fidelity — cycle 3 (branch `combat-fidelity`), the demo fight's palette and combat tail.** Cycle 3 closed three of cycle 2's residuals. The T-rex's colour difference was the **front-end dump driver's `DS_0010816A` seed** (0xFF → 0), not the engine — the acquisition sequences are identical and `0x41350` is faithful — so the T-rex's handle is now the original's `0x1BB9FCD8` at DAC range `start=142 len=31`. Seven of the twelve `0x34B14` `+0x52` handlers landed (`0x35F84`/`0x36430`/`0x399CC`/`0x361C8`/`0x36300`/`0x36710`/`0x364FC`); the state-7 entry's four missing RNG draws landed (the type-0 effect handler `0x4AAD0`/`0x4B144`, so the entry LCG now reaches `0x10F7DB07`, matching); and the demo-AI block state landed (`0x18540`/`0x18350`, so `cmd0@1072 = 0x4848` and `cmd1@1071 = 0x0002`, matching). The arena's byte-diff against capture 834 fell **42 667 B (22.2 %) → 18 294 B (9.5 %)**, the T-rex region 6 363 → 1 773 px and the raptor region 8 704 → 4 421 px, and the raptor's silhouette IoU rose **0.522 → 1.000**. **The Gate is UNMET overall:** the fight reaches the state-7 900-frame timer exit (`s7_last == 1969`) but freezes from loop 1072 — the original's pose state `0x10`/`0x0A` is reachable only through the unported `0x19020` → `0x193B0` → `0x3B714` → `0x3AAFC` → pose-family chain (since ported; `0x19020` last, record §35) (68 new funcs / 10 467 B; true new ≥ 11 012 B), so the pose subsystem passes to **cycle 4**. The port's hit counter `+0x7C` is 0 for the whole state-7 window: cycle 2's `+0x7C 0/0 → 1/1` was a by-product of the old diverged trajectory, and with the trajectory now matching the original's early path the hit needs the pose state the port cannot reach. Every enforced oracle claim is unmoved (`make verify` exit 0, 0 warnings). See `docs/superpowers/specs/2026-09-22-combat-fidelity-design.md` and the record `docs/superpowers/plans/2026-09-22-combat-fidelity-derivations.md`.
+
+**Small fidelity gaps — cycle (branch `fidelity-gaps`), the four off-demo-path residuals.** Closed all four of cycle 3's small named gaps; no enforced oracle claim moved. The five remaining `+0x52` handlers landed (`0x359E0`/`0x35C1C`/`0x35D20`/`0x37464`/`0x33B00`/`0x35E6C`), with `0x349C8`'s bit-6/7 deep callees (`0x385B0`/`0x39A10`) wired at their raw sites (`0x36884`/`0x37D57`) via the minimal caller chain (5 functions / ~1 741 B, ratified by the human). The loader flush scope's record premise was **refuted by the raw** — `0x1C470` is a whole-list drain and the port's flush was already faithful; the real gap, the missing initial record `{0xBD470, 0, 1, 0}`, is now enqueued. The attract/scene palette drivers (`0x4F7F4`/`0x4F83C`/`0x33874`) are ported and registered; `0x4F83C` ships test-only (its `0xE8916`-table callers are unported) as an **explicit accepted exception** (spec representation rule, Q10). The 169-tick state-9 hold is a **real divergence** (the state-9 screen's animation stops ~169 ticks early, holding capture 830's frame byte-static), oracle-neutral and carried forward with its owner. No single group triggered the size gate, but the **branch total crosses it**: 20 functions / 4 675 B (the four groups 10/2 223, 2/418, 0, 3/293 plus the human-ratified caller chain 5/1 741). Every enforced oracle claim is unmoved (`make verify` exit 0, 0 warnings). See `docs/superpowers/specs/2026-09-22-fidelity-gaps-design.md` and the record `docs/superpowers/plans/2026-09-22-fidelity-gaps-derivations.md`.
+
+**Pose/freeze — cycle 4 (branch `pose-freeze`), the demo fight's 9/8 freeze.** Ported the freeze's two halves faithfully and measured the demo observable. The **unfreeze half** (`0x140E4` + `0x170A0` + callees, wired into `camera_decay`) and the **pose-entry half** (`0x193B0` → `0x3B714` → `0x3AAFC` → the pose family, wired into `fighter_pass_a`'s tail) landed, plus `0x18950` (`fighter_connect_query`) as a **faithfulness fix**. The winner-gate record misread the pair table's odd record (`0x0000FF00` → `0x00FF0000`); corrected, both demo queries return 0 and the position compare picks side 0 (T-rex), matching cycle 3 — the "conflict" was a transcription error. **Task 5 measured the residual** as the `0x17FA0` page-flag/visibility tail (`0x16AFC` 601 B + `0x164F4` 547 B): `B60=B61=0`, `B54=0`, `B18=B10=B30=0`, `0x100AC0=0x100AC8=0` for the whole state-7 window, so `camera_unfreeze` returned at its visibility gate and `0x193B0` never ran. **Task 6 (`bfd22cb`) ported that tail** (`0x16AFC`/`0x164F4` plus `0x16734`/`0x164C0`), wired at the raw's `0x180C9`/`0x18108` site in `camera_project`; it now fires (`camera_page_tail_b(1)`, ~18 state-7 frames), `B61=1`, `camera_unfreeze(1)` writes `AF8[1] = 5/3/2`, `0x193B0` runs, and **892 port frames change from frame 489** (the winner's blood/reaction effect). The fighters now byte-match at 482/834; the oracle still takes the `res is None` fallback (`0/1068` exhibited, `0 clean / 0 splice / 0 transition / 2779 unexplained`, first 832), attributing the residual **18 294 B (9.5 %) / 6 194 px** to the **arena backdrop's missing dark mountain silhouette** in `platform/render.c` (`0x38730`/`0x387F4`/`0x38890`/`0x38A38`) — **cycle 5 (below) refuted that attribution**. Every enforced oracle claim is unmoved (`make verify` exit 0, 0 warnings). See `docs/superpowers/specs/2026-09-24-pose-freeze-design.md` and the record `docs/superpowers/plans/2026-09-24-pose-freeze-derivations.md`.
+
+**Arena backdrop — cycle 5 (branch `arena-backdrop`), the demo fight's state-7 mountain layer.** Cycle 4's residual attribution was **wrong twice over**: the port *did* draw the arena's scene actors (layer 2 = sky, layer 1 = sea), and the missing dark mountain silhouette was not `platform/render.c`'s scroll path. The missing layer was the crowd actor 0's **mountain children** (sprite ids 756/757/758, layer 94), spawned then killed by `actor_spawn`'s tail (`0x2B0D4`), which tested only for the stub `0x5D812` instead of calling the actor type's callback (`DSD(0xBB9DC + type*0xC)`) and testing `AL`. Type `0x1B`'s callback (`0x412FC`) returns 0 (visible), so the faithful dispatch revives the layer — and the five type-0x01 demo spawns killed by the same predicate (measured: 0 of 1381 dumped frames differ). The cycle ported the 16 non-stub callbacks plus `0x2BE5C` in `port/src/game/actors.c`; the size gate did not trigger (closure 25 f / 1 544 B; 17 f / 1 148 B new). **The cycle's gate is MET:** port 482 ↔ capture 834 = **0 / 192 000 B (0 px)**, from 18 294 B / 6 194 px; captures 834..839 are byte-exact at 0 B each (port 483–487 ↔ 835–839). The front-end claim's window end grew to 842 (`[560..830]`/271/`0 unexplained` → **`[560..842]`/283/`2 unexplained (832, 833)`**) — absorbed per the policy because the window is derived from the port's own dump (the fix explains captures 834..842; the loader frame 832 and the held dark-arena frame 833 are the front-end window's two named unexplained, allowed by name in `tools/title_compare.py`); title/attract/smk/C-vs-Python/`symbols.h` unmoved, `make verify` exit 0, 0 warnings. The demo oracle's report-only fallback stands: its first unexplained is now capture **843 (raw 3750)** — the T-rex pose. See `docs/superpowers/specs/2026-09-24-arena-backdrop-design.md` and the record `docs/superpowers/plans/2026-09-24-arena-backdrop-derivations.md`.
+
+**Pose handler — cycle 6 (branch `demo-pose`), the demo fight's T-rex pose. Goal partly reached; residual named.** The cycle's goal was the whole fight window `[843..1884]` at 0 unexplained (the demo oracle's first unexplained 843 → 1886). It was **not** reached.
+
+* **What landed.** The pose handler `0x3A43C` (the record corrected the design's `0x39CC8`: the demo's pose setter calls `0x3A43C`) and the frame-hold scaler `0x39A34`; then, from the 43 px differential, two raw-derived fixes — `0x3A43C` reads its context at the raw `RET 4` stack offsets (`0x2BC30`, `0x2BCEF`: `side = ctx[1]`, `rec_self = ctx[5]`), and the `0x186C4` two-slot re-latch at `0x35829` is ported. The size gate did not trigger (Task 1: genuinely-new closure 2 f / 245 B).
+* **Measured.** The direct pairs port 490 ↔ capture 843, 491 ↔ 844 and 496 ↔ 850 are now **0 B** (from 16 101 B / 5 793 px on the unmodified port), so captures 843..850 are explained. The demo oracle's first unexplained moved **843 → 851 (raw 3758)**: the demo window is `[851..3616]`, 2766 frames, 2760 unexplained; the fight window `[851..1884]` (raw `3758..4791`) has 1034 frames, **0 explained**.
+* **Residual.** Capture 851 (port 497 = f 80): the port advances the T-rex's roar animation one frame early (`0x9076 → 0x9077`); likely owner the roar stream's frame-hold timing (`0x39A34`'s `rec+0x24`, read by `frame_timer` `0x2AA70`).
+* **Claim move (ruled, absorbed in the same commit `dad2712`).** Front-end `[560..842]` / 283 → **`[560..850]` / 291 / `130 clean, 157 splice, 0 transition, 2 unexplained (832, 833)`**. The four classes sum to 289 of the 291 frames: the two all-black captures 561 and 831 are excluded as artifacts.
+* **New enforced line — a ratchet.** `make demo-fight-oracle` (in `make verify`) fails if the first unexplained fight-window frame is earlier than N = **851** (pinned in the `Makefile` with its provenance) or the fight window collapses; a later first-unexplained passes as an improvement and N is then raised. It is honestly near-vacuous today (0/1034 explained: it guards the front-end window's end and the fight window's start) and becomes a real regression guard as fight frames are explained.
+* **Named gaps still open.** The roar animation timing at f = 80; the `0x354F0` arena-wall clamp; `hit_record_x/y` (`0x18714`/`0x18788`) omitting the raw's `0x18540`/`0x18350` calls (first differs at f = 90; closed since, record §17); the camera split-arm `0x18714` write (closed since, record §24); the sibling pose handlers `0x3A588`/`0x3A820` and the `0x39F40`/`0x39CC8` pose family (unreached in the demo's first fight; the third sibling `0x3A6D4` is ported and registered since, demo-pose record §41-A); the `0x2C3FC` voice stays a stub (RNG- and fight-state-neutral, record §3.4).
+* **Unmoved.** Every other enforced claim (title, attract 215, smk, C-vs-Python 9866, `symbols.h`).
+
+See `docs/superpowers/specs/2026-09-24-demo-pose-design.md` and the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+
+**Roar timing (branch `roar-timing`), the demo fight's capture 851.** The roar's early frame advance was not the frame timer: `0x2AA70`, `0x39A34` and `0x2BC30` re-diff clean against the raw. The cause was the port's read of the pose setter's operand at `0x3AD23..0x3AD2E`: the raw is `mov esi,[esi+3]` / `sar esi,0x18` (`8b 76 03` / `c1 fe 18`), so the operand is the **signed byte at the anim3 row's +6**, and the port read +3. The demo's row `0xDE95F` (`08 18 08 73 02 0e fd 11`) gives −3, not 115, so the setter's `slot+0x7E` (`0x3A549..0x3A554`: `byte[0xBECF8] + CL`) is `0x11`, not `0x87`, and `0x39A34` sets the roar's frame hold to **+1.7**, not −12.1: each roar sprite holds about two frames instead of one. One line of code; no size gate.
+
+* **Measured.** Port 497 ↔ capture 851: 6 544 B / 2 456 px → **0 B**. Captures 851..857 are explained. The demo oracle's first unexplained is now **858 (raw 3765)**: the demo window `[858..3616]` has 2759 frames, 2753 unexplained, and the fight window `[858..1884]` has 1027 frames, 0 explained. The ratchet N is raised **851 → 858** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..850]` / 291 → **`[560..857]` / 298 / `134 clean, 160 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** In capture 858 (port 502/503, f ≈ 86), rows 175–199 match port 503 exactly. Rows 67–174, which hold the fighters and the backdrop band around them, match neither 502 nor 503. The best splice (502/503 at byte 131 205) leaves 13 617 B / 5 253 px, and the gap grows in the next captures.
+
+See §11 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+
+**Mode-1 x (`b2cb490`), the demo fight's capture 858.** The camera starts moving at f = 85, and from f = 86 the port scrolled the arena's mode-1 props wrongly. The pset x writer `0x2A690` reads both mode-1 operands as the high word of a dword load. `0x2A733`/`0x2A739` (`8b 43 44` / `c1 f8 10`) read the ramp entry just stored at `rec+0x46`. `0x2A6E0`/`0x2A6E9` (`8b 43 32` / `c1 f8 10`) read the velocity word at `rec+0x34`, the one `0x2A6D9` gates on. The port read the low words, `+0x44` and `+0x32`. So the temple, props and crowd did not scroll at all, and the `0x02F4` mountain (with its `0x02F5`/`0x02F6` children) moved 5.7 px instead of 0.2 px at f = 86. Two operand reads in one function; no size gate.
+
+* **Measured.** Capture 858 is now a 0-byte splice of port 502/503 at byte 64 254 (row 66), from 13 617 B / 5 253 px. The demo oracle's first unexplained is now **859 (raw 3766)**. The demo window `[859..3616]` has 2758 frames, 2752 unexplained, and the fight window `[859..1884]` has 1026 frames, 0 explained. The ratchet N is raised **858 → 859** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..857]` / 298 → **`[560..858]` / 299 / `134 clean, 161 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 859's best splice (port 503/504 at byte 90 582, row 94) leaves 449 B / 159 px, all in x 86–111, rows 137–174: the worshipper behind the T-rex (sprite `0x07E1`, layer 208). It shows a different pose from port 504's, not a shift (the best offset is 0).
+
+See §12 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+
+**Walk arrival (`afa47b3`), the demo fight's capture 859.** The type-0x20 worshipper behind the T-rex reaches its walk target at f = 87. The raw's scene/effects pass `0x49C78` handles a type-1 (walking) entry at `0x49D2F`: when `|actor+0x18 − entry+0x14|` is at most the step `[actor+0x32] >> 16` (negated for a leftward walker; signed `jg` at `0x49D79`), it calls `0x4AC38`. That zeroes `+0x34/+0x36/+0x38`, clears hflip, sets the entry back to type 0 and begins the `0xC9544[index]` stream (`0xEE02C`, sprite `0x0836`) with the hold 5.0. The port had left type 1 as a named gap, so the worshipper walked on. One function plus one case body (about 170 raw bytes).
+
+* **Measured.** Capture 859 is now a 0-byte splice of port 503/504 at byte 90 582 (row 94), from 449 B / 159 px. The demo oracle's first unexplained is now **860 (raw 3767)**. The demo window `[860..3616]` has 2757 frames, 2751 unexplained, and the fight window `[860..1884]` has 1025 frames, 0 explained. The ratchet N is raised **859 → 860** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..858]` / 299 → **`[560..859]` / 300 / `134 clean, 162 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 860 (f = 88) leaves 476 B / 164 px in x 86–106, rows 136–172: the same worshipper, which the capture still shows in its arrival sprite `0x0836`. In the port, `0x4AAD0`'s `0x4AB7F` gate reads bit 0 of the side-0 slot's `+0x42` and retargets the worshipper (type 8, `0xC958C[0]`). The roar reaction set that bit at f = 72, and the port never clears it. The raw clear is not derived. (Derived since: the effects pass's tail `0x4A634`; see the slot `+0x42` reset below.)
+
+See §13 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+
+**Slot `+0x42` reset (`b915712`), the demo fight's capture 860.** The raw clears the roar's `+0x42` bit 0 in the frame that sets it. The scene/effects pass `0x49C78` ends with an unconditional `call 0x4A634` (`0x4A591`). For each fighter slot, `0x4A634` does `and al,0xfc` on `+0x42` (`0x4A6D7..0x4A6E0`: `8a 83 f2 77 10 00` / `24 fc` / `88 83 f2 77 10 00`) and zeroes the side's `0x10889E`/`0x1088B2` bytes. Before that, when bit 1 is set, the side's `0x1088A8` reaction byte draws the crowd-voice RNG: rng(3) for `0x20..0x3F`, or rng(2) plus a second rng(2) when the first is non-zero for `0x10..0x17`. The port had skipped the call as a named gap, so the bit set at f = 72 made `0x4AB7F` retarget the worshipper to type 8 at f = 88. One function (211 raw bytes); the demo's reaction bytes (`0x0B`, `0x01`) draw nothing here.
+
+* **Measured.** Capture 860 is now a 0-byte splice of port 504/505 at byte 117 108 (row 121), from 476 B / 164 px. Captures 861..863 are explained. The demo oracle's first unexplained is now **864 (raw 3771)**. The demo window `[864..3616]` has 2753 frames, 2747 unexplained, and the fight window `[864..1884]` has 1021 frames, 0 explained. The ratchet N is raised **860 → 864** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..859]` / 300 → **`[560..863]` / 304 / `136 clean, 164 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 864 (f = 91) matches port 508 except for 495 B / 165 px in x 0–23, rows 99–118. The capture shows a small grey figure at the left screen edge, which persists through 865/866. The port does not draw it. Its owner, an unported effect type or spawn, is not derived. (Derived since: the `0x12750` node list and the frame counter; see the grey flier below.)
+
+See §14 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+
+**Grey flier (`7147288`), the demo fight's captures 864/865.** The grey figure is the flying creature that `0x1282C` spawns from descriptor `0xBB254` (type `0x01`, sprites `0x0281..`, effects palette `0x105FF3C`; a sprite search over every id matched `0x8281` at (−7, 99) to 1 px). Two things kept it off screen. First, state 6's reset `0x20DF4` calls `0x12750` at `0x20E33`, which self-links `0xF0AE0`/`0xF0A78` and tail-appends the eight 12-byte nodes `0xF0A80..0xF0AD4`. Type `0x01`'s cb1 `0x127C0` pops that list, and the port had skipped the call, so every spawn was refused. Second, the gate `(DS_000EF6DC & 0x3F) == 0` reads the raw's boot-relative loop counter (only writer `0x24CDB`), but the front-end driver entered state 2 with it at 0. The driver now seeds it to 886, the port's own boot-run count before state 2 (690 attract + 196 title iterations). The capture bounds that count to 886 + [−4, +17], and the flier pins it mod 64. The original's live counter is still unread, a `TODO(verify)`: the pin also depends on the modelled iteration count from state 2 to f = 91, including the un-derivable loader stall. `test_attract` cross-checks 690 and 886 in the continuous boot run. One function of 0x4D raw bytes, its call and the driver seed. Fix round 1 also made `game_frame`'s counter increment the raw's word (`0x24CDB`), no longer a dword that could carry into the separate global at `0xEF6DE`.
+
+* **Measured.** Captures 864 and 865 are now exact (0 B; 865 is a 508/509 splice at row 69), from 495/498 B. The demo oracle's first unexplained is now **866 (raw 3773)**. The demo window `[866..3616]` has 2751 frames, 2745 unexplained, and the fight window `[866..1884]` has 1019 frames, 0 explained. The ratchet N is raised **864 → 866** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..863]` / 304 → **`[560..865]` / 306 / `137 clean, 165 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 866 is the f = 92/93 tear. The best 509/510 splice (row 137) leaves 27 858 B / 9 891 px across both fighters and the ground, whose rows 185–199 match no port frame 508..511 at any shift in [−8, 8]. At f = 93 the port's camera steps −500 → −256, the T-rex switches `0x907E` → `0x96B5` and its shadow `0x9E04` leaves the list. The owner is not derived. (Derived since: `0x36870`'s case 0 restarted the wrong record; see below.)
+
+See §15 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+
+**Wrong record in `0x36870` case 0 (`2137bce`), the demo fight's capture 866.** The f = 93 camera step and the T-rex's `0x96B5` were one port error. `0x36870`'s `+0x54 == 0` arm restarts the calling side's **own** record at `0xC8950[char]` and sets its `+0x4D = 0x1E`: `0x36A8C` and `0x36AA1` both read `[esp+0x10]`, which `0x368E5` loaded from `[S]`, and `[esp+0x14]` (the other record) is never read. The port restarted the other side's record. So when the raptor's stream reached its `0x36870` opcode at f = 93, the T-rex went onto the raptor's stance `0xD2136` (`0x16B5`, hflipped `0x96B5`). Its `0x18540` anchor then fell out of range to 0, which moved `AB0` −448 → 320 and the camera −500 → −256. Two operands in an already-ported function.
+
+* **Measured.** Capture 866 is now a 0 B splice of port 509/510 (row 96), from 27 858 B / 9 891 px. The demo oracle's first unexplained is now **867 (raw 3774)**. The demo window `[867..3616]` has 2750 frames, 2744 unexplained, and the fight window `[867..1884]` has 1018 frames, 0 explained. The ratchet N is raised **866 → 867** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..865]` / 306 → **`[560..866]` / 307 / `137 clean, 166 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 867 is a tear. The best 510/511 splice (row 124) leaves 11 184 B / 3 955 px, all in x 185–319, rows 125–194: the raptor's body and legs. The capture shows the raptor lowering out of its stance. The port holds the stance `0x16B5` from f = 93 to f = 96, while side 1's slot reads `+0x52/+0x53/+0x54` = 3/4/2 from f = 94. The owner is not derived. (Derived since: `0x3BDDC`'s unported `0x3C480` call and `0x18714`'s omitted anchor calls; see below.)
+
+See §16 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+
+**The raptor's crouch and its anchor (`a76414d`), the demo fight's captures 867..869.** At f = 94 side 1's command `0xA0A0` reaches `0x3BDDC`, which moves the raptor to state 3/4/2. Before those stores the raw calls `0x3C480(rec, [0xC8B30 + char·4], 1.0f)` (`0x3BEF7..0x3BF05`), starting the crouch stream `0xD2274` (`0x1746`, `0x1747`, …); the port had that call as a gap, so the raptor held its stance `0x16B5`. `0x3C480`'s `0x188DC` tail then re-derives `rec+0x18` through `0x18714`, which runs `0x18540` and, on an anchor change, `0x18350` before subtracting the new `DS_00100AB0`; the port omitted both calls (a named gap since the demo-pose cycle), so the new sprite's anchor x (−11 against the stance's −4) never moved `rec+0x18`: the raptor stood 7 px left (6144 instead of 6592). One call added and one function's two calls ported (`0x18788` likewise); no size gate.
+
+* **Measured.** Captures 867, 868 and 869 are now 0 B (510/511 and 511/512 splices, then port 512), from 11 184 / 14 505 / 14 034 B. The demo oracle's first unexplained is now **870 (raw 3777)**. The demo window `[870..3616]` has 2747 frames, 2741 unexplained, and the fight window `[870..1884]` has 1015 frames, 0 explained. The ratchet N is raised **867 → 870** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..866]` / 307 → **`[560..869]` / 310 / `138 clean, 168 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 870 is a tear. The best 512/513 splice leaves 12 025 B / 4 306 px, 3 942 px of them in x 240–319, rows 28–197: the raptor, in a different pose from the port's `0x174E`. At f = 96 the port's raptor stream runs from `0x1747` through the opcodes `D000 5E04 0003`, `DA00 17D8 000D`, `DC00 12D8 000D`, `8E40`, `FF20`/`FF21` and `ED40 22B0 000D` to `0x174E`. The owner is not derived.
+
+See §17 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+(Derived since: the raptor's launch opcode's target `0x35E04` was unregistered; see below.)
+
+**The raptor's launch (`0x35E04`/`0x3BC70`, `0a8346b`), the demo fight's captures 870..879.** At f = 96 the raptor's attack stream `0xD2274` reaches `D000 5E04 0003` at `0xD2278`: opcode `0x10` with the inline dword `0x00035E04`. The port had nothing registered there, so the dispatch skipped the call. The raw `0x35E04` sets hold 3.0 and calls `0x3BC70`, which puts the slot in state 4/0/2 and loads the record's gravity, vertical speed and horizontal speed from the row `0x3BDDC` stored at `DS_00107D40` (the char-3 `0xBEF28` row: 23, 550, 150). The horizontal speed is negated because `slot+0x4E` = −1. So the raptor jumps, and the port kept it on the ground. Two small functions (60 B and 112 B) and one registration; no size gate. The `0x2C3FC` voice call stays a `PORT:` gap.
+
+* **Measured.** Capture 870 is now port 513 at 0 B, and 871..879 are 0 B splices of 513/514 … 520/521 (876 is port 518), from 12 025 B at 870. The demo oracle's first unexplained is now **880 (raw 3787)**. The demo window `[880..3616]` has 2737 frames, 2731 unexplained, and the fight window `[880..1884]` has 1005 frames, 0 explained. The ratchet N is raised **870 → 880** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..869]` / 310 → **`[560..879]` / 320 / `140 clean, 176 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 880 is a tear. The best 521/522 splice (row 101) leaves 6 073 px, all in x 0–149, rows 118–199: the T-rex, which the capture shows lowered while the port draws it upright (`0x8F35`). The owner is not derived.
+
+See §18 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+(Derived since: `0x34E2C`'s reaction callback was never called; see below.)
+
+**The T-rex's reaction-0x2B leap (`0x3E62C`/`0x3E524`/`0x3E4E4`, `cfff063`), the demo fight's captures 880..890.** At f = 105 the T-rex's `0x3CF38` chain drives reaction `0x2B` (hit-scan index 5, `word[0xC61C8]`). The `0x34E2C` entry for it (`0xA3884`) has no stream, only the callback `0x3E62C`, and the port skipped `0x34E2C`'s callback call at `0x35045`. So the T-rex stood up where the capture shows it lowering. The raw `0x3E62C` starts the `0xE7BDE` stream (`0x11B3`…) through `0x3C4CC` at hold 3.0, re-anchors x from the `slot+0x2C` it read first, and puts the slot in state 9/7/2 with `+0x57 = 2`. It also arms the `+0x0C` callback `0x3E524`, which `0x3531C` case 7 runs each frame (rise, fall, landing). The stream's `D500 E4E4 0003` reaches `0x3E4E4`, the leap: vertical speed `0x320`, gravity `0x23`. The fix is the callback call, four small functions and three registrations; no size gate.
+
+* **Measured.** Captures 880..890 are now 0 px (splices of 521/522 … 529/530; 883 and 890 are ports 524 and 530), from 6 073 px at 880. The demo oracle's first unexplained is now **891 (raw 3798)**. The demo window `[891..3616]` has 2726 frames, 2720 unexplained, and the fight window `[891..1884]` has 994 frames, 0 explained. The ratchet N is raised **880 → 891** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..879]` / 320 → **`[560..890]` / 331 / `142 clean, 185 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 891 is a tear. The best 530/531 splice (row 29) leaves 2 188 px in x 100–287: the capture shows the raptor struck in mid-air by the leaping T-rex (a hit spray, a different pose), and a worshipper; 892 onwards differ across the frame. (Derived since, below: `0x3E62C`'s `+0x1C` callback `0x3E4C4`, which `0x193B0` calls at `0x19505`. This bullet first named the `0x1975C` collision step and said the two callbacks were only called from the think chain. Both claims were wrong.)
+* **Known later gaps (unregistered code targets, skipped).** The animation-opcode target **`0x35938`** is first hit at f = 173 on the raptor (50 hits in the run), and `0x3640C` at f = 712. The reaction callbacks `0x3D17C` (f = 350), `0x3ECF8` (f = 688) and `0x3C0A4` (f = 832) are also unregistered. None fires before capture 891.
+
+See §19 of the record `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+
+**The T-rex's `+0x1C` callback (`0x3E4C4`, `6a48972`), the demo fight's capture 891.** `0x3E62C` stores two callbacks, `0x3E484` in `slot+0x18` and `0x3E4C4` in `slot+0x1C`. Their callers are `0x1958C`'s `0x19020` hook (`0x1903F`) and its winner body `0x193B0` (`0x19505`, EAX = side). At f = 114 the winner body runs for the T-rex, and the port's `fn_resolve` returned NULL for `0x3E4C4`, so it skipped the reaction and the raptor was not struck. `0x3E4C4` (31 B) applies `0x3B714(slot[1-side], slot[side])`, the call the `+0x1C == 0` arm makes at `0x19526`, which is already ported. `0x3E484` stays a `PORT:` gap: it needs the unported `0x18C14`, and its closure is 1 408 B in 6 functions. Evaluated on the port's state, it gives the port's `DS_00100AF8` zero-ness on every frame the hook is set (f = 106..114), so it is inert in this run. (Since ported with `0x19020`, record §35.)
+
+* **Measured.** Capture 891 is now 0 px (the 530/531 splice). The demo oracle's first unexplained is now **892 (raw 3799)**. The demo window `[892..3616]` has 2725 frames, 2719 unexplained, and the fight window `[892..1884]` has 993 frames, 0 explained. The ratchet N is raised **891 → 892** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..890]` / 331 → **`[560..891]` / 332 / `142 clean, 186 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 892 is a tear. The best 531/532 splice (row 56) leaves 35 921 px across rows 56–199. From it on, the capture's whole scene sits lower than the port's: the background matches at dy = +3, +5, +7 and +11 px at captures 892, 893, 894 and 896. The owner is not derived. The candidates are the camera's vertical follow after the hit and the struck raptor's reaction state.
+* **Collision step, measured.** `DS_00100AD0` still stays 0 because `0x1975C`'s `0x17CB0` → `0x176CC` is unported. Its genuinely new closure is `0x17CB0`, `0x176CC`, `0x17BC8` and the §7.12 gap `0x3B938`: 1 070 B in 4 functions. Its other callees (`0x140E4`, `0x15C30`, `0x16DA4`, `0x17EEC`, `0x181D0`, …) are already ported.
+
+See §19.6 of the record.
+(Derived since: the reaction's knockback pose handler `0x39CC8` was unregistered; see below.)
+
+**The knockback pose's handler (`0x39CC8`/`0x39B30`, `a51685d`), the demo fight's captures 892..949.** At f = 114 the reaction `0x3B714` → `0x3AAFC` finds the struck raptor airborne and calls the pose setter `0x39F40` (`0x3AC89`: −80, `0x46`, `0x0C`, `0x14`), which stores the per-frame handler `0x39CC8` in `slot+0x10` (`0x39F8F`). `0x3531C` case 10 calls it every frame (`0x354E2`), and the port resolved it to NULL. The raw handler (561 B, no Ghidra function) is a `+0x58` machine: it arms, launches the raptor through `0x39B30` (gravity `0x39AC8(0x46, 12)` = 62, vertical 62 · 12 = 744, horizontal −80 · 64 / 32 = −160, negated while unflipped), re-times the fall to the ground, lands it (the `0xBEDB0[char]` stream, the `0xBB1DC` dust) and clears `+0x54`. The camera follows the higher fighter's y (`0x12DA8`), so in the capture it climbs one 0x100 step a frame from f = 115; the port's raptor hung at the hit and the camera barely moved. That was the "scene drops" of capture 892. The closure is `0x39CC8`, `0x39B30`, `0x35050`, `0x39AC8` and `0x39B14`: 1 152 B in 5 functions, inside the size gate. The `0x2C3FC(0x6C)` voice stays a `PORT:` gap.
+
+* **Measured.** Captures 892..949 are now explained (clean or splice). The demo oracle's first unexplained is now **950 (raw 3857)**. The demo window `[950..3616]` has 2667 frames, 2661 unexplained, and the fight window `[950..1884]` has 935 frames, 0 explained. The ratchet N is raised **892 → 950** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..891]` / 332 → **`[560..949]` / 390 / `150 clean, 236 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 950 is a tear. The best 581/582 splice (row 122) leaves 1 731 px in x 132–264, rows 161–199: the capture's raptor stays lying where it landed, and the port's gets up. At f = 165 the landing stream `0xD2ADA` reaches `D500 47B8 0003`, an opcode-`0x15` target `0x347B8` that the port has not registered, so it was skipped. With `DS_00104B00` = 3 the raw `0x347B8` puts the slot in state 9/`0x0B`/0 and starts a per-character stream (table `0x34780`; corrected since: `0x34780` or `0x3479C`, chosen by `0x340BC` at `0x3485F`). That is the candidate owner; it is not derived here. (Derived since, below.)
+* **Known later gaps (unregistered code targets, skipped).** `0x35938` (now first at f = 201, 53 hits), `0x4AC18` (f = 206) and `0x370F0` (f = 291). The reaction callbacks `0x3D17C`/`0x3ECF8`/`0x3C0A4` no longer miss in this run.
+
+See §20 of the record.
+
+**The knockdown floor (`0x347B8`/`0x346F8`, `3fee8d0`), the demo fight's captures 950..991.** At f = 165 the landed raptor's stream `0xD2ADA` reaches `D500 47B8 0003` at `0xD2B00`, and the port's `fn_resolve(0x347B8)` returned NULL, so the dispatcher walked on into the ids that follow and the raptor got up. The raw `0x347B8` (448 B, no Ghidra function; the dword occurs 53 times in the streams) runs `0x39A10(rec, 0x29A)`, `0x3C148`, `0x3C16C`, sets state 9/`0x0B`/0 and clears `+0x43` bits 0..1, then asks the stun gate `0x340BC` (`0x3485F`): on 1 it runs the stun start `0x34168` (the `0xBDBC8[char]` actor, `+0x8C` = `0x4B0`) and takes `0x34780[char]`, on 0 `0x3479C[char]`, at hold 3.0 (in game mode 7 it may freeze the side instead). The demo raptor fails the gate (`+0x63` = 1, `+0x5A` 22 against 9), so it lies on `0xD28FC`, a 20-pass loop, until that stream's second opcode-`0x15` target `0x346F8` (the get-up: `+0x76` = `word[0xBDBE6]` + 1, then `0x36870`) at f = 206. The closure is `0x347B8`, `0x340BC`, `0x34168` and `0x346F8`: 1 029 B in 4 functions, all callees already ported. The frame-892 review's minors are folded in: the slot `+0x14` callback now takes the slot at all three raw call sites (`0x19537`, `0x3514C`, `0x350B8`), and its `PORT:` note names the raw writers' target `0x29D04`.
+
+* **Measured.** Captures 950..991 are now explained (clean or splice). The demo oracle's first unexplained is now **992 (raw 3899)**. The demo window `[992..3616]` has 2625 frames, 2619 unexplained, and the fight window `[992..1884]` has 893 frames, 0 explained. The ratchet N is raised **950 → 992** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..949]` / 390 → **`[560..991]` / 432 / `170 clean, 258 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 991 is a clean splice; 992 is a tear. The best 617/618 splice (row 134) leaves 6 342 px in x 64–319, rows 134–192, 993 leaves 13 800 px and from 994 the residual is whole-frame. The capture's background sits 1 px right of the port's at 991/992 and 1–2 px left from 994: a horizontal camera and fighter-position divergence, not the raptor's pose. Port frame 617 is f = 201, the first miss after the fix: the T-rex's stream reaches the unregistered animation-opcode target `0x35938`. That is the candidate owner; it is not derived here.
+* **Known later gaps (unregistered code targets, skipped).** `0x35938` (first at f = 201, 61 hits), `0x4AC18` (f = 206, 302, 362) and `0x3640C` (f = 598). `0x370F0` is still unregistered; it is not reached (no longer misses) in this run. `0x347B8`'s stun stream target `0x34530` is unregistered but not reached.
+
+See §21 of the record.
+(Derived since: the T-rex's walk entry `0x35938` was unregistered; see below.)
+
+**The walk entry (`0x35938`, `ff38dcc`), the demo fight's captures 992..997.** At f = 201 the T-rex's stream (state `0x0E`) reaches `D500 5938 0003` at `0xE6EE8`, and the port's `fn_resolve(0x35938)` returned NULL, so the dispatcher walked on into the ids that follow and `D500 7068` (`0x36870`), a loop that kept the T-rex in place while the capture's walked forward and the camera followed. The raw `0x35938` (166 B, no Ghidra function; the dword occurs 14 times, two per character) sets state 1/0 (8 when `+0x54` is 4, keeping `+0x53`), sets `rec+0x29` bit 3 and seeks `rec+8` through `0x2BCF4` to the literal sprite id of `0x35C1C`'s `+0x43`-selected frame table (`0xC8AE0`/`0xC8A68`) at the record's signed frame `rec+0x52`, then clears the frame, speed and hold, sets the step `rec+0x58` = 1 and `rec+0x28 |= 0x804`. The state-1 handler `0x359E0` then walks the T-rex. One function, its callee already ported. The frame-950 review's minors are folded in: the `0x347B8` dword is at `0xD2B02`, the `0x347B8`/`0x346F8` wrappers "do not read EDX", and `check_knockdown_floor` asserts the stun spawn's ECX layer `0xFF`.
+
+* **Measured.** Captures 992..997 are now explained (clean or splice). The demo oracle's first unexplained is now **998 (raw 3905)**. The demo window `[998..3616]` has 2619 frames, 2613 unexplained, and the fight window `[998..1884]` has 887 frames, 0 explained. The ratchet N is raised **992 → 998** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..991]` / 432 → **`[560..997]` / 438 / `172 clean, 262 splice, 0 transition, 2 unexplained (832, 833)`**. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 997 is a splice; 998's best 622/623 splice (row 107) leaves 259 px, all in the left-edge worshipper (x < 40), and 999..1006 leave 481–651 px there: the capture's worshipper turns and walks while the port's keeps cheering. Port frame 622 is f = 206, the first miss after the fix: a pool record's stream (`rec+8` `0xEE0A0`) reaches the unregistered animation-opcode target `0x4AC18` (24 data sites in `0xEE09E..0xEF62E`; it re-animates the `rec+0x14` effects-list entry through `0x4AC38`). That is the candidate owner; it is not derived here. From capture 1007 (f = 214) a second whole-frame divergence joins (called the raptor's leap here, corrected below to the T-rex's).
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x4AC18` (first f = 206, 8 hits), `0x3640C` (f = 304), `0x3C0A4` (f = 333), `0x14EF8` (f = 400) and `0x3A820` (first f = 473, 491 hits). `0x370F0` is still unregistered; it is not reached (no longer misses) in this run. `0x34530` is unregistered and not reached.
+
+See §22 of the record.
+(Derived since: the worshipper arrival target `0x4AC18` was unregistered; see below.)
+
+**The worshipper arrival target (`0x4AC18`, `b5a48a0`), the demo fight's captures 998..1357.** At f = 206 the left-edge worshipper's cheer stream (its fight-effect entry in type 8) reaches `D500 AC18 0004` at `0xEE09C`, and the port's `fn_resolve(0x4AC18)` returned NULL, so the dispatcher walked on into the next cheer stream and the worshipper kept cheering while the capture's turned and walked. The raw `0x4AC18` (29 B, no Ghidra function; the dword occurs 24 times in `0xEE09E..0xEF62E`) calls the already-ported arrival `0x4AC38` for the actor's `+0x14` entry with the index `(u32)(u8)rec+0x48 − 0x20`: the entry returns to type 0 and its actor begins the `0xC9544[index]` stream at the hold 5.0, after which the type-0 handler `0x4AAD0` walks it. One function, its callee already ported.
+
+* **Measured.** Captures 998..1357 are now explained (clean, splice or transition), including the second divergence from 1007. That one is not the raptor's leap, as the frame-992 characterisation said, but the T-rex's (side 0). With the fix, the port makes 3 RNG draws at f = 207 instead of 1 (the worshipper's two `rng(0x1200)` in `0x4B144`). Both fighters' states stay identical until the next draw at f = 214, which is exactly the capture-1007 frame. There the T-rex leaves state 1 (→ 0 → 5 → `09/07/02`) in the fixed port and stays in 1 in the unfixed one, while side 1 is the same in both builds. The dumped port frames are identical through 622, and the first difference is frame 623. The demo oracle's first unexplained is now **1358 (raw 4265)**. The demo window `[1358..3616]` has 2259 frames, 2253 unexplained, and the fight window `[1358..1884]` has 527 frames, 0 explained. The ratchet N is raised **998 → 1358** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..997]` / 438 → **`[560..1357]` / 798 / `307 clean, 484 splice, 3 transition, 2 unexplained (832, 833)`**. The three transition frames all lie in the new span; port frames 0..622 are byte-identical to before. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1357 is a splice; 1358's best 930/931 splice (row 39) leaves 2 743 px in the T-rex at the right edge, growing to the whole frame from 1362. The capture's T-rex comes down from its leap and stands by 1361, while the port's (side 0, state 4/8/2 from f = 508) stays in the air until f = 521. No `fn_resolve` miss other than the stub `0x5D812` falls before f = 559, so it is not an unregistered target; no candidate owner is named. (Derived since: the T-rex was misplaced in x, not late to land; the camera split arm's `0x18714` writes were skipped; see below.)
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x3D17C` (first f = 559, 3 hits), `0x14EF8` (f = 582), `0x3640C` (f = 741) and `0x3A588` (first f = 784, 180 hits). `0x3C0A4` and `0x3A820` are no longer reached. `0x370F0` is still unregistered; it is not reached (no longer misses) in this run. `0x34530` is unregistered and not reached.
+
+See §23 of the record.
+
+**The camera split arm's `0x18714` writes (`c78dc97`), the demo fight's captures 1358..1410.** At the end of f = 514 and f = 515 the fighters' `+0x34` latches are 20 526 apart (T-rex 26 674, raptor 6 148), more than `word[0x9AF28]` = `0x5000`. The mode-1 camera `0x12E3C` then pulls the outward-moving T-rex back to its `+0x38` latch (the previous frame's `+0x34`), storing `+0x34`/`+0x2C`, and rewrites its record's `+0x18` through `0x18714` (`0x12F22`/`0x12F29`; slot a's twin at `0x12F02`/`0x12F09`). The port stored only the slot fields (a named gap since the demo-fight cycle), so the next latch rebuilt `+0x2C` from the unclamped record and the T-rex ran two frames' worth of x (436) further right. The capture draws the same sprite 4 px further left from 1358 on; it was never a late landing. `0x18714` was already ported (`hit_record_x`), so the fix is two calls; new `check_camera_split`.
+
+* **Measured.** Captures 1358..1410 are now explained; port frames 0..930 are byte-identical to before, and 931 (f = 515) is the first that differs. The demo oracle's first unexplained is now **1411 (raw 4318)**. The demo window `[1411..3616]` has 2206 frames, 2200 unexplained, and the fight window `[1411..1884]` has 474 frames, 0 explained. The ratchet N is raised **1358 → 1411** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1357]` / 798 → **`[560..1410]` / 851 / `337 clean, 507 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1410 is a splice; 1411's best 975/976 splice leaves 6 363 px in rows 90–192, in both fighters, growing to 13 407 px by 1416. Port frame 976 is f = 560. At f = 559 the T-rex (state 9/0/0) takes reaction `0x20`, whose `(char 0, 0x20)` entry at `0xA37A8` has no stream and the callback `0x3D17C`. That callback is still unregistered (the run's first `fn_resolve` miss after the stub), so the port only stores `+0x5F` and the T-rex is back in its stance at f = 560. `0x3D17C` is the candidate owner; not derived. (Derived since: it is the owner; see below.)
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x3D17C` (first f = 559, 3 hits) and `0x3A588` (first f = 807, 157 hits). `0x14EF8` and `0x3640C` no longer miss in this run. `0x370F0` and `0x34530` are unregistered and not reached.
+
+See §24 of the record.
+
+**The T-rex's reaction-`0x20` breath (`4065c1d`), the demo fight's captures 1411..1477.** At f = 559 `0x34E2C` applies reaction `0x20` to the T-rex; its `(char 0, 0x20)` entry `0xA37A8` holds only the callback `0x3D17C`, which the port skipped as unregistered, so the T-rex fell back into its stance. The raw `0x3D17C` (unless the slot's `+0x08` already holds a projectile) starts the breath stream `0xE84C8` at hold 3.0 through `0x3C4CC` (state `0xB/6/0`), clears the slot's `+0x0C/+0x18/+0x1C` callbacks, moves `+0x5F` to `+0x64` and stores `0x100` in the word `0x1080AC[side]`. The stream's `D100` target `0x3D214` spawns the emitter `0xBB27C` as the record's child, and the emitter's `D100` target `0x3D26C` spawns the projectile `0xBB268` (the purple ring) beside the record into the slot's `+0x08`, at the speed `∓0x1080AC[side]`. Three functions (386 B) whose callees were already ported; new `check_trex_breath`. Two existing reaction-`0x20` checks now seed a live projectile so their assertions stay unchanged.
+
+* **Measured.** Captures 1411..1477 are now explained; port frames 0..975 are byte-identical to before, and 976 (f = 560) is the first that differs. The demo oracle's first unexplained is now **1478 (raw 4385)**. The demo window `[1478..3616]` has 2139 frames, 2133 unexplained, and the fight window `[1478..1884]` has 407 frames, 0 explained. The ratchet N is raised **1411 → 1478** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1410]` / 851 → **`[560..1477]` / 918 / `382 clean, 529 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1477 is a splice; 1478's best 1033/1034 splice (row 103) leaves 7 749 px in rows 103–195, growing to the whole frame from 1480. Port frame 1034 is f = 618. The capture's ring reaches the raptor at the left edge and bursts as the raptor recoils; the port's ring (slot 0's `+0x08`, −256 per frame, x 10 330 at f = 618 against the raptor's 10 052) flies on untested. No `fn_resolve` miss falls in f = 560..624. The candidate owner is the unported collision step `0x17CB0` (`0x1975C`'s first call, `0x19763`), whose `0x176CC`/`0x17BC8` test the slots' `+0x08` projectiles; not derived. The T-rex at the right edge also differs (reaction `0x08` at f = 619); not separated. (Derived since: `0x17CB0` is the owner; see below.)
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x14814` (f = 625, the `(char 3, 0x22)` reaction callback) and `0x3ECF8` (f = 888, the `(char 0, 0x2C)` callback). `0x3D17C` no longer misses, and `0x3A588` is no longer reached. `0x370F0` and `0x34530` are unregistered and not reached.
+
+See §25 of the record.
+
+**The projectile collision step (`3d64c61`), the demo fight's captures 1478..1480.** `0x1975C`'s first call `0x17CB0` was unported, so `DS_00100AD0/AD4` (the per-thrower projectile overlap counts) stayed 0, the think step never ran and the T-rex's breath ring flew through the raptor. The raw `0x17CB0` fills the `0x100BD3` plane, zeroes `AD0/AD4`, and tests either two live projectiles against each other (`0x17BC8`: burst side 0's through `0x3B938`, kill side 1's) or each side's projectile against the other fighter (`0x176CC`: the `0x170A0` shape with the projectile as a `0x20` box and `0x16DA4`'s mode-0 row `0xA173C`), writing the overlap count into `AD0[side]`. At f = 617 it gives `AD0[0]` = 17, and `0x1975C` applies the hit to the raptor through `0x3B464` (the `0x39834` pose driver and the `0x3A95C` stagger) and bursts the ring (`0x3B938`). New: `0x17CB0`, `0x176CC`, `0x17BC8`, `0x3B938`, `0x3A95C` (1 192 B) and `0x16DA4`'s mode arms; `0x3B464`'s §7.12 gaps are wired except `0x235C4` (projectile `+0x48` = 8, not in the demo; ported later, record §41-C). `check_think_chain` now asserts the raw zeroing; new `check_projectile_step`.
+
+* **Measured.** Captures 1478..1480 are now explained; port frames 0..1033 are byte-identical to before, and 1034 (f = 618) is the first that differs. The demo oracle's first unexplained is now **1481 (raw 4388)**. The demo window `[1481..3616]` has 2136 frames, 2130 unexplained, and the fight window `[1481..1884]` has 404 frames, 0 explained. The ratchet N is raised **1478 → 1481** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1477]` / 918 → **`[560..1480]` / 921 / `383 clean, 531 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1481's best 1035/1036 splice leaves 3 626 px in rows 86–192, almost all in the two fighters; against port 1036 (f = 620) the capture's raptor sits 1 px left and its T-rex 1 px right, with a slightly different T-rex pose; 1482 leaves 3 615 px. Candidates: the struck raptor's knock-back or the T-rex's reaction `0x08` at f = 619; not derived.
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x3C048` (f = 652, the reaction-`0x3D` callback of every character) and `0x3E3A8` (f = 920, the `(char 0, 0x2A)` callback). `0x14814` and `0x3ECF8` no longer miss. `0x370F0` and `0x34530` are unregistered and not reached.
+
+See §26 of the record.
+
+**The `0x349C8` command gate (`219691e`), the demo fight's captures 1481..1545.** `0x349C8` (the `+0x52` == 0 handler) returns at `0x34A8D` (`0F 85 78 00 00 00  jne 0x34B0B`) when the side's command word has a bit in both `(cmd>>8)&3` and `(cmd>>8)&0xC`; the `0x3BDDC` consume, the `0x4000` arm and `0x35838` all sit behind that gate. The port skipped only the consume. At f = 619 the T-rex's word `0x6F6F` took the port's `0x4000` arm, which restarted its record on `0xC8978[0]` (sprite `0x0F02` → `0x0F34`), and the reaction-`0x08` hit's `0x18B04` then re-derived its record x from the new sprite's anchor, 64 units (1 px) left of the raw's. A one-line gate, no new function; new case I in `check_deep_callees`.
+
+* **Measured.** Captures 1481..1545 are now explained; port frames 0..1035 are byte-identical to before, and 1036 (the f = 619 state) is the first that differs. The demo oracle's first unexplained is now **1546 (raw 4453)**. The demo window `[1546..3616]` has 2071 frames, 2065 unexplained, and the fight window `[1546..1884]` has 339 frames, 0 explained. The ratchet N is raised **1481 → 1546** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1480]` / 921 → **`[560..1545]` / 986 / `410 clean, 569 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1546's best 1091/1092 splice (row 67) leaves 148 px in x 221–234, rows 180–199: a small teal-clad worshipper crouches in the capture and not in the port; 1547 leaves 297 px and 1549 372 px. The fighters, the burst and the background match. Port 1091 is the f ≈ 674 state; not derived.
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x3C0A4` (f = 850), `0x3ECF8` (f = 887) and `0x3E3A8` (f = 896). `0x3C048` no longer misses. `0x370F0` and `0x34530` are unregistered and not reached.
+
+See §27 of the record.
+
+**The worshippers' fall, lie and climb (`27c95c0`), the demo fight's captures 1546..1562.** The effects pass `0x49C78`'s type-3 handler `0x49DB3` was ported only as its `DS_000BD898` gate and its `rng(0x3C)` draw. The raw sets the actor's `+0x2C` from its y (`0x496AC`) every frame and, once the y is at or below the zero-extended word `0xBD898` (`0x400`), lands it: hflip OR-ed in when `0x2BE1C` > 0, the `0xC9634[si]` crouch stream at 2.0, the velocities zeroed, a `rng(0x3C) + 0x3C` lie timer, `+0x1C` bit 7 and type 4. The port kept the entry at type 3 on its upright stream and drew `rng(0x3C)` on every later frame, so the two side-1 worshippers `0x4B5A8` scared at f ≈ 650 (their slot in state 7/2) never crouched (f = 675/676). The fix ports case 3 whole and the cycle it hands off to, case 4 (`0x49E5A`, the signed lie timer and the `0xC95EC` rise) and case 5 (`0x49EC0`, the climb back to type 0), with no new callee; `0x496AC` compares signed and `fight_dust_clamp` now does too. New `check_effects_fall` in `test_fight.c`; 31 mutations each fail it.
+
+* **Measured.** Captures 1546..1562 are now explained; port frames 0..1091 are byte-identical to before, and 1092 (the f = 675 state) is the first that differs. The demo oracle's first unexplained is now **1563 (raw 4470)**. The demo window `[1563..3616]` has 2054 frames, 2048 unexplained, and the fight window `[1563..1884]` has 322 frames, 0 explained. The ratchet N is raised **1546 → 1563** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1545]` / 986 → **`[560..1562]` / 1003 / `413 clean, 583 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1563's best 1106/1107 splice (row 154) leaves 514 px in x 37–232, rows 158–191, in two places: x 200–232, a worshipper beside the right-hand fighter in a different pose, and x 37–70, rows ≈ 180–191, a dark blob under the left fighter. 1562 splices at 0 px. Port 1106 is the f ≈ 689 state; not derived. The landed worshippers now carry `+0x1C` bit 7, which gates the unported per-entry prelude `0x4B69C` (a `0x17D30` collision against the fighters); that is a candidate, not a derivation.
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x14F50` (f = 865 and 871). `0x3C0A4`, `0x3ECF8` and `0x3E3A8` no longer miss (the run changed from f = 675). `0x370F0` and `0x34530` are unregistered and not reached.
+
+See §28 of the record.
+
+**The worshippers' trample (`cc38a38`), the demo fight's captures 1563..1658.** The effects pass `0x49C78` calls its per-entry prelude `0x4B69C(entry, si)` before the type dispatch (`0x49CFE`); the port did not. An entry with `+0x1C` bit 7 (a worshipper lying after case 3's landing) tests its actor's pset point against both fighters' `0x100AC8` boxes (`0x17D30`, which runs `0x1790C` per side: the `0x176CC` projectile-test shape with the point as a `0x30`-wide, `0x38`-tall box and the `0xA1740` overlap row). On a hit that `0x4B788` does not claim for a grab (the fighter's slot `+0x5F` is not its grab move `0xC97F2[ch]`), `0x4B470` tramples it: the `0xC9604[si]` tumble stream, a shadow actor from `0xBB920[si]`, `+0x34` = ±`0x80`, `+0x36` = `0x240`, type 6; case 6 (`0x49F11`) flies it and lands it on `0xC973C[si]` as type 8. At f = 689 the gold fighter's tail puts both landed side-1 worshippers inside side 0's box. The fix ports `0x17D30`/`0x1790C` in `camera.c` (every callee was already ported), `0x4B69C`, `0x4B788`'s gates, `0x4B470`, case 6 and case 8's gate in `fight.c`; the grab arm, the eighth-hit tail (`0x4BD98`/`0x4CB18`) and case 8's held body are named gaps that no probe reached (ported later, record §42-C). New `check_point_trample` in `test_fight.c`; 51 mutations each fail it.
+
+* **Measured.** Captures 1563..1658 are now explained; port frames 0..1105 are byte-identical to before, and 1106 (the f = 689 state) is the first that differs. The demo oracle's first unexplained is now **1659 (raw 4566)**. The demo window `[1659..3616]` has 1958 frames, 1952 unexplained, and the fight window `[1659..1884]` has 226 frames, 0 explained. The ratchet N is raised **1563 → 1659** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1562]` / 1003 → **`[560..1658]` / 1099 / `447 clean, 645 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1659's best 1188/1189 splice (row 135) leaves 57 px in x 111–124, rows 135–142, on the top-left edge of the dark ring; from 1660 the gold fighter's leap and the camera y diverge (5 279, 10 954, 42 868 px). Port 1188 is the f ≈ 771 state; not derived.
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x4AC80` (f = 820 and 841; a worshipper stream callback with no code xref) and `0x3BF70` (f = 850). `0x14F50` no longer misses. `0x370F0` and `0x34530` are unregistered and not reached.
+
+See §29 of the record.
+
+**The fighters' body push (`1268371`), the demo fight's captures 1659..1714.** game_frame's `DS_00104B15` tail calls `0x3BB90` at `0x2541D`, before `0x12D48`; the port had only a `PORT:` note (`port/spec/game_flow.md`'s "cycle 2 landed `0x3BB90`" was stale). `0x3BB90` latches both slots and, when the two latched points are closer than the sum of the characters' `0xBEEF8` widths (halved for `+0x54` = 2), takes `0x4FB20`'s distance estimate (max + min/4 + min/8) and pushes the sides apart by the penetration: `0x3BAEC` runs `0x3B9D8` per side, which moves the side half of it away from the other through `0x1883C` (or the other side at the `0x7C00` wall, `0x3B8D8`) and zeroes a speed that does not point away when `+0x54` is 2. The fighters first overlap at f = 772, the T-rex's leap onto the raptor: capture 1659's residual is the T-rex's claw 1 px left in the port (and the raptor 1 px right), not the dark ring. The fix ports the five functions in `fighter.c` (every callee was already ported) and wires the call in `flow.c`. New `check_body_push` in `test_fight.c` and a wiring assertion in `check_game_frame_tail`; 46 of 47 mutations fail them, and the 47th (`0x4FB20`'s |dy| gate) is equivalent in the reachable domain.
+
+* **Measured.** Captures 1659..1714 are now explained; port frames 0..1188 are byte-identical to before, and 1189 (the f = 772 state) is the first that differs. The demo oracle's first unexplained is now **1715 (raw 4622)**. The demo window `[1715..3616]` has 1902 frames, 1896 unexplained, and the fight window `[1715..1884]` has 170 frames, 0 explained. The ratchet N is raised **1659 → 1715** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1658]` / 1099 → **`[560..1714]` / 1155 / `455 clean, 693 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1715's best 1236/1237 splice (row 144) leaves 383 px, almost all in x 40–99, rows 144–190: a standing worshipper at x ≈ 45–60 in the capture is at x ≈ 75–88 in port 1237 and gone from 1238. Port 1237 is the f = 820 state, the run's first unregistered `0x4AC80` call (a worshipper stream callback); not derived.
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x4AC80` (f = 820 and 841) and `0x3C0A4` (f = 850, no code xref). `0x3BF70` no longer misses.
+
+See §30 of the record.
+
+**The worshipper landing target (`2287114`), the demo fight's captures 1715..1749.** The six worshipper landing streams end in `D500 AC80 0004` (opcode `0x15`, mode `0x4000`), and the port had not registered `0x4AC80`, so `anim_indirect` skipped it. At f = 820 and 841 it ends each trampled side-1 worshipper's type-8 landing with the climb: the `0xC95EC` rising stream at 3.0, the record's `+0x38` = `0x40` and `+0x34` = ±`0x40` by the fighter's `+0x28` bit `0x4000`, type 5 and `+0x1C &= 0x3F`; case 5 then stands it up. The port left both on the landing stream. `0x4AC80`'s other arms (the `DS_001088C5` walk or hold beside the `DS_00108868` record, the `DS_00108864` release, and the mode 8/9/`0x17` hold through `0x4B3F0`/`0x4B430` with EBX = 1) are ported too but not reached; `0x4B3F0`/`0x4B430` now take the raw's EBX flag for `+0x55` (the port had hard-coded 0). New `check_worshipper_landing` in `test_fight.c`; 58 of 59 mutations fail it, and the 59th (`0x4AD4F` at equality) is equivalent in the reachable domain. Task 20's parked minors are tidied in `71c61b2`.
+
+* **Measured.** Captures 1715..1749 are now explained; port frames 0..1236 are byte-identical to before, and 1237 (the f = 820 state) is the first that differs. The demo oracle's first unexplained is now **1750 (raw 4657)**. The demo window `[1750..3616]` has 1867 frames, 1861 unexplained, and the fight window `[1750..1884]` has 135 frames, 0 explained. The ratchet N is raised **1715 → 1750** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1714]` / 1155 → **`[560..1749]` / 1190 / `468 clean, 715 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1750's best 1266/1267 splice (row 153) leaves 5 544 px in x 0–286, rows 153–199 (1751 and 1752 leave 10 703 and 11 165): below the split the capture's gold T-rex keeps port 1266's place and upright pose, while port 1267 (f = 850) has it further left in another pose, and the camera matches. f = 850 is the run's `0x3C0A4` miss; not derived.
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x3C0A4` (f = 850, no code xref), `0x14F50` (f = 929) and `0x3A820` (f = 962/963). `0x4AC80` no longer misses.
+
+See §31 of the record.
+
+**The reaction callbacks `0x3C0A4`/`0x3BF70` (`c7320b2`), the demo fight's captures 1750..1762.** `0x34E2C`'s `(char, reaction)` table holds `0x3C0A4` as reaction `0x3E`'s callback and `0x3BF70` as reaction `0x3F`'s (the T-rex's records `0xA3A00`/`0xA3A14`, one pair per character at stride `0x500`; no code reference to `0x3C0A4`). The port had not registered `0x3C0A4`, so the `0x35045` call skipped it. At f = 850 the T-rex takes reaction `0x3E`: `0x3BF70`, the forced attack, starts its `0xC8B30` attack stream at hold 2.0 through `0x3C4CC` with the `0xBEFA0` row in `DS_00107D40` and state 3/4/2, and `0x3C0A4` then turns the slot's `+0x4E` facing the other way. New `check_reaction_attack` in `test_fight.c`; 36 of 37 mutations fail it, and the 37th (the `0x3BF70` wrapper passing the slot's own record) is equivalent at the only call site. Task 21's parked test minors are tidied in `1bb5b9e`.
+
+* **Measured.** Captures 1750..1762 are now explained; port frames 0..1266 are byte-identical to before, and 1267 (the f = 850 state) is the first that differs. The demo oracle's first unexplained is now **1763 (raw 4670)**. The demo window `[1763..3616]` has 1854 frames, 1848 unexplained, and the fight window `[1763..1884]` has 122 frames, 0 explained. The ratchet N is raised **1750 → 1763** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1749]` / 1190 → **`[560..1762]` / 1203 / `473 clean, 723 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before. Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1763's best 1277/1278 splice (row 130) leaves 153 px, all in x 15–22, rows 53–98, all green (0, 203, 0); 1764..1766 leave the same box. The capture draws a vertical "2 HIT COMBO" at the left edge. `0x39040` runs its gated body at f = 860 for side 0 with `DSW(0x107D2C)` = 2 (the T-rex's second hit) and there draws the text through `0x38D90` ("COMBO" at `0xBE01C`, referenced only from `0x38E1D`); the port skips that draw as a `PORT:` named gap (the `0x2F4D0`/`0x2EFD4` text-grid formatter). Not derived.
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x3E3A8` (f = 962). `0x3C0A4`, `0x14F50` and `0x3A820` no longer miss.
+
+See §32 of the record.
+
+**The combo text `0x38D90`/`0x38FEC` (`bcce10b`), the demo fight's captures 1763..1880.** `0x39040` draws the combo text through `0x38D90` and checks the combo names through `0x38FEC`, and the port skipped both as a `PORT:` named gap. At f = 860 the T-rex's second hit draws "2", the HIT glyph (`0x1B`) and "COMBO" (`0xBE01C`) down the text grid's column 2 (rows 8..14). The glyph grid and the string table were already ported, so the gap was ten functions: `0x2F4D0`/`0x2EFD4`/`0x2EF24` (the `"%i"` number formatter), `0x2F20C`/`0x2F314` (vertical draw and clear), `0x38C5C`/`0x38D90`/`0x38D24` (the combo text, its clear and its 180-frame timer, now wired at `fight_hud_pass`'s `0x357F5`) and `0x38FEC`/`0x38ED0` (the per-character combo names on rows 6/7). New `check_text_vertical_number` in `test_platform.c` and `check_combo_text` in `test_fight.c`; all 55 mutations fail them.
+
+* **Measured.** Captures 1763..1880 are now explained; port frames 0..1276 are byte-identical to before, and 1277 (f = 860) differs in exactly the capture's 153 px. The demo oracle's first unexplained is now **1881 (raw 4788)**. The demo window `[1881..3616]` has 1736 frames, 1730 unexplained, and the fight window `[1881..1884]` has 4 frames, 0 explained. The ratchet N is raised **1763 → 1881** in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1762]` / 1203 → **`[560..1880]` / 1321 / `516 clean, 798 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before, and port frames 0..1378 are exhibited (1142). Nothing else moved.
+* **Residual (characterised, not fixed).** Capture 1881's best 1378/1379 splice (row 137) leaves 3 791 px in x 0–204, rows 137–192, and 1882..1884 leave 8 429..11 140 px. Below the split the capture's gold T-rex drops into a new pose, lower, legs apart and its tail flat on the sand, while port 1379 (f = 962) keeps it upright as in 1880; the raptor, the worshippers and the camera match. f = 962 is the run's `0x3E3A8` miss (a `hit_reaction_apply` reaction callback, unregistered). Not derived. The port's dump ends at frame 1380, so the fight window holds only 4 captures.
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** `0x3E3A8` (f = 962), unchanged.
+
+See §33 of the record.
+
+**The reaction callback `0x3E3A8` and the exit frame (`8d538d5`), the demo fight's captures 1881..1884.** `0x34E2C`'s `(char 0, 0x2A)` record `0xA3870` holds the callback `0x3E3A8` and no stream, and the port had not registered it, so the `0x35045` call skipped it. At f = 962 the T-rex takes reaction `0x2A`: `0x3E3A8` starts its `0xC8950` stream (`0xE6DD2`) at hold 2.0 through `0x3C4CC`, sets state 9/7/0 and stores the callbacks `0x3E328` (`+0x0C`, run by `0x3531C` case 7), `0x3E1D0` (`+0x18`) and `0x3E244` (`+0x1C`). `0x3E328` (its `+0x57` machine, with `0x3E0F0`/`0x29C08`'s child spawn) is ported and registered; `0x3E1D0` and `0x3E244` are stored but not ported: `0x3E1D0`'s only caller is the `0x19020` hook, a named gap (so the port skips it at f = 963, the demo's last fight frame, unevaluated; since ported, record §35), and `0x3E244`'s, `0x193B0`'s `+0x1C` call, is not reached in the port's run. The front-end driver also dumped only the frames whose iteration *ended* in a state >= 3, so loop frame 1970, the frame presented in the iteration that starts in state 7 and exits it (`0x11BCC`'s timer exit drops the state inside `game_frame`, before the `0x25643` present), was never compared. It now credits a presented frame to the state its iteration started in, as the title/attract dump hooks do (`flow.c`'s `state_before`), and keeps the post-state for the entry: 1382 frames, 0..1381. New `check_trex_grab` in `test_fight.c`; all 36 mutations fail it.
+
+* **Measured.** Port frames 0..1378 are byte-identical to before, and 1379 (f = 962) is the first that differs. Captures 1881..1884 are now explained (1 clean, 3 splice), so the front-end window holds the whole demo fight, up to 1885, the capture's first all-black frame after it. The demo oracle's first unexplained is now **1886 (raw 4795)**, the capture's next cycle, with no port frame left. The demo-fight ratchet prints "fight window empty ... 0 unexplained in the fight window" and N is raised **1881 → 1886** (= the all-black frame 1885 + 1, the exact pin) in the same commit.
+* **Claim move (the one the brief allowed).** Front-end `[560..1880]` / 1321 → **`[560..1884]` / 1325 / `517 clean, 801 splice, 3 transition, 2 unexplained (832, 833)`**; the three transition frames are the same as before, and the exhibition set is the whole dump, port frames 0..1381 (1145 exhibited). Nothing else moved.
+* **The end of the demo-fight capture.** The capture has no fight frame after 1884, so N cannot rise further with it. What the ratchet still proves: every content-bearing capture frame from the front-end window's start up to 1885 is explained, and a shrink of the front-end window (which the front-end oracle, whose window is derived from the port's own dump, cannot detect) reopens the fight window and fails below N.
+* **Known later gaps (unregistered code targets, skipped; a whole-run `fn_resolve` probe).** None new in this run: `0x3E3A8` and `0x3E328` no longer miss; the front-end `0x29B74`/`0x41578` (since ported, §42-E) and the stub `0x5D812` remain.
+
+See §34 of the record.
+
+**The slot `+0x18` hook `0x19020` (`ec8e132`), no capture moved.** A survey after the frame-1881 fix found no oracle-visible unexplained frame with a raw-code owner: attract 215 and front-end 832 are the lazy loader's 498-byte `- LOADING -` frame, and 833 is the arena mid-fade under the same text. Holding that frame needs the loader stall's post-read ISR ticks, which cannot be derived. A whole-run probe found every named gap unreached except `0x1958C`'s per-slot hook `0x19020` (§7.6), which runs on 37 demo frames: `0x3E484` in the four reaction-`0x2B` leaps and `0x3E1D0` at f = 963. It is now ported with both hooks and the check walk they share: `0x19020`, `0x3E484`, `0x3E1D0`, `0x18BD4`, `0x18C14` (all 16 flags), `0x189FC` and `0x18A4C`, 7 functions. The hook's result sets `DS_00100AF8[side]`. The port's value already had the raw's zero-ness on all 37 frames, so the front-end dump is byte-identical and every oracle is unchanged. New `check_slot_hook` in `test_fight.c`. Of 64 mutations, 62 fail it; the 2 survivors are equivalent (`0x18A4C` is symmetric in the side, and `fn_resolve(0)` is NULL). See §35 of the record.
+
+**The attract's second cycle after the demo (`fc8e775`), captures 1886..2383.** The front-end capture runs past the demo into the attract's second cycle: the two logos, the attract, the title card with lightning, and a second demo from 2385. The driver's dump ends with the demo's exit frame, so nothing was compared there. Dumping the later frames into the same dump is not legitimate, because they content-match the capture's first attract and would grow the front-end window to `[1..2231]`. So the driver now runs to loop 2800 and writes every frame presented after loop 1970 to a separate `cycle2/` dump (995 frames). That includes the 166 screens the logo player writes inside one iteration, through a `PORT:` seam. Four raw owners were then pinned and ported:
+* The logo player `0x1C740` blanks the screen with `0x52106(0)` before and after each movie and blits every frame, TWI5's 121st included. The port had neither (captures 1885/1886, 2094/2095, 2133).
+* `0x2BAF4` calls `0x4F228` at `0x2BBC4`, which clears the projection gate `DS_00107A54` that the demo's state 6 had set.
+* The lightning stream `0xE890A` has opcode-`0x11` targets `0x4F83C` (the palette flash) and `0x10FC4`, and neither was registered.
+* The driver seeds the attract cycle counter `DS_000F0A5C` to the boot attract's post-state 0.
+
+The new ratchet `make attract2-oracle` (`--attract2`, in `make verify`) finds captures 1885..2383 (499 frames) at 0 unexplained: 354 clean, 138 splice, 3 transition, 4 all-black. The first unexplained is **2384**, the `- LOADING -` frame before the second demo, which has no raw-code owner (like 832). N = 2384. The front-end dump is byte-identical, and the front-end and demo-fight oracles are unchanged. All 24 mutations fail the new assertions. See §36 of the record.
+
+**The second demo's fighter passes and the raptor's block (`5448e09`, `9469a30`), captures 2386..2673.** A DOSBox-X live-RAM poll of the pinned original showed the second demo's logic equal to the port's frame for frame, so capture 2386 was a drawing difference. The owner is state 6's reset call `0x34978` (`0x20DF4` at `0x20E42`). It zeroes the live-fighter count `DS_001078FA`, which each spawn increments and which the fighter passes `0x1958C`/`0x34D8C` require to be 2. The port kept the first demo's 2, so the second demo counted 4 and the passes stopped. With it, 2386..2460 are explained. At 2461 the raptor blocks the ape's punch. `0x1AB5C`'s block arm (`0x18B04`, the block start `0x1A7CC`) and the block handler's helpers `0x1A6AC`/`0x1A8F4` were named gaps and are now ported; the handler's call to the already-ported `0x1A640` is now wired. A raw-wins fix came with them: at `0x1AA5F` the store runs when the words are equal. The driver's measurement window grows to 3100 loops, and the attract2 ratchet moves 2386 -> 2461 -> 2674. The front-end and demo-fight oracles are unchanged. Every mutation of the new code fails an assertion except one equivalent survivor. See §38 of the record.
+
+**The ape's block restart (`c9875d1`), captures 2674..2762.** The live-RAM poll, now with both fighters' positions and the camera, matches the port frame for frame through f = 3986, so capture 2674 is not a scene offset: it differs only in the ape's pose. At f = 3927 `0x3B298` sets the ape's `+0x43` bit `0x20` and calls `0x1A734` (`0x3B443`), which was a named gap. `0x1A734` restarts the block stream `0xC8F40`/`0xC8F90[char]` whatever the bit, where `0x1A6AC` skips while it is set. With it ported, the demo-fight record's §7.11 helpers are all in. The driver's window grows to 3200 loops, and the attract2 ratchet moves 2674 -> **2763**. At 2763 (f = 4003) the original's raptor starts character 3's reaction `0x23`, whose handler `0x14E44` is not registered. The other oracles are unchanged. Every mutation fails an assertion except one equivalent survivor. See §39 of the record.
+
+**The raptor's grab (`ce5f295`), captures 2763..2949.** At f = 4003 the original's raptor takes character 3's reaction `0x23`. Its callback `0x14E44` (the dword at `0xA46E4`; Ghidra has no function there) was decoded from `read_memory` with capstone. It starts the grab stream `0xD3026`, puts the slot in 9/7/0 and stores the `+0x18` hook `0x14CC4` and the `+0x1C` throw `0x14D7C`. `0x14CC4` decides the grab: the `0x18C14` checks and the fighters' distance (`0x1900..0x3200`). On a miss it restarts the record on `0xD3062`, which the poll shows at f = 4020. `0x14E44`, `0x14CC4` and the grab stream's `0xD100` target `0x14EA4` are ported; `0x14D7C` (it needs the unported `0x3C208`) and the stream's later target `0x14E80` are not reached and stay named gaps (all three since ported, §41-B). The poll now matches the port through f = 4179. The driver's window grows to 3300 loops, and the attract2 ratchet moves 2763 -> **2950**. At 2950 (f = 4180) the original's raptor leaves its reaction stream for its stance through `0x3C32C` (a `0xD500` target), which is not registered. The other oracles are unchanged. All 41 mutations of the new code fail an assertion. See §40 of the record.
+
+**The raptor's throw and the placement `0x3C208` (§41-B).** The grab's `+0x1C` throw `0x14D7C` (the one dword at `0x14E71`), the placement `0x3C208` it calls (10 call sites, all rel32) with its unported callees `0x18AF8` (both facing flags) and `0x3B90C` (the wall clamp; `0x3B8D8` was already ported), and the grab stream's second `0xD100` target `0x14E80` (the dword at `0xD3056`) are ported from `read_memory` with capstone and registered. `0x3C208` latches both slots, clears both records' `+0x34`/`+0x42`/`+0x43` and moves the other fighter so the two are `|dist|` apart: through `0x1883C` by the gap, or, when that would cross the wall, clamps the other at the wall and places the side `|dist|` from it. `0x14D7C` is reached only after `0x14CC4` finds a grab, which the second demo does not, and `0x14E80` lies past the loop the miss restart cuts, so no oracle moves. New `check_throw_3c208` in `test_fight.c`; see §41-B of the record for the mutations.
+
+**The raptor's stance return (`fcce893`), captures 2950..3098.** At f = 4180 the original's raptor ends its reaction stream `0xD24F0` on the `0xD500` target `0x3C32C` (the dword at `0xD24FE`, one of 9 such sites; Ghidra has no function there). Decoded from `read_memory` with capstone, it clears the slot's `+0x54` and runs the already-ported `0x36870`, whose `+0x54 == 0` arm restarts the stance `0xD2136`. It is now ported and registered. The poll matches the port through f = 4308, and `0x3A6D4`, which the previous probe missed on the diverged path, is no longer reached. The driver's window grows to 3500 loops, and the attract2 ratchet moves 2950 -> **3099**. At 3099 (f = 4309) the original's raptor starts character 3's reaction `0x25`, whose callback `0x15350` is not registered. The other oracles are unchanged. All 11 mutations of the new code fail an assertion. See §41 of the record.
+
+**The projectile freeze `0x235C4` and the stream target `0x370F0` (record §41-C).** Two named gaps no demo frame reaches, ported from the raw and unit-tested. `0x3B464`'s projectile `+0x48` = 8 arm now calls `0x235C4` after `0x1922C`: it snapshots the struck side's slot and record (`0x33ACC` into `0x104530`/`0x104658`), runs the `0x39834` pose driver with reaction `0x2A`, and puts the slot in 0x10/0x0A with the `+0x10` handler `0x22BEC`; `0x22B28` spawns a palette effect on the fighter's pset entry, stores the `+0x14` callback `0x29D04` and stops the record's motion. `0x22BEC` holds for `0x78` ticks of the per-side word `0x10474C` (two per frame while `0x10476C[side]` is set), then restores the snapshot through `0x33B00`, keeping the live x; `0x29D04` re-acquires the character palette once no palette effect is live. `0x370F0` is the target of 21 `0xD000`/`0xD100` stream sites (three per character) and is also called by `0x48AAC`/`0x48D94` (ported since, §42-B). `0x22BEC`, `0x29D04` and `0x370F0` are now registered code targets. No oracle is expected to move, because the demo reaches none of them. All 59 mutations of the new code fail the suite. See §41-C of the record.
+
+**The throw hold `0x3E244`/`0x3C358`, the fall landing `0x36280` and character 2's finishers `0x48AAC`/`0x48D94` (record §42-B).** Named gaps no demo frame reaches, ported from the raw and unit-tested. `0x3E244`, the `+0x1C` callback that the T-rex's reaction `0x2A` (`0x3E3A8`) stores, now runs: the flash pair, both records' streams at 2.0, `0x3E0F0`'s child, the `0x3C208` placement at the other character's `0xC759C` distance, and `0x3C358`, which puts the side in 9/7 and the other in the 0x10/0x0A hold (then 0x0F). `0x36280` is the `0xD000` target (13 dword sites) of the `0xC90A8`/`0xC90D0` fall streams that the `+0x52` = 12/13 handlers start: it ends the fall (`+0x58`, the anchor, a `0xBB1DC` spawn). `0x48AAC` and `0x48D94` are the `+0x0C` callbacks of character 2's two finisher entries `0x48BE0`/`0x48F54` (the `0xBDAE4`/`0xBDB00` tables, which the unported reaction callbacks `0x37774`/`0x37898` copy into `DS_001078E8` for the ported `0x379C4`); `0x48D94` builds the type-`0x2D` lists (`0x48C4C`) and spawns eight `0xC950C` actors, `0x48AAC` closes in and spawns `0xBDDE0[char]` (`0x380C4`); both end in `0x370F0`. The two entries, the four callbacks and `0x36280` are registered. No oracle is expected to move. See §42-B of the record.
+
+**The character screen's entries `0x43738`/`0x444C8` (record §42-F).** Both callers of `0x43818` are now ported, with the callees they needed:
+- `0x43964` spawns a side's character entry and panel.
+- `0x43A08` spawns the class's side actor and the marker.
+- `0x1D810`/`0x1D7B8` release and spawn the marker.
+- `0x2F528` draws a number in the `0xBD048` font.
+- The `-1` arm of `0x2C8F0` sets the unscaled volumes.
+
+`0x43738` fills each side whose bit (side + 1) is set in `DS_00104B1F` and draws the countdown (5 or 15). `0x444C8` fills both sides and draws no countdown. Both then reset the `DS_00104AE4` hook to `0x29D60`. `0x43738` is itself that hook's target (stored by `0x28D68`/`0x28D80`) and is registered.
+
+Every caller that puts the port in mode `0x1A` is unported mode code, so no oracle moves (the hooks and the mode `0x1A`/`0x1B` handlers are ported since, §43-B). New `check_char_screen_open` in `test_fight.c`: 60 of 63 mutations fail it, and the 3 survivors are equivalent.
+
+**The worshipper types 2, 7 and 9..12 and the mode tail `0x2545C` (record §42-D).** Named gaps no port path reaches, ported from the raw and unit-tested. `fight_effects_pass` now runs type 2's countdown into the arrival `0x4AC38`, type 7's flight (the `+0x1C` bit-2 latch, the `+0x34` steer and the `+0x28` exit bit), type 9's wait for `DS_001088B4`, type 10's hold (`0x4B430`) or walk `0x4B2AC` (the `DS_00108878` count, the `DS_00108870`/`DS_0010887C` target), type 11's walk with the arrival test `0x4A7D4`, and type 12's scatter into 13/14; the frame locals types 9 and 11 write are read only by the still-unported mode-9 block. `game_frame` now ends with the raw's `0x2545C` mode switch (modes `0x0C`, `0x21`, `0x22`/`0x23`, `0x25`), with the held-pair camera `0x12FD8` as `camera_pair_hold`. Types 2 and 7 are set only by the unported `0x4E5A4`, `0x4DBEC` (modes `0x0D`/`0x32`) and `0x4987C` (ported in §43-A; its tail call is not reached in the demo), and types 9..12 only in mode 9. The port only runs modes that take no `0x2545C` arm (3, and `0x15` once `0x29B74` stores it). So no oracle is expected to move. New `check_effects_worship` and `check_mode_tail` in `test_fight.c`; all 116 mutations fail the suite except 5 equivalent survivors. See §42-D of the record.
+
+**The worshippers' grab arms and the eighth hit (record §42-C).** Named gaps the demo does not reach, ported from the raw and unit-tested. `0x4B788`'s grab (the fighter in its grab move `0xC97F2[ch]` with `+0x52` inside `[0xC97E4, 0xC97EB][ch]`): the entry gains `+0x1C` bit 6, loses its shadow, is placed at the fighter's `(0xC977D, 0xC977E)[ch]` offsets (x mirrored by the facing), stopped, made type 8 on `0xC97AC[ch][si]` and linked to the fighter (`+0x4A`, `0x2BD20`), and the fighter plays `0xC9790[ch]` at `0xC97C8[ch]`. Case 8's held body releases it and tramples it (`0x4B470`) once `0x4AF04` finds the holder's stream cursor outside its character's hold range. `0x4B470`'s eighth-hit tail runs `0x4BD98` (unless `0x104AD8` > 0, `0x104ABC` < 2 or `0x13134`: mode `0x21`, `0x108864` = the entry, two actors from `0xBAB88`/`0xBAB9C` at the fighters' midpoint) and then `0x4CB18` (the launch: `+0x34` from the fighters' distance, `+0x36` from the height). The mode-`0x22` prelude `0x4D7A4` and its grab arm `0x4D898` (the `0xA`/`0xB` moves too, and a `+0x5B` award) are ported for the unported pass `0x4D2D0`. No oracle is expected to move. Of 146 mutations of the new code, 145 fail the suite; the survivor (calling `0x4CB18` before `0x4BD98`) is equivalent. See §42-C of the record.
+
+**Update-table entry 7 `0x2910C` and character 1's second freeze (record §42-A).** `0x2910C` walks the type-`0x0A`/`0x19` in-use list `0x104880`. It lands each actor whose y plus the signed `+0x36` drops below 0: it zeroes the actor's motion, starts `0xE8D50` and returns the node to `0x104888`. Otherwise it steps the actor's pose `0xE8D14`/`0xE8D28`/`0xE8D3C` by `|+0x36|` against `|+0x34|`. It is now registered as the update table's entry 7 (the dword at `0xA8660`). The rest of the freeze family is ported too. Character 1's reaction `0x29` (`0x22F74`, at `0xA3D5C`) arms the slot with the `+0x18` hook `0x22D8C`, the `+0x0C` tick `0x22F14` and the `+0x1C` callback `0x22E44`. `0x22E44` freezes the other fighter through `0x22CE4` (the `0x33ACC` snapshot and the `0x22BEC` handler, like `0x235C4`), spawns the `0xBB3E4` projectile into `0x104728[side]` and enables update-table entry 5, `0x22FE8`, which retires the projectile. Reaction `0x2A` (`0x2365C`, at `0xA3D70`) refuses while the other fighter is frozen. `0x2A148` is ported with them. A probe of the front-end driver's 3500-loop window is identical to the base's, frame for frame and byte for byte in the data object, so no oracle is expected to move. The stream target `0x236D8` (in `0xE4996`) has since been ported (§43-C); the voices remain named gaps. See §42-A of the record.
+
+**Character 1's reactions `0x20`/`0x25`/`0x28` and the `0x2365C` stream chain (record §43-C).** Named gaps no demo frame reaches, ported from the raw and unit-tested. The reaction callbacks `0x23130` (`0x20`, at `0xA3CA8`), `0x230F0` (`0x25`, `0xA3D0C`) and `0x23178` (`0x28`, `0xA3D48`) each put the slot in 9/7/0 with `+0x0C` = 0 and start their own stream through `0x3C4CC`. `0x230F0` starts it before the state store, so `0x3C4CC` sees the old `+0x52`; the other two store first and take `0x3C480`'s anchor arm. `0x2365C`'s stream `0xE4996` now reaches its `0xD100` target `0x236D8`, which spawns the `0xBB3BC` child. That child's stream `0xE4F94` reaches `0x2372C`, which spawns the type-8 projectile `0xBB3D0` into the slot's `+0x08`, 0xC00 ahead of the fighter at speed ±`0x113` (`0x2372C`'s other caller, character 1's entrance `0x24568`, is ported since, record §46-C). All five are registered. A probe of the front-end driver's 3500-loop window is byte-identical to the base's, so no oracle is expected to move. All 57 mutations of the new code fail the suite. See §43-C of the record.
+
+**Character 1's entrance `0x24568` (record §46-C).** A named gap no port path reaches, ported from the raw and unit-tested. `0x24568` is entry 1 of the per-character table `0xA8628` (the dword at `0xA862C`), called with the entering side. It spawns that side through the spawn core `0x33C78` 0x5000 beside the fighter `DS_0010810D` names. It tries the left side first when `0x1A570` holds for that fighter, and the right side first otherwise. Each side is taken only if it stays within ±`DS_000BE018`, and a failed test tries the other side. On the left, the new fighter faces right. It starts `0xE453A` at 4.0, sets the `+0x74` timer to `0x309` and fires `0x2372C`'s projectile. It sets the blink bit when `DS_00104B03` allows and puts the slot in state 9/3. The stream's `0xD500` target `0x246D4` ends the entrance: it sets the side's command word to `0xA000`/`0x9000` and calls `0x3BCE0`, which restarts the side on its stance stream `DS_000C8B30[char]` in state 3/4/2. `0x24568` and `0x246D4` are registered. The table's three dispatchers (`0x25F27`, `0x27732`, `0x2989C`) sit in the handlers of modes 5, `0x0D` and `0x32`, which the port does not run; they need 13 unported callees and stay a named gap. The voice `0x2C3FC(0xB4)` is not wired (§45-A). No port path reaches the new code, so no oracle is expected to move. Of 56 mutations, 53 fail the suite, 2 hang (the unsigned compares, which make the placement loop spin) and 1 is equivalent. See §46-C of the record.
+
+**The mode `0x1A`/`0x1B` wipe and the `DS_00104AE4` hooks `0x28D68`/`0x28D80` (record §43-B).** Named gaps no port path reaches, ported from the raw and unit-tested. The hooks store `0x43738` into `DS_00104AE4` and call `0x4F980`, which arms mode `0x1A` with the return mode `0x10`. The mode `0x1A` handler `0x4F9A0` runs the wipe-in `0x4F9E4`: the actor `0xC98F4` in `DS_000C98F0`, stepped through the 17 sprite words at `0xC991C` by `0x10D70`. Then it kills the actor, runs `0x2BAF4`, sets the render gate `DS_001088F4`, calls the hook (`0x43738` builds the character screen) and enters mode `0x1B`. `0x4F9C8` runs the wipe-out `0x4FA88` (`0xC9908`, `0xC993E`, the gate cleared), calls the hook again (now the no-op `0x29D60`) and restores the saved mode. The hooks are registered, and each `call [0x104AE4]` goes through `fn_resolve`. The hooks the other `0x4F980` callers install (`0x430E8`, `0x4367C`, `0x25BBC`, `0x26998`, `0x270BC`) were unported named gaps then; they are ported since (§46-B). `game_frame` does not dispatch modes `0x1A`/`0x1B`: `0x4F980`'s eleven callers are all unported, including the coin divert `0x257A4` that the stubbed arms of `0x11D04` would reach (`0x257A4` is ported since, §47-C, but not yet called). So no oracle moves. New `check_char_screen_modes` in `test_fight.c`. See §43-B of the record.
+
+**Character 3's reactions `0x25`/`0x24` and the blood (`b947895`), captures 3099..3256.** At f = 4309 the original's raptor takes character 3's reaction `0x25`, and at f = 4438 reaction `0x24`. Their callbacks `0x15350` and `0x151C0` (the dwords at `0xA470C`/`0xA46F8`; Ghidra has no functions there) were decoded from `read_memory` with capstone and ported with the callbacks they store (`0x152D4`, `0x15208`, `0x1527C`, `0x15160`, `0x151A0`) and their streams' `0xD100` targets (`0x153D8`, `0x1543C`, and `0x37CFC` in the spawned child's stream). The ape's blood at f = 4425 then showed two more gaps. The process-table entry `0x2910C`, which poses and lands the type-`0x0A`/`0x19` particles (§41-D's named gap), is now ported. The animation opcode `0x0C` had a port bug: it passed the child `a5 = 0x40` where the raw (`0x2B4C4`) passes the parent's `+0x28 & 0x4000`, so the blood flew the wrong way. Whole-RAM snapshots of the running original located it. The live-RAM poll now matches the port through f = 4570, the second demo's last frame. The driver's window grows to 3900 loops, which covers the capture's end, and the attract2 ratchet moves 3099 -> **3257**. 3257 is the loader's `- LOADING -` overlay: the original lazily loads a sound bank (`s16spisd.gra`) for the voice path, which is out of scope, so it stays a named gap. The other oracles are unchanged. Of 79 mutations of the new code, 75 fail an assertion and one hangs the suite; one is an equivalent survivor, and two driver-mode unregistrations change nothing the driver samples while their unit-mode twins fail. See §44-A of the record.
+
+**The mode-`0x22`/`0x24` effects pass and the volleyball (record §43-A).** Named gaps with no port caller, ported from the raw and unit-tested. `fight_4d2d0` (`0x4D2D0`) is the effects pass of modes `0x22`/`0x24`: the prelude `0x4D7A4` in mode `0x22`, a stop while `DS_00104AC4` ≤ 1, its own cases 3 and 4 (a second landing stream `0xC9724`, the lie's re-arm/walk/climb draws), the handler `0x4D224` for types 0/7/>8 (`0x4BD4C`, the rise `0x4D108`, the walk `0x4D150`, `0x4B3F0`/`0x4B430`), and the refill `0x4987C` when the side's slot `+0x81` exceeds its entry count. `fight_4987c` (`0x4987C`) takes entries off the free list as dust walkers (kind 0, through `0x4B144`) or type-7 flyers (kinds 1/2); the effects tail `0x4A616` now calls it for `DS_001088BF` 1..4 instead of drawing `rng(2)` alone. `fight_4c60c` (`0x4C60C`) is the volleyball's hit test: an eater character eats the ball (`0x4C784`: the spit actor, the score, "BALL EATEN!" and a new ball, or at three points the end screen `0x4CC0C`), others strike it into `0x4CB18` with the flag 1 for moves `0xC..0xF`. `0x2F510` is `text_cursor_hold_font2`. The mode frames `0x26C8C`/`0x26F58`/`0x26540` and `0x4BF18` stay unported. The effects-tail wiring does not move the demo: `DS_001088BF` stays 0 in the demo run, the front-end driver's dumps are byte-identical to the base's, and N is unchanged (demo-fight exact at 1886, attract cycle-2 3099 on 713833c and 3257 on main; §43-A.5). New `check_mode22_pass`, `check_flyers_4987c` and `check_volleyball` in `test_fight.c`. See §43-A of the record.
+
+**Update-table entry 7 `0x2910C` and character 1's second freeze (record §42-A).** `0x2910C` walks the type-`0x0A`/`0x19` in-use list `0x104880`. It lands each actor whose y plus the signed `+0x36` drops below 0: it zeroes the actor's motion, starts `0xE8D50` and returns the node to `0x104888`. Otherwise it steps the actor's pose `0xE8D14`/`0xE8D28`/`0xE8D3C` by `|+0x36|` against `|+0x34|`. It is now registered as the update table's entry 7 (the dword at `0xA8660`). The rest of the freeze family is ported too. Character 1's reaction `0x29` (`0x22F74`, at `0xA3D5C`) arms the slot with the `+0x18` hook `0x22D8C`, the `+0x0C` tick `0x22F14` and the `+0x1C` callback `0x22E44`. `0x22E44` freezes the other fighter through `0x22CE4` (the `0x33ACC` snapshot and the `0x22BEC` handler, like `0x235C4`), spawns the `0xBB3E4` projectile into `0x104728[side]` and enables update-table entry 5, `0x22FE8`, which retires the projectile. Reaction `0x2A` (`0x2365C`, at `0xA3D70`) refuses while the other fighter is frozen. `0x2A148` is ported with them. A probe of the front-end driver's 3500-loop window is identical to the base's, frame for frame and byte for byte in the data object, so no oracle is expected to move. The stream target `0x236D8` (in `0xE4996`) and the voices remain named gaps. See §42-A of the record.
+
+**The loader's `- LOADING -` screen at capture 3257 (`b05adcc`).** 3257 is the loader's text drawn straight onto the screen over the game frame. At f = 4444 the voice `0x2C3FC(0x4D)` that character 3's stream target `0x1543C` plays reads `s16spisd.gra` for the first time. The port now runs that path: the voice dispatcher `0x2C3FC`, and the sound module's sample path (`0x1CE70`, `0x1CC28`'s resolve, `0x1CE04`, `0x1CD9C` and the music words of `0x1CA14`/`0x1CA6C`) on the port's AIL handles. It also runs the fighter spawn's sound-bank reads (`0x33E51`) and stores the DIG driver handle `DS_001028C8`, which the port lost before because it mapped PRAGE.EXE after the init chain. A DOSBox-X poll of the INDEX shows the port reading the same sound banks in the same order on the same frames as the original. The slot choice and the sample start (`0x1CB18`) remain named gaps. A dump seam (`res_set_screen_hook`) writes each loader screen into the cycle-2 dump. That explains 3257 and 2384, so 2384's allowance by name is gone. The attract2 ratchet moves 3257 -> **3408**, the high-score table after the second demo, which the port did not draw then (since drawn, §46-A). The raw corrects §9.6's read rate: the 55 ticks cover six reads, so 7297097 bytes give 132674 bytes/tick (the model's tick after each read still drifts up to 4 ticks from the original's, a named gap). The front-end and demo-fight dumps are byte-identical. Of 78 mutations of the new code, 77 fail an assertion and one is equivalent. See §45-A of the record.
+
+**The attract's high-score screen (§46-A).** Capture 3408 is the high-score table the attract shows after the second demo. State 5's builder `0x1EA08` draws it; the port had only its first three calls, because the reads it makes (`0x2DBC4`/`0x2DB58`) looked like a paged resource reader. They are the high-score tables' record read and locate. `0x1E824`, called at boot from `0x20C10`, fills the three packed tables from the ten factory records at `0xA7BBC` and the champion at `0xA7D74` through the insert `0x2DCA0`. The shipped `CMOS` is all zero, and a DOSBox-X memory file of the original holds exactly the bytes the port now writes. The screen draws the champion and records 1..9 and spawns the champion's figure. Captures 3408..3542 are explained, and the attract2 ratchet moves 3408 -> **3545**, the third demo fight, which lies past the driver's window (the dump ends inside the high-score screen; 3543/3544 match earlier port screens). The front-end and demo-fight results are unchanged. See §46-A of the record.
+
+**The third demo's hand-off (§47-A).** 3545 needed no new port code. The driver's window ended inside the high-score screen; at 4100 loops it holds the screen's end and the third demo (the state-6 entry at loop 3985 reads six files: the caves, s16dia and s16spi). 3544..3592 are the port's own frames (3543 is all-black and excluded). 3545 is the one frame the two-frame splice model cannot express: rows 0..124 are the last loader screen, 125..179 the load frame and 180..199 the next frame, byte for byte. The loader's read ends by re-syncing the loop's frame counter to the tick (`0x1B45F`/`0x1B464`), which gives the load frame's present an arbitrary tick phase, so the next present can fall in the same capture scan. The raw has other such re-syncs (`0x4FA0E`, `0x4FAB2`, `0x5210D`) and catch-ups, so this can happen elsewhere too; the allowance is deliberately narrower than the mechanism. `title_compare --attract2` allows 3545 by name as exactly that shape, starting at a loader screen the driver lists. The attract2 ratchet moves 3545 -> **3593**, where the third demo's s16spi fighter attacks in the original and not in the port; no callback is unregistered there, so it is a named gap for a live-RAM poll. See §47-A of the record.
+
+**The five mode-`0x1A` hooks and the whole fight reset `0x20DF4` (record §46-B).** The hooks `0x4F980`'s callers install into `DS_00104AE4` before arming mode `0x1A`, ported from the raw and unit-tested: the versus screen `0x430E8` (with `0x4F200`, the stage pick `0x25848`, six spawns and the follow-on hook `0x430C0`, which draws "VS"), `0x4367C` (the character screen after the coin divert, through `0x43738` or `0x4454C`/`0x444C8`), and the fight restarts `0x25BBC`/`0x26998`/`0x270BC` (`0x20DF4`, the fighter spawns, `0x46504`). All six are registered. `0x20DF4` is now ported whole (`game_fight_reset`, with `0x2C390`/`0x2C074`), and state 6 calls it in place of its hand-picked subset. A headless 8000-frame run (four state-6 entries) is byte-identical before and after, and `make verify` stays green with every oracle unchanged (N 1886 and 3408 hold). The hooks stay unreachable, since modes `0x1A`/`0x1B` and `0x16` are not dispatched. New `check_mode_1a_hooks` in `test_fight.c`: 73 of 76 mutations fail it, and the 3 survivors are equivalent.
+
+**Update-table entries 1 `0x48F98` and 10 `0x28F08`, and `0x37B54` (record §46-D).** The two type-`0x19` spawners §41-D named, ported from the raw and unit-tested. `0x48F98` (the dword at `0xA8648`; `0x48CD8`, the type-`0x2D` cb1, enables it) walks the type-`0x2D` in-use list `0x108368` against the record of slot `DS_001078FD`: a phase-0 actor within `0x1000` starts `0xEDD20`, halves its `+0x34` and, the first time (`0x108396` bit 7), calls `0x37B54` on slot `DS_00104AD4`'s record; a phase-1 actor beyond `0x1000` starts `0xEDCEA` and doubles `+0x34`, and within it spawns a type-`0x19` actor (`0xA89AC`) on `rng(0x14) == 0`. `0x28F08` (the dword at `0xA866C`; `0x48AAC` enables it) spawns one at the other slot's `+0x2C` on `rng(6) == 0`. `0x37B54` sets the other side's record `+0x53` = 1; it is also registered as the `0xD000` target at `0xE8564`/`0xEDAFC`. No port path enables either entry or starts either stream, so no oracle is expected to move. The voices `0xF0`/`0xF1` are `PORT:` notes; `0x400EC`/`0x40148` (the other setter and clearer of entry 10's bit) and `0x37B54`'s callers `0x45B43`/`0x45FD3` stay unported. See §46-D of the record.
+**The seven remaining `DS_00104AE4` values (record §46-F).** Every non-trivial value the image stores in `DS_00104AE4` is now ported and registered. The seven §46-B left are mode-`0x17` hooks, which `0x4F318` calls when the mode's countdown runs out: `0x259CC`, `0x26978` and `0x27134` arm mode `0x1A` with `0x25BBC`/`0x26998`/`0x270BC`; `0x24B54` resets to mode `0x27`; `0x4142C` builds mode `0x12`'s screen (with `0x413C8`'s eight spawns); `0x25AE8` (also mode `0x14`'s handler) draws string `0x52`, clears the stage bytes (`0x4246C`) and re-arms mode `0x17` with `0x10E80` or `0x24B54`; and `0x10E80` is the boot's last init call. `game_state_init` had only part of `0x10E80` and is now the whole function, with `0x2C304` (`config_credits_init`) moved into it from `game_init`. A headless 8000-frame run is byte-identical before and after, so no oracle is expected to move. The storers are unported (`0x4F318` too, until §46-G), so the six other hooks run only in unit tests. New `check_mode_17_hooks` in `test_fight.c`: 96 of 97 mutations fail it, and the survivor is equivalent.
+
+**The mode-`0x17` handler `0x4F318` (record §46-G).** Ported from the raw and unit-tested as `frontend_mode_17_step`, together with its skip test `0x4F790` (`frontend_skip_check`) and `0x4F778` (`frontend_buttons_pressed`). While the word `DS_001088EE` is non-zero it counts down. At 0 the skip test runs: it returns 2 if either player's four button bits (masks `0x0F000000`/`0x00000F00` at `0xC9898`) are all held, and then the countdown `DS_00104AFE` is zeroed. It returns 1 if any of those bits is newly pressed, and then `0x3C` is taken off the countdown. When the old countdown is <= 0, `DS_001088EE` = `0xFFFF` and the `DS_00104AE4` hook runs. `game_frame` does not dispatch case `0x17`, as it does not dispatch `0x1A`/`0x1B`: of the mode's storers only the hook `0x25AE8` is ported, and it is reached only through `0x4F318` or unported code. No oracle is expected to move. New `check_mode_17_step` in `test_fight.c`: 27 of 30 mutations fail it, and the three survivors are equivalent.
+
+**The `0x24C5C` mode switch (record §47-B).** `game_frame` is `0x24C5C`, and it now carries the raw's whole mode switch: jump table `0x24B8C`, 52 entries, read as the word `DS_00104B00` (it used to read a dword). Case 3 runs `0x11D04` as before and case `0x11` stores its hook `0x259CC` and mode `0x17` inline. Cases `0x14`, `0x17`, `0x1A` and `0x1B` call `game_hook_25ae8`, `frontend_mode_17_step`, `frontend_mode_1a_step` and `frontend_mode_1b_step`, and the other 39 cases are named gaps. No ported path leaves mode 3. The raw leaves it three ways, all unported: Enter in the keyboard loop gives `0x27`, and the coin/start arm and state 8 of `0x11D04` both call `0x257A4`. So the hooks still run only in unit tests, and a headless 8000-frame run is byte-identical before and after. §47-B.6 scopes the follow-up (`0x257A4` with `0x33C18`/`0x46594`, then mode `0x10`'s `0x438B4`). New `check_mode_switch` in `test_fight.c`: 14 of 14 mutations fail it.
+
+**The coin/start divert `0x257A4` (record §47-C).** Ported from the raw and unit-tested as `game_coin_divert`, with its callee `0x46594` (`flow_1082c8_init`: the `DS_001082C8`/`CC`/`D0` values from the tables `0xC93F8`/`0xC9388` on the byte `DS_0010452C`, or 7/4 when `DS_00108173` is set). `0x33C18` was already ported (`fight_char_reset`) and is now exported. `0x257A4` is the only caller of `0x2BAF4` with EAX = 0, and that arm is new in the port: it copies 64000 bytes from `[0xE87A0]` to `[0xE87A4]` and skips `0x52106`/`0x336C0`. It is `actors_reset_al`, and `actors_reset` calls it with 1. The divert clears five state bytes and the seven bytes from `0x104B02` (the mode word's upper half), stores its argument in `DS_00104B1F`, resets both slots and installs the hook `0x4367C` before `0x4F980` arms mode `0x1A` with the return mode `0x10`. Nothing calls it yet. Its callers, `0x11D04`'s coin arm and state 8 and the game-start modes, are still unported, and a credited start would still land on mode `0x10`'s unported handler `0x438B4`. No oracle is expected to move. New `check_coin_divert` in `test_fight.c`: all 49 mutations fail the suite.
+
+**The mode-`0x10` handler `0x438B4` (record §47-M).** `0x438B4` is ported from the raw and unit-tested as `fight_mode_10_step`, with its join test `0x43928` (`fight_char_join`). `0x11F28`, the coin/start poll, was already ported as `frontend_coin_poll` and is now exported. `game_frame` dispatches case `0x10` to it, which leaves 38 named-gap cases. The handler branches on the byte `DS_00108174`:
+- 1 runs the join test, the skip test `0x4F790` and the countdown `DS_0010816C`, then copies `DS_00108172` into `DS_00108174`;
+- 0 runs the character select's per-frame pass `0x43B24` (`0x44798` when `DS_00104B1D == 3`). That pass is a named gap: about 1300 unported instructions with its callees.
+
+No instruction stores a non-zero value to `DS_00108174`, and no fill routine reaches it, so 0 is the arm the character screen runs. The record also corrects §47-B.2: `0x43D7E` is a per-side byte store, so no instruction stores `DS_00108173` and no fill routine reaches it either. Copies through heap or stack pointers and file reads are not fully closed (§47-M.2). No ported path stores mode `0x10`, and a headless 8000-frame run is byte-identical before and after. New `check_mode_10_step` in `test_fight.c`: 27 of 27 mutations fail it.
+
+Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
+demo fight's remaining divergences (the capture's fight is explained up to its
+first all-black frame 1885 after the frame-1881 fix, and the attract's second
+cycle up to 3592 (records §46-A, §47-A); 3593, the third demo's s16spi fighter's attack, is the next gap; the voice
+dispatcher's slot choice and sample start (`0x1CC28`'s tail, `0x1CB18`) and
+its other 302 call sites are named gaps, and so is the read-stall model's tick drift; the grab's throw
+`0x14D7C` and stream target `0x14E80` are ported but not reached (§41-B);
+the effects pass's type-8 held body, case-13/14 bodies and mode-9 block, the
+grab arm of `0x4B788`, `0x4B470`'s eighth-hit tail and case 8's held body are
+named gaps, as are `0x3ECF8`/`0x3C048`; `0x3B464`'s `0x235C4`
+arm and the stream target `0x370F0` are ported (record §41-C) but not reached
+in the demo) and
+
+the effects pass's types 2, 7 and 9..12 are named gaps, as are `0x3E244`
+and `0x3ECF8`/`0x3C048`; `0x3B464`'s `0x235C4` arm and the stream target
+`0x370F0` are ported (record §41-C), as are the grab arm of `0x4B788`,
+`0x4B470`'s eighth-hit tail, case 8's held body and the mode-`0x22` grab arm
+`0x4D898` (record §42-C), but none is reached in the demo; the mode-`0x21`
+frame `0x26540` that the eighth hit starts, with its pass `0x4BF18`, and the
+mode-`0x22`/`0x24` frames `0x26C8C`/`0x26F58` are not ported; the pass
+`0x4D2D0` and the volleyball's `0x4C60C` are, record §43-A) and
+
+in the demo, as are `0x3E244`/`0x3C358`, `0x36280` and `0x48AAC`/`0x48D94`
+(record §42-B)) and
+the
+interactive match cycle (the mode graph, `0x1EEB0`, the `0x1EA08` sites) remain;
+the attract's `0x2C3FC` voice calls remain declared gaps with `/* PORT: */`
+markers.
+
