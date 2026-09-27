@@ -6275,8 +6275,9 @@ u32 fighter_14cc4(u32 side)
  * the slot in state 9/7/0 with +0x57 = 0 (stored twice, 0x15388 and
  * 0x153BB), the +0x0C/+0x18/+0x1C callbacks 0x152D4/0x15208/0x1527C, +0x42
  * bit 2, and the side's FD118 byte = 0; AL = 1. 0x34E2C returns AL
- * (0x35045..0x3504F): 0x3CE58 overwrites it at 0x3CF33, 0x350D0's tail
- * (0x352CD) returns it. */
+ * (0x35045..0x3504F): 0x3CE58 overwrites it at 0x3CF33, and 0x350D0's tail
+ * (0x352CD) returns it to 0x3531C (0x353FF), whose only caller 0x35803 never
+ * reads AL; so the port's callback returns nothing. */
 void fighter_15350(u32 slot, u32 rec, u32 side)
 {
     u32 ctx[6];

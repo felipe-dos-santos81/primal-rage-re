@@ -7844,7 +7844,7 @@ teardown `0x290D0` returns the node. Process-table entry 7, `0x2910C`
 (`DS_000A8644[7]`), walks the in-use list at `0x104880`; the cb1s set
 `DS_00104AE8` bit 7 to enable it. `0x2910C` is not registered, so
 `run_process_table` skips it. It stays a named gap, outside this batch
-(ported since, §42).
+(ported since, §44-A).
 
 ### 41-D.2 `0x43818` (Ghidra disassembly, fixups applied)
 
@@ -8056,7 +8056,7 @@ accepting (and drawing). That would be a new RNG divergence. The fix is to
 port `0x2910C`.
 
 **Named gaps.**
-- `0x2910C` (process entry 7; ported since, §42) and the type-`0x19` spawners `0x48F98`/
+- `0x2910C` (process entry 7; ported since, §44-A) and the type-`0x19` spawners `0x48F98`/
   `0x28F08` (process entries 1/10) are unregistered.
 - In `0x20DF4`: the calls `0x29B70`, `0x2C390` and `0x2C074`, the five zero
   stores (dword `[0xF0A48]` at `0x20DFB`, dword `[0x100B4C]`, dword
@@ -8256,7 +8256,7 @@ script.
   unported siblings `0x22CE4`, `0x22D8C` and `0x2365C` and the other
   `0x370F0` callers `0x48AAC`/`0x48D94`.
 
-## 42. Character 3's reactions `0x25`/`0x24`, the process `0x2910C` and the opcode-`0x0C` hflip at capture 3099 (roar-timing Task 32, `b947895`)
+## 44-A. Character 3's reactions `0x25`/`0x24`, the process `0x2910C` and the opcode-`0x0C` hflip at capture 3099 (roar-timing Task 32, `b947895`)
 
 **Result in one line.** At f = 4309 (loop 3422) the original's raptor takes
 character 3's reaction `0x25`, whose callback `0x15350` was not registered;
@@ -8269,7 +8269,7 @@ matches the port through f = 4570, the second demo's last frame; 3099..3256
 are explained and N = 3257 (`b947895`). 3257 is the loader's `- LOADING -`
 overlay for a sound bank the port does not load (the voice path, spec §7).
 
-### 42.1 The raw (Ghidra `read_memory` + capstone, fixups applied)
+### 44-A.1 The raw (Ghidra `read_memory` + capstone, fixups applied)
 
 Ghidra has no function at any of the addresses below (`decompile_function`
 fails). Each block decodes cleanly up to its `ret`, with padding after it
@@ -8341,7 +8341,7 @@ fails). Each block decodes cleanly up to its `ret`, with padding after it
   as the parent until the spawn's tail cleared `+0x4A`. **Raw wins:
   corrected.** The first demo never spawned from a flipped parent here.
 
-### 42.2 Entrances
+### 44-A.2 Entrances
 
 A scan of both objects (dwords, `call`/`jmp` rel32 and `jcc` rel32) and
 `get_xrefs_to`:
@@ -8357,7 +8357,7 @@ A scan of both objects (dwords, `call`/`jmp` rel32 and `jcc` rel32) and
   `0xD4E9E`, `0xE85F6`, each after a `0xD100` word.
 - `0x2910C`: only `0xA8660`.
 
-### 42.3 The measurement (probes reverted, sources checked with `cmp`)
+### 44-A.3 The measurement (probes reverted, sources checked with `cmp`)
 
 The probe is §41.4's (`scratchpad/t32/probe.py`: the per-loop poll print,
 `FE_LOOPS` 3900, a `fn_resolve` miss print with the frame counter and the
@@ -8384,7 +8384,7 @@ snapshots at chosen frames.
    every other field matches. `0x2901C` negates the draw when the child's
    `+0x28` bit 14 is clear at its cb1. The parent (`0xBB09C`'s actor 107,
    stream `0xE8CE2`: `CC00 B0C4 000B 0000 0000`) has bit 14 set in both;
-   the port's opcode `0x0C` dropped it (§42.1). Corrected: 3235 -> 3257.
+   the port's opcode `0x0C` dropped it (§44-A.1). Corrected: 3235 -> 3257.
 4. 3257 is cycle-2 frame 1751 except rows 192..197, cols 0..85 (166
    pixels): the `- LOADING -` string over the game frame; 3258 (a splice)
    carries it too. The original's snapshots at f = 4443/4445: the INDEX
@@ -8404,7 +8404,7 @@ reaches past the capture's last frame 3616 (about loop 3865 at
 60.05/70.09 Hz from the exit's capture frame 3406, cycle-2 frame 1879 =
 loop 3684). The cycle-2 dump holds 2095 frames.
 
-### 42.4 The fix, its assertions and mutations
+### 44-A.4 The fix, its assertions and mutations
 
 `fighter_15350`, `fighter_152d4`, `fighter_15208`, `fighter_1527c`,
 `fighter_151c0`, `fighter_15160`, `fighter_151a0` (fighter.c) and
@@ -8419,7 +8419,9 @@ takes `a5 = W(+0x28) & 0x4000`.
   the 0x28 boundary, a negative `+0x88`), its stream, and the `0x2BD44` row.
   C 0x15208 on `gr_seed`'s passing context: the box edges 0x1B80/0x1B81
   (x, box a) and 0x18C0/0x18C1 (y, box b), the `+0x88` override (0, -1, 2),
-  each set flag firing, and 0x19020. D 0x1527C (the `0x39834` count and
+  flags 1/4/7/8/9/0xD each firing alone (0xD with slot 1 in the `0x39CC8`
+  pose, which also clears slot 0's `+0x8A`; 0xE's pass shows as the
+  `+0x86` = 0x1234 mark, flag 5 as the box edges), and 0x19020. D 0x1527C (the `0x39834` count and
   `b`, `0x36D20` on the other slot, `0x188AC`'s y = 0, the `+0x43` mask,
   `+0x57`). E/F/G 0x151C0, 0x15160, 0x151A0 (check_reaction's seeds). H the
   three stream targets on pool records. I the opcode-0x0C a5, with and
@@ -8438,12 +8440,15 @@ takes `a5 = W(+0x28) & 0x4000`.
   After loop 3567 the ape is on `0xE4406` in 0x10/0x0A/2 (`0x151A0`).
   `fe_cyc2_n` 1695 -> 2095.
 
-**Mutations** (`scratchpad/t32/mut32.py`; `mut32a..f.log`): 71 single-site
-edits, 61 in unit mode and 10 in driver mode, sources restored and checked
-with `cmp`. 67 fail an assertion: the gate's side, every stream, hold and
+**Mutations** (`scratchpad/t32/mut32.py`; `mut32a..g.log`): 79 single-site
+edits, 69 in unit mode and 10 in driver mode, sources restored and checked
+with `cmp`. 75 fail an assertion: the gate's side, every stream, hold and
 store of the seven callbacks, the `0x152D4` gates (a `+0x57` = 0 case was
 added after the `!= 1 -> > 1` mutant first survived), the row stride, both
-box tables and each flag of `0x15208`/`0x15160`, the `0x3B714` argument
+box tables, each of `0x15208`'s eight flag stores deleted (1, 4, 5, 7, 8, 9,
+0xD, 0xE; the review found the deletion of `flags[0xD] = 0` surviving the
+first suite, whose script had only changed flags 5/7/9, so C4 gained the
+flag-0xD case), `0x15160`'s flags 0/1/8, the `0x3B714` argument
 order, the three stream targets' gates and fields, the opcode-`0x0C` a5, and
 `0x2910C`'s landing boundary, node return, phase compares, streams, hold and
 `+0x59`; in driver mode the unregistrations of `0x15350`, `0x151C0`,
@@ -8455,7 +8460,7 @@ rewrites with no read between. Unregistering `0x15160` or `0x152D4` changes
 nothing the driver samples (and the attract2 counts are identical without
 `0x15160`); their unit-mode twins fail the registration checks.
 
-### 42.5 Measured
+### 44-A.5 Measured
 
 | measurement | before (`632f3cd`) | `b947895` |
 |---|---|---|
@@ -8477,7 +8482,7 @@ reverted): without `0x2910C` the first unexplained frame is 3246; without
 `0x151A0` it stays 3257 but 349 frames are unexplained (211 with it);
 without `0x15160` the classification is identical.
 
-**3257, characterised.** See 42.3 (4). 3258..3405 are explained, and 3406
+**3257, characterised.** See 44-A.3 (4). 3258..3405 are explained, and 3406
 is all-black (dropped as an artifact). 3407 on follows the second demo's exit
 (cycle-2 frame 1879, loop 3684) into the attract's third cycle, the next
 region (capture 3408 differs from the port's static frames 1879..1881 by 6786

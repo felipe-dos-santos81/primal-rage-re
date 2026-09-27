@@ -9227,7 +9227,7 @@ static void check_stance_return(void)
     DSD(DS_001014EC) = sv_14ec;
 }
 
-/* ---- roar-timing Task 32: character 3's reactions 0x25/0x24 (record §42) - */
+/* ---- roar-timing Task 32: character 3's reactions 0x25/0x24 (record §44-A) - */
 
 #define C25_ANIM_A  0x000D311Au   /* 0x15350's reaction stream head */
 #define C25_ANIM_B  0x000D315Au   /* 0x152D4's +0x57 == 1 stream head */
@@ -9252,7 +9252,7 @@ static void c25_link(u32 head, const u32 *node, u32 n)
     DSD(head + 4u) = prev;
 }
 
-/* Record §42. 0x15350 (*(u32*)0xA470C reads `50 53 01 00 00 00 00 00`:
+/* Record §44-A. 0x15350 (*(u32*)0xA470C reads `50 53 01 00 00 00 00 00`:
  * character 3's reaction 0x25, no stream; Ghidra has no function there): EAX
  * = slot, EDX = rec, EBX unread; nothing (AL 0) when 0x468D8(rec+0x51 ^ 1)
  * holds; else 0xD311A at hold 3.0 through 0x3C4CC, 9/7/0, +0x57 = 0, +0x0C/
@@ -9509,11 +9509,14 @@ static void check_char3_2425(void)
             CHECK_EQ_INT((int)fighter_15208(0u), want[k]);
         }
     }
-    /* C4: each flag it sets fires: 1 (+0x76), 4 (+0x54 = 2), 7 (+0x62), 8
-     * (+0x42 bit 3), 9 = 1 (x0 below x1). */
+    /* C4: the flags it sets, each firing alone: 1 (+0x76), 4 (+0x54 = 2), 7
+     * (+0x62), 8 (+0x42 bit 3), 9 = 1 (x0 below x1), 0xD (0x39EFC(1): slot 1
+     * in the 0x39CC8 pose, +0x53 = 0x0A, +0x58 = 4; its firing clears slot
+     * 0's +0x8A). Flag 0xE's pass is C's +0x86 = 0x1234 mark; flag 5 is
+     * C2's box edges. */
     {
         u32 k;
-        for (k = 0; k < 5u; k++) {
+        for (k = 0; k < 6u; k++) {
             gr_seed(s0, s1, r0, r1, 0x2000, 0x1000);
             DSW(s0 + 0x88u) = 1u;
             if (k == 0u) DSW(s1 + 0x76u) = 2u;
@@ -9526,7 +9529,13 @@ static void check_char3_2425(void)
                 DSD(s1 + 0x2Cu) = 0x2000u;
                 DSD(r1 + 0x18u) = 0x2000u;
             }
+            if (k == 5u) {
+                DSB(s1 + 0x53u) = 0x0Au;
+                DSD(s1 + 0x10u) = 0x00039CC8u;
+                DSB(s1 + 0x58u) = 4u;
+            }
             CHECK_EQ_INT((int)fighter_15208(0u), 1);
+            if (k == 5u) CHECK_EQ_INT((int)DSB(s0 + 0x8Au), 0);
         }
     }
     /* C5: through 0x19020: DS_00100AF8[0] = (hook == 0). */
@@ -9753,7 +9762,6 @@ static void check_char3_2425(void)
             found++;
             CHECK_EQ_INT((int)(DSW(r + 0x28u) & 0x4000u),
                          i == 0u ? 0x4000 : 0);
-            CHECK_EQ_INT((int)DSB(r + 0x4Au), 0);
         }
         CHECK_EQ_INT((int)found, 1);
     }

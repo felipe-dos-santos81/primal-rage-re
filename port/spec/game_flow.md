@@ -734,7 +734,7 @@ boot cycle's phase 2 wraps it to 0), so the second cycle reaches phase `0xA`'s
 lightning and hands off to a second demo at loop 2782 (`DS_000F0A72` = 5), as
 the capture does from 2385. `make attract2-oracle` (`--attract2`, in `make
 verify`) classifies captures 1885..3616 against `cycle2/` only, with the ratchet
-N = 3257 (record §42). Capture 2384, the `- LOADING -` frame before the second demo, is
+N = 3257 (record §44-A). Capture 2384, the `- LOADING -` frame before the second demo, is
 allowed by name: it is byte-identical to front-end capture 832 (record §37).
 
 **The demo window is report-only; its first unexplained frame is capture 1886 —
@@ -2444,11 +2444,11 @@ record §34).**
   spawn passes the parent's `+0x28 & 0x4000` as a5 (`0x2B4C4`), where the
   port passed `0x40`, so the blood flew the wrong way. The poll matches the
   port through f = 4570, the demo's last frame. Ported (`b947895`):
-  3099..3256 explained, N = 3257 (record §42).
+  3099..3256 explained, N = 3257 (record §44-A).
 * **3257.** The loader's `- LOADING -` overlay on the game frame: the
   original lazily loads `s16spisd.gra` (INDEX entry 64) for the sound
   module at f = 4444, which the port's out-of-scope voice path `0x2C3FC`
-  never asks for. A named gap (record §42.3).
+  never asks for. A named gap (record §44-A.3).
 
 ## Landmarks (verified)
 

@@ -848,8 +848,8 @@ static void anim_code_3C32C(u32 rec, u32 arg)
 #define ANIM_DESC_1543C   0x000BB3A8u  /* 0x15455: stream 0xD30F2 */
 
 /* 0x153D8 — the animation-opcode target shape (the 0xD100 target at 0xD312A
- * in character 3's reaction-0x25 stream 0xD311A; also 0xD321E, 0xD32B6,
- * 0xD3342 and a code dword at 0x24634). EAX = rec, EDX = the operand (read:
+ * in character 3's reaction-0x25 stream 0xD311A; also 0xD321E, 0xD32B6 and
+ * 0xD3342, each after a 0xD100 word). EAX = rec, EDX = the operand (read:
  * 0x153DD). With the record's +0x14 (its slot) set, it spawns the descriptor
  * 0x9B008 (operand non-zero) or 0xBB394 (zero) with a2 = a3 = a4 = 0 and a5 =
  * the record's +0x56 | 0x400, then the child's +0x59 = 2 and +0x14 = the

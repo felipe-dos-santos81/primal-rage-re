@@ -2352,7 +2352,7 @@ static void fe_cyc2_dump(void)
  * second attract cycle's state-6 handoff (loop 2782), the whole second demo
  * (its exit to state 9 at loop 3684, the poll's f = 4571) and the third
  * attract cycle's first 215 loops. FE_LOOPS is a measurement window, not a
- * raw value: 3900 (3500 before record §42, 3300 before §41, 3200 before §40,
+ * raw value: 3900 (3500 before record §44-A, 3300 before §41, 3200 before §40,
  * 3100 before §39, 2800 before §38) keeps the second demo's first
  * unexplained capture frame, 3257 (loop 3556), inside the cycle-2 dump, and
  * reaches past the capture's last frame, 3616 (about loop 3865 at the
@@ -2854,7 +2854,7 @@ int test_frontend(void)
      * The dump run is loop frames 589..1970, i.e. dumped frames 0..1381 (1382
      * frames); the 1400 cap covers it and FE_DEMO_LOOPS clears the 1970
      * exit. The exit frame closes this dump: the loop runs on to FE_LOOPS
-     * (3500) and writes every later presented frame to <dump>/cycle2 instead
+     * (3900) and writes every later presented frame to <dump>/cycle2 instead
      * (fe_cyc2_dump; record §36), the attract's second cycle, which the
      * capture shows from 1886 to its second demo at 2385. The per-frame
      * measurements and end-of-run reads below keep the FE_DEMO_LOOPS window. The front-end window is distinct [560..1884] (1325 frames: 517
@@ -3031,7 +3031,7 @@ int test_frontend(void)
          * DS_00100AB0 after loop 3293 (the poll's f = 4180). Sentinels. */
         u32 c2_ret_st = 0xFFFFFFFFu, c2_ret_state = 0xFFFFFFFFu;
         u32 c2_ret_ab0 = 0x12345678u;
-        /* Record §42. The raptor's record stream, slot +0x52/+0x53/+0x54/
+        /* Record §44-A. The raptor's record stream, slot +0x52/+0x53/+0x54/
          * +0x57 and +0x0C/+0x18/+0x1C after loop 3422 (f = 4309) and loop
          * 3551 (f = 4438); its +0x4B child index, that child's stream and
          * +0x14 after loop 3431 (f = 4318) and 3557 (f = 4444); the first
@@ -3361,7 +3361,7 @@ int test_frontend(void)
          * restarts on the stance 0xD2136, the slot is 0/0/0 with +0x41 = 0
          * and DS_00100AB0 = 0xFFFFFF00, as the poll's original. Unregistered,
          * the record runs on at 0xD2500 in 9/8/0.
-         * Record §42: at loop 3422 (f = 4309) character 3's reaction-0x25
+         * Record §44-A: at loop 3422 (f = 4309) character 3's reaction-0x25
          * callback 0x15350 starts 0xD311A (0xD311C after the frame) in
          * 9/7/0 with +0x57 = 0 and the callbacks 0x152D4/0x15208/0x1527C, as
          * the poll's original; unregistered, the raptor stays in 9/0/0 with
