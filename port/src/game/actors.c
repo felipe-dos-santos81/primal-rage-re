@@ -2627,6 +2627,18 @@ void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode)
     DSD(DS_00105F34) = save;
 }
 
+/* 0x2F510 — demo-pose record §43-A (`push esi; or cl,0x2; mov esi,[0x85f34];
+ * call 0x2F198; mov [0x85f34],esi`). 0x2F4BC with the mode ORed with 2 (the
+ * class font) before the cursor save. The ported callers are 0x4C784 and
+ * 0x4CC0C (fight.c); its other 60-odd call sites are not ported. */
+void text_cursor_hold_font2(s32 col, s32 row, const u8 *s, u32 mode)
+{
+    mode |= 2u;                                         /* 0x2F511 */
+    u32 save = DSD(DS_00105F34);                        /* 0x2F514 */
+    text_cursor_set(col, row, s, mode);                 /* 0x2F51A 0x2F198 */
+    DSD(DS_00105F34) = save;                            /* 0x2F51F */
+}
+
 /* 0x2F20C. 0x2F198's vertical twin: the same register shape, cursor reload
  * (0x2F228/0x2F22E) and centring (0x2F241..0x2F257), then 0x2F830 with the
  * stack byte 1 (0x2F259 `push 1`). The cursor gets {row, col + glyph count}
