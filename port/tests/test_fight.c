@@ -6770,6 +6770,236 @@ static void check_mode_10_step(void)
     memcpy(gfx_dac, s_dac, sizeof s_dac);
 }
 
+/* Record §48-Q: 0x33C18's other callers. q_seed_sides seeds the character
+ * bytes DS_0010816A[0..1] (0x55 either side), DS_00105B34[0..1] (0x55 either
+ * side), DS_00104B12 and DS_0010810D with sentinels, and both slots through
+ * cd_seed_slots. */
+static void q_seed_sides(u32 ch0, u32 ch1, u32 b0, u32 b1)
+{
+    cd_seed_slots();
+    DSB(DS_0010816A - 1u) = 0x55u;
+    DSB(DS_0010816A) = (u8)ch0;
+    DSB(DS_0010816A + 1u) = (u8)ch1;
+    DSB(DS_0010816A + 2u) = 0x55u;
+    DSB(DS_00105B34 - 1u) = 0x55u;
+    DSB(DS_00105B34) = (u8)b0;
+    DSB(DS_00105B34 + 1u) = (u8)b1;
+    DSB(DS_00105B34 + 2u) = 0x55u;
+    DSB(DS_00104B12) = 0x77u;
+    DSB(0x0010810Du) = 0x77u;
+}
+
+static void q_check_side_tail(u32 side)
+{
+    CHECK_EQ_INT((int)DSB(DS_00104B12), (int)side);
+    CHECK_EQ_INT((int)DSB(0x0010810Du), (int)(side ^ 1u));
+    CHECK_EQ_INT((int)DSB(DS_0010816A - 1u), 0x55);
+    CHECK_EQ_INT((int)DSB(DS_0010816A + 2u), 0x55);
+    CHECK_EQ_INT((int)DSB(DS_00105B34 - 1u), 0x55);
+    CHECK_EQ_INT((int)DSB(DS_00105B34 + 2u), 0x55);
+    cd_check_slot(side, 1);
+    cd_check_slot(side ^ 1u, 0);
+}
+
+static void check_33c18_callers_a(void)
+{
+    static u8 s_data[0x10B0D0u - 0x80000u];
+    static u8 s_rec[0xEBA0u], s_pset[0x4880u];
+    static u8 s_bufa[0xFA00u], s_bufb[0xFA00u], s_ap[0xFA00u];
+    static u8 s_dac[sizeof gfx_dac];
+    static u8 s_res[0x14u * 128u];
+    u32 rec_pool = DSD(DS_001014F4), pset_pool = DSD(DS_001014EC);
+    u32 bufa = DSD(DS_001014E8), bufb = DSD(DS_001014E4);
+    u32 res_tab = DSD(DS_001014E0);
+    u32 res_len = DSD(DS_001014F0) * 0x14u;
+    CHECK(rec_pool != 0u && pset_pool != 0u && bufa != 0u && bufb != 0u,
+          "0x33C18's callers need the pools and buffers");
+    CHECK(res_len != 0u && res_len <= sizeof s_res, "the resource table fits");
+    if (rec_pool == 0u || pset_pool == 0u || bufa == 0u || bufb == 0u ||
+        res_len == 0u || res_len > sizeof s_res)
+        return;
+    tf_snap(s_data, 0x80000u, sizeof s_data);
+    tf_snap(s_rec, rec_pool, sizeof s_rec);
+    tf_snap(s_pset, pset_pool, sizeof s_pset);
+    tf_snap(s_bufa, bufa, sizeof s_bufa);
+    tf_snap(s_bufb, bufb, sizeof s_bufb);
+    tf_snap(s_res, res_tab, res_len);
+    memcpy(s_ap, gfx_aperture(), sizeof s_ap);
+    memcpy(s_dac, gfx_dac, sizeof s_dac);
+#define QA_RESTORE() tf_put(s_data, 0x80000u, sizeof s_data)
+
+    /* (a) 0x4651C: C8/CC take C0/C4; C0/C4, D0 and the words either side keep
+     * theirs. */
+    QA_RESTORE();
+    cd_seed_latch();
+    DSD(DS_001082C0) = 0x12345678u;
+    DSD(DS_001082C4) = 0x9ABCDEF0u;
+    flow_1082c8_restore();
+    CHECK_EQ_INT((int)DSD(DS_001082C8), 0x12345678);
+    CHECK_EQ_INT((int)DSD(DS_001082CC), (int)0x9ABCDEF0u);
+    CHECK_EQ_INT((int)DSD(DS_001082C0), 0x12345678);
+    CHECK_EQ_INT((int)DSD(DS_001082C4), (int)0x9ABCDEF0u);
+    CHECK_EQ_INT((int)DSD(DS_001082D0), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_001082C0 - 4u), 0x11111111);
+    CHECK_EQ_INT((int)DSD(DS_001082D0 + 4u), 0x22222222);
+
+    /* (b) 0x292D4(1, 0x12345603): only DL is stored; side 0 holds 3 with its
+     * B34 byte 0, so side 1's B34 is 1. Side 1's slot is reset, side 0's not. */
+    QA_RESTORE();
+    q_seed_sides(3u, 0x77u, 0u, 0x77u);
+    flow_side_char_set(1u, 0x12345603u);
+    CHECK_EQ_INT((int)DSB(DS_0010816A + 1u), 3);
+    CHECK_EQ_INT((int)DSB(DS_0010816A), 3);
+    CHECK_EQ_INT((int)DSB(DS_00105B34 + 1u), 1);
+    CHECK_EQ_INT((int)DSB(DS_00105B34), 0);
+    q_check_side_tail(1u);
+    /* (b2) The other side's B34 is 1: this side's is 0 (the 0x292DE store). */
+    QA_RESTORE();
+    q_seed_sides(3u, 0x77u, 1u, 0x77u);
+    flow_side_char_set(1u, 3u);
+    CHECK_EQ_INT((int)DSB(DS_00105B34 + 1u), 0);
+    CHECK_EQ_INT((int)DSB(DS_00105B34), 1);
+    q_check_side_tail(1u);
+    /* (b3) Side 0 with character 4 against side 1's 5: B34[0] = 0. */
+    QA_RESTORE();
+    q_seed_sides(0x77u, 5u, 0x77u, 0u);
+    flow_side_char_set(0u, 4u);
+    CHECK_EQ_INT((int)DSB(DS_0010816A), 4);
+    CHECK_EQ_INT((int)DSB(DS_0010816A + 1u), 5);
+    CHECK_EQ_INT((int)DSB(DS_00105B34), 0);
+    q_check_side_tail(0u);
+
+    /* (c) 0x2716C(0): every byte DS_00104B02[0..6] but [5] has bit 5 set, so
+     * the draw loop ends on 5. The expected draw count comes from the same
+     * generator run from the same seed; the RNG state after the call must be
+     * that one. [5] keeps its other bits (0x41 -> 0x61); side 1 holds 5 with
+     * B34 0, so side 0's B34 is 1. */
+    {
+        u32 n = 0, seed = 0x1234ABCDu, after;
+        QA_RESTORE();
+        for (u32 c = 0; c < 7u; c++) DSB(DS_00104B02 + c) = (u8)(0x20u | c);
+        DSB(DS_00104B02 + 5u) = 0x41u;
+        DSB(DS_00104B02 + 7u) = 0x5Au;
+        DSD(DS_000EF6D8) = seed;
+        do { n++; } while (rng_next(7u) != 5u);
+        after = DSD(DS_000EF6D8);
+        CHECK(n > 1u, "the seed makes the loop draw more than once");
+        DSD(DS_000EF6D8) = seed;
+        q_seed_sides(0x77u, 5u, 0x77u, 0u);
+        flow_side_char_random(0u);
+        CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)after);
+        CHECK_EQ_INT((int)DSB(DS_0010816A), 5);
+        CHECK_EQ_INT((int)DSB(DS_00104B02 + 5u), 0x61);
+        for (u32 c = 0; c < 7u; c++)
+            if (c != 5u) CHECK_EQ_INT((int)DSB(DS_00104B02 + c), (int)(0x20u | c));
+        CHECK_EQ_INT((int)DSB(DS_00104B02 + 7u), 0x5A);
+        CHECK_EQ_INT((int)DSB(DS_00105B34), 1);
+        CHECK_EQ_INT((int)DSB(DS_00105B34 + 1u), 0);
+        q_check_side_tail(0u);
+        /* (c2) Side 1, the free byte 2, the other side holding 2 with B34 1:
+         * B34[1] is stored 0. */
+        QA_RESTORE();
+        for (u32 c = 0; c < 7u; c++) DSB(DS_00104B02 + c) = 0x20u;
+        DSB(DS_00104B02 + 2u) = 0u;
+        q_seed_sides(2u, 0x77u, 1u, 0x77u);
+        flow_side_char_random(1u);
+        CHECK_EQ_INT((int)DSB(DS_0010816A + 1u), 2);
+        CHECK_EQ_INT((int)DSB(DS_00104B02 + 2u), 0x20);
+        CHECK_EQ_INT((int)DSB(DS_00105B34 + 1u), 0);
+        q_check_side_tail(1u);
+    }
+
+    /* (d) 0x32B00. arm != 0: DS_00107478 = DS_0010746C[2]; arm 0: (acc[1] -
+     * DS_00107478) / 0x3C, unsigned (acc 0 under 0x3C wraps). */
+    QA_RESTORE();
+    DSD(DS_0010746C) = 0x11111111u;
+    DSD(DS_0010746C + 4u) = 1000u;
+    DSD(DS_0010746C + 8u) = 0x0BADF00Du;
+    DSD(DS_00107478) = 0xDEADBEEFu;
+    DSD(DS_00107478 + 4u) = 0x22222222u;
+    config_play_time_snap(2u, 0x100u);
+    CHECK_EQ_INT((int)DSD(DS_00107478), 0x0BADF00D);
+    CHECK_EQ_INT((int)DSD(DS_0010746C + 8u), 0x0BADF00D);
+    DSD(DS_00107478) = 400u;
+    config_play_time_snap(1u, 0u);
+    CHECK_EQ_INT((int)DSD(DS_00107478), 10);
+    CHECK_EQ_INT((int)DSD(DS_0010746C + 4u), 1000);
+    DSD(DS_0010746C + 4u) = 0u;
+    DSD(DS_00107478) = 0x3Cu;
+    config_play_time_snap(1u, 0u);
+    CHECK_EQ_INT((int)DSD(DS_00107478), (int)(0xFFFFFFC4u / 0x3Cu));
+    CHECK_EQ_INT((int)DSD(DS_0010746C), 0x11111111);
+    CHECK_EQ_INT((int)DSD(DS_00107478 + 4u), 0x22222222);
+
+    /* (e) 0x28DA4(1) with DS_00104B1F = 3: the three zeroed dwords, B24,
+     * the hook 0x28D80, the mode word 0x17 (upper half kept), B17 = 2,
+     * B15 = 0, the two countdown words (bytes after kept), 0x4651C's copy,
+     * 0x33C18 on side 1 and the byte +0x5B of side 0's slot alone. The
+     * DS_00104ABC = 2 selects DS_0010746C[2] for DS_00107478. */
+    for (u32 side = 0; side < 2u; side++) {
+        QA_RESTORE();
+        cd_seed_slots();
+        cd_seed_latch();
+        DSD(DS_001082C0) = 0x0000C0C0u;
+        DSD(DS_001082C4) = 0x0000C4C4u;
+        DSD(DS_000F0A48) = 0xDEADBEEFu;
+        DSD(DS_00104AEC) = 0xDEADBEEFu;
+        DSD(DS_00104AE8) = 0xDEADBEEFu;
+        DSD(DS_00104ABC) = 0xDEADBEEFu;
+        DSB(DS_00104B1F) = side == 0u ? 3u : 1u;
+        DSD(DS_0010746C + 4u) = 0x01010101u;
+        DSD(DS_0010746C + 8u) = 0x02020202u;
+        DSD(DS_00107478) = 0xDEADBEEFu;
+        DSB(DS_00104B24) = 0x77u;
+        DSD(DS_00104AE4) = 0xDEADBEEFu;
+        DSD(DS_00104B00) = 0xBEEF0003u;
+        DSB(DS_00104B17) = 0x77u;
+        DSB(DS_00104B15) = 0x77u;
+        DSW(DS_00104AFE) = 0x7777u;
+        DSB(DS_00104AFE - 1u) = 0x77u;
+        DSD(DS_001088EE) = 0x77777777u;
+        flow_player_join(side);
+        CHECK_EQ_INT((int)DSD(DS_000F0A48), 0);
+        CHECK_EQ_INT((int)DSD(DS_00104AEC), 0);
+        CHECK_EQ_INT((int)DSD(DS_00104AE8), 0);
+        CHECK_EQ_INT((int)DSD(DS_00104ABC), side == 0u ? 2 : 1);
+        CHECK_EQ_INT((int)DSD(DS_00107478), side == 0u ? 0x02020202 : 0x01010101);
+        CHECK_EQ_INT((int)DSD(DS_001082C8), 0xC0C0);
+        CHECK_EQ_INT((int)DSD(DS_001082CC), 0xC4C4);
+        cd_check_slot(side, 1);
+        {
+            u32 o = DS_001077B0 + (side ^ 1u) * 0x94u;
+            CHECK_EQ_INT((int)DSB(o + 0x5Bu), 0);
+            CHECK_EQ_INT((int)DSB(o + 0x7Fu), 0x77);
+            CHECK_EQ_INT((int)DSB(o + 0x80u), 0x77);
+            CHECK_EQ_INT((int)DSD(o + 0x3Cu), (int)0xDEADBEEFu);
+            CHECK_EQ_INT((int)DSB(o + 0x5Au), 0x66);
+            CHECK_EQ_INT((int)DSB(o + 0x5Cu), 0x66);
+            CHECK_EQ_INT((int)DSW(DS_00108860 + (side ^ 1u) * 2u), 0x7777);
+        }
+        CHECK_EQ_INT((int)DSB(DS_00104B24), 1);
+        CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x28D80);
+        CHECK(fn_resolve(DSD(DS_00104AE4)) == frontend_char_screen_hook_voice,
+              "0x28DA4's hook resolves to 0x28D80's port");
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0017u);
+        CHECK_EQ_INT((int)DSB(DS_00104B17), 2);
+        CHECK_EQ_INT((int)DSB(DS_00104B15), 0);
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x78);
+        CHECK_EQ_INT((int)DSB(DS_00104AFE - 1u), 0x77);
+        CHECK_EQ_INT((int)DSD(DS_001088EE), 0x7777001E);
+    }
+#undef QA_RESTORE
+
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    tf_put(s_bufa, bufa, sizeof s_bufa);
+    tf_put(s_bufb, bufb, sizeof s_bufb);
+    tf_put(s_res, res_tab, res_len);
+    memcpy(gfx_aperture(), s_ap, sizeof s_ap);
+    memcpy(gfx_dac, s_dac, sizeof s_dac);
+}
+
 /* 0x24C73/0x47208: the demo's CPU-AI command generator. A live pair of slots
  * (think gate armed, idle state, a legal character) must produce a non-zero
  * command word, and the two sides must be able to differ. The command words are
@@ -20361,6 +20591,7 @@ int test_fight(void)
     check_mode_switch();
     check_coin_divert();
     check_mode_10_step();
+    check_33c18_callers_a();
 
     return g_failures - before;
 }

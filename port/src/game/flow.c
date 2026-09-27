@@ -824,6 +824,103 @@ void game_coin_divert(u32 players)
      * AX, and 0x255CC reloads EAX (0x25621) after 0x24C5C returns. */
 }
 
+/* ---- 0x33C18's other callers (record §48-Q) ------------------------------ */
+
+#define FN_00028D80 0x00028D80u   /* no symbols.h name: frontend_char_screen_hook_voice */
+
+/* 0x4651C — record §48-Q. The 0x46504 latch reversed: DS_001082C8 =
+ * DS_001082C0 and DS_001082CC = DS_001082C4 (two dword copies through EAX).
+ * Callers: 0x28E07 (0x28DA4) and 0x27E74 (0x27A2C, mode 0xE's handler). */
+void flow_1082c8_restore(void)
+{
+    DSD(DS_001082C8) = DSD(DS_001082C0);                /* 0x4651C/0x46521 */
+    DSD(DS_001082CC) = DSD(DS_001082C4);                /* 0x46526/0x4652B */
+}
+
+/* 0x292D4 — record §48-Q. EAX = the side (kept in EBX), EDX = the character
+ * (DL). 0x33C18(side) pushes EDX, so DL is still the argument. Then
+ * DS_00105B34[side] = AH = 0 (0x292DC `xor ah,ah` on 0x33C18's return),
+ * DS_0010816A[side] = DL, and DS_00105B34[side] = 1 when the other side
+ * (`xor al,1` on the side) holds the same character with its DS_00105B34
+ * byte 0. Last the bytes DS_00104B12 = the side and DS_0010810D = the side ^ 1.
+ * Only caller: 0x29871 (0x296B8). */
+void flow_side_char_set(u32 side, u32 ch)
+{
+    u32 other = side ^ 1u;                              /* 0x292E4/0x292E6 */
+    fight_char_reset(side);                             /* 0x292D7 0x33C18 */
+    DSB(DS_00105B34 + side) = 0u;                       /* 0x292DC/0x292DE */
+    DSB(DS_0010816A + side) = (u8)ch;                   /* 0x292E8 */
+    if ((u8)ch == DSB(DS_0010816A + other)              /* 0x292EE `jnz` */
+            && DSB(DS_00105B34 + other) == 0u)          /* 0x292F6 `jnz` */
+        DSB(DS_00105B34 + side) = 1u;                   /* 0x292FF */
+    DSB(DS_00104B12) = (u8)side;                        /* 0x29306 */
+    DSB(DS_0010810D) = (u8)(side ^ 1u);                 /* 0x2930C/0x2930F */
+}
+
+/* 0x2716C — record §48-Q. EAX = the side (kept in ECX). 0x33C18(side), then
+ * rng(7) (0x5D7DC with EDX = 0, which it pushes and pops, so `mov dl,al`
+ * makes EDX the draw) until the draw's byte DS_00104B02[c] has bit 5 clear
+ * (0x2718A `and bl,0x20`). That bit is set, DS_0010816A[side] = c, and
+ * DS_00105B34[side] = DL ^ AL = 0 (0x271A2). Then the 0x292D4 tail: 1 when the
+ * other side holds the same character with its DS_00105B34 byte 0, and
+ * DS_00104B12 = the side, DS_0010810D = the side ^ 1. When all seven bytes
+ * have bit 5 set the raw draws for ever; so does the port. Callers: 0x2705E
+ * (0x26F58), 0x2722E (0x271E0) and 0x27700 (0x274FC). */
+void flow_side_char_random(u32 side)
+{
+    u32 other = side ^ 1u;                              /* 0x271A4/0x271A6 */
+    u32 c;
+    fight_char_reset(side);                             /* 0x27171 0x33C18 */
+    do {
+        c = rng_next(7u);                               /* 0x27176..0x2717D 0x5D7DC */
+    } while ((DSB(DS_00104B02 + c) & 0x20u) != 0u);     /* 0x27184..0x27193 */
+    DSB(DS_00104B02 + c) = (u8)(DSB(DS_00104B02 + c) | 0x20u);  /* 0x27195 */
+    DSB(DS_0010816A + side) = (u8)c;                    /* 0x2719C */
+    DSB(DS_00105B34 + side) = 0u;                       /* 0x271A2/0x271A8 (DL ^ AL) */
+    if (DSB(DS_0010816A + side) == DSB(DS_0010816A + other)    /* 0x271AE/0x271B4 */
+            && DSB(DS_00105B34 + other) == 0u)          /* 0x271BC */
+        DSB(DS_00105B34 + side) = 1u;                   /* 0x271C5 */
+    DSB(DS_00104B12) = (u8)side;                        /* 0x271CC */
+    DSB(DS_0010810D) = (u8)(side ^ 1u);                 /* 0x271D2/0x271D5 */
+}
+
+/* 0x28DA4 — record §48-Q. A player joins (modes 6 and 0xC, at 0x25269 and
+ * 0x25353, with EAX = 0x28CC8's result - 1, the joining side; kept in ESI).
+ * In raw order: 0x32970(0); DS_000F0A48, DS_00104AEC and DS_00104AE8 = 0
+ * (EDX); the 0x100 voice; DS_00104ABC = (DS_00104B1F == 3) + 1; string 0x44
+ * drawn by 0x2F510 at col -1, row 0xA (EDX, kept by 0x1C500) with mode 0x4000
+ * (ECX); 0x4651C; 0x33C18(side); the byte +0x5B of the OTHER side's slot = 0
+ * (0x28E0E `xor si,1`, 0x28E29); 0x32B00(DS_00104ABC, 1) and 0x2DAE4(0xD, 1).
+ * Then DS_00104B24 = 1 (BL), the hook 0x28D80 (ESI, 0x28E4E), the mode word =
+ * CX = 0x17 (set at 0x28E3A; 0x32B00 and 0x2DAE4 push and pop ECX),
+ * DS_00104B17 = DH = 2, DS_00104B15 = BH = 0, and the words DS_00104AFE =
+ * 0x78 and DS_001088EE = 0x1E. EBX/ECX/EDX/ESI are pushed and popped. */
+void flow_player_join(u32 side)
+{
+    /* PORT: 0x28DAC 0x32970(EAX = 0), the run clock, is out of scope (spec
+     * §7); the host clock owns wall time. */
+    DSD(DS_000F0A48) = 0u;                              /* 0x28DB8 */
+    DSD(DS_00104AEC) = 0u;                              /* 0x28DBE */
+    DSD(DS_00104AE8) = 0u;                              /* 0x28DC4 */
+    /* PORT: 0x28DCA 0x2C3FC(0x100) voice, not wired (record §45-A). */
+    DSD(DS_00104ABC) = (DSB(DS_00104B1F) == 3u ? 1u : 0u) + 1u;   /* 0x28DCF..0x28DE7 */
+    text_cursor_hold_font2(-1, 0xA, game_string_get(0x44u),
+                           0x4000u);                    /* 0x28DF6 0x1C500, 0x28E02 0x2F510 */
+    flow_1082c8_restore();                              /* 0x28E07 0x4651C */
+    fight_char_reset(side);                             /* 0x28E12 0x33C18 */
+    DSB(DS_0010780B + (side ^ 1u) * 0x94u) = 0u;        /* 0x28E0E/0x28E17..0x28E29 */
+    config_play_time_snap(DSD(DS_00104ABC), 1u);        /* 0x28E30..0x28E3F 0x32B00 */
+    /* PORT: 0x28E53 0x2DAE4(0xD, 1), the audit add, is deferred (spec §7),
+     * as in 0x2D962 and 0x32A3C (config.c). */
+    DSB(DS_00104B24) = 1u;                              /* 0x28E27/0x28E5A (BL) */
+    DSD(DS_00104AE4) = FN_00028D80;                     /* 0x28E4E/0x28E60 */
+    DSW(DS_00104B00) = 0x17u;                           /* 0x28E3A/0x28E66 (CX) */
+    DSB(DS_00104B17) = 2u;                              /* 0x28E58/0x28E6D (DH) */
+    DSB(DS_00104B15) = 0u;                              /* 0x28E73/0x28E7A (BH) */
+    DSW(DS_00104AFE) = 0x78u;                           /* 0x28E75/0x28E85 */
+    DSW(DS_001088EE) = 0x1Eu;                           /* 0x28E80/0x28E8C */
+}
+
 /* ---- the remaining DS_00104AE4 values (record §46-F) --------------------- */
 
 #define FN_00025BBC 0x00025BBCu   /* no symbols.h name: game_hook_25bbc */

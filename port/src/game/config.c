@@ -372,3 +372,24 @@ void config_play_time_close(u32 mode, u32 flag)
      *   mode 1, flag != 0: (6, 1), (0xB, 1), (0xC, t), (0x12, t) 0x32A91..
      *   mode 2/3:          (flag == 0 ? 9 : 7, 1), (0x13, t)     0x32AC4.. */
 }
+
+/* 0x32B00 — record §48-Q. EAX = the index (0x32B08 `shl eax,2`, no mask),
+ * EDX = the arm; EBX/ECX are pushed and popped, EDX is not written. EDX != 0:
+ * DS_00107478 (= DS_0010746C[3]) takes DS_0010746C[idx] (0x32B0F, stored at
+ * 0x32B40). EDX == 0: t = (DS_0010746C[idx] - DS_00107478) / 0x3C (unsigned
+ * DIV with EDX = 0, 0x32B17..0x32B24) is stored (0x32B2F), posted through
+ * 0x2E934(1, t), then DS_00107478 is reloaded and stored back
+ * (0x32B3A/0x32B40). Callers: 0x28E3F (0x28DA4, EDX = 1), 0x25EE5 (0x25C88)
+ * and 0x28937 (0x28788). */
+void config_play_time_snap(u32 idx, u32 arm)
+{
+    if (arm != 0u) {                                    /* 0x32B0B `jz` */
+        DSD(DS_00107478) = DSD(DS_0010746C + idx * 4u); /* 0x32B0F/0x32B40 */
+        return;
+    }
+    DSD(DS_00107478) = (DSD(DS_0010746C + idx * 4u)
+                        - DSD(DS_00107478)) / 0x3Cu;    /* 0x32B17..0x32B2F */
+    /* PORT: 0x32B35 0x2E934(1, t), the audit post, is deferred (spec §7).
+     * Neither it nor its callees 0x2E180, 0x2E0A4 and 0x2E034 name 0x107478,
+     * so the reload and store at 0x32B3A/0x32B40 leave the value as stored. */
+}
