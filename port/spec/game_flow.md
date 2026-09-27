@@ -1581,8 +1581,9 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
 * **Open named gaps.** `0x354F0` arena-wall clamp; `hit_record_x/y` omit the
   raw's `0x18540`/`0x18350` calls (first differs at f = 90; closed since, record
   §17); the camera split-arm
-  `0x18714` write (closed since, record §24); the sibling pose handlers `0x3A588`/`0x3A6D4`/`0x3A820` and the
-  `0x39F40`/`0x39CC8` family (unreached in the first fight); the `0x2C3FC` voice
+  `0x18714` write (closed since, record §24); the sibling pose handlers `0x3A588`/`0x3A820` and the
+  `0x39F40`/`0x39CC8` family (unreached in the first fight; the third sibling
+  `0x3A6D4` is ported and registered since, record §41-A); the `0x2C3FC` voice
   stub (RNG- and fight-state-neutral, record §3.4). Carried items: record §6.3.
 
 ### Roar timing (branch `roar-timing`), capture 851
