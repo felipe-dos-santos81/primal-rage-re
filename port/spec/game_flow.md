@@ -945,7 +945,12 @@ exits 0.
   and the `0x3B464`/`0x3B938`/`0x3A95C` hit it wakes are ported (§26);
   `0x3B464`'s `0x235C4` arm (projectile `+0x48` = 8) is ported with its
   `+0x10` handler `0x22BEC` and `+0x14` callback `0x29D04` (record §41-C);
-  the demo does not reach it. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
+  the demo does not reach it. The effects pass's grab arm (`0x4B788`'s grab,
+  case 8's held body with `0x4AF04`) and `0x4B470`'s eighth-hit tail
+  (`0x4BD98` with `0x13134`, `0x4CB18`) are ported, as are the mode-`0x22`
+  prelude `0x4D7A4` and its grab arm `0x4D898` (record §42-C); the demo
+  reaches none of them, and `0x4D7A4`'s caller `0x4D2D0` is not ported.
+  **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
   frame-1881 fix): none in the fight; `0x3E3A8` (f = 962, the `(char 0,
   0x2A)` callback) and its `+0x0C` callback `0x3E328` (f = 963) are now ported
   and registered; its `+0x18` hook `0x3E1D0` is ported with `0x19020`
@@ -2112,8 +2117,9 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   7 while falling, drags the shadow, subtracts `0x10` a frame and lands on
   `0xC973C[si]` at 2.0 as type 8 (or `0xC9544[si]` at 3.0 as type 4).
 * **Fix.** `camera_point_hit`/`camera_point_side` (`0x17D30`/`0x1790C`);
-  `fight_4b69c`, `fight_4b788` (the gates; the grab arm a named gap),
-  `fight_4b470` (the eighth-hit tail a named gap), case 6 and case 8's gate. New
+  `fight_4b69c`, `fight_4b788` (the gates; the grab arm a named gap, ported
+  later, record §42-C), `fight_4b470` (the eighth-hit tail a named gap, ported
+  later, record §42-C), case 6 and case 8's gate. New
   `check_point_trample`; 51 mutations each fail it.
 * **Measured.** Captures 1563..1658 are explained; port frames 0..1105 are
   byte-identical to before. The demo's first unexplained is now **1659 (raw

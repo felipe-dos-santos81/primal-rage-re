@@ -2001,6 +2001,42 @@ static void ph_seed(u32 p, u32 p2, int both)
     DSD(DS_00100B10) = 0xDEADBEEFu;
 }
 
+/* The grab arms' streams (record §42-C) start with real opcode words, which
+ * the fixtures must not run: the fighter's hold streams 0xC9790[0] = 0xE7B02
+ * and 0xC9790[1] = 0xE4744 get a plain sprite word 4 (the fighters' pset id,
+ * so the hit test keeps its sprite) in place and stay inside 0x4AF04's ranges;
+ * the held streams 0xC97AC[0][3] (0xC9688) and 0xC97AC[1][3] (0xC96B8) point
+ * at `hold0`/`hold1`; 0x4BD98's 0xEF66A gets a plain word; and the pool
+ * record 1's +0x4B (the fighter 0's link, 0x2BD20) is saved. */
+static u16 gr_sv_e7b02, gr_sv_e4744, gr_sv_ef66a;
+static u32 gr_sv_c9688, gr_sv_c96b8;
+static u8 gr_sv_link1;
+
+static void gr_patch(u32 hold0, u32 hold1)
+{
+    gr_sv_e7b02 = DSW(0x000E7B02u);
+    gr_sv_e4744 = DSW(0x000E4744u);
+    gr_sv_ef66a = DSW(0x000EF66Au);
+    gr_sv_c9688 = DSD(0x000C9688u);
+    gr_sv_c96b8 = DSD(0x000C96B8u);
+    gr_sv_link1 = DSB(DSD(DS_001014F4) + 1u * 0x68u + 0x4Bu);
+    DSW(0x000E7B02u) = 0x0004u;
+    DSW(0x000E4744u) = 0x0004u;
+    DSW(0x000EF66Au) = 0x0006u;
+    DSD(0x000C9688u) = hold0;
+    DSD(0x000C96B8u) = hold1;
+}
+
+static void gr_unpatch(void)
+{
+    DSW(0x000E7B02u) = gr_sv_e7b02;
+    DSW(0x000E4744u) = gr_sv_e4744;
+    DSW(0x000EF66Au) = gr_sv_ef66a;
+    DSD(0x000C9688u) = gr_sv_c9688;
+    DSD(0x000C96B8u) = gr_sv_c96b8;
+    DSB(DSD(DS_001014F4) + 1u * 0x68u + 0x4Bu) = gr_sv_link1;
+}
+
 /* 0x17D30 / 0x1790C and the effects pass's trample (record §29). The point
  * x = (100 + 0x18) * 64, y = (100 + 0x38) * 64 lands on side 0's screen
  * point: the x syncs see p3 = box0 + 100 - 100 = 0 (B1C = 8, the box) and
@@ -2147,17 +2183,21 @@ static void check_point_trample(void)
     CHECK_EQ_INT((int)DSB(entry + 0x1Fu), 0);
 
     /* F: the fighter in its grab move 0xC97F2[0] = 0x2D with +0x52 = 4 inside
-     * [0xC97E4[0], 0xC97EB[0]] = [3, 6]: 0x4B788 returns 0 (its grab arm is
-     * the named gap), so no trample and case 4 runs. */
+     * [0xC97E4[0], 0xC97EB[0]] = [3, 6]: 0x4B788 grabs and returns 0 (§42-C,
+     * detailed in check_grab_arms), so no trample: the entry is type 8 with
+     * +0x1C bit 6 and +0x20 = 0, and case 8 (not case 4) runs, the fighter
+     * still in its hold (0x4AF04), so the lie timer is untouched. */
     TR_SEED(1);
+    gr_patch(st_wrong, st_wrong);
     DSB(DS_001077B0 + 0x5Fu) = 0x2Du;
     DSB(FIGHT_RECS + 0x52u) = 4;
     fight_effects_pass();
+    gr_unpatch();
     CHECK_EQ_INT((int)DSD(DS_00100B54), 2);
-    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 4);
-    CHECK_EQ_INT((int)DSW(entry + 0x18u), 49);
-    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x85);
-    CHECK_EQ_INT((int)DSB(entry + 0x20u), 0x77);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSW(entry + 0x18u), 50);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0xC5);
+    CHECK_EQ_INT((int)DSB(entry + 0x20u), 0);
     /* The same grab move tramples when DS_00105B3A > 1 (0x4B7A0) or the other
      * side's slot +0x54 is 3 (0x4B7E0). */
     TR_SEED(1);
@@ -2333,6 +2373,589 @@ static void check_point_trample(void)
         DSD(tabs[i]) = sv_t[i * 2u];
         DSD(tabs[i] + 12u) = sv_t[i * 2u + 1u];
     }
+    tf_put(sv_slots, DS_001077B0, sizeof sv_slots);
+    tf_put(sv_g, DS_00100A70, sizeof sv_g);
+    tf_put(sv_rows0, 0x000FD160u, sizeof sv_rows0);
+    tf_put(sv_rows1, 0x000FEDE0u, sizeof sv_rows1);
+    tf_put(sv_7d, DS_00107D20, sizeof sv_7d);
+    tf_put(sv_7a80, DS_00107A80, sizeof sv_7a80);
+    DSD(DS_001014E0) = sv_res_tab;
+    DSD(DS_001014F0) = sv_res_cnt;
+    DSD(DS_001014EC) = sv_actor_tab;
+}
+
+/* The grab arms 0x4B788/0x4D898, case 8's held body with 0x4AF04, 0x4B470's
+ * eighth-hit tail 0x4BD98 (0x13134) / 0x4CB18, and 0x4D7A4 (record §42-C), on
+ * check_point_trample's fixture: one entry (si 3, side byte 1) whose actor's
+ * pset 5 holds side 0's point. Fighter 0's record sits at x 0x10000, height
+ * 0x800, y word 0x800, +0x52 = 4 (inside [3, 6] for characters 0 and 1). */
+static void check_grab_arms(void)
+{
+    u8 sv_slots[0x128], sv_g[0x1B0], sv_rows0[0x130], sv_rows1[0x130];
+    u8 sv_7d[0x40], sv_7a80[0x80], sv_88[0xC0], sv_4a[0x70];
+    u32 sv_res_tab = DSD(DS_001014E0), sv_res_cnt = DSD(DS_001014F0);
+    u32 sv_actor_tab = DSD(DS_001014EC), sv_rng = DSD(DS_000EF6D8);
+    u8 sv_3a = DSB(DS_00105B3A);
+    u32 sv_tumble = DSD(0x000C9604u + 12u);
+    u32 p = FIGHT_RECS + 0x200u, p2 = FIGHT_RECS + 0x300u;
+    u32 entry = FIGHT_RECS + 0x3000u, rec = FIGHT_RECS + 0x3100u;
+    u32 sh_fake = FIGHT_RECS + 0x3200u;
+    u32 st_tumble = FIGHT_RECS + 0x3800u, st_hold0 = FIGHT_RECS + 0x3840u;
+    u32 st_hold1 = FIGHT_RECS + 0x3880u;
+    u32 fr0 = FIGHT_RECS, fr1 = FIGHT_RECS + 0x100u;
+    u32 ps5 = FIGHT_ACTORS + 5u * 0x20u;
+    s32 x_hit = (100 + 0x18) * 64, y_hit = (100 + 0x38) * 64;
+    u32 link1 = DSD(DS_001014F4) + 1u * 0x68u + 0x4Bu;
+    u32 link2 = DSD(DS_001014F4) + 2u * 0x68u + 0x4Bu;
+    u8 sv_link2 = DSB(link2);
+    u32 slot1 = DS_001077B0 + 0x94u;
+    u32 a1, a2, i;
+
+    tf_snap(sv_slots, DS_001077B0, sizeof sv_slots);
+    tf_snap(sv_g, DS_00100A70, sizeof sv_g);
+    tf_snap(sv_rows0, 0x000FD160u, sizeof sv_rows0);
+    tf_snap(sv_rows1, 0x000FEDE0u, sizeof sv_rows1);
+    tf_snap(sv_7d, DS_00107D20, sizeof sv_7d);
+    tf_snap(sv_7a80, DS_00107A80, sizeof sv_7a80);
+    tf_snap(sv_88, 0x00108840u, sizeof sv_88);      /* 0x10884C..0x1088F2 */
+    tf_snap(sv_4a, 0x00104AB8u, sizeof sv_4a);      /* 0x104ABC..0x104B1D */
+    gr_patch(st_hold0, st_hold1);
+    DSD(0x000C9604u + 12u) = st_tumble;
+    DSW(st_tumble) = 0x0456u;
+    DSW(st_hold0) = 0x0321u;
+    DSW(st_hold1) = 0x0654u;
+
+/* Side 0's character with the anchor that keeps its sprite handle index 4
+ * (0x100AF0 + 0x17EEC(ch) = 4, as pc_seed has it for character 0). */
+#define GR_CHAR(c) do {                                                 \
+        DSB(DS_0010782A) = (u8)(c);                                     \
+        DSD(DS_00100AF0) = (u32)(4 - (s32)camera_char_const((u32)(c))); \
+    } while (0)
+#define GR_SEED(c1c) do {                                               \
+        ph_seed(p, p2, 0);                                              \
+        mem_fill(entry, 0, 0x40u); mem_fill(rec, 0, 0x68u);             \
+        mem_fill(sh_fake, 0, 0x68u); DSW(sh_fake + 0x56u) = 7;          \
+        DSD(DS_0010884C) = entry; DSD(entry) = DS_0010884C;             \
+        DSD(entry + 8u) = rec; DSD(entry + 0xCu) = slot1;               \
+        DSB(entry + 0x21u) = 1; DSB(entry + 0x1Eu) = 4;                 \
+        DSW(entry + 0x18u) = 50; DSB(entry + 0x1Cu) = (u8)(c1c);        \
+        DSB(entry + 0x20u) = 1; DSB(entry + 0x1Fu) = 0;                \
+        DSD(entry + 0x10u) = sh_fake;                                   \
+        DSB(rec + 0x48u) = 0x23u; DSW(rec + 0x56u) = 5;                 \
+        DSD(rec + 0x18u) = 0x1234u; DSD(rec + 0x30u) = 0x05000000u;     \
+        DSW(rec + 0x34u) = 0x1111u; DSW(rec + 0x36u) = 0x2222u;         \
+        DSW(rec + 0x38u) = 0x3333u;                                     \
+        DSB(rec + 0x29u) = 0x50u; DSB(rec + 0x2Au) = 0x0Cu;             \
+        DSD(ps5 + 4u) = (u32)x_hit; DSD(ps5 + 8u) = (u32)y_hit;         \
+        DSB(DS_001088BF) = 0; DSB(DS_001088C2) = 0;                     \
+        DSB(DS_00105B3A) = 0;                                           \
+        DSB(DS_001077B0 + 0x5Fu) = 0x2Du;                               \
+        DSB(fr0 + 0x52u) = 4; DSB(fr0 + 0x4Bu) = 0;                     \
+        DSD(fr0 + 0x18u) = 0x10000u; DSD(fr0 + 0x1Cu) = 0x800u;         \
+        DSW(fr0 + 0x32u) = 0x0800u; DSW(fr0 + 0x28u) = 0;               \
+        DSB(link1) = 0x99u; DSB(link2) = 0x99u;                         \
+        DSB(DS_001088AE) = 7; DSB(DS_001088AE + 1u) = 5;                \
+        DSB(DS_001088B2) = 0x33u; DSB(DS_001088B2 + 1u) = 0x33u;        \
+        DSB(DS_00104B1D) = 0; DSW(DS_00104AFC) = 0;                     \
+        DSB(DS_001088C1) = 0; DSB(DS_001088F2) = 0;                     \
+        DSB(DS_001088C5) = 0; DSD(DS_00108864) = 0;                     \
+        DSD(DS_00104AD8) = 0; DSD(DS_00104ABC) = 2;                     \
+        DSD(DS_001077E4) = 0x1000u; DSD(DS_00107878) = 0x3000u;         \
+        DSD(DS_00108854) = 0x100u; DSD(DS_00108880) = 0x5000u;         \
+        DSB(DS_00104AEC) = 0x03u;                                       \
+        DSD(DS_00108868) = 0x11111111u; DSD(DS_0010886C) = 0x22222222u; \
+        DSD(DS_00108884) = 0x33333333u;                                 \
+        DSW(DS_001088AA) = 0x5555u; DSW(DS_001088A0) = 0x5555u;         \
+        DSW(DS_00108898) = 0x5555u; DSW(DS_001088AC) = 0x5555u;         \
+        DSB(DS_0010889C) = 0x55u; DSB(DS_0010889D) = 0x55u;             \
+        DSB(DS_001077B0 + 0x5Bu) = 0x33u; DSB(slot1 + 0x5Bu) = 0x10u;   \
+        DSB(0x00104B1Au) = 1;                                           \
+    } while (0)
+
+    /* A: 0x4B788's grab (side 0, character 0, si 3): bit 6, the shadow
+     * killed, +0x29 bits 6 and 4 cleared (unflipped fighter), x = 0x10000 -
+     * 0x55 * 64 (0xC9780), height 3 * 64 + 0x800 (0xC9781), the fighter's y
+     * word, +0x2C = 0x496AC(0x800) = 0xD80 (after the y store; the seeded
+     * 0x500 would give 0xF00), stopped, type 8 on 0xC97AC[0][3] at hold 0,
+     * +0x4A = the fighter's pset 1 with the back link 5, and the fighter on
+     * 0xE7B02 at 3.0. Case 8 then runs in the same pass: 0x4AF04 finds the
+     * fighter in its hold, so nothing more (the lie timer is untouched). */
+    GR_SEED(0x85u);
+    rng_seed(0x4321u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_00100B54), 2);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0xC5);
+    CHECK_EQ_INT((int)DSB(entry + 0x20u), 0);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Fu), 0);
+    CHECK_EQ_INT((int)DSW(entry + 0x18u), 50);
+    CHECK_EQ_INT((int)DSD(entry + 0x10u), 0);
+    CHECK_EQ_INT((int)(DSB(sh_fake + 0x28u) & 0x08u), 0x08);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x00);
+    CHECK_EQ_INT((int)DSD(rec + 0x18u), 0x10000 - 0x55 * 64);
+    CHECK_EQ_INT((int)DSD(rec + 0x1Cu), 3 * 64 + 0x800);
+    CHECK_EQ_INT((int)DSW(rec + 0x32u), 0x0800);
+    CHECK_EQ_INT((int)DSW(rec + 0x2Cu), 0x0D80);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x36u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_hold0);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0);
+    CHECK_EQ_INT((int)DSB(rec + 0x4Au), 1);
+    CHECK_EQ_INT((int)DSB(link1), 5);
+    CHECK_EQ_INT((int)DSB(link2), 0x99);
+    CHECK_EQ_INT((int)DSD(fr0 + 0x08u), 0x000E7B02);
+    CHECK_EQ_INT((int)DSD(fr0 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0x4321);
+    /* The flipped fighter (+0x28 bit 0x4000): +0x29 bit 6 set, x mirrored. */
+    GR_SEED(0x85u);
+    DSW(fr0 + 0x28u) = 0x4000u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x40);
+    CHECK_EQ_INT((int)DSD(rec + 0x18u), 0x10000 + 0x55 * 64);
+    /* Character 1: the offsets (0x57, 0x0C), 0xC97AC[1][3], 0xE4744 at 5.0;
+     * 0x4AF04's character-1 range holds it. */
+    GR_SEED(0x85u);
+    GR_CHAR(1);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSD(rec + 0x18u), 0x10000 - 0x57 * 64);
+    CHECK_EQ_INT((int)DSD(rec + 0x1Cu), 0x0C * 64 + 0x800);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_hold1);
+    CHECK_EQ_INT((int)DSD(fr0 + 0x08u), 0x000E4744);
+    CHECK_EQ_INT((int)DSD(fr0 + 0x24u), 0x40A00000);
+    /* The return-0 gates grab nothing (the lie timer counts in case 4): bit
+     * 6 already set, +0x52 2 or 7, +0x4B set; +0x52 3 and 6 grab. */
+    {
+        static const u8 c1c[4] = { 0xC5u, 0x85u, 0x85u, 0x85u };
+        static const u8 st52[4] = { 4u, 2u, 7u, 4u };
+        static const u8 st4b[4] = { 0u, 0u, 0u, 1u };
+        for (i = 0; i < 4u; i++) {
+            GR_SEED(c1c[i]);
+            DSB(fr0 + 0x52u) = st52[i];
+            DSB(fr0 + 0x4Bu) = st4b[i];
+            fight_effects_pass();
+            CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 4);
+            CHECK_EQ_INT((int)DSW(entry + 0x18u), 49);
+            CHECK_EQ_INT((int)DSB(entry + 0x1Cu), c1c[i]);
+            CHECK_EQ_INT((int)DSD(entry + 0x10u), (int)sh_fake);
+        }
+        for (i = 0; i < 2u; i++) {
+            GR_SEED(0x85u);
+            DSB(fr0 + 0x52u) = (u8)(i == 0u ? 3u : 6u);
+            fight_effects_pass();
+            CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+        }
+    }
+
+    /* B: case 8's held body. With +0x1C = 0x45 the prelude skips; the holder
+     * (+0x20 side) is held while its record's +8 lies in its character's
+     * 0x4AF04 range (both ends), released one past either end. */
+    {
+        static const u32 lo[7] = { 0xE7B02u, 0xE4744u, 0xED7AEu, 0xD2DECu,
+                                   0xEB38Au, 0xD4A3Cu, 0xE137Au };
+        static const u32 hi[7] = { 0xE7B50u, 0xE47FCu, 0xED80Cu, 0xD2E06u,
+                                   0xEB3E4u, 0xD4A8Au, 0xE1432u };
+#define GR_HELD(ch, cur) do {                                           \
+        GR_SEED(0x45u);                                                 \
+        DSB(entry + 0x1Eu) = 8; DSB(entry + 0x20u) = 0;                 \
+        DSB(entry + 0x1Fu) = 3; DSB(rec + 0x4Au) = 1;                   \
+        GR_CHAR(ch); DSD(fr0 + 8u) = (cur);                             \
+        fight_effects_pass();                                           \
+    } while (0)
+        for (i = 0; i < 7u; i++) {
+            GR_HELD(i, lo[i]);
+            CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+            GR_HELD(i, hi[i]);
+            CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+            GR_HELD(i, hi[i] + 1u);
+            CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+            GR_HELD(i, lo[i] - 1u);
+            CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+        }
+        /* Characters above 6 (unsigned: 7 and 0xFF) are always held. */
+        GR_HELD(7u, 0u);
+        CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+        GR_HELD(0xFFu, 0u);
+        CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+        /* The release (character 0, one past 0xE7B50): the holder's link,
+         * +0x2A bit 3, +0x29 bit 6, +0x4A, the entry's bit 6, DS_001088AE[1]
+         * counts; 0x4B470 without a +0x1F count (3, so the reversal: +0x34
+         * 0x1111 -> 0xFF80), +0x36 = 0x240, the tumble stream at 3.0. */
+        GR_HELD(0u, 0xE7B51u);
+        CHECK_EQ_INT((int)DSB(link1), 0);
+        CHECK_EQ_INT((int)DSB(rec + 0x2Au), 0x04);
+        CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x10);
+        CHECK_EQ_INT((int)DSB(rec + 0x4Au), 0);
+        CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x05);
+        CHECK_EQ_INT((int)DSB(DS_001088AE + 1u), 6);
+        CHECK_EQ_INT((int)DSB(DS_001088AE), 7);
+        CHECK_EQ_INT((int)DSB(entry + 0x1Fu), 3);
+        CHECK_EQ_INT((int)DSB(entry + 0x20u), 0);
+        CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFF80);
+        CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x0240);
+        CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_tumble);
+        CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+        CHECK_EQ_INT((int)DSD(entry + 0x10u), (int)sh_fake);
+        /* No +0x4A link: nothing, even out of the hold. */
+        GR_SEED(0x45u);
+        DSB(entry + 0x1Eu) = 8; DSB(entry + 0x20u) = 0;
+        DSD(fr0 + 8u) = 0xE7B51u;
+        fight_effects_pass();
+        CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+        CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x45);
+        CHECK_EQ_INT((int)DSB(link1), 0x99);
+        /* +0x20 = 1 asks side 1's record (character 0 by pc_seed). */
+        GR_HELD(0u, 0u);                    /* side 0 out: released */
+        CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+        GR_SEED(0x45u);
+        DSB(entry + 0x1Eu) = 8; DSB(entry + 0x20u) = 1;
+        DSB(rec + 0x4Au) = 1;
+        DSD(fr0 + 8u) = 0; DSD(fr1 + 8u) = 0xE7B02u;
+        fight_effects_pass();
+        CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+#undef GR_HELD
+    }
+
+    /* C: the eighth hit. Side 0 out of its grab move tramples (+0x1F 7 -> 8)
+     * with every tail gate open: 0x4BD98 makes the entry DS_00108864 with
+     * bit 5 and mode 0x21, and spawns the two actors at x = 0x1000 +
+     * (0x2000 >> 1) - 0x100 = 0x1F00, depth 0x5000 - 0x3140; then 0x4CB18:
+     * +0x34 = -0x2000 / 0x70 = -73 (0x1A570(0) holds), +0x36 = 0x3BC0 /
+     * 0x16 = 0x2B7, less case 6's 0x10 in the same pass. */
+#define GR_EIGHTH() do {                                                \
+        GR_SEED(0x85u);                                                 \
+        DSB(DS_001077B0 + 0x5Fu) = 0;                                   \
+        DSB(entry + 0x1Fu) = 7; DSB(DS_001088F2) = 2;                   \
+    } while (0)
+#define GR_FREE_SPAWNS() do {                                           \
+        a1 = DSD(DS_00108868); a2 = DSD(DS_0010886C);                   \
+        if (a1 != 0x11111111u && a1 != 0u) { actor_set_dead(a1); actor_free(a1); } \
+        if (a2 != 0x22222222u && a2 != 0u) { actor_set_dead(a2); actor_free(a2); } \
+    } while (0)
+    GR_EIGHTH();
+    rng_seed(0x4321u);
+    fight_effects_pass();
+    a1 = DSD(DS_00108868); a2 = DSD(DS_0010886C);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Fu), 8);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x25);
+    CHECK_EQ_INT((int)DSD(DS_00108864), (int)entry);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x21);
+    CHECK_EQ_INT((int)DSB(DS_001088C1), 1);
+    CHECK_EQ_INT((int)DSB(DS_001088C5), 1);
+    CHECK_EQ_INT((int)DSW(DS_001088AA), 0x1E);
+    CHECK_EQ_INT((int)DSW(DS_001088A0), 0);
+    CHECK_EQ_INT((int)DSW(DS_00108898), 0);
+    CHECK_EQ_INT((int)DSW(DS_001088AC), 0);
+    CHECK_EQ_INT((int)DSB(DS_0010889C), 0);
+    CHECK_EQ_INT((int)DSB(DS_0010889D), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x02);
+    CHECK_EQ_INT((int)DSD(DS_00108884), 0x1F00);
+    CHECK(a1 != 0x11111111u && a1 != 0u, "0x4BD98 spawned 0xBAB88 into DS_00108868");
+    CHECK(a2 != 0x22222222u && a2 != 0u, "0x4BD98 spawned 0xBAB9C into DS_0010886C");
+    if (a1 != 0x11111111u && a1 != 0u && a2 != 0x22222222u && a2 != 0u) {
+        CHECK_EQ_INT((int)DSD(a1 + 0x08u), 0x788);          /* 0xBAB88[0] */
+        CHECK_EQ_INT((int)DSD(a1 + 0x18u), 0x1F00);
+        CHECK_EQ_INT((int)DSD(a1 + 0x1Cu), 0x5000 - 0x3140);
+        CHECK_EQ_INT((int)DSW(a1 + 0x32u), (int)DSW(DS_000BD898));
+        CHECK_EQ_INT((int)DSW(a1 + 0x36u), 0x01A4);
+        CHECK_EQ_INT((int)DSD(a2 + 0x08u), 0x000EF66A);
+        CHECK_EQ_INT((int)DSD(a2 + 0x24u), 0x3F800000);
+        CHECK_EQ_INT((int)DSD(a2 + 0x18u), 0x1F00);
+        CHECK_EQ_INT((int)DSW(a2 + 0x36u), 0x01A4);
+    }
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_tumble);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFFB7);
+    CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x02A7);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0x4321);
+    GR_FREE_SPAWNS();
+    /* The midpoint of -0x1001 and 0 is -0x801 (not the truncated -0x800);
+     * the distance 0x1001 gives -0x1001 / 0x70 = -36. */
+    GR_EIGHTH();
+    DSD(DS_001077E4) = (u32)-0x1001; DSD(DS_00107878) = 0;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_00108884), -0x801 - 0x100);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFFDC);
+    GR_FREE_SPAWNS();
+    /* 0x4BD98's gates (DS_00104AD8 > 0, DS_00104ABC < 2, 0x13134 both beyond
+     * -0x3300 or 0x3300) stop it, but 0x4CB18 still runs. */
+    for (i = 0; i < 4u; i++) {
+        GR_EIGHTH();
+        if (i == 0u) DSD(DS_00104AD8) = 1;
+        if (i == 1u) DSD(DS_00104ABC) = 1;
+        if (i == 2u) { DSD(fr0 + 0x18u) = (u32)-0x3301; DSD(fr1 + 0x18u) = (u32)-0x3301; }
+        if (i == 3u) { DSD(fr0 + 0x18u) = 0x3301u; DSD(fr1 + 0x18u) = 0x3301u; }
+        fight_effects_pass();
+        CHECK_EQ_INT((int)DSB(entry + 0x1Fu), 8);
+        CHECK_EQ_INT((int)DSD(DS_00108864), 0);
+        CHECK_EQ_INT((int)DSW(DS_00104B00), 3);
+        CHECK_EQ_INT((int)DSD(DS_00108868), 0x11111111);
+        CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x05);
+        CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+        CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFFB7);
+        CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x02A7);
+    }
+    /* ... and pass it: DS_00104AD8 = -1 (signed), DS_00104ABC = 0xFFFFFFFF
+     * (unsigned), both x at -0x3300, both at 0x3300, one each side. */
+    for (i = 0; i < 4u; i++) {
+        GR_EIGHTH();
+        if (i == 0u) { DSD(DS_00104AD8) = 0xFFFFFFFFu; DSD(DS_00104ABC) = 0xFFFFFFFFu; }
+        if (i == 1u) { DSD(fr0 + 0x18u) = (u32)-0x3300; DSD(fr1 + 0x18u) = (u32)-0x3300; }
+        if (i == 2u) { DSD(fr0 + 0x18u) = 0x3300u; DSD(fr1 + 0x18u) = 0x3300u; }
+        if (i == 3u) { DSD(fr0 + 0x18u) = (u32)-0x3301; DSD(fr1 + 0x18u) = 0x3301u; }
+        fight_effects_pass();
+        CHECK_EQ_INT((int)DSB(entry + 0x1Fu), 8);
+        CHECK_EQ_INT((int)DSD(DS_00108864), (int)entry);
+        CHECK_EQ_INT((int)DSW(DS_00104B00), 0x21);
+        GR_FREE_SPAWNS();
+    }
+    /* 0x4CB18's side is +0x20: side 1 alone hits (side 0's box emptied, its
+     * pset 1 with bit 15 set so 0x1A570(0) = 0 would give +73); side 1's
+     * pset 2 is clear, so -73. pc_seed zeroes the slots' +0x34, re-seeded. */
+    GR_EIGHTH();
+    ph_seed(p, p2, 1);
+    DSB(DS_00100AC8 + 2u) = 0;
+    DSW(FIGHT_ACTORS + 1u * 0x20u) = 0x8004u;
+    DSD(ps5 + 4u) = (u32)x_hit; DSD(ps5 + 8u) = (u32)y_hit;
+    DSD(DS_001077E4) = 0x1000u; DSD(DS_00107878) = 0x3000u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x20u), 1);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Fu), 8);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFFB7);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x21);
+    GR_FREE_SPAWNS();
+    /* The tail's own gates each skip 0x4BD98 and 0x4CB18: 0x4B470 alone
+     * leaves the reversal 0xFF80 and 0x240 - 0x10. */
+    for (i = 0; i < 8u; i++) {
+        GR_EIGHTH();
+        if (i == 0u) DSB(DS_00104B1D) = 2;
+        if (i == 1u) DSB(DS_00104B1D) = 3;
+        if (i == 2u) DSW(DS_00104AFC) = 1;
+        if (i == 3u) DSB(DS_001088C1) = 1;
+        if (i == 4u) DSB(DS_001088F2) = 1;
+        if (i == 5u) DSB(entry + 0x1Fu) = 6;
+        if (i == 6u) DSB(DS_001088C5) = 1;
+        if (i == 7u) DSD(DS_00108864) = sh_fake;
+        fight_effects_pass();
+        CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+        CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFF80);
+        CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x0230);
+        CHECK_EQ_INT((int)DSD(DS_00108868), 0x11111111);
+    }
+    DSW(DS_00104AFC) = 0;
+#undef GR_EIGHTH
+
+    /* D: 0x4CB18 directly (0x4C60C's flag 1 arm too). Distance 0x2000; the
+     * height 0x1000. Side 1's pset 2 with bit 15 set makes 0x1A570(1) = 0. */
+    {
+        static const u32 flag[5] = { 1u, 0u, 1u, 0u, 0u };
+        static const u32 side[5] = { 0u, 1u, 1u, 1u, 1u };
+        static const u32 e4[5] = { 0x1000u, 0x1000u, 0x1000u, 0x1000u, 0x3000u };
+        static const u32 h1c[5] = { 0x1000u, 0x1000u, 0x1000u, 0x5000u, 0x1000u };
+        static const int v34[5] = { 0xFF6E, 0x0049, 0x0092, 0x0049, 0x0049 };
+        static const int v36[5] = { 0, 0x01FD, 0, 0xFF15, 0x01FD };
+        for (i = 0; i < 5u; i++) {
+            GR_SEED(0xFFu);
+            DSW(FIGHT_ACTORS + 2u * 0x20u) = 0x8004u;
+            DSD(DS_001077E4) = e4[i];
+            DSD(DS_00107878) = (e4[i] == 0x1000u) ? 0x3000u : 0x1000u;
+            DSD(rec + 0x1Cu) = h1c[i];
+            fight_4cb18(entry, 3u, flag[i], side[i]);
+            CHECK_EQ_INT((int)DSW(rec + 0x34u), v34[i]);
+            CHECK_EQ_INT((int)DSW(rec + 0x36u), v36[i]);
+            CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+            CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x7F);
+            CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_tumble);
+            CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+        }
+        /* The distance caps at 0x3F00: 0x5000 gives 0x3F00 / 0x70 = 144. */
+        GR_SEED(0xFFu);
+        DSW(FIGHT_ACTORS + 2u * 0x20u) = 0x8004u;
+        DSD(DS_001077E4) = 0; DSD(DS_00107878) = 0x5000u;
+        fight_4cb18(entry, 3u, 0u, 1u);
+        CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x0090);
+    }
+
+    /* E: 0x4D898 directly (the hit test's box moves for characters 5 and
+     * 6, 0x15B90's adjustment, so the move gates are called without it).
+     * With +0x1C bit 6 set an accepted move returns 0 without a write; a
+     * refused one returns 1. */
+    {
+        static const u8 ok_ch[7] = { 0u, 0u, 4u, 5u, 1u, 6u, 3u };
+        static const u8 ok_mv[7] = { 0x2Du, 0x0Au, 0x0Au, 0x0Au, 0x0Bu, 0x0Bu, 0x2Du };
+        static const u8 no_ch[8] = { 0u, 1u, 2u, 3u, 3u, 6u, 4u, 5u };
+        static const u8 no_mv[8] = { 0x0Bu, 0x0Au, 0x0Au, 0x0Au, 0x0Bu, 0x0Au, 0x0Bu, 0x0Bu };
+        for (i = 0; i < 7u; i++) {
+            GR_SEED(0xC5u);
+            GR_CHAR(ok_ch[i]);
+            DSB(DS_001077B0 + 0x5Fu) = ok_mv[i];
+            CHECK_EQ_INT(fight_4d898(1u, entry, 3u), 0);
+            CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0xC5);
+            CHECK_EQ_INT((int)DSB(entry + 0x20u), 1);
+        }
+        for (i = 0; i < 8u; i++) {
+            GR_SEED(0xC5u);
+            GR_CHAR(no_ch[i]);
+            DSB(DS_001077B0 + 0x5Fu) = no_mv[i];
+            CHECK_EQ_INT(fight_4d898(1u, entry, 3u), 1);
+        }
+        /* The accepted move's return-0 gates (bit 6 clear): +0x52 2 or 7
+         * and +0x4B set grab nothing; +0x52 3 and 6 grab (type 8). */
+        {
+            static const u8 st52[5] = { 2u, 7u, 4u, 3u, 6u };
+            static const u8 st4b[5] = { 0u, 0u, 1u, 0u, 0u };
+            for (i = 0; i < 5u; i++) {
+                GR_SEED(0x85u);
+                DSB(fr0 + 0x52u) = st52[i];
+                DSB(fr0 + 0x4Bu) = st4b[i];
+                CHECK_EQ_INT(fight_4d898(1u, entry, 3u), 0);
+                CHECK_EQ_INT((int)DSB(entry + 0x1Eu), i < 3u ? 4 : 8);
+                CHECK_EQ_INT((int)DSB(entry + 0x1Cu), i < 3u ? 0x85 : 0xC5);
+            }
+        }
+        /* Hit 2 reads side 1's slot: its move 0xA with character 4. */
+        GR_SEED(0xC5u);
+        DSB(slot1 + 0x7Au) = 4;
+        DSB(slot1 + 0x5Fu) = 0x0Au;
+        DSB(DS_001077B0 + 0x5Fu) = 0;
+        CHECK_EQ_INT(fight_4d898(2u, entry, 3u), 0);
+        CHECK_EQ_INT(fight_4d898(1u, entry, 3u), 1);
+    }
+    /* Through 0x4D7A4: the accepted move leaves the entry alone (type 4, no
+     * count); a refused one tramples (type 6, +0x20 = 0, +0x1F = 1). */
+    GR_SEED(0xC5u);
+    fight_4d7a4(entry, 3u);
+    CHECK_EQ_INT((int)DSD(DS_00100B54), 2);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 4);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Fu), 0);
+    GR_SEED(0xC5u);
+    DSB(DS_001077B0 + 0x5Fu) = 0x0Bu;
+    fight_4d7a4(entry, 3u);
+    CHECK_EQ_INT((int)DSD(DS_00100B54), 2);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+    CHECK_EQ_INT((int)DSB(entry + 0x20u), 0);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Fu), 1);
+    /* No DS_00105B3A or other-side +0x54 gate (0x4B788 has both). */
+    GR_SEED(0xC5u);
+    DSB(DS_00105B3A) = 2;
+    fight_4d7a4(entry, 3u);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 4);
+    GR_SEED(0xC5u);
+    DSB(slot1 + 0x54u) = 3;
+    fight_4d7a4(entry, 3u);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 4);
+    /* Bit 7 clear: no hit test. */
+    GR_SEED(0x45u);
+    DSB(DS_001077B0 + 0x5Fu) = 0;
+    fight_4d7a4(entry, 3u);
+    CHECK_EQ_INT((int)DSD(DS_00100B54), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 4);
+    /* Both sides count as side 0; a held actor (+0x4A = 2) is released
+     * without 0x4B69C's DS_001088B2 store. */
+    GR_SEED(0xC5u);
+    ph_seed(p, p2, 1);
+    DSD(ps5 + 4u) = (u32)x_hit; DSD(ps5 + 8u) = (u32)y_hit;
+    DSB(DS_001077B0 + 0x5Fu) = 0;
+    DSB(DS_001077B0 + 0x94u + 0x5Fu) = 0;
+    DSB(rec + 0x4Au) = 2;
+    fight_4d7a4(entry, 3u);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 6);
+    CHECK_EQ_INT((int)DSB(entry + 0x20u), 0);
+    CHECK_EQ_INT((int)DSB(link2), 0);
+    CHECK_EQ_INT((int)DSB(rec + 0x2Au), 0x04);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x10);
+    CHECK_EQ_INT((int)DSB(rec + 0x4Au), 0);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x05);
+    CHECK_EQ_INT((int)DSB(DS_001088AE + 1u), 6);
+    CHECK_EQ_INT((int)DSB(DS_001088B2 + 1u), 0x33);
+
+    /* 0x4D898's grab (character 0, 0x2D): as 0x4B788's, returning 0 (no
+     * +0x1F count), then DS_00104B1A = 1's slot +0x5B gains 0x10 * 120 / 100
+     * = 19 for the actor's +0x48 = 0x20 (si 3 still picks the stream). */
+    GR_SEED(0x85u);
+    DSB(rec + 0x48u) = 0x20u;
+    fight_4d7a4(entry, 3u);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0xC5);
+    CHECK_EQ_INT((int)DSB(entry + 0x20u), 0);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Fu), 0);
+    CHECK_EQ_INT((int)DSD(entry + 0x10u), 0);
+    CHECK_EQ_INT((int)(DSB(sh_fake + 0x28u) & 0x08u), 0x08);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x00);
+    CHECK_EQ_INT((int)DSD(rec + 0x18u), 0x10000 - 0x55 * 64);
+    CHECK_EQ_INT((int)DSD(rec + 0x1Cu), 3 * 64 + 0x800);
+    CHECK_EQ_INT((int)DSW(rec + 0x32u), 0x0800);
+    CHECK_EQ_INT((int)DSW(rec + 0x2Cu), 0x0D80);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x36u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_hold0);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0);
+    CHECK_EQ_INT((int)DSB(rec + 0x4Au), 1);
+    CHECK_EQ_INT((int)DSB(link1), 5);
+    CHECK_EQ_INT((int)DSD(fr0 + 0x08u), 0x000E7B02);
+    CHECK_EQ_INT((int)DSD(fr0 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSB(slot1 + 0x5Bu), 0x10 + 19);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x5Bu), 0x33);
+    /* Flipped: +0x29 bit 6 and the mirrored x. */
+    GR_SEED(0x85u);
+    DSW(fr0 + 0x28u) = 0x4000u;
+    fight_4d7a4(entry, 3u);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x40);
+    CHECK_EQ_INT((int)DSD(rec + 0x18u), 0x10000 + 0x55 * 64);
+    /* The 0x4D880 weights by +0x48 - 0x20 (0x1F wraps to 0xFF: the default). */
+    {
+        static const u8 k48[8] = { 0x20u, 0x21u, 0x22u, 0x23u, 0x24u, 0x25u, 0x26u, 0x1Fu };
+        static const int add[8] = { 19, 16, 25, 14, 12, 15, 15, 15 };
+        for (i = 0; i < 8u; i++) {
+            GR_SEED(0x85u);
+            DSB(rec + 0x48u) = k48[i];
+            fight_4d7a4(entry, 3u);
+            CHECK_EQ_INT((int)DSB(slot1 + 0x5Bu), 0x10 + add[i]);
+        }
+    }
+    /* The cap 0x78; the 0xA/0xB moves add 1 (capped the same). */
+    GR_SEED(0x85u);
+    DSB(rec + 0x48u) = 0x20u;
+    DSB(slot1 + 0x5Bu) = 0x70u;
+    fight_4d7a4(entry, 3u);
+    CHECK_EQ_INT((int)DSB(slot1 + 0x5Bu), 0x78);
+    GR_SEED(0x85u);
+    DSB(DS_001077B0 + 0x5Fu) = 0x0Au;
+    fight_4d7a4(entry, 3u);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSB(slot1 + 0x5Bu), 0x11);
+    GR_SEED(0x85u);
+    DSB(DS_001077B0 + 0x5Fu) = 0x0Au;
+    DSB(slot1 + 0x5Bu) = 0x78u;
+    fight_4d7a4(entry, 3u);
+    CHECK_EQ_INT((int)DSB(slot1 + 0x5Bu), 0x78);
+    /* Character 1 with 0xB: its offsets, 0xC97AC[1][3], 0xE4744 at 5.0. */
+    GR_SEED(0x85u);
+    GR_CHAR(1);
+    DSB(DS_001077B0 + 0x5Fu) = 0x0Bu;
+    fight_4d7a4(entry, 3u);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSD(rec + 0x18u), 0x10000 - 0x57 * 64);
+    CHECK_EQ_INT((int)DSD(rec + 0x1Cu), 0x0C * 64 + 0x800);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_hold1);
+    CHECK_EQ_INT((int)DSD(fr0 + 0x08u), 0x000E4744);
+    CHECK_EQ_INT((int)DSD(fr0 + 0x24u), 0x40A00000);
+    CHECK_EQ_INT((int)DSB(slot1 + 0x5Bu), 0x11);
+#undef GR_FREE_SPAWNS
+#undef GR_SEED
+#undef GR_CHAR
+
+    gr_unpatch();
+    DSB(link2) = sv_link2;
+    DSD(0x000C9604u + 12u) = sv_tumble;
+    DSB(DS_00105B3A) = sv_3a;
+    DSD(DS_000EF6D8) = sv_rng;
+    tf_put(sv_88, 0x00108840u, sizeof sv_88);
+    tf_put(sv_4a, 0x00104AB8u, sizeof sv_4a);
     tf_put(sv_slots, DS_001077B0, sizeof sv_slots);
     tf_put(sv_g, DS_00100A70, sizeof sv_g);
     tf_put(sv_rows0, 0x000FD160u, sizeof sv_rows0);
@@ -11738,6 +12361,7 @@ int test_fight(void)
     check_think_chain();
     check_projectile_step();
     check_point_trample();
+    check_grab_arms();
     check_attack_consume();
     check_char_select();
     check_health_bars();

@@ -131,4 +131,22 @@ void fight_hud_spawn(u32 enable);
  * table is a named gap (§7.9). */
 void fight_health_bars(void);
 
+/* 0x4CB18 (record §42-C). The launch of a worshipper entry: the 0xC9604[si]
+ * tumble stream at 3.0, +0x34 from the fighters' distance (over 0x38 when
+ * `flag`, else 0x70; negated when 0x1A570(side)), +0x36 = 0 (flag) or
+ * (0x3BC0 - height) / 0x16, type 6, +0x1C bit 7 cleared. Called by 0x4B470's
+ * eighth-hit tail; its other caller 0x4C60C is not ported. */
+void fight_4cb18(u32 entry, u32 index, u32 flag, u32 side);
+
+/* 0x4D898 (record §42-C). The mode-0x22 grab arm 0x4D7A4 calls: 1 (trample)
+ * unless fighter `hit - 1` is in the character's grab move (0xC97F2[ch], or
+ * 0xA / 0xB by character); an accepted move grabs as 0x4B788 does, feeds
+ * DS_00104B1A's slot +0x5B and returns 0. EAX = hit, EDX = entry, EBX = si. */
+int fight_4d898(u32 hit, u32 entry, u32 index);
+
+/* 0x4D7A4 (record §42-C). The mode-0x22 effects pass's per-entry prelude (the
+ * twin of 0x4B69C, through the grab arm 0x4D898). Its only caller, the
+ * mode-0x22 pass 0x4D2D0, is not ported. */
+void fight_4d7a4(u32 entry, u32 index);
+
 #endif /* PRAGE_GAME_FIGHT_H */

@@ -8254,3 +8254,173 @@ script.
 - Remaining named gaps: the voice `0x2C3FC(0xB5)` in `0x22B28` (spec §7); the
   unported siblings `0x22CE4`, `0x22D8C` and `0x2365C` and the other
   `0x370F0` callers `0x48AAC`/`0x48D94`.
+
+## 42-C. The grab arms `0x4B788`/`0x4D898`, case 8's held body and `0x4B470`'s eighth-hit tail (named-gap batch 2, branch `gap2-grab`)
+
+**Result in one line.** The named gaps §29 left in the effects pass, `0x4B788`'s
+grab body, case 8's held body (`0x4AF04`) and `0x4B470`'s eighth-hit tail
+(`0x4BD98` with `0x13134`, then `0x4CB18`), are ported from the raw, with the
+mode-`0x22` twin prelude `0x4D7A4` and its grab arm `0x4D898` and the shared
+callee `0x2BD20`. The demo reaches none of them (§29: its fighters never touch
+a lying worshipper in their grab move, and no entry gets eight hits), so they
+are unit-tested; no oracle is expected to move.
+
+### 42-C.1 Entrances (get_xrefs_to, a rel32 CALL/JMP/Jcc scan and a dword scan of both fixed-up objects)
+
+- `0x4B788`: one call, `0x4B705` in `0x4B69C`. No dword.
+- `0x4D898`: one call, `0x4D80B` in `0x4D7A4`. `0x4D7A4`: one call, `0x4D323`
+  in `0x4D2D0`, made only when the word `0x104B00` is `0x22` (`0x4D317 cmp
+  edx,0x22; jne`), with EDX = (u16)(`+0x48` − `0x20`). `0x4D2D0` is called at
+  `0x26D28` (`0x26C8C`) and `0x26FF0` (`0x26F58`), which `0x24C5C`'s mode
+  table `0x24B8C` reaches for modes `0x22` (`0x25321`) and `0x24`
+  (`0x2532B`). None of these is ported.
+- `0x4BD98`: one call, `0x4B590`. `0x13134`: one call, `0x4BDBA`.
+- `0x4CB18`: `0x4B59E` (`0x4B470`) and `0x4C760`/`0x4C774` (`0x4C60C`, EBX = 1
+  when the side's slot `+0x5F` is `0xC..0xF`, else 0; `0x4C60C`'s one caller
+  is `0x4C21B` in `0x4BF18`; not ported).
+- `0x4AF04`: one call, `0x4A0A2` (case 8). `0x2BD20`: `0x4B956`, `0x4DA85`.
+- No dword in either object equals any of these addresses.
+
+### 42-C.2 The raw (Ghidra disassembly, fixups applied; tables by `read_memory`)
+
+- **`0x4B788`'s grab** (`0x4B83D..0x4B98F`; ECX = entry, EBX = slot, DL =
+  ch, EDI = si): `+0x1C |= 0x40`; `+0x10` killed (`0x2B150`) and zeroed;
+  DH = 1 when the fighter record's `+0x28` word lacks `0x4000`: then the
+  actor's `+0x29 &= 0xBF`, else `|= 0x40`; `+0x29 &= 0xEF`; `+0x20` = hit − 1;
+  x: `mov eax,[ch*2 + 0xC977D]; sar eax,0x18; shl eax,6` — the signed byte
+  `0xC9780 + ch * 2` × 64 — subtracted from the fighter's `+0x18` when DH, else
+  added; height `[ch*2 + 0xC977E] >> 24` (the byte `0xC9781 + ch * 2`) × 64 +
+  the fighter's `+0x1C`; the `+0x32` word copied; `+0x2C` = `0x496AC(+0x30 >>
+  16)` after that copy; `+0x38`, `+0x36`, `+0x34` = 0; type 8;
+  `0x2BC30(actor, [[ch*4 + 0xC97AC] + si*4], 0)`; the actor's `+0x4A` = the
+  fighter's `+0x56` byte; `0x2BD20(actor, word +0x56)`; `0x2BC30(fighter,
+  [ch*4 + 0xC9790], [ch*4 + 0xC97C8])`; the voice `0x2C3FC(si < 3 ? 0xD4 :
+  0xD5)`; return 0. `0x2B150` preserves EBX/ECX/EDX, `0x2BC30` EBX/ECX/ESI,
+  `0x2C3FC` EBX/EDX/EDI and does not write ECX, so the live registers hold.
+- **`0x4D898`** (`0x4D898..0x4DBB3`): the slot of hit − 1; `[esp+4]` = its
+  `+0x5F` (mv), `[esp+8]` = its `+0x7A` (ch, read back as `[esp+5] >> 24`,
+  signed). Accepted when mv = `0xC97F2[ch]`, or ch ∈ {0, 5, 4} and mv = `0xA`
+  (`0x4D8E2..0x4D8FC`), or ch ∈ {1, 6} and mv = `0xB` (`0x4D8FE..0x4D91C`);
+  else return 1. No `0x105B3A` or other-side `+0x54` gate. Then the same
+  return-0 gates and the same grab body as `0x4B788` (`0x4D922..0x4DABE`,
+  DL for DH). Then the award to the slot `0x1077B0 + byte[0x104B1A] * 0x94`,
+  `+0x5B`: for mv = `0xC97F2[ch]`, AL by (u8)(actor `+0x48` − `0x20`) through
+  the table `0x4D880` = `0x4DAF3, 0x4DAF7, 0x4DAFB, 0x4DAFF, 0x4DB03, 0x4DB07`
+  (AL = `0x10, 0xE, 0x15, 0xC, 0xA, 0xD`; above 5 → `0x4DB07`), then
+  `(AL * 0x78) / 0x64` (`shl 4; sub; *8; idiv 0x64`); else 1. When `+0x5B` +
+  the award > `0x78` (signed) it becomes `0x78`, else it adds. Return 0.
+- **`0x4D7A4`**: `0x4B69C`'s body with `0x4D898` for `0x4B788`, and without the
+  `0x1088B2[+0x21]` = 1 store of the release (`0x4D869` goes straight to
+  `0x4D86F`).
+- **Case 8** (`0x4A08A..0x4A110`): bit 6 clear → skip; `0x4AF04(+0x20)`
+  non-zero → skip; the actor's `+0x4A` zero → skip; else `0x1014F4 + k *
+  0x68 + 0x4B` = 0, `+0x2A &= 0xF7`, `+0x29 &= 0xBF`, `+0x4A` = 0, `+0x1C &=
+  0xBF`, `0x1088AE[+0x21]` += 1, `0x1088B2[+0x21]` = 1, `0x4B470(entry, EDX =
+  EDI = si)` — without `0x4B69C`'s `+0x1F` count.
+- **`0x4AF04`** (AL = side, zero-extended): ch = the slot's `+0x7A`; `ja` 6 →
+  1; else the table `0x4AEE8` (`0x4AF39, 0x4AF7F, 0x4AFC1, 0x4AFE0, 0x4AFFF,
+  0x4AF5C, 0x4AFA2`) compares the fighter record's `+8` (its stream cursor)
+  unsigned against `[0xE7B02, 0xE7B50]`, `[0xE4744, 0xE47FC]`, `[0xED7AE,
+  0xED80C]`, `[0xD2DEC, 0xD2E06]`, `[0xEB38A, 0xEB3E4]`, `[0xD4A3C,
+  0xD4A8A]`, `[0xE137A, 0xE1432]` for ch 0..6: inside → 1, else 0. Each range
+  starts at `0xC9790[ch]`.
+- **`0x4B470`'s tail** (`0x4B584..0x4B59E`): EBX = `[0x108864]` (0 past the
+  gate); `0x4BD98(EAX = entry)`, which pushes and pops EBX; then
+  `0x4CB18(EAX = entry, EDX = EDI = si, EBX = 0, ECX = byte +0x20)`,
+  unconditionally.
+- **`0x4BD98`**: returns when `[0x104AD8]` > 0 (`jg`), `[0x104ABC]` < 2
+  (`jc`) or `0x13134()` ≠ 0. Else `0x108864` = entry, type 6, `0x1088C1` =
+  1, word `0x104B00` = `0x21`, `0x1088C5` = 1, word `0x1088AA` = `0x1E`, words
+  `0x1088A0`/`0x108898`/`0x1088AC` = 0, bytes `0x10889D`/`0x10889C` = 0,
+  `0x104AEC &= 0xFE`, `+0x1C |= 0x20`; `0x108884` = the midpoint of
+  `[0x1077E4]`/`[0x107878]` (signed `jge`: min + ((max − min) `sar` 1)), then
+  less `[0x108854]`; `0x2AE14(0xBAB88, EDX = [0x108884], ECX = word[0xBD898],
+  EBX = [0x108880] − 0x3140; 0)` into `0x108868` and the same from `0xBAB9C`
+  into `0x10886C`; `0x2BC30(0x10886C's actor, 0xEF66A, 1.0)`; both `+0x36` =
+  `0x1A4`. (Ghidra's decompile of the midpoint and the spawn arguments is
+  wrong; the disassembly is followed.)
+- **`0x13134`**: 1 when both fighter records' `+0x18` are below −`0x3300`, or
+  both above `0x3300` (signed); else 0.
+- **`0x4CB18`** (EAX = entry, EDX = si, EBX = flag, ECX = side): the voice
+  `0x2C3FC(si < 3 ? 0xD1 : 0xD0)`; `0x2BC30(actor, 0xC9604[si], 3.0)`; d =
+  |`[0x1077E4]` − `[0x107878]`| capped at `0x3F00`; h = `0x3BC0` − the actor's
+  `+0x1C`; `0x1A570(side)` true negates d; `+0x34` = d / (flag ? `0x38` :
+  `0x70`); `+0x36` = flag ? 0 : h / `0x16` (both `cdq; idiv`); type 6;
+  `+0x1C &= 0x7F`.
+- **`0x2BD20`** (EAX = rec, EDX = v): `[0x1014F4] + rec.+0x4A * 0x68 + 0x4B` =
+  BL; return 0.
+- Tables (`read_memory`): `0xC9780` pairs (x, y) = (`0x55`, 3), (`0x57`,
+  `0xC`), (4, 3), (`0x3F`, 0), (`0x4C`, −1), (`0x55`, 3), (`0x48`, 3);
+  `0xC97AC` = `0xC967C, 0xC96AC, 0xC96C4, 0xC96DC, 0xC9694, 0xC96F4, 0xC970C`;
+  `0xC9790` = `0xE7B02, 0xE4744, 0xED7AE, 0xD2DEC, 0xEB38A, 0xD4A3C, 0xE137A`;
+  `0xC97C8` = 3.0, 5.0, 4.0, 4.0, 4.0, 3.0, 5.0; `0xC97E4` = 3 3 2 3 2 3 3,
+  `0xC97EB` = 6 6 5 5 4 6 6, `0xC97F2` = `0x2D` ×7. The descriptors
+  `0xBAB88`/`0xBAB9C` start with the sprite ids `0x788`/`0x780` and carry
+  `+0x28` bit `0x800` (no stream walk at the spawn).
+
+### 42-C.3 The port
+
+`fight.c`: `fight_4b788` completed; new `fight_13134`, `fight_4bd98`,
+`fight_4cb18` (exported for the future `0x4C60C`), `fight_4af04`,
+`fight_4d898` and `fight_4d7a4` (exported for the future `0x4D2D0`); case 8's
+held body and `0x4B470`'s tail wired. `actors.c`: `actors_link_held`
+(`0x2BD20`), next to `0x2BCF4`. The voices are `PORT:` notes (spec §7). The
+grab body is written out twice, as the raw has it.
+
+### 42-C.4 The assertions
+
+`check_point_trample`'s case F asserted the old gap (the grab move with
+`+0x52` in range left the entry to case 4); it now asserts the grab (type 8,
+`+0x1C` `0xC5`, `+0x20` 0, the lie timer untouched), with the streams below
+patched. New `check_grab_arms` (`test_fight.c`) on the same fixture. The real
+hold streams start with opcode words, so `gr_patch` gives `0xE7B02`/`0xE4744`
+a plain sprite word 4 in place (inside `0x4AF04`'s ranges, and the fighters'
+pset id, so the hit test keeps its sprite), points `0xC97AC[0][3]`/`[1][3]`
+at scratch streams and gives `0xEF66A` a plain word; all are restored. It
+covers: `0x4B788`'s grab for characters 0 (unflipped and flipped) and 1, every
+field above, the return-0 gates and the `+0x52` bounds; case 8 held at both
+ends of each character's range and released one past either end, characters
+above 6 always held, the release's stores, no `+0x4A` link, the `+0x20` side;
+the eighth hit (every `0x4BD98` store, both spawns, the `0x4CB18` launch
+after case 6's step), the signed midpoint of −`0x1001` and 0, each `0x4BD98`
+gate stopping only `0x4BD98` (both signednesses and every `0x13134` edge), a
+side-1 hitter, each tail gate; `0x4CB18` directly (both flags, both sides,
+negative height, the cap); `0x4D898`'s move gates for every character
+(directly: the hit test's box moves for characters 5/6, `0x15B90`'s
+adjustment), hit 2's slot, `0x4D7A4`'s missing gates, bit 7, both sides, the
+release without the `0x1088B2` store, the full grab with its award, every
+`0x4D880` weight, the cap for both awards, and character 1 with `0xB`.
+
+`0x1088B2[+0x21]` = 1 in case 8 cannot be asserted through the pass
+(`0x4A634` clears it at the pass's end, as for `0x4B69C`'s store in §29); the
+type-6 store in `0x4BD98` is always overwritten by `0x4CB18`'s.
+
+**Mutations** (`scratchpad/grab_mut.py`, `grab_mutlist.py`, `grab_mut2.out`):
+146 single-site edits of the new code, its wiring and `0x2BD20` (each
+dropped store or call, each table index forced to character 0, each sign,
+bound and signedness, each gate, each `0x4D880` weight, the award's slot,
+scale and cap, each `0x4AF04` edge and two swapped ranges). The first sweep
+left five survivors (`0x4D898`'s `+0x52` bounds and `+0x4B` gate, then
+untested) and one crash (`0x4D7A4` without its `+0x20` store left the seed
+`0x77` as `0x1A570`'s side); the test gained those gates and a valid `+0x20`
+seed (1). On the re-run 144 fail 1..46 assertions, none crashes, and two
+survive, both equivalent or unobservable: calling `0x4CB18` before
+`0x4BD98` (the two write disjoint state apart from type 6, and `0x4CB18`'s
+`&= 0x7F` leaves `0x4BD98`'s bit 5), and dropping case 8's `0x1088B2` store
+(cleared by `0x4A634` in the same pass). The sources were restored by the
+script.
+
+### 42-C.5 Measured and remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 0 compiler
+  warnings. The drivers and `make verify` were not run (the batch controller
+  runs them after the merge).
+- No oracle is expected to move: the grab needs the fighter's slot `+0x5F`
+  at its grab move while a lying worshipper's point is in its box (§29 found
+  none in the demo), and the tail needs a worshipper's eighth hit and
+  `[0x1088EF] >> 24` > 1.
+- Remaining named gaps: the voices (`0x2C3FC` in `0x4B788`, `0x4D898`,
+  `0x4CB18`); the mode-`0x21` frame `0x26540` that `0x4BD98`'s mode starts
+  (and everything reading `0x108864`/`0x108868`/`0x10886C`/`0x1088C5` there);
+  the mode-`0x22`/`0x24` pass `0x4D2D0` (so `0x4D7A4`/`0x4D898` have no port
+  caller); `0x4C60C` (`0x4CB18`'s flag-1 caller).

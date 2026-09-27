@@ -102,6 +102,9 @@ void anim_write_var(u32 rec, u8 op, u32 value);
 void actors_anim_begin(u32 rec, u32 stream, u32 frame_bits);
 /* 0x2BCF4. Point a record at `stream` and load its first sprite id. */
 void actors_anim_seek(u32 rec, u32 stream);
+/* 0x2BD20. Store `v`'s low byte at +0x4B of the pool record `rec`'s +0x4A byte
+ * names (the holder's link to the held record); returns 0. */
+u32 actors_link_held(u32 rec, u32 v);
 /* TEST-ONLY. Task 1's fourth pin replaced the opcode-8 call to 0x5D7DC with
  * `mov eax, 0`; the port draws `on ? 0 : rng_next(range)` at that one call site.
  * Set by the Task 10 title driver; nothing else calls it. */

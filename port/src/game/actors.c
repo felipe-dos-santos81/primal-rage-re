@@ -1330,6 +1330,18 @@ void actors_anim_seek(u32 rec, u32 stream)
     DSW(pset) = (u16)anim_next_sprite_id(rec, pset);
 }
 
+/* 0x2BD20 — demo-pose record §42-C. The back link of a held record: the pool
+ * record `rec`'s +0x4A byte names (0x1014F4 + k * 0x68) gets `v`'s low byte in
+ * its +0x4B (0x2BD3C `mov [edx + eax*8 + 0x4b],bl`, eax = k * 0xD). EAX = rec,
+ * EDX = v; returns 0 (0x2BD40). Its callers are the grab arms 0x4B788 (0x4B956)
+ * and 0x4D898 (0x4DA85), which pass the held record's own +0x56 word. */
+u32 actors_link_held(u32 rec, u32 v)
+{
+    DSB(DSD(DS_001014F4) + (u32)DSB(rec + 0x4Au) * ACTOR_REC_SIZE + 0x4Bu) =
+        (u8)v;                                          /* 0x2BD3C */
+    return 0;                                           /* 0x2BD40 */
+}
+
 /* ---- pset sync (0x2A31C -> 0x2A1FC -> 0x2A820) -------------------------- */
 
 static void set_dead(u32 rec);
