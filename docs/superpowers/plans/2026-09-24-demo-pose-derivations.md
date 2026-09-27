@@ -13439,7 +13439,10 @@ explained. N 3593 -> 3617, the exact pin (`e00ab15`).
   allowed by name as the three-frame splice), 6 all-black; no other
   unexplained frame. N = 3617 = the region end + 1, the largest value the
   ratchet accepts.
-- `make verify`: see 48-A.8.
+- `make verify` on `0ed0a36` (dumps redirected to the scratchpad): EXIT 0,
+  0 warnings. Front-end 517/801/3/2 (832 and 833 allowed), unchanged;
+  demo-fight empty, N 1886, unchanged; attract2 as above with N = 3617;
+  the oracle-required suite and the attract prefix: all checks passed.
 
 ### 48-A.7 Remaining gaps
 
