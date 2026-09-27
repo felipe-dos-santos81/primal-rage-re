@@ -18458,8 +18458,10 @@ static void check_update_48f98(void)
     anim_fn a37;
     u32 r0, r1, r2, r3, r4, near_p, far_p, seed, i;
     u32 f0 = R46_REC(4), f1 = R46_REC(5), sp = R46_REC(6);
+    u8 low[0x100];
 
     q42_save();
+    tf_snap(low, 0u, sizeof low);          /* r46_seed zeroes mem[0..0xFF] */
     p1 = (proc_fn)fn_resolve(0x48F98u);
     p10 = (proc_fn)fn_resolve(0x28F08u);
     a37 = (anim_fn)(void *)fn_resolve(0x37B54u);
@@ -18484,15 +18486,17 @@ static void check_update_48f98(void)
     CHECK(near_p != far_p, "0xEDD20 and 0xEDCEA leave different cursors");
 
     /* A: 0x37B54 on record 4 (+0x51 0): slot 1's record 5 takes +0x53 = 1;
-     * on record 5 (+0x51 1) slot 0's record 4; through the registration with
-     * +0x51 = 0x100 in the dword (the byte index); a zero slot writes
-     * nothing. */
+     * on record 5 (+0x51 1) slot 0's record 4; through the registration.
+     * +0x52 is seeded non-zero, so only the byte index (`and eax,0xff`)
+     * reaches the slot table. A zero slot writes nothing. */
     if (a37 != NULL) {
         r46_seed();
+        DSB(f0 + 0x52u) = 1u;
         a37(f0, 0x1234u);
         CHECK_EQ_INT((int)DSB(f1 + 0x53u), 1);
         CHECK_EQ_INT((int)DSB(f0 + 0x53u), 0x77);
         r46_seed();
+        DSB(f1 + 0x52u) = 0x80u;
         a37(f1, 0u);
         CHECK_EQ_INT((int)DSB(f0 + 0x53u), 1);
         CHECK_EQ_INT((int)DSB(f1 + 0x53u), 0x77);
@@ -18555,18 +18559,30 @@ static void check_update_48f98(void)
     CHECK_EQ_INT((int)DSB(f0 + 0x53u), 1);
     CHECK_EQ_INT((int)DSB(f1 + 0x53u), 0x77);
 
-    /* C: phase 1 beyond 0x1000: node 0 at -0x1001 (+0x34 0x4001 -> 0x8002),
-     * node 1 at +0x2000 (+0x34 0xFFF0 -> 0xFFE0); 0x108397 2 -> 0; node 2
-     * in phase 3 holds. DS_001078FD = 0 moves the watched record to record 4
-     * (x 0x90000), so node 3 at 0x90000 is within reach and draws. */
+    /* C: DS_001078FD = 0 moves the watched record to record 4 (x 0x90000).
+     * Phase 1 beyond 0x1000: node 0 at -0x1001 (+0x34 0x4001 -> 0x8002),
+     * node 1 at +0x2000 (+0x34 0xFFF0 -> 0xFFE0) and node 7 at 0x20000
+     * (record 5's x, so within reach only of the wrong record; +0x34 0x0100
+     * -> 0x0200); node 2 in phase 3 holds. Node 3, phase 0 at 0x90000, is
+     * within reach of record 4 only, so it starts 0xEDD20 and calls 0x37B54.
+     * 0x108397: 2 - 3 + 1 = 0, and nothing draws. */
     r46_seed();
     DSB(DS_001078FD) = 0u;
     DSB(R46_108397) = 2u;
     r0 = r46_node(0, 1u, 0x0008EFFFu, 0x4001u);
     r1 = r46_node(1, 1u, 0x00092000u, 0xFFF0u);
     r2 = r46_node(2, 3u, 0x00090000u, 0x0040u);
+    r3 = r46_node(3, 0u, 0x00090000u, 0x0010u);
+    r4 = r46_node(7, 1u, 0x00020000u, 0x0100u);
     rng_seed(0x1234u);
     if (p1 != NULL) p1();
+    CHECK_EQ_INT((int)DSD(r3 + 0x08u), (int)near_p);
+    CHECK_EQ_INT((int)DSW(r3 + 0x34u), 0x0008);
+    CHECK_EQ_INT((int)DSB(R46_NODE(3) + 0x0Cu), 1);
+    CHECK_EQ_INT((int)DSD(r4 + 0x08u), (int)far_p);
+    CHECK_EQ_INT((int)DSW(r4 + 0x34u), 0x0200);
+    CHECK_EQ_INT((int)DSB(R46_NODE(7) + 0x0Cu), 2);
+    CHECK_EQ_INT((int)DSB(f1 + 0x53u), 1);
     CHECK_EQ_INT((int)DSD(r0 + 0x08u), (int)far_p);
     CHECK_EQ_INT((int)DSD(r0 + 0x24u), 0x40000000);
     CHECK_EQ_INT((int)DSW(r0 + 0x34u), 0x8002);
@@ -18578,7 +18594,7 @@ static void check_update_48f98(void)
     CHECK_EQ_INT((int)DSB(R46_NODE(2) + 0x0Cu), 3);
     CHECK_EQ_INT((int)DSB(R46_108397), 0);
     CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0x1234);    /* no draw */
-    CHECK_EQ_INT((int)DSB(R46_108396), 0x05);
+    CHECK_EQ_INT((int)DSB(R46_108396), 0x85);
 
     /* D: phase 1 within 0x1000 (node 0 at +0x1000): rng(0x14) != 0 draws
      * once and does nothing else. */
@@ -18656,8 +18672,28 @@ static void check_update_48f98(void)
         r46_mirror(seed, 6u, x, 0x0C00u, y, a5);
         CHECK(!r46_same(), "0x28F08's spawn: a3/a4 swapped differ");
     }
+    /* E4: a zero slot 1 is not tested: 0x28F08 reads x from mem[0x2C] and
+     * the height through the dword at mem[0] (0x40 -> mem[0x70]). */
+    seed = r46_rng_seed(6u, 1, 1);
+    r46_seed();
+    DSD(DS_001077A8 + 4u) = 0u;
+    DSD(0x00u) = 0x40u;
+    DSD(0x2Cu) = 0x00055555u;
+    DSD(0x70u) = 0x0120ABCDu;
+    rng_seed(seed);
+    if (p10 != NULL) p10();
+    CHECK_EQ_INT((int)DSD(DS_00105BCC), (int)sp);
+    r46_snap();
+    r46_seed();
+    DSD(DS_001077A8 + 4u) = 0u;
+    DSD(0x00u) = 0x40u;
+    DSD(0x2Cu) = 0x00055555u;
+    DSD(0x70u) = 0x0120ABCDu;
+    r46_mirror(seed, 6u, 0x00055555u, 0x120u, 0x0C00u, 0x4000u);
+    CHECK(r46_same(), "0x28F08 spawns through a zero slot as the raw does");
 
     q42_restore();
+    tf_put(low, 0u, sizeof low);
 }
 
 int test_fight(void)

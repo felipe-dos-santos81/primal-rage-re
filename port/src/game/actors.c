@@ -2295,8 +2295,8 @@ static void anim_code_37B54(u32 rec, u32 arg)
  * voice 0xF0. 1: when farther than 0x1000 it starts 0xEDCEA at 2.0, doubles
  * +0x34, drops 0x108397 and bumps the phase, with voice 0xF1 once the count
  * reaches <= 0 (signed); within 0x1000 it spawns a type-0x19 actor on
- * rng(0x14) == 0 (x = +0x18, y = the SAR of +0x30 by 16, a4 = 0, a5 =
- * rng(2) ? 0x4000 : 0). Above 1 holds. The EAX index the table call passes
+ * rng(0x14) == 0 (x = +0x18, the height a3 = the SAR of +0x30 by 16, y = 0,
+ * a5 = rng(2) ? 0x4000 : 0). Above 1 holds. The EAX index the table call passes
  * is not read. */
 static void actor_type_2d_update(void)
 {
@@ -2358,8 +2358,9 @@ static void actor_type_2d_update(void)
  * at 0xA866C, its only reference; 0x48AAC sets DS_00104AE9 bit 2). The slot
  * DS_001077A8[DS_00104AD4 ^ 1] (the dword with its low bit flipped, read
  * before the draws and not tested for 0) spawns a type-0x19 actor on
- * rng(6) == 0: x = the slot's +0x2C, y = the SAR of its record's +0x30 by 16,
- * a4 = 0xC00, a5 = rng(2) ? 0x4000 : 0. The EAX index is not read. */
+ * rng(6) == 0: x = the slot's +0x2C, the height a3 = the SAR of its record's
+ * +0x30 by 16, y = 0xC00, a5 = rng(2) ? 0x4000 : 0. The EAX index is not
+ * read. */
 static void actor_type_19_spawn(void)
 {
     u32 slot = DSD(DS_001077A8 + (DSD(DS_00104AD4) ^ 1u) * 4u);  /* 0x28F0B..0x28F19 */
