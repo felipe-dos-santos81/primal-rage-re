@@ -5889,10 +5889,10 @@ static void check_mode_17_hooks(void)
         }
         CHECK(diff != 0u, "0x2F4BC's mode 0x4000 (no class bit) draws other glyphs");
     }
-    /* DS_00104B1D != 0 and DS_00104B1F == 3: DS_00104ABC = 2 and the hook
-     * 0x24B54. */
+    /* DS_00104B1D = 2 (not 0) and DS_00104B1F == 3: DS_00104ABC = 2 and the
+     * hook 0x24B54. */
     mt_seed_record();
-    DSB(DS_00104B1D) = 1u;
+    DSB(DS_00104B1D) = 2u;
     DSB(DS_00104B1F) = 3u;
     DSD(DS_00104ABC) = 0xDEADBEEFu;
     mt_seed_arm();

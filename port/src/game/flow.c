@@ -477,8 +477,9 @@ void frontend_mode_1a_step(void)
      * five hooks 0x4F980's own callers install just before arming mode 0x1A
      * (0x430E8, 0x4367C, 0x25BBC, 0x26998, 0x270BC) and 0x430C0, which
      * 0x430E8 installs for this call's 0x1B twin, are registered (record
-     * §46-B). The image stores 7 other unregistered, non-trivial values
-     * there: 0x259CC, 0x10E80, 0x24B54, 0x27134, 0x4142C, 0x25AE8 and 0x26978.
+     * §46-B), and so are the 7 other non-trivial values the image stores
+     * there (record §46-F): 0x259CC, 0x10E80, 0x24B54, 0x27134, 0x4142C,
+     * 0x25AE8 and 0x26978, mode 0x17's hooks.
      * TODO(verify): once cases 0x1A/0x1B are dispatched, a miss on any value
      * but the two no-ops is a missing port, not a skip. The returned EAX is
      * dead: `xor ah,ah` and byte/word stores of AH/DX follow. */
@@ -495,8 +496,9 @@ void frontend_mode_1b_step(void)
 {
     if (frontend_wipe_out() == 0u) return;              /* 0x4F9C8/0x4F9CF */
     /* PORT: the registry call of 0x4F9A0, with the same misses: only
-     * 0x29D60/0x5D812 are no-ops, and the seven unregistered values listed
-     * there would be skipped. EAX is overwritten by the 0x4F9D7 load. */
+     * 0x29D60/0x5D812 are no-ops, and every other value the image stores is
+     * registered (records §46-B, §46-F). EAX is overwritten by the 0x4F9D7
+     * load. */
     void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
     if (hook != NULL) hook();                           /* 0x4F9D1 */
     DSW(DS_00104B00) = DSW(DS_00104AFA);                /* 0x4F9D7/0x4F9DD */
