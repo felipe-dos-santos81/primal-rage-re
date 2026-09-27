@@ -11058,3 +11058,7 @@ no spawn bank read (#75), and the old rate (#76, the flier's tick 100).
   +0xC, the aperture and the DAC.
 - Two test comments: `0x5D` tests its first sample, not its second; the
   driver's loop-1973 screen is a pinned known divergence.
+
+## 46-A. The attract's high-score table at capture 3408 (roar-timing Task 34, branch `frame-3408d`)
+
+(In progress: the raw, the entrances, the port and the measurement follow.)
