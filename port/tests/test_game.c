@@ -702,10 +702,15 @@ static u32 hs_cell(s32 row, s32 col)
     return DSD(DS_00105F38 + (u32)row * 0xACu + (u32)col * 4u);
 }
 
+/* A cell's glyph: the sprite id and the pset's flags word (+2), with the
+ * palette entry's handle folded in. */
 static u32 hs_sprite(s32 row, s32 col)
 {
     u32 r = hs_cell(row, col);
-    return r != 0 ? (u32)(DSW(actor_pset(r)) & 0x7FFFu) : 0u;
+    if (r == 0) return 0u;
+    u32 pal = DSD(actor_pset(r) + 0x18u);
+    return ((u32)(DSW(actor_pset(r)) & 0x7FFFu) | ((u32)DSW(actor_pset(r) + 2u) << 16))
+           ^ (pal != 0u ? DSD(pal) : 0u);
 }
 
 /* 1 when the cells from `col` on row `row` hold the glyphs text_cursor_hold
@@ -782,6 +787,9 @@ static void check_hiscore_screen(void)
     hiscore_init();
 
     frontend_match_start();
+    /* Record 0 of table 0 is not drawn: row [0xA7B94] holds no cell. */
+    for (i = 0; i < 0x2Bu; i++)
+        CHECK_EQ_INT((int)hs_cell(DSB(0xA7B94u), (s32)i), 0);
     CHECK(hs_row_is(2, DSB(0xA7B95u), rows[0][0], 0x3000u), "rank 1");
     CHECK(hs_row_is(2, DSB(0xA7B96u), rows[0][1], 0x2000u), "the champion's name");
     CHECK(hs_row_is(2, DSB(0xA7B97u), rows[0][2], 0x2000u), "the champion's score");
