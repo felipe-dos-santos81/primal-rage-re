@@ -623,6 +623,17 @@ The new ratchet `make attract2-oracle` (`--attract2`, in `make verify`) finds ca
 
 **The projectile freeze `0x235C4` and the stream target `0x370F0` (record §41-C).** Two named gaps no demo frame reaches, ported from the raw and unit-tested. `0x3B464`'s projectile `+0x48` = 8 arm now calls `0x235C4` after `0x1922C`: it snapshots the struck side's slot and record (`0x33ACC` into `0x104530`/`0x104658`), runs the `0x39834` pose driver with reaction `0x2A`, and puts the slot in 0x10/0x0A with the `+0x10` handler `0x22BEC`; `0x22B28` spawns a palette effect on the fighter's pset entry, stores the `+0x14` callback `0x29D04` and stops the record's motion. `0x22BEC` holds for `0x78` ticks of the per-side word `0x10474C` (two per frame while `0x10476C[side]` is set), then restores the snapshot through `0x33B00`, keeping the live x; `0x29D04` re-acquires the character palette once no palette effect is live. `0x370F0` is the target of 21 `0xD000`/`0xD100` stream sites (three per character) and is also called by the unported `0x48AAC`/`0x48D94`. `0x22BEC`, `0x29D04` and `0x370F0` are now registered code targets. No oracle is expected to move, because the demo reaches none of them. All 59 mutations of the new code fail the suite. See §41-C of the record.
 
+**The character screen's entries `0x43738`/`0x444C8` (record §42-F).** Both callers of `0x43818` are now ported, with the callees they needed:
+- `0x43964` spawns a side's character entry and panel.
+- `0x43A08` spawns the class's side actor and the marker.
+- `0x1D810`/`0x1D7B8` release and spawn the marker.
+- `0x2F528` draws a number in the `0xBD048` font.
+- The `-1` arm of `0x2C8F0` sets the unscaled volumes.
+
+`0x43738` fills each side whose bit (side + 1) is set in `DS_00104B1F` and draws the countdown (5 or 15). `0x444C8` fills both sides and draws no countdown. Both then reset the `DS_00104AE4` hook to `0x29D60`. `0x43738` is itself that hook's target (stored by `0x28D68`/`0x28D80`) and is registered.
+
+The mode-`0x1A` dispatch and every caller are unported mode code, so no oracle moves. New `check_char_screen_open` in `test_fight.c`: 60 of 63 mutations fail it, and the 3 survivors are equivalent.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
 demo fight's remaining divergences (the capture's fight is explained up to its
 first all-black frame 1885 after the frame-1881 fix, and the attract's second

@@ -382,7 +382,12 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   `0x10E80`, so neither function is reachable: both are unit-tested
   (`test_effects`), and `0x29B74` is registered in `actors_init` for a future
   `DS_00104AE4` dispatch. `port/tests/test_game.c` pins that state 5 neither
-  arms `DS_00104AE4` nor leaves mode 3. **Correction (record §42-E):** this
+  arms `DS_00104AE4` nor leaves mode 3. `DS_00104AE4` has other
+  targets too. `0x28D68`/`0x28D80` store the character screen's entry `0x43738`
+  there and enter mode `0x1A` (`0x4F980`). The mode `0x1A`/`0x1B` handlers
+  `0x4F9A0`/`0x4F9C8` then dispatch it. The port registers `0x43738` (demo-pose
+  record §42-F), but it has no `call [0x104AE4]` dispatch, so `0x43738` runs
+  only in unit tests. **Correction (record §42-E):** this
   bullet used to call `0x41578`'s compare against `0x88874B0` dead because the
   value is above `MEM_SIZE`. It is not an address. The compare is on the list
   entry's `+0` **resource handle** (`index << 23 | offset`, `0x1B544`), and

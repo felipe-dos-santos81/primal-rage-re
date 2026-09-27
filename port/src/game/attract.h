@@ -46,6 +46,11 @@ void frontend_continue_tail(void);
  * DS_000A2CB4 from config fields 0x2A (scale), 0x35 and 0x37. */
 void attract_config_volumes(void);
 
+/* 0x2C8F0 with eax = -1. Set the music/SFX volumes DS_000A2CB8 and
+ * DS_000A2CB4 to config fields 0x35 and 0x37 halved (8 / 0x10 when a field
+ * reads -1), with no 0x2A scale. The character screens' setups call it. */
+void attract_config_volumes_unscaled(void);
+
 /* 0x11000. The 13-phase attract sub-machine. DS_000F0A6F selects the phase
  * through the jump table at 0x10FCC (0 -> 0x1101F ... 0xC -> 0x11531); a value
  * > 0xC skips straight to the 0x11550 tail. Every phase falls through to that

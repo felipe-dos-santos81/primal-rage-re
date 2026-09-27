@@ -173,6 +173,22 @@ void attract_config_volumes(void)
                       : (u32)(((s32)(s * scale) / 3) >> 1);
 }
 
+/* 0x2C8F0 with eax = -1 — record §42-F. The unscaled arm (0x2C8F8..0x2C934):
+ * field 0x35 halved with `sar eax,1` (0x2C910) or 8 when it reads -1, into
+ * 0x1CAB8; field 0x37 halved (0x2C92D) or 0x10, into 0x1CED4. No 0x2A read.
+ * The returned EAX (field 0x35, 0x2C9B1) is dead at both ported call sites
+ * (0x43755, 0x444E5 `xor ah,ah` then byte stores and `xor eax,eax`). */
+void attract_config_volumes_unscaled(void)
+{
+    u32 m = config_field_get(0x35u);                /* 0x2C8FD 0x2D974 */
+    u32 s;
+    /* PORT: 0x1CAB8 and 0x1CED4 store into DS_000A2CB8/DS_000A2CB4 and push
+     * the value to the AIL device (see attract_config_volumes). */
+    DSD(DS_000A2CB8) = (m == 0xFFFFFFFFu) ? 8u : (u32)((s32)m >> 1);
+    s = config_field_get(0x37u);                    /* 0x2C91C 0x2D974 */
+    DSD(DS_000A2CB4) = (s == 0xFFFFFFFFu) ? 0x10u : (u32)((s32)s >> 1);
+}
+
 /* ---- the 0x11000 attract sub-machine ------------------------------------ */
 
 static const char *s_media_dir;

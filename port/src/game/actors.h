@@ -139,6 +139,9 @@ s32 text_number_format(s32 value, u8 *dest, s32 width, u32 pad);
 /* 0x2F4D0. EAX = col, EDX = row, EBX = value, ECX = width, stack pad and mode:
  * 0x2EFD4 then 0x2F198 with the cursor saved and restored. */
 void text_number_draw(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode);
+/* 0x2F528. 0x2F4D0 with the mode ORed with 2 (the 0xBD048 class font). */
+void text_number_draw_font2(s32 col, s32 row, s32 value, s32 width, u32 pad,
+                            u32 mode);
 /* 0x2F830. EAX = string, EDX = mode, ECX = row, EBX = col, and a stack byte
  * `vertical` (0x2F198 passes 0; 0x2F20C passes 1). All-spaces clears the run
  * through 0x2F280; otherwise it lays each character out through 0x2F5A0 and
