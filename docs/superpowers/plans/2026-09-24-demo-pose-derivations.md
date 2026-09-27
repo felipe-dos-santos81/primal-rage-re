@@ -12069,8 +12069,9 @@ the third demo. N 3545 -> 3593 (`41db901`).
 
 Against §46-A (1051/588/15/72/6 on a 2102-frame dump), 18 more frames are
 clean, 28 more are splices and one more (3585) is a transition. 47 fewer are
-unexplained: 3543..3592 minus the black 3543 and 3545, which is still counted
-unexplained but allowed by name.
+unexplained: 3546..3592. 3543 was already black and 3544 already matched an
+earlier port screen. 3545 is still counted unexplained, but it is allowed by
+name.
 
 ### 47-A.6 Remaining gaps
 
