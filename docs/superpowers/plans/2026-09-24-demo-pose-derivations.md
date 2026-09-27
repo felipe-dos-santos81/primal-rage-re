@@ -7471,8 +7471,12 @@ For the raptor that is `0xD2136`, the poll's value.
 
 - `check_stance_return` (`test_fight.c`, after `check_char3_grab`) calls the
   registered target as `anim_indirect` does, `(rec, 0xFFFFFFFF)`, for each
-  side. Both slots' `+0x54` are seeded 3, whose `0x36870` case returns at
-  once, so only the clear reaches the stance arm. It asserts the clear, the
+  side. Both slots' `+0x54` are seeded 3. `0x36870` still runs its resets
+  before the switch, but its case-3 arm does nothing, so only the clear
+  reaches the stance arm. Both words of `DS_00107D2C` are seeded 0, so
+  `0x39040(other)` (gate word `0x107D2C + other * 2`) skips its body for
+  either side. It checks that `0x3C32C` resolves and differs from
+  `fn_resolve(0x36870)`, the registered wrapper. It asserts the clear, the
   restart (the stream `0xC8950[char]`, the pset's sprite id, `+0x4D` =
   `0x1E`, state 0/0) and the other side's sentinels. It snapshots and
   restores the slots with `DS_001077A8`, `DS_001014EC`, `DS_00104B00`,
@@ -7480,13 +7484,21 @@ For the raptor that is `0xD2136`, the poll's value.
   `0x107A80` and the two `0xC8950` entries. A temporary whole-data-object
   diff around it (reverted) was empty. The same diff found 37 bytes when the
   slot restore was dropped, so it would have seen a leak.
+- Review fix (`41e0f46`): the first version seeded only `DS_00107D2C`, so
+  for side 0 the gate read the unseeded `0x107D2E`. With `0x107D2E` = 5
+  planted before the check (the diff, reverted), the version without the
+  second seed leaked 193 bytes, the LCG `0xEF6D8` among them. With it the
+  diff is empty. The first registration check compared against
+  `fighter_36870`, which is not what `0x36870` resolves to, so no mutation
+  could fail it. It now compares against `fn_resolve(0x36870)`.
 - The driver: after loop 3293 the raptor's record is at `0xD2136`, its slot
   `+0x52/+0x53/+0x54/+0x41` are 0, and `DS_00100AB0` is `0xFFFFFF00`. There
   are 1695 cycle-2 frames.
 
-**Mutations** (`scratchpad/t31/mut31.py`, `mut31.log`): 11 single-site
-edits, 10 in unit mode and the registration again in driver mode. All 11
-fail. In unit mode 1..14 assertions fail: dropping the clear, writing the
+**Mutations** (`scratchpad/t31/mut31b.py`, `mut31b.log`, re-run after the
+review fix): 12 single-site edits, 11 in unit mode and the registration
+again in driver mode. All 12 fail. The twelfth registers `0x3C32C` to
+`0x36870`'s wrapper and fails the registration check (and 12 more). In unit mode 1..14 assertions fail: dropping the clear, writing the
 side or 1, a fixed or the other slot, the neighbouring byte, a wrong side
 byte, dropping or reordering the `0x36870` call, and the registration. In
 driver mode the loop-3293 samples read `0xD2500`, `0x09080080` and
