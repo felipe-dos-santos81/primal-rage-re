@@ -393,3 +393,24 @@ void config_play_time_snap(u32 idx, u32 arm)
      * Neither it nor its callees 0x2E180, 0x2E0A4 and 0x2E034 name 0x107478,
      * so the reload and store at 0x32B3A/0x32B40 leave the value as stored. */
 }
+
+/* 0x32B4C — record §48-U. 0x32B00 on DS_00107480 in place of DS_00107478,
+ * posting to audit counter 0 (0x32B76 `xor eax,eax`) in place of 1: EAX = the
+ * index (0x32B54 `shl eax,2`, no mask), EDX = the arm; EBX/ECX pushed and
+ * popped. EDX != 0: DS_00107480 = DS_0010746C[idx] (0x32B5B, stored at
+ * 0x32B89). EDX == 0: t = (DS_0010746C[idx] - DS_00107480) / 0x3C (unsigned
+ * DIV with EDX = 0) is stored (0x32B78), posted through 0x2E934(0, t), and
+ * DS_00107480 is reloaded and stored back (0x32B83/0x32B89). Callers:
+ * 0x25EFD (0x25C88, EDX = 1) and the unported 0x27DEB (0x27DC8). */
+void config_play_time_snap_b(u32 idx, u32 arm)
+{
+    if (arm != 0u) {                                    /* 0x32B57 `jz` */
+        DSD(DS_00107480) = DSD(DS_0010746C + idx * 4u); /* 0x32B5B/0x32B89 */
+        return;
+    }
+    DSD(DS_00107480) = (DSD(DS_0010746C + idx * 4u)
+                        - DSD(DS_00107480)) / 0x3Cu;    /* 0x32B63..0x32B78 */
+    /* PORT: 0x32B7E 0x2E934(0, t), the audit post, is deferred (spec §7);
+     * as for 0x32B00, it names neither 0x107480 nor anything the reload at
+     * 0x32B83 reads, so the value stays as stored. */
+}

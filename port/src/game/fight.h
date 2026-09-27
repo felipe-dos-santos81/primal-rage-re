@@ -116,8 +116,8 @@ void fight_select_marker_spawn(u32 side, u32 cls, u32 y);
 /* Record §48-Q. 0x1D838: the 0x1D810 release inline, then spawn the
  * character's badge 0xA7760[ch] at x = side ? 0x4200 : 0x200, a3 0xFD, the
  * caller's y into DS_001028E0[side]. 0x1D764: DS_0010290C[side] = 0, the
- * slot's +0x5A = 0 and +0x42 bit 4 cleared, the 0x1D2F0 bar draw (a named
- * gap), and DS_001028F8[side] begins the stream 0xE904C at 1.0. 0x4DBEC: the
+ * slot's +0x5A = 0 and +0x42 bit 4 cleared, the 0x1D2F0 bar draw at 0
+ * (record §48-U), and DS_001028F8[side] begins the stream 0xE904C at 1.0. 0x4DBEC: the
  * winner's crowd (up to 28 fight-effect entries run to DS_0010810D's
  * fighter), called by modes 0xD and 0x32 at a match's end. */
 void fight_hud_badge_spawn(u32 side, u32 ch, u32 y);
@@ -171,11 +171,32 @@ void fight_dust_build(u32 side);
  * gate, and mirrors DS_0010810D. `char_index` is the raw's DX. */
 void fight_char_select(u32 side, u32 char_index);
 
-/* 0x1D890. The HUD spawn. State 6 calls it with EAX = 0, for which the raw only
- * zeroes four per-side HUD bytes (DS_0010780E/DS_0010290C/DS_0010780A/
- * DS_0010290E) and returns; the EAX != 0 arm (0x1D8CF..0x1D9DA) spawns the HUD
- * actors and is cycle 2's (§10.6). */
+/* 0x1D890. The HUD spawn. Per side it zeroes four HUD bytes (DS_0010780E/
+ * DS_0010290C/DS_0010780A/DS_0010290E); with AL != 0 (record §48-U) it also
+ * spawns the side's two bar records (DS_001028F0/DS_001028E8, drawn at 0 by
+ * 0x1D2F0/0x1D464), the 0xBB664/0xBB678 records (DS_001028F8/DS_00102900)
+ * and the character badge (0x1D838), and sets DS_00104AEC bit 1. State 6
+ * calls it with EAX = 0; mode 5's 0x25C1C with 1. 0x1DC6C (fight_hud_spawn_b,
+ * DS_00104B1D == 2) differs only in side 1's first descriptor, 0xA7678. */
 void fight_hud_spawn(u32 enable);
+void fight_hud_spawn_b(u32 enable);
+
+/* Record §48-U. 0x1D2F0: 0x10D70 on DS_001028F0[side] with the word
+ * 0xC9960[v] or 0xC9A52[v] (v clamped to 0..0x78; the table by DS_00104B1D
+ * == 2 and the side, else by the slot's +0x41 bit 3). 0x1D464: 0x10D70 on
+ * DS_001028E8[side] with 0xC9B44[v] (v clamped to 0..0x44). */
+void fight_hud_bar_set(s32 v, u32 side);
+void fight_hud_bar2_set(s32 v, u32 side);
+
+/* 0x20EF8 (record §48-U). The per-round reset of both sides' slot words
+ * +0x74/+0x76/+0x78/+0x84/+0x8C, their 0x38BEC scratch (the 0x107D18..
+ * words and 64 bytes at 0x107A80), the 0xFD148/0xFD158 bytes, DS_001078F2,
+ * DS_00100B5E, DS_00100B50 (-1), 0x46670's 0x1081F0 block and DS_00100C1D. */
+void fight_round_reset(void);
+
+/* 0x3CB68. The 2 x 32 slot pass (0x3C88C per slot); DS_00107EDC ends at 2 and
+ * DS_00107ED8 at 0x20. Called by 0x263F4 (fight.c) and mode 5's 0x25C88. */
+void fight_slot_pass(void);
 
 /* 0x33F08. The two-side health-bar pass, called by state 7 (0x11E94) and the
  * game_frame tail (0x25457). Per side it selects the character constant
