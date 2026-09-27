@@ -7434,9 +7434,10 @@ in §30). None of them is reached in the port's run, so no oracle moves.
 
 ### 41-B.1 The raw (Ghidra `read_memory` + capstone, fixups applied)
 
-Ghidra now has functions at `0x3C208` and `0x14D7C` (`FUN_00014d7c`); its
-decompilations agree with the disassembly below. `0x14E80` and `0x3B90C` have
-no Ghidra function; `0x18AF8` is `FUN_00018af8`.
+Ghidra has functions at `0x3C208`, `0x14D7C` (`FUN_00014d7c`), `0x3B90C`
+(`FUN_0003b90c`) and `0x18AF8` (`FUN_00018af8`), all in the checked-in
+decomp export; the decompilations agree with the disassembly below. Only
+`0x14E80` has no Ghidra function.
 
 - **`0x3C208`** (292 bytes, `0x3C208..0x3C32B`; EAX = side, EDX = dist):
   - `0x186D0(0)`, `0x186D0(1)`, `0x18AF8()`. All three keep EDX (`0x186D0`
@@ -7474,7 +7475,7 @@ no Ghidra function; `0x18AF8` is `FUN_00018af8`.
     `0x107D2C` word, signed, at least 4 sets `DS_001088BF` = 4.
   - `0x39A10(ctx[4], 0x309)`, `0x39A10(ctx[5], 0x309)`.
   - EDX = `[0x9AFA2 + 2 * byte ctx[3]+0x7A] sar 16`, the s16 at `0x9AFA4 +
-    2c` (`read_memory 0x9AFA0`: `2D00 2D00 2D00 3840 2F80 2D00 29C0` for
+    2c` (`read_memory 0x9AFA4`: `2D00 2D00 2D00 3840 2F80 2D00 29C0` for
     c = 0..6); `0x3C208(side, EDX)` (`0x14DDF`).
   - `0x39834(ctx[1], byte ctx[2]+0x5F)`.
   - `0x2BC30(ctx[5], [0xC91C0 + 4 * byte ctx[3]+0x7A], 3.0)` (`push
@@ -7546,13 +7547,14 @@ registration checks.
 - J: `0x14E80` both ways, and no other slot (a pointer planted at `mem[0]`
   is not followed).
 
-**Mutations** (`scratchpad/g3c208/mut.py`, `mut.log`, `mut2.log`): 72
-single-site edits over `0x3B90C` (6 + 1), `0x18AF8` (2), `0x3C208` (29),
+**Mutations** (`scratchpad/g3c208/mut.py`, `mut.log`, `mut2.log`): 71
+single-site edits over `0x3B90C` (6 + 1), `0x18AF8` (2), `0x3C208` (30),
 `0x14D7C` (24), `0x14E80` (6) and the two registrations, each rebuilt and
-run with `PR_ORACLE_REQUIRED=1`. 70 failed at once (2..35 `FAIL` lines). The
-survivor moved `0x3B90C`'s `jge` to `x > W + 1`, which differs from the raw
-only at x = W + 1; H now asserts ±(W + 1) (one past each wall), and that
-mutation and its mirror (`x > -W - 2`, added with it) both fail. All 72 fail.
+run with `PR_ORACLE_REQUIRED=1`. The first run had 70; 69 failed at once (2..35
+`FAIL` lines). The survivor moved `0x3B90C`'s `jge` to `x > W + 1`, which
+differs from the raw only at x = W + 1; H now asserts ±(W + 1) (one past each
+wall). The second run re-ran that mutation and `ret wall` and added its
+mirror (`x > -W - 2`); all three fail. All 71 fail.
 The sources were restored and the suite re-run green.
 
 ### 41-B.5 Measured and remaining gaps

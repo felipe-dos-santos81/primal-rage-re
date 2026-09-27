@@ -4125,8 +4125,8 @@ void fighter_3e3a8(u32 slot, u32 rec, u32 side)
     /* PORT: 0x3E244 is stored but not ported: it needs the unported
      * 0x3C358 (0x3C208 and 0x18AF8 are ported, record §41-B), and its caller,
      * 0x193B0's +0x1C call, is not reached in the port's run before the demo
-     * ends (record §34). 0x3E1D0 (0x1958C's
-     * 0x19020 hook) and 0x3E328 are ported and registered. */
+     * ends (record §34). 0x3E1D0 (0x1958C's 0x19020 hook) and 0x3E328 are
+     * ported and registered. */
     DSD(ctx[2] + 0x18u) = 0x0003E1D0u;                  /* 0x3E3FC */
     DSD(ctx[2] + 0x1Cu) = 0x0003E244u;                  /* 0x3E407 */
     DSB(ctx[2] + 0x57u) = 0;                            /* 0x3E412 */
