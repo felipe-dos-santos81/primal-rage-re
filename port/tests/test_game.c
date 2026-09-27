@@ -2349,13 +2349,16 @@ static void fe_cyc2_dump(void)
 
 /* The driver's loop: FE_DEMO_LOOPS covers the first demo's 0x11BCC exit at
  * loop 1970 (the run's length before the cycle-2 dump); FE_LOOPS reaches the
- * second attract cycle's state-6 handoff (loop 2782) and the second demo's
- * first 716 frames. FE_LOOPS is a measurement window, not a raw value: 3500
- * (3300 before record §41, 3200 before §40, 3100 before §39, 2800 before
- * §38) keeps the second demo's first unexplained capture frame, 3099 (loop
- * 3422), inside the cycle-2 dump. */
+ * second attract cycle's state-6 handoff (loop 2782), the whole second demo
+ * (its exit to state 9 at loop 3684, the poll's f = 4571) and the third
+ * attract cycle's first 215 loops. FE_LOOPS is a measurement window, not a
+ * raw value: 3900 (3500 before record §42, 3300 before §41, 3200 before §40,
+ * 3100 before §39, 2800 before §38) keeps the second demo's first
+ * unexplained capture frame, 3257 (loop 3556), inside the cycle-2 dump, and
+ * reaches past the capture's last frame, 3616 (about loop 3865 at the
+ * 60.05/70.09 Hz ratio from the exit's capture frame 3406). */
 #define FE_DEMO_LOOPS 2000
-#define FE_LOOPS 3500
+#define FE_LOOPS 3900
 
 int test_frontend(void)
 {
@@ -3028,6 +3031,24 @@ int test_frontend(void)
          * DS_00100AB0 after loop 3293 (the poll's f = 4180). Sentinels. */
         u32 c2_ret_st = 0xFFFFFFFFu, c2_ret_state = 0xFFFFFFFFu;
         u32 c2_ret_ab0 = 0x12345678u;
+        /* Record §42. The raptor's record stream, slot +0x52/+0x53/+0x54/
+         * +0x57 and +0x0C/+0x18/+0x1C after loop 3422 (f = 4309) and loop
+         * 3551 (f = 4438); its +0x4B child index, that child's stream and
+         * +0x14 after loop 3431 (f = 4318) and 3557 (f = 4444); the first
+         * type-0x0A node's actor +0x34 after loop 3538 (f = 4425), its phase
+         * and stream after loop 3547, and the in-use node list's head after
+         * loop 3631. Sentinels. */
+        u32 c2_r25_st = 0xFFFFFFFFu, c2_r25_state = 0xFFFFFFFFu;
+        u32 c2_r25_cb[3] = { 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu };
+        u32 c2_r24_st = 0xFFFFFFFFu, c2_r24_state = 0xFFFFFFFFu;
+        u32 c2_r24_cb[3] = { 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu };
+        u32 c2_k25[3] = { 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu };
+        u32 c2_k24[2] = { 0xFFFFFFFFu, 0xFFFFFFFFu };
+        u32 c2_bl34 = 0xFFFFFFFFu, c2_bl_ph = 0xFFFFFFFFu;
+        u32 c2_bl_st = 0xFFFFFFFFu, c2_bl_head = 0xFFFFFFFFu;
+        /* The ape's record stream and slot +0x52/+0x53/+0x54 after loop 3567
+         * (f = 4454), the frame after 0x151A0's 0x3B714. Sentinels. */
+        u32 c2_hit_st = 0xFFFFFFFFu, c2_hit_state = 0xFFFFFFFFu;
         /* The picks, variant and handle as the first demo left them, read
          * where the driver's run used to end (loop FE_DEMO_LOOPS - 1); the
          * second demo's state 6 draws new picks. 0xFF/0 sentinels. */
@@ -3207,6 +3228,45 @@ int test_frontend(void)
                     c2_rap_hook = DSD(sl0 + 0x18u);
                 }
                 if (i == 3133) c2_rap_miss = DSD(DSD(DS_001077B0) + 8u);
+                if (i == 3422 || i == 3551) {
+                    u32 sl0 = DS_001077B0;
+                    u32 *cb = (i == 3422) ? c2_r25_cb : c2_r24_cb;
+                    u32 stt = (u32)DSB(sl0 + 0x52u) << 24
+                            | (u32)DSB(sl0 + 0x53u) << 16
+                            | (u32)DSB(sl0 + 0x54u) << 8
+                            | DSB(sl0 + 0x57u);
+                    if (i == 3422) {
+                        c2_r25_st = DSD(DSD(sl0) + 8u);
+                        c2_r25_state = stt;
+                    } else {
+                        c2_r24_st = DSD(DSD(sl0) + 8u);
+                        c2_r24_state = stt;
+                    }
+                    cb[0] = DSD(sl0 + 0x0Cu);
+                    cb[1] = DSD(sl0 + 0x18u);
+                    cb[2] = DSD(sl0 + 0x1Cu);
+                }
+                if (i == 3431 || i == 3557) {
+                    u32 ix = DSB(DSD(DS_001077B0) + 0x4Bu);
+                    u32 ch = DSD(DS_001014F4) + ix * 0x68u;
+                    u32 *k = (i == 3431) ? c2_k25 : c2_k24;
+                    k[0] = ix;
+                    k[1] = DSD(ch + 8u);
+                    if (i == 3431) c2_k25[2] = DSD(ch + 0x14u);
+                }
+                if (i == 3538) c2_bl34 = DSW(DSD(0x00104780u + 8u) + 0x34u);
+                if (i == 3547) {
+                    c2_bl_ph = DSB(0x00104780u + 0x0Cu);
+                    c2_bl_st = DSD(DSD(0x00104780u + 8u) + 8u);
+                }
+                if (i == 3631) c2_bl_head = DSD(0x00104880u);
+                if (i == 3567) {
+                    u32 sl1 = DS_001077B0 + 0x94u;
+                    c2_hit_st = DSD(DSD(sl1) + 8u);
+                    c2_hit_state = (u32)DSB(sl1 + 0x52u) << 16
+                                 | (u32)DSB(sl1 + 0x53u) << 8
+                                 | DSB(sl1 + 0x54u);
+                }
                 if (i == 3293) {
                     u32 sl0 = DS_001077B0;
                     c2_ret_st = DSD(DSD(sl0) + 8u);
@@ -3232,6 +3292,19 @@ int test_frontend(void)
                (unsigned)c2_rap_hook, (unsigned)c2_rap_miss,
                (unsigned)c2_ret_st, (unsigned)c2_ret_state,
                (unsigned)c2_ret_ab0);
+        printf("test_frontend: @3422 %05X/%08X/%X/%X/%X, @3431 %02X/%05X/%X, "
+               "@3538 %04X, @3547 %u/%05X, @3551 %05X/%08X/%X/%X/%X, "
+               "@3557 %02X/%05X, @3567 %05X/%06X, @3631 %X\n",
+               (unsigned)c2_r25_st, (unsigned)c2_r25_state,
+               (unsigned)c2_r25_cb[0], (unsigned)c2_r25_cb[1],
+               (unsigned)c2_r25_cb[2], (unsigned)c2_k25[0],
+               (unsigned)c2_k25[1], (unsigned)c2_k25[2], (unsigned)c2_bl34,
+               (unsigned)c2_bl_ph, (unsigned)c2_bl_st, (unsigned)c2_r24_st,
+               (unsigned)c2_r24_state, (unsigned)c2_r24_cb[0],
+               (unsigned)c2_r24_cb[1], (unsigned)c2_r24_cb[2],
+               (unsigned)c2_k24[0], (unsigned)c2_k24[1],
+               (unsigned)c2_hit_st, (unsigned)c2_hit_state,
+               (unsigned)c2_bl_head);
 
         /* The raw's timeline: six entries, each drawn then paused, then state 3.
          * Entry k is drawn on frame 1+93k; after the sixth, 0x1E pause frames
@@ -3251,11 +3324,11 @@ int test_frontend(void)
         CHECK_EQ_INT(dumped, (int)(raw_cap < 1382 ? raw_cap : 1382));
 
         /* The second attract cycle (derivation record §36). The cycle-2 dump
-         * starts after the exit frame, at loop 1971, and holds 1695 frames:
-         * loops 1971..3499 (1529) and, inside loop 1971, the 166 screens
+         * starts after the exit frame, at loop 1971, and holds 2095 frames:
+         * loops 1971..3899 (1929) and, inside loop 1971, the 166 screens
          * 0x1C740 writes (TWI5: the entry blank, 121 frames, the exit blank;
          * TWG: the same with 41). A player that drops TWI5's 121st frame
-         * writes 1694; one with no screen hook 1529. 0x2BAF4's 0x4F228 call
+         * writes 2094; one with no screen hook 1929. 0x2BAF4's 0x4F228 call
          * (0x2BBC4) clears the projection gate DS_00107A54 the demo's state 6
          * set (0x387E2), so it is 0 after loop 1971 (1 without it). The
          * lightning stream 0xE890A's 0x4F83C sets DS_00104AD0 bit 0 first at
@@ -3287,10 +3360,31 @@ int test_frontend(void)
          * which clears the slot's +0x54 and runs 0x36870: the record
          * restarts on the stance 0xD2136, the slot is 0/0/0 with +0x41 = 0
          * and DS_00100AB0 = 0xFFFFFF00, as the poll's original. Unregistered,
-         * the record runs on at 0xD2500 in 9/8/0. */
+         * the record runs on at 0xD2500 in 9/8/0.
+         * Record §42: at loop 3422 (f = 4309) character 3's reaction-0x25
+         * callback 0x15350 starts 0xD311A (0xD311C after the frame) in
+         * 9/7/0 with +0x57 = 0 and the callbacks 0x152D4/0x15208/0x1527C, as
+         * the poll's original; unregistered, the raptor stays in 9/0/0 with
+         * +0x57 = 3. At loop 3431 (f = 4318) the stream's 0xD100 target
+         * 0x153D8 has spawned 0xBB394's child (actor 0x6A, stream 0xD318E,
+         * +0x14 = the raptor's slot). At loop 3538 (f = 4425) the blood
+         * particle 0x2901C accepted from the hit effect's opcode-0x0C spawn
+         * carries the parent's hflip (a5 = 0x4000, 0x2B4C4), so its +0x34
+         * is +0x58 as in the original (the snapshot's actor 106); with the
+         * old a5 = 0x40 it is -0x58. The process 0x2910C (entry 7) moves it
+         * to phase 1 on 0xE8D14 (0xE8D16 after the frame) by loop 3547 and
+         * has returned all seven nodes to the free list by loop 3631. At
+         * loop 3551 (f = 4438) the reaction-0x24 callback 0x151C0 starts
+         * 0xD3078 (0xD3082) in 9/7/0 with +0x0C = 0 and the hooks
+         * 0x15160/0x151A0, and at loop 3557 (f = 4444) its stream's 0xD100
+         * target 0x1543C has spawned 0xBB3A8's child (actor 0x6B, stream
+         * 0xD30F4). At loop 3566 (f = 4453) its +0x1C callback 0x151A0 runs
+         * 0x3B714 on the ape: after loop 3567 the ape is in 0x10/0x0A/2 on
+         * 0xE4406, as the poll's original; unregistered, it is in 0x0E/0/0
+         * on 0xE3AAC. */
         CHECK(!fe_cyc2_failed, "cycle-2 frames write to the dump");
         CHECK_EQ_INT(c2_start, 1971);
-        CHECK_EQ_INT(fe_cyc2_n, 1695);
+        CHECK_EQ_INT(fe_cyc2_n, 2095);
         CHECK_EQ_INT(c2_proj54, 0);
         CHECK_EQ_INT(c2_flash_i, 2547);
         CHECK_EQ_INT(c2_state6_i, 2782);
@@ -3307,6 +3401,27 @@ int test_frontend(void)
         CHECK_EQ_INT((int)c2_ret_st, 0x000D2136);
         CHECK_EQ_INT((int)c2_ret_state, 0x00000000);
         CHECK_EQ_INT((int)c2_ret_ab0, (int)0xFFFFFF00u);
+        CHECK_EQ_INT((int)c2_r25_st, 0x000D311C);
+        CHECK_EQ_INT((int)c2_r25_state, 0x09070000);
+        CHECK_EQ_INT((int)c2_r25_cb[0], 0x000152D4);
+        CHECK_EQ_INT((int)c2_r25_cb[1], 0x00015208);
+        CHECK_EQ_INT((int)c2_r25_cb[2], 0x0001527C);
+        CHECK_EQ_INT((int)c2_k25[0], 0x6A);
+        CHECK_EQ_INT((int)c2_k25[1], 0x000D318E);
+        CHECK_EQ_INT((int)c2_k25[2], (int)DS_001077B0);
+        CHECK_EQ_INT((int)c2_bl34, 0x0058);
+        CHECK_EQ_INT((int)c2_bl_ph, 1);
+        CHECK_EQ_INT((int)c2_bl_st, 0x000E8D16);
+        CHECK_EQ_INT((int)c2_r24_st, 0x000D3082);
+        CHECK_EQ_INT((int)c2_r24_state, 0x09070000);
+        CHECK_EQ_INT((int)c2_r24_cb[0], 0);
+        CHECK_EQ_INT((int)c2_r24_cb[1], 0x00015160);
+        CHECK_EQ_INT((int)c2_r24_cb[2], 0x000151A0);
+        CHECK_EQ_INT((int)c2_k24[0], 0x6B);
+        CHECK_EQ_INT((int)c2_k24[1], 0x000D30F4);
+        CHECK_EQ_INT((int)c2_hit_st, 0x000E4406);
+        CHECK_EQ_INT((int)c2_hit_state, 0x100A02);
+        CHECK_EQ_INT((int)c2_bl_head, 0x00104880);
 
         /* Alignment: the driver's state-6 entry sits at the attract's
          * post-state, and the two picks drawn from it (plus the dust builder's

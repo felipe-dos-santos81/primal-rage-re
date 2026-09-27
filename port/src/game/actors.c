@@ -101,6 +101,9 @@ static void anim_code_10FC4(u32 rec, u32 arg);
 static void anim_code_37CD4(u32 rec, u32 arg);
 static void anim_code_14EA4(u32 rec, u32 arg);
 static void anim_code_3C32C(u32 rec, u32 arg);
+static void anim_code_153D8(u32 rec, u32 arg);
+static void anim_code_1543C(u32 rec, u32 arg);
+static void anim_code_37CFC(u32 rec, u32 arg);
 static void anim_code_14E80(u32 rec, u32 arg);
 static void anim_code_370F0(u32 rec, u32 arg);
 static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side);
@@ -123,6 +126,7 @@ static u8   actor_type_412FC(u32 rec, u32 slot);
 static void actor_type_12800(u32 rec);
 static void actor_type_19928(u32 rec);
 static void actor_type_290D0(u32 rec);
+static void actor_proc_2910C(void);
 static void actor_type_3B9C4(u32 rec);
 static void actor_type_3D784(u32 rec);
 static void actor_type_3FC90(u32 rec);
@@ -260,6 +264,27 @@ int actors_init(void)
      * second demo; 0xE4856, 0xE48A0, 0xE492E, 0xEA92A, 0xEA9DE, 0xEB4A0,
      * 0xECEFC, 0xECF58). */
     fn_register(0x3C32Cu, (void (*)(void))anim_code_3C32C);
+    /* PORT: 0x34E2C's reaction callbacks 0x15350 (*(u32*)0xA470C, character
+     * 3's reaction 0x25, the second demo's f = 4309) and 0x151C0
+     * (*(u32*)0xA46F8, reaction 0x24, f = 4438), called at 0x35045 with the
+     * (slot, rec, side) registers, and the callbacks they store: 0x15350's
+     * +0x0C 0x152D4 (0x3531C case 7, same registers), +0x18 hook 0x15208
+     * (0x19020, fn(side) with EAX returned) and +0x1C 0x1527C (0x193B0's
+     * 0x19505, fn(side)); 0x151C0's +0x18 hook 0x15160 and +0x1C 0x151A0.
+     * Their streams carry the 0xD100 targets 0x153D8 (0xD312A in 0xD311A,
+     * opcode 0x11, mode 0x4000, the operand read) and 0x1543C (0xD308E in
+     * 0xD3078), and 0x153D8's child stream 0xD318E the 0xD100 target 0x37CFC
+     * (0xD3192). */
+    fn_register(0x15350u, (void (*)(void))fighter_15350);
+    fn_register(0x152D4u, (void (*)(void))fighter_152d4);
+    fn_register(0x15208u, (void (*)(void))fighter_15208);
+    fn_register(0x1527Cu, (void (*)(void))fighter_1527c);
+    fn_register(0x151C0u, (void (*)(void))fighter_151c0);
+    fn_register(0x15160u, (void (*)(void))fighter_15160);
+    fn_register(0x151A0u, (void (*)(void))fighter_151a0);
+    fn_register(0x153D8u, (void (*)(void))anim_code_153D8);
+    fn_register(0x1543Cu, (void (*)(void))anim_code_1543C);
+    fn_register(0x37CFCu, (void (*)(void))anim_code_37CFC);
     fn_register(0x14E80u, (void (*)(void))anim_code_14E80);
     /* PORT: the projectile +0x48 == 8 freeze 0x235C4 (record §41-C): its
      * +0x10 handler 0x22BEC (0x3531C case 10, (slot, side) as 0x39CC8) and
@@ -280,6 +305,10 @@ int actors_init(void)
     fn_register(0x28F64u, (void (*)(void))actor_type_28F64);
     fn_register(0x2901Cu, (void (*)(void))actor_type_2901C);
     fn_register(0x290D0u, (void (*)(void))actor_type_290D0);
+    /* PORT: the update-table process entry 7 (DS_000A8644[7], the dword at
+     * 0xA8660) the type-0x0A/0x19 cb1s enable with DS_00104AE8 bit 7:
+     * run_process_table calls it with no arguments. */
+    fn_register(0x2910Cu, (void (*)(void))actor_proc_2910C);
     fn_register(0x3B9C4u, (void (*)(void))actor_type_3B9C4);
     fn_register(0x3D784u, (void (*)(void))actor_type_3D784);
     fn_register(0x3FC90u, (void (*)(void))actor_type_3FC90);
@@ -812,6 +841,68 @@ static void anim_code_3C32C(u32 rec, u32 arg)
     fighter_36870(rec);                                 /* 0x3C34C/0x3C34E */
 }
 
+/* PORT: data-object addresses symbols.h does not name (the 0x153D8 and
+ * 0x1543C spawn descriptors). */
+#define ANIM_DESC_153D8_A 0x0009B008u  /* 0x153E1: operand non-zero (stream 0xD31AE) */
+#define ANIM_DESC_153D8_B 0x000BB394u  /* 0x153E8: operand zero (stream 0xD318E) */
+#define ANIM_DESC_1543C   0x000BB3A8u  /* 0x15455: stream 0xD30F2 */
+
+/* 0x153D8 — the animation-opcode target shape (the 0xD100 target at 0xD312A
+ * in character 3's reaction-0x25 stream 0xD311A; also 0xD321E, 0xD32B6,
+ * 0xD3342 and a code dword at 0x24634). EAX = rec, EDX = the operand (read:
+ * 0x153DD). With the record's +0x14 (its slot) set, it spawns the descriptor
+ * 0x9B008 (operand non-zero) or 0xBB394 (zero) with a2 = a3 = a4 = 0 and a5 =
+ * the record's +0x56 | 0x400, then the child's +0x59 = 2 and +0x14 = the
+ * slot; for side 1 its +0x4E = 1 and +0x2E gets 4 more; the record's +0x4B =
+ * the child's +0x56 byte and the child's +0x60 = 1. */
+static void anim_code_153D8(u32 rec, u32 arg)
+{
+    u32 desc = (arg != 0u) ? ANIM_DESC_153D8_A : ANIM_DESC_153D8_B;   /* 0x153DD..0x153E8 */
+    u32 child;
+    if (DSD(rec + 0x14u) == 0u) return;                 /* 0x153ED/0x153F1 */
+    child = actor_spawn((const u32 *)(mem + desc), 0u, 0u, 0u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));  /* 0x153F3..0x15407 0x2AE14 */
+    DSB(child + 0x59u) = 2u;                            /* 0x1540F */
+    DSD(child + 0x14u) = DSD(rec + 0x14u);              /* 0x1540C/0x15413 */
+    if (DSB(rec + 0x51u) != 0u) {                       /* 0x15416..0x1541D */
+        DSB(child + 0x4Eu) = 1u;                        /* 0x15423 */
+        DSW(child + 0x2Eu) = (u16)(DSW(child + 0x2Eu) + 4u);   /* 0x1541F..0x1542A */
+    }
+    DSB(rec + 0x4Bu) = DSB(child + 0x56u);              /* 0x1542E/0x15431 */
+    DSB(child + 0x60u) = 1u;                            /* 0x15434 */
+}
+
+/* 0x1543C — the animation-opcode target shape (the 0xD100 target at 0xD308E
+ * in character 3's reaction-0x24 stream 0xD3078, and 0xD3266). EAX = rec;
+ * EDX is pushed at 0x1543E and never read. It spawns the descriptor 0xBB3A8
+ * with a2 = a3 = a4 = 0 and a5 = the record's +0x56 | 0x400; the record's
+ * +0x4B = the child's +0x56 byte and the child's +0x60 = 1. */
+static void anim_code_1543C(u32 rec, u32 arg)
+{
+    u32 child;
+    (void)arg;
+    child = actor_spawn((const u32 *)(mem + ANIM_DESC_1543C), 0u, 0u, 0u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));  /* 0x15442..0x1545A 0x2AE14 */
+    DSB(rec + 0x4Bu) = DSB(child + 0x56u);              /* 0x1545F/0x15462 */
+    DSB(child + 0x60u) = 1u;                            /* 0x15465 */
+    /* PORT: 0x1546E 0x2C3FC(0x4D) voice, out of scope (spec §7). */
+}
+
+/* 0x37CFC — the animation-opcode target shape (the 0xD100 target at 0xD3192
+ * in 0xBB394's stream 0xD318E, the child 0x153D8 spawns; also 0xD4E38,
+ * 0xD4E9E and 0xE85F6). EAX = rec; EDX is pushed and overwritten at 0x37CFD
+ * before any read. With the record's +0x14 (the parent's slot) set and that
+ * slot's +0x53 not 7, the record's +0x55 = 1 and 0x2B150(rec). */
+static void anim_code_37CFC(u32 rec, u32 arg)
+{
+    u32 slot = DSD(rec + 0x14u);                        /* 0x37CFD */
+    (void)arg;
+    if (slot == 0u) return;                             /* 0x37D00/0x37D02 */
+    if (DSB(slot + 0x53u) == 7u) return;                /* 0x37D04/0x37D08 */
+    DSB(rec + 0x55u) = 1u;                              /* 0x37D0A */
+    set_dead(rec);                                      /* 0x37D0E 0x2B150 */
+}
+
 /* 0x12720. The animation opcode 0x11 target reached on the globe's first
  * presentation stream: the word at 0xE89A8 is `0xD100` (opcode 0x11, mode
  * 0x4000), so `anim_operand` loads the code pointer 0x12720 into
@@ -1119,7 +1210,11 @@ static u32 spawn_anim_opcode(u32 rec, u32 index, u32 flag)
             a4 = (u32)(s32)bx;
             a5 = (u32)(index + 0x400u);
         } else {
-            a5 = (u32)((DSW(rec + 0x28) >> 8) & 0x40u);
+            /* 0x2B4C4..0x2B4CD: `mov ax,[esi+0x28]; xor al,al; and ah,0x40;
+             * and eax,0xffff` pushes the parent's +0x28 bit 14 in place
+             * (0x4000, the hflip actor_spawn copies into the child's +0x28),
+             * not shifted down to 0x40 (a parent index in a5's low 7 bits). */
+            a5 = (u32)(DSW(rec + 0x28) & 0x4000u);
             a2 = (u32)((s32)di + (s32)DSD(rec + 0x18));
             a3 = (u32)((s32)DSD(rec + 0x30) >> 16);
             a4 = (u32)((s32)bx + (s32)DSD(rec + 0x1c));
@@ -1852,6 +1947,79 @@ static void actor_type_290D0(u32 rec)
     list_unlink(rec2);
     list_insert_after(DS_00104888, DSD(rec + 0x14));
     DSD(rec + 0x14) = 0;
+}
+
+/* PORT: data-object addresses symbols.h does not name (0x2910C's streams). */
+#define ANIM_2910C_LAND 0x000E8D50u  /* 0x29167: the landing stream (hold 3.0) */
+#define ANIM_2910C_P1   0x000E8D14u  /* 0x291EF: phase 0 -> 1 (hold 2.0) */
+#define ANIM_2910C_P2   0x000E8D28u  /* 0x29237: phase 1 -> 2 (hold 2.0) */
+#define ANIM_2910C_P3   0x000E8D3Cu  /* 0x29281: phase 2 -> 3 (hold 2.0) */
+
+/* 0x2910C. The update-table process entry 7 (DS_000A8644[7], the dword at
+ * 0xA8660; the type-0x0A/0x19 cb1s set its DS_00104AE8 bit 7), no input
+ * registers (Ghidra has no function here). It walks the in-use node list at
+ * 0x104880 (node +0 next, +8 the actor, +0xC the pose phase; the next node is
+ * read before the body). An actor whose +0x1C plus the signed word +0x36 is
+ * negative has landed: +0x1C, the words +0x34/+0x36/+0x44 and +0x48 are
+ * zeroed, +0x59 = 0xFE, the 0xE8D50 stream starts at 3.0 (0x2BC30), and its
+ * +0x14 node (when set) goes back to the free list 0x104888 with +0x14 = 0.
+ * Otherwise the phase (0..3, jump table 0x290FC) advances on the word
+ * velocities vx = +0x34, vy = +0x36: 0 -> 1 when |vy| < |vx| (0xE8D14),
+ * 1 -> 2 when |vy| > |vx| (0xE8D28), 2 -> 3 when |vy| > 2|vx| (0xE8D3C),
+ * each at 2.0; phase 3 and above do nothing. */
+static void actor_proc_2910C(void)
+{
+    u32 node = DSD(DS_00104880);                        /* 0x29111 */
+    while (node != DS_00104880) {                       /* 0x29117 / 0x29299 */
+        u32 rec = DSD(node + 8u);                       /* 0x29123 */
+        u32 next = DSD(node);                           /* 0x29131 */
+        s32 y = ((s32)DSD(rec + 0x34u) >> 16)
+              + (s32)DSD(rec + 0x1Cu);                  /* 0x29126..0x2912F */
+        if (y < 0) {                                    /* 0x29133/0x29135 */
+            u32 n;
+            DSD(rec + 0x1Cu) = 0u;                      /* 0x29137 */
+            DSW(rec + 0x34u) = 0u;                      /* 0x29141 */
+            DSW(rec + 0x36u) = 0u;                      /* 0x2914A */
+            DSW(rec + 0x44u) = 0u;                      /* 0x29153 */
+            DSB(rec + 0x48u) = 0u;                      /* 0x2915C */
+            DSB(rec + 0x59u) = 0xFEu;                   /* 0x29163 */
+            actors_anim_begin(rec, ANIM_2910C_LAND, 0x40400000u);   /* 0x29167..0x29174 0x2BC30 */
+            n = DSD(rec + 0x14u);                       /* 0x29179/0x2917C */
+            if (n != 0u) {                              /* 0x2917F/0x29181 */
+                list_unlink(n);                         /* 0x29187/0x29189 0x249D0 */
+                list_insert_after(DS_00104888, DSD(rec + 0x14u));   /* 0x2918E..0x29196 0x249B0 */
+                DSD(rec + 0x14u) = 0u;                  /* 0x2919B */
+            }
+        } else {
+            s32 vx = (s32)(s16)DSW(rec + 0x34u);        /* 0x291A7 */
+            s32 vy = (s32)(s16)DSW(rec + 0x36u);        /* 0x291AE */
+            s32 ax = vx < 0 ? -vx : vx;
+            s32 ay = vy < 0 ? -vy : vy;
+            switch (DSB(node + 0x0Cu)) {                /* 0x291AB..0x291C1 */
+            case 0u:                                    /* 0x291C9 */
+                if (ay < ax) {                          /* 0x291E7/0x291E9 */
+                    actors_anim_begin(rec, ANIM_2910C_P1, 0x40000000u);  /* 0x291EF..0x291FC */
+                    DSB(node + 0x0Cu) = 1u;             /* 0x29201 */
+                }
+                break;
+            case 1u:                                    /* 0x29219 */
+                if (ay > ax) {                          /* 0x29233/0x29235 */
+                    actors_anim_begin(rec, ANIM_2910C_P2, 0x40000000u);  /* 0x29237..0x29244 */
+                    DSB(node + 0x0Cu) = 2u;             /* 0x29249 */
+                }
+                break;
+            case 2u:                                    /* 0x29261 */
+                if (ay > ax * 2) {                      /* 0x29270..0x2927F */
+                    actors_anim_begin(rec, ANIM_2910C_P3, 0x40000000u);  /* 0x29281..0x2928E */
+                    DSB(node + 0x0Cu) = 3u;             /* 0x29293 */
+                }
+                break;
+            default:                                    /* 0x29297 (3), 0x291B5 (above 3) */
+                break;
+            }
+        }
+        node = next;                                    /* 0x29297 */
+    }
 }
 
 /* 0x48CD8. Type 0x2D: pop 0x1082E0, insert at 0x108368, then the 0x104AE8
