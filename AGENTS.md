@@ -152,6 +152,9 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
 - Sub-project specs, plans, derivation records and reports live in
   `docs/superpowers/`. A derivation record (`*-derivations.md`) is the
   authoritative raw-byte source for the tasks that implement from it.
+- `docs/PROGRESS.md` is the running, per-task status narrative (what's ported,
+  verified, and every named gap). Append a paragraph there, not to `README.md`,
+  which stays a short pointer.
 - Multi-task work runs under subagent-driven development with a git-ignored
   ledger at `.superpowers/sdd/<plan-basename>/progress.md`. `make clean` keeps
   `.superpowers/` deliberately — it is the recovery map, not build output.

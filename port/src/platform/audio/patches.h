@@ -2,7 +2,7 @@
  * sequencer applies on a program change.
  *
  * Layout (verified against the bytes and against the captured OPL trace; full
- * detail in FORMATS.md):
+ * detail in docs/FORMATS.md):
  *
  *   table:   repeated { u16 key (LE); u32 payload offset (LE) } stepping 6,
  *            terminated by key == 0xFFFF. key = (bank << 8) | program; bank 0

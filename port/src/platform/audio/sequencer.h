@@ -7,7 +7,7 @@
  * XMIDI event stream, maps program changes through the FAT.OPL patch bank, and
  * emits the note/patch register writes the driver emitted. See
  * port/spec/audio.md ("Music event grammar", "FAT.OPL patch bank") for the byte
- * evidence and FORMATS.md for the container.
+ * evidence and docs/FORMATS.md for the container.
  *
  * Data in, no I/O. `seq_load` takes the XMI bank bytes; the caller resolves them
  * through the resource/file layer (same discipline as samples_load). Nothing

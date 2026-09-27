@@ -1,7 +1,7 @@
 /* `.GRA` graphics container: a linked list of chunks. gra_open walks the chain
  * and reports each chunk's type and body range; gra_decode_palette and
  * gra_decode_frame decode the type-5 palette bank and the type-2/6 sprites.
- * The 8-byte header and every payload layout are documented in ../FORMATS.md.
+ * The 8-byte header and every payload layout are documented in docs/FORMATS.md.
  *
  * Every offset in GraChunk is FILE-RELATIVE: the struct carries no file base,
  * so callers must add the offset the image was loaded at — a chunk body starts

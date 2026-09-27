@@ -1,5 +1,7 @@
 # Primal Rage (DOS, 1995) — reverse engineering
 
+![Primal Rage](docs/intro.jpg)
+
 Reverse engineering of **Primal Rage**'s PC/DOS release (Time Warner
 Interactive / Probe Software / Teeny Weeny Games, 1995), targeting `PRAGE.EXE`
 and the `S16*.GRA` graphics set.
@@ -12,7 +14,7 @@ mode game code: everything interesting lives in two LE objects (code + data).
 
 | Path | What |
 |---|---|
-| `PROGRESS.md` | Detailed, continuously-updated status: what's ported, verified, and every named gap |
+| `docs/PROGRESS.md` | Detailed, continuously-updated status: what's ported, verified, and every named gap |
 | `data/game/C/` | Installed game (`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound drivers) |
 | `data/game/CD/RAGECD.ISO` | Original CD (`/Volumes/RAGECD` when mounted: `RAGE.S04`, `RAGE.S08`, `RAGE.S16`, `RAGE.SND`) |
 | `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) + **Smacker video** (sub-project 2b-i) + **sprite compositor** (sub-project 4a-i) + **actor system and title** (sub-project 4a-ii) + **title-path residuals** (sub-project 4a-iii) + **EEPROM/config core** (sub-project 4b-A) + **front-end input/credits/select** (sub-project 4b-B) — `cmake -S port -B build` |
@@ -25,7 +27,8 @@ mode game code: everything interesting lives in two LE objects (code + data).
 | `port/decomp/prage.functions.csv` | Function index: entry, size, callers, callees |
 | `port/decomp/prage.strings.csv` | Defined strings with cross-references |
 | `port/decomp/prage.symbols.csv` | User-defined / imported symbols |
-| `FORMATS.md` | Decoded on-disk formats (LE layout, `INDEX`, `GRA`) |
+| `docs/FORMATS.md` | Decoded on-disk formats (LE layout, `INDEX`, `GRA`) |
+| `docs/THIRD_PARTY_LICENSES.md` | Vendored third-party code and licences |
 | `docs/superpowers/` | Sub-project specs, plans and the engine-core report |
 | `tools/le_info.py` | Dump the LE header/objects and decode `INDEX` |
 | `tools/gra_render.py` | Independent GRA decoder + frame oracle (`--indices`, `--frame`) |
@@ -67,7 +70,7 @@ $G _tools/ghidra_proj prage -process PRAGE.EXE \
 ## Status
 
 `PRAGE.EXE` (~1350 functions) and its `S16*.GRA` graphics set are fully
-decompiled (`FORMATS.md`, `port/decomp/`). The SDL3 port reimplements the
+decompiled (`docs/FORMATS.md`, `port/decomp/`). The SDL3 port reimplements the
 engine in C over a flat `mem[]` holding the original data image at its
 original addresses (`port/PORTING.md`); it currently covers boot through the
 title screen, the front end and the attract demo, each gated by a byte-exact
@@ -75,7 +78,7 @@ oracle against the original's own captured frames (`make verify`). Real
 interactive gameplay is not yet ported and has no oracle to verify it against.
 
 **For the detailed, continuously-updated status** — what's ported, what's
-verified, and every named gap with its evidence — see **[`PROGRESS.md`](PROGRESS.md)**.
+verified, and every named gap with its evidence — see **[`docs/PROGRESS.md`](docs/PROGRESS.md)**.
 The underlying raw-byte derivations live in
 `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
 
@@ -159,4 +162,4 @@ The FM synthesiser is vendored: **opal 2.0.3**, MIT
 is by Shayde/Reality (Reality Adlib Tracker 2), public domain. It lives at
 `port/src/platform/audio/opl/` with its licence at `opl/LICENSE.opal.txt`; the
 files are byte-identical to upstream apart from a provenance banner. See
-`THIRD_PARTY_LICENSES.md`.
+`docs/THIRD_PARTY_LICENSES.md`.

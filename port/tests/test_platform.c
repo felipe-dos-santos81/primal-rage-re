@@ -168,7 +168,7 @@ int test_res(void)
     int before = g_failures;
 
     u32 n = res_load_index("data/game/C", "data/game/C/INDEX");
-    /* port/FORMATS.md: the shipped C/INDEX has 69 entries. */
+    /* docs/FORMATS.md: the shipped C/INDEX has 69 entries. */
     CHECK_EQ_INT(n, 69);
     CHECK_EQ_INT(res_count(), 69);
 

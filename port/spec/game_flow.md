@@ -29,7 +29,7 @@ The game uses an in-house engine, not a third-party framework:
 
 * **Resource manager** — `INDEX` is a 20-byte-record table; `FUN_0001B120`
   loads it, `count = size / 0x14`; `FUN_0001B544` resolves a handle
-  `(index << 23) | byte_offset` to `entry.data + offset`. See `FORMATS.md`.
+  `(index << 23) | byte_offset` to `entry.data + offset`. See `../../docs/FORMATS.md`.
 * **Extended-memory check** — `FUN_0001C0F0` probes extended memory
   (`< 1100000` bytes → error `"%s needs more extended memory.\nPlease consult
   the manual.\n"`) and builds a linked list of memory blocks beginning at
@@ -199,7 +199,7 @@ original's six straddle branches. `DAT_00081310[0] == 0x0005D110` (a stale code
 pointer; the port maps bank byte 0 to no offset) and `RAW+HFLIP` (type `0x0A`, a
 no-op) are pinned. Full record:
 `../../docs/superpowers/plans/2026-09-17-sprite-compositor-report.md`; format
-notes in `../../FORMATS.md` ("Sprite compositor").
+notes in `../../docs/FORMATS.md` ("Sprite compositor").
 
 ## Boot logos and the attract subsystem — `0x11000` (sub-project 4d, ported)
 

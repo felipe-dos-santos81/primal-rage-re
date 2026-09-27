@@ -11,7 +11,7 @@ underlying raw-byte evidence.
 
 **Reverse engineering.** `PRAGE.EXE` loads and analyses cleanly: **~1350
 functions**, 0 failures. LE layout and `INDEX` verified; `S16*.GRA` chunk types
-2/5/6 decoded (`FORMATS.md`); the per-sprite sub-palette/DAC base and descriptor
+2/5/6 decoded (`docs/FORMATS.md`); the per-sprite sub-palette/DAC base and descriptor
 `x`/`y` anchor are `likely`, not proven. Pinned: `0x624D4` (entry/startup),
 `0x1BEC4` (game main), the `0x255CC` → `0x24C5C` → `0x11D04` frame loop, the
 60.05 Hz tick and the literal-`0xA0000` write path — see

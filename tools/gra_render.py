@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render a frame from a Primal Rage `.GRA` graphics file to a PPM.
 
-A `.GRA` is an 8-byte-header chunk chain (see FORMATS.md).  This tool is an
+A `.GRA` is an 8-byte-header chunk chain (see docs/FORMATS.md).  This tool is an
 *independent* decoder: it shares no code with `port/` and re-derives the layout
 from the file bytes so it can act as the oracle for the C decoder.
 

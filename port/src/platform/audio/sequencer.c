@@ -148,7 +148,7 @@ static u8 scale7(u8 a, u8 b)
 }
 
 /* PORT: Applies the register families selected by `mask` to an OPL channel,
- * from the voice's cached patch payload. Payload layout (verified, FORMATS.md):
+ * from the voice's cached patch payload. Payload layout (verified, docs/FORMATS.md):
  * [3..7] = modulator 0x20/0x40/0x60/0x80/0xE0, [8] = 0xC0, [9..13] = carrier
  * 0x20/0x40/0x60/0x80/0xE0. Writes are ordered by register family, matching
  * the captured driver's per-note setup; a key-on passes FAM_ALL, which emits

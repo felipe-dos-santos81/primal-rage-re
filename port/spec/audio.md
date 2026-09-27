@@ -266,7 +266,7 @@ The resource handle format (`(index << 23) | byte_offset`) resolves the GRA
 resources by name; the game builds the `\RAGE.S16` path string
 (`xrefs 0x10c98/0x10d25`) to find the S16 resource directory (installed
 `data/game/C`, or the CD's `RAGE.S16/`).
-`verified (cmd: prage.strings.csv + FORMATS.md resource-handle section)`.
+`verified (cmd: prage.strings.csv + ../../docs/FORMATS.md resource-handle section)`.
 
 ### `MDI.INI` / `DIG.INI` (the shipped profile)
 
@@ -912,7 +912,7 @@ left to Task 9.`
 
 ## FAT.OPL patch bank (Task 8)
 
-Container and payload layout are in `FORMATS.md` ("`FAT.OPL` / `FAT.AD`"). The
+Container and payload layout are in `../../docs/FORMATS.md` ("`FAT.OPL` / `FAT.AD`"). The
 payload decode is **verified** against the capture:
 
 * `[3..7]` → modulator registers `0x20, 0x40, 0x60, 0x80, 0xE0` and `[9..13]` →

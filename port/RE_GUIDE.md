@@ -1,7 +1,7 @@
 # Reverse-engineering guide — Primal Rage (DOS)
 
 Conventions, the DOS/4GW memory model, and the toolchain. Read together with
-`../README.md` and `../FORMATS.md`.
+`../README.md` and `../docs/FORMATS.md`.
 
 ## Target
 
@@ -54,7 +54,7 @@ Conventions, the DOS/4GW memory model, and the toolchain. Read together with
 
 ## What the game reads at runtime
 
-* `INDEX` — resource index (`name → size|flags`); see `FORMATS.md`.
+* `INDEX` — resource index (`name → size|flags`); see `../docs/FORMATS.md`.
 * `S16*.GRA` — graphics sets, loaded by name from the current directory.
 * `\RAGE.S16` — CD/relative path string (data object).
 * `english.txt`, `french.txt`, `german.txt`, `italian.txt`, `spanish.txt`,
@@ -63,7 +63,7 @@ Conventions, the DOS/4GW memory model, and the toolchain. Read together with
   `FAT.OPL`, `FAT.AD` — Miles/AIL sound-driver set. `FUN_00010034` inits the
   driver and falls back through `SB16.DIG → SBPRO.DIG → SBLASTER.DIG`.
 * `twi5.smk`, `twg.smk` — Smacker video (logos/intro), now decoded by the port
-  (sub-project 2b-i; SMK2, 320×200, silent). See `../FORMATS.md` and
+  (sub-project 2b-i; SMK2, 320×200, silent). See `../docs/FORMATS.md` and
   `../../docs/superpowers/plans/2026-09-17-smacker-video-report.md`.
 
 ## Toolchain
@@ -241,7 +241,7 @@ true original, and ported the divergence. Two pieces:
    `tools/gra_render.py` by **exact consumption** (18,201/18,202 descriptors
    across all 69 files) and byte-for-byte only for the four full-screen
    `S16TITLE` frames `{10,12,13,18}`; the per-sprite sub-palette/DAC base and
-   the descriptor `x`/`y` anchor stay `likely`, not proven. See `FORMATS.md`.
+   the descriptor `x`/`y` anchor stay `likely`, not proven. See `../docs/FORMATS.md`.
 3. Name the hot core functions (`0x2C3FC`, `0x2BC30`, `0x1C500`, `0x2AE14`).
 4. Pin the tick **interrupt vector** (the rate is measured at 60.05 Hz; the
    framebuffer write path has since been resolved as a literal `0xA0000`).

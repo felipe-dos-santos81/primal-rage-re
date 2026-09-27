@@ -35,7 +35,7 @@ int gra_open(u32 file_off, u32 file_len, GraChunk *out, int max, int *count)
 }
 
 /* RLE-decodes one sprite from src: `height` rows of `width` pixels, decoded
- * back to back. Dispatch bit 7 first, then bit 6 (FORMATS.md):
+ * back to back. Dispatch bit 7 first, then bit 6 (docs/FORMATS.md):
  *   b & 0x80 == 0            literal run  (b & 0x7F) pixels, one colour byte each
  *   b & 0x80 != 0, b&0x40==0 repeat run   (b & 0x3F) pixels, one colour byte
  *   b & 0x80 != 0, b&0x40!=0 transparent  (b & 0x3F) pixels, index 0

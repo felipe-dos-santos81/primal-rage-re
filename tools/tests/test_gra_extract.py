@@ -1,7 +1,7 @@
 """Tests for tools/gra_extract.py.
 
 The fixture is a synthetic GRA built in memory with the exact chunk layout
-FORMATS.md documents: chunk 2 (pixel blobs) -> chunk 5 (palette bank,
+docs/FORMATS.md documents: chunk 2 (pixel blobs) -> chunk 5 (palette bank,
 optional) -> chunk 6 (12-byte descriptors).  Oracle tests at the bottom need
 data/game/C and are skipped (or, under PR_ORACLE_REQUIRED, fail) without it.
 """

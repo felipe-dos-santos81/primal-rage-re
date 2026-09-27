@@ -1,7 +1,7 @@
 # Decompiling `PRAGE.EXE` — steps and dependencies
 
 Reproducible record of how `port/decomp/` was produced. Target: a 32-bit
-DOS/4GW **bound Linear Executable** (see `../FORMATS.md`).
+DOS/4GW **bound Linear Executable** (see `../docs/FORMATS.md`).
 
 ## Dependencies
 
