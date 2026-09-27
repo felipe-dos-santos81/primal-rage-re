@@ -480,8 +480,9 @@ void frontend_mode_1a_step(void)
      * §46-B), and so are the 7 other non-trivial values the image stores
      * there (record §46-F): 0x259CC, 0x10E80, 0x24B54, 0x27134, 0x4142C,
      * 0x25AE8 and 0x26978, mode 0x17's hooks.
-     * TODO(verify): once cases 0x1A/0x1B are dispatched, a miss on any value
-     * but the two no-ops is a missing port, not a skip. The returned EAX is
+     * TODO(verify): game_frame dispatches cases 0x1A/0x1B (record §47-B), so
+     * a miss on any value but the two no-ops is a missing port, not a skip;
+     * no unregistered value is known. The returned EAX is
      * dead: `xor ah,ah` and byte/word stores of AH/DX follow. */
     void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
     if (hook != NULL) hook();                           /* 0x4F9AA */
@@ -2242,6 +2243,8 @@ void game_loop(void)
     } while (DSB(DS_000A81A8) == 0);
 }
 
+#define FN_000259CC 0x000259CCu   /* no symbols.h name: mode 0x11's hook */
+
 void game_frame(void)
 {
     /* PORT: 0x24C5C calls 0x4F644 at 0x24C6E (unless DAT_00104B00 == 0x27) as
@@ -2261,35 +2264,109 @@ void game_frame(void)
     run_process_table(DS_000A8644, DSD(DS_00104AE8));  /* update table */
     /* PORT: 0x24C5C's second 0x38990 per-frame service call is deferred. */
 
-    /* The original reaches the state machine 0x11D04 only in case 3 of
-     * switch(DAT_00104B00) (0x24C5C). The other modes (login/attract/fight and
-     * diagnostics) are deferred to sub-projects 4/5. */
-    switch (DSD(DS_00104B00)) {
-    case 3:
-        game_state_step();                             /* 0x11D04 */
+    /* PORT: 0x24CFE..0x24EE7, the int 16h keyboard loop, is not ported (only
+     * its ESC quit arm, in game_loop). It runs before the switch and is one of
+     * the three ways out of mode 3: Enter in mode 3 stores mode 0x27 (0x24EE0,
+     * the start menu), 0x11D04's coin/start arm calls the unported 0x257A4,
+     * and so does 0x11D04's state 8 (reached only when DS_00108173 is
+     * non-zero, which no ported code writes) (record §47-B). */
+
+    /* 0x24EEC..0x24F01: the mode switch, on the word DS_00104B00 (`mov
+     * ax,[0x104b00]; cmp ax,0x33; ja 0x2540F; and eax,0xffff; jmp
+     * [eax*4+0x24B8C]`). Every case ends at 0x2540F, the 0x2A31C tail below.
+     * Record §47-B lists every entry. No ported path the oracles exercise
+     * leaves mode 3 (§47-B.2), so only case 3 runs outside the unit tests. */
+    switch (DSW(DS_00104B00)) {
+    case 0x01u:
+    case 0x02u:
+    case 0x20u:
+        /* 0x2521A/0x25224/0x2522E call 0x29B70, a bare `ret`. */
         break;
+    case 0x03u:
+        game_state_step();                             /* 0x25238 0x11D04 */
+        break;
+    case 0x11u:
+        /* 0x2538F: the countdowns DS_00104AFE = 0xF0 (BX) and DS_001088EE = 0
+         * (CX), the hook 0x259CC (EDI) and mode 0x17 (SI), all words but the
+         * hook. */
+        DSW(DS_00104AFE) = 0xF0u;                      /* 0x253A0 */
+        DSW(DS_001088EE) = 0u;                         /* 0x253A7 */
+        DSD(DS_00104AE4) = FN_000259CC;                /* 0x253AE */
+        DSW(DS_00104B00) = 0x17u;                      /* 0x253B4 */
+        break;
+    case 0x14u:
+        game_hook_25ae8();                             /* 0x253D9 0x25AE8 */
+        break;
+    case 0x1Au:
+        frontend_mode_1a_step();                       /* 0x25403 0x4F9A0 */
+        break;
+    case 0x1Bu:
+        frontend_mode_1b_step();                       /* 0x2540A 0x4F9C8 */
+        break;
+    case 0x17u:
+        frontend_mode_17_step();                       /* 0x253EE 0x4F318 */
+        break;
+    case 0x04u:
+    case 0x05u:
+    case 0x06u:
+    case 0x07u:
+    case 0x08u:
+    case 0x09u:
+    case 0x0Au:
+    case 0x0Bu:
+    case 0x0Cu:
+    case 0x0Du:
+    case 0x0Eu:
+    case 0x0Fu:
+    case 0x10u:
+    case 0x12u:
+    case 0x13u:
+    case 0x15u:
+    case 0x16u:
+    case 0x18u:
+    case 0x19u:
+    case 0x1Eu:
+    case 0x1Fu:
+    case 0x21u:
+    case 0x22u:
+    case 0x23u:
+    case 0x24u:
+    case 0x25u:
+    case 0x27u:
+    case 0x28u:
+    case 0x29u:
+    case 0x2Au:
+    case 0x2Bu:
+    case 0x2Cu:
+    case 0x2Du:
+    case 0x2Eu:
+    case 0x2Fu:
+    case 0x30u:
+    case 0x31u:
+    case 0x32u:
+    case 0x33u:
+        /* PORT: named gaps, each case's body unported (record §47-B.1 has
+         * the entry and callees of every one):
+         * 4 0x26254; 5 0x25C88; 6 0x28CC8/0x28DA4 else 0x26254; 7 0x282C4;
+         * 8 0x28468; 9 0x28788; 0xA 0x28BD4; 0xB 0x26254 + 0x28C38;
+         * 0xC 0x28CC8/0x28DA4 else 0x27380; 0xD 0x274FC; 0xE 0x27A2C;
+         * 0xF 0x277C0; 0x10 0x438B4; 0x12 0x41C28; 0x13 0x424E8;
+         * 0x15 0x4F24C; 0x16 0x4F2B0; 0x18 0x4F6E8;
+         * 0x19 0x4F704; 0x1E 0x1EEB0; 0x1F 0x208F8; 0x21 0x26540;
+         * 0x22 0x26C8C; 0x23 0x26A50; 0x24 0x26F58; 0x25 inline (0x266AC,
+         * 0x4EF8C, 0x4F0FC, 0x49C78); 0x27 inline (0x50146, the 0xBCBDC menu
+         * 0x2FFC4, 0x65431 longjmp); 0x28..0x2F inline (0x2D974 field 0x29,
+         * 0x2CA7C, 0x257A4); 0x30 0x29328; 0x31 0x299E8; 0x32 0x296B8;
+         * 0x33 0x29638. Case 0x17 is ported (0x4F318, record §46-G) and
+         * dispatched above as frontend_mode_17_step. */
+        break;
+    case 0x00u:
+    case 0x1Cu:
+    case 0x1Du:
+    case 0x26u:
+        break;                                         /* table entries 0x2540F */
     default:
-        /* PORT: 0x24C5C's case 1/2/4..0x33 modes drive menus, attract, fight
-         * and diagnostics; deferred to sub-projects 4/5. The effect call sites
-         * 0x29B74 (frontend_darken_all, the DS_00104AE4 countdown handler)
-         * and 0x41578 (frontend_darken_marked) are ported (record §42-E), but
-         * their callers are not: the `call [0x104ae4]` dispatchers
-         * (0x4F2B0..0x4F9C8, called at 0x253E7..0x2540A in these cases), the
-         * direct call 0x27B17 and the four 0x41578 sites in 0x416D4/0x41C28.
-         * DS_00104B00 is fixed at 3 by 0x10E80, so no reachable path enters
-         * those cases. The mode 0x1A/0x1B handlers 0x4F9A0/0x4F9C8 (cases
-         * 0x1A/0x1B, table 0x24B8C) are ported as frontend_mode_1a_step/
-         * frontend_mode_1b_step (record §43-B) but not dispatched here: only
-         * 0x4F980 stores mode 0x1A, and its eleven callers (0x1F44D, 0x25816,
-         * 0x25A4C, 0x25A79, 0x26991, 0x27162, 0x28D79, 0x28D9B, 0x43AEE,
-         * 0x43C1E, 0x4482A) sit in unported code or in the two hooks, whose
-         * storers 0x42CB4 (mode 0x13's 0x424E8), 0x28DA4 (cases 6/0xC) and
-         * the unreferenced stub 0x42FB0 are unported. The mode 0x17 handler
-         * 0x4F318 (case 0x17, 0x253EE) is ported as frontend_mode_17_step
-         * (record §46-G) and not dispatched either: of the mode's storers
-         * only the hook 0x25AE8 is ported, and it is reached only through
-         * 0x4F318 or unported code. */
-        break;
+        break;                                         /* 0x24EF6 ja 0x2540F */
     }
 
     /* 0x24C5C's tail calls 0x2A31C here (Format reference I): walk the active
@@ -2442,7 +2519,11 @@ void game_state_step(void)
             }
             break;
         case 8:
-            /* PORT: fight engine (sub-project 5). */
+            /* PORT: 0x11EAC runs 0x32970(0) (the run clock, spec §7) and
+             * 0x257A4(3), the unported game-start divert that leaves mode 3
+             * for 0x1A (record §47-B), then the shared tails below. Only
+             * attract phase 0xB stores state 8, when DS_00108173 != 0, and
+             * no ported code writes that byte. */
             break;
         case 9:
             DSW(DS_000F0A6A) = (u16)sVar1;

@@ -12892,3 +12892,408 @@ polarity, pressed -> held, and moving the `0xFFFF` store after the hook.
     `0x4F790` and would be the natural next step: `0x29B74` and `0x41578`
     already store mode `0x15`;
   - the storers of mode `0x17` listed in 46-G.2.
+
+## 47-B. The `0x24C5C` mode switch (jump table `0x24B8C`) and what keeps modes other than 3 unreachable (named-gap batch 8, branch `gap8-24c5c`)
+
+**Result in one line.** `game_frame` *is* `0x24C5C` and has always been
+the port's frame update. What it lacked was the mode switch. It dispatched
+only mode 3, and it read the mode as a dword. It now carries the whole jump
+table `0x24B8C` and reads the mode as a word, as the raw does:
+- mode 3 still runs `0x11D04`;
+- modes 1, 2 and `0x20` run the bare `ret` `0x29B70`;
+- mode `0x11` runs its inline body;
+- modes `0x14`, `0x1A` and `0x1B` call their ported handlers;
+- the other 40 table entries are named gaps.
+
+This is the dispatch half of the blocker only. **No ported path moves the
+mode word off 3 at runtime.** The raw leaves mode 3 in three ways, and none
+is ported:
+- `0x24C5C`'s own int 16h keyboard loop: Enter in mode 3 stores `0x27`, the
+  start menu;
+- `0x11D04`'s coin/start arm, which calls `0x257A4`;
+- `0x11D04`'s state 8, which also calls `0x257A4`.
+
+So the hooks of §43-B/§46-B/§46-F still run only in unit tests. A headless
+8000-frame run gives byte-identical frames before and after this change
+(47-B.5). What it would take to make the modes reachable is scoped as a
+follow-up in 47-B.6.
+
+(This section takes §47-B because §47-A is capture 3545's and §46-G is
+`gap7-mode17`'s; §46-E is left free.)
+
+### 47-B.1 The raw (`read_memory` + capstone over `0x24C5C..0x255CB`, fixups applied; Ghidra's `FUN_00024c5c` has `body_end` `0x255CA`)
+
+`0x24C5C` pushes EBX/ECX/EDX/ESI/EDI and runs, in this order:
+
+1. `0x24C61..0x24C6E`: `0x4F644` unless the zero-extended word
+   `[0x104B00]` is `0x27` (ported).
+2. `0x24C73..0x24CB5`: the command block. It runs while `[0x104B26] == 0`
+   and `[0x104B1B] != 0`, and consists of the per-side `0x47208` (or a zero
+   command when slot `+0x41` bit 4 is set), then `0x461DC` (ported,
+   `fighter_command_block`).
+3. `0x24CBA..0x24CC8`: `0x38990`, twice when `[0x104B26] != 0` and once
+   otherwise (deferred, an existing `PORT:` note).
+4. `0x24CCD..0x24CFC`: the word frame counter `[0xEF6DC]` and the update
+   table `[0xA8644]` walked over the bits of `[0x104AE8]` (ported).
+5. `0x24CFE..0x24EE7`: **the keyboard loop** (unported; only its ESC arm
+   is modelled, in `game_loop`). `int 16h` AH=1 peeks and AH=0 reads. The
+   ASCII byte is taken, or the scan code when the ASCII byte is 0, masked
+   `0xFF` and stored to `[0x105F30]`. Then:
+   - in mode `0x1E` every non-zero ASCII key goes to `0x20860` (text entry);
+   - scan codes, with ASCII 0: `0x10` goes to `0x249F0(0)` (quit), `0x1F`
+     to `0x1D220`, `0x24` to `0x5004A` and `0x32` to `0x1D1B0`;
+   - **Enter** (`0x0D`, `0x24ECF`): in mode 3 only, `mov [0x104b00],di`
+     with DI = `0x27` (`0x24EE0`);
+   - **ESC** (`0x1B`, `0x24E9E`): mode 3 goes to `0x249F0(0)`, any mode but
+     `0x27` goes to `0x249F0(1)`, and mode `0x27` does nothing;
+   - **Space** (`0x20`, `0x24DE9`): the pause. It is skipped in modes 3 and
+     `0x27`, and in mode `0x17` while the hook is `0x10E80` (`0x24E09 cmp
+     dword [0x104ae4],0x10e80`, the compare §46-F.2 names). It sets
+     `[0x104B22] = 1`, calls `0x1D250`, draws string `0x1E8` (`0x1C500`,
+     `0x2F198`, `0x2EA78`) and waits for another Space. Then it clears the
+     string (`0x2F280`), calls `0x1D270` and sets `[0x104B22] = 0`.
+6. `0x24EEC..0x24F01`: **the switch**: `mov ax,[0x104b00]; cmp ax,0x33; ja
+   0x2540F; and eax,0xffff; jmp cs:[eax*4+0x24B8C]`. The mode is a word, and
+   values above `0x33` skip to the tail.
+7. `0x2540F`: `0x2A31C`, the `[0x104B15]` tail (`0x25414`) and the mode
+   tail (`0x2545C`, §42-D), all ported.
+
+**The jump table `0x24B8C`** has `0x34` dwords, fixups applied. Every entry
+ends with `jmp 0x2540F` or falls into it. A "no" in the Ported column means
+the case is a named gap in `game_frame`; the bytes for its end address come
+from Ghidra's `body_end`.
+
+| mode | entry | body | ported |
+|---|---|---|---|
+| 0, `0x1C`, `0x1D`, `0x26` | `0x2540F` | nothing | yes (empty) |
+| 1, 2, `0x20` | `0x2521A`, `0x25224`, `0x2522E` | `call 0x29B70`, a bare `ret` (`0x29B70: ret`; `0x29B74` begins after the `lea eax,[eax]` pad) | yes (empty) |
+| 3 | `0x25238` | `0x11D04` | yes (`game_state_step`) |
+| 4 | `0x25242` | `0x26254` (to `0x263F2`) | no |
+| 5 | `0x2524C` | `0x25C88` (to `0x25FAB`) | no |
+| 6 | `0x25256` | if `[0x104B1D] == 0` and `r = 0x28CC8()` is non-zero, `0x28DA4(r - 1)`; otherwise it jumps to case 4's `0x26254` | no |
+| 7 | `0x25273` | `0x282C4` (to `0x28413`) | no |
+| 8 | `0x25335` | `0x28468` (to `0x2861B`) | no |
+| 9 | `0x2533F` | `0x28788` (to `0x28BD2`) | no |
+| `0xA` | `0x2527D` | `0x28BD4` | no |
+| `0xB` | `0x25287` | `0x26254`, then `0x28C38` | no |
+| `0xC` | `0x25349` | `r = 0x28CC8()`; if r is non-zero, `0x28DA4(r - 1)`, else `0x27380` | no |
+| `0xD` | `0x25367` | `0x274FC` (to `0x277BF`) | no |
+| `0xE` | `0x25371` | `0x27A2C` | no |
+| `0xF` | `0x2537B` | `0x277C0` | no |
+| `0x10` | `0x25385` | `0x438B4` (to `0x43927`) | no |
+| `0x11` | `0x2538F` | inline: `[0x104AFE] = 0xF0` (BX), `[0x1088EE] = 0` (CX), `[0x104AE4] = 0x259CC` (EDI), mode `0x17` (SI); words except the hook | **yes** |
+| `0x12` | `0x253BD` | `0x41C28` (to `0x4246A`) | no |
+| `0x13` | `0x253C4` | `0x424E8` (to `0x42721`) | no |
+| `0x14` | `0x253D9` | `0x25AE8` | **yes** (`game_hook_25ae8`, §46-F) |
+| `0x15` | `0x253E0` | `0x4F24C` | no |
+| `0x16` | `0x253E7` | `0x4F2B0` | no |
+| `0x17` | `0x253EE` | `0x4F318` | no on this branch; ported on `gap7-mode17` (§46-G) |
+| `0x18` | `0x253F5` | `0x4F6E8` | no |
+| `0x19` | `0x253FC` | `0x4F704` | no |
+| `0x1A` | `0x25403` | `0x4F9A0` | **yes** (`frontend_mode_1a_step`, §43-B) |
+| `0x1B` | `0x2540A` | `0x4F9C8`, falling into `0x2540F` | **yes** (`frontend_mode_1b_step`, §43-B) |
+| `0x1E` | `0x253CB` | `0x1EEB0` (to `0x1F457`) | no |
+| `0x1F` | `0x253D2` | `0x208F8` (to `0x20C08`) | no |
+| `0x21` | `0x25296` | `0x26540` | no |
+| `0x22` | `0x25321` | `0x26C8C` | no |
+| `0x23` | `0x25317` | `0x26A50` | no |
+| `0x24` | `0x2532B` | `0x26F58` | no |
+| `0x25` | `0x252A0` | inline, on the byte `[0x104B25]` (below) | no |
+| `0x27` | `0x251C6` | inline, the start menu (below) | no |
+| `0x28`..`0x2F` | `0x24F09`, `0x24F66`, `0x24FC4`, `0x25187`, `0x2501E`, `0x25071`, `0x250CE`, `0x2512B` | inline, the game start (below) | no |
+| `0x30`..`0x33` | `0x2519E`, `0x251A8`, `0x251B2`, `0x251BC` | `0x29328`, `0x299E8`, `0x296B8`, `0x29638` | no |
+
+**Case `0x25`** (`0x252A0`) branches on the byte `[0x104B25]`:
+- **0**: it calls `0x266AC`. When `[0x1088BD] == 8`, `[0x1078F0] != 0` and
+  `[0x1078F1] != 0`, it also calls `0x4EF8C` and does `[0x104B25]++`.
+- **1**: it decrements the word `[0x10889A]` and tests the new value (`test
+  ax,ax; ja`). Non-zero calls `0x49C78`, zero calls `0x4F0FC`.
+- **Above 1**: nothing.
+
+**Case `0x27`** (`0x251C6`):
+- it calls `0x50146(EAX = 0xC000C000, EDX = 0x1E, EBX = 0xF, ECX = 4)`;
+- then the menu `0x2FFC4(EAX = 0xBCBDC, EDX = 0x10, EBX = 0xF000)` (to
+  `0x305EC`);
+- a result other than 0, -5 or -10 leaves through `jmp 0x65431` with EAX =
+  `0x1044F4`, EDX = 1. That is a longjmp: it restores the registers from the
+  buffer and `call [0xF0900]`;
+- the other results call `0x4F644` again.
+
+**The start menu's items.** The `0xBCBDC` menu's item handlers are the only
+code that stores modes `0x28..0x2E`. They are seven stubs at `0x2CBC4`,
+`0x2CBDC`, `0x2CBF4`, `0x2CC0C`, `0x2CC24`, `0x2CC3C` and `0x2CC54`, entered
+only through the data dwords at `0xBCCE4 + 0x10·i` (no rel32). They store:
+
+| stub | mode | `[0x104B1D]` |
+|---|---|---|
+| `0x2CBC4` | `0x2D` | 0 |
+| `0x2CBDC` | `0x2E` | 0 |
+| `0x2CBF4` | `0x28` | 1 |
+| `0x2CC0C` | `0x29` | 1 |
+| `0x2CC24` | `0x2A` | 2 |
+| `0x2CC3C` | `0x2B` | 3 |
+| `0x2CC54` | `0x2C` | 4 |
+
+No storer of mode `0x2F` was found (47-B.2).
+
+**Cases `0x28..0x2F`** (the game start). Every case except `0x2B` reads the
+config field `0x29` through `0x2D974` (ported, `config_field_get`) and
+stores:
+- `[0x104528]` = the field;
+- `[0x105B3A]` = `(field & 0x100) >> 4`;
+- `[0x1088D0]` = `(field & 0xF)·5 + 0x1E`;
+- `[0x10452C]` = `(field & 0xF0) >> 4`.
+
+Then, per case:
+
+| mode | `[0x104AB8]` | `0x2CA7C(1)` | `0x257A4` argument |
+|---|---|---|---|
+| `0x28` | 1 | no | 3 |
+| `0x29` | 2 | no | 3 |
+| `0x2A` | 3 | no | 3 |
+| `0x2B` (no field read) | 3 | no | 3 |
+| `0x2C` | not stored | no | 3 |
+| `0x2D` | not stored | yes (credit spend, ported) | 1 |
+| `0x2E` | not stored | yes | 2 |
+| `0x2F` | not stored | yes | 2 |
+
+**`0x257A4`** (unported; to `0x25827`; the coin/start divert) runs:
+- `0x2C3FC(0x100)`, then `0x2BAF4(0)`;
+- the bytes `[0x104B17]`, `[0x104B19]`, `[0x104B11]`, `[0x104B1B]` and
+  `[0x104B15]` = 0, and `[0x104B1F]` = the argument (DL);
+- `0x33C18(0)` and `0x33C18(1)` (`0x33C18..0x33C5A`), then `0x46594`
+  (`..0x4660A`);
+- `0x65490(0x104B02, 0, 7)`, a `memset` that clears `0x104B02..0x104B08`
+  (**the mode word's upper half**, so the raw never reads a non-zero upper
+  half there);
+- the hook `[0x104AE4] = 0x4367C` (ported, §46-B) and `0x4F980(0x10)`, which
+  arms mode `0x1A` with the return mode `0x10`;
+- last, `0x2C3FC(0x53)`.
+
+### 47-B.2 Entrances, and every writer of the mode word (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object, a dword scan of both fixed-up objects)
+
+- **`0x24C5C`**:
+  - rel32: `0x2560B` (`call`, in `0x255CC`, the master loop) only;
+  - dword: none;
+  - Ghidra agrees: one `UNCONDITIONAL_CALL` from `FUN_000255cc`.
+
+  So `game_frame` (called at the same point of `game_loop`) is its only
+  entrance. Nothing needs unwinding to reach the switch.
+- **`0x24B8C`**: the only dword is at code `0x24F05`, the displacement of
+  the `jmp` at `0x24F01`; no data. Ghidra agrees: one `DATA` reference from
+  `0x24F01`.
+- **`0x257A4`**: rel32 `0x11CD4` (`jmp`), `0x11D41`, `0x11EB8`, and the
+  eight game-start cases `0x24F5C`, `0x24FBA`, `0x25014`, `0x25067`,
+  `0x250C4`, `0x25121`, `0x2517D`, `0x25194`. No dword.
+  - `0x11D41` is the arm `game_state_step`'s `PORT:` note names (`0x32970(0)`
+    then `0x257A4(accepted)`).
+
+**Every store to the word `[0x104B00]`.** Each fixed-up occurrence of the
+displacement `0x104B00` in the code object was decoded back to its
+instruction (a `66` prefix was taken when present) and classified by the
+operand's access. The value is the immediate, or the last immediate loaded
+into the stored register earlier in the function. The function starts are
+approximate: the nearest preceding rel32/dword target. There are 85 stores:
+
+| value | store sites |
+|---|---|
+| 3 | `0x10EA1` (`0x10E80`, **ported**), `0x10F05` (`0x10EE4`, **ported**, `attract_state_reset`), `0x11C9E` (in `0x11C4C`, which no rel32 or dword enters: dead) |
+| 4 | `0x25ADA` (`0x25A84`) |
+| 6 | `0x25F6B` (`0x25C88`), `0x4CDA8`, `0x4F1A3` (`0x4F0FC`) |
+| 8, 9, `0xA` | `0x27EC1`/`0x27ECC`, `0x27F92`, `0x2802D`/`0x2803B`, `0x28353`/`0x283A1`, `0x283DE`/`0x283F9` |
+| `0xB`, `0xC`, `0xD`, `0xE`, `0xF` | `0x28C2F` (`0x28BD4`), `0x25F20`/`0x277B5`/`0x27A15`, `0x27375`, `0x2790D`, `0x27696` |
+| `0x12` | `0x41494` (`0x4142C`, **ported**, `fight_hook_4142c`) |
+| `0x14` | `0x1F18C`, `0x1F42E` (`0x1EEB0`, mode `0x1E`'s handler) |
+| `0x15` | 8 sites in `0x1EEB0`, `0x20A79`, `0x20BF4`, `0x29BBA` (**ported**, `frontend_darken_all`), `0x415F8` (**ported**, `frontend_darken_marked`) |
+| `0x17` | `0x253B4` (case `0x11`, **ported now**), `0x25B82`/`0x25BA2` (**ported**, `0x25AE8`), and the unported storers §46-G.2 lists |
+| `0x1A` | `0x4F994` (**ported**, `frontend_wipe_arm`) |
+| `0x1B` | `0x4F9BD` (**ported**, `frontend_mode_1a_step`) |
+| `[0x104AFA]` | `0x4F2A4` (`0x4F24C`), `0x4F30E` (`0x4F2B0`), `0x4F6FD` (`0x4F6E8`), `0x4F9DD` (**ported**, `frontend_mode_1b_step`) |
+| `0x1E` | `0x42EF7` (`0x42CB4`) |
+| `0x21` | `0x4BDE7` (**ported**, `fight_4bd98`) |
+| `0x22`, `0x24`, `0x25` | `0x26BD1`, `0x26E24`, `0x4E1E9` |
+| `0x27` | `0x24B6D` (**ported**, `game_hook_24b54`), `0x24EE0` (the Enter key, unported) |
+| `0x28..0x2E` | `0x2CBC4..0x2CC54` (the menu items above) |
+| `0x31`, `0x32` | `0x2957F`, `0x29965`, `0x29999`/`0x299D2` |
+| `0x15` | `0x1F355`, `0x1F3BE` |
+| `0x17` | `0x27247` (§46-G.2), `0x2864F` (the dead `0x2861C` region) |
+| `7` | `0x28124` |
+| `0x16` | `0x285DC`, `0x2860F` |
+| `0x33` | `0x2984F` |
+
+**What leaves mode 3 in the raw.** From mode 3, the switch reaches only
+`0x11D04`. A store of anything but 3 therefore has to come from one of
+three places:
+- `0x11D04` itself, through `0x257A4`. That covers the coin/start arm
+  (`0x11D41`, with the accepted mask) and **state 8** (`0x11EAC`: `0x32970(0)`,
+  `0x257A4(3)`, then the shared tails; the state jump table `0x11CDC` has
+  entry 8 = `0x11EAC`);
+- `0x24C5C`'s keyboard loop, before the switch: Enter gives `0x27`;
+- a process-table or render-table entry.
+
+Two things keep state 8 out of the port's runs:
+- **Only one store writes state 8.** A scan of every store to `[0xF0A64]`
+  found `0x114D6` (attract phase `0xB`, ported in `attract.c`) as the only
+  one. The copies from `[0xF0A6C]` carry 4, 5, 6 or `[0xF0A72]` (0, 4 or
+  5); the store at `0x119E6` copies `[0xF0A6C]` too, so it can also be 0.
+- **No ported code writes the byte that gates it.** Phase `0xB` stores state
+  8 only when `[0x108173] != 0`. The image holds 0 there. No instruction
+  stores to `0x108173` directly. It is the top byte of the dword
+  `[0x108170]`, which only the unported `0x43D7F` (in `0x43D60`) writes
+  whole. The byte stores index a side:
+  - the ported ones in `fight.c`, over a 0..1 loop: `0x43790`/`0x437A6`
+    (`0x43738`) and `0x44511` (`0x444C8`);
+  - the unported ones: `0x43954` (`0x43928`, a 0..1 loop), `0x43B77`
+    (`0x43B24`), and `0x443F9`/`0x4443F` (`0x4434C`, whose index is its EAX
+    argument, not bounded here).
+
+  So every displacement-addressed store that can reach `0x108173` is
+  unported. The scan did not cover block fills (`rep stos`, the `0x65490`
+  `memset`) through a computed pointer. The 5000-frame run below never
+  entered state 8.
+
+The port's `game_state_step` case 8 note said "fight engine". It now names
+`0x11EAC`'s real body, which still depends on the unported `0x257A4`.
+
+The ported stores of values other than 3 are all in hooks or handlers that
+mode 3 does not reach: `0x4F980`, the six mode handlers and hooks above,
+`0x41494`, `0x4BDE7` (gated on `[0x104ABC] >= 2`) and `0x29BBA`/`0x415F8`.
+
+**Measured.** A temporary `stderr` probe in `game_frame`, which was reverted
+and never committed, logged the dword `[0x104B00]` and `[0xF0A64]` at entry
+and after the switch. It ran over a 5000-frame `prageport --check`, the
+oracles' no-input path. The dword was `0x00000003` on every frame. The
+states ran 0, 1 (690), 2 (886), 3 (1476), 9 (1716), 6/7 (1956/1957), 0
+(2857), 6/7 (3669/3670), 5 (4570), 9, 6/7 (4871/4872). So no oracle path
+leaves mode 3, and the upper word `0x104B02` is 0 throughout.
+
+### 47-B.3 The port
+
+- `flow.c` `game_frame`:
+  - the switch reads `DSW(DS_00104B00)`, which **corrects the dword read**
+    §43-B.5 and §46-F.5 had flagged. With the upper half 0, as it is on
+    every oracle path, the two reads agree;
+  - cases 1/2/`0x20` are empty (`0x29B70`) and 3 is `game_state_step`;
+  - `0x11` is transcribed inline with a local `#define FN_000259CC`:
+    `symbols.h` has no name for it, and it is registered since §46-F;
+  - `0x14`, `0x1A` and `0x1B` call `game_hook_25ae8`,
+    `frontend_mode_1a_step` and `frontend_mode_1b_step`;
+  - 0/`0x1C`/`0x1D`/`0x26` and values above `0x33` are empty;
+  - the other 40 modes share one `PORT:` block naming each entry's callee.
+  - A `PORT:` note before the switch names the unported keyboard loop and
+    the two exits from mode 3.
+- `frontend_mode_1a_step`'s `TODO(verify)` now states that cases
+  `0x1A`/`0x1B` are dispatched. No unregistered hook value is known (§46-F).
+- `game_state_step`'s case 8 `PORT:` note named the fight engine. It now
+  names `0x11EAC`'s body (`0x32970(0)`, `0x257A4(3)`) and the
+  `DS_00108173` gate (47-B.2). The code is unchanged: the case still breaks
+  into the shared tails, as the raw's does after `0x257A4`.
+- `flow.h`'s `game_frame` comment is updated.
+- **Case `0x17` is not wired here.** `frontend_mode_17_step` (`0x4F318`)
+  exists only on the unmerged branch `gap7-mode17` (§46-G), which this
+  branch does not contain. After both merge, it goes in as `case 0x17u:
+  frontend_mode_17_step(); /* 0x253EE 0x4F318 */`, and `0x17` leaves the gap
+  list. (Expect a textual conflict: both branches edit the same `game_frame`
+  comment block.)
+- The game-start cases `0x28..0x2F` are kept as gaps, not half-ported. Each
+  one ends in the unported `0x257A4`, and running only their config stores
+  would leave a state the raw never has.
+
+### 47-B.4 The assertions and mutations
+
+`check_mode_switch` (`test_fight.c`, after `check_mode_17_hooks`) snapshots
+and restores the whole data object, the record and pset pools, both
+buffers, the aperture, the DAC and the resource table, as
+`check_mode_17_hooks` does. Each case gates off the update table, the command
+block and the `0x25414` tail, and seeds the mode's upper word with `0xBEEF`.
+- **(a)** Mode 3 (dword `0xBEEF0003`) runs `0x11D04`. State 9's timer goes
+  5 → 4, with the coin poll, the tails and the overlay skipped. The words
+  `0x0103` (low byte 3), 1, 2 and `0x20` leave the timer at 5 and the mode
+  unchanged.
+- **(b)** Mode `0x11`: `DS_00104AFE` = `0xF0`, `DS_001088EE` = 0 with its
+  neighbour word `0x6666` kept, the hook `0x259CC`, and the dword
+  `0xBEEF0017`.
+- **(c)** Mode `0x14` (`DS_00104B1D` = 0): `DS_00104B14` = 0, the hook
+  `0x10E80`, both countdowns `0xB4`, `0xBEEF0017`.
+- **(d)** Mode `0x1A` with the counter at `0x11`: `DS_000C98F0` = 0, the
+  gate = 1, the counter = 0, `0xBEEF001B`.
+- **(e)** Mode `0x1B` with `DS_00104AFA` = `0x26`: `DS_000C98F0` = 0, the
+  gate kept (`0x77`), `0xBEEF0026`.
+
+Mutations of `flow.c` (`mut.py`, one per build, and the source was restored
+afterwards). All 14 fail the suite:
+
+| # | mutation | failing lines |
+|---|---|---|
+| M1 | switch on `DSD` | 16 |
+| M2 | switch on `DSB` | the `0x0103` loop |
+| M3 | `0xF0` → `0xF1` | (b) |
+| M4 | `DS_001088EE` store dropped | (b) |
+| M5 | `DS_001088EE` stored as a dword | (b), the neighbour |
+| M6 | hook `0x25BBC` | (b) |
+| M7 | mode `0x17` stored as a dword | (b) |
+| M8 | case `0x14` dropped | 5 lines of (c) |
+| M9 | case `0x1A` dropped | 4 lines of (d) |
+| M10 | case `0x1B` dropped | 2 lines of (e) |
+| M11 | case 1 into case 3 | (a) |
+| M12 | case `0x20` into case 3 | (a) |
+| M13 | case 3 dropped | 37 lines, across the suite |
+| M14 | case `0x1A` → `0x4F9C8` | (d) |
+
+### 47-B.5 Measured and remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, with 0
+  compiler warnings. As the brief requires, the branch ran neither `make
+  verify` nor the drivers.
+- **Frames.** `prageport --check 8000` was run from two scratch directories,
+  once with the base binary (`3aaaf21`) and once with this branch's. All
+  24000 `frame_*.ppm`/`.pal`/`.idx` files are byte-identical. The mode stays 3
+  with a zero upper word on the no-input path (47-B.2), so no oracle is
+  expected to move. The drivers run the same `game_loop`.
+- Remaining named gaps:
+  - the 40 unported case bodies (47-B.1's table);
+  - the keyboard loop `0x24CFE..0x24EE7`;
+  - `0x24C5C`'s `0x38990` calls;
+  - the coin/start arm and state 8 of `0x11D04` (`0x32970`, `0x257A4`);
+  - case `0x17` until `gap7-mode17` merges.
+
+### 47-B.6 Follow-up: what makes modes `0x17`/`0x1A`/`0x1B` reachable (scoped, not done here)
+
+The dispatch is now in place, so reachability depends only on something
+storing the modes at runtime. The smallest path is the credited start. Its
+chain is `0x11D04` (coin poll accepted) → `0x257A4` → mode `0x1A` (hook
+`0x4367C`) → `0x1B` → return mode `0x10`. It needs:
+
+1. **`0x257A4`** (`0x257A4..0x25827`) and its unported callees:
+   - `0x33C18` (`..0x33C5A`, called per side);
+   - `0x46594` (`..0x4660A`);
+   - the `memset` `0x65490` over `0x104B02` for 7 bytes;
+   - the voices `0x2C3FC(0x100)`/`(0x53)`, which stay unwired as in §45-A.
+
+   Then `game_state_step`'s accepted arm and its case 8 call it.
+   `0x32970(0)` (the run clock, spec §7) stays out of scope. State 8 also
+   needs `DS_00108173` set, and only the unported character-select code
+   writes that byte (47-B.2).
+2. **Mode `0x10`'s handler `0x438B4`** (`..0x43927`), with its callee
+   `0x4F790` (§46-G). Without it the credited start ends in a mode that
+   draws nothing after the wipe.
+3. Mode **`0x17`** follows only later in the match flow. The storers are
+   §46-G.2's list: mode `0x12`'s `0x41C28`, mode `0x13`'s `0x424E8`/`0x42CB4`,
+   `0x26F58`, `0x28788` and others. So `0x17` has no short path. It belongs
+   to the interactive-match project, as §46-G concluded.
+4. The keyboard route (Enter → `0x27`) additionally needs:
+   - the int 16h loop's Enter arm (a host key source, like
+     `input_drain_esc`);
+   - `0x50146`;
+   - the menu engine `0x2FFC4` (`..0x305EC`) with its `0xBCBDC` table;
+   - the longjmp exit `0x65431`, which has no C equivalent inside
+     `game_frame`;
+   - the game-start cases `0x28..0x2F`, which also end in `0x257A4`.
+
+   This route is larger than the coin route and depends on it.
+
+**Oracle risk of the follow-up.** Both routes need input: a credit plus a
+start, or Enter. None of the oracle captures has input, so on the no-input
+path neither route should move an oracle. The new code runs only when
+`config_credit_ready` is non-zero and the start bits are pressed. The
+follow-up must re-run the 8000-frame comparison above to confirm that.
