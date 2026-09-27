@@ -17348,6 +17348,7 @@ static void check_volleyball(void)
     }
 #undef MZ_BALL
     mz_restore();
+}
 
 /* ---- the spawn's sound banks and the voice 0x4D (record §45-A) ---------- */
 
