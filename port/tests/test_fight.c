@@ -21020,14 +21020,17 @@ static void check_char6_entrance(void)
     }
 
     /* B: 0x23530 through 0xA55F8. Rows: 0 side 0, +0x52 = 0; 1 side 1 with
-     * slot +0x7A = 2 (the anchor word 0x1400); 2 side 0, +0x52 = 3. */
-    for (i = 0; cb != NULL && i < 3u; i++) {
+     * slot +0x7A = 2 (the anchor word 0x1400); 2 side 0, +0x52 = 3; 3 side 0,
+     * +0x52 = 0 with +0x42 bit 3 clear (the camera path), where 0x3C4CC's
+     * plain 0x2BC30 arm keeps the record's x while 0x3C480's anchor writes
+     * would re-derive it from the new sprite's anchor. */
+    for (i = 0; cb != NULL && i < 4u; i++) {
         u32 side = i == 1u ? 1u : 0u;
         u32 slot = DS_001077B0 + side * 0x94u, rec, ref[4];
         rec = ce_seed(6u, side, 0x1000, 0, 0x7C00u, 0u);
         ce_sentinels(slot, rec);
         DSB(slot + 0x52u) = (u8)(i == 2u ? 3u : 0u);
-        DSB(slot + 0x42u) = 0x08u;
+        DSB(slot + 0x42u) = (u8)(i == 3u ? 0x00u : 0x08u);
         if (i == 1u) DSB(slot + 0x7Au) = 2u;
         DSB(rec + 0x28u) = 0x41u;
         DSD(rec + 0x1Cu) = 0x00007777u;
@@ -21046,7 +21049,8 @@ static void check_char6_entrance(void)
         CHECK_EQ_INT((int)DSW(slot + 0x88u), 0);
         CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x0320);
         CHECK_EQ_INT((int)DSW(rec + 0x44u), 0x0020);
-        CHECK_EQ_INT((int)DSD(rec + 0x1Cu), i == 1u ? 0x1400 : 0x1180);
+        if (i != 3u) CHECK_EQ_INT((int)DSD(rec + 0x1Cu), i == 1u ? 0x1400 : 0x1180);
+        if (i != 2u) CHECK_EQ_INT((int)DSD(rec + 0x18u), 0x1000);
         CHECK_EQ_INT((int)(DSB(rec + 0x28u) & 0x20u), 0x20);
         if (i == 0u) CHECK_EQ_INT((int)DSB(rec + 0x28u), 0x61);
         CHECK_EQ_INT((int)DSB(slot + 0x5Fu), 0x5F);
