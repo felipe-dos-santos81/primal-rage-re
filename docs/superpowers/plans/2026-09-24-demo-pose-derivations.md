@@ -11061,4 +11061,69 @@ no spawn bank read (#75), and the old rate (#76, the flier's tick 100).
 
 ## 46-A. The attract's high-score table at capture 3408 (roar-timing Task 34, branch `frame-3408d`)
 
-(In progress: the raw, the entrances, the port and the measurement follow.)
+(In progress: the port and the measurement follow.)
+
+### 46-A.1 The raw (Ghidra `decompile_function`/`disassemble_function`, fixups applied)
+
+- **`0x2DB58`** (the table locate). EAX = the record, EDX = the table, ECX =
+  a pointer for the record size, EBX = a pointer for the bytes left. A table
+  of 3 or more (`cmp edx,3; jc`) or a record at or past the count (`cmp
+  eax,edi; jc`, unsigned) returns 0. The descriptor is the 8-byte
+  `0x2D3FC[table]`: +0 the count, +2 the stored count, +4 the value bytes,
+  +6 the name bytes. The record size is +4 + +6; `*EBX` = (count - record) *
+  size, `*ECX` = size; the address is `[0x2D478 + 8*table]` + record * size.
+  The shipped descriptors: table 0 = 10/10/4/8 (12-byte records), table 1 =
+  1/1/4/0x18 (28), table 2 = 1/1/3/2 (5). The pointers (the storage-block
+  list at `0x2D474`, 8-byte `{u16 offset, u16 size, u32 ram}`): `0x105E34`
+  (0xF6, 0x78), `0x105EAC` (0x176, 0x1C), `0x105EC8` (0x199, 5).
+- **`0x2DBC4`** (the record read). EAX = the record, EDX = the table; EBX, ECX,
+  ESI and EDI are preserved. A missing record returns 0. Otherwise the value
+  bytes are read big-endian into `DS_00105EFC` (0x2DC07), and each name word
+  (little-endian) gives three characters at `DS_00105F00`: bits 0-4, 5-9,
+  10-14, each `c + 0x40`, or `' '` for 0. A NUL follows (0x2DC94); EAX =
+  `0x105EFC`.
+- **`0x2DCA0`** (the record insert). EAX = the record, EDX = the source
+  (`u32` value, then the name string), EBX = the table. A missing record
+  returns 0. When the record is below the stored count (+2, `jbe`), the bit
+  `table + 6` of `DS_00105DD8` is set (0x2DD00). When the bytes left exceed
+  one record (`jle`, signed) `0x653A1` (memmove: EAX = dst, EDX = src, EBX =
+  n) moves the records from this one down by one record, dropping the last.
+  The value is stored big-endian. Each name word packs up to three
+  characters, `c & 0x1F` at bits 0/5/10: a NUL or a space packs 0, a space
+  advances the source, a NUL does not. When the record is below the stored
+  count, `0x2D4EC(table + 6)` (the storage image's check bytes; a no-op in
+  the port, as for `0x2DA0C`). EAX = 1.
+- **`0x1E918`** (the default fill). EAX = force. For record 0..9 of table 0:
+  when the read value is 0 or force is set, insert the 0x2C-byte default
+  record `0xA7BBC + 0x2C*i`: 500000 TWG, 400000 CFF, 350000 AMR, 300000 MSG,
+  250000 JSY, 200000 ACW, 90210 MrP, 50000 HUH, 20000 WHU, 100 DUD.
+- **`0x1E988`**: AL = 1 when field 0x27 >= 2000 and field 0x26 >= 200
+  (`jl`, signed), else 0.
+- **`0x1E824`** (the high-score init, called from `0x20C10` at `0x20C84`,
+  after `DS_00104528` = field 0x29 and `0x47370`). Fills `DS_00104367 +
+  0xA0*k` (k = 0, 1) and `DS_001042C7`, 0x24 bytes each, with spaces. When
+  `DS_00104529` has neither 0x40 nor (0x20 with `0x1E988` = 1): `0x1E918(0)`,
+  then when table 1's record 0 reads 0, insert `0xA7D74` (500000, "Teeny
+  Weeny Games") there. Otherwise fields 0x27 and 0x26 = 0, `0x1E918(1)`, and
+  when 0x40 was set it is cleared, field 0x29 = `DS_00104528`, table 1 is read
+  and `0xA7D74` inserted unconditionally.
+- **`0x1EA08`** from 0x1EA4A (the high-score screen). `0x2DBC4(0, 1)` (the
+  champion); `0x2F4D0(col [0xA7B95], row ECX = 2, 1, width 2, pad 1, mode
+  0x3000)`; the first 0x12 characters of the name, NUL-terminated, through
+  `0x2F4BC([0xA7B96], 2, s, 0x2000)`; the value through `0x2F4D0([0xA7B97],
+  2, value, 7, 1, 0x2000)`. The selection: the first i in 0..9 whose string
+  `[0xA7DA0 + 4i]` starts with the name's character 0x12 (`[ESI+0x16]`),
+  kept at 0 when none matches and forced to 0 above 6. Then for i = 1..9:
+  `0x2DBC4(i, 0)`, row = `[0xA7B94 + 4i]`; `0x2F4D0([0xA7B95+4i], row, i+1,
+  2, 1, 0x3000)`; three characters through `0x2F4BC([0xA7B96+4i], row, s,
+  0x3000)`, `0x2F4D0([0xA7B97+4i], row, value, 7, 1, 0x3000)` and the same
+  `0x2F4BC` again. Last `0x2AE14([0xA7DCC + 4*sel], EDX 0x2A00, ECX 0xFF,
+  EBX 0x1C80, 0)` and `0x2A17C(rec, 0, 0x105FD30)`.
+- The selection strings are `R K T C S D H X X X` (`0x8090C..0x80928`); the
+  default champion's character 0x12 is a space, so the selection is 0 and
+  the descriptor is `0xBB6DC`.
+- **The original's RAM** (Task 33's DOSBox-X memory file `t33/db/guest.mem`,
+  f 6585): `0x105E34..0x105ECD` hold exactly the ten encoded defaults and the
+  encoded champion, `DS_00105DD8` = `0xC7`, `DS_00104528` = `0x142095`, the
+  three space buffers are spaces, and the `CMOS` file in `data/game/C` is
+  2040 zero bytes, so the storage path finds no table.
