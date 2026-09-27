@@ -13297,3 +13297,9 @@ start, or Enter. None of the oracle captures has input, so on the no-input
 path neither route should move an oracle. The new code runs only when
 `config_credit_ready` is non-zero and the start bits are pressed. The
 follow-up must re-run the 8000-frame comparison above to confirm that.
+
+## 47-M. The mode-`0x10` handler `0x438B4` and its join test `0x43928` (named-gap batch 10, branch `gap10-mode10`)
+
+(In progress. §47-C is `gap9-257a4`'s; the batch-10 branches run in
+parallel, so this section takes the free letter M, for mode `0x10`, rather
+than the next one in sequence.)
