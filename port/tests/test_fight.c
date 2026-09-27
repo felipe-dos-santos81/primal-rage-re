@@ -1580,6 +1580,398 @@ static void check_effects_tail(void)
     }
 }
 
+/* One worshipper entry of `type` (si = 3, side byte 1) on the one-entry list,
+ * its actor (pset 3) on sentinels: x 0x1000, y word 0x800, speed word 0x80,
+ * +0x3C 0x100, +0x44 high word 0x10, +0x29 = 0x01, a sentinel stream. */
+static void wp_seed(u32 entry, u32 rec, u8 type)
+{
+    mem_fill(entry, 0, 0x40u);
+    mem_fill(rec, 0, 0x68u);
+    DSD(DS_0010884C) = entry;
+    DSD(DS_0010884C + 4u) = entry;
+    DSD(entry) = DS_0010884C;
+    DSD(entry + 4u) = DS_0010884C;
+    DSD(entry + 8u) = rec;
+    DSD(entry + 0xCu) = DS_001077B0;
+    DSB(entry + 0x1Eu) = type;
+    DSB(entry + 0x1Cu) = 0x05u;
+    DSB(entry + 0x21u) = 1u;
+    DSD(entry + 0x14u) = 0x5555u;
+    DSW(entry + 0x18u) = 0x7777u;
+    DSB(rec + 0x48u) = 0x23u;
+    DSW(rec + 0x56u) = 3u;
+    DSD(rec + 0x08u) = 0xEEFD4u;
+    DSD(rec + 0x24u) = 0x3F800000u;
+    DSD(rec + 0x18u) = 0x1000u;
+    DSD(rec + 0x30u) = 0x08000000u;
+    DSW(rec + 0x34u) = 0x0080u;
+    DSW(rec + 0x36u) = 0x2222u;
+    DSW(rec + 0x38u) = 0x1111u;
+    DSW(rec + 0x2Cu) = 0x9999u;
+    DSB(rec + 0x29u) = 0x01u;
+    DSD(rec + 0x3Cu) = 0x100u;
+    DSD(rec + 0x44u) = 0x00100000u;
+    DSW(FIGHT_ACTORS + 3u * 0x20u) = 0x07E1u;
+    DSB(DS_001088BF) = 0;
+    DSB(DS_001088C2) = 0;
+}
+
+/* 0x49C78 types 2, 7 and 9..12 with 0x4B2AC and 0x4A7D4 (record §42-D). The
+ * three stream tables' entries 0 and 3 are distinct literal sprite ids, so a
+ * wrong index fails. Type 9's and 11's frame-local writes are read only by the
+ * unported mode-9 block, so only their mem[] effects are asserted. The
+ * type-10 cases that prove +0x1C bit 7 is cleared set it, and run in mode 0x22
+ * with DS_00104B1A = 2 so 0x4B69C's 0x17D30 tests neither side (0x17DD0/
+ * 0x17E41) and the entry is not trampled. */
+static void check_effects_worship(void)
+{
+    u32 entry = FIGHT_RECS + 0x3000u, rec = FIGHT_RECS + 0x3100u;
+    u32 st_idle = FIGHT_RECS + 0x3800u, st_walk = FIGHT_RECS + 0x3840u;
+    u32 st_hold = FIGHT_RECS + 0x3880u, st_wrong = FIGHT_RECS + 0x38C0u;
+    u32 pset = FIGHT_ACTORS + 3u * 0x20u;
+    const u32 tabs[3] = { 0x000C9544u, 0x000C95D4u, 0x000C958Cu };
+    u32 sv_t[6], sv_rng = DSD(DS_000EF6D8), sv_4ec = DSD(DS_001014EC), i, r;
+    u8 sv_88[0x100], sv_sl[0x250], sv_bd3[0x25];
+    u16 sv_4b00 = DSW(DS_00104B00);
+    u8 sv_1a = DSB(0x00104B1Au);
+
+    for (i = 0; i < 3u; i++) {
+        sv_t[i * 2u] = DSD(tabs[i]);
+        sv_t[i * 2u + 1u] = DSD(tabs[i] + 12u);
+    }
+    tf_snap(sv_88, 0x00108840u, sizeof sv_88);
+    tf_snap(sv_sl, 0x00107688u, sizeof sv_sl);
+    tf_snap(sv_bd3, DS_00100BD3, sizeof sv_bd3);
+
+    mem_fill(FIGHT_RECS, 0, 0x4000);
+    mem_fill(FIGHT_ACTORS, 0, 0x80);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    fight_reset_bases();
+    DSW(FIGHT_RECS + 0x56u) = 1;
+    DSW(FIGHT_RECS + 0x100u + 0x56u) = 2;
+    DSW(DS_00104B00) = 3;
+    DSW(st_idle) = 0x0321u;
+    DSW(st_walk) = 0x0654u;
+    DSW(st_hold) = 0x0987u;
+    DSW(st_wrong) = 0x0BADu;
+    DSD(0x000C9544u) = st_wrong;  DSD(0x000C9544u + 12u) = st_idle;
+    DSD(0x000C95D4u) = st_wrong;  DSD(0x000C95D4u + 12u) = st_walk;
+    DSD(0x000C958Cu) = st_wrong;  DSD(0x000C958Cu + 12u) = st_hold;
+
+    /* Type 2 (0x49D90): 2 -> 1 waits; 1 -> 0 arrives through 0x4AC38 (the
+     * 0xC9544[3] stream at 5.0, +0x34/+0x36/+0x38 zeroed, +0x29 0x4B -> 0x13,
+     * type 0). 0x8001 -> 0x8000 is negative (signed `jg`) and arrives. */
+    wp_seed(entry, rec, 2u);
+    DSW(entry + 0x18u) = 2u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(entry + 0x18u), 1);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 2);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), 0xEEFD4);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x80);
+    DSB(rec + 0x29u) = 0x4Bu;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(entry + 0x18u), 0);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 0);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_idle);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40A00000);
+    CHECK_EQ_INT((int)DSW(pset), 0x0321);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x36u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x13);
+    wp_seed(entry, rec, 2u);
+    DSW(entry + 0x18u) = 0x8001u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(entry + 0x18u), 0x8000);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 0);
+
+    /* Type 7 (0x49FC2). x = 0x100 with +0x1C 0: bit 2 latches, bit 0 clear
+     * leaves the speed; with 0x05: no second latch, the speed 0x50 rises. */
+    wp_seed(entry, rec, 7u);
+    DSB(entry + 0x1Cu) = 0x00u;
+    DSW(rec + 0x34u) = 0x0050u;
+    DSW(rec + 0x28u) = 0x4011u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x04);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x50);
+    CHECK_EQ_INT((int)DSW(rec + 0x28u), 0x4011);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 7);
+    DSB(entry + 0x1Cu) = 0x05u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x05);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x51);
+    /* The steer's four arms: 0x100 rises (`jle`), 0x101 snaps to 0x100, -0x10
+     * snaps to -0x100, -0x100 falls (`jle`). */
+    DSW(rec + 0x34u) = 0x0100u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x101);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x100);
+    DSW(rec + 0x34u) = 0xFFF0u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFF00);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFEFF);
+    /* The gates' edges: x = 0 steers without the latch; 0x5400 steers without
+     * the latch; 0x5401 does neither; 0x53FF latches. */
+    DSD(rec + 0x3Cu) = 0;
+    DSB(entry + 0x1Cu) = 0x01u;
+    DSW(rec + 0x34u) = 0x0050u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x01);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x51);
+    DSD(rec + 0x3Cu) = 0x5400u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x01);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x52);
+    DSD(rec + 0x3Cu) = 0x5401u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x01);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x52);
+    DSD(rec + 0x3Cu) = 0x53FFu;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x05);
+    /* The exit flag (+0x28 byte bit 7): -0x100 with x < -0x300, 0x100 with
+     * x > 0x5700 (the word keeps +0x29 = 0x40). */
+    DSW(rec + 0x34u) = 0xFF00u;
+    DSD(rec + 0x3Cu) = (u32)-0x300;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x28u), 0x4011);
+    DSW(rec + 0x34u) = 0xFF01u;
+    DSD(rec + 0x3Cu) = (u32)-0x301;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x28u), 0x4011);
+    DSW(rec + 0x34u) = 0xFF00u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x28u), 0x4091);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFF00);
+    DSW(rec + 0x28u) = 0x4011u;
+    DSW(rec + 0x34u) = 0x0100u;
+    DSD(rec + 0x3Cu) = 0x5700u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x28u), 0x4011);
+    DSD(rec + 0x3Cu) = 0x5701u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x28u), 0x4091);
+    DSW(rec + 0x28u) = 0x4011u;
+    DSW(rec + 0x34u) = 0xFF00u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x28u), 0x4011);
+
+    /* Type 9 (0x4A115): the word DS_001088B4 (0x0100: a byte read sees 0)
+     * moves it to 10. */
+    wp_seed(entry, rec, 9u);
+    DSW(DS_001088B4) = 0;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 9);
+    DSW(DS_001088B4) = 0x0100u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 10);
+    DSW(DS_001088B4) = 0;
+
+    /* Type 10 (0x4A131) with 0x4B2AC. A: side s = C9 ^ 1 = 1: 150007 / 50000
+     * = 3, 20 - (2 + 3) = 15 caps at 7. The other side's target DS_0010887C
+     * 0x3000 (DS_00108870 = 0 would stop it): +0x14 = 0x10 * 2 + 0x3000 -
+     * 0x2A00 = 0x620, left of x 0x1000: +0x34 = -0x80, hflip. Type 11 and
+     * +0x1C bit 7 cleared. */
+    DSW(DS_00104B00) = 0x22u;
+    DSB(0x00104B1Au) = 2u;
+    DSB(DS_001088C6) = 0; DSB(0x001088C7u) = 0; DSB(0x001088C8u) = 0;
+    DSB(0x001088C9u) = 0; DSB(DS_001088CA) = 0; DSB(DS_001088CC) = 2u;
+    DSD(0x00107844u + 0x3Cu) = 150007u;
+    DSB(0x00107844u + 0x81u) = 20u;
+    DSD(DS_00108870) = 0;
+    DSD(DS_0010887C) = 0x3000u;
+    DSD(DS_00108878) = 0xA5A5A5A5u;
+    wp_seed(entry, rec, 10u);
+    DSB(entry + 0x1Cu) = 0x85u;
+    rng_seed(0x1234u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_00108878), 7);
+    CHECK_EQ_INT((int)DSD(entry + 0x14u), 0x620);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFF80);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x41);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_walk);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSW(pset), 0x8654);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 11);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Cu), 0x05);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), 0x1234);
+    /* A2: x 0x100 is left of 0x620: +0x34 = 0x80, hflip cleared. */
+    wp_seed(entry, rec, 10u);
+    DSD(rec + 0x18u) = 0x100u;
+    DSB(rec + 0x29u) = 0x41u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x80);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x01);
+    CHECK_EQ_INT((int)DSW(pset), 0x0654);
+    /* B: the divide is unsigned and the cap signed: 0x80000000 / 50000 =
+     * 42949, 20 - (2 + 42949) = -42931 is kept. */
+    DSD(0x00107844u + 0x3Cu) = 0x80000000u;
+    wp_seed(entry, rec, 10u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_00108878), -42931);
+    DSD(0x00107844u + 0x3Cu) = 150007u;
+    /* C: the entry's side 0 equals (s8)C9 = 0: DS_00108870 = 0 stops the actor
+     * (+0x34 = 0) before the hflip clear; +0x14 and the stream stay. */
+    wp_seed(entry, rec, 10u);
+    DSB(entry + 0x21u) = 0;
+    DSB(rec + 0x29u) = 0x41u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x41);
+    CHECK_EQ_INT((int)DSD(entry + 0x14u), 0x5555);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), 0xEEFD4);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 11);
+    /* C2: the same side walks to DS_00108870; C3: the other side stops on a
+     * zero DS_0010887C. */
+    DSD(DS_00108870) = 0x3200u;
+    DSD(DS_0010887C) = 0;
+    wp_seed(entry, rec, 10u);
+    DSB(entry + 0x21u) = 0;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(entry + 0x14u), 0x820);
+    wp_seed(entry, rec, 10u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+    CHECK_EQ_INT((int)DSD(entry + 0x14u), 0x5555);
+    DSD(DS_00108870) = 0;
+    DSD(DS_0010887C) = 0x3000u;
+    /* D: C9 = 0xFF: s = (s8)0xFE = -2 reads the slot at 0x107688 (50000 / 50000
+     * = 1, 9 - 3 = 6), and the entry's 0xFF (zero-extended) is not -1, so the
+     * target is DS_0010887C. */
+    DSB(0x001088C9u) = 0xFFu;
+    DSD(0x00107688u + 0x3Cu) = 50000u;
+    DSB(0x00107688u + 0x81u) = 9u;
+    wp_seed(entry, rec, 10u);
+    DSB(entry + 0x21u) = 0xFFu;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_00108878), 6);
+    CHECK_EQ_INT((int)DSD(entry + 0x14u), 0x620);
+    DSB(0x001088C9u) = 0;
+    /* E: DS_001088C6 non-zero adds rng(0xC00) to the target. */
+    DSB(DS_001088C6) = 1u;
+    rng_seed(0x1234u);
+    r = rng_next(0xC00u);
+    wp_seed(entry, rec, 10u);
+    rng_seed(0x1234u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(entry + 0x14u), (int)(0x620u + r));
+    DSB(DS_001088C6) = 0;
+    /* F: |0x2F81 - 0x3000| = 0x7F is under the step 0x80: stop, hflip already
+     * cleared. F2: 0x80 is not (`jl`): it walks. F3: the step of a -0x80
+     * speed is 0x80. */
+    wp_seed(entry, rec, 10u);
+    DSD(rec + 0x18u) = 0x2F81u;
+    DSB(rec + 0x29u) = 0x41u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x01);
+    CHECK_EQ_INT((int)DSD(entry + 0x14u), 0x5555);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), 0xEEFD4);
+    wp_seed(entry, rec, 10u);
+    DSD(rec + 0x18u) = 0x2F80u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFF80);
+    CHECK_EQ_INT((int)DSD(entry + 0x14u), 0x620);
+    wp_seed(entry, rec, 10u);
+    DSD(rec + 0x18u) = 0x2F81u;
+    DSW(rec + 0x34u) = 0xFF80u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+    /* G: DS_001088C7 set: 0x4B430 holds (type 8, +0x55 = 1, the 0xC958C[3]
+     * stream at 3.0) and 0x4B2AC does not run. G2: DS_001088C8 alone.
+     * G3: a zero 0xC958C[3] declines, so the walk runs. */
+    DSB(0x001088C7u) = 1u;
+    DSD(DS_00108878) = 0xA5A5A5A5u;
+    wp_seed(entry, rec, 10u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSB(rec + 0x55u), 1);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_hold);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSD(DS_00108878), (int)0xA5A5A5A5u);
+    DSB(0x001088C7u) = 0;
+    DSB(0x001088C8u) = 1u;
+    wp_seed(entry, rec, 10u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+    DSD(0x000C958Cu + 12u) = 0;
+    wp_seed(entry, rec, 10u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 11);
+    CHECK_EQ_INT((int)DSD(DS_00108878), 7);
+    DSD(0x000C958Cu + 12u) = st_hold;
+    DSB(0x001088C8u) = 0;
+    DSW(DS_00104B00) = 3;
+
+    /* Type 11 (0x4A17A) with 0x4A7D4. +0x2C = 0x496AC(0x800) = 0xD80 each
+     * frame. |0x1000 - 0x10C0| = 0xC0 <= 2 * 0x80: arrival (+0x38/+0x34/+0x36
+     * zeroed, the 0xC9544[3] stream at 5.0); 0x101 past 0x100 keeps walking. */
+    wp_seed(entry, rec, 11u);
+    DSD(entry + 0x14u) = 0x10C0u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x2Cu), 0xD80);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x36u), 0);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_idle);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40A00000);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 11);
+    wp_seed(entry, rec, 11u);
+    DSD(entry + 0x14u) = 0x1101u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x2Cu), 0xD80);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x80);
+    CHECK_EQ_INT((int)DSW(rec + 0x38u), 0x1111);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), 0xEEFD4);
+    /* Both magnitudes: x 0x1000 against 0x1100, speed -0x80: 0x100 <= 0x100. */
+    wp_seed(entry, rec, 11u);
+    DSD(entry + 0x14u) = 0x1100u;
+    DSW(rec + 0x34u) = 0xFF80u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_idle);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+
+    /* Type 12 (0x4A1EB): DS_001088CA = 0 walks left (hflip, -0x80), 1 right;
+     * the next type is 14 when DS_001088C6 is non-zero, else 13. */
+    wp_seed(entry, rec, 12u);
+    DSB(DS_001088CA) = 0;
+    DSB(DS_001088C6) = 0;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x41);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFF80);
+    CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)st_walk);
+    CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSW(pset), 0x8654);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 13);
+    wp_seed(entry, rec, 12u);
+    DSB(rec + 0x29u) = 0x41u;
+    DSB(DS_001088CA) = 1u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(rec + 0x29u), 0x01);
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x80);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 13);
+    wp_seed(entry, rec, 12u);
+    DSB(DS_001088CA) = 0;
+    DSB(DS_001088C6) = 1u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFF80);
+    CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 14);
+
+    for (i = 0; i < 3u; i++) {
+        DSD(tabs[i]) = sv_t[i * 2u];
+        DSD(tabs[i] + 12u) = sv_t[i * 2u + 1u];
+    }
+    tf_put(sv_88, 0x00108840u, sizeof sv_88);
+    tf_put(sv_sl, 0x00107688u, sizeof sv_sl);
+    tf_put(sv_bd3, DS_00100BD3, sizeof sv_bd3);
+    DSW(DS_00104B00) = sv_4b00;
+    DSB(0x00104B1Au) = sv_1a;
+    DSD(DS_000EF6D8) = sv_rng;
+    DSD(DS_001014EC) = sv_4ec;
+}
+
 /* 0x3B134: the command-word mapper's stance branch (record §8.13). The three
  * side-0 cases differ only in the other slot's +0x34 sign and +0x64 stance, so
  * a swapped branch or a missing table select fails; the side-1 case proves the
@@ -2873,6 +3265,231 @@ static void check_game_frame_tail(void)
     game_frame();
     CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x7000);
     CHECK_EQ_INT((int)DSB(DS_00107D30), 1);    /* the tail (and 0x3BB90) skipped */
+}
+
+/* Both slots on sentinels for 0x12FD8: bit 3 of +0x42 clear and DS_001077A8
+ * empty, so 0x18714 returns +0x2C - DS_00100AB0[side * 8] (0x10 / 0x30). */
+static void ph_pair_seed(u32 x0, u32 l0, u32 x1, u32 l1, u32 mid, u32 cam)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    fight_reset_recs();
+    DSD(DS_001077A8) = 0;
+    DSD(DS_001077A8 + 4u) = 0;
+    DSB(s0 + 0x42u) = 0;
+    DSB(s1 + 0x42u) = 0;
+    DSD(s0 + 0x20u) = 0;
+    DSD(s1 + 0x20u) = 0;
+    DSD(DS_00100AF0) = 0;
+    DSD(DS_00100AF4) = 0;
+    DSD(DS_00100AB0) = 0x10u;
+    DSD(DS_00100AB0 + 8u) = 0x30u;
+    DSD(s0 + 0x34u) = x0;
+    DSD(s0 + 0x38u) = l0;
+    DSD(s1 + 0x34u) = x1;
+    DSD(s1 + 0x38u) = l1;
+    DSD(s0 + 0x2Cu) = 0xDEADu;
+    DSD(s1 + 0x2Cu) = 0xBEEFu;
+    DSD(FIGHT_RECS + 0x18u) = 0x5A5Au;
+    DSD(FIGHT_RECS + 0x118u) = 0xA5A5u;
+    DSD(DS_00108884) = mid;
+    DSD(DS_000F0AF0) = cam;
+}
+
+/* 0x12FD8 and the 0x2545C mode tail (record §42-D). The camera is called
+ * directly for its bands and clamp, then game_frame runs each tail arm: 0x21
+ * (0x3BB90 clears DS_00107D30, the held camera clamps to the centre + 0x1500,
+ * both slots latch although DS_001077A8 is empty, and each pset x is taken
+ * after the camera moved), 0x25 (the camera on the centre, no body push),
+ * 0x22 (the dispatch clamp, only the DS_00104B1A slot) and 0x0C (the
+ * DS_00104B12 slot's pset word on the frame word's bit 1). */
+static void check_mode_tail(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    /* Every range the seeds, tf_demo_fixture and game_frame write, saved
+     * and restored whole. mem[0..0x1F] is pset 0, which actor_pset_point
+     * writes for the out-of-pool scratch records. A whole-memory diff around
+     * this check (reverted), with sentinels planted in the slots and the
+     * scalar globals first, found no other written byte. */
+    static const u32 rg[][2] = {
+        { 0x00000000u, 0x20u },  { 0x0009AD50u, 0x10u },
+        { 0x000EF6D8u, 0x08u },  { 0x000F0A60u, 0xA0u },
+        { 0x00100A70u, 0x100u }, { 0x001014E0u, 0x18u },
+        { 0x00104AE0u, 0x50u },  { 0x00105BC0u, 0x1B0u },
+        { 0x001077A0u, 0x170u }, { 0x00107D20u, 0x20u },
+        { 0x00108840u, 0x100u },
+    };
+    static u8 sv[0x20 + 0x10 + 0x08 + 0xA0 + 0x100 + 0x18 + 0x50 + 0x1B0
+                 + 0x170 + 0x20 + 0x100];
+    u32 k, o = 0;
+    for (k = 0; k < sizeof rg / sizeof rg[0]; k++) {
+        tf_snap(sv + o, rg[k][0], rg[k][1]);
+        o += rg[k][1];
+    }
+
+    /* A: AL = 0 puts the camera on the centre and pulls nothing. */
+    ph_pair_seed(0x1000u, 0x1100u, 0x5000u, 0x4000u, 0x1000u, 0x7777u);
+    camera_pair_hold(0x100u);                   /* only AL is read */
+    CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x1000);
+    CHECK_EQ_INT((int)DSD(s0 + 0x34u), 0x1000);
+    CHECK_EQ_INT((int)DSD(FIGHT_RECS + 0x18u), 0x5A5A);
+
+    /* B: centre 0x4000. The left slot 0 at 0x1000 is past 0x4000 - 0x2E80 and
+     * its latch 0x1100 is right of it (moving left): pulled, its record x =
+     * 0x1100 - 0x10. The right slot 1 at 0x5000 is past 0x4A80 and inside
+     * 0x6E80: kept. The camera 0x7000 clamps to 0x5500. */
+    ph_pair_seed(0x1000u, 0x1100u, 0x5000u, 0x4000u, 0x4000u, 0x7000u);
+    camera_pair_hold(1u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x34u), 0x1100);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x1100);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x10F0);
+    CHECK_EQ_INT((int)DSD(s1 + 0x34u), 0x5000);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0xBEEF);
+    CHECK_EQ_INT((int)DSD(r1 + 0x18u), 0xA5A5);
+    CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x5500);
+    /* B2: the same far slot moving right (latch 0xF00) is kept. */
+    ph_pair_seed(0x1000u, 0x0F00u, 0x5000u, 0x4000u, 0x4000u, 0x4000u);
+    camera_pair_hold(1u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x34u), 0x1000);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x5A5A);
+    /* The far band's edge: 0x117F is past 0x1180 (pulled), 0x1180 is not. */
+    ph_pair_seed(0x117Fu, 0x1200u, 0x5000u, 0x4000u, 0x4000u, 0x4000u);
+    camera_pair_hold(1u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x34u), 0x1200);
+    ph_pair_seed(0x1180u, 0x1200u, 0x5000u, 0x4000u, 0x4000u, 0x4000u);
+    camera_pair_hold(1u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x34u), 0x1180);
+    /* B3: near the centre (0x3800 >= 0x3580) and moving right (latch 0x3700):
+     * pulled. B4: 0x2000 is in neither band: kept. */
+    ph_pair_seed(0x3800u, 0x3700u, 0x5000u, 0x4000u, 0x4000u, 0x4000u);
+    camera_pair_hold(1u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x34u), 0x3700);
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0x36F0);
+    ph_pair_seed(0x2000u, 0x3700u, 0x5000u, 0x4000u, 0x4000u, 0x4000u);
+    camera_pair_hold(1u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x34u), 0x2000);
+    /* C: the right slot far (0x7000 > 0x6E80) moving right (latch 0x6F00):
+     * pulled, its record x = 0x6F00 - 0x30. C2: near (0x4800 <= 0x4A80) and
+     * moving left (latch 0x4900): pulled. */
+    ph_pair_seed(0x2000u, 0x2000u, 0x7000u, 0x6F00u, 0x4000u, 0x4000u);
+    camera_pair_hold(1u);
+    CHECK_EQ_INT((int)DSD(s1 + 0x34u), 0x6F00);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0x6F00);
+    CHECK_EQ_INT((int)DSD(r1 + 0x18u), 0x6ED0);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0xDEAD);
+    ph_pair_seed(0x2000u, 0x2000u, 0x4800u, 0x4900u, 0x4000u, 0x4000u);
+    camera_pair_hold(1u);
+    CHECK_EQ_INT((int)DSD(s1 + 0x34u), 0x4900);
+    ph_pair_seed(0x2000u, 0x2000u, 0x4800u, 0x4700u, 0x4000u, 0x4000u);
+    camera_pair_hold(1u);
+    CHECK_EQ_INT((int)DSD(s1 + 0x34u), 0x4800);
+    /* D: equal +0x34 (`setge`) makes slot 1 the left one: at 0x2000 it is in
+     * no band, and slot 0, the right one, is near and moving left (latch
+     * 0x2100): only slot 0 is pulled. */
+    ph_pair_seed(0x2000u, 0x2100u, 0x2000u, 0x2200u, 0x4000u, 0x4000u);
+    camera_pair_hold(1u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x34u), 0x2100);
+    CHECK_EQ_INT((int)DSD(s1 + 0x34u), 0x2000);
+    /* E: the clamp's low edge (0x1000 -> 0x4000 - 0x1500) and its signed
+     * compares: centre -0x100 keeps the camera -0x1000. */
+    ph_pair_seed(0x2000u, 0x2000u, 0x5000u, 0x5000u, 0x4000u, 0x1000u);
+    camera_pair_hold(1u);
+    CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x2B00);
+    ph_pair_seed(0x2000u, 0x2000u, 0x5000u, 0x5000u, (u32)-0x100, (u32)-0x1000);
+    camera_pair_hold(1u);
+    CHECK_EQ_INT((int)DSD(DS_000F0AF0), -0x1000);
+
+    /* F: game_frame in mode 0x21. The records' x 0x123/0x456, clean latches
+     * (+0x42 bit 3). */
+#define MT_SEED(mode) do {                                              \
+        (void)tf_demo_fixture();                                        \
+        DSB(DS_00104B1D) = 1;                                           \
+        DSD(DS_00104B00) = (mode);                                      \
+        DSW(DS_000F0A64) = 7;                                           \
+        DSW(DS_000F0A6A) = 2;                                           \
+        DSB(DS_00104B15) = 0;                                           \
+        DSD(DS_00104AE8) = 0;                                           \
+        DSD(DS_000F0AF0) = 0x7000u;                                     \
+        DSD(DS_00108884) = 0x1000u;                                     \
+        DSB(DS_00107D30) = 1u;                                          \
+        DSB(s0 + 0x42u) = 0x08u; DSB(s1 + 0x42u) = 0x08u;               \
+        DSB(s0 + 0x41u) = 0; DSB(s1 + 0x41u) = 0;                       \
+        DSD(r0 + 0x18u) = 0x123u; DSD(r1 + 0x18u) = 0x456u;             \
+        DSD(s0 + 0x2Cu) = 0xDEADu; DSD(s1 + 0x2Cu) = 0xBEEFu;           \
+        DSD(r0 + 0x3Cu) = 0x5A5Au; DSD(r1 + 0x3Cu) = 0xA5A5u;           \
+    } while (0)
+    MT_SEED(0x21u);
+    game_frame();
+    CHECK_EQ_INT((int)DSB(DS_00107D30), 0);
+    CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x2500);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x123);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0x456);
+    CHECK_EQ_INT((int)DSD(r0 + 0x3Cu), 0x623);
+    CHECK_EQ_INT((int)DSD(r1 + 0x3Cu), 0x956);
+
+    /* G: mode 0x25: no body push, the camera on the centre 0x1000. */
+    MT_SEED(0x25u);
+    game_frame();
+    CHECK_EQ_INT((int)DSB(DS_00107D30), 1);
+    CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x1000);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x123);
+    CHECK_EQ_INT((int)DSD(r1 + 0x3Cu), 0x1E56);
+
+    /* H: modes 0x22/0x23: 0x12D48's clamp (camera mode 4: 0x7000 -> 0x5D00)
+     * and only the DS_00104B1A slot. */
+    MT_SEED(0x22u);
+    DSB(0x00104B1Au) = 1u;
+    game_frame();
+    CHECK_EQ_INT((int)DSB(DS_00107D30), 1);
+    CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x5D00);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0xDEAD);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0x456);
+    CHECK_EQ_INT((int)DSD(r0 + 0x3Cu), 0x5A5A);
+    CHECK_EQ_INT((int)DSD(r1 + 0x3Cu), (int)(0x456u + 0x2A00u - 0x5D00u));
+    MT_SEED(0x23u);
+    DSB(0x00104B1Au) = 0;
+    game_frame();
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x123);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0xBEEF);
+
+    /* I: mode 0x0C: frame word 1 -> 2 (bit 1) with slot 1 (+0x41 bit 0): its
+     * record's pset word 0x8123 is saved and becomes 0x81E1; slot 0's pset
+     * keeps its word. Frame 3 -> 4 and a clear bit 0 do nothing. */
+    MT_SEED(0x0Cu);
+    DSB(DS_00104B12) = 1u;
+    DSB(s1 + 0x41u) = 0x01u;
+    DSW(FIGHT_ACTORS + 0x20u) = 0x4321u;
+    DSW(FIGHT_ACTORS + 0x40u) = 0x8123u;
+    DSW(DS_00104AF6) = 0x7777u;
+    DSW(DS_000EF6DC) = 1u;
+    game_frame();
+    CHECK_EQ_INT((int)DSW(DS_00104AF6), 0x8123);
+    CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 0x40u), 0x81E1);
+    CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 0x20u), 0x4321);
+    CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x7000);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0xBEEF);
+    DSW(FIGHT_ACTORS + 0x40u) = 0x0123u;
+    DSW(DS_000EF6DC) = 3u;
+    game_frame();
+    CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 0x40u), 0x0123);
+    DSB(s1 + 0x41u) = 0xFEu;
+    DSW(DS_000EF6DC) = 1u;
+    game_frame();
+    CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + 0x40u), 0x0123);
+    CHECK_EQ_INT((int)DSW(DS_00104AF6), 0x8123);
+
+    /* J: mode 0x24 takes no arm. */
+    MT_SEED(0x24u);
+    game_frame();
+    CHECK_EQ_INT((int)DSB(DS_00107D30), 1);
+    CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0x7000);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0xDEAD);
+#undef MT_SEED
+
+    for (k = 0, o = 0; k < sizeof rg / sizeof rg[0]; k++) {
+        tf_put(sv + o, rg[k][0], rg[k][1]);
+        o += rg[k][1];
+    }
 }
 
 /* 0x49300, state 6's fight-effect list init. It self-links the 0x1083C4 and
@@ -12049,6 +12666,7 @@ int test_fight(void)
     check_effects_arrival();
     check_effects_fall();
     check_effects_tail();
+    check_effects_worship();
     check_command_map();
     check_think_chain();
     check_projectile_step();
@@ -12061,6 +12679,7 @@ int test_fight(void)
     check_slots_reset();
     check_state7();
     check_game_frame_tail();
+    check_mode_tail();
     check_list_init();
     check_type_0a19_list_init();
     check_scene_props();

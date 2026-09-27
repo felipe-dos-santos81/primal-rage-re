@@ -55,6 +55,17 @@ u32 camera_char_const(u32 ch);
  * DS_000F0AF0 = clamp(DS_000F0AF0, -0x5D00, +0x5D00). */
 void camera_dispatch(void);
 
+/* 0x12FD8 — demo-pose record §42-D. The 0x24C5C tail's camera for modes 0x21
+ * (0x25513, AL = 1) and 0x25 (0x25593, AL = 0). With `track` zero the camera x
+ * DS_000F0AF0 takes the centre DS_00108884. Otherwise each slot is held to the
+ * centre's bands: the left slot (the lower +0x34) is pulled back to its +0x38
+ * latch when it is left of centre - 0x2E80 and still moving left, or at or
+ * right of centre - 0xA80 and moving right; the right slot mirrors it
+ * (centre + 0x2E80 / + 0xA80). A pulled slot's +0x34/+0x2C take the latch and
+ * its record's +0x18 is rewritten through 0x18714. Then the camera x is
+ * clamped to centre ± 0x1500 (all compares signed). */
+void camera_pair_hold(u32 track);
+
 /* 0x12C70. The camera-x step seed: DS_000F0AFC = 0x400. 0x20DF4 (the state-6
  * fight reset) is its only caller (0x20E6A). */
 void camera_step_seed(void);

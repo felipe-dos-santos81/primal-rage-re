@@ -45,10 +45,11 @@ void fight_stance_pass(u32 side);
 void fight_command_map(u32 side, u32 edx_arg, u32 override);
 
 /* 0x49C78. The scene/effects pass. Cycle 1 ports the pass structure, the list
- * walk and the eight direct RNG call sites with their gates; types 0/>0xE, 1,
- * 3..6, 8's gate, 13/14's draws and the per-entry prelude 0x4B69C (the
- * trample, demo-pose record §29) are ported, the other entry effect bodies
- * (types 2, 7, 9..12, 0x496DC/0x4987C/...) are a named gap (§7.4). When the effect
+ * walk and the eight direct RNG call sites with their gates; types 0/>0xE, 1..7,
+ * 8's gate, 9..12 (record §42-D), 13/14's draws and the per-entry prelude
+ * 0x4B69C (the trample, demo-pose record §29) are ported; the type-8 held body,
+ * the case-13/14 bodies, the mode-9 block (the only reader of the frame locals
+ * types 9 and 11 write) and 0x496DC/0x4987C are a named gap (§7.4). When the effect
  * list at DS_0010884C is empty only the unconditional tail runs, which includes
  * 0x4A634's slot +0x42 bit 0/1 reset. */
 void fight_effects_pass(void);

@@ -1367,6 +1367,10 @@ void game_loop(void)
     } while (DSB(DS_000A81A8) == 0);
 }
 
+/* 0x104B1A: the slot index the mode-0x22/0x23 tail latches (0x25552 `mov
+ * al,[0x104b1a]`); symbols.h has no name for it. */
+#define DS_00104B1A 0x00104B1Au
+
 void game_frame(void)
 {
     /* PORT: 0x24C5C calls 0x4F644 at 0x24C6E (unless DAT_00104B00 == 0x27) as
@@ -1423,6 +1427,62 @@ void game_frame(void)
             actor_pset_point(DSD(DS_001077B0 + side * 0x94u));  /* 0x25443 */
         }
         fight_health_bars();                           /* 0x25457 0x33F08 */
+    }
+
+    /* 0x2545C: the mode tail (record §42-D), on the word DS_00104B00 (`cmp
+     * ax,0x21` / `jc` / `jbe`, `cmp ax,0x23` / `jbe`, `cmp ax,0x25` / `jz`).
+     * Every arm ends 0x24C5C. The port's modes (3, and 0x15 once 0x29B74
+     * stores it) take none. */
+    switch (DSW(DS_00104B00)) {
+    case 0x0Cu: {
+        /* 0x25487: while the frame word's bit 1 is set (two frames on, two
+         * off: frames 2 and 3 mod 4) and the DS_00104B12 slot's +0x41 bit 0
+         * is set, its record's pset word is saved to DS_00104AF6 and replaced
+         * by 0x1E1 with bit 15 kept. */
+        u32 slot = DS_001077B0 + (u32)DSB(DS_00104B12) * 0x94u;     /* 0x25491..0x254A7 */
+        if ((DSB(slot + 0x41u) & 1u) == 0u) break;                  /* 0x254AA */
+        if ((DSW(DS_000EF6DC) & 2u) == 0u) break;                   /* 0x254B7..0x254C9 */
+        u32 ps = DSD(DS_001014EC) + (u32)DSW(DSD(slot) + 0x56u) * 0x20u; /* 0x254CF..0x254E9 */
+        DSW(DS_00104AF6) = DSW(ps);                                 /* 0x254EB/0x254EE */
+        DSW(ps) = (u16)((DSW(ps) & 0x8000u) | 0x1E1u);              /* 0x254F5..0x25500 */
+        break;
+    }
+    case 0x21u:
+        /* 0x25509: the body push, the held pair camera, both slots latched
+         * (unconditionally, unlike the 0x25414 tail) with each non-zero
+         * record's pset synced, then the health bars. */
+        (void)fighter_body_push();                     /* 0x25509 0x3BB90 */
+        camera_pair_hold(1u);                          /* 0x25513 0x12FD8 */
+        for (u32 side = 0; side < 2u; side++) {        /* 0x2551C..0x2553E */
+            fighter_slot_latch(side);                  /* 0x2551E 0x186D0 */
+            u32 rec = DSD(DS_001077B0 + side * 0x94u); /* 0x25523 */
+            if (rec != 0u) actor_pset_point(rec);      /* 0x2552F 0x2A690 */
+        }
+        fight_health_bars();                           /* 0x25540 0x33F08 */
+        break;
+    case 0x22u:
+    case 0x23u: {
+        /* 0x2554B: the camera dispatch and the DS_00104B1A slot alone. */
+        camera_dispatch();                             /* 0x2554B 0x12D48 */
+        u32 side = DSB(DS_00104B1A);                   /* 0x25552 */
+        fighter_slot_latch(side);                      /* 0x25559 0x186D0 */
+        u32 rec = DSD(DS_001077B0 + side * 0x94u);     /* 0x25575 */
+        if (rec != 0u) actor_pset_point(rec);          /* 0x25581 0x2A690 */
+        fight_health_bars();                           /* 0x25586/0x255C0 0x33F08 */
+        break;
+    }
+    case 0x25u:
+        /* 0x25591: as 0x21 without the body push, the camera on the centre. */
+        camera_pair_hold(0u);                          /* 0x25593 0x12FD8 */
+        for (u32 side = 0; side < 2u; side++) {        /* 0x2559C..0x255BE */
+            fighter_slot_latch(side);                  /* 0x2559E 0x186D0 */
+            u32 rec = DSD(DS_001077B0 + side * 0x94u); /* 0x255A3 */
+            if (rec != 0u) actor_pset_point(rec);      /* 0x255AF 0x2A690 */
+        }
+        fight_health_bars();                           /* 0x255C0 0x33F08 */
+        break;
+    default:
+        break;
     }
 }
 

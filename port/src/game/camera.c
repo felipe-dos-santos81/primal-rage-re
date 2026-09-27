@@ -571,6 +571,67 @@ void camera_dispatch(void)
     if ((s32)DSD(DS_000F0AF0) < -0x5D00) DSD(DS_000F0AF0) = (u32)-0x5D00;
 }
 
+/* 0x12FD8 — demo-pose record §42-D. EAX's low byte is the only argument
+ * (0x12FE1 `test al,al`). a = (slot0 +0x34 >= slot1 +0x34) is the left slot's
+ * index (0x12FF4 `setge`), b = 1 - a. The two stack dwords the raw fills from
+ * +0x34 (0x1303C/0x13042) are read once each (0x1304B, 0x130A4) before any
+ * pull, so they are the +0x34 values on entry; the pulls' copies into them are
+ * dead. 0x18714 is called with EAX = the pulled side (0x13087 after `and
+ * eax,0xff`; 0x130E3 `mov eax,ecx`) and its result stored at the slot's record
+ * +0x18 (0x1308E, 0x130EC). The centre is DS_00108884 (written by 0x4BD98 at
+ * 0x4BE5C/0x4BE8A and 0x4E11C at 0x4E214); the ±0x2E80/0xA80/0x1500 sums wrap in 32
+ * bits before the signed compares. */
+void camera_pair_hold(u32 track)
+{
+    s32 mid = (s32)DSD(DS_00108884);
+    if ((u8)track == 0u) {                                      /* 0x12FE3 */
+        DSD(DS_000F0AF0) = (u32)mid;                            /* 0x1311E/0x13123 */
+        return;
+    }
+    u32 a = ((s32)DSD(DS_001077E4) >= (s32)DSD(DS_00107878)) ? 1u : 0u; /* 0x12FF4 */
+    u32 b = 1u - a;                                             /* 0x13001 */
+    u32 sa = DS_001077B0 + a * 0x94u;                           /* 0x13019 */
+    u32 sb = DS_001077B0 + b * 0x94u;                           /* 0x13036 */
+    s32 xa = (s32)DSD(sa + 0x34u);                              /* 0x1303C */
+    s32 xb = (s32)DSD(sb + 0x34u);                              /* 0x13042 */
+
+    {
+        s32 latch = (s32)DSD(sa + 0x38u);
+        int pull;
+        if ((s32)((u32)mid - 0x2E80u) > xa)                     /* 0x13056 `jle` */
+            pull = (s32)DSD(sa + 0x34u) < latch;                /* 0x13060 `jge` */
+        else if ((s32)((u32)mid - 0xA80u) > xa)                 /* 0x13072 `jg` */
+            pull = 0;
+        else
+            pull = (s32)DSD(sa + 0x34u) > latch;                /* 0x1307C `jle` */
+        if (pull) {
+            DSD(sa + 0x34u) = (u32)latch;                       /* 0x1307E */
+            DSD(sa + 0x2Cu) = (u32)latch;                       /* 0x13081 */
+            DSD(DSD(sa) + 0x18u) = hit_record_x(a);             /* 0x13087/0x1308E */
+        }
+    }
+    {
+        s32 latch = (s32)DSD(sb + 0x38u);
+        int pull;
+        if ((s32)((u32)mid + 0x2E80u) < xb)                     /* 0x130A9 `jge` */
+            pull = (s32)DSD(sb + 0x34u) > latch;                /* 0x130B3 `jle` */
+        else if ((s32)((u32)mid + 0xA80u) < xb)                 /* 0x130CE `jl` */
+            pull = 0;
+        else
+            pull = (s32)DSD(sb + 0x34u) < latch;                /* 0x130D8 `jge` */
+        if (pull) {
+            DSD(sb + 0x34u) = (u32)latch;                       /* 0x130B5/0x130DA */
+            DSD(sb + 0x2Cu) = (u32)latch;                       /* 0x130B8/0x130DD */
+            DSD(DSD(sb) + 0x18u) = hit_record_x(b);             /* 0x130E5/0x130EC */
+        }
+    }
+
+    if ((s32)((u32)mid + 0x1500u) < (s32)DSD(DS_000F0AF0))      /* 0x130FF `jge` */
+        DSD(DS_000F0AF0) = (u32)mid + 0x1500u;                  /* 0x13103 */
+    if ((s32)((u32)mid - 0x1500u) > (s32)DSD(DS_000F0AF0))      /* 0x13118 `jle` */
+        DSD(DS_000F0AF0) = (u32)mid - 0x1500u;                  /* 0x13123 */
+}
+
 /* ---- 0x17580 the per-frame decay --------------------------------------- */
 
 /* The signed truncating multiply the four decays share: (s32)(x*num + 0x800) /

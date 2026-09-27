@@ -1324,11 +1324,104 @@ static void fight_4b69c(u32 entry, u32 index)
     fight_4b470(entry, index);                                  /* 0x4B779 */
 }
 
+/* The bytes 0x1088C7/0x1088C8/0x1088C9 the mode-9 worshipper types read (the
+ * last as `mov al,[0x1088c9]` in 0x4B2AC, and as the high byte of the dword
+ * DS_001088C6 elsewhere); symbols.h has no name for them. */
+#define DS_001088C7 0x001088C7u
+#define DS_001088C8 0x001088C8u
+#define DS_001088C9 0x001088C9u
+
+/* 0x4A7D4 — demo-pose record §42-D. The type-11 arrival test (its one caller is
+ * 0x4A196): 1 when |actor+0x18 - entry+0x14| <= |2 * the actor's +0x34 word|
+ * (read as `[+0x32] >> 16`, doubled by `add eax,eax`), signed (0x4A7FA `setle`).
+ * EAX = entry; EDX and EBX are pushed and popped. */
+static int fight_4a7d4(u32 entry)
+{
+    u32 actor = DSD(entry + 8u);
+    s32 d = (s32)(DSD(actor + 0x18u) - DSD(entry + 0x14u));    /* 0x4A7DF */
+    if (d < 0) d = (s32)(0u - (u32)d);                          /* 0x4A7E5 */
+    s32 v = ((s32)DSD(actor + 0x32u) >> 16) * 2;                /* 0x4A7ED/0x4A7F0 */
+    if (v < 0) v = -v;                                          /* 0x4A7F6 */
+    return d <= v;                                              /* 0x4A7FA */
+}
+
+/* 0x4B2AC — demo-pose record §42-D. The type-10 walk (its one caller is
+ * 0x4A163; EAX = entry, EDX = si). The side s = (s8)(DS_001088C9 ^ 1) gives
+ * DS_00108878 = slot[s]+0x81 - (DS_001088CC + slot[s]+0x3C / [0xC9520]),
+ * capped at 7 (signed `jl`). The target x is DS_00108870 when the entry's +0x21
+ * equals (s8)DS_001088C9 (zero-extended against sign-extended), else
+ * DS_0010887C, plus rng(0xC00) when DS_001088C6 is non-zero. A zero target, or
+ * one closer than the actor's step (the +0x34 word's magnitude), stops the
+ * actor (+0x34 = 0). Otherwise +0x14 = 0x2BE4C(actor, target), the actor
+ * faces and walks toward it at 0x80 and takes the 0xC95D4[si] stream at 3.0.
+ * The 0x4B35A hflip clear precedes the distance test. */
+static void fight_4b2ac(u32 entry, u32 index)
+{
+    s32 s = (s32)(s8)(u8)(DSB(DS_001088C9) ^ 1u);               /* 0x4B2B5..0x4B2BC */
+    u32 slot = DS_001077B0 + (u32)s * 0x94u;                    /* 0x4B2BF..0x4B2D3 */
+    u32 q = DSD(slot + 0x3Cu) / DSD(DS_000C9520);               /* 0x4B2D8/0x4B2DE */
+    u32 n = (u32)DSB(slot + 0x81u) - ((u32)DSB(DS_001088CC) + q);  /* 0x4B2E0..0x4B2F2 */
+    DSD(DS_00108878) = n;                                       /* 0x4B2F4 */
+    if ((s32)n >= 7) n = 7u;                                    /* 0x4B2F9/0x4B2FE */
+    DSD(DS_00108878) = n;                                       /* 0x4B309 */
+
+    u32 actor = DSD(entry + 8u);                                /* 0x4B316 */
+    u32 target;
+    if ((s32)(u32)DSB(entry + 0x21u) == ((s32)DSD(DS_001088C6) >> 24)) { /* 0x4B319 */
+        target = DSD(DS_00108870);                              /* 0x4B31D */
+        if (target == 0u) {                                     /* 0x4B323 */
+            DSW(actor + 0x34u) = 0;                             /* 0x4B3E2 */
+            return;
+        }
+    } else {
+        target = DSD(DS_0010887C);                              /* 0x4B32F */
+        if (target == 0u) {                                     /* 0x4B335 */
+            DSW(actor + 0x34u) = 0;                             /* 0x4B3E2 */
+            return;
+        }
+        if (DSB(DS_001088C6) != 0u)                             /* 0x4B33D */
+            target = rng_next(0xC00u) + DSD(DS_0010887C);       /* 0x4B34B/0x4B350 */
+    }
+    DSB(actor + 0x29u) &= 0xBFu;                                /* 0x4B35D */
+    s32 d = (s32)(DSD(actor + 0x18u) - target);                 /* 0x4B367 */
+    if (d < 0) d = (s32)(0u - (u32)d);                          /* 0x4B36F */
+    s32 step = (s32)DSD(actor + 0x32u) >> 16;                   /* 0x4B37F/0x4B389 */
+    if ((s16)DSW(actor + 0x34u) < 0) step = -step;              /* 0x4B378/0x4B385 */
+    if (d < step) {                                             /* 0x4B38F `jl` */
+        DSW(actor + 0x34u) = 0;                                 /* 0x4B3DF/0x4B3E2 */
+        return;
+    }
+    DSD(entry + 0x14u) = (u32)fight_2be4c(actor, (s32)target); /* 0x4B39A/0x4B39F */
+    if ((s32)DSD(entry + 0x14u) > (s32)DSD(actor + 0x18u)) {    /* 0x4B3A8 `jle` */
+        DSW(actor + 0x34u) = 0x0080u;                           /* 0x4B3AD */
+        DSB(actor + 0x29u) &= 0xBFu;                            /* 0x4B3B6 */
+    } else {
+        DSW(actor + 0x34u) = 0xFF80u;                           /* 0x4B3BC */
+        DSB(actor + 0x29u) |= 0x40u;                            /* 0x4B3C5 */
+    }
+    actors_anim_begin(actor, DSD(DS_000C95D4 + index * 4u), 0x40400000u); /* 0x4B3D8 */
+}
+
 void fight_effects_pass(void)
 {
-    /* The raw's four frame locals (0x49C7E/0x49C8E). Only the mode-9 block reads
-     * them, and the demo runs mode 3; they are kept zero. */
-    /* PORT: 0x49C81..0x49CA6. The mode-9 local init is part of the named gap. */
+    /* The raw's frame locals the worshipper types write: [ESP+0xC] (type 9's
+     * count, 0x4A128), [ESP+0x14] (type 11 sets it, 0x4A17A) and [ESP+0x18]
+     * (type 11 clears it, 0x4A1E2). Mode 9 initialises them (0x49C8E..0x49CA6:
+     * [ESP+0x18] = 1, [ESP+0x14] = 0, [ESP+0xC] = EDX with DX = 0); only the
+     * mode-9 block reads them (0x4A549 as a word, 0x4A567, 0x4A56E). */
+    /* PORT: outside mode 9 the raw leaves them unset; they start at 0 here, as
+     * nothing reads them there. [ESP+0xC]'s high word (the caller's EDX high
+     * half) is 0: the mode-9 block compares only AX. The prelude's per-side
+     * words [ESP]/[ESP+2], the count [ESP+8] and case 14's [ESP+0x10] stay with
+     * their named gaps. */
+    u32 loc_idle = 0;                           /* [ESP+0xC] */
+    u8 loc_walk = 0;                            /* [ESP+0x14] */
+    u8 loc_still = 0;                           /* [ESP+0x18] */
+    if (DSW(DS_00104B00) == 9u) {               /* 0x49C89 */
+        loc_still = 1u;                         /* 0x49C94 */
+        loc_walk = 0;                           /* 0x49C98 */
+        loc_idle = 0;                           /* 0x49CA6 */
+    }
 
     DSD(DS_00108874) = fight_midpoint();        /* 0x49CAA 0x493F0 */
 
@@ -1348,11 +1441,11 @@ void fight_effects_pass(void)
 
                 /* 0x49D03: AL = +0x1E; CMP AL,0xE; JA 0x49D1E. The jump table
                  * at 0x49C2C sends type 0 to the same 0x49D1E (0x4AAD0), so
-                 * both type 0 and >0xE take it; types 1 (0x49D2F), 3..6
-                 * (0x49DB3, 0x49E5A, 0x49EC0, 0x49F11) and 8's gate (0x4A08A)
-                 * are ported, types 2, 7 and 9..12 are their own (unported)
-                 * handlers and stay named gaps (§7.4). The type is read after
-                 * the prelude, which can make it 6. */
+                 * both type 0 and >0xE take it; types 1 (0x49D2F), 2
+                 * (0x49D90), 3..7 (0x49DB3, 0x49E5A, 0x49EC0, 0x49F11,
+                 * 0x49FC2), 8's gate (0x4A08A) and 9..12 (0x4A115, 0x4A131,
+                 * 0x4A17A, 0x4A1EB; record §42-D) are ported. The type is read
+                 * after the prelude, which can make it 6. */
                 u8 type = DSB(entry + 0x1Eu);
                 if (type == 0u || type > 0xEu) {
                     fight_4aad0(entry, index);  /* 0x49D1E */
@@ -1375,6 +1468,18 @@ void fight_effects_pass(void)
                     if ((s16)DSW(rec + 0x34u) < 0) step = -step;    /* 0x49D6D */
                     if (d <= step)                          /* 0x49D79 */
                         fight_4ac38(entry, index);          /* 0x49D86 */
+                    break;
+                }
+                case 2: {
+                    /* 0x49D90: the wait. The entry's +0x18 word counts down
+                     * (signed, 0x49D99 `test bx,bx` / `jg`); at zero or below
+                     * the actor arrives (0x4AC38). 0x4E5A4 sets the type
+                     * (0x4E672), and 0x4DBEC (0x4DDB6, a register store) in
+                     * modes 0x0D/0x32. */
+                    u16 t = (u16)(DSW(entry + 0x18u) - 1u); /* 0x49D94 */
+                    DSW(entry + 0x18u) = t;                 /* 0x49D95 */
+                    if ((s16)t > 0) break;                  /* 0x49D9C */
+                    fight_4ac38(entry, index);              /* 0x49DA9 */
                     break;
                 }
                 case 3:
@@ -1481,6 +1586,46 @@ void fight_effects_pass(void)
                     DSB(entry + 0x1Fu) = 0;                  /* 0x49FAF */
                     break;
                 }
+                case 7: {
+                    /* 0x49FC2: the flight across the screen (0x4987C sets the
+                     * type, 0x49BF3). x = the actor's +0x3C dword. Inside
+                     * (0, 0x5400) the entry's +0x1C bit 2 latches once with
+                     * the voice. Inside [0, 0x5400] with +0x1C bit 0, the +0x34
+                     * word (read as `[+0x32] >> 16`) steers: negative and above
+                     * -0x100 it snaps to -0x100, at or below it falls by 1;
+                     * non-negative and at most 0x100 it rises by 1, above it
+                     * snaps to 0x100. Then at speed -0x100 with x < -0x300, or
+                     * 0x100 with x > 0x5700 (the re-read speed; all signed),
+                     * the actor's +0x28 byte gains bit 7. */
+                    u32 actor = DSD(entry + 8u);
+                    s32 x = (s32)DSD(actor + 0x3Cu);         /* 0x49FC5 */
+                    if (x > 0 && x < 0x5400
+                            && (DSB(entry + 0x1Cu) & 4u) == 0u) {   /* 0x49FCA..0x49FE1 */
+                        DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) | 4u); /* 0x49FEE */
+                        /* PORT: 0x49FF1 0x2C3FC(0xDE) voice, out of scope (spec §7). */
+                    }
+                    if (x >= 0 && x <= 0x5400
+                            && (DSB(entry + 0x1Cu) & 1u) != 0u) {   /* 0x49FF6..0x4A00F */
+                        s32 v = (s32)DSD(actor + 0x32u) >> 16;      /* 0x4A014 */
+                        if (v < 0) {                                /* 0x4A01C */
+                            if (v > -0x100)                         /* 0x4A023 `jle` */
+                                DSW(actor + 0x34u) = 0xFF00u;       /* 0x4A025 */
+                            else
+                                DSW(actor + 0x34u) = (u16)(DSW(actor + 0x34u) - 1u); /* 0x4A02D */
+                        } else if (v > 0x100) {                     /* 0x4A038 `jle` */
+                            DSW(actor + 0x34u) = 0x0100u;           /* 0x4A03A */
+                        } else {
+                            DSW(actor + 0x34u) = (u16)(DSW(actor + 0x34u) + 1u); /* 0x4A042 */
+                        }
+                    }
+                    {
+                        s32 v = (s32)DSD(actor + 0x32u) >> 16;      /* 0x4A049 */
+                        if ((v == -0x100 && x < -0x300)             /* 0x4A04F/0x4A056 */
+                                || (v == 0x100 && x > 0x5700))      /* 0x4A067/0x4A072 */
+                            DSB(actor + 0x28u) = (u8)(DSB(actor + 0x28u) | 0x80u); /* 0x4A081 */
+                    }
+                    break;
+                }
                 case 8:
                     /* 0x4A08A: the held worshipper. Without +0x1C bit 6 (set
                      * by the grab arms: 0x4B788's, and 0x4D898's at 0x4D963 in
@@ -1490,6 +1635,67 @@ void fight_effects_pass(void)
                     /* PORT: 0x4A09D..0x4A110, the held body (0x4AF04, the
                      * release and 0x4B470), is a named gap with the grab arm
                      * that sets bit 6 (§29). */
+                    break;
+                case 9:
+                    /* 0x4A115: mode 9's idle (0x4AAD0 sets the type in mode 9,
+                     * 0x4AAE6). While the word DS_001088B4 (set by the mode-9
+                     * block, 0x4A559) is non-zero the entry becomes type 10;
+                     * else it counts into [ESP+0xC] (a dword `inc`). */
+                    if (DSW(DS_001088B4) != 0u)              /* 0x4A115 */
+                        DSB(entry + 0x1Eu) = 0x0Au;          /* 0x4A11F */
+                    else
+                        loc_idle++;                          /* 0x4A128 */
+                    break;
+                case 10:
+                    /* 0x4A131: with DS_001088C7 or DS_001088C8 set (0x4A928's
+                     * flags), 0x4B430 may hold the actor (EBX = 1, 0x4A143);
+                     * otherwise (or when it declines) the 0x4B2AC walk, type
+                     * 11 and +0x1C bit 7 cleared. */
+                    if (DSB(DS_001088C7) != 0u || DSB(DS_001088C8) != 0u) { /* 0x4A131/0x4A13A */
+                        if (fight_4b430(entry, index, 1u) != 0) break;      /* 0x4A14F */
+                    }
+                    fight_4b2ac(entry, index);               /* 0x4A163 */
+                    DSB(entry + 0x1Eu) = 0x0Bu;              /* 0x4A16B */
+                    DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) & 0x7Fu); /* 0x4A16F/0x4A172 */
+                    break;
+                case 11: {
+                    /* 0x4A17A: the walk. [ESP+0x14] = 1; +0x2C follows the y
+                     * (0x496AC); on arrival (0x4A7D4) the actor stops
+                     * (+0x38/+0x34/+0x36 zeroed) and takes the 0xC9544[si]
+                     * stream at 5.0 (EDX still holds si * 4 from 0x49D0F:
+                     * 0x496AC and 0x4A7D4 push and pop it); still moving
+                     * (+0x34 non-zero), [ESP+0x18] = 0. The type stays 11. */
+                    loc_walk = 1u;                           /* 0x4A17A */
+                    DSW(rec + 0x2Cu) = fight_dust_clamp((s32)DSD(rec + 0x30u) >> 16); /* 0x4A188/0x4A190 */
+                    if (fight_4a7d4(entry) != 0) {           /* 0x4A196 */
+                        DSW(rec + 0x38u) = 0;                /* 0x4A1A2 */
+                        DSW(rec + 0x34u) = 0;                /* 0x4A1AB */
+                        DSW(rec + 0x36u) = 0;                /* 0x4A1B4 */
+                        actors_anim_begin(rec, DSD(DS_000C9544 + index * 4u),
+                                          0x40A00000u);      /* 0x4A1C8 */
+                    } else if (DSW(rec + 0x34u) != 0u) {     /* 0x4A1D5 */
+                        loc_still = 0;                       /* 0x4A1E2 */
+                    }
+                    break;
+                }
+                case 12:
+                    /* 0x4A1EB: the scatter (the mode-9 block sets every
+                     * entry's type to 12, 0x4A583). By DS_001088CA the actor
+                     * faces and walks left (zero: +0x29 |= 0x40, +0x34 =
+                     * -0x80) or right (+0x29 &= 0xBF, +0x34 = 0x80), takes
+                     * the 0xC95D4[si] stream at 3.0, and the entry becomes
+                     * type 14 when DS_001088C6 is non-zero, else 13. */
+                    if (DSB(DS_001088CA) == 0u) {            /* 0x4A1EB */
+                        DSB(rec + 0x29u) = (u8)(DSB(rec + 0x29u) | 0x40u); /* 0x4A1F7 */
+                        DSW(rec + 0x34u) = 0xFF80u;          /* 0x4A1FE */
+                    } else {
+                        DSB(rec + 0x29u) = (u8)(DSB(rec + 0x29u) & 0xBFu); /* 0x4A209 */
+                        DSW(rec + 0x34u) = 0x0080u;          /* 0x4A210 */
+                    }
+                    actors_anim_begin(rec, DSD(DS_000C95D4 + index * 4u),
+                                      0x40400000u);          /* 0x4A22A */
+                    DSB(entry + 0x1Eu) = (DSB(DS_001088C6) != 0u)
+                                       ? 0x0Eu : 0x0Du;      /* 0x4A22F..0x4A241 */
                     break;
                 case 13: {
                     /* PORT: 0x4A24A..0x4A2F4. The case-13 body (0x2BE1C,
@@ -1510,7 +1716,6 @@ void fight_effects_pass(void)
                     break;
                 }
                 default:
-                    /* PORT: types 2, 7 and 9..12 are named gaps (§7.4). */
                     break;
                 }
                 }
@@ -1525,7 +1730,11 @@ void fight_effects_pass(void)
      * DS_001088B0/0x1088C9/0x1088B4 traffic. The demo runs mode 3 and gates the
      * whole block out (0x4A481 `jne 0x4A591`), so those two sites are not
      * issued in cycle 1. */
-    /* PORT: 0x4A487..0x4A58F (mode 9 only) — named gap (§7.4). */
+    /* PORT: 0x4A487..0x4A58F (mode 9 only) — named gap (§7.4). It is the only
+     * reader of the three frame locals above. */
+    (void)loc_idle;
+    (void)loc_walk;
+    (void)loc_still;
 
     fight_4a634();                              /* 0x4A591 */
     DSB(DS_001088C2) = 0;                       /* 0x4A5A0 */

@@ -8734,3 +8734,229 @@ The named gaps are all mode code:
   cannot return -1 for these fields: the descriptor dwords at `0x2D3D4`/
   `0x2D3DC` (`0xE0C0`/`0x62C0`) give widths of 4 and 2 nibbles;
 - `0x2C3FC(0x30)`, the voice (spec §7).
+
+## 42-D. The worshipper types 2, 7 and 9..12 and the mode tail `0x2545C` (named-gap batch 2, branch `gap2-worship`)
+
+**Result in one line.** `0x49C78`'s type handlers 2, 7 and 9..12 (the named
+gaps §7.4 left in `fight_effects_pass`) are ported with their unported
+callees `0x4B2AC` (type 10's walk) and `0x4A7D4` (type 11's arrival test).
+`0x24C5C`'s mode switch at `0x2545C` is ported whole: the `0x25509`
+mode-`0x21` arm (§30.2) with its unported camera `0x12FD8`, and the `0x0C`,
+`0x22`/`0x23` and `0x25` arms, whose callees were all ported already. No
+port path reaches any of it, so it is unit-tested and no oracle is expected
+to move.
+
+### 42-D.1 The raw (Ghidra `disassemble_function`, fixups applied)
+
+- **The jump table** `0x49C2C` (`read_memory`, 15 dwords): type 0
+  `0x49D1E`, 1 `0x49D2F`, 2 `0x49D90`, 3 `0x49DB3`, 4 `0x49E5A`, 5
+  `0x49EC0`, 6 `0x49F11`, 7 `0x49FC2`, 8 `0x4A08A`, 9 `0x4A115`, 10
+  `0x4A131`, 11 `0x4A17A`, 12 `0x4A1EB`, 13 `0x4A24A`, 14 `0x4A346`. The
+  dispatch at `0x49D0F` leaves EDX = si * 4 (`lea edx,[edi*4]`), EDI = si
+  (zero-extended at `0x49CDB`/`0x49CF2`), ECX = entry.
+- **Type 2** (`0x49D90`): `mov bx,[ecx+0x18]; dec ebx; mov [ecx+0x18],bx;
+  test bx,bx; jg` out, else `0x4AC38(ecx, dx = si)`.
+- **Type 7** (`0x49FC2`): EDX = actor `+0x3C` (actor = `[ecx+8]`). With
+  `0 < x < 0x5400` (`jle`/`jge`) and entry `+0x1C` bit 2 clear: `+0x1C |= 4`
+  and `0x2C3FC(0xDE)` (`0x49FF1`; it pushes EDX, so x survives). With
+  `0 <= x <= 0x5400` (`jl`/`jg`) and `+0x1C` bit 0: EAX = `[actor+0x32] sar
+  16` (the `+0x34` word); negative: `cmp eax,-0x100; jle` `dec word
+  [+0x34]`, else `+0x34` = `0xFF00`; non-negative: `cmp eax,0x100; jle`
+  `inc word [+0x34]`, else `0x100`. Then, re-reading the speed, `== -0x100`
+  with `x < -0x300` (`jl`) or `== 0x100` with `x > 0x5700` (`jle` skips):
+  `or byte [actor+0x28],0x80` (`0x4A081`).
+- **Type 9** (`0x4A115`): `cmp word [0x1088b4],0; jz` `inc dword
+  [esp+0xc]`, else `+0x1E` = `0x0A`.
+- **Type 10** (`0x4A131`): when byte `[0x1088c7]` or `[0x1088c8]` is non-zero,
+  `0x4B430(ecx, dx = si, ebx = 1)` and out on a non-zero EAX. Then
+  `0x4B2AC(ecx, dx = si)`, `+0x1E` = `0x0B`, `+0x1C &= 0x7F`.
+- **Type 11** (`0x4A17A`): `mov byte [esp+0x14],1`; `+0x2C` =
+  `0x496AC([actor+0x30] sar 16)`; `0x4A7D4(ecx)` non-zero: `+0x38`, `+0x34`,
+  `+0x36` = 0 and `0x2BC30(actor, [edx + 0xC9544], 5.0)`. EDX is still
+  si * 4: `0x496AC` (`push edx`/`pop edx`) and `0x4A7D4` (`push ebx; push
+  edx`) preserve it. Else, with `+0x34` non-zero, `xor ah,ah; mov
+  [esp+0x18],ah`.
+- **Type 12** (`0x4A1EB`): byte `[0x1088ca]` zero: `+0x29 |= 0x40`, `+0x34` =
+  `0xFF80`; else `+0x29 &= 0xBF`, `+0x34` = `0x80`. `0x2BC30(actor,
+  [si*4 + 0xC95D4], 3.0)`, then `+0x1E` = `0x0E` when byte `[0x1088c6]` is
+  non-zero, else `0x0D`.
+- **The frame locals.** Mode 9 initialises them at `0x49C8E..0x49CA6`:
+  `[esp+0x18]` = 1, `[esp+0x14]` = 0, `[esp+8]` = `[esp+0x10]` = 0 and
+  `[esp+0xc]` = EDX with DX = 0. Outside mode 9 they are not initialised.
+  Only the mode-9 block reads them: `[esp+0xc]` as AX at `0x4A549`/`0x4A554`,
+  `[esp+0x18]` and `[esp+0x14]` at `0x4A567`/`0x4A56E`.
+- **`0x4A7D4`** (49 bytes): `|[eax+8]+0x18 − [eax+0x14]| <= |2 ·
+  ([eax+8]+0x32 sar 16)|` (`add eax,eax`), `setle`, `and eax,0xff`.
+- **`0x4B2AC`** (322 bytes; EBX = entry, ESI = si): s = `movsx(byte
+  [0x1088c9] ^ 1)`; `[0x108878]` = byte `[s·0x94 + 0x107831]` (slot `+0x81`)
+  − (byte `[0x1088cc]` + `[s·0x94 + 0x1077ec]` (slot `+0x3C`) `div` dword
+  `[0xc9520]`). The divide is unsigned (`xor edx,edx; div edi`) and
+  `[0xC9520]` reads `0xC350` (50000). The value is stored, capped at 7
+  (`cmp eax,7; jl`) and stored again. Then ECX = `[0x1088c6] sar 0x18`
+  (sign-extended byte `0x1088C9`) against the zero-extended entry `+0x21`.
+  Equal: target = `[0x108870]`. Otherwise target = `[0x10887c]`, plus
+  `rng(0xC00)` when byte `[0x1088c6]` is set. A zero target does `+0x34` = 0
+  (`0x4B3E2`, EAX = actor from `0x4B316`). Otherwise `+0x29 &= 0xBF`,
+  d = |x − target| and step = `[+0x32] sar 16`, negated when the word
+  `+0x34` is negative. `d < step` (`jl`) gives `+0x34` = 0. Else `+0x14` =
+  `0x2BE4C(actor, target)`; when `+0x14 > x` (`jle`), `+0x34` = `0x80` and
+  `+0x29 &= 0xBF`, else `0xFF80` and `+0x29 |= 0x40`. Last,
+  `0x2BC30(actor, [esi*4 + 0xC95D4], 3.0)`.
+- **`0x2545C`** (in `0x24C5C`, after the `0x25414` tail): `mov ax,[0x104b00];
+  cmp ax,0x21; jc` → `cmp ax,0xc; jnz` out; `jbe 0x25509`; `cmp ax,0x23; jbe
+  0x2554B`; `cmp ax,0x25; jz 0x25591`; else out. Every arm ends the
+  function.
+  - `0x25487` (mode `0x0C`): i = byte `[0x104b12]`. With slot i's `+0x41`
+    bit 0 (`test byte [eax+0x1077f1],1`) and bit 1 of the word `[0xef6dc]`,
+    ps = `[0x1014ec]` + word rec `+0x56` · 0x20. Word `[0x104af6]` = word
+    `[ps]`, then word `[ps]` = (word & 0x8000) | 0x1E1.
+  - `0x25509` (mode `0x21`): `0x3BB90`, `0x12FD8(al = 1)`. Then, for side 0
+    and 1, `0x186D0(side)` unconditionally and `0x2A690(rec)` when the slot's
+    record is non-zero. Then `0x33F08`.
+  - `0x2554B` (modes `0x22`/`0x23`): `0x12D48`, `0x186D0(byte [0x104b1a])`,
+    that slot's `0x2A690` when its record is non-zero, `0x33F08`.
+  - `0x25591` (mode `0x25`): as `0x25509` without `0x3BB90`, with
+    `0x12FD8(al = 0)`.
+- **`0x12FD8`** (346 bytes): with AL = 0, `[0xf0af0]` = `[0x108884]`.
+  Otherwise a = `setge([0x1077e4], [0x107878])` (slot 0 `+0x34` against slot
+  1's, signed), b = 1 − a. The stack copies of both `+0x34`s are read once,
+  before any pull.
+  - The left slot a is pulled when x < mid − `0x2E80` and `+0x34 < +0x38`,
+    or when x >= mid − `0xA80` and `+0x34 > +0x38`.
+  - The right slot b is pulled when x > mid + `0x2E80` and `+0x34 > +0x38`,
+    or when x <= mid + `0xA80` and `+0x34 < +0x38`.
+  - A pull stores the latch in `+0x34` and `+0x2C` and the record's `+0x18` =
+    `0x18714(side)` (EAX = a at `0x13087`, `mov eax,ecx` = b at `0x130E3`).
+  - Then `[0xf0af0]` is clamped to mid ± `0x1500`. Every compare is signed
+    after a 32-bit add.
+  - Mid is `DS_00108884`. Its only writers are `0x4BD98` (`0x4BE5C` and
+    `0x4BE8A`) and `0x4E11C` (`0x4E214`).
+
+### 42-D.2 Entrances (`get_xrefs_to`, a rel32 scan of the code object and a dword scan of both objects)
+
+- `0x4B2AC`: one `call` at `0x4A163`. `0x4A7D4`: one `call` at `0x4A196`.
+  No dword for either.
+- `0x12FD8`: `call`s at `0x25513` and `0x25593`, no dword.
+- `0x25509`: one `jbe` at `0x25468`. The handler addresses `0x49D90`,
+  `0x49FC2` and `0x4A115..0x4A1EB` appear only as jump-table dwords
+  (`0x49C34`, `0x49C48`, `0x49C50..0x49C5C`), with no rel32.
+- Who sets the types. A capstone linear sweep of the code object lists every
+  store whose range covers `+0x1E` (372; review of this branch). The
+  immediate stores of 2, 7 and 9..12 and the one register-source type setter
+  are:
+  - type 2: `0x4E672` in `0x4E5A4` (called at `0x4E84E`), and `0x4DDB6 mov
+    [esi+0x1e],al` in `0x4DBEC`. There AL = `[esp+0xc]` + 1, and `[esp+0xc]`
+    cycles 1, 2, 0 (`0x4DC75..0x4DC85`), so it stores types 2, 3, 1 in
+    rotation; on its `[esp+0x1c]` gate `0x4DDAA` stores 4 instead. The
+    entries come off the `0x1083C4` free list. `0x4DBEC` is called only at
+    `0x2766D` (in `0x274FC`, the mode-`0x0D` arm) and `0x29838` (in
+    `0x296B8`, the mode-`0x32` arm);
+  - type 7: `0x49BF3` in `0x4987C` (called at `0x4A616`, the effects
+    tail's gated rng(2) arm, and at `0x4D792`);
+  - type 9: `0x4AAE6` (`0x4AAD0` in mode 9);
+  - type 10: `0x4A11F`; type 11: `0x4A16B`;
+  - type 12: `0x4A583` (the mode-9 block, every entry).
+  The other register-source byte stores to `[reg+0x1e]` are not type
+  setters: `0x30881` and `0x3DD44` store to the stack, and `0x58784` and
+  `0x59206` sit in unrolled library fill/blit loops. The register dword
+  stores covering `+0x1E` write an actor's `+0x1C` (`0x4B8E8`, `0x4DA19`,
+  EDX = `[ecx+8]`) or the stack.
+  `0x4E5A4`, `0x4DBEC` and `0x4987C` are unported, and the port never runs
+  modes 9, `0x0D` or `0x32`. So no port path reaches the six types. Type 7
+  is reachable in mode 3 in the raw, through `0x4A5A6` → `0x4A616` →
+  `0x4987C` whenever `DS_001088BF` is 1..4 (set by the ported `0x391CA` and
+  by `0x14DA4`). Only the port's `0x4987C` gap keeps it out.
+- `DS_001088B4` is written only by the mode-9 block (`0x4A54D` = 0, `0x4A559`
+  = 1). `DS_00108870`/`DS_0010887C` are written only by `0x4A928`, which is
+  reached from the mode-9 block (`0x4A562`).
+
+### 42-D.3 The port
+
+- `fight.c`:
+  - The six `case` bodies in `fight_effects_pass`.
+  - `fight_4a7d4` and `fight_4b2ac` (static).
+  - The three frame locals as C locals, set in mode 9 as the raw does. They
+    start at 0 elsewhere (`PORT:`: nothing reads them there), and
+    `[esp+0xc]`'s high word is 0, since the reader compares only AX.
+  - The locals are `(void)`-read at the mode-9 gap, which is their only
+    reader.
+  - The `default:` label no longer names a gap; every type 1..14 has a case.
+  - Local `#define`s for `0x1088C7/C8/C9` (no `symbols.h` names).
+- `camera.c`/`camera.h`: `camera_pair_hold` (`0x12FD8`).
+- `flow.c`: the `0x2545C` switch at the end of `game_frame`, with a local
+  `#define` for `0x104B1A`.
+- The type-7 voice `0x2C3FC(0xDE)` is a `PORT:` stub (spec §7).
+- No new registration: none of the new addresses is stored in data.
+
+### 42-D.4 The assertions and mutations
+
+- `check_effects_worship` (`test_fight.c`, after `check_effects_tail`)
+  saves and restores:
+  - the `0xC9544`/`0xC95D4`/`0xC958C` entries 0 and 3;
+  - `0x108840..0x10893F`, `0x107688..0x1078D7` (both slots and the s = −2
+    slot `0x107688`), the `0x100BD3` plane (`0x17D30`'s pixel fill);
+  - `DS_00104B00`, `0x104B1A`, `DS_001014EC` and the RNG.
+  It covers:
+  - type 2's countdown, arrival and signed edge;
+  - type 7's latch, the four steer arms, the four gate edges and the two exit
+    flags, with a `0xFF01` speed that must not flag;
+  - type 9's word gate;
+  - type 10: the cap and its value, the unsigned divide with the signed cap
+    (−42931), both targets, a zero target on either side, s = −2 with the
+    zero-extended `0xFF` side, the `rng(0xC00)` arm, d = step − 1 and d =
+    step, the negative step, the hold through `0x4B430` (C7, C8 and a
+    declining zero stream), and bit 7 cleared (mode `0x22` with
+    `DS_00104B1A` = 2, so `0x4B69C`'s `0x17D30` tests neither side);
+  - type 11's arrival, doubling and magnitudes;
+  - type 12's two directions and the 13/14 choice on `DS_001088C6`, not on
+    `DS_001088CA`.
+- `check_mode_tail` (after `check_game_frame_tail`) saves and restores whole
+  ranges: `mem[0..0x1F]` (pset 0, which `actor_pset_point` writes for the
+  out-of-pool scratch records), `0x9AD50..0x9AD5F`, `0xEF6D8..0xEF6DF`,
+  `0xF0A60..0xF0AFF`, `0x100A70..0x100B6F`, `0x1014E0..0x1014F7`,
+  `0x104AE0..0x104B2F`, `0x105BC0..0x105D6F`, `0x1077A0..0x10790F`,
+  `0x107D20..0x107D3F` and `0x108840..0x10893F`. These cover everything the
+  seeds, `tf_demo_fixture` and `game_frame` write. A temporary whole-memory
+  diff around both new checks (reverted) planted sentinels first: an XOR in
+  the slots `0x1077A8..0x1078D7`, `0x100A70..0x100B6F`, `mem[0..0x1F]` and 34
+  scalar globals. The diff was empty outside the `FIGHT_*` scratch. With the
+  slot range cut to 0x10 bytes it listed the slot fields, so the probe can
+  fail. It covers:
+  - `0x12FD8` directly: AL only, each band and direction on each side with
+    the record x through `0x18714`, the far band's edge, `setge`, and both
+    clamp edges with a signed case;
+  - `game_frame` in modes `0x21`, `0x25`, `0x22`, `0x23`, `0x0C` (acting and
+    not acting) and `0x24` (no arm).
+- **Mutations** (`scratchpad/w/mut.py`, `mut.log`): 116 single-site edits
+  of the new code. 111 fail 1..22 assertions. None crashes, and the two first
+  written as bare deletions (build failures) were re-run as `;` and fail.
+  Two assertions were added after the first sweep: `0xFF01` for the type-7
+  speed pairing and the far band's edge for `0x12FD8`. The 5 survivors are
+  equivalent:
+  - type 7 without the bit-2 gate: the OR is idempotent and the only other
+    effect is the stubbed voice. It is equivalent only while `0x2C3FC(0xDE)`
+    stays a stub;
+  - `0x4B2AC`'s second `+0x29 &= 0xBF`: `0x4B35D` has already cleared the
+    bit;
+  - the three frame-local writes, which only the unported mode-9 block
+    reads.
+  The sources were restored and checked with `cmp`.
+
+### 42-D.5 Measured and remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, with 0
+  compiler warnings. The drivers and `make verify` were not run; the batch
+  controller runs them after the merge.
+- No oracle is expected to move. No port path sets types 2, 7 or 9..12
+  (42-D.2; type 7 waits on the `0x4987C` gap). The port only runs modes that
+  take no `0x2545C` arm: 3, and `0x15` once `gap2-frontend`'s `0x29B74`
+  stores it.
+- Remaining named gaps in `0x49C78`:
+  - the mode-9 block `0x4A487..0x4A58F` with `0x4A928`/`0x4AA6C` (the only
+    readers of the frame locals and the only writers of `DS_001088B4`,
+    `DS_00108870`/`DS_0010887C`, `DS_001088C7`/`C8`/`C9`/`CA`);
+  - the prelude's per-side words `[esp]`/`[esp+2]` and count `[esp+8]`;
+  - case 14's `[esp+0x10]`;
+  - the type-8 held body and the case-13/14 bodies;
+  - the type setters `0x4E5A4`, `0x4DBEC` (modes `0x0D`/`0x32`) and
+    `0x4987C`.

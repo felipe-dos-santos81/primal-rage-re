@@ -65,7 +65,7 @@ void fighter_pass_a(void);
 void fighter_pass_b(u32 arg);
 
 /* 0x186D0. The slot position latch the game_frame tail (0x25438) calls per live
- * side. With slot+0x42 bit 3 set it copies the fighter record's +0x18/+0x1C to
+ * side, and the 0x2545C mode tail calls at 0x2551E/0x25559/0x2559E. With slot+0x42 bit 3 set it copies the fighter record's +0x18/+0x1C to
  * slot+0x2C/+0x30; otherwise the 0x18540/0x18350 screen-anchor path (named gaps
  * §6.3) offsets them by DS_00100AB0/AB4[side]. A set slot+0x41 bit 7 then
  * latches slot+0x2C into slot+0x34. */
@@ -281,13 +281,13 @@ void fighter_3ae9c(u32 side, u8 param_2);                /* 0x3AE9C */
 void fighter_winner_body(u32 side);                      /* 0x193B0 */
 
 /* 0x3BB90. The fighters' body push the game_frame DS_00104B15 tail runs at
- * 0x2541D, before 0x12D48. Clears DS_00107D30; with DS_001078FA == 2 and both
+ * 0x2541D, before 0x12D48 (and the mode-0x21 tail at 0x25509). Clears DS_00107D30; with DS_001078FA == 2 and both
  * DS_001077A8 slots live it re-latches both slots (0x186D0), and unless either
  * slot's +0x42 bit 2 is set it copies their +0x2C/+0x30 to DS_000D3388..D3394,
  * sums the 0xBEEF8 character widths (halved for a side whose +0x54 is 2) into
  * DS_000D33A8, and when 0x4FB20's body distance is non-zero pushes the sides
  * apart by the penetration (0x3BAEC -> 0x3B9D8 per side -> 0x1883C). Returns
- * 1 when it pushed, else 0 (the 0x2541D caller ignores it). */
+ * 1 when it pushed, else 0 (both callers ignore it). */
 u32 fighter_body_push(void);
 
 /* 0x46534. Add `delta` to the per-side AI-difficulty accumulator at

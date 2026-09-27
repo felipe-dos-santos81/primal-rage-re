@@ -38,7 +38,8 @@ void game_loop(void);
 /* 0x24C5C: one per-frame update — frame counter, the two 0x94-byte player
  * records, the update process table (DS_000A8644 / DS_00104AE8), then the
  * state machine in the DAT_00104B00 == 3 mode only (the original's other modes
- * are deferred). Exposed for tests. */
+ * are deferred), the DS_00104B15 tail, and the 0x2545C mode tail (modes 0x0C,
+ * 0x21..0x23 and 0x25; record §42-D). Exposed for tests. */
 void game_frame(void);
 
 /* 0x11D04: switch(DS_000F0A64). States 0/1/2 and the front-end states 3/4/5 are

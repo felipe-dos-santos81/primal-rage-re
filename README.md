@@ -634,13 +634,15 @@ The new ratchet `make attract2-oracle` (`--attract2`, in `make verify`) finds ca
 
 The mode-`0x1A` dispatch and every caller are unported mode code, so no oracle moves. New `check_char_screen_open` in `test_fight.c`: 60 of 63 mutations fail it, and the 3 survivors are equivalent.
 
+**The worshipper types 2, 7 and 9..12 and the mode tail `0x2545C` (record §42-D).** Named gaps no port path reaches, ported from the raw and unit-tested. `fight_effects_pass` now runs type 2's countdown into the arrival `0x4AC38`, type 7's flight (the `+0x1C` bit-2 latch, the `+0x34` steer and the `+0x28` exit bit), type 9's wait for `DS_001088B4`, type 10's hold (`0x4B430`) or walk `0x4B2AC` (the `DS_00108878` count, the `DS_00108870`/`DS_0010887C` target), type 11's walk with the arrival test `0x4A7D4`, and type 12's scatter into 13/14; the frame locals types 9 and 11 write are read only by the still-unported mode-9 block. `game_frame` now ends with the raw's `0x2545C` mode switch (modes `0x0C`, `0x21`, `0x22`/`0x23`, `0x25`), with the held-pair camera `0x12FD8` as `camera_pair_hold`. Types 2 and 7 are set only by the unported `0x4E5A4`, `0x4DBEC` (modes `0x0D`/`0x32`) and `0x4987C`, and types 9..12 only in mode 9. The port only runs modes that take no `0x2545C` arm (3, and `0x15` once `0x29B74` stores it). So no oracle is expected to move. New `check_effects_worship` and `check_mode_tail` in `test_fight.c`; all 116 mutations fail the suite except 5 equivalent survivors. See §42-D of the record.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
 demo fight's remaining divergences (the capture's fight is explained up to its
 first all-black frame 1885 after the frame-1881 fix, and the attract's second
 cycle up to 3098 with the LOADING frame 2384 allowed by name; the second
 demo diverges from 3099 at the unregistered `0x15350`; the grab's throw
 `0x14D7C` and stream target `0x14E80` are ported but not reached (§41-B);
-the effects pass's types 2, 7 and 9..12, the
+the effects pass's type-8 held body, case-13/14 bodies and mode-9 block, the
 grab arm of `0x4B788`, `0x4B470`'s eighth-hit tail and case 8's held body are
 named gaps, as are `0x3E244` and `0x3ECF8`/`0x3C048`; `0x3B464`'s `0x235C4`
 arm and the stream target `0x370F0` are ported (record §41-C) but not reached
