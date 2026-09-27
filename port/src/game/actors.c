@@ -1114,13 +1114,17 @@ static void reaction_cb_230F0(u32 slot, u32 rec, u32 side)
     (void)fighter_230f0(slot, rec, side);
 }
 
-/* 0x23130 — the reaction-callback shape (record §43-C); drops the AL. */
+/* 0x23130 — the reaction-callback shape (record §43-C). PORT: the same
+ * 0x35045 call, whose AL is ignored; this wrapper drops fighter_23130's
+ * result. */
 static void reaction_cb_23130(u32 slot, u32 rec, u32 side)
 {
     (void)fighter_23130(slot, rec, side);
 }
 
-/* 0x23178 — the reaction-callback shape (record §43-C); drops the AL. */
+/* 0x23178 — the reaction-callback shape (record §43-C). PORT: the same
+ * 0x35045 call, whose AL is ignored; this wrapper drops fighter_23178's
+ * result. */
 static void reaction_cb_23178(u32 slot, u32 rec, u32 side)
 {
     (void)fighter_23178(slot, rec, side);

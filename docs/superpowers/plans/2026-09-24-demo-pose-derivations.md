@@ -9764,8 +9764,9 @@ base's (§43-C.5).
   `0x3C4CC(rec, 0xE4872, 0x40400000)` (`0x23161`). So `0x3C4CC` sees `+0x52`
   = 9 and takes its `0x3C480` arm. Then the voice `0x2C3FC(0x7C)`
   (`0x23166..0x2316B`) and AL = 1.
-- **`0x23178`** (72 bytes) is `0x23130` byte for byte except for the stream
-  `0xE48DC` (`0x23197`).
+- **`0x23178`** (72 bytes) is `0x23130` instruction for instruction except
+  for the stream `0xE48DC` (`0x23197`). The rel32 call encodings differ, since
+  they are position-dependent.
 - **`0x236D8`** (83 bytes; it pushes EBX, ECX, EDX, ESI and EDI; EAX = rec;
   EDX is zeroed at `0x236F7` before any read). EDI = `[rec+0x14]` (the slot),
   and 0 returns (`0x236DF..0x236E4`). Otherwise
@@ -9823,12 +9824,35 @@ base's (§43-C.5).
 
 `get_xrefs_to` lists only the `0x2463E` call, because Ghidra has no code or
 data references at the others. `0x2463E` lies in `0x24568`, which is entry 1
-of the table `0xA8628` (the dword at `0xA862C`). The `call [edx*4 +
-0xA8628]` sites at `0x25F27`, `0x27732` and `0x2989F` dispatch it, and all
-three are unported. `0x24568` passes EAX = `0x1077B0[side]`'s record, whose
-`+0x14` is its slot (`0x33D62`). The small body at `0x230D8..0x230ED` (state
-9/7/0, `+0x0C` = 0, AL = 1, no prologue) has no reference in either scan and
-is not ported.
+of the table `0xA8628` (the dword at `0xA862C`). Three unported sites dispatch
+it:
+- `0x25F27`: `call [edx*4 + 0xA8628]`;
+- `0x27732`: `call [edx*4 + 0xA8628]`;
+- `0x2989C`: `ff148d28860a00`, `call [ecx*4 + 0xA8628]`.
+
+`0x24568` passes EAX = `0x1077B0[side]`'s record, whose `+0x14` is its slot
+(`0x33D62`).
+
+`0xBB3BC`'s second reference, `0xBBA38`, is row 8 of `0xBB9D8`. The only code
+reference to that table is the crowd spawner `0x2C320` (`fight_scene_crowd`),
+which reads the row's first dword at `0x2C36F`. No scene's crowd table uses
+index 8. The indices at `+0xA` of each `0xBBDA8[scene]` record (counts at
+`0xBBD98`) are:
+
+| scene | indices |
+|---|---|
+| 0 | 27, 46, 47 |
+| 1 | 17, 18, 24, 7, 7, 20 |
+| 2, 3, 5 | none |
+| 4 | 22 |
+| 6 | 42, 41, 42, 41, 41 |
+| 7 | 12, 11, 15, 28, 28, 30, 23, 23, 13, 31, 31, 23, 29, 29, 29, 28, 29 |
+
+So `0xE4F94`, and with it the `0xD100` call of `0x2372C`, is reached only
+through `0x236D8`.
+
+The small body at `0x230D8..0x230ED` (state 9/7/0, `+0x0C` = 0, AL = 1, no
+prologue) has no reference in either scan and is not ported.
 
 ### 43-C.3 The port
 
@@ -9913,7 +9937,7 @@ shows only the intended changes.
 - **Named gaps.**
   - The voices `0x2C3FC(0x7C)` at `0x23166`/`0x231AE` (spec §7).
   - `0x2372C`'s other caller: `0x24568` (`0xA8628` entry 1, the call at
-    `0x2463E`). Its dispatches `0x25F27`/`0x27732`/`0x2989F` are unported
+    `0x2463E`). Its dispatches `0x25F27`/`0x27732`/`0x2989C` are unported
     mode code.
   - The type-8 projectile `0xBB3D0` is spawned. What moves it and hits with
     it is the existing type-8 machinery (`0x3B464`'s `+0x48` = 8 arm, §41-C)
