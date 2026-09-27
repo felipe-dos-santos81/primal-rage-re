@@ -66,4 +66,10 @@ void config_set_credit_row(u8 row);
 /* 0x2BF00. The init-time row write: 0x1D. One caller, 0x20CCC in 0x20C10. */
 void config_set_credit_row_init(void);
 
+/* 0x32A3C. The play-time audit close: zeroes the per-mode tick accumulator
+ * DS_0010746C[mode & 3]. Its run-clock call 0x32970 and its 0x2DAE4 audit adds
+ * are out of scope / deferred (spec §7). Callers: 0x41578 (ported) and the
+ * unported 0x26F58, 0x277C0, 0x28788, 0x41C28 and the dead 0x2861C region. */
+void config_play_time_close(u32 mode, u32 flag);
+
 #endif /* PRAGE_GAME_CONFIG_H */

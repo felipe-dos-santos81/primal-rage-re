@@ -747,6 +747,9 @@ int test_actors(void)
     CHECK(DSD(DS_001014F4) != 0, "actor pool allocated by res_load_index");
     CHECK(DSD(DS_001014EC) != 0, "pset pool allocated by res_load_index");
     CHECK(actors_init() == 1, "actors_init validates the two pools");
+    /* Record §42-E: the DS_00104AE4 handler 0x29B74 resolves to its port. */
+    CHECK(fn_resolve(FN_00029B74) == frontend_darken_all,
+          "actors_init registered 0x29B74 as frontend_darken_all");
 
     /* A fresh reset frees every record and leaves both lists empty. It also
      * runs 0x4F228 with EAX = 0 (0x2BBC0/0x2BBC4): the projection gate
@@ -1559,6 +1562,121 @@ int test_effects(void)
         CHECK_EQ_INT(gfx_dac[0x50][0], 0x77);
         effects_clear();
         effects_restore_restab(saved_tab, saved_n);
+    }
+    CHECK_EQ_INT(effects_active(), 0);
+
+    {
+        /* 0x29B74 / 0x41578 / 0x32A3C (record §42-E), the two 0x13D4C call
+         * sites. The 0x33904 list gets five slots: A (+0 0x1111), B
+         * (0x3E688), a dead C (+4 = 0, 0x3E688), D (0x88874B0) and E
+         * (0x2222). The resource count is 0, so 0x1B544 resolves nothing and
+         * no copy runs; one earlier effect is live, so 0x29B74's clear shows
+         * as a count of 4 rather than 5, and 0x41578's missing clear as 3.
+         * Every global either touches is saved and put back. */
+        static u8 saved_list[0x190];
+        const u32 tbl = DS_00107608;
+        const u32 ea = tbl + 0x10u, eb = tbl + 0x20u, ec = tbl + 0x30u;
+        const u32 ed = tbl + 0x40u, ee = tbl + 0x50u;
+        u32 saved_tab = DSD(DS_001014E0), saved_n = DSD(DS_001014F0);
+        u32 s_8ee = DSW(DS_001088EE), s_afe = DSW(DS_00104AFE);
+        u32 s_afa = DSW(DS_00104AFA), s_b00 = DSD(DS_00104B00);
+        u32 s_b25 = DSB(DS_00104B25), s_abc = DSD(DS_00104ABC);
+        u32 s_b19 = DSB(DS_00104B19);
+        u32 s_acc[4];
+        for (u32 i = 0; i < 4u; i++) s_acc[i] = DSD(DS_0010746C + i * 4u);
+
+        for (u32 i = 0; i < 0x190u; i++) saved_list[i] = DSB(tbl + i);
+        mem_fill(tbl, 0, 0x190u);
+        DSD(ea) = 0x1111u;       DSD(ea + 4u) = 1u;
+        DSD(eb) = 0x3E688u;      DSD(eb + 4u) = 1u;
+        DSD(ec) = 0x3E688u;                         /* +4 = 0: not live */
+        DSD(ed) = 0x088874B0u;   DSD(ed + 4u) = 1u;
+        DSD(ee) = 0x2222u;       DSD(ee + 4u) = 1u;
+        DSD(DS_001014F0) = 0u;
+
+        /* 0x29B74: clear, then a byte-3 darken for every live entry (no
+         * predicate), in list order, each head-inserted. */
+        tf_effects_fixture_begin();
+        effects_reset_source(0x40u);
+        CHECK(effects_spawn(EFFECTS_TEST_SRC, 0u, 0u) != 0, "an earlier effect");
+        DSW(DS_001088EE) = 0x1234u;
+        DSW(DS_00104AFE) = 0x5678u;
+        DSD(DS_00104B00) = 0xDEAD0003u;
+        frontend_darken_all();
+        CHECK_EQ_INT(effects_active(), 4);
+        {
+            const u32 want[4] = { ee, ed, eb, ea };   /* head first */
+            u32 r = DSD(DS_000FCCE0);
+            for (u32 i = 0; i < 4u; i++) {
+                CHECK_EQ_INT((int)DSD(r + 0x08u), (int)want[i]);
+                CHECK_EQ_INT((int)DSB(r + 0x0Cu), 4);
+                CHECK_EQ_INT((int)DSB(r + 0x0Du), 3);
+                r = DSD(r);
+            }
+            CHECK_EQ_INT((int)r, (int)DS_000FCCE0);   /* no fifth record */
+        }
+        CHECK_EQ_INT((int)DSW(DS_001088EE), 0x78);
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x78);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xDEAD0015u);  /* a word store */
+        effects_clear();
+
+        /* 0x41578: no clear; a byte-2 darken only for B and D (the two
+         * handles), then 0x32A3C on mode 5 (index 1) and the five stores. */
+        tf_effects_fixture_begin();
+        CHECK(effects_spawn(EFFECTS_TEST_SRC, 0u, 0u) != 0, "an earlier effect");
+        DSW(DS_001088EE) = 0x1234u;
+        DSW(DS_00104AFE) = 0x5678u;
+        DSW(DS_00104AFA) = 0x9ABCu;
+        DSD(DS_00104B00) = 0xDEAD0003u;
+        DSB(DS_00104B25) = 0xAAu;
+        DSD(DS_00104ABC) = 5u;
+        DSB(DS_00104B19) = 1u;
+        for (u32 i = 0; i < 4u; i++)
+            DSD(DS_0010746C + i * 4u) = 0x1000u + i;
+        frontend_darken_marked();
+        CHECK_EQ_INT(effects_active(), 3);
+        {
+            u32 r = DSD(DS_000FCCE0);
+            CHECK_EQ_INT((int)DSD(r + 0x08u), (int)ed);
+            CHECK_EQ_INT((int)DSB(r + 0x0Cu), 4);
+            CHECK_EQ_INT((int)DSB(r + 0x0Du), 2);
+            r = DSD(r);
+            CHECK_EQ_INT((int)DSD(r + 0x08u), (int)eb);
+            CHECK_EQ_INT((int)DSB(r + 0x0Du), 2);
+            r = DSD(r);
+            CHECK_EQ_INT((int)DSD(r + 0x08u), (int)EFFECTS_TEST_SRC);
+        }
+        CHECK_EQ_INT((int)DSD(DS_0010746C + 0u), 0x1000);
+        CHECK_EQ_INT((int)DSD(DS_0010746C + 4u), 0);      /* 5 & 3 = 1 */
+        CHECK_EQ_INT((int)DSD(DS_0010746C + 8u), 0x1002);
+        CHECK_EQ_INT((int)DSD(DS_0010746C + 12u), 0x1003);
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x78);
+        CHECK_EQ_INT((int)DSW(DS_001088EE), 0);
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x13);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xDEAD0015u);
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+        effects_clear();
+
+        /* 0x32A3C alone: mode 0 still takes and zeroes its accumulator
+         * (0x32A56 runs before the 0x32A5F mode-0 exit). */
+        for (u32 i = 0; i < 4u; i++)
+            DSD(DS_0010746C + i * 4u) = 0x2000u + i;
+        config_play_time_close(4u, 0u);
+        CHECK_EQ_INT((int)DSD(DS_0010746C + 0u), 0);
+        CHECK_EQ_INT((int)DSD(DS_0010746C + 4u), 0x2001);
+        CHECK_EQ_INT((int)DSD(DS_0010746C + 8u), 0x2002);
+        CHECK_EQ_INT((int)DSD(DS_0010746C + 12u), 0x2003);
+
+        for (u32 i = 0; i < 4u; i++) DSD(DS_0010746C + i * 4u) = s_acc[i];
+        DSB(DS_00104B19) = (u8)s_b19;
+        DSD(DS_00104ABC) = s_abc;
+        DSB(DS_00104B25) = (u8)s_b25;
+        DSD(DS_00104B00) = s_b00;
+        DSW(DS_00104AFA) = (u16)s_afa;
+        DSW(DS_00104AFE) = (u16)s_afe;
+        DSW(DS_001088EE) = (u16)s_8ee;
+        effects_restore_restab(saved_tab, saved_n);
+        for (u32 i = 0; i < 0x190u; i++) DSB(tbl + i) = saved_list[i];
     }
     CHECK_EQ_INT(effects_active(), 0);
 
@@ -2474,20 +2592,16 @@ int test_frontend(void)
         DSB(DS_00104B15) = saved_15;
     }
 
-    /* Task 8: the effect call sites 0x29B74 (the DS_00104AE4 mode-0x17 handler)
-     * and 0x41578 are deferred, not shipped. The raw reaches them only through
-     * 0x24C5C's unported mode cases (0x12 and 0x16..0x1b) and the unported
-     * match/fight chain; the port's DS_00104B00 is fixed at 3 by 0x10E80, so
-     * wiring either would be a dispatch path nothing can reach (UNOWNED BY THIS
-     * PLAN; see port/spec/game_flow.md). This pins that no unreachable handler
-     * is registered: registering FN_00029B74 or FN_00041578 fails it. The
+    /* The effect call sites 0x29B74 and 0x41578 are ported (record §42-E;
+     * test_effects), their callers are not. 0x41578 is only direct-called:
+     * no dword 0x00041578 exists in either object, so nothing may register
+     * it. 0x29B74 is a DS_00104AE4 pointer and is registered by actors_init
+     * (asserted in test_actors, which runs it; this driver may not). The
      * behavioral half (the ported state machine never arms DS_00104AE4 and
      * never leaves mode 3) is asserted in the state-5 block below. */
     {
-        CHECK(fn_resolve(FN_00029B74) == NULL,
-              "0x29B74 is deferred, not registered");
         CHECK(fn_resolve(FN_00041578) == NULL,
-              "0x41578 is deferred, not registered");
+              "0x41578 is direct-called only, not registered");
     }
 
     /* 0x12484: state 3 (the post-select presentation). Phase 0 re-spawns the
@@ -2689,11 +2803,11 @@ int test_frontend(void)
         CHECK_EQ_INT((int)DSB(DS_000F0A72), 0);
         CHECK_EQ_INT((int)DSB(DS_00104B15), 0);   /* 0x1EA08 ran 0x4F1E4 */
         CHECK_EQ_INT((int)DSB(DS_00105C05), 0x1D);  /* 0x2C06C ran */
-        /* Task 8: the ported state-5 path does not arm the deferred 0x29B74
-         * handler and does not leave mode 3 (so the six call dword [0x104ae4]
+        /* Task 8: the ported state-5 path does not arm the 0x29B74 handler
+         * (its DS_00104AE4 stores are unported) and does not leave mode 3 (so the six call dword [0x104ae4]
          * sites and the four 0x41578 sites stay unreachable). */
         CHECK(DSD(DS_00104AE4) == 0xDEADBEEFu,
-              "state 5 does not arm the deferred 0x29B74 handler");
+              "state 5 does not arm the 0x29B74 handler");
         CHECK_EQ_INT((int)DSW(DS_00104B00), 3);
         /* 0x1EA08's prefix is observable only with the pool present (the
          * isolated PR_FRONTEND_DUMP run reaches here before game_init()). */

@@ -56,6 +56,18 @@ u32 frontend_list_next(u32 node);
  * dereferences it. Exposed for a unit test. */
 u32 frontend_resource_known(u32 rec);
 
+/* 0x29B74: the DS_00104AE4 countdown handler. Clears the effects, spawns a
+ * 0x13D4C darken (byte 3) for every live 0x33904 list entry, then
+ * DS_001088EE = DS_00104AFE = 0x78 and DS_00104B00 = 0x15. Registered in
+ * actors_init; its stores and dispatchers are unported (record §42-E). */
+void frontend_darken_all(void);
+
+/* 0x41578: spawns a 0x13D4C darken (byte 2) for each live list entry whose +0
+ * handle is 0x3E688 or 0x88874B0, runs 0x32A3C, then DS_00104AFE = 0x78,
+ * DS_001088EE = 0, DS_00104AFA = 0x13, DS_00104B00 = 0x15, DS_00104B25 = 0.
+ * Direct-called only, from unported callers (record §42-E). */
+void frontend_darken_marked(void);
+
 /* 0x1CF40: the init chain's audio calls — AIL_startup, the shipped preferences,
  * four sample handles, the sequence handle and the 60 Hz timer slot. Called by
  * game_main(); exported so tests can run it without the full init chain (which

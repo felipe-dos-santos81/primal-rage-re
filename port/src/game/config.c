@@ -247,3 +247,24 @@ void config_set_credit_row_init(void)
 {
     DSB(DS_00105C05) = 0x1Du;
 }
+
+/* 0x32A3C — derivation record §42-E. EAX = the mode (only its low two bits
+ * index, 0x32A43 `and edx,3`), EDX = the flag, kept in ECX (0x32A3F). Takes
+ * the per-mode tick accumulator DS_0010746C[mode & 3] and zeroes it
+ * (0x32A4F/0x32A56); mode 0 stops there (0x32A5F). */
+void config_play_time_close(u32 mode, u32 flag)
+{
+    u32 idx = mode & 3u;                                /* 0x32A43 */
+    /* PORT: 0x32A4A 0x32970(EAX = 0), the run clock (it adds the elapsed
+     * DS_00105D88 ticks into these accumulators), is out of scope (spec §7);
+     * the host clock owns wall time. It preserves EDX (0x32972 push). */
+    u32 ticks = DSD(DS_0010746C + idx * 4u);            /* 0x32A4F */
+    DSD(DS_0010746C + idx * 4u) = 0u;                   /* 0x32A56 */
+    (void)ticks;
+    (void)flag;
+    /* PORT: the audit adds through 0x2DAE4 (deferred no-op, spec §7) that
+     * follow for mode != 0, with t = ticks / 0x3C (unsigned DIV):
+     *   mode 1, flag == 0: (8, 1), (0xA, t), (0x12, t)          0x32A7B..
+     *   mode 1, flag != 0: (6, 1), (0xB, 1), (0xC, t), (0x12, t) 0x32A91..
+     *   mode 2/3:          (flag == 0 ? 9 : 7, 1), (0x13, t)     0x32AC4.. */
+}

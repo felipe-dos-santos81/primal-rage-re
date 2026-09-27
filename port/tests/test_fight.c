@@ -10888,6 +10888,22 @@ static void check_type_table(void)
     for (u32 i = 0; i < 9u; i++)
         CHECK(fn_resolve(s_cb2_addrs[i]) != NULL, "cb2 registered");
     CHECK(fn_resolve(FN_0005D812) == NULL, "the stub is unregistered");
+    /* Record §42-E: the stub is 3 bytes, `xor eax,eax; ret`, between
+     * 0x5D808's `ret` (0x5D811) and the next function's `push ebx` (0x5D815).
+     * The image's other holders are the four `mov edx,0x5d812` stores into
+     * DS_00104AE4 (the no-handler value), fixed up from 0x4D812. */
+    CHECK_EQ_INT((int)DSB(0x5D811u), 0xC3);
+    CHECK_EQ_INT((int)DSB(0x5D812u), 0x33);
+    CHECK_EQ_INT((int)DSB(0x5D813u), 0xC0);
+    CHECK_EQ_INT((int)DSB(0x5D814u), 0xC3);
+    CHECK_EQ_INT((int)DSB(0x5D815u), 0x53);
+    {
+        static const u32 imm[4] = { 0x25C05u, 0x26A28u, 0x27123u, 0x29627u };
+        for (u32 i = 0; i < 4u; i++) {
+            CHECK_EQ_INT((int)DSB(imm[i] - 1u), 0xBA);          /* mov edx */
+            CHECK_EQ_INT((int)DSD(imm[i]), (int)FN_0005D812);
+        }
+    }
 
     arena_list_empty(0x000F0A78u);
     arena_list_empty(0x00100C20u);
