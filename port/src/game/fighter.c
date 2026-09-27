@@ -5936,6 +5936,123 @@ void fighter_2372c(u32 rec)
     }
 }
 
+#define FIGHTER_E453A   0x000E453Au  /* 0x24613: 0x24568's entrance stream */
+#define FIGHTER_C8B30   0x000C8B30u  /* 0x3BD1F: [char] stance stream */
+#define FIGHTER_104B03  0x00104B03u  /* 0x2465A: the per-side blink mask byte */
+
+/* 0x3BCE0 — record §46-C. Called only at 0x24704 (in 0x246D4). EAX = side
+ * (kept in ECX; EBX, ECX and EDX are pushed). DS_00107D40[side] = 0xBEF64 +
+ * char * 6, the slot's record restarts on its character's stream
+ * DS_000C8B30[char] at 2.0, the slot's state is 3/4/2 (+0x52/+0x53/+0x54),
+ * DS_001078F8[side] = 1, and the slot's word +0x4E is 1 when the high byte of
+ * DS_001088E0[side] has bit 4, else 0xFFFF when it has bit 5, else 0. */
+void fighter_3bce0(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;              /* 0x3BCE3..0x3BD06 */
+    u32 hi;
+    DSD(DS_00107D40 + side * 4u) =
+        DS_000BEF64 + (u32)DSB(slot + 0x7Au) * 6u;      /* 0x3BCF5..0x3BD13 */
+    actors_anim_begin(DSD(slot),
+                      DSD(FIGHTER_C8B30 + (u32)DSB(slot + 0x7Au) * 4u),
+                      0x40000000u);                     /* 0x3BD1A..0x3BD2B 0x2BC30 */
+    DSB(slot + 0x52u) = 3u;                             /* 0x3BD30 */
+    DSB(slot + 0x54u) = 2u;                             /* 0x3BD34 */
+    DSB(slot + 0x53u) = 4u;                             /* 0x3BD3A */
+    DSB(DS_001078F8 + side) = 1u;                       /* 0x3BD3E */
+    hi = (u32)DSW(DS_001088E0 + side * 2u) >> 8;        /* 0x3BD44..0x3BD4D */
+    if ((hi & 0x10u) != 0u) {                           /* 0x3BD4F..0x3BD57 */
+        DSW(slot + 0x4Eu) = 1u;                         /* 0x3BD59 */
+        return;
+    }
+    hi = (u32)DSW(DS_001088E0 + side * 2u) >> 8;        /* 0x3BD63..0x3BD6A */
+    if ((hi & 0x20u) != 0u) {                           /* 0x3BD6C..0x3BD74 */
+        DSW(slot + 0x4Eu) = 0xFFFFu;                    /* 0x3BD76 */
+        return;
+    }
+    DSW(slot + 0x4Eu) = 0u;                             /* 0x3BD80 */
+}
+
+/* 0x246D4 — record §46-C. The 0xD500 target in 0x24568's entrance stream
+ * 0xE453A (the dword at 0xE4544 after the 0xD500 word at 0xE4542; its only
+ * reference). EAX = rec; EDX is pushed and zeroed at 0x246D7 before any read.
+ * For rec's side (+0x51): DS_001088E0[side] = 0xA000 when 0x1A570(side) holds,
+ * else 0x9000; then 0x3BCE0(side), which reads that word back; then the
+ * slot's +0x54 = 2, word +0x74 = 0, dword +0x40 loses bits 12 and 19, and
+ * DS_000F0AFE = 1, DS_000F0AFC = 0x100. */
+void fighter_246d4(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                   /* 0x246D7/0x246D9 */
+    u32 slot, v;
+    if (fighter_actor_bit15_clear(side) != 0)           /* 0x246DC..0x246EC 0x1A570 */
+        DSW(DS_001088E0 + side * 2u) = 0xA000u;         /* 0x246EE */
+    else
+        DSW(DS_001088E0 + side * 2u) = 0x9000u;         /* 0x246F9 */
+    fighter_3bce0(side);                                /* 0x24702/0x24704 */
+    slot = DS_001077B0 + side * 0x94u;                  /* 0x24709..0x24715 */
+    DSB(slot + 0x54u) = 2u;                             /* 0x24717 */
+    v = DSD(slot + 0x40u);                              /* 0x24721 */
+    DSW(slot + 0x74u) = 0u;                             /* 0x24728 */
+    DSD(slot + 0x40u) = v & 0xFFF7EFFFu;                /* 0x24730/0x24736 */
+    DSB(DS_000F0AFE) = 1u;                              /* 0x24744 */
+    DSW(DS_000F0AFC) = 0x100u;                          /* 0x2474A */
+}
+
+/* 0x24568 — record §46-C. Entry 1 of the per-character table 0xA8628 (the
+ * dword at 0xA862C), character 1's entrance. The dispatchers `call [char*4 +
+ * 0xA8628]` at 0x25F27 (mode 5's 0x25C88), 0x27732 (mode 0xD's 0x274FC) and
+ * 0x2989C (mode 0x32's 0x296B8) pass EAX = the entering side; EBX, ECX, EDX
+ * and ESI are preserved (0x2989C's caller reads CL after the call).
+ *
+ * The x is placed 0x5000 from the fighter record of the side DS_0010810D
+ * names: to its left (a5 = 0x4000) when 0x1A570(that side) holds and x - 0x5000
+ * >= -DS_000BE018, else to its right (a5 = 0) when x + 0x5000 <= DS_000BE018,
+ * else back to the left test (0x245E3's `jg` to 0x2457E). Both compares are
+ * signed. With the image's DS_000BE018 = 0x7C00 one of the two always passes;
+ * a bound below 0x5000 could make the raw spin, and the port spins the same.
+ * Then the spawn core 0x33C78(side, x, word[0xBD898], a5) with EBX = 0, the
+ * record on 0xE453A at 4.0, the slot's +0x74 = 0x309 (0x39A10), the 0x2372C
+ * projectile, the slot's +0x41 bit 0 when DS_00104B03 has 0x40 (DS_0010810D
+ * set) or 0x80 (clear), and the slot's state 9/3 with +0x64 = 0x2A, +0x40 |=
+ * 0x81000 and +0x63 = 1. */
+void fighter_24568(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;              /* 0x24602..0x24610 */
+    int left = fighter_actor_bit15_clear((u32)DSB(FIGHTER_10810D)) != 0;  /* 0x2456E..0x2457C 0x1A570 */
+    u32 x, a5, mask, v;
+    for (;;) {
+        u32 sel = (u32)DSB(FIGHTER_10810D);             /* 0x24580/0x245B8 */
+        u32 x0 = DSD(DSD(DS_001077B0 + sel * 0x94u) + 0x18u);   /* 0x24586..0x245A1, 0x245BE..0x245D3 */
+        if (left) {
+            x = x0 - 0x5000u;                           /* 0x245A6 */
+            if ((s32)x >= (s32)(0u - DSD(DS_000BE018))) {   /* 0x2459B/0x245A4/0x245AB `jl` */
+                a5 = 0x4000u;                           /* 0x245AF */
+                break;
+            }
+        }
+        x = x0 + 0x5000u;                               /* 0x245DC */
+        if ((s32)x <= (s32)DSD(DS_000BE018)) {          /* 0x245D6/0x245E1 `jg` */
+            a5 = 0u;                                    /* 0x245E5 */
+            break;
+        }
+        left = 1;                                       /* 0x245E3 -> 0x2457E */
+    }
+    fighter_spawn_slot(side, x, (u32)DSW(DS_000BD898),
+                       a5 & 0xFFFFu);                   /* 0x245E7..0x245FD 0x33C78 */
+    actors_anim_begin(DSD(slot), FIGHTER_E453A, 0x40800000u);  /* 0x24613..0x24623 0x2BC30 */
+    fighter_39a10(DSD(slot), 0x309u);                   /* 0x24628..0x24633 */
+    fighter_2372c(DSD(slot));                           /* 0x24638/0x2463E */
+    mask = DSB(FIGHTER_10810D) != 0u ? 0x40u : 0x80u;   /* 0x24643..0x24653 */
+    if (((u32)DSB(FIGHTER_104B03) & mask) != 0u)        /* 0x24658..0x24667 */
+        DSB(slot + 0x41u) |= 1u;                        /* 0x24677 */
+    /* PORT: 0x2467F/0x24684 0x2C3FC(0xB4) voice, not wired (record §45-A). */
+    DSB(slot + 0x52u) = 9u;                             /* 0x2469B */
+    DSB(slot + 0x53u) = 3u;                             /* 0x246A2 */
+    v = DSD(slot + 0x40u);                              /* 0x246AB */
+    DSB(slot + 0x64u) = 0x2Au;                          /* 0x246B2 */
+    DSD(slot + 0x40u) = v | 0x81000u;                   /* 0x246B9/0x246BF */
+    DSB(slot + 0x63u) = 1u;                             /* 0x246C6 */
+}
+
 /* 0x3AAFC. The reaction applier / pose dispatcher 0x3B714 runs for the winner.
  * EAX = slot, the stack argument = the reaction byte. It runs the facing latch,
  * the 0x39834 pose driver, the 0x3A0FC effect spawn and the pose dispatch on

@@ -668,6 +668,15 @@ int fighter_23178(u32 slot, u32 rec, u32 side);
 void fighter_236d8(u32 rec);
 void fighter_2372c(u32 rec);
 
+/* 0x24568. Entry 1 of the per-character table 0xA8628 (character 1's
+ * entrance, EAX = side): the spawn 0x5000 beside DS_0010810D's fighter, the
+ * 0xE453A stream, the 0x2372C projectile and state 9/3. 0x246D4. That stream's
+ * 0xD500 target, the entrance's end: 0x3BCE0(side) restarts the side on its
+ * stance stream DS_000C8B30[char] in state 3/4/2. §46-C. */
+void fighter_24568(u32 side);
+void fighter_246d4(u32 rec);
+void fighter_3bce0(u32 side);
+
 /* The machine's and chain's per-function fixtures (record §7.1-§7.5, §7.7-§7.9
  * and §7.11) exercise these directly. */
 u32  hit_frame_desc(u32 side, u32 i);                 /* 0x3C600 */
