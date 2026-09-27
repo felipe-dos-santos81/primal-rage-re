@@ -97,6 +97,22 @@ class Splice3Test(unittest.TestCase):
         c = self.f[1][:self.b1] + self.f[3][self.b1:]
         self.assertIsNone(self.tc.splice3(c, self.f, {1}))
 
+    def test_splice_ending_in_the_middle_frame_fails(self):
+        # b2 would be FRAME_BYTES: a two-frame splice N ++ N+1.
+        c = self.f[1][:self.b1] + self.f[2][self.b1:]
+        self.assertIsNone(self.tc.splice3(c, self.f, {1}))
+
+    def test_splice_starting_in_the_middle_frame_fails(self):
+        # b1 would be 0: a two-frame splice N+1 ++ N+2.
+        c = self.f[2][:self.b2] + self.f[3][self.b2:]
+        self.assertIsNone(self.tc.splice3(c, self.f, {1}))
+
+    def test_next_clean_anchor(self):
+        # The next capture frame's clean frame must be N + 2.
+        self.assertEqual(self.tc.splice3(self.c, self.f, {1}, 3),
+                         (1, self.b1, self.b2))
+        self.assertIsNone(self.tc.splice3(self.c, self.f, {1}, 2))
+
 
 if __name__ == "__main__":
     unittest.main()

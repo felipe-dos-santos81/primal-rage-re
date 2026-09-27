@@ -254,7 +254,8 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # N = 3593 (§47-A, branch frame-3545): FE_LOOPS 3900 -> 4100 brings the high-score
 # screen's end (state 9 -> 6 after loop 3984) and the third demo (s16dia against
 # s16spi in s16caves; its state-6 entry reads six files in loop 3985) into the dump.
-# 3543/3544 are now the port's own hand-off, 3546..3592 its third demo fight, and 3545
+# 3544 is now the port's own loader screen (3543 is all-black, excluded), 3546..3592
+# its third demo fight, and 3545
 # (raw 8338) is allowed by name as a three-frame splice (ATTRACT2_SPLICE3_ALLOWED,
 # cycle-2 2192/2193/2194: the last loader screen, the load frame's present and the
 # next, which the read's tick re-sync 0x1B45F/0x1B464 lets fall inside one capture
@@ -339,6 +340,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@$(MAKE) --no-print-directory attract2-compare
 	@echo "== attract prefix oracle (pixel-exact) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory attract-oracle
+	@echo "== title_compare unit tests (splice3, record §47-A) =="
+	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory re-extract-test
 	@echo "== symbols.h must regenerate byte-identically =="

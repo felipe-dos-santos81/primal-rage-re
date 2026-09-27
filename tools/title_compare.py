@@ -506,27 +506,37 @@ ATTRACT2_ALLOWED_UNEXPLAINED = {}
 # frames named here may be explained this way, and each must be byte-exactly
 # `c2[N][:b1] ++ c2[N+1][b1:b2] ++ c2[N+2][b2:]` with 0 < b1 < b2 < 192000,
 # where N is a loader screen the driver lists in <cycle2>/loader.txt and N+1 is
-# not (N+1 is the first present after the loader's stall). The raw's reason:
-# 0x255CC's gate (0x25643) presents only when DS_0010150C == DS_00101508, and
-# its spin (0x256C6..0x256DB) waits only while DS_0010150C - 1 == DS_00101508,
-# i.e. until the timer ISR's next tick. The loader's read ends by re-syncing
-# DS_0010150C = DS_00101508 (0x1B3AC at 0x1B45F/0x1B464) at whatever moment the
-# read completes, so the load frame's present lands at an arbitrary phase of
-# the ISR tick, and the next present follows at the next tick plus one
-# iteration's work; the two can fall inside one 70 Hz capture scan. Everywhere
-# else the presents are phase-locked a tick apart.
+# not (N+1 is the first present after the loader's stall), and where N+2 is the
+# frame the next capture frame (j+1) shows clean, which ties the splice to the
+# named frame's own neighbourhood. The raw's reason: 0x255CC's gate (0x25643)
+# presents only when DS_0010150C == DS_00101508, and its spin (0x256C6..0x256DB)
+# waits only while DS_0010150C - 1 == DS_00101508, i.e. until the timer ISR's
+# next tick. A present that follows a re-sync of DS_0010150C to DS_00101508, or
+# a catch-up (the gate skips presents with no spin while DS_0010150C is behind),
+# lands at an arbitrary phase of the ISR tick, and the next present follows at
+# the next tick plus one iteration's work; the two can fall inside one 70 Hz
+# capture scan. The raw re-syncs at 0x1B45F/0x1B464 (0x1B3AC, the loader's
+# read), at 0x4FA0E (0x4F9E4) and 0x4FAB2 (0x4FA88), both after a 0x2AE14 load,
+# and at 0x5210D (0x52106, the logo player's blank, both counters). So sub-tick
+# present gaps are possible after any re-sync or catch-up; 3545's instance is
+# the 0x1B3AC re-sync, and the allowance is deliberately narrower than the
+# mechanism: one named frame, a loader-screen start.
 # Capture 3545 (raw 8338) is the third demo's first frame after the state-6
 # entry's six loader screens: rows 0..124 are the last loader screen, rows
-# 125..179 the catch-up present, rows 180..199 the next frame. A named frame
-# that is not such a splice fails.
+# 125..179 the load frame's present, rows 180..199 the next frame. A named frame
+# that is not such a splice fails; a named frame the two-frame model already
+# explains is reported as a stale name.
 ATTRACT2_SPLICE3_ALLOWED = (3545,)
 
 
-def splice3(c, frames, loaders):
+def splice3(c, frames, loaders, next_clean=None):
     """(N, b1, b2) when c is the three-frame splice ATTRACT2_SPLICE3_ALLOWED
-    describes, starting at a loader screen N; None otherwise."""
+    describes, starting at a loader screen N; None otherwise. When next_clean
+    is given (the frame the next capture frame shows clean), N + 2 must be it."""
     for N in sorted(loaders):
         if N + 1 in loaders or N + 2 >= len(frames):
+            continue
+        if next_clean is not None and N + 2 != next_clean:
             continue
         a, b, e = frames[N], frames[N + 1], frames[N + 2]
         b1 = first_diff(c, a)
@@ -1000,9 +1010,18 @@ def main():
                 loaders = {int(t) for t in f.read().split()}
         for j in ATTRACT2_SPLICE3_ALLOWED:
             if j not in unexpl:
+                if lo <= j <= hi and kinds[j][0] != 'artifact':
+                    print("title_compare: attract2: note: frame %d is named in "
+                          "ATTRACT2_SPLICE3_ALLOWED but is %s now; retire the "
+                          "name" % (j, kinds[j][0]))
                 continue
+            nxt = kinds[j + 1] if j + 1 <= hi else None
+            if nxt is None or nxt[0] != 'clean':
+                print("title_compare: attract2: FAIL: allowed frame %d's next "
+                      "capture frame is not clean, the splice has no anchor" % j)
+                return 1
             s3 = splice3(load(os.path.join(capture, 'frame_%04d.raw' % j)),
-                         c2, loaders)
+                         c2, loaders, nxt[1])
             if s3 is None:
                 print("title_compare: attract2: FAIL: allowed frame %d is not a "
                       "three-frame splice from a loader screen" % j)

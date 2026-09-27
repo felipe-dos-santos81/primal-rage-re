@@ -2572,11 +2572,13 @@ record §34).**
   3984; loop 3985 is the third demo's state-6 entry (s16caves, s16dia,
   s16diash, s16diasd, s16spi, s16spish, six loader screens) and goes on to
   state 7. FE_LOOPS 4100 covers the capture's end.
-* **Result.** 3543..3592 are the port's own frames: the loader screens, then
-  the third demo fight. 3545 is a three-frame splice (the last loader screen,
+* **Result.** 3544..3592 are the port's own frames (3543 is all-black and
+  excluded): the loader screens, then the third demo fight. 3545 is a three-frame splice (the last loader screen,
   loop 3985's present, loop 3986's present), allowed by name: the read's tick
   re-sync `0x1B45F`/`0x1B464` gives the load frame's present an arbitrary
-  tick phase, so the next present can fall in the same capture scan. First
+  tick phase, so the next present can fall in the same capture scan. The
+  raw's other re-syncs (`0x4FA0E`, `0x4FAB2`, `0x5210D`) and any catch-up can
+  do the same; the allowance is narrower than the mechanism. First
   unexplained **3593** (raw 8386): the s16spi fighter's attack, which the port
   does not play (a named gap). N = 3593.
 
