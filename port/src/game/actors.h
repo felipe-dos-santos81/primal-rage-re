@@ -141,6 +141,8 @@ void text_cursor_set(s32 col, s32 row, const u8 *s, u32 mode);
 void text_cells_release(s32 col, s32 row, const u8 *s, u32 mode);
 /* 0x2F4BC. 0x2F198 with the cursor saved and restored afterwards. */
 void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode);
+/* 0x2F510. 0x2F4BC with the mode ORed with 2 (the class font). */
+void text_cursor_hold_font2(s32 col, s32 row, const u8 *s, u32 mode);
 /* 0x2F20C. 0x2F198's vertical twin (0x2F830 with the stack byte 1); the cursor
  * gets {row, col + glyph count}. */
 void text_vertical_set(s32 col, s32 row, const u8 *s, u32 mode);

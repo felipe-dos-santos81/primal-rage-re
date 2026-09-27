@@ -10455,3 +10455,303 @@ not reached: ported and unit-tested only.
 presentation (§35.1). The call that triggers it is not pinned.
 
 **Merge note.** `0x2910C` was ported twice in parallel: here as `actor_proc_2910C` and on the `gap2-2910c` branch (§42-A) as `actor_type_0a19_update`. The merge kept §42-A's reviewed port and dropped this branch's copy; the two are the same walk over the raw (same stores, phases and streams). The ratchet N = 3257 was re-measured on the merged tree.
+
+## 43-A. The mode-`0x22`/`0x24` pass `0x4D2D0`, its refill `0x4987C`, and the volleyball's `0x4C60C` (named-gap batch 3, branch `gap3-4d2d0`)
+
+**Result in one line.** The named gaps §42-C left, the mode-`0x22`/`0x24`
+effects pass `0x4D2D0` (the caller of `0x4D7A4`) and `0x4CB18`'s flag-1 caller
+`0x4C60C`, are ported from the raw with every unported callee: `0x4D224`,
+`0x4D108`, `0x4D150` and `0x4987C` under `0x4D2D0`; `0x4C784`, `0x4CC0C` and
+the text call `0x2F510` under `0x4C60C`. `0x4987C` is also the effects tail's
+callee (`0x4A616`), which is now wired. `0x4D2D0` and `0x4C60C` have no port
+caller (their mode frames are unported), so they are unit-tested; the
+`0x4A616` wiring is the one change a demo run can see (43-A.5).
+
+### 43-A.1 The raw (Ghidra `disassemble_function`, `read_memory`, fixups applied)
+
+- **`0x4D2D0`** (no arguments; a 4-byte frame of two words zeroed at
+  `0x4D2E1`/`0x4D2E6`). It walks `DS_0010884C` (EBX = entry, EDI = next, ECX
+  = the actor `+8`). Per entry: `inc word [esp + eax*2]` with AL = byte
+  `0x104B1A` (`0x4D313`); SI = (u16)(`+0x48` − `0x20`) (`movzx si` then `sub
+  esi,0x20`: only the low word is passed, `mov dx,si` after `xor edx,edx`);
+  `0x4D7A4(entry, si)` when the word `0x104B00` is `0x22` (`0x4D317`). Then,
+  when `[0x104AC4]` ≤ 1 (`cmp …,1; jg`), the type is not 6 and `+0x1C & 0x44`
+  is 0 (`0x4D33B..0x4D348`), the stop: the actor's `+0x38`/`+0x34`/`+0x36`
+  = 0, `+0x1C |= 4`, `0x4AC38(actor.+0x14, (u8)actor.+0x48 − 0x20)` when
+  `+0x14` is non-zero (a 32-bit index, as `0x4AC18`), type 8. Otherwise the
+  jump table `0x4D2AC` (`ja` above 8 to `0x4D3A4`): 0 and 7 `0x4D3A4`
+  (`0x4D224`), 1 `0x4D3B5`, 2 `0x4D41C`, 3 `0x4D43F`, 4 `0x4D502`, 5
+  `0x4D5F8`, 6 `0x4D649`, 8 `0x4D747` (nothing).
+  - 1: `0x49C78`'s case 1 (`0x4BD4C` first while `DS_001088C2`; the arrival
+    `0x4AC38` when |x − `+0x14`| ≤ the `+0x34` step, signed `jg`).
+  - 2: the `+0x18` word counts down (signed `jg`), then `0x4AC38`.
+  - 3: `+0x2C` = `0x496AC(y)`; at or below the zero-extended word `0xBD898`
+    (`jg`): `+0x28 |= 0x4000` when `0x2BE1C(actor, the slot's record)` > 0;
+    `rng(2)` non-zero → `0xC9634[si]` at 2.0 (`push 0x40000000`), else
+    `0xC9724[si]` at 5.0 (`push 0x40a00000`); `+0x38`/`+0x34` = 0; `+0x18` =
+    `rng(0x3C)` + `0x3C`; type 4; `+0x1C |= 0x80`. (`0x49C78`'s case 3 has no
+    `rng(2)` and no `0xC9724`.)
+  - 4: `+0x18` counts down (signed `jg`); at zero `rng(2)` non-zero re-arms
+    `+0x18` = `rng(0x3C)` + `0x3C`; else `rng(2)` non-zero with the actor's
+    x in (−`0x4D00`, `0x4D00`) (`cmp ebp,0xffffb300; jle`, `cmp ebp,0x4d00;
+    jge`) walks: `rng(2)` non-zero → `+0x34` = `0x80`, `+0x29 &= 0xBF`, else
+    `0xFF80`, `|= 0x40`; `0xC95D4[si]` at 3.0; type 4 (`0x4D5B0`); `+0x18` =
+    `rng(0x1E)` + `0x3C`. Otherwise the climb: `0xC95EC[si]` at 3.0, `+0x38`
+    = `0x20` (`0x49C78`'s is `0x40` with a facing `+0x34`), type 5, `+0x1C &=
+    0x7F`.
+  - 5: `0x49C78`'s case 5.
+  - 6: `0x49C78`'s case 6, with the stop above inserted after the shadow's
+    kill when `[0x104AC4]` ≤ 1 (`0x4D69A..0x4D6E5`); the landing stream and
+    type (`0xC973C[si]` at 2.0 type 8, else `0xC9544[si]` at 3.0 type 4)
+    follow and overwrite its type.
+  After the walk (`0x4D755`): `DS_001088C2` = 0; DL = the byte
+  `0x1077B0 + side * 0x94 + 0x81` (`[eax*4 + 0x107831]` with EAX = side *
+  0x25, after `xor edx,ecx` zeroes EDX), SI = the side's word; when (i16)(DL
+  − SI) > 0 (`test ax,ax; jle`), `0x4987C(EAX = side, EDX = movsx ax, EBX =
+  0)`. The only writers of `0x104B1A` are `0x269D0` (0) and `0x269DF` (1)
+  (`get_xrefs_to`), so the word index stays inside the frame.
+- **`0x4D224`** (EAX = entry, EDX = si): `DS_001088C2` and `0x4BD4C` ≠ 0 →
+  return; `0x4D108` (AL) ≠ 0 → return; `0x4D150` ≠ 0 → return; the slot's
+  `+0x42` bit 1 or `DS_001088B2[+0x21]` → `0x4B3F0(EBX = 0)`, non-zero →
+  return; `+0x42` bit 0 or `DS_0010889E[+0x21]` → `0x4B430(EBX = 0)`.
+- **`0x4D108`**: `rng(0x3C)` ≠ 0 → AL = 0. Else `0xC95BC[si]` at 3.0, `+0x1A`
+  = the actor's word `+0x32`, `+0x38` = `0xFFE0`, type 3, AL = 1.
+- **`0x4D150`**: `rng(0x3C)` ≠ 0 → 0. Else ESI = `rng(4)` * 3 << 10
+  (`rng(2)` non-zero) or its negation; `+0x14` = `0x2BE4C(actor,
+  0x2BE00(slot[byte 0x104B1A].record) + ESI)`; type 1; `+0x34` = `0x80` and
+  `+0x29 &= 0xBF` when `+0x14` > the actor's x (signed `jle`), else `0xFF80`
+  and `|= 0x40`; `0xC95D4[si]` at 3.0 (ECX = si); 1.
+- **`0x4987C`** (EAX = side, EDX = count, EBX = kind; `[esp+0x28]` the
+  direction flag): nothing for count ≤ 0 (`jle`). Per entry (`jl` on the
+  count): the free list `0x1083C4`'s head (empty → return), `0x249D0`, then
+  `0x249B0(0x10884C, entry)`; word `+0x1C` = 0. Kind ≠ 0: count 1 →
+  `[kind*4 + 0xC9538]`; kind 1 → `[i*4 + 0xC953C]`; else `[(i ^ 1)*4 +
+  0xC953C]` with `+0x1C |= 1` for i = 0 (both). Kind 0: `0xC9524[0x49388(side)]`
+  with `+0x10` = `0x29CDC(side, slot +0x7A)`. Mode `0x22`: x =
+  `0x2BE00(side's record)` ∓ `0x5780` by `rng(2)` (non-zero: −, flag 1),
+  through `0x2BE4C(side's record, ·)`; else − when the side's `0x2BE00` is
+  below the other's (signed `jge`, flag 1), + otherwise. A pair's first
+  flyer (kind ≠ 0, count 2, i = 0) goes `0x780` further out. y = the word
+  `0xBD898` (mode `0x22`) or it − `0x200` for kind ≠ 0; for kind 0 the
+  record's `+0x30 >> 16` + `0x400` + `rng(0x300)`. `0x2AE14(desc, x, ECX =
+  y, EBX = 0; 0)`; entry `+8` = actor, actor `+0x14` = entry, `+0x0C` = the
+  slot, `+0x21` = side, `+0x1F` = 0, actor `+0x2C` = `0x496AC(y)`, actor
+  `+0x29 |= 0x10`, entry `+0x10` = 0; the record's `+0x51` non-zero or mode
+  `0x22` → actor `+0x2E += 4`, `+0x4E` = 1. Kind ≠ 0: `+0x34` = flag ?
+  `0xC0` : `0xFF40` (entry `+0x1C` bit 0) or flag ? `0x100` : `0xFF00`;
+  flag 0 → `+0x29 |= 0x40`; type 7, `+0x1C |= 0x10`. Kind 0: `0x4B144(entry,
+  (u16)(+0x48 − 0x20))`. `0x5D7DC` pushes EBX/EDX, so the x survives its
+  draws.
+- **The effects tail** (`0x4A5A6..0x4A61B`): outside modes 7/8/9, BH =
+  `DS_001088BF`; BH − 1 ≤ 3 → the table `0x49C68` = `0x4A5DC, 0x4A5E3,
+  0x4A5F4, 0x4A605` sets (EDX, EBX) = (1, 1), (1, 2), (2, 1), (2, 2), then
+  `rng(2)` into EAX and `0x4987C`; then `DS_001088BF` = 0.
+- **`0x4C60C`** (EAX = entry, EDX = si): `0x17D30` on the actor's pset point
+  (BX = 0, ECX = 0 preserved by `0x17D30`'s `push ecx`); 0 → return; above 2
+  → 1. With side = hit − 1 and ch = the slot's `+0x7A`: above 6 (`ja`)
+  nothing; the table `0x4C5F0` = `0x4C68E` (ch 0, 3, 5), `0x4C6B0` (1, 4,
+  6), `0x4C69E` (2): at `0x4C68E` `+0x5F` = 0 → `0x4C784(side)` and return,
+  at `0x4C69E` `+0x5F` = 1 → `0x4C784(side)` and return, else (and at
+  `0x4C6B0`) ECX = 1: word `0x108898` = 0, `+0x20` = side, `+0x1C &= 0xF7`,
+  `+0x1F += 1`, the `+0x4A` release (`0x1014F4` + k * `0x68` + `0x4B` = 0,
+  `+0x2A &= 0xF7`, `+0x29 &= 0xBF`, `+0x4A` = 0, `+0x1C &= 0xBF`,
+  `0x1088AE[+0x21] += 1`; no `0x1088B2` store), then by the slot's `+0x5F`
+  in `0xC..0xF` `0x4CB18(entry, si, 1, side)` and `+0x1C |= 8`, else
+  `0x4CB18(entry, si, 0, side)` (ECX = hit − 1 in both).
+- **`0x4C784`** (EAX = side; the ball is `[0x108864]`): hs = the ball's
+  `+0x21`; `0x2AE14(0xC976C, the ball actor's +0x18, ECX = word 0xBD898 −
+  0x100, EBX = its +0x1C; 0x4000 unless the side's record +0x28 has 0x4000)`
+  then `0x2BC30(that actor, 0xEF65A, 3.0)` (the actor is not kept); the
+  ball's shadow `+0x10` killed and zeroed, the ball's actor killed; the
+  voices `0x2C3FC(0xD4/0xD5)`, `0x2C3FC(0xD6)`, `0x2C3FC(0xCE)`; other =
+  side ^ 1: `0x10889C[other] += 1`; `0x2BC30([0x10886C], [0x108884] >
+  other's record +0x18 (jle) ? 0xEF680 : 0xEF6AC, 3.0)`; word `0x1088AC` =
+  `0x69`; word `0x108898` = other ? 2 : 1 (`setnz`, `inc`). Score ≥ 3
+  (`jl`): the ball's `+0x1F` = 0, `0x4CC0C()` when the word `0x1088A0` is 0,
+  `0x108864` = 0, return. Else `0x2F510(−1, 6, 0x1C500(0x56), 0x4000)`
+  ("BALL EATEN!"); a free entry (none → return) onto `0x10884C`;
+  `0xC9524[0x49388(other)]` with `+0x10` = `0x29CDC(side, [0x1077A8 +
+  side*4].+0x7A)`; base = `0x2BE00([0x108868])`; the side's `0x2BE00` below
+  the other's (signed) → x = base − `0x2580`, target base + `0x1740`, else
+  x = base + `0x2580`, target base − `0x1740`; `0x2AE14(desc,
+  0x2BE4C([0x108868], x), ECX = word 0xBD898, 0; 0)`; the entry and actor
+  links as `0x4987C`'s, `+0x21` = hs, `+0x0C` = hs's slot, actor `+0x28`
+  word = 0, word `+0x1C` = 0; record `+0x51` → `+0x2E += 4`, `+0x4E` = 1
+  (no mode clause); type 1, `0x108864` = entry, `+0x14` = target, `+0x1C |=
+  0x20`; `+0x34`/`+0x29` by `0x2BE00(actor)` < target (signed `jge`);
+  `0xC95D4[si]` at 3.0.
+- **`0x4CC0C`**: `[0x108868]`/`[0x10886C]` `+0x36` = `0xFE5C`, word
+  `0x1088A0` = `0x3C`; `0x2F510` (col, row, string, mode) (`0xA`, 8, `0x57`,
+  `0x5000`), (`0x13`, 4, `0x58`, 0); `0x2F4BC` (1, 7, `0x59`, 0), (`0x26`, 7,
+  `0x5A`, 0); `0x2F510` (`0x13`, 1, `0x5B`, `0x5000`), (7, 8, `0x5C`,
+  `0x5000`), (`0x16`, 8, `0x5D`, `0x5000`); equal bytes `0x10889C`/`0x10889D`
+  → (−1, 6, `0x5E`, `0x4000`), (−1, 9, `0x5F`, `0x4000`); else (−1, 6, below
+  (`setbe`) ? `0x16` : `0x17`, `0x4000`), (−1, 9, `0x5E`, `0x4000`).
+  `0x1C500` pushes EDX and `0x474E4` pushes ECX, so the row and mode survive
+  the string fetch. The strings (`ENGLISH.TXT`): `0x16` "RIGHT PLAYER",
+  `0x17` "LEFT PLAYER", `0x56` "BALL EATEN!", `0x57..0x5D` spaces, `0x5E`
+  "VOLLEYBALL GAME", `0x5F` "TIED".
+- **`0x2F510`**: `push esi; or cl,2; mov esi,[0x105F34]; call 0x2F198; mov
+  [0x105F34],esi` — `0x2F4BC` with the mode ORed with 2.
+- Tables (`read_memory`): `0xC9524` = `0xBB470..0xBB4D4` (step `0x14`,
+  `+0x48` bytes `0x20..0x25`), `0xC9538` = `0xBB4D4` (so kind 1/2 read
+  `0xC953C` = `0xBB59C`, `0xBB5B0`: `+0x48` `0x20`/`0x23`, `+6` word `0x40`,
+  `+8` word `0x1000`); `0xC9724` = `0xEE36E, 0xEE6AE, 0xEEA7E, 0xEEE5C,
+  0xEF226, 0xEF5BA`; `0xC976C` = { `0xEF65A`, …, `+0x10` `0x105FF3C` }.
+  `0xEF65A`, `0xEF680` and `0xEF6AC` start with opcode words.
+
+### 43-A.2 Entrances (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object and a dword scan of both fixed-up objects)
+
+- `0x4D2D0`: `0x26D28` (`0x26C8C`) and `0x26FF0` (`0x26F58`), the mode
+  `0x22`/`0x24` frames; neither is ported. No dword.
+- `0x4D224`: `0x4D3AB`. `0x4D108`: `0x4D247`. `0x4D150`: `0x4D254`. No dword.
+- `0x4987C`: `0x4A616` (`0x49C78`) and `0x4D792` (`0x4D2D0`). No dword.
+- `0x4C60C`: `0x4C21B` in `0x4BF18`, whose one caller is `0x26687` in the
+  mode-`0x21` frame `0x26540`; neither is ported. No dword.
+- `0x4C784`: `0x4C697`, `0x4C6A9` (both `0x4C60C`). `0x4CC0C`: `0x4C356`,
+  `0x4C429` (`0x4BF18`) and `0x4C90D` (`0x4C784`). No dword.
+- `0x2F510`: 67 call sites (`0x1F7F4..0x4F13A`); none was ported before.
+- The jump tables `0x4D2AC`, `0x4C5F0` and `0x49C68` are each read by one
+  `jmp` (`0x4D3A0`, `0x4C68A`, `0x4A5D8`); their targets have no other
+  dword.
+
+### 43-A.3 The port
+
+- `fight.c`: `fight_4987c`, `fight_4d2d0`, `fight_4cc0c`, `fight_4c784` and
+  `fight_4c60c` (exported, for the unported mode frames and `0x4BF18`), and
+  the static `fight_4d108`, `fight_4d150`, `fight_4d224`; local `#define`s
+  for `0xC9724` and `0xC976C`. The effects tail calls `fight_4987c` with the
+  `0x49C68` pairs in place of the lone `rng_next(2)`.
+- `actors.c`/`actors.h`: `text_cursor_hold_font2` (`0x2F510`).
+- `PORT:` notes: the voices; `0x4D2D0`'s count word and refill for a
+  `0x104B1A` above 1 (it would index the raw's saved registers; the two
+  writers store 0 and 1).
+- No registration: none of the addresses is stored in data.
+
+### 43-A.4 The assertions and mutations
+
+Three checks in `test_fight.c` (after `check_arena_backdrop`), on
+`check_point_trample`'s fixture (`ph_seed`) with an entry E (si 3, side byte
+1) whose actor R is pset 5, the eleven stream tables' entry 3 pointed at
+distinct scratch streams, and RNG seeds picked for their draws with the LCG
+`0x5D7DC` (`scratchpad/g3-4d2d0/seeds.py`, `seeds2.py`; each chosen draw
+also differs from the draw of a range one larger). Each check saves and
+restores the whole data object, the actor record pool, the running pset
+pool, the `FIGHT_*` scratch and `mem[0..0x3F]`. `mz_seed` first takes the pool records 0..8
+off the actor free list `DS_00105B3C` (their psets are the fixture's), so no
+spawn depends on the tests run before (review: after main's
+`check_char3_2425` the head was record 2 and a flyer overwrote fighter 1's
+pset; reproduced by pushing records 2..5 to the head, 3 failures, none with
+the seeding). A temporary whole-`mem[]`
+diff around the three showed only `mem[0x18..0x1B]` (pset 0's `+0x18`, the
+out-of-pool kill of §42-D) before that range was added, and nothing after
+(re-run on the final tests). The low range also carries sentinels: `0x1E`
+(`0x4AC38` on entry 0), `0x28` bit 3 (`0x2B150` on record 0), `0x29` (a
+`[entry − 8]` slip) and `0x32` (a shadow 0 followed).
+
+- `check_mode22_pass`: the empty list; the stop (both signs of
+  `DS_00104AC4`, every field, `0x4AC38`'s stream and `+0x29`), each of its
+  four gates, `+0x1C` bit 0 not gating, and the stop without an owner (its
+  own zeroing; no `0x4AC38`); type 8; type 2's countdown and signed edge;
+  type 1's arrival edges (|d| = step, step + 1, a negative d, a negative step
+  at step and step + 1) and `0x4BD4C` with and without `DS_001088C2`; type 3
+  above and at the layer, both landing streams, the `0x2BE1C` flip (positive,
+  negative, zero; the slot's record, not another), the timer and draw count;
+  type 4's countdown, re-arm, both walk directions at x inside both edges,
+  the climb at both x edges and on the second `rng(2)`; type 5's signed
+  edges; type 6 airborne both ways (`+0x36` 0 is not falling, a height sum of
+  1 still airborne), the shadow, the landing for both `0xC973C` arms with and
+  without the stop, and without a shadow or owner; types 0, 7 and 9 into
+  `0x4D108`; `0x4D150` both directions, `DS_00104B1A`'s side, the signed
+  `jle` edge; the `0x4B3F0`/`0x4B430` gates (each flag, the fall-through,
+  the other side's bytes) and `0x4BD4C` first; mode `0x22`'s prelude against
+  mode `0x24`; the refill (one entry for side 1 with its descriptor, x, y,
+  `+0x2C` and links; none at equality or on the other side's `+0x81`; two
+  for side 0).
+- `check_flyers_4987c`: kind 1 and 2 for one flyer (kind 1 from a copy of
+  `0xBB59C` with a scratch stream and `+0x28` word `0x4000`, so `+0x29 |=
+  0x10` is `0x4987C`'s own and keeps the spawn's bit 6), every entry and
+  actor field including `+0x1C` (EBX) and `+0x4A`; the pair for kind 1 and 2
+  and side 1 (order, bit 0, the `0x780`, the direction and the whole
+  `+0x29`); mode `0x22`'s `rng(2)` both ways (seed `0x103`: `rng(3)` would be
+  1), its pair and the `+0x51` adjustment; equal fighter x; counts 0 and −1
+  and an empty free list; kind 0 in mode 3 (descriptor, `0x29CDC` value, y,
+  `0x4B144`'s stream by the actor's si and type); the effects tail for
+  `DS_001088BF` 1..5 and in modes 7, 8 and 9.
+- `check_volleyball`: `0x4C60C` struck with the slot `+0x5F` at `0`, `0xB`,
+  `0xC`, `0xF`, `0x10` (the flag's `+0x36` and `+0x1C` bit 3; no release
+  without `+0x4A`), the release, both sides hitting (3 → side 0), side 1
+  alone (`+0x20` = 1, side 1's move), no hit, characters 7 and `0xFF`, and
+  the eater table for all of 0..6 (characters 5 and 6 need the side's raw box
+  x 4 and the point 8 units left: `0x15B90` shifts their box off the
+  fixture's 8-pixel sprite, and a scan of the point found hits for x offsets
+  −37..−1); `0x4C784` for both sides (the spit actor's fields, flip and
+  `+0x4A`, the kills, the score, `0xEF680`/`0xEF6AC` with the `jle` edge,
+  `0x1088AC`, `0x108898`, row 6 equal to `0x2F4BC`'s own drawing of string
+  `0x56` in mode `0x4002` and the cursor kept, the free list emptied, the new
+  ball's descriptor from the other side's `0x108860` range, `+0x10` from
+  `0x1077A8[side]`, x, target, the equal-x `jge` edge, `+0x2C`, `+0x2E`/`+0x4E`
+  by the owner's `+0x51`, links, stream and both walk directions), a ball
+  without a shadow, the empty free list, the third point with and without
+  `DS_001088A0`; `0x4CC0C`'s seven space strings (one planted cell each only
+  that string covers, and a cell between two runs that must stay) and rows
+  6/9 compared with `0x2F4BC`'s drawing of the expected strings for the three
+  score cases; `0x2F510` against `0x2F4BC` with and without the `| 2`.
+
+**Mutations** (`scratchpad/g3-4d2d0/mutgen.py`, `mut.py`, `mut4.out`): 1041
+single-line edits of the new code in `fight.c` (from `0x4987C` to
+`0x4C60C`), the effects-tail wiring and `0x2F510` (each simple statement
+deleted, up to two literals + 1, up to two operator flips per line). 12 do
+not compile. Of the 1029 others, 977 fail the suite (1..249 assertions, 76 by
+a crash, 1 by a hang); the first sweep's 118 survivors led to the added
+assertions above. The 52 left are equivalent:
+
+- a count ≤ 0 reaching `0x4987C` does nothing (2: `count <= 0` → `< 0`, the
+  refill's `> 0` → `>= 0`);
+- reading `+0x1D` right after the word `+0x1C` was zeroed (2);
+- `flag = 1` deleted leaves it uninitialised (1; the compiled code keeps 1);
+- a non-zero 1 → 2 read only for its truth (8: `flag`, the `return 1`s,
+  `struck`, `0x4CB18`'s flag);
+- `0x2AE14`'s stack flag 0 → 1 or `0x4000` → `0x4001`/inverted (5): the
+  port's `actor_spawn` reads only its `0x400` bit, bits 8..15 `& 0x44` and the
+  high word, so bit 0 is not observable;
+- the `PORT:` side guard (5: `0x104B1A` is only ever 0 or 1);
+- negating a zero (4);
+- case 4's walk re-storing type 4 (2, one of them at entry − `0x1E`, the
+  preceding scratch);
+- case 6's stop zeroing `+0x34`/`+0x36`, which the landing zeroes again (6);
+- case 6's stop `0x4AC38` stream index and type 8, both overwritten by the
+  landing (8; one writes `+0x1F`, which the landing zeroes);
+- `a <= b` → `<` in `0x4CC0C` (1; equality is handled first);
+- the spit's `0x2BC30` restarting the stream the spawn just started (1);
+- the new ball's `+0x29` edits right after its `+0x28` word is zeroed (6:
+  every dust descriptor's `+0x28` low byte is 0, and one writes the
+  preceding pool record's `+0x3F`, which nothing reads);
+- `0x2BE00(new ball) < target` → `<=` (1): the two differ by ±`0x3CC0` by
+  construction.
+
+The sources were restored by the script and compared with `cmp`.
+
+### 43-A.5 Measured and remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 0 compiler
+  warnings. The drivers and `make verify` were not run (the batch controller
+  runs them after the merge).
+- **The effects-tail wiring does not move the demo (measured in review).**
+  With `DS_001088BF` in 1..4 the port now spawns `0x4987C`'s type-7 flyers
+  where it drew `rng(2)` alone. In the demo run `DS_001088BF` stays 0 on
+  every fight frame: neither setter is reached (`0x391CA`'s combo block at
+  `0x39195` is never entered, and `0x14D7C`, the `0x14DA4` setter, is never
+  called), so the `0x4A5A6` gate never fires. The front-end driver's dumps
+  (`PR_FRONTEND_DET`) are byte-identical to 713833c's, and main with this
+  branch merged is byte-identical to main. N is unchanged: demo-fight exact
+  (N = 1886); attract cycle-2 3099 on 713833c and 3257 on main. The wiring
+  is one hunk (the `0x4A5A6` block of `fight_effects_pass`) with its test
+  block F and the mode 7/8/9 loop in `check_flyers_4987c`.
+- `0x4D2D0` and `0x4C60C` are unreachable until the mode frames `0x26C8C`,
+  `0x26F58` (modes `0x22`/`0x24`) and `0x26540` with its pass `0x4BF18`
+  (mode `0x21`) are ported; `0x4CC0C`'s two `0x4BF18` sites wait on the same.
+- Named gaps: the voices (`0x2C3FC` at `0x4C85C`, `0x4C866`, `0x4C875`);
+  `0x4D2D0`'s frame words for a `0x104B1A` above 1 (not reachable, 43-A.1).
+- The report is in this worktree's `.superpowers/sdd/2026-09-25-roar-timing/`
+  (the isolation guard refused the main checkout's path).

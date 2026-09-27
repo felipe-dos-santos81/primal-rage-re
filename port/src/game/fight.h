@@ -49,8 +49,9 @@ void fight_command_map(u32 side, u32 edx_arg, u32 override);
  * 8's gate, 9..12 (record §42-D), 13/14's draws and the per-entry prelude
  * 0x4B69C (the trample, demo-pose record §29) are ported; the type-8 held body,
  * the case-13/14 bodies, the mode-9 block (the only reader of the frame locals
- * types 9 and 11 write) and 0x496DC/0x4987C are a named gap (§7.4). When the effect
- * list at DS_0010884C is empty only the unconditional tail runs, which includes
+ * types 9 and 11 write) and 0x496DC are a named gap (§7.4); the tail's
+ * 0x4987C (DS_001088BF 1..4) is ported (record §43-A). When the effect list
+ * at DS_0010884C is empty only the unconditional tail runs, which includes
  * 0x4A634's slot +0x42 bit 0/1 reset. */
 void fight_effects_pass(void);
 
@@ -168,7 +169,7 @@ void fight_health_bars(void);
  * tumble stream at 3.0, +0x34 from the fighters' distance (over 0x38 when
  * `flag`, else 0x70; negated when 0x1A570(side)), +0x36 = 0 (flag) or
  * (0x3BC0 - height) / 0x16, type 6, +0x1C bit 7 cleared. Called by 0x4B470's
- * eighth-hit tail; its other caller 0x4C60C is not ported. */
+ * eighth-hit tail and by 0x4C60C (record §43-A). */
 void fight_4cb18(u32 entry, u32 index, u32 flag, u32 side);
 
 /* 0x4D898 (record §42-C). The mode-0x22 grab arm 0x4D7A4 calls: 1 (trample)
@@ -178,8 +179,28 @@ void fight_4cb18(u32 entry, u32 index, u32 flag, u32 side);
 int fight_4d898(u32 hit, u32 entry, u32 index);
 
 /* 0x4D7A4 (record §42-C). The mode-0x22 effects pass's per-entry prelude (the
- * twin of 0x4B69C, through the grab arm 0x4D898). Its only caller, the
- * mode-0x22 pass 0x4D2D0, is not ported. */
+ * twin of 0x4B69C, through the grab arm 0x4D898). Its only caller is the
+ * mode-0x22 pass 0x4D2D0 (record §43-A). */
 void fight_4d7a4(u32 entry, u32 index);
+
+/* 0x4987C (record §43-A). EAX = side, EDX = count, EBX = kind: `count` new
+ * fight-effect entries off the free list, kind 0 dust walkers (0x4B144), kind
+ * 1/2 type-7 flyers. Callers: the effects tail 0x4A616 and 0x4D2D0. */
+void fight_4987c(u32 side, s32 count, u32 kind);
+
+/* 0x4D2D0 (record §43-A). The effects pass of modes 0x22 and 0x24; its
+ * callers 0x26C8C/0x26F58 (the mode frames) are not ported. */
+void fight_4d2d0(void);
+
+/* 0x4CC0C (record §43-A). The volleyball game's end screen. Callers: 0x4C784
+ * and the unported mode-0x21 pass 0x4BF18. */
+void fight_4cc0c(void);
+
+/* 0x4C784 (record §43-A). Fighter `side` eats the volleyball DS_00108864. */
+void fight_4c784(u32 side);
+
+/* 0x4C60C (record §43-A). The volleyball's per-entry hit test (EAX = entry,
+ * EDX = si); its one caller, the mode-0x21 pass 0x4BF18, is not ported. */
+void fight_4c60c(u32 entry, u32 index);
 
 #endif /* PRAGE_GAME_FIGHT_H */
