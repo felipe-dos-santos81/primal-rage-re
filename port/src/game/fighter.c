@@ -236,6 +236,11 @@ static void fighter_spawn_slot(u32 side, u32 a2, u32 a3, u32 a5)
 
     /* 0x33CC8/0x33CD3: the fighter record from descriptor [char*2 + side]. */
     u32 desc = DSD(FIGHTER_DESC_A + (ch * 2u + side) * 4u);
+    /* PORT: the raw hands the caller's EBX to 0x2AE14 untouched (the y,
+     * rec+0x1C). Both port callers (0x33EB4, 0x24568) zero it; of the nine
+     * raw callers only 0x40D48 (in 0x40CB0, entry 0 of 0xA8628) does not
+     * (EBX = 0x4C00 at 0x40D2F), so its port must pass EBX through here
+     * (record §46-C). */
     u32 rec = actor_spawn((const u32 *)(mem + desc), a2, a3, 0u, a5);
     DSD(slot) = rec;                                /* 0x33CD8 */
 
@@ -2290,7 +2295,7 @@ static void hit_facing_flag(u32 side);                      /* 0x18B04 */
 #define FIGHT_TXT_COMBO  0x000BE01Cu  /* 0x38E1D: "\x1bCOMBO" */
 #define FIGHT_COMBO_TABLE 0x000BEB90u /* 0x39014: [char] combo records */
 #define FIGHT_ANIM_367DC 0x000C8950u  /* 0xC8950: 0x367DC's per-character anim */
-#define FIGHT_ANIM_3BDDC 0x000C8B30u  /* 0xC8B30: 0x3BDDC's per-character anim */
+#define FIGHT_ANIM_3BDDC 0x000C8B30u  /* 0xC8B30: 0x3BDDC's (and 0x3BCE0's) per-character anim */
 #define FIGHT_ANIM_36BC8 0x000C8A18u  /* 0xC8A18: 0x36BC8's per-character anim */
 #define FIGHT_367DC_STREAM 0x000E906Au /* 0xE906A: 0x367DC's second-call stream */
 #define FIGHT_36BC8_STREAM 0x000E906Eu /* 0xE906E: 0x36BC8's second-call stream */
@@ -5937,7 +5942,6 @@ void fighter_2372c(u32 rec)
 }
 
 #define FIGHTER_E453A   0x000E453Au  /* 0x24613: 0x24568's entrance stream */
-#define FIGHTER_C8B30   0x000C8B30u  /* 0x3BD1F: [char] stance stream */
 #define FIGHTER_104B03  0x00104B03u  /* 0x2465A: the per-side blink mask byte */
 
 /* 0x3BCE0 — record §46-C. Called only at 0x24704 (in 0x246D4). EAX = side
@@ -5953,7 +5957,7 @@ void fighter_3bce0(u32 side)
     DSD(DS_00107D40 + side * 4u) =
         DS_000BEF64 + (u32)DSB(slot + 0x7Au) * 6u;      /* 0x3BCF5..0x3BD13 */
     actors_anim_begin(DSD(slot),
-                      DSD(FIGHTER_C8B30 + (u32)DSB(slot + 0x7Au) * 4u),
+                      DSD(FIGHT_ANIM_3BDDC + (u32)DSB(slot + 0x7Au) * 4u),
                       0x40000000u);                     /* 0x3BD1A..0x3BD2B 0x2BC30 */
     DSB(slot + 0x52u) = 3u;                             /* 0x3BD30 */
     DSB(slot + 0x54u) = 2u;                             /* 0x3BD34 */

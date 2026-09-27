@@ -17583,6 +17583,9 @@ static void check_char1_entry(void)
             }
             DSB(slot + 0x63u) = 0x63u;
             DSW(slot + 0x74u) = 0x7474u;
+            /* The spawn's layer word[0xBD898] (0x400 in the image), another
+             * value on one row so a literal 0x400 fails too. */
+            if (i == 3u) DSW(DS_000BD898) = 0x0500u;
             f68(side);
             rec = DSD(slot);
             CHECK(rec != 0u && rec != orec, "0x24568 spawned the side");
@@ -17591,6 +17594,7 @@ static void check_char1_entry(void)
             CHECK_EQ_INT((int)DSB(slot + 0x7Au), 1);
             CHECK_EQ_INT((int)DSB(rec + 0x51u), (int)side);
             CHECK_EQ_INT((int)DSD(rec + 0x18u), (int)row[i].x);
+            CHECK_EQ_INT((int)DSW(rec + 0x32u), (int)DSW(DS_000BD898));
             CHECK_EQ_INT((int)(DSW(rec + 0x28u) & 0x4000u), (int)row[i].a5);
             CHECK_EQ_INT((int)DSD(rec + 0x08u), 0x000E453A);
             CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40800000);
