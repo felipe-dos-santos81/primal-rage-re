@@ -1215,16 +1215,33 @@ static void fight_4a634(void)
 #define DS_000C97F2 0x000C97F2u
 #define DS_001088EF 0x001088EFu
 
-/* 0x4B788 — demo-pose record §29. Fighter side `hit - 1` touching the entry:
- * 1 (the caller tramples it) when DS_00105B3A > 1, when the other side's slot
- * +0x54 is 3, or when the side's slot +0x5F is not its character's grab move
- * 0xC97F2[ch]; else 0 — the grab arm, which returns 0 without grabbing when
- * the entry is already held (+0x1C bit 6), the fighter record's +0x52 is out
- * of [0xC97E4[ch], 0xC97EB[ch]] (signed bytes) or its +0x4B is set. EAX = hit
- * (1/2), EDX = entry, EBX = si. */
+/* The grab arms' tables (record §42-C), all DAT_/PTR_ in Ghidra (no DS_ name
+ * from gen_symbols.py): the worshipper's placement offsets, read as the top
+ * byte of the unaligned dwords 0xC977D/0xC977E + ch * 2 (0x4B896/0x4B8D1 then
+ * `sar eax,0x18`), the per-character held-stream tables 0xC97AC[ch][si]
+ * (0x4B92E/0x4B938), the fighter's hold stream 0xC9790[ch] (0x4B95B) and its
+ * hold 0xC97C8[ch] (0x4B964 `push`); 0x104B1A is the mode-0x22 side byte
+ * (camera.c's CAMERA_MODE22_SIDE) whose slot +0x5B 0x4D898 feeds. */
+#define DS_000C977D 0x000C977Du
+#define DS_000C977E 0x000C977Eu
+#define DS_000C97AC 0x000C97ACu
+#define DS_000C9790 0x000C9790u
+#define DS_000C97C8 0x000C97C8u
+#define DS_00104B1A 0x00104B1Au
+
+/* 0x4B788 — demo-pose record §29, §42-C. Fighter side `hit - 1` touching the
+ * entry: 1 (the caller tramples it) when DS_00105B3A > 1, when the other side's
+ * slot +0x54 is 3, or when the side's slot +0x5F is not its character's grab
+ * move 0xC97F2[ch]; else 0 — the grab arm, which returns 0 without grabbing
+ * when the entry is already held (+0x1C bit 6), the fighter record's +0x52 is
+ * out of [0xC97E4[ch], 0xC97EB[ch]] (signed bytes) or its +0x4B is set, and
+ * otherwise grabs: +0x1C bit 6, the shadow killed, the worshipper turned to
+ * the fighter's facing and placed at its (0xC977D, 0xC977E)[ch] offsets (x
+ * mirrored by the facing, << 6), stopped, type 8 on the 0xC97AC[ch][si] stream
+ * at hold 0, linked to the fighter (+0x4A, 0x2BD20), and the fighter put on
+ * 0xC9790[ch] at 0xC97C8[ch]. EAX = hit (1/2), EDX = entry, EBX = si. */
 static int fight_4b788(u32 hit, u32 entry, u32 index)
 {
-    (void)index;
     if ((u32)DSB(DS_00105B3A) > 1u) return 1;                   /* 0x4B7A0 */
     u32 s = hit - 1u;                                           /* 0x4B7A9 */
     u32 slot = DS_001077B0 + s * 0x94u;                         /* 0x4B7C4 */
@@ -1239,20 +1256,169 @@ static int fight_4b788(u32 hit, u32 entry, u32 index)
     if (st < (s8)DSB(DS_000C97E4 + (u32)ch)) return 0;          /* 0x4B821 */
     if (st > (s8)DSB(DS_000C97EB + (u32)ch)) return 0;          /* 0x4B82D */
     if (DSB(fr + 0x4Bu) != 0u) return 0;                        /* 0x4B837 */
-    /* PORT: 0x4B83D..0x4B98F, the grab (+0x1C |= 0x40, the shadow killed, the
-     * worshipper placed at the fighter's 0xC977D offsets, type 8 on the
-     * 0xC97AC[ch][si] stream, 0x2BD20, the fighter on 0xC9790[ch], the voice) is
-     * a named gap: the demo's fighters never touch a worshipper in their grab
-     * move (§29). It returns 0 like the raw. */
+    DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) | 0x40u);      /* 0x4B845 */
+    if (DSD(entry + 0x10u) != 0u) {                             /* 0x4B84A */
+        actor_set_dead(DSD(entry + 0x10u));                     /* 0x4B84E 0x2B150 */
+        DSD(entry + 0x10u) = 0;                                 /* 0x4B853 */
+    }
+    int unflipped = (DSW(DSD(slot) + 0x28u) & 0x4000u) == 0u;   /* 0x4B86A: DH */
+    if (!unflipped)
+        DSB(DSD(entry + 8u) + 0x29u) |= 0x40u;                  /* 0x4B871 */
+    else
+        DSB(DSD(entry + 8u) + 0x29u) &= 0xBFu;                  /* 0x4B87C */
+    DSB(DSD(entry + 8u) + 0x29u) &= 0xEFu;                      /* 0x4B883 */
+    DSB(entry + 0x20u) = (u8)(hit - 1u);                        /* 0x4B88C */
+    {
+        s32 ox = ((s32)DSD(DS_000C977D + (u32)ch * 2u) >> 24) * 64; /* 0x4B896..0x4B8A5 */
+        u32 fx = DSD(DSD(slot) + 0x18u);
+        DSD(DSD(entry + 8u) + 0x18u) = unflipped ? fx - (u32)ox   /* 0x4B8A8 */
+                                                 : (u32)ox + fx;  /* 0x4B8C9 */
+    }
+    {
+        s32 oy = ((s32)DSD(DS_000C977E + (u32)ch * 2u) >> 24) * 64; /* 0x4B8D1..0x4B8E0 */
+        DSD(DSD(entry + 8u) + 0x1Cu) = (u32)oy + DSD(DSD(slot) + 0x1Cu); /* 0x4B8E8 */
+    }
+    DSW(DSD(entry + 8u) + 0x32u) = DSW(DSD(slot) + 0x32u);      /* 0x4B8F4 */
+    DSW(DSD(entry + 8u) + 0x2Cu) =
+        fight_dust_clamp((s32)DSD(DSD(entry + 8u) + 0x30u) >> 16); /* 0x4B901 0x496AC */
+    DSW(DSD(entry + 8u) + 0x38u) = 0;                           /* 0x4B910 */
+    DSW(DSD(entry + 8u) + 0x36u) = DSW(DSD(entry + 8u) + 0x38u); /* 0x4B91D */
+    DSW(DSD(entry + 8u) + 0x34u) = DSW(DSD(entry + 8u) + 0x36u); /* 0x4B926 */
+    DSB(entry + 0x1Eu) = 8u;                                    /* 0x4B92A */
+    actors_anim_begin(DSD(entry + 8u),
+                      DSD(DSD(DS_000C97AC + (u32)ch * 4u) + index * 4u), 0u); /* 0x4B93D */
+    DSB(DSD(entry + 8u) + 0x4Au) = DSB(DSD(slot) + 0x56u);      /* 0x4B94A */
+    (void)actors_link_held(DSD(entry + 8u), DSW(DSD(entry + 8u) + 0x56u)); /* 0x4B956 */
+    actors_anim_begin(DSD(slot), DSD(DS_000C9790 + (u32)ch * 4u),
+                      DSD(DS_000C97C8 + (u32)ch * 4u));         /* 0x4B96B */
+    /* PORT: 0x4B98F 0x2C3FC(0xD4 for (u8)+0x48 - 0x20 < 3, else 0xD5) — voice,
+     * out of scope (spec §7). */
     return 0;                                                   /* 0x4B994 */
 }
 
-/* 0x4B470 — demo-pose record §29. The trample: the entry's actor takes the
+/* 0x13134 — demo-pose record §42-C. 1 when both fighter records' x (+0x18 of
+ * DS_001077B0's and DS_00107844's record) are below -0x3300, or both above
+ * 0x3300 (signed); else 0. Its only caller is 0x4BD98 (0x4BDBA). */
+static int fight_13134(void)
+{
+    s32 x0 = (s32)DSD(DSD(DS_001077B0) + 0x18u);
+    s32 x1 = (s32)DSD(DSD(DS_00107844) + 0x18u);
+    if (x0 < -0x3300 && x1 < -0x3300) return 1;                 /* 0x13140/0x1314E */
+    if (x0 > 0x3300 && x1 > 0x3300) return 1;                   /* 0x13162/0x13170 */
+    return 0;                                                   /* 0x13178 */
+}
+
+/* 0x4BD98 — demo-pose record §42-C. The eighth-hit start, EAX = entry: unless
+ * DS_00104AD8 > 0 (signed), DS_00104ABC < 2 (unsigned) or 0x13134, the entry
+ * becomes DS_00108864 as type 6 with +0x1C bit 5, the mode becomes 0x21 with
+ * DS_001088C1/DS_001088C5 = 1 and DS_001088AA = 0x1E, the 0x1088A0/0x108898/
+ * 0x1088AC words and 0x10889C/0x10889D bytes clear, DS_00104AEC loses bit 0,
+ * and two actors are spawned from 0xBAB88/0xBAB9C at x = the fighters' +0x34
+ * midpoint (DS_001077E4, DS_00107878) less DS_00108854, depth DS_00108880 -
+ * 0x3140, layer word DS_000BD898 (into DS_00108868/DS_0010886C); the second
+ * takes the 0xEF66A stream at 1.0, and both get +0x36 = 0x1A4. */
+static void fight_4bd98(u32 entry)
+{
+    if ((s32)DSD(DS_00104AD8) > 0) return;                      /* 0x4BDA7 */
+    if (DSD(DS_00104ABC) < 2u) return;                          /* 0x4BDB4 */
+    if (fight_13134() != 0) return;                             /* 0x4BDC1 */
+    DSD(DS_00108864) = entry;                                   /* 0x4BDD3 */
+    DSB(entry + 0x1Eu) = 6u;                                    /* 0x4BDD9 */
+    DSB(DS_001088C1) = 1u;                                      /* 0x4BDE1 */
+    DSW(DS_00104B00) = 0x21u;                                   /* 0x4BDE7 */
+    DSB(DS_001088C5) = 1u;                                      /* 0x4BDEE */
+    DSW(DS_001088AA) = 0x1Eu;                                   /* 0x4BDF4 */
+    DSW(DS_001088A0) = 0;                                       /* 0x4BDFB */
+    DSW(DS_00108898) = 0;                                       /* 0x4BE02 */
+    DSB(DS_0010889D) = 0;                                       /* 0x4BE19 */
+    DSB(DS_0010889C) = 0;                                       /* 0x4BE21 */
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) & 0xFEu);          /* 0x4BE27 */
+    DSW(DS_001088AC) = 0;                                       /* 0x4BE31 */
+    DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) | 0x20u);      /* 0x4BE3C */
+    {
+        /* 0x4BE3F `jge`: the signed compare; the `sar` halves the difference. */
+        s32 a = (s32)DSD(DS_001077E4), b = (s32)DSD(DS_00107878);
+        u32 mid = (a < b)
+            ? (u32)a + (u32)((s32)((u32)b - (u32)a) >> 1)       /* 0x4BE43..0x4BE4F */
+            : (u32)b + (u32)((s32)((u32)a - (u32)b) >> 1);      /* 0x4BE53..0x4BE59 */
+        DSD(DS_00108884) = mid;                                 /* 0x4BE5C */
+        DSD(DS_00108884) = mid - DSD(DS_00108854);              /* 0x4BE8A */
+    }
+    DSD(DS_00108868) = actor_spawn((const u32 *)(mem + 0x000BAB88u),
+                                   DSD(DS_00108884), (u32)DSW(DS_000BD898),
+                                   DSD(DS_00108880) - 0x3140u, 0u); /* 0x4BE90/0x4BEA3 */
+    u32 b2 = actor_spawn((const u32 *)(mem + 0x000BAB9Cu),
+                         DSD(DS_00108884), (u32)DSW(DS_000BD898),
+                         DSD(DS_00108880) - 0x3140u, 0u);       /* 0x4BEBC */
+    DSD(DS_0010886C) = b2;                                      /* 0x4BECB */
+    actors_anim_begin(b2, 0x000EF66Au, 0x3F800000u);            /* 0x4BED0 */
+    DSW(DSD(DS_00108868) + 0x36u) = 0x01A4u;                    /* 0x4BEDA */
+    DSW(DSD(DS_0010886C) + 0x36u) = 0x01A4u;                    /* 0x4BEE5 */
+}
+
+/* 0x4CB18 — demo-pose record §42-C. The launch: the entry's actor takes the
+ * 0xC9604[si] tumble stream at 3.0; +0x34 = the fighters' +0x34 distance
+ * (|DS_001077E4 - DS_00107878|, at most 0x3F00), negated when 0x1A570(side)
+ * holds, over 0x38 (flag) or 0x70; +0x36 = 0 (flag) or (0x3BC0 - the actor's
+ * +0x1C) / 0x16 (signed `idiv`s); type 6 and +0x1C bit 7 cleared. EAX = entry,
+ * EDX = si, EBX = flag, ECX = side. Callers: 0x4B470 (0x4B59E, flag 0, side
+ * +0x20) and 0x4C60C (0x4C760 flag 1, 0x4C774 flag 0; not ported). */
+void fight_4cb18(u32 entry, u32 index, u32 flag, u32 side)
+{
+    /* PORT: 0x4CB3E 0x2C3FC(0xD1 for (u8)+0x48 - 0x20 < 3, else 0xD0) — voice,
+     * out of scope (spec §7). */
+    actors_anim_begin(DSD(entry + 8u), DSD(DS_000C9604 + index * 4u),
+                      0x40400000u);                             /* 0x4CB52 */
+    s32 d = (s32)(DSD(DS_001077E4) - DSD(DS_00107878));         /* 0x4CB63 */
+    if (d < 0) d = (s32)(0u - (u32)d);                          /* 0x4CB6B */
+    if (d > 0x3F00) d = 0x3F00;                                 /* 0x4CB75 */
+    s32 h = (s32)(0x3BC0u - DSD(DSD(entry + 8u) + 0x1Cu));      /* 0x4CB84/0x4CB90 */
+    if (fighter_actor_bit15_clear(side) != 0)                   /* 0x4CB8B 0x1A570 */
+        d = (s32)(0u - (u32)d);                                 /* 0x4CB9A/0x4CBA3 */
+    DSW(DSD(entry + 8u) + 0x34u) =
+        (u16)(d / (flag != 0u ? 0x38 : 0x70));                  /* 0x4CBB5/0x4CBCC */
+    if (flag != 0u)
+        DSW(DSD(entry + 8u) + 0x36u) = 0;                       /* 0x4CBDC */
+    else
+        DSW(DSD(entry + 8u) + 0x36u) = (u16)(h / 0x16);         /* 0x4CBF0 */
+    DSB(entry + 0x1Eu) = 6u;                                    /* 0x4CBFE */
+    DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) & 0x7Fu);      /* 0x4CC05 */
+}
+
+/* 0x4AF04 — demo-pose record §42-C. Whether side `side`'s fighter still plays
+ * its grab hold: 1 when the slot's character (+0x7A, unsigned) is above 6, or
+ * when the fighter record's stream cursor (+8) lies in the character's range
+ * (jump table 0x4AEE8; each range starts at that character's 0xC9790 hold
+ * stream); else 0. EAX = side (AL, zero-extended at 0x4AF09). */
+static int fight_4af04(u32 side)
+{
+    u32 slot = DS_001077B0 + (side & 0xFFu) * 0x94u;           /* 0x4AF0B..0x4AF19 */
+    u8 ch = DSB(slot + 0x7Au);                                  /* 0x4AF1C */
+    u32 lo, hi;
+    if (ch > 6u) return 1;                                      /* 0x4AF25 */
+    switch (ch) {                                               /* 0x4AF31 */
+    case 0:  lo = 0x000E7B02u; hi = 0x000E7B50u; break;         /* 0x4AF39 */
+    case 1:  lo = 0x000E4744u; hi = 0x000E47FCu; break;         /* 0x4AF7F */
+    case 2:  lo = 0x000ED7AEu; hi = 0x000ED80Cu; break;         /* 0x4AFC1 */
+    case 3:  lo = 0x000D2DECu; hi = 0x000D2E06u; break;         /* 0x4AFE0 */
+    case 4:  lo = 0x000EB38Au; hi = 0x000EB3E4u; break;         /* 0x4AFFF */
+    case 5:  lo = 0x000D4A3Cu; hi = 0x000D4A8Au; break;         /* 0x4AF5C */
+    default: lo = 0x000E137Au; hi = 0x000E1432u; break;         /* 0x4AFA2 */
+    }
+    u32 cur = DSD(DSD(slot) + 8u);
+    if (cur < lo || cur > hi) return 0;                         /* `jc`/`jbe` */
+    return 1;                                                   /* 0x4B01E */
+}
+
+/* 0x4B470 — demo-pose record §29, §42-C. The trample: the entry's actor takes the
  * 0xC9604[si] tumble stream at 3.0, gets a shadow actor (0x2AE14 from
  * 0xBB920[si] at its x and y) when +0x10 has none, is thrown (+0x34 = ±0x80, away
  * from the hitter on the first hit (0x1A570 of the +0x20 side), else reversed
  * from its current +0x34; not in mode 0x22) with +0x36 = 0x240, and the entry
- * becomes type 6 with +0x1C bit 7 cleared. EAX = entry, EDX = si. */
+ * becomes type 6 with +0x1C bit 7 cleared. Then the eighth-hit tail: with
+ * DS_00104B1D not 2/3, DS_00104AFC, DS_001088C1, DS_001088C5 and DS_00108864
+ * clear, [0x1088EF] >> 24 > 1 and +0x1F > 7, 0x4BD98 then 0x4CB18 (the
+ * launch). EAX = entry, EDX = si. */
 static void fight_4b470(u32 entry, u32 index)
 {
     /* PORT: 0x4B497 0x2C3FC(0xD1 for si < 3, else 0xD0) — voice, out of scope
@@ -1287,8 +1453,11 @@ static void fight_4b470(u32 entry, u32 index)
     if ((u32)DSB(entry + 0x1Fu) <= 7u) return;                  /* 0x4B579 */
     if (DSB(DS_001088C5) != 0u) return;                         /* 0x4B582 */
     if (DSD(DS_00108864) != 0u) return;                         /* 0x4B58C */
-    /* PORT: 0x4B590 0x4BD98(entry) and 0x4B59E 0x4CB18(entry, si, +0x20), the
-     * eighth-hit bonus, are a named gap (§29); not reached in the demo. */
+    /* The eighth hit (§42-C): 0x4BD98, then 0x4CB18 whether or not 0x4BD98
+     * passed its gates. EBX is 0x4B584's DS_00108864, zero here (0x4BD98
+     * pushes and pops it); ECX is the +0x20 side byte (0x4B597/0x4B59B). */
+    fight_4bd98(entry);                                         /* 0x4B590 */
+    fight_4cb18(entry, index, 0u, (u32)DSB(entry + 0x20u));     /* 0x4B59E */
 }
 
 /* 0x4B69C — demo-pose record §29. The effects pass's per-entry prelude
@@ -1400,6 +1569,130 @@ static void fight_4b2ac(u32 entry, u32 index)
         DSB(actor + 0x29u) |= 0x40u;                            /* 0x4B3C5 */
     }
     actors_anim_begin(actor, DSD(DS_000C95D4 + index * 4u), 0x40400000u); /* 0x4B3D8 */
+}
+
+/* 0x4D898 — demo-pose record §42-C. The mode-0x22 grab arm (0x4B788's twin,
+ * without its DS_00105B3A and other-side +0x54 gates): 1 (the caller
+ * tramples) unless the side's slot +0x5F is 0xC97F2[ch], or 0xA for
+ * characters 0, 4 and 5, or 0xB for characters 1 and 6 (ch the signed slot
+ * +0x7A). An accepted move returns 0 without grabbing on +0x1C bit 6, +0x52
+ * out of [0xC97E4[ch], 0xC97EB[ch]] or +0x4B set; else it grabs exactly as
+ * 0x4B788 does, then feeds DS_00104B1A's slot +0x5B (capped at 0x78): by the
+ * actor's (u8)+0x48 - 0x20 (jump table 0x4D880: 0x10, 0xE, 0x15, 0xC, 0xA,
+ * else 0xD) times 120 / 100 for the 0xC97F2 move, 1 for the 0xA/0xB move.
+ * Returns 0. EAX = hit (1/2), EDX = entry, EBX = si. */
+int fight_4d898(u32 hit, u32 entry, u32 index)
+{
+    u32 slot = DS_001077B0 + (hit - 1u) * 0x94u;                /* 0x4D8A6..0x4D8BF */
+    u8 mv = DSB(slot + 0x5Fu);                                  /* 0x4D8C8 */
+    s32 ch = (s32)(s8)DSB(slot + 0x7Au);                        /* 0x4D8C1, 0x4D8CF `sar` */
+    if (mv != DSB(DS_000C97F2 + (u32)ch)) {                     /* 0x4D8DA */
+        int alt = 0;
+        if ((ch == 0 || ch == 5 || ch == 4) && mv == 0x0Au)     /* 0x4D8E2..0x4D8F9 */
+            alt = 1;
+        if (!alt) {
+            if (ch != 1 && ch != 6) return 1;                   /* 0x4D905/0x4D90D */
+            if (mv != 0x0Bu) return 1;                          /* 0x4D91C */
+        }
+    }
+    if ((DSB(entry + 0x1Cu) & 0x40u) != 0u) return 0;           /* 0x4D92F */
+    u32 fr = DSD(slot);                                         /* 0x4D939 */
+    s8 st = (s8)DSB(fr + 0x52u);
+    if (st < (s8)DSB(DS_000C97E4 + (u32)ch)) return 0;          /* 0x4D947 */
+    if (st > (s8)DSB(DS_000C97EB + (u32)ch)) return 0;          /* 0x4D953 */
+    if (DSB(fr + 0x4Bu) != 0u) return 0;                        /* 0x4D95D */
+    DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) | 0x40u);      /* 0x4D963 */
+    if (DSD(entry + 0x10u) != 0u) {                             /* 0x4D96C */
+        actor_set_dead(DSD(entry + 0x10u));                     /* 0x4D970 0x2B150 */
+        DSD(entry + 0x10u) = 0;                                 /* 0x4D975 */
+    }
+    int unflipped = (DSW(DSD(slot) + 0x28u) & 0x4000u) == 0u;   /* 0x4D98C: DL */
+    if (!unflipped)
+        DSB(DSD(entry + 8u) + 0x29u) |= 0x40u;                  /* 0x4D993 */
+    else
+        DSB(DSD(entry + 8u) + 0x29u) &= 0xBFu;                  /* 0x4D99E */
+    DSB(DSD(entry + 8u) + 0x29u) &= 0xEFu;                      /* 0x4D9A5 */
+    DSB(entry + 0x20u) = (u8)(hit - 1u);                        /* 0x4D9AE */
+    {
+        s32 ox = ((s32)DSD(DS_000C977D + (u32)ch * 2u) >> 24) * 64; /* 0x4D9BC..0x4D9CB */
+        u32 fx = DSD(DSD(slot) + 0x18u);
+        DSD(DSD(entry + 8u) + 0x18u) = unflipped ? fx - (u32)ox   /* 0x4D9D5 */
+                                                 : (u32)ox + fx;  /* 0x4D9F8 */
+    }
+    {
+        s32 oy = ((s32)DSD(DS_000C977E + (u32)ch * 2u) >> 24) * 64; /* 0x4DA02..0x4DA11 */
+        DSD(DSD(entry + 8u) + 0x1Cu) = (u32)oy + DSD(DSD(slot) + 0x1Cu); /* 0x4DA19 */
+    }
+    DSW(DSD(entry + 8u) + 0x32u) = DSW(DSD(slot) + 0x32u);      /* 0x4DA25 */
+    DSW(DSD(entry + 8u) + 0x2Cu) =
+        fight_dust_clamp((s32)DSD(DSD(entry + 8u) + 0x30u) >> 16); /* 0x4DA32 0x496AC */
+    DSW(DSD(entry + 8u) + 0x38u) = 0;                           /* 0x4DA41 */
+    DSW(DSD(entry + 8u) + 0x36u) = DSW(DSD(entry + 8u) + 0x38u); /* 0x4DA4E */
+    DSW(DSD(entry + 8u) + 0x34u) = DSW(DSD(entry + 8u) + 0x36u); /* 0x4DA55 */
+    DSB(entry + 0x1Eu) = 8u;                                    /* 0x4DA59 */
+    actors_anim_begin(DSD(entry + 8u),
+                      DSD(DSD(DS_000C97AC + (u32)ch * 4u) + index * 4u), 0u); /* 0x4DA6C */
+    DSB(DSD(entry + 8u) + 0x4Au) = DSB(DSD(slot) + 0x56u);      /* 0x4DA79 */
+    (void)actors_link_held(DSD(entry + 8u), DSW(DSD(entry + 8u) + 0x56u)); /* 0x4DA85 */
+    actors_anim_begin(DSD(slot), DSD(DS_000C9790 + (u32)ch * 4u),
+                      DSD(DS_000C97C8 + (u32)ch * 4u));         /* 0x4DA9A */
+    /* PORT: 0x4DABE 0x2C3FC(0xD4 for (u8)+0x48 - 0x20 < 3, else 0xD5) — voice,
+     * out of scope (spec §7). */
+    {
+        u32 dst = DS_001077B0 + (u32)DSB(DS_00104B1A) * 0x94u;  /* 0x4DB0B/0x4DB64 */
+        u32 add;
+        if (mv == DSB(DS_000C97F2 + (u32)ch)) {                 /* 0x4DACE */
+            u8 w;
+            switch ((u8)(DSB(DSD(entry + 8u) + 0x48u) - 0x20u)) { /* 0x4DAE0 0x4D880 */
+            case 0:  w = 0x10u; break;                          /* 0x4DAF3 */
+            case 1:  w = 0x0Eu; break;                          /* 0x4DAF7 */
+            case 2:  w = 0x15u; break;                          /* 0x4DAFB */
+            case 3:  w = 0x0Cu; break;                          /* 0x4DAFF */
+            case 4:  w = 0x0Au; break;                          /* 0x4DB03 */
+            default: w = 0x0Du; break;                          /* 0x4DB07 */
+            }
+            add = (u32)w * 120u / 100u;                         /* 0x4DB2F..0x4DB45 */
+        } else {
+            add = 1u;                                           /* 0x4DB83 */
+        }
+        if ((s32)((u32)DSB(dst + 0x5Bu) + add) > 0x78)          /* 0x4DB50/0x4DB8D */
+            DSB(dst + 0x5Bu) = 0x78u;                           /* 0x4DB55/0x4DB92 */
+        else
+            DSB(dst + 0x5Bu) = (u8)(DSB(dst + 0x5Bu) + add);    /* 0x4DB5B/0x4DB9A */
+    }
+    return 0;                                                   /* 0x4DB5E/0x4DB9D */
+}
+
+/* 0x4D7A4 — demo-pose record §42-C. 0x4B69C's twin in the mode-0x22 effects
+ * pass 0x4D2D0 (its only caller, 0x4D323, in mode 0x22 only; 0x4D2D0 is not
+ * ported): an entry with +0x1C bit 7 tests its actor's pset point against the
+ * fighters (0x17D30, BX = 0), both sides counting as side 0; when 0x4D898 lets
+ * it through, +0x20 = the side, +0x1F counts, a held actor (+0x4A) is released
+ * (without 0x4B69C's DS_001088B2 store) and 0x4B470 tramples it. EAX = entry,
+ * EDX = si. */
+void fight_4d7a4(u32 entry, u32 index)
+{
+    if ((DSB(entry + 0x1Cu) & 0x80u) == 0u) return;              /* 0x4D7BB */
+    u32 rec = DSD(entry + 8u);
+    u32 ps = DSD(DS_001014EC) + ((u32)DSW(rec + 0x56u) << 5);  /* 0x4D7C1..0x4D7D3 */
+    u32 hit = camera_point_hit((s32)(s16)DSW(ps + 4u),
+                               (s32)(s16)DSW(ps + 8u), 0u);     /* 0x4D7E8 */
+    if (hit == 0u) return;                                      /* 0x4D7F2 */
+    if ((s32)hit > 2) hit = 1u;                                 /* 0x4D7FB */
+    if (fight_4d898(hit, entry, index) == 0) return;            /* 0x4D80B */
+    DSB(entry + 0x20u) = (u8)(hit - 1u);                        /* 0x4D819 */
+    DSB(entry + 0x1Fu) = (u8)(DSB(entry + 0x1Fu) + 1u);         /* 0x4D81C */
+    u32 k = DSB(DSD(entry + 8u) + 0x4Au);
+    if (k != 0u) {                                              /* 0x4D826 */
+        DSB(DSD(DS_001014F4) + k * 0x68u + 0x4Bu) = 0;          /* 0x4D841 */
+        DSB(DSD(entry + 8u) + 0x2Au) &= 0xF7u;                  /* 0x4D849 */
+        DSB(DSD(entry + 8u) + 0x29u) &= 0xBFu;                  /* 0x4D850 */
+        DSB(DSD(entry + 8u) + 0x4Au) = 0;                       /* 0x4D857 */
+        DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) & 0xBFu);  /* 0x4D866 */
+        DSB(DS_001088AE + (u32)DSB(entry + 0x21u)) =
+            (u8)(DSB(DS_001088AE + (u32)DSB(entry + 0x21u)) + 1u); /* 0x4D869 */
+    }
+    fight_4b470(entry, index);                                  /* 0x4D873 */
 }
 
 void fight_effects_pass(void)
@@ -1626,16 +1919,33 @@ void fight_effects_pass(void)
                     }
                     break;
                 }
-                case 8:
-                    /* 0x4A08A: the held worshipper. Without +0x1C bit 6 (set
-                     * by the grab arms: 0x4B788's, and 0x4D898's at 0x4D963 in
-                     * 0x4D2D0's pass, not ported) it does nothing. */
+                case 8: {
+                    /* 0x4A08A: the held worshipper (§42-C). Without +0x1C bit
+                     * 6 (set by the grab arms 0x4B788 and 0x4D898) it does
+                     * nothing; nor while the holder (side +0x20) still plays
+                     * its hold (0x4AF04) or the actor has no +0x4A link.
+                     * Otherwise it is released as 0x4B69C releases (the
+                     * holder's +0x4B, +0x2A bit 3, +0x29 bit 6, +0x4A, the
+                     * entry's bit 6, DS_001088AE counts and DS_001088B2 = 1)
+                     * and 0x4B470 tramples it with EDX = EDI = si, without
+                     * counting +0x1F. */
                     if ((DSB(entry + 0x1Cu) & 0x40u) == 0u)  /* 0x4A097 */
                         break;
-                    /* PORT: 0x4A09D..0x4A110, the held body (0x4AF04, the
-                     * release and 0x4B470), is a named gap with the grab arm
-                     * that sets bit 6 (§29). */
+                    if (fight_4af04((u32)DSB(entry + 0x20u)) != 0) /* 0x4A0A2 */
+                        break;
+                    u32 k = DSB(DSD(entry + 8u) + 0x4Au);    /* 0x4A0B2 */
+                    if (k == 0u) break;                      /* 0x4A0B7 */
+                    DSB(DSD(DS_001014F4) + k * 0x68u + 0x4Bu) = 0; /* 0x4A0CD */
+                    DSB(DSD(entry + 8u) + 0x2Au) &= 0xF7u;   /* 0x4A0D5 */
+                    DSB(DSD(entry + 8u) + 0x29u) &= 0xBFu;   /* 0x4A0DC */
+                    DSB(DSD(entry + 8u) + 0x4Au) = 0;        /* 0x4A0E3 */
+                    DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) & 0xBFu); /* 0x4A0F2 */
+                    DSB(DS_001088AE + (u32)DSB(entry + 0x21u)) =
+                        (u8)(DSB(DS_001088AE + (u32)DSB(entry + 0x21u)) + 1u); /* 0x4A0F5 */
+                    DSB(DS_001088B2 + (u32)DSB(entry + 0x21u)) = 1u; /* 0x4A100 */
+                    fight_4b470(entry, index);               /* 0x4A10B */
                     break;
+                }
                 case 9:
                     /* 0x4A115: mode 9's idle (0x4AAD0 sets the type in mode 9,
                      * 0x4AAE6). While the word DS_001088B4 (set by the mode-9
