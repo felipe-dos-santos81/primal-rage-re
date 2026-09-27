@@ -277,7 +277,8 @@ int actors_init(void)
     fn_register(0x370F0u, (void (*)(void))anim_code_370F0);
     /* PORT: the DS_00104AE4 frame hook 0x43738 (record §42-F), stored by
      * 0x28D68/0x28D80 (dwords at 0x28D6A/0x28D87); both setters and the
-     * `call [0x104ae4]` dispatch are unported mode code. */
+     * `call [0x104ae4]` dispatchers 0x4F9A0/0x4F9C8 are ported (record
+     * §43-B) and registered below. */
     fn_register(0x43738u, fight_char_screen_open);
 
     /* PORT: record §42-B. The +0x1C callback 0x3E244 that 0x3E3A8 stores
@@ -334,6 +335,12 @@ int actors_init(void)
      * it there, and six `call [0x104ae4]` sites run it, all unported;
      * registered so a ported dispatch resolves it. */
     fn_register(0x29B74u, frontend_darken_all);
+    /* PORT: record §43-B. The DS_00104AE4 hooks 0x28D68 (code immediates at
+     * 0x42CF4/0x42D35/0x42D7D, stored by 0x42CB4, and 0x42FB7, stored by the
+     * unreferenced stub 0x42FB0) and 0x28D80 (the immediate at 0x28E4F,
+     * stored by 0x28DA4); no dword in the data object. */
+    fn_register(0x28D68u, frontend_char_screen_hook);
+    fn_register(0x28D80u, frontend_char_screen_hook_voice);
     return 1;
 }
 
@@ -1805,6 +1812,24 @@ static void set_dead(u32 rec)
 /* Exposed for 0x121A0's phase-1 retirement of the logo and the second object
  * (the same 0x2B150 the sync path reaches internally). */
 void actor_set_dead(u32 rec) { set_dead(rec); }
+
+/* 0x10D70 — derivation record §43-B. The record is the stack argument
+ * ([esp+4], `ret 4`), the word AX. The pset (DS_001014EC + rec+0x56 * 0x20,
+ * 0x10D74..0x10D83, no pool check) takes the word with bit 15 = rec+0x28's
+ * bit 14 (0x10D8C..0x10DA2 `and bh,0x40`), after rec+0x28's byte bit 2 is
+ * cleared (0x10D85). The first store at 0x10D89 is overwritten by 0x10DA5 at
+ * the same address with nothing reading it in between, so only the second is
+ * kept. */
+void actor_pset_word_set(u32 rec, u32 word)
+{
+    u32 pset = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;  /* 0x10D74..0x10D83 */
+    DSB(rec + 0x28u) &= 0xFBu;                                      /* 0x10D85 */
+    if ((DSW(rec + 0x28u) & 0x4000u) != 0u)                         /* 0x10D8C..0x10D9B */
+        word |= 0x8000u;                                            /* 0x10D9D */
+    else
+        word &= 0x7FFFu;                                            /* 0x10DA2 */
+    DSW(pset) = (u16)word;                                          /* 0x10DA5 */
+}
 
 /* ---- the per-type callbacks (0xBB9DC cb1 / 0xBB9E0 cb2) ----------------
  * The 16 non-stub entries of the type table. Every body is the raw's; the

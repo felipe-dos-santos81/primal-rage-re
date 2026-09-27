@@ -4767,6 +4767,243 @@ static void check_char_screen_open(void)
     memcpy(gfx_dac, s_dac, sizeof s_dac);
 }
 
+/* Record §43-B: the DS_00104AE4 hooks 0x28D68/0x28D80, the mode 0x1A arm
+ * 0x4F980, the mode 0x1A/0x1B handlers 0x4F9A0/0x4F9C8 with their wipes
+ * 0x4F9E4/0x4FA88, and 0x10D70. The same snapshot as check_char_screen_open,
+ * whose seeds (chs_seed) and checks (chs_check_common/chs_check_side) the
+ * 0x43738 the hook runs is held to. The wipe tables are the data object's:
+ * descriptors 0xC98F4/0xC9908 (ids 0x2DD9/0x2DE9, flags 0x802800), sprite
+ * words 0xC991C = 0x2DD9..0x2DE8, 0x3F13 and 0xC993E = 0x2DE9..0x2DF8, 0x3F14;
+ * the word before 0xC991C (0xC991A, the high half of 0xC9908's palette
+ * 0x3E638) is 3. */
+static u16 cm_pset_word(u32 rec)
+{
+    return DSW(DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u);
+}
+
+static void cm_seed_arm(void)
+{
+    DSD(0x00104AF8u) = 0xA5A5A5A5u;
+    DSD(0x00104AFCu) = 0x5A5A5A5Au;
+    DSD(DS_00104B00) = 0xBEEFBEEFu;
+    DSB(DS_001088F4) = 0x66u;
+    DSB(DS_001088F5) = 0x77u;
+    DSB(0x001088F6u) = 0x55u;
+    DSD(DS_00104AE4) = 0xDEADBEEFu;
+}
+
+/* The arm's stores: DS_001088F5 = 0, the word DS_00104AFA, the word
+ * DS_00104B00 = 0x1A, with their neighbours intact. */
+static void cm_check_arm(u32 ret_mode)
+{
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0);
+    CHECK_EQ_INT((int)DSB(DS_001088F4), 0x66);
+    CHECK_EQ_INT((int)DSB(0x001088F6u), 0x55);
+    CHECK_EQ_INT((int)DSD(0x00104AF8u), (int)(0xA5A5u | (ret_mode << 16)));
+    CHECK_EQ_INT((int)DSD(0x00104AFCu), (int)0x5A5A5A5Au);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF001Au);
+}
+
+static void check_char_screen_modes(void)
+{
+    static u8 s_data[0x10B0D0u - 0x80000u];
+    static u8 s_rec[0xEBA0u], s_pset[0x4880u];
+    static u8 s_bufa[0xFA00u], s_bufb[0xFA00u], s_ap[0xFA00u];
+    static u8 s_dac[sizeof gfx_dac];
+    static u8 s_res[0x14u * 128u];
+    u32 rec_pool = DSD(DS_001014F4), pset_pool = DSD(DS_001014EC);
+    u32 bufa = DSD(DS_001014E8), bufb = DSD(DS_001014E4);
+    u32 res_tab = DSD(DS_001014E0);
+    u32 res_len = DSD(DS_001014F0) * 0x14u;
+    CHECK(rec_pool != 0u && pset_pool != 0u && bufa != 0u && bufb != 0u,
+          "the mode 0x1A chain needs the pools and buffers");
+    CHECK(res_len != 0u && res_len <= sizeof s_res, "the resource table fits");
+    if (rec_pool == 0u || pset_pool == 0u || bufa == 0u || bufb == 0u ||
+        res_len == 0u || res_len > sizeof s_res)
+        return;
+    tf_snap(s_data, 0x80000u, sizeof s_data);
+    tf_snap(s_rec, rec_pool, sizeof s_rec);
+    tf_snap(s_pset, pset_pool, sizeof s_pset);
+    tf_snap(s_bufa, bufa, sizeof s_bufa);
+    tf_snap(s_bufb, bufb, sizeof s_bufb);
+    tf_snap(s_res, res_tab, res_len);
+    memcpy(s_ap, gfx_aperture(), sizeof s_ap);
+    memcpy(s_dac, gfx_dac, sizeof s_dac);
+    const u32 R = ACTOR_REC_SIZE;
+
+    /* (a) Both hooks are DS_00104AE4 values (code immediates only). */
+    CHECK(fn_resolve(0x28D68u) == frontend_char_screen_hook,
+          "0x28D68 resolves to its port");
+    CHECK(fn_resolve(0x28D80u) == frontend_char_screen_hook_voice,
+          "0x28D80 resolves to its port");
+
+    /* (b) 0x4F980 alone, then each hook: the hook becomes 0x43738 and the arm
+     * returns to 0x10. */
+    cm_seed_arm();
+    frontend_wipe_arm(0x1234u);
+    cm_check_arm(0x1234u);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+    cm_seed_arm();
+    frontend_char_screen_hook();
+    cm_check_arm(0x10u);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x43738);
+    cm_seed_arm();
+    frontend_char_screen_hook_voice();
+    cm_check_arm(0x10u);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x43738);
+
+    /* (c) 0x10D70 alone: bit 2 of +0x28 cleared, bit 15 from +0x28 bit 14
+     * (set, then cleared on a word that has it), the pset's +2 untouched. */
+    actors_reset();
+    {
+        u32 r = actor_alloc(0);
+        u32 ps = DSD(DS_001014EC) + (u32)DSW(r + 0x56u) * 0x20u;
+        DSW(ps) = 0xFFFFu;
+        DSW(ps + 2u) = 0xABCDu;
+        DSW(r + 0x28u) = 0x4004u;
+        actor_pset_word_set(r, 0x1234u);
+        CHECK_EQ_INT((int)DSW(ps), 0x9234);
+        CHECK_EQ_INT((int)DSW(r + 0x28u), 0x4000);
+        CHECK_EQ_INT((int)DSW(ps + 2u), 0xABCD);
+        DSW(r + 0x28u) = 0x2804u;
+        actor_pset_word_set(r, 0x8123u);
+        CHECK_EQ_INT((int)DSW(ps), 0x0123);
+        CHECK_EQ_INT((int)DSW(r + 0x28u), 0x2800);
+    }
+
+    /* (d) The whole chain from 0x28D68: 17 wipe-in frames, the 18th runs
+     * 0x43738 (as check_char_screen_open's run (a): side 1, character 6),
+     * then 17 wipe-out frames and the 18th returns to mode 0x10. */
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    chs_seed(3u, 6u, 2u, 1u);
+    DSD(DS_000C98F0) = 0u;
+    DSB(DS_001088F4) = 0x77u;
+    DSB(DS_001088F5) = 0x77u;
+    DSD(DS_00101508) = 0x123u;
+    DSD(DS_0010150C) = 0x100u;
+    frontend_char_screen_hook();
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x1A);
+    frontend_mode_1a_step();                             /* frame 1: the spawn */
+    u32 w = DSD(DS_000C98F0);
+    CHECK(w != 0u, "0x4F9E4 spawned the wipe-in actor");
+    CHECK_EQ_INT((int)DSD(w + 0x08u), 0x2DD9);           /* 0xC98F4 */
+    CHECK_EQ_INT((int)DSB(w + 0x49u), 0xFF);
+    CHECK_EQ_INT((int)DSD(DS_0010150C), 0x123);
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 1);
+    CHECK_EQ_INT((int)(cm_pset_word(w) & 0x7FFFu), 0x2DD9);
+    DSW(w + 0x28u) |= 0x4004u;
+    DSD(DS_0010150C) = 0x200u;
+    frontend_mode_1a_step();                             /* frame 2 */
+    CHECK_EQ_INT((int)cm_pset_word(w), 0x2DDA | 0x8000);
+    CHECK_EQ_INT((int)(DSB(w + 0x28u) & 4u), 0);
+    for (u32 k = 3; k <= 17u; k++) frontend_mode_1a_step();
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0x11);
+    CHECK_EQ_INT((int)cm_pset_word(w), 0x3F13 | 0x8000);
+    CHECK_EQ_INT((int)DSD(DS_000C98F0), (int)w);
+    CHECK_EQ_INT((int)DSD(DS_0010150C), 0x200);          /* no resync */
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x1A);
+    CHECK_EQ_INT((int)DSB(DS_001088F4), 0x77);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x43738);        /* the hook has not run */
+    CHECK_EQ_INT((int)DSB(DS_00108174), 0x77);
+    frontend_mode_1a_step();                             /* frame 18: done */
+    CHECK_EQ_INT((int)DSD(DS_000C98F0), 0);
+    CHECK_EQ_INT((int)DSB(DS_001088F4), 1);
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x1B);
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x10);
+    chs_check_common(rec_pool);                          /* 0x43738 ran */
+    chs_check_side(1u, rec_pool + 3u * R, 0x2F40u, 0x0EC0u, 0x331u, 0x2Cu,
+                  0x098ECC0Cu, 0x098ECC0Cu, 0x0A00u, 0x402Fu);
+    CHECK_EQ_INT((int)chs_active_count(), 9);
+    /* 0x2BAF4's EAX = 1 arm (0x52106 with 0) zeroed both tick counters. */
+    CHECK_EQ_INT((int)DSD(DS_0010150C), 0);
+    CHECK_EQ_INT((int)DSD(DS_00101508), 0);
+
+    DSD(DS_00101508) = 0x123u;
+    DSD(DS_0010150C) = 0x300u;
+    frontend_mode_1b_step();                             /* frame 1: the spawn */
+    u32 w2 = DSD(DS_000C98F0);
+    CHECK(w2 != 0u, "0x4FA88 spawned the wipe-out actor");
+    CHECK_EQ_INT((int)DSD(w2 + 0x08u), 0x2DE9);          /* 0xC9908 */
+    CHECK_EQ_INT((int)DSB(w2 + 0x49u), 0xFF);
+    CHECK_EQ_INT((int)DSB(DS_001088F4), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010150C), 0x123);
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 1);
+    CHECK_EQ_INT((int)chs_active_count(), 10);
+    /* A hook with a visible effect (0x29B74: DS_00104AFE = 0x78) must not
+     * run before the wipe is done, and must run before the mode copy (it
+     * stores mode 0x15). */
+    DSD(DS_00104AE4) = 0x29B74u;
+    DSW(DS_00104AFE) = 0x1111u;
+    DSB(DS_001088F4) = 0x55u;
+    DSD(DS_0010150C) = 0x300u;
+    frontend_mode_1b_step();                             /* frame 2 */
+    CHECK_EQ_INT((int)cm_pset_word(w2), 0x2DEA);
+    for (u32 k = 3; k <= 17u; k++) frontend_mode_1b_step();
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0x11);
+    CHECK_EQ_INT((int)cm_pset_word(w2), 0x3F14);
+    CHECK_EQ_INT((int)DSB(DS_001088F4), 0x55);           /* spawn frame only */
+    CHECK_EQ_INT((int)DSD(DS_0010150C), 0x300);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x1B);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x1111);
+    CHECK_EQ_INT((int)(DSB(w2 + 0x28u) & 8u), 0);
+    frontend_mode_1b_step();                             /* frame 18: done */
+    CHECK_EQ_INT((int)DSD(DS_000C98F0), 0);
+    CHECK_EQ_INT((int)(DSB(w2 + 0x28u) & 8u), 8);        /* 0x2B150 */
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x78);           /* the hook ran */
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x10);           /* then DS_00104AFA */
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0x11);
+    CHECK_EQ_INT((int)DSB(DS_001088F4), 0x55);
+    CHECK_EQ_INT((int)chs_active_count(), 10);           /* no 0x2BAF4 */
+
+    /* (e) 0x4F9A0's done frame with the no-op hook 0x29D60 (unregistered):
+     * 0x4F9E4's own 0x2BAF4 empties the active list. */
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    actors_reset();
+    (void)actor_alloc(0);
+    DSD(DS_000C98F0) = actor_alloc(0);
+    CHECK_EQ_INT((int)chs_active_count(), 2);
+    DSD(DS_00104AE4) = 0x29D60u;
+    DSB(DS_001088F5) = 0x11u;
+    DSB(DS_001088F4) = 0x77u;
+    DSD(DS_00104B00) = 0xBEEF001Au;
+    DSD(DS_00101508) = 0x123u;
+    DSD(DS_0010150C) = 0x123u;
+    frontend_mode_1a_step();
+    CHECK_EQ_INT((int)chs_active_count(), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010150C), 0);
+    CHECK_EQ_INT((int)DSD(DS_000C98F0), 0);
+    CHECK_EQ_INT((int)DSB(DS_001088F4), 1);
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF001Bu);
+
+    /* (f) The counter is signed (`sar eax,0x18`, `jle`): 0xFF (-1) is not
+     * done, and 0x10D70 gets the word before the table, 0xC991A = 3. */
+    {
+        u32 r = actor_alloc(0);
+        DSD(DS_000C98F0) = r;
+        DSW(r + 0x28u) = 0u;
+        DSB(DS_001088F5) = 0xFFu;
+        CHECK_EQ_INT((int)frontend_wipe_in(), 0);
+        CHECK_EQ_INT((int)DSB(DS_001088F5), 0);
+        CHECK_EQ_INT((int)cm_pset_word(r), 3);
+        CHECK_EQ_INT((int)DSD(DS_000C98F0), (int)r);
+    }
+
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    tf_put(s_bufa, bufa, sizeof s_bufa);
+    tf_put(s_bufb, bufb, sizeof s_bufb);
+    tf_put(s_res, res_tab, res_len);
+    memcpy(gfx_aperture(), s_ap, sizeof s_ap);
+    memcpy(gfx_dac, s_dac, sizeof s_dac);
+}
+
 /* 0x24C73/0x47208: the demo's CPU-AI command generator. A live pair of slots
  * (think gate armed, idle state, a legal character) must produce a non-zero
  * command word, and the two sides must be able to differ. The command words are
@@ -15070,6 +15307,7 @@ int test_fight(void)
      * earlier fixtures replace, and it saves and restores all it writes. */
     check_char_screen_setup();
     check_char_screen_open();
+    check_char_screen_modes();
 
     return g_failures - before;
 }
