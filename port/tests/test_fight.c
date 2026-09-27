@@ -6312,9 +6312,10 @@ static void check_mode_switch(void)
 }
 
 /* Record §47-M: the mode 0x10 handler 0x438B4 and its join test 0x43928.
- * m10_seed sets the sub-state DS_00108174, the side bytes DS_00108170[0..1]
- * with 0x77 either side, the byte DS_00108172 (0x5A, what a finished pass
- * copies), the countdown word DS_0010816C with 0x66 above it, the credit
+ * m10_seed sets the sub-state DS_00108174 (0x77 after it), the side bytes
+ * DS_00108170[0..1] = 0 (0x77 before them), the byte DS_00108172 (0x5A, what
+ * a finished pass copies; 0x33 after it, so a word copy shows at
+ * DS_00108175), the countdown word DS_0010816C (0x66 after it), the credit
  * layer (no free play, `credits`, DS_00104B1F = b1f) and the pressed/held
  * words DS_001088E4/DS_001088D8. The image masks: 0x9ACBC = 0x01000000 (side
  * 0) and 0x100 (side 1); 0xC9898 = 0x0F000000 and 0xF00. */
@@ -6328,7 +6329,7 @@ static void m10_seed(u32 b1d, u32 sub, u32 cd, u32 credits, u32 b1f,
     DSB(DS_00108170) = 0u;
     DSB(DS_00108170 + 1u) = 0u;
     DSB(DS_00108172) = 0x5Au;
-    DSB(DS_00108172 + 1u) = 0x77u;
+    DSB(DS_00108172 + 1u) = 0x33u;
     DSW(DS_0010816C) = (u16)cd;
     DSB(DS_0010816C + 2u) = 0x66u;
     DSB(DS_00105D60) = 0u;
