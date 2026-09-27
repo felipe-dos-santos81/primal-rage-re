@@ -672,3 +672,29 @@ the character select pass and are left to that branch. Named gaps: `0x2C2B0`,
 `0x2DAE4`/`0x2E934` audit. No ported path stores mode `0xD` or `0x32`, and the
 headless 8000-frame run is byte-identical. New `check_33c18_callers_a`/`_b`
 in `test_fight.c`.
+**Mode 5, the round start (record §48-U).** `game_frame`'s case 5 now runs
+`0x25C88` (`game_mode_05_step`), so 35 of the switch's entries remain named
+gaps. It is not an arena-frame tail like modes `0xD`/`0x32` and shares no
+code with them beyond the badge spawn `0x1D838`. It is a sub-state machine on
+`DS_00104B25`. State 1 spawns the HUD (`0x25C1C`: `0x1D890`, or `0x1DC6C`
+in `DS_00104B1D` mode 2, with the bars drawn at 0 by `0x1D2F0`/`0x1D464`,
+then the per-round reset `0x20EF8`), the round card and the round-win
+markers (`0x256F4`). State 2 spawns the fight card. State 4 holds each for
+0x3C frames. State 3 releases both, draws the timer field (`0x4F37C`),
+takes the play-time snaps (`0x32B00`/`0x32B4C`) and goes to mode 6, or to
+mode `0xC` after the next side's entrance and badge. All of these callees
+are ported from the raw, the `EAX != 0` arm of `0x1D890` included, which
+was a §10.6 gap. §48-Q's `0x1D2F0` gap is closed and wired into `0x1D764`.
+The entrance at `0x25F27` goes through `fn_resolve` as modes `0xD`/`0x32`
+do, and six of the seven entrances are still gaps. Mode 5 arrives only
+through the return mode `DS_00104AFA` (the ported hooks `0x259CC`/`0x27134`,
+and the unported `0x28468`). A probe found the mode dword at 3 on every
+frame of a headless 8000-frame run, and that run is byte-identical to
+`main`'s. Named gaps: the voice, `0x32970` and the `0x2E934` audit, mode
+`0x30`'s `0x29328` (the other caller of `0x25C1C`/`0x256F4`/`0x4F37C`),
+`0x1D540`, `0x26A50` and `0x27DC8`. New `check_mode5_a`/`_b` in
+`test_fight.c`: 47 of 48 mutations fail the suite. The survivor, `0x1D2F0`'s clamp at 0x77, is equivalent on the image tables (§48-U.4). `make verify` is green with the oracle lines unchanged.
+A pre-existing flake came to light in this batch: `run_tests` dies with
+SIGBUS in about one run in six, on `main`'s build as well. The crash is in
+`check_projectile_step`'s `fighter_18350(side 1, anchor 0xFFFFF120)`, an
+out-of-bounds table read. It is named in §48-U.4 and not fixed here.
