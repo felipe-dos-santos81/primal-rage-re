@@ -6459,6 +6459,7 @@ static void check_mode_10_step(void)
     fight_mode_10_step();
     CHECK_EQ_INT((int)DSW(DS_0010816C), 1);
     CHECK_EQ_INT((int)DSB(DS_00108174), 1);
+    M10_RESTORE();
     m10_seed(3u, 1u, 9u, 0u, 0x40u, 0x100u, 0u);
     fight_mode_10_step();
     CHECK_EQ_INT((int)DSW(DS_0010816C), 9);

@@ -674,7 +674,7 @@ Every caller that puts the port in mode `0x1A` is unported mode code, so no orac
 - 1 runs the join test, the skip test `0x4F790` and the countdown `DS_0010816C`, then copies `DS_00108172` into `DS_00108174`;
 - 0 runs the character select's per-frame pass `0x43B24` (`0x44798` when `DS_00104B1D == 3`). That pass is a named gap: about 1300 unported instructions with its callees.
 
-No instruction stores a non-zero value to `DS_00108174` by displacement, so 0 is the arm the character screen runs. The record also corrects §47-B.2: `0x43D7E` is a per-side byte store, so nothing writes `DS_00108173`. No ported path stores mode `0x10`, and a headless 8000-frame run is byte-identical before and after. New `check_mode_10_step` in `test_fight.c`: 27 of 27 mutations fail it.
+No instruction stores a non-zero value to `DS_00108174`, and no fill routine reaches it, so 0 is the arm the character screen runs. The record also corrects §47-B.2: `0x43D7E` is a per-side byte store, so no instruction stores `DS_00108173` and no fill routine reaches it either. Copies through heap or stack pointers and file reads are not fully closed (§47-M.2). No ported path stores mode `0x10`, and a headless 8000-frame run is byte-identical before and after. New `check_mode_10_step` in `test_fight.c`: 27 of 27 mutations fail it.
 
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
 demo fight's remaining divergences (the capture's fight is explained up to its

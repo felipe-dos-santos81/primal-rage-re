@@ -2448,12 +2448,12 @@ void game_frame(void)
     }
 }
 
-/* PORT: 0x11F28. One coin/start event: requires a credit (0x2C060), then tests
- * the event's mask in the DS_0009ACBC table against the newly-pressed bits
- * DS_001088E4, and debits one credit through 0x2CA7C. Returns 1 when accepted
- * (0x11F42/0x11F4C: 1 whatever 0x2CA7C returns). Called at 0x11D15/0x11D28 and,
- * with EAX = the side, by 0x43928 (0x43939) and 0x43B24 (0x43B4E), record
- * §47-M. */
+/* 0x11F28 — record §47-M. One coin/start event: requires a credit (0x2C060),
+ * then tests the event's mask in the DS_0009ACBC table against the
+ * newly-pressed bits DS_001088E4, and debits one credit through 0x2CA7C.
+ * Returns 1 when accepted (0x11F42/0x11F4C: 1 whatever 0x2CA7C returns).
+ * Called at 0x11D15/0x11D28 and, with EAX = the side, by 0x43928 (0x43939)
+ * and 0x43B24 (0x43B4E). */
 u32 frontend_coin_poll(u32 code)
 {
     if (config_credit_ready() == 0u) return 0u;

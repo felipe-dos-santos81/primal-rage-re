@@ -13147,6 +13147,12 @@ Two things keep state 8 out of the port's runs:
     (`0x43B24`), and `0x443F9`/`0x4443F` (`0x4434C`, whose index is its EAX
     argument, not bounded here).
 
+  (Corrected in §47-M.2: `0x43D7E` is `mov byte [ebx+0x108170],ah`, a
+  per-side byte store, not a dword store at `0x43D7F`. `0x4434C`'s only
+  caller `0x44908` passes the 0..1 loop index. So no instruction found writes
+  `0x108173`, and no fill routine reaches it. Copies through heap or stack
+  pointers and file reads are not fully closed.)
+
   So every displacement-addressed store that can reach `0x108173` is
   unported. The scan did not cover block fills (`rep stos`, the `0x65490`
   `memset`) through a computed pointer. The 5000-frame run below never
@@ -13273,7 +13279,10 @@ chain is `0x11D04` (coin poll accepted) → `0x257A4` → mode `0x1A` (hook
    Then `game_state_step`'s accepted arm and its case 8 call it.
    `0x32970(0)` (the run clock, spec §7) stays out of scope. State 8 also
    needs `DS_00108173` set, and only the unported character-select code
-   writes that byte (47-B.2).
+   writes that byte (47-B.2). (Corrected in §47-M.2: no instruction found
+   writes `0x108173`, and no fill routine reaches it, because `0x43D7E` is a
+   per-side byte store. Copies through heap or stack pointers and file reads
+   are not fully closed.)
 2. **Mode `0x10`'s handler `0x438B4`** (`..0x43927`), with its callee
    `0x4F790` (§46-G). Without it the credited start ends in a mode that
    draws nothing after the wipe.
@@ -13406,15 +13415,58 @@ give:
   - `0x443F9` (AH = 2) and `0x4443F` (DL = 3), both in `0x4434C`, indexed
     by its argument ECX. Its only caller `0x44908` (`0x44798`) passes the
     0..1 loop index.
+- the indexed stores whose displacement lies below `0x108170`. Reaching
+  `0x108172` would take an index of 8 from `0x10816A` and 4 from
+  `0x10816E`. The index was bounded at each caller (Ghidra's instruction
+  starts):
+  - `[reg + 0x10816A]`:
+    - `0x2719C` (`0x2716C`, ECX = EAX). Its callers `0x2705E`, `0x2722E`
+      and `0x27700` pass `[0x104AD4] ^ 1`, the same XORed with DH = 1, and
+      the byte `[0x104B12]`. The stores to the dword `[0x104AD4]` are 0, 2
+      or a register (`0x288F3` stores 2), so XOR 1 gives at most 3;
+    - `0x292E8` (`0x292D4`, EBX = EAX), from `0x29871` only. There EAX is
+      the zero-extended byte `[0x104B09]` (`0x29780`), which also indexes the
+      two per-side counters `0x104AF0`/`0x104AF1` (`0x29785`, and the `cmp`s
+      at `0x2979D`/`0x297B0`). So it is used as a side, though no
+      range check was found;
+    - `0x4136D` (`0x41350`, EBX = the side). Its callers pass 0, 1,
+      `[0x104AD4] ^ 1` or `(DS_00104B1F - 1) ^ 1` with `DS_00104B1F` != 3;
+    - `0x43D74` (`0x43D60`), where the side is 0..1 as above;
+  - `[reg + 0x10816E]`:
+    - `0x41390` (`0x41350`), the side as above;
+    - `0x43E63` (`0x43D60`, EBX 0..1);
+    - `0x444AB` (`0x4434C`, ECX 0..1);
+    - `0x445D1` (`0x4454C`, `mov byte [esi+0x10816e],0xff`, ESI 0..1:
+      `inc esi; cmp esi,2; jl` at `0x44610..0x4461F`);
+  - `[eax + 0x10816D]`: `0x436B1`/`0x43707` (the `0x4367C` region) and
+    `0x44568` (`0x4454C`, storing `0xFF`). Each loop is `inc eax` before the
+    store and `cmp eax,2; jl` after it, so EAX = 1..2. They write
+    `0x10816E`/`0x10816F`, and no displacement names those bytes;
+  - the review of this branch (`gap10-mode10-review.md`, check 2) also
+    bounded the `[reg*4 + 0x108144]`, `0x108154`/`0x10815C`, `0x10813C`,
+    `[edx + 0x108166]` and `0x108114`/`0x108134` table stores. None reaches
+    past `0x10813B`, or past `0x108167` for `0x108166`.
 
   No displacement names `0x10816F`, `0x108171` or `0x108175`.
 
+**Block fills.** The fill routine `0x65490` has 4 callers (rel32; no dword):
+- `0x41682` and `0x4247A`, which fill `0x108106` for 7 bytes;
+- `0x25801`, which fills `0x104B02` for 7 bytes;
+- the C `memset` `0x61A70`.
+
+`0x61A70` has 46 callers (rel32; no dword; Ghidra agrees). The review checked
+every one. No immediate base covers `0x108174`: the nearest are `0x107618 +
+0x180`, `0x105F38 + 0x14D4` and `0x108DAC`. The others fill through heap, pool
+or stack pointers. The `rep stos`/`rep movs` sites are in the runtime and AIL
+region (from `0x5E000` up) or copy the `0x94`-byte fighter slots.
+
 So **no instruction stores a non-zero value to `DS_00108174`, or anything to
-`DS_00108172`, by displacement**. Block fills through a computed pointer (the
-`0x65490` `memset`, `rep stos`) were not scanned. Every entry to the
-character screen, `0x43738` and `0x444C8`, leaves the sub-state at 0. So mode
-`0x10` runs `0x43B24` or `0x44798` on every frame, and the ported
-sub-state-1 arm runs only in unit tests.
+`DS_00108172`, and no fill routine reaches either byte**. Two things are not
+closed: copies through heap or stack pointers, and file reads. Nothing found
+points either of them at `0x1081xx`. Every entry to the character screen,
+`0x43738` and `0x444C8`, leaves the sub-state at 0. So mode `0x10` runs
+`0x43B24` or `0x44798` on every frame, and the ported sub-state-1 arm runs
+only in unit tests.
 
 **Correction to 47-B.2.** 47-B.2 said that `0x108173` is "the top byte of the
 dword `[0x108170]`, which only the unported `0x43D7F` (in `0x43D60`) writes
@@ -13425,10 +13477,12 @@ disagrees:
   decode began inside the instruction;
 - `0x4434C`'s only caller passes 0..1.
 
-So every indexed store reaches `0x108170`/`0x108171` only. **No instruction
-stores `0x108173` by displacement.** The conclusion of 47-B.2 still holds,
-and is stronger: nothing writes `DS_00108173`, so state 8 is unreachable
-except through a block write.
+So every indexed store into `[reg + 0x108170]` reaches only
+`0x108170`/`0x108171`, and the lower tables stop at `0x10816F`. **No
+instruction found stores `0x108173`, and no fill routine reaches it.** The
+conclusion of 47-B.2 still holds and is stronger: state 8 cannot be reached
+except through a copy by heap or stack pointer or a file read, the gaps left
+open above. 47-B.2 and 47-B.6 now carry a marker pointing here.
 
 **Mode `0x10` in the port.** In the raw, `0x4F980`'s eleven callers load
 EAX with the return mode (the last `mov eax,imm` before each call):
