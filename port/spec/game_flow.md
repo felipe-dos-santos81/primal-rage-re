@@ -950,8 +950,8 @@ exits 0.
   0x2A)` callback) and its `+0x0C` callback `0x3E328` (f = 963) are now ported
   and registered; its `+0x18` hook `0x3E1D0` is ported with `0x19020`
   (record §35: at f = 963 its `+0x86 >> 16` is 0, so it returns 1 without
-  `0x18C14`), while its `+0x1C` callback `0x3E244` is stored but not ported
-  (not reached in the port's run). (On the
+  `0x18C14`), and its `+0x1C` callback `0x3E244` is ported and registered
+  with its callee `0x3C358` (record §42-B; not reached in the port's run). (On the
   frame-1750 fix: `0x3E3A8` (f = 962), skipped; `0x3C0A4` (f = 850, the
   reaction-`0x3E` callback, now ported), `0x14F50` (f = 929) and `0x3A820`
   (f = 962/963 on the frame-1715 fix) no longer miss; `0x4AC80` (f = 820 and 841
@@ -2267,7 +2267,8 @@ record §34).**
 * **Fix.** `fighter_3e3a8`/`fighter_3e328` (registered) and the static
   `fighter_3e0f0`/`fighter_29c08` in `fighter.c`; `0x3E1D0` (needs the
   unported `0x19020`/`0x18C14`) and `0x3E244` (needs `0x3C208`/`0x3C358`;
-  `0x3C208` since ported, record §41-B)
+  `0x3C208` since ported, record §41-B; `0x3E244` and `0x3C358` since
+  ported, record §42-B)
   are stored but not ported (the `0x19020` gap skips `0x3E1D0` at f =
   963, unevaluated; `0x3E1D0` since ported, record §35). The front-end driver dumps a frame whose
   iteration starts or ends in a state >= 3 (1382 frames). `title_compare.py`
