@@ -14003,8 +14003,8 @@ explained. N 3593 -> 3617, the exact pin (`e00ab15`).
   00 00 00`). So `0x34E2C` plays no stream and calls `0x45AD0` at `0x35045`
   with EAX = slot, EDX = rec, EBX = side. Character 4's other callbacks
   (reactions `0x20..0x26`, `0x2D`: `0x44F64`, `0x450E8`, `0x455A0`,
-  `0x44970`, `0x45878`, `0x44CFC`, `0x44B10`) are not reached in any window
-  and stay unported.
+  `0x44970`, `0x45878`, `0x44CFC`, `0x44B10`) are not reached in any window.
+  **Since ported (§48-R).**
 - **`0x45AD0`** (`0x45AD0..0x45B14`): `ECX = slot`, `ESI = rec`;
   `0x3C4CC(rec, 0xEB64E)` with hold `0x40000000` (2.0) pushed; slot `+0x52`
   = 9, `+0x53` = 7, `+0x54` = 1, `+0x57` = 0 (`0x45AE7..0x45AF3`); `+0x0C` =
@@ -14117,7 +14117,7 @@ explained. N 3593 -> 3617, the exact pin (`e00ab15`).
 
 - `0x459D0` and `0x45A70`'s uncurl arm are ported and unit-tested but not
   reached by any oracle window.
-- Character 4's other reaction callbacks (48-A.2) are unported and not
+- Character 4's other reaction callbacks are ported since (§48-R) and not
   reached.
 - The capture ends at 3616, so the attract2 ratchet has no frame left to
   guard beyond it; a longer capture would be needed to go further.
@@ -14313,3 +14313,397 @@ tail's other arm clears it too) and the credit count after state 8.
     `0x4367C`), then `0x1B`, then mode `0x10` with the sub-state 0. That
     arm is the gap, so the character screen is built but its per-frame
     pass does not run.
+
+## 48-R. Character 4's remaining reaction callbacks `0x44F64`, `0x450E8`, `0x455A0`, `0x44970`, `0x45878`, `0x44CFC` and `0x44B10` (named-gap batch 11, branch `gap11-char4`)
+
+**Result in one line.** The seven character-4 reaction callbacks §48-A.2
+named as a gap are ported from the raw with everything they store or call
+that was not ported yet: 16 slot callbacks, 5 stream targets, the landing
+`0x45908`, the shared knockback `0x3A2A0` and the small helpers `0x3C0EC`,
+`0x3C1C8` and `0x3F6F4`. Also ported and registered are three stream
+targets of their streams that are not character-4 code: `0x37C24` (a dust
+spawn), `0x3E480` (a bare `RET`) and `0x385B0` (already ported, now also
+registered as a `0xD500` target). No oracle window reaches any of them
+(48-R.5). Nothing is left unported inside the seven callbacks' trees apart
+from the voices (§45-A's rule) and the runtime error exit `0x62003`.
+
+(The section letter is R, for reactions: the batch-11 branches run in
+parallel, so it takes a free letter rather than the next one. The branch is
+cut from `e12fd9d`, which does not contain `frame-3593`'s §48-A; the two
+touch the same append points in `fighter.c`, `fighter.h`, `actors.c` and
+`test_fight.c`, with distinct names, so they merge by keeping both.)
+
+### 48-R.1 The raw (`read_memory` + capstone over `0x44970..0x459D0`, fixups applied; Ghidra `disassemble_function` where it has a function)
+
+**The table.** `0x34E2C` reads the (char, reaction) record `0xA3528 +
+(char*64 + reaction)*20`. For character 4 the entries are, as dwords
+`callback, stream`: `0xA4BA8` (0x20) `0x44F64, 0`; `0xA4BBC` (0x21)
+`0x450E8, 0`; `0xA4BD0` (0x22) `0x455A0, 0`; `0xA4BE4` (0x23) `0x44970, 0`;
+`0xA4BF8` (0x24) `0x45878, 0`; `0xA4C0C` (0x25) `0x45AD0, 0` (§48-A);
+`0xA4C20` (0x26) `0x44CFC, 0`; `0xA4CAC` (0x2D) `0x44B10, 0`. With stream 0,
+`0x34E2C` plays nothing itself and calls the callback at `0x35045` with EAX
+= slot, EDX = rec, EBX = side. The raw returns AL; `0x34E2C`'s callers never
+read it (§48-A).
+
+The seven callbacks and their trees ("ctx" is `0x33950(side)`: ctx[0] =
+side, [1] = other, [2]/[3] their slots, [4]/[5] their records):
+
+- **`0x44970`** (reaction 0x23; no Ghidra function). ECX = slot; returns AL
+  = 0 while the slot's `+0x08` (a live projectile) is set. Else `0x3C4CC(rec,
+  0xEB4D6)` at 3.0, `+0x52/53/54 = 0x0B/6/0`, `+0x18 = +0x1C = 0` (`+0x0C`
+  kept), `+0x64 = +0x5F`, `+0x5F = 0xFF`, AL = 1. The stream `0xEB4D6` has
+  two `0xD000` targets, `0x449B8` (dword `0xEB4F2`) and `0x44A64` (dword
+  `0xEB4FE`). They are one body with the speed magnitude 0x180 and 0x200.
+  With the record's `+0x14` slot set: `0x2AE14(0xBB358, x = rec+0x18 -/+
+  0x1800, a3 = rec+0x30 >> 16, a4 = rec+0x1C + 0x1300, a5 = 0x4000 when the
+  record's `+0x28` bit 14 is clear, else 0)` into the slot's `+0x08`; its
+  `+0x34` = -speed (bit 14 clear) or +speed; its `+0x14` = the slot; for
+  side 1 (`rec+0x51`) its `+0x2E += 4` and `+0x4E = 1`; the voice `0xAB`.
+- **`0x44B10`** (reaction 0x2D; no Ghidra function). `0x2BC30(rec,
+  DSD(0xC8CD0) = 0xEA948)` at 4.0 and `+0x52/53/54 = 9/8/1`; AL = 1.
+- **`0x44CFC`** (reaction 0x26; no Ghidra function). EAX/EDX are overwritten
+  (`0x44CFF`/`0x44D01`); ctx = `0x33950(EBX)`. `0x3E3A8`'s shape: `0x3C4CC(
+  ctx[4], 0xC8950[ctx[2]'s char])` at 2.0, ctx[2]'s `7/9/0`, `+0x0C/+0x18/
+  +0x1C = 0x44C88/0x44B38/0x44BAC`, `+0x57 = 0`, `+0x41 |= 0x80`.
+  - `0x44C88` (+0x0C): ctx[2]'s `+0x57` 0 -> 1 once `+0x86 >> 16 > 3`; 1:
+    `0x2BC30(ctx[4], 0xEB44E)` at 4.0, `+0x52 = 9`, `+0x57 = 2`, `+0x8A = 0`;
+    above 1 returns.
+  - `0x44B38` (+0x18): `0x3E1D0`'s body with the boxes `0xC9300`/`0xC930A`
+    (`73`x7, `e0`x7).
+  - `0x44BAC` (+0x1C): `0x3E244`'s shape without `0x3E0F0`'s child. The flash
+    pair `0x34D8C(side)` keeps EDX = `0xEB3F4` for `0x2BC30(ctx[4], 0xEB3F4)`
+    at 2.0 (not `0x3C4CC`); `0x3C480(ctx[5], 0xC90F8[ctx[3]'s char])` at 2.0;
+    `0x3C208(side, word 0xC9314[ctx[3]'s char])` (0xC9314 holds the same
+    words as `0x3E244`'s `0xC759C` in the image); `0x18AF8`; `0x39834(ctx[1],
+    ctx[2]'s +0x5F)`; `0x3C358(side)` (EDX = 0x309 survives it); `0x39A10` on
+    both records with 0x309; the voice `0xC75AA[char]`; ctx[2]'s `+0x57 = 2`,
+    ctx[3]'s `+0x53 = 0x0F`. The stream `0xEB3F4` carries the `0xD100`
+    target `0x3E480` (dword `0xEB3FC`, a bare `RET` ending the function
+    before `0x3E484`) and the `0xD000` target `0x37C24` (dword `0xEB406`,
+    also `0xE1684` in another stream): with the byte `0x105B3A <= 1` and the
+    record's `+0x14` slot, `0x2AE14(0xBB0D8, 0, 0, 0, rec+0x56 | 0x400 | (the
+    record's +0x28 bit 14))`, its `+0x59 = +0x60 = 1`, and the slot record's
+    `+0x4B` = its index byte.
+- **`0x44F64`** (reaction 0x20; no Ghidra function). The `0x339AC(rec)`
+  context it builds is never read. `0x3E62C`'s shape: `0x3C4CC(rec, 0xEB4A4)`
+  at 3.0, `+0x57 = 2`, `9/7/2`, `+0x0C/+0x18/+0x1C = 0x44E64/0x44D78/0x44DB8`.
+  - `0x44E64` (+0x0C; ECX = slot for the switch, ctx for the writes): with
+    ctx[4]'s `+0x63 > 10`, ctx[2]'s `+0x8A = 0`. `+0x57`: 0: `0x39A10(ctx[4],
+    0x29A)`, then 1 once `(s16)ctx[4]+0x36 < 0`; 1: `0x39A10(ctx[4], 0)`, and
+    when `word 0xBD884[char] > ctx[2]+0x30` (signed): `+0x54 = 0`,
+    `0x2BC30(ctx[4], 0xC8B58[char])` at 3.0, `0x188AC(side, ctx[4]+0x18,
+    0)`, `0x3C148`, `0x3C16C`, `+0x57 = 2`; 2 returns; above 2 is
+    `0x62003(1)`.
+  - `0x44D78` (+0x18, Ghidra `FUN_00044d78`): `0x3E484`'s body.
+  - `0x44DB8` (+0x1C, `FUN_00044db8`): with `(s16)word 0x107D2C[side] >= 4`
+    the byte `0x1088BF = 3`; ctx[2]'s `+0x42 &= 0xFB`; `0x3A2A0(side, EDX =
+    -100, EBX = 0x64, ECX = 0x0F, push 0x14)`.
+  - `0x44E0C`, the `0xD500` target at `0xEB4BA`: with the record's `+0x14`
+    slot, the side is the slot record's `+0x51` (read at `0x44E25`, before
+    the stream starts); `0x2BC30(rec, 0xEB4C0)` at 3.0, `+0x36 = 0x258`,
+    `+0x44 = 0x1E`, `+0x34 = 0xC8` negated when `0x1A570(side)` holds, `+0x43
+    = 5`, the slot's `+0x57 = 0`.
+- **`0x450E8`** (reaction 0x21; no Ghidra function). EBX is loaded with
+  `rec+0x51` and never read as the side. `0x3C4CC(rec, 0xEB464)` at 2.0,
+  `9/7/0`, `+0x57 = 0`, `+0x0C/+0x18/+0x1C = 0x4505C/0x44FB4/0x44FF4`,
+  `0x3C0EC(rec+0x51, 0x20)`, `0x3C190(rec+0x51, 0x64)`, `+0x42 |= 4`, the
+  voice `0x47`.
+  - `0x3C0EC` (callers `0x45133`, `0x45269` only): the side's record takes
+    `+0x42 = DL` and `+0x34 = -DX` when `0x1A570(side)` holds, else DX. In
+    both callers `0x3C190` overwrites that `+0x34` next.
+  - `0x4505C` (+0x0C, `FUN_0004505c`), the jump table `0x45048` on the
+    slot's `+0x57` (entries `0x45082`, `0x450E0`, `0x450B9`, `0x450D6`,
+    `0x450E0`): 0 moves to 2 when `|(s16)rec+0x34| >= 0x300` or ctx[2]'s
+    `+0x86 >> 16 > 0x1E`; 2 zeroes `rec+0x34`, `0x2BC30(rec, 0xEB482)` at
+    3.0, `+0x57 = 4`; 1 and 4 return; 3 and above 4 are `0x62003(1)`.
+  - `0x44FB4` (+0x18): `0x3E484`'s body.
+  - `0x44FF4` (+0x1C): ctx[3]'s `+0x42 &= 0xFB`; ctx[2]'s `+0x57 = 2` unless
+    it is 4; `0x3A2A0(side, 0x32, 0xAA, 0x18, push 0x1A)`.
+- **`0x455A0`** (reaction 0x22, `FUN_000455a0`). ctx = `0x33950(EBX)`.
+  `0x3C4CC(rec, 0xEB516)` at 2.0; the slot `9/7/2`, `+0x57 = 0`. In mode
+  `0x25` (`DS_00104B00`): `+0x54 = 0`, `+0x0C = 0x45454`, `+0x18 = +0x1C =
+  0`; otherwise `+0x0C/+0x18/+0x1C = 0x452E4/0x45158/0x451EC`. Then ctx[2]'s
+  `+0x42 |= 4`, the word `0x1081E4[side]` = ctx[2]'s `+0x2C` word, the word
+  `0x1081E0[side]` = 0. The stream `0xEB516` has the `0xD000` target
+  `0x45238` (dword `0xEB51C`).
+  - `0x452E4` (+0x0C outside mode 0x25), the jump table `0x452D0` on ctx[2]'s
+    `+0x57` (`0x4544E`, `0x4531A`, `0x4536D`, `0x45395`, `0x45422`): 1: with
+    `d = |ctx[2]+0x2C - (s16)0x1081E4[side]|`, `d / 64 > 0x12C` (the `sar
+    edx,0x1f; shl edx,6; sbb; sar 6` idiom, truncating) sets the EAX slot's
+    `+0x57 = 2`; else `0x1081E0[side]++` and past `0x28` (signed) the same;
+    2: `0x3C148(side)` (EDX = `0xEB536` survives it), `0x2BC30(ctx[4],
+    0xEB536)` at 2.0, `+0x57 = 0`; 3: nothing if ctx[2]'s `+0x52 == 0x13`;
+    outside mode 0x25, with ctx[3]'s `+0x53 == 0x0A` and the byte `0x105B3A <
+    2`, `0x2AE14(0xC9324, 0, 0, 0, ctx[4]+0x56 | 0x400)` and the child's
+    `+0x60 = 1`; then `0x1081E8[side] = 0`, `+0x57 = 4`, `+0x42 &= 0xFB`,
+    `0x3C1C8(side, 0x12C)`, ctx[4]'s `+0x43 = 0x32`; 4: `0x1081E8[side]++`,
+    past `0x2D` (signed) `+0x57 = 2`; above 4 `0x62003(1)`.
+  - `0x3C1C8` (its one caller `0x45410`): ctx[4]'s `+0x34 = -v` while ctx[2]'s
+    `+0x2C` is below ctx[3]'s (signed), else v.
+  - `0x45454` (+0x0C in mode 0x25; EAX = slot, EDX = rec, EBX = side): 1:
+    with the command word `0x1088E0[side]`, bit `0x8000` raises `rec+0x32`
+    by 0x20 while `rec+0x30 >> 16 < word 0xBD898 + 3 * DSD(0xC980C) + 0x20`;
+    otherwise bit `0x4000` lowers it by 0x20 while `rec+0x30 >> 16 > word
+    0xBD898 - 3 * DSD(0xC980C) - 0x20` (signed compares). Then, when
+    `|slot+0x2C - (s16)0x1081E4[side]| / 64 > 0x12C`, `0x1081E0[side]++` and
+    past `0x14` `+0x57 = 2`. 2: `rec+0x29 |= 0x40`, `0x3C148(side)`,
+    `0x2BC30(rec, 0xEB540)` at 2.0, bytes `0x1088B9 = 1` and `0x1088B8 += 1`,
+    `rec+0x32 = word 0xBD898`, `+0x57 = 0`. 0 returns; others `0x62003(1)`.
+    The stream `0xEB540` ends on the `0xD500` target `0x385B0` (dword
+    `0xEB546`), `fighter_385b0` (already ported for `0x36870`).
+  - `0x45158` (+0x18): r = `0x18C14` with `0x3E484`'s flags; when r == 0,
+    the mode is not `0x25`, and ctx[3]'s `+0x5F == 0x22` and `+0x7A == 4`
+    (the other fighter is character 4 in this same reaction), the word
+    `0x108892++`. It returns r when ctx[2]'s `+0x57 == 1`, else 1.
+  - `0x451EC` (+0x1C): ctx[2]'s `+0x18 = 0`, `+0x42 &= 0xFB`, `+0x57 = 3`;
+    `0x3A2A0(side, -0x190, 0x64, 0x0F, push 0x14)`.
+  - `0x45238`, the `0xD000` target: with the record's `+0x14` slot,
+    `rec+0x24 = 1.0` and the slot's `+0x57 = 1`. Outside mode 0x25:
+    `0x3C0EC(rec+0x51, 0x20)` and `0x3C190(rec+0x51, 0x12C)`. In mode 0x25:
+    the side's slot record's `+0x42 = 8` and `+0x34 = 0xFF38`, and
+    `rec+0x29 &= 0xBF`. Then the voice `0x7B`.
+- **`0x45878`** (reaction 0x24, `FUN_00045878`). `0x2BC30(rec, 0xEB58C)` at
+  3.0 (not `0x3C4CC`); `rec+0x53 = rec+0x59 = 1`; the slot `9/7/1`, `+0x57 =
+  0`, `+0x0C/+0x18/+0x1C = 0x4579C/0x45640/0x456A8`, the word `+0x88 = 0`,
+  `+0x42 |= 4`. The stream `0xEB58C` has the `0xD000` target `0x458D4`
+  (dword `0xEB592`): with the record's `+0x14` slot, the slot's `+0x54 = 2`,
+  `+0x57 = 1`, `rec+0x36 = 0x3B6`, `rec+0x44 = 0x26` (its `0x339AC` context
+  is unread).
+  - `0x4579C` (+0x0C), the jump table `0x45788` on the EAX slot's `+0x57`
+    (`0x45872`, `0x457C3`, `0x45806`, `0x45844`, `0x45872`; `ja 0x45872`, no
+    error exit): 1: `0x3F720(side, 0x3F6F4(side, 0x2A))`, then once ctx[4]'s
+    `+0x36` is negative, `+0x36 = 0xFB50`, `+0x44 = 0x3C`, ctx[2]'s `+0x57 =
+    2`; 2: the same speed, then like 3; 3: `0x45908(ctx[4])` when `(word
+    0xBD884[char]) - 0x500 > ctx[2]+0x30` (signed).
+  - `0x3F6F4` (7 callers; here `0x457CB`/`0x4580E`): `n - (ctx[2]+0x86 >>
+    16)`, or 0 when negative (`xor eax,ebx` on equal registers).
+  - `0x45908` (`FUN_00045908`, called only at `0x4586D`): ctx = `0x339AC(rec)`;
+    nothing without the record's `+0x14` slot or `DS_001077A8[(rec+0x51) ^
+    1]`. Else `rec+0x1C = 0`, `0x3C148`/`0x3C16C(ctx[0])`, the slot's `+0x54
+    = 0`, `+0x57 = 4`, `0x3C480(ctx[4], 0xEB61E)` at 1.0, ctx[2]'s `+0x8A =
+    0`. With the other slot's `+0x52 == 0x0F`: `0x2AE14(0xBB0EC, rec+0x18,
+    rec+0x30 >> 16, 0, 0)` when the byte `0x105B3A < 2`, and the voice
+    `0x46`; else the voices `0x6C` and `0x72`. Then the slot's `+0x8A = 0`.
+  - `0x45640` (+0x18): 1 unless ctx[2]'s `+0x57 == 2`; else `0x18C14` with
+    flags 0 and 5 = 1, flags 1, 4 and 8 = 0, EBX = `0xC9338`, ECX =
+    `0xC9342` (loaded before `0x18BD4`, which only writes the flag bytes).
+  - `0x456A8` (+0x1C): with `0x3B298(ctx[1], ctx[2]'s +0x5F)` non-zero,
+    `0x3B714(ctx[3], ctx[2])`. Else `0x2BC30(ctx[5], 0xC9198[ctx[3]'s char])`
+    at 3.0, `0x188AC(ctx[1], ctx[5]+0x18, 0)`, ctx[3]'s `0x0F/4/0`,
+    `0x39A10` on both records with 0x309, `0x39834(ctx[1], +0x5F)`, ctx[2]'s
+    `+0x42 |= 4`. Both arms then run `0x3C148(side)`, set ctx[2]'s `+0x57 =
+    3` and call `0x34D8C(side)`.
+- **`0x3A2A0`** (`FUN_0003a2a0`; callers `0x21023`, `0x44DFF`, `0x45039`,
+  `0x4522B`; `RET 4`). ctx = `0x33950(side)`. EDX/EBX are kept in EDI/ESI;
+  ECX survives every callee (`0x33950` does not write it, and `0x3AFC4`,
+  `0x3B298`, `0x3A0FC`, `0x18B04`, `0x2C3FC` and `0x2C3FC`'s callees push
+  it). It builds the triple `0x3AFC4(side, ctx[2]'s +0x5F)` and takes r =
+  `0x3B298(ctx[1], +0x5F)`, then clears ctx[2]'s `+0x8A` and `+0x18`.
+  - r == 0: the voice `0xBE008[ctx[3]'s char]` when `0x3A280(+0x5F)` holds;
+    `0x3A0FC(side)`; `0x18B04(ctx[1])`; `0x39F40(ctx[1], EDX, EBX, ECX, the
+    stack word)`; `0x39834(ctx[1], +0x5F)`; ctx[3]'s `+0x41 |= 0x80`;
+    returns 0.
+  - Otherwise: `0x3B080(ctx[1], byte triple[0]+3, byte triple[0]+2, 1)`
+    unless ctx[3]'s `+0x54 == 2`; ctx[2]'s `+0x8A = 0`; both slots' `+0x42
+    &= 0xFB`; `0x3AD98(ctx[1], triple)`; returns 1.
+
+  The `+0x54 == 2` gate cannot close after a non-zero `0x3B298`. That call
+  returns 1 only at `0x3B448`. Just before, `0x3B40D` or `0x3B43B` sets
+  exactly one of that slot's `+0x43` bits `0x20`/`0x10`, and `0x3B443`
+  calls `0x1A734`, which stores its `+0x54 = 0` (`0x1A77E`, bit `0x20`) or
+  `1` (`0x1A7A1`, bit `0x10`). **Correction (review):** the first version of
+  this record cited `0x1AB10`/`0x1AC73`. `0x1AC73` runs earlier, and
+  `0x1A734` overwrites what it stores.
+
+### 48-R.2 Entrances (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object, a dword scan of both fixed-up objects; the objects dumped through `read_memory`)
+
+| target | code dword | data dword | rel32 | Ghidra xrefs |
+|---|---|---|---|---|
+| `0x44F64` | none | `0xA4BA8` | none | 0 |
+| `0x450E8` | none | `0xA4BBC` | none | 0 |
+| `0x455A0` | none | `0xA4BD0` | none | 0 |
+| `0x44970` | none | `0xA4BE4` | none | 0 |
+| `0x45878` | none | `0xA4BF8` | `0x46148` (in `0x46138`) | 1 (`0x46148`) |
+| `0x44CFC` | none | `0xA4C20` | none | 0 |
+| `0x44B10` | none | `0xA4CAC` | none | 0 |
+| `0x44C88`, `0x44B38`, `0x44BAC` | `0x44D48`, `0x44D53`, `0x44D5E` (in `0x44CFC`) | none | none | 0 |
+| `0x44E64`, `0x44D78`, `0x44DB8` | `0x44F98`, `0x44F9F`, `0x44FA8` (in `0x44F64`) | none | none | 1 each |
+| `0x4505C`, `0x44FB4`, `0x44FF4` | `0x45117`, `0x4511E`, `0x45125` (in `0x450E8`) | none | none | 1 each |
+| `0x45454` | `0x455E7` (in `0x455A0`) | none | none | 1 |
+| `0x452E4`, `0x45158`, `0x451EC` | `0x455FE`, `0x45605`, `0x4560C` (in `0x455A0`) | none | none | 1 each |
+| `0x4579C`, `0x45640`, `0x456A8` | `0x458AA`, `0x458B1`, `0x458B8` (in `0x45878`) | none | none | 1 each |
+| `0x449B8`, `0x44A64` | none | `0xEB4F2`, `0xEB4FE` | none | 0 |
+| `0x44E0C` | none | `0xEB4BA` | none | 0 |
+| `0x45238` | none | `0xEB51C` | none | 0 |
+| `0x458D4` | none | `0xEB592` | none | 0 |
+| `0x45908` | none | none | `0x4586D` | 1 |
+| `0x37C24` | none | `0xE1684`, `0xEB406` | none | 0 |
+| `0x3E480` | none | `0xEB3FC` | none | 0 |
+| `0x385B0` | none | `0xEB546` | `0x36884` | 1 |
+| `0x3A2A0` | none | none | `0x21023`, `0x44DFF`, `0x45039`, `0x4522B` | 4 |
+| `0x3C0EC` | none | none | `0x45133`, `0x45269` | 2 |
+| `0x3C1C8` | none | none | `0x45410` | 1 |
+| `0x3F6F4` | none | none | `0x233E5`, `0x23439`, `0x3FA3D`, `0x457CB`, `0x4580E`, `0x48815`, `0x48868` | 7 |
+| `0x46138` | none | `0xEB184` | none | 0 |
+
+A dword scan for every value in `0x44900..0x45B20` finds only the entries
+above, the jump tables `0x45048`/`0x452D0`/`0x45788` (their own cases),
+§48-A's `0x45Axx` callbacks and `0xEB70E` (`0x45B18`, past this range's
+code). The hits at `0x1C134`, `0x1C184`, `0x1C1A9`, `0x1C1B0`, `0x1C1F7`,
+`0x1D108`, `0x1D12B`, `0x1D18E`, `0x1D2B6`, `0x208B5`, `0x24FBF`, `0x2C48B`,
+`0x691E0`, `0x6FCB2`, `0x71BBB` and the data dword at `0xD0221` are
+instruction or table bytes that happen to read as such a value (most are
+the displacement bytes of rel32 calls, `e8 xx xx 04 00`). Their values
+(`0x45938`, `0x4529B`, `0x45359`, `0x4526F`, `0x45875`, `0x44964`, `0x45605`,
+`0x455A2`, `0x44D49`, `0x44B34`, `0x44BE9`, `0x45885`, `0x45090`, `0x45383`,
+`0x45783`, `0x44E04`) all fall inside function bodies; none is an entry
+listed here. **`0x45878` has a second
+entrance.** `0x46138`, the `0xD500` target at `0xEB184` (the opcode word
+at `0xEB182` is `0xD500`), calls it with EBX
+= 0, then sets the slot's `+0x5F = 0x24`, `+0x8A = 1`, `+0x74 = 0`, `+0x40 &=
+0xFFF7EFFF` and the bytes `0xF0AFE = 1`, `0xF0AFC = 0x100`. It is not
+character-4 reaction code and stays a named gap (48-R.5).
+
+### 48-R.3 The port
+
+- `fighter.c`, appended: `fighter_3a2a0` (exported), the static
+  `fighter_3c0ec`, `fighter_3c1c8` and `fighter_3f6f4`, and the 29
+  character-4 functions `fighter_44970`, `fighter_449b8`, `fighter_44a64`,
+  `fighter_44b10`, `fighter_44b38`, `fighter_44bac`, `fighter_44c88`,
+  `fighter_44cfc`, `fighter_44d78`, `fighter_44db8`, `fighter_44e0c`,
+  `fighter_44e64`, `fighter_44f64`, `fighter_44fb4`, `fighter_44ff4`,
+  `fighter_4505c`, `fighter_450e8`, `fighter_45158`, `fighter_451ec`,
+  `fighter_45238`, `fighter_452e4`, `fighter_45454`, `fighter_455a0`,
+  `fighter_45640`, `fighter_456a8`, `fighter_45908`, `fighter_4579c`,
+  `fighter_45878` and `fighter_458d4`. `0x449B8` and `0x44A64` share the
+  static `fighter_c4_spawn` (their bodies differ only in one immediate, the
+  precedent of `fighter_pose_commit`). The data addresses symbols.h does not
+  name are local `FIGHT_C4_*` defines. `0x2BC30` is `actors_anim_begin`,
+  `0x3C4CC` `hit_anim_start_b`, `0x3C480` `hit_anim_start_a`, `0x39F40`
+  `fighter_pose_start`, `0x3B298` `fighter_command_dispatch`, `0x3B714`
+  `fighter_reaction`.
+- `actors.c`: all 31 registered after the §43-C block: the seven
+  callbacks and the 16 slot callbacks directly, the stream targets through
+  `(rec, arg)` wrappers (`anim_code_449B8`, `_44A64`, `_44E0C`, `_45238`,
+  `_458D4`, `_385B0`). Each raw target pushes EDX and writes it before any
+  read, so the wrappers drop the operand. `0x37C24` and `0x3E480` are ported
+  as their wrappers' bodies (`anim_code_37C24`, `anim_code_3E480`).
+- `PORT:` markers: the voices (§45-A's rule) and the `0x62003(1)` exits.
+
+### 48-R.4 The assertions and mutations (`check_char4_react_a/b/c` in `test_fight.c`)
+
+Each check runs between `g2_save` and `g2_restore` (the whole data object
+and both pools), so its stream-head and table patches and every global it
+seeds are put back. The seeds are `c3_seed` with side 0 character 4 and the
+character-4 stream heads patched to plain frame words `0x1400 + k`, and, for
+the hooks and `0x3A2A0`, `sh_seed` and `pose_chain_setup` with sentinels.
+
+- **a**: the eight table entries and the streams' target dwords from the
+  loaded image; `0x44970` through `0x34E2C` (reaction 0x23), with a live
+  projectile, and on side 1; `0x449B8`/`0x44A64` through their wrappers,
+  both facings, side 1, no slot; `0x44B10` through `0x34E2C` (0x2D) and on
+  side 1; `0x44CFC` through `0x34E2C` (0x26) and with side-1 registers and
+  EBX = 0; a 7-row table for `0x44C88`; `0x44B38` as check_slot_hook's O on
+  its boxes (edges 7360/7361 and 14336/14337) and through `0x19020`;
+  `0x44BAC` both ways round, with `0xC9314[2]` patched to 0x1100 so it
+  differs from `0xC759C`.
+- **b**: `0x44F64` through `0x34E2C` (0x20) and on side 1; `0x44E64`'s gate,
+  rise, landing edge `0x1800`/`0x17FF`, the landing's writes and the
+  switch's EAX slot; `0x44D78`/`0x44FB4` as N; `0x44DB8` and `0x44FF4` on
+  `0x3A2A0`'s r == 0 arm (the four pose words per side); the `0x107D2C`
+  gate for both sides with signed values; `0x3A2A0` directly on both arms;
+  `0x44E0C` (the slot record's side); `0x450E8` through `0x34E2C` (0x21),
+  hflipped, and on side 1; a 9-row table for `0x4505C`, its case 2 and the
+  EBX slot's `+0x86`.
+- **c**: `0x455A0` through `0x34E2C` (0x22), in mode 0x25, and with EAX side
+  1 / EBX side 0; `0x452E4`'s case 1 (the /64 edge 19263/19264, a negative
+  d, the sign-extended latch, the count's `0x28` edge and its signed wrap),
+  EAX/EBX split, case 2, a 6-row case-3 table (every spawn gate, both
+  `0x3C1C8` signs), the child's flags, case 4's edge and signed wrap, case 0
+  and the error exit; `0x45454`'s y steering (a 7-row table with the band
+  patched), the count, side 1, case 2 and case 0; a 7-row table for
+  `0x45158`; `0x451EC`; `0x45238` in both modes, on side 1 and with no
+  slot; `0x45878` through `0x34E2C` (0x24) and directly with `+0x52 = 9`
+  (so a `0x3C4CC` would zero `+0x1C`); `0x4579C` case 1 (four `+0x86`
+  values, `0x3F6F4`'s n through `0x3F720`'s quotient) and its fall, cases
+  2/3 at the `0x1300` edge, and 0/4/5; `0x45908`'s dust gates, its writes and
+  its two early exits, and side 1's other-slot index; `0x45640` (the box
+  edges 4096/4097 and 6336/6337, flags 4/8/1/0, the `+0x57` gate, side 1);
+  `0x456A8` on both arms; `0x458D4`; `0x37C24` (the spawn and its gates);
+  `0x3E480`; `0x385B0`'s wrapper.
+
+**Mutations** (`mut.py` in the session scratchpad: one source edit, a
+rebuild, `PR_ORACLE_REQUIRED=1 ./build/run_tests`, then the edit is
+reverted). 193 mutations were run over every function, its gates, constants,
+signs and argument orders, the registrations and the wrappers. 188 fail the
+suite. Five survive:
+- deleting `0x3A2A0`'s `+0x54 == 2` gate. It cannot close (48-R.1), so no
+  assertion can kill it.
+- four equivalent mutants, which is why none of them has an assertion:
+  - `0x3C0EC`'s `+0x34` negation: both callers call `0x3C190` next, and it
+    overwrites `+0x34`;
+  - `0x3F6F4`'s clamp to 0: its only result reaches `0x3F720`, which clamps
+    n < 1 to 1 itself;
+  - `0x451EC`'s own `+0x18 = 0`: `0x3A2A0` clears the same slot's `+0x18` at
+    `0x3A2F0`;
+  - `0x45908`'s `rec+0x1C = 0`: its `0x3C480` runs `0x188AC(side, x, 0)` on
+    the same record.
+
+**Correction (review).** The first version counted 191 mutations, 185 of
+them failing, and listed six survivors as equivalent. Two of them were not:
+- `0x44BAC` starting ctx[4] through `0x3C4CC` instead of `0x2BC30`;
+- ctx[5] through `0x3C4CC` instead of `0x3C480`.
+
+`0x3C480`'s `0x188AC` zeroes the record's `+0x1C` before `0x3C208`'s
+latches store `slot+0x30 = rec+0x1C + DS_00100AB4[side]`. `0x3C358` clears
+the records' `+0x1C` later, but never re-latches. The test now seeds the
+thrower's `+0x52 = 9` (what `0x44CFC` leaves) and asserts the latched y:
+9000 on the thrower's slot, 3200 (448 mirrored) on the other. Both mutants
+now fail. Two mutants were added:
+- `0x3C1C8`'s `<` to `<=`. The raw's `jge` sends equal x to `+v`; a
+  case-3 row at x `0x80` now kills it;
+- the gate deletion above.
+
+Four first-attempt edits matched twice (shared text with `0x3B714`'s
+`0x3B080` call and with other `0x39A10`/command-word reads). They were
+re-anchored on their address comments and all four fail the suite.
+
+### 48-R.5 Measured and remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, with 0
+  compiler warnings. As the brief requires, the branch ran neither `make
+  verify` nor the drivers.
+- **Frames.** `prageport --check 8000` was run from two scratch directories,
+  once with the base binary (`e12fd9d`) and once with this branch's
+  (`d0e67f0`). All 24000 `frame_*.ppm`/`.pal`/`.idx` files are
+  byte-identical (`diff -rq`). Both binaries lack §48-A, so this says
+  nothing about main after the merge.
+- **Oracles.** Two pieces of evidence:
+  - §48-A.1's `fn_resolve` miss log over the whole 4100-loop driver run (the
+    front-end/attract window) shows one miss besides the stub, the zero
+    address and the boot miss `0x41578`: `0x45AD0`. That log was taken
+    before `0x45AD0` was registered, so it covers the run only up to
+    f = 4914.
+  - From f = 4914 on, the port runs §48-A's code. There the coverage is
+    §48-A.6's live-RAM poll, which matches the port through f = 4986, the
+    driver's last frame. The poll shows no slot state from these reactions
+    (none of their state bytes or callbacks), so none of them fires.
+
+  So no character-4 callback, slot callback or stream target registered here
+  is expected to be resolved in any oracle window, including `0x37C24`
+  through `0xE1684`. The direct callees (`0x3A2A0`, `0x3C0EC`, `0x3C1C8`,
+  `0x3F6F4`) are reached only from them. No oracle is expected to move.
+  **The controller's post-merge `make verify` is the real gate.** The driver
+  is the controller's to run, so it was not re-measured here.
+- **Remaining named gaps:**
+  - the voices (`0x2C3FC`) in `0x3A2A0`, `0x449B8`/`0x44A64`, `0x44BAC`,
+    `0x450E8`, `0x45238` and `0x45908`, by §45-A's rule;
+  - the `0x62003(1)` error exits of `0x44E64`, `0x4505C`, `0x452E4` and
+    `0x45454` (out of scope, as elsewhere);
+  - `0x46138`, the `0xD500` target at `0xEB184` that calls `0x45878`
+    (48-R.2). It is not a reaction callback and is not reached;
+  - `0x20FE0`, `0x3A2A0`'s fourth caller, and the five other `0x3F6F4`
+    callers (`0x233E5`, `0x23439`, `0x3FA3D`, `0x48815`, `0x48868`), are
+    outside this batch;
+  - `0xEB70E`'s `0xD100` target `0x45B18`, just past §48-A's `0x45AD0`, is
+    not in these streams and was not examined.

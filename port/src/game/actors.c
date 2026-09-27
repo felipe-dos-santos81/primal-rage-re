@@ -142,6 +142,14 @@ static void reaction_cb_23130(u32 slot, u32 rec, u32 side);
 static void reaction_cb_23178(u32 slot, u32 rec, u32 side);
 static void anim_code_236D8(u32 rec, u32 arg);
 static void anim_code_2372C(u32 rec, u32 arg);
+static void anim_code_449B8(u32 rec, u32 arg);
+static void anim_code_44A64(u32 rec, u32 arg);
+static void anim_code_44E0C(u32 rec, u32 arg);
+static void anim_code_45238(u32 rec, u32 arg);
+static void anim_code_458D4(u32 rec, u32 arg);
+static void anim_code_37C24(u32 rec, u32 arg);
+static void anim_code_3E480(u32 rec, u32 arg);
+static void anim_code_385B0(u32 rec, u32 arg);
 static void anim_code_246D4(u32 rec, u32 arg);
 static void actor_type_2d_update(void);
 static void actor_type_19_spawn(void);
@@ -356,6 +364,49 @@ int actors_init(void)
     fn_register(0x23178u, (void (*)(void))reaction_cb_23178);
     fn_register(0x236D8u, (void (*)(void))anim_code_236D8);
     fn_register(0x2372Cu, (void (*)(void))anim_code_2372C);
+    /* PORT: record §48-R. Character 4's reaction callbacks (*(u32*) 0xA4BA8
+     * 0x44F64, 0xA4BBC 0x450E8, 0xA4BD0 0x455A0, 0xA4BE4 0x44970, 0xA4BF8
+     * 0x45878, 0xA4C20 0x44CFC, 0xA4CAC 0x44B10; the (slot, rec, side)
+     * registers) and the callbacks they store: +0x0C (0x3531C case 7, same
+     * registers) 0x44E64, 0x4505C, 0x452E4, 0x45454, 0x4579C, 0x44C88; +0x18
+     * (0x19020, fn(side) with EAX returned) 0x44D78, 0x44FB4, 0x45158,
+     * 0x45640, 0x44B38; +0x1C (0x193B0's 0x19505, fn(side)) 0x44DB8, 0x44FF4,
+     * 0x451EC, 0x456A8, 0x44BAC. Their streams' targets: 0xD000 0x449B8/
+     * 0x44A64 (dwords 0xEB4F2/0xEB4FE in 0xEB4D6), 0xD500 0x44E0C (0xEB4BA in
+     * 0xEB4A4), 0xD000 0x45238 (0xEB51C in 0xEB516), 0xD000 0x458D4 (0xEB592
+     * in 0xEB58C), 0xD000 0x37C24 (0xEB406 in 0xEB3F4, also 0xE1684), 0xD100
+     * 0x3E480 (0xEB3FC in 0xEB3F4) and 0xD500 0x385B0 (0xEB546 in 0xEB540). */
+    fn_register(0x44F64u, (void (*)(void))fighter_44f64);
+    fn_register(0x450E8u, (void (*)(void))fighter_450e8);
+    fn_register(0x455A0u, (void (*)(void))fighter_455a0);
+    fn_register(0x44970u, (void (*)(void))fighter_44970);
+    fn_register(0x45878u, (void (*)(void))fighter_45878);
+    fn_register(0x44CFCu, (void (*)(void))fighter_44cfc);
+    fn_register(0x44B10u, (void (*)(void))fighter_44b10);
+    fn_register(0x44E64u, (void (*)(void))fighter_44e64);
+    fn_register(0x4505Cu, (void (*)(void))fighter_4505c);
+    fn_register(0x452E4u, (void (*)(void))fighter_452e4);
+    fn_register(0x45454u, (void (*)(void))fighter_45454);
+    fn_register(0x4579Cu, (void (*)(void))fighter_4579c);
+    fn_register(0x44C88u, (void (*)(void))fighter_44c88);
+    fn_register(0x44D78u, (void (*)(void))fighter_44d78);
+    fn_register(0x44FB4u, (void (*)(void))fighter_44fb4);
+    fn_register(0x45158u, (void (*)(void))fighter_45158);
+    fn_register(0x45640u, (void (*)(void))fighter_45640);
+    fn_register(0x44B38u, (void (*)(void))fighter_44b38);
+    fn_register(0x44DB8u, (void (*)(void))fighter_44db8);
+    fn_register(0x44FF4u, (void (*)(void))fighter_44ff4);
+    fn_register(0x451ECu, (void (*)(void))fighter_451ec);
+    fn_register(0x456A8u, (void (*)(void))fighter_456a8);
+    fn_register(0x44BACu, (void (*)(void))fighter_44bac);
+    fn_register(0x449B8u, (void (*)(void))anim_code_449B8);
+    fn_register(0x44A64u, (void (*)(void))anim_code_44A64);
+    fn_register(0x44E0Cu, (void (*)(void))anim_code_44E0C);
+    fn_register(0x45238u, (void (*)(void))anim_code_45238);
+    fn_register(0x458D4u, (void (*)(void))anim_code_458D4);
+    fn_register(0x37C24u, (void (*)(void))anim_code_37C24);
+    fn_register(0x3E480u, (void (*)(void))anim_code_3E480);
+    fn_register(0x385B0u, (void (*)(void))anim_code_385B0);
     /* PORT: record §46-C. Character 1's entry 0x24568 of the per-character
      * table 0xA8628 (the dword at 0xA862C), fn(side): its three dispatchers
      * 0x25F27/0x27732/0x2989C (modes 5, 0xD and 0x32) are unported. And the
@@ -1313,6 +1364,96 @@ static void anim_code_2372C(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_2372c(rec);
+}
+
+/* 0x449B8 — the animation-opcode target shape (record §48-R; the 0xD000
+ * word at 0xEB4F0, opcode 0x10). The raw pushes EDX at 0x449BA and writes it
+ * at 0x449E8/0x449F2 before any read, so this wrapper drops the operand. */
+static void anim_code_449B8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_449b8(rec);
+}
+
+/* 0x44A64 — the animation-opcode target shape (record §48-R; the 0xD000
+ * word at 0xEB4FC, opcode 0x10). EDX is pushed at 0x44A66 and written at
+ * 0x44A94/0x44A9E before any read. */
+static void anim_code_44A64(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_44a64(rec);
+}
+
+/* 0x44E0C — the animation-opcode target shape (record §48-R; the 0xD500
+ * word at 0xEB4B8, opcode 0x15). EDX is pushed at 0x44E0E and written at
+ * 0x44E20 before any read. */
+static void anim_code_44E0C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_44e0c(rec);
+}
+
+/* 0x45238 — the animation-opcode target shape (record §48-R; the 0xD000
+ * word at 0xEB51A, opcode 0x10). EDX is pushed at 0x45239 and written at
+ * 0x45261/0x4527F before any read. */
+static void anim_code_45238(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_45238(rec);
+}
+
+/* 0x458D4 — the animation-opcode target shape (record §48-R; the 0xD000
+ * word at 0xEB590, opcode 0x10). EDX is pushed at 0x458D5 and written at
+ * 0x458DB before any read. */
+static void anim_code_458D4(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_458d4(rec);
+}
+
+/* PORT: a data-object address symbols.h does not name. */
+#define ANIM_DESC_37C24 0x000BB0D8u  /* 0x37C6D: the dust descriptor */
+
+/* 0x37C24 — the animation-opcode target shape (record §48-R; the 0xD000
+ * words at 0xEB404 in character 4's 0x44BAC stream 0xEB3F4 and at 0xE1682).
+ * EAX = rec; EDX is pushed at 0x37C26 and zeroed at 0x37C28 before any read.
+ * Nothing when the byte 0x105B3A is above 1 or without the record's +0x14
+ * slot. Else the 0xBB0D8 dust as the record's child (a5 = the record's +0x56
+ * | 0x400, | 0x4000 with the record's +0x28 bit 14; the other arguments 0),
+ * its +0x59/+0x60 = 1, and the slot's record's +0x4B = the child's +0x56
+ * byte. */
+static void anim_code_37C24(u32 rec, u32 arg)
+{
+    u32 slot, a5, child;
+    (void)arg;
+    if ((u32)DSB(DS_00105B3A) > 1u) return;                 /* 0x37C28..0x37C33 */
+    slot = DSD(rec + 0x14u);                                /* 0x37C35 */
+    if (slot == 0u) return;                                 /* 0x37C38/0x37C3A */
+    a5 = (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u; /* 0x37C3C..0x37C4D */
+    child = actor_spawn((const u32 *)(mem + ANIM_DESC_37C24), 0u, 0u, 0u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u) | a5);   /* 0x37C52..0x37C72 0x2AE14 */
+    DSB(child + 0x59u) = 1u;                                /* 0x37C77 */
+    DSB(child + 0x60u) = 1u;                                /* 0x37C7B */
+    DSB(DSD(slot) + 0x4Bu) = DSB(child + 0x56u);            /* 0x37C7F..0x37C84 */
+}
+
+/* 0x3E480 — the animation-opcode target shape (record §48-R; the 0xD100
+ * word at 0xEB3FA in character 4's 0x44BAC stream 0xEB3F4, opcode 0x11). The
+ * raw is the bare RET that ends the function before 0x3E484. */
+static void anim_code_3E480(u32 rec, u32 arg)
+{
+    (void)rec;
+    (void)arg;
+}
+
+/* 0x385B0 — the animation-opcode target shape (record §48-R; the 0xD500 word
+ * at 0xEB544 in character 4's 0x45454 stream 0xEB540, opcode 0x15; also
+ * called by 0x36870 at 0x36884). EAX = rec; EDX is pushed at 0x385B2 and
+ * written at 0x385C5 before any read. */
+static void anim_code_385B0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_385b0(rec);
 }
 
 /* 0x246D4 — the animation-opcode target shape (record §46-C). PORT: the raw
