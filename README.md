@@ -10,6 +10,15 @@ It is a **32-bit protected-mode WATCOM C/C++32 program** shipped as a
 **Microsoft DOS/4GW *bound* Linear Executable (LE)**. There is no 16-bit real
 mode game code: everything interesting lives in two LE objects (code + data).
 
+## Game assets
+
+The original game files are **not included** in this repository and are
+required to build, run, or reverse-engineer anything here. Download them (e.g. from
+[myabandonware](https://www.myabandonware.com/game/primal-rage-2vr)) and
+place them under `data/game/C/` (`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound
+drivers). `data/` is git-ignored and read-only — the tools and tests never
+write to it.
+
 ## Layout
 
 | Path | What |
