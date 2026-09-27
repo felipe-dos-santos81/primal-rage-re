@@ -4738,8 +4738,9 @@ static s32 fighter_39b14(s32 a, s32 b)
 
 /* 0x35050. The slot +0x14 callback runs, called first by the +0x10 handler
  * 0x39CC8 (0x39CD9) and by 0x22C60: with slot[side]+0x14 set, call it with the
- * slot and zero the field when it returns non-zero. No ported writer stores a
- * non-zero +0x14 (the spawn zeroes it at 0x33DFE). */
+ * slot and zero the field when it returns non-zero. The spawn zeroes +0x14 at
+ * 0x33DFE; the ported non-zero writers are 0x22B28 (0x22B6F) and 0x22BEC
+ * (0x22CD7), both storing 0x29D04 (record §41-C). */
 static void fighter_35050(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x35062..0x35078 */
@@ -5350,7 +5351,7 @@ static void fighter_39834(u32 side, s32 b)
 #define FIGHTER_22B28_PAL 0x0105FDB0u   /* 0x22B59: the 0x13C70 handle (EBX) */
 #define FIGHTER_BDC2C     0x000BDC2Cu   /* 0x3713E: [char] 0x370F0 stream */
 
-/* 0x33ACC. Copy slot[side]'s 0x94 bytes to `dst` (EDX) and its record's 0x68
+/* 0x33ACC — record §41-C. Copy slot[side]'s 0x94 bytes to `dst` (EDX) and its record's 0x68
  * bytes to `dst2` (EBX). EAX = side. */
 static void fighter_33acc(u32 side, u32 dst, u32 dst2)
 {
@@ -5359,7 +5360,7 @@ static void fighter_33acc(u32 side, u32 dst, u32 dst2)
     memcpy(mem + dst2, mem + DSD(slot), 0x68u);         /* 0x33AF2/0x33AF9 rep movsd 0x1A */
 }
 
-/* 0x22B28. The freeze start 0x235C4 (0x23650) and 0x22CE4 (0x22D78) run on
+/* 0x22B28 — record §41-C. The freeze start 0x235C4 (0x23650) and 0x22CE4 (0x22D78) run on
  * their 0x33A10 context (EAX = &ctx; ECX keeps it across the calls): a
  * palette effect on the side's pset entry, the +0x14 callback 0x29D04, the
  * 0x10474C tick at 0, the record's motion cleared (0x3C16C, 0x3C148, +0x24

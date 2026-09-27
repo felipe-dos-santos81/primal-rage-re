@@ -7505,8 +7505,9 @@ at `0x22BEC` or `0x29D04`; those two were decoded with capstone from
 - `0x22BEC`: no rel32. Code dwords at `0x22D67` and `0x23634` (the `+0x10`
   stores of `0x22CE4` and `0x235C4`) and at `0x22DDE`, `0x23094`, `0x2368D`,
   `0x468AC`, `0x468EF` (`cmp [reg+0x10],0x22BEC` identity tests; the port's
-  `0x46898`/`0x468D8` already test it). None in the data object. So it runs
-  only through `0x3531C` case 10.
+  `0x46898`/`0x468D8` already test it). None in the data object. The code
+  object's only `call [reg+0x10]` is `0x354E2` (`0x3531C` case 10), so it runs
+  only through case 10.
 - `0x29D04`: no rel32; code dwords at `0x22B72` and `0x22CDA` only (the two
   `+0x14` stores above), none in data.
 - `0x370F0`: rel32 `call`s at `0x48BC3` (`0x48AAC`) and `0x48F36`
@@ -7546,11 +7547,17 @@ snapshot area on `0xEE`, `DS_001014F0` = 0 (`res_resolve` returns NULL) and a
 crafted effect free list. It saves and restores the slots, `DS_001077A8`,
 `0x104530..0x104727`, `0x10474C`, `0x10476C`, `0xFCCE0..0xFCCEF`,
 `0x9AF3C/3D`, the palette table `0x107618..0x10779B`, `0xA8A98[0..2]`,
-`0x105B34`, `0x107D20..0x107D5F`, `0x104B00`, `0x100AF0..0x100AF7`,
+`0x105B34`, `0x107D20..0x107EE7` (with `tf_hit_fixture`'s `0x107D58`
+arrays and `0x107ED8/EDC/EE4`), `0x104B00`, `0x100AF0..0x100AF7`,
+`0x100B5A..0x100B5F`, `DS_001088E0/E2`, `DS_001078FA`,
 `DS_001014EC/F0/F4`, `0xBDC2C[2]`, `DS_001078F6`, `DS_00104B14` and
-`DS_000F0AFE`. A temporary whole-data-object diff around it (reverted) first
-found `0x100AF4` (`0x188DC`'s `0x18714` latch); after adding it the diff was
-empty.
+`DS_000F0AFE`. `fz_seed` sets `DS_00104B14` = 1, so `0x39834`'s tail gate
+`0x399AC` never runs `0x4F434` whatever `DS_00104ABC` holds. A temporary
+whole-data-object diff around it (reverted) first found `0x100AF4`
+(`0x188DC`'s `0x18714` latch). After adding it, and with non-zero sentinels
+planted beforehand in every `tf_hit_fixture` global above, in
+`DS_00104B14` (0) and in `DS_00104ABC` (1), the diff was empty. It was not
+empty when the `0x107D20` restore was cut back to 0x40 bytes.
 - A/A2: `0x235C4` for side 1 and side 0: both snapshot halves byte-equal to
   the pre-call slot and record, the other side's halves still `0xEE`,
   `DS_00107D28` = 0x2A (`0x39834`'s `0x39953` store), 0x10/0x0A, `+0x10`,
@@ -7572,9 +7579,11 @@ empty.
   the record's (not the slot's) `+0x53` and `DS_000F0AFE` = 2; with it set,
   `0xBDC2C[slot char 2]` (patched to a one-word stream) at 1.0.
 - `check_projectile_step` A (`pc_seed`'s `+0x48` = 8) now also asserts the
-  struck side's 0x10/0x0A, `+0x10` = `0x22BEC` and `+0x58` = 1. It seeds an
-  empty effect free list (`0x13C79` then never reads `pc_seed`'s zero pset
-  entry) and saves/restores the snapshot area and the two per-side arrays; a
+  struck side's 0x10/0x0A, `+0x10` = `0x22BEC` and `+0x58` = 1. It seeds the
+  raw's empty effect free list, a self-linked head `DS_000FCCE8` (the
+  `0x13C7F`/`0x13C85` compare, so `0x13C70` never reads `pc_seed`'s zero pset
+  entry; a zero head is only the port's unbuilt-pool guard), restores the
+  head, and saves/restores the snapshot area and the two per-side arrays; a
   whole-data-object diff around it is the same before and after the wiring.
 
 **Mutations** (`scratchpad/g235/mut.py`, `mut.log`): 59 single-site edits of
@@ -7586,7 +7595,9 @@ sweep killed all 59, but 7 only by a crash (a restore from the `0xEE`
 snapshot, a zero effect source, a call through the unregistered target), so
 the test gained valid snapshot images (`fz_snap_live`), a second pset source
 at `+0x1C` and NULL-guarded target calls. On the re-run all 59 fail 1..18
-assertions and none crashes. The sources were restored by the script.
+assertions and none crashes. The script lists a sixtieth entry that matches
+no line (logged `SKIP`, never applied). The sources were restored by the
+script.
 
 ### 41-C.5 Measured and remaining gaps
 

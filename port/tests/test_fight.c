@@ -1805,9 +1805,9 @@ static void check_projectile_step(void)
     tf_snap(sv_474c, DS_0010474C, sizeof sv_474c);
     tf_snap(sv_476c, DS_0010476C, sizeof sv_476c);
     /* The +0x48 == 8 arm's 0x235C4 (record §41-C) spawns a palette effect
-     * through 0x13C70: an empty free list (0x13C79) keeps it off the shared
-     * effect pool. */
-    DSD(DS_000FCCE8) = 0;
+     * through 0x13C70: the raw's empty free list, a self-linked head (the
+     * 0x13C85 test), keeps it off the shared effect pool. */
+    DSD(DS_000FCCE8) = DS_000FCCE8;
 
     /* A: the hit. 0x176CC writes AD0[0] = B54 = 5 and restores B62[0]; the
      * think step applies the hit to side 1 through 0x3B464 (P +0x48 = 8: the
@@ -8822,6 +8822,7 @@ static void fz_seed(u32 r0, u32 r1)
     DSD(DS_000FCCE8 + 4u) = DS_000FCCE8;
     DSW(DS_001078F6) = 0;
     DSD(DS_001014F0) = 0;                    /* res_resolve: every handle NULL */
+    DSB(DS_00104B14) = 1u;                   /* 0x399AC: no 0x4F434 in 0x39834 */
 }
 
 /* Both sides' snapshot halves as copies of the live slots and records (valid
@@ -8876,7 +8877,8 @@ static void check_freeze_235c4(void)
     u8 pre_s[0x94], pre_r[0x68];
     u8 sv_slots[0x128], sv_7a8[8], sv_snap[0x1F8], sv_474c[4], sv_476c[2];
     u8 sv_cce0[16], sv_af3c[2], sv_pal[0x184], sv_a98[12], sv_b34[2];
-    u8 sv_7d[0x40], sv_b00[4], sv_af0[8];
+    u8 sv_7d[0x1C8], sv_b00[4], sv_af0[8], sv_8e0[4], sv_b5a[6];
+    u8 sv_78fa = DSB(DS_001078FA);
     u32 sv_14ec = DSD(DS_001014EC), sv_14f0 = DSD(DS_001014F0);
     u32 sv_14f4 = DSD(DS_001014F4), sv_dc2c = DSD(0x000BDC2Cu + 8u);
     u16 sv_78f6 = DSW(DS_001078F6);
@@ -8894,7 +8896,9 @@ static void check_freeze_235c4(void)
     tf_snap(sv_pal, DS_00107618, 0x184u);
     tf_snap(sv_a98, DS_000A8A98, 12u);
     tf_snap(sv_b34, DS_00105B34, 2u);
-    tf_snap(sv_7d, DS_00107D20, 0x40u);
+    tf_snap(sv_7d, DS_00107D20, 0x1C8u);   /* 0x107D20..0x107EE7 */
+    tf_snap(sv_8e0, DS_001088E0, 4u);
+    tf_snap(sv_b5a, DS_00100B5A, 6u);
     tf_snap(sv_b00, DS_00104B00, 4u);
     tf_snap(sv_af0, DS_00100AF0, 8u);
 
@@ -9135,7 +9139,10 @@ static void check_freeze_235c4(void)
 
     tf_put(sv_af0, DS_00100AF0, 8u);
     tf_put(sv_b00, DS_00104B00, 4u);
-    tf_put(sv_7d, DS_00107D20, 0x40u);
+    tf_put(sv_7d, DS_00107D20, 0x1C8u);
+    tf_put(sv_8e0, DS_001088E0, 4u);
+    tf_put(sv_b5a, DS_00100B5A, 6u);
+    DSB(DS_001078FA) = sv_78fa;
     tf_put(sv_b34, DS_00105B34, 2u);
     tf_put(sv_a98, DS_000A8A98, 12u);
     tf_put(sv_pal, DS_00107618, 0x184u);
