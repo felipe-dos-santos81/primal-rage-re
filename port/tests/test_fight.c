@@ -1629,7 +1629,7 @@ static void check_effects_worship(void)
     u32 st_hold = FIGHT_RECS + 0x3880u, st_wrong = FIGHT_RECS + 0x38C0u;
     u32 pset = FIGHT_ACTORS + 3u * 0x20u;
     const u32 tabs[3] = { 0x000C9544u, 0x000C95D4u, 0x000C958Cu };
-    u32 sv_t[6], sv_rng = DSD(DS_000EF6D8), i, r;
+    u32 sv_t[6], sv_rng = DSD(DS_000EF6D8), sv_4ec = DSD(DS_001014EC), i, r;
     u8 sv_88[0x100], sv_sl[0x250], sv_bd3[0x25];
     u16 sv_4b00 = DSW(DS_00104B00);
     u8 sv_1a = DSB(0x00104B1Au);
@@ -1968,6 +1968,7 @@ static void check_effects_worship(void)
     DSW(DS_00104B00) = sv_4b00;
     DSB(0x00104B1Au) = sv_1a;
     DSD(DS_000EF6D8) = sv_rng;
+    DSD(DS_001014EC) = sv_4ec;
 }
 
 /* 0x3B134: the command-word mapper's stance branch (record §8.13). The three
@@ -3304,15 +3305,26 @@ static void check_mode_tail(void)
 {
     u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
     u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
-    u8 sv_ab0[0x50];
-    u32 sv_884 = DSD(DS_00108884), sv_4b00 = DSD(DS_00104B00);
-    u16 sv_af6 = DSW(DS_00104AF6);
-    u8 sv_low[0x20];                    /* actor_pset_point on the scratch
-                                         * records (out of the pool) writes
-                                         * pset 0 */
-    u8 sv_b12 = DSB(DS_00104B12), sv_b1a = DSB(0x00104B1Au);
-    tf_snap(sv_ab0, DS_00100AB0, sizeof sv_ab0);
-    tf_snap(sv_low, 0u, sizeof sv_low);
+    /* Every range the seeds, tf_demo_fixture and game_frame write, saved
+     * and restored whole. mem[0..0x1F] is pset 0, which actor_pset_point
+     * writes for the out-of-pool scratch records. A whole-memory diff around
+     * this check (reverted), with sentinels planted in the slots and the
+     * scalar globals first, found no other written byte. */
+    static const u32 rg[][2] = {
+        { 0x00000000u, 0x20u },  { 0x0009AD50u, 0x10u },
+        { 0x000EF6D8u, 0x08u },  { 0x000F0A60u, 0xA0u },
+        { 0x00100A70u, 0x100u }, { 0x001014E0u, 0x18u },
+        { 0x00104AE0u, 0x50u },  { 0x00105BC0u, 0x1B0u },
+        { 0x001077A0u, 0x170u }, { 0x00107D20u, 0x20u },
+        { 0x00108840u, 0x100u },
+    };
+    static u8 sv[0x20 + 0x10 + 0x08 + 0xA0 + 0x100 + 0x18 + 0x50 + 0x1B0
+                 + 0x170 + 0x20 + 0x100];
+    u32 k, o = 0;
+    for (k = 0; k < sizeof rg / sizeof rg[0]; k++) {
+        tf_snap(sv + o, rg[k][0], rg[k][1]);
+        o += rg[k][1];
+    }
 
     /* A: AL = 0 puts the camera on the centre and pulls nothing. */
     ph_pair_seed(0x1000u, 0x1100u, 0x5000u, 0x4000u, 0x1000u, 0x7777u);
@@ -3473,13 +3485,10 @@ static void check_mode_tail(void)
     CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0xDEAD);
 #undef MT_SEED
 
-    tf_put(sv_ab0, DS_00100AB0, sizeof sv_ab0);
-    tf_put(sv_low, 0u, sizeof sv_low);
-    DSD(DS_00108884) = sv_884;
-    DSD(DS_00104B00) = sv_4b00;
-    DSW(DS_00104AF6) = sv_af6;
-    DSB(DS_00104B12) = sv_b12;
-    DSB(0x00104B1Au) = sv_b1a;
+    for (k = 0, o = 0; k < sizeof rg / sizeof rg[0]; k++) {
+        tf_put(sv + o, rg[k][0], rg[k][1]);
+        o += rg[k][1];
+    }
 }
 
 /* 0x49300, state 6's fight-effect list init. It self-links the 0x1083C4 and

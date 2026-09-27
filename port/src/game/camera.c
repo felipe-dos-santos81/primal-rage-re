@@ -573,13 +573,13 @@ void camera_dispatch(void)
 
 /* 0x12FD8 — demo-pose record §42-D. EAX's low byte is the only argument
  * (0x12FE1 `test al,al`). a = (slot0 +0x34 >= slot1 +0x34) is the left slot's
- * index (0x12FF4 `setge`), b = 1 - a. The two stack words the raw fills from
+ * index (0x12FF4 `setge`), b = 1 - a. The two stack dwords the raw fills from
  * +0x34 (0x1303C/0x13042) are read once each (0x1304B, 0x130A4) before any
  * pull, so they are the +0x34 values on entry; the pulls' copies into them are
  * dead. 0x18714 is called with EAX = the pulled side (0x13087 after `and
  * eax,0xff`; 0x130E3 `mov eax,ecx`) and its result stored at the slot's record
  * +0x18 (0x1308E, 0x130EC). The centre is DS_00108884 (written by 0x4BD98 at
- * 0x4BE5C and 0x4E11C at 0x4E214); the ±0x2E80/0xA80/0x1500 sums wrap in 32
+ * 0x4BE5C/0x4BE8A and 0x4E11C at 0x4E214); the ±0x2E80/0xA80/0x1500 sums wrap in 32
  * bits before the signed compares. */
 void camera_pair_hold(u32 track)
 {

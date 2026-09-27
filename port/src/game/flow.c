@@ -1387,12 +1387,14 @@ void game_frame(void)
 
     /* 0x2545C: the mode tail (record §42-D), on the word DS_00104B00 (`cmp
      * ax,0x21` / `jc` / `jbe`, `cmp ax,0x23` / `jbe`, `cmp ax,0x25` / `jz`).
-     * Every arm ends 0x24C5C. The demo's mode 3 takes none. */
+     * Every arm ends 0x24C5C. The port's modes (3, and 0x15 once 0x29B74
+     * stores it) take none. */
     switch (DSW(DS_00104B00)) {
     case 0x0Cu: {
-        /* 0x25487: every other frame (the frame word's bit 1), while the
-         * DS_00104B12 slot's +0x41 bit 0 is set, its record's pset word is
-         * saved to DS_00104AF6 and replaced by 0x1E1 with bit 15 kept. */
+        /* 0x25487: while the frame word's bit 1 is set (two frames on, two
+         * off: frames 2 and 3 mod 4) and the DS_00104B12 slot's +0x41 bit 0
+         * is set, its record's pset word is saved to DS_00104AF6 and replaced
+         * by 0x1E1 with bit 15 kept. */
         u32 slot = DS_001077B0 + (u32)DSB(DS_00104B12) * 0x94u;     /* 0x25491..0x254A7 */
         if ((DSB(slot + 0x41u) & 1u) == 0u) break;                  /* 0x254AA */
         if ((DSW(DS_000EF6DC) & 2u) == 0u) break;                   /* 0x254B7..0x254C9 */

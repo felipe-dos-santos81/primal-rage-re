@@ -1321,7 +1321,8 @@ void fight_effects_pass(void)
                     /* 0x49D90: the wait. The entry's +0x18 word counts down
                      * (signed, 0x49D99 `test bx,bx` / `jg`); at zero or below
                      * the actor arrives (0x4AC38). 0x4E5A4 sets the type
-                     * (0x4E672). */
+                     * (0x4E672), and 0x4DBEC (0x4DDB6, a register store) in
+                     * modes 0x0D/0x32. */
                     u16 t = (u16)(DSW(entry + 0x18u) - 1u); /* 0x49D94 */
                     DSW(entry + 0x18u) = t;                 /* 0x49D95 */
                     if ((s16)t > 0) break;                  /* 0x49D9C */

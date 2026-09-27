@@ -8263,7 +8263,7 @@ callees `0x4B2AC` (type 10's walk) and `0x4A7D4` (type 11's arrival test).
 `0x24C5C`'s mode switch at `0x2545C` is ported whole: the `0x25509`
 mode-`0x21` arm (§30.2) with its unported camera `0x12FD8`, and the `0x0C`,
 `0x22`/`0x23` and `0x25` arms, whose callees were all ported already. No
-demo path reaches any of it, so it is unit-tested and no oracle is expected
+port path reaches any of it, so it is unit-tested and no oracle is expected
 to move.
 
 ### 42-D.1 The raw (Ghidra `disassemble_function`, fixups applied)
@@ -8349,8 +8349,8 @@ to move.
     `0x18714(side)` (EAX = a at `0x13087`, `mov eax,ecx` = b at `0x130E3`).
   - Then `[0xf0af0]` is clamped to mid ± `0x1500`. Every compare is signed
     after a 32-bit add.
-  - Mid is `DS_00108884`. Its only writers are `0x4BD98` (`0x4BE5C`) and
-    `0x4E11C` (`0x4E214`).
+  - Mid is `DS_00108884`. Its only writers are `0x4BD98` (`0x4BE5C` and
+    `0x4BE8A`) and `0x4E11C` (`0x4E214`).
 
 ### 42-D.2 Entrances (`get_xrefs_to`, a rel32 scan of the code object and a dword scan of both objects)
 
@@ -8360,17 +8360,32 @@ to move.
 - `0x25509`: one `jbe` at `0x25468`. The handler addresses `0x49D90`,
   `0x49FC2` and `0x4A115..0x4A1EB` appear only as jump-table dwords
   (`0x49C34`, `0x49C48`, `0x49C50..0x49C5C`), with no rel32.
-- Who sets the types (a scan for `mov byte [reg+0x1e],imm8`, `C6 4x 1E ii`;
-  register-source stores are not covered):
-  - type 2: `0x4E672` in `0x4E5A4` (called at `0x4E84E`);
+- Who sets the types. A capstone linear sweep of the code object lists every
+  store whose range covers `+0x1E` (372; review of this branch). The
+  immediate stores of 2, 7 and 9..12 and the one register-source type setter
+  are:
+  - type 2: `0x4E672` in `0x4E5A4` (called at `0x4E84E`), and `0x4DDB6 mov
+    [esi+0x1e],al` in `0x4DBEC`. There AL = `[esp+0xc]` + 1, and `[esp+0xc]`
+    cycles 1, 2, 0 (`0x4DC75..0x4DC85`), so it stores types 2, 3, 1 in
+    rotation; on its `[esp+0x1c]` gate `0x4DDAA` stores 4 instead. The
+    entries come off the `0x1083C4` free list. `0x4DBEC` is called only at
+    `0x2766D` (in `0x274FC`, the mode-`0x0D` arm) and `0x29838` (in
+    `0x296B8`, the mode-`0x32` arm);
   - type 7: `0x49BF3` in `0x4987C` (called at `0x4A616`, the effects
     tail's gated rng(2) arm, and at `0x4D792`);
   - type 9: `0x4AAE6` (`0x4AAD0` in mode 9);
   - type 10: `0x4A11F`; type 11: `0x4A16B`;
   - type 12: `0x4A583` (the mode-9 block, every entry).
-  `0x4E5A4` and `0x4987C` are unported. The port never runs mode 9, because
-  `DS_00104B00` stays 3 (`0x10E80`). So the port reaches none of the six
-  types.
+  The other register-source byte stores to `[reg+0x1e]` are not type
+  setters: `0x30881` and `0x3DD44` store to the stack, and `0x58784` and
+  `0x59206` sit in unrolled library fill/blit loops. The register dword
+  stores covering `+0x1E` write an actor's `+0x1C` (`0x4B8E8`, `0x4DA19`,
+  EDX = `[ecx+8]`) or the stack.
+  `0x4E5A4`, `0x4DBEC` and `0x4987C` are unported, and the port never runs
+  modes 9, `0x0D` or `0x32`. So no port path reaches the six types. Type 7
+  is reachable in mode 3 in the raw, through `0x4A5A6` → `0x4A616` →
+  `0x4987C` whenever `DS_001088BF` is 1..4 (set by the ported `0x391CA` and
+  by `0x14DA4`). Only the port's `0x4987C` gap keeps it out.
 - `DS_001088B4` is written only by the mode-9 block (`0x4A54D` = 0, `0x4A559`
   = 1). `DS_00108870`/`DS_0010887C` are written only by `0x4A928`, which is
   reached from the mode-9 block (`0x4A562`).
@@ -8400,7 +8415,7 @@ to move.
   - the `0xC9544`/`0xC95D4`/`0xC958C` entries 0 and 3;
   - `0x108840..0x10893F`, `0x107688..0x1078D7` (both slots and the s = −2
     slot `0x107688`), the `0x100BD3` plane (`0x17D30`'s pixel fill);
-  - `DS_00104B00`, `0x104B1A` and the RNG.
+  - `DS_00104B00`, `0x104B1A`, `DS_001014EC` and the RNG.
   It covers:
   - type 2's countdown, arrival and signed edge;
   - type 7's latch, the four steer arms, the four gate edges and the two exit
@@ -8415,10 +8430,18 @@ to move.
   - type 11's arrival, doubling and magnitudes;
   - type 12's two directions and the 13/14 choice on `DS_001088C6`, not on
     `DS_001088CA`.
-- `check_mode_tail` (after `check_game_frame_tail`) saves and restores
-  `0x100AB0..0x100AFF`, `mem[0..0x1F]` (the out-of-pool records' pset 0),
-  `DS_00108884`, `DS_00104B00`, `DS_00104AF6`, `DS_00104B12` and
-  `0x104B1A`. It covers:
+- `check_mode_tail` (after `check_game_frame_tail`) saves and restores whole
+  ranges: `mem[0..0x1F]` (pset 0, which `actor_pset_point` writes for the
+  out-of-pool scratch records), `0x9AD50..0x9AD5F`, `0xEF6D8..0xEF6DF`,
+  `0xF0A60..0xF0AFF`, `0x100A70..0x100B6F`, `0x1014E0..0x1014F7`,
+  `0x104AE0..0x104B2F`, `0x105BC0..0x105D6F`, `0x1077A0..0x10790F`,
+  `0x107D20..0x107D3F` and `0x108840..0x10893F`. These cover everything the
+  seeds, `tf_demo_fixture` and `game_frame` write. A temporary whole-memory
+  diff around both new checks (reverted) planted sentinels first: an XOR in
+  the slots `0x1077A8..0x1078D7`, `0x100A70..0x100B6F`, `mem[0..0x1F]` and 34
+  scalar globals. The diff was empty outside the `FIGHT_*` scratch. With the
+  slot range cut to 0x10 bytes it listed the slot fields, so the probe can
+  fail. It covers:
   - `0x12FD8` directly: AL only, each band and direction on each side with
     the record x through `0x18714`, the far band's edge, `setge`, and both
     clamp edges with a signed case;
@@ -8431,7 +8454,8 @@ to move.
   speed pairing and the far band's edge for `0x12FD8`. The 5 survivors are
   equivalent:
   - type 7 without the bit-2 gate: the OR is idempotent and the only other
-    effect is the stubbed voice;
+    effect is the stubbed voice. It is equivalent only while `0x2C3FC(0xDE)`
+    stays a stub;
   - `0x4B2AC`'s second `+0x29 &= 0xBF`: `0x4B35D` has already cleared the
     bit;
   - the three frame-local writes, which only the unported mode-9 block
@@ -8444,8 +8468,9 @@ to move.
   compiler warnings. The drivers and `make verify` were not run; the batch
   controller runs them after the merge.
 - No oracle is expected to move. No port path sets types 2, 7 or 9..12
-  (42-D.2), and `DS_00104B00` is 3 in every driver, which the `0x2545C`
-  switch passes through.
+  (42-D.2; type 7 waits on the `0x4987C` gap). The port only runs modes that
+  take no `0x2545C` arm: 3, and `0x15` once `gap2-frontend`'s `0x29B74`
+  stores it.
 - Remaining named gaps in `0x49C78`:
   - the mode-9 block `0x4A487..0x4A58F` with `0x4A928`/`0x4AA6C` (the only
     readers of the frame locals and the only writers of `DS_001088B4`,
@@ -8453,4 +8478,5 @@ to move.
   - the prelude's per-side words `[esp]`/`[esp+2]` and count `[esp+8]`;
   - case 14's `[esp+0x10]`;
   - the type-8 held body and the case-13/14 bodies;
-  - the type setters `0x4E5A4` and `0x4987C`.
+  - the type setters `0x4E5A4`, `0x4DBEC` (modes `0x0D`/`0x32`) and
+    `0x4987C`.

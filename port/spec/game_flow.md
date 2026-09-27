@@ -2158,12 +2158,13 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   else moved.
 * **The mode tail after it (demo-pose record §42-D).** After the
   `DS_00104B15` tail, `0x24C5C` switches on the word `DS_00104B00` at
-  `0x2545C`: `0x0C` rewrites one fighter's pset word every other frame,
-  `0x21` (`0x25509`) runs `0x3BB90`, the held-pair camera `0x12FD8(1)`, both
-  slot latches with their pset syncs and `0x33F08`, `0x22`/`0x23` the camera
-  dispatch and the `DS_00104B1A` slot alone, and `0x25` `0x12FD8(0)` with
-  the same loop. `game_frame` ports the switch and `camera_pair_hold` ports
-  `0x12FD8`; the demo's mode 3 takes no arm.
+  `0x2545C`. `0x0C` rewrites one fighter's pset word while bit 1 of the
+  frame word is set (two frames on, two off). `0x21` (`0x25509`) runs
+  `0x3BB90`, the held-pair camera `0x12FD8(1)`, both slot latches with their
+  pset syncs and `0x33F08`. `0x22`/`0x23` run the camera dispatch and the
+  `DS_00104B1A` slot alone, and `0x25` runs `0x12FD8(0)` with the same loop.
+  `game_frame` ports the switch and `camera_pair_hold` ports `0x12FD8`. The
+  port's modes (3, and `0x15` once `0x29B74` stores it) take no arm.
 
 **The worshipper landing target (`2287114`, demo-pose record §31).**
 * **Cause.** The six worshipper landing streams end in `D500 AC80 0004`
