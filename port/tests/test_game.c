@@ -695,6 +695,145 @@ static void check_sound_voice(void)
     tf_put(sv_data, DATA_BASE, 0x8B0D0u);
 }
 
+/* ---- the attract's high-score screen 0x1EA08 (record §46-A) ---- */
+
+static u32 hs_cell(s32 row, s32 col)
+{
+    return DSD(DS_00105F38 + (u32)row * 0xACu + (u32)col * 4u);
+}
+
+static u32 hs_sprite(s32 row, s32 col)
+{
+    u32 r = hs_cell(row, col);
+    return r != 0 ? (u32)(DSW(actor_pset(r)) & 0x7FFFu) : 0u;
+}
+
+/* 1 when the cells from `col` on row `row` hold the glyphs text_cursor_hold
+ * draws for `s` at the same place (a space leaves its cell empty). */
+static int hs_row_is(s32 row, s32 col, const char *s, u32 mode)
+{
+    u32 got[40], n = (u32)strlen(s), i;
+    int ok = 1;
+    for (i = 0; i < n; i++) got[i] = hs_sprite(row, col + (s32)i);
+    text_cells_release(col, row, (const u8 *)s, mode);
+    text_cursor_hold(col, row, (const u8 *)s, mode);
+    for (i = 0; i < n; i++) {
+        if (s[i] == ' ' ? got[i] != 0u : got[i] != hs_sprite(row, col + (s32)i)) ok = 0;
+        if (s[i] != ' ' && got[i] == 0u) ok = 0;
+    }
+    return ok;
+}
+
+/* The figure: the one record 0x2AE14 gave EDX 0x2A00 and EBX 0x1C80. */
+static u32 hs_figure(void)
+{
+    u32 found = 0u, n = 0u;
+    for (u32 r = actor_list_head(); r != 0u; r = actor_next(r))
+        if (DSD(r + 0x18u) == 0x2A00u && DSD(r + 0x1Cu) == 0x1C80u) { found = r; n++; }
+    return n == 1u ? found : 0u;
+}
+
+/* The first sprite id 0x2AE14 gives descriptor 0xA7DCC[k] on an empty pool. */
+static u32 hs_ref_sprite(u32 k)
+{
+    actors_reset();
+    u32 r = actor_spawn((const u32 *)(mem + DSD(0xA7DCCu + k * 4u)), 0x2A00u, 0xFFu,
+                        0x1C80u, 0u);
+    return r != 0u ? (u32)DSW(actor_pset(r)) : 0xFFFFFFFFu;
+}
+
+static u32 hs_figure_sprite(void)
+{
+    u32 r = hs_figure();
+    return r != 0u ? (u32)DSW(actor_pset(r)) : 0xFFFFFFFEu;
+}
+
+/* 0x1EA08 on the live resources: the champion on row 2, table 0's records 1..9
+ * at the 0xA7B94 layout, and the figure from 0xA7DCC selected by the name's
+ * character 0x12. The data object, the INDEX table, both pools, the DAC and
+ * the aperture are restored. */
+static void check_hiscore_screen(void)
+{
+    static u8 sv_data[0x8B0D0], sv_idx[256u * 20u], sv_pa[0x4880], sv_pb[0xEBA0];
+    static u8 sv_ap[320u * 200u], sv_dac[256][3];
+    const u32 idx = DSD(DS_001014E0), nidx = res_count() * 20u;
+    const u32 pa = DSD(DS_001014EC), pb = DSD(DS_001014F4);
+    static const char *rows[10][3] = {
+        { " 1", "TEENY WEENY GAMES ", " 500000" },
+        { " 2", "CFF", " 400000" }, { " 3", "AMR", " 350000" },
+        { " 4", "MSG", " 300000" }, { " 5", "JSY", " 250000" },
+        { " 6", "ACW", " 200000" }, { " 7", "MRP", "  90210" },
+        { " 8", "HUH", "  50000" }, { " 9", "WHU", "  20000" },
+        { "10", "DUD", "    100" },
+    };
+    u32 i, rec;
+
+    CHECK(nidx <= sizeof sv_idx, "the INDEX table fits the snapshot");
+    tf_snap(sv_data, DATA_BASE, 0x8B0D0u);
+    tf_snap(sv_idx, idx, nidx);
+    tf_snap(sv_pa, pa, 0x4880u);
+    tf_snap(sv_pb, pb, 0xEBA0u);
+    memcpy(sv_ap, gfx_aperture(), sizeof sv_ap);
+    memcpy(sv_dac, gfx_dac, sizeof sv_dac);
+
+    /* The tables as 0x1E824 leaves them on a fresh CMOS. */
+    mem_fill(0x105E34u, 0, 153u);
+    DSD(DS_00104528) = 0x142095u;
+    hiscore_init();
+
+    frontend_match_start();
+    CHECK(hs_row_is(2, DSB(0xA7B95u), rows[0][0], 0x3000u), "rank 1");
+    CHECK(hs_row_is(2, DSB(0xA7B96u), rows[0][1], 0x2000u), "the champion's name");
+    CHECK(hs_row_is(2, DSB(0xA7B97u), rows[0][2], 0x2000u), "the champion's score");
+    for (i = 1; i < 10u; i++) {
+        s32 row = DSB(0xA7B94u + i * 4u);
+        CHECK(hs_row_is(row, DSB(0xA7B95u + i * 4u), rows[i][0], 0x3000u), "a rank");
+        CHECK(hs_row_is(row, DSB(0xA7B96u + i * 4u), rows[i][1], 0x3000u), "a name");
+        CHECK(hs_row_is(row, DSB(0xA7B97u + i * 4u), rows[i][2], 0x3000u), "a score");
+    }
+    /* The figure: on 0x2A17C's word 0 (with the 0x5F flag's 0x800) and the
+     * palette entry of handle 0x105FD30. */
+    rec = hs_figure();
+    CHECK(rec != 0u, "one figure record");
+    if (rec != 0u) {
+        CHECK_EQ_INT((int)DSW(actor_pset(rec) + 0x02u), 0x800);
+        CHECK_EQ_INT((int)DSD(DSD(actor_pset(rec) + 0x18u)), 0x105FD30);
+    }
+    {
+        /* The selection. The reference sprites of descriptors 0, 2 and 6
+         * differ, so each case below can tell them apart. */
+        u32 f0, f2, f6;
+        frontend_match_start();
+        f0 = hs_figure_sprite();
+        u32 r0 = hs_ref_sprite(0u), r2 = hs_ref_sprite(2u), r6 = hs_ref_sprite(6u);
+        CHECK(r0 != r2 && r0 != r6 && r2 != r6, "descriptors 0, 2, 6 differ");
+        /* Character 0x12 is a space (no string starts with one): 0. */
+        CHECK_EQ_INT((int)f0, (int)r0);
+        /* 'T' is the third string: 2. */
+        DSW(0x105EACu + 4u + 12u) = 0x0014u;
+        frontend_match_start();
+        f2 = hs_figure_sprite();
+        CHECK_EQ_INT((int)f2, (int)r2);
+        /* 'H' is the seventh (index 6): kept. */
+        DSW(0x105EACu + 4u + 12u) = 0x0008u;
+        frontend_match_start();
+        f6 = hs_figure_sprite();
+        CHECK_EQ_INT((int)f6, (int)r6);
+        /* 'X' is the eighth (index 7): above 6, back to 0. */
+        DSW(0x105EACu + 4u + 12u) = 0x0018u;
+        frontend_match_start();
+        CHECK_EQ_INT((int)hs_figure_sprite(), (int)r0);
+    }
+
+    actors_reset();
+    memcpy(gfx_dac, sv_dac, sizeof sv_dac);
+    memcpy(gfx_aperture(), sv_ap, sizeof sv_ap);
+    tf_put(sv_pb, pb, 0xEBA0u);
+    tf_put(sv_pa, pa, 0x4880u);
+    tf_put(sv_idx, idx, nidx);
+    tf_put(sv_data, DATA_BASE, 0x8B0D0u);
+}
+
 int test_flow(void)
 {
     int before = g_failures;
@@ -828,6 +967,8 @@ int test_flow(void)
     /* The voice dispatcher 0x2C3FC and the sound module, on the live handles
      * game_audio_init allocated (record §45-A). */
     check_sound_voice();
+    /* The attract's high-score screen 0x1EA08 (record §46-A). */
+    check_hiscore_screen();
 
     game_shutdown();                         /* release handles for later tests */
     CHECK_EQ_INT((int)DSB(DS_000A2CB1), 0);  /* teardown clears the enable flag */
