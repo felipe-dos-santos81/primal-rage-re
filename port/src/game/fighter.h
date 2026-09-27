@@ -699,4 +699,19 @@ void hit_anchor_x(u32 side, u32 x);                   /* 0x188DC */
 void hit_anchor_y(u32 side, u32 y);                   /* 0x1890C */
 void hit_sound(u32 ch);                               /* 0x32BAC */
 
+/* 0x45AD0. Character 4's reaction-0x25 callback (*(u32*)0xA4C0C), the
+ * (slot, rec, side) registers (EBX unread): the 0xEB64E curl stream at 2.0,
+ * state 9/7/1 with +0x57 = 0, +0x0C 0x45A70, +0x18 0x459F4, +0x1C 0x45A34
+ * and the record's +0x4C = 0x78. 0x45A70. Its +0x0C callback: the curl
+ * holds while the command word has 0x600, the other slot's +0x42 bit 0x10
+ * is clear and the +0x4C countdown stays positive; else the 0xEB692 stream
+ * and +0x57 = 1. 0x459F4. The +0x18 hook (0x3E484's body). 0x45A34. The +0x1C
+ * callback: 0x3B714(ctx[3], ctx[2]), the 0xEB692 stream and +0x57 = 1.
+ * 0x459D0. The curl stream's 0xD100 target: rec+0x63 = 1. §48-A. */
+void fighter_45ad0(u32 slot, u32 rec, u32 side);
+void fighter_45a70(u32 slot, u32 rec, u32 side);
+u32  fighter_459f4(u32 side);
+void fighter_45a34(u32 side);
+void fighter_459d0(u32 rec);
+
 #endif /* PRAGE_GAME_FIGHTER_H */

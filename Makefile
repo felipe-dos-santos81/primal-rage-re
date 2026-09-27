@@ -251,7 +251,15 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # over the held frame inside an iteration (res.c's seam, record §45-A). Capture 2384,
 # the `- LOADING -` frame before the second demo, was allowed by name (record §37)
 # until those screens explained it; ATTRACT2_ALLOWED_UNEXPLAINED is now empty.
-# N = 3593 (§47-A, branch frame-3545): FE_LOOPS 3900 -> 4100 brings the high-score
+# N = 3617 (§48-A, branch frame-3593): the capture's end (3616) + 1, the exact pin,
+# since no unexplained frame is left in the region (3545 stays allowed by name).
+# At f = 4914 (loop 4027) the third demo's left fighter, character 4 (s16spi),
+# takes reaction 0x25, whose callback 0x45AD0 (*(u32*)0xA4C0C) the port did not
+# have: it curls into the spiked ball (stream 0xEB64E, state 9/7/1), its +0x18
+# hook 0x459F4 finds the hit at f = 4917 and its +0x1C callback 0x45A34 knocks
+# the tyrannosaur back (0x3B714) and uncurls it (0xEB692). Porting 0x45AD0,
+# 0x45A70, 0x459F4, 0x45A34 and the stream target 0x459D0 explained 3593..3616.
+# (Before it, N = 3593 (§47-A, branch frame-3545): FE_LOOPS 3900 -> 4100 brings the high-score
 # screen's end (state 9 -> 6 after loop 3984) and the third demo (s16dia against
 # s16spi in s16caves; its state-6 entry reads six files in loop 3985) into the dump.
 # 3544 is now the port's own loader screen (3543 is all-black, excluded), 3546..3592
@@ -260,7 +268,7 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # cycle-2 2192/2193/2194: the last loader screen, the load frame's present and the
 # next, which the read's tick re-sync 0x1B45F/0x1B464 lets fall inside one capture
 # scan). The driver lists the loader screens in cycle2/loader.txt for that check.
-# 3593 (raw 8386) is the third demo's first fight frame the port does not match.
+# 3593 (raw 8386) was the third demo's first fight frame the port did not match.)
 # (Before it, N = 3545 was measured on 1251af7 (§46-A): the high-score tables 0x2DB58/0x2DBC4/
 # 0x2DCA0, their boot fill 0x1E824 (0x1E918's ten factory records and the champion
 # 0xA7D74) and the rest of 0x1EA08 (the rows through 0x2F4D0/0x2F4BC and the
@@ -296,7 +304,7 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # DS_001078FA explained 2386..2460; before that N = 2386, measured on c0edb4c and
 # re-measured unchanged on a7ccc86 and 65f4084; before that N = 2384, measured on
 # fc8e775.)
-ATTRACT2_MIN_FIRST = 3593
+ATTRACT2_MIN_FIRST = 3617
 attract2-oracle: build ## Attract cycle-2 ratchet after the demo (skips without data/title-captures/frontend)
 	@echo "== attract cycle-2 oracle (ratchet on the first unexplained frame, N=$(ATTRACT2_MIN_FIRST)) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
