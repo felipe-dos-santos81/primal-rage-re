@@ -195,8 +195,8 @@ void fight_select_marker_spawn(u32 side, u32 cls, u32 y)
  * pushes and pops EDX) and the slot zeroed (EBP = 0); then 0x2AE14(0xA7760[
  * character], a2 = side ? 0x4200 : 0x200, a3 = 0xFD, a4 = y, a5 = 0) into
  * DS_001028E0[side]. Callers: 0x27770 (0x274FC) and 0x298F3 (0x296B8) with
- * y = the word at 0xA76D0 (0x980), and the unported 0x1D9D5 (0x1D890),
- * 0x1DBFA (0x1DAE8), 0x1DDBF (0x1DC6C) and 0x25F47 (0x25C88). */
+ * y = the word at 0xA76D0 (0x980), 0x1D9D5 (0x1D890), 0x1DDBF (0x1DC6C) and
+ * 0x25F47 (0x25C88) (record §48-U), and the unported 0x1DBFA (0x1DAE8). */
 void fight_hud_badge_spawn(u32 side, u32 ch, u32 y)
 {
     u32 rec = DSD(DS_001028E0 + side * 4u);             /* 0x1D840/0x1D847 */
@@ -224,10 +224,7 @@ void fight_hud_side_reset(u32 side)
     cl = DSB(slot + 0x42u);                             /* 0x1D77B */
     DSB(slot + 0x5Au) = 0u;                             /* 0x1D782 */
     DSB(slot + 0x42u) = (u8)(cl & 0xEFu);               /* 0x1D789/0x1D78E */
-    /* PORT: 0x1D797 0x1D2F0(EAX = 0, EDX = side) is a named gap (record
-     * §48-Q): the side's HUD bar draw (the value clamped to 0..0x78, the
-     * 0xC9960/0xC9A52 word tables by DS_00104B1D and the slot's +0x41 bit 3,
-     * then 0x10D70 with a pushed record from DS_001028F0[side]). */
+    fight_hud_bar_set(0, side);                         /* 0x1D797 0x1D2F0 (record §48-U) */
     actors_anim_begin(DSD(DS_001028F8 + side * 4u), DS_000E904C,
                       0x3F800000u);                     /* 0x1D79C..0x1D7AD 0x2BC30 */
 }
@@ -1391,6 +1388,71 @@ void fight_char_select(u32 side, u32 char_index)
 
 /* ---- 0x1D890 the HUD spawn ---------------------------------------------- */
 
+#define DS_000A7674 0x000A7674u   /* no symbols.h name: 0x1DC6C's side-1 bar descriptor - 4 */
+#define DS_000A767C 0x000A767Cu   /* no symbols.h name: [side] bar descriptor */
+#define DS_000A7684 0x000A7684u   /* no symbols.h name: [side] second bar descriptor */
+#define DS_000A768C 0x000A768Cu   /* no symbols.h name: [side] bar x word */
+#define DS_000A7690 0x000A7690u   /* no symbols.h name: [side] bar y word */
+#define DS_000A7694 0x000A7694u   /* no symbols.h name: [side] second bar x word */
+#define DS_000A7698 0x000A7698u   /* no symbols.h name: [side] second bar y word */
+#define DS_000A7628 0x000A7628u   /* no symbols.h name: [side] 0xBB664 x word */
+#define DS_000A762C 0x000A762Cu   /* no symbols.h name: [side] 0xBB664 y word */
+#define DS_000A7630 0x000A7630u   /* no symbols.h name: [side] 0xBB678 x word */
+#define DS_000A7634 0x000A7634u   /* no symbols.h name: [side] 0xBB678 y word */
+#define DS_000A76D0 0x000A76D0u   /* no symbols.h name: the badge y word (0x980) */
+#define DS_000BB664 0x000BB664u   /* no symbols.h name: the HUD descriptor (stream 0xE904C) */
+#define DS_000BB678 0x000BB678u   /* no symbols.h name: the HUD descriptor (stream 0xE906A) */
+#define DS_000C9960 0x000C9960u   /* no symbols.h name: 0x79 bar sprite words (0x2DF9..) */
+#define DS_000C9A52 0x000C9A52u   /* no symbols.h name: 0x79 bar sprite words (0x46F9..) */
+#define DS_000C9B44 0x000C9B44u   /* no symbols.h name: 0x45 bar sprite words (0x2E71..) */
+
+/* 0x1D2F0 — record §48-U. EAX = the value v (ECX), EDX = the side (EBX). v is
+ * clamped to 0..0x78 (0x1D2F9 `jle`, 0x1D305 `jge`; below 0 `xor ecx,eax`
+ * gives 0). One 0x10D70 on the pushed record DS_001028F0[side] with AX = a
+ * word of 0xC9960[v] or 0xC9A52[v]: with DS_00104B1D == 2 side 0 takes
+ * 0xC9960 and side 1 0xC9A52; otherwise both take 0xC9A52 when the slot's
+ * +0x41 bit 3 is set (0x1D3AA/0x1D400), else 0xC9960. The EBX/ECX/EDX loads
+ * before each call (1 / 0x5000 or 0x6000 / 4 or 0x17) are dead: 0x10D70
+ * reads only AX and its stack record. Callers: 0x1D797 (0x1D764), 0x1D941
+ * (0x1D890), 0x1DD2C (0x1DC6C), and the unported 0x1D5A8 (0x1D540). */
+void fight_hud_bar_set(s32 v, u32 side)
+{
+    u32 c = v > 0x78 ? 0x78u : (v < 0 ? 0u : (u32)v);  /* 0x1D2F9..0x1D309 */
+    u32 flag8 = DSB(DS_001077B0 + side * 0x94u + 0x41u) & 8u;   /* 0x1D30B..0x1D319 */
+    u32 table;
+    if (DSB(DS_00104B1D) == 2u)                         /* 0x1D33D `jnz` */
+        table = side == 0u ? DS_000C9960 : DS_000C9A52; /* 0x1D35D / 0x1D385 */
+    else
+        table = flag8 != 0u ? DS_000C9A52 : DS_000C9960;    /* 0x1D3AA..0x1D442 */
+    actor_pset_word_set(DSD(DS_001028F0 + side * 4u),
+                        DSW(table + c * 2u));           /* 0x10D70 */
+}
+
+/* 0x1D464 — record §48-U. EAX = the value v, EDX = the side. v is clamped to
+ * 0..0x44 (0x1D466 `jle`, 0x1D472 `jge`, below 0 `xor eax,eax`), then 0x10D70
+ * on the pushed record DS_001028E8[side] with AX = the word 0xC9B44[v]. The
+ * EBX/ECX/EDX loads (3, 0x7000, 9 or 0x17) are dead as in 0x1D2F0. Callers:
+ * 0x1D94A (0x1D890), 0x1DD35 (0x1DC6C) and the unported 0x1D5E1 (0x1D540). */
+void fight_hud_bar2_set(s32 v, u32 side)
+{
+    u32 c = v > 0x44 ? 0x44u : (v < 0 ? 0u : (u32)v);  /* 0x1D466..0x1D476 */
+    actor_pset_word_set(DSD(DS_001028E8 + side * 4u),
+                        DSW(DS_000C9B44 + c * 2u));     /* 0x1D48B/0x1D4AA, 0x1D4C6 */
+}
+
+/* 0x1D890 — record §48-U (the EAX != 0 arm). Per side (ESI; EBP = side * 4,
+ * EDI = side * 2): the four HUD bytes are zeroed; with the byte AL non-zero,
+ * a = side ? 0x4000 : 0 is every spawn's a5 and
+ * - 0xA767C[side] at (0xA768C[side], a3 0xFF, 0xA7690[side]) into
+ *   DS_001028F0[side], 0xA7684[side] at (0xA7694[side], 0xFF, 0xA7698[side])
+ *   into DS_001028E8[side];
+ * - 0x1D2F0(0, side) and 0x1D464(0, side);
+ * - 0xBB664 at (0xA7628[side], 0xFF, 0xA762C[side]) into DS_001028F8[side],
+ *   0xBB678 at (0xA7630[side], 0xFF, 0xA7634[side]) into DS_00102900[side];
+ * - DS_001028E0[side] = 0 (EBX, no 0x2B150 on the old record), then 0x1D838
+ *   (side, the slot's +0x7A, the word 0xA76D0) and DS_00104AEC |= 2.
+ * The words are zero-extended. Callers: 0x11B1E (state 6, EAX = 0), 0x25C46
+ * (0x25C1C, EAX = 1) and 0x25AC2 (0x25A84, no entrance). */
 void fight_hud_spawn(u32 enable)
 {
     for (u32 side = 0; side < 2u; side++) {                 /* 0x1D8A6 loop */
@@ -1398,12 +1460,140 @@ void fight_hud_spawn(u32 enable)
         DSB(DS_0010290C + side) = 0;                        /* 0x1D8B1 */
         DSB(DS_0010780A + side * 0x94u) = 0;                /* 0x1D8B7 */
         DSB(DS_0010290E + side) = 0;                        /* 0x1D8C1 */
-        if (enable != 0u) {
-            /* PORT: 0x1D8CF..0x1D9DA the HUD actor spawn (0x1D2F0/0x1D464/
-             * 0x1D838, the 0xA76xx tables and DS_00104AEC bit 2) is cycle 2's
-             * HUD; state 6's EAX is 0, so it is not reached here (gap §10.6). */
+        if ((u8)enable != 0u) {                             /* 0x1D8C7 `test dl,dl` */
+            u32 a = side != 0u ? 0x4000u : 0u;              /* 0x1D8CF..0x1D8E1 */
+            DSD(DS_001028F0 + side * 4u) = actor_spawn(
+                (const u32 *)(mem + DSD(DS_000A767C + side * 4u)),
+                DSW(DS_000A768C + side * 2u), 0xFFu,
+                DSW(DS_000A7690 + side * 2u), a);           /* 0x1D8F1..0x1D912 */
+            DSD(DS_001028E8 + side * 4u) = actor_spawn(
+                (const u32 *)(mem + DSD(DS_000A7684 + side * 4u)),
+                DSW(DS_000A7694 + side * 2u), 0xFFu,
+                DSW(DS_000A7698 + side * 2u), a);           /* 0x1D919..0x1D939 */
+            fight_hud_bar_set(0, side);                     /* 0x1D941 0x1D2F0 */
+            fight_hud_bar2_set(0, side);                    /* 0x1D94A 0x1D464 */
+            DSD(DS_001028F8 + side * 4u) = actor_spawn(
+                (const u32 *)(mem + DS_000BB664),
+                DSW(DS_000A7628 + side * 2u), 0xFFu,
+                DSW(DS_000A762C + side * 2u), a);           /* 0x1D96F..0x1D992 */
+            DSD(DS_00102900 + side * 4u) = actor_spawn(
+                (const u32 *)(mem + DS_000BB678),
+                DSW(DS_000A7630 + side * 2u), 0xFFu,
+                DSW(DS_000A7634 + side * 2u), a);           /* 0x1D9A0..0x1D9B7 */
+            DSD(DS_001028E0 + side * 4u) = 0u;              /* 0x1D9C0 (EBX) */
+            fight_hud_badge_spawn(side, DSB(DS_0010782A + side * 0x94u),
+                                  DSW(DS_000A76D0));        /* 0x1D9C6..0x1D9D5 0x1D838 */
+            DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u); /* 0x1D9DA */
         }
     }
+}
+
+/* 0x1DC6C — record §48-U. 0x1D890 instruction for instruction but for the
+ * first record's descriptor (0x1DCBC `test esi,esi`): side 0 takes
+ * 0xA767C[0] (as 0x1D890) and side 1 0xA7674[1] = 0xA7678 (0x1D890's is
+ * 0xA7680). In the image 0xA767C/0xA7680 both hold 0xA7638 and 0xA7678 holds
+ * 0xA7660, the descriptor whose first sprite word is 0xC9A52's. The stack
+ * slots of a and the slot offset are swapped; nothing else differs. Callers:
+ * 0x25C3A (0x25C1C, EAX = 1, with DS_00104B1D == 2) and 0x25AB6 (0x25A84, no
+ * entrance). */
+void fight_hud_spawn_b(u32 enable)
+{
+    for (u32 side = 0; side < 2u; side++) {                 /* 0x1DC83 loop */
+        DSB(DS_0010780E + side * 0x94u) = 0;                /* 0x1DC89 */
+        DSB(DS_0010290C + side) = 0;                        /* 0x1DC8F */
+        DSB(DS_0010780A + side * 0x94u) = 0;                /* 0x1DC95 */
+        DSB(DS_0010290E + side) = 0;                        /* 0x1DC9F */
+        if ((u8)enable != 0u) {                             /* 0x1DCA5 `test dl,dl` */
+            u32 a = side != 0u ? 0x4000u : 0u;              /* 0x1DCAD..0x1DCBA */
+            u32 d = side == 0u ? DSD(DS_000A767C)
+                               : DSD(DS_000A7674 + side * 4u);  /* 0x1DCBC..0x1DCC8 */
+            DSD(DS_001028F0 + side * 4u) = actor_spawn(
+                (const u32 *)(mem + d),
+                DSW(DS_000A768C + side * 2u), 0xFFu,
+                DSW(DS_000A7690 + side * 2u), a);           /* 0x1DCE3..0x1DCFD */
+            DSD(DS_001028E8 + side * 4u) = actor_spawn(
+                (const u32 *)(mem + DSD(DS_000A7684 + side * 4u)),
+                DSW(DS_000A7694 + side * 2u), 0xFFu,
+                DSW(DS_000A7698 + side * 2u), a);           /* 0x1DD04..0x1DD24 */
+            fight_hud_bar_set(0, side);                     /* 0x1DD2C 0x1D2F0 */
+            fight_hud_bar2_set(0, side);                    /* 0x1DD35 0x1D464 */
+            DSD(DS_001028F8 + side * 4u) = actor_spawn(
+                (const u32 *)(mem + DS_000BB664),
+                DSW(DS_000A7628 + side * 2u), 0xFFu,
+                DSW(DS_000A762C + side * 2u), a);           /* 0x1DD59..0x1DD7B */
+            DSD(DS_00102900 + side * 4u) = actor_spawn(
+                (const u32 *)(mem + DS_000BB678),
+                DSW(DS_000A7630 + side * 2u), 0xFFu,
+                DSW(DS_000A7634 + side * 2u), a);           /* 0x1DD89..0x1DDA0 */
+            DSD(DS_001028E0 + side * 4u) = 0u;              /* 0x1DDAA (EBX) */
+            fight_hud_badge_spawn(side, DSB(DS_0010782A + side * 0x94u),
+                                  DSW(DS_000A76D0));        /* 0x1DDB0..0x1DDBF 0x1D838 */
+            DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u); /* 0x1DDC4 */
+        }
+    }
+}
+
+/* ---- 0x20EF8 the round reset --------------------------------------------- */
+
+/* 0x38BEC — record §48-U. EAX = the side. The words 0x107D2C, 0x107D20,
+ * 0x107D18, 0x107D1C and 0x107D24 [side] = 0 (BX), then the 64 bytes
+ * 0x107A80 + side * 0x40 .. + 0x3F = 0 (0x38C22 `inc eax` before the store at
+ * [eax + 0x107A7F]). EBX/EDX are pushed and popped. Only caller: 0x20F07. */
+static void fight_side_scratch_clear(u32 side)
+{
+    DSW(DS_00107D2C + side * 2u) = 0u;                  /* 0x38BF5 */
+    DSW(DS_00107D20 + side * 2u) = 0u;                  /* 0x38BFD */
+    DSW(DS_00107D18 + side * 2u) = 0u;                  /* 0x38C05 */
+    DSW(DS_00107D1C + side * 2u) = 0u;                  /* 0x38C0D */
+    DSW(DS_00107D24 + side * 2u) = 0u;                  /* 0x38C15 */
+    for (u32 i = 0; i < 0x40u; i++)                     /* 0x38C22..0x38C2D */
+        DSB(DS_00107A80 + side * 0x40u + i) = 0u;       /* 0x38C25 [eax+0x107A7F] */
+}
+
+/* 0x46670 — record §48-U. For EAX = 0x40 and 0x80 (0x46673 `add eax,0x40`
+ * before the stores, 0x4668C `cmp eax,0x80`): the byte [EAX + 0x1081DE] = 0
+ * and the dwords [EAX + 0x1081B0] and [EAX + 0x1081B4] = 0. So 0x10821E,
+ * 0x10825E, 0x1081F0, 0x1081F4, 0x108230 and 0x108234. Only caller: 0x20F8C. */
+static void fight_1081f0_clear(void)
+{
+    for (u32 o = 0; o <= 0x40u; o += 0x40u) {           /* 0x46673..0x46691 */
+        DSB(DS_0010821E + o) = 0u;                      /* 0x46678 [eax+0x1081DE] */
+        DSD(DS_001081F0 + o) = 0u;                      /* 0x46680 [eax+0x1081B0] */
+        DSD(DS_001081F4 + o) = 0u;                      /* 0x46686 [eax+0x1081B4] */
+    }
+}
+
+/* 0x20EF8 — record §48-U. Per side s (ECX; ESI, EBX and EDX advance to
+ * (s + 1) * 2, * 4 and * 0x94 after 0x38BEC(s) and before the stores): the
+ * slot's +0x74, +0x76, +0x78, +0x8C = 0 and +0x84 = AX = 0 (AH and AL were
+ * zeroed at 0x20F22/0x20F31; 0x38BEC leaves EAX at s * 0x40 + 0x40), +0x76
+ * again = AX; the bytes DS_001078F2[s] and DS_00100B5E[s] = 0; the bytes
+ * 0xFD158/0xFD159/0xFD15A/0xFD15B + s * 4 = 0 and the dword 0xFD148 + s * 4 =
+ * 0; the word DS_00100B50[s] = 0xFFFF (DI). Then 0x46670 and the byte
+ * DS_00100C1D = 0. EBX..EDI are pushed and popped. Callers: 0x25C70
+ * (0x25C1C) and the unported 0x26AAF (0x26A50). */
+void fight_round_reset(void)
+{
+    for (u32 s = 0; s < 2u; s++) {                      /* 0x20F05..0x20F86 */
+        u32 slot = DS_001077B0 + s * 0x94u;
+        fight_side_scratch_clear(s);                    /* 0x20F07 0x38BEC */
+        DSW(slot + 0x74u) = 0u;                         /* 0x20F1B */
+        DSW(slot + 0x76u) = 0u;                         /* 0x20F24 */
+        DSB(DS_001078F2 + s) = 0u;                      /* 0x20F2B */
+        DSW(slot + 0x78u) = 0u;                         /* 0x20F33 */
+        DSB(DS_000FD158 + s * 4u) = 0u;                 /* 0x20F3A */
+        DSB(DS_000FD159 + s * 4u) = 0u;                 /* 0x20F42 */
+        DSD(DS_000FD148 + s * 4u) = 0u;                 /* 0x20F48 */
+        DSB(DS_000FD15A + s * 4u) = 0u;                 /* 0x20F4E */
+        DSB(DS_000FD15B + s * 4u) = 0u;                 /* 0x20F56 */
+        DSW(slot + 0x84u) = 0u;                         /* 0x20F5C (AX) */
+        DSB(DS_00100B5E + s) = 0u;                      /* 0x20F63 */
+        DSW(slot + 0x8Cu) = 0u;                         /* 0x20F69 */
+        DSW(slot + 0x76u) = 0u;                         /* 0x20F75 (AX) */
+        DSW(DS_00100B50 + s * 2u) = 0xFFFFu;            /* 0x20F70/0x20F7C (DI) */
+    }
+    fight_1081f0_clear();                               /* 0x20F8C 0x46670 */
+    DSB(DS_00100C1D) = 0u;                              /* 0x20F93 */
 }
 
 /* ---- 0x33F08 the health-bar pass ---------------------------------------- */
@@ -1440,7 +1630,7 @@ void fight_health_bars(void)
 
 /* ---- 0x3CB68 the 2x32 slot pass ---------------------------------------- */
 
-static void fight_slot_pass(void)
+void fight_slot_pass(void)
 {
     /* 0x3CB6B saves DS_00107ED8 and 0x3CB71 zeroes DS_00107EDC; the outer loop
      * increments DS_00107EDC to 2 and the inner runs 0x20 times per side. */

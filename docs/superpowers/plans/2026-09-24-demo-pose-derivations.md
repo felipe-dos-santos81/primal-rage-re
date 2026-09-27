@@ -15190,3 +15190,279 @@ call moved before the branch (killed by the free-list order).
   mode handlers. Mode `0xD`'s own remaining gaps are unchanged from §48-Q:
   the voices `0x2C3FC` (`0x2759E`, `0x277B0`; §45-A) and the entrances of
   characters 0 and 2..6 (whose port §48-U is taking up on another branch).
+
+## 48-U. Mode 5's handler `0x25C88`, the round start (named-gap batch 13, branch `gap13-mode5`)
+
+**Result in one line.** `0x25C88`, the handler `game_frame`'s mode switch
+reaches for mode 5, is ported as `game_mode_05_step` (`flow.c`) and wired
+into case 5, so 35 table entries remain named gaps. It is not an arena-frame
+tail like `0x274FC`/`0x296B8`: it shares no instruction run with them (its
+only common callee is `0x1D838`) and is instead a small state machine on
+the byte `DS_00104B25` that stages a round's start: the HUD and the round
+card, a 60-frame hold, the fight card, another hold, then the release into
+mode 6 or, for a continuing team/survival match, mode `0xC` with the next
+side's entrance. Ported with it, each from the raw: `0x25C1C`
+(`flow_round_hud_init`), `0x256F4` (`flow_win_markers_spawn`), `0x4F37C`
+(`flow_round_timer_draw`), `0x32B4C` (`config_play_time_snap_b`), the
+`EAX != 0` arm of `0x1D890` (`fight_hud_spawn`, until now a §10.6 gap),
+`0x1DC6C` (`fight_hud_spawn_b`), `0x1D2F0` (`fight_hud_bar_set`, §48-Q's
+named gap, now also wired into `0x1D764`), `0x1D464` (`fight_hud_bar2_set`),
+`0x20EF8` (`fight_round_reset`) with its callees `0x38BEC` and `0x46670`;
+`0x3CB68` (`fight_slot_pass`) was ported and is only made public. The one
+open call is the per-character entrance at `0x25F27`, which goes through
+`fn_resolve` exactly as `0x27732`/`0x2989C` do (only character 1's
+`0x24568` is registered; the other six are the parallel `gap13-entrances`
+task's). No ported path the oracles run stores mode 5, and a headless
+8000-frame run is byte-identical before and after (48-U.5).
+
+(§48-S is `gap12-charselect`'s and `gap13-entrances` runs in parallel, so
+this section skips T and takes U.)
+
+### 48-U.1 The raw (Ghidra `disassemble_function`, `read_memory` + capstone, fixups applied)
+
+- **The entry.** The mode table `0x24B8C[5]` is `0x2524C`: `call 0x25c88;
+  jmp 0x2540f`.
+- **`0x25C88`** (Ghidra `FUN_00025c88`, 804 bytes, to `0x25FAB`) pushes
+  EBX/ECX/EDX/ESI/EDI, calls `0x3CB68`, then `mov al,[0x104b25]; dec al;
+  cmp al,3; ja 0x25f9f; and eax,0xff; jmp cs:[eax*4+0x25c78]`. The table
+  `0x25C78` holds `0x25CAE`, `0x25DD3`, `0x25E67`, `0x25F81` for the values
+  1..4. Every arm ends `or byte [0x104aec],2` and returns; `0x25F9F` is the
+  default (0 and above 4).
+  - **1 (`0x25CAE`)**: `mov bl,1` into `[0x104b1b]` and `[0x104b15]`, `call
+    0x25c1c`. With `[0x104b14] != 0`: `[0xa88b4]` when `test byte
+    [0x104529],2` is non-zero, else `[0xa88a4]`. With it 0: `xor eax,eax;
+    mov ecx,[0x104adc]; mov al,[0x104b1e]; cmp eax,ecx` (a dword compare
+    of the zero-extended byte) gives 2, else `cmp eax,1` gives 0, else 1;
+    `shl eax,2` and `[eax+0xa88a8]` (bit 1) or `[eax+0xa8898]`. All four
+    spawns are `push 0; ecx 0xff; ebx 0x3600; edx 0x2a00` into `0x2AE14`,
+    the result to `[0x104ac0]`. Then `xor esi,esi` into the eight dwords
+    `0x104A88..0x104AA4`, `call 0x256f4`, `[0x104b25] = ah = 4`,
+    `[0x104b23] = dl = 2`, the word `[0x104afe] = ax = 0x3c`.
+  - **2 (`0x25DD3`)**: the descriptor immediate `0xa8884` only when bit 1
+    of `[0x104529]` and `[0x104b14]` are both set (two `jz` to the same
+    `0x25DFD`), else `0xbb6a0`; `push 0; ecx 0xff; ebx 0x1200; edx 0x2a00`,
+    the result to `[0x104acc]`; `or byte [0x104ae8],0x40`; `0x2C3FC(0xd9)`
+    with `[0x104b14]`, else `0xd7`; `[0x104b25] = dl = 4`, the word
+    `[0x104afe] = di = 0x3c`, `[0x104b23] = dh = 3`.
+  - **3 (`0x25E67`)**: `0x2F4BC(eax -1, edx 5, ebx 0x80994, ecx 0)` (22
+    spaces); `0x2B150([0x104ac0])`; `xor edx,edx`; `0x2B150([0x104acc])`
+    with `[0x104ac0] = edx` between; `[0x104acc] = edx` (0: `0x2B150`
+    pushes and pops EDX, §48-Q); `call 0x4f37c`; `[0x1078fc]` and
+    `[0x1078fe]` = `ah` = 0; `[0x104abc] = ([0x104b1f] == 3) + 1` (`setz`,
+    `inc`); `call 0x32970`; `0x32B00([0x104abc], 1)` when `[0x104b1e] ==
+    1`; `0x32B4C([0x104abc], 1)` when `[0x104b14] == 0`. Then `[0x104b14]
+    == 0` stores the word mode 6 (`0x25F6B`). Otherwise `movzx` side
+    `[0x104b12]` into EAX, `edx = [eax+0x108167] sar 0x18` (the signed byte
+    `0x10816A[side]`), `mov esi,0xc; mov [0x104b00],si` **before** `call
+    [edx*4+0xa8628]` (`0x25F27`), then `0x1D838(eax side, edx the same
+    signed character re-read, ebx the word 0xa76d0)`, `[0xf0afe] = bh = 0`
+    and `[0xf0aff] = [0x10810d]`.
+  - **4 (`0x25F81`)**: `mov dx,[0x104afe]; dec edx; mov [0x104afe],dx;
+    test dx,dx; jg 0x25f9f`, else `[0x104b25] = [0x104b23]`.
+  - **Ghidra's decompiler drops** case 1's `[0x104b14]`/`[0x104529]` card
+    selection (it shows `FUN_0002ae14(0)`) and case 3's `0x2F4BC`
+    arguments; the port follows the disassembly.
+- **`0x25C1C`** (to `0x25C76`) pushes EDX: `call 0x29d60` (a bare `ret`),
+  `[0x104ad8] = edx = 0`, `0x1DC6C(1)` when `[0x104b1d] == 2` else
+  `0x1D890(1)`, `0x1D810([0x104b12])` when `[0x104b1d] != 3` and
+  `[0x104b14] != 0`, `[0x104b20] = 1`, `call 0x20ef8`.
+- **`0x256F4`** (to `0x257A0`) pushes EBX..EBP. `cmp byte [0x104af2],0;
+  jbe` skips the first loop; it walks EBP = 0.. while EBP < the byte
+  (re-read each pass), and a zero dword `[edi+0x104a88]` takes `0x2AE14(eax
+  0xbb68c, edx esi = 0x1700 + k * 0x380, ecx 0xff, ebx 0x900, push edx =
+  0)`. The second loop does the same on `[0x104af3]` and `[esi+0x104a98]`
+  with `edx edi = 0x3940 - k * 0x380` and `push ebx = 0`. Nothing bounds k
+  to the four slots.
+- **`0x4F37C`** (to `0x4F431`) pushes EBX/ECX/EDX. `[0x104b1d] == 2`:
+  `[0x1088f2] = ch = 0x1e`, `0x2F198(0x13, 1, 0x80c80 "TT", 0x4002)`;
+  `== 3`: the same with `0x80c84` "EE"; else `[0x104b14] != 0`:
+  `0x2F198(0x13, 1, 0x80c88 "XX", 0x4002)`, `[0x1088f2]` untouched; else
+  `[0x1088f2] = bl = 0x3c`, `0x2F528(0x13, 1, ebx 0x3c, ecx 2, push 0x4000,
+  push 0)` (the pad 0 last) and `or byte [0x104aec],1`.
+- **`0x32B4C`** (to `0x32B91`) is `0x32B00` on `0x107480` instead of
+  `0x107478`, with `xor eax,eax` (audit counter 0) before `0x2E934` in place
+  of 1.
+- **`0x1D890`**'s `EAX != 0` arm (`0x1D8CF..0x1D9DA`), per side (ESI; EBP =
+  side * 4, EDI = side * 2; `[esp]` the slot offset, `[esp+4]` a): a = side ?
+  0x4000 : 0 as every spawn's pushed a5; `[ebp+0xa767c]` at (`[edi+0xa768c]`,
+  0xff, `[edi+0xa7690]`) into `[ebp+0x1028f0]`; `[ebp+0xa7684]` at
+  (`[edi+0xa7694]`, 0xff, `[edi+0xa7698]`) into `[ebp+0x1028e8]`;
+  `0x1D2F0(0, side)`, `0x1D464(0, side)`; `0xbb664` at (`[edi+0xa7628]`,
+  0xff, `[edi+0xa762c]`) into `[ebp+0x1028f8]`; `0xbb678` at
+  (`[edi+0xa7630]`, 0xff, `[edi+0xa7634]`) into `[ebp+0x102900]`;
+  `[ebp+0x1028e0] = ebx = 0` (no `0x2B150` on what was there);
+  `0x1D838(side, dl = [slot+0x10782a], the word 0xa76d0)`; `or byte
+  [0x104aec],2`. Every word is zero-extended.
+- **`0x1DC6C`** (to `0x1DDF2`) is `0x1D890` instruction for instruction
+  except `0x1DCBC..0x1DCC8`: `test esi,esi; jnz; mov eax,[ebp+0xa767c]` /
+  `mov eax,[ebp+0xa7674]`, so side 1 reads `0xa7678`, not `0xa7680`, and the
+  two stack slots swap roles. The image holds `0xA7638` at `0xA767C` and
+  `0xA7680` and `0xA7660` at `0xA7678`: side 1's first bar is the
+  descriptor whose first word is `0xC9A52[0]`, which is what `0x1D2F0`
+  draws for side 1 when `[0x104b1d] == 2`.
+- **`0x1D2F0`** (to `0x1D462`): ECX = the value clamped to 0..0x78
+  (`cmp eax,0x78; jle`, `test eax,eax; jge`, `xor ecx,eax` = 0), EBX = the
+  side, `add ecx,ecx`. With `[0x104b1d] == 2` side 0 takes `[ecx+0xc9960]`
+  and side 1 `[ecx+0xc9a52]`; otherwise each side takes `0xc9a52` when
+  `test byte [side*0x94+0x1077f1],8` is non-zero, else `0xc9960`. Each arm
+  pushes `[side*4+0x1028f0]` and calls `0x10D70` with AX the word; the EBX
+  (1), ECX (0x5000/0x6000 from the same bit) and EDX (4/0x17) it loads are
+  dead, as `0x10D70` overwrites all three before reading them (§43-B).
+  The image's tables end with a repeated word (`0xC9960[0x77]` =
+  `[0x78]` = `0x2E70`, `0xC9A52[0x77]` = `[0x78]` = `0x4770`).
+- **`0x1D464`** (to `0x1D4CD`): the value clamped to 0..0x44, `0x10D70`
+  on `[side*4+0x1028e8]` with `[eax*2+0xc9b44]` (`0xC9B44[0x43]` =
+  `[0x44]` = `0x2EB4`).
+- **`0x20EF8`** (to `0x20F9E`), per side ECX: `0x38BEC(ecx)`, then ESI,
+  EBX and EDX advance to (s + 1) * 2, * 4, * 0x94 *before* the stores, so
+  `[edx+0x107790]` is slot s's +0x74, and so on: the slot words +0x74,
+  +0x76, +0x78, +0x8C = 0 and +0x84 = AX, +0x76 again = AX (AH and AL
+  zeroed at `0x20F22`/`0x20F31`); the bytes `[ecx+0x1078f1]`
+  (`0x1078F2[s]`) and `[ecx+0x100b5d]` (`0x100B5E[s]`) = 0; the bytes
+  `0xFD158..0xFD15B + s * 4` and the dword `0xFD148 + s * 4` = 0; the word
+  `[esi+0x100b4e]` (`0x100B50[s]`) = DI = 0xFFFF. Then `call 0x46670` and
+  `[0x100c1d] = 0`.
+- **`0x38BEC`** zeroes the words `0x107D2C`, `0x107D20`, `0x107D18`,
+  `0x107D1C`, `0x107D24` [side] and the 64 bytes `0x107A80 + side * 0x40`
+  (`inc eax` before the store at `[eax+0x107a7f]`); **`0x46670`** zeroes
+  the byte `[eax+0x1081de]` and the dwords `[eax+0x1081b0]`/`[eax+0x1081b4]`
+  for EAX = 0x40 and 0x80.
+
+### 48-U.2 Entrances and who stores mode 5 (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object, a dword scan of both fixed-up objects; the objects dumped through `read_memory`)
+
+| target | rel32 | dwords | Ghidra |
+|---|---|---|---|
+| `0x25C88` | `0x2524C` (the table's case-5 body) | none | the same |
+| `0x25CAE`/`0x25DD3`/`0x25E67`/`0x25F81` | none | `0x25C78..0x25C84` (the sub-state table), referenced only by `0x25CA6` | |
+| `0x25C1C` | `0x25CBC`, `0x2935C` (`0x29328`) | none | the same 2 |
+| `0x256F4` | `0x25DA6`, `0x27D02`/`0x27D80`/`0x27DA5`/`0x27DBA` (`0x27C48`), `0x29446` (`0x29328`) | none | the same 6 |
+| `0x4F37C` | `0x25E9F`, `0x29534` (`0x29328`), `0x25AC7` (`0x25A84`, no entrance, §48-Q) | none | the same 3 |
+| `0x32B4C` | `0x25EFD`, `0x27DEB` (`0x27DC8`) | none | the same 2 |
+| `0x1D890` | `0x11B1E` (state 6, EAX 0), `0x25C46`, `0x25AC2` | none | the same 3 |
+| `0x1DC6C` | `0x25C3A`, `0x25AB6` | none | the same 2 |
+| `0x1D2F0` | `0x1D5A8` (`0x1D540`), `0x1D797` (`0x1D764`), `0x1D941`, `0x1DD2C` | none | the same 4 |
+| `0x1D464` | `0x1D5E1` (`0x1D540`), `0x1D94A`, `0x1DD35` | none | the same 3 |
+| `0x20EF8` | `0x25C70`, `0x26AAF` (`0x26A50`) | none | the same 2 |
+| `0x38BEC`, `0x46670` | `0x20F07`, `0x20F8C` only | none | the same |
+
+`0x29328` is mode `0x30`'s handler: it calls `0x3CB68`, `0x25C1C`,
+`0x256F4` and `0x4F37C` too and looks like the team-battle counterpart of
+`0x25C88`; it stays a named gap of the switch.
+
+**Who stores mode 5.** No instruction stores the immediate 5 into the word
+`[0x104B00]` (§47-B.2's table has no 5). Mode 5 arrives through the return
+mode `[0x104AFA]`, which mode `0x1B` (`0x4F9DD`, ported) and modes
+`0x15`/`0x16`/`0x18` (unported) copy into the mode word. Decoding every
+store to `[0x104AFA]` and every `call 0x4F980` back to its register's load
+finds three sources of 5: `0x4F980(5)` at `0x25A79` (`0x259CC`'s
+`DS_00104B1D != 3` arm) and at `0x27162` (`0x27134`), both ported hooks
+that also set `DS_00104B25 = 1` (the case-1 entry above), and `mov eax,5`
+before `0x28609` in `0x28468` (mode 8, unported), which stores mode `0x16`.
+In the port, `0x259CC` runs only as a `DS_00104AE4` hook of mode `0x17`,
+which case `0x11` and the unported character-select passes store; so under
+real input mode 5 becomes reachable once the character select (§48-S)
+reaches mode `0x11`, and on the no-input path it is not reached at all
+(48-U.5).
+
+### 48-U.3 The port
+
+- `flow.c`: `game_mode_05_step` (`0x25C88`), `flow_round_hud_init`
+  (`0x25C1C`), `flow_win_markers_spawn` (`0x256F4`) and
+  `flow_round_timer_draw` (`0x4F37C`); `game_frame`'s case 5 calls the
+  handler and the named-gap list drops it. The voice at `0x25E39` is
+  "not wired (record §45-A)", `0x32970` stays out of scope (spec §7), and
+  the entrance call is `fn_resolve(0xA8628[c])(side)` with a miss skipped,
+  as at `0x27732`/`0x2989C`.
+- `fight.c`: `fight_hud_bar_set`/`fight_hud_bar2_set` (`0x1D2F0`/
+  `0x1D464`), the `EAX != 0` arm of `fight_hud_spawn` (`0x1D890`),
+  `fight_hud_spawn_b` (`0x1DC6C`, kept as its own function because the raw
+  bytes differ in the descriptor select), `fight_round_reset` (`0x20EF8`)
+  with the static `fight_side_scratch_clear` (`0x38BEC`) and
+  `fight_1081f0_clear` (`0x46670`); `fight_slot_pass` is exported; and
+  `fight_hud_side_reset` (`0x1D764`) now calls `0x1D2F0` at `0x1D797`.
+- `config.c`: `config_play_time_snap_b` (`0x32B4C`), its `0x2E934(0, t)`
+  audit post deferred as `0x32B00`'s is.
+
+### 48-U.4 The assertions and mutations (`check_mode5_a`/`_b` in `test_fight.c`)
+
+`check_mode5_a` covers case 4's signed countdown (2 -> 1 -> 0, 0x8000 and
+0), the default arm for 0, 5 and 0xFF, `game_frame`'s dispatch of case 5,
+case 2's four card selections, `0x1D2F0`/`0x1D464`'s clamps, tables, side
+and bit-3 selection and mirror bit, `0x1D764`'s new bar draw, `0x32B4C`'s
+two arms, `0x4F37C`'s four arms (row 1 redrawn and compared glyph by glyph)
+and `0x256F4`'s kept/spawned slots and positions. `check_mode5_b` covers
+case 1 in full (0x1D890's ten records and pset words per side, the badge
+over an old record that is not released, the card, the markers, every
+`0x20EF8` store against sentinels, one byte past each block), the six
+card selections with `0x1DC6C` and the `0x1D810` gate, and case 3's two
+exits (the row-5 release of cells 10..31 only, both cards released and
+zeroed, the snaps, mode 6 without an entrance; mode `0xC` set before the
+stub entrance, the "EE" field, side 1's badge replacing the old one). Every
+image value an expectation uses is asserted first, and every record the
+handler releases is a clean pool record (`m5_rec`). Each check restores the
+data object, the pools and the scratch around every run (`m5_seed`).
+
+**Mutations.** 48 single-site mutations of the new code, each rebuilt with
+the three touched objects deleted first and run through the whole suite
+(`scratchpad/mutate.py`). 47 fail it. Each was confirmed by an assertion
+failure, not only by a crash (see the flake below):
+- the handler: case 4's `<= 0` as `< 0` and as unsigned; case 5 unwired
+  from `game_frame`; the slot pass dropped; `DS_00104B1B` not stored; the
+  `DS_00104ADC` compare on bytes; the bit-1 card table swapped; one of the
+  eight zeroing stores dropped; `DS_00104AFE` 0x3D; case 2's `&&` as `||`,
+  its `DS_00104AE8 |= 0x40` dropped, `DS_00104B23` 2; case 3's spaces on
+  row 6, the `DS_00104ACC` release or the `DS_00104AC0` zeroing dropped,
+  `DS_001078FE` not cleared, `DS_00104ABC` on `== 1`, the `0x32B00` gate on
+  `DS_00104B1E == 0`, the `0x32B4C` gate inverted, mode `0xC` not stored
+  before the entrance, the badge dropped, `DS_000F0AFF` = 0;
+- `0x25C1C`: `DS_00104AD8` not zeroed, the `DS_00104B1D != 3` gate dropped,
+  `0x1DC6C` replaced by `0x1D890`, `0x20EF8` dropped;
+- `0x256F4`: the step 0x300, the non-zero test dropped;
+- `0x4F37C`: "EE" as "TT", the "XX" arm storing `DS_001088F2`,
+  `DS_00104AEC |= 1` dropped;
+- `0x1D2F0`/`0x1D464`: the clamp 0x79, the negative clamp dropped, the
+  mode-2 sides swapped, bit 3 inverted, `0x1D464`'s clamp 0x45 and its
+  table off by one word, the draw dropped from `0x1D890` and from
+  `0x1D764`;
+- `0x1D890`/`0x1DC6C`: the `DS_001028E0` zeroing dropped, a5 on side 0,
+  `0x1DC6C`'s side-1 descriptor as `0x1D890`'s;
+- `0x20EF8`/`0x38BEC`/`0x46670`: +0x84 not cleared, `DS_00100B50` 0,
+  63 bytes, one pass;
+- `0x32B4C`: the divisor 0x3D.
+
+The survivor is `0x1D2F0`'s clamp at 0x77. It is equivalent on the image
+data, because `0xC9960`/`0xC9A52` repeat their last word at 0x77 and 0x78,
+so it cannot be caught through them. The clamp at 0x79 is caught. The
+first passes of the script were unreliable in two ways. Some mutants were
+not rebuilt (make's timestamps), which is fixed by deleting the objects.
+Others hit the pre-existing crash below; their assertion failures were then
+confirmed in another pass.
+
+**A pre-existing flake, not from this batch.** `run_tests` dies with
+SIGBUS in about one run in six, on `main`'s build as on this branch's (2
+of 12 and 2 of 10 runs). lldb puts it in `check_projectile_step`
+(`test_fight.c`, long before the §48-U checks): `fighter_think` ->
+`fighter_command_dispatch` -> `fighter_input_mask` -> `hit_facing_flag` ->
+`hit_record_x` -> `fighter_18350(side 1, anchor 0xFFFFF120)`, which reads
+`mem + table + anchor * 2` out of bounds. It is reported, not fixed here.
+
+### 48-U.5 Measured and remaining gaps
+
+- **No regression on the no-input path.** A temporary `stderr` probe in
+  `game_frame` (reverted, never committed) logged every change of the
+  dword `[0x104B00]` over a headless `--check 8000`: one line, frame 1,
+  `0x00000003`. So mode 5 is never entered. The same 8000-frame run from a
+  build of `main` (`d9d5afe`) and from this branch writes 24000
+  byte-identical `frames/` files and identical logs. `make verify`:
+  green: the front-end oracle 517 clean / 801 splice / 3 transition / 2 unexplained (both allowed by name), the demo-fight ratchet fully explained at N = 1886, attract2 0 unexplained (fully explained), SMK 120/120 and 41/41, the title and attract prefix oracles unchanged, and `symbols.h` regenerates byte-identically.
+- **Named gaps left.** The six unregistered entrances `0xA8628[0, 2..6]`
+  (`gap13-entrances`); the voice `0x2C3FC(0xD9/0xD7)` (§45-A); `0x32970`
+  and the `0x2E934` audit posts (spec §7); mode `0x30`'s `0x29328`, the
+  other caller of `0x25C1C`/`0x256F4`/`0x4F37C`; `0x1D540`, the third
+  caller of `0x1D2F0`/`0x1D464`; `0x26A50`, `0x20EF8`'s other caller;
+  `0x27DC8`, `0x32B4C`'s other caller; `0x25A84` (no entrance).
+- **Two stores the tests cannot see through the handler.** `0x1D890`'s
+  own `DS_00104AEC |= 2` is masked by the handler's closing `|= 2`, and
+  `0x2B150` on a zero `DS_00104AC0`/`DS_00104ACC` (case 3 run without
+  cases 1 and 2) would write the raw's `mem[0x28]` as the port's does; the
+  raw's sub-state order (1, 4, 2, 4, 3) always fills both first.

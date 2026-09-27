@@ -672,7 +672,33 @@ the character select pass and are left to that branch. Named gaps: `0x2C2B0`
 `0x2DAE4`/`0x2E934` audit. No ported path stores mode `0xD` or `0x32`, and the
 headless 8000-frame run is byte-identical. New `check_33c18_callers_a`/`_b`
 in `test_fight.c`.
-
 **The character select's per-frame passes (record §48-S).** Mode `0x10`'s sub-state 0 now runs the real character screen. `0x43B24` is ported as `fight_char_select_pass`, and `0x44798`, the `DS_00104B1D == 3` pick-four route, as `fight_char_team_pass`. Their callees are ported from the raw too: the unjoined side's blinking PRESS START / INSERT 1 COIN prompts (`0x432A0` and the `0x2Cxxx` helpers `0x2C088`/`0x2C0F4`/`0x2C178`/`0x2C1C8`→`0x2C1D4`, exported in `flow.h`), the joined side's text (`0x43464`/`0x435AC`/`0x44638` and the erasers `0x432EC`/`0x433DC`), the cursor's portrait and fighter updates (`0x43EA0`/`0x43FBC`/`0x4418C`/`0x442A0`), the confirm (`0x43D60`, `0x43D0C`, `0x4248C`), the countdown (`0x43AAC`), the pick toggle and its tags (`0x4434C`, `0x44054`, `0x4408C`), `0x2F388` (`text_cells_release_count`) and an export of `0x2AD40` (`actor_release`). Under real input a credited start now blinks the prompts, moves the cursor, confirms, and on the countdown or both confirms arms the versus screen (hook `0x430E8`, mode `0x1A` returning to `0x11`). Still named gaps: the voices (§45-A), the character-pick audit count `0x2E934` (spec §7), and the match itself, because `0x259CC` returns to mode 5 or `0x30`, both unported. A probe shows that no covered path leaves mode 3 (`DS_001088E4` stays 0), and a headless 8000-frame run is byte-identical before and after. New `check_char_select_pass` and `check_char_team_pass` in `test_fight.c`, and `check_mode_10_step` (f)/(h) updated: all 144 mutations fail the suite.
 
 **`0x2C2B0`, the side prompts' erase (record §48-T).** Mode `0xD`'s final round now erases the loser's prompts on row `0x1D`. `0x2C2B0` was the last unported call in §48-Q's match end, and it is ported from the raw as `prompt_side_erase` (`flow.c`). `game_mode_0d_step` calls it with `(s8)(DS_0010810D ^ 1)` right after the result text `0x28130`, where the gap note was. It is small because both its callees were already ported (§48-S). With the sprite-prompt bit (`DS_00104529` bit 1) it runs `0x2C088`, which kills the side's PRESS START sprite and releases string `0x48`'s cells, and then releases `DS_00105BF8` cells at the last INSERT 1 COIN position. Either way it then releases `DS_00105BF8` cells at the side's col byte `0xBAB58[side]` and the given row. Mode `0x32`'s `0x296B8` has no such call. The function's other four callers (`0x26D4C`, `0x27DC8`, `0x28CC8`, `0x42FE0`) are unported mode handlers and stay outside this batch. A probe shows that no covered path reaches mode `0xD`, and a headless 8000-frame run is byte-identical before and after. New `check_2c2b0` in `test_fight.c` covers the text form, the sprite form, the release order and the call from `0x274FC`. `check_33c18_callers_b` (h) now seeds row `0x1D` empty so the new call finds nothing there. 24 of 27 mutations fail the suite, and the three survivors are equivalent.
+
+**Mode 5, the round start (record §48-U).** `game_frame`'s case 5 now runs
+`0x25C88` (`game_mode_05_step`), so 35 of the switch's entries remain named
+gaps. It is not an arena-frame tail like modes `0xD`/`0x32` and shares no
+code with them beyond the badge spawn `0x1D838`. It is a sub-state machine on
+`DS_00104B25`. State 1 spawns the HUD (`0x25C1C`: `0x1D890`, or `0x1DC6C`
+in `DS_00104B1D` mode 2, with the bars drawn at 0 by `0x1D2F0`/`0x1D464`,
+then the per-round reset `0x20EF8`), the round card and the round-win
+markers (`0x256F4`). State 2 spawns the fight card. State 4 holds each for
+0x3C frames. State 3 releases both, draws the timer field (`0x4F37C`),
+takes the play-time snaps (`0x32B00`/`0x32B4C`) and goes to mode 6, or to
+mode `0xC` after the next side's entrance and badge. All of these callees
+are ported from the raw, the `EAX != 0` arm of `0x1D890` included, which
+was a §10.6 gap. §48-Q's `0x1D2F0` gap is closed and wired into `0x1D764`.
+The entrance at `0x25F27` goes through `fn_resolve` as modes `0xD`/`0x32`
+do, and six of the seven entrances are still gaps. Mode 5 arrives only
+through the return mode `DS_00104AFA` (the ported hooks `0x259CC`/`0x27134`,
+and the unported `0x28468`). A probe found the mode dword at 3 on every
+frame of a headless 8000-frame run, and that run is byte-identical to
+`main`'s. Named gaps: the voice, `0x32970` and the `0x2E934` audit, mode
+`0x30`'s `0x29328` (the other caller of `0x25C1C`/`0x256F4`/`0x4F37C`),
+`0x1D540`, `0x26A50` and `0x27DC8`. New `check_mode5_a`/`_b` in
+`test_fight.c`: 47 of 48 mutations fail the suite. The survivor, `0x1D2F0`'s clamp at 0x77, is equivalent on the image tables (§48-U.4). `make verify` is green with the oracle lines unchanged.
+A pre-existing flake came to light in this batch: `run_tests` dies with
+SIGBUS in about one run in six, on `main`'s build as well. The crash is in
+`check_projectile_step`'s `fighter_18350(side 1, anchor 0xFFFFF120)`, an
+out-of-bounds table read. It is named in §48-U.4 and not fixed here.

@@ -267,4 +267,17 @@ void flow_match_result_text(void);
 void game_mode_0d_step(void);
 void game_mode_32_step(void);
 
+/* Record §48-U, mode 5 (the round start). 0x25C88, dispatched by game_frame:
+ * 0x3CB68, then on DS_00104B25 1 the HUD (0x25C1C), the round card and the
+ * win markers (0x256F4); 2 the fight card; 3 their release, the timer field
+ * (0x4F37C) and mode 6, or mode 0xC with the side DS_00104B12's entrance and
+ * badge; 4 the DS_00104AFE countdown into DS_00104B23. 0x25C1C: the HUD
+ * spawn (0x1DC6C or 0x1D890 with 1), 0x1D810 and 0x20EF8. 0x256F4: the
+ * 0xBB68C markers for DS_00104AF2/DS_00104AF3 wins. 0x4F37C: "TT"/"EE"/"XX"
+ * or the number 60 at col 0x13, row 1. */
+void game_mode_05_step(void);
+void flow_round_hud_init(void);
+void flow_win_markers_spawn(void);
+void flow_round_timer_draw(void);
+
 #endif /* PR_GAME_FLOW_H */
