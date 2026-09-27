@@ -4405,6 +4405,35 @@ void fighter_145e4(u32 side)
     fighter_39834(ctx[1], (s32)DSB(ctx[2] + 0x5Fu));        /* 0x145F1..0x14602 */
 }
 
+/* PORT: data-object addresses symbols.h does not name (character 3's
+ * reaction-0x23 grab, *(u32*)0xA46E4). */
+#define FIGHT_ANIM_14E44   0x000D3026u  /* 0x14E49: 0x14E44's grab stream */
+#define FIGHT_ANIM_14CC4   0x000D3062u  /* 0x14D55: 0x14CC4's miss stream */
+
+/* 0x14E44. Character 3's reaction-0x23 callback (*(u32*)0xA46E4, the (char 3,
+ * 0x23) entry of 0x34E2C's 0xA3528 table; Ghidra has no function here). EAX =
+ * slot, EDX = rec; EBX is pushed at 0x14E44 and overwritten at 0x14E45 before
+ * any read. The 0xD3026 stream at hold 2.0 through 0x3C4CC, state 9/7/0, the
+ * +0x18/+0x1C callbacks 0x14CC4/0x14D7C and +0x42 bit 2. The raw returns
+ * AL = 1; 0x34E2C returns it (0x35045..0x3504F), 0x3CE58 overwrites it at
+ * 0x3CF33 and 0x350D0's tail (0x352CD) returns it. It writes neither +0x0C
+ * nor +0x57. */
+void fighter_14e44(u32 slot, u32 rec, u32 side)
+{
+    (void)side;
+    hit_anim_start_b(rec, FIGHT_ANIM_14E44, 0x40000000u);  /* 0x14E47..0x14E53 0x3C4CC */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x14E58 */
+    DSB(slot + 0x54u) = 0u;                                 /* 0x14E5C */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x14E60 */
+    DSD(slot + 0x18u) = 0x00014CC4u;                        /* 0x14E64 */
+    /* PORT: 0x14D7C (the throw) is stored but not ported: it needs the
+     * unported 0x3C208, and its caller, 0x193B0's +0x1C call (0x19505), runs
+     * only after 0x14CC4 returns 0; in the second demo the grab misses
+     * (record §40). */
+    DSD(slot + 0x1Cu) = 0x00014D7Cu;                        /* 0x14E6E */
+    DSB(slot + 0x42u) |= 4u;                                /* 0x14E6B..0x14E78 */
+}
+
 /* 0x3CE58. Validate the hitbox and drive the reaction: the 0x3CE24 gate, the
  * 0x4CE70 allow-list in modes 0x21/0x22, 0x34D8C, the 0x10/0x11 variant select
  * and 0x34E2C. */
@@ -5973,6 +6002,44 @@ u32 fighter_3e1d0(u32 side)
     if (t > 3 || t < 1) return 1u;                          /* 0x3E215..0x3E21F */
     return (u32)fighter_18c14(ctx[0], flags,
                               FIGHTER_C75F5, FIGHTER_C75FF);    /* 0x3E226..0x3E237 */
+}
+
+/* 0x14CC4. The slot +0x18 hook 0x14E44 (character 3's grab) stores, called by
+ * 0x19020 as fn(side). The context is 0x33950(side). With ctx[4]'s (the
+ * side's record) +0x61 clear it returns 1. Otherwise 0x18C14 with flags 1, 4,
+ * 8, 0xD and 0xE = 0, flag 9 = 1 (CL, which 0x18BD4 leaves alone) and the
+ * default box tables; when that passes, 1 unless |0x187FC()| is in
+ * 0x1900..0x3200 (signed; 0x187FC called once for the sign and once for the
+ * value). On 1 the record restarts on the 0xD3062 miss stream at 3.0 through
+ * 0x2BC30. Then the record's +0x61 = 0 and the result is returned. */
+u32 fighter_14cc4(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    u32 r;
+    fighter_ctx_same(ctx, side);                            /* 0x14CCE 0x33950 */
+    if (DSB(ctx[4] + 0x61u) == 0u) return 1u;               /* 0x14CD7..0x14CE2 */
+    fighter_18bd4(flags);                                   /* 0x14CE7..0x14CED 0x18BD4 */
+    flags[1] = 0;                                           /* 0x14CF9 */
+    flags[8] = 0;                                           /* 0x14CFD */
+    flags[4] = 0;                                           /* 0x14D01 */
+    flags[9] = 1u;                                          /* 0x14CEB/0x14D05 CL */
+    flags[0xE] = 0;                                         /* 0x14D09 */
+    flags[0xD] = 0;                                         /* 0x14D0D */
+    r = (u32)fighter_18c14(ctx[0], flags, 0u, 0u);          /* 0x14D11..0x14D1C 0x18C14 */
+    if (r == 0u) {                                          /* 0x14D1E/0x14D20 */
+        s32 d;
+        if (ai_distance() < 0)                              /* 0x14D22..0x14D29 */
+            d = (s32)(0u - (u32)ai_distance());             /* 0x14D2B/0x14D30 */
+        else
+            d = ai_distance();                              /* 0x14D34 */
+        r = (d > 0x3200 || d < 0x1900) ? 1u : 0u;           /* 0x14D39..0x14D4B */
+    }
+    if (r == 1u)                                            /* 0x14D50/0x14D53 */
+        actors_anim_begin(ctx[4], FIGHT_ANIM_14CC4,
+                          0x40400000u);                     /* 0x14D55..0x14D63 0x2BC30 */
+    DSB(ctx[4] + 0x61u) = 0u;                               /* 0x14D68/0x14D6C */
+    return r;                                               /* 0x14D70 */
 }
 
 /* 0x19164. The winner's stance-timer seed: B5A[side] = truncate(max(rec+0x20,

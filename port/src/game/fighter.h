@@ -480,6 +480,17 @@ u32 fighter_145cc(u32 side);
  * +0x5F) on 0x33950(side). EAX = side. */
 void fighter_145e4(u32 side);
 
+/* 0x14E44. Character 3's reaction-0x23 callback (*(u32*)0xA46E4), same
+ * (slot, rec, side) registers (EBX unread): the 0xD3026 grab stream at 2.0,
+ * state 9/7/0, +0x18 0x14CC4, +0x1C 0x14D7C (not ported) and +0x42 bit 2. */
+void fighter_14e44(u32 slot, u32 rec, u32 side);
+
+/* 0x14CC4. The +0x18 hook 0x14E44 stores: 1 while the record's +0x61 is
+ * clear; else the 0x18C14 checks and the 0x187FC range 0x1900..0x3200 decide
+ * the grab, a miss (1) restarts the record on 0xD3062, and +0x61 is cleared.
+ * EAX = side. */
+u32 fighter_14cc4(u32 side);
+
 /* 0x3B938. Burst slot `slot`'s projectile (slot+0x08): restart it on the
  * burst stream (0xE1898 at 2.0 when its +0x48 is 4, else the per-character
  * 0xBDFC8/0xBDFF0 stream and hold), detach it (+0x48, +0x34/+0x36 and

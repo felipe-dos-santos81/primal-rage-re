@@ -99,6 +99,7 @@ static void anim_code_3D26C(u32 rec, u32 arg);
 static void anim_code_4F83C(u32 rec, u32 arg);
 static void anim_code_10FC4(u32 rec, u32 arg);
 static void anim_code_37CD4(u32 rec, u32 arg);
+static void anim_code_14EA4(u32 rec, u32 arg);
 static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side);
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side);
 
@@ -234,6 +235,18 @@ int actors_init(void)
     fn_register(0x145CCu, (void (*)(void))fighter_145cc);
     fn_register(0x145E4u, (void (*)(void))fighter_145e4);
     fn_register(0x37CD4u, (void (*)(void))anim_code_37CD4);
+    /* PORT: 0x34E2C's reaction callback 0x14E44 (*(u32*)0xA46E4, character
+     * 3's reaction 0x23, the second demo's grab at f = 4003), called at
+     * 0x35045 with the (slot, rec, side) registers, and the +0x18 hook it
+     * stores, 0x14CC4 (0x19020, fn(side) with EAX returned). Its +0x1C
+     * callback 0x14D7C is not ported (record §40). Its stream 0xD3026
+     * carries the 0xD100 target 0x14EA4 (dword at 0xD3036), opcode 0x11,
+     * mode 0x4000; the 0xD100 target 0x14E80 (dword at 0xD3056) lies past
+     * the 0xD3034 loop, which the grab's miss restart (0x14CC4) cuts, and is
+     * not ported. */
+    fn_register(0x14E44u, (void (*)(void))fighter_14e44);
+    fn_register(0x14CC4u, (void (*)(void))fighter_14cc4);
+    fn_register(0x14EA4u, (void (*)(void))anim_code_14EA4);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -720,6 +733,31 @@ static void anim_code_37CD4(u32 rec, u32 arg)
         DSW(slot + 0x74u) = 0x0378u;                    /* 0x37CEA */
     else
         DSW(slot + 0x74u) = 0u;                         /* 0x37CF2 */
+}
+
+/* PORT: a data-object address symbols.h does not name. */
+#define ANIM_9AFA8 0x0009AFA8u  /* 0x14EC3: the word table 0x14EA4 indexes */
+
+/* 0x14EA4 — the animation-opcode target shape (the 0xD100 target at 0xD3036
+ * in character 3's grab stream 0xD3026, called once per pass of its 0xD3034
+ * loop). EAX = rec; EDX is pushed at 0x14EA5, used as scratch and popped, so
+ * the operand is never read. With the other side's DS_001077A8 slot set, it
+ * moves that slot's record's x (+0x18) by (s16)(word[0x9AFA8 + 2 * (s8)rec
+ * +0x52] << 6): added when 0x1A570(rec+0x51) holds, else subtracted. */
+static void anim_code_14EA4(u32 rec, u32 arg)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                   /* 0x14EA6 */
+    u32 other = DSD(DS_001077A8 + (side ^ 1u) * 4u);    /* 0x14EA9..0x14EB2 */
+    s32 idx;
+    s32 dx;
+    (void)arg;
+    if (other == 0u) return;                            /* 0x14EB9/0x14EBB */
+    idx = (s32)DSD(rec + 0x4Fu) >> 24;                  /* 0x14EBD/0x14EC0 sar */
+    dx = (s32)(s16)(u16)((u32)DSW(ANIM_9AFA8 + (u32)(idx * 2)) << 6);   /* 0x14EC3..0x14ECE, 0x14EE1/0x14EEC movsx */
+    if (fighter_actor_bit15_clear(side))                /* 0x14ECB..0x14EDD 0x1A570 */
+        DSD(DSD(other) + 0x18u) += (u32)dx;             /* 0x14EDF..0x14EE4 */
+    else
+        DSD(DSD(other) + 0x18u) -= (u32)dx;             /* 0x14EEA..0x14EEF */
 }
 
 /* 0x12720. The animation opcode 0x11 target reached on the globe's first

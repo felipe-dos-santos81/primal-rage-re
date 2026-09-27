@@ -2350,11 +2350,12 @@ static void fe_cyc2_dump(void)
 /* The driver's loop: FE_DEMO_LOOPS covers the first demo's 0x11BCC exit at
  * loop 1970 (the run's length before the cycle-2 dump); FE_LOOPS reaches the
  * second attract cycle's state-6 handoff (loop 2782) and the second demo's
- * first 416 frames. FE_LOOPS is a measurement window, not a raw value: 3200
- * (3100 before record §39, 2800 before §38) keeps the second demo's first
- * unexplained capture frame, 2763 (loop 3116), inside the cycle-2 dump. */
+ * first 516 frames. FE_LOOPS is a measurement window, not a raw value: 3300
+ * (3200 before record §40, 3100 before §39, 2800 before §38) keeps the
+ * second demo's first unexplained capture frame, 2950 (loop 3293), inside
+ * the cycle-2 dump. */
 #define FE_DEMO_LOOPS 2000
-#define FE_LOOPS 3200
+#define FE_LOOPS 3300
 
 int test_frontend(void)
 {
@@ -2850,7 +2851,7 @@ int test_frontend(void)
      * The dump run is loop frames 589..1970, i.e. dumped frames 0..1381 (1382
      * frames); the 1400 cap covers it and FE_DEMO_LOOPS clears the 1970
      * exit. The exit frame closes this dump: the loop runs on to FE_LOOPS
-     * (3200) and writes every later presented frame to <dump>/cycle2 instead
+     * (3300) and writes every later presented frame to <dump>/cycle2 instead
      * (fe_cyc2_dump; record §36), the attract's second cycle, which the
      * capture shows from 1886 to its second demo at 2385. The per-frame
      * measurements and end-of-run reads below keep the FE_DEMO_LOOPS window. The front-end window is distinct [560..1884] (1325 frames: 517
@@ -3018,6 +3019,11 @@ int test_frontend(void)
         /* The ape's (side 1) record stream and rec+0x52 after loop 3040 (the
          * poll's f = 3927). Sentinels that no stream takes. */
         u32 c2_ape_st = 0xFFFFFFFFu, c2_ape_52 = 0xFFu;
+        /* The raptor's (side 0) record stream, slot state +0x52/+0x53/+0x54
+         * and +0x18 hook after loop 3116 (the poll's f = 4003), and its
+         * record stream after loop 3133 (f = 4020). Sentinels. */
+        u32 c2_rap_st = 0xFFFFFFFFu, c2_rap_state = 0xFFFFFFFFu;
+        u32 c2_rap_hook = 0xFFFFFFFFu, c2_rap_miss = 0xFFFFFFFFu;
         /* The picks, variant and handle as the first demo left them, read
          * where the driver's run used to end (loop FE_DEMO_LOOPS - 1); the
          * second demo's state 6 draws new picks. 0xFF/0 sentinels. */
@@ -3188,6 +3194,15 @@ int test_frontend(void)
                     c2_ape_st = DSD(rec1 + 8u);
                     c2_ape_52 = DSB(rec1 + 0x52u);
                 }
+                if (i == 3116) {
+                    u32 sl0 = DS_001077B0;
+                    c2_rap_st = DSD(DSD(sl0) + 8u);
+                    c2_rap_state = (u32)DSB(sl0 + 0x52u) << 16
+                                 | (u32)DSB(sl0 + 0x53u) << 8
+                                 | DSB(sl0 + 0x54u);
+                    c2_rap_hook = DSD(sl0 + 0x18u);
+                }
+                if (i == 3133) c2_rap_miss = DSD(DSD(DS_001077B0) + 8u);
             }
         }
         movie_set_screen_hook(NULL);
@@ -3195,9 +3210,12 @@ int test_frontend(void)
         if (log != NULL) fclose(log);
         printf("test_frontend: cycle 2 from loop %d, %d frames; A54@1971 %d, "
                "4F83C@%d, state 6@%d (F0A72 %d), state 7@%d (78FA %d), "
-               "block@%d, ape@3040 %05X/%u\n", c2_start, fe_cyc2_n, c2_proj54,
+               "block@%d, ape@3040 %05X/%u, raptor@3116 %05X/%06X/%05X, "
+               "@3133 %05X\n", c2_start, fe_cyc2_n, c2_proj54,
                c2_flash_i, c2_state6_i, c2_f0a72, c2_state7_i, c2_fa,
-               c2_block_i, (unsigned)c2_ape_st, (unsigned)c2_ape_52);
+               c2_block_i, (unsigned)c2_ape_st, (unsigned)c2_ape_52,
+               (unsigned)c2_rap_st, (unsigned)c2_rap_state,
+               (unsigned)c2_rap_hook, (unsigned)c2_rap_miss);
 
         /* The raw's timeline: six entries, each drawn then paused, then state 3.
          * Entry k is drawn on frame 1+93k; after the sixth, 0x1E pause frames
@@ -3217,11 +3235,11 @@ int test_frontend(void)
         CHECK_EQ_INT(dumped, (int)(raw_cap < 1382 ? raw_cap : 1382));
 
         /* The second attract cycle (derivation record §36). The cycle-2 dump
-         * starts after the exit frame, at loop 1971, and holds 1395 frames:
-         * loops 1971..3199 (1229) and, inside loop 1971, the 166 screens
+         * starts after the exit frame, at loop 1971, and holds 1495 frames:
+         * loops 1971..3299 (1329) and, inside loop 1971, the 166 screens
          * 0x1C740 writes (TWI5: the entry blank, 121 frames, the exit blank;
          * TWG: the same with 41). A player that drops TWI5's 121st frame
-         * writes 1394; one with no screen hook 1229. 0x2BAF4's 0x4F228 call
+         * writes 1494; one with no screen hook 1329. 0x2BAF4's 0x4F228 call
          * (0x2BBC4) clears the projection gate DS_00107A54 the demo's state 6
          * set (0x387E2), so it is 0 after loop 1971 (1 without it). The
          * lightning stream 0xE890A's 0x4F83C sets DS_00104AD0 bit 0 first at
@@ -3240,10 +3258,17 @@ int test_frontend(void)
          * f = 3915. 0x3B298 sets its +0x43 bit 0x20 and calls 0x1A734
          * (0x3B443), which restarts 0xC8F40[1] = 0xE3F5E at +0x52 = 0
          * whatever the bit was, as the poll's original does. Without it
-         * the stream runs on at 0xE3F66 (rec+0x52 = 2). */
+         * the stream runs on at 0xE3F66 (rec+0x52 = 2).
+         * Record §40: at loop 3116 (f = 4003) the raptor takes character 3's
+         * reaction 0x23, whose callback 0x14E44 starts the grab stream
+         * 0xD3026 (at 0xD3028 after the frame), state 9/7/0 and the +0x18
+         * hook 0x14CC4; unregistered, the raptor stays in its stance. At loop
+         * 3133 (f = 4020) the hook returns 1 (no grab) and restarts the
+         * record on the miss stream 0xD3062 (at 0xD3068 after the frame),
+         * as the poll's original does. */
         CHECK(!fe_cyc2_failed, "cycle-2 frames write to the dump");
         CHECK_EQ_INT(c2_start, 1971);
-        CHECK_EQ_INT(fe_cyc2_n, 1395);
+        CHECK_EQ_INT(fe_cyc2_n, 1495);
         CHECK_EQ_INT(c2_proj54, 0);
         CHECK_EQ_INT(c2_flash_i, 2547);
         CHECK_EQ_INT(c2_state6_i, 2782);
@@ -3253,6 +3278,10 @@ int test_frontend(void)
         CHECK_EQ_INT(c2_block_i, 2848);
         CHECK_EQ_INT((int)c2_ape_st, 0x000E3F5E);
         CHECK_EQ_INT((int)c2_ape_52, 0);
+        CHECK_EQ_INT((int)c2_rap_st, 0x000D3028);
+        CHECK_EQ_INT((int)c2_rap_state, 0x090700);
+        CHECK_EQ_INT((int)c2_rap_hook, 0x00014CC4);
+        CHECK_EQ_INT((int)c2_rap_miss, 0x000D3068);
 
         /* Alignment: the driver's state-6 entry sits at the attract's
          * post-state, and the two picks drawn from it (plus the dust builder's
