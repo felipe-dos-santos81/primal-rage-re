@@ -100,6 +100,7 @@ static void anim_code_4F83C(u32 rec, u32 arg);
 static void anim_code_10FC4(u32 rec, u32 arg);
 static void anim_code_37CD4(u32 rec, u32 arg);
 static void anim_code_14EA4(u32 rec, u32 arg);
+static void anim_code_3C32C(u32 rec, u32 arg);
 static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side);
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side);
 
@@ -247,6 +248,12 @@ int actors_init(void)
     fn_register(0x14E44u, (void (*)(void))fighter_14e44);
     fn_register(0x14CC4u, (void (*)(void))fighter_14cc4);
     fn_register(0x14EA4u, (void (*)(void))anim_code_14EA4);
+    /* PORT: the 0xD500 target 0x3C32C (opcode 0x15, mode 0x4000), the end
+     * of a reaction stream: 9 dword sites, each after a 0xD500 word (0xD24FE
+     * in character 3's reaction stream 0xD24F0, reached at loop 3293 of the
+     * second demo; 0xE4856, 0xE48A0, 0xE492E, 0xEA92A, 0xEA9DE, 0xEB4A0,
+     * 0xECEFC, 0xECF58). */
+    fn_register(0x3C32Cu, (void (*)(void))anim_code_3C32C);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -758,6 +765,19 @@ static void anim_code_14EA4(u32 rec, u32 arg)
         DSD(DSD(other) + 0x18u) += (u32)dx;             /* 0x14EDF..0x14EE4 */
     else
         DSD(DSD(other) + 0x18u) -= (u32)dx;             /* 0x14EEA..0x14EEF */
+}
+
+/* 0x3C32C — the animation-opcode target shape (the 0xD500 target of 9
+ * stream sites, the first at 0xD24FE). EAX = rec; EBX and EDX are pushed and
+ * popped, EDX only holds rec, so the operand is never read. It clears the
+ * +0x54 byte of the rec's side's slot (the byte at 0x107804 + side * 0x94,
+ * zeroed through BL) and runs 0x36870(rec). */
+static void anim_code_3C32C(u32 rec, u32 arg)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                   /* 0x3C330/0x3C332 */
+    (void)arg;
+    DSB(DS_00107804 + side * 0x94u) = 0u;               /* 0x3C335..0x3C345 */
+    fighter_36870(rec);                                 /* 0x3C34C/0x3C34E */
 }
 
 /* 0x12720. The animation opcode 0x11 target reached on the globe's first

@@ -8733,6 +8733,105 @@ static void check_char3_grab(void)
     DSD(DS_001014EC) = sv_14ec;
 }
 
+/* Record §41. 0x3C32C (the 0xD500 target of 9 stream sites, the first at
+ * 0xD24FE in character 3's reaction stream 0xD24F0; Ghidra has no function
+ * there): EAX = rec, the operand unread; the byte at 0x107804 + (rec+0x51) *
+ * 0x94 (the side's slot +0x54) = 0, then 0x36870(rec). Both slots are seeded
+ * with +0x54 = 3, whose 0x36870 case returns at once, so only the clear
+ * reaches the +0x54 == 0 arm: the side's record restarts on 0xC8950[+0x7A]
+ * with +0x4D = 0x1E and state 0/0 (check_deep_callees E's setting: mode 3,
+ * DS_00107D2C = 0, +0x42/+0x43 = 0). The other side keeps its sentinels. */
+static void sr_seed(u32 s0, u32 s1, u32 r0, u32 r1, u32 st0, u32 st3)
+{
+    mem_fill(s0, 0, 0x94u);
+    mem_fill(s1, 0, 0x94u);
+    mem_fill(FIGHT_RECS, 0, 0x200u);
+    mem_fill(FIGHT_ACTORS, 0, 0x80u);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    fight_reset_slot_pair(s0, s1, r0, r1);
+    DSW(st3) = 0x0123u;                      /* literal sprite ids */
+    DSW(st0) = 0x0456u;
+    DSD(0x000C895Cu) = st3;                  /* 0xC8950[3] */
+    DSD(0x000C8950u) = st0;                  /* 0xC8950[0] */
+    DSW(DS_00104B00) = 3u;
+    DSW(DS_00107D2C) = 0;                    /* 0x39040(other) gate shut */
+    DSB(r0 + 0x51u) = 0;
+    DSB(r1 + 0x51u) = 1;
+    DSW(r0 + 0x56u) = 1;
+    DSW(r1 + 0x56u) = 2;
+    DSW(FIGHT_ACTORS + 0x20u) = 0x7777u;
+    DSW(FIGHT_ACTORS + 0x40u) = 0x7777u;
+    DSB(s0 + 0x7Au) = 0;
+    DSB(s1 + 0x7Au) = 3;
+    DSB(s0 + 0x54u) = 3u;
+    DSB(s1 + 0x54u) = 3u;
+    DSB(s0 + 0x52u) = 0x66u;
+    DSB(s0 + 0x53u) = 0x66u;
+    DSB(s1 + 0x52u) = 0x66u;
+    DSB(s1 + 0x53u) = 0x66u;
+    DSD(r0 + 8u) = 0x00ABCDEFu;
+    DSD(r1 + 8u) = 0x00ABCDEFu;
+    DSB(r0 + 0x4Du) = 0x55u;
+    DSB(r1 + 0x4Du) = 0x55u;
+}
+
+static void check_stance_return(void)
+{
+    u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    u32 st3 = FIGHT_RECS + 0x3800u, st0 = FIGHT_RECS + 0x3810u;
+    u32 sv_14ec = DSD(DS_001014EC);
+    u32 sv_c8950 = DSD(0x000C8950u), sv_c895c = DSD(0x000C895Cu);
+    u8 sv_slots[0x130], sv_b00[4], sv_d2c[4], sv_ce0[4], sv_af8[8];
+    u8 sv_d148[8], sv_d20[0x10], sv_a80[0x80];
+    u32 k;
+    typedef void (*anim_fn)(u32 rec, u32 arg);
+    anim_fn f;
+
+    tf_snap(sv_slots, DS_001077A8, 0x130u);
+    tf_snap(sv_b00, DS_00104B00, 4u);
+    tf_snap(sv_d2c, DS_00107D2C, 4u);
+    tf_snap(sv_ce0, DS_00100CE0, 4u);
+    tf_snap(sv_af8, DS_00100AF8, 8u);
+    tf_snap(sv_d148, DS_000FD148, 8u);
+    tf_snap(sv_d20, DS_00107D20, 0x10u);
+    tf_snap(sv_a80, 0x00107A80u, 0x80u);
+
+    f = (anim_fn)(void *)fn_resolve(0x3C32Cu);
+    CHECK(f != NULL, "0x3C32C is a registered stream target");
+    CHECK(fn_resolve(0x3C32Cu) != (void (*)(void))fighter_36870,
+          "0x3C32C is its own target, not 0x36870");
+    for (k = 0; f != NULL && k < 2u; k++) {
+        u32 s = k ? s1 : s0, so = k ? s0 : s1;
+        u32 r = k ? r1 : r0, ro = k ? r0 : r1;
+        sr_seed(s0, s1, r0, r1, st0, st3);
+        f(r, 0xFFFFFFFFu);
+        CHECK_EQ_INT((int)DSB(s + 0x54u), 0);
+        CHECK_EQ_INT(DSD(r + 8u), k ? st3 : st0);
+        CHECK_EQ_INT((int)DSW(FIGHT_ACTORS + (k ? 0x40u : 0x20u)),
+                     k ? 0x0123 : 0x0456);
+        CHECK_EQ_INT((int)DSB(r + 0x4Du), 0x1E);
+        CHECK_EQ_INT((int)DSB(s + 0x52u), 0);
+        CHECK_EQ_INT((int)DSB(s + 0x53u), 0);
+        CHECK_EQ_INT((int)DSB(so + 0x54u), 3);
+        CHECK_EQ_INT((int)DSB(so + 0x52u), 0x66);
+        CHECK_EQ_INT(DSD(ro + 8u), 0x00ABCDEFu);
+        CHECK_EQ_INT((int)DSB(ro + 0x4Du), 0x55);
+    }
+
+    tf_put(sv_a80, 0x00107A80u, 0x80u);
+    tf_put(sv_d20, DS_00107D20, 0x10u);
+    tf_put(sv_d148, DS_000FD148, 8u);
+    tf_put(sv_af8, DS_00100AF8, 8u);
+    tf_put(sv_ce0, DS_00100CE0, 4u);
+    tf_put(sv_d2c, DS_00107D2C, 4u);
+    tf_put(sv_b00, DS_00104B00, 4u);
+    tf_put(sv_slots, DS_001077A8, 0x130u);
+    DSD(0x000C8950u) = sv_c8950;
+    DSD(0x000C895Cu) = sv_c895c;
+    DSD(DS_001014EC) = sv_14ec;
+}
+
 /* ---- Task 3b: the 0x3B714 reaction applier (pose/freeze record §2.3) ----- */
 
 /* §2.3: the reaction gates 0x39EFC/0x3B038/0x3B6C4 and the seeds 0x3B080/
@@ -10588,6 +10687,7 @@ int test_fight(void)
     check_block();
     check_slot_hook();
     check_char3_grab();
+    check_stance_return();
     check_reaction_predicates();
     check_reaction();
     check_winner_body();
