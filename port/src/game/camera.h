@@ -118,4 +118,8 @@ void camera_dust_list_init(void);
  * selected-player-y commit and the camera-y clamp. */
 void camera_scene_step(void);
 
+/* 0x12DA8 alone, the selected player y and the y clamp. Exported for modes
+ * 0xD and 0x32 (0x274FC/0x296B8, record §48-Q), which call it directly. */
+void camera_y_commit(void);
+
 #endif /* PRAGE_GAME_CAMERA_H */

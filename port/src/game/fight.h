@@ -113,6 +113,17 @@ void fight_select_marker_release(u32 side);
  * DS_001028E0[side]. */
 void fight_select_marker_spawn(u32 side, u32 cls, u32 y);
 
+/* Record §48-Q. 0x1D838: the 0x1D810 release inline, then spawn the
+ * character's badge 0xA7760[ch] at x = side ? 0x4200 : 0x200, a3 0xFD, the
+ * caller's y into DS_001028E0[side]. 0x1D764: DS_0010290C[side] = 0, the
+ * slot's +0x5A = 0 and +0x42 bit 4 cleared, the 0x1D2F0 bar draw (a named
+ * gap), and DS_001028F8[side] begins the stream 0xE904C at 1.0. 0x4DBEC: the
+ * winner's crowd (up to 28 fight-effect entries run to DS_0010810D's
+ * fighter), called by modes 0xD and 0x32 at a match's end. */
+void fight_hud_badge_spawn(u32 side, u32 ch, u32 y);
+void fight_hud_side_reset(u32 side);
+void fight_4dbec(void);
+
 /* 0x43964. Spawn the side's entry 0xC8870[side] at the character's
  * (0xC8898, 0xC88A6) into DS_00108154[side] and its panel 0xC8878[side] into
  * DS_0010815C[side], re-pointed at 0xC88DC[ch] with 0xC88F8[ch]/0xC8908[ch]

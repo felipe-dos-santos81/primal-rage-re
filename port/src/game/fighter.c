@@ -2359,7 +2359,7 @@ static void fighter_38bc8(u32 side)
 
 /* 0x41310. Add `delta` to the camera-target record's +0x3C (mode 3 excluded);
  * a negative delta that would underflow clamps to 0. */
-static void fighter_41310(u32 side, s32 delta)
+void fighter_41310(u32 side, s32 delta)
 {
     u32 rec;
     s32 v;

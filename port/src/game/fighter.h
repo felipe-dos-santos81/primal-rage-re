@@ -295,6 +295,11 @@ u32 fighter_body_push(void);
  * DS_001082D0. Called by 0x4F434. */
 void fighter_46534(u32 side, s32 delta);
 
+/* 0x41310. Add `delta` to the camera-target record DS_001077A8[side]'s +0x3C
+ * (mode 3 excluded); a negative delta that would leave it <= 0 stores 0.
+ * Exported for mode 0xD's 0x274FC (record §48-Q). */
+void fighter_41310(u32 side, s32 delta);
+
 /* 0x3C88C. The per-slot attack-frame state machine fight_slot_pass runs 2 x 32
  * times per arena frame. Reads DS_00107ED8 (slot index), DS_00107EDC (side) and
  * DS_00107EE4 (facing); phase 0 arms the hitbox (word[0x107D58 + side*0x40 +

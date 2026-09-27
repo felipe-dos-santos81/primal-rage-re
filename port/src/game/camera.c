@@ -1547,7 +1547,7 @@ static void camera_dust_spawn(void)
 /* 0x12DA8. The selected player y: mode 0 reads slot[DS_000F0AFF]+0x30's word,
  * else the signed max of DS_001077E0/DS_00107874; store its low word to
  * DS_001078F4 and run the y clamp. */
-static void camera_y_commit(void)
+void camera_y_commit(void)
 {
     s32 y;
     if (DSB(DS_000F0AFE) == 0) {
