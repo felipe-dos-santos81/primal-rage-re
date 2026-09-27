@@ -11270,6 +11270,6 @@ s3545.png`), which no port frame shows.
 - `game_flow.md` and the README said the port "does not draw" the table;
   both now say it did not then and is since drawn.
 - Table 2's insert and dirty bit are now tested.
-- The front-end record (§7.1, §7.2, §8.5) and the demo-fight record (§10.9)
+- The front-end record (§3.3, §7.1, §7.2, §8.5) and the demo-fight record (§10.9)
   carry "superseded by §46-A" notes where they call `0x2DBC4`/`0x2DB58` a
   paged resource reader.
