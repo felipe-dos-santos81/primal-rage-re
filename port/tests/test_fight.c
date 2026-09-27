@@ -20305,6 +20305,770 @@ static void check_char1_entry(void)
     tf_put(s_ce_idx, idx, nidx);
     tf_put(s_ce_data, DATA_BASE, 0x8B0D0u);
 }
+
+/* ---- the other six entrances of 0xA8628 and their chains (record §48-U) -- */
+
+typedef void (*ce_side_fn)(u32 side);
+typedef void (*ce_anim_fn)(u32 rec, u32 arg);
+typedef void (*ce_react_fn)(u32 slot, u32 rec, u32 side);
+
+static u8 s_ce_sap[320u * 200u], s_ce_sdac[256][3];
+
+/* check_char1_entry's snapshot, for the §48-U checks that follow it. */
+static void ce_save(void)
+{
+    const u32 idx = DSD(DS_001014E0), nidx = res_count() * 20u;
+    CHECK(nidx <= sizeof s_ce_idx, "the INDEX table fits the snapshot");
+    tf_snap(s_ce_data, DATA_BASE, 0x8B0D0u);
+    tf_snap(s_ce_idx, idx, nidx);
+    tf_snap(s_ce_pa, DSD(DS_001014EC), 0x4880u);
+    tf_snap(s_ce_pb, DSD(DS_001014F4), 0xEBA0u);
+    tf_snap(s_ce_decoy, CE_DECOY, ACTOR_REC_SIZE);
+    memcpy(s_ce_sap, gfx_aperture(), sizeof s_ce_sap);
+    memcpy(s_ce_sdac, gfx_dac, sizeof s_ce_sdac);
+}
+
+static void ce_restore(void)
+{
+    const u32 idx = DSD(DS_001014E0), nidx = res_count() * 20u;
+    const u32 pa = DSD(DS_001014EC), pb = DSD(DS_001014F4);
+    actors_reset();
+    memcpy(gfx_dac, s_ce_sdac, sizeof s_ce_sdac);
+    memcpy(gfx_aperture(), s_ce_sap, sizeof s_ce_sap);
+    tf_put(s_ce_decoy, CE_DECOY, ACTOR_REC_SIZE);
+    tf_put(s_ce_pb, pb, 0xEBA0u);
+    tf_put(s_ce_pa, pa, 0x4880u);
+    tf_put(s_ce_idx, idx, nidx);
+    tf_put(s_ce_data, DATA_BASE, 0x8B0D0u);
+}
+
+/* The cursor, +0x10 and the two frame words 0x2BC30 leaves on `stream` at
+ * `bits` for a copy of `rec` without a slot (so a pre-walk 0x37CD4 changes
+ * nothing), run on the decoy; the decoy and rec's pset word are put back. */
+static void ce_ref(u32 rec, u32 stream, u32 bits, u32 out[4])
+{
+    u8 save[ACTOR_REC_SIZE];
+    u32 ps = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
+    u16 psw = DSW(ps);
+    tf_snap(save, CE_DECOY, ACTOR_REC_SIZE);
+    memcpy(mem + CE_DECOY, mem + rec, ACTOR_REC_SIZE);
+    DSD(CE_DECOY + 0x14u) = 0u;
+    actors_anim_begin(CE_DECOY, stream, bits);
+    out[0] = DSD(CE_DECOY + 0x08u);
+    out[1] = DSD(CE_DECOY + 0x10u);
+    out[2] = DSD(CE_DECOY + 0x20u);
+    out[3] = DSD(CE_DECOY + 0x24u);
+    tf_put(save, CE_DECOY, ACTOR_REC_SIZE);
+    DSW(ps) = psw;
+}
+
+/* The one pool record whose cursor lies in [lo, hi); 0 for none or several. */
+static u32 ce_find(u32 lo, u32 hi)
+{
+    u32 base = DSD(DS_001014F4), r, hit = 0u, n = 0u;
+    for (r = base; r < base + ACTOR_POOL_RECORDS * ACTOR_REC_SIZE; r += ACTOR_REC_SIZE) {
+        if (DSD(r + 0x08u) >= lo && DSD(r + 0x08u) < hi) { hit = r; n++; }
+    }
+    return n == 1u ? hit : 0u;
+}
+
+/* One character's entry of 0xA8628: its placement offset, the spawn's y,
+ * its entrance stream, the expected +0x52/+0x54/+0x64 (the spawn leaves 0,
+ * 0 and 0xFF) and the bits it ORs into +0x40. */
+struct ce_spec {
+    u32 ch, entry, y, stream, or40;
+    s32 d;
+    u8 s52, s54, s64;
+};
+
+/* The entrance through its table dword, in eleven rows like §46-C's, with
+ * the offsets scaled by the spec's d: left; left failing to right; the bound
+ * read (0x8000); right; right failing to left; both equalities; both signed
+ * compares; and two rows entering on DS_0010810D's own side. The blink mask
+ * byte is DS_00104B02 + ch; the other six bytes hold its complement, so a
+ * wrong byte flips the blink. Character 6's 0x24754 actor is checked here
+ * against the opponent record ctx[5] (the decoy when the side enters on
+ * sel's own side). */
+static void ce_entrance_rows(const struct ce_spec *sp)
+{
+    const s32 d = sp->d, W = 0x7C00;
+    const struct {
+        u32 sel, ent; int b15; s32 x0; u32 w; u8 b; s32 x; u32 a5;
+    } row[] = {
+        { 0u, 1u, 0,  0x2000,          0x7C00u, 0x80u,  0x2000 - d,          0x4000u }, /* left */
+        { 0u, 1u, 0,  d - W - 0x400,   0x7C00u, 0x40u,  2 * d - W - 0x400,   0u      }, /* left fails */
+        { 0u, 1u, 0,  d - 0x8000,      0x8000u, 0x7Fu, -0x8000,              0x4000u }, /* the bound read */
+        { 1u, 0u, 1,  0x1000,          0x7C00u, 0x40u,  0x1000 + d,          0u      }, /* right */
+        { 1u, 0u, 1,  W - d + 0x400,   0x7C00u, 0xBFu,  W - 2 * d + 0x400,   0x4000u }, /* right fails */
+        { 0u, 1u, 0,  d - W,           0x7C00u, 0x00u, -W,                   0x4000u }, /* left equal */
+        { 1u, 0u, 1,  W - d,           0x7C00u, 0xC0u,  W,                   0u      }, /* right equal */
+        { 0u, 1u, 0,  0x6000,          0x7C00u, 0xFFu,  0x6000 - d,          0x4000u }, /* signed left */
+        { 1u, 0u, 1, -0x6000,          0x7C00u, 0x00u, -0x6000 + d,          0u      }, /* signed right */
+        { 1u, 1u, 0,  0x2000,          0x7C00u, 0x40u,  0x2000 - d,          0x4000u }, /* sel enters */
+        { 0u, 0u, 1,  0x1000,          0x7C00u, 0x80u,  0x1000 + d,          0u      }, /* sel enters */
+    };
+    ce_side_fn fn = (ce_side_fn)(void *)fn_resolve(DSD(0x000A8628u + sp->ch * 4u));
+    u32 i, k;
+    CHECK_EQ_INT((int)DSD(0x000A8628u + sp->ch * 4u), (int)sp->entry);
+    CHECK(fn != NULL, "the 0xA8628 entry is registered");
+    for (i = 0; fn != NULL && i < sizeof row / sizeof row[0]; i++) {
+        u32 side = row[i].ent;
+        u32 slot = DS_001077B0 + side * 0x94u;
+        u32 other = DS_001077B0 + row[i].sel * 0x94u;
+        int apart = row[i].sel != side;
+        u32 blink = (row[i].b & (row[i].sel != 0u ? 0x40u : 0x80u)) != 0u;
+        u32 rec, orec, opp;
+        orec = ce_seed(sp->ch, row[i].sel, row[i].x0, row[i].b15, row[i].w, 0u);
+        for (k = 0; k < 7u; k++)
+            DSB(DS_00104B02 + k) = (u8)(k == sp->ch ? row[i].b : (u8)~row[i].b);
+        if (apart) {
+            mem_fill(CE_DECOY, 0, ACTOR_REC_SIZE);
+            DSW(CE_DECOY + 0x56u) = 500u;
+            DSW(DSD(DS_001014EC) + 500u * 0x20u) = (u16)(row[i].b15 ? 0x0123u : 0x8123u);
+            DSD(slot) = CE_DECOY;
+            DSB(other + 0x52u) = 0x52u;
+            opp = orec;
+        } else {
+            /* The side 0x24754 aims at: the decoy in the other slot. */
+            mem_fill(CE_DECOY, 0, ACTOR_REC_SIZE);
+            DSW(CE_DECOY + 0x56u) = 500u;
+            DSD(CE_DECOY + 0x18u) = 0x00003000u;
+            DSD(DS_001077B0 + (1u - side) * 0x94u) = CE_DECOY;
+            opp = CE_DECOY;
+        }
+        DSD(opp + 0x3Cu) = 0x00001234u + i * 0x100u;
+        DSD(opp + 0x30u) = 0x01560000u + (i << 16);
+        DSB(slot + 0x63u) = 0x63u;
+        DSW(slot + 0x74u) = 0x7474u;
+        if (i == 3u) DSW(DS_000BD898) = 0x0500u;
+        fn(side);
+        rec = DSD(slot);
+        CHECK(rec != 0u && rec != orec && rec != CE_DECOY, "the entrance spawned the side");
+        if (rec == 0u || rec == orec || rec == CE_DECOY) continue;
+        CHECK_EQ_INT((int)DSD(DS_001077A8 + side * 4u), (int)slot);
+        CHECK_EQ_INT((int)DSB(slot + 0x7Au), (int)sp->ch);
+        CHECK_EQ_INT((int)DSB(rec + 0x51u), (int)side);
+        CHECK_EQ_INT((int)DSD(rec + 0x18u), (int)row[i].x);
+        CHECK_EQ_INT((int)DSD(rec + 0x1Cu), (int)sp->y);
+        CHECK_EQ_INT((int)DSW(rec + 0x32u), (int)DSW(DS_000BD898));
+        CHECK_EQ_INT((int)(DSW(rec + 0x28u) & 0x4000u), (int)row[i].a5);
+        CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)sp->stream);
+        CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40800000);
+        CHECK_EQ_INT((int)DSD(rec + 0x20u), 0x40800000);
+        CHECK_EQ_INT((int)DSW(slot + 0x74u), 0x0309);
+        CHECK_EQ_INT((int)DSB(slot + 0x41u), (int)(0x10u | blink));
+        CHECK_EQ_INT((int)DSB(slot + 0x52u), (int)sp->s52);
+        CHECK_EQ_INT((int)DSB(slot + 0x53u), 3);
+        CHECK_EQ_INT((int)DSB(slot + 0x54u), (int)sp->s54);
+        CHECK_EQ_INT((int)DSB(slot + 0x64u), (int)sp->s64);
+        CHECK_EQ_INT((int)DSD(slot + 0x40u), (int)(0x80000000u | sp->or40 | (blink << 8)));
+        CHECK_EQ_INT((int)DSB(slot + 0x63u), 1);
+        if (sp->ch == 6u) {
+            /* 0x24754: 0x1A570(side) holds when the new record's pset word
+             * lacks bit 15, i.e. for a5 = 0 (0xE1174's sprite 0x32F5 has
+             * it clear). */
+            u32 e = DSD(slot + 0x08u);
+            s32 ex = row[i].a5 == 0u
+                ? (s32)(DSD(opp + 0x18u) - DSD(opp + 0x3Cu))
+                : (s32)(0x5400u - DSD(opp + 0x3Cu) + DSD(opp + 0x18u));
+            CHECK_EQ_INT((int)((DSW(DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u)
+                                & 0x8000u) != 0u), row[i].a5 != 0u);
+            CHECK(e != 0u, "0x24754 spawned the 0xA8614 actor");
+            if (e != 0u) {
+                CHECK_EQ_INT((int)DSB(e + 0x48u), 5);
+                CHECK_EQ_INT((int)DSD(e + 0x18u), (int)ex);
+                CHECK_EQ_INT((int)DSD(e + 0x1Cu), 0x1A00);
+                CHECK_EQ_INT((int)DSW(e + 0x32u), (int)(0x0156u + i));
+                CHECK_EQ_INT((int)(DSW(e + 0x28u) & 0x4000u), 0);
+                CHECK_EQ_INT((int)DSB(e + 0x59u), 2);
+                CHECK_EQ_INT((int)DSD(e + 0x14u), (int)slot);
+                CHECK_EQ_INT((int)DSW(e + 0x34u), row[i].a5 == 0u ? 0x0096 : 0xFF6A);
+                CHECK_EQ_INT((int)DSW(e + 0x36u), 0xFFF0);
+            }
+        } else {
+            CHECK_EQ_INT((int)DSD(slot + 0x08u), 0);
+        }
+        if (apart) {
+            CHECK_EQ_INT((int)DSB(other + 0x52u), 0x52);
+            CHECK_EQ_INT((int)DSD(other), (int)orec);
+        }
+    }
+}
+
+/* Sentinels in the fields the entrance targets write: slot state and
+ * callbacks, +0x5F/+0x8A/+0x57/+0x74/+0x88/+0x40/+0x42, the record's
+ * +0x36/+0x44, and DS_000F0AFE/DS_000F0AFC. */
+static void ce_sentinels(u32 slot, u32 rec)
+{
+    DSB(slot + 0x52u) = 0x52u; DSB(slot + 0x53u) = 0x53u; DSB(slot + 0x54u) = 0x54u;
+    DSD(slot + 0x0Cu) = 0x0C0C0C0Cu; DSD(slot + 0x18u) = 0x18181818u;
+    DSD(slot + 0x1Cu) = 0x1C1C1C1Cu;
+    DSB(slot + 0x57u) = 0x57u; DSB(slot + 0x5Fu) = 0x5Fu; DSB(slot + 0x8Au) = 0x8Au;
+    DSW(slot + 0x74u) = 0x7474u; DSW(slot + 0x88u) = 0x8888u;
+    DSD(slot + 0x40u) = 0xFFFFFFFFu;
+    DSW(rec + 0x36u) = 0x3636u; DSW(rec + 0x44u) = 0x4444u;
+    DSB(DS_000F0AFE) = 0x55u;
+    DSW(DS_000F0AFC) = 0x5555u;
+}
+
+/* Character 0: 0x40CB0 (the 0x3000 placement, y = 0x4C00, state 9/3/2) and
+ * its 0xD500 target 0x40C34, through the registration, through the real
+ * stream word 0xE790E, and with a zero slot. */
+static void check_char0_entrance(void)
+{
+    static const struct ce_spec sp = { 0u, 0x40CB0u, 0x4C00u, 0xE790Au, 0x81000u,
+                                       0x3000, 9u, 2u, 0xFFu };
+    ce_anim_fn t = (ce_anim_fn)(void *)fn_resolve(0x40C34u);
+    u32 i;
+    ce_save();
+    CHECK_EQ_INT((int)DSW(0x000E790Au), 0x114F);
+    CHECK_EQ_INT((int)DSW(0x000E790Eu), 0xD500);
+    CHECK_EQ_INT((int)DSD(0x000E7910u), 0x00040C34);
+    CHECK(t != NULL, "0x40C34 is registered");
+    CHECK(fn_resolve(0x40C34u) != (void (*)(void))fighter_40c34,
+          "0x40C34 is registered through the (rec, arg) wrapper");
+    ce_entrance_rows(&sp);
+
+    for (i = 0; i < 3u; i++) {
+        u32 slot = DS_001077B0, rec, ref[4], cur;
+        rec = ce_seed(0u, 0u, 0x1000, 0, 0x7C00u, 0u);
+        ce_sentinels(slot, rec);
+        ce_ref(rec, 0x000E8538u, 0x40800000u, ref);
+        cur = DSD(rec + 0x08u);
+        if (i == 2u) DSD(rec + 0x14u) = 0u;
+        if (i == 1u) actors_anim_begin(rec, 0x000E790Eu, 0x3F800000u);
+        else if (t != NULL) t(rec, 0x1234u);
+        if (i == 2u) {
+            CHECK_EQ_INT((int)DSB(slot + 0x52u), 0x52);
+            CHECK_EQ_INT((int)DSD(slot + 0x0Cu), 0x0C0C0C0C);
+            CHECK_EQ_INT((int)DSB(slot + 0x5Fu), 0x5F);
+            CHECK_EQ_INT((int)DSW(slot + 0x74u), 0x7474);
+            CHECK_EQ_INT((int)DSD(slot + 0x40u), (int)0xFFFFFFFFu);
+            CHECK_EQ_INT((int)DSB(DS_000F0AFE), 0x55);
+            CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x3636);
+            CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)cur);
+            continue;
+        }
+        if (i == 0u) {
+            CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)ref[0]);
+            CHECK_EQ_INT((int)DSD(rec + 0x10u), (int)ref[1]);
+            CHECK_EQ_INT((int)DSD(rec + 0x20u), (int)ref[2]);
+            CHECK_EQ_INT((int)DSD(rec + 0x24u), (int)ref[3]);
+            CHECK_EQ_INT((int)ref[3], 0x40800000);
+            CHECK(ref[0] >= 0x000E8538u && ref[0] < 0x000E8550u,
+                  "0x40C34's cursor is inside 0xE8538");
+        }
+        CHECK_EQ_INT((int)DSB(slot + 0x52u), 9);
+        CHECK_EQ_INT((int)DSB(slot + 0x53u), 7);
+        CHECK_EQ_INT((int)DSB(slot + 0x54u), 0x54);
+        CHECK_EQ_INT((int)DSD(slot + 0x0Cu), 0x0003F360);
+        CHECK_EQ_INT((int)DSB(slot + 0x57u), 1);
+        CHECK_EQ_INT((int)DSD(slot + 0x18u), 0x0003F1F0);
+        CHECK_EQ_INT((int)DSD(slot + 0x1Cu), 0x0003F284);
+        CHECK_EQ_INT((int)DSB(slot + 0x5Fu), 0x26);
+        CHECK_EQ_INT((int)DSB(slot + 0x8Au), 1);
+        CHECK_EQ_INT((int)DSW(slot + 0x74u), 0);
+        CHECK_EQ_INT((int)DSD(slot + 0x40u), (int)0xFFF7EFFFu);
+        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 1);
+        CHECK_EQ_INT((int)DSW(DS_000F0AFC), 0x5555);
+        CHECK_EQ_INT((int)DSW(rec + 0x36u), 0xFE80);
+        CHECK_EQ_INT((int)DSW(rec + 0x44u), 0x0040);
+    }
+    ce_restore();
+}
+
+/* Character 2: 0x49150 and 0x492A8 -> 0x488B8. 0x488B8 also through its
+ * reaction-table dword 0xA41D0, including a row whose EAX slot (side 0) is
+ * not the record's own ctx[2] (side 1), and with DS_001078FA = 2 (the
+ * 0x34D8C flash pair) or 1. The +0x42 bit 3 is seeded so 0x1890C's latch
+ * takes the record's +0x1C directly and the result is exactly the anchor
+ * word at 0xBD884 + char * 2. */
+static void check_char2_entrance(void)
+{
+    static const struct ce_spec sp = { 2u, 0x49150u, 0u, 0xED582u, 0x81000u,
+                                       0x5000, 9u, 0u, 0xFFu };
+    ce_anim_fn t = (ce_anim_fn)(void *)fn_resolve(0x492A8u);
+    ce_react_fn cb = (ce_react_fn)(void *)fn_resolve(DSD(0x000A41D0u));
+    u32 i;
+    ce_save();
+    CHECK_EQ_INT((int)DSW(0x000ED586u), 0xD500);
+    CHECK_EQ_INT((int)DSD(0x000ED588u), 0x000492A8);
+    CHECK_EQ_INT((int)DSD(0x000A41D0u), 0x000488B8);
+    CHECK_EQ_INT((int)DSW(0x000BD884u + 2u * 2u), 0x1400);
+    CHECK_EQ_INT((int)DSW(0x000BD884u + 5u * 2u), 0x1800);
+    CHECK(t != NULL, "0x492A8 is registered");
+    CHECK(fn_resolve(0x492A8u) != (void (*)(void))fighter_492a8,
+          "0x492A8 is registered through the (rec, arg) wrapper");
+    CHECK(cb == (ce_react_fn)fighter_488b8, "0xA41D0 resolves to 0x488B8, (slot, rec, side)");
+    ce_entrance_rows(&sp);
+
+    /* A: 0x488B8. Rows: 0 on side 0 with the flash (78FA = 2); 1 on side 1
+     * without it and slot +0x7A = 5; 2 with EAX = slot 0 and rec on side 1. */
+    for (i = 0; cb != NULL && i < 3u; i++) {
+        u32 rs = i == 0u ? 0u : 1u;
+        u32 own = DS_001077B0 + rs * 0x94u;
+        u32 eax = i == 2u ? DS_001077B0 : own;
+        u32 orec_slot = DS_001077B0 + (1u - rs) * 0x94u;
+        u32 rec, ref[4], ch = i == 1u ? 5u : 2u;
+        rec = ce_seed(2u, rs, 0x1000, 0, 0x7C00u, 0u);
+        mem_fill(CE_DECOY, 0, ACTOR_REC_SIZE);
+        DSB(CE_DECOY + 0x59u) = 0x59u;
+        DSD(orec_slot) = CE_DECOY;
+        DSB(rec + 0x59u) = 0x5Au;
+        DSB(DS_001078FA) = (u8)(i == 0u ? 2u : 1u);
+        ce_sentinels(own, rec);
+        if (eax != own) ce_sentinels(eax, rec);
+        DSB(own + 0x7Au) = (u8)ch;
+        DSB(eax + 0x42u) = 0x08u;
+        DSB(own + 0x42u) = 0x08u;
+        ce_ref(rec, 0x000EDA6Cu, 0x40400000u, ref);
+        cb(eax, rec, 0x77u);
+        CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)ref[0]);
+        CHECK_EQ_INT((int)DSD(rec + 0x10u), (int)ref[1]);
+        CHECK_EQ_INT((int)DSD(rec + 0x20u), (int)ref[2]);
+        CHECK_EQ_INT((int)DSD(rec + 0x24u), (int)ref[3]);
+        CHECK_EQ_INT((int)DSB(rec + 0x59u), i == 0u ? 1 : 0x5A);
+        CHECK_EQ_INT((int)DSB(CE_DECOY + 0x59u), i == 0u ? 0xFF : 0x59);
+        CHECK_EQ_INT((int)DSD(eax + 0x18u), 0x00048668);
+        CHECK_EQ_INT((int)DSB(eax + 0x52u), 9);
+        CHECK_EQ_INT((int)DSB(eax + 0x53u), 7);
+        CHECK_EQ_INT((int)DSD(eax + 0x0Cu), 0x000487D4);
+        CHECK_EQ_INT((int)DSD(eax + 0x1Cu), 0x000486F8);
+        CHECK_EQ_INT((int)DSW(eax + 0x88u), 0);
+        CHECK_EQ_INT((int)DSB(eax + 0x42u), 0x0C);
+        CHECK_EQ_INT((int)DSB(own + 0x54u), 2);
+        CHECK_EQ_INT((int)DSB(own + 0x57u), 1);
+        CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x0320);
+        CHECK_EQ_INT((int)DSW(rec + 0x44u), 0x0020);
+        CHECK_EQ_INT((int)DSD(rec + 0x1Cu), ch == 5u ? 0x1800 : 0x1400);
+        if (eax != own) {
+            CHECK_EQ_INT((int)DSB(eax + 0x54u), 0x54);
+            CHECK_EQ_INT((int)DSB(eax + 0x57u), 0x57);
+            CHECK_EQ_INT((int)DSD(own + 0x18u), 0x18181818);
+            CHECK_EQ_INT((int)DSB(own + 0x52u), 0x52);
+        }
+    }
+
+    /* B: 0x492A8 through the registration, through the stream word 0xED586
+     * and with a zero slot. */
+    for (i = 0; i < 3u; i++) {
+        u32 slot = DS_001077B0, rec;
+        rec = ce_seed(2u, 0u, 0x1000, 0, 0x7C00u, 0u);
+        ce_sentinels(slot, rec);
+        DSB(slot + 0x42u) = 0x08u;
+        if (i == 2u) DSD(rec + 0x14u) = 0u;
+        if (i == 1u) actors_anim_begin(rec, 0x000ED586u, 0x3F800000u);
+        else if (t != NULL) t(rec, 0x1234u);
+        if (i == 2u) {
+            CHECK_EQ_INT((int)DSB(slot + 0x52u), 0x52);
+            CHECK_EQ_INT((int)DSD(slot + 0x18u), 0x18181818);
+            CHECK_EQ_INT((int)DSB(slot + 0x5Fu), 0x5F);
+            CHECK_EQ_INT((int)DSW(slot + 0x74u), 0x7474);
+            CHECK_EQ_INT((int)DSB(DS_000F0AFE), 0x55);
+            CHECK_EQ_INT((int)DSW(DS_000F0AFC), 0x5555);
+            continue;
+        }
+        CHECK_EQ_INT((int)DSD(slot + 0x18u), 0x00048668);
+        CHECK_EQ_INT((int)DSB(slot + 0x53u), 7);
+        CHECK_EQ_INT((int)DSB(slot + 0x54u), 2);
+        CHECK_EQ_INT((int)DSB(slot + 0x5Fu), 0x22);
+        CHECK_EQ_INT((int)DSB(slot + 0x8Au), 1);
+        CHECK_EQ_INT((int)DSD(slot + 0x40u), (int)0xFF04EFFFu);
+        CHECK_EQ_INT((int)DSW(slot + 0x74u), 0);
+        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 1);
+        CHECK_EQ_INT((int)DSW(DS_000F0AFC), 0x0100);
+        CHECK_EQ_INT((int)DSD(rec + 0x1Cu), 0x1400);
+    }
+    ce_restore();
+}
+
+/* Character 3: 0x15A34 (the 0x3000 placement, +0x40 |= 0xC1000) and its
+ * 0xD500 target 0x159A8. The target's 0x3C480 pre-walks 0xD2EBA, whose
+ * 0xD100 target 0x37CD4 toggles the slot's +0x42 bit 3 and rewrites +0x74
+ * (0x378 when the bit ends set, else 0), after 0x159A8's own +0x74 = 0. The
+ * facing flag 0x18B04 sets the record's +0x29 bit 6 when this slot's +0x2C
+ * is below the other's (seeded at the extremes), and does nothing in mode
+ * 0x22. */
+static void check_char3_entrance(void)
+{
+    static const struct ce_spec sp = { 3u, 0x15A34u, 0u, 0xD2BC2u, 0xC1000u,
+                                       0x3000, 9u, 0u, 0xFFu };
+    ce_anim_fn t = (ce_anim_fn)(void *)fn_resolve(0x159A8u);
+    u32 i;
+    ce_save();
+    CHECK_EQ_INT((int)DSW(0x000D2BC6u), 0xD500);
+    CHECK_EQ_INT((int)DSD(0x000D2BC8u), 0x000159A8);
+    CHECK_EQ_INT((int)DSW(0x000D2EBAu), 0xD100);
+    CHECK_EQ_INT((int)DSD(0x000D2EBCu), 0x00037CD4);
+    CHECK(t != NULL, "0x159A8 is registered");
+    CHECK(fn_resolve(0x159A8u) != (void (*)(void))fighter_159a8,
+          "0x159A8 is registered through the (rec, arg) wrapper");
+    ce_entrance_rows(&sp);
+
+    /* Rows: 0 registration, bit 3 clear, other +0x2C max (flag set); 1 the
+     * stream word, bit 3 set, other +0x2C min (flag clear); 2 registration
+     * in mode 0x22 (flag kept); 3 zero slot. */
+    for (i = 0; i < 4u; i++) {
+        u32 slot = DS_001077B0, oslot = DS_001077B0 + 0x94u, rec, ref[4], cur;
+        u8 s42 = (u8)(i == 1u ? 0xFFu : 0xF7u);
+        u8 f42 = (u8)((s42 | 8u) & 0xFBu);
+        rec = ce_seed(3u, 0u, 0x1000, 0, 0x7C00u, 0u);
+        ce_sentinels(slot, rec);
+        DSB(slot + 0x42u) = s42;
+        DSD(oslot + 0x2Cu) = i == 1u ? 0x80000000u : 0x7FFFFFFFu;
+        DSB(rec + 0x29u) = (u8)(i == 0u ? 0x00u : 0x40u);
+        DSW(DS_00104B00) = (u16)(i == 2u ? 0x22u : 3u);
+        ce_ref(rec, 0x000D2EBAu, 0x3F800000u, ref);
+        cur = DSD(rec + 0x08u);
+        if (i == 3u) DSD(rec + 0x14u) = 0u;
+        if (i == 1u) actors_anim_begin(rec, 0x000D2BC6u, 0x3F800000u);
+        else if (t != NULL) t(rec, 0x1234u);
+        if (i == 3u) {
+            CHECK_EQ_INT((int)DSB(slot + 0x52u), 0x52);
+            CHECK_EQ_INT((int)DSD(slot + 0x0Cu), 0x0C0C0C0C);
+            CHECK_EQ_INT((int)DSW(slot + 0x74u), 0x7474);
+            CHECK_EQ_INT((int)DSB(slot + 0x42u), 0xF7);
+            CHECK_EQ_INT((int)DSB(slot + 0x57u), 0x57);
+            CHECK_EQ_INT((int)DSB(DS_000F0AFE), 0x55);
+            CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)cur);
+            continue;
+        }
+        if (i != 1u) {
+            CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)ref[0]);
+            CHECK_EQ_INT((int)DSD(rec + 0x10u), (int)ref[1]);
+            CHECK_EQ_INT((int)DSD(rec + 0x24u), (int)ref[3]);
+        }
+        CHECK_EQ_INT((int)DSB(slot + 0x52u), 9);
+        CHECK_EQ_INT((int)DSB(slot + 0x53u), 7);
+        CHECK_EQ_INT((int)DSB(slot + 0x54u), 0);
+        CHECK_EQ_INT((int)DSD(slot + 0x0Cu), 0);
+        CHECK_EQ_INT((int)DSD(slot + 0x18u), 0);
+        CHECK_EQ_INT((int)DSD(slot + 0x1Cu), 0);
+        CHECK_EQ_INT((int)DSD(slot + 0x40u), (int)(0xFF00EFFFu | ((u32)f42 << 16)));
+        CHECK_EQ_INT((int)DSB(slot + 0x42u), (int)f42);
+        CHECK_EQ_INT((int)DSW(slot + 0x74u), 0x0378);
+        CHECK_EQ_INT((int)DSB(slot + 0x57u), 3);
+        CHECK_EQ_INT((int)DSB(slot + 0x5Fu), 0x5F);
+        CHECK_EQ_INT((int)(DSB(rec + 0x29u) & 0x40u), i == 1u ? 0 : 0x40);
+        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 1);
+        CHECK_EQ_INT((int)DSW(DS_000F0AFC), 0x5555);
+    }
+    DSW(DS_00104B00) = 3u;
+    ce_restore();
+}
+
+/* Character 4: 0x45FE8 (no +0x52 store) and its 0xD500 target 0x46138,
+ * which runs character 4's reaction-0x24 callback 0x45878 (§48-R). */
+static void check_char4_entrance(void)
+{
+    static const struct ce_spec sp = { 4u, 0x45FE8u, 0u, 0xEB17Eu, 0x81000u,
+                                       0x5000, 0u, 0u, 0xFFu };
+    ce_anim_fn t = (ce_anim_fn)(void *)fn_resolve(0x46138u);
+    u32 i;
+    ce_save();
+    CHECK_EQ_INT((int)DSW(0x000EB182u), 0xD500);
+    CHECK_EQ_INT((int)DSD(0x000EB184u), 0x00046138);
+    CHECK(t != NULL, "0x46138 is registered");
+    CHECK(fn_resolve(0x46138u) != (void (*)(void))fighter_46138,
+          "0x46138 is registered through the (rec, arg) wrapper");
+    ce_entrance_rows(&sp);
+
+    for (i = 0; i < 3u; i++) {
+        u32 slot = DS_001077B0, rec, ref[4];
+        rec = ce_seed(4u, 0u, 0x1000, 0, 0x7C00u, 0u);
+        ce_sentinels(slot, rec);
+        DSB(slot + 0x42u) = 0x10u;
+        ce_ref(rec, 0x000EB58Cu, 0x40400000u, ref);
+        if (i == 2u) DSD(rec + 0x14u) = 0u;
+        if (i == 1u) actors_anim_begin(rec, 0x000EB182u, 0x3F800000u);
+        else if (t != NULL) t(rec, 0x1234u);
+        if (i == 2u) {
+            CHECK_EQ_INT((int)DSB(slot + 0x52u), 0x52);
+            CHECK_EQ_INT((int)DSD(slot + 0x0Cu), 0x0C0C0C0C);
+            CHECK_EQ_INT((int)DSB(slot + 0x5Fu), 0x5F);
+            CHECK_EQ_INT((int)DSW(slot + 0x74u), 0x7474);
+            CHECK_EQ_INT((int)DSB(DS_000F0AFE), 0x55);
+            CHECK_EQ_INT((int)DSW(DS_000F0AFC), 0x5555);
+            continue;
+        }
+        if (i == 0u) {
+            CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)ref[0]);
+            CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+        }
+        CHECK_EQ_INT((int)DSB(rec + 0x53u), 1);
+        CHECK_EQ_INT((int)DSB(slot + 0x52u), 9);
+        CHECK_EQ_INT((int)DSB(slot + 0x53u), 7);
+        CHECK_EQ_INT((int)DSB(slot + 0x54u), 1);
+        CHECK_EQ_INT((int)DSB(slot + 0x57u), 0);
+        CHECK_EQ_INT((int)DSD(slot + 0x0Cu), 0x0004579C);
+        CHECK_EQ_INT((int)DSD(slot + 0x18u), 0x00045640);
+        CHECK_EQ_INT((int)DSD(slot + 0x1Cu), 0x000456A8);
+        CHECK_EQ_INT((int)DSW(slot + 0x88u), 0);
+        CHECK_EQ_INT((int)DSB(slot + 0x42u), 0x14);
+        CHECK_EQ_INT((int)DSB(slot + 0x5Fu), 0x24);
+        CHECK_EQ_INT((int)DSB(slot + 0x8Au), 1);
+        CHECK_EQ_INT((int)DSD(slot + 0x40u), (int)0xFF14EFFFu);
+        CHECK_EQ_INT((int)DSW(slot + 0x74u), 0);
+        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 1);
+        CHECK_EQ_INT((int)DSW(DS_000F0AFC), 0x0100);
+    }
+    ce_restore();
+}
+
+/* Character 5: 0x40E64 (the 0x3000 placement, 0xC1000), its 0xD500 target
+ * 0x40E14 and that target's 0x3DFC0. 0x3DFC0 directly: no other slot (a
+ * no-op); rec left of, equal to and right of the other record (bit 14 of
+ * +0x28 is 0x4000, 0x4000 and 0); side 1 (the actor's +0x2E + 4 and +0x4E
+ * = 1); +0x57 wrapping from 0xFF. Its 0xBB2A4 actor is found by its cursor
+ * in 0xD4E16. */
+static void check_char5_entrance(void)
+{
+    static const struct ce_spec sp = { 5u, 0x40E64u, 0u, 0xD4844u, 0xC1000u,
+                                       0x3000, 9u, 0u, 0xFFu };
+    static const struct { u32 side; s32 x, ox; int none; u8 s57, s42; } row[] = {
+        { 0u, 0x1000, 0x2000, 0, 0x57u, 0xF7u },
+        { 0u, 0x2000, 0x2000, 0, 0xFFu, 0xFFu },
+        { 0u, 0x2001, 0x2000, 0, 0x00u, 0x04u },
+        { 1u, -0x100, 0x7000, 0, 0x10u, 0x0Cu },
+        { 1u, 0x7000, -0x100, 0, 0x20u, 0x00u },
+        { 0u, 0x1000, 0x2000, 1, 0x57u, 0xFFu },
+    };
+    ce_anim_fn t = (ce_anim_fn)(void *)fn_resolve(0x40E14u);
+    u32 i;
+    ce_save();
+    CHECK_EQ_INT((int)DSW(0x000D4848u), 0xD500);
+    CHECK_EQ_INT((int)DSD(0x000D484Au), 0x00040E14);
+    CHECK_EQ_INT((int)DSW(0x000D4BA6u), 0xD100);
+    CHECK_EQ_INT((int)DSD(0x000BB2A4u), 0x000D4E16);
+    CHECK_EQ_INT((int)DSW(0x000BB2A4u + 6u), 0x0008);
+    CHECK(t != NULL, "0x40E14 is registered");
+    CHECK(fn_resolve(0x40E14u) != (void (*)(void))fighter_40e14,
+          "0x40E14 is registered through the (rec, arg) wrapper");
+    ce_entrance_rows(&sp);
+
+    /* A: 0x3DFC0 on the side's record, the other side's slot on the decoy. */
+    for (i = 0; i < sizeof row / sizeof row[0]; i++) {
+        u32 side = row[i].side;
+        u32 slot = DS_001077B0 + side * 0x94u;
+        u32 oslot = DS_001077B0 + (1u - side) * 0x94u;
+        u32 rec, e, ref[4];
+        u16 w28;
+        rec = ce_seed(5u, side, row[i].x, 0, 0x7C00u, 0u);
+        mem_fill(CE_DECOY, 0, ACTOR_REC_SIZE);
+        DSD(CE_DECOY + 0x18u) = (u32)row[i].ox;
+        DSD(oslot) = CE_DECOY;
+        DSD(DS_001077A8 + (1u - side) * 4u) = row[i].none ? 0u : oslot;
+        DSD(rec + 0x1Cu) = 0x00002468u;
+        DSD(rec + 0x30u) = 0x01230000u + (i << 16);
+        DSW(rec + 0x28u) = (u16)(0x4F3Fu ^ (i << 14));
+        DSW(rec + 0x34u) = 0x3434u;
+        DSB(slot + 0x57u) = row[i].s57;
+        DSB(slot + 0x42u) = row[i].s42;
+        DSW(slot + 0x74u) = 0x7474u;
+        w28 = DSW(rec + 0x28u);
+        ce_ref(rec, 0x000D4BA6u, 0x40000000u, ref);
+        CHECK_EQ_INT((int)ce_find(0x000D4E16u, 0x000D4E26u), 0);
+        fighter_3dfc0(slot, rec);
+        if (row[i].none) {
+            CHECK_EQ_INT((int)DSW(rec + 0x28u), (int)w28);
+            CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x3434);
+            CHECK_EQ_INT((int)DSB(slot + 0x57u), 0x57);
+            CHECK_EQ_INT((int)DSB(slot + 0x42u), 0xFF);
+            CHECK_EQ_INT((int)ce_find(0x000D4E16u, 0x000D4E26u), 0);
+            continue;
+        }
+        CHECK_EQ_INT((int)DSW(rec + 0x28u),
+                     (int)(u16)(((w28 & 0xBFFFu)
+                                 | (row[i].x <= row[i].ox ? 0x4000u : 0u)) & 0xF7EBu));
+        CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+        CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)ref[0]);
+        CHECK_EQ_INT((int)DSD(rec + 0x10u), (int)ref[1]);
+        CHECK_EQ_INT((int)DSD(rec + 0x24u), (int)ref[3]);
+        CHECK_EQ_INT((int)DSB(slot + 0x42u), (int)(u8)((row[i].s42 ^ 8u) & 0xFBu));
+        CHECK_EQ_INT((int)DSW(slot + 0x74u), (row[i].s42 & 8u) != 0u ? 0 : 0x0378);
+        CHECK_EQ_INT((int)DSB(slot + 0x57u), (int)(u8)(row[i].s57 + 1u));
+        e = ce_find(0x000D4E16u, 0x000D4E26u);
+        CHECK(e != 0u, "0x3DFC0 spawned one 0xBB2A4 actor");
+        if (e != 0u) {
+            CHECK_EQ_INT((int)DSB(e + 0x48u), 0);
+            CHECK_EQ_INT((int)DSD(e + 0x18u), (int)row[i].x);
+            CHECK_EQ_INT((int)DSD(e + 0x1Cu), 0x2468);
+            CHECK_EQ_INT((int)DSW(e + 0x32u), (int)(0x0123u + i));
+            CHECK_EQ_INT((int)(DSW(e + 0x28u) & 0x4000u), 0);
+            CHECK_EQ_INT((int)DSW(e + 0x2Eu), side != 0u ? 0x000C : 0x0008);
+            CHECK_EQ_INT((int)DSB(e + 0x4Eu), side != 0u ? 1 : 0);
+        }
+    }
+
+    /* B: 0x40E14 through the registration, the stream word 0xD4848, a zero
+     * slot, and (row 3) with no other slot, where 0x3DFC0 returns at once and
+     * 0x40E14's own +0x74 = 0 and +0x42 bit 3 clear (bit 19 of its +0x40
+     * mask) stand. Otherwise the other side's slot is live on the decoy to
+     * the left (so 0x3DFC0 clears the side-0 spawn's +0x28 bit 14) and
+     * 0x3DFC0's 0x37CD4 sets bit 3 again with +0x74 = 0x378. */
+    for (i = 0; i < 4u; i++) {
+        u32 slot = DS_001077B0, oslot = DS_001077B0 + 0x94u, rec;
+        u8 f42 = (u8)(i == 3u ? 0x04u : 0x08u);
+        rec = ce_seed(5u, 0u, 0x1000, 0, 0x7C00u, 0u);
+        mem_fill(CE_DECOY, 0, ACTOR_REC_SIZE);
+        DSD(CE_DECOY + 0x18u) = 0x00000800u;
+        DSD(oslot) = CE_DECOY;
+        DSD(DS_001077A8 + 4u) = i == 3u ? 0u : oslot;
+        ce_sentinels(slot, rec);
+        DSB(slot + 0x42u) = 0x0Cu;
+        if (i == 2u) DSD(rec + 0x14u) = 0u;
+        if (i == 1u) actors_anim_begin(rec, 0x000D4848u, 0x3F800000u);
+        else if (t != NULL) t(rec, 0x1234u);
+        if (i == 2u) {
+            CHECK_EQ_INT((int)DSB(slot + 0x52u), 0x52);
+            CHECK_EQ_INT((int)DSD(slot + 0x1Cu), 0x1C1C1C1C);
+            CHECK_EQ_INT((int)DSB(slot + 0x57u), 0x57);
+            CHECK_EQ_INT((int)DSB(slot + 0x42u), 0x0C);
+            CHECK_EQ_INT((int)DSB(DS_000F0AFE), 0x55);
+            CHECK_EQ_INT((int)ce_find(0x000D4E16u, 0x000D4E26u), 0);
+            continue;
+        }
+        CHECK_EQ_INT((int)DSB(slot + 0x52u), 9);
+        CHECK_EQ_INT((int)DSB(slot + 0x53u), 7);
+        CHECK_EQ_INT((int)DSB(slot + 0x54u), 0);
+        CHECK_EQ_INT((int)DSD(slot + 0x0Cu), 0);
+        CHECK_EQ_INT((int)DSD(slot + 0x18u), 0);
+        CHECK_EQ_INT((int)DSD(slot + 0x1Cu), 0);
+        CHECK_EQ_INT((int)DSD(slot + 0x40u), (int)(0xFF00EFFFu | ((u32)f42 << 16)));
+        CHECK_EQ_INT((int)DSB(slot + 0x42u), (int)f42);
+        CHECK_EQ_INT((int)DSW(slot + 0x74u), i == 3u ? 0 : 0x0378);
+        CHECK_EQ_INT((int)DSB(slot + 0x57u), i == 3u ? 0x57 : 0x58);
+        CHECK_EQ_INT((int)(DSW(rec + 0x28u) & 0x4000u), i == 3u ? 0x4000 : 0);
+        CHECK_EQ_INT((int)(ce_find(0x000D4E16u, 0x000D4E26u) != 0u), i != 3u);
+        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 1);
+        CHECK_EQ_INT((int)DSW(DS_000F0AFC), 0x5555);
+    }
+    ce_restore();
+}
+
+/* Character 6: 0x24804 (0x24754's actor, +0x64 = 0x20), 0x24754 directly,
+ * the 0xD500 target 0x24964 and 0x23530 (also through its reaction-table
+ * dword 0xA55F8). 0x23530's 0x3C4CC takes the plain 0x2BC30 arm for the
+ * slot's +0x52 = 0 and 0x3C480 for 3 (same cursor). */
+static void check_char6_entrance(void)
+{
+    static const struct ce_spec sp = { 6u, 0x24804u, 0u, 0xE1174u, 0x81000u,
+                                       0x5000, 9u, 0u, 0x20u };
+    ce_anim_fn t = (ce_anim_fn)(void *)fn_resolve(0x24964u);
+    ce_react_fn cb = (ce_react_fn)(void *)fn_resolve(DSD(0x000A55F8u));
+    u32 i;
+    ce_save();
+    CHECK_EQ_INT((int)DSW(0x000E1174u), 0x32F5);
+    CHECK_EQ_INT((int)DSW(0x000E1178u), 0xD500);
+    CHECK_EQ_INT((int)DSD(0x000E117Au), 0x00024964);
+    CHECK_EQ_INT((int)DSD(0x000A55F8u), 0x00023530);
+    CHECK_EQ_INT((int)DSB(0x000A8614u + 4u), 5);
+    CHECK_EQ_INT((int)DSW(0x000BD884u + 6u * 2u), 0x1180);
+    CHECK(t != NULL, "0x24964 is registered");
+    CHECK(fn_resolve(0x24964u) != (void (*)(void))fighter_24964,
+          "0x24964 is registered through the (rec, arg) wrapper");
+    CHECK(cb == (ce_react_fn)fighter_23530, "0xA55F8 resolves to 0x23530, (slot, rec, side)");
+    ce_entrance_rows(&sp);
+
+    /* A: 0x24754 on side s whose record's pset bit 15 is b15, the other
+     * side's slot on the decoy (x, +0x3C and +0x30 seeded). */
+    for (i = 0; i < 4u; i++) {
+        u32 side = i & 1u, b15 = i >> 1;
+        u32 slot = DS_001077B0 + side * 0x94u, e, rec, ps;
+        rec = ce_seed(6u, side, 0x1000, (int)b15, 0x7C00u, 0u);
+        (void)rec;
+        mem_fill(CE_DECOY, 0, ACTOR_REC_SIZE);
+        DSD(CE_DECOY + 0x18u) = 0x00003000u + i * 0x10u;
+        DSD(CE_DECOY + 0x3Cu) = 0x00000500u + i;
+        DSD(CE_DECOY + 0x30u) = 0x02220000u + (i << 16);
+        DSD(DS_001077B0 + (1u - side) * 0x94u) = CE_DECOY;
+        DSD(slot + 0x08u) = 0x08080808u;
+        ps = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
+        CHECK_EQ_INT((int)((DSW(ps) & 0x8000u) != 0u), (int)b15);
+        fighter_24754(side);
+        e = DSD(slot + 0x08u);
+        CHECK(e != 0u && e != 0x08080808u, "0x24754 stored its actor");
+        if (e == 0u || e == 0x08080808u) continue;
+        CHECK_EQ_INT((int)DSB(e + 0x48u), 5);
+        CHECK_EQ_INT((int)DSD(e + 0x18u),
+                     b15 == 0u ? (int)(0x3000u + i * 0x10u - (0x500u + i))
+                               : (int)(0x5400u - (0x500u + i) + 0x3000u + i * 0x10u));
+        CHECK_EQ_INT((int)DSD(e + 0x1Cu), 0x1A00);
+        CHECK_EQ_INT((int)DSW(e + 0x32u), (int)(0x0222u + i));
+        CHECK_EQ_INT((int)(DSW(e + 0x28u) & 0x4000u), 0);
+        CHECK_EQ_INT((int)DSB(e + 0x59u), 2);
+        CHECK_EQ_INT((int)DSD(e + 0x14u), (int)slot);
+        CHECK_EQ_INT((int)DSW(e + 0x34u), b15 == 0u ? 0x0096 : 0xFF6A);
+        CHECK_EQ_INT((int)DSW(e + 0x36u), 0xFFF0);
+    }
+
+    /* B: 0x23530 through 0xA55F8. Rows: 0 side 0, +0x52 = 0; 1 side 1 with
+     * slot +0x7A = 2 (the anchor word 0x1400); 2 side 0, +0x52 = 3. */
+    for (i = 0; cb != NULL && i < 3u; i++) {
+        u32 side = i == 1u ? 1u : 0u;
+        u32 slot = DS_001077B0 + side * 0x94u, rec, ref[4];
+        rec = ce_seed(6u, side, 0x1000, 0, 0x7C00u, 0u);
+        ce_sentinels(slot, rec);
+        DSB(slot + 0x52u) = (u8)(i == 2u ? 3u : 0u);
+        DSB(slot + 0x42u) = 0x08u;
+        if (i == 1u) DSB(slot + 0x7Au) = 2u;
+        DSB(rec + 0x28u) = 0x41u;
+        DSD(rec + 0x1Cu) = 0x00007777u;
+        ce_ref(rec, 0x000E1452u, 0x40400000u, ref);
+        cb(slot, rec, 0x77u);
+        CHECK_EQ_INT((int)DSD(rec + 0x08u), (int)ref[0]);
+        CHECK_EQ_INT((int)DSD(rec + 0x10u), (int)ref[1]);
+        CHECK_EQ_INT((int)DSD(rec + 0x24u), (int)ref[3]);
+        CHECK_EQ_INT((int)DSB(slot + 0x52u), 9);
+        CHECK_EQ_INT((int)DSB(slot + 0x53u), 7);
+        CHECK_EQ_INT((int)DSB(slot + 0x54u), 2);
+        CHECK_EQ_INT((int)DSB(slot + 0x57u), 0);
+        CHECK_EQ_INT((int)DSD(slot + 0x0Cu), 0x000233A8);
+        CHECK_EQ_INT((int)DSD(slot + 0x18u), 0x00023250);
+        CHECK_EQ_INT((int)DSD(slot + 0x1Cu), 0x000232B4);
+        CHECK_EQ_INT((int)DSW(slot + 0x88u), 0);
+        CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x0320);
+        CHECK_EQ_INT((int)DSW(rec + 0x44u), 0x0020);
+        CHECK_EQ_INT((int)DSD(rec + 0x1Cu), i == 1u ? 0x1400 : 0x1180);
+        CHECK_EQ_INT((int)(DSB(rec + 0x28u) & 0x20u), 0x20);
+        if (i == 0u) CHECK_EQ_INT((int)DSB(rec + 0x28u), 0x61);
+        CHECK_EQ_INT((int)DSB(slot + 0x5Fu), 0x5F);
+        CHECK_EQ_INT((int)DSW(slot + 0x74u), 0x7474);
+    }
+
+    /* C: 0x24964 through the registration, the stream word 0xE1178 and a
+     * zero slot. */
+    for (i = 0; i < 3u; i++) {
+        u32 slot = DS_001077B0, rec;
+        rec = ce_seed(6u, 0u, 0x1000, 0, 0x7C00u, 0u);
+        ce_sentinels(slot, rec);
+        DSB(slot + 0x52u) = 0u;
+        DSB(slot + 0x42u) = 0x08u;
+        if (i == 2u) DSD(rec + 0x14u) = 0u;
+        if (i == 1u) actors_anim_begin(rec, 0x000E1178u, 0x3F800000u);
+        else if (t != NULL) t(rec, 0x1234u);
+        if (i == 2u) {
+            CHECK_EQ_INT((int)DSB(slot + 0x53u), 0x53);
+            CHECK_EQ_INT((int)DSD(slot + 0x0Cu), 0x0C0C0C0C);
+            CHECK_EQ_INT((int)DSB(slot + 0x5Fu), 0x5F);
+            CHECK_EQ_INT((int)DSW(slot + 0x74u), 0x7474);
+            CHECK_EQ_INT((int)DSB(DS_000F0AFE), 0x55);
+            CHECK_EQ_INT((int)DSW(DS_000F0AFC), 0x5555);
+            continue;
+        }
+        CHECK_EQ_INT((int)DSB(slot + 0x53u), 7);
+        CHECK_EQ_INT((int)DSD(slot + 0x0Cu), 0x000233A8);
+        CHECK_EQ_INT((int)DSB(slot + 0x5Fu), 0x24);
+        CHECK_EQ_INT((int)DSB(slot + 0x8Au), 1);
+        CHECK_EQ_INT((int)DSW(slot + 0x74u), 0);
+        CHECK_EQ_INT((int)DSB(slot + 0x54u), 2);
+        CHECK_EQ_INT((int)DSD(slot + 0x40u), (int)0xFF00EFFFu);
+        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 1);
+        CHECK_EQ_INT((int)DSW(DS_000F0AFC), 0x0100);
+        CHECK_EQ_INT((int)DSD(rec + 0x1Cu), 0x1180);
+    }
+    ce_restore();
+}
 #undef CE_10810D
 #undef CE_104B03
 #undef CE_DECOY
@@ -22678,6 +23442,12 @@ int test_fight(void)
      * zero its pointer). */
     check_spawn_sound();
     check_char1_entry();
+    check_char0_entrance();
+    check_char2_entrance();
+    check_char3_entrance();
+    check_char4_entrance();
+    check_char5_entrance();
+    check_char6_entrance();
     check_projection();
     check_dispatch();
     check_camera_split();
