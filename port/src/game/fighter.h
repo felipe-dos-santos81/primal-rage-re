@@ -514,6 +514,42 @@ s32 fighter_3b90c(u32 side, s32 delta);
  * EAX = side. */
 u32 fighter_14cc4(u32 side);
 
+/* 0x15350. Character 3's reaction-0x25 callback (*(u32*)0xA470C), same
+ * (slot, rec, side) registers (EBX unread): nothing when 0x468D8(the other
+ * side) holds; else the 0xD311A stream at 3.0, state 9/7/0 with +0x57 = 0,
+ * +0x0C 0x152D4, +0x18 0x15208, +0x1C 0x1527C, +0x42 bit 2 and the side's
+ * 0xFD118 byte = 0. */
+void fighter_15350(u32 slot, u32 rec, u32 side);
+
+/* 0x152D4. The slot +0x0C callback 0x15350 stores (0x3531C case 7), same
+ * registers (EBX = side): at +0x57 == 1 with +0x88 above the 0x9AFF8 byte,
+ * +0x57 = 2, 0x2BD44 on the record's +0x4B child and the 0xD315A stream. */
+void fighter_152d4(u32 slot, u32 rec, u32 side);
+
+/* 0x15208. The +0x18 hook 0x15350 stores: 0x18C14 (flags 1/4/7/8/0xD/0xE =
+ * 0, 5/9 = 1, box tables 0x9AFFA/0x9B001), or 1 while the slot's +0x88 is
+ * below the 0x9AFF9 byte. EAX = side. */
+u32 fighter_15208(u32 side);
+
+/* 0x1527C. The +0x1C callback 0x15350 stores (0x193B0's 0x19505, EAX =
+ * side): 0x39834, 0x36D20 on the other slot, 0x188AC, the other slot's +0x43
+ * bits 4/5 cleared and +0x57 = 1. */
+void fighter_1527c(u32 side);
+
+/* 0x151C0. Character 3's reaction-0x24 callback (*(u32*)0xA46F8), same
+ * (slot, rec, side) registers (EBX unread): the 0xD3078 stream at 3.0,
+ * state 9/7/0 with +0x57 = 0, +0x0C = 0, +0x18 0x15160, +0x1C 0x151A0 and
+ * +0x42 bit 2. */
+void fighter_151c0(u32 slot, u32 rec, u32 side);
+
+/* 0x15160. The +0x18 hook 0x151C0 stores: 0x18C14 with flag 0 = 1, flags
+ * 1/8 = 0 and the default box tables. EAX = side. */
+u32 fighter_15160(u32 side);
+
+/* 0x151A0. The +0x1C callback 0x151C0 stores: 0x3B714(the other slot, the
+ * side's slot). EAX = side. */
+void fighter_151a0(u32 side);
+
 /* 0x3B938. Burst slot `slot`'s projectile (slot+0x08): restart it on the
  * burst stream (0xE1898 at 2.0 when its +0x48 is 4, else the per-character
  * 0xBDFC8/0xBDFF0 stream and hold), detach it (+0x48, +0x34/+0x36 and

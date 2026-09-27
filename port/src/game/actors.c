@@ -102,6 +102,9 @@ static void anim_code_10FC4(u32 rec, u32 arg);
 static void anim_code_37CD4(u32 rec, u32 arg);
 static void anim_code_14EA4(u32 rec, u32 arg);
 static void anim_code_3C32C(u32 rec, u32 arg);
+static void anim_code_153D8(u32 rec, u32 arg);
+static void anim_code_1543C(u32 rec, u32 arg);
+static void anim_code_37CFC(u32 rec, u32 arg);
 static void anim_code_14E80(u32 rec, u32 arg);
 static void anim_code_370F0(u32 rec, u32 arg);
 static void anim_code_36280(u32 rec, u32 arg);
@@ -270,6 +273,27 @@ int actors_init(void)
      * second demo; 0xE4856, 0xE48A0, 0xE492E, 0xEA92A, 0xEA9DE, 0xEB4A0,
      * 0xECEFC, 0xECF58). */
     fn_register(0x3C32Cu, (void (*)(void))anim_code_3C32C);
+    /* PORT: 0x34E2C's reaction callbacks 0x15350 (*(u32*)0xA470C, character
+     * 3's reaction 0x25, the second demo's f = 4309) and 0x151C0
+     * (*(u32*)0xA46F8, reaction 0x24, f = 4438), called at 0x35045 with the
+     * (slot, rec, side) registers, and the callbacks they store: 0x15350's
+     * +0x0C 0x152D4 (0x3531C case 7, same registers), +0x18 hook 0x15208
+     * (0x19020, fn(side) with EAX returned) and +0x1C 0x1527C (0x193B0's
+     * 0x19505, fn(side)); 0x151C0's +0x18 hook 0x15160 and +0x1C 0x151A0.
+     * Their streams carry the 0xD100 targets 0x153D8 (0xD312A in 0xD311A,
+     * opcode 0x11, mode 0x4000, the operand read) and 0x1543C (0xD308E in
+     * 0xD3078), and 0x153D8's child stream 0xD318E the 0xD100 target 0x37CFC
+     * (0xD3192). */
+    fn_register(0x15350u, (void (*)(void))fighter_15350);
+    fn_register(0x152D4u, (void (*)(void))fighter_152d4);
+    fn_register(0x15208u, (void (*)(void))fighter_15208);
+    fn_register(0x1527Cu, (void (*)(void))fighter_1527c);
+    fn_register(0x151C0u, (void (*)(void))fighter_151c0);
+    fn_register(0x15160u, (void (*)(void))fighter_15160);
+    fn_register(0x151A0u, (void (*)(void))fighter_151a0);
+    fn_register(0x153D8u, (void (*)(void))anim_code_153D8);
+    fn_register(0x1543Cu, (void (*)(void))anim_code_1543C);
+    fn_register(0x37CFCu, (void (*)(void))anim_code_37CFC);
     fn_register(0x14E80u, (void (*)(void))anim_code_14E80);
     /* PORT: the projectile +0x48 == 8 freeze 0x235C4 (record §41-C): its
      * +0x10 handler 0x22BEC (0x3531C case 10, (slot, side) as 0x39CC8) and
@@ -880,6 +904,68 @@ static void anim_code_3C32C(u32 rec, u32 arg)
     fighter_36870(rec);                                 /* 0x3C34C/0x3C34E */
 }
 
+/* PORT: data-object addresses symbols.h does not name (the 0x153D8 and
+ * 0x1543C spawn descriptors). */
+#define ANIM_DESC_153D8_A 0x0009B008u  /* 0x153E1: operand non-zero (stream 0xD31AE) */
+#define ANIM_DESC_153D8_B 0x000BB394u  /* 0x153E8: operand zero (stream 0xD318E) */
+#define ANIM_DESC_1543C   0x000BB3A8u  /* 0x15455: stream 0xD30F2 */
+
+/* 0x153D8 — the animation-opcode target shape (the 0xD100 target at 0xD312A
+ * in character 3's reaction-0x25 stream 0xD311A; also 0xD321E, 0xD32B6 and
+ * 0xD3342, each after a 0xD100 word). EAX = rec, EDX = the operand (read:
+ * 0x153DD). With the record's +0x14 (its slot) set, it spawns the descriptor
+ * 0x9B008 (operand non-zero) or 0xBB394 (zero) with a2 = a3 = a4 = 0 and a5 =
+ * the record's +0x56 | 0x400, then the child's +0x59 = 2 and +0x14 = the
+ * slot; for side 1 its +0x4E = 1 and +0x2E gets 4 more; the record's +0x4B =
+ * the child's +0x56 byte and the child's +0x60 = 1. */
+static void anim_code_153D8(u32 rec, u32 arg)
+{
+    u32 desc = (arg != 0u) ? ANIM_DESC_153D8_A : ANIM_DESC_153D8_B;   /* 0x153DD..0x153E8 */
+    u32 child;
+    if (DSD(rec + 0x14u) == 0u) return;                 /* 0x153ED/0x153F1 */
+    child = actor_spawn((const u32 *)(mem + desc), 0u, 0u, 0u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));  /* 0x153F3..0x15407 0x2AE14 */
+    DSB(child + 0x59u) = 2u;                            /* 0x1540F */
+    DSD(child + 0x14u) = DSD(rec + 0x14u);              /* 0x1540C/0x15413 */
+    if (DSB(rec + 0x51u) != 0u) {                       /* 0x15416..0x1541D */
+        DSB(child + 0x4Eu) = 1u;                        /* 0x15423 */
+        DSW(child + 0x2Eu) = (u16)(DSW(child + 0x2Eu) + 4u);   /* 0x1541F..0x1542A */
+    }
+    DSB(rec + 0x4Bu) = DSB(child + 0x56u);              /* 0x1542E/0x15431 */
+    DSB(child + 0x60u) = 1u;                            /* 0x15434 */
+}
+
+/* 0x1543C — the animation-opcode target shape (the 0xD100 target at 0xD308E
+ * in character 3's reaction-0x24 stream 0xD3078, and 0xD3266). EAX = rec;
+ * EDX is pushed at 0x1543E and never read. It spawns the descriptor 0xBB3A8
+ * with a2 = a3 = a4 = 0 and a5 = the record's +0x56 | 0x400; the record's
+ * +0x4B = the child's +0x56 byte and the child's +0x60 = 1. */
+static void anim_code_1543C(u32 rec, u32 arg)
+{
+    u32 child;
+    (void)arg;
+    child = actor_spawn((const u32 *)(mem + ANIM_DESC_1543C), 0u, 0u, 0u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));  /* 0x15442..0x1545A 0x2AE14 */
+    DSB(rec + 0x4Bu) = DSB(child + 0x56u);              /* 0x1545F/0x15462 */
+    DSB(child + 0x60u) = 1u;                            /* 0x15465 */
+    /* PORT: 0x1546E 0x2C3FC(0x4D) voice, out of scope (spec §7). */
+}
+
+/* 0x37CFC — the animation-opcode target shape (the 0xD100 target at 0xD3192
+ * in 0xBB394's stream 0xD318E, the child 0x153D8 spawns; also 0xD4E38,
+ * 0xD4E9E and 0xE85F6). EAX = rec; EDX is pushed and overwritten at 0x37CFD
+ * before any read. With the record's +0x14 (the parent's slot) set and that
+ * slot's +0x53 not 7, the record's +0x55 = 1 and 0x2B150(rec). */
+static void anim_code_37CFC(u32 rec, u32 arg)
+{
+    u32 slot = DSD(rec + 0x14u);                        /* 0x37CFD */
+    (void)arg;
+    if (slot == 0u) return;                             /* 0x37D00/0x37D02 */
+    if (DSB(slot + 0x53u) == 7u) return;                /* 0x37D04/0x37D08 */
+    DSB(rec + 0x55u) = 1u;                              /* 0x37D0A */
+    set_dead(rec);                                      /* 0x37D0E 0x2B150 */
+}
+
 /* 0x12720. The animation opcode 0x11 target reached on the globe's first
  * presentation stream: the word at 0xE89A8 is `0xD100` (opcode 0x11, mode
  * 0x4000), so `anim_operand` loads the code pointer 0x12720 into
@@ -1256,7 +1342,11 @@ static u32 spawn_anim_opcode(u32 rec, u32 index, u32 flag)
             a4 = (u32)(s32)bx;
             a5 = (u32)(index + 0x400u);
         } else {
-            a5 = (u32)((DSW(rec + 0x28) >> 8) & 0x40u);
+            /* 0x2B4C4..0x2B4CD: `mov ax,[esi+0x28]; xor al,al; and ah,0x40;
+             * and eax,0xffff` pushes the parent's +0x28 bit 14 in place
+             * (0x4000, the hflip actor_spawn copies into the child's +0x28),
+             * not shifted down to 0x40 (a parent index in a5's low 7 bits). */
+            a5 = (u32)(DSW(rec + 0x28) & 0x4000u);
             a2 = (u32)((s32)di + (s32)DSD(rec + 0x18));
             a3 = (u32)((s32)DSD(rec + 0x30) >> 16);
             a4 = (u32)((s32)bx + (s32)DSD(rec + 0x1c));

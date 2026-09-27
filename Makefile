@@ -241,7 +241,7 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 
 # Attract cycle-2 oracle (a RATCHET, enforced in verify; roar-timing Task 26, record
 # §36): the same PR_FRONTEND_DUMP run. After the demo's exit frame (loop 1970) the
-# driver writes every presented frame to run1/cycle2 (loops 1971..3499, and inside
+# driver writes every presented frame to run1/cycle2 (loops 1971..3899, and inside
 # loop 1971 the 166 screens the logo player 0x1C740 writes: its 0x52106 blanks and
 # every TWI5/TWG frame), a separate dump so the front-end and demo-fight windows do
 # not change. title_compare --attract2 classifies the capture from the first all-black
@@ -251,17 +251,21 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # allowed by name (title_compare's ATTRACT2_ALLOWED_UNEXPLAINED, record §37): it is
 # byte-identical to front-end capture 832, the loader's read-stall frame with no
 # raw-code owner (record §35.1), and the allowance holds only while that identity
-# does. N = 3099 was measured on fcce893 (the commit that set it, on 38c4efc; §41):
-# the raptor's reaction stream's 0xD500 target 0x3C32C (the dword at 0xD24FE; it
-# clears the slot's +0x54 and runs 0x36870) returns the raptor to its stance at
-# loop 3293 as the original does, which explains captures 2950..3098, and the
-# second demo diverges from 3099 (character 3's unported reaction-0x25 callback
-# 0x15350 at loop 3422). The driver's loop (FE_LOOPS, a measurement window) runs
-# to 3500 so that 3099 lies inside the dump. It fails if an unexplained frame
-# appears below N, N exceeds the capture's end + 1, or N is at or below the
-# region's start.
+# does. N = 3257 was measured on b947895 (the commit that set it, on 632f3cd; §44-A):
+# character 3's reaction callbacks 0x15350 (reaction 0x25, loop 3422) and 0x151C0
+# (0x24, loop 3551) with the callbacks they store and their streams' 0xD100
+# targets, the process-table entry 0x2910C (the blood particles' poses and
+# landings) and the opcode-0x0C spawn's a5 (the parent's +0x28 bit 14, raw
+# 0x2B4C4; it was 0x40) explain captures 3099..3256. 3257 is the loader's
+# `- LOADING -` overlay for a sound bank the voice path (0x2C3FC, out of scope)
+# loads at f = 4444; it has no port owner. The driver's loop (FE_LOOPS, a
+# measurement window) runs to 3900 so that 3257 (loop 3556) and the capture's
+# last frame lie inside the dump. It fails if an unexplained frame appears below
+# N, N exceeds the capture's end + 1, or N is at or below the region's start.
 # Like the front-end oracle, its window comes from the port's own dump, so it cannot
-# detect an under-rendering port. (Before it, N = 2950, measured on ce5f295:
+# detect an under-rendering port. (Before it, N = 3099, measured on fcce893: the
+# raptor's reaction stream's 0xD500 target 0x3C32C returned it to its stance at
+# loop 3293 and explained 2950..3098; before that N = 2950, measured on ce5f295:
 # character 3's reaction-0x23 callback 0x14E44 (the raptor's grab at loop 3116)
 # and its +0x18 hook 0x14CC4 (the miss at loop 3133) explained 2763..2949;
 # before that N = 2763, measured on c9875d1:
@@ -273,7 +277,7 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # DS_001078FA explained 2386..2460; before that N = 2386, measured on c0edb4c and
 # re-measured unchanged on a7ccc86 and 65f4084; before that N = 2384, measured on
 # fc8e775.)
-ATTRACT2_MIN_FIRST = 3099
+ATTRACT2_MIN_FIRST = 3257
 attract2-oracle: build ## Attract cycle-2 ratchet after the demo (skips without data/title-captures/frontend)
 	@echo "== attract cycle-2 oracle (ratchet on the first unexplained frame, N=$(ATTRACT2_MIN_FIRST)) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \

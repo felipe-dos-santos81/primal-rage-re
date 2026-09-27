@@ -10209,3 +10209,249 @@ shows only the intended changes.
     it is the existing type-8 machinery (`0x3B464`'s `+0x48` = 8 arm, §41-C)
     and was not re-audited here.
   - `0x230D8` has no reference and is not ported.
+
+## 44-A. Character 3's reactions `0x25`/`0x24`, the process `0x2910C` and the opcode-`0x0C` hflip at capture 3099 (roar-timing Task 32, `b947895`)
+
+**Result in one line.** At f = 4309 (loop 3422) the original's raptor takes
+character 3's reaction `0x25`, whose callback `0x15350` was not registered;
+at f = 4438 (loop 3551) it takes reaction `0x24` (`0x151C0`). Both are ported
+with the callbacks they store and their streams' `0xD100` targets. The blood
+of the hit at f = 4425 then exposed two more gaps: the process-table entry
+`0x2910C` (§41-D's named gap) and a port bug in the animation opcode `0x0C`
+(the child's `a5` lost the parent's hflip). With all of them the live-RAM poll
+matches the port through f = 4570, the second demo's last frame; 3099..3256
+are explained and N = 3257 (`b947895`). 3257 is the loader's `- LOADING -`
+overlay for a sound bank the port does not load (the voice path, spec §7).
+
+### 44-A.1 The raw (Ghidra `read_memory` + capstone, fixups applied)
+
+Ghidra has no function at any of the addresses below (`decompile_function`
+fails). Each block decodes cleanly up to its `ret`, with padding after it
+(`scratchpad/t32/d15350.txt`, `d151c0.txt`, `d2910c.txt`).
+
+- **`0x15350..0x153D6`** (`*(u32*)0xA470C` reads `50 53 01 00 00 00 00 00`:
+  the callback, no stream word). `push ebx; push ecx; sub esp,0x18`; EBX =
+  EAX (the slot), ECX = EDX (the record); the EBX 0x34E2C passes is never
+  read. `0x339AC(esp, rec)`. `mov al,[ecx+0x51]; xor al,1; and eax,0xff;
+  call 0x468D8`: when AL is non-zero it returns AL = 0 and writes nothing.
+  Otherwise `0x3C4CC(rec, 0xD311A, 3.0)`; the slot's `+0x57` = 0 (stored
+  twice, `0x15388` and `0x153BB`), `+0x52/+0x53/+0x54` = 9/7/0, `+0x0C` =
+  `0x152D4`, `+0x18` = `0x15208`, `+0x1C` = `0x1527C`, `+0x42 |= 4`;
+  `0x2C3FC(0xAF)` (the voice, out of scope); the byte `0xFD118 + ctx[0]` = 0
+  (`0x153C4..0x153C9`); AL = 1.
+- **`0x152D4`** (+0x0C, 0x3531C case 7: EAX = slot, EDX = rec, EBX = side;
+  only EBX is read). `0x33950(esp, side)`. Returns unless ctx[2]'s `+0x57`
+  is 1 and the byte at `0x9AFF8` (0x28) is below ctx[2]'s word `+0x88`
+  (`cmp dx,[eax+0x88]; jge`, signed). Then `+0x57` = 2; when ctx[4]'s
+  `+0x4B` is non-zero, `0x2BD44(ctx[4], [0x1014F4] + 0x68 * +0x4B)` (no
+  `+0x60` test, unlike `0x3B844`); `0x2BC30(ctx[4], 0xD315A, 3.0)`.
+- **`0x15208`** (+0x18, 0x19020's `fn(side)`, EAX returned). `0x33950`, then
+  `0x18BD4`, flags 1/8/4/0xD/0xE/7 = 0 and 5/9 = 1, `0x18C14(side, flags,
+  EBX = 0x9AFFA, ECX = 0x9B001)` (ECX is loaded before `0x33950`, EBX before
+  `0x18BD4`; both keep them). 0x18C14 moves EBX into EDI (box a, the x test)
+  and ECX into EBX (box b), as `0x3E1D0`'s `0xC75F5`/`0xC75FF` do. The result
+  is returned unless the byte at `0x9AFF9` (1) is above ctx[2]'s `+0x88`
+  (`jle` skips `mov eax,1`).
+- **`0x1527C`** (+0x1C, 0x193B0's `0x19505`, `fn(side)`). `0x33950`;
+  `0x39834(ctx[1], ctx[2]'s +0x5F)`; `0x36D20(ctx[3])`; `0x188AC(ctx[1],
+  ctx[5]'s +0x18, EBX = 0)`; ctx[3]'s `+0x43 &= 0xCF`; ctx[2]'s `+0x57` = 1.
+- **`0x151C0`** (`*(u32*)0xA46F8` reads `c0 51 01 00 00 00 00 00`: reaction
+  `0x24`). EBX = slot, EAX = rec: `0x3C4CC(rec, 0xD3078, 3.0)`, `+0x57` = 0,
+  9/7/0, `+0x0C` = 0, `+0x18` = `0x15160`, `+0x1C` = `0x151A0`, `+0x42 |= 4`,
+  AL = 1.
+- **`0x15160`** (+0x18): `0x33950`, `0x18BD4`, flags 1/8 = 0, flag 0 = 1,
+  `0x18C14(side, flags, 0, 0)`, its EAX returned.
+- **`0x151A0`** (+0x1C): `0x33950`, `0x3B714(ctx[3], ctx[2])`.
+- **`0x153D8`** (the `0xD100` target at `0xD312A` in `0xD311A`). ESI = rec,
+  EDX = the operand (read): descriptor `0x9B008` when non-zero, else
+  `0xBB394`. Returns when the record's `+0x14` is 0. `0x2AE14(desc, 0, 0, 0,
+  a5 = +0x56 | 0x400)`; the child's `+0x59` = 2, `+0x14` = the record's
+  `+0x14`; for side 1 the child's `+0x4E` = 1 and `+0x2E += 4`; the record's
+  `+0x4B` = the child's `+0x56` byte; the child's `+0x60` = 1. The operand
+  at `0xD312A` is `DSW(0xD312E)` = 0 (opcode 0x11 reads the word after the
+  target dword): the child is `0xBB394` (stream `0xD318E`).
+- **`0x1543C`** (the `0xD100` target at `0xD308E` in `0xD3078`). EDX pushed,
+  never read. `0x2AE14(0xBB3A8, 0, 0, 0, +0x56 | 0x400)`; the record's `+0x4B`
+  = the child's `+0x56`; the child's `+0x60` = 1; `0x2C3FC(0x4D)`. No slot
+  gate, no `+0x14`, no side adjust.
+- **`0x37CFC`** (the `0xD100` target at `0xD3192` in `0xD318E`). `push edx;
+  mov edx,[eax+0x14]`: with that slot set and its `+0x53` not 7, the record's
+  `+0x55` = 1 and `0x2B150(rec)`.
+- **`0x2910C`** (process entry 7, `DS_000A8644[7]` = the dword at
+  `0xA8660`). No input registers. It walks the in-use list at `0x104880`
+  (reading each node's next before the body). An actor whose `+0x1C` plus
+  `(s32)[+0x34] >> 16` is negative lands: `+0x1C`, the words `+0x34/+0x36/
+  +0x44` and `+0x48` are zeroed, `+0x59` = `0xFE`, `0x2BC30(rec, 0xE8D50,
+  3.0)`, and its `+0x14` node goes back to `0x104888` (`0x249D0`, `0x249B0`)
+  with `+0x14` = 0. Otherwise the node's `+0xC` phase (jump table `0x290FC`,
+  entries `0x291C9/0x29219/0x29261/0x29297`) advances on the word velocities:
+  0 -> 1 when |vy| < |vx| (`0xE8D14`), 1 -> 2 when |vy| > |vx| (`0xE8D28`),
+  2 -> 3 when |vy| > 2|vx| (`0xE8D3C`), each at 2.0; 3 and above do nothing.
+- **The opcode `0x0C` spawn** (`0x2B484`). In the non-`0x400` arm,
+  `0x2B4C4..0x2B4CD` is `mov ax,[esi+0x28]; xor al,al; and ah,0x40; and
+  eax,0xffff; push eax`: a5 = the parent's `+0x28 & 0x4000`, which
+  `0x2AE14` copies into the child's `+0x28`. The port computed
+  `(W >> 8) & 0x40` = `0x40`: no hflip, and a5's low 7 bits named actor 64
+  as the parent until the spawn's tail cleared `+0x4A`. **Raw wins:
+  corrected.** The first demo never spawned from a flipped parent here.
+
+### 44-A.2 Entrances
+
+A scan of both objects (dwords, `call`/`jmp` rel32 and `jcc` rel32) and
+`get_xrefs_to`:
+- `0x15350`: only the data dword `0xA470C`; `0x151C0`: only `0xA46F8`.
+- `0x152D4`, `0x15208`, `0x1527C`: only the `imm32` stores in `0x15350`
+  (`0x1539B`, `0x153A2`, `0x153AC`); `0x15160`, `0x151A0`: only those in
+  `0x151C0` (`0x151EE`, `0x151F8`). No rel32.
+- `0x153D8`: data `0xD312A`, `0xD321E`, `0xD32B6`, `0xD3342`, each after a
+  `0xD100` word (the last three with operand 1, so `0x9B008`). The code
+  dword at `0x24634` is the rel32 of `call 0x39a10` at `0x24633`, not a
+  reference.
+- `0x1543C`: `0xD308E`, `0xD3266`. `0x37CFC`: `0xD3192`, `0xD4E38`,
+  `0xD4E9E`, `0xE85F6`, each after a `0xD100` word.
+- `0x2910C`: only `0xA8660`.
+
+### 44-A.3 The measurement (probes reverted, sources checked with `cmp`)
+
+The probe is §41.4's (`scratchpad/t32/probe.py`: the per-loop poll print,
+`FE_LOOPS` 3900, a `fn_resolve` miss print with the frame counter and the
+caller's offset). The DOSBox-X poll log `t29/db.log` (f 1716..5771) is the
+reference; `t32/dbpoll.py` adds each record's `+0x28` and whole-RAM
+snapshots at chosen frames.
+
+1. With `0x15350`/`0x151C0` and their callees: the poll equals the port
+   through f = 4570, except single-frame sampling tears (f 3703, 3862, 3912,
+   3929, 4051, 4056, 4132, 4380; each sample has equal tick counts, `tk
+   a/a`, mid-frame). f = 4571 is the demo's exit. The raptor enters 9/7/0 on
+   `0xD311C` at f = 4309, returns to its stance at f = 4408 and enters 9/7/0
+   on `0xD3082` at f = 4438, as the original. (The port's `0x153D8` spawns
+   `0xBB394`'s child at f = 4318, actor `0x6A` on `0xD318E`; the poll does
+   not sample it.) New miss: `0x2910C` from
+   f = 4426 (146 frames, `run_process_table`). attract2: 3099 -> 3235.
+2. With `0x2910C`: no miss is left but the known `0x29B74`/`0x41578`; the
+   frames change from cycle-2 frame 1742 on, 3235 does not move.
+3. 3235 is cycle-2 frame 1733 (loop 3538, f = 4425), 888 bytes off, rows
+   77..117: the blood splash is mirrored. Whole-RAM snapshots of the
+   original (f = 4424..4432) against the port's `mem` at the same frames:
+   the type-`0x0A` particle (the pool's actor 106, stream `0xE8D02`, node
+   `0x104780`) has `+0x34` = `+0x58` in the original and `-0x58` in the port;
+   every other field matches. `0x2901C` negates the draw when the child's
+   `+0x28` bit 14 is clear at its cb1. The parent (`0xBB09C`'s actor 107,
+   stream `0xE8CE2`: `CC00 B0C4 000B 0000 0000`) has bit 14 set in both;
+   the port's opcode `0x0C` dropped it (§44-A.1). Corrected: 3235 -> 3257.
+4. 3257 is cycle-2 frame 1751 except rows 192..197, cols 0..85 (166
+   pixels): the `- LOADING -` string over the game frame; 3258 (a splice)
+   carries it too. The original's snapshots at f = 4443/4445: the INDEX
+   entry 64 (`s16spisd.gra`, `0x179BA` bytes, flags `0x020179BA`) gains the
+   loaded bit `0x20000000`, and the sound module's area at `0x10289C` (the
+   `0x102860..0x1028DC` block that `0x1C8E9..0x1CD0D` address, which
+   `0x2C3FC` calls through `0x1CA14`/`0x1CC28`) takes the handle
+   `0x2001513C` (entry 64). The port never resolves entries 63..65 (a
+   `res_resolve` probe). So 3257 is a lazy load by the voice path, which is
+   out of scope (spec §7), shown by the loader's read-stall presentation
+   (§35.1). The call that triggers it is not pinned: `0x1543C`'s
+   `0x2C3FC(0x4D)` runs in the same window (the raptor's `+0x4B` = `0x6B`
+   by f = 4445). **Named gap.**
+
+`FE_LOOPS` 3500 -> 3900: a measurement window. 3257 is loop 3556, and 3900
+reaches past the capture's last frame 3616 (about loop 3865 at
+60.05/70.09 Hz from the exit's capture frame 3406, cycle-2 frame 1879 =
+loop 3684). The cycle-2 dump holds 2095 frames.
+
+### 44-A.4 The fix, its assertions and mutations
+
+`fighter_15350`, `fighter_152d4`, `fighter_15208`, `fighter_1527c`,
+`fighter_151c0`, `fighter_15160`, `fighter_151a0` (fighter.c) and
+`anim_code_153D8`, `anim_code_1543C`, `anim_code_37CFC`, `actor_proc_2910C`
+(actors.c) are registered in `actors_init`; `spawn_anim_opcode`'s case `0x0C`
+takes `a5 = W(+0x28) & 0x4000`.
+
+- `check_char3_2425` (`test_fight.c`, last in `test_fight`): A 0x15350
+  through `hit_reaction_apply(0, 0x25)` and directly on side 1, and the
+  `0x468D8` gate (other side's `+0x52` = 7; `0x22BEC` with `+0x24` = 0 and
+  `+0x54` != 2; `+0x54` = 2 fails the arm). B 0x152D4's gates (`+0x57`,
+  the 0x28 boundary, a negative `+0x88`), its stream, and the `0x2BD44` row.
+  C 0x15208 on `gr_seed`'s passing context: the box edges 0x1B80/0x1B81
+  (x, box a) and 0x18C0/0x18C1 (y, box b), the `+0x88` override (0, -1, 2),
+  flags 1/4/7/8/9/0xD each firing alone (0xD with slot 1 in the `0x39CC8`
+  pose, which also clears slot 0's `+0x8A`; 0xE's pass shows as the
+  `+0x86` = 0x1234 mark, flag 5 as the box edges), and 0x19020. D 0x1527C (the `0x39834` count and
+  `b`, `0x36D20` on the other slot, `0x188AC`'s y = 0, the `+0x43` mask,
+  `+0x57`). E/F/G 0x151C0, 0x15160, 0x151A0 (check_reaction's seeds). H the
+  three stream targets on pool records. I the opcode-0x0C a5, with and
+  without the parent's bit. J `0x2910C` over eight hand-linked nodes. It
+  snapshots and restores every data-object byte it writes. A temporary
+  whole-data-object diff around it (reverted) showed 37 bytes, the same 37
+  as a bare `actors_reset()` there: its pool tests leave the pool reset, as
+  `check_trex_breath` does.
+- The driver: after loop 3422 the raptor is on `0xD311C` in 9/7/0/`+0x57` 0
+  with `0x152D4/0x15208/0x1527C`; after loop 3431 its `+0x4B` = `0x6A`, the
+  child on `0xD318E` with `+0x14` = the slot; after loop 3538 the first
+  particle's `+0x34` = `0x58`; after loop 3547 its node is in phase 1 on
+  `0xE8D16`; after loop 3551 the raptor is on `0xD3082` in 9/7/0 with `+0x0C`
+  = 0 and `0x15160/0x151A0`; after loop 3557 its `+0x4B` = `0x6B`, the child
+  on `0xD30F4`; after loop 3631 the in-use node list is empty.
+  After loop 3567 the ape is on `0xE4406` in 0x10/0x0A/2 (`0x151A0`).
+  `fe_cyc2_n` 1695 -> 2095.
+
+**Mutations** (`scratchpad/t32/mut32.py`; `mut32a..g.log`): 79 single-site
+edits, 69 in unit mode and 10 in driver mode, sources restored and checked
+with `cmp`. 75 fail an assertion: the gate's side, every stream, hold and
+store of the seven callbacks, the `0x152D4` gates (a `+0x57` = 0 case was
+added after the `!= 1 -> > 1` mutant first survived), the row stride, both
+box tables, each of `0x15208`'s eight flag stores deleted (1, 4, 5, 7, 8, 9,
+0xD, 0xE; the review found the deletion of `flags[0xD] = 0` surviving the
+first suite, whose script had only changed flags 5/7/9, so C4 gained the
+flag-0xD case), `0x15160`'s flags 0/1/8, the `0x3B714` argument
+order, the three stream targets' gates and fields, the opcode-`0x0C` a5, and
+`0x2910C`'s landing boundary, node return, phase compares, streams, hold and
+`+0x59`; in driver mode the unregistrations of `0x15350`, `0x151C0`,
+`0x151A0`, `0x15208`, `0x153D8`, `0x1543C`, `0x2910C` and the old a5. One
+hangs the suite (`0x2910C` reading the next node after the body walks the
+circular free list forever; caught by the timeout). One is equivalent: the
+first of `0x15350`'s two `+0x57` = 0 stores (`0x15388`), which `0x153BB`
+rewrites with no read between. Unregistering `0x15160` or `0x152D4` changes
+nothing the driver samples (and the attract2 counts are identical without
+`0x15160`); their unit-mode twins fail the registration checks.
+
+### 44-A.5 Measured
+
+| measurement | before (`632f3cd`) | `b947895` |
+|---|---|---|
+| `FE_LOOPS`, cycle-2 frames | 3500, 1695 | 3900, 2095 |
+| attract2 `[1885..3616]` clean/splice/trans/unexpl/black | 771/430/8/517/6 | 946/554/15/211/6 |
+| attract2 first unexplained (2384 allowed) | 3099 | **3257** (raw 7697) |
+| front-end `[560..1884]`, demo-fight | 517/801/3/2; empty, N 1886 | unchanged |
+| polled logic equal to the original through | f = 4308 | f = 4570 (the demo's end) |
+| non-stub `fn_resolve` misses in the window | `0x15350` 3422, `0x151C0` 3551 | none (`0x29B74`, `0x41578` once each) |
+
+`make verify` on `b947895` (EXIT 0, 0 compiler warnings): title 54/55/2/0
+and 54/57/0/0; smk 120/120, 41/41; C-vs-Python 9866; front-end
+`[560..1884]` 517/801/3/2 with 832/833 allowed; demo-fight empty, N 1886;
+attract2 exhibited window `[1886..3405]`, first unexplained 3257 (raw 7697)
+= N; symbols.h idempotent.
+
+Attribution (single `PR_FRONTEND_DUMP` runs with one registration dropped,
+reverted): without `0x2910C` the first unexplained frame is 3246; without
+`0x151A0` it stays 3257 but 349 frames are unexplained (211 with it);
+without `0x15160` the classification is identical.
+
+**3257, characterised.** See 44-A.3 (4). 3258..3405 are explained, and 3406
+is all-black (dropped as an artifact). 3407 on follows the second demo's exit
+(cycle-2 frame 1879, loop 3684) into the attract's third cycle, the next
+region (capture 3408 differs from the port's static frames 1879..1881 by 6786
+bytes).
+
+**Reach** (a temporary print probe, reverted): `0x15208` and `0x152D4` run
+99 times (f = 4310..4408), `0x15160` 15 times (f = 4439..4453), `0x151A0`
+once at f = 4453 (its `0x3B714` puts the ape in 0x10/0x0A/2 on `0xE4406`,
+poll-equal; the driver samples it after loop 3567), `0x37CFC` 25 times,
+always on its `+0x53 == 7` return. `0x1527C` (the `+0x1C` the winner body
+calls) and so `0x152D4`'s `+0x57 == 1` arm, and `0x37CFC`'s kill arm, are
+not reached: ported and unit-tested only.
+
+**Named gaps.** 3257's lazy load of `s16spisd.gra` by the voice path
+(`0x2C3FC`, spec §7), which the port does not run, and its read-stall
+presentation (§35.1). The call that triggers it is not pinned.
+
+**Merge note.** `0x2910C` was ported twice in parallel: here as `actor_proc_2910C` and on the `gap2-2910c` branch (§42-A) as `actor_type_0a19_update`. The merge kept §42-A's reviewed port and dropped this branch's copy; the two are the same walk over the raw (same stores, phases and streams). The ratchet N = 3257 was re-measured on the merged tree.
