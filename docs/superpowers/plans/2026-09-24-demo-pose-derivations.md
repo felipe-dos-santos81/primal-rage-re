@@ -14313,3 +14313,51 @@ tail's other arm clears it too) and the credit count after state 8.
     `0x4367C`), then `0x1B`, then mode `0x10` with the sub-state 0. That
     arm is the gap, so the character screen is built but its per-frame
     pass does not run.
+
+## 48-S. The character select's per-frame pass `0x43B24` and its callees (named-gap batch 12, branch `gap12-charselect`)
+
+**Status: in progress.** This section is filled in as the branch lands. The
+structure below is the investigation; the port, the assertions and the
+measurements follow in 48-S.3..48-S.5.
+
+(§47-M.5 names this follow-up. `git log --all` shows §47-A/B/C/M and
+§48-A/R/W in use, and batch 12 runs in parallel, so this section takes S, for
+"select".)
+
+### 48-S.1 The call tree (Ghidra `disassemble_function`, `read_memory` + capstone, fixups applied)
+
+`0x43B24` (to `0x43D09`, 139 instructions) loops EDX = side 0..1 with EBX =
+side * 2 over the side byte `DS_00108170[side]`:
+- 0: `0x11F28(side)` (ported). Accepted: `0x43964`, `0x43A08` (ported),
+  `DS_00104B1F |= side + 1`, the byte = 1 (`0x43B77`). Refused: `0x432A0`
+  (the unjoined side's blinking prompt, through `0x2C178`/`0x2C0F4`/`0x2C088`
+  or `0x2C1C8`, which falls through into `0x2C1D4`);
+- 1: `0x435AC` when `DS_00104B1D == 1` and `side + 1 != [0x104AB8]`, else
+  `0x43464` (the joined side's blinking text, strings `0x36..0x39`);
+- 2: when the other side's byte is 0 or 2, the hook `0x430E8` and
+  `0x4F980(0x11)`, and the pass returns at once;
+- above 2: nothing before the stick test.
+
+For bytes 1 and above 2, bits 4..7 of the command word `DS_001088E0[side]`
+move the cursor byte `DS_00108166[side]` over the 4 + 3 grid (0x10 right
+while < 6, 0x20 left while > 0, 0x40 down by 4 while < 4 and clamped to 6,
+0x80 up by 4 while >= 4), then `0x43EA0` (the portrait highlight) and
+`0x43FBC` (the side's fighter actor) run. Bit 0 confirms through `0x43D60`.
+After the loop, `DS_00105C04` resets the countdown `DS_0010816C` to `0xF`,
+and every 64th frame (`[0xEF6DC] & 0x3F == 0`) `0x43AAC` steps it.
+
+| function | role | callees |
+|---|---|---|
+| `0x432A0` | unjoined side's prompt | `0x2C060`, `0x2C178`, `0x2C1C8` |
+| `0x2C178`/`0x2C0F4`/`0x2C088` | "PRESS START" blink (string `0x48`, or the `0xBAB60` sprite) | `0x2AE14`, `0x1C500`, `0x2F198`, `0x2B150`, `0x2F280` |
+| `0x2C1C8` -> `0x2C1D4` | "INSERT COIN" blink (strings `0x49`, `0x809C4`, `0x4B`) | `0x1C500`, `0x2F198`, `0x2F388` |
+| `0x43464`, `0x435AC` | joined side's blinking text | `0x432EC`, `0x433DC`, `0x2AE14`, `0x1C500`, `0x2F198`, `0x65624` |
+| `0x432EC`, `0x433DC` | their erasers | `0x2B150`, `0x2C088`, `0x1C500`, `0x2F280`, `0x65624` |
+| `0x43EA0` | the portrait highlight and voice | `0x2BCF4`, `0x2A17C`, `0x2C3FC` |
+| `0x43FBC` | the side's fighter actor | `0x2BC30`, `0x2A17C`, `0x1D7B8` |
+| `0x43D60` | the confirm | `0x43D0C`, `0x33C18`, `0x4248C`, `0x2E934`, `0x2B150`, `0x432EC`, `0x2C3FC` |
+| `0x43AAC` | the countdown | `0x43D60`, `0x4F980`, `0x2F528` |
+
+`0x44798` (the `DS_00104B1D == 3` pass, 118 instructions) and its callees
+`0x44638`, `0x4418C`, `0x442A0`, `0x4434C`, `0x44054`, `0x4408C` are the
+second route (§47-M.5 follow-up 2).
