@@ -17542,39 +17542,47 @@ static void check_char1_entry(void)
     CHECK(fn_resolve(0x246D4u) != (void (*)(void))fighter_246d4,
           "0x246D4 is registered through the (rec, arg) wrapper");
 
-    /* A: 0x24568. Each row: sel, 0x1A570's bit 15, x0, the bound, the mask
-     * byte; the spawn's x and a5, and +0x41 bit 0. The left test is x0 -
-     * 0x5000 >= -bound, the right x0 + 0x5000 <= bound, both signed; bit 15
-     * clear tries the left first. The mask is 0x80 for sel 0, 0x40 for 1. */
+    /* A: 0x24568. Each row: sel, the entering side, 0x1A570's bit 15, x0,
+     * the bound, the mask byte; the spawn's x and a5, and +0x41 bit 0. The
+     * left test is x0 - 0x5000 >= -bound, the right x0 + 0x5000 <= bound,
+     * both signed; bit 15 clear tries the left first. The mask is 0x80 for
+     * sel 0, 0x40 for 1, whichever side enters (the last two rows enter on
+     * sel's own side, whose old record 0x24568 then places against). */
     {
         static const struct {
-            u32 sel; int b15; s32 x0; u32 w; u8 b03; s32 x; u32 a5; u8 blink;
+            u32 sel, ent; int b15; s32 x0; u32 w; u8 b03; s32 x; u32 a5; u8 blink;
         } row[] = {
-            { 0u, 0,  0x2000, 0x7C00u, 0x80u, -0x3000, 0x4000u, 1u }, /* left */
-            { 0u, 0, -0x3000, 0x7C00u, 0x40u,  0x2000, 0u,      0u }, /* left fails */
-            { 0u, 0, -0x3000, 0x8000u, 0x7Fu, -0x8000, 0x4000u, 0u }, /* the bound read */
-            { 1u, 1,  0x1000, 0x7C00u, 0x40u,  0x6000, 0u,      1u }, /* right */
-            { 1u, 1,  0x3000, 0x7C00u, 0xBFu, -0x2000, 0x4000u, 0u }, /* right fails */
-            { 0u, 0, -0x2C00, 0x7C00u, 0x00u, -0x7C00, 0x4000u, 0u }, /* left equal */
-            { 1u, 1,  0x2C00, 0x7C00u, 0xC0u,  0x7C00, 0u,      1u }, /* right equal */
-            { 0u, 0,  0x6000, 0x7C00u, 0xFFu,  0x1000, 0x4000u, 1u }, /* signed left */
-            { 1u, 1, -0x6000, 0x7C00u, 0x00u, -0x1000, 0u,      0u }, /* signed right */
+            { 0u, 1u, 0,  0x2000, 0x7C00u, 0x80u, -0x3000, 0x4000u, 1u }, /* left */
+            { 0u, 1u, 0, -0x3000, 0x7C00u, 0x40u,  0x2000, 0u,      0u }, /* left fails */
+            { 0u, 1u, 0, -0x3000, 0x8000u, 0x7Fu, -0x8000, 0x4000u, 0u }, /* the bound read */
+            { 1u, 0u, 1,  0x1000, 0x7C00u, 0x40u,  0x6000, 0u,      1u }, /* right */
+            { 1u, 0u, 1,  0x3000, 0x7C00u, 0xBFu, -0x2000, 0x4000u, 0u }, /* right fails */
+            { 0u, 1u, 0, -0x2C00, 0x7C00u, 0x00u, -0x7C00, 0x4000u, 0u }, /* left equal */
+            { 1u, 0u, 1,  0x2C00, 0x7C00u, 0xC0u,  0x7C00, 0u,      1u }, /* right equal */
+            { 0u, 1u, 0,  0x6000, 0x7C00u, 0xFFu,  0x1000, 0x4000u, 1u }, /* signed left */
+            { 1u, 0u, 1, -0x6000, 0x7C00u, 0x00u, -0x1000, 0u,      0u }, /* signed right */
+            { 1u, 1u, 0,  0x2000, 0x7C00u, 0x40u, -0x3000, 0x4000u, 1u }, /* sel enters */
+            { 0u, 0u, 1,  0x1000, 0x7C00u, 0x80u,  0x6000, 0u,      1u }, /* sel enters */
         };
-        for (i = 0; i < sizeof row / sizeof row[0]; i++) {
-            u32 side = row[i].sel ^ 1u;
+        for (i = 0; f68 != NULL && i < sizeof row / sizeof row[0]; i++) {
+            u32 side = row[i].ent;
             u32 slot = DS_001077B0 + side * 0x94u;
             u32 other = DS_001077B0 + row[i].sel * 0x94u;
+            int apart = row[i].sel != side;
             u32 rec, p, orec;
             orec = ce_seed(1u, row[i].sel, row[i].x0, row[i].b15, row[i].w, row[i].b03);
-            /* The entering side's old record: a decoy on pset 500 whose bit 15
-             * is the opposite of sel's, so 0x1A570 on the wrong side fails. */
-            mem_fill(CE_DECOY, 0, ACTOR_REC_SIZE);
-            DSW(CE_DECOY + 0x56u) = 500u;
-            DSW(DSD(DS_001014EC) + 500u * 0x20u) = (u16)(row[i].b15 ? 0x0123u : 0x8123u);
-            DSD(slot) = CE_DECOY;
+            /* The entering side's old record (when it is not sel's): a decoy
+             * on pset 500 whose bit 15 is the opposite of sel's, so 0x1A570
+             * on the wrong side fails. */
+            if (apart) {
+                mem_fill(CE_DECOY, 0, ACTOR_REC_SIZE);
+                DSW(CE_DECOY + 0x56u) = 500u;
+                DSW(DSD(DS_001014EC) + 500u * 0x20u) = (u16)(row[i].b15 ? 0x0123u : 0x8123u);
+                DSD(slot) = CE_DECOY;
+                DSB(other + 0x52u) = 0x52u;
+            }
             DSB(slot + 0x63u) = 0x63u;
             DSW(slot + 0x74u) = 0x7474u;
-            DSB(other + 0x52u) = 0x52u;
             f68(side);
             rec = DSD(slot);
             CHECK(rec != 0u && rec != orec, "0x24568 spawned the side");
@@ -17606,8 +17614,10 @@ static void check_char1_entry(void)
             CHECK_EQ_INT((int)DSD(slot + 0x40u),
                          (int)(0x80081000u | ((u32)row[i].blink << 8)));
             CHECK_EQ_INT((int)DSB(slot + 0x63u), 1);
-            CHECK_EQ_INT((int)DSB(other + 0x52u), 0x52);
-            CHECK_EQ_INT((int)DSD(DS_001077B0 + row[i].sel * 0x94u), (int)orec);
+            if (apart) {
+                CHECK_EQ_INT((int)DSB(other + 0x52u), 0x52);
+                CHECK_EQ_INT((int)DSD(other), (int)orec);
+            }
         }
     }
 
@@ -17661,7 +17671,7 @@ static void check_char1_entry(void)
         DSW(slot + 0x4Eu) = 0x4E4Eu;
         DSB(DS_000F0AFE) = 0x55u;
         DSW(DS_000F0AFC) = 0x5555u;
-        if (i < 2u) fd4(rec, 0x1234u);
+        if (i < 2u) { if (fd4 != NULL) fd4(rec, 0x1234u); }
         else actors_anim_begin(rec, 0x000E4542u, 0x3F800000u);
         CHECK_EQ_INT((int)DSW(DS_001088E0), i == 1u ? 0x9000 : 0xA000);
         CHECK_EQ_INT((int)DSW(DS_001088E0 + 2u), 0x5656);
