@@ -3761,9 +3761,28 @@ static void check_state6(void)
      * node lists; 0xA5 over the nodes and both sentinels differs from every
      * link it writes. */
     mem_fill(DS_00104780, 0xA5u, 0x110u);
+    /* Record §46-B: state 6 runs 0x20DF4 whole, so its stores the port once
+     * left as a gap land too: dword 0xF0A48, byte 0x1088EC (the second
+     * demo's state 6 sees 3 there), the 0x2C074 pair 0x105BF0/F4 and the
+     * 0x2C390 sentinel 0x105C0C. 0xF0A48 and 0x1088EC are outside the
+     * windows test_fight restores, so they are restored here. */
+    u32 s_f0a48 = DSD(DS_000F0A48);
+    u8 s_1088ec = DSB(DS_001088EC);
+    DSD(DS_000F0A48) = 0xDEADBEEFu;
+    DSB(DS_001088EC) = 3u;
+    DSD(DS_00105BF0) = 0xDEADBEEFu;
+    DSD(DS_00105BF4) = 0xDEADBEEFu;
+    DSD(DS_00105C0C) = 0xDEADBEEFu;
     rng_seed(0x1234u);
     game_state_step();
 
+    CHECK_EQ_INT((int)DSD(DS_000F0A48), 0);                   /* 0x20DFB */
+    CHECK_EQ_INT((int)DSB(DS_001088EC), 0);                   /* 0x20E22 */
+    CHECK_EQ_INT((int)DSD(DS_00105BF0), 0);                   /* 0x2C074 */
+    CHECK_EQ_INT((int)DSD(DS_00105BF4), 0);
+    CHECK_EQ_INT((int)DSD(DS_00105C0C), (int)DS_00105C0C);    /* 0x2C390 */
+    DSD(DS_000F0A48) = s_f0a48;
+    DSB(DS_001088EC) = s_1088ec;
     CHECK_EQ_INT((int)DSD(DS_000F0AE0), (int)DS_000F0AE0);   /* 0x12750 */
     CHECK_EQ_INT((int)DSD(DS_000F0AE4), (int)DS_000F0AE0);
     CHECK_EQ_INT((int)DSD(DS_000F0A78), 0x000F0A80);
