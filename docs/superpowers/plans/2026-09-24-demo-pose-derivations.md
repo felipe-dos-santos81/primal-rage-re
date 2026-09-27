@@ -14707,3 +14707,30 @@ re-anchored on their address comments and all four fail the suite.
     outside this batch;
   - `0xEB70E`'s `0xD100` target `0x45B18`, just past §48-A's `0x45AD0`, is
     not in these streams and was not examined.
+## 48-Q. `0x33C18`'s other callers (named-gap batch 12, branch `gap12-33c18callers`)
+
+§47-C.2 names eight unported callers of `0x33C18` (`0x25A84`, `0x2716C`,
+`0x274FC`, `0x28DA4`, `0x292D4`, `0x296B8`, `0x43D60`, `0x4434C`). Modes `0xD`
+and `0x32` are ported (`0x274FC`/`0x296B8` → `game_mode_0d_step`/
+`game_mode_32_step`, `flow.c`), wired into `game_frame`'s mode switch; each
+runs the arena frame's tail steps (`0x3C5CC`, per-side `0x16D58`, the two
+position latches, per-side `0x35658`, `0x19068(1)`, `0x12DA8`) and sets
+`DS_00104AEC` bit 1. On `DS_00104B0C` set it either replaces the losing
+side's character — via `0x2716C`'s random pick or `0x292D4`'s team list at
+`DS_00108134`, then that character's entrance `0xA8628[c]` (only character
+1's, `0x24568`, is ported) and the HUD resets `0x1D764`/`0x1D838` — or, on
+the final round, ends the match: draws the result (`0x28130`), gives the
+bonus (mode `0xD` only) and runs the winner's crowd `0x4DBEC`. Also ported:
+`0x28DA4` (`flow_player_join`, unwired — its mode-6/`0xC` callers reach it
+only through the unported `0x28CC8`), `0x4651C`, `0x32B00`, `0x1D764` and
+`0x1D838`. `0x25A84` has no entrance and stays unported; `0x43D60`/`0x4434C`
+are callees of the character-select passes and belong to `gap12-charselect`.
+Named gaps: `0x2C2B0`, `0x1D2F0`, six of the seven per-character entrances,
+the voices, `0x32970` and the `0x2DAE4`/`0x2E934` audit. No ported path
+stores mode `0xD` or `0x32`, so a headless 8000-frame run is byte-identical
+before and after. `check_33c18_callers_a`/`_b` in `test_fight.c`; the row-8
+"NO WINNERS"/winner-name text draws and the `DS_00104AF0` one-short-of-final
+edge case are asserted directly (added in this batch's fix round). See
+`docs/PROGRESS.md` and `port/spec/game_flow.md` for the wiring detail; no
+separate raw-disassembly transcript was kept for this batch beyond the
+addresses cited above and in the `PORT:` comments at each site.

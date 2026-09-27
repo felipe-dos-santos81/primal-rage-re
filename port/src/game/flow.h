@@ -232,4 +232,21 @@ void frontend_match_start(void);
 void game_coin_divert(u32 players);
 void flow_1082c8_init(void);
 
+/* Record §48-Q, 0x33C18's other callers. 0x4651C: DS_001082C8/CC from
+ * DS_001082C0/C4. 0x292D4: the side's character set to `ch` (0x33C18 first).
+ * 0x2716C: the same with an unused random character (bit 5 of
+ * DS_00104B02[c]). 0x28DA4: a player joins (modes 6/0xC), mode 0x17 with the
+ * hook 0x28D80. */
+void flow_1082c8_restore(void);
+void flow_side_char_set(u32 side, u32 ch);
+void flow_side_char_random(u32 side);
+void flow_player_join(u32 side);
+/* 0x28130: the match-result caption on DS_00104AD4 (and DS_00104B16).
+ * 0x274FC/0x296B8: the handlers of modes 0xD and 0x32, dispatched by
+ * game_frame: the arena frame's tail steps, then on DS_00104B0C the next
+ * opponent (modes 0xC / 0x31) or the match's end (modes 0xF / 0x33). */
+void flow_match_result_text(void);
+void game_mode_0d_step(void);
+void game_mode_32_step(void);
+
 #endif /* PR_GAME_FLOW_H */

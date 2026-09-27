@@ -94,4 +94,9 @@ void config_credits_init(void);
  * unported 0x26F58, 0x277C0, 0x28788, 0x41C28 and the dead 0x2861C region. */
 void config_play_time_close(u32 mode, u32 flag);
 
+/* 0x32B00 (record §48-Q). `arm` != 0: DS_00107478 = DS_0010746C[idx]; 0:
+ * DS_00107478 = (DS_0010746C[idx] - DS_00107478) / 0x3C, its 0x2E934 audit
+ * post deferred (spec §7). Ported caller: 0x28DA4 (flow_player_join). */
+void config_play_time_snap(u32 idx, u32 arm);
+
 #endif /* PRAGE_GAME_CONFIG_H */
