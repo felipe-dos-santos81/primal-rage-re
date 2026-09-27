@@ -12471,3 +12471,7 @@ mismatch in the script). They were run again with the right text in
     of the unported frame prologue);
   - the `game_frame` switch still reads `DS_00104B00` as a dword (§43-B.5).
     The hooks store words, so the upper half is whatever `0x104B02` holds.
+
+## 46-G. The mode-`0x17` handler `0x4F318` and its callee `0x4F790` (named-gap batch 7, branch `gap7-mode17`)
+
+(In progress.)
