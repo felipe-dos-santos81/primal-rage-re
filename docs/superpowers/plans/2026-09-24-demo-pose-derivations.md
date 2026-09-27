@@ -11224,7 +11224,15 @@ port's hand-off lies about 85 ticks past the window. 3545..3616 are the
 third demo fight (Sauron and Armadon in the cave, `scratchpad/t34/
 s3545.png`), which no port frame shows.
 
-(`make verify` result follows.)
+`make verify` on `dfcc8a3` (the dumps redirected to the scratchpad; EXIT 0,
+0 compiler warnings):
+- title 54/55/2/0 and 54/57/0/0, determinism 54;
+- smk 120/120 and 41/41; C-vs-Python 9866;
+- front-end `[560..1884]` 517/801/3/2 with 832/833 allowed;
+- demo-fight empty, N 1886;
+- attract2 1051/588/15/72/6, first unexplained 3545 (raw 8338) = N;
+- attract prefix 215/216 (the expected divergence at 215);
+- gra_extract 32 OK; symbols.h idempotent.
 
 ### 46-A.6 Remaining gaps
 
