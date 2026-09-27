@@ -11215,12 +11215,15 @@ assertion changed.
   | `0x4367C` | `0x25810` (after `0x65490(0x104B02)`) | `0x10` |
   | `0x25BBC` | `0x25A46` (in `0x259CC`, the arm with byte CH == 3) | `0x30` |
   | `0x25BBC` | `0x25A73` (in `0x259CC`, the other arm) | 5 |
-  | `0x25BBC` | `0x285CB`, `0x285F3` (in `0x28468`) | none: that path stores mode `0x16` and `[0x104AFA]` = `0x30` itself (`0x285DC`/`0x285E3`) |
+  | `0x25BBC` | `0x285CB` (in `0x28468`) | none: that path stores mode `0x16` and the word `[0x104AFA]` = `0x30` itself (`0x285DC`/`0x285E3`) |
+  | `0x25BBC` | `0x285F3` (in `0x28468`) | none: mode `0x16` and `[0x104AFA]` = 5 (`0x285FF`, stored at `0x28609`/`0x2860F`) |
   | `0x26998` | `0x2698B` (in `0x26978`) | `0x23` |
   | `0x270BC` | `0x2715C` (in `0x27134`, which zeroes `[0x104B1E]`, `[0x104AF3]`, `[0x104AF2]` first) | 5 |
 
   `0x259CC`, `0x26978` and `0x27134` are themselves `DS_00104AE4` values
-  (§43-B.3's list). **Correction to §43-B.3:** that table omits `0x25BBC`'s two storers
+  (§43-B.3's list). On the two `0x28468` paths the hook is called by mode
+  `0x16`'s handler `0x4F2B0` (`call [0x104AE4]` at `0x4F302`, once the
+  countdown `[0x104AFE]` runs out), not by `0x4F9A0`/`0x4F9C8`. **Correction to §43-B.3:** that table omits `0x25BBC`'s two storers
   in `0x28468`. They are found by the dword scan (`0x285C0`/`0x285ED`) and
   by Ghidra's `get_xrefs_to`.
 
@@ -11250,9 +11253,9 @@ immediates' instruction starts (`0x1F43D`, `0x43ADE`, `0x43C0E`, `0x44815`,
 - the hooks are reached only through `DS_00104AE4`;
 - `0x4F200`, `0x4454C` and `0x4F714` have a single caller each, inside the
   hooks;
-- `0x20DF4`'s only ported caller is state 6. `0x295E4` loads EAX as the
-  **dword** `[0x104AFC]`, not the word, so the port's `u32` stage and the
-  signed clamp are kept for it.
+- `0x20DF4`'s only ported caller is state 6. Every caller, `0x295E4`
+  included (`0x295D7 xor eax,eax; 0x295DE mov ax,[0x104afc]`), passes the
+  zero-extended word `[0x104AFC]` with EDX = 1.
 
 ### 46-B.3 The port
 
@@ -11274,12 +11277,14 @@ immediates' instruction starts (`0x1F43D`, `0x43ADE`, `0x43C0E`, `0x44815`,
 - The voices (`0x31`, `0x2D`, `0x2F`, `0x100`, `0x2E`, `0x28`, `0x25`) and
   `0x4F714`'s stage voice are `PORT:` notes, "not wired" (§45-A's rule for
   the other 302 sites).
-- `0x25848`'s last arm reads `[esp + ([0x104AD4] ^ 1)]`. Only offsets 0 and 1
-  hold stored bytes. For any other `[0x104AD4]` the raw reads uninitialised
-  frame bytes or saved registers. The port returns without a store, the raw's
-  no-match exit (`TODO(verify)`). The live writers of `[0x104AD4]`
-  (`0x25A0E`, `0x27C3D`, `0x283AE`/`0x283EE`/`0x28409`, `0x288F3` = 2,
-  `0x28961` = 0, `0x28973`) store register values that were not traced.
+- `0x25848`'s last arm reads `[esp + ([0x104AD4] ^ 1)]`. The writers of
+  `[0x104AD4]` (`0x25A0E`, `0x27C3D`, `0x283AE`/`0x283EE`/`0x28409`,
+  `0x288F3` = 2, `0x28961` = 0, `0x28973`) store only -1, 0, 1 or 2; -1
+  comes from `0x25A0E` (EBX = -1 from `0x259D2`) and `0x27C3D`. 2 takes the
+  step arm, so the index is 1, 0 or -2. For -1 the raw reads `[esp-2]`, a
+  leftover stack byte below the frame, and stores only if that byte equals
+  one of the two frame bytes. The port returns without a store, the raw's
+  no-match exit (a `PORT:` note: the stack byte is not modelled).
 - New local names with no `symbols.h` entry: `DS_000A87C4`, `DS_0010810D`,
   `DS_00104B1A` (`flow.c`); `DS_000C8364`/`C8378`/`C84E0`/`C84FC`/`C87BC`,
   `DS_00080C04`, the loop bases `DS_0010816D`/`DS_00108165`/`DS_00105B33`,
@@ -11400,22 +11405,24 @@ added for each, and each mutation then failed:
 ### 46-B.5 Measured and remaining gaps
 
 - `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, with 0
-  compiler warnings. `make verify` and the drivers were not run, as the brief
-  requires.
+  compiler warnings. The branch itself did not run `make verify` or the
+  drivers, as the brief requires. The controller's review run did: `make
+  verify` green, the front-end, demo-fight and attract2 oracles unchanged (N
+  1886 and 3408 hold), and the full driver dump byte-identical to main.
 - **State 6's change.** The headless `prageport --check 8000` was run from a
   scratch directory, with the base binary (`1151646` plus the test brace) and
   with this branch's. It gives byte-identical `frame_*.idx`/`.pal` for all
   8000 frames. A probe build (not committed) printed state 6's entries at
   ticks 1957, 3670, 4872 and 6585, with byte `[0x1088EC]` = 3 before the
-  last three. Zeroing it has no visible effect in that window. No oracle is
-  expected to move, but the front-end/demo-fight/attract2 drivers were not
-  run. The controller's ladder is the check.
-- The hooks themselves stay unreachable: modes `0x1A`/`0x1B` are not
-  dispatched (§43-B.5), and `0x25BBC`'s mode-`0x16` path (`0x28468`) is
-  unported.
+  last three. Zeroing it has no visible effect in that window, and the
+  controller's oracle run above agrees.
+- The hooks themselves stay unreachable: modes `0x1A`/`0x1B` and `0x16`
+  (`0x4F2B0`, which calls `0x25BBC` on the `0x28468` paths) are not
+  dispatched (§43-B.5), and `0x28468` is unported.
 - Remaining named gaps:
   - the voices, including `0x4F714`'s stage voice (§45-A's rule);
-  - `0x25848`'s last arm for `[0x104AD4]` other than 0/1/2 (46-B.3);
+  - `0x25848`'s last arm for `[0x104AD4]` = -1, which reads a leftover
+    stack byte (46-B.3);
   - `0x25848`'s other callers `0x4177D`, `0x418A8` and `0x42390`, and
     `0x20DF4`'s callers `0x25A95` and `0x295E4`;
   - the storers of the five hooks (`0x1EEB0`, `0x43AAC`, `0x43B24`,
@@ -11424,3 +11431,21 @@ added for each, and each mutation then failed:
   - the 7 `DS_00104AE4` values still unregistered (46-B.3);
   - the `game_frame` cases `0x1A`/`0x1B`, which still switch on a dword where
     the raw reads a word (§43-B.5).
+
+### 46-B.6 Review round 1 (`gap5-hookcallers-review.md`)
+
+Five corrections, none of which changes behaviour:
+- 46-B.1: the `0x285F3` path stores the return mode 5, not `0x30` (only
+  `0x285CB` stores `0x30`). On both `0x28468` paths mode `0x16`'s `0x4F2B0`
+  calls the hook (`0x4F302`).
+- 46-B.2: `0x295E4` passes the zero-extended word `[0x104AFC]`, like every
+  other `0x20DF4` caller. The first version said it was the dword.
+- 46-B.3: `[0x104AD4]` holds only -1, 0, 1 or 2. With -1, `0x25848` reads
+  `[esp-2]`, a leftover byte below its frame, not an uninitialised frame byte
+  or a saved register. The port's return is unchanged. Its note is now a
+  `PORT:` note with this evidence, not a `TODO(verify)`.
+- `flow.c` defined `DS_00104B1A` twice. The later copy (before `game_frame`)
+  is removed and its comment is merged into the first.
+- `check_state6`'s comment said `0x1088EC` was outside `test_fight`'s restore
+  windows. It is inside `s_88` (`0x108840..0x10893F`); only `0xF0A48` is
+  outside.

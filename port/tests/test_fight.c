@@ -3764,8 +3764,10 @@ static void check_state6(void)
     /* Record §46-B: state 6 runs 0x20DF4 whole, so its stores the port once
      * left as a gap land too: dword 0xF0A48, byte 0x1088EC (the second
      * demo's state 6 sees 3 there), the 0x2C074 pair 0x105BF0/F4 and the
-     * 0x2C390 sentinel 0x105C0C. 0xF0A48 and 0x1088EC are outside the
-     * windows test_fight restores, so they are restored here. */
+     * 0x2C390 sentinel 0x105C0C. 0xF0A48 is outside the windows test_fight
+     * restores, so it is restored here; 0x1088EC (inside s_88) and the
+     * 0x105BF0..0x105C0C words (inside s_5b) are restored there. 0x1088EC is
+     * also put back here so this check leaves it as it found it. */
     u32 s_f0a48 = DSD(DS_000F0A48);
     u8 s_1088ec = DSB(DS_001088EC);
     DSD(DS_000F0A48) = 0xDEADBEEFu;

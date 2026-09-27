@@ -506,7 +506,9 @@ void frontend_mode_1b_step(void)
 
 #define DS_000A87C4 0x000A87C4u   /* no symbols.h name: 7 stage-offset bytes */
 #define DS_0010810D 0x0010810Du   /* no symbols.h name: the high byte of DS_0010810A */
-#define DS_00104B1A 0x00104B1Au   /* no symbols.h name: the side byte 0x26998 sets */
+/* 0x104B1A: the slot index 0x26998 sets and the mode-0x22/0x23 tail latches
+ * (0x25552 `mov al,[0x104b1a]`); symbols.h has no name for it. */
+#define DS_00104B1A 0x00104B1Au
 
 /* 0x4F200 — record §46-B. EAX = v: DS_00107A55 = (u8)v (0x4F20A), and
  * DS_00107A54 = DH after `and eax,0xff; mov edx,eax; xor dh,ah`, which is 0
@@ -592,11 +594,13 @@ void flow_stage_pick(void)
         return;
     }
     u32 k = DSD(DS_00104AD4) ^ 1u;                      /* 0x2598F/0x25997 */
-    /* TODO(verify): the raw reads [esp + k] of its 4-byte frame. Only k = 0/1
-     * are stored bytes (0x258D7/0x258E3); for any other DS_00104AD4 it reads
-     * uninitialised frame bytes or the saved registers above them, which are
-     * not pinned. The port stops there, leaving DS_00104AFC unchanged as the
-     * raw's no-match exit (0x259C3) does. */
+    /* PORT: the raw reads [esp + k] of its 4-byte frame. DS_00104AD4's
+     * writers store only -1, 0, 1 or 2 (-1 at 0x25A0E and 0x27C3D), and 2
+     * took the step above, so k is 1, 0 or -2. For -2 the raw reads [esp-2],
+     * a leftover stack byte below the frame, and stores only when that byte
+     * equals one of the two frame bytes. The port does not model the stack,
+     * so it returns, leaving DS_00104AFC unchanged as the raw's no-match exit
+     * (0x259C3) does. */
     if (k > 1u) return;
     for (u32 i = 0; i < 7u; i++) {                      /* 0x2599A..0x259C1 */
         if ((u32)(DSB(DS_00108106 + i) & 0x7Fu) == fr[k]) {   /* 0x259AB */
@@ -1951,10 +1955,6 @@ void game_loop(void)
         }
     } while (DSB(DS_000A81A8) == 0);
 }
-
-/* 0x104B1A: the slot index the mode-0x22/0x23 tail latches (0x25552 `mov
- * al,[0x104b1a]`); symbols.h has no name for it. */
-#define DS_00104B1A 0x00104B1Au
 
 void game_frame(void)
 {
