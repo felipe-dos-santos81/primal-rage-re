@@ -241,7 +241,7 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 
 # Attract cycle-2 oracle (a RATCHET, enforced in verify; roar-timing Task 26, record
 # §36): the same PR_FRONTEND_DUMP run. After the demo's exit frame (loop 1970) the
-# driver writes every presented frame to run1/cycle2 (loops 1971..3899, and inside
+# driver writes every presented frame to run1/cycle2 (loops 1971..4099, and inside
 # loop 1971 the 166 screens the logo player 0x1C740 writes: its 0x52106 blanks and
 # every TWI5/TWG frame), a separate dump so the front-end and demo-fight windows do
 # not change. title_compare --attract2 classifies the capture from the first all-black
@@ -251,21 +251,31 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # over the held frame inside an iteration (res.c's seam, record §45-A). Capture 2384,
 # the `- LOADING -` frame before the second demo, was allowed by name (record §37)
 # until those screens explained it; ATTRACT2_ALLOWED_UNEXPLAINED is now empty.
-# N = 3545 was measured on 1251af7 (§46-A): the high-score tables 0x2DB58/0x2DBC4/
+# N = 3593 (§47-A, branch frame-3545): FE_LOOPS 3900 -> 4100 brings the high-score
+# screen's end (state 9 -> 6 after loop 3984) and the third demo (s16dia against
+# s16spi in s16caves; its state-6 entry reads six files in loop 3985) into the dump.
+# 3544 is now the port's own loader screen (3543 is all-black, excluded), 3546..3592
+# its third demo fight, and 3545
+# (raw 8338) is allowed by name as a three-frame splice (ATTRACT2_SPLICE3_ALLOWED,
+# cycle-2 2192/2193/2194: the last loader screen, the load frame's present and the
+# next, which the read's tick re-sync 0x1B45F/0x1B464 lets fall inside one capture
+# scan). The driver lists the loader screens in cycle2/loader.txt for that check.
+# 3593 (raw 8386) is the third demo's first fight frame the port does not match.
+# (Before it, N = 3545 was measured on 1251af7 (§46-A): the high-score tables 0x2DB58/0x2DBC4/
 # 0x2DCA0, their boot fill 0x1E824 (0x1E918's ten factory records and the champion
 # 0xA7D74) and the rest of 0x1EA08 (the rows through 0x2F4D0/0x2F4BC and the
 # champion's figure 0x2AE14/0x2A17C) draw the attract's high-score screen and explain
 # 3408..3542. 3543/3544 (black, `- LOADING -` on black) match earlier port screens,
 # not the port's hand-off: the dump ends at loop 3899 inside the high-score screen
 # (loops 3685..3899), about 85 ticks before the original leaves it. 3545 (raw 8338)
-# is the third demo fight, past the driver's window. (Before it, N = 3408, measured on b05adcc (on 54394e9; §45-A): the voice
+# is the third demo fight, past the driver's window. Before that, N = 3408, measured on b05adcc (on 54394e9; §45-A): the voice
 # dispatcher 0x2C3FC with the sound module's sample path, 0x1543C's voice 0x4D
 # (its first read of s16spisd.gra draws the loader's text over the game frame at
 # loop 3557), the fighter spawns' sound-bank reads (0x33E51), the DIG driver
 # handle DS_001028C8 (0x1CF8E) and the loader-screen seam explain capture 3257.
 # 3408 is the attract's third cycle: the high-score table after the second demo,
 # which the port did not draw.) The driver's loop (FE_LOOPS, a measurement window)
-# runs to 3900 so that the capture's last frame lies inside the dump. It fails if
+# runs to 4100 so that the capture's last frame lies inside the dump. It fails if
 # an unexplained frame appears below N, N exceeds the capture's end + 1, or N is
 # at or below the region's start.
 # Like the front-end oracle, its window comes from the port's own dump, so it cannot
@@ -286,7 +296,7 @@ demo-fight-oracle: build ## Demo-fight ratchet, states 6/7 (skips without data/t
 # DS_001078FA explained 2386..2460; before that N = 2386, measured on c0edb4c and
 # re-measured unchanged on a7ccc86 and 65f4084; before that N = 2384, measured on
 # fc8e775.)
-ATTRACT2_MIN_FIRST = 3545
+ATTRACT2_MIN_FIRST = 3593
 attract2-oracle: build ## Attract cycle-2 ratchet after the demo (skips without data/title-captures/frontend)
 	@echo "== attract cycle-2 oracle (ratchet on the first unexplained frame, N=$(ATTRACT2_MIN_FIRST)) =="
 	@if [ -d $(TITLE_CAPTURES)/frontend ]; then \
@@ -330,6 +340,8 @@ verify: build ## Full ladder: --check frames, oracle-required tests, front-end +
 	@$(MAKE) --no-print-directory attract2-compare
 	@echo "== attract prefix oracle (pixel-exact) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory attract-oracle
+	@echo "== title_compare unit tests (splice3, record §47-A) =="
+	$(PYTHON) -m unittest tools.tests.test_title_compare
 	@echo "== gra_extract oracle tests (real assets required) =="
 	@PR_ORACLE_REQUIRED=1 $(MAKE) --no-print-directory re-extract-test
 	@echo "== symbols.h must regenerate byte-identically =="

@@ -731,7 +731,7 @@ phase at `0x1150E`/`0x11517`/`0x1151F`, `port/src/game/attract.c:304-307`)
 belong to the *next* attract loop, not this demo run.
 
 **Dump length.** `make demo-oracle` runs the same `PR_FRONTEND_DUMP` run as
-`frontend-oracle`. The driver loops 3900 frames from the state-2 entry
+`frontend-oracle`. The driver loops 4100 frames from the state-2 entry
 (`FE_LOOPS`; its measurements and end-of-run reads keep the first 2000,
 `FE_DEMO_LOOPS`) and caps the top-level RGB dump at 1400 frames (`PR_FRONTEND_DUMP_FRAMES`, default 1400). The
 measurement that sizes it: state 3 enters at loop 589 (dumped frame 0), state 6
@@ -745,23 +745,24 @@ driver now does the same (`state_in`), keeping the post-state only for the entry
 that starts in state 7 and exits it, is dumped (1381), and loop 1971 on, which
 start in state 0, are not in the state >= 3 window. The dump therefore holds **1382 frames** (dumped 0..1381); the 1400
 cap covers it with no truncation, and the 2000-loop window clears the 1970 exit.
-Loops 1971..3899 (the attract's second cycle, the second demo and the third
-cycle's first 215 loops, record §36)
+Loops 1971..4099 (the attract's second cycle, the second demo, the third
+cycle's high-score screen and the third demo's first 115 loops, records §36
+and §47-A)
 go to the separate `cycle2/` dump.
 (Before the frame-1881 fix the gate read only the state after the iteration, so
 loop 1970 was dropped and the dump held 1381 frames.)
 
 **The attract's second cycle (roar-timing Task 26, demo-pose record §36).** The
-exit frame closes that dump. The loop now runs to 3900 (a measurement window:
-2800 in Task 26, raised in Tasks 28, 29, 30, 31 and 32 (3900 keeps 3257, loop 3556, inside the dump and reaches past the capture's last frame 3616) so that the second demo's first
-unexplained frame stays inside the dump, record §38), and every frame
-presented after loop 1970 goes to a separate `cycle2/` dump (2102 frames).
-That is one frame per iteration for loops 1971..3899, plus the 166 screens the logo
+exit frame closes that dump. The loop now runs to 4100 (a measurement window:
+2800 in Task 26, raised in Tasks 28, 29, 30, 31, 32 and 35; 4100 reaches past the capture's last frame 3616, near loop 4046, record §47-A), and every frame
+presented after loop 1970 goes to a separate `cycle2/` dump (2308 frames).
+That is one frame per iteration for loops 1971..4099, plus the 166 screens the logo
 player `0x1C740` writes inside loop 1971 (its `0x52106` blanks and every TWI5
 and TWG frame, through the `PORT:` seam `movie_set_screen_hook`), plus the
-seven `- LOADING -` screens the loader draws over the held frame inside an
+thirteen `- LOADING -` screens the loader draws over the held frame inside an
 iteration (the `PORT:` seam `res_set_screen_hook`, record §45-A: loop 1973,
-four in loop 2783, loop 3557 and loop 3684). Every
+four in loop 2783, loop 3557, loop 3684 and six in loop 3985, the third
+demo's state-6 entry; the driver lists their indices in `cycle2/loader.txt`). Every
 earlier measurement keeps the loop-0..1999 window. A separate dump is needed:
 in one dump the second cycle's frames content-match the capture's first
 attract, and the front-end window grew to `[1..2231]`. The driver seeds
@@ -770,13 +771,17 @@ boot cycle's phase 2 wraps it to 0), so the second cycle reaches phase `0xA`'s
 lightning and hands off to a second demo at loop 2782 (`DS_000F0A72` = 5), as
 the capture does from 2385. `make attract2-oracle` (`--attract2`, in `make
 verify`) classifies captures 1885..3616 against `cycle2/` only, with the ratchet
-N = 3545 (record §46-A). Capture 2384, the `- LOADING -` frame before the second demo, was
-allowed by name (record §37) until the loader screens explained it.
+N = 3593 (record §47-A). Capture 2384, the `- LOADING -` frame before the second demo, was
+allowed by name (record §37) until the loader screens explained it. Capture
+3545, the third demo's first frame, is allowed by name as a three-frame splice
+(`ATTRACT2_SPLICE3_ALLOWED`: the last loader screen, the load frame's present
+and the next, byte-exact; the read's tick re-sync `0x1B45F`/`0x1B464` gives
+the load frame's present an arbitrary tick phase, record §47-A.2).
 
 **The demo window is report-only; its first unexplained frame is capture 1886 —
 the capture's next cycle after the demo, with no port frame left in the
 top-level dump (`make attract2-oracle` classifies that region against
-`cycle2/`: first unexplained 3545) — after the
+`cycle2/`: first unexplained 3593) — after the
 demo-pose cycle explained captures 843..850, the roar-timing fix 851..857, the
 frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863, the
 frame-864 fix 864/865, the frame-866 fix 866, the frame-867 fix 867..869 and
@@ -2561,10 +2566,26 @@ record §34).**
   `hiscore_fill_defaults`/`hiscore_audit_reset_due`/`hiscore_init` and the
   whole `frontend_match_start` (flow.c); `game_init` calls `hiscore_init`.
 * **Result.** 3408..3542 are explained (3408 = port 1886, clean). 3543/3544
-  (black, `- LOADING -` on black) match earlier port screens: the driver's dump
-  ends at loop 3899 inside the high-score screen, about 85 ticks before the
-  original leaves it. First unexplained **3545** (raw 8338), the third demo
-  fight, past the driver's window. N = 3545.
+  (black, `- LOADING -` on black) matched earlier port screens then, because
+  the driver's dump ended at loop 3899 inside the high-score screen. First
+  unexplained **3545** (raw 8338), the third demo fight, past the driver's
+  window. N = 3545.
+
+### The third demo's hand-off (record §47-A)
+
+* **Window.** The high-score screen's state-9 hold (`0x12C`) ends after loop
+  3984; loop 3985 is the third demo's state-6 entry (s16caves, s16dia,
+  s16diash, s16diasd, s16spi, s16spish, six loader screens) and goes on to
+  state 7. FE_LOOPS 4100 covers the capture's end.
+* **Result.** 3544..3592 are the port's own frames (3543 is all-black and
+  excluded): the loader screens, then the third demo fight. 3545 is a three-frame splice (the last loader screen,
+  loop 3985's present, loop 3986's present), allowed by name: the read's tick
+  re-sync `0x1B45F`/`0x1B464` gives the load frame's present an arbitrary
+  tick phase, so the next present can fall in the same capture scan. The
+  raw's other re-syncs (`0x4FA0E`, `0x4FAB2`, `0x5210D`) and any catch-up can
+  do the same; the allowance is narrower than the mechanism. First
+  unexplained **3593** (raw 8386): the s16spi fighter's attack, which the port
+  does not play (a named gap). N = 3593.
 
 ## Landmarks (verified)
 

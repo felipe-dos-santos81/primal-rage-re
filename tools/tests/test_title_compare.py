@@ -64,5 +64,55 @@ class TitleCompareTest(unittest.TestCase):
             self.assertIn("exhibited 1/2", r.stdout)
 
 
+class Splice3Test(unittest.TestCase):
+    # Record §47-A: title_compare.splice3, the named three-frame splice after a
+    # loader screen. Frames 0..3 are four distinct fills; frame 1 is the loader
+    # screen, so the splice is c = f1[:b1] ++ f2[b1:b2] ++ f3[b2:].
+    def setUp(self):
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import title_compare
+        self.tc = title_compare
+        self.f = [bytes([v]) * FRAME_BYTES for v in (0x10, 0x20, 0x30, 0x40)]
+        self.b1, self.b2 = 125 * 960, 180 * 960
+        self.c = (self.f[1][:self.b1] + self.f[2][self.b1:self.b2]
+                  + self.f[3][self.b2:])
+
+    def test_exact_splice_from_a_loader_screen(self):
+        self.assertEqual(self.tc.splice3(self.c, self.f, {1}),
+                         (1, self.b1, self.b2))
+
+    def test_first_frame_must_be_a_loader_screen(self):
+        self.assertIsNone(self.tc.splice3(self.c, self.f, {0}))
+        self.assertIsNone(self.tc.splice3(self.c, self.f, set()))
+
+    def test_middle_frame_must_not_be_a_loader_screen(self):
+        self.assertIsNone(self.tc.splice3(self.c, self.f, {1, 2}))
+
+    def test_one_foreign_byte_in_the_middle_fails(self):
+        c = bytearray(self.c)
+        c[150 * 960] = 0x77
+        self.assertIsNone(self.tc.splice3(bytes(c), self.f, {1}))
+
+    def test_two_frame_splice_is_not_a_three_frame_splice(self):
+        c = self.f[1][:self.b1] + self.f[3][self.b1:]
+        self.assertIsNone(self.tc.splice3(c, self.f, {1}))
+
+    def test_splice_ending_in_the_middle_frame_fails(self):
+        # b2 would be FRAME_BYTES: a two-frame splice N ++ N+1.
+        c = self.f[1][:self.b1] + self.f[2][self.b1:]
+        self.assertIsNone(self.tc.splice3(c, self.f, {1}))
+
+    def test_splice_starting_in_the_middle_frame_fails(self):
+        # b1 would be 0: a two-frame splice N+1 ++ N+2.
+        c = self.f[2][:self.b2] + self.f[3][self.b2:]
+        self.assertIsNone(self.tc.splice3(c, self.f, {1}))
+
+    def test_next_clean_anchor(self):
+        # The next capture frame's clean frame must be N + 2.
+        self.assertEqual(self.tc.splice3(self.c, self.f, {1}, 3),
+                         (1, self.b1, self.b2))
+        self.assertIsNone(self.tc.splice3(self.c, self.f, {1}, 2))
+
+
 if __name__ == "__main__":
     unittest.main()
