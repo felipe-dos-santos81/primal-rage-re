@@ -6155,6 +6155,257 @@ static void check_mode_17_step(void)
     tf_put(s_data, 0x80000u, sizeof s_data);
 }
 
+/* Record §47-C: the coin/start divert 0x257A4, its callees 0x46594 and
+ * 0x33C18, and 0x2BAF4's EAX = 0 arm, called directly (no port path calls
+ * 0x257A4 yet). The snapshot of check_mode_1a_hooks: the data object, both
+ * pools, both buffers, the resource table, the DAC and the aperture. The
+ * copy's source/destination pair [0xE87A0]/[0xE87A4] is pointed at a scratch
+ * area above the resource heap (CD_SRC/CD_DST, 0x10000 apart, saved and
+ * restored), so the byte after the 0xFA00 bytes is not a pool byte that
+ * 0x2BAF4 itself clears. The tables: 0xC93F8[0xE]
+ * = 6, [0xC] = 5; 0xC9388[7 * 0xE] = 3, [7 * 0xC] = 2. */
+static void cd_seed_slots(void)
+{
+    for (u32 s = 0; s < 2u; s++) {
+        u32 slot = DS_001077B0 + s * 0x94u;
+        DSB(slot + 0x7Fu) = 0x77u;
+        DSB(slot + 0x80u) = 0x77u;
+        DSB(slot + 0x81u) = 0x66u;
+        DSB(slot + 0x82u) = 0x77u;
+        DSB(slot + 0x83u) = 0x66u;
+        DSD(slot + 0x3Cu) = 0xDEADBEEFu;
+        DSB(slot + 0x5Au) = 0x66u;
+        DSB(slot + 0x5Bu) = 0x77u;
+        DSB(slot + 0x5Cu) = 0x66u;
+        DSW(DS_00108860 + s * 2u) = 0x7777u;
+    }
+    DSW(DS_00108860 + 4u) = 0x6666u;
+}
+
+/* Whether 0x33C18 cleared side s (1) or left its sentinels (0). */
+static void cd_check_slot(u32 s, int cleared)
+{
+    u32 slot = DS_001077B0 + s * 0x94u;
+    CHECK_EQ_INT((int)DSB(slot + 0x7Fu), cleared ? 0 : 0x77);
+    CHECK_EQ_INT((int)DSB(slot + 0x80u), cleared ? 0 : 0x77);
+    CHECK_EQ_INT((int)DSB(slot + 0x82u), cleared ? 0 : 0x77);
+    CHECK_EQ_INT((int)DSD(slot + 0x3Cu), cleared ? 0 : (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSB(slot + 0x5Bu), cleared ? 0 : 0x77);
+    CHECK_EQ_INT((int)DSW(DS_00108860 + s * 2u), cleared ? 100 : 0x7777);
+    CHECK_EQ_INT((int)DSB(slot + 0x81u), 0x66);
+    CHECK_EQ_INT((int)DSB(slot + 0x83u), 0x66);
+    CHECK_EQ_INT((int)DSB(slot + 0x5Au), 0x66);
+    CHECK_EQ_INT((int)DSB(slot + 0x5Cu), 0x66);
+}
+
+/* Seeds DS_001082C0..D0 (and the words either side) with sentinels. */
+static void cd_seed_latch(void)
+{
+    DSD(DS_001082C0 - 4u) = 0x11111111u;
+    DSD(DS_001082C0) = 0xDEADBEEFu;
+    DSD(DS_001082C4) = 0xDEADBEEFu;
+    DSD(DS_001082C8) = 0xDEADBEEFu;
+    DSD(DS_001082CC) = 0xDEADBEEFu;
+    DSD(DS_001082D0) = 0xDEADBEEFu;
+    DSD(DS_001082D0 + 4u) = 0x22222222u;
+}
+
+static void cd_check_latch(u32 c8, u32 cc, u32 d0)
+{
+    CHECK_EQ_INT((int)DSD(DS_001082C8), (int)c8);
+    CHECK_EQ_INT((int)DSD(DS_001082CC), (int)cc);
+    CHECK_EQ_INT((int)DSD(DS_001082D0), (int)d0);
+    CHECK_EQ_INT((int)DSD(DS_001082C0), (int)c8);
+    CHECK_EQ_INT((int)DSD(DS_001082C4), (int)cc);
+    CHECK_EQ_INT((int)DSD(DS_001082C0 - 4u), 0x11111111);
+    CHECK_EQ_INT((int)DSD(DS_001082D0 + 4u), 0x22222222);
+}
+
+#define CD_SRC 0x3D00000u
+#define CD_DST (CD_SRC + 0x10000u)
+
+static void check_coin_divert(void)
+{
+    static u8 s_data[0x10B0D0u - 0x80000u];
+    static u8 s_rec[0xEBA0u], s_pset[0x4880u];
+    static u8 s_bufa[0xFA00u], s_bufb[0xFA00u], s_ap[0xFA00u];
+    static u8 s_dac[sizeof gfx_dac];
+    static u8 s_res[0x14u * 128u];
+    u32 rec_pool = DSD(DS_001014F4), pset_pool = DSD(DS_001014EC);
+    u32 bufa = DSD(DS_001014E8), bufb = DSD(DS_001014E4);
+    u32 res_tab = DSD(DS_001014E0);
+    u32 res_len = DSD(DS_001014F0) * 0x14u;
+    CHECK(rec_pool != 0u && pset_pool != 0u && bufa != 0u && bufb != 0u,
+          "the coin divert needs the pools and buffers");
+    CHECK(res_len != 0u && res_len <= sizeof s_res, "the resource table fits");
+    if (rec_pool == 0u || pset_pool == 0u || bufa == 0u || bufb == 0u ||
+        res_len == 0u || res_len > sizeof s_res)
+        return;
+    tf_snap(s_data, 0x80000u, sizeof s_data);
+    tf_snap(s_rec, rec_pool, sizeof s_rec);
+    tf_snap(s_pset, pset_pool, sizeof s_pset);
+    tf_snap(s_bufa, bufa, sizeof s_bufa);
+    tf_snap(s_bufb, bufb, sizeof s_bufb);
+    tf_snap(s_res, res_tab, res_len);
+    memcpy(s_ap, gfx_aperture(), sizeof s_ap);
+    memcpy(s_dac, gfx_dac, sizeof s_dac);
+    static u8 s_scr[0x20000u];
+    tf_snap(s_scr, CD_SRC, sizeof s_scr);
+#define CD_RESTORE() do { tf_put(s_data, 0x80000u, sizeof s_data);  \
+        tf_put(s_rec, rec_pool, sizeof s_rec);                        \
+        tf_put(s_pset, pset_pool, sizeof s_pset); } while (0)
+
+    /* The image's table bytes the runs below rely on. */
+    CHECK_EQ_INT((int)DSB(DS_000C93F8 + 0xEu), 6);
+    CHECK_EQ_INT((int)DSB(DS_000C93F8 + 0xCu), 5);
+    CHECK_EQ_INT((int)DSB(DS_000C9388 + 7u * 0xEu), 3);
+    CHECK_EQ_INT((int)DSB(DS_000C9388 + 7u * 0xCu), 2);
+
+    /* (a) 0x46594, DS_00108173 == 0: C8 = CC = 0xC93F8[b], D0 = 0xC9388[7b],
+     * the latch C0/C4. b = 0xE; the byte after DS_0010452C is not read. */
+    cd_seed_latch();
+    DSB(DS_00108173) = 0u;
+    DSD(DS_0010452C) = 0x7777770Eu;
+    flow_1082c8_init();
+    cd_check_latch(6u, 6u, 3u);
+
+    /* (b) DS_00108173 != 0: C8 = 7, CC = 4; D0 still 0xC9388[7b] (b = 0xC). */
+    cd_seed_latch();
+    DSB(DS_00108173) = 0x80u;
+    DSB(DS_0010452C) = 0xCu;
+    flow_1082c8_init();
+    cd_check_latch(7u, 4u, 2u);
+    CD_RESTORE();
+
+    /* (c) 0x33C18 on side 1 alone: side 0 and the word after keep theirs. */
+    cd_seed_slots();
+    fight_char_reset(1u);
+    cd_check_slot(0u, 0);
+    cd_check_slot(1u, 1);
+    CHECK_EQ_INT((int)DSW(DS_00108860 + 4u), 0x6666);
+    CD_RESTORE();
+
+    /* (d) 0x2BAF4 with AL = 0 (EAX = 0x100: only AL is saved at 0x2BAFD):
+     * the two seeded records are freed, [0xE87A0] is copied over [0xE87A4]
+     * (0xFA00 bytes, the byte after kept), and there is no 0x52106: the DAC
+     * and the aperture keep their bytes. */
+    DSD(DS_000E87A0) = CD_SRC;
+    DSD(DS_000E87A4) = CD_DST;
+    mem_fill(CD_SRC, 0x5Au, 0xFA00u);
+    DSB(CD_SRC) = 0x3Cu;
+    DSB(CD_SRC + 0xF9FFu) = 0xC3u;
+    mem_fill(CD_DST, 0xA5u, 0xFA00u);
+    DSB(CD_DST + 0xFA00u) = 0x99u;
+    actors_reset();
+    (void)actor_alloc(0);
+    (void)actor_alloc(0);
+    gfx_dac[7][1] = 0x2Au;
+    gfx_aperture()[0x100] = 0x4Bu;
+    CHECK_EQ_INT((int)chs_active_count(), 2);
+    actors_reset_al(0x100u);
+    CHECK_EQ_INT((int)chs_active_count(), 0);
+    CHECK_EQ_INT((int)DSB(CD_DST), 0x3C);
+    CHECK_EQ_INT((int)DSB(CD_DST + 0x7D00u), 0x5A);
+    CHECK_EQ_INT((int)DSB(CD_DST + 0xF9FFu), 0xC3);
+    CHECK_EQ_INT((int)DSB(CD_DST + 0xFA00u), 0x99);
+    CHECK_EQ_INT((int)DSB(CD_SRC), 0x3C);
+    CHECK_EQ_INT((int)gfx_dac[7][1], 0x2A);
+    CHECK_EQ_INT((int)gfx_aperture()[0x100], 0x4B);
+    CHECK_EQ_INT((int)DSB(DS_00105BED), 1);
+    /* With AL = 1 the copy is not made and 0x52106 blacks the DAC. */
+    mem_fill(CD_DST, 0xA5u, 0xFA00u);
+    gfx_dac[7][1] = 0x2Au;
+    actors_reset_al(0x201u);
+    CHECK_EQ_INT((int)gfx_dac[7][1], 0);
+    CHECK_EQ_INT((int)DSB(CD_DST + 0xF9FFu), 0xA5);
+    CD_RESTORE();
+
+    /* (e) 0x257A4 with EAX = 2: the byte resets (neighbours kept), the
+     * argument in DS_00104B1F, both slots, 0x46594 (b = 0xE), the 7-byte
+     * clear from 0x104B02 (the mode word's upper half), the hook 0x4367C
+     * and mode 0x1A with the return mode 0x10, after 0x2BAF4(0). */
+    DSD(DS_000E87A0) = CD_SRC;
+    DSD(DS_000E87A4) = CD_DST;
+    mem_fill(CD_SRC, 0x5Au, 0xFA00u);
+    mem_fill(CD_DST, 0xA5u, 0xFA00u);
+    actors_reset();
+    (void)actor_alloc(0);
+    gfx_dac[7][1] = 0x2Au;
+    mem_fill(DS_00104B00, 0x66u, 0x22u);
+    DSD(DS_00104B00) = 0xBEEF0003u;
+    DSB(DS_00104B11) = 0x77u;
+    DSB(DS_00104B15) = 0x77u;
+    DSB(DS_00104B17) = 0x77u;
+    DSB(DS_00104B19) = 0x77u;
+    DSB(0x00104B1Bu) = 0x77u;
+    DSB(DS_00104B1F) = 0x77u;
+    DSD(DS_00104AE4) = 0xDEADBEEFu;
+    DSW(DS_00104AFA) = 0x7777u;
+    DSB(DS_001088F5) = 0x77u;
+    cd_seed_slots();
+    cd_seed_latch();
+    DSB(DS_00108173) = 0u;
+    DSB(DS_0010452C) = 0xEu;
+    game_coin_divert(2u);
+    CHECK_EQ_INT((int)chs_active_count(), 0);
+    CHECK_EQ_INT((int)DSB(CD_DST + 0xF9FFu), 0x5A);
+    CHECK_EQ_INT((int)gfx_dac[7][1], 0x2A);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), 0x1A);
+    CHECK_EQ_INT((int)DSD(0x00104B04u), 0);
+    CHECK_EQ_INT((int)DSB(0x00104B08u), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B09), 0x66);
+    CHECK_EQ_INT((int)DSB(DS_00104B11), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B15), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B17), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B19), 0);
+    CHECK_EQ_INT((int)DSB(0x00104B1Bu), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 2);
+    CHECK_EQ_INT((int)DSB(0x00104B10u), 0x66);
+    CHECK_EQ_INT((int)DSB(DS_00104B12), 0x66);
+    CHECK_EQ_INT((int)DSB(DS_00104B16), 0x66);
+    CHECK_EQ_INT((int)DSB(DS_00104B18), 0x66);
+    CHECK_EQ_INT((int)DSB(0x00104B1Au), 0x66);
+    CHECK_EQ_INT((int)DSB(0x00104B1Cu), 0x66);
+    CHECK_EQ_INT((int)DSB(DS_00104B1E), 0x66);
+    CHECK_EQ_INT((int)DSB(0x00104B20u), 0x66);
+    cd_check_slot(0u, 1);
+    cd_check_slot(1u, 1);
+    CHECK_EQ_INT((int)DSW(DS_00108860 + 4u), 0x6666);
+    cd_check_latch(6u, 6u, 3u);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x4367C);
+    CHECK(fn_resolve(DSD(DS_00104AE4)) == fight_hook_4367c,
+          "0x257A4's hook resolves to 0x4367C's port");
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x10);
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0);
+    CD_RESTORE();
+
+    /* (f) EAX = 0x12345601 stores only DL (1); DS_00108173 != 0 gives 7/4. */
+    DSD(DS_000E87A0) = CD_SRC;
+    DSD(DS_000E87A4) = CD_DST;
+    DSB(DS_00104B1F) = 0x77u;
+    DSB(DS_00104B1E) = 0x66u;
+    DSB(0x00104B20u) = 0x66u;
+    cd_seed_latch();
+    DSB(DS_00108173) = 1u;
+    DSB(DS_0010452C) = 0xCu;
+    game_coin_divert(0x12345601u);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 1);
+    CHECK_EQ_INT((int)DSB(DS_00104B1E), 0x66);
+    CHECK_EQ_INT((int)DSB(0x00104B20u), 0x66);
+    cd_check_latch(7u, 4u, 2u);
+#undef CD_RESTORE
+
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    tf_put(s_bufa, bufa, sizeof s_bufa);
+    tf_put(s_bufb, bufb, sizeof s_bufb);
+    tf_put(s_scr, CD_SRC, sizeof s_scr);
+    tf_put(s_res, res_tab, res_len);
+    memcpy(gfx_aperture(), s_ap, sizeof s_ap);
+    memcpy(gfx_dac, s_dac, sizeof s_dac);
+}
+
 /* 0x24C73/0x47208: the demo's CPU-AI command generator. A live pair of slots
  * (think gate armed, idle state, a legal character) must produce a non-zero
  * command word, and the two sides must be able to differ. The command words are
@@ -19431,6 +19682,7 @@ int test_fight(void)
     check_mode_1a_hooks();
     check_mode_17_hooks();
     check_mode_17_step();
+    check_coin_divert();
 
     return g_failures - before;
 }
