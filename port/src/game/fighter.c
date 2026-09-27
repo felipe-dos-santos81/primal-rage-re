@@ -7514,3 +7514,89 @@ int fighter_48f54(u32 slot, u32 rec)
     DSD(slot + 0x14u) = 0;                              /* 0x48F8F */
     return 1;                                           /* 0x48F8D */
 }
+
+/* PORT: data-object addresses symbols.h does not name (character 4's
+ * reaction 0x25, *(u32*)0xA4C0C). */
+#define FIGHT_ANIM_45AD0   0x000EB64Eu  /* 0x45AD6: 0x45AD0's curl stream */
+#define FIGHT_ANIM_45A70   0x000EB692u  /* 0x45AB9/0x45A54: the uncurl stream */
+
+/* 0x45AD0 — record §48-A. Character 4's reaction-0x25 callback (*(u32*)
+ * 0xA4C0C, the (char 4, 0x25) entry of 0x34E2C's 0xA3528 table, whose stream
+ * word +4 is 0; Ghidra has no function here). EAX = slot, EDX = rec; EBX is
+ * not read. The 0xEB64E stream at hold 2.0 through 0x3C4CC, the slot in
+ * state 9/7/1 with +0x57 = 0, the +0x0C/+0x18/+0x1C callbacks 0x45A70/
+ * 0x459F4/0x45A34 and the record's +0x4C = 0x78. The raw returns AL = 1
+ * (0x45B0C); 0x34E2C's callers never read it (see 0x15350). */
+void fighter_45ad0(u32 slot, u32 rec, u32 side)
+{
+    (void)side;
+    hit_anim_start_b(rec, FIGHT_ANIM_45AD0, 0x40000000u);  /* 0x45AD6..0x45AE2 0x3C4CC */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x45AE7 */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x45AEB */
+    DSB(slot + 0x54u) = 1u;                                 /* 0x45AEF */
+    DSB(slot + 0x57u) = 0u;                                 /* 0x45AF3 */
+    DSD(slot + 0x0Cu) = 0x00045A70u;                        /* 0x45AF7 */
+    DSD(slot + 0x18u) = 0x000459F4u;                        /* 0x45AFE */
+    DSD(slot + 0x1Cu) = 0x00045A34u;                        /* 0x45B05 */
+    DSB(rec + 0x4Cu) = 0x78u;                               /* 0x45B0E */
+}
+
+/* 0x45A70 — record §48-A. The slot +0x0C callback 0x45AD0 stores (0x3531C
+ * case 7). EAX = slot, EDX = rec, EBX = side. Nothing once +0x57 is set or
+ * while the other side's slot pointer DS_001077A8[side ^ 1] is 0. The curl
+ * holds while the side's command word has both 0x200 and 0x400 set, that
+ * slot's +0x42 bit 0x10 is clear and the record's +0x4C countdown,
+ * decremented here, stays positive (signed); otherwise the record goes on the
+ * 0xEB692 stream at 2.0 through 0x2BC30 and +0x57 = 1. */
+void fighter_45a70(u32 slot, u32 rec, u32 side)
+{
+    u32 other;
+    if (DSB(slot + 0x57u) != 0u) return;                    /* 0x45A75..0x45A7A */
+    other = DSD(DS_001077A8 + (side ^ 1u) * 4u);            /* 0x45A7C..0x45A81 */
+    if (other == 0u) return;                                /* 0x45A88/0x45A8A */
+    if ((DSW(DS_001088E0 + side * 2u) & 0x0600u) == 0x0600u /* 0x45A8C..0x45AA5 */
+            && (DSB(other + 0x42u) & 0x10u) == 0u) {        /* 0x45AA7/0x45AAB */
+        u8 n = (u8)(DSB(rec + 0x4Cu) - 1u);                 /* 0x45AAD/0x45AB0 */
+        DSB(rec + 0x4Cu) = n;                               /* 0x45AB2 */
+        if ((s8)n > 0) return;                              /* 0x45AB5/0x45AB7 */
+    }
+    actors_anim_begin(rec, FIGHT_ANIM_45A70, 0x40000000u);  /* 0x45AB9..0x45AC3 0x2BC30 */
+    DSB(slot + 0x57u) = 1u;                                 /* 0x45AC8 */
+}
+
+/* 0x459F4 — record §48-A. The slot +0x18 hook 0x45AD0 stores (0x19020's
+ * call). EAX = side; the context is 0x33950(side). 0x18C14 with flag 0 = 1,
+ * flags 1 and 8 = 0 and the default box tables (EBX = ECX = 0, 0x45A09/
+ * 0x459FE); its result is returned. The same body as 0x3E484. */
+u32 fighter_459f4(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    fighter_ctx_same(ctx, side);                            /* 0x459FA..0x45A00 0x33950 */
+    fighter_18bd4(flags);                                   /* 0x45A05..0x45A0B 0x18BD4 */
+    flags[1] = 0;                                           /* 0x45A14 */
+    flags[8] = 0;                                           /* 0x45A18 */
+    flags[0] = 1u;                                          /* 0x45A20 */
+    return (u32)fighter_18c14(ctx[0], flags, 0u, 0u);       /* 0x45A24/0x45A27 0x18C14 */
+}
+
+/* 0x45A34 — record §48-A. The slot +0x1C callback 0x45AD0 stores (0x193B0's
+ * 0x19505 call). EAX = side; the context is 0x33950(side). 0x3B714(ctx[3],
+ * ctx[2]), then ctx[4] on the 0xEB692 stream at 2.0 through 0x2BC30 and
+ * ctx[2]'s +0x57 = 1. */
+void fighter_45a34(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x45A39..0x45A3D 0x33950 */
+    fighter_reaction(ctx[3], ctx[2]);                       /* 0x45A42..0x45A4A 0x3B714 */
+    actors_anim_begin(ctx[4], FIGHT_ANIM_45A70, 0x40000000u);   /* 0x45A4F..0x45A61 0x2BC30 */
+    DSB(ctx[2] + 0x57u) = 1u;                               /* 0x45A66 */
+}
+
+/* 0x459D0 — record §48-A. The 0xD100 target of the curl stream 0xEB64E (the
+ * dwords at 0xEB66E and 0xEB684), opcode 0x11: the record's +0x63 = 1.
+ * EAX = rec. */
+void fighter_459d0(u32 rec)
+{
+    DSB(rec + 0x63u) = 1u;                                  /* 0x459D0 */
+}

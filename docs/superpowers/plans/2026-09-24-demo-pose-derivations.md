@@ -12630,7 +12630,9 @@ name.
   - A temporary `fn_resolve` miss log over the whole 4100-loop run (reverted)
     shows no miss other than the type-table stub `0x5D812`, the zero address
     and the two early-boot misses (`0x45AD0`, `0x41578`). So this is not an
-    unregistered callback.
+    unregistered callback. (Corrected in §48-A.1: `0x45AD0` is not an
+    early-boot miss. It is character 4's reaction-`0x25` callback, missed
+    once, at f = 4914, and it is the cause of 3593.)
   - The cause needs a live-RAM poll of the original's third demo: the
     fighters' `+0x52/+0x53/+0x54`, the demo command words `DS_001088E0`, and
     the LCG `DS_000EF6D8` from loop 3985.
@@ -13958,3 +13960,164 @@ fixed:
      start menu (§47-B.6 item 4).
 
   Both need input, so no oracle capture reaches them.
+
+## 48-A. Capture 3593, the third demo's spiked ball (roar-timing Task 36, branch `frame-3593`)
+
+**Result in one line.** At f = 4914 (loop 4027) the third demo's left
+fighter, character 4 (s16spi), takes reaction `0x25`, whose callback
+`0x45AD0` the port had not registered. `0x45AD0`, the three callbacks it
+stores (`0x45A70`, `0x459F4`, `0x45A34`) and its stream's `0xD100` target
+`0x459D0` are ported. The live-RAM poll then matches the port through the
+driver's last frame, and captures 3593..3616 (the capture's end) are
+explained. N 3593 -> 3617, the exact pin (`e00ab15`).
+
+### 48-A.1 Ground truth (DOSBox-X live-RAM poll, pinned original)
+
+- The poll is §38's (`t28/dbpoll.py`'s format with the positions and the
+  camera, as `t32`), run for 140 s with a whole-RAM snapshot at f = 4911.
+  The data base is `0x266000` (delta `0x1E6000`), as before. The LCG at the
+  third demo's first state-7 frame f = 4872 is `0x80D6AEFF` in this run and
+  in the two earlier polls (`t28/db2.log`, `t32/db32b.log`), so the demo is
+  deterministic across runs.
+- A port probe in the front-end driver (the same line format, loops >= 3980,
+  reverted) matches the poll line for line for f = 4867..4913. The first
+  difference is f = 4914:
+  - original: slot 0 `09/07/01`, stream `0xEB650`, sprite `0xA17F`;
+  - port: slot 0 `09/00/00`, stream `0xEA63A`, sprite `0x9FBD`.
+  
+  The AI blocks (`0x1081F0 + side*0x40`) and the command words
+  (`DS_001088E0` = `0x0680`, `DS_001088E2` = `0x0C0C`) are equal in both, so
+  the AI issued the same command and the port did not honour it.
+- A temporary `fn_resolve` miss log with the frame counter (in `mem.c`,
+  reverted) over the whole 4100-loop run shows, besides the stub `0x5D812`,
+  the zero address and the boot miss `0x41578` (f = 0), exactly one miss:
+  `0x45AD0` at f = 4914. **Correction (raw wins):** §47-A.6 listed `0x45AD0`
+  as one of "two early-boot misses"; it is the third demo's reaction
+  callback, missed once, at f = 4914.
+
+### 48-A.2 The raw (`read_memory` + capstone; fixups applied; Ghidra has no functions there)
+
+- **The entry.** `0x34E2C` reads the (char, reaction) record
+  `0xA3528 + (char*64 + reaction)*20`. For character 4, reaction `0x25` that
+  is `0xA4C0C`: dword `0x00045AD0`, then stream pointer 0 (`d0 5a 04 00 00
+  00 00 00`). So `0x34E2C` plays no stream and calls `0x45AD0` at `0x35045`
+  with EAX = slot, EDX = rec, EBX = side. Character 4's other callbacks
+  (reactions `0x20..0x26`, `0x2D`: `0x44F64`, `0x450E8`, `0x455A0`,
+  `0x44970`, `0x45878`, `0x44CFC`, `0x44B10`) are not reached in any window
+  and stay unported.
+- **`0x45AD0`** (`0x45AD0..0x45B14`): `ECX = slot`, `ESI = rec`;
+  `0x3C4CC(rec, 0xEB64E)` with hold `0x40000000` (2.0) pushed; slot `+0x52`
+  = 9, `+0x53` = 7, `+0x54` = 1, `+0x57` = 0 (`0x45AE7..0x45AF3`); `+0x0C` =
+  `0x45A70`, `+0x18` = `0x459F4`, `+0x1C` = `0x45A34` (`0x45AF7..0x45B05`);
+  `AL = 1`; record `+0x4C` = `0x78` (`0x45B0E`). EBX is never read, and it
+  writes neither `+0x42` nor `+0x14`.
+- **`0x45A70`** (`+0x0C`, run by `0x3531C` case 7 with EAX = slot, EDX =
+  rec, EBX = side): `ja 0x45ACC` on `+0x57` (any non-zero value returns);
+  `EDX = DSD(0x1077A8 + (side ^ 1)*4)` (the other side's slot pointer),
+  zero returns; `BX = DSW(0x1088E0 + side*2)`, `xor bl,bl; and bh,6`, and
+  only `0x600` goes on; then the other slot's `+0x42` bit `0x10` must be
+  clear; then `rec+0x4C` is decremented and stored, and `jg` (signed) > 0
+  returns. Every other path falls to `0x45AB9`: `0x2BC30(rec, 0xEB692)` at
+  2.0 and slot `+0x57` = 1.
+- **`0x459F4`** (`+0x18`, `0x19020`'s `fn(side)`, EAX returned): the same
+  bytes as `0x3E484` apart from the addresses: `0x33950(side)` with
+  `ECX = 0`, `0x18BD4` with `EBX = 0`, flags 1 and 8 = 0, flag 0 = 1,
+  `0x18C14(ctx[0], flags)` with the default box tables.
+- **`0x45A34`** (`+0x1C`, `0x193B0`'s `0x19505` call, `fn(side)`):
+  `0x33950(side)`; `0x3B714(EAX = ctx[3], EDX = ctx[2])`; after `push
+  0x40000000`, `EAX = [esp+0x14]` = ctx[4] (the side's record) and `EBX =
+  [esp+0xC]` = ctx[2]; `0x2BC30(ctx[4], 0xEB692)`; `ctx[2]+0x57` = 1.
+- **`0x459D0`**: `mov byte [eax+0x63],1; ret`. The curl stream `0xEB64E`
+  (frames `0x217F`, `0x2182`, `0x2185`, a `0xC300` loop back to `0xEB676`)
+  carries it as the `0xD100` target at `0xEB66C`/`0xEB682` (dwords
+  `0xEB66E`, `0xEB684`). The uncurl stream `0xEB692` ends on the `0xD500`
+  target `0x36870` (already registered).
+- `0x459D8` (`0x2BC30(rec, 0xEB692)`, `+0x57` = 1) sits between them but
+  has no entrance (below) and is not ported.
+
+### 48-A.3 Entrances (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object, a dword scan of both fixed-up objects)
+
+| target | code dword | data dword | rel32 | Ghidra xrefs |
+|---|---|---|---|---|
+| `0x45AD0` | none | `0xA4C0C` | none | 0 |
+| `0x45A70` | `0x45AFA` (in `0x45AD0`) | none | none | 1 (`0x45AF7`) |
+| `0x459F4` | `0x45B01` (in `0x45AD0`) | none | none | 1 (`0x45AFE`) |
+| `0x45A34` | `0x45B08` (in `0x45AD0`) | none | none | 1 (`0x45B05`) |
+| `0x459D0` | none | `0xEB66E`, `0xEB684` | none | 0 |
+| `0x459D8` | none | none | none | 0 |
+| `0xEB64E` | `0x45AD7` | `0xEB656` (the stream's own hold loop) | - | 1 |
+| `0xEB692` | `0x459DE`, `0x45A55`, `0x45ABA` | none | - | 3 |
+
+### 48-A.4 The port
+
+- `fighter.c`: `fighter_45ad0`, `fighter_45a70`, `fighter_459f4`,
+  `fighter_45a34`, `fighter_459d0`, with `FIGHT_ANIM_45AD0` (`0xEB64E`) and
+  `FIGHT_ANIM_45A70` (`0xEB692`). `0x3C4CC` is `hit_anim_start_b`, `0x2BC30`
+  is `actors_anim_begin`, `0x3B714` is `fighter_reaction`.
+- `actors.c`: the five registered, `0x459D0` through the `(rec, arg)`
+  wrapper `anim_code_459D0`.
+- Reached in the driver (a temporary per-function print, reverted):
+  `0x45AD0` at f = 4914; `0x45A70` f = 4915..4959 (it decrements `+0x4C` on
+  4915/4916, then returns on `+0x57` = 1); `0x459F4` f = 4915..4917 (the hit
+  at 4917); `0x45A34` at f = 4917. `0x459D0` and `0x45A70`'s uncurl arm are
+  not reached (the hit comes first).
+
+### 48-A.5 The assertions and mutations (`check_char4_curl` in `test_fight.c`)
+
+- A: `0x45AD0` through `0x34E2C` for character 4, reaction `0x25`; A2 direct
+  on side 1. Sentinels: `+0x57` `0x99`/`0x9A`, `+0x4C` `0x11`/`0x22`,
+  `+0x42` `0x09` (not touched), patched stream heads (frame words
+  `0x1340..0x1344`, restored). The table entry and the stream's two
+  `0xD100` dwords are asserted from the loaded image.
+- B: a 12-row table for `0x45A70` on side 0 (`+0x57` gate, both command
+  bits, the low byte ignored, the other slot's bit `0x10`, the signed
+  boundary `0x80`/`0x81`, `1 -> 0`); B2 no other slot; B3 side 1 reads
+  `DS_001088E2` and slot 0's `+0x42`; B4 side 1 ignores `DS_001077A8[1]`.
+- C: `0x459F4` as `0x3E484`'s N case, and through `0x19020`.
+- D: `0x45A34(0)` on `check_char3_2425`'s G seeds (slot 1 takes the
+  `0x3A504` pose, so the argument order is pinned), the uncurl stream and
+  `+0x57` = 1 on slot 0 only.
+- E: `0x459D0` through the registered wrapper: `+0x63` = 1, neighbours kept.
+- All shared state the check touches is saved and restored (the same set as
+  `check_char3_2425`, plus the two stream heads).
+- **38 of 38 mutations killed** (`t36/mut36.py`): stream/hold/state/`+0x57`/
+  callback words/`+0x4C` value and base in `0x45AD0`; the `+0x57` gate, the
+  other-side index, the null gate, both-bits test, the command side, the
+  bit `0x10`, signedness, `>` vs `>=`, the missing store, the uncurl
+  stream/hold/`+0x57` in `0x45A70`; flags 0/1/8 and the `0x18C14` side in
+  `0x459F4`; the `0x3B714` argument swap, the record, the stream and the
+  slot in `0x45A34`; value and offset in `0x459D0`; each of the five
+  registrations.
+
+### 48-A.6 Measurement
+
+- The port probe against the poll (`t36/db36.log`): equal for every logged
+  field, the AI blocks included, through f = 4986 (loop 4099, the driver's
+  last), apart from three torn samples:
+  - f = 4937 and f = 4947, where the poll's command word reads `0000`;
+  - f = 4920, where the poll's AI timers read `tmA`/`tm4` against the
+    port's `tm9`/`tm3`.
+
+  All three have the tick pair `N/N` (`126/126`, `136/136`, `109/109`),
+  that is, they were sampled while the loop was mid-frame. The earlier
+  poll `t32/db32b.log` agrees with the port on all three frames (`0x0680`;
+  `tm9`/`tm3`). (Review round 1: the first write-up found only the two
+  command-word samples, because its comparison left the AI fields out.)
+- `title_compare --attract2` on the driver's dump: region 1885..3616, 1732
+  frames: 1078 clean, 630 splice, 17 transition, 1 unexplained (3545,
+  allowed by name as the three-frame splice), 6 all-black; no other
+  unexplained frame. N = 3617 = the region end + 1, the largest value the
+  ratchet accepts.
+- `make verify` on `0ed0a36` (dumps redirected to the scratchpad): EXIT 0,
+  0 warnings. Front-end 517/801/3/2 (832 and 833 allowed), unchanged;
+  demo-fight empty, N 1886, unchanged; attract2 as above with N = 3617;
+  the oracle-required suite and the attract prefix: all checks passed.
+
+### 48-A.7 Remaining gaps
+
+- `0x459D0` and `0x45A70`'s uncurl arm are ported and unit-tested but not
+  reached by any oracle window.
+- Character 4's other reaction callbacks (48-A.2) are unported and not
+  reached.
+- The capture ends at 3616, so the attract2 ratchet has no frame left to
+  guard beyond it; a longer capture would be needed to go further.

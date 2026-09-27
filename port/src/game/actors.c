@@ -146,6 +146,7 @@ static void anim_code_246D4(u32 rec, u32 arg);
 static void actor_type_2d_update(void);
 static void actor_type_19_spawn(void);
 static void anim_code_37B54(u32 rec, u32 arg);
+static void anim_code_459D0(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -369,6 +370,18 @@ int actors_init(void)
     fn_register(0x48F98u, (void (*)(void))actor_type_2d_update);
     fn_register(0x28F08u, (void (*)(void))actor_type_19_spawn);
     fn_register(0x37B54u, (void (*)(void))anim_code_37B54);
+    /* PORT: record §48-A. Character 4's reaction callback 0x45AD0 (*(u32*)
+     * 0xA4C0C, reaction 0x25, the third demo's curl at f = 4914), the
+     * (slot, rec, side) registers, and the callbacks it stores: +0x0C 0x45A70
+     * (0x3531C case 7, same registers), the +0x18 hook 0x459F4 (0x19020,
+     * fn(side) with EAX returned) and +0x1C 0x45A34 (0x193B0's 0x19505,
+     * fn(side)). Its stream 0xEB64E carries the 0xD100 target 0x459D0 (the
+     * dwords at 0xEB66E and 0xEB684), opcode 0x11, mode 0x4000. */
+    fn_register(0x45AD0u, (void (*)(void))fighter_45ad0);
+    fn_register(0x45A70u, (void (*)(void))fighter_45a70);
+    fn_register(0x459F4u, (void (*)(void))fighter_459f4);
+    fn_register(0x45A34u, (void (*)(void))fighter_45a34);
+    fn_register(0x459D0u, (void (*)(void))anim_code_459D0);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -1309,6 +1322,15 @@ static void anim_code_246D4(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_246d4(rec);
+}
+
+/* 0x459D0 — the animation-opcode target shape (record §48-A; the 0xD100
+ * words at 0xEB66C and 0xEB682, opcode 0x11). anim_indirect passes EAX = rec;
+ * the raw reads only EAX, so this wrapper drops the operand. */
+static void anim_code_459D0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_459d0(rec);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */
