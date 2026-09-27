@@ -12892,3 +12892,8 @@ polarity, pressed -> held, and moving the `0xFFFF` store after the hook.
     `0x4F790` and would be the natural next step: `0x29B74` and `0x41578`
     already store mode `0x15`;
   - the storers of mode `0x17` listed in 46-G.2.
+
+## 47-C. The coin/start divert `0x257A4` and its callees `0x33C18`, `0x46594` and `0x2BAF4`'s EAX = 0 arm (named-gap batch 9, branch `gap9-257a4`)
+
+(In progress. §47-A is capture 3545's and §47-B is `gap8-24c5c`'s, which is
+not merged into this branch's base `072b261`.)
