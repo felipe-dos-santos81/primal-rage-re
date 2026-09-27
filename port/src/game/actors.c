@@ -2999,6 +2999,13 @@ void text_cells_release(s32 col, s32 row, const u8 *s, u32 mode)
     }
 }
 
+/* 0x2AD40 — record §48-S. The release above, exported for 0x44054 (EAX = the
+ * record, EDX = its pset, `[0x1014EC] + word[rec+0x56] << 5` at the caller). */
+void actor_release(u32 rec, u32 pset)
+{
+    release_record(rec, pset);
+}
+
 /* 0x2F388 — record §48-S. 0x2F280 with the count given (EBX, kept at
  * [esp+4]) instead of measured: EAX = col (a negative col centres the run,
  * `(0x2b - count) >> 1`, and when that is negative too the run is col 0 for

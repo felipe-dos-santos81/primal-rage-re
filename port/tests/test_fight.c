@@ -6731,15 +6731,14 @@ static void check_mode_10_step(void)
         CHECK_EQ_INT((int)DSW(DS_0010816C), 9);
     }
 
-    /* (f) Sub-state 2 in either copy, and sub-state 0 in the DS_00104B1D == 3
-     * copy (the 0x44798 gap), run nothing: with credits and both presses
-     * available, no side joins, the countdown keeps 1 and the sub-state is
-     * not copied. Record §48-S: sub-state 0 in the other copy now runs
-     * 0x43B24 (group (h) and check_char_select_pass). */
+    /* (f) Sub-state 2 runs nothing in either copy: with credits and both
+     * presses available, no side joins, the countdown keeps 1 and the
+     * sub-state is not copied. Record §48-S: sub-state 0 now runs 0x43B24 or
+     * 0x44798 (group (h), check_char_select_pass and check_char_team_pass). */
     {
-        static const u32 subs[] = { 0u, 2u };
-        for (u32 i = 0; i < 2u; i++) {
-            for (u32 b1d = subs[i] == 0u ? 3u : 0u; b1d <= 3u; b1d += 3u) {
+        static const u32 subs[] = { 2u };
+        for (u32 i = 0; i < 1u; i++) {
+            for (u32 b1d = 0u; b1d <= 3u; b1d += 3u) {
                 M10_RESTORE();
                 m10_seed(b1d, subs[i], 1u, 5u, 0x40u, 0x01000100u, 0u);
                 fight_mode_10_step();
@@ -6761,22 +6760,36 @@ static void check_mode_10_step(void)
     CHECK_EQ_INT((int)DSB(DS_00108174), 1);
     CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0010u);
 
-    /* (h) Record §48-S: sub-state 0 with DS_00104B1D != 3 now runs 0x43B24.
-     * Its tail is visible with no side acting: both side bytes 5 (no arm, no
-     * stick), DS_00105C04 set, so the countdown word becomes 0xF and the flag
-     * is cleared; the frame counter 1 keeps 0x43AAC out. */
-    M10_RESTORE();
-    m10_seed(0u, 0u, 0x1234u, 5u, 0x40u, 0u, 0u);
-    DSB(DS_00108170) = 5u;
-    DSB(DS_00108170 + 1u) = 5u;
-    DSB(DS_00105C04) = 1u;
-    DSW(DS_000EF6DC) = 1u;
-    DSW(DS_001088E0) = 0u;
-    DSW(DS_001088E0 + 2u) = 0u;
-    fight_mode_10_step();
-    CHECK_EQ_INT((int)DSW(DS_0010816C), 0xF);
-    CHECK_EQ_INT((int)DSB(DS_00105C04), 0);
-    CHECK_EQ_INT((int)DSB(DS_00108174), 0);
+    /* (h) Record §48-S: sub-state 0 runs 0x43B24 (DS_00104B1D 0) or 0x44798
+     * (3). Their shared tail is visible with no side acting: both side bytes
+     * 5 (no arm, no stick), DS_00105C04 set, so the countdown word becomes
+     * 0xF and the flag is cleared; the frame counter 1 keeps 0x43AAC out.
+     * With both side bytes 3 only 0x44798 arms the versus screen (0x43B24
+     * has no arm for 3). */
+    for (u32 b1d = 0u; b1d <= 3u; b1d += 3u) {
+        M10_RESTORE();
+        m10_seed(b1d, 0u, 0x1234u, 5u, 0x40u, 0u, 0u);
+        DSB(DS_00108170) = 5u;
+        DSB(DS_00108170 + 1u) = 5u;
+        DSB(DS_00105C04) = 1u;
+        DSW(DS_000EF6DC) = 1u;
+        DSW(DS_001088E0) = 0u;
+        DSW(DS_001088E0 + 2u) = 0u;
+        fight_mode_10_step();
+        CHECK_EQ_INT((int)DSW(DS_0010816C), 0xF);
+        CHECK_EQ_INT((int)DSB(DS_00105C04), 0);
+        CHECK_EQ_INT((int)DSB(DS_00108174), 0);
+        M10_RESTORE();
+        m10_seed(b1d, 0u, 0x1234u, 5u, 0x40u, 0u, 0u);
+        DSB(DS_00108170) = 3u;
+        DSB(DS_00108170 + 1u) = 3u;
+        DSW(DS_000EF6DC) = 1u;
+        DSW(DS_001088E0) = 0u;
+        DSW(DS_001088E0 + 2u) = 0u;
+        DSD(DS_00104AE4) = 0xDEADBEEFu;
+        fight_mode_10_step();
+        CHECK_EQ_INT((int)DSD(DS_00104AE4), b1d == 3u ? 0x430E8 : (int)0xDEADBEEFu);
+    }
 #undef M10_RESTORE
 
     tf_put(s_data, 0x80000u, sizeof s_data);
@@ -7466,6 +7479,325 @@ static void check_char_select_pass(void)
         CHECK_EQ_INT((int)chs_grid(r + 1u, 0x2Au), (int)k[1]);
     }
 #undef CS_RESTORE
+
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    tf_put(s_bufa, bufa, sizeof s_bufa);
+    tf_put(s_bufb, bufb, sizeof s_bufb);
+    tf_put(s_res, res_tab, res_len);
+    memcpy(gfx_aperture(), s_ap, sizeof s_ap);
+    memcpy(gfx_dac, s_dac, sizeof s_dac);
+}
+
+/* The DS_00104B1D == 3 screen: 0x444C8 fills both sides (characters ch0/ch1,
+ * side bytes 1), then cs_open's resting inputs, DS_00104B1D = 3, empty picks
+ * (0xFF) and tag slots (0), and DS_0010816A/DS_0010816E = 0x77/0xFF. */
+static void ct_open(u8 ch0, u8 ch1)
+{
+    chs_seed(ch0, ch1, 0u, 0u);
+    fight_char_screen_open_both();
+    DSW(DS_000EF6DC) = 1u;
+    DSW(DS_001088E0) = 0u;
+    DSW(DS_001088E0 + 2u) = 0u;
+    DSD(DS_001088E4) = 0u;
+    DSD(DS_001088D8) = 0u;
+    DSD(DS_00104528) = 0u;
+    DSB(DS_00105D60) = 0u;
+    DSD(DS_00105C00) = 0u;
+    DSB(DS_00104B1D) = 3u;
+    DSB(DS_00105C04) = 0u;
+    for (u32 k = 0; k < 8u; k++) {
+        DSB(DS_00108134 + k) = 0xFFu;
+        DSD(DS_00108114 + k * 4u) = 0u;
+    }
+    DSB(DS_0010816A) = 0x77u;
+    DSB(DS_0010816A + 1u) = 0x77u;
+    DSB(DS_0010816E) = 0xFFu;
+    DSB(DS_0010816E + 1u) = 0xFFu;
+    cm_seed_arm();
+}
+
+/* Record §48-S: the DS_00104B1D == 3 pass 0x44798 and its callees, from
+ * ct_open's screen, with check_char_select_pass's snapshot and restore. */
+static void check_char_team_pass(void)
+{
+    static u8 s_data[0x10B0D0u - 0x80000u];
+    static u8 s_rec[0xEBA0u], s_pset[0x4880u];
+    static u8 s_bufa[0xFA00u], s_bufb[0xFA00u], s_ap[0xFA00u];
+    static u8 s_dac[sizeof gfx_dac];
+    static u8 s_res[0x14u * 128u];
+    u32 rec_pool = DSD(DS_001014F4), pset_pool = DSD(DS_001014EC);
+    u32 bufa = DSD(DS_001014E8), bufb = DSD(DS_001014E4);
+    u32 res_tab = DSD(DS_001014E0);
+    u32 res_len = DSD(DS_001014F0) * 0x14u;
+    CHECK(rec_pool != 0u && pset_pool != 0u && bufa != 0u && bufb != 0u,
+          "0x44798 needs the pools and buffers");
+    CHECK(res_len != 0u && res_len <= sizeof s_res, "the resource table fits");
+    if (rec_pool == 0u || pset_pool == 0u || bufa == 0u || bufb == 0u ||
+        res_len == 0u || res_len > sizeof s_res)
+        return;
+    game_string_table_load("data/game/C");
+    tf_snap(s_data, 0x80000u, sizeof s_data);
+    tf_snap(s_rec, rec_pool, sizeof s_rec);
+    tf_snap(s_pset, pset_pool, sizeof s_pset);
+    tf_snap(s_bufa, bufa, sizeof s_bufa);
+    tf_snap(s_bufb, bufb, sizeof s_bufb);
+    tf_snap(s_res, res_tab, res_len);
+    memcpy(s_ap, gfx_aperture(), sizeof s_ap);
+    memcpy(s_dac, gfx_dac, sizeof s_dac);
+#define CT_RESTORE() do {                                               \
+        tf_put(s_data, 0x80000u, sizeof s_data);                        \
+        tf_put(s_rec, rec_pool, sizeof s_rec);                          \
+        tf_put(s_pset, pset_pool, sizeof s_pset);                       \
+    } while (0)
+
+    /* (a) Both side bytes 3: DS_0010816A/B take the first picks 0x108134 /
+     * 0x108138, DS_00105B34 = 0, DS_00105B35 = (equal), the hook 0x430E8 and
+     * 0x4F980(0x11); the pass returns before its tail. One byte 3 and the
+     * other 2 (or 4): nothing, and the tail runs. */
+    {
+        static const u8 cases[][5] = {
+            /* b0, b1, pick0, pick1, fires */
+            { 3u, 3u, 2u, 2u, 1u }, { 3u, 3u, 2u, 5u, 1u },
+            { 3u, 2u, 2u, 2u, 0u }, { 4u, 3u, 2u, 2u, 0u },
+        };
+        for (u32 i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+            CT_RESTORE();
+            ct_open(3u, 6u);
+            DSB(DS_00108170) = cases[i][0];
+            DSB(DS_00108170 + 1u) = cases[i][1];
+            DSB(DS_00108134) = cases[i][2];
+            DSB(DS_00108134 + 1u) = 0x66u;
+            DSB(DS_00108138) = cases[i][3];
+            DSB(DS_00105B34) = 0x77u;
+            DSB(DS_00105B35) = 0x77u;
+            DSB(DS_00105C04) = 1u;
+            fight_char_team_pass();
+            if (cases[i][4] != 0u) {
+                CHECK_EQ_INT((int)DSB(DS_0010816A), (int)cases[i][2]);
+                CHECK_EQ_INT((int)DSB(DS_0010816B), (int)cases[i][3]);
+                CHECK_EQ_INT((int)DSB(DS_00105B34), 0);
+                CHECK_EQ_INT((int)DSB(DS_00105B35), cases[i][2] == cases[i][3] ? 1 : 0);
+                CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x430E8);
+                cm_check_arm(0x11u);
+                CHECK_EQ_INT((int)DSB(DS_00105C04), 1);
+            } else {
+                CHECK_EQ_INT((int)DSB(DS_0010816A), 0x77);
+                CHECK_EQ_INT((int)DSB(DS_00105B34), 0x77);
+                CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+                CHECK_EQ_INT((int)DSB(DS_00105C04), 0);
+                CHECK_EQ_INT((int)DSW(DS_0010816C), 0xF);
+            }
+        }
+    }
+
+    /* (b) Byte 1: 0x44638 on phase 0 draws strings 0x37/0x38 at rows
+     * 0x1B/0x1C and string 0x39 (" ", shorter than 2) at 0x1D all the same,
+     * which releases a live record there (0x43464 would leave it). Phase 0x18
+     * releases rows 0x1B/0x1C through 0x432EC. */
+    CT_RESTORE();
+    ct_open(3u, 6u);
+    DSB(DS_00108170 + 1u) = 5u;
+    {
+        u32 k = actor_alloc(0);
+        DSD(DS_00105F38 + 0x1Du * 0xACu + 3u * 4u) = k;
+        DSW(DS_000EF6DC) = 0x20u;
+        fight_char_team_pass();
+        CHECK_EQ_INT((int)chs_grid(0x1Du, 3u), 0);
+        CHECK_EQ_INT((int)cs_row_ref(0x1Bu, 3, game_string_get(0x37u), 0x1000u), 1);
+        CHECK_EQ_INT((int)cs_row_ref(0x1Cu, 3, game_string_get(0x38u), 0x1000u), 1);
+        DSW(DS_000EF6DC) = 0x38u;
+        fight_char_team_pass();
+        CHECK_EQ_INT((int)cs_row_count(0x1Bu), 0);
+        CHECK_EQ_INT((int)cs_row_count(0x1Cu), 0);
+    }
+    /* The sprite form and the flagged erase, as 0x43464's. */
+    CT_RESTORE();
+    ct_open(3u, 6u);
+    DSB(DS_00108170 + 1u) = 5u;
+    DSD(DS_00104528) = 0x200u;
+    DSD(DS_00105BF0) = 0u;
+    DSW(DS_000EF6DC) = 0x20u;
+    fight_char_team_pass();
+    {
+        u32 spr = DSD(DS_00108144);
+        CHECK(spr != 0u, "the joined side's sprite is spawned");
+        CHECK_EQ_INT((int)DSD(spr + 0x18u), 0x1500);
+        CHECK_EQ_INT((int)DSD(spr + 0x1Cu), 0x3700);
+        DSW(DS_000EF6DC) = 0x38u;
+        fight_char_team_pass();
+        CHECK_EQ_INT((int)(DSB(spr + 0x28u) & 8u), 8);
+    }
+
+    /* (c) The stick runs for bytes 0 and 2 too (0x43B24 would not): the
+     * cursor moves right and 0x4418C/0x442A0 follow. A zero entry or fighter
+     * record skips 0x4418C's or 0x442A0's writes. */
+    {
+        static const u8 bytes[] = { 0u, 1u, 2u, 4u };
+        for (u32 i = 0; i < sizeof bytes; i++) {
+            CT_RESTORE();
+            ct_open(3u, 6u);
+            DSB(DS_00108170) = bytes[i];
+            DSB(DS_00108170 + 1u) = 5u;
+            DSW(DS_001088E0) = 0x10u;
+            fight_char_team_pass();
+            CHECK_EQ_INT((int)DSB(DS_00108166), 4);
+            CHECK_EQ_INT((int)DSD(DSD(DS_00108154) + 0x18u), 0x1640);
+            CHECK_EQ_INT((int)DSW(DSD(DS_0010813C) + 0x2Cu), 0xA00);   /* class 6 */
+            CHECK_EQ_INT((int)chs_pal_handle(DSD(DS_0010813C)), 0x098EC20C);
+        }
+        /* Every stick direction and clamp, as 0x43B24's. */
+        static const u8 moves[][3] = {
+            { 5u, 0x10u, 6u }, { 6u, 0x10u, 6u }, { 0u, 0x20u, 0u }, { 3u, 0x20u, 2u },
+            { 2u, 0x40u, 6u }, { 3u, 0x40u, 6u }, { 4u, 0x40u, 4u }, { 1u, 0x40u, 5u },
+            { 5u, 0x80u, 1u }, { 4u, 0x80u, 0u }, { 3u, 0x80u, 3u },
+        };
+        for (u32 i = 0; i < sizeof moves / sizeof moves[0]; i++) {
+            CT_RESTORE();
+            ct_open(moves[i][0], 6u);
+            DSB(DS_00108170 + 1u) = 5u;
+            DSW(DS_001088E0) = moves[i][1];
+            fight_char_team_pass();
+            CHECK_EQ_INT((int)DSB(DS_00108166), (int)moves[i][2]);
+        }
+        CT_RESTORE();
+        ct_open(3u, 6u);
+        DSB(DS_00108170 + 1u) = 5u;
+        u32 e = DSD(DS_00108154), a = DSD(DS_0010813C), m = DSD(DS_001028E0);
+        DSD(DS_00108154) = 0u;
+        DSD(DS_0010813C) = 0u;
+        DSD(e + 0x18u) = 0x7777u;
+        DSD(a + 0x18u) = 0x7777u;
+        DSW(DS_001088E0) = 0x10u;
+        fight_char_team_pass();
+        CHECK_EQ_INT((int)DSB(DS_00108166), 4);
+        CHECK_EQ_INT((int)DSD(e + 0x18u), 0x7777);
+        CHECK_EQ_INT((int)DSD(a + 0x18u), 0x7777);
+        CHECK_EQ_INT((int)DSD(DS_001028E0), (int)m);            /* no 0x1D7B8 */
+    }
+
+    /* (d) 0x4418C's highlight looks at the cursors alone: equal cursors set
+     * both +8 words even with the other byte 5; different set the side's. */
+    CT_RESTORE();
+    ct_open(4u, 4u);
+    DSB(DS_00108170 + 1u) = 5u;
+    {
+        u32 e0 = DSD(DS_00108154), e1 = DSD(DS_00108154 + 4u);
+        DSD(e0 + 8u) = 0x7777u; DSD(e1 + 8u) = 0x7777u; DSB(e1 + 0x28u) = 0u;
+        fight_char_team_portrait(0u);
+        CHECK_EQ_INT((int)DSD(e0 + 8u), 0x334);
+        CHECK_EQ_INT((int)DSD(e1 + 8u), 0x335);
+        CHECK_EQ_INT((int)(DSB(e1 + 0x28u) & 4u), 4);
+        DSB(DS_00108166) = 2u;
+        DSD(e0 + 8u) = 0x7777u; DSD(e1 + 8u) = 0x7777u;
+        fight_char_team_portrait(0u);
+        CHECK_EQ_INT((int)DSD(e0 + 8u), 0x333);
+        CHECK_EQ_INT((int)DSD(e1 + 8u), 0x7777);
+        CHECK_EQ_INT((int)DSD(e0 + 0x18u), 0x2900);
+        CHECK_EQ_INT((int)DSD(e0 + 0x1Cu), 0x0540);
+        CHECK_EQ_INT((int)DSD(DSD(DS_0010815C) + 0x08u), 0x32F);
+    }
+
+    /* (e) 0x4434C, side 0 on character 5 (class 4): the first pick goes to
+     * slot 0 (byte 2, a tag 0x3F34 with the palette 0x809994 at the portrait
+     * + 0x180/+ 0x180, a3 0xFE); the slot byte, 0x107813 and the stage marks
+     * of DS_0010816A (seeded 3) follow 0x43D60's tail. Picking class 4 again
+     * drops it (slot 0xFF, tag released and zeroed). */
+    CT_RESTORE();
+    ct_open(5u, 6u);
+    DSB(DS_00108170 + 1u) = 5u;
+    DSB(DS_0010816A) = 3u;
+    DSB(DS_00107813) = 0x77u;
+    DSB(DS_00108106) = 3u;
+    DSB(DS_00108106 + 1u) = 4u;
+    DSB(DS_00108111) = 5u;
+    DSW(DS_001088E0) = 1u;
+    fight_char_team_pass();
+    {
+        u32 tag = DSD(DS_00108114);
+        CHECK_EQ_INT((int)DSB(DS_00108134), 4);
+        CHECK_EQ_INT((int)DSB(DS_00108134 + 1u), 0xFF);
+        CHECK_EQ_INT((int)DSB(DS_00108170), 2);
+        CHECK(tag != 0u, "0x4408C spawned the pick tag");
+        CHECK_EQ_INT((int)DSD(tag + 0x08u), 0x3F34);
+        CHECK_EQ_INT((int)DSD(tag + 0x18u), 0x22C0 + 0x180);
+        CHECK_EQ_INT((int)DSD(tag + 0x1Cu), 0x0EC0 + 0x180);
+        CHECK_EQ_INT((int)DSB(tag + 0x49u), 0xFE);
+        CHECK_EQ_INT((int)DSW(tag + 0x2Cu), 0x1000);
+        CHECK_EQ_INT((int)chs_pal_handle(tag), 0x809994);
+        CHECK_EQ_INT((int)DSD(DS_00108114 + 4u), 0);
+        CHECK_EQ_INT((int)DSB(DS_00107813), 0);
+        CHECK_EQ_INT((int)DSB(DS_0010816E), 3);
+        CHECK_EQ_INT((int)DSB(DS_00108106), 0);
+        CHECK_EQ_INT((int)DSB(DS_00108106 + 1u), 4);
+        CHECK_EQ_INT((int)DSB(DS_00108111), 4);
+        CHECK_EQ_INT((int)(DSB(DSD(DS_00108154) + 0x28u) & 8u), 0);
+        /* The same class again: dropped. DS_0010816E == DS_0010816A now, so
+         * the marks are left (the seeded 3 comes back and stays). */
+        DSB(DS_00108106) = 3u;
+        fight_char_team_pass();
+        CHECK_EQ_INT((int)DSB(DS_00108134), 0xFF);
+        CHECK_EQ_INT((int)DSD(DS_00108114), 0);
+        CHECK_EQ_INT((int)(DSB(tag + 0x28u) & 8u), 8);
+        CHECK_EQ_INT((int)DSB(DS_00108106), 3);
+        CHECK_EQ_INT((int)DSB(DS_00108111), 4);
+        CHECK_EQ_INT((int)DSB(DS_00108170), 2);
+    }
+    /* A pick into the first free slot (slot 0 held by class 1, slot 1 free);
+     * the fourth fills the side: byte 3, the entry marked dead and zeroed.
+     * Side 1's tag is 0x3F33 with 0x80998C at the portrait + 0xB00. */
+    CT_RESTORE();
+    ct_open(5u, 2u);
+    DSB(DS_00108170) = 5u;
+    DSB(DS_00108138) = 1u;
+    DSB(DS_00108138 + 2u) = 6u;
+    DSB(DS_00108138 + 3u) = 2u;
+    DSB(DS_00107813 + 0x94u) = 0x77u;
+    DSB(DS_00107813) = 0x77u;
+    {
+        u32 e1 = DSD(DS_00108154 + 4u);
+        DSW(DS_001088E0 + 2u) = 1u;
+        fight_char_team_pass();
+        u32 tag = DSD(DS_00108114 + 0x10u + 4u);
+        CHECK_EQ_INT((int)DSB(DS_00108138 + 1u), 3);
+        CHECK_EQ_INT((int)DSB(DS_00108138), 1);
+        CHECK(tag != 0u, "side 1's tag in slot 1");
+        CHECK_EQ_INT((int)DSD(tag + 0x08u), 0x3F33);
+        CHECK_EQ_INT((int)DSD(tag + 0x18u), 0x2900 + 0xB00);
+        CHECK_EQ_INT((int)chs_pal_handle(tag), 0x80998C);
+        CHECK_EQ_INT((int)DSD(DS_00108114 + 0x10u), 0);
+        CHECK_EQ_INT((int)DSB(DS_00108170 + 1u), 3);
+        CHECK_EQ_INT((int)DSD(DS_00108154 + 4u), 0);
+        CHECK_EQ_INT((int)(DSB(e1 + 0x28u) & 8u), 8);
+        CHECK_EQ_INT((int)DSB(DS_00107813 + 0x94u), 0);
+        CHECK_EQ_INT((int)DSB(DS_00107813), 0x77);
+    }
+    /* An existing tag in the chosen slot is kept (0x4408C returns). */
+    CT_RESTORE();
+    ct_open(5u, 6u);
+    {
+        u32 k = actor_alloc(0);
+        DSD(DS_00108114) = k;
+        fight_char_team_tag_add(0u, 0u);
+        CHECK_EQ_INT((int)DSD(DS_00108114), (int)k);
+        fight_char_team_tag_drop(0u, 1u);
+        CHECK_EQ_INT((int)DSD(DS_00108114), (int)k);
+        fight_char_team_tag_drop(0u, 0u);
+        CHECK_EQ_INT((int)DSD(DS_00108114), 0);
+    }
+    /* The previous class: DS_0010816E[0] = 2, DS_0010816A[0] = 3 runs
+     * 0x33C18. */
+    CT_RESTORE();
+    ct_open(5u, 6u);
+    DSB(DS_00108170 + 1u) = 5u;
+    DSB(DS_0010816E) = 2u;
+    DSB(DS_0010816A) = 3u;
+    DSB(DS_001077B0 + 0x7Fu) = 0x77u;
+    fight_char_team_pick(0u);
+    CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x7Fu), 0);
+    CHECK_EQ_INT((int)DSB(DS_0010816E), 3);
+#undef CT_RESTORE
 
     tf_put(s_data, 0x80000u, sizeof s_data);
     tf_put(s_rec, rec_pool, sizeof s_rec);
@@ -21069,6 +21401,7 @@ int test_fight(void)
     check_coin_divert();
     check_mode_10_step();
     check_char_select_pass();
+    check_char_team_pass();
 
     return g_failures - before;
 }

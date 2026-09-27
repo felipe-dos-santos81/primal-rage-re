@@ -139,10 +139,9 @@ void fight_char_screen_open_both(void);
 /* Record §47-M. 0x43928: each side whose DS_00108170 byte is 0 is polled by
  * 0x11F28; an accepted side sets its bit side + 1 in DS_00104B1F and its byte
  * to 1. 0x438B4: the mode 0x10 handler (0x24C5C at 0x25385), on the byte
- * DS_00108174: 0 is the character select's per-frame pass 0x43B24 (record
- * §48-S; 0x44798 for DS_00104B1D == 3 is a named gap), 1 is the join test,
- * 0x4F790 and the countdown DS_0010816C that ends in DS_00108174 =
- * DS_00108172. */
+ * DS_00108174: 0 is the character select's per-frame pass 0x43B24, or
+ * 0x44798 with DS_00104B1D == 3 (record §48-S), 1 is the join test, 0x4F790
+ * and the countdown DS_0010816C that ends in DS_00108174 = DS_00108172. */
 void fight_char_join(void);
 void fight_mode_10_step(void);
 
@@ -164,6 +163,18 @@ void fight_stage_mark_drop(u32 cls, u32 side);
 void fight_char_confirm(u32 side);
 u32  fight_char_countdown(void);
 void fight_char_select_pass(void);
+/* Record §48-S. 0x44798, the DS_00104B1D == 3 pass (up to four class picks
+ * per side in DS_00108134, a versus arm when both side bytes are 3), and its
+ * callees: 0x44638 the joined side's text; 0x4418C/0x442A0 the portrait and
+ * fighter (skipped for a zero record); 0x4434C the pick toggle; 0x44054 and
+ * 0x4408C drop and add a pick tag in DS_00108114. */
+void fight_char_team_text_blink(u32 side);
+void fight_char_team_portrait(u32 side);
+void fight_char_team_fighter(u32 side);
+void fight_char_team_tag_drop(u32 side, u32 slot);
+void fight_char_team_tag_add(u32 side, u32 slot);
+void fight_char_team_pick(u32 side);
+void fight_char_team_pass(void);
 
 /* 0x494A8. The dust/effect entry builder the fighter spawn (0x33C78) calls at
  * 0x33E43 when DS_00104B14 == 0. Each iteration moves one node from the free

@@ -143,6 +143,9 @@ void text_cursor_set(s32 col, s32 row, const u8 *s, u32 mode);
 /* 0x2F280. Same register shape as 0x2F198: clears `text_width` consecutive
  * cells of the actor-record grid at DS_00105F38 and releases each record. */
 void text_cells_release(s32 col, s32 row, const u8 *s, u32 mode);
+/* 0x2AD40 (record §48-S): release `rec` (EDX = its pset): unlink it to the
+ * free list, zero the pset's +4/+8/+0xC/+0xE and mark it dead. */
+void actor_release(u32 rec, u32 pset);
 /* 0x2F388 (record §48-S). 0x2F280 with the cell count `count` given (EBX)
  * rather than measured from a string. */
 void text_cells_release_count(s32 col, s32 row, s32 count);

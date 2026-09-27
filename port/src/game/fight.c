@@ -321,8 +321,8 @@ void fight_char_join(void)
  * table 0x24B8C entry 0x25385, its only caller). It branches on the byte
  * DS_00108174 (`test al,al; jbe` is == 0), with two copies of the same body
  * split on DS_00104B1D == 3:
- * - 0: 0x44798 (DS_00104B1D == 3, a named gap below) or 0x43B24
- *   (otherwise, record §48-S), the character select's per-frame pass;
+ * - 0: 0x44798 (DS_00104B1D == 3) or 0x43B24 (otherwise), the character
+ *   select's per-frame pass (record §48-S);
  * - 1: 0x43928, then 0x4F790's AL. When AL is non-zero, DS_00108174 takes the
  *   byte DS_00108172 (0x4391C/0x43921). When it is 0, the DS_00104B1D == 3 copy
  *   returns; the other decrements the word DS_0010816C (`dec edx` on the
@@ -336,10 +336,7 @@ void fight_mode_10_step(void)
     u32 sub = DSB(DS_00108174);                         /* 0x438BE / 0x438E4 */
     if (DSB(DS_00104B1D) == 3u) {                       /* 0x438B5/0x438BC */
         if (sub == 0u) {                                /* 0x438C3/0x438C5 */
-            /* PORT: 0x438CD 0x44798, the DS_00104B1D == 3 character select's
-             * per-frame pass (to 0x4493A), is a named gap (records §47-M.5,
-             * §48-S.5): it and its callees 0x44638, 0x4418C, 0x442A0,
-             * 0x4434C, 0x44054 and 0x4408C are unported. */
+            fight_char_team_pass();                     /* 0x438CD 0x44798 */
             return;
         }
         if (sub != 1u) return;                          /* 0x438C7/0x438C9 */
@@ -723,6 +720,248 @@ void fight_char_select_pass(void)
     }
     if ((DSW(DS_000EF6DC) & 0x3Fu) == 0u)               /* 0x43CF0..0x43CFF */
         (void)fight_char_countdown();                   /* 0x43D01 0x43AAC */
+}
+
+/* ---- mode 0x10 sub-state 0 with DS_00104B1D == 3: 0x44798 (§48-S) ------- */
+
+/* 0x44638 — record §48-S. EAX = side (ESI). 0x43464's twin in the
+ * DS_00104B1D == 3 pass. Phase 0 of DS_000EF6DC & 0x1F: the sprite form is
+ * 0x43464's; the text form draws strings 0x36, 0x37, 0x38 at rows r - 2..r
+ * (r = 0x1B, or 0x1C when string 0x39 is shorter than 2), then r is
+ * incremented when string 0x39 is at least 2 long and string 0x39 is drawn
+ * at r + 1 whatever its length (0x4473B `jl` skips only the `inc edi`).
+ * Phase 0x18: 0x432EC(side, DS_00104528 & 0x200). */
+void fight_char_team_text_blink(u32 side)
+{
+    u32 phase = (u32)DSW(DS_000EF6DC) & 0x1Fu;         /* 0x44643..0x44652 */
+    if (phase != 0u) {                                  /* 0x44657 */
+        if (phase == 0x18u)                             /* 0x44774 */
+            fight_char_text_clear(side, DSD(DS_00104528) & 0x200u);  /* 0x44779..0x44787 */
+        return;
+    }
+    if ((DSB(DS_00104529) & 2u) != 0u) {                /* 0x4465D */
+        fight_char_text_clear(side, 0u);                /* 0x44666..0x4466A 0x432EC */
+        DSD(DS_00108144 + side * 4u) = actor_spawn(
+            (const u32 *)(mem + DS_000C8934),
+            DSW(DS_000C8948 + side * 2u), 0xFFu, 0x3700u, 0u);  /* 0x4466F..0x44693 */
+        return;
+    }
+    s32 row = 0x1B;                                     /* 0x4464B */
+    if ((s32)strlen((const char *)game_string_get(0x39u)) < 2) row = 0x1C;  /* 0x4469F..0x446B3 */
+    s32 col = (s32)DSW(DS_000C894C + side * 2u);        /* 0x446C9 */
+    text_cursor_set(col, row - 2, game_string_get(0x36u), 0x1000u);  /* 0x446B8..0x446DC */
+    text_cursor_set(col, row - 1, game_string_get(0x37u), 0x1000u);  /* 0x446E1..0x44705 */
+    text_cursor_set(col, row, game_string_get(0x38u), 0x1000u);      /* 0x4470A..0x44727 */
+    if ((s32)strlen((const char *)game_string_get(0x39u)) >= 2)      /* 0x4472C..0x4473E */
+        row++;                                          /* 0x44740 */
+    text_cursor_set(col, row + 1, game_string_get(0x39u), 0x1000u);  /* 0x44741..0x44765 */
+}
+
+/* 0x4418C — record §48-S. EAX = side (ECX), the other side EDX ^ 1. 0x43EA0
+ * without its other-side byte test: nothing when the side's entry
+ * DS_00108154[side] is 0 (0x4419F); otherwise the highlight on the two
+ * cursors alone, then 0x43EA0's entry, panel and voice updates. */
+void fight_char_team_portrait(u32 side)
+{
+    u32 other = side ^ 1u;                              /* 0x44191/0x4419C */
+    if (DSD(DS_00108154 + side * 4u) == 0u) return;     /* 0x44196..0x441A1 */
+    if (DSB(DS_00108166 + side) == DSB(DS_00108166 + other)) {  /* 0x441A7..0x441B3 */
+        DSD(DSD(DS_00108154 + side * 4u) + 8u) =
+            DSD(DS_000C88D4 + side * 4u);               /* 0x441B5..0x441C1 */
+        DSD(DSD(DS_00108154 + other * 4u) + 8u) =
+            DSD(DS_000C88CC + other * 4u);              /* 0x441C4..0x441D7 */
+        DSB(DSD(DS_00108154 + other * 4u) + 0x28u) |= 4u;  /* 0x441DA/0x441E0 */
+    } else {
+        DSD(DSD(DS_00108154 + side * 4u) + 8u) =
+            DSD(DS_000C88CC + side * 4u);               /* 0x441E6..0x441F2 */
+    }
+    s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x441F5/0x441FB */
+    DSD(DSD(DS_00108154 + side * 4u) + 0x18u) =
+        DSW(DS_000C8898 + (u32)(ch * 2));               /* 0x441FE..0x4420F */
+    DSD(DSD(DS_00108154 + side * 4u) + 0x1Cu) =
+        DSW(DS_000C88A6 + (u32)(ch * 2));               /* 0x44212..0x4422F */
+    DSB(DSD(DS_00108154 + side * 4u) + 0x28u) |= 4u;    /* 0x44232/0x44239 */
+    actors_anim_seek(DSD(DS_0010815C + side * 4u),
+                     DSD(DS_000C88DC + (u32)(ch * 4)));  /* 0x4423D..0x44254 0x2BCF4 */
+    actor_pset_palette(DSD(DS_0010815C + side * 4u),
+                       DSW(DS_000C88F8 + (u32)(ch * 2)),
+                       DSD(DS_000C8908 + (u32)(ch * 4)));  /* 0x44259..0x4427A 0x2A17C */
+    /* PORT: 0x44295 0x2C3FC(0xC888A[ch]) voice, not wired (record §45-A). */
+}
+
+/* 0x442A0 — record §48-S. EAX = side. 0x43FBC, skipped when the side's
+ * fighter DS_0010813C[side] is 0 (0x442AE). */
+void fight_char_team_fighter(u32 side)
+{
+    if (DSD(DS_0010813C + side * 4u) == 0u) return;     /* 0x442AE/0x442B5 */
+    s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x442BB/0x442C9 */
+    s32 cls = (s8)DSB(DS_000C8882 + (u32)ch);           /* 0x442D4/0x442F0 */
+    DSD(DSD(DS_0010813C + side * 4u) + 0x18u) =
+        DSW(DS_000C88B4 + side * 2u);                   /* 0x442C1..0x442DA */
+    DSD(DSD(DS_0010813C + side * 4u) + 0x1Cu) =
+        DSW(DS_000C88B8 + side * 2u);                   /* 0x442DD..0x442F3 */
+    actors_anim_begin(DSD(DS_0010813C + side * 4u),
+                      DSD(DS_000BB988 + (u32)(cls * 4)),
+                      0x40400000u);                     /* 0x442F6..0x44308 0x2BC30 */
+    actor_pset_palette(DSD(DS_0010813C + side * 4u), 0x1Cu,
+                       DSD(DS_000BB9B0 + (u32)(cls * 4)));  /* 0x4430D..0x4431F 0x2A17C */
+    fight_select_marker_spawn(side, (u32)cls, 0x1800u); /* 0x44324..0x4432D 0x1D7B8 */
+    DSW(DSD(DS_0010813C + side * 4u) + 0x2Cu) =
+        DSW(DS_000C8924 + (u32)(cls * 2));              /* 0x44332..0x44340 */
+}
+
+/* 0x44054 — record §48-S. EAX = side, EDX = slot: the pick tag
+ * DS_00108114[side * 4 + slot], when set, is released through 0x2AD40 (EDX =
+ * its pset) and the slot zeroed (ECX = 0). */
+void fight_char_team_tag_drop(u32 side, u32 slot)
+{
+    u32 a = DS_00108114 + side * 16u + slot * 4u;       /* 0x44056..0x4405C */
+    u32 rec = DSD(a);                                   /* 0x4405F */
+    if (rec == 0u) return;                              /* 0x44065 */
+    actor_release(rec, DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u);  /* 0x44069..0x4407E 0x2AD40 */
+    DSD(a) = 0u;                                        /* 0x44083 */
+}
+
+/* 0x4408C — record §48-S. EAX = side (ESI), EDX = slot (EDI). When the tag
+ * slot DS_00108114[side * 4 + slot] is empty, a tag is spawned from a
+ * descriptor built on the stack: sprite 0x3F34 with the palette 0x809994
+ * for side 0, 0x3F33 with 0x80998C for side 1; the bytes +4/+5 and the word
+ * +6 = 0, +8 = 0x2A00, +0xA = 0x80, +0xC = 0x1000. It goes at the side's
+ * cursor's portrait (0xC8898[ch] + 0x180 for side 0, + 0xB00 for side 1;
+ * 0xC88A6[ch] + 0x180), a3 0xFE, a5 0 (`push esi` with ESI = 0, or `push
+ * 0`), and a non-zero record is stored in the slot.
+ * PORT: the raw leaves the descriptor's word +0xE unwritten (stack garbage);
+ * 0x2AE14 reads +0, +4, +5, +6, +8, +0xA, +0xC and +0x10 only, so the port's
+ * zero there is not observable. */
+void fight_char_team_tag_add(u32 side, u32 slot)
+{
+    u32 a = DS_00108114 + side * 16u + slot * 4u;       /* 0x44097..0x4409C */
+    if (DSD(a) != 0u) return;                           /* 0x4409C/0x440A4 */
+    u32 desc[5];
+    desc[0] = side == 0u ? 0x3F34u : 0x3F33u;           /* 0x440AE/0x440BA, 0x440D4 */
+    desc[1] = 0u;                                       /* 0x440DE..0x440EE */
+    desc[2] = 0x2A00u | (0x80u << 16);                  /* 0x440D9, 0x440FC */
+    desc[3] = 0x1000u;                                  /* 0x440F7 */
+    desc[4] = side == 0u ? 0x809994u : 0x80998Cu;       /* 0x440B3/0x440BF, 0x440CE */
+    s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x4410B/0x44141 */
+    u32 x = (u32)DSW(DS_000C8898 + (u32)(ch * 2))
+          + (side == 0u ? 0x180u : 0xB00u);             /* 0x44120/0x44132, 0x44156/0x44168 */
+    u32 y = (u32)DSW(DS_000C88A6 + (u32)(ch * 2)) + 0x180u;  /* 0x44118/0x4412C */
+    u32 rec = actor_spawn(desc, x, 0xFEu, y, 0u);       /* 0x4416E 0x2AE14 */
+    if (rec != 0u) DSD(a) = rec;                        /* 0x44173..0x4417A */
+}
+
+/* 0x4434C — record §48-S. EAX = side (ECX). The DS_00104B1D == 3 confirm:
+ * a pick of up to four classes per side in DS_00108134[side * 4 + k] (0xFF
+ * empty). The class is the signed byte 0xC8882[cursor] (`[eax+0xc887f] sar
+ * 0x18`). When one of the four already holds it (signed compare), its tag
+ * is dropped (0x44054) and the byte becomes 0xFF. Otherwise the first 0xFF
+ * slot takes the class, the side byte becomes 2 and the tag is added
+ * (0x4408C); then, when no slot is 0xFF any more, the side byte becomes 3,
+ * the entry DS_00108154[side] is marked dead and zeroed and 0x432EC(side, 0)
+ * runs. Both ways end in 0x43D60's tail: the fighter slot byte 0x107813 +
+ * side * 0x94 = 0; unless DS_0010816E[side] is not 0xFF and equals
+ * DS_0010816A[side] (which this pass does not write), 0x33C18 for a
+ * non-0xFF DS_0010816E, 0x4248C(DS_0010816A[side], side) and DS_0010816E =
+ * DS_0010816A; then the 0x6C voice. */
+void fight_char_team_pick(u32 side)
+{
+    s32 ch = (s8)DSB(DS_00108166 + side);               /* 0x4435D/0x44363 */
+    s32 cls = (s8)DSB(DS_000C8882 + (u32)ch);           /* 0x44366/0x4436C */
+    u32 base = DS_00108134 + side * 4u;
+    s32 found = -1;
+    for (u32 k = 0; k < 4u; k++) {                      /* 0x44381..0x4439F */
+        if ((s8)DSB(base + k) == cls) { found = (s32)k; break; }  /* 0x44383..0x4438E */
+    }
+    if (found != -1) {                                  /* 0x443A1..0x443AE */
+        fight_char_team_tag_drop(side, (u32)found);     /* 0x443B0..0x443B4 0x44054 */
+        DSB(base + (u32)found) = 0xFFu;                 /* 0x443B9 */
+    } else {
+        s32 k0 = -1;
+        for (u32 k = 0; k < 4u; k++)                    /* 0x443C6..0x443E6 */
+            if ((s8)DSB(base + k) == -1) { k0 = (s32)k; break; }
+        if (k0 != -1) {                                 /* 0x443E8 */
+            DSB(base + (u32)k0) = (u8)cls;              /* 0x443ED/0x443F2 */
+            DSB(DS_00108170 + side) = 2u;               /* 0x443F0/0x443F9 */
+            fight_char_team_tag_add(side, (u32)k0);     /* 0x443FF..0x44403 0x4408C */
+        }
+        s32 k1 = -1;
+        for (u32 k = 0; k < 4u; k++)                    /* 0x44408..0x4442D */
+            if ((s8)DSB(base + k) == -1) { k1 = (s32)k; break; }
+        if (k1 == -1) {                                 /* 0x4442F */
+            DSB(DS_00108170 + side) = 3u;               /* 0x44434/0x4443F */
+            actor_set_dead(DSD(DS_00108154 + side * 4u));   /* 0x44436..0x44445 0x2B150 */
+            DSD(DS_00108154 + side * 4u) = 0u;          /* 0x4444E (EBP = 0) */
+            fight_char_text_clear(side, 0u);            /* 0x4444A..0x44455 0x432EC */
+        }
+    }
+    DSB(DS_00107813 + side * 0x94u) = 0u;               /* 0x4445A..0x4446A */
+    if ((s8)DSB(DS_0010816E + side) == -1
+        || DSB(DS_0010816E + side) != DSB(DS_0010816A + side)) {  /* 0x44471..0x4448B */
+        if ((s8)DSB(DS_0010816E + side) != -1)          /* 0x4447A */
+            fight_char_reset(side);                     /* 0x4448D/0x4448F 0x33C18 */
+        fight_stage_mark_drop(DSB(DS_0010816A + side), side);  /* 0x44494..0x444A0 0x4248C */
+        DSB(DS_0010816E + side) = DSB(DS_0010816A + side);     /* 0x444A5/0x444AB */
+    }
+    /* PORT: 0x444B6 0x2C3FC(0x6C) voice, not wired (record §45-A). */
+}
+
+/* 0x44798 — record §48-S. The character select's per-frame pass with
+ * DS_00104B1D == 3 (mode 0x10, sub-state 0). Its only caller is 0x438CD
+ * (0x438B4); the dead copy's `jbe` at 0x44943 also names it. For side 0..1
+ * on the side byte DS_00108170:
+ * - 3: when the other side's byte is 3 too, DS_0010816A = DS_00108134 (side
+ *   0's first pick), DS_00105B34 = 0, DS_0010816B = DS_00108138 (side 1's),
+ *   DS_00105B35 = (the two are equal), the hook 0x430E8 and 0x4F980(0x11),
+ *   and the pass returns; otherwise the next side;
+ * - 1: 0x44638, then the stick and confirm;
+ * - anything else (0, 2, above 3): the stick and confirm.
+ * The stick is 0x43B24's, followed by 0x4418C and 0x442A0; bit 0 confirms
+ * through 0x4434C. After the loop a set DS_00105C04 resets the countdown
+ * DS_0010816C to 0xF and is cleared; there is no countdown step. */
+void fight_char_team_pass(void)
+{
+    for (u32 side = 0; side < 2u; side++) {             /* 0x4479B..0x44914 */
+        u8 b = DSB(DS_00108170 + side);                 /* 0x4479F */
+        if (b == 3u) {                                  /* 0x447AF/0x447C5..0x447CD */
+            if (DSB(DS_00108170 + (side ^ 1u)) != 3u) continue;  /* 0x447D3..0x447E5 */
+            DSB(DS_0010816A) = DSB(DS_00108134);        /* 0x447EB/0x447F0 */
+            DSB(DS_00105B34) = 0u;                      /* 0x447F7 */
+            DSB(DS_0010816B) = DSB(DS_00108138);        /* 0x447FD/0x44802 */
+            DSB(DS_00105B35) = DSB(DS_0010816A) == DSB(DS_0010816B) ? 1u : 0u;  /* 0x44807..0x4481A */
+            DSD(DS_00104AE4) = FN_000430E8;             /* 0x44815/0x44824 */
+            frontend_wipe_arm(0x11u);                   /* 0x4482A 0x4F980 */
+            return;                                     /* 0x4482F */
+        }
+        if (b == 1u)                                    /* 0x447B8/0x447BA */
+            fight_char_team_text_blink(side);           /* 0x447BE 0x44638 */
+        u32 stick = (u32)DSW(DS_001088E0 + side * 2u) & 0xF0u;  /* 0x44833..0x44840 */
+        if (stick != 0u) {                              /* 0x44843/0x44845 */
+            if (stick == 0x10u) {                       /* 0x4486E/0x448BC */
+                if ((s8)DSB(DS_00108166 + side) < 6)    /* 0x448C5 */
+                    DSB(DS_00108166 + side)++;          /* 0x448CA */
+            } else if (stick == 0x20u) {                /* 0x44851/0x448D2 */
+                s8 c = (s8)DSB(DS_00108166 + side);
+                if (c > 0) DSB(DS_00108166 + side) = (u8)(c - 1);  /* 0x448D8..0x448E0 */
+            } else if (stick == 0x40u) {                /* 0x44861/0x44890 */
+                if ((s8)DSB(DS_00108166 + side) < 4)    /* 0x44899 */
+                    DSB(DS_00108166 + side) = (u8)(DSB(DS_00108166 + side) + 4u);  /* 0x4489E */
+                if ((s8)DSB(DS_00108166 + side) >= 7)   /* 0x448A5..0x448B1 */
+                    DSB(DS_00108166 + side) = 6u;       /* 0x448B3 */
+            } else if (stick == 0x80u) {                /* 0x44867/0x44879 */
+                if ((s8)DSB(DS_00108166 + side) >= 4)   /* 0x44882 */
+                    DSB(DS_00108166 + side) = (u8)(DSB(DS_00108166 + side) - 4u);  /* 0x44887 */
+            }
+            fight_char_team_portrait(side);             /* 0x448E8 0x4418C */
+            fight_char_team_fighter(side);              /* 0x448EF 0x442A0 */
+        }
+        if ((DSW(DS_001088E0 + side * 2u) & 1u) != 0u)  /* 0x448F4..0x44904 */
+            fight_char_team_pick(side);                 /* 0x44908 0x4434C */
+    }
+    if (DSB(DS_00105C04) != 0u) {                       /* 0x4491A */
+        DSW(DS_0010816C) = 0xFu;                        /* 0x4492A */
+        DSB(DS_00105C04) = 0u;                          /* 0x44931 */
+    }
 }
 
 /* ---- the mode-0x1A hooks 0x430E8/0x4367C, 0x430C0 and 0x4454C (§46-B) -- */
