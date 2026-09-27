@@ -3677,6 +3677,23 @@ static void check_slot_latch(void)
     CHECK_EQ_INT((int)DSD(DS_00100AF0), 0);
     CHECK_EQ_INT((int)DSD(DS_00100AB0), 64);
     CHECK_EQ_INT((int)DSD(DS_00100AB4), 3840);
+
+    /* Record §48-U.5: 0x18350 forms table + anchor * 2 in EAX, so it wraps at
+     * 32 bits. With 0x18540's early out (DS_001077A8[0] = 0) a stale anchor
+     * 0x80000003 stands, and char 0 reads 0xCEB00 + 6 (the anchor-3 pair
+     * (-5, 52) above): AB0 = 320, AB4 = 3328. Without the wrap the port read
+     * about 4 GB past mem (a crash, or host bytes). */
+    DSB(DS_0010782A) = 0;                       /* slot+0x7A: char 0 */
+    DSW(FIGHT_ACTORS + 1u * 0x20u) = 0x8EE7u;   /* bit 15 set */
+    DSD(DS_001077A8) = 0;
+    DSD(DS_00100AF0) = 0x80000003u;
+    DSD(DS_001077B0 + 0x20u) = 0xDEADBEEFu;     /* differs from the anchor */
+    DSD(DS_00100AB0) = 0xDEADBEEFu;
+    DSD(DS_00100AB4) = 0xDEADBEEFu;
+    fighter_slot_latch(0u);
+    CHECK_EQ_INT((int)DSD(DS_00100AF0), (int)0x80000003u);
+    CHECK_EQ_INT((int)DSD(DS_00100AB0), 320);
+    CHECK_EQ_INT((int)DSD(DS_00100AB4), 3328);
 }
 
 /* 0x11A8C: state 6. Fourteen draws from the shared stream — rng(7) at 0x11AAD,
@@ -20777,7 +20794,7 @@ static void check_char4_entrance(void)
         u32 slot = DS_001077B0, rec, ref[4];
         rec = ce_seed(4u, 0u, 0x1000, 0, 0x7C00u, 0u);
         ce_sentinels(slot, rec);
-        DSB(slot + 0x42u) = 0x10u;
+        DSB(slot + 0x42u) = 0x18u;      /* bit 3 = +0x40 bit 19, which 0x46138 clears */
         ce_ref(rec, 0x000EB58Cu, 0x40400000u, ref);
         if (i == 2u) DSD(rec + 0x14u) = 0u;
         if (i == 1u) actors_anim_begin(rec, 0x000EB182u, 0x3F800000u);

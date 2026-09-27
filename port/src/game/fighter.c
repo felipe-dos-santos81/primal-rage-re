@@ -163,17 +163,24 @@ static void fighter_18540(u32 side)
 static void fighter_18350(u32 side, u32 anchor)
 {
     u32 ch = (u32)DSB(DS_001077B0 + side * 0x94u + 0x7Au);   /* 0x1835F */
+    u32 a;
     const u8 *p;
+    /* PORT: the raw forms the address in EAX (`lea eax,[edx*2]; add eax,table`),
+     * so it wraps at 32 bits: a negative anchor (a stale DS_00100AF0 when
+     * 0x18540 returned early on a dead slot) reads below the table, inside
+     * the flat image. The offset is formed in a u32 before it is added to mem
+     * (record §48-U.5); `mem + table + anchor * 2u` stepped ~4 GB past mem. */
     switch (ch) {                                       /* 0x18384 table 0x18334 */
-    case 0u: p = mem + 0x000CEB00u + anchor * 2u; break;
-    case 1u: p = mem + 0x000CF399u + anchor * 2u; break;
-    case 2u: p = mem + 0x000CFC32u + anchor * 2u; break;
-    case 3u: p = mem + 0x000D033Bu + anchor * 2u; break;
-    case 4u: p = mem + 0x000D0A44u + anchor * 2u; break;
-    case 5u: p = mem + 0x000CEB00u + anchor * 2u; break;
-    case 6u: p = mem + 0x000CF399u + anchor * 2u; break;
-    default: p = mem + 0x000CEB00u + anchor * 2u; break;   /* char >6 (0x1838B) */
+    case 0u: a = 0x000CEB00u + anchor * 2u; break;
+    case 1u: a = 0x000CF399u + anchor * 2u; break;
+    case 2u: a = 0x000CFC32u + anchor * 2u; break;
+    case 3u: a = 0x000D033Bu + anchor * 2u; break;
+    case 4u: a = 0x000D0A44u + anchor * 2u; break;
+    case 5u: a = 0x000CEB00u + anchor * 2u; break;
+    case 6u: a = 0x000CF399u + anchor * 2u; break;
+    default: a = 0x000CEB00u + anchor * 2u; break;      /* char >6 (0x1838B) */
     }
+    p = mem + a;
     DSD(0x00100AB0u + side * 8u) = (u32)(s32)(s8)p[0];   /* 0x183BA */
     DSD(0x00100AB4u + side * 8u) = (u32)(s32)(s8)p[1];   /* 0x183C4 */
     if (fighter_actor_bit15_clear(side) == 0)            /* 0x183CC */
@@ -236,7 +243,7 @@ static void fighter_spawn_slot(u32 side, u32 a2, u32 a3, u32 a4, u32 a5)
 
     /* 0x33CC8/0x33CD3: the fighter record from descriptor [char*2 + side]. */
     u32 desc = DSD(FIGHTER_DESC_A + (ch * 2u + side) * 4u);
-    /* The raw hands the caller's EBX to 0x2AE14 untouched (no write to EBX
+    /* 0x33CD3: the raw hands the caller's EBX to 0x2AE14 untouched (no write to EBX
      * between 0x33C78 and 0x33CD3): the y, rec+0x1C. Of the nine raw callers
      * only 0x40D48 (in 0x40CB0, entry 0 of 0xA8628) passes a non-zero EBX,
      * 0x4C00 from 0x40D2F (record §46-C, threaded through since §48-U). */
