@@ -30,6 +30,13 @@
 /* HOST_TICK_MAX_CATCHUP lives in host.h: the audio service shares the host
  * clock's catch-up bound, so it must be a single source of truth. */
 
+/* PORT: window policy is the host's own (the original has no window). The
+ * window opens at 1024x768 — 4:3, the aspect a DOS CRT showed the 320x200
+ * frame at — and is user-resizable; present_pending() scales the frame to
+ * fill whatever the current size is. */
+#define HOST_WINDOW_W 1024
+#define HOST_WINDOW_H 768
+
 /* Set 1 BIOS scan codes for SDL_SCANCODE_A..Z, indexed - SDL_SCANCODE_A. */
 static const u8 k_bios_letter[26] = {
     0x1E, 0x30, 0x2E, 0x20, 0x12, 0x21, 0x22, 0x23, 0x17, 0x24, 0x25, 0x26,
@@ -139,7 +146,11 @@ static void present_pending(void)
     if (!g_window || !g_scratch) return;
     SDL_Surface *win = SDL_GetWindowSurface(g_window);
     if (!win) return;
-    SDL_BlitSurface(g_scratch, NULL, win, NULL); /* converts RGB24 to window fmt */
+    /* SDL_GetWindowSurface is re-fetched every present: SDL3 invalidates the
+     * surface on resize, so this is also the resize path. The 320x200 frame is
+     * scaled to fill the window (nearest, to keep the pixels hard). */
+    SDL_Rect dst = { 0, 0, win->w, win->h };
+    SDL_BlitSurfaceScaled(g_scratch, NULL, win, &dst, SDL_SCALEMODE_NEAREST);
     SDL_UpdateWindowSurface(g_window);
 }
 
@@ -149,7 +160,8 @@ int host_init(const char *title, int w, int h)
     if (w <= 0 || h <= 0) return 0;
     if (!SDL_Init(SDL_INIT_VIDEO)) return 0; /* no display: report, do not abort */
     g_sdl_video = 1;
-    g_window = SDL_CreateWindow(title, w, h, 0);
+    g_window = SDL_CreateWindow(title, HOST_WINDOW_W, HOST_WINDOW_H,
+                                SDL_WINDOW_RESIZABLE);
     if (!g_window) { host_shutdown(); return 0; }
     g_scratch = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_RGB24);
     if (!g_scratch) { host_shutdown(); return 0; }
