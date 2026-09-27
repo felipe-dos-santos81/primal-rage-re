@@ -143,6 +143,9 @@ static void reaction_cb_23178(u32 slot, u32 rec, u32 side);
 static void anim_code_236D8(u32 rec, u32 arg);
 static void anim_code_2372C(u32 rec, u32 arg);
 static void anim_code_246D4(u32 rec, u32 arg);
+static void actor_type_2d_update(void);
+static void actor_type_19_spawn(void);
+static void anim_code_37B54(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -359,6 +362,13 @@ int actors_init(void)
      * opcode 0x15. */
     fn_register(0x24568u, (void (*)(void))fighter_24568);
     fn_register(0x246D4u, (void (*)(void))anim_code_246D4);
+    /* PORT: record §46-D. The update table's entries 1 (0x48F98, the type-0x2D
+     * node walk; dword at 0xA8648) and 10 (0x28F08, the type-0x19 spawner;
+     * dword at 0xA866C), fn() with the unread EAX index; and the 0xD000
+     * target 0x37B54 (the dwords at 0xE8564/0xEDAFC), opcode 0x10. */
+    fn_register(0x48F98u, (void (*)(void))actor_type_2d_update);
+    fn_register(0x28F08u, (void (*)(void))actor_type_19_spawn);
+    fn_register(0x37B54u, (void (*)(void))anim_code_37B54);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -2244,6 +2254,122 @@ static void actor_type_0a19_update(void)
         }
         node = next;                                    /* 0x29297 */
     }
+}
+
+/* PORT: data-object addresses symbols.h does not name. */
+#define ACTOR_DESC_19    0x000A89ACu    /* the type-0x19 descriptor (0xBBB04's entry) */
+#define ACTOR_48F98_NEAR 0x000EDD20u    /* 0x48FF8: phase 0 -> 1, at 2.0 */
+#define ACTOR_48F98_FAR  0x000EDCEAu    /* 0x490A3: phase 1 -> 2, at 2.0 */
+#define DS_00108396      0x00108396u    /* 0x48F98's once-only bit 7 */
+#define DS_00108397      0x00108397u    /* 0x48F98's phase-0 count */
+
+/* 0x37B54 — demo-pose record §46-D. EAX = rec: the other side's slot
+ * DS_001077A8[(rec+0x51) ^ 1] (the byte index, `and eax,0xff`); when it is
+ * not 0, its record's +0x53 = 1. Called by 0x48F98 (0x4904F) and the
+ * unported 0x45B43/0x45FD3; the D000 target at 0xE8564/0xEDAFC. */
+static void fighter_37b54(u32 rec)
+{
+    u32 slot = DSD(DS_001077A8
+                   + (u32)(u8)(DSB(rec + 0x51u) ^ 1u) * 4u);   /* 0x37B54..0x37B5E */
+    if (slot != 0u)                                     /* 0x37B65/0x37B67 */
+        DSB(DSD(slot) + 0x53u) = 1u;                    /* 0x37B69/0x37B6B */
+}
+
+/* 0x37B54 — the animation-opcode target shape (the 0xD000 words at 0xE8562
+ * and 0xEDAFA, opcode 0x10). anim_indirect passes EAX = rec; the arg is not
+ * read. */
+static void anim_code_37B54(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_37b54(rec);
+}
+
+/* 0x48F98 — demo-pose record §46-D. The update table's entry 1 (the dword at
+ * 0xA8648, its only reference; 0x48CD8 enables it with DS_00104AE8 bit 1).
+ * It walks the type-0x2D in-use list 0x108368 (the next node read first,
+ * ESI) against the record of slot DS_001078FD (0x1077B0 + n*0x94), by the
+ * node's +0x0C phase. 0: when |x - that record's x| <= 0x1000 (signed, +0x18)
+ * it starts 0xEDD20 at 2.0, halves the word +0x34 toward 0 (cwd/sub/sar),
+ * bumps 0x108397 and the phase, and on the first such node (0x108396 bit 7
+ * clear) calls 0x37B54 on slot DS_00104AD4's record, sets the bit and plays
+ * voice 0xF0. 1: when farther than 0x1000 it starts 0xEDCEA at 2.0, doubles
+ * +0x34, drops 0x108397 and bumps the phase, with voice 0xF1 once the count
+ * reaches <= 0 (signed); within 0x1000 it spawns a type-0x19 actor on
+ * rng(0x14) == 0 (x = +0x18, y = the SAR of +0x30 by 16, a4 = 0, a5 =
+ * rng(2) ? 0x4000 : 0). Above 1 holds. The EAX index the table call passes
+ * is not read. */
+static void actor_type_2d_update(void)
+{
+    u32 node = DSD(DS_00108368);                        /* 0x48F9C */
+    while (node != DS_00108368) {                       /* 0x48FA2/0x4913E */
+        u8 ph = DSB(node + 0x0Cu);                      /* 0x48FAE */
+        u32 next = DSD(node);                           /* 0x48FB1 ESI */
+        u32 them, d = 0u;
+        if (ph <= 1u) {                                 /* 0x48FB3..0x48FBD: above 1 holds */
+            them = DSD(DS_001077B0
+                       + (u32)DSB(DS_001078FD) * 0x94u);    /* 0x48FCA..0x48FDB, 0x49078..0x49085 */
+            d = DSD(DSD(node + 8u) + 0x18u) - DSD(them + 0x18u);  /* 0x48FE1/0x48FE4, 0x4908E..0x49094 */
+            if ((s32)d < 0) d = 0u - d;                 /* 0x48FE9/0x48FEB, 0x49098/0x4909A */
+        }
+        if (ph == 0u) {                                 /* 0x48FB5/0x48FC4 */
+            u32 rec;
+            u8 once;
+            if ((s32)d > 0x1000) { node = next; continue; } /* 0x48FED/0x48FF2 */
+            actors_anim_begin(DSD(node + 8u), ACTOR_48F98_NEAR,
+                              0x40000000u);             /* 0x48FF8..0x49005 0x2BC30 */
+            rec = DSD(node + 8u);                       /* 0x4900A */
+            DSW(rec + 0x34u) = (u16)((s32)(s16)DSW(rec + 0x34u) / 2);  /* 0x4900D..0x49019 */
+            once = (u8)(DSB(DS_00108396) & 0x80u);      /* 0x4901D/0x49022 */
+            DSB(DS_00108397) = (u8)(DSB(DS_00108397) + 1u); /* 0x49024 */
+            DSB(node + 0x0Cu) = (u8)(DSB(node + 0x0Cu) + 1u);   /* 0x4902A..0x49034 */
+            if (once != 0u) { node = next; continue; }  /* 0x49037/0x49039 */
+            fighter_37b54(DSD(DS_001077B0 + DSD(DS_00104AD4) * 0x94u));    /* 0x4903F..0x4904F */
+            DSB(DS_00108396) |= 0x80u;                  /* 0x49054 */
+            /* PORT: 0x49060 0x2C3FC(0xF0) voice, not wired (record §45-A). */
+        } else if (ph == 1u) {                          /* 0x48FB7 */
+            if ((s32)d > 0x1000) {                      /* 0x4909C/0x490A1 */
+                u32 rec;
+                u8 n;
+                actors_anim_begin(DSD(node + 8u), ACTOR_48F98_FAR,
+                                  0x40000000u);         /* 0x490A3..0x490B0 0x2BC30 */
+                rec = DSD(node + 8u);                   /* 0x490B5 */
+                DSW(rec + 0x34u) = (u16)(DSW(rec + 0x34u) * 2u);    /* 0x490B8..0x490BE */
+                n = (u8)(DSB(DS_00108397) - 1u);        /* 0x490C2/0x490CB */
+                DSB(node + 0x0Cu) = (u8)(DSB(node + 0x0Cu) + 1u);   /* 0x490C8/0x490CD/0x490D5 */
+                DSB(DS_00108397) = n;                   /* 0x490CF */
+                if ((s8)n > 0) { node = next; continue; }   /* 0x490D8/0x490DA */
+                /* PORT: 0x490E1 0x2C3FC(0xF1) voice, not wired (record §45-A). */
+            } else {
+                u32 a5, rec;
+                if (rng_next(0x14u) != 0u) { node = next; continue; }  /* 0x490F9..0x49105 */
+                a5 = (rng_next(2u) != 0u) ? 0x4000u : 0u;   /* 0x49107..0x4911E */
+                rec = DSD(node + 8u);                   /* 0x49123 */
+                (void)actor_spawn((const u32 *)(mem + ACTOR_DESC_19),
+                                  DSD(rec + 0x18u),
+                                  (u32)((s32)DSD(rec + 0x30u) >> 16),
+                                  0u, a5);              /* 0x49126..0x49137 0x2AE14 */
+            }
+        }
+        node = next;                                    /* 0x4913C/0x49065/0x490E6 */
+    }
+}
+
+/* 0x28F08 — demo-pose record §46-D. The update table's entry 10 (the dword
+ * at 0xA866C, its only reference; 0x48AAC sets DS_00104AE9 bit 2). The slot
+ * DS_001077A8[DS_00104AD4 ^ 1] (the dword with its low bit flipped, read
+ * before the draws and not tested for 0) spawns a type-0x19 actor on
+ * rng(6) == 0: x = the slot's +0x2C, y = the SAR of its record's +0x30 by 16,
+ * a4 = 0xC00, a5 = rng(2) ? 0x4000 : 0. The EAX index is not read. */
+static void actor_type_19_spawn(void)
+{
+    u32 slot = DSD(DS_001077A8 + (DSD(DS_00104AD4) ^ 1u) * 4u);  /* 0x28F0B..0x28F19 */
+    u32 a5;
+    if (rng_next(6u) != 0u) return;                     /* 0x28F14..0x28F27 */
+    a5 = (rng_next(2u) != 0u) ? 0x4000u : 0u;           /* 0x28F29..0x28F40 */
+    (void)actor_spawn((const u32 *)(mem + ACTOR_DESC_19),
+                      DSD(slot + 0x2Cu),
+                      (u32)((s32)DSD(DSD(slot) + 0x30u) >> 16),
+                      0x0C00u, a5);                     /* 0x28F45..0x28F5B 0x2AE14 */
 }
 
 /* 0x48CD8. Type 0x2D: pop 0x1082E0, insert at 0x108368, then the 0x104AE8
