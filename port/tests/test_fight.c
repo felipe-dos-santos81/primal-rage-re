@@ -6806,17 +6806,25 @@ static u32 cs_row_count(u32 row)
     return n;
 }
 
+/* The palette handle of text cell (row, col)'s glyph, or 0. */
+static u32 cs_pal(u32 row, u32 col)
+{
+    u32 r = chs_grid(row, col);
+    return r != 0u ? chs_pal_handle(r) : 0u;
+}
+
 /* 1 when text row `row` holds exactly what 0x2F198 draws for `s` at `col`
- * with `mode` from an empty row (compared by sprite id; the row is left
- * redrawn). */
+ * with `mode` from an empty row (compared by sprite id and palette, which
+ * carries the mode's 0xF000 bits; the row is left redrawn). */
 static int cs_row_ref(u32 row, s32 col, const u8 *s, u32 mode)
 {
-    u32 got[0x2B];
+    u32 got[0x2B], pal[0x2B];
     int same = 1;
-    for (u32 c = 0; c < 0x2Bu; c++) got[c] = cs_sprite(row, c);
+    for (u32 c = 0; c < 0x2Bu; c++) { got[c] = cs_sprite(row, c); pal[c] = cs_pal(row, c); }
     mem_fill(DS_00105F38 + row * 0xACu, 0, 0xACu);
     text_cursor_set(col, (s32)row, s, mode);
-    for (u32 c = 0; c < 0x2Bu; c++) if (cs_sprite(row, c) != got[c]) same = 0;
+    for (u32 c = 0; c < 0x2Bu; c++)
+        if (cs_sprite(row, c) != got[c] || cs_pal(row, c) != pal[c]) same = 0;
     return same;
 }
 
@@ -6957,6 +6965,13 @@ static void check_char_select_pass(void)
     DSW(DS_000EF6DC) = 0x38u;
     fight_char_select_pass();
     CHECK_EQ_INT((int)cs_row_count(0x1Bu), 0);
+    /* Side 1's text prompt is at its col byte 0xBAB59 = 0x18. */
+    DSW(DS_000EF6DC) = 0x20u;
+    prompt_press_start(1u, 0x1B);
+    CHECK_EQ_INT((int)cs_row_ref(0x1Bu, 0x18, game_string_get(0x48u), 0x1000u), 1);
+    prompt_insert_coin(1u, 0x1C);
+    CHECK_EQ_INT((int)DSB(DS_00105C06), 0x18);
+    CHECK_EQ_INT((int)DSB(DS_00105C07), 0x1C);
 
     /* (a4) The sprite prompts (DS_00104528 bit 0x200): phase 0 spawns 0xBAB60
      * at x 0xBAB5A[side] (0x1500 / 0x4000), y 0x3700 into DS_00105BF0[side];
@@ -7139,6 +7154,7 @@ static void check_char_select_pass(void)
             { 3u, 0x20u, 2u }, { 2u, 0x40u, 6u }, { 3u, 0x40u, 6u },
             { 5u, 0x40u, 5u }, { 1u, 0x40u, 5u }, { 5u, 0x80u, 1u },
             { 3u, 0x80u, 3u }, { 4u, 0x30u, 4u }, { 1u, 0xF0u, 1u },
+            { 4u, 0x40u, 4u }, { 4u, 0x80u, 0u },
         };
         static const u16 ent_x[7] = { 0x1000, 0x1C80, 0x2900, 0x3580, 0x1640, 0x22C0, 0x2F40 };
         static const u16 ent_y[7] = { 0x0540, 0x0540, 0x0540, 0x0540, 0x0EC0, 0x0EC0, 0x0EC0 };
@@ -7343,6 +7359,30 @@ static void check_char_select_pass(void)
     CHECK_EQ_INT((int)DSB(DS_00108111), 3);
     CHECK_EQ_INT((int)DSB(DS_00108170), 2);
 
+    /* Side 1 (character 2, class 3): its own slot byte 0x107813 + 0x94 and
+     * class byte, and its stage mark key 3 | 0x40. */
+    CS_RESTORE();
+    cs_open(5u, 2u, 3u);
+    DSB(DS_0010816E + 1u) = 0xFFu;
+    DSB(DS_0010816E) = 0xFFu;
+    DSB(DS_00107813) = 0x77u;
+    DSB(DS_00107813 + 1u) = 0x77u;
+    DSB(DS_00107813 + 0x94u) = 0x77u;
+    DSB(DS_00108106) = 0x43u;
+    DSB(DS_00108106 + 1u) = 0x03u;
+    DSB(DS_00108111) = 5u;
+    fight_char_confirm(1u);
+    CHECK_EQ_INT((int)DSB(DS_00107813 + 0x94u), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107813), 0x77);
+    CHECK_EQ_INT((int)DSB(DS_00107813 + 1u), 0x77);
+    CHECK_EQ_INT((int)DSB(DS_0010816A + 1u), 3);
+    CHECK_EQ_INT((int)DSB(DS_00108170 + 1u), 2);
+    CHECK_EQ_INT((int)DSB(DS_00108170), 1);
+    CHECK_EQ_INT((int)DSB(DS_0010816E + 1u), 3);
+    CHECK_EQ_INT((int)DSB(DS_00108106), 0);
+    CHECK_EQ_INT((int)DSB(DS_00108106 + 1u), 3);
+    CHECK_EQ_INT((int)DSB(DS_00108111), 4);
+
     /* (g4) 0x4248C for side 1: the key is class | 0x40. */
     CS_RESTORE();
     for (u32 k = 0; k < 7u; k++) DSB(DS_00108106 + k) = (u8)(k == 2u ? 0xC5u : k == 4u ? 0x45u : 0x05u);
@@ -7385,6 +7425,9 @@ static void check_char_select_pass(void)
     DSB(DS_00108170 + 1u) = 5u;
     DSW(DS_0010816C) = 9u;
     DSW(DS_000EF6DC) = 0x41u;
+    fight_char_select_pass();
+    CHECK_EQ_INT((int)DSW(DS_0010816C), 9);
+    DSW(DS_000EF6DC) = 0x20u;
     fight_char_select_pass();
     CHECK_EQ_INT((int)DSW(DS_0010816C), 9);
     DSW(DS_000EF6DC) = 0x40u;
