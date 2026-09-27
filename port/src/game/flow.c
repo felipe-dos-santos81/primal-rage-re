@@ -2446,7 +2446,11 @@ void game_state_step(void)
             }
             break;
         case 8:
-            /* PORT: fight engine (sub-project 5). */
+            /* PORT: 0x11EAC runs 0x32970(0) (the run clock, spec §7) and
+             * 0x257A4(3), the unported game-start divert that leaves mode 3
+             * for 0x1A (record §47-B), then the shared tails below. Only
+             * attract phase 0xB stores state 8, when DS_00108173 != 0, and
+             * no ported code writes that byte. */
             break;
         case 9:
             DSW(DS_000F0A6A) = (u16)sVar1;

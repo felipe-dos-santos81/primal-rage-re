@@ -380,8 +380,9 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   direct-called from four sites (`0x41755`, `0x41DE6`, `0x42337`, `0x42352` in
   `0x416D4`/`0x41C28`). Every live caller is reached only through `0x24C5C`'s
   **unported mode cases** and the unported match/fight chain; the `0x2861C`
-  region is dead outright. The port's `DS_00104B00` is fixed at 3 by
-  `0x10E80`, so neither function is reachable: both are unit-tested
+  region is dead outright. No ported path moves the port's `DS_00104B00` off
+  the 3 that `0x10E80` stores (record §47-B.2), so neither function is
+  reachable: both are unit-tested
   (`test_effects`), and `0x29B74` is registered in `actors_init` for a future
   `DS_00104AE4` dispatch. `port/tests/test_game.c` pins that state 5 neither
   arms `DS_00104AE4` nor leaves mode 3. `DS_00104AE4` has other
@@ -400,11 +401,16 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   `0x27134` (which arm mode `0x1A` with `0x25BBC`/`0x26998`/`0x270BC`),
   `0x24B54`, `0x4142C`, `0x25AE8` and `0x10E80` (`game_state_init`). Their
   storers and mode `0x17`'s handler `0x4F318` are unported.
-  `game_frame`
-  still does not dispatch cases `0x1A`/`0x1B`: only `0x4F980` stores mode
-  `0x1A`, and its eleven callers are unported (the nearest, `0x257A4`, is the
-  coin divert `0x11D04` reaches at `0x11D41` and in state 8, both stubbed), so
-  the chain runs only in unit tests. **Correction (record §42-E):** this
+  `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
+  `0x24B8C`, on the word `DS_00104B00`, record §47-B):
+  - it dispatches cases 3, `0x11`, `0x14`, `0x1A` and `0x1B`, and cases
+    1/2/`0x20` run the bare `ret` `0x29B70`;
+  - the other 40 cases are named gaps.
+
+  Still, only `0x4F980` stores mode `0x1A`, and its eleven callers are
+  unported. The nearest is `0x257A4`, the coin divert `0x11D04` reaches at
+  `0x11D41` and in state 8, both stubbed. So the chain runs only in unit
+  tests. **Correction (record §42-E):** this
   bullet used to call `0x41578`'s compare against `0x88874B0` dead because the
   value is above `MEM_SIZE`. It is not an address. The compare is on the list
   entry's `+0` **resource handle** (`index << 23 | offset`, `0x1B544`), and
