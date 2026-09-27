@@ -102,17 +102,17 @@ void attract_voice_tick(void)
 {
     DSW(DS_000F0A60) = (u16)(DSW(DS_000F0A60) - 1u);
     if ((s16)DSW(DS_000F0A60) <= 0) {
-        /* PORT: 0x2C3FC(0xBD) voice, out of scope (spec §7). */
+        /* PORT: 0x2C3FC(0xBD) voice, not wired (record §45-A). */
         DSW(DS_000F0A60) = (u16)(rng_next(0x2Du) + 0x2Du);
     }
     DSW(DS_000F0A62) = (u16)(DSW(DS_000F0A62) - 1u);
     if ((s16)DSW(DS_000F0A62) <= 0) {
         /* PORT: the raw draws rng_next(2) to pick 0xBE (nonzero) or 0xBF; the
-         * 0x2C3FC call is out of scope (spec §7), but the draw must stay to
+         * 0x2C3FC call is not wired (record §45-A), but the draw must stay to
          * keep the shared rng stream faithful. */
         u32 pick = rng_next(2u);
         (void)pick;
-        /* PORT: 0x2C3FC(pick ? 0xBE : 0xBF) voice, out of scope (spec §7). */
+        /* PORT: 0x2C3FC(pick ? 0xBE : 0xBF) voice, not wired (record §45-A). */
         DSW(DS_000F0A62) = (u16)(rng_next(0x3Cu) + 0x3Cu);
     }
 }
@@ -130,7 +130,7 @@ void frontend_pause_tail(void)
         DSW(DS_000F0A6C) = 4;
         DSW(DS_000F0A64) = 4;
         /* PORT: 0x29D60 is a ret-only no-op; the raw then calls 0x2C3FC(0x100)
-         * (voice, out of scope, spec §7). */
+         * (voice, not wired, record §45-A). */
         return;
     }
     DSW(DS_000F0A64) = 4;
@@ -149,7 +149,7 @@ void frontend_continue_tail(void)
         DSW(DS_000F0A6C) = 5;
         DSW(DS_000F0A64) = 5;
         /* PORT: 0x29D60 is a ret-only no-op; the raw then calls 0x2C3FC(0x100)
-         * (voice, out of scope, spec §7). */
+         * (voice, not wired, record §45-A). */
         return;
     }
     DSW(DS_000F0A64) = 5;
@@ -199,7 +199,7 @@ void attract_step(void)
 {
     switch (DSB(DS_000F0A6F)) {
     case 0:
-        /* PORT: 0x2C3FC(0x100) voice, out of scope (spec §7). */
+        /* PORT: 0x2C3FC(0x100) voice, not wired (record §45-A). */
         DSB(DS_0009AD58) = 1;                       /* 0x11029 */
         /* 0x11035: 0x4F1E4 (frontend_input_reset) ignores eax. */
         frontend_input_reset();                     /* 0x4F1E4 */
@@ -247,9 +247,9 @@ void attract_step(void)
          * port's 3-argument effects_spawn does not model; the same value is the
          * DS_000F0A68 countdown stored below. */
         effects_spawn(DSD(DS_000F0A48), 4u, 0x396ED28u);   /* 0x11151 */
-        /* PORT: 0x2C3FC(0x40) and 0x2C3FC(0x42) voices, out of scope (spec
-         * §7). The raw keeps ecx = 0x2D and bh = 3 live across them (item 2);
-         * those are the DS_000F0A60 / DS_000F0A70 values stored below. */
+        /* PORT: 0x2C3FC(0x40) and 0x2C3FC(0x42) voices, not wired (record
+         * §45-A). The raw keeps ecx = 0x2D and bh = 3 live across them (item
+         * 2); those are the DS_000F0A60 / DS_000F0A70 values stored below. */
         DSW(DS_000F0A60) = 0x2Du;                   /* 0x11171 */
         DSW(DS_000F0A62) = 0x3Cu;                   /* 0x11178 */
         DSW(DS_000F0A68) = 0xB4u;                   /* 0x1117F */
@@ -269,8 +269,8 @@ void attract_step(void)
         u16 v = (u16)(DSW(rec + 0x2Cu) - 0x100u);   /* 0x111D2 */
         DSW(rec + 0x2Cu) = v;
         if (v < 0x1001u) {                          /* 0x111E4 (jg) */
-            /* PORT: 0x2C3FC(DS_000F0A5C == 0 ? 0x54 : 0x56) voice, out of
-             * scope (spec §7). */
+            /* PORT: 0x2C3FC(DS_000F0A5C == 0 ? 0x54 : 0x56) voice, not wired
+             * (record §45-A). */
             DSB(DS_000F0A6F) = 5;                   /* 0x1120B */
             /* 0x11206 reloads eax from DS_000F0A50 after the voice call and
              * 0x11211 stores through it; the reload is kept literal. */

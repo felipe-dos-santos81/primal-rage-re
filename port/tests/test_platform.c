@@ -149,6 +149,20 @@ int test_le(void)
 
 /* ---- test_res.c ---- */
 
+/* The loader's dump seam (record §45-A): the calls, the text pixels already on
+ * the aperture at each call, and DS_00101508 then (the read's stall comes
+ * after the hook). */
+static int res_hook_n;
+static u32 res_hook_px, res_hook_1508;
+static void res_hook(void)
+{
+    const u8 *ap = gfx_aperture();
+    res_hook_n++;
+    res_hook_px = 0;
+    for (u32 b = 192u * 320u; b < 198u * 320u; b++) if (ap[b] != 0u) res_hook_px++;
+    res_hook_1508 = DSD(DS_00101508);
+}
+
 int test_res(void)
 {
     int before = g_failures;
@@ -227,7 +241,7 @@ int test_res(void)
 
         /* A lazy entry stays unread until its first resolve: that resolve
          * presents (0x1B3AC's head) and marks it read (0x1B47A). The read's
-         * stall advances DS_00101508 by bytes/117882 (record 9.6) and its tail
+         * stall advances DS_00101508 by bytes/132674 (records 9.6, 45-A) and its tail
          * re-syncs DS_0010150C to it (0x1B45F/0x1B464), so the master loop's
          * gate (0x25643) passes on the load frame. Seed the pair to different
          * sentinels: a missing stall leaves 1508 at 0x5678, a missing re-sync
@@ -245,7 +259,7 @@ int test_res(void)
          * rate-relative, so without this a changed rate would move both sides
          * together and the pin would be vacuous. res_size(0) is read from the
          * shipped INDEX, so the assertion tracks the real payload. */
-        CHECK_EQ_INT((int)RES_READ_BYTES_PER_TICK, 117882);
+        CHECK_EQ_INT((int)RES_READ_BYTES_PER_TICK, 132674);
         CHECK_EQ_INT((int)DSD(DS_00101508),
                      0x5678 + (int)((res_size(0u) + RES_READ_BYTES_PER_TICK - 1u)
                                     / RES_READ_BYTES_PER_TICK));
@@ -308,6 +322,46 @@ int test_res(void)
         CHECK_EQ_INT((int)mem[backbuf + 197u * 320u + 85u], 0xAA);
         DSD(DS_000E87A4) = saved_base;
         DSD(DS_001088F8 + 192u * 4u) = saved_row;
+    }
+
+    /* The dump seam: a first read calls the hook once, with the loader's 166
+     * text pixels already on the aperture and before the stall advances
+     * DS_00101508; a second resolve, or a NULL hook, calls nothing. Every
+     * byte it touches is restored: the data object (the tick pair,
+     * DS_001014FC, the row pointer, the font palette's records), entries 4
+     * and 6's +0xC, the aperture and the DAC. */
+    {
+        static u8 sv_data[0x8B0D0], sv_ap[320u * 200u], sv_dac[256][3];
+        u32 table = DSD(DS_001014E0);
+        u32 sv_e4 = DSD(table + 4u * 20u + 12u), sv_e6 = DSD(table + 6u * 20u + 12u);
+        memcpy(sv_data, mem + DATA_BASE, sizeof sv_data);
+        memcpy(sv_ap, gfx_aperture(), sizeof sv_ap);
+        memcpy(sv_dac, gfx_dac, sizeof sv_dac);
+        DSD(DS_001088F8 + 192u * 4u) = 192u * 0x140u;   /* as the pixel test above */
+        CHECK((DSD(table + 4u * 20u + 12u) & 0x20000000u) == 0u, "s16jap unread");
+        CHECK((DSD(table + 6u * 20u + 12u) & 0x20000000u) == 0u, "s16snd2 unread");
+        memset(gfx_aperture(), 0, 320u * 200u);
+        res_hook_n = 0;
+        res_hook_px = 0x7777u;
+        res_hook_1508 = 0x7777u;
+        DSD(DS_00101508) = 0x5678u;
+        res_set_screen_hook(res_hook);
+        CHECK(res_resolve(res_handle(4u, 0)) != NULL, "s16jap resolves");
+        CHECK_EQ_INT(res_hook_n, 1);
+        CHECK_EQ_INT((int)res_hook_px, 166);
+        CHECK_EQ_INT((int)res_hook_1508, 0x5678);
+        CHECK(DSD(DS_00101508) != 0x5678u, "the stall follows the hook");
+        CHECK(res_resolve(res_handle(4u, 8)) != NULL, "s16jap resolves again");
+        CHECK_EQ_INT(res_hook_n, 1);
+        res_set_screen_hook(NULL);
+        CHECK(res_resolve(res_handle(6u, 0)) != NULL, "s16snd2 resolves unhooked");
+        CHECK_EQ_INT(res_hook_n, 1);
+        CHECK((DSD(table + 6u * 20u + 12u) & 0x20000000u) != 0u, "s16snd2 read");
+        DSD(table + 4u * 20u + 12u) = sv_e4;
+        DSD(table + 6u * 20u + 12u) = sv_e6;
+        memcpy(gfx_dac, sv_dac, sizeof sv_dac);
+        memcpy(gfx_aperture(), sv_ap, sizeof sv_ap);
+        memcpy(mem + DATA_BASE, sv_data, sizeof sv_data);
     }
 
     CHECK(res_resolve(0xFFFFFFFFu) == NULL, "an out-of-range handle resolves to NULL");

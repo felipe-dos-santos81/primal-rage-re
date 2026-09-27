@@ -1373,7 +1373,7 @@ static int camera_projectile_clash(void)
         return 0;
     if ((s32)DSD(DS_00100B1C) <= 0) return 0;                  /* 0x17C78 */
     if ((s32)DSD(DS_00100B18) <= 0) return 0;                  /* 0x17C81 */
-    /* PORT: 0x17C88 0x2C3FC(0x64) — voice, out of scope (spec §7). */
+    /* PORT: 0x17C88 0x2C3FC(0x64) — voice, not wired (record §45-A). */
     fighter_3b938(DS_001077B0);                                /* 0x17C92 */
     actor_set_dead(DSD(DS_0010784C));                          /* 0x17C9C 0x2B150 */
     return 1;

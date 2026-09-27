@@ -10453,6 +10453,8 @@ not reached: ported and unit-tested only.
 **Named gaps.** 3257's lazy load of `s16spisd.gra` by the voice path
 (`0x2C3FC`, spec §7), which the port does not run, and its read-stall
 presentation (§35.1). The call that triggers it is not pinned.
+(Closed by §45-A: the trigger is `0x1543C`'s `0x2C3FC(0x4D)`, now ported,
+and 3257 is explained.)
 
 **Merge note.** `0x2910C` was ported twice in parallel: here as `actor_proc_2910C` and on the `gap2-2910c` branch (§42-A) as `actor_type_0a19_update`. The merge kept §42-A's reviewed port and dropped this branch's copy; the two are the same walk over the raw (same stores, phases and streams). The ratchet N = 3257 was re-measured on the merged tree.
 
@@ -10755,3 +10757,304 @@ The sources were restored by the script and compared with `cmp`.
   `0x4D2D0`'s frame words for a `0x104B1A` above 1 (not reachable, 43-A.1).
 - The report is in this worktree's `.superpowers/sdd/2026-09-25-roar-timing/`
   (the isolation guard refused the main checkout's path).
+
+## 45-A. The loader's `- LOADING -` screen at capture 3257: the voice dispatcher `0x2C3FC`, the sound module's sample path and the spawns' sound banks (roar-timing Task 33, `b05adcc`)
+
+**Result in one line.** Capture 3257 is the loader's `- LOADING -` text drawn
+straight onto the VGA aperture over the frame the screen holds, when
+`0x1543C`'s voice `0x2C3FC(0x4D)` reads `s16spisd.gra` (INDEX entry 64) for
+the first time at f = 4444 (loop 3557). The port now runs that path: the voice
+dispatcher `0x2C3FC` and the sound module's memory-visible parts, the fighter
+spawn's sound-bank tail, the DIG driver handle `DS_001028C8`, and a dump seam
+for the loader's screen. Capture 3257 is explained (clean), and so is 2384,
+whose allowance by name is dropped. The first unexplained frame is now 3408,
+the attract's third cycle: the high-score table after the second demo, which
+the port does not draw. N 3257 -> 3408 (`b05adcc`). Two raw-wins
+corrections come with it: the image is mapped before the init chain, and the
+read-stall rate of §9.6 is re-derived from the bytes the original reads.
+
+### 45-A.1 The raw (Ghidra `decompile_function`/`disassemble_function`, fixups applied)
+
+- **`0x2C3FC`** (1268 B). EAX = the voice id. Id 0 returns 0 (`0x2C401`); id
+  `0x100` becomes 0 (`0x2C409`/`0x2C410`). The record is the 12-byte
+  `DS_000BBDC8[id]`: +0 the case, +4 a handle, +8 a byte. `cmp al,6; ja
+  0x2C8E8` returns 0 above 6, else `jmp [0x2C3E0 + 4*case]`. The table reads
+  `0x2C8DD, 0x2C437, 0x2C473, 0x2C4C6, 0x2C89B, 0x2C57F, 0x2C8E8`.
+  - Case 0 (`0x2C8DD`): AL = 1.
+  - Case 1 (`0x2C437`): `DS_00105D5C` = the handle; `0x1CA14(DS_00105D5C,
+    byte)`; AL = 1.
+  - Case 2 (`0x2C473`): `0x1CE70(handle)`; when it returns non-zero, AL = 0;
+    otherwise `0x1CC28(handle, byte)` and AL = 1.
+  - Case 3 (`0x2C4C6`): the paired ids. `0x46`: `0x1CE70(0x2886158)`, then
+    `0x1CC28(0x28847C9, 0)` and `0x1CC28(0x2886158, 0)`. `0x4D`:
+    `0x1CE70(0x1201D606)`, then `0x1CC28(0x1201D606, 0)` and
+    `0x1CC28(0x2001513C, 0)`. `0x5D`: `0x1CE70(0x281A726)`, then
+    `0x1CC28(0x281A726, 0)` and `0x1CC28(0x2819183, 0)`. A playing first
+    sample, or any other id, gives AL = 0.
+  - Case 4 (`0x2C89B`): `0x1D238`, `0x1D244`, `DS_00105D5C` = `0x21`,
+    `0x1CA14(0x2803E64, 0)`. Unless `0x1CE70(0x180122FD)` answers 1, it runs
+    `0x1CD9C` and `0x1CC28(0x180122FD, 1)`. AL = 1.
+  - Case 5 (`0x2C57F`): a compare tree on the id. Id 0 runs `0x1CA6C` and
+    `0x1CD9C`. `0x22` runs `0x1CA6C` when `DS_00105D5C` is `0x1B..0x21`,
+    `0x25` or `0x26`; `0x2B`/`0x2A`, `0x2D`/`0x2C`, `0x2F`/(`0x2E`, `0x30`),
+    `0x33`/`0x32`, `0x3C`/`0x3B`, `0x55`/`0x54`, `0x57`/`0x56`, `0xE0`/`0xDF`
+    and `0xE2`/(`0xE1`, `0xE3`) likewise. `0x3F`, `0x41`, `0x43`, `0x4C`,
+    `0x4F`, `0x5B` and `0xF1` run `0x1CE04` on `0x1800EBC9`, `0x383B6F4`,
+    `0x3837440`, `0x22008696`, `0x1501053C`, `0x1B01AF00` and `0x22018405`.
+    AL = 1. The `cmp edx,0x100; jz 0x2C69C` after `0xF1` is dead: EDX was
+    zeroed for id `0x100`.
+  - Case 6 (`0x2C8E8`): AL = 0.
+  EBX, EDX and EDI are pushed and popped. The shipped table has five case-0
+  ids, 29 case-1, 154 case-2, three case-3 (`0x46`, `0x4D`, `0x5D`), one
+  case-4 (3), 18 case-5 and 34 case-6 ids in `0..0xF3`.
+- **The slots.** Four 0x18-byte records at `0x102860`: +0 the AIL sample
+  handle (`0x1CF40`), +4 the queued resource handle, +8 its loop byte, +0xC
+  the playing handle (moved there by `0x1CB18`), +0x10 the slot's buffer
+  (`0x1D0BC`) and +0x14 the queue time (`0x500BB` = `DS_00101500`).
+  `DS_001028C8` is the DIG driver (`0x1CF8E`: `AIL_install_DIG_INI`'s
+  return), `DS_001028C0`/`C4` the MDI sequence/driver, `DS_001028CC` the
+  pending song, `DS_001028D4`/`D9` the current song and its byte,
+  `DS_001028DA`/`DB` the music and sample pause bytes.
+- **`0x1CE70`**: AL = 0 without `DS_001028C8`. For each slot whose +0xC is
+  the handle, `0x5DD03` status 4 answers AL = 1; any other status clears +0xC
+  and the scan goes on (`0x1CEA5`).
+- **`0x1CE04`**: the same scan. The first matching slot whose status is not 2
+  is ended (`0x5DC8B`), re-inited (`0x5DC0F`) and cleared, AL = 1
+  (`0x1CE5B`).
+- **`0x1CD9C`**: AL = 0 without `DS_001028C8`. Otherwise each slot's +4 and
+  +0xC are cleared, a slot whose status is not 2 is ended and re-inited, and
+  AL = 1.
+- **`0x1CC28`**: AL = 0 without `DS_001028C8` or with `DS_001028DB` set
+  (`0x1CC37`/`0x1CC44`). Otherwise `EBP = 0x500BB()` and `0x1B544(handle)`
+  (`0x1CC5D`). Then the slot choice (`0x1CC62..0x1CD8D`): a sample of at most
+  `0x6000` bytes takes a slot with a buffer, no queued handle and a status
+  other than 4; a larger one takes slot 0 on the same test. Failing that, the
+  oldest slot (smallest +0x14) is ended and re-inited. Then +4 = the handle,
+  +8 = the byte, +0x14 = the time; AL = 1.
+- **`0x1CA14`**: `DS_001028D9` = DL, `DS_001028D4` = EAX; unless
+  `DS_001028DA` == 1 or `DS_001028C0` == 0, `DS_001028CC` = EAX, AL = 1.
+  **`0x1CA40`**: AL = 0 without `DS_001028C0`, else `0x5DEED` status == 4.
+  **`0x1CA6C`**: `DS_001028D4` = 0, `DS_001028D9` = 0; when `DS_001028C0` is
+  set and `0x1CA40` answers 1, `DS_001028CC` = 0 and `0x5DEAF` stops the
+  sequence, AL = 1. **`0x1D238`**/**`0x1D244`**: clear `DS_001028DA` /
+  `DS_001028DB`.
+- **`0x33C78`'s tail** (`0x33E48..0x33EA6`). When `0x1CEBC` passes
+  (`DS_001028C8` set, `DS_001028DB` clear), it reads `DL = [ESI+0x7A]` (ESI
+  is the slot, `0x33C84..0x33C95`; +0x7A is the character, `0x33CB8`).
+  `xor eax,eax; cmp dl,6; ja 0x33E98`, then the jump table `0x33C5C` (`0x33E69
+  .. 0x33E93`) loads `DS_000BDB1C[ch]`. A non-zero handle goes through
+  `0x1B544`, and so does the fixed `0x287B2F5` (entry 5, `s16sound.gra`).
+  `DS_000BDB1C` = `0x1E005ABC, 0x1B007C54, 0x22000008, 0x1200808B, 0x2000410C,
+  0x1501053C, 0x18004092` (entries 60, 54, 68, 36, 64, 42, 48, the sd banks).
+- **`0x1543C`**'s tail (`0x15469`/`0x1546E`): `mov eax,0x4D; call 0x2C3FC`.
+  AL is not read.
+- **`0x1D018`** (the teardown): clears `DS_001028C8` at `0x1D0A9` after it
+  stops the slots.
+
+### 45-A.2 Entrances
+
+`get_xrefs_to`: `0x1CC28`, `0x1CE70`, `0x1CE04`, `0x1CA14`, `0x1CA6C`,
+`0x1D238` and `0x1D244` are called only from `0x2C3FC` (8, 5, 7, 2, 11, 1
+and 1 sites). `0x1CD9C` is also called from `0x1D220`/`0x1D250`, the pause
+toggles, which are unported. `0x1CA40` is also called from `0x1D1B0`. `0x1CEBC` is called
+only at `0x33E48`. A rel32 scan of the code object finds 299 `call`s and 4
+`jmp`s to `0x2C3FC`, 303 sites. Ghidra's list is complete at 300 references
+from 104 functions (`total` 300 at `limit` 1000); the three it has no xref
+for are `0x11C38` (a call, in the ported `0x11BCC`), `0x1550B` (a `jmp`) and
+`0x30B34` (a call). No dword points at `0x2C3FC`. Only `0x1546E` is wired
+here; the other 302 keep their `PORT:` comments, which now read "not wired
+(record §45-A)" where they said "out of scope (spec §7)": the dispatcher is
+ported, the call is not.
+
+### 45-A.3 The measurement
+
+1. **The original's reads** (`scratchpad/t33/idxpoll.py`: DOSBox-X with a
+   memory file, polling every INDEX entry's +0xC loaded bit `0x20000000` with
+   `DS_000EF6DC`, the state and the tick pair; `idx.log`). `DS_001028C8` is
+   `0x2F2140` from boot. The loads are: 1, 2 and 7 at boot (f 0); 0 and 8 at
+   f 691 (state 1). At the first demo's state-6 entry (f 1957): 21 (tk 3), 55
+   (31), **60** (32), **5** (36), 33 (54) and **36** (55), then 32, 57 and 34.
+   At the second demo's (f 3670): 27, 49, **54** and 51. At **f 4444, 64**.
+   At f 4571, 20. The bold entries are sound banks. Every one follows the
+   fighter bank it belongs to, which is `0x33C78`'s tail. At f 4444 the tick
+   pair reads 802/802 before and 803/803 after the load, so the ~0.7-tick read
+   leaves no gap in the tick count.
+2. **The original's slots** (Task 32's whole-RAM snapshots `snap_4443/4445`).
+   Slots 2 and 3 take the playing handles `0x2001513C` and `0x1201D606`
+   (both queued at time `0x196A`, where the older queues read `0x1957`).
+   Only `0x2C3FC(0x4D)` queues that pair. Entry 64 alone gains the loaded bit,
+   because entry 36 was read at the first demo's spawn.
+3. **The port before the fix** (a `res_resolve` print, reverted). There were
+   no sound-bank reads: `DS_001028C8` read 0 at run time. The port's order
+   was `game_audio_init` first, then `mem_load_le`, which rewrote the data
+   object's BSS: the store was lost, and so were `DS_00101504/10/14`,
+   `DS_000A2CAC` and `DS_000A2CB1` (the image holds zeros there).
+4. **The port after the fix.** Its sound banks and fight reads are the
+   original's, in the same order at the same frames: 21, 55, 60, 5, 33, 36,
+   32, 57, 34 at f 1957; 27, 49, 54, 51 at f 3670; 64 at f 4444; 20 at
+   f 4571. Two reads differ, neither a sound bank: s16title (7), which the
+   original reads at boot and the port at the title state (cycle 2's loop
+   1973, f 2860), and s16slabs/s16attrc (0, 8), which the original reads at
+   f 691 in state 1 and the port at f 887 in state 2. The second predates this
+   task (the front-end dump's allowed 832/833 are probably those screens).
+5. **The screen.** 0x1B3AC draws the text through `0x51ED8` onto the aperture,
+   which holds the last presented frame, and the gate presents the next frame
+   in the same master-loop iteration (§35.1). A per-iteration dump never
+   holds that screen. The new seam `res_set_screen_hook` runs right after the
+   text is drawn, as movie.c's does for `0x1C740`. The front-end driver
+   points it at the cycle-2 dump only (the movie seam's rule), which gains
+   seven screens (2095 -> 2102 frames): loop 1973 (entry 7), four in loop
+   2783 (27, 49, 54, 51), loop 3557 (64) and loop 3684 (20). The classifier:
+   3256 = port 1756, **3257 = port 1757** (1756 with the text), 3258 = splice
+   1758/1759; **2384** (text on black) and **3407** (raw 7853, text on black)
+   are clean. 3406 is all-black.
+6. **3408** (raw 7896) and every later frame to 3415 are unexplained. The
+   best splice is port 1885 with ~19 000 bytes off from row 13: the
+   high-score table (`1 TEENY WEENY GAMES 500000` ... `10 DVD 100`) over the
+   bone pile with the T-rex figure. The port shows the bone pile and the
+   credit line with neither (`scratchpad/t33/s3408.png`). The original read
+   `s16hghsc.gra` at f 4571 (state 5), and so does the port. A different
+   cause: the attract's high-score screen is unported. **N = 3408.**
+
+### 45-A.4 The raw-wins corrections
+
+- **The init order.** `game_init` mapped PRAGE.EXE after `game_audio_init`.
+  The loader maps both objects before `0x1BEC4` runs, so the image is now
+  mapped first and the chain's stores survive. Three readers see different
+  values: `DS_00101514`, the BIOS base (reads of the zeroed
+  `GAME_BIOS_BASE + 0x2D4/0x2D8` instead of `mem[0x2D4/0x2D8]`: the same
+  zeros); `DS_000A2CB1` = 1 (so `game_shutdown` runs its `0x1D018` arm); and
+  `DS_001028C8`. The top-level dump stays byte-identical (1382 frames).
+- **The read-stall rate** (§9.6, `res.h`). The state-6 entry's 55 ticks
+  covered six reads, not three. The original re-syncs after each one at
+  ticks 3, 31, 32, 36, 54 and 55, the values §9.6's own `150C` distribution
+  lists. The reads are s16beach 233128 + s16rex 3812084 + s16rexsd 81192 +
+  s16sound 586942 + s16cob 2438316 + s16cobsd 145435 = 7297097 bytes (each
+  size is its INDEX entry's, `res_size()`), and 7297097 / 55 = 132674.49,
+  floored as 117882 was: **132674 bytes/tick**. Only the tick pair moves.
+  The flier's `DS_0010150C` reads 93 (92 before); its frame (loop 1097,
+  `DS_000EF6DC`'s gate) does not move.
+- **Named gap: the tick model's drift.** The per-read ceiling does not
+  reproduce the original's tick after each read. At the first demo's state-6
+  entry the port's re-syncs land at 2, 31, 32, 37, 56 and 58 (the original's
+  3, 31, 32, 36, 54, 55), and the state-7 reads at 61, 63 and 65 (58, 59,
+  61): up to 4 ticks late, where the pre-change model was 56 against 55 and
+  60/62/64, up to 3. No frame depends on the absolute tick, because the
+  loader's re-sync makes the gate pass either way; a closer model needs the
+  reads' own timing, which the poll does not resolve below a tick.
+
+### 45-A.5 The port
+
+`sound_voice` (0x2C3FC) and the static `snd_*` functions (0x1CA14, 0x1CA40,
+0x1CA6C, 0x1CC28, 0x1CD9C, 0x1CE04, 0x1CE70, 0x1D238, 0x1D244) are in
+flow.c, next to the AIL handles. A slot's +0 is the port's `s_samples[i]`
+(`PORT:`), and the status, end and init calls go to the port's AIL.
+`game_audio_init` stores 1 in `DS_001028C8` as the stand-in for the host
+handle (`PORT:`: every reader tests it for zero). `game_shutdown` clears it
+(`0x1D0A9`). `fighter_spawn_slot` runs the tail. `anim_code_1543C` calls
+`sound_voice(0x4D)`. `res_set_screen_hook` is the seam.
+
+**Named gaps.**
+- `0x1CC28`'s slot choice and `0x1CB18`'s start, which copies the sample into
+  the slot's `0x1D0BC` buffer. The port allocates no buffers, so no port path
+  writes a slot's +4/+0xC/+0x14; the original's snapshot values above are the
+  evidence.
+- `DS_001028C0`/`C4` stay 0. The port's music runs through `s_music_request`,
+  so the dispatcher's music arms (`0x1CA14`'s store, `0x1CA6C`'s stop) are
+  inert in runs.
+- The other 302 `0x2C3FC` call sites are not wired. They are reached (the
+  original's f 4443 slots hold other voices' handles, queued at `0x1957`),
+  but in the captured window they read no bank that is not already loaded:
+  every sound-bank read the original makes there is accounted for above. In
+  the original, `0x1CE70` makes a repeat `0x4D` return 0 while the pair
+  plays; the port returns 1 (no slot state), which `0x1546E` ignores.
+- The original reads `s16title` (7) at boot; the port reads it at the title
+  state (loop 1973 in cycle 2). The driver pins that screen as a known
+  divergence. The port reads entries 0 and 8 at f 887 (state 2) where the
+  original does at f 691 (state 1), predating this task.
+- The tick model's drift (45-A.4).
+- The front-end dump has no loader seam, so 832/833 stay allowed by name.
+- 3408, the high-score screen.
+
+### 45-A.6 Tests and mutations
+
+- `check_sound_voice` (`test_game.c`, in `test_flow` on the live handles
+  `game_audio_init` allocated) covers every case: id 0, case 0 and 6; case 1
+  with and without a sequence handle and the pause byte; case 2's queue,
+  playing refusal, the DIG and pause gates, `0x1CE70`'s clear-and-scan-on;
+  case 3's three ids (each first-sample test) and an unlisted id (a retyped
+  record); case 4's pauses, voice, song, `0x1CD9C` (the handles and one voice
+  stopped) and queue, and its playing arm; case 5's id `0x100` with and
+  without the DIG driver and with the title music playing (`0x1CA6C` stops
+  it), the 15 keyed music stops against 15 neighbours, and the seven
+  `0x1CE04` stops (stopped slot kept, first match only, no DIG). It
+  snapshots and restores the data object, the INDEX table, both pools, the
+  DAC and the aperture. After `game_shutdown`, a released handle (status 0) shows
+  `0x1CE70` tests status 4 exactly. `DS_001028C8` is 1 after
+  `game_audio_init` and 0 after `game_shutdown`.
+- `test_res`: the seam runs once per first read, with the 166 text pixels on
+  the aperture and before the stall; not on a second resolve or when unset.
+  The rate pin is 132674.
+- `check_spawn_sound` (`test_fight.c`, first in `test_fight` while the
+  shipped INDEX is in place): characters 0..6 each read only their own bank
+  and s16sound; no DIG driver, or paused samples, read neither; `0x1543C`
+  reads 36 and 64 once (two screens), then nothing, and nothing without the
+  driver.
+- The driver: the banks after loops 1069/1070 (60, 5, 36), 2782/2783 (54)
+  and 3556/3557 (64); the seven screens' loops and cycle-2 indices; frame 1757
+  differs from 1756 only inside the text box; `fe_cyc2_n` 2102; the flier's
+  tick 93.
+
+**Mutations** (`scratchpad/t33/mut33.py`; `mut33u.log`, `mut33b.log`):
+78 single-site edits (73 in unit mode, 5 in driver mode; two
+placeholder rows of the script are skipped). Every source was restored and
+checked against the intended diff. 77 fail an assertion. One is equivalent:
+#12 drops `0x1CA6C`'s own `DS_001028C0 == 0` return, which `0x1CA40`
+repeats. Three survived the first suite and are killed now:
+- #16 turns `0x1CE70`'s `== 4` into `!= 2`. It is killed by the
+  released-handle case (status 0).
+- #22 and #26 drop the end call (`0x5DC8B`) in `0x1CE04` and `0x1CD9C`,
+  which the re-init's status 2 hid. They are killed by the mixer's
+  active-voice count.
+The bound mutant `c <= 6` -> `c < 6` fails the character-6 case. In driver
+mode each of these fails the driver: no voice (#72), no seam (#73),
+`DS_001028C8` wiped after `game_audio_init` as the old init order did (#74),
+no spawn bank read (#75), and the old rate (#76, the flier's tick 100).
+
+### 45-A.7 Measured
+
+| measurement | before (`54394e9`) | `b05adcc` |
+|---|---|---|
+| cycle-2 dump frames | 2095 | 2102 (+7 loader screens) |
+| attract2 `[1885..3616]` clean/splice/trans/unexpl/black | 946/554/15/211/6 (2384 allowed) | 950/554/15/207/6 (none allowed) |
+| attract2 first unexplained | 3257 (raw 7697) | **3408** (raw 7896) |
+| front-end `[560..1884]`, demo-fight | 517/801/3/2; empty, N 1886 | unchanged (top-level dump byte-identical) |
+| sound banks read (entries 5/36/54/60/64) | none | as the original, same frames (ticks drift, 45-A.4) |
+
+`make verify` on `b05adcc` (EXIT 0, 0 compiler warnings):
+- title 54/55/2/0 and 54/57/0/0, determinism 54;
+- smk 120/120 and 41/41; C-vs-Python 9866;
+- front-end `[560..1884]` 517/801/3/2 with 832/833 allowed;
+- demo-fight empty, N 1886;
+- attract2 950/554/15/207/6, first unexplained 3408 (raw 7896) = N;
+- attract prefix 215/215;
+- symbols.h idempotent.
+
+### 45-A.8 Review round 1 (`task-33-review.md`)
+
+- The rate used s16sound = 587966; INDEX entry 5, the file and `res_size(5)`
+  say 586942. Corrected to 7297097 bytes, 132674 bytes/tick (`res.h`,
+  `res.c`, `test_res`'s pin, 45-A.4). No tick in the run changes: each of the
+  run's 21 reads has the same ceiling at both rates.
+- The tick model's drift is now a named gap (45-A.4, `res.c`).
+- The call sites are 303, so 302 are unwired; Ghidra's 300 are complete and
+  the three it lacks are named (45-A.2). The 61 `PORT:` comments in
+  `port/src` and four `game_flow.md` lines that called the voice "out of
+  scope" now say "not wired (record §45-A)".
+- The load claim is narrowed to the sound banks and the fight reads; the
+  s16title and entries 0/8 differences are stated (45-A.3).
+- `test_res`'s seam block now restores the data object (the tick pair,
+  `DS_001014FC`, the row pointer, the palette records), entries 4 and 6's
+  +0xC, the aperture and the DAC.
+- Two test comments: `0x5D` tests its first sample, not its second; the
+  driver's loop-1973 screen is a pinned known divergence.
