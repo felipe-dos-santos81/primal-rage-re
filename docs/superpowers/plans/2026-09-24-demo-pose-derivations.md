@@ -14314,11 +14314,19 @@ tail's other arm clears it too) and the credit count after state 8.
     arm is the gap, so the character screen is built but its per-frame
     pass does not run.
 
-## 48-S. The character select's per-frame pass `0x43B24` and its callees (named-gap batch 12, branch `gap12-charselect`)
+## 48-S. The character select's per-frame passes `0x43B24` and `0x44798` and their callees (named-gap batch 12, branch `gap12-charselect`)
 
-**Status: in progress.** This section is filled in as the branch lands. The
-structure below is the investigation; the port, the assertions and the
-measurements follow in 48-S.3..48-S.5.
+**Result in one line.** Both passes that mode `0x10`'s sub-state 0 runs are
+ported from the raw with all their callees: `0x43B24` as
+`fight_char_select_pass` and `0x44798` (the `DS_00104B1D == 3` route) as
+`fight_char_team_pass`. `fight_mode_10_step` now calls them at `0x438F3` and
+`0x438CD`. Under real input a credited start now reaches a live character
+screen: the prompts blink, the stick moves the cursor, a button confirms, and
+the countdown or both confirms arm the versus screen (hook `0x430E8`, mode
+`0x1A` returning to `0x11`). What stays out: the voices (§45-A's rule) and the
+character-pick audit count `0x2E934` (the audit layer, spec §7). A probe shows
+that no oracle path reaches mode `0x10`, and a headless 8000-frame run is
+byte-identical before and after (48-S.5).
 
 (§47-M.5 names this follow-up. `git log --all` shows §47-A/B/C/M and
 §48-A/R/W in use, and batch 12 runs in parallel, so this section takes S, for
@@ -14358,6 +14366,250 @@ and every 64th frame (`[0xEF6DC] & 0x3F == 0`) `0x43AAC` steps it.
 | `0x43D60` | the confirm | `0x43D0C`, `0x33C18`, `0x4248C`, `0x2E934`, `0x2B150`, `0x432EC`, `0x2C3FC` |
 | `0x43AAC` | the countdown | `0x43D60`, `0x4F980`, `0x2F528` |
 
-`0x44798` (the `DS_00104B1D == 3` pass, 118 instructions) and its callees
-`0x44638`, `0x4418C`, `0x442A0`, `0x4434C`, `0x44054`, `0x4408C` are the
-second route (§47-M.5 follow-up 2).
+`0x44798` (to `0x4493A`, 118 instructions) is the `DS_00104B1D == 3` route
+(§47-M.5 follow-up 2). Same loop, on the side byte:
+- 3: when the other byte is 3 too, `DS_0010816A = [0x108134]`,
+  `DS_00105B34 = 0`, `DS_0010816B = [0x108138]`, `DS_00105B35 =
+  (DS_0010816A == DS_0010816B)` (`sete`), the hook `0x430E8` and
+  `0x4F980(0x11)`, and it returns. Otherwise the next side;
+- 1: `0x44638`, then the stick;
+- 0, 2 and above 3: the stick directly (`0x447A7 jc`/`0x447BA jnz` send 0 to
+  `0x44833`, unlike `0x43B24`).
+
+The stick code is `0x43B24`'s byte for byte (`0x44833..0x448E0`), followed by
+`0x4418C` and `0x442A0`, and bit 0 runs `0x4434C`. The tail resets the
+countdown on `DS_00105C04` only; there is no `0x43AAC` step.
+
+| function | role | callees |
+|---|---|---|
+| `0x44638` | `0x43464` with string `0x39` always drawn (below) | `0x432EC`, `0x2AE14`, `0x1C500`, `0x2F198`, `0x65624` |
+| `0x4418C` | `0x43EA0` gated on a non-zero entry, with no other-byte test | `0x2BCF4`, `0x2A17C`, `0x2C3FC` |
+| `0x442A0` | `0x43FBC` gated on a non-zero fighter record | `0x2BC30`, `0x2A17C`, `0x1D7B8` |
+| `0x4434C` | the pick toggle over `DS_00108134[side * 4 + k]` | `0x44054`, `0x4408C`, `0x2B150`, `0x432EC`, `0x33C18`, `0x4248C`, `0x2C3FC` |
+| `0x44054` | drop a pick tag | `0x2AD40` |
+| `0x4408C` | add a pick tag | `0x2AE14` |
+
+The details that differ from a plain reading:
+- **`0x2C1C8` has no `ret`.** `mov al,[eax+0xbab58]; and eax,0xff; nop` falls
+  into `0x2C1D4` (Ghidra's own function, whose only xref is `0x27B92`). On a
+  non-zero blink phase `0x2C1D4` jumps back to `0x2C1AD`, the bytes just after
+  `0x2C178`'s `ret` (`cmp eax,0x18; jne; mov eax,[esp+0x14]; mov
+  ebx,[0x105bf8]; call 0x2f388`). No rel32 targets `0x2C1AD`, and Ghidra's
+  only reference to it is that `jnz` at `0x2C1F1`.
+- **`0x2C1D4`'s buffer** is `[esp..esp+0x13]`, and the saved col/row sit at
+  `[esp+0x14]`/`[esp+0x18]`. It strcpys string `0x49`, strcats the image
+  string at `0x809C4` (`"1"`; the only reference to `0x809C4` is the operand at
+  `0x2C21C`, so nothing writes it), then strcats string `0x4B`. ENGLISH.TXT
+  gives `"INSERT "` + `"1"` + `" COIN"`, 13 characters, which fits.
+- **`0x2C088`'s sprite arm** releases string `0x48`'s cells at the position
+  `0x2C1D4` last drew (`[0x105C06]`, `[0x105C07]`, `movzx`/`mov dl` after
+  `xor edx,edx`), not at its caller's col/row.
+- **`0x432EC`/`0x433DC`'s flag arm** marks `DS_00108144[side]` dead but does
+  not zero the slot.
+- **`0x44638` vs `0x43464`.** At `0x4473B`, `jl 0x44741` skips only the `inc
+  edi`, so string `0x39` is drawn at r + 1 whatever its length. `0x43464`
+  skips the draw (`0x4355A jl 0x435A3`).
+- **`0x4408C`'s descriptor** is built at `[esp..esp+0x13]`. It writes the
+  dword +0, the bytes +4/+5 and the words +6, +8, +0xA and +0xC, and the
+  dword +0x10, but never the word +0xE. `0x2AE14` reads +0, +4, +5, +6, +8,
+  +0xA, +0xC and +0x10 (actors.c's `actor_spawn`), so the stale word is not
+  observable.
+- **`0x4434C`'s tail** is `0x43D60`'s tail on `DS_0010816A[side]`, which the
+  `DS_00104B1D == 3` pass never writes before the versus arm. The stage marks
+  it drops use whatever class the byte holds.
+- **`0x43D60`'s audit count** `0x2E934(2, (s8)DS_0010816A[side])` works on
+  the 16-byte descriptors at `0x2D414`. Entry 2 is `0x2D434`, a bucket
+  table of 7. `0x2E180` bumps the byte at `[0x2D46C + 4]` = `0x105EF5` +
+  bucket, with an overflow path through `0x2E0A4`, and `0x2E034` stores it
+  and raises `DS_00105DD8` through `0x2D4EC`. That is the audit/EEPROM layer
+  that spec §7 leaves out (config.h's `0x32A3C` note), so it stays a named
+  gap. No instruction names `0x105EF5..0x105EFB` by displacement. The
+  only dword of `0x105EF5` in either object is that descriptor at `0x2D470`,
+  so the table is reached only through the audit descriptors, never by the
+  character screen.
+
+### 48-S.2 Entrances (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object, a dword scan of both fixed-up objects; the objects dumped through `read_memory`, re-checked against live reads)
+
+| target | rel32 | dwords | Ghidra |
+|---|---|---|---|
+| `0x43B24` | `0x438F3` | none | the same |
+| `0x432A0` | `0x43B85` | none | the same |
+| `0x435AC` | `0x43BA7` | none | the same |
+| `0x43464` | `0x43BB0` | none | the same |
+| `0x43EA0` | `0x43CA1` | none | the same |
+| `0x43FBC` | `0x43CA8` | none | the same |
+| `0x43D60` | `0x43AD3`, `0x43CC1` | none | the same |
+| `0x43AAC` | `0x43D01` | none | the same |
+| `0x432EC` | `0x43493`, `0x4359E`, `0x435E8`, `0x43E8C`, `0x44455`, `0x4466A`, `0x44787` | none | the same 7 |
+| `0x433DC` | `0x43670` | none | the same |
+| `0x43D0C` | `0x43D9D` | none | the same |
+| `0x4248C` | `0x43E58`, `0x444A0` | none | the same |
+| `0x2C088` | `0x27960`, `0x2C16F`, `0x2C2CA`, `0x43316`, `0x43400` | none | the same 5 |
+| `0x2C0F4` | `0x27B7C`, `0x2C1A4` | none | the same |
+| `0x2C178` | `0x28D3B`, `0x4262C`, `0x42637`, `0x42689`, `0x42694`, `0x426EF`, `0x426FA`, `0x432BE`, `0x432CE` | none | the same 9 |
+| `0x2C1C8` | `0x28D4B`, `0x42644`, `0x426A4`, `0x4270A`, `0x432E0` | none | the same 5 |
+| `0x2C1D4` | `0x27B92` (and `0x2C1C8`'s fall-through) | none | `0x27B92` |
+| `0x2C1AD` | none (the `jnz` at `0x2C1F1` is rel8) | none | `0x2C1F1` |
+| `0x2F388` | 22 (`0x2690D` .. `0x4F19E`, `0x2C1BC`) | none | 21: all but `0x30986` |
+| `0x44798` | `0x438CD`, the dead copy's `jbe` at `0x44943` | none | `0x438CD` |
+| `0x44638` | `0x447BE` | none | the same |
+| `0x4418C` | `0x448E8` | none | the same |
+| `0x442A0` | `0x448EF` | none | the same |
+| `0x4434C` | `0x44908` | none | the same |
+| `0x44054` | `0x443B4` | none | the same |
+| `0x4408C` | `0x44403` | none | the same |
+
+So each `0x43xxx`/`0x44xxx` function is reached only from the two passes, and
+the two passes only from `0x438B4` (the dead copy aside, §47-M.1). The
+`0x2Cxxx` prompt helpers and `0x2F388` have callers outside this tree (the
+unported mode handlers `0x27A2C`, `0x2791C`, `0x28CC8`, `0x424E8`, `0x2C2B0`
+and the text/menu code). They are ported whole and exported, so those
+callers can use them later. `0x2AD40` (seven callers) was already ported as
+actors.c's static `release_record`; it is exported as `actor_release` for
+`0x44054`.
+
+**Who writes the command word on this screen.** Every store to
+`DS_001088E0`/`E2` found by displacement decode: `0x246EE`, `0x246F9`
+(a region with no Ghidra function), `0x24C96` (the AI block), `0x3B207`, `0x3B215`, `0x3B23D`,
+`0x3B262`, `0x3B278` (`0x3B134`), `0x472CA`, `0x472FF`, `0x47325` (`0x47208`)
+and `0x4F6BD`/`0x4F6DE` in `0x4F644`, which the port has as
+`input_state_update`, called first in `game_frame`. The AI block needs
+`DS_00104B1B != 0`, and `0x43738`/`0x444C8` clear it. So on the character
+screen the word is the keyboard's (stick bits 4..7, buttons 0 and
+`0x200`/`0x400`/`0x800`).
+
+### 48-S.3 The port
+
+- `fight.c`:
+  - `0x43B24`'s tree: `fight_char_prompt` (`0x432A0`),
+    `fight_char_text_clear` (`0x432EC`), `fight_char_opp_text_clear`
+    (`0x433DC`), `fight_char_text_blink` (`0x43464`),
+    `fight_char_opp_text_blink` (`0x435AC`), `fight_char_portrait`
+    (`0x43EA0`), `fight_char_fighter` (`0x43FBC`), `fight_char_button`
+    (`0x43D0C`), `fight_stage_mark_drop` (`0x4248C`), `fight_char_confirm`
+    (`0x43D60`), `fight_char_countdown` (`0x43AAC`) and
+    `fight_char_select_pass` (`0x43B24`);
+  - `0x44798`'s tree: `fight_char_team_text_blink` (`0x44638`),
+    `fight_char_team_portrait` (`0x4418C`), `fight_char_team_fighter`
+    (`0x442A0`), `fight_char_team_tag_drop` (`0x44054`),
+    `fight_char_team_tag_add` (`0x4408C`), `fight_char_team_pick`
+    (`0x4434C`) and `fight_char_team_pass` (`0x44798`);
+  - `fight_mode_10_step` calls the two passes where its two `PORT:` gap notes
+    were, and all are declared in `fight.h` after `0x438B4`;
+  - `PORT:` notes: the four `0x2C3FC` voices (`0x43FB1`, `0x43E96`,
+    `0x44295`, `0x444B6`; §45-A), the audit count `0x2E934` (`0x43E77`) and
+    `0x4408C`'s unwritten descriptor word.
+- `flow.c`/`flow.h`: `prompt_press_start_clear` (`0x2C088`),
+  `prompt_press_start_blink` (`0x2C0F4`), `prompt_press_start` (`0x2C178`),
+  `prompt_insert_coin_blink` (`0x2C1D4`) and `prompt_insert_coin`
+  (`0x2C1C8`, calling `0x2C1D4` for the fall-through). A `PORT:` note says
+  the port bounds `0x2C1D4`'s copies to its 0x14-byte buffer.
+- `actors.c`/`actors.h`: `text_cells_release_count` (`0x2F388`) and
+  `actor_release` (`0x2AD40`, exporting the existing `release_record`).
+- `0x65624` is the C `strlen` (`repne scasb`), and `0x1C500` is
+  `game_string_get`. `0x1C500` pushes and pops EBX/EDX, and its callee
+  `0x474E4` pushes and pops ECX, ESI, EDI and EBP. So the registers the
+  callers set before it and reuse after it (ECX = mode, EDX = row, EDI/ESI =
+  side) survive.
+
+### 48-S.4 The assertions and mutations
+
+In `test_fight.c`:
+- `check_char_select_pass` (`0x43B24`'s tree). It snapshots
+  `check_char_screen_open`'s set: the data object, both pools, both
+  buffers, the resource table, the aperture and the DAC. It restores the
+  data object and the pools before each group, and everything at the end.
+  `cs_open` builds a real screen with `chs_seed` + `0x43738` and sets the
+  inputs to rest: frame counter 1, no stick, button or credit, text prompts,
+  and `cm_seed_arm`'s hook and mode sentinels. It first checks the strings
+  (`0x37`, `0x39`, `0x236`, `0x48`'s length 14) and the col tables `0xBAB58`
+  (3, `0x18`) and `0xC894C` (3, `0x18`). The groups:
+  - **(a)** join, `DS_00105C04` tail;
+  - **(a2)** INSERT 1 COIN: length 13, col/row, cells compared with a
+    reference draw by sprite id *and* palette, then released by count;
+  - **(a3)** PRESS START and its release, and side 1's col `0x18` and row;
+  - **(a4)** the sprite prompts: x `0x1500`/`0x4000`, y `0x3700`, the kill,
+    and the release at `0x105C06`/`0x105C07`;
+  - **(b)**, **(b2)** `0x43464`'s text, its sprite and the flagged erase;
+  - **(c)** `0x435AC` vs `0x43464` on `DS_00104AB8`;
+  - **(d)** the byte-2 arm for six byte pairs;
+  - **(e)** the stick: 14 moves with the entry, panel, fighter and marker
+    values, no stick, and side 1;
+  - **(f)** `0x43EA0`'s highlight arms;
+  - **(g)** the confirm with five button words, the marks and the count;
+  - **(g2)** the palette clash (8 cases);
+  - **(g3)** the previous class, and side 1's slot byte, class and key;
+  - **(g4)** `0x4248C`'s side-1 key;
+  - **(h)** `0x43AAC`: the draw, the timeout, signedness and the 64-frame
+    gate;
+  - **(i)** `0x2F388`'s centring, wrap and clamp.
+- `check_char_team_pass` (`0x44798`'s tree), with the same snapshot. `ct_open`
+  builds the screen with `0x444C8`. The groups:
+  - **(a)** the versus arm (4 byte/pick cases);
+  - **(b)** `0x44638`'s unconditional string `0x39` (it releases a live
+    record at row `0x1D`), and its sprite form;
+  - **(c)** the stick for bytes 0/1/2/4, 11 moves, the zero-record gates and
+    the marker respawn;
+  - **(d)** `0x4418C`'s cursor-only highlight;
+  - **(e)** the pick, re-pick drop, first free slot, fourth pick (byte 3, the
+    entry zeroed), side 1's tag (`0x3F33`, `0x80998C`, + `0xB00`), the kept
+    tag, and the previous class.
+- `check_mode_10_step`:
+  - **(f)** now covers sub-state 2 only. Its sub-state-0 cases asserted the
+    gap, which is closed;
+  - new **(h)** checks that both copies run their pass (the shared tail),
+    and that only the `DS_00104B1D == 3` copy arms the versus screen on bytes
+    3/3.
+
+**Mutations** (`scratchpad/g12cs/mut.py`, `mut.log`; one single-site edit per
+build, the source restored after each). The final run on the finished tests:
+**all 144 mutations fail the suite.** That is 142 in one run over the
+finished code, plus two mutations re-run separately. C29 (the class stream in
+`0x43FBC`) had matched `0x442A0`'s identical line too, so it was split into
+C29 and D55. D55 first survived, and `check_char_team_pass` (c) gained the
+stream check that kills it. The groups: P1..P16 for the `0x2Cxxx` helpers,
+T1..T4 for `0x2F388`, C1..C54 for `0x43B24`'s tree and the two dispatches,
+and D1..D55 for `0x44798`'s tree. The earlier runs had seven survivors and
+three edits that did not build, and each was fixed:
+- `0x2C1D4`'s mode `0x3000` → `0x1000`: the row comparison now includes the
+  glyph palette, which the mode's `0xF000` bits select;
+- `0x40`'s `< 4` → `<= 4` and `0x80`'s `>= 4` → `> 4`: cursor 4 cases
+  added;
+- the countdown gate `0x3F` → `0x1F`: counter `0x20` added;
+- `0x107813 + side * 0x94` → `+ side`: a side-1 confirm added;
+- `0x4418C`'s zero-entry gate: the panel's `+8` is now checked;
+- `0x442A0`'s marker spawn: a marker respawn check added;
+- the edits that did not build: two deletions that left an empty `if`
+  became `;` (C14, D47), and D40 named an undefined symbol (now
+  `DS_00108134 + 1u`).
+
+### 48-S.5 Measured, oracle risk, remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, with 0
+  compiler warnings. As the brief requires, the branch ran neither `make
+  verify` nor the drivers.
+- **The oracle risk, probed rather than assumed.** A throwaway `stderr`
+  build (never committed) logged, over `prageport --check 8000`, each mode
+  word value the first time `game_frame` saw it, and every frame with a
+  non-zero `DS_001088E4` or command word. The only mode was 3, from frame 1.
+  `DS_001088E4` was 0 on every frame. The command words were non-zero on
+  2076 frames (1959..7486), all in mode 3: the demo fights' AI block. So no
+  covered path reaches mode `0x10`, and neither pass runs there.
+- **Frames.** `prageport --check 8000` was run from two scratch directories,
+  with the base binary (`9037cb3`) and with this branch's (`57061ab`),
+  both built with the same CMake configuration. `diff -rq` finds all 24000
+  `frame_*.ppm`/`.pal`/`.idx` files byte-identical. No oracle is expected to
+  move.
+- **Remaining named gaps:**
+  - the voices `0x2C3FC` at `0x43FB1`, `0x43E96`, `0x44295` and `0x444B6`
+    (§45-A);
+  - `0x2E934` at `0x43E77`, the character-pick audit count (spec §7, with
+    `0x2E180`, `0x2E034`, `0x2E0A4` and `0x2D4EC`);
+  - past the screen: the versus hook `0x430E8` (ported, §46-B) and mode
+    `0x11` → `0x17` → the hook `0x259CC` (ported, §46-F), which arms mode
+    `0x1A` returning to 5 (or `0x30` with `DS_00104B1D == 3`). Mode 5
+    (`0x25C88`) and `0x30` are named gaps in `game_frame`'s switch (§47-B),
+    so a real match does not start yet. That is the next project;
+  - `0x2F388`'s and the prompt helpers' other callers (`0x27A2C`,
+    `0x2791C`, `0x28CC8`, `0x424E8`, `0x2C2B0` and the text/menu code) stay
+    unported. The helpers themselves are ported and exported for them.
