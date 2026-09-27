@@ -11940,3 +11940,7 @@ s3545.png`), which no port frame shows.
 - The front-end record (§3.3, §7.1, §7.2, §8.5) and the demo-fight record (§10.9)
   carry "superseded by §46-A" notes where they call `0x2DBC4`/`0x2DB58` a
   paged resource reader.
+
+## 46-F. The seven remaining `DS_00104AE4` values `0x259CC`, `0x10E80`, `0x24B54`, `0x27134`, `0x4142C`, `0x25AE8` and `0x26978` (named-gap batch 6, branch `gap6-hooks2`)
+
+(In progress.)
