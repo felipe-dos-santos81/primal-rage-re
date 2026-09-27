@@ -7430,8 +7430,8 @@ to its stance.
 its reaction stream `0xD24F0` on the `0xD500` target `0x3C32C`, which was not
 registered. It is now ported. The live-RAM poll matches the port through
 f = 4308, 2950..3098 are explained, and N = 3099 (`fcce893`). `0x3A6D4`,
-which §40.5's probe missed on the diverged path, is no longer reached and is
-not ported.
+which §40.5's probe missed on the diverged path, is no longer reached (ported and
+unit-tested since, §41-A).
 
 ### 41.1 The raw (Ghidra `read_memory` + capstone, fixups applied)
 
@@ -7538,3 +7538,115 @@ and 3343 before the grab was ported. On the diverged path it later misses
 (`decompile_function 0x15350` finds no function), in the shape of `0x14E44`
 (§40), and register it as the reaction-`0x25` callback. Then re-run the poll
 comparison past f = 4309.
+
+## 41-A. The `0x3A79C` family's pose handler `0x3A6D4` (named-gap batch, branch `gap-3a6d4`)
+
+**Result in one line.** `0x3A6D4`, the per-frame handler the pose setter
+`0x3A79C` stores in `slot+0x10`, is ported and registered. It is §2.3's
+sibling of `0x3A43C` with its own stream table, glob pair and final `+0x90`
+store, and it calls only ported functions. §40.5's probe missed it from loop
+3295 on the diverged path; after §41's `0x3C32C` no oracle window reaches it,
+so it is ported byte-faithfully and unit-tested only.
+
+### 41-A.1 The raw (Ghidra `read_memory` + capstone, fixups applied)
+
+Ghidra has no function at `0x3A6D4` (`disassemble_function` fails). The bytes
+`0x3A6D4..0x3A798` (197 B) decode cleanly up to the `ret` at `0x3A798`;
+`0x3A799` is the `lea eax,[eax]` padding and `0x3A79C` is the setter. The
+body is `0x3A43C`'s instruction for instruction, except for four operands:
+
+| site | `0x3A43C` | `0x3A6D4` |
+|---|---|---|
+| the stream table (`mov edx,[eax*4 + T]`) | `0x3A47E`: `0xC8FE0` | `0x3A716`: **`0xC9008`** |
+| A (`mov ebx,[edx*2 + a-2]; sar ebx,16`) | `0x3A4AC`: `0x107D12` = word `0x107D14` | `0x3A744`: `0x107D06` = word **`0x107D08`** |
+| B (`mov edx,[edx*2 + b-2]; sar edx,16`) | `0x3A4B3`: `0x107D0E` = word `0x107D10` | `0x3A74B`: `0x107D02` = word **`0x107D04`** |
+| the jump table (`jmp cs:[eax*4 + J]`) | `0x3A4E0`: `0x3A42C` | `0x3A778`: `0x3A6C4` |
+| the final `+0x90` store | `0x3A4F6`: 1 | `0x3A78E`: **3** |
+
+- `sub esp,0x18; mov edx,ebx; mov eax,esp; call 0x33A10` (the ctx swap on
+  EBX = side; the incoming EAX = slot is overwritten unread).
+- `+0x58` (`0x3A6E4`): 0 stores 1 (`0x3A6FD`) and returns; above 1 returns
+  (`0x3A6EB`/`0x3A6ED`); 1 runs the body.
+- `push 3.0f; call 0x2BC30(ctx[5], 0xC9008[slot+0x7A], 3.0)`. `0x2BC30` ends
+  `ret 4`, so from `0x3A726` `[esp+4]` = ctx[1] (the side) and
+  `[esp+0x14]` = ctx[5] (rec_self), as §9 found for `0x3A43C`.
+- `0x188AC(ctx[1], rec_self+0x18, 0)` (`0x3A726..0x3A733`), `+0x58` = 2
+  (`0x3A73C`).
+- B = (s16) word `0x107D04 + side*2`, A = (s16) word `0x107D08 + side*2`.
+  When B is neither 0 (`0x3A75C`) nor 5 (`0x3A761`) and `(u8)(+0x90 - 1)`
+  is above 3 (`0x3A771`, `ja`), `0x188DC(ctx[1], A)` (`0x3A785`). The four
+  dwords at `0x3A6C4` all read `0x3A78A` (`read_memory`), so `+0x90` in
+  1..4 skips the snap.
+- `+0x90` = 3 (`0x3A78E`).
+- These are the globs the setter writes: `0x3A7FB` stores the slot's `+0x2C`
+  word at `0x107D08 + side*2` (A) and `0x3A803` stores BX at
+  `0x107D04 + side*2` (B), matching §2.3's table.
+- `0xC9008` (`read_memory`, 10 dwords, up to `0x3A588`'s table at
+  `0xC9030`): `0xE7358`, `0xE3FD6`, `0xED0BE`, `0xD26A6`, `0xEAC02`,
+  `0xD42C6`, `0xE0BE8`, then `0xED0BE`, `0xD26A6`, `0xEAC02` again. Every
+  stream opens with two sprite words, then `D100 00039A34` (the ported and
+  registered hold scaler, §2.4) and later `D500 00036870` (the ported and
+  registered `0x36870`). The raptor's (char 3) is `0xD26A6`:
+  `1886 1887 D100 9A34 0003 0008 1888 .. 188F D500 6870 0003 ...`.
+
+**Callees.** `0x33A10` (`fighter_ctx_swap`), `0x2BC30`
+(`actors_anim_begin`), `0x188AC` (`hit_anchor_set`), `0x188DC`
+(`hit_anchor_x`), and through the streams `0x39A34`/`0x36870`: all ported
+and registered. **No callee is new.**
+
+### 41-A.2 Entrances
+
+- `0x3A6D4`: one dword in the whole image, in the code object at `0x3A7D5`
+  (the setter's `mov dword [ecx+0x10], 0x3A6D4` at `0x3A7D2`). None in the
+  data object; no `call`/`jmp`/`jcc` rel32 to it (scan of both objects,
+  `scratchpad/scan.py`). `get_xrefs_to 0x3A6D4`: one DATA reference, from
+  `0x3A7D2`.
+- The setter `0x3A79C`: one rel32 call, `0x3AD6B` in `0x3AAFC` (the `ecx & 8`
+  arm, port `fighter_reaction_apply`); `get_xrefs_to` agrees.
+- `0x3A6C4` (the jump table): one dword, at `0x3A77C`. `0xC9008`: one dword,
+  at `0x3A719`; `get_xrefs_to` gives the same one DATA reference (`0x3A716`).
+- So the handler runs only through `0x3531C` case 10's `slot+0x10` call
+  (`0x354E2`, EAX = slot, EBX = side). It is registered in `actors_init`
+  next to `0x3A43C`, and the case-10 resolve now finds it.
+
+### 41-A.3 The assertions and mutations
+
+`check_pose_handler_3a6d4` (`test_fight.c`, after `check_anim_hold_scaler`
+so that `actors_init` has run) seeds character 3 on both slots, sentinels on
+both records, the 0x3A79C pair zeroed and `0x3A43C`'s pair armed as a trap
+(B = 3, A = `0x4321`). It saves and restores the slots, `0x107D00..0x107D2F`,
+`0x100AB0..0x100AFF`, `DS_001078F6`, `DS_001014EC` and every global
+`pose_chain_setup` writes. A temporary whole-data-object diff around the
+check (reverted) was empty; dropping the slot restore made it report 16
+bytes, so the diff could see a leak.
+- Phase 0 sets `+0x58` = 1 and leaves `+0x90` and the stream; `+0x58` = 2
+  returns untouched.
+- Phase 1, B = 0: the stream `0xD26A6` (char 3; char 0 gives `0xE7358` and
+  sprite `0x11D1`), the 3.0 hold, sprite `0x1886`, `+0x58` = 2, `+0x90` = 3,
+  `rec+0x1C` = 0, no snap, the other record untouched.
+- The snap: B = 3, A = `0x4321` gives `slot+0x2C` = A and `rec+0x18` =
+  A - `DS_00100AB0[0]`; A = `0x8001` is sign-extended; `+0x90` = 1 and 4 skip
+  it, 5 and 0 take it; B = 5 closes it; the other side's B/A do not open it.
+- The side-1 mirror (EBX = 1): slot 1, record 1, pset 1, B[1]/A[1] and
+  `DS_00100AB0[8]`; slot 0 untouched.
+- The registration (`fn_resolve(0x3A6D4)` is `fighter_pose_3a6d4`) and the
+  `0x3531C` case-10 call through `slot+0x10` = `0x3A6D4`.
+
+**Mutations** (`scratchpad/mut.py`, `mut.log`): 19 single-site edits of the
+new code: the phase-0 store, the phase-above-1 return, the table address,
+the char index, the hold, the anchor y, the `+0x58` = 2 store, the `+0x90`
+= 3 store, each glob address, each B gate, both edges of the jump-table
+range, A's sign extension, each side index, the ctx-swap side and the
+registration. All 19 fail (1..8 assertions each). The sources were restored
+and checked with `cmp`.
+
+### 41-A.4 Measured, and the gaps
+
+- On the batch base (`38c4efc`, before §41's `0x3C32C`) the port reaches
+  `0x3A6D4` from loop 3295 only on the diverged path after N = 2950's frame
+  (loop 3293), so the first unexplained attract2 frame cannot move earlier;
+  the counts past it may change. After §41 the 3840-loop probe does not
+  reach it, so it should change no oracle. The oracles were not run here
+  (the batch controller runs the ladder after merging).
+- No gap remains inside `0x3A6D4`. Its siblings `0x3A588` (the `0x3A650`
+  setter) and `0x3A820` (the `0x3A8E8` setter) are separate batch items.
