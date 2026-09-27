@@ -378,7 +378,11 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   is reachable from the ported states 3/4/5. They are **deferred and unowned by
   this plan** — no dispatch path is shipped, and `port/tests/test_game.c` pins
   that no handler is registered and that state 5 neither arms `DS_00104AE4` nor
-  leaves mode 3. `0x41578`'s register-level comparison against `0x88874B0` is
+  leaves mode 3. `DS_00104AE4` has other targets too. The character screen's entry
+  `0x43738` is stored there by `0x28D68`/`0x28D80`, which then enter mode `0x1A`
+  (`0x4F980`). It is ported and registered (demo-pose record §42-F), but the port
+  has no `call [0x104AE4]` dispatch yet, so it runs only in unit tests.
+  `0x41578`'s register-level comparison against `0x88874B0` is
   **dead in the port's flat model**: `0x88874B0` is above `MEM_SIZE`
   (`0x4000000`) and outside both LE objects, so that half of the predicate can
   never match. Because the four `0x41578` sites are themselves unreachable, no

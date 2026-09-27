@@ -8254,3 +8254,271 @@ script.
 - Remaining named gaps: the voice `0x2C3FC(0xB5)` in `0x22B28` (spec §7); the
   unported siblings `0x22CE4`, `0x22D8C` and `0x2365C` and the other
   `0x370F0` callers `0x48AAC`/`0x48D94`.
+
+## 42-F. The character screen's entries `0x43738`/`0x444C8` and their callees (named-gap batch 2, branch `gap2-charselect`)
+
+**Result in one line.** The two callers of `0x43818` (§41-D), `0x43738` and
+`0x444C8`, are ported as `fight_char_screen_open` and
+`fight_char_screen_open_both`, together with every callee that was not yet
+ported: `0x43964` (`fight_char_entry_spawn`), `0x43A08`
+(`fight_char_select_actor`), `0x1D810` (`fight_select_marker_release`),
+`0x1D7B8` (`fight_select_marker_spawn`), `0x2F528` (`text_number_draw_font2`)
+and the `eax = -1` arm of `0x2C8F0` (`attract_config_volumes_unscaled`).
+`0x43738` is stored in data as the `DS_00104AE4` frame hook, so it is
+registered. No driver reaches either entry, so they are unit-tested only. The
+port covers about 880 raw bytes: `0xDE` + `0x84` + `0xA4` + `0xA2` + `0x27` +
+`0x57` + `0x48`, plus the `0x2C8F8..0x2C934` arm.
+
+### 42-F.1 The raw (Ghidra `disassemble_function`, `read_memory` + capstone, fixups applied)
+
+**`0x43738`** (`0x43738..0x43815`) runs these steps in order:
+- `push ebx/ecx/edx/esi`;
+- `0x2C3FC(0x30)` (the voice, `0x43741`);
+- `0x13DF0` (`0x43746`);
+- `0x2C8F0(-1)` (`0x43750`);
+- `xor ah,ah`, then byte `[0x104B1B]` = byte `[0x104B24]` = 0
+  (`0x43757`/`0x4375D`);
+- `xor eax,eax; xor edx,edx; call 0x1D810`, then `eax = 1; xor ebx,ebx;
+  call 0x1D810` (`0x43767`/`0x43773`);
+- `call 0x43818` (`0x43778`).
+
+The loop `0x4377D..0x437BB` runs with EDX = side:
+- `xor ecx,ecx; lea eax,[edx+1]; mov cl,[0x104B1F]; test ecx,eax`. The mask
+  is side + 1 (1, then 2), not `1 << side`. Both give the same two values;
+  see the equivalent mutation below.
+- Bit set: `mov ch,1; mov [edx+0x108170],ch`, then `0x43964(side)` and
+  `0x43A08(side)`. Bit clear: `xor cl,cl; mov [edx+0x108170],cl`.
+- `add ebx,4; xor ecx,ecx; inc edx; mov [ebx+0x108140],ecx`. EBX is 0 from
+  `0x43771`, because `0x1D810` and `0x43818` push and pop EBX and EDX, and
+  `0x43964`/`0x43A08` push EBX..EDI. So the stores hit `0x108144` and
+  `0x108148`.
+
+After the loop:
+- word `[0x10816C]` = 5 if byte `[0x108173]` != 0, else `0xF`
+  (`0x437C6`/`0x437D1`);
+- `push 0x4000; ecx = 2; edx = 1; eax = 0x13; ebx = [0x10816A] sar 16;
+  push 0; esi = 0x29D60; call 0x2F528`. That draws col `0x13`, row 1, the
+  signed word at `0x10816C`, width 2, pad 0 and mode `0x4000`. The pad is
+  the last push, so the callee reads it at `[esp+0x28]`;
+- `xor ah,ah`, `[0x104AE4]` = `0x29D60` (a bare `ret`), byte `[0x108174]` =
+  0.
+
+**`0x444C8`** (`0x444C8..0x4454B`) runs the same prologue up to `0x44508`.
+The loop `0x4450D..0x44532` then fills both sides with no test:
+`[edx+0x108170]` = 1, `0x43964`, `add ebx,4`, `0x43A08`, `[ebx+0x108140]`
+= 0. After the loop, byte `[0x108174]` = 0 and `[0x104AE4]` = `0x29D60`.
+There is no countdown.
+
+**`0x43964`** takes the side in EAX.
+- `esi = [eax+0x108163] sar 24` is the signed byte at `0x108166 + side`,
+  the character. `0x4454C` and the block before `0x4372E` write that byte.
+- It spawns `0xC8870[side]` into `[side*4+0x108154]`, with a2 = word
+  `0xC8898[ch]`, a3 = `0xFF`, a4 = word `0xC88A6[ch]` (both words
+  zero-extended) and a5 = 0. The two descriptors are `0xC880C`/`0xC8820`:
+  ids `0x333`/`0x335`, flags `0x2800`, palettes `0x98EC50C`/`0x98EC514`.
+- It spawns `0xC8878[side]` (`0xC8834`/`0xC8848`) into
+  `[side*4+0x10815C]`, with a2 = a4 = 0 and a3 = `0xFE`. That record then
+  gets `0x2BCF4(rec, [ch*4+0xC88DC])` and `0x2A17C(rec, word 0xC88F8[ch],
+  [ch*4+0xC8908])`.
+
+**`0x43A08`** takes the side in EAX. The character comes from the same byte.
+- The class is `cl = [ch+0xC8882]`, then `movsx ebp,cl`.
+- The spawn takes a5 = 0 for side 1 and `0x4000` for side 0 (masked with
+  `0xFFFF`, then pushed), a2 = word `0xC88B4[side]`, a4 = word
+  `0xC88B8[side]`, a3 = `0xFF` and desc = `[side*4 + class*8 + 0xBB938]`.
+- The record goes into `[side*4+0x10813C]`, and its `+0x4D` = `0x1E`.
+- Then `0x1D7B8(side, class)` with EBX = `0x1800`, `or byte
+  [[side*4+0x10814C]+0x29],8` and `0x2BCF4([side*4+0x10814C], 0x32B)`.
+
+**`0x1D810`** loads `ebx = [eax*4+0x1028E0]`. If that is non-zero, it runs
+`xor ecx,ecx; 0x2B150(ebx)`, then `[edx+0x1028E0] = ecx`. `0x2B150` pushes
+and pops EBX, ECX and EDX, so the store writes 0.
+
+**`0x1D7B8`** does the same release, with EBP = 0 as the stored value.
+Then it spawns:
+- `push 0` (a5);
+- `eax = [ecx*4+0xA78B0]`, where ECX holds the class copied from EDX;
+- `ecx = 0xFD` (a3);
+- EDX = `0x4200` for side 1, `0x200` for side 0 (a2);
+- EBX is the caller's y: `0x1D7B8` never writes it.
+
+The record goes into `[esi*4+0x1028E0]`.
+
+**`0x2F528`** is `0x2F4D0` (`text_number_draw`) with `or ebp,2` on the
+mode. The buffer is `0x14` bytes at ESP. The cursor is saved at
+`[esp+0x14]` and restored before the `ret 8`.
+
+**`0x2C8F0` with `eax = -1`** (`0x2C8F8..0x2C934`):
+- `0x2D974(0x35)`: -1 gives 8, else `sar eax,1`; then `0x1CAB8`.
+- `0x2D974(0x37)`: -1 gives `0x10`, else `sar 1`; then `0x1CED4`.
+- `0x1CAB8`/`0x1CED4` store into `0xA2CB8`/`0xA2CB4`, then push the value
+  to AIL.
+- The returned EAX is dead at both call sites, where `xor ah,ah` and byte
+  stores follow.
+
+**The tables** (data object):
+
+| table | contents |
+|---|---|
+| `0xC8882` classes | `0,2,3,1,6,4,5` |
+| `0xC8898` x | `0x1000,0x1C80,0x2900,0x3580,0x1640,0x22C0,0x2F40` |
+| `0xC88A6` y | `0x540` for characters 0..3, `0xEC0` for 4..6 |
+| `0xC88B4` side x | `0x1500,0x3F00` |
+| `0xC88B8` side y | `0x3200` for both sides |
+| `0xC88DC` sprite ids | `0x32C,0x32E,0x32F,0x32D,0x332,0x330,0x331` |
+| `0xC88F8` pset words | `0x1C,0x20,0x14,0x18,0x24,0x28,0x2C` |
+| `0xC8908` palettes | `0x98ECC8C,0x98ECD8C,0x98EC10C,0x98EC18C,0x98EC20C,0x98ECD0C,0x98ECC0C` |
+| `0xBB938` side actors | 14 descriptors `0xBAEF8..0xBAFFC`: flags `0x2200`; desc[1] `0x300` for side 0, `0x40300` for side 1 |
+| `0xA78B0` markers | `0xA7824..0xA789C`: ids `0x4030,0x402D,0x4031,0x4032,0x402C,0x402F,0x402E`, flags `0x2A00` |
+
+All the descriptors are type 0.
+
+### 42-F.2 Entrances (`get_xrefs_to`, rel32 scan of the code object, dword scan of both objects)
+
+**`0x43738`** has one direct call and two data stores:
+- a `call` at `0x4372E`. It sits in a block Ghidra has no function for,
+  after the cursor setup at `0x43691..0x43724`.
+- the dwords `0x28D6A`/`0x28D87`. `0x28D68` and `0x28D80` store the address
+  into `DS_00104AE4`, then call `0x4F980(0x10)`.
+
+The hook then runs through the mode handlers:
+- `0x4F980` sets `DS_00104AFA` = `0x10` and the mode `DS_00104B00` =
+  `0x1A`.
+- `0x4F9A0` (called at `0x25403`) runs `call [0x104AE4]` once `0x4F9E4`
+  reports done, then sets mode `0x1B`.
+- `0x4F9C8` (mode `0x1B`) calls the hook again, which is now `0x29D60`, and
+  restores the mode from `DS_00104AFA`.
+
+Two immediates load the setters' addresses:
+- `0x28D68` is loaded into EBX just before a call to `0x42FE0` (dwords
+  `0x42CF4`, `0x42D35`, `0x42D7D`, `0x42FB7`).
+- `0x28D80` is loaded into ESI before `call 0x2DAE4` (`0x28E4E`).
+
+The other entrances:
+
+| target | rel32 calls | dwords |
+|---|---|---|
+| `0x444C8` | `0x4462B` only (in `0x4454C`, itself called only at `0x43688`) | none |
+| `0x43964` | `0x43796`, `0x43B59` (in `0x43B24`), `0x44517` | none |
+| `0x43A08` | `0x4379D`, `0x43B60`, `0x44521` | none |
+| `0x1D810` | `0x25C64` (in `0x25C1C`), `0x43767`, `0x43773`, `0x444F7`, `0x44503` | none |
+| `0x1D7B8` | `0x43A84`, `0x44035` (in `0x43FBC`), `0x4432D` | none |
+| `0x2F528` | `0x437FE`, `0x43B18`, `0x4C418`, `0x4C45D`, `0x4F422`, `0x4F5BC`, `0x4F610` | none |
+| `0x2C8F0` | `0x110B0` (the ported -2 arm), `0x20C2B` (`game_init`, -1), `0x2FA2D`, `0x2FA37`, `0x308C1`, `0x43750`, `0x444E0` | none |
+| `0x29D60` | 15 calls | the immediates `0x437FA`/`0x44537` |
+
+### 42-F.3 The port
+
+- `fight.c`: the four `0x43xxx` functions and the two `0x1Dxxx` ones, after
+  `fight_char_screen_setup`.
+  - The hook store writes the raw's value `0x29D60`, as `fighter_14814`
+    stores its callbacks. Nothing dispatches `DS_00104AE4` yet.
+  - `0x2C3FC(0x30)` is a `PORT:` voice note (spec §7).
+  - `0x43A08` writes `+0x4D` and `0x10814C[side]+0x29` with no null test, as
+    the raw does.
+- `actors.c`: `text_number_draw_font2` (`0x2F528`) after
+  `text_number_draw`, and `fn_register(0x43738, fight_char_screen_open)` in
+  `actors_init`.
+- `attract.c`: `attract_config_volumes_unscaled`, next to the -2 arm.
+
+### 42-F.4 The assertions and mutations
+
+`check_char_screen_open` (`test_fight.c`, after `check_char_screen_setup`)
+saves and restores the data object, both pools, both offscreen buffers, the
+resource table, the DAC and the aperture. Each run starts from that snapshot.
+
+`chs_seed` seeds:
+- a sentinel in every global the entries write;
+- live records in both marker slots;
+- `DS_0009AF3C/3D` = 1/5, the two volumes, the text cursor and the two
+  countdown cells;
+- config fields `0x2A`/`0x35`/`0x37` = 0/`0xA1`/`0x41`.
+
+The runs:
+- **(a)** `0x43738` with `DS_00104B1F` = 2, characters 3/6 and
+  `DS_00108173` = 1. Only side 1 is filled:
+  - side 0's four pointers keep `0xDEADBEEF`, its marker slot is 0, and its
+    `0x10814C` record keeps `0x32A`;
+  - the countdown is 5, drawn "05": `0x3FA0` at col `0x13`, nothing at
+    `0x14` and `0x3FA5` at `0x15`, because the `0xBD048` digits are 16
+    wide. The palette is `0x8099AC`;
+  - 9 records are active.
+- **(b)** `0x43738` with `DS_00104B1F` = `0xFD` and `DS_00108173` = 0. Only
+  side 0 is filled. The countdown is `0xF`, drawn "15" (`0x3FA1`,
+  `0x3FA5`), and 9 records are active.
+- **(c)** `0x444C8` with `DS_00104B1F` = 0 and characters 5/0. Both sides
+  are filled. The countdown word keeps `0x7777`, its cells are 0, and 11
+  records are active.
+- **(d)** the callees alone:
+  - `0x1D810` on an empty slot and on a live one (the dead bit is set and
+    the slot is zeroed);
+  - `0x43A08`'s `+0x29 |= 8` on a cleared bit, its side-1 class-3 actor
+    (palette `0x98EC10C`) and its marker `0x4032`.
+
+`chs_check_side` checks each filled side:
+- the four records at their exact addresses, in spawn order;
+- each record's `+8`, `+0x18`, `+0x1C` and `+0x49`;
+- the panel's pset id, pset word and palette;
+- the side actor's `+0x4D`, `+0x28` bit `0x4000`, `+0x2E` (the side),
+  `+0x2C` (the class) and palette;
+- the marker's id and position;
+- `0x10814C[side]+8` = `0x32B`.
+
+`chs_check_common` checks:
+- the prologue's byte stores, the effect lock and count, and the volumes
+  `0x50`/`0x20`;
+- the hook `0x29D60`, `0x108174`, `0x108144`/`0x108148` and the restored
+  cursor;
+- no RNG draw;
+- `0x43818`'s three records not dead, each with palette `0x98EC71C`.
+
+Two further checks: `fn_resolve(0x43738)` returns the port, and
+`test_game.c` checks the -1 arm directly (scale 0, `0xA1` -> `0x50`, `0x41`
+-> `0x20`).
+
+**Mutations** (`scratchpad/cs/mut.py`, logs `mut.log`/`mut2.log`): 60
+single-site edits. They cover each index, constant and table, each dropped
+store or call, the call order, the loop bound and the registration. 57 fail
+1..60 assertions. Three survive, and all three are equivalent:
+- `O1` replaces the mask `side + 1` with `1 << side`. The two are equal for
+  sides 0 and 1.
+- `O8`/`B7` drop the direct `0x13DF0` call in either entry. `0x43818`'s
+  `0x2BAF4` calls `0x13DF0` again (`0x2BB2B`) before anything reads the
+  effect state. It also rebuilds the palette table and the render list that
+  the `0x1D810` calls in between touch.
+
+In the first sweep, dropping either `0x444C8` release also survived (`R4`,
+`B8`). The pool rebuild re-allocates the stale slot's record, and `0x1D7B8`
+would then kill that live record. The check that `0x43818`'s three records
+stay alive with their palette was added for this. Those two mutations, and
+the new `R5` and `O15`, now fail.
+
+### 42-F.5 Oracles and remaining gaps
+
+No driver reaches either entry. The mode `0x1A` hook dispatch (`0x4F9A0`,
+`0x4F9C8`) and every caller are `0x24C5C`-mode code the port does not run:
+`DS_00104B00` stays 3 on the ported path. `0x43738` appears as a dword only
+in the code object, so no stream walk resolves it. No oracle is expected to
+move.
+
+The named gaps are all mode code:
+- the hook installers `0x28D68`/`0x28D80`, `0x4F980`, the mode
+  `0x1A`/`0x1B` handlers `0x4F9A0`/`0x4F9C8` (with `0x4F9E4`/`0x4FA88`),
+  and the code at `0x42CF3..0x42FB7` and `0x28E4E` that loads the setters;
+- the entries' callers. One is the block ending at `0x4372E`, which has no
+  Ghidra function. The other is `0x4454C`, which is small and
+  self-contained, but its only caller `0x43688` is in that same unported
+  block;
+- the select screen's per-frame code, and the remaining call sites of the
+  callees ported here:
+  - `0x43B24`, which calls `0x43964`, `0x43A08` and `0x2F528` again;
+  - `0x43FBC` and the `0x4432D` site, which call `0x1D7B8`;
+  - `0x25C1C`, which calls `0x1D810`;
+  - the other `0x2F528` callers `0x4C418`, `0x4C45D`, `0x4F422`, `0x4F5BC`
+    and `0x4F610`;
+- `game_init` still does not call `0x2C8F0(-1)` at `0x20C2B`. The port's
+  `flow.c` sets its own startup SFX volume;
+- the -1 sentinels in `0x2C8F0` are transcribed but untested. `0x2D974`
+  cannot return -1 for these fields: the descriptor dwords at `0x2D3D4`/
+  `0x2D3DC` (`0xE0C0`/`0x62C0`) give widths of 4 and 2 nibbles;
+- `0x2C3FC(0x30)`, the voice (spec §7).
