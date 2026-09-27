@@ -7606,20 +7606,89 @@ That is 2 functions, `0x4D` + `0x9A` raw bytes, and no new registration
 
 ### 41-D.5 Oracles and remaining gaps
 
-- **Oracles.** No driver reaches `0x43818`. `0x28E98` now runs in both
-  demos' state 6.
-  - Until now the port's `0x104888` list was zero, so the port refused any
-    type-`0x0A`/`0x19` spawn: the record died with no RNG draw.
-  - The raw accepts such a spawn and draws twice (`rng(0x20)`/`rng(0x80)`,
-    or `rng(0x80)` twice).
-  - So if a driver window spawns one, the port's RNG stream and pixels now
-    change there, towards the raw. §38.2 recorded no such spawn in the
-    measured windows.
-  - The drivers were not run here (batch rules), so the controller's ladder
-    decides. No N was moved.
-- **Named gaps.**
-  - `0x2910C` (process entry 7, the `0x104880` walk) is unregistered.
-  - `0x20DF4`'s `0x29B70`, `0x2C390`, `0x2C074` and its stores stay as
-    §38.2 has them.
-  - `0x43738`, `0x444C8`, `0x43964`, `0x43A08` and the `0x104AE4` hook
-    chain (`0x28D68`, `0x28D80`) are unported mode code.
+No driver reaches `0x43818`. `0x28E98` now runs in both demos' state 6.
+Until now the port's `0x104888` list was zero, so it refused every
+type-`0x0A`/`0x19` spawn: the record died with no RNG draw. After a state 6
+the raw accepts such a spawn and draws twice (`rng(0x20)`/`rng(0x80)`, or
+`rng(0x80)` twice). Before its first state 6 the raw refuses as well
+(review: `0x28F64` on the zero list returns -1). §38.2's "none is spawned in
+the measured windows" cites no evidence, so this section does not rely on
+it. The evidence is below.
+
+**Which paths spawn these types** (dword and rel32 scans, fixups applied).
+The type table is `{desc; cb1; cb2}` at `0xBB9D8`. Entry `0x0A`'s
+descriptor is `0xBB0C4` (dword at `0xBBA50`; its byte 4 is `0x0A`), and
+entry `0x19`'s is `0xA89AC` (`0xBBB04`; byte 4 `0x19`).
+- **Type `0x19`.** `0xA89AC` is referenced only by the type table and by
+  two code immediates: `0x28F54` in `0x28F08`, and `0x4912D` in `0x48F98`
+  (reached through `0x490A1 jle 0x490F9`). `0x48F98` and `0x28F08` are
+  process-table entries 1 and 10 (the dwords at `0xA8648`/`0xA866C`, their
+  only references). Neither is registered in the port, so the port cannot
+  spawn type `0x19`.
+- **The scene tables.** The crowd table's `e+0xA` indices over all eight
+  scenes (`0xBBD98`/`0xBBDA8`) are `7, 0xB..0xD, 0xF, 0x11, 0x12, 0x14,
+  0x16..0x18, 0x1B..0x1F, 0x29, 0x2A, 0x2E, 0x2F`. Their descriptors' type
+  bytes are the same values. The `0xC82CC` prop descriptors are all type 0.
+  Neither uses `0x0A` or `0x19`.
+- **Type `0x0A`.** `0xBB0C4` is referenced by the type table and three
+  times by the stream at `0xE8CCC`: `CC00 000BB0C4 0000 0000` at
+  `0xE8CDA`/`0xE8CE6`/`0xE8CF2` (dwords `0xE8CDC`/`0xE8CE8`/`0xE8CF4`).
+  The reaction table at `0xA3528` references that stream 32 times
+  (`0xA3544..0xA4F5C`). So a fighter reaction in a demo fight can spawn a
+  type-`0x0A` actor.
+
+**Measured** (a temporary `fprintf` in the two cb1s and the teardown
+`0x290D0`, reverted). The front-end driver was dumped to a scratch directory,
+not `/tmp/pr_frontend_dump`, with no other test or verify process running.
+- **This branch** (base `38c4efc`, `FE_LOOPS` 3300): two type-`0x0A` cb1
+  calls in state 7 of the second demo, at f = 4182 and f = 4185. Both
+  were accepted (heads `0x104780`, then `0x104790`), and `0x290D0` never
+  ran. f = 4182 is after 2950's f = 4180, on the port's diverged path
+  (§40.5). The oracles are unchanged from §40.5: front-end 2 allowed, no
+  other unexplained frame; the demo-fight window is empty; attract2
+  684/369/7/666/6 with first unexplained frame 2950.
+- **`main` at `48611ea`** (`FE_LOOPS` 3500, with §41's `0x3C32C`, `0x3A6D4`
+  and the throw): no type-`0x0A`/`0x19` cb1 call in the whole driver run,
+  so the raptor's return to its stance removed that path. With this
+  branch's code commit cherry-picked onto it (a throwaway branch, deleted),
+  the driver still makes no such call. The dump (top level and `cycle2/`)
+  is byte-identical to `main`'s, and the oracles are unchanged: front-end
+  2 allowed; demo-fight fully explained; attract2 771/430/8/517/6 with first
+  unexplained frame 3099 = N.
+
+So `0x28E98` moves no oracle at the current pins. A later window that
+reaches the `0xE8CCC` reaction will now spawn the type-`0x0A` actors, as
+the raw does.
+
+**The unregistered `0x2910C` limits that.** `0x2910C` (process entry 7,
+`DS_000A8644[7]`, which the cb1s enable with `DS_00104AE8` bit 7) walks
+the in-use list:
+- For each node whose actor has `rec+0x1C` + the signed word `rec+0x36`
+  < 0 (landed; `mov edx,[eax+0x34]; sar edx,16; add edx,[eax+0x1C]`,
+  `0x29126..0x29135`), it zeroes `+0x1C`, `+0x34`, `+0x36` and `+0x44`, sets
+  the type `+0x48` = 0 and `+0x59` = `0xFE`, starts stream `0xE8D50` at
+  3.0, and returns the node to `0x104888` (`0x249D0`, then `0x249B0`,
+  `0x29187..0x2919B`).
+- Otherwise it picks a pose stream from the velocities by the node's `+0xC`
+  phase (`0xE8D14`, `0xE8D28`, ...; jump table `0x290FC`).
+
+In the port an accepted actor keeps its spawn stream and gets neither the
+landing nor the pose changes. Its node goes back only if the record is
+released while still type `0x0A`/`0x19` (the teardown `0x290D0`). If that
+never happens, after 16 accepted spawns the list is empty and the port
+refuses again, while the raw, which recycles each node on landing, keeps
+accepting (and drawing). That would be a new RNG divergence. The fix is to
+port `0x2910C`.
+
+**Named gaps.**
+- `0x2910C` (process entry 7) and the type-`0x19` spawners `0x48F98`/
+  `0x28F08` (process entries 1/10) are unregistered.
+- In `0x20DF4`: the calls `0x29B70`, `0x2C390` and `0x2C074`, the five zero
+  stores (dword `[0xF0A48]` at `0x20DFB`, dword `[0x100B4C]`, dword
+  `[0x104AE8]`, byte `[0x1088EC]`, byte `[0x104B15]` at
+  `0x20E16..0x20E28`), and the two word stores `DS_000F0AFA`/`DS_000F0AF8`.
+  Only the two word stores are BSS-zero (net-faithful). `[0x104AE8]` is not
+  zero at the second demo's state 6. `flow.c` and `game_flow.md` list them
+  all.
+- `0x43738`, `0x444C8`, `0x43964`, `0x43A08` and the `0x104AE4` hook chain
+  (`0x28D68`, `0x28D80`) are unported mode code.

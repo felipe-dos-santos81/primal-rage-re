@@ -795,10 +795,19 @@ static void game_state_6(void)
      * zero head would walk address 0 forever. 0x28E98
      * (actor_type_0a19_list_init) builds the type-0x0A/0x19 node lists
      * (record §41-D). 0x12C70 (camera_step_seed) is called at its raw position
-     * below (0x20E6A); the rest (0x29B70, 0x2C390, 0x2C074 and the stores),
-     * including the two word stores DS_000F0AFA/DS_000F0AF8, stay a named gap
-     * (record §6.10, §38.2) — both stores are BSS-zero, so the port is
-     * net-faithful for them. */
+     * below (0x20E6A). The rest stays a named gap (record §6.10, §38.2,
+     * §41-D):
+     * - the calls 0x29B70, 0x2C390 and 0x2C074;
+     * - the five zero stores dword [0xF0A48] (0x20DFB), dword [0x100B4C]
+     *   (0x20E16), dword [0x104AE8] (0x20E1C), byte [0x1088EC] (0x20E22) and
+     *   byte [0x104B15] (0x20E28). These are not BSS-zero in general;
+     *   [0x104AE8] in particular is not at the second demo's state 6.
+     *   actors_reset (0x2BAF4 at 0x2BB13/0x2BB1F) re-zeroes
+     *   [0x104AE8] and [0x100B4C] later on this path, and 0x11B14 sets
+     *   [0x104B15] to 1; whether anything reads them in between is not
+     *   established;
+     * - the two word stores DS_000F0AFA/DS_000F0AF8 (0x20E5C/0x20E63). Both
+     *   are BSS-zero, so the port is net-faithful for these two only. */
     camera_dust_list_init();                            /* 0x11AC4 0x12750 (0x20E33) */
     fight_list_init();                                  /* 0x11AC4 0x49300 */
     actor_type_0a19_list_init();                        /* 0x11AC4 0x28E98 (0x20E3D) */
