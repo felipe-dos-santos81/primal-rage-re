@@ -699,4 +699,47 @@ void hit_anchor_x(u32 side, u32 x);                   /* 0x188DC */
 void hit_anchor_y(u32 side, u32 y);                   /* 0x1890C */
 void hit_sound(u32 ch);                               /* 0x32BAC */
 
+/* Record §48-R. Character 4's reaction callbacks 0x44F64 (0x20), 0x450E8
+ * (0x21), 0x455A0 (0x22), 0x44970 (0x23), 0x45878 (0x24), 0x44CFC (0x26) and
+ * 0x44B10 (0x2D), the (slot, rec, side) registers of 0x34E2C's 0x35045 call;
+ * the +0x0C callbacks they store (0x3531C case 7, same registers) 0x44E64,
+ * 0x4505C, 0x452E4, 0x45454, 0x4579C and 0x44C88; the +0x18 hooks (0x19020,
+ * fn(side), EAX returned) 0x44D78, 0x44FB4, 0x45158, 0x45640 and 0x44B38; the
+ * +0x1C callbacks (0x193B0's 0x19505, fn(side)) 0x44DB8, 0x44FF4, 0x451EC,
+ * 0x456A8 and 0x44BAC; their streams' targets (EAX = rec) 0x449B8, 0x44A64
+ * (0xD000), 0x44E0C (0xD500), 0x45238 and 0x458D4 (0xD000); 0x4579C's
+ * landing 0x45908 (EAX = rec); and 0x3A2A0, the pose knockback of three +0x1C
+ * callbacks (EAX = side, EDX/EBX/ECX and a stack word for 0x39F40; returns
+ * 0x3B298's verdict, 0 or 1). */
+void fighter_44f64(u32 slot, u32 rec, u32 side);
+void fighter_450e8(u32 slot, u32 rec, u32 side);
+void fighter_455a0(u32 slot, u32 rec, u32 side);
+void fighter_44970(u32 slot, u32 rec, u32 side);
+void fighter_45878(u32 slot, u32 rec, u32 side);
+void fighter_44cfc(u32 slot, u32 rec, u32 side);
+void fighter_44b10(u32 slot, u32 rec, u32 side);
+void fighter_44e64(u32 slot, u32 rec, u32 side);
+void fighter_4505c(u32 slot, u32 rec, u32 side);
+void fighter_452e4(u32 slot, u32 rec, u32 side);
+void fighter_45454(u32 slot, u32 rec, u32 side);
+void fighter_4579c(u32 slot, u32 rec, u32 side);
+void fighter_44c88(u32 slot, u32 rec, u32 side);
+u32  fighter_44d78(u32 side);
+u32  fighter_44fb4(u32 side);
+u32  fighter_45158(u32 side);
+u32  fighter_45640(u32 side);
+u32  fighter_44b38(u32 side);
+void fighter_44db8(u32 side);
+void fighter_44ff4(u32 side);
+void fighter_451ec(u32 side);
+void fighter_456a8(u32 side);
+void fighter_44bac(u32 side);
+void fighter_449b8(u32 rec);
+void fighter_44a64(u32 rec);
+void fighter_44e0c(u32 rec);
+void fighter_45238(u32 rec);
+void fighter_458d4(u32 rec);
+void fighter_45908(u32 rec);
+u32  fighter_3a2a0(u32 side, u32 edx, u32 ebx, u32 ecx, u32 word);
+
 #endif /* PRAGE_GAME_FIGHTER_H */
