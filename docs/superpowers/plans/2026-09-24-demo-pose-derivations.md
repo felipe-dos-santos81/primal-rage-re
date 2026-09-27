@@ -11058,3 +11058,7 @@ no spawn bank read (#75), and the old rate (#76, the flier's tick 100).
   +0xC, the aperture and the DAC.
 - Two test comments: `0x5D` tests its first sample, not its second; the
   driver's loop-1973 screen is a pinned known divergence.
+
+## 46-B. The five mode-`0x1A` hooks `0x430E8`, `0x4367C`, `0x25BBC`, `0x26998` and `0x270BC` (named-gap batch 5, branch `gap5-hookcallers`)
+
+**Status: in progress.** This section is filled in as the ports land.
