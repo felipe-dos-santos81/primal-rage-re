@@ -7665,16 +7665,31 @@ static void check_char_team_pass(void)
         ct_open(3u, 6u);
         DSB(DS_00108170 + 1u) = 5u;
         u32 e = DSD(DS_00108154), a = DSD(DS_0010813C), m = DSD(DS_001028E0);
+        u32 p = DSD(DS_0010815C);
         DSD(DS_00108154) = 0u;
         DSD(DS_0010813C) = 0u;
         DSD(e + 0x18u) = 0x7777u;
         DSD(a + 0x18u) = 0x7777u;
+        DSD(p + 0x08u) = 0x7777u;
         DSW(DS_001088E0) = 0x10u;
         fight_char_team_pass();
         CHECK_EQ_INT((int)DSB(DS_00108166), 4);
         CHECK_EQ_INT((int)DSD(e + 0x18u), 0x7777);
         CHECK_EQ_INT((int)DSD(a + 0x18u), 0x7777);
+        CHECK_EQ_INT((int)DSD(p + 0x08u), 0x7777);             /* no 0x2BCF4 */
         CHECK_EQ_INT((int)DSD(DS_001028E0), (int)m);            /* no 0x1D7B8 */
+        /* With the records, 0x442A0's 0x1D7B8 replaces the marker (class 6,
+         * y 0x1800). */
+        CT_RESTORE();
+        ct_open(3u, 6u);
+        DSB(DS_00108170 + 1u) = 5u;
+        m = DSD(DS_001028E0);
+        DSD(m + 0x1Cu) = 0x7777u;
+        DSW(DS_001088E0) = 0x10u;
+        fight_char_team_pass();
+        CHECK(DSD(DS_001028E0) != m, "0x1D7B8 respawned the marker");
+        CHECK_EQ_INT((int)DSD(DSD(DS_001028E0) + 0x1Cu), 0x1800);
+        CHECK_EQ_INT((int)(DSB(m + 0x28u) & 8u), 8);
     }
 
     /* (d) 0x4418C's highlight looks at the cursors alone: equal cursors set
