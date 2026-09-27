@@ -985,7 +985,12 @@ exits 0.
   with update-table entry 5 `0x22FE8`; the demo reaches none of them either.
   Character 1's reactions `0x20`/`0x25`/`0x28` (`0x23130`, `0x230F0`,
   `0x23178`) and `0x2365C`'s stream chain `0x236D8` -> `0x2372C` are ported
-  and registered as well (§43-C); the demo reaches none of them. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
+  and registered as well (§43-C); the demo reaches none of them.
+  Character 1's entrance `0x24568` (entry 1 of the per-character table
+  `0xA8628`), its stream `0xE453A`'s `0xD500` target `0x246D4` and that
+  target's `0x3BCE0` are ported and registered (§46-C); the table's three
+  dispatchers, in the mode 5/`0x0D`/`0x32` handlers `0x25C88`/`0x274FC`/
+  `0x296B8`, are not, so no port path reaches them. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
   frame-1881 fix): none in the fight; `0x3E3A8` (f = 962, the `(char 0,
   0x2A)` callback) and its `+0x0C` callback `0x3E328` (f = 963) are now ported
   and registered; its `+0x18` hook `0x3E1D0` is ported with `0x19020`

@@ -142,6 +142,7 @@ static void reaction_cb_23130(u32 slot, u32 rec, u32 side);
 static void reaction_cb_23178(u32 slot, u32 rec, u32 side);
 static void anim_code_236D8(u32 rec, u32 arg);
 static void anim_code_2372C(u32 rec, u32 arg);
+static void anim_code_246D4(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -351,6 +352,13 @@ int actors_init(void)
     fn_register(0x23178u, (void (*)(void))reaction_cb_23178);
     fn_register(0x236D8u, (void (*)(void))anim_code_236D8);
     fn_register(0x2372Cu, (void (*)(void))anim_code_2372C);
+    /* PORT: record §46-C. Character 1's entry 0x24568 of the per-character
+     * table 0xA8628 (the dword at 0xA862C), fn(side): its three dispatchers
+     * 0x25F27/0x27732/0x2989C (modes 5, 0xD and 0x32) are unported. And the
+     * 0xD500 target 0x246D4 of its stream 0xE453A (the dword at 0xE4544),
+     * opcode 0x15. */
+    fn_register(0x24568u, (void (*)(void))fighter_24568);
+    fn_register(0x246D4u, (void (*)(void))anim_code_246D4);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -1244,6 +1252,15 @@ static void anim_code_2372C(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_2372c(rec);
+}
+
+/* 0x246D4 — the animation-opcode target shape (record §46-C). PORT: the raw
+ * pushes EDX at 0x246D5 and zeroes it at 0x246D7 before any read, so this
+ * wrapper drops the operand. */
+static void anim_code_246D4(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_246d4(rec);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */

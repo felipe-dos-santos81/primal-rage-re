@@ -11058,3 +11058,281 @@ no spawn bank read (#75), and the old rate (#76, the flier's tick 100).
   +0xC, the aperture and the DAC.
 - Two test comments: `0x5D` tests its first sample, not its second; the
   driver's loop-1973 screen is a pinned known divergence.
+
+## 46-C. Character 1's entrance `0x24568` (entry 1 of the per-character table `0xA8628`), its stream target `0x246D4` and `0x3BCE0` (named-gap batch 5, branch `gap5-24568`)
+
+**Result in one line.** §43-C.5 named `0x24568` (the last caller of `0x2372C`)
+and its three dispatch sites `0x25F27`/`0x27732`/`0x2989C` as unported.
+`0x24568` is now ported, registered and unit-tested. So are the one code
+target its entrance stream reaches, `0x246D4`, and that target's callee
+`0x3BCE0`: 3 functions and 661 raw bytes (363 + 128 + 170), with no
+unported callee except the voice. The three dispatch sites are not ported.
+Each lies in an interactive mode's handler (modes 5, `0x0D` and `0x32`). The
+port's `0x24C5C` never runs those modes, and the handlers need 13 unported
+callees. They remain a named gap, with the evidence in 46-C.2. No port path
+reaches any of the new code, so no oracle is expected to move (46-C.5).
+
+### 46-C.1 The raw (Ghidra `read_memory` + capstone, fixups applied; Ghidra has no function at `0x24568` or `0x246D4`)
+
+- **The table `0xA8628`.** It holds seven dwords, one per character 0..6:
+  `0x40CB0`, `0x24568`, `0x49150`, `0x15A34`, `0x45FE8`, `0x40E64` and
+  `0x24804`. `0xA8644` starts the next table, the update table
+  (`DS_000A8644`, `run_process_table`). Ghidra has no function at any of the
+  seven entries, and the port has none of the other six.
+- **`0x24568`** (363 bytes, `0x24568..0x246D2`; it pushes EBX, ECX, EDX and
+  ESI; EAX = the entering side, kept in ESI).
+  - **The placement.** It calls `0x1A570(byte [0x10810D])` (`0x2456E..0x2457C`).
+    - The left arm (`0x2457E`) reads x0 = `+0x18` of the fighter record of
+      the side `DS_0010810D` names, recomputed from the byte each time. It
+      takes x = x0 - `0x5000` when x >= `-DS_000BE018` (`neg edx`; `cmp`/`jl`,
+      signed), with a5 = `0x4000` (`0x245AF`).
+    - The right arm (`0x245B6`) takes x = x0 + `0x5000` when x <=
+      `DS_000BE018` (`cmp`/`jg`, signed), with a5 = 0 (`0x245E5`).
+    - A true `0x1A570` enters the left arm first. The left arm falls to the
+      right on failure, and the right arm jumps back to the left on failure
+      (`0x245E3 jg 0x2457E`) without calling `0x1A570` again. With the
+      image's bound `0x7C00`, one arm always passes; a bound below `0x5000`
+      could spin, in the raw and in the port alike.
+  - **The spawn.** `0x33C78(EAX = side, EDX = x, ECX = word [0xBD898], EBX =
+    0, push a5 & 0xFFFF)` (`0x245E7..0x245FD`). `0x33C78` hands the
+    caller's EBX to `0x2AE14` untouched (no write to EBX between `0x33C78`
+    and `0x33CD3`), where it becomes the record's y (`+0x1C`). `0x33C78` has
+    nine callers (`get_xrefs_to` and the rel32 scan agree): `0x15AC9`,
+    `0x245FD`, `0x24899`, `0x33EE0`, `0x357D6`, `0x40D48`, `0x40EF9`,
+    `0x4607D` and `0x491E5`. Eight zero EBX. `0x40D48` does not: it is in
+    `0x40CB0` (entry 0 of `0xA8628`), and both of its placement arms pass
+    through `mov ebx, 0x4C00` at `0x40D2F`. The port's `fighter_spawn_slot`
+    passes a literal 0, which is correct for its two port callers, `0x33EB4`
+    (`0x33ED7`) and `0x24568` (`0x245EF`). A port of `0x40CB0` must pass EBX
+    through. `fighter.c` carries a `PORT:` note there, and 46-C.5 names the
+    gap. (Corrected in review round 1: the first version said `0x33C78` had
+    two callers.)
+  - **The record.** `0x2BC30(slot record, 0xE453A, 0x40800000)`
+    (`0x24613..0x24623`), `0x39A10(record, 0x309)` (`0x24628..0x24633`), and
+    `0x2372C(record)` (`0x24638/0x2463E`). The record is re-read from
+    `[side*0x94 + 0x1077B0]` before each call.
+  - **The blink.** The mask is `0x40` when `DS_0010810D` is set, else `0x80`
+    (`0x24643..0x24653`). When `DS_00104B03 & mask` is set, the slot's
+    `+0x41` gets bit 0 (`0x24658..0x24677`). Mode `0x0C`'s tail, which is
+    ported, blinks a slot with that bit.
+  - **The voice** `0x2C3FC(0xB4)` (`0x2467F/0x24684`). Its record at
+    `0xBC638` is case 2 with handle `0x1B007C54`.
+  - **The state.** The slot's `+0x52` = 9 (`0x2469B`), `+0x53` = 3
+    (`0x246A2`), `+0x64` = `0x2A` (`0x246B2`), dword `+0x40` |= `0x81000`
+    (read at `0x246AB`, stored at `0x246BF`), and `+0x63` = 1 (`0x246C6`).
+    EAX is clobbered. The dispatchers do not read it (46-C.2).
+- **The stream `0xE453A`.** It reads `12A2 C410 <0xE453A> D500 <0x246D4>`: a
+  sprite, then opcode 4's counted loop back to the start (the dword at
+  `0xE453E`), then opcode `0x15` on `0x246D4`. Opcode `0x15` calls its target
+  and stops the walk (`0x2B5E3`). `0x246D4` re-points the record through
+  `0x3BCE0`'s `0x2BC30`. So the words after it (`D100 <0x37DD4>` at `0xE4548`,
+  the entry that `0xBDC30` and `0xE4560` name) belong to another stream.
+- **`0x246D4`** (128 bytes, `0x246D4..0x24753`; it pushes EBX, EDX and EDI;
+  EAX = rec; EDX is zeroed at `0x246D7` before any read).
+  - side = byte `[rec+0x51]`.
+  - `DS_001088E0[side]` = `0xA000` when `0x1A570(side)` holds, else `0x9000`
+    (`0x246DE..0x246F9`).
+  - `0x3BCE0(side)` (`0x24704`).
+  - Then the slot's `+0x54` = 2 (`0x24717`, which repeats `0x3BCE0`'s store,
+    so dropping it is an equivalent mutant) and word `+0x74` = 0
+    (`0x24728`). Dword `+0x40` &= `0xFFF7EFFF` (`0x24721..0x24736`), which
+    clears exactly the bits `0x24568` set.
+  - `DS_000F0AFE` = 1 (`0x24744`) and `DS_000F0AFC` = `0x100` (`0x2474A`).
+- **`0x3BCE0`** (170 bytes, `0x3BCE0..0x3BD89`; it pushes EBX, ECX and EDX;
+  EAX = side, kept in ECX).
+  - `DS_00107D40[side]` = `0xBEF64` + char * 6 (`0x3BCF5..0x3BD13`).
+  - `0x2BC30(slot record, DS_000C8B30[char], 0x40000000)` (`0x3BD1A..0x3BD2B`).
+    `0xC8B30` holds `0xE6F28`, `0xE3AF0`, `0xECCEC`, `0xD2274`, `0xEA720`,
+    `0xD3F4C` and `0xE073C`. Characters 1 and 3 start with a sprite word
+    (`0x134F`, `0x1746`).
+  - The slot's `+0x52` = 3, `+0x54` = 2, `+0x53` = 4 (`0x3BD30..0x3BD3A`),
+    and `DS_001078F8[side]` = 1 (`0x3BD3E`).
+  - The word `+0x4E` depends on the high byte of `DS_001088E0[side]`: 1 when
+    it has bit 4 (`0x3BD4F..0x3BD59`), else `0xFFFF` when it has bit 5
+    (`0x3BD6C..0x3BD76`), else 0 (`0x3BD80`). `0x246D4`'s `0xA000` gives
+    `0xFFFF` and its `0x9000` gives 1.
+
+### 46-C.2 Entrances (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object and a dword scan of both fixed-up objects)
+
+| address | references |
+|---|---|
+| `0x24568` | data dword `0xA862C` only (Ghidra: the same, DATA) |
+| `0x246D4` | data dword `0xE4544` only (Ghidra: none) |
+| `0x3BCE0` | rel32 `call` at `0x24704` only |
+| `0xE453A` | code dword `0x24614` (the `mov edx` in `0x24568`) and data dword `0xE453E` (its own loop) |
+| `0xE4542` (the `D500` word) | none: it is reached only by falling through from `0xE453A` |
+| `0xA8628` | code dwords `0x25F2A`, `0x27735` and `0x2989F`: the three `call [reg*4 + 0xA8628]` |
+| `0xA862C` | none |
+| `0x25C88` | rel32 `call` at `0x2524C` only (the `0x24C5C` jump table `0x24B8C`, case 5) |
+| `0x274FC` | rel32 `call` at `0x25367` only (case `0x0D`). The scan's dword at `0x14C48` is the rel32 operand of `call 0x3C148` at `0x14C47`, not a reference |
+| `0x296B8` | rel32 `call` at `0x251B2` only (case `0x32`) |
+
+The three dispatch sites:
+- **`0x25F27`**, in `0x25C88` (804 bytes, mode 5's handler), runs in its
+  `DS_00104B25` - 1 == 2 arm when `DS_00104B14` is set. It sets
+  `DS_00104B00` = `0x0C` (`0x25F20`), then EAX = `DS_00104B12`, EDX = char =
+  byte `[0x10816A + side]` (`mov edx,[eax+0x108167]; sar edx,0x18`), then
+  `0x1D838(side, char)`.
+- **`0x27732`**, in `0x274FC` (708 bytes, mode `0x0D`), runs when
+  `DS_00104B0C` is set and the incremented `DS_00104B21` is not 7. It first
+  clears the record's `+0x48`, frees the slot's `+4` actor (`0x2B150`),
+  decrements `DS_001078FA`, and calls `0x2716C`, `0x46534(side, 1)` and
+  `0x33C18(side)`. Then comes the dispatch with the same EAX/EDX. Afterwards
+  `DS_000F0AFF` = `DS_0010810D` (AL is reloaded at `0x27739`), then `0x1D764`
+  and `0x1D838`.
+- **`0x2989C`**, in `0x296B8` (696 bytes, mode `0x32`), runs when
+  `DS_00104B0C` is set, `DS_00104B09` is not `0xFF`, and neither side's
+  `DS_00104AF0` count has reached 4. It first calls `0x292D4`, `0x46534` and
+  `0x33C18`. Then EAX = `DS_00104B09`, EBX = 0, ECX = char = byte `[0x108134
+  + side*4 + DS_00104AF0[side]]` (the side's next roster entry, after the
+  increment at `0x2978D`). After the call it stores the slot's `+0x63` = 0
+  and `+0x7A` = CL, so it relies on the entry preserving ECX, which
+  `0x24568` does.
+
+**Why the dispatchers stay a gap.**
+- The port's `game_frame` dispatches only case 3 of `0x24C5C`.
+- Beyond the handlers' own 2208 bytes, they call 13 unported functions, 2384
+  bytes before their own callees:
+  - `0x25C88`: `0x25C1C` (91), `0x256F4` (173), `0x4F37C` (182), `0x32970`
+    (203), `0x32B00` (73), `0x32B4C` (70) and `0x1D838` (87);
+  - `0x274FC`: `0x28130` (404), `0x2C2B0` (82), `0x4DBEC` (755, the
+    mode-`0x0D`/`0x32` spawner of §42-D.2), `0x2716C` (115), `0x1D764` (82)
+    and `0x1D838`;
+  - `0x296B8`: `0x28130`, `0x4DBEC`, `0x292D4` (67), `0x1D764` and `0x1D838`.
+- The handlers' ported callees are `0x2AE14`, `0x2C3FC`, `0x2F4BC`,
+  `0x2B150`, `0x3C5CC`, `0x16D58`, `0x35658`, `0x19068`, `0x12DA8`,
+  `0x1C500`, `0x2F198`, `0x41310`, `0x46534`, `0x33C18` and `0x3CB68`
+  (`fight_slot_pass`). The first version counted `0x3CB68` as unported
+  (14 functions, 2475 bytes); corrected in review round 1.
+
+That is the interactive match flow (continue/challenger, team and endurance
+modes), a sub-project of its own. Ported, the dispatch is one line:
+`fn_resolve(DSD(DS_000A8628 + char * 4))` called with the side.
+
+### 46-C.3 The port
+
+- `fighter.c` has `fighter_24568`, `fighter_246d4` and `fighter_3bce0`, right
+  after `fighter_2372c`, with local `#define`s for `0xE453A` and `0x104B03`
+  (`symbols.h` names neither). The stance table `0xC8B30` reuses the file's
+  existing `FIGHT_ANIM_3BDDC`, which `0x3BDDC` also reads. `fighter.h`
+  declares them after `fighter_2372c`.
+  - `fighter_spawn_slot` (`0x33C78`) gains a `PORT:` note at its
+    `actor_spawn`: the EBX pass-through and `0x40D48`'s `0x4C00` (46-C.1).
+  - `fighter_24568` calls the static spawn core `fighter_spawn_slot`
+    (`0x33C78`) directly.
+  - The voice `0x2C3FC(0xB4)` is a `PORT:` note, "not wired (record §45-A)",
+    like the other 302 sites. `sound_voice` would queue the sample
+    `0x1B007C54`, so wiring it is the §45-A gap's decision, not this one's.
+- `actors.c` registers `0x24568` directly (`fn(side)`, the table's shape:
+  EAX = side, nothing else read). It registers `0x246D4` through
+  `anim_code_246D4`, the `(rec, arg)` wrapper, which drops the operand the
+  raw zeroes.
+
+### 46-C.4 The assertions and mutations
+
+`check_char1_entry` (`test_fight.c`) runs right after `check_spawn_sound`, on
+the same live INDEX and pools. It snapshots and restores the data object,
+the INDEX table, both actor pools, a scratch decoy record, the DAC and the
+aperture. Every scenario starts from the snapshot with `actors_reset`, both
+sides set to character 1 and the audio gate closed (`DS_001028C8` = 0).
+
+- **The data.** `0xA862C` = `0x24568`; `0xE453A`'s first word is `0x12A2`;
+  the `D500` word and its dword `0x246D4`; `0xC8B30[1]`/`[3]`. The table
+  dword resolves to `fighter_24568`, and `0x246D4` resolves to a wrapper,
+  not to `fighter_246d4`.
+- **A: `0x24568` through the table dword**, in eleven rows:
+  - each arm: left, left failing to right, and the bound read (`0x8000`);
+  - right, and right failing to left;
+  - both equalities (x0 - `0x5000` == `-bound`, x0 + `0x5000` == bound);
+  - both signed compares (a positive left x, a negative right x);
+  - two rows where the entering side is `DS_0010810D`'s own side (its old
+    record is the one placed against). These separate the mask's
+    `DS_0010810D` from the entering side.
+
+  The rows also vary `DS_0010810D` between 0 and 1 and the mask byte. When
+  the two sides differ, the entering side's old slot record is a decoy
+  whose pset bit 15 is the opposite of `DS_0010810D`'s side, so `0x1A570` on
+  the wrong side fails. Each row checks:
+  - the spawned record: its slot, `DS_001077A8`, character, `+0x51`, x, the
+    word `+0x32` = the layer `word [0xBD898]` (seeded `0x0500` on the
+    "right" row, so a literal `0x400` fails too), the a5 bit, `+8` =
+    `0xE453A` and `+0x20`/`+0x24` = 4.0;
+  - the slot: `+0x74` = `0x309`, `+0x41` bit 0, `+0x52`/`+0x53`/`+0x64`, the
+    exact `+0x40` (`0x80081000`, or `0x80081100` with the blink; the spawn
+    leaves `0x80000000`) and `+0x63` against a sentinel;
+  - the projectile: type 8, `+0x14`, speed `0x113`/`0xFEED`, and x ±
+    `0xC00`;
+  - the other slot's pointer and `+0x52`, kept (when the sides differ).
+- **B: `0x3BCE0` directly**, on side 1 with characters 1 and 3, over six
+  `DS_001088E0[1]` values (bit 4, bits 4 and 5, bit 5, 0, low byte only,
+  other high bits). It checks `DS_00107D40[1]`, the stream and 2.0, the state
+  3/4/2, `DS_001078F8[1]` and `+0x4E`. Side 0's sentinels are kept.
+- **C: `0x246D4`** on side 0 through its registration (bit 15 clear, then
+  set) and through the real `D500` word at `0xE4542` via `0x2BC30`'s
+  pre-walk. It checks `DS_001088E0[0]` (`0xA000`/`0x9000`) and the `+0x4E` it
+  yields, `DS_00107D40[0]`, the state, `+0x74` = 0, `+0x40` = `0xFFF7EFFF`
+  from `0xFFFFFFFF`, `DS_000F0AFE` and `DS_000F0AFC` against sentinels, and
+  side 1's word kept.
+
+`check_char1_entry` has 56 assertion sites.
+
+**Mutations** (`scratchpad/g5-24568/mut.py`; `mut3.out`, plus `mut4.out` for
+review round 1): 56 single-site edits of the new code, its registrations and
+the wrapper. They cover every store, constant, side index, gate and bit test
+of the three functions, both arms' offsets, compares and signedness, the
+bound read, the mask's source, the spawn's x and layer, the stream and rate,
+the `0x39A10` value, the `0x2372C` call, both registrations and the
+wrapper's call.
+- 53 fail an assertion (1..31 each), with no fault. That includes the two
+  added in review round 1, which fail 11 and 1: the spawn's layer as a
+  literal 0, and as a literal `0x400`. The first version's sweep missed the
+  layer argument; review round 1 found that it survived.
+- 2 hang, and the script kills them at 90 s: the unsigned forms of the two
+  compares (#30, #35). On the signed rows neither arm then passes, so the
+  loop spins, which is the raw's own behaviour for an unplaceable x. They
+  count as failing.
+- 1 is equivalent: #11, `0x3BCE0`'s bit-5 test widened to `0x30`. Bit 4
+  has already returned by then.
+- Also equivalent (not in the sweep): dropping `0x246D4`'s `+0x54` = 2,
+  which repeats `0x3BCE0`'s store.
+
+Two survivors of the first run were killed by strengthening the test:
+- `0x1A570` on the entering side instead of `DS_0010810D`'s side, killed by
+  the decoy record;
+- the mask taken from the entering side, killed by the two rows that enter
+  on sel's own side.
+
+A third, the stream `0xE453A` + 2, converges back to `0xE453A` through the
+`C410` loop. The sweep replaced it with a different stream (`0xE3AF0`),
+which fails. The script restored every source, and `git diff` shows only
+the intended changes.
+
+### 46-C.5 Measured, and the remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 0 compiler
+  warnings. The drivers and `make verify` were not run (batch rules).
+- **Reachability.** Nothing in the port reads `0xA8628` or calls
+  `fighter_24568`, except the test. `0x246D4` is reached only through the
+  `D500` word at `0xE4542`, which only `0xE453A` falls into, and only
+  `0x24568` starts `0xE453A`. `0x3BCE0`'s only caller is `0x246D4`. So no
+  port run executes the new code, and no oracle is expected to move at the
+  current pins. The controller's ladder is the check.
+- **Base fix.** The base `1151646` did not compile: the frame-3257 merge
+  dropped `check_volleyball`'s closing brace in `test_fight.c`. `0e49057`
+  restores it. §46-B's branch carries the same one-line fix, and main has
+  it since `df59113` (the same blob).
+- **Named gaps.**
+  - The dispatchers `0x25F27`/`0x27732`/`0x2989C` and their handlers
+    `0x25C88`/`0x274FC`/`0x296B8` (modes 5, `0x0D`, `0x32`), with the 13
+    unported callees of 46-C.2. This is the interactive match flow.
+  - `0x33C78`'s EBX. The raw hands the caller's EBX to `0x2AE14` as the
+    record's y. `fighter_spawn_slot` passes 0, which is right for its port
+    callers. `0x40D48` (in `0x40CB0`) passes `0x4C00`, so a port of `0x40CB0`
+    must thread EBX through. The `PORT:` note at `fighter_spawn_slot`'s
+    `actor_spawn` records this.
+  - The other six entries of `0xA8628`: `0x40CB0`, `0x49150`, `0x15A34`,
+    `0x45FE8`, `0x40E64` and `0x24804`. They are the other characters'
+    entrances, reached only through the same dispatchers.
+  - The voice `0x2C3FC(0xB4)` at `0x24684` (§45-A's unwired sites).
+  - What follows `0x246D4` in the stance stream `DS_000C8B30[char]` is the
+    existing per-character machinery and was not re-audited here.
