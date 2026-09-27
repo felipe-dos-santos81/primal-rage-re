@@ -380,9 +380,11 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   direct-called from four sites (`0x41755`, `0x41DE6`, `0x42337`, `0x42352` in
   `0x416D4`/`0x41C28`). Every live caller is reached only through `0x24C5C`'s
   **unported mode cases** and the unported match/fight chain; the `0x2861C`
-  region is dead outright. No ported path moves the port's `DS_00104B00` off
-  the 3 that `0x10E80` stores (record §47-B.2), so neither function is
-  reachable: both are unit-tested
+  region is dead outright. On the no-input path no ported code moves the
+  port's `DS_00104B00` off the 3 that `0x10E80` stores (record §47-B.2; an
+  accepted coin/start event does, through `0x257A4`, record §48-W, but only
+  into modes `0x1A`/`0x1B`/`0x10` with the hook `0x4367C`), so neither
+  function is reachable: both are unit-tested
   (`test_effects`), and `0x29B74` is registered in `actors_init` for a future
   `DS_00104AE4` dispatch. `port/tests/test_game.c` pins that state 5 neither
   arms `DS_00104AE4` nor leaves mode 3. `DS_00104AE4` has other
@@ -416,13 +418,14 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     displacement (record §47-M.2), so the value-0 gap is the arm the character
     screen actually runs.
 
-  Still, only `0x4F980` stores mode `0x1A`, and its eleven callers are
-  unported; no ported path stores mode `0x17` outside `0x4F318`'s own chain.
-  The nearest route in is `0x257A4`, the coin divert `0x11D04` reaches at
-  `0x11D41` and in state 8, both stubbed; `0x257A4` itself is ported since
-  record §47-C, with its callee `0x46594` and `0x33C18` (`fight_char_reset`),
-  but nothing calls it yet. So the hook and handler chains run
-  only in unit tests. **Correction (record §42-E):** this
+  Still, only `0x4F980` stores mode `0x1A`; no ported path stores mode
+  `0x17` outside `0x4F318`'s own chain. The route in is `0x257A4`
+  (`game_coin_divert`, record §47-C), which `0x11D04` calls at `0x11D41`
+  (an accepted coin/start event) and in state 8 (`0x11EB8`, EAX = 3); both
+  call sites are wired since record §48-W. Neither fires on the oracles'
+  no-input path: no event is accepted, and state 8 needs `DS_00108173 != 0`,
+  which no instruction stores. So the hook and handler chains run only in
+  unit tests and under real input. **Correction (record §42-E):** this
   bullet used to call `0x41578`'s compare against `0x88874B0` dead because the
   value is above `MEM_SIZE`. It is not an address. The compare is on the list
   entry's `+0` **resource handle** (`index << 23 | offset`, `0x1B544`), and
@@ -509,12 +512,12 @@ selector.
   `accepted |= 1`) and 1 (`0x11D28`, `accepted |= 2`). **The raw returns from
   `0x11D04` when either is accepted** — it calls `0x32970(0)` then
   `0x257a4(accepted)` and skips the state dispatch for that frame. `0x32970`
-  is unported (4b carve-out) and the port returns there. `0x257A4` is ported
-  as `game_coin_divert` (record §47-C: `0x2BAF4` with EAX = 0, five byte
-  resets, `DS_00104B1F` = the argument, `0x33C18` per side, `0x46594`, the
-  seven bytes from `0x104B02` cleared, the hook `0x4367C` and mode `0x1A`
-  returning to `0x10`), but it is not called until `game_frame` dispatches
-  mode `0x1A` (record §47-B).
+  is unported (4b carve-out); it pushes and pops EDX, so `0x11D3F mov
+  eax,edx` passes the accepted mask on. The port calls `0x257A4` as
+  `game_coin_divert(accepted)` and returns (record §48-W). `0x257A4` is
+  record §47-C's: `0x2BAF4` with EAX = 0, five byte resets, `DS_00104B1F` =
+  the argument, `0x33C18` per side, `0x46594`, the seven bytes from
+  `0x104B02` cleared, the hook `0x4367C` and mode `0x1A` returning to `0x10`.
 * **Select state** — `0x11F6C` (`game_state_select`, case 2), the six-entry
   carousel, with `0x33904` (`frontend_list_next`) and `0x1C6D4`
   (`frontend_resource_known`). Phase 0 writes config row 1
@@ -573,9 +576,10 @@ dead copy — `0x11A30` is referenced nowhere in either LE object) and `0x1F140`
 `0x1F278`/`0x1F39B` in `FUN_0001EEB0` (the match sub-state machine, cases 2/6/9).
 No task in this plan owns the match cycle. States 6/7 (the attract demo
 fight: `0x11A8C`, `0x263F4`) were ported by the demo-fight cycle 1 (see the
-next section); state 8 (`0x33F08`'s run clock is not it — 8 is the run clock
-plus the `0x257A4` coin divert) and state 9's semantics beyond the countdown
-handoff (`0x10EE4`'s `DS_000F0A71` arm) remain the **next cycle**. The countdown
+next section); state 8 (`0x11EAC`: the run clock `0x32970(0)`, a named gap,
+then `0x257A4(3)` and the shared tails) is wired since record §48-W but
+unreachable without `DS_00108173 != 0`; state 9's semantics beyond the
+countdown handoff (`0x10EE4`'s `DS_000F0A71` arm) remain the **next cycle**. The countdown
 itself is ported and faithful; the state-9 hold's render divergence is in the
 demo-fight section below.
 

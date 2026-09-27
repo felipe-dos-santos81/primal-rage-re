@@ -2332,15 +2332,17 @@ void game_frame(void)
     /* PORT: 0x24CFE..0x24EE7, the int 16h keyboard loop, is not ported (only
      * its ESC quit arm, in game_loop). It runs before the switch and is one of
      * the three ways out of mode 3: Enter in mode 3 stores mode 0x27 (0x24EE0,
-     * the start menu), 0x11D04's coin/start arm calls the unported 0x257A4,
-     * and so does 0x11D04's state 8 (reached only when DS_00108173 is
-     * non-zero, which no ported code writes) (record §47-B). */
+     * the start menu), 0x11D04's coin/start arm calls 0x257A4
+     * (game_coin_divert), and so does 0x11D04's state 8 (reached only when
+     * DS_00108173 is non-zero, which no instruction stores) (records §47-B,
+     * §48-W). */
 
     /* 0x24EEC..0x24F01: the mode switch, on the word DS_00104B00 (`mov
      * ax,[0x104b00]; cmp ax,0x33; ja 0x2540F; and eax,0xffff; jmp
      * [eax*4+0x24B8C]`). Every case ends at 0x2540F, the 0x2A31C tail below.
      * Record §47-B lists every entry. No ported path the oracles exercise
-     * leaves mode 3 (§47-B.2), so only case 3 runs outside the unit tests. */
+     * leaves mode 3 (§47-B.2), so only case 3 runs outside the unit tests and
+     * real input (an accepted coin/start event reaches 0x1A, record §48-W). */
     switch (DSW(DS_00104B00)) {
     case 0x01u:
     case 0x02u:
@@ -2533,13 +2535,12 @@ void game_state_step(void)
         u32 accepted = 0u;
         if (frontend_coin_poll(0u)) accepted |= 1u;    /* 0x11D15 */
         if (frontend_coin_poll(1u)) accepted |= 2u;    /* 0x11D28 */
-        if (accepted != 0u) {
-            /* PORT: the raw then calls 0x32970(eax=0) and 0x257a4(eax=accepted)
-             * and returns from 0x11D04, so the state dispatch below is skipped
-             * for that frame. 0x32970 is unported (out of scope); 0x257A4 is
-             * ported as game_coin_divert (record §47-C) but not called here
-             * until game_frame dispatches the mode 0x1A it arms (§47-B). */
-            return;
+        if (accepted != 0u) {                          /* 0x11D34/0x11D36 */
+            /* PORT: 0x11D38 runs 0x32970(eax = 0), the run-clock/tick update,
+             * out of scope (spec §7). It pushes and pops EDX, so 0x11D3F's
+             * `mov eax,edx` passes the accepted mask on (record §48-W). */
+            game_coin_divert(accepted);                /* 0x11D41 0x257A4 */
+            return;                                    /* 0x11D46..0x11D49 */
         }
     }
 
@@ -2592,11 +2593,11 @@ void game_state_step(void)
             }
             break;
         case 8:
-            /* PORT: 0x11EAC runs 0x32970(0) (the run clock, spec §7) and
-             * 0x257A4(3), the unported game-start divert that leaves mode 3
-             * for 0x1A (record §47-B), then the shared tails below. Only
-             * attract phase 0xB stores state 8, when DS_00108173 != 0, and
-             * no ported code writes that byte. */
+            /* PORT: 0x11EAC runs 0x32970(eax = 0), the run clock, out of scope
+             * (spec §7); 0x11EB3 then loads EAX = 3. Only attract phase 0xB
+             * (0x114D6) stores state 8, when DS_00108173 != 0, and no
+             * instruction stores that byte (records §47-M.2, §48-W). */
+            game_coin_divert(3u);                       /* 0x11EB8 0x257A4 */
             break;
         case 9:
             DSW(DS_000F0A6A) = (u16)sVar1;

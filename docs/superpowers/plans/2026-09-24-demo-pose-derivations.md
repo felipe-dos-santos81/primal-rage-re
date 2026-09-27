@@ -14121,3 +14121,195 @@ explained. N 3593 -> 3617, the exact pin (`e00ab15`).
   reached.
 - The capture ends at 3616, so the attract2 ratchet has no frame left to
   guard beyond it; a longer capture would be needed to go further.
+
+## 48-W. Wiring `0x11D04`'s coin arm and state 8 to `0x257A4` (named-gap batch 11, branch `gap11-coinwire`)
+
+**Result in one line.** `game_state_step` (`0x11D04`) now calls
+`game_coin_divert` (`0x257A4`, §47-C) at both of its raw call sites: the
+coin/start arm passes the accepted mask and returns (`0x11D41`), and state 8
+passes 3 and falls into the shared tails (`0x11EB8`). The only raw
+instruction still missing at either site is `0x32970(0)`, the run clock,
+which is already a named gap at state 5 (spec §7). Neither site fires on the
+oracles' no-input path. A headless 8000-frame run is byte-identical before and
+after (48-W.5), and a probe run shows no divert and no state 8.
+
+(§47-C.5 names this follow-up. The batch-11 branches run in parallel.
+`git log --all` shows §48-A and §48-R in use, so this section takes W, for
+"wire".)
+
+### 48-W.1 The raw (Ghidra `disassemble_function` `0x11D04`, `read_memory` + capstone, fixups applied)
+
+- **The coin arm** `0x11D07..0x11D49`:
+  - `mov ah,[0x104b1d]; xor edx,edx; test ah,ah; jnz 0x11d4a`: the arm runs
+    only with `DS_00104B1D == 0`;
+  - `xor eax,eax; call 0x11f28; test eax,eax; jz; mov edx,1`, then `mov
+    eax,1; call 0x11f28; test eax,eax; jz; or dl,2`. Both polls always run.
+    `0x11F28` pushes and pops EDX (§47-M.1), so EDX is the mask 0..3;
+  - `test edx,edx; jz 0x11d4a`: no event goes on to the state dispatch;
+  - `0x11D38 xor eax,eax; call 0x32970`, `0x11D3F mov eax,edx`, `0x11D41
+    call 0x257a4`, then `pop edx; pop ecx; pop ebx; ret`. There are no
+    tails: the state dispatch and `0x10DB0`/`0x10E18`/`0x2BF08` are skipped
+    for that frame.
+- **`0x32970`** (Ghidra `FUN_00032970`, to `0x32A3A`) pushes EBX, ECX,
+  **EDX**, ESI and EDI and pops them at `0x32A35..0x32A39`, so EDX survives
+  it and `0x11D3F` passes the mask on. It adds the elapsed ticks
+  (`[0x105D88] - [0x10747C]`) into the `0x107470` table for each set bit of
+  `[0x107494]`, into `[0x107484]` and into `[0x107488 + 4·[0x107494]]`,
+  folds them through `0x2DAE4` at `0x3840`, stores AL (0 here) into
+  `[0x107494]` and returns EAX = `0x107488`. `0x11D3F` and `0x11EB3`
+  overwrite that EAX, so nothing reads it. This is the run clock of spec §7.
+  The port omits it at state 5 already (`config.c`'s note describes its
+  body), and Ghidra lists 17 references to it.
+- **The state table** `0x11CDC` (40 bytes: `0x11D70`, `0x11D88`, `0x11DA0`,
+  `0x11DB8`, `0x11DD0`, `0x11DE8`, `0x11E4F`, `0x11E67`, `0x11EAC`,
+  `0x11ED0`): entry 8 is `0x11EAC`.
+- **State 8** `0x11EAC..0x11ECF`: `xor eax,eax; call 0x32970; mov eax,3;
+  call 0x257a4`, then `call 0x10db0; call 0x10e18; call 0x2bf08` and the
+  epilogue. The `dec eax` at `0x11D68` (the countdown minus one) is not read.
+- **The port before this branch** had both polls, the mask and the early
+  return. The coin arm lacked only `0x32970(0)` and `0x257A4(mask)`. State 8
+  was an empty case that ran the tails. Nothing else in `0x11D04` differs.
+
+### 48-W.2 Entrances and the reachability of both sites (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object, a dword scan of both fixed-up objects; the objects dumped through `read_memory`)
+
+| target | rel32 | dwords | Ghidra |
+|---|---|---|---|
+| `0x257A4` | `0x11CD4` (`jmp`, the dead stub), `0x11D41`, `0x11EB8`, `0x24F5C`, `0x24FBA`, `0x25014`, `0x25067`, `0x250C4`, `0x25121`, `0x2517D`, `0x25194` | none | the same 11 |
+| `0x11D04` | `0x25238` (mode 3's case) | none | the same |
+| `0x11EAC` | none | `0x11CFC` (table entry 8) | `0x11CFC` (data) and `0x11D69` (the computed jump) |
+| `0x11CDC` | none | `0x11D6C` (the `jmp [edx+0x11cdc]` operand) | `0x11D69` |
+| `0x11D38`, `0x11D3F`, `0x11D41`, `0x11CC8` | none | none | |
+
+**The coin arm on the no-input path.** It needs a newly-pressed bit in
+`DS_001088E4` matching `0x9ACBC` (`0x01000000`/`0x100`). The port writes
+that dword only in `input_state_update` (`0x4F644`), from the host key
+bitmap. A headless `--check` run has no keyboard, so the dword stays 0 (the
+probe in 48-W.5 logs it). It is not the credit layer that blocks the arm:
+that run holds `DS_00105C00` = 5 on every frame.
+
+**State 8.** Two conditions keep it out:
+- **Only `0x114D6` stores 8.** A decode of every instruction whose
+  displacement is `0xF0A64` gives these stores:
+  - immediates: 4 (`0x10E0D`), 5 (`0x10E75`), 8 (`0x114D6`), 1 (`0x114EE`)
+    and 6 (`0x11526`);
+  - registers: `0x10DF5`, `0x10E5D`, `0x10EA8`, `0x10F0C`, `0x119ED`,
+    `0x11A69`, `0x11BAB` (EDX = 7), `0x11BE0`, `0x11C28`, `0x11C6E`,
+    `0x11CAD`, `0x11E35` (9), `0x11EEC`, `0x1216A`, `0x12459` and `0x12636`
+    (ESI = 9).
+
+  The copies from the next-state word `[0xF0A6C]` were traced to its
+  stores: 4 (`0x10DEE`), 5 (`0x10E56`), 0 (`0x119E6`), 6 (`0x11E2E`), 6
+  (`0x12628`), and the byte `[0xF0A72]` (`0x11BB9`, zero-extended). That
+  byte's stores are 5, 0 or 4 (`0x1150E`, `0x11517` after `xor ah,ah`,
+  `0x1151F`), 0 (`0x11E17`, `0x1264C`) and `0x11A7F` in the dead copy
+  `0x11A30`. This matches §47-B.2.
+- **`0x114D6` needs `DS_00108173 != 0`** (`0x114C6 mov dl,[0x108173]; test
+  dl,dl; jz 0x114e4`). The displacement scan of `0x108170..0x108173` gives
+  only reads of `0x108173` (`0x114C6`, `0x288DB`, `0x43103`, `0x4369B`,
+  `0x437BD`, `0x4455C`, `0x46596`). The stores are all side-indexed byte
+  stores into `[reg + 0x108170]`, and §47-M.2 bounded each index to 0..1.
+  The dword hits `0x43D7F`/`0x443FA` are decodes that start inside
+  `0x43D7E`/`0x443F9`. The port has no writer (grep: only reads in
+  `flow.c`, `fight.c` and `attract.c`).
+
+So wiring state 8 is safe: it is unreachable except through the gaps §47-M.2
+leaves open (copies through heap or stack pointers, file reads).
+
+### 48-W.3 The port
+
+- `flow.c` `game_state_step`:
+  - the coin arm calls `game_coin_divert(accepted)` and returns. A `PORT:`
+    note names `0x32970(0)` and why EDX (the mask) survives it;
+  - case 8 calls `game_coin_divert(3u)` and breaks into the shared tails. A
+    `PORT:` note names `0x32970(0)` and the state-8 gate.
+- `game_frame`'s comments about the ways out of mode 3 now say the coin arm
+  and state 8 call `game_coin_divert`, and that real input can reach mode
+  `0x1A`.
+- `flow.h`: `game_coin_divert`'s "not yet called" is replaced by its two
+  wired callers. `game_state_step`'s comment names them.
+- `port/spec/game_flow.md`: the three passages that called both sites
+  stubbed now describe them as wired, and the mode-3 claim is qualified to
+  the no-input path.
+
+### 48-W.4 The assertions and mutations
+
+`test_frontend`'s coin block (`test_game.c`) now covers both sites. That
+block runs in the unit suite, and also in the isolated `PR_FRONTEND_DUMP`
+driver **before** `game_init()`. `0x257A4` rewrites much of the data object,
+so the block now saves and restores more:
+- the whole data object (`0x80000..0x10B0D0`);
+- both pools, when they exist. Before `game_init()`, `actors_reset_al`
+  returns at its pool guard;
+- a `0x20000`-byte scratch area at `0x3D00000`, which the copy's
+  `[0xE87A0]`/`[0xE87A4]` point into.
+
+The new assertions:
+- **The reject**, with the mode dword seeded 3 and the hook `0xDEADBEEF`:
+  both are kept.
+- **Event 0**: the existing debit and held-countdown checks, then
+  `DS_00104B1F` = 1, the mode dword `0x1A`, the hook `0x4367C` and
+  `DS_00104AFA` = `0x10`.
+- **Event 1**: `0x2CA7C` debits only while `DS_00104B1F == 0`, and `0x257A4`
+  has just set that byte. So the test re-arms it and the mode word, as a
+  fresh mode-3 frame would find them. The existing debit check (3) is
+  unchanged, and `DS_00104B1F` = 2 is new.
+- **Both events in one frame**: both polls debit (3 → 1), because
+  `DS_00104B1F` is still 0 until the divert runs. `DS_00104B1F` = 3 and the
+  countdown is held.
+- **State 8**, with no event: `DS_00104B1F` (seeded `0x77`) = 3, the mode
+  `0x1A`, the hook and `DS_00104AFA`. The held pause chord (`DS_001088D8` =
+  `0x20001000`) makes the `0x10DB0` tail store state 4 and
+  `DS_000F0A71` = 1. `DS_00104B1B` is seeded `0x77` and `DS_000F0A6C` is
+  seeded `0x7777`, and `0x6C` keeps its seed. That proves the tails run after
+  the divert: the divert clears `DS_00104B1B`, so `0x10DB0` takes the arm that
+  leaves `0x6C` alone.
+
+**Mutations** (`scratchpad/g11cw/mut.py`, `mut.log`; one single-site edit
+per build, the source restored after each). **All 11 fail the suite.**
+
+| # | mutation | failing lines |
+|---|---|---|
+| M1 | the coin arm's call dropped | event 0, event 1, both |
+| M2 | the coin arm passes 1 | event 1, both |
+| M3 | the coin arm passes `accepted & 1` | event 1, both |
+| M4 | the coin arm's return dropped | event 0's held countdown |
+| M5 | state 8's call dropped | state 8 (the byte, the mode, the hook, `0x104AFA`, `0x6C`) |
+| M6, M7 | state 8 passes 2 / 1 | state 8's `DS_00104B1F` |
+| M8 | the second poll `=` for `\|=` | both |
+| M9 | state 8 returns before the tails | state 8's state word and `0xF0A71` |
+| M10 | state 8 runs the tails before the divert | state 8's `0x6C` |
+| M11 | the arm taken with no event | the reject's mode and hook, state 8, and `check_state6` (48 lines) |
+
+Two assertions from the first draft were removed because no mutation of the
+wired code could fail them: `DS_00104B19 + 2` = 0 after state 8 (the pause
+tail's other arm clears it too) and the credit count after state 8.
+
+### 48-W.5 Measured, remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, with 0
+  compiler warnings. As the brief requires, the branch ran neither `make
+  verify` nor the drivers.
+- **Frames.** `prageport --check 8000` was run from two scratch directories,
+  with the base binary (`e12fd9d`) and with this branch's (`efdd34b`), both
+  built with the same CMake configuration. `diff -rq` finds all 24000
+  `frame_*.ppm`/`.pal`/`.idx` files byte-identical.
+- **Probe** (a throwaway `stderr` build of this branch, never committed).
+  Over the same 8000 frames it logged:
+  - `game_state_step` 8000 times, each with `DS_00104B1D` = 0, so the coin
+    arm polled on every frame;
+  - `DS_001088E4` = 0 every time, with `DS_00105C00` = 5;
+  - no state-8 entry and no `game_coin_divert` call;
+  - the mode dword `0x00000003` at every 1000-frame tick.
+- **No oracle is expected to move.** The front-end driver's unit block now
+  runs `0x257A4` before `game_init()`, but it restores the whole data object,
+  and before `game_init()` `0x2BAF4` returns at its pool guard. So the
+  driver's state at `game_init()` is what it was.
+- **Remaining named gaps:**
+  - `0x32970(0)` at both sites (the run clock, spec §7);
+  - the game-start modes `0x28..0x2F`, `0x257A4`'s other eight callers
+    (§47-B.1);
+  - the character select's per-frame pass `0x43B24`/`0x44798` (§47-M.5).
+    Under real input a credited start now runs mode `0x1A` (the wipe and
+    `0x4367C`), then `0x1B`, then mode `0x10` with the sub-state 0. That
+    arm is the gap, so the character screen is built but its per-frame
+    pass does not run.
