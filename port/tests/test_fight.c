@@ -7646,6 +7646,8 @@ static void check_char_team_pass(void)
             CHECK_EQ_INT((int)DSD(DSD(DS_00108154) + 0x18u), 0x1640);
             CHECK_EQ_INT((int)DSW(DSD(DS_0010813C) + 0x2Cu), 0xA00);   /* class 6 */
             CHECK_EQ_INT((int)chs_pal_handle(DSD(DS_0010813C)), 0x098EC20C);
+            CHECK(DSD(DSD(DS_0010813C) + 0x08u) - DSD(0x000BB988u + 6u * 4u) < 0x40u,
+                  "the fighter runs class 6's select stream");
         }
         /* Every stick direction and clamp, as 0x43B24's. */
         static const u8 moves[][3] = {
