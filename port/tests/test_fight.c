@@ -6138,6 +6138,20 @@ static void check_mode_17_step(void)
     CHECK_EQ_INT((int)DSW(DS_001088EE), 0xFFFF);
     CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
 
+    /* (i) The hook runs after the 0xFFFF store: 0x29B74 re-arms DS_001088EE
+     * = 0x78. The list it darkens is emptied and the effect pool guard
+     * DS_000FCCE0 = 0, so it spawns and tears down nothing. */
+    DSD(DS_000FCCE0) = 0u;
+    mem_fill(DS_00107608, 0u, DS_00107798 - DS_00107608);
+    DSD(DS_00104AE4) = 0x29B74u;
+    DSW(DS_00104AFE) = 0u;
+    DSW(DS_001088EE) = 3u;
+    DSD(DS_00104B00) = 0xBEEF7777u;
+    frontend_mode_17_step();
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0x78);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x78);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0015u);
+
     tf_put(s_data, 0x80000u, sizeof s_data);
 }
 
