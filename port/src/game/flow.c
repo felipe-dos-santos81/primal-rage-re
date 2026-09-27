@@ -786,18 +786,31 @@ static void game_state_6(void)
     /* PORT: 0x11AC4 0x20DF4(eax=draw1, edx=1) — a 155-byte reset. Its eight
      * pre-branch calls are 0x29B70, 0x2C390, 0x12750, 0x49300, 0x28E98, 0x34978,
      * 0x2C074 and 0x12C70, and 0x20E5C/0x20E63 also write the words
-     * DS_000F0AFA/DS_000F0AF8. Of these 0x12750, 0x49300 and 0x34978 are
-     * ported here.
+     * DS_000F0AFA/DS_000F0AF8. Of these 0x12750, 0x49300, 0x28E98 and 0x34978
+     * are ported here.
      * 0x12750 (camera_dust_list_init) builds the type-0x01 node lists without
      * which 0x1282C's spawn is refused (demo record §15). 0x49300
      * (fight_list_init) is the liveness precondition — it self-links the
      * fight-effect list sentinel DS_0010884C that the 0x49C78 walk reads, so a
-     * zero head would walk address 0 forever. 0x12C70 (camera_step_seed) is
-     * called at its raw position below (0x20E6A); the rest, including the two
-     * word stores DS_000F0AFA/DS_000F0AF8, stay a named gap (record §6.10) —
-     * both stores are BSS-zero, so the port is net-faithful for them. */
+     * zero head would walk address 0 forever. 0x28E98
+     * (actor_type_0a19_list_init) builds the type-0x0A/0x19 node lists
+     * (record §41-D). 0x12C70 (camera_step_seed) is called at its raw position
+     * below (0x20E6A). The rest stays a named gap (record §6.10, §38.2,
+     * §41-D):
+     * - the calls 0x29B70, 0x2C390 and 0x2C074;
+     * - the five zero stores dword [0xF0A48] (0x20DFB), dword [0x100B4C]
+     *   (0x20E16), dword [0x104AE8] (0x20E1C), byte [0x1088EC] (0x20E22) and
+     *   byte [0x104B15] (0x20E28). These are not BSS-zero in general;
+     *   [0x104AE8] in particular is not at the second demo's state 6.
+     *   actors_reset (0x2BAF4 at 0x2BB13/0x2BB1F) re-zeroes
+     *   [0x104AE8] and [0x100B4C] later on this path, and 0x11B14 sets
+     *   [0x104B15] to 1; whether anything reads them in between is not
+     *   established;
+     * - the two word stores DS_000F0AFA/DS_000F0AF8 (0x20E5C/0x20E63). Both
+     *   are BSS-zero, so the port is net-faithful for these two only. */
     camera_dust_list_init();                            /* 0x11AC4 0x12750 (0x20E33) */
     fight_list_init();                                  /* 0x11AC4 0x49300 */
+    actor_type_0a19_list_init();                        /* 0x11AC4 0x28E98 (0x20E3D) */
     /* 0x20E42 0x34978: the live-fighter count DS_001078FA must restart at 0,
      * or the second demo's two spawns leave it at 4 and 0x1958C/0x34D8C,
      * which gate on 2, never run (record §38). */

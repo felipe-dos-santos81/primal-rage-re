@@ -7797,3 +7797,272 @@ The sources were restored and the suite re-run green.
   nine lie in code the port does not have (no `port/src` reference to any of
   those addresses or their functions). The `0x2C3FC(0xB3)` voice is out of
   scope.
+
+## 41-D. The type-`0x0A`/`0x19` node lists `0x28E98` and the character-screen setup `0x43818` (named-gap batch, branch `gap-28e98`)
+
+**Result in one line.** `0x28E98`, the call in state 6's reset `0x20DF4`
+that builds the lists types `0x0A`/`0x19` pop (a named gap in §38.2), is
+ported as `actor_type_0a19_list_init` and called at its raw position.
+`0x43818`, the unported caller of `0x4F228` at `0x43822` (§36.3, §37.1), is
+ported as `fight_char_screen_setup`. Its callers are unported `0x24C5C`-mode
+code, so it is unit-tested only. No new callee was needed: `0x249C0`,
+`0x4F228`, `0x2BAF4`, `0x2AE14` and `0x33754` were already ported, and
+`0x29D60` is a bare `ret`.
+
+### 41-D.1 `0x28E98` (Ghidra disassembly, fixups applied)
+
+- `push ebx; push ecx; push edx`, then EDX = `0x104880`, ECX = `0x104888`,
+  EBX = `0x104780`.
+- `0x28EAA`/`0x28EB0`: `[0x104884]` = `[0x104880]` = `0x104880`.
+  `0x28EB6`/`0x28EBC`: `[0x10488C]` = `[0x104888]` = `0x104888`. Both
+  sentinels are self-linked.
+- `0x28EC2 cmp ebx,0x104880; jnc` (never taken), then the loop
+  `0x28ECA..0x28EDF`: EAX = `0x104888`, EDX = EBX, EBX += `0x10`,
+  `call 0x249C0`, `cmp ebx,0x104880; jc`. That is 16 nodes,
+  `0x104780..0x104870`, each inserted before the free sentinel `0x104888`
+  (at the tail). So the free list runs in address order, and `0x28F64`/
+  `0x2901C` pop `0x104780` first. `0x249C0` writes only the node's
+  `{next; prev}`.
+- `pop edx; pop ecx; pop ebx; ret`. The region `0x104780..0x10488F` is zero
+  in the image (BSS).
+
+**Entrances.** `get_xrefs_to 0x28E98` gives `0x20E3D` (in `0x20DF4`) and
+`0x20EE4`. A rel32 scan of the code object finds the same two `call`s and no
+`jmp`/`jcc`. No dword `0x00028E98` appears in the code or data object.
+`0x20EE4` lies in a block at `0x20EB8` that Ghidra has no function for:
+`push edx; xor edx,edx; xor ah,ah`, the four `0x20DF4` stores, the calls
+`0x2C390`, `0x12750`, `0x49300`, `0x28E98`, `0x34978` and `0x2C074`, then
+`pop edx; ret`. It is dead. No rel32 and no dword references `0x20EB8`, and
+the `mov eax,eax` at `0x20EB6` is padding after the `ret` of the block at
+`0x20E90`, whose one caller is `0x4256A`. `0x20DF4` has six callers
+(`0x11AC4`, `0x25A95`, `0x25BE6`, `0x269BE`, `0x270E0`, `0x295E4`). Only
+`0x11AC4` (state 6) is ported, so `game_state_6` is the one wiring site.
+
+**The list users.** The type-`0x19`/`0x0A` cb1s `0x28F64`/`0x2901C` pop
+the free list (type table `0xBB9DC`, entries `0x19` and `0x0A`), and the
+teardown `0x290D0` returns the node. Process-table entry 7, `0x2910C`
+(`DS_000A8644[7]`), walks the in-use list at `0x104880`; the cb1s set
+`DS_00104AE8` bit 7 to enable it. `0x2910C` is not registered, so
+`run_process_table` skips it. It stays a named gap, outside this batch.
+
+### 41-D.2 `0x43818` (Ghidra disassembly, fixups applied)
+
+- `push ebx; push ecx; push edx`.
+- `0x4381B xor eax,eax`, `0x4381D mov ecx,0xE0`, `0x43822 call 0x4F228`.
+- `0x43827 mov eax,1`, `0x4382C xor ebx,ebx`, `0x4382E call 0x2BAF4`, then
+  `0x43833 call 0x29D60` (a bare `ret`).
+- `push 0; xor edx,edx; mov eax,0xC885C; call 0x2AE14` (`0x43841`). ECX =
+  `0xE0` and EBX = 0 reach this call intact. `0x4F228` never writes ECX,
+  and `0x2BAF4` pushes and pops EBX, ECX and EDX (`0x2BAF4..0x2BAF6`,
+  `0x2BC2C..0x2BC2E`). `0x2BAF4` loads EBX at `0x2BB05`, after the push,
+  so EBX = 0 is not an argument to it.
+- `push 0; ecx = 0xE2; ebx = 0x3900; edx = 0x1500; eax = 0xC87F8; call
+  0x2AE14` (`0x4385C`). Then `push 0; ecx = 0xE2; ebx = 0x3900; edx =
+  0x3F00; mov [0x10814C],eax; eax = 0xC87F8; call 0x2AE14` (`0x4387C`) and
+  `mov [0x108150],eax` (`0x43881`). `0x2AE14` ends `ret 4` (`0x2B14A`), so
+  each pushed 0 is its a5. The port maps a2 = EDX, a3 = ECX and a4 = EBX,
+  so the spawns are `(0xC885C, 0, 0xE0, 0, 0)`, `(0xC87F8, 0x1500, 0xE2,
+  0x3900, 0)` and `(0xC87F8, 0x3F00, 0xE2, 0x3900, 0)`.
+- `0x33754` with EAX = `0x98EC50C`, `0x98EC514`, `0x8099AC`, `0x809984`
+  (`0x4388B..0x438A9`).
+- `pop edx; pop ecx; pop ebx; ret`. The last acquire's EAX is dead: both
+  callers overwrite EAX next (`0x4377F lea eax,[edx+1]`, `0x4450F mov
+  eax,edx`).
+- The descriptors (data object):
+  - `0xC885C`: desc[0] = `000046F8`, type 0, word `+8` = `0x2800`, palette
+    `+0x10` = `0x098EC71C`.
+  - `0xC87F8`: desc[0] = `0000032A`, type 0, `0x2800`, the same palette.
+  - Flag `0x0800` skips `0x2AE14`'s stream walk, and `0x2000` puts a3 in
+    `rec+0x49`.
+
+**Entrances.** `get_xrefs_to 0x43818` gives `0x43778` (in `0x43738`) and
+`0x44508` (in `0x444C8`). The rel32 scan finds the same two calls, and no
+dword `0x00043818` appears in either object. None of the callers is ported:
+- `0x43738` is called at `0x4372E`. `0x28D68`/`0x28D80` store it as the
+  `DS_00104AE4` frame hook (immediates at `0x28D6A`/`0x28D87`).
+- Immediates in the code around `0x42CF3` store `0x28D68` (dwords at
+  `0x42CF4`, `0x42D35`, `0x42D7D` and `0x42FB7`), and `0x28E4F` stores
+  `0x28D80`.
+- `0x444C8` is called only at `0x4462B` (in `0x4454C`).
+
+This is `0x24C5C`-mode code: the per-frame `call [0x104AE4]` hook is the
+unported mode-0x17 handler (`flow.c`), so no oracle reaches `0x43818`. After
+it, both callers fill the two sides through `0x43964`. That function spawns
+each side's entries from `0xC8870`/`0xC8878[side]` with the character index
+byte of `0x108163[side]` and the character palette (`0x2A17C`), hence the
+port's name.
+
+**The `0x43822` call has no effect.** `0x2BAF4` calls `0x4F228` again at
+`0x2BBC4` with EAX = 0 (`0x2BBC0`). Between the two calls run only
+`0x2EA30`, `0x13DF0`, `0x61A70`, `0x249C0` and `0x13ADC`. Their transitive
+callees (`0x13420`, `0x249B0/C0/D0`, `0x33714`, `0x33734`, `0x65490`,
+`0x654C7`) do not touch the four targets. The code object references
+`0x107A54/55/3A/38` only in `0x121A0`, `0x12484`, `0x14328`, `0x255CC`,
+`0x387xx..0x38Bxx` and `0x4F1xx..0x4F2xx`. So the `0x43822` writes are
+always overwritten before anything reads them. The port still makes the
+call, at its raw position.
+
+### 41-D.3 The fix
+
+- `actors.c`: `actor_type_0a19_list_init` (`0x28E98`), with the file's
+  `list_insert_before` (`0x249C0`).
+- `flow.c`: `game_state_6` calls it after `fight_list_init` (`0x49300`)
+  and before `fighter_slots_reset` (`0x34978`), in the raw order
+  (`0x20E38`, `0x20E3D`, `0x20E42`). The `PORT:` note now lists what
+  remains: `0x29B70`, `0x2C390`, `0x2C074` and the stores.
+- `fight.c`: `fight_char_screen_setup` (`0x43818`), which calls
+  `render_projection_reset`, `actors_reset`, `actor_spawn` and
+  `palette_acquire`. No port code calls it yet.
+- `render.c`: the `0x4F228` comment named only one call site. It now names
+  all three (`0x2BBC4`, `0x20C49`, `0x43822`), each with EAX = 0.
+- `game_flow.md`: the `0x20DF4` paragraph says which resets are ported.
+
+That is 2 functions, `0x4D` + `0x9A` raw bytes, and no new registration
+(neither address is stored in data).
+
+### 41-D.4 The assertions and mutations
+
+- `check_type_0a19_list_init` (`test_fight.c`, after `check_list_init`)
+  fills `0x104770..0x10489F` with `0xA5`, and saves and restores it. It
+  asserts:
+  - both sentinels, and the free list's next and prev (`0x104780`/
+    `0x104870`);
+  - each node's next and prev;
+  - the nodes' `+8`/`+0xC` and the 0x10-byte margins keep the `0xA5`.
+- `check_state6` fills `0x104780..0x10488F` with `0xA5` before the step,
+  then asserts the two sentinels' four links. The `test_fight` harness
+  snapshot `s_4880` now spans `0x104780..0x10488F` (it held only the
+  sentinels), because state 6 now writes the nodes. These assertions pass,
+  so the unit state-6 step pops no type-`0x0A`/`0x19` node.
+- `check_char_screen_setup` runs last in `test_fight`, after the harness
+  restores, because the earlier fixtures replace the resource table.
+  - It saves and restores the data object, both pools, both offscreen
+    buffers, the resource table (a first resolve sets an entry's loaded
+    flag), the DAC and the aperture.
+  - Seeds: two live records in the pool, `DS_0010814C`/`150` =
+    `0xDEADBEEF`, `DS_00104AE8` = all ones, a fifth palette entry's handle,
+    and the projection sentinels.
+  - The projection's four targets and `DS_00104AE8` read 0.
+  - Exactly three records are active, newest first, at base, base + `0x68`
+    and base + `0xD0`. `DS_0010814C`/`150` hold base + `0x68`/`0xD0`.
+  - Each record's `+8` (desc[0], read from the data), `+0x18`, `+0x1C`
+    and `+0x49` (`0xE0`, `0xE2`, `0xE2`).
+  - The palette table. Entry 0 is the descriptors' handle (read from
+    `+0x10`), with refcount 3 and start 1. Entries 1..4 are the four
+    literals in order, each with refcount 1, start = the previous start +
+    len, and len = the resolved count. Entry 5 reads 0. Measured lens are
+    99, 1, 1, 7, 1 and starts 1, 100, 101, 102, 109.
+
+**Mutations** (`scratchpad/g/mut/mut.py`): 20 single-site edits.
+- `0x28E98`:
+  - insert-after for insert-before: 36 failures;
+  - stride `0xC`: 56;
+  - bound `0x104870`: 5;
+  - dropping the `0x104880` or the `0x104884` store: 2 each;
+  - dropping the `0x10488C` store: the run crashes (SIGSEGV; the first
+    `0x249C0` follows the `0xA5` prev), which fails it.
+- `flow.c`: dropping the call fails `check_state6` (4).
+- `0x43818`:
+  - dropping `actors_reset`: 16;
+  - the first spawn's a3 `0xE0` -> `0xE2`: 1;
+  - its a4 0 -> `0x3900`: 1;
+  - the second spawn's a3/a4 swapped: 2;
+  - the third spawn's x `0x3F00` -> `0x1500`: 1;
+  - dropping the `0x10814C` store: 1;
+  - storing the third spawn to `0x10814C`: 2;
+  - either wrong descriptor: 1 each;
+  - the first two acquires swapped: 10;
+  - the last acquire dropped: 4.
+- Two edits survive: `render_projection_reset(1)` and dropping the
+  `0x43822` call. Both are equivalent, because `0x2BBC4` overwrites the four
+  targets before anything reads them (§41-D.2). All sources were restored
+  and checked.
+
+### 41-D.5 Oracles and remaining gaps
+
+No driver reaches `0x43818`. `0x28E98` now runs in both demos' state 6.
+Until now the port's `0x104888` list was zero, so it refused every
+type-`0x0A`/`0x19` spawn: the record died with no RNG draw. After a state 6
+the raw accepts such a spawn and draws twice (`rng(0x20)`/`rng(0x80)`, or
+`rng(0x80)` twice). Before its first state 6 the raw refuses as well
+(review: `0x28F64` on the zero list returns -1). §38.2's "none is spawned in
+the measured windows" cites no evidence, so this section does not rely on
+it. The evidence is below.
+
+**Which paths spawn these types** (dword and rel32 scans, fixups applied).
+The type table is `{desc; cb1; cb2}` at `0xBB9D8`. Entry `0x0A`'s
+descriptor is `0xBB0C4` (dword at `0xBBA50`; its byte 4 is `0x0A`), and
+entry `0x19`'s is `0xA89AC` (`0xBBB04`; byte 4 `0x19`).
+- **Type `0x19`.** `0xA89AC` is referenced only by the type table and by
+  two code immediates: `0x28F54` in `0x28F08`, and `0x4912D` in `0x48F98`
+  (reached through `0x490A1 jle 0x490F9`). `0x48F98` and `0x28F08` are
+  process-table entries 1 and 10 (the dwords at `0xA8648`/`0xA866C`, their
+  only references). Neither is registered in the port, so the port cannot
+  spawn type `0x19`.
+- **The scene tables.** The crowd table's `e+0xA` indices over all eight
+  scenes (`0xBBD98`/`0xBBDA8`) are `7, 0xB..0xD, 0xF, 0x11, 0x12, 0x14,
+  0x16..0x18, 0x1B..0x1F, 0x29, 0x2A, 0x2E, 0x2F`. Their descriptors' type
+  bytes are the same values. The `0xC82CC` prop descriptors are all type 0.
+  Neither uses `0x0A` or `0x19`.
+- **Type `0x0A`.** `0xBB0C4` is referenced by the type table and three
+  times by the stream at `0xE8CCC`: `CC00 000BB0C4 0000 0000` at
+  `0xE8CDA`/`0xE8CE6`/`0xE8CF2` (dwords `0xE8CDC`/`0xE8CE8`/`0xE8CF4`).
+  The reaction table at `0xA3528` references that stream 32 times
+  (`0xA3544..0xA4F5C`). So a fighter reaction in a demo fight can spawn a
+  type-`0x0A` actor.
+
+**Measured** (a temporary `fprintf` in the two cb1s and the teardown
+`0x290D0`, reverted). The front-end driver was dumped to a scratch directory,
+not `/tmp/pr_frontend_dump`, with no other test or verify process running.
+- **This branch** (base `38c4efc`, `FE_LOOPS` 3300): two type-`0x0A` cb1
+  calls in state 7 of the second demo, at f = 4182 and f = 4185. Both
+  were accepted (heads `0x104780`, then `0x104790`), and `0x290D0` never
+  ran. f = 4182 is after 2950's f = 4180, on the port's diverged path
+  (§40.5). The oracles are unchanged from §40.5: front-end 2 allowed, no
+  other unexplained frame; the demo-fight window is empty; attract2
+  684/369/7/666/6 with first unexplained frame 2950.
+- **`main` at `48611ea`** (`FE_LOOPS` 3500, with §41's `0x3C32C`, `0x3A6D4`
+  and the throw): no type-`0x0A`/`0x19` cb1 call in the whole driver run,
+  so the raptor's return to its stance removed that path. With this
+  branch's code commit cherry-picked onto it (a throwaway branch, deleted),
+  the driver still makes no such call. The dump (top level and `cycle2/`)
+  is byte-identical to `main`'s, and the oracles are unchanged: front-end
+  2 allowed; demo-fight fully explained; attract2 771/430/8/517/6 with first
+  unexplained frame 3099 = N.
+
+So `0x28E98` moves no oracle at the current pins. A later window that
+reaches the `0xE8CCC` reaction will now spawn the type-`0x0A` actors, as
+the raw does.
+
+**The unregistered `0x2910C` limits that.** `0x2910C` (process entry 7,
+`DS_000A8644[7]`, which the cb1s enable with `DS_00104AE8` bit 7) walks
+the in-use list:
+- For each node whose actor has `rec+0x1C` + the signed word `rec+0x36`
+  < 0 (landed; `mov edx,[eax+0x34]; sar edx,16; add edx,[eax+0x1C]`,
+  `0x29126..0x29135`), it zeroes `+0x1C`, `+0x34`, `+0x36` and `+0x44`, sets
+  the type `+0x48` = 0 and `+0x59` = `0xFE`, starts stream `0xE8D50` at
+  3.0, and returns the node to `0x104888` (`0x249D0`, then `0x249B0`,
+  `0x29187..0x2919B`).
+- Otherwise it picks a pose stream from the velocities by the node's `+0xC`
+  phase (`0xE8D14`, `0xE8D28`, ...; jump table `0x290FC`).
+
+In the port an accepted actor keeps its spawn stream and gets neither the
+landing nor the pose changes. Its node goes back only if the record is
+released while still type `0x0A`/`0x19` (the teardown `0x290D0`). If that
+never happens, after 16 accepted spawns the list is empty and the port
+refuses again, while the raw, which recycles each node on landing, keeps
+accepting (and drawing). That would be a new RNG divergence. The fix is to
+port `0x2910C`.
+
+**Named gaps.**
+- `0x2910C` (process entry 7) and the type-`0x19` spawners `0x48F98`/
+  `0x28F08` (process entries 1/10) are unregistered.
+- In `0x20DF4`: the calls `0x29B70`, `0x2C390` and `0x2C074`, the five zero
+  stores (dword `[0xF0A48]` at `0x20DFB`, dword `[0x100B4C]`, dword
+  `[0x104AE8]`, byte `[0x1088EC]`, byte `[0x104B15]` at
+  `0x20E16..0x20E28`), and the two word stores `DS_000F0AFA`/`DS_000F0AF8`.
+  Only the two word stores are BSS-zero (net-faithful). `[0x104AE8]` is not
+  zero at the second demo's state 6. `flow.c` and `game_flow.md` list them
+  all.
+- `0x43738`, `0x444C8`, `0x43964`, `0x43A08` and the `0x104AE4` hook chain
+  (`0x28D68`, `0x28D80`) are unported mode code.

@@ -94,6 +94,14 @@ void fight_scene_crowd(u32 scene);
  * is a no-op target and is not issued (see the .c). */
 void fight_scene_props(u32 scene);
 
+/* 0x43818. The setup 0x43738 and 0x444C8 share before they fill each side's
+ * character entries: 0x4F228(0), 0x2BAF4(1), the spawns 0xC885C (a2 0, a3
+ * 0xE0, a4 0) and 0xC87F8 twice (a2 0x1500/0x3F00, a3 0xE2, a4 0x3900; the
+ * records go to DS_0010814C/DS_00108150), then the palette acquires 0x98EC50C,
+ * 0x98EC514, 0x8099AC and 0x809984 in that order. Its callers are 0x24C5C-mode
+ * code the port does not reach. */
+void fight_char_screen_setup(void);
+
 /* 0x494A8. The dust/effect entry builder the fighter spawn (0x33C78) calls at
  * 0x33E43 when DS_00104B14 == 0. Each iteration moves one node from the free
  * fight-effect list (DS_001083C4) to the active one (DS_0010884C), picks a

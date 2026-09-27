@@ -6,7 +6,9 @@
 #include "game/flow.h"
 #include "game/rng.h"
 #include "mem.h"
+#include "platform/gfx.h"
 #include "platform/render.h"
+#include "platform/res.h"
 #include "symbols.h"
 #include "test.h"
 #include "test_fixtures.h"
@@ -2641,6 +2643,10 @@ static void check_state6(void)
      * 0 -> 2 (4 without the reset) and the word must read 0. */
     DSB(DS_001078FA) = 2;
     DSW(DS_001078F6) = 0x1234;
+    /* Record §41-D: 0x20DF4's 0x28E98 (0x20E3D) builds the type-0x0A/0x19
+     * node lists; 0xA5 over the nodes and both sentinels differs from every
+     * link it writes. */
+    mem_fill(DS_00104780, 0xA5u, 0x110u);
     rng_seed(0x1234u);
     game_state_step();
 
@@ -2648,6 +2654,10 @@ static void check_state6(void)
     CHECK_EQ_INT((int)DSD(DS_000F0AE4), (int)DS_000F0AE0);
     CHECK_EQ_INT((int)DSD(DS_000F0A78), 0x000F0A80);
     CHECK_EQ_INT((int)DSD(DS_000F0A7C), 0x000F0AD4);
+    CHECK_EQ_INT((int)DSD(DS_00104880), (int)DS_00104880);   /* 0x28E98 */
+    CHECK_EQ_INT((int)DSD(DS_00104884), (int)DS_00104880);
+    CHECK_EQ_INT((int)DSD(DS_00104888), 0x00104780);
+    CHECK_EQ_INT((int)DSD(DS_0010488C), 0x00104870);
     CHECK_EQ_INT((int)DSW(DS_000F0AFC), 0x400);   /* 0x12C70 */
     CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0);       /* 0x20E52 */
 
@@ -2971,6 +2981,155 @@ static void check_list_init(void)
 
     DSD(DS_00104AFC) = s_a4fc;
     tf_put(s_li, 0x001083C4u, sizeof s_li);
+}
+
+/* 0x28E98 (record §41-D): both sentinels self-linked, then the sixteen nodes
+ * 0x104780..0x104870 appended to the 0x104888 free list in address order
+ * (0x249C0 inserts before the sentinel), so the free list's next is 0x104780
+ * and its prev 0x104870. 0xA5 over the nodes, the sentinels and a 0x10-byte
+ * margin on each side differs from every link; the nodes' +8/+0xC and the
+ * margins must keep it (0x249C0 writes only {next; prev}). */
+static void check_type_0a19_list_init(void)
+{
+    u8 s[0x130];
+    tf_snap(s, 0x00104770u, sizeof s);
+    mem_fill(0x00104770u, 0xA5u, sizeof s);
+
+    actor_type_0a19_list_init();
+
+    CHECK_EQ_INT((int)DSD(DS_00104880), (int)DS_00104880);
+    CHECK_EQ_INT((int)DSD(DS_00104884), (int)DS_00104880);
+    CHECK_EQ_INT((int)DSD(DS_00104888), (int)0x00104780u);
+    CHECK_EQ_INT((int)DSD(DS_0010488C), (int)0x00104870u);
+    for (u32 i = 0; i < 16u; i++) {
+        u32 node = DS_00104780 + i * 0x10u;
+        u32 next = i < 15u ? node + 0x10u : DS_00104888;
+        u32 prev = i > 0u ? node - 0x10u : DS_00104888;
+        CHECK_EQ_INT((int)DSD(node), (int)next);
+        CHECK_EQ_INT((int)DSD(node + 4u), (int)prev);
+        CHECK_EQ_INT((int)DSD(node + 8u), (int)0xA5A5A5A5u);
+        CHECK_EQ_INT((int)DSD(node + 0xCu), (int)0xA5A5A5A5u);
+    }
+    for (u32 o = 0; o < 0x10u; o += 4u) {
+        CHECK_EQ_INT((int)DSD(0x00104770u + o), (int)0xA5A5A5A5u);
+        CHECK_EQ_INT((int)DSD(0x00104890u + o), (int)0xA5A5A5A5u);
+    }
+
+    tf_put(s, 0x00104770u, sizeof s);
+}
+
+/* 0x43818 (record §41-D): 0x4F228(0), 0x2BAF4(1), three 0x2AE14 spawns and
+ * four 0x33754 acquires. Everything the call writes is saved and restored: the
+ * data object, the two pools, the two offscreen buffers, the resource table
+ * (a first resolve marks an entry loaded), the DAC and the aperture.
+ * - The pool holds two live records beforehand, so only 0x2BAF4's rebuild
+ *   makes the spawns land at base, base+0x68 and base+0xD0 with an active
+ *   list of exactly three.
+ * - The descriptors' flags 0x2800 skip the walk (bit 0x0800) and select the
+ *   layer byte (bit 0x2000), so rec+0x49 carries a3 = ECX (0xE0, 0xE2, 0xE2)
+ *   and rec+8 keeps desc[0], read from the data object.
+ * - DS_0010814C/DS_00108150 are seeded 0xDEADBEEF.
+ * - The palette table: 0x2BAF4's 0x336C0 clears it, the three spawns acquire
+ *   their descriptors' handle (desc+0x10, read from the data) three times,
+ *   then the four literals follow in the raw's order with refcount 1, each
+ *   start the previous entry's start + len. A fifth entry's handle is seeded
+ *   and must read 0 (the 0x336C0 clear, and no fifth acquire).
+ * - The projection sentinels go to 0. 0x2BAF4 makes the same 0x4F228(0) call
+ *   at 0x2BBC4, so this group cannot see the 0x43822 call itself: dropping
+ *   it is an equivalent mutation (record §41-D). */
+static void check_char_screen_setup(void)
+{
+    static u8 s_data[0x10B0D0u - 0x80000u];
+    static u8 s_rec[0xEBA0u], s_pset[0x4880u];
+    static u8 s_bufa[0xFA00u], s_bufb[0xFA00u], s_ap[0xFA00u];
+    static u8 s_dac[sizeof gfx_dac];
+    static u8 s_res[0x14u * 128u];
+    u32 rec_pool = DSD(DS_001014F4), pset_pool = DSD(DS_001014EC);
+    u32 bufa = DSD(DS_001014E8), bufb = DSD(DS_001014E4);
+    u32 res_tab = DSD(DS_001014E0);
+    u32 res_len = DSD(DS_001014F0) * 0x14u;
+    CHECK(rec_pool != 0u && pset_pool != 0u && bufa != 0u && bufb != 0u,
+          "0x43818 needs the pools and buffers");
+    CHECK(res_len != 0u && res_len <= sizeof s_res, "the resource table fits");
+    if (rec_pool == 0u || pset_pool == 0u || bufa == 0u || bufb == 0u ||
+        res_len == 0u || res_len > sizeof s_res)
+        return;
+    tf_snap(s_data, 0x80000u, sizeof s_data);
+    tf_snap(s_rec, rec_pool, sizeof s_rec);
+    tf_snap(s_pset, pset_pool, sizeof s_pset);
+    tf_snap(s_bufa, bufa, sizeof s_bufa);
+    tf_snap(s_bufb, bufb, sizeof s_bufb);
+    tf_snap(s_res, res_tab, res_len);
+    memcpy(s_ap, gfx_aperture(), sizeof s_ap);
+    memcpy(s_dac, gfx_dac, sizeof s_dac);
+
+    actors_reset();
+    (void)actor_alloc(0);
+    (void)actor_alloc(0);
+    DSD(DS_00107618 + 0x50u) = 0xDEADBEEFu;   /* a fifth entry's handle */
+    DSD(DS_0010814C) = 0xDEADBEEFu;
+    DSD(DS_00108150) = 0xDEADBEEFu;
+    DSD(DS_00104AE8) = 0xFFFFFFFFu;
+    DSB(DS_00107A54) = 1u;
+    DSB(DS_00107A55) = 0x99u;
+    DSW(DS_00107A3A) = 0x1234u;
+    DSW(DS_00107A38) = 0x4321u;
+
+    fight_char_screen_setup();
+
+    CHECK_EQ_INT((int)DSB(DS_00107A54), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107A55), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107A3A), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107A38), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), 0);
+
+    u32 r0 = rec_pool, r1 = rec_pool + ACTOR_REC_SIZE;
+    u32 r2 = rec_pool + 2u * ACTOR_REC_SIZE;
+    u32 n = 0;
+    for (u32 r = actor_list_head(); r != 0; r = actor_next(r)) n++;
+    CHECK_EQ_INT((int)n, 3);
+    CHECK_EQ_INT((int)actor_list_head(), (int)r2);  /* 0x249B0: newest first */
+    CHECK_EQ_INT((int)DSD(DS_0010814C), (int)r1);
+    CHECK_EQ_INT((int)DSD(DS_00108150), (int)r2);
+    CHECK_EQ_INT((int)DSD(r0 + 0x08u), (int)DSD(0x000C885Cu));
+    CHECK_EQ_INT((int)DSD(r1 + 0x08u), (int)DSD(0x000C87F8u));
+    CHECK_EQ_INT((int)DSD(r2 + 0x08u), (int)DSD(0x000C87F8u));
+    CHECK_EQ_INT((int)DSD(r0 + 0x18u), 0);
+    CHECK_EQ_INT((int)DSD(r0 + 0x1Cu), 0);
+    CHECK_EQ_INT((int)DSB(r0 + 0x49u), 0xE0);
+    CHECK_EQ_INT((int)DSD(r1 + 0x18u), 0x1500);
+    CHECK_EQ_INT((int)DSD(r1 + 0x1Cu), 0x3900);
+    CHECK_EQ_INT((int)DSB(r1 + 0x49u), 0xE2);
+    CHECK_EQ_INT((int)DSD(r2 + 0x18u), 0x3F00);
+    CHECK_EQ_INT((int)DSD(r2 + 0x1Cu), 0x3900);
+    CHECK_EQ_INT((int)DSB(r2 + 0x49u), 0xE2);
+
+    static const u32 lit[4] = { 0x098EC50Cu, 0x098EC514u, 0x008099ACu,
+                                0x00809984u };
+    u32 desc_hdl = DSD(0x000C885Cu + 0x10u);
+    CHECK_EQ_INT((int)DSD(0x000C87F8u + 0x10u), (int)desc_hdl);
+    CHECK_EQ_INT((int)DSD(DS_00107618), (int)desc_hdl);
+    CHECK_EQ_INT((int)DSD(DS_00107618 + 4u), 3);
+    CHECK_EQ_INT((int)DSD(DS_00107618 + 8u), 1);
+    for (u32 k = 0; k < 4u; k++) {
+        u32 e = DS_00107618 + (k + 1u) * 0x10u;
+        const u32 *res = (const u32 *)res_resolve(lit[k]);
+        CHECK(res != NULL, "each literal palette handle resolves");
+        CHECK_EQ_INT((int)DSD(e), (int)lit[k]);
+        CHECK_EQ_INT((int)DSD(e + 4u), 1);
+        CHECK_EQ_INT((int)DSD(e + 8u), (int)(DSD(e - 8u) + DSD(e - 4u)));
+        if (res != NULL) CHECK_EQ_INT((int)DSD(e + 12u), (int)*res);
+    }
+    CHECK_EQ_INT((int)DSD(DS_00107618 + 0x50u), 0);
+
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    tf_put(s_bufa, bufa, sizeof s_bufa);
+    tf_put(s_bufb, bufb, sizeof s_bufb);
+    tf_put(s_res, res_tab, res_len);
+    memcpy(gfx_aperture(), s_ap, sizeof s_ap);
+    memcpy(gfx_dac, s_dac, sizeof s_dac);
 }
 
 /* 0x24C73/0x47208: the demo's CPU-AI command generator. A live pair of slots
@@ -11092,7 +11251,7 @@ int test_fight(void)
     u8 s_9ad[0x10];
     u8 s_f0a78[0x68];
     u8 s_c20[0x10];
-    u8 s_4880[0x10];
+    u8 s_4880[0x110];
     u8 s_82e0[0x90];
     u8 s_8398;
     u32 s_actor_tab = DSD(DS_001014EC);
@@ -11116,11 +11275,11 @@ int test_fight(void)
     tf_snap(s_9ad, 0x0009AD50u, 0x10u);
     /* The type-dispatch checks' list sentinels (with the 0x12750 nodes
      * 0xF0A80..0xF0ADF) and the 0x2D counter; 0xF0AE0 is covered by s_f0ae0
-     * above, and s_4880 spans the 0x104880/0x104888
-     * sentinel pairs. */
+     * above, and s_4880 spans the 0x104780..0x104870 nodes and the
+     * 0x104880/0x104888 sentinel pairs (state 6's 0x28E98 writes both). */
     tf_snap(s_f0a78, 0x000F0A78u, 0x68u);
     tf_snap(s_c20, 0x00100C20u, 0x10u);
-    tf_snap(s_4880, 0x00104880u, 0x10u);
+    tf_snap(s_4880, 0x00104780u, 0x110u);
     tf_snap(s_82e0, 0x001082E0u, 0x90u);
     s_8398 = DSB(0x00108398u);
 
@@ -11159,6 +11318,7 @@ int test_fight(void)
     check_state7();
     check_game_frame_tail();
     check_list_init();
+    check_type_0a19_list_init();
     check_scene_props();
     check_command_generator();
     check_state_dispatch();
@@ -11222,7 +11382,7 @@ int test_fight(void)
     tf_put(s_9ad, 0x0009AD50u, 0x10u);
     tf_put(s_f0a78, 0x000F0A78u, 0x68u);
     tf_put(s_c20, 0x00100C20u, 0x10u);
-    tf_put(s_4880, 0x00104880u, 0x10u);
+    tf_put(s_4880, 0x00104780u, 0x110u);
     tf_put(s_82e0, 0x001082E0u, 0x90u);
     DSB(0x00108398u) = s_8398;
     DSD(DS_001014EC) = s_actor_tab;
@@ -11235,6 +11395,9 @@ int test_fight(void)
     DSD(DS_000EF6DC) = s_frame;
 
     check_combo_text();
+    /* After the restores above: it needs the real resource table, which the
+     * earlier fixtures replace, and it saves and restores all it writes. */
+    check_char_screen_setup();
 
     return g_failures - before;
 }
