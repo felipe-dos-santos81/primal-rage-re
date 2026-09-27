@@ -14313,3 +14313,9 @@ tail's other arm clears it too) and the credit count after state 8.
     `0x4367C`), then `0x1B`, then mode `0x10` with the sub-state 0. That
     arm is the gap, so the character screen is built but its per-frame
     pass does not run.
+
+## 48-Q. `0x33C18`'s other callers (named-gap batch 12, branch `gap12-33c18callers`)
+
+Work in progress: §47-C.2 names eight unported callers of `0x33C18`
+(`0x25A84`, `0x2716C`, `0x274FC`, `0x28DA4`, `0x292D4`, `0x296B8`, `0x43D60`,
+`0x4434C`). This section records their raw, entrances, port and gaps.
