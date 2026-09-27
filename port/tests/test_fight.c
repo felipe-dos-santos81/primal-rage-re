@@ -8737,10 +8737,12 @@ static void check_char3_grab(void)
  * 0xD24FE in character 3's reaction stream 0xD24F0; Ghidra has no function
  * there): EAX = rec, the operand unread; the byte at 0x107804 + (rec+0x51) *
  * 0x94 (the side's slot +0x54) = 0, then 0x36870(rec). Both slots are seeded
- * with +0x54 = 3, whose 0x36870 case returns at once, so only the clear
- * reaches the +0x54 == 0 arm: the side's record restarts on 0xC8950[+0x7A]
- * with +0x4D = 0x1E and state 0/0 (check_deep_callees E's setting: mode 3,
- * DS_00107D2C = 0, +0x42/+0x43 = 0). The other side keeps its sentinels. */
+ * with +0x54 = 3: 0x36870 still runs its resets before the switch, but its
+ * case-3 arm does nothing, so only the clear reaches the +0x54 == 0 arm: the
+ * side's record restarts on 0xC8950[+0x7A] with +0x4D = 0x1E and state 0/0
+ * (check_deep_callees E's setting: mode 3, +0x42/+0x43 = 0). Both words of
+ * DS_00107D2C are 0, so 0x39040(other) (the gate word 0x107D2C + other * 2)
+ * skips its body for either side. The other side keeps its sentinels. */
 static void sr_seed(u32 s0, u32 s1, u32 r0, u32 r1, u32 st0, u32 st3)
 {
     mem_fill(s0, 0, 0x94u);
@@ -8754,7 +8756,8 @@ static void sr_seed(u32 s0, u32 s1, u32 r0, u32 r1, u32 st0, u32 st3)
     DSD(0x000C895Cu) = st3;                  /* 0xC8950[3] */
     DSD(0x000C8950u) = st0;                  /* 0xC8950[0] */
     DSW(DS_00104B00) = 3u;
-    DSW(DS_00107D2C) = 0;                    /* 0x39040(other) gate shut */
+    DSW(DS_00107D2C) = 0;                    /* 0x39040(0) gate shut (k = 1) */
+    DSW(DS_00107D2C + 2u) = 0;               /* 0x39040(1) gate shut (k = 0) */
     DSB(r0 + 0x51u) = 0;
     DSB(r1 + 0x51u) = 1;
     DSW(r0 + 0x56u) = 1;
@@ -8799,8 +8802,8 @@ static void check_stance_return(void)
 
     f = (anim_fn)(void *)fn_resolve(0x3C32Cu);
     CHECK(f != NULL, "0x3C32C is a registered stream target");
-    CHECK(fn_resolve(0x3C32Cu) != (void (*)(void))fighter_36870,
-          "0x3C32C is its own target, not 0x36870");
+    CHECK(fn_resolve(0x3C32Cu) != fn_resolve(0x36870u),
+          "0x3C32C is its own target, not 0x36870's");
     for (k = 0; f != NULL && k < 2u; k++) {
         u32 s = k ? s1 : s0, so = k ? s0 : s1;
         u32 r = k ? r1 : r0, ro = k ? r0 : r1;
