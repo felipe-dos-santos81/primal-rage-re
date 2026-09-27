@@ -8269,6 +8269,18 @@ registered. No driver reaches either entry, so they are unit-tested only. The
 port covers about 880 raw bytes: `0xDE` + `0x84` + `0xA4` + `0xA2` + `0x27` +
 `0x57` + `0x48`, plus the `0x2C8F8..0x2C934` arm.
 
+**Corrections to §41-D** (the raw wins):
+- §41-D.2 says `0x43964` takes "the character index byte of
+  `0x108163[side]`". The byte is at `0x108166 + side`. `0x43972` loads the
+  dword at `0x108163 + side` and `0x4397C` does `sar esi,0x18`, which keeps
+  its top byte, the one at `0x108166 + side` (signed). `0x43A10`/`0x43A16`
+  read it the same way.
+- §41-D.2 calls the per-frame `call [0x104AE4]` hook "the unported mode-0x17
+  handler". That is wrong for `0x43738`. `0x43738` is dispatched by the mode
+  `0x1A`/`0x1B` handlers `0x4F9A0`/`0x4F9C8` (the calls at `0x4F9AA`/
+  `0x4F9D1`), which `0x24C5C` reaches at `0x25403`/`0x2540A`. The mode-`0x17`
+  hook is a different target, `0x29B74`.
+
 ### 42-F.1 The raw (Ghidra `disassemble_function`, `read_memory` + capstone, fixups applied)
 
 **`0x43738`** (`0x43738..0x43815`) runs these steps in order:
@@ -8402,7 +8414,7 @@ The other entrances:
 | `0x43964` | `0x43796`, `0x43B59` (in `0x43B24`), `0x44517` | none |
 | `0x43A08` | `0x4379D`, `0x43B60`, `0x44521` | none |
 | `0x1D810` | `0x25C64` (in `0x25C1C`), `0x43767`, `0x43773`, `0x444F7`, `0x44503` | none |
-| `0x1D7B8` | `0x43A84`, `0x44035` (in `0x43FBC`), `0x4432D` | none |
+| `0x1D7B8` | `0x43A84`, `0x44035` (in `0x43FBC`), `0x4432D` (in `0x442A0`) | none |
 | `0x2F528` | `0x437FE`, `0x43B18`, `0x4C418`, `0x4C45D`, `0x4F422`, `0x4F5BC`, `0x4F610` | none |
 | `0x2C8F0` | `0x110B0` (the ported -2 arm), `0x20C2B` (`game_init`, -1), `0x2FA2D`, `0x2FA37`, `0x308C1`, `0x43750`, `0x444E0` | none |
 | `0x29D60` | 15 calls | the immediates `0x437FA`/`0x44537` |
@@ -8411,8 +8423,9 @@ The other entrances:
 
 - `fight.c`: the four `0x43xxx` functions and the two `0x1Dxxx` ones, after
   `fight_char_screen_setup`.
-  - The hook store writes the raw's value `0x29D60`, as `fighter_14814`
-    stores its callbacks. Nothing dispatches `DS_00104AE4` yet.
+  - The hook store writes the raw's value `0x29D60` (`FN_00029D60`), as
+    `fighter_14814` stores its callbacks. Nothing dispatches `DS_00104AE4`
+    yet.
   - `0x2C3FC(0x30)` is a `PORT:` voice note (spec §7).
   - `0x43A08` writes `+0x4D` and `0x10814C[side]+0x29` with no null test, as
     the raw does.
@@ -8453,7 +8466,13 @@ The runs:
   - `0x1D810` on an empty slot and on a live one (the dead bit is set and
     the slot is zeroed);
   - `0x43A08`'s `+0x29 |= 8` on a cleared bit, its side-1 class-3 actor
-    (palette `0x98EC10C`) and its marker `0x4032`.
+    (palette `0x98EC10C`) and its marker `0x4032`;
+  - `0x1D7B8` on a live marker: the class-3 marker just spawned, with
+    palette `0x98ECBEC`. Its release arm sets the old record's dead bit and
+    zeroes its pset palette. The class-5 marker (`0x402F`) lands in the slot
+    at x `0x4200` and at the caller's y (`0x1234`). This is the only run that
+    exercises the arm: in (a)..(c) `0x1D810` has already emptied the slot
+    each time `0x1D7B8` runs.
 
 `chs_check_side` checks each filled side:
 - the four records at their exact addresses, in spawn order;
@@ -8476,10 +8495,11 @@ Two further checks: `fn_resolve(0x43738)` returns the port, and
 `test_game.c` checks the -1 arm directly (scale 0, `0xA1` -> `0x50`, `0x41`
 -> `0x20`).
 
-**Mutations** (`scratchpad/cs/mut.py`, logs `mut.log`/`mut2.log`): 60
-single-site edits. They cover each index, constant and table, each dropped
-store or call, the call order, the loop bound and the registration. 57 fail
-1..60 assertions. Three survive, and all three are equivalent:
+**Mutations** (`scratchpad/cs/mut.py`, logs `mut.log`/`mut2.log`/
+`mut3.log`): 63 single-site edits. They cover each index, constant and table,
+each dropped store or call, the call order, the loop bound, the hook value
+and the registration. 60 fail 1..60 assertions. Three survive, and all three
+are equivalent:
 - `O1` replaces the mask `side + 1` with `1 << side`. The two are equal for
   sides 0 and 1.
 - `O8`/`B7` drop the direct `0x13DF0` call in either entry. `0x43818`'s
@@ -8492,6 +8512,11 @@ In the first sweep, dropping either `0x444C8` release also survived (`R4`,
 would then kill that live record. The check that `0x43818`'s three records
 stay alive with their palette was added for this. Those two mutations, and
 the new `R5` and `O15`, now fail.
+
+In review, deleting `0x1D7B8`'s release arm also passed, because no run gave
+it a live record. The (d) case for that arm was added. Deleting the whole
+arm (`M5`) now fails 2 assertions, and so does dropping only its
+`0x2B150` call (`M6`). A wrong hook value (`O6b`, `0x29D64`) fails 2.
 
 ### 42-F.5 Oracles and remaining gaps
 
@@ -8512,7 +8537,7 @@ The named gaps are all mode code:
 - the select screen's per-frame code, and the remaining call sites of the
   callees ported here:
   - `0x43B24`, which calls `0x43964`, `0x43A08` and `0x2F528` again;
-  - `0x43FBC` and the `0x4432D` site, which call `0x1D7B8`;
+  - `0x43FBC` and `0x442A0` (its call at `0x4432D`), which call `0x1D7B8`;
   - `0x25C1C`, which calls `0x1D810`;
   - the other `0x2F528` callers `0x4C418`, `0x4C45D`, `0x4F422`, `0x4F5BC`
     and `0x4F610`;

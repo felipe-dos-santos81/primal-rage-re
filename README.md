@@ -631,7 +631,7 @@ The new ratchet `make attract2-oracle` (`--attract2`, in `make verify`) finds ca
 
 `0x43738` fills each side whose bit (side + 1) is set in `DS_00104B1F` and draws the countdown (5 or 15). `0x444C8` fills both sides and draws no countdown. Both then reset the `DS_00104AE4` hook to `0x29D60`. `0x43738` is itself that hook's target (stored by `0x28D68`/`0x28D80`) and is registered.
 
-The mode-`0x1A` dispatch and every caller are unported mode code, so no oracle moves. New `check_char_screen_open` in `test_fight.c`: 57 of 60 mutations fail it, and the 3 survivors are equivalent.
+The mode-`0x1A` dispatch and every caller are unported mode code, so no oracle moves. New `check_char_screen_open` in `test_fight.c`: 60 of 63 mutations fail it, and the 3 survivors are equivalent.
 
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
 demo fight's remaining divergences (the capture's fight is explained up to its

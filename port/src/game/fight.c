@@ -154,7 +154,6 @@ void fight_char_screen_setup(void)
 #define DS_000BB938 0x000BB938u   /* no symbols.h name: [class][side] descriptor */
 #define DS_000A78B0 0x000A78B0u   /* no symbols.h name: [class] marker descriptor */
 #define DS_00104B1B 0x00104B1Bu   /* no symbols.h name */
-#define FN_HOOK_NOP 0x00029D60u   /* 0x29D60, a bare `ret` */
 
 /* 0x1D810 — record §42-F. EAX = side. When DS_001028E0[side] holds a record,
  * 0x2B150 marks it dead and the slot is zeroed (ECX = 0 at 0x1D826; 0x2B150
@@ -267,7 +266,7 @@ void fight_char_screen_open(void)
     DSW(DS_0010816C) = DSB(DS_00108173) != 0u ? 5u : 0xFu;  /* 0x437C6/0x437D1 */
     text_number_draw_font2(0x13, 1, (s16)DSW(DS_0010816C), 2,
                            0u, 0x4000u);                /* 0x437FE 0x2F528 */
-    DSD(DS_00104AE4) = FN_HOOK_NOP;                     /* 0x43805 */
+    DSD(DS_00104AE4) = FN_00029D60;                     /* 0x43805 (a bare `ret`) */
     DSB(DS_00108174) = 0u;                              /* 0x4380B */
 }
 
@@ -293,7 +292,7 @@ void fight_char_screen_open_both(void)
         DSD(DS_00108144 + side * 4u) = 0u;              /* 0x44529 */
     }
     DSB(DS_00108174) = 0u;                              /* 0x4453B */
-    DSD(DS_00104AE4) = FN_HOOK_NOP;                     /* 0x44541 */
+    DSD(DS_00104AE4) = FN_00029D60;                     /* 0x44541 */
 }
 
 /* ---- 0x494A8 the dust builder (state 6's fighter spawn) ----------------- */

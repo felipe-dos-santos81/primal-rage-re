@@ -3427,6 +3427,22 @@ static void check_char_screen_open(void)
     CHECK_EQ_INT((int)chs_pal_handle(rec_pool + 3u * R), 0x098EC10C);
     CHECK_EQ_INT((int)DSD(DS_001028E0 + 4u), (int)(rec_pool + 4u * R));
     CHECK_EQ_INT((int)DSD(rec_pool + 4u * R + 0x08u), 0x4032);   /* 0xA7860 */
+    /* 0x1D7B8 on a live marker (the one just spawned, palette 0x98ECBEC):
+     * its release arm marks it dead and drops its pset palette before the
+     * class-5 marker (0xA7888, id 0x402F) lands in the slot at the caller's
+     * y. Every earlier 0x1D7B8 ran on a slot 0x1D810 had already emptied. */
+    {
+        u32 old = rec_pool + 4u * R;
+        CHECK_EQ_INT((int)chs_pal_handle(old), 0x098ECBEC);
+        CHECK_EQ_INT((int)(DSB(old + 0x28u) & 8u), 0);
+        fight_select_marker_spawn(1u, 5u, 0x1234u);
+        CHECK_EQ_INT((int)(DSB(old + 0x28u) & 8u), 8);
+        CHECK_EQ_INT((int)DSD(actor_pset(old) + 0x18u), 0);
+        CHECK_EQ_INT((int)DSD(DS_001028E0 + 4u), (int)(rec_pool + 5u * R));
+        CHECK_EQ_INT((int)DSD(rec_pool + 5u * R + 0x08u), 0x402F);
+        CHECK_EQ_INT((int)DSD(rec_pool + 5u * R + 0x18u), 0x4200);
+        CHECK_EQ_INT((int)DSD(rec_pool + 5u * R + 0x1Cu), 0x1234);
+    }
 
     tf_put(s_data, 0x80000u, sizeof s_data);
     tf_put(s_rec, rec_pool, sizeof s_rec);
