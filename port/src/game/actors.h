@@ -63,6 +63,11 @@ void actor_mode1_pset(u32 rec);
  * list in address order. State 6's reset 0x20DF4 calls it at 0x20E3D; without
  * it 0x28F64/0x2901C find the free list empty and refuse the spawn. */
 void actor_type_0a19_list_init(void);
+/* 0x48C4C (record §42-B). Self-link the type-0x2D sentinels 0x1082E0 (free)
+ * and 0x108368 (in use), append the eight nodes 0x1082E8..0x108358 to the
+ * free list in address order and clear the bytes 0x108396..0x108398 (the
+ * last is the type-0x2D count). Its one caller is 0x48D94's +0x57 == 1 arm. */
+void actor_type_2d_list_init(void);
 
 /* 0x33754. Acquire a reference to palette resource `handle` in the table at
  * DS_00107618 and enqueue its DAC range via palette_record (0x33734). Returns

@@ -104,6 +104,7 @@ static void anim_code_14EA4(u32 rec, u32 arg);
 static void anim_code_3C32C(u32 rec, u32 arg);
 static void anim_code_14E80(u32 rec, u32 arg);
 static void anim_code_370F0(u32 rec, u32 arg);
+static void anim_code_36280(u32 rec, u32 arg);
 static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side);
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side);
 
@@ -275,6 +276,21 @@ int actors_init(void)
      * 0x28D68/0x28D80 (dwords at 0x28D6A/0x28D87); both setters and the
      * `call [0x104ae4]` dispatch are unported mode code. */
     fn_register(0x43738u, fight_char_screen_open);
+
+    /* PORT: record §42-B. The +0x1C callback 0x3E244 that 0x3E3A8 stores
+     * (the one dword at 0x3E40A; 0x193B0's 0x19505, fn(side)); the 0xD000
+     * target 0x36280 of the 0xC90A8/0xC90D0 fall streams (13 dwords,
+     * 0xD2750..0xED156), opcode 0x10, mode 0x4000; and character 2's finisher
+     * +0x0C callbacks 0x48AAC/0x48D94 (the dwords at 0x48C06/0x48F77, stored
+     * by 0x48BE0/0x48F54; 0x3531C case 7, (slot, rec, side)) with those two
+     * entries (0xBDAE4[2]/0xBDB00[2], the dwords at 0xBDAEC/0xBDB08; 0x379C4
+     * calls DS_001078E8 as (slot, rec) and tests the return). */
+    fn_register(0x3E244u, (void (*)(void))fighter_3e244);
+    fn_register(0x36280u, (void (*)(void))anim_code_36280);
+    fn_register(0x48AACu, (void (*)(void))fighter_48aac);
+    fn_register(0x48D94u, (void (*)(void))fighter_48d94);
+    fn_register(0x48BE0u, (void (*)(void))fighter_48be0);
+    fn_register(0x48F54u, (void (*)(void))fighter_48f54);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -903,6 +919,16 @@ static void anim_code_370F0(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_370f0(rec);
+}
+
+/* 0x36280 — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x36280 takes EAX = rec and does not
+ * read EDX (pushed at 0x36282; DL is loaded at 0x3628F before its one use and
+ * EDX reloaded at 0x362A3), so this wrapper drops the operand. */
+static void anim_code_36280(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_36280(rec);
 }
 
 /* 0x36870 — the animation-opcode target shape. PORT: anim_indirect calls every
@@ -1864,6 +1890,26 @@ void actor_type_0a19_list_init(void)
     DSD(DS_00104888) = DS_00104888;                     /* 0x28EBC */
     for (u32 node = DS_00104780; node < DS_00104880; node += 0x10u)  /* 0x28EC2/0x28ED9 */
         list_insert_before(DS_00104888, node);          /* 0x28ED4 0x249C0 */
+}
+
+/* 0x48C4C — record §42-B. The type-0x2D node lists 0x48CD8/0x48D3C use:
+ * self-link the in-use sentinel 0x108368 and the free sentinel 0x1082E0,
+ * append the eight 0x10-byte nodes 0x1082E8..0x108358 to the free list in
+ * address order (0x249C0 inserts before the sentinel), then clear the bytes
+ * 0x108398 (the type-0x2D count), 0x108397 and 0x108396. Only the nodes'
+ * {next; prev} dwords are written. 0x48D94 calls it at 0x48DBF. */
+void actor_type_2d_list_init(void)
+{
+    DSD(DS_0010836C) = DS_00108368;                     /* 0x48C5E */
+    DSD(DS_00108368) = DS_00108368;                     /* 0x48C64 */
+    DSD(DS_001082E4) = DS_001082E0;                     /* 0x48C6A */
+    DSD(DS_001082E0) = DS_001082E0;                     /* 0x48C70 */
+    for (u32 node = DS_001082E8; node < DS_00108368; node += 0x10u)  /* 0x48C76/0x48C8D */
+        list_insert_before(DS_001082E0, node);          /* 0x48C88 0x249C0 */
+    DSB(DS_00108398) = 0;                               /* 0x48C97 */
+    DSB(DS_00108398 - 1u) = 0;                          /* 0x48C9D: 0x108397 */
+    DSB(DS_00108398 - 2u) = 0;                          /* 0x48CA3: 0x108396 */
+    /* PORT: 0x48CAE 0x2C3FC(0xEF) voice, out of scope (spec §7). */
 }
 
 /* 0x290D0. Types 0x0A/0x19's teardown: return the node to 0x104888. */
