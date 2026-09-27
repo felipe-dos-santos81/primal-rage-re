@@ -3218,15 +3218,18 @@ static int fe_entry_read(u32 e)
 /* The driver's loop: FE_DEMO_LOOPS covers the first demo's 0x11BCC exit at
  * loop 1970 (the run's length before the cycle-2 dump); FE_LOOPS reaches the
  * second attract cycle's state-6 handoff (loop 2782), the whole second demo
- * (its exit to state 9 at loop 3684, the poll's f = 4571) and the third
- * attract cycle's first 215 loops. FE_LOOPS is a measurement window, not a
- * raw value: 3900 (3500 before record §44-A, 3300 before §41, 3200 before §40,
- * 3100 before §39, 2800 before §38) keeps the second demo's first
- * unexplained capture frame, 3257 (loop 3556), inside the cycle-2 dump, and
- * reaches past the capture's last frame, 3616 (about loop 3865 at the
- * 60.05/70.09 Hz ratio from the exit's capture frame 3406). */
+ * (its exit to state 9 at loop 3684, the poll's f = 4571), the third attract
+ * cycle's high-score screen (loops 3684..3984) and the third demo from its
+ * state-6 entry (loop 3985). FE_LOOPS is a measurement window, not a raw
+ * value: 4100 (3900 before record §47-A, 3500 before §44-A, 3300 before §41,
+ * 3200 before §40, 3100 before §39, 2800 before §38) reaches past the
+ * capture's last frame, 3616: capture 3546 is loop 3986's frame (cycle-2
+ * 2194), and 70 capture frames at the 60.05/70.09 Hz ratio are about 60
+ * loops, so 3616 lies near loop 4046. (The old estimate, loop 3865 from the
+ * exit's capture frame 3406, missed that the capture drops the static
+ * high-score screen's repeated frames.) */
 #define FE_DEMO_LOOPS 2000
-#define FE_LOOPS 3900
+#define FE_LOOPS 4100
 
 int test_frontend(void)
 {
@@ -3885,6 +3888,13 @@ int test_frontend(void)
          * s16konsd (54, after 2782 and 2783); loop 3557's voice 0x4D s16spisd
          * (64, after 3556 and 3557). -1: never sampled. */
         int sd1[2] = { -1, -1 }, sd2[2] = { -1, -1 }, sd64[2] = { -1, -1 };
+        /* Record §47-A: the third demo's state-6 entry. Its first reads,
+         * sampled after loops 3984 and 3985 (s16caves 22, s16dia 37, s16diash
+         * 39, s16diasd 42, s16spi 61, s16spish 62 as bits 0..5), and the first
+         * loop after the second demo's exit (3684) that starts in state 6,
+         * with the cycle-2 index its presented frame is written at. -1: never
+         * sampled. */
+        int sd3[2] = { -1, -1 }, c2_s6c_i = -1, c2_s6c_f = -1;
         int c2_start = -1, c2_proj54 = -1, c2_flash_i = -1;
         int c2_state6_i = -1, c2_f0a72 = -1;
         /* The live-fighter count DS_001078FA after the second demo's 6 -> 7
@@ -3955,6 +3965,14 @@ int test_frontend(void)
                               | fe_entry_read(36u) << 2;
             if (i == 2782 || i == 2783) sd2[i - 2782] = fe_entry_read(54u);
             if (i == 3556 || i == 3557) sd64[i - 3556] = fe_entry_read(64u);
+            if (i == 3984 || i == 3985)
+                sd3[i - 3984] = fe_entry_read(22u) | fe_entry_read(37u) << 1
+                              | fe_entry_read(39u) << 2 | fe_entry_read(42u) << 3
+                              | fe_entry_read(61u) << 4 | fe_entry_read(62u) << 5;
+            if (i > 3684 && c2_s6c_i < 0 && state_in == 6u) {
+                c2_s6c_i = i;
+                c2_s6c_f = fe_cyc2_n;
+            }
             if (s7_pre_seen && !s7_post_seen) {
                 s7_entry_post = DSD(DS_000EF6D8);
                 s7_post_seen = 1;
@@ -4166,6 +4184,19 @@ int test_frontend(void)
         for (int k = 0; k < fe_ld_n && k < 16; k++)
             printf(" %d@%d", fe_ld_loop[k], fe_ld_frame[k]);
         printf("\n");
+        /* Record §47-A: the loader screens' cycle-2 indices, one per line, for
+         * title_compare --attract2's three-frame splice (a catch-up present
+         * after the loader's stall). */
+        {
+            char lpath[1400];
+            snprintf(lpath, sizeof lpath, "%s/loader.txt", fe_cyc2_dir);
+            FILE *lf = fopen(lpath, "w");
+            int lok = lf != NULL;
+            for (int k = 0; lok && k < fe_ld_n && k < 16; k++)
+                if (fprintf(lf, "%d\n", fe_ld_frame[k]) < 0) lok = 0;
+            if (lf != NULL && fclose(lf) != 0) lok = 0;
+            CHECK(lok, "the loader-screen list writes to the cycle-2 dump");
+        }
         fe_cyc2_on = 0;
         if (log != NULL) fclose(log);
         printf("test_frontend: cycle 2 from loop %d, %d frames; A54@1971 %d, "
@@ -4271,7 +4302,7 @@ int test_frontend(void)
          * on 0xE3AAC. */
         CHECK(!fe_cyc2_failed, "cycle-2 frames write to the dump");
         CHECK_EQ_INT(c2_start, 1971);
-        CHECK_EQ_INT(fe_cyc2_n, 2102);
+        CHECK_EQ_INT(fe_cyc2_n, 2308);
         /* Record §45-A. The sound banks' first reads: none before, all after
          * each loop (0x33E51's tails, 0x2C3FC(0x4D)). */
         CHECK_EQ_INT(sd1[0], 0);
@@ -4280,19 +4311,33 @@ int test_frontend(void)
         CHECK_EQ_INT(sd2[1], 1);
         CHECK_EQ_INT(sd64[0], 0);
         CHECK_EQ_INT(sd64[1], 1);
-        /* The seven loader screens the cycle-2 dump holds, with the loop that
-         * drew each: s16title (loop 1973), the second demo's state-6 entry
-         * (s16stone, s16kon, s16konsd, s16konsh in loop 2783), s16spisd (loop
-         * 3557, capture 3257) and s16hghsc (loop 3684). 2095 presented
-         * frames + 7 = 2102. The first pins a known divergence, not the
+        /* Record §47-A. The high-score screen (state 5 at loop 3684, its
+         * state-9 hold 0x12C) hands to state 6 at the end of loop 3984; loop
+         * 3985 is the third demo's state-6 entry. It reads its six files
+         * there, none before, and presents the frame after the last loader
+         * screen (cycle-2 frame 2193, the middle of capture 3545's
+         * three-frame splice 2192/2193/2194). */
+        CHECK_EQ_INT(sd3[0], 0);
+        CHECK_EQ_INT(sd3[1], 0x3F);
+        CHECK_EQ_INT(c2_s6c_i, 3985);
+        CHECK_EQ_INT(c2_s6c_f, 2193);
+        /* The thirteen loader screens the cycle-2 dump holds, with the loop
+         * that drew each: s16title (loop 1973), the second demo's state-6
+         * entry (s16stone, s16kon, s16konsd, s16konsh in loop 2783), s16spisd
+         * (loop 3557, capture 3257), s16hghsc (loop 3684) and the third
+         * demo's state-6 entry (six screens in loop 3985, record §47-A).
+         * 2295 presented frames (loops 1971..4099 and the logo player's 166
+         * screens) + 13 = 2308. The first pins a known divergence, not the
          * original: the original reads s16title at boot, the port at the
          * title state (record §45-A's named gap). A fix of that gap removes
          * this screen; it is not a regression. */
         {
-            static const int ld_loop[7] = { 1973, 2783, 2783, 2783, 2783, 3557, 3684 };
-            static const int ld_frame[7] = { 168, 979, 980, 981, 982, 1757, 1885 };
-            CHECK_EQ_INT(fe_ld_n, 7);
-            for (int k = 0; k < 7 && k < fe_ld_n; k++) {
+            static const int ld_loop[13] = { 1973, 2783, 2783, 2783, 2783, 3557, 3684,
+                                             3985, 3985, 3985, 3985, 3985, 3985 };
+            static const int ld_frame[13] = { 168, 979, 980, 981, 982, 1757, 1885,
+                                              2187, 2188, 2189, 2190, 2191, 2192 };
+            CHECK_EQ_INT(fe_ld_n, 13);
+            for (int k = 0; k < 13 && k < fe_ld_n; k++) {
                 CHECK_EQ_INT(fe_ld_loop[k], ld_loop[k]);
                 CHECK_EQ_INT(fe_ld_frame[k], ld_frame[k]);
             }
