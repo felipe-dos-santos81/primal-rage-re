@@ -5997,6 +5997,150 @@ static void check_mode_17_hooks(void)
     memcpy(gfx_dac, s_dac, sizeof s_dac);
 }
 
+/* Record §46-G: one 0x4F318 step from sentinels. The words either side of
+ * DS_001088EE (0x1088EC, 0x1088F0) and DS_00104AFE (0x104AFC, the mode word
+ * 0x104B00) are seeded to catch a width change. The hook is 0x26978, which
+ * stores data only: DS_00104B25 = 1, the hook 0x26998, DS_001088F5 = 0,
+ * DS_00104AFA = 0x23 and mode 0x1A. */
+static void ms_step(u32 hold, u32 afe, u32 held, u32 pressed)
+{
+    DSW(DS_001088EE - 2u) = 0x6666u;
+    DSW(DS_001088EE) = (u16)hold;
+    DSW(DS_001088EE + 2u) = 0x5555u;
+    DSW(DS_00104AFE - 2u) = 0x4444u;
+    DSW(DS_00104AFE) = (u16)afe;
+    DSD(DS_00104B00) = 0xBEEF7777u;
+    DSD(DS_001088D8) = held;
+    DSD(DS_001088E4) = pressed;
+    DSD(DS_00104AE4) = 0x26978u;
+    DSB(DS_00104B25) = 0x77u;
+    DSB(DS_001088F5) = 0x77u;
+    DSW(DS_00104AFA) = 0x7777u;
+    frontend_mode_17_step();
+}
+
+/* Whether ms_step's hook ran; the neighbours and the input words kept. */
+static u32 ms_fired(u32 held, u32 pressed)
+{
+    CHECK_EQ_INT((int)DSW(DS_001088EE - 2u), 0x6666);
+    CHECK_EQ_INT((int)DSW(DS_001088EE + 2u), 0x5555);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE - 2u), 0x4444);
+    CHECK_EQ_INT((int)DSD(DS_001088D8), (int)held);
+    CHECK_EQ_INT((int)DSD(DS_001088E4), (int)pressed);
+    if (DSD(DS_00104AE4) == 0x26978u) {
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF7777u);
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0x77);
+        return 0u;
+    }
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x26998);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF001Au);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 1);
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x23);
+    return 1u;
+}
+
+static void check_mode_17_step(void)
+{
+    static u8 s_data[0x10B0D0u - 0x80000u];
+    tf_snap(s_data, 0x80000u, sizeof s_data);
+    const u32 M0 = 0x0F000000u, M1 = 0x00000F00u;
+
+    /* (a) The masks 0xC9898[0..1] and 0x4F778 on each. */
+    CHECK_EQ_INT((int)DSD(DS_000C9898), (int)M0);
+    CHECK_EQ_INT((int)DSD(DS_000C9898 + 4u), (int)M1);
+    DSD(DS_001088E4) = 0x00000100u;
+    CHECK_EQ_INT((int)frontend_buttons_pressed(1u), 1);
+    CHECK_EQ_INT((int)frontend_buttons_pressed(0u), 0);
+    DSD(DS_001088E4) = 0x08000000u;
+    CHECK_EQ_INT((int)frontend_buttons_pressed(0u), 1);
+    CHECK_EQ_INT((int)frontend_buttons_pressed(1u), 0);
+
+    /* (b) 0x4F790: either mask held whole gives 2 (over a press), a press
+     * of a bit of either mask gives 1, anything else 0. */
+    static const u32 sk[][3] = {
+        /* held, pressed, AL */
+        { 0x0F000000u, 0x01000000u, 2u }, { 0x00000F00u, 0u, 2u },
+        { 0xFFFFFFFFu, 0u, 2u },          { 0x07000F00u, 0u, 2u },
+        { 0x07000700u, 0u, 0u },          { 0x0E000E00u, 0u, 0u },
+        { 0x07000000u, 0x01000000u, 1u }, { 0u, 0x00000800u, 1u },
+        { 0u, 0xF0FFF0FFu, 0u },          { 0u, 0u, 0u },
+    };
+    for (u32 k = 0; k < sizeof sk / sizeof sk[0]; k++) {
+        DSD(DS_001088D8) = sk[k][0];
+        DSD(DS_001088E4) = sk[k][1];
+        CHECK_EQ_INT((int)frontend_skip_check(), (int)sk[k][2]);
+        CHECK_EQ_INT((int)DSD(DS_001088D8), (int)sk[k][0]);
+    }
+
+    /* (c) DS_001088EE != 0: it counts down and the skip test does not run
+     * (the held mask would zero the countdown). */
+    ms_step(5u, 0x10u, M0, 0u);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 4);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x0F);
+    CHECK_EQ_INT((int)ms_fired(M0, 0u), 0);
+
+    /* (d) DS_001088EE == 0, no input: DS_00104AFE - 1 only. */
+    ms_step(0u, 0x10u, 0u, 0u);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x0F);
+    CHECK_EQ_INT((int)ms_fired(0u, 0u), 0);
+
+    /* (e) A press takes 0x3C more (either mask); 0x3D leaves 0, not fired;
+     * 0x3C leaves -1, fired. */
+    ms_step(0u, 0x100u, 0u, 0x01000000u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x100 - 0x3C - 1);
+    CHECK_EQ_INT((int)ms_fired(0u, 0x01000000u), 0);
+    ms_step(0u, 0x100u, 0u, 0x00000200u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x100 - 0x3C - 1);
+    CHECK_EQ_INT((int)ms_fired(0u, 0x00000200u), 0);
+    ms_step(0u, 0x3Du, 0u, 0x00000200u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0);
+    CHECK_EQ_INT((int)ms_fired(0u, 0x00000200u), 0);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0);
+    ms_step(0u, 0x3Cu, 0u, 0x00000200u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xFFFF);
+    CHECK_EQ_INT((int)ms_fired(0u, 0x00000200u), 1);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0xFFFF);
+
+    /* (f) A held mask zeroes the countdown: it fires at once. */
+    ms_step(0u, 0x100u, M1, 0u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xFFFF);
+    CHECK_EQ_INT((int)ms_fired(M1, 0u), 1);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0xFFFF);
+
+    /* (g) The signed test on the old value: 1 does not fire, 0 and 0x8000
+     * do, 0x7FFF does not; a non-zero DS_001088EE is then overwritten. */
+    ms_step(3u, 1u, 0u, 0u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0);
+    CHECK_EQ_INT((int)ms_fired(0u, 0u), 0);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 2);
+    ms_step(3u, 0u, 0u, 0u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xFFFF);
+    CHECK_EQ_INT((int)ms_fired(0u, 0u), 1);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0xFFFF);
+    ms_step(3u, 0x8000u, 0u, 0u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x7FFF);
+    CHECK_EQ_INT((int)ms_fired(0u, 0u), 1);
+    ms_step(3u, 0x7FFFu, 0u, 0u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x7FFE);
+    CHECK_EQ_INT((int)ms_fired(0u, 0u), 0);
+
+    /* (h) After firing, DS_001088EE = 0xFFFF counts down without the skip
+     * test, and an unregistered hook is skipped. */
+    ms_step(0xFFFFu, 0x10u, M0, 0u);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0xFFFE);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x0F);
+    DSD(DS_00104AE4) = 0xDEADBEEFu;
+    DSW(DS_00104AFE) = 0u;
+    DSW(DS_001088EE) = 0u;
+    frontend_mode_17_step();
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0xFFFF);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+
+    tf_put(s_data, 0x80000u, sizeof s_data);
+}
+
 /* 0x24C73/0x47208: the demo's CPU-AI command generator. A live pair of slots
  * (think gate armed, idle state, a legal character) must produce a non-zero
  * command word, and the two sides must be able to differ. The command words are
@@ -19272,6 +19416,7 @@ int test_fight(void)
     check_char_screen_modes();
     check_mode_1a_hooks();
     check_mode_17_hooks();
+    check_mode_17_step();
 
     return g_failures - before;
 }
