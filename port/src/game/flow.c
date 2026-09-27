@@ -1245,29 +1245,115 @@ static void game_state_6(void)
     DSB(DS_000F0A6F) = 0;                               /* 0x11BBF */
 }
 
-/* PORT: 0x1EA08. The match-start builder, called inline from state 5. It resets
- * the input latch and the actor pool, spawns the roster row from the 0xA7B6C
- * descriptor, then builds the per-character rows and spawns the selected
- * character's actor. The build reads its strings and its selection key from the
- * paged resource reader 0x2DBC4/0x2DB58 (not modelled) and formats them through
- * 0x2F4D0 (0x2EFD4; both ported for 0x38D90 since), so only the three calls before the
- * resource read are transcribed. Task 6 wires only this state-5 call site;
- * 0x1EA08's other four callers (0x11A30 and three in FUN_0001EEB0, the match
- * sub-state machine) belong to the match cycle and stay unwired. */
-static void frontend_match_start(void)
+/* 0x1E918 — record §46-A. EAX = force. Writes the ten 0x2C-byte factory
+ * records at 0xA7BBC into table 0 through 0x2DCA0: each record whose value
+ * reads 0, or every record when forced. */
+void hiscore_fill_defaults(u32 force)
 {
+    u32 src = 0xA7BBCu;                                         /* 0x1E920 */
+    for (u32 i = 0u; i < 10u; i++) {                            /* 0x1E925..0x1E94C */
+        u32 r = hiscore_read(i, 0u);                            /* 0x1E92D 0x2DBC4 */
+        if (DSD(r) == 0u || force != 0u)                        /* 0x1E932/0x1E936 */
+            (void)hiscore_insert(i, src, 0u);                   /* 0x1E940 0x2DCA0 */
+        src += 0x2Cu;                                           /* 0x1E946 */
+    }
+}
+
+/* 0x1E988 — record §46-A. AL = 1 when config field 0x27 >= 2000 and field
+ * 0x26 >= 200 (both `jl`, signed). */
+u32 hiscore_audit_reset_due(void)
+{
+    if ((s32)config_field_get(0x27u) < 0x7D0) return 0u;        /* 0x1E98D/0x1E992 */
+    if ((s32)config_field_get(0x26u) < 0xC8) return 0u;         /* 0x1E99E/0x1E9A3 */
+    return 1u;                                                  /* 0x1E9AA */
+}
+
+/* 0x1E824 — record §46-A. The high-score init, called from 0x20C10 at 0x20C84
+ * after DS_00104528 is read. Blanks three 0x24-byte name buffers, then fills
+ * the factory table 0 and, when table 1 is empty, the champion 0xA7D74. With
+ * DS_00104529 bit 0x40, or bit 0x20 and 0x1E988, it clears fields 0x27/0x26,
+ * forces the defaults and, only when bit 0x40 was set, clears it back into
+ * field 0x29 and writes the champion over any value (bit 0x40 clear returns
+ * at 0x1E8B9 -> 0x1E912 with the champion kept). */
+void hiscore_init(void)
+{
+    for (u32 k = 0u; k < 2u; k++)                               /* 0x1E82B..0x1E856 */
+        for (u32 i = 0u; i < 0x24u; i++)
+            DSB(DS_00104367 + k * 0xA0u + i) = 0x20u;           /* 0x1E83B */
+    for (u32 i = 0u; i < 0x24u; i++)                            /* 0x1E85E..0x1E86D */
+        DSB(DS_001042C7 + i) = 0x20u;                           /* 0x1E85F */
+    u8 ah = DSB(DS_00104528 + 1u);                              /* 0x1E86F */
+    if ((ah & 0x40u) == 0u
+        && ((ah & 0x20u) == 0u || hiscore_audit_reset_due() != 1u)) {   /* 0x1E875..0x1E88C */
+        hiscore_fill_defaults(0u);                              /* 0x1E8F0 0x1E918 */
+        u32 r = hiscore_read(0u, 1u);                           /* 0x1E8F7 0x2DBC4 */
+        if (DSD(r) != 0u) return;                               /* 0x1E8FC/0x1E8FF */
+    } else {
+        (void)config_field_set(0x27u, 0u);                      /* 0x1E895 0x2DA0C */
+        (void)config_field_set(0x26u, 0u);                      /* 0x1E8A1 0x2DA0C */
+        hiscore_fill_defaults(1u);                              /* 0x1E8AB 0x1E918 */
+        u8 dh = DSB(DS_00104528 + 1u);                          /* 0x1E8B0 */
+        if ((dh & 0x40u) == 0u) return;                         /* 0x1E8B6/0x1E8B9 */
+        DSB(DS_00104528 + 1u) = (u8)(dh & 0xBFu);               /* 0x1E8BD/0x1E8C0 */
+        (void)config_field_set(0x29u, DSD(DS_00104528));        /* 0x1E8D1 0x2DA0C */
+        (void)hiscore_read(0u, 1u);                             /* 0x1E8E2 0x2DBC4 */
+    }
+    (void)hiscore_insert(0u, 0xA7D74u, 1u);                     /* 0x1E90D 0x2DCA0 */
+}
+
+/* 0x1EA08 — record §46-A. The attract's high-score screen, called inline from
+ * state 5. It resets the input latch and the actor pool, spawns the backdrop
+ * row from the 0xA7B6C descriptor, draws the champion (table 1) on row 2 and
+ * table 0's records 1..9 at the 0xA7B94 layout (row, rank column, name column,
+ * value column), then spawns the champion's figure: the first of the ten
+ * 0xA7DA0 strings whose first byte is the name's character 0x12 selects the
+ * 0xA7DCC descriptor (0 when none matches or above 6). 0x1EA08's other four
+ * callers (0x11A30 and three in FUN_0001EEB0, the match sub-state machine)
+ * belong to the match cycle and stay unwired. */
+void frontend_match_start(void)
+{
+    u8 name[0x24];
+
     frontend_input_reset();                                     /* 0x1EA11 (0x4F1E4) */
     actors_reset();                                             /* 0x1EA26 (0x2BAF4) */
     frontend_spawn_row((const u32 *)(mem + 0xA7B6Cu), 0u, 0u);  /* 0x1EA30 (0x38B18) */
-    /* PORT: 0x1EA4A onward is the resource-driven roster build: 0x2DBC4 returns
-     * a string blob whose [esi+0x16] selects the character descriptor from
-     * 0xA7DCC (the guard at 0x1EB0A keeps indices 0..6), and 0x2F4D0/0x2F4BC
-     * draw the formatted rows before 0x2AE14/0x2A17C spawn the selected actor.
-     * The port does not model the paged resource reader 0x2DB58/0x2DBC4 (the
-     * 0x2EFD4 formatter is ported), so the blob, the `local` index, the string draws and
-     * the actor spawn are a declared gap
-     * (docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md §7.1,
-     * §7.2); spawning descriptor 0 would be a fitted constant. */
+    const u32 mode = 0x3000u;                                   /* 0x1EA35/0x1EA3C [esp+0x24] */
+    u32 champ = hiscore_read(0u, 1u);                           /* 0x1EA4A 0x2DBC4 */
+    text_number_draw(DSB(0xA7B95u), 2, 1, 2, 1u, mode);         /* 0x1EA66 0x2F4D0 (row = ECX 2) */
+    for (u32 i = 0u; i < 0x12u; i++)                            /* 0x1EA74..0x1EA8D */
+        name[i] = DSB(champ + 4u + i);
+    name[0x12] = 0u;                                            /* 0x1EA98 */
+    text_cursor_hold(DSB(0xA7B96u), 2, name, 0x2000u);          /* 0x1EAA8 0x2F4BC */
+    text_number_draw(DSB(0xA7B97u), 2, (s32)DSD(champ), 7, 1u, 0x2000u);   /* 0x1EAC7 0x2F4D0 */
+
+    u32 sel = 0u;                                               /* 0x1EAD0 */
+    for (u32 i = 0u; i < 10u; i++) {                            /* 0x1EAD9..0x1EB02 */
+        if (DSB(champ + 0x16u) == DSB(DSD(DS_000A7DA0 + i * 4u))) {  /* 0x1EADB..0x1EAE7 */
+            sel = i;                                            /* 0x1EAED */
+            break;
+        }
+    }
+    if (sel > 6u) sel = 0u;                                     /* 0x1EB0A..0x1EB11 */
+
+    for (u32 i = 1u; i < 10u; i++) {                            /* 0x1EB15..0x1EBF8 */
+        u32 r = hiscore_read(i, 0u);                            /* 0x1EB2F 0x2DBC4 */
+        s32 row = DSB(0xA7B94u + i * 4u);
+        text_number_draw(DSB(0xA7B95u + i * 4u), row, (s32)(i + 1u), 2, 1u, mode);  /* 0x1EB5A */
+        for (u32 k = 0u; k < 3u; k++)                           /* 0x1EB68..0x1EB81 */
+            name[k] = DSB(r + 4u + k);
+        name[3] = 0u;                                           /* 0x1EB92 */
+        text_cursor_hold(DSB(0xA7B96u + i * 4u), row, name, mode);            /* 0x1EBA6 0x2F4BC */
+        text_number_draw(DSB(0xA7B97u + i * 4u), row, (s32)DSD(r), 7, 1u, mode);   /* 0x1EBC7 */
+        text_cursor_hold(DSB(0xA7B96u + i * 4u), row, name, mode);            /* 0x1EBE2 0x2F4BC */
+    }
+
+    u32 rec = actor_spawn((const u32 *)(mem + DSD(0xA7DCCu + sel * 4u)),   /* 0x1EC15 */
+                          0x2A00u, 0xFFu, 0x1C80u, 0u);         /* 0x1EC1C 0x2AE14 */
+    /* PORT: 0x1EC28 passes the spawn's EAX unchecked; the pool was reset at
+     * 0x1EA26, so the spawn cannot fail, and the port does not index a pset
+     * from a zero record. */
+    if (rec != 0u)
+        actor_pset_palette(rec, 0u, 0x105FD30u);                /* 0x1EC28 0x2A17C */
 }
 
 /* 0x10E80: initialise the game state. */
@@ -1788,6 +1874,10 @@ void game_init(void)
     config_validate();          /* 0x2F9CC's 0x2D6F8, before 0x20C5D */
     u32 v = config_field_get(0x29u);                   /* 0x20C68 */
     DSD(DS_00104528) = v;                              /* 0x20C6D */
+    /* 0x20C84 0x1E824. The raw runs 0x47370 (the string table, loaded below
+     * in the port) first; 0x1E824 reads neither it nor the globals derived
+     * next. */
+    hiscore_init();                                    /* 0x20C84 */
     DSB(DS_00105B3A) = (u8)((v & 0x100u) >> 4);        /* 0x20C9F */
     DSD(DS_001088D0) = (v & 0xFu) * 5u + 0x1Eu;        /* 0x20CB0 */
     DSB(DS_0010452C) = (u8)((v & 0xF0u) >> 4);         /* 0x20CC2 */

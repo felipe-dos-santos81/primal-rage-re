@@ -531,12 +531,15 @@ states 6/7 section below). Each state is a phase machine driven by its own
   voice cancel is not wired (record §45-A) and the `0x32970` run clock is out
   of scope; both are skipped.
 
-**Gaps this section leaves.** `frontend_match_start` is ported only through its
-three pinnable pre-resource calls (`0x4F1E4`, `0x2BAF4`, `0x38B18(0xA7B6C)`); the
-`0x2DBC4`/`0x2DB58` paged-resource blob, the `local` character index, the
-`0x2F4D0`/`0x2F4BC` formatted draws and the `0x2AE14`/`0x2A17C` spawn are a named
-gap (derivations §7.1/§7.2) — the port does not model the resource reader, so
-spawning a descriptor would be a fitted constant. `0x1EA08`'s other four call
+**Gaps this section leaves.** `frontend_match_start` (`0x1EA08`) is the
+attract's high-score screen and is ported whole (record §46-A): `0x2DBC4`/
+`0x2DB58` are not a paged resource reader but the high-score tables' record read
+and locate, over the three packed tables `0x2D3FC` describes (`0x105E34`,
+`0x105EAC`, `0x105EC8`). `0x1E824` fills them at boot (`0x20C84`) from the ten
+factory records at `0xA7BBC` and the champion `0xA7D74`, through the insert
+`0x2DCA0`. The screen draws the champion and records 1..9 through `0x2F4D0`/
+`0x2F4BC` at the `0xA7B94` layout and spawns the champion's figure
+`0xA7DCC[sel]` (`0x2AE14`/`0x2A17C`). `0x1EA08`'s other four call
 sites are the **match cycle's** and are unwired: `0x11A42` in `FUN_00011A30` (a
 dead copy — `0x11A30` is referenced nowhere in either LE object) and `0x1F140`/
 `0x1F278`/`0x1F39B` in `FUN_0001EEB0` (the match sub-state machine, cases 2/6/9).
@@ -762,13 +765,13 @@ boot cycle's phase 2 wraps it to 0), so the second cycle reaches phase `0xA`'s
 lightning and hands off to a second demo at loop 2782 (`DS_000F0A72` = 5), as
 the capture does from 2385. `make attract2-oracle` (`--attract2`, in `make
 verify`) classifies captures 1885..3616 against `cycle2/` only, with the ratchet
-N = 3408 (record §45-A). Capture 2384, the `- LOADING -` frame before the second demo, was
+N = 3545 (record §46-A). Capture 2384, the `- LOADING -` frame before the second demo, was
 allowed by name (record §37) until the loader screens explained it.
 
 **The demo window is report-only; its first unexplained frame is capture 1886 —
 the capture's next cycle after the demo, with no port frame left in the
 top-level dump (`make attract2-oracle` classifies that region against
-`cycle2/`: first unexplained 3408) — after the
+`cycle2/`: first unexplained 3545) — after the
 demo-pose cycle explained captures 843..850, the roar-timing fix 851..857, the
 frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863, the
 frame-864 fix 864/865, the frame-866 fix 866, the frame-867 fix 867..869 and
@@ -2534,7 +2537,29 @@ record §34).**
 * **Result.** 3257 = port 1757 (1756 with the text), clean; 2384 and 3407 are
   clean against text-on-black screens. First unexplained **3408**: the
   high-score table the attract shows after the second demo, which the port
-  does not draw (record §45-A.3). N = 3408.
+  did not draw then (record §45-A.3; since drawn, record §46-A). N = 3408.
+
+### The attract's high-score screen (record §46-A)
+
+* **Raw.** `0x1EA08`, state 5's builder, is the high-score screen. After the
+  backdrop row (`0x38B18(0xA7B6C)`) it reads the champion (table 1, record 0)
+  and table 0's records 1..9 through `0x2DBC4`, which decodes a record's
+  big-endian value into `DS_00105EFC` and its 5-bit name words into
+  `DS_00105F00`. The rows go through `0x2F4D0`/`0x2F4BC` at the `0xA7B94`
+  layout, and the champion's name character 0x12 selects the figure
+  descriptor `0xA7DCC[0..6]` from the `0xA7DA0` strings. The tables are
+  filled at boot by `0x1E824` (`0x20C84`): `0x1E918` inserts the ten factory
+  records `0xA7BBC` through `0x2DCA0`, then the champion `0xA7D74` ("Teeny
+  Weeny Games", 500000). The shipped `CMOS` is all zero, and the original's
+  RAM holds exactly those bytes.
+* **Port.** `hiscore_locate`/`hiscore_read`/`hiscore_insert` (config.c),
+  `hiscore_fill_defaults`/`hiscore_audit_reset_due`/`hiscore_init` and the
+  whole `frontend_match_start` (flow.c); `game_init` calls `hiscore_init`.
+* **Result.** 3408..3542 are explained (3408 = port 1886, clean). 3543/3544
+  (black, `- LOADING -` on black) match earlier port screens: the driver's dump
+  ends at loop 3899 inside the high-score screen, about 85 ticks before the
+  original leaves it. First unexplained **3545** (raw 8338), the third demo
+  fight, past the driver's window. N = 3545.
 
 ## Landmarks (verified)
 

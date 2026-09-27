@@ -190,4 +190,12 @@ void game_hook_25bbc(void);
 void game_hook_26998(void);
 void game_hook_270bc(void);
 
+/* 0x1E918, 0x1E988, 0x1E824 and 0x1EA08: the high-score defaults, the audit
+ * reset test, the high-score init and the attract's high-score screen (record
+ * §46-A). */
+void hiscore_fill_defaults(u32 force);
+u32  hiscore_audit_reset_due(void);
+void hiscore_init(void);
+void frontend_match_start(void);
+
 #endif /* PR_GAME_FLOW_H */

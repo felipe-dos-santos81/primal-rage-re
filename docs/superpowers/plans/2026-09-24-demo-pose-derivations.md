@@ -11726,3 +11726,217 @@ Five corrections, none of which changes behaviour:
 - `check_state6`'s comment said `0x1088EC` was outside `test_fight`'s restore
   windows. It is inside `s_88` (`0x108840..0x10893F`); only `0xF0A48` is
   outside.
+## 46-A. The attract's high-score table at capture 3408 (roar-timing Task 34, branch `frame-3408d`)
+
+**Result in one line.** Capture 3408 is the attract's high-score screen, which
+state 5's builder `0x1EA08` draws. The port had only its first three calls,
+because §7.1/§7.2 of the front-end record read `0x2DBC4`/`0x2DB58` as a paged
+resource reader. They are the high-score tables' record read and locate, over
+three packed tables that `0x1E824` fills at boot from factory records in the
+data object. With the tables, their init and the rest of `0x1EA08` ported,
+3408..3542 are explained and the first unexplained frame is 3545, the third
+demo fight, which lies past the driver's window. N 3408 -> 3545 (`1251af7`).
+
+### 46-A.1 The raw (Ghidra `decompile_function`/`disassemble_function`, fixups applied)
+
+- **`0x2DB58`** (the table locate). EAX = the record, EDX = the table, ECX =
+  a pointer for the record size, EBX = a pointer for the bytes left. A table
+  of 3 or more (`cmp edx,3; jc`) or a record at or past the count (`cmp
+  eax,edi; jc`, unsigned) returns 0. The descriptor is the 8-byte
+  `0x2D3FC[table]`: +0 the count, +2 the stored count, +4 the value bytes,
+  +6 the name bytes. The record size is +4 + +6; `*EBX` = (count - record) *
+  size, `*ECX` = size; the address is `[0x2D478 + 8*table]` + record * size.
+  The shipped descriptors: table 0 = 10/10/4/8 (12-byte records), table 1 =
+  1/1/4/0x18 (28), table 2 = 1/1/3/2 (5). The pointers (the storage-block
+  list at `0x2D474`, 8-byte `{u16 offset, u16 size, u32 ram}`): `0x105E34`
+  (0xF6, 0x78), `0x105EAC` (0x176, 0x1C), `0x105EC8` (0x199, 5).
+- **`0x2DBC4`** (the record read). EAX = the record, EDX = the table; EBX, ECX,
+  ESI and EDI are preserved. A missing record returns 0. Otherwise the value
+  bytes are read big-endian into `DS_00105EFC` (0x2DC07), and each name word
+  (little-endian) gives three characters at `DS_00105F00`: bits 0-4, 5-9,
+  10-14, each `c + 0x40`, or `' '` for 0. A NUL follows (0x2DC94); EAX =
+  `0x105EFC`.
+- **`0x2DCA0`** (the record insert). EAX = the record, EDX = the source
+  (`u32` value, then the name string), EBX = the table. A missing record
+  returns 0. When the record is below the stored count (+2, `jbe`), the bit
+  `table + 6` of `DS_00105DD8` is set (0x2DD00). When the bytes left exceed
+  one record (`jle`, signed) `0x653A1` (memmove: EAX = dst, EDX = src, EBX =
+  n) moves the records from this one down by one record, dropping the last.
+  The value is stored big-endian. Each name word packs up to three
+  characters, `c & 0x1F` at bits 0/5/10: a NUL or a space packs 0, a space
+  advances the source, a NUL does not. When the record is below the stored
+  count, `0x2D4EC(table + 6)` (the storage image's check bytes; a no-op in
+  the port, as for `0x2DA0C`). EAX = 1.
+- **`0x1E918`** (the default fill). EAX = force. For record 0..9 of table 0:
+  when the read value is 0 or force is set, insert the 0x2C-byte default
+  record `0xA7BBC + 0x2C*i`: 500000 TWG, 400000 CFF, 350000 AMR, 300000 MSG,
+  250000 JSY, 200000 ACW, 90210 MrP, 50000 HUH, 20000 WHU, 100 DUD.
+- **`0x1E988`**: AL = 1 when field 0x27 >= 2000 and field 0x26 >= 200
+  (`jl`, signed), else 0.
+- **`0x1E824`** (the high-score init, called from `0x20C10` at `0x20C84`,
+  after `DS_00104528` = field 0x29 and `0x47370`). Fills `DS_00104367 +
+  0xA0*k` (k = 0, 1) and `DS_001042C7`, 0x24 bytes each, with spaces. When
+  `DS_00104529` has neither 0x40 nor (0x20 with `0x1E988` = 1): `0x1E918(0)`,
+  then when table 1's record 0 reads 0, insert `0xA7D74` (500000, "Teeny
+  Weeny Games") there. Otherwise fields 0x27 and 0x26 = 0, `0x1E918(1)`, and
+  when 0x40 was set it is cleared, field 0x29 = `DS_00104528`, table 1 is read
+  and `0xA7D74` inserted unconditionally.
+- **`0x1EA08`** from 0x1EA4A (the high-score screen). `0x2DBC4(0, 1)` (the
+  champion); `0x2F4D0(col [0xA7B95], row ECX = 2, 1, width 2, pad 1, mode
+  0x3000)`; the first 0x12 characters of the name, NUL-terminated, through
+  `0x2F4BC([0xA7B96], 2, s, 0x2000)`; the value through `0x2F4D0([0xA7B97],
+  2, value, 7, 1, 0x2000)`. The selection: the first i in 0..9 whose string
+  `[0xA7DA0 + 4i]` starts with the name's character 0x12 (`[ESI+0x16]`),
+  kept at 0 when none matches and forced to 0 above 6. Then for i = 1..9:
+  `0x2DBC4(i, 0)`, row = `[0xA7B94 + 4i]`; `0x2F4D0([0xA7B95+4i], row, i+1,
+  2, 1, 0x3000)`; three characters through `0x2F4BC([0xA7B96+4i], row, s,
+  0x3000)`, `0x2F4D0([0xA7B97+4i], row, value, 7, 1, 0x3000)` and the same
+  `0x2F4BC` again. Last `0x2AE14([0xA7DCC + 4*sel], EDX 0x2A00, ECX 0xFF,
+  EBX 0x1C80, 0)` and `0x2A17C(rec, 0, 0x105FD30)`.
+- The selection strings are `R K T C S D H X X X` (`0x8090C..0x80928`); the
+  default champion's character 0x12 is a space, so the selection is 0 and
+  the descriptor is `0xBB6DC`.
+- **The original's RAM** (Task 33's DOSBox-X memory file `t33/db/guest.mem`,
+  written at the end of that run, whose poll log reaches f 6585; base
+  `0x266000`): `0x105E34..0x105ECC` hold exactly the ten encoded defaults and
+  the encoded champion (table 2 is zero), `DS_00105DD8` = `0xC7`,
+  `DS_00104528` = `0x142095`, and the three name buffers are spaces. The
+  `CMOS` file in `data/game/C` is 2040 zero bytes, so the storage path finds
+  no table. `DS_00104529` is `0x20`, so the original calls `0x1E988`; fields
+  0x27/0x26 are below 2000/200 and the normal path runs.
+- **The storage validation** `0x2DE98`/`0x2DF8C` (`0x2D912`/`0x2D919` in
+  `0x2D6F8`) are left as the port's declared no-ops: with no stored image each
+  table is cleared (`0x61A70`, already zero at boot) and `0x2D4EC` rewrites
+  the storage check bytes. Neither writes a value the screen reads.
+
+### 46-A.2 Entrances (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object and a dword scan of both fixed-up objects)
+
+- `0x1E824`: one call, `0x20C84` in `0x20C10`. No dword.
+- `0x1E918`: `0x1E8AB`, `0x1E8F0` (both in `0x1E824`). `0x1E988`: `0x1E87F`.
+- `0x1EA08`: `0x11DF7` (state 5, wired), `0x11A42` (the dead `0x11A30`) and
+  `0x1F140`/`0x1F278`/`0x1F39B` (the match sub-state machine `0x1EEB0`,
+  unported).
+- `0x2DB58`: `0x2DBD1`, `0x2DCBB`, `0x2DDFC`, `0x2DEC1`. `0x2DBC4`: `0x1E8E2`,
+  `0x1E8F7`, `0x1E92D`, `0x1E963`, `0x1EA4A`, `0x1EB2F`, `0x20517`,
+  `0x2056D`. `0x2DCA0`: `0x1E90D`, `0x1E940`, `0x1E97D`, `0x207B1`,
+  `0x207E8`, `0x306B2`. The `0x2051x`/`0x207xx`/`0x306B2` sites are the
+  match cycle's score entry and are not ported.
+- `0x1E958..0x1E984` (table 1's twin of `0x1E918`'s test, it calls `0x2DBC4`
+  at `0x1E963` and `0x2DCA0` at `0x1E97D`) has no reference of any kind: no
+  xref, no rel32, no dword. Dead code, not ported.
+
+### 46-A.3 The port
+
+- config.c: `hiscore_locate` (0x2DB58), `hiscore_read` (0x2DBC4),
+  `hiscore_insert` (0x2DCA0; `0x653A1` is `memmove` on `mem`, `0x2D4EC` a
+  `PORT:` no-op as in `0x2DA0C`). The descriptors and pointers are read
+  from the image (`DS_0002D3FC`, `DS_0002D478`); no table is transcribed.
+- flow.c: `hiscore_fill_defaults` (0x1E918), `hiscore_audit_reset_due`
+  (0x1E988), `hiscore_init` (0x1E824), called by `game_init` right after
+  the `DS_00104528` store (0x20C84; the raw's `0x47370` runs first there, and
+  the port loads its string table later, which `0x1E824` does not read), and
+  the whole `frontend_match_start` (0x1EA08), now exported. One `PORT:`: the
+  raw passes the spawn's EAX to `0x2A17C` unchecked; the port skips the call
+  on a zero record (the pool was reset at `0x1EA26`, so it cannot be zero).
+
+### 46-A.4 Tests and mutations
+
+- `check_hiscore` (`test_game.c`, in `test_config`): the locate's address,
+  bytes left, size and bounds for all three tables; `0x1E824` on zeroed
+  tables with the original's `DS_00104528` writes the 153 bytes of the
+  original's RAM, blanks exactly the three 0x24-byte buffers and raises
+  `DS_00105DD8` bits 6/7 only; the read's decode, terminator, return and
+  miss; a second init keeps a non-zero table and champion; the insert's move
+  (to its last byte), drop, big-endian value, space/NUL packing, dirty bit
+  and bounds; table 2's insert and its dirty bit (bit 8, `DS_00105DD9` bit 0);
+  `0x1E988`'s two thresholds; the audit due with bits `0x2000` and `0x4000`
+  clear (the normal path: table and both fields kept); bit `0x2000` (set in
+  the original's `0x142095`) with the audit due and not due; and the `0x4000`
+  arm. It saves and restores `DS_00105D88..+0x1C0`, the name
+  buffers, `DS_00104528` and a scratch source.
+- `check_hiscore_screen` (`test_game.c`, in `test_flow` on the live
+  resources): after `0x1E824` and `0x1EA08`, every rank, name and score cell
+  of rows 2 and 1..9 holds the glyph (sprite, flags word and palette handle)
+  that `0x2F4BC` draws for the expected text at that place, and the undrawn
+  record 0's row is empty; the figure record (EDX `0x2A00`, EBX `0x1C80`) is
+  unique, with pset+2 = `0x800` and palette handle `0x105FD30`; the
+  selection gives descriptors 0 (space), 2 ('T'), 6 ('H'), 0 ('X', index 7)
+  and, with string 1 aimed at 'T', 1 (the first match). It snapshots and
+  restores the data object, the INDEX table, both pools, the DAC and the
+  aperture.
+
+**Mutations** (`scratchpad/t34/mut34.py`, `mut34.log`): 54 single-site
+edits in unit mode, each source restored. 52 fail an assertion after the
+review round (#51..#53, below); the first round's survivors were #12 (the move one byte
+short: the moved block's last byte was zero in both records) and #42 (no
+`break` in the selection: the image's only repeated string is `X`, above 6
+either way), killed by the last-byte sentinel and the aimed string 1. Two
+are equivalent: #47 (the first of the two name draws at `0x1EBA6` in mode
+0x2000) is overwritten cell by cell by the second (`0x2F5A0` releases an
+occupied cell before it spawns), and a `>=` for the insert's stored-count
+test and the move's `>` are equivalent on the image (stored count = count in
+all three descriptors; a move of 0 bytes), so they were not run.
+
+In driver mode (`scratchpad/t34/mutdrv.sh`), `game_init` without the
+`0x1E824` call fails the attract2 ratchet: 950/554/15/207/6, first
+unexplained 3408 < N 3545, the counts before the task. The unit tests stay
+green there, because both checks call `hiscore_init` themselves: the call
+site is covered by the driver alone.
+
+Review round 1 (`task-34-review.md`) added #51 (`0x1E824` consults
+`0x1E988` whatever bit `0x2000`), #52 (the dirty-bit byte index `>> 4`) and
+#53 (no dirty bit for table 2); each is killed by the new cases, and #51 by
+the bit-`0x2000`-clear case alone, which no test ran before.
+
+### 46-A.5 Measured
+
+| measurement | before (`1151646`) | `1251af7` |
+|---|---|---|
+| attract2 `[1885..3616]` clean/splice/trans/unexpl/black | 950/554/15/207/6 | 1051/588/15/72/6 |
+| attract2 first unexplained | 3408 (raw 7896) | **3545** (raw 8338) |
+| demo-fight | empty, N 1886 | unchanged |
+
+3408..3419 are clean against port 1886..1915 (the screen), 3540..3542
+against 1939/1942/1886. 3543 (black) and 3544 (`- LOADING -` on black) match
+port 0 and 168, earlier screens: the dump ends at loop 3899 inside the
+high-score screen (loops 3685..3899, cycle-2 frames 1886..2101), and the
+original holds it for 3408..3542 (raw 7896..8244, about 301 ticks), so the
+port's hand-off lies about 85 ticks past the window. 3545..3616 are the
+third demo fight (Sauron and Armadon in the cave, `scratchpad/t34/
+s3545.png`), which no port frame shows.
+
+`make verify` on `dfcc8a3` (the dumps redirected to the scratchpad; EXIT 0,
+0 compiler warnings):
+- title 54/55/2/0 and 54/57/0/0, determinism 54;
+- smk 120/120 and 41/41; C-vs-Python 9866;
+- front-end `[560..1884]` 517/801/3/2 with 832/833 allowed;
+- demo-fight empty, N 1886;
+- attract2 1051/588/15/72/6, first unexplained 3545 (raw 8338) = N;
+- attract prefix 215/216 (the expected divergence at 215);
+- gra_extract 32 OK; symbols.h idempotent.
+
+### 46-A.6 Remaining gaps
+
+- 3545: the third demo fight after the high-score screen. The driver's
+  window (FE_LOOPS 3900) ends inside the screen; a longer window is needed to
+  measure the hand-off and the fight.
+- The storage path (`0x2DE98`/`0x2DF8C`, `0x2D4EC`, `0x2E990`) stays a
+  declared no-op; the shipped CMOS is empty, which is the only case the
+  oracles exercise.
+- The match cycle's table writers (`0x20517`/`0x2056D`, `0x20710`, `0x305FC`)
+  and `0x1EA08`'s four other callers are not ported.
+
+### 46-A.7 Review round 1 (`task-34-review.md`)
+
+- `0x1E824`'s comment said the reset path always writes the champion; with
+  bit `0x40` clear the raw returns at `0x1E8B9` -> `0x1E912`, as the code
+  does. The comment is corrected; no code changed.
+- The test comments called `0x142095`'s bit `0x2000` clear; it is set
+  (`DS_00104529` = `0x20`, 46-A.1), so `| 0x2000u` was a no-op and no test ran
+  with the bit clear. The bit-clear, audit-due case is added (46-A.4).
+- `game_flow.md` and the README said the port "does not draw" the table;
+  both now say it did not then and is since drawn.
+- Table 2's insert and dirty bit are now tested.
+- The front-end record (§3.3, §7.1, §7.2, §8.5) and the demo-fight record (§10.9)
+  carry "superseded by §46-A" notes where they call `0x2DBC4`/`0x2DB58` a
+  paged resource reader.

@@ -695,6 +695,164 @@ static void check_sound_voice(void)
     tf_put(sv_data, DATA_BASE, 0x8B0D0u);
 }
 
+/* ---- the attract's high-score screen 0x1EA08 (record §46-A) ---- */
+
+static u32 hs_cell(s32 row, s32 col)
+{
+    return DSD(DS_00105F38 + (u32)row * 0xACu + (u32)col * 4u);
+}
+
+/* A cell's glyph: the sprite id and the pset's flags word (+2), with the
+ * palette entry's handle folded in. */
+static u32 hs_sprite(s32 row, s32 col)
+{
+    u32 r = hs_cell(row, col);
+    if (r == 0) return 0u;
+    u32 pal = DSD(actor_pset(r) + 0x18u);
+    return ((u32)(DSW(actor_pset(r)) & 0x7FFFu) | ((u32)DSW(actor_pset(r) + 2u) << 16))
+           ^ (pal != 0u ? DSD(pal) : 0u);
+}
+
+/* 1 when the cells from `col` on row `row` hold the glyphs text_cursor_hold
+ * draws for `s` at the same place (a space leaves its cell empty). */
+static int hs_row_is(s32 row, s32 col, const char *s, u32 mode)
+{
+    u32 got[40], n = (u32)strlen(s), i;
+    int ok = 1;
+    for (i = 0; i < n; i++) got[i] = hs_sprite(row, col + (s32)i);
+    text_cells_release(col, row, (const u8 *)s, mode);
+    text_cursor_hold(col, row, (const u8 *)s, mode);
+    for (i = 0; i < n; i++) {
+        if (s[i] == ' ' ? got[i] != 0u : got[i] != hs_sprite(row, col + (s32)i)) ok = 0;
+        if (s[i] != ' ' && got[i] == 0u) ok = 0;
+    }
+    return ok;
+}
+
+/* The figure: the one record 0x2AE14 gave EDX 0x2A00 and EBX 0x1C80. */
+static u32 hs_figure(void)
+{
+    u32 found = 0u, n = 0u;
+    for (u32 r = actor_list_head(); r != 0u; r = actor_next(r))
+        if (DSD(r + 0x18u) == 0x2A00u && DSD(r + 0x1Cu) == 0x1C80u) { found = r; n++; }
+    return n == 1u ? found : 0u;
+}
+
+/* The first sprite id 0x2AE14 gives descriptor 0xA7DCC[k] on an empty pool. */
+static u32 hs_ref_sprite(u32 k)
+{
+    actors_reset();
+    u32 r = actor_spawn((const u32 *)(mem + DSD(0xA7DCCu + k * 4u)), 0x2A00u, 0xFFu,
+                        0x1C80u, 0u);
+    return r != 0u ? (u32)DSW(actor_pset(r)) : 0xFFFFFFFFu;
+}
+
+static u32 hs_figure_sprite(void)
+{
+    u32 r = hs_figure();
+    return r != 0u ? (u32)DSW(actor_pset(r)) : 0xFFFFFFFEu;
+}
+
+/* 0x1EA08 on the live resources: the champion on row 2, table 0's records 1..9
+ * at the 0xA7B94 layout, and the figure from 0xA7DCC selected by the name's
+ * character 0x12. The data object, the INDEX table, both pools, the DAC and
+ * the aperture are restored. */
+static void check_hiscore_screen(void)
+{
+    static u8 sv_data[0x8B0D0], sv_idx[256u * 20u], sv_pa[0x4880], sv_pb[0xEBA0];
+    static u8 sv_ap[320u * 200u], sv_dac[256][3];
+    const u32 idx = DSD(DS_001014E0), nidx = res_count() * 20u;
+    const u32 pa = DSD(DS_001014EC), pb = DSD(DS_001014F4);
+    static const char *rows[10][3] = {
+        { " 1", "TEENY WEENY GAMES ", " 500000" },
+        { " 2", "CFF", " 400000" }, { " 3", "AMR", " 350000" },
+        { " 4", "MSG", " 300000" }, { " 5", "JSY", " 250000" },
+        { " 6", "ACW", " 200000" }, { " 7", "MRP", "  90210" },
+        { " 8", "HUH", "  50000" }, { " 9", "WHU", "  20000" },
+        { "10", "DUD", "    100" },
+    };
+    u32 i, rec;
+
+    CHECK(nidx <= sizeof sv_idx, "the INDEX table fits the snapshot");
+    tf_snap(sv_data, DATA_BASE, 0x8B0D0u);
+    tf_snap(sv_idx, idx, nidx);
+    tf_snap(sv_pa, pa, 0x4880u);
+    tf_snap(sv_pb, pb, 0xEBA0u);
+    memcpy(sv_ap, gfx_aperture(), sizeof sv_ap);
+    memcpy(sv_dac, gfx_dac, sizeof sv_dac);
+
+    /* The tables as 0x1E824 leaves them on a fresh CMOS. */
+    mem_fill(0x105E34u, 0, 153u);
+    DSD(DS_00104528) = 0x142095u;
+    hiscore_init();
+
+    frontend_match_start();
+    /* Record 0 of table 0 is not drawn: row [0xA7B94] holds no cell. */
+    for (i = 0; i < 0x2Bu; i++)
+        CHECK_EQ_INT((int)hs_cell(DSB(0xA7B94u), (s32)i), 0);
+    CHECK(hs_row_is(2, DSB(0xA7B95u), rows[0][0], 0x3000u), "rank 1");
+    CHECK(hs_row_is(2, DSB(0xA7B96u), rows[0][1], 0x2000u), "the champion's name");
+    CHECK(hs_row_is(2, DSB(0xA7B97u), rows[0][2], 0x2000u), "the champion's score");
+    for (i = 1; i < 10u; i++) {
+        s32 row = DSB(0xA7B94u + i * 4u);
+        CHECK(hs_row_is(row, DSB(0xA7B95u + i * 4u), rows[i][0], 0x3000u), "a rank");
+        CHECK(hs_row_is(row, DSB(0xA7B96u + i * 4u), rows[i][1], 0x3000u), "a name");
+        CHECK(hs_row_is(row, DSB(0xA7B97u + i * 4u), rows[i][2], 0x3000u), "a score");
+    }
+    /* The figure: on 0x2A17C's word 0 (with the 0x5F flag's 0x800) and the
+     * palette entry of handle 0x105FD30. */
+    rec = hs_figure();
+    CHECK(rec != 0u, "one figure record");
+    if (rec != 0u) {
+        CHECK_EQ_INT((int)DSW(actor_pset(rec) + 0x02u), 0x800);
+        CHECK_EQ_INT((int)DSD(DSD(actor_pset(rec) + 0x18u)), 0x105FD30);
+    }
+    {
+        /* The selection. The reference sprites of descriptors 0, 2 and 6
+         * differ, so each case below can tell them apart. */
+        u32 f0, f2, f6;
+        frontend_match_start();
+        f0 = hs_figure_sprite();
+        u32 r0 = hs_ref_sprite(0u), r2 = hs_ref_sprite(2u), r6 = hs_ref_sprite(6u);
+        CHECK(r0 != r2 && r0 != r6 && r2 != r6, "descriptors 0, 2, 6 differ");
+        /* Character 0x12 is a space (no string starts with one): 0. */
+        CHECK_EQ_INT((int)f0, (int)r0);
+        /* 'T' is the third string: 2. */
+        DSW(0x105EACu + 4u + 12u) = 0x0014u;
+        frontend_match_start();
+        f2 = hs_figure_sprite();
+        CHECK_EQ_INT((int)f2, (int)r2);
+        /* 'H' is the seventh (index 6): kept. */
+        DSW(0x105EACu + 4u + 12u) = 0x0008u;
+        frontend_match_start();
+        f6 = hs_figure_sprite();
+        CHECK_EQ_INT((int)f6, (int)r6);
+        /* 'X' is the eighth (index 7): above 6, back to 0. */
+        DSW(0x105EACu + 4u + 12u) = 0x0018u;
+        frontend_match_start();
+        CHECK_EQ_INT((int)hs_figure_sprite(), (int)r0);
+        /* The first match wins: with string 1 aimed at string 2's 'T', 'T'
+         * selects 1 (the image's strings are distinct but for the X's). */
+        {
+            u32 s1 = DSD(DS_000A7DA0 + 4u), r1 = hs_ref_sprite(1u);
+            CHECK(r1 != r2, "descriptors 1 and 2 differ");
+            DSD(DS_000A7DA0 + 4u) = DSD(DS_000A7DA0 + 8u);
+            DSW(0x105EACu + 4u + 12u) = 0x0014u;
+            frontend_match_start();
+            CHECK_EQ_INT((int)hs_figure_sprite(), (int)r1);
+            DSD(DS_000A7DA0 + 4u) = s1;
+        }
+    }
+
+    actors_reset();
+    memcpy(gfx_dac, sv_dac, sizeof sv_dac);
+    memcpy(gfx_aperture(), sv_ap, sizeof sv_ap);
+    tf_put(sv_pb, pb, 0xEBA0u);
+    tf_put(sv_pa, pa, 0x4880u);
+    tf_put(sv_idx, idx, nidx);
+    tf_put(sv_data, DATA_BASE, 0x8B0D0u);
+}
+
 int test_flow(void)
 {
     int before = g_failures;
@@ -828,6 +986,8 @@ int test_flow(void)
     /* The voice dispatcher 0x2C3FC and the sound module, on the live handles
      * game_audio_init allocated (record §45-A). */
     check_sound_voice();
+    /* The attract's high-score screen 0x1EA08 (record §46-A). */
+    check_hiscore_screen();
 
     game_shutdown();                         /* release handles for later tests */
     CHECK_EQ_INT((int)DSB(DS_000A2CB1), 0);  /* teardown clears the enable flag */
@@ -2051,6 +2211,204 @@ int test_effects(void)
     return g_failures - before;
 }
 
+/* ---- the high-score tables (record §46-A) ---- */
+
+/* The original's tables after 0x1E824 on a fresh CMOS (all zero): 0x105E34..
+ * 0x105ECC, read from Task 33's DOSBox-X memory file (t33/db/guest.mem). */
+static const u8 hs_orig[153] = {
+    0x00, 0x07, 0xA1, 0x20, 0xF4, 0x1E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x06, 0x1A, 0x80, 0xC3, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x05, 0x57, 0x30, 0xA1, 0x49, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x04, 0x93, 0xE0, 0x6D, 0x1E, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x03, 0xD0, 0x90, 0x6A, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x03, 0x0D, 0x40, 0x61, 0x5C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x01, 0x60, 0x62, 0x4D, 0x42, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0xC3, 0x50, 0xA8, 0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x4E, 0x20, 0x17, 0x55, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x64, 0xA4, 0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x07, 0xA1, 0x20, 0xB4, 0x14, 0x2E, 0x03, 0xB7, 0x14, 0x2E, 0x03,
+    0x27, 0x34, 0x65, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+#define HS_T0 0x105E34u
+#define HS_T1 0x105EACu
+#define HS_SCRATCH 0x3FFFF00u
+
+static int hs_match(u32 addr, const u8 *want, u32 n)
+{
+    for (u32 i = 0; i < n; i++)
+        if (DSB(addr + i) != want[i]) return 0;
+    return 1;
+}
+
+/* 0x2DB58/0x2DBC4/0x2DCA0, 0x1E918/0x1E988/0x1E824 on the loaded image. The
+ * config region with the tables and the decode buffer (DS_00105D88..+0x1C0),
+ * the three name buffers, DS_00104528 and a scratch source are saved and
+ * restored. */
+static void check_hiscore(void)
+{
+    static u8 sreg[0x1C0], snb[0x164], sscr[0x40];
+    const u32 nb = DS_001042C7;
+    u32 left, size, i;
+    memcpy(sreg, mem + DS_00105D88, sizeof sreg);
+    memcpy(snb, mem + nb, sizeof snb);
+    memcpy(sscr, mem + HS_SCRATCH, sizeof sscr);
+    u32 s28 = DSD(DS_00104528);
+
+    /* The image's descriptors and pointers (0x2D3FC, 0x2D478). */
+    CHECK_EQ_INT((int)DSD(DS_0002D478), (int)HS_T0);
+
+    /* 0x2DB58: the address, the bytes left and the record size. */
+    left = size = 0xDEADu;
+    CHECK_EQ_INT((int)hiscore_locate(0u, 0u, &left, &size), (int)HS_T0);
+    CHECK_EQ_INT((int)left, 120);
+    CHECK_EQ_INT((int)size, 12);
+    CHECK_EQ_INT((int)hiscore_locate(9u, 0u, &left, &size), (int)(HS_T0 + 108u));
+    CHECK_EQ_INT((int)left, 12);
+    left = size = 0xDEADu;
+    CHECK_EQ_INT((int)hiscore_locate(10u, 0u, &left, &size), 0);
+    CHECK_EQ_INT((int)left, 0xDEAD);
+    CHECK_EQ_INT((int)hiscore_locate(0u, 1u, &left, &size), (int)HS_T1);
+    CHECK_EQ_INT((int)size, 28);
+    CHECK_EQ_INT((int)hiscore_locate(1u, 1u, NULL, NULL), 0);
+    CHECK_EQ_INT((int)hiscore_locate(0u, 2u, &left, &size), 0x105EC8);
+    CHECK_EQ_INT((int)size, 5);
+    CHECK_EQ_INT((int)hiscore_locate(0u, 3u, &left, &size), 0);
+
+    /* 0x1E824 on zeroed tables with the original's DS_00104528 (0x142095: bit
+     * 0x4000 clear, bit 0x2000 set, the audit not due: fields 0x27/0x26 are
+     * below 2000/200) writes the original's bytes, blanks the three name
+     * buffers and raises DS_00105DD8 bits 6 and 7 only. */
+    mem_fill(HS_T0, 0, 153u);
+    mem_fill(nb, 0x5A, sizeof snb);
+    DSD(DS_00104528) = 0x142095u;
+    DSB(DS_00105DD8) = 0x01u;
+    hiscore_init();
+    CHECK(hs_match(HS_T0, hs_orig, 153u), "0x1E824 writes the original's tables");
+    CHECK_EQ_INT((int)DSB(DS_00105DD8), 0xC1);
+    for (i = 0; i < 0x24u; i++) {
+        CHECK_EQ_INT((int)DSB(nb + i), 0x20);
+        CHECK_EQ_INT((int)DSB(DS_00104367 + i), 0x20);
+        CHECK_EQ_INT((int)DSB(DS_00104367 + 0xA0u + i), 0x20);
+    }
+    CHECK_EQ_INT((int)DSB(nb + 0x24u), 0x5A);
+    CHECK_EQ_INT((int)DSB(DS_00104367 + 0x24u), 0x5A);
+    CHECK_EQ_INT((int)DSB(DS_00104367 - 1u), 0x5A);
+
+    /* 0x2DBC4: the decode, the terminator and the return. */
+    mem_fill(DS_00105EFC, 0x77, 0x2Cu);
+    CHECK_EQ_INT((int)hiscore_read(9u, 0u), (int)DS_00105EFC);
+    CHECK_EQ_INT((int)DSD(DS_00105EFC), 100);
+    CHECK(memcmp(mem + DS_00105F00, "DUD         ", 13u) == 0, "record 9 reads DUD");
+    CHECK_EQ_INT((int)hiscore_read(0u, 1u), (int)DS_00105EFC);
+    CHECK_EQ_INT((int)DSD(DS_00105EFC), 500000);
+    CHECK(memcmp(mem + DS_00105F00, "TEENY WEENY GAMES", 17u) == 0, "the champion");
+    CHECK_EQ_INT((int)DSB(DS_00105F00 + 17u), 0x20);
+    CHECK_EQ_INT((int)DSB(DS_00105F00 + 36u), 0);
+    CHECK_EQ_INT((int)DSB(DS_00105F00 + 37u), 0x77);
+    mem_fill(DS_00105EFC, 0x77, 0x2Cu);
+    CHECK_EQ_INT((int)hiscore_read(10u, 0u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00105EFC), 0x77777777);
+
+    /* A second 0x1E824 keeps what is there: a non-zero champion and records. */
+    DSB(HS_T1 + 3u) = 0x21u;
+    DSB(HS_T0 + 12u + 3u) = 0x81u;
+    hiscore_init();
+    CHECK_EQ_INT((int)DSB(HS_T1 + 3u), 0x21);
+    CHECK_EQ_INT((int)DSB(HS_T0 + 12u + 3u), 0x81);
+
+    /* 0x2DCA0: the insert moves the later records down one and drops the last;
+     * a space packs 0 and advances, a NUL packs 0 and does not. */
+    DSD(HS_SCRATCH) = 0x01020304u;
+    memcpy(mem + HS_SCRATCH + 4u, "A BC\0D", 6u);
+    DSB(HS_T0 + 107u) = 0x5Cu;                           /* record 8's last byte */
+    DSB(DS_00105DD8) = 0u;
+    CHECK_EQ_INT((int)hiscore_insert(1u, HS_SCRATCH, 0u), 1);
+    CHECK(hs_match(HS_T0, hs_orig, 12u), "record 0 kept");
+    CHECK_EQ_INT((int)DSB(HS_T0 + 12u), 1);
+    CHECK_EQ_INT((int)DSB(HS_T0 + 15u), 4);
+    CHECK_EQ_INT((int)DSW(HS_T0 + 16u), 0x0801);         /* A, space, B */
+    CHECK_EQ_INT((int)DSW(HS_T0 + 18u), 0x0003);         /* C, NUL, NUL */
+    CHECK_EQ_INT((int)DSW(HS_T0 + 20u), 0);
+    CHECK_EQ_INT((int)DSB(HS_T0 + 24u + 3u), 0x81);      /* old record 1, moved */
+    CHECK(hs_match(HS_T0 + 36u, hs_orig + 24u, 83u), "records 2..8 moved down");
+    CHECK_EQ_INT((int)DSB(HS_T0 + 119u), 0x5C);          /* the move's last byte */
+    CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x40);
+    CHECK_EQ_INT((int)hiscore_insert(10u, HS_SCRATCH, 0u), 0);
+    CHECK_EQ_INT((int)hiscore_insert(0u, HS_SCRATCH, 3u), 0);
+    /* The last record: nothing to move (left == size). */
+    CHECK_EQ_INT((int)hiscore_insert(9u, HS_SCRATCH, 0u), 1);
+    CHECK_EQ_INT((int)DSB(HS_T0 + 111u), 4);
+    CHECK_EQ_INT((int)DSB(HS_T0 + 120u + 3u), 0x21);     /* table 1 untouched */
+    /* Table 2 (0x105EC8, 3 value bytes, one name word): its dirty bit is
+     * table + 6 = 8, bit 0 of DS_00105DD9. */
+    {
+        u8 s_c8[5];
+        memcpy(s_c8, mem + 0x105EC8u, 5u);
+        mem_fill(0x105EC8u, 0xEE, 5u);
+        DSB(DS_00105DD8) = 0u;
+        DSB(DS_00105DD8 + 1u) = 0u;
+        DSB(0x105ECDu) = 0x3Cu;
+        CHECK_EQ_INT((int)hiscore_insert(0u, HS_SCRATCH, 2u), 1);
+        CHECK_EQ_INT((int)DSB(0x105EC8u), 0x02);
+        CHECK_EQ_INT((int)DSB(0x105EC9u), 0x03);
+        CHECK_EQ_INT((int)DSB(0x105ECAu), 0x04);
+        CHECK_EQ_INT((int)DSW(0x105ECBu), 0x0801);
+        CHECK_EQ_INT((int)DSB(0x105ECDu), 0x3C);         /* one record, no move */
+        CHECK_EQ_INT((int)DSB(DS_00105DD8), 0);
+        CHECK_EQ_INT((int)DSB(DS_00105DD8 + 1u), 0x01);
+        memcpy(mem + 0x105EC8u, s_c8, 5u);
+    }
+
+    /* 0x1E988: field 0x27 >= 2000 and field 0x26 >= 200. */
+    config_field_set(0x27u, 2000u);
+    config_field_set(0x26u, 200u);
+    CHECK_EQ_INT((int)hiscore_audit_reset_due(), 1);
+    config_field_set(0x26u, 199u);
+    CHECK_EQ_INT((int)hiscore_audit_reset_due(), 0);
+    config_field_set(0x26u, 200u);
+    config_field_set(0x27u, 1999u);
+    CHECK_EQ_INT((int)hiscore_audit_reset_due(), 0);
+
+    /* The audit due with bits 0x2000 and 0x4000 clear: 0x1E988 is not
+     * consulted, the normal path keeps the edited table and both fields. */
+    config_field_set(0x27u, 2000u);
+    DSB(HS_T0 + 12u + 3u) = 0x81u;
+    DSD(DS_00104528) = 0x142095u & ~0x2000u;
+    hiscore_init();
+    CHECK_EQ_INT((int)DSB(HS_T0 + 12u + 3u), 0x81);
+    CHECK_EQ_INT((int)config_field_get(0x27u), 2000);
+    CHECK_EQ_INT((int)config_field_get(0x26u), 200);
+
+    /* Bit 0x2000 (set in 0x142095) with the audit due: fields 0x27/0x26
+     * cleared, the defaults forced over the edited table, the champion kept
+     * (bit 0x4000 clear). */
+    DSD(DS_00104528) = 0x142095u;
+    hiscore_init();
+    CHECK(hs_match(HS_T0, hs_orig, 120u), "the forced defaults");
+    CHECK_EQ_INT((int)config_field_get(0x27u), 0);
+    CHECK_EQ_INT((int)config_field_get(0x26u), 0);
+    CHECK_EQ_INT((int)DSB(HS_T1 + 3u), 0x21);
+    /* Bit 0x2000 with the audit not due: the normal path keeps the table. */
+    DSB(HS_T0 + 3u) = 0x99u;
+    hiscore_init();
+    CHECK_EQ_INT((int)DSB(HS_T0 + 3u), 0x99);
+
+    /* Bit 0x4000: forced, the bit cleared into field 0x29, the champion
+     * rewritten over a non-zero one. */
+    DSD(DS_00104528) = 0x142095u | 0x4000u;
+    hiscore_init();
+    CHECK(hs_match(HS_T0, hs_orig, 153u), "0x4000 rewrites both tables");
+    CHECK_EQ_INT((int)DSD(DS_00104528), 0x142095);
+    CHECK_EQ_INT((int)config_field_get(0x29u), 0x142095);
+
+    DSD(DS_00104528) = s28;
+    memcpy(mem + HS_SCRATCH, sscr, sizeof sscr);
+    memcpy(mem + nb, snb, sizeof snb);
+    memcpy(mem + DS_00105D88, sreg, sizeof sreg);
+}
+
 /* ---- test_config.c ---- */
 
 /* The descriptor table lives in the loaded image (obj-0 VA 0x2D300). These tests
@@ -2248,6 +2606,7 @@ int test_config(void)
         DSB(DS_00105D60) = free_play;
         DSB(DS_00104B1F) = suppress;
     }
+    check_hiscore();
     return 0;
 }
 

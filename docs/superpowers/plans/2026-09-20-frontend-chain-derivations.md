@@ -431,7 +431,9 @@ frame). The globals it changes are all written through callees:
 The **index-selection** `local` (which of the seven descriptors is spawned) depends on
 `[esi+0x16]`, produced by `0x2DBC4`/`0x2DB58`; that value cannot be pinned from the
 raw without modelling the paged resource (named gap §7.1). The rest of the body is
-pinnable.
+pinnable. (Superseded by demo-pose record §46-A: `0x2DBC4`/`0x2DB58` are the
+high-score tables' record read and locate, not a paged resource reader;
+`[esi+0x16]` is the champion name's character 0x12, and `0x1EA08` is ported.)
 
 ---
 
@@ -823,14 +825,18 @@ the port should follow the raw order.
    the returned blob's `+4` "first string" / `+0` "next pointer" layout is read off
    the consumer (`0x1EA6B` copies 0x12 bytes from `[esi+4]`; `0x1EAC0`/`0x1EBC7` use
    `[esi]`) rather than from a decoded format. Both go to a future task that models
-   `0x2DB58`.
+   `0x2DB58`. (Superseded by demo-pose record §46-A: there is no paged resource
+   and no run-length decoder. `0x2DB58` locates a record of one of three packed
+   high-score tables (`0x2D3FC`), `0x2DBC4` unpacks its big-endian value and
+   5-bit name words into `DS_00105EFC`/`DS_00105F00`, and `0x1EA08` is ported.)
 2. **The `0x2F4D0`/`0x2EFD4` formatter.** `0x2F4D0` is `0x2EFD4` followed by
    `0x2F198`; the exact output of `0x2EFD4` (a `sprintf`-style formatter) is not
    decoded — only its col/row pass-through to `0x2F198` and its call sites are
    pinned. The `0x1EA08` draws therefore have exact `(col,row,table)` inputs but
    un-asserted formatted output. (Derived since, demo-pose record §33: the
    formatter is decoded and ported; the `0x1EA08` draws stay a gap on the
-   `0x2DB58` resource reader.)
+   `0x2DB58` resource reader. Superseded by demo-pose record §46-A: the draws
+   are ported and `0x2DB58` is the high-score tables' locate.)
 3. **The assets named by the two list handles `0x3E688` and `0x88874B0`.** They are
    resource handles in the `0x1B544` space; the index/offset decode is pinned
    (`0x3E688`: index 0 offset `0x3E688`; `0x88874B0`: index 17 offset `0x874B0`) but
@@ -930,7 +936,9 @@ Expected:
   the letter table `0xA7DA0`.
 * The `local` index is **not assertable** until `0x2DBC4` is modelled (§7.1); a test
   may set `[esi+0x16]` to a known letter (`"R"`) and assert `local == 0` once the
-  resource reader exists.
+  resource reader exists. (Superseded by demo-pose record §46-A:
+  `check_hiscore_screen` asserts the selection for a space, 'T', 'H', 'X' and
+  the first match.)
 
 ### 8.6 `0x1317C`
 
