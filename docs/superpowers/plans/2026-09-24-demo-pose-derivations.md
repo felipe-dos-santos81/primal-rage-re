@@ -11940,3 +11940,8 @@ s3545.png`), which no port frame shows.
 - The front-end record (§3.3, §7.1, §7.2, §8.5) and the demo-fight record (§10.9)
   carry "superseded by §46-A" notes where they call `0x2DBC4`/`0x2DB58` a
   paged resource reader.
+
+## 47-A. Capture 3545, after the attract's high-score screen (roar-timing Task 35, branch `frame-3545`)
+
+**Status: in progress.** Scaffolding; the sections below are filled as the
+evidence lands.
