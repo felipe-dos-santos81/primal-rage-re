@@ -9915,7 +9915,12 @@ distinct scratch streams, and RNG seeds picked for their draws with the LCG
 `0x5D7DC` (`scratchpad/g3-4d2d0/seeds.py`, `seeds2.py`; each chosen draw
 also differs from the draw of a range one larger). Each check saves and
 restores the whole data object, the actor record pool, the running pset
-pool, the `FIGHT_*` scratch and `mem[0..0x3F]`. A temporary whole-`mem[]`
+pool, the `FIGHT_*` scratch and `mem[0..0x3F]`. `mz_seed` first takes the pool records 0..8
+off the actor free list `DS_00105B3C` (their psets are the fixture's), so no
+spawn depends on the tests run before (review: after main's
+`check_char3_2425` the head was record 2 and a flyer overwrote fighter 1's
+pset; reproduced by pushing records 2..5 to the head, 3 failures, none with
+the seeding). A temporary whole-`mem[]`
 diff around the three showed only `mem[0x18..0x1B]` (pset 0's `+0x18`, the
 out-of-pool kill of §42-D) before that range was added, and nothing after
 (re-run on the final tests). The low range also carries sentinels: `0x1E`
@@ -10010,17 +10015,17 @@ The sources were restored by the script and compared with `cmp`.
 - `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 0 compiler
   warnings. The drivers and `make verify` were not run (the batch controller
   runs them after the merge).
-- **The one oracle-visible change** is the effects tail: with
-  `DS_001088BF` in 1..4 the port now spawns `0x4987C`'s type-7 flyers (and
-  takes two free entries and pool actors) where it drew `rng(2)` alone. Its
-  setters in the port are `0x391CA` (a combo of at least 5 hits with
-  `0x107D20` ≥ `0x41`) and `0x14DA4` (the throw `0x14D7C`, not reached per
-  §41-B). If the demo reaches either, the flyers appear and the demo-fight
-  and attract cycle-2 ratchets may move. `0x4987C` itself draws nothing
-  outside mode `0x22` for the flyers, but the spawned actors' streams run
-  from the next frame. The wiring is one hunk (the `0x4A5A6` block of
-  `fight_effects_pass`) with its test block F and the mode 7/8/9 loop in
-  `check_flyers_4987c`; reverting those alone restores the old tail.
+- **The effects-tail wiring does not move the demo (measured in review).**
+  With `DS_001088BF` in 1..4 the port now spawns `0x4987C`'s type-7 flyers
+  where it drew `rng(2)` alone. In the demo run `DS_001088BF` stays 0 on
+  every fight frame: neither setter is reached (`0x391CA`'s combo block at
+  `0x39195` is never entered, and `0x14D7C`, the `0x14DA4` setter, is never
+  called), so the `0x4A5A6` gate never fires. The front-end driver's dumps
+  (`PR_FRONTEND_DET`) are byte-identical to 713833c's, and main with this
+  branch merged is byte-identical to main. N is unchanged: demo-fight exact
+  (N = 1886); attract cycle-2 3099 on 713833c and 3257 on main. The wiring
+  is one hunk (the `0x4A5A6` block of `fight_effects_pass`) with its test
+  block F and the mode 7/8/9 loop in `check_flyers_4987c`.
 - `0x4D2D0` and `0x4C60C` are unreachable until the mode frames `0x26C8C`,
   `0x26F58` (modes `0x22`/`0x24`) and `0x26540` with its pass `0x4BF18`
   (mode `0x21`) are ported; `0x4CC0C`'s two `0x4BF18` sites wait on the same.

@@ -2627,8 +2627,8 @@ void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode)
     DSD(DS_00105F34) = save;
 }
 
-/* 0x2F510 — demo-pose record §43-A (`push esi; or cl,0x2; mov esi,[0x85f34];
- * call 0x2F198; mov [0x85f34],esi`). 0x2F4BC with the mode ORed with 2 (the
+/* 0x2F510 — demo-pose record §43-A (`push esi; or cl,0x2; mov esi,[0x105f34];
+ * call 0x2F198; mov [0x105f34],esi`). 0x2F4BC with the mode ORed with 2 (the
  * class font) before the cursor save. The ported callers are 0x4C784 and
  * 0x4CC0C (fight.c); its other 60-odd call sites are not ported. */
 void text_cursor_hold_font2(s32 col, s32 row, const u8 *s, u32 mode)

@@ -2,6 +2,7 @@
 #include "game/actors.h"
 #include "game/camera.h"
 #include "game/config.h"
+#include "game/effects.h"
 #include "game/fight.h"
 #include "game/fighter.h"
 #include "game/flow.h"
@@ -14942,7 +14943,8 @@ static void mz_restore(void)
     mz_buf = NULL;
 }
 
-/* The fixture: check_point_trample's (ph_seed, side 0's box, the point x/y
+/* The fixture (mz_free_list_high first keeps the pool records 0..8 out of
+ * every spawn): check_point_trample's (ph_seed, side 0's box, the point x/y
  * below on side 0), one entry E (si 3, side byte 1, slot 1) on the active
  * list with its actor R (pset 5, +0x14 = E), the shadow SH, an empty free
  * list, mode 0x24, DS_00104B1A = 0, DS_00104AC4 = 2 (no stop), DS_001088C2 =
@@ -14970,10 +14972,30 @@ static const u32 mz_tabs[11] = {
     0x000C9604u,
 };
 
+/* Take the pool records 0..8 off the actor free list DS_00105B3C (0x249D0
+ * on the free ones only): a record's pset is its index, and the fixture's
+ * psets 1..8 (FIGHT_ACTORS) hold the fighters, the projectiles, R, R2/B1,
+ * SH and B2, so a spawn handed one of them would overwrite a fixture
+ * position. Which records are free depends on the tests run before (main's
+ * check_char3_2425 leaves index 2 at the head); mz_restore puts the list
+ * back. */
+static void mz_free_list_high(void)
+{
+    u32 pool = DSD(DS_001014F4);
+    u32 r = DSD(DS_00105B3C);
+    while (r != DS_00105B3C && r != 0u) {
+        u32 next = DSD(r);
+        if (r >= pool && r < pool + 9u * ACTOR_REC_SIZE)
+            effects_list_unlink(r);
+        r = next;
+    }
+}
+
 static void mz_seed(u8 type, u8 c1c)
 {
     u32 k;
     ph_seed(FIGHT_RECS + 0x200u, FIGHT_RECS + 0x300u, 0);
+    mz_free_list_high();
     mem_fill(FIGHT_RECS + 0x3000u, 0, 0x500u);
     mem_fill(MZ_PS(5), 0, 0x80u);
     DSW(MZ_SH + 0x56u) = 7;
