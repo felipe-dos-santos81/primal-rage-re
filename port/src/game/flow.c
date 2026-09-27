@@ -2306,6 +2306,9 @@ void game_frame(void)
     case 0x17u:
         frontend_mode_17_step();                       /* 0x253EE 0x4F318 */
         break;
+    case 0x10u:
+        fight_mode_10_step();                          /* 0x25385 0x438B4 */
+        break;
     case 0x04u:
     case 0x05u:
     case 0x06u:
@@ -2318,7 +2321,6 @@ void game_frame(void)
     case 0x0Du:
     case 0x0Eu:
     case 0x0Fu:
-    case 0x10u:
     case 0x12u:
     case 0x13u:
     case 0x15u:
@@ -2350,7 +2352,7 @@ void game_frame(void)
          * 4 0x26254; 5 0x25C88; 6 0x28CC8/0x28DA4 else 0x26254; 7 0x282C4;
          * 8 0x28468; 9 0x28788; 0xA 0x28BD4; 0xB 0x26254 + 0x28C38;
          * 0xC 0x28CC8/0x28DA4 else 0x27380; 0xD 0x274FC; 0xE 0x27A2C;
-         * 0xF 0x277C0; 0x10 0x438B4; 0x12 0x41C28; 0x13 0x424E8;
+         * 0xF 0x277C0; 0x12 0x41C28; 0x13 0x424E8;
          * 0x15 0x4F24C; 0x16 0x4F2B0; 0x18 0x4F6E8;
          * 0x19 0x4F704; 0x1E 0x1EEB0; 0x1F 0x208F8; 0x21 0x26540;
          * 0x22 0x26C8C; 0x23 0x26A50; 0x24 0x26F58; 0x25 inline (0x266AC,
@@ -2358,7 +2360,8 @@ void game_frame(void)
          * 0x2FFC4, 0x65431 longjmp); 0x28..0x2F inline (0x2D974 field 0x29,
          * 0x2CA7C, 0x257A4); 0x30 0x29328; 0x31 0x299E8; 0x32 0x296B8;
          * 0x33 0x29638. Case 0x17 is ported (0x4F318, record §46-G) and
-         * dispatched above as frontend_mode_17_step. */
+         * dispatched above as frontend_mode_17_step, and case 0x10 (0x438B4,
+         * record §47-M) as fight_mode_10_step. */
         break;
     case 0x00u:
     case 0x1Cu:
@@ -2447,8 +2450,11 @@ void game_frame(void)
 
 /* PORT: 0x11F28. One coin/start event: requires a credit (0x2C060), then tests
  * the event's mask in the DS_0009ACBC table against the newly-pressed bits
- * DS_001088E4, and debits one credit through 0x2CA7C. Returns 1 when accepted. */
-static u32 frontend_coin_poll(u32 code)
+ * DS_001088E4, and debits one credit through 0x2CA7C. Returns 1 when accepted
+ * (0x11F42/0x11F4C: 1 whatever 0x2CA7C returns). Called at 0x11D15/0x11D28 and,
+ * with EAX = the side, by 0x43928 (0x43939) and 0x43B24 (0x43B4E), record
+ * §47-M. */
+u32 frontend_coin_poll(u32 code)
 {
     if (config_credit_ready() == 0u) return 0u;
     if ((DSD(DS_0009ACBC + code * 4u) & DSD(DS_001088E4)) == 0u) return 0u;

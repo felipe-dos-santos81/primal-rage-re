@@ -136,6 +136,15 @@ void fight_char_screen_open(void);
  * Only 0x4454C calls it (0x4462B). */
 void fight_char_screen_open_both(void);
 
+/* Record §47-M. 0x43928: each side whose DS_00108170 byte is 0 is polled by
+ * 0x11F28; an accepted side sets its bit side + 1 in DS_00104B1F and its byte
+ * to 1. 0x438B4: the mode 0x10 handler (0x24C5C at 0x25385), on the byte
+ * DS_00108174: 0 is the character select's per-frame pass 0x43B24/0x44798
+ * (a named gap), 1 is the join test, 0x4F790 and the countdown DS_0010816C
+ * that ends in DS_00108174 = DS_00108172. */
+void fight_char_join(void);
+void fight_mode_10_step(void);
+
 /* 0x494A8. The dust/effect entry builder the fighter spawn (0x33C78) calls at
  * 0x33E43 when DS_00104B14 == 0. Each iteration moves one node from the free
  * fight-effect list (DS_001083C4) to the active one (DS_0010884C), picks a

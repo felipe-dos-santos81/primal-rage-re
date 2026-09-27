@@ -96,6 +96,10 @@ void frontend_mode_1b_step(void);
 u32 frontend_buttons_pressed(u32 n);
 u32 frontend_skip_check(void);
 void frontend_mode_17_step(void);
+/* 0x11F28: one coin/start poll for the event (side) `code`; 1 when a credit
+ * is ready and the event's mask 0x9ACBC[code] is newly pressed (one credit is
+ * spent through 0x2CA7C), else 0. Also 0x43928's poll (record §47-M). */
+u32 frontend_coin_poll(u32 code);
 
 /* 0x1CF40: the init chain's audio calls — AIL_startup, the shipped preferences,
  * four sample handles, the sequence handle and the 60 Hz timer slot. Called by
