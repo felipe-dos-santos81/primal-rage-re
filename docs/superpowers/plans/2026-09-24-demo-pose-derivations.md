@@ -11227,16 +11227,19 @@ sides set to character 1 and the audio gate closed (`DS_001028C8` = 0).
   the `D500` word and its dword `0x246D4`; `0xC8B30[1]`/`[3]`. The table
   dword resolves to `fighter_24568`, and `0x246D4` resolves to a wrapper,
   not to `fighter_246d4`.
-- **A: `0x24568` through the table dword**, in nine rows:
+- **A: `0x24568` through the table dword**, in eleven rows:
   - each arm: left, left failing to right, and the bound read (`0x8000`);
   - right, and right failing to left;
   - both equalities (x0 - `0x5000` == `-bound`, x0 + `0x5000` == bound);
-  - both signed compares (a positive left x, a negative right x).
+  - both signed compares (a positive left x, a negative right x);
+  - two rows where the entering side is `DS_0010810D`'s own side (its old
+    record is the one placed against). These separate the mask's
+    `DS_0010810D` from the entering side.
 
-  The rows also vary `DS_0010810D` between 0 and 1 and the mask byte. The
-  entering side's old slot record is a decoy whose pset bit 15 is the
-  opposite of `DS_0010810D`'s side, so `0x1A570` on the wrong side fails.
-  Each row checks:
+  The rows also vary `DS_0010810D` between 0 and 1 and the mask byte. When
+  the two sides differ, the entering side's old slot record is a decoy
+  whose pset bit 15 is the opposite of `DS_0010810D`'s side, so `0x1A570` on
+  the wrong side fails. Each row checks:
   - the spawned record: its slot, `DS_001077A8`, character, `+0x51`, x, the
     a5 bit, `+8` = `0xE453A` and `+0x20`/`+0x24` = 4.0;
   - the slot: `+0x74` = `0x309`, `+0x41` bit 0, `+0x52`/`+0x53`/`+0x64`, the
@@ -11244,7 +11247,7 @@ sides set to character 1 and the audio gate closed (`DS_001028C8` = 0).
     leaves `0x80000000`) and `+0x63` against a sentinel;
   - the projectile: type 8, `+0x14`, speed `0x113`/`0xFEED`, and x ±
     `0xC00`;
-  - the other slot's pointer and `+0x52`, kept.
+  - the other slot's pointer and `+0x52`, kept (when the sides differ).
 - **B: `0x3BCE0` directly**, on side 1 with characters 1 and 3, over six
   `DS_001088E0[1]` values (bit 4, bits 4 and 5, bit 5, 0, low byte only,
   other high bits). It checks `DS_00107D40[1]`, the stream and 2.0, the state
@@ -11256,4 +11259,55 @@ sides set to character 1 and the audio gate closed (`DS_001028C8` = 0).
   from `0xFFFFFFFF`, `DS_000F0AFE` and `DS_000F0AFC` against sentinels, and
   side 1's word kept.
 
-**Mutations** (`scratchpad/g5-24568/mut.py`, `mut2.out`): MUTRESULT
+`check_char1_entry` has 55 assertion sites.
+
+**Mutations** (`scratchpad/g5-24568/mut.py`, final run `mut3.out`): 54
+single-site edits of the new code, its registrations and the wrapper. They
+cover every store, constant, side index, gate and bit test of the three
+functions, both arms' offsets, compares and signedness, the bound read, the
+mask's source, the spawn's x, the stream and rate, the `0x39A10` value, the
+`0x2372C` call, both registrations and the wrapper's call.
+- 51 fail an assertion (1..31 each), with no fault.
+- 2 hang, and the script kills them at 90 s: the unsigned forms of the two
+  compares (#30, #35). On the signed rows neither arm then passes, so the
+  loop spins, which is the raw's own behaviour for an unplaceable x. They
+  count as failing.
+- 1 is equivalent: #11, `0x3BCE0`'s bit-5 test widened to `0x30`. Bit 4
+  has already returned by then.
+- Also equivalent (not in the sweep): dropping `0x246D4`'s `+0x54` = 2,
+  which repeats `0x3BCE0`'s store.
+
+Two survivors of the first run were killed by strengthening the test:
+- `0x1A570` on the entering side instead of `DS_0010810D`'s side, killed by
+  the decoy record;
+- the mask taken from the entering side, killed by the two rows that enter
+  on sel's own side.
+
+A third, the stream `0xE453A` + 2, converges back to `0xE453A` through the
+`C410` loop. The sweep replaced it with a different stream (`0xE3AF0`),
+which fails. The script restored every source, and `git diff` shows only
+the intended changes.
+
+### 46-C.5 Measured, and the remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 0 compiler
+  warnings. The drivers and `make verify` were not run (batch rules).
+- **Reachability.** Nothing in the port reads `0xA8628` or calls
+  `fighter_24568`, except the test. `0x246D4` is reached only through the
+  `D500` word at `0xE4542`, which only `0xE453A` falls into, and only
+  `0x24568` starts `0xE453A`. `0x3BCE0`'s only caller is `0x246D4`. So no
+  port run executes the new code, and no oracle is expected to move at the
+  current pins. The controller's ladder is the check.
+- **Base fix.** The base `1151646` did not compile: the frame-3257 merge
+  dropped `check_volleyball`'s closing brace in `test_fight.c`. `0e49057`
+  restores it. §46-B's branch carries the same one-line fix.
+- **Named gaps.**
+  - The dispatchers `0x25F27`/`0x27732`/`0x2989C` and their handlers
+    `0x25C88`/`0x274FC`/`0x296B8` (modes 5, `0x0D`, `0x32`), with the 14
+    unported callees of 46-C.2. This is the interactive match flow.
+  - The other six entries of `0xA8628`: `0x40CB0`, `0x49150`, `0x15A34`,
+    `0x45FE8`, `0x40E64` and `0x24804`. They are the other characters'
+    entrances, reached only through the same dispatchers.
+  - The voice `0x2C3FC(0xB4)` at `0x24684` (§45-A's unwired sites).
+  - What follows `0x246D4` in the stance stream `DS_000C8B30[char]` is the
+    existing per-character machinery and was not re-audited here.
