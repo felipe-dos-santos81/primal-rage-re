@@ -618,6 +618,20 @@ void fighter_22fe8(void);
  * 0xE4996 stream at 3.0, state 0x0B/6/0 and +0x5F moved to +0x64; 1. */
 int fighter_2365c(u32 slot, u32 rec, u32 side);
 
+/* 0x230F0/0x23130/0x23178. Character 1's reaction callbacks 0x25/0x20/0x28
+ * (*(u32*)0xA3D0C/0xA3CA8/0xA3D48): the 0xE483E/0xE4872/0xE48DC stream at 3.0
+ * through 0x3C4CC and state 9/7/0 with +0x0C = 0 (0x230F0 starts the stream
+ * before the stores, the other two after); 1. Record §43-C. */
+int fighter_230f0(u32 slot, u32 rec, u32 side);
+int fighter_23130(u32 slot, u32 rec, u32 side);
+int fighter_23178(u32 slot, u32 rec, u32 side);
+
+/* 0x236D8. 0xE4996's 0xD100 target: spawns the 0xBB3BC child of rec with the
+ * slot at +0x14. 0x2372C. That child stream's 0xD100 target (also called at
+ * 0x2463E): spawns the 0xBB3D0 projectile into the slot's +0x08. §43-C. */
+void fighter_236d8(u32 rec);
+void fighter_2372c(u32 rec);
+
 /* The machine's and chain's per-function fixtures (record §7.1-§7.5, §7.7-§7.9
  * and §7.11) exercise these directly. */
 u32  hit_frame_desc(u32 side, u32 i);                 /* 0x3C600 */

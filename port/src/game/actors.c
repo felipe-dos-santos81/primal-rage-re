@@ -134,6 +134,11 @@ static void actor_type_49444(u32 rec);
 static void actor_type_0a19_update(void);
 static void reaction_cb_22F74(u32 slot, u32 rec, u32 side);
 static void reaction_cb_2365C(u32 slot, u32 rec, u32 side);
+static void reaction_cb_230F0(u32 slot, u32 rec, u32 side);
+static void reaction_cb_23130(u32 slot, u32 rec, u32 side);
+static void reaction_cb_23178(u32 slot, u32 rec, u32 side);
+static void anim_code_236D8(u32 rec, u32 arg);
+static void anim_code_2372C(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -310,6 +315,17 @@ int actors_init(void)
     fn_register(0x22F14u, (void (*)(void))fighter_22f14);
     fn_register(0x22D8Cu, (void (*)(void))fighter_22d8c);
     fn_register(0x22E44u, (void (*)(void))fighter_22e44);
+    /* PORT: record §43-C. Character 1's reaction callbacks 0x230F0 (*(u32*)
+     * 0xA3D0C, reaction 0x25), 0x23130 (0xA3CA8, 0x20) and 0x23178 (0xA3D48,
+     * 0x28), the (slot, rec, side) registers; the 0xD100 target 0x236D8 of
+     * 0x2365C's stream 0xE4996 (dword at 0xE49A4) and the 0xD100 target
+     * 0x2372C of its child's stream 0xE4F94 (dword at 0xE4FA4), opcode 0x11,
+     * mode 0x4000. */
+    fn_register(0x230F0u, (void (*)(void))reaction_cb_230F0);
+    fn_register(0x23130u, (void (*)(void))reaction_cb_23130);
+    fn_register(0x23178u, (void (*)(void))reaction_cb_23178);
+    fn_register(0x236D8u, (void (*)(void))anim_code_236D8);
+    fn_register(0x2372Cu, (void (*)(void))anim_code_2372C);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -1088,6 +1104,45 @@ static void reaction_cb_22F74(u32 slot, u32 rec, u32 side)
 static void reaction_cb_2365C(u32 slot, u32 rec, u32 side)
 {
     (void)fighter_2365c(slot, rec, side);
+}
+
+/* 0x230F0 — the reaction-callback shape (record §43-C). PORT: the same
+ * 0x35045 call, whose AL is ignored; this wrapper drops fighter_230f0's
+ * result. */
+static void reaction_cb_230F0(u32 slot, u32 rec, u32 side)
+{
+    (void)fighter_230f0(slot, rec, side);
+}
+
+/* 0x23130 — the reaction-callback shape (record §43-C); drops the AL. */
+static void reaction_cb_23130(u32 slot, u32 rec, u32 side)
+{
+    (void)fighter_23130(slot, rec, side);
+}
+
+/* 0x23178 — the reaction-callback shape (record §43-C); drops the AL. */
+static void reaction_cb_23178(u32 slot, u32 rec, u32 side)
+{
+    (void)fighter_23178(slot, rec, side);
+}
+
+/* 0x236D8 — the animation-opcode target shape (record §43-C). PORT:
+ * anim_indirect calls every code pointer as (rec, arg); the raw 0x236D8
+ * pushes EDX at 0x236DA and zeroes it at 0x236F7 before any read, so this
+ * wrapper drops the operand. */
+static void anim_code_236D8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_236d8(rec);
+}
+
+/* 0x2372C — the animation-opcode target shape (record §43-C). PORT: the raw
+ * pushes EDX at 0x2372E and overwrites it at 0x2374D/0x2375E before any read,
+ * so this wrapper drops the operand. */
+static void anim_code_2372C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_2372c(rec);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */
