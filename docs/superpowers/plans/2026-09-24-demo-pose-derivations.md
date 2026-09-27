@@ -13297,3 +13297,7 @@ start, or Enter. None of the oracle captures has input, so on the no-input
 path neither route should move an oracle. The new code runs only when
 `config_credit_ready` is non-zero and the start bits are pressed. The
 follow-up must re-run the 8000-frame comparison above to confirm that.
+
+## 48-A. Capture 3593, the third demo's spiked-ball fight divergence (roar-timing Task 36, branch `frame-3593`)
+
+*Scaffold: investigation in progress.*
