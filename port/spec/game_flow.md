@@ -779,7 +779,7 @@ boot cycle's phase 2 wraps it to 0), so the second cycle reaches phase `0xA`'s
 lightning and hands off to a second demo at loop 2782 (`DS_000F0A72` = 5), as
 the capture does from 2385. `make attract2-oracle` (`--attract2`, in `make
 verify`) classifies captures 1885..3616 against `cycle2/` only, with the ratchet
-N = 3593 (record §47-A). Capture 2384, the `- LOADING -` frame before the second demo, was
+N = 3617, the capture's end + 1 (record §48-A). Capture 2384, the `- LOADING -` frame before the second demo, was
 allowed by name (record §37) until the loader screens explained it. Capture
 3545, the third demo's first frame, is allowed by name as a three-frame splice
 (`ATTRACT2_SPLICE3_ALLOWED`: the last loader screen, the load frame's present
@@ -789,7 +789,7 @@ the load frame's present an arbitrary tick phase, record §47-A.2).
 **The demo window is report-only; its first unexplained frame is capture 1886 —
 the capture's next cycle after the demo, with no port frame left in the
 top-level dump (`make attract2-oracle` classifies that region against
-`cycle2/`: first unexplained 3593) — after the
+`cycle2/`: no unexplained frame left, N = 3617) — after the
 demo-pose cycle explained captures 843..850, the roar-timing fix 851..857, the
 frame-858 fix 858, the frame-859 fix 859, the frame-860 fix 860..863, the
 frame-864 fix 864/865, the frame-866 fix 866, the frame-867 fix 867..869 and
@@ -2593,7 +2593,32 @@ record §34).**
   raw's other re-syncs (`0x4FA0E`, `0x4FAB2`, `0x5210D`) and any catch-up can
   do the same; the allowance is narrower than the mechanism. First
   unexplained **3593** (raw 8386): the s16spi fighter's attack, which the port
-  does not play (a named gap). N = 3593.
+  did not play. N = 3593 (since explained, record §48-A).
+
+### The third demo's spiked ball (record §48-A), captures 3593..3616
+
+* **Ground truth.** A DOSBox-X live-RAM poll of the pinned original (the
+  §38 poll's format, whole-RAM snapshots at f = 4911) matches the port frame
+  for frame through f = 4913. At f = 4914 (loop 4027) the original's left
+  fighter, character 4 (s16spi), enters 9/7/1 on stream `0xEB64E` from the
+  command word `0x0680`; the port's stays 9/0/0.
+* **Owner.** A `fn_resolve` miss log with the frame counter shows the port
+  missing `0x45AD0` at f = 4914: character 4's reaction-`0x25` callback (the
+  dword at `0xA4C0C` = `0xA3528 + (4*64 + 0x25)*20`, stream word 0). §47-A's
+  miss log had listed it as an early-boot miss (raw wins).
+* **Fix.** `0x45AD0` (the curl: `0xEB64E` at 2.0 through `0x3C4CC`, 9/7/1,
+  `+0x57` = 0, `+0x0C`/`+0x18`/`+0x1C` = `0x45A70`/`0x459F4`/`0x45A34`,
+  record `+0x4C` = `0x78`), `0x45A70` (holds while the command word has both
+  `0x600` bits, the other slot's `+0x42` bit `0x10` is clear and `+0x4C`,
+  decremented, stays positive as a signed byte; else `0xEB692` and `+0x57` =
+  1), `0x459F4` (the `+0x18` hook, `0x3E484`'s body; the hit at f = 4917),
+  `0x45A34` (the `+0x1C` callback: `0x3B714(other slot, slot)`, `0xEB692`,
+  `+0x57` = 1) and the curl stream's `0xD100` target `0x459D0` (record
+  `+0x63` = 1; not reached). Decoded from `read_memory` with capstone
+  (Ghidra has no functions there). The poll matches the port through f =
+  4986, the driver's last frame (two DOSBox-X samples torn mid-frame aside).
+  3593..3616 are explained; no unexplained frame is left in the region, so
+  N = 3617, the capture's end + 1.
 
 ## Landmarks (verified)
 
