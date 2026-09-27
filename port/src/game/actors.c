@@ -100,6 +100,7 @@ static void anim_code_4F83C(u32 rec, u32 arg);
 static void anim_code_10FC4(u32 rec, u32 arg);
 static void anim_code_37CD4(u32 rec, u32 arg);
 static void anim_code_14EA4(u32 rec, u32 arg);
+static void anim_code_370F0(u32 rec, u32 arg);
 static void reaction_cb_3BF70(u32 slot, u32 rec, u32 side);
 static void reaction_cb_3C0A4(u32 slot, u32 rec, u32 side);
 
@@ -247,6 +248,15 @@ int actors_init(void)
     fn_register(0x14E44u, (void (*)(void))fighter_14e44);
     fn_register(0x14CC4u, (void (*)(void))fighter_14cc4);
     fn_register(0x14EA4u, (void (*)(void))anim_code_14EA4);
+    /* PORT: the projectile +0x48 == 8 freeze 0x235C4 (record §41-C): its
+     * +0x10 handler 0x22BEC (0x3531C case 10, (slot, side) as 0x39CC8) and
+     * the +0x14 callback 0x29D04 its 0x22B28 stores (0x35050/0x350D0/
+     * 0x1952F, fn(slot) with EAX returned). The 0xD000/0xD100 target 0x370F0
+     * (21 dwords, 0xD2B20..0xED5D0, three per character), opcodes 0x10/0x11,
+     * mode 0x4000. */
+    fn_register(0x22BECu, (void (*)(void))fighter_22bec);
+    fn_register(0x29D04u, (void (*)(void))fighter_29d04);
+    fn_register(0x370F0u, (void (*)(void))anim_code_370F0);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -830,6 +840,17 @@ static void anim_code_39A34(u32 rec, u32 arg)
              / (float)(u16)arg;                             /* 0x39A4C/0x39A59 */
         DSD(rec + 0x24u) = fu.u;                            /* 0x39A5B */
     }
+}
+
+/* 0x370F0 — the animation-opcode target shape. PORT: anim_indirect calls every
+ * code pointer as (rec, arg); the raw 0x370F0 takes EAX = rec and does not
+ * read EDX (it pushes EDX at 0x370F2, loads DL from rec+0x51 at 0x37105 and
+ * masks EDX to that byte at 0x3710B before any use), so this wrapper drops the
+ * operand and calls fighter_370f0(rec) unchanged. */
+static void anim_code_370F0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_370f0(rec);
 }
 
 /* 0x36870 — the animation-opcode target shape. PORT: anim_indirect calls every
