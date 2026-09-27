@@ -504,6 +504,76 @@ void frontend_mode_1b_step(void)
     DSW(DS_00104B00) = DSW(DS_00104AFA);                /* 0x4F9D7/0x4F9DD */
 }
 
+/* ---- the mode 0x17 countdown 0x4F318 and its skip test 0x4F790 (§46-G) ---- */
+
+/* 0x4F778 — record §46-G. AL = (DS_001088E4 & the dword 0xC9898[n]) != 0
+ * (`lea edx,[eax*4]; test [edx+0xc9898],eax; setnz al`); EDX is pushed and
+ * popped. The three callers (0x27AC3, 0x42E01, 0x4F7D5) read AL only (`and
+ * eax,0xff` or `test al,al`), so the rest of EAX (DS_001088E4's upper bytes)
+ * is dropped. The two masks are 0x0F000000 and 0x00000F00. */
+u32 frontend_buttons_pressed(u32 n)
+{
+    return (DSD(DS_000C9898 + n * 4u) & DSD(DS_001088E4)) != 0u
+               ? 1u : 0u;                               /* 0x4F779..0x4F78B */
+}
+
+/* 0x4F790 — record §46-G. The countdown's skip test, AL only (every caller
+ * masks or tests AL). 2 when the held bits DS_001088D8 cover either mask
+ * 0xC9898[0]/[1] whole; else 1 when a bit of either is newly pressed
+ * (DS_001088E4, 0xC9898[0] tested inline, [1] through 0x4F778); else 0. The
+ * stores to DS_001088D8 at 0x4F7C1/0x4F7E6 write back the value just read.
+ * EBX/ECX/EDX/EDI are pushed and popped. */
+u32 frontend_skip_check(void)
+{
+    u32 held = DSD(DS_001088D8);                        /* 0x4F794 */
+    for (u32 i = 0; i < 8u; i += 4u) {                  /* 0x4F79A/0x4F7AE/0x4F7B1 */
+        u32 m = DSD(DS_000C9898 + i);                   /* 0x4F79E */
+        if ((held & m) == m) {                          /* 0x4F7A4/0x4F7A6 */
+            DSD(DS_001088D8) = held;                    /* 0x4F7E6 */
+            return 2u;                                  /* 0x4F7AA */
+        }
+    }
+    u32 mask0 = DSD(DS_000C9898);                       /* 0x4F7BB */
+    DSD(DS_001088D8) = held;                            /* 0x4F7C1 */
+    u32 r = (DSD(DS_001088E4) & mask0) != 0u ? 1u : 0u; /* 0x4F7B6/0x4F7C7/0x4F7C9 */
+    if (r == 0u && frontend_buttons_pressed(1u) != 0u)  /* 0x4F7CE..0x4F7DC */
+        r = 1u;                                         /* 0x4F7DE */
+    DSD(DS_001088D8) = DSD(DS_001088D8);                /* 0x4F7E0/0x4F7E6 */
+    return r;
+}
+
+/* 0x4F318 — record §46-G. The mode 0x17 handler (0x24C5C case 0x17, the jump
+ * table 0x24B8C entry 0x253EE; also called at 0x425E5 in 0x424E8). While the
+ * word DS_001088EE is non-zero it is decremented; at 0 the skip test runs: 2
+ * zeroes the countdown DS_00104AFE (DX, still 0: 0x4F790 pops EDX), 1 takes
+ * 0x3C off it. Then DS_00104AFE is decremented, and when its old value was <=
+ * 0 (signed, `test ax,ax; jg`) DS_001088EE = 0xFFFF and the DS_00104AE4 hook
+ * runs. The mode is left to the hook (unlike mode 0x16's 0x4F2B0). */
+void frontend_mode_17_step(void)
+{
+    u16 dx = DSW(DS_001088EE);                          /* 0x4F31A */
+    if (dx == 0u) {                                     /* 0x4F321/0x4F324 */
+        u32 r = frontend_skip_check() & 0xFFu;          /* 0x4F326 0x4F790, 0x4F32B */
+        if (r == 2u) DSW(DS_00104AFE) = dx;             /* 0x4F330/0x4F335 */
+        if (r == 1u)                                    /* 0x4F33C */
+            DSW(DS_00104AFE) = (u16)(DSW(DS_00104AFE) - 0x3Cu);  /* 0x4F341 */
+    } else {
+        DSW(DS_001088EE) = (u16)(dx - 1u);              /* 0x4F34B..0x4F34E */
+    }
+    u16 ax = DSW(DS_00104AFE);                          /* 0x4F355 */
+    DSW(DS_00104AFE) = (u16)(ax - 1u);                  /* 0x4F35B..0x4F35E */
+    if ((s16)ax > 0) return;                            /* 0x4F365/0x4F368 */
+    DSW(DS_001088EE) = 0xFFFFu;                         /* 0x4F36A */
+    /* PORT: `call dword [0x104ae4]` through the registry, a miss skipped, as
+     * in 0x4F9A0. Every value the image stores there is registered (records
+     * §42-E, §43-B, §46-B, §46-F), and only 0x29D60/0x5D812 are no-ops. EAX
+     * (the old countdown, <= 0) and EDX (EAX - 1, the new countdown, from
+     * 0x4F35B/0x4F35D) are not passed: the registered hooks take no
+     * arguments, as for 0x4F9A0. */
+    void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
+    if (hook != NULL) hook();                           /* 0x4F373 */
+}
+
 /* ---- the mode-0x1A hooks 0x25BBC/0x26998/0x270BC and their callees (§46-B) */
 
 #define DS_000A87C4 0x000A87C4u   /* no symbols.h name: 7 stage-offset bytes */
@@ -2214,7 +2284,11 @@ void game_frame(void)
          * 0x25A4C, 0x25A79, 0x26991, 0x27162, 0x28D79, 0x28D9B, 0x43AEE,
          * 0x43C1E, 0x4482A) sit in unported code or in the two hooks, whose
          * storers 0x42CB4 (mode 0x13's 0x424E8), 0x28DA4 (cases 6/0xC) and
-         * the unreferenced stub 0x42FB0 are unported. */
+         * the unreferenced stub 0x42FB0 are unported. The mode 0x17 handler
+         * 0x4F318 (case 0x17, 0x253EE) is ported as frontend_mode_17_step
+         * (record §46-G) and not dispatched either: of the mode's storers
+         * only the hook 0x25AE8 is ported, and it is reached only through
+         * 0x4F318 or unported code. */
         break;
     }
 

@@ -89,6 +89,12 @@ u32 frontend_wipe_out(void);
  * the saved DS_00104AFA. */
 void frontend_mode_1a_step(void);
 void frontend_mode_1b_step(void);
+/* Record §46-G. 0x4F778: AL = DS_001088E4 & 0xC9898[n] != 0. 0x4F790: the
+ * skip test (2 held, 1 pressed, 0 none). 0x4F318: the mode 0x17 handler, a
+ * countdown that runs the DS_00104AE4 hook (0x24C5C at 0x253EE). */
+u32 frontend_buttons_pressed(u32 n);
+u32 frontend_skip_check(void);
+void frontend_mode_17_step(void);
 
 /* 0x1CF40: the init chain's audio calls — AIL_startup, the shipped preferences,
  * four sample handles, the sequence handle and the 60 Hz timer slot. Called by

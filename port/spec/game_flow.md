@@ -399,7 +399,10 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   values (record §46-F): the mode-`0x17` hooks `0x259CC`, `0x26978` and
   `0x27134` (which arm mode `0x1A` with `0x25BBC`/`0x26998`/`0x270BC`),
   `0x24B54`, `0x4142C`, `0x25AE8` and `0x10E80` (`game_state_init`). Their
-  storers and mode `0x17`'s handler `0x4F318` are unported.
+  storers are unported. Mode `0x17`'s handler `0x4F318` is ported as
+  `frontend_mode_17_step`, with its skip test `0x4F790` and `0x4F778` (record
+  §46-G). It is not dispatched, because no ported path stores mode `0x17`
+  outside that chain.
   `game_frame`
   still does not dispatch cases `0x1A`/`0x1B`: only `0x4F980` stores mode
   `0x1A`, and its eleven callers are unported (the nearest, `0x257A4`, is the
