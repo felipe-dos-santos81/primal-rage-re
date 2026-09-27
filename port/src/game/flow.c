@@ -2341,7 +2341,8 @@ void game_frame(void)
      * ax,[0x104b00]; cmp ax,0x33; ja 0x2540F; and eax,0xffff; jmp
      * [eax*4+0x24B8C]`). Every case ends at 0x2540F, the 0x2A31C tail below.
      * Record §47-B lists every entry. No ported path the oracles exercise
-     * leaves mode 3 (§47-B.2), so only case 3 runs outside the unit tests. */
+     * leaves mode 3 (§47-B.2), so only case 3 runs outside the unit tests and
+     * real input (an accepted coin/start event reaches 0x1A, record §48-W). */
     switch (DSW(DS_00104B00)) {
     case 0x01u:
     case 0x02u:
