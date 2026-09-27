@@ -616,12 +616,14 @@ The new ratchet `make attract2-oracle` (`--attract2`, in `make verify`) finds ca
 
 **The raptor's grab (`ce5f295`), captures 2763..2949.** At f = 4003 the original's raptor takes character 3's reaction `0x23`. Its callback `0x14E44` (the dword at `0xA46E4`; Ghidra has no function there) was decoded from `read_memory` with capstone. It starts the grab stream `0xD3026`, puts the slot in 9/7/0 and stores the `+0x18` hook `0x14CC4` and the `+0x1C` throw `0x14D7C`. `0x14CC4` decides the grab: the `0x18C14` checks and the fighters' distance (`0x1900..0x3200`). On a miss it restarts the record on `0xD3062`, which the poll shows at f = 4020. `0x14E44`, `0x14CC4` and the grab stream's `0xD100` target `0x14EA4` are ported; `0x14D7C` (it needs the unported `0x3C208`) and the stream's later target `0x14E80` are not reached and stay named gaps. The poll now matches the port through f = 4179. The driver's window grows to 3300 loops, and the attract2 ratchet moves 2763 -> **2950**. At 2950 (f = 4180) the original's raptor leaves its reaction stream for its stance through `0x3C32C` (a `0xD500` target), which is not registered. The other oracles are unchanged. All 41 mutations of the new code fail an assertion. See §40 of the record.
 
+**The raptor's throw and the placement `0x3C208` (§41-B).** The grab's `+0x1C` throw `0x14D7C` (the one dword at `0x14E71`), the placement `0x3C208` it calls (10 call sites, all rel32) with its unported callees `0x18AF8` (both facing flags) and `0x3B90C` (the wall clamp; `0x3B8D8` was already ported), and the grab stream's second `0xD100` target `0x14E80` (the dword at `0xD3056`) are ported from `read_memory` with capstone and registered. `0x3C208` latches both slots, clears both records' `+0x34`/`+0x42`/`+0x43` and moves the other fighter so the two are `|dist|` apart: through `0x1883C` by the gap, or, when that would cross the wall, clamps the other at the wall and places the side `|dist|` from it. `0x14D7C` is reached only after `0x14CC4` finds a grab, which the second demo does not, and `0x14E80` lies past the loop the miss restart cuts, so no oracle moves. New `check_throw_3c208` in `test_fight.c`; see §41-B of the record for the mutations.
+
 Streamed Smacker audio (2b-ii), the remaining menus/EEPROM storage I/O (4), the
 demo fight's remaining divergences (the capture's fight is explained up to its
 first all-black frame 1885 after the frame-1881 fix, and the attract's second
 cycle up to 2949 with the LOADING frame 2384 allowed by name; the second
-demo diverges from 2950 at the unregistered `0x3C32C`, and the grab's throw
-`0x14D7C` and stream target `0x14E80` are unreached named gaps;
+demo diverges from 2950 at the unregistered `0x3C32C`; the grab's throw
+`0x14D7C` and stream target `0x14E80` are ported but not reached (§41-B);
 `0x3B464`'s `0x235C4` arm, the effects pass's types 2, 7 and 9..12, the
 grab arm of `0x4B788`, `0x4B470`'s eighth-hit tail and case 8's held body are
 named gaps, as are `0x3E244` and `0x3ECF8`/`0x3C048`; `0x370F0` is still
