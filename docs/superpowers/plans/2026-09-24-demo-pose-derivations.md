@@ -12471,3 +12471,8 @@ mismatch in the script). They were run again with the right text in
     of the unported frame prologue);
   - the `game_frame` switch still reads `DS_00104B00` as a dword (§43-B.5).
     The hooks store words, so the upper half is whatever `0x104B02` holds.
+
+## 47-B. The `0x24C5C` mode switch (jump table `0x24B8C`) and what keeps modes other than 3 unreachable (named-gap batch 8, branch `gap8-24c5c`)
+
+(Scaffold; investigation in progress. This section takes §47-B because §47-A
+is capture 3545's and §46-G is `gap7-mode17`'s; §46-E is left free.)
