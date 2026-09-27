@@ -962,7 +962,10 @@ exits 0.
   case 8's held body with `0x4AF04`) and `0x4B470`'s eighth-hit tail
   (`0x4BD98` with `0x13134`, `0x4CB18`) are ported, as are the mode-`0x22`
   prelude `0x4D7A4` and its grab arm `0x4D898` (record §42-C); the demo
-  reaches none of them, and `0x4D7A4`'s caller `0x4D2D0` is not ported.
+  reaches none of them. `0x4D7A4`'s caller, the mode-`0x22`/`0x24` pass
+  `0x4D2D0`, and the volleyball's `0x4C60C` (`0x4CB18`'s flag-1 caller) are
+  ported with their callees (record §43-A) but have no port caller; the
+  effects tail's `0x4987C` (`DS_001088BF` 1..4) is wired.
   The second freeze `0x22CE4` and character 1's
   reactions `0x29`/`0x2A` (`0x22F74`, `0x2365C`) are ported too (§42-A),
   with update-table entry 5 `0x22FE8`; the demo reaches none of them either. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
