@@ -17473,8 +17473,10 @@ static void check_spawn_sound(void)
 
 #define CE_10810D 0x0010810Du   /* the side 0x24568 places against */
 #define CE_104B03 0x00104B03u   /* its +0x41 bit-0 mask byte */
+#define CE_DECOY  (FIGHT_RECS + 0x6400u)  /* a scratch record, saved/restored */
 
 static u8 s_ce_data[0x8B0D0], s_ce_idx[256u * 20u], s_ce_pa[0x4880], s_ce_pb[0xEBA0];
+static u8 s_ce_decoy[ACTOR_REC_SIZE];
 
 /* Back to the snapshot, a fresh actor pool, both sides character `ch`, the
  * audio gate closed; then the side `sel` spawned with its record at x0 and
@@ -17521,6 +17523,7 @@ static void check_char1_entry(void)
     tf_snap(s_ce_idx, idx, nidx);
     tf_snap(s_ce_pa, pa, 0x4880u);
     tf_snap(s_ce_pb, pb, 0xEBA0u);
+    tf_snap(s_ce_decoy, CE_DECOY, ACTOR_REC_SIZE);
     memcpy(sap, gfx_aperture(), sizeof sap);
     memcpy(sdac, gfx_dac, sizeof sdac);
 
@@ -17563,6 +17566,12 @@ static void check_char1_entry(void)
             u32 other = DS_001077B0 + row[i].sel * 0x94u;
             u32 rec, p, orec;
             orec = ce_seed(1u, row[i].sel, row[i].x0, row[i].b15, row[i].w, row[i].b03);
+            /* The entering side's old record: a decoy on pset 500 whose bit 15
+             * is the opposite of sel's, so 0x1A570 on the wrong side fails. */
+            mem_fill(CE_DECOY, 0, ACTOR_REC_SIZE);
+            DSW(CE_DECOY + 0x56u) = 500u;
+            DSW(DSD(DS_001014EC) + 500u * 0x20u) = (u16)(row[i].b15 ? 0x0123u : 0x8123u);
+            DSD(slot) = CE_DECOY;
             DSB(slot + 0x63u) = 0x63u;
             DSW(slot + 0x74u) = 0x7474u;
             DSB(other + 0x52u) = 0x52u;
@@ -17670,6 +17679,7 @@ static void check_char1_entry(void)
     actors_reset();
     memcpy(gfx_dac, sdac, sizeof sdac);
     memcpy(gfx_aperture(), sap, sizeof sap);
+    tf_put(s_ce_decoy, CE_DECOY, ACTOR_REC_SIZE);
     tf_put(s_ce_pb, pb, 0xEBA0u);
     tf_put(s_ce_pa, pa, 0x4880u);
     tf_put(s_ce_idx, idx, nidx);
@@ -17677,6 +17687,7 @@ static void check_char1_entry(void)
 }
 #undef CE_10810D
 #undef CE_104B03
+#undef CE_DECOY
 
 int test_fight(void)
 {
