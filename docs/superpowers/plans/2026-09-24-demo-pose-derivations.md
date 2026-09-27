@@ -11061,4 +11061,238 @@ no spawn bank read (#75), and the old rate (#76, the flier's tick 100).
 
 ## 46-B. The five mode-`0x1A` hooks `0x430E8`, `0x4367C`, `0x25BBC`, `0x26998` and `0x270BC` (named-gap batch 5, branch `gap5-hookcallers`)
 
-**Status: in progress.** This section is filled in as the ports land.
+**Result in one line.** The five hooks that `0x4F980`'s callers install
+before arming mode `0x1A` (§43-B.3) are ported, with the hook `0x430C0` that
+`0x430E8` installs for the mode-`0x1B` call and every callee they need:
+- in `flow.c`: `game_fight_reset` (`0x20DF4`, now ported whole), its callees
+  `0x2C390`/`0x2C074`, `flow_screen_reset` (`0x4F200`), `flow_stage_pick`
+  (`0x25848`), `0x46504`, and the hooks `game_hook_25bbc`/`game_hook_26998`/
+  `game_hook_270bc`;
+- in `fight.c`: `fight_hook_430e8`, `fight_hook_430c0`, `fight_hook_4367c` and
+  `0x4454C`.
+All six hooks are registered. State 6 now calls `0x20DF4` whole instead of
+its hand-picked subset. That is the one change a ported path reaches. A
+headless `--check 8000` run, which enters state 6 four times, gives
+byte-identical `.idx`/`.pal` frames before and after the change (§46-B.5).
+Modes `0x1A`/`0x1B` are still not dispatched, because no ported path stores
+mode `0x1A`.
+
+**The base did not build.** `1151646`'s `test_fight.c` had lost the `}`
+after `mz_restore();` that closes the function before "the spawn's sound
+banks" (§45-A), in the frame-3257 merge. `dc8d682` restores the brace. No
+assertion changed.
+
+### 46-B.1 The raw (`read_memory` + capstone; Ghidra has no function at any of the six hooks; fixups applied)
+
+- **`0x430E8`** (to `0x4329E`) pushes EBX/ECX/EDX/ESI/EDI. In order:
+  - the voice `0x2C3FC(0x31)`, `0x4F200` with EAX = 0 (`0x430F7 xor
+    eax,eax`), then `0x25848`;
+  - with byte `[0x108173]` != 0, bytes `[0x107813]` and `[0x1078A7]` = 1 (DL).
+    These are the two slots' `+0x63` think gates, which `0x41350` also sets;
+  - with byte `[0x104B1D]` == 1 (BL), `[0x104B1F]` = `[0x104AB8]`
+    (`0x43125/0x4312A`). **`0x25848` runs before this copy**, so it reads the
+    old `[0x104B1F]`;
+  - unless `[0x104B1F]` == 3: `0x41350` with EAX = `[0x104B1F]` - 1 with AL
+    xored by 1 (`0x4313D dec eax; 0x43145 xor al,bl`, BL = 1, or `0x4315F xor
+    al,1`), which is `(b1f - 1) ^ 1`, and EDX = the zero-extended word
+    `[0x104AFC]`;
+  - six `0x2AE14` spawns (a2 = EDX, a3 = ECX, a4 = EBX, a5 = the pushed
+    dword):
+
+    | # | descriptor | a2 | a3 | a4 | a5 | kept |
+    |---|---|---|---|---|---|---|
+    | 1 | `0xC8364` (id `0x351`) | 0 | `0xF0` | 0 | 0 | `[0x1080B4]` |
+    | 2 | `0xC8378` (id `0x352`) | `0x2A00` | `0xF1` | 0 | 0 | `[0x1080B8]` |
+    | 3 | `0xC84FC[c0]` | `0xF` | `0xF4` | 7 | pa \| `0x400` | |
+    | 4 | `0xC84FC[c1]` | `0xF` | `0xF4` | 7 | pb \| `0x400` | |
+    | 5 | `0xC84E0[c0]` | `0x9B` | `0xE0` | `0x36` | pa \| `0x4400` | |
+    | 6 | `0xC84E0[c1]` | `0xD` | `0xE0` | `0x36` | pb \| `0x400` | ESI |
+
+    pa is the word `+0x56` of `[0x1080B4]` (reloaded at `0x43198`) and pb the
+    word `+0x56` of spawn 2. c0/c1 are the signed bytes `[0x10816A]`/
+    `[0x10816B]` (`mov eax,[0x108167]` / `[0x108168]`; `sar eax,0x18`).
+    `0xC84FC` = `0xC83C8..0xC8440` and `0xC84E0` = `0xC8454..0xC84CC`, stride
+    `0x14`;
+  - `0x4F1D0` (EAX/EBX/ECX/EDX zeroed at `0x43254..0x4325A`; `0x4F1D0` pushes
+    EDX and names no other), then `0x38B18(0xC87BC)` with EDX = EBX = 0;
+  - spawn 6's word `+0x2E` += 4 (`0x4326B..0x43277`), byte `+0x4E` = 1
+    (`0x43280`), `[0x104AE4]` = `0x430C0` (`0x43284`), then the voices `0x2D`
+    and `0x2F`.
+- **`0x430C0`** pushes EBX/ECX/EDX, calls `0x29D60` (a bare `ret`), then
+  `0x2F198` with EAX = `0x13`, EDX = 2, EBX = `0x80C04` (the string "VS") and
+  ECX = `0x4002`.
+- **`0x4367C`** pushes EBX/ECX/EDX:
+  - with byte `[0x104B1D]` == 3 it calls `0x4454C` and returns;
+  - otherwise the voice `0x100`. Then, with `[0x108173]` != 0, for EAX = 1, 2
+    (`xor eax,eax` before a loop that starts with `inc eax` and ends at `cmp
+    eax,2; jl`): `[0x10816D+EAX]` = `0xFF`, `[0x108165+EAX]` =
+    `[0x108167+EAX]`, `[0x105B33+EAX]` = 0. Then byte `[0x108169]` += 1; at 7
+    it becomes 0 and `[0x108168]` += 1, which becomes 0 at 7;
+  - with `[0x108173]` == 0, the same loop with `[0x108165+EAX]` =
+    `[0xC887F+EAX]` (the bytes `0xC8880`/`0xC8881` = 0, 5) and no step;
+  - then the voice `0x2E` and `call 0x43738` (`0x4372E`).
+- **`0x4454C`** (Ghidra function) pushes EBX..EBP. The voice `0x100`, then:
+  - with `[0x108173]` != 0, `0x4367C`'s first arm (the same stores and step);
+  - otherwise, per side s (ESI), `[0x10816E+s]` = `0xFF`, `[0x108166+s]` =
+    `[0xC8880+s]`, `[0x105B34+s]` = 0, the four bytes `[0x108134+4s..]` =
+    `0xFF`, the four dwords `[0x108114+16s..]` = 0 (`0x445F5..0x4460B`: EAX =
+    s << 4, pre-incremented by 4 before the `[EAX+0x108110]` store, until it
+    equals EBP = 16(s+1)), and `[0x108164+s]` = 0 (ESI incremented before the
+    `0x44616` store at `ESI+0x108163`);
+  - then the voice `0x2E` and `0x444C8`.
+- **`0x25BBC`** pushes EDX:
+  - bytes `[0x1078FA]` = `[0x104B13]` = 0 (AH), and `[0x104B1E]` += 1 (a byte);
+  - `0x20DF4` with EAX = the word `[0x104AFC]` and EDX = 1;
+  - `0x33EB4(0)`, `0x33EB4(1)`;
+  - `0x4F714` with EAX = the word `[0x104AFC]` and EDX = `0x5D812`, then
+    `0x46504`;
+  - `[0x104AE4]` = EDX (`0x25C13`), which is `0x5D812`, because `0x4F714`
+    tail-jumps into `0x2C3FC` (it pushes EBX/EDX/EDI) and `0x46504` moves only
+    EAX.
+- **`0x26998`** pushes EBX/ECX/EDX:
+  - the same round/`0x1078FA` stores, but no `0x104B13` store;
+  - `0x20DF4` on the stage word with EDX = 1;
+  - byte `[0x104B1A]` = 0 and EAX = 0 when `[0x1078A7]` != 0, else 1 and 1,
+    then `0x33EB4`;
+  - with EDX = `[0x104B1A]`, the byte at `0x10780B + EDX * 0x94` (`lea
+    eax,[edx*8]; add eax,edx; shl eax,2; add eax,edx; shl eax,2`, i.e. 148 =
+    `0x94`) += 2. It is capped at `0x78` by `cmp edx,0x78; jle` on the
+    zero-extended new byte, so a wrap from `0xFF` to 1 is not capped;
+  - the voice `0x28` with EDX = `0x5D812`, then `0x46504`, then `[0x104AE4]` =
+    EDX.
+- **`0x270BC`** pushes EDX:
+  - the round/`0x1078FA` stores;
+  - `0x20DF4` on the stage word with EDX = 1;
+  - `0x33EB4` with EAX = the signed byte `[0x10810D]` (`mov eax,[0x10810a];
+    sar eax,0x18`);
+  - the voice `0x25`, after `xor dh,dh`. `0x2C3FC` preserves EDX, so the store
+    below is 0;
+  - byte `[0x104B0A]` = DH = 0, byte `[0x104B0B]` = the byte at `0x10780B +
+    that side * 0x94`, and `[0x104AE4]` = `0x5D812`. There is no `0x46504`.
+- **`0x20DF4`** (Ghidra function) pushes EBX/ECX/ESI. EBX = EAX, clamped by
+  the signed `cmp eax,7; jl` to 7. In order:
+  - `[0xF0A48]` = 0 and `0x29B70` (a bare `ret`);
+  - dwords `[0x100B4C]`, `[0x104AE8]` = 0, bytes `[0x1088EC]`, `[0x104B15]` =
+    0;
+  - `0x2C390`, `0x12750`, `0x49300`, `0x28E98`, `0x34978`, `0x2C074`;
+  - dwords `[0xF0AEC]`, `[0xF0AF0]` = 0, words `[0xF0AFA]`, `[0xF0AF8]` = 0;
+  - `0x12C70`;
+  - then, if EDX != 0, `0x2BAF4(1)`, `0x38730(EBX)` and `0x412A0(EBX)`.
+
+  EDX survives to `0x20E6F`: `0x2C390`, `0x12750`, `0x49300`, `0x28E98`,
+  `0x34978` and `0x2C074` push and pop it, and `0x12C70` does not name it.
+- **`0x2C390`** sets `[0x105C10]` = `[0x105C0C]` = `0x105C0C` and
+  `[0x105C18]` = `[0x105C14]` = `0x105C14`. Then it `0x249C0`-inserts the
+  sixteen `0x14`-byte nodes `0x105C1C..0x105D48` before `0x105C14`, while EBX
+  < `0x105D5C`.
+- **`0x2C074`** sets `[0x105BF4]` = `[0x105BF0]` = 0.
+- **`0x4F200`** runs `and eax,0xff; mov edx,eax; xor dh,ah`, then `[0x107A55]`
+  = AL and `[0x107A54]` = DH (= 0), then `0x4F1D0` and `0x2BAF4(1)`.
+- **`0x46504`** sets `[0x1082C0]` = `[0x1082C8]` and `[0x1082C4]` =
+  `[0x1082CC]`.
+- **`0x4F714`** is `mov ax,[eax*2+0xc9888]; and eax,0xffff; jmp 0x2C3FC`. The
+  words at `0xC9888` are `0x20, 0x21, 0x1B, 0x1C, 0x1E, 0x1D, 0x1F, 0x1F`.
+- **`0x25848`** (Ghidra function) sets up a 4-byte frame (`sub esp,4`) and
+  switches on byte `[0x104B17]`:
+  - **0:** with `[0x104B1F]` == 3, the word `[0x104AFC]` = rng(7). Otherwise
+    c = the signed byte at `0x108169 + [0x104B1F]` (`mov
+    eax,[eax+0x108166]; sar eax,0x18`), and the word = `0xA87C4[c]` + rng(6)
+    + 1, less 7 once if >= 7. `0xA87C4` = 0, 4, 2, 3, 6, 1, 5. EDX's upper
+    half is the caller's (`xor dh,dh; mov dl,..`) but only AX is stored;
+  - **2:** return;
+  - **1 or above 2:** `[esp]` = `[0x10782A]` and `[esp+1]` = `[0x1078BE]` |
+    `0x40`. With n = the zero bytes among `[0x108106..0x10810C]`, n != 0
+    stores the index of the rng(n)-th zero byte. Otherwise, or if that scan
+    runs out, it stores the first index whose byte & `0x7F` is neither frame
+    byte. Failing that, with `[0x104AD4]` == 2 the word goes +1 (a 16-bit
+    `inc`) and wraps to 0 at 7. Otherwise it stores the first index whose
+    byte & `0x7F` equals `[esp + ([0x104AD4] ^ 1)]` (`xor cl,1`).
+- **The storers and their return modes** (`EAX` into `0x4F980`):
+
+  | hook | stored at | return mode |
+  |---|---|---|
+  | `0x430E8` | `0x1F447`, `0x43AE8`, `0x43C18`, `0x44824` | `0x11` |
+  | `0x4367C` | `0x25810` (after `0x65490(0x104B02)`) | `0x10` |
+  | `0x25BBC` | `0x25A46` | `0x30` |
+  | `0x25BBC` | `0x25A73` | 5 |
+  | `0x25BBC` | `0x285CB`, `0x285F3` (in `0x28468`) | none: that path stores mode `0x16` and `[0x104AFA]` = `0x30` itself (`0x285DC`/`0x285E3`) |
+  | `0x26998` | `0x2698B` (in `0x26978`) | `0x23` |
+  | `0x270BC` | `0x2715C` (in `0x27134`, which zeroes `[0x104B1E]`, `[0x104AF3]`, `[0x104AF2]` first) | 5 |
+
+  `0x26978` and `0x27134` are themselves `DS_00104AE4` values (§43-B.3's
+  list). **Correction to §43-B.3:** that table omits `0x25BBC`'s two storers
+  in `0x28468`. They are found by the dword scan (`0x285C0`/`0x285ED`) and
+  by Ghidra's `get_xrefs_to`.
+
+### 46-B.2 Entrances (`get_xrefs_to`, a rel32 CALL/JMP/Jcc scan of the code object, a dword scan of both fixed-up objects)
+
+| target | rel32 | dwords |
+|---|---|---|
+| `0x430E8` | none | code `0x1F43E`, `0x43ADF`, `0x43C0F`, `0x44816`; no data |
+| `0x4367C` | none | code `0x25807`; no data |
+| `0x25BBC` | none | code `0x25A35`, `0x25A65`, `0x285C0`, `0x285ED`; no data |
+| `0x26998` | none | code `0x2697C`; no data |
+| `0x270BC` | none | code `0x2713B`; no data |
+| `0x430C0` | none | code `0x4327C` (in `0x430E8`); no data |
+| `0x20DF4` | `0x11AC4`, `0x25A95`, `0x25BE6`, `0x269BE`, `0x270E0`, `0x295E4` | none |
+| `0x4F200` | `0x430F9` only | none |
+| `0x25848` | `0x430FE`, `0x4177D`, `0x418A8`, `0x42390` | none |
+| `0x46504` | `0x25C0E`, `0x26A31` | none |
+| `0x4454C` | `0x43688` only | none |
+| `0x4F714` | `0x25C09` only | none |
+| `0x2C390` | `0x20E2E`, `0x20ED5` | none |
+| `0x2C074` | `0x20E47`, `0x20EEE` | none |
+
+Ghidra's `get_xrefs_to` agrees on every row: DATA references at the
+immediates' instruction starts (`0x1F43D`, `0x43ADE`, `0x43C0E`, `0x44815`,
+`0x25806`, `0x25A34`, `0x25A64`, `0x285BF`, `0x285EC`, `0x2697B`,
+`0x2713A`, `0x4327B`) and the CALLs above. So:
+- the hooks are reached only through `DS_00104AE4`;
+- `0x4F200`, `0x4454C` and `0x4F714` have a single caller each, inside the
+  hooks;
+- `0x20DF4`'s only ported caller is state 6. `0x295E4` loads EAX as the
+  **dword** `[0x104AFC]`, not the word, so the port's `u32` stage and the
+  signed clamp are kept for it.
+
+### 46-B.3 The port
+
+- `game_fight_reset(stage, full)` is `0x20DF4` in raw order. The clamp is
+  `(s32)stage < 7 ? stage : 7`, and the byte store `[0x1088EC]` stays a byte
+  (`fighter.c`'s `0x39278` writes that address as a word).
+- **State 6** (`game_state_6`, `0x11AC4`) now calls `game_fight_reset(draw1,
+  1)`. It replaces the inline subset and its `PORT:` gap list (`0x29B70`,
+  `0x2C390`, `0x2C074`, five zero stores, two word stores). What state 6 now
+  does in addition:
+  - zeroes `[0xF0A48]`, `[0x100B4C]` and `[0x104AE8]`. `0x2BAF4` re-zeroes the
+    last two later on the same path;
+  - zeroes byte `[0x1088EC]`, which is 3 at the second, third and fourth
+    demos' state 6 in a headless run;
+  - zeroes `[0x104B15]`, which `0x11B14` then sets to 1;
+  - rebuilds the `0x105C0C`/`0x105C14` lists and clears `0x105BF0`/`F4`
+    (neither has a ported reader);
+  - zeroes the words `0xF0AF8`/`0xF0AFA`.
+- The voices (`0x31`, `0x2D`, `0x2F`, `0x100`, `0x2E`, `0x28`, `0x25`) and
+  `0x4F714`'s stage voice are `PORT:` notes, "not wired" (§45-A's rule for
+  the other 302 sites).
+- `0x25848`'s last arm reads `[esp + ([0x104AD4] ^ 1)]`. Only offsets 0 and 1
+  hold stored bytes. For any other `[0x104AD4]` the raw reads uninitialised
+  frame bytes or saved registers. The port returns without a store, the raw's
+  no-match exit (`TODO(verify)`). The live writers of `[0x104AD4]`
+  (`0x25A0E`, `0x27C3D`, `0x283AE`/`0x283EE`/`0x28409`, `0x288F3` = 2,
+  `0x28961` = 0, `0x28973`) store register values that were not traced.
+- New local names with no `symbols.h` entry: `DS_000A87C4`, `DS_0010810D`,
+  `DS_00104B1A` (`flow.c`); `DS_000C8364`/`C8378`/`C84E0`/`C84FC`/`C87BC`,
+  `DS_00080C04`, the loop bases `DS_0010816D`/`DS_00108165`/`DS_00105B33`,
+  and `FN_000430C0` (`fight.c`).
+- `actors_init` registers `0x430E8`, `0x4367C`, `0x25BBC`, `0x26998`,
+  `0x270BC` and `0x430C0`. The `PORT:` notes of `0x4F9A0`/`0x4F9C8` now list
+  the 7 values still unregistered: `0x259CC`, `0x10E80`, `0x24B54`,
+  `0x27134`, `0x4142C`, `0x25AE8` and `0x26978`.
+
+### 46-B.4 The assertions and mutations
+
+(See 46-B.4 below the measurement; filled in with the mutation run.)
+
+### 46-B.5 Measured and remaining gaps
+
+(Filled in below.)

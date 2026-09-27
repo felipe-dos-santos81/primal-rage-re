@@ -5369,6 +5369,7 @@ static void check_mode_1a_hooks(void)
      * 0's think gate DS_00107813 too. */
     MH_RESTORE();
     actors_reset();
+    DSD(actor_alloc(0) + 0x08u) = 0x7777u;             /* 0x4F200's 0x2BAF4 drops it */
     DSB(DS_00104B17) = 0u;
     DSB(DS_00104B1D) = 1u;
     DSB(DS_00104AB8) = 1u;
@@ -5394,6 +5395,8 @@ static void check_mode_1a_hooks(void)
     CHECK_EQ_INT((int)DSB(DS_00107813), 1);
     CHECK_EQ_INT((int)DSB(DS_001078A7), 1);
     CHECK_EQ_INT((int)DSB(DS_00107A55), 0);             /* 0x4F200(0) */
+    for (u32 r = actor_list_head(); r != 0; r = actor_next(r))
+        CHECK(DSD(r + 0x08u) != 0x7777u, "0x4F200 reset the actors");
     CHECK_EQ_INT((int)DSB(DS_00107A54), 0);
     {
         u32 a = DSD(DS_001080B4), b = DSD(DS_001080B8);
@@ -5412,6 +5415,11 @@ static void check_mode_1a_hooks(void)
             CHECK_EQ_INT((int)DSW(r6 + 0x2Eu), (int)((DSW(r5 + 0x2Eu) + 4u) & 0xFFFFu));
             CHECK_EQ_INT((int)DSB(r6 + 0x4Eu), 1);
             CHECK(DSB(r5 + 0x4Eu) != 1u, "only the last spawn gets +0x4E = 1");
+            /* a5's low 7 bits are the parent's index: pa for spawn 5, pb
+             * for spawn 6. */
+            CHECK_EQ_INT((int)DSB(r5 + 0x4Au), (int)(DSW(a + 0x56u) & 0x7Fu));
+            CHECK_EQ_INT((int)DSB(r6 + 0x4Au), (int)(DSW(b + 0x56u) & 0x7Fu));
+            CHECK(DSW(a + 0x56u) != DSW(b + 0x56u), "two parents");
         }
         u32 row = DSD(DS_00107A1C);
         CHECK(row != 0u, "0x38B18 filled the row table");
@@ -5443,6 +5451,42 @@ static void check_mode_1a_hooks(void)
     CHECK_EQ_INT((int)DSB(DS_0010816B), 5);
     CHECK_EQ_INT((int)DSB(DS_001078A7), 0x77);          /* DS_00108173 == 0 */
 
+    /* (k2) 0x430E8 with DS_00104B1F = 3 (no 0x41350) and DS_00108173 != 0:
+     * both think gates come from 0x430E8 alone. Characters 0 and 6: spawns 3
+     * (0xC84FC[c0], parent pa) and 4 (0xC84FC[c1], parent pb) share a2/a3
+     * but not their descriptor. DS_00104B17 = 2 leaves the stage word. */
+    MH_RESTORE();
+    actors_reset();
+    DSB(DS_00104B17) = 2u;
+    DSB(DS_00104B1D) = 0u;
+    DSB(DS_00104B1F) = 3u;
+    DSB(DS_0010816A) = 0u;
+    DSB(DS_0010816B) = 6u;
+    DSB(DS_00108173) = 1u;
+    DSB(DS_00107813) = 0x77u;
+    DSB(DS_001078A7) = 0x77u;
+    DSW(DS_00104AFC) = 0x7777u;
+    fight_hook_430e8();
+    CHECK_EQ_INT((int)DSW(DS_00104AFC), 0x7777);
+    CHECK_EQ_INT((int)DSB(DS_00107813), 1);
+    CHECK_EQ_INT((int)DSB(DS_001078A7), 1);
+    CHECK_EQ_INT((int)DSB(DS_0010816A), 0);
+    CHECK_EQ_INT((int)DSB(DS_0010816B), 6);
+    {
+        u32 pa = DSW(DSD(DS_001080B4) + 0x56u) & 0x7Fu;
+        u32 pb = DSW(DSD(DS_001080B8) + 0x56u) & 0x7Fu;
+        u32 r3 = 0, r4 = 0;
+        for (u32 r = actor_list_head(); r != 0; r = actor_next(r)) {
+            if (DSW(r + 0x34u) != 0xFu || DSB(r + 0x49u) != 0xF4u) continue;
+            if (DSB(r + 0x4Au) == pa) r3 = r;
+            if (DSB(r + 0x4Au) == pb) r4 = r;
+        }
+        CHECK(r3 != 0u && r4 != 0u, "spawns 3 and 4 under their parents");
+        if (r3 != 0u && r4 != 0u)
+            CHECK(DSD(r3 + 0x08u) != DSD(r4 + 0x08u),
+                  "0xC84FC[c0] and 0xC84FC[c1] differ");
+    }
+
     /* (l) 0x25848's other arms. DS_00104B1F = 3: rng(7). DS_00104B17 = 2:
      * nothing. DS_00104B17 = 1 with zero bytes at DS_00108106[2] and [5]:
      * the rng(2)-th of them. With none zero: the first whose low 7 bits are
@@ -5458,6 +5502,23 @@ static void check_mode_1a_hooks(void)
     DSW(DS_00104AFC) = 0x7777u;
     flow_stage_pick();
     CHECK_EQ_INT((int)DSW(DS_00104AFC), (int)st);
+    /* Arm 0's reduction at exactly 7: 0xA87C4[5] = 1, so rng(6) = 5 gives
+     * 5 + 1 + 1 = 7 -> 0 (the raw's `cmp eax,7; jl`). The seed is found by
+     * stepping the model. */
+    {
+        u32 seed = 1;
+        for (; seed < 0x10000u; seed++) {
+            rng_seed(seed);
+            if (rng_next(6u) == 5u) break;
+        }
+        CHECK(seed < 0x10000u, "a seed whose rng(6) is 5");
+        DSB(DS_00104B1F) = 2u;
+        DSB(DS_0010816B) = 5u;
+        rng_seed(seed);
+        flow_stage_pick();
+        CHECK_EQ_INT((int)DSW(DS_00104AFC), 0);
+        DSB(DS_00104B1F) = 3u;
+    }
     DSB(DS_00104B17) = 2u;
     DSW(DS_00104AFC) = 0x7777u;
     flow_stage_pick();
