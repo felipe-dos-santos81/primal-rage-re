@@ -79,7 +79,9 @@ frame loop is reached through `0x20C10`:
 * **Process tables** — two 32-entry `code *` tables `0x80` bytes apart, each
   gated by a `u32` bitmask: `PTR_FUN_000A8644`/`_DAT_00104AE8` (update, walked
   by `0x24C5C`) and `PTR_FUN_000A86C4`/`_DAT_00104AEC` (render, walked by
-  `0x255CC`). This is the engine's extension seam.
+  `0x255CC`). This is the engine's extension seam. The port registers the
+  update table's entries 0 (`0x1324C`), 5 (`0x22FE8`) and 7 (`0x2910C`,
+  demo-pose record §42-A).
 * **Tick** — `DAT_00105D88` is incremented by the 9-byte handler `0x2D62C`
   (`DAT_00105D88++`); `main` locks that code page and the `DAT_00105D88` data
   page. **Tick rate = 60 Hz (measured + static).** Static: `0x32B00` converts a
@@ -945,7 +947,9 @@ exits 0.
   and the `0x3B464`/`0x3B938`/`0x3A95C` hit it wakes are ported (§26);
   `0x3B464`'s `0x235C4` arm (projectile `+0x48` = 8) is ported with its
   `+0x10` handler `0x22BEC` and `+0x14` callback `0x29D04` (record §41-C);
-  the demo does not reach it. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
+  the demo does not reach it. The second freeze `0x22CE4` and character 1's
+  reactions `0x29`/`0x2A` (`0x22F74`, `0x2365C`) are ported too (§42-A),
+  with update-table entry 5 `0x22FE8`; the demo reaches none of them either. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
   frame-1881 fix): none in the fight; `0x3E3A8` (f = 962, the `(char 0,
   0x2A)` callback) and its `+0x0C` callback `0x3E328` (f = 963) are now ported
   and registered; its `+0x18` hook `0x3E1D0` is ported with `0x19020`
