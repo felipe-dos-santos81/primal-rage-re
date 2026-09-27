@@ -1660,7 +1660,8 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   seeded assertions in `check_effects_arrival` (`test_fight.c`) use the demo's
   f = 87 values and are mutation-proven: no case 1, a word read of `+0x32`, no
   negation, `<` for `<=`, the hold 3.0, and each dropped store in `0x4AC38`.
-  Type 2 (`0x49D90`) stays a named gap.
+  Type 2 (`0x49D90`) was left a named gap; it is ported since (demo-pose
+  record §42-D).
 * **Measured.** Capture 859 ↔ port 503/504: 449 B / 159 px → a **0-byte
   splice** at byte 90 582 (row 94). The demo's first unexplained is now
   **860 (raw 3767)**, and the fight window `[860..1884]` has 1025 frames, 0
@@ -2155,6 +2156,14 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   **`[560..1714]`/1155: 455 clean, 693 splice, 3 transition, 2 unexplained
   (832, 833)**; the three transition frames are the same as before. Nothing
   else moved.
+* **The mode tail after it (demo-pose record §42-D).** After the
+  `DS_00104B15` tail, `0x24C5C` switches on the word `DS_00104B00` at
+  `0x2545C`: `0x0C` rewrites one fighter's pset word every other frame,
+  `0x21` (`0x25509`) runs `0x3BB90`, the held-pair camera `0x12FD8(1)`, both
+  slot latches with their pset syncs and `0x33F08`, `0x22`/`0x23` the camera
+  dispatch and the `DS_00104B1A` slot alone, and `0x25` `0x12FD8(0)` with
+  the same loop. `game_frame` ports the switch and `camera_pair_hold` ports
+  `0x12FD8`; the demo's mode 3 takes no arm.
 
 **The worshipper landing target (`2287114`, demo-pose record §31).**
 * **Cause.** The six worshipper landing streams end in `D500 AC80 0004`
