@@ -174,6 +174,9 @@ int actors_init(void)
      * +0x10 (the 0x3A504 setter writes it; the raw reaches it only through
      * that indirect call). */
     fn_register(0x3A43Cu, (void (*)(void))fighter_pose_3a43c);
+    /* PORT: its sibling 0x3A6D4, which the 0x3A79C setter stores in slot+0x10
+     * at 0x3A7D2 (the dword at 0x3A7D5 is its only reference). */
+    fn_register(0x3A6D4u, (void (*)(void))fighter_pose_3a6d4);
     /* PORT: the knockback pose's handler 0x39CC8, which the setter 0x39F40
      * stores in slot+0x10 at 0x39F8F; same case-10 shape as 0x3A43C. */
     fn_register(0x39CC8u, (void (*)(void))fighter_39cc8);

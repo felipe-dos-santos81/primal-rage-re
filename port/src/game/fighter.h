@@ -209,6 +209,12 @@ void fighter_reaction_apply(u32 slot, u32 reaction);
  * EAX = slot (dead), EBX = side. */
 void fighter_pose_3a43c(u32 slot, u32 side);
 
+/* 0x3A6D4. The 0x3A79C pose family's per-frame handler: 0x3A43C's body with the
+ * 0xC9008[char] stream, the 0x107D04/0x107D08 B/A words and +0x90 = 3. 0x3531C
+ * case 10 resolves it from slot+0x10; registered in actors_init. EAX = slot
+ * (dead), EBX = side. */
+void fighter_pose_3a6d4(u32 slot, u32 side);
+
 /* 0x39CC8. The 0x39F40 knockback pose's per-frame handler (slot+0x10, which
  * 0x39F40 stores at 0x39F8F): the slot +0x14 callback through 0x35050, then a
  * +0x58 machine. 0 arms; 1 launches through 0x39B30 (gravity, vertical and
