@@ -12694,7 +12694,11 @@ approximate: the nearest preceding rel32/dword target. There are 85 stores:
 | `0x27` | `0x24B6D` (**ported**, `game_hook_24b54`), `0x24EE0` (the Enter key, unported) |
 | `0x28..0x2E` | `0x2CBC4..0x2CC54` (the menu items above) |
 | `0x31`, `0x32` | `0x2957F`, `0x29965`, `0x29999`/`0x299D2` |
-| not resolved by the sweep | `0x1F355`, `0x1F3BE`, `0x27247` (§46-G.2: `0x17`), `0x28124`, `0x285DC`, `0x2860F`, `0x2864F` (the dead `0x2861C` region), `0x2984F` |
+| `0x15` | `0x1F355`, `0x1F3BE` |
+| `0x17` | `0x27247` (§46-G.2), `0x2864F` (the dead `0x2861C` region) |
+| `7` | `0x28124` |
+| `0x16` | `0x285DC`, `0x2860F` |
+| `0x33` | `0x2984F` |
 
 **What leaves mode 3 in the raw.** From mode 3, the switch reaches only
 `0x11D04`. A store of anything but 3 therefore has to come from one of
@@ -12710,7 +12714,7 @@ Two things keep state 8 out of the port's runs:
 - **Only one store writes state 8.** A scan of every store to `[0xF0A64]`
   found `0x114D6` (attract phase `0xB`, ported in `attract.c`) as the only
   one. The copies from `[0xF0A6C]` carry 4, 5, 6 or `[0xF0A72]` (0, 4 or
-  5).
+  5); the store at `0x119E6` copies `[0xF0A6C]` too, so it can also be 0.
 - **No ported code writes the byte that gates it.** Phase `0xB` stores state
   8 only when `[0x108173] != 0`. The image holds 0 there. No instruction
   stores to `0x108173` directly. It is the top byte of the dword

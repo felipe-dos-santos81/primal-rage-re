@@ -2196,9 +2196,10 @@ void game_frame(void)
 
     /* PORT: 0x24CFE..0x24EE7, the int 16h keyboard loop, is not ported (only
      * its ESC quit arm, in game_loop). It runs before the switch and is one of
-     * the two ways out of mode 3: Enter in mode 3 stores mode 0x27 (0x24EE0,
-     * the start menu), and 0x11D04's coin/start arm calls the unported 0x257A4
-     * (record §47-B). */
+     * the three ways out of mode 3: Enter in mode 3 stores mode 0x27 (0x24EE0,
+     * the start menu), 0x11D04's coin/start arm calls the unported 0x257A4,
+     * and so does 0x11D04's state 8 (reached only when DS_00108173 is
+     * non-zero, which no ported code writes) (record §47-B). */
 
     /* 0x24EEC..0x24F01: the mode switch, on the word DS_00104B00 (`mov
      * ax,[0x104b00]; cmp ax,0x33; ja 0x2540F; and eax,0xffff; jmp
