@@ -12482,8 +12482,8 @@ it does not dispatch `0x1A`/`0x1B` (§43-B.5): no ported path stores mode
 `0x4F318` or unported code. So the six mode-`0x17` hooks of §46-F still run
 only in unit tests, and no oracle is expected to move.
 
-(This section takes the letter after §46-F. §46-E is absent from the record;
-it is left free in case an earlier batch holds it.)
+(There is no §46-E. The letter was skipped in the numbering; no section is
+missing.)
 
 ### 46-G.1 The raw (Ghidra `disassemble_function`/`decompile_function`, fixups applied)
 
@@ -12529,7 +12529,7 @@ it is left free in case an earlier batch holds it.)
 | target | rel32 | dwords | Ghidra |
 |---|---|---|---|
 | `0x4F318` | `0x253EE` (`0x24C5C`, table `0x24B8C` entry `0x17`), `0x425E5` (`0x424E8`) | none | agrees |
-| `0x4F790` | `0x438D9`, `0x438FF` (`0x438B4`), `0x44952`, `0x4F25A` (`0x4F24C`), `0x4F2BE` (`0x4F2B0`), `0x4F326` (`0x4F318`) | none | agrees; it has no function at `0x44952`, so it lists 5 |
+| `0x4F790` | `0x438D9`, `0x438FF` (`0x438B4`), `0x44952` (dead, see below), `0x4F25A` (`0x4F24C`), `0x4F2BE` (`0x4F2B0`), `0x4F326` (`0x4F318`) | none | agrees; it has no function at `0x44952`, so it lists 5 |
 | `0x4F778` | `0x27AC3` (`0x27A2C`), `0x42E01` (`0x42CB4`), `0x4F7D5` (`0x4F790`) | none | agrees |
 | `0xC9898` | none | code `0x4F787`, `0x4F7A0`, `0x4F7BD` (the three displacements); no data | agrees |
 
@@ -12543,8 +12543,13 @@ ax,0x33; ja 0x2540F; and eax,0xffff; jmp [eax*4+0x24B8C]`). Case `0x17` is
 - `0x4F2B0` (mode `0x16`, `0x253E7`);
 - `0x27A2C` and `0x42CB4`, the latter being `0x424E8`'s callee.
 
-None of them is ported (no port header), nor is the function around
-`0x44952`.
+None of them is ported (no port header). `0x44952` is not an unported caller.
+It is dead code: it lies in `0x4493C..0x44965`, a variant of the end of
+`0x438B4` (the `0x108174` test, `0x43928`, `0x4F790`, then `0x108174` =
+`0x108172`). That routine sits after `0x4493A ret; nop`, and nothing enters
+it. There is no rel32 or rel8 into `0x4493C`, `0x44949`, `0x4494D` or
+`0x44952`, no dword of any of them in either object, and `get_xrefs_to` of
+`0x4493C` is empty.
 
 **Who stores mode `0x17`.** A linear capstone sweep lists every `mov
 [0x104b00]` that has an immediate `0x17` within the 25 instructions before it.
@@ -12562,7 +12567,15 @@ positive. The storers:
 - `0x25AE8` (`0x25B82`, `0x25BA2`).
 
 The sweep would miss a mode computed from a table. None was found, and the
-limit is recorded here. Only `0x25AE8` is ported (§46-F), and it is entered
+limit is recorded here. It would also miss the return-mode route: mode
+`0x1B`'s `0x4F9C8` stores the word `[0x104AFA]` as the mode (`0x4F9D7`).
+That route was checked separately, and none of its values is `0x17`:
+- the 11 callers of `0x4F980` pass `0x11`, `0x10`, `0x30`, 5, `0x23`, 5,
+  `0x10`, `0x10`, `0x11`, `0x11` and `0x11`;
+- the 20 other `mov [0x104afa],reg` sites take their register from an
+  immediate `0x1E`, `0x1F`, `0x30`, 5 or `0x13`.
+
+Only `0x25AE8` is ported (§46-F), and it is entered
 at `0x253D9` (mode `0x14`), at `0x296AF`/`0x42ED9` (as a hook, unported
 storers) or through `0x4F318` itself. **No ported path can set mode
 `0x17`.**
@@ -12657,8 +12670,9 @@ polarity, pressed -> held, and moving the `0xFFFF` store after the hook.
     a ported storer of mode `0x17` (46-G.2), and the switch should then read
     the word;
   - `0x4F318`'s other caller `0x424E8` (mode `0x13`), and `0x4F790`'s other
-    callers `0x438B4` (mode `0x10`), the code at `0x44952`, `0x4F24C` (mode
-    `0x15`) and `0x4F2B0` (mode `0x16`), all unported. `0x4F778`'s other
+    callers `0x438B4` (mode `0x10`), `0x4F24C` (mode `0x15`) and `0x4F2B0`
+    (mode `0x16`), all unported. The call at `0x44952` is in the dead
+    routine `0x4493C..0x44965` (46-G.2) and is not a gap. `0x4F778`'s other
     callers are `0x27A2C` and `0x42CB4`. Modes `0x15`/`0x16` reuse
     `0x4F790` and would be the natural next step: `0x29B74` and `0x41578`
     already store mode `0x15`;

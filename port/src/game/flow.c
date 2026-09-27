@@ -567,8 +567,9 @@ void frontend_mode_17_step(void)
     /* PORT: `call dword [0x104ae4]` through the registry, a miss skipped, as
      * in 0x4F9A0. Every value the image stores there is registered (records
      * §42-E, §43-B, §46-B, §46-F), and only 0x29D60/0x5D812 are no-ops. EAX
-     * (the old countdown, <= 0) and EDX (the caller's) are not passed: the
-     * registered hooks take no arguments, as for 0x4F9A0. */
+     * (the old countdown, <= 0) and EDX (EAX - 1, the new countdown, from
+     * 0x4F35B/0x4F35D) are not passed: the registered hooks take no
+     * arguments, as for 0x4F9A0. */
     void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
     if (hook != NULL) hook();                           /* 0x4F373 */
 }
