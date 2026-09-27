@@ -2616,7 +2616,7 @@ record §34).**
   `+0x57` = 1) and the curl stream's `0xD100` target `0x459D0` (record
   `+0x63` = 1; not reached). Decoded from `read_memory` with capstone
   (Ghidra has no functions there). The poll matches the port through f =
-  4986, the driver's last frame (two DOSBox-X samples torn mid-frame aside).
+  4986, the driver's last frame (three DOSBox-X samples torn mid-frame aside, f = 4920/4937/4947).
   3593..3616 are explained; no unexplained frame is left in the region, so
   N = 3617, the capture's end + 1.
 

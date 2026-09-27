@@ -12630,7 +12630,9 @@ name.
   - A temporary `fn_resolve` miss log over the whole 4100-loop run (reverted)
     shows no miss other than the type-table stub `0x5D812`, the zero address
     and the two early-boot misses (`0x45AD0`, `0x41578`). So this is not an
-    unregistered callback.
+    unregistered callback. (Corrected in §48-A.1: `0x45AD0` is not an
+    early-boot miss. It is character 4's reaction-`0x25` callback, missed
+    once, at f = 4914, and it is the cause of 3593.)
   - The cause needs a live-RAM poll of the original's third demo: the
     fighters' `+0x52/+0x53/+0x54`, the demo command words `DS_001088E0`, and
     the LCG `DS_000EF6D8` from loop 3985.
@@ -13429,11 +13431,17 @@ explained. N 3593 -> 3617, the exact pin (`e00ab15`).
 ### 48-A.6 Measurement
 
 - The port probe against the poll (`t36/db36.log`): equal for every logged
-  field through f = 4986 (loop 4099, the driver's last), apart from f = 4937
-  and f = 4947, where the poll's command word reads `0000`. Both samples are
-  torn: their tick pair is `126/126` and `136/136` (sampled while the loop
-  was mid-frame), and the earlier poll `t32/db32b.log` has `0x0680` on both
-  frames, as the port does.
+  field, the AI blocks included, through f = 4986 (loop 4099, the driver's
+  last), apart from three torn samples:
+  - f = 4937 and f = 4947, where the poll's command word reads `0000`;
+  - f = 4920, where the poll's AI timers read `tmA`/`tm4` against the
+    port's `tm9`/`tm3`.
+
+  All three have the tick pair `N/N` (`126/126`, `136/136`, `109/109`),
+  that is, they were sampled while the loop was mid-frame. The earlier
+  poll `t32/db32b.log` agrees with the port on all three frames (`0x0680`;
+  `tm9`/`tm3`). (Review round 1: the first write-up found only the two
+  command-word samples, because its comparison left the AI fields out.)
 - `title_compare --attract2` on the driver's dump: region 1885..3616, 1732
   frames: 1078 clean, 630 splice, 17 transition, 1 unexplained (3545,
   allowed by name as the three-frame splice), 6 all-black; no other
