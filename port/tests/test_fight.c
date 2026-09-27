@@ -7720,6 +7720,279 @@ static void check_char_select_pass(void)
     memcpy(gfx_dac, s_dac, sizeof s_dac);
 }
 
+/* Record §48-J: 0x28CC8, the join poll of modes 6 and 0xC. A character
+ * screen from cs_open (its resting inputs: no credit, no press, the text
+ * prompts), then DS_00104B1F = b1f, an empty row 0x1D, blink phase 0 (the
+ * counter 0x20) and sentinels in the prompt's length DS_00105BF8, its col/row
+ * DS_00105C06/07 and both sprite slots DS_00105BF0[side]. */
+static void jp_open(u8 b1f)
+{
+    cs_open(3u, 6u, 0u);
+    DSB(DS_00104B1F) = b1f;
+    mem_fill(DS_00105F38 + 0x1Du * 0xACu, 0, 0xACu);
+    DSW(DS_000EF6DC) = 0x20u;
+    DSD(DS_00105BF8) = 0xDEADu;
+    DSB(DS_00105C06) = 0x77u;
+    DSB(DS_00105C07) = 0x77u;
+    DSD(DS_00105BF0) = 0x5A5A5A5Au;
+    DSD(DS_00105BF0 + 4u) = 0x5A5A5A5Au;
+}
+
+/* No prompt was drawn: the sentinels of jp_open are intact and row 0x1D is
+ * empty. */
+static void jp_check_quiet(void)
+{
+    CHECK_EQ_INT((int)DSD(DS_00105BF8), 0xDEAD);
+    CHECK_EQ_INT((int)DSB(DS_00105C06), 0x77);
+    CHECK_EQ_INT((int)DSB(DS_00105C07), 0x77);
+    CHECK_EQ_INT((int)DSD(DS_00105BF0), 0x5A5A5A5A);
+    CHECK_EQ_INT((int)DSD(DS_00105BF0 + 4u), 0x5A5A5A5A);
+    CHECK_EQ_INT((int)cs_row_count(0x1Du), 0);
+}
+
+/* game_frame's gates for jp_open's screen: no update-table bit, command
+ * block or 0x25414 tail (ms_seed), the mode dword, the frame counter one
+ * short of phase 0 (0x24CDB increments it), the input latches so 0x4F644
+ * makes DS_001088E4 = `pressed` (level `pressed`, latch 0), and slot
+ * DS_00104B12 = 0 with +0x41 bit 0 clear so the mode-0xC tail (0x25487)
+ * stops at its first test. */
+static void jp_frame_seed(u32 mode_dword, u32 pressed)
+{
+    ms_seed(mode_dword);
+    DSW(DS_000EF6DC) = 0x1Fu;
+    DSD(DS_000E1C34) = pressed;
+    DSD(DS_000E1C38) = 0u;
+    DSB(DS_00104B12) = 0u;
+    DSB(DS_001077B0 + 0x41u) = (u8)(DSB(DS_001077B0 + 0x41u) & 0xFEu);
+}
+
+static void check_join_poll(void)
+{
+    static u8 s_data[0x10B0D0u - 0x80000u];
+    static u8 s_rec[0xEBA0u], s_pset[0x4880u];
+    static u8 s_bufa[0xFA00u], s_bufb[0xFA00u], s_ap[0xFA00u];
+    static u8 s_dac[sizeof gfx_dac];
+    static u8 s_res[0x14u * 128u];
+    u32 rec_pool = DSD(DS_001014F4), pset_pool = DSD(DS_001014EC);
+    u32 bufa = DSD(DS_001014E8), bufb = DSD(DS_001014E4);
+    u32 res_tab = DSD(DS_001014E0);
+    u32 res_len = DSD(DS_001014F0) * 0x14u;
+    CHECK(rec_pool != 0u && pset_pool != 0u && bufa != 0u && bufb != 0u,
+          "0x28CC8 needs the pools and buffers");
+    CHECK(res_len != 0u && res_len <= sizeof s_res, "the resource table fits");
+    if (rec_pool == 0u || pset_pool == 0u || bufa == 0u || bufb == 0u ||
+        res_len == 0u || res_len > sizeof s_res)
+        return;
+    game_string_table_load("data/game/C");
+    tf_snap(s_data, 0x80000u, sizeof s_data);
+    tf_snap(s_rec, rec_pool, sizeof s_rec);
+    tf_snap(s_pset, pset_pool, sizeof s_pset);
+    tf_snap(s_bufa, bufa, sizeof s_bufa);
+    tf_snap(s_bufb, bufb, sizeof s_bufb);
+    tf_snap(s_res, res_tab, res_len);
+    memcpy(s_ap, gfx_aperture(), sizeof s_ap);
+    memcpy(s_dac, gfx_dac, sizeof s_dac);
+#define JP_RESTORE() do {                                               \
+        tf_put(s_data, 0x80000u, sizeof s_data);                        \
+        tf_put(s_rec, rec_pool, sizeof s_rec);                          \
+        tf_put(s_pset, pset_pool, sizeof s_pset);                       \
+    } while (0)
+
+    /* The start masks 0x9ACBC[0]/[1] (the image's dwords) and the cols. */
+    CHECK_EQ_INT((int)DSD(DS_0009ACBC), 0x01000000);
+    CHECK_EQ_INT((int)DSD(DS_0009ACBC + 4u), 0x100);
+    CHECK_EQ_INT((int)DSW(DS_000BAB58), 0x1803);
+
+    /* (a) No credit, both starts pressed: side 0 (no bit) gets "INSERT 1
+     * COIN" at col 3, row 0x1D, mode 0x3000 (length 13, col/row kept), the
+     * result is 0 and nothing joins. B1F 4 has neither side's bit, so side 0
+     * is the one polled; with B1F 1 it is side 1, at col 0x18. */
+    {
+        static const u8 b1f[3] = { 0u, 4u, 1u };
+        static const u8 col[3] = { 3u, 3u, 0x18u };
+        for (u32 i = 0; i < 3u; i++) {
+            JP_RESTORE();
+            jp_open(b1f[i]);
+            DSD(DS_001088E4) = 0x01000100u;
+            CHECK_EQ_INT((int)flow_join_poll(), 0);
+            CHECK_EQ_INT((int)DSB(DS_00104B1F), (int)b1f[i]);
+            CHECK_EQ_INT((int)DSD(DS_00105C00), 0);
+            CHECK_EQ_INT((int)DSD(DS_00105BF8), 13);
+            CHECK_EQ_INT((int)DSB(DS_00105C06), (int)col[i]);
+            CHECK_EQ_INT((int)DSB(DS_00105C07), 0x1D);
+            CHECK_EQ_INT((int)cs_row_ref(0x1Du, (s32)col[i],
+                                         (const u8 *)"INSERT 1 COIN", 0x3000u), 1);
+        }
+    }
+
+    /* (b) A credit and no start (or only the other side's start, or the
+     * start held but not newly pressed): "PRESS START" (string 0x48) at the
+     * polled side's col, row 0x1D, mode 0x1000, length 14; 0, no bit, no
+     * credit spent. Side 1 is never polled while side 0 has no bit. */
+    {
+        static const u8 b1f[4] = { 0u, 0u, 2u, 1u };
+        static const u32 e4[4] = { 0u, 0x100u, 0x100u, 0x01000000u };
+        static const u8 col[4] = { 3u, 3u, 3u, 0x18u };
+        for (u32 i = 0; i < 4u; i++) {
+            JP_RESTORE();
+            jp_open(b1f[i]);
+            DSD(DS_00105C00) = 5u;
+            DSD(DS_001088E4) = e4[i];
+            DSD(DS_001088D8) = 0x01000100u;
+            CHECK_EQ_INT((int)flow_join_poll(), 0);
+            CHECK_EQ_INT((int)DSB(DS_00104B1F), (int)b1f[i]);
+            CHECK_EQ_INT((int)DSD(DS_00105C00), 5);
+            CHECK_EQ_INT((int)DSD(DS_00105BF8), 14);
+            CHECK_EQ_INT((int)DSB(DS_00105C06), 0x77);
+            CHECK(cs_row_count(0x1Du) != 0u, "PRESS START drawn");
+            CHECK_EQ_INT((int)cs_row_ref(0x1Du, (s32)col[i], game_string_get(0x48u),
+                                         0x1000u), 1);
+        }
+    }
+
+    /* (c) The sprite prompt (DS_00104528 bit 0x200, i.e. DS_00104529 bit 1):
+     * 0xBAB60 spawned at x 0xBAB5A[side] (0x1500 / 0x4000), y 0x3A00, into
+     * DS_00105BF0[side]; row 0x1D stays empty. */
+    for (u32 side = 0; side < 2u; side++) {
+        JP_RESTORE();
+        jp_open((u8)side);
+        DSD(DS_00104528) = 0x200u;
+        DSD(DS_00105C00) = 5u;
+        DSD(DS_00105BF0 + side * 4u) = 0u;
+        CHECK_EQ_INT((int)flow_join_poll(), 0);
+        {
+            u32 spr = DSD(DS_00105BF0 + side * 4u);
+            CHECK(spr != 0u, "0x28CC8's sprite prompt is spawned");
+            if (spr != 0u) {
+                CHECK_EQ_INT((int)DSD(spr + 0x18u), side == 0u ? 0x1500 : 0x4000);
+                CHECK_EQ_INT((int)DSD(spr + 0x1Cu), 0x3A00);
+            }
+        }
+        CHECK_EQ_INT((int)DSD(DS_00105BF0 + (side ^ 1u) * 4u), 0x5A5A5A5A);
+        CHECK_EQ_INT((int)DSD(DS_00105BF8), 14);
+        CHECK_EQ_INT((int)cs_row_count(0x1Du), 0);
+    }
+
+    /* (d) The join: the polled side's start newly pressed. The result is
+     * side + 1, its bit is OR'd into DS_00104B1F (other bits kept) and no
+     * prompt is drawn. The credit count is unchanged, 5 or exactly 1: the bit
+     * is stored before 0x2CA7C, whose debit it suppresses. Free play (no
+     * credit at all) joins the same way. */
+    {
+        static const u8 b1f[5] = { 0u, 1u, 5u, 2u, 0u };
+        static const u32 e4[5] = { 0x01000000u, 0x100u, 0x01000100u,
+                                   0x01000100u, 0x01000000u };
+        static const u32 cr[5] = { 5u, 5u, 1u, 5u, 0u };
+        static const u8 fp[5] = { 0u, 0u, 0u, 0u, 1u };
+        static const int res[5] = { 1, 2, 2, 1, 1 };
+        static const u8 after[5] = { 1u, 3u, 7u, 3u, 1u };
+        for (u32 i = 0; i < 5u; i++) {
+            JP_RESTORE();
+            jp_open(b1f[i]);
+            DSD(DS_00105C00) = cr[i];
+            DSB(DS_00105D60) = fp[i];
+            DSD(DS_001088E4) = e4[i];
+            CHECK_EQ_INT((int)flow_join_poll(), res[i]);
+            CHECK_EQ_INT((int)DSB(DS_00104B1F), (int)after[i]);
+            CHECK_EQ_INT((int)DSD(DS_00105C00), (int)cr[i]);
+            jp_check_quiet();
+        }
+    }
+
+    /* (e) Both bits set: 0 whatever is pressed, nothing drawn or spent. */
+    JP_RESTORE();
+    jp_open(3u);
+    DSD(DS_00105C00) = 5u;
+    DSD(DS_001088E4) = 0x01000100u;
+    CHECK_EQ_INT((int)flow_join_poll(), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 3);
+    CHECK_EQ_INT((int)DSD(DS_00105C00), 5);
+    jp_check_quiet();
+
+    /* (f) game_frame's case 6 (0x25256) and case 0xC (0x25349) with no join:
+     * the poll draws "INSERT 1 COIN" for side 0 and the mode word is kept
+     * (the 0x26254/0x27380 arms are named gaps). With DS_00104B1D set, case 6
+     * does not poll (it goes to case 4's 0x26254) but case 0xC still does. */
+    {
+        static const u32 mode[4] = { 0xBEEF0006u, 0xBEEF000Cu, 0xBEEF0006u,
+                                     0xBEEF000Cu };
+        static const u8 b1d[4] = { 0u, 0u, 1u, 1u };
+        for (u32 i = 0; i < 4u; i++) {
+            JP_RESTORE();
+            jp_open(0u);
+            DSB(DS_00104B1D) = b1d[i];
+            jp_frame_seed(mode[i], 0u);
+            game_frame();
+            CHECK_EQ_INT((int)DSD(DS_00104B00), (int)mode[i]);
+            CHECK_EQ_INT((int)DSB(DS_00104B1F), 0);
+            if (i == 2u) {
+                jp_check_quiet();
+            } else {
+                CHECK_EQ_INT((int)DSD(DS_00105BF8), 13);
+                CHECK_EQ_INT((int)DSB(DS_00105C06), 3);
+                CHECK_EQ_INT((int)DSB(DS_00105C07), 0x1D);
+                CHECK(cs_row_count(0x1Du) != 0u, "INSERT 1 COIN drawn");
+            }
+        }
+    }
+
+    /* (g) The same cases with a join, the start pressed through 0x4F644:
+     * case 6 with side 0 in (B1F 1) and side 1's start joins side 1; case 0xC
+     * with side 1 in (B1F 2) and side 0's start joins side 0. 0x28DA4 then
+     * runs on the result minus one: that side's slot is reset (0x33C18), the
+     * other side's +0x5B zeroed, DS_00104ABC = 2 (B1F now 3), the hook
+     * 0x28D80 and mode 0x17 (the upper word kept); no credit is spent. With
+     * DS_00104B1D set, case 6 does not join. */
+    {
+        static const u32 mode[3] = { 0xBEEF0006u, 0xBEEF000Cu, 0xBEEF0006u };
+        static const u8 b1f[3] = { 1u, 2u, 1u };
+        static const u32 press[3] = { 0x100u, 0x01000000u, 0x100u };
+        static const u8 b1d[3] = { 0u, 0u, 1u };
+        for (u32 i = 0; i < 3u; i++) {
+            u32 side = i == 1u ? 0u : 1u;
+            JP_RESTORE();
+            jp_open(b1f[i]);
+            cd_seed_slots();
+            cd_seed_latch();
+            DSD(DS_00105C00) = 5u;
+            DSB(DS_00104B1D) = b1d[i];
+            DSD(DS_00104ABC) = 0xDEADBEEFu;
+            DSD(DS_00104AE4) = 0xDEADBEEFu;
+            jp_frame_seed(mode[i], press[i]);
+            game_frame();
+            CHECK_EQ_INT((int)DSD(DS_001088E4), (int)press[i]);
+            CHECK_EQ_INT((int)DSD(DS_00105C00), 5);
+            if (i == 2u) {
+                CHECK_EQ_INT((int)DSB(DS_00104B1F), 1);
+                CHECK_EQ_INT((int)DSD(DS_00104B00), (int)mode[i]);
+                CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+                CHECK_EQ_INT((int)DSD(DS_00104ABC), (int)0xDEADBEEFu);
+                cd_check_slot(0u, 0);
+                cd_check_slot(1u, 0);
+                continue;
+            }
+            CHECK_EQ_INT((int)DSB(DS_00104B1F), 3);
+            CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0017u);
+            CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x28D80);
+            CHECK_EQ_INT((int)DSD(DS_00104ABC), 2);
+            cd_check_slot(side, 1);
+            CHECK_EQ_INT((int)DSB(DS_001077B0 + (side ^ 1u) * 0x94u + 0x5Bu), 0);
+            CHECK_EQ_INT((int)DSB(DS_001077B0 + (side ^ 1u) * 0x94u + 0x7Fu), 0x77);
+            CHECK_EQ_INT((int)DSD(DS_00105BF8), 0xDEAD);
+        }
+    }
+#undef JP_RESTORE
+
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    tf_put(s_rec, rec_pool, sizeof s_rec);
+    tf_put(s_pset, pset_pool, sizeof s_pset);
+    tf_put(s_bufa, bufa, sizeof s_bufa);
+    tf_put(s_bufb, bufb, sizeof s_bufb);
+    tf_put(s_res, res_tab, res_len);
+    memcpy(gfx_aperture(), s_ap, sizeof s_ap);
+    memcpy(gfx_dac, s_dac, sizeof s_dac);
+}
+
 /* The DS_00104B1D == 3 screen: 0x444C8 fills both sides (characters ch0/ch1,
  * side bytes 1), then cs_open's resting inputs, DS_00104B1D = 3, empty picks
  * (0xFF) and tag slots (0), and DS_0010816A/DS_0010816E = 0x77/0xFF. */
@@ -23881,6 +24154,7 @@ int test_fight(void)
     check_33c18_callers_a();
     check_33c18_callers_b();
     check_char_select_pass();
+    check_join_poll();
     check_char_team_pass();
 
     return g_failures - before;
