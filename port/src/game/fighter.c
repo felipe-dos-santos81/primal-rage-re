@@ -5627,8 +5627,8 @@ u32 fighter_22d8c(u32 side)
 /* 0x22E44 — record §42-A. The slot +0x1C callback 0x22F74 stores (the dword
  * at 0x22F92, its only reference), called by 0x193B0 at 0x19505 as fn(side).
  * On 0x33950(side): the slot's +0x57 = 2, the other side frozen through
- * 0x22CE4 (EDX = 0x29A, which 0x22CE4 preserves for 0x39A10), the record's
- * +0x74 timer 0x29A (0x39A10), then the 0xBB3E4 projectile spawned 0x1000 in
+ * 0x22CE4 (EDX = 0x29A, which 0x22CE4 preserves for 0x39A10), the +0x74
+ * timer of the record's slot (the one its +0x51 names) = 0x29A (0x39A10), then the 0xBB3E4 projectile spawned 0x1000 in
  * front (-0x1000 when 0x1A570 is non-zero) of the record's x at its +0x32
  * height, a4 = 0xFFFFCC00, a5 = 0; it goes in 0x104728[side] with +0x14 =
  * the slot, +0x36 = 0x200 and +0x59 = 0xFE, 0x10476A[side] = 0, 0x2A148(it,
@@ -5767,6 +5767,10 @@ int fighter_2365c(u32 slot, u32 rec, u32 side)
             + (((u32)DSB(rec + 0x51u) ^ 1u) & 0xFFu) * 0x94u;  /* 0x2366E..0x23685 */
     if (DSD(other + 0x10u) == 0x00022BECu) return 0;    /* 0x2368A..0x23693 */
     hit_anim_start_b(rec, FIGHT_ANIM_2365C, 0x40400000u);   /* 0x23698..0x236A4 0x3C4CC */
+    /* PORT: 0xE4996's 0xD100 target 0x236D8 (at 0xE49A2, the dword at 0xE49A4
+     * its only reference) is unregistered, so anim_indirect skips it: it
+     * spawns the 0xBB3BC actor, whose stream 0xE4F94 carries the unported
+     * 0xD100 target 0x2372C (also called at 0x2463E). Named gap, §42-A.5. */
     DSB(slot + 0x52u) = 0x0Bu;                          /* 0x236A9 */
     DSB(slot + 0x53u) = 6u;                             /* 0x236AD */
     DSB(slot + 0x54u) = 0;                              /* 0x236B1 */

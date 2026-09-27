@@ -7843,7 +7843,8 @@ the free list (type table `0xBB9DC`, entries `0x19` and `0x0A`), and the
 teardown `0x290D0` returns the node. Process-table entry 7, `0x2910C`
 (`DS_000A8644[7]`), walks the in-use list at `0x104880`; the cb1s set
 `DS_00104AE8` bit 7 to enable it. `0x2910C` is not registered, so
-`run_process_table` skips it. It stays a named gap, outside this batch.
+`run_process_table` skips it. It stays a named gap, outside this batch
+(since ported and registered, §42-A).
 
 ### 41-D.2 `0x43818` (Ghidra disassembly, fixups applied)
 
@@ -8162,7 +8163,8 @@ at `0x22BEC` or `0x29D04`; those two were decoded with capstone from
   `0xED4BA`/`0xED5B4`/`0xED5D0`. The `0xBDC2C` table it indexes reads
   `0xE7914 0xE4548 0xED58C 0xD2BCC 0xEB188 0xD484E 0xE117E 0xBB150`, and
   each character's second and third sites follow its own `0xBDC2C` stream.
-- Related, not callees and not ported: `0x22CE4` (a second setter of the
+- Related, not callees and not ported (all three since ported, §42-A):
+  `0x22CE4` (a second setter of the
   same freeze, called at `0x22E64`: `0x33ACC`, `0x39834(side, the other
   slot's +0x5F)`, the other slot's `+0x57` = 2, 0x10/0x0A/`0x22BEC`, its own
   `+0x5F` = 0xFF, `0x22B28`, and byte `0x10476A + (side ^ 1)` = 1), the
@@ -8433,7 +8435,11 @@ and puts them back.
   B: `0x2A148` with flag 1 and flag 0.
 - `check_freeze_22ce4`: `0x22CE4(1)` and `(0)` on §41-C's `fz_seed` plus
   sentinels on `+0x57`, `+0x5F` and the three arrays. It checks both snapshot
-  halves, `DS_00107D28` = the other slot's `+0x5F` (`0x28`/`0x29`), the other
+  halves, `DS_00107D28` = the other slot's `+0x5F` (`0x28`/`0x29`), the
+  `0x39834` side: its `ctx[0]` is `side ^ 1`, so only that side's
+  `DS_00107D2C` hit word advances (seeded 3/5, which keeps `0x39865`'s scale
+  on the `0xBEBF8` arm and `0x39973`'s store off) and the other side's
+  `DS_00107D2C`/`DS_00107D20` words keep their sentinels; the other
   slot's `+0x57`, the frozen slot's fields with `+0x18`/`+0x1C` kept,
   `0x22B28`'s writes, and `0x10476A[side ^ 1]` = 1 with the other byte kept.
   Then `0x22E44` through its registration, sides 0 and 1, with a one-record
@@ -8480,12 +8486,15 @@ and puts them back.
     - a slot-less entry keeping bit 5, with entry 1 live and alone (C7b);
     - entry 1's other slot taken through its record's `+0x51`.
 
-The four groups hold 249 assertion sites.
+The four groups hold 255 assertion sites.
 
 **Mutations** (`scratchpad/g2910c/mut.py`, `mut.out`/`mut2.out`): 125
 single-site edits of the new code and its seven registrations. They cover
 every store, constant, index, gate, edge, signedness, stream and frame bit,
-each flag of `0x22D8C`, each box pair, and each `ctx` slot choice.
+each flag of `0x22D8C`, each box pair, and most `ctx` slot choices. They
+missed one: the review found that `0x22CE4`'s `0x39834(ctx[1], ...)` ->
+`ctx[0]` passed the suite. The group asserted only `DS_00107D28`, which
+`0x39834` writes for either side.
 - The first sweep: 119 failed 1..32 assertions. Two were killed only by a
   fault:
   - `0x2910C` without its `+0x14` test: `0x249D0(0)` faults (SIGBUS).
@@ -8512,6 +8521,13 @@ each flag of `0x22D8C`, each box pair, and each `ctx` slot choice.
   - Dropping `0x22E44`'s own `+0x57` = 2 (`0x22E57`): the `0x22CE4(ctx[1])`
     call that follows stores 2 to the same byte at `0x22D4C`. Its ctx[2] is
     `slot[1 - (1 - side)]`, the caller's own slot.
+
+- After the review, `q42_fz_seed` puts sentinels on both words of
+  `DS_00107D2C` and `DS_00107D20`. The group now asserts which word
+  `0x22CE4(1)`/`(0)` advances and that the other side's words are kept. The
+  `0x39834` side mutation (126th) now fails 6 assertions. §41-C's
+  `fighter_235c4` has the same unpinned `0x39834(ctx[1], 0x2A)` side (review
+  note, left as follow-up).
 
   The remaining fault-killed and hang-killed mutations cannot be turned into
   assertion failures without touching low memory or bounding the walk. The

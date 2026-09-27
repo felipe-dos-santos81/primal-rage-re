@@ -9863,6 +9863,13 @@ static void q42_fz_seed(u32 r0, u32 r1)
     DSW(Q42_104750 + 2u) = 0x3434u;
     DSB(Q42_10476A) = 0x6Au;
     DSB(Q42_10476A + 1u) = 0x6Bu;
+    /* 0x39834's per-side words (its ctx[0] = the other side): the hit count
+     * DS_00107D2C (3/5: below 0xB, so 0x39865's scale reads 0xBEBF8 and
+     * 0x39973's >= 0x14 store stays off) and the damage sum DS_00107D20. */
+    DSW(DS_00107D2C) = 3u;
+    DSW(DS_00107D2C + 2u) = 5u;
+    DSW(DS_00107D20) = 0x2020u;
+    DSW(DS_00107D20 + 2u) = 0x2121u;
 }
 
 /* The actor free list holding only `rec` (a zeroed pool record) and an empty
@@ -9915,6 +9922,9 @@ static void check_freeze_22ce4(void)
     CHECK_EQ_INT((int)DSB(FIGHT_SNAP_235C4), 0xEE);
     CHECK_EQ_INT((int)DSB(snap_r0), 0xEE);
     CHECK_EQ_INT((int)DSD(DS_00107D28), 0x28);                 /* slot 0's +0x5F */
+    CHECK_EQ_INT((int)DSW(DS_00107D2C), 4);          /* 0x39834(1): its ctx[0] = 0 */
+    CHECK_EQ_INT((int)DSW(DS_00107D2C + 2u), 5);
+    CHECK_EQ_INT((int)DSW(DS_00107D20 + 2u), 0x2121);
     CHECK_EQ_INT((int)DSB(s0 + 0x57u), 2);
     CHECK_EQ_INT((int)DSB(s1 + 0x57u), 0x57);
     CHECK_EQ_INT((int)DSB(s1 + 0x52u), 0x10);
@@ -9940,6 +9950,9 @@ static void check_freeze_22ce4(void)
           "0x22CE4's 0x33ACC copied slot 0");
     CHECK_EQ_INT((int)DSB(snap_s1), 0xEE);
     CHECK_EQ_INT((int)DSD(DS_00107D28), 0x29);
+    CHECK_EQ_INT((int)DSW(DS_00107D2C + 2u), 6);     /* 0x39834(0): its ctx[0] = 1 */
+    CHECK_EQ_INT((int)DSW(DS_00107D2C), 3);
+    CHECK_EQ_INT((int)DSW(DS_00107D20), 0x2020);
     CHECK_EQ_INT((int)DSB(s1 + 0x57u), 2);
     CHECK_EQ_INT((int)DSB(s0 + 0x57u), 0x57);
     CHECK_EQ_INT((int)DSD(s0 + 0x10u), 0x00022BEC);
@@ -10132,7 +10145,6 @@ static void check_hook_22d8c(void)
     DSW(DS_000A6728 + 2u) = 0;
     mem_fill(DS_00108270, 0, 0x50u);
     DSW(DS_001088E0) = 0;
-    DSW(DS_001088E2) = 0x1000u;
     DSW(DS_001088E2) = 0x2000u;              /* slot 1 below slot 0: 0x2000 */
     CHECK_EQ_INT((int)fighter_22d8c(0u), 1);
     CHECK_EQ_INT((int)(DSB(s1 + 0x43u) & 0x30u), 0x20);
