@@ -296,6 +296,168 @@ void fight_char_screen_open_both(void)
     DSD(DS_00104AE4) = FN_00029D60;                     /* 0x44541 */
 }
 
+/* ---- the mode-0x1A hooks 0x430E8/0x4367C, 0x430C0 and 0x4454C (§46-B) -- */
+
+#define DS_000C8364 0x000C8364u   /* no symbols.h name: descriptor, id 0x351 */
+#define DS_000C8378 0x000C8378u   /* no symbols.h name: descriptor, id 0x352 */
+#define DS_000C84E0 0x000C84E0u   /* no symbols.h name: 7 descriptor pointers */
+#define DS_000C84FC 0x000C84FCu   /* no symbols.h name: 7 descriptor pointers */
+#define DS_000C87BC 0x000C87BCu   /* no symbols.h name: descriptor, id 0x3F11 */
+#define DS_00080C04 0x00080C04u   /* no symbols.h name: the string "VS" */
+#define DS_0010816D 0x0010816Du   /* no symbols.h name: 0x10816E - 1, the loops' base */
+#define DS_00108165 0x00108165u   /* no symbols.h name: 0x108166 - 1, the loops' base */
+#define DS_00105B33 0x00105B33u   /* no symbols.h name: 0x105B34 - 1, the loops' base */
+#define FN_000430C0 0x000430C0u   /* no symbols.h name: the hook 0x430E8 installs */
+
+/* 0x430C0 — record §46-B. A DS_00104AE4 hook, stored by 0x430E8 (0x43284).
+ * 0x29D60 (a bare `ret`), then 0x2F198 draws "VS" (0x80C04) at col 0x13, row
+ * 2 with mode 0x4002. EBX/ECX/EDX are pushed and popped. */
+void fight_hook_430c0(void)
+{
+    text_cursor_set(0x13, 2, mem + DS_00080C04, 0x4002u);   /* 0x430DC 0x2F198 */
+}
+
+/* 0x430E8 — record §46-B. A DS_00104AE4 hook, stored at 0x1F447 (0x1EEB0),
+ * 0x43AE8 (0x43AAC), 0x43C18 (0x43B24) and 0x44824 (0x44798), each just
+ * before 0x4F980 arms mode 0x1A. The versus screen:
+ * - the 0x31 voice, 0x4F200(0), 0x25848; with DS_00108173 != 0 the bytes
+ *   DS_00107813 and DS_001078A7 become 1;
+ * - with DS_00104B1D == 1, DS_00104B1F = DS_00104AB8 (0x43125/0x4312A); then
+ *   unless DS_00104B1F == 3, 0x41350 with EAX = (DS_00104B1F - 1) ^ 1 (0x4313D
+ *   `dec eax` and 0x43145 `xor al,bl` with BL = 1, or 0x4315F `xor al,1`) and
+ *   EDX = the stage word;
+ * - six 0x2AE14 spawns: 0xC8364 (a2 0, a3 0xF0) into DS_001080B4, 0xC8378
+ *   (a2 0x2A00, a3 0xF1) into DS_001080B8; then, with pa/pb the two records'
+ *   +0x56 words, 0xC84FC[c0] and 0xC84FC[c1] (a2 0xF, a3 0xF4, a4 7, a5 pa |
+ *   0x400 / pb | 0x400) and 0xC84E0[c0] (a2 0x9B, a3 0xE0, a4 0x36, a5 pa |
+ *   0x4400) and 0xC84E0[c1] (a2 0xD, a5 pb | 0x400), where c0/c1 are the
+ *   signed bytes DS_0010816A/DS_0010816B (`mov eax,[0x108167]` or
+ *   `[0x108168]`; `sar eax,0x18`);
+ * - 0x4F1D0, 0x38B18(0xC87BC) with EDX = EBX = 0 (0x43254/0x4325A, kept by
+ *   0x4F1D0, which pushes EDX and names no other), the last spawn's +0x2E
+ *   word += 4 and +0x4E = 1, the hook becomes 0x430C0, then the 0x2D and 0x2F
+ *   voices. */
+void fight_hook_430e8(void)
+{
+    /* PORT: 0x430F2 0x2C3FC(0x31) voice, not wired (record §45-A). */
+    flow_screen_reset(0u);                              /* 0x430F9 0x4F200 */
+    flow_stage_pick();                                  /* 0x430FE 0x25848 */
+    if (DSB(DS_00108173) != 0u) {                       /* 0x43103 */
+        DSB(DS_00107813) = 1u;                          /* 0x4310E */
+        DSB(DS_001078A7) = 1u;                          /* 0x43114 */
+    }
+    if (DSB(DS_00104B1D) == 1u)                         /* 0x4311A/0x43120 */
+        DSB(DS_00104B1F) = DSB(DS_00104AB8);            /* 0x43125/0x4312A */
+    u32 b1f = DSB(DS_00104B1F);                         /* 0x43131/0x4314B */
+    if (b1f != 3u)                                      /* 0x43136/0x43150 */
+        fight_char_select((b1f - 1u) ^ 1u, DSW(DS_00104AFC));   /* 0x43161 0x41350 */
+    u32 a = actor_spawn((const u32 *)(mem + DS_000C8364), 0u, 0xF0u, 0u, 0u);  /* 0x43176 */
+    DSD(DS_001080B4) = a;                               /* 0x43187 */
+    u32 b = actor_spawn((const u32 *)(mem + DS_000C8378), 0x2A00u, 0xF1u, 0u, 0u);  /* 0x43193 */
+    DSD(DS_001080B8) = b;                               /* 0x4319E */
+    u32 pa = DSW(DSD(DS_001080B4) + 0x56u);             /* 0x43198/0x431A3 */
+    u32 pb = DSW(b + 0x56u);                            /* 0x431AF */
+    u32 c0 = (u32)(s32)(s8)DSB(DS_0010816A);            /* 0x431BE/0x431C8 */
+    u32 c1 = (u32)(s32)(s8)DSB(DS_0010816B);            /* 0x431EB/0x431F5 */
+    actor_spawn((const u32 *)(mem + DSD(DS_000C84FC + c0 * 4u)),
+                0xFu, 0xF4u, 7u, pa | 0x400u);          /* 0x431DC */
+    actor_spawn((const u32 *)(mem + DSD(DS_000C84FC + c1 * 4u)),
+                0xFu, 0xF4u, 7u, pb | 0x400u);          /* 0x43205 */
+    actor_spawn((const u32 *)(mem + DSD(DS_000C84E0 + c0 * 4u)),
+                0x9Bu, 0xE0u, 0x36u, pa | 0x4400u);     /* 0x43229 */
+    u32 r = actor_spawn((const u32 *)(mem + DSD(DS_000C84E0 + c1 * 4u)),
+                        0xDu, 0xE0u, 0x36u, pb | 0x400u);   /* 0x4324D/0x43252 */
+    frontend_origin_zero();                             /* 0x4325C 0x4F1D0 */
+    frontend_spawn_row((const u32 *)(mem + DS_000C87BC), 0u, 0u);  /* 0x43266 0x38B18 */
+    DSW(r + 0x2Eu) = (u16)(DSW(r + 0x2Eu) + 4u);        /* 0x4326B..0x43277 */
+    DSB(r + 0x4Eu) = 1u;                                /* 0x43280 */
+    DSD(DS_00104AE4) = FN_000430C0;                     /* 0x43284 */
+    /* PORT: 0x4328A 0x2C3FC(0x2D) and 0x43294 0x2C3FC(0x2F) voices, not wired
+     * (record §45-A). */
+}
+
+/* 0x4454C — record §46-B. 0x4367C's DS_00104B1D == 3 arm (only caller
+ * 0x43688). The 0x100 voice; then with DS_00108173 != 0 the per-side bytes as
+ * in 0x4367C's first arm (0x10816E/F = 0xFF, 0x108166/7 = 0x108168/9,
+ * 0x105B34/5 = 0) and the 0x108169/0x108168 step (each wraps to 0 at 7, the
+ * second only on the first's wrap). Otherwise, per side s: 0x10816E[s] = 0xFF,
+ * 0x108166[s] = 0xC8880[s], 0x105B34[s] = 0, the four bytes 0x108134[s*4..] =
+ * 0xFF and the four dwords 0x108114[s*16..] = 0 (0x445F5..0x4460B, EAX
+ * pre-incremented by 4 before the 0x44603 store), and 0x108164[s] = 0 (ESI
+ * incremented before the 0x44616 store). Last, the 0x2E voice and 0x444C8. */
+static void fight_4454c(void)
+{
+    /* PORT: 0x44557 0x2C3FC(0x100) voice, not wired (record §45-A). */
+    if (DSB(DS_00108173) != 0u) {                       /* 0x4455C */
+        for (u32 i = 1; i <= 2u; i++) {                 /* 0x44565..0x44586 */
+            DSB(DS_0010816D + i) = 0xFFu;               /* 0x44568 */
+            DSB(DS_00108165 + i) = DSB(DS_00108167 + i);    /* 0x4456F/0x44575 */
+            DSB(DS_00105B33 + i) = 0u;                  /* 0x4457D */
+        }
+        u8 c = (u8)(DSB(DS_00108169) + 1u);             /* 0x44588/0x44590 */
+        DSB(DS_00108169) = c;                           /* 0x44594 */
+        if (c >= 7u) {                                  /* 0x4459A */
+            u8 d = (u8)(DSB(DS_00108168) + 1u);         /* 0x445A3/0x445AB */
+            DSB(DS_00108169) = 0u;                      /* 0x445AD */
+            DSB(DS_00108168) = d;                       /* 0x445B5 */
+            if (d >= 7u) DSB(DS_00108168) = 0u;         /* 0x445BB/0x445C0 */
+        }
+    } else {
+        for (u32 s = 0; s < 2u; s++) {                  /* 0x445D1..0x4461F */
+            DSB(DS_0010816E + s) = 0xFFu;               /* 0x445D1 */
+            DSB(DS_00108166 + s) = DSB(DS_000C8880 + s);    /* 0x445D8/0x445DE */
+            DSB(DS_00105B34 + s) = 0u;                  /* 0x445E8 */
+            for (u32 k = 0; k < 4u; k++) {              /* 0x445F5..0x4460B */
+                DSB(DS_00108134 + s * 4u + k) = 0xFFu;  /* 0x445FA */
+                DSD(DS_00108114 + s * 16u + k * 4u) = 0u;   /* 0x44603 */
+            }
+            DSB(DS_00108164 + s) = 0u;                  /* 0x44616 */
+        }
+    }
+    /* PORT: 0x44626 0x2C3FC(0x2E) voice, not wired (record §45-A). */
+    fight_char_screen_open_both();                      /* 0x4462B 0x444C8 */
+}
+
+/* 0x4367C — record §46-B. A DS_00104AE4 hook, stored at 0x25810 (0x257A4,
+ * the coin divert, before 0x4F980 at 0x25816). With DS_00104B1D == 3 it is
+ * 0x4454C alone. Otherwise the 0x100 voice; with DS_00108173 != 0 the
+ * per-side bytes (for EAX = 1, 2: 0x10816D[EAX] = 0xFF, 0x108165[EAX] =
+ * 0x108167[EAX], 0x105B33[EAX] = 0) and the 0x108169/0x108168 step; else
+ * the same loop with 0x108165[EAX] = 0xC887F[EAX]. Last, the 0x2E voice and
+ * 0x43738 (called directly at 0x4372E). */
+void fight_hook_4367c(void)
+{
+    if (DSB(DS_00104B1D) == 3u) {                       /* 0x4367F */
+        fight_4454c();                                  /* 0x43688 0x4454C */
+        return;
+    }
+    /* PORT: 0x43696 0x2C3FC(0x100) voice, not wired (record §45-A). */
+    if (DSB(DS_00108173) != 0u) {                       /* 0x4369B */
+        for (u32 i = 1; i <= 2u; i++) {                 /* 0x436A6..0x436C6 */
+            u8 v = DSB(DS_00108167 + i);                /* 0x436A9 */
+            DSB(DS_0010816D + i) = 0xFFu;               /* 0x436B1 */
+            DSB(DS_00108165 + i) = v;                   /* 0x436B7 */
+            DSB(DS_00105B33 + i) = 0u;                  /* 0x436BD */
+        }
+        u8 c = (u8)(DSB(DS_00108169) + 1u);             /* 0x436C8/0x436D0 */
+        DSB(DS_00108169) = c;                           /* 0x436D4 */
+        if (c >= 7u) {                                  /* 0x436DA */
+            DSB(DS_00108169) = 0u;                      /* 0x436E1 */
+            u8 d = (u8)(DSB(DS_00108168) + 1u);         /* 0x436E6 */
+            DSB(DS_00108168) = d;
+            if (d >= 7u) DSB(DS_00108168) = 0u;         /* 0x436F3/0x436F8 */
+        }
+    } else {
+        for (u32 i = 1; i <= 2u; i++) {                 /* 0x43702..0x43722 */
+            DSB(DS_0010816D + i) = 0xFFu;               /* 0x43707 */
+            DSB(DS_00108165 + i) = DSB(DS_000C887F + i);    /* 0x4370D/0x43719 */
+            DSB(DS_00105B33 + i) = 0u;                  /* 0x43713 */
+        }
+    }
+    /* PORT: 0x43729 0x2C3FC(0x2E) voice, not wired (record §45-A). */
+    fight_char_screen_open();                           /* 0x4372E 0x43738 */
+}
+
 /* ---- 0x494A8 the dust builder (state 6's fighter spawn) ----------------- */
 
 /* 0x49388. The dust descriptor picker. The draw's range is the raw's

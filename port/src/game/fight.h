@@ -203,4 +203,11 @@ void fight_4c784(u32 side);
  * EDX = si); its one caller, the mode-0x21 pass 0x4BF18, is not ported. */
 void fight_4c60c(u32 entry, u32 index);
 
+/* Record §46-B. DS_00104AE4 hooks, registered in actors_init: 0x430E8 (the
+ * versus screen, installing 0x430C0), 0x430C0 (draws "VS") and 0x4367C (the
+ * character screen after the coin divert, 0x43738 or 0x4454C). */
+void fight_hook_430e8(void);
+void fight_hook_430c0(void);
+void fight_hook_4367c(void);
+
 #endif /* PRAGE_GAME_FIGHT_H */

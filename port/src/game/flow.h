@@ -175,4 +175,19 @@ void frontend_input_reset(void);
  * selector and the attract machine. */
 void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3);
 
+/* Record §46-B. 0x20DF4: the fight reset (state 6 and the three hooks
+ * below). `stage` is clamped to 7 for the full branch; `full` (the raw's EDX)
+ * selects 0x2BAF4/0x38730/0x412A0. */
+void game_fight_reset(u32 stage, u32 full);
+/* 0x4F200: DS_00107A55 = (u8)v, DS_00107A54 = 0, 0x4F1D0, 0x2BAF4(1). */
+void flow_screen_reset(u32 v);
+/* 0x25848: picks the stage word DS_00104AFC (on DS_00104B17). */
+void flow_stage_pick(void);
+/* 0x25BBC/0x26998/0x270BC: DS_00104AE4 hooks their storers install before
+ * 0x4F980 arms mode 0x1A; each resets the fight, spawns fighters and leaves
+ * the hook 0x5D812. Registered in actors_init. */
+void game_hook_25bbc(void);
+void game_hook_26998(void);
+void game_hook_270bc(void);
+
 #endif /* PR_GAME_FLOW_H */

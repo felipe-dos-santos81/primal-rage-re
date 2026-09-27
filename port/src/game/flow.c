@@ -474,11 +474,11 @@ void frontend_mode_1a_step(void)
     /* PORT: `call dword [0x104ae4]` goes through the registry and a miss is
      * skipped. A miss is a no-op only for 0x29D60 (a bare `ret`, stored by
      * 0x43738/0x444C8) and 0x5D812 (`xor eax,eax; ret`, record §42-E.4). The
-     * image stores 13 other unregistered, non-trivial values there. Five are
-     * the hooks 0x4F980's own callers install just before arming mode 0x1A,
-     * so this call would reach them; they are named gaps (record §43-B.3):
-     * 0x430E8 (stored at 0x1F447/0x43AE8/0x43C18/0x44824), 0x4367C (0x25810),
-     * 0x25BBC (0x25A46/0x25A73), 0x26998 (0x2698B) and 0x270BC (0x2715C).
+     * five hooks 0x4F980's own callers install just before arming mode 0x1A
+     * (0x430E8, 0x4367C, 0x25BBC, 0x26998, 0x270BC) and 0x430C0, which
+     * 0x430E8 installs for this call's 0x1B twin, are registered (record
+     * §46-B). The image stores 7 other unregistered, non-trivial values
+     * there: 0x259CC, 0x10E80, 0x24B54, 0x27134, 0x4142C, 0x25AE8 and 0x26978.
      * TODO(verify): once cases 0x1A/0x1B are dispatched, a miss on any value
      * but the two no-ops is a missing port, not a skip. The returned EAX is
      * dead: `xor ah,ah` and byte/word stores of AH/DX follow. */
@@ -495,12 +495,195 @@ void frontend_mode_1b_step(void)
 {
     if (frontend_wipe_out() == 0u) return;              /* 0x4F9C8/0x4F9CF */
     /* PORT: the registry call of 0x4F9A0, with the same misses: only
-     * 0x29D60/0x5D812 are no-ops, and the five named-gap hooks listed there
-     * (0x430E8, 0x4367C, 0x25BBC, 0x26998, 0x270BC) would be skipped. EAX is
-     * overwritten by the 0x4F9D7 load. */
+     * 0x29D60/0x5D812 are no-ops, and the seven unregistered values listed
+     * there would be skipped. EAX is overwritten by the 0x4F9D7 load. */
     void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
     if (hook != NULL) hook();                           /* 0x4F9D1 */
     DSW(DS_00104B00) = DSW(DS_00104AFA);                /* 0x4F9D7/0x4F9DD */
+}
+
+/* ---- the mode-0x1A hooks 0x25BBC/0x26998/0x270BC and their callees (§46-B) */
+
+#define DS_000A87C4 0x000A87C4u   /* no symbols.h name: 7 stage-offset bytes */
+#define DS_0010810D 0x0010810Du   /* no symbols.h name: the high byte of DS_0010810A */
+/* 0x104B1A: the slot index 0x26998 sets and the mode-0x22/0x23 tail latches
+ * (0x25552 `mov al,[0x104b1a]`); symbols.h has no name for it. */
+#define DS_00104B1A 0x00104B1Au
+
+/* 0x4F200 — record §46-B. EAX = v: DS_00107A55 = (u8)v (0x4F20A), and
+ * DS_00107A54 = DH after `and eax,0xff; mov edx,eax; xor dh,ah`, which is 0
+ * (0x4F20F); then 0x4F1D0 and 0x2BAF4 with EAX = 1. EDX is pushed and popped.
+ * Only caller: 0x430F9 (0x430E8, EAX = 0). */
+void flow_screen_reset(u32 v)
+{
+    DSB(DS_00107A55) = (u8)v;                           /* 0x4F20A */
+    DSB(DS_00107A54) = 0u;                              /* 0x4F20F */
+    frontend_origin_zero();                             /* 0x4F215 0x4F1D0 */
+    actors_reset();                                     /* 0x4F21F 0x2BAF4 (eax = 1) */
+}
+
+/* 0x46504 — record §46-B. DS_001082C0 = DS_001082C8 and DS_001082C4 =
+ * DS_001082CC (two dword copies through EAX). Callers: 0x25C0E (0x25BBC) and
+ * 0x26A31 (0x26998). */
+static void flow_1082c8_latch(void)
+{
+    DSD(DS_001082C0) = DSD(DS_001082C8);                /* 0x46504/0x46509 */
+    DSD(DS_001082C4) = DSD(DS_001082CC);                /* 0x4650E/0x46513 */
+}
+
+/* 0x25848 — record §46-B. Picks the stage word DS_00104AFC on the byte
+ * DS_00104B17 (0x2584E..0x25865: 0 -> 0x2586B, 2 -> return, 1 and above 2 ->
+ * 0x258D2).
+ * - 0: with DS_00104B1F == 3 the stage is rng(7) (0x2587C). Otherwise it is
+ *   0xA87C4[c] + rng(6) + 1, where c is the signed byte at 0x108169 +
+ *   DS_00104B1F (0x2588C `mov eax,[eax+0x108166]; sar eax,0x18`), stored as a
+ *   word and reduced once by 7 when the word is >= 7 (0x258B0..0x258C6).
+ * - 1 or above 2: a 4-byte frame holds [esp] = DS_0010782A and [esp+1] =
+ *   DS_001078BE | 0x40. With n = the zero bytes of DS_00108106[0..6], n != 0
+ *   picks the rng(n)-th zero entry (0x258FD..0x25925). Otherwise, or when that
+ *   scan runs out, the first entry whose byte & 0x7F is neither frame byte
+ *   (0x25927..0x2595B). Failing that, DS_00104AD4 == 2 steps the word by one,
+ *   wrapping to 0 at 7 (0x25966..0x25981); otherwise the first entry whose byte
+ *   & 0x7F equals [esp + (DS_00104AD4 ^ 1)] (0x2598F..0x259C1).
+ * EAX is not a result. Callers: 0x430FE (0x430E8), 0x4177D, 0x418A8,
+ * 0x42390. */
+void flow_stage_pick(void)
+{
+    u8 m = DSB(DS_00104B17);                            /* 0x2584E */
+    if (m == 0u) {                                      /* 0x25867 */
+        u32 b1f = DSB(DS_00104B1F);                     /* 0x2586D */
+        if (b1f == 3u) {                                /* 0x25872 */
+            DSW(DS_00104AFC) = (u16)rng_next(7u);       /* 0x2587C/0x25881 */
+            return;
+        }
+        s32 c = (s8)DSB(DS_00108169 + b1f);             /* 0x2588C/0x25892 */
+        u32 dl = DSB(DS_000A87C4 + (u32)c);             /* 0x25897 */
+        DSW(DS_00104AFC) = (u16)(rng_next(6u) + dl + 1u);   /* 0x258A2..0x258AA */
+        u32 w = DSW(DS_00104AFC);                       /* 0x258B2 */
+        if (w >= 7u) DSW(DS_00104AFC) = (u16)(w - 7u);  /* 0x258B8..0x258C6 */
+        return;
+    }
+    if (m == 2u) return;                                /* 0x2585D/0x2585F */
+    u8 fr[2];
+    fr[0] = DSB(DS_0010782A);                           /* 0x258D2/0x258D7 */
+    fr[1] = (u8)(DSB(DS_001078BE) | 0x40u);             /* 0x258DA..0x258E3 */
+    u32 n = 0;
+    for (u32 i = 0; i < 7u; i++)                        /* 0x258E9..0x258F7 */
+        if (DSB(DS_00108106 + i) == 0u) n++;
+    if (n != 0u) {                                      /* 0x258F9 */
+        u32 r = rng_next(n);                            /* 0x258FD */
+        for (u32 i = 0; i < 7u; i++) {                  /* 0x25904..0x25925 */
+            if (DSB(DS_00108106 + i) != 0u) continue;
+            if (--r == 0xFFFFFFFFu) {                   /* 0x2590D/0x2590E */
+                DSW(DS_00104AFC) = (u16)i;              /* 0x25913 */
+                return;
+            }
+        }
+    }
+    for (u32 i = 0; i < 7u; i++) {                      /* 0x25927..0x2595B */
+        u32 a = DSB(DS_00108106 + i) & 0x7Fu;
+        if (a != fr[0] && a != fr[1]) {                 /* 0x2593B/0x25945 */
+            DSW(DS_00104AFC) = (u16)i;                  /* 0x25949 */
+            return;
+        }
+    }
+    if (DSD(DS_00104AD4) == 2u) {                       /* 0x2595D */
+        u16 b = (u16)(DSW(DS_00104AFC) + 1u);           /* 0x25966..0x2596F */
+        DSW(DS_00104AFC) = b;                           /* 0x25973 */
+        if (b >= 7u) DSW(DS_00104AFC) = 0u;             /* 0x2597A/0x25981 */
+        return;
+    }
+    u32 k = DSD(DS_00104AD4) ^ 1u;                      /* 0x2598F/0x25997 */
+    /* PORT: the raw reads [esp + k] of its 4-byte frame. DS_00104AD4's
+     * writers store only -1, 0, 1 or 2 (-1 at 0x25A0E and 0x27C3D), and 2
+     * took the step above, so k is 1, 0 or -2. For -2 the raw reads [esp-2],
+     * a leftover stack byte below the frame, and stores only when that byte
+     * equals one of the two frame bytes. The port does not model the stack,
+     * so it returns, leaving DS_00104AFC unchanged as the raw's no-match exit
+     * (0x259C3) does. */
+    if (k > 1u) return;
+    for (u32 i = 0; i < 7u; i++) {                      /* 0x2599A..0x259C1 */
+        if ((u32)(DSB(DS_00108106 + i) & 0x7Fu) == fr[k]) {   /* 0x259AB */
+            DSW(DS_00104AFC) = (u16)i;                  /* 0x259AF */
+            return;
+        }
+    }
+}
+
+/* 0x25BBC — record §46-B. A DS_00104AE4 hook, stored at 0x25A46/0x25A73
+ * (before 0x4F980 arms mode 0x1A with 0x30/5) and at 0x285CB/0x285F3 (in
+ * 0x28468). The byte DS_001078FA = 0 and DS_00104B13 = 0 (AH), DS_00104B1E
+ * += 1, then 0x20DF4 on the stage word with EDX = 1, both fighters (0x33EB4
+ * with EAX = 0 and 1), 0x4F714 on the stage word, 0x46504, and the hook
+ * becomes 0x5D812 (the EDX 0x25C04 loaded, which 0x4F714's tail jump into
+ * 0x2C3FC and 0x46504 leave alone). */
+void game_hook_25bbc(void)
+{
+    u8 r = (u8)(DSB(DS_00104B1E) + 1u);                 /* 0x25BBF/0x25BCB */
+    DSB(DS_001078FA) = 0u;                              /* 0x25BC5 */
+    DSB(DS_00104B13) = 0u;                              /* 0x25BCD */
+    DSB(DS_00104B1E) = r;                               /* 0x25BD3 */
+    game_fight_reset(DSW(DS_00104AFC), 1u);             /* 0x25BE6 0x20DF4 */
+    fighter_spawn(0u);                                  /* 0x25BED 0x33EB4 */
+    fighter_spawn(1u);                                  /* 0x25BF7 0x33EB4 */
+    /* PORT: 0x25C09 0x4F714(stage) — `mov ax,[eax*2+0xc9888]; and
+     * eax,0xffff; jmp 0x2C3FC`, the stage's voice (0x20, 0x21, 0x1B, 0x1C,
+     * 0x1E, 0x1D, 0x1F, 0x1F) — voice, not wired (record §45-A). */
+    flow_1082c8_latch();                                /* 0x25C0E 0x46504 */
+    DSD(DS_00104AE4) = FN_0005D812;                     /* 0x25C13 */
+}
+
+/* 0x26998 — record §46-B. A DS_00104AE4 hook, stored at 0x2698B (0x26978,
+ * before 0x4F980 at 0x26991). The byte DS_001078FA = 0, DS_00104B1E += 1,
+ * 0x20DF4 on the stage word with EDX = 1; then the side byte DS_00104B1A = 0
+ * when DS_001078A7 != 0, else 1, and 0x33EB4 spawns that side. The side's
+ * byte at 0x10780B + side * 0x94 grows by 2 (a byte add) and is capped at
+ * 0x78 (0x26A16 `cmp edx,0x78; jle` on the zero-extended byte). Then the 0x28
+ * voice, 0x46504, and the hook becomes 0x5D812. */
+void game_hook_26998(void)
+{
+    u8 r = (u8)(DSB(DS_00104B1E) + 1u);                 /* 0x2699B/0x269A3 */
+    DSB(DS_001078FA) = 0u;                              /* 0x269A5 */
+    DSB(DS_00104B1E) = r;                               /* 0x269AB */
+    game_fight_reset(DSW(DS_00104AFC), 1u);             /* 0x269BE 0x20DF4 */
+    u32 side;
+    if (DSB(DS_001078A7) != 0u) {                       /* 0x269C3 */
+        DSB(DS_00104B1A) = 0u;                          /* 0x269D0 */
+        side = 0u;                                      /* 0x269CE */
+    } else {
+        DSB(DS_00104B1A) = 1u;                          /* 0x269DF */
+        side = 1u;                                      /* 0x269DA */
+    }
+    fighter_spawn(side);                                /* 0x269E5 0x33EB4 */
+    u32 a = DS_0010780B + (u32)DSB(DS_00104B1A) * 0x94u;    /* 0x269EC..0x26A00 */
+    u8 v = (u8)(DSB(a) + 2u);                           /* 0x26A03/0x26A0B */
+    DSB(a) = v;                                         /* 0x26A10 */
+    if (v > 0x78u) DSB(a) = 0x78u;                      /* 0x26A16/0x26A1B */
+    /* PORT: 0x26A2C 0x2C3FC(0x28) voice, not wired (record §45-A). EDX
+     * (0x5D812, 0x26A27) survives it and 0x46504. */
+    flow_1082c8_latch();                                /* 0x26A31 0x46504 */
+    DSD(DS_00104AE4) = FN_0005D812;                     /* 0x26A36 */
+}
+
+/* 0x270BC — record §46-B. A DS_00104AE4 hook, stored at 0x2715C (0x27134,
+ * before 0x4F980 at 0x27162). The byte DS_001078FA = 0, DS_00104B1E += 1,
+ * 0x20DF4 on the stage word with EDX = 1, then 0x33EB4 on the signed byte
+ * DS_0010810D (0x270E5 `mov eax,[0x10810a]; sar eax,0x18`), the 0x25 voice,
+ * DS_00104B0A = 0 (DH after `xor dh,dh`, which 0x2C3FC preserves), and
+ * DS_00104B0B = the byte at 0x10780B + that side * 0x94. The hook becomes
+ * 0x5D812. */
+void game_hook_270bc(void)
+{
+    u8 r = (u8)(DSB(DS_00104B1E) + 1u);                 /* 0x270BD/0x270C5 */
+    DSB(DS_001078FA) = 0u;                              /* 0x270C7 */
+    DSB(DS_00104B1E) = r;                               /* 0x270CD */
+    game_fight_reset(DSW(DS_00104AFC), 1u);             /* 0x270E0 0x20DF4 */
+    fighter_spawn((u32)(s32)(s8)DSB(DS_0010810D));      /* 0x270E5..0x270ED 0x33EB4 */
+    /* PORT: 0x270F9 0x2C3FC(0x25) voice, not wired (record §45-A). */
+    DSB(DS_00104B0A) = 0u;                              /* 0x270FE */
+    u32 side = (u32)(s32)(s8)DSB(DS_0010810D);          /* 0x27104/0x2710A */
+    DSB(DS_00104B0B) = DSB(DS_0010780B + side * 0x94u); /* 0x2711B/0x27127 */
+    DSD(DS_00104AE4) = FN_0005D812;                     /* 0x2712C */
 }
 
 /* 0x11F6C: the six-entry selector. Phase 0 draws the first entry then falls
@@ -944,6 +1127,74 @@ static void game_state_4(void)
     }
 }
 
+/* ---- 0x20DF4 the fight reset (record §46-B) ------------------------------ */
+
+/* 0x2C390 — record §46-B. Self-links the two sentinels 0x105C0C (0x2C3A2/
+ * 0x2C3A8) and 0x105C14 (0x2C3AE/0x2C3B4), then tail-appends the sixteen
+ * 0x14-byte nodes 0x105C1C..0x105D48 to the 0x105C14 list (0x2C3C2 `mov
+ * eax,0x105c14` / 0x2C3C7 `mov edx,ebx` / 0x2C3C9 `add ebx,0x14` / 0x2C3CC
+ * `call 0x249c0`, while EBX < 0x105D5C). Callers: 0x20E2E (in 0x20DF4) and
+ * 0x20ED5. EBX/ECX/EDX are pushed and popped. */
+static void flow_list_105c0c_init(void)
+{
+    DSD(DS_00105C10) = DS_00105C0C;                     /* 0x2C3A2 */
+    DSD(DS_00105C0C) = DS_00105C0C;                     /* 0x2C3A8 */
+    DSD(DS_00105C18) = DS_00105C14;                     /* 0x2C3AE */
+    DSD(DS_00105C14) = DS_00105C14;                     /* 0x2C3B4 */
+    for (u32 node = DS_00105C1C; node < DS_00105D5C; node += 0x14u)  /* 0x2C3BA/0x2C3D1 */
+        effects_list_insert_before(DS_00105C14, node);  /* 0x2C3CC 0x249C0 */
+}
+
+/* 0x2C074 — record §46-B. DS_00105BF4 = DS_00105BF0 = 0 (EDX pushed and
+ * popped). Callers: 0x20E47 (in 0x20DF4) and 0x20EEE. */
+static void flow_105bf0_clear(void)
+{
+    DSD(DS_00105BF4) = 0u;                              /* 0x2C077 */
+    DSD(DS_00105BF0) = 0u;                              /* 0x2C07D */
+}
+
+/* 0x20DF4 — record §46-B. The fight reset. EAX = the stage (DS_00104AFC's
+ * zero-extended word at every caller), clamped to 7 by a signed `cmp eax,7;
+ * jl` (0x20E01/0x20E06) into EBX; EDX = `full`, read at 0x20E6F. EDX survives
+ * every pre-branch callee (0x2C390/0x12750/0x49300/0x28E98/0x34978/0x2C074
+ * push and pop it; 0x29B70 is a bare `ret`, 0x12C70 does not name it), so the
+ * test reads the caller's EDX. EBX/ECX/ESI are pushed and popped; EAX is not
+ * a result.
+ * - 0x12750 builds the type-0x01 node lists without which 0x1282C's spawn is
+ *   refused (demo record §15); 0x49300 self-links the fight-effect sentinel
+ *   DS_0010884C that the 0x49C78 walk reads; 0x28E98 builds the type-0x0A/0x19
+ *   lists (record §41-D); 0x34978 restarts the live-fighter count DS_001078FA
+ *   (record §38).
+ * - The full branch: 0x2BAF4 with EAX = 1 (actors_reset), 0x38730 and 0x412A0
+ *   on the clamped stage (0x20E7D/0x20E84 `mov eax,ebx`).
+ * Callers: 0x11AC4 (state 6), 0x25A95, 0x25BE6 (0x25BBC), 0x269BE (0x26998),
+ * 0x270E0 (0x270BC) and 0x295E4. */
+void game_fight_reset(u32 stage, u32 full)
+{
+    DSD(DS_000F0A48) = 0u;                              /* 0x20DFB */
+    u32 s = (s32)stage < 7 ? stage : 7u;                /* 0x20DF7/0x20E01/0x20E06 */
+    /* 0x20E0B 0x29B70 is a bare `ret`. */
+    DSD(DS_00100B4C) = 0u;                              /* 0x20E16 */
+    DSD(DS_00104AE8) = 0u;                              /* 0x20E1C */
+    DSB(DS_001088EC) = 0u;                              /* 0x20E22 */
+    DSB(DS_00104B15) = 0u;                              /* 0x20E28 */
+    flow_list_105c0c_init();                            /* 0x20E2E 0x2C390 */
+    camera_dust_list_init();                            /* 0x20E33 0x12750 */
+    fight_list_init();                                  /* 0x20E38 0x49300 */
+    actor_type_0a19_list_init();                        /* 0x20E3D 0x28E98 */
+    fighter_slots_reset();                              /* 0x20E42 0x34978 */
+    flow_105bf0_clear();                                /* 0x20E47 0x2C074 */
+    DSD(DS_000F0AEC) = 0u;                              /* 0x20E4C */
+    DSD(DS_000F0AF0) = 0u;                              /* 0x20E52 */
+    DSW(DS_000F0AFA) = 0u;                              /* 0x20E5C */
+    DSW(DS_000F0AF8) = 0u;                              /* 0x20E63 */
+    camera_step_seed();                                 /* 0x20E6A 0x12C70 */
+    if (full == 0u) return;                             /* 0x20E6F/0x20E71 */
+    actors_reset();                                     /* 0x20E78 0x2BAF4 (eax = 1) */
+    render_scroll_setup(s);                             /* 0x20E7F 0x38730 */
+    fight_scene_props(s);                               /* 0x20E86 0x412A0 */
+}
+
 /* 0x11A8C. State 6: the demo-fight setup. It picks two random characters from
  * the shared RNG stream and arms the 900-frame state-7 timer.
  *
@@ -958,62 +1209,9 @@ static void game_state_6(void)
 
     u32 draw1 = rng_next(7u);                           /* 0x11AAD (draw 1) */
     DSW(DS_00104AFC) = (u16)draw1;                      /* 0x11AB4 */
-    /* PORT: 0x11AC4 0x20DF4(eax=draw1, edx=1) — a 155-byte reset. Its eight
-     * pre-branch calls are 0x29B70, 0x2C390, 0x12750, 0x49300, 0x28E98, 0x34978,
-     * 0x2C074 and 0x12C70, and 0x20E5C/0x20E63 also write the words
-     * DS_000F0AFA/DS_000F0AF8. Of these 0x12750, 0x49300, 0x28E98 and 0x34978
-     * are ported here.
-     * 0x12750 (camera_dust_list_init) builds the type-0x01 node lists without
-     * which 0x1282C's spawn is refused (demo record §15). 0x49300
-     * (fight_list_init) is the liveness precondition — it self-links the
-     * fight-effect list sentinel DS_0010884C that the 0x49C78 walk reads, so a
-     * zero head would walk address 0 forever. 0x28E98
-     * (actor_type_0a19_list_init) builds the type-0x0A/0x19 node lists
-     * (record §41-D). 0x12C70 (camera_step_seed) is called at its raw position
-     * below (0x20E6A). The rest stays a named gap (record §6.10, §38.2,
-     * §41-D):
-     * - the calls 0x29B70, 0x2C390 and 0x2C074;
-     * - the five zero stores dword [0xF0A48] (0x20DFB), dword [0x100B4C]
-     *   (0x20E16), dword [0x104AE8] (0x20E1C), byte [0x1088EC] (0x20E22) and
-     *   byte [0x104B15] (0x20E28). These are not BSS-zero in general;
-     *   [0x104AE8] in particular is not at the second demo's state 6.
-     *   actors_reset (0x2BAF4 at 0x2BB13/0x2BB1F) re-zeroes
-     *   [0x104AE8] and [0x100B4C] later on this path, and 0x11B14 sets
-     *   [0x104B15] to 1; whether anything reads them in between is not
-     *   established;
-     * - the two word stores DS_000F0AFA/DS_000F0AF8 (0x20E5C/0x20E63). Both
-     *   are BSS-zero, so the port is net-faithful for these two only. */
-    camera_dust_list_init();                            /* 0x11AC4 0x12750 (0x20E33) */
-    fight_list_init();                                  /* 0x11AC4 0x49300 */
-    actor_type_0a19_list_init();                        /* 0x11AC4 0x28E98 (0x20E3D) */
-    /* 0x20E42 0x34978: the live-fighter count DS_001078FA must restart at 0,
-     * or the second demo's two spawns leave it at 4 and 0x1958C/0x34D8C,
-     * which gate on 2, never run (record §38). */
-    fighter_slots_reset();                              /* 0x11AC4 0x34978 */
-    /* 0x20E4C/0x20E52: the reset zeroes the two camera words the projection
-     * reads — 0x38A38's stride is DS_000F0AF0 << 8 and 0x2A620's shear base is
-     * DS_000F0AEC — before the 0x38730 call below. */
-    DSD(DS_000F0AEC) = 0;
-    DSD(DS_000F0AF0) = 0;
-    /* 0x20E6A 0x12C70: the camera-x step seed (DS_000F0AFC = 0x400), at the
-     * raw's position before the EDX branch below. camera_x_commit reads it as
-     * the step. */
-    camera_step_seed();                                 /* 0x20E6A 0x12C70 */
-    /* 0x20E78 0x2BAF4(EAX=1): the branch's first call. It clears the actor and
-     * pset pools, the render list and the process masks, zeroes the two
-     * offscreen buffers and blacks the DAC (0x52106/0x336C0), which releases the
-     * attract's presentation actors and their held text before the fight's own
-     * actors spawn. The port's actors_reset() ports the param_1 != 0 arm.
-     * The branch's other two calls follow below: 0x38730 and 0x412A0. */
-    actors_reset();                                     /* 0x11AC4 0x2BAF4 */
-    /* 0x20E7F 0x38730(eax=draw1): the attract projection setup. Its argument is
-     * 0x20DF4's clamped EAX (0x20DF7 MOV EBX,EAX; 0x20E01/0x20E06 clamp to 7;
-     * 0x20E7D MOV EAX,EBX), which 0x11AC1 loaded with the state-6 draw. */
-    render_scroll_setup(draw1);                         /* 0x11AC4 0x38730 */
-    /* 0x20E86 0x412A0(eax=draw1): the branch's third call — the scene's prop
-     * actors (0xC82CC[draw1]) and the crowd (0x2C320), which 0x412A0's tail
-     * runs. */
-    fight_scene_props(draw1);                           /* 0x11AC4 0x412A0 */
+    /* 0x11ABA..0x11AC1: EAX = the zero-extended word of the draw, EDX = 1, so
+     * 0x20DF4 takes its full-reset branch (record §46-B). */
+    game_fight_reset(draw1, 1u);                        /* 0x11AC4 0x20DF4 */
     fight_char_select(0u, draw1);                       /* 0x11ACD 0x41350 */
     fighter_spawn(0u);                                  /* 0x11AD9 0x33EB4 */
     /* 0x11AE3: EDX after 0x33EB4 is the caller's 7 — 0x33EB4 push/pops EDX and
@@ -1757,10 +1955,6 @@ void game_loop(void)
         }
     } while (DSB(DS_000A81A8) == 0);
 }
-
-/* 0x104B1A: the slot index the mode-0x22/0x23 tail latches (0x25552 `mov
- * al,[0x104b1a]`); symbols.h has no name for it. */
-#define DS_00104B1A 0x00104B1Au
 
 void game_frame(void)
 {

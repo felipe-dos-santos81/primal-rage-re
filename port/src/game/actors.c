@@ -389,6 +389,17 @@ int actors_init(void)
      * stored by 0x28DA4); no dword in the data object. */
     fn_register(0x28D68u, frontend_char_screen_hook);
     fn_register(0x28D80u, frontend_char_screen_hook_voice);
+    /* PORT: record §46-B. The hooks 0x4F980's callers install (code
+     * immediates only, no dword in the data object): 0x430E8 (0x1F43E,
+     * 0x43ADF, 0x43C0F, 0x44816), 0x4367C (0x25807), 0x25BBC (0x25A35,
+     * 0x25A65, 0x285C0, 0x285ED), 0x26998 (0x2697C), 0x270BC (0x2713B), and
+     * 0x430C0 (0x4327C, stored by 0x430E8). */
+    fn_register(0x430E8u, fight_hook_430e8);
+    fn_register(0x4367Cu, fight_hook_4367c);
+    fn_register(0x25BBCu, game_hook_25bbc);
+    fn_register(0x26998u, game_hook_26998);
+    fn_register(0x270BCu, game_hook_270bc);
+    fn_register(0x430C0u, fight_hook_430c0);
     return 1;
 }
 
