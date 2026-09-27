@@ -831,6 +831,17 @@ static void check_hiscore_screen(void)
         DSW(0x105EACu + 4u + 12u) = 0x0018u;
         frontend_match_start();
         CHECK_EQ_INT((int)hs_figure_sprite(), (int)r0);
+        /* The first match wins: with string 1 aimed at string 2's 'T', 'T'
+         * selects 1 (the image's strings are distinct but for the X's). */
+        {
+            u32 s1 = DSD(DS_000A7DA0 + 4u), r1 = hs_ref_sprite(1u);
+            CHECK(r1 != r2, "descriptors 1 and 2 differ");
+            DSD(DS_000A7DA0 + 4u) = DSD(DS_000A7DA0 + 8u);
+            DSW(0x105EACu + 4u + 12u) = 0x0014u;
+            frontend_match_start();
+            CHECK_EQ_INT((int)hs_figure_sprite(), (int)r1);
+            DSD(DS_000A7DA0 + 4u) = s1;
+        }
     }
 
     actors_reset();
@@ -2310,6 +2321,7 @@ static void check_hiscore(void)
      * a space packs 0 and advances, a NUL packs 0 and does not. */
     DSD(HS_SCRATCH) = 0x01020304u;
     memcpy(mem + HS_SCRATCH + 4u, "A BC\0D", 6u);
+    DSB(HS_T0 + 107u) = 0x5Cu;                           /* record 8's last byte */
     DSB(DS_00105DD8) = 0u;
     CHECK_EQ_INT((int)hiscore_insert(1u, HS_SCRATCH, 0u), 1);
     CHECK(hs_match(HS_T0, hs_orig, 12u), "record 0 kept");
@@ -2319,7 +2331,8 @@ static void check_hiscore(void)
     CHECK_EQ_INT((int)DSW(HS_T0 + 18u), 0x0003);         /* C, NUL, NUL */
     CHECK_EQ_INT((int)DSW(HS_T0 + 20u), 0);
     CHECK_EQ_INT((int)DSB(HS_T0 + 24u + 3u), 0x81);      /* old record 1, moved */
-    CHECK(hs_match(HS_T0 + 36u, hs_orig + 24u, 84u), "records 2..8 moved down");
+    CHECK(hs_match(HS_T0 + 36u, hs_orig + 24u, 83u), "records 2..8 moved down");
+    CHECK_EQ_INT((int)DSB(HS_T0 + 119u), 0x5C);          /* the move's last byte */
     CHECK_EQ_INT((int)DSB(DS_00105DD8), 0x40);
     CHECK_EQ_INT((int)hiscore_insert(10u, HS_SCRATCH, 0u), 0);
     CHECK_EQ_INT((int)hiscore_insert(0u, HS_SCRATCH, 3u), 0);
