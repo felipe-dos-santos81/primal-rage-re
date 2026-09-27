@@ -48,6 +48,9 @@ void actors_update(void);
  * zero handle returns at 0x2A1AC leaving +0x18 unchanged (the 0x2A1F5 store is
  * dead). 0x29BC8 (the fighter's character palette) passes word 0. */
 void actor_pset_palette(u32 rec, u32 word, u32 handle);
+/* 0x2A148. Store `flag` in rec+0x5F and set the pset's +2 word to rec+0x2E
+ * with the 0x800 sprite bit while that byte is non-zero. */
+void actor_pset_flag_5f(u32 rec, u8 flag);
 /* 0x2B150. Mark `rec` dead (rec+0x28 |= 8), release its pset palette and unlink
  * the pset from the render list. 0x121A0's phase 1 calls it on the logo and the
  * second object when DS_000F0A66 <= 0x10. */
