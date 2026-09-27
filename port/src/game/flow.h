@@ -216,4 +216,14 @@ u32  hiscore_audit_reset_due(void);
 void hiscore_init(void);
 void frontend_match_start(void);
 
+/* Record §47-C. 0x257A4: the coin/start divert (`players` is the raw's EAX,
+ * stored as DS_00104B1F): 0x2BAF4(0), the byte resets, 0x33C18 per side,
+ * 0x46594, the 7-byte clear of DS_00104B02, the hook 0x4367C and mode 0x1A
+ * with the return mode 0x10. Not yet called: its callers (0x11D04's coin arm
+ * and state 8, the game-start modes 0x28..0x2F) wait on the mode switch.
+ * 0x46594: the DS_001082C8/CC/D0 values from the byte DS_0010452C (or 7/4
+ * when DS_00108173 != 0), latched into DS_001082C0/C4. */
+void game_coin_divert(u32 players);
+void flow_1082c8_init(void);
+
 #endif /* PR_GAME_FLOW_H */

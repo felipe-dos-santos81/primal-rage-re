@@ -440,9 +440,13 @@ void actor_cursor_reset(void)
     mem_fill(DS_00107A1C, 0, 28u);
 }
 
-/* 0x2BAF4. The title entry (0x121E4) calls it with eax = 1, so this mirrors the
- * param_1 != 0 arm and skips the param_1 == 0 back-buffer copy. */
-void actors_reset(void)
+/* 0x2BAF4 — record §47-C. AL is saved at [esp] (0x2BAFD) and reloaded into DL
+ * at 0x2BBBD; 0x4F228, 0x1C350, 0x38B70 and 0x2F920 push and pop EDX, so the
+ * 0x2BBE4 `test dl,dl` sees it. Non-zero: 0x52106 and 0x336C0. Zero (only
+ * 0x257B4, 0x257A4's call, of the 35 rel32 callers passes EAX = 0): a
+ * 0xFA00-byte `rep movsd`/`rep movsb` copy from [0xE87A0] to [0xE87A4]
+ * (0x2BBF6..0x2BC14), and neither 0x52106 nor 0x336C0. */
+void actors_reset_al(u32 al)
 {
     /* PORT: the original assumes its loader ran; without the pool the free-list
      * rebuild would walk mem[0..0xEBA0]. Return when actors_init would fail. */
@@ -477,15 +481,26 @@ void actors_reset(void)
     render_list_init();                             /* 0x1C350 */
     actor_cursor_reset();                           /* 0x38B70 */
     mem_fill(DS_00105F38, 0, 0x14D4u);              /* 0x2F920 */
-    /* 0x2BAF4's param_1 != 0 arm: 0x52106 clears both offscreen buffers, blacks
-     * the DAC and clears the screen aperture, and zeroes the tick counters.
-     * The param_1 == 0 arm (copy DS_000E87A0 into DS_000E87A4) is unreachable
-     * from the title path and is not transcribed. */
-    gfx_screen_reset(0);                            /* 0x2BBE8/0x2BBEA 0x52106 */
-    palette_list_init();                            /* 0x336C0 */
-    DSB(DS_00105BED) = 1;
+    if ((al & 0xFFu) != 0u) {                       /* 0x2BBE4 test dl,dl */
+        /* The non-zero arm: 0x52106 clears both offscreen buffers, blacks the
+         * DAC and clears the screen aperture, and zeroes the tick counters. */
+        gfx_screen_reset(0);                        /* 0x2BBE8/0x2BBEA 0x52106 */
+        palette_list_init();                        /* 0x336C0 */
+    } else {
+        memcpy(mem + DSD(DS_000E87A4), mem + DSD(DS_000E87A0),
+               0xFA00u);                            /* 0x2BBF6..0x2BC14 */
+    }
+    DSB(DS_00105BED) = 1;                           /* 0x2BC1B */
     /* PORT: 0x2EA30() restores the lock state saved before the counter zeroing;
      * inert as above. */
+}
+
+/* 0x2BAF4 — record §47-C. PORT: the EAX = 1 entry; 34 of the 35 rel32
+ * callers load `mov eax,1` before the call (the title entry 0x121E4 among
+ * them), so the port keeps this name for them. */
+void actors_reset(void)
+{
+    actors_reset_al(1u);
 }
 
 /* 0x2AC80: pop the free-list head and link it into the active list. The

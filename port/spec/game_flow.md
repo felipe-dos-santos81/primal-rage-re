@@ -411,7 +411,9 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   Still, only `0x4F980` stores mode `0x1A`, and its eleven callers are
   unported; no ported path stores mode `0x17` outside `0x4F318`'s own chain.
   The nearest route in is `0x257A4`, the coin divert `0x11D04` reaches at
-  `0x11D41` and in state 8, both stubbed. So the hook and handler chains run
+  `0x11D41` and in state 8, both stubbed; `0x257A4` itself is ported since
+  record §47-C, with its callee `0x46594` and `0x33C18` (`fight_char_reset`),
+  but nothing calls it yet. So the hook and handler chains run
   only in unit tests. **Correction (record §42-E):** this
   bullet used to call `0x41578`'s compare against `0x88874B0` dead because the
   value is above `MEM_SIZE`. It is not an address. The compare is on the list
@@ -498,8 +500,13 @@ selector.
   one through `0x2CA7C`. `game_state_step` calls it with codes 0 (`0x11D15`,
   `accepted |= 1`) and 1 (`0x11D28`, `accepted |= 2`). **The raw returns from
   `0x11D04` when either is accepted** — it calls `0x32970(0)` then
-  `0x257a4(accepted)` and skips the state dispatch for that frame; both divert
-  handlers are unported (4b carve-out) and the port returns there.
+  `0x257a4(accepted)` and skips the state dispatch for that frame. `0x32970`
+  is unported (4b carve-out) and the port returns there. `0x257A4` is ported
+  as `game_coin_divert` (record §47-C: `0x2BAF4` with EAX = 0, five byte
+  resets, `DS_00104B1F` = the argument, `0x33C18` per side, `0x46594`, the
+  seven bytes from `0x104B02` cleared, the hook `0x4367C` and mode `0x1A`
+  returning to `0x10`), but it is not called until `game_frame` dispatches
+  mode `0x1A` (record §47-B).
 * **Select state** — `0x11F6C` (`game_state_select`, case 2), the six-entry
   carousel, with `0x33904` (`frontend_list_next`) and `0x1C6D4`
   (`frontend_resource_known`). Phase 0 writes config row 1
