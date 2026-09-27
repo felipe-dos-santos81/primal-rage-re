@@ -189,6 +189,17 @@ void flow_stage_pick(void);
 void game_hook_25bbc(void);
 void game_hook_26998(void);
 void game_hook_270bc(void);
+/* Record §46-F. The seven remaining DS_00104AE4 values, registered in
+ * actors_init: 0x259CC, 0x26978 and 0x27134 arm mode 0x1A with the hooks
+ * above; 0x24B54 and 0x10E80 (game_state_init, also 0x20C10's last call)
+ * reset to modes 0x27 and 3; 0x25AE8 (also mode 0x14's handler) sets mode 0x17
+ * with the hook 0x10E80 or 0x24B54. */
+void game_hook_259cc(void);
+void game_hook_26978(void);
+void game_hook_27134(void);
+void game_hook_24b54(void);
+void game_hook_25ae8(void);
+void game_state_init(void);
 
 /* 0x1E918, 0x1E988, 0x1E824 and 0x1EA08: the high-score defaults, the audit
  * reset test, the high-score init and the attract's high-score screen (record

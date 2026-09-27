@@ -209,5 +209,10 @@ void fight_4c60c(u32 entry, u32 index);
 void fight_hook_430e8(void);
 void fight_hook_430c0(void);
 void fight_hook_4367c(void);
+/* Record §46-F. 0x4142C, a DS_00104AE4 hook (stored by 0x28788 with mode
+ * 0x17): the screen of mode 0x12, with 0x413C8's eight spawns. 0x4246C: the
+ * seven stage bytes DS_00108106 and the count DS_00108111 = 0. */
+void fight_hook_4142c(void);
+void fight_stage_marks_clear(void);
 
 #endif /* PRAGE_GAME_FIGHT_H */

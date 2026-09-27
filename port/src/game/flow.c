@@ -477,8 +477,9 @@ void frontend_mode_1a_step(void)
      * five hooks 0x4F980's own callers install just before arming mode 0x1A
      * (0x430E8, 0x4367C, 0x25BBC, 0x26998, 0x270BC) and 0x430C0, which
      * 0x430E8 installs for this call's 0x1B twin, are registered (record
-     * §46-B). The image stores 7 other unregistered, non-trivial values
-     * there: 0x259CC, 0x10E80, 0x24B54, 0x27134, 0x4142C, 0x25AE8 and 0x26978.
+     * §46-B), and so are the 7 other non-trivial values the image stores
+     * there (record §46-F): 0x259CC, 0x10E80, 0x24B54, 0x27134, 0x4142C,
+     * 0x25AE8 and 0x26978, mode 0x17's hooks.
      * TODO(verify): once cases 0x1A/0x1B are dispatched, a miss on any value
      * but the two no-ops is a missing port, not a skip. The returned EAX is
      * dead: `xor ah,ah` and byte/word stores of AH/DX follow. */
@@ -495,8 +496,9 @@ void frontend_mode_1b_step(void)
 {
     if (frontend_wipe_out() == 0u) return;              /* 0x4F9C8/0x4F9CF */
     /* PORT: the registry call of 0x4F9A0, with the same misses: only
-     * 0x29D60/0x5D812 are no-ops, and the seven unregistered values listed
-     * there would be skipped. EAX is overwritten by the 0x4F9D7 load. */
+     * 0x29D60/0x5D812 are no-ops, and every other value the image stores is
+     * registered (records §46-B, §46-F). EAX is overwritten by the 0x4F9D7
+     * load. */
     void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
     if (hook != NULL) hook();                           /* 0x4F9D1 */
     DSW(DS_00104B00) = DSW(DS_00104AFA);                /* 0x4F9D7/0x4F9DD */
@@ -684,6 +686,122 @@ void game_hook_270bc(void)
     u32 side = (u32)(s32)(s8)DSB(DS_0010810D);          /* 0x27104/0x2710A */
     DSB(DS_00104B0B) = DSB(DS_0010780B + side * 0x94u); /* 0x2711B/0x27127 */
     DSD(DS_00104AE4) = FN_0005D812;                     /* 0x2712C */
+}
+
+/* ---- the remaining DS_00104AE4 values (record §46-F) --------------------- */
+
+#define FN_00025BBC 0x00025BBCu   /* no symbols.h name: game_hook_25bbc */
+#define FN_00026998 0x00026998u   /* no symbols.h name: game_hook_26998 */
+#define FN_000270BC 0x000270BCu   /* no symbols.h name: game_hook_270bc */
+#define FN_00024B54 0x00024B54u   /* no symbols.h name: game_hook_24b54 */
+
+/* 0x259CC — record §46-F. A DS_00104AE4 hook, stored at 0x253AE (mode 0x11's
+ * case 0x2538F), 0x417A5 (0x41760), 0x418D5 (0x41878, no Ghidra function)
+ * and 0x423C4 (0x41C28), each with mode 0x17, whose 0x4F318 calls it when the countdown runs out. The stage's
+ * byte DS_00108106[DS_00104AFC] = 0 (DL), DS_00104B1E = 0; then, around
+ * 0x2D974(0x29), the bytes DS_00104AF3/DS_00104AF2 = 0 (DL), DS_00104B14 = 0
+ * (CL) and DS_00104AD4 = -1 (EBX, 0x259D2); DS_00104AC8 = 0 and DS_00104ADC =
+ * ((field & 0x300000) >> 20) * 2 + 1 (`sar eax,0x14; add eax,eax; inc eax`).
+ * The hook becomes 0x25BBC and DS_00104B25 = 1 on both arms; with DS_00104B1D
+ * == 3 (CH, read at 0x25A17) 0x4F980 arms mode 0x1A with 0x30 and then
+ * DS_00104B14 = 1 (DL) and DS_00104B21 = 0 (CL, kept by 0x4F980, which pushes
+ * only EDX); otherwise with 5. 0x2D974 pushes EBX/ECX/EDX/ESI. */
+void game_hook_259cc(void)
+{
+    u32 stage = DSW(DS_00104AFC);                       /* 0x259D7 */
+    DSB(DS_00108106 + stage) = 0u;                      /* 0x259E1 */
+    DSB(DS_00104B1E) = 0u;                              /* 0x259EC */
+    u32 v = config_field_get(0x29u) & 0x300000u;        /* 0x259F2 0x2D974, 0x259F7 */
+    DSB(DS_00104AF3) = 0u;                              /* 0x259FC */
+    DSB(DS_00104AF2) = 0u;                              /* 0x25A02 */
+    DSB(DS_00104B14) = 0u;                              /* 0x25A08 */
+    DSD(DS_00104AD4) = 0xFFFFFFFFu;                     /* 0x25A0E */
+    u8 mode = DSB(DS_00104B1D);                         /* 0x25A17 */
+    DSD(DS_00104AC8) = 0u;                              /* 0x25A22 */
+    DSD(DS_00104ADC) = (v >> 20) * 2u + 1u;             /* 0x25A14..0x25A21, 0x25A28 */
+    if (mode == 3u) {                                   /* 0x25A2D */
+        DSB(DS_00104B25) = 1u;                          /* 0x25A3B */
+        DSD(DS_00104AE4) = FN_00025BBC;                 /* 0x25A46 */
+        frontend_wipe_arm(0x30u);                       /* 0x25A4C 0x4F980 */
+        DSB(DS_00104B14) = 1u;                          /* 0x25A51 */
+        DSB(DS_00104B21) = 0u;                          /* 0x25A57 */
+        return;
+    }
+    DSB(DS_00104B25) = 1u;                              /* 0x25A69 */
+    DSD(DS_00104AE4) = FN_00025BBC;                     /* 0x25A73 */
+    frontend_wipe_arm(5u);                              /* 0x25A79 0x4F980 */
+}
+
+/* 0x26978 — record §46-F. A DS_00104AE4 hook, stored at 0x41854 (0x417C4)
+ * with mode 0x17. DS_00104B25 = 1, the hook becomes 0x26998 and 0x4F980 arms
+ * mode 0x1A with 0x23. */
+void game_hook_26978(void)
+{
+    DSB(DS_00104B25) = 1u;                              /* 0x26980 */
+    DSD(DS_00104AE4) = FN_00026998;                     /* 0x2698B */
+    frontend_wipe_arm(0x23u);                           /* 0x26991 0x4F980 */
+}
+
+/* 0x27134 — record §46-F. A DS_00104AE4 hook, stored at 0x27074 (0x26F58)
+ * and 0x27233 (0x271E0), each with mode 0x17. The bytes DS_00104B1E,
+ * DS_00104AF3 and DS_00104AF2 = 0 (AH), DS_00104B25 = 1 (BL), the hook
+ * becomes 0x270BC and 0x4F980 arms mode 0x1A with 5. */
+void game_hook_27134(void)
+{
+    DSB(DS_00104B1E) = 0u;                              /* 0x2713F */
+    DSB(DS_00104AF3) = 0u;                              /* 0x27145 */
+    DSB(DS_00104AF2) = 0u;                              /* 0x2714B */
+    DSB(DS_00104B25) = 1u;                              /* 0x27151 */
+    DSD(DS_00104AE4) = FN_000270BC;                     /* 0x2715C */
+    frontend_wipe_arm(5u);                              /* 0x27162 0x4F980 */
+}
+
+/* 0x24B54 — record §46-F. A DS_00104AE4 hook, stored only by 0x25AE8
+ * (0x25B97, the DS_00104B1D != 0 arm) with mode 0x17. 0x4F1E4, 0x2BAF4 with
+ * EAX = 1, the mode word DS_00104B00 = DX = 0x27 (loaded at 0x24B61 and kept
+ * by 0x2BAF4, which pushes EDX), the bytes DS_00104B1D and DS_00104B1F = 0
+ * (AH) and the dword DS_00104AB8 = 0. */
+void game_hook_24b54(void)
+{
+    frontend_input_reset();                             /* 0x24B57 0x4F1E4 */
+    actors_reset();                                     /* 0x24B66 0x2BAF4 (eax = 1) */
+    DSW(DS_00104B00) = 0x27u;                           /* 0x24B6D */
+    DSB(DS_00104B1D) = 0u;                              /* 0x24B74 */
+    DSB(DS_00104B1F) = 0u;                              /* 0x24B7C */
+    DSD(DS_00104AB8) = 0u;                              /* 0x24B82 */
+}
+
+/* 0x25AE8 — record §46-F. The mode-0x14 handler (0x24C5C case 0x14, table
+ * entry 0x253D9 calls it) and a DS_00104AE4 hook, stored at 0x296AF (0x29638)
+ * and 0x42ED9 (0x42CB4), each with mode 0x17. The 0x100 voice, the byte
+ * DS_00104B14 = 0 (AH), 0x4F1E4, 0x2BAF4 with EAX = 1, DS_00104ABC =
+ * (DS_00104B1F == 3) + 1 (`cmp eax,3; sete al; inc eax`), string 0x52 drawn
+ * by 0x2F510 at col -1, row 0xE with mode 0x4000 (ECX, set at 0x25B22 and
+ * kept by 0x1C500 and 0x474E4, which push it), 0x4246C and the 0x3D voice.
+ * Then mode 0x17 with the countdown words DS_001088EE = DS_00104AFE = 0xB4,
+ * and the hook becomes 0x10E80 when DS_00104B1D == 0, else 0x24B54. */
+void game_hook_25ae8(void)
+{
+    /* PORT: 0x25AF1 0x2C3FC(0x100) voice, not wired (record §45-A). */
+    DSB(DS_00104B14) = 0u;                              /* 0x25AF8 */
+    frontend_input_reset();                             /* 0x25B00 0x4F1E4 */
+    actors_reset();                                     /* 0x25B0A 0x2BAF4 (eax = 1) */
+    DSD(DS_00104ABC) = (DSB(DS_00104B1F) == 3u ? 1u : 0u) + 1u;   /* 0x25B11..0x25B27 */
+    text_cursor_hold_font2(-1, 0xE, game_string_get(0x52u),
+                           0x4000u);                    /* 0x25B36 0x1C500, 0x25B42 0x2F510 */
+    fight_stage_marks_clear();                        /* 0x25B47 0x4246C */
+    /* PORT: 0x25B51 0x2C3FC(0x3D) voice, not wired (record §45-A). */
+    if (DSB(DS_00104B1D) == 0u) {                       /* 0x25B56 */
+        DSD(DS_00104AE4) = FN_00010E80;                 /* 0x25B6E */
+        DSW(DS_001088EE) = 0xB4u;                       /* 0x25B74 */
+        DSW(DS_00104AFE) = 0xB4u;                       /* 0x25B7B */
+        DSW(DS_00104B00) = 0x17u;                       /* 0x25B82 */
+        return;
+    }
+    DSD(DS_00104AE4) = FN_00024B54;                     /* 0x25B97 */
+    DSW(DS_00104B00) = 0x17u;                           /* 0x25BA2 */
+    DSW(DS_00104AFE) = 0xB4u;                           /* 0x25BA9 */
+    DSW(DS_001088EE) = 0xB4u;                           /* 0x25BB0 */
 }
 
 /* 0x11F6C: the six-entry selector. Phase 0 draws the first entry then falls
@@ -1356,20 +1474,32 @@ void frontend_match_start(void)
         actor_pset_palette(rec, 0u, 0x105FD30u);                /* 0x1EC28 0x2A17C */
 }
 
-/* 0x10E80: initialise the game state. */
-static void game_state_init(void)
+/* 0x10E80 — record §46-F. Initialise the game state: 0x20C10's last call
+ * (0x20CE6), and a DS_00104AE4 hook, stored at 0x25B6E (0x25AE8, the
+ * DS_00104B1D == 0 arm) with mode 0x17; 0x24C5C tests the hook against it at
+ * 0x24E09. It enters state 0 (the 0x11000 attract sub-machine), which plays
+ * the two boot logos in phase 0 (through movie_play) and hands off to title
+ * state 1 when DS_000F0A5C wraps to 0. The row-1 credit value comes from
+ * attract phase 2's 0x2C06C(1), not a stand-in. In order: 0x32970(0),
+ * 0x4F1E4, 0x2BAF4 with EAX = 1, the mode word DS_00104B00 = DX = 3 (loaded
+ * at 0x10E8B and kept by 0x4F1E4 and 0x2BAF4, which push EDX), the word
+ * DS_000F0A64 = BX = 0, the byte DS_000F0A71 = 0 (AH), the dword DS_000F0A5C =
+ * 4, the byte DS_000F0A6F = 0 (DL), 0x2C304, the dword DS_00104AB8 = 0 (EBX)
+ * and the byte DS_00104B1F = 0 (DH). */
+void game_state_init(void)
 {
-    /* 0x10E80 enters state 0 (the 0x11000 attract sub-machine), which plays the
-     * two boot logos in phase 0 (through movie_play) and hands off to title
-     * state 1 when DS_000F0A5C wraps to 0. DS_00104B00 is the port's selected
-     * mode; the original derives the value in 0x10E80's register handoff. The
-     * row-1 credit value comes from attract phase 2's 0x2C06C(1), not a
-     * stand-in. */
-    DSD(DS_00104B00) = 3;
-    DSW(DS_000F0A64) = 0;
-    DSB(DS_000F0A71) = 0;
-    DSB(DS_000F0A5C) = 4;
-    DSB(DS_000F0A6F) = 0;
+    /* PORT: 0x10E84 0x32970(EAX = 0), the run clock, is out of scope (spec
+     * §7); the host clock owns wall time. */
+    frontend_input_reset();                             /* 0x10E90 0x4F1E4 */
+    actors_reset();                                     /* 0x10E9C 0x2BAF4 (eax = 1) */
+    DSW(DS_00104B00) = 3u;                              /* 0x10EA1 */
+    DSW(DS_000F0A64) = 0u;                              /* 0x10EA8 */
+    DSB(DS_000F0A71) = 0u;                              /* 0x10EB6 */
+    DSD(DS_000F0A5C) = 4u;                              /* 0x10EBC */
+    DSB(DS_000F0A6F) = 0u;                              /* 0x10EC6 */
+    config_credits_init();                              /* 0x10ECC 0x2C304 */
+    DSD(DS_00104AB8) = 0u;                              /* 0x10ED3 */
+    DSB(DS_00104B1F) = 0u;                              /* 0x10ED9 */
 }
 
 /* ---- audio: the init chain's AIL calls and the frame-loop music service --- */
@@ -1881,15 +2011,11 @@ void game_init(void)
     DSB(DS_00105B3A) = (u8)((v & 0x100u) >> 4);        /* 0x20C9F */
     DSD(DS_001088D0) = (v & 0xFu) * 5u + 0x1Eu;        /* 0x20CB0 */
     DSB(DS_0010452C) = (u8)((v & 0xF0u) >> 4);         /* 0x20CC2 */
-    /* PORT: 0x2C304, called from 0x10E80 at 0x10ECC. The port's
-     * game_state_init() transcribes only 0x10E80's state handoff, not this
-     * credit initializer, so the derivation lives here with the config reads it
-     * depends on: DS_00105C00 = ((0x2D974(0x29) & 0xF0000) >> 16) + 1. */
-    DSD(DS_00105C00) = ((config_field_get(0x29u) & 0xF0000u) >> 16) + 1u;
     /* PORT: 0x2BF08's captured inputs (docs/superpowers/plans/
      * 2026-09-18-bf08-overlay-diagnosis.md §2.3). DS_00105C00 is the live credit
      * counter the overlay renders as `<CREDITS string>:<n>`; the un-pinned title
-     * capture shows 5, now derived by 0x2C304's config read above. Its
+     * capture shows 5, derived by 0x2C304's config read (config_credits_init,
+     * which game_state_init calls at 0x10ECC, record §46-F). Its
      * decrementers (0x2CA48/0x2CA7C via the title input handler 0x11F28) are
      * input-driven and wired through game_state_step's coin poll. The
      * renderer scales a text row by 20/3 px (0x200 >> 6, projected by

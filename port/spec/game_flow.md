@@ -395,7 +395,11 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   `fn_resolve`. A miss is skipped. That is a no-op only for `0x29D60`/`0x5D812`.
   The hooks the other `0x4F980` callers install (`0x430E8`, `0x4367C`,
   `0x25BBC`, `0x26998`, `0x270BC`) and `0x430C0`, which `0x430E8` installs,
-  are ported and registered (record §46-B); 7 other stored values are not.
+  are ported and registered (record §46-B). So are the 7 other stored
+  values (record §46-F): the mode-`0x17` hooks `0x259CC`, `0x26978` and
+  `0x27134` (which arm mode `0x1A` with `0x25BBC`/`0x26998`/`0x270BC`),
+  `0x24B54`, `0x4142C`, `0x25AE8` and `0x10E80` (`game_state_init`). Their
+  storers and mode `0x17`'s handler `0x4F318` are unported.
   `game_frame`
   still does not dispatch cases `0x1A`/`0x1B`: only `0x4F980` stores mode
   `0x1A`, and its eleven callers are unported (the nearest, `0x257A4`, is the
@@ -443,9 +447,10 @@ ran inside `actors_init`) invokes it before that block in the raw. The block the
 reads `v = 0x2D974(0x29)` and derives `DS_00104528 = v`,
 `DS_00105B3A = (v & 0x100) >> 4`, `DS_001088D0 = (v & 0xF)*5 + 0x1E`,
 `DS_0010452C = (v & 0xF0) >> 4` (raw `0x20C5D`–`0x20CC2`), plus `0x2C304`'s
-`DS_00105C00 = ((0x2D974(0x29) & 0xF0000) >> 16) + 1 = 5` (called from `0x10E80`
-at `0x10ECC`). The outer wrapper `0x20C10` is not transcribed as one function;
-its `0x2F9CC` and `0x10E80` calls fold into `game_init`/`game_state_init`.
+`DS_00105C00 = ((0x2D974(0x29) & 0xF0000) >> 16) + 1 = 5` (`config_credits_init`,
+called from `0x10E80` at `0x10ECC`). The outer wrapper `0x20C10` is not
+transcribed as one function; its `0x2F9CC` call folds into `game_init`, and
+`game_state_init` is `0x10E80` whole (record §46-F).
 
 **Declared gaps.** No storage I/O (the save/load path and the `0x80CE4` image)
 and the deferred module taps `0x1AE20`/`0x2EA78` (screen setup, storage write).

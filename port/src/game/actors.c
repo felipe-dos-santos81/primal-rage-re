@@ -410,6 +410,18 @@ int actors_init(void)
     fn_register(0x26998u, game_hook_26998);
     fn_register(0x270BCu, game_hook_270bc);
     fn_register(0x430C0u, fight_hook_430c0);
+    /* PORT: record §46-F. The seven remaining DS_00104AE4 values, all code
+     * immediates (no dword in the data object): 0x259CC (0x25395, 0x4179A,
+     * 0x418CA, 0x423AD), 0x10E80 (0x25B60; 0x24E0F is 0x24C5C's compare),
+     * 0x24B54 (0x25B8E), 0x27134 (0x27064, 0x2722A), 0x4142C (0x28BBC),
+     * 0x25AE8 (0x296A4, 0x42ED0) and 0x26978 (0x41849). */
+    fn_register(0x259CCu, game_hook_259cc);
+    fn_register(0x10E80u, game_state_init);
+    fn_register(0x24B54u, game_hook_24b54);
+    fn_register(0x27134u, game_hook_27134);
+    fn_register(0x4142Cu, fight_hook_4142c);
+    fn_register(0x25AE8u, game_hook_25ae8);
+    fn_register(0x26978u, game_hook_26978);
     return 1;
 }
 
