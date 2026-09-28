@@ -854,6 +854,29 @@ void fighter_3e6a8(u32 slot, u32 side);
 void fighter_3ea24(u32 slot, u32 rec, u32 side);
 void fighter_3ee00(u32 slot, u32 rec, u32 side);
 void fighter_3f9c8(u32 slot, u32 rec, u32 side);
+/* Record §50-A: the setups the pose callbacks above are stored by
+ * (0x3EC20 called by 0x3E9A4; 0x3EF44/0x3FB88/0x3ECF8 reaction-row callbacks,
+ * (slot, rec, side)), the +0x18 hooks 0x3E924/0x3ED78 (fn(side), EAX
+ * returned) and the +0x1C callbacks 0x3E9A4/0x3EDB8/0x3FDD8 (fn(side)),
+ * the +0x0C callback 0x40954, 0x3E8E4 (no reference), the confetti burst
+ * 0x406B4 and the winner-pose initializer 0x36F10 (EAX = the other slot's
+ * table entry, fight_health_sync's arm). */
+void fighter_3ec20(u32 slot, u32 rec);
+void fighter_3e9a4(u32 side);
+void fighter_3e8e4(u32 side);
+void fighter_3e800(u32 side);
+u32  fighter_3e924(u32 side);
+void fighter_3ecf8(u32 slot, u32 rec, u32 side);
+u32  fighter_3ed78(u32 side);
+void fighter_3edb8(u32 side);
+void fighter_3ef44(u32 slot, u32 rec, u32 side);
+void fighter_3fb88(u32 slot, u32 rec, u32 side);
+void fighter_3fdd8(u32 side);
+void fighter_40954(u32 slot, u32 rec, u32 side);
+void fighter_406b4(void);
+void fighter_36f10(u32 slot);
+int  fighter_40bbc(u32 slot, u32 rec);
+int  fighter_3ff08(u32 slot, u32 rec);
 /* And their callees no ported code shares: 0x3F184 (EAX = rec: 0x3F308 on
  * the record's side's slot, the 0xE7C98 landing and +0x57 = 3), 0x3F308 (EAX =
  * slot: the 0xBB308 spawn at the slot's record), 0x3C404 (EAX = side, EDX =

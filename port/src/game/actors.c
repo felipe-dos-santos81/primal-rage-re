@@ -492,11 +492,29 @@ int actors_init(void)
     fn_register(0x3D3E4u, (void (*)(void))fighter_3d3e4);
     /* PORT: record §49-U. The pose callbacks: +0x0C 0x3EA24/0x3EE00/0x3F9C8
      * (0x3531C case 7, (slot, rec, side)) and +0x10 0x3E6A8 (case 10, (slot,
-     * side)), stored by the unported setups 0x3EC20/0x3EF44/0x3FB88. */
+     * side)), stored by the setups 0x3EC20/0x3EF44/0x3FB88 (ported, record §50-A). */
     fn_register(0x3E6A8u, (void (*)(void))fighter_3e6a8);
     fn_register(0x3EA24u, (void (*)(void))fighter_3ea24);
     fn_register(0x3EE00u, (void (*)(void))fighter_3ee00);
     fn_register(0x3F9C8u, (void (*)(void))fighter_3f9c8);
+    /* PORT: record §50-A. The setups and hooks of those callbacks: reaction-row
+     * callbacks 0x3EF44 (*(u32*)0xA37D0/0xA37E4/0xA50BC), 0x3FB88 (0xA3848/
+     * 0xA385C) and 0x3ECF8 (0xA3898), (slot, rec, side); the +0x18 hooks
+     * 0x3E924/0x3ED78 (fn(side), EAX returned); the +0x1C callbacks 0x3E9A4/
+     * 0x3EDB8/0x3FDD8 (fn(side)); and the +0x0C callback 0x40954. */
+    fn_register(0x3EF44u, (void (*)(void))fighter_3ef44);
+    fn_register(0x3FB88u, (void (*)(void))fighter_3fb88);
+    fn_register(0x3ECF8u, (void (*)(void))fighter_3ecf8);
+    fn_register(0x3E924u, (void (*)(void))fighter_3e924);
+    fn_register(0x3ED78u, (void (*)(void))fighter_3ed78);
+    fn_register(0x3E9A4u, (void (*)(void))fighter_3e9a4);
+    fn_register(0x3EDB8u, (void (*)(void))fighter_3edb8);
+    fn_register(0x3FDD8u, (void (*)(void))fighter_3fdd8);
+    fn_register(0x40954u, (void (*)(void))fighter_40954);
+    /* PORT: record §50-A. 0x40BBC (the dword at 0xBDB14) and 0x3FF08 are the
+     * 0x1078E8-shaped setups (slot, rec), AL returned. */
+    fn_register(0x40BBCu, (void (*)(void))fighter_40bbc);
+    fn_register(0x3FF08u, (void (*)(void))fighter_3ff08);
     /* PORT: record §46-D. The update table's entries 1 (0x48F98, the type-0x2D
      * node walk; dword at 0xA8648) and 10 (0x28F08, the type-0x19 spawner;
      * dword at 0xA866C), fn() with the unread EAX index; and the 0xD000
