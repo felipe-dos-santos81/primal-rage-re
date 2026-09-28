@@ -22512,3 +22512,177 @@ attract and front-end paths never reach.
 * The `0x2C3FC` voices (§45-A).
 * The blink prompt's mode word (`0x1000`/`0x4000`, `0x1FB46..0x1FBBA`) is passed
   through but no test observes it (the glyph actors do not carry it).
+
+## 49-U. The pose/animation slot callbacks `0x3E6A8`/`0x3EA24`/`0x3EE00`/`0x3F9C8` (branch `gap40-posecb`)
+
+Letter `U` was free (records §49-A..§49-Q are in this file; parallel branches
+hold other letters). All four targets were unported (`tools/port_progress.py
+--unported` listed `3EA24 508`, `3F9C8 446`, `3E6A8 344`, `3EE00 321`, each with 0
+direct callers) and none was ported under a non-standard header (`grep` of
+`port/src` for each address found nothing).
+
+### 49-U.1 Sources and how they are reached
+
+The Ghidra bridge (`get_xrefs_to`) gave only DATA references, all in code that
+stores the address into a slot (Ghidra has no function at the storing code
+either, except `0x3EC20`). The jump tables and registrations were read from the
+fixed-up image (`read_memory`), and the data object was scanned for dwords
+equal to each target and its storing routine.
+
+| Target | Stored by | Slot field / shape | Dispatcher |
+|---|---|---|---|
+| `0x3EA24` | `0x3EC20` at `0x3EC4B` | slot `+0x0C`, (slot, rec, side) | `0x3531C` case 7 (`0x35431`) |
+| `0x3E6A8` | `0x3EC20` at `0x3ECBE`/`0x3ECC5` (`[0x1077C0 + side*0x94]`, the *other* slot's `+0x10`) | slot `+0x10`, (slot, side) in the port | `0x3531C` case 10 (`0x354E2`, `call [ecx+0x10]`, EDX = the slot's record) |
+| `0x3EE00` | `0x3EF44` at `0x3EF9B` (also stores `0x3ED78`/`0x3EDB8` as `+0x18`/`+0x1C`) | slot `+0x0C` | case 7 |
+| `0x3F9C8` | `0x3FB88` at `0x3FBC1` (also stores `0x3F7F4`/`0x3F85C` as `+0x18`/`+0x1C`) | slot `+0x0C` | case 7 |
+
+`0x3EF44` is the callback dword (`+0` of the 20-byte row, table `0xA3528`, row
+index `(char << 6) + reaction`) of character 0 reactions `0x22` (`0xA37D0`) and
+`0x23` (`0xA37E4`) and of character 5 reaction `0x21` (`0xA50BC`). `0x3FB88` is
+the dword of character 0 reactions `0x28` (`0xA3848`) and `0x29` (`0xA385C`).
+`0x3EC20` has one caller, `0x3E9DF`, inside an unlisted function that starts at
+`0x3E9A4` (bytes `52 83 EC 18 ...`, ends `0x3EA0C`) and also calls `0x3E800`
+(`0x3E9EC`, argument `0x29A`) and `0x39A10` on both records; nothing references
+`0x3E9A4`, `0x3E8E4` or `0x3E924` by a data dword or a call.
+
+Register shapes (verified against `0x3531C` and `0x3D424`'s note): `0x3EA24`
+overwrites EAX/EDX unread and reads EBX = side; `0x3EE00` and `0x3F9C8` take EAX
+= slot (ESI/ECX), EDX = rec, EBX = side; `0x3E6A8` takes EAX = slot, EDX = the
+slot's record `[slot]` (`0x35396`), EBX = side (the `0x3531C` loop variable, still
+live at `0x354E2`). The port's case-10 dispatch passes `(slot, side)`, so
+`fighter_3e6a8` reloads `rec = DSD(slot)` (`PORT:` note, as `fighter_3d424`).
+
+Jump tables (linear addresses, read): `0x3E698` (+0x58) = `0x3E6DA, 0x3E77E,
+0x3E7EB, 0x3E7F9`; `0x3EA10` (+0x57) = `0x3EA5C, 0x3EB31, 0x3EB51, 0x3EC1A,
+0x3EBD6`; `0x3EDF0` (+0x57) = `0x3EE3E, 0x3EEBD, 0x3EEDF, 0x3EF3A`; `0x3F9AC`
+(+0x57) = `0x3F9F4, 0x3FA15, 0x3FA8B, 0x3FAA2, 0x3FABD, 0x3FB80, 0x3FAEA`. The
+bound checks are `ja` (unsigned) in all four: `0x3E6A8` above 3 exits; `0x3EA24`
+above 4 exits (`0x3EC1A`); `0x3EE00` above 3 and `0x3F9C8` above 6 fall to a
+`CALL 0x62003` with EAX = 1 (the runtime's error exit, out of scope, `PORT:`).
+
+### 49-U.2 `0x3E6A8` (`fighter_3e6a8`)
+
+Context `0x33A10(side)` (swap: ctx[0] = 1-side = EDI, ctx[1] = side, ctx[2] =
+&slot[1-side], ctx[3] = &slot[side], ctx[4]/ctx[5] = their records). On the slot's
+`+0x58`:
+
+- 0: the landing word `sar(dword[0xBD882 + char*2], 16)` less `0xDC0` against the slot's
+  `+0x30`; `JG` (signed) runs, else the record's word `+0x44` must be zero
+  (`JNZ` exits). Run: `0x39834(side, byte[ctx[2]+0x5F])` (`0x3E702..0x3E722`:
+  EAX = 1-EDI, EDX = the byte at `0x10780F + 0x94*EDI`, i.e. slot `1-side`'s
+  `+0x5F`); `0x3F308(slot)`; record `+0x36` = `0x190`, `+0x44` = `0x1E`; slot
+  `+0x58` = 1, `+0x54` = 2; `0x2BC30(rec, dword[0xC76A8 + char*4], 0x40400000)`;
+  `0x2AE14(0xBB1DC, x = slot+0x2C, a3 = rec+0x30 >> 16, a4 = EBX, 0)`. EBX at the
+  spawn is `EDI xor EDI` = 0: `0x3E702` set EBX = EDI, and `0x39834`,
+  `0x3F308` and `0x2BC30` all push and pop EBX (checked at their entries).
+- 1: `dword[0xC766A + char*2] >> 16 + dword[0xBD882 + char*2] >> 16` against `+0x30`
+  (`JLE` exits, signed) and word `[ctx[5]+0x36]` (`JGE` exits): then `+0x54` = 0,
+  `+0x58` = 2, `0x3C16C(side)`, `0x188AC(side, [ctx[5]+0x18], 0)`,
+  `0x2BC30([slot], dword[0xC76D0 + char*4], 0x40400000)`.
+- 2: `byte[ctx[5]+0x28] &= 0xDF`; `byte[[slot]+0x43] = 0xF`. 3 and above: nothing.
+
+### 49-U.3 `0x3EA24` (`fighter_3ea24`)
+
+Context `0x33950(side)` (same). `word[0x1080A8 + side*2]` is incremented
+first (`0x3EA37`); `EAX` keeps `side*2` through the table dispatch, so every
+`[EAX + 0x1080A6]` (`0x3EA5C`, `0x3EB31`, `0x3EBFC`) reads that counter as the
+high half of the dword at `0x1080A6 + side*2`, and case 4's `0x3EBE5` reads
+`dword[0xBD882 + side*2]` (the raw indexes the landing table by *side*, not by
+character; kept as is, recorded in the comment). On ctx[2]'s `+0x57`:
+
+- 0: counter `> 0x16` (signed `JLE` exits): `+0x57` = 1; ctx[4] `+0x34` = `0x96`,
+  `+0x36` = `+0x44` = `0xA`; both records' first slot dwords are reloaded from
+  `0x1077B0 + 0x94*side` (= ctx[4], ctx[5]): ctx[4] byte `+0x4B` = 0, ctx[5] dword
+  `+0x24` = `0x40000000`; ctx[3] `+0x58` = 0; ctx[5] `+0x34` = `0xFF6A`, `+0x36` =
+  `0xFE0C`, `+0x44` = `0xA`; then `0x1A570(side)`: **non-zero** skips, zero negates
+  both `+0x34` words (`IMUL AX, word, -1`).
+- 1: counter `> 0x19`: `+0x57` = 2.
+- 2: ctx[4] `+0x44` = `0xF` while its `+0x36` is negative; then landing word (by
+  character) `<= +0x30` exits; else `+0x54` = 0, `0x188AC(side, [ctx[4]+0x18], 0)`,
+  `0x3C148(side)`, `0x3C16C(side)`, `0x2BC30(ctx[4], dword[0xC8B58 + char*4],
+  0x40400000)`, `+0x57` = 3.
+- 4: `DL` = 1 when ctx[4]'s `+0x36` is negative and the side-indexed word is above
+  ctx[2]'s `+0x30`, or the counter is above 7 (both `JLE`, signed); `0x36870(ctx[4])`
+  when `DL`. 3 (`0x3EC1A`) and above 4: nothing.
+
+### 49-U.4 `0x3EE00` (`fighter_3ee00`)
+
+Returns at `0x3EF3A` at once when `dword[0x1077A8 + (side ^ 1)*4]` is null
+(`0x3EE0C..0x3EE19`, before the context is built). Case 0: `|word[rec+0x34]|`
+(`0x3EE3E..0x3EE52`, negated when the word is negative) `>= 0x200` (signed `JGE`)
+runs, else ctx[2]'s `+0x86 >> 16` must be above `0x1E` (`JLE` exits); then rec `+0x42`
+= 0, `os = dword[0x1077A8 + byte[rec+0x51]*4]` (null returns *after* the `+0x42`
+store), and by `byte[os+0x7A]`: 0 the head `0xE7F04`, 5 `0xD4C3C`, else none, at
+`0x40400000` through `0x2BC30(rec, ...)`; `+0x57` = 1. Case 1: rec `+0x43` =
+`0x1E`; `+0x57` = 2 when `word[rec+0x34]` is zero; `0x2C3FC(0xBB)` (voice, deferred
+idiom, spec §7, `PORT:`). Case 2: `os` as above (null returns); `[slot]` restarted
+on `0xE7F10` (char 0) / `0xD4C48` (char 5) at `0x40000000`; `word[[slot]+0x34]` = 0,
+`byte[[slot]+0x42]` = 0, `+0x57` = 3. Case 3: nothing.
+
+### 49-U.5 `0x3F9C8` (`fighter_3f9c8`)
+
+Context `0x33950(side)` kept at ESP+0x18. Case 0: word `[rec+0x36]` negative (`JGE`
+exits) -> `0xFD44`, `[rec+0x44]` = `0x1C`, `+0x57` = 1. Case 1: ctx[2]'s landing
+word `> +0x30` (`JG`, signed) or `0x3F6F4(side, 0x28) < 1` (`JGE` continues) sets
+ctx[2]'s `+0x57` = 6; else a second `0x33950(side)` and `0x3F720(side, 0x28 -
+(ctx2[2]+0x86 >> 16))` with the `TEST/JGE/XOR EDX,EAX` clamp to 0 (`0x3FA72..0x3FA7C`).
+Case 2: `0x3C148(0)`, `0x3C148(1)`. Case 3: word `[rec+0x36]` negative -> `+0x57` = 4,
+`[rec+0x44]` = `0xF`. Case 4: the *EAX slot's* landing word `+ 0x3C0` `<= +0x30`
+(`JLE`) exits, else ctx[2]'s `+0x57` = 6. Case 5: nothing. Case 6: ctx[2] `+0x8A` =
+0; `d = dword[0x108080 + side*4]`, `0x2B150(d)` when non-null; EAX slot `+0x54` = 0;
+`0x3C148(side)`, `0x3C16C(side)`; `x = [ctx[2]+0x2C]` is loaded at `0x3FB34` before
+`0x188AC(side, [ctx[4]+0x18], 0)`; `0x2BC30(ctx[4], dword[0xC8B58 + char*4],
+0x40800000)`; `0x188DC(side, x)`; ctx[2] `+0x57` = 5. (`0x188AC` and `0x2BC30` both
+preserve ECX, so the value loaded before the calls is the one `0x188DC` sees; the port
+captures it at the same point.)
+
+### 49-U.6 Callees and things checked
+
+Every callee is already ported (`0x33A10`/`0x33950`, `0x39834`, `0x3F308`,
+`0x3C148`, `0x3C16C`, `0x188AC`, `0x188DC`, `0x2BC30`, `0x2AE14`, `0x1A570`,
+`0x36870`, `0x3F6F4`, `0x3F720`, `0x2B150`); `0x2C3FC(0xBB)` at `0x3EED3` is the
+deferred voice idiom; `0x62003(1)` at `0x3EF35` and `0x3FB7B` is the quit path.
+The two `xor edx,eax` clamps (`0x3F718`-style) and the `IMUL reg, mem, -1` negations
+were read as operations on equal registers / a 16-bit negate. No loop exists in
+any of the four functions.
+
+### 49-U.7 Verification
+
+`check_posecb` (registered after `check_sc_char5`) with sub-checks per function:
+the four `fn_resolve` registrations; `0x3E6A8` case 0 nine rows (both sides,
+chars 0/2, the `JG` equality edge, unsigned-vs-signed `+0x30`, the `+0x44` alternative,
+the `0x39834` side effect `DS_00107D28`, `DS_001088C2`, the two spawns and the
+`0xBB1DC` actor's x/a3), case 1 fourteen rows around the sum computed from the data
+words, cases 2/3/4/`0xFF`; `0x3EA24` cases 0 (both sides, both flip states, counter
+edges 0x15/0x16/0x7FFF/0xFFFF), 1, 2, 4 (including the side-vs-character index
+row) and 3/5/`0xFF`; `0x3EE00` null gates, case 0 nine rows and the three
+characters plus the absent slot, cases 1/2/3/error; `0x3F9C8` cases 0..6 and above 6
+with the ten-row `0x3F6F4`/`0x3F720` table (n = 1, 0, <0, 41, 32808), the flip
+false 100, the EAX-slot-vs-ctx[2] row for case 4 and case 6 with and without an
+actor at `0x108080`. Mutations proved live (each rebuilt, the suite failed, then
+reverted): `>` -> `>=` on `0x3E6A8` case 0 (25 failures); `<=` -> `<` on case 1 (11);
+the side-indexed landing word -> the character's on `0x3EA24` case 4 (3); counter
+`<= 0x16` -> `< 0x16` (21); `>= 0x200` -> `> 0x200` on `0x3EE00` (22); `x2c`
+captured after `0x188AC` (3); `+ 0x3C0` -> `+ 0x3C1` (2); `< 1` -> `< 0` on
+`0x3F6F4`'s gate (5); unsigned `+0x86 >> 16` (7); the negation condition inverted
+(9); `ctx[2]` -> `ctx[3]` for the `0x39834` byte (6) and for `+0x8A` (3);
+dropped `0x3C16C` (7); `0x1E` -> `0x1F` (4); the null-slot gate reading side instead
+of `side ^ 1` (3); `c > 7` -> `c > 8` (3); the error bound `> 6` -> `> 5` (22);
+wrong record for the `0x3E6A8` case-1 gate (43). `PR_ORACLE_REQUIRED=1 run_tests`: all
+checks passed, three consecutive runs, ~1.8 s each. `make verify` results are in the
+branch report.
+
+### 49-U.8 Remaining named gaps
+
+- `0x3EC20` (stance setup that stores `0x3EA24`/`0x3E6A8`, with `0x3C520`, `0x3C190`
+  callees already ported), `0x3EF44` (character 0 reactions `0x22`/`0x23`, character
+  5 reaction `0x21`; stores `0x3EE00`/`0x3ED78`/`0x3EDB8`; calls `0x3C4CC`, `0x1A570`,
+  `0x2C3FC(0x47)`) and `0x3FB88` (character 0 reactions `0x28`/`0x29`; stores
+  `0x3F9C8`/`0x3F7F4`/`0x3F85C`; calls `0x339AC`, `0x3C4CC`, `0x3F720`) are not in
+  the exported function list, so `port_progress.py` does not count them; their
+  callbacks are now ported and registered but are reachable only once the setups
+  are. The setups, `0x3E9A4` (the only caller of `0x3EC20`, with `0x3E800`/`0x3E8E4`/
+  `0x3E924` beside it, no reference found), and the `+0x18`/`+0x1C` callbacks
+  `0x3ED78`, `0x3EDB8`, `0x3F7F4` and `0x3F85C` (only DATA references from the
+  setups; also absent from the list) stay unported.
+- `0x2C3FC(0xBB)` at `0x3EED3` and the `0x62003` exits: the deferred idioms above.
