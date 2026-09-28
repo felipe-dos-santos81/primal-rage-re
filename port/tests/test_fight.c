@@ -30324,6 +30324,181 @@ static void check_mode_21(void)
     mz_restore();
 }
 
+/* ---- record §49-Q: the coin/start divert's cases 0x28..0x2F -------------- */
+
+/* Each of the eight case handlers is a straight-line block with no branch and
+ * no loop: config_field_get(0x29) decoded into DS_00104528/DS_00105B3A/
+ * DS_0010452C/DS_001088D0 (skipped only by game_mode_2b_step), an optional
+ * DS_00104AB8 store (a distinct constant for 0x28/0x29/0x2A/0x2B, none at all
+ * for 0x2C-0x2F, so those four must leave a pre-seeded sentinel untouched),
+ * an optional config_credit_spend(1) (0x2D-0x2F only, proven by the credit
+ * counter actually decrementing), then game_coin_divert(players) — proven by
+ * the post-call DS_00104B1F, which game_coin_divert unconditionally sets to
+ * (u8)players (already the case (e)/(f) oracle for 0x257A4 itself, above).
+ * The real per-case entry addresses (confirmed off the jump table at
+ * 0x24B8C, not disassembly position) are 0x24F09/0x24F66/0x24FC4/0x25187/
+ * 0x2501E/0x25071/0x250CE/0x2512B for 0x28/0x29/0x2A/0x2B/0x2C/0x2D/0x2E/
+ * 0x2F. DS_001014F4 (the actor record pool base) is pinned to 0 for the
+ * duration so game_coin_divert's actors_reset_al(0) call (0x257B4 0x2BAF4)
+ * takes its "pool not loaded" early return (actors.c's pool_base() == 0
+ * check) rather than touching this file's shared FIGHT_RECS/FIGHT_ACTORS
+ * fixtures. */
+static void check_modes_28_2f(void)
+{
+    u32 save_pool = DSD(DS_001014F4);
+    u32 save_fp = DSB(DS_00105D60);
+    u32 save_credits = DSD(DS_00105C00);
+    u32 save_field29 = config_field_get(0x29u);
+    DSD(DS_001014F4) = 0u;
+    DSB(DS_00105D60) = 0u;                              /* not free play */
+
+    /* v = 0x157: bit 8 set (-> DS_00105B3A = 0x10), nibble 5 (-> DS_0010452C
+     * = 5), low nibble 7 (-> DS_001088D0 = 7*5+0x1E = 0x41 = 65), each
+     * distinct from both the 0x77-family sentinels below and from 0. */
+    config_field_set(0x29u, 0x157u);
+
+    /* (a) 0x28: DS_00104AB8 = 1, divert(3). */
+    DSD(DS_00104528) = 0xDEADBEEFu;
+    DSB(DS_00105B3A) = 0x77u;
+    DSB(DS_0010452C) = 0x77u;
+    DSD(DS_001088D0) = 0x77777777u;
+    DSD(DS_00104AB8) = 0x77777777u;
+    DSB(DS_00104B1F) = 0x77u;
+    game_mode_28_step();
+    CHECK_EQ_INT((int)DSD(DS_00104528), 0x157);
+    CHECK_EQ_INT((int)DSB(DS_00105B3A), 0x10);
+    CHECK_EQ_INT((int)DSB(DS_0010452C), 5);
+    CHECK_EQ_INT((int)DSD(DS_001088D0), 0x41);
+    CHECK_EQ_INT((int)DSD(DS_00104AB8), 1);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 3);
+
+    /* (b) 0x29: same decode, DS_00104AB8 = 2, divert(3). */
+    DSD(DS_00104528) = 0xDEADBEEFu;
+    DSB(DS_00105B3A) = 0x77u;
+    DSB(DS_0010452C) = 0x77u;
+    DSD(DS_001088D0) = 0x77777777u;
+    DSD(DS_00104AB8) = 0x77777777u;
+    DSB(DS_00104B1F) = 0x77u;
+    game_mode_29_step();
+    CHECK_EQ_INT((int)DSD(DS_00104528), 0x157);
+    CHECK_EQ_INT((int)DSB(DS_00105B3A), 0x10);
+    CHECK_EQ_INT((int)DSB(DS_0010452C), 5);
+    CHECK_EQ_INT((int)DSD(DS_001088D0), 0x41);
+    CHECK_EQ_INT((int)DSD(DS_00104AB8), 2);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 3);
+
+    /* (c) 0x2A: same decode, DS_00104AB8 = 3, divert(3). */
+    DSD(DS_00104528) = 0xDEADBEEFu;
+    DSB(DS_00105B3A) = 0x77u;
+    DSB(DS_0010452C) = 0x77u;
+    DSD(DS_001088D0) = 0x77777777u;
+    DSD(DS_00104AB8) = 0x77777777u;
+    DSB(DS_00104B1F) = 0x77u;
+    game_mode_2a_step();
+    CHECK_EQ_INT((int)DSD(DS_00104528), 0x157);
+    CHECK_EQ_INT((int)DSB(DS_00105B3A), 0x10);
+    CHECK_EQ_INT((int)DSB(DS_0010452C), 5);
+    CHECK_EQ_INT((int)DSD(DS_001088D0), 0x41);
+    CHECK_EQ_INT((int)DSD(DS_00104AB8), 3);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 3);
+
+    /* (d) 0x2B: no field decode at all (DS_00104528 stays at its sentinel),
+     * DS_00104AB8 = 3, divert(3). */
+    DSD(DS_00104528) = 0xDEADBEEFu;
+    DSD(DS_00104AB8) = 0x77777777u;
+    DSB(DS_00104B1F) = 0x77u;
+    game_mode_2b_step();
+    CHECK_EQ_INT((int)DSD(DS_00104528), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_00104AB8), 3);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 3);
+
+    /* (e) 0x2C: the decode runs, but DS_00104AB8 is left untouched (must
+     * still read back the 0x66666666 sentinel, not 0 and not a stale
+     * constant from (a)-(d) above), divert(3). */
+    DSD(DS_00104528) = 0xDEADBEEFu;
+    DSB(DS_00105B3A) = 0x77u;
+    DSB(DS_0010452C) = 0x77u;
+    DSD(DS_001088D0) = 0x77777777u;
+    DSD(DS_00104AB8) = 0x66666666u;
+    DSB(DS_00104B1F) = 0x77u;
+    game_mode_2c_step();
+    CHECK_EQ_INT((int)DSD(DS_00104528), 0x157);
+    CHECK_EQ_INT((int)DSB(DS_00105B3A), 0x10);
+    CHECK_EQ_INT((int)DSB(DS_0010452C), 5);
+    CHECK_EQ_INT((int)DSD(DS_001088D0), 0x41);
+    CHECK_EQ_INT((int)DSD(DS_00104AB8), (int)0x66666666u);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 3);
+
+    /* (f) 0x2D: the decode runs, DS_00104AB8 untouched, one credit spent
+     * (DS_00104B1F seeded 0 so config_credit_spend's suppression gate is
+     * open and the counter actually decrements), divert(1). */
+    DSD(DS_00104528) = 0xDEADBEEFu;
+    DSB(DS_00105B3A) = 0x77u;
+    DSB(DS_0010452C) = 0x77u;
+    DSD(DS_001088D0) = 0x77777777u;
+    DSD(DS_00104AB8) = 0x66666666u;
+    DSB(DS_00104B1F) = 0u;
+    DSD(DS_00105C00) = 5u;
+    game_mode_2d_step();
+    CHECK_EQ_INT((int)DSD(DS_00104528), 0x157);
+    CHECK_EQ_INT((int)DSB(DS_00105B3A), 0x10);
+    CHECK_EQ_INT((int)DSB(DS_0010452C), 5);
+    CHECK_EQ_INT((int)DSD(DS_001088D0), 0x41);
+    CHECK_EQ_INT((int)DSD(DS_00104AB8), (int)0x66666666u);
+    CHECK_EQ_INT((int)DSD(DS_00105C00), 4);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 1);
+
+    /* (g) 0x2E: same shape as 0x2D, but divert(2). */
+    DSD(DS_00104528) = 0xDEADBEEFu;
+    DSB(DS_00105B3A) = 0x77u;
+    DSB(DS_0010452C) = 0x77u;
+    DSD(DS_001088D0) = 0x77777777u;
+    DSD(DS_00104AB8) = 0x66666666u;
+    DSB(DS_00104B1F) = 0u;
+    DSD(DS_00105C00) = 5u;
+    game_mode_2e_step();
+    CHECK_EQ_INT((int)DSD(DS_00104528), 0x157);
+    CHECK_EQ_INT((int)DSB(DS_00105B3A), 0x10);
+    CHECK_EQ_INT((int)DSB(DS_0010452C), 5);
+    CHECK_EQ_INT((int)DSD(DS_001088D0), 0x41);
+    CHECK_EQ_INT((int)DSD(DS_00104AB8), (int)0x66666666u);
+    CHECK_EQ_INT((int)DSD(DS_00105C00), 4);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 2);
+
+    /* (h) 0x2F: the compiler's separately-emitted duplicate of 0x2E's block
+     * (same field-decode order variant, same credit spend, same divert(2)). */
+    DSD(DS_00104528) = 0xDEADBEEFu;
+    DSB(DS_00105B3A) = 0x77u;
+    DSB(DS_0010452C) = 0x77u;
+    DSD(DS_001088D0) = 0x77777777u;
+    DSD(DS_00104AB8) = 0x66666666u;
+    DSB(DS_00104B1F) = 0u;
+    DSD(DS_00105C00) = 5u;
+    game_mode_2f_step();
+    CHECK_EQ_INT((int)DSD(DS_00104528), 0x157);
+    CHECK_EQ_INT((int)DSB(DS_00105B3A), 0x10);
+    CHECK_EQ_INT((int)DSB(DS_0010452C), 5);
+    CHECK_EQ_INT((int)DSD(DS_001088D0), 0x41);
+    CHECK_EQ_INT((int)DSD(DS_00104AB8), (int)0x66666666u);
+    CHECK_EQ_INT((int)DSD(DS_00105C00), 4);
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 2);
+
+    /* (i) 0x2D again with free play on: config_credit_spend must not touch
+     * the counter (the free-play early return), proving the credit spend is
+     * gated, not an unconditional decrement the test above happens to match. */
+    DSB(DS_00105D60) = 1u;
+    DSD(DS_00105C00) = 5u;
+    DSB(DS_00104B1F) = 0u;
+    game_mode_2d_step();
+    CHECK_EQ_INT((int)DSD(DS_00105C00), 5);
+    DSB(DS_00105D60) = 0u;
+
+    config_field_set(0x29u, save_field29);
+    DSD(DS_00105C00) = save_credits;
+    DSB(DS_00105D60) = (u8)save_fp;
+    DSD(DS_001014F4) = save_pool;
+}
+
 static void check_mode_1e(void)
 {
     check_mode_1e_parked();
@@ -33190,6 +33365,7 @@ int test_fight(void)
     check_mode_07();
     check_mode_0f();
     check_mode_21();
+    check_modes_28_2f();
     check_mode_12();
 
     /* Last: check_mode4_spawn_gate's fighter_spawn call (via fight_hud_pass)
