@@ -830,7 +830,7 @@ void game_coin_divert(u32 players)
 
 /* 0x4651C — record §48-Q. The 0x46504 latch reversed: DS_001082C8 =
  * DS_001082C0 and DS_001082CC = DS_001082C4 (two dword copies through EAX).
- * Callers: 0x28E07 (0x28DA4) and the unported 0x27E74 (0x27DC8). */
+ * Callers: 0x28E07 (0x28DA4) and 0x27E74 (0x27DC8, record §48-K). */
 void flow_1082c8_restore(void)
 {
     DSD(DS_001082C8) = DSD(DS_001082C0);                /* 0x4651C/0x46521 */
@@ -1249,8 +1249,8 @@ void game_mode_32_step(void)
  * the value just tested); then for k below DS_00104AF3 a zero DS_00104A98[k]
  * takes 0xBB68C at (0x3940 - k * 0x380, 0xFF, 0x900, a5 = EBX = 0). The bound
  * is re-read each pass; nothing caps k at the four slots. EBX..EBP are pushed
- * and popped. Callers: 0x25DA6 (0x25C88), and the unported 0x27D02/0x27D80/
- * 0x27DA5/0x27DBA (0x27C48) and 0x29446 (0x29328). */
+ * and popped. Callers: 0x25DA6 (0x25C88), 0x27D02/0x27D80/0x27DA5/0x27DBA
+ * (0x27C48, record §48-K) and the unported 0x29446 (0x29328). */
 void flow_win_markers_spawn(void)
 {
     u32 k;
@@ -1442,6 +1442,341 @@ void game_mode_05_step(void)
         break;                                          /* 0x25C9B `ja 0x25F9F` */
     }
     DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);     /* 0x25DC6/0x25E5A/0x25F5E/0x25F74/0x25F9F */
+}
+
+/* ---- 0x26254, the fight frame, and its round end 0x27FA8 (record §48-K) -- */
+
+#define DS_00104B1C 0x00104B1Cu   /* no symbols.h name: 0x27C48's bonus byte */
+#define DS_001088EF 0x001088EFu   /* no symbols.h name: the dword whose top byte is DS_001088F2 */
+#define DS_001077F2 0x001077F2u   /* no symbols.h name: slot 0's +0x42 */
+#define DS_000A88B8 0x000A88B8u   /* no symbols.h name: 0x25FDC's descriptor */
+#define DS_000A88E0 0x000A88E0u   /* no symbols.h name: 0x25FDC's descriptor (bit 1) */
+#define DS_000A88CC 0x000A88CCu   /* no symbols.h name: 0x2604C's descriptor */
+#define DS_000A88F4 0x000A88F4u   /* no symbols.h name: 0x2604C's descriptor (bit 1) */
+#define DS_000BB6C8 0x000BB6C8u   /* no symbols.h name: 0x27ED8's descriptor */
+
+/* 0x25FDC — record §48-K. EAX = the side (kept in ESI). With the
+ * DS_00104529 bit 1 the actor 0xA88E0 with EDX = 0x2A00, ECX = 0xFF, EBX =
+ * 0xE00, else 0xA88B8 with EBX = 0x1200 (actor_spawn's a2 = EDX, a3 = ECX,
+ * a4 = EBX; a5 = the pushed 0) into DS_00104AB4; DS_00104B0D = 0 (DL), DS_00104AE9 |= 0x80, then 0x41310(side,
+ * 0x4E20). EBX/ECX/EDX/ESI are pushed and popped. Callers: 0x27CC7 and
+ * 0x27D67 (0x27C48), each with the winning side whose +0x5A is 0. */
+void flow_round_bonus_a(u32 side)
+{
+    if ((DSB(DS_00104529) & 2u) != 0u)                  /* 0x25FE2/0x25FE9 */
+        DSD(DS_00104AB4) = actor_spawn((const u32 *)(mem + DS_000A88E0),
+                                       0x2A00u, 0xFFu, 0xE00u, 0u);   /* 0x25FEB..0x26019 0x2AE14 */
+    else
+        DSD(DS_00104AB4) = actor_spawn((const u32 *)(mem + DS_000A88B8),
+                                       0x2A00u, 0xFFu, 0x1200u, 0u);  /* 0x26003..0x26019 0x2AE14 */
+    DSB(DS_00104B0D) = 0u;                              /* 0x26023/0x26025 */
+    DSB(DS_00104AE9) = (u8)(DSB(DS_00104AE9) | 0x80u);  /* 0x2602B..0x26036 */
+    fighter_41310(side, 0x4E20);                        /* 0x26034..0x26041 0x41310 */
+}
+
+/* 0x2604C — record §48-K. 0x25FDC's twin: 0xA88F4 (bit 1) or 0xA88CC at the
+ * same places into DS_00104AB0, DS_00104B0F = 0, DS_00104AEA |= 1, then
+ * 0x41310(side, 0x4E20). EBX/ECX/EDX/ESI are pushed and popped. Callers:
+ * 0x27CFD and 0x27DA0 (0x27C48). */
+void flow_round_bonus_b(u32 side)
+{
+    if ((DSB(DS_00104529) & 2u) != 0u)                  /* 0x26052/0x26059 */
+        DSD(DS_00104AB0) = actor_spawn((const u32 *)(mem + DS_000A88F4),
+                                       0x2A00u, 0xFFu, 0xE00u, 0u);   /* 0x2605B..0x26089 0x2AE14 */
+    else
+        DSD(DS_00104AB0) = actor_spawn((const u32 *)(mem + DS_000A88CC),
+                                       0x2A00u, 0xFFu, 0x1200u, 0u);  /* 0x26073..0x26089 0x2AE14 */
+    DSB(DS_00104B0F) = 0u;                              /* 0x26093/0x26095 */
+    DSB(DS_00104AEA) = (u8)(DSB(DS_00104AEA) | 1u);     /* 0x2609B..0x260A6 */
+    fighter_41310(side, 0x4E20);                        /* 0x260A4..0x260B1 0x41310 */
+}
+
+/* 0x27BA4 — record §48-K. The match result into the dword DS_00104AD4. With
+ * the byte DS_00104B1E equal to the dword DS_00104ADC: 2 on equal round wins
+ * DS_00104AF2/DS_00104AF3, else 1 when AF2 < AF3 (0x27BCF `setbe` after
+ * the `jnz`), else 0. Otherwise, with B1E > 1 and B1E <= ADC (both signed
+ * dword compares) and d = ADC - B1E: 0 when AF2 > AF3 + d, 1 when AF3 > AF2
+ * + d; every other case -1. For a result 0 or 1 the word DS_00108860[r]
+ * (zero-extended, below 0xC8) gains 4. EBX/ECX/EDX are pushed and popped.
+ * Callers: the four 0x27C48 exits (0x27D07, 0x27D85, 0x27DAA, 0x27DBF). */
+void flow_match_result_set(void)
+{
+    u32 adc = DSD(DS_00104ADC);                         /* 0x27BA9 */
+    u32 b1e = DSB(DS_00104B1E);                         /* 0x27BAF */
+    u32 w2 = DSB(DS_00104AF2), w3 = DSB(DS_00104AF3);
+    s32 r;
+    if (b1e == adc) {                                   /* 0x27BB5/0x27BB7 */
+        if (w2 == w3) r = 2;                            /* 0x27BC4..0x27BC8 */
+        else r = w2 < w3 ? 1 : 0;                       /* 0x27BCF/0x27BD2 */
+    } else if ((s32)b1e <= 1 || (s32)b1e > (s32)adc) {  /* 0x27BDA..0x27BE1 */
+        r = -1;                                         /* 0x27C0C */
+    } else {
+        u32 d = adc - b1e;                              /* 0x27BE3 */
+        if ((s32)w2 > (s32)(w3 + d)) r = 0;             /* 0x27BF4..0x27BFB */
+        else if ((s32)w3 > (s32)(w2 + d)) r = 1;        /* 0x27BFF..0x27C05 */
+        else r = -1;                                    /* 0x27C0C */
+    }
+    if (r != -1 && r != 2) {                            /* 0x27C11..0x27C19 */
+        u32 w = DSW(DS_00108860 + (u32)r * 2u);         /* 0x27C1B..0x27C24 */
+        if ((s32)w < 0xC8)                              /* 0x27C2B/0x27C31 */
+            DSW(DS_00108860 + (u32)r * 2u) = (u16)(w + 4u);   /* 0x27C33/0x27C36 */
+    }
+    DSD(DS_00104AD4) = (u32)r;                          /* 0x27C3D */
+}
+
+/* 0x27C48 — record §48-K. The round's winner on the two +0x5A bytes, A
+ * (DS_0010780A) and B (DS_0010789E), compared unsigned. First DS_00104B13 =
+ * 1 (AH) and DS_00104B1C = 0xFF (DL); AL = 0x78 - A.
+ * - A < B: side 0 wins. With slot 0's +0x41 bit 3, slot 0's +0x5B = AL.
+ *   DS_00104B16 = 0, DS_00104AF2 and slot 0's +0x7F incremented;
+ * - B < A: side 1 wins. With slot 1's +0x41 bit 3, slot 1's +0x5B = AL,
+ *   the value computed from A (0x27D21 stores the 0x27C69 AL, never
+ *   recomputed from B). DS_00104B16 = 1, DS_00104AF3 and slot 1's +0x7F
+ *   incremented;
+ * - A == B: DS_00104B16 = 2 only.
+ * For a winner, unless DS_00104B1D is 3 or 2: with the winner's +0x5A 0
+ * (re-read from memory), 0x25FDC(winner), then with the signed byte
+ * DS_001088F2 (0x27CCC `mov eax,[0x1088ef]; sar eax,0x18`) >= 0x32,
+ * DS_00104B1C = the winner; with it non-zero and DS_001088F2 >= 0x32,
+ * 0x2604C(winner). Every path ends 0x256F4, 0x27BA4. EBX/ECX/EDX are pushed
+ * and popped. Callers: 0x27FC8, 0x280C4 and 0x280DC (0x27FA8), and the
+ * unported 0x29328. */
+void flow_round_winner(void)
+{
+    u8 a, b, al;
+    u32 w;
+    DSB(DS_00104B13) = 1u;                              /* 0x27C4B/0x27C4F */
+    DSB(DS_00104B1C) = 0xFFu;                           /* 0x27C4D/0x27C55 */
+    a = DSB(DS_0010780A);                               /* 0x27C5D */
+    b = DSB(DS_0010789E);                               /* 0x27C63 */
+    al = (u8)(0x78u - a);                               /* 0x27C5B/0x27C69 */
+    if (a < b) {                                        /* 0x27C6B `jnc` */
+        if ((DSB(DS_001077F1) & 8u) != 0u)              /* 0x27C73 */
+            DSB(DS_0010780B) = al;                      /* 0x27C7C */
+        DSB(DS_00104B16) = 0u;                          /* 0x27C89 */
+        DSB(DS_00104AF2) = (u8)(DSB(DS_00104AF2) + 1u); /* 0x27C83..0x27C96 */
+        DSB(DS_0010782F) = (u8)(DSB(DS_0010782F) + 1u); /* 0x27C90..0x27CA4 */
+        w = 0u;
+    } else if (b < a) {                                 /* 0x27D10 `jnc` */
+        if ((DSB(DS_00107885) & 8u) != 0u)              /* 0x27D18 */
+            DSB(DS_0010789F) = al;                      /* 0x27D21 */
+        DSB(DS_00104B16) = 1u;                          /* 0x27D26/0x27D28 */
+        DSB(DS_001078C3) = (u8)(DSB(DS_001078C3) + 1u); /* 0x27D2D..0x27D49 */
+        DSB(DS_00104AF3) = (u8)(DSB(DS_00104AF3) + 1u); /* 0x27D33..0x27D3D */
+        w = 1u;
+    } else {
+        DSB(DS_00104B16) = 2u;                          /* 0x27DB3 */
+        w = 2u;
+    }
+    if (w != 2u && DSB(DS_00104B1D) != 3u && DSB(DS_00104B1D) != 2u) {  /* 0x27CAA..0x27CB6, 0x27D4F..0x27D57 */
+        if (DSB(DS_0010780A + w * 0x94u) == 0u) {       /* 0x27CBC, 0x27D59 */
+            flow_round_bonus_a(w);                      /* 0x27CC7, 0x27D67 0x25FDC */
+            if ((s32)DSD(DS_001088EF) >> 24 >= 0x32)    /* 0x27CCC..0x27CD7, 0x27D6C..0x27D77 */
+                DSB(DS_00104B1C) = (u8)w;               /* 0x27CDF (CL = 0), 0x27D79 */
+        } else if ((s32)DSD(DS_001088EF) >> 24 >= 0x32) {   /* 0x27CEA..0x27CF5, 0x27D8E..0x27D99 */
+            flow_round_bonus_b(w);                      /* 0x27CFD, 0x27DA0 0x2604C */
+        }
+    }
+    flow_win_markers_spawn();                           /* 0x27D02/0x27D80/0x27DA5/0x27DBA 0x256F4 */
+    flow_match_result_set();                            /* 0x27D07/0x27D85/0x27DAA/0x27DBF 0x27BA4 */
+}
+
+/* 0x27DC8 — record §48-K. The match's end. 0x32970(0); DS_00104ABC =
+ * (DS_00104B1F == 3) + 1; 0x32B4C(that, EDX = 0); then 0x32BB0 on the
+ * characters (EAX = slot 0's, EDX = slot 1's, or with DS_00104ABC == 1 the
+ * side not flagged by slot 0's +0x63 and EDX = -1); 0x2B150 on DS_00104AC8
+ * when non-zero (the dword is kept); 0x4F728(DS_00104AFC, 0x1D); 0x2C2B0
+ * for both sides at row 0x1D (EDX = 0x1D survives 0x4F728, which pushes and
+ * pops it, and is reloaded for side 1); DS_00104AE8 &= 0xFB, DS_00104AEC &=
+ * 0xFE; 0x4651C; and unless DS_00104B16 == 2, 0x46534(DS_00104B16, -1) and
+ * 0x46534(DS_00104B16 ^ 1, 1). EBX/EDX are pushed and popped. Callers:
+ * 0x2800D and 0x280E3 (0x27FA8). */
+void flow_match_end(void)
+{
+    u32 b;
+    /* PORT: 0x27DCC 0x32970(EAX = 0), the run clock, is out of scope (spec
+     * §7); the host clock owns wall time. */
+    DSD(DS_00104ABC) = (DSB(DS_00104B1F) == 3u ? 1u : 0u) + 1u;   /* 0x27DD1..0x27DE6 */
+    config_play_time_snap_b(DSD(DS_00104ABC), 0u);      /* 0x27DE4/0x27DEB 0x32B4C */
+    /* PORT: 0x27DF0..0x27E28 0x32BB0(c0, c1) (or (c, -1) with DS_00104ABC
+     * == 1): two 0x2DAE4(0x1B + c, 1) audit adds for the characters below 7,
+     * deferred (spec §7) as in 0x2D962 and 0x32A3C (config.c). */
+    if (DSD(DS_00104AC8) != 0u)                         /* 0x27E2D/0x27E35 */
+        actor_set_dead(DSD(DS_00104AC8));               /* 0x27E39 0x2B150 */
+    /* PORT: 0x27E4B 0x4F728 (EAX = DS_00104AFC, not read) is two voices, not
+     * wired (record §45-A): 0xDF when DS_00104AD4 is neither -1 nor 3, the
+     * winner's +0x63 is 0 and the signed byte DS_001088F2 > 0, else 0x23;
+     * then 0x22. It reads only. */
+    prompt_side_erase(0, 0x1D);                         /* 0x27E50/0x27E52 0x2C2B0 */
+    prompt_side_erase(1, 0x1D);                         /* 0x27E57..0x27E61 0x2C2B0 */
+    DSB(DS_00104AE8) = (u8)(DSB(DS_00104AE8) & 0xFBu);  /* 0x27E66 */
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) & 0xFEu);  /* 0x27E6D */
+    flow_1082c8_restore();                              /* 0x27E74 0x4651C */
+    b = DSB(DS_00104B16);                               /* 0x27E79/0x27E7B */
+    if (b != 2u) {                                      /* 0x27E80/0x27E83 */
+        fighter_46534(b, -1);                           /* 0x27E85/0x27E8A 0x46534 */
+        fighter_46534((DSB(DS_00104B16) ^ 1u) & 0xFFu, 1);   /* 0x27E8F..0x27EA0 0x46534 */
+    }
+}
+
+/* 0x27ED8 — record §48-K. The round is over: for each side the slot's +0x40
+ * dword &= 0xFFEFEFFF and 0x1D764(side); 0x2DAE4(0xF, 1); the actor 0xBB6C8
+ * with EDX = 0x2A00, ECX = 0xFF, EBX = 0xF00 (a2, a3, a4; EBX/ECX set before
+ * 0x2DAE4, which pushes and pops them; a5 = the pushed 0) into DS_00104AC8; 0x19820; DS_001088F2 = 0x1E
+ * (AH). Then m = the larger +0x5A byte (unsigned, 0x27F52 `ja`); for m below
+ * 0x78, q = (s8)DS_001088F2 * DS_001088D0 / (0x78 - m) (signed `imul`/`idiv`;
+ * DS_001088F2 is the 0x1E just stored), and q = 1 for m >= 0x78 or q == 0.
+ * The +0x5A bytes are read at 0x27F4D/0x27F41, after 0x1D764 zeroed both, so
+ * m is 0 and q = 0x1E * DS_001088D0 / 0x78 on every path.
+ * Last the mode word = 0xA and DS_00104AA8 = q (the 0x27EDC load of
+ * DS_00104AA8 into ESI is overwritten on every path). EBX/ECX/EDX/ESI are
+ * pushed and popped. Callers: 0x28003, 0x280BA and 0x280D2 (0x27FA8). */
+void flow_round_over(void)
+{
+    u32 side, m, q;
+    for (side = 0; side < 2u; side++) {                 /* 0x27EE6..0x27F09 */
+        u32 slot = DS_001077B0 + side * 0x94u;
+        DSD(slot + 0x40u) &= 0xFFEFEFFFu;               /* 0x27EE8..0x27EFB */
+        fight_hud_side_reset(side);                     /* 0x27F01 0x1D764 */
+    }
+    /* PORT: 0x27F1F 0x2DAE4(0xF, 1), the audit add, is deferred (spec §7),
+     * as in 0x2D962 and 0x32A3C (config.c). */
+    DSD(DS_00104AC8) = actor_spawn((const u32 *)(mem + DS_000BB6C8),
+                                   0x2A00u, 0xFFu, 0xF00u, 0u);   /* 0x27F24..0x27F35 0x2AE14 */
+    fighter_19820();                                    /* 0x27F3A 0x19820 */
+    DSB(DS_001088F2) = 0x1Eu;                           /* 0x27F3F/0x27F47 */
+    m = DSB(DS_0010780A);                               /* 0x27F4D */
+    if (!(m > (u32)DSB(DS_0010789E))) m = DSB(DS_0010789E);   /* 0x27F52..0x27F56 */
+    q = 1u;                                             /* 0x27F8D */
+    if (m < 0x78u) {                                    /* 0x27F5C..0x27F63 */
+        s32 p = (s32)((u32)((s32)DSD(DS_001088EF) >> 24) * DSD(DS_001088D0));  /* 0x27F65..0x27F74 */
+        s32 v = p / (s32)(0x78u - m);                   /* 0x27F77..0x27F85 */
+        if (v != 0) q = (u32)v;                         /* 0x27F87..0x27F8B */
+    }
+    DSW(DS_00104B00) = 0x0Au;                           /* 0x27F92 */
+    DSD(DS_00104AA8) = q;                               /* 0x27F9B */
+}
+
+/* 0x27FA8 — record §48-K. The round-end check the fight frame runs each
+ * frame, on A = DS_0010780A and B = DS_0010789E (the +0x5A bytes):
+ * - either at 0x78 or above: 0x27C48. Then, outside mode 0xB, with the
+ *   byte DS_00104B1E equal to the dword DS_00104ADC and DS_00104AD4 == 2: the
+ *   0xD3 voice, 0x39FF4 and 0x27ED8. Otherwise 0x27DC8, the word
+ *   DS_00104AF8 = 0x258 (BX) and mode 9 for DS_00104AD4 in 0..2 (signed), else
+ *   mode 8;
+ * - both below: nothing while the signed byte DS_001088F2 is >= 1. At 0 or
+ *   below the 0xD3 voice and 0x39FF4; then, with B1E == ADC and outside mode
+ *   0xB, 0x27ED8 when DS_00104AF3 == DS_00104AF2 and |A - B| <= 3, else
+ *   0x27C48 and 0x27ED8 when DS_00104AD4 == 2. The rest (B1E != ADC or mode
+ *   0xB go through 0x27C48 at 0x280DC; AD4 != 2 falls through from 0x280C9):
+ *   0x27DC8; unless DS_00104B16 == 2 the winner slot's +0x42 |= 0x80; the
+ *   bytes DS_001078FC = DS_001078FE = 1 (BL), DS_000F0AFE = 2 (CL) and mode
+ *   7 (DX). The mode word is compared as a zero-extended word
+ *   (0x27FCF/0x2807C). EBX/ECX/EDX/EDI are pushed and popped. Only caller:
+ *   0x263AF (0x26254). */
+void flow_round_end_check(void)
+{
+    u32 a = DSB(DS_0010780A), b = DSB(DS_0010789E);    /* 0x27FAE, 0x27FBA */
+    if (a >= 0x78u || b >= 0x78u) {                     /* 0x27FB3/0x27FB6, 0x27FBF/0x27FC2 */
+        s32 r;
+        flow_round_winner();                            /* 0x27FC8 0x27C48 */
+        if (DSW(DS_00104B00) != 0x0Bu                   /* 0x27FCF..0x27FD8 */
+                && (u32)DSB(DS_00104B1E) == DSD(DS_00104ADC)   /* 0x27FDA..0x27FE9 */
+                && DSD(DS_00104AD4) == 2u) {            /* 0x27FEB/0x27FF2 */
+            /* PORT: 0x27FF9 0x2C3FC(0xD3) voice, not wired (record §45-A). */
+            fighter_39ff4();                            /* 0x27FFE 0x39FF4 */
+            flow_round_over();                          /* 0x28003 0x27ED8 */
+            return;
+        }
+        flow_match_end();                               /* 0x2800D 0x27DC8 */
+        DSW(DS_00104AF8) = 0x258u;                      /* 0x28012/0x2801D */
+        r = (s32)DSD(DS_00104AD4);                      /* 0x28017 */
+        DSW(DS_00104B00) = (r >= 0 && r <= 2) ? 0x09u : 0x08u;  /* 0x28024..0x2803B */
+        return;
+    }
+    if ((s32)DSD(DS_001088EF) >> 24 >= 1) return;       /* 0x28049..0x28054 */
+    /* PORT: 0x2805F 0x2C3FC(0xD3) voice, not wired (record §45-A). */
+    fighter_39ff4();                                    /* 0x28064 0x39FF4 */
+    if ((u32)DSB(DS_00104B1E) == DSD(DS_00104ADC)       /* 0x28069..0x28078 */
+            && DSW(DS_00104B00) != 0x0Bu) {             /* 0x2807A..0x28085 */
+        u32 d = a >= b ? a - b : b - a;                 /* 0x28087..0x2809C */
+        if (DSB(DS_00104AF3) == DSB(DS_00104AF2) && (d & 0xFFu) <= 3u) {  /* 0x2809E..0x280B8 */
+            flow_round_over();                          /* 0x280BA 0x27ED8 */
+            return;
+        }
+        flow_round_winner();                            /* 0x280C4 0x27C48 */
+        if (DSD(DS_00104AD4) == 2u) {                   /* 0x280C9/0x280D0 */
+            flow_round_over();                          /* 0x280D2 0x27ED8 */
+            return;
+        }
+    } else {
+        flow_round_winner();                            /* 0x280DC 0x27C48 */
+    }
+    flow_match_end();                                   /* 0x280E3 0x27DC8 */
+    {
+        u32 w = DSB(DS_00104B16);                       /* 0x280E8 */
+        if (w != 2u)                                    /* 0x280EE/0x280F1 */
+            DSB(DS_001077F2 + w * 0x94u) = (u8)(DSB(DS_001077F2 + w * 0x94u) | 0x80u);  /* 0x280F3..0x28101 */
+    }
+    DSB(DS_001078FC) = 1u;                              /* 0x28109/0x28112 */
+    DSB(DS_001078FE) = 1u;                              /* 0x28118 */
+    DSB(DS_000F0AFE) = 2u;                              /* 0x2810B/0x2811E */
+    DSW(DS_00104B00) = 0x07u;                           /* 0x2810D/0x28124 */
+}
+
+/* 0x26254 — record §48-K. The fight frame: mode 4's handler (0x24C5C case
+ * 4, the table entry 0x25242 `call 0x26254; jmp 0x2540F`, which case 6
+ * reaches too, at 0x2525D/0x25266) and the first call of case 0xB's
+ * 0x25287. 0x3C5CC; 0x16D58 per side (EAX = side, EDX = the slot's
+ * zero-extended +0x7A); the two position latches (+0x34 -> +0x38). Then,
+ * only with DS_001078FA == 2 (0x2629D; else `jnz 0x26385`), the arena
+ * frame's projection block, as in 0x263F4: 0x17FA0 for both sides (the
+ * DS_00100B08/B00/B62/B60/AF0 set, pushed twice per call), 0x17580, 0x1958C,
+ * 0x19068(0), the projections again, 0x1975C and the projections a third
+ * time. Then always 0x3CB68, 0x35658(0), 0x35658(1), 0x49C78, 0x1282C,
+ * 0x12DA8, 0x1DA08, 0x27FA8, DS_00104AEC |= 2 (AH), and with
+ * DS_001078FA == 2 (re-read after 0x27FA8), the word DS_00108892
+ * (zero-extended) >= 6 and slot 0's +0x53 == 0, 0x4E11C. The `jnz` at
+ * 0x263E8 repeats 0x263E6's on the same flags and is never taken.
+ * EBX/ECX/EDX are pushed and popped; every callee keeps them or they are
+ * reloaded before a read. */
+void game_mode_04_step(void)
+{
+    fight_slot_clear();                                 /* 0x26257 0x3C5CC */
+    camera_screen_base(0, (s32)DSB(DS_0010782A));       /* 0x2625C..0x26266 0x16D58 */
+    camera_screen_base(1, (s32)DSB(DS_001078BE));       /* 0x2626B..0x26278 0x16D58 */
+    DSD(DS_001077E8) = DSD(DS_001077E4);                /* 0x2627D/0x26283 */
+    DSD(DS_0010787C) = DSD(DS_00107878);                /* 0x26289/0x2628F */
+    if (DSB(DS_001078FA) == 2u) {                       /* 0x26295..0x262A0 */
+        camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                       DS_00100B60, DS_00100AF0);       /* 0x262A6..0x262C1 0x17FA0 */
+        camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                       DS_00100B61, DS_00100AF4);       /* 0x262C6..0x262E4 0x17FA0 */
+        camera_decay();                                 /* 0x262E9 0x17580 */
+        fighter_pass_a();                               /* 0x262EE 0x1958C */
+        fighter_pass_b(0u);                             /* 0x262F3/0x262F5 0x19068 */
+        camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                       DS_00100B60, DS_00100AF0);       /* 0x262FA..0x26315 0x17FA0 */
+        camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                       DS_00100B61, DS_00100AF4);       /* 0x2631A..0x26338 0x17FA0 */
+        fighter_think();                                /* 0x2633D 0x1975C */
+        camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                       DS_00100B60, DS_00100AF0);       /* 0x26342..0x2635D 0x17FA0 */
+        camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                       DS_00100B61, DS_00100AF4);       /* 0x26362..0x26380 0x17FA0 */
+    }
+    fight_slot_pass();                                  /* 0x26385 0x3CB68 */
+    fight_hud_pass(0u);                                 /* 0x2638A/0x2638C 0x35658 */
+    fight_hud_pass(1u);                                 /* 0x26391/0x26396 0x35658 */
+    fight_effects_pass();                               /* 0x2639B 0x49C78 */
+    camera_scene_step();                                /* 0x263A0 0x1282C + 0x263A5 0x12DA8 */
+    fight_hud_bar_tick();                               /* 0x263AA 0x1DA08 */
+    flow_round_end_check();                             /* 0x263AF 0x27FA8 */
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);     /* 0x263B4..0x263C5 */
+    if (DSB(DS_001078FA) == 2u                          /* 0x263BA..0x263CE */
+            && (u32)DSW(DS_00108892) >= 6u              /* 0x263D0..0x263DC */
+            && DSB(DS_00107803) == 0u)                  /* 0x263DE..0x263E8 */
+        fight_mode25_enter();                           /* 0x263EA 0x4E11C */
 }
 
 /* ---- the remaining DS_00104AE4 values (record §46-F) --------------------- */
@@ -2150,7 +2485,8 @@ void prompt_insert_coin(u32 side, s32 row)
  * The side is used whole in `[esi+0xBAB58]` and 0x2C088's `[eax*4+0x105BF0]`,
  * so a negative one reads below both tables. Callers: 0x275B7 (0x274FC, side
  * (s8)(DS_0010810D ^ 1) by `movsx`, row 0x1D), 0x28CFD (0x28CC8, record
- * §48-J) and the unported 0x26D4C, 0x27DC8 and 0x42FE0. */
+ * §48-J), 0x27E52/0x27E61 (0x27DC8, sides 0 and 1, row 0x1D, record §48-K)
+ * and the unported 0x26D4C and 0x42FE0. */
 void prompt_side_erase(s32 side, s32 row)
 {
     if ((DSB(DS_00104529) & 2u) != 0u) {                /* 0x2C2B7/0x2C2BE */
@@ -3138,6 +3474,9 @@ void game_frame(void)
     case 0x32u:
         game_mode_32_step();                           /* 0x251B2 0x296B8 */
         break;
+    case 0x04u:
+        game_mode_04_step();                           /* 0x25242 0x26254 */
+        break;                                         /* 0x25247 */
     case 0x05u:
         game_mode_05_step();                           /* 0x2524C 0x25C88 */
         break;
@@ -3151,9 +3490,10 @@ void game_frame(void)
                 break;                                 /* 0x2526E */
             }
         }
-        /* PORT: 0x2525D/0x25266 jump to case 4's 0x25242, 0x26254 (the fight
-         * frame, mode 4's handler), a named gap (record §48-J). */
-        break;
+        /* 0x2525D/0x25266 jump to case 4's entry 0x25242 (`call 0x26254;
+         * jmp 0x2540F`), the fight frame (record §48-K). */
+        game_mode_04_step();                           /* 0x25242 0x26254 */
+        break;                                         /* 0x25247 */
     case 0x0Cu: {
         /* 0x25349 (record §48-J): 0x28CC8 with no DS_00104B1D test; a
          * non-zero result r joins side r - 1 through 0x28DA4. */
@@ -3163,11 +3503,10 @@ void game_frame(void)
             break;                                     /* 0x25358 */
         }
         /* PORT: 0x2535D 0x27380 (mode 0xC's arena frame) is a named gap
-         * (record §48-J); its callees 0x3CB68, 0x1DA08 and 0x272DC are
-         * unported. */
+         * (record §48-J); of its callees 0x272DC is unported (0x3CB68 is
+         * fight_slot_pass, and 0x1DA08 fight_hud_bar_tick, record §48-K). */
         break;
     }
-    case 0x04u:
     case 0x07u:
     case 0x08u:
     case 0x09u:
@@ -3202,8 +3541,9 @@ void game_frame(void)
     case 0x33u:
         /* PORT: named gaps, each case's body unported (record §47-B.1 has
          * the entry and callees of every one):
-         * 4 0x26254; 7 0x282C4;
-         * 8 0x28468; 9 0x28788; 0xA 0x28BD4; 0xB 0x26254 + 0x28C38;
+         * 7 0x282C4;
+         * 8 0x28468; 9 0x28788; 0xA 0x28BD4; 0xB 0x26254 (ported, record
+         * §48-K) + 0x28C38;
          * 0xE 0x27A2C;
          * 0xF 0x277C0; 0x12 0x41C28; 0x13 0x424E8;
          * 0x15 0x4F24C; 0x16 0x4F2B0; 0x18 0x4F6E8;
@@ -3217,9 +3557,11 @@ void game_frame(void)
          * record §47-M) as fight_mode_10_step, and cases 0xD (0x274FC) and
          * 0x32 (0x296B8, record §48-Q) as game_mode_0d_step and
          * game_mode_32_step, and case 5 (0x25C88, record §48-U) as
-         * game_mode_05_step. Cases 6 and 0xC run 0x28CC8 (flow_join_poll)
-         * and 0x28DA4 (flow_player_join) above (record §48-J); their other
-         * arms, 0x26254 and 0x27380, are named gaps there. */
+         * game_mode_05_step, and case 4 (0x26254, record §48-K) as
+         * game_mode_04_step. Cases 6 and 0xC run 0x28CC8 (flow_join_poll)
+         * and 0x28DA4 (flow_player_join) above (record §48-J); case 6's
+         * other arm is case 4's 0x26254, and case 0xC's, 0x27380, is a
+         * named gap there. */
         break;
     case 0x00u:
     case 0x1Cu:

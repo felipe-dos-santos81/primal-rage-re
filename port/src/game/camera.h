@@ -113,9 +113,10 @@ void camera_screen_base(s32 side, s32 character);
  * (the state-6 fight reset) calls it at 0x20E33. */
 void camera_dust_list_init(void);
 
-/* 0x1282C then 0x12DA8, the pair 0x263F4 calls at the end of the frame: the
- * gated dust spawn (every 64th frame, then rng(7)&3 == 0) followed by the
- * selected-player-y commit and the camera-y clamp. */
+/* 0x1282C then 0x12DA8, the pair 0x263F4 (and 0x26254, record §48-K) calls
+ * at the end of the frame: the gated dust spawn (every 64th frame, then
+ * rng(7)&3 == 0) followed by the selected-player-y commit and the camera-y
+ * clamp. */
 void camera_scene_step(void);
 
 /* 0x12DA8 alone, the selected player y and the y clamp. Exported for modes
