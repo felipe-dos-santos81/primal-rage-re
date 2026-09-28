@@ -415,9 +415,9 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
   - it dispatches cases 3, 4, 5, 6, 8, 9, `0xA`, `0xB`, `0xC`, `0xD`, `0xE`,
-    `0x10`, `0x11`, `0x13`, `0x14`, `0x15`, `0x17`, `0x1A`, `0x1B` and `0x32`,
-    and cases 1/2/`0x20` run the bare `ret` `0x29B70`;
-  - the other 25 cases are named gaps.
+    `0x10`, `0x11`, `0x13`, `0x14`, `0x15`, `0x16`, `0x17`, `0x1A`, `0x1B` and
+    `0x32`, and cases 1/2/`0x20` run the bare `ret` `0x29B70`;
+  - the other 24 cases are named gaps.
   - Case 4 (the table entry `0x25242`, `call 0x26254; jmp 0x2540F`) is the
     fight frame `0x26254` (`game_mode_04_step`, record §48-K): `0x3C5CC`,
     `0x16D58` per side and the two position latches; only with
@@ -530,6 +530,14 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     `0xB` loaded into `EDX` before the call, which `0x2C3FC` preserves by
     push/pop on every exit path (record §42-E.2) regardless of whether the
     voice actually played.
+  - Case `0x16` is `0x4F2B0` (`frontend_mode_16_step`, record §49-G), the
+    third sibling of case `0x15`'s `0x4F24C` and case `0x17`'s `0x4F318`:
+    the same `DS_001088EE`/`DS_00104AFE` countdown and `0x4F790` skip test,
+    but its expiry arm runs *both* siblings' actions instead of just one —
+    the `DS_00104AE4` hook call (as `0x4F318` does, no `DS_001088EE =
+    0xFFFF` rearm) and then `DS_00104B00 = DS_00104AFA` (as `0x4F24C` does),
+    hook first. Case 8/9's results countdown reaches it (`game_hook_25bbc`
+    installed, mode `0x16`, return mode `0x30` or 5).
   - Case `0xC`'s no-join arm is `0x27380` (`game_mode_0c_step`, record
     §48-C), the arena frame of the mode that mode 5 and `0x274FC` (after
     replacing the loser) store. It first undoes the mode-`0xC` tail's blink (`0x25487`): while the

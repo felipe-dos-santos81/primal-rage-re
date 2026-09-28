@@ -19154,3 +19154,228 @@ only historical references in `test_fight.c`'s comments, `fighter.c`'s
 unrelated `0x36E78` cross-reference, and the two `docs/superpowers/plans/`
 derivation records that first identified the gap — none of which claim it
 is still open.
+
+## 49-G. Mode `0x16`'s frame handler `0x4F2B0` (named-gap batch, branch `gap27-mode16`)
+
+(The section letter is G. `docs/PROGRESS.md` and this file were grepped for
+`§49-` first on `main` at `330b335`: A, B, C and D are taken; E and F are
+reserved for the parallel `gap26-modes7f` branch's cases 7/`0xF` (not yet
+committed to `main` as of this task), so this task starts at G, the first
+letter neither taken nor reserved.)
+
+**Result in one line.** `0x4F2B0`, `game_frame`'s case `0x16` (confirmed by
+`get_xrefs_to`: its one caller is `0x253E7`, `game_frame`'s own dispatch
+`FUN_00024c5c`, at the jump-table slot between `0x253E0`'s case `0x15` and
+`0x253EE`'s case `0x17`), is ported as `frontend_mode_16_step` (`flow.c`) and
+wired. It turns out to be neither a new shape nor a third unrelated sibling:
+it is the **third member of the `0x4F24C`/`0x4F318` countdown family**
+(modes `0x15`/`0x17`, records §48-X/§46-G) already documented in `flow.c`'s
+own header comments on those two functions — comment text on `0x4F24C`
+already said "the body is `0x4F318`'s (and `0x4F2B0`'s) countdown byte for
+byte up to the expiry" and on `0x4F318` "the mode is left to the hook
+(unlike mode `0x16`'s `0x4F2B0`)". This task confirms and ports exactly what
+those two pre-existing comments predicted: `0x4F2B0` runs the identical
+`DS_001088EE`/`DS_00104AFE` countdown and `frontend_skip_check` (`0x4F790`)
+skip test as its two siblings, but its expiry arm does **both** of what they
+each do separately instead of picking one — it runs the `DS_00104AE4` hook
+(as `0x4F318`/mode `0x17` does; no `DS_001088EE = 0xFFFF` rearm, unlike
+`0x4F318`) and *then* stores `DS_00104B00 = DS_00104AFA` (as `0x4F24C`/mode
+`0x15` does), hook first. No new callee was needed at all: `frontend_skip_
+check` and the `fn_resolve`/hook-call idiom are both already ported and
+already used by `frontend_mode_17_step`.
+
+### 49-G.1 Sources
+
+The raw comes from the Ghidra HTTP bridge at `127.0.0.1:8089`
+(`disassemble_function`, `decompile_function`, `get_xrefs_to`, with fixups
+applied; the Ghidra MCP tool did not connect this session, so the HTTP
+bridge was used throughout per `port/RE_GUIDE.md`'s fallback), and `flow.c`'s
+existing `frontend_mode_15_step`/`frontend_mode_17_step` ports (records
+§48-X/§46-G) for both the sibling structure and the countdown/skip-test
+callees this task reuses unchanged.
+
+### 49-G.2 Confirming case `0x16`
+
+1. `disassemble_function 0x24C5C` around the jump-table dispatch shows the
+   bare stub sequence in table order: `0x253E0 CALL 0x4F24C` (case `0x15`),
+   `0x253E7 CALL 0x4F2B0` (case `0x16`), `0x253EE CALL 0x4F318` (case
+   `0x17`), each followed by `JMP 0x2540F` — the identical no-register-setup
+   shape every dispatched case in this function shares, and the same
+   sequence record §47-B.1's jump-table table already lists (mode `0x16` →
+   entry `0x253E7` → body `0x4F2B0`).
+2. `get_xrefs_to 0x4F2B0` lists exactly one call site, `0x253E7`, inside
+   `FUN_00024c5c`, `UNCONDITIONAL_CALL` — confirming both the case and that
+   no other code path reaches this function.
+
+### 49-G.3 `0x4F2B0` (29 instructions, `0x4F2B0`..`0x4F316`)
+
+```
+0004f2b0  PUSH EBX
+0004f2b1  PUSH EDX
+0004f2b2  MOV  DX,[0x001088ee]           ; dx = DS_001088EE
+0004f2b9  TEST DX,DX
+0004f2bc  JNZ  0x0004f2e3
+0004f2be  CALL 0x0004f790                 ; frontend_skip_check()
+0004f2c3  AND  EAX,0xff                   ; r = eax & 0xff
+0004f2c8  CMP  EAX,0x2
+0004f2cb  JNZ  0x0004f2d4
+0004f2cd  MOV  word ptr [0x00104afe],DX   ; r == 2: DS_00104AFE = dx (0)
+0004f2d4  CMP  EAX,0x1
+0004f2d7  JNZ  0x0004f2ed
+0004f2d9  SUB  word ptr [0x00104afe],0x3c ; r == 1: DS_00104AFE -= 0x3C
+0004f2e1  JMP  0x0004f2ed
+0004f2e3  MOV  EBX,EDX
+0004f2e5  DEC  EBX
+0004f2e6  MOV  word ptr [0x001088ee],BX   ; DS_001088EE = dx - 1
+0004f2ed  MOV  AX,[0x00104afe]            ; ax = DS_00104AFE (old)
+0004f2f3  MOV  EDX,EAX
+0004f2f5  DEC  EDX
+0004f2f6  MOV  word ptr [0x00104afe],DX   ; DS_00104AFE = ax - 1
+0004f2fd  TEST AX,AX
+0004f300  JG   0x0004f314                 ; ax > 0 (signed): return
+0004f302  CALL dword ptr [0x00104ae4]     ; the DS_00104AE4 hook
+0004f308  MOV  AX,[0x00104afa]
+0004f30e  MOV  word ptr [0x00104b00],AX   ; DS_00104B00 = DS_00104AFA
+0004f314  POP  EDX
+0004f315  POP  EBX
+0004f316  RET
+```
+
+`decompile_function 0x4F2B0` (Ghidra's own decompilation) confirms this
+byte-for-byte: `void __regparm3 FUN_0004f2b0(undefined4 param_1, undefined4
+param_2)` with `if (DAT_001088ee == 0) { ...skip test... } else { DAT_
+001088ee -= 1; } ...countdown...; if (bVar1 /* old <= 0 */) { (*DAT_
+00104ae4)(param_2); DAT_00104b00 = DAT_00104afa; }`.
+
+- **`param_1`/`param_2` are dead**, exactly as `0x4F318`'s own header comment
+  already established for the sibling hook call: the decompiler's `(*DAT_
+  00104ae4)(param_2)` is a Ghidra artifact of `__regparm3`'s calling
+  convention, not a real argument — the raw's `CALL dword ptr [0x00104ae4]`
+  passes nothing, and every registered hook (records §42-E/§43-B/§46-B/
+  §46-F) already takes no arguments through the existing `fn_resolve`
+  registry, the same "hooks take no arguments" fact `0x4F318`'s comment
+  states for `0x4F9A0`. The call site `0x253E7` sets up no registers before
+  the bare `CALL`, matching every other case's dispatch stub.
+- **The countdown and skip test are instruction-for-instruction identical**
+  to `0x4F24C`/`0x4F318`'s own (down to the exact opcode encodings and
+  operand widths — `MOV DX,[...]`/`TEST DX,DX`/`AND EAX,0xff`/`CMP EAX,0x2`
+  etc. all match), which is expected: `flow.c`'s existing comments on both
+  siblings already say as much, and this task's disassembly is the direct
+  confirmation.
+- **The expiry arm is the union, not a new shape.** `0x4F318`
+  (`0x4F373`) runs `call dword [0x104ae4]` and returns, no mode store, and
+  separately rearms `DS_001088EE = 0xFFFF` first (`0x4F36A`) — `0x4F2B0` has
+  no such rearm anywhere in its 29 instructions. `0x4F24C` (`0x4F29E`)
+  stores `DS_00104B00 = DS_00104AFA` and never touches `DS_00104AE4` at all.
+  `0x4F2B0` runs the hook call (`0x4F302`) *and then* the mode store
+  (`0x4F308`/`0x4F30E`) in that order, with neither sibling's other quirk
+  (no `0xFFFF` rearm, no hook skip). Because the hook runs first, a hook
+  that itself writes `DS_00104AFA` (several registered hooks do, e.g.
+  `game_hook_25bbc`/`0x25BBC` via `0x26998`'s own storer, and `0x26978`)
+  changes what mode `0x4F2B0` ultimately stores — the new unit test's (f)
+  scenario below exercises exactly this.
+- **Reachability.** Mode `0x16` is stored by mode 8/9's results countdown
+  (`game_mode_08_step`/`game_mode_09_step`, records §49-C/§48-Y:
+  `DS_00104AE4 = game_hook_25bbc`, `DS_00104B00 = 0x16`, `DS_00104AFA = 0x30`
+  or `5`), already ported and already ties into `port/spec/game_flow.md`'s
+  case-8 bullet, which this task's spec update cross-references.
+
+### 49-G.4 The port
+
+- `flow.h`, after `frontend_mode_15_step`'s declaration: `frontend_mode_16_
+  step`'s prototype and derivation comment.
+- `flow.c`, after `frontend_mode_17_step` (both siblings are adjacent, right
+  before the `---- the mode-0x1A hooks ----` section delimiter):
+  `frontend_mode_16_step` (`0x4F2B0`), reusing `frontend_skip_check` and the
+  `fn_resolve` hook-call idiom unchanged.
+- `game_frame`'s switch (`flow.c`): `case 0x16u: frontend_mode_16_step();
+  break;` added between cases `0x17` and `0x15` (matching the raw's table
+  order); `0x16` removed from the generic named-gap case list and its
+  trailing comment (now 24 named gaps, one fewer), and the narration
+  sentence extended to name case `0x16` too.
+- No new callee, no new `fn_register`, no `symbols.h` change (confirmed by
+  `make verify`'s idempotence check, §49-G.6 below — `DS_00104AE4`/`DS_
+  00104AFE`/`DS_00104AFA`/`DS_00104B00`/`DS_001088EE` all already have
+  `symbols.h` names from earlier records).
+- `port/spec/game_flow.md`: the dispatched-case list and count updated
+  (`0x16` added, 24 named gaps), and a new case-`0x16` bullet added after
+  case `0xA`'s, cross-referencing case 8's `DS_00104B00 = 0x16` store.
+
+### 49-G.5 The assertions and mutations (`check_mode_16` in `test_fight.c`)
+
+New `check_mode_16`, registered in `test_fight()`'s call list right after
+`check_mode_15`, and a new `m16_step`/`m16_fired` pair modelled directly on
+the pre-existing `ms_step`/`ms_fired` (mode `0x17`) and `m15_step`/`m15_
+fired` (mode `0x15`) helpers, seeding every field both siblings' helpers
+seed (the neighbour words either side of `DS_001088EE`/`DS_00104AFE`, the
+mode dword's sentinel upper word, the return mode `DS_00104AFA = 0x5A1E`,
+and the hook `0x26978`, which itself stores `DS_00104B25 = 1`, the hook
+`0x26998`, `DS_001088F5 = 0` and, load-bearingly for this task, `DS_00104AFA
+= 0x23`):
+
+- (a)/(b): the countdown steps down with no hook and no mode store while
+  `DS_001088EE != 0` or the skip test returns 0, proving the shared
+  countdown/skip-test body ported unchanged;
+- (c)/(d)/(e): the full `frontend_skip_check` boundary (a press taking
+  `0x3C`, `0x3D` remaining not-fired vs. `0x3C` firing, a held mask firing
+  at once, the signed `> 0`/`<= 0` boundary at `1`/`0`/`0x8000`/`0x7FFF`),
+  mirroring `check_mode_17_step`'s own (e)/(f)/(g)/(h) scenarios but through
+  `m16_fired` instead of `ms_fired`, and confirming `DS_001088EE` is never
+  rearmed to `0xFFFF` on a fire (unlike mode `0x17`, `0x4F318` has no such
+  store — see §49-G.3);
+- **(the load-bearing check, folded into every fired call via `m16_fired`):**
+  a fired step's final `DS_00104B00` low word is the **hook's own** `DS_
+  00104AFA` write (`0x23`, from the `0x26978`/`0x26998` hook chain), not the
+  seeded `0x5A1E` — this is the one assertion that distinguishes `0x4F2B0`
+  from a naive "run `0x4F24C` then `0x4F318`" or "`0x4F318` then `0x4F24C`"
+  guess: only "hook first, mode store second, reading the hook's post-state"
+  matches the raw's instruction order (`0x4F302` before `0x4F308`/`0x4F30E`).
+  A single-site mutation swapping the two (`if (hook != NULL) hook();`
+  moved after the `DSW(DS_00104B00) = DSW(DS_00104AFA);` store) was tried
+  and confirmed to fail this exact check (the fired-scenario `DS_00104B00`
+  assertions now read `0xBEEF5A1E` instead of `0xBEEF0023`, 6
+  `CHECK_EQ_INT` failures across scenarios (c)/(d)/(e)), then reverted;
+- (f): an unregistered hook (`fn_resolve` miss, `0xDEADBEEF`) is skipped
+  without crashing, but the mode store still runs off the seeded, untouched
+  `DS_00104AFA` — proving the hook-null-check and the mode store are two
+  independent steps, not one conditional on the other.
+
+`check_mode_switch` also gains a new (c2b) scenario, inserted between the
+existing (c2) case-`0x17` and (c3) case-`0x15` scenarios, proving `game_
+frame` itself really routes mode `0x16` to `frontend_mode_16_step` and not
+into the named-gap default (a non-expiring countdown step, the cheapest
+observable proof, mirroring (c2)'s own shape); `check_mode_16` above is
+where the expiry arm gets full coverage.
+
+**Mutations** (three single-site edits, each rebuilt and the whole of
+`run_tests` re-run, then reverted): (1) the hook/mode-store order swap
+above (6 failures); (2) `case 0x16u` in `game_frame`'s switch commented out
+(falls through to the named-gap default) — caught by the new (c2b)
+`check_mode_switch` scenario (2 failures: the countdown does not tick and
+the dword store overwrites the whole mode word with the seed instead of
+being routed to the real handler); (3) the `DS_001088EE = 0xFFFF` rearm from
+`0x4F318` copy-pasted into `0x4F2B0`'s expiry arm — caught by every fired
+`m16_fired` call in (c)/(d)/(e) (5 failures, each expecting `DS_001088EE`
+unchanged at `0`/`2` but seeing `0xFFFF`). All three were reverted and the
+suite re-confirmed green.
+
+### 49-G.6 Measured and remaining gaps
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 3 consecutive
+runs (plus the 3 mutation-revert runs above), no SIGBUS. `make verify`:
+front-end 517/801/3/2, demo-fight fully explained at N = 1886, attract2 0
+unexplained at N = 3617, `symbols.h` regenerates byte-identically — mode
+`0x16` is reachable only through mode 8/9's results-state countdown
+expiring, itself only reached through the still-unported match-end stores
+(`0x27DC8`, record §48-K, the same gap that leaves modes 8/9 unreached
+under no-input play), so the no-input oracle path never leaves mode 3 and
+these gate numbers are unaffected by design.
+
+Remaining named gaps this task leaves untouched: the match-end path itself
+(`0x27DC8`, inside the still-unported fight frame `0x26254`, record §48-K)
+that would drive modes `0x16`/8/9 for real; the 24 other still-unported
+`game_frame` cases (`0x18`/`0x19`/`0x1E`/`0x1F`/`0x21`-`0x25`/`0x27`-`0x31`/
+`0x33`, plus `7`/`0xF` if `gap26-modes7f` has not yet merged); and every
+`DS_00104AE4` hook value already named a gap elsewhere (unaffected by this
+task, which only reuses the existing `fn_resolve` dispatch, not any new
+hook body).
