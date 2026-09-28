@@ -499,6 +499,63 @@ void game_mode_08_step(void);
  * nonzero, the mode is left at 0xA (this handler runs again next frame). */
 void game_mode_0a_step(void);
 
+/* 0x1EEB0 — record §49-H. Mode 0x1E's frame handler (0x24C5C's named-gap
+ * case 0x1E, table entry `call 0x1EEB0; jmp 0x2540F`; get_xrefs_to 0x1EEB0
+ * confirms that one call site). It is entered with DS_00104B25 = 0 as the
+ * return mode DS_00104AFA that mode 0x13's challenge poll (flow_
+ * challenge_poll, record §48-D) takes when the post-match challenge window
+ * runs out with no one joining (0x42EF1/0x42EF7).
+ *   A 17-state sub-machine (jump table 0x1EE6C, states 0..0x10 on the byte
+ *   DS_00104B25; AL > 0x10 and state 1 both land on the shared tail `ret`
+ *   0x1F452, so state 1 is a genuine no-op, not an unported gap).
+ *   Half the states are pure bookkeeping this port wires in full: state 2
+ *   (frontend_input_reset, actors_reset, frontend_match_start, then
+ *   DS_00104AFE = 0x12C, DS_00104B00 = 0x15, DS_00104AFA = 0x1E, DS_00104B25
+ *   = 3, DS_001088EE = 0); state 3 (frontend_input_reset, actors_reset,
+ *   DS_00104B25 = 0, DS_00104B00 = 0x14); state 6 and its side-1 mirror
+ *   state 9 (frontend_input_reset, actors_reset, then — only when
+ *   DS_00104ABC == 1 — the same frontend_match_start/DS_00104AFE/
+ *   DS_00104B00/DS_00104AFA quad as state 2, before DS_00104B25 = 7 (state
+ *   6) or 0xA (state 9) unconditionally either way); and state 0xA
+ *   (frontend_input_reset, actors_reset — which leaves DS_00104B25 = 0, the
+ *   CH zeroed at 0x1F3E5 and proven to survive the call since 0x2BAF4
+ *   pushes and pops ECX whole — then, unless DS_00104B1F != 0 short-
+ *   circuits past it, a match-result/think-byte check (DS_00104AD4 == 2, or
+ *   DS_00107813 + DS_00104AD4 * 0x94 == 1) that on either hit sets
+ *   DS_00104B00 = 0x14 and returns; otherwise, on DS_00104B14 == 0, installs
+ *   the hook FN_000430E8 (fight.c's fight_hook_430e8, the versus-screen
+ *   hook, record §46-B — already documented there as stored "at 0x1F447
+ *   (0x1EEB0)") and arms the mode-0x1A wipe with return mode 0x11
+ *   (frontend_wipe_arm); else DS_00104B00 = 0x14 too).
+ *   The other half — states 0, 4, 5, 7, 8, 0xB..0xE, primed by 0xF/0x10 —
+ *   gate on three unported functions: 0x1ECC8 and 0x1EC38 (states 0 and
+ *   4/7) rank DS_001077EC/DS_00107880 — each fighter's post-match score,
+ *   the +8 field of the per-side records at DS_001077E4/DS_00107878 — via
+ *   the unported 0x2DDE4 against a table at 0x2D400 (0x2DDE4 itself calls
+ *   the unported 0x2DB58); a return < 0xA is a high-score-table rank. 0x1F458
+ *   (2897 B, its own subsystem, the analog/digital cursor driver states 5,
+ *   8 and 0xB..0xE all poll — params 0 or 1 select the side — and 0xF/0x10
+ *   prime with the return discarded) is the initials/name-entry screen those
+ *   ranked states wait on. This is exactly the family docs/PROGRESS.md
+ *   already flags jointly with this function: "the interactive match ...
+ *   0x1EEB0, 0x1F458, the player screens and human input ... remains
+ *   unowned" — a genuine, separate, high-score name-entry gap, not a small
+ *   completable chain. Two of the four gated states have a portable short-
+ *   circuit, ported here: state 0 only calls 0x1ECC8 when DS_00104AD4 == 2
+ *   && DS_00104B1F == 0 (else DS_00104B25 = 4, unconditionally); state 4
+ *   only calls 0x1EC38 when DS_00107813 == 0 (else DS_00104B25 = 7); state
+ *   7 mirrors state 4 on DS_001078A7 (else DS_00104B25 = 0xA). Past that
+ *   short-circuit — and for states 5/8/0xB..0xE/0xF/0x10 entirely — the
+ *   state cannot determine whether to advance without the unported gate, so
+ *   it stays parked (PORT: notes at each case); this is not a fabricated
+ *   stub; it is exactly the "still waiting" behaviour those states already
+ *   have while their own poll returns not-done.
+ *   Two established gaps recur throughout, left as the same PORT: notes
+ *   this codebase already uses elsewhere: every 0x2C3FC voice call (record
+ *   §45-A) and, inside 0x1ECC8/0x1EC38, 0x2DAE4 (the deferred audit no-op,
+ *   spec §7). EBX/ECX/EDX/ESI/EDI are pushed and popped. */
+void game_mode_1e_step(void);
+
 void flow_scroll_reset(u32 stage);
 void flow_challenge_open(void);
 void flow_challenge_drop(void);

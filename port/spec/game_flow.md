@@ -857,10 +857,14 @@ factory records at `0xA7BBC` and the champion `0xA7D74`, through the insert
 `0x2DCA0`. The screen draws the champion and records 1..9 through `0x2F4D0`/
 `0x2F4BC` at the `0xA7B94` layout and spawns the champion's figure
 `0xA7DCC[sel]` (`0x2AE14`/`0x2A17C`). `0x1EA08`'s other four call
-sites are the **match cycle's** and are unwired: `0x11A42` in `FUN_00011A30` (a
-dead copy — `0x11A30` is referenced nowhere in either LE object) and `0x1F140`/
-`0x1F278`/`0x1F39B` in `FUN_0001EEB0` (the match sub-state machine, cases 2/6/9).
-No task in this plan owns the match cycle. States 6/7 (the attract demo
+sites: `0x11A42` in `FUN_00011A30` (a dead copy — `0x11A30` is referenced
+nowhere in either LE object; still unwired) and `0x1F140`/`0x1F278`/`0x1F39B`
+in `FUN_0001EEB0` (the match sub-state machine's states 2/6/9, `game_mode_1e_
+step`, record §49-H — now wired; §49-H also ports the state-0xA versus-screen
+hook/wipe-arm and the states 0/4/7 short-circuit arms, and leaves the states
+5/8/0xB..0xE/0xF/0x10 high-score name-entry screen, gated by `0x1F458`, as a
+named gap). No task in this plan owns the match cycle as a whole. States 6/7
+(the attract demo
 fight: `0x11A8C`, `0x263F4`) were ported by the demo-fight cycle 1 (see the
 next section); state 8 (`0x11EAC`: the run clock `0x32970(0)`, a named gap,
 then `0x257A4(3)` and the shared tails) is wired since record §48-W but
