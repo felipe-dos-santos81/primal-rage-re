@@ -22686,3 +22686,168 @@ branch report.
   `0x3ED78`, `0x3EDB8`, `0x3F7F4` and `0x3F85C` (only DATA references from the
   setups; also absent from the list) stay unported.
 - `0x2C3FC(0xBB)` at `0x3EED3` and the `0x62003` exits: the deferred idioms above.
+
+## 50-A. The 0x36000..0x41000 fighter helper cluster: `0x36F10`, `0x3FDD8`, `0x406B4`, `0x40954` and the pose setups (branch `gap46-fighterset`)
+
+Letter `A` of section 50 was free (no `## 50` heading on any branch of this file;
+the last letters are §49-*). The branch is `gap46-fighterset`, based on `main`
+(`ebaeffb`) with `gap40-posecb` (§49-U) merged in, because the setups store the
+§49-U callbacks and `gap40`'s own merge into `main` was still pending. The staged
+merge state of the main tree was copied, not edited.
+
+### 50-A.1 What was unported and how it is reached
+
+`tools/port_progress.py --unported` listed `40954 616 0`, `36F10 477 1`, `406B4
+309 2`, `3FDD8 206 0` (size, direct callers, callees); a grep of `port/src` for
+each address found no port under any header (only prose). The bridge's
+`get_xrefs_to` gave the code callers; the data object (`0x80000`-`0x10B0CF`) and
+the code object were dumped through `read_memory` and scanned for dwords equal to
+each target (the fixed-up bytes, so displacements are runtime addresses):
+
+| Target | Reached by | Shape |
+|---|---|---|
+| `0x36F10` | `0x34BE8` (`fight_health_sync`, the in-range arm) | EAX = the `0x1077A8` table entry (the slot) |
+| `0x406B4` | `0x4065A` (in the unported `0x40608`, the pool init) and `0x4081E` (in the unported `0x407EC`, the pool tick) | no arguments |
+| `0x3FDD8` | the dword stored at `0x3FF7E` (`+0x1C` of the slot) by the setup `0x3FF08` | `fn(side)` |
+| `0x40954` | the dword stored at `0x40C17` (`+0x0C`) by the setup `0x40BBC` (its dword at `0xBDB14`) | `fn(slot, rec, side)`, `0x3531C` case 7 |
+| `0x3EC20` | `0x3E9DF` (in `0x3E9A4`) | `(slot, rec)` |
+| `0x3E9A4` | the dword stored at `0x3ED55` (`+0x1C`) by `0x3ECF8` | `fn(side)` |
+| `0x3E924` | the dword stored at `0x3ED4D` (`+0x18`) by `0x3ECF8` | `fn(side)`, EAX returned |
+| `0x3ECF8` | the dword at `0xA3898` (character 0 reaction `0x2C`, `(0xA3898 - 0xA3528) / 20`) | `(slot, rec, side)` |
+| `0x3EF44` | the dwords at `0xA37D0`, `0xA37E4`, `0xA50BC` (§49-U.1) | `(slot, rec, side)` |
+| `0x3FB88` | the dwords at `0xA3848`, `0xA385C` (§49-U.1) | `(slot, rec, side)` |
+| `0x3ED78` / `0x3EDB8` | stored by `0x3EF44` at `0x3EFA2` / `0x3EFAB` (`+0x18` / `+0x1C`) | `fn(side)` (`0x3ED78` returns EAX) |
+| `0x40BBC` | the dword at `0xBDB14` (a table of code pointers) | `(slot, rec)`, AL returned: the `0x1078E8` shape `0x379C4` calls (`0x379E8`) |
+| `0x3FF08` | no data dword and no call (the data object and code were both scanned) | same shape as `0x40BBC` |
+| `0x3E800` | `0x3E9EC` (in `0x3E9A4`; its EDX = `0x29A` is unread) | EAX = side |
+| `0x3E8E4` | no reference of any kind (Ghidra has no function here either) | EAX = side |
+
+Callees not yet ported were ported with their users: `0x3C12C` (2 callers,
+`0x3E871` and `0x21621` in the unported `0x215B0`), `0x3D0C0` (`0x3FE04`) and
+`0x408E8` (`0x40A22`). `0x3ECF8`, `0x3ED78`, `0x3EDB8`, `0x40BBC` and `0x3FF08`
+are not in the task's list; they are the storing/stored neighbours the disassembly
+of the requested functions exposed (Ghidra has no function at `0x3ECF8`, `0x3ED78`,
+`0x3EDB8`, `0x3E8E4`, `0x3E924`, `0x3E9A4`, `0x3EF44`, `0x3FB88`, `0x40BBC`,
+`0x3FF08`), and porting them makes the requested callbacks registrable and
+testable. Every disassembly of a function Ghidra does not know was made from the
+`read_memory` bytes with capstone (`/private/tmp` helper), with the fixups
+applied.
+
+### 50-A.2 Findings worth keeping
+
+- `0x18AF8` is a two-call stub: `xor eax,eax; call 0x18B04` and then `mov eax,1`
+  *falls into* `0x18B04` (the ret is inside it), so it is `hit_facing_flag(0)`
+  then `hit_facing_flag(1)` (the port already has it as `fighter_18af8`). `0x3E9A4`
+  (0x3E9B9) calls it without an argument.
+- `0x36F10`'s `| 0x820` at `0x36FC8` is on the *word* at `+0x42` (`MOV DX,
+  [ESI+0x42]` ... `MOV [ESI+0x42],DX`): bits 5 and 11, not bit 4. The claim in
+  `fight_health_sync` (and §7.10) that nothing sets `+0x42` bit `0x10` is therefore
+  unchanged by this port, and the in-range arm is still unreachable in practice;
+  `fighter_36f10(rec)` is now called from it (the raw's call, EAX = the entry),
+  and the arm's comment says why it still cannot fire.
+- `0x36F10` stores `0xBD89C` into `DS_001078DC` at `0x37043`, the pointer
+  `0x37464` loads at `0x374E3`. The port's `fighter_state_37464` still reads the
+  *pointer word* as its table (record §1.3, Task 3); its TODO(verify) is kept and
+  re-worded. Changing it moves the assertions of the `0x37464` tests, so it was
+  left for the task that makes the caller reachable.
+- `0x36F10` arm A writes `DS_001078F6 = BX` right after `CALL 0x2BC30` with
+  `EBX = 0x1A4` set before the call; `0x2BC30` pushes and pops EBX (checked at its
+  entry and at its `RET 4`), so the word is `0x1A4` (the `0x3531C` countdown at
+  `0x353A7` reads it: `0x353C0`'s voice/cutscene pair, still dead).
+- In `0x36F10` the gate reads the entry at `0x1077A8 + (byte ^ 1) * 4` (the other
+  slot, EBX) and never the record's own entry; in `0x3EF44`, `0x40BBC`, `0x3FF08`
+  the *own* entry `0x1077A8 + byte * 4` supplies the character byte at `+0x7A`
+  (the raw calls it EDX after overwriting the record pointer). `0x3FF08` reads both
+  entries and returns 0 on either being null. `0x3EF44`, `0x40BBC` and `0x3FF08`
+  test the character with `JBE` after `TEST AL,AL` (unsigned: zero only) then
+  `CMP AL,5`.
+- `0x3E800`'s two nudges read `dword[0xC7656 + char*2] >> 16` and
+  `dword[0xC7642 + char*2] >> 16`: unaligned dwords at a two-byte stride, so the
+  *high word* is the word at `+2` (`0xC7658 + ch*2` and `0xC7644 + ch*2`), signed
+  (`SAR`). The first goes through `0x1883C(o, 0, w1)` (EBX = w1, EDX = 0), the
+  second through `0x3C12C` (`0x1A570` non-zero negates EDX, then `0x1883C(side,
+  dx, 0)`).
+- `0x40954` case 2's four `0x2AE14` calls (`0xC77C4`): only the first result is
+  stored (`DS_00108090`); the three that follow use its record's `+0x56` word with
+  `AH |= 4` as the flag word (the `0x400` "child of record `+0x56 & 0x7F`" bit of
+  `actor_spawn`), `EDX = 0/0x14/-0x14`, `EBX = 0x14`, and their results are
+  dropped (`MOV EAX,[0x108090]` is re-read each time). All four take `ECX =
+  (ctx[5]+0x30 >> 16) - 0x200`.
+- `0x406B4` re-reads the free-list head at `0x107EF8` on each of up to eight
+  passes (`JL` on `EDI < 8` after `INC`): an empty list (`head == &head`, tested
+  at `0x406FE`) leaves the loop through `0x40715`, before the insert. The draws are
+  `rng(2)`, `rng(0x60)`, `rng(0x100)`, `rng(0x18)` in that order per pass.
+
+### 50-A.3 Ported functions
+
+`fighter_36f10(slot)` (the `+0x42` word, the `0xBDC18` actor when
+`byte[0x104529] & 2`, both arms, the `0x1028F8`/`0x102900` tail unless mode 3/0x22
+or `DS_00105B3A >= 2`, `0x34038`), `fighter_3fdd8(side)` (with `0x3D0C0`),
+`fighter_406b4()`, `fighter_40954(slot, rec, side)` (with `0x408E8`),
+`fighter_3ec20(slot, rec)`, `fighter_3e9a4(side)`, `fighter_3e800(side)` (with
+`0x3C12C`), `fighter_3e8e4(side)`, `fighter_3e924(side)` (returns EAX),
+`fighter_3ecf8`, `fighter_3ed78(side)` (returns EAX), `fighter_3edb8(side)`,
+`fighter_3ef44`, `fighter_3fb88` (`0x3FB88` stores `0x3F7F4`/`0x3F85C` at `+0x18`/
+`+0x1C` of ctx[2] after `0x3F720`), `fighter_40bbc(slot, rec)` and
+`fighter_3ff08(slot, rec)`. Register shapes are the ones in the table above; the
+registered ones (`0x3EF44`, `0x3FB88`, `0x3ECF8`, `0x3E924`, `0x3ED78`, `0x3E9A4`,
+`0x3EDB8`, `0x3FDD8`, `0x40954`, `0x40BBC`, `0x3FF08`) are in `actors_init`. Code
+addresses stored into slots are written as the raw dwords (as §48-P does).
+`0x3EC20`, `0x3E800`, `0x3E8E4` and `0x406B4`/`0x36F10` are called directly.
+
+Deviations: the `0x2C3FC` voice calls (`0x408ED`/`0x40931` with `0x6C`/`0x72`,
+`0x40B26` `0xEE`, `0x407CE` `0x73`, `0x3EFC9` `0x47`, `0x37051` the word at
+`0xBDAD4 + char*2`) are the deferred idiom (`PORT:` notes, record §45-A). The AL
+results of the reaction-row callbacks (`0x3EF44`: 0 on the null gate, else 1;
+`0x3ECF8`, `0x3FB88`: 1) are dropped as `0x3F3F4`'s are: `0x34E2C` returns the
+callback's AL, and both of its callers (`0x352CD` and `0x3CF2E`, which reloads AL =
+1) ignore it. `fighter_3ecf8` and `fighter_3ef44` and `fighter_3fb88` take the
+raw's overwritten EBX as an unused `side`.
+
+### 50-A.4 Verification
+
+`check_fighterset` (test_fight.c; called after `check_posecb`, each part between
+`g2_save`/`g2_restore`) with crafted plain-frame streams for every table and fixed
+head (ids `0x1580`..`0x15EC`). Every arm has a sentinel that differs from its
+post-condition: `0x3EC20` and `0x3E9A4` on both sides with the stance flag,
+`0x3E800` (signed nudges, both flips), `0x3E924`/`0x3ED78` (counter window,
+box-table choice by the sign of the `0x107D2C` word, every flag by a state
+row: `AF8`, `+0x74/+0x76`, `+0x42` bit 3, `+0x54`), `0x3EDB8` (differential
+against `0x3B714` from the same state), `0x3ECF8`, `0x3EF44`, `0x3FB88`
+(`0x3F720`'s speed from the post-call slot positions and `0x189FC`), `0x3FDD8`,
+`0x40BBC`/`0x3FF08` (characters 0/5/other, both null gates), `0x40954` (every
+case with signed/equality edges, the five-actor burst with the child count,
+palette on side 1 only, cases above 4), `0x406B4` (0/1/3/8/10 nodes, both
+`DS_00104AD4` values, the rng draws recomputed from the same seed) and `0x36F10`
+(two gates, twelve rows over arm A/B, config bit, mode gate, `DS_00105B3A`,
+`+0x8C`/`0x34038`, `0x35B7C`, `+0x40` masks). Two of my own expectations were
+wrong before they were right and are worth recording: the stream start
+(`0x2BC30`/`0x3C4CC`) *overwrites* the pset word, so the hflip a later `0x3C190`/
+`0x1A570` reads comes from the record's `+0x29` bit 6, not from a pre-seeded pset
+word; and `0x3C4CC` moves the record's anchor, so positions are read after the
+call. Mutations proved live (each rebuilt, the suite failed, then reverted; the
+count is the failing assertions): 36F10 mode-`0x22` gate 5, `B3A` bound 5, `+0x63`
+compare 151, `0x1A4` 17, config bit 3, side xor 205; 406B4 loop bound 5, y draw
+24, side xor 70; 40954 case-4 `jg` 10, `-0x200` 5, low-31 mask 3, side palette 5,
+case-1 `jle` 17, above-4 bound 3; 3E924 window 5/5, box table 27, flag 4 29; 3E800
+high word 5, `+0x4B` 9, dword `+0x24` 11; 3C12C negation 5; 3EF44 character 13,
+flip 13; 3FB88 `0x48000` 5, `0x3F720` argument 3; 3FDD8 sign 5, `0x3D0C0` side 29,
+`+0x61` 5; 3EC20 `+0x36` 13, side index 9, `+0x42` bit 5; 3E9A4 flash side 9,
+timers 5, `0x3EC20` arguments 57; 3EDB8 gate 5, argument order 15; 3ED78 flag 0 9;
+3ECF8 word index 5, `+0x57` 3; 3FF08 gate 5, `+0x53` 7; 40BBC `+0x54` 7; 408E8 flag
+word 3; 3D0C0 `+0x5C` 5. `PR_ORACLE_REQUIRED=1 run_tests`: all checks passed, three
+consecutive runs, ~1.8 s each. `make verify` results are in the branch report.
+
+### 50-A.5 Remaining named gaps
+
+- The setups' own callbacks: `0x3FEF8` (`+0x0C`) and `0x3FD30` (`+0x18`) stored by
+  `0x3FF08`, `0x3F7F4` and `0x3F85C` stored by `0x3FB88`; `0x3FC08`/`0x3FC90`/
+  `0x3FCB0` sit beside them. All have only DATA references from the setups.
+- `0x40608` (the pool init: the sentinel pairs at `0x107EF0`/`0x107EF8` and the
+  free list `0x107F00..0x108080`, then `0x406B4`) and `0x407EC` (the pool tick,
+  the other `0x406B4` caller, the `0x1080B0` countdown): unported and unreachable,
+  so `fighter_406b4` has no live caller yet.
+- `0x215B0` (the other `0x3C12C` caller), the writer of `0x1078E8` for
+  `0x40BBC`/`0x3FF08`, and whatever calls `0x3E8E4`.
+- `fighter_state_37464`'s pointer-table TODO(verify) above.
+- The voice calls and `0x62003` exits: the deferred idioms.
