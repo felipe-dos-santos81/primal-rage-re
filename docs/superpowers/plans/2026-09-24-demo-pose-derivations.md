@@ -8961,7 +8961,8 @@ to move.
   take no `0x2545C` arm: 3, and `0x15` once `gap2-frontend`'s `0x29B74`
   stores it.
 - Remaining named gaps in `0x49C78`:
-  - the mode-9 block `0x4A487..0x4A58F` with `0x4A928`/`0x4AA6C` (the only
+  - the mode-9 block `0x4A487..0x4A58F` with `0x4A928`/`0x4AA6C` (ported
+    since, record §49-Z, without a call site; the only
     readers of the frame locals and the only writers of `DS_001088B4`,
     `DS_00108870`/`DS_0010887C`, `DS_001088C7`/`C8`/`C9`/`CA`);
   - the prelude's per-side words `[esp]`/`[esp+2]` and count `[esp+8]`;
@@ -22512,3 +22513,216 @@ attract and front-end paths never reach.
 * The `0x2C3FC` voices (§45-A).
 * The blink prompt's mode word (`0x1000`/`0x4000`, `0x1FB46..0x1FBBA`) is passed
   through but no test observes it (the glyph actors do not carry it).
+
+## 49-Z. The `0x45000`-`0x4F500` fighter/AI/effects helper cluster (named-gap batch, branch `gap45-fighterai`)
+
+The letter `Z` was free (the record's last letters in this tree are `T`, `V`;
+`U` and `W` live on sibling branches). Eight functions came from
+`tools/port_progress.py --unported`: `0x45B50` (191 B), `0x474E4` (215 B),
+`0x47A00` (233 B), `0x47B04` (247 B), `0x496DC` (416 B), `0x4A928` (323 B),
+`0x4CF20` (487 B), `0x4F4E8` (223 B). A grep of `port/src` for each found only
+one already ported: **`0x474E4`** is the static `string_decode` in `flow.c`
+written under a `/* PORT: 0x474E4. ... */` header that the progress
+counter does not match. It was checked against the raw and kept; its header is
+now `/* 0x474E4 — record §49-Z. ... */` and states the one deviation (the
+caller, `game_string_get`, does the `0x1E75C` lock at `0x474F2` and the
+`0x1E808` unlock at `0x475A5`).
+
+### 49-Z.1 Sources and how the callbacks are reached
+
+* Ghidra bridge `disassemble_function` for all eight, plus the callees
+  `0x39FB0` (66 B, needed by `0x47B04`) and `0x4AA6C` (98 B, needed by
+  `0x4A928`), which were unported.
+* Callers, by `get_xrefs_to` and a scan of the data object
+  `0x80000`-`0x10B0CF` for the dwords:
+  * `0x45B50`: one DATA reference, `0x45C30`. The bytes there are
+    `c7 43 0c 50 5b 04 00` (`mov dword [ebx+0xc], 0x45B50`): it is the slot
+    `+0x0C` callback stored by the code at `0x45C10` (`push ebx; mov ebx,eax;
+    mov eax,edx; mov edx,0xEB7A0; push 0x40400000; call 0x2BC30; ...`), which
+    Ghidra has **no function** for (it sits behind a `nop`). The dword `0xBDAF4`
+    holds `0x45C10`. So `0x45B50` is `0x3531C` case 7 with the
+    `(slot, rec, side)` registers, exactly as `0x45A70` (§48-A).
+  * `0x47B04`: one DATA reference, `0x47C53` (`mov dword [ecx+0xc], 0x47B04`
+    in the function at `0x47BFC`, also missing from Ghidra; the dword `0xA4220`
+    holds `0x47BFC`). Same registers. Its jump table is the six dwords at
+    `0x47AEC`: `0x47B79`, `0x47B92`, `0x47BC7`, `0x47BF3`, `0x47BDA`, `0x47B4A`
+    for `+0x57` 0..5.
+  * `0x47A00`: one call, `0x47B85` (case 0 of `0x47B04`).
+  * `0x4F4E8`: the dword `0xA86C4`, entry 0 of the render table `DS_000A86C4`
+    (`0x255CC` walks it by the bits of `DS_00104AEC`, and `0x4F427`, inside
+    `0x4F37C`, sets bit 0; `0x27E6D` clears it). `fn()` with the EAX unread.
+  * `0x496DC`: one call, `0x4A32B` (the case-13 body of `0x49C78`).
+  * `0x4A928`: one call, `0x4A562` (the mode-9 block of `0x49C78`), and its
+    callee `0x4AA6C` is called only by `0x4A928` (`0x4A97A`, `0x4A9C2`).
+  * `0x4CF20`: one call, `0x494C6` (`0x494A8`'s `DS_00104AFA == 0x23` arm).
+  * `0x39FB0`: `0x47BC0` and the unrecognised `0x476CF`.
+* `0x4A868` (the case-13/14 gate) stays a named gap (spec §7.4); nothing here
+  calls it.
+
+### 49-Z.2 What the routines do, by address
+
+* **`0x4CF20` (EAX = side).** `slot +0x81` = 6 (`0x4CF45`); the side's
+  `DS_001088AE/A2/A4/B2/9E` bytes zeroed (`0x4CF4E`..`0x4CF76`);
+  `n = 0x300 / (slot +0x81)` (`0x4CF86`..`0x4CF9C`, 6 gives 0x80). Then
+  `+0x81` iterations (`0x4D0E9`: signed `cmp eax,ebx / jg`): move a node from
+  the free list `DS_001083C4` to the active list `DS_0010884C` (an empty pool
+  leaves through `0x4D0FD`), pick the descriptor (`0x49388`) and write
+  `0x29CDC` into its `+0x10`, spawn at `x = rec+0x18 - 0x2400 + rng(0x4800)`
+  (`0x4D011`..`0x4D024`) and `y = offset + (rec+0x30 >> 16) + 0x400 + rng(n)`
+  (`0x4D026`..`0x4D046`), then the entry fields as `0x494A8` does (the type
+  `+0x1E` = 0, `+0x1F` = 0, `+0x21` = side, `+0x0C` = slot, `+0x1C` word and
+  `+0x10` dword = 0, the actor's `+0x2C` = the `0x496AC` clamp of y). The
+  actor's `+0x2E` += 4 and `+0x4E` = 1 when the record's `+0x51` is non-zero
+  for characters 0 and 4 (`0x4D08D`..`0x4D09C`) and zero for every other
+  (`0x4D09E`..`0x4D0B4`). **Correction of §10.5/§10.6 of the demo-fight
+  record ("diverts to `0x4CF20` (no list, no RNG)"):** the raw uses the free
+  and active lists and draws three times per iteration; it differs from
+  `0x494A8`'s body only in the constants (`0x4800` and `0x2400` for `0x1800`
+  and `0xC00`, y offset `+0x400` without the second `0x180` term), the six
+  entries, and that it does not touch `DS_001088C4/BF/C3/C1`.
+* **`0x496DC` (EAX = entry, EDX = count).** `count` iterations (signed
+  `jle`/`jl`): the same pool move and descriptor pick for the entry's side
+  (`+0x21`); spawn at the entry's actor's `x` (`+0x18`) and `y = (+0x30 >> 16) +
+  rng(0x180)`; the new actor takes `+0x2C` = clamp(y), `+0x28` and `+0x34`
+  words from the source actor, then `0x2BC30` on `0xC95D4[(u16)(+0x48 - 0x20)]`
+  at 3.0; the new entry: type `0x0E`, `+0x1F` = 0, `+0x0C` = the side's slot,
+  `+0x21` = the side, `+0x14` = the source entry's `+0x14` plus `rng(0xC00)`
+  when the new actor's `+0x34` word is `0x80` (the dword at `+0x32` >> 16,
+  signed) and minus it otherwise (`0x4980B`..`0x49838`).
+* **`0x4AA6C` (AL = a signed side byte).** The mean of `0x2BE00` over the
+  active entries whose `+0x21` equals it, `sum/count + 1` with a signed
+  `idiv` by the 16-bit count, 0 when there are none.
+* **`0x4A928`.** Zeroes `DS_001088C6`, `DS_00108870`, `DS_0010887C`; sets
+  `DS_001088C9` = (slot 0's `+0x5A` < 0x78) (`setl`) and `DS_001088C7` = (slot
+  0's `+0x5A` == slot 1's `+0x5A`). The dword read `[0x1088C6] >> 24` is the
+  *byte* `0x1088C9`. The two means come from `0x4AA6C(C9)` and
+  `0x4AA6C(C9 ^ 1)`; an empty side takes `0x2BE00` of slot C9's record (both
+  times: the raw reloads C9 at `0x4A9D0`, not `C9 ^ 1`) and sets `DS_001088C6`
+  / `DS_001088C8` to 1 (the `DH`/`BL` the code loaded before the call;
+  `0x2BE00` pushes and pops `EDX`). The direction `DS_001088CA` is 0 when the
+  first mean is below the second; a gap of `0x1400` or more (signed `jl`)
+  writes `DS_0010887C` (the first mean moved `0x1400` toward the other), else
+  `DS_00108870` (the second moved `0x1400` away).
+* **`0x39FB0` (EAX = slot).** `0x33A10` context of the slot record's `+0x51`,
+  `0x18B04` on `ctx[1]`, then `0x39F40` with `EDX` = -0x50, `EBX` = 0x64,
+  `ECX` = 0xF and the pushed 0x14: the same call as `0x3ACC3`.
+* **`0x45B50`.** `0x33950` context; `+0x57` == 1: the opponent's record on
+  `0x9B01C[the opponent slot's char]` at 1.0 (`0x2BC30`), `0x2A17C` on it with
+  word 0 and the handle in `EBX`, voice `0x50`, `DS_001081EC` (a word) = 0x1E,
+  `+0x57` = 2. `+0x57` == 2: the word counts down; when the signed 16-bit
+  result is not above 0 (`0x45BDB` `jg`): `rec +0x24` = 3.0, the opponent's
+  `+0x24` = 6.0, voice `0xD2`, `+0x53` = 3, `+0x52` = 9, `DS_000F0AFE` = 4.
+* **`0x47A00` (EAX = side).** `0x33950` context; with `DS_00105B3A` at most 1
+  (`0x47A21` `jg`) a child actor of `0xBB128` (`0x2AE14`, the pushed word
+  `rec +0x56 | 0x400`, EDX = ECX = EBX = 0) gets `+0x60` = 1 and the record's
+  `+0x4B` takes its `+0x56`. Then the side's slot `+0x57` = 1, `0x39834` on the
+  other side with the slot's `+0x5F`, voice `0x46`, the record on
+  `0xC90F8[the other slot's char]` at 3.0 through `0x3C480`, `0x3C358(side)`,
+  both records' slot `+0x74` = 0x309 (the first call's `EDX` is `0x3C358`'s
+  preserved 0x309), and `0x3C208(other side, the signed word at 0xC9456 + 2 *
+  the other slot's char)`.
+* **`0x47B04`.** As in 49-Z.1; the gate byte is the callback's *rec argument's*
+  `+0x63` (`ECX`), the actions use the context's records.
+* **`0x4F4E8`.** As in the function header (`flow.c`): the two `+0x3C` numbers
+  when `DS_00105B3B` is set; otherwise the round timer's countdown redraw.
+  `DS_001088F2` is the top byte of the dword `DS_001088EF`, so the value is
+  read signed before the decrement (`<= 10` chooses mode 0x3000 and voice
+  `0x52`) and the *decremented* byte is drawn.
+
+### 49-Z.3 Findings, raw first
+
+1. `0x45B94` loads `EBX` with the immediate `0x1F874610` for `0x2A17C`. No LE
+   fixup covers it (`mem_load_le` leaves `0x1F874610` at `0x45B95`), and it is
+   not in the data object. `0x2A17C` treats a non-zero `EBX` as a resource
+   handle (`0x33754` -> `0x1B544`). The port passes it through
+   `actor_pset_palette`, which acquires an empty palette entry for the
+   unresolved handle. `TODO(verify)` in the header; the code around it is
+   reachable only through the Ghidra-missed `0x45C10` and has never run in a
+   capture.
+2. `0x4AA6C`'s argument arrives as `mov [esp], al` and is read back as the
+   dword at `esp-3`, `sar 0x18`: a sign-extended byte.
+3. `0x47B04`'s four writers of `+0x54` = 0 come *before* the `0x36870` call
+   they gate (`0x47B64`, `0x47BE6`), so `0x36870`'s `switch (+0x54)` takes
+   case 0.
+4. `0x39834`'s scoring side is `1 - its argument` (the `0x33A10` context):
+   `0x47A00` and `0x47B04` case 1 both pass `1 - side`, so the hit count
+   `DS_00107D2C[side]` and the reaction `DS_00107D28` are the observable
+   attribution of the argument.
+5. `0x3C208` places the fighter it is *not* called for; its final
+   `|slot0.x - slot1.x|` equals the dist argument only when the called-for
+   side's actor faces (bit 15 of its pset word) the way that puts the other
+   in front of it. The tests seed the facing accordingly.
+
+### 49-Z.4 The port
+
+* `fight.c`: `fight_4cf20` (next to `0x494A8`; **wired**: the `0x23` arm of
+  `fight_dust_build` is now `if (DSW(DS_00104AFA) == 0x23) { fight_4cf20(side);
+  return; }`, reading the word `0x494B7` reads instead of the old byte),
+  `fight_496dc`, the static `fight_4aa6c` and `fight_4a928`. `0x496DC` and
+  `0x4A928` are ported without a call site: their callers are the case-13 body
+  and the mode-9 block, the named gap of §7.4, and wiring one helper into a
+  gap that is otherwise omitted would fabricate the rest of the block.
+* `fighter.c`: `fighter_39fb0`, `fighter_45b50`, `fighter_47a00`,
+  `fighter_47b04`. `0x45B50` and `0x47B04` are registered in `actors_init`
+  (`fn_register`) for the day `0x45C10` and `0x47BFC` are ported (the dwords
+  `0xBDAF4`/`0xA4220` already name them); `0x47A00`/`0x39FB0` are direct
+  callees.
+* `flow.c`: `flow_round_timer_step` (`0x4F4E8`), registered for
+  `DS_000A86C4[0]`. It runs the frames `DS_00104AEC` bit 0 is set (after
+  `0x4F37C` drew the 60), which the front-end, demo and attract paths never
+  reach (`0x4F37C`'s bit-setting arm needs `DS_00104B14 == 0` and
+  `DS_00104B1D` not 2/3).
+* PORT deviations: the voices `0x2C3FC(0x50)`, `0x2C3FC(0xD2)`,
+  `0x2C3FC(0x46)`, `0x2C3FC(0x52)` are not wired (§45-A); a zero
+  `DS_001088D0` returns (the original's `idiv` would fault; the init writes
+  `(v & 0xF) * 5 + 0x1E`); an exhausted actor pool skips `0x47A00`'s two
+  writes through record 0.
+
+### 49-Z.5 Tests and mutations
+
+`check_49z_survey` (12 rows: both sides of every branch of `0x4A928`,
+negative means, the exact `0x1400` boundary, a tie), `check_49z_4cf20` (both
+sides, three y offsets that hit both clamp ends, eight character/flag rows for
+the bump condition, the three-node pool, the word compare in `0x494A8`),
+`check_49z_496dc` (four `+0x34` words, both sides, both flag values, count 0
+and -1, a pool of 3 for count 2 and 3, and a `+0x48` of `0x10` whose
+`(u16)` index differs from a byte index), `check_49z_45b50` (state 1 on both
+sides through a pool record, the seven countdown words, five other states),
+`check_49z_47a00` (six `DS_00105B3A` values on both sides, the spawn, the
+stream by the other slot's char, `0x3C358`'s writes, the `+0x74` words,
+`0x39834`'s attribution, the placed distance), `check_49z_47b04` (the no-other,
+`+0x57` 3/6+, and every case with its gate rows) and `check_49z_round_timer`
+(sixteen gate rows, the two-mode discrimination, the row-7 numbers). Mutations,
+each rebuilt, failed and reverted: 48 caught (`0x300 / n`, the draw ranges, the
+bump condition inverted and its `+0x51` byte, the pick loop bound, the
+`b - a` boundary, unsigned `idiv`, the direction sign, the type byte, the
+`(u16)` index (segfault: the stream read is out of the table), the `>=`/`<=`
+compare on every gate, the wrong context member or side in every call of
+`0x47A00`/`0x47B04`/`0x39FB0`, the handle literal, the palette word, both
+`0x45B50` constants, the timer's signed shift/compare/modulo, the loop count,
+the column and row, the draw order in `0x4CF20`). Two equivalent mutants were found
+and dropped: `0x301 / 6 == 0x300 / 6`, and `continue` for `return` on an empty
+pool (nothing else changes once the list is empty).
+
+### 49-Z.6 Verification
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests` green three times (~1.8 s each, no
+hang). `make verify` (worktree-local dumps `/tmp/pr_frontend_dump_gap45`,
+`/tmp/pr_title_pin_gap45`) exits 0 with every enforced number unchanged:
+front-end 517 clean / 801 splice / 3 transition / 2 unexplained (the two named
+frames), demo-fight fully explained at N = 1886, attract2 0 unexplained at
+N = 3617, `symbols.h` regenerating byte-identically. As expected, nothing here
+is on an oracle-covered path: `0x4CF20` needs `DS_00104AFA == 0x23`, `0x4F4E8`
+needs `DS_00104AEC` bit 0 (only `0x4F37C`'s countdown arm sets it) and the
+rest have no live caller. The ported-function count (README recipe) goes from
+810 to 820 of 1206 (68%).
+
+### 49-Z.7 Remaining named gaps
+
+* `0x45C10` and `0x47BFC` (the storers of `0x45B50`/`0x47B04`; Ghidra has no
+  function at either) and the ~18 other reaction callbacks in their tables: the
+  two ported callbacks are unreachable until they land.
+* `0x4A868` and the case-13/14 bodies (`0x496DC` has no call site until then),
+  the mode-9 block (`0x4A928` likewise).
+* `0x476CF` (the second caller of `0x39FB0`, in no Ghidra function).
+* The four `0x2C3FC` voices above (§45-A).
