@@ -28587,6 +28587,449 @@ static void check_mode_13(void)
     memcpy(gfx_dac, m13_dac, sizeof m13_dac);
 }
 
+/* ---- record §48-Y: mode 9's frame handler 0x28788 and its callees ------- */
+
+#define M09_001077F1 0x001077F1u   /* no symbols.h name: slot 0's +0x41 */
+#define M09_00107885 0x00107885u   /* no symbols.h name: slot 1's +0x41 */
+
+/* tf_demo_fixture (the arena frame's proven-safe minimal live fixture — two
+ * seeded slots, no camera-target record, an empty effect list, every gate
+ * closed) with the mode-9-specific globals seeded to sentinels that differ
+ * from every post-condition below, so each CHECK can tell "ran" from
+ * "already there". The effects list stays empty here: fight_effects_hold_all
+ * is a direct-called unit (check_fight_effects_hold_all, below) since its
+ * list-walk needs mz_seed's richer per-entry fixture, which this preamble's
+ * unconditional camera_project/fight_slot_pass chain does not tolerate. */
+static void m09_seed(void)
+{
+    (void)tf_demo_fixture();
+    mem_fill(0x00107D58u, 0, 0x180u);   /* the three per-slot hitbox arrays */
+    /* fight_slot_pass's hit_connect (via hit_frame_desc) reads slot+0x63
+     * (== DS_00107813/DS_001078A7, this function's own "think byte" — the
+     * same field serves both roles) to pick the CPU/player hit table, and
+     * falls back to DSW(DSD(DS_00101514) + 0x2D4/0x2D6) when it is 0; both
+     * must be real/safe here since this test varies DS_00107813 through 0.
+     * slot+0x7A (== DS_0010782A/DS_001078BE) selects the character row of
+     * that table and must stay in 0..9. */
+    DSD(DS_00101514) = 0x3000000u;
+    mem_fill(0x3000000u, 0, 0x1000u);
+    DSB(DS_0010782A) = 2u;
+    DSB(DS_001078BE) = 5u;
+    DSW(DS_00104B00) = 9u;
+    DSW(DS_00104AF8) = 0u;
+    DSB(DS_000F0AFE) = 4u;
+    DSB(DS_001078FC) = 0u;
+    DSB(DS_001078FE) = 0u;
+    DSB(M09_001077F1) = 0u;
+    DSB(M09_00107885) = 0u;
+    DSD(DS_00107ED8) = 0x77777777u;
+    DSD(DS_00107EDC) = 0x77777777u;
+    DSD(DS_00104AD4) = 0u;
+    DSW(DS_00104AFC) = 3u;
+    DSB(DS_00108173) = 0u;
+    DSB(DS_00104B1D) = 0x77u;
+    DSB(DS_00104B1F) = 0x77u;
+    DSB(DS_00104B19) = 0x11u;
+    DSD(DS_00104ABC) = 0x77777777u;
+    DSB(DS_00107813) = 0u;
+    DSB(DS_001078A7) = 0u;
+    DSB(DS_00104B16) = 0x77u;
+    DSB(DS_00108104) = 1u;
+    DSB(DS_00108104 + 1u) = 2u;
+    DSB(DS_00107830) = 0u;
+    DSB(DS_00107830 + 0x94u) = 0u;
+    DSB(DS_00104B11) = 0u;
+    DSD(DS_001082D0) = 0x77777777u;
+    DSD(DS_0010746C) = 0x1111u;
+    DSD(DS_0010746C + 4u) = 0x2222u;
+    DSD(DS_0010746C + 8u) = 0x3333u;
+    DSD(DS_0010746C + 0xCu) = 0x4444u;
+    DSB(DS_0010452C) = 0u;
+    DSD(DS_00104AE4) = 0xDEADBEEFu;
+    DSB(DS_00104B25) = 0x77u;
+    DSB(DS_00104B17) = 0x77u;
+    DSW(DS_00104AFA) = 0x7777u;
+    DSW(DS_00104AFE) = 0x7777u;
+    DSW(DS_001088EE) = 0x7777u;
+}
+
+/* 0x4A708 — record §48-Y, direct: the effects-list walk needs mz_seed's
+ * per-entry fixture (MZ_E: type 8, +0x21 = 1, rec = MZ_R, rec+0x48 = 0x23,
+ * so the index is 3 — the same index mz_tabs[8]/[9], 0xC955C/0xC958C, are
+ * seeded at). DS_00104B16 selects fight_4b3f0 (stream mz_tabs[8]) or
+ * fight_4b430 (stream mz_tabs[9]) by entry+0x21. */
+static void check_fight_effects_hold_all(void)
+{
+    if (!mz_save()) { CHECK(0, "the §48-Y snapshot allocates"); return; }
+
+    mz_seed(8u, 0x40u);
+    DSB(DS_00104B16) = 1u;                        /* == entry+0x21 */
+    DSW(MZ_R + 0x38u) = 0x7777u;
+    DSW(MZ_R + 0x34u) = 0x7777u;
+    DSW(MZ_R + 0x36u) = 0x7777u;
+    DSB(MZ_R + 0x55u) = 0x77u;
+    fight_effects_hold_all();
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x38u), 0);
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x36u), 0);
+    CHECK_EQ_INT((int)DSD(MZ_R + 8u), (int)MZ_ST(8));
+    CHECK_EQ_INT((int)DSB(MZ_R + 0x55u), 1);
+    CHECK_EQ_INT((int)DSB(MZ_E + 0x1Eu), 8);
+
+    mz_seed(8u, 0x40u);
+    DSB(DS_00104B16) = 0u;                        /* != entry+0x21 (1) */
+    fight_effects_hold_all();
+    CHECK_EQ_INT((int)DSD(MZ_R + 8u), (int)MZ_ST(9));
+
+    /* type 6 is skipped entirely: neither the zeroing nor the hold runs. */
+    mz_seed(6u, 0x40u);
+    DSW(MZ_R + 0x38u) = 0x7777u;
+    DSW(MZ_R + 0x34u) = 0x7777u;
+    DSW(MZ_R + 0x36u) = 0x7777u;
+    DSD(MZ_R + 8u) = 0x77777777u;
+    fight_effects_hold_all();
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x38u), 0x7777);
+    CHECK_EQ_INT((int)DSD(MZ_R + 8u), (int)0x77777777u);
+
+    mz_restore();
+}
+
+/* (a) the preamble's countdown/early-return gate and the fight_slot_pass
+ * conditional (0x28815..0x28827), independent of the results state. */
+static void check_mode_09_a(void)
+{
+    if (!mz_save()) { CHECK(0, "the §48-Y snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* fight_slot_pass runs (0x3CB68 always ends with DS_00107ED8 = 0x20 and
+     * DS_00107EDC = 2) only when neither side's +0x41 byte has bit 1 set. */
+    {
+        m09_seed();
+        DSB(M09_001077F1) = 0u;
+        DSB(M09_00107885) = 0u;
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSD(DS_00107ED8), 0x20);
+        CHECK_EQ_INT((int)DSD(DS_00107EDC), 2);
+    }
+    {
+        m09_seed();
+        DSB(M09_001077F1) = 2u;
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSD(DS_00107ED8), 0x77777777);
+        CHECK_EQ_INT((int)DSD(DS_00107EDC), 0x77777777);
+    }
+    {
+        m09_seed();
+        DSB(M09_00107885) = 2u;
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSD(DS_00107ED8), 0x77777777);
+        CHECK_EQ_INT((int)DSD(DS_00107EDC), 0x77777777);
+    }
+
+    /* the preamble's own stores run every time, regardless of the gate. */
+    {
+        m09_seed();
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSD(DS_001077E8), (int)DSD(DS_001077E4));
+        CHECK_EQ_INT((int)DSD(DS_0010787C), (int)DSD(DS_00107878));
+        CHECK_EQ_INT((int)DSD(DS_00100A70), (int)(2u * 0x400u + 0xCC300u));
+        CHECK_EQ_INT((int)DSD(DS_00100A70 + 4u), (int)(5u * 0x400u + 0xCC300u));
+        CHECK_EQ_INT((int)(DSB(DS_00104AEC) & 2u), 2);
+    }
+
+    /* the countdown DS_00104AF8: non-zero decrements and, off zero, the
+     * results state does not run this frame (DS_00104B00 stays 9 under its
+     * BEEF sentinel, a word-only store). */
+    {
+        m09_seed();
+        DSW(DS_00104AF8) = 5u;
+        DSD(DS_00104B00) = 0xBEEF0009u;
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AF8), 4);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0009u);
+        CHECK_EQ_INT((int)DSB(DS_001078FC), 0);
+    }
+
+    /* reaching zero this frame arms DS_001078FE/FC = 1, ORs 0x10 into both
+     * +0x41 bytes and DS_000F0AFE = 4 — and, because that makes the gate
+     * true in the same call, the results state runs too (DS_00104B00
+     * becomes 0x17 under the same BEEF sentinel). */
+    {
+        m09_seed();
+        DSW(DS_00104AF8) = 1u;
+        DSB(DS_000F0AFE) = 0x77u;
+        DSD(DS_00104B00) = 0xBEEF0009u;
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AF8), 0);
+        CHECK_EQ_INT((int)DSB(DS_001078FE), 1);
+        CHECK_EQ_INT((int)DSB(DS_001078FC), 1);
+        CHECK_EQ_INT((int)(DSB(M09_001077F1) & 0x10u), 0x10);
+        CHECK_EQ_INT((int)(DSB(M09_00107885) & 0x10u), 0x10);
+        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 4);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0017u);
+    }
+
+    /* the results state does not run off DS_000F0AFE == 4 alone. */
+    {
+        m09_seed();
+        DSB(DS_000F0AFE) = 0x77u;
+        DSD(DS_00104B00) = 0xBEEF0009u;
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0009u);
+    }
+
+    mz_restore();
+}
+
+/* (b) the results state: fight_effects_hold_all, flow_match_result_text,
+ * flow_match_streak_update, the countdown rearm, the DS_00108173 draw force,
+ * the play-time index/snapshot and the four result-dispatch arms. */
+static void check_mode_09_b(void)
+{
+    if (!mz_save()) { CHECK(0, "the §48-Y snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* the gate is always open here (DS_000F0AFE == 4, DS_001078FC != 0). */
+    #define M09_OPEN() do { \
+        DSB(DS_000F0AFE) = 4u; DSB(DS_001078FC) = 1u; \
+    } while (0)
+
+    /* fight_effects_hold_all's own behavior is check_fight_effects_hold_all,
+     * above (it needs mz_seed's richer per-entry fixture); here the effects
+     * list is empty (tf_demo_fixture), so it is a no-op, proven by a plain
+     * smoke call below with a draw result. */
+    {
+        m09_seed();
+        M09_OPEN();
+        DSD(DS_00104AD4) = 2u;                       /* a draw: cheapest arm */
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B17), 2);
+    }
+
+    /* the countdown rearm and the DS_00108173 draw force: both think bytes
+     * cleared and DS_00104AD4 forced to 2 regardless of the seeded result. */
+    {
+        m09_seed();
+        M09_OPEN();
+        DSD(DS_00104AD4) = 0u;
+        DSB(DS_00108173) = 1u;
+        DSB(DS_00107813) = 0x77u;
+        DSB(DS_001078A7) = 0x77u;
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xF0);
+        CHECK_EQ_INT((int)DSW(DS_001088EE), 0x3C);
+        CHECK_EQ_INT((int)DSB(DS_00107813), 0);
+        CHECK_EQ_INT((int)DSB(DS_001078A7), 0);
+        CHECK_EQ_INT((int)DSB(DS_00104B17), 2);       /* the draw arm ran */
+    }
+
+    /* DS_00104B1D == 0 snapshots the play-time index and runs
+     * config_play_time_snap(idx, 0); a non-zero DS_00104B1D skips it.
+     * DS_00107478 is DS_0010746C[3] (config_play_time_snap's own header),
+     * the same slot m09_seed baselines to 0x4444 — the formula below is
+     * computed from that live baseline, not a fitted constant, and its
+     * unsigned division matches config_play_time_snap's own (a source below
+     * the running DS_00107478 wraps, as the raw's DIV does). */
+    {
+        u32 old478, src2, expect;
+        m09_seed();
+        M09_OPEN();
+        DSD(DS_00104AD4) = 2u;
+        DSB(DS_00104B1D) = 0u;
+        DSB(DS_00104B1F) = 3u;                         /* -> idx 2 */
+        old478 = DSD(DS_00107478);
+        src2 = DSD(DS_0010746C + 2u * 4u);
+        expect = (src2 - old478) / 0x3Cu;
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSD(DS_00104ABC), 2);
+        CHECK_EQ_INT((int)DSD(DS_00107478), (int)expect);
+    }
+    {
+        /* idx&3 != 3 here so the common close's config_play_time_close
+         * (which always runs for a draw) zeroes DS_0010746C[0], not
+         * DS_00107478 (DS_0010746C[3]) — isolating this gate from that. */
+        m09_seed();
+        M09_OPEN();
+        DSD(DS_00104AD4) = 2u;
+        DSB(DS_00104B1D) = 1u;
+        DSD(DS_00104ABC) = 0x77777774u;
+        DSD(DS_00107478) = 0x55555555u;
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSD(DS_00104ABC), (int)0x77777774u);
+        CHECK_EQ_INT((int)DSD(DS_00107478), (int)0x55555555u);
+    }
+
+    /* arm A: a draw (DS_00104AD4 == 2). DS_00104B17 = 2; DS_00107813 == 1
+     * forces the result to 0, DS_001078A7 == 1 forces it to 1 (the second
+     * write wins); then the common close. DS_00104B1D stays non-zero here
+     * (config_play_time_snap gated separately, above) so DS_00104ABC is not
+     * overwritten and the close's idx (0x77777777 & 3 = 3) is predictable. */
+    {
+        m09_seed();
+        M09_OPEN();
+        DSD(DS_00104AD4) = 2u;
+        DSD(DS_00104ABC) = 0x77777777u;
+        DSB(DS_00107813) = 1u;
+        DSB(DS_001078A7) = 1u;
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B17), 2);
+        CHECK_EQ_INT((int)DSD(DS_00104AD4), 1);          /* the last write */
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+        CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)fn_origin(frontend_darken_all));
+        CHECK_EQ_INT((int)DSW(DS_00104B00), 0x17);
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x13);
+        CHECK_EQ_INT((int)DSD(DS_0010746C + (0x77777777u & 3u) * 4u), 0);
+    }
+
+    /* arm B, the streak sub-case that crosses the threshold: the winner's
+     * think byte == 1, the loser's streak reaches 3 and its DS_00108104 stat
+     * is below 6 -> DS_00104B17 = 1, DS_00108106[stage] and DS_00107830[loser]
+     * take the combined flag byte. */
+    {
+        m09_seed();
+        M09_OPEN();
+        DSD(DS_00104AD4) = 0u;                        /* side 0 wins */
+        DSB(DS_00107813) = 1u;                         /* winner's think == 1 */
+        DSB(DS_00107830 + 0x94u) = 2u;                  /* loser's streak: 2 -> 3 */
+        DSB(DS_00108104 + 1u) = 5u;                       /* loser's stat < 6 */
+        DSB(DS_0010782A) = 4u;                             /* winner's byte (a
+                                                              * valid character:
+                                                              * slot0+0x7A also
+                                                              * gates hit_connect's
+                                                              * table row) */
+        DSW(DS_00104AFC) = 3u;                              /* stage 3 */
+        DSB(DS_00108106 + 3u) = 0x77u;                      /* overwritten by
+                                                              * flow_match_streak_
+                                                              * update's own "= 0"
+                                                              * before this arm's
+                                                              * own flag store */
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B17), 1);
+        {
+            /* DS_00108106[stage] takes the plain flag; DS_00107830[loser]
+             * takes the same byte XOR loser (0x28A85/0x28A8D). */
+            u8 flag = (u8)((0u << 6) | 0x80u | 4u);
+            CHECK_EQ_INT((int)DSB(DS_00108106 + 3u), (int)flag);
+            CHECK_EQ_INT((int)DSB(DS_00107830 + 0x94u), (int)(flag ^ 1u));
+        }
+        CHECK_EQ_INT((int)DSW(DS_00104B00), 0x17);
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x13);
+    }
+
+    /* arm B, the streak sub-case that does not cross the threshold (still
+     * below 3): DS_00104B17 = 2, and DS_00108106[stage] stays at
+     * flow_match_streak_update's own "= 0" (the winner-think-1 branch runs
+     * regardless of this arm's own threshold), not this arm's flag byte. */
+    {
+        m09_seed();
+        M09_OPEN();
+        DSD(DS_00104AD4) = 0u;
+        DSB(DS_00107813) = 1u;
+        DSB(DS_00107830 + 0x94u) = 0u;                  /* 0 -> 1, below 3 */
+        DSW(DS_00104AFC) = 3u;
+        DSB(DS_00108106 + 3u) = 0x77u;
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSB(DS_00107830 + 0x94u), 1);
+        CHECK_EQ_INT((int)DSB(DS_00104B17), 2);
+        CHECK_EQ_INT((int)DSB(DS_00108106 + 3u), 0);      /* streak_update's own 0 */
+        CHECK_EQ_INT((int)DSW(DS_00104B00), 0x17);
+    }
+
+    /* flow_match_streak_update itself, through DS_00104B11/DS_001082D0
+     * (fighter_4660c), exercised by the same winner-think-1 draw as above:
+     * the exact expected ceiling is read from the live game data table. */
+    {
+        m09_seed();
+        M09_OPEN();
+        DSD(DS_00104AD4) = 0u;
+        DSB(DS_00107813) = 1u;
+        DSB(DS_00108104 + 1u) = 4u;
+        DSB(DS_0010452C) = 0u;
+        u32 expect_table = (u32)DSB(DS_000C9388 + 4u);   /* v=4, b=0 */
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B11), 1);
+        CHECK_EQ_INT((int)DSD(DS_001082D0), (int)expect_table);
+    }
+
+    /* fighter_4660c's clamp: with DS_00104B11 pushed to 254 (255 after the
+     * increment), t - (streak - 1) is negative for every live table byte
+     * below 254, which the port clamps up to 0. */
+    {
+        u32 t, expect_clamped;
+        s32 r;
+        m09_seed();
+        M09_OPEN();
+        DSD(DS_00104AD4) = 0u;
+        DSB(DS_00107813) = 1u;
+        DSB(DS_00108104 + 1u) = 4u;
+        DSB(DS_0010452C) = 0u;
+        DSB(DS_00104B11) = 254u;
+        t = (u32)DSB(DS_000C9388 + 4u);
+        r = (s32)t - (s32)254u;
+        expect_clamped = (r < 0) ? 0u : (u32)r;
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B11), 255);
+        CHECK_EQ_INT((int)DSD(DS_001082D0), (int)expect_clamped);
+    }
+
+    /* arm C: the winner's think byte != 1 and the stage word == 7 ->
+     * fight_stage_marks_clear runs (the seven DS_00108106 stage bytes and
+     * DS_00108111 = 0), DS_00104B17 = 0, then the common close. */
+    {
+        m09_seed();
+        M09_OPEN();
+        DSD(DS_00104AD4) = 0u;
+        DSB(DS_00107813) = 0u;                         /* winner's think != 1 */
+        DSB(DS_001078A7) = 0u;                          /* loser's think != 1 */
+        DSW(DS_00104AFC) = 7u;
+        mem_fill(DS_00108106, 0x77u, 7u);
+        DSB(DS_00108111) = 0x77u;
+        game_mode_09_step();
+        {
+            u32 i;
+            for (i = 0; i < 7u; i++)
+                CHECK_EQ_INT((int)DSB(DS_00108106 + i), 0);
+        }
+        CHECK_EQ_INT((int)DSB(DS_00108111), 0);
+        CHECK_EQ_INT((int)DSB(DS_00104B17), 0);
+        CHECK_EQ_INT((int)DSW(DS_00104B00), 0x17);
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x13);
+    }
+
+    /* arm D: the winner's think byte != 1 and the stage word != 7 -> only
+     * DS_00104B17 = 1, mode = 0x17 and the hook fight_hook_4142c; no
+     * return-mode store and no config_play_time_close (DS_00104AFA and the
+     * play-time accumulator stay at their sentinels). */
+    {
+        m09_seed();
+        M09_OPEN();
+        DSD(DS_00104AD4) = 0u;
+        DSB(DS_00107813) = 0u;
+        DSB(DS_001078A7) = 0u;
+        DSW(DS_00104AFC) = 3u;
+        DSW(DS_00104AFA) = 0x7777u;
+        DSB(DS_00104B1D) = 0u;
+        DSB(DS_00104B1F) = 0u;                          /* -> idx 1 */
+        DSD(DS_0010746C + 4u) = 0x2222u;
+        game_mode_09_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B17), 1);
+        CHECK_EQ_INT((int)DSW(DS_00104B00), 0x17);
+        CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)fn_origin(fight_hook_4142c));
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x7777);          /* untouched */
+        CHECK_EQ_INT((int)DSD(DS_0010746C + 4u), 0x2222);     /* untouched */
+    }
+
+    #undef M09_OPEN
+    mz_restore();
+}
+
+static void check_mode_09(void)
+{
+    check_fight_effects_hold_all();
+    check_mode_09_a();
+    check_mode_09_b();
+}
+
 
 #define SC_ST   (FIGHT_RECS + 0x7000u)   /* crafted one-word streams, 0x10 apart */
 #define SC_SRC0 (FIGHT_RECS + 0x7800u)   /* a crafted effect source (pset 1 +0x18) */
@@ -30187,6 +30630,7 @@ int test_fight(void)
     check_fight_frame_c();
     check_mode_b();
     check_mode_13();
+    check_mode_09();
 
     return g_failures - before;
 }
