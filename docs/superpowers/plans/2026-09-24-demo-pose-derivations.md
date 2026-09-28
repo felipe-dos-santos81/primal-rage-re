@@ -16310,3 +16310,282 @@ hidden.
   the other callers of `0x1DA08` (`0x26540`, `0x266AC`, `0x299E8`) and of
   `0x2F434` (18 sites); the `0x2C3FC` voices (§45-A); and the
   `0x2791C` store of mode `0xC`.
+
+## 48-E. Mode `0xE`'s continue screen `0x27A2C` and its callees `0x2791C`, `0x42F60`, `0x2CA78` (named-gap batch 16, branch `gap16-27a2c`)
+
+**Result in one line.** `0x27A2C` is ported from the raw as
+`game_mode_0e_step` (`flow.c`), and `game_frame`'s case `0xE` now calls it
+(`0x25371`). This is the continue screen that `0x278B0` (record §48-C)
+opens. Two new callees come with it: `0x2791C` (`flow_continue_take`, the
+continue taken, which stores mode `0xC`) and `0x42F60`
+(`flow_continue_poll`, the side's credited start). A third, `0x2CA78`
+(`config_credit_zero`, `xor eax,eax; ret`), is also new. No path the port
+runs without input stores mode `0xE`, and a headless 8000-frame run is
+byte-identical before and after (48-E.5).
+
+**Scope check (the raw wins).** The batch brief listed the 12 callees from
+`prage.calls.csv`. Each was checked against `port/src` and the raw:
+- Already ported: `0x4F778` (`frontend_buttons_pressed`, §46-G), `0x2C0F4`
+  and `0x2C1D4` (`prompt_press_start_blink`/`prompt_insert_coin_blink`,
+  §48-S), `0x29B74` (`frontend_darken_all`, §42-E), `0x2C060`
+  (`config_credit_ready`), `0x29D60` (a bare `ret`), `0x41310`
+  (`fighter_41310`) and `0x2F434` (`text_number_set`, §48-C).
+- `0x2791C` was still a gap. A search of `docs/PROGRESS.md`, `port/src` and
+  `git log --all` found only the stale caller note in `fight.c` (0x1D764's
+  doc comment). It is ported here. Its six callees were already ported:
+  `0x1C500`, `0x2F388` (`text_cells_release_count`), `0x2C088`
+  (`prompt_press_start_clear`), `0x33B00` (`fighter_state_33b00`),
+  `0x1D764` (`fight_hud_side_reset`) and `0x46534` (`fighter_46534`).
+- `0x42F60` was not ported under any name. `port/src` has only its
+  `symbols.h` entry. It is **not** `0x11F28` (`frontend_coin_poll`), which
+  is similar: `0x42F60` also sets `DS_00105C04` and routes the spend through
+  `0x2CA78`. It is ported here.
+- `0x2CA78` (a callee of `0x42F60`, not in the brief) is 3 bytes: `xor
+  eax,eax; ret; nop`. It is the shared return-0 tail of `0x2CA48`/`0x2CA7C`,
+  and `0x42F60` and the unported `0x32F54` call it as a function. It is
+  ported so that `0x42F60` keeps its shape. It always returns 0, so
+  `0x42F60`'s `0x2CAA8`/`0x2CA48` arm is dead.
+- `0x2DAE4` (the audit add) and `0x2C3FC` (voices) are left deferred, as
+  the brief asked. They use the idioms of `0x28DA4` and `0x272DC`: a
+  `PORT:` note each (spec §7, record §45-A).
+
+Ghidra's `FUN_00027a2c` drops the register arguments of `__regparm3`. It
+shows `FUN_00042f60()` with no side, `FUN_0002f434` with no arguments, and
+`DAT_00104b25`/`DAT_00104afa` as `extraout_CH`/`extraout_DX`. Its
+`FUN_0002791c` also omits `0x46534`'s EDX = -2. The raw below is the
+source.
+
+(Letter choice: §48-A/C/J/Q/R/S/T/U/V/W are on `main`, and `git log --all`
+shows §48-K on the sibling `gap14-26254`. So this section takes E, for mode
+`0xE`.)
+
+### 48-E.1 The raw (`mem_load_le` + fixups replicated in a scratch dumper, capstone)
+
+The call site: jump table `0x24B8C` entry `0xE` = `0x25371`, `call
+0x27a2c`, then `25376 jmp 0x2540f`.
+
+`0x27A2C` (to `0x27BA1`; `push ebx; push ecx; push edx`, and three `pop
+edx; pop ecx; pop ebx; ret` exits at `0x27A7B`, `0x27B29` and `0x27B9E`):
+
+```
+27A2F mov eax,[0x10810a] ; sar eax,0x18 ; call 0x42f60   ; w = (s8)DS_0010810D
+27A3C test eax,eax ; je 0x27a7f
+27A40 cmp byte [0x10810d],0 ; setne al ; and eax,0xff ; inc eax
+27A50 mov edx,1 ; mov [0x104b1f],al ; mov eax,0x11 ; call 0x2dae4
+27A64 call 0x2791c
+27A69 eax = w (re-read) ; edx = 1 ; call 0x41310 ; ret
+27A7F cmp byte [0x105c04],0 ; je 0x27a9e
+27A88 mov byte [0x108110],0xa ; xor dh,dh ; mov eax,1
+27A96 mov [0x105c04],dh ; jmp 0x27acd
+27A9E al = [0x104b1f] & 1 ; and eax,0xff ; je 0x27ab3 ; eax = 1 ; jmp 0x27ac3
+27AB3 al = [0x104b1f] & 2 ; and eax,0xff ; je 0x27acd ; xor eax,eax
+27AC3 call 0x4f778 ; and eax,0xff
+27ACD mov bx,[0xef6dc] ; xor bh,bh ; and bl,0x3f ; and ebx,0xffff ; je 0x27ae5
+27AE1 test eax,eax ; je 0x27b51
+27AE5 bl = [0x108110] - 1 ; mov [0x108110],bl ; test bl,bl ; jge 0x27b2d
+27AF7 0x2c3fc(0x27, edx 0x1e) ; eax = 0x22 ; xor ch,ch ; call 0x2c3fc
+27B12 call 0x29d60 ; call 0x29b74
+27B1C mov [0x104b25],ch ; mov [0x104afa],dx ; ret
+27B2D push 0x4002 ; ecx = 2 ; edx = 0xe ; eax = -1
+27B41 mov ebx,[0x10810d] ; push 1 ; sar ebx,0x18 ; call 0x2f434
+27B51 mov eax,[0x10810d] ; sar eax,0x18 ; cmp eax,0xe ; jge 0x27b97
+27B5E call 0x2c060 ; test eax,eax ; je 0x27b83
+27B67 edx = 0xc ; eax = -1 ; ebx = w ; xor ecx,ecx ; call 0x2c0f4 ; jmp 0x27b97
+27B83 ebx = 1 ; edx = 0xc ; eax = 0xe ; call 0x2c1d4
+27B97 or byte [0x104aec],2
+```
+
+Register facts the port relies on:
+- The dword at `0x10810A` shifted right by 24 is the signed byte
+  `DS_0010810D`, the side `w`. The dword at `0x10810D` shifted the same way
+  is the byte `0x108110`, the countdown (as in `0x278B0`, §48-C.1).
+- `0x4F778` sets only AL (`setne al`), and the `and eax,0xff` drops the rest.
+  With neither `DS_00104B1F` bit, EAX is 0 from the `and`.
+- The expiry's stores come from registers that survive the calls. CH = 0 is
+  set at `0x27B0B`. DX = `0x1E` is loaded at `0x27AFC` for the first voice.
+  `0x2C3FC` pushes and pops EBX/EDX/EDI and never names ECX; its prologue
+  and three epilogues were read. `0x29D60` is `ret`. `0x29B74` pushes and
+  pops EBX/ECX/EDX. So `DS_00104B25 = 0` and `DS_00104AFA = 0x1E`, and the
+  second voice gets EDX `0x1E` too.
+- `0x2C1D4` never reads EBX = 1. It writes EBX (`mov ebx,esp`, `0x2C252`)
+  before its only use, and its phase-`0x18` arm loads EBX from
+  `DS_00105BF8`.
+- The expiry returns before `0x27B51`, so it draws no prompt and does not
+  set `DS_00104AEC` bit 1.
+- The continue-taken exit returns before all of the countdown.
+
+`0x42F60` (78 bytes; `push edx` ... `pop edx; ret`):
+
+```
+42F61 mov edx,eax ; call 0x2c060 ; test eax,eax ; je 0x42fac   ; 0
+42F6C mov eax,[0x1088e4] ; test [edx*4+0x9acbc],eax ; je 0x42faa
+42F7A call 0x2ca78 ; test eax,eax ; je 0x42f92
+42F83 call 0x2caa8 ; inc eax ; sar eax,1 ; call 0x2ca48 ; jmp 0x42f9c
+42F92 mov eax,1 ; call 0x2ca7c
+42F9C mov byte [0x105c04],1 ; mov eax,1 ; ret
+42FAA xor eax,eax
+```
+
+EDX survives `0x2C060` (`0x2CAA8` writes EAX only; `0x2CA2C` pushes and
+pops EDX). `0x2CA78` is `xor eax,eax; ret`, so the `0x42F83` arm never
+runs. `0x2CA48` does not read EAX anyway (it starts with `cmp byte
+[0x105d60],0`). The spend `0x2CA7C(1)` runs while `DS_00104B1F` is still
+the value `0x278B0` stored (0), so it debits. `0x27A2C` stores
+`DS_00104B1F` only after `0x42F60` returns.
+
+`0x2791C` (269 bytes; EBX/ECX/EDX/ESI/EDI pushed and popped):
+
+```
+27921 eax = 0x1c500(0x41) ; edi = eax ; edx = 0xa ; ecx = strlen (repne scasb)
+2793C eax = -1 ; ebx = ecx ; call 0x2f388            ; row 0xA, len cells
+27948 edx = 0xc ; ebx = (s8)[0x10810d] ; eax = -1 ; esi = 0x1049b8 ; call 0x2c088
+27965 ebx = 0x1c ; edx = 0xe ; eax = -1 ; edi = 0x104890 ; call 0x2f388
+2797E ebx = 0x1c ; edx = 0xf ; eax = -1 ; xor ecx,ecx ; call 0x2f388
+27994 loop: 0x33b00(ecx, edi, esi) ; edi += 0x94 ; ecx++ ; esi += 0x68 ; while ecx < 2
+279AE eax = w ; call 0x1d764
+279BB esi = w ; [w*0x94 + 0x10780b] = [0x104b0b]     ; +0x5B
+279DE xor eax,eax ; edx = -2 ; al = [0x104b12] ; call 0x46534
+279EF esi = w ; ah = [w*0x94 + 0x1077f1] ; edx = 0xc ; and ah,0xe7
+27A15 mov [0x104b00],dx ; mov [w*0x94 + 0x1077f1],ah
+```
+
+The loop registers survive the calls. `0x2F388` and `0x33B00` push and pop
+ECX/ESI/EDI (both prologues were read). `0x2C088` pushes and pops ECX/ESI
+and does not write EDI. Its EDI (the `repne scasb` end pointer) is reloaded
+with `0x104890` after it. With col -1, `0x2F388` centres by the count. String
+`0x41` is 0x1C characters ("TO CONTINUE THE FINAL BATTLE"), so rows `0xE`
+and `0xF` are released over the same 28 columns. `0x46534`'s EDX is -2,
+which Ghidra's `FUN_0002791c` drops.
+
+### 48-E.2 Entrances (a rel32 CALL/JMP/Jcc scan of the fixed-up code object, a dword scan of both objects)
+
+| target | callers | data references |
+|---|---|---|
+| `0x27A2C` | `0x25371` (case `0xE`) | none |
+| `0x2791C` | `0x27A64` (`0x27A2C`) | none |
+| `0x42F60` | `0x27A37` (`0x27A2C`), `0x42CE1`, `0x42D25`, `0x42D6A` (`0x42CB4`, unported) | none |
+| `0x2CA78` | `0x42F7A` (`0x42F60`), `0x32F56` (in the unported `0x32F54`), and the short `je`/`ja` tails of `0x2CA48`/`0x2CA7C` | none |
+| `0x2F434` | now `0x27908` and `0x27B4C` ported, 17 sites unported | none |
+
+No address is stored as data, so nothing needs `fn_register`.
+
+**Reachability.** Mode `0xE` is stored only by `0x278B0`, whose only caller
+is `0x272DC` (mode `0xC`'s arena frame). No no-input path stores mode `0xC`
+(§48-C.5's probe: mode 3 alone over `--check 8000`). So `0x27A2C` is reached
+only in the unit tests and under real input.
+
+### 48-E.3 The port
+
+- `flow.c`: `flow_continue_poll` (`0x42F60`), `flow_continue_take`
+  (`0x2791C`) and `game_mode_0e_step` (`0x27A2C`), after
+  `game_mode_0c_step`. They reuse §48-C's local `#define`s (`DS_00104890`,
+  `DS_001049B8`, `DS_001077F1`) and §46-B's `DS_0010810D`. `0x42F60` keeps
+  the dead `0x2CA78` arm as the raw has it. `0x27A2C`'s `0x2DAE4(0x11, 1)`
+  is a `PORT:` note (deferred, spec §7, as at `0x28E53`). Its two
+  `0x2C3FC` voices are a `PORT:` note (§45-A). `0x29D60` is a comment.
+- `game_frame`: case `0xE` leaves the named-gap group and calls
+  `game_mode_0e_step` (`0x25371`), then `break` (`0x25376 jmp 0x2540F`). The
+  named-gap enumeration no longer lists `0xE`.
+- `config.c`/`config.h`: `config_credit_zero` (`0x2CA78`).
+- Doc comments updated: `0x1D764`'s caller list (`fight.c`), `0x2F434`'s
+  (`actors.c`), `0x29B74`'s (`flow.c`, `flow.h`) and the prompt helpers'
+  (`flow.h`).
+
+### 48-E.4 The assertions and mutations (`check_mode_0e` in `test_fight.c`)
+
+`e_seed(w)` starts from `c_seed` (§48-C.4: the snapshot restored and
+`q_mode_seed(0xC)`). It sets `DS_0010810D = w` and `DS_00104B12` to the other
+side, and empties rows `0xB..0xF`. Then it runs `0x27254` and `0x278B0` for
+real (mode `0xE`, count 15, string `0x41` on row `0xA`, "15" on row `0xE`).
+After that: no credit, nothing pressed, frame word 1, `DS_00104AEC` 0x41,
+cursor 0x7777, and sentinels in the prompt bytes, both `DS_00105BF0` slots
+and `DS_00104AFA`/`B25`/`DS_001088EE`. The groups:
+- the image values relied on: `0x9ACBC` (`0x01000000`/`0x100`), `0xC9898`
+  (`0x0F000000`/`0xF00`), string `0x41`'s length 0x1C, and
+  `config_credit_zero() == 0`;
+- **(a)** `0x42F60` directly, 9 rows: no credit (with both starts pressed),
+  no press, the other side's start, each side's own start, side 1 with side
+  0's start, `DS_00104B1F` 2 (no debit), free play with no credits, and all
+  buttons with one credit. Each row checks the result, the credits,
+  `DS_00105C04` (1 or the 0x77 sentinel) and `DS_00104B1F`;
+- **(b)** the continue taken for `w` = 0, 1, and 1 with the sprite prompts.
+  The check covers: the credit spent (3 -> 2); `DS_00105C04` 1;
+  `DS_00104B1F = w + 1`; mode `0xC`; `DS_00104AEC`/`DS_00108110`
+  untouched; rows `0xA`, `0xC`, `0xE` and `0xF` empty while `0xB` and `0xD`
+  keep their cells (in sprite mode row `0xC` is kept, since `0x2C088`
+  releases at `DS_00105C06/07`); both copies restored (slot `+0x6C`, record
+  `+0x30`); `+0x5A` (the live 0x66 kept, w's zeroed); `+0x42` (the copy's
+  0xFF back, then w's bit 4 cleared, which fixes `0x1D764` after the
+  restore); `DS_0010290C[w]`; `w`'s `DS_001028F8` record on `0xE904C` at
+  1.0; `+0x5B`; `DS_001082C8` (the other side -2, cap `0xC9408[6] = 7`);
+  `+0x41`; `0x41310` on `w` only; and in sprite mode `DS_00105BF0[w]`
+  killed and cleared while the other is kept;
+- **(c)** the countdown, 9 rows over frame words 1/0x20/0x40/0x1040 and
+  counts `0xF`/`0xE`/`0xD`/0x80/0x7F. A tick happens exactly on `& 0x3F ==
+  0`. The number is redrawn on row `0xE` and the cursor moves (to row `0xC`
+  when the prompt follows). The prompt boundary is `< 0xE`, signed (0x80
+  yes, 0x7F no). The no-credit "INSERT 1 COIN" is at col `0xE`, row `0xC`
+  (`DS_00105C06/07`, 13 characters, 11 glyph cells). `DS_00104AEC |= 2`
+  every time;
+- **(d)** with a credit: "PRESS START" centred on row `0xC` in the string
+  form even with the sprite bit, the credit not spent, `DS_00105BF8` = 14.
+  On blink phase `0x18` it is erased. With the sprite bit only
+  `DS_00105BF0[w = 1]` is killed and cleared;
+- **(e)** the forced ticks: `DS_00105C04` restarts at `0xA` (from 15 and
+  from 0) and shows " 9", and is cleared. The button ticks, by
+  `DS_00104B1F` 1/2/3/0/4 against the two masks;
+- **(f)** the expiry from 0: count 0xFF, mode `0x15`, `DS_00104AFE` =
+  `DS_001088EE` = 0x78, `DS_00104B25` 0, `DS_00104AFA` 0x1E, no redraw,
+  prompt or `DS_00104AEC`. From 1: " 0" and none of those;
+- **(g)** `game_frame`'s case `0xE`: frame word 0x3F -> 0x40 ticks to 14.
+  With side 0's start held (through `0x4F644`) and a credit, the continue
+  is taken (mode `0xC`, one credit spent).
+
+**Mutations** (`build/g16/mut.py`; one edit per build, the source restored
+after each, a crash rerun up to three times). There were 70 mutations: 9
+over `0x42F60`/`0x2CA78`, 20 over `0x2791C`, 40 over `0x27A2C` and 1 over
+the wiring. **69 fail the suite.** Notes:
+- P3 (`0x42F60`'s `&` as `|`) fails 17 assertions, then segfaults. An
+  unbuffered rerun shows the failures in (a) and (d). The crash comes from
+  the continue being taken wrongly in (d)'s sprite row: `0x2C088` then
+  passes the `DS_00105BF0` sentinel `0x5A5A5A5A` to `0x2B150`. It is a
+  fixture effect of the mutation, not a port defect.
+- Round one had one more survivor, T18 (`0x2791C`'s `+0x41` byte read from
+  the other side). Both copies held 0xFF, so the byte could not tell the
+  sides apart. The copies now differ (0xFF/0xDF), and T18 fails.
+- Round one's M22-M24, M26 and M37 matched `0x278B0`'s identical
+  `0x2F434` line too, and were not applied. They were rerun with
+  `0x27A2C`'s own line, and all five fail.
+
+The one survivor is equivalent:
+- P5 swaps `0x42F60`'s dead arm for the live one (`0x2CAA8` +
+  `0x2CA48` in place of `0x2CA7C(1)`). The first two checks already
+  require a credit: `0x2C060` is non-zero only with free play or
+  `DS_00105C00` != 0. Under that precondition `0x2CA48` and `0x2CA7C(1)`
+  have the same effect: free play gives 1 with no debit; otherwise both
+  debit one credit unless `DS_00104B1F` is set, and return 1.
+  `0x2CAA8` has no side effect. The raw's own `0x2CA78` always takes the
+  `0x2CA7C` arm, as the port does.
+
+### 48-E.5 Measured, oracle risk, remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed on each of
+  3 consecutive runs, with no compiler warnings. No crash was seen in these
+  or in any unmutated run during the sweep (the §48-V fix holds).
+- **Frames.** `prageport --check 8000` was run from two scratch
+  directories, once with the base binary (`50714ac`, built from an archive
+  of that commit) and once with this branch's, both Release builds.
+  `diff -rq` finds all 24000 `frame_*.ppm`/`.pal`/`.idx` files and both run
+  logs byte-identical. That is expected: no no-input path leaves mode 3
+  (48-E.2).
+- `make verify`: green on the first run, and unchanged from `main`.
+  Front-end 517 clean / 801 splice / 3 transition / 2 unexplained (the two
+  allowed by name), demo-fight fully explained at N = 1886, attract2 0
+  unexplained over its 1732-frame region, and `symbols.h` regenerates
+  byte-identically.
+- **Remaining named gaps:** the `0x2C3FC` voices (§45-A) and the
+  `0x2DAE4` audit (spec §7), both deferred; `0x42F60`'s other caller
+  `0x42CB4` (under `0x424E8`, mode `0x13`); `0x2CA78`'s other caller
+  `0x32F54`; the other 17 `0x2F434` sites; and mode `0x15`'s handler
+  `0x4F24C`, which the expiry stores (with `DS_00104AFA = 0x1E`, the mode
+  after it, `0x1EEB0`).

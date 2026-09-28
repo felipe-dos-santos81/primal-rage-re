@@ -408,10 +408,10 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   skip test `0x4F790` and `0x4F778` (record §46-G).
   `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
-  - it dispatches cases 3, 5, 6, `0xC`, `0xD`, `0x10`, `0x11`, `0x14`, `0x17`,
-    `0x1A`, `0x1B` and `0x32`, and cases 1/2/`0x20` run the bare `ret`
-    `0x29B70`;
-  - the other 33 cases are named gaps.
+  - it dispatches cases 3, 5, 6, `0xC`, `0xD`, `0xE`, `0x10`, `0x11`,
+    `0x14`, `0x17`, `0x1A`, `0x1B` and `0x32`, and cases 1/2/`0x20` run the
+    bare `ret` `0x29B70`;
+  - the other 32 cases are named gaps.
   - Cases 6 and `0xC` run the join poll `0x28CC8` (`flow_join_poll`, record
     §48-J); case 6 runs it only with `DS_00104B1D == 0`. The first side whose
     bit is clear in `DS_00104B1F` gets the "INSERT 1 COIN" (no credit) or
@@ -424,8 +424,8 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     named gap, and case `0xC` runs its arena frame `0x27380`
     (`game_mode_0c_step`, record §48-C, below). Modes 6
     and `0xC` are stored by `0x25C88` (mode 5, record §48-U), and by the
-    unported `0x4CD98`, `0x4F0FC` and `0x2791C`, and by `0x274FC` (mode
-    `0xD`). So under real input a credited join from the character screen
+    unported `0x4CD98` and `0x4F0FC`, and by `0x274FC` (mode `0xD`) and
+    `0x2791C` (mode `0xE`'s continue taken, record §48-E). So under real input a credited join from the character screen
     now reaches mode 5, then this poll, for real — not only in unit tests.
   - Case `0xC`'s no-join arm is `0x27380` (`game_mode_0c_step`, record
     §48-C), the arena frame of the mode that mode 5 and `0x274FC` (after
@@ -448,7 +448,28 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     `0x41` on row `0xA`, the countdown `DS_00108110 = 15` on row `0xE`
     through `0x2F434`, `DS_00104B1F = 0`, mode `0xE`); else the
     `DS_00104B12` side's at `0x78` sets the winner's `+0x41` bit 4 and
-    mode `0xD` (`0x274FC`). Mode `0xE`'s handler `0x27A2C` is a named gap.
+    mode `0xD` (`0x274FC`). Mode `0xE`'s handler is `0x27A2C`, below.
+  - Case `0xE` is `0x27A2C` (`game_mode_0e_step`, record §48-E), the
+    continue screen `0x278B0` opens. The side `w = (s8)DS_0010810D` takes
+    the continue when `0x42F60` (`flow_continue_poll`) sees a credit and
+    `w`'s start mask `0x9ACBC[w]` newly pressed: one credit is spent through
+    `0x2CA7C(1)` (while `DS_00104B1F` is still 0, so it debits) and
+    `DS_00105C04 = 1`. Then `DS_00104B1F = w + 1`, the `0x2DAE4` audit
+    (deferred, spec §7), `0x2791C` (`flow_continue_take`: rows `0xA`,
+    `0xC`, `0xE` and `0xF` erased, both `0x27254` snapshots restored through
+    `0x33B00`, `0x1D764` on `w`, `w`'s `+0x5B = DS_00104B0B`,
+    `0x46534(DS_00104B12, -2)`, mode `0xC` and `w`'s `+0x41 &= 0xE7`) and
+    `0x41310(w, 1)`. Otherwise the countdown byte `DS_00108110` ticks when
+    the frame word's low six bits are 0, or when forced: `DS_00105C04`
+    restarts it at `0xA` (and is cleared); a newly pressed button counts
+    through `0x4F778(1)` with the `DS_00104B1F` bit 0, else `0x4F778(0)`
+    with bit 1. A tick redraws it on row `0xE` (`0x2F434`, width 2, pad 1,
+    mode `0x4002`); a tick below 0 instead runs `0x29B74` (darken all, mode
+    `0x15`) with `DS_00104B25 = 0` and `DS_00104AFA = 0x1E`, and returns.
+    While the signed count is below `0xE`, row `0xC` blinks "PRESS START"
+    (`0x2C0F4`, string form, with a credit) or "INSERT 1 COIN" (`0x2C1D4`
+    at col `0xE`). Then `DS_00104AEC |= 2`. The `0x2C3FC` voices on the
+    expiry stay §45-A's named gap.
   - Cases `0xD` and `0x32` are `0x274FC`/`0x296B8` (`game_mode_0d_step`/
     `game_mode_32_step`, record §48-Q). Each runs the arena frame's tail
     steps (`0x3C5CC`, `0x16D58` per side, the two position latches, `0x35658`
