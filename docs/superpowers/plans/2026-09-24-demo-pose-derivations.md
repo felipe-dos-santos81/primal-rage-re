@@ -19592,3 +19592,176 @@ subsystem regardless of its callees) and its two still-unported callees
 match-end stores `0x27DC8` (record §48-K) that would make mode `0x1E`
 reachable for real remain unported, as noted in records §49-C/§49-D for
 modes 8/0xA.
+
+## 49-I. Modes `0x18`/`0x19`'s effects-gated hooks `0x4F6E8`/`0x4F704` (branch `gap30-mode1819`)
+
+(The section letter is I. `docs/PROGRESS.md` and this file were grepped for
+`§49-` on `main` at `59e6ea4` first, both at task start and again right
+before this section was written: A–D and G–H are taken there (E/F were
+claimed by sibling sessions' uncommitted worktrees in an earlier batch and
+never landed a derivation section on `main`); neither of the two sibling
+branches racing this batch (`gap26-modes7f`, cases 7/0xF; `gap29-mode21`,
+case `0x21`) had merged or claimed a letter as of the second check, so I is
+free against both checks.)
+
+**Result in one line.** `0x4F6E8`/`0x4F704`, `game_frame`'s cases `0x18`/
+`0x19` (jump table `0x24B8C` entries `0x253F5`/`0x253FC`, `call; jmp
+0x2540F`; `get_xrefs_to` confirms one call site each, both from `0x24C5C`),
+are ported as `frontend_mode_18_step`/`frontend_mode_19_step` (`flow.c`) and
+wired. The task brief's guess that they might be a small sibling pair like
+the mode `0x15`/`0x16`/`0x17` countdown family (records §48-X/§49-G/§46-G)
+is confirmed, but the family resemblance is only structural (a gate, a
+hook call, an optional mode store) — the *mechanism* is unrelated: these
+two gate on the effects-in-flight count `DS_0009AF3D`, not a two-word
+frame countdown, and neither runs `frontend_skip_check`.
+
+### 49-I.1 Sources
+
+The raw comes from the Ghidra HTTP bridge at `127.0.0.1:8089`
+(`disassemble_function`, `get_xrefs_to`; the Ghidra MCP tool is not
+connected this session, confirmed by an empty `ToolSearch` for a Ghidra
+tool), cross-checked instruction-for-instruction against `port/decomp/
+prage.c`'s decompiled `FUN_0004f6e8`/`FUN_0004f704` (which matched the raw
+exactly — both are single-branch, callee-free leaves, `port/decomp/
+prage.functions.csv` records `callees=0` for both). Full disassembly:
+
+```
+0004f6e8  CMP byte ptr [0x0009af3d],0x0
+0004f6ef  JNZ 0x0004f703
+0004f6f1  CALL dword ptr [0x00104ae4]
+0004f6f7  MOV AX,[0x00104afa]
+0004f6fd  MOV [0x00104b00],AX
+0004f703  RET
+
+0004f704  CMP byte ptr [0x0009af3d],0x0
+0004f70b  JNZ 0x0004f713
+0004f70d  CALL dword ptr [0x00104ae4]
+0004f713  RET
+```
+
+`DS_0009AF3D` already has a name and a port-side accessor
+(`effects_active()`, `effects.c`): the effects-in-flight counter `effects_
+spawn`/`effects_kill` increment and decrement. `flow.c` itself already
+tests it inline at `0x425C0` (`case 3u`, `flow.c:3159`) rather than through
+the accessor, so the port follows that existing in-file idiom
+(`DSB(DS_0009AF3D) != 0u`) for consistency rather than calling
+`effects_active()`.
+
+### 49-I.2 The two bodies, and what they share/don't
+
+Both functions are the same two-part shape as the `DS_00104AE4` hook idiom
+this file has already ported three times (`0x4F318`/mode `0x17`, `0x4F2B0`/
+mode `0x16`, `0x4F9C8`/mode `0x1B`): while the gate is non-zero, return at
+once (a no-op); at zero, resolve and call the hook through `fn_resolve`
+(the same registry: every value the image stores into `DS_00104AE4` is
+registered — records §42-E, §43-B, §46-B, §46-F — and only `0x29D60`/
+`0x5D812` are no-ops; the registered hooks take no arguments, as for the
+three siblings above). `0x4F6E8` (mode `0x18`) then stores `DS_00104B00 =
+DS_00104AFA` after the hook returns, exactly as `0x4F2B0`'s (mode `0x16`)
+expiry arm does. `0x4F704` (mode `0x19`) omits that store entirely —
+`DS_00104B00` is left at whatever the hook itself wrote (or untouched, if
+the hook was a miss), the same shape `0x4F318`'s (mode `0x17`) hook-only
+arm has. So the "sibling pair" the task brief asked about confirms as: two
+one-off leaves that happen to share the gate-then-hook-then-optional-store
+skeleton the `DS_00104AE4` idiom always has, not a countdown family and not
+two calls into one shared body — each is its own tiny function, ported as
+such, one C function per original function per this repo's convention.
+
+Unlike `0x4F318`/`0x4F2B0`/`0x4F24C`, there is **no** `DS_001088EE`/
+`DS_00104AFE` countdown and **no** `frontend_skip_check` call anywhere in
+either body — the effects count is the entire gate, checked once per call
+with no rearm. EAX/EDX carry no state the port needs: `0x4F6E8`'s `AX =
+[0x104afa]` (`0x4F6F7`) is only the value the very next instruction stores
+back, and `0x4F704`'s `RET` after the `CALL` leaves nothing live for the
+caller (`game_frame`'s shared `jmp 0x2540F` tail reads no register from
+either case).
+
+### 49-I.3 Port
+
+`frontend_mode_18_step`/`frontend_mode_19_step`, new in `flow.c` (declared
+in `flow.h`), placed with the other `DS_00104AE4`-hook functions right
+before the mode-`0x1A` hooks section (after `frontend_mode_16_step`).
+`game_frame`'s switch gains `case 0x18u`/`case 0x19u`, each calling its new
+function and `break`ing (verified against the disassembly: `0x253FA`/
+`0x25401` are both `jmp 0x2540F`, the shared tail every other case's
+`break` already reaches). The two cases are removed from the file's
+generic named-gap fallthrough list and from the "PORT: named gaps" summary
+comment at the top of the switch, and added to the "each dispatched above"
+sentence at the bottom of that same comment, following the pattern every
+prior gap-closing task in this record used.
+
+### 49-I.4 Tests
+
+New `check_mode_18`/`check_mode_19` in `test_fight.c` (registered in
+`test_fight`'s call list right after `check_mode_16`), sharing a new
+`m1819_seed` fixture that seeds the gate byte, the hook dword, the return-
+mode word, a `0xBEEF`-high-word-sentineled mode dword (to catch a width
+change) and the registered hook `0x26978` (`game_hook_26978`)'s own two
+targets `DS_00104B25`/`DS_001088F5` — the same pool of fields, and the same
+`0x26978` hook, `check_mode_16`'s `m16_step`/`m16_fired` already use, since
+`0x26978` is pool/resource-independent (it only calls
+`frontend_wipe_arm`, a handful of plain field stores) and so needs neither
+`mz_save`/`mz_restore` nor `game_string_table_load`, unlike the heavier
+`check_mode_17_hooks` fixture. Each check has three scenarios: (a) the gate
+closed (`DS_0009AF3D != 0`) — both are a complete no-op, hook and mode
+dword untouched; (b) the gate open with an unregistered hook (`fn_resolve`
+returns NULL) — the hook is skipped without crashing, and `check_mode_18`
+proves the mode store still runs off the seeded `DS_00104AFA` while
+`check_mode_19` proves `DS_00104B00` is left exactly as seeded, since
+`0x19` never stores it at all; (c) the gate open with the registered hook
+`0x26978` — both prove the hook's own writes stick (`DS_00104AE4 =
+0x26998`, `DS_00104B25 = 1`, `DS_001088F5 = 0`, `DS_00104AFA = 0x23`), and
+this is where the two functions' one real difference shows up:
+`check_mode_18` ends with `DS_00104B00 = 0xBEEF0023` (the hook's own
+`DS_00104AFA` written a second time, by `0x18`'s own store, over
+whatever the hook's `frontend_wipe_arm` call left there), while
+`check_mode_19` ends with `DS_00104B00 = 0xBEEF001A` — `frontend_wipe_arm`
+arms mode `0x1A` as a *side effect* of the hook call itself
+(`DSW(DS_00104B00) = 0x1Au`, `0x4F994`), and since `0x19` issues no store of
+its own, that intermediate write from inside the hook is what survives.
+This scenario's first draft asserted `0x19`'s case (c) left `DS_00104B00`
+at the pre-hook seed (`0xBEEF7777`), which failed (`0xBEEF001A !=
+0xBEEF7777`) and corrected the derivation: the mode dword is not untouched
+by a hook-having call, only unstored-to by `0x4F704` itself — a useful
+reminder that "no mode store in this function" is not the same claim as
+"no mode store happens".
+
+**Mutations** (two single-site edits, each rebuilt and the whole of
+`run_tests` re-run, then reverted): (1) `frontend_mode_18_step`'s gate
+inverted (`!= 0u` → `== 0u`) — caught with 7 `CHECK_EQ_INT` failures across
+both `check_mode_18` and `check_mode_19` (the gate-closed/open cases and
+the switch-routing checks it does not itself touch were unaffected, but
+the shared-fixture asymmetry meant the inverted gate on `0x18` alone still
+tripped assertions written against both functions' behavior together); (2)
+`frontend_mode_19_step` given `0x18`'s trailing `DS_00104B00 = DS_00104AFA`
+store (a copy-paste mutation, the natural mistake given how similar the two
+bodies are) — caught by `check_mode_19`'s scenario (c), 2 failures
+(`DSD(DS_00104B00)` becomes `0xBEEF0023` instead of the correct
+`0xBEEF001A`, and the derived-record restore at the end of the test then
+observed the wrong prior value too). Both mutations were reverted and the
+suite re-confirmed green (3 consecutive `PR_ORACLE_REQUIRED=1 ./build/
+run_tests` runs, no SIGBUS, no hang).
+
+### 49-I.5 Verification
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 3 consecutive
+runs (plus the 2 mutation-revert runs above), no SIGBUS, no hang (both new
+functions are straight-line — no loop, no counter, no off-by-one surface).
+`make verify` (run with worktree-local `*_DUMP`/`TITLE_PIN_DIR` overrides
+to avoid colliding with sibling sessions' concurrent runs on the shared
+`/tmp` paths the Makefile hard-codes): front-end 517/801/3/2, demo-fight
+fully explained at N = 1886, attract2 0 unexplained at N = 3617,
+`symbols.h` regenerates byte-identically — all four gate numbers unchanged
+from before this task, as expected: modes `0x18`/`0x19` are not stored
+into `DS_00104B00` by any code path this port currently reaches (the only
+writers found by inspection are the two named-gap dead zones `0x28..0x2F`
+and the still-unported case bodies further down the same switch), so the
+no-input demo/attract/front-end oracle path never dispatches through
+either new case.
+
+### 49-I.6 Remaining named gaps
+
+None introduced by this task: both `0x4F6E8` and `0x4F704` are fully
+ported, callee-free leaves. The `DS_00104AE4` hook registry and the
+functions that store into `DS_0009AF3D` (`effects_spawn`/`effects_kill`,
+already ported) are unaffected.

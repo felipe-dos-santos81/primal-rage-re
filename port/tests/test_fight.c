@@ -23175,6 +23175,111 @@ static void check_mode_16(void)
     mz_restore();
 }
 
+/* ---- record §49-I: modes 0x18/0x19's effects-gated hooks 0x4F6E8/0x4F704 */
+
+/* Seed the handful of fields 0x4F6E8/0x4F704 read or write: the gate byte
+ * DS_0009AF3D, the hook DS_00104AE4, the return-mode word DS_00104AFA, the
+ * mode dword DS_00104B00 (upper word 0xBEEF, to catch a width change) and
+ * the hook 0x26978's own targets DS_00104B25/DS_001088F5, sentineled so a
+ * hook run is visible. */
+static void m1819_seed(u32 gate, u32 hook, u32 afa)
+{
+    DSB(DS_0009AF3D) = (u8)gate;
+    DSD(DS_00104AE4) = hook;
+    DSW(DS_00104AFA) = (u16)afa;
+    DSD(DS_00104B00) = 0xBEEF7777u;
+    DSB(DS_00104B25) = 0x77u;
+    DSB(DS_001088F5) = 0x77u;
+}
+
+static void check_mode_18(void)
+{
+    u8 af3d = DSB(DS_0009AF3D);
+    u32 ae4 = DSD(DS_00104AE4);
+    u16 afa = DSW(DS_00104AFA);
+    u32 b00 = DSD(DS_00104B00);
+    u8 b25 = DSB(DS_00104B25);
+    u8 f5 = DSB(DS_001088F5);
+
+    /* (a) gate closed (DS_0009AF3D != 0): no-op, everything kept. */
+    m1819_seed(1u, 0xDEADBEEFu, 0x1234u);
+    frontend_mode_18_step();
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF7777u);
+
+    /* (b) gate open, unregistered hook (fn_resolve returns NULL): the hook
+     * is skipped, but the mode store still runs off the seeded
+     * DS_00104AFA. */
+    m1819_seed(0u, 0xDEADBEEFu, 0x2Cu);
+    frontend_mode_18_step();
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF002Cu);
+
+    /* (c) gate open, the registered hook 0x26978 (game_hook_26978): it runs
+     * first and overwrites DS_00104AE4/DS_00104B25/DS_001088F5/DS_00104AFA
+     * itself, and the mode store then takes that *post-hook* DS_00104AFA
+     * (0x23), not the seeded 0x5A1E — the hook-then-store order 0x4F2B0
+     * (mode 0x16) also has. */
+    m1819_seed(0u, 0x26978u, 0x5A1Eu);
+    frontend_mode_18_step();
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x26998);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 1);
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x23);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0023u);
+
+    DSB(DS_0009AF3D) = af3d;
+    DSD(DS_00104AE4) = ae4;
+    DSW(DS_00104AFA) = afa;
+    DSD(DS_00104B00) = b00;
+    DSB(DS_00104B25) = b25;
+    DSB(DS_001088F5) = f5;
+}
+
+static void check_mode_19(void)
+{
+    u8 af3d = DSB(DS_0009AF3D);
+    u32 ae4 = DSD(DS_00104AE4);
+    u16 afa = DSW(DS_00104AFA);
+    u32 b00 = DSD(DS_00104B00);
+    u8 b25 = DSB(DS_00104B25);
+    u8 f5 = DSB(DS_001088F5);
+
+    /* (a) gate closed: no-op, as 0x18's. */
+    m1819_seed(1u, 0xDEADBEEFu, 0x1234u);
+    frontend_mode_19_step();
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF7777u);
+
+    /* (b) gate open, unregistered hook: skipped. Unlike 0x18, DS_00104B00 is
+     * left exactly as seeded — 0x19 has no mode store at all. */
+    m1819_seed(0u, 0xDEADBEEFu, 0x2Cu);
+    frontend_mode_19_step();
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF7777u);
+
+    /* (c) gate open, the registered hook 0x26978: it runs (its own writes
+     * stick, including DS_00104AFA = 0x23 and, through frontend_wipe_arm,
+     * DS_00104B00's low word = 0x1A), but unlike 0x18 there is no further
+     * store off DS_00104AFA: DS_00104B00 is left at the hook's own 0x1A, not
+     * overwritten to 0x23 (0x18's check_mode_18 (c) is 0xBEEF0023, not this
+     * 0xBEEF001A — the one observable difference between the two). */
+    m1819_seed(0u, 0x26978u, 0x5A1Eu);
+    frontend_mode_19_step();
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x26998);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 1);
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x23);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF001Au);
+
+    DSB(DS_0009AF3D) = af3d;
+    DSD(DS_00104AE4) = ae4;
+    DSW(DS_00104AFA) = afa;
+    DSD(DS_00104B00) = b00;
+    DSB(DS_00104B25) = b25;
+    DSB(DS_001088F5) = f5;
+}
+
 /* Count the non-empty glyph cells of text row `row`. */
 static int mz_row_cells(s32 row)
 {
@@ -31752,6 +31857,8 @@ int test_fight(void)
     check_mode_0e();
     check_mode_15();
     check_mode_16();
+    check_mode_18();
+    check_mode_19();
     check_fight_frame_a();
     check_fight_frame_b();
     check_fight_frame_c();
