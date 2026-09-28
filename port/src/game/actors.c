@@ -479,6 +479,13 @@ int actors_init(void)
     fn_register(0x3DD84u, (void (*)(void))fighter_3dd84);
     fn_register(0x3D424u, (void (*)(void))fighter_3d424);
     fn_register(0x3D3E4u, (void (*)(void))fighter_3d3e4);
+    /* PORT: record §49-U. The pose callbacks: +0x0C 0x3EA24/0x3EE00/0x3F9C8
+     * (0x3531C case 7, (slot, rec, side)) and +0x10 0x3E6A8 (case 10, (slot,
+     * side)), stored by the unported setups 0x3EC20/0x3EF44/0x3FB88. */
+    fn_register(0x3E6A8u, (void (*)(void))fighter_3e6a8);
+    fn_register(0x3EA24u, (void (*)(void))fighter_3ea24);
+    fn_register(0x3EE00u, (void (*)(void))fighter_3ee00);
+    fn_register(0x3F9C8u, (void (*)(void))fighter_3f9c8);
     /* PORT: record §46-D. The update table's entries 1 (0x48F98, the type-0x2D
      * node walk; dword at 0xA8648) and 10 (0x28F08, the type-0x19 spawner;
      * dword at 0xA866C), fn() with the unread EAX index; and the 0xD000
