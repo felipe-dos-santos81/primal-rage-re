@@ -61,6 +61,12 @@ void sprite_blit(SpriteNode *n);
  * directly. `base` is the destination buffer. */
 void sprite_blit_at(SpriteNode *n, u8 *base);
 
+/* PORT: sets the frame number the PR_PALETTE_DUMP hook (sprite.c) tags
+ * subsequent blits with. Called by the frame-dump drivers (flow.c's
+ * game_dump_frame, test_frontend's write sites). Inert unless PR_PALETTE_DUMP
+ * is set. */
+void palette_dump_frame_marker(int n);
+
 /* RLE-renders `rows` rows of `width` pixels from src into dst. Each destination
  * row starts `stride` bytes after the previous one (the original's 0x140 row
  * pitch), so the caller offsets dst to the sprite's screen x and the renderer

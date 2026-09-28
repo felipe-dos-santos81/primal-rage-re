@@ -17,6 +17,7 @@
 #include "platform/audio/sequencer.h"
 #include "platform/render.h"
 #include "platform/res.h"
+#include "platform/sprite.h"
 #include "test.h"
 #include "game/effects.h"
 #include "test_fixtures.h"
@@ -3188,6 +3189,7 @@ static void fe_cyc2_dump(void)
     if (!fe_cyc2_on || fe_cyc2_failed) return;
     char path[1400];
     snprintf(path, sizeof path, "%s/frame_%04d.raw", fe_cyc2_dir, fe_cyc2_n);
+    palette_dump_frame_marker(fe_cyc2_n);
     if (fe_write_frame(path)) fe_cyc2_n++;
     else fe_cyc2_failed = 1;
 }
@@ -4167,6 +4169,7 @@ int test_frontend(void)
                        !dump_failed && dumped < (int)raw_cap) {
                 char path[1300];
                 snprintf(path, sizeof path, "%s/frame_%04d.raw", dump, dumped);
+                palette_dump_frame_marker(dumped);
                 int ok = fe_write_frame(path);
                 CHECK(ok, "front-end frame writes to the dump");
                 if (ok) dumped++;

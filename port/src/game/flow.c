@@ -18,6 +18,7 @@
 #include "platform/res.h"
 #include "platform/render.h"
 #include "platform/gfx.h"
+#include "platform/sprite.h"
 #include "platform/input.h"
 #include "platform/audio/ail.h"
 #include "platform/audio/mixer.h"
@@ -2317,6 +2318,7 @@ static void game_state_select(void)
  * the cap. */
 static void game_dump_frame(const char *dir, const char *sub, int n)
 {
+    palette_dump_frame_marker(n);
     char subdir[1200];
     snprintf(subdir, sizeof subdir, "%s/%s", dir, sub);
     mkdir(dir, 0777);       /* ignore EEXIST; the same pattern main.c uses */

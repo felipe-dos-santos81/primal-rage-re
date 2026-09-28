@@ -4,6 +4,49 @@
 #include "../mem.h"
 #include "../symbols.h"
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+/* PORT: PR_PALETTE_DUMP hook — env-gated per-sprite palette dump for the
+ * texture exporter project. Writes one JSON line per drawn sprite; frame
+ * boundaries are set by palette_dump_frame_marker() from the dump drivers
+ * in flow.c. Inert unless PR_PALETTE_DUMP is set; no effect on rendering. */
+static FILE *g_pal_dump;
+static int g_pal_dump_init;
+static int g_pal_dump_frame = -1;
+
+static void palette_dump_ensure(void)
+{
+    if (g_pal_dump_init)
+        return;
+    {
+        const char *p = getenv("PR_PALETTE_DUMP");
+        g_pal_dump = (p && p[0]) ? fopen(p, "a") : NULL;
+    }
+    g_pal_dump_init = 1;
+}
+
+void palette_dump_frame_marker(int n)
+{
+    palette_dump_ensure();
+    g_pal_dump_frame = n;
+}
+
+static void palette_dump_blit(const SpriteNode *n)
+{
+    u32 pal_handle;
+    unsigned bank;
+    palette_dump_ensure();
+    if (!g_pal_dump)
+        return;
+    pal_handle = n->pal_ptr ? DSD(n->pal_ptr + 0u) : 0;
+    bank = n->pal_ptr ? DSB(n->pal_ptr + 8u) : 0;
+    fprintf(g_pal_dump,
+            "{\"frame\":%d,\"pixel_handle\":\"0x%08X\",\"pal_handle\":\"0x%08X\","
+            "\"bank\":%u,\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,\"type\":%u}\n",
+            g_pal_dump_frame, n->pixel_handle, pal_handle, bank,
+            n->x, n->y, n->width, n->rows, n->type);
+}
 
 void sprite_node_build(SpriteNode *n, u32 sprite_id)
 {
@@ -243,6 +286,7 @@ void sprite_blit_at(SpriteNode *n, u8 *base)
     if (!gra_sprite_pixels(n->pixel_handle, &src)) return;
 
     u8  bank = (u8)sprite_bank(n->pal_ptr);
+    palette_dump_blit(n);
     u8 *dst  = base + DSD(DS_001088F8 + (u32)n->y * 4u) + (u32)n->x;
 
     /* PORT: 0x51E5C stores rows - clip_b into the node for the call and
