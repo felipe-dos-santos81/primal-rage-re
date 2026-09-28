@@ -2241,9 +2241,11 @@ void fighter_state_37464(u32 side)
     u32 rec = DSD(slot);
     u32 ro = DSD(so);
     /* TODO(verify): 0x374E3 loads DSD(0x1078DC) before indexing, and the raw's
-     * 0x36F10 (the unported pose/winner chain) initializes that pointer to
-     * 0xBD89C. This reads the pointer word as the table; the faithful form is
-     * DSW(DSD(0x1078DC) + …) once 0x36F10's initialization is ported.
+     * 0x36F10 (ported in record §50-A, which stores 0xBD89C at 0x37043)
+     * initializes that pointer. This still reads the pointer word as the
+     * table; the faithful form is DSW(DSD(0x1078DC) + …), a change that moves
+     * the assertions of the 0x37464 tests (which seed the word at 0x1078DC
+     * itself) and is left for the task that wires 0x36F10's caller.
      * Record §1.3's Task-3 correction. */
     s16 base = (s16)DSW(DS_001078DC
         + (u32)DSB(slot + 0x7Au) * 14u + (u32)DSB(so + 0x7Au) * 2u);  /* 0x374D1 */
@@ -10410,8 +10412,8 @@ void fighter_3d424(u32 slot, u32 side)
  * 0x3EC20 (stores 0x3EA24 at slot +0x0C, 0x3E6A8 at the other slot's +0x10),
  * 0x3EF44 (0x3EE00 at +0x0C) and 0x3FB88 (0x3F9C8 at +0x0C) write them, and
  * 0x3531C dispatches them (case 7 (slot, rec, side) for +0x0C, case 10
- * (slot, side) for +0x10). Those three setups are not in the exported
- * function list and stay unported (named gaps of the record). The tables
+ * (slot, side) for +0x10). Those three setups are ported below (record
+ * §50-A). The tables
  * are the raw's: 0x3E698 (+0x58), 0x3EA10 (+0x57), 0x3EDF0 (+0x57) and
  * 0x3F9AC (+0x57). */
 

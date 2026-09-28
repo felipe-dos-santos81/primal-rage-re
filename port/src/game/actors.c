@@ -481,7 +481,7 @@ int actors_init(void)
     fn_register(0x3D3E4u, (void (*)(void))fighter_3d3e4);
     /* PORT: record §49-U. The pose callbacks: +0x0C 0x3EA24/0x3EE00/0x3F9C8
      * (0x3531C case 7, (slot, rec, side)) and +0x10 0x3E6A8 (case 10, (slot,
-     * side)), stored by the unported setups 0x3EC20/0x3EF44/0x3FB88. */
+     * side)), stored by the setups 0x3EC20/0x3EF44/0x3FB88 (ported, record §50-A). */
     fn_register(0x3E6A8u, (void (*)(void))fighter_3e6a8);
     fn_register(0x3EA24u, (void (*)(void))fighter_3ea24);
     fn_register(0x3EE00u, (void (*)(void))fighter_3ee00);
