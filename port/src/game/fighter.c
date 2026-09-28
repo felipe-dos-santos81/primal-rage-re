@@ -473,12 +473,12 @@ void fighter_pass_b(u32 arg)
         u32 slot = DS_001077B0 + side * 0x94u;
         u8 st = (u8)DSB(slot + 0x5fu);
 
-        /* 0x190A8: the side is handed to 0x1922C (a named gap §7.6) unless the
+        /* 0x190A8: the side is handed to 0x1922C (record §49-B) unless the
          * stance byte equals the latched DS_00100B58 AND is not 0xFF. The raw
          * branches to the skip on `st != B58` (0x190AE) or `st == 0xFF`
          * (0x190BD falls through, not to 0x190CB). */
         if (st != DSB(DS_00100B58 + side) || st == 0xFFu) {
-            /* PORT: 0x190C1 0x1922C(side) — named gap (§7.6). */
+            hit_stance_timer(side);             /* 0x190C1 0x1922C(side) */
             continue;
         }
 
@@ -3012,11 +3012,10 @@ void fighter_39040(u32 side)
 }
 
 /* 0x1DE64. The reaction picker 0x350D0 calls after a miss. With the slot's
- * +0x63 clear it scans 0x46460/0x4649C for a live input (a named gap: those
- * two are the unported input scanner, §7.12); otherwise the result is the
- * side's command word. The command's bits then map to a reaction code, the
- * 0x10/0x11/0x14/0x15 codes selected by 0x1DDF4's geometry test. Returns 0xFF
- * when nothing maps. */
+ * +0x63 clear it scans 0x46460/0x4649C for a live input (record §49-B);
+ * otherwise the result is the side's command word. The command's bits then
+ * map to a reaction code, the 0x10/0x11/0x14/0x15 codes selected by 0x1DDF4's
+ * geometry test. Returns 0xFF when nothing maps. */
 u32 hit_reaction_pick(u32 side, u32 stance)
 {
     u32 ctx[6];
@@ -3027,9 +3026,28 @@ u32 hit_reaction_pick(u32 side, u32 stance)
     {
         s32 n = ((s32)DSD(slot + 0x90u) >> 16 < 0xF) ? 5 : 0xF;   /* 0x1DEA1 */
         if (DSB(slot + 0x63u) == 0u) {                      /* 0x1DEB8 */
-            /* PORT: 0x1DEDC 0x46460/0x4649C — the input scanner, a named gap
-             * (§7.12). The demo's slot+0x63 is 1, so this arm is unreachable. */
-            (void)n;
+            /* 0x1DEDC: scan the ring's most recent `n` words (0x46460). A word
+             * with no low-nibble bit set (0x1DEED/0x1DEF2) is skipped.
+             * Otherwise probe two lookahead windows with 0x4649C: mask 3 at
+             * 0x1DEFF and mask 0xC at 0x1DF16, both n1 = the current index,
+             * n2 = 3. Both hitting (0x1DF24) is ambiguous and returns 0xFF
+             * immediately, matching the function's own 0xFF fallback
+             * (0x1E28F). Otherwise, once the index reaches 2 (0x1DF34), that
+             * word becomes r and the scan stops (0x1DF3E); below 2 it keeps
+             * scanning. */
+            s32 i;
+            for (i = 0; i < n; i++) {
+                u32 word = fighter_input_read(side, i);         /* 0x1DEE0 0x46460 */
+                if ((word & 0xFu) != 0u) {
+                    int r1 = fighter_input_scan(side, i, 3, 3u);   /* 0x1DEFF 0x4649C */
+                    int r2 = fighter_input_scan(side, i, 3, 0xCu); /* 0x1DF16 0x4649C */
+                    if (r1 && r2) return 0xFFu;                    /* 0x1DF24 */
+                    if (i >= 2) {                                  /* 0x1DF34 */
+                        r = word;                                  /* 0x1DF3A */
+                        break;                                      /* 0x1DF3E */
+                    }
+                }
+            }
         } else {
             r = (u32)DSW(DS_001088E0 + side * 2u);          /* 0x1DEC2 */
         }

@@ -18308,3 +18308,217 @@ Remaining named gaps this task leaves untouched: the round-end path itself
 drive mode `0xA`/`0xB`/8/9 for real; mode 7's `0x282C4`, the only other
 caller of the `DS_00107804`/`DS_00107898` per-side field mode `0xA` reads;
 and the `0x2C3FC` voice dispatcher itself (record §45-A, spec §7).
+
+## 49-B. Two live interactive-fight-path gaps: `0x1922C`'s call site in `fighter_pass_b` (§7.6) and `0x46460`/`0x4649C`'s call site in `hit_reaction_pick` (§7.12), branch `gap23-fighterinput`
+
+(Neither §49-A nor any other §49-letter is used anywhere in `docs/PROGRESS.md`
+or this file as of `main` at `9eb8b05`; B is used here because the task that
+named this record specified it directly.)
+
+**Result in one line.** Both `0x1922C` and `0x46460`/`0x4649C` were already
+fully ported as real C functions (`hit_stance_timer` and
+`fighter_input_read`/`fighter_input_scan`, all in `fighter.c`, all used
+elsewhere in the file) — the only gaps were two call sites that had been left
+as stale `PORT:`-commented stubs (a bare `continue` in `fighter_pass_b`, and a
+`(void)n;` cast that discarded the scan in `hit_reaction_pick`). Unlike most
+named-gap tasks in this record, no new function needed porting: this task
+disassembled the two raw call sites (`0x190C1` and `0x1DEDC`..`0x1DF3E`),
+confirmed the existing ports' bodies match the raw byte-for-byte, and wired
+the two calls. Both gaps are on the live interactive-fight path (gated on real
+input/stance state, not just the no-input demo/attract oracle), so neither is
+exercised by `make verify`'s oracle gates; the new unit tests in
+`test_fight.c` are the only correctness net.
+
+### 49-B.1 Sources
+
+The raw comes from the Ghidra HTTP bridge at `127.0.0.1:8089`
+(`disassemble_function`, `read_memory`); the Ghidra MCP tool does not connect
+this session. `fighter.c`'s own pre-existing header comments on
+`hit_stance_timer` (0x1922C, line ~3786) and `fighter_input_read`/
+`fighter_input_scan` (0x46460/0x4649C, line ~529/543) supplied the register
+conventions the two new call sites needed to match.
+
+### 49-B.2 `0x190C1`: `fighter_pass_b`'s stance-mismatch skip (`0x19068`..`0x19161`, already fully disassembled and ported except this one call)
+
+`0x190A8`..`0x190C6`: per side, `AL = byte[EBX+0x10780F]` (the side's `slot+
+0x5F` stance byte), compared against `byte[EDX+0x100B58]` (the latched
+`DS_00100B58[side]`). On mismatch (`JNZ 0x190BF`) or, when they match, on the
+stance byte itself being `0xFF` (`0x190B0`..`0x190BD`, `JNZ 0x190CB` — i.e.
+`0xFF` skips even when it equals the latch), control falls to `0x190BF`:
+`MOV EAX,EDX; CALL 0x1922C; JMP 0x1914B` — `EDX` is the loop's side index (`0`
+initialized at `0x1909E`, incremented at `0x1914B`), so this is
+`hit_stance_timer(side)` followed by the loop's `continue` target
+(`0x1914B`: `INC EDX; ADD EBX,0x94; CMP EDX,0x2; JL 0x190A2`). The matched-
+stance arm (`0x190CB` onward, the +0x5E hit-stun countdown and the +0x5A
+stance-timer's own inline write, already ported) is untouched by this task.
+
+`0x1922C` itself (`disassemble_function 0x1922C`, 44 instructions,
+`0x1922C`..`0x192BE`) was re-disassembled and compared statement-for-statement
+against `fighter.c`'s existing `hit_stance_timer` (lines 3790–3805): the
+`(s8)DS_00100B5A[side] > 0` guard (`0x19244`), the `rec+0x24 & 0x7FFFFFFF ==
+0` inner gate (`0x1924A`/`0x19251`), the `FILD`/`FSTP` float store from the
+signed byte `DS_00100B5C[side]` (`0x19256`..`0x1926A`), the `rec+0x20 = 0`
+clear (`0x19271`), the `[1.0, DS_0008058C]` clamp to `3.0f`
+(`0x1927C`..`0x1929C`, `FLD1`/`FCOMP`/`JA` then `FCOMP [0x8058C]`/`JBE`), the
+unconditional `DS_00100B5A[side] = 0` inside the guard (`0x192A8`) and the
+unconditional `DS_00100B5E[side] = 0` outside it (`0x192B3`) all match. No
+deviation; the port needed no change.
+
+### 49-B.3 `0x1DEDC`..`0x1DF3E`: `hit_reaction_pick`'s input-scanner arm (`0x1DE64`..`0x1E299`, already fully disassembled and ported except this one arm)
+
+`0x1DE86`..`0x1DEB8`: `EBP = 0xF`; `EAX = (s32)slot[+0x90] >> 16`; `EBP = 5`
+when `EAX < EBP` (`0x1DEA3`/`0x1DEA5`) — the existing `n` local. `slot+0x63 ==
+0` (`0x1DEC0`, computed from `EAX = side*37; CMP byte[EAX*4 + 0x107813]` —
+`0x107813 == DS_001077B0 + 0x63`, the slot base's own field, confirming
+`slot+0x63` not some other struct) takes the scanner arm at `0x1DED3`; else
+`r = word[EDI*2 + 0x1088E0]` (already ported as the `else` branch).
+
+The scanner arm (`0x1DED3`..`0x1DF4E`, a counted loop, index `i` from 0,
+compared against `EBP` = `n`):
+
+- `0x1DEDC`..`0x1DEE0`: `EDX = i; EAX = side; CALL 0x46460` — matches
+  `fighter_input_read`'s own documented convention (`EAX` = side, `EDX` =
+  index; confirmed independently from `0x46460`'s own disassembly:
+  `MOV ECX,EAX` / `MOV EBX,EDX` at entry, i.e. `ECX` = side, `EBX` = index,
+  the reverse naming but the same register-to-argument mapping as the call
+  site presents them).
+- `0x1DEE5`..`0x1DEF2`: `word &= 0xF`; `JZ 0x1DF40` (the loop-increment tail)
+  — a word with no low-nibble bit set skips straight to the next iteration
+  without scanning.
+- `0x1DEF4`..`0x1DEFF`: `ECX=3; EDX=i; EAX=side; EBX=ECX(=3); CALL 0x4649C`
+  — `fighter_input_scan(side, n1=i, n2=3, mask=3)`, confirmed against
+  `0x4649C`'s own entry (`MOV EBP,EAX` = side, `MOV ESI,EDX` = n1,
+  `MOV EDI,EBX` = n2, `ECX` untouched = mask — the same mapping the
+  pre-existing call site at `fighter.c:3299`
+  (`fighter_input_scan(side, 0, 5, 0x4000u)`) already uses).
+- `0x1DF04`..`0x1DF16`: `ECX=0xC; EBX=3; [save r1]; EDX=i; EAX=side; CALL
+  0x4649C` — the second, *unconditional* scan `fighter_input_scan(side,
+  n1=i, n2=3, mask=0xC)`; both scans always run once the low nibble is set,
+  regardless of the first one's result.
+- `0x1DF1B`..`0x1DF24`: `r1 != 0 && r2 != 0` (`JZ` past the second test when
+  `r1 == 0`, else `TEST AL,AL; JNZ 0x1E28F`) jumps straight to `0x1E28F`
+  (`MOV AL,0xFF; ...; RET` — the function's own final fallback, confirmed by
+  reading past it), i.e. an ambiguous double-overlap returns `0xFF`
+  *immediately*, not merely breaking the scan loop with `r` left at its
+  initial `0xFF` (the two are observationally identical here since `r` is
+  never written before this point on any path, but the raw's control flow is
+  the direct jump, which the port matches with `return 0xFFu;`).
+- `0x1DF2A`..`0x1DF3E`: not ambiguous — `EAX = i` (re-read from the loop
+  counter's stack slot); `CMP EAX,0x2; JL 0x1DF40` (still the loop-increment
+  tail when `i < 2`); else `r = word` (the value `0x1DEE5` already read) and
+  `JMP 0x1DF50` (the post-loop code, i.e. `break`).
+- `0x1DF40`..`0x1DF4E`: the loop increment/condition, a 16-bit counter stored
+  at `[ESP+0x2C]` and re-read through `[ESP+0x2A]` shifted right 16 — the
+  same "signed 16 packed in a dword's high half" idiom `0x1DEA1`'s own `n`
+  computation uses, here purely a compiler artifact for an ordinary `int`
+  loop counter (no `DS_` memory address is involved), so the port uses a
+  plain `s32 i` for-loop instead of replicating the packing.
+
+Downstream (`0x1DF50` onward, `if (r != 0xFFu) {...} return 0xFFu;` at
+`0x1E28F`, already fully ported) is unaffected: it treats `r` from the
+scanner arm identically to `r` from the `else` branch's command word.
+
+### 49-B.4 The port
+
+- `fighter.c`, `fighter_pass_b` (`0x19068`): the stance-mismatch arm now
+  calls `hit_stance_timer(side)` before `continue`, matching `0x190C1`. No
+  new function; `hit_stance_timer` (0x1922C) was already ported and already
+  called from four other sites (`hit_reaction_apply`, `fighter_38fec`-area,
+  `fighter_state_350d0`, and `0x3A093/0x3A095`'s caller).
+- `fighter.c`, `hit_reaction_pick` (`0x1DE64`): the `slot+0x63 == 0` arm is
+  now the loop described in §49-B.3 above, calling the already-ported
+  `fighter_input_read`/`fighter_input_scan` (0x46460/0x4649C). No new
+  function; both were already ported and already called elsewhere
+  (`fighter_input_read` at two think-chain sites, `fighter_input_scan` at
+  one `fighter.c:3264`-area site with a fixed `n1 = 0`).
+- `fighter.h`: the stale "`0x1922C`/`0x3CF38` are named gaps (§7.6)" claim on
+  `fighter_pass_b`'s header comment is corrected — `0x3CF38`
+  (`hit_chain_resolve`) was already fully ported (cross-checked against its
+  own header at `fighter.c:4537`/`fighter.h`); the whole function is now
+  "Fully ported." `hit_reaction_pick`'s header comment's "a named gap"
+  aside is replaced with a §49-B citation.
+- No `symbols.h` change (neither address has a `symbols.h` entry; both are
+  referenced through their pre-existing local forward declarations).
+
+### 49-B.5 Tests and mutations (`test_fight.c`)
+
+- `check_fighter_pass_b` (pre-existing, extended): its second scenario had
+  asserted the *stub* behavior — that `DS_00100B5E`/the record fields stayed
+  at their sentinels through the `0x1922C` skip — which was only ever true
+  because the skip was a no-op `continue`. With the call wired, `0x1922C`
+  unconditionally clears `DS_00100B5E[side]` (and, when its own guard fires,
+  `DS_00100B5A[side]`), so that assertion is corrected to the real
+  post-condition (this is completing a named gap, not a behavior change to
+  guard against — AGENTS.md's "assertions must not change" rule is about
+  consolidating pre-existing passing tests, not about updating an assertion
+  that was asserting a documented stub's absence of effect). Both scenarios
+  are extended with side-1 coverage (side 1 already took the mismatch arm in
+  both scenarios, unasserted before): the write arm (`B5A > 0`, `rec+0x24`
+  clear — proves the float store and the `rec+0x20` clear reach through the
+  new call), and the guard-false arm (`B5A <= 0` as signed — proves the
+  inner block is skipped while `B5E` still clears unconditionally). B5C = 3
+  is reused for both sides' float-store cases specifically because side 0's
+  existing assertion already proves 3.0f is not clamped by the shared
+  `DS_0008058C`, so the same value is known-good for side 1 without a second
+  derivation.
+- `check_hit_reaction_scan` (new): `fighter_input_read`/`fighter_input_scan`
+  are not called by name anywhere else in `test_fight.c`, so this is their
+  first direct exercise. Five scenarios against a ring pinned to
+  `DS_001082D2 = 0x000F0000` (`pos0 = 15`, so index `i` reads ring position
+  `15 - i` with no wraparound for `i` up to 14): (A) an empty ring exhausts
+  the `n = 5` window with `r` still `0xFF`; (B) a valid match at index 6 is
+  outside `n = 5` (still `0xFF`) but reachable once `slot+0x90`'s `>> 16 ==
+  0xF` boundary raises `n` to `0xF`; (C) an index-0 word overlapping both
+  scan masks on its own first (self-overlapping) window entry returns `0xFF`
+  immediately, bypassing index 6's match that (B) proved reachable — this
+  specifically catches a "keep scanning past ambiguous" mutation, since a
+  "break with `r` left at its initial `0xFF`" would be unobservable here (`r`
+  is never set on any earlier iteration), so the test's power comes from
+  the reachable decoy at index 6, not from the return value alone; (D) an
+  index-0 word that is a valid, non-ambiguous match but uses a *different*
+  bit than index 6's decoy (bit 1 vs bit 0) — this distinguishes "captured
+  because it's below the `i >= 2` floor" from "captured any match", which an
+  earlier draft of this test (both words equal) failed to distinguish; (E) a
+  match exactly at the `i >= 2` floor (index 2) is captured immediately, not
+  index 6's later match.
+- **Mutations**, each applied, rebuilt, and `PR_ORACLE_REQUIRED=1
+  ./build/run_tests` re-run, then reverted and confirmed byte-identical
+  (`diff` against the pre-mutation file):
+  - `fighter_pass_b`'s new `hit_stance_timer(side);` call removed: 7
+    assertions fail in `check_fighter_pass_b`.
+  - The ambiguity check `if (r1 && r2) return 0xFFu;` disabled (`if (0 &&
+    r1 && r2)`): scenario C fails (returns the index-6 mapping instead of
+    `0xFF`).
+  - The capture floor `i >= 2` weakened to `i >= 0`: scenario D fails
+    (captures index 0's decoy instead of index 6's match).
+  - The capture floor strengthened to `i > 2`: scenario E fails (skips past
+    index 2's exact-floor match to index 6's).
+  - The `n`-selection boundary `< 0xF` loosened to `<= 0xF`: scenarios B and
+    D fail (the `>> 16 == 0xF` boundary no longer raises `n` to `0xF`, so
+    index 6 is unreached).
+
+  All five mutations fail the suite; all five were reverted and confirmed to
+  restore the file byte-for-byte.
+
+### 49-B.6 Measured and remaining gaps
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 3 consecutive
+runs, 0 compiler warnings. `make verify`: front-end 517/801/3/2, demo-fight
+fully explained at N = 1886, attract2 0 unexplained at N = 3617, `symbols.h`
+regenerates byte-identically — none of these move, because both gaps are
+gated on live input/stance state the no-input demo/attract oracle path never
+drives (`fighter_pass_b`'s mismatch arm needs a stance transition the demo's
+scripted AI does not produce mid-cycle in the oracle's window, and
+`hit_reaction_pick`'s scanner arm needs `slot+0x63 == 0`, which the demo
+fixture and, per this record's own reading of the raw, the actual game's
+`0x3BDDC` command-consumer machinery keep at 1 outside real player/CPU input).
+
+No functions remained to port for this record: both `0x1922C` and
+`0x46460`/`0x4649C` were already-ported code whose only defect was two unwired
+call sites. This record leaves no new gaps in `fighter.c`; the §7.6/§7.12
+labels this task closes were the last remaining stale references to these
+three addresses in `fighter.c`/`fighter.h`/`port/spec/game_flow.md` (checked
+by `grep` across all three; the remaining §7.6/§7.12 mentions in
+`game_flow.md` are historical narrative about other, unrelated addresses
+under the same spec section numbers, not open-gap claims about `0x1922C` or
+`0x46460`/`0x4649C`).
