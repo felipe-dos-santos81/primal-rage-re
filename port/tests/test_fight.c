@@ -6,6 +6,7 @@
 #include "game/fight.h"
 #include "game/fighter.h"
 #include "game/flow.h"
+#include "game/nameentry.h"
 #include "game/rng.h"
 #include "mem.h"
 #include "platform/gfx.h"
@@ -30021,7 +30022,7 @@ static void m1e_seed(u8 substate)
 static void check_mode_1e_parked(void)
 {
     static const u8 parked[] = {
-        1u, 5u, 8u, 0x0Bu, 0x0Cu, 0x0Du, 0x0Eu, 0x0Fu, 0x10u,
+        1u, 0x0Fu, 0x10u,
     };
     u32 i;
     if (!mz_save()) { CHECK(0, "the §49-H snapshot allocates"); return; }
@@ -33297,6 +33298,907 @@ static void check_sc_char5(void)
     g2_restore();
 }
 
+/* ---- record §49-T: the high-score name-entry screen ------------------------
+ * 0x1F458 (nameentry_step), 0x1FFD0 (nameentry_cells_step), 0x20710
+ * (nameentry_finish), 0x1ED2C (nameentry_reset) and the name filter
+ * 0x13EF0/0x13F68. Every expectation is derived from the raw listing (record
+ * §49-T); each seeded field starts at a sentinel that differs from its
+ * post-condition. */
+
+#define NET_BUF      0x00104343u
+#define NET_CELL(i)  (0x00104114u + 0x14u * (u32)(i))
+#define NET_COL      0x001044D0u   /* word: cursor column */
+#define NET_ROW      0x001044D2u   /* word: cursor row */
+#define NET_PAD0     0x001088E7u
+#define NET_PAD1     0x001088E5u
+#define NET_CNT      0x0010431Cu   /* byte: letters typed */
+#define NET_LIM      0x0010431Du   /* byte: letters allowed */
+#define NET_CFG_HI   0x00104529u
+#define NET_RANK     0x001044D6u
+#define NET_TIMER    0x0010438Cu
+#define NET_REPEAT_H 0x001044E0u
+#define NET_REPEAT_V 0x001044DCu
+
+/* A signature of every glyph actor on grid row `row`: position, animation word
+ * and pset word, so two draws of the same text compare equal and a different
+ * glyph does not. */
+static u32 net_row_sig(u32 row)
+{
+    u32 sig = 0u, c;
+    for (c = 0u; c < 43u; c++) {
+        u32 rec = chs_grid(row, c);
+        if (rec != 0u)
+            sig = sig * 31u + c + 1u + DSD(rec + 8u) * 7u + DSD(rec + 0x18u) +
+                  DSD(rec + 0x1Cu) * 3u + (u32)DSW(actor_pset(rec)) * 5u;
+    }
+    return sig;
+}
+
+static void net_str(u32 at, const char *s)
+{
+    u32 i = 0u;
+    while (s[i] != '\0') { DSB(at + i) = (u8)s[i]; i++; }
+    DSB(at + i) = 0u;
+}
+
+static int net_str_eq(u32 at, const char *s)
+{
+    u32 i = 0u;
+    while (s[i] != '\0') {
+        if (DSB(at + i) != (u8)s[i]) return 0;
+        i++;
+    }
+    return DSB(at + i) == 0u;
+}
+
+/* The name filter 0x13EF0/0x13F68 over the real bad-word table at 0x9AF40. */
+static void check_name_filter(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-T snapshot allocates"); return; }
+
+    DSB(NET_CFG_HI) = 0u;                        /* bit 2 clear: tolerance 2 (0x13EF8) */
+    DSB(0x000FD0F0u) = 0x77u;
+
+    /* the whole word, then the trailing-position and the leading-space cases */
+    net_str(NET_BUF, "ASSHOLE");
+    CHECK_EQ_INT((int)name_filter(NET_BUF), 1);
+    CHECK(net_str_eq(NET_BUF, "*******"), "ASSHOLE blanks to seven stars");
+    CHECK_EQ_INT((int)DSB(0x000FD0F0u), 2);      /* 0x13F1B */
+
+    net_str(NET_BUF, "JOE ASSHOLE");
+    CHECK_EQ_INT((int)name_filter(NET_BUF), 1);
+    CHECK(net_str_eq(NET_BUF, "JOE *******"), "only the word is blanked");
+
+    net_str(NET_BUF, "   BOB");
+    CHECK_EQ_INT((int)name_filter(NET_BUF), 0);
+    CHECK(net_str_eq(NET_BUF, "BOB"), "leading spaces are stripped in place (0x13F42)");
+
+    /* repeated letters collapse (0x13FB2 / 0x13FC2) */
+    net_str(NET_BUF, "FFUUCK");
+    CHECK_EQ_INT((int)name_filter(NET_BUF), 1);
+    CHECK(net_str_eq(NET_BUF, "******"), "FFUUCK matches FUCK through the run skips");
+
+    /* the recursion at 0x14039 keeps searching after a match */
+    net_str(NET_BUF, "FUCK FUCK");
+    CHECK_EQ_INT((int)name_filter(NET_BUF), 1);
+    CHECK(net_str_eq(NET_BUF, "**** ****"), "the second occurrence is blanked by the recursion");
+
+    /* a word holding a space matches across the space (0x13FCF) */
+    net_str(NET_BUF, "FUK YOU");
+    CHECK_EQ_INT((int)name_filter(NET_BUF), 1);
+    CHECK(net_str_eq(NET_BUF, "*******"), "FUK YOU blanks whole");
+
+    /* the tolerance: two stray letters are skipped when bit 2 of 0x104529 is
+     * clear, none when it is set */
+    net_str(NET_BUF, "ASXSHOLE");
+    CHECK_EQ_INT((int)name_filter(NET_BUF), 1);
+    CHECK(net_str_eq(NET_BUF, "********"), "one stray letter is tolerated");
+    DSB(NET_CFG_HI) = 4u;
+    net_str(NET_BUF, "ASXSHOLE");
+    CHECK_EQ_INT((int)name_filter(NET_BUF), 0);
+    CHECK(net_str_eq(NET_BUF, "ASXSHOLE"), "tolerance 0 leaves it alone");
+    CHECK_EQ_INT((int)DSB(0x000FD0F0u), 0);      /* 0x13F12 */
+
+    /* 0x13F68 directly: a non-match reports 0 and leaves the string */
+    DSB(0x000FD0F0u) = 2u;
+    net_str(NET_BUF, "JOE");
+    CHECK_EQ_INT((int)name_filter_word(DSD(0x0009AF40u), NET_BUF), 0);
+    CHECK(net_str_eq(NET_BUF, "JOE"), "a non-match changes nothing");
+    net_str(NET_BUF, "ASSHOLE");
+    CHECK_EQ_INT((int)name_filter_word(DSD(0x0009AF40u), NET_BUF), 1);
+    CHECK(net_str_eq(NET_BUF, "*******"), "a match blanks in place");
+
+    mz_restore();
+}
+
+/* One letter cell with a real live actor for the handle. */
+static u32 net_cell_actor(void)
+{
+    return actor_spawn((const u32 *)(mem + 0xA7E44u), 0x1111u, 0xFFu, 0x2222u, 0u);
+}
+
+static void net_cell_set(u32 i, u32 h, u32 x, u32 y, u32 vel, u32 acc, u32 tgt,
+                         u32 st, u32 ch)
+{
+    DSD(NET_CELL(i)) = h;
+    DSD(NET_CELL(i) + 4u) = x;
+    DSD(NET_CELL(i) + 8u) = y;
+    DSW(NET_CELL(i) + 0xCu) = (u16)vel;
+    DSW(NET_CELL(i) + 0xEu) = (u16)acc;
+    DSW(NET_CELL(i) + 0x10u) = (u16)tgt;
+    DSB(NET_CELL(i) + 0x12u) = (u8)st;
+    DSB(NET_CELL(i) + 0x13u) = (u8)ch;
+}
+
+static void net_env(void)
+{
+    DSD(DS_001014F4) = M1F_POOL;
+    DSD(DS_001014EC) = M1F_PSET;
+    actors_reset();
+    DSB(DS_0009AF3D) = 0u;
+    game_string_table_load("data/game/C");
+    mem_fill(NET_CELL(0), 0, 0x12u * 0x14u);
+    mem_fill(NET_BUF, 0, 0x60u);
+    DSD(DS_001044C4) = 4u;          /* name row */
+    DSD(DS_001044CC) = 0x24u;       /* name column */
+    DSD(DS_001044AC) = 0x77777777u;
+}
+
+/* 0x1ED2C and 0x1FFD0's per-state transitions. */
+static void check_nameentry_cells(void)
+{
+    u32 h, c;
+    if (!mz_save()) { CHECK(0, "the §49-T snapshot allocates"); return; }
+
+    /* ---- 0x1ED2C ----------------------------------------------------- */
+    net_env();
+    DSW(NET_COL) = 0x7777u;
+    DSW(NET_ROW) = 0x7777u;
+    DSD(DS_001044A8) = 0x77u;
+    DSD(DS_001044C8) = 0x77u;
+    DSD(DS_001044BC) = 0x77u;
+    DSB(DS_001044D8) = 0x77u;
+    DSB(NET_CELL(0) + 0x12u) = 0x77u;
+    DSB(NET_CELL(17) + 0x12u) = 0x77u;
+    DSB(NET_CELL(17) + 0x13u) = 0x77u;    /* not a state byte: must survive */
+    nameentry_reset();
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xB);
+    CHECK_EQ_INT((int)DSW(NET_ROW), 6);
+    CHECK_EQ_INT((int)DSD(DS_001044A8), 0);
+    CHECK_EQ_INT((int)DSD(DS_001044C8), 0);
+    CHECK_EQ_INT((int)DSD(DS_001044BC), 0);
+    CHECK_EQ_INT((int)DSB(DS_001044D8), 0);
+    CHECK_EQ_INT((int)DSB(NET_CELL(0) + 0x12u), 0);
+    CHECK_EQ_INT((int)DSB(NET_CELL(17) + 0x12u), 0);
+    CHECK_EQ_INT((int)DSB(NET_CELL(17) + 0x13u), 0x77);
+    h = DSD(DS_001044B8);
+    CHECK(h != 0u, "the cursor actor is spawned");
+    CHECK_EQ_INT((int)DSD(h + 0x18u), (0xB << 9) + 0x200);       /* 0x1EDB5 x */
+    CHECK_EQ_INT((int)DSD(h + 0x1Cu), (6 << 9) + 0x200);         /* 0x1EDA4 y */
+    h = DSD(DS_001044B4);
+    CHECK(h != 0u, "the second marker actor is spawned");
+    CHECK_EQ_INT((int)DSD(h + 0x18u), 0x3A00);
+    CHECK_EQ_INT((int)DSD(h + 0x1Cu), 0x1E00);
+    CHECK_EQ_INT((int)DSD(h + 8u), (int)DSW(0x000A7E2Au));       /* 0x2BCF4 stream */
+    h = DSD(DS_001044B0);
+    CHECK(h != 0u && h != DSD(DS_001044B4), "the third marker actor is its own record");
+    CHECK_EQ_INT((int)DSD(h + 0x18u), 0x3400);
+    CHECK_EQ_INT((int)DSD(h + 0x1Cu), 0x1E00);                   /* EBX survives 0x2BCF4 */
+    CHECK_EQ_INT((int)DSD(h + 8u), (int)DSW(0x000A7E28u));
+
+    /* ---- state 0 / a state above 9: the flag only ------------------------ */
+    net_env();
+    net_cell_set(0, 0x77u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0u, 3u);
+    net_cell_set(1, 0x77u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x0Au, 3u);
+    nameentry_cells_step();
+    CHECK_EQ_INT((int)DSD(DS_001044AC), 1);                       /* cell 1 is live */
+    CHECK_EQ_INT((int)DSB(NET_CELL(1) + 0x12u), 0x0A);            /* 0x20017 `ja` */
+    CHECK_EQ_INT((int)DSD(NET_CELL(1) + 4u), 0x11);
+    net_cell_set(1, 0x77u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0u, 3u);
+    nameentry_cells_step();
+    CHECK_EQ_INT((int)DSD(DS_001044AC), 0);                       /* none live */
+
+    /* ---- state 1: spawn and arm the fall --------------------------------- */
+    net_env();
+    net_cell_set(3, 0x77u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 1u, 5u);
+    nameentry_cells_step();
+    c = NET_CELL(3);
+    CHECK_EQ_INT((int)DSB(c + 0x12u), 2);
+    CHECK_EQ_INT((int)DSD(c + 4u), 0x4C00);
+    CHECK_EQ_INT((int)DSD(c + 8u), 0x200);
+    CHECK_EQ_INT((int)DSW(c + 0xCu), 0);
+    CHECK_EQ_INT((int)DSW(c + 0xEu), 0x20);
+    CHECK_EQ_INT((int)DSW(c + 0x10u), 4 << 9);                    /* 0x20040 */
+    h = DSD(c);
+    CHECK(h != 0u && h != 0x77u, "state 1 stores the spawned handle");
+    CHECK_EQ_INT((int)DSD(h + 0x18u), 0x4C00);
+    CHECK_EQ_INT((int)DSD(h + 0x1Cu), 0x200);
+    CHECK_EQ_INT((int)DSD(h + 8u), (int)DSW(0x000A7DF4u + 2u * 5u));   /* per-letter stream */
+    CHECK_EQ_INT((int)DSD(DS_001044AC), 1);
+
+    /* ---- state 2: fall, then bounce ----------------------------------- */
+    net_env();
+    h = net_cell_actor();
+    net_cell_set(2, h, 0x77u, 0x1000u, 0x10u, 0x20u, 0x4000u, 2u, 1u);
+    nameentry_cells_step();
+    c = NET_CELL(2);
+    CHECK_EQ_INT((int)DSW(c + 0xCu), 0x30);                       /* vel += acc */
+    CHECK_EQ_INT((int)DSD(c + 8u), 0x1030);                       /* y += new vel */
+    CHECK_EQ_INT((int)DSB(c + 0x12u), 2);
+    CHECK_EQ_INT((int)DSD(h + 0x1Cu), 0x1030);
+    /* target below y: clamp, state 3, vel = -(vel)/4 truncating (0x20114) */
+    net_cell_set(2, h, 0x77u, 0x1F00u, 0xFEu, 0x20u, 0x2000u, 2u, 1u);
+    nameentry_cells_step();
+    CHECK_EQ_INT((int)DSB(c + 0x12u), 3);
+    CHECK_EQ_INT((int)DSD(c + 8u), 0x2000);
+    CHECK_EQ_INT((int)DSW(c + 0xCu), 0xFFB9);                     /* -286/4 = -71 */
+    CHECK_EQ_INT((int)DSD(h + 0x1Cu), 0x2000);
+    /* an exact tie is not a bounce (0x200F7 `jge`) */
+    net_cell_set(2, h, 0x77u, 0x1FE0u, 0x00u, 0x20u, 0x2000u, 2u, 1u);
+    nameentry_cells_step();
+    CHECK_EQ_INT((int)DSB(c + 0x12u), 2);
+    CHECK_EQ_INT((int)DSD(c + 8u), 0x2000);
+
+    /* ---- state 3: the small bounce, then hand-off to the slide ---------- */
+    net_env();
+    h = net_cell_actor();
+    net_cell_set(4, h, 0x77u, 0x2000u, 0xFFB8u, 0x20u, 0x2000u, 3u, 1u);
+    nameentry_cells_step();
+    c = NET_CELL(4);
+    CHECK_EQ_INT((int)DSD(c + 8u), 0x1FB8);                       /* y += the OLD vel (0x20146) */
+    CHECK_EQ_INT((int)DSW(c + 0xCu), 0xFFD8);
+    CHECK_EQ_INT((int)DSB(c + 0x12u), 3);
+    CHECK_EQ_INT((int)DSD(h + 0x1Cu), 0x1FB8);
+    net_cell_set(4, h, 0x77u, 0x1FF1u, 0x10u, 0x20u, 0x2000u, 3u, 1u);
+    nameentry_cells_step();
+    CHECK_EQ_INT((int)DSB(c + 0x12u), 4);
+    CHECK_EQ_INT((int)DSW(c + 0x10u), 0x4A00);
+    CHECK_EQ_INT((int)DSD(c + 8u), 0x2000);                       /* the OLD target (0x2018E) */
+    CHECK_EQ_INT((int)DSW(c + 0xEu), 0xFFC0);
+    CHECK_EQ_INT((int)DSW(c + 0xCu), 0);
+
+    /* ---- state 4: the slide left, then arm the column target ------------- */
+    net_env();
+    h = net_cell_actor();
+    net_cell_set(2, h, 0x4C00u, 0x77u, 0u, 0xFFC0u, 0x4A00u, 4u, 1u);
+    nameentry_cells_step();
+    c = NET_CELL(2);
+    CHECK_EQ_INT((int)DSW(c + 0xCu), 0xFFC0);                     /* vel += acc first (0x201EB) */
+    CHECK_EQ_INT((int)DSD(c + 4u), 0x4BC0);
+    CHECK_EQ_INT((int)DSB(c + 0x12u), 4);
+    CHECK_EQ_INT((int)DSD(h + 0x18u), 0x4BC0);
+    net_cell_set(2, h, 0x4A20u, 0x77u, 0xFFD0u, 0xFFC0u, 0x4A00u, 4u, 1u);
+    nameentry_cells_step();
+    CHECK_EQ_INT((int)DSD(c + 4u), 0x4A20 - 0x70);
+    CHECK_EQ_INT((int)DSB(c + 0x12u), 5);
+    CHECK_EQ_INT((int)DSW(c + 0x10u), (0x24 + 2 * 2) << 9);       /* 0x20229..0x2023A */
+
+    /* ---- state 5: land on the column, damp the vel -------------------- */
+    net_env();
+    h = net_cell_actor();
+    net_cell_set(1, h, 0x5100u, 0x77u, 0xFFA0u, 0x77u, 0x5000u, 5u, 1u);
+    nameentry_cells_step();
+    c = NET_CELL(1);
+    CHECK_EQ_INT((int)DSD(c + 4u), 0x5100 - 0x60);
+    CHECK_EQ_INT((int)DSB(c + 0x12u), 5);
+    CHECK_EQ_INT((int)DSD(h + 0x18u), 0x50A0);
+    net_cell_set(1, h, 0x5010u, 0x77u, 0xFFDEu, 0x77u, 0x5000u, 5u, 1u);   /* -34 */
+    nameentry_cells_step();
+    CHECK_EQ_INT((int)DSB(c + 0x12u), 6);
+    CHECK_EQ_INT((int)DSD(c + 4u), 0x5000);
+    CHECK_EQ_INT((int)DSW(c + 0xCu), 0xFFF5);                     /* -34/3 = -11 (idiv truncates) */
+    CHECK_EQ_INT((int)DSW(c + 0x10u), 4 << 9);
+    CHECK_EQ_INT((int)DSW(c + 0xEu), 0x40);
+    CHECK_EQ_INT((int)DSD(h + 0x18u), 0x5000);
+
+    /* ---- state 6: settle to the row target ------------------------------- */
+    net_env();
+    h = net_cell_actor();
+    net_cell_set(5, h, 0x77u, 0x1000u, 0xFFF0u, 0x40u, 0x2000u, 6u, 1u);
+    nameentry_cells_step();
+    c = NET_CELL(5);
+    CHECK_EQ_INT((int)DSD(c + 8u), 0xFF0);                        /* y += the OLD vel (0x202E8) */
+    CHECK_EQ_INT((int)DSW(c + 0xCu), 0x30);
+    CHECK_EQ_INT((int)DSB(c + 0x12u), 6);
+    CHECK_EQ_INT((int)DSD(h + 0x1Cu), 0xFF0);
+    net_cell_set(5, h, 0x77u, 0x2008u, 0x10u, 0x40u, 0x2000u, 6u, 1u);
+    nameentry_cells_step();
+    CHECK_EQ_INT((int)DSB(c + 0x12u), 7);
+    CHECK_EQ_INT((int)DSD(c + 8u), 0x2000);
+    CHECK_EQ_INT((int)DSD(h + 0x1Cu), 0x2000);
+
+    /* ---- state 7: retire the flyer -------------------------------------- */
+    net_env();
+    h = net_cell_actor();
+    DSB(h + 0x28u) = 0u;
+    net_cell_set(6, h, 0x77u, 0x77u, 0x77u, 0x77u, 0x77u, 7u, 1u);
+    nameentry_cells_step();
+    CHECK_EQ_INT((int)DSB(NET_CELL(6) + 0x12u), 8);
+    CHECK((DSB(h + 0x28u) & 8u) != 0u, "state 7 marks the actor dead (0x2B150)");
+
+    /* ---- state 8: commit a letter, a space and a rub-out ---------------- */
+    net_env();
+    DSB(NET_BUF) = 'A';
+    DSB(NET_BUF + 1u) = 'B';
+    net_cell_set(2, 0x77u, 0x77u, 0x77u, 0x77u, 0x77u, 0x77u, 8u, 9u);   /* 'J' */
+    mem_fill(DS_00105F38, 0, 0x14D4u);
+    nameentry_cells_step();
+    CHECK_EQ_INT((int)DSB(NET_BUF + 2u), 'J');
+    CHECK_EQ_INT((int)DSB(NET_BUF + 1u), 'B');
+    CHECK_EQ_INT((int)DSB(NET_CELL(2) + 0x12u), 0);
+    CHECK(chs_grid(9, 17) != 0u, "the letter is drawn at (3*(9%7)+11, 3*(9/7)+6)");
+    CHECK(chs_grid(6, 11) == 0u, "no other grid cell is drawn");
+    CHECK(chs_grid(4, 0x24 + 4) != 0u, "the name buffer is drawn at the name row/column");
+
+    net_env();
+    h = DSD(DS_001044B0) = net_cell_actor();
+    DSD(h + 8u) = 0x77777777u;
+    net_cell_set(3, 0x77u, 0x77u, 0x77u, 0x77u, 0x77u, 0x77u, 8u, 0x1Au);   /* space */
+    DSB(NET_BUF + 3u) = 0x77u;
+    nameentry_cells_step();
+    CHECK_EQ_INT((int)DSB(NET_BUF + 3u), 0x20);
+    CHECK_EQ_INT((int)DSD(h + 8u), (int)DSW(0x000A7E28u));        /* 0x2BCF4 on 0x1044B0 */
+    CHECK_EQ_INT((int)DSB(NET_CELL(3) + 0x12u), 0);
+
+    net_env();
+    DSB(NET_BUF + 4u) = 0x77u;
+    net_cell_set(4, 0x77u, 0x77u, 0x77u, 0x77u, 0x77u, 0x77u, 8u, 0x1Bu);   /* DEL */
+    nameentry_cells_step();
+    CHECK_EQ_INT((int)DSB(NET_BUF + 4u), 0);
+    CHECK_EQ_INT((int)DSB(NET_CELL(4) + 0x12u), 0);
+
+    /* ---- state 9: the puff and retire ------------------------------------ */
+    net_env();
+    h = net_cell_actor();
+    DSB(h + 0x28u) = 0u;
+    net_cell_set(7, h, 0x1000u, 0x2000u, 0x77u, 0x77u, 0x77u, 9u, 1u);
+    nameentry_cells_step();
+    CHECK_EQ_INT((int)DSB(NET_CELL(7) + 0x12u), 0);
+    CHECK((DSB(h + 0x28u) & 8u) != 0u, "state 9 marks the actor dead");
+
+    mz_restore();
+}
+
+/* 0x20710. */
+static void check_nameentry_finish(void)
+{
+    u32 a, b, d, exp3;
+    if (!mz_save()) { CHECK(0, "the §49-T snapshot allocates"); return; }
+
+    net_env();
+    game_string_table_load("data/game/C");
+    mem_fill(0x105E34u, 0, 153u);
+    DSD(DS_00104528) = 0x142095u;
+    hiscore_init();
+    DSB(NET_CFG_HI) = 0u;
+    a = DSD(DS_001044B8) = net_cell_actor();
+    b = DSD(DS_001044B4) = net_cell_actor();
+    d = DSD(DS_001044B0) = net_cell_actor();
+    DSB(a + 0x28u) = 0u;
+    DSB(b + 0x28u) = 0u;
+    DSB(d + 0x28u) = 0u;
+    net_str(NET_BUF, "  JO");
+    DSB(NET_BUF + 4u) = 8u;                 /* a stray backspace after the name */
+    DSB(NET_LIM) = 3u;                      /* the loop bound (0x1043 1D) */
+    DSB(DS_0010782A + 0x94u) = 2u;          /* side 1's character */
+    exp3 = DSB(DSD(DS_000A7DA0 + 2u * 4u));
+    DSD(0x00104390u) = 0x0001E240u;         /* the score, 123456 */
+    DSW(NET_RANK) = 4u;
+    DSB(0x00104397u) = 0x77u;
+    mem_fill(DS_00105F38, 0, 0x14D4u);
+    nameentry_finish(1u);
+    CHECK_EQ_INT((int)DSB(NET_BUF), 'J');                          /* the filter stripped "  " */
+    CHECK_EQ_INT((int)DSB(NET_BUF + 1u), 'O');
+    CHECK_EQ_INT((int)DSB(NET_BUF + 2u), 0x20);                    /* 0x20734 NUL -> space */
+    CHECK_EQ_INT((int)DSB(0x00104394u), 'J');
+    CHECK_EQ_INT((int)DSB(0x00104395u), 'O');
+    CHECK_EQ_INT((int)DSB(0x00104396u), 0x20);                     /* 0x20734 NUL -> space */
+    CHECK_EQ_INT((int)DSB(0x00104367u), 'J');
+    CHECK_EQ_INT((int)DSB(0x00104369u), 0x20);
+    CHECK_EQ_INT((int)DSB(0x00104394u + 3u), (int)exp3);           /* the character's letter */
+    CHECK_EQ_INT((int)DSB(0x00104397u), (int)exp3);
+    CHECK_EQ_INT((int)hiscore_read(4u, 0u), 0x105EFC);
+    CHECK_EQ_INT((int)DSD(0x105EFCu), 0x0001E240);                 /* inserted at rank 4 */
+    CHECK_EQ_INT((int)DSD(0x105EFCu) == 0x0001E240 ? 1 : 0, 1);
+    (void)hiscore_read(0u, 1u);
+    CHECK(DSD(0x105EFCu) != 0x0001E240u, "count 3 (not > 3): no champion insert (0x20798 `jle`)");
+    CHECK((DSB(a + 0x28u) & 8u) != 0u && (DSB(b + 0x28u) & 8u) != 0u &&
+          (DSB(d + 0x28u) & 8u) != 0u, "all three actors are retired (0x20843..0x20857)");
+    {
+        u32 sig = net_row_sig(0x1Cu);
+        mem_fill(DS_00105F38, 0, 0x14D4u);
+        text_cursor_hold_font2(0x13, 0x1C, mem + 0x80978u, 0x4003u);
+        CHECK(sig != 0u && sig == net_row_sig(0x1Cu),
+              "the \" 0\" string (0x80978) is drawn at (0x13, 0x1C) in mode 0x4003");
+    }
+
+    /* a name longer than three letters also goes to the champion table */
+    net_env();
+    hiscore_init();
+    DSD(DS_001044B8) = net_cell_actor();
+    DSD(DS_001044B4) = net_cell_actor();
+    DSD(DS_001044B0) = net_cell_actor();
+    net_str(NET_BUF, "ABCDE");
+    DSB(NET_LIM) = 5u;
+    DSB(DS_0010782A) = 1u;
+    DSD(0x00104390u) = 0x00000FA0u;
+    DSW(NET_RANK) = 0u;
+    nameentry_finish(0u);
+    CHECK_EQ_INT((int)DSD(0x105EFCu) >= 0, 1);
+    CHECK_EQ_INT((int)hiscore_read(0u, 1u), 0x105EFC);
+    CHECK_EQ_INT((int)DSD(0x105EFCu), 0x0FA0);
+    CHECK_EQ_INT((int)hiscore_read(0u, 0u), 0x105EFC);
+    CHECK_EQ_INT((int)DSD(0x105EFCu), 0x0FA0);
+
+    mz_restore();
+}
+
+/* 0x1F458. */
+static void net_press(u8 side, u8 mask)
+{
+    DSB(NET_PAD0) = 0u;
+    DSB(NET_PAD1) = 0u;
+    if (side == 0u) DSB(NET_PAD0) = mask; else DSB(NET_PAD1) = mask;
+}
+
+static void net_step_env(void)
+{
+    net_env();
+    nameentry_reset();
+    DSB(NET_PAD0) = 0u;
+    DSB(NET_PAD1) = 0u;
+    DSD(NET_REPEAT_H) = 0u;
+    DSD(NET_REPEAT_V) = 0u;
+    DSW(NET_TIMER) = 500u;
+    DSW(NET_RANK) = 3u;
+    DSB(NET_CNT) = 0u;
+    DSB(NET_LIM) = 3u;
+    DSD(0x00104318u) = 0u;
+    DSB(NET_CFG_HI) = 0u;
+    DSW(DS_000EF6DC) = 0x21u;               /* no blink this frame */
+    DSD(0x001077ECu) = 1234u;
+    DSD(0x001077ECu + 0x94u) = 5678u;
+}
+
+static void check_nameentry_step(void)
+{
+    u32 rec;
+    if (!mz_save()) { CHECK(0, "the §49-T snapshot allocates"); return; }
+
+    /* ---- timer ----------------------------------------------------------- */
+    net_step_env();
+    DSW(NET_TIMER) = 61u;
+    CHECK_EQ_INT((int)nameentry_step(0u), 1);
+    CHECK_EQ_INT((int)DSW(NET_TIMER), 60);
+    {
+        u32 sig = net_row_sig(0x1Cu), sig3;
+        mem_fill(DS_00105F38, 0, 0x14D4u);
+        text_number_set(0x13, 0x1C, 2, 2, 1u, 0x4003u);
+        CHECK(sig != 0u && sig == net_row_sig(0x1Cu),
+              "the seconds left (60/30 = 2) are drawn at (0x13, 0x1C), width 2, pad 1, mode 0x4003");
+        mem_fill(DS_00105F38, 0, 0x14D4u);
+        text_number_set(0x13, 0x1C, 3, 2, 1u, 0x4003u);
+        sig3 = net_row_sig(0x1Cu);
+        CHECK(sig3 != sig, "a different digit gives a different signature");
+        /* 31 -> 30 is one second left: an integer /30 of the new count */
+        net_step_env();
+        DSW(NET_TIMER) = 31u;
+        (void)nameentry_step(0u);
+        sig3 = net_row_sig(0x1Cu);
+        mem_fill(DS_00105F38, 0, 0x14D4u);
+        text_number_set(0x13, 0x1C, 1, 2, 1u, 0x4003u);
+        CHECK(sig3 == net_row_sig(0x1Cu), "30 frames left shows 1 (0x1F48E idiv by 0x1E)");
+    }
+
+    /* timer 0, no cell live: finished -> 0 (0x1F4CB) */
+    net_step_env();
+    DSW(NET_TIMER) = 0u;
+    DSW(NET_RANK) = 2u;
+    DSD(0x00104390u) = 99u;
+    net_str(NET_BUF, "BOB");
+    DSB(NET_LIM) = 3u;
+    CHECK_EQ_INT((int)nameentry_step(0u), 0);
+    CHECK_EQ_INT((int)hiscore_read(2u, 0u), 0x105EFC);
+
+    /* timer 0 but a cell still flying: keeps running */
+    net_step_env();
+    DSW(NET_TIMER) = 0u;
+    net_cell_set(0, net_cell_actor(), 0x5100u, 0x77u, 0u, 0u, 0x5000u, 5u, 1u);
+    CHECK_EQ_INT((int)nameentry_step(0u), 1);
+    CHECK_EQ_INT((int)DSW(NET_TIMER), 0);
+
+    /* ---- the cursor: right ------------------------------------------------ */
+    net_step_env();
+    rec = DSD(DS_001044B8);
+    net_press(0u, 0x10u);
+    CHECK_EQ_INT((int)nameentry_step(0u), 1);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xE);
+    CHECK_EQ_INT((int)DSW(NET_ROW), 6);
+    CHECK_EQ_INT((int)DSD(rec + 0x18u), (0xE << 9) + 0x200);
+    /* side 1 ignores side 0's pad */
+    net_step_env();
+    net_press(0u, 0x10u);
+    (void)nameentry_step(1u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xB);
+    net_step_env();
+    net_press(1u, 0x10u);
+    (void)nameentry_step(1u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xE);
+    net_step_env();
+    net_press(1u, 0x10u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xB);
+    /* wrap past 0x1D on an ordinary row, past 0x20 on the bottom row */
+    net_step_env();
+    DSW(NET_COL) = 0x1Du;
+    net_press(0u, 0x10u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xB);
+    CHECK_EQ_INT((int)DSD(DSD(DS_001044B8) + 0x18u), (0xB << 9) + 0x200);
+    net_step_env();
+    DSW(NET_COL) = 0x1Du;
+    DSW(NET_ROW) = 0xFu;
+    net_press(0u, 0x10u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0x20);
+    net_step_env();
+    DSW(NET_COL) = 0x20u;
+    DSW(NET_ROW) = 0xFu;
+    net_press(0u, 0x10u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xB);
+
+    /* the autorepeat: above 0x1E and a multiple of 5 */
+    net_step_env();
+    DSD(NET_REPEAT_H) = 0x23u;
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xE);
+    net_step_env();
+    DSD(NET_REPEAT_H) = 0x24u;
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xB);
+    net_step_env();
+    DSD(NET_REPEAT_H) = 0x1Eu;
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xB);
+    net_step_env();
+    DSD(NET_REPEAT_H) = 0x28u;
+    DSD(NET_REPEAT_V) = 0x28u;
+    (void)nameentry_step(0u);                      /* 0x10's repeat wins over 0x20's */
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xE);
+
+    /* ---- left ------------------------------------------------------------- */
+    net_step_env();
+    DSW(NET_COL) = 0xEu;
+    net_press(0u, 0x20u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xB);
+    CHECK_EQ_INT((int)DSD(DSD(DS_001044B8) + 0x18u), (0xB << 9) + 0x200);
+    net_step_env();
+    net_press(0u, 0x20u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0x1D);
+    net_step_env();
+    DSW(NET_ROW) = 0xFu;
+    net_press(0u, 0x20u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0x20);
+    net_step_env();
+    DSW(NET_COL) = 0xEu;
+    DSD(NET_REPEAT_V) = 0x1Fu;                     /* 31: not a multiple of 5 */
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xE);
+    DSD(NET_REPEAT_V) = 0x1Eu;
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xE);
+    DSD(NET_REPEAT_V) = 0x1Fu + 4u;                /* 35 */
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xB);
+
+    /* ---- up ---------------------------------------------------------------- */
+    net_step_env();
+    DSW(NET_ROW) = 9u;
+    net_press(0u, 0x80u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_ROW), 6);
+    CHECK_EQ_INT((int)DSD(DSD(DS_001044B8) + 0x1Cu), (6 << 9) + 0x200);
+    net_step_env();
+    net_press(0u, 0x80u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_ROW), 0xF);
+    net_step_env();
+    DSW(NET_ROW) = 0xFu;
+    DSW(NET_COL) = 0x20u;
+    net_press(0u, 0x80u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_ROW), 0xC);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0x1D);
+    CHECK_EQ_INT((int)DSD(DSD(DS_001044B8) + 0x18u), 0x3C00);
+    CHECK_EQ_INT((int)DSD(DSD(DS_001044B8) + 0x1Cu), (0xC << 9) + 0x200);
+    net_step_env();
+    DSW(NET_ROW) = 9u;
+    DSD(NET_REPEAT_H) = 0x23u;                      /* up's repeat is right's counter: right wins */
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xE);
+    CHECK_EQ_INT((int)DSW(NET_ROW), 9);
+
+    /* ---- down -------------------------------------------------------------- */
+    net_step_env();
+    net_press(0u, 0x40u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_ROW), 9);
+    CHECK_EQ_INT((int)DSD(DSD(DS_001044B8) + 0x1Cu), (9 << 9) + 0x200);
+    net_step_env();
+    DSW(NET_ROW) = 0xFu;
+    net_press(0u, 0x40u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_ROW), 6);
+    net_step_env();
+    DSW(NET_ROW) = 0xCu;
+    DSW(NET_COL) = 0x20u;
+    net_press(0u, 0x40u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_ROW), 0xF);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0x1D);
+    CHECK_EQ_INT((int)DSD(DSD(DS_001044B8) + 0x18u), 0x3C00);
+    net_step_env();
+    DSD(NET_REPEAT_V) = 0x23u;                      /* down's repeat is left's counter: left wins */
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_ROW), 6);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0x1D);
+    net_step_env();
+    DSB(DS_001044D8) = 1u;                          /* input disabled */
+    net_press(0u, 0x10u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xB);
+
+    /* ---- the screen text --------------------------------------------------- */
+    net_step_env();
+    mem_fill(DS_00105F38, 0, 0x14D4u);
+    (void)nameentry_step(0u);
+    CHECK(chs_grid(6, 0xB) != 0u, "the letter grid is drawn when no cell is live");
+    CHECK(chs_grid(0xC, 0x1D) != 0u, "the letter grid's last ordinary cell");
+    CHECK(chs_grid(0xF, 0x20) != 0u, "the END cell (0xA7DC8)");
+    CHECK(chs_grid(1, 1) != 0u, "string 0x18 at (1, 1)");
+    CHECK(chs_grid(1, 0x23) != 0u, "string 0x19 at (0x23, 1)");
+    CHECK(chs_grid(2, 1) != 0u, "the score at (1, 2)");
+    CHECK(chs_grid(2, 0x25) != 0u, "the rank + 1 at (0x24, 2), width 2");
+    CHECK(chs_grid(0x1C, 3) == 0u, "no blink message off the 0x1F frame boundary");
+
+    net_step_env();
+    net_cell_set(0, net_cell_actor(), 0x5100u, 0x77u, 0u, 0u, 0x5000u, 5u, 1u);
+    mem_fill(DS_00105F38, 0, 0x14D4u);
+    (void)nameentry_step(0u);
+    CHECK(chs_grid(6, 0xB) == 0u, "a live cell suppresses the grid redraw (0x1F7D3)");
+    CHECK(chs_grid(1, 1) != 0u, "the header is drawn regardless");
+
+    net_step_env();
+    DSW(DS_000EF6DC) = 0x40u;
+    mem_fill(DS_00105F38, 0, 0x14D4u);
+    (void)nameentry_step(0u);
+    CHECK(chs_grid(0x1C, 3) != 0u, "side 0's blink message at (3, 0x1C)");
+    CHECK(chs_grid(0x1C, 0x19) == 0u, "not side 1's");
+    net_step_env();
+    DSW(DS_000EF6DC) = 0x40u;
+    mem_fill(DS_00105F38, 0, 0x14D4u);
+    (void)nameentry_step(1u);
+    CHECK(chs_grid(0x1C, 0x19) != 0u, "side 1's blink message at (0x19, 0x1C)");
+    CHECK(chs_grid(0x1C, 3) == 0u, "not side 0's");
+
+    /* ---- letter selection -------------------------------------------------- */
+    net_step_env();
+    DSW(NET_COL) = 0xEu;
+    DSW(NET_ROW) = 9u;                              /* 7*1 + 1 = 8, 'I' */
+    net_press(0u, 0x01u);
+    DSW(NET_TIMER) = 77u;
+    CHECK_EQ_INT((int)nameentry_step(0u), 1);
+    CHECK_EQ_INT((int)DSB(NET_CELL(0) + 0x12u), 1);
+    CHECK_EQ_INT((int)DSB(NET_CELL(0) + 0x13u), 8);
+    CHECK_EQ_INT((int)DSB(NET_CNT), 1);
+    CHECK_EQ_INT((int)DSW(NET_TIMER), 0x1C2);
+    net_step_env();
+    DSW(NET_COL) = 0xEu;
+    DSW(NET_ROW) = 9u;
+    net_press(1u, 0x02u);
+    (void)nameentry_step(1u);
+    CHECK_EQ_INT((int)DSB(NET_CELL(0) + 0x12u), 1);
+    net_step_env();
+    DSW(NET_COL) = 0xEu;
+    DSW(NET_ROW) = 9u;
+    net_press(1u, 0x01u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSB(NET_CELL(0) + 0x12u), 0);
+    CHECK_EQ_INT((int)DSB(NET_CNT), 0);
+    /* the last letter jumps the cursor to END */
+    net_step_env();
+    DSB(NET_CNT) = 2u;
+    DSW(NET_COL) = 0xBu;
+    DSW(NET_ROW) = 6u;
+    net_press(0u, 0x04u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSB(NET_CNT), 3);
+    CHECK_EQ_INT((int)DSB(NET_CELL(2) + 0x12u), 1);
+    CHECK_EQ_INT((int)DSB(NET_CELL(2) + 0x13u), 0);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0x20);
+    CHECK_EQ_INT((int)DSW(NET_ROW), 0xF);
+    CHECK_EQ_INT((int)DSD(DSD(DS_001044B8) + 0x18u), 0x4200);
+    CHECK_EQ_INT((int)DSD(DSD(DS_001044B8) + 0x1Cu), 0x2000);
+    /* a full name takes no more letters */
+    net_step_env();
+    DSB(NET_CNT) = 3u;
+    net_press(0u, 0x04u);
+    DSW(NET_TIMER) = 77u;
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSB(NET_CNT), 3);
+    CHECK_EQ_INT((int)DSW(NET_TIMER), 76);
+    /* the signed byte compare: a limit of 0xFF (-1) is already exceeded */
+    net_step_env();
+    DSB(NET_CNT) = 0u;
+    DSB(NET_LIM) = 0xFFu;
+    net_press(0u, 0x04u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSB(NET_CNT), 0);
+    /* space: index 26 at (0x1A, 0xF) */
+    net_step_env();
+    DSW(NET_COL) = 0x1Au;
+    DSW(NET_ROW) = 0xFu;
+    net_press(0u, 0x01u);
+    rec = DSD(DS_001044B0);
+    DSD(rec + 8u) = 0x77777777u;
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSB(NET_CELL(0) + 0x13u), 0x1A);
+    CHECK_EQ_INT((int)DSD(rec + 8u), 0x1E1);
+    /* DEL: index 27 at (0x1D, 0xF) */
+    net_step_env();
+    DSW(NET_COL) = 0x1Du;
+    DSW(NET_ROW) = 0xFu;
+    DSB(NET_CNT) = 2u;
+    net_press(0u, 0x01u);
+    DSW(NET_TIMER) = 77u;
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSB(NET_CNT), 1);
+    CHECK_EQ_INT((int)DSB(NET_CELL(1) + 0x12u), 8);
+    CHECK_EQ_INT((int)DSB(NET_CELL(1) + 0x13u), 0x1B);
+    CHECK_EQ_INT((int)DSW(NET_TIMER), 0x1C2);
+    net_step_env();
+    DSW(NET_COL) = 0x1Du;
+    DSW(NET_ROW) = 0xFu;
+    DSB(NET_CNT) = 2u;
+    DSB(NET_CELL(1) + 0x12u) = 5u;                  /* the letter is still flying */
+    net_press(0u, 0x01u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSB(NET_CNT), 1);
+    CHECK_EQ_INT((int)DSB(NET_CELL(1) + 0x12u), 9);
+    net_step_env();
+    DSW(NET_COL) = 0x1Du;
+    DSW(NET_ROW) = 0xFu;
+    DSB(NET_CNT) = 0u;
+    net_press(0u, 0x01u);
+    DSW(NET_TIMER) = 77u;
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSB(NET_CNT), 0);
+    CHECK_EQ_INT((int)DSW(NET_TIMER), 76);
+    net_step_env();
+    DSW(NET_COL) = 0x1Du;
+    DSW(NET_ROW) = 0xFu;
+    DSB(NET_CNT) = 0x80u;                           /* -128 is not > 0 */
+    net_press(0u, 0x01u);
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSB(NET_CNT), 0x80);
+    /* END: index 28 at (0x20, 0xF) terminates the name and zeroes the timer */
+    net_step_env();
+    DSW(NET_COL) = 0x20u;
+    DSW(NET_ROW) = 0xFu;
+    DSB(NET_CNT) = 2u;
+    DSB(NET_BUF + 2u) = 0x77u;
+    net_press(0u, 0x01u);
+    DSW(NET_TIMER) = 77u;
+    CHECK_EQ_INT((int)nameentry_step(0u), 1);
+    CHECK_EQ_INT((int)DSB(NET_BUF + 2u), 0);
+    CHECK_EQ_INT((int)DSW(NET_TIMER), 0);
+
+    /* ---- the keyboard queue (0x1044BC / 0x1044C8 / 0x104458) ----------------- */
+    net_step_env();
+    DSD(DS_001044BC) = 5u;
+    DSD(DS_001044C8) = 1u;
+    DSD(DS_00104458 + 2u * 4u) = 4u;                /* 'E': col 3*4+11, row 6 */
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSD(DS_001044C8), 2);
+    CHECK_EQ_INT((int)DSW(NET_COL), 3 * 4 + 0xB);
+    CHECK_EQ_INT((int)DSW(NET_ROW), 6);
+    CHECK_EQ_INT((int)DSD(DSD(DS_001044B8) + 0x18u), ((3 * 4 + 0xB) << 9) + 0x200);
+    CHECK_EQ_INT((int)DSB(NET_CELL(0) + 0x13u), 4);
+    CHECK_EQ_INT((int)DSB(NET_CELL(0) + 0x12u), 1);
+    net_step_env();
+    DSD(DS_001044BC) = 3u;
+    DSD(DS_001044C8) = 15u;                         /* 15 + 1 = 16: the raw reads 0x104498 unmasked */
+    DSD(DS_00104458) = 6u;
+    DSD(DS_00104458 + 16u * 4u) = 5u;               /* 'F': col 3*5+11, row 6 */
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSD(DS_001044C8), 0);
+    CHECK_EQ_INT((int)DSB(NET_CELL(0) + 0x13u), 5);
+    net_step_env();
+    DSD(DS_001044BC) = 3u;
+    DSD(DS_001044C8) = 1u;
+    DSD(DS_00104458 + 2u * 4u) = 0x1Cu;             /* END from the queue: the cursor is untouched */
+    DSB(NET_CNT) = 1u;
+    DSB(NET_BUF + 1u) = 0x77u;
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSW(NET_COL), 0xB);
+    CHECK_EQ_INT((int)DSB(NET_BUF + 1u), 0);
+    net_step_env();
+    DSD(DS_001044BC) = 1u;
+    DSD(DS_001044C8) = 1u;                          /* equal: empty, no press: nothing happens */
+    DSW(NET_TIMER) = 77u;
+    (void)nameentry_step(0u);
+    CHECK_EQ_INT((int)DSB(NET_CNT), 0);
+    CHECK_EQ_INT((int)DSB(NET_CELL(0) + 0x12u), 0);
+
+    mz_restore();
+}
+
+/* States 5/8/0xB..0xE of game_mode_1e_step poll nameentry_step with the side
+ * 0/1/0/1 and advance on its 0 (record §49-T): a running entry leaves every
+ * field alone, a finished one stores the successor state and the four words,
+ * and the side picks which player's character letter the name gets. */
+static void check_mode_1e_nameentry(void)
+{
+    static const u8 st[6]   = { 5u, 8u, 0x0Bu, 0x0Cu, 0x0Du, 0x0Eu };
+    static const u8 side[6] = { 0u, 1u, 0u, 1u, 0u, 1u };
+    static const u8 nxt[6]  = { 6u, 9u, 0x0Fu, 0x10u, 2u, 2u };
+    u32 k;
+    if (!mz_save()) { CHECK(0, "the §49-T snapshot allocates"); return; }
+    for (k = 0u; k < 6u; k++) {
+        u32 want = DSB(DSD(DS_000A7DA0 + (side[k] ? 2u : 1u) * 4u));
+        net_step_env();
+        m1e_seed(st[k]);
+        DSW(NET_TIMER) = 500u;                       /* still running */
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), (int)st[k]);
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x7777);
+        CHECK_EQ_INT((int)DSW(DS_001088EE), 0x7777);
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x7777);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x1Eu));
+        CHECK_EQ_INT((int)DSW(NET_TIMER), 499);      /* it did poll */
+
+        net_step_env();
+        mem_fill(0x105E34u, 0, 153u);
+        DSD(DS_00104528) = 0x142095u;
+        hiscore_init();
+        m1e_seed(st[k]);
+        DSW(NET_TIMER) = 0u;                         /* finished */
+        DSW(NET_RANK) = 2u;
+        DSB(NET_LIM) = 3u;
+        DSB(DS_0010782A) = 1u;                       /* side 0's character */
+        DSB(DS_0010782A + 0x94u) = 2u;               /* side 1's character */
+        DSD(0x00104390u) = 99u;
+        DSB(0x00104394u + 3u) = 0x77u;
+        net_str(NET_BUF, "BOB");
+        DSD(DS_001044B8) = net_cell_actor();
+        DSD(DS_001044B4) = net_cell_actor();
+        DSD(DS_001044B0) = net_cell_actor();
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), (int)nxt[k]);
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x8C);
+        CHECK_EQ_INT((int)DSW(DS_001088EE), 0);
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x1E);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x15u));
+        CHECK_EQ_INT((int)DSB(0x00104394u + 3u), (int)want);   /* the polled side */
+    }
+    CHECK(DSB(DSD(DS_000A7DA0 + 4u)) != DSB(DSD(DS_000A7DA0 + 8u)),
+          "the two characters' letters differ, so the side is observable");
+    mz_restore();
+}
+
+static void check_nameentry(void)
+{
+    check_mode_1e_nameentry();
+    check_name_filter();
+    check_nameentry_cells();
+    check_nameentry_finish();
+    check_nameentry_step();
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -33555,6 +34457,9 @@ int test_fight(void)
      * (through frontend_input_reset/actors_reset/frontend_match_start), so
      * it is placed here too, after check_mode4_spawn_gate. */
     check_mode_1e();
+
+    /* record §49-T: the name-entry screen (spawns real actors like the above). */
+    check_nameentry();
 
     /* check_mode_1f rebuilds the real free list from its own scratch pool
      * (M1F_POOL/M1F_PSET) on every sub-case, for the same reason
