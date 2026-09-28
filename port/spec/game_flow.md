@@ -1105,8 +1105,10 @@ exits 0.
   (`+0x5F` = `0x26`/`0x22`/`0x24`, or the plain 9/7/0 of characters 3 and
   5). `0x488B8` and `0x23530` are also character 2's reaction-`0x22` and
   character 6's reaction-`0x24` callbacks. The slot callbacks those poses
-  store (`0x3F360`/`0x3F1F0`/`0x3F284`, `0x48668`/`0x487D4`/`0x486F8`,
-  `0x233A8`/`0x23250`/`0x232B4`) are named gaps. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
+  store (`0x3F360`/`0x3F1F0`/`0x3F284`, `0x487D4`/`0x48668`/`0x486F8`,
+  `0x233A8`/`0x23250`/`0x232B4`) are ported and registered (§48-P), with
+  character 0's reaction-`0x26`/`0x27` callback `0x3F3F4` and character 5's
+  reaction-`0x22` callback `0x3E064` and its chain. **Known later gaps** (a whole-run `fn_resolve`-miss probe on the
   frame-1881 fix): none in the fight; `0x3E3A8` (f = 962, the `(char 0,
   0x2A)` callback) and its `+0x0C` callback `0x3E328` (f = 963) are now ported
   and registered; its `+0x18` hook `0x3E1D0` is ported with `0x19020`
