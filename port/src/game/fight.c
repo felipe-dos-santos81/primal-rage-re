@@ -4129,6 +4129,78 @@ void fight_effects_hold_all(void)
     }
 }
 
+/* 0x4DEF4 — record §49-F. The active effects list's (DS_0010884C) idle-pose
+ * walker. The background-flourish voice/countdown pair DS_001088B0 (word)/
+ * DS_001088BB (flag) is the same pair fight_4dbec's winner-crowd spawn arms
+ * (DS_001088BB = 0, DS_001088B0 = rng_next(0x14) + 0x78, above): once the
+ * word reaches 0 and the flag is set, this function re-arms it with voice
+ * 0xCB and a fresh rng_next(0x14) + 0x78 (0x4DEF9..0x4DF25); either way the
+ * word then counts down by one (0x4DF2B..0x4DF37, the pre-decrement value
+ * kept for the next test); crossing 0x3C with the flag set plays voice 0xDC
+ * (0x4DF3D..0x4DF50).
+ *   Then, per entry of the same DS_0010884C singly-linked list
+ * fight_effects_pass/fight_effects_hold_all walk (entry+8 the record,
+ * entry+0x1E the type/state byte, entry the node itself/its own `next`
+ * field), an index (u16)(rec+0x48 - 0x20) is computed (0x4DF6E/0x4DF74,
+ * fight_effects_hold_all's own index expression) and the state dispatches
+ * through a 5-entry jump table (0x4DEE0, states 0..4, `ja` past 4 also lands
+ * on the shared advance label 0x4E108). State 0's table entry *is* 0x4E108:
+ * already a no-op. States 1..4 each first gate on 0x4A868(entry) — the same
+ * call `fight_effects_pass`'s case-13/14 bodies already leave as a named gap
+ * (spec §7.4; see the "0x4A868" comment on that function, and its case-14
+ * comment above) — skipping to the advance when it returns zero; when
+ * non-zero they set DS_001088BB = 1, zero the record's +0x34 word, and pick
+ * an idle stream from one of two float/threshold tables — the record's +0x30
+ * high word (0x4DFB0/0x4DFBA `sar ecx,0x10`) against the layer word
+ * DS_000BD898 (`fight.c`'s own layer-word precedent, e.g. line ~2951) — with
+ * the low branch also setting the record's +0x55 = 1, before running it
+ * through actors_anim_begin at 3.0 (state 4 has only one branch, no
+ * threshold, at 5.0 from a single table 0xC9724) and clearing entry+0x1E
+ * back to 0 (0x4E104).
+ *   PORT: since 0x4A868 is unported (spec §7.4, as above), its gate is
+ * treated here as always false: no per-state transition ever fires, and
+ * entry+0x1E is never cleared by this walk. This is the same decision this
+ * codebase already made for the identical call inside `fight_effects_pass`'s
+ * case-13/14 bodies; unlike those two call sites this function has no
+ * rng_next calls inside the gated body to preserve for determinism (the
+ * only RNG consumption here is the voice/countdown rearm above, which is
+ * ported in full) — `read_memory`/disassembly of 0x4DF8C..0x4E103 confirms
+ * no CALL targets 0x5D7DC (rng_next) anywhere in the four state bodies.
+ * Callers: 0x277C0 (mode 0xF, game_mode_0f_step, flow.c, record §49-F) and
+ * 0x29638 (mode 0x33, still a named gap). EBX/ECX/EDX/ESI/EDI are pushed
+ * and popped. */
+void fight_effects_idle_pass(void)
+{
+    if (DSW(DS_001088B0) == 0u && DSB(DS_001088BB) != 0u) {  /* 0x4DEF9..0x4DF0A */
+        /* PORT: 0x4DF0C 0x2C3FC(0xCB) voice, not wired (record §45-A). */
+        DSW(DS_001088B0) = (u16)(rng_next(0x14u) + 0x78u);    /* 0x4DF16..0x4DF25 */
+    }
+    {
+        u16 pre = DSW(DS_001088B0);                            /* 0x4DF2B/0x4DF33 */
+        DSW(DS_001088B0) = (u16)(pre - 1u);                      /* 0x4DF36/0x4DF37 */
+        if (pre == 0x3Cu && DSB(DS_001088BB) != 0u) {              /* 0x4DF3D..0x4DF49 */
+            /* PORT: 0x4DF4B 0x2C3FC(0xDC) voice, not wired (record §45-A). */
+        }
+    }
+
+    u32 entry = DSD(DS_0010884C);                              /* 0x4DF55 */
+    if (entry == DS_0010884C) return;                            /* 0x4DF5B/0x4DF61 */
+    for (;;) {
+        u32 rec = DSD(entry + 8u);                                /* 0x4DF67 */
+        u32 next = DSD(entry);                                     /* 0x4DF6C */
+        u32 state = DSB(entry + 0x1Eu);                             /* 0x4DF71 */
+        u32 index = (u32)(u16)((u32)DSB(rec + 0x48u) - 0x20u);       /* 0x4DF6E/0x4DF74 */
+        (void)state;
+        (void)index;
+        /* PORT: 0x4DF8C..0x4E103 (states 1..4, see the header comment
+         * above): each gates on the unported 0x4A868(entry); treated as
+         * always false here, so no transition fires and entry+0x1E is left
+         * untouched for any state. */
+        entry = next;                                              /* 0x4E108 */
+        if (entry == DS_0010884C) break;                            /* 0x4E10A/0x4E110 */
+    }
+}
+
 /* ---- 0x263F4 the arena frame ------------------------------------------- */
 
 void fight_arena_frame(void)

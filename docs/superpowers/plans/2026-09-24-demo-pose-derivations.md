@@ -19155,6 +19155,395 @@ unrelated `0x36E78` cross-reference, and the two `docs/superpowers/plans/`
 derivation records that first identified the gap — none of which claim it
 is still open.
 
+
+## 49-E. Mode 7's frame handler `0x282C4` (named-gap batch, branch `gap26-modes7f`)
+
+(`docs/PROGRESS.md` and this file were grepped for `§49-E` first; nothing in
+either file, on `main` at `a11bb37`, or in `git log --all` claims it, so it
+is free. §49-F, immediately below, is likewise free.)
+
+**Result in one line.** `0x282C4`, `game_frame`'s case 7 (confirmed the same
+two-way way §49-D confirmed case `0xA`: `get_xrefs_to 0x282C4` lists exactly
+one call site, `0x25273` inside `FUN_00024c5c`, the bare dispatch-stub shape
+`CALL 0x282C4; JMP 0x2540F` with no register setup, matching every other
+case's stub), is ported as `game_mode_07_step` (`flow.c`) and wired.
+
+### 49-E.1 `0x282C4` (88 instructions, `0x282C4`..`0x28413`)
+
+Full disassembly fetched via the Ghidra HTTP bridge
+(`disassemble_function?address=0x282C4`). Decoded shape: `fight_slot_pass`
+unconditionally (no `fight_slot_clear`/`camera_screen_base`/
+`camera_project`/`camera_decay`/`fighter_pass_a` preamble at all — unlike
+every other mode-8/9/0xA sibling), then the shared tail (the two position
+latches — computed here, unusually, *before* `fight_slot_pass` rather than
+after; both orderings are behaviourally equivalent since neither touches the
+other's operands — `fight_hud_pass(0)/(1)`, `fighter_pass_b(1)`,
+`fight_effects_pass`, `camera_y_commit`).
+
+Then a three-way dispatch on the round winner `DS_00104B16` (0/1 a side, 2 a
+draw — the byte `flow_round_winner` sets, `flow.c` §48-K) crossed with the
+match result `DS_00104AD4` (-1 undecided, 0/1 a side, 2 a draw):
+
+- **`DS_00104B16 != 2`** (a side just won the round): the byte at that
+  side's own slot `+0x52` (`DS_00107802`'s stride — the same "attack state"
+  field trio `fighter_attack_consume` writes, `fighter.h`) `== 0` arms
+  `DS_00104AF8 = 0x258` and advances the mode to 9 when the match result is
+  in `[0, 2]` (0/1/2), else to 8; the byte `!= 0` skips the whole block
+  (no mode change, no `DS_00104AF8` arm).
+- **`DS_00104B16 == 2` (a drawn round) and the match result in `[0, 2)`**
+  (0 or 1 — i.e. a match already decided despite this round drawing): the
+  *other* side's (`result ^ 1`) slot `+0x54` byte (`DS_00107804`/
+  `DS_00107898`'s stride — the same field mode `0xA`'s `0x28BD4` tests
+  against 0, §49-D.3) `== 3` arms `DS_00104AF8 = 0x258`, advances to mode 9
+  and returns immediately (`0x2836F`..`0x283B8`); otherwise falls to the
+  shared tail with no mode change.
+- **`DS_00104B16 == 2` and the match result outside `[0, 2)`** (< 0 or >= 2):
+  both sides' `+0x54` bytes `== 3` *and equal to each other* arms
+  `DS_00104AF8 = 0x258`; the mode advances to 9 only when the result is
+  exactly 2 (a settled draw), else to 8 (`0x283B9`..`0x283F8`, both arms
+  return immediately); when the bytes aren't both 3 and equal, falls to the
+  shared tail with no mode change.
+
+The shared tail (`0x28402`, reached on every path that did not already
+return): `DS_00104AEC |= 2`, `DS_00104AD4 = ` the match result, reloaded
+from memory and written back unchanged (nothing in this function ever
+writes a *different* value to `DS_00104AD4` than the one it read — the two
+early-return arms above write back the same `result` they tested). The very
+first instruction after the four `PUSH`es, `MOV EBX,[0x104AD4]` (`0x282C8`),
+loads the match result before any of the calls above run; it is never read
+again before both reload sites (`0x2832B`, `0x28361`) overwrite it — a dead
+compiler-emitted load, omitted from the port. `EBX`/`ECX`/`EDX`/`EDI` are
+pushed and popped.
+
+### 49-E.2 The port
+
+- `flow.h`, after `game_mode_0a_step`'s declaration: `game_mode_07_step`'s
+  prototype and derivation comment.
+- `flow.c`, after `game_mode_0a_step` (a new `---- mode 7 ----` delimited
+  section): `game_mode_07_step` (`0x282C4`), with the full branch-by-branch
+  derivation in its header comment.
+- `game_frame`'s switch (`flow.c`): `case 0x07u: game_mode_07_step(); break;`
+  added (`0x25273 0x282C4`, `break` at `0x25278`, the call-site-plus-5
+  convention every other case in this switch already uses); `7` removed
+  from the generic named-gap case list and its comment, and the running
+  case-narration tail extended to name case 7 too.
+- No new callee (every call in `0x282C4` targets an already-ported
+  function: `fight_slot_pass`, `fight_hud_pass`, `fighter_pass_b`,
+  `fight_effects_pass`, `camera_y_commit`), no new `fn_register`, no
+  `symbols.h` change.
+
+### 49-E.3 The assertions and mutations (`check_mode_07` in `test_fight.c`)
+
+New `check_mode_07`, registered in `test_fight()`'s call list right after
+`check_mode_0a`, built on a new `m07_seed` (`tf_demo_fixture` plus
+mode-7-specific seeding, reusing `m08_seed`/`m09_seed`'s hitbox-array/
+character safety since mode 7's `fight_slot_pass` also runs unconditionally
+on every call). `DS_00104B00` is seeded as a dword with a `0xBEEF` high word
+(`m0a_seed`'s trick, §49-D.6) since every raw store to it here is a 16-bit
+store. Eight scenarios cover: the preamble running every call (position
+latches, `fight_slot_pass`'s `DS_00107ED8 = 0x20`/`DS_00107EDC = 2`
+signature, the tail's `DS_00104AEC |= 2`) folded into the `DS_00104B16 != 2`
+in-range-advance case; the `DS_00104B16 != 2` out-of-range-advance case
+(mode 8); the `DS_00104B16 != 2` attack-byte-nonzero no-op case; the
+`DS_00104B16 == 2`, decided-result, other-side-byte-`== 3` early-return case
+(mode 9); the same with the other-side byte not `3` (no mode change); the
+`DS_00104B16 == 2`, undecided-result, both-bytes-`3`-and-equal case (mode
+8); the same with the result exactly 2 (mode 9); and the bytes unequal case
+(no mode change). Every scenario also asserts `DS_00104AD4` is preserved
+(never corrupted to something other than what the test seeded).
+
+**Mutations** (each actually built and run — `PR_ORACLE_REQUIRED=1
+./build/run_tests` in full — not merely predicted, then reverted and
+re-verified byte-identical to the pre-mutation source via `diff`): (1)
+dropping the `DS_00104AEC |= 2` store from the shared tail — caught: 3
+`CHECK_EQ_INT` failures (the three scenarios that check `(DSB(DS_00104AEC) &
+2u) == 2`: the folded preamble/in-range-advance case and the two `DS_00104B16
+== 2` early-return cases; the other five scenarios don't re-assert this flag
+so don't contribute failures here); (2) widening the `DS_00104B16 != 2`
+in-range test from `result <= 2` to `result <= 3` — behaviourally inert for
+every seeded scenario (none uses `result == 3`) and so, per this repo's
+evidence-discipline precedent for an inert mutation (§48-Z.7), not counted
+as a passing mutation-kill; replaced with (2') narrowing the same test from
+`result >= 0` to `result >= 1` — caught: 1 `CHECK_EQ_INT` failure (the
+in-range-advance scenario, which seeds `result = 0`, sees the mode stay at
+its `0xBEEF0007` sentinel instead of advancing to `0xBEEF0009`); (3)
+flipping the drawn-round, decided-result branch's `other = result ^ 1` to
+`other = result` (reading the *same* side's `+0x54` byte instead of the
+*other* side's) — caught: 2 `CHECK_EQ_INT` failures (the mode-9
+early-return scenario, which seeds side 0's byte at its `0x77` sentinel and
+only side 1's at `3`: both the `DS_00104AF8` arm and the mode advance to 9
+fail to fire). All three real mutations were reverted and the suite
+re-confirmed green (3 consecutive `PR_ORACLE_REQUIRED=1 ./build/run_tests`
+runs, no SIGBUS, matching the 3 pre-mutation clean runs).
+
+### 49-E.4 Measured and remaining gaps
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 3 consecutive
+runs (plus the 3 mutation-revert runs above), no SIGBUS. `make verify`:
+front-end 517/801/3/2, demo-fight fully explained at N = 1886, attract2 0
+unexplained at N = 3617, `symbols.h` regenerates byte-identically — mode 7
+is reachable only through the still-unported match-end stores (`0x27DC8`,
+record §48-K) that leave modes 8/9 unreached either (§49-C.6/§48-Y.8's same
+reachability story), so the no-input oracle path never leaves mode 3.
+
+### 49-E.5 A hang wiring case 7 exposed in a pre-existing test, and the fix
+
+Wiring `case 0x07u` to a real function broke an assumption a pre-existing
+test made about it. `test_game.c`'s `test_flow` (around line 938, part of
+the title-boot Task 9 coverage) has:
+
+```c
+/* A mode other than 3 must not run the state machine at all. */
+DSD(DS_00104B00) = 7;
+game_frame();
+```
+
+Before this task, `game_frame`'s case 7 was one of the generic named-gap
+`break`s — a genuine no-op — so `7` was a harmless "any mode but 3" stand-in.
+Once case 7 became `game_mode_07_step`, this same line now runs the real
+fight-frame chain (`fight_slot_pass`, `fight_hud_pass` x2, `fighter_pass_b`,
+`fight_effects_pass`, `camera_y_commit`) against `test_flow`'s title-state
+fixture, which was never built to carry a live fight/effects-list state.
+`PR_ORACLE_REQUIRED=1 ./build/run_tests` hung at 100% CPU, no I/O wait,
+indefinitely (killed after 10+ minutes of CPU burn with no termination in
+sight).
+
+**Diagnosis.** `/usr/bin/sample <pid> 2` (macOS's built-in profiler; the
+`sample` shell command itself is shadowed by an unrelated `pip`-installed
+`sample` package on this machine's `PATH`, so the full `/usr/bin/sample`
+path is required) taken while the process was hung gave an exact call stack:
+`main` -> `test_flow` (`test_game.c:940`) -> `game_frame` (`flow.c:5352`,
+the case-7 dispatch this task added) -> `game_mode_07_step`
+(`flow.c:3599`, the `fight_effects_pass()` call) -> `fight_effects_pass`
+-> `fight_4b69c` (the already-ported worshipper-trample pass, record §29),
+looping. `fight_4b69c` walks a list this title-state fixture leaves in a
+state it cannot terminate on (the specific list/pointer invariant was not
+chased further, since the fix is to stop feeding it title-state garbage,
+not to harden `fight_4b69c` against inputs it was never a named gap for and
+that no real game state produces — case 7 is only ever reached from a live
+fight, never the title/attract front end).
+
+**Fix.** `test_flow`'s comment's actual intent — "a mode other than 3 must
+not run the state machine at all" — only needs *some* still-inert mode
+value, not specifically `7`. Changed to `0x16`, the first entry in the
+still-untouched named-gap case list after this task, with a comment
+recording why `7` stopped being safe and citing this record. No other test
+in `port/tests/*.c` sets `DS_00104B00` to `7` or `0xF` before a `game_frame`
+call (checked by grep across all four test files); the handful of other `= 7`
+sites (`test_fight.c` §17's knockdown-floor tests, `fighter_347b8`) pass the
+mode word to `fighter_347b8` directly, never through `game_frame`, and are
+unaffected. After the fix, `PR_ORACLE_REQUIRED=1 ./build/run_tests`
+completes in ~2 seconds, all checks pass, 3 consecutive clean runs, no
+SIGBUS, no hangs.
+
+This is recorded as its own numbered item, not folded silently into §49-E.3,
+because it is exactly the kind of interaction the task brief's "double-check
+`git log -1 main`... in case main has moved" caution is aimed at in spirit:
+wiring a previously-inert case number is a change with a blast radius wider
+than the new function's own tests, and this repo's evidence discipline
+records what was found, not just what was fixed.
+
+## 49-F. Mode `0xF`'s frame handler `0x277C0` and its idle-pose callee `0x4DEF4` (named-gap batch, branch `gap26-modes7f`)
+
+**Result in one line.** `0x277C0`, `game_frame`'s case `0xF` (confirmed via
+`get_xrefs_to 0x277C0`'s single bare-`CALL` site `0x2537B`, the same
+dispatch-stub shape as §49-E.0), is ported as `game_mode_0f_step` (`flow.c`),
+wired, and its one new callee `0x4DEF4` is ported as `fight_effects_idle_pass`
+(`fight.c`/`fight.h`) — with one sub-piece, the case-13/14 named gap
+`0x4A868` already established in this codebase (spec §7.4, `fight_effects_
+pass`'s own header, predating this task), left unported exactly as
+`fight_effects_pass` already leaves it, per a `PORT:` note.
+
+### 49-F.1 `0x277C0` (58 instructions, `0x277C0`..`0x278AE`)
+
+Position latches, `fight_hud_pass(0)/(1)` — **not** `fighter_pass_b`, unlike
+every other mode-7/8/9/0xA sibling's shared tail — then `CALL 0x4DEF4` (new,
+§49-F.3) and `camera_y_commit`.
+
+`DS_00104AEC |= 2` unconditionally; the word `DS_00104AFE` decrements by one
+on *every* call, with **no zero-guard** before the decrement (unlike modes
+8/9's `DS_00104AF8` countdown, which tests `hold != 0` first) — confirmed by
+the raw's own sequence, `MOV DX,[0x104AFE]; DEC EDX; MOV [0x104AFE],DX; TEST
+DX,DX; JG skip` with no earlier zero check. At or below zero (signed 16-bit)
+it fires:
+
+- voice `0x2B` (`0x27821 0x2C3FC`, deferred, record §45-A) with `DL = 0`;
+  since `0x2C3FC` preserves `EDX` unconditionally (record §42-E.2, the same
+  precedent mode `0xA`'s port used, §49-D.4), `DS_00104B1B = DL` afterward
+  (`0x27826`) is unconditionally 0;
+- the established winner-side macro `DS_0010810D`'s slot `+0x41` bit 4 is
+  cleared (`DS_001077F1 + w*0x94`, the same field's bit 4 modes 8/9 *set* on
+  their own countdown-arm arms — here it is cleared instead; `0x2782C`..
+  `0x27843`, decoded by hand from `MOV EDX,[0x10810A]; SAR EDX,0x18` —
+  exactly `flow.c`'s pre-existing `DS_0010810D` idiom, `... = (s32)(s8)
+  DSB(DS_0010810D)`, reused verbatim rather than re-derived — then the
+  `w*37`/`*4` address arithmetic already established for the identical
+  `DS_001077F1`-stride pattern elsewhere in this file);
+- `fighter_41310(DS_00104AD4, 0x30D40)` (`0x2784B`..`0x27855`) — the *match
+  result*, not `DS_0010810D`, is this call's side argument, confirmed by the
+  raw's literal register loads (`MOV EDX,0x30D40` then `MOV EAX,[0x104AD4]`
+  immediately before the `CALL`, with no `DS_0010810D` read in between);
+- the deferred `0x32B94` (`0x2786B`): disassembled in full (8 instructions,
+  `0x32B94`..`0x32BAB`, immediately followed by the `0x32BAC` bare-`ret`
+  stub mode 9's port already identified as a separate no-op, record §48-Y) —
+  it tests `DS_00104B1F` bit 0 and, when set, posts one audit entry through
+  `0x2DAE4(0xE, 1)` (the deferred audit idiom, spec §7) before falling into
+  the `0x32BAC` `ret`; no memory-visible effect either way, so this call
+  site is a `PORT:` no-op, the same treatment already given the four calls
+  onto the `0x32BAC` stub itself in mode 9's port;
+- the deferred run-clock tick `0x32970(0)` (`0x27874`, out of scope, spec
+  §7; the host clock owns wall time — the same established idiom used at
+  every other `0x32970` call site in this codebase);
+- `config_play_time_close(1, DS_00104B19)` (`0x27879`..`0x27886` `0x32A3C`)
+  — one of the two live callers `fighter.h`/`config.h`'s own comments named
+  as still unported before this task (the task brief's lead, confirmed);
+- `DS_00104B25 = 0`, `DS_00104AFA = 0x1F`, `DS_00104B00 = 0x17` and
+  `DS_00104AE4 = frontend_darken_all` (`0x29B74`) — the same hook mode 9's
+  `flow_results_darken_close` installs, confirming the task brief's lead
+  that `0x277C0` resembles mode 9's darken-close shape in this one respect,
+  though the two functions' bodies are otherwise unrelated.
+
+`EBX`/`ECX`/`EDX`/`ESI` are pushed and popped.
+
+### 49-F.2 `0x4DEF4` (138 instructions, `0x4DEF4`..`0x4E11B`)
+
+Disassembled in full via the Ghidra HTTP bridge. Two pieces:
+
+1. **The voice/countdown rearm** (`0x4DEF4`..`0x4DF55`): the pair
+   `DS_001088B0` (word)/`DS_001088BB` (flag) is the same pair `fight_4dbec`'s
+   winner-crowd spawn arms (`DS_001088BB = 0`, `DS_001088B0 = rng_next(0x14)
+   + 0x78`, `fight.c` around line 2993). Once the word reaches 0 *and* the
+   flag is set, this rearms with voice `0xCB` and a fresh `rng_next(0x14) +
+   0x78`; either way the word then decrements by one (the pre-decrement
+   value kept for the next test); crossing `0x3C` with the flag set plays
+   voice `0xDC`. This piece has real RNG consumption (`rng_next`, `0x5D7DC`)
+   and is ported in full.
+2. **The per-entry idle-pose walk** (`0x4DF55`..`0x4E116`): walks the same
+   `DS_0010884C` singly-linked active-effects list `fight_effects_pass`/
+   `fight_effects_hold_all` already walk (`entry+8` the record, `entry+0x1E`
+   the type/state byte), dispatching each entry's state through a 5-entry
+   jump table at `0x4DEE0` (read via `read_memory`: `0x4E108, 0x4DF8C,
+   0x4DFF8, 0x4E064, 0x4E0CE` for states 0..4 — state 0's own table entry
+   *is* the shared "advance to next node" label, i.e. already a no-op).
+   States 1..4 each first `CALL 0x4A868(entry)` and skip to the advance when
+   it returns zero. **`0x4A868` is not a new named gap this task
+   introduces** — it is the exact same call `fight_effects_pass`'s own
+   case-13/14 bodies already leave unported, cited by address in that
+   function's existing header comment and case-14 comment (`fight.c`, spec
+   §7.4, predating this task by several merges). When `0x4A868` returns
+   non-zero the four state bodies (decoded in full, `0x4DF8C`..`0x4E103`)
+   set `DS_001088BB = 1`, zero the record's `+0x34` word, and pick an idle
+   stream from one of two float/threshold tables — the record's `+0x30` high
+   word against the layer word `DS_000BD898` (`fight.c`'s own established
+   layer-word precedent) — running it through `actors_anim_begin` at 3.0
+   (state 4 has a single branch, no threshold, at 5.0 from table `0xC9724`
+   alone), then clearing `entry+0x1E` back to 0.
+   - **`PORT`, matching the existing §7.4 precedent exactly:** since
+     `0x4A868` is unported, its gate is treated here as always false — no
+     per-state transition ever fires, `entry+0x1E` is never cleared by this
+     walk. Unlike `fight_effects_pass`'s case-13/14 bodies (which still run
+     an `rng_next` call each to keep the RNG stream in sync, since the raw
+     draws RNG unconditionally before the gated body in those two cases),
+     `0x4DEF4`'s four state bodies have **no** RNG call anywhere in them
+     (confirmed: no `CALL 0x5D7DC` appears in `0x4DF8C`..`0x4E103`), so no
+     RNG-consumption stand-in is needed here for determinism.
+
+`get_xrefs_to 0x4DEF4` lists exactly two callers: `0x277C0` (this task) and
+`0x29638` (mode `0x33`, still an unported named gap after this task).
+
+### 49-F.3 The port
+
+- `fight.h`, after `fight_effects_hold_all`'s declaration:
+  `fight_effects_idle_pass`'s prototype and derivation comment.
+- `fight.c`, after `fight_effects_hold_all`: `fight_effects_idle_pass`
+  (`0x4DEF4`), with the full derivation (§49-F.2) in its header comment.
+- `flow.h`, after `game_mode_0a_step`'s declaration (and after §49-E's new
+  `game_mode_07_step`): `game_mode_0f_step`'s prototype and derivation
+  comment.
+- `flow.c`, after `game_mode_07_step` (a new `---- mode 0xF ----` delimited
+  section): `game_mode_0f_step` (`0x277C0`).
+- `game_frame`'s switch (`flow.c`): `case 0x0Fu: game_mode_0f_step(); break;`
+  added (`0x2537B 0x277C0`, `break` at `0x25380`); `0xF` removed from the
+  generic named-gap case list and its comment, and the running case-
+  narration tail extended to name case `0xF` too.
+- One new callee, `fight_effects_idle_pass`; `0x4A868` (inside it) and the
+  three voice calls (`0x2C3FC` x2 in `0x277C0`/`0x4DEF4`) and the audit/
+  run-clock calls (`0x32B94`/`0x32970`) are `PORT:` notes per spec §7 and
+  the pre-existing §7.4 precedent, not new callees. No new `fn_register`, no
+  `symbols.h` change.
+
+### 49-F.4 The assertions and mutations (`check_mode_0f` in `test_fight.c`)
+
+New `check_mode_0f`, registered in `test_fight()`'s call list right after
+`check_mode_07`, built on a new `m0f_seed` (`tf_demo_fixture` plus
+mode-`0xF`-specific seeding — no hitbox-array setup needed, unlike modes
+7/8/9, since this handler never calls `fight_slot_pass`/`camera_project`,
+the same reasoning `m0a_seed` documents, §49-D.6). `DS_001077A8[0]` is
+pointed at a scratch camera-target record (`FIGHT_RECS + 0x400`) so
+`fighter_41310`'s `+0x3C` write is directly observable. Four scenarios:
+
+- the preamble and `DS_00104AEC |= 2` run every call, but the countdown
+  (seeded to 5) merely decrements to 4 without firing the rest;
+- the countdown reaching exactly 0 (seeded to 1) fires the same frame:
+  `DS_00104B1B` clears from its `0x77` sentinel, the winner-side slot's
+  `+0x41` bit 4 clears, `fighter_41310`'s target `+0x3C` gains exactly
+  `0x30D40`, `config_play_time_close`'s target `DS_0010746C + 4` (mode `1 &
+  3`) zeroes from its `0x99999999` sentinel, and the hook/mode/return-mode
+  quartet (`DS_00104B25 = 0`, `DS_00104AFA = 0x1F`, `DS_00104B00 = 0x17`,
+  `DS_00104AE4 = fn_origin(frontend_darken_all)`) all land;
+- an **already-zero** countdown (seeded to 0, decrementing to `0xFFFF`)
+  fires too — the direct test of the "no zero-guard" finding above; a
+  mutation reinstating a zero-guard (below) is caught by this exact
+  scenario;
+- the winner-side bit-4 clear tracks `DS_0010810D`, not `fighter_41310`'s
+  side argument: seeding `DS_0010810D = 1` (with `DS_00104AD4` left at
+  `m0f_seed`'s `0`, so the two "side" values genuinely differ) clears side
+  1's `+0x41` bit 4 and leaves side 0's untouched, while a second scratch
+  record at `DS_001077A8[1]` proves `fighter_41310` still targets *side
+  0's* record (`DS_00104AD4`), not side 1's — the two "side" values are
+  independently derived, not the same field read twice.
+
+**Mutations** (each actually built and run — `PR_ORACLE_REQUIRED=1
+./build/run_tests` in full, not merely predicted — then reverted and
+re-verified byte-identical to the pre-mutation source via `diff`): (1)
+reinstating a `hold != 0` zero-guard before the decrement (mirroring modes
+8/9's `DS_00104AF8` idiom) — caught: 1 `CHECK_EQ_INT` failure (the
+already-zero-countdown scenario: the countdown stays `0` instead of
+wrapping to `0xFFFF`); (2) swapping `fighter_41310`'s side argument from
+`DS_00104AD4` to `DS_0010810D` — **the first attempt at this mutation was
+not caught, a genuine test-coverage gap this task found and fixed, not a
+false-positive mutation report.** The winner-side scenario as first written
+only checked the bit-4 fields, and every *other* scenario seeds
+`DS_0010810D` and `DS_00104AD4` to the *same* value (both `0`, from
+`m0f_seed`), so swapping one for the other in `fighter_41310`'s call was
+invisible everywhere. Fixed by extending the winner-side scenario (which
+already differs the two values) with a second scratch camera-target record
+at `DS_001077A8[1]` and asserting both `+0x3C` fields — side 0's changes,
+side 1's does not. Re-run with the fix: caught, 2 `CHECK_EQ_INT` failures
+(both `+0x3C` assertions in that scenario). Both mutations were reverted
+and the suite re-confirmed green (3 consecutive `PR_ORACLE_REQUIRED=1
+./build/run_tests` runs, no SIGBUS, matching the 3 pre-mutation clean
+runs).
+
+### 49-F.5 Measured and remaining gaps
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 3 consecutive
+runs (plus the mutation-revert runs above, including the extra round that
+found and fixed the coverage gap in mutation (2)), no SIGBUS. `make verify`:
+front-end 517/801/3/2, demo-fight fully explained at N = 1886, attract2 0
+unexplained at N = 3617, `symbols.h` regenerates byte-identically — mode
+`0xF` is reachable only through the same still-unported match-end stores
+(`0x27DC8`, record §48-K) that leave modes 7/8/9 unreached, so the no-input
+oracle path never leaves mode 3, and `0x4DEF4`'s idle-pose walk is
+inert either way (both its own gate `0x4A868` and its caller are
+unreached).
+
+Remaining named gaps these two tasks leave untouched: `0x4A868` itself
+(spec §7.4, `fight_effects_pass`'s case-13/14 bodies, predating this task);
+mode `0x33`'s `0x29638`, `0x4DEF4`'s other caller; the match-end stores
+`0x27DC8` (record §48-K) that would drive modes 7/8/9/0xF for real; and the
+`0x2C3FC` voice dispatcher and `0x2DAE4` audit sink (record §45-A, spec §7).
+
 ## 49-G. Mode `0x16`'s frame handler `0x4F2B0` (named-gap batch, branch `gap27-mode16`)
 
 (The section letter is G. `docs/PROGRESS.md` and this file were grepped for

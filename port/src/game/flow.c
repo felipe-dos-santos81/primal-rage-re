@@ -3895,6 +3895,171 @@ void game_mode_0a_step(void)
     }
 }
 
+/* ---- mode 7, the frame handler 0x282C4 (record §49-E) -------------------- */
+
+/* 0x282C4 — record §49-E. Mode 7's frame handler (0x24C5C case 7, the table
+ * entry unrecorded in this file's own comments before this task — confirmed
+ * as case 7 the same way mode 0xA's port confirmed its case: `get_xrefs_to
+ * 0x282C4` lists exactly one call site with no register setup before the
+ * bare `CALL`, the shared bare-dispatch-stub shape every 0x24C5C case has;
+ * body to 0x28413, its only caller). The tail slice modes 8/9/0xA share
+ * (the two position latches, then, unlike those three, fight_slot_pass
+ * unconditionally rather than fighter_pass_a's preamble first — 0x282C4 has
+ * none of fight_slot_clear/camera_screen_base/camera_project/camera_decay/
+ * fighter_pass_a — fight_hud_pass(0)/(1), fighter_pass_b(1), fight_effects_pass
+ * and camera_y_commit).
+ *   Then, on the round winner DS_00104B16 (0/1 a side, 2 a draw — the byte
+ * flow_round_winner sets, flow.c above):
+ *   - DS_00104B16 == 2 (a draw) and the match result DS_00104AD4 in [0, 2)
+ *     (0/1, i.e. a *decided* match despite a drawn round): with the *other*
+ *     side's (result ^ 1) slot +0x54 byte (DS_00107804/DS_00107898's stride,
+ *     the same field mode 0xA's port and actors.c's anim-opcode 0xD500 clear
+ *     read) == 3, arm DS_00104AF8 = 0x258 and advance to mode 9, OR the
+ *     match result's `AEC |= 2; AD4 = result` tail either way (0x2836F..
+ *     0x283B8);
+ *   - DS_00104B16 == 2 and the match result out of [0, 2) (< 0 or >= 2, i.e.
+ *     undecided/a draw): both sides' +0x54 bytes == 3 and equal to each
+ *     other arms DS_00104AF8 = 0x258 and, only when the result is exactly 2
+ *     (a draw), mode 9 (result > 2 or < 0 instead advances to mode 8) before
+ *     the same tail (0x283B9..0x283F8);
+ *   - DS_00104B16 != 2 (a side, 0 or 1): the byte at that side's own slot
+ *     +0x52 (DS_00107802's stride — the byte fighter_attack_consume's
+ *     "attack state" trio DS_00107802/03/04 writes, fighter.h) == 0 arms
+ *     DS_00104AF8 = 0x258 and advances to mode 9 when the match result is in
+ *     [0, 2] (0/1/2), else mode 8 (0x28339..0x283F9); the byte != 0 falls
+ *     straight to the tail with no mode change.
+ *   The tail (0x28402, reached whenever no branch above already returned):
+ * DS_00104AEC |= 2, DS_00104AD4 = the match result (reloaded, 0x2832B/
+ * 0x28361 — unchanged from the dword at function entry on every path, since
+ * nothing in this function writes DS_00104AD4 except the two explicit
+ * `= result` stores on the direct-return arms above, themselves writing back
+ * the same value they read). The very first load, `MOV EBX,[0x104AD4]`
+ * (0x282C8), before any of the above calls, is never read again before both
+ * reload sites (0x2832B, 0x28361) overwrite it — a dead compiler-emitted
+ * load, omitted. EBX/ECX/EDX/EDI are pushed and popped. */
+void game_mode_07_step(void)
+{
+    DSD(DS_001077E8) = DSD(DS_001077E4);                /* 0x282CE/0x282D3 */
+    DSD(DS_0010787C) = DSD(DS_00107878);                /* 0x282D8/0x282DD */
+    fight_slot_pass();                                   /* 0x282E2 0x3CB68 */
+    fight_hud_pass(0u);                                  /* 0x282E7/0x282E9 0x35658 */
+    fight_hud_pass(1u);                                  /* 0x282EE/0x282F3 0x35658 */
+    fighter_pass_b(1u);                                  /* 0x282F8/0x282FD 0x19068 */
+    fight_effects_pass();                                /* 0x28302 0x49C78 */
+    camera_y_commit();                                   /* 0x28307 0x12DA8 */
+
+    u32 winner = DSB(DS_00104B16);                       /* 0x2830E */
+    s32 result;
+
+    if (winner != 2u) {
+        u32 attack = DSB(DS_00107802 + winner * 0x94u);  /* 0x28318..0x28324 */
+        result = (s32)DSD(DS_00104AD4);                   /* 0x2832B */
+        if (attack == 0u) {                                /* 0x28331/0x28333 */
+            DSW(DS_00104AF8) = 0x258u;                       /* 0x28339 */
+            if (result >= 0 && result <= 2)                  /* 0x28342..0x2834D */
+                DSW(DS_00104B00) = 9u;                          /* 0x28353 */
+            else
+                DSW(DS_00104B00) = 8u;                          /* 0x283F9 */
+        }
+    } else {
+        result = (s32)DSD(DS_00104AD4);                     /* 0x28361 */
+        if (result >= 0 && result < 2) {
+            u32 other = (u32)result ^ 1u;                     /* 0x2836F/0x28371 */
+            if (DSB(DS_00107804 + other * 0x94u) == 3u) {      /* 0x28382/0x2838A */
+                DSW(DS_00104AF8) = 0x258u;                       /* 0x2839A */
+                DSW(DS_00104B00) = 9u;                            /* 0x283A1 */
+                DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);    /* 0x283A7 */
+                DSD(DS_00104AD4) = (u32)result;                    /* 0x283AE */
+                return;                                              /* 0x283B8 */
+            }
+        } else if (DSB(DS_00107804) == 3u &&
+                   DSB(DS_00107898) == DSB(DS_00107804)) {   /* 0x283B9..0x283CA */
+            DSW(DS_00104AF8) = 0x258u;                          /* 0x283CC */
+            DSW(DS_00104B00) = (result == 2) ? 9u : 8u;          /* 0x283D5..0x283DE/0x283F9 */
+            DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);       /* 0x283E7 */
+            DSD(DS_00104AD4) = (u32)result;                        /* 0x283EE */
+            return;                                                  /* 0x283F8 */
+        }
+    }
+
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);        /* 0x28402 */
+    DSD(DS_00104AD4) = (u32)result;                         /* 0x28409 */
+}
+
+/* ---- mode 0xF, the frame handler 0x277C0 (record §49-F) ------------------ */
+
+/* 0x277C0 — record §49-F. Mode 0xF's frame handler (0x24C5C case 0xF,
+ * confirmed the same way mode 7's 0x282C4 was above via `get_xrefs_to
+ * 0x277C0`'s single bare-`CALL` site; body to 0x278AE, its only caller). The
+ * two position latches, then fight_hud_pass(0)/(1) — not fighter_pass_b,
+ * unlike modes 7/8/9/0xA's shared tail — then the active effects list's
+ * idle-pose walker fight_effects_idle_pass (0x4DEF4, record §49-F, fight.c
+ * above) and camera_y_commit.
+ *   DS_00104AEC |= 2 unconditionally; the word DS_00104AFE (no zero-guard,
+ * unlike mode 8/9's DS_00104AF8 countdown) decrements by one every call; at
+ * or below 0 (signed 16-bit, 0x27811 `test dx,dx`/`jg`) it fires:
+ *   - voice 0x2B (0x27821 0x2C3FC, deferred, record §45-A) with DL = 0; since
+ *     0x2C3FC preserves EDX unconditionally (record §42-E.2, the same
+ *     precedent mode 0xA's port used), DS_00104B1B = DL afterward is
+ *     unconditionally 0 (0x27826);
+ *   - the established winner-side macro DS_0010810D's slot's +0x41 bit 4 is
+ *     cleared (DS_001077F1 + w*0x94, the same field's bit 4 modes 8/9 OR in
+ *     on their countdown-arm arms; 0x2782C..0x27843);
+ *   - fighter_41310(DS_00104AD4, 0x30D40) — the *match result*, not
+ *     DS_0010810D, is this call's side argument (0x2784B..0x27855);
+ *   - the deferred 0x32B94 (0x2786B): tests DS_00104B1F bit 0 and, when set,
+ *     posts one audit entry through 0x2DAE4(0xE, 1) — the deferred audit
+ *     idiom, spec §7 — before an unconditional bare `ret`; no memory-visible
+ *     effect either way (confirmed by disassembling 0x32B94 in full: 8
+ *     instructions, the only call is the conditional 0x2DAE4, EDX pushed and
+ *     popped around it), so this call site is a no-op here, the same
+ *     treatment already given the four calls onto the neighbouring 0x32BAC
+ *     bare-`ret` stub in mode 9's port;
+ *   - the deferred run-clock tick 0x32970(0) (0x27874, out of scope, spec
+ *     §7; the host clock owns wall time);
+ *   - config_play_time_close(1, DS_00104B19) (0x27879..0x27886 0x32A3C);
+ *   - DS_00104B25 = 0, DS_00104AFA = 0x1F, DS_00104B00 = 0x17 and
+ *     DS_00104AE4 = frontend_darken_all (0x29B74) — the same hook mode 9's
+ *     flow_results_darken_close installs (0x2788B..0x278A4).
+ * EBX/ECX/EDX/ESI are pushed and popped. */
+void game_mode_0f_step(void)
+{
+    DSD(DS_001077E8) = DSD(DS_001077E4);                /* 0x277C4/0x277C9 */
+    DSD(DS_0010787C) = DSD(DS_00107878);                /* 0x277CE/0x277D3 */
+    fight_hud_pass(0u);                                  /* 0x277D8/0x277DA 0x35658 */
+    fight_hud_pass(1u);                                  /* 0x277DF/0x277E4 0x35658 */
+    fight_effects_idle_pass();                           /* 0x277E9 0x4DEF4 */
+    camera_y_commit();                                    /* 0x277EE 0x12DA8 */
+
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);        /* 0x277F3/0x27800/0x27804 */
+    s16 hold = (s16)(DSW(DS_00104AFE) - 1u);                /* 0x277F9/0x27803 */
+    DSW(DS_00104AFE) = (u16)hold;                            /* 0x2780A */
+    if (hold > 0) return;                                     /* 0x27811/0x27814 */
+
+    /* PORT: 0x27821 0x2C3FC(0x2B) voice, not wired (record §45-A); its DL
+     * argument is 0 and 0x2C3FC preserves EDX (record §42-E.2), so the store
+     * below is unconditionally 0. */
+    DSB(DS_00104B1B) = 0u;                                    /* 0x27826 */
+    {
+        s32 w = (s32)(s8)DSB(DS_0010810D);                     /* 0x2782C/0x27832 */
+        DSB(DS_001077F1 + (u32)w * 0x94u) =
+            (u8)(DSB(DS_001077F1 + (u32)w * 0x94u) & 0xEFu);     /* 0x27835..0x27843 */
+    }
+    fighter_41310(DSD(DS_00104AD4), 0x30D40);                  /* 0x2784B..0x27855 0x41310 */
+    /* PORT: 0x2786B 0x32B94: tests DS_00104B1F bit 0; when set, posts a
+     * deferred audit entry through 0x2DAE4(0xE, 1) (out of scope, spec §7)
+     * before an unconditional bare `ret`; no memory-visible effect either
+     * way — omitted, the same treatment already given the 0x32BAC-stub call
+     * sites in mode 9's port. */
+    /* PORT: 0x27874 0x32970(EAX = 0), the run clock, is out of scope (spec
+     * §7); the host clock owns wall time. */
+    config_play_time_close(1u, DSB(DS_00104B19));               /* 0x27879..0x27886 0x32A3C */
+    DSB(DS_00104B25) = 0u;                                       /* 0x27890 */
+    DSW(DS_00104AFA) = 0x1Fu;                                    /* 0x27896 */
+    DSW(DS_00104B00) = 0x17u;                                    /* 0x2789D */
+    DSD(DS_00104AE4) = FN_00029B74;                               /* 0x278A4 */
+}
+
 /* 0x11F6C: the six-entry selector. Phase 0 draws the first entry then falls
  * into phase 1 (no jump between 0x11FD4 and 0x11FDA); phase 1 draws an entry;
  * phase 4 pauses on DS_000F0A68; phase 2 advances the entry and leaves for
@@ -5847,7 +6012,11 @@ void game_frame(void)
         game_mode_21_step();                           /* 0x26540 (record §49-O) */
         break;
     case 0x07u:
+        game_mode_07_step();                           /* 0x25273 0x282C4 (record §49-E) */
+        break;                                         /* 0x25278 */
     case 0x0Fu:
+        game_mode_0f_step();                           /* 0x2537B 0x277C0 (record §49-F) */
+        break;                                         /* 0x25380 */
     case 0x22u:
     case 0x23u:
     case 0x24u:
@@ -5863,8 +6032,6 @@ void game_frame(void)
     case 0x2Fu:
         /* PORT: named gaps, each case's body unported (record §47-B.1 has
          * the entry and callees of every one):
-         * 7 0x282C4;
-         * 0xF 0x277C0;
          * 0x22 0x26C8C; 0x23 0x26A50; 0x24 0x26F58; 0x25 inline (0x266AC,
          * 0x4EF8C, 0x4F0FC, 0x49C78); 0x27 inline (0x50146, the 0xBCBDC menu
          * 0x2FFC4, 0x65431 longjmp); 0x28..0x2F inline (0x2D974 field 0x29,
@@ -5891,9 +6058,11 @@ void game_frame(void)
          * §49-I) are frontend_mode_18_step/frontend_mode_19_step, case
          * 0x1F (0x208F8, record §49-J) is game_mode_1f_step, cases
          * 0x30/0x31/0x33 (0x29328/0x299E8/0x29638, record §49-K) are
-         * game_mode_30_step/game_mode_31_step/game_mode_33_step, and case
-         * 0x21 (0x26540, record §49-O) is game_mode_21_step, each
-         * dispatched above. */
+         * game_mode_30_step/game_mode_31_step/game_mode_33_step, case
+         * 0x21 (0x26540, record §49-O) is game_mode_21_step, case 7
+         * (0x282C4, record §49-E) is game_mode_07_step, and case 0xF
+         * (0x277C0, record §49-F) is game_mode_0f_step, each dispatched
+         * above. */
         break;
     case 0x00u:
     case 0x1Cu:
