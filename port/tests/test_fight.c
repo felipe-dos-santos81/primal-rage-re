@@ -30156,6 +30156,321 @@ static void check_mode_1e(void)
     check_mode_1e_bookkeeping();
 }
 
+/* ---- record §49-I: mode 0x1F's frame handler 0x208F8 ---------------------- */
+
+#define M1F_SPRITE_FLAG 0x00104529u  /* no symbols.h name: DS_00104528's second byte (flow.c) */
+#define M1F_PROMPT_ROW  0x000C8718u  /* no symbols.h name: shared prompt-row word (flow.c) */
+
+#define M1F_POOL  0x03F70000u  /* real free-list pool, ACTOR_POOL_RECORDS*ACTOR_REC_SIZE bytes */
+#define M1F_PSET  0x03FA0000u  /* real pset pool, ACTOR_POOL_RECORDS*PSET_SIZE bytes */
+#define M1F_REC1  0x03FB0000u  /* hand-built records for isolated per-state checks */
+#define M1F_REC2  0x03FB0100u
+#define M1F_REC3  0x03FB0200u
+#define M1F_TBL_A 0x03FB0300u  /* scratch dwords for the character-indexed table slots */
+#define M1F_TBL_B 0x03FB0400u
+
+/* Seed every field game_mode_1f_step reads or writes, plus a real actor pool
+ * (record §47-C's actors_reset rebuilds the free/active lists from
+ * DS_001014EC/DS_001014F4, and DS_00107A1C's row table and the effects
+ * pool) so every actor_spawn/actors_anim_begin/actor_set_dead/effects_spawn
+ * call a state makes is exercised for real, not stubbed. `charid`'s own
+ * table entry (DS_0010782A, side/index 0 since DS_00104AD4 = 0) is left at
+ * 0. */
+static void m1f_seed(u8 substate)
+{
+    DSD(DS_001014F4) = M1F_POOL;
+    DSD(DS_001014EC) = M1F_PSET;
+    actors_reset();
+    /* actors_reset -> effects_init rebuilds the free list but does not
+     * clear the active count (that's effects_clear's job); give state 0's
+     * test a deterministic baseline. */
+    DSB(DS_0009AF3D) = 0u;
+    DSB(DS_00104B25) = substate;
+    DSD(DS_00104AD4) = 0u;
+    DSB(DS_0010782A) = 0u;
+    DSB(M1F_SPRITE_FLAG) = 0u;
+    DSD(DS_001044A0) = 0u;
+    DSD(DS_001044A4) = 0u;
+    DSD(DS_0010449C) = 0u;
+    DSW(DS_00104AFE) = 0x7777u;
+    DSW(DS_001088EE) = 0x7777u;
+    DSW(DS_00104AFA) = 0x7777u;
+    DSD(DS_00104B00) = 0xBEEF0000u | 0x1Fu;
+    DSW(M1F_PROMPT_ROW) = 0x1234u;
+    mem_fill(0x00107608u, 0, 0x190u);   /* the challenge-row table, empty */
+}
+
+/* State 0: reset, the fixed backdrop row (0x38B18(0xA7B80)), and the
+ * conditional 0x3E688 effect (0x13C70) when 0x33904's palette-acquire table
+ * walk (the same DS_00107618..DS_00107798 table palette_acquire itself
+ * fills, record §47-C) finds any entry. The backdrop's own real 0xA7B80
+ * descriptor carries a real, resolvable handle in the ghidra_data.bin
+ * oracle, so frontend_spawn_row's own actor_spawn call (through
+ * palette_acquire) always plants one live entry there itself before the
+ * walk runs — the "no entry" arm can only be exercised by zeroing that
+ * descriptor's handle field (+0x10) first, so its own spawn does not
+ * register one. */
+static void check_mode_1f_state0(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+
+    m1f_seed(0u);
+    DSD(0xA7B90u) = 0u;                     /* the backdrop descriptor's own handle (+0x10) */
+    game_mode_1f_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 1);
+    CHECK(DSD(DS_00107A1C) != 0u, "state 0 spawns the backdrop row (0x38B18)");
+    CHECK_EQ_INT(effects_active(), 0);      /* no live palette entry */
+
+    mz_restore();
+    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+
+    /* the backdrop's own real handle is left intact: frontend_spawn_row's
+     * own spawn registers the palette entry 0x33904 then finds. */
+    m1f_seed(0u);
+    game_mode_1f_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 1);
+    CHECK_EQ_INT(effects_active(), 1);      /* the 0x3E688 effect */
+
+    mz_restore();
+}
+
+/* State 1: two actor spawns (0xA7ED8, then the character-indexed 0xA80AC or
+ * 0xA8090 on the sprite flag M1F_SPRITE_FLAG bit 1), frame_bits = (the first
+ * actor's own +0x56 word) | 0x400 either way, and the first actor's +0x36 =
+ * 0xFFC0. */
+static void check_mode_1f_state1(void)
+{
+    u32 rec1, rec2;
+
+    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+
+    /* desc[0] (a stream pointer actor_spawn's own pre-walk dereferences)
+     * must stay 0 — the descriptor block's default. desc[4] is the actor's
+     * *type*, an index into a real callback-dispatch table, so an
+     * unregistered marker byte there makes actor_spawn's own visibility
+     * check reject the spawn (return 0) — not a safe scratch field either.
+     * desc[5] (frame), stored verbatim as a float into rec+0x24 with no
+     * dispatch or dereference, is the one genuinely inert field, so it
+     * marks which table was read. */
+    union { float f; u32 u; } fu;
+
+    /* bit 1 clear: table 0xA8090[charid]. */
+    m1f_seed(1u);
+    DSD(0xA8090u) = M1F_TBL_B;
+    DSB(M1F_TBL_B + 5u) = 5u;
+    game_mode_1f_step();
+    rec1 = DSD(DS_001044A0);
+    rec2 = DSD(DS_001044A4);
+    CHECK(rec1 != 0u, "state 1 spawns the first actor (0xA7ED8)");
+    CHECK(rec2 != 0u, "state 1 spawns the second, character-indexed actor");
+    CHECK_EQ_INT((int)(s16)DSW(rec1 + 0x36u), (int)(s16)0xFFC0u);
+    fu.f = 5.0f;
+    CHECK_EQ_INT((int)DSD(rec2 + 0x24u), (int)fu.u);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 2);
+
+    mz_restore();
+    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+
+    /* bit 1 set: table 0xA80AC[charid] instead. */
+    m1f_seed(1u);
+    DSB(M1F_SPRITE_FLAG) = 2u;
+    DSD(0xA80ACu) = M1F_TBL_A;
+    DSB(M1F_TBL_A + 5u) = 9u;
+    game_mode_1f_step();
+    rec2 = DSD(DS_001044A4);
+    fu.f = 9.0f;
+    CHECK_EQ_INT((int)DSD(rec2 + 0x24u), (int)fu.u);
+
+    mz_restore();
+}
+
+/* State 2: waits for the first actor's play position (+0x34 SAR 16, +0x1C)
+ * to reach 0x1E00; below it, nothing is touched (the "JG" tail exit);
+ * at/above it, the position locks, +0x36 blanks, and mode 0x15 is armed
+ * with return mode 0x1F (DS_00104AFA). */
+static void check_mode_1f_state2(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+
+    /* rec1 + 0x34 (a dword) and rec1 + 0x36 (a word) are the SAME storage —
+     * 0x20a31's dword read then SAR 0x10 keeps only the +0x36 half, sign-
+     * extended (actor_spawn's own child branch, 0x2926/0x2927, treats
+     * +0x34/+0x36 as the same two adjacent word fields). +0x34's own word
+     * (the low half) is shifted out and irrelevant here; it is zeroed
+     * separately so it never contaminates +0x36. */
+    m1f_seed(2u);
+    DSD(DS_001044A0) = M1F_REC1;
+    DSW(M1F_REC1 + 0x34u) = 0u;
+    DSW(M1F_REC1 + 0x36u) = 0x0100u;         /* pos = 256, distinct from the advance path's 0 */
+    DSD(M1F_REC1 + 0x1Cu) = 0x2000u;         /* frame = 8192; pos + frame = 8448 > 0x1E00 */
+    game_mode_1f_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 2);
+    CHECK_EQ_INT((int)DSD(M1F_REC1 + 0x1Cu), (int)0x2000u);
+    CHECK_EQ_INT((int)DSW(M1F_REC1 + 0x36u), 0x0100);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x1Fu));
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x7777);
+
+    mz_restore();
+    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+
+    m1f_seed(2u);
+    DSD(DS_001044A0) = M1F_REC1;
+    DSW(M1F_REC1 + 0x34u) = 0u;
+    DSW(M1F_REC1 + 0x36u) = 0u;
+    DSD(M1F_REC1 + 0x1Cu) = 0u;              /* pos + frame = 0 <= 0x1E00 */
+    game_mode_1f_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 3);
+    CHECK_EQ_INT((int)DSD(M1F_REC1 + 0x1Cu), (int)0x1E00u);
+    CHECK_EQ_INT((int)DSW(M1F_REC1 + 0x36u), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x4B0);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0x3C);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x15u));
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x1F);
+
+    mz_restore();
+}
+
+/* State 3: a third, character-indexed actor (0xA80C8); the first actor's
+ * fade-out (+0x36 = 0xFF00, stream 0xE9206) and the second's own
+ * character-indexed stream (0xA7EBC), both through actors_anim_begin. */
+static void check_mode_1f_state3(void)
+{
+    u32 rec3;
+
+    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+
+    union { float f; u32 u; } fu;
+
+    m1f_seed(3u);
+    DSD(DS_001044A0) = M1F_REC1;
+    DSD(DS_001044A4) = M1F_REC2;
+    DSD(0xA80C8u) = M1F_TBL_A;
+    DSB(M1F_TBL_A + 5u) = 7u;                 /* desc[5] (frame) -> rec3 + 0x24 */
+    DSD(0xA7EBCu) = 0x2000u;                  /* charid 0's second-actor stream */
+
+    game_mode_1f_step();
+
+    rec3 = DSD(DS_0010449C);
+    CHECK(rec3 != 0u, "state 3 spawns the third, character-indexed actor (0xA80C8)");
+    fu.f = 7.0f;
+    CHECK_EQ_INT((int)DSD(rec3 + 0x24u), (int)fu.u);
+    CHECK_EQ_INT((int)(s16)DSW(M1F_REC1 + 0x36u), (int)(s16)0xFF00u);
+    /* rec1 + 0x08 is not checked against 0xE9206 directly: the ported test
+     * fixture's ghidra_data.bin oracle populates real game bytes at that
+     * real stream address, and actors_anim_begin's own command pre-walk
+     * (record §47-C's callee) legitimately advances the cursor past real
+     * command words there — a fitted "advanced by N" constant would not be
+     * evidence of anything. 0x2000 (rec2's stream) is outside the oracle's
+     * covered range and stays put, so it is still checked. */
+    CHECK_EQ_INT((int)DSD(M1F_REC2 + 0x08u), (int)0x2000u);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+
+    mz_restore();
+}
+
+/* State 4: the first/second actors' +0x2C counts down by 0x80 a frame,
+ * killing both (0x2B150) the frame it lands exactly on 0; independently the
+ * third actor's +0x2C counts up by 0x40 a frame, clamping at 0x1000 — at
+ * which point mode 0x15 is armed again (0x384 frames) with return mode
+ * 0x1E and DS_00104B25 resets to 0. */
+static void check_mode_1f_state4(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+
+    /* below both thresholds: the counters move but nothing finalises or
+     * dies. */
+    m1f_seed(4u);
+    DSD(DS_001044A0) = M1F_REC1;
+    DSD(DS_001044A4) = M1F_REC2;
+    DSD(DS_0010449C) = M1F_REC3;
+    DSW(M1F_REC1 + 0x2Cu) = 0x100u;           /* -0x80 -> 0x80, not 0 */
+    DSW(M1F_REC1 + 0x28u) = 0u;
+    DSW(M1F_REC3 + 0x2Cu) = 0xF00u;           /* +0x40 -> 0xF40, still < 0x1000 */
+    game_mode_1f_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+    CHECK_EQ_INT((int)DSD(DS_001044A0), (int)M1F_REC1);   /* not killed */
+    CHECK_EQ_INT((int)DSB(M1F_REC1 + 0x28u) & 0x08, 0);
+    CHECK_EQ_INT((int)DSW(M1F_REC1 + 0x2Cu), 0x80);
+    CHECK_EQ_INT((int)DSW(M1F_REC3 + 0x2Cu), 0xF40);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x1Fu));
+
+    mz_restore();
+    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+
+    /* the countdown lands exactly on 0: both actors die. */
+    m1f_seed(4u);
+    DSD(DS_001044A0) = M1F_REC1;
+    DSD(DS_001044A4) = M1F_REC2;
+    DSD(DS_0010449C) = M1F_REC3;
+    DSW(M1F_REC1 + 0x2Cu) = 0x80u;            /* -0x80 -> exactly 0 */
+    DSW(M1F_REC1 + 0x28u) = 0u;
+    DSW(M1F_REC2 + 0x28u) = 0u;
+    DSW(M1F_REC3 + 0x2Cu) = 0xF00u;
+    game_mode_1f_step();
+    CHECK_EQ_INT((int)DSD(DS_001044A0), 0);
+    CHECK_EQ_INT((int)DSD(DS_001044A4), 0);
+    CHECK_EQ_INT((int)DSB(M1F_REC1 + 0x28u) & 0x08, 0x08);
+    CHECK_EQ_INT((int)DSB(M1F_REC2 + 0x28u) & 0x08, 0x08);
+
+    mz_restore();
+    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+
+    /* the fade counter crosses 0x1000: it clamps, the text branch (sprite
+     * flag bit 1 clear) draws at row 0x1A, and mode 0x15 is armed with
+     * return mode 0x1E; DS_00104B25 resets to 0. */
+    m1f_seed(4u);
+    DSD(DS_001044A0) = 0u;                    /* skip the countdown arm */
+    DSD(DS_001044A4) = 0u;
+    DSD(DS_0010449C) = M1F_REC3;
+    DSW(M1F_REC3 + 0x2Cu) = 0xFF0u;           /* +0x40 -> 0x1030, crosses 0x1000 */
+    DSD(0xA80E4u) = 0x99u;                    /* an id; the empty-table path is safe */
+    DSW(DS_00105F34) = 0x7777u;
+    game_mode_1f_step();
+    CHECK_EQ_INT((int)DSW(M1F_REC3 + 0x2Cu), 0x1000);
+    CHECK_EQ_INT((int)(s16)DSW(DS_00105F34), 0x1A);    /* text_cursor_set's row */
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x384);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0x3C);
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x1E);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x15u));
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+
+    mz_restore();
+    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+
+    /* same crossing, sprite flag bit 1 set: an actor is spawned from the
+     * character-indexed 0xA818C table instead of the text draw. */
+    m1f_seed(4u);
+    DSB(M1F_SPRITE_FLAG) = 2u;
+    DSD(DS_001044A0) = 0u;
+    DSD(DS_001044A4) = 0u;
+    DSD(DS_0010449C) = M1F_REC3;
+    DSW(M1F_REC3 + 0x2Cu) = 0xFF0u;
+    DSD(0xA818Cu) = M1F_TBL_A;
+    DSB(M1F_TBL_A + 5u) = 3u;                 /* desc[5] (frame) -> the new actor + 0x24 */
+    game_mode_1f_step();
+    /* actors_reset()'s fresh free list (rebuilt by m1f_seed) hands out the
+     * pool base first, and this is the only spawn this run. */
+    {
+        union { float f; u32 u; } fu;
+        fu.f = 3.0f;
+        CHECK_EQ_INT((int)DSD(M1F_POOL + 0x24u), (int)fu.u);
+    }
+    CHECK_EQ_INT((int)DSD(M1F_POOL + 0x18u), (int)DSW(M1F_PROMPT_ROW));
+    CHECK_EQ_INT((int)DSD(M1F_POOL + 0x1Cu), 0x3400);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+
+    mz_restore();
+}
+
+static void check_mode_1f(void)
+{
+    check_mode_1f_state0();
+    check_mode_1f_state1();
+    check_mode_1f_state2();
+    check_mode_1f_state3();
+    check_mode_1f_state4();
+}
+
 #define SC_ST   (FIGHT_RECS + 0x7000u)   /* crafted one-word streams, 0x10 apart */
 #define SC_SRC0 (FIGHT_RECS + 0x7800u)   /* a crafted effect source (pset 1 +0x18) */
 #define SC_SRC1 (FIGHT_RECS + 0x7880u)   /* another (pset 2 +0x18) */
@@ -31777,6 +32092,12 @@ int test_fight(void)
      * (through frontend_input_reset/actors_reset/frontend_match_start), so
      * it is placed here too, after check_mode4_spawn_gate. */
     check_mode_1e();
+
+    /* check_mode_1f rebuilds the real free list from its own scratch pool
+     * (M1F_POOL/M1F_PSET) on every sub-case, for the same reason
+     * check_mode_1e is placed last: nothing after it may depend on the free
+     * list's accumulated state. */
+    check_mode_1f();
 
     return g_failures - before;
 }
