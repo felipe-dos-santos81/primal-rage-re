@@ -409,9 +409,9 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
   - it dispatches cases 3, 4, 5, 6, `0xC`, `0xD`, `0xE`, `0x10`, `0x11`,
-    `0x14`, `0x17`, `0x1A`, `0x1B` and `0x32`, and cases 1/2/`0x20` run the
-    bare `ret` `0x29B70`;
-  - the other 31 cases are named gaps.
+    `0x14`, `0x15`, `0x17`, `0x1A`, `0x1B` and `0x32`, and cases 1/2/`0x20`
+    run the bare `ret` `0x29B70`;
+  - the other 30 cases are named gaps.
   - Case 4 (the table entry `0x25242`, `call 0x26254; jmp 0x2540F`) is the
     fight frame `0x26254` (`game_mode_04_step`, record §48-K): `0x3C5CC`,
     `0x16D58` per side and the two position latches; only with
@@ -487,6 +487,14 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     (`0x2C0F4`, string form, with a credit) or "INSERT 1 COIN" (`0x2C1D4`
     at col `0xE`). Then `DS_00104AEC |= 2`. The `0x2C3FC` voices on the
     expiry stay §45-A's named gap.
+  - Case `0x15` is `0x4F24C` (`frontend_mode_15_step`, record §48-X), byte
+    for byte `0x4F318`'s countdown (mode `0x17`) up to the expiry, without
+    its `DS_001088EE = 0xFFFF` store or its `DS_00104AE4` hook call: while
+    `DS_001088EE` is non-zero it is decremented, else the skip test `0x4F790`
+    runs (2 zeroes `DS_00104AFE`, 1 takes `0x3C` off it); then `DS_00104AFE`
+    is decremented, and when its old value was `<= 0` (signed) `DS_00104B00`
+    takes the return mode `DS_00104AFA`. Its two raw stores are `0x29B74`
+    (mode `0xE`'s expiry, above) and `0x41578` (record §42-E).
   - Cases `0xD` and `0x32` are `0x274FC`/`0x296B8` (`game_mode_0d_step`/
     `game_mode_32_step`, record §48-Q). Each runs the arena frame's tail
     steps (`0x3C5CC`, `0x16D58` per side, the two position latches, `0x35658`

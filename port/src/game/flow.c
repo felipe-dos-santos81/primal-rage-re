@@ -544,6 +544,40 @@ u32 frontend_skip_check(void)
     return r;
 }
 
+/* 0x4F24C — record §48-X. The mode 0x15 handler (0x24C5C case 0x15, the jump
+ * table 0x24B8C entry 0x253E0 `call 0x4f24c; jmp 0x2540F`; its only caller,
+ * no dword in the image holds 0x4F24C). EBX/EDX are pushed and popped. The
+ * body is 0x4F318's (and 0x4F2B0's) countdown byte for byte up to the
+ * expiry: while the word DS_001088EE is non-zero it is decremented (0x4F27F
+ * `mov ebx,edx; dec ebx`); at 0 the skip test 0x4F790 runs: 2 stores DX to
+ * DS_00104AFE (still the 0 just tested: 0x4F790 pushes and pops EDX), 1
+ * takes 0x3C off it. Then DS_00104AFE is decremented (0x4F28F `mov edx,eax;
+ * dec edx`), and when its old value was <= 0 (signed, `test ax,ax; jg`) the
+ * mode word DS_00104B00 takes the return-mode word DS_00104AFA (0x4F29E/
+ * 0x4F2A4). Unlike 0x4F318 there is no DS_001088EE = 0xFFFF store and, unlike
+ * 0x4F2B0, no DS_00104AE4 hook call. The two stores of mode 0x15 are 0x29B74
+ * (0x29BBA; DS_001088EE = DS_00104AFE = 0x78, whose caller 0x27A2C then sets
+ * DS_00104AFA = 0x1E, record §48-E) and 0x41578 (0x415F8; DS_00104AFE =
+ * 0x78, DS_001088EE = 0, DS_00104AFA = 0x13, record §42-E). EAX (the old
+ * countdown, or the return mode) is left as every case leaves it for the
+ * shared tail 0x2540F; the port returns nothing, as for 0x4F318. */
+void frontend_mode_15_step(void)
+{
+    u16 dx = DSW(DS_001088EE);                          /* 0x4F24E */
+    if (dx == 0u) {                                     /* 0x4F255/0x4F258 */
+        u32 r = frontend_skip_check() & 0xFFu;          /* 0x4F25A 0x4F790, 0x4F25F */
+        if (r == 2u) DSW(DS_00104AFE) = dx;             /* 0x4F264/0x4F269 */
+        if (r == 1u)                                    /* 0x4F270 */
+            DSW(DS_00104AFE) = (u16)(DSW(DS_00104AFE) - 0x3Cu);  /* 0x4F275 */
+    } else {
+        DSW(DS_001088EE) = (u16)(dx - 1u);              /* 0x4F27F..0x4F282 */
+    }
+    u16 ax = DSW(DS_00104AFE);                          /* 0x4F289 */
+    DSW(DS_00104AFE) = (u16)(ax - 1u);                  /* 0x4F28F..0x4F292 */
+    if ((s16)ax > 0) return;                            /* 0x4F299/0x4F29C */
+    DSW(DS_00104B00) = DSW(DS_00104AFA);                /* 0x4F29E/0x4F2A4 */
+}
+
 /* 0x4F318 — record §46-G. The mode 0x17 handler (0x24C5C case 0x17, the jump
  * table 0x24B8C entry 0x253EE; also called at 0x425E5 in 0x424E8). While the
  * word DS_001088EE is non-zero it is decremented; at 0 the skip test runs: 2
@@ -3739,6 +3773,9 @@ void game_frame(void)
     case 0x17u:
         frontend_mode_17_step();                       /* 0x253EE 0x4F318 */
         break;
+    case 0x15u:
+        frontend_mode_15_step();                       /* 0x253E0 0x4F24C (record §48-X) */
+        break;                                         /* 0x253E5 */
     case 0x10u:
         fight_mode_10_step();                          /* 0x25385 0x438B4 */
         break;
@@ -3790,7 +3827,6 @@ void game_frame(void)
     case 0x0Fu:
     case 0x12u:
     case 0x13u:
-    case 0x15u:
     case 0x16u:
     case 0x18u:
     case 0x19u:
@@ -3819,7 +3855,7 @@ void game_frame(void)
          * 8 0x28468; 9 0x28788; 0xA 0x28BD4; 0xB 0x26254 (ported, record
          * §48-K) + 0x28C38;
          * 0xF 0x277C0; 0x12 0x41C28; 0x13 0x424E8;
-         * 0x15 0x4F24C; 0x16 0x4F2B0; 0x18 0x4F6E8;
+         * 0x16 0x4F2B0; 0x18 0x4F6E8;
          * 0x19 0x4F704; 0x1E 0x1EEB0; 0x1F 0x208F8; 0x21 0x26540;
          * 0x22 0x26C8C; 0x23 0x26A50; 0x24 0x26F58; 0x25 inline (0x266AC,
          * 0x4EF8C, 0x4F0FC, 0x49C78); 0x27 inline (0x50146, the 0xBCBDC menu
@@ -3835,7 +3871,8 @@ void game_frame(void)
          * and 0x28DA4 (flow_player_join) above (record §48-J); case 6's
          * other arm is case 4's 0x26254 (record §48-K), and case 0xC's,
          * 0x27380, is game_mode_0c_step (record §48-C). Case 0xE (0x27A2C,
-         * record §48-E) is game_mode_0e_step. */
+         * record §48-E) is game_mode_0e_step, and case 0x15 (0x4F24C, record
+         * §48-X) is frontend_mode_15_step. */
         break;
     case 0x00u:
     case 0x1Cu:
