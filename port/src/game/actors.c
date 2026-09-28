@@ -3380,6 +3380,22 @@ void text_number_draw(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
     DSD(DS_00105F34) = save;                                /* 0x2F4FE */
 }
 
+/* 0x2F434 — record §48-C. 0x2F4D0 without the cursor save: EAX = col (EDI),
+ * EDX = row (ESI), EBX = value, ECX = width, and two stack dwords, pad
+ * ([esp+0x20] after the prologue, the last pushed) and mode ([esp+0x24]);
+ * `ret 8`. 0x2EFD4 formats the value into a 0x14-byte stack buffer
+ * (0x2F447), then 0x2F198 draws it (0x2F456), so the cursor DS_00105F34
+ * moves. ESI/EDI pushed and popped. The ported caller is 0x27908 (0x278B0);
+ * its 18 other call sites are not ported. */
+void text_number_set(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
+{
+    /* PORT: the original's buffer is uninitialised stack; the port zeroes it,
+     * which only a pad above 3 could observe. */
+    u8 buf[0x14] = {0};
+    (void)text_number_format(value, buf, width, pad);       /* 0x2F447 0x2EFD4 */
+    text_cursor_set(col, row, buf, mode);                   /* 0x2F456 0x2F198 */
+}
+
 /* 0x2F528 — record §42-F. 0x2F4D0 with the mode ORed with 2 (0x2F54A `or
  * ebp,2`): the same registers, the pad at [esp+0x28] (the last pushed) and the
  * mode at [esp+0x2C], a 0x14-byte buffer at ESP with the cursor saved above

@@ -15620,9 +15620,13 @@ first frame, and no frame was in mode 6 or `0xC`.
 scope. It restores the `DS_00104AF6` pset word that case `0xC`'s mode tail
 (`0x25487`) saved, then runs the arena frame's steps. Most are ported
 (`0x3C5CC`, `0x16D58`, `0x17FA0`, `0x17580`, `0x1958C`, `0x19068`,
-`0x1975C`, `0x35658`, `0x12DA8`). Three are not: `0x3CB68` (27
-instructions, calling `0x1A570` and `0x3C88C`), `0x1DA08` (38, calling
+`0x1975C`, `0x35658`, `0x12DA8`). Three were named as gaps here: `0x3CB68`
+(27 instructions, calling `0x1A570` and `0x3C88C`), `0x1DA08` (38, calling
 `0x2BC30`) and `0x272DC` (41, calling `0x2C3FC`, `0x27254` and `0x278B0`).
+**Correction (record §48-C):** `0x3CB68` was never actually a gap — it has
+been ported as `fight_slot_pass` since the demo-fight arena frame, well
+before this batch — and `0x1DA08`/`0x272DC` are now ported by §48-C, which
+also names §48-C.1's fuller callee list for `0x272DC` (it is not a leaf).
 `0x26254` (97 instructions) is the real fight frame: it adds `0x49C78`,
 `0x1282C`, the round-end `0x27FA8` and `0x4E11C`. Both are the match loop,
 which is outside this batch.
@@ -15690,7 +15694,9 @@ after each case's join (only a comment follows it).
   smk-oracle step with the known intermittent bus error. The rerun passed.
 - **Remaining named gaps (as merged, see the correction above):**
   - `0x26254`, the fight frame (case 6's fall-back and case 4), and case
-    `0xC`'s `0x27380` with its unported `0x3CB68`, `0x1DA08` and `0x272DC`;
+    `0xC`'s `0x27380` with its unported `0x3CB68`, `0x1DA08` and `0x272DC`
+    (corrected by §48-C: `0x3CB68` was already `fight_slot_pass`, and
+    `0x27380`, `0x1DA08` and `0x272DC` are now ported);
   - the four other stores of modes 6/`0xC` (all but `0x274FC`'s and mode
     5's `0x25C88`, both now ported): `0x4CD98`, `0x4F0FC` and `0x2791C`.
     Mode 5 (§48-U) does store modes 6/`0xC`, so the join poll is reachable
@@ -16010,3 +16016,297 @@ changes.
   - The voices: `0x8C`, `0xA2`, `0x9C`, `0x80`, `0x86` in the entrances,
     `0x7B`, `0xB1`, `0xB9`, `0xA8` in the chains (§45-A).
   - The mode-5 dispatcher `0x25F27` in `0x25C88` (`gap13-mode5`).
+
+## 48-C. Mode `0xC`'s arena frame `0x27380` and its callees `0x1DA08`, `0x272DC`, `0x27254`, `0x278B0`, `0x2F434` (named-gap batch 14, branch `gap14-27380`)
+
+**Result in one line.** `0x27380` is ported from the raw as
+`game_mode_0c_step` (`flow.c`), and `game_frame`'s case `0xC` now calls it
+when `0x28CC8` finds no join (`0x2535D`), so mode `0xC` has a real frame.
+Its genuinely new callees are ported with it: `0x1DA08` (`fight_hud_pulse`,
+`fight.c`), `0x272DC` (`flow_arena_ko_check`), `0x27254`
+(`flow_match_snapshot`), `0x278B0` (`flow_continue_open`) and `0x2F434`
+(`text_number_set`, `actors.c`). No path the port runs without input
+stores mode `0xC`, and a headless 8000-frame run is byte-identical before
+and after (48-C.5).
+
+**Scope corrections (the raw wins).** §48-J.3 and the `game_frame` note
+listed three unported callees: `0x3CB68`, `0x1DA08` and `0x272DC`. Two of
+those claims were wrong, and so was the batch brief's correction of them:
+- `0x3CB68` has been ported since the demo-fight arena frame `0x263F4`
+  (`fight_slot_pass`, commit `ccdfdcf`). It was never a gap.
+- `0x1DA08` was **not** ported by §48-J (the brief assumed it was). A
+  search of `port/src` for the address found only the stale note. It is
+  ported here.
+- `0x272DC` was not ported, and it is not a leaf. It calls `0x2C3FC`
+  (voices), `0x27254` and `0x278B0`, and `0x278B0` calls the unported
+  `0x2F434`. All four are ported here (the voices stay §45-A's named gap).
+
+The other callees were already ported: `0x3C5CC`, `0x16D58`, `0x17FA0`,
+`0x17580`, `0x1958C`, `0x19068`, `0x1975C`, `0x35658` and `0x12DA8`
+(`fight_slot_clear`, `camera_screen_base`, `camera_project`,
+`camera_decay`, `fighter_pass_a`, `fighter_pass_b`, `fighter_think`,
+`fight_hud_pass`, `camera_y_commit`). `0x27254`'s callees `0x33ACC`,
+`0x3C16C` and `0x3C148` were ported but `static` in `fighter.c`. They are
+exported with their bodies unchanged (`fighter_33acc`, `fighter_3c16c`,
+`fighter_3c148`).
+
+(Letter choice: §48-A/J/Q/R/S/T/U/W are in use in this record and in `git
+log --all`. The sibling batch `gap14-26254` runs in parallel, and the next
+letter after J, K, is its most likely pick. So this section takes C, for
+mode `0xC`.)
+
+### 48-C.1 The raw (`mem_load_le` + fixups replicated in a scratch dumper, capstone; Ghidra's `FUN_00027380` used only as a callee list)
+
+The call site (jump table `0x24B8C`, case `0xC`): `25350 je 0x2535d` (no
+join), `2535D call 0x27380`, `25362 jmp 0x2540f`. There is no setup at the
+call site: `0x27380` is entered at its first byte.
+
+`0x27380` (to `0x274FB`; `push ebx; push ecx; push edx` ... `pop edx; pop
+ecx; pop ebx; ret`):
+
+```
+27383 xor edx,edx ; mov dl,[0x104b12]          ; s = DS_00104B12
+2738B eax = s * 0x94 (the lea/add/shl idiom)
+2739C test byte [eax+0x1077f1],1 ; je 0x273e6  ; slot +0x41 bit 0
+273A5 test byte [eax+0x1077f2],8 ; jne 0x273e6 ; slot +0x42 bit 3
+273AE mov eax,[eax+0x1077b0] ; mov ax,[eax+0x56] ; and eax,0xffff
+273BD mov edx,[0x1014ec] ; shl eax,5 ; add eax,edx   ; the record's pset
+273C8 mov dx,[eax] ; and dh,0x7f ; and edx,0xffff ; cmp edx,0x1e1 ; jne 0x273e6
+273DC mov dx,[0x104af6] ; mov [eax],dx          ; the whole saved word back
+273E6 call 0x3c5cc
+273EB..27407 0x16d58(0, byte [0x10782a]), 0x16d58(1, byte [0x1078be])
+2740C [0x1077e8] = [0x1077e4] ; [0x10787c] = [0x107878]
+27420 xor eax,eax ; mov al,[0x1078fa] ; cmp eax,2 ; jne 0x274cc
+27430..2746E 0x17fa0 x2 (0x263F4's argument shape: EDX 0x100b08/0b0c, EBX
+             0x100b00/0b04, ECX 0x100b62/0b63, pushed 0x100b60/0b61 and
+             0x100af0/0af4)
+27473 call 0x17580 ; 27478 call 0x1958c ; 2747D xor eax,eax ; call 0x19068
+27484..274C2 0x17fa0 x2 (the same arguments)
+274C7 call 0x1975c
+274CC call 0x3cb68 ; 274D1 0x35658(0) ; 274D8 0x35658(1)
+274E2 call 0x12da8 ; 274E7 call 0x1da08 ; 274EC call 0x272dc
+274F1 or byte [0x104aec],2
+```
+
+The blink undo pairs with the mode-`0xC` tail `0x25487` (§42-D,
+`game_frame`). The tail saves the pset word to `DS_00104AF6` and stores
+`0x1E1` with bit 15 kept. `0x27380` adds a gate the tail does not have
+(`+0x42` bit 3 clear), and its `and dh,0x7f` masks only the compare copy.
+Unlike `0x263F4`, the projection block is gated on `DS_001078FA == 2`, and
+`0x49C78`/`0x1282C` are absent.
+
+`0x1DA08` (38 instructions; EBX/ECX/EDX/ESI pushed and popped): EBX = side
+\* 2, ESI = side \* 0x94, ECX = side \* 4, looping while EBX != 4.
+
+```
+1DA12 mov dx,[ebx+0x102908] ; dec edx ; mov [ebx+0x102908],dx
+1DA21 test dx,dx ; jg 0x1da6c                   ; signed, 16-bit
+1DA26 mov edx,0xe9050 ; mov eax,[ecx+0x1028f8] ; push 0x40800000 ; call 0x2bc30
+1DA3B xor eax,eax ; mov edx,0x78 ; mov al,[esi+0x10780a] ; sub edx,eax
+1DA4A mov eax,edx ; sar eax,1 ; mov [ebx+0x102908],ax
+1DA55 mov eax,[ebx+0x102906] ; sar eax,0x10 ; cmp eax,0xc ; jge 0x1da6c
+1DA63 mov word [ebx+0x102908],0xc
+```
+
+`0x2BC30` pushes and pops EBX/ECX/ESI and returns with `ret 4` (its
+prologue and epilogue were read), so the loop registers survive it; EDX is
+reloaded. The `[ebx+0x102906]` dword shifted by `sar 0x10` is the signed
+word just stored.
+
+`0x272DC` (41 instructions; EDX pushed and popped):
+
+```
+272DD mov edx,[0x10810a] ; sar edx,0x18         ; w = (s8)DS_0010810D
+272E6..272FB al = byte [w*0x94 + 0x10780a] ; and eax,0xff
+27300 cmp eax,0x78 ; jl 0x2731b
+27305 0x2c3fc(0xd3) ; call 0x27254 ; call 0x278b0 ; pop edx ; ret
+2731B dl = [0x104b12] ; al = byte [s*0x94 + 0x10780a] (zero-extended)
+2733D cmp eax,0x78 ; jl 0x2737e
+27342 0x2c3fc(0x27) ; 0x2c3fc(0x22)
+27356 w re-read ; or byte [w*0x94 + 0x1077f1],0x10
+27375 mov word [0x104b00],0xd
+```
+
+`0x27254` (EBX/ECX/EDX/ESI/EDI/EBP pushed and popped): EDI = `0x104890`,
+ESI = `0x1049B8`, ECX = 0..1 and EBP = ECX \* 0x94. Per side it calls
+`0x33ACC(ECX, EDI, ESI)`, `0x3C16C(ECX)` and `0x3C148(ECX)`, sets
+`[[EBP+0x1077b0]+0x24] = 0`, and adds 0x94 to EDI and 0x68 to ESI.
+`0x33ACC` pushes ECX/ESI/EDI (its `rep movsd` pair) and clobbers EAX/EDX
+only; `0x3C16C`/`0x3C148` push and pop EDX. The copies are contiguous:
+side 1's slot copy ends at `0x1049B8`, and the record copies end at
+`0x104A88` (`DS_00104A88`).
+
+`0x278B0` (EBX/ECX/EDX pushed and popped):
+
+```
+278B3 mov dl,0xf ; xor ah,ah ; mov ecx,0x1000
+278BC [0x104b1f] = ah ; [0x108110] = dl ; [0x105c04] = ah
+278CE mov eax,0x41 ; mov edx,0xa ; call 0x1c500 ; mov ebx,eax
+278DF mov eax,-1 ; call 0x2f198                 ; row 0xA, mode 0x1000
+278E9 push 0x4002 ; ecx = 2 ; edx = 0xe ; eax = -1
+278FD mov ebx,[0x10810d] ; push 1 ; sar ebx,0x18 ; call 0x2f434
+2790D mov word [0x104b00],0xe
+```
+
+The value is the dword at `0x10810D` shifted right by 24. Its top byte is
+`0x108110`, the countdown just stored (15), not `DS_0010810D`. EDX (row
+`0xA`) survives `0x1C500`, which pushes EBX/EDX. ECX (mode `0x1000`)
+survives it too: `0x1C500` does not write ECX, and its `0x474E4` pushes and
+pops it. String `0x41` decodes from `ENGLISH.TXT` to "TO CONTINUE THE FINAL
+BATTLE".
+
+`0x2F434` (ESI/EDI pushed, 0x14 bytes of stack, `ret 8`): EDI = col and
+ESI = row. It calls `0x2EFD4` (value, the buffer, width = ECX, pad =
+`[esp+0x20]`), then `0x2F198` (col, row, the buffer, mode = `[esp+0x24]`).
+It is `0x2F4D0` without the cursor save, so the cursor moves.
+
+### 48-C.2 Entrances (a rel32 CALL/JMP scan of the fixed-up code object, a dword scan of both objects)
+
+| target | callers | data references |
+|---|---|---|
+| `0x27380` | `0x2535D` (case `0xC`) | none |
+| `0x272DC` | `0x274EC` (`0x27380`) | none |
+| `0x27254` | `0x2730F` (`0x272DC`) | none |
+| `0x278B0` | `0x27314` (`0x272DC`) | none |
+| `0x1DA08` | `0x274E7` (`0x27380`), `0x263AA` (`0x26254`), `0x26696` (`0x26540`), `0x26864` (`0x266AC`), `0x29B4F` (`0x299E8`) | none |
+| `0x2F434` | `0x27908` (`0x278B0`) and 18 unported sites (`0x1F4A8`, `0x26EDB`, `0x27B4C`, `0x307CE`, ...) | none |
+
+No address is stored as data, so nothing needs `fn_register`. `0x1DA08` is
+also called from `0x26254` (the fight frame), which the sibling batch
+`gap14-26254` ports. If both branches port `0x1DA08`, the merge keeps one
+`fight_hud_pulse`.
+
+**Reachability.** Mode `0xC` is stored by `0x25C88` (mode 5, §48-U,
+ported), `0x274FC` (mode `0xD`, §48-Q, ported) and the unported `0x2791C`.
+None of them is reached on the no-input path (§48-J.2), and the probe in
+48-C.5 confirms it.
+
+### 48-C.3 The port
+
+- `flow.c`: `flow_match_snapshot` (`0x27254`), `flow_continue_open`
+  (`0x278B0`), `flow_arena_ko_check` (`0x272DC`) and `game_mode_0c_step`
+  (`0x27380`), placed before `0x274FC`, with two local `#define`s
+  (`DS_00104890`, `DS_001049B8`). The three `0x2C3FC` voices are `PORT:`
+  notes (§45-A).
+- `game_frame`: case `0xC`'s no-join `PORT:` note is replaced by the call
+  (`0x2535D`), then `break` (`0x25362 jmp 0x2540F`). The named-gap
+  enumeration comment now names only case 6's `0x26254` arm; case `0xB`
+  is untouched.
+- `fight.c`: `fight_hud_pulse` (`0x1DA08`) after `0x1D764`, with the local
+  `#define`s `DS_00102908` and `DS_000E9050`.
+- `actors.c`: `text_number_set` (`0x2F434`) beside `0x2F4D0`. `PORT:` the
+  buffer is zeroed. In the original it is uninitialised stack, which only a
+  pad above 3 could observe.
+- `fighter.c`/`fighter.h`: `fighter_33acc`, `fighter_3c16c` and
+  `fighter_3c148` lose `static`; their bodies are unchanged.
+
+### 48-C.4 The assertions and mutations (`check_mode_0c` in `test_fight.c`; two additions to `check_join_poll`)
+
+`c_seed` restores the §43-A snapshot (`mz_save`) and runs
+`q_mode_seed(0xC)`: every prelude step inert, `DS_001078FA` 5, both
+`+0x5A` 0x66. It adds sentinels in the slot-pass words, both pulse words
+(0x50), the projection outputs, both `0x27254` copies and the bytes
+`0x278B0` writes. `DS_001028F8[side]` are fresh pool records. The groups:
+- the image words at `0xE9050` (`0x0700`) and `0xE904C` (`0x06FF`);
+- **(a)** the gate off: `q_check_prelude` (the latches, screen bases,
+  `0x12DA8` and the `0x35658` bits), the slot pass (`DS_00107ED8` 0x20,
+  `DS_00107EDC` 2), both pulse words 0x4F, the projection outputs
+  untouched, and no round end;
+- **(b)** the gate on at `DS_001078FA` 2, and off at 1, 3 and 0x82. With
+  2: the page flags are 0 and the indices stored; `0x17580`'s countdowns
+  go one down; side 0's `+0x18` stub hook is called once by `0x1958C` and
+  sees the first `0x17FA0` pair's flags and indices; `DS_00107EE0` is
+  0x2F (bit 5 is `0x19068(0)`'s `0x3C570(5)`); `0x1975C` zeroes
+  `DS_00100AD0/AD4`; and a re-projection of the end state reproduces all
+  four positions, which shows the second pair ran last (`0x17580` would
+  have scaled y 0x80 to 0x6B);
+- **(c)** the blink undo: `0x81E1`/`0x01E1` take `DS_00104AF6` (0x9234,
+  bit 15 included). `0x01E2`, `0x41E1`, `+0x42` bit 3 set and `+0x41` bit 0
+  clear keep the word. Side 0 is kept while `DS_00104B12` is 1 and
+  restored when it is 0;
+- **(d)** `0x1DA08` directly: 5 -> 4 (no restart); 1 -> 0 (restart, +0x5A
+  0x10 -> 0x34); 0 -> 0xFFFF (restart, 0x5E -> 0xD); 0x8000 -> 0x7FFF (no
+  restart); 0x8001 -> 0x8000 (restart, 0x62 -> 0xC); +0x5A 0x80 and 0xFF
+  -> 0xC; 0x00 -> 0x3C; 0x60 -> 0xC. A restart is `+0x24 = +0x20 =
+  0x40800000` and `+0x08 = 0xE9050`;
+- **(e)** `0x272DC` through `0x27380`. The winner at 0x78 or 0xFF (the
+  other side at 0x66, or also at 0x78) gives mode `0xE`, the slot copies,
+  each record's `+0x24` copied then zeroed, `DS_00104B1F` 0,
+  `DS_00108110` 0xF, `DS_00105C04` 0, the cursor on row `0xE`, string
+  `0x41` on row `0xA` and "15" on row `0xE`. The other side at 0x78 or
+  0xFF gives mode `0xD` and the winner's `+0x41` 0x11. Neither gives
+  nothing;
+- **(f)** `0x27254` directly with patterned records: all four copies, and
+  exactly `+0x24` (dword), `+0x34`/`+0x36`/`+0x44` (words) and
+  `+0x42`/`+0x43` zeroed;
+- **(g)** `game_frame` case `0xC` over three frames against the tail
+  `0x25487`. The blink is saved (0x9234 -> 0x81E1) and restored by
+  `0x27380` before the next save (`DS_00104AF6` stays 0x9234), and it stays
+  restored on the frame without bit 1;
+- **(h)** `0x2F434` directly with mode 0x1000: "7" at col 3 and the cursor
+  moved to (row `0xE`, col 4);
+- `check_join_poll` (f): case `0xC` without a join now steps the pulse
+  words (0x50 -> 0x4F), and case 6 does not. (g): a join leaves them at
+  0x50 (the `jmp 0x2540F` after `0x28DA4`).
+
+**Mutations** (`scratchpad/mut.py`, `mut.log`; one edit per build, the
+source restored after each, a crash rerun up to six times). There were 86
+mutations: 33 over `0x27380` (including each of the four `0x17FA0` calls
+alone and the first pair together), 14 over `0x1DA08`, 12 over `0x272DC`,
+8 over `0x27254`, 14 over `0x278B0`, 3 over `0x2F434` and 2 over the
+wiring. **80 fail the suite.** The six survivors are equivalent:
+- M29, `DS_00104AEC |= 2` moved before `0x272DC`: nothing `0x272DC`
+  reaches reads or writes `DS_00104AEC` (a `grep` of `port/src`: only
+  `game_frame`'s mode handlers and `actors_init` touch it).
+- P7 and P14, `0x1DA08`'s clamp as `< 0xD` or `<= 0xC`: they differ from
+  `< 0xC` only at a value of exactly 0xC, where the store writes 0xC over
+  0xC.
+- P11, a logical instead of an arithmetic `>> 1`: the byte `+0x5A` bounds
+  `0x78 - b` to [-0x87, 0x78]. For a negative value both shifts leave bit
+  15 of the low word set, so the word is negative either way and is
+  clamped to 0xC.
+- O10, `0x278B0`'s pad 1 -> 0: the value is always the 15 stored two
+  instructions earlier, two digits in width 2, so `0x2EFD4` never pads.
+- O14, `0x278B0`'s string drawn through `0x2F4BC` (cursor kept) instead of
+  `0x2F198`: `0x2F434`'s own `0x2F198` overwrites that cursor before
+  anything reads it (a row other than -1 does not read the cursor).
+
+An earlier round had three more survivors: the first `0x17FA0` pair
+deleted, and each of its two calls deleted alone. With a stub hook,
+`0x1958C` found nothing that read that pair's work before the second pair
+overwrote it. The real `+0x18` hooks (`0x3E484`/`0x3E1D0` -> `0x18C14`)
+read that work, so the stub now records the page flags and indices it
+sees. All three now fail. A direct `0x2F434` check with a mode lacking bit
+1 (group h) was added for T3 (`mode | 2`), which `0x278B0`'s 0x4002 had
+hidden.
+
+### 48-C.5 Measured, oracle risk, remaining gaps
+
+- `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, with no
+  compiler warnings, on every run that completed. About one run in eight
+  bus-errors. Under `lldb` the crash is `hit_record_x` <-
+  `fighter_command_dispatch` <- a `fighter_think` that `test_fight` calls
+  directly, not through `0x27380`. The base binary (`7370d74`) crashes
+  with the identical backtrace, so this is the known, pre-existing
+  intermittent crash.
+- **Frames.** `prageport --check 8000` was run from two scratch
+  directories, once with the base binary (`7370d74`, built from `git
+  archive`) and once with this branch's, both Release builds. `diff -rq`
+  finds all 24000 `frame_*.ppm`/`.pal`/`.idx` files and both run logs
+  byte-identical.
+- **Probed, not assumed.** A throwaway build (a scratch copy of this
+  branch; never committed) logged every mode word value the first time
+  `game_frame` saw it, every frame in mode `0xC`, and every entry to
+  `0x27380`, over `--check 8000`. The only mode was 3, from the first
+  frame; no frame was in mode `0xC` and `0x27380` never ran. The probe
+  build's 24000 frame files are byte-identical to the base run's too.
+- `make verify`: green on the first run, and unchanged from `main`.
+  Front-end 517 clean / 801 splice / 3 transition / 2 unexplained (the two
+  allowed by name), demo-fight fully explained at N = 1886, attract2 0
+  unexplained over its 1732-frame region, and `symbols.h` regenerates
+  byte-identically.
+- **Remaining named gaps:** case 6's (and case 4's) `0x26254`, on the
+  sibling branch; mode `0xE`'s handler `0x27A2C`, which `0x278B0` stores;
+  the other callers of `0x1DA08` (`0x26540`, `0x266AC`, `0x299E8`) and of
+  `0x2F434` (18 sites); the `0x2C3FC` voices (§45-A); and the
+  `0x2791C` store of mode `0xC`.

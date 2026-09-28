@@ -1653,8 +1653,9 @@ static void hit_anim_start_c(u32 rec, u32 stream, u32 frame_bits); /* 0x3C520 */
 #define FIGHT_ANIM_36430_B 0x000C8F90u  /* 0x36430: the +0x52=0x15 stream */
 #define FIGHT_ANIM_364FC_B 0x000C8FB8u  /* 0x364FC: the +0x52=5 stream */
 
-/* 0x3C148. Zero the record's +0x34 word and +0x43/+0x42 bytes. */
-static void fighter_3c148(u32 side)
+/* 0x3C148. Zero the record's +0x34 word and +0x43/+0x42 bytes. Exported for
+ * 0x27254 (record §48-C). */
+void fighter_3c148(u32 side)
 {
     u32 rec = DSD(DS_001077B0 + side * 0x94u);          /* 0x3C14E */
     DSW(rec + 0x34u) = 0;                               /* 0x3C155 */
@@ -1662,8 +1663,9 @@ static void fighter_3c148(u32 side)
     DSB(rec + 0x42u) = 0;                               /* 0x3C160 */
 }
 
-/* 0x3C16C. Zero the record's +0x36 and +0x44 words. */
-static void fighter_3c16c(u32 side)
+/* 0x3C16C. Zero the record's +0x36 and +0x44 words. Exported for 0x27254
+ * (record §48-C). */
+void fighter_3c16c(u32 side)
 {
     u32 rec = DSD(DS_001077B0 + side * 0x94u);          /* 0x3C172 */
     DSW(rec + 0x36u) = 0;                               /* 0x3C179 */
@@ -5470,8 +5472,8 @@ static void fighter_39834(u32 side, s32 b)
 #define FIGHTER_BDC2C     0x000BDC2Cu   /* 0x3713E: [char] 0x370F0 stream */
 
 /* 0x33ACC — record §41-C. Copy slot[side]'s 0x94 bytes to `dst` (EDX) and its record's 0x68
- * bytes to `dst2` (EBX). EAX = side. */
-static void fighter_33acc(u32 side, u32 dst, u32 dst2)
+ * bytes to `dst2` (EBX). EAX = side. Exported for 0x27254 (record §48-C). */
+void fighter_33acc(u32 side, u32 dst, u32 dst2)
 {
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x33AD1..0x33AE2 */
     memcpy(mem + dst, mem + slot, 0x94u);               /* 0x33AE9 rep movsd 0x25 */
