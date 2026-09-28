@@ -22705,7 +22705,12 @@ are registered at fake code addresses (`0xF1A00`..); input is the pad
 level/latch pair `0x50161` reads (a single-shot press) and the key latch
 `DS_00105F30` with a fake layout block. `menu_run` is scripted from inside its
 menu-level callback, which the loop calls once per poll. The suite runs in about
-2.1 s (no hang) three times in a row.
+2.1 s (no hang) three times in a row. `make verify` (worktree-local `_gap43`
+dump directories, log `/tmp/pr_gap43_verify.log`) is green with the enforced
+numbers unchanged: front-end 517 clean / 801 splice / 3 transition / 2
+unexplained (the two allowed by name), demo-fight fully explained at N = 1886,
+attract cycle 2 with 0 unexplained at N = 3617, `symbols.h` regenerating
+byte-identically. As expected: mode `0x27` is not entered on any of those paths.
 
 Single-site mutations of `menu.c`, each run against the suite (a hang counts as
 caught): `0x2FE40`'s `?` test removed (hang), its `n < idx` widened, `0x2EB80`'s
