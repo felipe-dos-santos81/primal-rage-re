@@ -3576,7 +3576,8 @@ void fight_4d2d0(void)
  * (0x13, 1), 0x5C (7, 8), 0x5D (0x16, 8), then centred on rows 6 and 9 0x5E
  * "VOLLEYBALL GAME" and 0x5F "TIED" when DS_0010889C equals DS_0010889D,
  * else 0x16 "RIGHT PLAYER" (DS_0010889C below) or 0x17 "LEFT PLAYER", and
- * 0x5E. Called by 0x4C784 and by the unported 0x4BF18 (0x4C356, 0x4C429). */
+ * 0x5E. Called by 0x4C784 and by fight_4bf18 (0x4BF18, 0x4C356, 0x4C429,
+ * record §49-S). */
 void fight_4cc0c(void)
 {
     DSW(DSD(DS_00108868) + 0x36u) = 0xFE5Cu;                    /* 0x4CC19 */
@@ -3702,10 +3703,11 @@ void fight_4c784(u32 side)
 }
 
 /* 0x4C60C — demo-pose record §43-A. The volleyball's per-entry test (EAX =
- * entry, EDX = si; its one caller is 0x4BF18 at 0x4C21B, the mode-0x21 pass,
- * not ported): the actor's pset point against the fighters (0x17D30, BX = 0;
- * both sides count as side 0). A fighter of character 0, 3 or 5 whose slot
- * +0x5F is 0, or of character 2 whose +0x5F is 1, eats it (0x4C784); a
+ * entry, EDX = si; its one caller is fight_4bf18 (0x4BF18, 0x4C21B), the
+ * mode-0x21 pass, record §49-S): the actor's pset point against the
+ * fighters (0x17D30, BX = 0; both sides count as side 0). A fighter of
+ * character 0, 3 or 5 whose slot +0x5F is 0, or of character 2 whose
+ * +0x5F is 1, eats it (0x4C784); a
  * character above 6 does nothing; otherwise the ball is struck: DS_00108898 =
  * 0, +0x20 = the side, +0x1C bit 3 cleared, +0x1F counts, a held actor
  * (+0x4A) is released as 0x4B69C releases (without DS_001088B2), and 0x4CB18
@@ -3766,6 +3768,376 @@ void fight_4c60c(u32 entry, u32 index)
             DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) | 0x08u);  /* 0x4C765 */
         } else {
             fight_4cb18(entry, index, 0u, side);                /* 0x4C774 */
+        }
+    }
+}
+
+/* 0x4CD98 — record §49-S. DS_00108864's third writer (0x4AC18's own header
+ * already names 0x4BD98/0x4CD98/0x4C784 as the three): the volleyball
+ * match's timeout end, called only from 0x4BF18's post-loop DS_001088A0
+ * countdown (0x4C3BA). Mode <- 6, DS_00104AEC |= 1, the score bytes
+ * DS_0010889C/DS_0010889D/DS_001088C5 clear. A live, not-already-type-6 ball
+ * entry (DS_00108864) resets: +0x18 = 0, +0x1C bit 5 clears, type = 4, and
+ * DS_00108864 = 0. String 0x60 draws twice, centred on rows 6 and 9
+ * (text_cursor_hold_font2, mode 0x4000), then both worshipper actors
+ * DS_00108868/DS_0010886C die (actor_set_dead). EBX/ECX/EDX pushed and
+ * popped. */
+static void fight_4cd98(void)
+{
+    DSW(DS_00104B00) = 6u;                                        /* 0x4CD9B/0x4CDA8 */
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 1u);               /* 0x4CDA0..0x4CDCA */
+    DSB(DS_001088C5) = 0;                                         /* 0x4CDAF */
+    DSB(DS_0010889D) = 0;                                         /* 0x4CDB5 */
+    DSB(DS_0010889C) = 0;                                         /* 0x4CDBB */
+    {
+        u32 entry = DSD(DS_00108864);                             /* 0x4CDC4 */
+        if (entry != 0u && DSB(entry + 0x1Eu) != 6u) {             /* 0x4CDD0..0x4CDDE */
+            DSW(entry + 0x18u) = 0;                                /* 0x4CDE3 */
+            DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) & 0xDFu); /* 0x4CDE0..0x4CDEC */
+            DSB(entry + 0x1Eu) = 4u;                               /* 0x4CDF1 */
+            DSD(DS_00108864) = 0;                                  /* 0x4CDF5 */
+        }
+    }
+    text_cursor_hold_font2(-1, 6, game_string_get(0x60u), 0x4000u); /* 0x4CDFB..0x4CE16 */
+    text_cursor_hold_font2(-1, 9, game_string_get(0x60u), 0x4000u); /* 0x4CE1B..0x4CE36 */
+    actor_set_dead(DSD(DS_00108868));                               /* 0x4CE3B/0x4CE40 */
+    actor_set_dead(DSD(DS_0010886C));                               /* 0x4CE45/0x4CE4A */
+}
+
+/* 0x4BF18 — record §49-S. The attract loop's volleyball mini-game's
+ * per-frame driver, called by mode 0x21's frame handler (0x26540/
+ * game_mode_21_step, flow.c) in place of fight_effects_pass. The raw returns
+ * undefined8 CONCAT44(param_2, ...); flow.c's own header already documents
+ * that 0x26540 discards the return value, so the port is void and param_1/
+ * param_2 (never read for anything but that composition) are dropped.
+ *   The preamble (0x4BF21..0x4BF53, before any list walk) completes the
+ * post-game worshipper walk-off: when DS_00108868's +0x36 word (a countdown
+ * fight_4CC0C also arms, to -0x1A4) is running and its distance-to-target
+ * (DS_00108880 minus its +0x34 velocity's integer half, `>>16`) has closed to
+ * within its own +0x1C, both DS_00108868 and DS_0010886C's +0x36 words snap
+ * to 0.
+ *   The main pass (0x4BF53..0x4C39C) walks the SAME singly-linked effects
+ * list DS_0010884C that fight_effects_pass/fight_effects_hold_all walk (head
+ * sentinel, entry/entry+0 = next, entry+8 = the actor record, entry+0x1E =
+ * the type byte, index = (u16)((u8)(rec+0x48) - 0x20)) — not a separate
+ * doubly-linked list; there is no second/prev field read anywhere in this
+ * function (confirmed by the full disassembly). Per entry, the type
+ * dispatches through the jump table at 0x4BEF4 (9 dwords for AL 0..8; AL > 8
+ * takes the unsigned `ja` default at 0x4BF86, which is also table entry 0's
+ * and entry 7's target, so types 0, 7 and > 8 share one body):
+ *   default (0, 7, > 8; 0x4BF86): DS_00108898 - 1 == entry+0x21 calls
+ *     fight_4B3F0(entry, index, 0); else DS_00108898 != 0 calls
+ *     fight_4B430(entry, index, 0) — a fresh call site, distinct from
+ *     fight_effects_hold_all's own DS_00104B16/flag-1 instance of the same
+ *     idiom.
+ *   case 1 (0x4BFCD): entry+0x1C bit 5 clear is the "arrival" test:
+ *     |rec+0x18 - entry+0x14| against the sign(rec+0x34)-gated rec+0x32
+ *     (dword, `>>16`) calls fight_4AC38(entry, index) on arrival. Bit 5 set
+ *     gates on FUN_0004A868(entry) — the same unported predicate this
+ *     codebase already treats as always false in fight_effects_pass's
+ *     case-13/14 bodies and fight_effects_idle_pass (spec §7.4); treated the
+ *     same way here, so the voice(200)/type-8 flyer spawn body
+ *     (0x4BFEB..0x4C034) never runs.
+ *   case 2 (0x4C07E): entry+0x18 (word) counts down; reaching < 1 (signed)
+ *     calls fight_4AC38(entry, index).
+ *   case 3/4 (0x4C0A1, one shared body): rec+0x2C = fight_dust_clamp(rec+
+ *     0x30>>16); actors_anim_begin(rec, DS_000C95EC[index], 3.0); rec+0x38 =
+ *     0x40; type = 5; entry+0x1C bit 7 clears.
+ *   case 5 (0x4C0E7): rec+0x2C = fight_dust_clamp(rec+0x30>>16); the signed
+ *     WORD rec+0x32 (not case 1's dword `>>16` — a genuinely different field
+ *     width at the same offset) reaching entry+0x1A (signed `>=`) ends it:
+ *     actors_anim_begin(rec, DS_000C9544[index], 3.0), rec+0x38/+0x34 = 0,
+ *     type = 0.
+ *   case 6 (0x4C135): only with entry+0x1C bit 5 clear. rec+0x36 < 0 sets
+ *     entry+0x1C bit 7; a held actor (entry+0x10) gets rec's +0x18 (dword)
+ *     and +0x32 (word) copied across. `(rec+0x34>>16) + rec+0x1C <= 0`
+ *     (landed) frees the held actor (actor_set_dead), picks
+ *     DS_000C973C[index] (type 8) when non-null or else DS_000C9544[index]
+ *     (type 4, 3.0) as the settle animation, zeros rec+0x1C/+0x34/+0x36 and
+ *     entry+0x1F; otherwise (still falling) rec+0x36 -= 0x10.
+ *   case 8 (0x4C1F3): no body of its own — the jump table's entry is the
+ *     shared tail's own address.
+ *   Every entry, regardless of type, then runs the shared tail at 0x4C1F3:
+ *   entry+0x1C bit 5 set and type != 1 calls fight_4C60C(entry, index) (its
+ *   own header already named this the mode-0x21 pass's one caller — that
+ *   note is now stale). After it: rec+0x36 < 0 sets entry+0x1C bit 7 again;
+ *   a held actor again gets +0x18/+0x32(word) copied from rec, exactly as
+ *   case 6's own copy. When the (possibly just-updated) type is 6 and
+ *   `(rec+0x34>>16) + rec+0x1C <= 0` (the ball was just struck into the
+ *   ground this same frame): free any held actor, pick the settle stream
+ *   exactly as case 6's own landing does, then SCORE: side0 =
+ *   fighter_actor_bit15_clear(0) != 0; idx = (ball's rec+0x18 < DS_00108884)
+ *   ? side0^1 : side0 (signed compare); DS_0010889C[idx] += 1;
+ *   DS_00108898 = idx + 1; actors_anim_begin(DS_0010886C, idx's branch chose
+ *   0xEF6AC or 0xEF680, 3.0); actors_anim_begin(rec, DS_000C973C[index],
+ *   2.0); type = 8; DS_001088AC = 0x69 (fight_4C784's own end-of-rally hold,
+ *   record §43-A, the same constant). DS_0010889B[DS_00108898] (0x4C332) is
+ *   algebraically DS_0010889C[idx] — 0x10889B + (idx+1) == 0x10889C + idx —
+ *   read directly here as the just-incremented score: reaching 3 zeroes
+ *   entry+0x1F and, when DS_001088A0 (the "match already ending" timer) is
+ *   0, calls fight_4CC0C(); either way the raw's `jmp 0x4C5AF` then abandons
+ *   the rest of the entry list for this frame (a plain function return, the
+ *   epilogue at 0x4C5AF has no side effects of its own). Otherwise (still
+ *   falling) rec+0x36 -= 0x10 and, within 0x100 of DS_00108884 and rec+0x1C
+ *   < 0x1680 (signed), rec+0x34 negates (a bounce).
+ *   Post-loop (0x4C39C, also the empty-list target from 0x4BF5F):
+ *   DS_001088A0 running counts down — the raw's `test ax,ax; ja` is the
+ *   unsigned "still running" test flagged in this session's review notes,
+ *   not a signed one — and, reaching 0, calls fight_4CD98() (the match's
+ *   timeout end) and returns; every DS_00104AF4 % DS_001088D0 == 0 frame
+ *   (computed as an unsigned mod: EDX is pre-cleared before the `idiv`, so
+ *   the signed division behaves as unsigned for the actual u16 range) draws
+ *   the pip counter (DS_001088F2, whose dword-at-DS_001088EF `sar 0x18` read
+ *   is byte-identical to `(s8)DS_001088F2` — its own +3 byte, folded here
+ *   directly) when DS_001088F2 != 0, ends the match via fight_4CC0C() when
+ *   DS_001088AA (rounds left) hits 0, else decrements it and draws it plus
+ *   both scores. Then: with no serve pending (DS_00108898 and DS_001088AC
+ *   both 0) the idle prompt draws (string 0x55 centred rows 6/9, string 0x54
+ *   at cols 7 and 0x16 row 8); otherwise DS_001088AC counts down to 0
+ *   (clearing DS_00108898 with it), and a live DS_00108898 draws string 0x53
+ *   at col 0x16 when fighter_actor_bit15_clear(DS_00108898 - 1) != 0, else
+ *   col 7, row 8 either way.
+ *   Ported callees, several already existing: fight_4B3F0/fight_4B430/
+ *   fight_4AC38/fight_dust_clamp/fight_midpoint/fighter_actor_bit15_clear/
+ *   actor_set_dead/actors_anim_begin/fight_4C60C/fight_4CC0C (pre-existing),
+ *   fight_4CD98 (newly ported above).
+ *   PORT: FUN_0004A868's gate (case 1's else branch) is out of scope per the
+ *   precedent cited above; no voice (0x2C3FC) call site in this function is
+ *   wired (spec §7, record §45-A), matching this file's existing convention
+ *   (0x4BFEB's voice(200) is unreachable anyway, since it sits behind the
+ *   0x4A868 gate). */
+void fight_4bf18(void)
+{
+    {
+        u32 wa = DSD(DS_00108868);                                  /* 0x4BF21 */
+        if (DSW(wa + 0x36u) != 0u) {                                /* 0x4BF26/0x4BF2B */
+            s32 d = (s32)DSD(DS_00108880) - ((s32)DSD(wa + 0x34u) >> 16); /* 0x4BF2D..0x4BF39 */
+            if (d <= (s32)DSD(wa + 0x1Cu)) {                        /* 0x4BF3D/0x4BF40 `jg` */
+                DSW(wa + 0x36u) = 0;                                 /* 0x4BF42 */
+                DSW(DSD(DS_0010886C) + 0x36u) = 0;                   /* 0x4BF48/0x4BF4D */
+            }
+        }
+    }
+
+    {
+        u32 head = DSD(DS_0010884C);                                /* 0x4BF53 */
+        if (head != DS_0010884C) {                                  /* 0x4BF59/0x4BF5F */
+            for (;;) {
+                u32 entry = head;
+                u32 next = DSD(entry);                               /* 0x4BF68 */
+                u32 rec = DSD(entry + 8u);                            /* 0x4BF65 */
+                u32 index = (u32)(u16)((u32)DSB(rec + 0x48u) - 0x20u); /* 0x4BF6A/0x4BF72 */
+
+                switch (DSB(entry + 0x1Eu)) {                          /* 0x4BF6F..0x4BF7E, table 0x4BEF4 */
+                default: /* types 0, 7 (table entries equal 0x4BF86) and >8 (`ja`) */
+                {
+                    u32 side = (u32)DSB(entry + 0x21u);                /* 0x4BF88 */
+                    u32 mode = (u32)DSW(DS_00108898);                   /* 0x4BF92 */
+                    if (mode - 1u == side)                              /* 0x4BF9B/0x4BF9F */
+                        (void)fight_4b3f0(entry, index, 0u);            /* 0x4BFA3..0x4BFA7 */
+                    else if (DSW(DS_00108898) != 0u)                     /* 0x4BFB1 */
+                        (void)fight_4b430(entry, index, 0u);             /* 0x4BFBF..0x4BFC3 */
+                    break;
+                }
+                case 1:
+                    if ((DSB(entry + 0x1Cu) & 0x20u) == 0u) {             /* 0x4BFCD..0x4BFDA */
+                        s32 d = (s32)(DSD(rec + 0x18u) - DSD(entry + 0x14u)); /* 0x4C039/0x4C03C */
+                        if (d < 0) d = -d;                                 /* 0x4C041..0x4C049 */
+                        s32 thresh = (s32)DSD(rec + 0x32u) >> 16;           /* 0x4C04B..0x4C062 */
+                        if ((s16)DSW(rec + 0x34u) < 0) thresh = -thresh;     /* 0x4C04E/0x4C053 */
+                        if (d <= thresh)                                      /* 0x4C065/0x4C067 `jg` */
+                            fight_4ac38(entry, index);                        /* 0x4C06F..0x4C074 */
+                    }
+                    /* PORT: 0x4BFDE FUN_0004A868(entry) — the same unported
+                     * gate treated as always false elsewhere in this file
+                     * (spec §7.4); the voice(200)/type-8 spawn body
+                     * (0x4BFEB..0x4C034) never runs here either. */
+                    break;
+                case 2: {
+                    s16 cd = (s16)(DSW(entry + 0x18u) - 1u);               /* 0x4C07E..0x4C083 */
+                    DSW(entry + 0x18u) = (u16)cd;
+                    if (cd < 1)                                            /* 0x4C087/0x4C08A `jg` */
+                        fight_4ac38(entry, index);                         /* 0x4C090..0x4C097 */
+                    break;
+                }
+                case 3:
+                case 4:
+                    DSW(rec + 0x2Cu) = fight_dust_clamp((s32)DSD(rec + 0x30u) >> 16); /* 0x4C0A1..0x4C0B2 */
+                    actors_anim_begin(rec, DSD(DS_000C95EC + index * 4u), 0x40400000u); /* 0x4C0BB..0x4C0CA */
+                    DSW(rec + 0x38u) = 0x0040u;                            /* 0x4C0CF */
+                    DSB(entry + 0x1Eu) = 5u;                                /* 0x4C0D8 */
+                    DSB(entry + 0x1Cu) = (u8)(DSB(entry + 0x1Cu) & 0x7Fu);  /* 0x4C0D5/0x4C0DC/0x4C0DF */
+                    break;
+                case 5:
+                    DSW(rec + 0x2Cu) = fight_dust_clamp((s32)DSD(rec + 0x30u) >> 16); /* 0x4C0E7..0x4C0F5 */
+                    if ((s16)DSW(rec + 0x32u) >= (s16)DSW(entry + 0x1Au)) {  /* 0x4C0F9..0x4C101 `jl` */
+                        actors_anim_begin(rec, DSD(DS_000C9544 + index * 4u), 0x40400000u); /* 0x4C10C..0x4C11B */
+                        DSW(rec + 0x38u) = 0;                                /* 0x4C120 */
+                        DSW(rec + 0x34u) = 0;                                /* 0x4C126 */
+                        DSB(entry + 0x1Eu) = 0;                              /* 0x4C12C */
+                    }
+                    break;
+                case 6:
+                    if ((DSB(entry + 0x1Cu) & 0x20u) == 0u) {                /* 0x4C135..0x4C142 */
+                        if ((s16)DSW(rec + 0x36u) < 0)                       /* 0x4C148/0x4C14D */
+                            DSB(entry + 0x1Cu) |= 0x80u;                     /* 0x4C14F */
+                        if (DSD(entry + 0x10u) != 0u) {                      /* 0x4C153/0x4C157 */
+                            u32 held = DSD(entry + 0x10u);
+                            DSD(held + 0x18u) = DSD(rec + 0x18u);            /* 0x4C159..0x4C162 */
+                            DSW(held + 0x32u) = DSW(rec + 0x32u);            /* 0x4C165..0x4C16F */
+                        }
+                        {
+                            s32 land = ((s32)DSD(rec + 0x34u) >> 16) + (s32)DSD(rec + 0x1Cu); /* 0x4C173..0x4C17C */
+                            if (land <= 0) {                                  /* 0x4C17E/0x4C180 `jg` */
+                                u32 held2 = DSD(entry + 0x10u);
+                                if (held2 != 0u) {                            /* 0x4C185/0x4C187 */
+                                    actor_set_dead(held2);                    /* 0x4C189/0x4C18B */
+                                    DSD(entry + 0x10u) = 0;                   /* 0x4C190 */
+                                }
+                                {
+                                    u32 alt = DSD(DS_000C973C + index * 4u);  /* 0x4C19F */
+                                    if (alt != 0u) {                          /* 0x4C1A5/0x4C1A7 */
+                                        actors_anim_begin(rec, alt, 0x40000000u); /* 0x4C1A9..0x4C1B1 */
+                                        DSB(entry + 0x1Eu) = 8u;              /* 0x4C1B6 */
+                                    } else {
+                                        actors_anim_begin(rec, DSD(DS_000C9544 + index * 4u), 0x40400000u); /* 0x4C1BC..0x4C1CA */
+                                        DSB(entry + 0x1Eu) = 4u;              /* 0x4C1CF */
+                                    }
+                                }
+                                DSD(rec + 0x1Cu) = 0;                          /* 0x4C1D3 */
+                                DSW(rec + 0x36u) = 0;                          /* 0x4C1DA */
+                                DSW(rec + 0x34u) = DSW(rec + 0x36u);            /* 0x4C1E0/0x4C1E4 */
+                                DSB(entry + 0x1Fu) = 0;                         /* 0x4C1E8 */
+                            } else {
+                                DSW(rec + 0x36u) = (u16)(DSW(rec + 0x36u) - 0x10u); /* 0x4C1EE */
+                            }
+                        }
+                    }
+                    break;
+                case 8:
+                    break; /* 0x4C1F3 no-op: the jump table's own case-8 target */
+                }
+
+                /* The shared per-entry tail, 0x4C1F3 — every type reaches it. */
+                if ((DSB(entry + 0x1Cu) & 0x20u) != 0u && DSB(entry + 0x1Eu) != 1u) { /* 0x4C1F3..0x4C20E */
+                    fight_4c60c(entry, index);                                         /* 0x4C21B */
+                    if ((s16)DSW(rec + 0x36u) < 0)                                     /* 0x4C220/0x4C225 */
+                        DSB(entry + 0x1Cu) |= 0x80u;                                    /* 0x4C227 */
+                    if (DSD(entry + 0x10u) != 0u) {                                     /* 0x4C22B/0x4C22F */
+                        u32 held = DSD(entry + 0x10u);
+                        DSD(held + 0x18u) = DSD(rec + 0x18u);                            /* 0x4C231..0x4C23A */
+                        DSW(held + 0x32u) = DSW(rec + 0x32u);                            /* 0x4C23D..0x4C247 */
+                    }
+                    if (DSB(entry + 0x1Eu) == 6u) {                                      /* 0x4C24D/0x4C253 */
+                        s32 land = ((s32)DSD(rec + 0x34u) >> 16) + (s32)DSD(rec + 0x1Cu); /* 0x4C259..0x4C262 */
+                        if (land <= 0) {                                                  /* 0x4C264/0x4C266 `jg` */
+                            u32 held2 = DSD(entry + 0x10u);
+                            if (held2 != 0u) {                                             /* 0x4C26C/0x4C271 */
+                                actor_set_dead(held2);                                     /* 0x4C273 */
+                                DSD(entry + 0x10u) = 0;                                    /* 0x4C278 */
+                            }
+                            DSB(entry + 0x1Fu) = 0;                                        /* 0x4C27F */
+                            DSW(rec + 0x38u) = 0;                                          /* 0x4C283 */
+                            DSW(rec + 0x34u) = DSW(rec + 0x38u);                            /* 0x4C289/0x4C28D */
+                            DSW(rec + 0x36u) = DSW(rec + 0x38u);                            /* 0x4C291 */
+
+                            {
+                                u32 side0 = (fighter_actor_bit15_clear(0u) != 0) ? 1u : 0u;    /* 0x4C295..0x4C29E */
+                                u32 mid = DSD(DS_00108884);                                    /* 0x4C2A1 */
+                                u32 ballx = DSD(rec + 0x18u);                                   /* 0x4C2AC */
+                                u32 idx = ((s32)ballx < (s32)mid) ? (side0 ^ 1u) : side0;        /* 0x4C2B1/0x4C2B3/0x4C2B5 */
+                                u32 stream = ((s32)ballx < (s32)mid) ? 0x000EF6ACu : 0x000EF680u; /* 0x4C2CA/0x4C2E7 */
+                                DSB(DS_0010889C + idx) = (u8)(DSB(DS_0010889C + idx) + 1u);         /* 0x4C2BA/0x4C2C1/0x4C2CF or 0x4C2D7/0x4C2DE/0x4C2EC */
+                                DSW(DS_00108898) = (u16)(idx + 1u);                                  /* 0x4C2C3/0x4C2E0 */
+                                actors_anim_begin(DSD(DS_0010886C), stream, 0x40400000u);            /* 0x4C2F2..0x4C2FC */
+                                actors_anim_begin(rec, DSD(DS_000C973C + index * 4u), 0x40000000u);  /* 0x4C301..0x4C315 */
+
+                                DSB(entry + 0x1Eu) = 8u;                                             /* 0x4C327 */
+                                DSW(DS_001088AC) = 0x0069u;                                          /* 0x4C32B */
+                                /* DS_0010889B[DS_00108898] (0x4C332) is algebraically
+                                 * DS_0010889C[idx]: 0x10889B + (idx+1) == 0x10889C + idx.
+                                 * Read directly as the just-incremented score. */
+                                if (DSB(DS_0010889C + idx) >= 3u) {                                   /* 0x4C33D/0x4C340 `jl` */
+                                    DSB(entry + 0x1Fu) = 0;                                            /* 0x4C349 */
+                                    if (DSW(DS_001088A0) == 0u)                                        /* 0x4C34D/0x4C350 */
+                                        fight_4cc0c();                                                 /* 0x4C356 */
+                                    return; /* 0x4C35B `jmp 0x4C5AF`: abandons the rest of the entry list */
+                                }
+                            }
+                        } else {
+                            DSW(rec + 0x36u) = (u16)(DSW(rec + 0x36u) - 0x10u);                       /* 0x4C360..0x4C36A */
+                            {
+                                s32 dx = (s32)(DSD(rec + 0x18u) - DSD(DS_00108884));                   /* 0x4C367/0x4C36E */
+                                if (dx < 0) dx = -dx;                                                    /* 0x4C374/0x4C376 */
+                                if (dx < 0x100 && (s32)DSD(rec + 0x1Cu) < 0x1680)                        /* 0x4C37A/0x4C37F/0x4C381/0x4C388 */
+                                    DSW(rec + 0x34u) = (u16)(0u - (u32)DSW(rec + 0x34u));                /* 0x4C38A */
+                            }
+                        }
+                    }
+                }
+
+                head = next;                                                                          /* 0x4C38E */
+                if (head == DS_0010884C) break;                                                        /* 0x4C390/0x4C396 */
+            }
+        }
+    }
+
+    /* Post-loop, also the empty-list target from 0x4BF5F. */
+    {
+        u16 timer = DSW(DS_001088A0);                                                                 /* 0x4C39C */
+        if (timer != 0u) {                                                                             /* 0x4C3A3/0x4C3A6 */
+            u16 nv = (u16)(timer - 1u);                                                                 /* 0x4C3A8/0x4C3AB */
+            DSW(DS_001088A0) = nv;
+            if (nv != 0u) return;                                                                        /* 0x4C3B1/0x4C3B4 `ja` (unsigned) */
+            fight_4cd98();                                                                                /* 0x4C3BA */
+            return;
+        }
+    }
+
+    DSD(DS_00108874) = fight_midpoint();                                                                /* 0x4C3C9/0x4C3DD */
+    {
+        u32 rem = (u32)DSW(DS_00104AF4) % DSD(DS_001088D0);                                             /* 0x4C3CE..0x4C3E9 */
+        if (rem == 0u) {                                                                                 /* 0x4C3EB */
+            if (DSB(DS_001088F2) != 0u) {                                                                /* 0x4C3F1/0x4C3F8 */
+                s32 v = (s32)(s8)DSB(DS_001088F2);                                                         /* 0x4C409/0x4C410 */
+                text_number_draw_font2(0x13, 1, v, 2, 0u, 0x5000u);                                        /* 0x4C3FA..0x4C418 */
+            }
+            if (DSW(DS_001088AA) == 0u) {                                                                 /* 0x4C41D/0x4C427 */
+                fight_4cc0c();                                                                             /* 0x4C429 */
+                return;
+            }
+            {
+                u16 rounds = (u16)(DSW(DS_001088AA) - 1u);                                                 /* 0x4C447/0x4C453 */
+                DSW(DS_001088AA) = rounds;                                                                 /* 0x4C456 */
+                text_number_draw_font2(0x13, 4, (s32)rounds, 2, 0u, 0x4000u);                               /* 0x4C438..0x4C45D */
+            }
+            text_number_set(1, 7, (s32)DSB(DS_0010889C), 2, 0u, 0x3000u);                                   /* 0x4C462..0x4C480 */
+            text_number_set(0x26, 7, (s32)DSB(DS_0010889D), 2, 0u, 0x3000u);                                /* 0x4C485..0x4C4A3 */
+        }
+    }
+
+    if (DSW(DS_00108898) == 0u && DSW(DS_001088AC) == 0u) {                                             /* 0x4C4A8..0x4C4BA */
+        text_cursor_hold_font2(-1, 6, game_string_get(0x55u), 0x4000u);                                   /* 0x4C52F..0x4C54A */
+        text_cursor_hold_font2(-1, 9, game_string_get(0x55u), 0x4000u);                                   /* 0x4C54F..0x4C56A */
+        text_cursor_hold_font2(7, 8, game_string_get(0x54u), 0x5000u);                                    /* 0x4C56F..0x4C58A */
+        text_cursor_hold_font2(0x16, 8, game_string_get(0x54u), 0x5000u);                                 /* 0x4C58F..0x4C5AA */
+        return;
+    }
+
+    {
+        u16 ac = DSW(DS_001088AC);                                                                       /* 0x4C4C0 */
+        if (ac != 0u) DSW(DS_001088AC) = (u16)(ac - 1u);                                                  /* 0x4C4C7..0x4C4CF */
+        if (DSW(DS_001088AC) == 0u) DSW(DS_00108898) = 0u;                                                /* 0x4C4D6..0x4C4E2 */
+        {
+            u16 mode = DSW(DS_00108898);                                                                  /* 0x4C4E9 */
+            if (mode == 0u) return;                                                                       /* 0x4C4F0/0x4C4F3 */
+            {
+                u32 side = (u32)mode - 1u;                                                                 /* 0x4C4F9..0x4C4FE */
+                if (fighter_actor_bit15_clear(side) != 0)                                                  /* 0x4C4FF/0x4C504 */
+                    text_cursor_hold_font2(0x16, 8, game_string_get(0x53u), 0x5000u);                       /* 0x4C528..0x4C5AA */
+                else
+                    text_cursor_hold_font2(7, 8, game_string_get(0x53u), 0x5000u);                          /* 0x4C508..0x4C523/0x4C5AA */
+            }
         }
     }
 }

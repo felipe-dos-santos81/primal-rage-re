@@ -309,15 +309,24 @@ void fight_4987c(u32 side, s32 count, u32 kind);
 void fight_4d2d0(void);
 
 /* 0x4CC0C (record §43-A). The volleyball game's end screen. Callers: 0x4C784
- * and the unported mode-0x21 pass 0x4BF18. */
+ * and the mode-0x21 pass 0x4BF18 (fight_4bf18, record §49-S). */
 void fight_4cc0c(void);
 
 /* 0x4C784 (record §43-A). Fighter `side` eats the volleyball DS_00108864. */
 void fight_4c784(u32 side);
 
 /* 0x4C60C (record §43-A). The volleyball's per-entry hit test (EAX = entry,
- * EDX = si); its one caller, the mode-0x21 pass 0x4BF18, is not ported. */
+ * EDX = si); its one caller is the mode-0x21 pass 0x4BF18 (fight_4bf18,
+ * record §49-S). */
 void fight_4c60c(u32 entry, u32 index);
+
+/* 0x4BF18 — record §49-S. The attract loop's volleyball mini-game's
+ * per-frame driver, called by mode 0x21's frame handler (0x26540/
+ * game_mode_21_step, flow.c) in place of fight_effects_pass; walks the
+ * SAME singly-linked effects list DS_0010884C that pass walks. See fight.c's
+ * own header comment for the full 8-state switch and shared-tail
+ * derivation. */
+void fight_4bf18(void);
 
 /* Record §46-B. DS_00104AE4 hooks, registered in actors_init: 0x430E8 (the
  * versus screen, installing 0x430C0), 0x430C0 (draws "VS") and 0x4367C (the
