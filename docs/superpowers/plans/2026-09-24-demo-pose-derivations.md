@@ -22800,8 +22800,10 @@ Deviations: the `0x2C3FC` voice calls (`0x408ED`/`0x40931` with `0x6C`/`0x72`,
 `0xBDAD4 + char*2`) are the deferred idiom (`PORT:` notes, record §45-A). The AL
 results of the reaction-row callbacks (`0x3EF44`: 0 on the null gate, else 1;
 `0x3ECF8`, `0x3FB88`: 1) are dropped as `0x3F3F4`'s are: `0x34E2C` returns the
-callback's AL, and both of its callers (`0x352CD` and `0x3CF2E`, which reloads AL =
-1) ignore it. `fighter_3ecf8` and `fighter_3ef44` and `fighter_3fb88` take the
+callback's AL; its callers are `0x3CF2E` (which reloads AL = 1 at `0x3CF33`) and
+`0x352CD` (in `0x350D0`, called at `0x353FF` from `0x3531C`, itself called at
+`0x35803`, where EAX is overwritten by `0x35808`/`0x3580E` before any read), so the
+AL is unread. `fighter_3ecf8` and `fighter_3ef44` and `fighter_3fb88` take the
 raw's overwritten EBX as an unused `side`.
 
 ### 50-A.4 Verification
