@@ -3121,6 +3121,16 @@ u8 text_glyph_emit(s32 ch, s32 *col, s32 *row, u32 mode, u32 vertical)
     return 0;
 }
 
+/* 0x2F174 — record §48-Z. 0x2F5A0 at a fixed (col, row): builds one-shot local
+ * copies (0x2F17E/0x2F186) and discards the glyph advance 0x2F5A0 writes back.
+ * EAX = col, EBX = ch, EDX = row, ECX = mode; `vertical` = 0. Callers: state 3
+ * and 5's scoreboard build (0x41A9D/0x41E5D area, record §48-Z). */
+void text_glyph_at(s32 col, s32 ch, s32 row, u32 mode)
+{
+    s32 c = col, r = row;
+    (void)text_glyph_emit(ch, &c, &r, mode, 0u);            /* 0x2F18E */
+}
+
 /* ---- the loader's direct glyph path (0x1C5E8, 0x1C65C) ------------------
  *
  * PORT: the resource loader's `- LOADING -` screen. 0x1C5E8/0x1C65C are the
@@ -3220,6 +3230,15 @@ void text_cursor_set(s32 col, s32 row, const u8 *s, u32 mode)
     s32 extent = text_render(s, mode, row, col, 0u);   /* 0x2F198 passes 0 */
     DSW(DS_00105F34) = (u16)row;
     DSW(DS_00105F34 + 2) = (u16)(col + extent);
+}
+
+/* 0x2F41C — record §48-Z. 0x2F198 with col = 0 and row = -1 (reuse the
+ * cursor's row, which `text_cursor_set` reloads from DS_00105F34). EAX =
+ * string, EDX = mode; EBX/ECX pushed and popped. Callers: state 3's VS banner
+ * continuation lines (0x42029/0x42044, record §48-Z). */
+void text_cursor_next_line(const u8 *s, u32 mode)
+{
+    text_cursor_set(0, -1, s, mode);                        /* 0x2F429 0x2F198 */
 }
 
 /* 0x2F280. Same register shape as 0x2F198. Clears `text_width(s, mode)`
@@ -3411,9 +3430,9 @@ void text_number_draw(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
  * ([esp+0x20] after the prologue, the last pushed) and mode ([esp+0x24]);
  * `ret 8`. 0x2EFD4 formats the value into a 0x14-byte stack buffer
  * (0x2F447), then 0x2F198 draws it (0x2F456), so the cursor DS_00105F34
- * moves. ESI/EDI pushed and popped. The ported callers are 0x27908 (0x278B0)
- * and 0x27B4C (0x27A2C, record §48-E); its 17 other call sites are not
- * ported. */
+ * moves. ESI/EDI pushed and popped. The ported callers are 0x27908 (0x278B0),
+ * 0x27B4C (0x27A2C, record §48-E), 0x41A22/0x41B15 (0x418F4) and 0x42329
+ * (0x41C28, record §48-Z); its other call sites are not ported. */
 void text_number_set(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
 {
     /* PORT: the original's buffer is uninitialised stack; the port zeroes it,

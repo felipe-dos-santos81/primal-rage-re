@@ -27631,6 +27631,103 @@ static void check_mode_b(void)
     mz_restore();
 }
 
+/* ---- record §48-Z: mode 0x12's step 0x41C28 and 0x416D4 ------------------ */
+
+/* game_mode_12_step's state byte DS_00104B25 > 8 is a no-op (0x41C36/0x41C38):
+ * every field the function could otherwise touch keeps its seeded sentinel. */
+static void check_mode_12_no_state(void)
+{
+    if (!mz_save()) { CHECK(0, "the §48-Z snapshot allocates"); return; }
+
+    DSB(DS_00104B25) = 9u;
+    DSB(DS_00104B23) = 0x77u;
+    DSW(DS_00104AFE) = 0x7777u;
+    game_mode_12_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 9);
+    CHECK_EQ_INT((int)DSB(DS_00104B23), 0x77);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x7777);
+
+    mz_restore();
+}
+
+/* State 8 (0x42443): the countdown DS_00104AFE decrements; above 0 (signed)
+ * afterward the state stays 8, at or below 0 it becomes DS_00104B23. Neither
+ * arm touches an actor or a resource, so no pool setup is needed. */
+static void check_mode_12_countdown(void)
+{
+    if (!mz_save()) { CHECK(0, "the §48-Z snapshot allocates"); return; }
+
+    /* Not yet expired: 5 -> 4, state unchanged. */
+    DSB(DS_00104B25) = 8u;
+    DSB(DS_00104B23) = 0x77u;             /* sentinel: state 8 must not copy this */
+    DSW(DS_00104AFE) = 5u;
+    game_mode_12_step();
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 4);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 8);
+
+    /* Expires this frame: 1 -> 0, state takes DS_00104B23's value. */
+    DSB(DS_00104B25) = 8u;
+    DSB(DS_00104B23) = 3u;
+    DSW(DS_00104AFE) = 1u;
+    game_mode_12_step();
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 3);
+
+    mz_restore();
+}
+
+/* game_frame's case 0x12 (0x253BD) dispatches to game_mode_12_step: with
+ * mode 0x12 and state 8 expiring, the same transition fires through the
+ * frame-level switch. */
+static void check_mode_12_frame_wiring(void)
+{
+    if (!mz_save()) { CHECK(0, "the §48-Z snapshot allocates"); return; }
+
+    DSD(DS_00104B00) = 0x12u;
+    DSB(DS_00104B25) = 8u;
+    DSB(DS_00104B23) = 5u;
+    DSW(DS_00104AFE) = 1u;
+    DSD(DS_000EF6D8) = 0xBEEF0012u;       /* rng seed so run_process_table etc. behave */
+    ms_seed(0xBEEF0012u);
+    game_frame();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 5);
+
+    mz_restore();
+}
+
+/* State 3's "not yet" branch (0x41E7D/0x41E83): while the background record
+ * DS_001080F4's y projection (word +0x34 hi + dword +0x1C) is below 0x2300,
+ * the state byte, the two touched dwords and DS_00108104[r] are all left
+ * alone — the raw does nothing until the threshold is crossed. */
+static void check_mode_12_state3_not_yet(void)
+{
+    u32 bg;
+    if (!mz_save()) { CHECK(0, "the §48-Z snapshot allocates"); return; }
+
+    bg = m5_rec();                         /* any scratch record will do */
+    DSD(DS_001080F4) = bg;
+    DSD(DS_00104AD4) = 0u;
+    DSD(bg + 0x1Cu) = 0x1000u;             /* well below the 0x2300 threshold */
+    DSD(bg + 0x34u) = 0u;
+    DSB(DS_00104B25) = 3u;
+    DSB(DS_00108104) = 0x77u;              /* sentinel: must not increment */
+    DSW(bg + 0x2Cu) = 0x9999u;             /* sentinel: +0x2C is state 6/7's field, untouched here */
+    game_mode_12_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 3);
+    CHECK_EQ_INT((int)DSD(bg + 0x1Cu), 0x1000);
+    CHECK_EQ_INT((int)DSB(DS_00108104), 0x77);
+
+    mz_restore();
+}
+
+static void check_mode_12(void)
+{
+    check_mode_12_no_state();
+    check_mode_12_countdown();
+    check_mode_12_frame_wiring();
+    check_mode_12_state3_not_yet();
+}
+
 /* ---- record §48-D: mode 0x13's challenge screen 0x424E8 and its callees -- */
 
 /* 0x2BAF4 (actors_reset, which 0x424E8's case 0 and 0x42CB4's expiry call,
@@ -30187,6 +30284,7 @@ int test_fight(void)
     check_fight_frame_c();
     check_mode_b();
     check_mode_13();
+    check_mode_12();
 
     return g_failures - before;
 }
