@@ -3092,6 +3092,142 @@ void fight_4dbec(void)
     }
 }
 
+#define DS_000C9574 0x000C9574u   /* no symbols.h name: [si] the winner's lane-1 stream */
+#define DS_000C95A4 0x000C95A4u   /* no symbols.h name: [si] the loser's lane-1 stream (rng) */
+#define DS_000C961C 0x000C961Cu   /* no symbols.h name: [si] the loser's lane-1 stream */
+#define DS_000C964C 0x000C964Cu   /* no symbols.h name: [si] the loser's lane-0 stream (outer) */
+#define DS_000C9664 0x000C9664u   /* no symbols.h name: [si] the loser's lane-0 stream (middle) */
+#define DS_000C97FA 0x000C97FAu   /* no symbols.h name: [lane] the crowd's y word */
+#define DS_000C9800 0x000C9800u   /* no symbols.h name: [lane] the crowd's y word (stages 0, 6) */
+#define DS_000C9806 0x000C9806u   /* no symbols.h name: [lane] the crowd's y range word */
+
+/* 0x4B9AC — record §48-D. The challenge screen's crowd (0x424E8's case 2,
+ * 0x42574; its only caller), 0x494A8's sibling. EBX/ECX/EDX/ESI/EDI/EBP are
+ * pushed and popped; the frame holds [esp+0x10] the side, [esp+0x1C]/[esp+
+ * 0x24] its slot, [esp+4] the leader (DS_001080F0 for side 1, else
+ * DS_001080EC: 0x42724's slot records), [esp+0x20] the x base (0x5E0 for
+ * side 1, else -0x22E0), [esp+8]/[esp+0xC] the bounds base + 0x9AA and base +
+ * 0x1354, [esp+0x28] n = the slot's +0x81 byte * 2, at most 0xA (`jle`),
+ * [esp+0x14] the count i and [esp+0x2C] the lane k (0 per side; its word
+ * steps 0, 1, 2, 0, ...: `inc`, and 0 past 2). While the word n is above i
+ * (signed, 0x4BD17 `jg`), each entry:
+ * - the y word 0xC9800[k] on stage (DS_00104AFC) 0 or 6, else 0xC97FA[k],
+ *   and the range word 0xC9806[k] (both zero-extended);
+ * - a node from the free list DS_001083C4 to DS_0010884C, or the whole
+ *   function returns when the list is empty (0x4BA9F..0x4BAB6: the
+ *   sentinel gives EDI = 0; a zero head is unlinked first, then returns);
+ * - the descriptor 0xC9524[rng(6)] with +0x10 = 0x29CDC(side, slot +0x7A);
+ * - x = base + rng(0x1D00) (EBP), y = the y word + rng(range) (0x4BB0F
+ *   `lea`); 0x2AE14(desc, x, a3 = y, a4 = 0, a5 = 0) into the entry's +8;
+ *   the actor's +0x2C = 0x496AC(its +0x30 >> 16) and +0x14 = the entry;
+ *   the entry's +0x1E/+0x1F = 0 and +0xC = the slot;
+ * - si = (u16)(the actor's +0x48 byte - 0x20) (DH cleared, DL loaded, then
+ *   `sub edx,0x20`, used as DX or `and edx,0xffff`); the actor's +0x29 |=
+ *   0x40 when its +0x18 is above the leader's (signed, 0x4BB5E `jle`);
+ * - on k (the word, `cmp cx,1`): 0: the side DS_00104AD4 (the winner, a
+ *   dword compare) takes 0xC9724[si] at 5.0; else x below the first bound
+ *   (signed) 0xC964C[si] at 2.0, below the second 0xC9664[si] at 2.0, else
+ *   0xC964C[si] at 2.0 and +0x29 |= 0x40 after it. 1: the winner +0x55 = 1
+ *   and 0xC9574[si] at 3.0; else rng(2) non-zero +0x55 = 1 and 0xC95A4[si]
+ *   at 3.0, zero 0xC961C[si] at 2.0. 2: +0x55 = 1 and 0xC955C[si] (the
+ *   winner) or 0xC958C[si] at 3.0. Every stream goes through 0x2BC30 with
+ *   the pushed float;
+ * - the entry's +0x21 = the side; side 1's actor +0x2E += 4 and +0x4E = 1.
+ * ECX (the range) and EBX (the y word) survive 0x29CDC (pushes EBX) and
+ * 0x5D7DC (pushes EBX/EDX); EDX (si) survives the rng(2) draw. */
+void fight_challenge_crowd(void)
+{
+    u32 side;
+    for (side = 0; side < 2u; side++) {                         /* 0x4B9BA..0x4B9C9, 0x4BD1F..0x4BD39 */
+        u32 slot = DS_001077B0 + side * 0x94u;                  /* 0x4B9BC, 0x4BD27 */
+        u32 lead = side != 0u ? DSD(DS_001080F0)
+                              : DSD(DS_001080EC);               /* 0x4B9DF..0x4B9F3 */
+        s32 base = side != 0u ? 0x5E0 : -0x22E0;                /* 0x4B9F7..0x4BA0B */
+        u32 n = (u32)DSB(slot + 0x81u) * 2u;                    /* 0x4BA0F..0x4BA17 */
+        u32 k = 0u;                                             /* 0x4B9D7 */
+        s32 far, near, i;
+        if ((s32)n > 0xA) n = 0xAu;                             /* 0x4BA19..0x4BA1E */
+        far = base + 0x1354;                                    /* 0x4BA23..0x4BA31 */
+        near = base + 0x9AA;                                    /* 0x4BA35..0x4BA44 */
+        for (i = 0; (s32)(u16)n > i; i++) {                     /* 0x4BA40, 0x4BD08..0x4BD19 */
+            u32 stage = DSW(DS_00104AFC);                       /* 0x4BA4D */
+            u32 y0, range, entry, desc, actor, index, stream, bits;
+            s32 x;
+            if (stage == 0u || stage == 6u)                     /* 0x4BA54..0x4BA61 */
+                y0 = DSW(DS_000C9800 + k * 2u);                 /* 0x4BA63..0x4BA6A */
+            else
+                y0 = DSW(DS_000C97FA + k * 2u);                 /* 0x4BA74..0x4BA7B */
+            range = DSW(DS_000C9806 + k * 2u);                  /* 0x4BA88..0x4BA97 */
+            entry = DSD(DS_001083C4);                           /* 0x4BA91 */
+            if (entry == DS_001083C4)                           /* 0x4BA9F/0x4BAA5 */
+                entry = 0u;                                     /* 0x4BAA7 */
+            else
+                effects_list_unlink(entry);                     /* 0x4BAAB/0x4BAAD 0x249D0 */
+            if (entry == 0u) return;                            /* 0x4BAB2..0x4BAB6 */
+            effects_list_insert_after(DS_0010884C, entry);      /* 0x4BABC..0x4BAC3 0x249B0 */
+            desc = DSD(DS_000C9524 + rng_next(6u) * 4u);        /* 0x4BAC8..0x4BAD9 0x5D7DC */
+            DSD(desc + 0x10u) = fight_dust_value(side, (u32)DSB(slot + 0x7Au));  /* 0x4BADC..0x4BAF1 0x29CDC */
+            x = base + (s32)rng_next(0x1D00u);                  /* 0x4BAF4..0x4BB02 0x5D7DC */
+            actor = actor_spawn((const u32 *)(mem + desc), (u32)x,
+                                y0 + rng_next(range), 0u, 0u);  /* 0x4BB04..0x4BB0F 0x5D7DC, 0x4BB18 0x2AE14 */
+            DSD(entry + 8u) = actor;                            /* 0x4BB1D */
+            DSW(actor + 0x2Cu) =
+                fight_dust_clamp((s32)DSD(actor + 0x30u) >> 16);    /* 0x4BB20..0x4BB2E 0x496AC */
+            DSD(actor + 0x14u) = entry;                         /* 0x4BB32/0x4BB35 */
+            DSB(entry + 0x1Eu) = 0u;                            /* 0x4BB38 */
+            DSB(entry + 0x1Fu) = 0u;                            /* 0x4BB40 */
+            DSD(entry + 0x0Cu) = slot;                          /* 0x4BB3C/0x4BB44 */
+            index = (u32)(u16)((u32)DSB(actor + 0x48u) - 0x20u);    /* 0x4BB4E..0x4BB59 */
+            if ((s32)DSD(actor + 0x18u) > (s32)DSD(lead + 0x18u))   /* 0x4BB47..0x4BB5E */
+                DSB(actor + 0x29u) = (u8)(DSB(actor + 0x29u) | 0x40u);  /* 0x4BB60 */
+            if (k == 0u) {                                      /* 0x4BB68 `jc`, 0x4BB83 */
+                if (side == DSD(DS_00104AD4)) {                 /* 0x4BB8C..0x4BB98 */
+                    actors_anim_begin(actor, DSD(DS_000C9724 + index * 4u),
+                                      0x40A00000u);             /* 0x4BB9A..0x4BBA9, 0x4BCCC 0x2BC30 */
+                } else if (x < near) {                          /* 0x4BBB3/0x4BBB7 */
+                    actors_anim_begin(actor, DSD(DS_000C964C + index * 4u),
+                                      0x40000000u);             /* 0x4BBB9..0x4BBC7, 0x4BCCC 0x2BC30 */
+                } else if (x < far) {                           /* 0x4BBD3/0x4BBD7 */
+                    actors_anim_begin(actor, DSD(DS_000C9664 + index * 4u),
+                                      0x40000000u);             /* 0x4BBD9..0x4BBE8, 0x4BCCC 0x2BC30 */
+                } else {
+                    actors_anim_begin(actor, DSD(DS_000C964C + index * 4u),
+                                      0x40000000u);             /* 0x4BBF2..0x4BC07 0x2BC30 */
+                    DSB(actor + 0x29u) = (u8)(DSB(actor + 0x29u) | 0x40u);  /* 0x4BC0C/0x4BC0F */
+                }
+            } else if (k == 1u) {                               /* 0x4BB6E `jbe` */
+                if (side == DSD(DS_00104AD4)) {                 /* 0x4BC18..0x4BC22 */
+                    DSB(actor + 0x55u) = 1u;                    /* 0x4BC27 */
+                    stream = DSD(DS_000C9574 + index * 4u);     /* 0x4BC2B..0x4BC30 */
+                    bits = 0x40400000u;                         /* 0x4BC3A */
+                } else if (rng_next(2u) != 0u) {                /* 0x4BC44..0x4BC50 0x5D7DC */
+                    DSB(actor + 0x55u) = 1u;                    /* 0x4BC55 */
+                    stream = DSD(DS_000C95A4 + index * 4u);     /* 0x4BC59..0x4BC5E */
+                    bits = 0x40400000u;                         /* 0x4BC68 */
+                } else {
+                    stream = DSD(DS_000C961C + index * 4u);     /* 0x4BC74..0x4BC7D */
+                    bits = 0x40000000u;                         /* 0x4BC6F */
+                }
+                actors_anim_begin(actor, stream, bits);         /* 0x4BCCC 0x2BC30 */
+            } else if (k == 2u) {                               /* 0x4BB74/0x4BB78 */
+                DSB(actor + 0x55u) = 1u;                        /* 0x4BC9A/0x4BCB8 */
+                if (side == DSD(DS_00104AD4))                   /* 0x4BC86..0x4BC90 */
+                    stream = DSD(DS_000C955C + index * 4u);     /* 0x4BC9E..0x4BCA7 */
+                else
+                    stream = DSD(DS_000C958C + index * 4u);     /* 0x4BCBC..0x4BCC5 */
+                actors_anim_begin(actor, stream, 0x40400000u);  /* 0x4BC95/0x4BCB3, 0x4BCCC 0x2BC30 */
+            }
+            DSB(entry + 0x21u) = (u8)side;                      /* 0x4BCD1..0x4BCD9 */
+            if (side != 0u) {                                   /* 0x4BCDC/0x4BCDE */
+                DSW(actor + 0x2Eu) = (u16)(DSW(actor + 0x2Eu) + 4u);    /* 0x4BCE0..0x4BCE3 */
+                DSB(actor + 0x4Eu) = 1u;                        /* 0x4BCE8..0x4BCEB */
+            }
+            k = (u32)(u16)(k + 1u);                             /* 0x4BCEF..0x4BCF9 */
+            if (k > 2u) k = 0u;                                 /* 0x4BCFD..0x4BD04 */
+        }
+    }
+}
+
 /* 0x4D108 — demo-pose record §43-A. EAX = entry, EDX = si. One time in 0x3C
  * (rng(0x3C) == 0) the actor rises: the 0xC95BC[si] stream at 3.0, the
  * entry's +0x1A = the actor's y word +0x32, +0x38 = -0x20, type 3; AL = 1.

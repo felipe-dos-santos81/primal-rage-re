@@ -27631,7 +27631,962 @@ static void check_mode_b(void)
     mz_restore();
 }
 
-/* ---- named-gap batch 15: the entrance poses' slot callbacks (record §48-P) */
+/* ---- record §48-D: mode 0x13's challenge screen 0x424E8 and its callees -- */
+
+/* 0x2BAF4 (actors_reset, which 0x424E8's case 0 and 0x42CB4's expiry call,
+ * and which m13_seed calls) clears both offscreen buffers, the aperture and
+ * the DAC, none of which mz_save holds: check_mode_13 keeps them here. */
+static u8 m13_bufa[0xFA00u], m13_bufb[0xFA00u], m13_ap[0xFA00u];
+static u8 m13_dac[sizeof gfx_dac];
+
+/* A fresh §48-D state: the snapshot back, a clean actor pool (0x2BAF4:
+ * every spawn below takes a fresh record; the effects pool and the palette
+ * list are rebuilt) and the fight-effect lists (0x49300: 32 free entries,
+ * their +0x0C/+0x1E/+0x1F/+0x21 seeded 0x77); the characters c0 = 2 and c1
+ * = 5, DS_00105B34 = 0 / 1, both slots' records 0 (0x33F08 skips both
+ * sides), think gates, +0x7F and +0x81 bytes; the result DS_00104AD4 0x55,
+ * the stage 3, no credit, nothing pressed or held, the frame word 1 (no
+ * tick, blink phase 1), the mode dword 0xBEEF0013; every pointer 0x428B8
+ * stores 0; sentinels in the bytes, words and the hook the handler and its
+ * callees write; text row 0x1C empty. */
+static void m13_seed(void)
+{
+    u32 s, e;
+    mz_restore();
+    (void)mz_save();
+    actors_reset();
+    fight_list_init();
+    for (e = DSD(DS_001083C4); e != DS_001083C4; e = DSD(e)) {
+        DSD(e + 0x0Cu) = 0x77777777u;
+        DSB(e + 0x1Eu) = 0x77u;
+        DSB(e + 0x1Fu) = 0x77u;
+        DSB(e + 0x21u) = 0x77u;
+    }
+    DSB(DS_0010782A) = 2u;
+    DSB(DS_001078BE) = 5u;
+    DSB(DS_00105B34) = 0u;
+    DSB(DS_00105B34 + 1u) = 1u;
+    DSB(DS_00107813) = 0x77u;
+    DSB(DS_001078A7) = 0x77u;
+    for (s = 0; s < 2u; s++) {
+        u32 slot = DS_001077B0 + s * 0x94u;
+        DSD(slot) = 0u;
+        DSD(slot + 4u) = 0u;
+        DSB(slot + 0x7Fu) = 0x77u;
+        DSB(slot + 0x81u) = 0u;
+        DSD(DS_001077A8 + s * 4u) = 0u;
+    }
+    for (e = DS_001080B4; e <= DS_001080FC; e += 4u) DSD(e) = 0u;
+    DSD(DS_00104AD4) = 0x55u;
+    DSW(DS_00104AFC) = 3u;
+    DSB(DS_00105D60) = 0u;
+    DSD(DS_00105C00) = 0u;
+    DSD(DS_001088E4) = 0u;
+    DSD(DS_001088D8) = 0u;
+    DSW(DS_000EF6DC) = 1u;
+    DSD(DS_00104B00) = 0xBEEF0013u;
+    DSB(DS_00104B25) = 0x77u;
+    DSB(DS_00104B15) = 0x77u;
+    DSB(DS_00104B19) = 0x77u;
+    DSB(DS_00104B1F) = 0x77u;
+    DSB(DS_00104B1D) = 0x77u;
+    DSB(DS_00108110) = 0x77u;
+    DSB(DS_00105C04) = 0u;
+    DSD(DS_00104AE4) = 0xDEADBEEFu;
+    DSW(DS_001088EE) = 0x7777u;
+    DSW(DS_00104AFE) = 0x7777u;
+    DSD(DS_00104AB8) = 0u;
+    DSB(0x00104529u) = 0u;
+    DSD(DS_00105BF8) = 0x77u;
+    DSB(DS_00105C06) = 0x77u;
+    DSB(DS_00105C07) = 0x77u;
+    DSD(DS_00105BF0) = 0u;
+    DSD(DS_00105BF0 + 4u) = 0u;
+    mem_fill(DS_00105F38 + 0x1Cu * 0xACu, 0, 0xACu);
+}
+
+/* An m5_rec record whose +0x2E word and +0x4E byte hold sentinels. */
+static u32 m13_rec(void)
+{
+    u32 r = m5_rec();
+    DSW(r + 0x2Eu) = 0x1234u;
+    DSB(r + 0x4Eu) = 0x77u;
+    return r;
+}
+
+/* The child `r` of `parent` spawned by 0x428B8: a5 bit 0x400 (+0x28 bit
+ * 10), the parent's index in +0x4A, a2 in the word +0x34, a3 in +0x49 and a4
+ * in the word +0x36. */
+static void m13_check_child(u32 r, u32 parent, u32 a2, u32 a3, u32 a4)
+{
+    CHECK(r != 0u, "0x428B8 spawned the child");
+    if (r == 0u) return;
+    CHECK_EQ_INT((int)(DSW(r + 0x28u) & 0x400u), 0x400);
+    CHECK_EQ_INT((int)DSB(r + 0x4Au), (int)(DSW(parent + 0x56u) & 0x7Fu));
+    CHECK_EQ_INT((int)DSW(r + 0x34u), (int)a2);
+    CHECK_EQ_INT((int)DSB(r + 0x49u), (int)a3);
+    CHECK_EQ_INT((int)DSW(r + 0x36u), (int)a4);
+}
+
+/* The palette entry 0x29BC8 gave record `r`: the handle 0xA8A98[ch]
+ * [DS_00105B34[side]]. */
+static int m13_palette_is(u32 r, u32 side, u32 ch)
+{
+    u32 h = DSD(DSD(DS_000A8A98 + ch * 4u) + (u32)DSB(DS_00105B34 + side) * 4u);
+    u32 e = DSD(actor_pset(r) + 0x18u);
+    return h != 0u && e != 0u && DSD(e) == h;
+}
+
+/* 0x20E90, 0x42BCC, 0x428B8 and 0x42724 directly. */
+static void check_mode_13_a(void)
+{
+    u32 i;
+    if (!mz_save()) { CHECK(0, "the §48-D snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* The image values the checks rely on: the characters' x words (read
+     * as `[c*2 + T]` then `sar 0x10`, so the word at T + 2 + c*2), the a3
+     * words 0xC834C[c] (c 0 is 0xC00, the others 0xE00), the secondary
+     * descriptors 0xBB8D0[c] (distinct for c 0 and 2), the winners'
+     * descriptors' frame byte +5 (3, the others' 0), the 0xC83B4 handles
+     * 0xA8AC0[2]/0xA8ADC[5], the stage words 0xBDE1C/0xBDDFC and the
+     * 0xC83xx children's +6 words. */
+    CHECK_EQ_INT((int)(s16)DSW(0x000C8314u), -0xA00);
+    CHECK_EQ_INT((int)(s16)DSW(0x000C8322u + 2u * 2u), 0x900);
+    CHECK_EQ_INT((int)(s16)DSW(0x000C8330u), -0x1400);
+    CHECK_EQ_INT((int)(s16)DSW(0x000C833Eu + 2u * 2u), 0x1C00);
+    CHECK_EQ_INT((int)DSW(0x000C834Cu), 0xC00);
+    CHECK_EQ_INT((int)DSW(0x000C834Cu + 2u * 2u), 0xE00);
+    CHECK(DSD(0x000BB8D0u) != DSD(0x000BB8D0u + 2u * 4u), "0xBB8D0[0] != [2]");
+    CHECK_EQ_INT((int)DSB(DSD(0x000BB880u) + 5u), 3);
+    CHECK_EQ_INT((int)DSB(DSD(0x000BB884u + 2u * 8u) + 5u), 3);
+    CHECK_EQ_INT((int)DSB(DSD(0x000BB830u) + 5u), 0);
+    CHECK_EQ_INT((int)DSB(DSD(0x000BB834u + 2u * 8u) + 5u), 0);
+    CHECK_EQ_INT((int)DSD(DS_000A8AC0 + 2u * 4u), 0x0900A9F0);
+    CHECK_EQ_INT((int)DSD(DS_000A8ADC + 5u * 4u), 0x0900AD74);
+    CHECK_EQ_INT((int)DSW(DS_000BDE1C + 3u * 2u), 0xA4);
+    CHECK_EQ_INT((int)DSW(DS_000BDDFC + 3u * 2u), 0x50);
+    CHECK_EQ_INT((int)DSW(DS_000BDDFC + 7u * 2u), 0x50);
+    CHECK_EQ_INT((int)DSW(DS_000BDDFC + 4u * 2u), 0x90);
+    CHECK_EQ_INT((int)DSW(0x000C83B4u + 6u), 0x40);
+
+    /* (a) 0x20E90: the four camera words zeroed and 0x38730 on the stage
+     * (DS_00107A54 = 1, DS_00107A4E/DS_00107A40 from the stage's rows). The
+     * stage is not clamped: 4 gives 0xBDDFC[4] = 0x90, not [3]. */
+    {
+        static const u32 st[2] = { 3u, 4u };
+        for (i = 0; i < 2u; i++) {
+            m13_seed();
+            DSD(DS_000F0AEC) = 0x5A5A5A5Au;
+            DSD(DS_000F0AF0) = 0x5A5A5A5Au;
+            DSW(DS_000F0AFA) = 0x7777u;
+            DSW(DS_000F0AF8) = 0x7777u;
+            DSB(DS_00107A54) = 0u;
+            DSW(DS_00107A40) = 0x7777u;
+            flow_scroll_reset(st[i]);
+            CHECK_EQ_INT((int)DSD(DS_000F0AEC), 0);
+            CHECK_EQ_INT((int)DSD(DS_000F0AF0), 0);
+            CHECK_EQ_INT((int)DSW(DS_000F0AFA), 0);
+            CHECK_EQ_INT((int)DSW(DS_000F0AF8), 0);
+            CHECK_EQ_INT((int)DSB(DS_00107A54), 1);
+            CHECK_EQ_INT((int)DSW(DS_00107A4E), (int)DSW(DS_000BDE1C + st[i] * 2u));
+            CHECK_EQ_INT((int)DSW(DS_00107A40), i == 0u ? 0x50 : 0x90);
+        }
+    }
+
+    /* (b) 0x42BCC. Rows: each record's +0x5B, +0x36 word and +0x1C before,
+     * then +0x36, +0x1C and +0x5B after (the +0x34 low word 0x5555 kept):
+     * a landed record is untouched; a falling one gains 0x40 while
+     * v + y < 0 (-1 does not bounce, 0 does); a bounce zeroes y and stores
+     * -(v / 3), truncated (v = -0x82 gives 0x2B, not 0x2C); a negative
+     * result of magnitude <= 0x40 lands (0x40 does, 0x41 does not); a
+     * non-negative one does not. Both landed: DS_00104B25 + 1 and nothing
+     * else. */
+    {
+        static const u8  l0[9] = { 1u, 1u, 1u, 1u, 1u, 1u, 1u, 0u, 1u };
+        static const u16 v0[9] = { 0x100u, 0x100u, 0x100u, 0x80u, 0x83u,
+                                   0xFF3Eu, 0xFF00u, 0x100u, 0x100u };
+        static const u32 y0[9] = { 0xFFFFC400u, 0xFFFFFEBFu, 0xFFFFFEC0u, 0u,
+                                   0u, 0x82u, 0xC0u, 0xFFFFC400u, 0xFFFFC400u };
+        static const u8  l1[9] = { 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 1u };
+        static const u16 v1[9] = { 0x140u, 0x140u, 0xFF96u, 0u, 0xFFBFu,
+                                   0x2Bu, 0x40u, 0x140u, 0x100u };
+        static const u32 y1[9] = { 0xFFFFC400u, 0xFFFFFEBFu, 0u, 0u, 0u, 0u,
+                                   0u, 0xFFFFC400u, 0xFFFFC400u };
+        static const u8  e1[9] = { 0u, 0u, 0u, 1u, 0u, 0u, 0u, 0u, 1u };
+        for (i = 0; i < 9u; i++) {
+            u32 a, b;
+            m13_seed();
+            a = m13_rec();
+            b = m13_rec();
+            DSD(DS_001080B4) = a;
+            DSD(DS_001080B8) = b;
+            DSB(a + 0x5Bu) = l0[i];
+            DSD(a + 0x34u) = 0x12345555u;
+            DSD(a + 0x1Cu) = i == 7u ? 0xFFFF0000u : 0x9999u;
+            DSB(b + 0x5Bu) = l1[i];
+            DSD(b + 0x34u) = ((u32)v0[i] << 16) | 0x5555u;
+            DSD(b + 0x1Cu) = y0[i];
+            DSB(DS_00104B25) = 0x40u;
+            flow_challenge_drop();
+            if (i == 7u) {
+                /* Record a falls too: the same step as b. */
+                CHECK_EQ_INT((int)DSW(a + 0x36u), 0x1274);
+                CHECK_EQ_INT((int)DSD(a + 0x1Cu), (int)0xFFFF0000u);
+            } else {
+                CHECK_EQ_INT((int)DSD(a + 0x34u), 0x12345555);
+                CHECK_EQ_INT((int)DSD(a + 0x1Cu), 0x9999);
+            }
+            CHECK_EQ_INT((int)DSW(b + 0x36u), (int)v1[i]);
+            CHECK_EQ_INT((int)DSW(b + 0x34u), 0x5555);
+            CHECK_EQ_INT((int)DSD(b + 0x1Cu), (int)y1[i]);
+            CHECK_EQ_INT((int)DSB(b + 0x5Bu), (int)e1[i]);
+            CHECK_EQ_INT((int)DSB(DS_00104B25), i == 8u ? 0x41 : 0x40);
+        }
+    }
+
+    /* (c) 0x428B8 on the result r. Both records dropped from a4 0xFFFFC400
+     * (+0x1C) at x 0 / 0x2A00, layers 0xF0/0xF1, +0x36 0x100 / 0x40, +0x5B
+     * 0; the count 9. r = 0: 0xC83C4 = 0xA8ADC[c1] (DS_00105B34[1] = 1) and
+     * the three children of the second record into DS_001080F8/E4/DC; with
+     * slot 0's think gate 0 DS_00104B19 = 0 and DS_00104B1F = 1, else
+     * DS_00104B1F &= 0xFD. r = 1: 0xA8AC0[c0], the children of the first
+     * into DS_001080FC/E8/E0 (a2 0x4C), slot 1's gate: 2, or &= 0xFE. r = 2:
+     * all six (0xC83C4 left with side 1's), DS_00104B1F = 0, DS_00104B19
+     * kept. r = 3: none. DS_001080F8's record gets +0x4E = 1 and +0x2E += 4
+     * unless r = 1, so for r = 3 the stale seeded record takes it; DS_001080FC
+     * (never zeroed here) keeps its seed where unspawned. */
+    {
+        static const u32 rv[6] = { 0u, 0u, 1u, 1u, 2u, 3u };
+        static const u8 gate[6] = { 0u, 1u, 0u, 1u, 0u, 0u };
+        static const u8 b19[6] = { 0u, 0x77u, 0u, 0x77u, 0x77u, 0x77u };
+        static const u8 b1f[6] = { 1u, 0x75u, 2u, 0x76u, 0u, 0x77u };
+        for (i = 0; i < 6u; i++) {
+            u32 r = rv[i], stale = 0u, a, b;
+            m13_seed();
+            DSD(DS_00104AD4) = r;
+            DSB(r == 1u ? DS_001078A7 : DS_00107813) = gate[i];
+            DSD(DS_001080DC) = 0x5A5A5A5Au;
+            DSD(DS_001080E0) = 0x5A5A5A5Au;
+            DSD(DS_001080E4) = 0x5A5A5A5Au;
+            DSD(DS_001080E8) = 0x5A5A5A5Au;
+            DSD(DS_001080FC) = 0x5A5A5A5Au;
+            stale = m13_rec();
+            DSD(DS_001080F8) = stale;
+            flow_challenge_open();
+            a = DSD(DS_001080B4);
+            b = DSD(DS_001080B8);
+            CHECK(a != 0u && b != 0u && a != b, "0x428B8's two records");
+            if (a == 0u || b == 0u) continue;
+            CHECK_EQ_INT((int)DSD(a + 0x18u), 0);
+            CHECK_EQ_INT((int)DSD(b + 0x18u), 0x2A00);
+            CHECK_EQ_INT((int)DSD(a + 0x1Cu), (int)0xFFFFC400u);
+            CHECK_EQ_INT((int)DSD(b + 0x1Cu), (int)0xFFFFC400u);
+            CHECK_EQ_INT((int)DSB(a + 0x49u), 0xF0);
+            CHECK_EQ_INT((int)DSB(b + 0x49u), 0xF1);
+            CHECK_EQ_INT((int)DSW(a + 0x36u), 0x100);
+            CHECK_EQ_INT((int)DSW(b + 0x36u), 0x40);
+            CHECK_EQ_INT((int)DSB(a + 0x5Bu), 0);
+            CHECK_EQ_INT((int)DSB(b + 0x5Bu), 0);
+            CHECK_EQ_INT((int)DSB(DS_00108110), 9);
+            CHECK_EQ_INT((int)DSB(DS_00104B19), (int)b19[i]);
+            CHECK_EQ_INT((int)DSB(DS_00104B1F), (int)b1f[i]);
+            if (r == 0u || r == 2u) {
+                m13_check_child(DSD(DS_001080F8), b, 0x30u, 0xE0u, 0xDAu);
+                m13_check_child(DSD(DS_001080E4), b, 0x14u, 0xF3u, 0xFu);
+                m13_check_child(DSD(DS_001080DC), b, 0x46u, 0xF4u, 0x34u);
+                CHECK_EQ_INT((int)DSW(DSD(DS_001080F8) + 0x2Eu), 0x44);
+                CHECK_EQ_INT((int)DSB(DSD(DS_001080F8) + 0x4Eu), 1);
+                CHECK_EQ_INT((int)DSW(stale + 0x2Eu), 0x1234);
+            } else {
+                CHECK_EQ_INT((int)DSD(DS_001080DC), 0);
+                CHECK_EQ_INT((int)DSD(DS_001080E4), 0);
+                CHECK_EQ_INT((int)DSD(DS_001080F8), (int)stale);
+                CHECK_EQ_INT((int)DSW(stale + 0x2Eu), r == 1u ? 0x1234 : 0x1238);
+                CHECK_EQ_INT((int)DSB(stale + 0x4Eu), r == 1u ? 0x77 : 1);
+            }
+            if (r == 1u || r == 2u) {
+                m13_check_child(DSD(DS_001080FC), a, 0x30u, 0xE0u, 0xDAu);
+                m13_check_child(DSD(DS_001080E8), a, 0x14u, 0xF3u, 0xFu);
+                m13_check_child(DSD(DS_001080E0), a, 0x4Cu, 0xF4u, 0x34u);
+                CHECK_EQ_INT((int)DSW(DSD(DS_001080FC) + 0x2Eu), 0x40);
+            } else {
+                CHECK_EQ_INT((int)DSD(DS_001080E0), 0);
+                CHECK_EQ_INT((int)DSD(DS_001080E8), 0);
+                CHECK_EQ_INT((int)DSD(DS_001080FC), 0x5A5A5A5A);
+            }
+            CHECK_EQ_INT((int)DSD(DS_000C83C4),
+                         r == 1u ? 0x0900A9F0 : r == 3u ? (int)0x0900AF04u : 0x0900AD74);
+        }
+    }
+
+    /* (d) 0x42724 on the result r with c0 = 0 and c1 = 2 (DS_00105B34 0 /
+     * 1): the slot records DS_001077B0/DS_00107844 respawned at x (+0x18)
+     * and a3 (the word +0x32: the fighter descriptors' +8 words have no bit
+     * 13), y 0, from the winner's descriptor (frame byte 3, so +0x24 = 3.0)
+     * for the side r; r = 1 gives side 1 the a3 0xC834C[c0] = 0xC00, not
+     * c1's 0xE00. Both get 0x29BC8's palette. Both secondary actors are
+     * 0xBB8D0[c0] children (c1's would differ), +0x59 = 0xFE, of their slot
+     * record; DS_001080EC/F0 copy the slot records. r = 3 respawns none and
+     * works on the seeded records. */
+    {
+        static const s32 x0[3] = { -0x1400, -0xA00, -0xA00 };
+        static const s32 x1[3] = { 0x900, 0x1C00, 0x900 };
+        static const u32 f0[3] = { 0x40400000u, 0u, 0u };
+        static const u32 f1[3] = { 0u, 0x40400000u, 0u };
+        static const u32 a30[3] = { 0xC00u, 0xE00u, 0xE00u };
+        static const u32 a31[3] = { 0xE00u, 0xC00u, 0xE00u };
+        for (i = 0; i < 4u; i++) {
+            u32 s0 = 0u, s1 = 0u, p0, p1, sh;
+            m13_seed();
+            DSB(DS_0010782A) = 0u;
+            DSB(DS_001078BE) = 2u;
+            DSD(DS_00104AD4) = i;
+            DSD(DS_001080EC) = 0x5A5A5A5Au;
+            DSD(DS_001080F0) = 0x5A5A5A5Au;
+            if (i == 3u) {
+                s0 = m13_rec();
+                s1 = m13_rec();
+                DSD(DS_001077B0) = s0;
+                DSD(DS_001077B0 + 0x94u) = s1;
+            }
+            flow_challenge_fighters();
+            p0 = DSD(DS_001077B0);
+            p1 = DSD(DS_001077B0 + 0x94u);
+            CHECK(p0 != 0u && p1 != 0u && p0 != p1, "0x42724's slot records");
+            if (p0 == 0u || p1 == 0u) continue;
+            if (i < 3u) {
+                CHECK_EQ_INT((int)DSD(p0 + 0x18u), x0[i]);
+                CHECK_EQ_INT((int)DSD(p1 + 0x18u), x1[i]);
+                CHECK_EQ_INT((int)DSW(p0 + 0x32u), (int)a30[i]);
+                CHECK_EQ_INT((int)DSW(p1 + 0x32u), (int)a31[i]);
+                CHECK_EQ_INT((int)DSD(p0 + 0x1Cu), 0);
+                CHECK_EQ_INT((int)DSD(p1 + 0x1Cu), 0);
+                CHECK_EQ_INT((int)DSD(p0 + 0x24u), (int)f0[i]);
+                CHECK_EQ_INT((int)DSD(p1 + 0x24u), (int)f1[i]);
+                CHECK_EQ_INT((int)(DSW(p0 + 0x28u) & 0x400u), 0);
+            } else {
+                CHECK_EQ_INT((int)p0, (int)s0);
+                CHECK_EQ_INT((int)p1, (int)s1);
+            }
+            CHECK(m13_palette_is(p0, 0u, 0u), "0x29BC8 on side 0");
+            CHECK(m13_palette_is(p1, 1u, 2u), "0x29BC8 on side 1");
+            CHECK_EQ_INT((int)DSD(DS_001080EC), (int)p0);
+            CHECK_EQ_INT((int)DSD(DS_001080F0), (int)p1);
+            for (u32 s = 0; s < 2u; s++) {
+                u32 par = s == 0u ? p0 : p1;
+                sh = DSD(DS_001077B0 + s * 0x94u + 4u);
+                CHECK(sh != 0u, "the secondary actor");
+                if (sh == 0u) continue;
+                CHECK_EQ_INT((int)(DSW(sh + 0x28u) & 0x400u), 0x400);
+                CHECK_EQ_INT((int)DSB(sh + 0x4Au), (int)(DSW(par + 0x56u) & 0x7Fu));
+                CHECK_EQ_INT((int)DSB(sh + 0x59u), 0xFE);
+                CHECK_EQ_INT((int)DSB(sh + 0x48u),
+                             (int)DSB(DSD(0x000BB8D0u) + 4u));
+                CHECK_EQ_INT((int)DSW(sh + 0x2Eu),
+                             (int)DSW(DSD(0x000BB8D0u) + 6u));
+            }
+            p0 = DSD(DS_001077B0 + 4u);
+            p1 = DSD(DS_001077B0 + 0x94u + 4u);
+            if (p0 != 0u && p1 != 0u)
+                CHECK_EQ_INT((int)DSD(p0 + 0x08u), (int)DSD(p1 + 0x08u));
+        }
+    }
+    mz_restore();
+}
+
+/* 0x496AC's clamp, restated for the expected values. */
+static u32 m13_clamp(s32 v)
+{
+    if (v >= 0xB00) return 0xC00u;
+    if (v <= 0x400) return 0xF80u;
+    return (u32)(((0xB00 - v) >> 1) + 0xC00);
+}
+
+/* The eight stream tables 0x4B9AC reads (6 entries each), in the order
+ * lane 0 winner, loser outer, loser middle; lane 1 winner, loser (rng 1),
+ * loser (rng 0); lane 2 winner, loser. m13_crowd_run points entry si of
+ * table t at the plain one-word stream M13_ST(t, si) (sprite 0x301 + t * 6
+ * + si), which 0x2BC30 leaves in +0x08. */
+static const u32 m13_tabs[8] = {
+    0x000C9724u, 0x000C964Cu, 0x000C9664u, 0x000C9574u,
+    0x000C95A4u, 0x000C961Cu, 0x000C955Cu, 0x000C958Cu,
+};
+#define M13_ST(t, si) (FIGHT_RECS + 0x3A00u + ((u32)(t) * 6u + (u32)(si)) * 0x10u)
+
+/* One 0x4B9AC run from the rng state `seed` with the winner `w` and the
+ * stage word `stage`, the stream tables planted (M13_ST), side 0's +0x81 2 (4 entries) and side 1's 7 (capped at
+ * 10), the leaders' x -0x1500 and 0x1000, checked entry by entry in creation
+ * order (the tail of DS_0010884C back to its head: each entry is inserted
+ * right after the sentinel) against the draws replayed from `seed`: per
+ * entry rng(6) (the descriptor 0xC9524[d], whose +4 byte is 0x20 + d, so
+ * the actor's +0x48 and si = d), x = base + rng(0x1D00), y = the lane's y
+ * word + rng(its range) (the word +0x32: the crowd descriptors' +8 words
+ * have no bit 13), and a loser's lane-1 rng(2). The stream's rate (+0x24),
+ * +0x55 and the +0x29 bit 6 follow the lane and the side's result. */
+static void m13_crowd_run(u32 seed, u32 w, u32 stage)
+{
+    static const s32 base[2] = { -0x22E0, 0x5E0 };
+    static const u32 nent[2] = { 4u, 10u };
+    u32 lead[2], e, side, k, i, n = 0u;
+    m13_seed();
+    for (k = 0; k < 8u; k++)
+        for (i = 0; i < 6u; i++) {
+            DSW(M13_ST(k, i)) = (u16)(0x0301u + k * 6u + i);
+            DSD(m13_tabs[k] + i * 4u) = M13_ST(k, i);
+        }
+    DSD(DS_00104AD4) = w;
+    DSW(DS_00104AFC) = (u16)stage;
+    DSB(DS_001077B0 + 0x81u) = 2u;
+    DSB(DS_001077B0 + 0x94u + 0x81u) = 7u;
+    for (side = 0; side < 2u; side++) {
+        lead[side] = m13_rec();
+        DSD(lead[side] + 0x18u) = side == 0u ? (u32)-0x1500 : 0x1000u;
+    }
+    DSD(DS_001080EC) = lead[0];
+    DSD(DS_001080F0) = lead[1];
+    rng_seed(seed);
+    fight_challenge_crowd();
+    rng_seed(seed);
+    e = DSD(DS_0010884C + 4u);
+    for (side = 0; side < 2u; side++) {
+        u32 slot = DS_001077B0 + side * 0x94u;
+        k = 0u;
+        for (i = 0; i < nent[side]; i++, e = DSD(e + 4u)) {
+            u32 d = rng_next(6u);
+            s32 x = base[side] + (s32)rng_next(0x1D00u);
+            u32 y0 = DSW((stage == 0u || stage == 6u ? 0x000C9800u : 0x000C97FAu)
+                         + k * 2u);
+            u32 y = y0 + rng_next(DSW(0x000C9806u + k * 2u));
+            u32 bits, f55 = 0u, b29, a, t;
+            int win = side == w;
+            if (k == 0u) {
+                bits = win ? 0x40A00000u : 0x40000000u;
+                b29 = !win && x >= base[side] + 0x1354;
+                t = win ? 0u : x < base[side] + 0x9AA ? 1u
+                  : x < base[side] + 0x1354 ? 2u : 1u;
+            } else if (k == 1u) {
+                u32 r2 = win ? 1u : rng_next(2u);
+                bits = r2 != 0u ? 0x40400000u : 0x40000000u;
+                f55 = r2 != 0u ? 1u : 0u;
+                b29 = 0u;
+                t = win ? 3u : r2 != 0u ? 4u : 5u;
+            } else {
+                bits = 0x40400000u;
+                f55 = 1u;
+                b29 = 0u;
+                t = win ? 6u : 7u;
+            }
+            if (x > (s32)DSD(lead[side] + 0x18u)) b29 = 1u;
+            CHECK(e != DS_0010884C, "0x4B9AC made the entry");
+            if (e == DS_0010884C) return;
+            n++;
+            a = DSD(e + 8u);
+            CHECK_EQ_INT((int)DSD(a + 0x14u), (int)e);
+            CHECK_EQ_INT((int)DSB(e + 0x21u), (int)side);
+            CHECK_EQ_INT((int)DSD(e + 0x0Cu), (int)slot);
+            CHECK_EQ_INT((int)DSB(e + 0x1Eu), 0);
+            CHECK_EQ_INT((int)DSB(e + 0x1Fu), 0);
+            CHECK_EQ_INT((int)DSB(a + 0x48u), (int)(0x20u + d));
+            CHECK_EQ_INT((int)DSD(a + 0x18u), x);
+            CHECK_EQ_INT((int)DSW(a + 0x32u), (int)(y & 0xFFFFu));
+            CHECK_EQ_INT((int)DSW(a + 0x2Cu), (int)m13_clamp((s32)(s16)y));
+            CHECK_EQ_INT((int)DSD(a + 0x24u), (int)bits);
+            CHECK_EQ_INT((int)DSD(a + 0x08u), (int)M13_ST(t, d));
+            CHECK_EQ_INT((int)DSB(a + 0x55u), (int)f55);
+            CHECK_EQ_INT((int)((DSB(a + 0x29u) >> 6) & 1u), (int)b29);
+            CHECK_EQ_INT((int)DSB(a + 0x4Eu), side != 0u ? 1 : 0);
+            CHECK_EQ_INT((int)DSW(a + 0x2Eu),
+                         (int)(DSW(DSD(DS_000C9524 + d * 4u) + 6u) + side * 4u));
+            k = k == 2u ? 0u : k + 1u;
+        }
+    }
+    CHECK_EQ_INT((int)(e == DS_0010884C), 1);
+    CHECK_EQ_INT((int)n, 14);
+}
+
+/* 0x4B9AC, 0x42FE0 and 0x42CB4 directly. */
+static void check_mode_13_b(void)
+{
+    u32 i;
+    if (!mz_save()) { CHECK(0, "the §48-D snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+    CHECK_EQ_INT((int)DSW(0x000C97FAu + 4u), 0xD06);
+    CHECK_EQ_INT((int)DSW(0x000C9800u + 4u), 0xA40);
+    CHECK_EQ_INT((int)DSB(DS_000BAB58), 3);
+    CHECK_EQ_INT((int)DSB(DS_000BAB58 + 1u), 0x18);
+    CHECK_EQ_INT((int)DSD(DS_000C82EC + 4u * 4u), 0x34A);
+    CHECK_EQ_INT((int)DSD(DS_000C82EC + 9u * 4u), 0x34F);
+
+    /* (e) 0x4B9AC: side 1 the winner on stage 3, side 0 the winner on stage
+     * 6 (whose lane-2 y word is 0xA40, not 0xD06), and a result neither
+     * side has; the seeds give x in all three lane-0 zones on both sides. */
+    m13_crowd_run(0x1234u, 1u, 3u);
+    m13_crowd_run(0x4321u, 0u, 6u);
+    m13_crowd_run(0x0BADu, 2u, 0u);
+    /* The lane-0 bounds are strict (signed `jge`): seed 0x9C3's first entry
+     * (side 0, a loser) lands on x = base + 0x9AA exactly, and 0xA17's on
+     * base + 0x1354 (scratchpad seed search over the replayed draws). */
+    m13_crowd_run(0x09C3u, 2u, 0u);
+    m13_crowd_run(0x0A17u, 2u, 0u);
+
+    /* (e2) An exhausted free list: 3 entries left, so side 0 gets 3 and the
+     * function returns before side 1 (the free list sentinel self-linked). */
+    {
+        u32 e, left = 0u, made = 0u;
+        m13_seed();
+        DSB(DS_001077B0 + 0x81u) = 2u;
+        DSB(DS_001077B0 + 0x94u + 0x81u) = 7u;
+        DSD(DS_001080EC) = m13_rec();
+        DSD(DS_001080F0) = m13_rec();
+        for (e = DSD(DS_001083C4); e != DS_001083C4; e = DSD(e)) left++;
+        CHECK_EQ_INT((int)left, 32);
+        while (left > 3u) {
+            effects_list_unlink(DSD(DS_001083C4));
+            left--;
+        }
+        fight_challenge_crowd();
+        for (e = DSD(DS_0010884C); e != DS_0010884C; e = DSD(e)) {
+            made++;
+            CHECK_EQ_INT((int)DSB(e + 0x21u), 0);
+        }
+        CHECK_EQ_INT((int)made, 3);
+        CHECK_EQ_INT((int)DSD(DS_001083C4), (int)DS_001083C4);
+    }
+
+    /* (f) 0x42FE0(side): the side's prompt actor (DS_001080FC for side 0,
+     * DS_001080F8 for 1) on the 0xE8816 stream at 6.0; its count actors
+     * (DS_001080E0/E8, DS_001080DC/E4) killed and the first pointer zeroed
+     * when the first is non-zero (else neither killed); the slot's +0x7F 0;
+     * DS_00104B1F |= its bit; row 0x1C's text at its col erased; DS_00104B19
+     * 1; 0x41310 adds 1 to both sides' +0x3C. The other side's actors keep
+     * their state. */
+    for (i = 0; i < 4u; i++) {
+        u32 side = i & 1u, o = side ^ 1u, pr[2], ct[4], sc[2], s;
+        m13_seed();
+        for (s = 0; s < 2u; s++) {
+            pr[s] = m13_rec();
+            sc[s] = m13_rec();
+            DSD(sc[s] + 0x3Cu) = 100u + s * 100u;
+            DSD(DS_001077A8 + s * 4u) = sc[s];
+        }
+        for (s = 0; s < 4u; s++) ct[s] = m13_rec();
+        DSD(DS_001080FC) = pr[0];
+        DSD(DS_001080F8) = pr[1];
+        DSD(DS_001080E0) = i < 2u ? ct[0] : 0u;
+        DSD(DS_001080E8) = ct[1];
+        DSD(DS_001080DC) = i < 2u ? ct[2] : 0u;
+        DSD(DS_001080E4) = ct[3];
+        DSB(DS_00104B1F) = 0x44u;
+        text_cursor_set((s32)DSB(DS_000BAB58 + side), 0x1C, game_string_get(0x48u), 0x1000u);
+        text_cursor_set((s32)DSB(DS_000BAB58 + o), 0x1D, game_string_get(0x48u), 0x1000u);
+        DSD(DS_00105BF8) = (u32)strlen((const char *)game_string_get(0x48u));
+        CHECK(q_row_cells(0x1C) != 0, "the side's text is drawn");
+        flow_challenge_join(side);
+        CHECK_EQ_INT((int)DSD(pr[side] + 0x24u), 0x40C00000);
+        CHECK_EQ_INT((int)DSD(pr[o] + 0x24u), 0);
+        CHECK_EQ_INT((int)DSB(DS_001077B0 + side * 0x94u + 0x7Fu), 0);
+        CHECK_EQ_INT((int)DSB(DS_001077B0 + o * 0x94u + 0x7Fu), 0x77);
+        CHECK_EQ_INT((int)DSB(DS_00104B1F), (int)(0x44u | (side + 1u)));
+        CHECK_EQ_INT((int)DSB(DS_00104B19), 1);
+        CHECK_EQ_INT(q_row_cells(0x1C), 0);
+        CHECK(q_row_cells(0x1D) != 0, "the other row kept");
+        CHECK_EQ_INT((int)DSD(sc[0] + 0x3Cu), 101);
+        CHECK_EQ_INT((int)DSD(sc[1] + 0x3Cu), 201);
+        {
+            u32 first = side == 0u ? ct[0] : ct[2], second = side == 0u ? ct[1] : ct[3];
+            u32 ofirst = side == 0u ? ct[2] : ct[0], osecond = side == 0u ? ct[3] : ct[1];
+            u32 pfirst = side == 0u ? DS_001080E0 : DS_001080DC;
+            u32 psecond = side == 0u ? DS_001080E8 : DS_001080E4;
+            int kill = i < 2u;
+            CHECK_EQ_INT((int)(DSB(first + 0x28u) & 8u), kill ? 8 : 0);
+            CHECK_EQ_INT((int)(DSB(second + 0x28u) & 8u), kill ? 8 : 0);
+            CHECK_EQ_INT((int)DSD(pfirst), 0);
+            CHECK_EQ_INT((int)DSD(psecond), (int)second);
+            CHECK_EQ_INT((int)(DSB(ofirst + 0x28u) & 8u), 0);
+            CHECK_EQ_INT((int)(DSB(osecond + 0x28u) & 8u), 0);
+        }
+    }
+
+    /* (g) 0x42CB4's challenge: r = 0 polls side 1, r = 1 side 0, each with
+     * one credit and the side's start (0x9ACBC: side 0 0x01000000, side 1
+     * 0x100) newly pressed: 0x42FE0(side) (its DS_00104B1F bit), the hook
+     * 0x28D68, DS_001088EE = DS_00104AFE = 0x78, DS_00104B25 = 5, and no
+     * countdown (the count 7 kept on a tick frame). The wrong side's start
+     * takes the countdown instead. r = 2, DS_00104B1F 0: side 0 joins with
+     * no stores and the loop goes on; side 1 then joins with the stores (one
+     * credit spent: 0x2CA7C debits only while DS_00104B1F is 0). With only
+     * side 1's start the join is side 1's, nothing is stored, and 0x42F60's
+     * DS_00105C04 = 1 forces the countdown's tick from 0xA (to 9). r = 2
+     * with DS_00104B1F 4 stores on side 0 and spends nothing. */
+    {
+        static const u32 rv[7] = { 0u, 0u, 1u, 1u, 2u, 2u, 2u };
+        static const u32 pv[7] = { 0x100u, 0x01000000u, 0x01000000u, 0x100u,
+                                   0x01000100u, 0x100u, 0x01000000u };
+        static const u8 b1f0[7] = { 0u, 0u, 0u, 0u, 0u, 0u, 4u };
+        static const u8 b1f1[7] = { 2u, 0u, 1u, 0u, 3u, 2u, 5u };
+        static const u8 hit[7] = { 1u, 0u, 1u, 0u, 1u, 0u, 1u };
+        static const u8 cr[7] = { 2u, 3u, 2u, 3u, 2u, 2u, 3u };
+        static const u8 n1[7] = { 7u, 6u, 7u, 6u, 7u, 9u, 7u };
+        for (i = 0; i < 7u; i++) {
+            u32 s;
+            m13_seed();
+            for (s = 0; s < 2u; s++) {
+                u32 a = m13_rec();
+                DSD(DS_001077A8 + s * 4u) = a;
+            }
+            DSD(DS_001080FC) = m13_rec();
+            DSD(DS_001080F8) = m13_rec();
+            DSD(DS_00104AD4) = rv[i];
+            DSD(DS_00105C00) = 3u;
+            DSD(DS_001088E4) = pv[i];
+            DSB(DS_00104B1F) = b1f0[i];
+            DSB(DS_00108110) = 7u;
+            DSW(DS_000EF6DC) = 0x40u;
+            flow_challenge_poll();
+            CHECK_EQ_INT((int)DSB(DS_00104B1F), (int)b1f1[i]);
+            CHECK_EQ_INT((int)DSD(DS_00105C00), (int)cr[i]);
+            CHECK_EQ_INT((int)DSD(DS_00104AE4), hit[i] ? 0x28D68 : (int)0xDEADBEEFu);
+            CHECK_EQ_INT((int)DSW(DS_001088EE), hit[i] ? 0x78 : 0x7777);
+            CHECK_EQ_INT((int)DSW(DS_00104AFE), hit[i] ? 0x78 : 0x7777);
+            CHECK_EQ_INT((int)DSB(DS_00104B25), hit[i] ? 5 : 0x77);
+            CHECK_EQ_INT((int)DSB(DS_00108110), (int)n1[i]);
+        }
+    }
+
+    /* (h) 0x42CB4's countdown (r = 0x55: no poll). Rows: the frame word,
+     * DS_00105C04, DS_00104B1F, the pressed word, the count before and
+     * after, and whether the count actors DS_001080E0 (row 3: 0) and
+     * DS_001080DC took +8 = 0xC82EC[count] and +0x28 |= 4. A forced tick
+     * restarts at 0xA (to 9) and clears DS_00105C04; a newly pressed button
+     * of the joined side ticks (bit 0: 0x4F778(1), 0xF00; bit 1: 0x4F778(0),
+     * 0x0F000000; with both bits only bit 0's mask counts); the frame word's
+     * low six bits 0 tick. */
+    {
+        static const u16 fw[8] = { 0x40u, 0x41u, 1u, 1u, 1u, 1u, 1u, 0x1040u };
+        static const u8 c04[8] = { 0u, 0u, 1u, 0u, 0u, 0u, 0u, 0u };
+        static const u8 b1f[8] = { 0u, 0u, 0u, 1u, 1u, 2u, 3u, 0u };
+        static const u32 e4[8] = { 0u, 0u, 0u, 0xF00u, 0x0F000000u, 0x0F000000u,
+                                   0x0F000000u, 0u };
+        static const u8 n1[8] = { 4u, 5u, 9u, 4u, 5u, 4u, 5u, 4u };
+        for (i = 0; i < 8u; i++) {
+            u32 c0, c1;
+            m13_seed();
+            c0 = m13_rec();
+            c1 = m13_rec();
+            DSD(c0 + 8u) = 0x7777u;
+            DSD(c1 + 8u) = 0x7777u;
+            DSB(c0 + 0x28u) = 0x10u;
+            DSB(c1 + 0x28u) = 0x10u;
+            DSD(DS_001080E0) = i == 3u ? 0u : c0;
+            DSD(DS_001080DC) = c1;
+            DSW(DS_000EF6DC) = fw[i];
+            DSB(DS_00105C04) = c04[i];
+            DSB(DS_00104B1F) = b1f[i];
+            DSD(DS_001088E4) = e4[i];
+            DSB(DS_00108110) = 5u;
+            flow_challenge_poll();
+            CHECK_EQ_INT((int)DSB(DS_00108110), (int)n1[i]);
+            CHECK_EQ_INT((int)DSB(DS_00105C04), 0);
+            if (n1[i] == 5u) {
+                CHECK_EQ_INT((int)DSD(c1 + 8u), 0x7777);
+                CHECK_EQ_INT((int)DSB(c1 + 0x28u), 0x10);
+            } else {
+                CHECK_EQ_INT((int)DSD(c1 + 8u), (int)DSD(DS_000C82EC + n1[i] * 4u));
+                CHECK_EQ_INT((int)DSB(c1 + 0x28u), 0x14);
+                CHECK_EQ_INT((int)DSD(c0 + 8u),
+                             i == 3u ? 0x7777 : (int)DSD(DS_000C82EC + n1[i] * 4u));
+                CHECK_EQ_INT((int)DSB(c0 + 0x28u), i == 3u ? 0x10 : 0x14);
+            }
+            CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0013u);
+            CHECK_EQ_INT((int)DSB(DS_00104B25), 0x77);
+        }
+    }
+
+    /* (i) The expiry (count 0, a tick): the count -1. With r = 2, or slot
+     * r's think gate (DS_00107813 + r * 0x94) 1, 0x4F1E4 and 0x2BAF4 (whose
+     * process mask DS_00104AE8 = 0 shows it); else neither. DS_00104B1F 1
+     * clears bit 6 of DS_00104B02..08, 2 bit 7, 3 neither (DS_00104B09
+     * kept; DS_00104B01 is the mode word's high byte). DS_00104B1D != 0: the hook 0x25AE8 and mode 0x17
+     * (DS_00104B25 kept); 0: DS_00104B25 = 0 and mode 0x1E (the hook kept).
+     * The count actors are not touched. */
+    {
+        static const u32 rv[6] = { 2u, 0u, 0u, 1u, 1u, 2u };
+        static const u8 g0[6] = { 0u, 1u, 0u, 0u, 0u, 0u };
+        static const u8 g1[6] = { 0u, 0u, 0u, 1u, 2u, 0u };
+        static const u8 rs[6] = { 1u, 1u, 0u, 1u, 0u, 1u };
+        static const u8 b1f[6] = { 1u, 2u, 3u, 1u, 2u, 0u };
+        static const u8 b1d[6] = { 0u, 1u, 0u, 2u, 0u, 0u };
+        for (i = 0; i < 6u; i++) {
+            u32 c1, k;
+            m13_seed();
+            c1 = m13_rec();
+            DSD(c1 + 8u) = 0x7777u;
+            DSD(DS_001080DC) = c1;
+            DSD(DS_00104AD4) = rv[i];
+            DSB(DS_00107813) = g0[i];
+            DSB(DS_001078A7) = g1[i];
+            DSB(DS_00104B1F) = b1f[i];
+            DSB(DS_00104B1D) = b1d[i];
+            DSD(DS_00104AE8) = 0x55u;
+            for (k = 0; k < 9u; k++) DSB(DS_00104B02 - 1u + k) = 0xFFu;
+            DSW(DS_000EF6DC) = 0x40u;
+            DSB(DS_00108110) = 0u;
+            flow_challenge_poll();
+            CHECK_EQ_INT((int)DSB(DS_00108110), 0xFF);
+            CHECK_EQ_INT((int)DSD(DS_00104AE8), rs[i] ? 0 : 0x55);
+            CHECK_EQ_INT((int)DSB(DS_00104B02 + 7u), 0xFF);
+            for (k = 0; k < 7u; k++)
+                CHECK_EQ_INT((int)DSB(DS_00104B02 + k),
+                             b1f[i] == 1u ? 0xBF : b1f[i] == 2u ? 0x7F : 0xFF);
+            if (b1d[i] != 0u) {
+                CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x25AE8);
+                CHECK_EQ_INT((int)DSW(DS_00104B00), 0x17);
+                CHECK_EQ_INT((int)DSB(DS_00104B25), 0x77);
+            } else {
+                CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+                CHECK_EQ_INT((int)DSW(DS_00104B00), 0x1E);
+                CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+            }
+            if (!rs[i]) CHECK_EQ_INT((int)DSD(c1 + 8u), 0x7777);
+        }
+    }
+    mz_restore();
+}
+
+/* One 0x424E8 step at DS_00104B25 = `b25` from m13_seed with the tail's
+ * DS_00104B1D = `b1d`. */
+static void m13_step(u32 b25, u32 b1d)
+{
+    DSB(DS_00104B25) = (u8)b25;
+    DSB(DS_00104B1D) = (u8)b1d;
+    game_mode_13_step();
+}
+
+/* The 0x424E8 dispatch, its tail and game_frame's case 0x13. */
+static void check_mode_13_c(void)
+{
+    u32 i;
+    if (!mz_save()) { CHECK(0, "the §48-D snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* (j) Case 0: 0x2BAF4 (DS_00104AE8 0), 0x38B18(0xC87BC) into the row
+     * table (id 0x3F11 at x 0), 0x428B8 (the count 9, both dropping
+     * records), DS_00104B15 = 0, DS_00104B25 = 1. The tail with
+     * DS_00104B1D 3 and DS_00104B1F 3 draws nothing. */
+    {
+        u32 row;
+        m13_seed();
+        DSD(DS_00104AE8) = 0x55u;
+        DSB(DS_00104B1F) = 3u;
+        DSD(DS_00104AD4) = 3u;
+        DSD(DS_001080F8) = m13_rec();
+        m13_step(0u, 3u);
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 1);
+        CHECK_EQ_INT((int)DSB(DS_00104B15), 0);
+        CHECK_EQ_INT((int)DSD(DS_00104AE8), 0);
+        CHECK_EQ_INT((int)DSB(DS_00108110), 9);
+        row = DSD(DS_00107A1C);
+        CHECK(row != 0u && row != 0x77777777u, "0x38B18 filled the row table");
+        if (row != 0u && row != 0x77777777u) {
+            CHECK_EQ_INT((int)DSD(row + 0x08u), 0x3F11);
+            CHECK_EQ_INT((int)DSD(row + 0x18u), 0);
+            CHECK_EQ_INT((int)DSD(row + 0x1Cu), 0);
+        }
+        CHECK(DSD(DS_001080B4) != 0u && DSD(DS_001080B8) != 0u, "0x428B8 ran");
+        CHECK_EQ_INT((int)DSD(DS_00105BF8), 0x77);
+        CHECK_EQ_INT((int)DSB(DS_00105C06), 0x77);
+    }
+
+    /* (k) Case 1: 0x42BCC. Both landed: DS_00104B25 2; else a step. */
+    for (i = 0; i < 2u; i++) {
+        u32 a, b;
+        m13_seed();
+        a = m13_rec();
+        b = m13_rec();
+        DSD(DS_001080B4) = a;
+        DSD(DS_001080B8) = b;
+        DSB(a + 0x5Bu) = 1u;
+        DSB(b + 0x5Bu) = (u8)i;
+        DSD(b + 0x34u) = 0x01000000u;
+        DSD(b + 0x1Cu) = 0xFFFFC400u;
+        DSB(DS_00104B1F) = 3u;
+        m13_step(1u, 3u);
+        CHECK_EQ_INT((int)DSB(DS_00104B25), i ? 2 : 1);
+        CHECK_EQ_INT((int)DSW(b + 0x36u), i ? 0x100 : 0x140);
+    }
+
+    /* (l) Case 2: the effects cleared (0x29CFC: the type-4 record planted
+     * first is gone), 0x20E90 on the stage (3), 0x42724, 0x4B9AC (both
+     * slots' +0x81 1: two entries each) and the filtered palette walk;
+     * DS_00104B25 3. Three
+     * palette-list entries are planted: handle 0x3E708 (skipped), the known
+     * 0x80995C (skipped by 0x1C6D4) and 0x12345 (faded: an effect record
+     * with +8 = the entry, type 3, +0xD = 3). Every live list entry but
+     * those two skips gets one; the effects count is theirs. */
+    {
+        u32 pl[3] = { 0u, 0u, 0u }, np = 0u, e, want = 0u, got = 0u;
+        static const u32 ph[3] = { 0x0003E708u, 0x0080995Cu, 0x00012345u };
+        u32 found[3] = { 0u, 0u, 0u };
+        m13_seed();
+        DSD(DS_00104AD4) = 2u;
+        DSB(DS_00104B1F) = 3u;
+        DSD(DS_000F0AEC) = 0x5A5A5A5Au;
+        DSB(DS_001077B0 + 0x81u) = 1u;
+        DSB(DS_001077B0 + 0x94u + 0x81u) = 1u;
+        (void)effects_spawn_darken(DS_00107608 + 0x10u, 1u);
+        for (e = DS_00107618; e < DS_00107798 && np < 3u; e += 0x10u) {
+            if (DSD(e + 4u) != 0u) continue;
+            DSD(e) = ph[np];
+            DSD(e + 4u) = 1u;
+            pl[np++] = e;
+        }
+        CHECK_EQ_INT((int)np, 3);
+        m13_step(2u, 3u);
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 3);
+        CHECK_EQ_INT((int)DSD(DS_000F0AEC), 0);
+        CHECK_EQ_INT((int)DSD(DS_001080EC), (int)DSD(DS_001077B0));
+        CHECK(DSD(DS_001077B0) != 0u, "0x42724 ran");
+        CHECK(DSD(DS_0010884C) != DS_0010884C, "0x4B9AC ran");
+        for (e = frontend_list_next(0u); e != 0u; e = frontend_list_next(e))
+            if (DSD(e) != 0x0003E708u && !frontend_resource_known(e)) want++;
+        for (e = DSD(DS_000FCCE0); e != DS_000FCCE0 && e != 0u; e = DSD(e)) {
+            u32 k;
+            got++;
+            CHECK_EQ_INT((int)DSB(e + 0x0Cu), 3);
+            CHECK_EQ_INT((int)DSB(e + 0x0Du), 3);
+            for (k = 0; k < 3u; k++) if (DSD(e + 8u) == pl[k]) found[k]++;
+        }
+        CHECK(want > 3u, "the walk sees the new actors' palettes too");
+        CHECK_EQ_INT((int)got, (int)want);
+        CHECK_EQ_INT((int)DSB(DS_0009AF3D), (int)want);
+        CHECK_EQ_INT((int)found[0], 0);
+        CHECK_EQ_INT((int)found[1], 0);
+        CHECK_EQ_INT((int)found[2], 1);
+    }
+
+    /* (m) Case 3: with the effects count DS_0009AF3D non-zero DS_00104B25
+     * stays 3, at 0 it becomes 4; 0x42CB4 runs either way (the count ticks
+     * on the frame word 0x40). Case 4: 0x42CB4 only. Case 5: 0x4F318
+     * (DS_001088EE 3 -> 2). Case 6 and above: nothing (the count and the
+     * countdown words kept). 0x33F08 runs in cases 3..5 with no slot records
+     * and writes nothing. */
+    {
+        static const u8 b25[6] = { 3u, 3u, 4u, 5u, 6u, 0xFFu };
+        static const u8 cnt[6] = { 1u, 0u, 0u, 0u, 0u, 0u };
+        static const u8 b25o[6] = { 3u, 4u, 4u, 5u, 6u, 0xFFu };
+        static const u8 n1[6] = { 4u, 4u, 4u, 5u, 5u, 5u };
+        static const u16 ee[6] = { 3u, 3u, 3u, 2u, 3u, 3u };
+        for (i = 0; i < 6u; i++) {
+            m13_seed();
+            DSB(DS_00104B1F) = 3u;
+            DSB(DS_0009AF3D) = cnt[i];
+            DSB(DS_00108110) = 5u;
+            DSW(DS_000EF6DC) = 0x40u;
+            DSW(DS_001088EE) = 3u;
+            DSW(DS_00104AFE) = 0x10u;
+            m13_step(b25[i], 3u);
+            CHECK_EQ_INT((int)DSB(DS_00104B25), (int)b25o[i]);
+            CHECK_EQ_INT((int)DSB(DS_00108110), (int)n1[i]);
+            CHECK_EQ_INT((int)DSW(DS_001088EE), (int)ee[i]);
+            CHECK_EQ_INT((int)DSW(DS_00104AFE), b25[i] == 5u ? 0xF : 0x10);
+        }
+    }
+
+    /* (n) The tail. Rows: DS_00104B1D, DS_00104B1F, DS_00104AB8, the think
+     * gates, credit, the sprite bit; then which sides drew. With no credit
+     * "INSERT 1 COIN" (0x2C1C8, row 0x1C, the side's col 3 / 0x18: the last
+     * drawn side's col in DS_00105C06); with a credit "PRESS START" (string
+     * form: string 0x48, "  PRESS START", its first letter two cells past
+     * the col; its length in DS_00105BF8; sprite form, DS_00104529 bit
+     * 1: the 0xBAB60 actor in DS_00105BF0[side] at y 0x3800). Blink phase 0
+     * (the frame word 0x20). The case is 6 (no body). */
+    {
+        static const u8 b1d[10] = { 1u, 1u, 1u, 2u, 2u, 0u, 0u, 0u, 1u, 0u };
+        static const u8 b1f[10] = { 0u, 0u, 0u, 1u, 2u, 0u, 0u, 2u, 0u, 0u };
+        static const u8 ab8[10] = { 2u, 1u, 3u, 0u, 0u, 0u, 0u, 0u, 2u, 3u };
+        static const u8 gt0[10] = { 0u, 0u, 0u, 0u, 0u, 1u, 0u, 0u, 0u, 0u };
+        static const u8 gt1[10] = { 0u, 0u, 0u, 0u, 0u, 0u, 1u, 0u, 0u, 0u };
+        static const u8 crd[10] = { 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 1u, 1u };
+        static const u8 spr[10] = { 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 1u, 0u };
+        /* bit 0 side 0 drew, bit 1 side 1. */
+        static const u8 drew[10] = { 2u, 1u, 3u, 2u, 1u, 2u, 1u, 1u, 2u, 3u };
+        for (i = 0; i < 10u; i++) {
+            m13_seed();
+            DSB(DS_00104B1F) = b1f[i];
+            DSD(DS_00104AB8) = ab8[i];
+            DSB(DS_00107813) = gt0[i];
+            DSB(DS_001078A7) = gt1[i];
+            DSD(DS_00105C00) = crd[i];
+            DSB(0x00104529u) = (u8)(spr[i] ? 2u : 0u);
+            DSW(DS_000EF6DC) = 0x20u;
+            m13_step(6u, b1d[i]);
+            if (!crd[i]) {
+                u32 last = (drew[i] & 2u) != 0u ? 1u : 0u;
+                CHECK_EQ_INT((int)DSB(DS_00105C06), (int)DSB(DS_000BAB58 + last));
+                CHECK_EQ_INT((int)DSB(DS_00105C07), 0x1C);
+                CHECK_EQ_INT((int)(ct_cell(0x1C, 3) != 0u), (drew[i] & 1u) != 0u);
+                CHECK_EQ_INT((int)(ct_cell(0x1C, 0x18) != 0u), (drew[i] & 2u) != 0u);
+            } else if (spr[i]) {
+                u32 s;
+                for (s = 0; s < 2u; s++) {
+                    u32 r = DSD(DS_00105BF0 + s * 4u);
+                    CHECK_EQ_INT((int)(r != 0u), ((drew[i] >> s) & 1u) != 0u);
+                    if (r != 0u) CHECK_EQ_INT((int)DSD(r + 0x1Cu), 0x3800);
+                }
+                CHECK_EQ_INT(q_row_cells(0x1C), 0);
+            } else {
+                CHECK_EQ_INT((int)DSD(DS_00105BF8),
+                             (int)strlen((const char *)game_string_get(0x48u)));
+                CHECK_EQ_INT((int)DSB(DS_00105C06), 0x77);
+                CHECK_EQ_INT((int)(ct_cell(0x1C, 5) != 0u), (drew[i] & 1u) != 0u);
+                CHECK_EQ_INT((int)(ct_cell(0x1C, 0x1A) != 0u), (drew[i] & 2u) != 0u);
+            }
+        }
+    }
+
+    /* (o) game_frame's case 0x13 (0x253C4), with no update-table bit,
+     * command block or 0x25414 tail, DS_00104B24 set (the 0x2A31C walk
+     * returns at once) and the input latches zeroed. The frame word 0x3F
+     * becomes 0x40 (0x24CDB) before the switch: at DS_00104B25 4 the count
+     * ticks 5 -> 4; the mode word is kept. */
+    m13_seed();
+    DSD(DS_00104AE8) = 0u;
+    DSB(DS_00104B19 + 2u) = 0u;
+    DSB(DS_00104B15) = 0u;
+    DSB(DS_00104B24) = 1u;
+    DSD(DS_000E1C34) = 0u;
+    DSD(DS_000E1C38) = 0u;
+    DSW(DS_000EF6DC) = 0x3Fu;
+    DSB(DS_00104B25) = 4u;
+    DSB(DS_00104B1D) = 3u;
+    DSB(DS_00104B1F) = 3u;
+    DSB(DS_00108110) = 5u;
+    game_frame();
+    CHECK_EQ_INT((int)DSB(DS_00108110), 4);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0013u);
+    mz_restore();
+}
+
+static void check_mode_13(void)
+{
+    u32 bufa = DSD(DS_001014E8), bufb = DSD(DS_001014E4);
+    CHECK(bufa != 0u && bufb != 0u, "the §48-D checks need the buffers");
+    if (bufa == 0u || bufb == 0u) return;
+    tf_snap(m13_bufa, bufa, sizeof m13_bufa);
+    tf_snap(m13_bufb, bufb, sizeof m13_bufb);
+    memcpy(m13_ap, gfx_aperture(), sizeof m13_ap);
+    memcpy(m13_dac, gfx_dac, sizeof m13_dac);
+    check_mode_13_a();
+    check_mode_13_b();
+    check_mode_13_c();
+    tf_put(m13_bufa, bufa, sizeof m13_bufa);
+    tf_put(m13_bufb, bufb, sizeof m13_bufb);
+    memcpy(gfx_aperture(), m13_ap, sizeof m13_ap);
+    memcpy(gfx_dac, m13_dac, sizeof m13_dac);
+}
+
 
 #define SC_ST   (FIGHT_RECS + 0x7000u)   /* crafted one-word streams, 0x10 apart */
 #define SC_SRC0 (FIGHT_RECS + 0x7800u)   /* a crafted effect source (pset 1 +0x18) */
@@ -29231,6 +30186,7 @@ int test_fight(void)
     check_fight_frame_b();
     check_fight_frame_c();
     check_mode_b();
+    check_mode_13();
 
     return g_failures - before;
 }

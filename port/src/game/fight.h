@@ -124,6 +124,10 @@ void fight_select_marker_spawn(u32 side, u32 cls, u32 y);
 void fight_hud_badge_spawn(u32 side, u32 ch, u32 y);
 void fight_hud_side_reset(u32 side);
 void fight_4dbec(void);
+/* 0x4B9AC — record §48-D. The challenge screen's crowd (mode 0x13's case 2):
+ * per side up to min(slot +0x81 * 2, 10) fight-effect entries, each a
+ * 0xC9524[rng(6)] actor in a lane, animated by the side's result. */
+void fight_challenge_crowd(void);
 
 /* Record §48-C. 0x1DA08: per side, the word DS_00102908[side] counts down;
  * at 0 or below the record DS_001028F8[side] restarts the stream 0xE9050 at

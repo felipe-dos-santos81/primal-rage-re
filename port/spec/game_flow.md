@@ -392,7 +392,8 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   there and enter mode `0x1A` (`0x4F980`). The mode `0x1A`/`0x1B` handlers
   `0x4F9A0`/`0x4F9C8` then dispatch it. The port registers `0x43738` (demo-pose
   record §42-F). The two hooks (themselves `DS_00104AE4` values, stored by
-  `0x42CB4`, `0x28DA4` and the unreferenced stub `0x42FB0`; `0x28DA4` is
+  `0x42CB4` (mode `0x13`'s challenge poll, ported as `flow_challenge_poll`,
+  record §48-D), `0x28DA4` and the unreferenced stub `0x42FB0`; `0x28DA4` is
   ported as `flow_player_join`, record §48-Q, and modes 6 and `0xC` reach it
   through the join poll `0x28CC8`, `flow_join_poll`, record §48-J), `0x4F980` and
   both handlers with their wipes `0x4F9E4`/`0x4FA88` are ported and the hooks
@@ -409,9 +410,9 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
   - it dispatches cases 3, 4, 5, 6, `0xB`, `0xC`, `0xD`, `0xE`, `0x10`,
-    `0x11`, `0x14`, `0x15`, `0x17`, `0x1A`, `0x1B` and `0x32`, and cases
-    1/2/`0x20` run the bare `ret` `0x29B70`;
-  - the other 29 cases are named gaps.
+    `0x11`, `0x13`, `0x14`, `0x15`, `0x17`, `0x1A`, `0x1B` and `0x32`, and
+    cases 1/2/`0x20` run the bare `ret` `0x29B70`;
+  - the other 28 cases are named gaps.
   - Case 4 (the table entry `0x25242`, `call 0x26254; jmp 0x2540F`) is the
     fight frame `0x26254` (`game_mode_04_step`, record §48-K): `0x3C5CC`,
     `0x16D58` per side and the two position latches; only with
@@ -499,6 +500,41 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     is decremented, and when its old value was `<= 0` (signed) `DS_00104B00`
     takes the return mode `DS_00104AFA`. Its two raw stores are `0x29B74`
     (mode `0xE`'s expiry, above) and `0x41578` (record §42-E).
+  - Case `0x13` is `0x424E8` (`game_mode_13_step`, record §48-D), the
+    challenge screen after a match: the return mode `DS_00104AFA` that mode
+    `0x15` takes after `0x28788` (mode 9, three sites, through mode `0x17`'s
+    hook `0x29B74`) or `0x41578`, each with `DS_00104B25 = 0`. A jump table
+    at `0x424D0` steps the byte `DS_00104B25`. 0: the `0x2C` voice (a
+    named gap, §45-A), `0x2BAF4`, `0x4F1D0`, the `0xC87BC` row (`0x38B18`)
+    and `0x428B8` (`flow_challenge_open`: the count `DS_00108110 = 9`, two
+    records dropped from y `-0x3C00` into `DS_001080B4`/`B8` and, on the
+    match result `DS_00104AD4` (0/1/2), the loser's prompt, `0xC838C` and
+    count children, with `0xC83B4`'s `+0x10` patched through `0x29CBC`),
+    then `DS_00104B15 = 0` and the next sub-state. 1: `0x42BCC`
+    (`flow_challenge_drop`: each record falls by `+0x36 += 0x40` and
+    bounces at `y + v >= 0` with `-(v / 3)`, landing at a magnitude of
+    `0x40` or less; both landed, the next sub-state). 2: the effects clear,
+    `0x20E90` (`flow_scroll_reset`: the camera words zeroed, `0x38730` on
+    the stage), `0x42724` (`flow_challenge_fighters`: both slot records
+    respawned from the result's descriptors, their palettes and secondary
+    actors), `0x4B9AC` (`fight_challenge_crowd`: up to 10 fight-effect
+    entries per side) and a palette fade (`0x13C70`, type 3) on every
+    `0x33904` entry but handle `0x3E708` and `0x1C6D4`'s nine; then the
+    next. 3: the next sub-state once no effect is active (the table call
+    `0xC7F58[stage]` is a no-op, as in `0x412A0`), then as 4. 4: `0x42CB4`
+    (`flow_challenge_poll`: the loser's start with a credit, either side on
+    a draw, takes the challenge through `0x42FE0`, the hook `0x28D68` and
+    sub-state 5; else the count ticks, and below 0 the mode becomes `0x1E`,
+    or `0x17` with the hook `0x25AE8` when `DS_00104B1D` is set) and
+    `0x33F08`. 5: `0x4F318` (mode `0x17`'s countdown, into the hook
+    `0x28D68`: mode `0x1A` with the return mode `0x10`) and `0x33F08`. Then
+    each side not skipped by `DS_00104B1D`'s rule (1: its `DS_00104AB8`
+    bit clear; other non-zero: its `DS_00104B1F` bit set; 0: that bit or
+    its think gate `DS_00107813` set) gets "PRESS START" (`0x2C178`, row
+    `0x1C`, or y `0x3800` for the sprite prompt) with a credit, else
+    "INSERT 1 COIN" (`0x2C1C8`, row `0x1C`). No ported path reaches mode
+    `0x13`: `0x28788` (mode 9), `0x416D4` and `0x41C28` (mode `0x12`) are
+    unported.
   - Cases `0xD` and `0x32` are `0x274FC`/`0x296B8` (`game_mode_0d_step`/
     `game_mode_32_step`, record §48-Q). Each runs the arena frame's tail
     steps (`0x3C5CC`, `0x16D58` per side, the two position latches, `0x35658`

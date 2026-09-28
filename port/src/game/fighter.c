@@ -28,8 +28,8 @@
 #define FIGHTER_C8FE0     0x000C8FE0u   /* 0x3A9B2: [char] projectile-hit stream */
 
 /* 0x29BC8. The character-palette acquire the spawn (0x33E1E) and the +0x52
- * handler block (0x33B00/0x36E78) share; defined with that block. */
-static void fighter_29bc8(u32 side, u32 rec, u32 ch);
+ * handler block (0x33B00/0x36E78) share; defined with that block. Exported
+ * (fighter.h) for 0x42724 (record §48-D). */
 
 /* 0x39A10/0x37D18/0x36870/0x37178/0x379C4. The 0x349C8 +0x42 bit-6/7 arms'
  * chains; defined together with the other 0x36xxx/0x37xxx handlers below.
@@ -1953,7 +1953,7 @@ static void hit_facing_flag(u32 side);                      /* 0x18B04 */
 
 /* 0x29BC8. Resolve the character's palette handle for `side` and point `rec`'s
  * pset at it (0x2A17C with word 0). */
-static void fighter_29bc8(u32 side, u32 rec, u32 ch)
+void fighter_29bc8(u32 side, u32 rec, u32 ch)
 {
     u32 tbl = DSD(DS_000A8A98 + ch * 4u);               /* 0x29BCD */
     u32 handle = DSD(tbl + (u32)DSB(DS_00105B34 + side) * 4u);
