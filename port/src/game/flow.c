@@ -1477,7 +1477,9 @@ void flow_round_bonus_a(u32 side)
 /* 0x2604C — record §48-K. 0x25FDC's twin: 0xA88F4 (bit 1) or 0xA88CC at the
  * same places into DS_00104AB0, DS_00104B0F = 0, DS_00104AEA |= 1, then
  * 0x41310(side, 0x4E20). EBX/ECX/EDX/ESI are pushed and popped. Callers:
- * 0x27CFD and 0x27DA0 (0x27C48). */
+ * 0x27CFD and 0x27DA0 (0x27C48), and 0x2613E in the unported 0x260BC (a
+ * code pointer stored at 0xA8680, no Ghidra function), on the signed byte
+ * DS_00104B1C. */
 void flow_round_bonus_b(u32 side)
 {
     if ((DSB(DS_00104529) & 2u) != 0u)                  /* 0x26052/0x26059 */
@@ -1540,7 +1542,7 @@ void flow_match_result_set(void)
  * DS_00104B1C = the winner; with it non-zero and DS_001088F2 >= 0x32,
  * 0x2604C(winner). Every path ends 0x256F4, 0x27BA4. EBX/ECX/EDX are pushed
  * and popped. Callers: 0x27FC8, 0x280C4 and 0x280DC (0x27FA8), and the
- * unported 0x29328. */
+ * unported 0x299A6/0x299DF (0x29970). */
 void flow_round_winner(void)
 {
     u8 a, b, al;
@@ -1672,8 +1674,8 @@ void flow_round_over(void)
  *   0x27DC8; unless DS_00104B16 == 2 the winner slot's +0x42 |= 0x80; the
  *   bytes DS_001078FC = DS_001078FE = 1 (BL), DS_000F0AFE = 2 (CL) and mode
  *   7 (DX). The mode word is compared as a zero-extended word
- *   (0x27FCF/0x2807C). EBX/ECX/EDX/EDI are pushed and popped. Only caller:
- *   0x263AF (0x26254). */
+ *   (0x27FCF/0x2807C). EBX/ECX/EDX/EDI are pushed and popped. Callers:
+ *   0x263AF (0x26254) and the unported 0x2669B (0x26540). */
 void flow_round_end_check(void)
 {
     u32 a = DSB(DS_0010780A), b = DSB(DS_0010789E);    /* 0x27FAE, 0x27FBA */
@@ -1770,7 +1772,7 @@ void game_mode_04_step(void)
     fight_hud_pass(1u);                                 /* 0x26391/0x26396 0x35658 */
     fight_effects_pass();                               /* 0x2639B 0x49C78 */
     camera_scene_step();                                /* 0x263A0 0x1282C + 0x263A5 0x12DA8 */
-    fight_hud_bar_tick();                               /* 0x263AA 0x1DA08 */
+    fight_hud_pulse();                                  /* 0x263AA 0x1DA08 */
     flow_round_end_check();                             /* 0x263AF 0x27FA8 */
     DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);     /* 0x263B4..0x263C5 */
     if (DSB(DS_001078FA) == 2u                          /* 0x263BA..0x263CE */
@@ -3504,7 +3506,7 @@ void game_frame(void)
         }
         /* PORT: 0x2535D 0x27380 (mode 0xC's arena frame) is a named gap
          * (record §48-J); of its callees 0x272DC is unported (0x3CB68 is
-         * fight_slot_pass, and 0x1DA08 fight_hud_bar_tick, record §48-K). */
+         * fight_slot_pass, and 0x1DA08 fight_hud_pulse, record §48-K). */
         break;
     }
     case 0x07u:

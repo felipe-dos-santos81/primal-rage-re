@@ -239,8 +239,9 @@ void fight_hud_side_reset(u32 side)
  * the slot's +0x5A) >> 1 (`sar`), and a reload below 0xC (the word re-read
  * as the dword at DS_00102906 `sar 0x10`) becomes 0xC. 0x2BC30 pushes and
  * pops EBX/ECX/ESI. EBX/ECX/EDX/ESI are pushed and popped. Callers: 0x263AA
- * (0x26254) and the unported 0x27380. */
-void fight_hud_bar_tick(void)
+ * (0x26254), and the unported 0x26696 (0x26540), 0x26864 (0x266AC), 0x274E7
+ * (0x27380) and 0x29B4F (0x299E8). */
+void fight_hud_pulse(void)
 {
     u32 side;
     for (side = 0; side < 2u; side++) {                 /* 0x1DA0C..0x1DA7B */
@@ -4039,7 +4040,7 @@ void fight_mode25_face(void)
  *   al,[eax+0x48]; xor ah,ah`, less 0x20, `and edx,0xffff`) and
  *   DS_0010839C[i] = E; else E's +0x1E = 1.
  * EBX..EBP are pushed and popped. Callers: 0x4E271 (0x4E11C, AL = 1), and the
- * unported 0x26540 and 0x26F58. */
+ * unported 0x4E987 (0x4E67C). */
 void fight_mode25_spawn(u32 fresh)
 {
     u32 i, node, desc = 0u;

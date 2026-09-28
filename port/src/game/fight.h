@@ -298,7 +298,7 @@ void fight_char_reset(u32 side);
  * +-0x3300); else the word DS_00108892 counts down. 0x4E350(fresh): the ten
  * DS_0010839C entries and their 0xC9524 actors; 0x4E27C: the active list's
  * actors re-faced to the camera centre. */
-void fight_hud_bar_tick(void);
+void fight_hud_pulse(void);
 void fight_mode25_enter(void);
 void fight_mode25_spawn(u32 fresh);
 void fight_mode25_face(void);
