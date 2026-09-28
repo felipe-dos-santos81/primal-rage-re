@@ -320,6 +320,16 @@ int actors_init(void)
      * 0x1952F, fn(slot) with EAX returned). The 0xD000/0xD100 target 0x370F0
      * (21 dwords, 0xD2B20..0xED5D0, three per character), opcodes 0x10/0x11,
      * mode 0x4000. */
+    /* PORT: the render table's bit 1 entry, DS_000A86C4[1] = 0x1D540 (record
+     * §49-V), which 0x255CC's per-bit walk calls while DS_00104AEC bit 1 is
+     * set and which clears that bit. */
+    fn_register(0x1D540u, fight_hud_meter_step);
+    /* PORT: the pair callbacks 0x21994 stores (record §49-V): the slot +0x0C
+     * 0x216EC (0x3531C case 7, (slot, rec, side)) and the other slot's +0x10
+     * 0x21458 (case 10, which the port calls as (slot, side): the adapter
+     * supplies the record). */
+    fn_register(0x216ECu, (void (*)(void))fighter_216ec);
+    fn_register(0x21458u, (void (*)(void))fighter_21458_case10);
     fn_register(0x22BECu, (void (*)(void))fighter_22bec);
     fn_register(0x29D04u, (void (*)(void))fighter_29d04);
     fn_register(0x370F0u, (void (*)(void))anim_code_370F0);

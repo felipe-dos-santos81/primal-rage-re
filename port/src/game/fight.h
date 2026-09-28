@@ -262,6 +262,12 @@ void fight_hud_spawn_side(u32 enable);
 void fight_hud_bar_set(s32 v, u32 side);
 void fight_hud_bar2_set(s32 v, u32 side);
 
+/* 0x1D540 (record §49-V). The render-table bit 1 handler: steps the two HUD
+ * meters DS_0010290C/E toward the slots' +0x5A/+0x5D targets, runs the +0x5D/
+ * +0x5E counters, and clears DS_00104AEC bit 1. Registered as a render-table
+ * entry in actors_init. */
+void fight_hud_meter_step(void);
+
 /* 0x20EF8 (record §48-U). The per-round reset of both sides' slot words
  * +0x74/+0x76/+0x78/+0x84/+0x8C, their 0x38BEC scratch (the 0x107D18..
  * words and 64 bytes at 0x107A80), the 0xFD148/0xFD158 bytes, DS_001078F2,

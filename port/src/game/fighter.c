@@ -1262,7 +1262,11 @@ static int ai_pred_46898(u32 side)
     return DSB(ctx[3] + 0x54u) == 2u;
 }
 
-static int ai_pred_468d8(u32 side)
+/* 0x468D8 — record §49-V (ported earlier without a header; exported for
+ * 0x1D540). EAX = the side: 1 when the slot's +0x10 handler is 0x22BEC with the
+ * record's +0x24 low 31 bits clear and +0x54 not 2 (0x468EC..0x4690C), else 1
+ * when the slot's +0x52 byte is 7 (0x4691E). Pure. */
+int ai_pred_468d8(u32 side)
 {
     u32 ctx[6];
     fighter_ctx_swap(ctx, side);                        /* 0x468E3 */
@@ -9575,6 +9579,263 @@ void fighter_3f308(u32 slot)
                       DSD(rec + 0x1Cu), a5);                /* 0x3F335..0x3F347 0x2AE14 */
     fighter_13244();                                        /* 0x3F34C */
     /* PORT: 0x3F351/0x3F356 0x2C3FC(0x72) voice, not wired (record §45-A). */
+}
+
+/* PORT: data-object addresses symbols.h does not name (record §49-V). */
+#define FIGHT_21_CTR_TBL   0x000BD882u  /* 0x21496 etc.: per-char dword, the ground x thresholds */
+#define FIGHT_21_A8234     0x000A8234u  /* 0x21533: per-char dword, 0x21458 case 1's second addend */
+#define FIGHT_21_A8274     0x000A8274u  /* 0x21502: [char] 0x21458 case 0's stream */
+#define FIGHT_21_A829C     0x000A829Cu  /* 0x21581: [char] 0x21458 case 1's stream */
+#define FIGHT_21_A824C     0x000A824Cu  /* 0x21A66: [char] 0x21994's other-side stream */
+#define FIGHT_21_C8B58     0x000C8B58u  /* 0x21892: [char] 0x216EC case 2's stream */
+#define FIGHT_21_BB1DC     0x000BB1DCu  /* 0x2151D: 0x21458 case 0's dust descriptor */
+#define FIGHT_21_BB308     0x000BB308u  /* 0x21F6A: 0x21F30's descriptor */
+#define FIGHT_21_E49C4     0x000E49C4u  /* 0x219AB: 0x21994's own stream */
+#define FIGHT_21_E4A18     0x000E4A18u  /* 0x2195D: 0x216EC case 4's stream for character 1 */
+#define FIGHT_21_E16E6     0x000E16E6u  /* 0x21964: 0x216EC case 4's stream for character 6 */
+
+/* 0x21F30 — record §49-V. EAX = slot: 0x3F308's body a second time (the
+ * compiler emitted it under a separate address). The slot's record spawns
+ * 0xBB308 at its own x, y and +0x30 >> 16, a5 = 0x4000 when its +0x28 bit 14
+ * is set (else 0); the actor 0x2AE14 returns is not read. Then 0x13244.
+ * Callers 0x214D9 (0x21458), 0x21DBE (0x21DA4) and 0x220A6 (0x2208C); the last
+ * two are unported. */
+static void fighter_21f30(u32 slot)
+{
+    u32 rec, a5;
+    /* PORT: 0x21F35/0x21F3A 0x2C3FC(0x6C) voice, not wired (record §45-A). */
+    rec = DSD(slot);                                        /* 0x21F3F */
+    a5 = (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u; /* 0x21F41..0x21F5D */
+    (void)actor_spawn((const u32 *)(mem + FIGHT_21_BB308), DSD(rec + 0x18u),
+                      (u32)((s32)DSD(rec + 0x30u) >> 16),
+                      DSD(rec + 0x1Cu), a5);                /* 0x21F5D..0x21F6F 0x2AE14 */
+    fighter_13244();                                        /* 0x21F74 */
+    /* PORT: 0x21F79/0x21F7E 0x2C3FC(0x72) voice, not wired (record §45-A). */
+}
+
+/* 0x21458 — record §49-V. The slot +0x10 callback 0x21994 stores in the slot
+ * of the side opposite the record it arms (0x3531C case 10 resolves it; the
+ * registers are EAX = slot, EDX = rec, EBX = side). EDI = 1 - side. The context is 0x33A10(side) (ctx[2] = the other slot,
+ * ctx[3] = slot, ctx[5] = this slot's record). Steps the slot's +0x58 byte
+ * (unsigned, above 3 leaves) through the jump table 0x21448:
+ * - 0: with word[0xBD882 + char * 2] >> 16 - 0xDC0 above the slot's +0x30 or
+ *   the record's +0x44 word zero (0x214A3..0x214AC), 0x39834 on the side with
+ *   the other slot's +0x5F, 0x21F30, then the record's +0x36 = 0x190, +0x44 =
+ *   0x1E, the slot's +0x58 = 1 and +0x54 = 2, the record on the stream
+ *   dword[0xA8274 + char * 4] at 3.0 (0x2BC30), and the 0xBB1DC dust at
+ *   (slot+0x2C, rec+0x30 >> 16, a4 = 0, a5 = 0);
+ * - 1: with word[0xBD882 + char * 2] >> 16 plus word[0xA8234 + char * 2] >> 16
+ *   above the slot's +0x30 and this slot's record's +0x36 word negative
+ *   (signed), +0x54 = 0, +0x58 = 2, 0x3C16C, 0x188AC at x = the record's +0x18,
+ *   y = 0, and the stream dword[0xA829C + char * 4] at 3.0;
+ * - 2: this record's +0x28 bit 5 cleared, the record's +0x43 = 0xF;
+ * - 3: nothing. */
+void fighter_21458(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    u32 other = 1u - side;                                  /* 0x21466/0x21473 */
+    fighter_ctx_swap(ctx, side);                            /* 0x2146B 0x33A10 */
+    u32 ch = (u32)DSB(slot + 0x7Au);                        /* 0x21482.. */
+    switch (DSB(slot + 0x58u)) {                            /* 0x21470..0x21482 table 0x21448 */
+    case 0u: {
+        s32 thr = ((s32)DSD(FIGHT_21_CTR_TBL + ch * 2u) >> 16) - 0xDC0;    /* 0x2148A..0x2149C */
+        if (!(thr > (s32)DSD(slot + 0x30u))                 /* 0x214A1/0x214A3 */
+                && DSW(DSD(slot) + 0x44u) != 0u)            /* 0x214A5..0x214AC */
+            return;                                         /* 0x214AC 0x215A9 */
+        fighter_39834(side, (s32)DSB(DS_001077B0 + other * 0x94u + 0x5Fu));    /* 0x214B2..0x214D2 */
+        fighter_21f30(slot);                                /* 0x214D9 */
+        DSW(DSD(slot) + 0x36u) = 0x0190u;                   /* 0x214E0 */
+        DSW(DSD(slot) + 0x44u) = 0x001Eu;                   /* 0x214E8 */
+        DSB(slot + 0x58u) = 1u;                             /* 0x214EE */
+        DSB(slot + 0x54u) = 2u;                             /* 0x214F4 */
+        actors_anim_begin(DSD(slot),
+                          DSD(FIGHT_21_A8274 + ch * 4u), 0x40400000u);  /* 0x214F8..0x2150B 0x2BC30 */
+        (void)actor_spawn((const u32 *)(mem + FIGHT_21_BB1DC), DSD(slot + 0x2Cu),
+                          (u32)((s32)DSD(rec + 0x30u) >> 16), 0u, 0u);  /* 0x21510..0x21522 0x2AE14 */
+        return;
+    }
+    case 1u: {
+        s32 sum = ((s32)DSD(FIGHT_21_CTR_TBL + ch * 2u) >> 16)
+                + ((s32)DSD(FIGHT_21_A8234 + ch * 2u) >> 16);           /* 0x21533..0x21547 */
+        if (!(sum > (s32)DSD(slot + 0x30u))) return;        /* 0x21549/0x2154C */
+        if ((s16)DSW(ctx[5] + 0x36u) >= 0) return;          /* 0x2154E..0x21557 */
+        DSB(slot + 0x54u) = 0;                              /* 0x21559 */
+        DSB(slot + 0x58u) = 2u;                             /* 0x2155D */
+        fighter_3c16c(ctx[1]);                              /* 0x21561 0x3C16C */
+        hit_anchor_set(ctx[1], DSD(ctx[5] + 0x18u), 0u);    /* 0x21577 0x188AC */
+        actors_anim_begin(DSD(slot),
+                          DSD(FIGHT_21_A829C + ch * 4u), 0x40400000u);  /* 0x2157E..0x2158F 0x2BC30 */
+        return;
+    }
+    case 2u:
+        DSB(ctx[5] + 0x28u) &= 0xDFu;                       /* 0x2159F */
+        DSB(DSD(slot) + 0x43u) = 0x0Fu;                     /* 0x215A5 */
+        return;
+    default:                                                /* 3 and above 3 */
+        return;
+    }
+}
+
+/* PORT: the case-10 call 0x354E2 in the port's fighter_state_3531c passes
+ * only (slot, side) (the pose handlers 0x3A43C/0x39CC8/0x22BEC read no
+ * record). The raw reaches 0x21458 there with EDX still the record loaded at
+ * 0x35396 (`mov edx,[ecx]`, nothing writes EDX before the case switch) and
+ * EBX = side, so this adapter supplies rec = DSD(slot). */
+void fighter_21458_case10(u32 slot, u32 side)
+{
+    fighter_21458(slot, DSD(slot), side);                   /* 0x35396, 0x354E2 */
+}
+
+/* 0x216EC — record §49-V. The slot +0x0C callback 0x21994 stores (0x3531C case
+ * 7: EDX = rec, EBX = side; EAX is overwritten at 0x216F6 unread). The
+ * context is 0x33950(side) (ctx[2] = the slot, ctx[3] = the other slot,
+ * ctx[4] = this record, ctx[5] = the other's). The counter word
+ * DS_00104764[side] is incremented (0x21702), then the slot's +0x57 byte
+ * (above 5 leaves) steps through the jump table 0x216D4; c below is the
+ * counter as a signed word (the high half of the dword at 0x104762 +
+ * side * 2, 0x21727):
+ * - 0: with c above 0x16, +0x57 = 1, this record's +0x34/+0x36/+0x44 = 0x96/
+ *   0x258/0x28, this record's +0x4B = 0, the other record's +0x24 =
+ *   0x40000000, the other slot's +0x58 = 0 and its record's +0x34/+0x36/+0x44
+ *   = 0xFF6A/0xFE0C/0xA; then, unless 0x1A570 reports the side unflipped
+ *   (non-zero), both records' +0x34 words are negated;
+ * - 1: with c above 0x19, +0x57 = 2;
+ * - 2: this record's +0x44 = 0xF while its +0x36 word is negative; once
+ *   word[0xBD882 + char * 2] >> 16 is above the slot's +0x30 the landing
+ *   runs: +0x54 = 0, 0x188AC at x = this record's +0x18 and y = 0, 0x3C148,
+ *   0x3C16C, this record on dword[0xC8B58 + char * 4] at 3.0 (0x2BC30) and
+ *   +0x57 = 3;
+ * - 3 and 5: nothing;
+ * - 4: with (this record's +0x36 word negative and word[0xBD882 + side * 2]
+ *   >> 16 above the slot's +0x30) or c above 7: when the byte
+ *   DS_0010476E[side] is set the slot's +0x53/+0x52/+0x54 = 0/4/2 and its
+ *   +0x0C/+0x18/+0x1C are cleared; else, with the slot DS_001077A8[rec's
+ *   +0x51] non-zero, this record starts the stream 0xE4A18 (that slot's
+ *   character 1) or 0xE16E6 (6) through 0x3C4CC, and +0x57 = 5, +0x8A = 0. */
+void fighter_216ec(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    (void)slot;                                             /* 0x216EC: EAX is overwritten at 0x216F6 */
+    fighter_ctx_same(ctx, side);                            /* 0x216F8 0x33950 */
+    u32 sl = ctx[2];
+    u32 r = ctx[4];
+    u32 idx2 = ctx[0] * 2u;                                 /* 0x216FD/0x21700, still EAX in every case */
+    DSW(DS_00104764 + idx2) = (u16)(DSW(DS_00104764 + idx2) + 1u);     /* 0x21702 */
+    s32 c = (s32)DSD(DS_00104762 + idx2) >> 16;             /* 0x21727 */
+    switch (DSB(sl + 0x57u)) {                              /* 0x2170D..0x2171F table 0x216D4 */
+    case 0u: {
+        if (!(c > 0x16)) return;                            /* 0x21730/0x21733 */
+        DSB(sl + 0x57u) = 1u;                               /* 0x2173D */
+        DSW(DSD(sl) + 0x34u) = 0x0096u;                     /* 0x21747 */
+        DSW(DSD(sl) + 0x36u) = 0x0258u;                     /* 0x21753 */
+        DSW(DSD(sl) + 0x44u) = 0x0028u;                     /* 0x2175F */
+        {
+            u32 o = 1u - ctx[0];                            /* 0x21768..0x2176F */
+            DSB(DSD(DS_001077B0 + ctx[0] * 0x94u) + 0x4Bu) = 0;             /* 0x21782 */
+            DSD(DSD(DS_001077B0 + o * 0x94u) + 0x24u) = 0x40000000u;         /* 0x2179B */
+        }
+        DSB(ctx[3] + 0x58u) = 0;                            /* 0x217A6 */
+        DSW(DSD(ctx[3]) + 0x34u) = 0xFF6Au;                 /* 0x217B0 */
+        DSW(DSD(ctx[3]) + 0x36u) = 0xFE0Cu;                 /* 0x217BC */
+        DSW(DSD(ctx[3]) + 0x44u) = 0x000Au;                 /* 0x217C8 */
+        if (fighter_actor_bit15_clear(ctx[0]) != 0) return; /* 0x217D1..0x217D8 0x1A570 */
+        DSW(r + 0x34u) = (u16)(0u - DSW(r + 0x34u));        /* 0x217E2..0x217EB */
+        DSW(ctx[5] + 0x34u) = (u16)(0u - DSW(ctx[5] + 0x34u));   /* 0x217F3..0x217FC */
+        return;
+    }
+    case 1u:
+        if (c > 0x19) DSB(sl + 0x57u) = 2u;                 /* 0x21810..0x2181D */
+        return;
+    case 2u: {
+        if ((s16)DSW(r + 0x36u) < 0)                        /* 0x2182C */
+            DSW(r + 0x44u) = 0x000Fu;                       /* 0x21833 */
+        if (!((s32)DSD(FIGHT_21_CTR_TBL + (u32)DSB(sl + 0x7Au) * 2u) >> 16
+                  > (s32)DSD(sl + 0x30u)))                  /* 0x21845..0x21856 */
+            return;
+        DSB(sl + 0x54u) = 0;                                /* 0x2185C */
+        hit_anchor_set(ctx[0], DSD(r + 0x18u), 0u);         /* 0x2186C 0x188AC */
+        fighter_3c148(ctx[0]);                              /* 0x21874 */
+        fighter_3c16c(ctx[0]);                              /* 0x2187C */
+        actors_anim_begin(r, DSD(FIGHT_21_C8B58 + (u32)DSB(sl + 0x7Au) * 4u),
+                          0x40400000u);                     /* 0x21881..0x2189D 0x2BC30 */
+        DSB(sl + 0x57u) = 3u;                               /* 0x218A6 */
+        return;
+    }
+    case 4u: {
+        int hit = 0;
+        /* PORT: EAX is still side * 2 here (0x216FD), so 0x218C0 indexes the
+         * 0xBD882 dword table by the side, not by the character as case 2 does. */
+        if ((s16)DSW(r + 0x36u) < 0                         /* 0x218B5..0x218BE */
+                && (s32)DSD(DS_000BD882 + idx2) >> 16 > (s32)DSD(sl + 0x30u))  /* 0x218C0..0x218D0 */
+            hit = 1;                                        /* 0x218D2 */
+        if ((s32)DSD(DS_00104762 + idx2) >> 16 > 7)         /* 0x218D7..0x218E4 */
+            hit = 1;                                        /* 0x218E6 */
+        if (!hit) return;                                   /* 0x218E8/0x218EA */
+        if (DSB(DS_0010476E + ctx[0]) != 0u) {              /* 0x218F3 */
+            DSB(sl + 0x53u) = 0;                            /* 0x21900 */
+            DSB(sl + 0x52u) = 4u;                           /* 0x21908 */
+            DSB(sl + 0x54u) = 2u;                           /* 0x21910 */
+            DSD(sl + 0x0Cu) = 0;                            /* 0x21918 */
+            DSD(sl + 0x18u) = 0;                            /* 0x2192A */
+            DSD(sl + 0x1Cu) = 0;                            /* 0x21930 */
+            return;
+        }
+        {
+            u32 tgt = DSD(DS_001077A8 + (u32)DSB(rec + 0x51u) * 4u);    /* 0x2193E..0x21944 */
+            if (tgt == 0u) return;                          /* 0x2194A/0x2194C */
+            u8 tc = DSB(tgt + 0x7Au);                       /* 0x2194E */
+            u32 stream = 0u;
+            if (tc == 1u) stream = FIGHT_21_E4A18;          /* 0x21951..0x2195D */
+            else if (tc == 6u) stream = FIGHT_21_E16E6;     /* 0x21955..0x21964 */
+            if (stream != 0u)
+                hit_anim_start_b(r, stream, 0x40400000u);   /* 0x21969..0x21972 0x3C4CC */
+        }
+        DSB(sl + 0x57u) = 5u;                               /* 0x2197B */
+        DSB(sl + 0x8Au) = 0;                                /* 0x21983 */
+        return;
+    }
+    default:                                                /* 3, 5 and above 5 */
+        return;
+    }
+}
+
+/* 0x21994 — record §49-V. EAX = slot, EDX = rec (the fighter whose finishing
+ * move this arms; the context is 0x339AC(rec), so ctx[0] = rec+0x51, the side
+ * ESI). The record restarts on the stream 0xE49C4 at 3.0 (0x2BC30); the slot's
+ * +0x57 = 0, +0x52 = 9, +0x53 = 7, +0x54 = 2, +0x0C = 0x216EC (fighter_216ec);
+ * the record's +0x44 = 0xF and +0x36 = 0xFA; 0x3C190(side, 0x64); the slot's
+ * +0x40 |= 0x48000. The other side's slot (EDI = 1 - side): +0x52 = 0x10, +0x54
+ * = 2, +0x53 = 0xA, +0x10 = 0x21458 (fighter_21458), +0x58 = 3, +0x41 |= 0x80,
+ * its record on the stream dword[0xA824C + its char * 4] with a stack a3 of 0;
+ * the counter word DS_00104764[side] = 0. Returns 1 (AL, 0x21A7B). Callers
+ * 0x21B43 and 0x21C33 are unported. */
+u32 fighter_21994(u32 slot, u32 rec)
+{
+    u32 ctx[6];
+    hit_anim_ctx(ctx, rec);                                 /* 0x2199F 0x339AC */
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x219B2 */
+    u32 other = 1u - side;                                  /* 0x219DC/0x219EE */
+    u32 os = DS_001077B0 + other * 0x94u;                   /* 0x219F5..0x21A0D */
+    actors_anim_begin(rec, FIGHT_21_E49C4, 0x40400000u);    /* 0x219A6..0x219B6 0x2BC30 */
+    DSB(slot + 0x57u) = 0;                                  /* 0x219BB */
+    DSB(slot + 0x52u) = 9u;                                 /* 0x219BF */
+    DSB(slot + 0x53u) = 7u;                                 /* 0x219C3 */
+    DSB(slot + 0x54u) = 2u;                                 /* 0x219C7 */
+    DSD(slot + 0x0Cu) = 0x000216ECu;                        /* 0x219CD */
+    DSW(DSD(slot) + 0x44u) = 0x000Fu;                       /* 0x219D4 */
+    DSW(DSD(slot) + 0x36u) = 0x00FAu;                       /* 0x219E6 */
+    fighter_3c190(side, 0x64u);                             /* 0x219F0 0x3C190 */
+    DSD(slot + 0x40u) |= 0x48000u;                          /* 0x219FC..0x21A0A */
+    DSB(os + 0x52u) = 0x10u;                                /* 0x21A13 */
+    DSB(os + 0x54u) = 2u;                                   /* 0x21A1A */
+    DSB(os + 0x53u) = 0x0Au;                                /* 0x21A28 */
+    DSD(os + 0x10u) = 0x00021458u;                          /* 0x21A2F */
+    DSB(os + 0x58u) = 3u;                                   /* 0x21A3B */
+    DSW(DS_00104764 + ctx[0] * 2u) = 0;                     /* 0x21A4B */
+    DSB(os + 0x41u) = (u8)(DSB(os + 0x41u) | 0x80u);        /* 0x21A55..0x21A5F */
+    actors_anim_begin(DSD(os), DSD(FIGHT_21_A824C + (u32)DSB(os + 0x7Au) * 4u),
+                      0u);                                  /* 0x21A66..0x21A76 0x2BC30 */
+    return 1u;                                              /* 0x21A7B */
 }
 
 /* 0x3F184 — record §48-P. Called only at 0x3F3C8 (in 0x3F360). EAX = rec

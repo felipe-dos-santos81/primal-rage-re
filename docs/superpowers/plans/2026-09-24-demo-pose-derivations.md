@@ -22156,3 +22156,192 @@ re-derived. No voice (`0x2C3FC`) call site in `0x4BF18` is wired (spec §7,
 record §45-A) — moot in any case, since the one voice call
 (`0x4BFF0`, `voice(200)`) sits behind the `0x4A868` gate and is therefore
 unreachable regardless.
+
+## 49-V. The engine/HUD helper cluster `0x1B000`-`0x1E500` and the `0x21994` pair (named-gap batch, branch `gap41-enginehelpers`)
+
+### 49-V.1 Dispositions
+
+The batch list (`0x1B120`, `0x1BBAC`, `0x1C0F0`, `0x1CB18`, `0x1D540`,
+`0x1E30C`, `0x1E458`, plus `0x216EC`, `0x21458`, `0x204F4` as the
+top-up) came from a heuristic that reads only `/* 0xADDR` headers. Each
+address was checked against `port_progress.py --unported`, a grep of
+`port/src`, and the Ghidra bridge's `get_xrefs_to`:
+
+| Address | Disposition |
+|---|---|
+| `0x1B120` (INDEX loader) | Already ported: `res_load_index` (`res.c`), header "FUN_0001B120". Not touched. |
+| `0x1CB18` (sample start) | Already ported as `game_sample_play` (`flow.c`), header "FUN_0001cb18", on the port's host-side AIL model. Its named gap (the per-slot copy into the `0x1D0BC` buffer, spec §7) stands. Not touched. |
+| `0x468D8` (a callee of `0x1D540`, not on the list) | Already ported as the static `ai_pred_468d8` (`fighter.c`, no address header). Exported and given a header. |
+| `0x1BBAC` | Not ported. The keyboard/joystick sampler of the timer ISR chain (`0x1BDF4`; its only call site `0x1BE1C` is inside the ISR body, which Ghidra has no function for). It calls `0x4FDF5`, `0x4FBBB`, `0x4FC05`, `0x4FCFD`, `0x4FF8F` and `0x4FFD8` (read from the raw; not derived further) on the state words at `DS_00101514 + 0x2D4/0x2D6` and stores the result bytes at `DS_00101514 + 0x2D8/0x2D9`, the bitmap the port fills from the host. The port fills that same bitmap from the host (`host_key_bits`, `game_loop`), so there is no ported caller and the hardware path has no C equivalent. |
+| `0x1C0F0`, `0x1E30C`, `0x1E458` | Not ported. The extended-memory block list: `0x1E2A0` (the pool-link init, its only caller of `0x1C0F0`) builds the 0x18-byte node pool at `0x102910`; `0x1C0F0` probes DPMI free memory (`0x1AD30`/`0x1AD64`/`0x1ACF0`) and allocates the arena through `0x61423`; `0x1E458` is the block allocator and `0x1E30C` the pass it runs (twice) to merge adjacent free nodes and find the largest free block. The port runs flat over `mem[]` with bump allocators (`res.c`'s `FUN_0001C308` replacement, `flow.c`'s 0x1E2A0/0x1C0F0 PORT note); the callers of `0x1E458` are `0x1C308` (replaced), and two call sites (`0x1C27D`, `0x1C2A6`) that have no Ghidra function. No ported caller exists, and a C port would model a heap the port never runs. |
+| `0x204F4` | Not ported. Its only caller is `0x1EC38` (the single-rank gate), which is unported on this branch's base and is being ported on `gap37-hiscorerank` (record §49-R) with `0x204F4` left there as the named gap "name-entry candidate-list prep". Porting it here would collide with that record and with the name-entry batch (`gap39-nameentry`). |
+| `0x1D540` | Ported: `fight_hud_meter_step` (`fight.c`), with `0x1D4D0` (`fight_hud_rate`) and `0x1D74C` (`fight_cmd_bits_30`). |
+| `0x216EC`, `0x21458` | Ported: `fighter_216ec`, `fighter_21458` (+ `fighter_21458_case10`), with the callee `0x21F30` (`fighter_21f30`) and their common installer `0x21994` (`fighter_21994`). |
+
+### 49-V.2 `0x1D540`, the render table's bit 1 handler
+
+`0x255CC`'s per-bit walk (`0x2561C`-`0x2562E`) calls
+`[0xA86C4 + 4 * bit]` while `DS_00104AEC` has the bit set. The table is
+`{0x4F4E8, 0x1D540, 0x5D812, 0x1DC0C}` (read_memory `0xA86C4`), so
+`0x1D540` is entry 1, the entry that the many `DS_00104AEC |= 2` sites
+(records §48-U, §49-*) arm. The port's `run_process_table(DS_000A86C4,
+DS_00104AEC)` (`flow.c`) resolves each live bit through `fn_resolve`, and
+had no entry registered for bit 1 (unregistered targets are skipped), so
+the bit stayed set forever. `0x1D540` is now registered in `actors_init`
+(`fn_register(0x1D540u, fight_hud_meter_step)`); its tail `and byte
+[0x104aec], 0xFD` (`0x1D738`) clears the bit each walk, as in the raw.
+
+The loop runs per side (`EBX` 0..1, `ESI = side * 4`, `ECX = side * 0x94`;
+the slot is `0x33A10`'s `out[3]`). `lim` (`[esp+0x18]`) starts at 10 and
+`rate` (`[esp+0x1C]`) at 0. Reading the raw straight through:
+
+1. `EDI = 0x1D4D0(side)`: the byte `DS_000A769C[4 * slot.+0x7A + column]`,
+   column 0/1/2/3 for the slot's `+0x5D` byte (zero-extended, `jle`
+   signed) above `0x3D` / `0x2F` / `0x22` / else (`0x1D4F9`-`0x1D530`).
+   The image table is `2,4,8,12` in every row but the last (zeros).
+2. Meter A `DS_0010290C[side]` steps one toward the slot's `+0x5A` byte
+   with `JBE`/`JNC` (unsigned; equal is skipped) and `0x1D2F0` redraws it
+   with the new value (`0x1D5A8`).
+3. Meter B `DS_0010290E[side]` steps up one, or snaps down to the slot's
+   `+0x5D` byte (`0x1D5D1`), then `0x1D464` (`0x1D5E1`). The asymmetry
+   (A steps down by one, B snaps) is the raw's.
+4. The slot's `+0x5E` byte is incremented (`0x1D5E6`).
+5. With `0x468D8(side)`: when `0x1D74C(side)` (the side's command word
+   `DS_001088E0[side]` has bit 4 or 5: `and al,0x30`, the low byte alone)
+   or the slot's `+0x63` byte is non-zero, `rate = 3`; with `+0x63` set,
+   `lim = DS_000A76C8[DS_001082C8[side]]` (a byte, index a dword); with it
+   clear, `rate = 4`, and only when the two absolute operands `[0x107813]`
+   and `[0x1078A7]` (slot 0's and slot 1's `+0x63`, not the current side's)
+   are both zero: `rate = 6` if the `+0x5A` gap (self minus other, signed)
+   is above the dword `DS_000A76C4` (27), then `+2` when `+0x5D` is below
+   `0xD` or `+1` when below `0x1B` (both signed compares), and the slot's
+   `+0x5E` is set to `lim + 1` (`0x1D6A8`, reached from both sub-arms of the
+   clear-`+0x63` leg; not from the set-`+0x63` leg).
+6. Then `0x468D8(side)` again: `+0x5E > lim` (signed) zeroes `+0x5E` and
+   takes `rate` off `+0x5D` (to 0 when `+0x5D < rate`, signed, `0x1D6E5`
+   `jl`). Without it: `+0x5E > EDI` (the step-1 byte; nothing on this arm
+   overwrites `EDI`) zeroes `+0x5E` and steps `+0x5D` down one unless it is
+   0 (`0x1D717` `jbe`).
+
+`0x468D8` was already ported (`ai_pred_468d8`, 1 when the slot's `+0x10`
+is `0x22BEC`, the record's `+0x24` low 31 bits are clear and `+0x54` is not
+2, else when the slot's `+0x52` is 7); it is exported for this caller.
+`0x1D2F0`/`0x1D464` were ported in §48-U with `0x1D540` named as their
+unported caller; their comments now say it is ported. The earlier records'
+"named gap" lists that carry `0x1D540` (§48-U.*) are superseded by this
+section. TODO(verify): the game meaning of the `+0x5A/+0x5D/+0x5E/+0x63`
+bytes is not derived; the port reproduces the observed arithmetic only.
+
+### 49-V.3 `0x21994` and the pair it arms
+
+`0x21994(EAX = slot, EDX = rec)` (its callers, `0x21B43` and `0x21C33`, are call sites with no Ghidra
+function and no port caller; the function is therefore dead in the port until those are
+ported, and is ported so its two callbacks have an origin and a test).
+The context is `0x339AC(rec)` (`ctx[0] = rec + 0x51`, the side). It
+starts `rec` on `0xE49C4` at 3.0 (`0x2BC30`); the slot's `+0x57/+0x52/
++0x53/+0x54 = 0/9/7/2`, `+0x0C = 0x216EC`, the record's `+0x44 = 0xF`,
+`+0x36 = 0xFA`, `0x3C190(side, 0x64)`, the slot's `+0x40 |= 0x48000`; the
+other side's slot (`EDI = 1 - side`): `+0x52 = 0x10`, `+0x54 = 2`,
+`+0x53 = 0xA`, `+0x10 = 0x21458`, `+0x58 = 3`, `+0x41 |= 0x80`, the word
+`0x104764 + 2 * side` cleared, and that slot's record started on
+`dword[0xA824C + 4 * char]` with a stack frame word of 0 (not 3.0). It
+returns `AL = 1`.
+
+`0x216EC` is the slot `+0x0C` callback (case 7 of `0x3531C`, registers
+EAX = slot, EDX = rec, EBX = side, all already carried by the port's
+`fighter_slot_cb`). Its `EAX` is dead at `0x216F6`; `ECX = rec` is used only
+in state 4. State byte is `ctx[2] + 0x57`; the counter is the word
+`0x104764 + 2 * side`, incremented first (`0x21702`) and read back as the
+high half of the dword at `0x104762 + 2 * side` (signed, `sar 16`):
+- 0 (`0x21727`): counter above `0x16` (signed): `+0x57 = 1`, the record's
+  `+0x34/+0x36/+0x44 = 0x96/0x258/0x28`, its `+0x4B = 0`, the other record's
+  `+0x24 = 0x40000000`, the other slot's `+0x58 = 0` and the other record's
+  `+0x34/+0x36/+0x44 = 0xFF6A/0xFE0C/0xA`; then if `0x1A570` returns 0 (the
+  side is hflipped) both records' `+0x34` words are negated.
+- 1 (`0x21807`): counter above `0x19`: `+0x57 = 2`.
+- 2 (`0x21828`): `+0x44 = 0xF` while the record's `+0x36` word is negative;
+  the landing (`word[0xBD882 + char * 2] >> 16 > slot.+0x30`) is
+  `+0x54 = 0`, `0x188AC`, `0x3C148`, `0x3C16C`, the `0xC8B58[char]` stream at
+  3.0, `+0x57 = 3`.
+- 4 (`0x218B1`): fires on (the record's `+0x36` negative and the
+  `0xBD882` dword **indexed by `EAX = side * 2`**, still live from
+  `0x216FD`, not by the character as state 2 does, `>> 16` above the slot's
+  `+0x30`) or the counter above 7. With `DS_0010476E[side]` set it resets
+  the slot (`+0x53/+0x52/+0x54 = 0/4/2`, `+0x0C/+0x18/+0x1C = 0`); else
+  with `DS_001077A8[rec + 0x51]` non-zero the record starts `0xE4A18` (that
+  slot's character 1) or `0xE16E6` (6) through `0x3C4CC` and `+0x57 = 5`,
+  `+0x8A = 0`; a zero table entry leaves `+0x57`.
+- 3, 5, above 5: nothing.
+
+`0x21458` is the slot `+0x10` callback (case 10 of `0x3531C`; the raw
+reaches it with EDX still the record loaded at `0x35396`, EBX the side;
+the port's case 10 passes only `(slot, side)`, so `fighter_21458_case10`
+supplies `rec = DSD(slot)` and is what `actors_init` registers). State byte
+`slot.+0x58` (jump table `0x21448`, `{0x2148A, 0x2152E, 0x2159B,
+0x215A9}`):
+- 0: `word[0xBD882 + char * 2] >> 16` minus `0xDC0` above `slot.+0x30`
+  (signed) or the record's `+0x44` word zero: `0x39834(side, other slot.
+  +0x5F)`, `0x21F30`, `+0x36 = 0x190`, `+0x44 = 0x1E`, `+0x58 = 1`,
+  `+0x54 = 2`, the record on `dword[0xA8274 + 4 * char]` at 3.0, and the
+  `0xBB1DC` dust (`slot.+0x2C`, `rec.+0x30 >> 16`, a4 = 0 since `EBX ^ EDI`
+  with `EBX = EDI` preserved by the callees, a5 = 0).
+- 1: `word[0xBD882 + 2 * char] >> 16` plus `word[0xA8234 + 2 * char] >> 16`
+  (char 0: `0x1600 - 0xC80`) above `slot.+0x30` and the record's `+0x36` word
+  negative (signed): `+0x54 = 0`, `+0x58 = 2`, `0x3C16C`, `0x188AC(side,
+  rec.+0x18, 0)`, the record on `dword[0xA829C + 4 * char]` at 3.0.
+- 2: `+0x28 &= 0xDF` and `+0x43 = 0xF`. 3, above 3: nothing.
+
+`0x21F30` is `0x3F308`'s body a second time (the compiler duplicated it):
+the `0xBB308` spawn at the record's `+0x18`, `+0x30 >> 16`, `+0x1C` with
+a5 = `0x4000` when `+0x28` bit 14 is set, then `0x13244`. Its two
+`0x2C3FC` voice posts (`0x6C`, `0x72`) are the deferred idiom (spec §7,
+record §45-A) with `PORT:` notes. Callers besides `0x21458`: `0x21DBE`
+(`0x21DA4`) and `0x220A6` (`0x2208C`), both unported.
+
+### 49-V.4 Verification
+
+New `check_hud_meter_step` and `check_pair_callbacks` (`test_fight.c`).
+The first seeds real actor records through the m5 fixture and drives
+`0x1D540` through: meter A up and down, meter B up and snap-down, the
+unchanged case (bar words stay at the `0x1234` seed), all four `0x1D4D0`
+columns at their exact thresholds (`0x3E/0x3D/0x30/0x2F/0x23/0x22`) with
+`+0x5E` one below and one above each column value, the unsigned `0x80`
+and `0xFF`, the zero row of character 7, both `0x1D74C` bits and the
+bits it ignores, the gap/adder edges (27/28, a negative gap, `0xC/0xD/
+0xE`, `0x1A/0x1B`), the set-`+0x63` leg with `lim` from `0xA76C8` and its
+equal-to-`lim` case, the absolute-operand gate on side 1, all three
+`0x468D8` legs, the `+0x5D < rate` clamp, and the `DS_00104AEC` bit-1
+clear leaving the other bits. Thirteen single-site mutations of
+`fight.c` (each threshold and compare direction, the `0x7FFFFFFF` mask,
+the `!= 2`, the `0x30` mask, `lim + 1`, the snap, the bit clear) each
+fail the suite; two survivors of the first pass (`>= lim`, the `d != 0`
+step) were closed with a `+0x5E == lim` case and a `+0x5D == 1` case and
+re-proved. `check_pair_callbacks` covers `0x21994` for both sides and
+both hflip states (checked against a scratch record's `0x2BC30`
+result for the stream, not a constant), `0x216EC` states 0-4 and the
+default for both sides including the signed-counter cases (`0xFFFE`,
+`0x7FFF`, `0xFFF0`), the side-indexed `0xBD882` read in state 4 against
+character 3, all four state-4 exits, `0x21458` states 0-3 with the
+`0x21F30` and dust actor counts (`+2` on the go path only) and the
+adapter through `fn_resolve(0x21458)`. Twenty single-site mutations of
+`fighter.c` (compare directions, signedness of the counter, both stream
+selectors, the removed `0x39834` and `0x21F30` calls, the `0xDF` mask,
+`|= 0x48000`, the stored callback address, a negation, `0x24`, `0x8A`,
+`|= 0x80`, and the side index of `DS_0010476E`) each fail the suite; every
+mutation was reverted and rebuilt. `PR_ORACLE_REQUIRED=1 run_tests` is
+green three times at about 1.7 s, no hang. `make verify` (worktree-local
+dump directories `_gap41`) is unchanged: front-end 517/801/3/2, demo-fight
+fully explained at N = 1886, attract2 0 unexplained at N = 3617,
+`symbols.h` regenerates byte-identically. The first pass (only `0x1D540`
+registered, which changes the demo path: bit 1 is now consumed each walk)
+was run on its own commit and held the same lines, so the wiring does not
+move any oracle.
+
+### 49-V.5 Remaining named gaps
+
+`0x1BBAC` (host-owned input sampling), `0x1C0F0`/`0x1E2A0`/`0x1E30C`/
+`0x1E458` (the extended-memory heap the port replaces), `0x204F4` (the
+name-entry prep, with `0x1EC38`, on `gap37-hiscorerank`/`gap39-nameentry`),
+`0x21994`'s call sites `0x21B43`/`0x21C33` and `0x21F30`'s callers
+`0x21DA4`/`0x2208C`, the `0x2C3FC` voice
+posts inside `0x21F30`, and the meaning of the `0x1D540` slot bytes.
