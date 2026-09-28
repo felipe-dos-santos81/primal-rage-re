@@ -25702,13 +25702,13 @@ static void check_fight_frame_a(void)
             DSB(DS_00104AF3) = af3[i];
             DSW(DS_00108860) = w0[i];
             DSW(DS_00108860 + 2u) = w1[i];
-            DSW(DS_00108860 + 4u) = 0x6666u;
+            DSW(DS_00108860 + 4u) = 0x50u;
             DSD(DS_00104AD4) = 0x55u;
             flow_match_result_set();
             CHECK_EQ_INT((int)DSD(DS_00104AD4), res[i]);
             CHECK_EQ_INT((int)DSW(DS_00108860), (int)e0[i]);
             CHECK_EQ_INT((int)DSW(DS_00108860 + 2u), (int)e1[i]);
-            CHECK_EQ_INT((int)DSW(DS_00108860 + 4u), 0x6666);
+            CHECK_EQ_INT((int)DSW(DS_00108860 + 4u), 0x50);
         }
     }
 
@@ -25841,7 +25841,9 @@ static void check_fight_frame_a(void)
             DSD(DS_001082C8) = 0x7777u;
             DSD(DS_001082CC) = 0x7777u;
             DSD(DS_001082D0) = 0u;
+            DSD(DS_001082D0 + 4u) = 0x7777u;
             flow_match_end();
+            CHECK_EQ_INT((int)DSD(DS_001082D0 + 4u), 0x7777);
             CHECK_EQ_INT((int)DSD(DS_00104ABC), b1f[i] == 3u ? 2 : 1);
             CHECK_EQ_INT((int)DSD(DS_00107480), 10);
             CHECK_EQ_INT((int)DSD(DS_00104AC8), (int)dead);
@@ -25948,19 +25950,24 @@ static void check_fight_frame_b(void)
      * DS_00104AF8 (0x258 on the match's end), 0x39FF4 (slot +0x0C zeroed),
      * 0x27ED8 (DS_00104AA8 set), 0x27DC8 (DS_00104AEC bit 0 cleared), the
      * mode-7 tail (DS_001078FC/FE 1, DS_000F0AFE 2, the winner's +0x42 bit
-     * 7), DS_00104B16 and DS_00104AD4. Kinds: 'n' nothing, 'o' 0x39FF4 +
+     * 7; the byte a winner 2 would index, slot "2"'s +0x42, stays), DS_00104B16
+     * and DS_00104AD4. Rows 11..14: B at 0x78 exactly, |A - B| = 3, and the
+     * 0x280C9 test on a result 2 and 1. Kinds: 'n' nothing, 'o' 0x39FF4 +
      * 0x27ED8, 'e' 0x27DC8 + mode 9/8, 's' 0x27DC8 + mode 7. */
     {
-        static const u8 a[11]  = { 0x40, 0x78, 0x78, 0x78, 0x78, 0x40, 0x40, 0x40, 0x40, 0x42, 0x40 };
-        static const u8 b[11]  = { 0x40, 0x10, 0x10, 0x10, 0x10, 0x42, 0x44, 0x42, 0x44, 0x42, 0x40 };
-        static const u8 f2[11] = { 1, 0x40, 0x40, 0x40, 0x40, 0, 0, 0x80, 0, 0, 0 };
-        static const u16 md[11] = { 4, 4, 4, 4, 0xB, 4, 4, 4, 4, 0xB, 4 };
-        static const u8 b1e[11] = { 3, 3, 3, 1, 3, 3, 3, 3, 1, 3, 3 };
-        static const u8 af2[11] = { 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0 };
-        static const u8 kind[11] = { 'n', 'o', 'e', 'e', 'e', 'o', 's', 's', 's', 's', 'o' };
-        static const u16 mode[11] = { 4, 0xA, 9, 8, 9, 0xA, 7, 7, 7, 7, 0xA };
-        static const u8 b16[11] = { 0x77, 1, 1, 1, 1, 0x77, 0, 0, 0, 2, 0x77 };
-        for (i = 0; i < 11u; i++) {
+        static const u8 a[15]  = { 0x40, 0x78, 0x78, 0x78, 0x78, 0x40, 0x40, 0x40, 0x40, 0x42, 0x40,
+                                   0x10, 0x40, 0x44, 0x44 };
+        static const u8 b[15]  = { 0x40, 0x10, 0x10, 0x10, 0x10, 0x42, 0x44, 0x42, 0x44, 0x42, 0x40,
+                                   0x78, 0x43, 0x40, 0x40 };
+        static const u8 f2[15] = { 1, 0x40, 0x40, 0x40, 0x40, 0, 0, 0x80, 0, 0, 0, 0x40, 0, 0, 0 };
+        static const u16 md[15] = { 4, 4, 4, 4, 0xB, 4, 4, 4, 4, 0xB, 4, 4, 4, 4, 4 };
+        static const u8 b1e[15] = { 3, 3, 3, 1, 3, 3, 3, 3, 1, 3, 3, 3, 3, 3, 3 };
+        static const u8 af2[15] = { 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0 };
+        static const u8 kind[15] = { 'n', 'o', 'e', 'e', 'e', 'o', 's', 's', 's', 's', 'o',
+                                     'e', 'o', 'o', 's' };
+        static const u16 mode[15] = { 4, 0xA, 9, 8, 9, 0xA, 7, 7, 7, 7, 0xA, 9, 0xA, 0xA, 7 };
+        static const u8 b16[15] = { 0x77, 1, 1, 1, 1, 0x77, 0, 0, 0, 2, 0x77, 0, 0x77, 1, 1 };
+        for (i = 0; i < 15u; i++) {
             k48_seed();
             DSB(DS_0010780A) = a[i];
             DSB(DS_0010789E) = b[i];
@@ -25974,7 +25981,9 @@ static void check_fight_frame_b(void)
             DSB(DS_000F0AFE) = 0x77u;
             DSB(DS_001077B0 + 0x42u) = 0x01u;
             DSB(DS_001077B0 + 0x94u + 0x42u) = 0x01u;
+            DSB(DS_001077B0 + 2u * 0x94u + 0x42u) = 0x01u;
             flow_round_end_check();
+            CHECK_EQ_INT((int)DSB(DS_001077B0 + 2u * 0x94u + 0x42u), 0x01);
             CHECK_EQ_INT((int)DSW(DS_00104B00), (int)mode[i]);
             CHECK_EQ_INT((int)DSW(DS_00104B00 + 2u), 0xBEEF);
             CHECK_EQ_INT((int)DSW(DS_00104AF8), kind[i] == 'e' ? 0x258 : 0x7777);
@@ -26014,6 +26023,18 @@ static void check_fight_frame_b(void)
     CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x43);
     CHECK_EQ_INT((int)DSW(DS_00104B00), 4);
     CHECK_EQ_INT((int)DSW(DS_00108892), 6);
+
+    /* (h2) The same with the timer byte run out (0, signed) and A == B,
+     * equal wins: 0x27FA8 takes 0x27ED8, mode 0xA. The slot pass 0x3CB68
+     * leaves DS_00107ED8 0x20 and DS_00107EDC 2. */
+    k48_seed();
+    DSB(DS_001088F2) = 0u;
+    DSD(DS_00107ED8) = 0x77777777u;
+    DSD(DS_00107EDC) = 0x77777777u;
+    game_mode_04_step();
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0xA);
+    CHECK_EQ_INT((int)DSD(DS_00107ED8), 0x20);
+    CHECK_EQ_INT((int)DSD(DS_00107EDC), 2);
 
     /* (i) game_frame's case 4 (0x25242) reaches 0x26254: the countdowns move
      * (no update-table bit, no command block, no 0x25414 tail, DS_00104B24
@@ -26105,7 +26126,7 @@ static void k48_active(u32 n)
         mem_fill(e, 0, 0x24u);
         DSD(e + 8u) = r;
         DSB(r + 0x48u) = (u8)(0x20u + k);
-        DSB(r + 0x29u) = 0x0Fu;
+        DSB(r + 0x29u) = 0x4Fu;
         DSD(prev) = e;
         DSD(e + 4u) = prev;
         DSD(e) = DS_0010884C;
@@ -26171,16 +26192,16 @@ static void check_fight_frame_c(void)
      * DS_001028F8 record begins 0xE9050 at 4.0 and the word reloads as (0x78
      * - +0x5A) >> 1, at least 0xC. Rows: (word, +0x5A) -> word after, begun. */
     {
-        static const u16 w[8] = { 5, 1, 0, 0x8000, 1, 1, 1, 2 };
-        static const u8 a[8] = { 0x10, 0x10, 0x70, 0x10, 0xFF, 0x5E, 0x60, 0x10 };
-        static const u16 e[8] = { 4, 0x34, 0xC, 0x7FFF, 0xC, 0xD, 0xC, 1 };
-        for (i = 0; i < 8u; i += 2u) {
+        static const u16 w[10] = { 5, 1, 0, 0x8000, 1, 1, 1, 2, 1, 3 };
+        static const u8 a[10] = { 0x10, 0x10, 0x70, 0x10, 0xFF, 0x5E, 0x60, 0x10, 0x62, 0x10 };
+        static const u16 e[10] = { 4, 0x34, 0xC, 0x7FFF, 0xC, 0xD, 0xC, 1, 0xC, 2 };
+        for (i = 0; i < 10u; i += 2u) {
             k48_seed();
             for (s = 0; s < 2u; s++) {
                 DSW(0x00102908u + s * 2u) = w[i + s];
                 DSB(DS_001077B0 + s * 0x94u + 0x5Au) = a[i + s];
             }
-            fight_hud_bar_tick();
+            fight_hud_pulse();
             for (s = 0; s < 2u; s++) {
                 u32 br = DSD(DS_001028F8 + s * 4u);
                 int begun = (s16)(w[i + s] - 1u) <= 0;
@@ -26234,9 +26255,9 @@ static void check_fight_frame_c(void)
      * with +0x60 = 1 (0x2BD44: R1's +0x4B = r's +0x4B, r dead). Per slot the
      * +0x0C/+0x18/+0x1C dwords and +0x5D zeroed, +0x40 0xFFFFFFFF ->
      * 0xFBF7FFFF, DS_00100B5E zeroed (0x1922C), side 0's +0x8C 5 -> 1 with
-     * 0x34038 (DS_001078FF 0: DS_001077A0[0] killed), side 1's 0xFFFF kept;
+     * 0x34038 (DS_001078FF 0: DS_001077A0[0] killed), side 1's 0 kept;
      * the 0x39F40 pose: DS_00107A68 = (s16)-((0x1800 - |0x1000 - R+0x18|)
-     * >> 6) (R0 0x800: -0x40; R1 0x80001000: the s16 of 0x01FFFFA0),
+     * >> 6) (R0 0x1800: -0x40; R1 0x80001000: the s16 of 0x01FFFFA0),
      * DS_00107A78 0x64, DS_00107A60 0xF, DS_00107A70 0x14, the slot's +0x52
      * 0x10, +0x53 0xA, +0x54 2 and R's +0x24 = 0. */
     k48_seed();
@@ -26250,7 +26271,7 @@ static void check_fight_frame_c(void)
     DSB(FIGHT_RECS + 0x4Bu) = 3u;
     DSB(FIGHT_RECS + 0x2Au) = 0xFFu;
     DSB(FIGHT_RECS + 0x100u + 0x4Bu) = (u8)actor_index(r);
-    DSD(FIGHT_RECS + 0x18u) = 0x800u;
+    DSD(FIGHT_RECS + 0x18u) = 0x1800u;
     DSD(FIGHT_RECS + 0x100u + 0x18u) = 0x80001000u;
     DSD(DS_000F0AF0) = 0x1000u;
     for (s = 0; s < 2u; s++) {
@@ -26265,7 +26286,7 @@ static void check_fight_frame_c(void)
         DSD(DSD(slot) + 0x24u) = 0x7777u;
     }
     DSW(DS_001077B0 + 0x8Cu) = 5u;
-    DSW(DS_001077B0 + 0x94u + 0x8Cu) = 0xFFFFu;
+    DSW(DS_001077B0 + 0x94u + 0x8Cu) = 0u;
     CHECK(actor_index(r) < 0x100u, "the child's index fits +0x4B");
     fighter_39ff4();
     CHECK_EQ_INT((int)DSB(FIGHT_RECS + 0x4Bu), 0);
@@ -26273,7 +26294,7 @@ static void check_fight_frame_c(void)
     CHECK_EQ_INT((int)DSB(FIGHT_RECS + 0x100u + 0x4Bu), 0x42);
     CHECK_EQ_INT((int)(DSB(r + 0x28u) & 8u), 8);
     CHECK_EQ_INT((int)DSW(DS_001077B0 + 0x8Cu), 1);
-    CHECK_EQ_INT((int)DSW(DS_001077B0 + 0x94u + 0x8Cu), 0xFFFF);
+    CHECK_EQ_INT((int)DSW(DS_001077B0 + 0x94u + 0x8Cu), 0);
     CHECK_EQ_INT((int)DSD(DS_001077A0), 0);
     CHECK_EQ_INT((int)(DSB(ra + 0x28u) & 8u), 8);
     CHECK_EQ_INT((int)DSD(DS_00107A68), -0x40);
@@ -26302,25 +26323,27 @@ static void check_fight_frame_c(void)
      * on 0xC8A40); 0x36638: +0x52 0x12 on 0xC91E8; 0x367DC: +0x52 0 then 9,
      * 0xC8950. Characters 2 (side 0) and 5 (side 1). */
     {
-        static const u32 sd[14]  = { 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0 };
-        static const s32 p[14]   = { 0x1000, 0x4800, 0x4800, -1, 0x5D01, 0x5D00, 0x1000,
-                                     0x6000, 0x4800, 0x1000, -5, 0x4800, 0, -1 };
-        static const u32 x[14]   = { 0, 0, 0, 0x4000, 0x1E00, 0, 0, 0x4000, 0, 0,
-                                     0x1A00, 0, 0x1E00, 0 };
-        static const u16 f28[14] = { 0, 0, 0, 0, 0, 0, 0x4000, 0x4000, 0x4000, 0, 0,
-                                     0, 0x4000, 0 };
-        static const u32 cx[14]  = { 0, 0, 0, 0x1000, 0, 0, 0, 0, 0, 0, 0x3000, 0,
-                                     0, 0x7FFFE100u };
-        static const u8 bd[14]   = { 0, 0, 0, 0, 0, 0, 0, 0, 9, 8, 8, 8, 0, 0 };
-        static const u8 b53[14]  = { 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-        static const u8 flag[14] = { 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 1 };
-        static const u8 e52[14]  = { 0xE, 0x77, 9, 0xE, 0x77, 0xE, 0xE, 0x12, 0x77, 0xE,
-                                     0x77, 0x77, 0xE, 0x77 };
-        static const u8 e53[14]  = { 0xC, 0, 0, 0xC, 0, 0xC, 0xC, 0xC, 0, 0xC, 0, 0, 0xC, 0 };
-        static const u8 e43[14]  = { 1, 0, 0, 2, 0, 2, 2, 0, 0x40, 1, 0, 0, 2, 0 };
-        static const u8 st[14]   = { 8, 0xFF, 16, 0, 0xFF, 0, 0, 24, 0xFF, 8, 0xFF, 0xFF,
-                                     0, 0xFF };
-        for (i = 0; i < 14u; i++) {
+        static const u32 sd[16]  = { 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1 };
+        static const s32 p[16]   = { 0x1000, 0x4500, 0x4500, -1, 0x5D01, 0x5D00, 0x1000,
+                                     0x6000, 0x4800, 0x1000, -5, 0x4800, 0, -1, 0x5D00,
+                                     0x1700 };
+        static const u32 x[16]   = { 0, 0, 0, 0x4000, 0x1E00, 0, 0, 0x4000, 0, 0,
+                                     0x1A00, 0, 0x1E00, 0, 0, 0 };
+        static const u16 f28[16] = { 0, 0, 0, 0, 0, 0, 0x4000, 0x4000, 0x4000, 0, 0,
+                                     0, 0x4000, 0, 0, 0 };
+        static const u32 cx[16]  = { 0, 0, 0, 0x1000, 0, 0, 0, 0, 0, 0, 0x3100, 0,
+                                     0, 0x7FFFE100u, 0x1500, 0 };
+        static const u8 bd[16]   = { 0, 0, 0, 0, 0, 0, 0, 0, 8, 8, 8, 8, 0, 0, 8, 8 };
+        static const u8 b53[16]  = { 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        static const u8 flag[16] = { 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1 };
+        static const u8 e52[16]  = { 0xE, 0x77, 9, 0xE, 0x77, 0xE, 0xE, 0x12, 0x77, 0xE,
+                                     0x77, 0x77, 0xE, 0x77, 0xE, 0x77 };
+        static const u8 e53[16]  = { 0xC, 0, 0, 0xC, 0, 0xC, 0xC, 0xC, 0, 0xC, 0, 0, 0xC, 0,
+                                     0xC, 0 };
+        static const u8 e43[16]  = { 1, 0, 0, 2, 0, 2, 2, 0, 0x40, 1, 0, 0, 2, 0, 2, 0 };
+        static const u8 st[16]   = { 8, 0xFF, 16, 0, 0xFF, 0, 0, 24, 0xFF, 8, 0xFF, 0xFF,
+                                     0, 0xFF, 0, 0xFF };
+        for (i = 0; i < 16u; i++) {
             u32 c = sd[i] == 0u ? 2u : 5u;
             u32 slot = DS_001077B0 + sd[i] * 0x94u;
             k48_seed();
@@ -26341,6 +26364,7 @@ static void check_fight_frame_c(void)
         k48_seed();
         k48_approach(0u, 0x4800, 0, 0, 0, 0, 0);
         DSD(DS_001077A8) = 0u;
+        DSD(0u) = FIGHT_RECS;
         fighter_38154(0u);
         CHECK_EQ_INT((int)DSB(DS_001078F0), 0x77);
         k48_seed();
@@ -26402,7 +26426,9 @@ static void check_fight_frame_c(void)
      * the entry's fields and DS_0010839C[i]; the active list's old entry is
      * re-faced first (0x4E27C). With only three free entries it stops after
      * i = 2. With `fresh` 0 an entry already in DS_0010839C[i] is kept (+0x1E
-     * 1, no spawn, no draw). */
+     * 1, no spawn, no draw, +0x29 |= 0x10 then &= 0xBF); with `fresh` it is
+     * replaced (DS_0010839C[0] seeded with the active entry). DS_00105B34[1]
+     * = 1 shows the value is side 0's. */
     {
         static const s32 j[10] = { 0, 1, -1, 2, 0, -2, -3, -1, 1, 3 };
         static const u32 ebp[10] = { 0x162F, 0xFCA, 0xFCA, 0x965, 0x965, 0x965,
@@ -26413,6 +26439,8 @@ static void check_fight_frame_c(void)
         k48_active(1u);
         k48_free(1u, 10u);
         for (i = 0; i < 10u; i++) DSD(DS_0010839C + i * 4u) = 0u;
+        DSD(DS_0010839C) = KF_NODE(0);
+        DSB(DS_00105B34 + 1u) = 1u;
         DSD(DS_000F0AF0) = 0x5000u;
         DSB(DS_001088B9) = 0x77u;
         DSB(DS_001088B8) = 0x77u;
@@ -26472,7 +26500,9 @@ static void check_fight_frame_c(void)
         ra = DSD(KF_NODE(0) + 8u);
         DSD(KF_NODE(0) + 0x14u) = 0x7777u;
         DSW(ra + 0x34u) = 0x7777u;
+        DSB(ra + 0x29u) = 0x4Fu;
         fight_mode25_spawn(0u);
+        CHECK_EQ_INT((int)DSB(ra + 0x29u), 0x1F);
         CHECK_EQ_INT((int)DSD(DS_0010839C), (int)KF_NODE(0));
         CHECK_EQ_INT((int)DSD(KF_NODE(0) + 8u), (int)ra);
         CHECK_EQ_INT((int)DSB(KF_NODE(0) + 0x1Eu), 1);
@@ -26501,9 +26531,10 @@ static void check_fight_frame_c(void)
             k48_seed();
             k48_streams();
             k48_descs();
-            k48_active(0u);
+            k48_active(1u);
             k48_free(1u, 10u);
             for (s = 0; s < 10u; s++) DSD(DS_0010839C + s * 4u) = 0u;
+            DSD(DS_0010839C) = KF_NODE(0);
             DSB(DS_00104B1D) = b1d[i];
             DSD(DS_000F0AF0) = (u32)cx[i];
             DSD(DS_00104AD8) = ad8[i];
@@ -26560,7 +26591,7 @@ static void check_fight_frame_c(void)
             CHECK_EQ_INT((int)DSB(DS_001078F0), in ? 1 : 0x77);
             CHECK_EQ_INT((int)DSB(DS_001078F0 + 1u), in ? 1 : 0x77);
             CHECK(in ? q_row_cells(6) != 0 : q_row_cells(6) == 0, "string 0x61 on row 6");
-            CHECK_EQ_INT((int)DSD(DS_0010839C), in ? (int)KF_NODE(1) : 0);
+            CHECK_EQ_INT((int)DSD(DS_0010839C), in ? (int)KF_NODE(1) : (int)KF_NODE(0));
         }
     }
 
