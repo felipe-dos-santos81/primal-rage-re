@@ -410,10 +410,10 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   skip test `0x4F790` and `0x4F778` (record §46-G).
   `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
-  - it dispatches cases 3, 4, 5, 6, 9, `0xB`, `0xC`, `0xD`, `0xE`, `0x10`,
+  - it dispatches cases 3, 4, 5, 6, 8, 9, `0xB`, `0xC`, `0xD`, `0xE`, `0x10`,
     `0x11`, `0x13`, `0x14`, `0x15`, `0x17`, `0x1A`, `0x1B` and `0x32`, and
     cases 1/2/`0x20` run the bare `ret` `0x29B70`;
-  - the other 27 cases are named gaps.
+  - the other 26 cases are named gaps.
   - Case 4 (the table entry `0x25242`, `call 0x26254; jmp 0x2540F`) is the
     fight frame `0x26254` (`game_mode_04_step`, record §48-K): `0x3C5CC`,
     `0x16D58` per side and the two position latches; only with
@@ -486,6 +486,29 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     of the unrelated `FUN_00032B94`, not a function of its own — confirmed
     by `read_memory` and by Ghidra's own function table), so they are proven
     no-ops and the port omits them.
+  - Case 8 is `0x28468` (`game_mode_08_step`, record §49-C), a slimmer sibling
+    of case 9's `0x28788`. Its preamble is the same unconditional sequence
+    (`0x3C5CC`, `0x16D58` per side, the two position latches, `0x17FA0` per
+    side, `0x17580`, `0x1958C`), but `0x3CB68` runs unconditionally here —
+    case 9's neither-side's-`+0x41`-bit-1 gate is absent — then `0x35658` per
+    side, `0x19068(1)`, `0x49C78` and `0x12DA8`, exactly as case 9. The word
+    `DS_00104AF8` counts down the same way, arming `DS_001078FE`/`FC = 1`,
+    OR-ing 0x10 into both `+0x41` bytes and setting `DS_000F0AFE = 4` on
+    reaching 0; either way `DS_00104AEC |= 2`. The results gate reads
+    `DS_001078FE` (not `DS_001078FC`, case 9's byte) `== 0`, then
+    `DS_000F0AFE != 4`, either returning first. The results state is far
+    slimmer than case 9's: `0x4A708` (`fight_effects_hold_all`) and `0x28130`
+    (`flow_match_result_text`) run — the very functions case 9 calls, not
+    separate siblings (`get_xrefs_to 0x4A708` lists both `0x28594` and
+    `0x288C2`) — but case 8 never reads or writes `DS_00104AD4`: no win/lose/
+    draw dispatch, no `flow_match_streak_update`, no `DS_00108173` draw
+    force, no `config_play_time_snap`/`close`. It only rearms the countdowns
+    (`DS_00104AFE = 0xF0`, `DS_001088EE = 0x3C`, case 9's own constants) and,
+    on `DS_00104B1D`, unconditionally installs the hook `game_hook_25bbc`
+    (`DS_00104AE4 = 0x25BBC`, the same hook `0x259CC` installs), sets
+    `DS_00104B25 = 1` and mode `DS_00104B00 = 0x16`; only the return mode
+    `DS_00104AFA` differs: `0x30` when `DS_00104B1D == 3`, else 5. No call
+    site in `0x28468` targets the `0x32BAC` bare-`ret` stub.
   - Case `0xC`'s no-join arm is `0x27380` (`game_mode_0c_step`, record
     §48-C), the arena frame of the mode that mode 5 and `0x274FC` (after
     replacing the loser) store. It first undoes the mode-`0xC` tail's blink (`0x25487`): while the
@@ -603,8 +626,10 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     or, with `DS_00104B14`, for mode `0xC` after side `DS_00104B12`'s
     entrance `0xA8628[c]` and badge. Mode 5 is stored only through the
     return mode `DS_00104AFA` (the ported hooks `0x259CC`/`0x27134` arm
-    `0x4F980(5)`; the unported `0x28468` stores it directly), so no ported
-    path the oracles run reaches it.
+    `0x4F980(5)`; `0x28468`, mode 8's handler, now ported as
+    `game_mode_08_step` (record §49-C), stores it directly: `0x30` when
+    `DS_00104B1D == 3`, else 5), so no ported path the oracles run reaches
+    it.
   - Case `0x10` is `0x438B4` (`fight_mode_10_step`, record §47-M). It
     branches on the byte `DS_00108174`. With 0 it runs the character
     select's per-frame pass `0x43B24` (`fight_char_select_pass`), or

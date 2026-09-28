@@ -17881,3 +17881,193 @@ Remaining named gaps this task leaves: mode 8's `0x28468` (the other
 the match-end stores that would drive `DS_00104AD4`/mode 9 for real
 (`0x27DC8`, record §48-K); and `0x2C3FC`'s voices are not implicated here
 (`0x28788` calls none).
+
+## 49-C. Mode 8's frame handler `0x28468` (named-gap batch 21, branch `gap24-28468`)
+
+(The section letter is C. `docs/PROGRESS.md` and this file were grepped for
+`§49-C` first; nothing in either file, on `main` at `9eb8b05`, or in
+`git log --all` claims it, so it is free.)
+
+**Result in one line.** `0x28468`, `game_frame`'s case 8 (the table entry
+`0x25335 call 0x28468; jmp 0x2540F`), is ported as `game_mode_08_step`
+(`flow.c`) and wired. It is a near-identical, but considerably slimmer,
+sibling of mode 9's `0x28788` (`game_mode_09_step`, record §48-Y, the
+named-gap note that led into this task): same unconditional preamble, but
+`fight_slot_pass` runs with no gate at all (mode 9 gates it), the results
+gate reads a different byte pair, and the results state itself never
+touches the match result `DS_00104AD4` — no streak update, no draw force,
+no play-time bookkeeping, no win/lose/draw dispatch. Both of §48-Y's leads
+into this function resolved to **reuse**, not new siblings:
+`fight_effects_hold_all` (`0x4A708`) and `flow_match_result_text`
+(`0x28130`) are the exact same functions mode 9 calls, confirmed by
+`get_xrefs_to 0x4A708` listing both `0x28594` and `0x288C2` as call sites
+(and `flow_match_result_text` was already ported, record §48-Q). No new
+callee was needed.
+
+### 49-C.1 Sources
+
+The raw comes from the Ghidra HTTP bridge at `127.0.0.1:8089`
+(`disassemble_function`, `read_memory`, `get_xrefs_to`,
+`get_function_by_address`, with fixups applied; the Ghidra MCP tool does not
+connect this session), and `flow.c`/`flow.h`'s existing `game_mode_09_step`
+port (record §48-Y) for the shared preamble/countdown shape and the already-
+registered hook `game_hook_25bbc` (`0x25BBC`, record §46-B, `fn_register`ed
+in `actors.c`).
+
+### 49-C.2 `0x28468` (100 instructions, `0x28468`..`0x2861B`)
+
+EBX/ECX/EDX/ESI/EDI are pushed at entry and popped at every return (a single
+shared epilogue at `0x28616`; every internal exit — the two early returns
+and the `mode_sel == 3` arm's `jmp 0x28616` — lands there). `get_xrefs_to
+0x28468` confirms the single caller (`0x25335`, `FUN_00024c5c`'s case 8);
+`get_function_by_address` gives `body_start == 0x28468`, `body_end ==
+0x2861B`, matching the trailing `RET`. (A region starting at `0x2861C`,
+immediately after that `RET`, stores `0x29B74` into `DS_00104AE4` — but it
+has no callers anywhere in the image and its address appears nowhere as a
+pointer, per `port/spec/game_flow.md`'s existing front-end-chain note; it is
+dead code adjacent to, not part of, this function, and the port does not
+emit it.)
+
+- **The preamble (`0x28468`..`0x2851D`), instruction-for-instruction the
+  same shape as `0x28788`'s (§48-Y.2):** `0x3C5CC` (`fight_slot_clear`);
+  `0x16D58` per side, EAX = side, DL = `DS_0010782A`/`DS_001078BE`
+  (`camera_screen_base`); `DS_001077E8 = DS_001077E4`, `DS_0010787C =
+  DS_00107878` (the position latches); `0x17FA0` per side with the identical
+  argument addresses mode 9 uses (`DS_00100B08/B00/B62/B60/AF0` for side 0,
+  `DS_00100B0C/B04/B63/B61/AF4` for side 1 — `camera_project`); `0x17580`
+  (`camera_decay`); `0x1958C` (`fighter_pass_a`).
+- **The one structural difference from mode 9: `fight_slot_pass` is
+  unconditional.** `0x284F8 call 0x3CB68` runs with no preceding test —
+  mode 9's own preamble (§48-Y.2) gates the same call on neither side's
+  `+0x41` byte having bit 1 set (`0x28815`..`0x28827`); `0x28468` has no such
+  test anywhere before or after this call. Then, exactly as mode 9: `0x35658`
+  per side (`fight_hud_pass`), `0x19068` with EAX = 1 (`fighter_pass_b(1)`),
+  `0x49C78` (`fight_effects_pass`), `0x12DA8` only of `0x1282C`/`0x12DA8`'s
+  pair (`camera_y_commit`).
+- **The countdown (`0x28522`..`0x2856F`), byte-for-byte the same as mode
+  9's `0x28851`..`0x2889E`.** The word `DS_00104AF8`: 0 skips straight to
+  the OR below; else it decrements, and reaching 0 *this frame* sets
+  `DS_001078FE = DS_001078FC = 1` (BL), ORs `0x10` into both
+  `DS_001077F1` and `DS_00107885`, and sets `DS_000F0AFE = 4` (DH). Either
+  way `DS_00104AEC |= 2` (`0x2856F`).
+- **The results-state gate (`0x28576`..`0x2858E`) — the other structural
+  difference from mode 9.** `DS_001078FE == 0` (`0x28576`/`0x2857D`)
+  returns; then `DS_000F0AFE != 4` (`0x28583`..`0x2858E`) returns. Mode 9's
+  own gate (§48-Y.2, `0x288A5`..`0x288BC`) tests `DS_000F0AFE != 4` then
+  `DS_001078FC == 0` — the *same pair of conditions* by outcome (both bytes
+  are always set together, above, when the countdown arms), but a literally
+  different byte address (`DS_001078FE`, not `DS_001078FC`) and a different
+  test order; ported exactly as disassembled, not copied from mode 9.
+- **The results state (`0x28594`..end), once the gate is open — far
+  slimmer than mode 9's.** `0x4A708` (`fight_effects_hold_all` — the same
+  function, not a sibling; see the one-line result above) and `0x28130`
+  (`flow_match_result_text`, already ported). Then `AL = DS_00104B1D`
+  (`0x285A8`); `DS_00104AFE = 0xF0` (`0x285AD`), `DS_001088EE = 0x3C`
+  (`0x285B4`) — the identical rearm constants mode 9 uses. No read or write
+  of `DS_00104AD4`, `DS_00107813`, `DS_001078A7`, `DS_00108173`,
+  `DS_00104B11`, `DS_0010746C` or `DS_00104ABC` anywhere in this function —
+  confirmed by reading every instruction in the 100-instruction body; mode 8
+  has no streak update, no draw force and no play-time bookkeeping. On
+  `AL == 3` (`0x285BB`/`0x285BD`): `DS_00104AE4 = 0x25BBC`
+  (`game_hook_25bbc`, already ported and registered, record §46-B),
+  `DS_00104B25 = 1`, mode `DS_00104B00 = 0x16`, return mode `DS_00104AFA =
+  0x30`, then `jmp 0x28616` (the shared epilogue). Otherwise
+  (`0x285EC`..`0x2860F`): the same four stores, except return mode
+  `DS_00104AFA = 5` instead of `0x30` — everything else identical, including
+  the store order (hook, then `DS_00104B25`, before mode/return-mode).
+
+### 49-C.3 No call site targets the `0x32BAC` bare-`ret` stub
+
+Mode 9's port (§48-Y.3) found four `0x28788` call sites landing on
+`0x32BAC`, a proven no-op (`get_xrefs_to 0x32BAC`'s eight call sites
+site-checked against `read_memory`/`get_function_by_address`). `0x28468`
+has no such call at all: all fifteen `CALL` instructions in its
+100-instruction body were enumerated from the raw disassembly and each
+targets one of `0x3C5CC`, `0x16D58` (x2), `0x17FA0` (x2), `0x17580`,
+`0x1958C`, `0x3CB68`, `0x35658` (x2), `0x19068`, `0x49C78`, `0x12DA8`,
+`0x4A708` or `0x28130` — fourteen distinct addresses, every one an
+already-ported callee before this task started (mode 9's own port supplied
+twelve of them; `0x4A708` and `0x28130` are the two §48-Y left as leads,
+resolved in §49-C.1/.2 above to be direct reuse, not new functions).
+
+### 49-C.4 The port
+
+- `flow.h`, after `game_mode_09_step`'s declaration: `game_mode_08_step`'s
+  prototype and full derivation comment.
+- `flow.c`, after `game_hook_25ae8` (the last of the §46-F hook block, so
+  `FN_00025BBC` — already `#define`d there for `game_hook_259cc`'s own
+  store — is in scope without a duplicate macro): `game_mode_08_step`
+  (`0x28468`), in its own `---- mode 8 ----` delimited section.
+- `game_frame`'s switch (`flow.c`): `case 0x08u: game_mode_08_step(); break;`
+  added next to `case 0x09u`; `8` is removed from the generic named-gap case
+  list and its comment, and the case-9 narration line extended to name case
+  8 too.
+- No new callee, no new `fn_register`, no `symbols.h` change (confirmed by
+  `make verify`'s idempotence check, §49-C.6 below).
+- Updated the header comments this task's leads pointed at, now that both
+  are confirmed shared rather than separate: `fight.h`/`fight.c`'s
+  `fight_effects_hold_all` (both callers listed), `flow.c`'s
+  `flow_match_result_text` (both callers listed) and `flow.c`'s
+  `game_hook_25bbc` (names `game_mode_08_step`/record §49-C at its
+  `0x28468` store sites). Updated `port/spec/game_flow.md`'s case-8/case-9
+  narration, the mode-5 return-mode note (`0x28468` used to be cited as
+  storing `DS_00104AFA` "directly" while unported; now cited as
+  `game_mode_08_step`), and the dispatched-case count (26 named gaps, one
+  fewer than before).
+
+### 49-C.5 Tests and mutations
+
+New `check_mode_08` in `test_fight.c` (registered in `test_fight()`'s own
+call list, right after `check_mode_09`), two parts, both built on a new
+`m08_seed` (a close sibling of mode 9's `m09_seed`, §48-Y.7's fixture,
+reusing its `M09_001077F1`/`M09_00107885` macros and the same
+`DS_00101514`/hitbox-array/character-byte safety mode 9's tests needed for
+their own unconditional `camera_project`/`fight_slot_pass` calls — mode 8's
+`fight_slot_pass` is unconditional on *every* call, so the same fixture
+requirements apply unconditionally here, not just in one sub-case):
+
+- `check_mode_08_a`: the preamble runs `fight_slot_pass` even with both
+  sides' `+0x41` bit 1 set — the condition that gates it off in mode 9 —
+  proving no such gate was ported here; the position-latch and
+  `camera_project` output stores; `DS_00104AEC |= 2`; the countdown's
+  decrement and zero-arm; and the results-state gate's two conditions
+  tested individually (`DS_000F0AFE == 4` alone, and `DS_001078FE != 0`
+  alone, are each independently insufficient) and together (reaching 0 the
+  same frame opens the gate in that same call, `DS_00104B00`'s sentinel
+  flipping from `0xBEEF0008` to `0xBEEF0016`).
+- `check_mode_08_b`: both `DS_00104B1D` arms (`== 3` -> return mode
+  `0x30`; otherwise -> `5`), the countdown rearm, the hook install checked
+  through `fn_origin(game_hook_25bbc)`, and — seeded to sentinels distinct
+  from every mode-9 post-condition — `DS_00104AD4`/`DS_00107813`/
+  `DS_001078A7`/`DS_00108173`/`DS_0010746C` all surviving untouched,
+  proving mode 8's results state really does skip mode 9's match-result
+  bookkeeping rather than the test simply not looking.
+
+**Mutations** (three single-site edits, each rebuilt and the whole of
+`run_tests` re-run, then reverted): (1) reintroducing mode 9's
+`fight_slot_pass` gate (`&&`-guarding the call) — caught by
+`check_mode_08_a`'s unconditional-call sub-case; (2) the results gate's
+`DS_001078FE` check changed to `DS_001078FC` — caught by
+`check_mode_08_a`'s two-independent-conditions sub-cases; (3) the
+`mode_sel == 3` arm's return mode changed from `0x30` to `5` (matching the
+other arm) — caught by `check_mode_08_b`'s first sub-case (which asserts
+`0x30`, not `5`, once `DS_00104B1D` is set to 3). All three mutations
+produced 12 `CHECK_EQ_INT` failures across the two functions; all three
+were reverted and the suite re-confirmed green (3 consecutive
+`PR_ORACLE_REQUIRED=1 ./build/run_tests` runs, no SIGBUS).
+
+### 49-C.6 Measured and remaining gaps
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 3 consecutive
+runs (plus the 3 mutation-revert runs above), 0 compiler warnings, no
+SIGBUS. `make verify`: front-end 517/801/3/2, demo-fight fully explained at
+N = 1886, attract2 0 unexplained at N = 3617, `symbols.h` regenerates
+byte-identically — none moved, for the same reason §48-Y.8 gives for mode
+9: mode 8 is reachable only through the same match-end stores (`0x27DC8`,
+record §48-K, still unported) that leave mode 9 unreached by the oracle's
+no-input demo/attract path (record §47-B.2).
+
+Remaining named gaps this task leaves untouched: mode `0xA`'s `0x28BD4`;
+the match-end stores that would drive `DS_00104AD4`/modes 8 and 9 for real
+(`0x27DC8`, record §48-K); and the dead `0x2861C` region noted in §49-C.2,
+which no reachable code ever calls.
