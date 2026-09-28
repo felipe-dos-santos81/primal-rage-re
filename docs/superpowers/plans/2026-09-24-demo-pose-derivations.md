@@ -17397,3 +17397,213 @@ commits or uncommitted changes at all. Ported directly by the coordinator
 instead of a third dispatch, using the Ghidra HTTP bridge at
 `127.0.0.1:8089` (the `disassemble_function` and `read_memory` endpoints)
 after the Ghidra MCP tool itself failed to connect.
+
+## 48-D. Mode `0x13`'s challenge screen `0x424E8` and its callees `0x20E90`, `0x29CBC`, `0x428B8`, `0x42BCC`, `0x42724`, `0x4B9AC`, `0x42CB4`, `0x42FE0` (named-gap batch 19, branch `gap19-424e8`)
+
+(The section letter is D. On `main` at `4c077f9` and in `git log --all`, the
+letters A, B, C, E, J, K, P, Q, R, S, T, U, V, W and X are taken. D is the
+first free one, and nothing else in flight names it.)
+
+**Result in one line.** `0x424E8`, `game_frame`'s case `0x13` (the table
+entry `0x253C4 call 0x424e8; 0x253C9 jmp 0x2540F`), is ported as
+`game_mode_13_step` (`flow.c`) and wired. Six of its 19 callees were
+unported, plus two of theirs (`0x29CBC`, `0x42FE0`). All eight are ported
+from the raw.
+
+### 48-D.1 Sources
+
+The raw comes from the Ghidra HTTP bridge at `127.0.0.1:8089`
+(`disassemble_function`, `read_memory`, `get_xrefs_to`,
+`get_function_by_address`, with fixups applied). The Ghidra MCP tool was not
+used. Callee and caller lists come from `port/decomp/prage.calls.csv`.
+`port/decomp/prage.c` was used only to find the `DS_00104AFA = 0x13` stores,
+which were then confirmed in the raw.
+
+### 48-D.2 `0x424E8` (570 bytes)
+
+- `mov al,[0x104b25]; cmp al,5; ja 0x425EF; and eax,0xff;
+  jmp [eax*4+0x424D0]`. The table (`read_memory 0x424D0`, 24 bytes) is
+  0x42508, 0x42553, 0x4255D, 0x425C0, 0x425DE, 0x425E5.
+- **0 (0x42508).** `mov eax,0x2c; call 0x2C3FC` (the voice; EDX is
+  `game_frame`'s), then `xor ecx,ecx; mov eax,1; xor ebx,ebx; call
+  0x2BAF4`, then `xor eax,eax; xor edx,edx; call 0x4F1D0`, then `mov
+  eax,0xc87bc; call 0x38B18` and `call 0x428B8`. The `0x38B18` call has
+  EDX = EBX = 0: `0x2BAF4` pushes all six registers and `0x4F1D0` pushes
+  EDX. Then `mov bl,[0x104b25]; xor dh,dh; inc bl; mov [0x104b15],dh;
+  mov [0x104b25],bl`. BL is read after `0x428B8`, which never stores
+  `0x104B25`.
+- **1 (0x42553).** `call 0x42BCC`.
+- **2 (0x4255D).** `call 0x29CFC` (`jmp 0x13DF0`), then `xor eax,eax; mov
+  ax,[0x104afc]; call 0x20E90`, `call 0x42724` and `call 0x4B9AC`. Then
+  the walk: `xor eax,eax; call 0x33904` and, for each entry ECX,
+  `cmp [ecx],0x3e708; jz` (the second `jz` at 0x42590 repeats the first),
+  `call 0x1C6D4; test al,al; jnz`, and `mov edx,3; mov eax,ecx; mov
+  ebx,[ecx]; call 0x13C70`. After the walk, `inc byte [0x104b25]`.
+- **3 (0x425C0).** `cmp byte [0x9af3d],0; jnz 0x425DE`, then `mov
+  ax,[0x104afc]; call [eax*4+0xc7f58]; inc byte [0x104b25]`, falling into
+  4.
+- **4 (0x425DE).** `call 0x42CB4; jmp 0x425EA`, then `call 0x33F08`.
+- **5 (0x425E5).** `call 0x4F318`, then `call 0x33F08`.
+- **The tail (0x425EF), on CL = `[0x104b1d]`.**
+  - 1: ESI = `0x1C`, EDI = 1. Per ECX = 0, 1, `mov ebp,[0x104ab8]`
+    (re-read each time), `lea eax,[ecx+1]; test eax,ebp; jz next`.
+  - Other non-zero: ESI = `0x1C`, EDI = `0x3800`. `mov al,[0x104b1f]`,
+    `test eax,ebx` (EBX = ECX + 1), `jnz next`.
+  - 0: the same `0x104B1F` test, then `cmp byte [esi+0x107813],0; jnz
+    next` (ESI = side * 0x94).
+  - Every arm then does `call 0x2C060`. On a credit, `test byte
+    [0x104529],2` selects `0x2C178`(side, `0x3800`) or (side, `0x1C`).
+    With no credit it calls `0x2C1C8`(side, `0x1C`) (EBX = 1, not read).
+- **The `0xC7F58` table.** `read_memory 0xC7F58` gives 0x412EC, 0x412EC,
+  0x412EC, 0x5D812, 0x5D812, 0x412EC, 0x5D812, 0x5D812. `0x412EC` is
+  `0x412A0`'s own `ret` (after `mov eax,eax` at 0x412EA). `0x5D812` is
+  `xor eax,eax; ret`. `get_xrefs_to` finds only the two reads, `0x412DD`
+  and `0x425D1`, so nothing stores the table. `0x42CB4` does not read EAX.
+  The call is not issued (`PORT:`), as in `fight_scene_props`.
+
+### 48-D.3 The callees
+
+- **`0x20E90` (38 bytes).** It pushes EDX, zeroes the dwords
+  `0xF0AEC`/`0xF0AF0` and the words `0xF0AFA`/`0xF0AF8`, and calls
+  `0x38730` with the caller's EAX (no clamp). This is `0x20DF4`'s
+  0x20E4C..0x20E63 block plus its 0x20E7F call.
+- **`0x29CBC` (30 bytes).** It pushes EBX and tests `bl = [eax+0x105b34]`.
+  Non-zero returns `[edx*4+0xa8adc]`, zero returns `[edx*4+0xa8ac0]`. It
+  is `0x29CDC`'s twin, and all four callers are in `0x428B8`.
+- **`0x428B8` (785 bytes).** It pushes EBX/ECX/EDX/ESI/EDI.
+  - `0x29D60`, then zeroes `DC`/`E0`/`E4`/`E8` (EDX) and sets
+    `0x108110 = 9` (AH).
+  - `0x2AE14(0xC8364, 0, 0xF0, 0xFFFFC400, push EDX = 0)` goes to
+    `0x1080B4`. `(0xC8378, 0x2A00, 0xF1, 0xFFFFC400, push ESI = 0)` goes
+    to `0x1080B8`.
+  - `pb` = B8's `+0x56 | 0x400` (EDI after `xor edi,edi`). `pa` = B4's
+    (`or si,0x400` at 0x4293E, skipped by the r = 0 arm, which never reads
+    ESI).
+  - `r = [0x104ad4]`: `cmp eax,1; jc` (then `test eax,eax; jnz` exits),
+    `jbe` (r = 1), `cmp eax,2; jz`.
+  - The arms are those of the port's header. The a3/a4 immediates are
+    loaded before `0x29CBC` (`push ebx`, never names ECX) and reloaded
+    after each `0x2AE14` (`ret 4`, keeps ESI/EDI/EBP only).
+  - The tail sets B4's `+0x36 = 0x100` and B8's `= 0x40`, both `+0x5B =
+    0`. It then re-reads `r` into EDI, and with `r != 1` sets F8's `+0x4E
+    = 1` and `+0x2E += 4`.
+- **`0x42BCC` (195 bytes).** The port's header gives the algorithm. The
+  `jge` at 0x42C51 follows `test si,si; jge` at 0x42C4C/0x42C4F, so its
+  target 0x42C5D is dead. The divide is `sar edx,0x1f; idiv esi` with ESI
+  = 3, a signed truncation (`v = -0x82` gives 43, so `+0x36 = 0x2B`).
+- **`0x42724` (403 bytes).** It pushes EBX/ECX/EDX/ESI/EDI and sets up
+  `sub esp,8` with `[esp] = c0` and `[esp+4] = c1`. The x and a3 values
+  are `mov reg,[c*2 + T]; sar reg,0x10`: the signed word at `T + 2 + c*2`.
+  Two stack reads are quirks, kept as they are:
+  - In the r = 1 arm (0x427B2..0x427CF), `push 0` comes first, then `mov
+    al,[esp+8]` (c1). The a3 is `mov ecx,[esi+0xc834a]`, where ESI = `c0 *
+    2` (0x4278A, kept by `0x2AE14`). So side 1's a3 is c0's word.
+  - In the secondary-actor loop (0x42857..0x42898), `push eax` (a5)
+    comes first, then `mov al,[esp+4]`, which is the pre-push `[esp]` =
+    c0 on both iterations. So both secondary actors are `0xBB8D0[c0]`.
+- **`0x4B9AC` (925 bytes).** It pushes all six registers and sets up
+  `sub esp,0x30`. The port's header gives the frame layout. Its draw order
+  is `rng(6)`, `0x29CDC` (no draw), `rng(0x1D00)`, `rng(range)`, and then
+  a loser's lane-1 `rng(2)`. The free list's empty case: `cmp
+  edi,0x1083c4; jnz` unlinks, else EDI = 0. `mov esi,edi; test edi,edi;
+  jz 0x4BD3F` leaves the whole function, including the side loop.
+- **`0x42CB4` (681 bytes)** and **`0x42FE0` (221 bytes).** The port's
+  headers give both. `0x42FE0` pushes EBX/ECX/EDX/ESI/EDI, so the stores
+  after each call use registers loaded before it. The expiry's think-gate
+  address is `lea eax,[ebp*8]; add eax,ebp; shl eax,2; add eax,ebp`, which
+  is 37r, then `[eax*4+0x107813]`: `0x107813 + r * 0x94`. The count
+  actors' frame index is `mov eax,[0x10810d]; sar eax,0x18`, the signed
+  byte `0x108110`.
+
+### 48-D.4 The image values (`read_memory`; the tests assert the ones they rely on)
+
+- **The descriptors' first dwords:** `0xC8364`/`0xC8378` = 0x351/0x352,
+  `0xC838C` = 0x3B1, `0xC83A0` = 0x34F, `0xC87BC` = 0x3F11. `0xC83B4`'s
+  `+0x10` is 0x0900AF04 until patched.
+- **The +8 words:** 0x2000/0x2800 for the `0xC83xx` descriptors,
+  0x4900/0x900/0x4200/0x200 for the fighter descriptors (no bit 13, so a3
+  goes to `+0x32`), and 0x1000 for the crowd `0xC9524[d]` (whose `+4` byte
+  is `0x20 + d`).
+- **The winner descriptors** `0xBB880`/`0xBB884` have frame byte `+5` =
+  3; the others have 0.
+- **The x and a3 words (from T + 2):**
+  - `0xC8314`: 0, -0xA00, -0xF00, -0x2100, -0x1200, -0x1200, -0xA00.
+  - `0xC8330`: -0x1400, -0x1400, -0x1600, -0x1200, -0x1C00, -0x1400.
+  - `0xC834C`: 0xC00, then 0xE00 six times.
+- **The crowd words:** `0xC97FA` = 0x6C2/0xA40/0xD06, `0xC9800` =
+  0x6C2/0xA40/0xA40, and `0xC9806` = 0x37E/0x2C6/0x500.
+- **The count frames** `0xC82EC[n]` are 0x350, 0x347..0x34F.
+- **The prompt columns** `0xBAB58` are 3 and 0x18.
+- **String `0x48`** is "  PRESS START" (two leading spaces).
+
+### 48-D.5 The port and the deviations
+
+- **Placement.** The flow functions are in `flow.c` (a new section before
+  the §46-F hooks). `0x4B9AC` is in `fight.c` next to `0x4DBEC`, reusing
+  `fight_dust_value` (`0x29CDC`) and `fight_dust_clamp` (`0x496AC`).
+- **`fighter_29bc8`** was static and is now exported.
+- **`PORT:` notes:** the `0x2C` voice (case 0) and the `0x2D` voice
+  (`0x42CB4`'s expiry), both §45-A, and the `0xC7F58` call.
+- **No `TODO(verify)`.** Every value is pinned above.
+- **Stale named-gap enumeration.** The comment still listed case `0xB` as
+  a gap after §48-B. It is corrected along with `0x13`.
+
+### 48-D.6 The assertions and mutations (`check_mode_13` in `test_fight.c`)
+
+`m13_seed` restores the snapshot, runs `0x2BAF4` (a clean pool) and
+`0x49300`, and seeds sentinels. `check_mode_13` snapshots the offscreen
+buffers, the aperture and the DAC around the checks, since `0x2BAF4`
+clears them and `mz_save` does not hold them.
+
+- **(a)** `0x20E90`: the stage is not clamped.
+- **(b)** `0x42BCC`, in nine rows: the -1/0 bounce boundary, the
+  0x40/0x41 landing boundary, the truncating divide, a non-negative
+  bounce, and both records landed.
+- **(c)** `0x428B8` for r = 0/1/2/3 with both think gates: the children's
+  a2/a3/a4 and parents, the `0xC83C4` patch, and the stale-`F8` tail.
+- **(d)** `0x42724` for r = 0..3 with c0 = 0 and c1 = 2. This shows the
+  r = 1 a3 quirk, the winner descriptor through `+0x24`, the palettes, and
+  that both secondary actors share `0xBB8D0[c0]`.
+- **(e)** `0x4B9AC`, entry by entry against replayed draws. The eight
+  stream tables are planted with one-word streams so that `+0x08` names
+  the arm. Five seeds are used, two of them from a search that lands
+  exactly on base + 0x9AA and on base + 0x1354. A trimmed free list shows
+  the early return.
+- **(f)** `0x42FE0`.
+- **(g)/(h)/(i)** `0x42CB4`: the challenge per result, the countdown's
+  forced and button ticks, and the expiry's reset, bit-clear and mode arms.
+- **(j)..(n)** `0x424E8`'s sub-states and tail.
+- **(o)** `game_frame`'s case `0x13`.
+
+A scripted sweep ran 15 mutations. All 15 fail the suite:
+
+| Mutation | Checks failed |
+|---|---|
+| r = 1 a3 from c1 | 1 |
+| lane wrap past 1 | 338 |
+| think gate `!= 0` | 2 |
+| no `0x3E708` skip | 3 |
+| landing `>=` | 2 |
+| tail only at r = 0 | 4 |
+| `DS_00104AB8` sense | 12 |
+| `0x41310` on the same side | 8 |
+| stage clamp | 2 |
+| case 3 ignores the count | 1 |
+| lane-0 `x <= near` | 1 |
+| `DS_00104B1F` bit precedence | 3 |
+| secondary actor from c1 | 4 |
+| floor divide | 1 |
+| sprite row `0x1C` | 1 |
+
+Two mutations first survived: the lane-0 bound and the floor divide.
+Planting the streams and adding the boundary seeds closed the first. A
+non-multiple-of-3 bounce (`v = -0x82`) closed the second.
+
+### 48-D.7 Reachability and verification
+
+No ported path reaches mode `0x13`. Its entries are `0x28788` (mode 9,
+unported) and `0x41578`, whose callers `0x416D4` and `0x41C28` are
+unported. `PR_ORACLE_REQUIRED=1 run_tests` is green three times. `make
+verify` is unchanged: front-end 517/801/3/2, demo-fight fully explained at
+N = 1886, attract2 0 unexplained at N = 3617, and `symbols.h` regenerates
+byte-identically.
