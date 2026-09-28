@@ -286,6 +286,17 @@ int actors_init(void)
     fn_register(0x14CC4u, (void (*)(void))fighter_14cc4);
     fn_register(0x14D7Cu, (void (*)(void))fighter_14d7c);
     fn_register(0x14EA4u, (void (*)(void))anim_code_14EA4);
+    /* PORT: 0x34E2C's reaction callbacks 0x14B90 (*(u32*)0xA4720, character
+     * 3's reaction 0x26) and 0x14C98 (*(u32*)0xA4748, reaction 0x28), called
+     * at 0x35045 with the (slot, rec, side) registers, and the callbacks
+     * 0x14B90 stores: +0x0C 0x14988 (0x3531C case 7, same registers), +0x18
+     * hook 0x14938 (0x19020, fn(side) with EAX returned) and +0x1C 0x14950
+     * (0x193B0's 0x19505, fn(side)); record §49-W. */
+    fn_register(0x14B90u, (void (*)(void))fighter_14b90);
+    fn_register(0x14C98u, (void (*)(void))fighter_14c98);
+    fn_register(0x14988u, (void (*)(void))fighter_14988);
+    fn_register(0x14938u, (void (*)(void))fighter_14938);
+    fn_register(0x14950u, (void (*)(void))fighter_14950);
     /* PORT: the 0xD500 target 0x3C32C (opcode 0x15, mode 0x4000), the end
      * of a reaction stream: 9 dword sites, each after a 0xD500 word (0xD24FE
      * in character 3's reaction stream 0xD24F0, reached at loop 3293 of the
