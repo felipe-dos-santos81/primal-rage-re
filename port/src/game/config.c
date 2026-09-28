@@ -288,6 +288,50 @@ u32 hiscore_insert(u32 rec, u32 src, u32 table)
     return 1u;                                               /* 0x2DDD2 */
 }
 
+/* 0x2DDE4 — record §49-R. EAX = value, EDX = table. Locates record 0 of
+ * `table` through 0x2DB58 to get the table's base address and per-record
+ * size (returning -1 immediately when that lookup fails, 0x2DE01/0x2DE07);
+ * reads the descriptor's own value-byte width straight from 0x2D400 (=
+ * 0x2D3FC + 4, the same field hiscore_locate's own `size` sums), packs
+ * `value` into a local buffer big-endian, most-significant byte first,
+ * exactly the byte order hiscore_insert's value store uses (0x2DE23..
+ * 0x2DE39: LSB stored at the highest buffer index first, then `value >>=
+ * 8`, each iteration one buffer slot lower). It then walks the table
+ * record by record (0x2DE3D the loop head): a byte-by-byte prefix compare
+ * against the current record (0x2DE43..0x2DE50) either matches every byte
+ * (a tie) or stops at the first mismatch; a strict win — the packed byte is
+ * greater, unsigned, than the record's (0x2DE5E `ja`) — returns the count
+ * of records already scanned (the insertion rank); a tie or a loss
+ * advances `left`/`p` by one record's size and retries (0x2DE60..0x2DE73);
+ * running the table's own byte budget negative (0x2DE71/0x2DE7A/0x2DE7C)
+ * returns -1. The stack buffer is sized 8 bytes; the shipped descriptors at
+ * 0x2D400 read 4/4/3 for tables 0/1/2 (read_memory, confirmed live), so 8
+ * is headroom, not a value the port invents. */
+u32 hiscore_rank_probe(u32 value, u32 table)
+{
+    u32 left = 0u, size = 0u;
+    u32 p = hiscore_locate(0u, table, &left, &size);          /* 0x2DDFC */
+    if (p == 0u) return 0xFFFFFFFFu;                          /* 0x2DE01/0x2DE07 */
+    u32 nval = DSW(DS_0002D400 + table * 8u);                 /* 0x2DE11 */
+    u8 buf[8];
+    for (u32 n = nval; n != 0u; n--) {                        /* 0x2DE23..0x2DE39 */
+        buf[n - 1u] = (u8)value;
+        value >>= 8;
+    }
+    u32 rank = 0u;
+    for (;;) {                                                /* 0x2DE3D */
+        u32 i = 0u;
+        while (i < nval && buf[i] == DSB(p + i)) i++;         /* 0x2DE43..0x2DE50 */
+        if (i < nval && buf[i] > DSB(p + i)) break;           /* 0x2DE52/0x2DE5E `ja` */
+        s32 sleft = (s32)left - (s32)size;                    /* 0x2DE69 */
+        p += size;                                            /* 0x2DE6B */
+        rank++;                                                /* 0x2DE68 */
+        if (sleft < 0) return 0xFFFFFFFFu;                     /* 0x2DE71/0x2DE7A/0x2DE7C */
+        left = (u32)sleft;                                     /* 0x2DE6D */
+    }
+    return rank;                                               /* 0x2DE75/0x2DE8A */
+}
+
 /* ---- credit layer -------------------------------------------------------- */
 
 /* 0x2CAA8. `cmp byte [0x85d60],0; sete al; and eax,0xff`. */

@@ -521,6 +521,24 @@ void game_mode_08_step(void);
  * nonzero, the mode is left at 0xA (this handler runs again next frame). */
 void game_mode_0a_step(void);
 
+/* 0x1EC38 — record §49-R. Ranks a fighter's post-match score against
+ * table 0 through config.h's hiscore_rank_probe (0x2DDE4): a rank < 10
+ * clears config field 0x26 and records the rank in DS_001044D6, returning
+ * 1; a rank >= 10 returns 0. The deferred field-0x27/0x26 audit adds
+ * (0x2DAE4) and the name-entry candidate-list prep (0x204F4, the unported
+ * 0x1F458 screen's own setup) are out of scope — see flow.c's header
+ * comment on this function for the full derivation and why neither
+ * changes this function's own observable return. */
+u32 hiscore_rank_single(u32 score);
+
+/* 0x1ECC8 — record §49-R. Ranks both fighters' post-match scores
+ * (DS_001077EC, DS_00107880) against table 0 through hiscore_rank_probe,
+ * recording each side's rank into DS_001044C0/DS_001044C2. Returns 1 only
+ * when both rank < 10 and are not both exactly 9 (the table's single last
+ * slot, which only one side can take); see flow.c's header comment for the
+ * full derivation. */
+u32 hiscore_rank_pair(void);
+
 /* 0x1EEB0 — record §49-H. Mode 0x1E's frame handler (0x24C5C's named-gap
  * case 0x1E, table entry `call 0x1EEB0; jmp 0x2540F`; get_xrefs_to 0x1EEB0
  * confirms that one call site). It is entered with DS_00104B25 = 0 as the
@@ -549,33 +567,45 @@ void game_mode_0a_step(void);
  *   hook, record §46-B — already documented there as stored "at 0x1F447
  *   (0x1EEB0)") and arms the mode-0x1A wipe with return mode 0x11
  *   (frontend_wipe_arm); else DS_00104B00 = 0x14 too).
- *   The other half — states 0, 4, 5, 7, 8, 0xB..0xE, primed by 0xF/0x10 —
- *   gate on three unported functions: 0x1ECC8 and 0x1EC38 (states 0 and
- *   4/7) rank DS_001077EC/DS_00107880 — each fighter's post-match score,
- *   the +8 field of the per-side records at DS_001077E4/DS_00107878 — via
- *   the unported 0x2DDE4 against a table at 0x2D400 (0x2DDE4 itself calls
- *   the unported 0x2DB58); a return < 0xA is a high-score-table rank. 0x1F458
- *   (2897 B, its own subsystem, the analog/digital cursor driver states 5,
- *   8 and 0xB..0xE all poll — params 0 or 1 select the side — and 0xF/0x10
- *   prime with the return discarded) is the initials/name-entry screen those
- *   ranked states wait on. This is exactly the family docs/PROGRESS.md
+ *   States 0, 4 and 7's high-score rank probe (record §49-R) is now real:
+ *   0x1ECC8 (hiscore_rank_pair, state 0) and 0x1EC38 (hiscore_rank_single,
+ *   states 4/7) rank DS_001077EC/DS_00107880 — each fighter's post-match
+ *   score, the +8 field of the per-side records at DS_001077E4/
+ *   DS_00107878 — against table 0 through hiscore_rank_probe (0x2DDE4,
+ *   config.h/.c); a rank < 0xA is a high-score-table slot. State 0's own
+ *   short-circuit (DS_00104AD4 == 2 && DS_00104B1F == 0) now continues
+ *   into the real gate: when hiscore_rank_pair() is true, it picks the
+ *   higher of the two scores (unsigned; a tie favours side 0), stores
+ *   DS_00104B25 = 0xB or 0xC and calls hiscore_rank_single on the winner
+ *   (its own return discarded, matching the raw); either a false
+ *   short-circuit term or a false gate lands on DS_00104B25 = 4. State 4's
+ *   short-circuit (DS_00107813 == 0) continues into hiscore_rank_single on
+ *   DS_001077EC; a true result is followed by a second, independent gate —
+ *   DS_00104AD4 != 0, or (DS_00104B14 != 0 && DS_00104ABC == 1) — that
+ *   arms DS_00104B25 = 5 only when it too holds; any false lands on
+ *   DS_00104B25 = 7. State 7 mirrors state 4 exactly (DS_001078A7,
+ *   DS_00107880, DS_00104AD4 != 1, arming state 8, else state 0xA).
+ *   Genuinely out of scope past the real gate, in all three states: the
+ *   name-entry screen reset 0x1ED2C (spawns the backdrop/cursor actors for
+ *   the unported 0x1F458 initials-entry screen — 2897 B, its own
+ *   subsystem, the analog/digital cursor driver states 5, 8 and 0xB..0xE
+ *   all poll, params 0 or 1 selecting the side, primed by 0xF/0x10 with
+ *   the return discarded) and, inside 0x1EC38 itself, the name-entry
+ *   candidate-list prep 0x204F4 — both PORT-noted at their call sites
+ *   (flow.c), both write only into state 0x1F458 later reads, and 0x1F458
+ *   stays parked regardless, so omitting them changes no state this port's
+ *   own callers observe. This is exactly the family docs/PROGRESS.md
  *   already flags jointly with this function: "the interactive match ...
  *   0x1EEB0, 0x1F458, the player screens and human input ... remains
- *   unowned" — a genuine, separate, high-score name-entry gap, not a small
- *   completable chain. Two of the four gated states have a portable short-
- *   circuit, ported here: state 0 only calls 0x1ECC8 when DS_00104AD4 == 2
- *   && DS_00104B1F == 0 (else DS_00104B25 = 4, unconditionally); state 4
- *   only calls 0x1EC38 when DS_00107813 == 0 (else DS_00104B25 = 7); state
- *   7 mirrors state 4 on DS_001078A7 (else DS_00104B25 = 0xA). Past that
- *   short-circuit — and for states 5/8/0xB..0xE/0xF/0x10 entirely — the
- *   state cannot determine whether to advance without the unported gate, so
- *   it stays parked (PORT: notes at each case); this is not a fabricated
- *   stub; it is exactly the "still waiting" behaviour those states already
- *   have while their own poll returns not-done.
+ *   unowned" — the rank probe closes the first half of that gap; the
+ *   initials-entry screen itself (5/8/0xB..0xE, primed by 0xF/0x10) is
+ *   untouched and stays parked (PORT: notes at each case) — exactly the
+ *   "still waiting" behaviour those states already have while their own
+ *   poll returns not-done, not a fabricated stub.
  *   Two established gaps recur throughout, left as the same PORT: notes
  *   this codebase already uses elsewhere: every 0x2C3FC voice call (record
- *   §45-A) and, inside 0x1ECC8/0x1EC38, 0x2DAE4 (the deferred audit no-op,
- *   spec §7). EBX/ECX/EDX/ESI/EDI are pushed and popped. */
+ *   §45-A) and, inside 0x1EC38, 0x2DAE4 (the deferred audit no-op, spec
+ *   §7). EBX/ECX/EDX/ESI/EDI are pushed and popped. */
 void game_mode_1e_step(void);
 
 /* 0x208F8 — record §49-J. The mode 0x1F handler: the "roar" screen between

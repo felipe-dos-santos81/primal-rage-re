@@ -4873,6 +4873,66 @@ void frontend_match_start(void)
 #define FN_000430E8 0x000430E8u   /* no symbols.h name: the versus-screen hook,
                                       fight.c's fight_hook_430e8 (record §46-B) */
 
+/* 0x1EC38 — record §49-R. EAX = score (DS_001077EC or DS_00107880). Ranks it
+ * against table 0 through hiscore_rank_probe (0x2DDE4, table = 0 both
+ * `xor edx,edx` at 0x1EC3D/0x1EC50's own callers). A rank >= 10 (0x1EC75/
+ * 0x1EC78, the low 16 bits of the probe's return, 0xFFFFFFFF included)
+ * returns 0. A rank < 10 clears config field 0x26 (0x1ECB1/0x1ECB3
+ * config_field_set — the real, unconditional store, not the deferred audit
+ * add below), records the rank into DS_001044D6 (0x1ECBA) and returns 1.
+ * PORT: 0x1EC44..0x1EC6B and 0x1EC7A..0x1EC9A each post one deferred
+ * 0x2DAE4 audit add (field 0x27 always, clamped at 2000 through
+ * config_field_set when its running total exceeds it; field 0x26 only on
+ * the non-qualifying path, clamped at 200) — 0x2DAE4 is the deferred audit
+ * idiom this codebase already treats as out of scope everywhere else
+ * (spec §7); neither add changes this function's own return value or
+ * DS_001044D6, so omitting them changes no state this port's own callers
+ * observe. PORT: 0x1ECA7 0x204F4(edx = the score) — the name-entry
+ * candidate-list shuffle and cursor-state init (DS_00104367 the buffer,
+ * DS_0010431C..0x104394 the cursor fields, DS_001044C4/0x1044CC/0x1044D4
+ * the layout) for the unported 0x1F458 initials-entry screen — is the same
+ * out-of-scope subsystem record §49-H already names; its own return value
+ * is discarded by the raw, so omitting it changes nothing this function
+ * itself returns or stores. */
+u32 hiscore_rank_single(u32 score)
+{
+    u32 rank = hiscore_rank_probe(score, 0u);                  /* 0x1EC3F */
+    /* PORT: 0x1EC44..0x1EC6B — field 0x27's deferred audit add; see header. */
+    if ((u16)rank >= 10u) {                                    /* 0x1EC75/0x1EC78 */
+        /* PORT: 0x1EC7A..0x1EC9A — field 0x26's deferred audit add; see
+         * header. */
+        return 0u;                                             /* 0x1EC9F */
+    }
+    /* PORT: 0x1ECA7 0x204F4(score) — see header. */
+    (void)config_field_set(0x26u, 0u);                          /* 0x1ECB3 0x2DA0C */
+    DSW(DS_001044D6) = (u16)rank;                               /* 0x1ECBA */
+    return 1u;                                                  /* 0x1ECB8 */
+}
+
+/* 0x1ECC8 — record §49-R. Ranks both fighters' post-match scores
+ * (DS_001077EC, DS_00107880 — the per-side records' own `+8` field) against
+ * table 0 through hiscore_rank_probe, recording each rank into
+ * DS_001044C0/DS_001044C2 for game_mode_1e_step's own state 0 to read back
+ * (0x1ECD5/0x1ECFC). Side 0's rank >= 10 bails immediately (0x1ECE0/
+ * 0x1ECE3/0x1ECE5). Otherwise side 1 is probed; the one pathological tie —
+ * both sides land on rank 9, the table's last slot, which only one of them
+ * can actually take — bails too (0x1ED02/0x1ED05/0x1ED0C/0x1ED0F/0x1ED11);
+ * any other tie is not special-cased (this codebase transcribes the raw
+ * exactly here, not a plausible-looking simplification). Otherwise side
+ * 1's rank >= 10 bails (0x1ED1D/0x1ED20/0x1ED22); else returns 1
+ * (0x1ED26). */
+u32 hiscore_rank_pair(void)
+{
+    u32 r0 = hiscore_rank_probe(DSD(DS_001077EC), 0u);          /* 0x1ECD0 */
+    DSW(DS_001044C0) = (u16)r0;                                  /* 0x1ECD5 */
+    if ((u16)r0 >= 10u) return 0u;                               /* 0x1ECE0/0x1ECE3 */
+    u32 r1 = hiscore_rank_probe(DSD(DS_00107880), 0u);           /* 0x1ECF0 */
+    DSW(DS_001044C2) = (u16)r1;                                  /* 0x1ECFC */
+    if ((u16)r1 == (u16)r0 && (u16)r0 == 9u) return 0u;          /* 0x1ED02/0x1ED05/0x1ED0C/0x1ED0F/0x1ED11 */
+    if ((u16)r1 >= 10u) return 0u;                                /* 0x1ED1D/0x1ED20 */
+    return 1u;                                                    /* 0x1ED26 */
+}
+
 /* 0x1EEB0 — record §49-H. See flow.h for the full derivation: a 17-state
  * sub-machine on DS_00104B25, entered from mode 0x13's challenge poll with
  * DS_00104B25 = 0 when the post-match challenge window runs out unjoined.
@@ -4887,15 +4947,26 @@ void game_mode_1e_step(void)
 {
     switch (DSB(DS_00104B25)) {
     case 0x00u:
-        if (DSD(DS_00104AD4) == 2u && DSB(DS_00104B1F) == 0u) {  /* 0x1EECF/0x1EED6/0x1EED8/0x1EEDF */
-            /* PORT: 0x1EEE1 0x1ECC8 (the high-score-rank probe over
-             * DS_001077EC/DS_00107880 via the unported 0x2DDE4/0x2DB58 and
-             * 0x2DAE4) gates the wipe into state 0xB or 0xC through the
-             * unported 0x1ED2C/0x1EC38; named gap (see flow.h). This state
-             * cannot advance past here without them. */
-        } else {
-            DSB(DS_00104B25) = 4u;                              /* 0x1EF37 */
+        if (DSD(DS_00104AD4) == 2u && DSB(DS_00104B1F) == 0u    /* 0x1EECF/0x1EED6/0x1EED8/0x1EEDF */
+            && hiscore_rank_pair() != 0u) {                     /* 0x1EEE1/0x1EEE6/0x1EEE8 */
+            /* PORT: 0x1EEEA 0x1ED2C — the name-entry screen reset (spawns
+             * the backdrop/cursor actors, resets DS_001044D0/D2/CE and the
+             * entry-buffer state) for the unported 0x1F458 initials screen
+             * — out of scope, record §49-H's own gap. PORT: 0x1EEEF/
+             * 0x1EEF9 0x2C3FC voices (0x100, 0xE1), not wired (record
+             * §45-A). */
+            u32 s0 = DSD(DS_001077EC);                          /* 0x1EF03 */
+            u32 s1 = DSD(DS_00107880);                          /* 0x1EF08 */
+            if (s0 >= s1) {                                     /* 0x1EF0E/0x1EF10 (unsigned) */
+                DSB(DS_00104B25) = 0x0Bu;                       /* 0x1EF12 */
+                (void)hiscore_rank_single(s0);                  /* 0x1EF19 */
+            } else {
+                DSB(DS_00104B25) = 0x0Cu;                       /* 0x1EF27 */
+                (void)hiscore_rank_single(s1);                  /* 0x1EF2D */
+            }
+            break;
         }
+        DSB(DS_00104B25) = 4u;                                  /* 0x1EF37 */
         break;
     case 0x01u:
         /* 0x1EE6C's state-1 jump-table entry is the shared tail `ret`
@@ -4922,10 +4993,19 @@ void game_mode_1e_step(void)
             DSB(DS_00104B25) = 7u;                                /* 0x1F2AA */
             break;
         }
-        /* PORT: 0x1F1AB 0x1EC38(DS_001077EC) — the same rank probe as state
-         * 0 — gates the rest of this state (state 5's screen reset 0x1ED2C
-         * and two voices) through the unported 0x2DDE4/0x2DB58/0x2DAE4/
-         * 0x204F4; named gap (see flow.h). */
+        if (hiscore_rank_single(DSD(DS_001077EC)) != 0u) {         /* 0x1F1A6/0x1F1AB/0x1F1B0/0x1F1B2 */
+            u32 advance = (DSD(DS_00104AD4) != 0u)                  /* 0x1F1B8/0x1F1BF */
+                       || (DSB(DS_00104B14) != 0u && DSD(DS_00104ABC) == 1u); /* 0x1F1C1/0x1F1C8/0x1F1CE/0x1F1D5 */
+            if (advance) {
+                DSB(DS_00104B25) = 5u;                              /* 0x1F1DB */
+                /* PORT: 0x1F1E2 0x1ED2C — side 0's name-entry screen
+                 * reset — out of scope (see state 0's own note). PORT:
+                 * 0x1F1EC/0x1F1F6 0x2C3FC voices (0x100, 0xE1), not wired
+                 * (record §45-A). */
+                break;
+            }
+        }
+        DSB(DS_00104B25) = 7u;                                     /* 0x1F2AA */
         break;
     case 0x05u:
         /* PORT: 0x1F203 polls the unported 0x1F458(0) — the name-entry
@@ -4950,9 +5030,19 @@ void game_mode_1e_step(void)
             DSB(DS_00104B25) = 0xAu;                              /* 0x1F3CC */
             break;
         }
-        /* PORT: 0x1F2C9 0x1EC38(DS_00107880) — side 1's mirror of state 4's
-         * gate — gates the rest of this state (state 8's two voices);
-         * named gap (see flow.h). */
+        if (hiscore_rank_single(DSD(DS_00107880)) != 0u) {          /* 0x1F2C4/0x1F2C9/0x1F2CE/0x1F2D0 */
+            u32 advance = (DSD(DS_00104AD4) != 1u)                   /* 0x1F2D6/0x1F2DC/0x1F2DF */
+                       || (DSB(DS_00104B14) != 0u && DSD(DS_00104ABC) == 1u); /* 0x1F2E1/0x1F2E8/0x1F2EE/0x1F2F4 */
+            if (advance) {
+                DSB(DS_00104B25) = 8u;                               /* 0x1F301 */
+                /* PORT: 0x1F316 0x1ED2C — side 1's name-entry screen
+                 * reset — out of scope (see state 0's own note). PORT:
+                 * 0x1F307/0x1F311 0x2C3FC voices (0x100, 0xE1), not wired
+                 * (record §45-A). */
+                break;
+            }
+        }
+        DSB(DS_00104B25) = 0xAu;                                     /* 0x1F3CC */
         break;
     case 0x08u:
         /* PORT: 0x1F326 polls 0x1F458(1) — side 1's mirror of state 5;
