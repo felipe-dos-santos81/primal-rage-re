@@ -194,7 +194,7 @@ static void title_origin_reset(u32 idx)
     DSW(DS_00107A38) = (u16)(DSW(DS_00107A48) >> 6);  /* 0x3897D */
 }
 
-/* PORT: 0x1E75C. Lock the paged data handle and return its data offset, or 0
+/* 0x1E75C — record §50-D. PORT: lock the paged data handle and return its data offset, or 0
  * when it is locked or empty. The handle is {base @+8; len @+0xc; flags @+0x15}
  * (0x1E6D8/0x1E75C/0x1E808's block header); the port builds it in mem[] and the
  * "lock" is an inert single-threaded flag. */
@@ -207,7 +207,7 @@ static u32 string_lock(u32 handle)
     return 0;
 }
 
-/* PORT: 0x1E808. Clear the lock bit. Its second argument feeds 0x500BB (a DPMI
+/* 0x1E808 — record §50-D. PORT: clear the lock bit. Its second argument feeds 0x500BB (a DPMI
  * page-map query) and a write to [arg+0x10] that the string reader never reads;
  * the port omits both, which is the arm 0x474E4 reaches. */
 static void string_unlock(u32 handle) { DSB(handle + 0x15) &= 0xFDu; }
@@ -5978,6 +5978,89 @@ static u32 snd_samples_stop_all(void)
     return 1;
 }
 
+/* 0x1CAB8 — record §50-D. EAX = the music volume. Unchanged from
+ * DS_000A2CB8 it does nothing; otherwise it is stored (0x1CACB) and, when the
+ * sequence plays (0x1CAD9 0x5DEED status 4; a zero DS_001028C0 reads as not
+ * playing, 0x1CAD2), pushed to the device over 500 ms (0x1CAF6 0x5DECA). */
+void sound_music_volume(u32 v)
+{
+    if (v == DSD(DS_000A2CB8)) return;                     /* 0x1CABD */
+    DSD(DS_000A2CB8) = v;                                  /* 0x1CACB */
+    if (snd_music_playing() == 1u)                         /* 0x1CAD2..0x1CAF1 */
+        AIL_set_sequence_volume(s_sequence, (s32)DSD(DS_000A2CB8), 500);   /* 0x1CAF6..0x1CB09 */
+}
+
+/* 0x1CED4 — record §50-D. EAX = the SFX volume. Unchanged from DS_000A2CB4 it
+ * does nothing; otherwise it is stored (0x1CEE1) and every slot whose 0x5DD03
+ * status is 4 (playing) gets it through 0x5DCC5 (slots 0..3 at stride 0x18,
+ * 0x1CF12/0x1CF15 `cmp esi,0x60`). PORT: the slot's handle is s_samples[i],
+ * not a mem[] word (see the sound-module comment above). */
+void sound_sfx_volume(u32 v)
+{
+    if (v == DSD(DS_000A2CB4)) return;                     /* 0x1CED9 */
+    DSD(DS_000A2CB4) = v;                                  /* 0x1CEE1 */
+    for (u32 off = 0; off != SND_SLOT_END; off += SND_SLOT_STRIDE) {   /* 0x1CEE6 0x1CF15 */
+        if (snd_slot_status(off) != 4) continue;           /* 0x1CEEF 0x1CEF7 */
+        AIL_set_sample_volume(s_samples[off / SND_SLOT_STRIDE],
+                              (s32)DSD(DS_000A2CB4));      /* 0x1CEFC..0x1CF0A */
+    }
+}
+
+/* 0x1D1B0 — record §50-D. The music pause toggle (key 0x32 at 0x24DBF; the
+ * pause arm of 0x1D250, the resume arm of 0x1D270). With the music paused
+ * (DS_001028DA == 1) it clears the byte (0x1D1C2) and, when a current song
+ * byte (DS_001028D9) and song (DS_001028D4) are set and there is a sequence
+ * handle, makes the song pending again (0x1D1E7). Otherwise, with a sequence
+ * handle that plays (0x1CA40), it stops the sequence (0x1D20B 0x5DEAF); either
+ * way it then sets the pause byte (0x1D213). No caller reads the result. */
+void sound_music_pause_toggle(void)
+{
+    if (DSB(DS_001028DA) == 1u) {                          /* 0x1D1BB */
+        DSB(DS_001028DA) = 0;                              /* 0x1D1C2 */
+        if (DSB(DS_001028D9) == 0u) return;                /* 0x1D1C8 */
+        u32 song = DSD(DS_001028D4);                       /* 0x1D1D1 */
+        if (song == 0u) return;                            /* 0x1D1D7 */
+        if (DSD(DS_001028C0) == 0u) return;                /* 0x1D1E1 */
+        DSD(DS_001028CC) = song;                           /* 0x1D1E7 */
+        return;
+    }
+    if (DSD(DS_001028C0) != 0u && snd_music_playing() != 0u)   /* 0x1D1F2 0x1D1FB 0x1D202 */
+        AIL_stop_sequence(s_sequence);                     /* 0x1D20B 0x5DEAF */
+    DSB(DS_001028DA) = 1;                                  /* 0x1D213 */
+}
+
+/* 0x1D220 — record §50-D. The sample pause toggle (key 0x1F at 0x24DC9):
+ * flips DS_001028DB (0x1D220) and, when it is now 1, stops every sample
+ * (0x1D231 -> 0x1CD9C, a tail jump). */
+void sound_sample_pause_toggle(void)
+{
+    DSB(DS_001028DB) ^= 1u;                                /* 0x1D220 */
+    if (DSB(DS_001028DB) == 1u) snd_samples_stop_all();    /* 0x1D22E 0x1D231 */
+}
+
+/* 0x1D250 — record §50-D. The pause entry of the quit prompt (0x249F0) and the
+ * pause key (0x24E26): with the music not yet paused, pauses it (0x1D25C
+ * 0x1D1B0) and records that this pause is the prompt's (DS_001028D8 = 1,
+ * 0x1D261: DL is 1 across the call); then stops every sample (0x1D267). */
+void sound_pause(void)
+{
+    if (DSB(DS_001028DA) == 0u) {                          /* 0x1D251 */
+        sound_music_pause_toggle();                        /* 0x1D25C */
+        DSB(DS_001028D8) = 1u;                             /* 0x1D261 */
+    }
+    snd_samples_stop_all();                                /* 0x1D267 0x1CD9C */
+}
+
+/* 0x1D270 — record §50-D. The resume of 0x1D250: when it paused the music
+ * (DS_001028D8 == 1) it toggles the music back (0x1D27C 0x1D1B0) and clears
+ * the byte (0x1D283). */
+void sound_resume(void)
+{
+    if (DSB(DS_001028D8) != 1u) return;                    /* 0x1D272 0x1D27A */
+    sound_music_pause_toggle();                            /* 0x1D27C */
+    DSB(DS_001028D8) = 0;                                  /* 0x1D283 */
+}
+
 /* 0x1CC28. EAX = the resource handle of a sample, DL = its loop byte. Without
  * a DIG driver (DS_001028C8) or while samples are paused (DS_001028DB) AL = 0
  * and nothing is read. Otherwise it reads the time (0x500BB) and resolves the
@@ -6092,6 +6175,53 @@ u32 sound_voice(u32 id)
     default:                                               /* 0x2C8E8, `ja` */
         return 0;
     }
+}
+
+/* 0x249F0 — record §50-D. The quit prompt (0x24C5C's key 0x10 at 0x24DDF with
+ * AL = 0, and its mode arms at 0x24EAD / 0x24EC5 with AL = 0 / 1). `hard_quit`
+ * is AL: 0 asks string 0x1EE and a yes sets the quit flag DS_000A81A8, nonzero
+ * asks string 0x1EF and a yes leaves through the longjmp quit. It raises the
+ * prompt flag DS_00104B22 (0x24A01), pauses the sound (0x1D250), draws the
+ * question centred on row 10 (0x24A1C..0x24A32 0x1C500 0x2F198), presents one
+ * frame (0x24A37 0x2EA78 with -1) and reads keys (0x24A64 int 16h AH=0) until
+ * the flag drops: the key's ascii byte, upper-cased (0x24A7B 0x653ED: 'a'..'z'
+ * minus 0x20, signed compares), against the first bytes of strings 0x1F0
+ * (yes) and 0x1F1 (no), each sign-extended (0x24A4B 0x24A58 movsx). Yes drops
+ * the flag (0x24A89); no drops it (0x24ABE) and clears the question's cells
+ * (0x24AE7 0x2F280). Any other key loops. It ends by resuming the sound
+ * (0x24AF9 0x1D270).
+ * PORT: 0x24A9C..0x24AB0 (0x1D270, then the resource free 0x1B084, a no-op
+ * under flat mem[] (see game_init), then `jmp 0x65431`, longjmp(0x1044F4, 1))
+ * is out of scope (spec §7); the port resumes the sound and ends the run
+ * through the same quit flag the AL = 0 arm sets. The blocking key read is
+ * input_get_key. */
+void game_quit_prompt(u32 hard_quit)
+{
+    u32 id = (hard_quit & 0xFFu) == 0u ? 0x1EEu : 0x1EFu;  /* 0x24A0C..0x24A17 */
+    DSB(DS_00104B22) = 1u;                                 /* 0x24A01 */
+    sound_pause();                                         /* 0x24A07 0x1D250 */
+    text_cursor_set(-1, 0xA, game_string_get(id), 0x1000u);   /* 0x24A1C..0x24A32 0x1C500 0x2F198 */
+    config_screen_wait(-1);                                /* 0x24A37 0x2EA78 */
+    s32 yes = (s8)game_string_get(0x1F0u)[0];              /* 0x24A41..0x24A4B */
+    s32 no = (s8)game_string_get(0x1F1u)[0];               /* 0x24A4E..0x24A58 */
+    do {
+        s32 key = (s32)(input_get_key() & 0xFFu);          /* 0x24A64..0x24A76 int 16h AH=0 */
+        if (key >= 0x61 && key <= 0x7A) key -= 0x20;       /* 0x24A7B 0x653ED */
+        if (key == yes) {                                  /* 0x24A80 */
+            DSB(DS_00104B22) = 0;                          /* 0x24A89 */
+            if ((hard_quit & 0xFFu) == 0u) {               /* 0x24A91 */
+                DSB(DS_000A81A8) = 1u;                     /* 0x24A93 */
+            } else {
+                sound_resume();                            /* 0x24A9C 0x1D270 */
+                DSB(DS_000A81A8) = 1u;                     /* 0x24AA1..0x24AB0 */
+                return;
+            }
+        } else if (key == no) {                            /* 0x24AB5 */
+            DSB(DS_00104B22) = 0;                          /* 0x24ABE */
+            text_cells_release(-1, 0xA, game_string_get(id), 0x1000u);   /* 0x24AC4..0x24AE7 0x1C500 0x2F280 */
+        }
+    } while (DSB(DS_00104B22) != 0u);                      /* 0x24AEC */
+    sound_resume();                                        /* 0x24AF9 0x1D270 */
 }
 
 /* ---- the exported flow -------------------------------------------------- */

@@ -152,6 +152,25 @@ u32 sound_voice(u32 id);
  * a unit test can set the status the sound module's slot scans read. */
 struct AIL_SAMPLE *sound_slot_handle(u32 i);
 
+/* 0x1CAB8 / 0x1CED4 (record §50-D). Set the music / SFX volume word
+ * (DS_000A2CB8 / DS_000A2CB4) and push it to a playing sequence / to each
+ * playing sample slot; a value equal to the stored one does nothing. */
+void sound_music_volume(u32 v);
+void sound_sfx_volume(u32 v);
+
+/* 0x1D1B0, 0x1D220, 0x1D250, 0x1D270 (record §50-D): the music pause toggle,
+ * the sample pause toggle, and the pause / resume pair the quit prompt uses. */
+void sound_music_pause_toggle(void);
+void sound_sample_pause_toggle(void);
+void sound_pause(void);
+void sound_resume(void);
+
+/* 0x249F0 (record §50-D). The quit prompt; `hard_quit` is AL (0 = the quit
+ * flag, nonzero = the longjmp quit, which the port ends through the same flag).
+ * Blocks on input_get_key. Not called by the frame loop, which keeps its ESC
+ * quit arm (input_drain_esc). */
+void game_quit_prompt(u32 hard_quit);
+
 /* 0x1CF20: the master loop's per-frame audio service — starts pending music,
  * advances the sequencer two ticks (120 Hz; the loop is 60 Hz) and, when a
  * device is open, renders and submits one frame of mixed stereo audio. Exposed

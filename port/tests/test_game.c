@@ -405,6 +405,126 @@ static void sv_status(u32 i, int st)
     CHECK_EQ_INT((int)AIL_sample_status(h), st);
 }
 
+/* 0x1CED4 and the pause module 0x1D1B0/0x1D220/0x1D250/0x1D270 (record §50-D)
+ * on the live handles. Every asserted post-condition differs from its seed. */
+static void check_sound_pause_volume(void)
+{
+    u32 i;
+
+    /* 0x1CED4: a new value is stored and reaches exactly the playing slots
+     * (1 and 3); the same value again pushes nothing (slot 1 keeps 0x22). */
+    sv_seed();
+    for (i = 0; i < 4u; i++) sv_status(i, (i & 1u) ? 4 : 2);
+    for (i = 0; i < 4u; i++) AIL_set_sample_volume(sound_slot_handle(i), 0x11);
+    DSD(DS_000A2CB4) = 0x7Fu;
+    sound_sfx_volume(0x33u);
+    CHECK_EQ_INT((int)DSD(DS_000A2CB4), 0x33);
+    for (i = 0; i < 4u; i++)
+        CHECK_EQ_INT((int)AIL_sample_volume(sound_slot_handle(i)), (i & 1u) ? 0x33 : 0x11);
+    AIL_set_sample_volume(sound_slot_handle(1u), 0x22);
+    sound_sfx_volume(0x33u);
+    CHECK_EQ_INT((int)AIL_sample_volume(sound_slot_handle(1u)), 0x22);
+    sound_sfx_volume(0x40u);
+    CHECK_EQ_INT((int)AIL_sample_volume(sound_slot_handle(1u)), 0x40);
+    CHECK_EQ_INT((int)AIL_sample_volume(sound_slot_handle(0u)), 0x11);
+
+    /* 0x1CAB8: stored when it differs; without a sequence handle nothing
+     * plays and nothing else changes. */
+    DSD(DS_000A2CB8) = 0x7Fu;
+    DSD(DS_001028C0) = 0;
+    sound_music_volume(0x21u);
+    CHECK_EQ_INT((int)DSD(DS_000A2CB8), 0x21);
+    sound_music_volume(0x21u);
+    CHECK_EQ_INT((int)DSD(DS_000A2CB8), 0x21);
+
+    /* 0x1D1B0 with the music running and no sequence handle: it pauses (byte
+     * DS_001028DA = 1, pending song untouched); the second call resumes and,
+     * with no handle, leaves the pending song alone. */
+    sv_seed();
+    for (i = 0; i < 4u; i++) sv_status(i, 2);
+    sound_music_pause_toggle();
+    CHECK_EQ_INT((int)DSB(DS_001028DA), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028CC), 0x5E5E5E5E);
+    sound_music_pause_toggle();
+    CHECK_EQ_INT((int)DSB(DS_001028DA), 0);
+    CHECK_EQ_INT((int)DSD(DS_001028CC), 0x5E5E5E5E);
+    /* Resuming with a handle, a song byte and a song makes the song pending;
+     * each of the three missing leaves the pending word alone. */
+    DSD(DS_001028C0) = 0x1234u;
+    DSB(DS_001028DA) = 1u;
+    sound_music_pause_toggle();
+    CHECK_EQ_INT((int)DSB(DS_001028DA), 0);
+    CHECK_EQ_INT((int)DSD(DS_001028CC), (int)0xD4D4D4D4u);
+    DSD(DS_001028CC) = 0x5E5E5E5Eu;
+    DSB(DS_001028DA) = 1u;
+    DSB(DS_001028D9) = 0;
+    sound_music_pause_toggle();
+    CHECK_EQ_INT((int)DSD(DS_001028CC), 0x5E5E5E5E);
+    DSB(DS_001028DA) = 1u;
+    DSB(DS_001028D9) = 0x99u;
+    DSD(DS_001028D4) = 0;
+    sound_music_pause_toggle();
+    CHECK_EQ_INT((int)DSD(DS_001028CC), 0x5E5E5E5E);
+    DSD(DS_001028C0) = 0;
+
+    /* 0x1D220: the first press sets DS_001028DB and stops every sample (the
+     * queued +0x04 and playing +0x0C handles clear, the playing slots are
+     * inited); the second clears the byte and touches nothing. */
+    sv_seed();
+    for (i = 0; i < 4u; i++) sv_status(i, (i & 1u) ? 4 : 2);
+    sound_sample_pause_toggle();
+    CHECK_EQ_INT((int)DSB(DS_001028DB), 1);
+    for (i = 0; i < 4u; i++) {
+        CHECK_EQ_INT((int)DSD(DS_00102864 + i * 0x18u), 0);
+        CHECK_EQ_INT((int)DSD(DS_0010286C + i * 0x18u), 0);
+        CHECK_EQ_INT((int)AIL_sample_status(sound_slot_handle(i)), 2);
+    }
+    sv_seed();
+    DSB(DS_001028DB) = 1u;
+    sound_sample_pause_toggle();
+    CHECK_EQ_INT((int)DSB(DS_001028DB), 0);
+    CHECK_EQ_INT((int)DSD(DS_00102864), 0x44440000);
+
+    /* 0x1D250: music running: pauses it, DS_001028D8 = 1, samples stop. Music
+     * already paused: D8 keeps its seed, samples stop. */
+    sv_seed();
+    DSB(DS_001028D8) = 0x55u;
+    sound_pause();
+    CHECK_EQ_INT((int)DSB(DS_001028DA), 1);
+    CHECK_EQ_INT((int)DSB(DS_001028D8), 1);
+    CHECK_EQ_INT((int)DSD(DS_00102864), 0);
+    sv_seed();
+    DSB(DS_001028DA) = 1u;
+    DSB(DS_001028D8) = 0x55u;
+    sound_pause();
+    CHECK_EQ_INT((int)DSB(DS_001028DA), 1);
+    CHECK_EQ_INT((int)DSB(DS_001028D8), 0x55);
+    CHECK_EQ_INT((int)DSD(DS_0010286C + 0x18u), 0);
+
+    /* 0x1D270: D8 == 1 toggles the music back and clears D8; any other D8
+     * changes nothing. */
+    DSB(DS_001028D8) = 1u;
+    sound_resume();
+    CHECK_EQ_INT((int)DSB(DS_001028DA), 0);
+    CHECK_EQ_INT((int)DSB(DS_001028D8), 0);
+    DSB(DS_001028DA) = 1u;
+    DSB(DS_001028D8) = 0x55u;
+    sound_resume();
+    CHECK_EQ_INT((int)DSB(DS_001028DA), 1);
+    CHECK_EQ_INT((int)DSB(DS_001028D8), 0x55);
+    DSB(DS_001028DA) = 0;
+    DSB(DS_001028D8) = 0;
+
+    /* 0x2C9B8: negative runs the (no-op) voice 0 and returns 0x10000. */
+    DSD(DS_001028D4) = 0xD4D4D4D4u;
+    CHECK_EQ_INT((int)config_voice_gate(-1), 0x10000);
+    CHECK_EQ_INT((int)config_voice_gate((s32)0x80000000u), 0x10000);
+    CHECK_EQ_INT((int)config_voice_gate(0), 0);
+    CHECK_EQ_INT((int)config_voice_gate(7), 0);
+    CHECK_EQ_INT((int)config_voice_gate(0x7FFFFFFF), 0);
+    CHECK_EQ_INT((int)DSD(DS_001028D4), (int)0xD4D4D4D4u);
+}
+
 /* 0x2C3FC over the shipped records at DS_000BBDC8 and the sound module's
  * slot scans on the live AIL handles game_audio_init allocated. Snapshots
  * and restores the data object, the INDEX table, both pools, the DAC and the
@@ -993,6 +1113,7 @@ int test_flow(void)
     /* The voice dispatcher 0x2C3FC and the sound module, on the live handles
      * game_audio_init allocated (record §45-A). */
     check_sound_voice();
+    check_sound_pause_volume();
     /* The attract's high-score screen 0x1EA08 (record §46-A). */
     check_hiscore_screen();
 
@@ -6242,6 +6363,70 @@ static void ch_check_screen_wait(void)
     DSD(CH_KEY_WORD) = s_kw;
 }
 
+/* 0x249F0 (record §50-D): the quit prompt. Strings 0x1F0/0x1F1 are the
+ * localised yes/no letters; the seeds differ from every asserted result. */
+static void ch_check_quit_prompt(void)
+{
+    ch_text_setup();
+    const u8 yes = game_string_get(0x1F0u)[0];
+    const u8 no = game_string_get(0x1F1u)[0];
+    CHECK(yes >= 'A' && yes <= 'Z' && no >= 'A' && no <= 'Z' && yes != no,
+          "the yes/no letters are distinct capitals");
+    const u8 lo_yes = (u8)(yes + 0x20), lo_no = (u8)(no + 0x20);
+    const u32 s_a0 = DSD(DS_000E87A0), s_a4 = DSD(DS_000E87A4);
+    const u8 s_gate = DSB(DS_00104B22), s_quit = DSB(DS_000A81A8);
+    const u8 s_da = DSB(DS_001028DA), s_d8 = DSB(DS_001028D8);
+    const u32 s_c0 = DSD(DS_001028C0), s_c8 = DSD(DS_001028C8);
+    const u8 s_full = DSB(DS_001014FC);
+    const u32 s_lat = DSD(CH_KEY_LATCH);
+
+    DSD(DS_001028C0) = 0;
+    DSD(DS_001028C8) = 0;
+    for (u32 pass = 0; pass < 4u; pass++) {
+        /* pass 0: AL = 0, "no" (lower case) after a stray key.
+         * pass 1: AL = 0, "yes" upper case.  pass 2: AL = 1, "yes" lower.
+         * pass 3: AL = 1, "no". */
+        const u32 hard = (pass >= 2u) ? 1u : 0u;
+        const int want_quit = (pass == 1u || pass == 2u);
+        DSD(DS_000E87A0) = CH_BUF_A;
+        DSD(DS_000E87A4) = CH_BUF_B;
+        DSB(DS_00104B22) = 0x77u;
+        DSB(DS_000A81A8) = 0x5Au;
+        DSB(DS_001028DA) = 0;
+        DSB(DS_001028D8) = 0x55u;
+        DSD(DS_00105F34) = 0;
+        input_clear();
+        if (pass == 0u) input_push(0x2D, 'x');            /* not yes, not no */
+        u8 k = (pass == 0u) ? lo_no : (pass == 1u) ? yes : (pass == 2u) ? lo_yes : no;
+        input_push(0x1E, k);
+        game_quit_prompt(hard);
+        CHECK_EQ_INT((int)DSB(DS_00104B22), 0);           /* seed 0x77 */
+        CHECK_EQ_INT((int)DSB(DS_000A81A8), want_quit ? 1 : 0x5A);
+        CHECK(!input_has_key(), "the prompt consumed its keys");
+        CHECK_EQ_INT((int)DSB(DS_001028DA), 0);           /* resumed */
+        CHECK_EQ_INT((int)DSB(DS_001028D8), 0);           /* seed 0x55 */
+        CHECK_EQ_INT((int)DSW(DS_00105F34), 0xA);         /* the question's row */
+        {
+            /* the question drawn is 0x1EE (AL = 0) or 0x1EF, centred: the
+             * cursor's column word is col + width (mode 0x1000: strlen). */
+            int len = (int)strlen((const char *)game_string_get(hard ? 0x1EFu : 0x1EEu));
+            CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), ((0x2B - len) >> 1) + len);
+        }
+        CHECK_EQ_INT((int)DSD(DS_000E87A0), (int)CH_BUF_B);   /* one frame presented */
+    }
+
+    DSD(DS_000E87A0) = s_a0;
+    DSD(DS_000E87A4) = s_a4;
+    DSB(DS_00104B22) = s_gate;
+    DSB(DS_000A81A8) = s_quit;
+    DSB(DS_001028DA) = s_da;
+    DSB(DS_001028D8) = s_d8;
+    DSD(DS_001028C0) = s_c0;
+    DSD(DS_001028C8) = s_c8;
+    DSB(DS_001014FC) = s_full;
+    DSD(CH_KEY_LATCH) = s_lat;
+}
+
 int test_cfg_helpers(void)
 {
     int before = g_failures;
@@ -6255,5 +6440,6 @@ int test_cfg_helpers(void)
     ch_check_option_row();
     ch_check_code_row();
     ch_check_screen_wait();
+    ch_check_quit_prompt();
     return g_failures - before;
 }

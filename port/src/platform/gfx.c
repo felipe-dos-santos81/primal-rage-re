@@ -78,6 +78,13 @@ void palette_record(u32 ptr, u32 first, u32 count, u32 flag)
     DSD(DS_00107798) = head + 16;
 }
 
+/* 0x1C470 — record §50-D. Drains the palette dirty list DS_00107498..DS_00107798
+ * to the DAC. PORT: the DAC ports 0x3C8/0x3C9 and the 0x3DA retrace spin are
+ * the host's gfx_dac and gfx_wait_vblank(). TODO(verify): the raw clamps with
+ * first + record+0xC (0x1C48B..0x1C499, the flag word, not the count at +8) and
+ * runs the write loop as a do-while (0x1C4D6 `dec esi; jg`), so a zero count
+ * still writes one entry; the port clamps with the count and skips a zero count.
+ * Whether a shipped record reaches either case is not checked. */
 void gfx_flush_palette(void)
 {
     u32 rec = DS_00107498;

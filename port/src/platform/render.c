@@ -53,7 +53,7 @@ static u16 node_layer(u32 node)
     return DSW(DSD(node + 4) + RENDER_PSET_LAYER);
 }
 
-/* PORT: 0x1C3A0. Splices `node` before the first node whose layer is greater,
+/* 0x1C3A0 — record §50-D. PORT: splices `node` before the first node whose layer is greater,
  * so equal layers keep their relative order (stable). This is the one place the
  * ordering rule lives: render_list_insert and render_list_sort both go through
  * it. `node` must be detached -- its next field is overwritten here. */
@@ -94,6 +94,11 @@ int render_list_insert(u32 pset_off)
     return 1;
 }
 
+/* 0x1C458 — record §50-D. Searches the list for the node whose +4 is
+ * `pset_off`; the port runs 0x1C3D0 in the same body. */
+/* 0x1C3D0 — record §50-D. The unlink half (EAX = the list head, EDX = the
+ * node): splices the node out (0x1C3DD 0x1C3DF) and pushes it on the free list
+ * DS_0010275C (0x1C3E1 0x1C3E7 0x1C3EC). */
 void render_list_remove(u32 pset_off)
 {
     u32 prev = 0;
@@ -110,7 +115,7 @@ void render_list_remove(u32 pset_off)
     render_count--;
 }
 
-/* PORT: 0x1C3FC. Insertion sort in place: a node whose layer is strictly less
+/* 0x1C3FC — record §50-D. PORT: insertion sort in place: a node whose layer is strictly less
  * than its predecessor's is detached and re-spliced through render_splice, the
  * one place the ordering rule lives. A node that is merely equal never moves,
  * so equal layers keep their order and a full pass leaves the list ascending.

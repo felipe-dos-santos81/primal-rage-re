@@ -161,16 +161,15 @@ void attract_config_volumes(void)
     u32 scale = config_field_get(0x2Au) & 3u;
     u32 m = config_field_get(0x35u);
     u32 s = config_field_get(0x37u);
-    /* PORT: 0x1CAB8 (music) and 0x1CED4 (SFX) store the value into
-     * DS_000A2CB8/DS_000A2CB4 and push it to the AIL device. The port's
-     * game_audio_service applies both globals every frame (flow.c:683/706), so
-     * writing the globals here is the port's realization of the two setters.
-     * The raw multiplies with imul, divides by 3 with idiv (truncation toward
-     * zero) and halves with sar 1. */
-    DSD(DS_000A2CB8) = (m == 0xFFFFFFFFu) ? 8u
-                      : (u32)(((s32)(m * scale) / 3) >> 1);
-    DSD(DS_000A2CB4) = (s == 0xFFFFFFFFu) ? 0x10u
-                      : (u32)(((s32)(s * scale) / 3) >> 1);
+    /* 0x1CAB8 (music) and 0x1CED4 (SFX) store the value into
+     * DS_000A2CB8/DS_000A2CB4 and push it to the AIL device (record §50-D:
+     * sound_music_volume, sound_sfx_volume). The port's game_audio_service also
+     * applies both globals every frame. The raw multiplies with imul, divides
+     * by 3 with idiv (truncation toward zero) and halves with sar 1. */
+    sound_music_volume((m == 0xFFFFFFFFu) ? 8u
+                       : (u32)(((s32)(m * scale) / 3) >> 1));   /* 0x2C97C */
+    sound_sfx_volume((s == 0xFFFFFFFFu) ? 0x10u
+                     : (u32)(((s32)(s * scale) / 3) >> 1));     /* 0x2C9AC */
 }
 
 /* 0x2C8F0 with eax = -1 — record §42-F. The unscaled arm (0x2C8F8..0x2C934):
@@ -182,11 +181,22 @@ void attract_config_volumes_unscaled(void)
 {
     u32 m = config_field_get(0x35u);                /* 0x2C8FD 0x2D974 */
     u32 s;
-    /* PORT: 0x1CAB8 and 0x1CED4 store into DS_000A2CB8/DS_000A2CB4 and push
-     * the value to the AIL device (see attract_config_volumes). */
-    DSD(DS_000A2CB8) = (m == 0xFFFFFFFFu) ? 8u : (u32)((s32)m >> 1);
+    /* 0x1CAB8 and 0x1CED4 store into DS_000A2CB8/DS_000A2CB4 and push the
+     * value to the AIL device (see attract_config_volumes). */
+    sound_music_volume((m == 0xFFFFFFFFu) ? 8u : (u32)((s32)m >> 1));   /* 0x2C912 */
     s = config_field_get(0x37u);                    /* 0x2C91C 0x2D974 */
-    DSD(DS_000A2CB4) = (s == 0xFFFFFFFFu) ? 0x10u : (u32)((s32)s >> 1);
+    sound_sfx_volume((s == 0xFFFFFFFFu) ? 0x10u : (u32)((s32)s >> 1)); /* 0x2C92F */
+}
+
+/* 0x2C9B8 — record §50-D. EAX < 0 (signed, 0x2C9BA `jge`) runs the voice
+ * dispatcher with id 0 (0x2C9BE 0x2C3FC, which does nothing for id 0,
+ * 0x2C401) and returns 0x10000 (0x2C9C3); otherwise 0 (0x2C9C9). Callers:
+ * 0x2F9CC (0x2FA23, EAX = 0) and 0x30E68. */
+u32 config_voice_gate(s32 v)
+{
+    if (v >= 0) return 0u;                          /* 0x2C9BA 0x2C9C9 */
+    (void)sound_voice(0u);                          /* 0x2C9BE 0x2C3FC */
+    return 0x10000u;                                /* 0x2C9C3 */
 }
 
 /* ---- the 0x11000 attract sub-machine ------------------------------------ */
