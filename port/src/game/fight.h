@@ -52,7 +52,8 @@ void fight_command_map(u32 side, u32 edx_arg, u32 override);
  * 8's gate, 9..12 (record §42-D), 13/14's draws and the per-entry prelude
  * 0x4B69C (the trample, demo-pose record §29) are ported; the type-8 held body,
  * the case-13/14 bodies, the mode-9 block (the only reader of the frame locals
- * types 9 and 11 write) and 0x496DC are a named gap (§7.4); the tail's
+ * types 9 and 11 write) are a named gap (§7.4), though their helpers 0x496DC
+ * and 0x4A928 are ported (record §49-Z) without a call site; the tail's
  * 0x4987C (DS_001088BF 1..4) is ported (record §43-A). When the effect list
  * at DS_0010884C is empty only the unconditional tail runs, which includes
  * 0x4A634's slot +0x42 bit 0/1 reset. */
@@ -232,6 +233,17 @@ void fight_char_team_pass(void);
  * slot+0x81 iterations — state 6's six intermediate draws. The entry's type-0
  * processing (0x4AAD0) is a named gap (§7.4); the spawned actor renders. */
 void fight_dust_build(u32 side);
+/* 0x4CF20 — record §49-Z. 0x494A8's DS_00104AFA == 0x23 arm: the six-entry
+ * dust builder (slot +0x81 = 6). EAX = side. */
+void fight_4cf20(u32 side);
+/* 0x496DC — record §49-Z. The case-13 body's spawner: `count` new type-0x0E
+ * entries around `entry`'s actor. EAX = entry, EDX = count. The port has no
+ * call site (the case-13 body is the named gap, spec §7.4). */
+void fight_496dc(u32 entry, s32 count);
+/* 0x4A928 — record §49-Z. The mode-9 block's side survey: DS_001088C6..CA,
+ * DS_00108858/5C/70/7C. The port has no call site (the mode-9 block is a
+ * named gap, spec §7.4). */
+void fight_4a928(void);
 
 /* 0x41350. The per-side character select state 6 calls for both players. It
  * runs 0x33C18 (the slot field reset), stores the character index (0xC835A[char])

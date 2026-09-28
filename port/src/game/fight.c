@@ -1314,6 +1314,67 @@ static u16 fight_dust_clamp(s32 v)
     return (u16)(((0xb00 - v) >> 1) + 0xc00);
 }
 
+/* 0x4CF20 — record §49-Z. The six-entry dust builder 0x494A8's DS_00104AFA ==
+ * 0x23 arm calls (0x494C6, EAX = side; EBX/ECX/EDX/ESI/EDI/EBP are pushed and
+ * popped). The slot's +0x81 is set to 6, the side's DS_001088AE/A2/A4/B2/9E
+ * bytes are zeroed, and each of the +0x81 iterations moves one node from the
+ * free list DS_001083C4 to the active list DS_0010884C (an empty pool ends the
+ * loop), picks the descriptor (0x49388) and its +0x10 value (0x29CDC), and
+ * spawns the actor (0x2AE14) at x = rec+0x18 - 0x2400 + rng(0x4800) and y =
+ * the running offset + (rec+0x30 >> 16) + 0x400 + rng(step), step = 0x300 /
+ * +0x81 (0x300 when +0x81 is 0). The draws land in the raw's order: 0x49388's,
+ * rng(0x4800), rng(step). The entry takes type 0 (+0x1E), +0x1F = 0, +0x21 =
+ * side, +0x0C = the slot, +0x1C = 0, +0x10 = 0; the actor's +0x2C is the 0x496AC
+ * clamp of y. The actor's +0x2E takes 4 and +0x4E 1 when the record's +0x51 is
+ * non-zero for characters 0 and 4 (0x4D08D..0x4D09C), or is zero for the
+ * others (0x4D09E..0x4D0B4). Unlike 0x494A8's body it leaves DS_001088C4/BF/
+ * C3/C1 alone. */
+void fight_4cf20(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;              /* 0x4CF20..0x4CF41 */
+    DSB(slot + 0x81u) = 6u;                             /* 0x4CF45 */
+    DSB(DS_001088AE + side) = 0;                        /* 0x4CF4E */
+    DSB(DS_001088A2 + side) = 0;                        /* 0x4CF5A */
+    DSB(DS_001088A4 + side) = 0;                        /* 0x4CF60 */
+    DSB(DS_001088B2 + side) = 0;                        /* 0x4CF6A */
+    DSB(DS_0010889E + side) = 0;                        /* 0x4CF76 */
+    u32 n = (u32)DSB(slot + 0x81u);                     /* 0x4CF7C */
+    u32 step = (n != 0u) ? (0x300u / n) : 0x300u;       /* 0x4CF86..0x4CF9C */
+    u32 offset = 0;                                     /* 0x4CFA5..0x4CFAC */
+    for (u32 i = 0; (u32)DSB(slot + 0x81u) > i; i++) {  /* 0x4D0E9..0x4D0F7 */
+        u32 entry = DSD(DS_001083C4);                   /* 0x4CFB5 */
+        if (entry == DS_001083C4) return;               /* 0x4CFBB..0x4CFD4 */
+        effects_list_unlink(entry);                     /* 0x4CFC9 0x249D0 */
+        effects_list_insert_after(DS_0010884C, entry);  /* 0x4CFDA..0x4CFE1 0x249B0 */
+        u32 desc = DSD(DS_000C9524 + fight_dust_pick(side) * 4u);  /* 0x4CFEA..0x4CFFB */
+        DSD(desc + 0x10u) = fight_dust_value(side, (u32)DSB(slot + 0x7Au)); /* 0x4D003..0x4D00C */
+        u32 rec = DSD(slot);                            /* 0x4D00F */
+        u32 x = DSD(rec + 0x18u) - 0x2400u;             /* 0x4D011..0x4D019 */
+        x += rng_next(0x4800u);                         /* 0x4D01F..0x4D024 */
+        u32 y = offset + (u32)((s32)DSD(DSD(slot) + 0x30u) >> 16)
+                + 0x400u;                               /* 0x4D026..0x4D037 */
+        y += rng_next(step);                            /* 0x4D03F..0x4D046 */
+        u32 actor = actor_spawn((const u32 *)(mem + desc), x, y, 0u, 0u);  /* 0x4D04E */
+        DSD(entry + 8u) = actor;                        /* 0x4D053 */
+        DSD(actor + 0x14u) = entry;                     /* 0x4D056 */
+        DSB(entry + 0x1Eu) = 0;                         /* 0x4D059 */
+        DSB(entry + 0x1Fu) = 0;                         /* 0x4D061 */
+        DSB(entry + 0x21u) = (u8)side;                  /* 0x4D065 */
+        DSD(entry + 0x0Cu) = slot;                      /* 0x4D06A */
+        DSW(actor + 0x2Cu) = fight_dust_clamp((s32)y);  /* 0x4D06D..0x4D075 0x496AC */
+        DSW(entry + 0x1Cu) = 0;                         /* 0x4D079 */
+        DSD(entry + 0x10u) = 0;                         /* 0x4D07F */
+        u8 ch = DSB(slot + 0x7Au);                      /* 0x4D086 */
+        u8 flag = DSB(DSD(slot) + 0x51u);               /* 0x4D096/0x4D09E */
+        int bump = (ch == 0u || ch == 4u) ? (flag != 0u) : (flag == 0u);
+        if (bump) {                                     /* 0x4D0B6 */
+            DSW(actor + 0x2Eu) = (u16)(DSW(actor + 0x2Eu) + 4u);   /* 0x4D0BD..0x4D0C8 */
+            DSB(actor + 0x4Eu) = 1;                     /* 0x4D0CF */
+        }
+        offset += step;                                 /* 0x4D0DE */
+    }
+}
+
 /* 0x494A8. The dust/effect entry builder. 0x33C78 calls it at 0x33E43 when
  * DS_00104B14 == 0; each iteration moves one node from the free fight-effect
  * list (DS_001083C4, built by 0x49300) to the active one (DS_0010884C), picks a
@@ -1326,10 +1387,10 @@ static u16 fight_dust_clamp(s32 v)
  * behaviour (§7.4); the actor it spawns is an ordinary pool actor and renders. */
 void fight_dust_build(u32 side)
 {
-    /* PORT: 0x494A8's DS_00104AFA == 0x23 arm calls 0x4CF20, a six-entry
-     * variant of this builder with its own draws. Not reached in the demo (the
-     * reference's state-6 draws are this arm's 3 x slot+0x81) and a named gap. */
-    if (DSB(DS_00104AFA) == 0x23u) return;
+    if (DSW(DS_00104AFA) == 0x23u) {                    /* 0x494B7..0x494C0 */
+        fight_4cf20(side);                              /* 0x494C6 (record §49-Z) */
+        return;                                         /* 0x494CB */
+    }
 
     DSB(DS_001088AE + side) = 0;                /* 0x494F2 */
     DSB(DS_001088C4) = 0;                       /* 0x494FE */
@@ -2856,6 +2917,138 @@ static void fight_4b69c(u32 entry, u32 index)
 #define DS_001088C7 0x001088C7u
 #define DS_001088C8 0x001088C8u
 #define DS_001088C9 0x001088C9u
+
+/* 0x496DC — record §49-Z. The case-13 body's spawner (0x4A32B, EAX = entry,
+ * EDX = count): for `count` iterations (signed; none for a count of 0 or
+ * less) one node moves from the free list to the active list and the
+ * descriptor / +0x10 value are picked for the entry's side (+0x21) as in
+ * 0x494A8. The actor spawns at the entry's actor x (+0x18) and y = its
+ * (+0x30 >> 16) + rng(0x180), takes +0x28/+0x34 from the entry's actor, the
+ * 0xC95D4 stream indexed by (u16)(its +0x48 - 0x20) at 3.0 (0x2BC30), and the
+ * new entry the type 0x0E, +0x1F = 0, +0x0C = the side's slot and +0x21 = the
+ * side. The new entry's +0x14 is the old one's +0x14 plus rng(0xC00) when
+ * the new actor's +0x34 word is 0x80 (signed), else minus; the actor's +0x2C
+ * is the 0x496AC clamp of y, and +0x2E takes 4 and +0x4E 1 when the slot's
+ * record +0x51 is non-zero. An empty pool ends the loop. Callers: 0x4A32B
+ * (0x49C78's case-13 body, which is the named gap, spec §7.4); the port has
+ * no call site yet. */
+void fight_496dc(u32 entry, s32 count)
+{
+    u32 slot = DS_001077B0 + (u32)DSB(entry + 0x21u) * 0x94u;  /* 0x496EC..0x49707 */
+    for (s32 i = 0; i < count; i++) {                   /* 0x49715/0x4986B */
+        u32 ne = DSD(DS_001083C4);                      /* 0x4971D */
+        if (ne == DS_001083C4) return;                  /* 0x49723..0x4973C */
+        effects_list_unlink(ne);                        /* 0x49731 0x249D0 */
+        effects_list_insert_after(DS_0010884C, ne);     /* 0x49742..0x49749 0x249B0 */
+        u32 side = (u32)DSB(entry + 0x21u);             /* 0x4974E */
+        u32 desc = DSD(DS_000C9524 + fight_dust_pick(side) * 4u);  /* 0x49753..0x4975F */
+        DSD(desc + 0x10u) = fight_dust_value(side, (u32)DSB(slot + 0x7Au)); /* 0x49762..0x49778 */
+        u32 src = DSD(entry + 8u);                      /* 0x4977B */
+        u32 x = DSD(src + 0x18u);                       /* 0x49780 */
+        s32 y0 = (s32)DSD(src + 0x30u) >> 16;           /* 0x49783/0x4978B */
+        u32 y = (u32)y0 + rng_next(0x180u);             /* 0x4978E..0x49795 */
+        u32 actor = actor_spawn((const u32 *)(mem + desc), x, y, 0u, 0u);  /* 0x4979D */
+        DSD(ne + 8u) = actor;                           /* 0x497A4 */
+        u32 b = (u32)DSB(actor + 0x48u);                /* 0x497A7 */
+        DSD(actor + 0x14u) = ne;                        /* 0x497AA */
+        DSB(ne + 0x1Fu) = 0;                            /* 0x497B1 */
+        DSD(ne + 0x0Cu) = slot;                         /* 0x497B5 */
+        DSB(ne + 0x21u) = DSB(entry + 0x21u);           /* 0x497B8..0x497BB */
+        DSW(actor + 0x2Cu) = fight_dust_clamp((s32)y);  /* 0x497C0..0x497C8 0x496AC */
+        DSW(actor + 0x28u) = DSW(DSD(entry + 8u) + 0x28u);   /* 0x497CC..0x497D6 */
+        DSW(actor + 0x34u) = DSW(DSD(entry + 8u) + 0x34u);   /* 0x497DA..0x497E7 */
+        u32 idx = (u32)(u16)(b - 0x20u);                /* 0x497E4..0x497ED */
+        actors_anim_begin(actor, DSD(DS_000C95D4 + idx * 4u),
+                          0x40400000u);                 /* 0x497F0..0x497FF 0x2BC30 */
+        DSB(ne + 0x1Eu) = 0x0Eu;                        /* 0x49807 */
+        u32 r;
+        if (((s32)DSD(actor + 0x32u) >> 16) == 0x80) {  /* 0x4980B..0x49811 */
+            r = rng_next(0xC00u);                       /* 0x49818..0x4981D */
+            r = DSD(entry + 0x14u) + r;                 /* 0x49822/0x49825 */
+        } else {
+            r = rng_next(0xC00u);                       /* 0x4982E */
+            r = DSD(entry + 0x14u) - r;                 /* 0x49833/0x49836 */
+        }
+        DSD(ne + 0x14u) = r;                            /* 0x49838 */
+        if (DSB(DSD(slot) + 0x51u) != 0u) {             /* 0x4983B..0x49845 */
+            DSW(actor + 0x2Eu) = (u16)(DSW(actor + 0x2Eu) + 4u);   /* 0x49847..0x4984E */
+            DSB(actor + 0x4Eu) = 1;                     /* 0x4985A */
+        }
+    }
+}
+
+/* 0x4AA6C — record §49-Z. The active list's mean (EAX = the side as a signed
+ * byte, sign-extended at 0x4AA8F): over every DS_0010884C entry whose +0x21
+ * equals it, the count (a 16-bit `test cx,cx` at 0x4AAAD) and the sum of
+ * 0x2BE00 of the entry's actor (+8). Returns sum / count + 1 (signed `idiv`,
+ * 0x4AABE/0x4AAC0), 0 for no entries. The walk reads the next link (0x4AA92)
+ * before the body. Callers: 0x4A97A and 0x4A9C2 (0x4A928). */
+static s32 fight_4aa6c(s32 side)
+{
+    s32 sum = 0;
+    u32 count = 0;
+    u32 e = DSD(DS_0010884C);                           /* 0x4AA77 */
+    while (e != DS_0010884C) {                          /* 0x4AA80/0x4AAAB */
+        u32 next = DSD(e);                              /* 0x4AA92 */
+        if ((s32)DSB(e + 0x21u) == side) {              /* 0x4AA8B..0x4AA94 */
+            count++;                                    /* 0x4AA9B */
+            sum += fight_2be00(DSD(e + 8u));            /* 0x4AA98..0x4AAA1 */
+        }
+        e = next;                                       /* 0x4AAA3 */
+    }
+    if ((u16)count == 0u) return 0;                     /* 0x4AAAD/0x4AAB0 */
+    return sum / (s32)(u16)count + 1;                   /* 0x4AAB2..0x4AAC0 */
+}
+
+/* 0x4A928 — record §49-Z. The mode-9 block's side survey (0x4A562; EBX/ECX/
+ * EDX are pushed and popped). DS_001088C6 = 0, DS_00108870 = DS_0010887C =
+ * 0; DS_001088C9 = slot 0's +0x5A < 0x78 and DS_001088C7 = (slot 0's +0x5A ==
+ * slot 1's +0x5A). DS_0010885C is the mean of the side-(C9) entries
+ * (0x4AA6C) or, with none, 0x2BE00 of slot C9's record with DS_001088C6 = 1;
+ * DS_00108858 the same for the other side, or, with none, 0x2BE00 of slot
+ * C9's record (the raw reloads C9, 0x4A9D0) with DS_001088C8 = 1. The
+ * direction DS_001088CA is 0 when the first mean is below the second, else 1;
+ * a gap of 0x1400 or more (signed) puts DS_0010887C at the first mean moved
+ * 0x1400 toward the second, else DS_00108870 at the second moved 0x1400 away
+ * from the first. The only caller is the mode-9 block (0x4A562), a named gap
+ * (spec §7.4); the port has no call site yet. */
+void fight_4a928(void)
+{
+    DSB(DS_001088C6) = 0;                               /* 0x4A92F */
+    DSD(DS_00108870) = 0;                               /* 0x4A937 */
+    DSD(DS_0010887C) = 0;                               /* 0x4A942 */
+    DSB(DS_001088C9) = (u8)((s32)DSB(DS_0010780A) < 0x78);  /* 0x4A93D..0x4A959 */
+    DSB(DS_001088C7) = (u8)(DSB(DS_0010780A) == DSB(DS_0010789E)); /* 0x4A95E..0x4A96D */
+    s32 a = fight_4aa6c((s32)(s8)DSB(DS_001088C9));     /* 0x4A972..0x4A97A */
+    DSD(DS_0010885C) = (u32)a;                          /* 0x4A97F */
+    if (a == 0) {                                       /* 0x4A984 */
+        u32 c9 = (u32)(s32)(s8)DSB(DS_001088C9);        /* 0x4A98E..0x4A991 */
+        a = fight_2be00(DSD(DS_001077B0 + c9 * 0x94u)); /* 0x4A99F..0x4A9A8 */
+        DSD(DS_0010885C) = (u32)a;                      /* 0x4A9AD */
+        DSB(DS_001088C6) = 1;                           /* 0x4A9B2 (DH) */
+    }
+    s32 b = fight_4aa6c((s32)(s8)(DSB(DS_001088C9) ^ 1u));  /* 0x4A9B8..0x4A9C2 */
+    DSD(DS_00108858) = (u32)b;                          /* 0x4A9C7 */
+    if (b == 0) {                                       /* 0x4A9CC */
+        u32 c9 = (u32)(s32)(s8)DSB(DS_001088C9);        /* 0x4A9D0..0x4A9D9 */
+        b = fight_2be00(DSD(DS_001077B0 + c9 * 0x94u)); /* 0x4A9E7..0x4A9F0 */
+        DSD(DS_00108858) = (u32)b;                      /* 0x4A9F5 */
+        DSB(DS_001088C8) = 1;                           /* 0x4A9FA (BL) */
+    }
+    if (a < b) {                                        /* 0x4AA0B/0x4AA0D */
+        DSB(DS_001088CA) = 0;                           /* 0x4AA15 */
+        if (b - a >= 0x1400)                            /* 0x4AA13..0x4AA21 */
+            DSD(DS_0010887C) = (u32)(a + 0x1400);       /* 0x4AA23..0x4AA29 */
+        else
+            DSD(DS_00108870) = (u32)(b - 0x1400);       /* 0x4AA33..0x4AA62 */
+        return;
+    }
+    DSB(DS_001088CA) = 1;                               /* 0x4AA3A */
+    if (a - b >= 0x1400)                                /* 0x4AA41..0x4AA4B */
+        DSD(DS_0010887C) = (u32)(a - 0x1400);           /* 0x4AA4D..0x4AA53 */
+    else
+        DSD(DS_00108870) = (u32)(b + 0x1400);           /* 0x4AA5D..0x4AA62 */
+}
 
 /* 0x4A7D4 — demo-pose record §42-D. The type-11 arrival test (its one caller is
  * 0x4A196): 1 when |actor+0x18 - entry+0x14| <= |2 * the actor's +0x34 word|

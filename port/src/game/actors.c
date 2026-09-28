@@ -493,6 +493,14 @@ int actors_init(void)
      * fn(side) with EAX returned) and +0x1C 0x45A34 (0x193B0's 0x19505,
      * fn(side)). Its stream 0xEB64E carries the 0xD100 target 0x459D0 (the
      * dwords at 0xEB66E and 0xEB684), opcode 0x11, mode 0x4000. */
+    /* PORT: record §49-Z. The slot +0x0C callbacks 0x45B50 (stored by the
+     * unported 0x45C10, the dword at 0x45C33) and 0x47B04 (stored by the
+     * unported 0x47BFC, the dword at 0x47C56; 0x3531C case 7, (slot, rec,
+     * side)), and the render table's bit-0 entry 0x4F4E8 (DS_000A86C4[0],
+     * the dword at 0xA86C4; fn() with the unread EAX). */
+    fn_register(0x45B50u, (void (*)(void))fighter_45b50);
+    fn_register(0x47B04u, (void (*)(void))fighter_47b04);
+    fn_register(0x4F4E8u, flow_round_timer_step);
     fn_register(0x45AD0u, (void (*)(void))fighter_45ad0);
     fn_register(0x45A70u, (void (*)(void))fighter_45a70);
     fn_register(0x459F4u, (void (*)(void))fighter_459f4);
