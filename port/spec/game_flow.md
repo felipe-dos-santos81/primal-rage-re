@@ -420,12 +420,34 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     record §48-T) and sets the bit (the `0x2CA7C` spend after it therefore
     never debits, the same guard `0x2CA48` uses), and the case passes side
     to `0x28DA4` (`flow_player_join`, mode `0x17` with the hook `0x28D80`).
-    With no join, case 6 falls back to case 4's fight frame `0x26254`, and
-    case `0xC` runs its arena frame `0x27380`; both are named gaps. Modes 6
+    With no join, case 6 falls back to case 4's fight frame `0x26254`, a
+    named gap, and case `0xC` runs its arena frame `0x27380`
+    (`game_mode_0c_step`, record §48-C, below). Modes 6
     and `0xC` are stored by `0x25C88` (mode 5, record §48-U), and by the
     unported `0x4CD98`, `0x4F0FC` and `0x2791C`, and by `0x274FC` (mode
     `0xD`). So under real input a credited join from the character screen
     now reaches mode 5, then this poll, for real — not only in unit tests.
+  - Case `0xC`'s no-join arm is `0x27380` (`game_mode_0c_step`, record
+    §48-C), the arena frame of the mode that mode 5 and `0x274FC` (after
+    replacing the loser) store. It first undoes the mode-`0xC` tail's blink (`0x25487`): while the
+    `DS_00104B12` slot's `+0x41` bit 0 is set and `+0x42` bit 3 clear, a
+    pset word still at `0x1E1` (bit 15 masked) gets `DS_00104AF6` back.
+    Then `0x263F4`'s steps without `0x49C78`/`0x1282C`: `0x3C5CC`,
+    `0x16D58` per side, the two position latches, and only while the byte
+    `DS_001078FA` is 2 the projection block (`0x17FA0` twice, `0x17580`,
+    `0x1958C`, `0x19068(0)`, `0x17FA0` twice, `0x1975C`); then `0x3CB68`,
+    `0x35658` per side, `0x12DA8`, the pulse countdowns `0x1DA08`
+    (`fight_hud_pulse`: `DS_00102908[side]`, restarting the
+    `DS_001028F8` record's stream `0xE9050` at 4.0 and reloading
+    `max((0x78 - +0x5A) >> 1, 0xC)`), the round-end test `0x272DC`
+    (`flow_arena_ko_check`) and `DS_00104AEC |= 2`. `0x272DC`: the winner
+    `(s8)DS_0010810D`'s `+0x5A` at `0x78` or more gives the snapshot
+    `0x27254` (both slots and records copied to `0x104890`/`0x1049B8`, the
+    records' motion zeroed) and the continue screen `0x278B0` (string
+    `0x41` on row `0xA`, the countdown `DS_00108110 = 15` on row `0xE`
+    through `0x2F434`, `DS_00104B1F = 0`, mode `0xE`); else the
+    `DS_00104B12` side's at `0x78` sets the winner's `+0x41` bit 4 and
+    mode `0xD` (`0x274FC`). Mode `0xE`'s handler `0x27A2C` is a named gap.
   - Cases `0xD` and `0x32` are `0x274FC`/`0x296B8` (`game_mode_0d_step`/
     `game_mode_32_step`, record §48-Q). Each runs the arena frame's tail
     steps (`0x3C5CC`, `0x16D58` per side, the two position latches, `0x35658`
