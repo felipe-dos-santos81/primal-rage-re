@@ -29030,6 +29030,195 @@ static void check_mode_09(void)
     check_mode_09_b();
 }
 
+/* ---- record §49-C: mode 8's frame handler 0x28468 ------------------------ */
+
+/* tf_demo_fixture with the mode-8-specific globals seeded to sentinels that
+ * differ from every post-condition below. Reuses M09_001077F1/M09_00107885
+ * (record §48-Y) — the same slot +0x41 fields mode 8 also touches — and the
+ * same character/hitbox safety m09_seed established for its own
+ * unconditional camera_project/fight_slot_pass chain: mode 8's
+ * fight_slot_pass runs unconditionally on every call, so the same
+ * requirements apply here. */
+static void m08_seed(void)
+{
+    (void)tf_demo_fixture();
+    mem_fill(0x00107D58u, 0, 0x180u);   /* the three per-slot hitbox arrays */
+    DSD(DS_00101514) = 0x3000000u;
+    mem_fill(0x3000000u, 0, 0x1000u);
+    DSB(DS_0010782A) = 2u;
+    DSB(DS_001078BE) = 5u;
+    DSW(DS_00104B00) = 8u;
+    DSW(DS_00104AF8) = 0u;
+    DSB(DS_000F0AFE) = 4u;
+    DSB(DS_001078FC) = 0u;
+    DSB(DS_001078FE) = 0u;
+    DSB(M09_001077F1) = 0u;
+    DSB(M09_00107885) = 0u;
+    DSD(DS_00107ED8) = 0x77777777u;
+    DSD(DS_00107EDC) = 0x77777777u;
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) & ~2u);
+    DSB(DS_00104B1D) = 0x77u;
+    DSD(DS_00104AE4) = 0xDEADBEEFu;
+    DSB(DS_00104B25) = 0x77u;
+    DSW(DS_00104AFA) = 0x7777u;
+    DSW(DS_00104AFE) = 0x7777u;
+    DSW(DS_001088EE) = 0x7777u;
+    /* mode 8 never touches these (unlike mode 9's results state); seeded so
+     * check_mode_08_b can prove it. */
+    DSD(DS_00104AD4) = 0x77777777u;
+    DSB(DS_00107813) = 0x77u;
+    DSB(DS_001078A7) = 0x77u;
+    DSB(DS_00108173) = 0x77u;
+    DSD(DS_0010746C) = 0x11112222u;
+}
+
+/* (a) the always-run preamble (including the unconditional fight_slot_pass —
+ * unlike mode 9's gated call, 0x28815..0x28825 — mode 8 has no such gate)
+ * and the countdown/results gate, which reads DS_001078FE (not mode 9's
+ * DS_001078FC) then DS_000F0AFE. */
+static void check_mode_08_a(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-C snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* fight_slot_pass runs even with both sides' +0x41 bit 1 set — the
+     * condition that would gate it off in mode 9 — proving the port carries
+     * no such gate here. */
+    {
+        m08_seed();
+        DSB(M09_001077F1) = 2u;
+        DSB(M09_00107885) = 2u;
+        game_mode_08_step();
+        CHECK_EQ_INT((int)DSD(DS_00107ED8), 0x20);
+        CHECK_EQ_INT((int)DSD(DS_00107EDC), 2);
+    }
+
+    /* the preamble's own stores run every time. */
+    {
+        m08_seed();
+        game_mode_08_step();
+        CHECK_EQ_INT((int)DSD(DS_001077E8), (int)DSD(DS_001077E4));
+        CHECK_EQ_INT((int)DSD(DS_0010787C), (int)DSD(DS_00107878));
+        CHECK_EQ_INT((int)DSD(DS_00100A70), (int)(2u * 0x400u + 0xCC300u));
+        CHECK_EQ_INT((int)DSD(DS_00100A70 + 4u), (int)(5u * 0x400u + 0xCC300u));
+        CHECK_EQ_INT((int)(DSB(DS_00104AEC) & 2u), 2);
+    }
+
+    /* the countdown DS_00104AF8: non-zero decrements and, off zero, the
+     * results state does not run this frame (DS_00104B00 stays 8 under its
+     * BEEF sentinel, a word-only store). */
+    {
+        m08_seed();
+        DSW(DS_00104AF8) = 5u;
+        DSD(DS_00104B00) = 0xBEEF0008u;
+        game_mode_08_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AF8), 4);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0008u);
+        CHECK_EQ_INT((int)DSB(DS_001078FC), 0);
+    }
+
+    /* reaching zero this frame arms DS_001078FE/FC = 1, ORs 0x10 into both
+     * +0x41 bytes and DS_000F0AFE = 4 — and, because that makes the gate
+     * true in the same call, the results state runs too (DS_00104B00
+     * becomes 0x16 under the same BEEF sentinel). */
+    {
+        m08_seed();
+        DSW(DS_00104AF8) = 1u;
+        DSB(DS_000F0AFE) = 0x77u;
+        DSD(DS_00104B00) = 0xBEEF0008u;
+        game_mode_08_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AF8), 0);
+        CHECK_EQ_INT((int)DSB(DS_001078FE), 1);
+        CHECK_EQ_INT((int)DSB(DS_001078FC), 1);
+        CHECK_EQ_INT((int)(DSB(M09_001077F1) & 0x10u), 0x10);
+        CHECK_EQ_INT((int)(DSB(M09_00107885) & 0x10u), 0x10);
+        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 4);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0016u);
+    }
+
+    /* the results state does not run off DS_000F0AFE == 4 alone: the gate's
+     * first test is DS_001078FE, and m08_seed leaves it 0. */
+    {
+        m08_seed();
+        DSB(DS_000F0AFE) = 4u;
+        DSD(DS_00104B00) = 0xBEEF0008u;
+        game_mode_08_step();
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0008u);
+    }
+
+    /* ...nor off DS_001078FE alone, without DS_000F0AFE == 4. */
+    {
+        m08_seed();
+        DSB(DS_001078FE) = 1u;
+        DSB(DS_000F0AFE) = 0x77u;
+        DSD(DS_00104B00) = 0xBEEF0008u;
+        game_mode_08_step();
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0008u);
+    }
+
+    mz_restore();
+}
+
+/* (b) the results state: fight_effects_hold_all and flow_match_result_text
+ * (the same functions mode 9 calls — their own behavior is
+ * check_fight_effects_hold_all and mode 9's tests, above; an empty effects
+ * list here, from tf_demo_fixture, makes fight_effects_hold_all a no-op on
+ * its own data), the countdown rearm, the hook install and the
+ * DS_00104B1D-selected return mode. Unlike mode 9, mode 8 never reads or
+ * writes DS_00104AD4/DS_00107813/DS_001078A7/DS_00108173/DS_0010746C —
+ * proven by m08_seed's sentinels surviving untouched. */
+static void check_mode_08_b(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-C snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    #define M08_OPEN() do { \
+        DSB(DS_000F0AFE) = 4u; DSB(DS_001078FE) = 1u; \
+    } while (0)
+
+    /* DS_00104B1D != 3: the return mode DS_00104AFA = 5. */
+    {
+        m08_seed();
+        M08_OPEN();
+        DSB(DS_00104B1D) = 0u;
+        game_mode_08_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xF0);
+        CHECK_EQ_INT((int)DSW(DS_001088EE), 0x3C);
+        CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)fn_origin(game_hook_25bbc));
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 1);
+        CHECK_EQ_INT((int)DSW(DS_00104B00), 0x16);
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 5);
+        /* untouched by mode 8's results state. */
+        CHECK_EQ_INT((int)DSD(DS_00104AD4), (int)0x77777777u);
+        CHECK_EQ_INT((int)DSB(DS_00107813), 0x77);
+        CHECK_EQ_INT((int)DSB(DS_001078A7), 0x77);
+        CHECK_EQ_INT((int)DSB(DS_00108173), 0x77);
+        CHECK_EQ_INT((int)DSD(DS_0010746C), (int)0x11112222u);
+    }
+
+    /* DS_00104B1D == 3: the return mode DS_00104AFA = 0x30 instead;
+     * everything else the same. */
+    {
+        m08_seed();
+        M08_OPEN();
+        DSB(DS_00104B1D) = 3u;
+        game_mode_08_step();
+        CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)fn_origin(game_hook_25bbc));
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 1);
+        CHECK_EQ_INT((int)DSW(DS_00104B00), 0x16);
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x30);
+    }
+
+    #undef M08_OPEN
+    mz_restore();
+}
+
+static void check_mode_08(void)
+{
+    check_mode_08_a();
+    check_mode_08_b();
+}
+
 
 #define SC_ST   (FIGHT_RECS + 0x7000u)   /* crafted one-word streams, 0x10 apart */
 #define SC_SRC0 (FIGHT_RECS + 0x7800u)   /* a crafted effect source (pset 1 +0x18) */
@@ -30631,6 +30820,7 @@ int test_fight(void)
     check_mode_b();
     check_mode_13();
     check_mode_09();
+    check_mode_08();
 
     return g_failures - before;
 }

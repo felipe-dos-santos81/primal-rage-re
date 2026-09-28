@@ -720,7 +720,8 @@ void flow_stage_pick(void)
 
 /* 0x25BBC — record §46-B. A DS_00104AE4 hook, stored at 0x25A46/0x25A73
  * (before 0x4F980 arms mode 0x1A with 0x30/5) and at 0x285CB/0x285F3 (in
- * 0x28468). The byte DS_001078FA = 0 and DS_00104B13 = 0 (AH), DS_00104B1E
+ * 0x28468, game_mode_08_step, record §49-C). The byte DS_001078FA = 0 and
+ * DS_00104B13 = 0 (AH), DS_00104B1E
  * += 1, then 0x20DF4 on the stage word with EDX = 1, both fighters (0x33EB4
  * with EAX = 0 and 1), 0x4F714 on the stage word, 0x46504, and the hook
  * becomes 0x5D812 (the EDX 0x25C04 loaded, which 0x4F714's tail jump into
@@ -1019,7 +1020,8 @@ u32 flow_join_poll(void)
  * - anything else: nothing.
  * EBX/ECX/EDX are pushed and popped. The `test edx,edx; jnz` at 0x2815E runs
  * with EDX = 0 and is never taken. Callers: 0x275A3 (0x274FC), 0x297C9
- * (0x296B8), and the unported 0x28599 (0x28468) and 0x288C7 (0x28788). */
+ * (0x296B8), 0x28599 (0x28468, mode 8, record §49-C) and 0x288C7 (0x28788,
+ * mode 9, record §48-Y). */
 void flow_match_result_text(void)
 {
     u32 r = DSD(DS_00104AD4);                           /* 0x28133 */
@@ -2945,6 +2947,68 @@ void game_hook_25ae8(void)
     DSW(DS_001088EE) = 0xB4u;                           /* 0x25BB0 */
 }
 
+/* ---- mode 8, the frame handler 0x28468 (record §49-C) -------------------- */
+
+/* 0x28468 — record §49-C. See flow.h for the full derivation; a near-
+ * identical, but slimmer, sibling of mode 9's game_mode_09_step (0x28788,
+ * record §48-Y). FN_00025BBC (game_hook_25bbc) is the same hook constant
+ * game_hook_259cc installs above. */
+void game_mode_08_step(void)
+{
+    fight_slot_clear();                                 /* 0x2846D 0x3C5CC */
+    camera_screen_base(0, (s32)DSB(DS_0010782A));       /* 0x28476..0x28481 0x16D58 */
+    camera_screen_base(1, (s32)DSB(DS_001078BE));       /* 0x2848D..0x28498 0x16D58 */
+    DSD(DS_001077E8) = DSD(DS_001077E4);                /* 0x284A2/0x284AA */
+    DSD(DS_0010787C) = DSD(DS_00107878);                /* 0x284B0/0x284BB */
+    camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                   DS_00100B60, DS_00100AF0);            /* 0x2849D..0x284C6 0x17FA0 */
+    camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                   DS_00100B61, DS_00100AF4);            /* 0x284CB..0x284E9 0x17FA0 */
+    camera_decay();                                      /* 0x284EE 0x17580 */
+    fighter_pass_a();                                    /* 0x284F3 0x1958C */
+    /* PORT: unlike mode 9 (0x28815..0x28825), no gate guards this call. */
+    fight_slot_pass();                                   /* 0x284F8 0x3CB68 */
+    fight_hud_pass(0u);                                  /* 0x284FD/0x284FF 0x35658 */
+    fight_hud_pass(1u);                                  /* 0x28504/0x28509 0x35658 */
+    fighter_pass_b(1u);                                  /* 0x2850E/0x28513 0x19068 */
+    fight_effects_pass();                                /* 0x28518 0x49C78 */
+    camera_y_commit();                                   /* 0x2851D 0x12DA8 */
+
+    u16 hold = DSW(DS_00104AF8);                          /* 0x28522 */
+    if (hold != 0u) {                                     /* 0x28529/0x2852C */
+        hold = (u16)(hold - 1u);                          /* 0x2852E/0x28530 */
+        DSW(DS_00104AF8) = hold;                           /* 0x28532 */
+        if (hold == 0u) {                                   /* 0x28539 */
+            DSB(DS_001078FE) = 1u;                            /* 0x2853B/0x2854F */
+            DSB(DS_001078FC) = 1u;                             /* 0x28555 */
+            DSB(DS_001077F1) = (u8)(DSB(DS_001077F1) | 0x10u); /* 0x2853D/0x28549/0x28563 */
+            DSB(DS_00107885) = (u8)(DSB(DS_00107885) | 0x10u); /* 0x28543/0x2854C/0x2855B */
+            DSB(DS_000F0AFE) = 4u;                              /* 0x28561/0x28569 */
+        }
+    }
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);        /* 0x2856F */
+
+    if (DSB(DS_001078FE) == 0u) return;                     /* 0x28576..0x2857D */
+    if (DSB(DS_000F0AFE) != 4u) return;                      /* 0x28583..0x2858E */
+
+    fight_effects_hold_all();                                 /* 0x28594 0x4A708 */
+    flow_match_result_text();                                 /* 0x28599 0x28130 */
+    u32 mode_sel = DSB(DS_00104B1D);                          /* 0x285A8 */
+    DSW(DS_00104AFE) = 0xF0u;                                  /* 0x285AD */
+    DSW(DS_001088EE) = 0x3Cu;                                   /* 0x285B4 */
+    if (mode_sel == 3u) {                                        /* 0x285BB/0x285BD */
+        DSD(DS_00104AE4) = FN_00025BBC;                            /* 0x285CB */
+        DSB(DS_00104B25) = 1u;                                       /* 0x285D1 */
+        DSW(DS_00104B00) = 0x16u;                                     /* 0x285DC */
+        DSW(DS_00104AFA) = 0x30u;                                      /* 0x285E3 */
+        return;                                                         /* 0x285EA -> 0x28616 */
+    }
+    DSD(DS_00104AE4) = FN_00025BBC;                                       /* 0x285F3 */
+    DSB(DS_00104B25) = 1u;                                                 /* 0x285F9 */
+    DSW(DS_00104AFA) = 5u;                                                  /* 0x28609 */
+    DSW(DS_00104B00) = 0x16u;                                                /* 0x2860F */
+}
+
 /* 0x11F6C: the six-entry selector. Phase 0 draws the first entry then falls
  * into phase 1 (no jump between 0x11FD4 and 0x11FDA); phase 1 draws an entry;
  * phase 4 pauses on DS_000F0A68; phase 2 advances the entry and leaves for
@@ -4573,8 +4637,10 @@ void game_frame(void)
     case 0x09u:
         game_mode_09_step();                           /* 0x2533F 0x28788 (record §48-Y) */
         break;                                         /* 0x25344 */
-    case 0x07u:
     case 0x08u:
+        game_mode_08_step();                           /* 0x25335 0x28468 (record §49-C) */
+        break;                                         /* 0x2533A */
+    case 0x07u:
     case 0x0Au:
     case 0x0Fu:
     case 0x12u:
@@ -4603,7 +4669,7 @@ void game_frame(void)
         /* PORT: named gaps, each case's body unported (record §47-B.1 has
          * the entry and callees of every one):
          * 7 0x282C4;
-         * 8 0x28468; 0xA 0x28BD4;
+         * 0xA 0x28BD4;
          * 0xF 0x277C0; 0x12 0x41C28;
          * 0x16 0x4F2B0; 0x18 0x4F6E8;
          * 0x19 0x4F704; 0x1E 0x1EEB0; 0x1F 0x208F8; 0x21 0x26540;
@@ -4624,8 +4690,9 @@ void game_frame(void)
          * record §48-E) is game_mode_0e_step, case 0x15 (0x4F24C, record
          * §48-X) is frontend_mode_15_step, case 0xB (0x28C38, record §48-B)
          * runs after 0x26254, case 0x13 (0x424E8, record §48-D) is
-         * game_mode_13_step, and case 9 (0x28788, record §48-Y) is
-         * game_mode_09_step, dispatched above. */
+         * game_mode_13_step, case 9 (0x28788, record §48-Y) is
+         * game_mode_09_step, and case 8 (0x28468, record §49-C) is
+         * game_mode_08_step, each dispatched above. */
         break;
     case 0x00u:
     case 0x1Cu:
