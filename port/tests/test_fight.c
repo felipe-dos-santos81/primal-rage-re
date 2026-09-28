@@ -7912,8 +7912,9 @@ static void check_join_poll(void)
 
     /* (f) game_frame's case 6 (0x25256) and case 0xC (0x25349) with no join:
      * the poll draws "INSERT 1 COIN" for side 0 and the mode word is kept
-     * (the 0x26254/0x27380 arms are named gaps). With DS_00104B1D set, case 6
-     * does not poll (it goes to case 4's 0x26254) but case 0xC still does. */
+     * (case 6's 0x26254 arm is a named gap; case 0xC's 0x27380 runs, record
+     * §48-C, and ends no round here). With DS_00104B1D set, case 6 does not
+     * poll (it goes to case 4's 0x26254) but case 0xC still does. */
     {
         static const u32 mode[4] = { 0xBEEF0006u, 0xBEEF000Cu, 0xBEEF0006u,
                                      0xBEEF000Cu };
@@ -7922,10 +7923,14 @@ static void check_join_poll(void)
             JP_RESTORE();
             jp_open(0u);
             DSB(DS_00104B1D) = b1d[i];
+            DSD(0x00102908u) = 0x00500050u;
             jp_frame_seed(mode[i], 0u);
             game_frame();
             CHECK_EQ_INT((int)DSD(DS_00104B00), (int)mode[i]);
             CHECK_EQ_INT((int)DSB(DS_00104B1F), 0);
+            /* 0x27380's 0x1DA08 steps both pulse words in case 0xC only. */
+            CHECK_EQ_INT((int)DSD(0x00102908u),
+                         (mode[i] & 0xFFu) == 0xCu ? 0x004F004F : 0x00500050);
             if (i == 2u) {
                 jp_check_quiet();
             } else {
@@ -7943,7 +7948,10 @@ static void check_join_poll(void)
      * runs on the result minus one: that side's slot is reset (0x33C18), the
      * other side's +0x5B zeroed, DS_00104ABC = 2 (B1F now 3), the hook
      * 0x28D80 and mode 0x17 (the upper word kept); no credit is spent. With
-     * DS_00104B1D set, case 6 does not join. */
+     * DS_00104B1D set, case 6 does not join. A join ends the case (0x25358
+     * `jmp 0x2540F`): case 0xC's 0x27380 does not run after it, so its
+     * 0x1DA08 leaves the pulse words DS_00102908[0/1] at their sentinel
+     * (record §48-C). */
     {
         static const u32 mode[3] = { 0xBEEF0006u, 0xBEEF000Cu, 0xBEEF0006u };
         static const u8 b1f[3] = { 1u, 2u, 1u };
@@ -7959,10 +7967,12 @@ static void check_join_poll(void)
             DSB(DS_00104B1D) = b1d[i];
             DSD(DS_00104ABC) = 0xDEADBEEFu;
             DSD(DS_00104AE4) = 0xDEADBEEFu;
+            DSD(0x00102908u) = 0x00500050u;
             jp_frame_seed(mode[i], press[i]);
             game_frame();
             CHECK_EQ_INT((int)DSD(DS_001088E4), (int)press[i]);
             CHECK_EQ_INT((int)DSD(DS_00105C00), 5);
+            CHECK_EQ_INT((int)DSD(0x00102908u), 0x00500050);
             if (i == 2u) {
                 CHECK_EQ_INT((int)DSB(DS_00104B1F), 1);
                 CHECK_EQ_INT((int)DSD(DS_00104B00), (int)mode[i]);
@@ -21715,6 +21725,392 @@ static void check_mode5_b(void)
     mz_restore();
 }
 
+/* ---- record §48-C: mode 0xC's arena frame 0x27380 and its callees ------- */
+
+#define C_PULSE 0x00102908u   /* DS_00102908[side], 0x1DA08's countdown words */
+#define C_COPY  0x00104890u   /* 0x27254's slot copies, then its record copies */
+
+static u32 c_pr[2];
+
+/* A fresh §48-C state (m5_seed's pattern): the snapshot back, then
+ * q_mode_seed(0xC) (every prelude step inert, DS_001078FA 5 so 0x27380's
+ * projection block is off, both +0x5A 0x66 so 0x272DC does nothing), with
+ * sentinels in the slot-pass words, both pulse words (0x50), the projection
+ * outputs DS_00100B60/61 and DS_00100AF0/F4, both 0x27254 copies, and the
+ * bytes 0x278B0 writes; DS_001028F8[side] are m5_rec records with sentinels
+ * in +0x08/+0x20/+0x24. The winner DS_0010810D is side 0, DS_00104B12 side
+ * 1, DS_00104AF6 0x1234, and the text rows 0xA/0xE are empty. */
+static void c_seed(void)
+{
+    u32 s;
+    mz_restore();
+    (void)mz_save();
+    q_mode_seed(0xCu);
+    DSD(DS_00107ED8) = 0x77777777u;
+    DSD(DS_00107EDC) = 0x77777777u;
+    for (s = 0; s < 2u; s++) {
+        c_pr[s] = m5_rec();
+        DSD(DS_001028F8 + s * 4u) = c_pr[s];
+        DSD(c_pr[s] + 0x08u) = 0x5A5A5A5Au;
+        DSD(c_pr[s] + 0x20u) = 0x5A5A5A5Au;
+        DSD(c_pr[s] + 0x24u) = 0x5A5A5A5Au;
+        DSW(C_PULSE + s * 2u) = 0x50u;
+        DSB(DS_00100B60 + s) = 0x77u;
+        DSD(DS_00100AF0 + s * 4u) = 0x77777777u;
+    }
+    mem_fill(C_COPY, 0x77, 2u * 0x94u + 2u * 0x68u);
+    DSB(DS_00104B1F) = 0x77u;
+    DSB(DS_00108110) = 0x77u;
+    DSB(DS_00105C04) = 0x77u;
+    DSB(0x0010810Du) = 0u;
+    DSB(DS_00104B12) = 1u;
+    DSW(DS_00104AF6) = 0x1234u;
+    mem_fill(DS_00105F38 + 0xAu * 0xACu, 0, 0xACu);
+    mem_fill(DS_00105F38 + 0xEu * 0xACu, 0, 0xACu);
+}
+
+/* Nothing of 0x272DC's two arms ran: the copies, the 0x278B0 bytes and the
+ * text rows keep their seeds. */
+static void c_check_no_end(void)
+{
+    u32 i;
+    int dirty = 0;
+    for (i = 0; i < 2u * 0x94u + 2u * 0x68u; i++)
+        if (DSB(C_COPY + i) != 0x77u) dirty = 1;
+    CHECK(!dirty, "0x27254 did not run");
+    CHECK_EQ_INT((int)DSB(DS_00104B1F), 0x77);
+    CHECK_EQ_INT((int)DSB(DS_00108110), 0x77);
+    CHECK_EQ_INT((int)DSB(DS_00105C04), 0x77);
+    CHECK_EQ_INT(q_row_cells(0xA), 0);
+    CHECK_EQ_INT(q_row_cells(0xE), 0);
+}
+
+/* A slot +0x18 hook for 0x1958C's 0x19020 call: counts, records the side and
+ * the first 0x17FA0 pair's outputs as the hook sees them (the real hooks'
+ * 0x18C14 box tests read that pair's work), and returns 1 (so
+ * DS_00100AF8[side] = 0). */
+#define C_STUB_HOOK 0x7FFF0300u
+static u32 c_hook_calls, c_hook_side, c_hook_flags, c_hook_af0, c_hook_af4;
+static u32 c_hook_stub(u32 side)
+{
+    c_hook_calls++;
+    c_hook_side = side;
+    c_hook_flags = DSW(DS_00100B60);
+    c_hook_af0 = DSD(DS_00100AF0);
+    c_hook_af4 = DSD(DS_00100AF4);
+    return 1u;
+}
+
+static void check_mode_0c(void)
+{
+    u32 i, s, rec, ps;
+    if (!mz_save()) { CHECK(0, "the §48-C snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* The image values the checks rely on: 0xE9050's first word is a plain
+     * sprite word (no bit 15), so 0x2BC30 leaves +0x08 on it; 0xE904C's
+     * (0x1D764's stream) is another. */
+    CHECK_EQ_INT((int)DSW(0x000E9050u), 0x0700);
+    CHECK_EQ_INT((int)DSW(0x000E904Cu), 0x06FF);
+
+    /* (a) 0x27380 with DS_001078FA 5: the prelude (as mode 0xD's), the slot
+     * pass 0x3CB68 (DS_00107ED8 0x20, DS_00107EDC 2), both pulse words one
+     * down, DS_00104AEC |= 2, and the projection block skipped (its six
+     * outputs keep their sentinels). No round end: mode 0xC kept. */
+    c_seed();
+    game_mode_0c_step();
+    q_check_prelude();
+    CHECK_EQ_INT((int)DSD(DS_00107ED8), 0x20);
+    CHECK_EQ_INT((int)DSD(DS_00107EDC), 2);
+    CHECK_EQ_INT((int)DSW(C_PULSE), 0x4F);
+    CHECK_EQ_INT((int)DSW(C_PULSE + 2u), 0x4F);
+    for (s = 0; s < 2u; s++) {
+        CHECK_EQ_INT((int)DSB(DS_00100B60 + s), 0x77);
+        CHECK_EQ_INT((int)DSD(DS_00100AF0 + s * 4u), 0x77777777);
+        CHECK_EQ_INT((int)DSD(c_pr[s] + 0x24u), 0x5A5A5A5A);
+    }
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0xC);
+    CHECK_EQ_INT((int)DSB(DS_001078FA), 5);
+    c_check_no_end();
+
+    /* (b) The projection block's gate, the byte DS_001078FA == 2 (a zero-
+     * extended byte: 0x82 is not 2). With 2 each step leaves its mark: the
+     * 0x17FA0 page flags (0) and index outputs, the 0x17580 countdowns
+     * DS_00107824/DS_001078BA one down, side 0's +0x18 hook called once by
+     * 0x1958C (0x19020; it returns 1, so DS_00100AF8 stays 0) and seeing the
+     * first 0x17FA0 pair's page flags and indices already stored, 0x19068(0)'s
+     * 0x3C570(5) (DS_00107EE0 bit 5, beside the page tails' bits 0..3), and
+     * 0x1975C's 0x17CB0 zeroing DS_00100AD0/AD4. The second 0x17FA0 pair ran
+     * last: a re-projection of the end state gives the same four positions,
+     * which 0x17580's scaling of the first pair's would not. With 1, 3 or
+     * 0x82 every one of them keeps its seed. */
+    if (fn_resolve(C_STUB_HOOK) == NULL)
+        fn_register(C_STUB_HOOK, (void (*)(void))c_hook_stub);
+    {
+        static const u8 fa[4] = { 2u, 1u, 3u, 0x82u };
+        for (i = 0; i < 4u; i++) {
+            u32 b[4];
+            c_seed();
+            DSB(DS_001078FA) = fa[i];
+            DSW(DS_00107824) = 5u;
+            DSW(DS_001078BA) = 7u;
+            DSD(DS_00100AD0) = 0x77777777u;
+            DSD(DS_00100AD4) = 0x77777777u;
+            DSD(DS_001077B0 + 0x18u) = C_STUB_HOOK;
+            DSD(DS_001077B0 + 0x94u + 0x18u) = 0u;
+            c_hook_calls = 0;
+            c_hook_side = c_hook_flags = 0x5555u;
+            c_hook_af0 = c_hook_af4 = 0x77777777u;
+            game_mode_0c_step();
+            CHECK_EQ_INT((int)DSD(DS_00107ED8), 0x20);
+            CHECK_EQ_INT((int)DSW(C_PULSE), 0x4F);
+            CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x43);
+            if (i == 0u) {
+                CHECK_EQ_INT((int)DSB(DS_00100B60), 0);
+                CHECK_EQ_INT((int)DSB(DS_00100B61), 0);
+                CHECK(DSD(DS_00100AF0) != 0x77777777u, "0x17FA0 side 0's index");
+                CHECK(DSD(DS_00100AF4) != 0x77777777u, "0x17FA0 side 1's index");
+                CHECK_EQ_INT((int)DSW(DS_00107824), 4);
+                CHECK_EQ_INT((int)DSW(DS_001078BA), 6);
+                CHECK_EQ_INT((int)c_hook_calls, 1);
+                CHECK_EQ_INT((int)c_hook_side, 0);
+                CHECK_EQ_INT((int)c_hook_flags, 0);
+                CHECK(c_hook_af0 != 0x77777777u, "the first 0x17FA0 pair ran before 0x1958C (side 0)");
+                CHECK(c_hook_af4 != 0x77777777u, "the first 0x17FA0 pair ran before 0x1958C (side 1)");
+                CHECK_EQ_INT((int)DSD(DS_00100AF8), 0);
+                CHECK_EQ_INT((int)DSD(DS_00107EE0), 0x2F);
+                CHECK_EQ_INT((int)DSD(DS_00100AD0), 0);
+                CHECK_EQ_INT((int)DSD(DS_00100AD4), 0);
+                b[0] = DSD(DS_00100B08);
+                b[1] = DSD(DS_00100B0C);
+                b[2] = DSD(DS_00100B00);
+                b[3] = DSD(DS_00100B04);
+                CHECK((s32)(b[2] * 0xD56u + 0x800u) / 0x1000 != (s32)b[2],
+                      "0x17580 would move side 0's y");
+                camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                               DS_00100B60, DS_00100AF0);
+                camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                               DS_00100B61, DS_00100AF4);
+                CHECK_EQ_INT((int)DSD(DS_00100B08), (int)b[0]);
+                CHECK_EQ_INT((int)DSD(DS_00100B0C), (int)b[1]);
+                CHECK_EQ_INT((int)DSD(DS_00100B00), (int)b[2]);
+                CHECK_EQ_INT((int)DSD(DS_00100B04), (int)b[3]);
+            } else {
+                CHECK_EQ_INT((int)DSB(DS_00100B60), 0x77);
+                CHECK_EQ_INT((int)DSB(DS_00100B61), 0x77);
+                CHECK_EQ_INT((int)DSD(DS_00100AF0), 0x77777777);
+                CHECK_EQ_INT((int)DSD(DS_00100AF4), 0x77777777);
+                CHECK_EQ_INT((int)DSW(DS_00107824), 5);
+                CHECK_EQ_INT((int)DSW(DS_001078BA), 7);
+                CHECK_EQ_INT((int)c_hook_calls, 0);
+                CHECK_EQ_INT((int)DSD(DS_00107EE0), 0);
+                CHECK_EQ_INT((int)DSD(DS_00100AD0), 0x77777777);
+                CHECK_EQ_INT((int)DSD(DS_00100AD4), 0x77777777);
+            }
+        }
+    }
+
+    /* (c) The blink undo, on the DS_00104B12 slot's record's pset word
+     * (DS_001014EC + +0x56 * 0x20): with +0x41 bit 0 set, +0x42 bit 3 clear
+     * and the word 0x1E1 under bit 15 (0x81E1, 0x01E1) it takes DS_00104AF6
+     * whole (0x9234, bit 15 included); 0x01E2, bit 14 (0x41E1), +0x42 bit 3,
+     * +0x41 bit 0 clear keep it. The side is DS_00104B12's: side 0 open with
+     * 0x1E1 is kept while B12 is 1, and restored when B12 is 0. */
+    {
+        static const u8 b12[8] = { 1u, 1u, 1u, 1u, 1u, 1u, 1u, 0u };
+        static const u8 f41[8] = { 0x01u, 0x01u, 0x01u, 0x01u, 0xFEu, 0x01u, 0xFEu, 0xFEu };
+        static const u8 f42[8] = { 0xF7u, 0xF7u, 0xF7u, 0x08u, 0x00u, 0xF7u, 0x00u, 0x00u };
+        static const u16 wd[8] = { 0x81E1u, 0x01E1u, 0x01E2u, 0x01E1u, 0x01E1u,
+                                   0x41E1u, 0x01E1u, 0x01E1u };
+        static const u8 open0[8] = { 0u, 0u, 0u, 0u, 0u, 0u, 1u, 1u };
+        u32 ps0, ps1;
+        c_seed();
+        rec = DSD(DS_001077B0 + 0x94u);
+        ps = DSW(DSD(DS_001077B0) + 0x56u);
+        CHECK(DSW(rec + 0x56u) != 0u && (u32)DSW(rec + 0x56u) != ps,
+              "the two fighters' pset indices are distinct and non-zero");
+        for (i = 0; i < 8u; i++) {
+            c_seed();
+            ps0 = DSD(DS_001014EC) + (u32)DSW(DSD(DS_001077B0) + 0x56u) * 0x20u;
+            ps1 = DSD(DS_001014EC) + (u32)DSW(DSD(DS_001077B0 + 0x94u) + 0x56u) * 0x20u;
+            DSB(DS_00104B12) = b12[i];
+            DSW(DS_00104AF6) = 0x9234u;
+            DSB(DS_001077B0 + 0x94u + 0x41u) = f41[i];
+            DSB(DS_001077B0 + 0x94u + 0x42u) = f42[i];
+            DSW(ps1) = wd[i];
+            DSB(DS_001077B0 + 0x41u) = open0[i] ? 0x01u : 0xFEu;
+            DSB(DS_001077B0 + 0x42u) = 0xF7u;
+            DSW(ps0) = 0x01E1u;
+            game_mode_0c_step();
+            if (i < 2u) CHECK_EQ_INT((int)DSW(ps1), 0x9234);
+            else CHECK_EQ_INT((int)DSW(ps1), (int)wd[i]);
+            CHECK_EQ_INT((int)DSW(ps0), i == 7u ? 0x9234 : 0x01E1);
+            CHECK_EQ_INT((int)DSW(DS_00104AF6), 0x9234);
+        }
+    }
+
+    /* (d) 0x1DA08 directly: per side the word one down (mod 0x10000); at 0 or
+     * below (signed) the DS_001028F8 record begins 0xE9050 at 4.0 and the
+     * word becomes (0x78 - +0x5A) >> 1 (signed), at least 0xC. Rows: side 0
+     * then side 1, each (word before, +0x5A, word after, restarted). */
+    {
+        static const u16 w0[5] = { 5u, 0u, 0x8001u, 1u, 1u };
+        static const u16 w1[5] = { 1u, 0x8000u, 2u, 1u, 1u };
+        static const u8 a0[5] = { 0x66u, 0x5Eu, 0x62u, 0x80u, 0x00u };
+        static const u8 a1[5] = { 0x10u, 0x66u, 0x66u, 0xFFu, 0x60u };
+        static const u16 e0[5] = { 4u, 0xDu, 0xCu, 0xCu, 0x3Cu };
+        static const u16 e1[5] = { 0x34u, 0x7FFFu, 1u, 0xCu, 0xCu };
+        static const u8 r0[5] = { 0u, 1u, 1u, 1u, 1u };
+        static const u8 r1[5] = { 1u, 0u, 0u, 1u, 1u };
+        for (i = 0; i < 5u; i++) {
+            c_seed();
+            DSW(C_PULSE) = w0[i];
+            DSW(C_PULSE + 2u) = w1[i];
+            DSB(DS_0010780A) = a0[i];
+            DSB(DS_0010780A + 0x94u) = a1[i];
+            fight_hud_pulse();
+            CHECK_EQ_INT((int)DSW(C_PULSE), (int)e0[i]);
+            CHECK_EQ_INT((int)DSW(C_PULSE + 2u), (int)e1[i]);
+            for (s = 0; s < 2u; s++) {
+                int on = s == 0u ? r0[i] : r1[i];
+                CHECK_EQ_INT((int)DSD(c_pr[s] + 0x24u), on ? 0x40800000 : 0x5A5A5A5A);
+                CHECK_EQ_INT((int)DSD(c_pr[s] + 0x20u), on ? 0x40800000 : 0x5A5A5A5A);
+                CHECK_EQ_INT((int)DSD(c_pr[s] + 0x08u), on ? 0xE9050 : 0x5A5A5A5A);
+            }
+        }
+    }
+
+    /* (e) 0x272DC through 0x27380. Winner w = DS_0010810D, the other side
+     * DS_00104B12; the +0x5A bytes are unsigned. w at 0x78 or 0xFF (whatever
+     * the other side has): the continue screen, mode 0xE. Only the other side
+     * at 0x78 or 0xFF: w's +0x41 |= 0x10, mode 0xD. Neither: nothing. */
+    {
+        static const u8 w[6] = { 0u, 0u, 0u, 1u, 1u, 0u };
+        static const u8 wa[6] = { 0x78u, 0xFFu, 0x78u, 0x77u, 0x66u, 0x77u };
+        static const u8 la[6] = { 0x66u, 0x66u, 0x78u, 0x78u, 0xFFu, 0x77u };
+        static const u16 mode[6] = { 0xEu, 0xEu, 0xEu, 0xDu, 0xDu, 0xCu };
+        for (i = 0; i < 6u; i++) {
+            u32 ws = w[i], ls = w[i] ^ 1u;
+            c_seed();
+            DSB(0x0010810Du) = w[i];
+            DSB(DS_00104B12) = (u8)ls;
+            DSB(DS_0010780A + ws * 0x94u) = wa[i];
+            DSB(DS_0010780A + ls * 0x94u) = la[i];
+            for (s = 0; s < 2u; s++)
+                DSD(DSD(DS_001077B0 + s * 0x94u) + 0x24u) = 0x3F800000u;
+            game_mode_0c_step();
+            CHECK_EQ_INT((int)DSW(DS_00104B00), (int)mode[i]);
+            CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x43);
+            CHECK_EQ_INT((int)DSB(DS_001077B0 + ls * 0x94u + 0x41u), 0x01);
+            CHECK_EQ_INT((int)DSB(DS_001077B0 + ws * 0x94u + 0x41u),
+                         mode[i] == 0xDu ? 0x11 : 0x01);
+            if (mode[i] != 0xEu) {
+                c_check_no_end();
+                CHECK_EQ_INT((int)DSW(DS_00105F34), 0x7777);
+                for (s = 0; s < 2u; s++)
+                    CHECK_EQ_INT((int)DSD(DSD(DS_001077B0 + s * 0x94u) + 0x24u),
+                                 0x3F800000);
+                continue;
+            }
+            /* 0x27254: the slot copies (the slots are not written after it)
+             * and each record's +0x24 copied, then zeroed. 0x278B0: the bytes,
+             * the cursor moved by 0x2F434 to row 0xE, string 0x41 on row 0xA
+             * (0x2F198, mode 0x1000) and "15" on row 0xE (mode 0x4002). */
+            CHECK(memcmp(mem + C_COPY, mem + DS_001077B0, 0x94u) == 0,
+                  "side 0's slot copy");
+            CHECK(memcmp(mem + C_COPY + 0x94u, mem + DS_001077B0 + 0x94u, 0x94u) == 0,
+                  "side 1's slot copy");
+            for (s = 0; s < 2u; s++) {
+                CHECK_EQ_INT((int)DSD(C_COPY + 0x128u + s * 0x68u + 0x24u), 0x3F800000);
+                CHECK_EQ_INT((int)DSD(DSD(DS_001077B0 + s * 0x94u) + 0x24u), 0);
+            }
+            CHECK_EQ_INT((int)DSB(DS_00104B1F), 0);
+            CHECK_EQ_INT((int)DSB(DS_00108110), 0xF);
+            CHECK_EQ_INT((int)DSB(DS_00105C04), 0);
+            CHECK_EQ_INT((int)DSW(DS_00105F34), 0xE);
+            CHECK(q_row_ref(0xA, 0x41u, 0x1000u), "0x278B0's string 0x41 on row 0xA");
+            CHECK(m5_row_is(0xE, -1, "15", 0x4002u), "0x278B0's countdown 15 on row 0xE");
+        }
+    }
+
+    /* (f) 0x27254 directly: each record's 0x68 bytes (a pattern) copied after
+     * the slot copies, then +0x24 (dword), +0x34/+0x36/+0x44 (words) and
+     * +0x42/+0x43 (bytes) zeroed; its other bytes kept. */
+    {
+        static const u8 zero[0x68] = {
+            [0x24] = 1, [0x25] = 1, [0x26] = 1, [0x27] = 1, [0x34] = 1,
+            [0x35] = 1, [0x36] = 1, [0x37] = 1, [0x42] = 1, [0x43] = 1,
+            [0x44] = 1, [0x45] = 1,
+        };
+        int bad_copy = 0, bad_rec = 0;
+        c_seed();
+        for (s = 0; s < 2u; s++) {
+            rec = DSD(DS_001077B0 + s * 0x94u);
+            for (i = 0; i < 0x68u; i++) DSB(rec + i) = (u8)(0x10u + s * 0x80u + i);
+        }
+        flow_match_snapshot();
+        for (s = 0; s < 2u; s++) {
+            rec = DSD(DS_001077B0 + s * 0x94u);
+            if (memcmp(mem + C_COPY + s * 0x94u, mem + DS_001077B0 + s * 0x94u, 0x94u) != 0)
+                bad_copy = 1;
+            for (i = 0; i < 0x68u; i++) {
+                u8 pat = (u8)(0x10u + s * 0x80u + i);
+                if (DSB(C_COPY + 0x128u + s * 0x68u + i) != pat) bad_copy = 1;
+                if (DSB(rec + i) != (zero[i] ? 0u : pat)) bad_rec = 1;
+            }
+        }
+        CHECK(!bad_copy, "0x27254's two slot and two record copies");
+        CHECK(!bad_rec, "0x27254 zeroed exactly the records' motion fields");
+    }
+
+    /* (g) game_frame's case 0xC (0x2535D) with both sides joined (0x28CC8
+     * returns 0 and draws nothing), three frames against the mode-0xC tail
+     * 0x25487 (no update-table bit, command block or 0x25414 tail, and
+     * DS_00104B24 set so the 0x2A31C walk returns at once). Frame 2 (bit 1
+     * set): 0x27380 runs (slot pass, pulse, DS_00104AEC), then the tail saves
+     * 0x9234 and blinks 0x81E1. Frame 3: 0x27380 restores 0x9234 before the
+     * tail saves it again (without the restore it would save 0x81E1). Frame 4
+     * (bit 1 clear): restored and left. */
+    c_seed();
+    DSB(DS_00104B1F) = 3u;
+    DSD(DS_00104AE8) = 0u;
+    DSB(DS_00104B19 + 2u) = 0u;
+    DSB(DS_00104B15) = 0u;
+    DSB(DS_00104B24) = 1u;
+    DSW(DS_000EF6DC) = 1u;
+    DSB(DS_001077B0 + 0x94u + 0x42u) = 0xF7u;
+    ps = DSD(DS_001014EC) + (u32)DSW(DSD(DS_001077B0 + 0x94u) + 0x56u) * 0x20u;
+    DSW(ps) = 0x9234u;
+    DSW(DS_00104AF6) = 0x5A5Au;
+    mem_fill(DS_00105F38 + 0x1Du * 0xACu, 0, 0xACu);
+    game_frame();
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0xC);
+    CHECK_EQ_INT((int)DSD(DS_00107ED8), 0x20);
+    CHECK_EQ_INT((int)DSW(C_PULSE), 0x4F);
+    CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x43);
+    CHECK_EQ_INT((int)DSW(DS_00104AF6), 0x9234);
+    CHECK_EQ_INT((int)DSW(ps), 0x81E1);
+    CHECK_EQ_INT(q_row_cells(0x1D), 0);
+    game_frame();
+    CHECK_EQ_INT((int)DSW(C_PULSE), 0x4E);
+    CHECK_EQ_INT((int)DSW(DS_00104AF6), 0x9234);
+    CHECK_EQ_INT((int)DSW(ps), 0x81E1);
+    game_frame();
+    CHECK_EQ_INT((int)DSW(C_PULSE), 0x4D);
+    CHECK_EQ_INT((int)DSW(ps), 0x9234);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0xC);
+
+    /* (h) 0x2F434 directly, with a mode lacking bit 1 (0x278B0's 0x4002 has
+     * it): "7" (width 1, pad 0) at col 3, row 0xE, mode 0x1000, drawn as
+     * 0x2F198 draws it, and the cursor moved to {row 0xE, col 3 + 1}. */
+    c_seed();
+    text_number_set(3, 0xE, 7, 1, 0u, 0x1000u);
+    CHECK_EQ_INT((int)DSW(DS_00105F34), 0xE);
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2u), 4);
+    CHECK(m5_row_is(0xE, 3, "7", 0x1000u), "0x2F434's number in mode 0x1000");
+    mz_restore();
+}
+
 /* Count the non-empty glyph cells of text row `row`. */
 static int mz_row_cells(s32 row)
 {
@@ -24968,6 +25364,7 @@ int test_fight(void)
     check_char_team_pass();
     check_mode5_a();
     check_mode5_b();
+    check_mode_0c();
 
     return g_failures - before;
 }
