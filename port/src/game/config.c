@@ -531,13 +531,13 @@ void config_screen_wait(s32 n)
     }
 }
 
-/* 0x2EB80 — record §49-Y. Returns the latched key DS_00105F30 when it is
+/* 0x2EB80 — records §49-X, §49-Y (§50-B). Returns the latched key DS_00105F30 when it is
  * non-zero (0x2EB81..0x2EB8E). Otherwise 0x500BB minus DS_00105F2C is tested
  * unsigned against 0x4B0 (0x2EB94..0x2EB9F `jbe`): at or under, 0 (0x2EBB8);
  * over, the idle timeout stores DS_00107414 = 0 (0x2EBA8) and calls
  * longjmp(0x1044F4, 1) (0x2EBAE..0x2EBB3, 0x65431). PORT: the longjmp quit
  * path is not modelled (spec §7); the store is kept and 0 is returned in its
- * place. Callers: 0x2EBF0 (0x2EBFD), 0x2FFC4 (0x303D9), 0x33058 (0x3306B),
+ * place. Callers: 0x2EBF0 (0x2EBFD), 0x2FFC4 (0x303D9, menu.c), 0x33058 (0x3306B),
  * 0x33230 (0x33247) and three unlisted sites. */
 u32 config_key_latched(void)
 {
@@ -565,7 +565,7 @@ static u32 cfg_dir_bits(u32 kb, u32 off, u32 code, u32 bits)
     return bits;                                            /* 0x2EC93 */
 }
 
-/* 0x2EBF0 — record §49-Y. EAX = the mask (kept in EBX). Turns the latched key
+/* 0x2EBF0 — records §49-X, §49-Y (§50-B). EAX = the mask (kept in EBX). Turns the latched key
  * (0x2EB80) into the game's key-bit word. 0 when nothing is latched
  * (0x2EC04). With mask 0 or any of 0xF300F000 set (0x2EC19..0x2EC2B: the
  * second test is a subset of the first), the arrow scan codes 0x48, 0x50,
@@ -611,7 +611,7 @@ u32 config_key_flags(u32 mask)
     return out;                                             /* 0x2EDCF */
 }
 
-/* 0x2EDE0 — record §49-Y. EAX = the mask, DL = the flag. EDX = 0x50161(mask)
+/* 0x2EDE0 — records §49-X, §49-Y (§50-B). EAX = the mask, DL = the flag. EDX = 0x50161(mask)
  * (0x2EDEA); with the flag set, EDX |= 0x2EBF0(mask) (0x2EDF9..0x2EE00). A
  * non-zero result stamps DS_00105F2C = 0x500BB (0x2EE04..0x2EE0B). Returns
  * EDX. Callers: 0x2FA40 (0x2FD29) and eighteen more. */
@@ -623,7 +623,7 @@ u32 config_input_poll(u32 mask, u8 flag)
     return r;                                               /* 0x2EE10 */
 }
 
-/* 0x2EEC8 — record §49-Y. 0x2EDE0 that also clears the latch: the key flags
+/* 0x2EEC8 — records §49-X, §49-Y (§50-B). 0x2EDE0 that also clears the latch: the key flags
  * (0x2EEE3) are taken first, then DS_00105F30 = 0 (0x2EEEC), then the stamp
  * on a non-zero result (0x2EEF2..0x2EEFB). Caller: 0x2FFC4 (0x303D2). */
 u32 config_input_poll_clear(u32 mask, u8 flag)
@@ -635,7 +635,7 @@ u32 config_input_poll_clear(u32 mask, u8 flag)
     return r;                                               /* 0x2EF00 */
 }
 
-/* 0x305FC — record §49-Y. EAX = the column, EDX = the row; the record is
+/* 0x305FC — records §49-X, §49-Y (§50-B). EAX = the column, EDX = the row; the record is
  * DS_00107450: byte +2 the count, byte +3 the flags, bytes +4.. the first
  * text, bytes +0xD.. the second (eight columns each). With the flags byte
  * non-zero (0x3061D), the second text is drawn as one string at mode 0x1000

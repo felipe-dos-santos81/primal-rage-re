@@ -5884,9 +5884,20 @@ static void ch_check_key_flags(void)
     CHECK_EQ_INT((int)config_key_flags(0x0C000000u), 0);   /* outside 0xF300F000 */
     CHECK_EQ_INT((int)config_key_flags(0x01000000u), (int)0x80008000u);  /* bit 24 is in it */
     CHECK_EQ_INT((int)config_key_flags(0x02000000u), (int)0x80008000u);  /* and bit 25 */
+    /* The menu drivers' own mask (0x2FA40/0x2FFC4 poll 0xC300C000). */
+    DSD(CH_KEY_LATCH) = 0x50u;
+    CHECK_EQ_INT((int)config_key_flags(0xC300C000u), 0x40004000);
     /* A code outside the arrows sets nothing. */
     DSD(CH_KEY_LATCH) = 0x49u;
     CHECK_EQ_INT((int)config_key_flags(0u), 0);
+    /* Not even when a player's binding is 0x49 (inside the 0x48..0x50 table
+     * span but on a default arm, 0x2ED9F). */
+    {
+        u8 p2up = DSB(CH_KB + 0x2E6u);
+        DSB(CH_KB + 0x2E6u) = 0x49u;
+        CHECK_EQ_INT((int)config_key_flags(0u), 0);
+        DSB(CH_KB + 0x2E6u) = p2up;
+    }
     DSD(CH_KEY_LATCH) = 0x4Au;
     CHECK_EQ_INT((int)config_key_flags(0u), 0);
 
@@ -5901,6 +5912,7 @@ static void ch_check_key_flags(void)
     CHECK_EQ_INT((int)config_key_flags(0x02000000u), 0x2000000);
     CHECK_EQ_INT((int)config_key_flags(0x01000000u), 0);
     CHECK_EQ_INT((int)config_key_flags(0x80000000u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00101514), (int)CH_KB);   /* stored back unchanged (0x2EDD1) */
 
     /* 0x2EDE0 / 0x2EEC8: the level word, the key flags on `flag`, the stamp
      * on a non-zero result, and the latch cleared by 0x2EEC8 alone. */
@@ -5926,6 +5938,35 @@ static void ch_check_key_flags(void)
     CHECK_EQ_INT((int)config_input_poll_clear(0u, 0u), 0);
     CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 0);                    /* cleared even on 0 */
     CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 1);
+
+    /* The menu drivers' mask 0xC300C000 with a pad level (0x50161's level word
+     * and one-shot latch): the keyboard is read only on a non-zero flag, the
+     * poll leaves the key latched, and the stamp follows a non-zero result. */
+    u32 plat = DSD(DS_000E1C38);
+    DSD(CH_TICK) = 700u;
+    DSD(CH_KEY_TIME) = 5u;
+    DSD(CH_KEY_LATCH) = 0x50u;
+    DSD(DS_000E1C34) = 0u; DSD(DS_000E1C38) = 0u;
+    CHECK_EQ_INT((int)config_input_poll(0xC300C000u, 0u), 0);   /* keyboard not read */
+    CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 5);
+    CHECK_EQ_INT((int)config_input_poll(0xC300C000u, 1u), 0x40004000);
+    CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 700);
+    CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 0x50);                 /* 0x2EDE0 leaves the key */
+    DSD(CH_KEY_LATCH) = 0u;
+    DSD(DS_000E1C34) = 0x80008000u; DSD(DS_000E1C38) = 0u;
+    CHECK_EQ_INT((int)config_input_poll(0xC300C000u, 0u), (int)0x80008000u);
+    CHECK_EQ_INT((int)config_input_poll(0xC300C000u, 0u), 0);   /* latched: one shot */
+    DSD(CH_TICK) = 900u;
+    DSD(CH_KEY_LATCH) = 0x50u;
+    DSD(DS_000E1C34) = 0u; DSD(DS_000E1C38) = 0u;
+    DSD(CH_KEY_TIME) = 5u;
+    CHECK_EQ_INT((int)config_input_poll_clear(0xC300C000u, 1u), 0x40004000);
+    CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 0);
+    CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 900);
+    DSD(CH_KEY_TIME) = 5u;
+    CHECK_EQ_INT((int)config_input_poll_clear(0xC300C000u, 1u), 0);
+    CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 5);
+    DSD(DS_000E1C38) = plat;
     DSD(DS_000E1C34) = lvl;
 
     DSD(DS_00101514) = saved_kb;
@@ -6119,6 +6160,7 @@ static void ch_check_code_row(void)
     memset(mem + CH_CODE, 0, 0x20);
     DSB(CH_CODE + 3u) = 1u;
     memcpy(mem + CH_CODE + 0xDu, "XYZ12345", 9);
+    DSD(DS_00105EFC) = 0xDEADBEEFu;                         /* sentinel: the filing must overwrite it */
     config_code_row(2, 4);
     ch_expect(4, 2, 'X', 0x1000u, "the string is drawn at mode 0x1000");
     ch_expect(4, 9, '5', 0x1000u, "eight columns");

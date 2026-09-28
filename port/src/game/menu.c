@@ -35,15 +35,6 @@
 #define MENU_DEBUG_BUF  0x000BCD5Cu   /* the string 0x2F940 hands to 0x2F41C */
 #define MENU_BACKDROP   0x0009AD84u   /* the descriptor 0x2FE84 spawns */
 #define MENU_KEYS_MASK  0xC300C000u   /* the pad/key mask both drivers poll */
-/* The keyboard-layout block DS_00101514 points at (0x2EBF0). */
-#define KEY_ENABLE_P1   0x2D4u        /* word */
-#define KEY_ENABLE_P2   0x2D6u        /* word */
-#define KEY_UP_P1       0x2DEu        /* +0 up, +1 down, +2 left, +3 right; P2 at +8 */
-#define KEY_UP_P2       0x2E6u
-/* PORT: the raw builds the 0x305FC high-score record (a dword and a 4-byte
- * name) on its stack; the port builds it at this address near the top of
- * mem[], above the resource heap, which nothing else in src/ uses. */
-#define MENU_REC_SCRATCH 0x03FFFE00u
 
 typedef u32 (*menu_cb_fn)(u32 entry);
 
@@ -61,110 +52,6 @@ static u32 menu_call(u32 addr, u32 arg)
 void menu_fatal_error(u32 msg)
 {
     (void)msg;   /* PORT: 0x2EA68 tail-jumps to 0x62003(1) with the message; the runtime's error exit is out of scope (spec §7). */
-}
-
-/* 0x2EB80 — record §49-X. */
-u32 menu_key_or_timeout(void)
-{
-    u32 key = DSD(DS_00105F30);                             /* 0x2EB81 */
-    if (key != 0u) return key;                              /* 0x2EB87..0x2EB8E */
-    u32 idle = DSD(DS_00101500) - DSD(DS_00105F2C);         /* 0x2EB8F 0x500BB, 0x2EB94 */
-    if (idle > 0x4B0u) {                                    /* 0x2EB9A..0x2EB9F `jbe` */
-        DSB(DS_00107414) = 0u;                              /* 0x2EBA8 */
-        /* PORT: 0x2EBB3 jmp 0x65431 (longjmp(0x1044F4, 1)) is the idle-timeout
-         * quit path, out of scope (spec §7); the port returns 0. */
-        return 0u;
-    }
-    return 0u;                                              /* 0x2EBB8 */
-}
-
-/* The 0x2EBF0 direction arm: key `key` against the two players' bindings
- * (bytes at KEY_UP_P1/P2 + dir) and enable words. Sets `bit` unless a binding
- * that matches is disabled. */
-static int menu_key_bound(u32 layout, u32 dir, u32 key)
-{
-    u32 a = DSB(layout + KEY_UP_P1 + dir);
-    u32 b = DSB(layout + KEY_UP_P2 + dir);
-    if (a == key && DSW(layout + KEY_ENABLE_P1) == 0u) return 0;
-    if (b == key && DSW(layout + KEY_ENABLE_P2) == 0u) return 0;
-    return 1;
-}
-
-/* 0x2EBF0 — record §49-X. */
-u32 menu_key_decode(u32 mask)
-{
-    u32 layout = DSD(DS_00101514);                          /* 0x2EBF5 */
-    u32 key = menu_key_or_timeout();                        /* 0x2EBFD 0x2EB80 */
-    u32 bits = 0u;                                          /* 0x2EC02 */
-    if (key == 0u) {                                        /* 0x2EC04 */
-        DSD(DS_00101514) = layout;                          /* 0x2EDD1 */
-        return bits;
-    }
-    layout = DSD(DS_00101514);                              /* 0x2EC13 */
-    /* 0x2EC19..0x2EC31: decoded when mask is 0 or holds a 0xF300F000 bit; the
-     * 0x2EC25 test of 0xF000F000 is a subset of the 0x2EC1D test, so it always
-     * skips. */
-    if (mask == 0u || (mask & 0xF300F000u) != 0u) {
-        u32 k = key - 0x48u;                                /* 0x2EC31 */
-        if (k <= 8u) {                                      /* 0x2EC34..0x2EC37 `ja` */
-            switch (k) {                                    /* 0x2EC3D table 0x2EBCC */
-            case 0u:                                        /* key 0x48, 0x2EC45 */
-                if (menu_key_bound(layout, 0u, key)) bits |= 0x80008000u;
-                break;
-            case 8u:                                        /* key 0x50, 0x2EC9E */
-                if (menu_key_bound(layout, 1u, key)) bits |= 0x40004000u;
-                break;
-            case 3u:                                        /* key 0x4B, 0x2ECF7 */
-                if (menu_key_bound(layout, 2u, key)) bits |= 0x20002000u;
-                break;
-            case 5u:                                        /* key 0x4D, 0x2ED49 */
-                if (DSB(layout + KEY_UP_P1 + 3u) != key
-                        && DSB(layout + KEY_UP_P2 + 3u) != key) {
-                    bits |= 0x10001000u;                    /* 0x2ED97 */
-                    key = 0u;                               /* 0x2ED9D */
-                } else if (menu_key_bound(layout, 3u, key)) {
-                    bits |= 0x10001000u;                    /* 0x2ED8F */
-                }
-                break;
-            default:                                        /* 0x2ED9F */
-                break;
-            }
-        }
-    }
-    if (mask == 0u || (mask & 0x1000000u) != 0u) {          /* 0x2EDA1..0x2EDA9 */
-        if (key == 0xDu) {                                  /* 0x2EDAB */
-            bits |= 0x1000000u;                             /* 0x2EDB0 */
-            key = 0u;                                       /* 0x2EDB6 */
-        }
-    }
-    if (mask == 0u || (mask & 0x2000000u) != 0u) {          /* 0x2EDB8..0x2EDC2 */
-        if (key == 0x1Bu) bits |= 0x2000000u;               /* 0x2EDC4..0x2EDC9 */
-    }
-    DSD(DS_00101514) = layout;                              /* 0x2EDD1 */
-    return bits;                                            /* 0x2EDCF */
-}
-
-/* 0x2EDE0 — record §49-X. */
-u32 menu_input_poll(u32 mask, u32 keys)
-{
-    u32 bits = input_select_bits(mask);                     /* 0x2EDEA 0x50161 */
-    if ((keys & 0xFFu) != 0u)                               /* 0x2EDF3 */
-        bits |= menu_key_decode(mask);                      /* 0x2EDFB 0x2EBF0 */
-    if (bits != 0u)                                         /* 0x2EE02 */
-        DSD(DS_00105F2C) = DSD(DS_00101500);                /* 0x2EE06 0x500BB, 0x2EE0B */
-    return bits;                                            /* 0x2EE10 */
-}
-
-/* 0x2EEC8 — record §49-X. */
-u32 menu_input_poll_clear(u32 mask, u32 keys)
-{
-    u32 bits = input_select_bits(mask);                     /* 0x2EED2 0x50161 */
-    if ((keys & 0xFFu) != 0u)                               /* 0x2EEDB */
-        bits |= menu_key_decode(mask);                      /* 0x2EEE3 0x2EBF0 */
-    DSD(DS_00105F30) = 0u;                                  /* 0x2EEEA..0x2EEEC */
-    if (bits != 0u)                                         /* 0x2EEF2 */
-        DSD(DS_00105F2C) = DSD(DS_00101500);                /* 0x2EEF6 0x500BB, 0x2EEFB */
-    return bits;                                            /* 0x2EF00 */
 }
 
 /* 0x2FE40 — record §49-X. */
@@ -244,39 +131,6 @@ void menu_title_draw(u32 entry, u32 mode_a, u32 mode_b, u32 flags)
     if ((flags & 4u) == 0u) {                               /* 0x2FF7C */
         text_cursor_set(-1, 0x1B, game_string_get(0x209u), mode_b);   /* 0x2FF83..0x2FF9B 0x1C500, 0x2F198 */
         text_cursor_set(-1, 0x1C, game_string_get(0x20Au), mode_b);   /* 0x2FFA0..0x2FFB8 0x1C500, 0x2F198 */
-    }
-}
-
-/* 0x305FC — record §49-X. */
-void menu_debug_widget(s32 col, s32 row)
-{
-    if (DSB(DS_00107453) != 0u) {                           /* 0x30613..0x3061F */
-        text_cursor_set(col, row, mem + DS_0010745D, 0x1000u);   /* 0x30625..0x30638 0x2F198 */
-        if ((DSB(DS_00107453) & 2u) != 0u) return;          /* 0x3063D..0x30649 */
-        u32 rec = MENU_REC_SCRATCH;
-        memcpy(mem + rec + 4u, mem + DS_0010745D, 3u);      /* 0x3064F..0x30665 */
-        DSB(rec + 7u) = 0u;                                 /* 0x3066F */
-        u32 value = 0u;                                     /* 0x30673 */
-        for (s16 i = 3; i < 8; i++) {                       /* 0x30675, 0x3069E..0x306A4 */
-            s32 c = (s8)DSB(DS_00107450 + (u32)i + 0xDu);   /* 0x3067D, 0x30682..0x30685 */
-            if (c < 0x30 || c > 0x39) break;                /* 0x30688..0x30693 */
-            value = value * 10u + (u32)(c - 0x30);          /* 0x30695..0x306A0 */
-        }
-        DSD(rec) = value;                                   /* 0x306AD */
-        (void)hiscore_insert(0u, rec, 2u);                  /* 0x306B2 0x2DCA0 */
-        DSB(DS_00107453) = (u8)(DSB(DS_00107453) | 2u);     /* 0x306BB */
-        return;
-    }
-    for (s16 i = 0; i < 8; i++) {                           /* 0x306C8, 0x3070A..0x30710 */
-        u8 ch[2];
-        u32 mode = 0x4000u;                                 /* 0x306E3 */
-        ch[0] = DSB(DS_00107450 + (u32)i + 4u);             /* 0x306CC..0x306DA */
-        ch[1] = 0u;                                         /* 0x3061D */
-        if (i >= (s16)DSB(DS_00107450 + 2u)) {              /* 0x306E0..0x306EB `jl` */
-            ch[0] = DSB(DS_00107450 + (u32)i + 0xDu);       /* 0x306ED */
-            mode = 0x2000u;                                 /* 0x306F0 */
-        }
-        text_cursor_set(col + i, row, ch, mode);            /* 0x306F9..0x30704 0x2F198 */
     }
 }
 
@@ -375,7 +229,7 @@ L_poll:                                                     /* 0x2FD0C */
     {
         s32 last = count - 1;                               /* 0x2FD0C..0x2FD10 */
         if (cur != old) goto L_redraw;                      /* 0x2FD11..0x2FD15 */
-        u32 keys = menu_input_poll(MENU_KEYS_MASK, 1u);     /* 0x2FD1B..0x2FD29 0x2EDE0 */
+        u32 keys = config_input_poll(MENU_KEYS_MASK, 1u);     /* 0x2FD1B..0x2FD29 0x2EDE0 */
         if (cb != 0u) {                                     /* 0x2FD30 */
             u32 r = menu_call(cb, sel);                     /* 0x2FD34..0x2FD38 */
             if (r != 0u) return r;                          /* 0x2FD3C..0x2FD3E */
@@ -424,7 +278,7 @@ L_poll:                                                     /* 0x2FD0C */
             }
         }
         if ((flags & 1u) != 0u)                             /* 0x2FE19 */
-            menu_debug_widget(0x11, 2);                     /* 0x2FE20..0x2FE2A 0x305FC */
+            config_code_row(0x11, 2);                     /* 0x2FE20..0x2FE2A 0x305FC */
         /* 0x2FE2F 0x2EA74 is a no-op. */
         goto L_poll;                                        /* 0x2FE34 jmp 0x2FD11 */
     }
@@ -508,8 +362,8 @@ u32 menu_step(u32 table, u32 stride, u32 flags)
         }
         DSD(MENU_REDRAW) = 0u;                              /* 0x303C0..0x303C2 */
     }
-    u32 keys = menu_input_poll_clear(MENU_KEYS_MASK, 1u);   /* 0x303C8..0x303D2 0x2EEC8 */
-    u32 key = menu_key_or_timeout();                        /* 0x303D9 0x2EB80 */
+    u32 keys = config_input_poll_clear(MENU_KEYS_MASK, 1u);   /* 0x303C8..0x303D2 0x2EEC8 */
+    u32 key = config_key_latched();                        /* 0x303D9 0x2EB80 */
     if (key != 0u && key == 0x1Bu)                          /* 0x303DE..0x303E5 */
         return (DSD(MENU_FLAGS) & 4u) != 0u ? (u32)-10 : (u32)-5;   /* 0x303E7..0x303F9, 0x30466..0x3046E */
     if (DSD(MENU_CB) != 0u) {                               /* 0x303FD */
@@ -580,6 +434,6 @@ u32 menu_step(u32 table, u32 stride, u32 flags)
         DSD(MENU_REDRAW) = 1u;                              /* 0x305C5 */
     }
     if ((DSD(MENU_FLAGS) & 1u) != 0u)                       /* 0x305CF */
-        menu_debug_widget(0x11, 2);                         /* 0x305D8..0x305E2 0x305FC */
+        config_code_row(0x11, 2);                         /* 0x305D8..0x305E2 0x305FC */
     return 0u;                                              /* 0x305E7 */
 }
