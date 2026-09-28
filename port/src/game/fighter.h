@@ -826,6 +826,13 @@ u32  fighter_3dd14(u32 side);
 void fighter_3dd84(u32 side);
 void fighter_3d424(u32 slot, u32 side);
 u32  fighter_3d3e4(u32 slot);
+/* Record §49-U: the pose/animation slot callbacks 0x3EC20/0x3EF44/0x3FB88
+ * store. 0x3EA24, 0x3EE00 and 0x3F9C8 are +0x0C callbacks (slot, rec, side);
+ * 0x3E6A8 is a +0x10 handler, (slot, side) as 0x3D424. */
+void fighter_3e6a8(u32 slot, u32 side);
+void fighter_3ea24(u32 slot, u32 rec, u32 side);
+void fighter_3ee00(u32 slot, u32 rec, u32 side);
+void fighter_3f9c8(u32 slot, u32 rec, u32 side);
 /* And their callees no ported code shares: 0x3F184 (EAX = rec: 0x3F308 on
  * the record's side's slot, the 0xE7C98 landing and +0x57 = 3), 0x3F308 (EAX =
  * slot: the 0xBB308 spawn at the slot's record), 0x3C404 (EAX = side, EDX =
