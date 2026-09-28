@@ -30272,21 +30272,30 @@ static void check_mode_1e_bookkeeping(void)
 /* ---- record §49-O: mode 0x21's frame 0x26540 ----------------------------- */
 
 /* 0x26540 diverges from 0x26254 (game_mode_04_step, record §48-K) in exactly
- * two places: it runs the unported 0x4BF18 (the attract volleyball mini-
- * game's driver) instead of fight_effects_pass (0x49C78), and it has no
- * closing DS_001078FA/DS_00108892/DS_00107803 gate into fight_mode25_enter.
- * With DS_001078FA left at k48_seed's mode-4 sentinel (5, not 2) the gated
- * projection block is skipped in both, so the shared preamble and tail
- * (fight_slot_clear, camera_screen_base per side, the two position latches,
- * fight_slot_pass, fight_hud_pass(0)/(1), camera_scene_step, fight_hud_pulse
- * — the DS_00102908 pair 5 -> 4 — flow_round_end_check inert on
- * DS_001088F2 == 1, DS_00104AEC |= 2) must behave identically to 0x26254's
- * own no-projection case (test (h), above). fight_effects_pass's first,
- * unconditional write (DS_00108874 = fight_midpoint(), 0x49CAA) is the
- * canary for the one tail call 0x26540 skips: seeded to a sentinel, it must
- * stay untouched by game_mode_21_step (proven live by first showing
- * game_mode_04_step, from the identical seed, does move it — so the canary
- * is a real assertion, not a value nothing in either chain ever writes). */
+ * two places: it runs fight_4bf18 (0x4BF18, record §49-S, the attract
+ * volleyball mini-game's driver) instead of fight_effects_pass (0x49C78),
+ * and it has no closing DS_001078FA/DS_00108892/DS_00107803 gate into
+ * fight_mode25_enter. With DS_001078FA left at k48_seed's mode-4 sentinel
+ * (5, not 2) the gated projection block is skipped in both, so the shared
+ * preamble and tail (fight_slot_clear, camera_screen_base per side, the two
+ * position latches, fight_slot_pass, fight_hud_pass(0)/(1),
+ * camera_scene_step, fight_hud_pulse — the DS_00102908 pair 5 -> 4 —
+ * flow_round_end_check inert on DS_001088F2 == 1, DS_00104AEC |= 2) must
+ * behave identically to 0x26254's own no-projection case (test (h), above).
+ * fight_4bf18's own tail write (DS_00108874 = fight_midpoint(), 0x4C3C9,
+ * reached once its empty-list-and-idle-timer post-loop path runs) is the
+ * canary for the one call 0x26540 now makes that 0x26254 does not: seeded to
+ * a sentinel, it must move under game_mode_21_step now that the call is
+ * wired (proven live by first showing game_mode_04_step, from the identical
+ * seed, moves it too via fight_effects_pass's own 0x493F0 write — so the
+ * canary is a real assertion, not a value nothing in either chain ever
+ * writes). A second block below seeds DS_001088A0 (the "match already
+ * ending" timer) to 1 so fight_4bf18's post-loop branch counts it to 0 and
+ * calls the newly-ported fight_4cd98 (0x4CD98): DS_00104B00's low word
+ * (a dword sentinel from k48_seed, so its high half proves this is a
+ * partial/word write) moves to 6 and the score bytes DS_0010889C/
+ * DS_0010889D/DS_001088C5, seeded non-zero first (never asserting an
+ * unseeded BSS zero), clear. */
 static void check_mode_21(void)
 {
     if (!mz_save()) { CHECK(0, "the §49-O snapshot allocates"); return; }
@@ -30300,8 +30309,8 @@ static void check_mode_21(void)
           "fight_effects_pass's 0x493F0 write is a live canary");
 
     /* game_mode_21_step: the shared preamble/tail run exactly as 0x26254's
-     * no-projection case, but the canary is untouched (0x4BF18 is a named
-     * gap, not fight_effects_pass) and there is no fight_mode25_enter gate
+     * no-projection case, and the canary now moves too (fight_4bf18 is
+     * wired, record §49-S) even though there is no fight_mode25_enter gate
      * to (correctly) skip. */
     k48_seed();
     DSD(DS_00108874) = 0x77777777u;
@@ -30319,7 +30328,23 @@ static void check_mode_21(void)
     CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x43);
     CHECK_EQ_INT((int)DSW(DS_00104B00), 4);
     CHECK_EQ_INT((int)DSW(DS_00108892), 6);
-    CHECK_EQ_INT((int)DSD(DS_00108874), (int)0x77777777u);
+    CHECK(DSD(DS_00108874) != 0x77777777u,
+          "fight_4bf18's 0x493F0 tail write fires now that 0x4BF18 is wired");
+
+    /* fight_4bf18's post-loop DS_001088A0 timeout path -> fight_4cd98
+     * (record §49-S, newly ported). */
+    k48_seed();
+    DSD(DS_00104B00) = 0xBEEF0004u;
+    DSW(DS_001088A0) = 1u;
+    DSB(DS_0010889C) = 0x11u;
+    DSB(DS_0010889D) = 0x22u;
+    DSB(DS_001088C5) = 0x33u;
+    game_mode_21_step();
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0006u);
+    CHECK_EQ_INT((int)DSB(DS_0010889C), 0);
+    CHECK_EQ_INT((int)DSB(DS_0010889D), 0);
+    CHECK_EQ_INT((int)DSB(DS_001088C5), 0);
+    CHECK_EQ_INT((int)DSW(DS_001088A0), 0);
 
     mz_restore();
 }
