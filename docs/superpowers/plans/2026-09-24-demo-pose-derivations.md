@@ -21506,3 +21506,199 @@ brief). A mutation (`t <= 0` → `t <= -1000`) was proven to fail 9 of
 None: every real callee is already ported, and the one deferred-idiom call
 (`0x2DAE4`, spec §7) is already `config_play_time_close`'s own standing
 `PORT:` note, not a new one this task introduces.
+
+## 49-Q. Modes `0x28`-`0x2F`'s eight game-start entries (named-gap batch, branch `gap36-modes2829af`)
+
+**Result in one line.** `game_frame`'s cases `0x28` through `0x2F` — the
+generic named-gap comment's own `0x28..0x2F inline (0x2D974 field 0x29,
+0x2CA7C, 0x257A4)` listing — are ported as `game_mode_28_step` through
+`game_mode_2f_step` (`flow.c`) and wired individually (not as one shared
+fallthrough case, and not merged into fewer functions than the jump table
+has entries). All three named ingredients the task brief pointed at were
+already ported before this task: `config_field_get` (`0x2D974`),
+`config_credit_spend` (`0x2CA7C`) and `game_coin_divert` (`0x257A4`, record
+§47-C). This task's own work is wiring plus confirming there is no further
+unported glue at the eight case-dispatch sites themselves — there is not:
+each of the eight blocks is a short, branch-free, loop-free sequence of
+moves, ANDs, shifts and the three known calls.
+
+### 49-Q.1 Sources
+
+The raw comes from the Ghidra HTTP bridge at `127.0.0.1:8089` (reachable
+this session, unlike the down report in the task brief — confirmed with
+`get_function_by_address?address=0x2D974` before starting):
+`disassemble_function` on the containing function `0x24C5C` for every
+instruction in the `0x24F09`-`0x251A3` range, and `read_memory` on the jump
+table `0x24B8C` (`0x24B8C + 4*case`, one dword per case) to resolve the
+eight real entry addresses — required because, as the task brief warned,
+`0x24C5C` dispatches through a jump table (`JMP dword ptr CS:[EAX*4 +
+0x24B8C]` at `0x24EFC`/`0x24F01`), not a chain of compares, so disassembly
+position alone cannot confirm which case owns which address. The
+decompiled `port/decomp/prage.c` (`FUN_00024c5c`, case labels `0x28`-`0x2F`)
+corroborates every field and call the raw disassembly shows, and was the
+first source read; its own `case 0x29: ... _DAT_00104ab8 =
+extraout_ECX_00;` (and the twin `MOV ESI,0x1`/`MOV ECX,0x2` patterns in
+cases `0x28`/`0x29`) turned out to be a decompiler mis-attribution — see
+§49-Q.3 below.
+
+### 49-Q.2 The eight real entry addresses (jump table `0x24B8C`)
+
+Read as eight little-endian dwords, `0x24B8C + 4*0x28`..`0x24B8C + 4*0x2F`:
+
+| case | table dword (raw bytes) | entry address |
+|---|---|---|
+| `0x28` | `09 4f 02 00` | `0x00024F09` |
+| `0x29` | `66 4f 02 00` | `0x00024F66` |
+| `0x2A` | `c4 4f 02 00` | `0x00024FC4` |
+| `0x2B` | `87 51 02 00` | `0x00025187` |
+| `0x2C` | `1e 50 02 00` | `0x0002501E` |
+| `0x2D` | `71 50 02 00` | `0x00025071` |
+| `0x2E` | `ce 50 02 00` | `0x000250CE` |
+| `0x2F` | `2b 51 02 00` | `0x0002512B` |
+
+Each block's own `JMP 0x0002540F` back into the shared tail (actor update,
+the demo-fight post-update and the render-hint tail, all already ported and
+unaffected by this task) marks its end; none of the eight falls through
+into a neighbour.
+
+### 49-Q.3 Per-case disassembly and the shared shape
+
+Every case first (except `0x2B`) calls `config_field_get(0x29)` — `EAX =
+0x29` then `CALL 0x2D974`, its established single-argument-in-`EAX`,
+result-in-`EAX` convention (`config.h`, already ported) — and stores the
+result `v` into `DS_00104528`, then decodes three fields from it exactly as
+`game_init`'s own `0x20C5D`-`0x20CC2` block already does (record §46-F,
+`flow.c:5936`-`5944`): `DS_00105B3A = (u8)((v & 0x100) >> 4)`,
+`DS_0010452C = (u8)((v & 0xF0) >> 4)`, `DS_001088D0 = (v & 0xF) * 5 +
+0x1E`. Confirmed against the port's own established idiom for the identical
+computation, not re-derived from scratch. Every case ends with a call to
+`game_coin_divert` (`0x257A4`), `EAX` = a per-case players mask (1 = side 0
+only, 2 = side 1 only, 3 = both).
+
+**The `extraout_ECX`/`MOV ESI,0x1` red herring.** Cases `0x28` and `0x29`
+each load a register (`ESI = 1` at `0x24F0E`; `ECX = 2` at `0x24F6B`)
+*before* the `CALL 0x2D974`, then use that same register's value *after*
+the call returns, to store into `DS_00104AB8` (`0x24F38`: `MOV dword ptr
+[0x104AB8],ESI`; `0x24F7E`: `MOV dword ptr [0x104AB8],ECX`). Ghidra's
+decompiler reads this as a second call argument (`FUN_0002d974(uint,
+undefined4)`, `_DAT_00104ab8 = extraout_ECX_00` in case `0x29`) because the
+register is set up immediately before the call — but it is never read
+inside `0x2D974`'s own body (confirmed: `config_field_get`'s only register
+read is `EAX`, per its existing, already-verified port) and is only
+consumed after the call returns, on a path the call itself does not
+clobber. This is scheduling, not a parameter: `config_field_get(u32 field)`
+keeps its single-argument signature; the port does not add a second
+parameter, and `DS_00104AB8 = 1`/`2` in cases `0x28`/`0x29` are the true
+meaning of those two instructions.
+
+Per case, the exact addresses and divergence from the shared shape:
+
+* **`0x28` (`0x24F09`-`0x24F61`, 20 instructions).** `v = config_field_get(0x29)`
+  (`0x24F09`-`0x24F13`); `DS_00104528 = v` (`0x24F1A`); `DS_00105B3A`
+  (`0x24F2C`); `DS_00104AB8 = 1` (`0x24F38`, the `ESI` red herring above);
+  `DS_001088D0` (`0x24F4C`); `DS_0010452C` (`0x24F56`);
+  `game_coin_divert(3)` (`0x24F5C`).
+* **`0x29` (`0x24F66`-`0x24FBF`).** Identical, `DS_00104AB8 = 2`
+  (`0x24F7E`, the `ECX` red herring), `game_coin_divert(3)`
+  (`0x24FBA`) — the four decode/store instructions run in a different
+  order than `0x28`'s (compiler-scheduled, not semantically different).
+* **`0x2A` (`0x24FC4`-`0x25019`).** Identical decode, `DS_00104AB8 = 3`
+  (`0x2500E`, via `EBX`, no red herring this time — `EBX = 3` is loaded
+  after the decode, not before the call), `game_coin_divert(3)`
+  (`0x25014`).
+* **`0x2B` (`0x25187`-`0x25199`, 5 instructions).** The one case with no
+  `config_field_get` call at all: `EDX = 3`; `DS_00104AB8 = 3`
+  (`0x2518E`); `game_coin_divert(3)` (`0x25194`). `DS_00104528`/
+  `DS_00105B3A`/`DS_0010452C`/`DS_001088D0` are left exactly as whatever
+  an earlier frame's case left them.
+* **`0x2C` (`0x2501E`-`0x2506C`).** The decode runs, but **no** instruction
+  anywhere in the block writes `DS_00104AB8` — confirmed by reading every
+  one of its 20 instructions; it is not an omission in this derivation, the
+  raw simply does not store it here. `game_coin_divert(3)` (`0x25067`).
+* **`0x2D` (`0x25071`-`0x250C9`).** The decode runs, no `DS_00104AB8`
+  store, then `config_credit_spend(1)` (`0x250BA`, `EAX = 1` at `0x250AF`)
+  before `game_coin_divert(1)` (`0x250C4`, `EAX` reloaded to `1` at
+  `0x250BF`) — the one case diverting side 0 alone.
+* **`0x2E` (`0x250CE`-`0x25126`).** Identical shape to `0x2D`
+  (`config_credit_spend(1)` at `0x25117`), but `game_coin_divert(2)`
+  (`0x25121`) — side 1 alone.
+* **`0x2F` (`0x2512B`-`0x25182`).** Byte-for-byte the same operation as
+  `0x2E` (`config_credit_spend(1)` at `0x25173`, `game_coin_divert(2)` at
+  `0x2517D`) — the compiler duplicated the block under a second, separate
+  case label rather than sharing `0x2E`'s code (confirmed: the two blocks'
+  addresses do not overlap and each has its own `JMP 0x2540F`). Ported as
+  two distinct functions (`game_mode_2e_step`, `game_mode_2f_step`) for
+  the same reason `game_mode_22_step`/`game_mode_23_step`/`game_mode_24_step`
+  stayed three functions in record §49-L/§49-M/§49-N and `game_mode_2e_
+  step`/`game_mode_2f_step` are not folded into one shared helper here:
+  the jump table has eight entries, and this repository's "one C function
+  per original function" convention treats each jump-table-resolved block
+  as its own unit even when two of the eight are semantically identical.
+
+`config_credit_spend`'s own gate (`config.c`, already ported: free play ->
+1 without spending; `n > credits` -> 0; otherwise, only when
+`DS_00104B1F == 0`, subtract `n`) is unmodified and untouched by this task;
+cases `0x2D`-`0x2F` simply call it with `n = 1`, in the raw's own order,
+strictly before the `game_coin_divert` call that will itself overwrite
+`DS_00104B1F` with the new players mask.
+
+### 49-Q.4 No new callees
+
+Every instruction in all eight blocks is one of: a register move/AND/shift
+feeding the four-global decode (already an established idiom, §49-Q.3), a
+store to one of the five already-`symbols.h`-named globals
+(`DS_00104528`/`DS_00105B3A`/`DS_0010452C`/`DS_001088D0`/`DS_00104AB8`), or
+a call to one of the three already-ported functions the task brief named.
+No new callee, no deferred-idiom call (`0x2E934`/`0x2DAE4`/`0x2C3FC`) and no
+`longjmp` path appears anywhere in the `0x24F09`-`0x251A3` range.
+
+### 49-Q.5 Verification
+
+`check_modes_28_2f` (`test_fight.c`) exercises all eight handlers from one
+shared config-field-0x29 seed (`v = 0x157`: bit 8 set, nibble `5`, low
+nibble `7`, chosen so all three decoded globals land on distinct nonzero
+values distinguishable from both the `0x77...`-family sentinels and 0):
+the decode into the four globals (skipped only by `0x2B`, whose case proves
+`DS_00104528` survives untouched); the per-case `DS_00104AB8` store (three
+distinct constants for `0x28`/`0x29`/`0x2A`/`0x2B`, and, for `0x2C`-`0x2F`,
+a `0x66666666` sentinel proven to survive untouched); the credit spend for
+`0x2D`-`0x2F` (the counter actually decrementing by exactly 1, with
+`DS_00104B1F` seeded 0 so `config_credit_spend`'s own suppression gate is
+open, plus a ninth sub-case proving the free-play early return leaves the
+counter alone); and the players argument reaching `game_coin_divert`, read
+back off its own `DS_00104B1F` post-condition (the same proxy the existing
+`0x257A4` test already at `test_fight.c:6839` uses).
+`DS_001014F4` (the actor record pool base) is pinned to `0` for the
+fixture's duration so `game_coin_divert`'s `actors_reset_al(0)` call takes
+its early "pool not loaded" return (`actors.c`'s `pool_base() == 0` check)
+instead of touching this test file's shared `FIGHT_RECS`/`FIGHT_ACTORS`
+fixtures — the same reasoning `check_mode_21`'s neighbours already rely on
+for functions that call deeper into the actor system, here applied to keep
+an otherwise-unrelated test isolated. Proved live: mutated `game_mode_28_
+step`'s `DS_00104AB8` store from `1` to `2`, rebuilt, confirmed
+`check_modes_28_2f` fails (`test_fight.c:30372: 2 != 1`), reverted, rebuilt
+clean. `PR_ORACLE_REQUIRED=1 run_tests`: all checks passed, 3 consecutive
+runs (plus the mutation and its revert), each ~1.8s wall, no SIGBUS, no
+hang — none of the eight new functions contains a loop of any kind (every
+one is a straight-line sequence with no internal branch), so this task
+carries none of the loop-exit-condition risk the sibling `gap26-modes7f`
+session's `run_tests` hang (caught and fixed separately) warned this batch
+to check for. `make verify` (run with worktree-local `*_DUMP`/
+`TITLE_PIN_DIR` overrides, `_gap36` suffixed, to avoid the shared-`/tmp`
+collision precedent already flagged by records §49-H/§49-K/§49-O): front-end
+517/801/3/2, demo-fight fully explained at N = 1886, attract2 0 unexplained
+at N = 3617, `symbols.h` regenerates byte-identically — all four gate
+numbers unchanged from before this task, as expected: modes `0x28`-`0x2F`
+are reachable only through an accepted coin/start event or state 8's
+`DS_00108173 != 0` arm (neither fires on the oracles' no-input path, per
+the front-end input section of `game_flow.md`), so the no-input demo/
+attract/front-end oracle path never dispatches through any of the eight new
+cases.
+
+### 49-Q.6 Remaining named gaps
+
+None introduced by this task. `config_field_get`, `config_credit_spend` and
+`game_coin_divert` were already fully ported with no gaps of their own
+before this task started (per their existing header comments in
+`config.h`/`flow.c`), and every instruction in the eight new blocks is
+accounted for in §49-Q.3-§49-Q.4 above.
