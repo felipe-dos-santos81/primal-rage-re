@@ -16586,9 +16586,9 @@ The one survivor is equivalent:
 - **Remaining named gaps:** the `0x2C3FC` voices (§45-A) and the
   `0x2DAE4` audit (spec §7), both deferred; `0x42F60`'s other caller
   `0x42CB4` (under `0x424E8`, mode `0x13`); `0x2CA78`'s other caller
-  `0x32F54`; the other 17 `0x2F434` sites; and mode `0x15`'s handler
+  `0x32F54`; and the other 17 `0x2F434` sites. Mode `0x15`'s handler
   `0x4F24C`, which the expiry stores (with `DS_00104AFA = 0x1E`, the mode
-  after it, `0x1EEB0`).
+  after it, `0x1EEB0`), is since ported (record §48-X).
 
 ## 48-K. The fight frame `0x26254` (mode 4, and mode 6 without a join) and its round end (named-gap batch 14, branch `gap14-26254`)
 
@@ -16941,3 +16941,88 @@ fixture that path runs the full fighter chain (`0x1975C` spawns effect
 entries through `0x235C4`, and `0x49C78` then loops in a stream walk), so
 the tests cover the gate closed (`DS_001078FA` 5) only; the block itself is
 the already-verified `0x263F4` sequence.
+
+## 48-X. Mode `0x15`'s countdown `0x4F24C` (named-gap batch 17, branch `gap17-4f24c`)
+
+**Result in one line.** `0x4F24C`, the handler `game_frame`'s case `0x15`
+reaches (table entry `0x253E0`, `call 0x4f24c; jmp 0x2540F`, its only
+caller — no dword in the image holds `0x4F24C`), is ported as
+`frontend_mode_15_step` (`flow.c`) and wired into the switch. It is
+`0x4F318`'s countdown (mode `0x17`, record §46-G) instruction for
+instruction up to the expiry, with two differences: no
+`DS_001088EE = 0xFFFF` store, and no `DS_00104AE4` hook call.
+
+### 48-X.1 The raw
+
+While the word `DS_001088EE` is non-zero it is decremented (`0x4F27F
+mov ebx,edx; dec ebx`). At 0 the skip test `0x4F790` runs (already
+ported, record §46-G): 2 stores DX (still 0, since `0x4F790` pushes and
+pops EDX before returning it) to `DS_00104AFE`; 1 takes `0x3C` off it.
+Either way `DS_00104AFE` is then decremented (`0x4F28F mov edx,eax; dec
+edx`), and when its *old* value (read before the decrement, `0x4F299
+test ax,ax; jg`) was `<= 0` signed, the mode word `DS_00104B00` takes
+the return-mode word `DS_00104AFA` (`0x4F29E/0x4F2A4`). EBX/EDX are
+pushed and popped; EAX (the old countdown or the return mode) is left
+for the shared tail `0x2540F`, same as `0x4F318`.
+
+The two raw stores of mode `0x15` are `0x29B74` (`0x29BBA`;
+`DS_001088EE = DS_00104AFE = 0x78`, whose caller `0x27A2C` then sets
+`DS_00104AFA = 0x1E`, record §48-E — the continue screen's expiry) and
+`0x41578` (`0x415F8`; `DS_00104AFE = 0x78`, `DS_001088EE = 0`,
+`DS_00104AFA = 0x13`, record §42-E).
+
+### 48-X.2 The port
+
+```c
+void frontend_mode_15_step(void)
+{
+    u16 dx = DSW(DS_001088EE);
+    if (dx == 0u) {
+        u32 r = frontend_skip_check() & 0xFFu;
+        if (r == 2u) DSW(DS_00104AFE) = dx;
+        if (r == 1u)
+            DSW(DS_00104AFE) = (u16)(DSW(DS_00104AFE) - 0x3Cu);
+    } else {
+        DSW(DS_001088EE) = (u16)(dx - 1u);
+    }
+    u16 ax = DSW(DS_00104AFE);
+    DSW(DS_00104AFE) = (u16)(ax - 1u);
+    if ((s16)ax > 0) return;
+    DSW(DS_00104B00) = DSW(DS_00104AFA);
+}
+```
+
+`game_frame`'s case `0x15` calls it and breaks, replacing the
+`0x15 0x4F24C` entry in the switch's named-gap enumeration.
+
+### 48-X.3 The assertions (`check_mode_15` in `test_fight.c`)
+
+Groups (a)-(e) drive `frontend_mode_15_step` directly from sentinels
+(the words either side of `DS_001088EE`/`DS_00104AFE`, the mode dword's
+upper word, the return mode, the hook `DS_00104AE4` and the
+`DS_00104B25`/`DS_001088F5` bytes a `0x26978` hook would touch if
+called — none of them move, which is the port's evidence that no hook
+runs here unlike `0x4F318`): the plain countdown; the skip test's two
+results (2 zeroes, 1 subtracts `0x3C`); a held mask zeroing the
+countdown to reach the return mode at once; and the signed boundary on
+the old value (1 keeps the mode, 0 and `0x8000` take it, `0x7FFF` keeps
+it). Group (f) drives it end to end from `0x27A2C`'s own expiry (record
+§48-E: `0x29B74` arms both countdowns at `0x78`, mode `0x15`,
+`DS_00104AFA = 0x1E`) — with nothing held or pressed, exactly `0x78`
+steps keep mode `0x15` (both countdowns reaching 0 together), and the
+`0x79`th, the first to run the skip test, takes mode `0x1E`. That
+number is the direct check that this port's per-step semantics agree
+with §48-E's own account of the expiry, not just each function in
+isolation.
+
+### 48-X.4 Verification
+
+`PR_ORACLE_REQUIRED=1 run_tests` green x3, no SIGBUS. `make verify`:
+front-end 517/801/3/2, demo-fight fully explained at N = 1886, attract2
+0 unexplained at N = 3617, `symbols.h` regenerates byte-identically. No
+no-input path reaches mode `0x15`.
+
+### 48-X.5 Remaining named gaps
+
+None new. `0x4F790` and `frontend_skip_check` were already ported; the
+function has exactly one caller and one callee, both accounted for.

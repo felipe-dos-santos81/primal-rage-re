@@ -98,6 +98,9 @@ void frontend_mode_1b_step(void);
 u32 frontend_buttons_pressed(u32 n);
 u32 frontend_skip_check(void);
 void frontend_mode_17_step(void);
+/* Record §48-X. 0x4F24C: the mode 0x15 handler (0x24C5C at 0x253E0), the
+ * same countdown; when it runs out the mode takes DS_00104AFA. */
+void frontend_mode_15_step(void);
 /* 0x11F28: one coin/start poll for the event (side) `code`; 1 when a credit
  * is ready and the event's mask 0x9ACBC[code] is newly pressed (one credit is
  * spent through 0x2CA7C), else 0. Also 0x43928's poll (record §47-M). */

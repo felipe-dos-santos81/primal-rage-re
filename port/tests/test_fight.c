@@ -6291,6 +6291,22 @@ static void check_mode_switch(void)
     CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
     CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0017u);
 
+    /* (c3) Case 0x15 calls frontend_mode_15_step (0x4F24C, record §48-X):
+     * from DS_00104AFE = 0 with DS_001088EE = 5 it counts both down and the
+     * mode word takes the return mode DS_00104AFA (0x26, a table entry that
+     * runs nothing), the upper word kept. */
+    MS_RESTORE();
+    DSW(DS_001088EE) = 5u;
+    DSW(DS_00104AFE) = 0u;
+    DSW(DS_00104AFA) = 0x26u;
+    DSD(DS_00104AE4) = 0xDEADBEEFu;
+    ms_seed(0xBEEF0015u);
+    game_frame();
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 4);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xFFFF);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0026u);
+
     /* (d) Case 0x1A calls 0x4F9A0: with the wipe-in counter past 0x10 the
      * record is dropped, the render gate set, the hook (0x29D60, a `ret`)
      * skipped, the counter cleared and the mode becomes 0x1B. */
@@ -22542,6 +22558,138 @@ static void check_mode_0e(void)
     mz_restore();
 }
 
+/* ---- record §48-X: mode 0x15's countdown 0x4F24C ---- */
+
+/* One 0x4F24C step from sentinels, as ms_step seeds 0x4F318: the words
+ * either side of DS_001088EE and DS_00104AFE (0x104AFC is also DS_00104AFA's
+ * upper word, so a dword read of the return mode shows 0x4444), the mode
+ * dword's upper word 0xBEEF, the return mode 0x5A1E, and the hook 0x26978
+ * (which would store DS_00104B25 = 1, the hook 0x26998, DS_001088F5 = 0,
+ * DS_00104AFA = 0x23 and mode 0x1A if it were called). */
+static void m15_step(u32 hold, u32 afe, u32 held, u32 pressed)
+{
+    DSW(DS_001088EE - 2u) = 0x6666u;
+    DSW(DS_001088EE) = (u16)hold;
+    DSW(DS_001088EE + 2u) = 0x5555u;
+    DSW(DS_00104AFE - 2u) = 0x4444u;
+    DSW(DS_00104AFE) = (u16)afe;
+    DSD(DS_00104B00) = 0xBEEF7777u;
+    DSW(DS_00104AFA) = 0x5A1Eu;
+    DSD(DS_001088D8) = held;
+    DSD(DS_001088E4) = pressed;
+    DSD(DS_00104AE4) = 0x26978u;
+    DSB(DS_00104B25) = 0x77u;
+    DSB(DS_001088F5) = 0x77u;
+    frontend_mode_15_step();
+}
+
+/* Whether the mode took the return mode (1) or was kept (0); the neighbours,
+ * the input words, the return mode and the hook's targets kept either way. */
+static u32 m15_fired(u32 held, u32 pressed)
+{
+    CHECK_EQ_INT((int)DSW(DS_001088EE - 2u), 0x6666);
+    CHECK_EQ_INT((int)DSW(DS_001088EE + 2u), 0x5555);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE - 2u), 0x4444);
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x5A1E);
+    CHECK_EQ_INT((int)DSD(DS_001088D8), (int)held);
+    CHECK_EQ_INT((int)DSD(DS_001088E4), (int)pressed);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), 0x26978);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 0x77);
+    CHECK_EQ_INT((int)DSB(DS_001088F5), 0x77);
+    if (DSD(DS_00104B00) == 0xBEEF7777u) return 0u;
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF5A1Eu);
+    return 1u;
+}
+
+static void check_mode_15(void)
+{
+    const u32 M0 = 0x0F000000u, M1 = 0x00000F00u;
+    u32 k;
+    if (!mz_save()) { CHECK(0, "the §48-X snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+    CHECK_EQ_INT((int)DSD(DS_000C9898), (int)M0);
+    CHECK_EQ_INT((int)DSD(DS_000C9898 + 4u), (int)M1);
+
+    /* (a) DS_001088EE != 0: it counts down and the skip test does not run
+     * (the held mask would zero the countdown). */
+    m15_step(5u, 0x10u, M0, 0u);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 4);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x0F);
+    CHECK_EQ_INT((int)m15_fired(M0, 0u), 0);
+
+    /* (b) DS_001088EE == 0, no input: DS_00104AFE - 1 only. */
+    m15_step(0u, 0x10u, 0u, 0u);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x0F);
+    CHECK_EQ_INT((int)m15_fired(0u, 0u), 0);
+
+    /* (c) A press (either mask) takes 0x3C more; 0x3D leaves 0, kept; 0x3C
+     * leaves -1: the return mode, and DS_001088EE stays 0 (no 0xFFFF). */
+    m15_step(0u, 0x100u, 0u, 0x01000000u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x100 - 0x3C - 1);
+    CHECK_EQ_INT((int)m15_fired(0u, 0x01000000u), 0);
+    m15_step(0u, 0x100u, 0u, 0x00000200u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x100 - 0x3C - 1);
+    CHECK_EQ_INT((int)m15_fired(0u, 0x00000200u), 0);
+    m15_step(0u, 0x3Du, 0u, 0x00000200u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0);
+    CHECK_EQ_INT((int)m15_fired(0u, 0x00000200u), 0);
+    m15_step(0u, 0x3Cu, 0u, 0x00000200u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xFFFF);
+    CHECK_EQ_INT((int)m15_fired(0u, 0x00000200u), 1);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0);
+
+    /* (d) A held mask zeroes the countdown (DX, the 0 just tested): the
+     * return mode at once. */
+    m15_step(0u, 0x100u, M1, 0u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xFFFF);
+    CHECK_EQ_INT((int)m15_fired(M1, 0u), 1);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0);
+
+    /* (e) The signed test on the old value: 1 keeps the mode, 0 and 0x8000
+     * take the return mode, 0x7FFF keeps it; a non-zero DS_001088EE is only
+     * decremented either way. */
+    m15_step(3u, 1u, 0u, 0u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0);
+    CHECK_EQ_INT((int)m15_fired(0u, 0u), 0);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 2);
+    m15_step(3u, 0u, 0u, 0u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xFFFF);
+    CHECK_EQ_INT((int)m15_fired(0u, 0u), 1);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 2);
+    m15_step(3u, 0x8000u, 0u, 0u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x7FFF);
+    CHECK_EQ_INT((int)m15_fired(0u, 0u), 1);
+    m15_step(3u, 0x7FFFu, 0u, 0u);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x7FFE);
+    CHECK_EQ_INT((int)m15_fired(0u, 0u), 0);
+
+    /* (f) From 0x27A2C's expiry (record §48-E: 0x29B74 arms both countdowns
+     * at 0x78 and mode 0x15, then DS_00104AFA = 0x1E): with nothing held or
+     * pressed, 0x78 steps keep mode 0x15 (both countdowns reach 0 together)
+     * and the 0x79th, the first to run the skip test, takes mode 0x1E. */
+    e_seed(0u);
+    DSW(DS_000EF6DC) = 0x40u;
+    DSB(DS_00108110) = 0u;
+    game_mode_0e_step();
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x15);
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x1E);
+    DSD(DS_001088D8) = 0u;
+    DSD(DS_001088E4) = 0u;
+    for (k = 0; k < 0x78u; k++) {
+        frontend_mode_15_step();
+        if (DSW(DS_00104B00) != 0x15u) break;
+    }
+    CHECK_EQ_INT((int)k, 0x78);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0);
+    frontend_mode_15_step();
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x1E);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xFFFF);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0);
+    mz_restore();
+}
+
 /* Count the non-empty glyph cells of text row `row`. */
 static int mz_row_cells(s32 row)
 {
@@ -27598,6 +27746,7 @@ int test_fight(void)
     check_mode5_b();
     check_mode_0c();
     check_mode_0e();
+    check_mode_15();
     check_fight_frame_a();
     check_fight_frame_b();
     check_fight_frame_c();
