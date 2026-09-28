@@ -1,4 +1,4 @@
-# Primal Rage (DOS, 1995) — reverse engineering
+# Primal Rage (DOS, 1995) — Reverse Engineering 61%
 
 ![Primal Rage](docs/intro.jpg)
 
@@ -26,7 +26,7 @@ write to it.
 | `docs/PROGRESS.md` | Detailed, continuously-updated status: what's ported, verified, and every named gap |
 | `data/game/C/` | Installed game (`PRAGE.EXE`, `INDEX`, `S16*.GRA`, sound drivers) |
 | `data/game/CD/RAGECD.ISO` | Original CD (`/Volumes/RAGECD` when mounted: `RAGE.S04`, `RAGE.S08`, `RAGE.S16`, `RAGE.SND`) |
-| `port/` | **SDL3 port** (engine core, sub-project 1) + **audio/AIL** (sub-project 2a) + **Smacker video** (sub-project 2b-i) + **sprite compositor** (sub-project 4a-i) + **actor system and title** (sub-project 4a-ii) + **title-path residuals** (sub-project 4a-iii) + **EEPROM/config core** (sub-project 4b-A) + **front-end input/credits/select** (sub-project 4b-B) — `cmake -S port -B build` |
+| `port/` | SDL3 port: engine core, audio/AIL, Smacker video, sprite/actor/render, EEPROM/config, front-end input/credits/select — `cmake -S port -B build` |
 | `port/src/platform/audio/` | AIL surface, XMIDI sequencer, FAT.OPL, samples, mixer, vendored OPL core |
 | `port/RE_GUIDE.md` | Address conventions, DOS/4GW layout, toolchain, landmarks |
 | `port/spec/game_flow.md` | Entry, frame loop, state machine, tick, pixel path |
@@ -81,15 +81,17 @@ $G _tools/ghidra_proj prage -process PRAGE.EXE \
 `PRAGE.EXE` (~1350 functions) and its `S16*.GRA` graphics set are fully
 decompiled (`docs/FORMATS.md`, `port/decomp/`). The SDL3 port reimplements the
 engine in C over a flat `mem[]` holding the original data image at its
-original addresses (`port/PORTING.md`); it currently covers boot through the
-title screen, the front end and the attract demo, each gated by a byte-exact
+original addresses (`port/PORTING.md`) and currently covers boot through the
+title screen, the front end and the attract demo — each gated by a byte-exact
 oracle against the original's own captured frames (`make verify`). Real
 interactive gameplay is not yet ported and has no oracle to verify it against.
 
-**For the detailed, continuously-updated status** — what's ported, what's
-verified, and every named gap with its evidence — see **[`docs/PROGRESS.md`](docs/PROGRESS.md)**.
-The underlying raw-byte derivations live in
-`docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
+**61%** of the original's 1206 real functions have a ported, header-commented
+counterpart in `port/src/` (see `AGENTS.md` for how that figure is computed).
+For the detailed, continuously-updated status — what's ported, what's
+verified, and every named gap with its evidence — see
+**[`docs/PROGRESS.md`](docs/PROGRESS.md)**. The underlying raw-byte
+derivations live in `docs/superpowers/plans/2026-09-24-demo-pose-derivations.md`.
 
 ## Build and run
 
