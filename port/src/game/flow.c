@@ -2915,15 +2915,13 @@ void game_mode_04_step(void)
  * fighter_think, camera_project per side a third time; then fight_slot_pass,
  * fight_hud_pass(0)/(1) — identical to 0x26254 through here. It diverges
  * exactly where 0x26254 calls fight_effects_pass (0x49C78): 0x26540 calls
- * FUN_0004BF18 instead. fight.c already names that call "the mode-0x21 pass"
- * (its own comments at 0x4C356/0x4C429/0x4C21B, from before this task): the
- * attract loop's volleyball mini-game's per-frame ball/entry driver. Its
- * callees fight_4c60c (0x4C60C) and fight_4cc0c (0x4CC0C) are already ported
- * (record §43-A), but 0x4BF18's own body — an ~150-instruction 8-state
- * switch walking a doubly-linked entry list, with further unported callees
- * of its own (e.g. 0x4A868's case 14, already flagged PORT in fight.c) — is
- * not small and stays a named gap here (confirmed via `disassemble_function`
- * and `decompile_function` on 0x4BF18 through the Ghidra bridge). After that,
+ * FUN_0004BF18 instead — fight_4bf18 (record §49-S), the attract loop's
+ * volleyball mini-game's per-frame ball/entry driver; see its own header
+ * comment in fight.c for the full 8-state switch (over the same singly-
+ * linked DS_0010884C list fight_effects_pass walks, not a separate
+ * doubly-linked one) and shared-tail derivation. Its own unported callee
+ * FUN_0004A868 (case 1's else branch) is the same predicate this codebase
+ * already treats as always false elsewhere (spec §7.4). After that,
  * exactly like 0x26254: camera_scene_step (0x1282C + 0x12DA8),
  * fight_hud_pulse (0x1DA08), flow_round_end_check (0x27FA8), then
  * DS_00104AEC |= 2. Unlike 0x26254 there is no closing DS_001078FA/
@@ -2959,9 +2957,7 @@ void game_mode_21_step(void)
     fight_slot_pass();                                  /* 0x26671 0x3CB68 */
     fight_hud_pass(0u);                                 /* 0x26676/0x26678 0x35658 */
     fight_hud_pass(1u);                                 /* 0x2667D/0x26682 0x35658 */
-    /* PORT: 0x26687 0x4BF18 (the volleyball mini-game's per-frame driver,
-     * fight.c's "the mode-0x21 pass") is a named gap — see the header
-     * comment above. Not called. */
+    fight_4bf18();                                       /* 0x26687 0x4BF18 (record §49-S) */
     camera_scene_step();                                /* 0x2668C 0x1282C + 0x26691 0x12DA8 */
     fight_hud_pulse();                                  /* 0x26696 0x1DA08 */
     flow_round_end_check();                             /* 0x2669B 0x27FA8 */

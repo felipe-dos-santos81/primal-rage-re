@@ -593,14 +593,12 @@ void game_mode_1f_step(void);
  * (fighter.c's 0x1975C), camera_project per side a third time. Then
  * fight_slot_pass, fight_hud_pass(0)/(1) — identical to 0x26254 up to here.
  * It diverges where 0x26254 calls fight_effects_pass (0x49C78): 0x26540 calls
- * the unported 0x4BF18 instead — fight.c already documents this as "the
- * mode-0x21 pass" (its comments at 0x4C356/0x4C429/0x4C21B), the attract
- * loop's volleyball mini-game's per-frame ball/entry driver, whose own
- * callees fight_4c60c (0x4C60C) and fight_4cc0c (0x4CC0C) are already ported
- * under record §43-A but whose ~150-instruction driver body (an 8-state
- * switch over a doubly-linked entry list, plus further unported callees of
- * its own) is out of scope here and stays a named gap. After that, exactly
- * like 0x26254: camera_scene_step (0x1282C + 0x12DA8), fight_hud_pulse
+ * fight_4bf18 instead (0x4BF18, record §49-S) — the attract loop's
+ * volleyball mini-game's per-frame ball/entry driver, an 8-state switch over
+ * the SAME singly-linked DS_0010884C list fight_effects_pass walks (not a
+ * separate doubly-linked one); see fight.c's own header comment for the full
+ * derivation. After that, exactly like 0x26254: camera_scene_step (0x1282C +
+ * 0x12DA8), fight_hud_pulse
  * (0x1DA08), flow_round_end_check (0x27FA8), DS_00104AEC |= 2. Unlike
  * 0x26254 there is no closing DS_001078FA/DS_00108892/DS_00107803 gate into
  * fight_mode25_enter (0x4E11C): the raw ends at the OR and a plain
