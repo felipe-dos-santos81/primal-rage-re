@@ -342,4 +342,27 @@ void flow_round_over(void);
  * 0x392A0(slot, 1, 0) on each side below 0x77 at its +0x5A byte. */
 void flow_winner_pose_step(void);
 
+/* Record §48-D, mode 0x13 (the challenge screen after a match). 0x424E8,
+ * game_frame's case 0x13, steps DS_00104B25: 0 the actors (0x428B8), 1 the
+ * drop (0x42BCC), 2 the fighters (0x42724), the crowd (0x4B9AC) and a
+ * filtered palette fade, 3/4 the challenge poll (0x42CB4) and the health
+ * bars, 5 mode 0x17's countdown; then each side's "PRESS START"/"INSERT 1
+ * COIN" on DS_00104B1D. 0x20E90: the camera words zeroed and 0x38730 on the
+ * stage. 0x428B8: the two dropping records DS_001080B4/B8 and, on the match
+ * result DS_00104AD4, the loser's prompt and count actors. 0x42BCC: both
+ * records fall and bounce until landed (+0x5B), then DS_00104B25 + 1.
+ * 0x42724: both slot records respawned for the result, their palettes and
+ * secondary actors. 0x42CB4: the loser's start with a credit takes the
+ * challenge (0x42FE0, the hook 0x28D68, DS_00104B25 = 5); else the count
+ * DS_00108110 ticks, and below 0 leaves for mode 0x1E (or 0x17 with the
+ * hook 0x25AE8). 0x42FE0: the side's prompt actor on the 0xE8816 stream,
+ * its count actors killed, its prompts erased, 0x41310 on both sides. */
+void game_mode_13_step(void);
+void flow_scroll_reset(u32 stage);
+void flow_challenge_open(void);
+void flow_challenge_drop(void);
+void flow_challenge_fighters(void);
+void flow_challenge_poll(void);
+void flow_challenge_join(u32 side);
+
 #endif /* PR_GAME_FLOW_H */

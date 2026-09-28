@@ -300,6 +300,11 @@ void fighter_46534(u32 side, s32 delta);
  * Exported for mode 0xD's 0x274FC (record §48-Q). */
 void fighter_41310(u32 side, s32 delta);
 
+/* 0x29BC8. EAX = side, EDX = the character, EBX = the record: the handle
+ * 0xA8A98[ch][DS_00105B34[side]] set on the record's pset (0x2A17C, word 0).
+ * Exported for 0x42724 (record §48-D). */
+void fighter_29bc8(u32 side, u32 rec, u32 ch);
+
 /* 0x3C88C. The per-slot attack-frame state machine fight_slot_pass runs 2 x 32
  * times per arena frame. Reads DS_00107ED8 (slot index), DS_00107EDC (side) and
  * DS_00107EE4 (facing); phase 0 arms the hitbox (word[0x107D58 + side*0x40 +
