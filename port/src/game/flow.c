@@ -4536,6 +4536,142 @@ void game_mode_1e_step(void)
     }
 }
 
+/* ---- mode 0x1F, the frame handler 0x208F8 (record §49-I) ----------------- */
+
+/* 0x208F8 — record §49-I. The mode 0x1F handler (0x24C5C case 0x1F, jump
+ * table 0x24B8C entry; sole caller, per get_xrefs_to). No ported case stores
+ * mode 0x1F today — it is reachable only from the still-unported match-end
+ * path — but the raw table 0x24B8C dispatches here regardless, so the port
+ * wires it the same as every other case.
+ *
+ * A 5-state sub-machine on DS_00104B25 (jump table 0x208E4; DL > 4 is a
+ * no-op, 0x20927/0x20c00), gated by the per-side character id `charid`
+ * (DS_0010782A[DS_00104AD4 * 0x94], read unconditionally at 0x20900..0x20921
+ * regardless of state, as the decompilation's top-of-function `uVar1`
+ * shows). This is the "roar" screen between the post-match challenge poll
+ * and mode 0x1E's high-score flow: state 0 resets the screen and spawns a
+ * fixed backdrop row (0x38B18(0xA7B80)) plus one effect (0x13C70) when
+ * 0x33904's walk of the palette-acquire table (DS_00107618..DS_00107798,
+ * the same table palette_acquire itself fills — record §47-C, §49-I.3)
+ * finds any entry, which the backdrop spawn's own real handle typically
+ * ensures; state 1 spawns two actors, the
+ * fixed 0xA7ED8 descriptor and a character-indexed one (0xA80AC when the
+ * sprite flag DS_00104529 bit 1 is set, else 0xA8090), both frame_bits =
+ * (the first actor's own +0x56 word) | 0x400; state 2 waits for the first
+ * actor's play position (+0x34 SAR 16, +0x1C) to reach 0x1E00, then locks it
+ * there, blanks the second actor's +0x36 and hands off to mode 0x15 (a
+ * 0x4B0-frame wait, or skip) with return mode 0x1F itself (DS_00104AFA); on
+ * mode 0x15's return (state 3) a third, character-indexed actor (0xA80C8)
+ * is spawned, the first actor is set to a fade-out anim (+0x36 = 0xFF00,
+ * stream 0xE9206) and the second to its own character-indexed stream
+ * (0xA7EBC), both at hold 1.0; state 4 counts the first actor's +0x2C down
+ * by 0x80 a frame at a time, killing both actors (0x2B150) the frame it
+ * hits exactly 0, while independently counting the third actor's +0x2C up
+ * by 0x40 a frame at a time until it clamps at 0x1000 — at which point
+ * either a character-indexed actor (0xA818C, bit 1 set) or a
+ * character-indexed string (0xA80E4, bit 1 clear, drawn at col -1, row
+ * 0x1A, mode 0x2000 through text_cursor_set/game_string_get) is emitted,
+ * then mode 0x15 is armed again (0x384 frames) with return mode 0x1E — the
+ * post-match challenge/high-score flow (record §49-H) — and DS_00104B25 is
+ * reset to 0 for the next time mode 0x1F runs. */
+void game_mode_1f_step(void)
+{
+    u32 charid = DSB(DS_0010782A + DSD(DS_00104AD4) * 0x94u);  /* 0x20900..0x20921 */
+
+    switch (DSB(DS_00104B25)) {                                 /* 0x2091b/0x20931 */
+    case 0x00u:
+        frontend_input_reset();                                 /* 0x2093b 0x4F1E4 */
+        actors_reset();                                         /* 0x20949 0x2BAF4 (eax=1) */
+        /* PORT: 0x20955 0x2C3FC(0x3B, edx=0) voice, not wired (record
+         * §45-A; spec §7). */
+        frontend_spawn_row((const u32 *)(mem + 0xA7B80u), 0u, 0u); /* 0x2095f 0x38B18 */
+        {
+            u32 e = frontend_list_next(0u);                     /* 0x20966 0x33904 */
+            if (e != 0u)
+                (void)effects_spawn(e, 2u, 0x3E688u);           /* 0x20979 0x13C70 */
+        }
+        DSB(DS_00104B25) = (u8)(DSB(DS_00104B25) + 1u);         /* 0x2097e */
+        break;
+    case 0x01u: {
+        u32 rec1 = actor_spawn((const u32 *)(mem + 0xA7ED8u),
+                                0x2A00u, 0xF0u, 0x5A00u, 0u);   /* 0x2099e..0x209a3 0x2AE14 */
+        DSD(DS_001044A0) = rec1;                                /* 0x209ae */
+        u32 frame_bits = (u32)(u16)(DSW(rec1 + 0x56u) | 0x0400u);  /* 0x209b8/0x209dd..0x209e4 */
+        u32 desc = (DSB(DS_00104529) & 2u) != 0u                /* 0x209b3/0x209b6 */
+                       ? DSD(0xA80ACu + charid * 4u)             /* 0x209d4 */
+                       : DSD(0xA8090u + charid * 4u);            /* 0x209f9 */
+        u32 rec2 = actor_spawn((const u32 *)(mem + desc),
+                                0u, 0xF2u, 0u, frame_bits);      /* 0x20a00 0x2AE14 */
+        DSD(DS_001044A4) = rec2;                                /* 0x20a05 */
+        DSW(rec1 + 0x36u) = 0xFFC0u;                             /* 0x20a17 */
+        DSB(DS_00104B25) = (u8)(DSB(DS_00104B25) + 1u);         /* 0x20a0a/0x20a1d */
+        break;
+    }
+    case 0x02u: {
+        u32 rec1 = DSD(DS_001044A0);                             /* 0x20a2c */
+        s32 pos = (s32)DSD(rec1 + 0x34u) >> 16;                  /* 0x20a31/0x20a37 */
+        s32 frame = (s32)DSD(rec1 + 0x1Cu);                      /* 0x20a34 */
+        if (pos + frame > 0x1E00) break;                         /* 0x20a3c/0x20a42 */
+        DSD(rec1 + 0x1Cu) = 0x1E00u;                             /* 0x20a5c */
+        DSW(rec1 + 0x36u) = 0u;                                  /* 0x20a65 */
+        DSW(DS_00104AFE) = 0x4B0u;                               /* 0x20a6b */
+        DSW(DS_001088EE) = 0x3Cu;                                /* 0x20a72 */
+        DSW(DS_00104B00) = 0x15u;                                /* 0x20a79 */
+        DSW(DS_00104AFA) = 0x1Fu;                                /* 0x20a80 */
+        DSB(DS_00104B25) = (u8)(DSB(DS_00104B25) + 1u);          /* 0x20a63/0x20a87 */
+        break;
+    }
+    case 0x03u: {
+        u32 rec3 = actor_spawn((const u32 *)(mem + DSD(0xA80C8u + charid * 4u)),
+                                0x2A00u, 0xF8u, 0x1A00u, 0u);   /* 0x20a9d..0x20ab3 0x2AE14 */
+        DSD(DS_0010449C) = rec3;                                 /* 0x20ac3 */
+        DSB(DS_00104B25) = (u8)(DSB(DS_00104B25) + 1u);          /* 0x20abd/0x20acf */
+        u32 rec1 = DSD(DS_001044A0);                             /* 0x20aca */
+        DSW(rec1 + 0x36u) = 0xFF00u;                             /* 0x20ada */
+        actors_anim_begin(rec1, 0xE9206u, 0x3F800000u);          /* 0x20ae0 0x2BC30 */
+        u32 rec2 = DSD(DS_001044A4);                             /* 0x20ae5 */
+        actors_anim_begin(rec2, DSD(0xA7EBCu + charid * 4u),
+                           0x3F800000u);                         /* 0x20af6 0x2BC30 */
+        break;
+    }
+    case 0x04u: {
+        u32 rec1 = DSD(DS_001044A0);                             /* 0x20b04 */
+        if (rec1 != 0u) {                                        /* 0x20b0a/0x20b0c */
+            u16 pos = (u16)(DSW(rec1 + 0x2Cu) - 0x80u);          /* 0x20b10..0x20b1a */
+            DSW(rec1 + 0x2Cu) = pos;
+            if (pos == 0u) {                                     /* 0x20b1e/0x20b21 */
+                actor_set_dead(rec1);                             /* 0x20b25 0x2B150 */
+                DSD(DS_001044A0) = 0u;                            /* 0x20b2a */
+                u32 rec2 = DSD(DS_001044A4);                      /* 0x20b30 */
+                if (rec2 != 0u) {                                 /* 0x20b36/0x20b38 */
+                    actor_set_dead(rec2);                          /* 0x20b3e 0x2B150 */
+                    DSD(DS_001044A4) = 0u;                        /* 0x20b43 */
+                }
+            }
+        }
+        u32 rec3 = DSD(DS_0010449C);                              /* 0x20b49 */
+        u16 alpha = (u16)(DSW(rec3 + 0x2Cu) + 0x40u);            /* 0x20b4e..0x20b57 */
+        DSW(rec3 + 0x2Cu) = alpha;                                /* 0x20b5a */
+        if (alpha < 0x1000u) break;                               /* 0x20b5e/0x20b64 */
+        DSW(rec3 + 0x2Cu) = 0x1000u;                              /* 0x20b6a */
+        if ((DSB(DS_00104529) & 2u) != 0u) {                      /* 0x20b70/0x20b77 */
+            (void)actor_spawn((const u32 *)(mem + DSD(0xA818Cu + charid * 4u)),
+                               DSW(DS_000C8718), 0xFFu, 0x3400u, 0u);  /* 0x20b94..0x20b9b 0x2AE14 */
+        } else {
+            text_cursor_set(-1, 0x1A,
+                             game_string_get(DSD(0xA80E4u + charid * 4u)),
+                             0x2000u);                            /* 0x20bac..0x20bc4 0x1C500, 0x2F198 */
+        }
+        DSW(DS_00104AFE) = 0x384u;                                /* 0x20bdd */
+        DSW(DS_001088EE) = 0x3Cu;                                 /* 0x20be4 */
+        DSW(DS_00104AFA) = 0x1Eu;                                 /* 0x20beb */
+        DSW(DS_00104B00) = 0x15u;                                 /* 0x20bf4 */
+        DSB(DS_00104B25) = 0u;                                    /* 0x20bfa */
+        break;
+    }
+    }
+}
+
 /* 0x10E80 — record §46-F. Initialise the game state: 0x20C10's last call
  * (0x20CE6), and a DS_00104AE4 hook, stored at 0x25B6E (0x25AE8, the
  * DS_00104B1D == 0 arm) with mode 0x17; 0x24C5C tests the hook against it at
@@ -5372,11 +5508,13 @@ void game_frame(void)
     case 0x1Eu:
         game_mode_1e_step();                           /* 0x253CB 0x1EEB0 (record §49-H) */
         break;
+    case 0x1Fu:
+        game_mode_1f_step();                           /* 0x253D2 0x208F8 (record §49-I) */
+        break;
     case 0x07u:
     case 0x0Fu:
     case 0x18u:
     case 0x19u:
-    case 0x1Fu:
     case 0x21u:
     case 0x22u:
     case 0x23u:
@@ -5399,7 +5537,7 @@ void game_frame(void)
          * 7 0x282C4;
          * 0xF 0x277C0;
          * 0x18 0x4F6E8;
-         * 0x19 0x4F704; 0x1F 0x208F8; 0x21 0x26540;
+         * 0x19 0x4F704; 0x21 0x26540;
          * 0x22 0x26C8C; 0x23 0x26A50; 0x24 0x26F58; 0x25 inline (0x266AC,
          * 0x4EF8C, 0x4F0FC, 0x49C78); 0x27 inline (0x50146, the 0xBCBDC menu
          * 0x2FFC4, 0x65431 longjmp); 0x28..0x2F inline (0x2D974 field 0x29,
@@ -5422,8 +5560,9 @@ void game_frame(void)
          * game_mode_08_step, case 0xA (0x28BD4, record §49-D) is
          * game_mode_0a_step, case 0x12 (0x41C28, record §48-Z) is
          * game_mode_12_step, case 0x16 (0x4F2B0, record §49-G) is
-         * frontend_mode_16_step, and case 0x1E (0x1EEB0, record §49-H) is
-         * game_mode_1e_step, each dispatched above. */
+         * frontend_mode_16_step, case 0x1E (0x1EEB0, record §49-H) is
+         * game_mode_1e_step, and case 0x1F (0x208F8, record §49-I) is
+         * game_mode_1f_step, each dispatched above. */
         break;
     case 0x00u:
     case 0x1Cu:
