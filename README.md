@@ -1,4 +1,4 @@
-# Primal Rage (DOS, 1995) — Reverse Engineering 61%
+# Primal Rage (DOS, 1995) — Reverse Engineering 62%
 
 ![Primal Rage](docs/intro.jpg)
 
@@ -86,7 +86,7 @@ title screen, the front end and the attract demo — each gated by a byte-exact
 oracle against the original's own captured frames (`make verify`). Real
 interactive gameplay is not yet ported and has no oracle to verify it against.
 
-**61%** of the original's 1206 real functions have a ported, header-commented
+**62%** of the original's 1206 real functions have a ported, header-commented
 counterpart in `port/src/` (see `AGENTS.md` for how that figure is computed).
 For the detailed, continuously-updated status — what's ported, what's
 verified, and every named gap with its evidence — see
