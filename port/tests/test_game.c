@@ -5972,20 +5972,37 @@ static void ch_check_bar(void)
      * the same cells as text_number_set with pad 2 and mode 0xC002. */
     actors_reset();
     config_bar_draw(100, 3, 8);
-    u32 got[3][2];
-    for (s32 c = 0; c < 3; c++) {
+    u32 got[8][2];
+    for (s32 c = 0; c < 8; c++) {
         got[c][0] = ch_sprite(8, 0x19 + c);
         got[c][1] = ch_pal(8, 0x19 + c);
     }
     actors_reset();
     text_number_set(0x19, 8, 100, 3, 2u, 0xC002u);
-    for (s32 c = 0; c < 3; c++) {
-        CHECK(ch_cell(8, 0x19 + c) != 0u || ch_sprite(8, 0x19 + c) == 0u,
-              "reference number cell");
+    for (s32 c = 0; c < 8; c++) {
         CHECK_EQ_INT((int)got[c][0], (int)ch_sprite(8, 0x19 + c));
         CHECK_EQ_INT((int)got[c][1], (int)ch_pal(8, 0x19 + c));
     }
     CHECK(got[0][0] != 0u && got[2][0] != 0u, "the label number was drawn");
+    /* The label shows the clamped value: 999 prints as 255 (a 256 would differ
+     * in the second digit), -5 prints as 0 (not "-5"). The numbers use the
+     * class font, whose glyphs advance one or two columns, so eight columns
+     * are compared. */
+    static const struct { s32 in; s32 shown; } clamp[] = { { 999, 255 }, { -5, 0 } };
+    for (u32 k = 0; k < 2; k++) {
+        actors_reset();
+        config_bar_draw(clamp[k].in, 3, 8);
+        u32 gs[8];
+        for (s32 c = 0; c < 8; c++) gs[c] = ch_sprite(8, 0x19 + c);
+        actors_reset();
+        text_number_set(0x19, 8, clamp[k].shown, 3, 2u, 0xC002u);
+        u32 drawn = 0;
+        for (s32 c = 0; c < 8; c++) {
+            CHECK_EQ_INT((int)gs[c], (int)ch_sprite(8, 0x19 + c));
+            if (gs[c] != 0u) drawn++;
+        }
+        CHECK(drawn >= 1u, "the clamped number was drawn");
+    }
     /* A negative label row draws no number. */
     actors_reset();
     config_bar_draw(100, 3, -1);
