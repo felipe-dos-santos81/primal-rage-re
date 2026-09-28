@@ -662,6 +662,38 @@ void game_mode_23_step(void);
  * flow.c for the full derivation. */
 void game_mode_24_step(void);
 
+/* Record §49-Q, the coin/start divert's eight game-start entries, cases
+ * 0x28..0x2F of 0x24C5C (the jump table at 0x24B8C, entries 0x24F09/0x24F66/
+ * 0x24FC4/0x25187/0x2501E/0x25071/0x250CE/0x2512B for 0x28/0x29/0x2A/0x2B/
+ * 0x2C/0x2D/0x2E/0x2F respectively — confirmed by reading those eight table
+ * dwords over the Ghidra bridge, not by disassembly position, since 0x24C5C
+ * dispatches through a jump table). Each is a short, straight-line block with
+ * no branch and no loop, either decoding config field 0x29 (0x2D974) the same
+ * way game_state_init's 0x20C5D-0x20CC2 already does (record §46-F) — DS_
+ * 00104528 = the raw value v, DS_00105B3A = bit 8 of v shifted to bit 4,
+ * DS_0010452C = the nibble (v&0xF0)>>4, DS_001088D0 = (v&0xF)*5+0x1E — then
+ * calling game_coin_divert (0x257A4, record §47-C) with a per-case players
+ * mask (1 = side 0, 2 = side 1, 3 = both), optionally preceded by
+ * config_credit_spend (0x2CA7C) and optionally preceded by setting the dword
+ * DS_00104AB8 to a per-case constant. Case 0x2B skips the config-field decode
+ * entirely (DS_00104AB8 = 3, straight to the divert); cases 0x2C-0x2F skip
+ * the DS_00104AB8 store entirely (it keeps whatever value an earlier case, or
+ * game_state_init's own DS_00104AB8 = 0 init at 0x10ED3, left there); cases
+ * 0x2D-0x2F additionally spend one credit before the divert. Cases 0x2E and
+ * 0x2F are, byte for byte, the same operation (config_credit_spend(1) then
+ * game_coin_divert(2)) compiled twice under separate case labels — ported as
+ * two separate functions since that is what the jump table's two distinct
+ * entries are, not "fixed" into one. See flow.c for the full per-case
+ * derivation and addresses. */
+void game_mode_28_step(void);
+void game_mode_29_step(void);
+void game_mode_2a_step(void);
+void game_mode_2b_step(void);
+void game_mode_2c_step(void);
+void game_mode_2d_step(void);
+void game_mode_2e_step(void);
+void game_mode_2f_step(void);
+
 void flow_scroll_reset(u32 stage);
 void flow_challenge_open(void);
 void flow_challenge_drop(void);

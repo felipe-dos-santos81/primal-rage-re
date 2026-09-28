@@ -416,11 +416,21 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
   - it dispatches cases 3, 4, 5, 6, 7, 8, 9, `0xA`, `0xB`, `0xC`, `0xD`, `0xE`,
     `0xF`, `0x10`, `0x11`, `0x13`, `0x14`, `0x15`, `0x16`, `0x17`, `0x1A`,
-    `0x1B`, `0x22`, `0x23`, `0x24` and `0x32` (cases `0x22`/`0x23`/`0x24` —
+    `0x1B`, `0x22`, `0x23`, `0x24`, `0x28`, `0x29`, `0x2A`, `0x2B`, `0x2C`,
+    `0x2D`, `0x2E`, `0x2F` and `0x32` (cases `0x22`/`0x23`/`0x24` —
     `0x26C8C`/`0x26A50`/`0x26F58`, `game_mode_22_step`/`game_mode_23_step`/
-    `game_mode_24_step`, records §49-L/§49-M/§49-N — are no longer named
-    gaps), and cases 1/2/`0x20` run the bare `ret` `0x29B70`;
-  - the other 19 cases are named gaps.
+    `game_mode_24_step`, records §49-L/§49-M/§49-N — and cases `0x28`-`0x2F`
+    — the jump table's `0x24F09`/`0x24F66`/`0x24FC4`/`0x25187`/`0x2501E`/
+    `0x25071`/`0x250CE`/`0x2512B`, `game_mode_28_step` through
+    `game_mode_2f_step`, record §49-Q, the coin/start divert's eight
+    game-start entries: each decodes config field `0x29` (`0x2D974`) into
+    `DS_00104528`/`DS_00105B3A`/`DS_0010452C`/`DS_001088D0` exactly as
+    `game_init`'s own `0x20C5D`-`0x20CC2` block below, then calls
+    `game_coin_divert` (`0x257A4`) with a per-case players mask, cases
+    `0x2D`-`0x2F` first spending one credit (`config_credit_spend`) —
+    are no longer named gaps), and cases 1/2/`0x20` run the bare `ret`
+    `0x29B70`;
+  - the other 11 cases are named gaps.
   - Case 4 (the table entry `0x25242`, `call 0x26254; jmp 0x2540F`) is the
     fight frame `0x26254` (`game_mode_04_step`, record §48-K): `0x3C5CC`,
     `0x16D58` per side and the two position latches; only with

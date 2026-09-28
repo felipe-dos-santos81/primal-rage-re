@@ -6103,6 +6103,125 @@ void game_loop(void)
     } while (DSB(DS_000A81A8) == 0);
 }
 
+/* ---- modes 0x28-0x2F, the coin/start divert's eight game-start entries
+ * (record §49-Q) -------------------------------------------------------- */
+
+/* 0x24F09 — record §49-Q. Mode 0x28's handler (0x24C5C case 0x28, jump-table
+ * entry 0x24F09, the table's own named-gap listing until now; its only
+ * caller). See flow.h for the group derivation. Decodes config field 0x29
+ * (0x2D974) into DS_00104528/DS_00105B3A/DS_0010452C/DS_001088D0, exactly as
+ * game_state_init's 0x20C5D-0x20CC2 (record §46-F), sets the both-sides mask
+ * DS_00104AB8 = 1 and diverts both players (0x257A4(3)). */
+void game_mode_28_step(void)
+{
+    u32 v = config_field_get(0x29u);                     /* 0x24F09 0x2D974 */
+    DSD(DS_00104528) = v;                                /* 0x24F1A */
+    DSB(DS_00105B3A) = (u8)((v & 0x100u) >> 4);          /* 0x24F2C */
+    DSD(DS_00104AB8) = 1u;                               /* 0x24F38 */
+    DSD(DS_001088D0) = (v & 0xFu) * 5u + 0x1Eu;          /* 0x24F4C */
+    DSB(DS_0010452C) = (u8)((v & 0xF0u) >> 4);           /* 0x24F56 */
+    game_coin_divert(3u);                                /* 0x24F5C 0x257A4 */
+}
+
+/* 0x24F66 — record §49-Q. Mode 0x29's handler (0x24C5C case 0x29, jump-table
+ * entry 0x24F66; its only caller). Identical to game_mode_28_step's field
+ * decode and divert(3), differing only in DS_00104AB8 = 2. */
+void game_mode_29_step(void)
+{
+    u32 v = config_field_get(0x29u);                     /* 0x24F66 0x2D974 */
+    DSD(DS_00104528) = v;                                /* 0x24F75 */
+    DSD(DS_00104AB8) = 2u;                               /* 0x24F7E */
+    DSB(DS_00105B3A) = (u8)((v & 0x100u) >> 4);          /* 0x24F95 */
+    DSB(DS_0010452C) = (u8)((v & 0xF0u) >> 4);           /* 0x24FA7 */
+    DSD(DS_001088D0) = (v & 0xFu) * 5u + 0x1Eu;          /* 0x24FB4 */
+    game_coin_divert(3u);                                /* 0x24FBA 0x257A4 */
+}
+
+/* 0x24FC4 — record §49-Q. Mode 0x2A's handler (0x24C5C case 0x2A, jump-table
+ * entry 0x24FC4; its only caller). Identical field decode and divert(3),
+ * differing only in DS_00104AB8 = 3. */
+void game_mode_2a_step(void)
+{
+    u32 v = config_field_get(0x29u);                     /* 0x24FC4 0x2D974 */
+    DSD(DS_00104528) = v;                                /* 0x24FD0 */
+    DSB(DS_00105B3A) = (u8)((v & 0x100u) >> 4);          /* 0x24FE8 */
+    DSB(DS_0010452C) = (u8)((v & 0xF0u) >> 4);           /* 0x24FF9 */
+    DSD(DS_001088D0) = (v & 0xFu) * 5u + 0x1Eu;          /* 0x25007 */
+    DSD(DS_00104AB8) = 3u;                               /* 0x2500E */
+    game_coin_divert(3u);                                /* 0x25014 0x257A4 */
+}
+
+/* 0x25187 — record §49-Q. Mode 0x2B's handler (0x24C5C case 0x2B, jump-table
+ * entry 0x25187; its only caller). The one case in the group with no config
+ * field 0x29 read at all: DS_00104AB8 = 3 directly, then divert(3). */
+void game_mode_2b_step(void)
+{
+    DSD(DS_00104AB8) = 3u;                               /* 0x2518E */
+    game_coin_divert(3u);                                /* 0x25194 0x257A4 */
+}
+
+/* 0x2501E — record §49-Q. Mode 0x2C's handler (0x24C5C case 0x2C, jump-table
+ * entry 0x2501E; its only caller). The field decode again, but with no
+ * DS_00104AB8 store at all this time — it keeps whatever an earlier case (or
+ * game_state_init's own DS_00104AB8 = 0 init, 0x10ED3) left there — then
+ * divert(3). */
+void game_mode_2c_step(void)
+{
+    u32 v = config_field_get(0x29u);                     /* 0x2501E 0x2D974 */
+    DSD(DS_00104528) = v;                                /* 0x25028 */
+    DSB(DS_00105B3A) = (u8)((v & 0x100u) >> 4);          /* 0x25042 */
+    DSB(DS_0010452C) = (u8)((v & 0xF0u) >> 4);           /* 0x25054 */
+    DSD(DS_001088D0) = (v & 0xFu) * 5u + 0x1Eu;          /* 0x25061 */
+    game_coin_divert(3u);                                /* 0x25067 0x257A4 */
+}
+
+/* 0x25071 — record §49-Q. Mode 0x2D's handler (0x24C5C case 0x2D, jump-table
+ * entry 0x25071; its only caller). The field decode, no DS_00104AB8 store,
+ * then one credit spent (config_credit_spend, 0x2CA7C) before diverting side
+ * 0 alone (0x257A4(1)). */
+void game_mode_2d_step(void)
+{
+    u32 v = config_field_get(0x29u);                     /* 0x25071 0x2D974 */
+    DSD(DS_00104528) = v;                                /* 0x2507B */
+    DSB(DS_00105B3A) = (u8)((v & 0x100u) >> 4);          /* 0x25095 */
+    DSB(DS_0010452C) = (u8)((v & 0xF0u) >> 4);           /* 0x250A7 */
+    DSD(DS_001088D0) = (v & 0xFu) * 5u + 0x1Eu;          /* 0x250B4 */
+    (void)config_credit_spend(1u);                       /* 0x250BA 0x2CA7C */
+    game_coin_divert(1u);                                /* 0x250C4 0x257A4 */
+}
+
+/* 0x250CE — record §49-Q. Mode 0x2E's handler (0x24C5C case 0x2E, jump-table
+ * entry 0x250CE; its only caller). Same shape as game_mode_2d_step (field
+ * decode, no DS_00104AB8 store, config_credit_spend(1)), but diverts side 1
+ * alone (0x257A4(2)) instead of side 0. */
+void game_mode_2e_step(void)
+{
+    u32 v = config_field_get(0x29u);                     /* 0x250CE 0x2D974 */
+    DSD(DS_00104528) = v;                                /* 0x250D8 */
+    DSB(DS_00105B3A) = (u8)((v & 0x100u) >> 4);          /* 0x250F2 */
+    DSB(DS_0010452C) = (u8)((v & 0xF0u) >> 4);           /* 0x25104 */
+    DSD(DS_001088D0) = (v & 0xFu) * 5u + 0x1Eu;          /* 0x25111 */
+    (void)config_credit_spend(1u);                       /* 0x25117 0x2CA7C */
+    game_coin_divert(2u);                                /* 0x25121 0x257A4 */
+}
+
+/* 0x2512B — record §49-Q. Mode 0x2F's handler (0x24C5C case 0x2F, jump-table
+ * entry 0x2512B; its only caller). Byte for byte the same operation as
+ * game_mode_2e_step (field decode, no DS_00104AB8 store, config_credit_
+ * spend(1), divert(2)) — the compiler emitted it a second time under a
+ * separate case label rather than sharing 0x250CE's block; ported as
+ * observed, not merged into one function. */
+void game_mode_2f_step(void)
+{
+    u32 v = config_field_get(0x29u);                     /* 0x2512B 0x2D974 */
+    DSD(DS_00104528) = v;                                /* 0x25137 */
+    DSB(DS_00105B3A) = (u8)((v & 0x100u) >> 4);          /* 0x25149 */
+    DSD(DS_001088D0) = (v & 0xFu) * 5u + 0x1Eu;          /* 0x25163 */
+    DSB(DS_0010452C) = (u8)((v & 0xF0u) >> 4);           /* 0x2516D */
+    (void)config_credit_spend(1u);                       /* 0x25173 0x2CA7C */
+    game_coin_divert(2u);                                /* 0x2517D 0x257A4 */
+}
+
 #define FN_000259CC 0x000259CCu   /* no symbols.h name: mode 0x11's hook */
 
 void game_frame(void)
@@ -6277,25 +6396,40 @@ void game_frame(void)
     case 0x24u:
         game_mode_24_step();                           /* 0x2540F 0x26F58 (record §49-N) */
         break;
+    case 0x28u:
+        game_mode_28_step();                           /* 0x24F09 (record §49-Q) */
+        break;
+    case 0x29u:
+        game_mode_29_step();                           /* 0x24F66 (record §49-Q) */
+        break;
+    case 0x2Au:
+        game_mode_2a_step();                           /* 0x24FC4 (record §49-Q) */
+        break;
+    case 0x2Bu:
+        game_mode_2b_step();                           /* 0x25187 (record §49-Q) */
+        break;
+    case 0x2Cu:
+        game_mode_2c_step();                           /* 0x2501E (record §49-Q) */
+        break;
+    case 0x2Du:
+        game_mode_2d_step();                           /* 0x25071 (record §49-Q) */
+        break;
+    case 0x2Eu:
+        game_mode_2e_step();                           /* 0x250CE (record §49-Q) */
+        break;
+    case 0x2Fu:
+        game_mode_2f_step();                           /* 0x2512B (record §49-Q) */
+        break;
     case 0x25u:
     case 0x27u:
-    case 0x28u:
-    case 0x29u:
-    case 0x2Au:
-    case 0x2Bu:
-    case 0x2Cu:
-    case 0x2Du:
-    case 0x2Eu:
-    case 0x2Fu:
         /* PORT: named gaps, each case's body unported (record §47-B.1 has
          * the entry and callees of every one):
          * 0x25 inline (0x266AC,
          * 0x4EF8C, 0x4F0FC, 0x49C78); 0x27 inline (0x50146, the 0xBCBDC menu
-         * 0x2FFC4, 0x65431 longjmp); 0x28..0x2F inline (0x2D974 field 0x29,
-         * 0x2CA7C, 0x257A4). Case 0x17 is ported (0x4F318, record §46-G) and
-         * dispatched above as frontend_mode_17_step, case 0x10 (0x438B4,
-         * record §47-M) as fight_mode_10_step, and cases 0xD (0x274FC) and
-         * 0x32 (0x296B8, record §48-Q) as game_mode_0d_step and
+         * 0x2FFC4, 0x65431 longjmp). Case 0x17 is ported (0x4F318, record
+         * §46-G) and dispatched above as frontend_mode_17_step, case 0x10
+         * (0x438B4, record §47-M) as fight_mode_10_step, and cases 0xD
+         * (0x274FC) and 0x32 (0x296B8, record §48-Q) as game_mode_0d_step and
          * game_mode_32_step, and case 5 (0x25C88, record §48-U) as
          * game_mode_05_step, and case 4 (0x26254, record §48-K) as
          * game_mode_04_step. Cases 6 and 0xC run 0x28CC8 (flow_join_poll)
@@ -6318,10 +6452,12 @@ void game_frame(void)
          * game_mode_30_step/game_mode_31_step/game_mode_33_step, case
          * 0x21 (0x26540, record §49-O) is game_mode_21_step, case 7
          * (0x282C4, record §49-E) is game_mode_07_step, case 0xF
-         * (0x277C0, record §49-F) is game_mode_0f_step, and cases
+         * (0x277C0, record §49-F) is game_mode_0f_step, cases
          * 0x22/0x23/0x24 (0x26C8C/0x26A50/0x26F58, records §49-L/§49-M/
          * §49-N) are game_mode_22_step/game_mode_23_step/game_mode_24_step,
-         * each dispatched above. */
+         * and cases 0x28..0x2F (0x24F09/0x24F66/0x24FC4/0x25187/0x2501E/
+         * 0x25071/0x250CE/0x2512B, record §49-Q) are game_mode_28_step
+         * through game_mode_2f_step, each dispatched above. */
         break;
     case 0x00u:
     case 0x1Cu:
