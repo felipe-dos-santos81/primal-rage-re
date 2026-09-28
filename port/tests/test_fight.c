@@ -4406,6 +4406,13 @@ static void check_mode_tail(void)
         DSW(DS_000F0A64) = 7;                                           \
         DSW(DS_000F0A6A) = 2;                                           \
         DSB(DS_00104B15) = 0;                                           \
+        /* modes 0x22/0x23/0x24 (records §49-L/§49-M/§49-N): keep the    \
+         * gated bodies (flow_26d4c's DS_00104AC4 <= 0 arm, mode 0x23's  \
+         * DS_00104B25 states) from firing mid-frame and reassigning     \
+         * DS_00104B00 out from under this shared-tail check; inert for  \
+         * every other mode MT_SEED drives. */                          \
+        DSD(DS_00104AC4) = 1u;                                          \
+        DSB(DS_00104B25) = 0u;                                          \
         DSD(DS_00104AE8) = 0;                                           \
         DSD(DS_000F0AF0) = 0x7000u;                                     \
         DSD(DS_00108884) = 0x1000u;                                     \
@@ -31350,6 +31357,230 @@ static void check_mode_0f(void)
     mz_restore();
 }
 
+/* ---- modes 0x22/0x23/0x24 (records §49-L/§49-M/§49-N) -------------------- */
+
+#define DS_00104B1A 0x00104B1Au   /* no symbols.h name */
+#define DS_00104B1B 0x00104B1Bu   /* no symbols.h name */
+#define DS_001077F1 0x001077F1u   /* no symbols.h name: slot 0's +0x41 */
+#define DS_00104529 0x00104529u   /* no symbols.h name: DS_00104528's second byte */
+
+/* mode 0x22 (0x26C8C, record §49-L). tf_demo_fixture's own DS_001077E4/E8
+ * sentinels (0x1111 vs 0x2222, already proven distinguishing for the same
+ * copy in check_arena_frame's 0x26254) catch a missing camera-preamble field
+ * copy; the DS_00104AC4 > 1 gate on camera_impact_dust_spawn (0x128D4) is
+ * proven by rng_next's unconditional DS_000EF6D8 advance once the callee
+ * runs (before its own draw's gate); flow_26d4c's DS_00104AC4 <= 0 gate is
+ * proven by its unconditional prefix stores, which the DS_00104AC4 > 0
+ * sub-tests above already prove untouched (a sentinel that survives). */
+static void check_mode_22(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-L snapshot allocates"); return; }
+
+    (void)tf_demo_fixture();
+    DSB(DS_00104B1A) = 0u;
+    DSB(DS_00104AEC) = 0u;
+    DSD(DS_00104AC4) = 5u;              /* > 1 and > 0: both dust and 0x26D4C's body are skipped/gated */
+    game_mode_22_step();
+    CHECK_EQ_INT((int)DSD(DS_001077E8), 0x1111);
+    CHECK((DSB(DS_00104AEC) & 0x18u) == 0x18u,
+          "mode 0x22 sets DS_00104AEC bits 3/4 (0x26D40)");
+
+    /* the DS_00104AC4 > 1 gate on camera_impact_dust_spawn: two otherwise
+     * identical runs (same fixture, same seed) differ only in whether
+     * camera_impact_dust_spawn's own rng_next(7) draw fires, so the LCG
+     * state after each run must differ. (fight_slot_pass/fight_hud_pass/
+     * fight_4d2d0 also draw rng in general, but identically in both runs —
+     * an absolute "unchanged" comparison isn't safe here, a differential
+     * one is.) */
+    u32 rng_after_1, rng_after_2;
+    (void)tf_demo_fixture();
+    DSB(DS_00104B1A) = 0u;
+    DSB(DS_000EF6DC) = 0u;              /* open 0x128D4's own (EF6DC & 0xF) gate */
+    DSD(DS_00104AC4) = 1u;              /* not > 1: no call */
+    rng_seed(0x1234u);
+    game_mode_22_step();
+    rng_after_1 = DSD(DS_000EF6D8);
+
+    (void)tf_demo_fixture();
+    DSB(DS_00104B1A) = 0u;
+    DSB(DS_000EF6DC) = 0u;
+    DSD(DS_00104AC4) = 2u;              /* > 1: the call happens */
+    rng_seed(0x1234u);
+    game_mode_22_step();
+    rng_after_2 = DSD(DS_000EF6D8);
+
+    CHECK(rng_after_1 != rng_after_2,
+          "mode 0x22 calls camera_impact_dust_spawn when DS_00104AC4 > 1");
+
+    /* flow_26d4c's DS_00104AC4 <= 0 gate: its unconditional prefix
+     * (DS_001077F1[side] |= 0x10, DS_00104AFE = 0xB4, DS_00104B00 = 0x24)
+     * runs only then. DS_00104529 bit 1 set takes the actor-spawn arm
+     * (0xA8970/0xA8984, real descriptors per ghidra_data.bin), avoiding any
+     * dependency on ENGLISH.TXT being loaded. */
+    (void)tf_demo_fixture();
+    DSD(DS_001014F4) = M1F_POOL;
+    DSD(DS_001014EC) = M1F_PSET;
+    actors_reset();
+    DSB(DS_00104B1A) = 0u;
+    DSD(DS_00104AC4) = 0u;              /* <= 0: the body runs */
+    DSB(DS_00104529) = 2u;
+    DSB(DS_001077F1) = 0u;
+    DSW(DS_00104AFE) = 0x7777u;
+    DSW(DS_00104B00) = 0x7777u;
+    game_mode_22_step();
+    CHECK((DSB(DS_001077F1) & 0x10u) != 0u,
+          "flow_26d4c sets the side's slot +0x41 bit 4");
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xB4);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x24);
+
+    mz_restore();
+}
+
+static void m23_seed(u8 state)
+{
+    DSD(DS_001014F4) = M1F_POOL;
+    DSD(DS_001014EC) = M1F_PSET;
+    actors_reset();
+    DSB(DS_00104B1A) = 0u;
+    DSB(DS_0010782A) = 0u;
+    DSB(DS_00104529) = 0u;
+    DSD(DS_00104ACC) = 0u;
+    DSB(DS_00104B25) = state;
+    DSB(DS_00104AEC) = 0u;
+}
+
+/* mode 0x23 (0x26A50, record §49-M). A 4-state sub-machine; each state is
+ * exercised in isolation with a fresh pool (m23_seed), as check_mode_1f's
+ * per-state checks already do for mode 0x1F. */
+static void check_mode_23(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-M snapshot allocates"); return; }
+
+    /* state 1: arm the round. */
+    m23_seed(1u);
+    DSD(DS_00104AC4) = 0xDEADu;
+    DSD(DS_00104AD8) = 0xDEADBEEFu;
+    DSW(DS_00104AFE) = 0x7777u;
+    DSB(DS_00104B23) = 0u;
+    game_mode_23_step();
+    CHECK_EQ_INT((int)DSD(DS_00104AC4), 0x16);
+    CHECK_EQ_INT((int)DSD(DS_00104AD8), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B1B), 1);
+    CHECK_EQ_INT((int)DSB(DS_00104B15), 1);
+    CHECK_EQ_INT((int)DSB(DS_00104B20), 1);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x3C);
+    CHECK_EQ_INT((int)DSB(DS_00104B23), 2);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+    CHECK((DSB(DS_00104AEC) & 8u) != 0u,
+          "mode 0x23 sets DS_00104AEC bit 3 (0x26C7F/0x26AC9)");
+
+    /* state 2: spawn the round card and arm state 3. */
+    m23_seed(2u);
+    DSW(DS_00104AFE) = 0x7777u;
+    DSB(DS_00104B23) = 0u;
+    game_mode_23_step();
+    CHECK(DSD(DS_00104ACC) != 0u, "state 2 spawns the round card (0x2AE14)");
+    CHECK((DSB(DS_00104AE8) & 0x40u) != 0u, "state 2 sets DS_00104AE8 bit 6");
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x3C);
+    CHECK_EQ_INT((int)DSB(DS_00104B23), 3);
+
+    /* state 3, DS_00104529 bit 1 set: kills the round card, computes
+     * DS_00104ABC, and skips the challenge-string draw (0x26BDB `jnz`). */
+    m23_seed(3u);
+    DSB(DS_00104529) = 2u;
+    DSD(DS_00104ACC) = actor_spawn((const u32 *)(mem + 0xBB6B4u), 0x2A00u,
+                                   0xFFu, 0x1200u, 0u);
+    CHECK(DSD(DS_00104ACC) != 0u, "test setup: a real round-card record");
+    DSB(DS_00104B1F) = 3u;
+    DSD(DS_00104AAC) = 0u;
+    DSW(DS_00104B00) = 0u;
+    game_mode_23_step();
+    CHECK_EQ_INT((int)DSD(DS_00104ACC), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104ABC), 2);   /* (DS_00104B1F == 3) + 1 = 2 */
+    CHECK_EQ_INT((int)DSD(DS_00104AAC), 0x78);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x22);
+
+    /* state 3, bit 1 clear: the same fields (DS_00104B1F != 3 this time). */
+    m23_seed(3u);
+    DSD(DS_00104ACC) = actor_spawn((const u32 *)(mem + 0xBB6B4u), 0x2A00u,
+                                   0xFFu, 0x1200u, 0u);
+    DSB(DS_00104B1F) = 0u;
+    game_mode_23_step();
+    CHECK_EQ_INT((int)DSD(DS_00104ABC), 1);   /* (DS_00104B1F == 3) + 1 = 1 */
+
+    /* state 4: the countdown, and DS_00104B25 = DS_00104B23 only on expiry. */
+    m23_seed(4u);
+    DSW(DS_00104AFE) = 5u;
+    DSB(DS_00104B23) = 0xAAu;
+    game_mode_23_step();
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 4);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+
+    m23_seed(4u);
+    DSW(DS_00104AFE) = 1u;
+    DSB(DS_00104B23) = 0xAAu;
+    game_mode_23_step();
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 0xAA);
+
+    /* default: DS_00104B25 outside 1..4 runs only the shared tail. */
+    m23_seed(0u);
+    game_mode_23_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+    CHECK((DSB(DS_00104AEC) & 8u) != 0u, "default falls to the shared tail");
+
+    mz_restore();
+}
+
+/* mode 0x24 (0x26F58, record §49-N). The same camera preamble as mode 0x22
+ * (proven the same way), plus the countdown that arms game_hook_27134 and
+ * resets the join scratch only on expiry. DS_00104B02 is cleared so
+ * flow_side_char_random's draw loop (record §48-Q) cannot spin. */
+static void check_mode_24(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-N snapshot allocates"); return; }
+
+    (void)tf_demo_fixture();
+    DSB(DS_00104B1A) = 0u;
+    DSB(DS_00104AEC) = 0u;
+    DSW(DS_00104AFE) = 5u;
+    DSD(DS_00104AE4) = 0xDEADBEEFu;
+    DSB(DS_00104B21) = 0xAAu;
+    game_mode_24_step();
+    CHECK_EQ_INT((int)DSD(DS_001077E8), 0x1111);
+    CHECK((DSB(DS_00104AEC) & 8u) != 0u, "mode 0x24 sets DS_00104AEC bit 3");
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 4);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSB(DS_00104B21), 0xAA);
+
+    /* the countdown-expired path. */
+    (void)tf_demo_fixture();
+    DSB(DS_00104B1A) = 0u;
+    DSW(DS_00104AFE) = 1u;
+    DSB(DS_00104B21) = 0xAAu;
+    DSB(DS_00104B14) = 0xAAu;
+    DSB(DS_00104B0C) = 0xAAu;
+    DSB(DS_00104B11) = 0xAAu;
+    DSD(DS_00104AD4) = 0u;
+    DSD(DS_00104ABC) = 0u;
+    DSB(DS_00104B19) = 5u;
+    for (u32 c = 0; c < 7u; c++) DSB(DS_00104B02 + c) = 0u;
+    game_mode_24_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B21), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B14), 1);
+    CHECK_EQ_INT((int)DSB(DS_00104B0C), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B11), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFC), 7);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x78);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0x27134u);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x17);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B19), 0);
+
+    mz_restore();
+}
+
 #define SC_ST   (FIGHT_RECS + 0x7000u)   /* crafted one-word streams, 0x10 apart */
 #define SC_SRC0 (FIGHT_RECS + 0x7800u)   /* a crafted effect source (pset 1 +0x18) */
 #define SC_SRC1 (FIGHT_RECS + 0x7880u)   /* another (pset 2 +0x18) */
@@ -32971,6 +33202,13 @@ int test_fight(void)
      * adjacent to its companion. */
     check_wall_clamp();
     check_mode4_spawn_gate();
+
+    /* check_mode_22/23/24 also rebuild the real free list from M1F_POOL/
+     * M1F_PSET on every sub-case; same placement rationale as check_mode_1f
+     * above. */
+    check_mode_22();
+    check_mode_23();
+    check_mode_24();
 
     /* check_mode_1e's states 2/3/6/9 also call actors_reset()/actor_spawn
      * (through frontend_input_reset/actors_reset/frontend_match_start), so

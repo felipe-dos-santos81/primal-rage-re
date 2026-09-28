@@ -247,6 +247,12 @@ void fight_char_select(u32 side, u32 char_index);
 void fight_hud_spawn(u32 enable);
 void fight_hud_spawn_b(u32 enable);
 
+/* 0x1DAE8 (record §49-M). The single-side twin of 0x1D890/0x1DC6C, scoped to
+ * DS_00104B1A: only the health-bar and 0xBB664 records (no second bar, no
+ * 0xBB678), then the badge; sets DS_00104AEC bit 3 (not bit 1). Only caller:
+ * mode 0x23's state 1 (0x26A50, unported before this cycle). */
+void fight_hud_spawn_side(u32 enable);
+
 /* Record §48-U. 0x1D2F0: 0x10D70 on DS_001028F0[side] with the word
  * 0xC9960[v] or 0xC9A52[v] (v clamped to 0..0x78; the table by DS_00104B1D
  * == 2 and the side, else by the slot's +0x41 bit 3). 0x1D464: 0x10D70 on

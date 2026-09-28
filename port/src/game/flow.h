@@ -643,6 +643,25 @@ void game_mode_07_step(void);
  * pushed and popped. */
 void game_mode_0f_step(void);
 
+/* 0x26C8C — record §49-L. The mode 0x22 handler: fight_slot_clear, the
+ * per-side camera preamble shared with mode 0x24, fight_slot_pass,
+ * fight_hud_pass, camera_y_commit, fight_4d2d0, a gated
+ * camera_impact_dust_spawn and the unconditional tail 0x26D4C (flow_26d4c,
+ * static in flow.c). See flow.c for the full derivation. */
+void game_mode_22_step(void);
+
+/* 0x26A50 — record §49-M. The mode 0x23 handler: a 4-state sub-machine on
+ * DS_00104B25 that arms a round card, spawns it, draws the per-character
+ * challenge strings and counts down to mode 0x22. See flow.c for the full
+ * derivation. */
+void game_mode_23_step(void);
+
+/* 0x26F58 — record §49-N. The mode 0x24 handler: the same camera preamble as
+ * mode 0x22 (no dust spawn), then a countdown that on expiry resets the join
+ * scratch, re-arms game_hook_27134 and closes the play-time accounting. See
+ * flow.c for the full derivation. */
+void game_mode_24_step(void);
+
 void flow_scroll_reset(u32 stage);
 void flow_challenge_open(void);
 void flow_challenge_drop(void);
