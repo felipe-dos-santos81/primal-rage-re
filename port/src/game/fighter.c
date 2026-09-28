@@ -5301,8 +5301,9 @@ static void fighter_3a0fc(u32 side)
 /* 0x392A0. The pose driver 0x39834 runs for the winner: scale the reaction
  * value v and the 0x39834 `ebx` by the per-level tables, nudge the pair's
  * +0x5A split timers and the slot's +0x5D clamp through 0x41310, and run the
- * 0x36E78 landing reset at +0x5A >= 0x78. EAX = slot, EDX = v, EBX = w. */
-static void fighter_392a0(u32 slot, s32 v, s32 w)
+ * 0x36E78 landing reset at +0x5A >= 0x78. EAX = slot, EDX = v, EBX = w.
+ * Exported for 0x28C38 (record §48-B). */
+void fighter_392a0(u32 slot, s32 v, s32 w)
 {
     u32 rec = DSD(slot);                                    /* 0x392A7 */
     s32 A = (s32)((u32)v * 120u) / 100;                     /* 0x392AD..0x392C7 */

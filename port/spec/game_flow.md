@@ -408,10 +408,10 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   skip test `0x4F790` and `0x4F778` (record §46-G).
   `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
-  - it dispatches cases 3, 4, 5, 6, `0xC`, `0xD`, `0xE`, `0x10`, `0x11`,
-    `0x14`, `0x15`, `0x17`, `0x1A`, `0x1B` and `0x32`, and cases 1/2/`0x20`
-    run the bare `ret` `0x29B70`;
-  - the other 30 cases are named gaps.
+  - it dispatches cases 3, 4, 5, 6, `0xB`, `0xC`, `0xD`, `0xE`, `0x10`,
+    `0x11`, `0x14`, `0x15`, `0x17`, `0x1A`, `0x1B` and `0x32`, and cases
+    1/2/`0x20` run the bare `ret` `0x29B70`;
+  - the other 29 cases are named gaps.
   - Case 4 (the table entry `0x25242`, `call 0x26254; jmp 0x2540F`) is the
     fight frame `0x26254` (`game_mode_04_step`, record §48-K): `0x3C5CC`,
     `0x16D58` per side and the two position latches; only with
@@ -426,8 +426,12 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     (`0x27C48`, `0x25FDC`/`0x2604C`, `0x256F4`, the result `0x27BA4`), then
     either the round over (`0x39FF4` freezes both fighters, `0x27ED8` sets
     mode `0xA`) or the match's end (`0x27DC8`, then mode 9/8, or 7 on a
-    timer-out). Case `0xB` (`0x25287`) calls `0x26254` too, then the unported
-    `0x28C38`; it stays a named gap.
+    timer-out). Case `0xB` (`0x25287`) calls `0x26254` too, then `0x28C38`
+    (`flow_winner_pose_step`, record §48-B): every `DS_00104AA8` frames
+    (the count `DS_00104AD8` reset at `0x25C1C`, record §48-U, taken modulo
+    the duration `flow_round_over` loads into `DS_00104AA8`), each side
+    below `0x77` at its `+0x5A` byte gets `0x392A0`(slot, 1, 0), the winner
+    pose driver already ported and now exported for this caller.
   - Cases 6 and `0xC` run the join poll `0x28CC8` (`flow_join_poll`, record
     §48-J); case 6 runs it only with `DS_00104B1D == 0`. The first side whose
     bit is clear in `DS_00104B1F` gets the "INSERT 1 COIN" (no credit) or

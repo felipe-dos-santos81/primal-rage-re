@@ -844,4 +844,8 @@ void fighter_34038(u32 side);
 void fighter_38154(u32 side);
 void fighter_19820(void);
 
+/* 0x392A0. The winner-pose driver (see its header comment in fighter.c);
+ * exported for 0x28C38 (record §48-B). EAX = slot, EDX = v, EBX = w. */
+void fighter_392a0(u32 slot, s32 v, s32 w);
+
 #endif /* PRAGE_GAME_FIGHTER_H */

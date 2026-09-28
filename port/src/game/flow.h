@@ -337,4 +337,9 @@ void flow_match_result_set(void);
 void flow_match_end(void);
 void flow_round_over(void);
 
+/* 0x28C38 — record §48-B. Mode 0xB's winner-pose tick, run after
+ * game_mode_04_step: every DS_00104AA8 frames (DS_00104AD8's own count),
+ * 0x392A0(slot, 1, 0) on each side below 0x77 at its +0x5A byte. */
+void flow_winner_pose_step(void);
+
 #endif /* PR_GAME_FLOW_H */
