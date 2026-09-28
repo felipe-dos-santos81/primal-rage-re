@@ -2906,6 +2906,68 @@ void game_mode_04_step(void)
         fight_mode25_enter();                           /* 0x263EA 0x4E11C */
 }
 
+/* 0x26540 — record §49-O. Mode 0x21's frame handler (one of game_frame's
+ * named-gap fallthrough cases, `call 0x26540; jmp 0x2540F`). Byte-for-byte
+ * 0x26254's (game_mode_04_step, above) preamble and gated projection block —
+ * fight_slot_clear; camera_screen_base per side; the two position latches;
+ * then, only with DS_001078FA == 2, camera_project per side, camera_decay,
+ * fighter_pass_a, fighter_pass_b(0), camera_project per side again,
+ * fighter_think, camera_project per side a third time; then fight_slot_pass,
+ * fight_hud_pass(0)/(1) — identical to 0x26254 through here. It diverges
+ * exactly where 0x26254 calls fight_effects_pass (0x49C78): 0x26540 calls
+ * FUN_0004BF18 instead. fight.c already names that call "the mode-0x21 pass"
+ * (its own comments at 0x4C356/0x4C429/0x4C21B, from before this task): the
+ * attract loop's volleyball mini-game's per-frame ball/entry driver. Its
+ * callees fight_4c60c (0x4C60C) and fight_4cc0c (0x4CC0C) are already ported
+ * (record §43-A), but 0x4BF18's own body — an ~150-instruction 8-state
+ * switch walking a doubly-linked entry list, with further unported callees
+ * of its own (e.g. 0x4A868's case 14, already flagged PORT in fight.c) — is
+ * not small and stays a named gap here (confirmed via `disassemble_function`
+ * and `decompile_function` on 0x4BF18 through the Ghidra bridge). After that,
+ * exactly like 0x26254: camera_scene_step (0x1282C + 0x12DA8),
+ * fight_hud_pulse (0x1DA08), flow_round_end_check (0x27FA8), then
+ * DS_00104AEC |= 2. Unlike 0x26254 there is no closing DS_001078FA/
+ * DS_00108892/DS_00107803 gate into fight_mode25_enter (0x4E11C): the raw
+ * disassembly ends at the OR and a plain `pop edx; pop ecx; pop ebx; ret`
+ * (0x266A0..0x266AA). EBX/ECX/EDX are pushed and popped exactly as
+ * 0x26254's. */
+void game_mode_21_step(void)
+{
+    fight_slot_clear();                                 /* 0x26543 0x3C5CC */
+    camera_screen_base(0, (s32)DSB(DS_0010782A));       /* 0x26548..0x26552 0x16D58 */
+    camera_screen_base(1, (s32)DSB(DS_001078BE));       /* 0x26557..0x26564 0x16D58 */
+    DSD(DS_001077E8) = DSD(DS_001077E4);                /* 0x26569/0x2656F */
+    DSD(DS_0010787C) = DSD(DS_00107878);                /* 0x26575/0x2657B */
+    if (DSB(DS_001078FA) == 2u) {                       /* 0x26581..0x2658C */
+        camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                       DS_00100B60, DS_00100AF0);       /* 0x26592..0x265AD 0x17FA0 */
+        camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                       DS_00100B61, DS_00100AF4);       /* 0x265B2..0x265D0 0x17FA0 */
+        camera_decay();                                 /* 0x265D5 0x17580 */
+        fighter_pass_a();                               /* 0x265DA 0x1958C */
+        fighter_pass_b(0u);                             /* 0x265DF/0x265E1 0x19068 */
+        camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                       DS_00100B60, DS_00100AF0);       /* 0x265E6..0x26601 0x17FA0 */
+        camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                       DS_00100B61, DS_00100AF4);       /* 0x26606..0x26624 0x17FA0 */
+        fighter_think();                                /* 0x26629 0x1975C */
+        camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                       DS_00100B60, DS_00100AF0);       /* 0x2662E..0x26649 0x17FA0 */
+        camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                       DS_00100B61, DS_00100AF4);       /* 0x2664E..0x2666C 0x17FA0 */
+    }
+    fight_slot_pass();                                  /* 0x26671 0x3CB68 */
+    fight_hud_pass(0u);                                 /* 0x26676/0x26678 0x35658 */
+    fight_hud_pass(1u);                                 /* 0x2667D/0x26682 0x35658 */
+    /* PORT: 0x26687 0x4BF18 (the volleyball mini-game's per-frame driver,
+     * fight.c's "the mode-0x21 pass") is a named gap — see the header
+     * comment above. Not called. */
+    camera_scene_step();                                /* 0x2668C 0x1282C + 0x26691 0x12DA8 */
+    fight_hud_pulse();                                  /* 0x26696 0x1DA08 */
+    flow_round_end_check();                             /* 0x2669B 0x27FA8 */
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);     /* 0x266A0 */
+}
+
 /* ---- mode 0x13, the challenge screen 0x424E8 and its callees (record §48-D) */
 
 #define DS_000C8364 0x000C8364u   /* no symbols.h name: descriptor, id 0x351 */
@@ -5781,9 +5843,11 @@ void game_frame(void)
     case 0x33u:
         game_mode_33_step();                           /* 0x29638 (record §49-K) */
         break;
+    case 0x21u:
+        game_mode_21_step();                           /* 0x26540 (record §49-O) */
+        break;
     case 0x07u:
     case 0x0Fu:
-    case 0x21u:
     case 0x22u:
     case 0x23u:
     case 0x24u:
@@ -5801,7 +5865,6 @@ void game_frame(void)
          * the entry and callees of every one):
          * 7 0x282C4;
          * 0xF 0x277C0;
-         * 0x21 0x26540;
          * 0x22 0x26C8C; 0x23 0x26A50; 0x24 0x26F58; 0x25 inline (0x266AC,
          * 0x4EF8C, 0x4F0FC, 0x49C78); 0x27 inline (0x50146, the 0xBCBDC menu
          * 0x2FFC4, 0x65431 longjmp); 0x28..0x2F inline (0x2D974 field 0x29,
@@ -5826,9 +5889,10 @@ void game_frame(void)
          * frontend_mode_16_step, case 0x1E (0x1EEB0, record §49-H) is
          * game_mode_1e_step, cases 0x18/0x19 (0x4F6E8/0x4F704, record
          * §49-I) are frontend_mode_18_step/frontend_mode_19_step, case
-         * 0x1F (0x208F8, record §49-J) is game_mode_1f_step, and cases
+         * 0x1F (0x208F8, record §49-J) is game_mode_1f_step, cases
          * 0x30/0x31/0x33 (0x29328/0x299E8/0x29638, record §49-K) are
-         * game_mode_30_step/game_mode_31_step/game_mode_33_step, each
+         * game_mode_30_step/game_mode_31_step/game_mode_33_step, and case
+         * 0x21 (0x26540, record §49-O) is game_mode_21_step, each
          * dispatched above. */
         break;
     case 0x00u:

@@ -583,6 +583,30 @@ void game_mode_1e_step(void);
  * for the full derivation. */
 void game_mode_1f_step(void);
 
+/* 0x26540 — record §49-O. Mode 0x21's frame handler (0x24C5C case 0x21, one
+ * of the fallthrough list's named gaps, dispatched by `call 0x26540; jmp
+ * 0x2540F`). Byte-for-byte the fight frame 0x26254's (game_mode_04_step,
+ * record §48-K) preamble and gated projection block: fight_slot_clear,
+ * camera_screen_base per side, the two position latches, then, only with
+ * DS_001078FA == 2, camera_project per side, camera_decay, fighter_pass_a,
+ * fighter_pass_b(0), camera_project per side again, fighter_think
+ * (fighter.c's 0x1975C), camera_project per side a third time. Then
+ * fight_slot_pass, fight_hud_pass(0)/(1) — identical to 0x26254 up to here.
+ * It diverges where 0x26254 calls fight_effects_pass (0x49C78): 0x26540 calls
+ * the unported 0x4BF18 instead — fight.c already documents this as "the
+ * mode-0x21 pass" (its comments at 0x4C356/0x4C429/0x4C21B), the attract
+ * loop's volleyball mini-game's per-frame ball/entry driver, whose own
+ * callees fight_4c60c (0x4C60C) and fight_4cc0c (0x4CC0C) are already ported
+ * under record §43-A but whose ~150-instruction driver body (an 8-state
+ * switch over a doubly-linked entry list, plus further unported callees of
+ * its own) is out of scope here and stays a named gap. After that, exactly
+ * like 0x26254: camera_scene_step (0x1282C + 0x12DA8), fight_hud_pulse
+ * (0x1DA08), flow_round_end_check (0x27FA8), DS_00104AEC |= 2. Unlike
+ * 0x26254 there is no closing DS_001078FA/DS_00108892/DS_00107803 gate into
+ * fight_mode25_enter (0x4E11C): the raw ends at the OR and a plain
+ * `pop edx; pop ecx; pop ebx; ret`. */
+void game_mode_21_step(void);
+
 void flow_scroll_reset(u32 stage);
 void flow_challenge_open(void);
 void flow_challenge_drop(void);

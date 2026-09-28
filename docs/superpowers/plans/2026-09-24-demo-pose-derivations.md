@@ -20501,3 +20501,212 @@ mode `0xF`'s still-unported `0x277C0`. The match-end stores `0x27DC8`
 unported, as already noted for modes 8/0xA/0x1E (records §49-C/§49-D/
 §49-H). Every `0x2C3FC` voice call inside all three new functions and
 `0x29970` (record §45-A) and `0x32970` (the run clock, spec §7).
+
+## 49-O. Mode `0x21`'s frame handler `0x26540` (named-gap batch, branch `gap29-mode21`)
+
+(The section letter is O, not I. This task's own branch checked `§49-`
+on `main` at `330b335` first: A-D, G and H were taken there (G/H had
+merged since batch dispatch); E/F were reserved for the sibling
+`gap26-modes7f` session's own in-progress worktree (confirmed by reading
+its dirty `docs/PROGRESS.md` directly), still unmerged as of this
+section's original writing; I was the first free letter against both
+`main` and that worktree at the time. By merge time `main` had advanced
+through five more batches racing for the same letters: `gap30-mode1819`
+took I, `gap32-mode1f` took J (after I collided), `gap31-mode303133` took
+K (after J collided), and the sibling `gap33-modes222324` session claimed
+L/M/N for cases 0x22/0x23/0x24 while still in flight. This section, and
+every in-progress `§49-I` reference this task had already written in
+`flow.c`/`flow.h`/`test_fight.c`/`docs/PROGRESS.md`, was mechanically
+relabelled to `§49-O` when merging into `main` behind all of the above,
+per the project's established relabel precedent (§48-U/§48-V,
+§49-J/§49-K).)
+
+**Result in one line.** `0x26540`, `game_frame`'s case `0x21` (one of the
+generic named-gap fallthrough cases), is ported as `game_mode_21_step`
+(`flow.c`) and wired. It is **not** a distinct piece of round/match-
+transition logic as the task's own hint speculated — it is a byte-for-byte
+near-duplicate of the fight frame `0x26254` (`game_mode_04_step`, record
+§48-K), sharing its entire preamble, gated projection block and slot/HUD
+passes, and diverging in exactly one call: where `0x26254` runs
+`fight_effects_pass` (`0x49C78`), `0x26540` runs the unported `0x4BF18`
+instead — the attract loop's volleyball mini-game's own per-frame driver,
+which `fight.c`'s pre-existing comments (written before this task, at
+`0x4C356`/`0x4C429`/`0x4C21B`) already call "the mode-`0x21` pass". `0x26540`
+also has no closing `fight_mode25_enter` gate at all, unlike `0x26254`.
+
+### 49-O.1 Sources
+
+The raw comes from the Ghidra HTTP bridge at `127.0.0.1:8089`
+(`disassemble_function`, `decompile_function` — the Ghidra MCP tool does not
+connect this session), and the already-ported `game_mode_04_step` (`0x26254`,
+record §48-K, `flow.c`) for the shared preamble/gated-block/tail shape, which
+turned out to supply every callee `0x26540` needed except one.
+
+### 49-O.2 `0x26540` (82 instructions, `0x26540`..`0x266AA`)
+
+EBX/ECX/EDX are pushed at entry and popped at the single shared exit
+(`0x266A7`..`0x266AA`); no internal branch skips the epilogue. The body is a
+straight-line sequence of calls with exactly one forward conditional skip
+(`JNZ 0x26671` at `0x2658C`) and **no loop** anywhere — confirmed by reading
+every one of the 82 instructions in the `disassemble_function` listing, not
+inferred from the decompile (whose rendering of the `DS_001077E8 =
+DS_001077E4` position latch as a literal `_DAT_001077e8 = 0` is wrong, an
+artifact the decompiler's own "globals overlap smaller symbols" warning
+flags; the raw `MOV EDX,[0x1077e4]; MOV [0x1077e8],EDX` is authoritative,
+raw-wins per this repo's evidence rule).
+
+- **The preamble and gated block (`0x26543`..`0x2666C`), instruction-for-
+  instruction identical to `0x26254`'s own (§48-K, already in `flow.c`):**
+  `0x3C5CC` (`fight_slot_clear`); `0x16D58` per side, EAX = side, DL =
+  `DS_0010782A`/`DS_001078BE` (`camera_screen_base`); `DS_001077E8 =
+  DS_001077E4`, `DS_0010787C = DS_00107878` (the position latches); then,
+  only with `DS_001078FA == 2`: `0x17FA0` per side
+  (`DS_00100B08/B00/B62/B60/AF0` and `DS_00100B0C/B04/B63/B61/AF4` —
+  `camera_project`), `0x17580` (`camera_decay`), `0x1958C`
+  (`fighter_pass_a`), `0x19068` with EAX = 0 (`fighter_pass_b(0)`), `0x17FA0`
+  per side again, `0x1975C` (`fighter_think`), `0x17FA0` per side a third
+  time. Every argument address, register load and call order matches
+  `0x26254`'s own disassembly exactly — confirmed instruction by instruction,
+  not assumed from the family resemblance.
+- **The one divergence: `0x26687 CALL 0x4BF18`, where `0x26254`'s
+  equivalent site (`0x2639B`) calls `0x49C78` (`fight_effects_pass`).**
+  `0x3CB68` (`fight_slot_pass`, `0x26671`) and `0x35658` per side (`0x26676`/
+  `0x2667D`, `fight_hud_pass`) run first, identically to `0x26254`. Then
+  `0x4BF18` — not `fight_effects_pass`. `decompile_function` on `0x4BF18`
+  shows an ~150-instruction 8-state `switch` (cases 1/2/3-4/5/6/8, default)
+  walking a doubly-linked entry list rooted at `DS_0010884C` (the same
+  effects list `fight_effects_pass` itself walks), each case dispatching
+  into already-unported callees of its own (`0x4B3F0`/`0x4B430`,
+  `0x4AC38`/`0x4A868`, `0x496AC`, `0x4CD98`/`0x4C60C`/`0x4CC0C`) plus a tail
+  section managing `DS_00108874`/`DS_00108898`/`DS_001088AC`/`DS_001088A0`
+  through `FUN_000493F0`/`FUN_0002F528`/`FUN_0001C500`/`FUN_0002F510`/
+  `FUN_0002F434`/`FUN_0004CC0C`. Two of its callees — `fight_4c60c`
+  (`0x4C60C`) and `fight_4cc0c` (`0x4CC0C`) — are already ported under
+  record §43-A ("demo-pose"), and `fight.c`'s own pre-existing header
+  comments on them (written before this task) already name `0x4BF18` as
+  "the mode-`0x21` pass" and its one caller (`fight_4c60c`'s header: "its
+  one caller is `0x4BF18` at `0x4C21B`, the mode-`0x21` pass, not ported").
+  This task confirms that attribution and what it is: the attract loop's
+  volleyball mini-game (the fighters batting a ball back and forth between
+  rounds) needs a per-frame driver to walk the ball/worshipper entries, and
+  `0x4BF18` is it. Porting it in full is out of scope here — it is not
+  small, several of its own callees are themselves unported (`0x4A868`'s
+  case 14 already carries a `PORT:` note in `fight.c` predating this task),
+  and nothing in `game_mode_21_step` needs its result (the raw discards
+  `0x4BF18`'s return value: `0002668c CALL 0x1282c` follows it with no
+  intervening use of EAX/EDX) — so it stays a named gap, documented with a
+  `PORT:` comment at the call site rather than silently dropped.
+- **The tail (`0x2668C`..`0x266A0`), identical to `0x26254`'s own:**
+  `0x1282C` + `0x12DA8` (`camera_scene_step`); `0x1DA08` (`fight_hud_pulse`);
+  `0x27FA8` (`flow_round_end_check`); `DS_00104AEC |= 2`.
+- **The one other divergence: no closing gate.** `0x26254` ends
+  (`0x263BA`..`0x263EA`) with `if (DS_001078FA == 2 && DS_00108892 >= 6 &&
+  DS_00107803 == 0) fight_mode25_enter()`. `0x26540` has nothing of the
+  kind: `0x266A0`'s `OR byte [0x104AEC],2` is followed directly by
+  `POP EDX; POP ECX; POP EBX; RET` (`0x266A7`..`0x266AA`) — confirmed as the
+  function's literal last five instructions in the `disassemble_function`
+  listing (`get_function_by_address`-style `body_end` inference not needed;
+  the `RET` is unambiguous).
+
+### 49-O.3 The port
+
+- `flow.h`, after `game_mode_0a_step`'s declaration: `game_mode_21_step`'s
+  prototype and full derivation comment.
+- `flow.c`, immediately after `game_mode_04_step` (so the "identical to
+  0x26254's" cross-references in the header comment stay adjacent to what
+  they reference): `game_mode_21_step` (`0x26540`).
+- `game_frame`'s switch (`flow.c`): `case 0x21u: game_mode_21_step(); break;`
+  added as its own case (removed from the generic named-gap fallthrough
+  list and its `0x21 0x26540;` entry deleted from that comment's address
+  table); the comment's per-case narration paragraph extended to name case
+  `0x21` too.
+- No new callee ported. `0x4BF18` is left as a `PORT:`-commented named gap
+  at its would-be call site (not a stub function — nothing calls it).
+  `symbols.h` unchanged (confirmed by `make verify`'s idempotence check,
+  §49-O.5 below).
+
+### 49-O.4 A pre-existing test collided with the now-real case `0x21`
+
+`test_fight.c` already had a `game_frame`-level test (part F of the
+`camera_pair_hold`/`0x25414`-family test block, `#define MT_SEED`) that
+deliberately drove `game_frame()` in mode `0x21` — chosen, before this task,
+*because* the first switch's case `0x21` was still a documented no-op, so
+the test could isolate the **second**, already-ported `0x2545C` "mode tail"
+switch's own, unrelated case `0x21` (`fighter_body_push`, `camera_pair_hold
+(1)`, per-side `fighter_slot_latch`/`actor_pset_point`, `fight_health_bars`
+— ported before this task, at `0x25509`, and not touched by it). Both
+switches key off the same word `DS_00104B00`, so wiring the first switch's
+case `0x21` for real means `game_frame()` in mode `0x21` now runs
+`game_mode_21_step()` *before* reaching the second switch — and
+`game_mode_21_step()`'s own `flow_round_end_check` call (`0x27FA8`, part of
+the shared `0x26254` tail, §49-O.2 above) reads `DS_0010780A`/`DS_0010789E`
+(both sides' `+0x5A` health byte) and, unseeded, could overwrite
+`DS_00104B00` away from `0x21` before the second switch ever runs — which is
+exactly what happened: the test's post-conditions all came back as their
+untouched pre-call sentinels, meaning the second switch's case `0x21` body
+never ran at all. Fixed by seeding `DS_0010780A = DS_0010789E = 0` and
+`DS_001088F2 = 1` (the top byte of `flow_round_end_check`'s own early-return
+gate `DS_001088EF`) into the shared `MT_SEED` macro, making `0x27FA8` a
+deterministic no-op for every mode this macro drives (harmless for the
+other modes `MT_SEED` already covers — `0x22`/`0x23`/`0x25`/`0x0C` — none of
+which reach `flow_round_end_check` through the first switch). This is a
+necessary consequence of completing this task's own porting, not a
+pre-existing defect in the test or in `0x25509`'s prior port; the fix keeps
+every one of that test's original assertion values unchanged, per this
+repo's "consolidating must not change an assertion" rule — nothing here
+"consolidates" the test, so the rule does not bar the fixture addition
+either way, but the assertion values themselves are untouched regardless.
+
+### 49-O.5 Tests and mutations
+
+New `check_mode_21` in `test_fight.c` (registered in `test_fight()`'s own
+call list, right after `check_mode_0a`), reusing the pre-existing `k48_seed`
+fixture (`0x26254`'s own §48-K test fixture — proven directly applicable
+since `0x26540` shares its exact preamble/tail shape) with
+`DS_001078FA` left at its mode-4 sentinel (5, not 2), matching `0x26254`'s
+own no-projection test case: the shared preamble/tail's position latches,
+`fight_hud_pulse`'s countdown (`DS_00102908` pair `5 -> 4`),
+`flow_round_end_check` inert (`DS_001088F2 == 1`), `DS_00104AEC |= 2` and
+the mode word untouched — proven identical to `0x26254`'s own recorded
+values for the same seed (`0x1111`/`0x3333` for the position latches,
+`0x43` for `DS_00104AEC`). The one new, `0x26540`-specific assertion: a
+canary at `DS_00108874` (`fight_effects_pass`'s own first, unconditional
+write, `DS_00108874 = fight_midpoint()`, `0x49CAA`) seeded to a sentinel
+and proven to move under `game_mode_04_step` (from the identical seed, so
+the canary is live, not a value nothing in either chain ever touches) but
+stay untouched under `game_mode_21_step` — the direct, mutation-sensitive
+proof that `0x4BF18`'s named gap really is skipped rather than silently
+calling `fight_effects_pass` in its place. One mutation (temporarily adding
+a `fight_effects_pass()` call into `game_mode_21_step`, in the `0x4BF18`
+gap's position) was rebuilt and confirmed to fail the new canary assertion,
+then reverted. `PR_ORACLE_REQUIRED=1 run_tests` is green (`all checks
+passed`, no SIGBUS). `make verify` (run with a worktree-local
+`FRONTEND_DUMP` override, `make FRONTEND_DUMP=/tmp/pr_frontend_dump_gap29
+verify`, to avoid colliding with sibling sessions' concurrent runs on the
+Makefile's hard-coded shared `/tmp` paths, per record §49-H's own note) is
+unchanged (front-end 517/801/3/2, demo-fight fully explained at N = 1886,
+attract2 0 unexplained at N = 3617, `symbols.h` idempotent) — expected,
+since mode `0x21` (the attract loop's volleyball interlude) is reachable
+only through the still-unported match-end stores `0x27DC8` (record §48-K)
+that leave every other results-family mode unreached, so the no-input
+oracle path never leaves mode 3.
+
+### 49-O.6 Remaining named gaps
+
+`0x4BF18` itself (the volleyball mini-game's per-frame driver) and its own
+unported callees `0x4B3F0`/`0x4B430`/`0x4AC38`/`0x4A868`/`0x496AC`/
+`0x4CD98`, plus the tail dispatch's `0x493F0`/`0x2F528`/`0x1C500`/`0x2F510`/
+`0x2F434`/`0x4CC0C` mix (several of which are, individually, already
+ported under other names for other callers — this task did not re-check
+each one against `0x4BF18`'s own call sites, since the driver itself is
+out of scope regardless). Cases `0x22`/`0x23`/`0x24` — nearby, still-named
+gaps the task's own hint flagged as a possible "same tiny stub" — were left
+untouched and their addresses (`0x26C8C`/`0x26A50`/`0x26F58`) were not
+fetched from Ghidra by this task: `0x26540` itself turned out to be
+`0x26254`'s ~80-instruction near-duplicate, not a tiny stub, so the hint's
+premise did not hold for `0x21`, and checking whether it holds for its
+neighbours is out of this task's scope. They remain grouped in the generic
+named-gap fallthrough list exactly as before this task. The match-end stores
+`0x27DC8` (record §48-K) that would make mode `0x21` reachable for real
+remain unported, as already noted in records §49-C/§49-D/§49-H for modes
+8/`0xA`/`0x1E`.

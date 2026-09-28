@@ -4392,7 +4392,13 @@ static void check_mode_tail(void)
     CHECK_EQ_INT((int)DSD(DS_000F0AF0), -0x1000);
 
     /* F: game_frame in mode 0x21. The records' x 0x123/0x456, clean latches
-     * (+0x42 bit 3). */
+     * (+0x42 bit 3). Since game_mode_21_step (record §49-O) now runs mode
+     * 0x21's *first*-switch case too (0x26540, before the second-switch tail
+     * this block exercises), DS_0010780A/DS_00107898 (both sides' +0x5A
+     * health byte, flow_round_end_check's `a`/`b`) and DS_001088F2 (the top
+     * byte of its early-return gate DS_001088EF) are seeded so 0x27FA8 is a
+     * deterministic no-op and leaves DS_00104B00 == 0x21 for the second
+     * switch's own case 0x21, exactly as before this task. */
 #define MT_SEED(mode) do {                                              \
         (void)tf_demo_fixture();                                        \
         DSB(DS_00104B1D) = 1;                                           \
@@ -4409,6 +4415,9 @@ static void check_mode_tail(void)
         DSD(r0 + 0x18u) = 0x123u; DSD(r1 + 0x18u) = 0x456u;             \
         DSD(s0 + 0x2Cu) = 0xDEADu; DSD(s1 + 0x2Cu) = 0xBEEFu;           \
         DSD(r0 + 0x3Cu) = 0x5A5Au; DSD(r1 + 0x3Cu) = 0xA5A5u;           \
+        DSB(DS_0010780A) = 0;                                           \
+        DSB(DS_0010789E) = 0;                                           \
+        DSB(DS_001088F2) = 1u;                                          \
     } while (0)
     MT_SEED(0x21u);
     game_frame();
@@ -30253,6 +30262,61 @@ static void check_mode_1e_bookkeeping(void)
     mz_restore();
 }
 
+/* ---- record §49-O: mode 0x21's frame 0x26540 ----------------------------- */
+
+/* 0x26540 diverges from 0x26254 (game_mode_04_step, record §48-K) in exactly
+ * two places: it runs the unported 0x4BF18 (the attract volleyball mini-
+ * game's driver) instead of fight_effects_pass (0x49C78), and it has no
+ * closing DS_001078FA/DS_00108892/DS_00107803 gate into fight_mode25_enter.
+ * With DS_001078FA left at k48_seed's mode-4 sentinel (5, not 2) the gated
+ * projection block is skipped in both, so the shared preamble and tail
+ * (fight_slot_clear, camera_screen_base per side, the two position latches,
+ * fight_slot_pass, fight_hud_pass(0)/(1), camera_scene_step, fight_hud_pulse
+ * — the DS_00102908 pair 5 -> 4 — flow_round_end_check inert on
+ * DS_001088F2 == 1, DS_00104AEC |= 2) must behave identically to 0x26254's
+ * own no-projection case (test (h), above). fight_effects_pass's first,
+ * unconditional write (DS_00108874 = fight_midpoint(), 0x49CAA) is the
+ * canary for the one tail call 0x26540 skips: seeded to a sentinel, it must
+ * stay untouched by game_mode_21_step (proven live by first showing
+ * game_mode_04_step, from the identical seed, does move it — so the canary
+ * is a real assertion, not a value nothing in either chain ever writes). */
+static void check_mode_21(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-O snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* the canary is live: 0x26254's fight_effects_pass moves it. */
+    k48_seed();
+    DSD(DS_00108874) = 0x77777777u;
+    game_mode_04_step();
+    CHECK(DSD(DS_00108874) != 0x77777777u,
+          "fight_effects_pass's 0x493F0 write is a live canary");
+
+    /* game_mode_21_step: the shared preamble/tail run exactly as 0x26254's
+     * no-projection case, but the canary is untouched (0x4BF18 is a named
+     * gap, not fight_effects_pass) and there is no fight_mode25_enter gate
+     * to (correctly) skip. */
+    k48_seed();
+    DSD(DS_00108874) = 0x77777777u;
+    DSW(0x00102908u) = 5u;
+    DSW(0x00102908u + 2u) = 5u;
+    DSB(DS_001088F2) = 1u;
+    DSW(DS_00108892) = 6u;
+    DSB(DS_001077B0 + 0x53u) = 0u;
+    DSB(DS_00104B1D) = 2u;
+    game_mode_21_step();
+    CHECK_EQ_INT((int)DSD(DS_001077E8), 0x1111);
+    CHECK_EQ_INT((int)DSD(DS_0010787C), 0x3333);
+    CHECK_EQ_INT((int)DSW(0x00102908u), 4);
+    CHECK_EQ_INT((int)DSW(0x00102908u + 2u), 4);
+    CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x43);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 4);
+    CHECK_EQ_INT((int)DSW(DS_00108892), 6);
+    CHECK_EQ_INT((int)DSD(DS_00108874), (int)0x77777777u);
+
+    mz_restore();
+}
+
 static void check_mode_1e(void)
 {
     check_mode_1e_parked();
@@ -32629,6 +32693,7 @@ int test_fight(void)
     check_mode_09();
     check_mode_08();
     check_mode_0a();
+    check_mode_21();
     check_mode_12();
 
     /* Last: check_mode4_spawn_gate's fighter_spawn call (via fight_hud_pass)
