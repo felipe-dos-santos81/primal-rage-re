@@ -3385,8 +3385,9 @@ void text_number_draw(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
  * ([esp+0x20] after the prologue, the last pushed) and mode ([esp+0x24]);
  * `ret 8`. 0x2EFD4 formats the value into a 0x14-byte stack buffer
  * (0x2F447), then 0x2F198 draws it (0x2F456), so the cursor DS_00105F34
- * moves. ESI/EDI pushed and popped. The ported caller is 0x27908 (0x278B0);
- * its 18 other call sites are not ported. */
+ * moves. ESI/EDI pushed and popped. The ported callers are 0x27908 (0x278B0)
+ * and 0x27B4C (0x27A2C, record §48-E); its 17 other call sites are not
+ * ported. */
 void text_number_set(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
 {
     /* PORT: the original's buffer is uninitialised stack; the port zeroes it,

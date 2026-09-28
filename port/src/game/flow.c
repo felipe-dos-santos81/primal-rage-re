@@ -330,8 +330,9 @@ u32 frontend_resource_known(u32 rec)
 
 /* 0x29B74 — derivation record §42-E. The DS_00104AE4 countdown handler (the
  * dispatchers 0x4F2B0/0x4F318/0x4F6E8/0x4F704/0x4F9A0/0x4F9C8 call it when
- * DS_00104AFE runs out). EAX is never read: 0x13DF0 comes first and the walk
- * starts from `xor eax,eax`. */
+ * DS_00104AFE runs out; 0x27B17, in 0x27A2C, calls it directly, record
+ * §48-E). EAX is never read: 0x13DF0 comes first and the walk starts from
+ * `xor eax,eax`. EBX/ECX/EDX are pushed and popped. */
 void frontend_darken_all(void)
 {
     effects_clear();                                    /* 0x29B77 0x13DF0 */
@@ -1149,6 +1150,142 @@ void game_mode_0c_step(void)
     fight_hud_pulse();                                  /* 0x274E7 0x1DA08 */
     flow_arena_ko_check();                              /* 0x274EC 0x272DC */
     DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);     /* 0x274F1 */
+}
+
+/* ---- mode 0xE, the continue screen 0x27A2C and its callees (record §48-E) - */
+
+/* 0x42F60 — record §48-E. EAX = side (kept in EDX; EDX pushed and popped).
+ * 0 when no credit is ready (0x2C060, which keeps EDX: 0x2CAA8 writes EAX
+ * only and 0x2CA2C pushes and pops EDX) or when the side's start mask
+ * 0x9ACBC[side] is not newly pressed in DS_001088E4 (`test [edx*4+0x9acbc],
+ * eax`, the side used whole). Otherwise one credit is spent and
+ * DS_00105C04 = 1, and the result is 1. The spend is chosen by 0x2CA78,
+ * which is `xor eax,eax; ret` and always 0, so 0x42F92's 0x2CA7C(1) always
+ * runs; the other arm (0x2CAA8, `inc eax; sar eax,1`, then 0x2CA48, which
+ * does not read EAX) is dead. Both results are discarded. Callers: 0x27A37
+ * (0x27A2C) and the unported 0x42CB4 (three sites). */
+u32 flow_continue_poll(u32 side)
+{
+    if (config_credit_ready() == 0u) return 0u;         /* 0x42F63 0x2C060, 0x42F6A */
+    if ((DSD(DS_0009ACBC + side * 4u) & DSD(DS_001088E4)) == 0u)
+        return 0u;                                      /* 0x42F6C..0x42F78, 0x42FAA */
+    if (config_credit_zero() != 0u) {                   /* 0x42F7A 0x2CA78, 0x42F81 */
+        (void)config_not_free_play();                   /* 0x42F83 0x2CAA8 */
+        (void)config_credit_take();                     /* 0x42F8B 0x2CA48 */
+    } else {
+        (void)config_credit_spend(1u);                  /* 0x42F92/0x42F97 0x2CA7C */
+    }
+    DSB(DS_00105C04) = 1u;                              /* 0x42F9C */
+    return 1u;                                          /* 0x42FA3 */
+}
+
+/* 0x2791C — record §48-E. The continue taken (EBX/ECX/EDX/ESI/EDI pushed and
+ * popped). The continue screen is erased: string 0x41's length (0x1C500,
+ * then `repne scasb`) in cells at col -1 (centred by 0x2F388), row 0xA; the
+ * "PRESS START" prompt through 0x2C088(col -1, row 0xC, the side (s8)
+ * DS_0010810D); 0x1C cells at rows 0xE and 0xF (the countdown). Then both
+ * sides' 0x27254 snapshots come back through 0x33B00(side, 0x104890 + side *
+ * 0x94, 0x1049B8 + side * 0x68) (ECX = side, EDI/ESI the copies; 0x2F388 and
+ * 0x33B00 push and pop ECX/ESI/EDI, 0x2C088 ECX/ESI). Then 0x1D764 on the
+ * side (s8)DS_0010810D, that slot's byte +0x5B = DS_00104B0B,
+ * 0x46534(DS_00104B12, -2) (`xor eax,eax; mov al`, EDX = 0xFFFFFFFE), the
+ * side re-read, mode 0xC (the word, DX) and its slot's +0x41 &= 0xE7 (AH,
+ * read before the mode store, written after it). Its only caller is 0x27A64
+ * (0x27A2C). */
+void flow_continue_take(void)
+{
+    s32 w;
+    u8 f;
+    s32 n = (s32)strlen((const char *)game_string_get(0x41u)); /* 0x27926 0x1C500, 0x2792B..0x2793B */
+    text_cells_release_count(-1, 0xA, n);               /* 0x2792D..0x27943 0x2F388 */
+    prompt_press_start_clear(-1, 0xC,
+                             (u32)(s32)(s8)DSB(DS_0010810D));   /* 0x27948..0x27960 0x2C088 */
+    text_cells_release_count(-1, 0xE, 0x1C);            /* 0x27965..0x27979 0x2F388 */
+    text_cells_release_count(-1, 0xF, 0x1C);            /* 0x2797E..0x2798F 0x2F388 */
+    for (u32 c = 0; c < 2u; c++)                        /* 0x2798D, 0x2799F..0x279AC */
+        fighter_state_33b00(c, DS_00104890 + c * 0x94u,
+                            DS_001049B8 + c * 0x68u);   /* 0x27994..0x2799A 0x33B00 */
+    fight_hud_side_reset((u32)(s32)(s8)DSB(DS_0010810D));   /* 0x279AE..0x279B6 0x1D764 */
+    w = (s32)(s8)DSB(DS_0010810D);                      /* 0x279BB/0x279C1 */
+    DSB(DS_0010780B + (u32)w * 0x94u) = DSB(DS_00104B0B);   /* 0x279D2/0x279D7 */
+    fighter_46534(DSB(DS_00104B12), -2);                /* 0x279DE..0x279EA 0x46534 */
+    w = (s32)(s8)DSB(DS_0010810D);                      /* 0x279EF/0x279F5 */
+    f = (u8)(DSB(DS_001077F1 + (u32)w * 0x94u) & 0xE7u);    /* 0x27A06/0x27A12 */
+    DSW(DS_00104B00) = 0xCu;                            /* 0x27A15 (DX) */
+    DSB(DS_001077F1 + (u32)w * 0x94u) = f;              /* 0x27A1C */
+}
+
+/* 0x27A2C — record §48-E. Mode 0xE's handler, the continue screen 0x278B0
+ * opens (0x24C5C case 0xE, the table entry 0x25371 `call 0x27a2c`, then
+ * 0x25376 `jmp 0x2540F`; its only caller). EBX/ECX/EDX are pushed and
+ * popped. The side w = (s8)DS_0010810D (`mov eax,[0x10810a]; sar eax,0x18`).
+ * - 0x42F60(w) non-zero (the side's start, with a credit spent): DS_00104B1F
+ *   = (the byte DS_0010810D != 0) + 1 (`setne al; inc eax`), the 0x2DAE4
+ *   audit, 0x2791C (the continue taken, mode 0xC) and 0x41310(w, 1), return.
+ * - Otherwise a tick is forced when DS_00105C04 is set (DS_00108110 = 0xA,
+ *   DS_00105C04 = 0 by DH after `xor dh,dh`, EAX = 1), else by a newly
+ *   pressed button: 0x4F778(1) with the DS_00104B1F bit 0, else 0x4F778(0)
+ *   with bit 1 (AL, `and eax,0xff`), else none (EAX = 0 from the `and`).
+ * - On the frame word's DS_000EF6DC & 0x3F == 0 (the zero-extended word,
+ *   0x27ACD..0x27ADF) or a forced tick, the byte DS_00108110 is decremented.
+ *   Below 0 (signed, 0x27AF5 `jge`): the 0x27 and 0x22 voices, 0x29D60 (a
+ *   bare `ret`), 0x29B74 (darken all, mode 0x15), DS_00104B25 = CH = 0 (0x27B0B
+ *   `xor ch,ch`) and the word DS_00104AFA = DX = 0x1E (loaded at 0x27AFC for
+ *   the first voice; 0x2C3FC pushes and pops EBX/EDX/EDI and never names ECX,
+ *   0x29B74 pushes and pops EBX/ECX/EDX), return. Otherwise 0x2F434(col -1,
+ *   row 0xE, the signed byte DS_00108110, width 2, pad 1, mode 0x4002)
+ *   (0x27B41 `mov ebx,[0x10810d]` / 0x27B49 `sar ebx,0x18`: the dword's top
+ *   byte is 0x108110, the new count).
+ * - While the signed byte DS_00108110 is below 0xE (0x27B59 `cmp eax,0xe;
+ *   jge`): with a credit (0x2C060) the "PRESS START" blink 0x2C0F4(col -1,
+ *   row 0xC, w, ECX = 0: the string form); else the "INSERT 1 COIN" blink
+ *   0x2C1D4(col 0xE, row 0xC) (EBX = 1 is not read: 0x2C1D4 loads EBX before
+ *   any use). Then DS_00104AEC |= 2. */
+void game_mode_0e_step(void)
+{
+    u32 tick;
+    if (flow_continue_poll((u32)(s32)(s8)DSB(DS_0010810D)) != 0u) {  /* 0x27A2F..0x27A3E 0x42F60 */
+        DSB(DS_00104B1F) = (u8)((DSB(DS_0010810D) != 0u ? 1u : 0u) + 1u);  /* 0x27A40..0x27A55 */
+        /* PORT: 0x27A5F 0x2DAE4(0x11, 1), the audit add, is deferred (spec
+         * §7), as in 0x28E53 (0x28DA4) and 0x2D962 (config.c). */
+        flow_continue_take();                           /* 0x27A64 0x2791C */
+        fighter_41310((u32)(s32)(s8)DSB(DS_0010810D), 1);   /* 0x27A69..0x27A76 0x41310 */
+        return;                                         /* 0x27A7B */
+    }
+    if (DSB(DS_00105C04) != 0u) {                       /* 0x27A7F/0x27A86 */
+        DSB(DS_00108110) = 0xAu;                        /* 0x27A88 */
+        DSB(DS_00105C04) = 0u;                          /* 0x27A8F/0x27A96 (DH) */
+        tick = 1u;                                      /* 0x27A91 */
+    } else if ((DSB(DS_00104B1F) & 1u) != 0u) {         /* 0x27A9E..0x27AAA */
+        tick = frontend_buttons_pressed(1u) & 0xFFu;    /* 0x27AAC 0x27AC3 0x4F778, 0x27AC8 */
+    } else if ((DSB(DS_00104B1F) & 2u) != 0u) {         /* 0x27AB3..0x27ABF */
+        tick = frontend_buttons_pressed(0u) & 0xFFu;    /* 0x27AC1 0x27AC3 0x4F778, 0x27AC8 */
+    } else {
+        tick = 0u;                                      /* 0x27ABF (EAX = 0) */
+    }
+    if (((u32)DSW(DS_000EF6DC) & 0x3Fu) == 0u || tick != 0u) {   /* 0x27ACD..0x27AE3 */
+        s8 n = (s8)(DSB(DS_00108110) - 1u);             /* 0x27AE5/0x27AEB */
+        DSB(DS_00108110) = (u8)n;                       /* 0x27AED */
+        if (n < 0) {                                    /* 0x27AF3/0x27AF5 */
+            /* PORT: 0x27B01 0x2C3FC(0x27, EDX = 0x1E) and 0x27B0D
+             * 0x2C3FC(0x22) voices, not wired (record §45-A). */
+            /* 0x27B12 0x29D60 is a ret-only no-op. */
+            frontend_darken_all();                      /* 0x27B17 0x29B74 */
+            DSB(DS_00104B25) = 0u;                      /* 0x27B1C (CH) */
+            DSW(DS_00104AFA) = 0x1Eu;                   /* 0x27B22 (DX) */
+            return;                                     /* 0x27B2C */
+        }
+        text_number_set(-1, 0xE, (s32)(s8)DSB(DS_00108110), 2, 1u,
+                        0x4002u);                       /* 0x27B2D..0x27B49 0x27B4C 0x2F434 */
+    }
+    if ((s32)(s8)DSB(DS_00108110) < 0xE) {              /* 0x27B51..0x27B5C */
+        if (config_credit_ready() != 0u)                /* 0x27B5E 0x2C060, 0x27B65 */
+            prompt_press_start_blink(-1, 0xC, (u32)(s32)(s8)DSB(DS_0010810D),
+                                     0u);               /* 0x27B67..0x27B7C 0x2C0F4 */
+        else
+            prompt_insert_coin_blink(0xE, 0xC);         /* 0x27B83..0x27B92 0x2C1D4 */
+    }
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);     /* 0x27B97 */
 }
 
 /* 0x274FC — record §48-Q. Mode 0xD's handler (0x24C5C case 0xD, the table
@@ -3292,13 +3429,15 @@ void game_frame(void)
         game_mode_0c_step();                           /* 0x2535D 0x27380 (record §48-C) */
         break;                                         /* 0x25362 */
     }
+    case 0x0Eu:
+        game_mode_0e_step();                           /* 0x25371 0x27A2C (record §48-E) */
+        break;                                         /* 0x25376 */
     case 0x04u:
     case 0x07u:
     case 0x08u:
     case 0x09u:
     case 0x0Au:
     case 0x0Bu:
-    case 0x0Eu:
     case 0x0Fu:
     case 0x12u:
     case 0x13u:
@@ -3329,7 +3468,6 @@ void game_frame(void)
          * the entry and callees of every one):
          * 4 0x26254; 7 0x282C4;
          * 8 0x28468; 9 0x28788; 0xA 0x28BD4; 0xB 0x26254 + 0x28C38;
-         * 0xE 0x27A2C;
          * 0xF 0x277C0; 0x12 0x41C28; 0x13 0x424E8;
          * 0x15 0x4F24C; 0x16 0x4F2B0; 0x18 0x4F6E8;
          * 0x19 0x4F704; 0x1E 0x1EEB0; 0x1F 0x208F8; 0x21 0x26540;
@@ -3345,7 +3483,8 @@ void game_frame(void)
          * game_mode_05_step. Cases 6 and 0xC run 0x28CC8 (flow_join_poll)
          * and 0x28DA4 (flow_player_join) above (record §48-J); case 0xC's
          * other arm 0x27380 is game_mode_0c_step (record §48-C), and case
-         * 6's, 0x26254, is a named gap there. */
+         * 6's, 0x26254, is a named gap there. Case 0xE (0x27A2C, record
+         * §48-E) is game_mode_0e_step. */
         break;
     case 0x00u:
     case 0x1Cu:

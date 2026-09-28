@@ -214,8 +214,8 @@ void fight_hud_badge_spawn(u32 side, u32 ch, u32 y)
  * store, written at 0x1D78E), 0x1D2F0(0, side), then the record
  * DS_001028F8[side] begins the stream 0xE904C at 1.0 (0x3F800000 pushed,
  * 0x2BC30). EBX/ECX/EDX are pushed and popped. Callers: 0x27752 (0x274FC),
- * 0x298DE (0x296B8), and the unported 0x279B6 (0x2791C) and 0x27F01
- * (0x27ED8). */
+ * 0x298DE (0x296B8), 0x279B6 (0x2791C, record §48-E), and the unported
+ * 0x27F01 (0x27ED8). */
 void fight_hud_side_reset(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x1D767..0x1D773 */
