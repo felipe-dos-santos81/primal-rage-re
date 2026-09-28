@@ -22132,6 +22132,404 @@ static void check_mode_0c(void)
     mz_restore();
 }
 
+/* ---- record §48-E: mode 0xE's continue screen 0x27A2C and its callees ---- */
+
+/* A fresh §48-E state: c_seed's (the §48-C fixture, both +0x5A 0x66) with the
+ * side DS_0010810D = w and DS_00104B12 the other, rows 0xB..0xF emptied, then
+ * the snapshot 0x27254 and the continue screen 0x278B0 run for real (mode
+ * 0xE, DS_00108110 15, DS_00104B1F 0, DS_00105C04 0, string 0x41 on row 0xA
+ * and "15" on row 0xE). Then: no credit, no free play, nothing pressed, the
+ * frame word 1 (no tick, blink phase 1), DS_00104AEC 0x41, the cursor
+ * 0x7777, and sentinels in the prompts' DS_00105BF8/C06/C07, both
+ * DS_00105BF0 sprite slots and the darken's DS_00104AFA/B25/DS_001088EE. */
+static void e_seed(u32 w)
+{
+    u32 r;
+    c_seed();
+    DSB(0x0010810Du) = (u8)w;
+    DSB(DS_00104B12) = (u8)(w ^ 1u);
+    for (r = 0xBu; r <= 0xFu; r++) mem_fill(DS_00105F38 + r * 0xACu, 0, 0xACu);
+    flow_match_snapshot();
+    flow_continue_open();
+    DSB(DS_00105D60) = 0u;
+    DSD(DS_00105C00) = 0u;
+    DSD(DS_001088E4) = 0u;
+    DSW(DS_000EF6DC) = 1u;
+    DSB(DS_00104AEC) = 0x41u;
+    DSW(DS_00105F34) = 0x7777u;
+    DSD(DS_00105BF8) = 13u;
+    DSB(DS_00105C06) = 0x77u;
+    DSB(DS_00105C07) = 0x77u;
+    DSD(DS_00105BF0) = 0x5A5A5A5Au;
+    DSD(DS_00105BF0 + 4u) = 0x5A5A5A5Au;
+    DSW(DS_00104AFA) = 0x7777u;
+    DSB(DS_00104B25) = 0x77u;
+    DSW(DS_001088EE) = 0x7777u;
+}
+
+/* Nothing of the "PRESS START"/"INSERT 1 COIN" blinks ran: row 0xC empty,
+ * the prompt sentinels intact. */
+static void e_check_no_prompt(void)
+{
+    CHECK_EQ_INT(q_row_cells(0xC), 0);
+    CHECK_EQ_INT((int)DSD(DS_00105BF8), 13);
+    CHECK_EQ_INT((int)DSB(DS_00105C06), 0x77);
+    CHECK_EQ_INT((int)DSB(DS_00105C07), 0x77);
+    CHECK_EQ_INT((int)DSD(DS_00105BF0), 0x5A5A5A5A);
+    CHECK_EQ_INT((int)DSD(DS_00105BF0 + 4u), 0x5A5A5A5A);
+}
+
+static void check_mode_0e(void)
+{
+    u32 i, s;
+    if (!mz_save()) { CHECK(0, "the §48-E snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* The image values the checks rely on: the start masks 0x9ACBC[side],
+     * the button masks 0xC9898[n] (0x4F778) and string 0x41's length (the
+     * 0x1C cells 0x2791C also releases on rows 0xE and 0xF). */
+    CHECK_EQ_INT((int)DSD(DS_0009ACBC), 0x01000000);
+    CHECK_EQ_INT((int)DSD(DS_0009ACBC + 4u), 0x100);
+    CHECK_EQ_INT((int)DSD(DS_000C9898), 0x0F000000);
+    CHECK_EQ_INT((int)DSD(DS_000C9898 + 4u), 0xF00);
+    CHECK_EQ_INT((int)strlen((const char *)game_string_get(0x41u)), 0x1C);
+    CHECK_EQ_INT((int)config_credit_zero(), 0);
+
+    /* (a) 0x42F60 directly. 1 only with a credit (or free play) and the
+     * side's own start mask newly pressed; then 0x2CA7C(1) spends one credit
+     * unless DS_00104B1F suppresses it, and DS_00105C04 = 1. Otherwise 0,
+     * with the credits and DS_00105C04 (0x77) untouched. */
+    {
+        static const u8 d60[9] = { 0u, 0u, 0u, 0u, 0u, 0u, 0u, 1u, 0u };
+        static const u8 c00[9] = { 0u, 3u, 3u, 3u, 3u, 3u, 3u, 0u, 1u };
+        static const u8 b1f[9] = { 0u, 0u, 0u, 0u, 0u, 0u, 2u, 0u, 0u };
+        static const u32 e4[9] = { 0x01000100u, 0u, 0x100u, 0x01000000u, 0x100u,
+                                   0x01000000u, 0x01000000u, 0x01000000u,
+                                   0x0F000F00u };
+        static const u8 side[9] = { 0u, 0u, 0u, 0u, 1u, 1u, 0u, 0u, 0u };
+        static const u8 ret[9] = { 0u, 0u, 0u, 1u, 1u, 0u, 1u, 1u, 1u };
+        static const u8 left[9] = { 0u, 3u, 3u, 2u, 2u, 3u, 3u, 0u, 0u };
+        for (i = 0; i < 9u; i++) {
+            c_seed();
+            DSB(DS_00105D60) = d60[i];
+            DSD(DS_00105C00) = c00[i];
+            DSB(DS_00104B1F) = b1f[i];
+            DSD(DS_001088E4) = e4[i];
+            DSB(DS_00105C04) = 0x77u;
+            CHECK_EQ_INT((int)flow_continue_poll(side[i]), (int)ret[i]);
+            CHECK_EQ_INT((int)DSD(DS_00105C00), (int)left[i]);
+            CHECK_EQ_INT((int)DSB(DS_00105C04), ret[i] ? 1 : 0x77);
+            CHECK_EQ_INT((int)DSB(DS_00104B1F), (int)b1f[i]);
+        }
+    }
+
+    /* (b) The continue taken through 0x27A2C: side w's start with 3 credits.
+     * 0x42F60 spends one (DS_00104B1F is still 0 then) and sets DS_00105C04;
+     * DS_00104B1F = w + 1. 0x2791C: rows 0xA (string 0x41's 0x1C cells), 0xC
+     * ("PRESS START") and 0xE/0xF (0x1C cells each) emptied while rows 0xB
+     * and 0xD keep theirs; both 0x27254 copies restored through 0x33B00
+     * (the copies' slot +0x6C and record +0x30 come back; +0x5A keeps the
+     * live 0x66, then 0x1D764 zeroes w's; +0x42 comes back 0xFF, then
+     * 0x1D764 clears w's bit 4, so it ran after); 0x1D764 on w (DS_0010290C[w] 0,
+     * the DS_001028F8 record on 0xE904C at 1.0); w's +0x5B = DS_00104B0B
+     * (the other's keeps its copy's 0x44); 0x46534(the other side, -2); mode
+     * 0xC and w's +0x41 &= 0xE7. Then 0x41310(w, 1). DS_00104AEC and
+     * DS_00108110 are untouched (the path returns before them). Row 2: the
+     * sprite prompts (DS_00104529 bit 1), where 0x2C088 kills and clears
+     * DS_00105BF0[w] only and releases at DS_00105C06/C07 (row 0x1E), so the
+     * text on row 0xC stays. 0x46534's cap is 0xC9408[6] = 7. */
+    {
+        static const u8 wv[3] = { 0u, 1u, 1u };
+        static const u8 spr[3] = { 0u, 0u, 1u };
+        for (i = 0; i < 3u; i++) {
+            u32 w = wv[i], o = w ^ 1u, a[2], sp[2] = { 0u, 0u };
+            u32 cap;
+            int nb, nc, nd;
+            e_seed(w);
+            DSD(DS_00105C00) = 3u;
+            DSD(DS_001088E4) = DSD(DS_0009ACBC + w * 4u);
+            text_cursor_set(-1, 0xB, game_string_get(0x48u), 0x1000u);
+            text_cursor_set(-1, 0xC, game_string_get(0x48u), 0x1000u);
+            text_cursor_set(-1, 0xD, game_string_get(0x48u), 0x1000u);
+            text_cursor_set(-1, 0xF, game_string_get(0x41u), 0x1000u);
+            nb = q_row_cells(0xB);
+            nc = q_row_cells(0xC);
+            nd = q_row_cells(0xD);
+            CHECK(nb != 0 && nc != 0 && nd != 0 && q_row_cells(0xA) != 0
+                  && q_row_cells(0xE) != 0 && q_row_cells(0xF) != 0,
+                  "the continue screen's rows are drawn");
+            for (s = 0; s < 2u; s++) {
+                u32 slot = DS_001077B0 + s * 0x94u;
+                DSD(slot + 0x6Cu) = 0xA5A5A5A5u;
+                DSD(DSD(slot) + 0x30u) = 0xA5A5A5A5u;
+                DSD(C_COPY + s * 0x94u + 0x6Cu) = 0x1234u + s;
+                DSD(C_COPY + 0x128u + s * 0x68u + 0x30u) = 0x5678u + s;
+                DSB(C_COPY + s * 0x94u + 0x5Au) = 0x11u;
+                DSB(C_COPY + s * 0x94u + 0x5Bu) = 0x44u;
+                DSB(C_COPY + s * 0x94u + 0x41u) = 0xFFu;
+                DSB(C_COPY + s * 0x94u + 0x42u) = 0xFFu;
+                a[s] = m5_rec();
+                DSD(a[s] + 0x3Cu) = 100u + s * 100u;
+                DSD(DS_001077A8 + s * 4u) = a[s];
+                DSD(DS_001082C8 + s * 4u) = 5u + s;
+            }
+            DSB(DS_00104B0B) = 0x5Cu;
+            DSD(DS_001082D0) = 0u;
+            DSB(DS_0010452C) = 6u;
+            cap = DSB(DS_000C9408 + (u32)DSB(DS_0010452C));
+            CHECK_EQ_INT((int)cap, 7);
+            if (spr[i]) {
+                DSB(0x00104529u) = 2u;
+                DSB(DS_00105C06) = 0u;
+                DSB(DS_00105C07) = 0x1Eu;
+                for (s = 0; s < 2u; s++) {
+                    sp[s] = m5_rec();
+                    DSD(DS_00105BF0 + s * 4u) = sp[s];
+                }
+            }
+            game_mode_0e_step();
+            CHECK_EQ_INT((int)DSD(DS_00105C00), 2);
+            CHECK_EQ_INT((int)DSB(DS_00105C04), 1);
+            CHECK_EQ_INT((int)DSB(DS_00104B1F), (int)(w + 1u));
+            CHECK_EQ_INT((int)DSW(DS_00104B00), 0xC);
+            CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x41);
+            CHECK_EQ_INT((int)DSB(DS_00108110), 0xF);
+            CHECK_EQ_INT(q_row_cells(0xA), 0);
+            CHECK_EQ_INT(q_row_cells(0xC), spr[i] ? nc : 0);
+            CHECK_EQ_INT(q_row_cells(0xE), 0);
+            CHECK_EQ_INT(q_row_cells(0xF), 0);
+            CHECK_EQ_INT(q_row_cells(0xB), nb);
+            CHECK_EQ_INT(q_row_cells(0xD), nd);
+            for (s = 0; s < 2u; s++) {
+                u32 slot = DS_001077B0 + s * 0x94u;
+                CHECK_EQ_INT((int)DSD(slot + 0x6Cu), (int)(0x1234u + s));
+                CHECK_EQ_INT((int)DSD(DSD(slot) + 0x30u), (int)(0x5678u + s));
+            }
+            CHECK_EQ_INT((int)DSB(DS_0010780A + w * 0x94u), 0);
+            CHECK_EQ_INT((int)DSB(DS_0010780A + o * 0x94u), 0x66);
+            CHECK_EQ_INT((int)DSB(DS_0010290C + w), 0);
+            CHECK_EQ_INT((int)DSB(DS_0010290C + o), 0x77);
+            CHECK_EQ_INT((int)DSD(c_pr[w] + 0x24u), 0x3F800000);
+            CHECK_EQ_INT((int)DSD(c_pr[w] + 0x08u), 0xE904C);
+            CHECK_EQ_INT((int)DSD(c_pr[o] + 0x24u), 0x5A5A5A5A);
+            CHECK_EQ_INT((int)DSB(DS_0010780B + w * 0x94u), 0x5C);
+            CHECK_EQ_INT((int)DSB(DS_0010780B + o * 0x94u), 0x44);
+            CHECK_EQ_INT((int)DSD(DS_001082C8 + o * 4u), (int)(5u + o - 2u));
+            CHECK_EQ_INT((int)DSD(DS_001082C8 + w * 4u), (int)(5u + w));
+            CHECK_EQ_INT((int)DSB(DS_001077B0 + w * 0x94u + 0x41u), 0xE7);
+            CHECK_EQ_INT((int)DSB(DS_001077B0 + o * 0x94u + 0x41u), 0xFF);
+            CHECK_EQ_INT((int)DSB(DS_001077B0 + w * 0x94u + 0x42u), 0xEF);
+            CHECK_EQ_INT((int)DSB(DS_001077B0 + o * 0x94u + 0x42u), 0xFF);
+            CHECK_EQ_INT((int)DSD(a[w] + 0x3Cu), (int)(101u + w * 100u));
+            CHECK_EQ_INT((int)DSD(a[o] + 0x3Cu), (int)(100u + o * 100u));
+            if (spr[i]) {
+                CHECK_EQ_INT((int)DSD(DS_00105BF0 + w * 4u), 0);
+                CHECK_EQ_INT((int)(DSB(sp[w] + 0x28u) & 8u), 8);
+                CHECK_EQ_INT((int)DSD(DS_00105BF0 + o * 4u), (int)sp[o]);
+                CHECK_EQ_INT((int)(DSB(sp[o] + 0x28u) & 8u), 0);
+            }
+        }
+    }
+
+    /* (c) The countdown with no join. Rows: the frame word, the count before
+     * and after, and whether a prompt blinks. The count ticks on the word's
+     * & 0x3F == 0 (0x40, 0x1040; not 0x20 or 1), and is redrawn on row 0xE
+     * (width 2, pad 1, mode 0x4002, the cursor moved there); below 0xE (the
+     * signed byte: 0x80 is below, 0x7F is not) the no-credit prompt "INSERT
+     * 1 COIN" blinks at col 0xE, row 0xC on blink phase 0 (the word & 0x1F:
+     * 0x40 and 0x20 draw, 1 does not): 13 characters, 11 glyph cells, and
+     * the cursor left on row 0xC. DS_00104AEC |= 2 every time. */
+    {
+        static const u16 fw[9] = { 1u, 0x40u, 0x1040u, 0x40u, 0x20u, 0x20u,
+                                   0x20u, 0x20u, 1u };
+        static const u8 c0[9] = { 0xFu, 0xFu, 0xFu, 0xEu, 0xDu, 0xEu, 0x80u,
+                                  0x7Fu, 0xDu };
+        static const u8 c1[9] = { 0xFu, 0xEu, 0xEu, 0xDu, 0xDu, 0xEu, 0x80u,
+                                  0x7Fu, 0xDu };
+        static const char *const txt[9] = { "15", "14", "14", "13", "15", "15",
+                                            "15", "15", "15" };
+        static const u8 prm[9] = { 0u, 0u, 0u, 1u, 1u, 0u, 1u, 0u, 0u };
+        for (i = 0; i < 9u; i++) {
+            e_seed(0u);
+            DSW(DS_000EF6DC) = fw[i];
+            DSB(DS_00108110) = c0[i];
+            game_mode_0e_step();
+            CHECK_EQ_INT((int)DSB(DS_00108110), (int)c1[i]);
+            CHECK_EQ_INT((int)DSW(DS_00104B00), 0xE);
+            CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x43);
+            CHECK_EQ_INT((int)DSW(DS_00105F34),
+                         prm[i] ? 0xC : c1[i] != c0[i] ? 0xE : 0x7777);
+            CHECK(m5_row_is(0xE, -1, txt[i], 0x4002u), "the countdown on row 0xE");
+            CHECK_EQ_INT((int)DSB(DS_00104B1F), 0);
+            if (!prm[i]) {
+                e_check_no_prompt();
+                continue;
+            }
+            CHECK_EQ_INT((int)DSB(DS_00105C06), 0xE);
+            CHECK_EQ_INT((int)DSB(DS_00105C07), 0xC);
+            CHECK_EQ_INT((int)DSD(DS_00105BF8), 13);
+            CHECK_EQ_INT(q_row_cells(0xC), 11);
+            CHECK(ct_cell(0xC, 0xE) != 0u && ct_cell(0xC, 0xD) == 0u,
+                  "\"INSERT 1 COIN\" starts at col 0xE");
+        }
+    }
+
+    /* (d) The prompt with a credit (one, nothing pressed, so 0x42F60 returns
+     * 0 and spends none): "PRESS START" (string 0x48, mode 0x1000) centred on
+     * row 0xC through 0x2C0F4's string form (ECX = 0, even with the
+     * DS_00104529 sprite bit: no sprite is spawned), its length 14 in
+     * DS_00105BF8, the INSERT col/row sentinels kept. On blink phase 0x18 (the
+     * word 0x18: no tick) 0x2C088 erases it, and with the sprite bit it kills
+     * and clears DS_00105BF0[w] (w = 1) only. */
+    {
+        u32 sp[2];
+        for (i = 0; i < 2u; i++) {
+            e_seed(0u);
+            DSD(DS_00105C00) = 1u;
+            DSB(0x00104529u) = (u8)(i != 0u ? 2u : 0u);
+            DSW(DS_000EF6DC) = 0x40u;
+            game_mode_0e_step();
+            CHECK_EQ_INT((int)DSB(DS_00108110), 0xE);
+            CHECK_EQ_INT((int)DSD(DS_00105C00), 1);
+            CHECK_EQ_INT(q_row_cells(0xC), 0);
+            DSB(DS_00108110) = 0xDu;
+            DSW(DS_000EF6DC) = 0x20u;
+            game_mode_0e_step();
+            CHECK_EQ_INT((int)DSB(DS_00108110), 0xD);
+            CHECK_EQ_INT((int)DSD(DS_00105C00), 1);
+            CHECK_EQ_INT((int)DSD(DS_00105BF8),
+                         (int)strlen((const char *)game_string_get(0x48u)));
+            CHECK_EQ_INT((int)DSB(DS_00105C06), 0x77);
+            CHECK_EQ_INT((int)DSB(DS_00105C07), 0x77);
+            CHECK_EQ_INT((int)DSD(DS_00105BF0), 0x5A5A5A5A);
+            CHECK_EQ_INT((int)DSD(DS_00105BF0 + 4u), 0x5A5A5A5A);
+            CHECK(q_row_ref(0xC, 0x48u, 0x1000u), "\"PRESS START\" on row 0xC");
+            CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x43);
+        }
+        e_seed(1u);
+        DSD(DS_00105C00) = 1u;
+        text_cursor_set(-1, 0xC, game_string_get(0x48u), 0x1000u);
+        DSB(DS_00108110) = 0xDu;
+        DSW(DS_000EF6DC) = 0x18u;
+        game_mode_0e_step();
+        CHECK_EQ_INT(q_row_cells(0xC), 0);
+        e_seed(1u);
+        DSD(DS_00105C00) = 1u;
+        DSB(0x00104529u) = 2u;
+        DSB(DS_00105C06) = 0u;
+        DSB(DS_00105C07) = 0x1Eu;
+        for (s = 0; s < 2u; s++) {
+            sp[s] = m5_rec();
+            DSD(DS_00105BF0 + s * 4u) = sp[s];
+        }
+        DSB(DS_00108110) = 0xDu;
+        DSW(DS_000EF6DC) = 0x18u;
+        game_mode_0e_step();
+        CHECK_EQ_INT((int)DSD(DS_00105BF0 + 4u), 0);
+        CHECK_EQ_INT((int)(DSB(sp[1] + 0x28u) & 8u), 8);
+        CHECK_EQ_INT((int)DSD(DS_00105BF0), (int)sp[0]);
+        CHECK_EQ_INT((int)(DSB(sp[0] + 0x28u) & 8u), 0);
+    }
+
+    /* (e) The forced ticks (the frame word 1, count 15, no credit). With
+     * DS_00105C04 set the count restarts at 0xA and ticks to 9 (" 9"), and
+     * DS_00105C04 is cleared; from 0 it is 9 too, not the expiry. Otherwise a
+     * newly pressed button ticks: 0x4F778(1) (0xF00) with the DS_00104B1F
+     * bit 0, else 0x4F778(0) (0x0F000000) with bit 1; B1F 0 or 4 never. */
+    {
+        static const u8 c0[2] = { 0xFu, 0u };
+        for (i = 0; i < 2u; i++) {
+            e_seed(0u);
+            DSB(DS_00108110) = c0[i];
+            DSB(DS_00105C04) = 1u;
+            game_mode_0e_step();
+            CHECK_EQ_INT((int)DSB(DS_00108110), 9);
+            CHECK_EQ_INT((int)DSB(DS_00105C04), 0);
+            CHECK_EQ_INT((int)DSW(DS_00104B00), 0xE);
+            CHECK(m5_row_is(0xE, -1, " 9", 0x4002u), "the restarted count \" 9\"");
+            CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x43);
+        }
+    }
+    {
+        static const u8 b1f[8] = { 1u, 1u, 2u, 2u, 3u, 3u, 0u, 4u };
+        static const u32 e4[8] = { 0xF00u, 0x0F000000u, 0x0F000000u, 0xF00u,
+                                   0xF00u, 0x0F000000u, 0x0F000F00u, 0x0F000F00u };
+        static const u8 tk[8] = { 1u, 0u, 1u, 0u, 1u, 0u, 0u, 0u };
+        for (i = 0; i < 8u; i++) {
+            e_seed(0u);
+            DSB(DS_00104B1F) = b1f[i];
+            DSD(DS_001088E4) = e4[i];
+            game_mode_0e_step();
+            CHECK_EQ_INT((int)DSB(DS_00108110), tk[i] ? 0xE : 0xF);
+            CHECK_EQ_INT((int)DSB(DS_00104B1F), (int)b1f[i]);
+            CHECK_EQ_INT((int)DSW(DS_00104B00), 0xE);
+            CHECK(m5_row_is(0xE, -1, tk[i] ? "14" : "15", 0x4002u),
+                  "the count after a button");
+        }
+    }
+
+    /* (f) The expiry: a tick from 0 gives -1 (0xFF): 0x29B74 (mode 0x15,
+     * DS_00104AFE = DS_001088EE = 0x78), DS_00104B25 = 0 and DS_00104AFA =
+     * 0x1E, and a return before the redraw, the prompt and DS_00104AEC. From
+     * 1 it is 0, redrawn " 0" (not the expiry). */
+    e_seed(0u);
+    DSW(DS_000EF6DC) = 0x40u;
+    DSB(DS_00108110) = 0u;
+    game_mode_0e_step();
+    CHECK_EQ_INT((int)DSB(DS_00108110), 0xFF);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x15);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x78);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0x78);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x1E);
+    CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x41);
+    CHECK_EQ_INT((int)DSW(DS_00105F34), 0x7777);
+    CHECK(m5_row_is(0xE, -1, "15", 0x4002u), "no redraw on the expiry");
+    e_check_no_prompt();
+    e_seed(0u);
+    DSW(DS_000EF6DC) = 0x40u;
+    DSB(DS_00108110) = 1u;
+    game_mode_0e_step();
+    CHECK_EQ_INT((int)DSB(DS_00108110), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0xE);
+    CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x7777);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 0x77);
+    CHECK_EQ_INT((int)DSW(DS_001088EE), 0x7777);
+    CHECK(m5_row_is(0xE, -1, " 0", 0x4002u), "the count \" 0\"");
+    CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x43);
+
+    /* (g) game_frame's case 0xE (0x25371), with no update-table bit, command
+     * block or 0x25414 tail, DS_00104B24 set (the 0x2A31C walk returns at
+     * once) and the input latches so 0x4F644 makes DS_001088E4 the level.
+     * The frame word 0x3F becomes 0x40 (0x24CDB) before the switch: the
+     * count ticks to 14. With side 0's start held and a credit the
+     * continue is taken instead: mode 0xC, one credit spent. */
+    for (i = 0; i < 2u; i++) {
+        e_seed(0u);
+        DSD(DS_00104AE8) = 0u;
+        DSB(DS_00104B19 + 2u) = 0u;
+        DSB(DS_00104B15) = 0u;
+        DSB(DS_00104B24) = 1u;
+        DSW(DS_000EF6DC) = 0x3Fu;
+        DSD(DS_000E1C34) = i != 0u ? 0x01000000u : 0u;
+        DSD(DS_000E1C38) = 0u;
+        DSD(DS_00105C00) = i != 0u ? 2u : 0u;
+        game_frame();
+        if (i == 0u) {
+            CHECK_EQ_INT((int)DSW(DS_00104B00), 0xE);
+            CHECK_EQ_INT((int)DSB(DS_00108110), 0xE);
+            CHECK(m5_row_is(0xE, -1, "14", 0x4002u), "game_frame's case 0xE ticked");
+            CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x43);
+        } else {
+            CHECK_EQ_INT((int)DSW(DS_00104B00), 0xC);
+            CHECK_EQ_INT((int)DSD(DS_00105C00), 1);
+            CHECK_EQ_INT((int)DSB(DS_00104B1F), 1);
+            CHECK_EQ_INT(q_row_cells(0xA), 0);
+        }
+    }
+    mz_restore();
+}
+
 /* Count the non-empty glyph cells of text row `row`. */
 static int mz_row_cells(s32 row)
 {
@@ -26160,6 +26558,7 @@ int test_fight(void)
     check_mode5_a();
     check_mode5_b();
     check_mode_0c();
+    check_mode_0e();
 
     return g_failures - before;
 }
