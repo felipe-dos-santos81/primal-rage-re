@@ -318,6 +318,15 @@ u32 config_credit_take(void)
     return 1u;
 }
 
+/* 0x2CA78 — record §48-E. `xor eax,eax; ret`: the return-0 tail that 0x2CA48
+ * (0x2CA5E `je`) and 0x2CA7C (0x2CA91 `ja`) jump to, also called as a
+ * function by 0x42F60 (0x42F7A), which makes that function's 0x2CA48 arm dead,
+ * and by the unported 0x32F54 (0x32F56). Always 0. */
+u32 config_credit_zero(void)
+{
+    return 0u;                                         /* 0x2CA78 */
+}
+
 /* 0x2CA7C. `cmp eax,[0x85c00]; ja` is an unsigned guard. */
 u32 config_credit_spend(u32 n)
 {

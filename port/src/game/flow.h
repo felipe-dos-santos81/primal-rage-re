@@ -62,7 +62,8 @@ u32 frontend_resource_known(u32 rec);
 /* 0x29B74: the DS_00104AE4 countdown handler. Clears the effects, spawns a
  * 0x13D4C darken (byte 3) for every live 0x33904 list entry, then
  * DS_001088EE = DS_00104AFE = 0x78 and DS_00104B00 = 0x15. Registered in
- * actors_init; its stores and dispatchers are unported (record §42-E). */
+ * actors_init; its stores and dispatchers are unported (record §42-E), and
+ * 0x27A2C (record §48-E) calls it directly. */
 void frontend_darken_all(void);
 
 /* 0x41578: spawns a 0x13D4C darken (byte 2) for each live list entry whose +0
@@ -103,7 +104,8 @@ void frontend_mode_17_step(void);
 u32 frontend_coin_poll(u32 code);
 /* Record §48-S. The unjoined side's blinking prompt on the character screen
  * (0x432A0's callees; also called by 0x28CC8, record §48-J, and by 0x2C2B0
- * since record §48-T; the unported 0x27A2C and 0x424E8 are the rest).
+ * since record §48-T, by 0x27A2C and 0x2791C since record §48-E; the
+ * unported 0x424E8 is the rest).
  * 0x2C178: "PRESS START" (string 0x48, or the 0xBAB60 sprite with the
  * DS_00104529 bit 1) for `side` through 0x2C0F4, which draws on the
  * blink phase DS_000EF6DC & 0x1F == 0 and erases through 0x2C088 on phase
@@ -285,6 +287,22 @@ void game_mode_0c_step(void);
 void flow_arena_ko_check(void);
 void flow_match_snapshot(void);
 void flow_continue_open(void);
+/* Record §48-E, mode 0xE (the continue screen). 0x27A2C, game_frame's case
+ * 0xE: the side (s8)DS_0010810D's start with a credit (0x42F60) takes the
+ * continue (DS_00104B1F = side + 1, 0x2791C, 0x41310(side, 1)); otherwise
+ * the countdown DS_00108110 ticks every 0x40 frames or on a forced tick
+ * (DS_00105C04: back to 0xA; a newly pressed button of the joined side), is
+ * redrawn on row 0xE, and below 0 darkens everything (0x29B74, mode 0x15)
+ * with DS_00104AFA = 0x1E; below 0xE the side's "PRESS START" (with a
+ * credit) or "INSERT 1 COIN" blinks on row 0xC; DS_00104AEC |= 2. 0x42F60:
+ * 1 with a credit and the side's start mask 0x9ACBC[side] newly pressed (one
+ * credit spent, DS_00105C04 = 1), else 0. 0x2791C: the continue screen
+ * erased, both 0x27254 snapshots restored (0x33B00), 0x1D764 on the side,
+ * its +0x5B = DS_00104B0B, 0x46534(DS_00104B12, -2), mode 0xC and its +0x41
+ * &= 0xE7. */
+void game_mode_0e_step(void);
+u32 flow_continue_poll(u32 side);
+void flow_continue_take(void);
 
 /* Record §48-U, mode 5 (the round start). 0x25C88, dispatched by game_frame:
  * 0x3CB68, then on DS_00104B25 1 the HUD (0x25C1C), the round card and the

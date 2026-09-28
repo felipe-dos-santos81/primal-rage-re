@@ -74,6 +74,9 @@ u32 config_credit_ready(void);
  * (unless DS_00104B1F suppresses it) and -> 1. */
 u32 config_credit_take(void);
 
+/* 0x2CA78. `xor eax,eax; ret`, always 0 (0x42F60 calls it; record §48-E). */
+u32 config_credit_zero(void);
+
 /* 0x2CA7C(n). Free play -> 1; n > credits -> 0; otherwise subtract n (unless
  * DS_00104B1F suppresses it) and -> 1. */
 u32 config_credit_spend(u32 n);
