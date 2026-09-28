@@ -106,6 +106,12 @@ void frontend_mode_15_step(void);
  * does) and then takes DS_00104B00 = DS_00104AFA (as 0x4F24C does) — both
  * siblings' expiry actions in one. */
 void frontend_mode_16_step(void);
+/* Record §49-I. 0x4F6E8/0x4F704: the mode 0x18/0x19 handlers (0x24C5C at
+ * 0x253F5/0x253FC), gated on the effects-in-flight count DS_0009AF3D rather
+ * than a countdown; each runs the DS_00104AE4 hook when it is 0, and 0x18
+ * also stores DS_00104B00 = DS_00104AFA (0x19 does not). */
+void frontend_mode_18_step(void);
+void frontend_mode_19_step(void);
 /* 0x11F28: one coin/start poll for the event (side) `code`; 1 when a credit
  * is ready and the event's mask 0x9ACBC[code] is newly pressed (one credit is
  * spent through 0x2CA7C), else 0. Also 0x43928's poll (record §47-M). */

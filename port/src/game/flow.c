@@ -1152,6 +1152,43 @@ void frontend_mode_16_step(void)
     DSW(DS_00104B00) = DSW(DS_00104AFA);                /* 0x4F308/0x4F30E */
 }
 
+/* ---- the mode 0x18/0x19 effects-gated hooks 0x4F6E8/0x4F704 (§49-I) ---- */
+
+/* 0x4F6E8 — record §49-I. The mode 0x18 handler (0x24C5C case 0x18, the jump
+ * table 0x24B8C entry 0x253F5; sole caller, per get_xrefs_to). Not a
+ * countdown like 0x15/0x16/0x17/0x4F9C8's family: the sole gate is the
+ * effects-in-flight count DS_0009AF3D (effects_active()'s backing byte,
+ * `cmp byte [0x9af3d],0; jnz 0x4f703`). While it is non-zero the function is
+ * a no-op (straight to the shared `ret`). At 0, the DS_00104AE4 hook runs
+ * (the same registry as 0x4F318/0x4F2B0/0x4F9A0/0x4F9C8: every value the
+ * image stores there is registered — records §42-E, §43-B, §46-B, §46-F —
+ * and only 0x29D60/0x5D812 are no-ops; the registered hooks take no
+ * arguments) and then DS_00104B00 takes the return-mode word DS_00104AFA, as
+ * 0x4F2B0's/0x4F24C's expiry arms do. EAX/EDX carry no state the port needs:
+ * the raw's AX = DS_00104AFA (0x4F6F7) is only the value the next
+ * instruction stores back. */
+void frontend_mode_18_step(void)
+{
+    if (DSB(DS_0009AF3D) != 0u) return;                 /* 0x4F6E8/0x4F6EF */
+    void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
+    if (hook != NULL) hook();                           /* 0x4F6F1 */
+    DSW(DS_00104B00) = DSW(DS_00104AFA);                /* 0x4F6F7/0x4F6FD */
+}
+
+/* 0x4F704 — record §49-I. The mode 0x19 handler (0x24C5C case 0x19, the jump
+ * table 0x24B8C entry 0x253FC; sole caller, per get_xrefs_to). Byte-for-byte
+ * 0x4F6E8's gate and hook call (`cmp byte [0x9af3d],0; jnz 0x4f713; call
+ * [0x104ae4]; ret`) but it omits the mode-transition store: unlike 0x18,
+ * DS_00104B00 is left exactly as the hook (or the shared 0x2545C tail) set
+ * it. The two are otherwise the same function, which is why they sit
+ * together in the game_frame gap list. */
+void frontend_mode_19_step(void)
+{
+    if (DSB(DS_0009AF3D) != 0u) return;                 /* 0x4F704/0x4F70B */
+    void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
+    if (hook != NULL) hook();                           /* 0x4F70D */
+}
+
 /* ---- the mode-0x1A hooks 0x25BBC/0x26998/0x270BC and their callees (§46-B) */
 
 #define DS_000A87C4 0x000A87C4u   /* no symbols.h name: 7 stage-offset bytes */
@@ -5305,6 +5342,12 @@ void game_frame(void)
     case 0x15u:
         frontend_mode_15_step();                       /* 0x253E0 0x4F24C (record §48-X) */
         break;                                         /* 0x253E5 */
+    case 0x18u:
+        frontend_mode_18_step();                       /* 0x253F5 0x4F6E8 (record §49-I) */
+        break;                                         /* 0x253FA */
+    case 0x19u:
+        frontend_mode_19_step();                       /* 0x253FC 0x4F704 (record §49-I) */
+        break;                                         /* 0x25401 */
     case 0x10u:
         fight_mode_10_step();                          /* 0x25385 0x438B4 */
         break;
@@ -5374,8 +5417,6 @@ void game_frame(void)
         break;
     case 0x07u:
     case 0x0Fu:
-    case 0x18u:
-    case 0x19u:
     case 0x1Fu:
     case 0x21u:
     case 0x22u:
@@ -5398,8 +5439,7 @@ void game_frame(void)
          * the entry and callees of every one):
          * 7 0x282C4;
          * 0xF 0x277C0;
-         * 0x18 0x4F6E8;
-         * 0x19 0x4F704; 0x1F 0x208F8; 0x21 0x26540;
+         * 0x1F 0x208F8; 0x21 0x26540;
          * 0x22 0x26C8C; 0x23 0x26A50; 0x24 0x26F58; 0x25 inline (0x266AC,
          * 0x4EF8C, 0x4F0FC, 0x49C78); 0x27 inline (0x50146, the 0xBCBDC menu
          * 0x2FFC4, 0x65431 longjmp); 0x28..0x2F inline (0x2D974 field 0x29,
@@ -5422,8 +5462,10 @@ void game_frame(void)
          * game_mode_08_step, case 0xA (0x28BD4, record §49-D) is
          * game_mode_0a_step, case 0x12 (0x41C28, record §48-Z) is
          * game_mode_12_step, case 0x16 (0x4F2B0, record §49-G) is
-         * frontend_mode_16_step, and case 0x1E (0x1EEB0, record §49-H) is
-         * game_mode_1e_step, each dispatched above. */
+         * frontend_mode_16_step, case 0x1E (0x1EEB0, record §49-H) is
+         * game_mode_1e_step, and cases 0x18/0x19 (0x4F6E8/0x4F704, record
+         * §49-I) are frontend_mode_18_step/frontend_mode_19_step, each
+         * dispatched above. */
         break;
     case 0x00u:
     case 0x1Cu:
