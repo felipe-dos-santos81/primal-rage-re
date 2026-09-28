@@ -1548,7 +1548,7 @@ subsystem, the unported `0x19020` chain; since ported, record §35.)
    needs the unported `0x34B14` handlers (§7.10: `0x35F84`, `0x36870`,
    `0x235C4`, `0x370F0`, …; `0x235C4` and `0x370F0` are ported by record
    §41-C) plus the `0x3C88C` re-arm. `0x354F0`
-   remains a named gap (`0x34038` is ported and wired at `0x357EE`, record
+   is closed since (record §49-A) (`0x34038` is ported and wired at `0x357EE`, record
    §48-K) (`0x38D24` is ported by the frame-1763 fix, record §33,
    and `0x186C4` runs).
 5. **The interactive match is UNOWNED.** The mode graph (`DS_00104B00`), the
@@ -1865,7 +1865,8 @@ unexplained 843 → 1886) was partly reached; the residual is named.**
   (`0x39A34`'s `rec+0x24`, read by `frame_timer` `0x2AA70`; record §9.5).
   **Superseded by the roar-timing fix below**: the owner was the pose setter's
   operand, not the timer.
-* **Open named gaps.** `0x354F0` arena-wall clamp; `hit_record_x/y` omit the
+* **Open named gaps.** `0x354F0` arena-wall clamp (closed since, record
+  §49-A); `hit_record_x/y` omit the
   raw's `0x18540`/`0x18350` calls (first differs at f = 90; closed since, record
   §17); the camera split-arm
   `0x18714` write (closed since, record §24); the sibling pose handlers `0x3A588`/`0x3A820` and the

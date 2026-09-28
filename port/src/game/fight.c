@@ -1947,9 +1947,17 @@ void fight_hud_pass(u32 side)
     if (rec == 0) return;                                   /* 0x3577E */
 
     if (DSW(DS_00104B00) == 4 && (DSB(rec + 0x43u) & 0x80u) == 0) {
-        /* PORT: 0x35792..0x357D6. The mode-4 arm (0x33C78 behind the
-         * DS_001088E0 bit-0 gate) is a named gap (§7.8). */
-        return;
+        /* 0x35792..0x357DB (record §49-A). Bit 0 of DS_001088E0[side] gates
+         * a respawn whose register setup (0x357AB..0x357D6: EDX = the s32
+         * DS_000BDA38[side] shifted right 16, ECX = DS_000BD898, EBX(stack)
+         * = 0x4000 for side 0 else 0, EBX(reg) = 0) is byte-for-byte
+         * fighter_spawn's own wrapper (0x33EB4..0x33ED7), so the port calls
+         * it directly instead of re-deriving 0x33C78's args. When the bit is
+         * clear, the raw writes a local stack scratch word (0x357DD) that is
+         * never read again before the function returns; the port skips it. */
+        if ((DSW(DS_001088E0 + side * 2u) & 1u) != 0u)      /* 0x35798..0x357A9 */
+            fighter_spawn(side);                             /* 0x357AB..0x357D6 0x33C78 */
+        return;                                              /* 0x357DB/0x357E2 -> 0x3582E */
     }
 
     /* 0x357E4: rec is the camera-target record; *rec is the fighter record.
@@ -1966,8 +1974,8 @@ void fight_hud_pass(u32 side)
         DSB(fighter + 0x28u) = (u8)(DSB(fighter + 0x28u) | 1u); /* 0x35808..0x35810 */
         actor_sync(fighter);                    /* 0x35813 0x2A1FC */
     }
-    /* PORT: 0x3581C/0x35824 0x354F0(side)/(1-side), the arena-wall clamp
-     * against DS_000BE018 (0x7C00), is a named gap (§7.8) and skipped. */
+    fighter_wall_clamp(side);                    /* 0x3581C 0x354F0 (record §49-A) */
+    fighter_wall_clamp(1u - side);               /* 0x35824 0x354F0 (record §49-A) */
     fighter_slot_latch_both();                  /* 0x35829 0x186C4 */
 }
 

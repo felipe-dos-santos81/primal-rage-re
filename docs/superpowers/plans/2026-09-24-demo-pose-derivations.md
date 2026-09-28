@@ -17607,3 +17607,370 @@ unported. `PR_ORACLE_REQUIRED=1 run_tests` is green three times. `make
 verify` is unchanged: front-end 517/801/3/2, demo-fight fully explained at
 N = 1886, attract2 0 unexplained at N = 3617, and `symbols.h` regenerates
 byte-identically.
+
+## 49-A. `fight_hud_pass`'s last two named gaps, the mode-4 respawn arm `0x35792`-`0x357DB` and the arena-wall clamp `0x354F0` (branch `gap22-fightwall`)
+
+**Result in one line.** Both gaps `port/src/game/fight.h`'s `fight_hud_pass`
+header cited as "(`0x33C78`, `0x354F0`) is a named gap (§7.8)" are closed:
+the mode-4 arm turns out to be a byte-identical duplicate of the
+already-ported `fighter_spawn` wrapper's argument computation (so it is
+wired by calling `fighter_spawn(side)` directly, not by re-deriving
+`0x33C78`'s register setup), and `0x354F0` is ported as the new
+`fighter_wall_clamp(side)` in `fighter.c`. `0x33C78` itself (`fighter_spawn_slot`)
+was already fully ported before this batch (record unclear/untracked, found
+during this investigation) — nothing new needed porting there, only the
+call site.
+
+### 49-A.1 Sources
+
+Ghidra HTTP bridge at `127.0.0.1:8089` (`disassemble_function`,
+`read_memory`; the Ghidra MCP tool did not connect this session). Fixups
+applied; addresses match `mem[]` linear addresses per `AGENTS.md`'s address
+model.
+
+### 49-A.2 The mode-4 arm, `0x35792`-`0x357DB`
+
+Disassembled as part of `fight_hud_pass`'s whole body (`0x35658`-`0x35835`,
+140 instructions). The relevant slice:
+
+```
+35792  test byte [eax+0x43],0x80      ; eax = rec (DS_001077A8[side]); the outer gate
+35796  jnz 0x357e4                    ; bit 0x80 set -> skip to the normal per-side body
+35798  mov ax,[esi*2+0x1088e0]        ; DS_001088E0[side] (esi = side)
+357a0  xor ah,ah
+357a2  and al,0x1                     ; bit 0
+357a4  and eax,0xffff
+357a9  jz 0x357db                     ; bit 0 clear -> the dead-write arm below
+357ab  mov eax,esi                    ; eax = side
+357ad  test esi,esi
+357af  jnz 0x357b8
+357b1  mov ebx,0x4000                 ; side 0: a5 = 0x4000
+357b6  jmp 0x357ba
+357b8  xor ebx,ebx                    ; side 1: a5 = 0
+357ba  mov edx,[eax*2+0xbda38]        ; DS_000BDA38[side] (FIGHTER_SPAWN_X)
+357c1  sar edx,0x10                   ; a2 = that dword >> 16 (signed)
+357c4  and ebx,0xffff
+357ca  xor ecx,ecx
+357cc  push ebx                       ; the stack arg, a5
+357cd  mov cx,[0xbd898]               ; a3 = DS_000BD898
+357d4  xor ebx,ebx                    ; a4 = 0
+357d6  call 0x33c78                   ; fighter_spawn_slot(side, a2, a3, a4=0, a5)
+357db  xor ecx,ecx
+357dd  mov [esp+esi*2+0x18],cx        ; a LOCAL STACK scratch word, never read again
+357e2  jmp 0x3582e                    ; -> the epilogue (return)
+```
+
+Both paths of the bit-0 branch land on the same `jmp 0x3582e`, i.e. the
+epilogue — the raw's mode-4 arm **always returns immediately** once entered,
+confirming the existing stub's `return;` shape was already correct; only
+the missing call was the gap.
+
+The register setup at `357ab`-`357d6` is, instruction for instruction, the
+same computation `fighter_spawn`'s own wrapper (`0x33EB4`-`0x33ED7`,
+already ported in `fighter.c`) performs:
+
+```c
+void fighter_spawn(u32 side)
+{
+    u32 a3 = (u32)DSW(DS_000BD898);
+    u32 a5 = (side == 0u) ? 0x4000u : 0u;
+    u32 a2 = (u32)((s32)DSD(FIGHTER_SPAWN_X + side * 2u) >> 16);
+    fighter_spawn_slot(side, a2, a3, 0u, a5);
+}
+```
+
+(`FIGHTER_SPAWN_X` is `#define FIGHTER_SPAWN_X 0x000BDA38u` in `fighter.c`.)
+So the mode-4 arm's `0x33C78` call is exactly `fighter_spawn(side)` — the
+port calls that existing, already-tested wrapper rather than re-deriving
+`0x33C78`'s five raw arguments a second time.
+
+`0x33C78` itself (`fighter_spawn_slot`, `static void fighter_spawn_slot(u32
+side, u32 a2, u32 a3, u32 a4, u32 a5)` in `fighter.c`) was already fully
+ported — it builds the fighter's actor record via `actor_spawn`, its child
+actor, the character palette (`fighter_29bc8`/`0x29BC8`), the dust builder
+(`fight_dust_build`/`0x494A8`), the audio-bank pre-resolve
+(`res_resolve`/`0x1B544`, the same idiom as `0x2E934`/`0x2DAE4`/`0x2C3FC` this
+codebase treats as out of scope, used here only for its cache side effect,
+matching the existing `(void)res_resolve(...)` idiom) and the position
+latch (`fighter_slot_latch`/`0x186D0`). Confirmed by re-reading the existing
+`fighter.c` source and cross-checking its address comments against the
+0x33C78 disassembly pulled for this batch; no discrepancy found.
+
+The dead local-stack write at `357dd` (`mov [esp+esi*2+0x18],cx`) targets a
+stack slot inside `fight_hud_pass`'s own frame that is never read again
+before the function returns (the very next instruction after the bit-0-clear
+arm is the `jmp` to the epilogue) — a compiler artifact with no observable
+`mem[]` effect. The port skips it.
+
+### 49-A.3 The arena-wall clamp, `0x354F0` (114 instructions, `FUN_000354f0`, `undefined FUN_000354f0(int param_1)`)
+
+Full disassembly (fixups applied):
+
+```
+354f0  push ebx / push ecx / push edx / push esi / sub esp,0x18
+354f7  mov ebx,eax                    ; ebx = side
+354f9  mov [esp+4],eax                ; save side
+354fd  mov eax,0x1
+35502  sub eax,ebx                    ; eax = 1-side
+35504  mov [esp],eax                  ; save 1-side
+35507  mov edx,eax
+35509..3551b   edx*0x94 + 0x1077b0 -> [esp+8] = slot(1-side)  ("other_slot")
+35521..35539   ebx*0x94 + 0x1077b0 -> edx = slot(side)        ("own_slot")
+3553b  mov eax,[esp+8]
+3553f  mov eax,[eax]                  ; eax = DSD(other_slot)  ("other_fighter", unused further)
+35541  mov [esp+0xc],edx              ; [esp+0xc] = own_slot
+35545  mov [esp+0x10],eax             ; [esp+0x10] = other_fighter
+35549  mov eax,[edx]                  ; eax = DSD(own_slot)    ("own_fighter")
+3554b  mov dl,[edx+0x40]              ; dl = own_slot+0x40 byte
+3554e  mov [esp+0x14],eax             ; [esp+0x14] = own_fighter
+35552  test dl,0x40
+35555  jnz 0x35650                    ; own_slot+0x40 bit 0x40 set -> return (frozen gate)
+3555b  mov eax,[esp+0xc]
+3555f  mov edx,[0xbe018]              ; DS_000BE018, the wall
+35565  cmp edx,[eax+0x2c]             ; wall vs own_slot+0x2c (own x)
+35568  jge 0x355d4                    ; wall >= own_x -> the left-wall arm
+    ; -- right-wall arm: own_x > wall --
+3556a  mov ecx,[esp+0xc] / mov ecx,[ecx+0x2c]   ; ecx = own_x
+35571  mov eax,ebx                    ; eax = side
+35573  sub ecx,edx                    ; ecx = overshoot = own_x - wall
+35575  call 0x188dc                   ; hit_anchor_x(side, edx=wall)  <- the clamp write
+3557a  mov eax,[esp+0xc]
+3557e  cmp byte [eax+0x53],0xa        ; own_slot+0x53 == 0xA ?
+35582  jnz 0x355c0
+35584  mov eax,[esp+8]
+35588  cmp byte [eax+0x54],0x2        ; other_slot+0x54 == 2 ?
+3558c  jz 0x355c0
+3558e..355a0   call 0x187fc three times (0x187fc = ai_distance, void->s32,
+               itself opens with fighter_slot_latch(0)/(1)); the raw computes
+               |ai_distance()| via a sign branch, calling the same
+               side-effect-free function 1-2 extra times for the same value
+355a5  mov edx,[0xbdbe8]              ; DS_000BDBE8 dword
+355ab  sar edx,0x10                  ; = sign-extended high word, i.e. DSW(DS_000BDBE8+2)
+355ae  cmp eax,edx                    ; |dist| vs the threshold
+355b0  jge 0x355c0                    ; not close enough -> skip the push
+355b2  mov eax,[esp]                  ; eax = 1-side
+355b5  mov edx,ecx / neg edx          ; edx = -overshoot
+355b7  xor ebx,ebx
+355bb  call 0x1883c                   ; fighter_1883c(1-side, -overshoot, 0)
+355c0  mov eax,[esp+0x14]             ; eax = own_fighter
+355c4  cmp word [eax+0x34],0x0        ; own_fighter+0x34 (signed word, x speed)
+355c9  jle 0x35650                    ; <= 0 -> return, no zero
+355cf  jmp 0x35647                    ; > 0 -> the common tail (zero the motion)
+    ; -- left-wall arm: wall < own_x false, i.e. own_x <= wall --
+355d4  mov eax,[esp+0xc]
+355d8  neg edx                        ; edx = -wall
+355da  mov ecx,[eax+0x2c]             ; ecx = own_x
+355dd  cmp edx,ecx                    ; -wall vs own_x
+355df  jle 0x35650                    ; -wall <= own_x -> within bounds, return
+355e5  mov eax,ebx                    ; eax = side
+355e7  mov esi,[0xbe018]              ; esi = wall (reload, positive)
+355ed  call 0x188dc                   ; hit_anchor_x(side, edx=-wall)  <- the clamp write
+355f2  mov eax,[esp+0xc]
+355f6  add ecx,esi                    ; ecx = own_x + wall (negative)
+355f8  mov dh,[eax+0x53]
+355fb  neg ecx                        ; ecx = -(own_x+wall) = positive overshoot magnitude
+355fd  cmp dh,0xa
+35600  jnz 0x3563c
+35602  mov eax,[esp+8]
+35606  cmp byte [eax+0x54],0x2
+3560a  jz 0x3563c
+3560c..3562c   the same |ai_distance()| dance and threshold compare
+3562e  jge 0x3563c
+35630  mov eax,[esp]                  ; eax = 1-side
+35633  mov edx,ecx                    ; edx = +overshoot (NOT negated)
+35635  xor ebx,ebx
+35637  call 0x1883c                   ; fighter_1883c(1-side, +overshoot, 0)
+3563c  mov eax,[esp+0x14]             ; eax = own_fighter
+35640  cmp word [eax+0x34],0x0
+35645  jge 0x35650                    ; >= 0 -> return, no zero
+35647  mov eax,[esp+4]                ; eax = side (own)
+3564b  call 0x3c148                   ; fighter_3c148(side) -- zero the motion
+35650  add esp,0x18 / pop esi/edx/ecx/ebx / ret
+```
+
+Raw bytes confirming the three constants used (`read_memory`, none fitted):
+`DS_000BE018` = bytes `00 7C 00 00` = dword `0x00007C00` (31744, the wall,
+matches the existing comment "`0x7C00`" and the value already read the same
+way at seven other `fighter.c` call sites); `DS_000BDBE8` = bytes `03 00 00
+32` = dword `0x32000003` (low word 3, used unrelatedly at `fighter.c:3208`
+as a small counter cap; high word `0x3200` = 12800, the threshold this gap
+reads via the `sar edx,0x10` idiom, equivalent to `(s16)DSW(DS_000BDBE8+2)`
+since a 32-bit arithmetic right shift by 16 of a dword is bit-for-bit the
+sign-extension of that dword's high word); `DS_000C9520` (unrelated, already
+used by `fighter_spawn_slot`) = bytes `50 C3 00 00` = `0xC350` (50000).
+
+All four callees were already ported: `hit_anchor_x(u32 side, u32 x)`
+(`0x188DC`, `fighter.c`), `ai_distance(void)` (`0x187FC`, `static s32
+ai_distance(void)`, itself calling `fighter_slot_latch(0)`/`(1)` before
+subtracting slot 1's `+0x2C` from slot 0's), `fighter_1883c(u32 side, u32 a,
+u32 b)` (`0x1883C`, `static`, re-latches both slots then adds `(a, b)` to
+`side`'s `+0x2C`/`+0x30`), `fighter_3c148(u32 side)` (`0x3C148`, zeroes the
+side's record `+0x34`/`+0x43`/`+0x42`).
+
+**A raw-faithful quirk, verified rather than assumed.** `ai_distance`
+re-latches *both* slots before computing the difference, and (when the
+slot's `+0x42` bit 3 is set) `fighter_slot_latch`'s bit-3 branch re-derives
+`slot+0x2C` from the *fighter record's* `+0x18` field, not from whatever is
+currently in `slot+0x2C`. Since `hit_anchor_x`'s own record-`+0x18` write is
+itself gated by that same bit (a no-op when set, via `hit_record_x`), the
+"are the two fighters close" test that gates the push-together call is
+comparing the two records' `+0x18` anchors, not the just-clamped slot
+position — and the same re-latch, running again inside `fighter_1883c`,
+overwrites the just-applied clamp on `own_slot+0x2C` back to the record's
+`+0x18` before the function returns. This was first missed (assumed the
+comparison used the live clamped position) and caught by the derivation's
+own unit test failing with the wrong numbers (§49-A.5); the disassembly was
+re-read line by line to find `ai_distance`'s internal re-latch, confirming
+the raw really does this. The port reproduces it exactly, as ported code
+must.
+
+### 49-A.4 The port
+
+`port/src/game/fight.c`, the mode-4 arm:
+
+```c
+if (DSW(DS_00104B00) == 4 && (DSB(rec + 0x43u) & 0x80u) == 0) {
+    if ((DSW(DS_001088E0 + side * 2u) & 1u) != 0u)      /* 0x35798..0x357A9 */
+        fighter_spawn(side);                             /* 0x357AB..0x357D6 0x33C78 */
+    return;                                              /* 0x357DB/0x357E2 -> 0x3582E */
+}
+```
+
+`port/src/game/fight.c`, the wall-clamp call site (replacing the skipped
+comment):
+
+```c
+fighter_wall_clamp(side);                    /* 0x3581C 0x354F0 (record §49-A) */
+fighter_wall_clamp(1u - side);               /* 0x35824 0x354F0 (record §49-A) */
+fighter_slot_latch_both();                  /* 0x35829 0x186C4 */
+```
+
+`port/src/game/fighter.c`, the new function (placed after `fighter_1883c`'s
+definition so its static callees are already visible):
+
+```c
+void fighter_wall_clamp(u32 side)
+{
+    u32 own_slot = DS_001077B0 + side * 0x94u;
+    u32 other_slot = DS_001077B0 + (1u - side) * 0x94u;
+    u32 own_fighter;
+    s32 wall, own_x;
+
+    if ((DSB(own_slot + 0x40u) & 0x40u) != 0u) return;
+
+    own_fighter = DSD(own_slot);
+    wall = (s32)DSD(DS_000BE018);
+    own_x = (s32)DSD(own_slot + 0x2Cu);
+
+    if (wall < own_x) {
+        s32 overshoot = own_x - wall;
+        hit_anchor_x(side, (u32)wall);
+        if (DSB(own_slot + 0x53u) == 0x0Au &&
+            DSB(other_slot + 0x54u) != 2u) {
+            s32 dist = ai_distance();
+            s32 adist = (dist >= 0) ? dist : -dist;
+            if (adist < (s32)(s16)DSW(DS_000BDBE8 + 2u))
+                fighter_1883c(1u - side, (u32)(-overshoot), 0u);
+        }
+        if ((s16)DSW(own_fighter + 0x34u) > 0)
+            fighter_3c148(side);
+    } else {
+        s32 overshoot;
+        if ((-wall) <= own_x) return;
+        overshoot = -(own_x + wall);
+        hit_anchor_x(side, (u32)(-wall));
+        if (DSB(own_slot + 0x53u) == 0x0Au &&
+            DSB(other_slot + 0x54u) != 2u) {
+            s32 dist = ai_distance();
+            s32 adist = (dist >= 0) ? dist : -dist;
+            if (adist < (s32)(s16)DSW(DS_000BDBE8 + 2u))
+                fighter_1883c(1u - side, (u32)overshoot, 0u);
+        }
+        if ((s16)DSW(own_fighter + 0x34u) < 0)
+            fighter_3c148(side);
+    }
+}
+```
+
+**Deviation (PORT, no behavior change).** The raw calls the pure,
+side-effect-free `ai_distance` (`0x187FC`) two or three times along the
+taken branch, once for the sign test and once or twice more for the
+magnitude, purely a compiler artifact of computing `abs()` without a
+dedicated instruction. The port calls it once and takes the absolute value
+in C — mathematically and behaviorally identical, confirmed by the mutation
+in §49-A.5 still catching a sign error in the push delta.
+
+### 49-A.5 The assertions and mutations (`check_wall_clamp`, `check_mode4_spawn_gate` in `test_fight.c`)
+
+`check_wall_clamp` overrides `DS_000BE018` (wall) and `DS_000BDBE8`
+(threshold) to round test values, as `check_char1_entry`'s existing
+`ce_seed` helper already does for `DS_000BE018`, and sets both slots'
+`+0x42` bit 3 so `fighter_slot_latch`'s re-latch (run by `ai_distance` and
+`fighter_1883c`) takes each fighter record's seeded `+0x18` unchanged
+instead of exercising the unrelated §38 screen-anchor machinery
+(`DS_00100AB0`/`AB4`, `fighter_18540`/`fighter_18350`). Nine scenarios:
+(A) within bounds on both walls, no call, both sides untouched; (B) the
+`+0x40` bit-0x40 freeze gate holds even 5000 units past the wall; (C) past
+the right wall with state `!= 0xA`: clamp only, no push (state gate holds),
+no velocity zero (`+0x34 == 0` is not `> 0`); (D) past the right wall,
+state `!= 0xA`, driving into the wall (`+0x34 = 40 > 0`): clamp plus
+`fighter_3c148`'s `+0x34`/`+0x42`/`+0x43` zero; (E) same but moving away
+(`+0x34 = -40`): clamp, no zero (this is the specific boundary mutation the
+task called out — a `>=` or unsigned mutation of the raw's `> 0` would flip
+this); (F) the left-wall mirror of D; (G) past the right wall, state `0xA`,
+the two records' `+0x18` anchors close (1500 vs 1470, `|diff| = 30 < 50`):
+the push fires, the other side's record anchor becomes `1470 - 500 = 970`;
+(H) same but far apart (700, `|diff| = 800 >= 50`): no push; (I) the
+left-wall mirror of G (`-1500`/`-1470` -> `-1470 + 500 = -970`).
+
+`check_mode4_spawn_gate` seeds `DS_001077A8[side]` to a scratch address
+distinct from the constant slot `fighter_spawn` installs
+(`DS_001077B0 + side*0x94`), so a bit-0-set call is detected by
+`DS_001077A8[side]` changing to that slot, and a bit-0-clear call is
+detected by it staying at the scratch address. It runs `actors_reset()`
+before and after (needed for `fighter_spawn`'s `actor_spawn` to succeed);
+it is placed at the very end of `test_fight`'s call list (after
+`check_mode_13`) because `check_point_trample`, much earlier in the same
+list, reads a shadow actor's pset index off the process-wide actor free
+list's accumulated state, and an `actors_reset()` positioned before it
+would shift that index (discovered empirically: inserting the two new
+checks after `check_hud_latch`, their original location, made
+`check_point_trample` fail; moving them to the end fixed it with no other
+change).
+
+**Verified by mutation** (temporary edits, rebuilt, observed the failure,
+reverted, rebuilt clean again — not a scripted sweep):
+- disabling the freeze gate (`if (0) return;`) fails assertion B
+  (`1000 != 5000`, i.e. the clamp ran when it should have been skipped);
+- flipping the right-wall velocity-zero test's sign (`< 0` in place of
+  `> 0`) fails six assertions across D and E (the zero fires when it
+  shouldn't, and doesn't fire when it should);
+- dropping the right-wall push's negation (`+overshoot` in place of
+  `-overshoot`) fails assertion G (`1970 != 970`);
+- forcing the mode-4 spawn gate to always fire (`if (1)`) fails
+  `check_mode4_spawn_gate` and, incidentally, an unrelated fixture test
+  further down the file (always-spawning perturbs shared pset state);
+- forcing it to never fire (`if (0)`, the original stub's behavior) fails
+  `check_mode4_spawn_gate` at the set-bit assertion exactly as expected.
+
+### 49-A.6 Verification
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests` green three times in a row (no
+SIGBUS observed). `make verify`: front-end 517/801/3/2, demo-fight fully
+explained at N = 1886, attract2 0 unexplained at N = 3617, `symbols.h`
+regenerates byte-identically — all four gate numbers unchanged from before
+this batch, as expected since `fight_hud_pass`'s mode-4 arm and the
+wall clamp are both gated on live fight-mode/input state (`DS_00104B00==4`,
+`DS_001088E0` bit 0) that the no-input demo/attract/front-end paths never
+reach.
+
+### 49-A.7 §7.8 status
+
+Both addresses `port/src/game/fight.h`'s header comment named as the §7.8
+gap (`0x33C78`, `0x354F0`) are closed. `port/src/game/fight.c`,
+`port/src/game/fight.h` and `port/spec/game_flow.md`'s "Open named gaps"
+bullet are updated to drop them; grep for `§7.8` after this batch finds
+only historical references in `test_fight.c`'s comments, `fighter.c`'s
+unrelated `0x36E78` cross-reference, and the two `docs/superpowers/plans/`
+derivation records that first identified the gap — none of which claim it
+is still open.
