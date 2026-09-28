@@ -913,8 +913,9 @@ nowhere in either LE object; still unwired) and `0x1F140`/`0x1F278`/`0x1F39B`
 in `FUN_0001EEB0` (the match sub-state machine's states 2/6/9, `game_mode_1e_
 step`, record §49-H — now wired; §49-H also ports the state-0xA versus-screen
 hook/wipe-arm and the states 0/4/7 short-circuit arms, and leaves the states
-5/8/0xB..0xE/0xF/0x10 high-score name-entry screen, gated by `0x1F458`, as a
-named gap). No task in this plan owns the match cycle as a whole. States 6/7
+5/8/0xB..0xE high-score name-entry screen, gated by `0x1F458`, since ported
+as `nameentry_step`, record §49-T; states 0xF/0x10 stay a named gap on the
+unported `0x1EC38`). No task in this plan owns the match cycle as a whole. States 6/7
 (the attract demo
 fight: `0x11A8C`, `0x263F4`) were ported by the demo-fight cycle 1 (see the
 next section); state 8 (`0x11EAC`: the run clock `0x32970(0)`, a named gap,
@@ -1735,7 +1736,8 @@ subsystem, the unported `0x19020` chain; since ported, record §35.)
    §48-K) (`0x38D24` is ported by the frame-1763 fix, record §33,
    and `0x186C4` runs).
 5. **The interactive match is UNOWNED.** The mode graph (`DS_00104B00`), the
-   `0x257A4` coin divert, `0x1EEB0`, `0x1F458`, the player screens and human
+   `0x257A4` coin divert, `0x1EEB0` (its name-entry driver `0x1F458` is ported,
+   record §49-T), the player screens and human
    input are not implemented by any task in this cycle. The design spec's Out
    section stands; this is not a gap inside the demo window.
 
@@ -1831,7 +1833,8 @@ the unported `0x36870` 9→4 closer and `0x37178`/`0x37D18`; the five unported
 `0x35E6C`); and the `0x19020`/`0x3Fxxx` freeze subsystem (cycle 4).
 
 **The interactive match remains UNOWNED** — the mode graph (`DS_00104B00`), the
-`0x257A4` coin divert, `0x1EEB0`, `0x1F458`, the player screens and human input
+`0x257A4` coin divert, `0x1EEB0` (its name-entry driver `0x1F458` is ported,
+record §49-T), the player screens and human input
 are implemented by no task in any demo-fight cycle.
 
 **Every enforced oracle claim is unmoved.** `make verify` exits 0 with 0
