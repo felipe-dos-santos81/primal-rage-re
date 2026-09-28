@@ -5423,7 +5423,8 @@ void game_mode_24_step(void)
  * 0x1F) == 0 and bit 0x20 clear, both strings 0x3B/0x3A are cell-released at
  * row 5 (their glyph count, centred); with bit 0x20 set, one of them (DS_
  * 001088BC selects which) is drawn centred at row 5 mode 0x2000 instead; then,
- * while DS_001088A6 is still positive, its value / 60 is drawn at col -1, row
+ * while DS_001088A6 is nonzero (an unsigned test, not signed), its value / 60
+ * is drawn at col -1, row
  * 0xB, width 1, pad 0, mode 0x2000. EBX/ECX/EDX/EDI are pushed and popped.
  * Only caller: 0x252B2 (0x24C5C case 0x25). */
 void game_mode_25_step(void)
@@ -5484,7 +5485,10 @@ void game_mode_25_step(void)
         }
     }
 
-    if ((s16)DSW(DS_001088A6) > 0) {                                      /* 0x26940/0x26943 */
+    if (DSW(DS_001088A6) != 0u) {                                         /* 0x26940/0x26943 */
+        /* PORT: 0x26940 TEST/JBE is an unsigned "!= 0" test (0x2694a's
+         * MOV DX,BX zero-extends before the divide), not a signed
+         * comparison; the earlier (s16) cast here was wrong and is fixed. */
         text_number_draw(-1, 0xB, (s32)DSW(DS_001088A6) / 60, 1, 0u,
                          0x2000u);                                       /* 0x26954..0x2696E 0x2F4D0 */
     }
@@ -6584,8 +6588,9 @@ void game_frame(void)
          * machine: 0 runs game_mode_25_step (0x266AC), then when DS_
          * 001088BD == 8 and both round flags DS_001078F0/DS_001078F1 are set,
          * game_mode_25_reveal (0x4EF8C) and DS_00104B25++; 1 decrements the
-         * word DS_0010889A and, while it stays positive, runs fight_
-         * effects_pass (0x49C78), else game_mode_25_exit (0x4F0FC); any
+         * word DS_0010889A and, while it stays nonzero (an unsigned test),
+         * runs fight_effects_pass (0x49C78), else game_mode_25_exit
+         * (0x4F0FC); any
          * other DS_00104B25 value falls straight through to the break. */
         u8 sub = DSB(DS_00104B25);                          /* 0x252A0 */
         if (sub == 0u) {                                    /* 0x252A5/0x252A7 */
@@ -6599,7 +6604,9 @@ void game_frame(void)
         } else if (sub == 1u) {                                /* 0x252A9/0x252AB */
             u16 t = (u16)(DSW(DS_0010889A) - 1u);                /* 0x252F1/0x252F7 */
             DSW(DS_0010889A) = t;                                 /* 0x252F8 */
-            if ((s16)t > 0) fight_effects_pass();                  /* 0x252FE/0x25301 0x49C78 */
+            /* PORT: 0x252FE TEST/JA is an unsigned "!= 0" test, not the
+             * signed comparison an earlier draft of this port used. */
+            if (t != 0u) fight_effects_pass();                     /* 0x252FE/0x25301 0x49C78 */
             else game_mode_25_exit();                               /* 0x25303 0x4F0FC */
         }
         break;                                                      /* 0x2530C/0x25312 */
