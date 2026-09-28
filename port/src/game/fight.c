@@ -1501,23 +1501,6 @@ static u32 fight_cmd_bits_30(u32 side)
     return (DSW(DS_001088E0 + side * 2u) & 0x30u) != 0u;        /* 0x1D74C..0x1D760 */
 }
 
-/* 0x468D8 — record §49-V. EAX = the side: 1 when the side's slot has the
- * +0x10 handler 0x22BEC (fighter_22bec, the projectile freeze) with the
- * record's +0x24 dword's low 31 bits clear and the slot's +0x54 byte not 2
- * (0x468EC..0x4690C); else 1 when the byte at slot(side)+0x52 (0x107802 +
- * side * 0x94, 0x46910..0x4691E) is 7. Pure. The slot/record are 0x33A10's
- * out[3]/out[5] (0x468E3). Callers include 0x1D5F0 and 0x1D6B6 (0x1D540). */
-static u32 fight_freeze_or_state7(u32 side)
-{
-    u32 ctx[6];
-    fighter_ctx_swap(ctx, side);                                /* 0x468E3 0x33A10 */
-    if (DSD(ctx[3] + 0x10u) == 0x22BECu                         /* 0x468EC */
-            && (DSD(ctx[5] + 0x24u) & 0x7FFFFFFFu) == 0u        /* 0x468F9 */
-            && DSB(ctx[3] + 0x54u) != 2u)                       /* 0x46906 */
-        return 1u;                                              /* 0x4690C */
-    return DSB(DS_00107802 + side * 0x94u) == 7u;               /* 0x4691E */
-}
-
 /* 0x1D540 — record §49-V. The render-table bit 1 handler (DS_000A86C4[1], run
  * by 0x255CC's per-bit walk while DS_00104AEC bit 1 is set): per side it
  * steps the two HUD meters toward their targets and runs the slot's +0x5D/+0x5E
@@ -1576,7 +1559,7 @@ void fight_hud_meter_step(void)
 
         DSB(slot + 0x5Eu) = (u8)(DSB(slot + 0x5Eu) + 1u);       /* 0x1D5E6 */
 
-        if (fight_freeze_or_state7(side) != 0u) {               /* 0x1D5F0 0x468D8 */
+        if (ai_pred_468d8(side) != 0u) {               /* 0x1D5F0 0x468D8 */
             if (fight_cmd_bits_30(side) != 0u                   /* 0x1D5FF 0x1D74C */
                     || DSB(slot + 0x63u) != 0u) {               /* 0x1D608 */
                 rate = 3u;                                      /* 0x1D615 */
@@ -1599,7 +1582,7 @@ void fight_hud_meter_step(void)
             }
         }
 
-        if (fight_freeze_or_state7(side) != 0u) {               /* 0x1D6B6 0x468D8 */
+        if (ai_pred_468d8(side) != 0u) {               /* 0x1D6B6 0x468D8 */
             if ((s32)DSB(slot + 0x5Eu) > (s32)lim) {            /* 0x1D6C5..0x1D6CD */
                 DSB(slot + 0x5Eu) = 0;                          /* 0x1D6D1 */
                 s32 c = (s32)DSB(slot + 0x5Du);                 /* 0x1D6DD */

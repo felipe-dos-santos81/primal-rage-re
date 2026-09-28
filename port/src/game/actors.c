@@ -324,6 +324,12 @@ int actors_init(void)
      * §49-V), which 0x255CC's per-bit walk calls while DS_00104AEC bit 1 is
      * set and which clears that bit. */
     fn_register(0x1D540u, fight_hud_meter_step);
+    /* PORT: the pair callbacks 0x21994 stores (record §49-V): the slot +0x0C
+     * 0x216EC (0x3531C case 7, (slot, rec, side)) and the other slot's +0x10
+     * 0x21458 (case 10, which the port calls as (slot, side): the adapter
+     * supplies the record). */
+    fn_register(0x216ECu, (void (*)(void))fighter_216ec);
+    fn_register(0x21458u, (void (*)(void))fighter_21458_case10);
     fn_register(0x22BECu, (void (*)(void))fighter_22bec);
     fn_register(0x29D04u, (void (*)(void))fighter_29d04);
     fn_register(0x370F0u, (void (*)(void))anim_code_370F0);

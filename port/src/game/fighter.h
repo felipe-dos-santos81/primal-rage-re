@@ -834,6 +834,25 @@ u32  fighter_3d3e4(u32 slot);
  * anchor, 0x3C148/0x3C16C and the 0xC8B58[char] stream at those bits). */
 void fighter_3f184(u32 rec);
 void fighter_3f308(u32 slot);
+
+/* 0x468D8 (record §49-V). See fighter.c. */
+int ai_pred_468d8(u32 side);
+
+/* 0x21458 (record §49-V). The slot +0x10 callback 0x21994 arms on the opposite
+ * side's slot: a three-state (+0x58) knockdown-recovery step, (slot, rec, side)
+ * as the reaction callbacks. Registered in actors_init. */
+void fighter_21458(u32 slot, u32 rec, u32 side);
+/* PORT: fighter_state_3531c's case-10 call passes (slot, side); this adapter is
+ * what actors_init registers under 0x21458 (rec = DSD(slot), as at 0x35396). */
+void fighter_21458_case10(u32 slot, u32 side);
+/* 0x216EC (record §49-V). The slot +0x0C callback 0x21994 arms: the six-state
+ * (+0x57) step, (slot, rec, side) as 0x3531C case 7 calls it. Registered in
+ * actors_init. */
+void fighter_216ec(u32 slot, u32 rec, u32 side);
+/* 0x21994 (record §49-V). Arms the pair (the 0x216EC/0x21458 callbacks on the
+ * slot and the other side's slot); returns 1. Its callers 0x21B43/0x21C33 are
+ * unported. */
+u32 fighter_21994(u32 slot, u32 rec);
 s32  fighter_3c404(u32 side, s32 n);
 void fighter_3605c(u32 side, u32 frame_bits);
 
