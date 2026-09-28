@@ -4093,9 +4093,10 @@ void fight_effects_pass(void)
  * then DS_00104B16 == entry+0x21 (0x4A746..0x4A74F) calls fight_4b3f0(entry,
  * index, 1) (0x4A751..0x4A75C), else fight_4b430(entry, index, 1)
  * (0x4A763..0x4A76E) — their own headers name this caller. head advances to
- * next (0x4A773) until it is DS_0010884C again (0x4A775/0x4A77B). Only
- * caller: 0x28788 (mode 9, 0x288C2, record §48-Y); the game's other list
- * walk of this shape, 0x28468 (mode 8, 0x28594), is unported. */
+ * next (0x4A773) until it is DS_0010884C again (0x4A775/0x4A77B). Callers:
+ * 0x28788 (mode 9, 0x288C2, record §48-Y) and 0x28468 (mode 8, 0x28594,
+ * record §49-C) — the same function both call, confirmed by `get_xrefs_to
+ * 0x4A708`, not two near-identical siblings. */
 void fight_effects_hold_all(void)
 {
     u32 head = DSD(DS_0010884C);                        /* 0x4A70C */

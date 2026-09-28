@@ -61,7 +61,9 @@ void fight_effects_pass(void);
  * not 6, zeroes the actor's +0x38/+0x34/+0x36 velocity words and holds it:
  * fight_4b3f0(entry, index, 1) when DS_00104B16 == entry+0x21, else
  * fight_4b430(entry, index, 1) (their own headers name both call sites).
- * Only caller: 0x28788 (mode 9, record §48-Y). */
+ * Callers: 0x28788 (mode 9, record §48-Y) and 0x28594 (mode 8, record
+ * §49-C) — the same function both call, not two near-identical siblings;
+ * `get_xrefs_to 0x4A708` lists both call sites. */
 void fight_effects_hold_all(void);
 
 /* 0x4AC18. The worshipper streams' 0xD500 target (opcode 0x15, mode 0x4000;

@@ -397,6 +397,41 @@ void game_mode_13_step(void);
  * only this function's four); the port omits the register-only computations
  * that feed them. */
 void game_mode_09_step(void);
+
+/* 0x28468 — record §49-C. Mode 8's frame handler (0x24C5C case 8, the table
+ * entry 0x25335 `call 0x28468; jmp 0x2540F`, body to 0x2861B; its only
+ * caller). A near-identical sibling of mode 9's 0x28788 (game_mode_09_step,
+ * record §48-Y, above): the same unconditional preamble (fight_slot_clear,
+ * camera_screen_base per side, the position latches, camera_project per
+ * side, camera_decay, fighter_pass_a), but fight_slot_pass (0x284F8, 0x3CB68)
+ * runs unconditionally here — mode 9 gates it on neither side's +0x41 byte
+ * having bit 1 set (0x28815..0x28825); mode 8 has no such gate. Then
+ * fight_hud_pass(0)/(1), fighter_pass_b(1), fight_effects_pass and
+ * camera_y_commit, exactly as mode 9. The word DS_00104AF8 counts down the
+ * same way, arming DS_001078FE = DS_001078FC = 1, OR-ing 0x10 into both
+ * sides' +0x41 byte and setting DS_000F0AFE = 4 on reaching 0; either way
+ * DS_00104AEC |= 2. The results gate reads different bytes than mode 9's:
+ * DS_001078FE (not DS_001078FC) == 0 (0x28576..0x2857D), then DS_000F0AFE !=
+ * 4 (0x28583..0x2858E), either returning before the results state.
+ * The results state is much slimmer than mode 9's: it holds every
+ * effects-list entry (fight_effects_hold_all, 0x28594 0x4A708 — the same
+ * function mode 9 calls, not a separate sibling; `get_xrefs_to 0x4A708`
+ * confirms 0x28594 as one of its call sites) and draws the result caption
+ * (flow_match_result_text, 0x28599 0x28130 — likewise the same function).
+ * Unlike mode 9, mode 8 never reads or writes the match result DS_00104AD4:
+ * there is no win/lose/draw dispatch, no flow_match_streak_update, no
+ * DS_00108173 draw force and no config_play_time_snap/close. It only rearms
+ * the countdown words (DS_00104AFE = 0xF0, DS_001088EE = 0x3C, the same
+ * constants mode 9 uses) and, on the byte DS_00104B1D read into AL
+ * (0x285A8), installs the hook game_hook_25bbc (DS_00104AE4 = 0x25BBC) and
+ * sets DS_00104B25 = 1 and mode DS_00104B00 = 0x16 unconditionally; only the
+ * return mode DS_00104AFA differs: 0x30 when DS_00104B1D == 3, else 5. No
+ * call site in 0x28468 targets the bare-`ret` stub 0x32BAC (game_mode_09_
+ * step's finding, above): all fifteen CALL instructions in this function
+ * were checked and each targets a real, already-ported callee.
+ * EBX/ECX/EDX/ESI/EDI are pushed and popped. */
+void game_mode_08_step(void);
+
 void flow_scroll_reset(u32 stage);
 void flow_challenge_open(void);
 void flow_challenge_drop(void);
