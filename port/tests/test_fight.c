@@ -922,10 +922,12 @@ static void check_fighter_pass_a(void)
 }
 
 /* 0x19068: the +0x5E timer and the +0x5A stance timer arm the record's
- * animation float from +0x5C and clear the record's +0x20. */
+ * animation float from +0x5C and clear the record's +0x20 on the matched-
+ * stance side. The mismatched/0xFF side takes the 0x190C1 skip, which now
+ * calls hit_stance_timer (0x1922C, record §49-B) directly. */
 static void check_fighter_pass_b(void)
 {
-    u32 p0 = FIGHT_RECS;
+    u32 p0 = FIGHT_RECS, p1 = FIGHT_RECS + 0x100u;
 
     fight_reset_recs();
     DSB(DS_00107802) = 0;
@@ -939,16 +941,33 @@ static void check_fighter_pass_b(void)
     DSD(p0 + 0x24u) = 0;
     DSD(p0 + 0x20u) = 0xDEADBEEFu;
     DSB(0x001078A3u) = 0;
-    DSB(DS_00100B58 + 1u) = 0x55;            /* side 1 skips through the gap */
+    DSB(DS_00100B58 + 1u) = 0x55;            /* side 1 mismatches -> 0x1922C */
+
+    /* side 1: hit_stance_timer's write arm (B5A > 0, rec+0x24 clear). Reuses
+     * B5C = 3 -> 3.0f, the same value side 0 proves is not clamped by
+     * DS_0008058C two lines below, so a clamp bug in either arm would move
+     * both checks together. */
+    DSB(DS_00100B5A + 1u) = 2;
+    DSB(DS_00100B5C + 1u) = 3;
+    DSD(p1 + 0x24u) = 0;
+    DSD(p1 + 0x20u) = 0xCAFEBABEu;
+    DSB(DS_00100B5E + 1u) = 9;
 
     fighter_pass_b(1);                  /* arg != 0 bypasses the 0x3C570 gate */
     CHECK_EQ_INT((int)DSB(DS_00100B5E), 0x0A);
     CHECK_EQ_INT((int)DSD(p0 + 0x24u), 0x40400000);
     CHECK_EQ_INT((int)DSD(p0 + 0x20u), 0);
+    /* side 1, via hit_stance_timer(1) from the 0x190C1 skip. */
+    CHECK_EQ_INT((int)DSD(p1 + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSD(p1 + 0x20u), 0);
+    CHECK_EQ_INT((int)DSB(DS_00100B5A + 1u), 0);
+    CHECK_EQ_INT((int)DSB(DS_00100B5E + 1u), 0);
 
     /* 0xFF is a real stance value (0x3BDDC writes it): it must take the 0x1922C
-     * skip even when it equals DS_00100B58[side]. The timer and record fields
-     * keep their sentinels. */
+     * skip even when it equals DS_00100B58[side]. Side 0 has rec+0x24 already
+     * set (non-zero), so hit_stance_timer's inner write is skipped and the
+     * record fields keep their sentinels; B5A/B5E are still cleared
+     * unconditionally. */
     DSB(0x0010780Fu) = 0xFF;
     DSB(DS_00100B58) = 0xFF;
     DSB(DS_00100B5E) = 5;
@@ -959,10 +978,24 @@ static void check_fighter_pass_b(void)
     DSB(0x001078A3u) = 0xFF;
     DSB(DS_00100B58 + 1u) = 0xFF;
 
+    /* side 1: hit_stance_timer's guard-false arm (B5A <= 0, as a signed
+     * byte): the whole B5A block is skipped, so B5A and the record fields
+     * keep their sentinels; only B5E is cleared unconditionally. */
+    DSB(DS_00100B5A + 1u) = 0xFEu;      /* signed -2 */
+    DSD(p1 + 0x24u) = 0x11111111u;
+    DSD(p1 + 0x20u) = 0x22222222u;
+    DSB(DS_00100B5E + 1u) = 0x77u;
+
     fighter_pass_b(1);
-    CHECK_EQ_INT((int)DSB(DS_00100B5E), 5);
+    CHECK_EQ_INT((int)DSB(DS_00100B5E), 0);
+    CHECK_EQ_INT((int)DSB(DS_00100B5A), 0);
     CHECK_EQ_INT((int)DSD(p0 + 0x24u), (int)0xDEADBEEFu);
     CHECK_EQ_INT((int)DSD(p0 + 0x20u), 0x12345678);
+    /* side 1. */
+    CHECK_EQ_INT((int)DSB(DS_00100B5A + 1u), 0xFE);
+    CHECK_EQ_INT((int)DSD(p1 + 0x24u), (int)0x11111111u);
+    CHECK_EQ_INT((int)DSD(p1 + 0x20u), (int)0x22222222u);
+    CHECK_EQ_INT((int)DSB(DS_00100B5E + 1u), 0);
 }
 
 /* 0x35658: the HUD pass's `rec+0x28 = *rec+0x18` and `*rec+0x28 |= 1` walk the
@@ -8984,6 +9017,95 @@ static void check_state_machine(void)
     DSW(DS_001088E0) = 0x4002u;
     CHECK_EQ_INT((int)hit_reaction_pick(0u, 0u), 9);
     DSD(DS_00101514) = saved_tab;
+}
+
+/* 0x1DE64's scanner arm (slot+0x63 == 0, record §49-B): 0x46460/0x4649C
+ * (fighter_input_read/fighter_input_scan) over the input ring at
+ * DS_00108270 (side stride 0x28), positioned by DS_001082D2 >> 16. Neither
+ * function is exercised by name anywhere else in this file, so every branch
+ * — the n = 5/0xF selection, the no-bits skip, the below-floor continue, the
+ * ambiguous early return and the i >= 2 capture — is proven directly here.
+ * pos0 is pinned to 15, so index i reads ring position 15 - i for i in
+ * [0, 14] (n maxes at 0xF) with no wraparound. */
+static void check_hit_reaction_scan(void)
+{
+    u8 sv_ring[0x50];
+    u32 sv_pos = DSD(0x001082D2u);
+    u32 s0 = DS_001077B0;
+    u32 tab = FIGHT_RECS + 0x500u;
+    u32 saved_tab = DSD(DS_00101514);
+
+    tf_snap(sv_ring, DS_00108270, sizeof sv_ring);
+
+    (void)tf_hit_fixture(0);
+    DSB(s0 + 0x63u) = 0;                        /* enable the scanner arm */
+    DSD(DS_00101514) = tab;
+    mem_fill(tab, 0, 0x300u);
+    DSW(tab + 0x2D4u) = 0;                      /* sel: unread on every return below */
+    DSD(0x001082D2u) = 0x000F0000u;             /* pos0 = 15 */
+
+    /* A: no live input anywhere in the n = 5 window (>>16 = 0xE < 0xF) ->
+     * the loop exhausts with r still 0xFF. */
+    mem_fill(DS_00108270, 0, 0x50u);
+    DSD(s0 + 0x90u) = 0x000E0000u;
+    CHECK_EQ_INT((int)hit_reaction_pick(0u, 0u), 0xFF);
+
+    /* B: a valid, unambiguous match sits at ring index 6 (position 9; its own
+     * 3-entry scan window at 8/7 stays clear of mask 0xC). At n = 5 (still
+     * 0xE0000) it is outside the loop and 0xFF stands; raising to the >>16 ==
+     * 0xF boundary (not < 0xF -> n = 0xF) reaches it and the stance-2, bit-0
+     * mapping applies. */
+    DSW(DS_00108270 + 9u * 2u) = 0x0001u;
+    DSW(DS_00108270 + 8u * 2u) = 0;
+    DSW(DS_00108270 + 7u * 2u) = 0;
+    CHECK_EQ_INT((int)hit_reaction_pick(0u, 0u), 0xFF);         /* n = 5: unreached */
+    DSD(s0 + 0x90u) = 0x000F0000u;
+    CHECK_EQ_INT((int)hit_reaction_pick(0u, 2u), 0x0C);
+
+    /* C: an index-0 word whose scan overlaps BOTH masks (0xF hits mask 3 and
+     * mask 0xC on its very first, self-overlapping window entry) is
+     * ambiguous and returns 0xFF immediately (0x1DF24), bypassing index 6's
+     * reachable match B just proved. A "continue past ambiguous" mutation
+     * would instead land on index 6 and return 0x0C. */
+    mem_fill(DS_00108270, 0, 0x50u);
+    DSW(DS_00108270 + 15u * 2u) = 0x000Fu;
+    DSW(DS_00108270 + 9u * 2u) = 0x0001u;
+    DSW(DS_00108270 + 8u * 2u) = 0;
+    DSW(DS_00108270 + 7u * 2u) = 0;
+    CHECK_EQ_INT((int)hit_reaction_pick(0u, 0u), 0xFF);
+
+    /* D: an index-0 word that is a valid but NON-ambiguous match (bit 1 only,
+     * mask 3 hits, mask 0xC's window stays clear) is still below the i >= 2
+     * floor (0x1DF34), so the scan keeps going past it to index 6's (bit 0)
+     * match — index 0's word is deliberately a different bit than index 6's
+     * so a "capture on any match" (floor lowered) mutation returns 0x0D
+     * instead of the correct 0x0C. */
+    mem_fill(DS_00108270, 0, 0x50u);
+    DSW(DS_00108270 + 15u * 2u) = 0x0002u;
+    DSW(DS_00108270 + 14u * 2u) = 0;
+    DSW(DS_00108270 + 13u * 2u) = 0;
+    DSW(DS_00108270 + 9u * 2u) = 0x0001u;
+    DSW(DS_00108270 + 8u * 2u) = 0;
+    DSW(DS_00108270 + 7u * 2u) = 0;
+    CHECK_EQ_INT((int)hit_reaction_pick(0u, 2u), 0x0C);
+
+    /* E: a match exactly at the i >= 2 floor (index 2, position 13) is
+     * captured immediately — its own bit 1 maps, not index 6's bit 0, so a
+     * floor-boundary-off-by-one mutation (i > 2 instead of i >= 2, or vice
+     * versa) fails this. */
+    mem_fill(DS_00108270, 0, 0x50u);
+    DSW(DS_00108270 + 13u * 2u) = 0x0002u;
+    DSW(DS_00108270 + 12u * 2u) = 0;
+    DSW(DS_00108270 + 11u * 2u) = 0;
+    DSW(DS_00108270 + 9u * 2u) = 0x0001u;
+    DSW(DS_00108270 + 8u * 2u) = 0;
+    DSW(DS_00108270 + 7u * 2u) = 0;
+    CHECK_EQ_INT((int)hit_reaction_pick(0u, 2u), 0x0D);
+
+    DSD(s0 + 0x90u) = 0;
+    DSD(DS_00101514) = saved_tab;
+    DSD(0x001082D2u) = sv_pos;
+    tf_put(sv_ring, DS_00108270, sizeof sv_ring);
 }
 
 /* Task 3: the remaining 0x34B14 +0x52 handlers. Each case seeds the inputs the
@@ -30520,6 +30642,7 @@ int test_fight(void)
     check_hit_reaction_drive();
     check_hit_chain();
     check_hit_helpers();
+    check_hit_reaction_scan();
     check_state_machine();
     check_state_handlers();
     check_gap_handlers();

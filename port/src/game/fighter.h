@@ -59,9 +59,8 @@ void fighter_pass_a(void);
 /* 0x19068. The second per-frame fighter pass, called with arg = 0 by the
  * arena frame. Gated on DS_00107802/DS_00107896 != 0x13; per side it runs the
  * hit-stun/timer update over DS_00100B58/B5A/B5C/B5E and the fighter record,
- * calling 0x3C570, 0x1922C and 0x3CF38. No RNG. 0x1922C/0x3CF38 are named gaps
- * (§7.6); the gates, the timer arithmetic and the record float store are
- * ported. */
+ * calling 0x3C570, 0x1922C (hit_stance_timer, record §49-B) and 0x3CF38
+ * (hit_chain_resolve). No RNG. Fully ported. */
 void fighter_pass_b(u32 arg);
 
 /* 0x186D0. The slot position latch the game_frame tail (0x25438) calls per live
@@ -375,7 +374,7 @@ void fighter_38fec(u32 side);
 void fighter_39040(u32 side);
 
 /* 0x1DE64. The reaction picker: map the side's command word (or, with slot+0x63
- * clear, the 0x46460/0x4649C input scan — a named gap) through 0x1DDF4 to a
+ * clear, the 0x46460/0x4649C input scan, record §49-B) through 0x1DDF4 to a
  * reaction code; 0xFF when nothing maps. */
 u32 hit_reaction_pick(u32 side, u32 stance);
 
