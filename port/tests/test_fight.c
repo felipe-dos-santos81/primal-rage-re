@@ -35644,6 +35644,140 @@ static void check_49z_47b04(void)
     mz_restore();
 }
 
+/* Row `row` (all 0x2B cells): the glyph sprite id and the palette entry of
+ * each cell, in order. */
+static void z_row_snap(s32 row, u32 out[0x2B * 2])
+{
+    s32 c;
+    for (c = 0; c < 0x2B; c++) {
+        out[c * 2] = ct_sprite(row, c);
+        out[c * 2 + 1] = q_cell_pal(row, c);
+    }
+}
+
+/* Redraw `s` at (col, row) into an empty row with `mode` and compare the
+ * sprite ids and palette entries with the row as it stood (`got`). */
+static int z_row_is(s32 row, s32 col, const char *s, u32 mode,
+                    const u32 got[0x2B * 2])
+{
+    u32 want[0x2B * 2];
+    u8 buf[8];
+    memcpy(buf, s, strlen(s) + 1u);
+    mem_fill(DS_00105F38 + (u32)row * 0xACu, 0, 0xACu);
+    text_cursor_hold(col, row, buf, mode);
+    z_row_snap(row, want);
+    return memcmp(got, want, sizeof want) == 0 && q_row_cells(row) != 0;
+}
+
+/* 0x4F4E8 (the render table's bit-0 entry). */
+static void check_49z_round_timer(void)
+{
+    typedef struct { u32 d, tick; u8 f2; u8 fire; } trow_t;
+    static const trow_t rows[] = {
+        { 0x1E, 0x3C, 0x0F, 1 },        /* 15 > 10: mode 0x4000, 14 */
+        { 0x1E, 0x3C, 0x0B, 1 },        /* 11 > 10: 10 */
+        { 0x1E, 0x3C, 0x0A, 1 },        /* 10: mode 0x3000, 09 */
+        { 0x1E, 0x3C, 0x01, 1 },        /* 00 */
+        { 0x1E, 0x3C, 0x00, 0 },        /* no countdown left */
+        { 0x1E, 0x3D, 0x0F, 0 },        /* the tick is not a multiple */
+        { 0x1E, 0x00, 0x0F, 1 },        /* tick 0 is */
+        { 0x1E, 0x1234003Cu, 0x0F, 1 },     /* the tick is the low word */
+        { 0x1E, 0x1234003Du, 0x0F, 0 },
+        { 0x62, 0x62, 0x0F, 1 },        /* DS_001088D0 0x62 still runs */
+        { 0x63, 0x63, 0x0F, 0 },        /* 0x63 does not (signed jg) */
+        { 0xFFFFFFFCu, 0x08, 0x0F, 1 }, /* -4 (signed): 8 % 4 == 0 */
+        { 0xFFFFFFFCu, 0x06, 0x0F, 0 },
+        { 0, 0, 0x0F, 0 },              /* the original's #DE */
+        { 0x1E, 0x3C, 0x80, 1 },        /* -128 <= 10 (signed): mode 0x3000 */
+        { 0x1E, 0x3C, 0xF6, 1 },
+    };
+    u32 k, got[0x2B * 2], got3[0x2B * 2], got4[0x2B * 2], i;
+    if (!mz_save()) { CHECK(0, "the §49-Z snapshot allocates"); return; }
+
+    /* the two modes render differently, so the rows below can tell them apart */
+    m5_seed(0u);
+    mem_fill(DS_00105F38 + 0xACu, 0, 0xACu);
+    {
+        u8 b[4] = { '1', '4', 0, 0 };
+        text_cursor_hold(0x13, 1, b, 0x3002u);
+        z_row_snap(1, got3);
+        mem_fill(DS_00105F38 + 0xACu, 0, 0xACu);
+        text_cursor_hold(0x13, 1, b, 0x4002u);
+        z_row_snap(1, got4);
+        CHECK(memcmp(got3, got4, sizeof got3) != 0, "modes 0x3002 and 0x4002 render differently");
+    }
+
+    /* DS_00105B3B set: the two sides' +0x3C numbers on row 7 (width 6, zero
+     * padded, mode 0x2000, cursor kept), and nothing else */
+    m5_seed(0u);
+    mem_fill(DS_00105F38 + 0xACu, 0, 0xACu);
+    mem_fill(DS_00105F38 + 7u * 0xACu, 0, 0xACu);
+    DSB(DS_00105B3B) = 1u;
+    DSD(DS_001077B0 + 0x3Cu) = 25u;
+    DSD(DS_001077B0 + 0x94u + 0x3Cu) = 4711u;
+    DSD(DS_001088D0) = 0x1Eu;
+    DSD(DS_00104AF4) = 0x3Cu;
+    DSB(DS_001088F2) = 0x10u;
+    DSD(DS_00105F34) = 0x12345678u;
+    flow_round_timer_step();
+    z_row_snap(7, got);
+    {
+        u8 b0[8] = { '0', '0', '0', '0', '2', '5', 0, 0 };
+        u8 b1[8] = { '0', '0', '4', '7', '1', '1', 0, 0 };
+        mem_fill(DS_00105F38 + 7u * 0xACu, 0, 0xACu);
+        text_cursor_hold(1, 7, b0, 0x2000u);
+        text_cursor_hold(0x23, 7, b1, 0x2000u);
+        z_row_snap(7, got3);
+    }
+    CHECK(memcmp(got, got3, sizeof got) == 0, "0x4F4E8 draws both sides' numbers on row 7");
+    CHECK(q_row_cells(7) == 12, "twelve digit cells on row 7");
+    CHECK_EQ_INT(q_row_cells(1), 0);
+    CHECK_EQ_INT((int)DSD(DS_00105F34), 0x12345678);
+    CHECK_EQ_INT((int)DSB(DS_001088F2), 0x10);
+    CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x40);
+
+    /* DS_00105B3B clear: the countdown redraw */
+    for (k = 0; k < sizeof rows / sizeof rows[0]; k++) {
+        const trow_t *r = &rows[k];
+        u8 nb;
+        char str[8];
+        u8 buf[8];
+        u32 mode;
+        m5_seed(0u);
+        mem_fill(DS_00105F38 + 0xACu, 0, 0xACu);
+        mem_fill(DS_00105F38 + 7u * 0xACu, 0, 0xACu);
+        DSB(DS_00105B3B) = 0u;
+        DSD(DS_001077B0 + 0x3Cu) = 25u;
+        DSD(DS_001088D0) = r->d;
+        DSD(DS_00104AF4) = r->tick;
+        DSB(DS_001088F2) = r->f2;
+        DSD(DS_00105F34) = 0x12345678u;
+        flow_round_timer_step();
+        CHECK_EQ_INT(q_row_cells(7), 0);
+        CHECK_EQ_INT((int)DSD(DS_00105F34), 0x12345678);
+        CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x40);
+        if (!r->fire) {
+            CHECK_EQ_INT((int)DSB(DS_001088F2), (int)r->f2);
+            CHECK_EQ_INT(q_row_cells(1), 0);
+            continue;
+        }
+        nb = (u8)(r->f2 - 1u);
+        CHECK_EQ_INT((int)DSB(DS_001088F2), (int)nb);
+        mode = ((s32)(s8)r->f2 <= 10) ? 0x3002u : 0x4002u;
+        (void)text_number_format((s32)(s8)nb, buf, 2, 0u);
+        for (i = 0; i < 8u; i++) str[i] = (char)buf[i];
+        z_row_snap(1, got);
+        CHECK(z_row_is(1, 0x13, str, mode, got), "0x4F4E8's countdown row");
+        /* the other mode draws something else */
+        z_row_snap(1, got);
+        mem_fill(DS_00105F38 + 0xACu, 0, 0xACu);
+        text_cursor_hold(0x13, 1, buf, mode == 0x3002u ? 0x4002u : 0x3002u);
+        z_row_snap(1, got4);
+        CHECK(memcmp(got, got4, sizeof got) != 0, "the other mode differs");
+    }
+    mz_restore();
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -35927,6 +36061,7 @@ int test_fight(void)
     check_49z_45b50();
     check_49z_47a00();
     check_49z_47b04();
+    check_49z_round_timer();
 
     return g_failures - before;
 }
