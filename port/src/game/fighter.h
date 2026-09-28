@@ -786,6 +786,42 @@ void fighter_45238(u32 rec);
 void fighter_458d4(u32 rec);
 void fighter_45908(u32 rec);
 u32  fighter_3a2a0(u32 side, u32 edx, u32 ebx, u32 ecx, u32 word);
+/* Record §48-P. The slot callbacks the entrance poses store: character 0's
+ * (0x40C34, and its reaction-0x26/0x27 callback 0x3F3F4) +0x0C 0x3F360, +0x18
+ * 0x3F1F0 and +0x1C 0x3F284; character 2's (0x488B8) +0x0C 0x487D4, +0x18
+ * 0x48668 and +0x1C 0x486F8; character 6's (0x23530) +0x0C 0x233A8, +0x18
+ * 0x23250 and +0x1C 0x232B4. Character 5's reaction-0x22 callback 0x3E064 and
+ * the callbacks it stores, +0x0C 0x3DE54, +0x18 0x3DD14 and +0x1C 0x3DD84, and
+ * the other slot's +0x10 handler 0x3D424 (0x3531C case 10, (slot, side)) and
+ * +0x14 callback 0x3D3E4 (fn(slot), EAX returned) that 0x3DD84 stores. The
+ * shapes are §48-R's: reaction and +0x0C callbacks (slot, rec, side), +0x18
+ * hooks fn(side) with EAX returned, +0x1C callbacks fn(side). */
+void fighter_3f3f4(u32 slot, u32 rec, u32 side);
+void fighter_3f360(u32 slot, u32 rec, u32 side);
+u32  fighter_3f1f0(u32 side);
+void fighter_3f284(u32 side);
+void fighter_487d4(u32 slot, u32 rec, u32 side);
+u32  fighter_48668(u32 side);
+void fighter_486f8(u32 side);
+void fighter_233a8(u32 slot, u32 rec, u32 side);
+u32  fighter_23250(u32 side);
+void fighter_232b4(u32 side);
+void fighter_3e064(u32 slot, u32 rec, u32 side);
+void fighter_3de54(u32 slot, u32 rec, u32 side);
+u32  fighter_3dd14(u32 side);
+void fighter_3dd84(u32 side);
+void fighter_3d424(u32 slot, u32 side);
+u32  fighter_3d3e4(u32 slot);
+/* And their callees no ported code shares: 0x3F184 (EAX = rec: 0x3F308 on
+ * the record's side's slot, the 0xE7C98 landing and +0x57 = 3), 0x3F308 (EAX =
+ * slot: the 0xBB308 spawn at the slot's record), 0x3C404 (EAX = side, EDX =
+ * n: the signed 64ths between the other slot's +0x2C and this one's + n * 64,
+ * facing-signed) and 0x3605C (EAX = side, one stack word: state 9/4/0, the
+ * anchor, 0x3C148/0x3C16C and the 0xC8B58[char] stream at those bits). */
+void fighter_3f184(u32 rec);
+void fighter_3f308(u32 slot);
+s32  fighter_3c404(u32 side, s32 n);
+void fighter_3605c(u32 side, u32 frame_bits);
 
 /* Record §48-C, exported for 0x27254 (flow.c). 0x33ACC: copy slot[side]'s 0x94
  * bytes to `dst` and its record's 0x68 bytes to `dst2` (EAX = side, EDX =

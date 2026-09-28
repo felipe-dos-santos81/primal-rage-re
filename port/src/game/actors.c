@@ -443,6 +443,32 @@ int actors_init(void)
     fn_register(0x24964u, (void (*)(void))anim_code_24964);
     fn_register(0x488B8u, (void (*)(void))fighter_488b8);
     fn_register(0x23530u, (void (*)(void))fighter_23530);
+    /* PORT: record §48-P. The slot callbacks 0x40C34, 0x488B8 and 0x23530
+     * store (+0x0C 0x3F360/0x487D4/0x233A8, 0x3531C case 7, (slot, rec,
+     * side); +0x18 0x3F1F0/0x48668/0x23250, 0x19020, fn(side) with EAX
+     * returned; +0x1C 0x3F284/0x486F8/0x232B4, 0x193B0's 0x19505, fn(side));
+     * character 0's reaction-0x26/0x27 callback 0x3F3F4 (*(u32*)0xA3820 and
+     * 0xA3834) and character 5's reaction-0x22 callback 0x3E064 (*(u32*)
+     * 0xA50D0), (slot, rec, side), and 0x3E064's three (+0x0C 0x3DE54, +0x18
+     * 0x3DD14, +0x1C 0x3DD84); and 0x3DD84's +0x10 handler 0x3D424 (0x3531C
+     * case 10, (slot, side)) and +0x14 callback 0x3D3E4 (fn(slot), EAX
+     * returned). */
+    fn_register(0x3F3F4u, (void (*)(void))fighter_3f3f4);
+    fn_register(0x3F360u, (void (*)(void))fighter_3f360);
+    fn_register(0x3F1F0u, (void (*)(void))fighter_3f1f0);
+    fn_register(0x3F284u, (void (*)(void))fighter_3f284);
+    fn_register(0x487D4u, (void (*)(void))fighter_487d4);
+    fn_register(0x48668u, (void (*)(void))fighter_48668);
+    fn_register(0x486F8u, (void (*)(void))fighter_486f8);
+    fn_register(0x233A8u, (void (*)(void))fighter_233a8);
+    fn_register(0x23250u, (void (*)(void))fighter_23250);
+    fn_register(0x232B4u, (void (*)(void))fighter_232b4);
+    fn_register(0x3E064u, (void (*)(void))fighter_3e064);
+    fn_register(0x3DE54u, (void (*)(void))fighter_3de54);
+    fn_register(0x3DD14u, (void (*)(void))fighter_3dd14);
+    fn_register(0x3DD84u, (void (*)(void))fighter_3dd84);
+    fn_register(0x3D424u, (void (*)(void))fighter_3d424);
+    fn_register(0x3D3E4u, (void (*)(void))fighter_3d3e4);
     /* PORT: record §46-D. The update table's entries 1 (0x48F98, the type-0x2D
      * node walk; dword at 0xA8648) and 10 (0x28F08, the type-0x19 spawner;
      * dword at 0xA866C), fn() with the unread EAX index; and the 0xD000
