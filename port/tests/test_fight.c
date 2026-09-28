@@ -29725,6 +29725,293 @@ static void check_mode_0a(void)
     mz_restore();
 }
 
+/* ---- record §49-H: mode 0x1E's frame handler 0x1EEB0 ---------------------- */
+
+/* Every field game_mode_1e_step reads or writes, seeded to 0x77-style
+ * sentinels distinct from every post-condition, plus the sub-state under
+ * test. DS_00104B00's high word is 0xBEEF: every mode store the function
+ * makes is a word, so a leaked dword write is caught. */
+static void m1e_seed(u8 substate)
+{
+    DSD(DS_00104B00) = 0xBEEF0000u | 0x1Eu;
+    DSB(DS_00104B25) = substate;
+    DSD(DS_00104AD4) = 0x77777777u;
+    DSB(DS_00104B1F) = 0x77u;
+    DSB(DS_00104B14) = 0x77u;
+    DSD(DS_00104ABC) = 0x77777777u;
+    DSB(DS_00107813) = 0x77u;
+    DSB(DS_001078A7) = 0x77u;
+    DSD(DS_00104AE4) = 0x77777777u;
+    DSW(DS_00104AFE) = 0x7777u;
+    DSW(DS_001088EE) = 0x7777u;
+    DSW(DS_00104AFA) = 0x7777u;
+}
+
+/* State 1 (the jump table's own shared-tail `ret`, a genuine no-op) and the
+ * always-parked "gated" arms of states 0/4/5/7/8/0xB..0xE/0xF/0x10, which
+ * this port leaves as named gaps (record §49-H, flow.h): every one of
+ * these calls must leave every field this function touches exactly at its
+ * sentinel, proving the state truly does not advance without the unported
+ * 0x1ECC8/0x1EC38/0x1F458 (not merely "the test didn't look"). */
+static void check_mode_1e_parked(void)
+{
+    static const u8 parked[] = {
+        1u, 5u, 8u, 0x0Bu, 0x0Cu, 0x0Du, 0x0Eu, 0x0Fu, 0x10u,
+    };
+    u32 i;
+    if (!mz_save()) { CHECK(0, "the §49-H snapshot allocates"); return; }
+
+    for (i = 0; i < sizeof parked / sizeof parked[0]; i++) {
+        m1e_seed(parked[i]);
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), (int)parked[i]);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x1Eu));
+        CHECK_EQ_INT((int)DSD(DS_00104AD4), (int)0x77777777u);
+        CHECK_EQ_INT((int)DSB(DS_00104B1F), 0x77);
+        CHECK_EQ_INT((int)DSB(DS_00104B14), 0x77);
+        CHECK_EQ_INT((int)DSD(DS_00104ABC), (int)0x77777777u);
+        CHECK_EQ_INT((int)DSB(DS_00107813), 0x77);
+        CHECK_EQ_INT((int)DSB(DS_001078A7), 0x77);
+        CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0x77777777u);
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x7777);
+        CHECK_EQ_INT((int)DSW(DS_001088EE), 0x7777);
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x7777);
+    }
+
+    /* State 0's own gate: only reached (and only then parked) when
+     * DS_00104AD4 == 2 && DS_00104B1F == 0 (0x1EECF/0x1EED6/0x1EED8/
+     * 0x1EEDF); every other combination takes the ported short-circuit
+     * arm (DS_00104B25 = 4), proven separately by check_mode_1e_gates. */
+    {
+        m1e_seed(0u);
+        DSD(DS_00104AD4) = 2u;
+        DSB(DS_00104B1F) = 0u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+    }
+
+    mz_restore();
+}
+
+/* States 0, 4 and 7's ported short-circuit arms: the raw's chain of `AND`
+ * conditions before the unported rank probe short-circuits in assembly
+ * (a `JNZ`/`JZ` on the first false term skips the call entirely), so each
+ * of these three states can determine "do not enter the gated arm" and
+ * advance without the unported 0x1ECC8/0x1EC38. */
+static void check_mode_1e_gates(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-H snapshot allocates"); return; }
+
+    /* state 0: DS_00104AD4 != 2 alone already short-circuits. */
+    {
+        m1e_seed(0u);
+        DSD(DS_00104AD4) = 0u;
+        DSB(DS_00104B1F) = 0u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+    }
+    /* state 0: DS_00104AD4 == 2 but DS_00104B1F != 0 also short-circuits. */
+    {
+        m1e_seed(0u);
+        DSD(DS_00104AD4) = 2u;
+        DSB(DS_00104B1F) = 1u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+    }
+
+    /* state 4: DS_00107813 != 0 short-circuits straight to state 7. */
+    {
+        m1e_seed(4u);
+        DSB(DS_00107813) = 1u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 7);
+    }
+    /* state 4: DS_00107813 == 0 enters the unported gate and stays parked
+     * at state 4. */
+    {
+        m1e_seed(4u);
+        DSB(DS_00107813) = 0u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+    }
+
+    /* state 7: DS_001078A7 != 0 short-circuits straight to state 0xA. */
+    {
+        m1e_seed(7u);
+        DSB(DS_001078A7) = 1u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0x0A);
+    }
+    /* state 7: DS_001078A7 == 0 enters the unported gate and stays parked
+     * at state 7. */
+    {
+        m1e_seed(7u);
+        DSB(DS_001078A7) = 0u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 7);
+    }
+
+    mz_restore();
+}
+
+/* State 0xA's four exits: two through the match-result/think-byte check
+ * (mode = 0x14, whether or not DS_00104B1F is set), and the DS_00104B14
+ * fork below it (the versus-screen hook + mode-0x1A wipe, or mode = 0x14
+ * again). Every call leaves DS_00104B25 = 0 (proven distinctly from every
+ * other sub-state's post-condition by seeding it 0xA first). */
+static void check_mode_1e_0a(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-H snapshot allocates"); return; }
+
+    /* DS_00104B1F == 0, match result DS_00104AD4 == 2 (a draw): mode 0x14,
+     * regardless of DS_00104B14. */
+    {
+        m1e_seed(0x0Au);
+        DSB(DS_00104B1F) = 0u;
+        DSD(DS_00104AD4) = 2u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x14u));
+    }
+
+    /* DS_00104B1F == 0, result 0's think-byte (DS_00107813) == 1: mode
+     * 0x14. */
+    {
+        m1e_seed(0x0Au);
+        DSB(DS_00104B1F) = 0u;
+        DSD(DS_00104AD4) = 0u;
+        DSB(DS_00107813) = 1u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x14u));
+    }
+
+    /* Past that check (either DS_00104B1F != 0, or DS_00104AD4 != 2 with a
+     * think-byte != 1): DS_00104B14 == 0 installs the versus-screen hook
+     * and arms the mode-0x1A wipe with return mode 0x11. */
+    {
+        m1e_seed(0x0Au);
+        DSB(DS_00104B1F) = 0u;
+        DSD(DS_00104AD4) = 0u;
+        DSB(DS_00107813) = 0u;
+        DSB(DS_00104B14) = 0u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+        CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)fn_origin(fight_hook_430e8));
+        CHECK_EQ_INT((int)DSB(DS_001088F5), 0);
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x11);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x1Au));
+    }
+
+    /* Same past-the-check state, but DS_00104B14 != 0: mode 0x14 instead,
+     * no hook install. */
+    {
+        m1e_seed(0x0Au);
+        DSB(DS_00104B1F) = 1u;   /* short-circuits the result/think-byte check too */
+        DSB(DS_00104B14) = 1u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+        CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0x77777777u);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x14u));
+    }
+
+    mz_restore();
+}
+
+/* States 1, 2, 3, 6 and 9's fully-ported bookkeeping. States 2/6/9 call the
+ * already-ported frontend_match_start, which needs real game strings and a
+ * parsed high-score table (record §46-A's own fixture recipe: a fresh-CMOS
+ * hiscore_init after zeroing its storage). */
+static void check_mode_1e_bookkeeping(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-H snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+    mem_fill(0x105E34u, 0, 153u);
+    DSD(DS_00104528) = 0x142095u;
+    hiscore_init();
+
+    /* state 3: input/actor reset (crash-freedom only; frontend_input_reset
+     * and actors_reset are each independently tested elsewhere), then
+     * DS_00104B25 = 0, DS_00104B00 = 0x14. */
+    {
+        m1e_seed(3u);
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x14u));
+    }
+
+    /* state 2: the reset pair, frontend_match_start, then the countdown/
+     * mode/return-mode/sub-state/word quad. */
+    {
+        m1e_seed(2u);
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x12C);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x15u));
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x1E);
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 3);
+        CHECK_EQ_INT((int)DSW(DS_001088EE), 0);
+    }
+
+    /* state 6, DS_00104ABC == 1: frontend_match_start runs and the same
+     * quad is stored, then DS_00104B25 = 7 unconditionally. */
+    {
+        m1e_seed(6u);
+        DSD(DS_00104ABC) = 1u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x12C);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x15u));
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x1E);
+        CHECK_EQ_INT((int)DSW(DS_001088EE), 0);
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 7);
+    }
+
+    /* state 6, DS_00104ABC != 1: frontend_match_start and the quad are
+     * skipped (every sentinel survives), but DS_00104B25 = 7 still runs. */
+    {
+        m1e_seed(6u);
+        DSD(DS_00104ABC) = 2u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x7777);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x1Eu));
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x7777);
+        CHECK_EQ_INT((int)DSW(DS_001088EE), 0x7777);
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 7);
+    }
+
+    /* state 9, DS_00104ABC == 1: side 1's mirror of state 6, landing on
+     * DS_00104B25 = 0xA. */
+    {
+        m1e_seed(9u);
+        DSD(DS_00104ABC) = 1u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x12C);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x15u));
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x1E);
+        CHECK_EQ_INT((int)DSW(DS_001088EE), 0);
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0x0A);
+    }
+
+    /* state 9, DS_00104ABC != 1: skipped quad, still DS_00104B25 = 0xA. */
+    {
+        m1e_seed(9u);
+        DSD(DS_00104ABC) = 2u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x7777);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x1Eu));
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0x0A);
+    }
+
+    mz_restore();
+}
+
+static void check_mode_1e(void)
+{
+    check_mode_1e_parked();
+    check_mode_1e_gates();
+    check_mode_1e_0a();
+    check_mode_1e_bookkeeping();
+}
+
 #define SC_ST   (FIGHT_RECS + 0x7000u)   /* crafted one-word streams, 0x10 apart */
 #define SC_SRC0 (FIGHT_RECS + 0x7800u)   /* a crafted effect source (pset 1 +0x18) */
 #define SC_SRC1 (FIGHT_RECS + 0x7880u)   /* another (pset 2 +0x18) */
@@ -31340,6 +31627,11 @@ int test_fight(void)
      * adjacent to its companion. */
     check_wall_clamp();
     check_mode4_spawn_gate();
+
+    /* check_mode_1e's states 2/3/6/9 also call actors_reset()/actor_spawn
+     * (through frontend_input_reset/actors_reset/frontend_match_start), so
+     * it is placed here too, after check_mode4_spawn_gate. */
+    check_mode_1e();
 
     return g_failures - before;
 }

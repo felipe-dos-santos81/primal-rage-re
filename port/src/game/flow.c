@@ -4305,8 +4305,9 @@ void hiscore_init(void)
  * value column), then spawns the champion's figure: the first of the ten
  * 0xA7DA0 strings whose first byte is the name's character 0x12 selects the
  * 0xA7DCC descriptor (0 when none matches or above 6). 0x1EA08's other four
- * callers (0x11A30 and three in FUN_0001EEB0, the match sub-state machine)
- * belong to the match cycle and stay unwired. */
+ * callers are 0x11A30 (still unwired) and three in game_mode_1e_step's
+ * states 2, 6 and 9 (0x1F140/0x1F278/0x1F39B, record §49-H, below), now
+ * wired. */
 void frontend_match_start(void)
 {
     u8 name[0x24];
@@ -4351,6 +4352,156 @@ void frontend_match_start(void)
      * from a zero record. */
     if (rec != 0u)
         actor_pset_palette(rec, 0u, 0x105FD30u);                /* 0x1EC28 0x2A17C */
+}
+
+/* ---- mode 0x1E, the frame handler 0x1EEB0 (record §49-H) ----------------- */
+
+#define FN_000430E8 0x000430E8u   /* no symbols.h name: the versus-screen hook,
+                                      fight.c's fight_hook_430e8 (record §46-B) */
+
+/* 0x1EEB0 — record §49-H. See flow.h for the full derivation: a 17-state
+ * sub-machine on DS_00104B25, entered from mode 0x13's challenge poll with
+ * DS_00104B25 = 0 when the post-match challenge window runs out unjoined.
+ * States 2/3/6/9/0xA are pure bookkeeping and fully ported; states 0/4/7
+ * have a portable short-circuit arm, ported, plus an unported rank-probe
+ * arm (0x1ECC8/0x1EC38, PORT: notes); states 5/8/0xB..0xE/0xF/0x10 gate
+ * entirely on the unported 0x1F458 name-entry driver and stay parked
+ * (PORT: notes) — exactly the "still waiting" behaviour those states
+ * already have while their own poll returns not-done, not a fabricated
+ * stub. */
+void game_mode_1e_step(void)
+{
+    switch (DSB(DS_00104B25)) {
+    case 0x00u:
+        if (DSD(DS_00104AD4) == 2u && DSB(DS_00104B1F) == 0u) {  /* 0x1EECF/0x1EED6/0x1EED8/0x1EEDF */
+            /* PORT: 0x1EEE1 0x1ECC8 (the high-score-rank probe over
+             * DS_001077EC/DS_00107880 via the unported 0x2DDE4/0x2DB58 and
+             * 0x2DAE4) gates the wipe into state 0xB or 0xC through the
+             * unported 0x1ED2C/0x1EC38; named gap (see flow.h). This state
+             * cannot advance past here without them. */
+        } else {
+            DSB(DS_00104B25) = 4u;                              /* 0x1EF37 */
+        }
+        break;
+    case 0x01u:
+        /* 0x1EE6C's state-1 jump-table entry is the shared tail `ret`
+         * itself (0x1F452): a genuine no-op, not an unported gap. */
+        break;
+    case 0x02u:
+        frontend_input_reset();               /* 0x1F12F 0x4F1E4 */
+        actors_reset();                        /* 0x1F13B 0x2BAF4 (eax=1) */
+        frontend_match_start();                /* 0x1F140 0x1EA08 */
+        DSW(DS_00104AFE) = 0x12Cu;             /* 0x1F145 */
+        DSW(DS_00104B00) = 0x15u;              /* 0x1F14C */
+        DSW(DS_00104AFA) = 0x1Eu;              /* 0x1F153 */
+        DSB(DS_00104B25) = 3u;                 /* 0x1F15C */
+        DSW(DS_001088EE) = 0u;                 /* 0x1F162 */
+        break;
+    case 0x03u:
+        frontend_input_reset();               /* 0x1F175 0x4F1E4 */
+        actors_reset();                        /* 0x1F181 0x2BAF4 (eax=1) */
+        DSB(DS_00104B25) = 0u;                 /* 0x1F186 */
+        DSW(DS_00104B00) = 0x14u;              /* 0x1F18C */
+        break;
+    case 0x04u:
+        if (DSB(DS_00107813) != 0u) {                            /* 0x1F199/0x1F1A0 */
+            DSB(DS_00104B25) = 7u;                                /* 0x1F2AA */
+            break;
+        }
+        /* PORT: 0x1F1AB 0x1EC38(DS_001077EC) — the same rank probe as state
+         * 0 — gates the rest of this state (state 5's screen reset 0x1ED2C
+         * and two voices) through the unported 0x2DDE4/0x2DB58/0x2DAE4/
+         * 0x204F4; named gap (see flow.h). */
+        break;
+    case 0x05u:
+        /* PORT: 0x1F203 polls the unported 0x1F458(0) — the name-entry
+         * driver — for completion before arming state 6; named gap (see
+         * flow.h). This state stays parked exactly as it already would
+         * while 0x1F458 itself reports "not done". */
+        break;
+    case 0x06u:
+        frontend_input_reset();                                 /* 0x1F260 0x4F1E4 */
+        actors_reset();                                          /* 0x1F26A 0x2BAF4 (eax=1) */
+        if (DSD(DS_00104ABC) == 1u) {          /* 0x1F26F/0x1F276 */
+            frontend_match_start();            /* 0x1F278 0x1EA08 */
+            DSW(DS_00104AFE) = 0x12Cu;         /* 0x1F28E */
+            DSW(DS_001088EE) = 0u;             /* 0x1F295 */
+            DSW(DS_00104B00) = 0x15u;          /* 0x1F29C */
+            DSW(DS_00104AFA) = 0x1Eu;          /* 0x1F2A3 */
+        }
+        DSB(DS_00104B25) = 7u;                 /* 0x1F2AA, both arms */
+        break;
+    case 0x07u:
+        if (DSB(DS_001078A7) != 0u) {                            /* 0x1F2B7/0x1F2BE */
+            DSB(DS_00104B25) = 0xAu;                              /* 0x1F3CC */
+            break;
+        }
+        /* PORT: 0x1F2C9 0x1EC38(DS_00107880) — side 1's mirror of state 4's
+         * gate — gates the rest of this state (state 8's two voices);
+         * named gap (see flow.h). */
+        break;
+    case 0x08u:
+        /* PORT: 0x1F326 polls 0x1F458(1) — side 1's mirror of state 5;
+         * named gap (see flow.h). */
+        break;
+    case 0x09u:
+        frontend_input_reset();               /* 0x1F383 0x4F1E4 */
+        actors_reset();                        /* 0x1F38D 0x2BAF4 (eax=1) */
+        if (DSD(DS_00104ABC) == 1u) {          /* 0x1F392/0x1F399 */
+            frontend_match_start();            /* 0x1F39B 0x1EA08 */
+            DSW(DS_00104AFE) = 0x12Cu;         /* 0x1F3B1 */
+            DSW(DS_001088EE) = 0u;             /* 0x1F3B7 */
+            DSW(DS_00104B00) = 0x15u;          /* 0x1F3BE */
+            DSW(DS_00104AFA) = 0x1Eu;          /* 0x1F3C5 */
+        }
+        DSB(DS_00104B25) = 0xAu;               /* 0x1F3CC, both arms */
+        break;
+    case 0x0Au: {
+        frontend_input_reset();                /* 0x1F3DB 0x4F1E4 */
+        /* actors_reset leaves DS_00104B25 = 0: CH is zeroed at 0x1F3E5 and
+         * survives the call, since 0x2BAF4 pushes ECX at entry and pops it
+         * unmodified just before its own `ret` (Ghidra's own extraout_CH_00
+         * for this store is a conservative decompiler artifact, not a real
+         * clobber). */
+        actors_reset();                        /* 0x1F3E7 0x2BAF4 (eax=1) */
+        DSB(DS_00104B25) = 0u;                 /* 0x1F3F1 */
+        if (DSB(DS_00104B1F) == 0u) {          /* 0x1F3EC/0x1F3F7/0x1F3F9 */
+            u32 r = DSD(DS_00104AD4);          /* 0x1F3FB */
+            if (r == 2u) {                     /* 0x1F401/0x1F404 */
+                DSW(DS_00104B00) = 0x14u;      /* 0x1F42E */
+                break;
+            }
+            if (DSB(DS_00107813 + r * 0x94u) == 1u) {   /* 0x1F406..0x1F423 */
+                DSW(DS_00104B00) = 0x14u;      /* 0x1F42E */
+                break;
+            }
+        }
+        if (DSB(DS_00104B14) == 0u) {          /* 0x1F425/0x1F42C */
+            DSD(DS_00104AE4) = FN_000430E8;    /* 0x1F447 */
+            frontend_wipe_arm(0x11u);          /* 0x1F44D 0x4F980 */
+        } else {
+            DSW(DS_00104B00) = 0x14u;          /* 0x1F42E */
+        }
+        break;
+    }
+    case 0x0Bu:
+    case 0x0Cu:
+    case 0x0Du:
+    case 0x0Eu:
+        /* PORT: 0x1EF46/0x1F039/0x1F0C3/0x1EFD8 each poll 0x1F458 (params
+         * 0/1/0/1) for completion before arming the initials-entry priming
+         * states 0xF/0x10 or looping back to state 2; named gap (see
+         * flow.h). */
+        break;
+    case 0x0Fu:
+    case 0x10u:
+        /* PORT: 0x1EFA9/0x1F099 unconditionally re-arm the opposite side's
+         * initials wait (state 0xE/0xD) through the unported 0x1ED2C and
+         * 0x1EC38, plus a priming, return-discarded 0x1F458 call; named gap
+         * (see flow.h). Unreachable from any state this port advances to,
+         * since only the gated states above ever target 0xF/0x10. */
+        break;
+    }
 }
 
 /* 0x10E80 — record §46-F. Initialise the game state: 0x20C10's last call
@@ -5183,12 +5334,14 @@ void game_frame(void)
     case 0x0Au:
         game_mode_0a_step();                           /* 0x2527D 0x28BD4 (record §49-D) */
         break;                                         /* 0x25282 */
+    case 0x1Eu:
+        game_mode_1e_step();                           /* 0x253CB 0x1EEB0 (record §49-H) */
+        break;
     case 0x07u:
     case 0x0Fu:
     case 0x16u:
     case 0x18u:
     case 0x19u:
-    case 0x1Eu:
     case 0x1Fu:
     case 0x21u:
     case 0x22u:
@@ -5212,7 +5365,7 @@ void game_frame(void)
          * 7 0x282C4;
          * 0xF 0x277C0;
          * 0x16 0x4F2B0; 0x18 0x4F6E8;
-         * 0x19 0x4F704; 0x1E 0x1EEB0; 0x1F 0x208F8; 0x21 0x26540;
+         * 0x19 0x4F704; 0x1F 0x208F8; 0x21 0x26540;
          * 0x22 0x26C8C; 0x23 0x26A50; 0x24 0x26F58; 0x25 inline (0x266AC,
          * 0x4EF8C, 0x4F0FC, 0x49C78); 0x27 inline (0x50146, the 0xBCBDC menu
          * 0x2FFC4, 0x65431 longjmp); 0x28..0x2F inline (0x2D974 field 0x29,
@@ -5233,8 +5386,9 @@ void game_frame(void)
          * game_mode_13_step, case 9 (0x28788, record §48-Y) is
          * game_mode_09_step, case 8 (0x28468, record §49-C) is
          * game_mode_08_step, case 0xA (0x28BD4, record §49-D) is
-         * game_mode_0a_step, and case 0x12 (0x41C28, record §48-Z) is
-         * game_mode_12_step, each dispatched above. */
+         * game_mode_0a_step, case 0x12 (0x41C28, record §48-Z) is
+         * game_mode_12_step, and case 0x1E (0x1EEB0, record §49-H) is
+         * game_mode_1e_step, each dispatched above. */
         break;
     case 0x00u:
     case 0x1Cu:

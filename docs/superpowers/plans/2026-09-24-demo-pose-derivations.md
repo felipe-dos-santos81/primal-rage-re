@@ -19154,3 +19154,217 @@ only historical references in `test_fight.c`'s comments, `fighter.c`'s
 unrelated `0x36E78` cross-reference, and the two `docs/superpowers/plans/`
 derivation records that first identified the gap — none of which claim it
 is still open.
+
+## 49-H. Mode 0x1E's frame handler `0x1EEB0` (named-gap batch, branch `gap28-mode1e`)
+
+(The section letter is H. `docs/PROGRESS.md` and this file were grepped for
+`§49-` on `main` at `330b335` first: A–D are taken there. Two sibling
+sessions racing this same batch had already claimed E/F (`gap26-modes7f`,
+uncommitted) and G (`gap27-mode16`, uncommitted) in their own worktrees at
+the time this task started, confirmed by reading `## 49-` headings directly
+out of those worktrees' dirty `docs/superpowers/plans/2026-09-24-demo-pose-
+derivations.md`; H was the first free letter against both. Re-check at
+merge time — this session raced others.)
+
+**Result in one line.** `0x1EEB0`, `game_frame`'s case `0x1E` (table entry
+`0x253CB`, `call 0x1EEB0; jmp 0x2540F`; `get_xrefs_to 0x1EEB0` confirms that
+one call site), is ported as `game_mode_1e_step` (`flow.c`) and wired. It
+is **not** simply "no continue → attract", despite being the return mode
+mode `0x13`'s challenge poll takes when the post-match challenge window
+runs out unjoined (the task's own hint). It is a 17-state sub-machine;
+this task ports every state whose own body does not depend on an unported
+callee (9 of 17, including two states' portable short-circuit arms) and
+leaves the rest — which all turn out to gate on a genuine, separate,
+previously-unidentified subsystem, the post-match **high-score name-entry
+screen** — as documented named gaps, exactly matching what
+`docs/PROGRESS.md`'s cycle-2 paragraph already flagged, without knowing
+why: "the interactive match ... `0x1EEB0`, `0x1F458` ... remains unowned".
+
+### 49-H.1 Sources
+
+The raw comes from the Ghidra HTTP bridge at `127.0.0.1:8089`
+(`disassemble_function`, `read_memory`, `get_xrefs_to` — the Ghidra MCP tool
+does not connect this session), cross-checked instruction-for-instruction
+against `port/decomp/prage.c`'s decompiled `FUN_0001eeb0` (which matched the
+raw in every branch once the raw's `extraout_CH_00`-style unknowns were
+resolved by hand, §49-H.3 below), and the already-ported `frontend_wipe_arm`
+(`0x4F980`)/`fight_hook_430e8` (`0x430E8`, record §46-B, whose own header
+comment already named "`0x1F447` (`0x1EEB0`)" as one of its four store
+sites) for the state-0xA hook/wipe pattern.
+
+### 49-H.2 The dispatch shape
+
+A 17-state sub-machine on the byte `DS_00104B25` (jump table `0x1EE6C`,
+read at `read_memory`; states 0..0x10 — `AL > 0x10` and state 1 both land
+on the shared tail `ret` at `0x1F452`, confirmed by decoding all 17 table
+dwords by hand: entry 1 is `0x1F452` itself, so state 1 is a genuine no-op,
+not an unported gap). Entered with `DS_00104B25 = 0` as the return mode
+`DS_00104AFA` mode `0x13`'s challenge poll (`flow_challenge_poll`, already
+ported, record §48-D) stores at `0x42EF1`/`0x42EF7` when the challenge
+count runs out with nobody joining.
+
+### 49-H.3 What turned out to be portable, and what didn't
+
+Five states are pure bookkeeping over already-ported callees
+(`frontend_input_reset`, `actors_reset`, `frontend_match_start`,
+`frontend_wipe_arm`) and fields this codebase already names elsewhere
+(`DS_00104AD4` the match result, `DS_00104ABC` the player count,
+`DS_00104B1F` the per-side continue mask, `DS_00107813`/`DS_001078A7` the
+per-side "think byte" at the per-fighter record's own field, stride
+`0x94`): state 2 (reset pair, `frontend_match_start`, then the
+`DS_00104AFE = 0x12C` / `DS_00104B00 = 0x15` / `DS_00104AFA = 0x1E` /
+`DS_00104B25 = 3` / `DS_001088EE = 0` quintet); state 3 (reset pair,
+`DS_00104B25 = 0`, `DS_00104B00 = 0x14`); states 6 and 9 (reset pair, then
+— only when `DS_00104ABC == 1` — the same quintet as state 2, before
+`DS_00104B25 = 7`/`0xA` unconditionally either way); and state 0xA.
+
+State 0xA's own reset call (`actors_reset`, `eax = 1`) is followed by
+`DS_00104B25 = 0`, stored from `CH`, which was zeroed by an explicit
+`xor ch,ch` *before* the call — Ghidra's decompiled C renders this store as
+`DAT_00104b25 = extraout_CH_00`, an untracked register, because its default
+analysis cannot prove `CH` survives the call. It does: `0x2BAF4`
+(`actors_reset`'s raw) pushes `ECX` as its second instruction and pops it,
+unmodified, as its second-to-last, bracketing the entire body with no
+intervening write to that stack slot — read by hand, instruction by
+instruction, to settle this one register. Past that store, state 0xA gates
+on `DS_00104B1F`/the match result/the think byte (short-circuiting to
+`DS_00104B00 = 0x14` on either a draw or the winner's think byte) and then
+on `DS_00104B14`: zero installs the hook `FN_000430E8` (`fight_hook_430e8`,
+already ported, record §46-B) and arms the mode-`0x1A` wipe with return
+mode `0x11` (`frontend_wipe_arm`); nonzero falls to `DS_00104B00 = 0x14`
+too. `flow.c`'s comment on `frontend_match_start`'s own four callers is
+corrected: three of its "stay unwired" callers are these states 2/6/9, now
+wired.
+
+The other twelve states (0, 4, 5, 7, 8, 0xB..0xE, primed by 0xF/0x10) gate
+on three functions this task leaves unported: `0x1ECC8` (98 B) and
+`0x1EC38` (141 B, states 0 and 4/7's gate) each call the unported `0x2DDE4`
+(177 B) — read by hand since it decides everything downstream — which
+compares a value against a sorted table at `0x2D400` through the further
+unported `0x2DB58` and returns an insertion rank; `0x1ECC8`'s own body
+proves the two values ranked are `DS_001077EC` and `DS_00107880`, each
+fighter's post-match score (the `+8` field of the two per-side records at
+`DS_001077E4`/`DS_00107878`, stride `0x94`, the same records the demo-fight
+capture's already-ported position-latch code reads) — this is a **high-
+score-table rank lookup**, not a generic timer as the task's own hint
+speculated. `0x1F458` (2897 B, its own subsystem — bigger than `0x1EEB0`
+itself) is the analog/digital-cursor **name-entry screen** those ranked
+states wait on (states 5/8/0xB..0xE poll it, params 0/1 selecting the
+side; states 0xF/0x10 prime it with the return discarded). Of its 10
+callees, eight are already ported — `text_cursor_set` (`0x1C500`),
+`actor_spawn` (`0x2AE14`), `actors_anim_seek` (`0x2BCF4`),
+`text_cursor_hold_font2` (`0x2F510`), `text_number_draw` (`0x2F4D0`),
+`text_number_set` (`0x2F434`), `text_cursor_hold` (`0x2F4BC`) and the
+`0x2C3FC` voice (out of scope, record §45-A) — and only two remain
+unported: `0x1FFD0` (1314 B, 5 callees) and `0x20710` (336 B, 5 callees).
+Even with eight of ten callees already available, `0x1F458`'s own 2897-byte
+body (read directly, not just its callee list: a deeply nested joystick-
+repeat/analog-cursor state machine over nearly 20 more `DAT_001044xx`
+globals this task does not otherwise touch) is well beyond this task's
+scope on its own merits, not merely because of its two remaining unported
+callees.
+Confirmed as the same subsystem `docs/PROGRESS.md`'s cycle-2 paragraph
+already flagged jointly with `0x1EEB0` as unowned ("the interactive match
+... `0x1EEB0`, `0x1F458` ... remains unowned") — that flag predates this
+task and did not say why; this task supplies the why.
+
+Two of the four gated states have a **portable short-circuit**, ported
+here rather than left whole as a gap: the raw's `AND`-chain before the
+rank probe short-circuits in assembly (a `JNZ`/`JZ` on the first false
+term skips the call outright) — state 0 only calls `0x1ECC8` when
+`DS_00104AD4 == 2 && DS_00104B1F == 0` (else `DS_00104B25 = 4`
+unconditionally, `0x1EF37`); state 4 only calls `0x1EC38` when
+`DS_00107813 == 0` (else `DS_00104B25 = 7`, `0x1F2AA`); state 7 mirrors
+state 4 on `DS_001078A7` (else `DS_00104B25 = 0xA`, `0x1F3CC`). Past that
+short-circuit, and for states 5/8/0xB..0xE/0xF/0x10 entirely, the state
+cannot determine whether to advance without the unported gate, so it
+stays parked — a `PORT:` comment at each `case`, citing the exact
+instruction address and the unported callee, not a fabricated stub: it is
+exactly the "still waiting" behaviour those states already have while
+their own poll reports not-done. Two already-established gaps recur
+throughout and are left as the same notes this codebase already uses:
+every `0x2C3FC` voice call (record §45-A) and `0x2DAE4`, `0x2DDE4`'s own
+callee, the deferred audit no-op (spec §7).
+
+### 49-H.4 The port
+
+- `flow.h`, after `game_mode_0a_step`'s declaration: `game_mode_1e_step`'s
+  prototype and full derivation comment (§49-H.2/.3 above, condensed).
+- `flow.c`, after `frontend_match_start` (spatial locality with the
+  original's own `0x1EA08`..`0x1EEB0` neighbourhood): a new
+  `#define FN_000430E8` local macro (no `symbols.h` name; `fight.c` already
+  has its own copy of the same macro for the same reason) and
+  `game_mode_1e_step`, in its own `---- mode 0x1E ----` delimited section.
+  `frontend_match_start`'s header comment is corrected (see §49-H.3).
+- `game_frame`'s switch (`flow.c`): `case 0x1Eu: game_mode_1e_step(); break;`
+  added next to `case 0x0Au`; `0x1E` is removed from the generic named-gap
+  case list and its comment, and the case-`0xA`/`0x12` narration line
+  extended to name case `0x1E` too.
+- No new callee ported (every call `game_mode_1e_step` makes was already
+  ported before this task), no new `fn_register`, no `symbols.h` change
+  (confirmed by `make verify`'s idempotence check, §49-H.6 below).
+
+### 49-H.5 Tests and mutations
+
+New `check_mode_1e` in `test_fight.c` (registered at the very end of
+`test_fight`'s call list, after `check_mode4_spawn_gate`, for the same
+reason that function is last: `game_mode_1e_step`'s states 2/3/6/9 call
+`actors_reset`/`actor_spawn` through `frontend_input_reset`/`actors_reset`/
+`frontend_match_start`, touching the process-wide free list
+`check_point_trample` depends on staying unperturbed), four parts on a new
+`m1e_seed` fixture (every field the function reads or writes seeded to a
+`0x77`-style sentinel distinct from every post-condition, `DS_00104B00`'s
+high word `0xBEEF` since every mode store is a word):
+
+- `check_mode_1e_parked`: every one of the nine states that cannot advance
+  without `0x1ECC8`/`0x1EC38`/`0x1F458` (state 1's *genuine* no-op included,
+  as a control) leaves every seeded field exactly at its sentinel — proving
+  "stays parked" is real, not merely untested — plus state 0's own gated
+  arm (`DS_00104AD4 == 2 && DS_00104B1F == 0`) parked the same way.
+- `check_mode_1e_gates`: states 0, 4 and 7's short-circuit arms, each
+  tested both ways — the short-circuit condition true (advances) and false
+  (parked) — six scenarios in total.
+- `check_mode_1e_0a`: state 0xA's four exits (mode `0x14` via a draw, mode
+  `0x14` via the winner's think byte, the hook install + wipe-arm(`0x11`)
+  through `fn_origin(fight_hook_430e8)`, and mode `0x14` via
+  `DS_00104B14 != 0`), each landing on `DS_00104B25 = 0`.
+- `check_mode_1e_bookkeeping`: states 2/3/6/9, reusing record §46-A's own
+  "fresh CMOS" `hiscore_init` recipe (zero the storage, `DSD(DS_00104528) =
+  0x142095`, `hiscore_init()`) so `frontend_match_start` runs for real; both
+  `DS_00104ABC` arms of states 6/9 (the quintet stored, or every one of its
+  fields left at its sentinel while the unconditional next-state store
+  still runs).
+
+**Mutations** (two single-site edits, each rebuilt and the whole of
+`run_tests` re-run, then reverted): (1) state 4's short-circuit condition
+inverted (`!= 0u` → `== 0u`) — caught by `check_mode_1e_gates`'s two state-4
+scenarios (`4 != 7` and `7 != 4`, both directions wrong); (2) state 0xA's
+wipe-arm return mode changed from `0x11` to `0x10` — caught by
+`check_mode_1e_0a` (`16 != 17`). Both mutations were reverted and the suite
+re-confirmed green (3 consecutive `PR_ORACLE_REQUIRED=1 ./build/run_tests`
+runs, no SIGBUS).
+
+### 49-H.6 Verification
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 3 consecutive
+runs (plus the 2 mutation-revert runs above), 0 compiler warnings, no
+SIGBUS. `make verify` (run with worktree-local `*_DUMP`/`TITLE_PIN_DIR`
+overrides to avoid colliding with sibling sessions' concurrent runs on the
+shared `/tmp` paths the Makefile hard-codes): front-end 517/801/3/2,
+demo-fight fully explained at N = 1886, attract2 0 unexplained at N = 3617,
+`symbols.h` regenerates byte-identically — all four gate numbers unchanged
+from before this batch, as expected: mode `0x1E` is reachable only through
+mode `0x13`'s challenge poll (itself reachable only through the still-
+unported match-end stores `0x27DC8`, record §48-K) that the no-input
+demo/attract/front-end oracle paths never reach.
+
+### 49-H.7 Remaining named gaps
+
+The high-score-rank probe `0x1ECC8`/`0x1EC38` and its callees `0x2DDE4`/
+`0x2DB58`; the name-entry screen driver `0x1F458` itself (2897 B, its own
+subsystem regardless of its callees) and its two still-unported callees
+(`0x1FFD0`, `0x20710`); every `0x2C3FC` voice call inside this function
+(record §45-A); and `0x2DAE4` (spec §7, the deferred audit no-op). The
+match-end stores `0x27DC8` (record §48-K) that would make mode `0x1E`
+reachable for real remain unported, as noted in records §49-C/§49-D for
+modes 8/0xA.
