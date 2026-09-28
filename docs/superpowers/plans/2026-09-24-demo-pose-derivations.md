@@ -22512,3 +22512,202 @@ attract and front-end paths never reach.
 * The `0x2C3FC` voices (§45-A).
 * The blink prompt's mode word (`0x1000`/`0x4000`, `0x1FB46..0x1FBBA`) is passed
   through but no test observes it (the glyph actors do not carry it).
+
+## 49-Y. The `0x2E000`-`0x32000` config/key/menu helper cluster (named-gap batch, branch `gap44-cfghelpers`)
+
+Letter `§49-Y` was free (grepped in this record and `docs/PROGRESS.md`; the
+last used letters are `S`, `T`, `V`). `python3 tools/port_progress.py
+--unported` listed all eight requested addresses (`3157C`, `2EBF0`, `305FC`,
+`2EA78`, `31E28`, `2DE98`, `30788`, `2D638`); a grep of `port/src` found none
+ported under a non-standard header (`config.c` only names `0x2EA78`, `0x2D638`
+and `0x2DE98` as declared no-ops). The list came from a header-only heuristic,
+so each was re-derived from the listing (Ghidra HTTP bridge, `:8089`).
+
+### 49-Y.1 Dispositions
+
+| Address | Bytes | Function | Disposition |
+|---|---|---|---|
+| `0x2EA78` | 263 | `config_screen_wait(n)` | ported, not wired (49-Y.3) |
+| `0x2EB80` | 60 | `config_key_latched` | ported (callee of `0x2EBF0`) |
+| `0x2EBF0` | 493 | `config_key_flags(mask)` | ported |
+| `0x2EDE0` / `0x2EEC8` | 56 / 64 | `config_input_poll` / `config_input_poll_clear` | ported (the only callers of `0x2EBF0`) |
+| `0x305FC` | 287 | `config_code_row(col, row)` | ported |
+| `0x30788` | 220 | `config_bar_draw(value, row, label_row)` | ported |
+| `0x31E28` | 251 | `config_option_row(which, p, flag)` | ported |
+| `0x3157C` | 1057 | `config_key_name(key, raw, dest)` | ported |
+| `0x2D638` | 191 | storage load / validate | **intentionally deferred** (49-Y.5) |
+| `0x2DE98` | 241 | high-score storage load | **intentionally deferred** (49-Y.5) |
+
+No ported function has a ported caller: every caller is an unported region
+(`0x24C5C` case bodies, the `0x19DE6..0x1A3EC` block, `0x30C9E..0x30DA3`,
+`0x31D08..0x31DC0`, `0x32xxx`) or the sibling `gap43` menu cluster
+(`0x2FA40`, `0x2FE84`, `0x2FFC4`, which call `0x305FC`, `0x2EDE0`, `0x2EEC8`
+and `0x2EB80`). The exports are declared in `config.h`.
+
+### 49-Y.2 What the routines do
+
+* **`0x2EB80`** returns `DS_00105F30` (the latched key) when non-zero. Else
+  `0x500BB` (`DS_00101500`, the ISR tick) minus `DS_00105F2C` is tested
+  unsigned against `0x4B0` (`0x2EB9F jbe`): over it stores `DS_00107414 = 0`
+  and `longjmp(0x1044F4, 1)` (`0x2EBB3 jmp 0x65431`); else 0.
+* **`0x2EBF0`** loads `DS_00101514` (kept in ECX, stored back at `0x2EDD1`),
+  takes `0x2EB80`, and returns 0 when it is 0. With the mask 0 or any of
+  `0xF300F000` set (`0x2EC1D`; the following `0xF000F000` test is a subset of
+  it, so its `jz` is always taken) the arrow scan codes `0x48/0x50/0x4B/0x4D`
+  (jump table `0x2EBCC`: nine dwords for `0x48..0x50`, entries 0/3/5/8 live)
+  map through the key-config record: bytes `+0x2DE..+0x2E1` (player 1) and
+  `+0x2E6..+0x2E9` (player 2), words `+0x2D4`/`+0x2D6` to
+  `0x80008000/0x40004000/0x20002000/0x10001000`. The arm is: neither player's
+  key equals the code -> set; else player 1's match with `+0x2D4 == 0` returns
+  clear, then player 2's match with `+0x2D6 == 0` returns clear, else set.
+  The right-arrow arm alone also zeroes EAX in the neither-matches case
+  (`0x2ED97`), which no later test can observe. Then Enter (`0xD`) gives
+  `0x1000000` for mask 0 or bit 24, and Esc (`0x1B`) `0x2000000` for mask 0 or
+  bit 25. Bits 24 and 25 are inside `0xF300F000`, so those masks also admit
+  the arrows.
+* **`0x2EDE0`** / **`0x2EEC8`**: `EDX = 0x50161(mask)`; with the flag set,
+  `EDX |= 0x2EBF0(mask)`; `0x2EEC8` then stores `DS_00105F30 = 0` (after the
+  `0x2EBF0` call, unconditionally); a non-zero result stamps
+  `DS_00105F2C = 0x500BB()`.
+* **`0x2EA78`** (`ECX = n`): clears `DS_00105F30`; runs `0x2A31C`, `0x1C3FC`
+  and `0x14328` (camera `0xBCD64`/clip `0xBCD6C`, bytes equal to the master
+  loop's `DS_000A87CC` record; `0x14328` is called without the master loop's
+  `DS_001088F4` gate); copies the back buffer to the aperture (`0x655FF`,
+  flag byte `DS_001014FC` cleared by a **byte** store) or runs the dirty blit
+  `0x501A3`; swaps (`0x50188`); flushes the palette (`0x1C470`). `n == -1`
+  stops there (`0x2EAE0`). Otherwise it loops `ECX = n .. -1` inclusive:
+  `0x2EB6E mov eax,ecx; dec ecx; cmp eax,-1; jg 0x2EAF0` tests the
+  pre-decrement value, so the body runs for ECX = n, n-1, .., 0, -1: **n + 2
+  passes** (one for `n = -2`). Each pass waits for the word `DS_000EF6DE` to
+  change (calling `0x1CF20` while it spins), runs `0x500C4`, then drains the
+  BIOS queue: `AH=1` peek (`0x2EB11..0x2EB27`), `AH=0` read, `DS_00105F28 =
+  key`, key `0x2400` calls `0x5004A` (joystick calibration), `DS_00105F2C =
+  0x500BB`, and `DS_00105F30 = ascii` or the scan code when the ascii byte is
+  0 (`0x2EB5C test dl,0xff; jnz; shr edx,8`, then `and edx,0xff`); the last
+  key wins.
+* **`0x305FC`** (`EAX = col`, `EDX = row`; record `DS_00107450`, count byte
+  `+2`, flags byte `+3`, first text `+4`, second text `+0xD`): flags non-zero
+  draws the second text as one string (mode `0x1000`); flag bit 1 set returns;
+  else the first three characters become a name, the digits from the fourth
+  character on (`0x30..0x39` as a **signed** byte compare: `0x3068B jl`,
+  `0x30693 jg`; index `< 8` as a signed word) a number, and
+  `0x2DCA0(rec 0, {number, name}, table 2)` files them; bit 1 is then set.
+  Flags zero: eight one-character draws at `col + i`, mode `0x4000` from the
+  first text while `i < count` (`0x306E8 cmp si,ax; jl`, signed word compare),
+  else the second text at `0x2000`. The raw builds the `{u32, char[4]}` record
+  on its stack and passes ESP to `0x2DCA0`, which reads `mem[]`.
+* **`0x30788`**: clamp to `0..0xFF` (signed); a non-negative label row draws
+  the value at column `0x19` with `0x2F434(pad 2, mode 0xC002, width 3)`; then
+  32 cells (`i = 0, 8, .. 0xF8`, `cmp ebp,0xff; jle` after `+= 8`) of glyph
+  `0x13` at columns 5.. on rows `row`, `row+1`, `row+2` via `0x2F174`. Mode:
+  `0xF000` when `i > value`, else `0x3000` when `i > 0xBF`, else `0x2000` when
+  `i > 0x81`, else the previous mode (`0x1000` to begin with).
+* **`0x31E28`**: `flag` picks the arrow-row mode (`0x3000`, else `0x4000`);
+  `which == 0` draws string `0x17` at (2, 4) mode `0x2000` and reads the word
+  at `p`, else string `0x16` at (`0x16`, 4) and the word at `p + 0x12`; base
+  column EBP is `0xA` / `0x1E`. The word (`ja 6` unsigned) indexes the jump
+  table `0x31E0C`: 0/2/4/6 give strings `0x22D/0x22F/0x230/0x22E` at column
+  `EBP - 8`, row 6, in the arrow mode; odd values skip. Then `<` (`0x3C`) at
+  `EBP - 9` and `>` (`0x3E`) at `EBP + 9`, row 6, mode `0x4000`.
+* **`0x3157C`**: the ascii byte `1..0x7F` except `0xD`/`0x20` (`0x31591`
+  `jz`, `0x31596 ja` unsigned) stands as itself (`sprintf("%c")`, format
+  `0x80B78`); else the scan code selects (branch tree at `0x315A7`, enumerated
+  by simulating it over `0..0x5F`): `0xE 0xF` -> strings `0x22A 0x22B`;
+  `0x47 0x48 0x49 0x4B 0x4D 0x4F 0x50 0x51 0x52 0x53` -> `0x220 0x223 0x221
+  0x224 0x225 0x227 0x226 0x222 0x228 0x229`; `0x3D..0x43` -> the three-byte
+  texts `0x80B7C..0x80B94` ("F3".."F9"); `0x44` the dword `0x80B98` ("F10");
+  `0x4A` / `0x4E` the words `0x80B9C` / `0x80BA0` ("-" / "+"); everything else
+  (including `0x45 0x46 0x4C`, the F1/F2 codes and anything above `0x53`)
+  returns 0. Scan code 2 with no qualifying ascii byte also takes the `%c`
+  arm (`EAX = 2`), printing an empty string. With the raw flag (DL) zero the
+  text is wrapped as `<%s>` (`0x80BA4`, through `sprintf` `0x65546` into a
+  12-byte stack buffer and a copy back).
+
+### 49-Y.3 The port
+
+All nine functions are in `config.c` (declarations in `config.h`), with the
+tests in `test_game.c` (`test_cfg_helpers`, registered once in `test.h` after
+`test_config`). Deviations, each a `PORT:` note in the source:
+
+* **`0x2EA78` is not wired.** Its only ported caller is `config_set_defaults`
+  (`0x2CB5F`, `0x2EA78(0xB4)`), which runs inside `game_init`; the raw would
+  present frames and wait 180 ticks there, which would move the frame-indexed
+  oracles. The other callers are unported.
+* **ISR model.** The wait for `DS_000EF6DE` is modelled as the master loop's
+  spin is: one ISR (`0x1BDF4`) per retrace, incrementing `DS_00101508`,
+  `DS_00101500` and the word `DS_000EF6DE` (`0x1BE0E..0x1BE21`), skipped when
+  `DS_00104B22 == 1` (`0x1BDF8..0x1BE00`, so that value spins forever, as in
+  the raw). Its calls `0x1BBAC` and `0x2D62C` are unported.
+* **Present order.** The raw copies to the aperture, then flushes the palette
+  (`0x2EADB`); the host converts through `gfx_dac` at present time, so the
+  flush runs first and the frame shows the palette the hardware would already
+  hold. The buffer swap is a local copy of the two stores of `0x50188`
+  (`flow.c` keeps its own static).
+* **`0x5004A`** (key `0x2400`) is omitted, as in `game_loop`.
+* **Idle timeout.** `0x2EB80`'s `longjmp` quit path is not modelled; the
+  `DS_00107414 = 0` store is kept and 0 returned.
+* **`0x305FC`'s stack record** lives at the port scratch `0x3900000`.
+* **`0x3157C`** uses a `0x120`-byte wrap buffer.
+
+### 49-Y.4 Tests and mutations
+
+`test_cfg_helpers` (`test_game.c`): `ch_check_key_flags` (latch, idle timeout
+boundary `0x4B0`/`0x4B1` and the wrapped clock, every arrow arm with the four
+match/word combinations, the mask gate including bits 24/25 and an excluded
+mask, Enter/Esc gating, `0x2EDE0`/`0x2EEC8` results, stamp and latch clear),
+`ch_check_key_name` (all 12 named scan codes against the string table, the ten
+literals, ascii keys, the unnamed keys leaving the destination sentinel
+intact, `<>` wrap), `ch_check_bar` (mode steps at every threshold, clamps,
+label cells against a direct `text_number_set`, negative and zero label row),
+`ch_check_option_row` (cells compared by sprite and palette entry against the
+glyph table and the palette handle, the four values, odd values, both
+`which` arms, both flag arms), `ch_check_code_row` (both draw arms, the
+filing into table 2 through `hiscore_read`, the digit walk stops, the
+signed-byte stop, the bit-1 second call), `ch_check_screen_wait` (buffers
+swapped, presented pixels, flag byte, `n = -1/-2/0/1` pass counts as ISR
+ticks, last key wins, extended key latches the scan code). Every seeded field
+differs from its post-condition. Mutations proved (each rebuilt, failed,
+reverted): 25 of 25 caught after adding the clamp-label check for the one that
+survived (`value > 0x100`); the loop count (`prev > 0`), the dropped player-2
+word test, `>=` for `>` on `0x4B0`, `0xC0` for `0xBF`, a swapped value string
+id, `0x3A` for `0x39`, `>` for `>=` on the code count, a swapped key-name id,
+the inverted wrap, Esc gated on bit 24, the dropped `flag` test, the dropped
+latch clears (both), the dropped flag-byte clear, F10 with three bytes, a `>`
+label test, swapped arrow modes, a moved right arrow, the dropped bit-1 set, a
+moved case, a dropped space exclusion, a zeroed key stamp and an unshifted
+scan code.
+
+### 49-Y.5 Deferred: `0x2D638` and `0x2DE98`
+
+Both are the storage layer, not the audit idiom. `0x2D638` (called at
+`0x2D71B` from `config_validate`) reads a `0x51`-byte image through `0x2E990`
+into a stack buffer (a failed first read falls back to a second copy at offset
+`0x52` and keeps it when its result is larger), checks the magic `0x9C94D2C4`
+at the buffer's tail and, on a match, reads 5 bytes at offset `0x195` into
+`0x105DDC` (zeroing them when that read is below -1). `0x2DE98` (called at
+`0x2D912`) runs over the three high-score blocks (`0x2D474`, located by
+`0x2DB58`): each is zeroed and read from storage (skipped, result -2, when its
+argument is non-zero), a read below -1 zeroes it again, table 2 copies 5 bytes
+from `0x105DDC` when the argument is non-zero, and a negative result calls
+`0x2D4EC(6 + index)`. `0x2E990` is not host I/O -- it reads a checksummed
+image in RAM (`[0x2D48C]` holds `0x100CE4`) -- but the eeprom-config design (spec §7) made
+the whole storage layer (`0x2E990`, `0x2D4EC`, `0x2D638`, `0x2DE98`) a
+declared no-op reporting a fresh EEPROM, and `config_validate` derives its
+"defaults path" from `read1 == read2 == -1`. Porting the two here would need
+`0x2E990`, `0x2D4EC`, `0x2D498`, `0x2DF8C` and `0x61A70` and would change
+`config_validate` (its declared -1 reads are what route it to the defaults
+path; a real read of the RAM image would have to be re-derived) -- a behaviour
+change under `game_init`, not a helper port. Left for
+a persistence cycle; `config.c` keeps its `PORT:` note.
+
+### 49-Y.6 Verification
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests` green three times (~1.8 s each, no
+hang). `make verify`: see the report.
+
+### 49-Y.7 Remaining named gaps
+
+* `0x2D638`, `0x2DE98` (49-Y.5) with `0x2E990`, `0x2D4EC`, `0x2D498`, `0x2DF8C`.
+* `0x1BBAC` and `0x2D62C`, the ISR calls the wait's tick model omits.
+* `0x5004A` (joystick calibration) and the `0x65431` idle longjmp.
+* The callers of every function here (49-Y.1), including `gap43`'s.
