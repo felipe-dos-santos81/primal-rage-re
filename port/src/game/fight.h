@@ -156,7 +156,9 @@ void fight_challenge_crowd(void);
  * at 0 or below the record DS_001028F8[side] restarts the stream 0xE9050 at
  * 4.0 and the word is reloaded with max((0x78 - the slot's +0x5A) >> 1, 0xC).
  * Called by mode 0xC's arena frame 0x27380 and mode 4/6's fight frame
- * 0x26254 (record §48-K), and the unported 0x26540, 0x266AC and 0x299E8. */
+ * 0x26254 (record §48-K), mode 0x21's 0x26540 (game_mode_21_step, record
+ * §49-O), mode 0x25's 0x266AC (game_mode_25_step, record §49-P) and mode
+ * 0x31's 0x299E8 (game_mode_31_step, record §49-J). */
 void fight_hud_pulse(void);
 
 /* 0x43964. Spawn the side's entry 0xC8870[side] at the character's
@@ -340,5 +342,15 @@ void fight_char_reset(u32 side);
 void fight_mode25_enter(void);
 void fight_mode25_spawn(u32 fresh);
 void fight_mode25_face(void);
+
+/* 0x4E67C — record §49-P. Mode 0x25's per-frame audience-effects pass;
+ * game_mode_25_step (0x266AC) calls it unconditionally. See fight.c for the
+ * full derivation. */
+void fight_4e67c(void);
+/* 0x4EBB8 — record §49-P. The mode-0x25 round-card body: the decorative
+ * glyph grid and, per side, the two tallies' glyph/number rendering and the
+ * final scorecard byte DS_0010888C[side * 5]. Called by fight_4e67c and by
+ * game_mode_25_reveal (0x4EF8C). See fight.c for the full derivation. */
+void fight_mode25_scorecard(void);
 
 #endif /* PRAGE_GAME_FIGHT_H */

@@ -5405,6 +5405,169 @@ void game_mode_24_step(void)
     camera_y_commit();                                       /* 0x270AE 0x12DA8 */
 }
 
+/* 0x266AC — record §49-P. Mode 0x25's per-frame state-0 body: case 0x25's
+ * inline DS_00104B25 == 0 arm calls it, then (DS_001088BD == 8 and both round
+ * flags DS_001078F0/DS_001078F1) advances the case's own DS_00104B25 to 1 and
+ * calls game_mode_25_reveal (0x4EF8C). Gated on both round flags: the word
+ * DS_001088A6 decrements (wrapping mod 0x10000); when it *was* 0 (before the
+ * decrement), DS_00104B18 = 1 and it resets to 0xB4 (the 180-frame window
+ * fight_384f8/hit_3d004 read). Then unconditionally: fight_slot_clear,
+ * camera_screen_base per side, DS_001077E8 = DS_001077E4 and DS_0010787C =
+ * DS_00107878 (two plain dword copies), camera_project per side, fight_slot_
+ * pass, fight_384f8(0)/fight_384f8(1); then, only when DS_001078FA == 2,
+ * three more camera_project pairs with fighter_pass_b(0) between the first
+ * and second pair (re-syncing the camera after fight_384f8's slot latches,
+ * the same idiom mode 0xC's game_mode_0c_step runs once per frame). Always
+ * then: fight_4e67c (the mode's audience-effects pass), camera_dust_spawn,
+ * fight_hud_pulse, DS_00104AEC |= 2, and a HUD-text tail: with (DS_000EF6DC &
+ * 0x1F) == 0 and bit 0x20 clear, both strings 0x3B/0x3A are cell-released at
+ * row 5 (their glyph count, centred); with bit 0x20 set, one of them (DS_
+ * 001088BC selects which) is drawn centred at row 5 mode 0x2000 instead; then,
+ * while DS_001088A6 is nonzero (an unsigned test, not signed), its value / 60
+ * is drawn at col -1, row
+ * 0xB, width 1, pad 0, mode 0x2000. EBX/ECX/EDX/EDI are pushed and popped.
+ * Only caller: 0x252B2 (0x24C5C case 0x25). */
+void game_mode_25_step(void)
+{
+    if (DSB(DS_001078F0) != 0u && DSB(DS_001078F1) != 0u) {  /* 0x266B0..0x266C0 */
+        u16 old = DSW(DS_001088A6);                          /* 0x266C2 */
+        DSW(DS_001088A6) = (u16)(old - 1u);                  /* 0x266C8..0x266CB */
+        if (old == 0u) {                                     /* 0x266D2/0x266D5 */
+            DSB(DS_00104B18) = 1u;                            /* 0x266D7 */
+            DSW(DS_001088A6) = 0xB4u;                         /* 0x266DE */
+        }
+    }
+
+    fight_slot_clear();                                      /* 0x266E7 0x3C5CC */
+    camera_screen_base(0, (s32)DSB(DS_0010782A));            /* 0x266FB 0x16D58 */
+    camera_screen_base(1, (s32)DSB(DS_001078BE));             /* 0x26712 0x16D58 */
+    DSD(DS_001077E8) = DSD(DS_001077E4);                      /* 0x26726 */
+    DSD(DS_0010787C) = DSD(DS_00107878);                       /* 0x26735 */
+    camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                   DS_00100B60, DS_00100AF0);                  /* 0x2673C 0x17FA0 */
+    camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                   DS_00100B61, DS_00100AF4);                   /* 0x2675F 0x17FA0 */
+    fight_slot_pass();                                          /* 0x26764 0x3CB68 */
+    fight_384f8(0u);                                             /* 0x2676B */
+    fight_384f8(1u);                                              /* 0x26775 */
+
+    if (DSB(DS_001078FA) == 2u) {                                 /* 0x2677C..0x26784 */
+        camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                       DS_00100B60, DS_00100AF0);                   /* 0x267A5 */
+        camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                       DS_00100B61, DS_00100AF4);                    /* 0x267C8 */
+        fighter_pass_b(0u);                                          /* 0x267CF 0x19068 */
+        camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                       DS_00100B60, DS_00100AF0);                     /* 0x267EF */
+        camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                       DS_00100B61, DS_00100AF4);                      /* 0x26812 */
+        camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                       DS_00100B60, DS_00100AF0);                       /* 0x26832 */
+        camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                       DS_00100B61, DS_00100AF4);                        /* 0x26855 */
+    }
+
+    fight_4e67c();                                                      /* 0x2685A */
+    camera_dust_spawn();                                                 /* 0x2685F 0x1282C */
+    fight_hud_pulse();                                                    /* 0x26864 0x1DA08 */
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);                       /* 0x2687A */
+
+    if ((DSW(DS_000EF6DC) & 0x1Fu) == 0u) {                               /* 0x26887 */
+        if ((DSW(DS_000EF6DC) & 0x20u) == 0u) {                          /* 0x2689C */
+            text_cells_release_count(-1, 5, (s32)strlen(
+                (const char *)game_string_get(0x3Bu)));                  /* 0x266EB..0x26912 0x2F388 */
+            text_cells_release_count(-1, 5, (s32)strlen(
+                (const char *)game_string_get(0x3Au)));                  /* 0x26917..0x26939 0x2F388 */
+        } else if (DSB(DS_001088BC) == 0u) {                              /* 0x2689E/0x268A5 */
+            text_cursor_set(-1, 5, game_string_get(0x3Au), 0x2000u);     /* 0x268C9..0x268E4 0x1C500/0x2F198 */
+        } else {
+            text_cursor_set(-1, 5, game_string_get(0x3Bu), 0x2000u);     /* 0x268A7..0x268C2 */
+        }
+    }
+
+    if (DSW(DS_001088A6) != 0u) {                                         /* 0x26940/0x26943 */
+        /* PORT: 0x26940 TEST/JBE is an unsigned "!= 0" test (0x2694a's
+         * MOV DX,BX zero-extends before the divide), not a signed
+         * comparison; the earlier (s16) cast here was wrong and is fixed. */
+        text_number_draw(-1, 0xB, (s32)DSW(DS_001088A6) / 60, 1, 0u,
+                         0x2000u);                                       /* 0x26954..0x2696E 0x2F4D0 */
+    }
+}
+
+/* 0x4EF8C — record §49-P. Mode 0x25's reveal: for every entry on the active
+ * list DS_0010884C whose +0x1C bit 1 is set, node->+0x14 = DS_000F0AF0 -
+ * 0x8180, its actor R's +0x34 = 0xFF80, node->+0x1C &= 0x7F, R->+0x28 |=
+ * 0x4080, node->+0x1E = 8, and R begins table_C9544[(u16)(R->+0x48 - 0x20)]
+ * at 3.0. Then DS_0010889A = 0xF0 (the state-1 arm's countdown), both cell-
+ * released strings 0x3B/0x3A at row 5, fight_mode25_scorecard() and, per
+ * DS_0010888C vs DS_00108891 (the two sides' final scorecard tallies), one
+ * font-2 string at row 0xB mode 0x4000: 0x63 then 0x64 at row 0xE when equal;
+ * else 0x65 (DS_0010888C <= DS_00108891, unsigned) or 0x66, then always 0x63
+ * (sic — the raw redraws string id 0x63, not the winner's own follow-up id)
+ * at row 0xE. EBX/ECX/EDX/ESI are pushed and popped. Only caller: the
+ * unported 0x252E1 (0x24C5C case 0x25, DS_001088BD == 8 arm). */
+void game_mode_25_reveal(void)
+{
+    DSW(DS_0010889A) = 0xF0u;                                /* 0x4EF90/0x4EF9A */
+    u32 node = DSD(DS_0010884C);
+    while (node != DS_0010884C) {
+        u32 next = DSD(node);                                /* 0x4EFAE */
+        if ((DSW(node + 0x1Cu) & 2u) != 0u) {                /* 0x4EFB0..0x4EFB9 */
+            u32 rec = DSD(node + 8u);
+            u32 idx = (u32)(u16)((u32)DSB(rec + 0x48u) - 0x20u);  /* 0x4EFBE..0x4EFEC */
+            DSD(node + 0x14u) = DSD(DS_000F0AF0) - 0x8180u;   /* 0x4EFC3..0x4EFCF */
+            DSW(rec + 0x34u) = 0xFF80u;                        /* 0x4EFD5 */
+            DSB(node + 0x1Cu) = (u8)(DSB(node + 0x1Cu) & 0x7Fu);  /* 0x4EFDB */
+            DSW(rec + 0x28u) = (u16)(DSW(rec + 0x28u) | 0x4080u); /* 0x4EFE2..0x4EFEF */
+            DSB(node + 0x1Eu) = 8u;                             /* 0x4EFF5 */
+            actors_anim_begin(rec, DSD(0x000C9544u + idx * 4u),
+                              0x40400000u);                     /* 0x4EFFC..0x4F00B 0x2BC30, the same
+                                                                   * 0xC9544 table fight.c's DS_000C9544
+                                                                   * local #define names */
+        }
+        node = next;                                             /* 0x4F010/0x4F012 */
+    }
+
+    text_cells_release_count(-1, 5,
+        (s32)strlen((const char *)game_string_get(0x3Bu)));       /* 0x4F02E..0x4F049 0x2F388 */
+    text_cells_release_count(-1, 5,
+        (s32)strlen((const char *)game_string_get(0x3Au)));       /* 0x4F04E..0x4F069 0x2F388 */
+    fight_mode25_scorecard();                                       /* 0x4F06E 0x4EBB8 */
+
+    if (DSB(DS_0010888C) == DSB(DS_00108891)) {                      /* 0x4F073..0x4F080 */
+        text_cursor_hold_font2(-1, 0xB, game_string_get(0x63u),
+                               0x4000u);                              /* 0x4F082..0x4F09D 0x1C500/0x2F510 */
+        text_cursor_hold_font2(-1, 0xE, game_string_get(0x64u),
+                               0x4000u);                              /* 0x4F0DC..0x4F0F2 */
+    } else {
+        u32 id = (DSB(DS_0010888C) <= DSB(DS_00108891)) ? 0x65u : 0x66u;  /* 0x4F0A9..0x4F0B7 */
+        text_cursor_hold_font2(-1, 0xB, game_string_get(id), 0x4000u); /* 0x4F0BC..0x4F0D2 */
+        text_cursor_hold_font2(-1, 0xE, game_string_get(0x63u),
+                               0x4000u);                              /* 0x4F0D7..0x4F0F2 */
+    }
+}
+
+/* 0x4F0FC — record §49-P. Mode 0x25's timeout exit: draws strings 0x67 (row
+ * 0xB) and 0x68 (row 0xE) font-2 mode 0x4000, cell-releases text rows 6..10
+ * (col -1, 0xE cells each — the round-card body 0x4EBB8 drew), then DS_
+ * 00104B00 = 6 (back to the fight-select flow), DS_001088C0 = 0, DS_00104B15
+ * = 1 and DS_00104AEC |= 1. Only caller: the unported 0x25303 (0x24C5C case
+ * 0x25, DS_00104B25 == 1 arm, timer expiry). */
+void game_mode_25_exit(void)
+{
+    text_cursor_hold_font2(-1, 0xB, game_string_get(0x67u), 0x4000u); /* 0x4F0FF..0x4F11A */
+    text_cursor_hold_font2(-1, 0xE, game_string_get(0x68u), 0x4000u); /* 0x4F11F..0x4F13A */
+    text_cells_release_count(-1, 6, 0xE);                            /* 0x4F13F..0x4F14E 0x2F388 */
+    text_cells_release_count(-1, 7, 0xE);                             /* 0x4F153..0x4F162 */
+    text_cells_release_count(-1, 8, 0xE);                              /* 0x4F167..0x4F176 */
+    text_cells_release_count(-1, 9, 0xE);                               /* 0x4F17B..0x4F18A */
+    text_cells_release_count(-1, 0xA, 0xE);                              /* 0x4F18F..0x4F19E */
+    DSW(DS_00104B00) = 6u;                                                /* 0x4F1A3 */
+    DSB(DS_001088C0) = 0u;                                                 /* 0x4F1B0 */
+    DSB(DS_00104B15) = 1u;                                                  /* 0x4F1BE */
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 1u);                          /* 0x4F1C4 */
+}
+
 /* 0x10E80 — record §46-F. Initialise the game state: 0x20C10's last call
  * (0x20CE6), and a DS_00104AE4 hook, stored at 0x25B6E (0x25AE8, the
  * DS_00104B1D == 0 arm) with mode 0x17; 0x24C5C tests the hook against it at
@@ -6420,12 +6583,38 @@ void game_frame(void)
     case 0x2Fu:
         game_mode_2f_step();                           /* 0x2512B (record §49-Q) */
         break;
-    case 0x25u:
+    case 0x25u: {
+        /* 0x252A0..0x25312 — record §49-P. The inline DS_00104B25 sub-state
+         * machine: 0 runs game_mode_25_step (0x266AC), then when DS_
+         * 001088BD == 8 and both round flags DS_001078F0/DS_001078F1 are set,
+         * game_mode_25_reveal (0x4EF8C) and DS_00104B25++; 1 decrements the
+         * word DS_0010889A and, while it stays nonzero (an unsigned test),
+         * runs fight_effects_pass (0x49C78), else game_mode_25_exit
+         * (0x4F0FC); any
+         * other DS_00104B25 value falls straight through to the break. */
+        u8 sub = DSB(DS_00104B25);                          /* 0x252A0 */
+        if (sub == 0u) {                                    /* 0x252A5/0x252A7 */
+            game_mode_25_step();                             /* 0x252B2 0x266AC */
+            if (DSB(DS_001088BD) == 8u                        /* 0x252B9/0x252BE */
+                    && DSB(DS_001078F0) != 0u                   /* 0x252C7/0x252CE */
+                    && DSB(DS_001078F1) != 0u) {                 /* 0x252D4/0x252DB */
+                game_mode_25_reveal();                            /* 0x252E1 0x4EF8C */
+                DSB(DS_00104B25) = (u8)(DSB(DS_00104B25) + 1u);    /* 0x252E6 */
+            }
+        } else if (sub == 1u) {                                /* 0x252A9/0x252AB */
+            u16 t = (u16)(DSW(DS_0010889A) - 1u);                /* 0x252F1/0x252F7 */
+            DSW(DS_0010889A) = t;                                 /* 0x252F8 */
+            /* PORT: 0x252FE TEST/JA is an unsigned "!= 0" test, not the
+             * signed comparison an earlier draft of this port used. */
+            if (t != 0u) fight_effects_pass();                     /* 0x252FE/0x25301 0x49C78 */
+            else game_mode_25_exit();                               /* 0x25303 0x4F0FC */
+        }
+        break;                                                      /* 0x2530C/0x25312 */
+    }
     case 0x27u:
-        /* PORT: named gaps, each case's body unported (record §47-B.1 has
-         * the entry and callees of every one):
-         * 0x25 inline (0x266AC,
-         * 0x4EF8C, 0x4F0FC, 0x49C78); 0x27 inline (0x50146, the 0xBCBDC menu
+        /* PORT: named gap, the body unported (record §47-B.1 has the entry
+         * and callees):
+         * 0x27 inline (0x50146, the 0xBCBDC menu
          * 0x2FFC4, 0x65431 longjmp). Case 0x17 is ported (0x4F318, record
          * §46-G) and dispatched above as frontend_mode_17_step, case 0x10
          * (0x438B4, record §47-M) as fight_mode_10_step, and cases 0xD
@@ -6455,9 +6644,13 @@ void game_frame(void)
          * (0x277C0, record §49-F) is game_mode_0f_step, cases
          * 0x22/0x23/0x24 (0x26C8C/0x26A50/0x26F58, records §49-L/§49-M/
          * §49-N) are game_mode_22_step/game_mode_23_step/game_mode_24_step,
-         * and cases 0x28..0x2F (0x24F09/0x24F66/0x24FC4/0x25187/0x2501E/
+         * cases 0x28..0x2F (0x24F09/0x24F66/0x24FC4/0x25187/0x2501E/
          * 0x25071/0x250CE/0x2512B, record §49-Q) are game_mode_28_step
-         * through game_mode_2f_step, each dispatched above. */
+         * through game_mode_2f_step, each dispatched above, and case 0x25
+         * (0x252A0's inline DS_00104B25 sub-state machine over 0x266AC/
+         * 0x4EF8C/0x4F0FC, record §49-P) is game_mode_25_step/game_mode_25_
+         * reveal/game_mode_25_exit, dispatched in its own `case 0x25u:`
+         * block above (not this fallthrough). */
         break;
     case 0x00u:
     case 0x1Cu:

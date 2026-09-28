@@ -243,9 +243,10 @@ void fight_hud_side_reset(u32 side)
  * byte) >> 1 (0x1DA3D..0x1DA4C, `sar`: signed), raised to 0xC when that is
  * below 0xC (0x1DA55 reads the dword at 0x102906 + side * 2 and `sar`s it by
  * 0x10, which is the signed word just stored; 0x1DA5E `cmp`, 0x1DA61 `jge`).
- * Callers: 0x274E7 (0x27380, record §48-C) and 0x263AA (0x26254, record
- * §48-K), and the unported 0x26696 (0x26540), 0x26864 (0x266AC) and 0x29B4F
- * (0x299E8). */
+ * Callers: 0x274E7 (0x27380, record §48-C), 0x263AA (0x26254, record §48-K),
+ * 0x26696 (0x26540, game_mode_21_step, record §49-O), 0x26864 (0x266AC,
+ * game_mode_25_step, record §49-P) and 0x29B4F (0x299E8, game_mode_31_step,
+ * record §49-J). */
 void fight_hud_pulse(void)
 {
     u32 side;
@@ -4491,4 +4492,387 @@ void fight_mode25_enter(void)
     }
     text_cursor_hold_font2(-1, 6, game_string_get(0x61u), 0x4000u);  /* 0x4E24C..0x4E267 0x1C500, 0x2F510 */
     fight_mode25_spawn(1u);                             /* 0x4E26C/0x4E271 0x4E350 */
+}
+
+/* ---- 0x266AC's mode-0x25 audience-effects pass (record §49-P) ---------- */
+
+#define DS_000C9810 0x000C9810u   /* no symbols.h name: fight_4e67c's even-round bit table */
+#define DS_000C9830 0x000C9830u   /* no symbols.h name: fight_4e67c's rng-gated bit table */
+
+/* 0x4A808 — record §49-P. EAX = node. Arrival test on the node's actor R
+ * (+8): |R->+0x18 - node->+0x14| against 2*|the high word (signed) of
+ * R->+0x32|; within that band returns 1. Otherwise, when node->+0x14 has not
+ * yet passed R->+0x18 (unsigned-looking but the raw's `cmp`/`jl` are signed)
+ * in the direction R->+0x34's sign implies, also returns 1; else 0.
+ * EBX/ECX/EDX pushed and popped. Only caller: the unported 0x4E74B (0x4E67C,
+ * the +0x1C bit 1 clear arm). */
+static u8 fight_4a808(u32 node)
+{
+    u32 rec = DSD(node + 8u);                              /* 0x4A80A */
+    s32 rx = (s32)DSD(rec + 0x18u);                         /* 0x4A810 */
+    s32 target = (s32)DSD(node + 0x14u);                    /* 0x4A839 (reloaded below too) */
+    s32 delta = rx - target;                                /* 0x4A813 */
+    if (delta < 0) delta = -delta;                          /* 0x4A815..0x4A81B */
+    s32 step = (s32)DSD(rec + 0x32u) >> 16;                 /* 0x4A824/0x4A827 */
+    step += step;                                            /* 0x4A82A */
+    if (step < 0) step = -step;                              /* 0x4A82C..0x4A830 */
+    if (delta <= step) return 1u;                             /* 0x4A832/0x4A834 */
+    if (target >= rx && (s16)DSW(rec + 0x34u) < 0)             /* 0x4A83C/0x4A83F, 0x4A841/0x4A846 */
+        return 1u;
+    if (target > rx) return 0u;                                 /* 0x4A84E/0x4A851 */
+    if ((s16)DSW(rec + 0x34u) <= 0) return 0u;                   /* 0x4A853/0x4A858 */
+    return 1u;                                                    /* 0x4A85A */
+}
+
+/* 0x4A8A8 — record §49-P. EAX = node. fight_4a808's twin against the "live"
+ * position fight_2be00(R) (0x2BE00) rather than the stored R->+0x18. Only
+ * caller: the unported 0x4E871 (0x4E67C, the +0x1E == 0 arm). */
+static u8 fight_4a8a8(u32 node)
+{
+    u32 rec = DSD(node + 8u);                                /* 0x4A8AD */
+    s32 pos = fight_2be00(rec);                               /* 0x4A8B0 0x2BE00 */
+    s32 target = (s32)DSD(node + 0x14u);                       /* 0x4A8CE */
+    s32 delta = pos - target;                                   /* 0x4A8CE */
+    if (delta < 0) delta = -delta;                               /* 0x4A8D1..0x4A8D5 */
+    s32 step = (s32)DSD(rec + 0x32u) >> 16;                      /* 0x4A8B8/0x4A8BB */
+    step += step;                                                 /* 0x4A8BE */
+    if (step < 0) step = -step;                                    /* 0x4A8C0..0x4A8C8 */
+    if (delta <= step) return 1u;                                   /* 0x4A8D7/0x4A8D9 */
+    if (pos <= target && (s16)DSW(rec + 0x34u) < 0)                  /* 0x4A8DB/0x4A8DE, 0x4A8E3/0x4A8E8 */
+        return 1u;
+    if (pos < target) return 0u;                                       /* 0x4A8EA/0x4A8ED */
+    if ((s16)DSW(rec + 0x34u) <= 0) return 0u;                          /* 0x4A8F2/0x4A8F7 */
+    return 1u;                                                            /* 0x4A8F9 */
+}
+
+/* 0x4E5A4 — record §49-P. EAX = node ("entry"), EDX = idx (the anim-table
+ * index fight_4e67c's caller already computed, (u16)(R->+0x48 - 0x20)). Runs
+ * only when node->+0x1C bit 0x80 is set: hit-tests the node's actor R's
+ * screen point (the actor table's word +4/+8 at R->+0x56's slot) through
+ * camera_point_hit; on a hit, DS_001088BA = 1, node->+0x20 = clamp(hit, 1, 2)
+ * - 1, node->+0x1F++, R begins DS_000C9604[idx] at 3.0; when the node has no
+ * partner yet (+0x10 == 0), one is spawned from DS_000BB920[idx] at (R->
+ * +0x18, R->+0x30's signed high word) and linked into +0x10; then R->+0x34/
+ * +0x36 = -0x60/0x240 (the flinch throw), node->+0x1C &= 0x7F, R->+0x28 |=
+ * 0x80 and node->+0x1E = 2. EBX/ECX/ESI pushed and popped. Only caller: the
+ * unported 0x4E84E (0x4E67C's per-entry tail-common). */
+static void fight_4e5a4(u32 node, u32 idx)
+{
+    if ((DSW(node + 0x1Cu) & 0x80u) == 0u) return;              /* 0x4E5B1/0x4E5B8 */
+    u32 rec = DSD(node + 8u);                                    /* 0x4E5BE */
+    u32 actor = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;   /* 0x4E5C1..0x4E5D0 */
+    s32 hit = camera_point_hit((s32)(s16)DSW(actor + 4u),
+                               (s32)(s16)DSW(actor + 8u), 0u);       /* 0x4E5E5 */
+    if (hit == 0) return;                                          /* 0x4E5EC/0x4E5EE */
+    DSB(DS_001088BA) = 1u;                                          /* 0x4E5F4 */
+    s32 clamped = (hit > 2) ? 1 : hit;                               /* 0x4E5FB/0x4E5FE/0x4E600 */
+    DSB(node + 0x20u) = (u8)(clamped - 1);                            /* 0x4E60C/0x4E611 */
+    DSB(node + 0x1Fu) = (u8)(DSB(node + 0x1Fu) + 1u);                  /* 0x4E60E/0x4E614/0x4E616 */
+    actors_anim_begin(rec, DSD(DS_000C9604 + idx * 4u), 0x40400000u);   /* 0x4E61C..0x4E627 0x2BC30 */
+    if (DSD(node + 0x10u) == 0u) {                                       /* 0x4E62F */
+        u32 desc = DSD(DS_000BB920 + idx * 4u);                           /* 0x4E640 */
+        u32 spawned = actor_spawn((const u32 *)(mem + desc),
+                                  DSD(rec + 0x18u),
+                                  (u32)((s32)DSD(rec + 0x30u) >> 16),
+                                  0u, 0u);                                  /* 0x4E633..0x4E648 0x2AE14 */
+        DSD(node + 0x10u) = spawned;                                        /* 0x4E64D */
+    }
+    rec = DSD(node + 8u);                                                    /* 0x4E650 */
+    DSW(rec + 0x34u) = 0xFFA0u;                                                /* 0x4E653 */
+    DSW(rec + 0x36u) = 0x0240u;                                                 /* 0x4E65C */
+    DSB(node + 0x1Cu) = (u8)(DSB(node + 0x1Cu) & 0x7Fu);                        /* 0x4E662..0x4E66B */
+    DSB(rec + 0x28u) = (u8)(DSB(rec + 0x28u) | 0x80u);                           /* 0x4E66E */
+    DSB(node + 0x1Eu) = 2u;                                                       /* 0x4E672 */
+}
+
+/* 0x4E99C — record §49-P. EBX(word) = the arrival count fight_4e67c's
+ * per-frame loop tallied (`count`, the raw's `ax,si` at the call site).
+ * Bumps the round counter DS_001088BD (r = r + 1, stored at once) and, per r
+ * < 5 (the character array DS_00108888[char * 5..]) or r >= 5 (DS_
+ * 0010888A[char * 5..]), and per r's parity and `count`, updates a two-byte
+ * "remaining/diff" pair and, in the "reset" sub-case, re-bumps DS_001088BD
+ * to r + 1 once more (a stack local saved before the parity split). The
+ * raw's two `jnz`s at 0x4EA80/0x4EB49 are dead code here: their target is
+ * only reached with ZF already forced 1 by the `test ecx,ecx`/`idiv` pair
+ * immediately above, so they never fire; the port omits them. Every branch
+ * ends with a 0x2C3FC(0x5D or 0x5E) voice post; PORT: not wired (record
+ * §45-A). At the tail, DS_001088BD in {2, 4, 6} toggles DS_001088BC and
+ * calls hit_flash_pair; then DS_001088B9 = 0 always. EBX/ECX/EDX/ESI pushed
+ * and popped. Only caller: the unported 0x4E923 (0x4E67C, the DS_001088B9-
+ * gated post-loop tail). */
+static void fight_4e99c(u32 count)
+{
+    u16 bx = (u16)count;                                             /* 0x4E9A3 */
+    u8 r = (u8)(DSB(DS_001088BD) + 1u);                                /* 0x4E9A5/0x4E9B0/0x4E9BE */
+    DSB(DS_001088BD) = r;                                               /* 0x4E9B4 */
+    u8 save = (u8)(r + 1u);                                              /* 0x4E9C0/0x4E9C5 */
+    u32 ch = DSB(DS_001088BC);                                            /* 0x4E9E3/0x4EA25/... reloaded per branch in the raw, cached here (unchanged across the function) */
+    s32 rmod2 = (s32)r % 2;                                                /* 0x4E9CA */
+
+    if (r < 5u) {                                                          /* 0x4E9CC/0x4E9CF */
+        if (bx == 0u && rmod2 != 0) {                                       /* 0x4E9D5/0x4E9D8, 0x4E9DA/0x4E9DC */
+            DSB(DS_00108888 + ch * 5u) = 0xAu;                               /* 0x4E9EC */
+            DSB(DS_001088BD) = save;                                          /* 0x4E9F4/0x4E9F7 */
+            /* PORT: 0x4EA01 0x2C3FC(0x5D) voice, not wired (record §45-A). */
+        } else if (((s32)DSB(DS_001088BD) % 2) == 0 && bx == 0u) {             /* 0x4EA1A/0x4EA1C, 0x4EA1E/0x4EA21 */
+            u8 v = (u8)(0xAu - DSB(DS_00108888 + ch * 5u));                      /* 0x4EA33..0x4EA3D */
+            DSB(DS_00108888 + ch * 5u + 1u) = v;
+            /* PORT: 0x4EA43->0x4EB72 0x2C3FC(0x5E) voice, not wired. */
+        } else {
+            u8 bl = (u8)(0xAu - (u8)bx);                                        /* 0x4EA5C/0x4EA5E/0x4EA60 */
+            if (((s32)DSB(DS_001088BD) % 2) != 0) {                              /* 0x4EA62/0x4EA64 */
+                DSB(DS_00108888 + ch * 5u) = bl;                                   /* 0x4EA6F */
+                DSB(DS_001088BD) = save;                                            /* 0x4EA76/0x4EA7B */
+                /* PORT: 0x4EA7B->0x4EB72 0x2C3FC(0x5D) voice, not wired. */
+            } else {
+                /* the raw's 0x4EA80 `jnz` is dead here (ZF still 1). */
+                u8 v = (u8)(bl - DSB(DS_00108888 + ch * 5u));                        /* 0x4EA96/0x4EA9C */
+                DSB(DS_00108888 + ch * 5u + 1u) = v;
+                /* PORT: v != 0 -> 0x4EAAA->0x4EB6D 0x2C3FC(0x5E) voice, not wired. */
+            }
+        }
+    } else {
+        if (bx == 0u && rmod2 != 0) {                                          /* 0x4EAAF/0x4EAB2, 0x4EAB4/0x4EAB6 */
+            DSB(DS_0010888A + ch * 5u) = 0xAu;                                   /* 0x4EAC1 */
+            DSB(DS_001088BD) = save;                                              /* 0x4EAC9/0x4EACC */
+            /* PORT: 0x4EAD6->0x4EB72 0x2C3FC(0x5D) voice, not wired. */
+        } else if (((s32)DSB(DS_001088BD) % 2) == 0 && bx == 0u) {                 /* 0x4EAEF/0x4EAF1, 0x4EAF3/0x4EAF6 */
+            u8 v = (u8)(0xAu - DSB(DS_0010888A + ch * 5u));                          /* 0x4EB02..0x4EB0B */
+            DSB(DS_0010888A + ch * 5u + 1u) = v;
+            /* PORT: 0x4EB12->0x4EB6D 0x2C3FC(0x5E) voice, not wired. */
+        } else {
+            u8 bl = (u8)(0xAu - (u8)bx);                                            /* 0x4EB28/0x4EB2A/0x4EB2C */
+            if (((s32)DSB(DS_001088BD) % 2) != 0) {                                  /* 0x4EB2E/0x4EB30 */
+                DSB(DS_0010888A + ch * 5u) = bl;                                       /* 0x4EB3B */
+                DSB(DS_001088BD) = save;                                                /* 0x4EB42/0x4EB47 */
+                /* PORT: 0x4EB47->0x4EB72 0x2C3FC(0x5D) voice, not wired. */
+            } else {
+                /* the raw's 0x4EB49 `jnz` is dead here (ZF still 1). */
+                u8 v = (u8)(bl - DSB(DS_0010888A + ch * 5u));                            /* 0x4EB5D/0x4EB63 */
+                DSB(DS_0010888A + ch * 5u + 1u) = v;
+                /* PORT: v != 0 -> 0x4EB6B->0x4EB6D 0x2C3FC(0x5E) voice, not wired. */
+            }
+        }
+    }
+
+    u8 rd = DSB(DS_001088BD);                                                       /* 0x4EB79 */
+    if (rd == 2u || rd == 4u || rd == 6u) {                                          /* 0x4EB7F/0x4EB82, 0x4EB84/0x4EB87, 0x4EB89/0x4EB8C */
+        u8 old = DSB(DS_001088BC);                                                    /* 0x4EB8E */
+        u8 v = (old == 0u) ? 1u : 0u;                                                  /* 0x4EB94/0x4EB96 */
+        DSB(DS_001088BC) = v;                                                           /* 0x4EB99 */
+        hit_flash_pair(v);                                                              /* 0x4EBA3 0x34D8C */
+    }
+    DSB(DS_001088B9) = 0u;                                                              /* 0x4EBAA */
+}
+
+/* 0x4E67C — record §49-P. Mode 0x25's per-frame audience-effects pass, called
+ * unconditionally by game_mode_25_step (0x266AC). fight_2be00 of the fighter
+ * record at slot DS_001088BC ("P"): when it exceeds 0x1C00 (signed), the
+ * `big` flag is set and DS_00108894 is loaded from clamp(((s16)P's record's
+ * +0x32 word - 0xE0) / 100, 0, 15) (0 when that difference is not positive);
+ * else `big` is clear and DS_00108894 keeps whatever it held. Then, for every
+ * entry on the active list DS_0010884C: with its +0x1C bit 1 clear, a live
+ * actor R (+0x34 != 0) that fight_4a808 reports arrived is retired (+0x34 =
+ * 0, +0x32 = the node's +0x1A, +0x1E = 0), and the entry is skipped for the
+ * rest of this pass either way; with the bit set and `big`, +0x1C bit 0x80 is
+ * driven by the table 0xC9810/0xC9830 gate (DS_001088BD odd: the fighters'
+ * +0x30 high-word x distance against +-0x100; even: two table-bit tests with
+ * an rng(2) veto between them) — without `big` the bit is left untouched.
+ * Then, unconditionally for every surviving entry: idx = (u16)(R->+0x48 -
+ * 0x20); fight_4e5a4(entry, idx); per the node's +0x1E: 0 runs fight_4a8a8,
+ * and on a hit clears R's +0x38/+0x34/+0x36, begins DS_000C9544[idx] at 5.0
+ * and sets +0x1E = 1 (either way the "processed" count `processed`++); 1
+ * bumps both the "stalled" count `stalled` and `processed`; 2, with a
+ * partner +0x10, copies R's +0x18/+0x32 into it, then fight_2be00(R) < 0 sets
+ * R's +0x28 bit 0x80 and tears the partner's type down (actor_type_49444).
+ * After the list: `stalled` == 10 sets DS_001088BE = 1; with DS_001088B9,
+ * fight_4e99c(`processed`) then fight_mode25_scorecard(), and DS_001088BD
+ * even also clears DS_001088BE. Finally, with DS_001088B8 and both round
+ * flags DS_001078F0/F1 set, and (DS_001088BD even, or `processed` != 0),
+ * fight_mode25_spawn(0) and DS_001088B8 = 0. EBX..EDI pushed and popped.
+ * Only caller: the unported 0x2685A (0x266AC). */
+void fight_4e67c(void)
+{
+    u32 p = DSD(DS_001077B0 + (u32)DSB(DS_001088BC) * 0x94u);    /* 0x4E6B8..0x4E6CE, 0x4E799..0x4E7A6 idiom */
+    int big = (s32)fight_2be00(p) > 0x1C00;                      /* 0x4E6AC/0x4E6B1/0x4E6B6 */
+    if (big) {                                                    /* 0x4E6B6 */
+        s32 v = (s32)(s16)DSW(p + 0x32u) - 0xE0;                    /* 0x4E6D5/0x4E6DE */
+        if (v <= 0) {                                                 /* 0x4E6E8/0x4E6EB */
+            DSW(DS_00108894) = 0u;                                       /* 0x4E70F/0x4E711 */
+        } else {
+            s32 c = v / 100;                                               /* 0x4E6FA */
+            if (c > 15) c = 15;                                              /* 0x4E6FD/0x4E700/0x4E702 */
+            DSW(DS_00108894) = (u16)c;                                        /* 0x4E707 */
+        }
+    }
+
+    u32 node = DSD(DS_0010884C);
+    u32 processed = 0u, stalled = 0u;                                          /* ESI, [ESP] */
+    while (node != DS_0010884C) {                                               /* 0x4E71E/0x4E724 */
+        u32 next = DSD(node);                                                    /* 0x4E730 */
+        if ((DSW(node + 0x1Cu) & 2u) == 0u) {                                     /* 0x4E732..0x4E739 */
+            u32 r = DSD(node + 8u);                                                /* 0x4E73B */
+            if (DSW(r + 0x34u) != 0u && fight_4a808(node) != 0u) {                  /* 0x4E73E/0x4E743, 0x4E74B/0x4E750 */
+                DSW(r + 0x34u) = 0u;                                                  /* 0x4E75B */
+                DSW(r + 0x32u) = DSW(node + 0x1Au);                                    /* 0x4E768 */
+                DSB(node + 0x1Eu) = 0u;                                                 /* 0x4E76C */
+            }
+            node = next;                                                                /* 0x4E743/0x4E752/0x4E770 -> 0x4E8F3 */
+            continue;
+        }
+        if (big) {                                                                   /* 0x4E77B */
+            if ((DSB(DS_001088BD) & 1u) != 0u) {                                       /* 0x4E795/0x4E797 */
+                s32 px = (s32)DSD(p + 0x30u) >> 16;                                       /* 0x4E7AF/0x4E7B5 */
+                s32 rx = (s32)DSD(DSD(node + 8u) + 0x30u) >> 16;                           /* 0x4E7B2/0x4E7B8 */
+                if (rx > px + 0x100 || rx < px - 0x100)                                     /* 0x4E7C1/0x4E7C3, 0x4E7CE/0x4E7D0 */
+                    DSB(node + 0x1Cu) &= 0x7Fu;                                               /* 0x4E836 */
+                else
+                    DSB(node + 0x1Cu) |= 0x80u;                                               /* 0x4E7D2 */
+            } else {
+                u16 bit = (u16)(DSW(DS_000C9810 + (u32)DSW(DS_00108894) * 2u)
+                                 >> (DSW(node + 0x1Au) & 0x1Fu));                             /* 0x4E7DA..0x4E7F7 */
+                int on = (bit & 1u) != 0u;                                                      /* 0x4E7F7/0x4E7F9 */
+                if (!on) {
+                    on = rng_next(2u) != 0u;                                                      /* 0x4E800/0x4E805 0x5D7DC */
+                    if (on) {
+                        u16 bit2 = (u16)(DSW(DS_000C9830 + (u32)DSW(DS_00108894) * 2u)
+                                          >> (DSW(node + 0x1Au) & 0x1Fu));                          /* 0x4E80B..0x4E82C */
+                        on = (bit2 & 1u) != 0u;
+                    }
+                }
+                if (on) DSB(node + 0x1Cu) |= 0x80u;                                                  /* 0x4E830 */
+                else    DSB(node + 0x1Cu) &= 0x7Fu;                                                   /* 0x4E836 */
+            }
+        }
+
+        u32 r2 = DSD(node + 8u);                                                                     /* 0x4E83A */
+        u32 idx = (u32)(u16)((u32)DSB(r2 + 0x48u) - 0x20u);                                            /* 0x4E83D..0x4E847 */
+        fight_4e5a4(node, idx);                                                                          /* 0x4E84E 0x4E5A4 */
+        u8 st = DSB(node + 0x1Eu);                                                                        /* 0x4E853 */
+        if (st == 0u) {                                                                                     /* 0x4E856/0x4E859 */
+            if (fight_4a8a8(node) != 0u) {                                                                    /* 0x4E871/0x4E876/0x4E878 */
+                r2 = DSD(node + 8u);                                                                             /* 0x4E87A */
+                DSW(r2 + 0x38u) = 0u;                                                                              /* 0x4E87D */
+                DSW(r2 + 0x34u) = 0u;                                                                               /* 0x4E886 */
+                DSW(r2 + 0x36u) = 0u;                                                                                /* 0x4E88F */
+                actors_anim_begin(r2, DSD(DS_000C9544 + idx * 4u), 0x40A00000u);                                       /* 0x4E89F..0x4E8A4 5.0f */
+                DSB(node + 0x1Eu) = 1u;                                                                                  /* 0x4E8A9 */
+            }
+            processed++;                                                                                                  /* 0x4E8AD */
+        } else if (st == 1u) {                                                                                             /* 0x4E85B */
+            stalled++;                                                                                                       /* 0x4E8B3 */
+            processed++;                                                                                                      /* 0x4E8B4 */
+        } else if (st == 2u) {                                                                                                /* 0x4E85D/0x4E860 */
+            u32 partner = DSD(node + 0x10u);                                                                                   /* 0x4E8BA */
+            if (partner != 0u) {                                                                                                  /* 0x4E8BF */
+                DSD(partner + 0x18u) = DSD(DSD(node + 8u) + 0x18u);                                                                  /* 0x4E8C7 */
+                DSW(partner + 0x32u) = DSW(DSD(node + 8u) + 0x32u);                                                                   /* 0x4E8D4 */
+            }
+            r2 = DSD(node + 8u);                                                                                                        /* 0x4E8D8 */
+            if (fight_2be00(r2) < 0) {                                                                                                    /* 0x4E8E0/0x4E8E2 */
+                DSB(r2 + 0x28u) |= 0x80u;                                                                                                    /* 0x4E8E7 */
+                actor_type_49444(r2);                                                                                                          /* 0x4E8EE 0x49444 */
+            }
+        }
+        node = next;                                                                                                                            /* 0x4E8F3/0x4E8FB */
+    }
+
+    if ((u16)stalled == 10u) DSB(DS_001088BE) = 1u;                                                                                                /* 0x4E907/0x4E90C */
+    if (DSB(DS_001088B9) != 0u) {                                                                                                                    /* 0x4E91A */
+        fight_4e99c(processed);                                                                                                                        /* 0x4E923 */
+        fight_mode25_scorecard();                                                                                                                       /* 0x4E928 0x4EBB8 */
+        if ((DSB(DS_001088BD) & 1u) == 0u) DSB(DS_001088BE) = 0u;                                                                                        /* 0x4E93D/0x4E941/0x4E945 */
+    }
+    if (DSB(DS_001088B8) != 0u                                                                                                                             /* 0x4E952 */
+            && DSB(DS_001078F0) != 0u && DSB(DS_001078F1) != 0u                                                                                             /* 0x4E95B/0x4E964 */
+            && ((DSB(DS_001088BD) & 1u) == 0u || processed != 0u)) {                                                                                        /* 0x4E97C/0x4E981 */
+        fight_mode25_spawn(0u);                                                                                                                                /* 0x4E987 */
+        DSB(DS_001088B8) = 0u;                                                                                                                                  /* 0x4E98C */
+    }
+}
+
+#define DS_000C9BCE 0x000C9BCEu   /* no symbols.h name: fight_mode25_scorecard's decorative glyph-id table */
+#define DS_000C9BE0 0x000C9BE0u   /* no symbols.h name: the "10, combined" glyph pair's tens id */
+#define DS_000C9BE2 0x000C9BE2u   /* no symbols.h name: the "10, combined" glyph pair's ones id */
+#define DS_000C9BE4 0x000C9BE4u   /* no symbols.h name: the "10, own stat" glyph pair's tens id */
+#define DS_000C9BE6 0x000C9BE6u   /* no symbols.h name: the "10, own stat" glyph pair's ones id */
+
+/* 0x4EBB8 — record §49-P. The mode-0x25 round-card body: a fixed 5-row x
+ * 11-col decorative glyph grid (i = 0..0x36, row = i/11 + 6, col = i%11 +
+ * 0xE; skips DS_000C9850[i] == 0xFF; glyph = DS_000C9BCE[DS_000C9850[i]];
+ * mode `mode_a`, which is 0x2000 when DS_00104AFC == 1 else 0x3000), then per
+ * side (0, 1; `base` = side * 5, `row0` the row cursor entering this side,
+ * starting at 6 and += 2 per side): DS_00108888[base] >= 10 draws the fixed
+ * "10" glyph pair DS_000C9BE4/DS_000C9BE6 at col 0x11/0x12 row `row0 + 1`
+ * mode_a and seeds `acc` from DS_0010888A[base]+DS_0010888A[base+1]+10; else
+ * DS_00108888[base]+DS_00108888[base+1] >= 10 draws DS_000C9BE0/DS_000C9BE2
+ * at the same cols/row and seeds `acc` from DS_0010888A[base]+10; else draws
+ * the sum's two digits through text_number_draw at col 0x11/0x12 row `row0 +
+ * 1` mode 0x3000 and seeds `acc` from the sum itself. The DS_0010888A[base]
+ * twin runs the same three-way split at col 0x14/0x15 and either adds 0x1E
+ * or 0xF to `acc` (the two ">= 10" arms) or draws its own sum's two digits at
+ * row `acc + 1` (note: not `row0` — the raw reuses the same stack slot) and
+ * accumulates the sum into `acc` (the "both < 10" arm only). With DS_
+ * 001088BD > 6, `acc`'s own two digits are drawn at col 0x17/0x18, again row
+ * `acc + 1`. Finally DS_0010888C[base] = (u8)acc (side 0 lands on the named
+ * DS_0010888C, side 1 on DS_00108891 — DS_0010888C + 5). EBX..EBP pushed and
+ * popped. Only caller: the unported 0x4F06E (0x4EF8C, game_mode_25_reveal)
+ * and, indirectly through it, 0x4E928 (0x4E67C's DS_001088B9-gated tail). */
+void fight_mode25_scorecard(void)
+{
+    u32 mode_b = 0x3000u;                                       /* [esp+4] */
+    u32 mode_a = (DSW(DS_00104AFC) == 1u) ? 0x2000u : 0x3000u;   /* [esp+0x14] */
+
+    for (u32 i = 0; i < 0x37u; i++) {                             /* 0x4EC05..0x4EC5F */
+        u8 id = DSB(DS_000C9850 + i);                               /* 0x4EC0B */
+        if (id == 0xFFu) continue;                                    /* 0x4EC11/0x4EC17 */
+        s32 row = (s32)(i / 11u) + 6;                                  /* 0x4EC19..0x4EC25 */
+        s32 col = (s32)(i % 11u) + 0xE;                                 /* 0x4EC34..0x4EC3B */
+        s32 ch = (s32)DSW(DS_000C9BCE + (u32)id * 2u);                   /* 0x4EC2A */
+        text_glyph_at(col, ch, row, mode_a);                               /* 0x4EC51 0x2F174 */
+    }
+
+    u32 row0 = 6u;                                                          /* EDI */
+    for (u32 side = 0; side < 2u; side++) {                                   /* 0x4EF71..0x4EF7B */
+        u32 base = side * 5u;
+        u32 acc;                                                                /* [esp+0xc] */
+
+        if (DSB(DS_00108888 + base) >= 10u) {                                    /* 0x4EC80/0x4EC83 */
+            text_glyph_at(0x11, (s32)DSW(DS_000C9BE4), (s32)(row0 + 1u), mode_a); /* 0x4ECA5 */
+            text_glyph_at(0x12, (s32)DSW(DS_000C9BE6), (s32)(row0 + 1u), mode_a);  /* 0x4ECBD */
+            acc = (u32)DSB(DS_0010888A + base) + DSB(DS_0010888A + base + 1u) + 10u; /* 0x4ECC2..0x4ECD7 */
+        } else if (DSB(DS_00108888 + base) + DSB(DS_00108888 + base + 1u) >= 10u) { /* 0x4ECE3/0x4ECEB */
+            text_glyph_at(0x11, (s32)DSW(DS_000C9BE0), (s32)(row0 + 1u), mode_a);     /* 0x4ED10 */
+            text_glyph_at(0x12, (s32)DSW(DS_000C9BE2), (s32)(row0 + 1u), mode_a);      /* 0x4ED28 */
+            acc = (u32)DSB(DS_0010888A + base) + 10u;                                    /* 0x4ED2F/0x4ED35 */
+        } else {
+            u32 sum = (u32)DSB(DS_00108888 + base) + DSB(DS_00108888 + base + 1u);         /* 0x4ED43..0x4ED52 */
+            acc = sum;                                                                       /* 0x4ED56 */
+            text_number_draw(0x11, (s32)(row0 + 1u), (s32)(sum / 10u), 1, 0u, mode_b);       /* 0x4ED86 0x2F4D0 */
+            text_number_draw(0x12, (s32)(row0 + 1u), (s32)(sum % 10u), 1, 0u, mode_b);        /* 0x4EDAD */
+        }
+
+        if (DSB(DS_0010888A + base) >= 10u) {                                                   /* 0x4EDC4/0x4EDC7 */
+            text_glyph_at(0x14, (s32)DSW(DS_000C9BE4), (s32)(row0 + 1u), mode_a);                 /* 0x4EDE8 */
+            text_glyph_at(0x15, (s32)DSW(DS_000C9BE6), (s32)(row0 + 1u), mode_a);                  /* 0x4EDFF */
+            acc += 0x1Eu;                                                                            /* 0x4EE04 */
+        } else if (DSB(DS_0010888A + base) + DSB(DS_0010888A + base + 1u) >= 10u) {                    /* 0x4EE17/0x4EE1C */
+            text_glyph_at(0x14, (s32)DSW(DS_000C9BE0), (s32)(row0 + 1u), mode_a);                        /* 0x4EE3D */
+            text_glyph_at(0x15, (s32)DSW(DS_000C9BE2), (s32)(row0 + 1u), mode_a);                         /* 0x4EE54 */
+            acc += 0xFu;                                                                                    /* 0x4EE59 */
+        } else {
+            u32 sum2 = (u32)DSB(DS_0010888A + base) + DSB(DS_0010888A + base + 1u);                           /* 0x4EE68..0x4EE74 */
+            text_number_draw(0x14, (s32)(acc + 1u), (s32)(sum2 / 10u), 1, 0u, mode_b);                          /* 0x4EEAA */
+            text_number_draw(0x15, (s32)(acc + 1u), (s32)(sum2 % 10u), 1, 0u, mode_b);                           /* 0x4EED1 */
+            acc += sum2;                                                                                            /* 0x4EED6..0x4EEDE */
+        }
+
+        if (DSB(DS_001088BD) > 6u) {                                                                                   /* 0x4EEE5/0x4EEED */
+            text_number_draw(0x17, (s32)(acc + 1u), (s32)(acc / 10u), 1, 0u, mode_b);                                    /* 0x4EF25 */
+            text_number_draw(0x18, (s32)(acc + 1u), (s32)(acc % 10u), 1, 0u, mode_b);                                     /* 0x4EF4C */
+        }
+
+        DSB(DS_0010888C + base) = (u8)acc;                                                                                  /* 0x4EF6B */
+        row0 += 2u;                                                                                                           /* 0x4EF64 */
+    }
 }

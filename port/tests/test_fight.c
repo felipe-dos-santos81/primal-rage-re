@@ -30324,6 +30324,146 @@ static void check_mode_21(void)
     mz_restore();
 }
 
+/* ---- record §49-P: mode 0x25's per-frame step, reveal and exit ---------- */
+
+/* game_mode_25_step (0x266AC), game_mode_25_reveal (0x4EF8C) and game_mode_
+ * 25_exit (0x4F0FC): the three functions the game_frame switch's inline
+ * case-0x25 DS_00104B25 sub-state machine calls. Each block below seeds a
+ * distinct sentinel, proves it moves, and hands off to the next block on the
+ * same snapshot (mz_restore only at entry/exit) since none of the three
+ * touch the process-wide actor free list. */
+static void check_mode_25(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-P snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* --- game_mode_25_step: the shared preamble (DS_001077E8/DS_0010787C
+     * plain copies, DS_00104AEC |= 2) and the empty-list fight_4e67c/
+     * fight_384f8 passes (no combo nodes, no audience entries) must not
+     * crash and must reach the tail. The pulse-timer gate closed (one round
+     * flag clear) leaves DS_001088A6/DS_00104B18 untouched — the canary that
+     * distinguishes "the gate ran" from "the gate was never reached". */
+    fight_reset_recs();
+    fight_reset_actors();
+    DSD(DS_0010884C) = DS_0010884C;                    /* empty audience list */
+    DSD(DS_001077A8) = 0u; DSD(DS_001077A8 + 4u) = 0u; /* no combo nodes */
+    DSD(DS_001077E4) = 0x1111u; DSD(DS_001077E8) = 0x2222u;
+    DSD(DS_00107878) = 0x3333u; DSD(DS_0010787C) = 0x4444u;
+    DSB(DS_001078F0) = 0u; DSB(DS_001078F1) = 1u;      /* gate closed */
+    DSW(DS_001088A6) = 0x77u;
+    DSB(DS_00104B18) = 0x77u;
+    DSB(DS_00104AEC) = 0u;
+    DSB(DS_001078FA) = 0u;                             /* skip the extra camera pass */
+    DSB(DS_0010782A) = 2u; DSB(DS_001078BE) = 5u;      /* valid character bytes */
+    DSB(DS_001088BC) = 0u;
+    DSW(DS_000EF6DC) = 0xFFFFu;                        /* HUD-text tail: skip (bit 0x1F set) */
+    game_mode_25_step();
+    CHECK_EQ_INT((int)DSD(DS_001077E8), 0x1111);
+    CHECK_EQ_INT((int)DSD(DS_0010787C), 0x3333);
+    CHECK_EQ_INT((int)DSW(DS_001088A6), 0x77);
+    CHECK_EQ_INT((int)DSB(DS_00104B18), 0x77);
+    CHECK_EQ_INT((int)(DSB(DS_00104AEC) & 2u), 2);
+
+    /* --- the pulse timer, gate open, DS_001088A6 already at 0: it resets to
+     * 0xB4 and DS_00104B18 arms — the mutation this proves is that, without
+     * the "old == 0" arm, DS_001088A6 would instead wrap to 0xFFFF. */
+    DSB(DS_001078F0) = 1u; DSB(DS_001078F1) = 1u;
+    DSW(DS_001088A6) = 0u;
+    DSB(DS_00104B18) = 0u;
+    game_mode_25_step();
+    CHECK_EQ_INT((int)DSW(DS_001088A6), 0xB4);
+    CHECK_EQ_INT((int)DSB(DS_00104B18), 1);
+
+    /* --- the pulse timer, gate open, DS_001088A6 above 0: it merely
+     * decrements and DS_00104B18 is left alone. */
+    DSW(DS_001088A6) = 5u;
+    DSB(DS_00104B18) = 0x77u;
+    game_mode_25_step();
+    CHECK_EQ_INT((int)DSW(DS_001088A6), 4);
+    CHECK_EQ_INT((int)DSB(DS_00104B18), 0x77);
+
+    /* --- game_mode_25_exit (0x4F0FC): pure global writes, no fixture. */
+    DSW(DS_00104B00) = 0x7777u;
+    DSB(DS_001088C0) = 0x77u;
+    DSB(DS_00104B15) = 0x77u;
+    DSB(DS_00104AEC) = 0x40u;
+    game_mode_25_exit();
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 6);
+    CHECK_EQ_INT((int)DSB(DS_001088C0), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B15), 1);
+    CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x41);
+
+    /* --- game_mode_25_reveal (0x4EF8C) and fight_mode25_scorecard (0x4EBB8):
+     * an empty audience list (the settling loop is proven separately below),
+     * both sides' tally arrays seeded so the scorecard computes a known,
+     * unequal pair of totals (side 0: 3+2=5, then +(1+1)=2 more = 7; side 1:
+     * 1+1=2, then +(2+2)=4 more = 6). DS_0010888C/DS_00108891 must reflect
+     * those totals exactly — a canary a fitted constant could not fake,
+     * since it depends on fight_mode25_scorecard's own arithmetic, not a
+     * value this test writes directly. */
+    DSD(DS_0010884C) = DS_0010884C;
+    DSW(DS_0010889A) = 0x77u;
+    DSB(DS_001088BD) = 6u;                              /* <= 6: skip the extra digit pair */
+    DSD(DS_000F0AF0) = 0u;
+    DSW(DS_00104AFC) = 0u;                              /* mode_a = 0x3000 */
+    mem_fill(DS_00108888, 0, 10);                       /* both tally arrays, both sides */
+    DSB(DS_00108888 + 0u) = 3u; DSB(DS_00108888 + 1u) = 2u;  /* side 0, array1: 5 */
+    DSB(DS_0010888A + 0u) = 1u; DSB(DS_0010888A + 1u) = 1u;  /* side 0, array2: 2 */
+    DSB(DS_00108888 + 5u) = 1u; DSB(DS_00108888 + 6u) = 1u;  /* side 1, array1: 2 */
+    DSB(DS_0010888A + 5u) = 2u; DSB(DS_0010888A + 6u) = 2u;  /* side 1, array2: 4 */
+    game_mode_25_reveal();
+    CHECK_EQ_INT((int)DSW(DS_0010889A), 0xF0);
+    CHECK_EQ_INT((int)DSB(DS_0010888C), 7);
+    CHECK_EQ_INT((int)DSB(DS_00108891), 6);
+
+    /* --- the "equal totals" arm: both sides land on 5; distinct from the
+     * unequal case just above taking the other branch under the same call
+     * shape, so the id-0x63/0x64 vs 0x65/0x66 choice is exercised both ways
+     * (the drawn string id itself is not observable from this fixture; the
+     * scorecard totals it is chosen from are, and that is what each branch
+     * actually reads). */
+    mem_fill(DS_00108888, 0, 10);
+    DSB(DS_00108888 + 0u) = 2u; DSB(DS_00108888 + 1u) = 1u;  /* side 0: 3 */
+    DSB(DS_0010888A + 0u) = 1u; DSB(DS_0010888A + 1u) = 1u;  /* side 0: +2 = 5 */
+    DSB(DS_00108888 + 5u) = 2u; DSB(DS_00108888 + 6u) = 1u;  /* side 1: 3 */
+    DSB(DS_0010888A + 5u) = 1u; DSB(DS_0010888A + 6u) = 1u;  /* side 1: +2 = 5 */
+    game_mode_25_reveal();
+    CHECK_EQ_INT((int)DSB(DS_0010888C), 5);
+    CHECK_EQ_INT((int)DSB(DS_00108891), 5);
+
+    /* --- the audience-list settling loop: one entry with its +0x1C bit 1
+     * set moves through 0x4EF8C's own reset (node->+0x14 = DS_000F0AF0 -
+     * 0x8180, R->+0x34 = 0xFF80, node->+0x1C &= 0x7F, R->+0x28 |= 0x4080,
+     * node->+0x1E = 8). Seeded to sentinels that all four assertions must
+     * move off. */
+    {
+        u32 entry = FIGHT_RECS + 0x1000u;
+        u32 rec = FIGHT_RECS + 0x1100u;
+        mem_fill(entry, 0, 0x40);
+        mem_fill(rec, 0, 0x100);
+        DSD(DS_0010884C) = entry;
+        DSD(entry) = DS_0010884C;
+        DSW(entry + 0x1Cu) = 0xFFFFu;    /* bit 1 set (and every other bit, as a sentinel) */
+        DSD(entry + 8u) = rec;
+        DSB(rec + 0x48u) = 0x20u;        /* idx = 0 */
+        DSD(DS_000F0AF0) = 0x8180u;      /* node->+0x14 lands on exactly 0 */
+        DSD(entry + 0x14u) = 0x77777777u;
+        DSW(rec + 0x34u) = 0x7777u;
+        DSW(rec + 0x28u) = 0u;
+        DSB(entry + 0x1Eu) = 0x77u;
+        game_mode_25_reveal();
+        CHECK_EQ_INT((int)DSD(entry + 0x14u), 0);
+        CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFF80);
+        /* bit 0x80 (not the low 7 bits, which the sentinel already set) is
+         * what node->+0x1C &= 0x7F actually clears. */
+        CHECK_EQ_INT((int)(DSW(entry + 0x1Cu) & 0x80u), 0);
+        CHECK_EQ_INT((int)(DSW(rec + 0x28u) & 0x4080u), 0x4080);
+        CHECK_EQ_INT((int)DSB(entry + 0x1Eu), 8);
+    }
+
+    mz_restore();
+}
+
 /* ---- record §49-Q: the coin/start divert's cases 0x28..0x2F -------------- */
 
 /* Each of the eight case handlers is a straight-line block with no branch and
@@ -33403,6 +33543,7 @@ int test_fight(void)
     check_flow_round_over_check();
     check_mode_31();
     check_mode_33();
+    check_mode_25();
 
     return g_failures - before;
 }
