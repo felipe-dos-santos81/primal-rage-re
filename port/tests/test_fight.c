@@ -36275,9 +36275,15 @@ static void check_fs_40954(void)
         DSB(s0 + 0x57u) = st[i];
         DSW(r0 + 0x36u) = 0x8000u;
         DSW(r0 + 0x44u) = 0x4444u;
+        DSD(r1 + 0x1Cu) = 0x80000000u;       /* case 4 would run on these */
+        DSD(DS_00108090) = FIGHT_RECS + 0x200u;
+        DSD(DS_00108094) = FIGHT_RECS + 0x300u;
+        DSB(DS_000F0AFE) = 0xAEu;
         fighter_40954(s0, r0, 0u);
         CHECK_EQ_INT((int)DSB(s0 + 0x57u), (int)st[i]);
         CHECK_EQ_INT((int)DSW(r0 + 0x44u), 0x4444);
+        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 0xAE);
+        CHECK_EQ_INT((int)DSW(r1 + 0x36u), 0x3636);
     }
 }
 
