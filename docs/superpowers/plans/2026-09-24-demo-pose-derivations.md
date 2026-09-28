@@ -21934,3 +21934,202 @@ of its documented callers (`0x26540`/`0x266AC`/`0x299E8`) are now ported.
 `0x4E99C`'s two `0x2C3FC` voice posts remain the deferred-audio idiom
 (spec §7), matching the dozens of existing `PORT:` comments this codebase
 already carries for that address.
+
+## 49-W. The startup/frame helper cluster (named-gap batch, branch `gap42-startuphelpers`)
+
+The heuristic list (`0x102B8`, `0x1013C`, `0x10A68`, `0x129FC`, `0x14A5C`,
+`0x14B90`) was checked against `tools/port_progress.py --unported` and a grep
+of `port/src` for each address first: none of the six is ported (no header
+comment, no `PORT:` note naming it as unported beyond `ail.c:355` and the
+`config.c`/`config.h` no-op notes). The extra candidates `0x305FC`, `0x2EA78`
+and `0x2EBF0` were not needed (three of the six are portable) and were only
+read: `0x2EA78` is the EEPROM-storage-write layer spec §4/§7 declares a no-op
+(it loops on `INT 0x16` BIOS keyboard polling), `0x305FC` is the same config
+screen family (`0x2F198` message draw, `0x2DCA0`). Letter `W` was free in
+`main` and in every worktree (the highest letter in the record is `R`).
+
+### 49-W.1 What each address is
+
+| Address | Size | Callers (Ghidra `get_xrefs_to`) | What it is | Outcome |
+|---|---|---|---|---|
+| `0x102B8` | 599 B | 11: `0x100E3` (`FUN_000100dc`) and ten in the Smacker SDK `0x6279C..0x65240` | the Smacker movie-audio streaming pump: walks the linked list at `DS_00081E00` and refills each stream through `0x5DD5D`/`0x60898`/`0x5DD86` | **named gap** (49-W.2) |
+| `0x1013C` | 379 B | 1: `0x63387` (`FUN_00063180`, SDK) | opens a stream: `0x1C884` alloc, `0x5DBCB` allocate sample handle, `0x5DC4D`/`0x5DCA6`/`0x5DDAD`/`0x5DCC5`, links the stream into `DS_00081E00` | **named gap** (49-W.2) |
+| `0x10A68` | 260 B | 2: `0x67D9B`, `0x6A2DB` (SDK) | a load-file-into-memory wrapper: `0x109F4` (size), the allocator hook `[0x81E1C]`, `0x6157F` (open), `0x6180F` (read), `0x6180A` (close), the free hook `[0x81E20]` | **named gap** (49-W.2) |
+| `0x129FC` | 443 B | 1: `0x129C1` (`FUN_000128d4`, ported as `camera_impact_dust_spawn`) | one in-use dust node offered to the fighters as a hit test | **ported** (49-W.3) |
+| `0x14A5C` | 308 B | 1: `0x14A47` (`FUN_00014988`, unported) | step 2 of character 3's reaction-0x26 callback: `0x146F0`'s twin | **ported** (49-W.4) |
+| `0x14B90` | 261 B | 1: `0x14CAC` (`0x14C98`, no Ghidra function) and `*(u32*)0xA4720` | character 3's reaction-0x26 callback: `0x14814`'s twin | **ported** (49-W.4) |
+
+Callees ported to make the three portable ones complete: `0x12BB8` (181 B, 4
+callers), `0x4DBB4` (53 B, 2 callers), `0x14988` (210 B, `0x14B90`'s `+0x0C`
+callback), `0x14938` and `0x14950` (`0x14B90`'s `+0x18`/`+0x1C` callbacks) and
+`0x14C98` (44 B, the reaction-0x28 wrapper, `0x14B90`'s only direct caller).
+Ghidra defines no function at `0x14938`, `0x14950` or `0x14C98`; the callback
+pointers `0x14B90` stores are `LAB_00014938`/`LAB_00014950` in the decompilation.
+
+### 49-W.2 The three Smacker-runtime functions: a named gap, with the evidence
+
+`0x102B8`, `0x1013C` and `0x10A68` sit in `0x10000..0x10D70`, the Smacker SDK's
+AIL adapter and streaming layer (design spec `2026-09-17-smacker-video-design.md`
+"Streamed-audio chain"). Every caller is either another unported function of
+that layer (`0x100DC`) or the SDK proper (`0x62xxx..0x6Axxx`, tagged `runtime`
+by `port_progress.py`). The port reimplements the decoder natively
+(`platform/smacker.c`) and the AIL surface as inert stubs (`ail.c:355`, "Safe
+inert stubs"). Porting the three faithfully is not possible under the rules:
+
+* **`0x1013C`/`0x102B8` keep an AIL sample handle in the stream struct.**
+  `0x1013C` stores `0x5DBCB`'s return at `[ESI+0x23C]` and `0x102B8` passes it
+  to `0x5DD5D`/`0x5DD86`. The port's `HSAMPLE` is a host C pointer
+  (`ail.h`); it cannot be stored in a 32-bit `mem[]` word without truncating
+  it (PORTING.md: "never shadow game state in a C global", and the reverse:
+  a host pointer must not be laundered into game memory).
+* **`0x102B8`'s body is unreachable through the port's AIL surface.**
+  `AIL_stream_buffer_index` (`0x5DD5D`) is the stub returning -1
+  (`ail.c`), and the raw tests `cmp eax,1 / ja 0x104FA` (0x10300/0x10303,
+  unsigned), so every node is skipped; the function reduces to the list walk.
+  A "port" would be dead code exercising only stubs.
+* **`0x10A68` is file I/O.** It opens and reads a file itself (`0x6157F`,
+  `0x6180F`) and calls the allocator hooks at `[0x81E1C]`/`[0x81E20]`; AGENTS.md
+  restricts file/asset I/O to `host.c`/`main.c` and requires new subsystems to
+  be data-in.
+* `0x60898` (called at `0x1033C`) is a translate-copy into a ring
+  (`rep movsd` with an optional 256-byte table); it belongs to the SDK
+  (`0x60xxx`), also unported.
+
+They stay unported, named here with the above as their evidence, and
+`ail.c`'s note is unchanged. If the movie audio is ever rendered through the
+AIL streaming path instead of the native decoder, the streaming layer
+(`0x10000..0x10D70`, `0x100DC`, `0x10034`, `0x10610` timer) is one unit.
+
+### 49-W.3 `0x129FC`, `0x12BB8`, `0x4DBB4` and `0x128D4`'s tail
+
+**`0x128D4` (`camera_impact_dust_spawn`, record §49-L) was only partly
+ported.** Its two gates (`0x128EB` `jnz 0x1296F`, `0x128FD` `jnz 0x1296F`)
+and the spawn all fall through to `0x1296F`, a tail the port dropped by
+`return`ing at the gates. The tail (49-W: now ported): with `DS_00104B00 !=
+0x24` (0x1296F..0x1297A), the byte `DS_000F0AE8` is set to `0xFF` when the
+slot `DS_00104B1A` names has `+0x52 == 0` (0x1297C..0x1299C); then, with the
+in-use dust list (sentinel `0xF0AE0`) non-empty (0x129A3/0x129A8), each node
+is offered to `0x129FC` for as long as the byte is `0xFF` (0x129B1..0x129C1,
+re-read every iteration; the next link is read *before* the call, 0x129B7),
+and the walk ends at the first node `0x129FC` consumes (`test eax,eax / jnz
+0x129D4`, 0x129C6/0x129C8) or at the sentinel (0x129CC). The node list is the
+type-0x01 list `0x12750` builds and `0x127C0`/`0x12800` maintain.
+
+**`0x129FC`** (`camera_dust_hit`). EAX = node, `[node+8]` = the dust actor
+record. Its pset entry is `DS_001014EC + word[rec+0x56] * 0x20`
+(0x12A04..0x12A16); `0x17D30` is called with x = the entry's word `+4`
+(`movsx eax,bx`, 0x12A23), y = word `+8` (`movsx edx,ax`, 0x12A20) and
+`tall = ebx = 1` (0x12A26). The port's `camera_point_hit(x, y, tall)` takes
+the same registers (`0x17D30`: `movsx edx,ax` is x, `movsx edx,si` is y).
+A zero result returns 0 (0x12A34); a result above 2 (signed, `jle`
+0x12A3D) becomes 1; `side = result - 1` (0x12A44). The fighter is
+`0x1077B0 + side*0x94`; `al = +0x7A` (character), `bl = +0x5F` (reaction).
+`cmp al,6 / ja` (0x12A65/0x12A67, unsigned) returns 0 above 6, else `jmp
+[0x129E0 + al*4]` with the table read from the object (`7a 2a 01 00`, `b7 2a
+01 00`, `13 2b 01 00`, `7a 2a 01 00`, `65 2b 01 00`, `7a 2a 01 00`, `b7 2a 01
+00`): characters 0/3/5 -> `0x12A7A`, 1/6 -> `0x12AB7`, 2 -> `0x12B13`, 4 ->
+`0x12B65`. The reaction sets, transcribed from the compare chains:
+`0x12A7A`: `== 0x2D` passes; otherwise `> 0xD` (signed `jg`, on a zero-extended
+byte) fails and `and al,2 / jnz` fails when bit 1 is set, i.e. {0,1,4,5,8,9,
+0xC,0xD,0x2D}; `0x12AB7`: {0x2D, 0xB, 0 (`test bl,bl / jz`), 1, 2, 8, 9, 0xA,
+4, 6, 7}; `0x12B13` and `0x12B65` (two copies, register roles differ): {0x2D,
+0 (`test bl,bl`), 1, 8, 9, 0xC, 0xD, 4, 5}. A pass calls `0x12BB8(side, rec)`
+and stores `bl` in `DS_000F0AE8` (0x12AAD/0x12B09/0x12B5B/0x12BA7) and returns
+1; every fail path lands on `0x12BB1 xor eax,eax`.
+
+**`0x12BB8`** (`camera_dust_burst`, EAX = side, EDX = dust record).
+`rec = [0x1077B0 + side*0x94]`; `ax = word[rec+0x28]`, `xor al,al / and ah,0x40`
+tests bit 14: set -> flag 0, clear -> `0x4000` (0x12BD0..0x12BE9). The actor
+`0xC976C` (descriptor stream `0xEF65A`, read from the object) is spawned by
+`0x2AE14` with a2 = `[dust+0x18]` (edx), a3 = the *zero-extended* word
+`DS_000BD898` (`xor ecx,ecx / mov cx,...`, unlike `0x128D4`'s `movsx`), a4 =
+`[dust+0x1C] + 0x580` (ebx) and the flag on the stack (0x12BEE..0x12C09), then
+`0x2BC30(eax = the spawn, edx = 0xEF65A, 3.0)` (0x12C0E..0x12C18), `0x2B150(dust)`
+(0x12C1D/0x12C1F), the voices `0x2C3FC(0xBF, 0xD6, 0xCE)` (the deferred
+idiom; `PORT:` notes) and `0x4DBB4(0x1077B0 + byte[0x104B1A]*0x94, 1)`
+(0x12C42..0x12C64) — the burst side and the counted slot are independent.
+The raw does not test the spawn's EAX; the port guards the pool-exhaustion 0
+(`PORT:`).
+
+**`0x4DBB4`** (`fight_slot_5b_add`, EAX = slot, EDX = amount). The addend is
+`amount*15*8 / 100` by signed `idiv` (0x4DBBA..0x4DBCC: `shl edx,4 / sub edx,ebx
+/ shl edx,3 / cdq / idiv 100`); the sum with the zero-extended byte `[slot+0x5B]`
+above `0x78` (signed, `jle 0x4DBE3`, 0x4DBDA) stores `0x78`, otherwise
+`add [slot+0x5B], bl` (the low byte of the addend, so a negative addend wraps).
+With amount 1 (the only known call) it adds `120/100 = 1`.
+
+### 49-W.4 Character 3's reaction 0x26/0x28: `0x14B90`, `0x14C98`, `0x14988`, `0x14A5C`, `0x14938`, `0x14950`
+
+A scan of `0xA0000..0xA8000` for the dwords `0x14B90`, `0x14C98`, `0x14988`,
+`0x14938`, `0x14950` and `0x14A5C` finds exactly two: `0xA4720 -> 0x14B90` and
+`0xA4748 -> 0x14C98`. Both are entries of `0x34E2C`'s table `0xA3528` (0x14
+bytes per record, 64 records per character): `(0xA4720 - 0xA3528) / 0x14 =
+230 = 3*64 + 0x26` and `(0xA4748 - 0xA3528) / 0x14 = 232 = 3*64 + 0x28`, i.e.
+character 3's reactions `0x26` and `0x28`, the twins of `0x22` (`0x14814`) and
+`0x27` (`0x1490C`). `0x396AC`'s threshold words for them (`0xA6C90`, `0xA6C9C`)
+are both 1, as for `0x22`/`0x27`.
+
+The family is `0x14814`/`0x1490C`/`0x1461C`/`0x146F0`/`0x145CC`/`0x145E4`
+(record §37) with different streams, an FD100/FD110/FD11A data set instead of
+FD108/FD114/FD11C, and these differences (all read from the raw):
+
+* `0x14B90` (start; EAX = slot, EDX = rec, EBX overwritten unread at 0x14B95).
+  `0x339AC(rec)`; the voice `0xB0`; `0x396AC(ctx[0], 0)` true (0x14BB6 falls
+  through): the slot in state 9/4/**2** (`0x14814`: 9/4/0), **then** `0x18B44(ctx[2])`
+  and the stream `0xD2F56` through **`0x3C520`** at the `[0x9AFF4]` hold
+  (`0x14814` uses `0x3C4CC`), return AL = 1 (the FD11A byte is not written). False: the
+  `0x14590` gate picks `0xD2FAC` (with `ctx[3]`'s `+0x68` decremented, 0x14BF9) or
+  `0xD2F6A`, through `0x3C520` at 1.0; `+0x57 = 0`, state 9/7/**2**; `+0x0C =
+  0x14988`, `+0x18 = 0x14938`, `+0x1C = 0x14950`, `+0x40 |= 0x48000`; the
+  record's `+0x55 = 0`; **`0x3C148(side)` and `0x3C16C(side)`** (new: `0x14814` has
+  neither); the FD100 dword (`0x2000` when `ctx[2]`'s `+0x2C` is above `ctx[3]`'s
+  by signed `jle`, else `0x1000`) and the FD11A byte = 0.
+* `0x14C98` (reaction 0x28; `0x1490C`'s twin): `0x339AC(rec)`,
+  `0x14B90(slot, rec)`, FD11A[side] = 1.
+* `0x14988` (`+0x0C` callback, EBX = side, `0x33950(side)`): the `+0x57` step
+  machine over the jump table `0x14978` (`b6 49 01 00`, `05 4a 01 00`, `43 4a
+  01 00`, `54 4a 01 00`); case 0 waits for `+0x42` bit 3, sets `+0x57 = 1` and
+  loads FD110[side] from the `[0x9AFEA]` word (and `0x4F944(1)`) when
+  `0x14590` holds (`test al,al / jbe` is a zero test), else from `[0x9AFE8]`;
+  case 1 decrements the counter, calls `0x3F720(side, old value)` and sets
+  `+0x57 = 2` when the new value (the high half of the dword at `0xFD10E +
+  side*2`) is below 1 (signed, `jge`); case 2 calls `0x14A5C(slot, rec)` and
+  sets `+0x57 = 3`; above 3 (`cmp al,3 / ja`) returns.
+* `0x14A5C` (`0x146F0`'s twin; EDX = rec): streams `0xD2FCC`/`0xD2F8A`; with FD11A
+  set, `0x3C148`, `0x3C520` at 1.0, the anchor y from the dword at `0x9AFEC >> 16`
+  (`0x146F0`: `0x9AFDC`), `+0x54 = 2`, `+0x36 = 3 * word[0x9AFF0]` and `+0x44 =
+  word[0x9AFF0]` (`0x146F0`: `0x9AFE0`), `0x1078F8[side] = 1`; **with it clear
+  `+0x54 = 0` and `+0x52 = 9` (0x14B0A/0x14B12) before the `0x3C480`** (`0x146F0`
+  writes neither); then `0x3C148`, the anchor x = `ctx[3]`'s `+0x2C` -/+ the
+  dword at `0x9AFEA >> 16` (bit `0x2000` of the direction bits selects the
+  sign), `0x18B04`, `+0x42 &= 0xFB`, `+0x57 = 3` and the voice `0xB1`.
+* `0x14938`: `0x33950(side)` and AL = 1; `0x14950`: `0x39834(ctx[1], byte
+  ctx[2]+0x5F)` — byte-identical to `0x145CC`/`0x145E4`, ported as separate
+  functions (one C function per original).
+
+Wiring: `fn_register` of `0x14B90`, `0x14C98`, `0x14988`, `0x14938` and
+`0x14950` in `actors.c` (the same site as the `0x1490C` family); `0x34E2C`,
+`0x3531C` case 7, `0x19020` and `0x193B0` reach them through the existing
+`fn_resolve` calls.
+
+### 49-W.5 Tests and gates
+
+`check_char3_2628` (`test_fight.c`) drives `0x14B90` through `0x34E2C`
+(`hit_reaction_apply(0, 0x26)` and `0x28`, both from the real `0xA4720`/`0xA4748`
+table words, asserted), directly on both `0x14590` arms and the `0x396AC`-true
+arm (with the `0x18B44` spawn observed through `DS_00100C1D`), the whole
+`0x14988` step machine (both `0x14590` arms of case 0 with the `0x4F944` side
+effects, case 1's counter at 3, 2, 1, 0, -1 through the boundary, case 2 into
+both `0x14A5C` arms, cases 3 and 4), `0x14938` through `0x19020` and `0x14950`
+through `0x39834`'s counter. `check_dust_consume` covers `0x4DBB4` (positive,
+negative, truncating, cap, boundary, zero-extended byte), `0x12BB8` (both
+flag values, both counted slots, spawn position/stream/hold, dust retired), all
+`8 x 49` (character, reaction) pairs of `0x129FC` against the three raw-derived
+sets (the hit fixture is `check_point_trample`'s `ph_seed` with `0xA1746`'s
+first byte set to `0x0F` so the `tall` test overlaps; the per-character sprite
+sum is kept at the fixture's 4 through `camera_char_const`, and characters 5
+and 6, whose `0x15B90` palette adjust moves the sprite 15 pixels, get a box 16
+pixels right), the hit-side choice (3 -> side 0; 2 -> side 1 in mode `0x22`),
+and `0x128D4`'s tail (mode `0x24` skip, `+0x52 != 0` keeps the byte, the `0xFF`
+reset, an empty list, the first hitting node consumed and the rest left, the
+rng-gate fall-through).

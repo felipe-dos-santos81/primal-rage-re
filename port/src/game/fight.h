@@ -353,4 +353,9 @@ void fight_4e67c(void);
  * game_mode_25_reveal (0x4EF8C). See fight.c for the full derivation. */
 void fight_mode25_scorecard(void);
 
+/* 0x4DBB4 (record §49-W). slot+0x5B += amount * 120 / 100 (signed, truncating),
+ * capped at 0x78. 0x12BB8 (camera_dust_burst) calls it with 1; its other
+ * caller is unported. */
+void fight_slot_5b_add(u32 slot, s32 amount);
+
 #endif /* PRAGE_GAME_FIGHT_H */

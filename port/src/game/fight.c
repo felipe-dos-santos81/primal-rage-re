@@ -3050,6 +3050,21 @@ void fight_4987c(u32 side, s32 count, u32 kind)
     }
 }
 
+/* 0x4DBB4 — record §49-W. Add a scaled amount to the byte at slot+0x5B, capped
+ * at 0x78. EAX = slot, EDX = amount: the addend is amount * 120 / 100 (signed
+ * idiv, truncating; 0x4DBBA..0x4DBCC), and the sum with the byte
+ * (zero-extended) above 0x78 (signed, 0x4DBDA jle) stores 0x78, else the low
+ * byte of the addend is added (0x4DBE3). 0x12BB8 calls it with amount 1. */
+void fight_slot_5b_add(u32 slot, s32 amount)
+{
+    s32 add = (s32)((u32)amount * 120u) / 100;         /* 0x4DBBA..0x4DBCC */
+    s32 sum = (s32)DSB(slot + 0x5Bu) + add;            /* 0x4DBD2..0x4DBD5 */
+    if (sum > 0x78)                                    /* 0x4DBD7/0x4DBDA */
+        DSB(slot + 0x5Bu) = 0x78u;                     /* 0x4DBDC */
+    else
+        DSB(slot + 0x5Bu) = (u8)(DSB(slot + 0x5Bu) + (u8)add);   /* 0x4DBE3 */
+}
+
 /* 0x4DBEC — record §48-Q. The winner's crowd at a match's end: its callers
  * are mode 0xD's 0x274FC (0x2766D) and mode 0x32's 0x296B8 (0x29838), each
  * on its final-round arm. w = DS_0010810D (zero-extended, 0x4DC0E). The byte

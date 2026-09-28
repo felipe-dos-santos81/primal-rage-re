@@ -8,6 +8,7 @@
 #include "game/actors.h"
 #include "game/effects.h"
 #include "game/fighter.h"
+#include "game/fight.h"
 #include "game/rng.h"
 #include "../mem.h"
 #include "../symbols.h"
@@ -21,6 +22,8 @@
 
 /* 0xBB254: the dust actor descriptor 0x1282C spawns (a data-object address). */
 #define CAMERA_DUST_DESC 0x000BB254u
+#define CAMERA_BURST_DESC 0x000C976Cu   /* 0x12C04: 0x12BB8's spawn descriptor */
+#define CAMERA_BURST_STREAM 0x000EF65Au /* 0x12C0E: its stream */
 
 /* 0x10810D: the mode-3 single-player slot index. Ghidra emits it only as the
  * `ram0x0010810d` form, so gen_symbols.py has no DS_ name for it. */
@@ -1545,35 +1548,125 @@ void camera_dust_spawn(void)
     if (rec != 0) DSW(rec + 0x34u) = (u16)yvel;        /* 0x128C5 */
 }
 
-/* 0x128D4 — record §49-L. 0x1282C's twin, four times as frequent (gated on
- * (DS_000EF6DC & 0xF) == 0, not 0x3F) and anchored to a fixed x rather than a
- * random one: rng(7); when (draw & 3) != 0 return (as 0x1282C). The
- * off/yvel/flag5 triple on bit 2 of the draw is byte-for-byte 0x1282C's
- * (0x2800/-0x80/0 or -0x2800/0x80/0x4000). Unlike 0x1282C, a3 is the fixed
- * word DS_000BD898 (sign-extended), not rng(0x1300), and a4 is rng(0x2000)
- * alone, not (0x1300 - r1) + r2 — the raw reaches this value through a
- * convoluted partial-dword stack read (`mov eax,edx; sub eax,edx` zeroes
- * EAX, then a sign-extended low word survives an unrelated `sar ebx,0x10`);
- * the port computes it directly. Spawns one actor from 0xBB254 as 0x1282C
- * does. Only caller: 0x26D36 (0x26C8C, mode 0x22, gated on DS_00104AC4 > 1
- * signed). */
+/* 0x12BB8 — record §49-W. The dust actor's burst on the fighter of `side`
+ * (0x129FC's call, EAX = side, EDX = the dust actor's record): the actor
+ * 0xC976C is spawned at the dust's +0x18 and +0x1C + 0x580 with the word
+ * DS_000BD898 as its y, flag 0 when the fighter's record has +0x28 bit 14 set
+ * and 0x4000 otherwise, and pointed at the stream 0xEF65A at hold 3.0
+ * (0x2BC30). The dust actor is then retired (0x2B150), the three voices
+ * 0xBF/0xD6/0xCE are PORT notes, and the slot DS_00104B1A names gains 1 in
+ * its +0x5B byte (0x4DBB4). 4 callers, three of them unported. */
+void camera_dust_burst(u32 side, u32 dust)
+{
+    u32 fighter = DSD(DS_001077B0 + side * 0x94u);     /* 0x12BC9 */
+    u32 flag5 = ((DSW(fighter + 0x28u) & 0x4000u) != 0u)
+              ? 0u : 0x4000u;                          /* 0x12BD0..0x12BE9 */
+    u32 rec = actor_spawn((const u32 *)(mem + CAMERA_BURST_DESC),
+                          DSD(dust + 0x18u), (u32)DSW(DS_000BD898),
+                          DSD(dust + 0x1Cu) + 0x580u, flag5);   /* 0x12BEE..0x12C09 */
+    /* PORT: the raw trusts EAX (0x12C0E..0x12C18); the port guards the
+     * pool-exhaustion 0 rather than write the word before mem[]. */
+    if (rec != 0) actors_anim_begin(rec, CAMERA_BURST_STREAM, 0x40400000u);   /* 0x12C18 0x2BC30 */
+    actor_set_dead(dust);                              /* 0x12C1D..0x12C1F 0x2B150 */
+    /* PORT: 0x12C24/0x12C2E/0x12C38 0x2C3FC(0xBF, 0xD6, 0xCE) voices, not
+     * wired (record §45-A). */
+    fight_slot_5b_add(DS_001077B0
+                      + (u32)DSB(CAMERA_MODE22_SIDE) * 0x94u, 1);   /* 0x12C42..0x12C64 0x4DBB4 */
+}
+
+/* 0x129FC — record §49-W. One in-use dust node (EAX; +8 its actor record) as
+ * a hit test: the pset point of the actor's record (the 0x20-byte entry
+ * DS_001014EC + (+0x56 word) * 0x20, words +4 and +8) through 0x17D30 with
+ * tall = 1. No hit returns 0; a hit on both sides counts as side 0 (a result
+ * above 2 becomes 1). By the hit fighter's character (+0x7A byte, above 6
+ * fails) the reaction it is in (+0x5F byte) must be in that character's set:
+ * characters 0/3/5 (0x12A7A): 0x2D, or at most 0xD with bit 1 clear;
+ * characters 1/6 (0x12AB7): 0, 1, 2, 4, 6, 7, 8, 9, 0xA, 0xB, 0x2D; characters
+ * 2/4 (0x12B13/0x12B65): 0, 1, 4, 5, 8, 9, 0xC, 0xD, 0x2D. A pass bursts the
+ * dust on that side (0x12BB8), stores the reaction in DS_000F0AE8 and returns
+ * 1; a fail returns 0. */
+u32 camera_dust_hit(u32 node)
+{
+    u32 dust = DSD(node + 8u);                         /* 0x12A01 */
+    u32 ent = DSD(DS_001014EC) + (u32)DSW(dust + 0x56u) * 0x20u;   /* 0x12A04..0x12A16 */
+    u32 hit = camera_point_hit((s32)(s16)DSW(ent + 4u),
+                               (s32)(s16)DSW(ent + 8u), 1u);      /* 0x12A1B..0x12A2B: x, y, tall */
+    u32 side, slot;
+    u8 ch, react;
+    if (hit == 0u) return 0u;                          /* 0x12A34 */
+    side = ((s32)hit > 2) ? 0u : hit - 1u;             /* 0x12A3A..0x12A44 */
+    slot = DS_001077B0 + side * 0x94u;                 /* 0x12A47..0x12A5D */
+    ch = DSB(slot + 0x7Au);                            /* 0x12A5F */
+    react = DSB(slot + 0x5Fu);                         /* 0x12A62 */
+    if (ch > 6u) return 0u;                            /* 0x12A65 */
+    switch (ch) {                                      /* 0x12A72 table 0x129E0 */
+    case 0u: case 3u: case 5u:                         /* 0x12A7A */
+        if (react != 0x2Du && (react > 0xDu || (react & 2u) != 0u)) return 0u;  /* 0x12A7E..0x12A93 */
+        break;
+    case 1u: case 6u:                                  /* 0x12AB7 */
+        if (react != 0x2Du && react != 0xBu && react != 0u && react != 1u
+                && react != 2u && react != 8u && react != 9u && react != 0xAu
+                && react != 4u && react != 6u && react != 7u) return 0u;  /* 0x12ABB..0x12AEF */
+        break;
+    default:                                           /* 0x12B13 (2), 0x12B65 (4) */
+        if (react != 0x2Du && react != 0u && react != 1u && react != 8u
+                && react != 9u && react != 0xCu && react != 0xDu
+                && react != 4u && react != 5u) return 0u;       /* 0x12B17..0x12B41 */
+        break;
+    }
+    camera_dust_burst(side, dust);                     /* 0x12A99..0x12AA3 */
+    DSB(DS_000F0AE8) = react;                          /* 0x12AAD */
+    return 1u;                                         /* 0x12AA8 */
+}
+
+/* 0x128D4 — record §49-L, tail §49-W. 0x1282C's twin, four times as frequent
+ * (gated on (DS_000EF6DC & 0xF) == 0, not 0x3F) and anchored to a fixed x
+ * rather than a random one: rng(7); when (draw & 3) != 0 no spawn (as
+ * 0x1282C). The off/yvel/flag5 triple on bit 2 of the draw is byte-for-byte
+ * 0x1282C's (0x2800/-0x80/0 or -0x2800/0x80/0x4000). Unlike 0x1282C, a3 is
+ * the fixed word DS_000BD898 (sign-extended), not rng(0x1300), and a4 is
+ * rng(0x2000) alone, not (0x1300 - r1) + r2 — the raw reaches this value
+ * through a convoluted partial-dword stack read (`mov eax,edx; sub eax,edx`
+ * zeroes EAX, then a sign-extended low word survives an unrelated `sar
+ * ebx,0x10`); the port computes it directly. Spawns one actor from 0xBB254 as
+ * 0x1282C does. Both gates (0x128EB, 0x128FD) and the spawn fall to 0x1296F,
+ * the tail (record §49-W): outside mode 0x24, the byte DS_000F0AE8 is reset
+ * to 0xFF when the slot DS_00104B1A names has +0x52 = 0; with the in-use dust
+ * list (sentinel 0xF0AE0) non-empty and the byte 0xFF, each node is offered to
+ * 0x129FC until one consumes it. Only caller: 0x26D36 (0x26C8C, mode 0x22,
+ * gated on DS_00104AC4 > 1 signed). */
 void camera_impact_dust_spawn(void)
 {
-    if ((DSB(DS_000EF6DC) & 0xFu) != 0u) return;       /* 0x128E6/0x128EB */
-    u32 draw = rng_next(7u);                           /* 0x128F6 */
-    if ((draw & 3u) != 0u) return;                     /* 0x128FB */
-    s32 off; s32 yvel; u32 flag5;
-    if ((draw & 4u) != 0u) {                            /* 0x128FF */
-        off = 0x2800; yvel = (s32)0xFFFFFF80; flag5 = 0u;
-    } else {
-        off = (s32)0xFFFFD800; yvel = 0x80; flag5 = 0x4000u;
+    if ((DSB(DS_000EF6DC) & 0xFu) == 0u) {             /* 0x128E6/0x128EB */
+        u32 draw = rng_next(7u);                       /* 0x128F6 */
+        if ((draw & 3u) == 0u) {                       /* 0x128FB */
+            s32 off; s32 yvel; u32 flag5;
+            if ((draw & 4u) != 0u) {                    /* 0x128FF */
+                off = 0x2800; yvel = (s32)0xFFFFFF80; flag5 = 0u;
+            } else {
+                off = (s32)0xFFFFD800; yvel = 0x80; flag5 = 0x4000u;
+            }
+            s32 a3 = (s32)(s16)DSW(DS_000BD898);        /* 0x1294D */
+            u32 a4 = rng_next(0x2000u);                 /* 0x12938 */
+            u32 rec = actor_spawn((const u32 *)(mem + CAMERA_DUST_DESC),
+                                  (u32)((s32)DSD(DS_000F0AF0) + off),
+                                  (u32)a3, a4, flag5);   /* 0x12962 */
+            if (rec != 0) DSW(rec + 0x34u) = (u16)yvel;  /* 0x1296B */
+        }
     }
-    s32 a3 = (s32)(s16)DSW(DS_000BD898);                /* 0x1294D */
-    u32 a4 = rng_next(0x2000u);                         /* 0x12938 */
-    u32 rec = actor_spawn((const u32 *)(mem + CAMERA_DUST_DESC),
-                          (u32)((s32)DSD(DS_000F0AF0) + off),
-                          (u32)a3, a4, flag5);           /* 0x12962 */
-    if (rec != 0) DSW(rec + 0x34u) = (u16)yvel;          /* 0x1296B */
+    if (DSW(DS_00104B00) == 0x24u) return;             /* 0x1296F..0x1297A */
+    if (DSB(DS_001077B0 + (u32)DSB(CAMERA_MODE22_SIDE) * 0x94u + 0x52u) == 0u)
+        DSB(DS_000F0AE8) = 0xFFu;                      /* 0x1297C..0x1299C */
+    {
+        u32 node = DSD(DS_000F0AE0);                   /* 0x129A3 */
+        while (node != DS_000F0AE0) {                  /* 0x129A8/0x129CC */
+            u32 next = DSD(node);                      /* 0x129B7 */
+            if (DSB(DS_000F0AE8) == 0xFFu                 /* 0x129B1/0x129B9 */
+                    && camera_dust_hit(node) != 0u)    /* 0x129C1 */
+                return;                                /* 0x129C8 */
+            node = next;                               /* 0x129CA */
+        }
+    }
 }
 
 /* 0x12DA8. The selected player y: mode 0 reads slot[DS_000F0AFF]+0x30's word,
