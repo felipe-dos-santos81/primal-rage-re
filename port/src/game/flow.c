@@ -2664,6 +2664,171 @@ void game_mode_13_step(void)
     }
 }
 
+/* ---- mode 9, the frame handler 0x28788 and its callees (record §48-Y) ---- */
+
+#define FN_00029B74 0x00029B74u   /* no symbols.h name: frontend_darken_all */
+#define FN_0004142C 0x0004142Cu   /* no symbols.h name: fight_hook_4142c */
+
+/* 0x28978/0x28A9D/0x28B3C — record §48-Y. Three of 0x28788's four result-
+ * dispatch arms share this close: DS_00104B25 = 0 (0x28989/0x28AB3/0x28B4D,
+ * BH/DH/AL), the hook DS_00104AE4 = frontend_darken_all (0x2898F/0x28AB9/
+ * 0x28B57), mode DS_00104B00 = 0x17 (0x28995/0x28ACE/0x28B71), return mode
+ * DS_00104AFA = 0x13 (0x289A8/0x28AC1/0x28B5D), then
+ * config_play_time_close(DS_00104ABC, DS_00104B19) (0x289AF/0x28AD5/0x28B78,
+ * already ported, 0x32A3C). Each arm's own DS_00104B17 store happens before
+ * this close and is not part of it. */
+static void flow_results_darken_close(void)
+{
+    DSB(DS_00104B25) = 0u;
+    DSD(DS_00104AE4) = FN_00029B74;
+    DSW(DS_00104B00) = 0x17u;
+    DSW(DS_00104AFA) = 0x13u;
+    config_play_time_close(DSD(DS_00104ABC), DSB(DS_00104B19));
+}
+
+/* 0x286BC — record §48-Y. The post-match streak/handicap update; only
+ * caller 0x288CC (0x28788). EBX/ECX/EDX are pushed and popped.
+ * DS_00104AD4 == 2 (a draw, 0x286C5/0x286C8): DS_00108106[stage] = 0 (DH),
+ * return. Otherwise EBX = DS_00104AD4 is the winner (0/1, 0x286DE); the
+ * loser is winner ^ 1 (0x286F9). DS_00107813[winner] == 1 (0x286FC/0x286FF):
+ * DS_00104B11 += 1 (0x28701/0x28709/0x28711), fighter_4660c(the byte
+ * DS_00108104[loser]) recomputes DS_001082D0 (0x2870B..0x28717, 0x4660C),
+ * DS_00108106[stage] = 0 (0x2871C..0x28726), return. Otherwise (0x28730):
+ * DS_00104B11 = 0 and DS_00107830[winner] = 0 (0x28732/0x28738, the same
+ * table 0x28788's own tail increments — here it is reset instead);
+ * DS_00108106[stage] = (winner << 6) | 0x80 | DS_0010782A[winner]
+ * (0x2873E..0x28755); DS_00107830[loser] = that byte XOR loser
+ * (0x2875B..0x2876F); DS_00107813[loser] == 1 calls fighter_46534(loser, 1)
+ * (0x28769..0x2877E). */
+static void flow_match_streak_update(void)
+{
+    u32 result = DSD(DS_00104AD4);                       /* 0x286BF */
+    if (result == 2u) {                                  /* 0x286C5/0x286C8 */
+        DSB(DS_00108106 + DSW(DS_00104AFC)) = 0u;         /* 0x286CA..0x286D4 */
+        return;
+    }
+    u32 winner = result;                                  /* 0x286DE */
+    u32 loser = winner ^ 1u;                               /* 0x286F9 */
+    if (DSB(DS_00107813 + winner * 0x94u) == 1u) {          /* 0x286F8..0x286FF */
+        DSB(DS_00104B11) = (u8)(DSB(DS_00104B11) + 1u);       /* 0x28701/0x28709/0x28711 */
+        fighter_4660c((u32)DSB(DS_00108104 + loser));          /* 0x2870B..0x28717 0x4660C */
+        DSB(DS_00108106 + DSW(DS_00104AFC)) = 0u;                /* 0x2871C..0x28726 */
+        return;
+    }
+    DSB(DS_00104B11) = 0u;                                    /* 0x28730/0x28732 */
+    DSB(DS_00107830 + winner * 0x94u) = 0u;                     /* 0x28738 */
+    {
+        u8 flag = (u8)(((u8)winner << 6) | 0x80u
+                        | DSB(DS_0010782A + winner * 0x94u));    /* 0x2873E..0x2874A */
+        DSB(DS_00108106 + DSW(DS_00104AFC)) = flag;                /* 0x2874C..0x28755 */
+        DSB(DS_00107830 + loser * 0x94u) = (u8)(flag ^ (u8)loser); /* 0x2875B..0x2876F */
+    }
+    if (DSB(DS_00107813 + loser * 0x94u) == 1u)                    /* 0x28769..0x28778 */
+        fighter_46534(loser, 1);                                    /* 0x2877A..0x2877E */
+}
+
+void game_mode_09_step(void)
+{
+    fight_slot_clear();                                 /* 0x2878E 0x3C5CC */
+    camera_screen_base(0, (s32)DSB(DS_0010782A));       /* 0x28793..0x287A2 0x16D58 */
+    camera_screen_base(1, (s32)DSB(DS_001078BE));       /* 0x287A7..0x287B9 0x16D58 */
+    DSD(DS_001077E8) = DSD(DS_001077E4);                /* 0x287C3/0x287CD */
+    DSD(DS_0010787C) = DSD(DS_00107878);                /* 0x287D2/0x287DC */
+    camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                   DS_00100B60, DS_00100AF0);            /* 0x287BE..0x287E3 0x17FA0 */
+    camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                   DS_00100B61, DS_00100AF4);            /* 0x287E8..0x28806 0x17FA0 */
+    camera_decay();                                      /* 0x2880B 0x17580 */
+    fighter_pass_a();                                    /* 0x28810 0x1958C */
+    if (!(DSB(DS_001077F1) & 2u) && !(DSB(DS_00107885) & 2u))   /* 0x28815..0x28825 */
+        fight_slot_pass();                               /* 0x28827 0x3CB68 */
+    fight_hud_pass(0u);                                  /* 0x2882C/0x2882E 0x35658 */
+    fight_hud_pass(1u);                                  /* 0x28833/0x28838 0x35658 */
+    fighter_pass_b(1u);                                  /* 0x2883D/0x28842 0x19068 */
+    fight_effects_pass();                                /* 0x28847 0x49C78 */
+    camera_y_commit();                                   /* 0x2884C 0x12DA8 */
+
+    u16 hold = DSW(DS_00104AF8);                          /* 0x28851 */
+    if (hold != 0u) {                                     /* 0x28858/0x2885B */
+        hold = (u16)(hold - 1u);                          /* 0x2885D/0x2885F */
+        DSW(DS_00104AF8) = hold;                           /* 0x28861 */
+        if (hold == 0u) {                                   /* 0x28868 */
+            DSB(DS_001078FE) = 1u;                            /* 0x2886A/0x2887E */
+            DSB(DS_001078FC) = 1u;                             /* 0x28884 */
+            DSB(DS_001077F1) = (u8)(DSB(DS_001077F1) | 0x10u); /* 0x2886C/0x28878/0x28892 */
+            DSB(DS_00107885) = (u8)(DSB(DS_00107885) | 0x10u); /* 0x28872/0x2887B/0x2888A */
+            DSB(DS_000F0AFE) = 4u;                              /* 0x28890/0x28898 */
+        }
+    }
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);        /* 0x2889E */
+
+    if (DSB(DS_000F0AFE) != 4u) return;                     /* 0x288A5..0x288AF */
+    if (DSB(DS_001078FC) == 0u) return;                      /* 0x288B5..0x288BC */
+
+    fight_effects_hold_all();                                 /* 0x288C2 0x4A708 */
+    flow_match_result_text();                                 /* 0x288C7 0x28130 */
+    flow_match_streak_update();                                /* 0x288CC 0x286BC */
+    DSW(DS_00104AFE) = 0xF0u;                                   /* 0x288D1/0x288E1 */
+    DSW(DS_001088EE) = 0x3Cu;                                    /* 0x288D6/0x288E8 */
+    if (DSB(DS_00108173) != 0u) {                                 /* 0x288DB/0x288EF */
+        DSD(DS_00104AD4) = 2u;                                      /* 0x288F3 */
+        DSB(DS_00107813) = 0u;                                       /* 0x288FF */
+        DSB(DS_001078A7) = 0u;                                        /* 0x28905 */
+    }
+    DSB(DS_00104B1B) = 0u;                                           /* 0x28913 */
+
+    if (DSB(DS_00104B1D) == 0u) {                                     /* 0x28919/0x2891B */
+        u32 idx = ((DSB(DS_00104B1F) == 3u) ? 1u : 0u) + 1u;           /* 0x2891D..0x2892F */
+        DSD(DS_00104ABC) = idx;                                          /* 0x28932 */
+        config_play_time_snap(idx, 0u);                                   /* 0x28937 0x32B00 */
+    }
+
+    u32 result = DSD(DS_00104AD4);                                       /* 0x2893C */
+    if (result == 2u) {                                                    /* 0x28942/0x28945 */
+        DSB(DS_00104B17) = 2u;                                               /* 0x2894D/0x28954 */
+        if (DSB(DS_00107813) == 1u) DSD(DS_00104AD4) = 0u;                    /* 0x2894F..0x28961 */
+        if (DSB(DS_001078A7) == 1u) DSD(DS_00104AD4) = 1u;                     /* 0x28967..0x28973 */
+        flow_results_darken_close();                                           /* 0x28978..0x289AF */
+        return;                                                                 /* 0x289E4 */
+    }
+
+    {
+        u32 winner = result;                                                    /* 0x289E5 */
+        u32 loser = winner ^ 1u;                                                  /* 0x289F5 */
+        if (DSB(DS_00107813 + winner * 0x94u) == 1u) {                            /* 0x289F8..0x28A13 */
+            u8 streak = (u8)(DSB(DS_00107830 + loser * 0x94u) + 1u);                /* 0x28A19/0x28A1F */
+            DSB(DS_00107830 + loser * 0x94u) = streak;                               /* 0x28A21 */
+            if (streak >= 3u && DSB(DS_00108104 + loser) < 6u) {                       /* 0x28A2E..0x28A3E */
+                u8 flag = (u8)(((u8)winner << 6) | 0x80u
+                                | DSB(DS_0010782A + winner * 0x94u));                    /* 0x28A54..0x28A5C */
+                DSB(DS_00108106 + DSW(DS_00104AFC)) = flag;                                /* 0x28A6F */
+                DSB(DS_00104B17) = 1u;                                                      /* 0x28A87 */
+                DSB(DS_00107830 + loser * 0x94u) = (u8)(flag ^ (u8)loser);                   /* 0x28A85/0x28A8D */
+            } else {
+                DSB(DS_00104B17) = 2u;                                                        /* 0x28A96 */
+            }
+            flow_results_darken_close();                                                       /* 0x28A9D..0x28AD5 */
+            return;                                                                              /* 0x28B0A */
+        }
+
+        /* PORT: 0x28B0D..0x28B25. The winner-think != 1 arm re-reads the
+         * loser's DS_00107813 think-byte; when it is also 1, the raw calls
+         * (val = DS_0010782A[loser], arm = 0) into 0x32BAC, this function's
+         * proven no-op (see the header comment in flow.h); omitted. */
+
+        if (DSW(DS_00104AFC) == 7u) {                                                  /* 0x28B2C..0x28B35 */
+            fight_stage_marks_clear();                                                   /* 0x28B37 0x4246C */
+            DSB(DS_00104B17) = 0u;                                                        /* 0x28B4D */
+            flow_results_darken_close();                                                    /* 0x28B3C..0x28B78 */
+            return;                                                                          /* 0x28BAD */
+        }
+
+        DSB(DS_00104B17) = 1u;                                                         /* 0x28BB5 */
+        DSW(DS_00104B00) = 0x17u;                                                        /* 0x28BC0 */
+        DSD(DS_00104AE4) = FN_0004142C;                                                    /* 0x28BC6 */
+    }
+}
+
 /* ---- the remaining DS_00104AE4 values (record §46-F) --------------------- */
 
 #define FN_00025BBC 0x00025BBCu   /* no symbols.h name: game_hook_25bbc */
@@ -4405,9 +4570,11 @@ void game_frame(void)
     case 0x13u:
         game_mode_13_step();                           /* 0x253C4 0x424E8 (record §48-D) */
         break;                                         /* 0x253C9 */
+    case 0x09u:
+        game_mode_09_step();                           /* 0x2533F 0x28788 (record §48-Y) */
+        break;                                         /* 0x25344 */
     case 0x07u:
     case 0x08u:
-    case 0x09u:
     case 0x0Au:
     case 0x0Fu:
     case 0x12u:
@@ -4436,7 +4603,7 @@ void game_frame(void)
         /* PORT: named gaps, each case's body unported (record §47-B.1 has
          * the entry and callees of every one):
          * 7 0x282C4;
-         * 8 0x28468; 9 0x28788; 0xA 0x28BD4;
+         * 8 0x28468; 0xA 0x28BD4;
          * 0xF 0x277C0; 0x12 0x41C28;
          * 0x16 0x4F2B0; 0x18 0x4F6E8;
          * 0x19 0x4F704; 0x1E 0x1EEB0; 0x1F 0x208F8; 0x21 0x26540;
@@ -4456,8 +4623,9 @@ void game_frame(void)
          * 0x27380, is game_mode_0c_step (record §48-C). Case 0xE (0x27A2C,
          * record §48-E) is game_mode_0e_step, case 0x15 (0x4F24C, record
          * §48-X) is frontend_mode_15_step, case 0xB (0x28C38, record §48-B)
-         * runs after 0x26254, and case 0x13 (0x424E8, record §48-D) is
-         * game_mode_13_step. */
+         * runs after 0x26254, case 0x13 (0x424E8, record §48-D) is
+         * game_mode_13_step, and case 9 (0x28788, record §48-Y) is
+         * game_mode_09_step, dispatched above. */
         break;
     case 0x00u:
     case 0x1Cu:

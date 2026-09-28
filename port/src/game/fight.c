@@ -4083,6 +4083,43 @@ void fight_effects_pass(void)
     DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) & 0x7Fu);   /* 0x4A623 */
 }
 
+/* 0x4A708 — record §48-Y. EBX/ECX/EDX/ESI are pushed and popped. head =
+ * DS_0010884C; empty (head == DS_0010884C) returns at once (0x4A711/0x4A716).
+ * Otherwise, per entry: rec = entry+8 (0x4A718), next = entry's next
+ * (0x4A71D), index = (u16)((u8)(rec+0x48) - 0x20) (0x4A71F/0x4A726, as
+ * fight_effects_pass computes it) and type = entry+0x1E (0x4A722). type == 6
+ * skips straight to the advance (0x4A729/0x4A72C). Otherwise rec's
+ * +0x38/+0x34/+0x36 words = 0 (0x4A72E..0x4A740, re-reading rec each time),
+ * then DS_00104B16 == entry+0x21 (0x4A746..0x4A74F) calls fight_4b3f0(entry,
+ * index, 1) (0x4A751..0x4A75C), else fight_4b430(entry, index, 1)
+ * (0x4A763..0x4A76E) — their own headers name this caller. head advances to
+ * next (0x4A773) until it is DS_0010884C again (0x4A775/0x4A77B). Only
+ * caller: 0x28788 (mode 9, 0x288C2, record §48-Y); the game's other list
+ * walk of this shape, 0x28468 (mode 8, 0x28594), is unported. */
+void fight_effects_hold_all(void)
+{
+    u32 head = DSD(DS_0010884C);                        /* 0x4A70C */
+    if (head == DS_0010884C) return;                     /* 0x4A711/0x4A716 */
+    for (;;) {
+        u32 entry = head;
+        u32 next = DSD(entry);                            /* 0x4A71D */
+        u32 rec = DSD(entry + 8u);                          /* 0x4A718 */
+        u8 type = DSB(entry + 0x1Eu);                        /* 0x4A722 */
+        if (type != 6u) {                                     /* 0x4A729/0x4A72C */
+            u32 index = (u32)(u16)((u32)DSB(rec + 0x48u) - 0x20u);  /* 0x4A71F/0x4A726 */
+            DSW(rec + 0x38u) = 0u;                               /* 0x4A72E */
+            DSW(rec + 0x34u) = 0u;                               /* 0x4A737 */
+            DSW(rec + 0x36u) = 0u;                               /* 0x4A740 */
+            if (DSB(DS_00104B16) == DSB(entry + 0x21u))          /* 0x4A746..0x4A74F */
+                (void)fight_4b3f0(entry, index, 1u);             /* 0x4A751..0x4A75C */
+            else
+                (void)fight_4b430(entry, index, 1u);             /* 0x4A763..0x4A76E */
+        }
+        head = next;                                              /* 0x4A773 */
+        if (head == DS_0010884C) break;                             /* 0x4A775/0x4A77B */
+    }
+}
+
 /* ---- 0x263F4 the arena frame ------------------------------------------- */
 
 void fight_arena_frame(void)

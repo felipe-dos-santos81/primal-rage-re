@@ -370,7 +370,8 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   `0x2861B`), which has **no callers** anywhere in the image and whose address
   appears nowhere as a pointer; and `0x28978`→`0x2898F`, `0x28A9D`→`0x28AB9`
   (`mov edi`), `0x28B3C`→`0x28B57` (`mov esi`), all three in `FUN_00028788`
-  (mode 9). It is dispatched by six
+  (mode 9, now ported as `game_mode_09_step`, record §48-Y — see the case-9
+  entry below). It is dispatched by six
   `call dword [0x104AE4]` sites (`0x4F302`, `0x4F373`, `0x4F6F1`, `0x4F70D`,
   `0x4F9AA`, `0x4F9D1`, in `0x4F2B0`/`0x4F318`/`0x4F6E8`/`0x4F704`/`0x4F9A0`/
   `0x4F9C8`, which `0x24C5C` calls at `0x253E7..0x2540A`) plus one direct
@@ -409,10 +410,10 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   skip test `0x4F790` and `0x4F778` (record §46-G).
   `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
-  - it dispatches cases 3, 4, 5, 6, `0xB`, `0xC`, `0xD`, `0xE`, `0x10`,
+  - it dispatches cases 3, 4, 5, 6, 9, `0xB`, `0xC`, `0xD`, `0xE`, `0x10`,
     `0x11`, `0x13`, `0x14`, `0x15`, `0x17`, `0x1A`, `0x1B` and `0x32`, and
     cases 1/2/`0x20` run the bare `ret` `0x29B70`;
-  - the other 28 cases are named gaps.
+  - the other 27 cases are named gaps.
   - Case 4 (the table entry `0x25242`, `call 0x26254; jmp 0x2540F`) is the
     fight frame `0x26254` (`game_mode_04_step`, record §48-K): `0x3C5CC`,
     `0x16D58` per side and the two position latches; only with
@@ -449,6 +450,42 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     unported `0x4CD98` and `0x4F0FC`, and by `0x274FC` (mode `0xD`) and
     `0x2791C` (mode `0xE`'s continue taken, record §48-E). So under real input a credited join from the character screen
     now reaches mode 5, then this poll, for real — not only in unit tests.
+  - Case 9 is `0x28788` (`game_mode_09_step`, record §48-Y), the post-match
+    results frame. Its preamble is a slimmer, unconditional sibling of the
+    fight frame (`0x3C5CC`, `0x16D58` per side, the two position latches,
+    then always — unlike case 4's `DS_001078FA == 2` gate — `0x17FA0` per
+    side, `0x17580`, `0x1958C`; `0x3CB68` only while neither side's `+0x41`
+    byte has bit 1 set; `0x35658` per side, `0x19068(1)`, `0x49C78` and only
+    `0x12DA8` of `0x1282C`/`0x12DA8`'s pair). The word `DS_00104AF8` counts
+    down; at 0 this frame it arms `DS_001078FE`/`FC = 1`, ORs 0x10 into both
+    `+0x41` bytes and sets `DS_000F0AFE = 4`; either way `DS_00104AEC |= 2`.
+    Only with `DS_000F0AFE == 4` and `DS_001078FC != 0` does the results
+    state run: `0x4A708` (`fight_effects_hold_all`, holding every effects-
+    list entry through `0x4B3F0`/`0x4B430` by `DS_00104B16` against the
+    entry's `+0x21`), `0x28130` (`flow_match_result_text`, already ported)
+    and `0x286BC` (`flow_match_streak_update`: a draw zeroes
+    `DS_00108106[stage]`; otherwise the winner's `DS_00107813` think-byte
+    `== 1` bumps `DS_00104B11` and `0x4660C` (`fighter_4660c`) recomputes the
+    handicap ceiling `DS_001082D0`; else `DS_00104B11 = 0`, the winner's
+    `DS_00107830` streak byte resets and a combined flag byte lands in
+    `DS_00108106[stage]`/the loser's `DS_00107830`, with `fighter_46534` on
+    the loser when its own think-byte is 1). Then the countdowns rearm
+    (`DS_00104AFE = 0xF0`, `DS_001088EE = 0x3C`); `DS_00108173 != 0` forces a
+    draw and clears both think bytes; `DS_00104B1D == 0` snapshots
+    `DS_00104ABC` and runs `config_play_time_snap` (record §48-Q). Finally a
+    four-way dispatch on `DS_00104AD4`: a draw, or a decided result whose
+    winner's think-byte is 1 and whose loser's `DS_00107830` streak reaches 3
+    under a `DS_00108104` stat below 6, each sets `DS_00104B17` and darkens
+    into mode `0x17` with return mode `0x13` (`0x29B74`,
+    `config_play_time_close`, already ported); a decided result whose
+    winner's think-byte isn't 1 and whose stage is 7 runs
+    `fight_stage_marks_clear` first, then the same darken/close; any other
+    stage only installs the mode-`0x12` hook `fight_hook_4142c` under mode
+    `0x17`, with no return-mode store and no close. Four call sites inside
+    `0x28788` target `0x32BAC`, which is a bare `ret` (the tail instruction
+    of the unrelated `FUN_00032B94`, not a function of its own — confirmed
+    by `read_memory` and by Ghidra's own function table), so they are proven
+    no-ops and the port omits them.
   - Case `0xC`'s no-join arm is `0x27380` (`game_mode_0c_step`, record
     §48-C), the arena frame of the mode that mode 5 and `0x274FC` (after
     replacing the loser) store. It first undoes the mode-`0xC` tail's blink (`0x25487`): while the
@@ -532,9 +569,10 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     bit clear; other non-zero: its `DS_00104B1F` bit set; 0: that bit or
     its think gate `DS_00107813` set) gets "PRESS START" (`0x2C178`, row
     `0x1C`, or y `0x3800` for the sprite prompt) with a credit, else
-    "INSERT 1 COIN" (`0x2C1C8`, row `0x1C`). No ported path reaches mode
-    `0x13`: `0x28788` (mode 9), `0x416D4` and `0x41C28` (mode `0x12`) are
-    unported.
+    "INSERT 1 COIN" (`0x2C1C8`, row `0x1C`). Mode 9 (`0x28788`, now ported,
+    record §48-Y) reaches mode `0x13` through this return-mode/darken
+    mechanism when its results state runs; `0x416D4` and `0x41C28` (mode
+    `0x12`) are still unported, so that is the only ported path in.
   - Cases `0xD` and `0x32` are `0x274FC`/`0x296B8` (`game_mode_0d_step`/
     `game_mode_32_step`, record §48-Q). Each runs the arena frame's tail
     steps (`0x3C5CC`, `0x16D58` per side, the two position latches, `0x35658`
