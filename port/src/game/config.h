@@ -28,8 +28,9 @@ u32 config_menu_default_bits(u32 table);
 
 /* 0x2CADC. Writes the default config fields: 0x29 from the menu table, 0x35 and
  * 0x37 = 0xA0, 0x2A's low two bits = 3. The message draw (0x2F198), screen setup
- * (0x1AE20), storage write (0x2EA78) and cursor restore (0x2F280) are declared
- * no-ops (spec §4/§7). */
+ * (0x1AE20), storage write (0x2EA78; ported as config_screen_wait but left
+ * unwired here, record §49-Y) and cursor restore (0x2F280) are declared no-ops
+ * (spec §4/§7). */
 void config_set_defaults(void);
 
 /* 0x2D6F8. Validates the stored config against the magic at DS_00105E30 and runs
@@ -107,5 +108,46 @@ void config_play_time_snap(u32 idx, u32 arm);
  * DS_0010746C[idx]; 0 stores (DS_0010746C[idx] - DS_00107480) / 0x3C, its
  * 0x2E934(0, t) audit post deferred (spec §7). Ported caller: 0x25EFD. */
 void config_play_time_snap_b(u32 idx, u32 arm);
+
+/* ---- timed screen, key latch and menu helpers (record §49-Y) ------------ */
+
+/* 0x2EA78. Builds and presents one frame without the game logic, then waits
+ * n + 2 ticks (none for n == -1) while draining the BIOS key queue into the
+ * latch DS_00105F30. Callers: 0x24C5C, 0x249F0, 0x2CADC, 0x1A38C, 0x31FBF. Not
+ * wired: the only ported caller, config_set_defaults, runs in game_init. */
+void config_screen_wait(s32 n);
+
+/* 0x2EB80. The latched key DS_00105F30, or 0; the idle timeout's longjmp quit
+ * path (0x65431) is not modelled. */
+u32 config_key_latched(void);
+
+/* 0x2EBF0. The latched key as the game's key-bit word (arrow pairs
+ * 0x80008000/0x40004000/0x20002000/0x10001000, Enter 0x1000000, Esc
+ * 0x2000000) under `mask`. Callers: 0x2EDE0, 0x2EEC8. */
+u32 config_key_flags(u32 mask);
+
+/* 0x2EDE0. 0x50161(mask), OR 0x2EBF0(mask) when `flag`; a non-zero result
+ * stamps DS_00105F2C. 0x2FA40 and eighteen more callers. */
+u32 config_input_poll(u32 mask, u8 flag);
+
+/* 0x2EEC8. 0x2EDE0 that also clears the latch DS_00105F30. Caller 0x2FFC4. */
+u32 config_input_poll_clear(u32 mask, u8 flag);
+
+/* 0x305FC. Draws the code-entry record DS_00107450 at (col, row); once its
+ * flags byte is set, files the entered name and number in high-score table 2,
+ * record 0. Callers 0x2FA40 and 0x2FFC4. */
+void config_code_row(s32 col, s32 row);
+
+/* 0x30788. Clamps `value` to 0..0xFF, draws it as a number (when label_row is
+ * not negative) and a 32-cell bar on three rows from `row`. */
+void config_bar_draw(s32 value, s32 row, s32 label_row);
+
+/* 0x31E28. Draws an option row: heading string 0x17 or 0x16, the value's text
+ * (0/2/4/6) and the '<' '>' arrows. `p` is the record, `flag` the arrow mode. */
+void config_option_row(u32 which, u32 p, u8 flag);
+
+/* 0x3157C. Writes the name of the key word `key` at `dest` and returns 1, or
+ * returns 0 when the key has none; `raw` == 0 wraps the name as "<name>". */
+u32 config_key_name(u32 key, u8 raw, u32 dest);
 
 #endif /* PRAGE_GAME_CONFIG_H */
