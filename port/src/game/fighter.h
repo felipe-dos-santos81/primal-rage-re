@@ -846,6 +846,16 @@ void fighter_33acc(u32 side, u32 dst, u32 dst2);
 void fighter_3c16c(u32 side);
 void fighter_3c148(u32 side);
 
+/* 0x354F0 (record §49-A). The arena-wall clamp; fight_hud_pass (0x35658)
+ * calls it side then 1-side (0x3581C/0x35824). Clamps the side's x
+ * (slot+0x2C) to +/-DS_000BE018 through hit_anchor_x, drags the other side
+ * by the same overshoot through fighter_1883c when the two are close and
+ * the clamped side is mid-hitstun (slot+0x53==0xA) while the other is not
+ * blocking (slot+0x54!=2), and zeroes the clamped side's motion via
+ * fighter_3c148 when it is still driving into the wall. Skipped entirely
+ * when slot+0x40 bit 0x40 is set. */
+void fighter_wall_clamp(u32 side);
+
 /* Record §48-K, the fight frame's round end. 0x39FF4: both fighters frozen
  * (the +0x4B child dropped or released, the slot's timers cleared, the stun
  * timer +0x8C ended through 0x34038, 0x1922C and a 0x39F40 pose on the

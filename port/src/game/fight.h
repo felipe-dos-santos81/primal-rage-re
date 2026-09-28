@@ -23,8 +23,10 @@ void fight_arena_frame(void);
  * to 0x2A1FC (actor_sync) advances the fighter's record each frame. The
  * 0x357EE stun end 0x34038 (record §48-K), the 0x357F5 combo-text timer
  * 0x38D24, the 0x35803 state machine 0x3531C and the 0x35829 0x186C4 re-latch
- * of both slots run; the rest of the pass (0x33C78, 0x354F0) is a named gap
- * (§7.8) and is skipped. */
+ * of both slots run. The mode-4 arm (0x35792..0x357DB, gated on
+ * DS_001088E0[side] bit 0) calls fighter_spawn (0x33C78) and the arena-wall
+ * clamp (0x3581C/0x35824, fighter_wall_clamp, 0x354F0) are both ported
+ * (record §49-A); the §7.8 gap is closed. */
 void fight_hud_pass(u32 side);
 
 /* 0x1A978. The per-side stance/command pass, reached from 0x34B6C. It calls the

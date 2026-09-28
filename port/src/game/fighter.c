@@ -2069,6 +2069,69 @@ static void fighter_1883c(u32 side, u32 a, u32 b)
     DSD(DSD(slot) + 0x1Cu) = hit_record_y(side);        /* 0x188A1 */
 }
 
+/* 0x354F0. The arena-wall clamp (record §49-A); fight_hud_pass (0x35658)
+ * calls it 0x3581C(side) then 0x35824(1-side). Skips entirely when
+ * slot+0x40 bit 0x40 is set (0x35552/0x35555). Otherwise: if the side's x
+ * (slot+0x2C) is past the right wall (> DS_000BE018), clamp it to the wall
+ * through hit_anchor_x (0x35575); if past the left wall (< -DS_000BE018),
+ * clamp it to -DS_000BE018 (0x355ED); within bounds on the untaken side,
+ * return (0x355DF). After the clamp, when the side's state (slot+0x53) is
+ * 0xA and the other side is not in state 2 (slot+0x54 != 2), and the two
+ * fighters' raw x separation (0x187FC, ai_distance) is smaller in
+ * magnitude than the signed word at DS_000BDBE8+2 (0x355A5..0x355B0's
+ * `sar edx,0x10` of the DS_000BDBE8 dword is the sign-extended high word,
+ * i.e. DSW(DS_000BDBE8+2)), the other side is dragged by the same
+ * overshoot through fighter_1883c (0x355BB/0x35637) so its slot does not
+ * lag behind the clamp. Finally, if the clamped side's fighter record's
+ * +0x34 speed word is still driving into the wall (> 0 on the right,
+ * < 0 on the left), fighter_3c148 zeroes its motion (0x35647..0x3564B).
+ * PORT: the raw calls the pure, side-effect-free ai_distance (0x187FC) two
+ * or three times along the taken branch only to recompute the same value
+ * (once for the sign test, once or twice more for the magnitude); the port
+ * calls it once and takes the absolute value, which is the identical
+ * result. */
+void fighter_wall_clamp(u32 side)
+{
+    u32 own_slot = DS_001077B0 + side * 0x94u;
+    u32 other_slot = DS_001077B0 + (1u - side) * 0x94u;
+    u32 own_fighter;
+    s32 wall, own_x;
+
+    if ((DSB(own_slot + 0x40u) & 0x40u) != 0u) return;      /* 0x35552/0x35555 */
+
+    own_fighter = DSD(own_slot);                            /* 0x35549 */
+    wall = (s32)DSD(DS_000BE018);                           /* 0x3555F */
+    own_x = (s32)DSD(own_slot + 0x2Cu);                     /* 0x35565 */
+
+    if (wall < own_x) {                                     /* 0x35565/0x35568 `jge` untaken */
+        s32 overshoot = own_x - wall;                       /* 0x3556E/0x35573 */
+        hit_anchor_x(side, (u32)wall);                      /* 0x35575 0x188DC */
+        if (DSB(own_slot + 0x53u) == 0x0Au &&               /* 0x3557E/0x35582 */
+            DSB(other_slot + 0x54u) != 2u) {                /* 0x35588/0x3558C */
+            s32 dist = ai_distance();                        /* 0x187FC */
+            s32 adist = (dist >= 0) ? dist : -dist;
+            if (adist < (s32)(s16)DSW(DS_000BDBE8 + 2u))    /* 0x355A5..0x355B0 */
+                fighter_1883c(1u - side, (u32)(-overshoot), 0u); /* 0x355BB */
+        }
+        if ((s16)DSW(own_fighter + 0x34u) > 0)              /* 0x355C4/0x355C9 */
+            fighter_3c148(side);                             /* 0x35647..0x3564B */
+    } else {
+        s32 overshoot;
+        if ((-wall) <= own_x) return;                        /* 0x355DD/0x355DF */
+        overshoot = -(own_x + wall);                         /* 0x355F6/0x355FB */
+        hit_anchor_x(side, (u32)(-wall));                     /* 0x355ED 0x188DC */
+        if (DSB(own_slot + 0x53u) == 0x0Au &&                /* 0x355FD/0x35600 */
+            DSB(other_slot + 0x54u) != 2u) {                 /* 0x35606/0x3560A */
+            s32 dist = ai_distance();                         /* 0x187FC */
+            s32 adist = (dist >= 0) ? dist : -dist;
+            if (adist < (s32)(s16)DSW(DS_000BDBE8 + 2u))     /* 0x35623..0x3562E */
+                fighter_1883c(1u - side, (u32)overshoot, 0u); /* 0x35637 */
+        }
+        if ((s16)DSW(own_fighter + 0x34u) < 0)               /* 0x35640/0x35645 */
+            fighter_3c148(side);                              /* 0x35647..0x3564B */
+    }
+}
+
 /* 0x36E78. The +0x5B/landing reset: when +0x5B is set, arm +0x5A = 0x78 - +0x5B
  * and clear +0x5B; otherwise clear +0x5D, set +0x40 bits 0x1000/0x100000, reset
  * the other slot's +0x5D/+0x43 and the DS_001078FF character's palette. */

@@ -1131,6 +1131,225 @@ static void check_hud_latch(void)
     DSB(s0 + 0x40u) = sv_40a;
 }
 
+/* 0x354F0, the arena-wall clamp (record §49-A). fight_hud_pass's tail calls
+ * it 0x3581C(side)/0x35824(1-side). DS_000BE018 (the wall) and DS_000BDBE8
+ * (its high word is the push-together distance threshold, 0x355A5's
+ * `sar edx,0x10` of the dword) are overridden to round test values here, as
+ * check_char1_entry's ce_seed already overrides DS_000BE018, so the boundary
+ * arithmetic is easy to check by hand; both are restored. Both slots' +0x42
+ * bit 3 is set so fighter_slot_latch's (0x186D0) re-latch — which 0x1883C
+ * (the push-together callee) runs on BOTH slots before applying its delta —
+ * takes each fighter record's +0x18 unchanged instead of re-deriving a
+ * screen anchor through 0x18540/0x18350 (record §38's DS_00100AB0/AB4
+ * machinery, not under test here); each record's +0x18 is seeded equal to
+ * its slot's +0x2C so that re-latch round-trips as a no-op. */
+static void check_wall_clamp(void)
+{
+    const u32 s0 = DS_001077B0, s1 = DS_00107844;
+    const u32 f0 = FIGHT_RECS + 0x9000u, f1 = FIGHT_RECS + 0x9100u;
+    static u8 sv_s0[0x94], sv_s1[0x94];
+    u32 sv_wall = DSD(DS_000BE018), sv_thr = DSD(DS_000BDBE8);
+
+    tf_snap(sv_s0, s0, 0x94u);
+    tf_snap(sv_s1, s1, 0x94u);
+    mem_fill(FIGHT_RECS + 0x9000u, 0, 0x200u);
+    mem_fill(s0, 0, 0x94u);              /* both slot structs, fully known */
+    mem_fill(s1, 0, 0x94u);
+    DSD(s0) = f0;
+    DSD(s1) = f1;
+    DSD(DS_000BE018) = 1000u;           /* the wall, in round units */
+    DSD(DS_000BDBE8) = 0x00320000u;     /* high word 0x32 = 50: the push threshold */
+
+    /* A: within bounds on both sides -> untouched, no call at all. */
+    DSB(s0 + 0x42u) = 0x08u;
+    DSB(s0 + 0x40u) = 0;
+    DSD(s0 + 0x2Cu) = 500u;             /* |x| < wall */
+    DSD(f0 + 0x18u) = 500u;
+    DSD(s1 + 0x2Cu) = 0xDEADu;          /* untouched sentinel */
+    fighter_wall_clamp(0u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 500);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0xDEAD);
+
+    /* B: the freeze gate (slot+0x40 bit 0x40) skips the clamp even when the
+     * fighter is well past the wall. */
+    DSB(s0 + 0x40u) = 0x40u;
+    DSD(s0 + 0x2Cu) = 5000u;
+    fighter_wall_clamp(0u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 5000);   /* not clamped: the gate held */
+    DSB(s0 + 0x40u) = 0;
+
+    /* C: past the right wall, own state not 0xA -> clamp only: no push (the
+     * state gate), no velocity zero (+0x34 == 0 is not > 0). */
+    DSD(s0 + 0x2Cu) = 1500u;            /* wall + 500 */
+    DSD(f0 + 0x18u) = 1500u;
+    DSB(s0 + 0x53u) = 0;
+    DSW(f0 + 0x34u) = 0;
+    DSD(s1 + 0x2Cu) = 0xDEADu;
+    fighter_wall_clamp(0u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 1000);   /* clamped to the wall */
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0xDEAD); /* no push: the state gate held */
+
+    /* D: past the right wall and still driving into it (+0x34 > 0) ->
+     * fighter_3c148 zeroes the fighter's motion word and +0x42/+0x43. */
+    DSD(s0 + 0x2Cu) = 1500u;
+    DSD(f0 + 0x18u) = 1500u;
+    DSB(s0 + 0x53u) = 0;
+    DSW(f0 + 0x34u) = 40u;
+    DSB(f0 + 0x42u) = 0xFFu;
+    DSB(f0 + 0x43u) = 0xFFu;
+    fighter_wall_clamp(0u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 1000);
+    CHECK_EQ_INT((int)DSW(f0 + 0x34u), 0);
+    CHECK_EQ_INT((int)DSB(f0 + 0x42u), 0);
+    CHECK_EQ_INT((int)DSB(f0 + 0x43u), 0);
+
+    /* E: past the right wall but moving away from it (+0x34 < 0) -> no
+     * velocity zero. Guards against an unsigned or `>=` mutation of the
+     * raw's signed `> 0` test (0x355C4/0x355C9). */
+    DSD(s0 + 0x2Cu) = 1500u;
+    DSD(f0 + 0x18u) = 1500u;
+    DSB(s0 + 0x42u) = 0x08u;
+    DSB(s0 + 0x53u) = 0;
+    DSW(f0 + 0x34u) = (u16)(-40);
+    DSB(f0 + 0x42u) = 0xFFu;
+    DSB(f0 + 0x43u) = 0xFFu;
+    fighter_wall_clamp(0u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 1000);
+    CHECK_EQ_INT((int)(s16)DSW(f0 + 0x34u), -40);   /* untouched */
+    CHECK_EQ_INT((int)DSB(f0 + 0x42u), 0xFF);
+    CHECK_EQ_INT((int)DSB(f0 + 0x43u), 0xFF);
+
+    /* F: symmetric on the left wall: clamp to -wall, velocity zero on
+     * +0x34 < 0 (still driving left). */
+    DSD(s0 + 0x2Cu) = (u32)(-1500);
+    DSD(f0 + 0x18u) = (u32)(-1500);
+    DSB(s0 + 0x42u) = 0x08u;
+    DSB(s0 + 0x53u) = 0;
+    DSW(f0 + 0x34u) = (u16)(-40);
+    DSB(f0 + 0x42u) = 0xFFu;
+    DSB(f0 + 0x43u) = 0xFFu;
+    DSD(s1 + 0x2Cu) = 0xDEADu;
+    fighter_wall_clamp(0u);
+    CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), -1000);
+    CHECK_EQ_INT((int)DSW(f0 + 0x34u), 0);
+    CHECK_EQ_INT((int)DSB(f0 + 0x42u), 0);
+    CHECK_EQ_INT((int)DSB(f0 + 0x43u), 0);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 0xDEAD);
+
+    /* G: past the right wall, state 0xA and the other side not blocking
+     * (+0x54 != 2), the two fighters close -> fighter_1883c drags the other
+     * side's slot by -overshoot. ai_distance (0x187FC) itself opens with
+     * fighter_slot_latch(0)/(1) (0x18800/0x18808), and with both slots'
+     * +0x42 bit 3 set that re-derives EACH slot's +0x2C from its OWN
+     * fighter record's +0x18 (0x186FC) before the subtraction — so the
+     * "close" test compares the two records' +0x18 anchors (here 1500 and
+     * 1470, |diff| = 30 < 50), not the just-clamped slot position; the same
+     * re-latch also means own_slot's clamp is overwritten back to 1500
+     * (record §49-A's raw-faithful quirk) before fighter_1883c's own
+     * re-latch runs again and adds the delta to the other side's record
+     * anchor (1470 - 500 = 970). */
+    DSD(s0 + 0x2Cu) = 1500u;            /* overshoot = 500 */
+    DSD(f0 + 0x18u) = 1500u;
+    DSB(s0 + 0x42u) = 0x08u;
+    DSB(s0 + 0x53u) = 0x0Au;
+    DSW(f0 + 0x34u) = 0;
+    DSD(s1 + 0x2Cu) = 1470u;
+    DSD(f1 + 0x18u) = 1470u;
+    DSB(s1 + 0x42u) = 0x08u;
+    DSB(s1 + 0x41u) = 0;
+    DSB(s0 + 0x41u) = 0;
+    DSB(s1 + 0x54u) = 0;
+    fighter_wall_clamp(0u);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 970);    /* 1470 - 500 */
+
+    /* H: same setup, but the two records' +0x18 anchors are far apart
+     * (|diff| >= the threshold) -> no push: the other side's slot re-latches
+     * to its own (unchanged) record anchor and nothing more. */
+    DSD(s0 + 0x2Cu) = 1500u;
+    DSD(f0 + 0x18u) = 1500u;
+    DSB(s0 + 0x42u) = 0x08u;
+    DSB(s0 + 0x53u) = 0x0Au;
+    DSW(f0 + 0x34u) = 0;
+    DSD(s1 + 0x2Cu) = 700u;
+    DSD(f1 + 0x18u) = 700u;
+    DSB(s1 + 0x42u) = 0x08u;
+    DSB(s1 + 0x54u) = 0;
+    fighter_wall_clamp(0u);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), 700);
+
+    /* I: symmetric push-together on the left wall: overshoot is +500 (not
+     * negated, 0x35637). The record anchors are -1500/-1470 (|diff| = 30 <
+     * 50), so the push still fires; the other side's record anchor becomes
+     * -1470 + 500 = -970. */
+    DSD(s0 + 0x2Cu) = (u32)(-1500);
+    DSD(f0 + 0x18u) = (u32)(-1500);
+    DSB(s0 + 0x42u) = 0x08u;
+    DSB(s0 + 0x53u) = 0x0Au;
+    DSW(f0 + 0x34u) = 0;
+    DSD(s1 + 0x2Cu) = (u32)(-1470);
+    DSD(f1 + 0x18u) = (u32)(-1470);
+    DSB(s1 + 0x42u) = 0x08u;
+    DSB(s1 + 0x54u) = 0;
+    fighter_wall_clamp(0u);
+    CHECK_EQ_INT((int)DSD(s1 + 0x2Cu), -970);   /* -1470 + 500 */
+
+    tf_put(sv_s0, s0, 0x94u);
+    tf_put(sv_s1, s1, 0x94u);
+    DSD(DS_000BE018) = sv_wall;
+    DSD(DS_000BDBE8) = sv_thr;
+}
+
+/* record §49-A: the mode-4 arm (0x35792..0x357DB) calls fighter_spawn
+ * (0x33C78) when DS_001088E0[side] bit 0 is set; it does nothing (besides a
+ * dead local-stack write, 0x357DD) when it is clear. Either way the arm
+ * returns immediately, skipping the rest of the pass. fighter_spawn itself
+ * is already ported and exercised (check_spawn_sound/check_char1_entry); the
+ * target here is only the gate and the early return. The gate's `rec` (the
+ * outer DS_001077A8[side] test) is seeded to a scratch address distinct from
+ * the constant slot fighter_spawn installs (DS_001077B0 + side*0x94), so a
+ * bit-0-set call is detected by DS_001077A8[side] changing to that slot, and
+ * a bit-0-clear call is detected by it staying at the seeded scratch
+ * address. A mutation dropping the bit-0 test (always spawning) fails the
+ * clear case; the original all-return stub fails the set case. */
+static void check_mode4_spawn_gate(void)
+{
+    const u32 side = 0u;
+    const u32 scratch = FIGHT_RECS + 0x9300u;
+    const u32 slot = DS_001077B0 + side * 0x94u;
+    u32 sv_recA = DSD(DS_001077A8 + side * 4u);
+    u16 sv_mode = DSW(DS_00104B00);
+    u16 sv_cmd = DSW(DS_001088E0 + side * 2u);
+    u8  sv_ch = DSB(DS_0010816A + side);
+    u32 sv_dig = DSD(DS_001028C8);
+
+    mem_fill(scratch, 0, 0x50u);
+    actors_reset();
+    DSB(DS_0010816A + side) = 0u;          /* a valid character */
+    DSD(DS_001028C8) = 0u;                 /* skip the audio-resolve tail */
+    DSW(DS_00104B00) = 4;
+
+    /* bit 0 clear: no spawn. */
+    DSD(DS_001077A8 + side * 4u) = scratch;
+    DSB(scratch + 0x43u) = 0;              /* the outer gate needs bit 0x80 clear */
+    DSW(DS_001088E0 + side * 2u) = 0;
+    fight_hud_pass(side);
+    CHECK_EQ_INT((int)DSD(DS_001077A8 + side * 4u), (int)scratch);
+
+    /* bit 0 set: fighter_spawn runs and installs the constant slot. */
+    DSD(DS_001077A8 + side * 4u) = scratch;
+    DSB(scratch + 0x43u) = 0;
+    DSW(DS_001088E0 + side * 2u) = 1;
+    fight_hud_pass(side);
+    CHECK_EQ_INT((int)DSD(DS_001077A8 + side * 4u), (int)slot);
+
+    actors_reset();
+    DSD(DS_001077A8 + side * 4u) = sv_recA;
+    DSW(DS_00104B00) = sv_mode;
+    DSW(DS_001088E0 + side * 2u) = sv_cmd;
+    DSB(DS_0010816A + side) = sv_ch;
+    DSD(DS_001028C8) = sv_dig;
+}
+
 /* 0x49C78: the direct RNG call sites and their gates. A case-3 entry issues
  * exactly one rng(0x3C); the DS_001088BF tail issues one rng(2) only inside
  * 1..4. The RNG state is the proof; the sentinel seeds prove the gate. */
@@ -31110,6 +31329,17 @@ int test_fight(void)
     check_mode_08();
     check_mode_0a();
     check_mode_12();
+
+    /* Last: check_mode4_spawn_gate's fighter_spawn call (via fight_hud_pass)
+     * touches the process-wide actor free list through actors_reset()/
+     * actor_spawn, unlike the FIGHT_RECS/FIGHT_ACTORS-only fixtures above,
+     * and check_point_trample (above) reads a shadow's pset index off that
+     * free list's accumulated state, so an actors_reset() before it would
+     * shift the index it expects. Both are placed after everything that
+     * depends on that accumulation; check_wall_clamp only needs to be
+     * adjacent to its companion. */
+    check_wall_clamp();
+    check_mode4_spawn_gate();
 
     return g_failures - before;
 }
