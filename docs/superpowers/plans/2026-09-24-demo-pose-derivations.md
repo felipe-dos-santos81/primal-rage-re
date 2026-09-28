@@ -19592,3 +19592,223 @@ subsystem regardless of its callees) and its two still-unported callees
 match-end stores `0x27DC8` (record §48-K) that would make mode `0x1E`
 reachable for real remain unported, as noted in records §49-C/§49-D for
 modes 8/0xA.
+
+## 49-I. Mode 0x1F's frame handler `0x208F8` (named-gap batch, branch `gap32-mode1f`)
+
+(The section letter is I. `docs/PROGRESS.md` and this file were grepped for
+`§49-` on `main` at `59e6ea4` first, matching A–H already taken; I was the
+first free letter.)
+
+**Result in one line.** `0x208F8`, `game_frame`'s case `0x1F` (table entry
+`0x253D2`, `call 0x208F8; jmp 0x2540F`; `get_xrefs_to 0x208F8` confirms that
+one call site), is ported as `game_mode_1f_step` (`flow.c`) and wired. It is
+the "winner roar" screen: a 5-state sub-machine that spawns a backdrop plus
+two "flash" actors, waits for the first one's play position to reach a
+fixed frame, hands off to mode `0x15` (the generic countdown/skip-arm mode,
+already ported, record §48-X) for up to `0x4B0` frames with return mode
+`0x1F` itself, spawns a third actor and starts both non-fading actors on
+fresh anim streams, then counts the first pair down to death and the third
+actor's alpha up to a clamp — at which point it either spawns a
+character-indexed actor or draws a character-indexed string, arms mode
+`0x15` again (`0x384` frames) with return mode **`0x1E`**, and resets its
+own sub-state to 0. That return-mode chase (`0x1F` → `0x15` → `0x1F` → …
+→ `0x15` → `0x1E`) is the same "hand off to the generic countdown, come
+back via `DS_00104AFA`" idiom record §49-H already documented for mode
+`0x1E`'s own state 2/6/9 stores, and it places mode `0x1F` immediately
+before `0x1E`'s post-match challenge/high-score flow in the game's own
+sequencing — consistent with this task's own working title, "roar-timing".
+No new callee was ported: every real callee `0x208F8` calls was already
+ported (`frontend_input_reset`, `actors_reset`, `frontend_spawn_row`,
+`frontend_list_next`, `effects_spawn`, `actor_spawn`, `actors_anim_begin`,
+`actor_set_dead`, `text_cursor_set`, `game_string_get`); one `0x2C3FC` voice
+call (record §45-A, spec §7) is a `PORT:` no-op as usual.
+
+### 49-I.1 Sources
+
+The raw comes from the Ghidra HTTP bridge at `127.0.0.1:8089`
+(`disassemble_function`, `read_memory`, `get_xrefs_to` — the Ghidra MCP tool
+does not connect this session), cross-checked instruction-for-instruction
+against `port/decomp/prage.c`'s decompiled `FUN_000208f8` (`size=785`,
+`callers=1 callees=11`), which matched the raw exactly in every branch.
+`game_frame`'s jump table at `0x24B8C` was read directly (`read_memory`,
+52 dwords) to confirm entry `0x1F` is `0x253D2` (`call 0x208F8`), not just
+trusted from `flow.c`'s prior comment.
+
+### 49-I.2 The dispatch shape and the register-preserving idiom
+
+A 5-state sub-machine on the byte `DS_00104B25` (jump table `0x208E4`,
+5 entries at `0x20939`/`0x2098D`/`0x20A2C`/`0x20A96`/`0x20B04`; `DL > 4` is
+a no-op, `0x20927`/`0x20C00`). `charid` — `DS_0010782A[DS_00104AD4 * 0x94]`,
+the acting side's character id — is computed once at `0x20900..0x20921`,
+unconditionally, before the dispatch, and used by states 1 and 4 only.
+Every function this task's batch has ported (`0x2AE14`/`actor_spawn`,
+`0x2BC30`/`actors_anim_begin`, `0x2BAF4`/`actors_reset_al`, `0x208F8`
+itself) preserves every register but `EAX` (`PUSH`/`POP` bracketing the
+whole body), which is what lets the raw thread a live value (a record
+pointer, a computed table address) *through* an intervening call by simply
+not reloading it afterward — `0x209ae..0x209b8` (state 1) and
+`0x20aca..0x20ad5` (state 3) both rely on this.
+
+### 49-I.3 Per-state derivation
+
+- **State 0** (`0x20939..0x2098C`): `frontend_input_reset()`; `actors_reset()`
+  (`EAX=1,ECX=EBX=0`); the `0x2C3FC(0x3B, edx=0)` voice (`PORT:`, not
+  wired); `frontend_spawn_row(mem+0xA7B80, 0, 0)` (`0x2095F`); then
+  `frontend_list_next(0)` (`0x20966`) and, if it finds an entry,
+  `effects_spawn(e, 2, 0x3E688)` (`0x20979`) — `EAX` (the found entry) is
+  never reloaded between the two calls, so it flows straight into
+  `effects_spawn`'s `source_rec` argument. `DS_00104B25 += 1` (`0x2097E`).
+  **What `frontend_list_next`'s table actually is**, discovered while
+  building the test fixture: `DS_00107608..DS_00107798` is not a
+  free-standing "challenge row" table — it *is* `palette_acquire`'s own
+  24-entry table (`DS_00107618..DS_00107798`, record §47-C), the same
+  memory `frontend_spawn_row`'s own `actor_spawn` call populates via
+  `palette_acquire` when the spawned descriptor carries a real handle.
+  Mode `0x13`'s own citation of this function (record §48-?) already
+  described it as "every entry whose `+0` handle is..."; state 0 here
+  just checks `e != 0` with no further filter, so in practice (given the
+  real `0xA7B80` descriptor's real handle) the effect fires on the row
+  the state's own spawn just registered.
+- **State 1** (`0x2098D..0x20A2B`): `rec1 = actor_spawn(mem+0xA7ED8, 0x2A00,
+  0xF0, 0x5A00, 0)` (`0x209A3`) → `DS_001044A0`. `frame_bits =
+  (u16)(rec1->+0x56 | 0x400)` (`0x209B8`/`0x209DD..0x209E4`, recomputed
+  identically on both arms). `desc = DS_0010782A`-side table
+  `0xA80AC[charid]` when `DS_00104529` bit 1 is set, else `0xA8090[charid]`
+  (`0x209B3..0x209F9`). `rec2 = actor_spawn(mem+desc, 0, 0xF2, 0, frame_
+  bits)` (`0x20A00`) → `DS_001044A4`. `rec1->+0x36 = 0xFFC0` (`0x20A17`,
+  a signed word, −64). `DS_00104B25 += 1`.
+- **State 2** (`0x20A2C..0x20A95`): `rec1 = DS_001044A0`; `pos = (s32)
+  rec1->+0x34 >> 16` (`0x20A31`/`0x20A37`, `SAR`), `frame = rec1->+0x1C`
+  (`0x20A34`). If `pos + frame > 0x1E00`, exit with nothing touched
+  (`0x20A3C`/`0x20A42`, the tail `JG`). Else: `rec1->+0x1C = 0x1E00`
+  (`0x20A5C`); `rec1->+0x36 = 0` (`0x20A65`); `DS_00104AFE = 0x4B0`,
+  `DS_001088EE = 0x3C`, **`DS_00104B00 = 0x15`** (the generic countdown
+  mode), `DS_00104AFA = 0x1F` (return to this mode); `DS_00104B25 += 1`.
+  **`rec1->+0x34` and `rec1->+0x36` are the same storage**: the dword
+  read at `+0x34` then `SAR 0x10` is mathematically `(s16)word[+0x36]`
+  sign-extended — confirmed against `actor_spawn`'s own child-actor arm
+  (`0x2926`/`0x2927`, `DSW(rec+0x34)=(u16)a2; DSW(rec+0x36)=(u16)a4;`,
+  the same two adjacent word fields), and the hard way, by a test bug: an
+  independent `DSD(+0x34)=0` followed by `DSW(+0x36)=0x9999` produced
+  `pos = -26215`, not `0`, because the second write clobbers the first
+  write's upper half.
+- **State 3** (`0x20A96..0x20B03`): `rec3 = actor_spawn(mem+0xA80C8[charid],
+  0x2A00, 0xF8, 0x1A00, 0)` (`0x20AB3`) → `DS_0010449C`. `DS_00104B25 +=
+  1`. `rec1 = DS_001044A0`; `rec1->+0x36 = 0xFF00` (`0x20ADA`, −256);
+  `actors_anim_begin(rec1, 0xE9206, 1.0)` (`0x20AE0`). `rec2 =
+  DS_001044A4`; `actors_anim_begin(rec2, 0xA7EBC[charid], 1.0)` (`0x20AF6`).
+- **State 4** (`0x20B04..0x20C08`): if `DS_001044A0 != 0`: `pos =
+  (u16)(rec1->+0x2C - 0x80)`, stored back; if `pos == 0` (exactly),
+  `actor_set_dead(rec1)`, `DS_001044A0 = 0`, and if `DS_001044A4 != 0`
+  too, `actor_set_dead(rec2)`, `DS_001044A4 = 0` (`0x20B04..0x20B49`).
+  Independently: `rec3 = DS_0010449C`; `alpha = (u16)(rec3->+0x2C +
+  0x40)`, stored back (`0x20B49..0x20B5A`); if `alpha < 0x1000`, exit with
+  nothing further (`0x20B5E..0x20B64`). Else: `rec3->+0x2C = 0x1000`
+  (clamp, `0x20B6A`); if `DS_00104529` bit 1 is set,
+  `actor_spawn(mem+0xA818C[charid], DS_000C8718 (word), 0xFF, 0x3400, 0)`
+  (`0x20B94..0x20B9B`, result discarded); else `text_cursor_set(-1, 0x1A,
+  game_string_get(0xA80E4[charid]), 0x2000)` (`0x20BAC..0x20BC4`, the
+  `0x1C500`/`0x2F198` pair). Then unconditionally: `DS_00104AFE = 0x384`,
+  `DS_001088EE = 0x3C`, `DS_00104AFA = 0x1E`, `DS_00104B00 = 0x15`,
+  `DS_00104B25 = 0` (`0x20BC9..0x20BFA`).
+
+### 49-I.4 The port
+
+`game_mode_1f_step` in `flow.c`, a `switch` on `DSB(DS_00104B25)` with one
+case per state, each statement cited to its address as above. `charid` is
+computed once at function entry, matching the raw. No new symbols.h names
+were needed; the two local `#define`s this function reuses
+(`DS_00104529`, `DS_000C8718`) already existed in `flow.c` from earlier
+records. The eight table addresses (`0xA7B80`, `0xA7ED8`, `0xA80AC`,
+`0xA8090`, `0xA80C8`, `0xA7EBC`, `0xA818C`, `0xA80E4`) are raw hex
+literals with an address comment, matching this file's existing style for
+one-off table constants (e.g. `frontend_match_start`'s `0xA7B6C`,
+`0xA7DCC`). `game_frame`'s switch gained `case 0x1Fu:` and lost `0x1F`
+from the generic named-gap list; the running tail-comment was updated.
+
+### 49-I.5 The assertions and mutations (`check_mode_1f` in `test_fight.c`)
+
+New `check_mode_1f` (`check_mode_1f_state0`..`_state4`), registered last in
+`test_fight()`'s call list, after `check_mode_1e`, for the same reason:
+every state calls `actors_reset()` (via a new `m1f_seed` fixture, itself
+building a real free list from a dedicated scratch pool,
+`M1F_POOL`/`M1F_PSET`, so nothing after it may depend on the shared free
+list's accumulated state). Two lessons from building this fixture, both
+now documented inline at the call sites:
+
+- `actor_spawn`'s descriptor `desc[0]` is a **stream pointer its own
+  pre-walk dereferences** (the "0x2AFFA initial animation-stream walk"),
+  not an inert scratch field — an arbitrary marker there (tried first,
+  e.g. `0xCAFEBABE`) is read back as a memory address and can, and once
+  did, crash the test (`EXC_BAD_ACCESS` inside `spawn_anim_opcode`'s
+  pre-walk). `desc[4]` (the actor's *type*) is not safe either: it indexes
+  a real callback-dispatch table, and an unregistered value makes
+  `actor_spawn`'s own visibility check reject the spawn (return 0) —
+  caught as a second, unrelated-looking test failure ("state 1 spawns the
+  second, character-indexed actor" failing) before the cause was traced.
+  `desc[5]` (the frame byte, stored as a float into `rec+0x24`/`+0x20`
+  with no dispatch or dereference) is the field this fixture actually
+  uses to prove which of the two character-indexed tables (state 1) or
+  three otherwise-unlabelled resource tables (states 3/4) was read.
+- The `ghidra_data.bin` oracle fixture puts **real game bytes** at real
+  data addresses like `0xA7B80`, so a state-0 test that assumes "the
+  backdrop's own spawn never touches the palette table" is wrong: the
+  real descriptor's own handle field (`+0x10`) is non-zero, so
+  `frontend_spawn_row`'s own `actor_spawn` call always registers a
+  palette entry before `frontend_list_next` runs. The "no entry" arm of
+  `check_mode_1f_state0` has to zero that one real dword (`0xA7B90`)
+  first to construct a genuinely empty table.
+
+Per-state coverage: state 0, both `frontend_list_next` arms (via the
+`0xA7B90` handle trick above), including `effects_active()` (0 vs 1) and
+the backdrop-row spawn; state 1, both `DS_00104529` bit-1 branches (via
+the `desc[5]` marker), `frame_bits`, and `rec1->+0x36`; state 2, both
+sides of the `pos + frame` threshold (a distinct, non-zero `pos` so the
+"unchanged" sentinel can't coincide with the advance arm's own `0` write
+— the aliasing lesson above, first caught as "the parked sub-case
+unexpectedly advanced"), plus the full `DS_00104AFE`/`DS_001088EE`/
+`DS_00104B00`/`DS_00104AFA` handoff quad; state 3, the third spawn (via
+`desc[5]`) and both `actors_anim_begin` calls (`rec1`'s fade parameters,
+`rec2`'s stream, read back from a scratch address outside the oracle's
+covered range so it isn't disturbed by a real pre-walk); state 4, the
+countdown-to-exactly-0 kill on both actors (and the "not yet 0" no-op
+arm, and the "already 0 / null" skip arm), the alpha clamp and both
+finalize branches (text draw, checked via the `DS_00105F34` cursor row;
+actor spawn, checked via the `desc[5]` marker and the `a2`/`a4` pass-
+through fields on the pool's first record, deterministic because
+`m1f_seed`'s `actors_reset()` always rebuilds the free list fresh).
+
+**Mutations** (three single-site edits, each rebuilt and the whole of
+`run_tests` re-run, then reverted): (1) state 2's threshold flipped
+`> 0x1E00` → `< 0x1E00` — 11 failures across both state-2 sub-cases; (2)
+state 4's kill condition flipped `pos == 0` → `pos != 0` — 6 failures
+(the actors die on every non-zero countdown instead of exactly zero, and
+survive at zero); (3) state 1's ternary branches swapped (bit-1-set now
+reads `0xA8090`, clear reads `0xA80AC`) — 2 failures (the `desc[5]`
+marker read back from the wrong table on both sub-cases). All three
+reverted and the suite re-confirmed green.
+
+### 49-I.6 Verification
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 3 consecutive
+runs (plus the 3 mutation-revert runs above), 0 compiler warnings, no
+SIGBUS, each run ≈2s (no hang). `make verify` (run with worktree-local
+`*_DUMP`/`TITLE_PIN_DIR` overrides to avoid colliding with sibling
+sessions' concurrent runs on the shared `/tmp` paths the Makefile
+hard-codes): front-end 517/801/3/2, demo-fight fully explained at N =
+1886, attract2 0 unexplained at N = 3617, `symbols.h` regenerates
+byte-identically — all four gate numbers unchanged from before this
+batch, as expected: mode `0x1F` is reachable only through the still-
+unported match-end path, which the no-input demo/attract/front-end
+oracle paths never reach.
+
+### 49-I.7 Remaining named gaps
+
+The `0x2C3FC` voice call in state 0 (record §45-A, spec §7). Nothing else:
+every real callee `0x208F8` calls was already ported before this task.
+The chain that would make mode `0x1F` reachable for real — whatever
+still-unported code stores `DS_00104B00 = 0x1F` — was not identified by
+this task (no cross-reference in the ported code stores that literal);
+it likely lives in the same match-end/high-score territory as the
+`0x27DC8` gap already noted for modes 8/0xA/0x1E (records §49-C/§49-D/
+§49-H).
