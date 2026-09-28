@@ -33540,6 +33540,425 @@ static void check_hud_meter_step(void)
     mz_restore();
 }
 
+/* ---- 0x21994 and the callbacks it arms: 0x216EC, 0x21458, 0x21F30 (record §49-V) */
+
+static u32 hb_count(void)
+{
+    u32 n = 0u;
+    for (u32 r = actor_list_head(); r != 0u; r = actor_next(r)) n++;
+    return n;
+}
+
+/* Both slots live on real actor records (rec+0x51 = the side), the camera-target
+ * table pointing at the slots, the counter words, DS_0010476E and the 0x13244
+ * flag seeded away from every post-condition. */
+static void hb_seed(void)
+{
+    m5_seed(0u);
+    for (u32 s = 0; s < 2u; s++) {
+        u32 slot = DS_001077B0 + s * 0x94u;
+        mem_fill(slot + 4u, 0, 0x94u - 4u);
+        DSD(slot) = m5_rec();
+        DSB(DSD(slot) + 0x51u) = (u8)s;
+        DSD(DS_001077A8 + s * 4u) = slot;
+        DSW(DS_00104764 + s * 2u) = 0u;
+        DSB(DS_0010476E + s) = 0u;
+        DSW(DSD(slot) + 0x36u) = 0x0123u;
+        DSW(DSD(slot) + 0x34u) = 0x0456u;
+        DSW(DSD(slot) + 0x44u) = 0x0789u;
+    }
+    DSB(DS_001088C2) = 0x77u;
+}
+
+/* The state `stream` at `bits` leaves a scratch record in (the stream's own
+ * hold opcodes may rewrite the frame words): rec+8, +0x24/+0x20 and the pset
+ * id must match it, and rec+8 must have moved off any seed (the caller checks
+ * it against its own sentinel where that matters). */
+static int hb_on_stream(u32 rec, u32 stream, u32 bits)
+{
+    u32 ref = m5_rec();
+    int ok;
+    actors_anim_begin(ref, stream, bits);
+    ok = DSD(rec + 8u) == DSD(ref + 8u) && DSD(rec + 0x24u) == DSD(ref + 0x24u)
+      && DSD(rec + 0x20u) == DSD(ref + 0x20u)
+      && DSW(actor_pset(rec)) == DSW(actor_pset(ref));
+    return ok;
+}
+
+static void check_pair_callbacks(void)
+{
+    u32 i, k, s;
+    if (!mz_save()) { CHECK(0, "the §49-V snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* The image values the checks rely on. */
+    CHECK_EQ_INT((int)DSD(0x000BD882u), 0x16001180);
+    CHECK_EQ_INT((int)DSD(0x000BD884u), 0x14001600);
+    CHECK_EQ_INT((int)DSD(0x000A824Cu + 4u), 0xE4A72);
+    CHECK_EQ_INT((int)DSD(0x000A8274u), 0xE4BE8);
+    CHECK_EQ_INT((int)DSD(0x000A829Cu), 0xE4CF4);
+    CHECK_EQ_INT((int)DSD(0x000C8B58u), 0xE6F82);
+    CHECK(fn_resolve(0x216ECu) == (void (*)(void))fighter_216ec,
+          "0x216EC is registered as fighter_216ec");
+    CHECK(fn_resolve(0x21458u) == (void (*)(void))fighter_21458_case10,
+          "0x21458 is registered through the case-10 adapter");
+
+    /* (a) 0x21994 arms the pair, per side (rec+0x51). The slot: +0x57/+0x52/
+     * +0x53/+0x54 = 0/9/7/2, +0x0C = 0x216EC, +0x40 |= 0x48000; the record
+     * on 0xE49C4 at 3.0 with +0x44 = 0xF, +0x36 = 0xFA and 0x3C190's -100 (the
+     * pset unflipped) or +100 (hflipped); the counter word cleared. The other
+     * slot: +0x52/+0x54/+0x53 = 0x10/2/0xA, +0x10 = 0x21458, +0x58 = 3,
+     * +0x41 |= 0x80, its record on dword[0xA824C + char * 4] at bits 0. */
+    for (i = 0; i < 4u; i++) {
+        u32 side = i & 1u, os = 1u - side;
+        u32 slot = DS_001077B0 + side * 0x94u, oslot = DS_001077B0 + os * 0x94u;
+        u32 rec, orec;
+        hb_seed();
+        rec = DSD(slot);
+        orec = DSD(oslot);
+        DSB(oslot + 0x7Au) = 1u;
+        DSD(slot + 0x40u) = 0x00000101u;
+        DSB(oslot + 0x41u) = 0x01u;
+        DSW(DS_00104764 + side * 2u) = 0x5555u;
+        DSW(DS_00104764 + os * 2u) = 0x6666u;
+        DSW(actor_pset(rec)) = (u16)((i & 2u) != 0u ? 0x8000u : 0u);
+        DSB(slot + 0x57u) = 0x66u;
+        CHECK_EQ_INT((int)fighter_21994(slot, rec), 1);
+        CHECK_EQ_INT((int)DSB(slot + 0x57u), 0);
+        CHECK_EQ_INT((int)DSB(slot + 0x52u), 9);
+        CHECK_EQ_INT((int)DSB(slot + 0x53u), 7);
+        CHECK_EQ_INT((int)DSB(slot + 0x54u), 2);
+        CHECK_EQ_INT((int)DSD(slot + 0x0Cu), 0x216EC);
+        CHECK_EQ_INT((int)DSD(slot + 0x40u), 0x00048101);
+        CHECK_EQ_INT((int)DSW(rec + 0x44u), 0xF);
+        CHECK_EQ_INT((int)DSW(rec + 0x36u), 0xFA);
+        /* the pset word is rewritten by the stream begin, so 0x1A570 reads the
+         * value the begin left there: hflip follows the sprite id's bit 15. */
+        CHECK(hb_on_stream(rec, 0xE49C4u, 0x40400000u),
+              "0x21994 starts the record on 0xE49C4 at 3.0");
+        CHECK_EQ_INT((int)(s16)DSW(rec + 0x34u),
+                     (DSW(actor_pset(rec)) & 0x8000u) != 0u ? 100 : -100);
+        CHECK_EQ_INT((int)DSB(oslot + 0x52u), 0x10);
+        CHECK_EQ_INT((int)DSB(oslot + 0x54u), 2);
+        CHECK_EQ_INT((int)DSB(oslot + 0x53u), 0xA);
+        CHECK_EQ_INT((int)DSD(oslot + 0x10u), 0x21458);
+        CHECK_EQ_INT((int)DSB(oslot + 0x58u), 3);
+        CHECK_EQ_INT((int)DSB(oslot + 0x41u), 0x81);
+        CHECK_EQ_INT((int)DSW(DS_00104764 + side * 2u), 0);
+        CHECK_EQ_INT((int)DSW(DS_00104764 + os * 2u), 0x6666);
+        CHECK(hb_on_stream(orec, 0xE4A72u, 0u),
+              "0x21994 starts the other record on 0xA824C[1] with bits 0");
+    }
+
+    /* (b) 0x216EC, the +0x57 state machine, per side. The counter is
+     * incremented first; state 0 waits for the signed counter to exceed 0x16
+     * (0xFFFE + 1 = -1 does not). */
+    for (i = 0; i < 6u; i++) {
+        static const u16 pre[6] = { 0x15u, 0x16u, 0xFFFEu, 0x7FFFu, 0x16u, 0x16u };
+        static const int go[6] = { 0, 1, 0, 0, 1, 1 };
+        for (s = 0; s < 2u; s++) {
+            u32 slot = DS_001077B0 + s * 0x94u, oslot = DS_001077B0 + (1u - s) * 0x94u;
+            u32 rec, orec;
+            hb_seed();
+            rec = DSD(slot);
+            orec = DSD(oslot);
+            DSB(slot + 0x57u) = 0u;
+            DSW(DS_00104764 + s * 2u) = pre[i];
+            DSW(DS_00104764 + (1u - s) * 2u) = 0x3333u;
+            DSW(actor_pset(rec)) = (u16)(i == 5u ? 0x8000u : 0u);
+            DSW(actor_pset(orec)) = 0u;
+            DSW(rec + 0x34u) = 0x1111u;
+            DSW(orec + 0x34u) = 0x2222u;
+            DSB(rec + 0x4Bu) = 0x99u;
+            DSD(orec + 0x24u) = 0x55u;
+            DSB(oslot + 0x58u) = 0x99u;
+            fighter_216ec(slot, rec, s);
+            CHECK_EQ_INT((int)DSW(DS_00104764 + s * 2u), (int)(u16)(pre[i] + 1u));
+            CHECK_EQ_INT((int)DSW(DS_00104764 + (1u - s) * 2u), 0x3333);
+            CHECK_EQ_INT((int)DSB(slot + 0x57u), go[i]);
+            if (go[i] != 0) {
+                CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x258);
+                CHECK_EQ_INT((int)DSW(rec + 0x44u), 0x28);
+                CHECK_EQ_INT((int)DSB(rec + 0x4Bu), 0);
+                CHECK_EQ_INT((int)DSD(orec + 0x24u), 0x40000000);
+                CHECK_EQ_INT((int)DSB(oslot + 0x58u), 0);
+                CHECK_EQ_INT((int)DSW(orec + 0x36u), 0xFE0C);
+                CHECK_EQ_INT((int)DSW(orec + 0x44u), 0xA);
+                /* 0x1A570 clear (unflipped): both +0x34 words stay 0x96 and
+                 * 0xFF6A; set: negated. */
+                if (i == 5u) {
+                    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0xFF6A);
+                    CHECK_EQ_INT((int)DSW(orec + 0x34u), 0x0096);
+                } else {
+                    CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x0096);
+                    CHECK_EQ_INT((int)DSW(orec + 0x34u), 0xFF6A);
+                }
+            } else {
+                CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x1111);
+                CHECK_EQ_INT((int)DSB(oslot + 0x58u), 0x99);
+            }
+        }
+    }
+    /* State 1 waits for the counter above 0x19; 3 and 5 and 6+ do nothing. */
+    for (i = 0; i < 7u; i++) {
+        static const u8 st[7] = { 1u, 1u, 3u, 5u, 6u, 0xFFu, 1u };
+        static const u16 pre[7] = { 0x18u, 0x19u, 0x40u, 0x40u, 0x40u, 0x40u, 0xFFFEu };
+        static const u8 want[7] = { 1u, 2u, 3u, 5u, 6u, 0xFFu, 1u };
+        u32 slot = DS_001077B0, rec;
+        hb_seed();
+        rec = DSD(slot);
+        DSB(slot + 0x57u) = st[i];
+        DSW(DS_00104764) = pre[i];
+        DSW(rec + 0x36u) = 0x8000u;
+        DSD(slot + 0x30u) = 0x7FFFFFFFu;
+        fighter_216ec(slot, rec, 0u);
+        CHECK_EQ_INT((int)DSB(slot + 0x57u), want[i]);
+        CHECK_EQ_INT((int)DSW(DS_00104764), (int)(u16)(pre[i] + 1u));
+    }
+
+    /* (c) 0x216EC state 2: the record's +0x44 = 0xF only while +0x36 is
+     * negative; the landing needs word[0xBD882 + char * 2] >> 16 (char 0:
+     * 0x1180 >> ... the dword 0x16001180 >> 16 = 0x1600) above the slot's
+     * +0x30 (an equal +0x30 does not land). */
+    for (i = 0; i < 4u; i++) {
+        static const u16 v36[4] = { 0x8000u, 5u, 0x8000u, 5u };
+        static const u32 x30[4] = { 0x1600u, 0x1600u, 0x15FFu, 0x15FFu };
+        u32 slot = DS_001077B0, rec;
+        hb_seed();
+        rec = DSD(slot);
+        DSB(slot + 0x57u) = 2u;
+        DSB(slot + 0x54u) = 2u;
+        DSD(slot + 0x30u) = x30[i];
+        DSW(rec + 0x36u) = v36[i];
+        DSW(rec + 0x44u) = 0x0789u;
+        DSD(rec + 0x18u) = 0x2468u;
+        DSD(rec + 0x1Cu) = 0x3579u;
+        DSW(rec + 0x34u) = 0x4444u;
+        DSB(rec + 0x43u) = 0x66u;
+        fighter_216ec(slot, rec, 0u);
+        if (x30[i] == 0x1600u) {
+            CHECK_EQ_INT((int)DSB(slot + 0x57u), 2);
+            CHECK_EQ_INT((int)DSB(slot + 0x54u), 2);
+            CHECK_EQ_INT((int)DSW(rec + 0x44u), v36[i] == 0x8000u ? 0xF : 0x789);
+            CHECK_EQ_INT((int)DSW(rec + 0x34u), 0x4444);
+        } else {
+            CHECK_EQ_INT((int)DSB(slot + 0x57u), 3);
+            CHECK_EQ_INT((int)DSB(slot + 0x54u), 0);
+            CHECK_EQ_INT((int)DSD(rec + 0x1Cu), 0);
+            CHECK_EQ_INT((int)DSD(rec + 0x18u), 0x2468);
+            CHECK_EQ_INT((int)DSW(rec + 0x34u), 0);
+            CHECK_EQ_INT((int)DSW(rec + 0x36u), 0);
+            CHECK_EQ_INT((int)DSW(rec + 0x44u), 0);
+            CHECK_EQ_INT((int)DSB(rec + 0x43u), 0);
+            CHECK(hb_on_stream(rec, 0xE6F82u, 0x40400000u),
+                  "0x216EC state 2 lands on 0xC8B58[0] at 3.0");
+        }
+    }
+
+    /* (d) 0x216EC state 4: the trigger is (+0x36 negative and word[0xBD882 +
+     * side * 2] >> 16 above the slot's +0x30; NOT indexed by the character) or
+     * the counter above 7. Side 0's word is 0x1600, side 1's 0x1400. */
+    for (i = 0; i < 12u; i++) {
+        static const u16 v36[12] = { 0x8000u, 0x8000u, 5u, 0x8000u, 0x8000u, 5u,
+                                     0x8000u, 0x8000u, 5u, 5u, 0x8000u, 5u };
+        static const u32 x30[12] = { 0x15FFu, 0x1600u, 0x15FFu, 0x13FFu, 0x1400u, 0x13FFu,
+                                     0x1600u, 0x1400u, 0x7FFFu, 0x7FFFu, 0x7FFFu, 0x7FFFu };
+        static const u16 pre[12] = { 0u, 0u, 0u, 0u, 0u, 0u, 7u, 7u, 7u, 6u, 6u, 0xFFF0u };
+        static const u32 sd[12] = { 0u, 0u, 0u, 1u, 1u, 1u, 0u, 1u, 1u, 0u, 1u, 0u };
+        u32 side = sd[i];
+        u32 slot = DS_001077B0 + side * 0x94u, rec;
+        int fire;
+        hb_seed();
+        rec = DSD(slot);
+        DSB(slot + 0x57u) = 4u;
+        DSD(slot + 0x30u) = x30[i];
+        DSW(rec + 0x36u) = v36[i];
+        DSW(DS_00104764 + side * 2u) = pre[i];
+        DSB(slot + 0x7Au) = 3u;                 /* a character with neither table entry */
+        DSD(slot + 0x0Cu) = 0x216ECu;
+        DSB(slot + 0x53u) = 0x66u;
+        DSB(slot + 0x52u) = 0x66u;
+        DSB(slot + 0x54u) = 0x66u;
+        DSD(slot + 0x18u) = 0x1111u;
+        DSD(slot + 0x1Cu) = 0x2222u;
+        DSB(DS_0010476E + side) = 1u;
+        fighter_216ec(slot, rec, side);
+        /* fires: (v36 neg && thr > x30) || the signed counter+1 > 7 */
+        fire = ((v36[i] & 0x8000u) != 0u && (side == 0u ? 0x1600u : 0x1400u) > x30[i])
+            || (s16)(pre[i] + 1u) > 7;      /* signed: 0xFFF1 is -15 */
+        if (fire) {
+            CHECK_EQ_INT((int)DSB(slot + 0x53u), 0);
+            CHECK_EQ_INT((int)DSB(slot + 0x52u), 4);
+            CHECK_EQ_INT((int)DSB(slot + 0x54u), 2);
+            CHECK_EQ_INT((int)DSD(slot + 0x0Cu), 0);
+            CHECK_EQ_INT((int)DSD(slot + 0x18u), 0);
+            CHECK_EQ_INT((int)DSD(slot + 0x1Cu), 0);
+        } else {
+            CHECK_EQ_INT((int)DSB(slot + 0x53u), 0x66);
+            CHECK_EQ_INT((int)DSD(slot + 0x0Cu), 0x216EC);
+        }
+    }
+
+    /* (e) 0x216EC state 4's exit when the trigger fires with DS_0010476E clear:
+     * the slot DS_001077A8[rec+0x51] picks the stream by its +0x7A byte (1:
+     * 0xE4A18, 6: 0xE16E6, anything else none), through 0x3C4CC; then +0x57 =
+     * 5 and +0x8A = 0. A zero table slot leaves +0x57. */
+    for (i = 0; i < 6u; i++) {
+        static const u8 ch[6] = { 1u, 6u, 0u, 2u, 7u, 1u };
+        static const u32 stream[6] = { 0xE4A18u, 0xE16E6u, 0u, 0u, 0u, 0u };
+        u32 slot = DS_001077B0, rec, before;
+        hb_seed();
+        rec = DSD(slot);
+        DSB(slot + 0x57u) = 4u;
+        DSW(DS_00104764) = 8u;
+        DSD(DS_001077A8) = i == 5u ? 0u : slot;
+        DSB(slot + 0x7Au) = ch[i];
+        DSB(slot + 0x8Au) = 0x77u;
+        DSD(rec + 8u) = 0x00CAFE00u;
+        before = DSD(rec + 8u);
+        fighter_216ec(slot, rec, 0u);
+        if (i == 5u) {
+            CHECK_EQ_INT((int)DSB(slot + 0x57u), 4);
+            CHECK_EQ_INT((int)DSB(slot + 0x8Au), 0x77);
+            CHECK_EQ_INT((int)DSD(rec + 8u), (int)before);
+        } else {
+            CHECK_EQ_INT((int)DSB(slot + 0x57u), 5);
+            CHECK_EQ_INT((int)DSB(slot + 0x8Au), 0);
+            if (stream[i] != 0u)
+                CHECK(hb_on_stream(rec, stream[i], 0x40400000u),
+                      "0x216EC state 4 starts the stream for the target's character");
+            else
+                CHECK_EQ_INT((int)DSD(rec + 8u), (int)before);
+        }
+    }
+
+    /* (f) 0x21458 state 0 (+0x58): with word[0xBD882 + char * 2] >> 16 - 0xDC0
+     * (char 0: 0x1600 - 0xDC0 = 0x840) above the slot's +0x30, or the record's
+     * +0x44 zero, it runs 0x39834 (the other slot's DS_00107D28 = +0x5F), the
+     * 0x21F30 spawn (+ DS_001088C2 = 1), sets the record's +0x36 = 0x190, +0x44
+     * = 0x1E, +0x58 = 1, +0x54 = 2, restarts it on dword[0xA8274 + char * 4]
+     * at 3.0 and spawns the 0xBB1DC dust: two more actors. */
+    for (i = 0; i < 4u; i++) {
+        static const u32 x30[4] = { 0x83Fu, 0x840u, 0x840u, 0x841u };
+        static const u16 v44[4] = { 5u, 5u, 0u, 0u };
+        static const int go[4] = { 1, 0, 1, 1 };
+        for (s = 0; s < 2u; s++) {
+            u32 slot = DS_001077B0 + s * 0x94u, oslot = DS_001077B0 + (1u - s) * 0x94u;
+            u32 rec, n0;
+            hb_seed();
+            rec = DSD(slot);
+            DSB(slot + 0x58u) = 0u;
+            DSB(slot + 0x7Au) = 0u;
+            DSD(slot + 0x30u) = x30[i];
+            DSW(rec + 0x44u) = v44[i];
+            DSB(oslot + 0x5Fu) = 0x2Au;
+            DSD(DS_00107D28) = 0x5A5Au;
+            DSD(rec + 0x30u) = 0x00123456u;
+            DSD(slot + 0x2Cu) = 0x00007777u;
+            DSD(rec + 8u) = 0x00CAFE00u;
+            n0 = hb_count();
+            fighter_21458(slot, rec, s);
+            if (go[i] != 0) {
+                CHECK_EQ_INT((int)DSD(DS_00107D28), 0x2A);
+                CHECK_EQ_INT((int)DSB(DS_001088C2), 1);
+                CHECK_EQ_INT((int)hb_count(), (int)n0 + 2);
+                CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x190);
+                CHECK_EQ_INT((int)DSW(rec + 0x44u), 0x1E);
+                CHECK_EQ_INT((int)DSB(slot + 0x58u), 1);
+                CHECK_EQ_INT((int)DSB(slot + 0x54u), 2);
+                CHECK(hb_on_stream(rec, 0xE4BE8u, 0x40400000u),
+                      "0x21458 state 0 restarts the record on 0xA8274[0]");
+            } else {
+                CHECK_EQ_INT((int)DSD(DS_00107D28), 0x5A5A);
+                CHECK_EQ_INT((int)DSB(DS_001088C2), 0x77);
+                CHECK_EQ_INT((int)hb_count(), (int)n0);
+                CHECK_EQ_INT((int)DSB(slot + 0x58u), 0);
+                CHECK_EQ_INT((int)DSD(rec + 8u), 0x00CAFE00);
+            }
+        }
+    }
+
+    /* (g) 0x21458 state 1: word[0xBD882 + char * 2] >> 16 plus word[0xA8234 +
+     * char * 2] >> 16 (char 0: 0x1600 and the dword 0xF3800000 >> 16 =
+     * -0xC80, sum 0x980) above the slot's +0x30 and this record's +0x36
+     * negative (signed): +0x54 = 0, +0x58 = 2, the record's +0x36/+0x44 zeroed,
+     * +0x1C = 0, restart on dword[0xA829C + char * 4] at 3.0. */
+    for (i = 0; i < 4u; i++) {
+        static const u32 x30[4] = { 0x97Fu, 0x980u, 0x97Fu, 0x97Fu };
+        static const u16 v36[4] = { 0x8000u, 0x8000u, 0u, 5u };
+        static const int go[4] = { 1, 0, 0, 0 };
+        u32 slot = DS_001077B0, rec;
+        hb_seed();
+        rec = DSD(slot);
+        DSB(slot + 0x58u) = 1u;
+        DSB(slot + 0x54u) = 2u;
+        DSD(slot + 0x30u) = x30[i];
+        DSW(rec + 0x36u) = v36[i];
+        DSW(rec + 0x44u) = 0x0789u;
+        DSD(rec + 0x1Cu) = 0x3579u;
+        DSD(rec + 8u) = 0x00CAFE00u;
+        fighter_21458(slot, rec, 0u);
+        if (go[i] != 0) {
+            CHECK_EQ_INT((int)DSB(slot + 0x54u), 0);
+            CHECK_EQ_INT((int)DSB(slot + 0x58u), 2);
+            CHECK_EQ_INT((int)DSW(rec + 0x36u), 0);
+            CHECK_EQ_INT((int)DSW(rec + 0x44u), 0);
+            CHECK_EQ_INT((int)DSD(rec + 0x1Cu), 0);
+            CHECK(hb_on_stream(rec, 0xE4CF4u, 0x40400000u),
+                  "0x21458 state 1 restarts the record on 0xA829C[0]");
+        } else {
+            CHECK_EQ_INT((int)DSB(slot + 0x54u), 2);
+            CHECK_EQ_INT((int)DSB(slot + 0x58u), 1);
+            CHECK_EQ_INT((int)DSD(rec + 0x1Cu), 0x3579);
+        }
+    }
+
+    /* (h) 0x21458 state 2: +0x28 bit 5 cleared and +0x43 = 0xF; 3 and above
+     * nothing; the case-10 adapter supplies rec = DSD(slot) (its dust spawn
+     * reads rec+0x30) and matches the direct call. */
+    {
+        u32 slot = DS_001077B0, rec;
+        hb_seed();
+        rec = DSD(slot);
+        DSB(slot + 0x58u) = 2u;
+        DSW(rec + 0x28u) = 0xFFFFu;
+        DSB(rec + 0x43u) = 0x66u;
+        fighter_21458(slot, rec, 0u);
+        CHECK_EQ_INT((int)DSW(rec + 0x28u), 0xFFDF);
+        CHECK_EQ_INT((int)DSB(rec + 0x43u), 0xF);
+        for (i = 3u; i < 6u; i++) {
+            DSB(slot + 0x58u) = (u8)(i == 5u ? 0xFFu : i);
+            DSW(rec + 0x28u) = 0xFFFFu;
+            DSB(rec + 0x43u) = 0x66u;
+            fighter_21458(slot, rec, 0u);
+            CHECK_EQ_INT((int)DSW(rec + 0x28u), 0xFFFF);
+            CHECK_EQ_INT((int)DSB(rec + 0x43u), 0x66);
+        }
+        DSB(slot + 0x58u) = 2u;
+        DSW(rec + 0x28u) = 0xFFFFu;
+        DSB(rec + 0x43u) = 0x66u;
+        fighter_21458_case10(slot, 0u);
+        CHECK_EQ_INT((int)DSW(rec + 0x28u), 0xFFDF);
+        CHECK_EQ_INT((int)DSB(rec + 0x43u), 0xF);
+        {
+            u32 n0;
+            void (*cb)(u32, u32) = (void (*)(u32, u32))(void *)fn_resolve(0x21458u);
+            hb_seed();
+            rec = DSD(slot);
+            DSB(slot + 0x58u) = 0u;
+            DSD(slot + 0x30u) = 0u;
+            DSW(rec + 0x44u) = 5u;
+            DSD(rec + 0x30u) = 0x00123456u;
+            n0 = hb_count();
+            cb(slot, 0u);
+            CHECK_EQ_INT((int)hb_count(), (int)n0 + 2);
+            CHECK_EQ_INT((int)DSB(slot + 0x58u), 1);
+        }
+    }
+    (void)k;
+    mz_restore();
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -33813,6 +34232,7 @@ int test_fight(void)
     check_mode_33();
     check_mode_25();
     check_hud_meter_step();
+    check_pair_callbacks();
 
     return g_failures - before;
 }
