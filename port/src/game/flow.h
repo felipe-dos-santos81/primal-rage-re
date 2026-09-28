@@ -556,7 +556,7 @@ void game_mode_0a_step(void);
  *   spec §7). EBX/ECX/EDX/ESI/EDI are pushed and popped. */
 void game_mode_1e_step(void);
 
-/* 0x208F8 — record §49-I. The mode 0x1F handler: the "roar" screen between
+/* 0x208F8 — record §49-J. The mode 0x1F handler: the "roar" screen between
  * the post-match challenge poll and mode 0x1E's high-score flow. See flow.c
  * for the full derivation. */
 void game_mode_1f_step(void);

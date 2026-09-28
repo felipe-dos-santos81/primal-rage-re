@@ -4536,9 +4536,9 @@ void game_mode_1e_step(void)
     }
 }
 
-/* ---- mode 0x1F, the frame handler 0x208F8 (record §49-I) ----------------- */
+/* ---- mode 0x1F, the frame handler 0x208F8 (record §49-J) ----------------- */
 
-/* 0x208F8 — record §49-I. The mode 0x1F handler (0x24C5C case 0x1F, jump
+/* 0x208F8 — record §49-J. The mode 0x1F handler (0x24C5C case 0x1F, jump
  * table 0x24B8C entry; sole caller, per get_xrefs_to). No ported case stores
  * mode 0x1F today — it is reachable only from the still-unported match-end
  * path — but the raw table 0x24B8C dispatches here regardless, so the port
@@ -4552,7 +4552,7 @@ void game_mode_1e_step(void)
  * and mode 0x1E's high-score flow: state 0 resets the screen and spawns a
  * fixed backdrop row (0x38B18(0xA7B80)) plus one effect (0x13C70) when
  * 0x33904's walk of the palette-acquire table (DS_00107618..DS_00107798,
- * the same table palette_acquire itself fills — record §47-C, §49-I.3)
+ * the same table palette_acquire itself fills — record §47-C, §49-J.3)
  * finds any entry, which the backdrop spawn's own real handle typically
  * ensures; state 1 spawns two actors, the
  * fixed 0xA7ED8 descriptor and a character-indexed one (0xA80AC when the
@@ -5509,7 +5509,7 @@ void game_frame(void)
         game_mode_1e_step();                           /* 0x253CB 0x1EEB0 (record §49-H) */
         break;
     case 0x1Fu:
-        game_mode_1f_step();                           /* 0x253D2 0x208F8 (record §49-I) */
+        game_mode_1f_step();                           /* 0x253D2 0x208F8 (record §49-J) */
         break;
     case 0x07u:
     case 0x0Fu:
@@ -5561,7 +5561,7 @@ void game_frame(void)
          * game_mode_0a_step, case 0x12 (0x41C28, record §48-Z) is
          * game_mode_12_step, case 0x16 (0x4F2B0, record §49-G) is
          * frontend_mode_16_step, case 0x1E (0x1EEB0, record §49-H) is
-         * game_mode_1e_step, and case 0x1F (0x208F8, record §49-I) is
+         * game_mode_1e_step, and case 0x1F (0x208F8, record §49-J) is
          * game_mode_1f_step, each dispatched above. */
         break;
     case 0x00u:

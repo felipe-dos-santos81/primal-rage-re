@@ -30156,7 +30156,7 @@ static void check_mode_1e(void)
     check_mode_1e_bookkeeping();
 }
 
-/* ---- record §49-I: mode 0x1F's frame handler 0x208F8 ---------------------- */
+/* ---- record §49-J: mode 0x1F's frame handler 0x208F8 ---------------------- */
 
 #define M1F_SPRITE_FLAG 0x00104529u  /* no symbols.h name: DS_00104528's second byte (flow.c) */
 #define M1F_PROMPT_ROW  0x000C8718u  /* no symbols.h name: shared prompt-row word (flow.c) */
@@ -30212,7 +30212,7 @@ static void m1f_seed(u8 substate)
  * register one. */
 static void check_mode_1f_state0(void)
 {
-    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
 
     m1f_seed(0u);
     DSD(0xA7B90u) = 0u;                     /* the backdrop descriptor's own handle (+0x10) */
@@ -30222,7 +30222,7 @@ static void check_mode_1f_state0(void)
     CHECK_EQ_INT(effects_active(), 0);      /* no live palette entry */
 
     mz_restore();
-    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
 
     /* the backdrop's own real handle is left intact: frontend_spawn_row's
      * own spawn registers the palette entry 0x33904 then finds. */
@@ -30242,7 +30242,7 @@ static void check_mode_1f_state1(void)
 {
     u32 rec1, rec2;
 
-    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
 
     /* desc[0] (a stream pointer actor_spawn's own pre-walk dereferences)
      * must stay 0 — the descriptor block's default. desc[4] is the actor's
@@ -30269,7 +30269,7 @@ static void check_mode_1f_state1(void)
     CHECK_EQ_INT((int)DSB(DS_00104B25), 2);
 
     mz_restore();
-    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
 
     /* bit 1 set: table 0xA80AC[charid] instead. */
     m1f_seed(1u);
@@ -30290,7 +30290,7 @@ static void check_mode_1f_state1(void)
  * with return mode 0x1F (DS_00104AFA). */
 static void check_mode_1f_state2(void)
 {
-    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
 
     /* rec1 + 0x34 (a dword) and rec1 + 0x36 (a word) are the SAME storage —
      * 0x20a31's dword read then SAR 0x10 keeps only the +0x36 half, sign-
@@ -30311,7 +30311,7 @@ static void check_mode_1f_state2(void)
     CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x7777);
 
     mz_restore();
-    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
 
     m1f_seed(2u);
     DSD(DS_001044A0) = M1F_REC1;
@@ -30337,7 +30337,7 @@ static void check_mode_1f_state3(void)
 {
     u32 rec3;
 
-    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
 
     union { float f; u32 u; } fu;
 
@@ -30375,7 +30375,7 @@ static void check_mode_1f_state3(void)
  * 0x1E and DS_00104B25 resets to 0. */
 static void check_mode_1f_state4(void)
 {
-    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
 
     /* below both thresholds: the counters move but nothing finalises or
      * dies. */
@@ -30395,7 +30395,7 @@ static void check_mode_1f_state4(void)
     CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x1Fu));
 
     mz_restore();
-    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
 
     /* the countdown lands exactly on 0: both actors die. */
     m1f_seed(4u);
@@ -30413,7 +30413,7 @@ static void check_mode_1f_state4(void)
     CHECK_EQ_INT((int)DSB(M1F_REC2 + 0x28u) & 0x08, 0x08);
 
     mz_restore();
-    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
 
     /* the fade counter crosses 0x1000: it clamps, the text branch (sprite
      * flag bit 1 clear) draws at row 0x1A, and mode 0x15 is armed with
@@ -30435,7 +30435,7 @@ static void check_mode_1f_state4(void)
     CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
 
     mz_restore();
-    if (!mz_save()) { CHECK(0, "the §49-I snapshot allocates"); return; }
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
 
     /* same crossing, sprite flag bit 1 set: an actor is spawned from the
      * character-indexed 0xA818C table instead of the text draw. */
