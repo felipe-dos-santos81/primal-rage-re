@@ -923,4 +923,14 @@ void fighter_19820(void);
  * exported for 0x28C38 (record §48-B). EAX = slot, EDX = v, EBX = w. */
 void fighter_392a0(u32 slot, s32 v, s32 w);
 
+/* Record §49-Z. 0x39FB0: the pose 0x39F40 (-0x50, 0x64, 0xF, 0x14) on the
+ * slot record's side after 0x18B04. EAX = slot. */
+void fighter_39fb0(u32 slot);
+/* 0x45B50: the slot +0x0C callback 0x45C10 stores (slot, rec, side). */
+void fighter_45b50(u32 slot, u32 rec, u32 side);
+/* 0x47A00: the throw setup 0x47B04's case 0 runs. EAX = side. */
+void fighter_47a00(u32 side);
+/* 0x47B04: the slot +0x0C callback 0x47BFC stores (slot, rec, side). */
+void fighter_47b04(u32 slot, u32 rec, u32 side);
+
 #endif /* PRAGE_GAME_FIGHTER_H */

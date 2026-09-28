@@ -211,11 +211,16 @@ static u32 string_lock(u32 handle)
  * the port omits both, which is the arm 0x474E4 reaches. */
 static void string_unlock(u32 handle) { DSB(handle + 0x15) &= 0xFDu; }
 
-/* PORT: 0x474E4. Decode string `id` from the localisation table at `base` into
- * `out` (capacity `outlen`). The table's +4 holds a linked list of group offsets
- * relative to `base`; each group is a run of one-byte-length-prefixed entries
- * and an entry's bytes are XORed with its plaintext length byte. Returns the
- * decoded length (0 for an empty entry) or `outlen` when truncated. */
+/* 0x474E4 — record §49-Z. Decode string `id` from the localisation table at
+ * `base` into `out` (capacity `outlen`). The table's +4 holds a linked list of
+ * group offsets relative to `base`; each group is a run of one-byte-length-
+ * prefixed entries and an entry's bytes are XORed with its plaintext length
+ * byte. Returns the decoded length + 1 (0 for an empty entry) or `outlen` when
+ * truncated. PORT: the original locks the DS_001082DC handle itself (0x474F2
+ * 0x1E75C) and unlocks it at 0x475A5 (0x1E808); the port's only caller,
+ * game_string_get, does both around this body, so `base` arrives locked. The
+ * `outlen` compare is signed (0x47556 JGE) and the ids are the callers'
+ * constants. */
 static u32 string_decode(u32 base, u32 id, u8 *out, u32 outlen)
 {
     u32 off = 0;
@@ -2552,6 +2557,47 @@ void game_mode_33_step(void)
 #define DS_000A88CC 0x000A88CCu   /* no symbols.h name: 0x2604C's descriptor */
 #define DS_000A88F4 0x000A88F4u   /* no symbols.h name: 0x2604C's descriptor (bit 1) */
 #define DS_000BB6C8 0x000BB6C8u   /* no symbols.h name: 0x27ED8's descriptor */
+
+#define DS_001081EC 0x001081ECu   /* no symbols.h name: the word 0x45B50's state 1 arms */
+
+/* 0x4F4E8 — record §49-Z. The render table's bit-0 entry (DS_000A86C4[0],
+ * the dword at 0xA86C4; 0x255CC's per-bit walk calls it while DS_00104AEC
+ * bit 0 is set, which 0x4F37C sets and 0x27E6D clears), fn() with EAX unread;
+ * EBX/ECX/EDX/ESI/EDI are pushed and popped. With DS_00105B3B non-zero it
+ * draws each side's slot +0x3C dword as a width-6 number at row 7 (column 1,
+ * then 0x23; mode 0x2000, pad 0) through 0x2F4D0. With it zero and the signed
+ * DS_001088D0 at most 0x62 it runs on the frames whose tick word
+ * DS_00104AF4 is a multiple of DS_001088D0 (the unsigned word, a signed
+ * `idiv`): with the countdown byte DS_001088F2 (the top byte of the dword
+ * DS_001088EF) non-zero, the byte is read signed, a value at most 10 plays the
+ * voice 0x52 and takes mode 0x3000 (else 0x4000), the byte is decremented and
+ * the new value is drawn at column 0x13, row 1, width 2, pad 0 through 0x2F528.
+ * PORT: 0x4F577 0x2C3FC(0x52) voice, not wired (record §45-A). PORT: a zero
+ * DS_001088D0 would fault the original's `idiv` (0x4F55A); the port returns
+ * (the init writes (v & 0xF) * 5 + 0x1E, so it is never zero). */
+void flow_round_timer_step(void)
+{
+    if (DSB(DS_00105B3B) != 0u) {                       /* 0x4F4ED */
+        for (u32 i = 0; i < 2u; i++)                    /* 0x4F4FB..0x4F52A */
+            text_number_draw((s32)(1u + i * 0x22u), 7,
+                             (s32)DSD(DS_001077B0 + i * 0x94u + 0x3Cu), 6, 0u,
+                             0x2000u);                  /* 0x4F510..0x4F51C 0x2F4D0 */
+    }
+    if (DSB(DS_00105B3B) != 0u) return;                 /* 0x4F52C/0x4F533 */
+    if ((s32)DSD(DS_001088D0) > 0x62) return;           /* 0x4F539/0x4F540 */
+    if (DSD(DS_001088D0) == 0u) return;
+    if (((s32)DSW(DS_00104AF4) % (s32)DSD(DS_001088D0)) != 0)
+        return;                                         /* 0x4F548..0x4F55E */
+    if (DSB(DS_001088F2) == 0u) return;                 /* 0x4F560 */
+    u32 mode;
+    if (((s32)DSD(DS_001088EF) >> 24) <= 0xA)           /* 0x4F569..0x4F575 */
+        mode = 0x3000u;                                 /* 0x4F57C */
+    else
+        mode = 0x4000u;                                 /* 0x4F588 */
+    DSB(DS_001088F2) = (u8)(DSB(DS_001088F2) - 1u);     /* 0x4F59E..0x4F5A6 */
+    text_number_draw_font2(0x13, 1, (s32)DSD(DS_001088EF) >> 24, 2, 0u,
+                           mode);                       /* 0x4F5AE..0x4F5BC 0x2F528 */
+}
 
 /* 0x25FDC — record §48-K. EAX = the side (kept in ESI). With the
  * DS_00104529 bit 1 the actor 0xA88E0 with EDX = 0x2A00, ECX = 0xFF, EBX =

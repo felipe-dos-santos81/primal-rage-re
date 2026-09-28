@@ -330,6 +330,10 @@ void game_mode_05_step(void);
 void flow_round_hud_init(void);
 void flow_win_markers_spawn(void);
 void flow_round_timer_draw(void);
+/* 0x4F4E8 — record §49-Z. The render table's bit-0 entry: the two sides' slot
+ * +0x3C numbers when DS_00105B3B is set, else the round-timer countdown
+ * redraw on the frames the tick word divides by DS_001088D0. */
+void flow_round_timer_step(void);
 
 /* Record §49-J, modes 0x30/0x31/0x33 (mode 0x32's continue/rematch chain).
  * 0x29328 (mode 0x30): a near-twin of mode 5's 0x25C88, the same

@@ -1931,7 +1931,7 @@ seeded below 2. Expected: `DS_001077A8[0] == 0x1077B0`,
 **`0x494A8`.** Gate: `DSB(0x104B14) == 0` runs it; `!= 0` skips. Input:
 `DS_00104AFA != 0x23`; `slot+0x81 = n`. Expected: one `0x10884C` entry per
 `n`, each with an actor, and `2n` RNG draws. Input B: `DS_00104AFA == 0x23` →
-diverts to `0x4CF20` (no list, no RNG).
+diverts to `0x4CF20` (corrected by record §49-Z: `0x4CF20` moves six list nodes and draws 18 times, and is ported).
 
 **`0x1D890`.** Input: `EAX = 0`. Expected: the four per-side bytes zeroed;
 `DS_00104AEC` unchanged, no actor spawned. Input B: `EAX != 0` → the HUD arm
