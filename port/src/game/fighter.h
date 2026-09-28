@@ -35,6 +35,11 @@ int fighter_state_ok(u32 side);
  * (word[actor] & 0x8000) == 0 for slot[side]'s actor record. */
 int fighter_actor_bit15_clear(u32 side);
 
+/* 0x18460 (record §50-E). The anchor pre-dispatch 0x18540 calls: 1 when it
+ * reaches its 0x18428 dispatch (which has no effect), 0 when a slot is missing,
+ * the side's sprite id lies in the character's range or is 0x1E1. */
+int fighter_18460(u32 side);
+
 /* 0x3C570. Test-and-set bit `bit` of DS_00107EE0: 1 when it was already set,
  * else set it and return 0. The camera page tails test bits 0..3 and
  * fighter_pass_b bit 5; fight_slot_clear (0x3C5CC) clears the word per frame. */

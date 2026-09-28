@@ -127,6 +127,7 @@ static u8   actor_type_412F0(u32 rec, u32 slot);
 static u8   actor_type_412FC(u32 rec, u32 slot);
 static void actor_type_12800(u32 rec);
 static void actor_type_19928(u32 rec);
+static void debris_update(void);
 static void actor_type_290D0(u32 rec);
 static void actor_type_3B9C4(u32 rec);
 static void actor_type_3D784(u32 rec);
@@ -549,6 +550,9 @@ int actors_init(void)
     fn_register(0x12800u, (void (*)(void))actor_type_12800);
     fn_register(0x198E8u, (void (*)(void))actor_type_198E8);
     fn_register(0x19928u, (void (*)(void))actor_type_19928);
+    /* PORT: record §50-E. Update-table entry 2 (the dword at 0xA864C): the
+     * debris spawner and walker 0x19B90, unlisted by Ghidra. */
+    fn_register(0x19B90u, debris_update);
     fn_register(0x28F64u, (void (*)(void))actor_type_28F64);
     fn_register(0x2901Cu, (void (*)(void))actor_type_2901C);
     fn_register(0x290D0u, (void (*)(void))actor_type_290D0);
@@ -2428,6 +2432,114 @@ static void actor_type_19928(u32 rec)
     list_insert_after(DS_00100C20, DSD(rec + 0x14));
     DSD(rec + 0x14) = 0;
     DSB(rec + 0x48) = 0;
+}
+
+/* 0x19958 — record §50-E. The round-end debris spawner, called once per frame
+ * by 0x19B90. A draw rng(DS_00100CA8) that is not 0 returns (0x19961..0x1996F).
+ * The x is DS_000F0AF0 - 0x3000 + rng(0x3000) (0x19975..0x1998B); the y pair is
+ * the word w8 = rng(0xA00) with AH += 6 (0x19992..0x1999A) and w0 = 0x3C00 - w8
+ * (0x1999F..0x199AA). By DS_00104AFC the descriptor is 0xBB4FC (== 4),
+ * 0xBB4E8 (== 5 with DS_00100CA9 clear) or 0xBB510 (== 5 with it set; w8 is
+ * redrawn as rng(0x200) with AH += 0xE, 0x199F2..0x19A08), else 0xBB448 or
+ * 0xBB45C by rng(2) (0x19A0F..0x19A29). The count is always 1 (0x199CE, 0x199E7,
+ * 0x199EB, 0x19A08, 0x19A29). Each spawn is 0x2AE14(desc, EDX = x, ECX = w8
+ * sign-extended, EBX = w0 sign-extended, stack 0): the two `sar 16` of the
+ * dwords at [esp+0xA] and [esp+2] read the words above the pushed 0 and the
+ * count, which are zero (0x19A42..0x19A51). A spawned record then gets its
+ * +0x34/+0x36 (and +0x44) by mode (0x19A5F..0x19AB6). */
+static void debris_spawn(void)
+{
+    u32 r, x, desc;
+    u16 w8, w0, mode;
+    s16 i, count;
+    if (rng_next((u32)DSB(DS_00100CA8)) != 0u) return;      /* 0x19968 0x5D7DC */
+    x = DSD(DS_000F0AF0) - 0x3000u;                         /* 0x19975..0x19980 */
+    x += rng_next(0x3000u);                                 /* 0x19986..0x1998B */
+    r = rng_next(0xA00u);                                   /* 0x19992 */
+    w8 = (u16)((r & 0xFFu) | ((((r >> 8) + 6u) & 0xFFu) << 8));   /* 0x19997 */
+    w0 = (u16)(0x3C00u - (u32)w8);                          /* 0x199A8..0x199AA */
+    mode = DSW(DS_00104AFC);                                /* 0x199AE */
+    if (mode == 4u) {                                       /* 0x199BA */
+        desc = 0x000BB4FCu;                                 /* 0x199C9 */
+    } else if (mode == 5u) {                                /* 0x199C0 */
+        if (DSB(DS_00100CA9) == 0u) {                       /* 0x199D4 */
+            desc = 0x000BB4E8u;                             /* 0x199E2 */
+        } else {
+            desc = 0x000BB510u;                             /* 0x199ED */
+            r = rng_next(0x200u);                           /* 0x199F2..0x199FC */
+            w8 = (u16)((r & 0xFFu) | ((((r >> 8) + 0xEu) & 0xFFu) << 8));  /* 0x19A01 */
+        }
+    } else {
+        desc = (rng_next(2u) != 0u) ? 0x000BB448u : 0x000BB45Cu;   /* 0x19A0F..0x19A24 */
+    }
+    count = 1;                                              /* 0x19A29..0x199CE */
+    for (i = 0; i < count; i++) {                           /* 0x19A37 0x19A3A 0x19AC1 */
+        u32 rec = actor_spawn((const u32 *)(mem + desc), x,
+                              (u32)(s32)(s16)w8, (u32)(s32)(s16)w0, 0u);   /* 0x19A54 */
+        if (rec == 0u) continue;                            /* 0x19A5D */
+        if (mode == 4u) {                                   /* 0x19A6C */
+            DSW(rec + 0x34u) = 0x100u;                      /* 0x19A76 */
+            DSW(rec + 0x36u) = 0xFE80u;                     /* 0x19A7C */
+        } else if (mode == 5u && DSB(rec + 0x48u) == 0x28u) {   /* 0x19A72 0x19A89 */
+            DSW(rec + 0x34u) = 0x80u;                       /* 0x19A8E */
+            DSW(rec + 0x36u) = 0u;                          /* 0x19A94 */
+            DSW(rec + 0x44u) = 8u;                          /* 0x19A9A */
+        } else {
+            DSW(rec + 0x34u) = 0x100u;                      /* 0x19AA2 0x19AB0 */
+            DSW(rec + 0x36u) = 0xFD00u;                     /* 0x19AA8 0x19AB6 */
+        }
+    }
+}
+
+/* 0x19B90 — record §50-E. Update-table entry 2 (the dword at 0xA864C, its only
+ * reference; 0x19820 enables it with DS_00104AE8 bit 2 at every fight start).
+ * Ghidra defines no function here (0x19B90 falls into the unlisted walker
+ * 0x19BB8): with DS_00100CA8 above 0x14 (0x19B97) and the low nibble of
+ * DS_000EF6DC clear (0x19BA4) it counts DS_00100CA8 down (0x19BAD), spawns
+ * (0x19BB3 0x19958), then walks the in-use list 0x100C28 (the next link read
+ * before any call, 0x19BDA). A node whose actor has (signed word rec+0x36) +
+ * rec+0x1C < 0 (0x19BCF..0x19BDE) has landed: +0x1C, +0x34, +0x36 are zeroed
+ * (0x19BE0..0x19BF3) and by DS_00104AFC the record restarts a stream at 2.0 -
+ * 0xE8C38 (== 4, 0x19AD4), 0xE8C16 (== 5, type != 0x28, 0x19B28) or 0xE8BF4
+ * (else, 0x19B45) - and takes 0x19928's teardown inline (0x19B61..0x19B7A);
+ * a type-0x28 record in mode 5 instead zeroes +0x44, restarts 0xE8C5C at 4.0
+ * (0x19B0B..0x19B18) and takes +0x34 = 0x40 with no teardown (0x19B20). */
+static void debris_update(void)
+{
+    u32 node;
+    if (DSB(DS_00100CA8) > 0x14u                            /* 0x19B97 0x19B9A */
+            && (DSW(DS_000EF6DC) & 0xFu) == 0u)             /* 0x19BA4..0x19BAB */
+        DSB(DS_00100CA8) = (u8)(DSB(DS_00100CA8) - 1u);     /* 0x19BAD */
+    debris_spawn();                                         /* 0x19BB3 */
+    node = DSD(DS_00100C28);                                /* 0x19BBE */
+    while (node != DS_00100C28) {                           /* 0x19BC4 0x19B80 */
+        u32 rec = DSD(node + 8u);                           /* 0x19BCC */
+        u32 next = DSD(node);                               /* 0x19BDA */
+        u16 mode;
+        u32 stream, frame;
+        s32 sum = (s32)(u32)(((s32)DSD(rec + 0x34u) >> 16) + (s32)DSD(rec + 0x1Cu));   /* 0x19BCF..0x19BD8 */
+        if (sum >= 0) { node = next; continue; }            /* 0x19BDE jge */
+        DSD(rec + 0x1Cu) = 0u;                              /* 0x19BE0 */
+        DSW(rec + 0x34u) = 0u;                              /* 0x19BEA */
+        DSW(rec + 0x36u) = 0u;                              /* 0x19BF3 */
+        mode = DSW(DS_00104AFC);                            /* 0x19BF9 */
+        if (mode == 4u) {                                   /* 0x19C09 */
+            stream = 0x000E8C38u; frame = 0x40000000u;     /* 0x19AD4 0x19ADC */
+        } else if (mode == 5u) {                            /* 0x19C13 */
+            if (DSB(rec + 0x48u) == 0x28u) {                /* 0x19B00 */
+                DSW(rec + 0x44u) = 0u;                      /* 0x19B05 */
+                actors_anim_begin(rec, 0x000E8C5Cu, 0x40800000u);   /* 0x19B18 0x2BC30 */
+                DSW(rec + 0x34u) = 0x40u;                   /* 0x19B20 */
+                node = next; continue;                      /* 0x19B26 */
+            }
+            stream = 0x000E8C16u; frame = 0x40000000u;      /* 0x19B28 0x19B2D */
+        } else {
+            stream = 0x000E8BF4u; frame = 0x40000000u;      /* 0x19B45 0x19B4D */
+        }
+        actors_anim_begin(rec, stream, frame);              /* 0x2BC30 */
+        actor_type_19928(rec);                              /* 0x19B5F..0x19B7A */
+        node = next;                                        /* 0x19B7E */
+    }
 }
 
 /* 0x28F64. Type 0x19: pop 0x104888, insert at 0x104880, then 0x2BE5C and

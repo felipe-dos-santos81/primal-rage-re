@@ -19815,6 +19815,275 @@ static void check_type_teardown(void)
     CHECK_EQ_INT((int)(DSB(rec + 0x2b) & 0x40u), 0);
 }
 
+/* ---- record §50-E: the debris update 0x19B90 (with 0x19958) and 0x18460 --- */
+
+/* The first seed whose first rng(n) draw is (want_zero) or is not zero. */
+static u32 debris_seed(u32 n, int want_zero)
+{
+    u32 s;
+    for (s = 1u; s < 100000u; s++) {
+        rng_seed(s);
+        if ((rng_next(n) == 0u) == (want_zero != 0)) return s;
+    }
+    return 1u;
+}
+
+static void debris_list3(u32 s, u32 a, u32 b)
+{
+    DSD(s) = a;
+    DSD(s + 4u) = b;
+    DSD(a) = b;
+    DSD(a + 4u) = s;
+    DSD(b) = s;
+    DSD(b + 4u) = a;
+}
+
+/* Seed a debris record: node -> rec (node+8), rec+0x14 -> node, the type, and
+ * the landing sum ((s16)+0x36) + rec+0x1C = `sum`. */
+static void debris_rec(u32 rec, u32 node, u8 type, s32 sum)
+{
+    DSW(rec + 0x56) = 0;
+    DSD(node + 8u) = rec;
+    DSD(rec + 0x14) = node;
+    DSB(rec + 0x48) = type;
+    DSW(rec + 0x36) = 0xFFF0u;                  /* -16 */
+    DSD(rec + 0x1C) = (u32)(sum + 16);
+    DSW(rec + 0x34) = 0x1111u;
+    DSD(rec + 0x08) = 0xDEADBEEFu;
+    DSD(rec + 0x24) = 0xDEADBEEFu;
+    DSW(rec + 0x44) = 0x7777u;
+}
+
+static void check_debris_update(void)
+{
+    void (*upd)(void) = fn_resolve(0x19B90u);
+    u8 s_c[0x90];
+    u32 s_cam = DSD(DS_000F0AF0);
+    u32 nodeA = 0x00100C30u, nodeB = 0x00100C3Cu, nodeC = 0x00100C48u;
+    u32 rA, rB, rC, seed, x, r3, r4, w8, exp_state, rec;
+    int mode;
+
+    CHECK(upd != NULL, "0x19B90 (update-table entry 2) is registered");
+    CHECK_EQ_INT((int)DSD(0x000A864Cu), 0x00019B90);   /* DS_000A8644[2] */
+    if (upd == NULL) return;
+    tf_snap(s_c, 0x00100C20u, 0x90u);
+
+    /* Gate: DS_00100CA8 counts down only above 0x14 and on frames whose low
+     * nibble is 0; the draw rng(DS_00100CA8) is non-zero here, so no spawn. */
+    arena_list_empty(0x00100C28u);
+    arena_list_empty(0x00100C20u);
+    DSW(DS_00104AFC) = 3;
+    DSW(DS_000EF6DC) = 0x30;
+    DSB(DS_00100CA8) = 0x30u;
+    rng_seed(debris_seed(0x2Fu, 0));
+    upd();
+    CHECK_EQ_INT((int)DSB(DS_00100CA8), 0x2F);
+    DSW(DS_000EF6DC) = 0x33;                    /* low nibble 3: no decrement */
+    DSB(DS_00100CA8) = 0x30u;
+    rng_seed(debris_seed(0x30u, 0));
+    upd();
+    CHECK_EQ_INT((int)DSB(DS_00100CA8), 0x30);
+    DSW(DS_000EF6DC) = 0x30;
+    DSB(DS_00100CA8) = 0x15u;                   /* above 0x14: counts down */
+    rng_seed(debris_seed(0x14u, 0));
+    upd();
+    CHECK_EQ_INT((int)DSB(DS_00100CA8), 0x14);
+    rng_seed(debris_seed(0x14u, 0));
+    upd();                                      /* at 0x14: stays */
+    CHECK_EQ_INT((int)DSB(DS_00100CA8), 0x14);
+    CHECK_EQ_INT((int)DSD(0x00100C28u), 0x00100C28);   /* nothing spawned */
+
+    /* The walker: A lands, B sits on the boundary (sum 0, stays), C lands.
+     * The next link is read before the teardown unlinks the node. Mode 3
+     * restarts 0xE8BF4, 0x100C20 receives C then A at its head. */
+    actors_reset();
+    rA = actor_alloc(0); rB = actor_alloc(0); rC = actor_alloc(0);
+    CHECK(rA != 0 && rB != 0 && rC != 0, "the debris walker seeds");
+    if (rA == 0 || rB == 0 || rC == 0) { tf_put(s_c, 0x00100C20u, 0x90u); return; }
+    for (mode = 3; mode <= 6; mode++) {
+        u32 sA, sC;
+        u8 tA = 0x06u;
+        arena_list_empty(0x00100C20u);
+        arena_list_empty(0x00100C28u);
+        DSD(0x00100C28u) = nodeA; DSD(0x00100C2Cu) = nodeC;
+        DSD(nodeA) = nodeB; DSD(nodeA + 4u) = 0x00100C28u;
+        DSD(nodeB) = nodeC; DSD(nodeB + 4u) = nodeA;
+        DSD(nodeC) = 0x00100C28u; DSD(nodeC + 4u) = nodeB;
+        if (mode == 5) tA = 0x26u;
+        debris_rec(rA, nodeA, tA, -11);
+        debris_rec(rB, nodeB, 0x06u, 0);
+        debris_rec(rC, nodeC, 0x06u, -11);
+        DSW(DS_00104AFC) = (u16)mode;
+        DSB(DS_00100CA8) = 0x10u;               /* below the gate: no count */
+        rng_seed(debris_seed(0x10u, 0));
+        upd();
+        sA = (mode == 4) ? 0xE8C38u : (mode == 5) ? 0xE8C16u : 0xE8BF4u;
+        sC = sA;
+        CHECK_EQ_INT((int)DSD(rA + 0x1C), 0);
+        CHECK_EQ_INT((int)DSW(rA + 0x34), 0);
+        CHECK_EQ_INT((int)DSW(rA + 0x36), 0);
+        CHECK_EQ_INT((int)DSD(rA + 0x08), (int)sA + 2);   /* the first word is consumed */
+        CHECK_EQ_INT((int)DSD(rA + 0x24), 0x40000000);
+        CHECK_EQ_INT((int)DSD(rA + 0x14), 0);
+        CHECK_EQ_INT((int)DSB(rA + 0x48), 0);
+        CHECK_EQ_INT((int)DSD(rC + 0x1C), 0);
+        CHECK_EQ_INT((int)DSD(rC + 0x08), (int)sC + 2);
+        CHECK_EQ_INT((int)DSD(rC + 0x14), 0);
+        CHECK_EQ_INT((int)DSB(rC + 0x48), 0);
+        CHECK_EQ_INT((int)DSD(rB + 0x14), (int)nodeB);      /* sum 0: stays */
+        CHECK_EQ_INT((int)DSB(rB + 0x48), 0x06);
+        CHECK_EQ_INT((int)DSD(rB + 0x08), (int)0xDEADBEEFu);
+        CHECK_EQ_INT((int)DSD(rB + 0x1C), 16);
+        CHECK_EQ_INT((int)DSD(0x00100C28u), (int)nodeB);    /* only B stays */
+        CHECK_EQ_INT((int)DSD(nodeB), 0x00100C28);
+        CHECK_EQ_INT((int)DSD(0x00100C20u), (int)nodeC);    /* C, then A */
+        CHECK_EQ_INT((int)DSD(nodeC), (int)nodeA);
+        CHECK_EQ_INT((int)DSD(nodeA), 0x00100C20);
+    }
+
+    /* Mode 5, type 0x28: no teardown; +0x44 = 0, 0xE8C5C at 4.0, +0x34 = 0x40. */
+    arena_list_empty(0x00100C20u);
+    arena_list_empty(0x00100C28u);
+    debris_list3(0x00100C28u, nodeA, nodeB);
+    debris_rec(rA, nodeA, 0x28u, -11);
+    debris_rec(rB, nodeB, 0x06u, 0);
+    DSW(DS_00104AFC) = 5;
+    DSB(DS_00100CA8) = 0x10u;
+    rng_seed(debris_seed(0x10u, 0));
+    upd();
+    CHECK_EQ_INT((int)DSW(rA + 0x44), 0);
+    CHECK_EQ_INT((int)DSW(rA + 0x34), 0x40);
+    CHECK_EQ_INT((int)DSW(rA + 0x36), 0);
+    CHECK_EQ_INT((int)DSD(rA + 0x1C), 0);
+    CHECK_EQ_INT((int)DSD(rA + 0x08), 0xE8C5E);
+    CHECK_EQ_INT((int)DSD(rA + 0x24), 0x40800000);
+    CHECK_EQ_INT((int)DSD(rA + 0x14), (int)nodeA);          /* not torn down */
+    CHECK_EQ_INT((int)DSB(rA + 0x48), 0x28);
+    CHECK_EQ_INT((int)DSD(0x00100C28u), (int)nodeA);
+    CHECK_EQ_INT((int)DSD(0x00100C20u), 0x00100C20);
+
+    /* The spawner 0x19958: draw 0 spawns one record from the free node, the
+     * fields by mode (DS_00104AFC), the rng draws in order. */
+    for (mode = 3; mode <= 6; mode++) {
+        int ca9;
+        for (ca9 = 0; ca9 <= (mode == 5 ? 1 : 0); ca9++) {
+            u32 want_ty, want34, want36, want44;
+            actors_reset();
+            arena_list_empty(0x00100C28u);
+            arena_list_link(0x00100C20u, nodeA);
+            DSD(DS_000F0AF0) = 0x10000u;
+            DSW(DS_00104AFC) = (u16)mode;
+            DSB(DS_00100CA9) = (u8)ca9;
+            DSW(DS_000EF6DC) = 1;               /* no count-down */
+            DSB(DS_00100CA8) = 0x30u;
+            seed = debris_seed(0x30u, 1);
+            rng_seed(seed);
+            (void)rng_next(0x30u);
+            x = rng_next(0x3000u);
+            r3 = rng_next(0xA00u);
+            w8 = r3 + 0x600u;
+            r4 = 0;
+            if (mode == 5 && ca9) r4 = rng_next(0x200u);
+            else if (mode != 4 && !(mode == 5)) r4 = rng_next(2u);
+            exp_state = DSD(DS_000EF6D8);
+            rng_seed(seed);
+            upd();
+            rec = DSD(nodeA + 8u);
+            CHECK(rec != 0, "the debris spawner made a record");
+            if (rec == 0) continue;
+            want_ty = (mode == 4) ? 0x27u : (mode == 5) ? (ca9 ? 0x28u : 0x26u) : 0x06u;
+            want34 = (mode == 5 && ca9) ? 0x80u : 0x100u;
+            want36 = (mode == 4) ? 0xFE80u : (mode == 5 && ca9) ? 0u : 0xFD00u;
+            want44 = (mode == 5 && ca9) ? 8u : 0u;
+            CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)exp_state);
+            CHECK_EQ_INT((int)DSB(rec + 0x48), (int)want_ty);
+            CHECK_EQ_INT((int)DSD(rec + 0x18), (int)(0x10000u - 0x3000u + x));
+            CHECK_EQ_INT((int)DSD(rec + 0x1C), (int)(0x3C00u - w8));
+            CHECK_EQ_INT((int)DSW(rec + 0x34), (int)want34);
+            CHECK_EQ_INT((int)DSW(rec + 0x36), (int)want36);
+            CHECK_EQ_INT((int)DSW(rec + 0x44), (int)want44);
+            CHECK_EQ_INT((int)DSD(rec + 0x14), (int)nodeA);
+            CHECK_EQ_INT((int)DSD(0x00100C28u), (int)nodeA);
+            CHECK_EQ_INT((int)DSD(0x00100C20u), 0x00100C20);
+            (void)r4;
+        }
+    }
+    /* A non-zero draw spawns nothing. */
+    actors_reset();
+    arena_list_empty(0x00100C28u);
+    arena_list_link(0x00100C20u, nodeA);
+    DSW(DS_00104AFC) = 4;
+    DSB(DS_00100CA8) = 0x30u;
+    rng_seed(debris_seed(0x30u, 0));
+    upd();
+    CHECK_EQ_INT((int)DSD(0x00100C28u), 0x00100C28);
+    CHECK_EQ_INT((int)DSD(0x00100C20u), (int)nodeA);
+
+    DSD(DS_000F0AF0) = s_cam;
+    tf_put(s_c, 0x00100C20u, 0x90u);
+}
+
+/* 0x18460 (called by 0x18540): 1 when it reaches its 0x18428 dispatch. The
+ * character-2 range words sit at 0xA1774 + 14 * 2 = 0xA1790/0xA1792. */
+static void check_anchor_dispatch(void)
+{
+    u32 slot0 = DS_001077B0, slot1 = DS_001077B0 + 0x94u;
+    u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
+    u32 s_a8 = DSD(DS_001077A8), s_ac = DSD(DS_001077AC);
+    u32 s_tab = DSD(DS_001014EC);
+    u16 s_lo2 = DSW(0x000A1790u), s_hi2 = DSW(0x000A1792u);
+    u16 s_lo3 = DSW(0x000A179Eu), s_hi3 = DSW(0x000A17A0u);
+
+    fight_reset_recs();
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    DSD(DS_001077A8) = slot0;
+    DSD(DS_001077AC) = slot1;
+    DSD(slot0) = r0;
+    DSD(slot1) = r1;
+    DSB(slot0 + 0x7Au) = 2;
+    DSB(slot1 + 0x7Au) = 3;
+    DSW(r0 + 0x56u) = 4;
+    DSW(r1 + 0x56u) = 5;
+    DSW(0x000A1790u) = 100; DSW(0x000A1792u) = 200;
+    DSW(0x000A179Eu) = 300; DSW(0x000A17A0u) = 400;
+
+    DSW(FIGHT_ACTORS + 4u * 0x20u) = 150;
+    CHECK_EQ_INT(fighter_18460(0), 0);              /* inside [100, 200) */
+    DSW(FIGHT_ACTORS + 4u * 0x20u) = 100;
+    CHECK_EQ_INT(fighter_18460(0), 0);              /* lo is inside */
+    DSW(FIGHT_ACTORS + 4u * 0x20u) = 99;
+    CHECK_EQ_INT(fighter_18460(0), 1);
+    DSW(FIGHT_ACTORS + 4u * 0x20u) = 200;
+    CHECK_EQ_INT(fighter_18460(0), 1);              /* hi is outside */
+    DSW(FIGHT_ACTORS + 4u * 0x20u) = 0x8000u | 150u;
+    CHECK_EQ_INT(fighter_18460(0), 0);              /* bit 15 masked off */
+    DSW(FIGHT_ACTORS + 4u * 0x20u) = 0x1E1;
+    CHECK_EQ_INT(fighter_18460(0), 0);              /* the engine's own id */
+    DSW(0x000A1792u) = 0x1E1; DSW(0x000A1790u) = 0x1E2;
+    DSW(FIGHT_ACTORS + 4u * 0x20u) = 0x1E1;
+    CHECK_EQ_INT(fighter_18460(0), 0);              /* 0x1E1 outside the range */
+    DSW(FIGHT_ACTORS + 4u * 0x20u) = 0x1E5;
+    CHECK_EQ_INT(fighter_18460(0), 1);
+    /* Side 1 reads its own character (3): [300, 400). */
+    DSW(FIGHT_ACTORS + 5u * 0x20u) = 350;
+    CHECK_EQ_INT(fighter_18460(1), 0);
+    DSW(FIGHT_ACTORS + 5u * 0x20u) = 150;
+    CHECK_EQ_INT(fighter_18460(1), 1);
+    /* Either slot missing: nothing is reached. */
+    DSD(DS_001077AC) = 0;
+    CHECK_EQ_INT(fighter_18460(0), 0);
+    DSD(DS_001077AC) = slot1;
+    DSD(DS_001077A8) = 0;
+    CHECK_EQ_INT(fighter_18460(1), 0);
+
+    DSD(DS_001077A8) = s_a8;
+    DSD(DS_001077AC) = s_ac;
+    DSD(DS_001014EC) = s_tab;
+    DSW(0x000A1790u) = s_lo2; DSW(0x000A1792u) = s_hi2;
+    DSW(0x000A179Eu) = s_lo3; DSW(0x000A17A0u) = s_hi3;
+}
+
+
 /* 0x12750 (demo record §15): the type-0x01 node lists. Every byte of the two
  * sentinels and the eight 12-byte nodes starts at 0xA5, so each link below
  * must have been written, and the nodes' +8 (the owner field 0x127C0 writes)
@@ -38264,6 +38533,8 @@ int test_fight(void)
     check_type_table();
     check_type_callbacks();
     check_type_teardown();
+    check_debris_update();
+    check_anchor_dispatch();
     check_dust_list();
     check_dust_consume();
     check_arena_backdrop();

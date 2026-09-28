@@ -5,6 +5,10 @@
 #include "../symbols.h"
 #include <stddef.h>
 
+/* 0x14268 — record §50-E. PORT: the node is a C struct, not the original's
+ * mem[] record (id table entry +0x24 is not kept; pixel_handle is the +0x20
+ * dword); an unresolvable id zeroes rows/width/xorg/yorg where the raw calls
+ * 0x1B544 on whatever the table holds. */
 void sprite_node_build(SpriteNode *n, u32 sprite_id)
 {
     if (n == NULL) return;
