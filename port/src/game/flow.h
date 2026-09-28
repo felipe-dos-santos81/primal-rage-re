@@ -494,6 +494,42 @@ void game_mode_08_step(void);
  * nonzero, the mode is left at 0xA (this handler runs again next frame). */
 void game_mode_0a_step(void);
 
+/* 0x282C4 — record §49-E. Mode 7's frame handler (0x24C5C case 7, its only
+ * caller, confirmed via `get_xrefs_to 0x282C4`'s single bare-`CALL` site —
+ * the same dispatch-stub shape used to confirm mode 0xA's case, above). Not
+ * a results-screen sibling of modes 8/9 either: no fight_slot_clear/
+ * camera_screen_base/camera_project/camera_decay/fighter_pass_a preamble,
+ * just fight_slot_pass unconditionally, then the shared tail (the two
+ * position latches, fight_hud_pass(0)/(1), fighter_pass_b(1),
+ * fight_effects_pass, camera_y_commit). See flow.c's header comment on
+ * game_mode_07_step for the full branch-by-branch derivation of what
+ * follows: a three-way dispatch on the round winner DS_00104B16 (0/1 a
+ * side, 2 a draw) and the match result DS_00104AD4, each testing a
+ * per-side "attack state" byte (DS_00107802's stride, entry +0x52, or
+ * DS_00107804/DS_00107898, +0x54) before optionally arming DS_00104AF8 =
+ * 0x258 and advancing to mode 8 or 9; every path ends DS_00104AEC |= 2,
+ * DS_00104AD4 = the (reloaded, unchanged) match result. EBX/ECX/EDX/EDI are
+ * pushed and popped. */
+void game_mode_07_step(void);
+
+/* 0x277C0 — record §49-F. Mode 0xF's frame handler (0x24C5C case 0xF, its
+ * only caller, confirmed via `get_xrefs_to 0x277C0`'s single bare-`CALL`
+ * site). Unlike modes 7/8/9/0xA's shared tail this calls fight_hud_pass(0)/
+ * (1) but not fighter_pass_b; in its place, the active effects list's
+ * idle-pose walker fight_effects_idle_pass (0x4DEF4, fight.c/fight.h,
+ * record §49-F). See flow.c's header comment on game_mode_0f_step for the
+ * full derivation: a DS_00104AFE countdown (no zero-guard, unlike modes
+ * 8/9's DS_00104AF8) that, on reaching zero or below, plays a deferred
+ * voice, clears a bit on DS_0010810D's (the established winner-side macro)
+ * slot, awards fighter_41310(DS_00104AD4, 0x30D40), runs the deferred
+ * 0x32B94/0x32970 (audit/run-clock, spec §7, both no-ops here) and
+ * config_play_time_close(1, DS_00104B19) — one of the two live callers
+ * fighter.h/config.h's own comments named as still unported before this
+ * task — then installs frontend_darken_all (0x29B74) under mode 0x17, the
+ * same hook mode 9's results-close path installs. EBX/ECX/EDX/ESI are
+ * pushed and popped. */
+void game_mode_0f_step(void);
+
 void flow_scroll_reset(u32 stage);
 void flow_challenge_open(void);
 void flow_challenge_drop(void);

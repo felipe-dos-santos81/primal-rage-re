@@ -414,10 +414,10 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   skip test `0x4F790` and `0x4F778` (record §46-G).
   `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
-  - it dispatches cases 3, 4, 5, 6, 8, 9, `0xA`, `0xB`, `0xC`, `0xD`, `0xE`,
-    `0x10`, `0x11`, `0x13`, `0x14`, `0x15`, `0x17`, `0x1A`, `0x1B` and `0x32`,
-    and cases 1/2/`0x20` run the bare `ret` `0x29B70`;
-  - the other 25 cases are named gaps.
+  - it dispatches cases 3, 4, 5, 6, 7, 8, 9, `0xA`, `0xB`, `0xC`, `0xD`, `0xE`,
+    `0xF`, `0x10`, `0x11`, `0x13`, `0x14`, `0x15`, `0x17`, `0x1A`, `0x1B` and
+    `0x32`, and cases 1/2/`0x20` run the bare `ret` `0x29B70`;
+  - the other 23 cases are named gaps.
   - Case 4 (the table entry `0x25242`, `call 0x26254; jmp 0x2540F`) is the
     fight frame `0x26254` (`game_mode_04_step`, record §48-K): `0x3C5CC`,
     `0x16D58` per side and the two position latches; only with
@@ -530,6 +530,39 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     `0xB` loaded into `EDX` before the call, which `0x2C3FC` preserves by
     push/pop on every exit path (record §42-E.2) regardless of whether the
     voice actually played.
+  - Case 7 is `0x282C4` (`game_mode_07_step`, record §49-E). Unlike cases
+    8/9/`0xA` it has no `0x3C5CC`/`0x16D58`/`0x17FA0`/`0x17580`/`0x1958C`
+    preamble at all: `0x3CB68` runs unconditionally, then the shared tail
+    (the two position latches, `0x35658` per side, `0x19068(1)`, `0x49C78`,
+    `0x12DA8`). A three-way dispatch on the round winner `DS_00104B16` (0/1
+    a side, 2 a draw) and the match result `DS_00104AD4` then tests a
+    per-side "attack state" byte — the winning side's own slot `+0x52`
+    (`DS_00107802`'s stride) when `DS_00104B16` names a side, or the
+    *other* side's (on a decided result) or *both* sides' (on an undecided
+    one) slot `+0x54` byte (`DS_00107804`/`DS_00107898`'s stride, case
+    `0xA`'s own field) against 3 when it is a draw — before optionally
+    arming `DS_00104AF8 = 0x258` and advancing to mode 8 or 9; every path
+    ends `DS_00104AEC |= 2`, `DS_00104AD4` reloaded and written back
+    unchanged.
+  - Case `0xF` is `0x277C0` (`game_mode_0f_step`, record §49-F). Unlike
+    cases 7/8/9/`0xA`'s shared tail it calls `0x35658` per side but not
+    `0x19068`; in its place, `0x4DEF4` (`fight_effects_idle_pass`, record
+    §49-F) — the active effects list's idle-pose walker, sharing
+    `0x49C78`'s `DS_0010884C` list walk — then `0x12DA8`. `DS_00104AEC |=
+    2` unconditionally; the word `DS_00104AFE` decrements by one every
+    call with **no zero-guard** (unlike cases 8/9's `DS_00104AF8`
+    countdown). At or below zero it plays voice `0x2B`, clears a bit on
+    the established winner-side macro `DS_0010810D`'s slot, awards
+    `0x41310(DS_00104AD4, 0x30D40)`, runs the deferred audit `0x32B94` and
+    run-clock `0x32970` (both no-ops here) and `config_play_time_close(1,
+    DS_00104B19)` (`0x32A3C`, already ported), then installs
+    `frontend_darken_all` (`0x29B74`) under mode `0x17` — the same hook
+    case 9's results-close path installs. `0x4DEF4`'s own per-entry state
+    dispatch (states 1..4) gates on `0x4A868`, the case-13/14 named gap
+    `0x49C78`'s own entry above already leaves unported (spec §7.4); the
+    port treats that gate as always false, so no idle-pose transition
+    fires — the same decision `0x49C78`'s own case-13/14 bodies already
+    made for the identical call.
   - Case `0xC`'s no-join arm is `0x27380` (`game_mode_0c_step`, record
     §48-C), the arena frame of the mode that mode 5 and `0x274FC` (after
     replacing the loser) store. It first undoes the mode-`0xC` tail's blink (`0x25487`): while the

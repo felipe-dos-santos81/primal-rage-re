@@ -29506,6 +29506,269 @@ static void check_mode_0a(void)
     mz_restore();
 }
 
+/* ---- record §49-E: mode 7's frame handler 0x282C4 ------------------------ */
+
+#define M07_00107802 0x00107802u   /* no symbols.h name: slot 0's +0x52 */
+#define M07_00107896 0x00107896u   /* no symbols.h name: slot 1's +0x52 */
+
+/* tf_demo_fixture with mode-7-specific globals seeded to sentinels that
+ * differ from every post-condition below. Reuses m09_seed's hitbox/
+ * character safety: mode 7's fight_slot_pass runs unconditionally, the same
+ * requirement m08_seed documents. DS_00104B00 is seeded as a dword with a
+ * 0xBEEF high word (m0a_seed's trick) since every raw store to it is a word
+ * store — a mutation widening the port's store to a dword would show up as
+ * the high word also moving. */
+static void m07_seed(void)
+{
+    (void)tf_demo_fixture();
+    mem_fill(0x00107D58u, 0, 0x180u);   /* the three per-slot hitbox arrays */
+    DSD(DS_00101514) = 0x3000000u;
+    mem_fill(0x3000000u, 0, 0x1000u);
+    DSB(DS_0010782A) = 2u;
+    DSB(DS_001078BE) = 5u;
+    DSD(DS_00104B00) = 0xBEEF0007u;
+    DSD(DS_00107ED8) = 0x77777777u;
+    DSD(DS_00107EDC) = 0x77777777u;
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) & (u8)~2u);
+    DSW(DS_00104AF8) = 0x7777u;
+    DSB(DS_00104B16) = 0x77u;
+    DSB(M07_00107802) = 0x77u;
+    DSB(M07_00107896) = 0x77u;
+    DSB(DS_00107804) = 0x77u;
+    DSB(DS_00107898) = 0x77u;
+}
+
+static void check_mode_07(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-E snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* the preamble runs on every call: the position latches, the
+     * unconditional fight_slot_pass (0x3CB68 always ends DS_00107ED8 =
+     * 0x20, DS_00107EDC = 2) and the tail's DS_00104AEC |= 2 — this
+     * scenario (winner side 0, its attack byte 0, a decided draw result of
+     * 0) also exercises the winner != 2 arm's in-range mode-9 advance. */
+    {
+        m07_seed();
+        DSB(DS_00104B16) = 0u;
+        DSB(M07_00107802) = 0u;
+        DSD(DS_00104AD4) = 0u;
+        game_mode_07_step();
+        CHECK_EQ_INT((int)DSD(DS_001077E8), (int)DSD(DS_001077E4));
+        CHECK_EQ_INT((int)DSD(DS_0010787C), (int)DSD(DS_00107878));
+        CHECK_EQ_INT((int)DSD(DS_00107ED8), 0x20);
+        CHECK_EQ_INT((int)DSD(DS_00107EDC), 2);
+        CHECK_EQ_INT((int)(DSB(DS_00104AEC) & 2u), 2);
+        CHECK_EQ_INT((int)DSW(DS_00104AF8), 0x258);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0009u);
+        CHECK_EQ_INT((int)DSD(DS_00104AD4), 0);
+    }
+
+    /* winner != 2, attack byte 0, result out of [0, 2]: mode 8 instead. */
+    {
+        m07_seed();
+        DSB(DS_00104B16) = 1u;
+        DSB(M07_00107896) = 0u;
+        DSD(DS_00104AD4) = 0xFFFFFFFFu;   /* -1 */
+        game_mode_07_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AF8), 0x258);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0008u);
+        CHECK_EQ_INT((int)DSD(DS_00104AD4), (int)0xFFFFFFFFu);
+    }
+
+    /* winner != 2, attack byte non-zero: no mode change, and DS_00104AF8
+     * stays at its sentinel — the whole block is skipped. */
+    {
+        m07_seed();
+        DSB(DS_00104B16) = 1u;
+        DSB(M07_00107896) = 5u;
+        DSD(DS_00104AD4) = 1u;
+        game_mode_07_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AF8), 0x7777);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0007u);
+        CHECK_EQ_INT((int)(DSB(DS_00104AEC) & 2u), 2);
+        CHECK_EQ_INT((int)DSD(DS_00104AD4), 1);
+    }
+
+    /* winner == 2 (a drawn round), a decided match result (0): the other
+     * side's (1) +0x54 byte == 3 arms the advance to mode 9 and returns
+     * early. */
+    {
+        m07_seed();
+        DSB(DS_00104B16) = 2u;
+        DSD(DS_00104AD4) = 0u;
+        DSB(DS_00107898) = 3u;
+        game_mode_07_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AF8), 0x258);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0009u);
+        CHECK_EQ_INT((int)(DSB(DS_00104AEC) & 2u), 2);
+        CHECK_EQ_INT((int)DSD(DS_00104AD4), 0);
+    }
+
+    /* same, but the other side's +0x54 byte isn't 3: no mode change, no
+     * DS_00104AF8 arm, but the shared tail still runs. */
+    {
+        m07_seed();
+        DSB(DS_00104B16) = 2u;
+        DSD(DS_00104AD4) = 0u;
+        DSB(DS_00107898) = 0u;
+        game_mode_07_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AF8), 0x7777);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0007u);
+        CHECK_EQ_INT((int)(DSB(DS_00104AEC) & 2u), 2);
+        CHECK_EQ_INT((int)DSD(DS_00104AD4), 0);
+    }
+
+    /* winner == 2, an undecided result (-1) with both sides' +0x54 bytes ==
+     * 3 and equal: advances to mode 8 (the result isn't exactly 2). */
+    {
+        m07_seed();
+        DSB(DS_00104B16) = 2u;
+        DSD(DS_00104AD4) = 0xFFFFFFFFu;
+        DSB(DS_00107804) = 3u;
+        DSB(DS_00107898) = 3u;
+        game_mode_07_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AF8), 0x258);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0008u);
+        CHECK_EQ_INT((int)DSD(DS_00104AD4), (int)0xFFFFFFFFu);
+    }
+
+    /* winner == 2, result == 2 (a settled draw), both sides' +0x54 bytes ==
+     * 3 and equal: advances to mode 9 instead. */
+    {
+        m07_seed();
+        DSB(DS_00104B16) = 2u;
+        DSD(DS_00104AD4) = 2u;
+        DSB(DS_00107804) = 3u;
+        DSB(DS_00107898) = 3u;
+        game_mode_07_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AF8), 0x258);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0009u);
+        CHECK_EQ_INT((int)DSD(DS_00104AD4), 2);
+    }
+
+    /* winner == 2, undecided result, the two sides' +0x54 bytes unequal: no
+     * mode change, no DS_00104AF8 arm. */
+    {
+        m07_seed();
+        DSB(DS_00104B16) = 2u;
+        DSD(DS_00104AD4) = 0xFFFFFFFFu;
+        DSB(DS_00107804) = 3u;
+        DSB(DS_00107898) = 2u;
+        game_mode_07_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AF8), 0x7777);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0007u);
+    }
+
+    mz_restore();
+}
+
+/* ---- record §49-F: mode 0xF's frame handler 0x277C0 ---------------------- */
+
+#define M0F_SIDE0_A41 M09_001077F1   /* no symbols.h name: slot 0's +0x41 */
+#define M0F_SIDE1_A41 M09_00107885   /* no symbols.h name: slot 1's +0x41 */
+#define M0F_0010810D  0x0010810Du    /* no symbols.h name: the high byte of 0x10810A */
+#define M0F_00104B1B  0x00104B1Bu    /* no symbols.h name */
+#define M0F_SIDE0_TGT (FIGHT_RECS + 0x400u)   /* a scratch camera-target record */
+
+/* tf_demo_fixture with mode-0xF-specific globals seeded to sentinels that
+ * differ from every post-condition below. Unlike modes 7/8/9 this handler
+ * never calls fight_slot_pass/camera_project, so no hitbox-array setup is
+ * needed (the same reasoning m0a_seed documents). DS_001077A8[0] points at
+ * a scratch record so fighter_41310's write is directly observable. */
+static void m0f_seed(void)
+{
+    (void)tf_demo_fixture();
+    DSD(DS_001077A8) = M0F_SIDE0_TGT;
+    DSD(M0F_SIDE0_TGT + 0x3Cu) = 0x1000u;
+    DSD(DS_00104B00) = 0xBEEF000Fu;
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) & (u8)~2u);
+    DSW(DS_00104AFE) = 5u;
+    DSB(M0F_00104B1B) = 0x77u;
+    DSB(M0F_SIDE0_A41) = 0x10u;
+    DSB(M0F_SIDE1_A41) = 0x10u;
+    DSB(M0F_0010810D) = 0u;
+    DSD(DS_00104AD4) = 0u;
+    DSD(DS_0010746C + 4u) = 0x99999999u;
+    DSB(DS_00104B19) = 0u;
+    DSB(DS_00104B25) = 0x77u;
+    DSW(DS_00104AFA) = 0x7777u;
+    DSD(DS_00104AE4) = 0xDEADBEEFu;
+}
+
+static void check_mode_0f(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-F snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* the preamble (the position latches) and DS_00104AEC |= 2 run on every
+     * call; the countdown decrements but, still positive, the fire logic
+     * does not run this frame. */
+    {
+        m0f_seed();
+        game_mode_0f_step();
+        CHECK_EQ_INT((int)DSD(DS_001077E8), (int)DSD(DS_001077E4));
+        CHECK_EQ_INT((int)DSD(DS_0010787C), (int)DSD(DS_00107878));
+        CHECK_EQ_INT((int)(DSB(DS_00104AEC) & 2u), 2);
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 4);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF000Fu);
+        CHECK_EQ_INT((int)DSB(M0F_00104B1B), 0x77);
+        CHECK_EQ_INT((int)DSD(M0F_SIDE0_TGT + 0x3Cu), (int)0x1000u);
+    }
+
+    /* the countdown reaching exactly 0 fires this same frame — no
+     * zero-guard, unlike modes 8/9's DS_00104AF8. */
+    {
+        m0f_seed();
+        DSW(DS_00104AFE) = 1u;
+        game_mode_0f_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0);
+        CHECK_EQ_INT((int)DSB(M0F_00104B1B), 0);
+        CHECK_EQ_INT((int)(DSB(M0F_SIDE0_A41) & 0x10u), 0);
+        CHECK_EQ_INT((int)DSD(M0F_SIDE0_TGT + 0x3Cu), (int)(0x1000u + 0x30D40u));
+        CHECK_EQ_INT((int)DSD(DS_0010746C + 4u), 0);
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+        CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x1F);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0017u);
+        CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)fn_origin(frontend_darken_all));
+    }
+
+    /* an already-zero countdown fires too (the raw has no `hold != 0`
+     * zero-guard before decrementing, unlike modes 8/9's DS_00104AF8). */
+    {
+        m0f_seed();
+        DSW(DS_00104AFE) = 0u;
+        game_mode_0f_step();
+        CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xFFFF);
+        CHECK_EQ_INT((int)DSB(M0F_00104B1B), 0);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0017u);
+    }
+
+    /* the winner-side bit-4 clear tracks DS_0010810D, not the mode result:
+     * side 1 clears side 1's +0x41 bit 4 and leaves side 0's untouched. The
+     * two "side" values are seeded to *different* sides here (DS_0010810D =
+     * 1, DS_00104AD4 stays m0f_seed's 0) so that fighter_41310's target
+     * (DS_001077A8[DS_00104AD4]) and the bit-4 clear's target
+     * (DS_001077F1 + DS_0010810D*0x94) land on different records: a second
+     * scratch camera-target record at DS_001077A8[1] proves fighter_41310
+     * still writes side 0's record, not side 1's, even though DS_0010810D
+     * names side 1. */
+    {
+        m0f_seed();
+        DSW(DS_00104AFE) = 1u;
+        DSB(M0F_0010810D) = 1u;
+        DSD(DS_001077A8 + 4u) = M0F_SIDE0_TGT + 0x100u;
+        DSD(M0F_SIDE0_TGT + 0x100u + 0x3Cu) = 0x2000u;
+        game_mode_0f_step();
+        CHECK_EQ_INT((int)(DSB(M0F_SIDE1_A41) & 0x10u), 0);
+        CHECK_EQ_INT((int)(DSB(M0F_SIDE0_A41) & 0x10u), 0x10);
+        CHECK_EQ_INT((int)DSD(M0F_SIDE0_TGT + 0x3Cu), (int)(0x1000u + 0x30D40u));
+        CHECK_EQ_INT((int)DSD(M0F_SIDE0_TGT + 0x100u + 0x3Cu), (int)0x2000u);
+    }
+
+    mz_restore();
+}
+
 #define SC_ST   (FIGHT_RECS + 0x7000u)   /* crafted one-word streams, 0x10 apart */
 #define SC_SRC0 (FIGHT_RECS + 0x7800u)   /* a crafted effect source (pset 1 +0x18) */
 #define SC_SRC1 (FIGHT_RECS + 0x7880u)   /* another (pset 2 +0x18) */
@@ -31109,6 +31372,8 @@ int test_fight(void)
     check_mode_09();
     check_mode_08();
     check_mode_0a();
+    check_mode_07();
+    check_mode_0f();
     check_mode_12();
 
     return g_failures - before;

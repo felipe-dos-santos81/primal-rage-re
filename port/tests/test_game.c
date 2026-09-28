@@ -935,8 +935,14 @@ int test_flow(void)
     CHECK(gfx_dac[1][0] || gfx_dac[1][1] || gfx_dac[1][2],
           "title palette reached gfx_dac");
 
-    /* A mode other than 3 must not run the state machine at all. */
-    DSD(DS_00104B00) = 7;
+    /* A mode other than 3 must not run the state machine at all. 0x16 is a
+     * still-unported named gap (`game_frame`'s generic no-op case list) as
+     * of record §49-F; mode 7 no longer is (game_mode_07_step, record
+     * §49-E) — it now runs the fight-frame's unconditional fight_slot_pass/
+     * fight_effects_pass chain, which this title-state fixture's actor/
+     * effects-list state was never built to tolerate (it hangs in
+     * fight_4b69c's trample walk). */
+    DSD(DS_00104B00) = 0x16;
     game_frame();
 
     check_title_overlay();
