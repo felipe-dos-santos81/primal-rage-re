@@ -10809,7 +10809,7 @@ static void fighter_408e8(u32 slot)
  * record takes the other's byte +0x56 at +0x4B, and the other record's
  * dwords +0x24 and +0x20 go to 0. Caller 0x3E9EC (in 0x3E9A4; its EDX =
  * 0x29A is unread). */
-static void fighter_3e800(u32 side)
+void fighter_3e800(u32 side)
 {
     u32 o = 1u - side;
     u32 slot = DS_001077B0 + side * 0x94u;                  /* 0x3E80C..0x3E81A */

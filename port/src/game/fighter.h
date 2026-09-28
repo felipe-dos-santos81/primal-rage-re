@@ -843,6 +843,7 @@ void fighter_3f9c8(u32 slot, u32 rec, u32 side);
 void fighter_3ec20(u32 slot, u32 rec);
 void fighter_3e9a4(u32 side);
 void fighter_3e8e4(u32 side);
+void fighter_3e800(u32 side);
 u32  fighter_3e924(u32 side);
 void fighter_3ecf8(u32 slot, u32 rec, u32 side);
 u32  fighter_3ed78(u32 side);
