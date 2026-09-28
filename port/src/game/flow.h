@@ -432,6 +432,46 @@ void game_mode_09_step(void);
  * EBX/ECX/EDX/ESI/EDI are pushed and popped. */
 void game_mode_08_step(void);
 
+/* 0x28BD4 — record §49-D. Mode 0xA's frame handler (0x24C5C case 0xA, the
+ * table entry 0x2527D `call 0x28BD4; jmp 0x2540F`, body to 0x28C37; its only
+ * caller, confirmed both from the decompiled switch at 0x24C5C — `case 10:`
+ * is the sole caller of FUN_00028bd4 — and from `get_xrefs_to 0x28BD4`,
+ * which lists exactly that one call site). Unlike modes 8/9 (game_mode_08_
+ * step, game_mode_09_step, above) this is not a results-screen sibling: its
+ * only 23 instructions are the tail slice those two share — the position
+ * latches (DS_001077E8 = DS_001077E4, DS_0010787C = DS_00107878), then
+ * fight_hud_pass(0)/(1), fighter_pass_b(1), fight_effects_pass and
+ * camera_y_commit — with none of their fight_slot_clear/camera_screen_base/
+ * camera_project/camera_decay/fighter_pass_a preamble, no DS_00104AF8
+ * countdown, and no match-result dispatch. EAX/EDX go in as whatever the
+ * jump-table dispatch stub at 0x2527D left them (no register is set up
+ * before the bare `call 0x28BD4`), and 0x28BD4 never reads them: the
+ * `__regparm3(undefined4,undefined4)` signature Ghidra infers is spurious;
+ * the port takes no parameters (confirmed against the raw disassembly, not
+ * the decompiled C, which also mis-shows the first fight_hud_pass call as
+ * `FUN_00035658(param_2)` — the raw shows `xor eax,eax; call 0x35658` and
+ * `mov eax,1; call 0x35658`, i.e. fight_hud_pass(0) then fight_hud_pass(1),
+ * matching the modes 8/9 idiom exactly).
+ *   With both sides' slot +0x54 byte (DS_00107804, DS_00107898 — the same
+ * per-side field anim-opcode 0xD500 clears, actors.c's anim_code_3C32C)
+ * zero (0x28C0E..0x28C1E), it plays voice 0xD8 and advances the mode:
+ * `mov eax,0xd8; mov edx,0xb; call 0x2C3FC; mov [DS_00104B00],dx` (0x28C20..
+ * 0x28C2F).
+ *   PORT: 0x28C2A 0x2C3FC(0xD8, EDX = 0xB) voice, not wired (record §45-A).
+ * EDX (0xB) survives 0x2C3FC, which pushes and pops EBX, EDX and EDI (record
+ * §42-E.2, confirmed here by reading 0x2C3FC's own disassembly: every exit
+ * path — including the two "can't play" early-outs at 0x2C8E8/0x2C8EA — ends
+ * `pop edi; pop edx; pop ebx; ret`, so DX after the call is unconditionally
+ * the 0xB written in before it, not a status flag), and becomes the mode
+ * below: `DAT_00104b00 = extraout_DX` in the decompiled C is exactly this
+ * preserved 0xB, which Ghidra cannot trace through the call and so renders
+ * as an untracked "extraout" register. So this branch unconditionally sets
+ * mode 0xB (flow_winner_pose_step's mode, run after game_mode_04_step,
+ * record §48-B) once the voice call returns, regardless of whether 0x2C3FC
+ * itself actually played anything; when either side's byte is still
+ * nonzero, the mode is left at 0xA (this handler runs again next frame). */
+void game_mode_0a_step(void);
+
 void flow_scroll_reset(u32 stage);
 void flow_challenge_open(void);
 void flow_challenge_drop(void);
