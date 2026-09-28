@@ -410,7 +410,7 @@ void config_play_time_snap(u32 idx, u32 arm)
  * 0x32B89). EDX == 0: t = (DS_0010746C[idx] - DS_00107480) / 0x3C (unsigned
  * DIV with EDX = 0) is stored (0x32B78), posted through 0x2E934(0, t), and
  * DS_00107480 is reloaded and stored back (0x32B83/0x32B89). Callers:
- * 0x25EFD (0x25C88, EDX = 1) and the unported 0x27DEB (0x27DC8). */
+ * 0x25EFD (0x25C88, EDX = 1) and 0x27DEB (0x27DC8, EDX = 0, record §48-K). */
 void config_play_time_snap_b(u32 idx, u32 arm)
 {
     if (arm != 0u) {                                    /* 0x32B57 `jz` */

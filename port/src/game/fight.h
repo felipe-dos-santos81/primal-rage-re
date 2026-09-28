@@ -21,9 +21,10 @@ void fight_arena_frame(void);
  * load-bearing spine is 0x35658 -> 0x34B6C -> 0x1A978 -> 0x3B134: the command
  * word DS_001088E0/E2 is re-derived after the think step, and its 0x35813 call
  * to 0x2A1FC (actor_sync) advances the fighter's record each frame. The
- * 0x357F5 combo-text timer 0x38D24, the 0x35803 state machine 0x3531C and the
- * 0x35829 0x186C4 re-latch of both slots run; the rest of the pass (0x33C78,
- * 0x34038, 0x354F0) is a named gap (§7.8) and is skipped. */
+ * 0x357EE stun end 0x34038 (record §48-K), the 0x357F5 combo-text timer
+ * 0x38D24, the 0x35803 state machine 0x3531C and the 0x35829 0x186C4 re-latch
+ * of both slots run; the rest of the pass (0x33C78, 0x354F0) is a named gap
+ * (§7.8) and is skipped. */
 void fight_hud_pass(u32 side);
 
 /* 0x1A978. The per-side stance/command pass, reached from 0x34B6C. It calls the
@@ -127,8 +128,8 @@ void fight_4dbec(void);
 /* Record §48-C. 0x1DA08: per side, the word DS_00102908[side] counts down;
  * at 0 or below the record DS_001028F8[side] restarts the stream 0xE9050 at
  * 4.0 and the word is reloaded with max((0x78 - the slot's +0x5A) >> 1, 0xC).
- * Called by mode 0xC's arena frame 0x27380 (and the unported 0x26254,
- * 0x26540, 0x266AC and 0x299E8). */
+ * Called by mode 0xC's arena frame 0x27380 and mode 4/6's fight frame
+ * 0x26254 (record §48-K), and the unported 0x26540, 0x266AC and 0x299E8. */
 void fight_hud_pulse(void);
 
 /* 0x43964. Spawn the side's entry 0xC8870[side] at the character's
@@ -233,7 +234,8 @@ void fight_hud_bar2_set(s32 v, u32 side);
 void fight_round_reset(void);
 
 /* 0x3CB68. The 2 x 32 slot pass (0x3C88C per slot); DS_00107EDC ends at 2 and
- * DS_00107ED8 at 0x20. Called by 0x263F4 (fight.c) and mode 5's 0x25C88. */
+ * DS_00107ED8 at 0x20. Called by 0x263F4 (fight.c), mode 5's 0x25C88 and
+ * mode 4's 0x26254 (record §48-K). */
 void fight_slot_pass(void);
 
 /* 0x33F08. The two-side health-bar pass, called by state 7 (0x11E94) and the
@@ -296,5 +298,14 @@ void fight_stage_marks_clear(void);
 /* 0x33C18 (record §47-C). The slot `side`'s +0x7F/+0x80/+0x82/+0x5B bytes
  * and +0x3C dword = 0, and the word DS_00108860[side] = 100. */
 void fight_char_reset(u32 side);
+/* Record §48-K. 0x1DA08: see the declaration above (record §48-C); this
+ * batch adds it as a second caller. 0x4E11C: the fight frame's gated entry to
+ * mode 0x25 (both characters 4, the camera centre DS_000F0AF0 within
+ * +-0x3300); else the word DS_00108892 counts down. 0x4E350(fresh): the ten
+ * DS_0010839C entries and their 0xC9524 actors; 0x4E27C: the active list's
+ * actors re-faced to the camera centre. */
+void fight_mode25_enter(void);
+void fight_mode25_spawn(u32 fresh);
+void fight_mode25_face(void);
 
 #endif /* PRAGE_GAME_FIGHT_H */

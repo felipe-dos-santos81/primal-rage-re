@@ -317,4 +317,21 @@ void flow_round_hud_init(void);
 void flow_win_markers_spawn(void);
 void flow_round_timer_draw(void);
 
+/* Record §48-K, mode 4 (the fight frame). 0x26254, dispatched by game_frame
+ * for mode 4 and for mode 6 without a join: the arena frame's steps (the
+ * projection block only with DS_001078FA == 2), then 0x1DA08, the round-end
+ * check 0x27FA8, DS_00104AEC |= 2 and the gated 0x4E11C. 0x27FA8: on a +0x5A
+ * byte at 0x78 (or the timer byte DS_001088F2 run out) the winner 0x27C48,
+ * then 0x27ED8 (mode 0xA) or 0x27DC8 and mode 9/8/7. 0x27C48: the winner's
+ * counts, the bonuses 0x25FDC/0x2604C, 0x256F4 and 0x27BA4 (the match result
+ * DS_00104AD4). 0x27DC8: the match's end. 0x27ED8: the round over. */
+void game_mode_04_step(void);
+void flow_round_end_check(void);
+void flow_round_winner(void);
+void flow_round_bonus_a(u32 side);
+void flow_round_bonus_b(u32 side);
+void flow_match_result_set(void);
+void flow_match_end(void);
+void flow_round_over(void);
+
 #endif /* PR_GAME_FLOW_H */

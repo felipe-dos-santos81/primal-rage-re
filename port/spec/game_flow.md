@@ -408,10 +408,26 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   skip test `0x4F790` and `0x4F778` (record §46-G).
   `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
-  - it dispatches cases 3, 5, 6, `0xC`, `0xD`, `0xE`, `0x10`, `0x11`,
+  - it dispatches cases 3, 4, 5, 6, `0xC`, `0xD`, `0xE`, `0x10`, `0x11`,
     `0x14`, `0x17`, `0x1A`, `0x1B` and `0x32`, and cases 1/2/`0x20` run the
     bare `ret` `0x29B70`;
-  - the other 32 cases are named gaps.
+  - the other 31 cases are named gaps.
+  - Case 4 (the table entry `0x25242`, `call 0x26254; jmp 0x2540F`) is the
+    fight frame `0x26254` (`game_mode_04_step`, record §48-K): `0x3C5CC`,
+    `0x16D58` per side and the two position latches; only with
+    `DS_001078FA == 2` the arena frame's projection block (`0x17FA0` x2,
+    `0x17580`, `0x1958C`, `0x19068(0)`, `0x17FA0` x2, `0x1975C`, `0x17FA0`
+    x2); then `0x3CB68`, `0x35658` per side, `0x49C78`, `0x1282C`,
+    `0x12DA8`, the HUD countdowns `0x1DA08`, the round-end check `0x27FA8`,
+    `DS_00104AEC |= 2`, and the mode-`0x25` entry `0x4E11C` behind
+    `DS_001078FA == 2`, the word `DS_00108892 >= 6` and slot 0's `+0x53 ==
+    0`. `0x27FA8` ends a round when a `+0x5A` byte reaches `0x78` or the
+    timer byte `DS_001088F2` runs out: the winner's counts and bonuses
+    (`0x27C48`, `0x25FDC`/`0x2604C`, `0x256F4`, the result `0x27BA4`), then
+    either the round over (`0x39FF4` freezes both fighters, `0x27ED8` sets
+    mode `0xA`) or the match's end (`0x27DC8`, then mode 9/8, or 7 on a
+    timer-out). Case `0xB` (`0x25287`) calls `0x26254` too, then the unported
+    `0x28C38`; it stays a named gap.
   - Cases 6 and `0xC` run the join poll `0x28CC8` (`flow_join_poll`, record
     §48-J); case 6 runs it only with `DS_00104B1D == 0`. The first side whose
     bit is clear in `DS_00104B1F` gets the "INSERT 1 COIN" (no credit) or
@@ -420,9 +436,10 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     record §48-T) and sets the bit (the `0x2CA7C` spend after it therefore
     never debits, the same guard `0x2CA48` uses), and the case passes side
     to `0x28DA4` (`flow_player_join`, mode `0x17` with the hook `0x28D80`).
-    With no join, case 6 falls back to case 4's fight frame `0x26254`, a
-    named gap, and case `0xC` runs its arena frame `0x27380`
-    (`game_mode_0c_step`, record §48-C, below). Modes 6
+    With no join (or with `DS_00104B1D` set, no poll), case 6 jumps to case
+    4's entry `0x25242` and runs the fight frame `0x26254` (record §48-K);
+    case `0xC` runs its arena frame `0x27380` (`game_mode_0c_step`, record
+    §48-C, below). Modes 6
     and `0xC` are stored by `0x25C88` (mode 5, record §48-U), and by the
     unported `0x4CD98` and `0x4F0FC`, and by `0x274FC` (mode `0xD`) and
     `0x2791C` (mode `0xE`'s continue taken, record §48-E). So under real input a credited join from the character screen
@@ -1480,8 +1497,9 @@ subsystem, the unported `0x19020` chain; since ported, record §35.)
    `+0x52 = 9` with `+0x53 = 8` where the original is at `+0x52 = 4`; closing it
    needs the unported `0x34B14` handlers (§7.10: `0x35F84`, `0x36870`,
    `0x235C4`, `0x370F0`, …; `0x235C4` and `0x370F0` are ported by record
-   §41-C) plus the `0x3C88C` re-arm. `0x34038`/`0x354F0`
-   remain named gaps (`0x38D24` is ported by the frame-1763 fix, record §33,
+   §41-C) plus the `0x3C88C` re-arm. `0x354F0`
+   remains a named gap (`0x34038` is ported and wired at `0x357EE`, record
+   §48-K) (`0x38D24` is ported by the frame-1763 fix, record §33,
    and `0x186C4` runs).
 5. **The interactive match is UNOWNED.** The mode graph (`DS_00104B00`), the
    `0x257A4` coin divert, `0x1EEB0`, `0x1F458`, the player screens and human
@@ -1628,7 +1646,8 @@ port frames 259..480) and carried forward.
 and the demo oracle's `res is None` → **cycle 4**; the `0x13xxx` call sites
 (`0x29B74`/`0x41578`, since ported, §42-E) → **the interactive match**; 831/832's held-frame
 presentation (un-derivable); the interactive match (unowned); the audio gaps (the
-audio sub-project, 2b-ii); the state-9 hold; `0x38154`; and the
+audio sub-project, 2b-ii); the state-9 hold; `0x38154` (since ported, record
+§48-K); and the
 flush-scope-vs-gate concern (cycle-2's read/gate model).
 
 **Every enforced oracle claim is unmoved.** `make verify` exits 0 with 0
@@ -1705,7 +1724,7 @@ ratified as this cycle's scope; the winner gate (1 f / 152 B) and the Task-6 tai
 
 **Named gaps carried (record §7).** `0x19020` (confirmed no-op in that run;
 the "`slot+0x18` never set" of that time is false since record §19, where
-`0x3E62C` stores `0x3E484` at f = 106; since ported, record §35), `0x38154`, the `0x3Fxxx` closer script (unreachable), 831/832's
+`0x3E62C` stores `0x3E484` at f = 106; since ported, record §35), `0x38154` (since ported, record §48-K), the `0x3Fxxx` closer script (unreachable), 831/832's
 held-frame presentation (un-derivable), the `0x2C3FC` voice stub, and the
 interactive match (unowned). The `0x16AFC`/`0x164F4` page-flag tail (§7.11) is
 **ported** (Task 6); the deferred minors are listed at record §7.0.

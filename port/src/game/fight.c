@@ -214,8 +214,8 @@ void fight_hud_badge_spawn(u32 side, u32 ch, u32 y)
  * store, written at 0x1D78E), 0x1D2F0(0, side), then the record
  * DS_001028F8[side] begins the stream 0xE904C at 1.0 (0x3F800000 pushed,
  * 0x2BC30). EBX/ECX/EDX are pushed and popped. Callers: 0x27752 (0x274FC),
- * 0x298DE (0x296B8), 0x279B6 (0x2791C, record §48-E), and the unported
- * 0x27F01 (0x27ED8). */
+ * 0x298DE (0x296B8), 0x279B6 (0x2791C, record §48-E) and 0x27F01
+ * (0x27ED8, record §48-K). */
 void fight_hud_side_reset(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;              /* 0x1D767..0x1D773 */
@@ -243,8 +243,9 @@ void fight_hud_side_reset(u32 side)
  * byte) >> 1 (0x1DA3D..0x1DA4C, `sar`: signed), raised to 0xC when that is
  * below 0xC (0x1DA55 reads the dword at 0x102906 + side * 2 and `sar`s it by
  * 0x10, which is the signed word just stored; 0x1DA5E `cmp`, 0x1DA61 `jge`).
- * Callers: 0x274E7 (0x27380, ported here), and the unported 0x263AA
- * (0x26254), 0x26696 (0x26540), 0x26864 (0x266AC) and 0x29B4F (0x299E8). */
+ * Callers: 0x274E7 (0x27380, record §48-C) and 0x263AA (0x26254, record
+ * §48-K), and the unported 0x26696 (0x26540), 0x26864 (0x266AC) and 0x29B4F
+ * (0x299E8). */
 void fight_hud_pulse(void)
 {
     u32 side;
@@ -1958,8 +1959,7 @@ void fight_hud_pass(u32 side)
     {
         u32 fighter = DSD(rec);                 /* 0x357E4 ebx = [eax] */
         DSD(rec + 0x28u) = DSD(fighter + 0x18u);          /* 0x357E6/0x357E9 */
-        /* PORT: 0x357EE 0x34038(side) runs before the spine; it is a named
-         * gap (§7.8) and is skipped. */
+        fighter_34038(side);                    /* 0x357EC/0x357EE 0x34038 (record §48-K) */
         fighter_38d24(side);                    /* 0x357F5 0x38D24 */
         fight_health_sync(side);                /* 0x357FC 0x34B6C */
         fighter_state_3531c(side);              /* 0x35803 0x3531C */
@@ -2144,8 +2144,10 @@ void fight_4ac18(u32 rec)
 
 /* The 0xC95D4 walk- and 0xC958C/0xC955C held-stream tables are defined above;
  * 0x4AC80 also reads DS_00108868 (a record, written only by 0x4BD98 at
- * 0x4BEA3) and DS_00108864 (an entry, written by 0x4BD98/0x4CD98/0x4C784/
- * 0x27BA4 and by 0x4AC80 itself at 0x4ADE1). */
+ * 0x4BEA3) and DS_00108864 (an entry, written by 0x4BD98/0x4CD98/0x4C784
+ * and by 0x4AC80 itself at 0x4ADE1). Ghidra also lists 0x27C24/0x27C36
+ * (0x27BA4) against DS_00108864, but those are the words `[eax+0x108860]`
+ * with EAX = 0 or 2, DS_00108860[0..1] (record §48-K). */
 
 /* 0x4AC80 — demo-pose record §31. The worshipper landing streams' opcode-0x15
  * target (the dword 0x0004AC80 after the 0xD500 word at 0xEE3BA, 0xEE6FA,
@@ -3982,4 +3984,203 @@ void fight_arena_frame(void)
     fight_hud_pass(1);                                         /* 0x26525 0x35658 */
     fight_effects_pass();                                      /* 0x2652A 0x49C78 */
     camera_scene_step();                       /* 0x2652F 0x1282C + 0x26534 0x12DA8 */
+}
+
+/* ---- 0x4E11C, the fight frame's entry to mode 0x25 (record §48-K) ------- */
+
+#define DS_000C980C 0x000C980Cu   /* no symbols.h name: 0x4E350's x step (0x100) */
+
+/* 0x4E27C — record §48-K. For each entry on the active list DS_0010884C
+ * (none when the head is the sentinel; the next pointer is read before the
+ * call), on its actor R (+8): with the signed DS_000F0AF0 > 0 the entry's
+ * +0x14 = DS_000F0AF0 - 0x8180, R's +0x34 = 0xFF80 and +0x29 |= 0x40; else
+ * +0x14 = DS_000F0AF0 + 0x8180, +0x34 = 0x80 and +0x29 &= 0xBF. Then R
+ * begins 0xC95D4[(u16)(R+0x48 - 0x20)] at 3.0 (the index is the low word of
+ * ECX = EDX - 0x20, EDX's low byte R+0x48 and DH = 0). EBX/ECX/EDX are pushed
+ * and popped; 0x2BC30 keeps EBX (the next entry). Only caller: 0x4E361
+ * (0x4E350 with AL != 0). */
+void fight_mode25_face(void)
+{
+    u32 node = DSD(DS_0010884C);                        /* 0x4E27F */
+    if (node == DS_0010884C) return;                    /* 0x4E284/0x4E289 */
+    do {
+        u32 next = DSD(node);                           /* 0x4E28E */
+        u32 idx = (u32)(u16)((u32)DSB(DSD(node + 8u) + 0x48u) - 0x20u);  /* 0x4E28B..0x4E29D */
+        s32 cx = (s32)DSD(DS_000F0AF0);                 /* 0x4E297 */
+        if (cx > 0) {                                   /* 0x4E2A0/0x4E2A2 */
+            DSD(node + 0x14u) = (u32)cx - 0x8180u;      /* 0x4E2A4/0x4E2AA */
+            DSW(DSD(node + 8u) + 0x34u) = 0xFF80u;      /* 0x4E2AD/0x4E2B0 */
+            DSB(DSD(node + 8u) + 0x29u) = (u8)(DSB(DSD(node + 8u) + 0x29u) | 0x40u);  /* 0x4E2B6/0x4E2B9 */
+        } else {
+            DSD(node + 0x14u) = (u32)cx + 0x8180u;      /* 0x4E2BF/0x4E2C5 */
+            DSW(DSD(node + 8u) + 0x34u) = 0x0080u;      /* 0x4E2C8/0x4E2CB */
+            DSB(DSD(node + 8u) + 0x29u) = (u8)(DSB(DSD(node + 8u) + 0x29u) & 0xBFu);  /* 0x4E2D1/0x4E2D4 */
+        }
+        actors_anim_begin(DSD(node + 8u), DSD(DS_000C95D4 + idx * 4u),
+                          0x40400000u);                 /* 0x4E2D8..0x4E2EC 0x2BC30 */
+        node = next;                                    /* 0x4E2F1 */
+    } while (node != DS_0010884C);                      /* 0x4E2F3/0x4E2F9 */
+}
+
+/* 0x4E350 — record §48-K. AL = `fresh` (kept at [ESP+0xC]). With it, 0x4E27C
+ * first. DS_001088B9 = DS_001088B8 = 0 (DL). Then for i = 0..9 (EDI = i * 4):
+ * - without `fresh` and with DS_0010839C[i] set, that entry E is kept;
+ * - else E is the free list DS_001083C4's head (the function returns at
+ *   once when the list is empty), unlinked (0x249D0) and put after
+ *   DS_0010884C (0x249B0), and the descriptor D = 0xC9524[rng(6)] gets +0x10
+ *   = 0x29CDC(0, slot 0's +0x7A);
+ * - E's +0x1A = i; with `fresh` or DS_0010839C[i] still 0, D is spawned
+ *   with EDX = DS_000F0AF0 - 0x3900, ECX = y and EBX = 0 (actor_spawn's a2,
+ *   a3, a4; a5 = the pushed 0), y = W + j * k by the jump table 0x4E300 (W
+ *   the zero-extended word DS_000BD898, k the dword 0xC980C; j = 0, 1, -1,
+ *   2, 0, -2, -3, -1, 1, 3 for i = 0..9); E's +8 = the actor R and R's +0x14
+ *   = E;
+ * - E's +0x14 = 0x162F, 0xFCA (i 1..2), 0x965 (3..5) or 0x300 (6..9) by the
+ *   table 0x4E328; +0x1F = +0x21 = 0 (AH), +0x0C = 0x1077B0, R's +0x2C =
+ *   0xA00, R's +0x29 |= 0x10, E's +0x1C word = 0, +0x10 = 0; with slot 0's
+ *   record's +0x51 non-zero R's +0x2E += 4 and +0x4E = 1; R's +0x29 &= 0xBF;
+ *   E's +0x1C |= 2;
+ * - with `fresh` or DS_0010839C[i] still 0: E's +0x1E = 0, R's +0x34 = 0x100,
+ *   R begins 0xC95D4[(u16)(R+0x48 - 0x20)] at 3.0 (EDX = EAX after `mov
+ *   al,[eax+0x48]; xor ah,ah`, less 0x20, `and edx,0xffff`) and
+ *   DS_0010839C[i] = E; else E's +0x1E = 1.
+ * EBX..EBP are pushed and popped. Callers: 0x4E271 (0x4E11C, AL = 1), and the
+ * unported 0x4E987 (0x4E67C). */
+void fight_mode25_spawn(u32 fresh)
+{
+    u32 i, node, desc = 0u;
+    int fr = (u8)fresh != 0u;                           /* 0x4E359/0x4E35D */
+    if (fr) fight_mode25_face();                        /* 0x4E361 0x4E27C */
+    DSB(DS_001088B9) = 0u;                              /* 0x4E36C */
+    DSB(DS_001088B8) = 0u;                              /* 0x4E372 */
+    for (i = 0; i < 10u; i++) {                         /* 0x4E384..0x4E592 */
+        u32 y, k, w, ebp, rec, b48;
+        if (!fr && DSD(DS_0010839C + i * 4u) != 0u) {   /* 0x4E384..0x4E393 */
+            node = DSD(DS_0010839C + i * 4u);           /* 0x4E395 */
+        } else {
+            node = DSD(DS_001083C4);                    /* 0x4E399 */
+            if (node == DS_001083C4) node = 0u;         /* 0x4E39F..0x4E3A7 */
+            else effects_list_unlink(node);             /* 0x4E3AB/0x4E3AD 0x249D0 */
+            if (node == 0u) return;                     /* 0x4E3B4/0x4E3B6 */
+            effects_list_insert_after(DS_0010884C, node);   /* 0x4E3BC/0x4E3C1 0x249B0 */
+            desc = DSD(DS_000C9524 + rng_next(6u) * 4u);    /* 0x4E3C6..0x4E3D7 0x5D7DC */
+            DSD(desc + 0x10u) = fight_dust_value(0u, (u32)DSB(DS_001077B0 + 0x7Au));  /* 0x4E3DB..0x4E3EE 0x29CDC */
+        }
+        DSW(node + 0x1Au) = (u16)i;                     /* 0x4E3F1/0x4E3FB */
+        k = DSD(DS_000C980C);                           /* 0x4E40E/0x4E41E */
+        w = DSW(DS_000BD898);                           /* 0x4E42F.. */
+        switch (i) {                                    /* 0x4E426 jmp [0x4E300 + i * 4] */
+        case 1: case 8: y = w + k; break;               /* 0x4E438 */
+        case 2: case 7: y = w - k; break;               /* 0x4E463 */
+        case 3:         y = 2u * k + w; break;          /* 0x4E44A */
+        case 5:         y = w - 2u * k; break;          /* 0x4E476 */
+        case 6:         y = w - 3u * k; break;          /* 0x4E484 */
+        case 9:         y = w + 3u * k; break;          /* 0x4E456 */
+        default:        y = w; break;                   /* 0x4E42D (i 0, 4) */
+        }
+        if (fr || DSD(DS_0010839C + i * 4u) == 0u) {    /* 0x4E48F..0x4E49D */
+            rec = actor_spawn((const u32 *)(mem + desc),
+                              DSD(DS_000F0AF0) - 0x3900u, y, 0u, 0u);   /* 0x4E3F5/0x4E403, 0x4E49F..0x4E4A7 0x2AE14 */
+            DSD(node + 8u) = rec;                       /* 0x4E4AC */
+            DSD(rec + 0x14u) = node;                    /* 0x4E4AF */
+        }
+        switch (i) {                                    /* 0x4E4B9 jmp [0x4E328 + i * 4] */
+        case 0:                 ebp = 0x162Fu; break;   /* 0x4E4C0 */
+        case 1: case 2:         ebp = 0x0FCAu; break;   /* 0x4E4C7 */
+        case 3: case 4: case 5: ebp = 0x0965u; break;   /* 0x4E4CE */
+        default:                ebp = 0x0300u; break;   /* 0x4E4D5 (i 6..9) */
+        }
+        rec = DSD(node + 8u);                           /* 0x4E4DA */
+        DSD(node + 0x14u) = ebp;                        /* 0x4E4DD */
+        b48 = DSB(rec + 0x48u);                         /* 0x4E4E0 */
+        DSB(node + 0x1Fu) = 0u;                         /* 0x4E4E5 */
+        DSB(node + 0x21u) = 0u;                         /* 0x4E4E8 */
+        DSD(node + 0x0Cu) = DS_001077B0;                /* 0x4E4F0 */
+        DSW(DSD(node + 8u) + 0x2Cu) = 0x0A00u;          /* 0x4E4ED/0x4E4F7 */
+        DSB(DSD(node + 8u) + 0x29u) = (u8)(DSB(DSD(node + 8u) + 0x29u) | 0x10u);   /* 0x4E4FD/0x4E500 */
+        DSW(node + 0x1Cu) = 0u;                         /* 0x4E504 */
+        DSD(node + 0x10u) = 0u;                         /* 0x4E50D */
+        if (DSB(DSD(DS_001077B0) + 0x51u) != 0u) {      /* 0x4E50A..0x4E51E */
+            DSW(DSD(node + 8u) + 0x2Eu) = (u16)(DSW(DSD(node + 8u) + 0x2Eu) + 4u);  /* 0x4E520/0x4E523 */
+            DSB(DSD(node + 8u) + 0x4Eu) = 1u;           /* 0x4E528/0x4E52B */
+        }
+        DSB(DSD(node + 8u) + 0x29u) = (u8)(DSB(DSD(node + 8u) + 0x29u) & 0xBFu);   /* 0x4E52F/0x4E532 */
+        DSB(node + 0x1Cu) = (u8)(DSB(node + 0x1Cu) | 2u);   /* 0x4E536..0x4E540 */
+        if (fr || DSD(DS_0010839C + i * 4u) == 0u) {    /* 0x4E53C..0x4E54E */
+            DSB(node + 0x1Eu) = 0u;                     /* 0x4E550 */
+            DSW(DSD(node + 8u) + 0x34u) = 0x0100u;      /* 0x4E554/0x4E55C */
+            actors_anim_begin(DSD(node + 8u),
+                              DSD(DS_000C95D4 + (u32)(u16)(b48 - 0x20u) * 4u),
+                              0x40400000u);             /* 0x4E519, 0x4E557..0x4E572 0x2BC30 */
+            DSD(DS_0010839C + i * 4u) = node;           /* 0x4E577 */
+        } else {
+            DSB(node + 0x1Eu) = 1u;                     /* 0x4E57F */
+        }
+    }
+}
+
+/* 0x4E11C — record §48-K. The fight frame's entry to mode 0x25, on its gate
+ * (DS_001078FA == 2, the word DS_00108892 >= 6, slot 0's +0x53 == 0):
+ * - DS_00104B1D 3 or 2: the word DS_00108892 - 1 only (0x4E131);
+ * - unless the signed DS_000F0AF0 is within [-0x3300, 0x3300], the signed
+ *   DS_00104AD8 <= 0, DS_00104ABC >= 2 (unsigned, 0x4E163 `jc`), both
+ *   characters are 4 and DS_001088C4 == 0: the same decrement (0x4E189);
+ * - else, in raw order: DS_00104B25 = 0 (DH, the DS_001088C4 byte just
+ *   tested), DS_001088C4 = 1, the words DS_001088A6 = 0xB4 (SI) and
+ *   DS_0010889A = 0 (DI), DS_00108892 = 0 (DX), DS_00104B15 = 0, DS_001088C0
+ *   = 1 (CH), DS_00104AEC &= 0xFE (AL, read at 0x4E19D), DS_001088BC = 0,
+ *   the mode word = 0x25 (BX), DS_00108896 = 0 (CX), 0x34D8C(0),
+ *   DS_001088BD = DS_001088BE = 0 (DH survives 0x34D8C, which pushes and
+ *   pops EDX), DS_00108884 = DS_000F0AF0; for side 0..1 0x38154(side) and
+ *   the five bytes DS_00108888 + side * 5 .. + 4 = 0 (EDX = 5 * (side + 1),
+ *   CL = 0; 0x38154 pushes and pops EBX/ECX/EDX); the string 0x61 by 0x2F510
+ *   at col -1, row 6 (EDX, kept by 0x1C500) with mode 0x4000 (ECX; EBX = 2,
+ *   the loop's end, is not read by 0x1C500); 0x4E350(1).
+ * EBX/ECX/EDX/ESI/EDI are pushed and popped. Only caller: 0x263EA
+ * (0x26254). */
+void fight_mode25_enter(void)
+{
+    u8 b1d = DSB(DS_00104B1D);                          /* 0x4E121 */
+    s32 cx;
+    u32 side;
+    if (b1d == 3u || b1d == 2u) {                       /* 0x4E127..0x4E12F */
+        DSW(DS_00108892) = (u16)(DSW(DS_00108892) - 1u);   /* 0x4E131 */
+        return;                                         /* 0x4E138 */
+    }
+    cx = (s32)DSD(DS_000F0AF0);                         /* 0x4E13D */
+    if (cx < -0x3300 || cx > 0x3300                     /* 0x4E143..0x4E151 */
+            || (s32)DSD(DS_00104AD8) > 0                /* 0x4E153/0x4E15A */
+            || DSD(DS_00104ABC) < 2u                    /* 0x4E15C/0x4E163 */
+            || DSB(DS_0010782A) != 4u                   /* 0x4E165..0x4E170 */
+            || DSB(DS_001078BE) != 4u                   /* 0x4E172..0x4E17D */
+            || DSB(DS_001088C4) != 0u) {                /* 0x4E17F..0x4E187 */
+        DSW(DS_00108892) = (u16)(DSW(DS_00108892) - 1u);   /* 0x4E189 */
+        return;
+    }
+    DSB(DS_00104B25) = 0u;                              /* 0x4E1A2 */
+    DSB(DS_001088C4) = 1u;                              /* 0x4E1AE */
+    DSW(DS_001088A6) = 0xB4u;                           /* 0x4E1B6 */
+    DSW(DS_0010889A) = 0u;                              /* 0x4E1BD */
+    DSW(DS_00108892) = 0u;                              /* 0x4E1CB */
+    DSB(DS_00104B15) = 0u;                              /* 0x4E1D2 */
+    DSB(DS_001088C0) = 1u;                              /* 0x4E1D8 */
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) & 0xFEu);  /* 0x4E19D/0x4E1B4/0x4E1DE */
+    DSB(DS_001088BC) = 0u;                              /* 0x4E1E3 */
+    DSW(DS_00104B00) = 0x25u;                           /* 0x4E1C6/0x4E1E9 */
+    DSW(DS_00108896) = 0u;                              /* 0x4E1F4 */
+    hit_flash_pair(0u);                                 /* 0x4E1F2/0x4E1FB 0x34D8C */
+    DSB(DS_001088BD) = 0u;                              /* 0x4E200 */
+    DSB(DS_001088BE) = 0u;                              /* 0x4E206 */
+    DSD(DS_00108884) = DSD(DS_000F0AF0);                /* 0x4E20C/0x4E214 */
+    for (side = 0; side < 2u; side++) {                 /* 0x4E212..0x4E24A */
+        u32 e = DS_00108888 + side * 5u;                /* 0x4E21E EDX = 5 * (side + 1), + 0x108883 */
+        fighter_38154(side);                            /* 0x4E21C/0x4E223 0x38154 */
+        DSB(e + 4u) = 0u;                               /* 0x4E228 */
+        DSB(e + 3u) = 0u;                               /* 0x4E22E */
+        DSB(e + 2u) = 0u;                               /* 0x4E234 */
+        DSB(e + 1u) = 0u;                               /* 0x4E23A */
+        DSB(e) = 0u;                                    /* 0x4E241 */
+    }
+    text_cursor_hold_font2(-1, 6, game_string_get(0x61u), 0x4000u);  /* 0x4E24C..0x4E267 0x1C500, 0x2F510 */
+    fight_mode25_spawn(1u);                             /* 0x4E26C/0x4E271 0x4E350 */
 }

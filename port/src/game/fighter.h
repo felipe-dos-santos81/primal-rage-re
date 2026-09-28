@@ -796,4 +796,16 @@ void fighter_33acc(u32 side, u32 dst, u32 dst2);
 void fighter_3c16c(u32 side);
 void fighter_3c148(u32 side);
 
+/* Record §48-K, the fight frame's round end. 0x39FF4: both fighters frozen
+ * (the +0x4B child dropped or released, the slot's timers cleared, the stun
+ * timer +0x8C ended through 0x34038, 0x1922C and a 0x39F40 pose on the
+ * distance to the camera centre). 0x34038: the stun end on DS_001078FF's
+ * side when `side`'s +0x8C word is 1. 0x38154: the mode-0x25 approach step
+ * of `side` (DS_001078F0[side]). 0x19820: the two 0x100C20/0x100C28 lists,
+ * DS_00100CA8/CA9 and DS_00104AE8 |= 4. */
+void fighter_39ff4(void);
+void fighter_34038(u32 side);
+void fighter_38154(u32 side);
+void fighter_19820(void);
+
 #endif /* PRAGE_GAME_FIGHTER_H */
