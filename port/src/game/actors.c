@@ -133,7 +133,7 @@ static void actor_type_3D784(u32 rec);
 static void actor_type_3FC90(u32 rec);
 static void actor_type_40684(u32 rec);
 static void actor_type_48D3C(u32 rec);
-static void actor_type_49444(u32 rec);
+void actor_type_49444(u32 rec);
 static void actor_type_0a19_update(void);
 static void reaction_cb_22F74(u32 slot, u32 rec, u32 side);
 static void reaction_cb_2365C(u32 slot, u32 rec, u32 side);
@@ -2761,8 +2761,10 @@ static u8 actor_type_412FC(u32 rec, u32 slot)
 
 /* 0x49444. Types 0x20..0x25's teardown: clear the 0x10839C entry named by the
  * node's 16.16 +0x18 when its +0x1C bit 1 is set, retire the node's +0x10
- * child, then return the node to 0x1083C4. */
-static void actor_type_49444(u32 rec)
+ * child, then return the node to 0x1083C4. Exported (record §49-P) because
+ * fight_4e67c's raw (0x266AC's mode-0x25 audience pass) calls it directly by
+ * address (0x4E8EE), not through fn_resolve. */
+void actor_type_49444(u32 rec)
 {
     u32 rec2 = DSD(rec + 0x14);
     if (rec2 == 0) return;

@@ -866,6 +866,10 @@ void fighter_wall_clamp(u32 side);
 void fighter_39ff4(void);
 void fighter_34038(u32 side);
 void fighter_38154(u32 side);
+/* 0x384F8 — record §49-P. Mode 0x25's per-side combo/approach pass;
+ * game_mode_25_step (0x266AC) calls it for each side. See fighter.c for the
+ * full derivation. */
+void fight_384f8(u32 side);
 void fighter_19820(void);
 
 /* 0x392A0. The winner-pose driver (see its header comment in fighter.c);

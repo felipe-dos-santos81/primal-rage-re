@@ -59,6 +59,11 @@ void actor_pset_flag_5f(u32 rec, u8 flag);
  * the pset from the render list. 0x121A0's phase 1 calls it on the logo and the
  * second object when DS_000F0A66 <= 0x10. */
 void actor_set_dead(u32 rec);
+/* 0x49444 (record §49-P). Types 0x20..0x25's teardown: clear the 0x10839C
+ * entry named by the node's 16.16 +0x18 when its +0x1C bit 1 is set, retire
+ * the node's +0x10 child, then return the node to 0x1083C4. Exported for
+ * fight_4e67c's direct call (0x4E8EE, not a stored callback). */
+void actor_type_49444(u32 rec);
 /* 0x10D70. Clear rec+0x28 bit 2 and write `word` to the record's pset +0, its
  * bit 15 taken from rec+0x28 bit 14. The wipe steps 0x4F9E4/0x4FA88 call it
  * (record §43-B), and so do 0x1D2F0/0x1D464 (fight.c, record §48-U); its

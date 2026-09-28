@@ -662,6 +662,20 @@ void game_mode_23_step(void);
  * flow.c for the full derivation. */
 void game_mode_24_step(void);
 
+/* 0x266AC — record §49-P. Mode 0x25's per-frame state-0 body: case 0x25's
+ * own inline DS_00104B25 == 0 arm calls it. See flow.c for the full
+ * derivation. */
+void game_mode_25_step(void);
+/* 0x4EF8C — record §49-P. Mode 0x25's reveal, run once when DS_001088BD
+ * reaches 8 with both round flags set: settles the active audience-effect
+ * list, draws the round-card body and the winner strings. See flow.c for the
+ * full derivation. */
+void game_mode_25_reveal(void);
+/* 0x4F0FC — record §49-P. Mode 0x25's timeout exit: draws the closing
+ * strings, releases the round-card cells and returns to mode 6. See flow.c
+ * for the full derivation. */
+void game_mode_25_exit(void);
+
 /* Record §49-Q, the coin/start divert's eight game-start entries, cases
  * 0x28..0x2F of 0x24C5C (the jump table at 0x24B8C, entries 0x24F09/0x24F66/
  * 0x24FC4/0x25187/0x2501E/0x25071/0x250CE/0x2512B for 0x28/0x29/0x2A/0x2B/

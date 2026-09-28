@@ -1520,8 +1520,9 @@ void camera_dust_list_init(void)
 
 /* 0x1282C. The rare dust spawn: gated on (DS_000EF6DC & 0x3F) == 0, then
  * rng(7) & 3 == 0; draws rng(7)/rng(0x1300)/rng(0x2000) and spawns one actor
- * from 0xBB254. */
-static void camera_dust_spawn(void)
+ * from 0xBB254. Exported (record §49-P): fight_mode25_step (0x266AC) calls it
+ * directly. */
+void camera_dust_spawn(void)
 {
     if ((DSW(DS_000EF6DC) & 0x3Fu) != 0) return;       /* 0x1283E */
     u32 draw = rng_next(7u);                           /* 0x1284E */

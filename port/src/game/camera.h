@@ -113,6 +113,11 @@ void camera_screen_base(s32 side, s32 character);
  * (the state-6 fight reset) calls it at 0x20E33. */
 void camera_dust_list_init(void);
 
+/* 0x1282C (record §49-P). The rare dust spawn: gated on (DS_000EF6DC & 0x3F)
+ * == 0, then rng(7) & 3 == 0. Exported for fight_mode25_step's direct call
+ * (0x266AC, 0x2685F). */
+void camera_dust_spawn(void);
+
 /* 0x128D4 (record §49-L). 0x1282C's twin, four times as frequent
  * ((DS_000EF6DC & 0xF) == 0) and anchored to the fixed word DS_000BD898
  * rather than a random x. Only caller: mode 0x22's frame (0x26C8C), gated on
