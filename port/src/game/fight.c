@@ -1448,7 +1448,7 @@ void fight_char_select(u32 side, u32 char_index)
  * +0x41 bit 3 is set (0x1D3AA/0x1D400), else 0xC9960. The EBX/ECX/EDX loads
  * before each call (1 / 0x5000 or 0x6000 / 4 or 0x17) are dead: 0x10D70
  * reads only AX and its stack record. Callers: 0x1D797 (0x1D764), 0x1D941
- * (0x1D890), 0x1DD2C (0x1DC6C), and the unported 0x1D5A8 (0x1D540). */
+ * (0x1D890), 0x1DD2C (0x1DC6C), and 0x1D5A8 (0x1D540, record §49-V). */
 void fight_hud_bar_set(s32 v, u32 side)
 {
     u32 c = v > 0x78 ? 0x78u : (v < 0 ? 0u : (u32)v);  /* 0x1D2F9..0x1D309 */
@@ -1466,12 +1466,155 @@ void fight_hud_bar_set(s32 v, u32 side)
  * 0..0x44 (0x1D466 `jle`, 0x1D472 `jge`, below 0 `xor eax,eax`), then 0x10D70
  * on the pushed record DS_001028E8[side] with AX = the word 0xC9B44[v]. The
  * EBX/ECX/EDX loads (3, 0x7000, 9 or 0x17) are dead as in 0x1D2F0. Callers:
- * 0x1D94A (0x1D890), 0x1DD35 (0x1DC6C) and the unported 0x1D5E1 (0x1D540). */
+ * 0x1D94A (0x1D890), 0x1DD35 (0x1DC6C) and 0x1D5E1 (0x1D540, record §49-V). */
 void fight_hud_bar2_set(s32 v, u32 side)
 {
     u32 c = v > 0x44 ? 0x44u : (v < 0 ? 0u : (u32)v);  /* 0x1D466..0x1D476 */
     actor_pset_word_set(DSD(DS_001028E8 + side * 4u),
                         DSW(DS_000C9B44 + c * 2u));     /* 0x1D48B/0x1D4AA, 0x1D4C6 */
+}
+
+/* 0x1D4D0 — record §49-V. EAX = the side. The rate byte for the side's
+ * character: the table DS_000A769C at four bytes per character (the slot's
+ * +0x7A byte, 0x1D4E1 `shl eax,2`), the column picked by the slot's +0x5D byte
+ * (a signed compare, 0x1D4F9 `jle`): > 0x3D column 0 (0x1D4FE), > 0x2F column 1
+ * (0x1D50B), > 0x22 column 2 (0x1D520), else column 3 (0x1D530). The slot is
+ * 0x33A10's out[3] (0x1D4D8). Caller: 0x1D563 (0x1D540). */
+static u32 fight_hud_rate(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_swap(ctx, side);                                /* 0x1D4D8 0x33A10 */
+    u32 row = (u32)DSB(ctx[3] + 0x7Au) << 2;                    /* 0x1D4E1..0x1D4ED */
+    s32 v = (s32)DSB(ctx[3] + 0x5Du);                           /* 0x1D4F0..0x1D4F9 */
+    if (v > 0x3D) return DSB(DS_000A769C + row);                /* 0x1D4FC..0x1D504 */
+    if (v > 0x2F) return DSB(DS_000A769C + row + 1u);           /* 0x1D506..0x1D50B */
+    if (v > 0x22) return DSB(DS_000A769C + row + 2u);           /* 0x1D51B..0x1D520 */
+    return DSB(DS_000A769C + row + 3u);                         /* 0x1D530 */
+}
+
+/* 0x1D74C — record §49-V. EAX = the side: 1 when the low byte of the side's
+ * command word DS_001088E0[side] has bit 4 or bit 5 set (0x1D756 `and al,0x30`;
+ * the ah clear at 0x1D754 and `and eax,0xffff` at 0x1D75D leave ZF from that
+ * byte alone, `setnz`). Caller: 0x1D5FF (0x1D540). */
+static u32 fight_cmd_bits_30(u32 side)
+{
+    return (DSW(DS_001088E0 + side * 2u) & 0x30u) != 0u;        /* 0x1D74C..0x1D760 */
+}
+
+/* 0x468D8 — record §49-V. EAX = the side: 1 when the side's slot has the
+ * +0x10 handler 0x22BEC (fighter_22bec, the projectile freeze) with the
+ * record's +0x24 dword's low 31 bits clear and the slot's +0x54 byte not 2
+ * (0x468EC..0x4690C); else 1 when the byte at slot(side)+0x52 (0x107802 +
+ * side * 0x94, 0x46910..0x4691E) is 7. Pure. The slot/record are 0x33A10's
+ * out[3]/out[5] (0x468E3). Callers include 0x1D5F0 and 0x1D6B6 (0x1D540). */
+static u32 fight_freeze_or_state7(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_swap(ctx, side);                                /* 0x468E3 0x33A10 */
+    if (DSD(ctx[3] + 0x10u) == 0x22BECu                         /* 0x468EC */
+            && (DSD(ctx[5] + 0x24u) & 0x7FFFFFFFu) == 0u        /* 0x468F9 */
+            && DSB(ctx[3] + 0x54u) != 2u)                       /* 0x46906 */
+        return 1u;                                              /* 0x4690C */
+    return DSB(DS_00107802 + side * 0x94u) == 7u;               /* 0x4691E */
+}
+
+/* 0x1D540 — record §49-V. The render-table bit 1 handler (DS_000A86C4[1], run
+ * by 0x255CC's per-bit walk while DS_00104AEC bit 1 is set): per side it
+ * steps the two HUD meters toward their targets and runs the slot's +0x5D/+0x5E
+ * counter, then clears the bit (0x1D738). Per side (EBX; slot = 0x33A10's
+ * out[3], the ECX * 0x94 addressing of 0x1077B0; lim = [esp+0x18], initially
+ * 10, rate = [esp+0x1C], initially 0; v = 0x1D4D0's result, EDI):
+ * - meter A DS_0010290C[side] moves one step (up: +1, 0x1D580; down: -1,
+ *   0x1D598) toward the slot's +0x5A byte (unsigned) and 0x1D2F0 redraws it;
+ * - meter B DS_0010290E[side] moves up one step (0x1D5BD) or snaps down to the
+ *   slot's +0x5D byte (0x1D5D1) and 0x1D464 redraws it;
+ * - the slot's +0x5E byte is incremented (0x1D5E6);
+ * - when 0x468D8 holds and (0x1D74C or the slot's +0x63 byte): rate = 3; with
+ *   +0x63 set, lim = the byte DS_000A76C8[DS_001082C8[side]] (0x1D628); with
+ *   it clear, rate = 4 and, when both DS_00107813 and DS_001078A7 are zero
+ *   (the absolute operands, slot 0's and slot 1's +0x63), rate = 6 if the
+ *   +0x5A gap (self - other, signed) exceeds the dword DS_000A76C4, then +2 if
+ *   the slot's +0x5D is below 0xD or +1 if below 0x1B (signed), and the
+ *   slot's +0x5E is set to lim + 1 (0x1D6A8);
+ * - then with 0x468D8 holding: +0x5E > lim (signed) zeroes it and takes rate
+ *   off +0x5D (to 0 when +0x5D < rate, signed); without it: +0x5E > v zeroes
+ *   +0x5E and steps +0x5D down one unless it is 0 (0x1D6FD..0x1D71F).
+ * TODO(verify): the meanings of the +0x5A/+0x5D/+0x5E/+0x63 slot bytes are not
+ * derived here; the port reproduces the observed byte arithmetic only. */
+void fight_hud_meter_step(void)
+{
+    for (u32 side = 0; side < 2u; side++) {                     /* 0x1D732 */
+        u32 ctx[6];
+        fighter_ctx_swap(ctx, side);                            /* 0x1D558 0x33A10 */
+        u32 slot = ctx[3];                                      /* 0x1077B0 + side * 0x94 */
+        u32 lim = 10u;                                          /* 0x1D55F */
+        u32 rate = 0u;                                          /* 0x1D578 */
+        u32 v = fight_hud_rate(side);                           /* 0x1D563 0x1D4D0 */
+
+        u8 tgt_a = DSB(slot + 0x5Au);                           /* 0x1D56A */
+        u8 cur_a = DSB(DS_0010290C + side);                     /* 0x1D572 */
+        if (tgt_a > cur_a) {                                    /* 0x1D57C */
+            cur_a = (u8)(cur_a + 1u);                           /* 0x1D580..0x1D584 */
+            DSB(DS_0010290C + side) = cur_a;
+            fight_hud_bar_set((s32)cur_a, side);                /* 0x1D5A8 0x1D2F0 */
+        } else if (tgt_a < cur_a) {                             /* 0x1D596 */
+            cur_a = (u8)(cur_a - 1u);                           /* 0x1D598..0x1D5A0 */
+            DSB(DS_0010290C + side) = cur_a;
+            fight_hud_bar_set((s32)cur_a, side);                /* 0x1D5A8 0x1D2F0 */
+        }
+
+        u8 tgt_b = DSB(slot + 0x5Du);                           /* 0x1D5AD */
+        u8 cur_b = DSB(DS_0010290E + side);                     /* 0x1D5B3 */
+        if (tgt_b > cur_b) {                                    /* 0x1D5BB */
+            cur_b = (u8)(cur_b + 1u);                           /* 0x1D5BD..0x1D5C5 */
+            DSB(DS_0010290E + side) = cur_b;
+            fight_hud_bar2_set((s32)cur_b, side);               /* 0x1D5E1 0x1D464 */
+        } else if (tgt_b < cur_b) {                             /* 0x1D5CF */
+            DSB(DS_0010290E + side) = tgt_b;                    /* 0x1D5D1 */
+            fight_hud_bar2_set((s32)tgt_b, side);               /* 0x1D5E1 0x1D464 */
+        }
+
+        DSB(slot + 0x5Eu) = (u8)(DSB(slot + 0x5Eu) + 1u);       /* 0x1D5E6 */
+
+        if (fight_freeze_or_state7(side) != 0u) {               /* 0x1D5F0 0x468D8 */
+            if (fight_cmd_bits_30(side) != 0u                   /* 0x1D5FF 0x1D74C */
+                    || DSB(slot + 0x63u) != 0u) {               /* 0x1D608 */
+                rate = 3u;                                      /* 0x1D615 */
+                if (DSB(slot + 0x63u) != 0u) {                  /* 0x1D61A/0x1D624 */
+                    lim = DSB(DS_000A76C8 + DSD(DS_001082C8 + side * 4u));  /* 0x1D628..0x1D639 */
+                } else {
+                    rate = 4u;                                  /* 0x1D642 */
+                    if (DSB(DS_00107813) == 0u                  /* 0x1D647..0x1D651 */
+                            && DSB(DS_001078A7) == 0u) {        /* 0x1D655..0x1D65C */
+                        s32 gap = (s32)DSB(ctx[3] + 0x5Au)      /* 0x1D662 */
+                                - (s32)DSB(ctx[2] + 0x5Au);     /* 0x1D669..0x1D67D */
+                        if (gap > (s32)DSD(DS_000A76C4))        /* 0x1D677..0x1D681 */
+                            rate = 6u;                          /* 0x1D683 */
+                        s32 c = (s32)DSB(slot + 0x5Du);         /* 0x1D68B..0x1D68D */
+                        if (c < 0xD) rate += 2u;                /* 0x1D693..0x1D698 */
+                        else if (c < 0x1B) rate += 1u;          /* 0x1D69F..0x1D6A4 */
+                    }
+                    DSB(slot + 0x5Eu) = (u8)(lim + 1u);         /* 0x1D6A8..0x1D6AE */
+                }
+            }
+        }
+
+        if (fight_freeze_or_state7(side) != 0u) {               /* 0x1D6B6 0x468D8 */
+            if ((s32)DSB(slot + 0x5Eu) > (s32)lim) {            /* 0x1D6C5..0x1D6CD */
+                DSB(slot + 0x5Eu) = 0;                          /* 0x1D6D1 */
+                s32 c = (s32)DSB(slot + 0x5Du);                 /* 0x1D6DD */
+                if (c >= (s32)rate)                             /* 0x1D6E3..0x1D6E5 */
+                    DSB(slot + 0x5Du) = (u8)(c - (s32)(u8)rate);    /* 0x1D6EB */
+                else
+                    DSB(slot + 0x5Du) = 0;                      /* 0x1D6FB */
+            }
+        } else if ((s32)DSB(slot + 0x5Eu) > (s32)v) {           /* 0x1D6FF..0x1D707 */
+            u8 d = DSB(slot + 0x5Du);                           /* 0x1D70B */
+            DSB(slot + 0x5Eu) = 0;                              /* 0x1D711 */
+            if (d != 0u) DSB(slot + 0x5Du) = (u8)(d - 1u);      /* 0x1D717..0x1D71F */
+        }
+    }
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) & 0xFDu);          /* 0x1D738 */
 }
 
 /* 0x1D890 — record §48-U (the EAX != 0 arm). Per side (ESI; EBP = side * 4,
