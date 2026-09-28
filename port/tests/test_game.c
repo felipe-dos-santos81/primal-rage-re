@@ -21,6 +21,7 @@
 #include "game/effects.h"
 #include "test_fixtures.h"
 #include "game/config.h"
+#include "platform/input.h"
 #include "game/fight.h"
 #include "game/attract.h"
 #include "game/movie.h"
@@ -5642,5 +5643,600 @@ int test_title(void)
     test_title_window(dump);
     game_shutdown();
 
+    return g_failures - before;
+}
+
+/* ---- record §49-Y: the 0x2Exxx key layer, the timed screen and the menu
+ * helpers ---------------------------------------------------------------- */
+
+#define CH_KB      0x03D00000u   /* test-only key-config record (DS_00101514) */
+#define CH_BUF_A   0x03D10000u   /* test-only 64000-byte frame buffers */
+#define CH_BUF_B   0x03D20000u
+#define CH_DEST    0x03D30000u   /* test-only text destination */
+#define CH_REC     0x03D40000u   /* test-only option record */
+#define CH_KEY_LATCH 0x00105F30u
+#define CH_KEY_TIME  0x00105F2Cu
+#define CH_KEY_WORD  0x00105F28u
+#define CH_TICK      0x00101500u
+#define CH_CODE      0x00107450u
+
+static u32 ch_cell(s32 row, s32 col)
+{
+    return DSD(DS_00105F38 + (u32)row * 0xacu + (u32)col * 4u);
+}
+
+/* The glyph's sprite id and its palette-table entry: what a cell is made of. */
+static u32 ch_sprite(s32 row, s32 col)
+{
+    u32 r = ch_cell(row, col);
+    return r != 0u ? (u32)(DSW(actor_pset(r)) & 0x7fffu) : 0u;
+}
+
+static u32 ch_pal(s32 row, s32 col)
+{
+    u32 r = ch_cell(row, col);
+    return r != 0u ? DSD(actor_pset(r) + 0x18u) : 0u;
+}
+
+/* The palette handle 0x2F5A0 picks for a font-0 glyph at `mode` (0x2F5A0's
+ * switch over mode & 0xF000, read off actors.c). */
+static u32 ch_handle(u32 mode)
+{
+    switch (mode & 0xF000u) {
+    case 0x1000u: return 0x809984u;
+    case 0x2000u: return 0x80998Cu;
+    case 0x3000u: return 0x809994u;
+    case 0x4000u: case 0xF000u: return 0x8099A4u;
+    default:      return 0x80997Cu;
+    }
+}
+
+/* A font-0 cell is `ch` at `mode`: sprite from the table at 0xBCD7C, palette
+ * from the handle. */
+static void ch_expect(s32 row, s32 col, u32 ch, u32 mode, const char *msg)
+{
+    CHECK(ch_cell(row, col) != 0u, msg);
+    if (ch_cell(row, col) == 0u) return;
+    CHECK_EQ_INT((int)ch_sprite(row, col), (int)DSW(0xBCD7Cu + ch * 4u));
+    CHECK_EQ_INT((int)ch_pal(row, col), (int)palette_acquire(ch_handle(mode)));
+}
+
+static void ch_text_setup(void)
+{
+    if (res_count() != 69)
+        CHECK(res_load_index("data/game/C", "data/game/C/INDEX") == 69,
+              "index loaded");
+    game_string_table_load("data/game/C");
+    actors_reset();
+    DSD(DS_00105F34) = 0;
+}
+
+static void ch_check_key_name(void)
+{
+    static const struct { u32 scan; u32 id; } named[] = {
+        { 0x0E, 0x22A }, { 0x0F, 0x22B }, { 0x47, 0x220 }, { 0x48, 0x223 },
+        { 0x49, 0x221 }, { 0x4B, 0x224 }, { 0x4D, 0x225 }, { 0x4F, 0x227 },
+        { 0x50, 0x226 }, { 0x51, 0x222 }, { 0x52, 0x228 }, { 0x53, 0x229 },
+    };
+    for (u32 i = 0; i < sizeof named / sizeof named[0]; i++) {
+        memset(mem + CH_DEST, 0xEE, 0x200);
+        char want[0x100];
+        strcpy(want, (const char *)game_string_get(named[i].id));
+        CHECK(want[0] != 0, "the key-name string exists");
+        CHECK_EQ_INT((int)config_key_name(named[i].scan << 8, 1u, CH_DEST), 1);
+        CHECK(strcmp((const char *)(mem + CH_DEST), want) == 0,
+              "raw flag set: the string as is");
+        memset(mem + CH_DEST, 0xEE, 0x200);
+        CHECK_EQ_INT((int)config_key_name(named[i].scan << 8, 0u, CH_DEST), 1);
+        char wrapped[0x110];
+        snprintf(wrapped, sizeof wrapped, "<%s>", want);
+        CHECK(strcmp((const char *)(mem + CH_DEST), wrapped) == 0,
+              "raw flag clear: the string wrapped in <>");
+    }
+    /* Distinct names: a swapped id would otherwise pass. */
+    char a[0x100], b[0x100];
+    strcpy(a, (const char *)game_string_get(0x223u));
+    strcpy(b, (const char *)game_string_get(0x226u));
+    CHECK(strcmp(a, b) != 0, "up and down names differ");
+
+    static const struct { u32 scan; const char *text; } lit[] = {
+        { 0x3D, "F3" }, { 0x3E, "F4" }, { 0x3F, "F5" }, { 0x40, "F6" },
+        { 0x41, "F7" }, { 0x42, "F8" }, { 0x43, "F9" }, { 0x44, "F10" },
+        { 0x4A, "-" },  { 0x4E, "+" },
+    };
+    for (u32 i = 0; i < sizeof lit / sizeof lit[0]; i++) {
+        memset(mem + CH_DEST, 0xEE, 0x200);
+        CHECK_EQ_INT((int)config_key_name(lit[i].scan << 8, 1u, CH_DEST), 1);
+        CHECK(strcmp((const char *)(mem + CH_DEST), lit[i].text) == 0,
+              "function/sign key literal from the data object");
+    }
+
+    /* An ascii key stands as itself: 'a', Esc (0x1B), and 0x7F; a scan code in
+     * the high byte does not matter once the ascii byte qualifies. */
+    memset(mem + CH_DEST, 0xEE, 0x200);
+    CHECK_EQ_INT((int)config_key_name(0x1E61u, 1u, CH_DEST), 1);
+    CHECK_EQ_INT((int)DSB(CH_DEST), 'a');
+    CHECK_EQ_INT((int)DSB(CH_DEST + 1u), 0);
+    memset(mem + CH_DEST, 0xEE, 0x200);
+    CHECK_EQ_INT((int)config_key_name(0x1E61u, 0u, CH_DEST), 1);
+    CHECK(strcmp((const char *)(mem + CH_DEST), "<a>") == 0, "ascii wrapped");
+    memset(mem + CH_DEST, 0xEE, 0x200);
+    CHECK_EQ_INT((int)config_key_name(0x011Bu, 1u, CH_DEST), 1);
+    CHECK_EQ_INT((int)DSB(CH_DEST), 0x1B);
+    memset(mem + CH_DEST, 0xEE, 0x200);
+    CHECK_EQ_INT((int)config_key_name(0x487Fu, 1u, CH_DEST), 1);
+    CHECK_EQ_INT((int)DSB(CH_DEST), 0x7F);
+
+    /* Not ascii: Enter (0xD) and space (0x20) fall to their scan codes 0x1C and
+     * 0x39, which have no name; 0x80 is above 0x7F so its scan code stands
+     * (0x0E: the string 0x22A). Unnamed keys leave the destination alone. */
+    static const u32 none[] = { 0x1C0Du, 0x3920u, 0x3B00u, 0x3C00u, 0x0100u,
+                                0x0000u, 0x4500u, 0x4600u, 0x4C00u, 0x5400u,
+                                0x0300u, 0x1000u };
+    for (u32 i = 0; i < sizeof none / sizeof none[0]; i++) {
+        memset(mem + CH_DEST, 0xEE, 0x200);
+        CHECK_EQ_INT((int)config_key_name(none[i], 1u, CH_DEST), 0);
+        CHECK_EQ_INT((int)DSB(CH_DEST), 0xEE);
+    }
+    memset(mem + CH_DEST, 0xEE, 0x200);
+    CHECK_EQ_INT((int)config_key_name(0x0E80u, 1u, CH_DEST), 1);
+    CHECK(strcmp((const char *)(mem + CH_DEST),
+                 (const char *)game_string_get(0x22Au)) == 0, "0x80 uses its scan");
+    /* Scan code 2 with no ascii is the ascii arm too (0x315A7 `cmp eax,0x47`
+     * sees EAX = 2): "%c" of 0 is an empty string. */
+    memset(mem + CH_DEST, 0xEE, 0x200);
+    CHECK_EQ_INT((int)config_key_name(0x0200u, 1u, CH_DEST), 1);
+    CHECK_EQ_INT((int)DSB(CH_DEST), 0);
+    CHECK_EQ_INT((int)DSB(CH_DEST + 1u), 0);
+}
+
+static void ch_check_key_flags(void)
+{
+    u32 saved_kb = DSD(DS_00101514);
+    u32 saved_tick = DSD(CH_TICK), saved_time = DSD(CH_KEY_TIME);
+    u32 saved_latch = DSD(CH_KEY_LATCH);
+    u8 saved_idle = DSB(0x00107414u);
+    u8 saved_rec[0x300];
+    memcpy(saved_rec, mem + CH_KB, sizeof saved_rec);
+
+    DSD(DS_00101514) = CH_KB;
+    memset(mem + CH_KB, 0, 0x300);
+    for (u32 i = 0; i < 4; i++) {            /* player 1: 0x48 0x50 0x4B 0x4D */
+        static const u8 p1[4] = { 0x48, 0x50, 0x4B, 0x4D };
+        static const u8 p2[4] = { 0x11, 0x1F, 0x1E, 0x20 };
+        DSB(CH_KB + 0x2DEu + i) = p1[i];
+        DSB(CH_KB + 0x2E6u + i) = p2[i];
+    }
+    DSW(CH_KB + 0x2D4u) = 1u;
+    DSW(CH_KB + 0x2D6u) = 1u;
+
+    /* 0x2EB80: a latched key is returned as is; without one the idle timeout
+     * (unsigned > 0x4B0) stores the flag byte. */
+    DSD(CH_KEY_LATCH) = 0x48u;
+    DSD(CH_TICK) = 5000u;
+    DSD(CH_KEY_TIME) = 1u;
+    DSB(0x00107414u) = 0x55u;
+    CHECK_EQ_INT((int)config_key_latched(), 0x48);
+    CHECK_EQ_INT((int)DSB(0x00107414u), 0x55);       /* untouched: a key is latched */
+    DSD(CH_KEY_LATCH) = 0u;
+    DSD(CH_KEY_TIME) = 5000u - 0x4B0u;               /* exactly 0x4B0: not over */
+    CHECK_EQ_INT((int)config_key_latched(), 0);
+    CHECK_EQ_INT((int)DSB(0x00107414u), 0x55);
+    DSD(CH_KEY_TIME) = 5000u - 0x4B1u;               /* one over: the timeout */
+    CHECK_EQ_INT((int)config_key_latched(), 0);
+    CHECK_EQ_INT((int)DSB(0x00107414u), 0);
+    DSB(0x00107414u) = 0x55u;
+    DSD(CH_KEY_TIME) = 5001u;                        /* the clock behind: wraps huge */
+    CHECK_EQ_INT((int)config_key_latched(), 0);
+    CHECK_EQ_INT((int)DSB(0x00107414u), 0);
+
+    /* Nothing latched, the timeout not due: 0, and the record pointer is kept. */
+    DSD(CH_KEY_TIME) = 5000u;
+    CHECK_EQ_INT((int)config_key_flags(0u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00101514), (int)CH_KB);
+
+    /* Arrow scan codes with mask 0. Player 1's key matched with its word
+     * non-zero, and player 2's with its own word. */
+    static const struct { u8 scan; u32 bits; u32 p1; u32 p2; } arrows[] = {
+        { 0x48, 0x80008000u, 0x2DE, 0x2E6 }, { 0x50, 0x40004000u, 0x2DF, 0x2E7 },
+        { 0x4B, 0x20002000u, 0x2E0, 0x2E8 }, { 0x4D, 0x10001000u, 0x2E1, 0x2E9 },
+    };
+    for (u32 i = 0; i < 4; i++) {
+        DSD(CH_KEY_LATCH) = arrows[i].scan;
+        CHECK_EQ_INT((int)config_key_flags(0u), (int)arrows[i].bits);
+        /* Player 1's word zero blocks the P1 match. */
+        DSW(CH_KB + 0x2D4u) = 0u;
+        CHECK_EQ_INT((int)config_key_flags(0u), 0);
+        /* The scan code equals both players' keys: P1's word zero returns
+         * before P2 is looked at. */
+        u8 p2 = DSB(CH_KB + arrows[i].p2);
+        DSB(CH_KB + arrows[i].p2) = arrows[i].scan;
+        CHECK_EQ_INT((int)config_key_flags(0u), 0);
+        DSW(CH_KB + 0x2D4u) = 1u;
+        DSW(CH_KB + 0x2D6u) = 0u;
+        CHECK_EQ_INT((int)config_key_flags(0u), 0);  /* P2's word zero blocks P2 */
+        DSW(CH_KB + 0x2D6u) = 1u;
+        CHECK_EQ_INT((int)config_key_flags(0u), (int)arrows[i].bits);
+        DSB(CH_KB + arrows[i].p2) = p2;
+        /* Only P2's key matches: P2's word decides. */
+        u8 p1 = DSB(CH_KB + arrows[i].p1);
+        DSB(CH_KB + arrows[i].p1) = 0x99u;
+        DSB(CH_KB + arrows[i].p2) = arrows[i].scan;
+        CHECK_EQ_INT((int)config_key_flags(0u), (int)arrows[i].bits);
+        DSW(CH_KB + 0x2D6u) = 0u;
+        CHECK_EQ_INT((int)config_key_flags(0u), 0);
+        DSW(CH_KB + 0x2D6u) = 1u;
+        /* Neither key matches: the bits are set regardless of the words. */
+        DSB(CH_KB + arrows[i].p2) = 0x98u;
+        DSW(CH_KB + 0x2D4u) = 0u;
+        DSW(CH_KB + 0x2D6u) = 0u;
+        CHECK_EQ_INT((int)config_key_flags(0u), (int)arrows[i].bits);
+        DSW(CH_KB + 0x2D4u) = 1u;
+        DSW(CH_KB + 0x2D6u) = 1u;
+        DSB(CH_KB + arrows[i].p1) = p1;
+        DSB(CH_KB + arrows[i].p2) = p2;
+    }
+
+    /* The mask gate: 0xF300F000 bits admit the arrows, others do not. */
+    DSD(CH_KEY_LATCH) = 0x48u;
+    CHECK_EQ_INT((int)config_key_flags(0x80000000u), (int)0x80008000u);
+    CHECK_EQ_INT((int)config_key_flags(0x00000100u), 0);
+    CHECK_EQ_INT((int)config_key_flags(0x0C000000u), 0);   /* outside 0xF300F000 */
+    CHECK_EQ_INT((int)config_key_flags(0x01000000u), (int)0x80008000u);  /* bit 24 is in it */
+    CHECK_EQ_INT((int)config_key_flags(0x02000000u), (int)0x80008000u);  /* and bit 25 */
+    /* A code outside the arrows sets nothing. */
+    DSD(CH_KEY_LATCH) = 0x49u;
+    CHECK_EQ_INT((int)config_key_flags(0u), 0);
+    DSD(CH_KEY_LATCH) = 0x4Au;
+    CHECK_EQ_INT((int)config_key_flags(0u), 0);
+
+    /* Enter and Esc. */
+    DSD(CH_KEY_LATCH) = 0x0Du;
+    CHECK_EQ_INT((int)config_key_flags(0u), 0x1000000);
+    CHECK_EQ_INT((int)config_key_flags(0x01000000u), 0x1000000);
+    CHECK_EQ_INT((int)config_key_flags(0x02000000u), 0);
+    CHECK_EQ_INT((int)config_key_flags(0x80000000u), 0);
+    DSD(CH_KEY_LATCH) = 0x1Bu;
+    CHECK_EQ_INT((int)config_key_flags(0u), 0x2000000);
+    CHECK_EQ_INT((int)config_key_flags(0x02000000u), 0x2000000);
+    CHECK_EQ_INT((int)config_key_flags(0x01000000u), 0);
+    CHECK_EQ_INT((int)config_key_flags(0x80000000u), 0);
+
+    /* 0x2EDE0 / 0x2EEC8: the level word, the key flags on `flag`, the stamp
+     * on a non-zero result, and the latch cleared by 0x2EEC8 alone. */
+    u32 lvl = DSD(DS_000E1C34);
+    DSD(DS_000E1C34) = 0x00000100u;
+    DSD(CH_TICK) = 7777u;
+    DSD(CH_KEY_LATCH) = 0x0Du;
+    DSD(CH_KEY_TIME) = 1u;
+    CHECK_EQ_INT((int)config_input_poll(0u, 0u), 0x100);       /* flag clear: level only */
+    CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 7777);
+    DSD(CH_KEY_TIME) = 1u;
+    CHECK_EQ_INT((int)config_input_poll(0u, 1u), 0x1000100);   /* level | Enter */
+    CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 0x0D);
+    DSD(DS_000E1C34) = 0u;
+    DSD(CH_KEY_TIME) = 1u;
+    CHECK_EQ_INT((int)config_input_poll(0u, 0u), 0);            /* zero: no stamp */
+    CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 1);
+    CHECK_EQ_INT((int)config_input_poll_clear(0u, 1u), 0x1000000);
+    CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 0);
+    CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 7777);
+    DSD(CH_KEY_LATCH) = 0x33u;
+    DSD(CH_KEY_TIME) = 1u;
+    CHECK_EQ_INT((int)config_input_poll_clear(0u, 0u), 0);
+    CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 0);                    /* cleared even on 0 */
+    CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 1);
+    DSD(DS_000E1C34) = lvl;
+
+    DSD(DS_00101514) = saved_kb;
+    DSD(CH_TICK) = saved_tick;
+    DSD(CH_KEY_TIME) = saved_time;
+    DSD(CH_KEY_LATCH) = saved_latch;
+    DSB(0x00107414u) = saved_idle;
+    memcpy(mem + CH_KB, saved_rec, sizeof saved_rec);
+}
+
+static void ch_check_bar(void)
+{
+    ch_text_setup();
+    /* value 200, no label: the mode steps at the raw's thresholds. Cell k is
+     * i = 8k: 0x1000 through 128 (0x81 not passed), 0x2000 for 136..184, 0x3000
+     * for 192 and 200 (> 0xBF, <= value), 0xF000 beyond the value. */
+    config_bar_draw(200, 3, -1);
+    for (s32 k = 0; k < 32; k++) {
+        u32 i = (u32)k * 8u;
+        u32 mode = i > 200u ? 0xF000u : i > 0xBFu ? 0x3000u
+                 : i > 0x81u ? 0x2000u : 0x1000u;
+        for (s32 r = 3; r < 6; r++)
+            ch_expect(r, 5 + k, 0x13u, mode, "bar cell");
+    }
+    CHECK_EQ_INT((int)ch_cell(3, 4), 0);
+    CHECK_EQ_INT((int)ch_cell(3, 37), 0);
+    CHECK_EQ_INT((int)ch_cell(6, 5), 0);
+    CHECK_EQ_INT((int)ch_cell(2, 5), 0);
+    CHECK_EQ_INT((int)ch_cell(3, 0x19), ch_cell(3, 0x19));    /* bar cell, not a label */
+    /* No label: nothing outside the bar rows. */
+    CHECK_EQ_INT((int)DSW(DS_00105F34), 0);
+
+    /* Clamping: 999 acts as 0xFF (no cell past the value), -5 as 0 (cell 0 keeps
+     * 0x1000 because 0 > 0 is false). */
+    actors_reset();
+    config_bar_draw(999, 3, -1);
+    ch_expect(3, 5 + 31, 0x13u, 0x3000u, "clamped high: last cell within the value");
+    actors_reset();
+    config_bar_draw(-5, 3, -1);
+    ch_expect(3, 5, 0x13u, 0x1000u, "clamped low: cell 0 at 0x1000");
+    ch_expect(3, 6, 0x13u, 0xF000u, "clamped low: cell 1 past the value");
+
+    /* A label row >= 0 draws the value as a three-wide number at column 0x19:
+     * the same cells as text_number_set with pad 2 and mode 0xC002. */
+    actors_reset();
+    config_bar_draw(100, 3, 8);
+    u32 got[3][2];
+    for (s32 c = 0; c < 3; c++) {
+        got[c][0] = ch_sprite(8, 0x19 + c);
+        got[c][1] = ch_pal(8, 0x19 + c);
+    }
+    actors_reset();
+    text_number_set(0x19, 8, 100, 3, 2u, 0xC002u);
+    for (s32 c = 0; c < 3; c++) {
+        CHECK(ch_cell(8, 0x19 + c) != 0u || ch_sprite(8, 0x19 + c) == 0u,
+              "reference number cell");
+        CHECK_EQ_INT((int)got[c][0], (int)ch_sprite(8, 0x19 + c));
+        CHECK_EQ_INT((int)got[c][1], (int)ch_pal(8, 0x19 + c));
+    }
+    CHECK(got[0][0] != 0u && got[2][0] != 0u, "the label number was drawn");
+    /* A negative label row draws no number. */
+    actors_reset();
+    config_bar_draw(100, 3, -1);
+    CHECK_EQ_INT((int)ch_cell(8, 0x19), 0);
+    /* Label row 0 is a row, not "none". */
+    actors_reset();
+    config_bar_draw(100, 3, 0);
+    CHECK(ch_cell(0, 0x19) != 0u, "label row 0 draws");
+}
+
+static void ch_check_option_row(void)
+{
+    ch_text_setup();
+    memset(mem + CH_REC, 0, 0x40);
+    DSW(CH_REC) = 2u;               /* which == 0 reads +0 */
+    DSW(CH_REC + 0x12u) = 6u;       /* which != 0 reads +0x12 */
+
+    /* which == 0, flag 0: heading 0x17 at (2,4) mode 0x2000; value 2 -> string
+     * 0x22F at column 2 (base 0xA - 8), row 6, mode 0x4000; arrows at 1 and 19. */
+    config_option_row(0u, CH_REC, 0u);
+    const u8 *h = game_string_get(0x17u);
+    ch_expect(4, 2, h[0], 0x2000u, "heading 0x17 first glyph");
+    char s22f[0x100];
+    strcpy(s22f, (const char *)game_string_get(0x22Fu));
+    u32 len = (u32)strlen(s22f);
+    ch_expect(6, 2, (u32)(u8)s22f[0], 0x4000u, "value 2 -> 0x22F");
+    CHECK(ch_cell(6, (s32)(2u + len)) == 0u || (2u + len) == 19u,
+          "value string ends at its length");
+    ch_expect(6, 1, 0x3Cu, 0x4000u, "left arrow at base - 9");
+    ch_expect(6, 19, 0x3Eu, 0x4000u, "right arrow at base + 9");
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), (int)(2u + len));   /* the last 0x2F198 */
+
+    /* flag != 0 moves the value string to mode 0x3000 (arrows stay 0x4000). */
+    actors_reset();
+    config_option_row(0u, CH_REC, 1u);
+    ch_expect(6, 2, (u32)(u8)s22f[0], 0x3000u, "flag set: arrow mode 0x3000");
+    ch_expect(6, 1, 0x3Cu, 0x4000u, "arrows stay 0x4000");
+
+    /* which != 0: heading 0x16 at column 0x16, base 0x1E; value 6 -> 0x22E at
+     * column 0x16, arrows at 0x15 and 0x27. */
+    actors_reset();
+    config_option_row(1u, CH_REC, 0u);
+    h = game_string_get(0x16u);
+    ch_expect(4, 0x16, h[0], 0x2000u, "heading 0x16");
+    ch_expect(6, 0x16, (u32)(u8)game_string_get(0x22Eu)[0], 0x4000u, "value 6 -> 0x22E");
+    ch_expect(6, 0x15, 0x3Cu, 0x4000u, "left arrow at 0x1E - 9");
+    ch_expect(6, 0x27, 0x3Eu, 0x4000u, "right arrow at 0x1E + 9");
+
+    /* The four values and their strings; odd values and 8 draw no value text. */
+    static const struct { u16 v; u32 id; } vals[] = {
+        { 0, 0x22D }, { 2, 0x22F }, { 4, 0x230 }, { 6, 0x22E },
+    };
+    for (u32 i = 0; i < 4; i++) {
+        actors_reset();
+        DSW(CH_REC) = vals[i].v;
+        config_option_row(0u, CH_REC, 0u);
+        char want[0x100];
+        strcpy(want, (const char *)game_string_get(vals[i].id));
+        u32 wl = (u32)strlen(want);
+        for (u32 c = 0; c < wl && 2u + c < 19u; c++)
+            if (want[c] != ' ')
+                ch_expect(6, (s32)(2u + c), (u32)(u8)want[c], 0x4000u, "value text glyph");
+        CHECK(ch_cell(6, 2 + (s32)wl) == 0u || 2u + wl >= 19u, "value text width");
+    }
+    static const u16 skip[] = { 1, 3, 5, 7, 8, 0x102 };
+    for (u32 i = 0; i < sizeof skip / sizeof skip[0]; i++) {
+        actors_reset();
+        DSW(CH_REC) = skip[i];
+        config_option_row(0u, CH_REC, 0u);
+        CHECK_EQ_INT((int)ch_cell(6, 2), 0);
+        ch_expect(6, 1, 0x3Cu, 0x4000u, "arrows drawn for any value");
+    }
+}
+
+static void ch_check_code_row(void)
+{
+    ch_text_setup();
+    u8 saved_rec[0x20];
+    memcpy(saved_rec, mem + CH_CODE, sizeof saved_rec);
+    u8 saved_tab[8];
+    memcpy(saved_tab, mem + 0x00105EC8u, sizeof saved_tab);
+    u8 saved_flags = DSB(DS_00105DD8);
+
+    /* Flags byte zero: eight columns, the first text (+4) below the count
+     * (+2), the second (+0xD) from the count on. */
+    memset(mem + CH_CODE, 0, 0x20);
+    DSB(CH_CODE + 2u) = 3u;
+    memcpy(mem + CH_CODE + 4u, "ABCDEFGH", 8);
+    memcpy(mem + CH_CODE + 0xDu, "12345678", 9);
+    config_code_row(3, 5);
+    for (s32 i = 0; i < 8; i++) {
+        u32 ch = i < 3 ? (u32)"ABCDEFGH"[i] : (u32)"12345678"[i];
+        ch_expect(5, 3 + i, ch, i < 3 ? 0x4000u : 0x2000u, "code column");
+    }
+    CHECK_EQ_INT((int)ch_cell(5, 2), 0);
+    CHECK_EQ_INT((int)ch_cell(5, 11), 0);
+    /* Count 8: every column from the first text; count 0: all from the second. */
+    actors_reset();
+    DSB(CH_CODE + 2u) = 8u;
+    config_code_row(0, 7);
+    ch_expect(7, 7, 'H', 0x4000u, "count 8: last column first text");
+    actors_reset();
+    DSB(CH_CODE + 2u) = 0u;
+    config_code_row(0, 7);
+    ch_expect(7, 0, '1', 0x2000u, "count 0: first column second text");
+    /* The cursor is the last cell's: row 7, column 0 + 7 + 1. */
+    CHECK_EQ_INT((int)DSW(DS_00105F34), 7);
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), 8);
+
+    /* Flags byte non-zero: the second text drawn as one string at mode 0x1000
+     * and, with flag bit 1 clear, the entry filed in table 2 record 0. */
+    actors_reset();
+    memset(mem + 0x00105EC8u, 0xA5, 8);
+    memset(mem + CH_CODE, 0, 0x20);
+    DSB(CH_CODE + 3u) = 1u;
+    memcpy(mem + CH_CODE + 0xDu, "XYZ12345", 9);
+    config_code_row(2, 4);
+    ch_expect(4, 2, 'X', 0x1000u, "the string is drawn at mode 0x1000");
+    ch_expect(4, 9, '5', 0x1000u, "eight columns");
+    CHECK_EQ_INT((int)DSB(CH_CODE + 3u), 3);                /* bit 1 set */
+    u32 rec = hiscore_read(0u, 2u);
+    CHECK_EQ_INT((int)rec, 0x105EFC);
+    CHECK_EQ_INT((int)DSD(DS_00105EFC), 12345);
+    CHECK(strcmp((const char *)(mem + DS_00105F00), "XYZ") == 0,
+          "the 3-character name is filed");
+    /* Bit 1 set: draws, files nothing. */
+    memcpy(mem + CH_CODE + 0xDu, "QRS99999", 9);
+    config_code_row(2, 4);
+    CHECK_EQ_INT((int)DSB(CH_CODE + 3u), 3);
+    (void)hiscore_read(0u, 2u);
+    CHECK_EQ_INT((int)DSD(DS_00105EFC), 12345);
+    /* The digit walk stops at the first character outside '0'..'9' and takes at
+     * most five (columns 3..7). */
+    static const struct { const char *t; int n; } digits[] = {
+        { "ABC12x45", 12 }, { "ABC1:345", 1 }, { "ABC1/345", 1 },
+        { "ABCx1234", 0 }, { "ABC00007", 7 }, { "ABC99999", 99999 },
+        { "ABC 1234", 0 },
+    };
+    for (u32 i = 0; i < sizeof digits / sizeof digits[0]; i++) {
+        actors_reset();
+        DSB(CH_CODE + 3u) = 1u;
+        memcpy(mem + CH_CODE + 0xDu, digits[i].t, 9);
+        config_code_row(0, 2);
+        (void)hiscore_read(0u, 2u);
+        CHECK_EQ_INT((int)DSD(DS_00105EFC), digits[i].n);
+        CHECK(strncmp((const char *)(mem + DS_00105F00), digits[i].t, 3) == 0,
+              "name kept");
+    }
+    /* A high-bit character is negative as a signed byte and stops the walk. */
+    actors_reset();
+    DSB(CH_CODE + 3u) = 1u;
+    memcpy(mem + CH_CODE + 0xDu, "ABC1\xB1" "234", 9);
+    config_code_row(0, 2);
+    (void)hiscore_read(0u, 2u);
+    CHECK_EQ_INT((int)DSD(DS_00105EFC), 1);
+
+    memcpy(mem + CH_CODE, saved_rec, sizeof saved_rec);
+    memcpy(mem + 0x00105EC8u, saved_tab, sizeof saved_tab);
+    DSB(DS_00105DD8) = saved_flags;
+}
+
+static void ch_check_screen_wait(void)
+{
+    ch_text_setup();
+    u32 s_a0 = DSD(DS_000E87A0), s_a4 = DSD(DS_000E87A4);
+    u32 s_tick = DSD(CH_TICK), s_isr = DSD(DS_00101508);
+    u16 s_word = DSW(0x000EF6DEu);
+    u8 s_gate = DSB(0x00104B22u), s_full = DSB(DS_001014FC);
+    u32 s_lat = DSD(CH_KEY_LATCH), s_time = DSD(CH_KEY_TIME), s_kw = DSD(CH_KEY_WORD);
+
+    DSD(DS_000E87A0) = CH_BUF_A;
+    DSD(DS_000E87A4) = CH_BUF_B;
+    memset(mem + CH_BUF_A, 0x11, 64000);
+    memset(mem + CH_BUF_B, 0x22, 64000);
+    DSB(0x00104B22u) = 0u;
+    DSB(DS_001014FC) = 0x01u;
+    DSD(CH_KEY_LATCH) = 0x77u;
+    input_clear();
+
+    /* n == -1: one frame, no waiting. The latch is cleared, the back buffer is
+     * presented, the buffers swap and the full-copy flag byte is cleared. */
+    u32 tick0 = DSD(CH_TICK);
+    config_screen_wait(-1);
+    CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 0);
+    CHECK_EQ_INT((int)DSD(DS_000E87A0), (int)CH_BUF_B);
+    CHECK_EQ_INT((int)DSD(DS_000E87A4), (int)CH_BUF_A);
+    CHECK_EQ_INT((int)DSB(DS_001014FC), 0);
+    CHECK_EQ_INT((int)DSD(CH_TICK), (int)tick0);             /* no wait, no tick */
+    const u8 *shown = gfx_display();
+    CHECK(shown != NULL, "a frame was presented");
+    if (shown != NULL) {
+        CHECK_EQ_INT((int)shown[0], 0x22);
+        CHECK_EQ_INT((int)shown[63999], 0x22);
+    }
+
+    /* n == -2: one pass. One tick elapses (ISR model), and the queue's last key
+     * wins: 'a' then an extended key (ascii 0) latches the scan code. */
+    input_push(0x1E, 'a');
+    input_push(0x48, 0x00);
+    DSD(CH_TICK) = 1000u;
+    DSD(CH_KEY_TIME) = 0u;
+    DSW(0x000EF6DEu) = 0xFFFFu;
+    u32 isr0 = DSD(DS_00101508);
+    config_screen_wait(-2);
+    CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 0x48);
+    CHECK_EQ_INT((int)DSD(CH_KEY_WORD), 0x4800);
+    CHECK_EQ_INT((int)DSD(CH_TICK), 1001);
+    CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 1001);
+    CHECK_EQ_INT((int)DSW(0x000EF6DEu), 0);                  /* wrapped 0xFFFF + 1 */
+    CHECK_EQ_INT((int)DSD(DS_00101508), (int)(isr0 + 1u));
+    CHECK(!input_has_key(), "the queue was drained");
+
+    /* n == 0: two passes (0x2EB6E..0x2EB74 loops once more for ecx = -1), so
+     * two ticks; a key in the queue is stamped at the first. */
+    input_push(0x1E, 'a');
+    DSD(CH_TICK) = 2000u;
+    config_screen_wait(0);
+    CHECK_EQ_INT((int)DSD(CH_TICK), 2002);
+    CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 'a');
+    CHECK_EQ_INT((int)DSD(CH_KEY_WORD), 0x1E61);
+    CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 2001);
+    /* n == 1 is three passes. */
+    DSD(CH_TICK) = 3000u;
+    config_screen_wait(1);
+    CHECK_EQ_INT((int)DSD(CH_TICK), 3003);
+    CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 0);                 /* cleared at entry */
+
+    DSD(DS_000E87A0) = s_a0;
+    DSD(DS_000E87A4) = s_a4;
+    DSD(CH_TICK) = s_tick;
+    DSD(DS_00101508) = s_isr;
+    DSW(0x000EF6DEu) = s_word;
+    DSB(0x00104B22u) = s_gate;
+    DSB(DS_001014FC) = s_full;
+    DSD(CH_KEY_LATCH) = s_lat;
+    DSD(CH_KEY_TIME) = s_time;
+    DSD(CH_KEY_WORD) = s_kw;
+}
+
+int test_cfg_helpers(void)
+{
+    int before = g_failures;
+    /* Once only: every actors_init() registers its handlers again and the
+     * registration table has a fixed limit. */
+    CHECK(actors_init() == 1, "actors_init validates the pools");
+    ch_check_key_flags();
+    ch_text_setup();
+    ch_check_key_name();
+    ch_check_bar();
+    ch_check_option_row();
+    ch_check_code_row();
+    ch_check_screen_wait();
     return g_failures - before;
 }
