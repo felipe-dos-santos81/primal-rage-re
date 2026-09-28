@@ -156,15 +156,13 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
   verified, and every named gap). Append a paragraph there, not to `README.md`,
   which stays a short pointer.
 - **Keep `README.md`'s title percentage current.** It reads
-  `— Reverse Engineering NN%`, computed as (unique ported-function header
-  comments in `port/src/**/*.c`, matching `^/\* 0x[0-9A-Fa-f]+`) ÷ (functions
-  in `port/src/symbols.h`) × 100, rounded to the nearest integer:
-  ```bash
-  N=$(grep -rhoE '^/\* 0x[0-9A-Fa-f]+' port/src/game/*.c port/src/platform/*.c port/src/platform/audio/*.c | sort -u | wc -l)
-  D=$(grep -c '^#define FN_' port/src/symbols.h)
-  ```
-  Recompute and update the README title (and its "N% of the original's D real
-  functions" line) after any merge that adds or removes a ported function.
+  `— Reverse Engineering NN%`. Run `python3 tools/port_progress.py`: it prints
+  `ported total percent`, counting only real functions (`symbols.h` `FN_`
+  addresses) that have a `/* 0xADDR` header or an `fn_register` in `port/src`.
+  Update the README title and its "N% of the original's D real functions"
+  line after any merge that adds or removes a ported function.
+  `--unported` lists what is left (addr, size, callers, callees), largest
+  first; the `runtime` rows (>= 0x5D000, WATCOM libc/DOS4GW) are not targets.
 - Multi-task work runs under subagent-driven development with a git-ignored
   ledger at `.superpowers/sdd/<plan-basename>/progress.md`. `make clean` keeps
   `.superpowers/` deliberately — it is the recovery map, not build output.
