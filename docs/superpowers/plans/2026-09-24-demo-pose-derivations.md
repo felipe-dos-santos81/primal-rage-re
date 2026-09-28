@@ -17601,9 +17601,283 @@ non-multiple-of-3 bounce (`v = -0x82`) closed the second.
 
 ### 48-D.7 Reachability and verification
 
-No ported path reaches mode `0x13`. Its entries are `0x28788` (mode 9,
-unported) and `0x41578`, whose callers `0x416D4` and `0x41C28` are
+At the time this record was written, no ported path reached mode `0x13`
+(its entries were `0x28788`, mode 9, and `0x41578`, whose callers `0x416D4`
+and `0x41C28` were unported). `0x28788` is now ported (record §48-Y), so
+mode 9's results state reaches mode `0x13` through the same return-mode/
+darken mechanism this record describes; `0x416D4`/`0x41C28` are still
 unported. `PR_ORACLE_REQUIRED=1 run_tests` is green three times. `make
 verify` is unchanged: front-end 517/801/3/2, demo-fight fully explained at
 N = 1886, attract2 0 unexplained at N = 3617, and `symbols.h` regenerates
 byte-identically.
+
+## 48-Y. Mode 9's frame handler `0x28788` and its callees `0x4A708`, `0x286BC`, `0x4660C` (named-gap batch 20, branch `gap20-28788`)
+
+(The section letter is Y. On `main` at `3d38220` and in `git log --all`, the
+letters A–E, J–X are taken; Y is the first free one and nothing else in
+flight names it.)
+
+**Result in one line.** `0x28788`, `game_frame`'s case 9 (the table entry
+`0x2533F call 0x28788; jmp 0x2540F`), is ported as `game_mode_09_step`
+(`flow.c`) and wired. It has no separate top-level jump table (unlike mode
+`0x13`'s `0x424D0`): it is a slimmer, *unconditional* sibling of the fight
+frame `0x26254`, followed by a countdown gate and a four-way dispatch on the
+match result once that gate opens. Three of its callees were unported:
+`0x4A708` (ported as `fight_effects_hold_all`, `fight.c`), `0x286BC` (ported
+as the static `flow_match_streak_update`, `flow.c`) and `0x286BC`'s own
+callee `0x4660C` (ported as `fighter_4660c`, `fighter.c`). Four call sites
+inside `0x28788` target `0x32BAC`, proven to be a bare `ret` and therefore a
+no-op; the port omits them.
+
+### 48-Y.1 Sources
+
+The raw comes from the Ghidra HTTP bridge at `127.0.0.1:8089`
+(`disassemble_function`, `read_memory`, `get_xrefs_to`,
+`get_function_by_address`, with fixups applied); the Ghidra MCP tool does
+not connect this session. `port/decomp/prage.calls.csv` and the existing
+port headers (`game_mode_04_step`/`0x26254`, `game_mode_13_step`/`0x424E8`,
+`fight_4ac80`/`0x4AC80`, `fighter_46534`/`0x46534`) supplied the callee
+names and signatures the raw's own disassembly does not spell out.
+
+### 48-Y.2 `0x28788` (277 instructions, `0x28788`..`0x28BD2`)
+
+EBX/ECX/EDX/ESI/EDI/EBP are pushed at entry and popped at every return.
+
+- **The preamble (`0x28788`..`0x2884C`).** `0x3C5CC` (`fight_slot_clear`);
+  `0x16D58` per side with EAX = side, DL = `DS_0010782A`/`DS_001078BE`
+  (`camera_screen_base`) — the dead-looking `ECX`/`EBX` loads at these two
+  call sites (`0x100B62`, `0x100B00`) are not read by `0x16D58` (Ghidra's
+  own signature is two words); they are the exact register values the two
+  `0x17FA0` calls need next, so the compiler is reusing them, not wasting
+  them. `DS_001077E8 = DS_001077E4`, `DS_0010787C = DS_00107878` (the
+  position latches). Then, **unconditionally** — `0x26254` gates this same
+  block on `DS_001078FA == 2` — `0x17FA0` per side (`camera_project`, the
+  same six-argument call `0x26254` makes), `0x17580` (`camera_decay`),
+  `0x1958C` (`fighter_pass_a`). `0x28815`..`0x28827`: `0x3CB68`
+  (`fight_slot_pass`) runs only when *neither* side's `+0x41` byte
+  (`DS_001077F1`/`DS_00107885`) has bit 1 set. Then always `0x35658` per
+  side (`fight_hud_pass`), `0x19068` with EAX = 1 (`fighter_pass_b(1)` —
+  `0x26254`'s own gated block passes 0), `0x49C78` (`fight_effects_pass`)
+  and, of `0x1282C`/`0x12DA8`'s pair (`camera_scene_step`), only `0x12DA8`
+  (`camera_y_commit`; `0x1282C`/`camera_dust_spawn` is not called here).
+- **The countdown (`0x28851`..`0x2889E`).** The word `DS_00104AF8`: 0 skips
+  straight to the OR below; else it decrements, and reaching 0 *this frame*
+  sets `DS_001078FE = DS_001078FC = 1` (CL), ORs `0x10` into both
+  `DS_001077F1` and `DS_00107885`, and sets `DS_000F0AFE = 4` (BH). Either
+  way `DS_00104AEC |= 2`.
+- **The results-state gate (`0x288A5`..`0x288BC`).** `DS_000F0AFE != 4` or
+  `DS_001078FC == 0` returns (to the pop/ret at `0x28BCC`) — so the
+  countdown reaching 0 *this same frame* can open the gate the same call
+  runs the results state, since `DS_000F0AFE` and `DS_001078FC` are both
+  set above before this test.
+- **The results state (`0x288C2`..end), once the gate is open.** `0x4A708`
+  (`fight_effects_hold_all`), `0x28130` (`flow_match_result_text`, already
+  ported), `0x286BC` (`flow_match_streak_update`). Then `DS_00104AFE =
+  0xF0`, `DS_001088EE = 0x3C`; with `DS_00108173 != 0`, `DS_00104AD4 = 2`
+  and both `DS_00107813`/`DS_001078A7` think-bytes = 0; `DS_00104B1B = 0`.
+  With `DS_00104B1D == 0`: `DS_00104ABC = (DS_00104B1F == 3 ? 1 : 0) + 1`,
+  `config_play_time_snap(DS_00104ABC, 0)` (`0x32B00`, record §48-Q, already
+  ported, `arm = 0` here — not `arm = 1` as an earlier lead into this task
+  guessed; the live disassembly's `xor edx,edx` at `0x28930` settles it).
+  Then a four-way dispatch on `EBX = DS_00104AD4`:
+  - **`EBX == 2` (a draw, `0x2893C`..`0x289E4`).** `DS_00104B17 = 2` (BL);
+    `DS_00107813 == 1` forces `DS_00104AD4 = 0` (EBP), `DS_001078A7 == 1`
+    forces it to 1 (the second write wins if both fire). Then the *common
+    close* (below), return mode `0x13`.
+  - **`EBX == 0/1` and the winner's `DS_00107813` think-byte `== 1`
+    (`0x289E5`..`0x28B0A`).** `winner = EBX`, `loser = winner ^ 1`. The
+    loser's `DS_00107830` streak byte increments (`0x28A19`/`0x28A21`).
+    Below 3, or the loser's `DS_00108104` stat at or above 6
+    (`0x28A2E`..`0x28A3E`): `DS_00104B17 = 2` (`0x28A96`). Otherwise:
+    `DS_00104B17 = 1`; `DS_00108106[stage] = (winner << 6) | 0x80 |
+    DS_0010782A[winner]` (`0x28A54`..`0x28A6F`); `DS_00107830[loser]` is
+    overwritten with that same byte XOR `loser` (`0x28A85`/`0x28A8D`, the
+    same address the increment above just wrote). Then the common close,
+    return mode `0x13`.
+  - **`EBX == 0/1` and the winner's think-byte `!= 1` (`0x28B0B`
+    onward).** `0x28B0D`..`0x28B25`: when the *loser's* `DS_00107813`
+    think-byte is also 1, `(val = DS_0010782A[loser], arm = 0)` into
+    `0x32BAC` — a fourth dead call (below), unconditionally reached
+    regardless of what follows. Then on the stage word `DS_00104AFC == 7`
+    (`0x28B2C`..`0x28B35`): `0x4246C` (`fight_stage_marks_clear`, already
+    ported), `DS_00104B17 = 0`, `DS_00104B25 = 0` (both AL, `0x28B4D`/
+    `0x28B52`), then the common close, return mode `0x13`. Otherwise (stage
+    `!= 7`, `0x28BAE`): only `DS_00104B17 = 1` (CH), mode `DS_00104B00 =
+    0x17` (AX), hook `DS_00104AE4 = 0x4142C` (`fight_hook_4142c`, **stored,
+    not called** — matches this task's lead) — **no** return-mode store and
+    **no** `config_play_time_close`; the function returns straight to the
+    pop/ret at `0x28BCC`.
+  - **The common close (three of the four arms: `0x28978`, `0x28A9D`,
+    `0x28B3C`).** `DS_00104B25 = 0`; hook `DS_00104AE4 = 0x29B74`
+    (`frontend_darken_all`, already ported and registered); mode
+    `DS_00104B00 = 0x17`; return mode `DS_00104AFA = 0x13`; then
+    `config_play_time_close(DS_00104ABC, DS_00104B19)` (`0x32A3C`, record
+    §42-E, already ported) — the exact call `flow.c`'s existing
+    `0x41578`/`flow_1082c8_init`-adjacent code already makes at its own
+    site (`config_play_time_close(DSD(DS_00104ABC), DSB(DS_00104B19))`,
+    `flow.c:363`), confirming the argument mapping independently.
+
+### 48-Y.3 The four dead calls to `0x32BAC` (`0x289D9`, `0x28AFF`, `0x28B25`, `0x28BA2`)
+
+`read_memory 0x32BAC 64` gives `c3 8d 40 00 53 89 d3 ...`: byte 0 is `0xC3`
+(`ret`). `get_function_by_address 0x32BAC` agrees from the Ghidra side:
+`FUN_00032BAC`, `body_start == body_end == 0x32BAC` — Ghidra itself sees a
+one-byte function. The bytes around it explain why: `FUN_00032B94`
+(`get_function_by_address 0x32B94`, `body_end 0x32BAB`) is a real function
+— `push edx; test al,1; jz +0xf; mov edx,1; mov eax,0xe; call 0x2DAE4
+(the deferred audit no-op, spec §7); pop edx; ret` — and its own `ret` is
+byte-for-byte at `0x32BAC`. The next function (`mov ebx,edx; cmp eax,6;
+...`, matching `FUN_00032BAC`'s signature guess) actually starts three
+bytes later at `0x32BB0`, after a `lea eax,[eax+0]` pad. So `0x32BAC` is
+not a stray label — it is the tail instruction of `0x32B94`, and every
+`CALL 0x32BAC` in the image skips `0x32B94`'s entire body (the `push edx`,
+the `test al,1` gate, the `call 0x2DAE4`, the `pop edx`) and lands directly
+on the `ret`. A `CALL` immediately followed by `RET` at the target pushes
+the return address and pops the same value straight back off: no register,
+flag or memory state differs before and after. `get_xrefs_to 0x32BAC` lists
+**eight** call sites across the whole image: the four inside `0x28788`
+(`0x289D9`, `0x28AFF`, `0x28B25`, `0x28BA2`) plus `0x3CFCA` (in
+`FUN_0003cf38`), `0x3D082` (in `FUN_0003d004`), `0x41733` (in
+`FUN_000416d4`) and one unattributed at `0x28680`. Eight independent call
+sites landing on the same tail instruction is a systematic feature of this
+build (almost certainly `0x32B94` inlined-then-truncated at those call
+sites by the original compiler/linker, or a debug/audit path that got
+disabled after the callers were written), not a one-off in `0x28788`. The
+three tail sites (`0x289D9`/`0x28AFF`/`0x28BA2`) each compute `(val, arm =
+1)` from `byte[0x10782A + DS_00104AD4 * 0x94]`; the fourth (`0x28B25`, `arm
+= 0`) from `byte[0x10782A + loser * 0x94]`. All four computations are
+register-only and never read afterward (each is immediately followed by
+the pop/ret sequence, or by unrelated code that does not touch EAX/EDX), so
+the port omits them entirely: `mem[]` cannot show a difference either way.
+
+### 48-Y.4 `0x4A708` (`fight_effects_hold_all`, 38 instructions)
+
+Walks the effects list `DS_0010884C` the same way `fight_effects_pass`'s
+own walk does (`rec = entry+8`, `index = (u16)((u8)(rec+0x48) - 0x20)`).
+For every entry whose type (`entry+0x1E`) is not 6: zeroes `rec`'s
+`+0x38`/`+0x34`/`+0x36` words, then holds it — `fight_4B3F0(entry, index,
+1)` when `DS_00104B16 == entry+0x21`, else `fight_4B430(entry, index, 1)`.
+Both callees already document this exact caller and register convention
+(`fight.c`'s own headers on `fight_4b3f0`/`fight_4b430` name `FUN_0004a708`
+by address, written before this task ported it under that name — a
+same-session cross-check that the register mapping (entry = EAX, index =
+EDX, flag = EBX) is right). Only caller: `0x28788` (`0x288C2`). `0x28468`
+(mode 8) has a call of the same shape (`0x28594`) and is still unported.
+
+### 48-Y.5 `0x286BC` (`flow_match_streak_update`, 64 instructions) and `0x4660C` (`fighter_4660c`, 33 instructions)
+
+`0x286BC`'s only caller is `0x28788` (`0x288CC`). `DS_00104AD4 == 2` (a
+draw): `DS_00108106[stage] = 0`, return. Otherwise `winner = DS_00104AD4`,
+`loser = winner ^ 1`. `DS_00107813[winner] == 1`: `DS_00104B11 += 1`
+(post-increment, read by the callee below), `fighter_4660c(byte
+DS_00108104[loser])` (`0x28717`), `DS_00108106[stage] = 0`, return.
+Otherwise: `DS_00104B11 = 0`, `DS_00107830[winner] = 0` (the *winner's* own
+streak byte, reset — a different address than `0x28788`'s own tail, which
+touches the *loser's*); `DS_00108106[stage] = (winner << 6) | 0x80 |
+DS_0010782A[winner]`; `DS_00107830[loser] = that byte XOR loser`; when the
+*loser's* `DS_00107813` think-byte is also 1, `fighter_46534(loser, 1)`
+(already ported, `fighter.c`).
+
+`0x4660C(v)`: `b = DS_0010452C` (the difficulty index), `t =` the
+zero-extended byte `0xC9388[v + b*7]` (`lea eax,[ebx*8]; sub eax,ebx` = 7b,
+both branches). `DS_00104B11` (read fresh, i.e. *after* the caller's
+increment) at or below 1: `DS_001082D0 = t`. Above 1: `DS_001082D0 = t -
+(DS_00104B11 - 1)`, both paths then clamped up to 0 (`test edx,edx; jge`).
+EBX/ECX/EDX are pushed and popped. Only caller: `0x28717` (`0x286BC`).
+
+### 48-Y.6 The port
+
+- `flow.c`, after `game_mode_13_step` (before the `§46-F` section): the
+  static `flow_results_darken_close` (the three arms' shared tail),
+  the static `flow_match_streak_update` (`0x286BC`) and `game_mode_09_step`
+  (`0x28788`). Two local `#define`s with no `symbols.h` name:
+  `FN_00029B74` (`frontend_darken_all`) and `FN_0004142C`
+  (`fight_hook_4142c`) — the same pattern `flow.c` already uses for every
+  other `DS_00104AE4` store (`FN_00028D68`, `FN_000259CC`, etc.).
+- `fight.c`, after `fight_effects_pass`: `fight_effects_hold_all`
+  (`0x4A708`), exposed in `fight.h`. It calls the existing static
+  `fight_4b3f0`/`fight_4b430` directly (same translation unit).
+- `fighter.c`, after `fighter_46534`: `fighter_4660c` (`0x4660C`), exposed
+  in `fighter.h` (needed by `flow.c`'s `flow_match_streak_update`).
+- `game_frame`'s switch (`flow.c`): `case 0x09u: game_mode_09_step(); break;`
+  added next to `case 0x13u`, matching that case's own wiring style; `9` is
+  removed from the generic named-gap case list and its comment.
+- `port/src/symbols.h` is unaffected (`make gen-symbols`/`make verify`'s
+  idempotence check covers this; none of the three new addresses has a
+  `symbols.h` entry, matching the existing local-`#define` convention for
+  every other address this deep in the front-end chain).
+
+### 48-Y.7 Tests and mutations
+
+New `check_mode_09` in `test_fight.c` (registered in `test_fight()`'s own
+call list), three parts:
+- `check_fight_effects_hold_all`, a direct unit of `fight_effects_hold_all`
+  using `mz_seed(8, 0x40)`'s single-entry effects-list fixture (the same
+  fixture other `fight.c` per-entry-walk tests use): both `DS_00104B16`
+  branches (`fight_4B3F0`'s stream `MZ_ST(8)` vs `fight_4B430`'s
+  `MZ_ST(9)`, discriminated by which stream lands in the actor's `+8`
+  field) and the type-6 skip (neither the zeroing nor the hold runs).
+- `check_mode_09_a`, the preamble/gates: the `fight_slot_pass` conditional
+  (proved through its own unconditional tail stores, `DS_00107ED8 = 0x20`/
+  `DS_00107EDC = 2`, present or absent), the countdown's decrement and
+  zero-arm, and the results-state gate's two independent conditions
+  (`DS_000F0AFE`, `DS_001078FC`), including the same-frame case where the
+  countdown reaching 0 opens the gate in that same call.
+- `check_mode_09_b`, the results state: the countdown rearm, the
+  `DS_00108173` draw force, the `DS_00104B1D` gate on
+  `config_play_time_snap` (computed from the live `DS_0010746C`/
+  `DS_00107478` state, not a fitted constant — `DS_00107478` **is**
+  `DS_0010746C[3]`, per `config_play_time_snap`'s own header, which the
+  first sub-test's isolation from `config_play_time_close`'s own
+  same-address zero-out depends on), all four dispatch arms (the draw, the
+  streak sub-case that crosses the threshold, the one that does not, the
+  stage-7 arm and the stage-`!= 7` fallback), `flow_match_streak_update`'s
+  own effect through `fighter_4660c` (including a dedicated case that pins
+  `DS_00104B11` to 254 so the post-increment 255 forces `t - 254` negative
+  for every live table byte below 254, exercising the clamp), and the two
+  hook installs (`frontend_darken_all` vs `fight_hook_4142c`, checked
+  through `fn_origin`).
+
+The test fixture is `tf_demo_fixture` (the existing arena-frame minimal
+live fixture), not `q_mode_seed`/`mz_seed`: `0x28788`'s preamble calls
+`camera_project` and `fight_slot_pass` *unconditionally* (`§48-Y.2`), and
+`q_mode_seed` deliberately arms `DS_001078FA` and slot `+0x63` to values
+that let `0x26254`'s tests *skip* exactly that block. Two fixture gaps this
+task found and fixed (both real, not test-only quirks — they are exactly
+the per-side slot fields `hit_frame_desc` reads, which `0x28788` also
+happens to read/write for other reasons): `DS_00101514` (the DPMI selector
+base `hit_frame_desc` falls back to when slot `+0x63` — the same address
+as this function's own `DS_00107813`/`DS_001078A7` think-bytes — is 0) must
+point at real, zeroed scratch, and slot `+0x7A` (`DS_0010782A`/
+`DS_001078BE`, this function's own per-side character byte) must stay a
+valid 0..9 character so `hit_frame_desc`'s table row does not walk off
+`HIT_TABLE_CPU`/`HIT_TABLE_PLAYER`. Without either, `fight_slot_pass` (via
+`hit_slot_step`/`hit_connect`) reads a garbage stream pointer and crashes;
+`m09_seed` now seeds both.
+
+**Mutations** (`/tmp/mutate.py`, git-ignored, not checked in): 8
+single-site edits, each rebuilt and run against the whole of `run_tests`:
+the `fight_slot_pass` gate's `&&` to `||`; the countdown's `== 0` to
+`== 1`; the results-gate's `!= 4` to `!= 5`; the draw dispatch's `== 2` to
+`== 3`; the streak threshold's `>= 3` to `>= 4`; arm D's hook swapped for
+`frontend_darken_all`; `fight_effects_hold_all`'s type skip changed to
+`!= 7`; and `fighter_4660c`'s clamp dropped. All 8 fail the suite (the
+clamp mutation needed the dedicated `DS_00104B11 = 254` case above before
+it did — the ordinary streak-1 case never drives the subtraction negative).
+
+### 48-Y.8 Measured and remaining gaps
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 5 consecutive
+runs, 0 compiler warnings. `make verify`: front-end 517/801/3/2, demo-fight
+fully explained at N = 1886, attract2 0 unexplained at N = 3617,
+`symbols.h` regenerates byte-identically — none of these move, because
+mode 9 is reachable only through mode 6/0xC's join, the character screen's
+coin/start chain and the match-end stores of `0x27DC8` (record §48-K), all
+still unported; the oracle's no-input demo/attract path never leaves mode
+3 (record §47-B.2).
+
+Remaining named gaps this task leaves: mode 8's `0x28468` (the other
+`0x4A708`-shaped caller, `game_frame`'s case 8); mode `0xA`'s `0x28BD4`;
+the match-end stores that would drive `DS_00104AD4`/mode 9 for real
+(`0x27DC8`, record §48-K); and `0x2C3FC`'s voices are not implicated here
+(`0x28788` calls none).
