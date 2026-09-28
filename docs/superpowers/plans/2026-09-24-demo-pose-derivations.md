@@ -23702,3 +23702,40 @@ write-back of `DS_00101514` in `0x2EBF0`'s no-key path (it stores what it read).
 * `0x2F9CC`'s `DS_0010740C` store, and whatever fills `DS_00107450` and
   `0xBCD5C`.
 * The `0x2C3FC(0x100)` voices, the `0x62003` error exit and the `0x65431` longjmps.
+
+### §50-B Dedupe of 0x2EB80..0x305FC (correction to §49-X.4/X.6 and §49-Y)
+
+Two agents ported `0x2EB80`, `0x2EBF0`, `0x2EDE0`, `0x2EEC8` and `0x305FC`
+independently (`menu.c` in §49-X, `config.c` in §49-Y). Both bodies were
+compared statement by statement with the disassembly (Ghidra bridge
+`/disassemble_function`). Result: **no behavioural difference** on either side.
+
+* `0x2EB80`: both return the latch when non-zero, else test the unsigned
+  `0x500BB - DS_00105F2C > 0x4B0` (`0x2EB9A..0x2EB9F` `jbe`), store
+  `DS_00107414 = 0` and return 0 in place of the `0x65431` longjmp.
+* `0x2EBF0`: both agree on the record load and store-back (`0x2EBF5`, `0x2EDD1`),
+  the mask gate (`0x2EC19..0x2EC2B`; the `0xF000F000` test is a subset), the
+  four arms, the right-arrow `0x2ED97` zeroing of the code only when neither
+  key matches, and the Enter (clears the code) then Esc order.
+* `0x2EDE0` / `0x2EEC8`: `DL` is the raw flag byte (`cmp byte [esp],0`). `menu.c`
+  called it `keys` and masked `& 0xFF`; `config.c` takes a `u8`; identical.
+  Order in `0x2EEC8`: key flags, latch clear, stamp. Both match.
+* `0x305FC`: same draws, the same signed `jl` digit walk to index 7 and the same
+  bit-1 filing. The only difference is the PORT scratch for the stack record:
+  `menu.c` `0x3FFFE00`, `config.c` `0x3900000`. The raw has no such address; the
+  survivor keeps `0x3900000` (`CFG_HISCORE_TMP`), which the 8 bytes it uses do
+  not collide with anything in `src/` (the palette descriptors near `0x396E000`
+  start well above). This corrects the `0x3FFFE00` statement in §49-X.6.
+
+Kept: the `config.c` implementations (`config_key_latched`, `config_key_flags`,
+`config_input_poll`, `config_input_poll_clear`, `config_code_row`); `menu.c` calls
+them. `menu_fatal_error` (`0x2EA68`) stays in `menu.c`. Tests: `check_menu_input`
+and `check_menu_widget` were removed from `test_platform.c`; the assertions that
+were not already in `test_cfg_helpers` (mask `0xC300C000`, a player binding of
+`0x49`, the record pointer stored back after activity, the pad-level polls with
+the flag clear/set, the one-shot latch, the stamp with the flag set/clear, the
+`0xDEADBEEF` sentinel before filing) were ported there. Dropped as duplicates of
+existing assertions: the six single-key decodes at mask 0, the `0x4B0`/`0x4B1`
+timeout, the per-player enable words and mask gates, the widget's idle/limit
+forms and the bit-1-set refile guard, and the palette-handle checks of the widget
+(the surviving test checks the mode through `ch_expect`).

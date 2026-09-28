@@ -2583,105 +2583,7 @@ static void mt_menu_reset(void)
     DSD(DS_00105F30) = 0;
 }
 
-/* 0x2EB80/0x2EBF0/0x2EDE0/0x2EEC8/0x2FE40 (record §49-X.2..5). */
-static void check_menu_input(void)
-{
-    const u32 s_key = DSD(DS_00105F30), s_stamp = DSD(DS_00105F2C),
-              s_ticks = DSD(DS_00101500), s_lay = DSD(DS_00101514),
-              s_lvl = DSD(DS_000E1C34), s_lat = DSD(DS_000E1C38);
-    DSD(DS_00101514) = MT_LAYOUT;
-    mem_fill(MT_LAYOUT, 0, 0x300u);
-    DSW(MT_LAYOUT + 0x2D4u) = 1;                    /* both players' bindings enabled */
-    DSW(MT_LAYOUT + 0x2D6u) = 1;
-    DSB(MT_LAYOUT + 0x2DEu) = 0x48; DSB(MT_LAYOUT + 0x2E6u) = 0x11;   /* up */
-    DSB(MT_LAYOUT + 0x2DFu) = 0x50; DSB(MT_LAYOUT + 0x2E7u) = 0x12;   /* down */
-    DSB(MT_LAYOUT + 0x2E0u) = 0x4B; DSB(MT_LAYOUT + 0x2E8u) = 0x13;   /* left */
-    DSB(MT_LAYOUT + 0x2E1u) = 0x4D; DSB(MT_LAYOUT + 0x2E9u) = 0x14;   /* right */
-
-    /* 0x2EB80: the pending key wins; else 0 through 0x4B0 idle ticks; past that
-     * it clears DS_00107414 (its longjmp is the PORT note). */
-    DSD(DS_00105F30) = 0x4B;
-    CHECK_EQ_INT((int)menu_key_or_timeout(), 0x4B);
-    DSD(DS_00105F30) = 0;
-    DSD(DS_00105F2C) = 100;
-    DSD(DS_00101500) = 100 + 0x4B0;
-    DSB(DS_00107414) = 1;
-    CHECK_EQ_INT((int)menu_key_or_timeout(), 0);
-    CHECK_EQ_INT((int)DSB(DS_00107414), 1);         /* 0x4B0 is not past 0x4B0 (`jbe`) */
-    DSD(DS_00101500) = 100 + 0x4B1;
-    CHECK_EQ_INT((int)menu_key_or_timeout(), 0);
-    CHECK_EQ_INT((int)DSB(DS_00107414), 0);         /* 0x4B1 is */
-
-    /* 0x2EBF0: the four arrows, Enter and Esc. */
-    DSD(DS_00101500) = 100;
-    DSD(DS_00105F30) = 0;
-    CHECK_EQ_INT((int)menu_key_decode(0), 0);                    /* no key */
-    DSD(DS_00105F30) = 0x48; CHECK_EQ_INT((int)menu_key_decode(0), (int)0x80008000u);
-    DSD(DS_00105F30) = 0x50; CHECK_EQ_INT((int)menu_key_decode(0), 0x40004000);
-    DSD(DS_00105F30) = 0x4B; CHECK_EQ_INT((int)menu_key_decode(0), 0x20002000);
-    DSD(DS_00105F30) = 0x4D; CHECK_EQ_INT((int)menu_key_decode(0), 0x10001000);
-    DSD(DS_00105F30) = 0x0D; CHECK_EQ_INT((int)menu_key_decode(0), 0x1000000);
-    DSD(DS_00105F30) = 0x1B; CHECK_EQ_INT((int)menu_key_decode(0), 0x2000000);
-    DSD(DS_00105F30) = 0x50; CHECK_EQ_INT((int)menu_key_decode(0xC300C000u), 0x40004000);
-    /* Player 2's bindings decode too; an unbound scan code inside 0x48..0x50
-     * (0x49) decodes to nothing. */
-    DSB(MT_LAYOUT + 0x2E6u) = 0x49;
-    DSD(DS_00105F30) = 0x49; CHECK_EQ_INT((int)menu_key_decode(0), 0);
-    DSB(MT_LAYOUT + 0x2E7u) = 0x50; DSB(MT_LAYOUT + 0x2DFu) = 0x33;
-    DSD(DS_00105F30) = 0x50; CHECK_EQ_INT((int)menu_key_decode(0), 0x40004000);
-    DSB(MT_LAYOUT + 0x2DFu) = 0x50;
-    /* A matching binding whose enable word is 0 is skipped, per player. */
-    DSW(MT_LAYOUT + 0x2D4u) = 0;
-    DSD(DS_00105F30) = 0x48; CHECK_EQ_INT((int)menu_key_decode(0), 0);
-    DSD(DS_00105F30) = 0x4D; CHECK_EQ_INT((int)menu_key_decode(0), 0);
-    DSW(MT_LAYOUT + 0x2D4u) = 1;
-    DSW(MT_LAYOUT + 0x2D6u) = 0;
-    DSB(MT_LAYOUT + 0x2E6u) = 0x48;                  /* both players on the same key */
-    DSD(DS_00105F30) = 0x48; CHECK_EQ_INT((int)menu_key_decode(0), 0);   /* p2's word is 0 */
-    DSW(MT_LAYOUT + 0x2D6u) = 1;
-    CHECK_EQ_INT((int)menu_key_decode(0), (int)0x80008000u);   /* both enabled: decoded */
-    /* A mask with no 0xF300F000 bit skips the arrows (0x2EC25); Enter needs its
-     * own bit or mask 0, Esc likewise. */
-    DSD(DS_00105F30) = 0x48; CHECK_EQ_INT((int)menu_key_decode(0x100u), 0);
-    DSD(DS_00105F30) = 0x0D; CHECK_EQ_INT((int)menu_key_decode(0x100u), 0);
-    DSD(DS_00105F30) = 0x0D; CHECK_EQ_INT((int)menu_key_decode(0x2000000u), 0);
-    DSD(DS_00105F30) = 0x0D; CHECK_EQ_INT((int)menu_key_decode(0x1000000u), 0x1000000);
-    DSD(DS_00105F30) = 0x1B; CHECK_EQ_INT((int)menu_key_decode(0x1000000u), 0);
-    DSD(DS_00105F30) = 0x1B; CHECK_EQ_INT((int)menu_key_decode(0x2000000u), 0x2000000);
-    CHECK_EQ_INT((int)DSD(DS_00101514), (int)MT_LAYOUT);   /* stored back unchanged */
-
-    /* 0x2EDE0: the pad bits, plus the keyboard's when `keys` is nonzero; a
-     * nonzero result stamps the idle clock. */
-    DSD(DS_00101500) = 700;
-    DSD(DS_00105F2C) = 5;
-    DSD(DS_00105F30) = 0x50;
-    mt_press(0);
-    CHECK_EQ_INT((int)menu_input_poll(0xC300C000u, 0u), 0);        /* keyboard not read */
-    CHECK_EQ_INT((int)DSD(DS_00105F2C), 5);                        /* nothing: no stamp */
-    CHECK_EQ_INT((int)menu_input_poll(0xC300C000u, 1u), 0x40004000);
-    CHECK_EQ_INT((int)DSD(DS_00105F2C), 700);
-    CHECK_EQ_INT((int)DSD(DS_00105F30), 0x50);                     /* 0x2EDE0 leaves the key */
-    mt_press(0x80008000u);
-    DSD(DS_00105F30) = 0;
-    CHECK_EQ_INT((int)menu_input_poll(0xC300C000u, 0u), (int)0x80008000u);
-    CHECK_EQ_INT((int)menu_input_poll(0xC300C000u, 0u), 0);        /* latched: one shot */
-    /* 0x2EEC8 clears the key after reading it. */
-    DSD(DS_00101500) = 900;
-    DSD(DS_00105F30) = 0x50;
-    mt_press(0);
-    DSD(DS_00105F2C) = 5;
-    CHECK_EQ_INT((int)menu_input_poll_clear(0xC300C000u, 1u), 0x40004000);
-    CHECK_EQ_INT((int)DSD(DS_00105F30), 0);
-    CHECK_EQ_INT((int)DSD(DS_00105F2C), 900);
-    DSD(DS_00105F2C) = 5;
-    CHECK_EQ_INT((int)menu_input_poll_clear(0xC300C000u, 1u), 0);
-    CHECK_EQ_INT((int)DSD(DS_00105F2C), 5);
-
-    DSD(DS_00105F30) = s_key; DSD(DS_00105F2C) = s_stamp; DSD(DS_00101500) = s_ticks;
-    DSD(DS_00101514) = s_lay; DSD(DS_000E1C34) = s_lvl; DSD(DS_000E1C38) = s_lat;
-}
-
-/* 0x2FE40, 0x2F940, 0x2FE84, 0x305FC (record §49-X.3..6). */
+/* 0x2FE40, 0x2F940, 0x2FE84 (record §49-X.3..6). */
 static void check_menu_draw(void)
 {
     const u32 s_struct = DSD(DS_0010740C);
@@ -2800,76 +2702,6 @@ static void check_menu_draw(void)
     actors_reset();
     DSD(DS_0010740C) = s_struct;
     memcpy(mem + 0xBCD5Cu, s_dbg, 4u);
-}
-
-/* 0x305FC (record §49-X.6). */
-static void check_menu_widget(void)
-{
-    static u8 sreg[0x1C0];
-    memcpy(sreg, mem + DS_00105D88, sizeof sreg);
-    mem_fill(DS_00107450, 0, 0x20u);
-    memcpy(mem + DS_00107454, "12345678", 8u);
-    memcpy(mem + DS_0010745D, "ABC01234", 9u);
-    actors_reset();
-
-    /* Idle form: the first DS_00107452 characters from DS_00107454 in mode
-     * 0x4000, the rest from DS_0010745D in mode 0x2000. */
-    DSB(DS_00107450 + 2u) = 3;
-    DSB(DS_00107453) = 0;
-    menu_debug_widget(0x11, 2);
-    for (s32 i = 0; i < 8; i++) {
-        u8 want = i < 3 ? (u8)('1' + i) : (u8)"ABC01234"[i];
-        CHECK_EQ_INT((int)grid_sprite(2, 0x11 + i), (int)mt_glyph(want));
-    }
-    CHECK_EQ_INT((int)grid(2, 0x10), 0);
-    CHECK_EQ_INT((int)grid(2, 0x19), 0);
-    CHECK_EQ_INT((int)mt_pal(2, 0x11), (int)MT_PAL_4000);
-    CHECK_EQ_INT((int)mt_pal(2, 0x14), (int)MT_PAL_2000);
-    CHECK(MT_PAL_4000 != MT_PAL_2000, "the two modes differ");
-    /* The whole limit range. */
-    DSB(DS_00107450 + 2u) = 0;
-    actors_reset();
-    menu_debug_widget(0x11, 2);
-    CHECK_EQ_INT((int)grid_sprite(2, 0x11), (int)mt_glyph('A'));
-    CHECK_EQ_INT((int)grid_sprite(2, 0x18), (int)mt_glyph('4'));
-    DSB(DS_00107450 + 2u) = 8;
-    actors_reset();
-    menu_debug_widget(0x11, 2);
-    CHECK_EQ_INT((int)grid_sprite(2, 0x18), (int)mt_glyph('8'));
-
-    /* Entry form: the string at DS_0010745D in mode 0x1000, then the initials
-     * and the digits after them go to high-score table 2, once. */
-    DSB(DS_00107453) = 1;
-    actors_reset();
-    CHECK_EQ_INT((int)hiscore_read(0u, 2u), (int)DS_00105EFC);
-    DSD(DS_00105EFC) = 0xDEADBEEFu;
-    menu_debug_widget(0x11, 2);
-    CHECK_EQ_INT((int)grid_sprite(2, 0x11), (int)mt_glyph('A'));
-    CHECK_EQ_INT((int)mt_pal(2, 0x11), (int)MT_PAL_1000);
-    CHECK_EQ_INT((int)DSB(DS_00107453), 3);
-    CHECK_EQ_INT((int)hiscore_read(0u, 2u), (int)DS_00105EFC);
-    CHECK_EQ_INT((int)DSD(DS_00105EFC), 1234);
-    CHECK_EQ_INT((int)DSB(DS_00105F00), 'A');
-    CHECK_EQ_INT((int)DSB(DS_00105F00 + 1u), 'B');
-    CHECK_EQ_INT((int)DSB(DS_00105F00 + 2u), 'C');
-    /* Bit 1 set: drawn again, never filed again. */
-    memcpy(mem + DS_0010745D, "XYZ99999", 9u);
-    menu_debug_widget(0x11, 2);
-    (void)hiscore_read(0u, 2u);
-    CHECK_EQ_INT((int)DSD(DS_00105EFC), 1234);
-    CHECK_EQ_INT((int)DSB(DS_00107453), 3);
-    CHECK_EQ_INT((int)grid_sprite(2, 0x11), (int)mt_glyph('X'));
-    /* A fresh entry stops at the first non-digit: "12x99" files 12. */
-    memcpy(mem + DS_0010745D, "DEF12x99", 9u);
-    DSB(DS_00107453) = 1;
-    menu_debug_widget(0x11, 2);
-    (void)hiscore_read(0u, 2u);
-    CHECK_EQ_INT((int)DSD(DS_00105EFC), 12);
-    CHECK_EQ_INT((int)DSB(DS_00105F00), 'D');
-
-    memcpy(mem + DS_00105D88, sreg, sizeof sreg);
-    mem_fill(DS_00107450, 0, 0x20u);
-    actors_reset();
 }
 
 /* 0x2FFC4 (record §49-X.7). */
@@ -3309,9 +3141,7 @@ static void check_menu(void)
     memcpy(spal, mem + DS_00107618, sizeof spal);
     mem_fill(DS_00107618, 0, sizeof spal);
     const u32 s_lvl = DSD(DS_000E1C34), s_lat = DSD(DS_000E1C38);
-    check_menu_input();
     check_menu_draw();
-    check_menu_widget();
     check_menu_step();
     check_menu_run();
     menu_fatal_error(0x80B54u);
