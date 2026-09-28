@@ -22345,3 +22345,170 @@ name-entry prep, with `0x1EC38`, on `gap37-hiscorerank`/`gap39-nameentry`),
 `0x21994`'s call sites `0x21B43`/`0x21C33` and `0x21F30`'s callers
 `0x21DA4`/`0x2208C`, the `0x2C3FC` voice
 posts inside `0x21F30`, and the meaning of the `0x1D540` slot bytes.
+
+## 49-T. The high-score name-entry screen `0x1F458` and its callees (named-gap batch, branch `gap39-nameentry`)
+
+`0x1F458` (2897 B, 8 callers) is the per-frame driver of the post-match
+high-score initials screen that `game_mode_1e_step` (`0x1EEB0`, §49-H)
+polls from states 5/8/0xB..0xE. This task ports it with every callee that was
+still unported: `0x1FFD0` (the letter-cell animator), `0x20710` (the entry
+finaliser), `0x13EF0` and `0x13F68` (the bad-word name filter `0x20710` runs)
+and, because states 0xF/0x10 and the rank-probe states re-arm the screen
+through it, `0x1ED2C` (the screen reset, 320 B). All six live in the new
+`port/src/game/nameentry.c` (header `nameentry.h`, registered in
+`port/CMakeLists.txt`) so that the concurrent rank-probe work (§49-R, edits in
+`flow.c`/`flow.h`) does not collide with it. Letter `§49-T` was free (grepped in
+`docs/PROGRESS.md` and this record). `python3 tools/port_progress.py --unported`
+listed `1F458`, `1FFD0` and `20710`; none was already ported under a
+non-standard header.
+
+### 49-T.1 Sources
+
+Ghidra HTTP bridge disassembly of `0x1F458`, `0x1FFD0`, `0x20710`, `0x13EF0`,
+`0x13F68`, `0x1ED2C`, `0x1EEB0` (the six call sites, `0x1EF46`, `0x1EFC8`,
+`0x1EFD8`, `0x1F039`, `0x1F0B6`, `0x1F0C3`, `0x1F203`, `0x1F326`), the jump
+table at `0x1FFAC` (nine dword entries, `AL = state - 1`, states 1..9) and the
+string-pointer / word tables read with `read_memory`
+(`0xA7DA0`, `0xA7DF4`, `0xA7B94`, `0x9AF40`). The Ghidra decompilation of
+`0x13F68` and `0x1FFD0` is wrong in several places (it drops the register
+carry-over and shows a store to `0xFD0F4` at `0x13F79` that the raw does not
+make); everything below is from the listing, with the port's `PORT:` note where a
+choice was made.
+
+### 49-T.2 The state, by address
+
+The screen keeps its state in the data object at the original addresses; no
+long-lived C global shadows it.
+
+* 18 letter cells at `0x104114`, stride `0x14`: `+0` actor handle, `+4` x,
+  `+8` y (dwords), `+0xC` velocity, `+0xE` acceleration, `+0x10` target
+  (words, signed), `+0x12` state (1..9, 0 = free), `+0x13` letter code. The
+  routine reads two of them as dwords at the odd offsets `+0x0A` and `+0x0E`
+  and shifts by 16 (`0x200E3`, `0x2014C`): those are the words at `+0xC` and
+  `+0x10`, and the port keeps the dword read (`NE_SAR16`) so the alias is
+  visible.
+* Letter codes: `0..0x19` A..Z, `0x1A` space, `0x1B` DEL, `0x1C` END.
+  The cursor grid is 7 columns at `0xB + 3k` by rows `6, 9, 0xC, 0xF`; row 0xF
+  also carries DEL at column `0x1D` and END at `0x20`. The index is
+  `7 * ((row - 6) / 3) + (col - 0xB) / 3` (`0x1FD3B..0x1FD76`), which puts
+  DEL at 27 and END at 28 with no special case.
+* Cursor: `W(0x1044D0)` column, `W(0x1044D2)` row; the raw's
+  `D(0x1044D0) >> 16` is therefore the row and `D(0x1044CE) >> 16` the column.
+* Name buffer `0x104343`; typed count `B(0x10431C)`; limit `B(0x10431D)`, read
+  by `0x20710` as `D(0x10431A) >> 24`; timer `W(0x10438C)` (`0x1C2` = 450 frames
+  after every keystroke, drawn as `timer / 30`); rank `W(0x1044D6)`; name row
+  `D(0x1044C4)`, name column `D(0x1044CC)`.
+* Live-cell flag `D(0x1044AC)` (recomputed by `0x1FFD0` every call), pad-input
+  disable `B(0x1044D8)`, queue write/read indices `D(0x1044BC)`/`D(0x1044C8)`,
+  queue `0x104458`.
+
+### 49-T.3 What the routines do
+
+`0x1F458(side)`: `0x1FFD0`; decrement the timer and draw `timer / 30`
+(`0x2F434`); finished (`timer == 0 && D(0x1044AC) == 0`) -> `0x20710(side)`
+and return 0; else, unless `B(0x1044D8)`, one cursor move (right `0x10`, left
+`0x20`, up `0x80`, down `0x40`, first match wins) from the side's pad byte
+(`B(0x1088E7)` for side 0, `B(0x1088E5)` for side 1 -- bytes 3 and 1 of
+`DS_001088E4`, the same dword `input.c` fills) or the autorepeat counter
+(`> 0x1E && % 5 == 0`); the letter grid redrawn (28 `0x2F510` calls) only
+while no cell is live; the header, score, rank and blinking prompt; then a
+letter taken from the face buttons (mask `0xF`) or the queue.
+
+Corrections and findings, raw first:
+
+1. **The up/down autorepeat arms are unreachable.** `0x1F503` (right) and
+   `0x1F68B` (up) both read `D(0x1044E0)`, `0x1F5DA` (left) and `0x1F738`
+   (down) both read `D(0x1044DC)`, and right/left are tested first, so a
+   counter that would repeat up or down has already repeated right or left. The
+   port keeps the four tests as written (`ne_repeat`) and a test proves right
+   wins. `get_xrefs_to` finds **no writer** of either counter in the code
+   (three and two reads, all in `0x1F458`), so in the port and, per the
+   analysis, in the original they stay 0 unless written through a pointer;
+   named gap (see 49-T.7).
+2. **The queue is 17 entries, not 16.** `0x1FD7F` reads
+   `D(0x104458 + (D(0x1044C8) + 1) * 4)` *before* the `& 0xF` of `0x1FD8D`, and
+   the writer `0x20860` (called from the frame update `0x24C5C` at `0x24D67`, so the key handler)
+   stores at `[ (write + 1) * 4 + 0x104458 ]` at `0x208CC` also before its
+   `& 0xF` (`0x208C9`). Both indices reach 16, so entry 16 (`0x104498`) is
+   live. The port reads and writes the raw way; a test seeds entry 16 apart from
+   entry 0 to prove the unmasked read.
+3. `0x20860` also sets `B(0x1044D8) = 1` (`0x208D9`) on the first key, which is
+   what disables the pad cursor once someone types; the port does not port
+   `0x20860` (it is not on the path of any oracle or of this task).
+4. `0x1FFD0` state 3 clamps `y` to the **old** target (`0x2018E` reads it before
+   `0x2019D` overwrites the word); a first draft read it after and a test now
+   pins it (mutation `state3 stale tgt`).
+5. `0x1FFD0`'s dead compare: `CMP EDX,0x12` at `0x2023D` is followed by no
+   conditional; not ported.
+6. Sign handling: state 2's `-(vel) / 4` is `neg; cdq; shl edx,2; sbb eax,edx;
+   sar eax,2`, which is C truncating division (checked with an odd magnitude);
+   state 5's `idiv cx` is a signed 16-bit division; every direction and range
+   test is the raw's Jcc (`0x1F549`/`0x1F612`/`0x1F6C3`/`0x1F774` signed,
+   `0x1F50A`/`0x1F5E3`/`0x1F694`/`0x1F741` `jbe` unsigned, the letter-count tests
+   at `0x1FE1A`/`0x1FEAE` signed *byte* compares).
+7. `0x1FFD0` reads the two-byte word at `0x1E820` (`0x0020`) as the one-character
+   string it hands `0x2F510` for a typed letter (`0x203B7`): the letter over the
+   word's zero high byte.
+8. `0x13F68` is a fuzzy word matcher with its own recursion; it carries state in
+   four globals (`0xFD0F0` tolerance byte, `0xFD0F2` word, `0xFD0F4` match
+   start, `0xFD0F8` current word) and in BX/EDI across its two exits. The port is
+   a goto transliteration keeping the registers as locals and every global
+   store at the raw's site (including the per-star re-store at `0x14022`).
+   `0x13EF0` sets the tolerance to 2 unless bit 2 of `B(0x104529)` is set.
+   Table `0x9AF40` is 24 words (`ASSHOLE` ... `PUSSY`) then an empty string.
+
+### 49-T.4 The port
+
+* `nameentry.c`: `name_filter_word` (`0x13F68`), `name_filter` (`0x13EF0`),
+  `nameentry_reset` (`0x1ED2C`), `nameentry_cells_step` (`0x1FFD0`),
+  `nameentry_finish` (`0x20710`), `nameentry_step` (`0x1F458`). One C function
+  per original; every statement cites its raw address.
+* `flow.c`: states 5/8/0xB..0xE of `game_mode_1e_step` now call
+  `nameentry_step(0/1/0/1)` and, on 0, store the successor state (6, 9, 0xF,
+  0x10, 2, 2) and the four words (`DS_00104AFE = 0x8C`, `DS_001088EE = 0`,
+  `DS_00104B00 = 0x15`, `DS_00104AFA = 0x1E`) in the raw's order. Not touched:
+  states 0/4/7 (§49-R). States 0xF/0x10 stay parked: they need `0x1EC38`,
+  which is not on `main`.
+* Voices (`0x2C3FC`, ids `0xB0 0x7B 0x71 0xE7/0xE8 0x70 0x4D 0xE9 0xE6
+  0x34/0x35/0x36/0x37/0x38/0x39`, and the `0xE3`/`0xE2` pair at each exit) are
+  `PORT:` notes, the deferred idiom (§45-A). No longjmp quit path exists in
+  these six functions. `game_string_get` supplies the `0x1C500` strings.
+
+### 49-T.5 Tests and mutations
+
+`test_fight.c`: `check_name_filter`, `check_nameentry_cells`,
+`check_nameentry_finish`, `check_nameentry_step`, `check_mode_1e_nameentry`
+(called from `check_nameentry`, registered after `check_mode_1e` in
+`test_fight`); `check_mode_1e_parked` no longer lists states 5/8/0xB..0xE.
+Every field is seeded to a sentinel that differs from its post-condition; text
+draws are compared against a direct draw of the same string through
+`net_row_sig` (glyph position, animation word and pset word), with a
+different-digit control. Mutations proved (each rebuilt, failed, reverted):
+floor instead of truncating divide (state 2), wrong divisor (state 5),
+`>= 0x1E` for `> 0x1E`, dropped side test on the pad, masked queue read,
+`n < 0` for `n <= 0` (DEL), `>= 3` for `> 3` (champion insert), stale target
+(state 3), dropped tolerance test, inverted grid-redraw gate, state 6 using the
+new velocity, divide by 31, swapped wrap columns, END's timer, the full-name
+jump, unsigned limit compare, the space animation stream, and a wrong side in
+the state 0xC wiring: 18 of 18 caught.
+
+### 49-T.6 Verification
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests` green three times (~1.8 s each, no
+hang). `make verify` (worktree-local dump directories, `_gap39`): see the
+report; the enforced numbers are unchanged, as expected -- mode `0x1E` is
+reachable only through mode `0x13`'s challenge poll, which the no-input demo,
+attract and front-end paths never reach.
+
+### 49-T.7 Remaining named gaps
+
+* `0x1EC38` / `0x1ECC8` / `0x2DDE4` (§49-R) and `0x204F4` (537 B, called by
+  `0x1EC38`): they write the geometry words this screen only reads
+  (`DS_001044C4`/`CC`/`D6`, `0x10431A..D`). States 0xF/0x10 re-arm the screen
+  through `nameentry_reset` and `0x1EC38` and stay parked until that lands.
+* `0x20860` (132 B, keyboard char -> queue, sets `B(0x1044D8)`): unported; the
+  port's queue stays empty and `B(0x1044D8)` stays 0 outside tests.
+* The writers of `D(0x1044DC)`/`D(0x1044E0)`: none found (49-T.3 #1).
+* The `0x2C3FC` voices (§45-A).
+* The blink prompt's mode word (`0x1000`/`0x4000`, `0x1FB46..0x1FBBA`) is passed
+  through but no test observes it (the glyph actors do not carry it).

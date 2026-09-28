@@ -12,6 +12,7 @@
 #include "game/effects.h"
 #include "game/fight.h"
 #include "game/fighter.h"
+#include "game/nameentry.h"
 #include "game/rng.h"
 #include "mem.h"
 #include "symbols.h"
@@ -4874,11 +4875,10 @@ void frontend_match_start(void)
  * DS_00104B25 = 0 when the post-match challenge window runs out unjoined.
  * States 2/3/6/9/0xA are pure bookkeeping and fully ported; states 0/4/7
  * have a portable short-circuit arm, ported, plus an unported rank-probe
- * arm (0x1ECC8/0x1EC38, PORT: notes); states 5/8/0xB..0xE/0xF/0x10 gate
- * entirely on the unported 0x1F458 name-entry driver and stay parked
- * (PORT: notes) — exactly the "still waiting" behaviour those states
- * already have while their own poll returns not-done, not a fabricated
- * stub. */
+ * arm (0x1ECC8/0x1EC38, PORT: notes); states 5/8/0xB..0xE poll the
+ * name-entry driver nameentry_step (0x1F458, record §49-T) and advance when
+ * it reports done; states 0xF/0x10 stay parked on the unported 0x1EC38
+ * (PORT: note). */
 void game_mode_1e_step(void)
 {
     switch (DSB(DS_00104B25)) {
@@ -4924,10 +4924,15 @@ void game_mode_1e_step(void)
          * 0x204F4; named gap (see flow.h). */
         break;
     case 0x05u:
-        /* PORT: 0x1F203 polls the unported 0x1F458(0) — the name-entry
-         * driver — for completion before arming state 6; named gap (see
-         * flow.h). This state stays parked exactly as it already would
-         * while 0x1F458 itself reports "not done". */
+        if (nameentry_step(0u) == 0u) {                          /* 0x1F203 0x1F458(0) */
+            DSW(DS_00104AFE) = 0x8Cu;                           /* 0x1F221 */
+            DSW(DS_001088EE) = 0u;                              /* 0x1F227 */
+            DSW(DS_00104B00) = 0x15u;                           /* 0x1F230 */
+            DSB(DS_00104B25) = 6u;                              /* 0x1F237 */
+            DSW(DS_00104AFA) = 0x1Eu;                           /* 0x1F242 */
+            /* PORT: 0x1F249 0x2C3FC(0xE3) and 0x1F253 0x2C3FC(0xE2) voices,
+             * not wired (record §45-A). */
+        }
         break;
     case 0x06u:
         frontend_input_reset();                                 /* 0x1F260 0x4F1E4 */
@@ -4951,8 +4956,15 @@ void game_mode_1e_step(void)
          * named gap (see flow.h). */
         break;
     case 0x08u:
-        /* PORT: 0x1F326 polls 0x1F458(1) — side 1's mirror of state 5;
-         * named gap (see flow.h). */
+        if (nameentry_step(1u) == 0u) {                          /* 0x1F326 0x1F458(1) */
+            DSB(DS_00104B25) = 9u;                              /* 0x1F341 */
+            DSW(DS_00104AFE) = 0x8Cu;                           /* 0x1F347 */
+            DSW(DS_001088EE) = 0u;                              /* 0x1F34E */
+            DSW(DS_00104B00) = 0x15u;                           /* 0x1F355 */
+            DSW(DS_00104AFA) = 0x1Eu;                           /* 0x1F365 */
+            /* PORT: 0x1F36C 0x2C3FC(0xE3) and 0x1F376 0x2C3FC(0xE2) voices,
+             * not wired (record §45-A). */
+        }
         break;
     case 0x09u:
         frontend_input_reset();               /* 0x1F383 0x4F1E4 */
@@ -4997,19 +5009,31 @@ void game_mode_1e_step(void)
     case 0x0Bu:
     case 0x0Cu:
     case 0x0Du:
-    case 0x0Eu:
-        /* PORT: 0x1EF46/0x1F039/0x1F0C3/0x1EFD8 each poll 0x1F458 (params
-         * 0/1/0/1) for completion before arming the initials-entry priming
-         * states 0xF/0x10 or looping back to state 2; named gap (see
-         * flow.h). */
+    case 0x0Eu: {
+        /* 0x1EF44/0x1F034/0x1F0C1/0x1EFD3 poll 0x1F458 with the side 0/1/0/1. */
+        static const u8 side_of[4] = { 0u, 1u, 0u, 1u };
+        static const u8 next_of[4] = { 0x0Fu, 0x10u, 2u, 2u };
+        u32 k = (u32)(DSB(DS_00104B25) - 0x0Bu);
+        if (nameentry_step(side_of[k]) == 0u) {                  /* 0x1EF46/0x1F039/0x1F0C3/0x1EFD8 */
+            DSW(DS_00104AFE) = 0x8Cu;                           /* 0x1EF6C/0x1F059/0x1F0E1/0x1EFFB */
+            DSW(DS_001088EE) = 0u;                              /* 0x1EF73/0x1F060/0x1F0E8/0x1F002 */
+            DSW(DS_00104B00) = 0x15u;                           /* 0x1EF86/0x1F067/0x1F0EE/0x1F009 */
+            DSW(DS_00104AFA) = 0x1Eu;                           /* 0x1EF7F/0x1F06E/0x1F0F5/0x1F012 */
+            DSB(DS_00104B25) = next_of[k];                      /* 0x1EF66/0x1F079/0x1F103/0x1F019 */
+            /* PORT: 0x1EF8D/0x1F07F/0x1F109/0x1F01F 0x2C3FC(0xE3) and
+             * 0x1EF97/0x1F089/0x1F10E/0x1F024 0x2C3FC(0xE2) voices, not
+             * wired (record §45-A). */
+        }
         break;
+    }
     case 0x0Fu:
     case 0x10u:
         /* PORT: 0x1EFA9/0x1F099 unconditionally re-arm the opposite side's
-         * initials wait (state 0xE/0xD) through the unported 0x1ED2C and
-         * 0x1EC38, plus a priming, return-discarded 0x1F458 call; named gap
-         * (see flow.h). Unreachable from any state this port advances to,
-         * since only the gated states above ever target 0xF/0x10. */
+         * initials wait (state 0xE/0xD): voice 0xE1, the state store,
+         * nameentry_reset (0x1ED2C, record §49-T), 0x1EC38 (the unported
+         * rank probe, record §49-R) and a priming, return-discarded
+         * nameentry_step (0x1F458). Parked until 0x1EC38 is ported;
+         * reachable now that states 0xB/0xC complete. */
         break;
     }
 }

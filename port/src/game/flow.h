@@ -555,23 +555,21 @@ void game_mode_0a_step(void);
  *   the +8 field of the per-side records at DS_001077E4/DS_00107878 — via
  *   the unported 0x2DDE4 against a table at 0x2D400 (0x2DDE4 itself calls
  *   the unported 0x2DB58); a return < 0xA is a high-score-table rank. 0x1F458
- *   (2897 B, its own subsystem, the analog/digital cursor driver states 5,
- *   8 and 0xB..0xE all poll — params 0 or 1 select the side — and 0xF/0x10
- *   prime with the return discarded) is the initials/name-entry screen those
- *   ranked states wait on. This is exactly the family docs/PROGRESS.md
- *   already flags jointly with this function: "the interactive match ...
- *   0x1EEB0, 0x1F458, the player screens and human input ... remains
- *   unowned" — a genuine, separate, high-score name-entry gap, not a small
- *   completable chain. Two of the four gated states have a portable short-
+ *   (2897 B, the analog/digital cursor driver states 5, 8 and 0xB..0xE all
+ *   poll — params 0 or 1 select the side — and 0xF/0x10 prime with the
+ *   return discarded) is the initials/name-entry screen those ranked states
+ *   wait on; it is ported as nameentry_step (game/nameentry.h, record
+ *   §49-T) with its callees 0x1FFD0, 0x20710, 0x1ED2C and the name filter
+ *   0x13EF0/0x13F68, and states 5/8/0xB..0xE poll it. States 0xF/0x10 stay
+ *   parked only on the unported 0x1EC38 (the rank probe). Two of the four
+ *   rank-gated states have a portable short-
  *   circuit, ported here: state 0 only calls 0x1ECC8 when DS_00104AD4 == 2
  *   && DS_00104B1F == 0 (else DS_00104B25 = 4, unconditionally); state 4
  *   only calls 0x1EC38 when DS_00107813 == 0 (else DS_00104B25 = 7); state
  *   7 mirrors state 4 on DS_001078A7 (else DS_00104B25 = 0xA). Past that
- *   short-circuit — and for states 5/8/0xB..0xE/0xF/0x10 entirely — the
- *   state cannot determine whether to advance without the unported gate, so
- *   it stays parked (PORT: notes at each case); this is not a fabricated
- *   stub; it is exactly the "still waiting" behaviour those states already
- *   have while their own poll returns not-done.
+ *   short-circuit — and for states 0xF/0x10 entirely — the state cannot
+ *   determine whether to advance without the unported 0x1EC38, so it stays
+ *   parked (PORT: notes at each case); this is not a fabricated stub.
  *   Two established gaps recur throughout, left as the same PORT: notes
  *   this codebase already uses elsewhere: every 0x2C3FC voice call (record
  *   §45-A) and, inside 0x1ECC8/0x1EC38, 0x2DAE4 (the deferred audit no-op,
