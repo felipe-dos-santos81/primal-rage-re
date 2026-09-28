@@ -1364,9 +1364,10 @@ exits 0.
   `game_mode_22_step`/`game_mode_24_step`, records §49-L/§49-N) call it,
   as `game_frame`'s cases `0x22`/`0x23`/`0x24` are no longer named gaps
   (records §49-L/§49-M/§49-N). The volleyball's `0x4C60C` (`0x4CB18`'s
-  flag-1 caller) is ported with its callees (record §43-A) but still has
-  no port caller (mode `0x21`'s own pass remains unported); the effects
-  tail's `0x4987C` (`DS_001088BF` 1..4) is wired.
+  flag-1 caller) is ported with its callees (record §43-A); its port caller,
+  mode `0x21`'s own pass `0x4BF18` (`fight_4bf18`, record §49-S), is now
+  ported and wired too, replacing `fight_effects_pass` in `game_mode_21_step`
+  (`0x26540`); the effects tail's `0x4987C` (`DS_001088BF` 1..4) is wired.
   The second freeze `0x22CE4` and character 1's
   reactions `0x29`/`0x2A` (`0x22F74`, `0x2365C`) are ported too (§42-A),
   with update-table entry 5 `0x22FE8`; the demo reaches none of them either.

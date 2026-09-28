@@ -21934,3 +21934,225 @@ of its documented callers (`0x26540`/`0x266AC`/`0x299E8`) are now ported.
 `0x4E99C`'s two `0x2C3FC` voice posts remain the deferred-audio idiom
 (spec §7), matching the dozens of existing `PORT:` comments this codebase
 already carries for that address.
+
+## 49-S. `0x4BF18`, the volleyball mini-game's per-frame driver (branch `gap38-volleyball`)
+
+**Result in one line.** `0x4BF18` (`fight_4bf18`, `fight.c`) — mode `0x21`'s
+`0x26540` (`game_mode_21_step`) replacement for `fight_effects_pass` — is
+ported in full (458 raw instructions, larger than the task brief's "~150
+instruction" lead), together with its one newly-needed callee `0x4CD98`
+(`fight_4cd98`, the volleyball match's timeout end and `DS_00108864`'s third
+writer). The task brief's "doubly-linked entry list" lead does not hold:
+`0x4BF18` walks the exact same singly-linked `DS_0010884C` effects list
+`fight_effects_pass`/`fight_effects_hold_all` already walk (head sentinel,
+`next` only — no second/prev field is read anywhere in the function, per
+the full disassembly), just with its own 8-state switch and shared per-entry
+tail. `0x4A868` (case 1's else branch) is the same unported predicate this
+codebase already treats as always false in `fight_effects_pass`'s case-13/14
+bodies and in `fight_effects_idle_pass` (spec §7.4); the same decision is
+made here, not re-derived.
+
+### 49-S.1 Sources
+
+The Ghidra HTTP bridge at `127.0.0.1:8089` was reachable this session
+(confirmed with `get_function_by_address?address=0x4bf18`). `0x4BF18` was
+read with `disassemble_function` (458 instructions, `0x4BF18`-`0x4C5B8`)
+and cross-checked against `decompile_function`, whose output is heavily
+polluted by Ghidra's `extraout_ECX*`/`extraout_EDX*` register-tracking
+artefacts (this function's `__regparm3` convention plus its many small
+callees defeats the decompiler's register modelling) — every branch and
+field width below was confirmed against the raw disassembly, not the
+decompile. The jump table at `0x4BEF4` (9 dwords, values `AL` `0`-`8`) was
+read with `read_memory` and decoded by hand: `0x4BF86` (twice — entries `0`
+and `7`), `0x4BFCD`, `0x4C07E`, `0x4C0A1` (twice — entries `3` and `4`),
+`0x4C0E7`, `0x4C135`, `0x4C1F3`. The `AL > 8` default (`0x4BF75` `cmp al,8;
+ja 0x4bf86`) lands on the same `0x4BF86` as table entries `0` and `7`, so a
+plain C `default:` label (no explicit `case 0:`/`case 7:`) correctly covers
+all three. `0x4CD98` (`0x4CD98`-`0x4CE52`, a clean 45-instruction leaf with
+no register-tracking artefacts) was read the same way.
+
+### 49-S.2 The preamble (`0x4BF21`-`0x4BF53`)
+
+```
+0004bf21 MOV EAX,[0x00108868]
+0004bf26 CMP word ptr [EAX + 0x36],0x0
+0004bf2b JZ 0x0004bf53
+0004bf2d MOV EDX,dword ptr [EAX + 0x34]
+0004bf30 MOV EBX,dword ptr [0x00108880]
+0004bf36 SAR EDX,0x10
+0004bf39 SUB EBX,EDX
+0004bf3d CMP EDX,dword ptr [EAX + 0x1c]        ; EDX now the distance-to-go
+0004bf40 JG 0x0004bf53
+0004bf42 MOV word ptr [EAX + 0x36],0x0
+0004bf48 MOV EAX,[0x0010886c]
+0004bf4d MOV word ptr [EAX + 0x36],0x0
+```
+
+Before any list walk, this completes the post-game worshipper walk-off:
+`DS_00108868`'s `+0x36` word is the same countdown `fight_4CC0C` arms to
+`-0x1A4` when a match ends. While it is running (`!= 0`), the remaining
+distance (`DS_00108880` minus the actor's `+0x34` velocity's integer half,
+`>>16`) closing to within its own `+0x1C` snaps both `DS_00108868` and
+`DS_0010886C`'s `+0x36` words to `0`.
+
+### 49-S.3 The 8-state switch and its callees
+
+Per entry (`rec` = `entry+8`, `index` = `(u16)((u8)(rec+0x48) - 0x20)`,
+exactly `fight_effects_pass`'s own idiom):
+
+- **default (types `0`, `7`, `>8`; `0x4BF86`)**: `DS_00108898 - 1 ==
+  entry+0x21` calls `fight_4B3F0(entry, index, 0)`; else `DS_00108898 != 0`
+  calls `fight_4B430(entry, index, 0)`. Both already ported (`fight.c`
+  `2095`/`2111`); this is a fresh call site distinct from
+  `fight_effects_hold_all`'s own `DS_00104B16`/flag-`1` instance of the same
+  idiom.
+- **case 1 (`0x4BFCD`)**: `entry+0x1C` bit 5 clear is the "arrival" test —
+  `|rec+0x18 - entry+0x14|` against the sign(`rec+0x34`)-gated `rec+0x32`
+  (dword, `>>16`) threshold — on arrival calls the already-ported
+  `fight_4AC38` (`fight.c` `2185`). Bit 5 set instead gates on
+  `FUN_0004A868(entry)` (`0x4BFDE`); per §49-S's result line, treated as
+  always false, so the voice(`200`)/type-`8` flyer spawn body
+  (`0x4BFEB`-`0x4C034`) never runs — no new derivation, the existing
+  `fight_effects_idle_pass`/`fight_effects_pass` case-13/14 reasoning
+  applies verbatim.
+- **case 2 (`0x4C07E`)**: `entry+0x18` (word) decrements; `< 1` (signed)
+  calls `fight_4AC38`.
+- **case 3/4 (`0x4C0A1`, one shared body)**: `rec+0x2C =
+  fight_dust_clamp(rec+0x30>>16)` (already ported, `fight.c` `1310`);
+  `actors_anim_begin(rec, DS_000C95EC[index], 3.0)`; `rec+0x38 = 0x40`; type
+  `= 5`; `entry+0x1C` bit 7 clears.
+- **case 5 (`0x4C0E7`)**: `rec+0x2C = fight_dust_clamp(rec+0x30>>16)`; the
+  signed **word** `rec+0x32` (not case 1's dword `>>16` read — a genuinely
+  different field width at the same base offset, confirmed by the raw's own
+  `mov ax,[esi+0x32]` vs case 1's `mov eax,[eax+0x32]; sar eax,0x10`)
+  reaching `entry+0x1A` (signed `>=`) ends it: `actors_anim_begin(rec,
+  DS_000C9544[index], 3.0)`, `rec+0x38`/`+0x34 = 0`, type `= 0`.
+- **case 6 (`0x4C135`)**: only with `entry+0x1C` bit 5 clear. `rec+0x36 < 0`
+  sets `entry+0x1C` bit 7; a held actor (`entry+0x10`) gets `rec`'s `+0x18`
+  (dword) and `+0x32` (word) copied across. `(rec+0x34>>16) + rec+0x1C <=
+  0` (landed) frees the held actor (`actor_set_dead`), picks
+  `DS_000C973C[index]` (type `8`) when non-null else `DS_000C9544[index]`
+  (type `4`, `3.0`) as the settle animation, zeros `rec+0x1C`/`+0x34`/
+  `+0x36` and `entry+0x1F`; otherwise (still falling) `rec+0x36 -= 0x10`.
+- **case 8 (`0x4C1F3`)**: no body — the jump table's entry is the shared
+  tail's own address.
+
+### 49-S.4 The shared per-entry tail (`0x4C1F3`-`0x4C38E`)
+
+Every entry, regardless of type, reaches this after the switch. `entry+0x1C`
+bit 5 set and type `!= 1` calls the already-ported `fight_4C60C` (`fight.c`
+`3714`; its own header already named `0x4BF18` as its one caller — that note
+is now stale, updated). After it: `rec+0x36 < 0` sets `entry+0x1C` bit 7
+again; a held actor again gets `+0x18`/`+0x32`(word) copied from `rec`,
+exactly as case 6's own copy (a genuine raw duplication of the same six-
+instruction shape, not a derivation error — confirmed by reading both
+`0x4C159`-`0x4C16F` and `0x4C231`-`0x4C247` side by side). When the
+(possibly just-updated) type is `6` and `(rec+0x34>>16) + rec+0x1C <= 0`
+(the ball was struck straight into the ground this same frame): free any
+held actor, pick the settle stream exactly as case 6's own landing does,
+then **score**:
+
+```
+side0 = fighter_actor_bit15_clear(0) != 0
+mid   = DS_00108884
+ballx = rec+0x18
+idx   = (ballx < mid) ? side0^1 : side0        ; signed compare
+stream = (ballx < mid) ? 0xEF6AC : 0xEF680
+DS_0010889C[idx] += 1
+DS_00108898 = idx + 1
+actors_anim_begin(DS_0010886C, stream, 3.0)
+actors_anim_begin(rec, DS_000C973C[index], 2.0)
+entry+0x1E = 8
+DS_001088AC = 0x69                              ; fight_4C784's own hold constant, record §43-A
+```
+
+`DS_0010889B[DS_00108898]` (`0x4C332`, `mov al,[eax+0x1089b]` with `EAX =
+DS_00108898`) is algebraically `DS_0010889C[idx]` — `0x10889B + (idx+1) ==
+0x10889C + idx` — so the port reads `DS_0010889C[idx]` directly rather than
+inventing a name for `DS_0010889B` (no `symbols.h` entry, and the address
+never needs its own identity once the algebra is shown). Reaching `3`
+zeroes `entry+0x1F` and, when `DS_001088A0` (the "match already ending"
+timer) is `0`, calls `fight_4CC0C()` (already ported, `fight.c` `3580`;
+its own header also updated); either way the raw's `jmp 0x4C5AF` then
+abandons the rest of the entry list for this frame — the port's `return;`,
+since the shared epilogue at `0x4C5AF` (`add esp,4; pop ebp/edi/esi/edx/
+ecx/ebx; ret`) has no side effects of its own and every jump to it is a
+plain function return. Otherwise (still falling) `rec+0x36 -= 0x10` and,
+within `0x100` of `DS_00108884` and `rec+0x1C < 0x1680` (signed), `rec+0x34`
+negates (a bounce).
+
+### 49-S.5 The post-loop tail (`0x4C39C`-`0x4C5AF`) and `fight_4CD98`
+
+Also the empty-list target from `0x4BF5F`. `DS_001088A0` running counts
+down — `0x4C3B1` is `test ax,ax; ja 0x4c5af`, the **unsigned** "still
+running" test this session's review notes already flagged as an easy
+signed/unsigned mistake — and, reaching `0`, calls the newly-ported
+`fight_4CD98` (`0x4CD98`) and returns. `fight_4CD98` (DS_00108864's third
+writer, alongside `0x4BD98` and `fight_4C784` — `fight_4AC18`'s own header
+already names all three): mode `<- 6`, `DS_00104AEC |= 1`, the score bytes
+`DS_0010889C`/`DS_0010889D`/`DS_001088C5` clear; a live, not-already-type-6
+ball entry resets (`+0x18 = 0`, `+0x1C` bit 5 clears, type `= 4`,
+`DS_00108864 = 0`); string `0x60` draws twice (rows 6 and 9, mode `0x4000`);
+both worshipper actors die (`actor_set_dead`).
+
+Otherwise, every `DS_00104AF4 % DS_001088D0 == 0` frame (an **unsigned**
+mod — the raw pre-clears `EDX` before the `idiv`, so the signed division
+behaves as unsigned for the actual `u16` range) draws the pip counter when
+`DS_001088F2 != 0` — the dword-at-`DS_001088EF` `sar 0x18` read the raw
+uses is byte-identical to `(s8)DS_001088F2` (its own `+3` byte: `0x1088EF +
+3 == 0x1088F2`), folded directly rather than adding an unnamed
+`DS_001088EF` symbol — ends the match via `fight_4CC0C()` when
+`DS_001088AA` (rounds left) hits `0`, else decrements it and draws it plus
+both scores (`text_number_draw_font2`/`text_number_set`, cross-checked
+register-for-register against the already-ported `fight_4CC0C`'s own
+`0x1C500`/`0x2F510`/`0x2F4BC` call shape — `EDX` set before a `0x1C500`
+call is the row, preserved across it and consumed by the following draw
+call, per `flow.c`'s own note that `0x1C500` "does not write it and its
+`0x474E4` pushes and pops it"). Then: with no serve pending (`DS_00108898`
+and `DS_001088AC` both `0`) the idle prompt draws; otherwise `DS_001088AC`
+counts down to `0` (clearing `DS_00108898` with it), and a live
+`DS_00108898` draws string `0x53` on the side `fighter_actor_bit15_clear`
+picks.
+
+### 49-S.6 Wiring and no other new callees
+
+`game_mode_21_step` (`0x26540`, `flow.c`) replaces its `PORT:` named-gap
+note with a direct `fight_4bf18();` call at `0x26687`, matching the raw's
+`call 0x4bf18` exactly (the return value, `undefined8`, is discarded by the
+raw itself, so the port is `void`). Every other callee `0x4BF18` reaches —
+`fight_4B3F0`/`fight_4B430`/`fight_4AC38`/`fight_dust_clamp`/
+`fight_midpoint`/`fighter_actor_bit15_clear`/`actor_set_dead`/
+`actors_anim_begin`/`fight_4C60C`/`fight_4CC0C` — was already ported before
+this task; only `fight_4CD98` is new.
+
+### 49-S.7 Verification
+
+Three `PR_ORACLE_REQUIRED=1 ./build/run_tests` runs, each timed at ~1.75s
+(no hang; the AGENTS.md-flagged infinite-loop risk does not apply here —
+the list walk's exit condition, `head == DS_0010884C`, was diffed line for
+line against `fight_effects_hold_all`'s own proven-correct walk before
+writing it, and the function has no other loop). `check_mode_21`
+(`test_fight.c`) updated: its old canary proved `0x4BF18` was a skipped
+named gap; flipped to prove `fight_4bf18`'s own `0x493F0` tail write now
+fires, plus a new scenario seeding `DS_001088A0 = 1` to drive the post-loop
+timeout path into `fight_4CD98`, asserting the mode word (a `k48_seed`
+dword sentinel, so only its low half should move) becomes `6` and the
+score bytes (seeded non-zero first, never asserting an unseeded BSS zero)
+clear. Verified live by mutation: temporarily commenting out the `flow.c`
+call site made all new/changed assertions fail (`check_mode_21`'s canary
+plus the four `fight_4CD98` checks), then restored and re-verified green.
+`make verify`: front-end 517/801/3/2, demo-fight fully explained at N =
+1886, attract2 0 unexplained at N = 3617, `symbols.h` regenerates
+byte-identically — all unchanged from before this task, as expected: the
+volleyball mini-game (mode `0x21`) is reachable only mid-attract-loop past
+the demo fight, outside the oracle windows this session's earlier gaps
+already established do not reach it.
+
+### 49-S.8 Remaining named gaps
+
+`FUN_0004A868` (case 1's else branch) remains unported, out of scope per
+spec §7.4 and the precedent this task deliberately reused rather than
+re-derived. No voice (`0x2C3FC`) call site in `0x4BF18` is wired (spec §7,
+record §45-A) — moot in any case, since the one voice call
+(`0x4BFF0`, `voice(200)`) sits behind the `0x4A868` gate and is therefore
+unreachable regardless.

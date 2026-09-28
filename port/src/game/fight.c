@@ -3576,7 +3576,8 @@ void fight_4d2d0(void)
  * (0x13, 1), 0x5C (7, 8), 0x5D (0x16, 8), then centred on rows 6 and 9 0x5E
  * "VOLLEYBALL GAME" and 0x5F "TIED" when DS_0010889C equals DS_0010889D,
  * else 0x16 "RIGHT PLAYER" (DS_0010889C below) or 0x17 "LEFT PLAYER", and
- * 0x5E. Called by 0x4C784 and by the unported 0x4BF18 (0x4C356, 0x4C429). */
+ * 0x5E. Called by 0x4C784 and by fight_4bf18 (0x4BF18, 0x4C356, 0x4C429,
+ * record §49-S). */
 void fight_4cc0c(void)
 {
     DSW(DSD(DS_00108868) + 0x36u) = 0xFE5Cu;                    /* 0x4CC19 */
@@ -3702,10 +3703,11 @@ void fight_4c784(u32 side)
 }
 
 /* 0x4C60C — demo-pose record §43-A. The volleyball's per-entry test (EAX =
- * entry, EDX = si; its one caller is 0x4BF18 at 0x4C21B, the mode-0x21 pass,
- * not ported): the actor's pset point against the fighters (0x17D30, BX = 0;
- * both sides count as side 0). A fighter of character 0, 3 or 5 whose slot
- * +0x5F is 0, or of character 2 whose +0x5F is 1, eats it (0x4C784); a
+ * entry, EDX = si; its one caller is fight_4bf18 (0x4BF18, 0x4C21B), the
+ * mode-0x21 pass, record §49-S): the actor's pset point against the
+ * fighters (0x17D30, BX = 0; both sides count as side 0). A fighter of
+ * character 0, 3 or 5 whose slot +0x5F is 0, or of character 2 whose
+ * +0x5F is 1, eats it (0x4C784); a
  * character above 6 does nothing; otherwise the ball is struck: DS_00108898 =
  * 0, +0x20 = the side, +0x1C bit 3 cleared, +0x1F counts, a held actor
  * (+0x4A) is released as 0x4B69C releases (without DS_001088B2), and 0x4CB18
