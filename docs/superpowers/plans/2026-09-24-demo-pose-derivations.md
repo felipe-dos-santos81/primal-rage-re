@@ -19986,3 +19986,410 @@ this task (no cross-reference in the ported code stores that literal);
 it likely lives in the same match-end/high-score territory as the
 `0x27DC8` gap already noted for modes 8/0xA/0x1E (records §49-C/§49-D/
 §49-H).
+
+## 49-L. Mode 0x22's frame handler `0x26C8C` (named-gap batch, branch `gap33-modes222324`)
+
+(The section letter is L. `docs/PROGRESS.md` and this file were grepped for
+`§49-` on `main` at `cd24528` first, at task start and again right before
+this section was written: A–D, G–K and O are taken; L, M and N appeared
+free both times, consistent with this task's own brief pre-assigning them
+to modes 0x22/0x23/0x24 respectively.)
+
+**Result in one line.** `0x26C8C`, `game_frame`'s case `0x22` (jump table
+`0x24B8C` entry `0x2540F`; `get_xrefs_to 0x26C8C` confirms the jump table is
+its one caller), is ported as `game_mode_22_step` (`flow.c`) and wired. It
+runs the per-side camera preamble shared with mode 0x24 (§49-N):
+`fight_slot_clear`, `camera_screen_base(side, class)`, a straight field copy
+`DS_001077E8[side] = DS_001077E4[side]`, `camera_project` with all six
+register/stack arguments resolved to the per-side cells the raw's own
+literals name (`DS_00100B08`/`DS_00100B00`/`DS_00100B62`/`DS_00100B60`/
+`DS_00100AF0`, all already-named `symbols.h` globals — no new `#define`
+needed here, unlike mode 0x23's table below). Then `fight_slot_pass`,
+`fight_hud_pass(side)`, `camera_y_commit`, `fight_4d2d0` (the effects pass,
+already ported, demo-pose record §43-A), a gated `camera_impact_dust_spawn`
+(new, `0x128D4`, this record) when `DS_00104AC4 > 1` signed, and the
+unconditional tail `0x26D4C` (new, `flow_26d4c`, `static` in `flow.c`, this
+record). Ends `DS_00104AEC |= 0x18`.
+
+### 49-L.1 Sources
+
+The raw comes from the Ghidra HTTP bridge at `127.0.0.1:8089`
+(`disassemble_function`, `read_memory`, `get_xrefs_to`), read in full for
+`0x26C8C` (53 instructions), `0x128D4` (the new dust-variant callee, 265
+bytes) and `0x26D4C` (the new tail, spanning up to `0x26F57` — right up to
+mode 0x24's own entry point `0x26F58`, confirmed by `get_function_by_address`
+on both addresses and by `0x26D4C`'s single xref being `0x26C8C`'s own call
+at `0x26D3B`). The format string at data address `0x809AC`
+(`read_memory`) decodes to the literal bytes `"%s%.03d%"` (a bare trailing
+`%`, not `%%`); the port writes the equivalent `"%s%03d%%"` to `snprintf`,
+the same substitution `game_overlay_step`'s `0x2BF08` already established
+for this codebase (`flow.c` `PORT:` note there).
+
+### 49-L.2 `0x128D4`, the frequent dust variant (`camera_impact_dust_spawn`)
+
+Already-ported `camera_dust_spawn` (`0x1282C`, `camera.c`, static, called
+only from `camera_scene_step`) is `0x128D4`'s near-twin: same gate shape
+(a frame-counter mask, then `rng(7) & 3 == 0`), same `off`/`yvel`/`flag5`
+literal triple on the draw's bit 2 (`0x2800`/`-0x80`/`0` or `-0x2800`/`0x80`/
+`0x4000`), same `actor_spawn(0xBB254, ...)` shape and the same `rec->+0x34
+= yvel` tail. Two differences, both pinned by re-disassembly and a raw
+`read_memory` byte check of the constants involved:
+
+- **The gate mask is `0xF`, not `0x3F`** (`0x128E4` `and al,0xf` vs
+  `0x1283E`'s `and ax,0x3f`) — four times as frequent (every 16 frames
+  instead of every 64).
+- **`a3` is the fixed word `DS_000BD898` (sign-extended), not `rng(0x1300)`,
+  and `a4` is `rng(0x2000)` alone, not `(0x1300 - r1) + r2`.** The raw
+  reaches the fixed-word value through a genuinely convoluted sequence
+  (`mov eax,edx; sub eax,edx` — a literal `EAX = EDX − EDX = 0`, a real
+  compiled idiom this codebase has not seen before this record — then a
+  4-byte stack slot straddling `[esp-2]` combines a garbage low word with
+  the just-computed `rng(0x2000)` result's low word, and `sar ebx,0x10`
+  discards the garbage half, leaving `(s32)(s16)` of the rng draw). The
+  port computes the same two final values directly (`(s32)(s16)
+  DSW(DS_000BD898)` and `rng_next(0x2000u)`) rather than replaying the
+  stack contortion; `DS_000BD898` is already a named global elsewhere in
+  this codebase's fighter/fight ground-plane math (`fighter.c` line 334,
+  `fight.c` several sites), so no new `#define` was needed for it.
+
+Its own header comment in `camera.c` cites both, and it is declared
+non-`static` (exported via `camera.h`) because — unlike `camera_dust_spawn`
+— its caller lives in a different translation unit (`flow.c`'s
+`game_mode_22_step`).
+
+### 49-L.3 `0x26D4C`, the mode-0x22 result-panel tail (`flow_26d4c`)
+
+Gated on `DS_00104AC4 > 0` (signed; `JG` at `0x26D5B` skips the whole body
+when true — note this is a *different* threshold than `camera_impact_dust_
+spawn`'s own `> 1` gate one call earlier in `0x26C8C`, both keyed off the
+same global). When the gate opens (`DS_00104AC4 <= 0`):
+
+- Three `text_cells_release_count(-1, row, 0x2A)` clears at rows 3/5/7
+  (`0x2F388`, already ported).
+- The run clock `0x32970(0)` and two voices `0x2C3FC(0x29)` /
+  `0x2C3FC(0x22, edx=0x1D)` — `PORT:` no-ops, spec §7 / record §45-A, as
+  every other call site in this codebase.
+- `prompt_side_erase(0, 0x1D)` and `prompt_side_erase(1, 0x1D)` (`0x2C2B0`,
+  already ported, record §48-T) — pinned by matching the raw's `EAX =
+  side` / `EDX = row` register shape against `prompt_side_erase`'s own
+  header comment.
+- The current side's slot byte `DS_001077F1[side] |= 0x10` — the slot's
+  `+0x41` byte, an already-named global this codebase's other `+0x41`
+  writers already use the same way (`flow.c`, several sites).
+- `DS_00104AFE = 0xB4`, `DS_00104AEC &= ~0x10`, `DS_00104B00 = 0x24` — note
+  this **reassigns the running mode to `0x24` mid-frame**, which is why
+  `check_mode_tail`'s pre-existing `H` sub-case (`test_fight.c`, testing
+  `game_frame`'s *second*, mode-tail switch's already-ported `case 0x22/
+  0x23` block) needed `DS_00104AC4` pinned `> 0` in its `MT_SEED` fixture
+  once mode 0x22 stopped being an inert gap — see §49-L.5.
+- `text_cursor_hold_font2(-1, 7, game_string_get(0x3C), 0x4000)`
+  unconditionally (already-ported callees).
+- `pct = DS_0010780B[side] * 100 / 0x78` (signed `IDIV`; the multiply-by-25-
+  then-shift-2 the raw uses is arithmetically `* 100`, confirmed by hand
+  expansion: `(v*4-v)*8+v = v*25`, `<<2 = v*100`). `DS_0010780B[side]` is an
+  already-`symbols.h`-named global (stride `0x94`, the same per-side struct
+  `DS_0010780A` belongs to).
+- **`DS_00104529` bit 1 set**: two background actors, `0xA8970` at
+  `(0x1400, 0xFF, 0x1800, 0)` and `0xA8984` at `(0x3A00, 0xFF, 0x1800, 0)`
+  (`0x2AE14`), then `text_number_set(0xF, 0xB, pct, 3, 1, 0x4003)`
+  (`0x2F434`, already ported) — the rest is skipped (`JMP` to the
+  epilogue, `0x26EE0`).
+- **Bit clear**: `game_string_get(0x3D)`, then the raw's own `sprintf`
+  (`0x65546`, itself never ported by this codebase — the `game_overlay_
+  step`/`0x2BF08` precedent already established that substitution) with
+  format `"%s%.03d%"` (the port: `"%s%03d%%"` via `snprintf`), then an
+  unbounded manual `REPNE SCASB` strcat that appends `game_string_get
+  (0x3E)` — the port bounds it into the same `snprintf`-based buffer
+  idiom `prompt_insert_coin_blink`'s `0x2C1FA` already established for
+  this codebase (three chained `snprintf(buf+n, sizeof buf-n, "%s", ...)`
+  calls) — then `text_cursor_set(-1, 3, buf, 0x2000)`.
+
+No `OR DS_00104AEC,0x8` inside `0x26D4C` itself — that bit is set by its
+*caller*, `0x26C8C`, after the call returns (`0x26D40`), which also means
+the `&= ~0x10` clear inside `0x26D4C`'s gated body is **not independently
+observable from outside `game_mode_22_step`**: the caller's own `|= 0x18`
+re-sets bit 4 immediately afterward. `check_mode_22`'s test (§49-L.5) checks
+only the effects that do survive to the end of `game_mode_22_step`.
+
+### 49-L.4 Register mapping evidence for the new callees
+
+- `camera_project`'s six arguments, for `game_mode_22_step`'s call: matched
+  register-for-register against `camera_project`'s own header comment
+  (`side=EAX`, `out_a=EDX`, `out_b=EBX`, `facing=ECX`, `page_flag=[esp]`,
+  `index_out=[esp+8]`), and cross-checked that the five per-side addresses
+  it computes (`0x100B08+side*4`, `0x100B00+side*4`, `0x100B62+side`,
+  `0x100B60+side`, `0x100AF0+side*4`) are the literal addresses that same
+  header comment already documents as `camera_project`'s own per-side
+  targets (`&DS_00100B08 (side 0) / &DS_00100B0C (side 1)`, etc.) —
+  independent confirmation the register/stack binding is right.
+- `text_cursor_hold_font2`'s four arguments (`col=EAX, row=EDX, s=EBX,
+  mode=ECX`): derived from an already-ported call site at `fight.c:4172`
+  (`0x4CC40`/`0x4CC4C`) by disassembling that site directly and matching
+  each register's value against the corresponding C argument in
+  `fight_4cc0c`'s already-ported body.
+- `text_number_set`'s six arguments (`col=EAX, row=EDX, value=EBX,
+  width=ECX`, stack `pad` then `mode`): taken directly from its own header
+  comment in `actors.h`, which already documents the stack order.
+
+### 49-L.5 Verification
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`, 3 consecutive runs plus 2
+mutation-revert runs (below), 0 compiler warnings, each run ≈2s (no hang).
+`check_mode_22` (`test_fight.c`) proves: the `DS_001077E8[side] =
+DS_001077E4[side]` field copy (`tf_demo_fixture`'s own `0x1111`/`0x2222`
+sentinels, already proven distinguishing for the identical copy in
+`fight_arena_frame`/`0x26254`'s `check_arena_frame`); `DS_00104AEC |= 0x18`
+at the end; the `DS_00104AC4 > 1` gate on `camera_impact_dust_spawn` via a
+**differential** rng-state check (`DS_000EF6D8` after two otherwise-
+identical runs, `DS_00104AC4 = 1` vs `= 2`, must differ — an absolute
+"unchanged" check is not safe here since `fight_slot_pass`/`fight_hud_pass`
+also draw rng in general, just identically in both runs); and `flow_26d4c`'s
+`DS_00104AC4 <= 0` gate via its unconditional prefix stores (`DS_001077F1`
+bit 4, `DS_00104AFE = 0xB4`, `DS_00104B00 = 0x24`), using the bit-1-set
+actor-spawn arm specifically to avoid any dependency on `ENGLISH.TXT` being
+loaded. Two mutations proven to fail the suite, then reverted: `>1` → `>
+100` in `game_mode_22_step`'s dust gate (`check_mode_22` fails at the
+differential rng check); `0x16` → `0x99` in mode 0x23's state 1 (§49-M,
+caught the same run — see below).
+
+`check_mode_tail`'s pre-existing `H` sub-case (mode 0x22/0x23 vehicles for
+`game_frame`'s *second* switch, its own already-ported `case 0x22/0x23`
+block) broke once mode 0x22/0x23 stopped being inert gaps: `flow_26d4c`'s
+`DS_00104AC4 <= 0` arm was firing under the old fixture (leaving
+`DS_00104AC4` at its zeroed/leftover value) and reassigning `DS_00104B00`
+to `0x24` before the second switch read it, so `camera_dispatch`'s clamp
+never ran (`DS_000F0AF0` stayed at its unclamped `0x7000` instead of
+`0x5D00`). Separately, mode 0x23's own state machine could fire on
+whatever `DS_00104B25` value happened to survive from an earlier,
+unrelated test (`MT_SEED` never set it). Fixed by adding `DS_00104AC4 = 1`
+and `DS_00104B25 = 0` to the shared `MT_SEED` fixture macro itself — inert
+for every other mode number `MT_SEED` drives (0x21/0x25/0x0C don't read
+either field), and it restores the exact original intent of the `H`
+sub-case (isolating `game_frame`'s shared tail, not mode 0x22/0x23's own
+now-real bodies, which `check_mode_22`/`check_mode_23` test directly).
+
+### 49-L.6 Remaining named gaps
+
+None beyond the standing, deliberately-deferred idioms: the `0x32970` run
+clock and the two `0x2C3FC` voices in `flow_26d4c` (spec §7, record
+§45-A) — the same `PORT:` no-ops every other mode handler in this codebase
+already carries.
+
+## 49-M. Mode 0x23's frame handler `0x26A50` (named-gap batch, branch `gap33-modes222324`)
+
+**Result in one line.** `0x26A50`, `game_frame`'s case `0x23` (same jump
+table, entry `0x2540F`; `get_xrefs_to 0x26A50` confirms one caller), is
+ported as `game_mode_23_step` (`flow.c`) and wired. It is a 4-state
+sub-machine on `DS_00104B25` (jump table `0x26A40`, `DEC AL; CMP AL,3; JA`
+sends anything outside `1..4` straight to the shared tail at `0x26C7F`):
+state 1 arms the round (a countdown timer, `DS_00104AC4 = 0x16`, the new
+single-side HUD spawn `fight_hud_spawn_side(1)`, `fight_round_reset`);
+state 2 spawns the round-card actor (`0xA895C` or `0xBB6B4` by
+`DS_00104529` bit 1) and arms a voice/countdown; state 3 kills that card,
+computes `DS_00104ABC`, and (bit 1 clear only) draws three per-character
+challenge strings from a new 12-byte-stride table; state 4 counts down and,
+on expiry, folds `DS_00104B25 = DS_00104B23`. Every path — the outside-
+`1..4` default included, via the shared tail states 3's bit-1-set arm and
+state 4 both fall into — ends `DS_00104AEC |= 8`.
+
+### 49-M.1 Sources
+
+Same Ghidra HTTP bridge; `0x26A50` disassembled in full (114 instructions
+across the four states plus the shared tail), and the jump table `0x26A40`
+(4 dwords) read directly via `read_memory` and confirmed against the
+`DEC AL / CMP AL,3 / JA` bound check (state `N` maps to `DS_00104B25 = N`,
+not `N-1`, since the raw decrements `AL` *before* the table index).
+
+### 49-M.2 `0x1DAE8`/`0x1DA84`, the single-side HUD spawn (`fight_hud_spawn_side`, `fight_hud_bar_set_inv`)
+
+`0x1DAE8` sits between the already-ported `fight_hud_spawn` (`0x1D890`)
+and `fight_hud_spawn_b` (`0x1DC6C`) in address order and shares their
+per-side `actor_spawn` idiom closely enough that the first pass of this
+task mistook it for a thin wrapper — it is not. Line-by-line comparison
+against `fight_hud_spawn`'s own already-derived body (record §48-U) found:
+
+- It operates on **one side only** (`DS_00104B1A`, not a `for side in
+  {0,1}` loop).
+- It zeroes **two** fields, not `fight_hud_spawn`'s four:
+  `DS_0010290C[side]` (shared with `fight_hud_spawn`) and
+  `DS_0010780B[side]` (stride `0x94`, **not** `fight_hud_spawn`'s
+  `DS_0010780E`/`DS_0010780A`/`DS_0010290E` triple — a field this task's
+  own §49-L needed independently, for `flow_26d4c`'s percentage readout,
+  confirming the field is real and shared across the two call sites).
+- It spawns **two** of `fight_hud_spawn`'s four records: the health-bar
+  record (`0xA767C[side]`/`0xA768C[side]`/`0xA7690[side]`, into
+  `DS_001028F0[side]` — byte-identical formula to `fight_hud_spawn`'s
+  first spawn) and the `0xBB664` record (into `DS_001028F8[side]` —
+  byte-identical to `fight_hud_spawn`'s third spawn). No second bar
+  (`DS_001028E8`, `0xA7684`) and no `0xBB678` record (`DS_00102900`).
+- In place of `fight_hud_spawn`'s `fight_hud_bar_set(0, side)` (`0x1D2F0`,
+  which selects between two sprite tables on `DS_00104B1D`/a slot flag),
+  it calls **a different, smaller function at `0x1DA84`** with the same
+  `(0, side)` arguments. Disassembling `0x1DA84` separately found it is
+  *not* `fight_hud_bar_set` reused: same `0..0x78` clamp, but the sprite
+  index is **inverted** (`0x78 - v`, not `v`) and **always** reads table
+  `0xC9A52` (no `DS_00104B1D` switch). Ported as a second new function,
+  `fight_hud_bar_set_inv`, `static` in `fight.c` (its only ported caller
+  is `0x1DAE8`'s own `0x1DB70`; a second xref, `0x1DC5C`, sits just before
+  `fight_hud_spawn_b`'s own entry `0x1DC6C` and belongs to a function
+  outside this task's three targets — noted, not chased).
+- Ends `DS_00104AEC |= 8`, not `fight_hud_spawn`'s `|= 2`.
+
+Both header comments (`fight.h`/`fight.c`) cite this record; `fight_hud_
+spawn_side` is exported (its one caller, `game_mode_23_step`, lives in
+`flow.c`), `fight_hud_bar_set_inv` stays `static`.
+
+### 49-M.3 Per-state derivation
+
+- **State 1** (`0x26A71..0x26AD5`, own `RET`, not the shared tail):
+  `DS_00104B1B = DS_00104B15 = 1`; `DS_00104AC4 = 0x16`; `0x29D60` (a bare
+  `ret`, the same no-op this codebase's own `0x32BAC`-pattern precedent
+  already documents, confirmed at `read_memory 0x29D60` = a single `RET`
+  byte); `DS_00104AD8 = 0`; `fight_hud_spawn_side(1)` (`0x1DAE8`, §49-M.2);
+  `DS_00104B20 = 1`; `fight_round_reset()` (`0x20EF8`, already ported);
+  `DS_00104AFE = 0x3C`; `DS_00104B23 = 2`; `DS_00104B25 = 4`.
+- **State 2** (`0x26AD6..0x26B58`, own `RET`): `desc = DS_00104529` bit 1
+  set `? 0xA895C : 0xBB6B4`; `DS_00104ACC = actor_spawn(mem+desc, 0x2A00,
+  0xFF, 0x1200, 0)`; `DS_00104AE8 |= 0x40`; the `0x2C3FC(0x60)` voice
+  (`PORT:`, record §45-A); `DS_00104B25 = 4`; `DS_00104AFE = 0x3C`;
+  `DS_00104B23 = 3`.
+- **State 3** (`0x26B59..0x26C60`, own `RET`): `text_cursor_hold(-1, 5,
+  mem+0x80994, 0)` (the same "22 spaces" string address mode 5's own
+  state 3 already uses, `0x2F4BC`); `actor_set_dead(DS_00104ACC)`;
+  `DS_00104ACC = 0`; `DS_00104ABC = (DS_00104B1F == 3) + 1` (identical
+  formula to mode 5's own state 3, `0x25EB2..0x25EC5`); the `0x32970` run
+  clock (`PORT:`, spec §7); `DS_00104AAC = 0x78`; `DS_00104B00 = 0x22`;
+  then, **only** with `DS_00104529` bit 1 clear (`0x26BDB` `JNZ` skips
+  straight to the shared tail otherwise), `side`'s character class
+  (`DS_0010782A[side]`) indexes a new 12-byte-stride table (`0xA8908`/
+  `0xA890C`/`0xA8910`, three `game_string_get` ids) drawn at rows 3/5/7
+  through `text_cursor_set(..., 0x2000)`.
+- **State 4** (`0x26C61..0x26C7E`, falls into the shared tail either way):
+  `DS_00104AFE -= 1` (word; the raw's `DEC EDX` on a 16-bit-loaded value
+  is a full-32-bit decrement, but only the low 16 bits are stored back and
+  tested, and a 32-bit borrow never changes the low-16 result of a `- 1`,
+  so the port's plain 16-bit decrement is exact). If the result is `<= 0`
+  (signed, `0x26C73` `JG` skips this), `DS_00104B25 = DS_00104B23`.
+- **Shared tail** (`0x26C7F..0x26C8B`): `DS_00104AEC |= 8`. Reached by the
+  outside-`1..4` default, state 3's bit-1-set skip, and state 4
+  unconditionally (both its taken and not-taken arms fall through to it).
+
+### 49-M.4 Verification
+
+`check_mode_23` (`test_fight.c`) exercises all four states plus the default
+in isolation (fresh scratch pool per state, `m23_seed`, the same idiom
+`check_mode_1f`'s per-state checks already established for this codebase):
+state 1's full field set including the `0x1DAE8` spawn and `DS_00104AC4 =
+0x16`; state 2's round-card spawn and voice-arm bit; state 3 both branches
+of the `DS_00104529` bit-1 split (with a real `actor_spawn`'d round-card
+record seeded first — `actor_set_dead` on an arbitrary non-zero-but-fake
+address risks dereferencing unrelated `mem[]` bytes as a pset/callback
+table, so the fixture spawns a genuine record instead); state 4's
+countdown, both the not-yet-expired and the expired-and-folds-`DS_00104B23`
+arms; the default's shared-tail-only path. One test-authoring bug caught
+and fixed during this task before commit: the `DS_00104ABC` formula's two
+expected values were transposed between the bit-1-set (`DS_00104B1F = 3`
+→ `2`, not `1`) and bit-1-clear (`DS_00104B1F = 0` → `1`, not `2`)
+sub-cases — caught by the test itself failing (`2 != 1` / `1 != 2`) on the
+first real run, not by inspection. See §49-L.5 for the mutation-revert
+runs (state 1's `DS_00104AC4 = 0x16` mutated to `0x99`, caught) and the
+`check_mode_tail` fixture fix this mode's wiring also required.
+
+### 49-M.5 Remaining named gaps
+
+The `0x2C3FC(0x60)` voice in state 2 (`PORT:`, spec §7, record §45-A). The
+second, unported xref to `0x1DA84` (`0x1DC5C`, outside this task's three
+targets) is noted but not chased.
+
+## 49-N. Mode 0x24's frame handler `0x26F58` (named-gap batch, branch `gap33-modes222324`)
+
+**Result in one line.** `0x26F58`, `game_frame`'s case `0x24` (same jump
+table; `get_xrefs_to 0x26F58` confirms one caller), is ported as
+`game_mode_24_step` (`flow.c`) and wired. It runs the identical per-side
+camera preamble to mode 0x22 (`fight_slot_clear`, `camera_screen_base`,
+the `DS_001077E8`/`DS_001077E4` field copy, `camera_project` — §49-L.1;
+*no* `camera_impact_dust_spawn` and no `camera_y_commit` at this point,
+unlike mode 0x22), then `fight_slot_pass`, `fight_hud_pass(side)`,
+`fight_4d2d0`. `DS_00104AEC |= 8`, then `DS_00104AFE -= 1` (word, same
+low-16-safe decrement as mode 0x23's state 4); while the result stays `>
+0` (signed) the function skips straight to the tail. Once it reaches `<=
+0`: resets the join/character-select scratch (`DS_00104B21 = 0,
+DS_00104B14 = 1, DS_00104B0C = 0, DS_00104B11 = 0` — byte-identical to
+`flow_join_prompt_draw`/`0x271E0`'s own reset, already ported, record
+§48-Z), `flow_1082d0_from_column(4)`, `DS_00104AFC = 7`,
+`flow_side_char_random(r ^ 1)` with `r = DS_00104AD4` (the exact call this
+already-ported function's own header comment cites as caller "`0x2705E
+(0x26F58)`" — i.e. a prior task's derivation of `flow_side_char_random`
+already named this exact, then-unported call site), arms the hook
+`game_hook_27134` (`DS_00104AE4 = 0x27134` — the store `game_hook_27134`'s
+own header comment already cites as "stored at `0x27074 (0x26F58)`"),
+`DS_00104AFE = 0x78`, `DS_00104B00 = 0x17`, `DS_001088EE = 0`,
+`config_play_time_close(mode = DS_00104ABC, flag = DS_00104B19)`
+(`0x32A3C`, already ported), `DS_00104B19 = 0`, and the deferred `0x2DAE4`
+play-time audit add (`PORT:`, spec §7, per `config_play_time_close`'s own
+header). Either way, `camera_y_commit` runs last, unconditionally.
+
+### 49-N.1 Sources
+
+Same Ghidra HTTP bridge; `0x26F58` disassembled in full (89 instructions).
+No new callees: every function `0x26F58` calls was already ported before
+this task, either standing (`fight_slot_clear`, `camera_screen_base`,
+`camera_project`, `fight_slot_pass`, `fight_hud_pass`, `fight_4d2d0`,
+`camera_y_commit`, `config_play_time_close`) or newly confirmed reachable
+by name from an existing header comment (`flow_1082d0_from_column`,
+`flow_side_char_random`, `game_hook_27134`'s `FN_00027134` target).
+
+### 49-N.2 The shared preamble, confirmed byte-identical to mode 0x22
+
+`0x26F58`'s first 0x88 bytes (`0x26F5D..0x26FE5`) were diffed instruction-
+for-instruction against `0x26C8C`'s own first 0x88 bytes (`0x26C90..
+0x26D17`, this record §49-L): identical addressing (`side*37` then `*4`
+for the two `DS_0010782A`/`DS_001077E4`/`DS_001077E8` table reads, the
+same six-argument `camera_project` register/stack setup) with only the
+absolute addresses shifted by the `0x26F58 - 0x26C8C = 0x2CC` function
+offset — confirming this is the same compiled preamble, not independently
+re-derived. Divergence starts immediately after `fight_hud_pass`: mode
+0x22 calls `camera_y_commit` then `fight_4d2d0` then the gated dust spawn
+then the unconditional `0x26D4C` tail; mode 0x24 calls `fight_4d2d0`
+directly (no `camera_y_commit`, no dust spawn) and moves straight into its
+own countdown/hook-arm body, with `camera_y_commit` deferred to the very
+end (both the countdown-expired and not-expired paths converge on the
+same `CALL 0x12DA8` at `0x270AE`).
+
+### 49-N.3 The `flow_side_char_random` XOR idiom, matched to precedent
+
+`0x27055`'s `XOR AL,DH` (`DH = 1` from `0x27033`) touches only the low
+byte of `EAX`, which was loaded as a full 32-bit `MOV EAX,[0x104AD4]` at
+`0x2704E` — a byte-only XOR on a dword-loaded register. This codebase
+already has the identical pattern at `0x271E0`'s own `0x27227` (`XOR
+AL,0x1` after `MOV EAX,[0x104AD4]` at `0x2721B`), already ported in
+`flow_join_prompt_draw` as `u32 r = DSD(DS_00104AD4); flow_side_char_
+random(r ^ 1u);` — a full-dword XOR in C, on the standing assumption
+(never contradicted anywhere in this codebase) that `DS_00104AD4`'s upper
+24 bits are always zero in reachable game state. This task's `0x26F58`
+reuses the identical idiom and is ported the identical way, for
+consistency with that established precedent rather than re-deriving a
+byte-exact-but-inconsistent alternative.
+
+### 49-N.4 Verification
+
+`check_mode_24` (`test_fight.c`) proves: the shared field copy (as
+§49-L.5); `DS_00104AEC |= 8`; the countdown-not-expired path leaves the
+hook (`DS_00104AE4`) and the join scratch untouched, only decrementing
+`DS_00104AFE`; the countdown-expired path resets all four join-scratch
+bytes, sets `DS_00104AFC = 7`, `DS_00104AFE = 0x78`, arms the hook to the
+literal `0x27134`, sets `DS_00104B00 = 0x17`, zeroes `DS_001088EE`, and
+zeroes `DS_00104B19` (proving `config_play_time_close` ran, per its own
+already-ported body). `DS_00104B02`'s seven gate bytes are explicitly
+zeroed before the expired-path test so `flow_side_char_random`'s draw loop
+(record §48-Q; a `do { c = rng(7); } while (DS_00104B02[c] & 0x20)` with
+no fallback) cannot spin — the fixture the sibling task in this session's
+batch was warned about (see this file's own §49-L caution and the task
+brief). A mutation (`t <= 0` → `t <= -1000`) was proven to fail 9 of
+`check_mode_24`'s assertions in one run, then reverted — see §49-L.5.
+
+### 49-N.5 Remaining named gaps
+
+None: every real callee is already ported, and the one deferred-idiom call
+(`0x2DAE4`, spec §7) is already `config_play_time_close`'s own standing
+`PORT:` note, not a new one this task introduces.

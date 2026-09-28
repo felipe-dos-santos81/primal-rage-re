@@ -1566,6 +1566,60 @@ void fight_hud_spawn_b(u32 enable)
     }
 }
 
+#define DS_00104B1A 0x00104B1Au
+
+/* 0x1DA84 — record §49-M. `v` clamped to 0..0x78 as 0x1D2F0 (fight_hud_bar_set),
+ * then actor_pset_word_set on DS_001028F0[side] with AX = the word
+ * 0xC9A52[(0x78 - v) * 2] — always table 0xC9A52 (no DS_00104B1D/flag8
+ * switch, unlike 0x1D2F0) and the index inverted (0x78 - v rather than v).
+ * The EBX/ECX/EDX loads before the 0x10D70 call are dead, as 0x1D2F0's own
+ * header notes for its call. Callers: the unported 0x1DB70 (0x1DAE8) and
+ * 0x1DC5C (unported, outside this cycle). */
+static void fight_hud_bar_set_inv(s32 v, u32 side)
+{
+    u32 c = v > 0x78 ? 0x78u : (v < 0 ? 0u : (u32)v);   /* 0x1DA86..0x1DA98 */
+    actor_pset_word_set(DSD(DS_001028F0 + side * 4u),
+                        DSW(DS_000C9A52 + (0x78u - c) * 2u));  /* 0x1DAE0 */
+}
+
+/* 0x1DAE8 — record §49-M. The single-side twin of 0x1D890/0x1DC6C, scoped to
+ * `side` = DS_00104B1A: only the health-bar record (0xA767C[side] at
+ * 0xA768C[side]/0xFF/0xA7690[side], into DS_001028F0[side]) and the 0xBB664
+ * record (0xA7628[side]/0xFF/0xA762C[side], into DS_001028F8[side]) are
+ * spawned — no second bar (0xA7684/DS_001028E8) and no 0xBB678 record
+ * (DS_00102900). DS_0010290C[side] and the per-side byte DS_0010780B[side]
+ * (stride 0x94, DS_0010780A's own struct, +1) are zeroed regardless of
+ * `enable` (0x1DAF9/0x1DB0D); with `enable` 0 (DL, AL at the call) the
+ * function returns there (0x1DB16). Otherwise: the health-bar spawn, then
+ * 0x1DA84(0, side) (not 0x1D2F0/0x1D2F0's own DS_00104B1D switch), the
+ * 0xBB664 spawn, DS_001028E0[side] = 0 (no 0x2B150 release of the old
+ * record, EDX kept 0 by the spawn's own `xor edx,eax` idiom), then
+ * fight_hud_badge_spawn(side, DS_0010782A[side]'s class, the word
+ * DS_000A76D0) and DS_00104AEC |= 8 (0x1DBFF; not fight_hud_spawn's 2).
+ * EBX/ECX/EDX pushed and popped. Only caller: 0x26AA1 (0x26A50, mode 0x23's
+ * state 1, EAX = 1). */
+void fight_hud_spawn_side(u32 enable)
+{
+    u32 side = DSB(DS_00104B1A);                            /* 0x1DAF1 */
+    DSB(DS_0010290C + side) = 0u;                           /* 0x1DAF9 */
+    DSB(DS_0010780B + side * 0x94u) = 0u;                   /* 0x1DB0D */
+    if ((u8)enable == 0u) return;                           /* 0x1DB14/0x1DB16 */
+    u32 a = side != 0u ? 0x4000u : 0u;                      /* 0x1DB1C..0x1DB29 */
+    DSD(DS_001028F0 + side * 4u) = actor_spawn(
+        (const u32 *)(mem + DSD(DS_000A767C + side * 4u)),
+        DSW(DS_000A768C + side * 2u), 0xFFu,
+        DSW(DS_000A7690 + side * 2u), a);                   /* 0x1DB38..0x1DB5A */
+    fight_hud_bar_set_inv(0, side);                          /* 0x1DB6E/0x1DB70 0x1DA84 */
+    DSD(DS_001028F8 + side * 4u) = actor_spawn(
+        (const u32 *)(mem + DS_000BB664),
+        DSW(DS_000A7628 + side * 2u), 0xFFu,
+        DSW(DS_000A762C + side * 2u), a);                   /* 0x1DB97..0x1DBB7 */
+    DSD(DS_001028E0 + side * 4u) = 0u;                       /* 0x1DBCF */
+    fight_hud_badge_spawn(side, DSB(DS_0010782A + side * 0x94u),
+                          DSW(DS_000A76D0));                /* 0x1DBEA..0x1DBFA 0x1D838 */
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 8u);          /* 0x1DBFF */
+}
+
 /* ---- 0x20EF8 the round reset --------------------------------------------- */
 
 /* 0x38BEC — record §48-U. EAX = the side. The words 0x107D2C, 0x107D20,

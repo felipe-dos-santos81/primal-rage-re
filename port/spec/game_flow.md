@@ -415,9 +415,12 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
   - it dispatches cases 3, 4, 5, 6, 8, 9, `0xA`, `0xB`, `0xC`, `0xD`, `0xE`,
-    `0x10`, `0x11`, `0x13`, `0x14`, `0x15`, `0x16`, `0x17`, `0x1A`, `0x1B` and
-    `0x32`, and cases 1/2/`0x20` run the bare `ret` `0x29B70`;
-  - the other 24 cases are named gaps.
+    `0x10`, `0x11`, `0x13`, `0x14`, `0x15`, `0x16`, `0x17`, `0x1A`, `0x1B`,
+    `0x22`, `0x23`, `0x24` and `0x32` (cases `0x22`/`0x23`/`0x24` —
+    `0x26C8C`/`0x26A50`/`0x26F58`, `game_mode_22_step`/`game_mode_23_step`/
+    `game_mode_24_step`, records §49-L/§49-M/§49-N — are no longer named
+    gaps), and cases 1/2/`0x20` run the bare `ret` `0x29B70`;
+  - the other 21 cases are named gaps.
   - Case 4 (the table entry `0x25242`, `call 0x26254; jmp 0x2540F`) is the
     fight frame `0x26254` (`game_mode_04_step`, record §48-K): `0x3C5CC`,
     `0x16D58` per side and the two position latches; only with
@@ -1309,9 +1312,13 @@ exits 0.
   (`0x4BD98` with `0x13134`, `0x4CB18`) are ported, as are the mode-`0x22`
   prelude `0x4D7A4` and its grab arm `0x4D898` (record §42-C); the demo
   reaches none of them. `0x4D7A4`'s caller, the mode-`0x22`/`0x24` pass
-  `0x4D2D0`, and the volleyball's `0x4C60C` (`0x4CB18`'s flag-1 caller) are
-  ported with their callees (record §43-A) but have no port caller; the
-  effects tail's `0x4987C` (`DS_001088BF` 1..4) is wired.
+  `0x4D2D0`, is now wired: modes `0x22`/`0x24` (`0x26C8C`/`0x26F58`,
+  `game_mode_22_step`/`game_mode_24_step`, records §49-L/§49-N) call it,
+  as `game_frame`'s cases `0x22`/`0x23`/`0x24` are no longer named gaps
+  (records §49-L/§49-M/§49-N). The volleyball's `0x4C60C` (`0x4CB18`'s
+  flag-1 caller) is ported with its callees (record §43-A) but still has
+  no port caller (mode `0x21`'s own pass remains unported); the effects
+  tail's `0x4987C` (`DS_001088BF` 1..4) is wired.
   The second freeze `0x22CE4` and character 1's
   reactions `0x29`/`0x2A` (`0x22F74`, `0x2365C`) are ported too (§42-A),
   with update-table entry 5 `0x22FE8`; the demo reaches none of them either.

@@ -113,6 +113,12 @@ void camera_screen_base(s32 side, s32 character);
  * (the state-6 fight reset) calls it at 0x20E33. */
 void camera_dust_list_init(void);
 
+/* 0x128D4 (record §49-L). 0x1282C's twin, four times as frequent
+ * ((DS_000EF6DC & 0xF) == 0) and anchored to the fixed word DS_000BD898
+ * rather than a random x. Only caller: mode 0x22's frame (0x26C8C), gated on
+ * DS_00104AC4 > 1. */
+void camera_impact_dust_spawn(void);
+
 /* 0x1282C then 0x12DA8, the pair 0x263F4 (and 0x26254, record §48-K) calls
  * at the end of the frame: the gated dust spawn (every 64th frame, then
  * rng(7)&3 == 0) followed by the selected-player-y commit and the camera-y

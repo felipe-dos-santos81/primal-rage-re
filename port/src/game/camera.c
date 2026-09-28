@@ -1544,6 +1544,37 @@ static void camera_dust_spawn(void)
     if (rec != 0) DSW(rec + 0x34u) = (u16)yvel;        /* 0x128C5 */
 }
 
+/* 0x128D4 — record §49-L. 0x1282C's twin, four times as frequent (gated on
+ * (DS_000EF6DC & 0xF) == 0, not 0x3F) and anchored to a fixed x rather than a
+ * random one: rng(7); when (draw & 3) != 0 return (as 0x1282C). The
+ * off/yvel/flag5 triple on bit 2 of the draw is byte-for-byte 0x1282C's
+ * (0x2800/-0x80/0 or -0x2800/0x80/0x4000). Unlike 0x1282C, a3 is the fixed
+ * word DS_000BD898 (sign-extended), not rng(0x1300), and a4 is rng(0x2000)
+ * alone, not (0x1300 - r1) + r2 — the raw reaches this value through a
+ * convoluted partial-dword stack read (`mov eax,edx; sub eax,edx` zeroes
+ * EAX, then a sign-extended low word survives an unrelated `sar ebx,0x10`);
+ * the port computes it directly. Spawns one actor from 0xBB254 as 0x1282C
+ * does. Only caller: 0x26D36 (0x26C8C, mode 0x22, gated on DS_00104AC4 > 1
+ * signed). */
+void camera_impact_dust_spawn(void)
+{
+    if ((DSB(DS_000EF6DC) & 0xFu) != 0u) return;       /* 0x128E6/0x128EB */
+    u32 draw = rng_next(7u);                           /* 0x128F6 */
+    if ((draw & 3u) != 0u) return;                     /* 0x128FB */
+    s32 off; s32 yvel; u32 flag5;
+    if ((draw & 4u) != 0u) {                            /* 0x128FF */
+        off = 0x2800; yvel = (s32)0xFFFFFF80; flag5 = 0u;
+    } else {
+        off = (s32)0xFFFFD800; yvel = 0x80; flag5 = 0x4000u;
+    }
+    s32 a3 = (s32)(s16)DSW(DS_000BD898);                /* 0x1294D */
+    u32 a4 = rng_next(0x2000u);                         /* 0x12938 */
+    u32 rec = actor_spawn((const u32 *)(mem + CAMERA_DUST_DESC),
+                          (u32)((s32)DSD(DS_000F0AF0) + off),
+                          (u32)a3, a4, flag5);           /* 0x12962 */
+    if (rec != 0) DSW(rec + 0x34u) = (u16)yvel;          /* 0x1296B */
+}
+
 /* 0x12DA8. The selected player y: mode 0 reads slot[DS_000F0AFF]+0x30's word,
  * else the signed max of DS_001077E0/DS_00107874; store its low word to
  * DS_001078F4 and run the y clamp. */

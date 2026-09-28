@@ -4709,6 +4709,257 @@ void game_mode_1f_step(void)
     }
 }
 
+/* ---- modes 0x22/0x23/0x24, the fight-transition frames -------------------- */
+
+/* 0x26D4C — record §49-L. Called unconditionally at the end of mode 0x22's
+ * frame (0x26C8C, its sole caller per get_xrefs_to). Skips its whole body
+ * when DS_00104AC4 > 0 (signed), falling straight to the epilogue (there is
+ * no further camera_y_commit here — 0x26C8C already ran it before this
+ * call). Otherwise:
+ * - three text_cells_release_count(-1, 3, 0x2A), (-1, 5, 0x2A), (-1, 7,
+ *   0x2A) clears (0x2F388);
+ * - the run clock 0x32970(0) and two deferred voices 0x2C3FC(0x29) and
+ *   0x2C3FC(0x22, edx=0x1D), out of scope (spec §7);
+ * - prompt_side_erase(0, 0x1D) and prompt_side_erase(1, 0x1D) (0x2C2B0);
+ * - the current side's slot byte DS_001077F1[side] |= 0x10 (the slot's
+ *   +0x41, as flow.c's other +0x41 writers);
+ * - DS_00104AFE = 0xB4, DS_00104AEC &= ~0x10, DS_00104B00 = 0x24;
+ * - text_cursor_hold_font2(-1, 7, game_string_get(0x3C), 0x4000)
+ *   unconditionally;
+ * - pct = DS_0010780B[side] * 100 / 0x78 (signed IDIV; DS_0010780B[side] is
+ *   the per-side byte 0x1DAE8/0x1DA84 also touch, record §49-M);
+ * - with DS_00104529 bit 1 set: two background actors, 0xA8970 at (0x1400,
+ *   0xFF, 0x1800, 0) and 0xA8984 at (0x3A00, 0xFF, 0x1800, 0), then
+ *   text_number_set(0xF, 0xB, pct, 3, 1, 0x4003) (0x2F434), and the string
+ *   path below is skipped;
+ * - with the bit clear: game_string_get(0x3D), sprintf(buf, "%s%.03d%%",
+ *   that string, pct) (0x65546, format read at data 0x809AC: "%s%.03d%", a
+ *   bare trailing '%' the port writes as the equivalent "%s%03d%%"; the
+ *   0x65546 formatter itself is not ported, as game_overlay_step's 0x2BF08
+ *   already established for this codebase), then the raw's unbounded
+ *   REPNE-SCASB manual strcat appends game_string_get(0x3E) to it (the port
+ *   bounds it, as prompt_insert_coin_blink's 0x2C1FA already established),
+ *   and text_cursor_set(-1, 3, buf, 0x2000) draws it.
+ * EBX..EDI are pushed and popped. */
+static void flow_26d4c(void)
+{
+    if ((s32)DSD(DS_00104AC4) > 0) return;                  /* 0x26D54/0x26D5B */
+
+    text_cells_release_count(-1, 3, 0x2A);                  /* 0x26D70 0x2F388 */
+    text_cells_release_count(-1, 5, 0x2A);                  /* 0x26D84 */
+    text_cells_release_count(-1, 7, 0x2A);                  /* 0x26D98 */
+    /* PORT: 0x26D9F 0x32970(0), the run clock, is out of scope (spec §7). */
+    /* PORT: 0x26DA9 0x2C3FC(0x29) and 0x26DB8 0x2C3FC(0x22, edx=0x1D)
+     * voices, not wired (record §45-A; spec §7). */
+    prompt_side_erase(0, 0x1D);                             /* 0x26DBF 0x2C2B0 */
+    prompt_side_erase(1, 0x1D);                             /* 0x26DCE */
+
+    u32 side = DSB(DS_00104B1A);                            /* 0x26DD5 */
+    DSB(DS_001077F1 + side * 0x94u) =
+        (u8)(DSB(DS_001077F1 + side * 0x94u) | 0x10u);      /* 0x26DE9/0x26DF8 */
+    DSW(DS_00104AFE) = 0xB4u;                               /* 0x26E0D */
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) & 0xEFu);      /* 0x26E14 */
+    DSW(DS_00104B00) = 0x24u;                               /* 0x26E24 */
+    text_cursor_hold_font2(-1, 7, game_string_get(0x3Cu), 0x4000u);  /* 0x26E3C */
+
+    u32 v = DSB(DS_0010780B + side * 0x94u);                /* 0x26E59 */
+    s32 pct = (s32)(v * 100u) / 0x78;                       /* 0x26E7B */
+
+    if ((DSB(DS_00104529) & 2u) != 0u) {                    /* 0x26E85/0x26E88 */
+        (void)actor_spawn((const u32 *)(mem + 0xA8970u), 0x1400u, 0xFFu,
+                          0x1800u, 0u);                     /* 0x26EA0 0x2AE14 */
+        (void)actor_spawn((const u32 *)(mem + 0xA8984u), 0x3A00u, 0xFFu,
+                          0x1800u, 0u);                     /* 0x26EBB */
+        text_number_set(0xF, 0xB, pct, 3, 1u, 0x4003u);     /* 0x26EDB 0x2F434 */
+    } else {
+        char buf[0x40];
+        snprintf(buf, sizeof buf, "%s%03d%%",
+                (const char *)game_string_get(0x3Du), (int)pct);   /* 0x26F01 0x65546 */
+        size_t n = strlen(buf);
+        snprintf(buf + n, sizeof buf - n, "%s",
+                (const char *)game_string_get(0x3Eu));      /* 0x26F1D..0x26F3B */
+        text_cursor_set(-1, 3, (const u8 *)buf, 0x2000u);   /* 0x26F48 0x2F198 */
+    }
+}
+
+/* 0x26C8C — record §49-L. The mode 0x22 handler (0x24C5C case 0x22, jump
+ * table entry). fight_slot_clear, then the per-side camera preamble shared
+ * with mode 0x24 (record §49-N): camera_screen_base(side, the class byte
+ * DS_0010782A[side]), DS_001077E8[side] = DS_001077E4[side] (a straight
+ * field copy), camera_project(side, out_a = &DS_00100B08[side], out_b =
+ * &DS_00100B00[side], facing = &DS_00100B62[side], page_flag =
+ * &DS_00100B60[side], index_out = &DS_00100AF0[side]). Then fight_slot_pass,
+ * fight_hud_pass(side), camera_y_commit, fight_4d2d0 (the effects pass,
+ * record §43-A), camera_impact_dust_spawn when DS_00104AC4 > 1 (signed,
+ * record §49-L), and flow_26d4c unconditionally. DS_00104AEC |= 0x18.
+ * EBX/ECX/EDX/ESI are pushed and popped. Sole caller per get_xrefs_to:
+ * 0x24C5C's jump table (record §47-B.1). */
+void game_mode_22_step(void)
+{
+    fight_slot_clear();                                     /* 0x26C90 0x3C5CC */
+    u32 side = DSB(DS_00104B1A);                            /* 0x26C95 */
+    u32 ch = DSB(DS_0010782A + side * 0x94u);                /* 0x26CAE */
+    camera_screen_base((s32)side, (s32)ch);                 /* 0x26CB7 0x16D58 */
+    DSD(DS_001077E8 + side * 0x94u) = DSD(DS_001077E4 + side * 0x94u);  /* 0x26CD1/0x26CD8 */
+    camera_project(side,
+                   DS_00100B08 + side * 4u,
+                   DS_00100B00 + side * 4u,
+                   DS_00100B62 + side,
+                   DS_00100B60 + side,
+                   DS_00100AF0 + side * 4u);                 /* 0x26D0D 0x17FA0 */
+    fight_slot_pass();                                       /* 0x26D12 0x3CB68 */
+    fight_hud_pass(DSB(DS_00104B1A));                        /* 0x26D1E 0x35658 */
+    camera_y_commit();                                       /* 0x26D23 0x12DA8 */
+    fight_4d2d0();                                            /* 0x26D28 0x4D2D0 */
+    if ((s32)DSD(DS_00104AC4) > 1)                             /* 0x26D2D/0x26D34 */
+        camera_impact_dust_spawn();                              /* 0x26D36 0x128D4 */
+    flow_26d4c();                                                /* 0x26D3B 0x26D4C */
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 0x18u);            /* 0x26D40 */
+}
+
+#define DS_000A8908 0x000A8908u   /* no symbols.h name: [character*12] challenge string id row 3 */
+#define DS_000A890C 0x000A890Cu   /* no symbols.h name: [character*12] challenge string id row 5 */
+#define DS_000A8910 0x000A8910u   /* no symbols.h name: [character*12] challenge string id row 7 */
+
+/* 0x26A50 — record §49-M. The mode 0x23 handler (0x24C5C case 0x23, jump
+ * table entry). A 4-state sub-machine on DS_00104B25 (jump table 0x26A40,
+ * `dec al; cmp al,3; ja` sends anything outside 1..4 straight to the shared
+ * tail): state 1 arms the round (DS_00104B1B/DS_00104B15 = 1, DS_00104AC4 =
+ * 0x16, DS_00104AD8 = 0, fight_hud_spawn_side(1) (record §49-M), DS_00104B20
+ * = 1, fight_round_reset, DS_00104AFE = 0x3C, DS_00104B23 = 2, DS_00104B25 =
+ * 4); state 2 spawns the round card (0xA895C or 0xBB6B4 by DS_00104529 bit
+ * 1) into DS_00104ACC and arms the voice/countdown (DS_00104B25 = 4,
+ * DS_00104AFE = 0x3C, DS_00104B23 = 3); state 3 erases the "22 spaces"
+ * cursor line (0x2F4BC), kills DS_00104ACC, sets DS_00104ABC =
+ * (DS_00104B1F == 3) + 1, DS_00104AAC = 0x78, DS_00104B00 = 0x22, and (with
+ * DS_00104529 bit 1 clear only) draws three per-character strings from the
+ * 12-byte-stride table 0xA8908/0xA890C/0xA8910 at rows 3/5/7; state 4
+ * decrements DS_00104AFE and, once it reaches 0 (signed), sets DS_00104B25
+ * = DS_00104B23. Every path (including the outside-1..4 default and the
+ * shared tail states 3/4 fall into) ends with DS_00104AEC |= 8.
+ * EBX/ECX/EDX/ESI/EDI are pushed and popped. Sole caller per get_xrefs_to:
+ * 0x24C5C's jump table (record §47-B.1). */
+void game_mode_23_step(void)
+{
+    switch (DSB(DS_00104B25)) {                             /* 0x26A55..0x26A69 */
+    case 1u:
+        DSB(DS_00104B1B) = 1u;                              /* 0x26A78 */
+        DSB(DS_00104B15) = 1u;                              /* 0x26A7E */
+        DSD(DS_00104AC4) = 0x16u;                            /* 0x26A8B */
+        /* 0x26A91 0x29D60 is a ret-only no-op. */
+        DSD(DS_00104AD8) = 0u;                              /* 0x26A9B */
+        fight_hud_spawn_side(1u);                            /* 0x26AA1 0x1DAE8 */
+        DSB(DS_00104B20) = 1u;                               /* 0x26AAA */
+        fight_round_reset();                                /* 0x26AAF 0x20EF8 */
+        DSW(DS_00104AFE) = 0x3Cu;                            /* 0x26AB6 */
+        DSB(DS_00104B23) = 2u;                               /* 0x26ABD */
+        DSB(DS_00104B25) = 4u;                               /* 0x26AC3 */
+        break;
+    case 2u: {
+        u32 desc = (DSB(DS_00104529) & 2u) != 0u
+                 ? 0xA895Cu : 0xBB6B4u;                      /* 0x26AD6..0x26B08 */
+        DSD(DS_00104ACC) = actor_spawn((const u32 *)(mem + desc), 0x2A00u,
+                                       0xFFu, 0x1200u, 0u);  /* 0x26B0D 0x2AE14 */
+        DSB(DS_00104AE8) = (u8)(DSB(DS_00104AE8) | 0x40u);   /* 0x26B2C */
+        /* PORT: 0x26B32 0x2C3FC(0x60) voice, not wired (record §45-A). */
+        DSB(DS_00104B25) = 4u;                               /* 0x26B37 */
+        DSW(DS_00104AFE) = 0x3Cu;                            /* 0x26B3F */
+        DSB(DS_00104B23) = 3u;                               /* 0x26B46 */
+        break;
+    }
+    case 3u:
+        text_cursor_hold(-1, 5, mem + DS_00080994, 0u);      /* 0x26B6A 0x2F4BC */
+        actor_set_dead(DSD(DS_00104ACC));                    /* 0x26B74 0x2B150 */
+        DSD(DS_00104ACC) = 0u;                               /* 0x26B82 */
+        DSD(DS_00104ABC) = (DSB(DS_00104B1F) == 3u ? 1u : 0u) + 1u;  /* 0x26B94 */
+        /* PORT: 0x26B99 0x32970, the run clock, is out of scope (spec §7). */
+        DSD(DS_00104AAC) = 0x78u;                            /* 0x26BBE */
+        DSW(DS_00104B00) = 0x22u;                            /* 0x26BD1 */
+        if ((DSB(DS_00104529) & 2u) == 0u) {                 /* 0x26BD8/0x26BDB */
+            u32 side = DSB(DS_00104B1A);                     /* 0x26B9E */
+            u32 ch = DSB(DS_0010782A + side * 0x94u);        /* 0x26BC4 */
+            u32 row = ch * 12u;                              /* 0x26BEA */
+            text_cursor_set(-1, 3, game_string_get(DSD(DS_000A8908 + row)),
+                            0x2000u);                        /* 0x26C0D */
+            text_cursor_set(-1, 5, game_string_get(DSD(DS_000A890C + row)),
+                            0x2000u);                        /* 0x26C2E */
+            text_cursor_set(-1, 7, game_string_get(DSD(DS_000A8910 + row)),
+                            0x2000u);                        /* 0x26C4F */
+        }
+        break;
+    case 4u: {
+        s32 t = (s32)(s16)(DSW(DS_00104AFE) - 1u);           /* 0x26C68 */
+        DSW(DS_00104AFE) = (u16)t;                           /* 0x26C69 */
+        if (t <= 0)                                          /* 0x26C73 `jg` */
+            DSB(DS_00104B25) = DSB(DS_00104B23);             /* 0x26C7A */
+        break;
+    }
+    default:
+        break;
+    }
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 8u);          /* 0x26C7F..0x26C86 */
+}
+
+/* 0x26F58 — record §49-N. The mode 0x24 handler (0x24C5C case 0x24, jump
+ * table entry). The same per-side camera preamble as mode 0x22 (record
+ * §49-L; fight_slot_clear, camera_screen_base, the DS_001077E8/E4 field
+ * copy, camera_project), then fight_slot_pass, fight_hud_pass(side) and
+ * fight_4d2d0 — but no camera_impact_dust_spawn and no camera_y_commit at
+ * this point. DS_00104AEC |= 8 and DS_00104AFE -= 1 (word); while the
+ * result is > 0 (signed) the function skips straight to camera_y_commit.
+ * Once it reaches 0 or below: reset the join scratch (DS_00104B21 = 0,
+ * DS_00104B14 = 1, DS_00104B0C = 0, DS_00104B11 = 0),
+ * flow_1082d0_from_column(4), DS_00104AFC = 7, flow_side_char_random(r ^ 1)
+ * with r = DS_00104AD4 (as 0x271E0's own 0x2722E call), arm the hook
+ * game_hook_27134 (DS_00104AE4 = 0x27134 — this is the store the hook's own
+ * header comment cites as "stored at 0x27074 (0x26F58)"), DS_00104AFE =
+ * 0x78, DS_00104B00 = 0x17, DS_001088EE = 0, config_play_time_close(mode =
+ * DS_00104ABC, flag = DS_00104B19), DS_00104B19 = 0, and the deferred
+ * 0x2DAE4 audit add (spec §7, per config_play_time_close's own header).
+ * Either way, camera_y_commit runs last. EBX/ECX/EDX/ESI/EDI are pushed and
+ * popped. Sole caller per get_xrefs_to: 0x24C5C's jump table (record
+ * §47-B.1). */
+void game_mode_24_step(void)
+{
+    fight_slot_clear();                                     /* 0x26F5D 0x3C5CC */
+    u32 side = DSB(DS_00104B1A);                            /* 0x26F62 */
+    u32 ch = DSB(DS_0010782A + side * 0x94u);                /* 0x26F7B */
+    camera_screen_base((s32)side, (s32)ch);                 /* 0x26F84 0x16D58 */
+    DSD(DS_001077E8 + side * 0x94u) = DSD(DS_001077E4 + side * 0x94u);  /* 0x26F9E/0x26FA5 */
+    camera_project(side,
+                   DS_00100B08 + side * 4u,
+                   DS_00100B00 + side * 4u,
+                   DS_00100B62 + side,
+                   DS_00100B60 + side,
+                   DS_00100AF0 + side * 4u);                 /* 0x26FDA 0x17FA0 */
+    fight_slot_pass();                                       /* 0x26FDF 0x3CB68 */
+    fight_hud_pass(DSB(DS_00104B1A));                        /* 0x26FEB 0x35658 */
+    fight_4d2d0();                                           /* 0x26FF0 0x4D2D0 */
+
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 8u);          /* 0x27002/0x27006 */
+    s32 t = (s32)(s16)(DSW(DS_00104AFE) - 1u);               /* 0x27005 */
+    DSW(DS_00104AFE) = (u16)t;                               /* 0x2700C */
+    if (t <= 0) {                                            /* 0x27016 `jg` */
+        DSB(DS_00104B21) = 0u;                               /* 0x2702D */
+        DSB(DS_00104B14) = 1u;                               /* 0x27037 */
+        DSB(DS_00104B0C) = 0u;                               /* 0x2703D */
+        DSB(DS_00104B11) = 0u;                               /* 0x27043 */
+        flow_1082d0_from_column(4u);                         /* 0x27049 0x4660C */
+        u32 r = DSD(DS_00104AD4);                            /* 0x2704E */
+        DSW(DS_00104AFC) = 7u;                               /* 0x27057 */
+        flow_side_char_random(r ^ 1u);                       /* 0x2705E 0x2716C */
+        DSW(DS_00104AFE) = 0x78u;                            /* 0x2706D */
+        DSD(DS_00104AE4) = FN_00027134;                      /* 0x27074 */
+        DSW(DS_00104B00) = 0x17u;                            /* 0x2707A */
+        DSW(DS_001088EE) = 0u;                               /* 0x2708D */
+        config_play_time_close(DSD(DS_00104ABC), DSB(DS_00104B19));  /* 0x27094 0x32A3C */
+        DSB(DS_00104B19) = 0u;                               /* 0x270A3 */
+        /* PORT: 0x270A9 0x2DAE4's play-time audit add is out of scope
+         * (spec §7), per config_play_time_close's own header. */
+    }
+    camera_y_commit();                                       /* 0x270AE 0x12DA8 */
+}
+
 /* 0x10E80 — record §46-F. Initialise the game state: 0x20C10's last call
  * (0x20CE6), and a DS_00104AE4 hook, stored at 0x25B6E (0x25AE8, the
  * DS_00104B1D == 0 arm) with mode 0x17; 0x24C5C tests the hook against it at
@@ -5554,12 +5805,18 @@ void game_frame(void)
     case 0x1Fu:
         game_mode_1f_step();                           /* 0x253D2 0x208F8 (record §49-J) */
         break;
+    case 0x22u:
+        game_mode_22_step();                           /* 0x2540F 0x26C8C (record §49-L) */
+        break;
+    case 0x23u:
+        game_mode_23_step();                           /* 0x2540F 0x26A50 (record §49-M) */
+        break;
+    case 0x24u:
+        game_mode_24_step();                           /* 0x2540F 0x26F58 (record §49-N) */
+        break;
     case 0x07u:
     case 0x0Fu:
     case 0x21u:
-    case 0x22u:
-    case 0x23u:
-    case 0x24u:
     case 0x25u:
     case 0x27u:
     case 0x28u:
@@ -5578,7 +5835,7 @@ void game_frame(void)
          * 7 0x282C4;
          * 0xF 0x277C0;
          * 0x21 0x26540;
-         * 0x22 0x26C8C; 0x23 0x26A50; 0x24 0x26F58; 0x25 inline (0x266AC,
+         * 0x25 inline (0x266AC,
          * 0x4EF8C, 0x4F0FC, 0x49C78); 0x27 inline (0x50146, the 0xBCBDC menu
          * 0x2FFC4, 0x65431 longjmp); 0x28..0x2F inline (0x2D974 field 0x29,
          * 0x2CA7C, 0x257A4); 0x30 0x29328; 0x31 0x299E8;
@@ -5602,9 +5859,11 @@ void game_frame(void)
          * game_mode_12_step, case 0x16 (0x4F2B0, record §49-G) is
          * frontend_mode_16_step, case 0x1E (0x1EEB0, record §49-H) is
          * game_mode_1e_step, cases 0x18/0x19 (0x4F6E8/0x4F704, record
-         * §49-I) are frontend_mode_18_step/frontend_mode_19_step, and case
-         * 0x1F (0x208F8, record §49-J) is game_mode_1f_step, each
-         * dispatched above. */
+         * §49-I) are frontend_mode_18_step/frontend_mode_19_step, case
+         * 0x1F (0x208F8, record §49-J) is game_mode_1f_step, and cases
+         * 0x22/0x23/0x24 (0x26C8C/0x26A50/0x26F58, records §49-L/§49-M/
+         * §49-N) are game_mode_22_step/game_mode_23_step/game_mode_24_step,
+         * each dispatched above. */
         break;
     case 0x00u:
     case 0x1Cu:
