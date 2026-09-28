@@ -29219,6 +29219,73 @@ static void check_mode_08(void)
     check_mode_08_b();
 }
 
+/* ---- record §49-D: mode 0xA's frame handler 0x28BD4 ----------------------- */
+
+/* tf_demo_fixture with mode-0xA's own sentinels. The two position latches
+ * reuse tf_demo_fixture's own pre/post pair (DS_001077E4/E8 = 0x1111/0x2222,
+ * DS_00107878/DS_0010787C = 0x3333/0x4444 — the PRE values must land in the
+ * POST ones). DS_000F0AFE is left at tf_demo_fixture's 4 (non-zero), which
+ * steers camera_y_commit into its max(DS_001077E0, DS_00107874) arm;
+ * DS_001077E0/DS_00107874 are seeded with distinct values so the tail store
+ * into DS_001078F2's high word is directly observable and proves
+ * camera_y_commit actually ran (not merely present in the call list). Both
+ * sides' slot +0x54 byte (DS_00107804/DS_00107898) start zero, so the
+ * default seed takes the voice+mode-advance arm; individual tests flip one
+ * byte nonzero to block it. */
+static void m0a_seed(void)
+{
+    (void)tf_demo_fixture();
+    DSD(DS_00104B00) = 0xBEEF000Au;
+    DSB(DS_00107804) = 0u;
+    DSB(DS_00107898) = 0u;
+    DSD(DS_001077E0) = 0x10u;
+    DSD(DS_00107874) = 0x20u;
+    DSW(DS_001078F2 + 2u) = 0x7777u;
+}
+
+static void check_mode_0a(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-D snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* the position latches and camera_y_commit's tail store run every call,
+     * and DS_00104B00's high word is never touched (the mode store is a
+     * word, not a dword). */
+    {
+        m0a_seed();
+        game_mode_0a_step();
+        CHECK_EQ_INT((int)DSD(DS_001077E8), (int)DSD(DS_001077E4));
+        CHECK_EQ_INT((int)DSD(DS_0010787C), (int)DSD(DS_00107878));
+        CHECK_EQ_INT((int)DSW(DS_001078F2 + 2u), 0x20);
+        CHECK_EQ_INT((int)(DSD(DS_00104B00) >> 16), 0xBEEF);
+    }
+
+    /* both sides' +0x54 byte zero: the mode word advances 0xA -> 0xB. */
+    {
+        m0a_seed();
+        game_mode_0a_step();
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF000Bu);
+    }
+
+    /* side 0's +0x54 byte nonzero blocks the advance: the mode word is left
+     * at its sentinel 0xA. */
+    {
+        m0a_seed();
+        DSB(DS_00107804) = 1u;
+        game_mode_0a_step();
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF000Au);
+    }
+
+    /* side 1's +0x54 byte nonzero blocks it too. */
+    {
+        m0a_seed();
+        DSB(DS_00107898) = 1u;
+        game_mode_0a_step();
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF000Au);
+    }
+
+    mz_restore();
+}
 
 #define SC_ST   (FIGHT_RECS + 0x7000u)   /* crafted one-word streams, 0x10 apart */
 #define SC_SRC0 (FIGHT_RECS + 0x7800u)   /* a crafted effect source (pset 1 +0x18) */
@@ -30821,6 +30888,7 @@ int test_fight(void)
     check_mode_13();
     check_mode_09();
     check_mode_08();
+    check_mode_0a();
 
     return g_failures - before;
 }

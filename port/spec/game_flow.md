@@ -410,10 +410,10 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   skip test `0x4F790` and `0x4F778` (record §46-G).
   `game_frame` now carries `0x24C5C`'s whole mode switch (jump table
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
-  - it dispatches cases 3, 4, 5, 6, 8, 9, `0xB`, `0xC`, `0xD`, `0xE`, `0x10`,
-    `0x11`, `0x13`, `0x14`, `0x15`, `0x17`, `0x1A`, `0x1B` and `0x32`, and
-    cases 1/2/`0x20` run the bare `ret` `0x29B70`;
-  - the other 26 cases are named gaps.
+  - it dispatches cases 3, 4, 5, 6, 8, 9, `0xA`, `0xB`, `0xC`, `0xD`, `0xE`,
+    `0x10`, `0x11`, `0x13`, `0x14`, `0x15`, `0x17`, `0x1A`, `0x1B` and `0x32`,
+    and cases 1/2/`0x20` run the bare `ret` `0x29B70`;
+  - the other 25 cases are named gaps.
   - Case 4 (the table entry `0x25242`, `call 0x26254; jmp 0x2540F`) is the
     fight frame `0x26254` (`game_mode_04_step`, record §48-K): `0x3C5CC`,
     `0x16D58` per side and the two position latches; only with
@@ -509,6 +509,23 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     `DS_00104B25 = 1` and mode `DS_00104B00 = 0x16`; only the return mode
     `DS_00104AFA` differs: `0x30` when `DS_00104B1D == 3`, else 5. No call
     site in `0x28468` targets the `0x32BAC` bare-`ret` stub.
+  - Case `0xA` is `0x28BD4` (`game_mode_0a_step`, record §49-D). Despite
+    sharing case 8/9's named-gap listing it is not a third results-screen
+    sibling: it is only the tail slice those two share (the two position
+    latches, `0x35658` per side, `0x19068(1)`, `0x49C78`, `0x12DA8`), with
+    none of their `0x3C5CC`/`0x16D58`/`0x17FA0`/`0x17580`/`0x1958C` preamble,
+    no `DS_00104AF8` countdown and no match-result dispatch. `0x27FA8`
+    (case 4's round-end check, `flow_round_end_check`) reaches it through
+    `0x27ED8` on the round (not match) end path, as the round-over mode
+    before mode `0xB`'s winner-pose tick — `0x27DC8` is the match-end path
+    into modes 9/8/7 instead. Once both sides' slot `+0x54` byte
+    (`DS_00107804`/`DS_00107898`, the same field the `0xD500` animation
+    opcode clears, `anim_code_3C32C`) read zero, `0x28C2A` plays voice
+    `0xD8` (`0x2C3FC`, named gap §45-A) and unconditionally sets mode
+    `DS_00104B00 = 0xB`: the decompiled `DAT_00104b00 = extraout_DX` is the
+    `0xB` loaded into `EDX` before the call, which `0x2C3FC` preserves by
+    push/pop on every exit path (record §42-E.2) regardless of whether the
+    voice actually played.
   - Case `0xC`'s no-join arm is `0x27380` (`game_mode_0c_step`, record
     §48-C), the arena frame of the mode that mode 5 and `0x274FC` (after
     replacing the loser) store. It first undoes the mode-`0xC` tail's blink (`0x25487`): while the

@@ -18071,3 +18071,240 @@ Remaining named gaps this task leaves untouched: mode `0xA`'s `0x28BD4`;
 the match-end stores that would drive `DS_00104AD4`/modes 8 and 9 for real
 (`0x27DC8`, record §48-K); and the dead `0x2861C` region noted in §49-C.2,
 which no reachable code ever calls.
+
+## 49-D. Mode `0xA`'s frame handler `0x28BD4` (named-gap batch 22, branch `gap25-28bd4`)
+
+(The section letter is D. `docs/PROGRESS.md` and this file were grepped for
+`§49-D` first; nothing in either file, on `main` at `5d608ad`, or in
+`git log --all` claims it, so it is free.)
+
+**Result in one line.** `0x28BD4`, `game_frame`'s case `0xA` (confirmed below),
+is ported as `game_mode_0a_step` (`flow.c`) and wired. **It is not a third
+results-screen sibling of modes 8/9** (record §49-C, §48-Y), despite sharing
+their named-gap listing line: at 100 bytes / 23 instructions it is only the
+*tail* render/commit slice those two share (the position latches,
+`fight_hud_pass(0)/(1)`, `fighter_pass_b(1)`, `fight_effects_pass`,
+`camera_y_commit`), with none of their `fight_slot_clear`/
+`camera_screen_base`/`camera_project`/`camera_decay`/`fighter_pass_a`
+preamble, no `DS_00104AF8` countdown and no match-result dispatch. Once both
+sides' slot `+0x54` byte read zero it plays a voice and unconditionally
+advances the mode word to `0xB` — `flow.h`'s existing mode-4 note
+(`game_mode_04_step`'s derivation, "then `0x27ED8` (mode `0xA`) or `0x27DC8`
+and mode 9/8/7") already placed mode `0xA` as the **round-over** path (as
+against `0x27DC8`'s match-over path into 9/8/7), which this derivation
+confirms: mode `0xA` is a short wait state — "has the losing/winning actor's
+pose settled on both sides yet" — between a round ending and mode `0xB`'s
+winner-pose tick. No new callee was needed: all five non-voice calls
+(`fight_hud_pass` x2, `fighter_pass_b`, `fight_effects_pass`,
+`camera_y_commit`) are the same already-ported functions modes 8/9 call, and
+the sixth call (`0x2C3FC`) is the established voice idiom (record §45-A),
+left unwired per spec §7.
+
+### 49-D.1 Sources
+
+The raw comes from the Ghidra HTTP bridge at `127.0.0.1:8089`
+(`disassemble_function`, `read_memory`, `get_xrefs_to`, with fixups applied;
+the Ghidra MCP tool does not connect this session), `port/decomp/prage.c`
+(the read-only Ghidra decompilation, used only to locate the switch statement
+and cross-checked against the raw disassembly throughout — it is wrong in two
+places noted below), and `flow.c`/`flow.h`'s existing `game_mode_08_step`/
+`game_mode_09_step` ports (record §49-C, §48-Y) for the shared tail-slice
+callees.
+
+### 49-D.2 Confirming case `0xA`
+
+Two independent checks, per the task brief (the dispatch at `0x24C5C` is a
+jump table, not a compare chain, so instruction position alone cannot
+confirm a case number):
+
+1. `port/decomp/prage.c`'s decompiled `switch(DAT_00104b00)` (the body of
+   `0x24C5C`, at line 12180) has `case 10: *puVar13 = 0x25282; FUN_00028bd4();
+   break;` (line 12223-12226) — `case 10` (`0xA`) is the only case whose body
+   calls `FUN_00028bd4`.
+2. `get_xrefs_to 0x28BD4` lists exactly one call site: `0x2527D`, inside
+   `FUN_00024c5c` (`game_frame`'s dispatch), `UNCONDITIONAL_CALL`. Reading
+   `disassemble_function` for `0x24C5C` around that address shows the bare
+   dispatch-stub shape shared by every case (`CALL 0x00028BD4; JMP
+   0x0002540F`, at `0x2527D`/`0x25282`), with no register setup before the
+   call — matching every other case's stub in the same function.
+
+Both agree: case `0xA`. (The existing `flow.c` comment, "`0xA 0x28BD4`" in
+the named-gap list, was a correct lead, not proof — this section is the
+proof.)
+
+### 49-D.3 `0x28BD4` (23 instructions, `0x28BD4`..`0x28C37`)
+
+```
+00028bd4  PUSH EDX
+00028bd5  MOV  EAX,[0x001077e4]
+00028bda  MOV  [0x001077e8],EAX          ; DS_001077E8 = DS_001077E4
+00028bdf  MOV  EAX,[0x00107878]
+00028be4  MOV  [0x0010787c],EAX          ; DS_0010787C = DS_00107878
+00028be9  XOR  EAX,EAX
+00028beb  CALL 0x00035658                 ; fight_hud_pass(0)
+00028bf0  MOV  EAX,0x1
+00028bf5  CALL 0x00035658                 ; fight_hud_pass(1)
+00028bfa  MOV  EAX,0x1
+00028bff  CALL 0x00019068                 ; fighter_pass_b(1)
+00028c04  CALL 0x00049c78                 ; fight_effects_pass()
+00028c09  CALL 0x00012da8                 ; camera_y_commit()
+00028c0e  CMP  byte ptr [0x00107804],0x0
+00028c15  JNZ  0x00028c36
+00028c17  CMP  byte ptr [0x00107898],0x0
+00028c1e  JNZ  0x00028c36
+00028c20  MOV  EAX,0xd8
+00028c25  MOV  EDX,0xb
+00028c2a  CALL 0x0002c3fc                 ; voice(0xD8, EDX=0xB)
+00028c2f  MOV  word ptr [0x00104b00],DX   ; DS_00104B00 = DX
+00028c36  POP  EDX
+00028c37  RET
+```
+
+`get_function_by_address` gives `body_start == body_end`-consistent bounds
+(`0x28BD4`/`size 100`), matching the trailing `RET` at `0x28C37`.
+
+- **`param_1`/`param_2` are dead.** Ghidra's decompiled signature is
+  `void __regparm3 FUN_00028bd4(undefined4 param_1, undefined4 param_2)`, but
+  neither register is read anywhere in the raw: `EAX` is clobbered at
+  `0x28bd5` before any use, and `EDX` is only pushed at entry and popped at
+  exit (used purely as scratch/preservation, never read as an operand). The
+  call site (`0x2527D`, §49-D.2) sets up no registers before the bare `CALL`,
+  confirming the port takes no parameters — matching `game_mode_08_step`/
+  `game_mode_09_step`'s own zero-argument signatures.
+- **The decompiled C is wrong in two places, both caught by trusting the raw
+  over it (AGENTS.md's "on any plan-vs-raw conflict the raw wins"):** it
+  shows `FUN_00035658(param_2)` for the first `fight_hud_pass` call (the raw
+  shows `xor eax,eax; call 0x35658` — no relation to `param_2`, and matching
+  modes 8/9's `fight_hud_pass(0)` exactly), and it shows
+  `DAT_00104b00 = extraout_DX` — Ghidra's placeholder for "a register that
+  survives a call unchanged, that I can't trace the origin of" — which
+  §49-D.4 below resolves concretely.
+- **The tail slice matches modes 8/9's own tail instruction-for-instruction**
+  (§49-C.2/§48-Y.2): the two position latches, then `fight_hud_pass(0)/(1)`,
+  `fighter_pass_b(1)` (argument 1, not `game_mode_04_step`'s 0), `fight_
+  effects_pass`, and only `camera_y_commit` of `camera_scene_step`'s
+  `camera_dust_spawn`/`camera_y_commit` pair — the identical five calls in
+  the identical order modes 8/9 make right before their own countdown logic.
+  Mode `0xA` has no countdown and no results state at all: after
+  `camera_y_commit` the function goes straight to the two-side gate.
+- **The gate and the voice+mode-advance (`0x28c0e`..`0x28c37`).** Both sides'
+  slot `+0x54` byte (`DS_00107804`, `DS_00107898` — the same per-side field
+  the `0xD500` animation opcode clears, `actors.c`'s `anim_code_3C32C`, and
+  the same field mode 7's `0x282C4` tests against `3`, though mode `0xA`'s
+  own test is against `0`, a different value) must both read 0; either
+  nonzero returns immediately (jumps to the shared `POP EDX; RET` at
+  `0x28c36`, doing nothing further this frame — the port stays in mode `0xA`
+  next frame). With both zero: `EAX = 0xD8`, `EDX = 0xB`, `CALL 0x2C3FC`
+  (§49-D.4), then `DS_00104B00 = DX` (a 16-bit store — the mode word only,
+  not the dword).
+
+### 49-D.4 `0x2C3FC(0xD8, EDX=0xB)`: the voice call, and why `DX` is `0xB` unconditionally
+
+`0x2C3FC` is the established voice dispatcher, already a named gap
+everywhere else in this codebase (record §45-A, dozens of call sites in
+`actors.c`/`flow.c`/`config.c`/`attract.h`) — the task brief's deferred
+audit/voice idiom (`0x2E934`, `0x2DAE4`, `0x2C3FC`), out of scope per spec
+§7. The one thing this call site does differently from every other `0x2C3FC`
+caller in this codebase is **use the value loaded into `EDX` before the
+call, after the call returns**, to drive the mode transition. Reading
+`0x2C3FC`'s own disassembly (395 instructions, `0x2C3FC`..`0x2C8EF`)
+resolves this concretely rather than trusting Ghidra's `extraout_DX`:
+
+- Entry: `PUSH EBX; PUSH EDX; PUSH EDI; MOV EDX,EAX` — the caller's `EDX`
+  (here, `0xB`) is pushed to the stack at `0x2C3FD` and `EDX` is then
+  repurposed as a scratch/working register for the whole function body
+  (holding the voice-case value, `0xD8`).
+- Every exit path in the function — both the two early "can't play" outs at
+  `0x2C8E8`/`0x2C8EA` and every one of the ~20 "case handled" returns
+  scattered through the body — ends `POP EDI; POP EDX; POP EBX; RET` (spot-
+  checked exhaustively across the full disassembly dump). The `POP EDX`
+  restores the **original caller value pushed at entry**, not whatever the
+  function computed locally (the local 0/1 "did I play this" result is
+  moved into `EAX` via `MOV EDX,0x1 (or XOR EDX,EDX); MOV EAX,EDX` *before*
+  that final `POP EDX` overwrites `EDX` again).
+- Concretely, for case `0xD8` (traced by hand): `EDX(=0xD8)` indexes a
+  12-byte-stride descriptor table at `0xBBDC8` (`read_memory 0xBC7E8` for
+  case `0xD8`'s own entry gives bytes `02 00 00 00 EF BB 80 02 00 00 00 00`
+  — type byte `2`, id dword `0x0280BBEF`, subtype byte `0`); type `2`
+  dispatches through the 7-entry jump table at `0x2C3E0` (`read_memory`
+  confirms entry 2 is `0x2C473`) to a "can this voice play" check
+  (`CALL 0x1CE70`) and, if it can, the actual play (`CALL 0x1CC28`) — either
+  way, `EDX` is never touched by this path; only `EBX`/`EAX` are.
+- So `DX` after `CALL 0x2C3FC` is **unconditionally the `0xB` loaded in
+  before the call**, regardless of whether the voice actually played. This
+  matches the codebase's own existing precedent verbatim: `flow.c`'s
+  `frontend_char_screen_hook_voice` header comment already states "EDX
+  (`0x43738`) survives `0x2C3FC`, which pushes and pops EBX, EDX and EDI
+  (record §42-E.2)" for an unrelated call site — the same mechanism, reused
+  here to write a mode-transition constant through a call whose return value
+  is otherwise ignored.
+- Therefore `DS_00104B00 = DX` at `0x28c2f` is `DS_00104B00 = 0xB`,
+  unconditionally, once the gate at `0x28c0e` opens — matching
+  `flow.h`'s existing mode-4 lead ("`0x27ED8` (mode `0xA`)... mode `0xB`'s
+  winner-pose tick").
+
+### 49-D.5 The port
+
+- `flow.h`, after `game_mode_08_step`'s declaration: `game_mode_0a_step`'s
+  prototype and full derivation comment.
+- `flow.c`, after `game_mode_08_step` (its own `---- mode 0xA ----`
+  delimited section): `game_mode_0a_step` (`0x28BD4`). The `0x2C3FC` voice
+  call is a `PORT:` comment, not a callee, per §49-D.4/spec §7.
+- `game_frame`'s switch (`flow.c`): `case 0x0Au: game_mode_0a_step(); break;`
+  added; `0xA` removed from the generic named-gap case list and its comment
+  (now 25 named gaps, one fewer than before), and the case-8/9 narration
+  line extended to name case `0xA` too.
+- No new callee, no new `fn_register`, no `symbols.h` change (confirmed by
+  `make verify`'s idempotence check, §49-D.7 below).
+- `port/spec/game_flow.md`: the dispatched-case list and count updated (`0xA`
+  added, 25 named gaps), and a new case-`0xA` bullet added after case 8's,
+  matching the existing case-8/9 bullets' style.
+
+### 49-D.6 The assertions and mutations (`check_mode_0a` in `test_fight.c`)
+
+New `check_mode_0a`, registered in `test_fight()`'s own call list right
+after `check_mode_08`, built on a new `m0a_seed` (`tf_demo_fixture` plus
+mode-`0xA`-specific seeding — no `DS_00101514`/hitbox-array setup needed,
+unlike modes 8/9's fixtures, since mode `0xA` never calls `fight_slot_pass`
+or `camera_project`):
+
+- the position latches (`tf_demo_fixture`'s own pre/post pair,
+  `DS_001077E4/E8` and `DS_00107878/0010787C`, land correctly on every call);
+- `camera_y_commit`'s tail store is directly observable: `DS_000F0AFE`
+  (left non-zero by `tf_demo_fixture`) selects the `max(DS_001077E0,
+  DS_00107874)` arm, so seeding those two distinctly and reading back
+  `DS_001078F2`'s high word proves `camera_y_commit` actually ran with real
+  data, not merely appears in the call list;
+- `DS_00104B00`'s **word-only** store: seeded to `0xBEEF000A` (sentinel high
+  word, mode `0xA` low word), both sides' `+0x54` byte zero advances it to
+  `0xBEEF000B` (proving only the low word moved); either side's byte set to
+  1 individually leaves it at `0xBEEF000A` (proving the gate needs *both*
+  bytes zero, tested independently for each side).
+
+**Mutations** (two single-site edits, each rebuilt and the whole of
+`run_tests` re-run, then reverted): (1) removing the two position-latch
+stores and the `camera_y_commit` call — caught by 3 `CHECK_EQ_INT` failures
+(both latches, and the `DS_001078F2` high-word check); (2) widening the gate
+from `DS_00107804 == 0 && DS_00107898 == 0` to `DS_00107804 == 1 &&
+DS_00107898 == 0` — caught by 2 `CHECK_EQ_INT` failures (the both-zero
+advance case now fails to advance, and the side-0-nonzero block case now
+wrongly advances). Both mutations were reverted and the suite re-confirmed
+green (3 consecutive `PR_ORACLE_REQUIRED=1 ./build/run_tests` runs, no
+SIGBUS, matching the 3 pre-mutation clean runs).
+
+### 49-D.7 Measured and remaining gaps
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 3 consecutive
+runs (plus the 2 mutation-revert runs above), no SIGBUS. `make verify`:
+front-end 517/801/3/2, demo-fight fully explained at N = 1886, attract2 0
+unexplained at N = 3617, `symbols.h` regenerates byte-identically — mode
+`0xA` is reachable only through the round-end path (`0x27FA8`/`0x27ED8`,
+inside the still-unported fight frame `0x26254`, record §48-K) that the
+oracle's no-input demo/attract path never drives for real (record §47-B.2),
+the same reachability story §49-C.6/§48-Y.8 give for modes 8/9.
+
+Remaining named gaps this task leaves untouched: the round-end path itself
+(`0x27FA8`/`0x27ED8`/`0x27DC8`, inside `0x26254`, record §48-K) that would
+drive mode `0xA`/`0xB`/8/9 for real; mode 7's `0x282C4`, the only other
+caller of the `DS_00107804`/`DS_00107898` per-side field mode `0xA` reads;
+and the `0x2C3FC` voice dispatcher itself (record §45-A, spec §7).

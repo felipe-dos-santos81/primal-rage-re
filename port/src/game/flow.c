@@ -3009,6 +3009,33 @@ void game_mode_08_step(void)
     DSW(DS_00104B00) = 0x16u;                                                /* 0x2860F */
 }
 
+/* ---- mode 0xA, the frame handler 0x28BD4 (record §49-D) ------------------ */
+
+/* 0x28BD4 — record §49-D. See flow.h for the full derivation. Not a results-
+ * screen sibling of modes 8/9 despite sharing their listing: only the tail
+ * render/commit slice those two share (position latches, fight_hud_pass(0)/
+ * (1), fighter_pass_b(1), fight_effects_pass, camera_y_commit), then, once
+ * both sides' slot +0x54 byte read zero, a voice and an unconditional mode
+ * advance to 0xB. */
+void game_mode_0a_step(void)
+{
+    DSD(DS_001077E8) = DSD(DS_001077E4);                /* 0x28BDA/0x28BDF */
+    DSD(DS_0010787C) = DSD(DS_00107878);                /* 0x28BE4/0x28BE9 */
+    fight_hud_pass(0u);                                  /* 0x28BE9/0x28BEB 0x35658 */
+    fight_hud_pass(1u);                                  /* 0x28BF0/0x28BF5 0x35658 */
+    fighter_pass_b(1u);                                  /* 0x28BFA/0x28BFF 0x19068 */
+    fight_effects_pass();                                /* 0x28C04 0x49C78 */
+    camera_y_commit();                                   /* 0x28C09 0x12DA8 */
+
+    if (DSB(DS_00107804) == 0u && DSB(DS_00107898) == 0u) {  /* 0x28C0E..0x28C1E */
+        /* PORT: 0x28C2A 0x2C3FC(0xD8, EDX = 0xB) voice, not wired (record
+         * §45-A). EDX (0xB) survives 0x2C3FC unconditionally (record §42-E.2)
+         * and becomes the mode below (0x28C2F, `DAT_00104b00 = extraout_DX`
+         * in the decompiled C). */
+        DSW(DS_00104B00) = 0xBu;                         /* 0x28C2F */
+    }
+}
+
 /* 0x11F6C: the six-entry selector. Phase 0 draws the first entry then falls
  * into phase 1 (no jump between 0x11FD4 and 0x11FDA); phase 1 draws an entry;
  * phase 4 pauses on DS_000F0A68; phase 2 advances the entry and leaves for
@@ -4640,8 +4667,10 @@ void game_frame(void)
     case 0x08u:
         game_mode_08_step();                           /* 0x25335 0x28468 (record §49-C) */
         break;                                         /* 0x2533A */
-    case 0x07u:
     case 0x0Au:
+        game_mode_0a_step();                           /* 0x2527D 0x28BD4 (record §49-D) */
+        break;                                         /* 0x25282 */
+    case 0x07u:
     case 0x0Fu:
     case 0x12u:
     case 0x16u:
@@ -4669,7 +4698,6 @@ void game_frame(void)
         /* PORT: named gaps, each case's body unported (record §47-B.1 has
          * the entry and callees of every one):
          * 7 0x282C4;
-         * 0xA 0x28BD4;
          * 0xF 0x277C0; 0x12 0x41C28;
          * 0x16 0x4F2B0; 0x18 0x4F6E8;
          * 0x19 0x4F704; 0x1E 0x1EEB0; 0x1F 0x208F8; 0x21 0x26540;
@@ -4691,8 +4719,9 @@ void game_frame(void)
          * §48-X) is frontend_mode_15_step, case 0xB (0x28C38, record §48-B)
          * runs after 0x26254, case 0x13 (0x424E8, record §48-D) is
          * game_mode_13_step, case 9 (0x28788, record §48-Y) is
-         * game_mode_09_step, and case 8 (0x28468, record §49-C) is
-         * game_mode_08_step, each dispatched above. */
+         * game_mode_09_step, case 8 (0x28468, record §49-C) is
+         * game_mode_08_step, and case 0xA (0x28BD4, record §49-D) is
+         * game_mode_0a_step, each dispatched above. */
         break;
     case 0x00u:
     case 0x1Cu:
