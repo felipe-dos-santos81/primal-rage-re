@@ -28,7 +28,8 @@ u32 config_menu_default_bits(u32 table);
 
 /* 0x2CADC. Writes the default config fields: 0x29 from the menu table, 0x35 and
  * 0x37 = 0xA0, 0x2A's low two bits = 3. The message draw (0x2F198), screen setup
- * (0x1AE20), storage write (0x2EA78; ported as config_screen_wait but left
+ * (0x1AE20; ported in record §50-C as config_keys_apply_defaults and called
+ * last, it is the key-config default apply, not a screen setup), storage write (0x2EA78; ported as config_screen_wait but left
  * unwired here, record §49-Y) and cursor restore (0x2F280) are declared no-ops
  * (spec §4/§7). */
 void config_set_defaults(void);
@@ -149,5 +150,20 @@ void config_option_row(u32 which, u32 p, u8 flag);
 /* 0x3157C. Writes the name of the key word `key` at `dest` and returns 1, or
  * returns 0 when the key has none; `raw` == 0 wraps the name as "<name>". */
 u32 config_key_name(u32 key, u8 raw, u32 dest);
+
+/* ---- key-config record (0x1AE20/0x1AE28/0x1AEE0/0x1AF64; record §50-C) ---- */
+/* 0x1AE28. Applies the 0x28-byte record at `rec`: device words and scan codes
+ * into the BIOS record at DS_00101514 (+0x2D4/+0x2D6, +0x2DE.., +0x2E6..) and
+ * the byte mirror at 0x1014AC.. in the data object. */
+void config_keys_apply(u32 rec);
+
+/* 0x1AE20. config_keys_apply of the default record at DS 0x22C62. */
+void config_keys_apply_defaults(void);
+
+/* 0x1AEE0. Packs the 0x1014AC.. mirror into a record at `rec`. */
+void config_keys_pack(u32 rec);
+
+/* 0x1AF64. Loads the BIOS key-config (+0x2D4.. ) from the record at `rec`. */
+void config_keys_load(u32 rec);
 
 #endif /* PRAGE_GAME_CONFIG_H */
