@@ -17254,3 +17254,146 @@ no-input path reaches mode `0x15`.
 
 None new. `0x4F790` and `frontend_skip_check` were already ported; the
 function has exactly one caller and one callee, both accounted for.
+
+## 48-B. Mode `0xB`'s winner-pose tick `0x28C38` (named-gap batch 18, branch `gap18-28c38`)
+
+**Result in one line.** `0x28C38`, the second call in `game_frame`'s case
+`0xB` (after the fight frame `0x26254`, record §48-K), is ported as
+`flow_winner_pose_step` (`flow.c`) and wired. Case `0xB` was previously
+entirely unwired — it fell into the generic named-gap fallthrough despite
+§48-K's own header comment already documenting what its raw body calls.
+
+### 48-B.1 The raw (Ghidra HTTP bridge `disassemble_function`/`read_memory`
+at `127.0.0.1:8089`, since the Ghidra MCP tool did not connect this
+session; fixups applied)
+
+`0x28C38` (29 instructions, 93 bytes):
+
+```
+28c38  push ebx
+28c39  push edx
+28c3a  mov edx,[0x104ad8]      ; DS_00104AD8, a signed running count
+28c40  inc edx
+28c41  mov ebx,[0x104aa8]      ; DS_00104AA8, the duration flow_round_over loads
+28c47  mov [0x104ad8],edx
+28c4d  mov eax,edx
+28c4f  sar edx,0x1f            ; sign-extend EAX into EDX:EAX for IDIV
+28c52  idiv ebx                ; EDX = count % duration (signed)
+28c54  test edx,edx
+28c56  jnz 0x28c92             ; non-zero remainder: skip both arms, return
+28c58  mov dl,[0x10780a]       ; side 0's +0x5A byte (DS_001077B0 + 0x5A)
+28c5e  cmp edx,0x77
+28c61  jge 0x28c74             ; >= 0x77: skip side 0's nudge
+28c63  mov edx,0x1
+28c68  mov eax,0x1077b0        ; side 0's slot base
+28c6d  xor ebx,ebx
+28c6f  call 0x392a0            ; fighter_392a0(slot=EAX, v=EDX=1, w=EBX=0)
+28c74  xor edx,edx
+28c76  mov dl,[0x10789e]       ; side 1's +0x5A byte (DS_001077B0+0x94+0x5A)
+28c7c  cmp edx,0x77
+28c7f  jge 0x28c92             ; >= 0x77: skip side 1's nudge
+28c81  mov edx,0x1
+28c86  mov eax,0x107844        ; side 1's slot base
+28c8b  xor ebx,ebx
+28c8d  call 0x392a0
+28c92  pop edx
+28c93  pop ebx
+28c94  ret
+```
+
+EBX/EDX are pushed and popped; EAX and the flags are clobbered. The only
+callee is `0x392A0`, already ported as `fighter_392a0` (in `fighter.c`,
+serving two other callers, `0x398B7` and `0x3AE87`) — exported here (was
+`static`) for this new caller.
+
+**The call site (case `0xB`, verified via `read_memory` at `0x25287`):**
+
+```
+25287  e8 c8 0f 00 00   call 0x26254   ; game_mode_04_step
+2528c  e8 a7 39 00 00   call 0x28c38   ; flow_winner_pose_step
+25291  e9 79 01 00 00   jmp 0x2540f    ; the switch's shared tail (the "break")
+```
+
+Confirmed by hand: `0x25287 + 5 + 0x0FC8 = 0x26254`;
+`0x2528C + 5 + 0x39A7 = 0x28C38`; `0x25291 + 5 + 0x179 = 0x2540F`.
+
+### 48-B.2 The port
+
+```c
+void flow_winner_pose_step(void)
+{
+    u32 count = DSD(DS_00104AD8) + 1u;
+    DSD(DS_00104AD8) = count;
+    if ((s32)count % (s32)DSD(DS_00104AA8) != 0) return;
+    if (DSB(DS_0010780A) < 0x77u)
+        fighter_392a0(DS_001077B0, 1, 0);
+    if (DSB(DS_0010789E) < 0x77u)
+        fighter_392a0(DS_001077B0 + 0x94u, 1, 0);
+}
+```
+
+`game_frame`'s case `0xB` now reads:
+
+```c
+case 0x0Bu:
+    game_mode_04_step();
+    flow_winner_pose_step();
+    break;
+```
+
+### 48-B.3 Divide-by-zero note
+
+`DS_00104AA8` is only ever observed set by `flow_round_over` (`0x27ED8`,
+record §48-K), which always leaves it at least 1 (`q = 1` when the derived
+value is 0 or the `+0x5A` max is already `>= 0x78`). No other store of
+`DS_00104AA8` was found. If some other path ever stores mode `0xB` without
+first running `flow_round_over`, the raw's `idiv` and this port's `%`
+would both fault/trap identically — this is a faithful translation, not a
+new risk the port introduces.
+
+### 48-B.4 The assertions and mutations (`check_mode_b` in `test_fight.c`)
+
+Reusing record §48-K's `k48_seed` fixture (a valid mode-4 fight state with
+real slot/record pointers), a new `kwp_seed(s0_5a, s1_5a)` additionally
+zeroes `DS_00105B38`/`DS_00105B36` (so `fighter_392a0`'s early-exit and
+`+0x5D` paths stay inert) and seeds each side's `+0x5A` byte directly. With
+the port's own fixed call arguments `v=1, w=0`, `fighter_392a0`'s default
+(non-mode-2/4) branch reduces to exactly "`+0x5A` += 1, `+0x5D` unchanged"
+whenever `DS_00104B1D == 0` (the fixture's default) and the byte stays
+`<= 0x78` after the add — a small, fully predictable side effect, checked
+directly rather than needing to re-verify `fighter_392a0`'s own (separately
+already-shipped) internals in depth:
+- (a) a non-firing modulus (`DS_00104AA8` chosen so the seeded count's
+  remainder is non-zero) leaves both `+0x5A` bytes untouched, across three
+  `(duration, count)` pairs; the count itself always advances by 1.
+- (b) a firing modulus (`DS_00104AA8 = 1`) with both sides below `0x77`
+  nudges both `+0x5A` bytes by exactly 1.
+- (c) at the threshold: `0x76` is nudged to `0x77`, `0x77` is left alone —
+  checked with each side at the boundary in turn, pinning that the
+  comparison is `< 0x77` and not `<= 0x76` in a way that would only show up
+  asymmetrically.
+- (d) a `game_frame` dispatch through case `0xB` with a non-firing modulus:
+  the fight frame's own effects run (covered by `check_fight_frame_a/b/c`),
+  and `+0x5A` is left exactly as `0x26254` itself left it — confirming
+  `0x28C38` really is inert on this path, not merely untested.
+
+Verified by mutation: forcing the modulo gate open unconditionally
+(`if (0) return;` in place of the real test) fails 8 assertions across
+groups (a) and (c), confirmed by a local build-and-revert, not a scripted
+sweep (this batch's scope did not warrant the full harness).
+
+### 48-B.5 Verification
+
+`PR_ORACLE_REQUIRED=1 run_tests` green x3, no SIGBUS. `make verify`:
+front-end 517/801/3/2, demo-fight fully explained at N = 1886, attract2 0
+unexplained at N = 3617, `symbols.h` regenerates byte-identically. No
+no-input path reaches mode `0xB`.
+
+### 48-B.6 Process note
+
+This gap's first two dispatch attempts (`gap18-28c38`) both stalled (no
+progress for 600s) before producing any code — the second attempt left no
+commits or uncommitted changes at all. Ported directly by the coordinator
+instead of a third dispatch, using the Ghidra HTTP bridge at
+`127.0.0.1:8089` (the `disassemble_function` and `read_memory` endpoints)
+after the Ghidra MCP tool itself failed to connect.

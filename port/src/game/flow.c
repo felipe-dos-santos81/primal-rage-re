@@ -2032,6 +2032,26 @@ void flow_round_end_check(void)
     DSW(DS_00104B00) = 0x07u;                           /* 0x2810D/0x28124 */
 }
 
+/* 0x28C38 — record §48-B. Mode `0xB`'s winner-pose tick (0x24C5C case 0xB:
+ * `0x25287 call 0x26254`, `0x2528C call 0x28c38`, `0x25291 jmp 0x2540F`;
+ * its only caller). EBX/EDX are pushed and popped. The running frame count
+ * DS_00104AD8 (a signed dword, reset to 0 at 0x25C1C, record §48-U) is
+ * incremented, then taken modulo DS_00104AA8 (`sar edx,0x1f; idiv ebx`, the
+ * duration `flow_round_over` loads into it, record §48-K); a non-zero
+ * signed remainder returns at once. Otherwise, per side, while that side's
+ * +0x5A byte (DS_0010780A/DS_0010789E) is below 0x77, `0x392A0`(slot, 1, 0)
+ * nudges its win pose (`fighter_392a0`, already ported). */
+void flow_winner_pose_step(void)
+{
+    u32 count = DSD(DS_00104AD8) + 1u;                  /* 0x28C3A/0x28C40 */
+    DSD(DS_00104AD8) = count;                           /* 0x28C47 */
+    if ((s32)count % (s32)DSD(DS_00104AA8) != 0) return;   /* 0x28C41..0x28C56 */
+    if (DSB(DS_0010780A) < 0x77u)                       /* 0x28C58..0x28C61 */
+        fighter_392a0(DS_001077B0, 1, 0);               /* 0x28C63..0x28C6F */
+    if (DSB(DS_0010789E) < 0x77u)                       /* 0x28C76..0x28C7F */
+        fighter_392a0(DS_001077B0 + 0x94u, 1, 0);       /* 0x28C81..0x28C8D */
+}
+
 /* 0x26254 — record §48-K. The fight frame: mode 4's handler (0x24C5C case
  * 4, the table entry 0x25242 `call 0x26254; jmp 0x2540F`, which case 6
  * reaches too, at 0x2525D/0x25266) and the first call of case 0xB's
@@ -3819,11 +3839,16 @@ void game_frame(void)
     case 0x0Eu:
         game_mode_0e_step();                           /* 0x25371 0x27A2C (record §48-E) */
         break;                                         /* 0x25376 */
+    case 0x0Bu:
+        /* 0x25287 (record §48-B): the fight frame, then the winner-pose
+         * tick. */
+        game_mode_04_step();                           /* 0x25287 0x26254 */
+        flow_winner_pose_step();                       /* 0x2528C 0x28C38 */
+        break;                                         /* 0x25291 */
     case 0x07u:
     case 0x08u:
     case 0x09u:
     case 0x0Au:
-    case 0x0Bu:
     case 0x0Fu:
     case 0x12u:
     case 0x13u:

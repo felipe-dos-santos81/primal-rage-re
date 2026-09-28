@@ -27533,6 +27533,104 @@ static void check_fight_frame_c(void)
     mz_restore();
 }
 
+/* ---- record §48-B: mode 0xB's winner-pose tick 0x28C38 ------------------- */
+
+/* A fresh §48-K/§48-B state, v/w fixed at 1/0 by flow_winner_pose_step: A =
+ * (1*120)/100 = 1 (unaffected by the +0x41 bit-0 halving, since
+ * (1-0)>>1 == 0), B = (0*68)/100 = 0. With DS_00104B1D 0, DS_00105B38 0
+ * (no early exit) and +0x5A + 1 <= 0x78, 0x392A0's default-mode branch
+ * simply adds A (1) to the side's +0x5A and leaves +0x5D unchanged (B = 0),
+ * so a call that reaches 0x392A0 is exactly a plus-one on that side's +0x5A. */
+static void kwp_seed(u32 s0_5a, u32 s1_5a)
+{
+    k48_seed();
+    DSB(DS_00105B38) = 0u;
+    DSB(DS_00105B36) = 0u;
+    DSB(DS_001077B0 + 0x5Au) = (u8)s0_5a;
+    DSB(DS_001077B0 + 0x94u + 0x5Au) = (u8)s1_5a;
+    DSD(DS_00104AD8) = 0u;
+}
+
+static void check_mode_b(void)
+{
+    if (!mz_save()) { CHECK(0, "the §48-B snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* (a) A non-zero remainder (count mod DS_00104AA8) leaves both sides'
+     * +0x5A alone; the count itself always advances and wraps mod 0x10000
+     * (0x10000's own DS_00104AD8 store is a plain dword, so this is really
+     * just increment-and-store, checked at a value that does not divide the
+     * chosen modulus). */
+    {
+        static const u32 aa8[3] = { 5u, 5u, 7u };
+        static const u32 seed[3] = { 0u, 1u, 3u };
+        u32 i;
+        for (i = 0; i < 3u; i++) {
+            kwp_seed(0x40u, 0x40u);
+            DSD(DS_00104AA8) = aa8[i];
+            DSD(DS_00104AD8) = seed[i];
+            flow_winner_pose_step();
+            CHECK_EQ_INT((int)DSD(DS_00104AD8), (int)(seed[i] + 1u));
+            CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x5Au), 0x40);
+            CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x5Au), 0x40);
+        }
+    }
+
+    /* (b) A zero remainder (here DS_00104AA8 = 1, so every call fires) with
+     * both sides below 0x77 nudges both +0x5A bytes by exactly 1. */
+    {
+        kwp_seed(0x40u, 0x50u);
+        DSD(DS_00104AA8) = 1u;
+        flow_winner_pose_step();
+        CHECK_EQ_INT((int)DSD(DS_00104AD8), 1);
+        CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x5Au), 0x41);
+        CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x5Au), 0x51);
+    }
+
+    /* (c) At the threshold (0x77) a side is left alone; below it, nudged.
+     * 0x76 -> 0x77 (still nudged: the test is "< 0x77", not "<= 0x76" in a
+     * way that would differ here, so this pins the boundary is 0x77 itself,
+     * not 0x76) and 0x77 -> 0x77 (no nudge). */
+    {
+        kwp_seed(0x76u, 0x77u);
+        DSD(DS_00104AA8) = 1u;
+        flow_winner_pose_step();
+        CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x5Au), 0x77);
+        CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x5Au), 0x77);
+    }
+    {
+        kwp_seed(0x77u, 0x76u);
+        DSD(DS_00104AA8) = 1u;
+        flow_winner_pose_step();
+        CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x5Au), 0x77);
+        CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x5Au), 0x77);
+    }
+
+    /* (d) game_frame's case 0xB runs the fight frame (0x26254, its own
+     * coverage in check_fight_frame_a/b/c) then this tick: with a non-firing
+     * modulus, only the fight frame's own effects show (the pulse words
+     * step; see check_fight_frame_b/c), and +0x5A is whatever 0x26254 itself
+     * left, not touched again by an inert 0x28C38. */
+    {
+        u32 before0, before1;
+        kwp_seed(0x40u, 0x40u);
+        DSD(DS_00104AA8) = 5u;
+        DSD(DS_00104AD8) = 1u;
+        DSD(DS_00104B00) = 0xBEEF000Bu;
+        ms_seed(0xBEEF000Bu);
+        DSB(DS_001078FA) = 5u;
+        before0 = DSB(DS_001077B0 + 0x5Au);
+        before1 = DSB(DS_001077B0 + 0x94u + 0x5Au);
+        game_frame();
+        CHECK_EQ_INT((int)DSD(DS_00104AD8), 2);
+        CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x5Au), (int)before0);
+        CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x94u + 0x5Au), (int)before1);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF000Bu);
+    }
+
+    mz_restore();
+}
+
 /* ---- named-gap batch 15: the entrance poses' slot callbacks (record §48-P) */
 
 #define SC_ST   (FIGHT_RECS + 0x7000u)   /* crafted one-word streams, 0x10 apart */
@@ -29132,6 +29230,7 @@ int test_fight(void)
     check_fight_frame_a();
     check_fight_frame_b();
     check_fight_frame_c();
+    check_mode_b();
 
     return g_failures - before;
 }
