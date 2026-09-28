@@ -18,3 +18,4 @@ port/tests/title_screen_ref.ppm
 .superpowers/
 .DS_Store
 __pycache__/
+.worktrees/
