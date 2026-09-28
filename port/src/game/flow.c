@@ -1120,6 +1120,38 @@ void frontend_mode_17_step(void)
     if (hook != NULL) hook();                           /* 0x4F373 */
 }
 
+/* 0x4F2B0 — record §49-G. The mode 0x16 handler (0x24C5C case 0x16, the jump
+ * table 0x24B8C entry 0x253E7; sole caller, per get_xrefs_to). The same
+ * DS_001088EE/DS_00104AFE countdown and frontend_skip_check() (0x4F790) skip
+ * test as 0x4F24C (mode 0x15) and 0x4F318 (mode 0x17), but its expiry arm
+ * combines both siblings' instead of doing only one half: it runs the
+ * DS_00104AE4 hook, as 0x4F318 does (every value the image stores there is
+ * registered: records §42-E, §43-B, §46-B, §46-F, and only 0x29D60/0x5D812
+ * are no-ops), *and* then takes DS_00104B00 = DS_00104AFA, as 0x4F24C does.
+ * Unlike 0x4F318 there is no DS_001088EE = 0xFFFF rearm. EBX/EDX are pushed
+ * and popped. As for 0x4F318/0x4F9A0, the registered hooks take no
+ * arguments. Reached from mode 8/9's results countdown (game_mode_08_step/
+ * game_mode_09_step, records §49-C/§48-Y, which install game_hook_25bbc and
+ * set DS_00104B00 = 0x16 with DS_00104AFA = 0x30 or 5). */
+void frontend_mode_16_step(void)
+{
+    u16 dx = DSW(DS_001088EE);                          /* 0x4F2B2 */
+    if (dx == 0u) {                                     /* 0x4F2B9/0x4F2BC */
+        u32 r = frontend_skip_check() & 0xFFu;          /* 0x4F2BE 0x4F790, 0x4F2C3 */
+        if (r == 2u) DSW(DS_00104AFE) = dx;             /* 0x4F2CB/0x4F2CD */
+        if (r == 1u)                                    /* 0x4F2D4/0x4F2D7 */
+            DSW(DS_00104AFE) = (u16)(DSW(DS_00104AFE) - 0x3Cu);  /* 0x4F2D9 */
+    } else {
+        DSW(DS_001088EE) = (u16)(dx - 1u);              /* 0x4F2E3..0x4F2E6 */
+    }
+    u16 ax = DSW(DS_00104AFE);                          /* 0x4F2ED */
+    DSW(DS_00104AFE) = (u16)(ax - 1u);                  /* 0x4F2F3..0x4F2F6 */
+    if ((s16)ax > 0) return;                            /* 0x4F2FD/0x4F300 */
+    void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
+    if (hook != NULL) hook();                           /* 0x4F302 */
+    DSW(DS_00104B00) = DSW(DS_00104AFA);                /* 0x4F308/0x4F30E */
+}
+
 /* ---- the mode-0x1A hooks 0x25BBC/0x26998/0x270BC and their callees (§46-B) */
 
 #define DS_000A87C4 0x000A87C4u   /* no symbols.h name: 7 stage-offset bytes */
@@ -5116,6 +5148,9 @@ void game_frame(void)
     case 0x17u:
         frontend_mode_17_step();                       /* 0x253EE 0x4F318 */
         break;
+    case 0x16u:
+        frontend_mode_16_step();                       /* 0x253E7 0x4F2B0 (record §49-G) */
+        break;                                         /* 0x253EC */
     case 0x15u:
         frontend_mode_15_step();                       /* 0x253E0 0x4F24C (record §48-X) */
         break;                                         /* 0x253E5 */
@@ -5185,7 +5220,6 @@ void game_frame(void)
         break;                                         /* 0x25282 */
     case 0x07u:
     case 0x0Fu:
-    case 0x16u:
     case 0x18u:
     case 0x19u:
     case 0x1Eu:
@@ -5211,7 +5245,7 @@ void game_frame(void)
          * the entry and callees of every one):
          * 7 0x282C4;
          * 0xF 0x277C0;
-         * 0x16 0x4F2B0; 0x18 0x4F6E8;
+         * 0x18 0x4F6E8;
          * 0x19 0x4F704; 0x1E 0x1EEB0; 0x1F 0x208F8; 0x21 0x26540;
          * 0x22 0x26C8C; 0x23 0x26A50; 0x24 0x26F58; 0x25 inline (0x266AC,
          * 0x4EF8C, 0x4F0FC, 0x49C78); 0x27 inline (0x50146, the 0xBCBDC menu
@@ -5233,8 +5267,9 @@ void game_frame(void)
          * game_mode_13_step, case 9 (0x28788, record §48-Y) is
          * game_mode_09_step, case 8 (0x28468, record §49-C) is
          * game_mode_08_step, case 0xA (0x28BD4, record §49-D) is
-         * game_mode_0a_step, and case 0x12 (0x41C28, record §48-Z) is
-         * game_mode_12_step, each dispatched above. */
+         * game_mode_0a_step, case 0x12 (0x41C28, record §48-Z) is
+         * game_mode_12_step, and case 0x16 (0x4F2B0, record §49-G) is
+         * frontend_mode_16_step, each dispatched above. */
         break;
     case 0x00u:
     case 0x1Cu:
