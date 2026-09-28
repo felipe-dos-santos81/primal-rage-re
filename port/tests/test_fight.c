@@ -34886,6 +34886,764 @@ static void check_nameentry(void)
     check_nameentry_step();
 }
 
+/* ---- record §49-Z: the 0x45000-0x4F500 helper cluster ------------------- */
+
+#define DS_001088C7 0x001088C7u   /* no symbols.h name: 0x4A928's flags */
+#define DS_001088C8 0x001088C8u
+#define DS_001088C9 0x001088C9u
+#define Z_N(k)  (FIGHT_RECS + 0x2000u + (u32)(k) * 0x40u)   /* free-list nodes */
+#define Z_E(k)  (FIGHT_RECS + 0x3000u + (u32)(k) * 0x40u)   /* active entries */
+#define Z_A(k)  (FIGHT_RECS + 0x3400u + (u32)(k) * 0x80u)   /* actor records */
+#define Z_PS(i) (FIGHT_ACTORS + (u32)(i) * 0x20u)
+#define Z_ST    (FIGHT_RECS + 0x3F00u)                      /* a plain-word stream */
+
+/* Link the `n` nodes e[] into the circular list at `head` (next at +0, prev at
+ * +4); n = 0 makes the list empty. */
+static void z_link(u32 head, const u32 *e, u32 n)
+{
+    u32 i;
+    DSD(head) = n ? e[0] : head;
+    DSD(head + 4u) = n ? e[n - 1u] : head;
+    for (i = 0; i < n; i++) {
+        DSD(e[i]) = (i + 1u < n) ? e[i + 1u] : head;
+        DSD(e[i] + 4u) = i ? e[i - 1u] : head;
+    }
+}
+
+/* One actor record for an entry: its pset index k, and the pset's +4 value v
+ * that 0x2BE00 returns for it. */
+static void z_actor(u32 a, u32 k, u32 v)
+{
+    DSW(a + 0x56u) = (u16)k;
+    DSD(Z_PS(k) + 4u) = v;
+}
+
+/* 0x4A928 with 0x4AA6C and 0x2BE00. The rows: slot 0's +0x5A, slot 1's +0x5A,
+ * whether the side-0 entry E1 is listed, the +4 values of E0 (side 1), E1
+ * (side 0) and E2 (side 1), the values of slot 0's and slot 1's records; then
+ * the wanted DS_001088C6/C7/C8/C9/CA and DS_00108870/DS_0010887C. */
+static void check_49z_survey(void)
+{
+    typedef struct {
+        u8 a0, a1, has0;
+        s32 v0, v1, v2, r0, r1;
+        u8 c6, c7, c8, c9, ca;
+        u32 w70, w7c;
+    } row_t;
+    static const row_t rows[] = {
+        /* the mean of side 1 below the mean of side 0 by 0x6000 */
+        { 0x50, 0x50, 1, 0x2000, 0x9000, 0x4000, 0x3500, 0x7000,
+          0, 1, 0x5A, 1, 0, 0, 0x4401 },
+        /* no side-0 entry: the record's value 0x7000, C8 = 1 */
+        { 0x50, 0x50, 0, 0x2000, 0x9000, 0x4000, 0x3500, 0x7000,
+          0, 1, 1, 1, 0, 0, 0x4401 },
+        /* the record's value 0x3500: gap 0x4FF, below 0x1400 */
+        { 0x50, 0x50, 0, 0x2000, 0x9000, 0x4000, 0x3500, 0x3500,
+          0, 1, 1, 1, 0, 0x2100, 0 },
+        /* slot 0's +0x5A >= 0x78: C9 = 0, C7 = 0; side 0 first, mean above */
+        { 0x80, 0x50, 1, 0x2000, 0x9000, 0x4000, 0x3500, 0x7000,
+          0, 0, 0x5A, 0, 1, 0, 0x7C01 },
+        /* the same with a gap of 0x800 */
+        { 0x80, 0x50, 1, 0x2000, 0x3800, 0x4000, 0x3500, 0x7000,
+          0, 0, 0x5A, 0, 1, 0x4401, 0 },
+        /* C9 = 0 and no side-0 entry: the record's value 0x3500, C6 = 1 */
+        { 0x80, 0x50, 0, 0x2000, 0x9000, 0x4000, 0x3500, 0x7000,
+          1, 0, 0x5A, 0, 1, 0x4401, 0 },
+        /* negative values: (-0x6001) / 2 + 1 = -0x2FFF (truncating) */
+        { 0x50, 0x50, 1, -0x2000, 0x1000, -0x4001, 0x3500, 0x7000,
+          0, 1, 0x5A, 1, 0, 0, 0xFFFFE401u },
+        /* the gap exactly 0x1400 (means 0x3001 and 0x4401) */
+        { 0x50, 0x50, 1, 0x2000, 0x4400, 0x4000, 0x3500, 0x7000,
+          0, 1, 0x5A, 1, 0, 0, 0x4401 },
+        /* the gap 0x13FF (means 0x3001 and 0x4400) */
+        { 0x50, 0x50, 1, 0x2000, 0x43FF, 0x4000, 0x3500, 0x7000,
+          0, 1, 0x5A, 1, 0, 0x3000, 0 },
+        /* equal means: not below, so direction 1 and DS_00108870 = b + 0x1400 */
+        { 0x50, 0x50, 1, 0x2000, 0x3000, 0x4000, 0x3500, 0x7000,
+          0, 1, 0x5A, 1, 1, 0x4401, 0 },
+        /* equal slot bytes give C7 = 1 at 0x78 - 1 and 0x78 gives C9 = 0 */
+        { 0x77, 0x77, 1, 0x2000, 0x9000, 0x4000, 0x3500, 0x7000,
+          0, 1, 0x5A, 1, 0, 0, 0x4401 },
+        { 0x78, 0x77, 1, 0x2000, 0x9000, 0x4000, 0x3500, 0x7000,
+          0, 0, 0x5A, 0, 1, 0, 0x7C01 },
+    };
+    u32 k, e[3];
+    if (!mz_save()) { CHECK(0, "the §49-Z snapshot allocates"); return; }
+    for (k = 0; k < sizeof rows / sizeof rows[0]; k++) {
+        const row_t *r = &rows[k];
+        u32 n = 0;
+        mem_fill(FIGHT_RECS + 0x3000u, 0, 0x1000u);
+        DSD(DS_001014EC) = FIGHT_ACTORS;
+        DSD(DS_001077B0) = FIGHT_RECS;
+        DSD(DS_00107844) = FIGHT_RECS + 0x100u;
+        z_actor(FIGHT_RECS, 10u, (u32)r->r0);
+        z_actor(FIGHT_RECS + 0x100u, 11u, (u32)r->r1);
+        DSB(DS_0010780A) = r->a0;
+        DSB(DS_0010789E) = r->a1;
+        e[n++] = Z_E(0);
+        DSB(Z_E(0) + 0x21u) = 1;  DSD(Z_E(0) + 8u) = Z_A(0);  z_actor(Z_A(0), 3u, (u32)r->v0);
+        if (r->has0) {
+            e[n++] = Z_E(1);
+            DSB(Z_E(1) + 0x21u) = 0;  DSD(Z_E(1) + 8u) = Z_A(1);  z_actor(Z_A(1), 4u, (u32)r->v1);
+        }
+        e[n++] = Z_E(2);
+        DSB(Z_E(2) + 0x21u) = 1;  DSD(Z_E(2) + 8u) = Z_A(2);  z_actor(Z_A(2), 5u, (u32)r->v2);
+        z_link(DS_0010884C, e, n);
+        DSD(DS_00108870) = 0x7777u;
+        DSD(DS_0010887C) = 0x6666u;
+        DSB(DS_001088C6) = 0x5Au;
+        DSB(DS_001088C7) = 0x5Au;
+        DSB(DS_001088C8) = 0x5Au;
+        DSB(DS_001088C9) = 0x5Au;
+        DSB(DS_001088CA) = 0x5Au;
+        fight_4a928();
+        CHECK_EQ_INT((int)DSB(DS_001088C6), r->c6);
+        CHECK_EQ_INT((int)DSB(DS_001088C7), r->c7);
+        CHECK_EQ_INT((int)DSB(DS_001088C8), r->c8);
+        CHECK_EQ_INT((int)DSB(DS_001088C9), r->c9);
+        CHECK_EQ_INT((int)DSB(DS_001088CA), r->ca);
+        CHECK_EQ_INT((int)DSD(DS_00108870), (int)r->w70);
+        CHECK_EQ_INT((int)DSD(DS_0010887C), (int)r->w7c);
+        /* the lists are only read */
+        CHECK_EQ_INT((int)DSD(DS_0010884C), (int)Z_E(0));
+        CHECK_EQ_INT((int)DSD(Z_E(0)), (int)e[1]);
+    }
+    mz_restore();
+}
+
+/* The raw's descriptor picker thresholds (0x493xx) for a draw of rng(0x64). */
+static u32 z_pick(u32 v)
+{
+    if (v < 0x1Eu) return 4u;
+    if (v < 0x32u) return 3u;
+    if (v < 0x46u) return 5u;
+    if (v < 0x55u) return 1u;
+    if (v < 0x5Fu) return 0u;
+    return 2u;
+}
+
+/* The 0x496AC clamp of y. */
+static u16 z_clamp(s32 y)
+{
+    if (y >= 0xB00) return 0xC00u;
+    if (y <= 0x400) return 0xF80u;
+    return (u16)(((0xB00 - y) >> 1) + 0xC00);
+}
+
+/* `n` free-list nodes with sentinels past the links, an empty active list,
+ * the 0xC9524 descriptors' +0x10 poisoned, mode 3 (the pick draws rng(0x64)),
+ * and the pool records 0..8 off the actor free list. */
+static void z_nodes(u32 n, u32 seed)
+{
+    u32 k, e[8];
+    mz_free_list_high();
+    mem_fill(FIGHT_RECS + 0x2000u, 0, 0x600u);
+    for (k = 0; k < n; k++) {
+        e[k] = Z_N(k);
+        DSB(Z_N(k) + 0x1Eu) = 0x77u;
+        DSB(Z_N(k) + 0x1Fu) = 0x78u;
+        DSB(Z_N(k) + 0x21u) = 0x79u;
+        DSD(Z_N(k) + 0x0Cu) = 0x7A7A7A7Au;
+        DSW(Z_N(k) + 0x1Cu) = 0x7B7Bu;
+        DSD(Z_N(k) + 0x10u) = 0x7C7C7C7Cu;
+        DSD(Z_N(k) + 0x14u) = 0x7D7D7D7Du;
+        DSW(Z_N(k) + 0x1Au) = 0x7E7Eu;
+    }
+    z_link(DS_001083C4, e, n);
+    z_link(DS_0010884C, e, 0u);
+    for (k = 0; k < 6u; k++)
+        DSD(DSD(0x000C9524u + k * 4u) + 0x10u) = 0xDEAD0000u + k;
+    DSW(DS_00104B00) = 3u;
+    DSB(DS_00105B34) = 0u;
+    DSB(DS_00105B34 + 1u) = 0u;
+    rng_seed(seed);
+}
+
+/* 0x4CF20 (and 0x494A8's 0x23 arm that calls it) with 0x49388, 0x29CDC and
+ * 0x496AC. */
+static void check_49z_4cf20(void)
+{
+    static const s32 y0s[3] = { 0xA0, 0x900, -0x200 };
+    static const u8 chs[8] = { 2u, 2u, 0u, 0u, 4u, 4u, 5u, 0xFFu };
+    static const u8 flags[8] = { 0u, 1u, 1u, 0u, 1u, 0u, 0u, 1u };
+    static const u8 bumps[8] = { 1u, 0u, 1u, 0u, 1u, 0u, 1u, 0u };
+    u32 side, y0i, t, i, n, slot, rec, seed = 0x1234u;
+    CHECK(fn_resolve(0x4CF20u) == NULL, "0x4CF20 is a direct callee, not a callback");
+    if (!mz_save()) { CHECK(0, "the §49-Z snapshot allocates"); return; }
+    for (side = 0; side < 2u; side++) {
+      for (y0i = 0; y0i < 3u; y0i++) {
+        for (t = 0; t < 8u; t++) {
+            u32 exp_off = 0, nfree = (t == 7u) ? 3u : 6u;
+            u32 sv_a8;
+            if (y0i != 0u && t > 1u) continue;
+            slot = DS_001077B0 + side * 0x94u;
+            rec = FIGHT_RECS + 0x600u + side * 0x100u;
+            z_nodes(nfree, seed + t);
+            DSD(slot) = rec;
+            DSD(rec + 0x18u) = 0x40000u;
+            DSD(rec + 0x30u) = (u32)y0s[y0i] << 16;
+            DSB(rec + 0x51u) = flags[t];
+            DSB(slot + 0x7Au) = chs[t];
+            DSB(slot + 0x81u) = 0x77u;
+            DSW(DS_00104AFA) = 0x23u;
+            for (i = 0; i < 2u; i++) {
+                DSB(DS_001088AE + i) = 0x5Au;  DSB(DS_001088A2 + i) = 0x5Au;
+                DSB(DS_001088A4 + i) = 0x5Au;  DSB(DS_001088B2 + i) = 0x5Au;
+                DSB(DS_0010889E + i) = 0x5Au;  DSB(DS_001088A8 + i) = 0x5Au;
+            }
+            DSB(DS_001088C4) = 0x5Au;
+            DSB(DS_001088C1) = 0x5Au;
+            DSB(DS_001088C3) = 0x5Au;
+            DSB(DS_001088BF) = 0x5Au;
+            sv_a8 = 0x5Au;
+            fight_4cf20(side);
+            CHECK_EQ_INT((int)DSB(slot + 0x81u), 6);
+            for (i = 0; i < 2u; i++) {
+                int mine = (i == side);
+                CHECK_EQ_INT((int)DSB(DS_001088AE + i), mine ? 0 : 0x5A);
+                CHECK_EQ_INT((int)DSB(DS_001088A2 + i), mine ? 0 : 0x5A);
+                CHECK_EQ_INT((int)DSB(DS_001088A4 + i), mine ? 0 : 0x5A);
+                CHECK_EQ_INT((int)DSB(DS_001088B2 + i), mine ? 0 : 0x5A);
+                CHECK_EQ_INT((int)DSB(DS_0010889E + i), mine ? 0 : 0x5A);
+                CHECK_EQ_INT((int)DSB(DS_001088A8 + i), (int)sv_a8);
+            }
+            CHECK_EQ_INT((int)DSB(DS_001088C4), 0x5A);
+            CHECK_EQ_INT((int)DSB(DS_001088C1), 0x5A);
+            CHECK_EQ_INT((int)DSB(DS_001088C3), 0x5A);
+            CHECK_EQ_INT((int)DSB(DS_001088BF), 0x5A);
+            /* the pool: the six (or three) nodes moved to the active list,
+             * the last moved first. */
+            CHECK_EQ_INT((int)DSD(DS_001083C4), (int)DS_001083C4);
+            CHECK_EQ_INT((int)DSD(DS_0010884C), (int)Z_N(nfree - 1u));
+            CHECK_EQ_INT((int)DSD(DS_0010884C + 4u), (int)Z_N(0));
+            /* the draws: 0x49388's rng(0x64), rng(0x4800), rng(0x80) each. */
+            CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)mz_rng_after(seed + t, 3u * nfree));
+            rng_seed(seed + t);
+            for (n = 0; n < nfree; n++) {
+                u32 v = rng_next(0x64u);
+                u32 idx = z_pick(v);
+                u32 rx = rng_next(0x4800u);
+                u32 ry = rng_next(0x80u);
+                u32 x = 0x40000u - 0x2400u + rx;
+                s32 y = (s32)(exp_off + (u32)y0s[y0i] + 0x400u + ry);
+                u32 desc = DSD(0x000C9524u + idx * 4u);
+                u32 ent = Z_N(n), a = DSD(ent + 8u);
+                CHECK(a != 0u, "0x4CF20 spawned an actor");
+                if (a == 0u) continue;
+                CHECK_EQ_INT((int)DSD(a + 0x14u), (int)ent);
+                CHECK_EQ_INT((int)DSB(a + 0x48u), (int)DSB(desc + 4u));
+                CHECK_EQ_INT((int)DSD(desc + 0x10u), (int)DSD(0x000A8AF8u + (u32)chs[t] * 4u));
+                CHECK_EQ_INT((int)DSD(a + 0x18u), (int)x);
+                CHECK_EQ_INT((int)DSW(a + 0x2Cu), (int)z_clamp(y));
+                CHECK_EQ_INT((int)DSB(ent + 0x1Eu), 0);
+                CHECK_EQ_INT((int)DSB(ent + 0x1Fu), 0);
+                CHECK_EQ_INT((int)DSB(ent + 0x21u), (int)side);
+                CHECK_EQ_INT((int)DSD(ent + 0x0Cu), (int)slot);
+                CHECK_EQ_INT((int)DSW(ent + 0x1Cu), 0);
+                CHECK_EQ_INT((int)DSD(ent + 0x10u), 0);
+                CHECK_EQ_INT((int)DSD(ent + 0x14u), 0x7D7D7D7D);
+                CHECK_EQ_INT((int)DSW(ent + 0x1Au), 0x7E7E);
+                CHECK_EQ_INT((int)DSW(a + 0x2Eu),
+                             (int)((DSW(desc + 6u) + (bumps[t] ? 4u : 0u)) & 0xFFFFu));
+                CHECK_EQ_INT((int)DSB(a + 0x4Eu), bumps[t] ? 1 : 0);
+                exp_off += 0x300u / 6u;
+            }
+        }
+      }
+    }
+    mz_restore();
+
+    /* 0x494A8: DS_00104AFA is read as a word: 0x23 runs 0x4CF20, 0x123 the
+     * ordinary builder (slot +0x81 kept, DS_001088A8[side] = 0xFF). */
+    if (!mz_save()) { CHECK(0, "the §49-Z snapshot allocates"); return; }
+    for (i = 0; i < 3u; i++) {
+        static const u16 mode[3] = { 0x23u, 0x123u, 0x22u };
+        slot = DS_001077B0;
+        z_nodes(6u, 0x777u);
+        DSD(slot) = FIGHT_RECS + 0x600u;
+        DSD(FIGHT_RECS + 0x600u + 0x18u) = 0x40000u;
+        DSB(slot + 0x81u) = 0u;
+        DSB(slot + 0x7Au) = 2u;
+        DSB(DS_001088A8) = 0x5Au;
+        DSW(DS_00104AFA) = mode[i];
+        fight_dust_build(0u);
+        CHECK_EQ_INT((int)DSB(slot + 0x81u), i == 0u ? 6 : 0);
+        CHECK_EQ_INT((int)DSB(DS_001088A8), i == 0u ? 0x5A : 0xFF);
+        CHECK_EQ_INT((int)DSD(DS_000EF6D8),
+                     (int)mz_rng_after(0x777u, i == 0u ? 18u : 0u));
+    }
+    mz_restore();
+}
+
+/* 0x496DC with 0x49388, 0x29CDC, 0x496AC and 0x2BC30. */
+static void check_49z_496dc(void)
+{
+    static const u16 dirs[4] = { 0x0080u, 0xFF80u, 0x0000u, 0x0081u };
+    u32 t, k, n, seed = 0x2468u, side, slot, ne, src = Z_A(0), ent = Z_E(0);
+    if (!mz_save()) { CHECK(0, "the §49-Z snapshot allocates"); return; }
+    for (t = 0; t < 4u; t++) {
+      for (side = 0; side < 2u; side++) {
+        u32 flag = (t & 1u) ? 0u : 1u;
+        z_nodes(3u, seed + t);
+        slot = DS_001077B0 + side * 0x94u;
+        DSD(slot) = FIGHT_RECS + 0x600u;
+        DSB(FIGHT_RECS + 0x600u + 0x51u) = (u8)flag;
+        DSB(slot + 0x7Au) = 3u;
+        /* every descriptor's +0x48 stream slot points at a plain word; the
+         * first run's descriptors carry +0x48 = 0x10, whose (u16)(b - 0x20)
+         * index (0xFFF0) a byte-wide index would miss */
+        for (k = 0; k < 6u; k++) {
+            u32 d = DSD(0x000C9524u + k * 4u);
+            if (t == 0u) DSB(d + 4u) = 0x10u;
+            DSD(0x000C95D4u + (u32)(u16)(DSB(d + 4u) - 0x20u) * 4u) = Z_ST;
+        }
+        DSW(Z_ST) = 0x1400u;
+        DSB(ent + 0x21u) = (u8)side;
+        DSD(ent + 8u) = src;
+        DSD(ent + 0x14u) = 0x9000u;
+        DSD(src + 0x18u) = 0x1234u;
+        DSD(src + 0x30u) = 0x50u << 16;
+        DSW(src + 0x28u) = 0xFFFFu;
+        DSW(src + 0x34u) = dirs[t];
+        DSW(src + 0x56u) = 12u;
+        n = (t == 3u) ? 2u : 3u;
+        /* count 0 and -1 draw nothing and move no node */
+        fight_496dc(ent, 0);
+        fight_496dc(ent, -1);
+        CHECK_EQ_INT((int)DSD(DS_001083C4), (int)Z_N(0));
+        CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)seed + (int)t);
+        fight_496dc(ent, (s32)n);
+        CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)mz_rng_after(seed + t, 3u * (t == 3u ? 2u : 3u)));
+        /* an empty pool ends the loop: 3 nodes for count 3 (t 0..2) */
+        CHECK_EQ_INT((int)DSD(DS_001083C4), n == 3u ? (int)DS_001083C4 : (int)Z_N(2));
+        rng_seed(seed + t);
+        for (k = 0; k < n; k++) {
+            u32 v = rng_next(0x64u);
+            u32 idx = z_pick(v);
+            u32 r180 = rng_next(0x180u);
+            u32 rc00 = rng_next(0xC00u);
+            u32 desc = DSD(0x000C9524u + idx * 4u);
+            s32 y = 0x50 + (s32)r180;
+            u32 a;
+            ne = Z_N(k);
+            a = DSD(ne + 8u);
+            CHECK(a != 0u, "0x496DC spawned an actor");
+            if (a == 0u) continue;
+            CHECK_EQ_INT((int)DSD(a + 0x14u), (int)ne);
+            CHECK_EQ_INT((int)DSB(a + 0x48u), (int)DSB(desc + 4u));
+            CHECK_EQ_INT((int)DSD(desc + 0x10u), (int)DSD(0x000A8AF8u + 3u * 4u));
+            CHECK_EQ_INT((int)DSD(a + 0x18u), 0x1234);
+            CHECK_EQ_INT((int)DSW(a + 0x2Cu), (int)z_clamp(y));
+            CHECK_EQ_INT((int)DSW(a + 0x28u), 0xF7EB);
+            CHECK_EQ_INT((int)DSW(a + 0x34u), (int)dirs[t]);
+            CHECK_EQ_INT((int)DSD(a + 0x08u), (int)Z_ST);
+            CHECK_EQ_INT((int)DSD(a + 0x24u), 0x40400000);
+            CHECK_EQ_INT((int)DSB(ne + 0x1Eu), 0x0E);
+            CHECK_EQ_INT((int)DSB(ne + 0x1Fu), 0);
+            CHECK_EQ_INT((int)DSB(ne + 0x21u), (int)side);
+            CHECK_EQ_INT((int)DSD(ne + 0x0Cu), (int)slot);
+            CHECK_EQ_INT((int)DSD(ne + 0x14u),
+                         (int)(t == 0u ? 0x9000u + rc00 : 0x9000u - rc00));
+            CHECK_EQ_INT((int)DSW(a + 0x2Eu),
+                         (int)((DSW(desc + 6u) + (flag ? 4u : 0u)) & 0xFFFFu));
+            CHECK_EQ_INT((int)DSB(a + 0x4Eu), flag ? 1 : 0);
+        }
+        /* the entry it was called for is only read */
+        CHECK_EQ_INT((int)DSD(ent + 0x14u), 0x9000);
+        CHECK_EQ_INT((int)DSD(src + 0x18u), 0x1234);
+      }
+    }
+    mz_restore();
+}
+
+/* The fixture of the fighter checks below: c3_seed's pair (slot 0 char 1,
+ * slot 1 char 2, records r0/r1 on psets 1/2, +0x57 = 0x99/0x9A, +0x52 9,
+ * +0x53 0x66, +0x5F 0x3C, DS_001077A8 wired) with the stream and the
+ * distance tables of the checks patched in. */
+#define DS_001081EC 0x001081ECu   /* no symbols.h name: the word 0x45B50 arms */
+#define DS_000C90F8 0x000C90F8u   /* no symbols.h name: 0x47A00's [char] stream table */
+#define Z_S0 DS_001077B0
+#define Z_S1 (DS_001077B0 + 0x94u)
+#define Z_R0 FIGHT_RECS
+#define Z_R1 (FIGHT_RECS + 0x100u)
+#define Z_STF (FIGHT_RECS + 0x3A00u)
+
+static void z_fseed(void)
+{
+    c3_seed(Z_S0, Z_S1, Z_R0, Z_R1, Z_STF);
+    DSD(DS_001077A8) = Z_S0;
+    DSD(DS_001077A8 + 4u) = Z_S1;
+    DSW(DS_001081EC) = 0x4321u;
+    DSB(DS_000F0AFE) = 0x55u;
+    DSB(Z_S0 + 0x53u) = 0x55u;
+    DSB(Z_S1 + 0x53u) = 0x55u;
+    DSB(Z_S0 + 0x52u) = 0x55u;
+    DSB(Z_S1 + 0x52u) = 0x55u;
+    DSW(Z_STF) = 0x1234u;
+    DSW(Z_STF + 0x10u) = 0x1235u;
+}
+
+/* 0x45B50 (the +0x0C callback 0x45C10 stores). */
+static void check_49z_45b50(void)
+{
+    u32 side, k;
+    u32 recs[2] = { Z_R0, Z_R1 };
+    u32 slots[2] = { Z_S0, Z_S1 };
+    if (!mz_save()) { CHECK(0, "the §49-Z snapshot allocates"); return; }
+    CHECK(fn_resolve(0x45B50u) == (void (*)(void))fighter_45b50,
+          "0x45B50 is registered as fighter_45b50");
+    CHECK(fn_resolve(0x47B04u) == (void (*)(void))fighter_47b04,
+          "0x47B04 is registered as fighter_47b04");
+    CHECK(fn_resolve(0x4F4E8u) == flow_round_timer_step,
+          "0x4F4E8 is registered as flow_round_timer_step");
+    /* the image words: the storers' immediates, the render table entry and
+     * the palette handle literal (no LE fixup covers it) */
+    CHECK_EQ_INT((int)DSD(0x00045C33u), 0x00045B50);
+    CHECK_EQ_INT((int)DSD(0x00047C56u), 0x00047B04);
+    CHECK_EQ_INT((int)DSD(0x000A86C4u), 0x0004F4E8);
+    CHECK_EQ_INT((int)DSD(0x00045B95u), 0x1F874610);
+    CHECK_EQ_INT((int)DSD(0x000BDAF4u), 0x00045C10);
+    CHECK_EQ_INT((int)DSD(0x000A4220u), 0x00047BFC);
+
+    /* +0x57 = 1: the other record on 0x9B01C[the other slot's char] at 1.0,
+     * the handle acquired, the word armed, +0x57 = 2. */
+    for (side = 0; side < 2u; side++) {
+        u32 self = slots[side], rec = recs[side], other_rec;
+        u32 ps, ent;
+        z_fseed();
+        /* the palette call needs a pool record (0x2A182 takes its pset) */
+        other_rec = m5_rec();
+        CHECK(other_rec != 0u, "a pool record for the other side");
+        if (other_rec == 0u) break;
+        DSD(slots[side ^ 1u]) = other_rec;
+        ps = actor_pset(other_rec);
+        /* slot 1's char is 2 and slot 0's is 3 (c3_seed) */
+        DSD(0x0009B01Cu + 3u * 4u) = Z_STF + 0x10u;
+        DSD(0x0009B01Cu + 2u * 4u) = Z_STF;
+        mem_fill(DS_00107618, 0, 0x180u);
+        DSD(ps + 0x18u) = 0u;
+        DSB(self + 0x57u) = 1u;
+        fighter_45b50(self, rec, side);
+        CHECK_EQ_INT((int)DSD(other_rec + 8u), (int)(side == 0u ? Z_STF : Z_STF + 0x10u));
+        CHECK_EQ_INT((int)DSD(other_rec + 0x24u), 0x3F800000);
+        CHECK_EQ_INT((int)(DSW(ps) & 0x7FFFu), side == 0u ? 0x1234 : 0x1235);
+        ent = DSD(ps + 0x18u);
+        CHECK(ent != 0u, "the handle's palette entry is acquired");
+        if (ent != 0u) CHECK_EQ_INT((int)DSD(ent), 0x1F874610);
+        CHECK_EQ_INT((int)DSB(self + 0x57u), 2);
+        CHECK_EQ_INT((int)DSW(DS_001081EC), 0x1E);
+        CHECK_EQ_INT((int)DSB(DS_000F0AFE), 0x55);
+        CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x11111111);
+        CHECK_EQ_INT((int)DSB(self + 0x53u), 0x55);
+        CHECK_EQ_INT((int)DSB(self + 0x52u), 0x55);
+        CHECK_EQ_INT((int)DSB(slots[side ^ 1u] + 0x57u), (int)(0x99u + (side ^ 1u)));
+    }
+
+    /* +0x57 = 2: the word counts down as a signed 16-bit value. */
+    {
+        static const u16 w[7] = { 3u, 2u, 1u, 0u, 0x8000u, 0x8001u, 0xFFFFu };
+        static const u16 nw[7] = { 2u, 1u, 0u, 0xFFFFu, 0x7FFFu, 0x8000u, 0xFFFEu };
+        static const u8 fire[7] = { 0u, 0u, 1u, 1u, 0u, 1u, 1u };
+        for (side = 0; side < 2u; side++) {
+            for (k = 0; k < 7u; k++) {
+                u32 self = slots[side], rec = recs[side], other_rec = recs[side ^ 1u];
+                z_fseed();
+                DSD(other_rec + 0x24u) = 0x22222222u;
+                DSB(self + 0x57u) = 2u;
+                DSW(DS_001081EC) = w[k];
+                fighter_45b50(self, rec, side);
+                CHECK_EQ_INT((int)DSW(DS_001081EC), (int)nw[k]);
+                CHECK_EQ_INT((int)DSB(self + 0x57u), 2);
+                CHECK_EQ_INT((int)DSD(rec + 0x24u), fire[k] ? 0x40400000 : 0x11111111);
+                CHECK_EQ_INT((int)DSD(other_rec + 0x24u), fire[k] ? 0x40C00000 : 0x22222222);
+                CHECK_EQ_INT((int)DSB(self + 0x53u), fire[k] ? 3 : 0x55);
+                CHECK_EQ_INT((int)DSB(self + 0x52u), fire[k] ? 9 : 0x55);
+                CHECK_EQ_INT((int)DSB(DS_000F0AFE), fire[k] ? 4 : 0x55);
+                CHECK_EQ_INT((int)DSB(slots[side ^ 1u] + 0x53u), 0x55);
+            }
+        }
+    }
+
+    /* every other +0x57 does nothing */
+    {
+        static const u8 st[5] = { 0u, 3u, 4u, 0x99u, 0xFFu };
+        u8 before[0x200], after[0x200], b2[0x130], a2[0x130];
+        for (k = 0; k < 5u; k++) {
+            z_fseed();
+            DSB(Z_S0 + 0x57u) = st[k];
+            DSW(DS_001081EC) = 1u;
+            tf_snap(before, FIGHT_RECS, 0x200u);
+            tf_snap(b2, DS_001077A8, 0x130u);
+            fighter_45b50(Z_S0, Z_R0, 0u);
+            tf_snap(after, FIGHT_RECS, 0x200u);
+            tf_snap(a2, DS_001077A8, 0x130u);
+            CHECK(memcmp(before, after, sizeof before) == 0, "0x45B50 leaves the records");
+            CHECK(memcmp(b2, a2, sizeof b2) == 0, "0x45B50 leaves the slots");
+            CHECK_EQ_INT((int)DSW(DS_001081EC), 1);
+            CHECK_EQ_INT((int)DSB(DS_000F0AFE), 0x55);
+        }
+    }
+    mz_restore();
+}
+
+/* 0x47A00 (and the callees whose effects only it attributes). */
+static void check_49z_47a00(void)
+{
+    static const u8 b3a[6] = { 0u, 1u, 2u, 3u, 0x80u, 0xFFu };
+    u32 side, k;
+    u32 recs[2] = { Z_R0, Z_R1 };
+    u32 slots[2] = { Z_S0, Z_S1 };
+    if (!mz_save()) { CHECK(0, "the §49-Z snapshot allocates"); return; }
+    for (side = 0; side < 2u; side++) {
+        for (k = 0; k < 6u; k++) {
+            u32 self = slots[side], rec = recs[side], oth = slots[side ^ 1u];
+            u32 ochar = (side == 0u) ? 2u : 3u;
+            u32 a, n0, dist;
+            int spawn = b3a[k] <= 1u;
+            z_fseed();
+            mz_free_list_high();
+            DSB(DS_00105B3A) = b3a[k];
+            DSB(rec + 0x4Bu) = 0x5Au;
+            DSD(DS_000C90F8 + 3u * 4u) = Z_STF + 0x10u;
+            DSD(DS_000C90F8 + 2u * 4u) = Z_STF;
+            DSW(0x000C9456u + 2u * 1u) = 0x33u;
+            DSW(0x000C9456u + 2u * 2u) = 0x50u;
+            DSW(0x000C9456u + 2u * 3u) = 0x44u;
+            /* the opponent (3C208's side) faces the way that puts the
+             * placed fighter |dist| from it */
+            DSW(FIGHT_ACTORS + (1u + (side ^ 1u)) * 0x20u) =
+                (side == 0u) ? 0x8F35u : 0x0F35u;
+            DSW(self + 0x74u) = 0x7777u;
+            DSW(oth + 0x74u) = 0x7777u;
+            DSB(self + 0x5Fu) = 0x21u;
+            DSB(oth + 0x5Fu) = 0x22u;
+            DSW(DS_00107D2C) = 0x100u;
+            DSW(DS_00107D2C + 2u) = 0x200u;
+            DSD(DS_00107D28) = 0x5A5Au;
+            dist = (ochar == 2u) ? 0x50u : 0x44u;
+            a = DSD(DS_00105B3C);
+            n0 = tb_active();
+            DSW(FIGHT_ACTORS + (1u + (side ^ 1u)) * 0x20u) = (side == 0u) ? 0x8F35u : 0x0F35u;
+            fighter_47a00(side);
+            CHECK_EQ_INT((int)tb_active(), (int)(n0 + (spawn ? 1u : 0u)));
+            if (spawn) {
+                CHECK_EQ_INT((int)DSB(a + 0x60u), 1);
+                CHECK_EQ_INT((int)DSB(rec + 0x4Bu), (int)DSB(a + 0x56u));
+                CHECK_EQ_INT((int)DSB(a + 0x4Au), (int)(DSW(rec + 0x56u) & 0x7Fu));
+                CHECK((DSW(a + 0x28u) & 0x400u) != 0u, "the spawn takes the child flag");
+            } else {
+                CHECK_EQ_INT((int)DSB(rec + 0x4Bu), 0x5A);
+                CHECK_EQ_INT((int)DSD(DS_00105B3C), (int)a);
+            }
+            CHECK_EQ_INT((int)DSB(self + 0x57u), 1);
+            CHECK_EQ_INT((int)DSB(oth + 0x57u), (int)(0x99u + (side ^ 1u)));
+            /* 0x39834(the other side, this slot's +0x5F): the scoring side
+             * (this one) takes the hit count and the reaction index */
+            CHECK_EQ_INT((int)DSW(DS_00107D2C + side * 2u), 0x101 + 0x100 * (int)side);
+            CHECK_EQ_INT((int)DSW(DS_00107D2C + (side ^ 1u) * 2u), 0x100 + 0x100 * (int)(side ^ 1u));
+            CHECK_EQ_INT((int)DSD(DS_00107D28), 0x21);
+            CHECK_EQ_INT((int)DSD(rec + 8u), (int)(ochar == 2u ? Z_STF : Z_STF + 0x10u));
+            CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+            CHECK_EQ_INT((int)DSB(self + 0x52u), 9);
+            CHECK_EQ_INT((int)DSB(self + 0x53u), 7);
+            CHECK_EQ_INT((int)DSB(oth + 0x52u), 0x10);
+            CHECK_EQ_INT((int)DSB(oth + 0x53u), 0x0A);
+            CHECK_EQ_INT((int)DSB(oth + 0x54u), 0);
+            CHECK_EQ_INT((int)DSD(oth + 0x0Cu), 0);
+            CHECK_EQ_INT((int)DSW(self + 0x74u), 0x309);
+            CHECK_EQ_INT((int)DSW(oth + 0x74u), 0x309);
+            {
+                s32 d = (s32)DSD(0x001077DCu) - (s32)DSD(0x00107870u);
+                if (d < 0) d = -d;
+                CHECK_EQ_INT(d, (int)dist);
+            }
+        }
+    }
+    mz_restore();
+}
+
+/* 0x47B04 (the +0x0C callback 0x47BFC stores) with 0x39FB0, 0x39F40, 0x18B04
+ * and 0x36870 reached through it. The callback's rec argument is a scratch
+ * record whose +0x63 is the gate and whose +0x51 names the slot 0x36870 acts
+ * on; the slots' own records carry +0x63 = 0x99 and +0x51 = their side. */
+static void check_49z_47b04(void)
+{
+    u32 side, k;
+    u32 slots[2] = { Z_S0, Z_S1 };
+    u32 recs[2] = { Z_R0, Z_R1 };
+    u32 arg = Z_A(5);
+    u8 before[0x200], after[0x200], b2[0x130], a2[0x130], b3[0x80], a3[0x80];
+    if (!mz_save()) { CHECK(0, "the §49-Z snapshot allocates"); return; }
+
+    for (side = 0; side < 2u; side++) {
+        u32 self = slots[side], oth = slots[side ^ 1u];
+        u32 rec = recs[side], orec = recs[side ^ 1u];
+
+        /* A: no other slot: nothing, whatever +0x57 and +0x63 */
+        for (k = 0; k < 8u; k++) {
+            z_fseed();
+            DSD(DS_001077A8 + (side ^ 1u) * 4u) = 0u;
+            DSB(self + 0x57u) = (u8)k;
+            DSB(arg + 0x63u) = (k & 1u) ? 7u : 0x10u;
+            DSB(arg + 0x51u) = (u8)side;
+            DSD(self + 0x86u) = 0x000B0000u;
+            tf_snap(before, FIGHT_RECS, 0x200u);
+            tf_snap(b2, DS_001077A8, 0x130u);
+            tf_snap(b3, DS_00107A60, 0x80u);
+            fighter_47b04(self, arg, side);
+            tf_snap(after, FIGHT_RECS, 0x200u);
+            tf_snap(a2, DS_001077A8, 0x130u);
+            tf_snap(a3, DS_00107A60, 0x80u);
+            CHECK(memcmp(before, after, sizeof before) == 0, "0x47B04 without the other slot: records kept");
+            CHECK(memcmp(b2, a2, sizeof b2) == 0, "0x47B04 without the other slot: slots kept");
+            CHECK(memcmp(b3, a3, sizeof b3) == 0, "0x47B04 without the other slot: pose words kept");
+        }
+
+        /* B: +0x57 above 5 and 3 do nothing */
+        {
+            static const u8 st[5] = { 3u, 6u, 7u, 0x99u, 0xFFu };
+            for (k = 0; k < 5u; k++) {
+                z_fseed();
+                DSB(self + 0x57u) = st[k];
+                DSB(arg + 0x63u) = 0x10u;
+                DSD(self + 0x86u) = 0x000B0000u;
+                tf_snap(before, FIGHT_RECS, 0x200u);
+                tf_snap(b2, DS_001077A8, 0x130u);
+                fighter_47b04(self, arg, side);
+                tf_snap(after, FIGHT_RECS, 0x200u);
+                tf_snap(a2, DS_001077A8, 0x130u);
+                CHECK(memcmp(before, after, sizeof before) == 0, "0x47B04 +0x57 3/6+: records kept");
+                CHECK(memcmp(b2, a2, sizeof b2) == 0, "0x47B04 +0x57 3/6+: slots kept");
+            }
+        }
+
+        /* 0: the gate is the argument record's +0x63 == 7 */
+        {
+            static const u8 g[6] = { 7u, 6u, 8u, 0x10u, 0u, 0x87u };
+            for (k = 0; k < 6u; k++) {
+                u32 ochar = (side == 0u) ? 2u : 3u;
+                int fire = (g[k] == 7u);
+                z_fseed();
+                DSD(DS_000C90F8 + 2u * 4u) = Z_STF;
+                DSD(DS_000C90F8 + 3u * 4u) = Z_STF + 0x10u;
+                DSW(0x000C9456u + 2u * 2u) = 0x50u;
+                DSW(0x000C9456u + 2u * 3u) = 0x44u;
+                DSW(FIGHT_ACTORS + (1u + (side ^ 1u)) * 0x20u) =
+                    (side == 0u) ? 0x8F35u : 0x0F35u;
+                DSB(DS_00105B3A) = 2u;
+                DSB(self + 0x57u) = 0u;
+                DSB(arg + 0x63u) = g[k];
+                DSB(rec + 0x63u) = (g[k] == 7u) ? 0x99u : 7u;   /* not the gate */
+                fighter_47b04(self, arg, side);
+                CHECK_EQ_INT((int)DSB(self + 0x57u), fire ? 1 : 0);
+                CHECK_EQ_INT((int)DSD(rec + 8u),
+                             fire ? (int)(ochar == 2u ? Z_STF : Z_STF + 0x10u) : 0x00ABCDEF);
+                CHECK_EQ_INT((int)DSB(oth + 0x57u), (int)(0x99u + (side ^ 1u)));
+            }
+        }
+
+        /* 1: +0x63 == 0x10 poses the other slot (0x39FB0) and steps to 3 */
+        {
+            static const u8 g[4] = { 0x10u, 0x0Fu, 0x11u, 0u };
+            for (k = 0; k < 4u; k++) {
+                int fire = (g[k] == 0x10u);
+                u32 s2 = side ^ 1u;
+                z_fseed();
+                DSB(self + 0x57u) = 1u;
+                DSB(arg + 0x63u) = g[k];
+                DSB(orec + 0x29u) = (side == 0u) ? 0x00u : 0xFFu;
+                DSD(orec + 0x24u) = 0x11111111u;
+                DSD(DS_00107A68 + s2 * 4u) = 0x1111u;
+                DSD(DS_00107A68 + side * 4u) = 0x7777u;
+                DSD(DS_00107A78 + s2 * 4u) = 0x2222u;
+                DSD(DS_00107A60 + s2 * 4u) = 0x3333u;
+                DSD(DS_00107A70 + s2 * 4u) = 0x4444u;
+                DSD(oth + 0x10u) = 0x5555u;
+                DSB(oth + 0x58u) = 0x66u;
+                DSB(oth + 0x54u) = 0x66u;
+                DSB(self + 0x5Fu) = 0x21u;
+                DSB(oth + 0x5Fu) = 0x22u;
+                DSW(DS_00107D2C) = 0x100u;
+                DSW(DS_00107D2C + 2u) = 0x200u;
+                DSD(DS_00107D28) = 0x5A5Au;
+                fighter_47b04(self, arg, side);
+                CHECK_EQ_INT((int)DSW(DS_00107D2C + side * 2u), 0x100 + 0x100 * (int)side + (fire ? 1 : 0));
+                CHECK_EQ_INT((int)DSW(DS_00107D2C + s2 * 2u), 0x100 + 0x100 * (int)s2);
+                CHECK_EQ_INT((int)DSD(DS_00107D28), fire ? 0x21 : 0x5A5A);
+                CHECK_EQ_INT((int)DSB(self + 0x57u), fire ? 3 : 1);
+                CHECK_EQ_INT((int)DSD(DS_00107A68 + s2 * 4u), fire ? (int)0xFFFFFFB0u : 0x1111);
+                CHECK_EQ_INT((int)DSD(DS_00107A78 + s2 * 4u), fire ? 0x64 : 0x2222);
+                CHECK_EQ_INT((int)DSD(DS_00107A60 + s2 * 4u), fire ? 0x0F : 0x3333);
+                CHECK_EQ_INT((int)DSD(DS_00107A70 + s2 * 4u), fire ? 0x14 : 0x4444);
+                CHECK_EQ_INT((int)DSD(DS_00107A68 + side * 4u), 0x7777);
+                CHECK_EQ_INT((int)DSB(oth + 0x52u), fire ? 0x10 : 0x55);
+                CHECK_EQ_INT((int)DSB(oth + 0x53u), fire ? 0x0A : 0x55);
+                CHECK_EQ_INT((int)DSB(oth + 0x54u), fire ? 2 : 0x66);
+                CHECK_EQ_INT((int)DSD(oth + 0x10u), fire ? 0x39CC8 : 0x5555);
+                CHECK_EQ_INT((int)DSB(oth + 0x58u), fire ? 0 : 0x66);
+                CHECK_EQ_INT((int)DSD(orec + 0x24u), fire ? 0 : 0x11111111);
+                /* 0x18B04 for the other slot: its record faces the way the
+                 * x order puts it (slot 0 is right of slot 1 after the latch) */
+                CHECK_EQ_INT((int)DSB(orec + 0x29u),
+                             fire ? (side == 0u ? 0x40 : 0xBF) : (side == 0u ? 0x00 : 0xFF));
+                CHECK_EQ_INT((int)DSB(oth + 0x57u), (int)(0x99u + (side ^ 1u)));
+            }
+        }
+
+        /* 2: 0x36870 on the argument record, then +0x57 = 3 */
+        z_fseed();
+        DSB(self + 0x57u) = 2u;
+        DSB(arg + 0x51u) = (u8)(side ^ 1u);
+        DSB(self + 0x5Fu) = 0x3Cu;
+        DSB(oth + 0x5Fu) = 0x3Cu;
+        fighter_47b04(self, arg, side);
+        CHECK_EQ_INT((int)DSB(self + 0x57u), 3);
+        CHECK_EQ_INT((int)DSD(oth + 0x0Cu), 0);
+        CHECK_EQ_INT((int)DSB(oth + 0x5Fu), 0xFF);
+        CHECK_EQ_INT((int)DSD(self + 0x0Cu), 0x11111111);
+        CHECK_EQ_INT((int)DSB(self + 0x5Fu), 0x3C);
+
+        /* 4: +0x63 == 0x10 clears the other slot's +0x54 and runs 0x36870
+         * on its record, then +0x57 = 3 */
+        for (k = 0; k < 3u; k++) {
+            static const u8 g[3] = { 0x10u, 0x0Fu, 0x11u };
+            int fire = (g[k] == 0x10u);
+            z_fseed();
+            DSB(self + 0x57u) = 4u;
+            DSB(arg + 0x63u) = g[k];
+            DSB(arg + 0x51u) = (u8)side;
+            DSB(oth + 0x5Fu) = 0x3Cu;
+            fighter_47b04(self, arg, side);
+            CHECK_EQ_INT((int)DSB(self + 0x57u), fire ? 3 : 4);
+            CHECK_EQ_INT((int)DSD(oth + 0x0Cu), fire ? 0 : 0x11111111);
+            CHECK_EQ_INT((int)DSB(oth + 0x5Fu), fire ? 0xFF : 0x3C);
+            CHECK_EQ_INT((int)DSD(self + 0x0Cu), 0x11111111);
+        }
+
+        /* 5: the signed word at +0x88 above 10 clears the slot's +0x54 and
+         * runs 0x36870 on the slot's own record; +0x57 stays */
+        {
+            static const u32 w[5] = { 0x000B0000u, 0x000A0000u, 0xFFF60000u,
+                                      0x7FFF0000u, 0x80000000u };
+            static const u8 fire[5] = { 1u, 0u, 0u, 1u, 0u };
+            for (k = 0; k < 5u; k++) {
+                z_fseed();
+                DSB(self + 0x57u) = 5u;
+                DSD(self + 0x86u) = w[k];
+                DSB(self + 0x5Fu) = 0x3Cu;
+                fighter_47b04(self, arg, side);
+                CHECK_EQ_INT((int)DSB(self + 0x57u), 5);
+                CHECK_EQ_INT((int)DSB(self + 0x54u), fire[k] ? 0 : 0x66);
+                CHECK_EQ_INT((int)DSB(oth + 0x54u), 0x66);
+                CHECK_EQ_INT((int)DSD(self + 0x0Cu), fire[k] ? 0 : 0x11111111);
+                CHECK_EQ_INT((int)DSB(self + 0x5Fu), fire[k] ? 0xFF : 0x3C);
+                CHECK_EQ_INT((int)DSD(oth + 0x0Cu), 0x11111111);
+            }
+        }
+    }
+    mz_restore();
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -35163,6 +35921,12 @@ int test_fight(void)
     check_mode_25();
     check_hud_meter_step();
     check_pair_callbacks();
+    check_49z_survey();
+    check_49z_4cf20();
+    check_49z_496dc();
+    check_49z_45b50();
+    check_49z_47a00();
+    check_49z_47b04();
 
     return g_failures - before;
 }
