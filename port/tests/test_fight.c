@@ -22233,7 +22233,8 @@ static void check_mode_0e(void)
      * 0x1D764 clears w's bit 4, so it ran after); 0x1D764 on w (DS_0010290C[w] 0,
      * the DS_001028F8 record on 0xE904C at 1.0); w's +0x5B = DS_00104B0B
      * (the other's keeps its copy's 0x44); 0x46534(the other side, -2); mode
-     * 0xC and w's +0x41 &= 0xE7. Then 0x41310(w, 1). DS_00104AEC and
+     * 0xC and w's +0x41 &= 0xE7 (the copies' +0x41 differ, 0xFF and 0xDF,
+     * so the byte is w's own). Then 0x41310(w, 1). DS_00104AEC and
      * DS_00108110 are untouched (the path returns before them). Row 2: the
      * sprite prompts (DS_00104529 bit 1), where 0x2C088 kills and clears
      * DS_00105BF0[w] only and releases at DS_00105C06/C07 (row 0x1E), so the
@@ -22266,7 +22267,7 @@ static void check_mode_0e(void)
                 DSD(C_COPY + 0x128u + s * 0x68u + 0x30u) = 0x5678u + s;
                 DSB(C_COPY + s * 0x94u + 0x5Au) = 0x11u;
                 DSB(C_COPY + s * 0x94u + 0x5Bu) = 0x44u;
-                DSB(C_COPY + s * 0x94u + 0x41u) = 0xFFu;
+                DSB(C_COPY + s * 0x94u + 0x41u) = s == 0u ? 0xFFu : 0xDFu;
                 DSB(C_COPY + s * 0x94u + 0x42u) = 0xFFu;
                 a[s] = m5_rec();
                 DSD(a[s] + 0x3Cu) = 100u + s * 100u;
@@ -22316,8 +22317,8 @@ static void check_mode_0e(void)
             CHECK_EQ_INT((int)DSB(DS_0010780B + o * 0x94u), 0x44);
             CHECK_EQ_INT((int)DSD(DS_001082C8 + o * 4u), (int)(5u + o - 2u));
             CHECK_EQ_INT((int)DSD(DS_001082C8 + w * 4u), (int)(5u + w));
-            CHECK_EQ_INT((int)DSB(DS_001077B0 + w * 0x94u + 0x41u), 0xE7);
-            CHECK_EQ_INT((int)DSB(DS_001077B0 + o * 0x94u + 0x41u), 0xFF);
+            CHECK_EQ_INT((int)DSB(DS_001077B0 + w * 0x94u + 0x41u), w == 0u ? 0xE7 : 0xC7);
+            CHECK_EQ_INT((int)DSB(DS_001077B0 + o * 0x94u + 0x41u), o == 0u ? 0xFF : 0xDF);
             CHECK_EQ_INT((int)DSB(DS_001077B0 + w * 0x94u + 0x42u), 0xEF);
             CHECK_EQ_INT((int)DSB(DS_001077B0 + o * 0x94u + 0x42u), 0xFF);
             CHECK_EQ_INT((int)DSD(a[w] + 0x3Cu), (int)(101u + w * 100u));
