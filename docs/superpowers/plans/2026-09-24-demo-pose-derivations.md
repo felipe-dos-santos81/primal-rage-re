@@ -19592,3 +19592,517 @@ subsystem regardless of its callees) and its two still-unported callees
 match-end stores `0x27DC8` (record §48-K) that would make mode `0x1E`
 reachable for real remain unported, as noted in records §49-C/§49-D for
 modes 8/0xA.
+
+## 49-J. Modes `0x30`/`0x31`/`0x33`, mode `0x32`'s continue/rematch chain
+(branch `gap31-mode303133`)
+
+(The section letter is J. `docs/PROGRESS.md` and this file were grepped
+for `§49-` on `main` three times: at task start (`main` at `59e6ea4`,
+A–D/G/H taken), again after this task's own port and tests were green
+(`main` had advanced to `009fa45`, merging `gap30-mode1819`'s §49-I — the
+letter this task's own branch name and early in-progress comments had
+assumed, since `main` had not moved when work began), and a third time
+immediately before this section was written (`main` still at `009fa45`,
+same result). I was retired in favour of J; every in-progress `§49-I`
+reference this task had already written in `flow.c`/`flow.h`/
+`test_fight.c` was mechanically relabelled to `§49-J` before this section
+was added. Neither sibling batch racing this one (`gap26-modes7f`, cases
+7/0xF; `gap29-mode21`, case `0x21`) had merged or claimed a letter as of
+the third check, so J is free against all three checks.)
+
+**Result in one line.** `0x29328`/`0x299E8`/`0x29638`, `game_frame`'s cases
+`0x30`/`0x31`/`0x33` (until now grouped in the tail named-gap fallthrough
+list alongside cases 7, 0xF, 0x18/0x19/0x1F/0x21..0x25/0x27..0x2F), are
+ported as `game_mode_30_step`/`game_mode_31_step`/`game_mode_33_step`
+(`flow.c`) and wired. All three turn out to be mode `0x32`'s own
+continue/rematch chain, exactly matching the pairing `flow.h`'s own
+pre-existing header comment on `flow_match_result_text` already named
+without elaboration: "the arena frame's tail steps, then on
+`DS_00104B0C` the next opponent (modes 0xC / 0x31) or the match's end
+(modes 0xF / 0x33)" — modes 0xD/0xC/0xF (already ported/named-gap) and
+modes `0x32`/`0x31`/`0x33` (this task) are the same three-step shape
+twice over, once for the "normal" round-loss path and once for mode
+`0x32`'s own (handicap/rematch) path. Mode `0x30` turns out to be a
+fourth member of this family too, but paired with mode 5 (`0x25C88`,
+record §48-U) rather than with `0x32`: it is mode 5's own near-twin,
+reached (per its own transition, `game_mode_32_step`) on the way *into*
+a rematch rather than out of one.
+
+### 49-J.1 Sources
+
+The raw comes from the Ghidra HTTP bridge at `127.0.0.1:8089`
+(`disassemble_function`), cross-checked against `port/decomp/prage.c`'s
+decompiled `FUN_00029328`/`FUN_000299e8`/`FUN_00029638` (`port/decomp/
+prage.functions.csv` records `callers=1` for all three, each from
+`0x24c5c`, matching `get_xrefs_to`-style confirmation via `prage.calls.
+csv`'s own call-site rows). `0x29328`'s decompilation matched the raw
+disassembly exactly (a `switch` on `DAT_00104b25` through the table at
+`0x29318`); `0x299e8`'s and `0x29638`'s decompilations carried several
+Ghidra `extraout_*` register artefacts (values the decompiler could not
+track across calls) that the raw disassembly resolved directly — in
+particular `0x29638`'s own `DS_00104B00 = extraout_CX` decompiled store
+is, on the raw, `mov ecx,0x17` two instructions before the call that
+clobbers it, i.e. a fixed `0x17`, not a mystery register. One callee,
+`0x29970` (called only from `0x299e8`), was itself unported before this
+task — its own disassembly is included below alongside the three cases'.
+
+```
+; 0x29328 (mode 0x30), the jump-table dispatch and its four states
+00029328  push ebx / ecx / edx / esi / edi
+0002932d  call 0x0003cb68                    ; fight_slot_pass
+00029332  mov al,[0x00104b25]
+00029337  dec al
+00029339  cmp al,0x3
+0002933b  ja 0x000295b1                       ; default: skip to the shared tail
+00029341  and eax,0xff
+00029346  jmp dword ptr cs:[eax*4 + 0x29318]  ; table: 0x2934e/0x29473/0x294fc/0x29593
+
+; state 1 (0x2934e): the round card, the win markers, -> state 4 (next: 2)
+0002934e  mov dh,1
+00029350  mov [0x00104b1b],dh
+00029356  mov [0x00104b15],dh
+0002935c  call 0x00025c1c                     ; flow_round_hud_init
+00029361  cmp byte [0x00104b14],0
+00029368  jz 0x000293a6
+0002936a  test byte [0x00104529],2
+00029371  jz 0x0002938e
+00029373  push 0 / mov ecx,0xff / mov ebx,0x3600 / mov edx,0x2a00
+00029384  mov eax,[0x000a88b4]
+00029389  jmp 0x0002940a
+0002938e  push 0 / mov ecx,0xff / mov ebx,0x3600 / mov edx,0x2a00
+0002939f  mov eax,[0x000a88a4]
+000293a4  jmp 0x0002940a
+000293a6  xor eax,eax
+000293a8  mov ecx,[0x00104adc]
+000293ae  mov al,[0x00104b1e]
+000293b3  cmp eax,ecx
+000293b5  jnz 0x000293be
+000293b7  mov eax,2
+000293bc  jmp 0x000293cc
+000293be  cmp eax,1
+000293c1  jnz 0x000293c7
+000293c3  xor eax,eax
+000293c5  jmp 0x000293cc
+000293c7  mov eax,1
+000293cc  mov cl,[0x00104529]
+000293d2  shl eax,2
+000293d5  test cl,2
+000293d8  jz 0x000293f3
+000293da  push 0 / mov ecx,0xff / mov ebx,0x3600 / mov edx,0x2a00
+000293eb  mov eax,[eax + 0xa88a8]
+000293f1  jmp 0x0002940a
+000293f3  push 0 / mov ecx,0xff / mov ebx,0x3600 / mov edx,0x2a00
+00029404  mov eax,[eax + 0xa8898]
+0002940a  call 0x0002ae14                     ; actor_spawn
+0002940f  mov [0x00104ac0],eax
+00029414  xor esi,esi
+00029416..00029440  8 dwords: [0x00104a88..0x00104aa4] = 0
+00029446  call 0x000256f4                     ; flow_win_markers_spawn
+0002944b  mov al,4 / mov edi,0x3c
+00029452  mov [0x00104b25],al
+00029457  mov ah,2
+00029459  mov [0x00104afe],di
+00029460  mov [0x00104b23],ah
+00029466  or byte [0x00104aec],2
+0002946d  pop edi / esi / edx / ecx / ebx
+00029472  ret
+
+; state 2 (0x29473): the fight card -> state 4 (next: 3)
+00029473  test byte [0x00104529],2
+0002947a  jz 0x0002949d
+0002947c  cmp byte [0x00104b14],0
+00029483  jz 0x0002949d
+00029485  push 0 / mov ecx,0xff / mov ebx,0x1200 / mov edx,0x2a00
+00029496  mov eax,0xa8884
+0002949b  jmp 0x000294b3
+0002949d  push 0 / mov ecx,0xff / mov ebx,0x1200 / mov edx,0x2a00
+000294ae  mov eax,0xbb6a0
+000294b3  call 0x0002ae14                     ; actor_spawn
+000294b8  mov [0x00104acc],eax
+000294bd  mov al,[0x00104ae8]
+000294c2  or al,0x40
+000294c4  mov esi,0x3c
+000294c9  mov [0x00104ae8],al
+000294ce  mov eax,0xd7 / mov dl,3
+000294d5  call 0x0002c3fc                     ; voice, unwired (§45-A)
+000294da  mov ah,4
+000294dc  mov [0x00104afe],si
+000294e3  mov [0x00104b23],dl
+000294e9  mov [0x00104b25],ah
+000294ef  or byte [0x00104aec],2
+000294f6  pop edi / esi / edx / ecx / ebx
+000294fb  ret
+
+; state 3 (0x294fc): release, timer field, -> mode 0x31 iff DS_00104B21 == 0
+000294fc  mov ebx,0x80994 / mov edx,5 / mov eax,-1 / xor ecx,ecx
+0002950d  call 0x0002f4bc                     ; text_cursor_hold
+00029512  mov eax,[0x00104ac0]
+00029517  call 0x0002b150                     ; actor_set_dead
+0002951c  xor edx,edx
+0002951e  mov eax,[0x00104acc]
+00029523  mov [0x00104ac0],edx
+00029529  call 0x0002b150                     ; actor_set_dead
+0002952e  mov [0x00104acc],edx
+00029534  call 0x0004f37c                     ; flow_round_timer_draw
+00029539  xor ah,ah
+0002953b  mov [0x001078fc],ah
+00029541  mov [0x001078fe],ah
+00029547  xor eax,eax
+00029549  mov al,[0x00104b1f]
+0002954e  cmp eax,3
+00029551  setz al
+00029554  and eax,0xff
+00029559  inc eax
+0002955a  mov [0x00104abc],eax
+0002955f  call 0x00032970                     ; run clock, out of scope (§7)
+00029564  mov dh,[0x00104b21]
+0002956a  test dh,dh
+0002956c  jnz 0x000295b1                       ; nonzero: fall to the shared tail
+0002956e  mov ecx,0x31
+00029573  mov [0x00104af0],dh
+00029579  mov [0x00104af1],dh
+0002957f  mov [0x00104b00],cx
+00029586  or byte [0x00104aec],2
+0002958d  pop edi / esi / edx / ecx / ebx
+00029592  ret
+
+; state 4 (0x29593): the DS_00104AFE countdown into DS_00104B23
+00029593  mov dx,[0x00104afe]
+0002959a  dec edx
+0002959b  mov [0x00104afe],dx
+000295a2  test dx,dx
+000295a5  jg 0x000295b1
+000295a7  mov al,[0x00104b23]
+000295ac  mov [0x00104b25],al
+000295b1  or byte [0x00104aec],2        ; shared tail (every state)
+000295b8  pop edi / esi / edx / ecx / ebx
+000295bd  ret
+
+; 0x299e8 (mode 0x31)
+000299e8  push ebx / ecx / edx
+000299eb  xor edx,edx
+000299ed  mov dl,[0x00104b12]
+000299f3  lea eax,[edx*8]
+000299fa  add eax,edx
+000299fc  shl eax,2
+000299ff  add eax,edx
+00029a01  shl eax,2                      ; eax = edx * 0x94 (the slot stride)
+00029a04  test byte [eax + 0x1077f1],1
+00029a0b  jz 0x00029a4e
+00029a0d  test byte [eax + 0x1077f2],8
+00029a14  jnz 0x00029a4e
+00029a16  mov eax,[eax + 0x1077b0]
+00029a1c  mov ax,[eax + 0x56]
+00029a20  and eax,0xffff
+00029a25  mov edx,[0x001014ec]
+00029a2b  shl eax,5
+00029a2e  add eax,edx
+00029a30  mov dx,[eax]
+00029a33  and dh,0x7f
+00029a36  and edx,0xffff
+00029a3c  cmp edx,0x1e1
+00029a42  jnz 0x00029a4e
+00029a44  mov dx,[0x00104af6]
+00029a4b  mov [eax],dx
+00029a4e  call 0x0003c5cc                 ; fight_slot_clear
+00029a53  xor edx,edx / xor eax,eax
+00029a57  mov dl,[0x0010782a]
+00029a5d  call 0x00016d58                 ; camera_screen_base(0, ...)
+00029a62  xor edx,edx / mov eax,1
+00029a69  mov dl,[0x001078be]
+00029a6f  call 0x00016d58                 ; camera_screen_base(1, ...)
+00029a74  mov eax,[0x001077e4]
+00029a79  mov [0x001077e8],eax
+00029a7e  mov eax,[0x00107878]
+00029a83  mov [0x0010787c],eax
+00029a88  xor eax,eax
+00029a8a  mov al,[0x001078fa]
+00029a8f  cmp eax,2
+00029a92  jnz 0x00029b34                  ; gate: DS_001078FA == 2
+00029a98..00029b2e  the six 0x17fa0/0x17580/0x1958c/0x19068/0x1975c calls,
+                     byte-identical to 0x27380's own (record §48-C)
+00029b34  call 0x0003cb68                 ; fight_slot_pass
+00029b39  xor eax,eax
+00029b3b  call 0x00035658                 ; fight_hud_pass(0)
+00029b40  mov eax,1
+00029b45  call 0x00035658                 ; fight_hud_pass(1)
+00029b4a  call 0x00012da8                 ; camera_y_commit
+00029b4f  call 0x0001da08                 ; fight_hud_pulse
+00029b54  call 0x00029970                 ; the round-over check (below)
+00029b59  or byte [0x00104aec],2
+00029b60  pop edx / ecx / ebx
+00029b63  ret
+
+; 0x29970, the round-over threshold check (0x299e8's only callee, unported
+; before this task)
+00029970  push ebx / edx
+00029972  xor eax,eax / mov al,[0x0010780a]
+00029979  cmp eax,0x78
+0002997c  jl 0x000299ab
+0002997e  mov eax,0x27
+00029983  call 0x0002c3fc                 ; voice, unwired
+00029988  mov eax,0x22 / mov edx,0x32
+00029992  call 0x0002c3fc                 ; voice, unwired
+00029997  xor ah,ah
+00029999  mov [0x00104b00],dx
+000299a0  mov [0x00104b09],ah
+000299a6  call 0x00027c48                 ; flow_round_winner
+000299ab  xor eax,eax / mov al,[0x001078be]
+000299b2  cmp eax,0x78
+000299b5  jl 0x000299e4
+000299b7  mov eax,0x27 / mov ebx,0x32
+000299c1  call 0x0002c3fc                 ; voice, unwired
+000299c6  mov eax,0x22 / mov dl,1
+000299cd  call 0x0002c3fc                 ; voice, unwired
+000299d2  mov [0x00104b00],bx
+000299d9  mov [0x00104b09],dl
+000299df  call 0x00027c48                 ; flow_round_winner
+000299e4  pop edx / ebx
+000299e6  ret
+
+; 0x29638 (mode 0x33)
+00029638  push ecx / edx
+0002963a  mov eax,[0x001077e4]
+0002963f  mov [0x001077e8],eax
+00029644  mov eax,[0x00107878]
+00029649  mov [0x0010787c],eax
+0002964e  xor eax,eax
+00029650  call 0x00035658                 ; fight_hud_pass(0)
+00029655  mov eax,1
+0002965a  call 0x00035658                 ; fight_hud_pass(1)
+0002965f  call 0x0004def4                 ; named gap (below)
+00029664  call 0x00012da8                 ; camera_y_commit
+00029669  mov ah,[0x00104aec]
+0002966f  mov dx,[0x00104afe]
+00029676  or ah,2
+00029679  dec edx
+0002967a  mov [0x00104aec],ah
+00029680  mov [0x00104afe],dx
+00029687  test dx,dx
+0002968a  jg 0x000296b5
+0002968c  mov eax,0x2b / mov ecx,0x17 / xor dl,dl
+00029698  call 0x0002c3fc                 ; voice, unwired
+0002969d  mov [0x00104b25],dl
+000296a3  mov edx,0x25ae8
+000296a8  mov [0x00104b00],cx
+000296af  mov [0x00104ae4],edx
+000296b5  pop edx / ecx
+000296b7  ret
+```
+
+### 49-J.2 Mode `0x30`: mode 5's near-twin, reached on the way into a
+rematch
+
+`0x29328`'s state 1 and state 4 are **byte-identical** to mode 5's own
+`0x25C88` (`game_mode_05_step`, record §48-U) states 1 and 4: the same
+round-card descriptor tables (`DS_000A8898`/`DS_000A88A4`/`DS_000A88A8`/
+`DS_000A88B4`, all already `#define`d in `flow.c` for mode 5's own
+section and reused unchanged here), the same win-marker reset
+(`flow_win_markers_spawn`), the same `DS_00104B25 = 4` / `DS_00104B23 = 2`
+/ `DS_00104AFE = 0x3C` wait-state handoff, and the identical
+`DS_00104AFE`-into-`DS_00104B23` countdown in state 4. State 2 is *almost*
+identical to mode 5's own state 2 (the same descriptor pick, the same
+`actor_spawn`/`DS_00104AE8`/timer/next-state stores) but its voice call is
+unconditionally `0x2C3FC(0xD7, dl=3)`, where mode 5's own state 2 picks
+`0xD9` when `DS_00104B14 != 0` — voices are an already-established named
+gap (record §45-A) either way, so this is noted but not otherwise
+consequential. State 3 is the one genuinely new shape: it releases the
+round-card/fight-card actors and draws the round-timer field exactly as
+mode 5's own state 3 does, but where mode 5's state 3 always advances (to
+mode 6 or mode 0xC, per `DS_00104B14`), mode `0x30`'s state 3 only stores
+the mode word (`0x31`) when `DS_00104B21 == 0`; the raw's own `jnz`
+(`0002956c`) skips straight to the shared tail otherwise, leaving *both*
+`DS_00104B25` and the mode word untouched. Ported as observed: this means
+that if `0x30` is ever entered with `DS_00104B21 != 0`, its state-3
+cleanup (both `actor_set_dead` calls, `flow_round_timer_draw`, the two
+byte resets) repeats every frame, with no bound. This is not believed
+reachable on the current port's own paths — `DS_00104B21` is mode `0x32`'s
+own round counter (`game_mode_32_step` increments it once per rematch
+cycle and only mode `0x32`'s own state-1 twin, `0x25C88`'s state 1,
+zeroes it — never mode `0x30` itself) — but it is recorded here rather
+than silently "fixed", per this codebase's evidence-discipline rule.
+
+### 49-J.3 Mode `0x31`: mode 0xC's near-twin, reached on the way out of a
+round within a rematch
+
+`0x299e8` is `0x27380` (`game_mode_0c_step`, record §48-C) verbatim for
+its prelude (`fight_slot_clear`, `camera_screen_base` per side, the two
+latches), its `DS_001078FA == 2`-gated projection block (the same six
+`0x17FA0`/`0x17580`/`0x1958C`/`0x19068`/`0x1975C` calls at the identical
+literal addresses `DS_00100B00`/`B04`/`B08`/`B0C`/`B60`/`B61`/`B62`/`B63`/
+`AF0`/`AF4`), and its tail (`fight_slot_pass`, `fight_hud_pass` per side,
+`camera_y_commit`). Two differences: an extra prelude step at entry — the
+`DS_00104B12` slot's frozen-pose undo, the *same* 0x1E1-blink-restore
+idiom `0x27380` itself already runs on that same slot for the mode-0xC
+tail's own blink (record §48-C's header comment on `0x25487`/`game_
+frame`), here unconditional rather than gated by that tail — and the tail
+ends with `flow_round_over_check` (`0x29970`) in place of `flow_
+arena_ko_check` (`0x272DC`). `0x29970` itself (previously unported, though
+already documented as a caller in `flow_round_winner`'s own header
+comment) is a small, two-branch threshold check: for each side, its
+`+0x5A` score byte at or above `0x78` (the same KO threshold `0x27C48`'s
+own callers use) sets the mode word to `0x32`, the losing... — the
+*deciding* — side into `DS_00104B09`, and calls the already-ported `flow_
+round_winner` (`0x27C48`, record §48-K). Ported as `flow_round_over_
+check`.
+
+### 49-J.4 Mode `0x33`: the match's end wait, into mode 0x17
+
+`0x29638` is a short wait state: the two latches, `fight_hud_pass` per
+side, the crowd/ambience walker `0x4DEF4` (named gap, below),
+`camera_y_commit`, then the `DS_00104AEC` bit-1 mark and the
+`DS_00104AFE` countdown armed to `0x258` by mode `0x32`'s own final-win
+arm (`game_mode_32_step`, already ported, record §48-Q). On expiry: the
+voice `0x2B`, `DS_00104B25 = 0` (parking mode `0x30`'s own sub-state for
+its next entry), mode `0x17` (`frontend_mode_17_step`, already ported)
+and the `DS_00104AE4` hook `FN_00025AE8` (`game_hook_25ae8`'s own header
+comment already named `0x296AF`/`0x29638` as one of its two callers,
+confirming this address ahead of the port). This closes the pairing
+`flow.h`'s own header comment predicted: mode `0xD`/`0xC`'s round-loss
+exit is mode `0xF` (still a named gap, in scope for the sibling
+`gap26-modes7f` batch); mode `0x32`'s own exit is mode `0x33`, now
+ported.
+
+### 49-J.5 What's ported vs named gap
+
+All three cases' own bodies are fully ported; one small callee (`0x29970`)
+is ported alongside `0x299e8` since it is small (39 instructions) and
+`0x299e8`'s only callee. One callee is left as a named gap:
+
+- **`0x4DEF4`** (`0x29638`'s crowd/ambience state walker, 552 bytes): a
+  five-sub-state machine over the `DS_0010884C` active-entry list (dispatch
+  table `0x4dee0`), each state resolving a per-entity animation-blend
+  target via `0x4A868` and a float-driven `0x2BC30` volume/scale call, with
+  voices `0xCB`/`0xDC`. It is unrelated to this task's own mode-transition
+  logic (nothing in `0x29638`'s own body depends on its outcome; it is a
+  side-effecting crowd-reaction visual/audio flourish) and out of scope for
+  this task's three-case brief. It has exactly two callers in the whole
+  image: `0x29638` (this task) and mode `0xF`'s `0x277C0` (still a named
+  gap, in scope for the sibling `gap26-modes7f` batch) — porting it here
+  would not close either caller's own remaining scope, so it is left a
+  named gap in both.
+
+Every other callee of all three functions (`fight_slot_pass`,
+`fight_slot_clear`, `camera_screen_base`, `camera_project`, `camera_decay`,
+`fighter_pass_a`, `fighter_pass_b`, `fighter_think`, `fight_hud_pass`,
+`camera_y_commit`, `fight_hud_pulse`, `flow_round_hud_init`, `flow_win_
+markers_spawn`, `flow_round_timer_draw`, `actor_spawn`, `actor_set_dead`,
+`text_cursor_hold`, `flow_round_winner`) was already ported before this
+task.
+
+### 49-J.6 Tests
+
+Three new `check_` functions in `test_fight.c`, registered at the very end
+of `test_fight`'s call list (after `check_mode_1e`, for the same reason
+`check_mode_1e`/`check_wall_clamp`/`check_mode4_spawn_gate` are there:
+`game_mode_30_step`'s states 1/2 call `actor_spawn`, which touches the
+process-wide actor free list `check_point_trample` depends on
+accumulating in a specific way — see that comment's own rationale):
+
+- **`check_mode_30`** (`m30_seed`, a `q_mode_seed(0x30)`-based fixture with
+  every field the function touches sentinelled, `DS_00104B00`'s high word
+  `0xBEEF` proving only the word store the raw makes ever happens): state
+  1's five descriptor-pick combinations (`DS_00104B14`/`DS_00104B1E`/the
+  `DS_00104529` bit-1 flag), each checked against the real image's own
+  descriptor `+4` "type" byte (not `+0`/`desc[0]`, which `actor_spawn`'s
+  own animation-stream walk, `0x2AFFA`, mutates in place post-spawn for
+  descriptors whose lead opcode has bit `0x80` set — a real, already-ported
+  behaviour this test learned about the hard way, see below); state 2's
+  three combinations; state 3 both with `DS_00104B21 == 0` (the
+  mode-advance arm) and `!= 0` (the documented "stuck" quirk, proven by
+  calling twice and observing the cleanup repeats with the mode word never
+  moving); state 4's `DS_00104AFE`-into-`DS_00104B23` boundary at 2/1/0;
+  and five parked/no-op states.
+- **`check_flow_round_over_check`**: `flow_round_over_check` in isolation,
+  on the existing `k48_seed` fixture (already used elsewhere for `flow_
+  round_winner`'s own tests) — below threshold (no-op, `DS_00104B13`
+  unset, the sentinel `flow_round_winner` itself always sets first);
+  either side at the threshold (mode `0x32`, that side, `DS_00104B13`
+  set, proving `flow_round_winner` ran).
+- **`check_mode_31`** (`m31_seed`, `c_seed` — mode `0xC`'s own established
+  fixture, since `0x299e8` is byte-identical to `0x27380` for everything
+  but the extra prelude step and the tail's own callee — relabelled to
+  mode `0x31`, plus `DS_00104AF2`/`DS_00104AF3` zeroed; see the mutation-
+  and-hazard note below): the pset-restore prelude's four combinations of
+  the two guard bits and the word match; the shared prelude/tail reusing
+  `q_check_prelude` and `check_mode_0c`'s own field checks; the gate itself
+  (`DS_001078FA != 2` leaves every gated output at its sentinel — the
+  gated block's own *contents* are `0x27380`'s already-fully-tested code,
+  see below); and the round-over integration, below threshold and at
+  side 0's threshold.
+- **`check_mode_33`** (`m33_seed`, `q_mode_seed(0x33)`, `DS_00104B00`'s
+  high word `0xBEEF`): the per-call latches/`camera_y_commit`/countdown
+  decrement below expiry; the signed `<= 0` boundary at 2/1/0 (firing
+  exactly at the `1 -> 0` transition, not one frame early); the `0 -> 
+  0xFFFF` wrap also firing (still `<= 0` signed).
+
+**A live-fixture hazard found and worked around, not silently avoided.**
+Two things surfaced only by running the suite, both left as comments in
+the test file rather than fixed by loosening the assertions:
+
+1. `flow_win_markers_spawn` (already documented, `flow.c`'s own header:
+   "nothing caps k at the four slots") is reachable from *two* new paths
+   this task adds — `game_mode_30_step`'s own state 1, and, transitively,
+   `flow_round_over_check` -> `flow_round_winner` -> `flow_win_markers_
+   spawn`. Neither `q_mode_seed` nor `c_seed` zero `DS_00104AF2`/
+   `DS_00104AF3` (only `k48_seed` does, for the pre-existing round-end
+   tests); a leftover nonzero byte from whichever test ran previously
+   drove the loop far past the four real slots, corrupting unrelated
+   memory. Fixed by zeroing both bytes in `m30_seed` and `m31_seed`, not
+   by capping the loop in `flow_win_markers_spawn` itself (a raw-faithful
+   quirk, not a port bug).
+2. `game_mode_31_step`'s own `fight_slot_pass` tail call, when `c_seed`'s
+   fixture's side-1 score (`DS_001078BE`) is set to the literal KO byte
+   `0x78` before the call, drives `fight_slot_pass` -> `hit_slot_step` ->
+   `hit_connect` into a wild descriptor read (`hit_frame_desc(1, 17)`
+   returning an address far outside `mem[]`) and a hard crash — reproduced
+   in isolation with nothing from this task's own new code having run yet
+   (the crash is inside `fight_slot_pass`, called *before* `game_mode_31_
+   step`'s own tail reaches `flow_round_over_check`). The identical
+   side-0 case (`DS_0010780A = 0x78`) does not crash, so this is not a
+   generic "score at threshold" hazard; it is specific to `c_seed`'s
+   single active-list entry combined with side 1's own hit-slot indexing,
+   a pre-existing gap in `fight_slot_pass`'s own test coverage (that
+   function, and `hit_connect`, were both already fully ported before this
+   task and are unaffected by anything this task changed). `check_mode_31`
+   therefore exercises the round-over integration only through side 0's
+   threshold (which is safe and passes); `check_flow_round_over_check`
+   independently proves both sides of `flow_round_over_check`'s own logic
+   symmetrically, on `k48_seed`, without going through `fight_slot_pass`
+   at all — full coverage of this task's own new code, without the
+   unrelated crash.
+
+Five single-site mutations (state 1's `DS_00104B25 = 4` store changed to
+5; `flow_round_over_check`'s side-0 threshold widened from `>=` to `>`;
+mode `0x33`'s expiry mode-word store changed from `0x17` to `0x18`; the
+pset-restore word match changed from `0x1E1` to `0x1E2`) each fail the
+suite (2–6 `CHECK_EQ_INT` failures apiece) and were reverted byte-for-
+byte.
+
+### 49-J.7 Verification
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 3 consecutive
+runs (plus the 5 mutation-revert runs above), no SIGBUS, no hang (every
+loop this task added — `flow_win_markers_spawn`'s pre-existing 4-item
+loops via the AF2/AF3 fix, the state-1/state-2 five/three-item test
+loops, the four-item pset-restore loop — has a fixed, small bound; no new
+loop reads a raw counter unbounded). `make verify` (run with worktree-
+local `*_DUMP`/`TITLE_PIN_DIR` overrides to avoid colliding with sibling
+sessions' concurrent runs on the shared `/tmp` paths the Makefile hard-
+codes): front-end 517/801/3/2, demo-fight fully explained at N = 1886,
+attract2 0 unexplained at N = 3617, `symbols.h` regenerates byte-
+identically — all four gate numbers unchanged from before this task, as
+expected: modes `0x30`/`0x31`/`0x33` are reachable only through mode
+`0x32`'s own transitions, themselves reachable only through the still-
+unported match-end stores `0x27DC8` (record §48-K), so the no-input
+demo/attract/front-end oracle path never dispatches through any of the
+three new cases.
+
+### 49-J.8 Remaining named gaps
+
+`0x4DEF4` (the crowd/ambience state walker, §49-J.5 above), shared with
+mode `0xF`'s still-unported `0x277C0`. The match-end stores `0x27DC8`
+(record §48-K) that would make this whole chain reachable for real remain
+unported, as already noted for modes 8/0xA/0x1E (records §49-C/§49-D/
+§49-H). Every `0x2C3FC` voice call inside all three new functions and
+`0x29970` (record §45-A) and `0x32970` (the run clock, spec §7).

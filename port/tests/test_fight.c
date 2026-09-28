@@ -30156,6 +30156,452 @@ static void check_mode_1e(void)
     check_mode_1e_bookkeeping();
 }
 
+/* ---- record §49-J: modes 0x30/0x31/0x33, mode 0x32's continue/rematch
+ * chain --------------------------------------------------------------- */
+
+#define M30_104B1B 0x00104B1Bu   /* no symbols.h name: flow.c's own local */
+
+/* actor_spawn's rec+0x48 = dp[4], the descriptor's own "type" byte
+ * (actors.c, 0x2AE14): set once and never touched again, unlike rec+0x08
+ * (also desc[0] at that same call, but 0x2AFFA's animation-stream walk right
+ * after mutates it in place — real, already-ported behaviour, not something
+ * this test should assume static). Comparing rec+0x48 against a candidate
+ * descriptor's own +4 byte proves which table entry a spawn actually used. */
+static u32 m30_desc_type(u32 desc_addr) { return DSB(desc_addr + 4u); }
+static u32 m30_desc_word(u32 desc_addr) { return DSD(desc_addr); }
+
+/* Every field game_mode_30_step reads or writes, at sentinels distinct from
+ * every post-condition, on q_mode_seed(0x30)'s base fixture (real image
+ * data, so the round-card/fight-card descriptor spawns are the genuine
+ * 0x2AE14 path, like check_33c18_callers_b's own mode-0x32 spawns).
+ * DS_00104B00's high word is 0xBEEF: the function only ever stores the low
+ * word (DSW), so a leaked dword write is caught. DS_00104B21 = 0 by default
+ * (state 3's mode-advance arm); m30_seed_stuck below overrides it. */
+static void m30_seed(u8 state)
+{
+    u32 i;
+    /* Like c_seed's/k48_seed's own restore-then-save (this function's own
+     * loops spawn several actors per state without any actor_set_dead in
+     * between, so each iteration needs a truly clean pool, not an
+     * accumulating one). */
+    mz_restore();
+    (void)mz_save();
+    q_mode_seed(0x30u);
+    DSD(DS_00104B00) = 0xBEEF0000u | 0x30u;
+    DSB(DS_00104B25) = state;
+    DSB(DS_00104B23) = 0x77u;
+    DSB(DS_00104B14) = 0u;
+    DSB(0x00104529u) = 0u;
+    DSB(DS_00104B1E) = 1u;
+    DSD(DS_00104ADC) = 3u;
+    DSD(DS_00104AC0) = 0x77777777u;
+    DSD(DS_00104ACC) = 0x77777777u;
+    DSB(DS_00104AE8) = 0x77u;
+    DSB(M30_104B1B) = 0x77u;
+    DSB(DS_00104B15) = 0x77u;
+    DSB(DS_00104B1F) = 0x77u;
+    DSB(DS_00104B20) = 0x77u;
+    DSB(DS_00104B21) = 0u;
+    DSW(DS_00104AFE) = 0x7777u;
+    for (i = 0; i < 4u; i++) {
+        DSD(DS_00104A88 + i * 4u) = 0x55555555u;
+        DSD(DS_00104A98 + i * 4u) = 0x55555555u;
+    }
+    /* flow_win_markers_spawn (state 1's own tail call) loops k below
+     * DS_00104AF2/DS_00104AF3 with nothing capping k at the four
+     * DS_00104A88/A98 slots (its own header comment says so): these must
+     * be small or a leftover large byte here spawns wildly out of bounds. */
+    DSB(DS_00104AF2) = 0u;
+    DSB(DS_00104AF3) = 0u;
+    DSB(DS_00104AF0) = 0x77u;
+    DSB(DS_00104AF1) = 0x77u;
+    DSB(DS_001078FC) = 0x77u;
+    DSB(DS_001078FE) = 0x77u;
+    DSD(DS_00104ABC) = 0x77777777u;
+}
+
+static void check_mode_30(void)
+{
+    u32 i;
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    /* (a) state 1's descriptor pick, all five combinations of
+     * DS_00104B14/DS_00104B1E/DS_00104529 bit 1: DS_00104B14 == 0 selects
+     * DS_000A8898/DS_000A88A8 by i (0 when B1E == 1, 2 when B1E == ADC, 1
+     * otherwise); DS_00104B14 != 0 selects DS_000A88A4/DS_000A88B4
+     * directly. Every case: the round card actor_spawn(desc, 0x2A00, 0xFF,
+     * 0x3600, 0) (rec+0x18/+0x1c/+0x08 prove the args and the table entry),
+     * the win markers zeroed, flow_round_hud_init's own DS_00104B20 = 1,
+     * DS_00104B1B/B15 = 1, state -> 4, DS_00104B23 -> 2, DS_00104AFE ->
+     * 0x3C, DS_00104AEC |= 2. */
+    {
+        static const u8 b14[5]  = { 0u, 0u, 0u, 1u, 1u };
+        static const u8 b1e[5]  = { 1u, 3u, 2u, 0u, 0u };
+        static const u8 bit1[5] = { 0u, 0u, 1u, 0u, 1u };
+        static const u32 desc[5] = {
+            0x000A8898u, 0x000A8898u + 2u * 4u, 0x000A88A8u + 1u * 4u,
+            0x000A88A4u, 0x000A88B4u,
+        };
+        for (i = 0; i < 5u; i++) {
+            m30_seed(1u);
+            DSB(DS_00104B14) = b14[i];
+            DSB(DS_00104B1E) = b1e[i];
+            DSB(0x00104529u) = bit1[i] ? 2u : 0u;
+            game_mode_30_step();
+            CHECK(DSD(DS_00104AC0) != 0u && DSD(DS_00104AC0) != 0x77777777u,
+                  "state 1 spawned the round card");
+            /* state 1's own desc[i] is a table/fixed slot holding a
+             * *pointer* to the descriptor (0x293xx loads it through
+             * `[...]`, unlike state 2's direct address): one dereference
+             * (m30_desc_word) reaches the descriptor, whose +4 byte
+             * (m30_desc_type) proves which table entry was used. */
+            CHECK_EQ_INT((int)DSB(DSD(DS_00104AC0) + 0x48u),
+                         (int)m30_desc_type(m30_desc_word(desc[i])));
+            CHECK_EQ_INT((int)DSD(DSD(DS_00104AC0) + 0x18u), 0x2A00);
+            CHECK_EQ_INT((int)DSD(DSD(DS_00104AC0) + 0x1Cu), 0x3600);
+            CHECK_EQ_INT((int)DSD(DS_00104A88), 0);
+            CHECK_EQ_INT((int)DSD(DS_00104A88 + 4u), 0);
+            CHECK_EQ_INT((int)DSD(DS_00104A88 + 8u), 0);
+            CHECK_EQ_INT((int)DSD(DS_00104A88 + 0xCu), 0);
+            CHECK_EQ_INT((int)DSD(DS_00104A98), 0);
+            CHECK_EQ_INT((int)DSD(DS_00104A98 + 0xCu), 0);
+            CHECK_EQ_INT((int)DSB(DS_00104B20), 1);
+            CHECK_EQ_INT((int)DSB(M30_104B1B), 1);
+            CHECK_EQ_INT((int)DSB(DS_00104B15), 1);
+            CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+            CHECK_EQ_INT((int)DSB(DS_00104B23), 2);
+            CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x3C);
+            CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x30u));
+            CHECK_EQ_INT((int)(DSB(DS_00104AEC) & 2u), 2);
+        }
+    }
+
+    /* (b) state 2's descriptor pick: DS_000A8884 only with bit 1 set AND
+     * DS_00104B14 != 0, else DS_000BB6A0. The fight card
+     * actor_spawn(desc, 0x2A00, 0xFF, 0x1200, 0), DS_00104AE8 |= 0x40,
+     * state -> 4, DS_00104B23 -> 3, DS_00104AFE -> 0x3C. */
+    {
+        static const u8 b14[3]  = { 1u, 1u, 0u };
+        static const u8 bit1[3] = { 1u, 0u, 1u };
+        static const u32 desc[3] = { 0x000A8884u, 0x000BB6A0u, 0x000BB6A0u };
+        for (i = 0; i < 3u; i++) {
+            m30_seed(2u);
+            DSB(DS_00104B14) = b14[i];
+            DSB(0x00104529u) = bit1[i] ? 2u : 0u;
+            DSB(DS_00104AE8) = 0u;
+            game_mode_30_step();
+            CHECK(DSD(DS_00104ACC) != 0u && DSD(DS_00104ACC) != 0x77777777u,
+                  "state 2 spawned the fight card");
+            /* state 2's own desc[i] is already the descriptor's address
+             * (a bare immediate in the raw, no `[...]` load), so a single
+             * m30_desc_type reaches its +4 byte directly. */
+            CHECK_EQ_INT((int)DSB(DSD(DS_00104ACC) + 0x48u),
+                         (int)m30_desc_type(desc[i]));
+            CHECK_EQ_INT((int)DSD(DSD(DS_00104ACC) + 0x18u), 0x2A00);
+            CHECK_EQ_INT((int)DSD(DSD(DS_00104ACC) + 0x1Cu), 0x1200);
+            CHECK_EQ_INT((int)(DSB(DS_00104AE8) & 0x40u), 0x40);
+            CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+            CHECK_EQ_INT((int)DSB(DS_00104B23), 3);
+            CHECK_EQ_INT((int)DSW(DS_00104AFE), 0x3C);
+        }
+    }
+
+    /* (c) state 3, DS_00104B21 == 0: both actors killed (the dead bit
+     * +0x28 & 8) and their slots zeroed, the two bytes DS_001078FC/FE
+     * cleared, DS_00104ABC on DS_00104B1F, DS_00104AF0/AF1 -> 0 and the
+     * mode word -> 0x31 (state 3 itself is left untouched: the raw's own
+     * 0x2957F store never rewrites DS_00104B25). */
+    {
+        static const u8 b1f[2] = { 3u, 0u };
+        static const u8 abc[2] = { 2u, 1u };
+        for (i = 0; i < 2u; i++) {
+            u32 r0, r1;
+            m30_seed(3u);
+            r0 = actor_alloc(0);
+            r1 = actor_alloc(0);
+            DSD(DS_00104AC0) = r0;
+            DSD(DS_00104ACC) = r1;
+            DSB(DS_00104B1F) = b1f[i];
+            game_mode_30_step();
+            CHECK_EQ_INT((int)(DSB(r0 + 0x28u) & 8u), 8);
+            CHECK_EQ_INT((int)(DSB(r1 + 0x28u) & 8u), 8);
+            CHECK_EQ_INT((int)DSD(DS_00104AC0), 0);
+            CHECK_EQ_INT((int)DSD(DS_00104ACC), 0);
+            CHECK_EQ_INT((int)DSB(DS_001078FC), 0);
+            CHECK_EQ_INT((int)DSB(DS_001078FE), 0);
+            CHECK_EQ_INT((int)DSD(DS_00104ABC), (int)abc[i]);
+            CHECK_EQ_INT((int)DSB(DS_00104AF0), 0);
+            CHECK_EQ_INT((int)DSB(DS_00104AF1), 0);
+            CHECK_EQ_INT((int)DSW(DS_00104B00), 0x31);
+            CHECK_EQ_INT((int)(DSB(DS_00104AEC) & 2u), 2);
+        }
+    }
+
+    /* (d) state 3, DS_00104B21 != 0: the raw's own quirk — the cleanup
+     * still runs (both actors killed) but neither DS_00104B25 nor the mode
+     * word advance, so a second call repeats the same cleanup. Proven by
+     * calling twice: the mode word stays the sentinel both times, and the
+     * second call's actor_alloc/actor_set_dead pair still runs (a fresh
+     * DS_00104AC0 is killed again). */
+    {
+        u32 r0, r1;
+        m30_seed(3u);
+        DSB(DS_00104B21) = 1u;
+        r0 = actor_alloc(0);
+        r1 = actor_alloc(0);
+        DSD(DS_00104AC0) = r0;
+        DSD(DS_00104ACC) = r1;
+        game_mode_30_step();
+        CHECK_EQ_INT((int)(DSB(r0 + 0x28u) & 8u), 8);
+        CHECK_EQ_INT((int)(DSB(r1 + 0x28u) & 8u), 8);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x30u));
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 3);
+        r0 = actor_alloc(0);
+        r1 = actor_alloc(0);
+        DSD(DS_00104AC0) = r0;
+        DSD(DS_00104ACC) = r1;
+        game_mode_30_step();
+        CHECK_EQ_INT((int)(DSB(r0 + 0x28u) & 8u), 8);
+        CHECK_EQ_INT((int)(DSB(r1 + 0x28u) & 8u), 8);
+        CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x30u));
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 3);
+    }
+
+    /* (e) state 4: the DS_00104AFE countdown into DS_00104B23, the signed
+     * <= 0 boundary at 2/1/0. */
+    {
+        static const u16 afe_in[3]  = { 2u, 1u, 0u };
+        static const u16 afe_out[3] = { 1u, 0u, 0xFFFFu };
+        static const u8  advanced[3] = { 0u, 1u, 1u };
+        for (i = 0; i < 3u; i++) {
+            m30_seed(4u);
+            DSW(DS_00104AFE) = afe_in[i];
+            DSB(DS_00104B23) = 9u;
+            game_mode_30_step();
+            CHECK_EQ_INT((int)DSW(DS_00104AFE), (int)afe_out[i]);
+            CHECK_EQ_INT((int)DSB(DS_00104B25), advanced[i] ? 9 : 4);
+        }
+    }
+
+    /* (f) every other state (0, 5..0xFF, `ja` in the raw): a genuine no-op
+     * past the shared AEC |= 2 tail. */
+    {
+        static const u8 parked[] = { 0u, 5u, 6u, 0x7Fu, 0xFFu };
+        for (i = 0; i < sizeof parked / sizeof parked[0]; i++) {
+            m30_seed(parked[i]);
+            game_mode_30_step();
+            CHECK_EQ_INT((int)DSB(DS_00104B25), (int)parked[i]);
+            CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x30u));
+            CHECK_EQ_INT((int)DSD(DS_00104AC0), (int)0x77777777u);
+            CHECK_EQ_INT((int)DSD(DS_00104ACC), (int)0x77777777u);
+            CHECK_EQ_INT((int)(DSB(DS_00104AEC) & 2u), 2);
+        }
+    }
+
+    mz_restore();
+}
+
+/* flow_round_over_check's own two independent thresholds, isolated from
+ * game_mode_31_step, on k48_seed's §48-K fixture (already the fixture
+ * flow_round_winner's own test uses): DS_00104B13 is flow_round_winner's
+ * own unconditional first store (0x27C4B), a proxy for "did it run". Both
+ * scores start at k48_seed's 0x40, well under the 0x78 threshold. */
+static void check_flow_round_over_check(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
+
+    /* below threshold: neither side fires. */
+    k48_seed();
+    DSD(DS_00104B00) = 0xBEEF0031u;
+    flow_round_over_check();
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0031u);
+    CHECK_EQ_INT((int)DSB(DS_00104B13), 0x77);
+
+    /* side 0 at the threshold: mode 0x32, side 0, flow_round_winner ran. */
+    k48_seed();
+    DSD(DS_00104B00) = 0xBEEF0031u;
+    DSB(DS_0010780A) = 0x78u;
+    flow_round_over_check();
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x32);
+    CHECK_EQ_INT((int)DSB(DS_00104B09), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B13), 1);
+
+    /* side 1 at the threshold: mode 0x32, side 1. */
+    k48_seed();
+    DSD(DS_00104B00) = 0xBEEF0031u;
+    DSB(DS_001078BE) = 0x78u;
+    flow_round_over_check();
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x32);
+    CHECK_EQ_INT((int)DSB(DS_00104B09), 1);
+    CHECK_EQ_INT((int)DSB(DS_00104B13), 1);
+
+    mz_restore();
+}
+
+/* game_mode_31_step's own fixture: c_seed's mode-0xC prelude/projection-
+ * block/tail machinery is byte-identical here (record §48-C's own game_
+ * mode_0c_step is this function's twin), so it is reused directly and just
+ * re-labelled to mode 0x31 afterwards. DS_00104B12 = 1 (c_seed's own
+ * setting) selects slot 1 for the pset-restore prelude; DS_00104AF6 =
+ * 0x1234 (also c_seed's) is the value a true restore should land. */
+static void m31_seed(void)
+{
+    c_seed();
+    DSW(DS_00104B00) = 0x31u;
+    /* flow_round_over_check's own tail can reach flow_round_winner, whose
+     * own tail calls flow_win_markers_spawn (see game_mode_30_step's own
+     * m30_seed comment: nothing caps its k below the four DS_00104A88/A98
+     * slots), and c_seed's mode-0xC fixture, unlike k48_seed's, never zeros
+     * DS_00104AF2/DS_00104AF3. */
+    DSB(DS_00104AF2) = 0u;
+    DSB(DS_00104AF3) = 0u;
+}
+
+static void check_mode_31(void)
+{
+    u32 slot1, rec1, ps_addr;
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+
+    slot1 = DS_001077B0 + 0x94u;
+
+    /* (a) the pset-restore prelude: DS_00104B12 (1, c_seed's own value)
+     * slot's +0x41 bit 0 set and +0x42 bit 3 clear (c_seed/q_mode_seed's
+     * default has +0x42 = 0xFF, bit 3 set, so it is overridden here) and
+     * the pset word 0x81E1 (bit 15 kept, 0x1E1 masked) is replaced by
+     * DS_00104AF6's saved value, whole (bit 15 included). The false arms
+     * (the guard bits, and a non-0x1E1 word) leave the pset untouched. */
+    {
+        static const u8  f41[4] = { 0x01u, 0xFEu, 0x01u, 0x01u };
+        static const u8  f42[4] = { 0xF7u, 0xF7u, 0x08u, 0xF7u };
+        static const u16 wd[4]  = { 0x81E1u, 0x81E1u, 0x81E1u, 0x81E2u };
+        static const u8  restored[4] = { 1u, 0u, 0u, 0u };
+        u32 i;
+        for (i = 0; i < 4u; i++) {
+            m31_seed();
+            rec1 = DSD(slot1);
+            ps_addr = DSD(DS_001014EC) + (u32)DSW(rec1 + 0x56u) * 0x20u;
+            DSB(slot1 + 0x41u) = f41[i];
+            DSB(slot1 + 0x42u) = f42[i];
+            DSW(ps_addr) = wd[i];
+            game_mode_31_step();
+            CHECK_EQ_INT((int)DSW(ps_addr),
+                         restored[i] ? 0x1234 : (int)wd[i]);
+        }
+    }
+
+    /* (b) the shared prelude/tail: reuse c_seed's own §48-C assertions
+     * (the same code, byte for byte) and the round-over integration in
+     * place of 0x272DC's KO check. */
+    m31_seed();
+    game_mode_31_step();
+    q_check_prelude();
+    CHECK_EQ_INT((int)DSD(DS_00107ED8), 0x20);
+    CHECK_EQ_INT((int)DSD(DS_00107EDC), 2);
+    CHECK_EQ_INT((int)DSW(C_PULSE), 0x4F);
+    CHECK_EQ_INT((int)DSW(C_PULSE + 2u), 0x4F);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x31);
+
+    /* (c) the gate itself, without entering the block: DS_001078FA != 2
+     * leaves every one of its six outputs at its sentinel. (The block's
+     * own contents — camera_project/camera_decay/fighter_pass_a/
+     * fighter_pass_b/fighter_think — are the exact code check_mode_0c
+     * already exercises in full, hook-stub and all, for the byte-identical
+     * gated block in game_mode_0c_step; re-running it here through
+     * c_seed's plain fixture, which does not register that stub, risks
+     * calling an uninitialised slot hook, so it is not repeated.) */
+    m31_seed();
+    DSB(DS_001078FA) = 1u;
+    game_mode_31_step();
+    CHECK_EQ_INT((int)DSD(DS_00100AF0), 0x77777777);
+
+    /* (d) the round-over integration: below threshold leaves mode 0x31; at
+     * the threshold, mode 0x32 with the side. Side 1's own threshold case
+     * is deliberately not exercised here: c_seed's fixture's single active-
+     * list entry, combined with DS_001078BE at the raw KO byte 0x78, drives
+     * fight_slot_pass's own hit_slot_step/hit_connect into an unrelated,
+     * pre-existing combat-descriptor read this task's fixture does not
+     * populate (a gap in fight_slot_pass's own test coverage, confirmed by
+     * a standalone reproduction — game_mode_31_step's new code never runs
+     * before the crash) — side 0's own threshold case below already proves
+     * the wiring (mode -> 0x32, DS_00104B09 -> the side), and
+     * check_flow_round_over_check proves flow_round_over_check's own two
+     * sides symmetrically, on the k48_seed fixture, without going through
+     * fight_slot_pass at all. */
+    m31_seed();
+    game_mode_31_step();
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x31);
+
+    m31_seed();
+    DSB(DS_0010780A) = 0x78u;
+    game_mode_31_step();
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x32);
+    CHECK_EQ_INT((int)DSB(DS_00104B09), 0);
+
+    mz_restore();
+}
+
+/* Every field game_mode_33_step reads or writes, at sentinels distinct from
+ * every post-condition. DS_00104B00's high word is 0xBEEF: the function
+ * only ever stores the low word or the fixed dword FN_00025AE8 (checked in
+ * full), so a stray write is caught either way. */
+static void m33_seed(void)
+{
+    q_mode_seed(0x33u);
+    DSD(DS_00104B00) = 0xBEEF0033u;
+    DSD(DS_00104AE4) = 0x77777777u;
+    DSB(DS_00104B25) = 0x77u;
+}
+
+static void check_mode_33(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-J snapshot allocates"); return; }
+
+    /* (a) the two latches and camera_y_commit run every call (proven the
+     * same way m0a's fixture does, DS_001078F2's high word), and the
+     * countdown decrements without firing while DS_00104AFE > 1. */
+    m33_seed();
+    DSW(DS_00104AFE) = 5u;
+    game_mode_33_step();
+    CHECK_EQ_INT((int)DSD(DS_001077E8), (int)DSD(DS_001077E4));
+    CHECK_EQ_INT((int)DSD(DS_0010787C), (int)DSD(DS_00107878));
+    /* q_mode_seed's own DS_00107874 = 0x500 (q_check_prelude's own
+     * expectation for the same field). */
+    CHECK_EQ_INT((int)DSW(DS_001078F2 + 2u), 0x500);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 4);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0033u);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)0x77777777u);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 0x77);
+    CHECK_EQ_INT((int)(DSB(DS_00104AEC) & 2u), 2);
+
+    /* (b) the signed <= 0 boundary at 1 -> 0: the reset fires exactly then,
+     * not one frame earlier (2 -> 1). */
+    m33_seed();
+    DSW(DS_00104AFE) = 2u;
+    game_mode_33_step();
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 1);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)0xBEEF0033u);
+
+    m33_seed();
+    DSW(DS_00104AFE) = 1u;
+    game_mode_33_step();
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x17);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)FN_00025AE8);
+
+    /* (c) 0 wraps to 0xFFFF (still <= 0 signed) and fires too. */
+    m33_seed();
+    DSW(DS_00104AFE) = 0u;
+    game_mode_33_step();
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 0xFFFF);
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x17);
+    CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)FN_00025AE8);
+
+    mz_restore();
+}
+
 #define SC_ST   (FIGHT_RECS + 0x7000u)   /* crafted one-word streams, 0x10 apart */
 #define SC_SRC0 (FIGHT_RECS + 0x7800u)   /* a crafted effect source (pset 1 +0x18) */
 #define SC_SRC1 (FIGHT_RECS + 0x7880u)   /* another (pset 2 +0x18) */
@@ -31777,6 +32223,13 @@ int test_fight(void)
      * (through frontend_input_reset/actors_reset/frontend_match_start), so
      * it is placed here too, after check_mode4_spawn_gate. */
     check_mode_1e();
+
+    /* check_mode_30's states 1/2 also call actor_spawn (round-card/fight-
+     * card), same reason: placed after check_mode4_spawn_gate. */
+    check_mode_30();
+    check_flow_round_over_check();
+    check_mode_31();
+    check_mode_33();
 
     return g_failures - before;
 }
