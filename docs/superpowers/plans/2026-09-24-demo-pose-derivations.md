@@ -21702,3 +21702,235 @@ None introduced by this task. `config_field_get`, `config_credit_spend` and
 before this task started (per their existing header comments in
 `config.h`/`flow.c`), and every instruction in the eight new blocks is
 accounted for in §49-Q.3-§49-Q.4 above.
+
+## 49-P. Mode `0x25`'s inline case (`0x266AC`/`0x4EF8C`/`0x4F0FC`, branch `gap35-mode25`)
+
+**Result in one line.** `game_frame`'s case `0x25` — the generic named-gap
+comment's own `0x25 inline (0x266AC, 0x4EF8C, 0x4F0FC, 0x49C78)` listing —
+is genuinely inline: the `DS_00104B25` sub-state dispatch (`0x252A0`-
+`0x25312`) lives directly in `game_frame`'s switch, confirmed by
+`disassemble_function` on `0x24C5C` and by `get_xrefs_to 0x266AC`, which
+returns exactly one caller, `0x252B2` inside `FUN_00024c5c` itself (not a
+separate handler function, unlike modes `0x21`/`0x22`/`0x23`/`0x24`/`0x31`
+ported earlier this session). It is wired as a real `case 0x25u:` block
+(not folded into the fallthrough gap), calling three new functions —
+`game_mode_25_step` (`0x266AC`), `game_mode_25_reveal` (`0x4EF8C`) and
+`game_mode_25_exit` (`0x4F0FC`) — plus `fight_effects_pass` (`0x49C78`,
+already ported). Porting `0x266AC` faithfully required porting its full,
+previously-unported callee closure: the mode's audience-effects pass
+(`0x4E67C` and its four callees `0x4A808`/`0x4A8A8`/`0x4E5A4`/`0x4E99C`),
+the round-card renderer it and `0x4EF8C` share (`0x4EBB8`), and the per-
+side "combo/approach" chain `0x266AC` calls twice a frame (`0x384F8`,
+`0x382C4`, `0x38434`, `0x3D004`) — nine new functions in total, none of
+which the task brief's leads named explicitly, all discovered by walking
+`get_xrefs_to`/`disassemble_function` outward from the three named
+addresses until every callee resolved to either an already-ported function
+or the `0x2C3FC` deferred-voice idiom.
+
+### 49-P.1 Sources
+
+The Ghidra HTTP bridge at `127.0.0.1:8089` was reachable this session
+(confirmed with `get_function_by_address?address=0x266AC` before starting,
+contrary to the task brief's "may be down" warning). Every function below
+was read with `disassemble_function` (full raw instruction listing) and
+cross-checked against `decompile_function`, which proved unreliable in two
+places the raw disassembly corrected (§49-P.3): `0x266AC`'s own decompile
+shows `_DAT_001077e8 = 0;`, but the raw is `mov eax,[0x1077e4]; mov
+[0x1077e8],eax` — a copy from `DS_001077E4`, not a zero store; and the same
+function's five `FUN_00017fa0` calls decompile with literal `0`/argument-
+count-mismatched calls where the raw shows the real per-side
+`DS_00100Bxx` constants (register values surviving dead through the
+preceding `camera_screen_base` calls, which the compiler scheduled early
+since that callee does not clobber them). `get_xrefs_to` on every new
+callee established each one's true (and, for the three task-brief
+addresses, sole) caller.
+
+### 49-P.2 The inline dispatch (`0x252A0`-`0x25312`)
+
+```
+000252a0 MOV AL,[0x00104b25]          ; sub = DS_00104B25
+000252a5 TEST AL,AL
+000252a7 JBE 0x000252b2               ; sub == 0 (TEST clears CF; JBE == JZ here)
+000252a9 CMP AL,0x1
+000252ab JZ 0x000252f1                ; sub == 1
+000252ad JMP 0x0002540f               ; else: break
+000252b2 CALL 0x000266ac              ; state 0: game_mode_25_step
+000252b7..252be  AL = DS_001088BD; CMP EAX,8
+000252c1 JNZ 0x0002540f
+000252c7/252ce/252d4/252db  DS_001078F0 and DS_001078F1 both != 0
+000252e1 CALL 0x0004ef8c              ; game_mode_25_reveal
+000252e6 INC byte [0x00104b25]        ; DS_00104B25++ (0 -> 1)
+000252ec JMP 0x0002540f
+000252f1 MOV AX,[0x0010889a]; DEC EAX; MOV [0x0010889a],AX   ; state 1: DS_0010889A--
+000252fe TEST AX,AX
+00025301 JA 0x0002530d                ; still positive
+00025303 CALL 0x0004f0fc              ; else: game_mode_25_exit
+00025308 JMP 0x0002540f
+0002530d CALL 0x00049c78              ; fight_effects_pass (already ported)
+00025312 JMP 0x0002540f
+```
+
+Ported verbatim as the `case 0x25u:` block in `flow.c`'s `game_frame`
+switch (replacing `case 0x25u:`'s spot in the generic fallthrough gap,
+which now lists only `0x27`).
+
+### 49-P.3 `0x266AC` (`game_mode_25_step`) and its audience-effects callee
+
+`0x266AC`'s own body (full raw in the port's header comment) is the shared
+`fight_slot_clear`/`camera_screen_base`×2/`camera_project`×2/
+`fight_slot_pass` preamble every sibling mode handler this session already
+uses (`game_mode_0c_step`/`game_mode_21_step`/`game_mode_31_step` are
+byte-for-byte twins on this preamble, confirmed by diffing their own header
+comments), plus two calls to `0x384F8` (one per side), a `DS_001078FA == 2`
+gated block of three more `camera_project` pairs with `fighter_pass_b(0)`
+between the first and second pair, then unconditionally `0x4E67C`,
+`camera_dust_spawn` (`0x1282C`, previously `static` in `camera.c` — exported
+since this is now a second external caller), `fight_hud_pulse`, `DS_
+00104AEC |= 2`, and a HUD-text tail gated on `DS_000EF6DC` bits `0x1F`/
+`0x20` that either cell-releases or redraws strings `0x3B`/`0x3A`, plus a
+`DS_001088A6 / 60` countdown digit while the word is still positive.
+
+`0x4E67C` (`fight_4e67c`, `fight.c`) is the mode's per-frame audience-
+effects pass: with `fight_2be00` of the record at slot `DS_001088BC`
+exceeding `0x1C00`, a `big` flag arms and `DS_00108894` loads from a
+clamped `((s16)record's +0x32 - 0xE0) / 100`; then, for every entry on
+`DS_0010884C`, an arrival test (state `+0x1C` bit 1 clear, `0x4A808`) or a
+`big`-gated visibility flag driven by the tables `0xC9810`/`0xC9830`
+(`rng_next(2)` breaks a tie) runs, followed unconditionally by `0x4E5A4`
+(the camera-point hit test that spawns a "worshipper" partner actor from
+`0xBB920`) and a three-way `+0x1E` state dispatch (`0`: arrival via
+`0x4A8A8`; `1`: tallied as both "processed" and "stalled"; `2`: partner
+sync plus `actor_type_49444` teardown, `0x49444` — previously `static` in
+`actors.c`, exported for this direct, non-`fn_resolve` call, matching the
+raw's own plain `CALL 0x00049444`). After the list, `0x4E99C` (the round-
+counter/tally update, two `0x2C3FC` voice posts left unwired per the
+`0x2C3FC` deferred idiom) and `fight_mode25_scorecard` (`0x4EBB8`, the
+round-card renderer both `0x4E67C` and `0x4EF8C` call) run when `DS_
+001088B9` is set, and a final `fight_mode25_spawn(0)` gate closes the pass.
+
+### 49-P.4 `0x4EF8C`/`0x4F0FC` (`game_mode_25_reveal`/`game_mode_25_exit`)
+
+`0x4EF8C` resets `DS_0010889A` to `0xF0`, settles every `DS_0010884C`
+entry whose `+0x1C` bit 1 is set (its own reset, distinct from `0x4E67C`'s
+own per-entry handling — a different `+0x1C`/`+0x1E`/`+0x34` write shape),
+cell-releases strings `0x3B`/`0x3A`, calls `fight_mode25_scorecard`, then
+picks the winner string (`0x63`/`0x64` on a tie, else `0x65` or `0x66` by
+`DS_0010888C` vs `DS_00108891`, unsigned) — both globals `fight_mode25_
+scorecard` itself just computed. `0x4F0FC` draws the closing strings
+`0x67`/`0x68`, cell-releases the round-card's five text rows and returns
+control to mode 6 (`DS_00104B00 = 6`, `DS_001088C0 = 0`, `DS_00104B15 = 1`,
+`DS_00104AEC |= 1`) — a short, branch-free, loop-free sequence.
+
+### 49-P.5 `0x4EBB8` (`fight_mode25_scorecard`)
+
+The round-card body: a fixed 5×11 decorative glyph grid (table `0xC9850`,
+skip value `0xFF`, glyph ids from `0xC9BCE`), then per side a three-way
+split on each of two 5-byte-stride tally arrays (`DS_00108888`/
+`DS_0010888A`) — "`>= 10`" draws a fixed glyph pair (`0xC9BE4`/`0xC9BE6` or
+`0xC9BE0`/`0xC9BE2` depending on which threshold fired), "`< 10`" draws the
+sum's two digits via `text_number_draw`. The second array's accumulator
+arithmetic reuses the *same* stack slot the first array's accumulator
+wrote (confirmed by re-reading the raw's `[esp+0xc]` addressing across both
+halves, not assumed) — so the second half's "both `< 10`" row argument is
+`acc + 1`, not the side's own row cursor, a genuine raw quirk transcribed
+literally rather than "fixed". The final per-side byte lands at `DS_
+0010888C + side * 5`, which is `DS_0010888C` (side 0) and `DS_00108891`
+(side 1) — both already-named `symbols.h` globals, confirming the stride.
+
+### 49-P.6 `0x384F8`/`0x382C4`/`0x38434`/`0x3D004` (the per-side combo/approach chain)
+
+`0x384F8` (`fight_384f8`, `fighter.c`) is `0x266AC`'s once-per-side tail
+call: `fighter_pass_flag(3, side)`-gated per-slot counter, then, on the
+`DS_001077A8[side]` combo node, `fighter_34038`/`fighter_38d24` (both
+already ported), `0x382C4`, `0x38434`, a signed clamp of the record's
+`+0x18` into `[-DS_000BE018, +DS_000BE018]` through `hit_anchor_set`
+(`0x188AC`, already ported — the raw's two `CMP`/`Jcc` pairs read exactly
+opposite of a first, wrong pass at this derivation: the call fires when the
+position has *already reached or passed* the threshold, not when it is
+still short of it; corrected after re-tracing the `JG`/`JL` targets
+against 0x38580/0x38599 a second time), and `fighter_slot_latch_both`
+(`0x186C4`, already ported). `0x382C4` (`fighter_382c4`, `static`) drives
+the node's `+0x52` approach phase (`0`: `fighter_38154`, already ported;
+`1`: a `fighter_38154`-twin `p`/`v` idiom deciding whether to arm phase 2 or
+run `fighter_state_35c1c` + `fighter_1883c`, both already ported; `>= 2`:
+`fighter_state_35b7c`, already ported). `0x38434` (`fighter_38434`,
+`static`) is a `DS_001077A8`-keyed `+0x53` dispatcher, structurally a twin
+of the already-ported `fighter_state_3531c` (same sentinel test, same case
+shape) but reached from this per-side pass rather than the main per-frame
+loop, with its own case 7 keeping `slot` (not `side`) as the raw's third
+callback register — transcribed as observed, not "fixed" to match its
+twin, since no registered callback exercises the path either way. Its
+default arm gates `0x3D004` (`hit_3d004`, `static`) on `DS_001088BC ==
+side` and both round flags and `DS_001088BE`; `0x3D004` drives `hit_scan`/
+`hit_reaction_drive`/`hit_slot_seed`/`hit_sound` (all already ported,
+`hit_sound` itself a documented dead stub) and clears `DS_001078F0[side]`
+on success.
+
+### 49-P.7 No further new callees
+
+Every callee `0x266AC`'s closure reaches was either already ported before
+this task (`fight_slot_clear`, `camera_screen_base`, `camera_project`,
+`fight_slot_pass`, `fighter_pass_b`, `fight_hud_pulse`, `fight_effects_pass`,
+`fight_2be00`, `rng_next`, `actors_anim_begin`, `actor_spawn`,
+`camera_point_hit`, `hit_flash_pair`, `fighter_34038`, `fighter_38d24`,
+`fighter_38154`, `fighter_state_35c1c`, `fighter_state_35b7c`,
+`fighter_1883c`, `fighter_state_3531c`'s callback convention,
+`hit_anchor_set`, `fighter_slot_latch_both`, `hit_scan`,
+`hit_reaction_drive`, `hit_slot_seed`, `hit_sound`, `fighter_pass_flag`,
+`game_string_get`, `text_cells_release_count`, `text_cursor_set`,
+`text_cursor_hold_font2`, `text_number_draw`, `text_glyph_at`,
+`fight_mode25_spawn`), newly ported by this task (the nine functions
+§49-P.3/§49-P.5/§49-P.6 name), or the `0x2C3FC` deferred-voice idiom
+(`0x4E99C`'s two posts, spec §7/record §45-A — the only deferred-idiom
+calls anywhere in the closure). No `longjmp` path and no further
+`fn_resolve`-indirected callback appears.
+
+### 49-P.8 Verification
+
+`check_mode_25` (`test_fight.c`): `game_mode_25_step`'s shared preamble
+(`DS_001077E8`/`DS_0010787C` plain copies) and `DS_00104AEC |= 2` tail run
+against an empty audience list and null combo nodes (`fight_reset_recs`/
+`fight_reset_actors`, matching `check_effects_rng`'s own scratch-fixture
+idiom); the pulse-timer gate proven both ways (closed: `DS_001088A6`/
+`DS_00104B18` untouched; open at 0: resets to `0xB4` and arms; open above
+0: merely decrements). `game_mode_25_exit`: pure global writes, no
+fixture, all four post-conditions distinct from their seeded sentinels.
+`game_mode_25_reveal` plus `fight_mode25_scorecard`: two distinct tally-
+array seedings (`DS_00108888`/`DS_0010888A`, both sides) drive the
+scorecard to two different, arithmetic-derived totals — an unequal pair
+(`7`/`6`) and an equal pair (`5`/`5`) — checked against `DS_0010888C`/
+`DS_00108891` directly, not against a value the test itself supplied; a
+third seeding exercises the one-entry audience-list settling loop
+(`DS_000F0AF0 - 0x8180` landing on exactly `0`, `+0x34` set from `0xFF80`,
+`+0x1C` bit `0x80` cleared while its low 7 bits survive a `0xFFFF`
+sentinel unchanged — the first version of this assertion checked `& 0x7F
+== 0`, which cannot distinguish "the mask ran" from "it never did" once
+the sentinel's own low 7 bits are already `0x7F`; corrected to check bit
+`0x80` alone after the first run caught its own bug, `test_fight.c:30456:
+127 != 0`). Proved live: mutated `fight_mode25_scorecard`'s `acc = sum` to
+`acc = sum + 1u`, rebuilt, confirmed 4 failures, reverted; mutated
+`game_mode_25_step`'s `DS_00104B18 = 1u` to `= 0u`, confirmed 1 failure,
+reverted; mutated `game_mode_25_exit`'s `| 1u` to `| 4u`, confirmed 1
+failure, reverted — each revert rebuilt clean. `PR_ORACLE_REQUIRED=1
+run_tests`: all checks passed, 3 consecutive runs (plus the three mutation
+round-trips), each ~1.7-1.8s wall, no hang, no crash; none of the new
+functions' loops (`fight_4e67c`'s per-entry `while`, `fight_mode25_
+scorecard`'s two `for`s) has an unbounded or raw-mismatched exit
+condition — each terminates on the same sentinel-equality or fixed-count
+test its raw `Jcc` pair does. `make verify`: front-end 517/801/3/2,
+demo-fight fully explained at N = 1886, attract2 0 unexplained at N =
+3617, `symbols.h` regenerates byte-identically — unchanged from before
+this task, as expected: mode `0x25` (the round-tally screen after a
+best-of-N decision) is reachable only from a live match's own round-end
+transition, which none of the front-end/demo-fight/attract2 oracles' own
+no-input capture windows reaches.
+
+### 49-P.9 Remaining named gaps
+
+None introduced by this task within the `0x266AC`/`0x4EF8C`/`0x4F0FC`
+closure. `fight_hud_pulse`'s own header comment (and `fight.h`'s) is
+updated to drop `0x266AC` from its "unported caller" list, since all three
+of its documented callers (`0x26540`/`0x266AC`/`0x299E8`) are now ported.
+`0x4E99C`'s two `0x2C3FC` voice posts remain the deferred-audio idiom
+(spec §7), matching the dozens of existing `PORT:` comments this codebase
+already carries for that address.

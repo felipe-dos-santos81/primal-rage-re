@@ -416,10 +416,14 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   `0x24B8C`, on the word `DS_00104B00`, record §47-B):
   - it dispatches cases 3, 4, 5, 6, 7, 8, 9, `0xA`, `0xB`, `0xC`, `0xD`, `0xE`,
     `0xF`, `0x10`, `0x11`, `0x13`, `0x14`, `0x15`, `0x16`, `0x17`, `0x1A`,
-    `0x1B`, `0x22`, `0x23`, `0x24`, `0x28`, `0x29`, `0x2A`, `0x2B`, `0x2C`,
-    `0x2D`, `0x2E`, `0x2F` and `0x32` (cases `0x22`/`0x23`/`0x24` —
+    `0x1B`, `0x22`, `0x23`, `0x24`, `0x25`, `0x28`, `0x29`, `0x2A`, `0x2B`,
+    `0x2C`, `0x2D`, `0x2E`, `0x2F` and `0x32` (cases `0x22`/`0x23`/`0x24` —
     `0x26C8C`/`0x26A50`/`0x26F58`, `game_mode_22_step`/`game_mode_23_step`/
-    `game_mode_24_step`, records §49-L/§49-M/§49-N — and cases `0x28`-`0x2F`
+    `game_mode_24_step`, records §49-L/§49-M/§49-N — case `0x25` — the
+    inline `DS_00104B25` sub-state machine over `0x266AC`/`0x4EF8C`/
+    `0x4F0FC`, `game_mode_25_step`/`game_mode_25_reveal`/`game_mode_25_exit`,
+    record §49-P, dispatched as its own `case 0x25u:` block rather than
+    folded into the generic named-gap fallthrough — and cases `0x28`-`0x2F`
     — the jump table's `0x24F09`/`0x24F66`/`0x24FC4`/`0x25187`/`0x2501E`/
     `0x25071`/`0x250CE`/`0x2512B`, `game_mode_28_step` through
     `game_mode_2f_step`, record §49-Q, the coin/start divert's eight
@@ -430,7 +434,7 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     `0x2D`-`0x2F` first spending one credit (`config_credit_spend`) —
     are no longer named gaps), and cases 1/2/`0x20` run the bare `ret`
     `0x29B70`;
-  - the other 11 cases are named gaps.
+  - the other 10 cases are named gaps.
   - Case 4 (the table entry `0x25242`, `call 0x26254; jmp 0x2540F`) is the
     fight frame `0x26254` (`game_mode_04_step`, record §48-K): `0x3C5CC`,
     `0x16D58` per side and the two position latches; only with
@@ -464,7 +468,8 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     case `0xC` runs its arena frame `0x27380` (`game_mode_0c_step`, record
     §48-C, below). Modes 6
     and `0xC` are stored by `0x25C88` (mode 5, record §48-U), and by the
-    unported `0x4CD98` and `0x4F0FC`, and by `0x274FC` (mode `0xD`) and
+    unported `0x4CD98` and by `0x4F0FC` (`game_mode_25_exit`, mode `0x25`'s
+    timeout exit, record §49-P), and by `0x274FC` (mode `0xD`) and
     `0x2791C` (mode `0xE`'s continue taken, record §48-E). So under real input a credited join from the character screen
     now reaches mode 5, then this poll, for real — not only in unit tests.
   - Case 9 is `0x28788` (`game_mode_09_step`, record §48-Y), the post-match
