@@ -273,6 +273,18 @@ u32 flow_join_poll(void);
 void flow_match_result_text(void);
 void game_mode_0d_step(void);
 void game_mode_32_step(void);
+/* Record §48-C, mode 0xC. 0x27380, game_frame's case 0xC with no join: the
+ * mode-0xC tail's blink undone, the arena frame's steps (the projection block
+ * only with DS_001078FA == 2), the pulse countdowns 0x1DA08, 0x272DC and
+ * DS_00104AEC |= 2. 0x272DC: the winner (s8)DS_0010810D's slot +0x5A at 0x78
+ * gives 0x27254 and 0x278B0 (mode 0xE); else the DS_00104B12 side's gives
+ * the winner's +0x41 bit 4 and mode 0xD. 0x27254: both sides' slot/record
+ * copies to 0x104890/0x1049B8 and their motion zeroed. 0x278B0: the
+ * continue screen, the string 0x41 and the countdown 15, mode 0xE. */
+void game_mode_0c_step(void);
+void flow_arena_ko_check(void);
+void flow_match_snapshot(void);
+void flow_continue_open(void);
 
 /* Record §48-U, mode 5 (the round start). 0x25C88, dispatched by game_frame:
  * 0x3CB68, then on DS_00104B25 1 the HUD (0x25C1C), the round card and the

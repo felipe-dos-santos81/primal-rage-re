@@ -761,4 +761,13 @@ void fighter_458d4(u32 rec);
 void fighter_45908(u32 rec);
 u32  fighter_3a2a0(u32 side, u32 edx, u32 ebx, u32 ecx, u32 word);
 
+/* Record §48-C, exported for 0x27254 (flow.c). 0x33ACC: copy slot[side]'s 0x94
+ * bytes to `dst` and its record's 0x68 bytes to `dst2` (EAX = side, EDX =
+ * dst, EBX = dst2; ECX/ESI/EDI pushed and popped, EAX and EDX clobbered).
+ * 0x3C16C: zero the side's record's +0x36/+0x44 words. 0x3C148: zero its
+ * +0x34 word and +0x43/+0x42 bytes (both push and pop EDX). */
+void fighter_33acc(u32 side, u32 dst, u32 dst2);
+void fighter_3c16c(u32 side);
+void fighter_3c148(u32 side);
+
 #endif /* PRAGE_GAME_FIGHTER_H */

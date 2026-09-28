@@ -1024,6 +1024,132 @@ void flow_match_result_text(void)
     }
 }
 
+#define DS_00104890 0x00104890u   /* no symbols.h name: [side] 0x27254's slot copy (0x94) */
+#define DS_001049B8 0x001049B8u   /* no symbols.h name: [side] 0x27254's record copy (0x68) */
+
+/* 0x27254 — record §48-C. Both sides' snapshot (ECX = side, EDI = 0x104890 +
+ * side * 0x94, ESI = 0x1049B8 + side * 0x68, EBP = side * 0x94; EBX/ECX/EDX/
+ * ESI/EDI/EBP pushed and popped): 0x33ACC(side, EDI, ESI) copies the slot and
+ * its record, 0x3C16C and 0x3C148 zero the record's motion words, and the
+ * record's +0x24 dword = 0 (0x27295, EAX = the slot's record pointer, loaded
+ * after the three calls). 0x33ACC clobbers only EAX/EDX (ECX/ESI/EDI pushed
+ * and popped); 0x3C16C/0x3C148 push and pop EDX. The two copies are
+ * contiguous: side 1's slot copy ends at 0x1049B8. Its only caller is
+ * 0x2730F (0x272DC). */
+void flow_match_snapshot(void)
+{
+    u32 c;
+    for (c = 0; c < 2u; c++) {                          /* 0x27264, 0x27294..0x2729F */
+        fighter_33acc(c, DS_00104890 + c * 0x94u,
+                      DS_001049B8 + c * 0x68u);         /* 0x2726C..0x27272 0x33ACC */
+        fighter_3c16c(c);                               /* 0x27279 0x3C16C */
+        fighter_3c148(c);                               /* 0x27286 0x3C148 */
+        DSD(DSD(DS_001077B0 + c * 0x94u) + 0x24u) = 0u; /* 0x2728B/0x27295 */
+    }
+}
+
+/* 0x278B0 — record §48-C. The continue screen's opening (EBX/ECX/EDX pushed
+ * and popped): DS_00104B1F = 0 and DS_00105C04 = 0 (AH, 0x278B5 `xor ah,ah`),
+ * DS_00108110 = 0xF (DL); the string 0x41 by 0x2F198 at col -1, row 0xA
+ * (EDX, kept by 0x1C500's push/pop), mode 0x1000 (ECX, loaded at 0x278B7;
+ * 0x1C500 does not write it and its 0x474E4 pushes and pops it); then
+ * 0x2F434(col -1, row 0xE, the signed byte DS_00108110, width 2, pad 1, mode
+ * 0x4002) (0x278FD `mov ebx,[0x10810d]` / 0x27905 `sar ebx,0x18`: the dword's
+ * top byte is 0x108110, just stored, so the countdown 15); and mode 0xE. Its
+ * only caller is 0x27314 (0x272DC). */
+void flow_continue_open(void)
+{
+    DSB(DS_00104B1F) = 0u;                              /* 0x278BC (AH) */
+    DSB(DS_00108110) = 0xFu;                            /* 0x278C2 (DL) */
+    DSB(DS_00105C04) = 0u;                              /* 0x278C8 (AH) */
+    text_cursor_set(-1, 0xA, game_string_get(0x41u),
+                    0x1000u);                           /* 0x278D8 0x1C500, 0x278E4 0x2F198 */
+    text_number_set(-1, 0xE, (s32)(s8)DSB(DS_00108110), 2, 1u,
+                    0x4002u);                           /* 0x278E9..0x27905, 0x27908 0x2F434 */
+    DSW(DS_00104B00) = 0xEu;                            /* 0x2790D */
+}
+
+/* 0x272DC — record §48-C. Mode 0xC's round-end test (EDX pushed and popped;
+ * EAX clobbered). The winner w = (s8)DS_0010810D (0x272DD `mov edx,[0x10810a]`
+ * / 0x272E3 `sar edx,0x18`): when w's slot +0x5A byte (zero-extended, 0x272FB)
+ * is at least 0x78 (0x27303 `jl`), the 0xD3 voice, 0x27254 and 0x278B0 (the
+ * continue screen, mode 0xE). Otherwise, when the DS_00104B12 side's +0x5A is
+ * at least 0x78 (0x27340 `jl`): the 0x27 and 0x22 voices, w's slot +0x41 |=
+ * 0x10 (w re-read at 0x27356) and mode 0xD. Else nothing. Its only caller is
+ * 0x274EC (0x27380). */
+void flow_arena_ko_check(void)
+{
+    s32 w = (s32)(s8)DSB(DS_0010810D);                  /* 0x272DD/0x272E3 */
+    if (DSB(DS_0010780A + (u32)w * 0x94u) >= 0x78u) {   /* 0x272F4..0x27303 */
+        /* PORT: 0x2730A 0x2C3FC(0xD3) voice, not wired (record §45-A). */
+        flow_match_snapshot();                          /* 0x2730F 0x27254 */
+        flow_continue_open();                           /* 0x27314 0x278B0 */
+        return;                                         /* 0x27319 */
+    }
+    if (DSB(DS_0010780A + (u32)DSB(DS_00104B12) * 0x94u) < 0x78u)
+        return;                                         /* 0x2731B..0x27340 */
+    /* PORT: 0x27347 0x2C3FC(0x27) and 0x27351 0x2C3FC(0x22) voices, not wired
+     * (record §45-A). */
+    w = (s32)(s8)DSB(DS_0010810D);                      /* 0x27356/0x2735C */
+    DSB(DS_001077F1 + (u32)w * 0x94u) =
+        (u8)(DSB(DS_001077F1 + (u32)w * 0x94u) | 0x10u);    /* 0x2736D */
+    DSW(DS_00104B00) = 0xDu;                            /* 0x27375 */
+}
+
+/* 0x27380 — record §48-C. Mode 0xC's arena frame (0x24C5C case 0xC's no-join
+ * arm, 0x2535D `call 0x27380`, then 0x25362 `jmp 0x2540F`; its only caller).
+ * EBX/ECX/EDX are pushed and popped; EAX is clobbered, and 0x2540F's 0x2A31C
+ * call does not read it. First it undoes the mode-0xC tail's blink (0x25487,
+ * game_frame): when the DS_00104B12 slot's +0x41 bit 0 is set and its +0x42
+ * bit 3 clear, and its record's pset word (DS_001014EC + +0x56 * 0x20) is the
+ * 0x1E1 blink sprite with bit 15 masked (0x273CB `and dh,0x7f`, the compare
+ * copy only), the word gets DS_00104AF6 back (the whole word). Then the arena
+ * steps of 0x263F4 minus 0x49C78/0x1282C, with the projection block gated:
+ * 0x3C5CC, 0x16D58 per side, the two position latches; only while the byte
+ * DS_001078FA is 2 (0x27427 `cmp eax,2` on the zero-extended byte) 0x17FA0
+ * twice, 0x17580, 0x1958C, 0x19068(0), 0x17FA0 twice and 0x1975C; then
+ * 0x3CB68, 0x35658 per side, 0x12DA8, 0x1DA08 (the pulse countdowns),
+ * 0x272DC (the round-end test, which may store mode 0xD or 0xE) and
+ * DS_00104AEC |= 2. The six 0x17FA0 calls take the same six arguments as
+ * 0x263F4's (0x27430..0x274C2). */
+void game_mode_0c_step(void)
+{
+    u32 slot = DS_001077B0 + (u32)DSB(DS_00104B12) * 0x94u; /* 0x27383..0x27399 */
+    if ((DSB(slot + 0x41u) & 1u) != 0u                  /* 0x2739C/0x273A3 */
+            && (DSB(slot + 0x42u) & 8u) == 0u) {        /* 0x273A5/0x273AC */
+        u32 ps = DSD(DS_001014EC)
+                 + (u32)DSW(DSD(slot) + 0x56u) * 0x20u; /* 0x273AE..0x273C6 */
+        if ((DSW(ps) & 0x7FFFu) == 0x1E1u)              /* 0x273C8..0x273DA */
+            DSW(ps) = DSW(DS_00104AF6);                 /* 0x273DC/0x273E3 */
+    }
+    fight_slot_clear();                                 /* 0x273E6 0x3C5CC */
+    camera_screen_base(0, (s32)DSB(DS_0010782A));       /* 0x273EB..0x273F5 0x16D58 */
+    camera_screen_base(1, (s32)DSB(DS_001078BE));       /* 0x273FA..0x27407 0x16D58 */
+    DSD(DS_001077E8) = DSD(DS_001077E4);                /* 0x2740C/0x27411 */
+    DSD(DS_0010787C) = DSD(DS_00107878);                /* 0x27416/0x2741B */
+    if (DSB(DS_001078FA) == 2u) {                       /* 0x27420..0x2742A */
+        camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                       DS_00100B60, DS_00100AF0);       /* 0x2744B 0x17FA0 */
+        camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                       DS_00100B61, DS_00100AF4);       /* 0x2746E 0x17FA0 */
+        camera_decay();                                 /* 0x27473 0x17580 */
+        fighter_pass_a();                               /* 0x27478 0x1958C */
+        fighter_pass_b(0u);                             /* 0x2747F 0x19068 */
+        camera_project(0, DS_00100B08, DS_00100B00, DS_00100B62,
+                       DS_00100B60, DS_00100AF0);       /* 0x2749F 0x17FA0 */
+        camera_project(1, DS_00100B0C, DS_00100B04, DS_00100B63,
+                       DS_00100B61, DS_00100AF4);       /* 0x274C2 0x17FA0 */
+        fighter_think();                                /* 0x274C7 0x1975C */
+    }
+    fight_slot_pass();                                  /* 0x274CC 0x3CB68 */
+    fight_hud_pass(0u);                                 /* 0x274D3 0x35658 */
+    fight_hud_pass(1u);                                 /* 0x274DD 0x35658 */
+    camera_y_commit();                                  /* 0x274E2 0x12DA8 */
+    fight_hud_pulse();                                  /* 0x274E7 0x1DA08 */
+    flow_arena_ko_check();                              /* 0x274EC 0x272DC */
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);     /* 0x274F1 */
+}
+
 /* 0x274FC — record §48-Q. Mode 0xD's handler (0x24C5C case 0xD, the table
  * entry 0x25367; its only caller). The arena frame's tail steps: 0x3C5CC,
  * 0x16D58 per side with the slot's +0x7A, the two position latches
@@ -3161,10 +3287,8 @@ void game_frame(void)
             flow_player_join(r - 1u);                  /* 0x25352/0x25353 0x28DA4 */
             break;                                     /* 0x25358 */
         }
-        /* PORT: 0x2535D 0x27380 (mode 0xC's arena frame) is a named gap
-         * (record §48-J); its callees 0x3CB68, 0x1DA08 and 0x272DC are
-         * unported. */
-        break;
+        game_mode_0c_step();                           /* 0x2535D 0x27380 (record §48-C) */
+        break;                                         /* 0x25362 */
     }
     case 0x04u:
     case 0x07u:
@@ -3217,8 +3341,9 @@ void game_frame(void)
          * 0x32 (0x296B8, record §48-Q) as game_mode_0d_step and
          * game_mode_32_step, and case 5 (0x25C88, record §48-U) as
          * game_mode_05_step. Cases 6 and 0xC run 0x28CC8 (flow_join_poll)
-         * and 0x28DA4 (flow_player_join) above (record §48-J); their other
-         * arms, 0x26254 and 0x27380, are named gaps there. */
+         * and 0x28DA4 (flow_player_join) above (record §48-J); case 0xC's
+         * other arm 0x27380 is game_mode_0c_step (record §48-C), and case
+         * 6's, 0x26254, is a named gap there. */
         break;
     case 0x00u:
     case 0x1Cu:

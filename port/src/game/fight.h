@@ -124,6 +124,13 @@ void fight_hud_badge_spawn(u32 side, u32 ch, u32 y);
 void fight_hud_side_reset(u32 side);
 void fight_4dbec(void);
 
+/* Record §48-C. 0x1DA08: per side, the word DS_00102908[side] counts down;
+ * at 0 or below the record DS_001028F8[side] restarts the stream 0xE9050 at
+ * 4.0 and the word is reloaded with max((0x78 - the slot's +0x5A) >> 1, 0xC).
+ * Called by mode 0xC's arena frame 0x27380 (and the unported 0x26254,
+ * 0x26540, 0x266AC and 0x299E8). */
+void fight_hud_pulse(void);
+
 /* 0x43964. Spawn the side's entry 0xC8870[side] at the character's
  * (0xC8898, 0xC88A6) into DS_00108154[side] and its panel 0xC8878[side] into
  * DS_0010815C[side], re-pointed at 0xC88DC[ch] with 0xC88F8[ch]/0xC8908[ch]

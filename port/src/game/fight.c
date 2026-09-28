@@ -229,6 +229,38 @@ void fight_hud_side_reset(u32 side)
                       0x3F800000u);                     /* 0x1D79C..0x1D7AD 0x2BC30 */
 }
 
+#define DS_00102908 0x00102908u   /* no symbols.h name: [side] the pulse countdown word */
+#define DS_000E9050 0x000E9050u   /* no symbols.h name: the 0x1DA08 stream */
+
+/* 0x1DA08 — record §48-C. The two sides' pulse countdowns (EBX = side * 2,
+ * ESI = side * 0x94, ECX = side * 4; EBX/ECX/EDX/ESI pushed and popped, EAX
+ * clobbered). Per side the word DS_00102908[side] is decremented (`mov dx`,
+ * `dec edx`, and only DX is stored, so the word wraps mod 0x10000); while it
+ * stays above 0 (signed, 0x1DA21 `test dx,dx`, 0x1DA24 `jg`) nothing else
+ * runs. Otherwise the record DS_001028F8[side] begins the stream 0xE9050 at
+ * 4.0 (0x40800000 pushed, 0x2BC30, which pushes and pops EBX/ECX/ESI and
+ * returns `ret 4`), and the word is reloaded with (0x78 - the slot's +0x5A
+ * byte) >> 1 (0x1DA3D..0x1DA4C, `sar`: signed), raised to 0xC when that is
+ * below 0xC (0x1DA55 reads the dword at 0x102906 + side * 2 and `sar`s it by
+ * 0x10, which is the signed word just stored; 0x1DA5E `cmp`, 0x1DA61 `jge`).
+ * Callers: 0x274E7 (0x27380, ported here), and the unported 0x263AA
+ * (0x26254), 0x26696 (0x26540), 0x26864 (0x266AC) and 0x29B4F (0x299E8). */
+void fight_hud_pulse(void)
+{
+    u32 side;
+    for (side = 0; side < 2u; side++) {                 /* 0x1DA6C..0x1DA7B */
+        u16 w = (u16)(DSW(DS_00102908 + side * 2u) - 1u);   /* 0x1DA12/0x1DA19 */
+        DSW(DS_00102908 + side * 2u) = w;               /* 0x1DA1A */
+        if ((s16)w > 0) continue;                       /* 0x1DA21/0x1DA24 `jg` */
+        actors_anim_begin(DSD(DS_001028F8 + side * 4u), DS_000E9050,
+                          0x40800000u);                 /* 0x1DA26..0x1DA36 0x2BC30 */
+        DSW(DS_00102908 + side * 2u) = (u16)((0x78 -
+            (s32)DSB(DS_0010780A + side * 0x94u)) >> 1);    /* 0x1DA3B..0x1DA4E */
+        if ((s16)DSW(DS_00102908 + side * 2u) < 0xC)    /* 0x1DA55..0x1DA61 `jge` */
+            DSW(DS_00102908 + side * 2u) = 0xCu;        /* 0x1DA63 */
+    }
+}
+
 /* 0x43964 — record §42-F. EAX = side; the character is the signed byte
  * DS_00108166[side] (0x43972 reads the dword at 0x108163 + side, 0x4397C `sar
  * esi,0x18`). Two spawns, a5 = 0 (each `push 0` popped by 0x2AE14's `ret 4`):
