@@ -22512,3 +22512,228 @@ attract and front-end paths never reach.
 * The `0x2C3FC` voices (§45-A).
 * The blink prompt's mode word (`0x1000`/`0x4000`, `0x1FB46..0x1FBBA`) is passed
   through but no test observes it (the glyph actors do not carry it).
+
+## 49-X. The menu/text cluster `0x2EB80`-`0x30000` and `0x50146` (named-gap batch, branch `gap43-menutext`)
+
+### 49-X.1 Dispositions
+
+`port_progress.py --unported` listed the three targets (`0x2FA40` 1024 B,
+`0x2FE84` 320 B, `0x2FFC4` 1577 B); a grep of `port/src` found no earlier port of
+any of them or of the helpers below. Callers (Ghidra bridge `get_xrefs_to`):
+
+| Address | Callers |
+|---|---|
+| `0x2FFC4` | `0x251EE` (`0x24C5C`, case `0x27`), `0x2CB88` (the item stub `0x2CB74`) |
+| `0x2FA40` | `0x2CBA8` (the item stub `0x2CB94`); no defined-function caller |
+| `0x2FE84` | `0x2FA40` x2, `0x2FFC4` x2 |
+| `0x2FE40` | `0x2FA40` x2, `0x2FFC4` x2 |
+| `0x2EDE0` | `0x2FA40`, plus 13 unported call sites (`0x30B54`, `0x32E55`, ...) |
+| `0x2EEC8` | `0x2FFC4` |
+| `0x2EBF0` | `0x2EDE0`, `0x2EEC8` |
+| `0x2EB80` | `0x2EBF0`, `0x2FFC4`, and five unported sites |
+| `0x305FC` | `0x2FA40`, `0x2FFC4` |
+| `0x2F940` | `0x2FE84` |
+| `0x50146` | `0x251DA` (case `0x27`), `0x2CFF3` (`0x2CF00`), `0x3128B` |
+
+The stock item stubs `0x2CB74`/`0x2CB94` (and `0x2CAC0`, `0x2CACC`, `0x2CBC4`...)
+sit in a stretch of `0x2CAxx`-`0x2CCxx` that Ghidra has no functions for; they are
+entered only through the data dwords of the menu tables (`0xBCBDC`, `0xBCC1C`,
+`0xBCCCC`), never by rel32 -- which is why `0x2FA40` shows one unnamed caller and
+no defined one. So `0x2FA40` has no ported caller and no path the port can
+reach; it is ported, unit-tested and documented, not wired.
+
+Ported, all with the `/* 0xADDR — record §49-X */` header: `0x2FA40`
+(`menu_run`), `0x2FFC4` (`menu_step`), `0x2FE84` (`menu_title_draw`), `0x2FE40`
+(`menu_entry_find`), `0x2F940` (`menu_debug_lines`), `0x305FC`
+(`menu_debug_widget`), `0x2EB80` (`menu_key_or_timeout`), `0x2EBF0`
+(`menu_key_decode`), `0x2EDE0` (`menu_input_poll`), `0x2EEC8`
+(`menu_input_poll_clear`), `0x2EA68` (`menu_fatal_error`) and `0x50146`
+(`input_repeat_set`, `input.c`). New file `port/src/game/menu.{c,h}`.
+
+Not ported, by rule: `0x2EA74` (`xor eax,eax; mov eax,eax`, five callers here, none
+reads EAX afterwards) and `0x2EA64` (`ret`) are proven no-ops and appear only as
+comments; `0x2C3FC(0x100)` at `0x2FA6D`/`0x2FFF6` is the deferred voice call
+(record §45-A); `0x2EA68`'s tail `jmp 0x62003` is the runtime's error exit, and
+`0x2EB80`'s `jmp 0x65431` (the idle timeout) and case `0x27`'s
+`jmp 0x65431` are longjmps (spec §7): each is a `PORT:` note where it is
+reached.
+
+### 49-X.2 The menu table and the state
+
+A menu is `stride`-byte entries (0x10 in every stock table, read at `0xBCBDC`,
+`0xBCC1C`, `0xBCCCC`): `+0` string id (0 ends the list), `+4` a second string id
+drawn 5 columns after the first, `+8` a callback code address, `+0xC` a signed
+row offset added before the item is drawn. Entry 0 is the title: `+0/+4` its
+strings, `+8` the menu-level callback (0 in all three stock tables; the item
+callbacks are the entries' own `+8`, run on Enter). A string whose first byte is
+`?` hides the item (it still occupies an index); `\n` (0x0A) first moves the
+item one row down. Read straight (`read_memory 0xBCBDC`): `{0x210,0,0,0}`,
+`{0x211,0,0x2CB74,0}`, `{0x76,0,0x2CB94,1}`, `{0,...}`; `ENGLISH.TXT` gives
+"MAIN MENU", "Start", "GAME OPTIONS", and 0x209/0x20A "PRESS ESCAPE KEY"/"TO EXIT
+MENU" (the two help lines `0x2FE84` prints on rows 0x1B/0x1C).
+
+`0x2FFC4` keeps its state in `mem[]`; `0x2FA40` keeps the same variables on
+its stack. The map (stack slot -> `0x2FFC4` word):
+
+| `0x2FA40` | `0x2FFC4` | meaning |
+|---|---|---|
+| `[esp+4]` | `EBP` | the title entry, 0 when entry 1's text is empty after its prefixes |
+| `[esp+8]` | `DS_00107440` | first row: 5, plus a `\v` (0x0B) digit's `- 0x30` |
+| `[esp+0xC]` | `DS_0010743C` | redraw the header / everything |
+| `[esp+0x10]` | `DS_00107418` | flags |
+| `[esp+0x14]` | `DS_0010744C` | the menu-level callback (`table[0].+8`) |
+| `[esp+0x18]` | `DS_00107428` | the selection last drawn, `-2` = none |
+| `ESI` | `DS_0010742C` | the selection index |
+| `[esp+0x1C]` | `DS_00107430` | the selected entry's address |
+| `[esp+0x20]` | `DS_00107434` | the entry being drawn / found |
+| `[esp+0x24]` | `DS_00107444` | the row being drawn |
+| `[esp+0x28]` | `DS_00107424` | the item count (hidden items included) |
+| `[esp+0x2C]` | `DS_0010741C` | entry 1's address |
+| -- | `DS_00107414` | byte: initialised |
+| -- | `DS_00107420/38/48` | the string pointer, `strlen + 5`, a result / the wrap fuse |
+
+### 49-X.3 Draw, both drivers
+
+Per item the raw picks one of three draws from `idx` (the item index), the last
+drawn selection `old` and the selection `cur` (`0x2FB88`-`0x2FC12`,
+`0x301A9`-`0x30263`): `idx == old && cur != idx` un-highlights (release
+`0x2F280` with mode `0x2000`, draw `0x2F198` with `0xF000`); `idx == cur`
+highlights (release `0xF000`, draw `0x2000`, and records the entry as the
+selection); anything else only draws with `0xF000`. The second string gets the
+same treatment at column `strlen(first) + 5`. The mode selects the font palette
+(`0x2F5A0`'s table: `0x2000` -> handle `0x80998C`, `0xF000` -> `0x8099A4`), so the
+unit tests read the palette handle out of the cell's pset (`+0x18`, entry `+0`).
+`?` items advance the index and the entry but not the row.
+
+**Quirk, raw wins.** `0x2FA40` starts every redraw pass at `[esp+8]`, so a
+`\v3` first item starts the list on row 8. `0x2FFC4` peeks the same prefix at
+initialisation but its redraw stores 5 in both `DS_00107440` and `DS_00107444`
+(`0x300F9`/`0x300FF`), so the same table draws from row 5 there; and its redraw
+draws the full string, `\v3` glyphs included (only `?` and `\n` are stripped
+per item; `0x2FE84` and the init peek strip `\v` + digit). Both are replicated.
+
+### 49-X.4 Input
+
+`0x2EB80` returns the pending key `DS_00105F30`; with none it returns 0 unless
+`DS_00101500 - DS_00105F2C` is above `0x4B0` (`jbe`, unsigned) -- that is the
+longjmp; the port clears `DS_00107414` (`0x2EBA8`) and returns 0.
+
+`0x2EDE0(mask, keys)`: `0x50161(mask)` (ported `input_select_bits`); when `keys`
+(DL) is nonzero it ORs in `0x2EBF0(mask)`; a nonzero result stamps
+`DS_00105F2C` with the tick counter (`0x500BB` = `DS_00101500`). `0x2EEC8` is the
+same but zeroes `DS_00105F30` first (between the OR and the stamp).
+
+`0x2EBF0(mask)`: the key is decoded when `mask == 0` or holds a `0xF300F000`
+bit (the second test, `0xF000F000`, is a subset of the first and always skips).
+The jump table `0x2EBCC` (read_memory) maps key - 0x48: 0 (up) `0x2EC45`,
+3 (0x4B, left) `0x2ECF7`, 5 (0x4D, right) `0x2ED49`, 8 (0x50, down) `0x2EC9E`,
+the rest `0x2ED9F`. The bit is set unless a matching binding is disabled: the two
+players' key-binding bytes at layout `+0x2DE..0x2E1` and `+0x2E6..0x2E9` (up,
+down, left, right), enabled by the words `+0x2D4`/`+0x2D6`; the layout block is
+`DS_00101514`'s target. Bits: `0x80008000` up, `0x40004000` down, `0x20002000` left,
+`0x10001000` right. Enter (`0xD`, needs `mask == 0` or bit `0x1000000`) gives
+`0x1000000` and zeroes the key; Esc (`0x1B`, `mask == 0` or `0x2000000`) gives
+`0x2000000`. Right with neither binding matching also zeroes the local key
+(`0x2ED9D`); nothing after it can tell, so no test observes it. `0x2FFC4` calls
+`0x2EEC8` before `0x2EB80`, so `0x2EB80` never sees the Esc key there and the
+`key == 0x1B` returns (`-5`/`-10`, `0x303E2`) are dead; Esc reaches
+`0x2FFC4` through the `0x2000000` bit.
+
+### 49-X.5 Results
+
+`0x2FFC4`: `0` while open; the menu-level callback's nonzero result as is;
+Esc: with flags bit 2 `-1` and `DS_00107414 = 0`, else `-5` (or `0` when
+`DS_0010742C == DS_00107424`), both with the redraw asked for; Enter: redraw the
+title for the selected entry (`0x2FE84`), run its `+8` callback with the entry:
+`-10` returns `-10`, `-5` returns `-5` and asks for a redraw with `old = -2`,
+anything else returns 0, and `DS_00107414` is 0 after every Enter. `0x2FA40`
+loops instead: callback result nonzero returns it; Esc with flags bit 2 acts as
+Down, without returns `(cur == count) - 1` (always `-1`); Enter redraws the
+header and runs the callback, re-arming the header and `old = -2`.
+
+Up/Down search for the next item `0x2FE40` accepts (in range, not ended, no
+`?`), wrapping; the wrap fuse (1, one wrap allowed) trips `0x2EA68("Null
+Menu", 0x80B54)` on the second wrap, i.e. when nothing is visible. PORT: the
+port stops (returns 0) rather than spin where the raw never returns.
+
+### 49-X.6 `0x2FE84`, `0x2F940`, `0x305FC`
+
+`0x2FE84(entry, mode_a, mode_b, flags)`: `0x4F1E4`, `0x2BAF4` (EAX = 1), `0x4F1D0`,
+`0x38B18(0x9AD84, 0, 0)` reset the screen and spawn the backdrop; flags bit 0
+adds `0x2F940(0x1B)`; the entry's first string (minus `?`, `\v` + digit, `\n`)
+and, when set, its second after a space are copied into a 0x2A-character
+stack buffer; if `0x2F0F0(buf, mode_a | 2)` is above 0x28, every `_` becomes a
+space and `mode_a` is used as is, else `mode_a | 2`; the buffer is drawn centred
+on row 0; unless flags bit 2, strings 0x209/0x20A go on rows 0x1B/0x1C in
+`mode_b`. `0x2F940(row)` draws "OS:   " and "MAIN: " (`0x80B44`/`0x80B4C`) on
+`row`/`row + 1`, each followed by a `0x2F41C` string (`0xBCD5C`, and
+`[[0x10740C] + 0xC]`). The writer of `DS_0010740C` is `0x2FA01` in the master
+init `0x2F9CC` (`mov [0x10740c],0x1d2d0`), not run by the port, so it is 0 and the
+second line draws the string at `mem[0]` (empty).
+
+`0x305FC(col, row)` is a debug entry widget at `DS_00107450` (byte `+2` the
+limit, `+3` flags, `+4..` 8 characters, `+0xD..` another 8): flags 0 draws the
+eight characters (mode `0x4000` below the limit, `0x2000` from it, the second
+row of characters); flags nonzero draws the `+0xD` string in mode `0x1000` and, if
+bit 1 is clear, parses the digits at `+0x10..+0x14` (stops at a non-digit) with
+the three characters at `+0xD` as a high-score record for table 2 (`0x2DCA0`)
+and sets bit 1. PORT: the record is built at `0x3FFFE00` in `mem[]` where the raw
+uses its stack. No writer of `0x107450..` exists in the image (`get_xrefs_to`),
+so the widget draws blanks until something outside the port fills it.
+
+### 49-X.7 Case `0x27` and reachability
+
+`0x24C5C` case `0x27` (`0x251C6`) is now wired: `input_repeat_set(0xC000C000, 0x1E,
+0xF)` then `menu_step(0xBCBDC, 0x10, 4)` (ECX = 4 is left over from the
+`0x251D5 mov ecx,4` and survives `0x50146`); results 0, -5 and -10 fall to
+`input_state_update` (`0x25210`), any other result is the longjmp (a `PORT:` note).
+No path in the port sets `DS_00104B00` to `0x27`: the raw's Enter arm in the
+`0x24C5C` int 16h loop (record §47-B) and the seven item stubs `0x2CBC4`..`0x2CC54`
+that store modes `0x28..0x2E` are not ported, so no oracle path enters the arm.
+
+### 49-X.8 Verification
+
+`check_menu` (`test_platform.c`, called from `test_text`) drives the cluster
+through a fabricated `ENGLISH.TXT` image (`mt_strings_install`: nine 0x800-byte
+groups, entries XORed with their length as `0x474E4` decodes them, installed
+behind `DS_001082DC` for the duration of the test and restored) so the `?`,
+`\n` and `\v` prefixes, the second string and the `_` width rule are all reachable
+-- the shipped table has no string starting with `?`, `\n` or `\v`. The palette
+each glyph got is read back from the cell's pset (`+0x18`, entry `+0`), which
+is what tells the highlight modes apart (the sprite ids do not differ). Callbacks
+are registered at fake code addresses (`0xF1A00`..); input is the pad
+level/latch pair `0x50161` reads (a single-shot press) and the key latch
+`DS_00105F30` with a fake layout block. `menu_run` is scripted from inside its
+menu-level callback, which the loop calls once per poll. The suite runs in about
+2.1 s (no hang) three times in a row.
+
+Single-site mutations of `menu.c`, each run against the suite (a hang counts as
+caught): `0x2FE40`'s `?` test removed (hang), its `n < idx` widened, `0x2EB80`'s
+`> 0x4B0` made `>=`, `0x2EEC8`'s key clear dropped, the `0x2EDE0` idle stamp
+dropped, `0x2EBF0`'s per-player enable test made an `||`, Enter's key code
+changed, `0x305FC`'s limit compare made `>`, its digit loop started one early,
+`0x2FE84`'s `_` replacement dropped, its `mode | 2` dropped, its
+`actors_reset` and backdrop spawn dropped, `0x2F940`'s second row moved,
+`0x2FA40`'s Esc-as-Down turned into Up, its Esc return zeroed, its header re-arm
+after Enter dropped, its selected-entry record dropped, its `?` and `\n` tests
+removed, its `\v` row shift dropped, its first-item title test dropped, its
+debug-widget gate removed; `0x2FFC4`'s highlight modes swapped, its selected-entry
+record dropped, its `?` and `\n` tests removed, its Enter `-10` and `-5`
+arms altered, its Esc return collapsed to `-5`, its wrap fuse start changed, its
+row-5 reset (`0x300F9`) removed, its redraw request after `-5` dropped, its first-item
+title test dropped, its debug-widget gate removed: 35 of 35 caught. Three
+mutants are equivalent and were left: `0x2FFC4`'s wrap test `== count` as
+`> count` (the end entry reads as "not found", so the loop wraps one step
+later to the same state), the `\v` digit add in its initialiser (`0x30053`:
+the first redraw stores 5 over it before anything reads it), and the
+write-back of `DS_00101514` in `0x2EBF0`'s no-key path (it stores what it read).
+
+### 49-X.9 Remaining named gaps
+
+* The item stubs `0x2CB74`, `0x2CB94`, `0x2CAC0`, `0x2CACC` and the mode setters
+  `0x2CBC4`..`0x2CC54` (no Ghidra functions; their table addresses are unregistered,
+  so Enter on a stock item calls nothing): `0x2CB94` also needs `0x1B084`.
+* The Enter arm of `0x24C5C`'s int 16h loop (mode `0x27` has no entry).
+* `0x2F9CC`'s `DS_0010740C` store, and whatever fills `DS_00107450` and
+  `0xBCD5C`.
+* The `0x2C3FC(0x100)` voices, the `0x62003` error exit and the `0x65431` longjmps.

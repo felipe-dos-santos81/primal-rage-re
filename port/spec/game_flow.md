@@ -835,7 +835,8 @@ selector.
   `game_frame` calls `input_state_update()` at the `0x24C6E` site as its first
   action — the raw's `0x4F644` precedes the frame counter and the process
   tables — so the masks are fresh for `game_state_step`.
-  `0x50146`'s repeat-timer setter has no port caller and stays inert.
+  `0x50146`'s repeat-timer setter is `input_repeat_set` (record §49-X); its one
+  caller is mode `0x27`'s arm, which nothing in the port enters.
 * **Credit layer** — `port/src/game/config.c` ports `0x2CAA8`
   (`config_not_free_play`), `0x2CA2C` (`config_has_credit`), `0x2C060`
   (`config_credit_ready`), `0x2CA48` (`config_credit_take`), `0x2CA7C`
