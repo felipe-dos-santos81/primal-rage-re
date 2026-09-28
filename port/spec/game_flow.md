@@ -379,15 +379,19 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   stub `0x5D812` (`xor eax,eax; ret`), stored by `mov edx,0x5d812` at `0x25C04`,
   `0x26A27`, `0x27122` and `0x29626`. `0x41578` (`frontend_darken_marked`) is
   direct-called from four sites (`0x41755`, `0x41DE6`, `0x42337`, `0x42352` in
-  `0x416D4`/`0x41C28`). Every live caller is reached only through `0x24C5C`'s
+  `0x416D4`/`0x41C28`, both since ported, mode `0x12`'s step, record §48-Z).
+  `0x29B74`'s every live caller is still reached only through `0x24C5C`'s
   **unported mode cases** and the unported match/fight chain; the `0x2861C`
   region is dead outright. On the no-input path no ported code moves the
   port's `DS_00104B00` off the 3 that `0x10E80` stores (record §47-B.2; an
   accepted coin/start event does, through `0x257A4`, record §48-W, but only
-  into modes `0x1A`/`0x1B`/`0x10` with the hook `0x4367C`), so neither
-  function is reachable: both are unit-tested
-  (`test_effects`), and `0x29B74` is registered in `actors_init` for a future
-  `DS_00104AE4` dispatch. `port/tests/test_game.c` pins that state 5 neither
+  into modes `0x1A`/`0x1B`/`0x10` with the hook `0x4367C`, and mode `0x12`
+  itself is stored only by the same unported chain, record §48-Z), so
+  `0x29B74` is unreachable and unit-tested (`test_effects`), and registered
+  in `actors_init` for a future `DS_00104AE4` dispatch. `0x41578` is now
+  reached from ported code (`0x416D4`/`0x41C28`) but not from any oracle
+  no-input path, so it stays exercised only by `test_effects` and
+  `check_mode_12`. `port/tests/test_game.c` pins that state 5 neither
   arms `DS_00104AE4` nor leaves mode 3. `DS_00104AE4` has other
   targets too. `0x28D68`/`0x28D80` store the character screen's entry `0x43738`
   there and enter mode `0x1A` (`0x4F980`). The mode `0x1A`/`0x1B` handlers
@@ -611,8 +615,39 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     `0x1C`, or y `0x3800` for the sprite prompt) with a credit, else
     "INSERT 1 COIN" (`0x2C1C8`, row `0x1C`). Mode 9 (`0x28788`, now ported,
     record §48-Y) reaches mode `0x13` through this return-mode/darken
-    mechanism when its results state runs; `0x416D4` and `0x41C28` (mode
-    `0x12`) are still unported, so that is the only ported path in.
+    mechanism when its results state runs; that is the only ported path in
+    — mode `0x12`'s `0x41C28`/`0x416D4` are since ported too (record §48-Z,
+    its own entry below), but no ported path stores mode `0x12` either.
+  - Case `0x12` is `0x41C28` (`game_mode_12_step`, record §48-Z), the
+    post-match "next opponent" screen: the return mode mode `0x15` takes
+    from `0x41578` at `0x415EF` (record §42-E) and from `0x41578`'s four
+    ported callers inside `0x41C28`/`0x416D4` themselves. A jump table at
+    `0x41C04` steps the byte `DS_00104B25` over nine states: 0 the sprite
+    or text prompt; 1 a resumable one-slot-per-frame scan of the seven
+    portrait actors `DS_00108106` for a newly-revealed opponent (bit
+    `0x80`), flashing it (`0x414B4`) and tallying `DS_00108104` against
+    each side's tagged character id (`DS_0010782A`); 2 kills the state-0
+    prompt; 3 the "P1'S CHARACTER / VS / STAGE" banner, held off until a
+    background record scrolls past y `0x2300`; 4 flashes the current
+    stage's portrait (`0x41528`) and counts `DS_0010810E`; 5 the
+    scoreboard build `0x418F4` (`frontend_scoreboard_build`: per-side
+    name/score text and a "confetti" scroll) then dispatches on
+    `DS_00104B1F`/`DS_00108104[r]` to `0x416D4` (the tally step, this
+    mode's other raw entry, called only from here), `0x4160c`
+    (`frontend_mode12_advance`) or `0x41760`
+    (`frontend_mode12_challenge_continue`); 6 sets up the credits-reel
+    scroll velocity and starts the scoreboard actors' animations; 7
+    scrolls the background until it passes y `0x180`, awards 100000
+    points (`0x41310`) and redraws the score, then dispatches to mode
+    `0x17` (continue, hook `0x259CC`), `0x417C4`
+    (`flow_no_continue_screen`) or the join prompt `0x271E0`
+    (`flow_join_prompt_draw`) followed by the play-time audit close and a
+    `longjmp(0x2DAE4, 0x10, 1)` quit path (spec §7, deferred); 8 a
+    countdown (`DS_00104AFE`) that restores `DS_00104B25` from
+    `DS_00104B23` at zero, reused as the "wait N frames" tail of nearly
+    every other state. `0x416D4`'s own dead call `0x32BAC` (its target
+    byte is a bare `RET`, confirmed by `read_memory`) is dropped. No
+    ported path stores mode `0x12` (record §48-Z).
   - Cases `0xD` and `0x32` are `0x274FC`/`0x296B8` (`game_mode_0d_step`/
     `game_mode_32_step`, record §48-Q). Each runs the arena frame's tail
     steps (`0x3C5CC`, `0x16D58` per side, the two position latches, `0x35658`

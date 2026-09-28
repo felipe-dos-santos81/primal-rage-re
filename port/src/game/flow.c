@@ -372,6 +372,516 @@ void frontend_darken_marked(void)
     DSB(DS_00104B25) = 0u;                              /* 0x415FF (AH = 0) */
 }
 
+/* ---- mode 0x12, the post-match "next opponent" screen (record §48-Z) ---- */
+
+#define DS_00104529 0x00104529u   /* no symbols.h name: DS_00104528's second byte */
+#define FN_000259CC 0x000259CCu   /* no symbols.h name: mode 0x11's hook */
+#define DS_000C8704 0x000C8704u   /* no symbols.h name: state 0's sprite prompt */
+#define DS_000C8718 0x000C8718u   /* no symbols.h name: shared prompt-row word */
+#define DS_000C871C 0x000C871Cu   /* no symbols.h name: 0x417C4's sprite prompt */
+#define DS_000C876C 0x000C876Cu   /* no symbols.h name: 0x4160c's sprite prompt */
+#define DS_0000A7760 0x0000A7760u /* no symbols.h name: state 3's per-char actor table */
+#define DS_0000A7808 0x0000A7808u /* no symbols.h name: 0x418F4's per-char actor table */
+#define DS_000C8780 0x000C8780u   /* no symbols.h name: state 3's centre sprite */
+#define DS_000C87A8 0x000C87A8u   /* no symbols.h name: state 3's opponent/stage sprite */
+#define DS_000C8794 0x000C8794u   /* no symbols.h name: state 3's third sprite */
+#define DS_000C86A4 0x000C86A4u   /* no symbols.h name: per-stage anim-stream table, stride 8 */
+#define DS_000C86A8 0x000C86A8u   /* no symbols.h name: per-stage layout-width table, stride 8 */
+#define DS_000C866C 0x000C866Cu   /* no symbols.h name: per-char name string-id table */
+#define DS_000C8688 0x000C8688u   /* no symbols.h name: per-stage name string-id table */
+#define DS_000C85F4 0x000C85F4u   /* no symbols.h name: state 6's per-slot anim-stream table */
+#define DS_0000E9286 0x000E9286u  /* no symbols.h name: state 6's background anim stream */
+#define DS_000C85A8 0x000C85A8u   /* no symbols.h name: 0x418F4/state 7's "confetti" sprite */
+#define DS_000C8730 0x000C8730u   /* no symbols.h name: 0x418F4's fixed sprite (sprite layout) */
+#define DS_000C8744 0x000C8744u   /* no symbols.h name: 0x418F4's fixed sprite (sprite layout) */
+#define DS_000C8762 0x000C8762u   /* no symbols.h name: 0x418F4's per-side tally column (text layout) */
+#define DS_000C8764 0x000C8764u   /* no symbols.h name: 0x418F4/state 3/7's per-side dword/column table */
+#define DS_000C875C 0x000C875Cu   /* no symbols.h name: 0x418F4's per-side tally column (sprite layout) */
+#define DS_000C875E 0x000C875Eu   /* no symbols.h name: 0x418F4/state 7's per-side score column (sprite layout) */
+#define DS_000C85D8 0x000C85D8u   /* no symbols.h name: frontend_portrait_flash's stream table */
+#define DS_000C8610 0x000C8610u   /* no symbols.h name: frontend_portrait_flash's palette table */
+#define DS_000C85E6 0x000C85E6u   /* no symbols.h name: frontend_portrait_reveal's stream table */
+#define DS_000C8648 0x000C8648u   /* no symbols.h name: frontend_portrait_reveal's palette table */
+#define FN_00026978 0x00026978u   /* no symbols.h name: game_hook_26978 */
+
+/* 0x414B4 — record §48-Z. Flash portrait slot `i`'s actor: mark its +0x29
+ * dirty bit (0x8), re-seek its animation to DS_000C85D8[char*2] (the class
+ * DS_00108106[i] & 0xF, or +7 when bit 0x40 is set, indexes the palette
+ * table DS_000C8610), and reset its pset palette. EBX/ECX/EDX/ESI pushed and
+ * popped. Callers: state 1's scan (0x41D13) and state 4 (0x42096), both in
+ * 0x41C28. */
+static void frontend_portrait_flash(u32 i)
+{
+    u32 flags = DSB(DS_00108106 + i);                       /* 0x414B8/0x414C5 */
+    u32 cls = flags & 0xFu;                                 /* 0x414C0/0x414C3 */
+    u32 bit6 = (flags & 0x40u) >> 6;                        /* 0x414CD..0x414E4 */
+    u32 ch = DSB(DS_000C8664 + i);                          /* 0x414D0 */
+    u32 rec = DSD(DS_001080C0 + ch * 4u);                   /* 0x414D9 */
+    DSB(rec + 0x29u) = (u8)(DSB(rec + 0x29u) | 8u);         /* 0x414E0 */
+    u32 stream = DSW(DS_000C85D8 + ch * 2u);                /* 0x414E7/0x414EF */
+    actors_anim_seek(rec, stream);                          /* 0x414FC 0x2BCF4 */
+    u32 col = bit6 != 0u ? cls + 7u : cls;                  /* 0x41501..0x4150A */
+    u32 pal = DSD(DS_000C8610 + col * 4u);                  /* 0x4150A */
+    actor_pset_palette(rec, 0u, pal);                       /* 0x4151C 0x2A17C */
+}
+
+/* 0x41528 — record §48-Z. 0x414B4 without the class/palette-column split:
+ * mark the portrait's +0x29 dirty, re-seek its animation to
+ * DS_000C85E6[char*2] and reset its pset palette to DS_000C8648[char].
+ * EBX/ECX/EDX pushed and popped. Only caller: state 5's DS_0010810E < 8 arm,
+ * 0x42159 (0x41C28). */
+static void frontend_portrait_reveal(u32 slot)
+{
+    u32 ch = DSB(DS_000C8664 + slot);                       /* 0x4152D */
+    u32 rec = DSD(DS_001080C0 + ch * 4u);                   /* 0x4153A/0x41552 */
+    DSB(rec + 0x29u) = (u8)(DSB(rec + 0x29u) | 8u);         /* 0x41540 */
+    u32 stream = DSW(DS_000C85E6 + ch * 2u);                /* 0x41544 */
+    actors_anim_seek(rec, stream);                          /* 0x41558 0x2BCF4 */
+    u32 pal = DSD(DS_000C8648 + ch * 4u);                   /* 0x4155D */
+    actor_pset_palette(rec, 0u, pal);                       /* 0x4156F 0x2A17C */
+}
+
+/* 0x4660c — record §48-Z. Recompute the continue timer DS_001082D0 from the
+ * difficulty row b = DS_0010452C and column `col` (the same table
+ * flow_1082c8_init reads at column 0 for its default): the byte
+ * DS_000C9388[b*7 + col], minus (DS_00104B11 - 1) when the continue count
+ * DS_00104B11 > 1, clamped to >= 0. EBX/ECX/EDX pushed and popped. Only
+ * caller: 0x416D4 (0x41780's 0x41778, and 0x41760's 0x41778 wait — actually
+ * called from 0x416D4 at 0x416EC and from 0x41760 at 0x41778). */
+static void flow_1082d0_from_column(u32 col)
+{
+    u32 count = DSB(DS_00104B11);                           /* 0x46613 */
+    u32 b = DSB(DS_0010452C);                                /* 0x46620/0x46644 */
+    u32 v = DSB(DS_000C9388 + col + b * 7u);                 /* 0x46633/0x46653 */
+    s32 r = (count > 1u) ? (s32)v - (s32)(count - 1u) : (s32)v;   /* 0x4661C..0x4665A */
+    if (r < 0) r = 0;                                          /* 0x46662/0x46664 */
+    DSD(DS_001082D0) = (u32)r;                                 /* 0x46666 */
+}
+
+/* 0x4160c — record §48-Z. Draw the round-transition prompt (sprite
+ * DS_000C876C at DS_000C8718's word when the sprite flag DS_00104529 bit 1
+ * is set, else the strings 0xDD/0xDC erased and drawn at row 2), clear the
+ * seven bytes DS_00108106..DS_0010810C, DS_00108111 = 0, DS_00104B23 = 6, a
+ * 30-frame countdown (DS_00104AFE = 0x1E), increment the current side's
+ * select-cycle field DS_00107832[r*0x94] and schedule state 8
+ * (DS_00104B25 = 8). Callers: 0x416D4 (0x4174D) and state 5's
+ * DS_00108104[r] == 7 arm, 0x4212C (0x41C28). */
+static void frontend_mode12_advance(void)
+{
+    if ((DSB(DS_00104529) & 2u) != 0u) {                    /* 0x4160F/0x41616 */
+        (void)actor_spawn((const u32 *)(mem + DS_000C876C), DSW(DS_000C8718),
+                          0xFFu, 0x1200u, 0u);               /* 0x41618..0x41632 0x2AE14 */
+    } else {
+        text_cells_release(0, 2, game_string_get(0xDDu), 0x4000u);   /* 0x41639..0x41651 0x1C500, 0x2F280 */
+        text_cursor_set(-1, 2, game_string_get(0xDCu), 0x4003u);     /* 0x41656..0x41671 0x1C500, 0x2F198 */
+    }
+    mem_fill(DS_00108106, 0u, 7u);                          /* 0x41676..0x41682 0x65490 */
+    DSB(DS_00108111) = 0u;                                  /* 0x41689 */
+    u32 r = DSD(DS_00104AD4);                               /* 0x4168F */
+    u32 field = DS_00107832 + r * 0x94u;                    /* 0x41695..0x416A3 */
+    DSB(DS_00104B23) = 6u;                                  /* 0x416A5 (BL) */
+    DSW(DS_00104AFE) = 0x1Eu;                               /* 0x416B7 */
+    DSB(field) = (u8)(DSB(field) + 1u);                     /* 0x416B0/0x416BE/0x416C2 */
+    DSB(DS_00104B25) = 8u;                                  /* 0x416C9 (DH) */
+}
+
+/* 0x416D4 — record §48-Z. Mode 0x12's tally step, called only from state 5
+ * of 0x41C28 (0x420FE). With the match result r == 2, frontend_darken_marked
+ * and return. Otherwise: flow_1082d0_from_column(DS_00108104[r])
+ * recomputes the continue timer; the dead stub 0x32BAC(char[r], char[r^1])
+ * is a no-op (raw byte at 0x32BAC is 0xC3, RET — confirmed by `read_memory`,
+ * 8 call sites across the image, none observable); then, when
+ * DS_00108104[r] == 7, frontend_mode12_advance(), else
+ * frontend_darken_marked(). EBX/EDX pushed and popped. */
+static void frontend_mode12_darken_or_tally(void)
+{
+    if (DSD(DS_00104AD4) == 2u) {                           /* 0x416DC/0x416DF */
+        frontend_darken_marked();                           /* 0x41755 0x41578 */
+        return;
+    }
+    u32 r = DSD(DS_00104AD4);                               /* 0x416D6 */
+    flow_1082d0_from_column((u32)DSB(DS_00108104 + r));     /* 0x416E1..0x416EC 0x4660C */
+    /* PORT: 0x41733 0x32BAC(char[r], char[r^1]) — the dead stub (see above).
+     * The original's EAX/EDX build (DS_0010782A[r^1] and DS_0010782A[r])
+     * feeds only this no-op call, so the port drops the dead computation
+     * too. */
+    if (DSB(DS_00108104 + r) == 7u) {                       /* 0x41738..0x4174B */
+        frontend_mode12_advance();                          /* 0x4174D 0x4160C */
+        return;
+    }
+    frontend_darken_marked();                               /* 0x41755 0x41578 */
+}
+
+/* 0x41760 — record §48-Z. State 5's "challenger takes over" branch:
+ * flow_1082d0_from_column(DS_00108104[r]), flow_stage_pick() (0x25848),
+ * fight_char_select(r ^ 1, DS_00104AFC) (0x41350, the other side becomes the
+ * current stage's character), then arm the hook game_hook_259cc, mode 0x17
+ * and a 0x78-frame (120) countdown. EBX/ECX/EDX pushed and popped. Only
+ * caller: state 5's DS_00108104[r] != 7 arm, 0x4213B (0x41C28). */
+static void frontend_mode12_challenge_continue(void)
+{
+    u32 r = DSD(DS_00104AD4);                                /* 0x41763 */
+    flow_1082d0_from_column((u32)DSB(DS_00108104 + r));      /* 0x41768..0x41778 0x4660C */
+    flow_stage_pick();                                        /* 0x4177D 0x25848 */
+    fight_char_select(r ^ 1u, DSW(DS_00104AFC));             /* 0x41784..0x41794 0x41350 */
+    DSD(DS_00104AE4) = FN_000259CC;                          /* 0x417A5 */
+    DSW(DS_001088EE) = 0u;                                   /* 0x4179E */
+    DSW(DS_00104B00) = 0x17u;                                /* 0x417B0 */
+    DSW(DS_00104AFE) = 0x78u;                                /* 0x417B7 */
+}
+
+/* 0x417C4 — record §48-Z. State 7's "no more continues" branch: draw the
+ * game-over text (strings 0x1E/0x1F/0x20 at rows 8/0xA/0xC, col -1, mode 0)
+ * or, with the sprite flag DS_00104529 bit 1, spawn the actor DS_000C871C at
+ * DS_000C8718's word (mode 0x1E00). Then arm the hook game_hook_26978, mode
+ * 0x17 and a 0xB4-frame (180) countdown. EBX/ECX/EDX pushed and popped.
+ * Only caller: state 7's DS_00105B3A == 0 arm, 0x42439 (0x41C28). */
+static void flow_no_continue_screen(void)
+{
+    if ((DSB(DS_00104529) & 2u) != 0u) {                    /* 0x417C7/0x417CE */
+        (void)actor_spawn((const u32 *)(mem + DS_000C871C), DSW(DS_000C8718),
+                          0xFFu, 0x1E00u, 0u);               /* 0x417D0..0x417EA 0x2AE14 */
+    } else {
+        text_cursor_set(-1, 8, game_string_get(0x1Eu), 0u);   /* 0x417F1..0x41809 0x1C500, 0x2F198 */
+        text_cursor_set(-1, 0xA, game_string_get(0x1Fu), 0u); /* 0x4180E..0x41826 */
+        text_cursor_set(-1, 0xC, game_string_get(0x20u), 0u); /* 0x4182B..0x41843 */
+    }
+    DSD(DS_00104AE4) = FN_00026978;                          /* 0x41854 */
+    DSW(DS_001088EE) = 0u;                                   /* 0x4185A */
+    DSW(DS_00104B00) = 0x17u;                                /* 0x41866 */
+    DSW(DS_00104AFE) = 0xB4u;                                /* 0x4186D */
+}
+
+/* 0x418F4 — record §48-Z. State 5's scoreboard build: for i in {0, 1}, if
+ * the side's camera-target record's +0x63 byte != 1, spawn the side's
+ * character (DS_0000A7808[char]) at a per-side position, draw a 12- or
+ * 19-glyph dash divider, two name lines (or one tally column) and a small
+ * DS_00108104[i] tally, then draw the side's score (rec+0x3C) at column
+ * DS_000C875E/DS_000C8764[i], row 0x1C. With the sprite flag DS_00104529 bit
+ * 1 clear (the "text layout") the divider/columns come from
+ * DS_000C8760/0xC875C..0xC8764's per-side tables and two DS_000C866C-style
+ * name lines are text_cursor_set directly; with it set (the "sprite layout")
+ * the divider/columns come from DS_000C8758/0xC875C/0xC875E and two fixed
+ * sprites DS_000C8730/0xC8744 are spawned. On the second side (i != 0) the
+ * spawned character's palette resets to handle 0x74. Last, when the side's
+ * select-cycle field rec+0x82 is non-zero, that many copies of the sprite
+ * DS_000C85A8 scroll in through DS_00108100/0x108102, `count` steps of
+ * 0x800. EBP/ESI/EDI and a four-dword local frame are the raw's loop
+ * scratch; i, off4 = i*4 and p2 = i*2 below play that role. Only caller:
+ * state 5's top, 0x420ED (0x41C28). */
+static void frontend_scoreboard_build(void)
+{
+    for (u32 i = 0u; i < 2u; i++) {
+        u32 off4 = i * 4u, p2 = i * 2u;
+        u32 rec = DSD(DS_001077A8 + off4);                  /* 0x4190E */
+        if (DSB(rec + 0x63u) == 1u) continue;                /* 0x41921/0x41924 */
+        u32 spawned;
+        s32 col;
+        if ((DSB(DS_00104529) & 2u) != 0u) {                 /* 0x4192A/0x41931 */
+            u32 ch = DSB(rec + 0x7Au);
+            spawned = actor_spawn((const u32 *)(mem + DSD(DS_0000A7808 + ch * 4u)),
+                                  DSW(DS_000C8758 + p2), 0xFFu, 0x2900u, 0u);   /* 0x41937..0x41963 0x2AE14 */
+            if (i != 0u) actor_pset_palette(spawned, 0u, 0x74u);   /* 0x41968..0x41973 0x2A17C */
+            s32 base = (s32)(s16)DSW(DS_000C8758 + p2) / 512;      /* 0x41978..0x4198E */
+            for (s32 c = base; c != base + 0x13; c++)               /* 0x41991..0x419B1 */
+                text_glyph_at(c, 0x2D, 0x16, 0x1000u);               /* 0x419AA 0x2F174 */
+            (void)actor_spawn((const u32 *)(mem + DS_000C8730), DSW(DS_000C8758 + p2),
+                              0xFFu, 0x2E00u, 0u);              /* 0x419D1 0x2AE14 */
+            (void)actor_spawn((const u32 *)(mem + DS_000C8744), DSW(DS_000C8758 + p2),
+                              0xFFu, 0x3400u, 0u);              /* 0x419F4 0x2AE14 */
+            text_number_set((s32)DSB(DS_000C875C + i), 0x18, (s32)DSB(DS_00108104 + i),
+                            1, 1u, 0x4003u);                    /* 0x41A22 0x2F434 */
+            col = (s32)DSB(DS_000C875E + i);
+        } else {
+            u32 ch = DSB(rec + 0x7Au);
+            spawned = actor_spawn((const u32 *)(mem + DSD(DS_0000A7808 + ch * 4u)),
+                                  (u32)((s32)DSD(DS_000C8764 + p2) >> 16), 0xFFu,
+                                  0x2B00u, 0u);                 /* 0x41A4B..0x41A78 0x2AE14 */
+            if (i != 0u) actor_pset_palette(spawned, 0u, 0x74u);   /* 0x41A7D..0x41A88 0x2A17C */
+            s32 start = (s32)DSB(DS_000C8760 + i);              /* 0x41A91 */
+            for (s32 c = start; c != start + 0xC; c++)          /* 0x41A9D..0x41AB6 */
+                text_glyph_at(c, 0x2D, 0x17, 0x1000u);           /* 0x41AAF 0x2F174 */
+            text_cursor_set(start, 0x18, game_string_get(0x4Cu), 0u);   /* 0x41AC2..0x41ACD */
+            text_cursor_set(start, 0x19, game_string_get(0x4Du), 0u);   /* 0x41ADC..0x41AE7 */
+            text_number_set((s32)DSB(DS_000C8762 + i), 0x1A, (s32)DSB(DS_00108104 + i),
+                            1, 1u, 0x2000u);                      /* 0x41B15 0x2F434 */
+            text_cursor_set(start, 0x1B, game_string_get(0x4Eu), 0u);   /* 0x41B24..0x41B2F */
+            col = (s32)DSB(DS_000C8764 + i);
+        }
+        text_number_set(col, 0x1C, (s32)DSD(rec + 0x3Cu), 7, 1u, 0x2000u);   /* 0x41B58 0x2F434 */
+        s32 count = (s32)DSB(rec + 0x82u);                        /* 0x41B61 */
+        if (count > 0) {                                           /* 0x41B6A */
+            s32 y = (count << 11) - 0x800;                         /* 0x41B6C..0x41B74 */
+            do {
+                DSW(DS_00108100) = DSW(DS_000C8518 + p2);          /* 0x41B7A */
+                s32 base_y = (DSB(DS_00104529) & 2u) != 0u ? 0x2600 : 0x2800;   /* 0x41B88..0x41B98 */
+                DSW(DS_00108102) = (u16)(base_y - y);              /* 0x41B9D */
+                y -= 0x800;                                          /* 0x41BB1 */
+                count--;                                              /* 0x41BC9 */
+                (void)actor_spawn((const u32 *)(mem + DS_000C85A8), DSW(DS_00108100),
+                                  0xFFu, DSW(DS_00108102), 0u);        /* 0x41BCA 0x2AE14 */
+            } while (count > 0);                                      /* 0x41BCF/0x41BD1 */
+        }
+    }
+}
+
+#define FN_00027134 0x00027134u   /* no symbols.h name: game_hook_27134 */
+
+/* 0x271E0 — record §48-Z. Reset the join/character-select scratch
+ * (DS_00104B21, DS_00104B0C = 0; DS_00104B14 = 1; DS_00104B11 = 0),
+ * flow_1082d0_from_column(4) (the continue timer default for this screen;
+ * EDX survives the call, which pushes and pops it, so DS_00104AFC = the
+ * stage word 7 loaded before the call), flow_side_char_random(r ^ 1)
+ * (0x2716C, r reloaded after the call), then arm the hook game_hook_27134,
+ * mode 0x17 and a 0x78-frame (120) countdown. EBX/ECX/EDX/ESI pushed and
+ * popped. Only caller: state 7's DS_00105B3A != 0 arm, 0x423FC (0x41C28,
+ * record §48-Z). */
+static void flow_join_prompt_draw(void)
+{
+    DSB(DS_00104B21) = 0u;                                   /* 0x271F4 */
+    DSB(DS_00104B14) = 1u;                                    /* 0x271FA */
+    DSB(DS_00104B0C) = 0u;                                    /* 0x27200 */
+    DSB(DS_00104B11) = 0u;                                    /* 0x27206 */
+    flow_1082d0_from_column(4u);                              /* 0x27216 0x4660C */
+    DSW(DS_00104AFC) = 7u;                                    /* 0x27220 */
+    u32 r = DSD(DS_00104AD4);                                 /* 0x2721B */
+    flow_side_char_random(r ^ 1u);                            /* 0x2722E 0x2716C */
+    DSD(DS_00104AE4) = FN_00027134;                           /* 0x27233 */
+    DSW(DS_00104AFE) = 0x78u;                                 /* 0x27239 */
+    DSW(DS_001088EE) = 0u;                                    /* 0x27240 */
+    DSW(DS_00104B00) = 0x17u;                                 /* 0x27247 */
+}
+
+/* 0x41C28 — record §48-Z. Mode 0x12's step, game_frame's case 0x12 (only
+ * caller, 0x253BD). Nine states on the byte DS_00104B25 (a jump table at
+ * 0x41C04; DS_00104B25 > 8 is a no-op). `rec` below is
+ * DS_001077B0 + r*0x94, the raw's ECX, computed once per call and used by
+ * states 3/6/7. */
+void game_mode_12_step(void)
+{
+    if (DSB(DS_00104B25) > 8u) return;                       /* 0x41C36/0x41C38 */
+    u32 r = DSD(DS_00104AD4);                                /* 0x41C3E */
+    u32 rec = DS_001077B0 + r * 0x94u;                       /* 0x41C44..0x41C5E */
+
+    switch (DSB(DS_00104B25)) {                              /* 0x41C61 */
+    case 0u:                                                 /* 0x41C68 */
+        if ((DSB(DS_00104529) & 2u) != 0u) {                 /* 0x41C68/0x41C6F */
+            DSD(DS_001080BC) =
+                actor_spawn((const u32 *)(mem + DS_000C8704), DSW(DS_000C8718),
+                           0xFFu, 0x3600u, 0u);               /* 0x41C71..0x41C90 0x2AE14 */
+        } else {
+            text_cursor_set(-1, 0x1Bu, game_string_get(0x4Fu), 0x4003u);   /* 0x41C97..0x41CB2 0x1C500, 0x2F198 */
+        }
+        DSW(DS_00104AFE) = 0xFu;                             /* 0x41CC0 */
+        DSB(DS_00104B25) = 8u;                               /* 0x41CC7 */
+        DSB(DS_00104B23) = 1u;                               /* 0x41CCD */
+        break;
+
+    case 1u: {                                               /* 0x41CDD */
+        u32 i = DSB(DS_0010810F);                            /* 0x41CDF */
+        for (; i < 7u; i++) {                                /* 0x41CE5/0x41DB2 */
+            if (i == DSW(DS_00104AFC)) continue;             /* 0x41CF6/0x41CF8 */
+            if ((DSB(DS_00108106 + i) & 0x80u) == 0u) continue;   /* 0x41CFE/0x41D0B */
+            frontend_portrait_flash(i);                      /* 0x41D13 0x414B4 */
+            u32 n = DSB(DS_00108112);                         /* 0x41D1A */
+            DSB(DS_00108112) = (u8)(n + 1u);                  /* 0x41D23 */
+            /* PORT: 0x41D2B 0x2C3FC(n + 0x34, n) voice, not wired (record
+             * §45-A). */
+            if (DSD(DS_00104AD4) != 2u) {                     /* 0x41D30/0x41D37 */
+                u32 cls = DSB(DS_00108106 + i) & 0x7Fu;       /* 0x41D39/0x41D3F */
+                for (u32 side = 0u; side < 2u; side++) {      /* 0x41D4A..0x41D75 */
+                    u32 tag = side * 0x40u;                   /* 0x41D68 */
+                    u32 ch = DSB(DS_0010782A + side * 0x94u); /* 0x41D4D */
+                    if (cls == (ch | tag))                    /* 0x41D5C/0x41D60 */
+                        DSB(DS_00108104 + side) =
+                            (u8)(DSB(DS_00108104 + side) + 1u);   /* 0x41D62 */
+                }
+            }
+            DSB(DS_0010810F) = (u8)(i + 1u);                  /* 0x41D86 */
+            DSB(DS_00104B23) = 1u;                            /* 0x41D8C */
+            DSW(DS_00104AFE) = 8u;                            /* 0x41D93 */
+            DSB(DS_00104B25) = 8u;                            /* 0x41D9C */
+            DSB(DS_00108111) = (u8)(DSB(DS_00108111) + 1u);   /* 0x41DA2 */
+            return;
+        }
+        if (DSD(DS_00104AD4) == 2u ||                         /* 0x41DC2/0x41DC5 */
+            DSB(DS_00107813 + r * 0x94u) == 1u) {              /* 0x41DD5..0x41DE4 */
+            frontend_darken_marked();                          /* 0x41DE6 0x41578 */
+            return;
+        }
+        DSW(DS_00104AFE) = 0x1Eu;                              /* 0x41DFE */
+        DSB(DS_00104B23) = 2u;                                  /* 0x41E05 */
+        DSB(DS_00104B25) = 8u;                                   /* 0x41E0B */
+        break;
+    }
+
+    case 2u:                                                  /* 0x41E1B */
+        if ((DSB(DS_00104529) & 2u) != 0u) {                  /* 0x41E1B/0x41E22 */
+            actor_set_dead(DSD(DS_001080BC));                        /* 0x41E24..0x41E29 0x2B150 */
+        } else {
+            text_cursor_hold_font2(-1, 0x1Bu, game_string_get(0x50u), 0x4000u);   /* 0x41E30..0x41E4B 0x1C500, 0x2F510 */
+        }
+        DSB(DS_00104B25) = 3u;                                 /* 0x41E57 */
+        DSW(DSD(DS_001080F4) + 0x36u) = 0x40u;                 /* 0x41E5D */
+        break;
+
+    case 3u:                                                   /* 0x41E6D */
+        /* PORT: the raw reads the dword at +0x34 and SARs it by 16
+         * (0x41E72/0x41E78), which is exactly the signed word at +0x36
+         * (little-endian: the dword's top 16 bits). The port reads that
+         * word directly. */
+        if ((s32)(s16)DSW(DSD(DS_001080F4) + 0x36u)
+            + (s32)DSD(DSD(DS_001080F4) + 0x1Cu) < 0x2300)     /* 0x41E7D/0x41E83 */
+            break;                                              /* not yet: nothing this frame */
+        DSD(DSD(DS_001080F4) + 0x1Cu) = 0x2300u;                /* 0x41E89 */
+        DSW(DSD(DS_001080F4) + 0x36u) = 0u;                     /* 0x41E90 */
+        if ((DSB(DS_00104529) & 2u) != 0u) {                    /* 0x41EA2/0x41EA5 */
+            u32 ch = DSB(rec + 0x7Au);
+            s32 half = (s32)((DSB(DS_000C86A8 + (u32)DSW(DS_00104AFC) * 8u) + 0x58u) / 2u);   /* 0x41EB4..0x41ECB */
+            s32 x = 0xA8 - half;                                /* 0x41ECD/0x41ED9 */
+            u32 spawned = actor_spawn(
+                (const u32 *)(mem + DSD(DS_0000A7760 + ch * 4u)),
+                (u32)x << 6, 0xFFu, 0x200u, 0u);                /* 0x41EF1 0x2AE14 */
+            if (DSD(DS_00104AD4) != 0u)                          /* 0x41EF6/0x41EFD */
+                actor_pset_palette(spawned, 0u, 0x74u);           /* 0x41F06 0x2A17C */
+            x += 0x50;                                           /* 0x41F12 */
+            (void)actor_spawn((const u32 *)(mem + DS_000C8780),
+                              (u32)x << 6, 0xFFu, 0x400u, 0u);     /* 0x41F24 0x2AE14 */
+            s32 halfw = (s32)(DSB(DS_000C86A8 + (u32)DSW(DS_00104AFC) * 8u) / 2u) + 8;   /* 0x41F3F..0x41F4F */
+            u32 rec2 = actor_spawn((const u32 *)(mem + DS_000C87A8),
+                                   (u32)(x + halfw) << 6, 0xFFu, 0x400u, 0u);   /* 0x41F62 0x2AE14 */
+            actors_anim_seek(rec2, DSD(DS_000C86A4 + (u32)DSW(DS_00104AFC) * 8u));   /* 0x41F81 0x2BCF4 */
+            (void)actor_spawn((const u32 *)(mem + DS_000C8794), DSW(DS_000C8718),
+                              0xFFu, 0xA00u, 0u);                  /* 0x41F96 0x2AE14 */
+        } else {
+            const u8 *s1 = game_string_get(DSD(DS_000C866C + (u32)DSB(rec + 0x7Au) * 4u));  /* 0x41FAE 0x1C500 */
+            s32 w1 = text_width(s1, 0u);                          /* 0x41FB3 0x2F0F0 */
+            const u8 *s2 = game_string_get(0xDBu);                /* 0x41FC1 0x1C500 */
+            s32 w2 = text_width(s2, 0u);                          /* 0x41FC6 0x2F0F0 */
+            const u8 *s3 = game_string_get(DSD(DS_000C8688 + (u32)DSW(DS_00104AFC) * 4u));  /* 0x41FDE 0x1C500 */
+            s32 w3 = text_width(s3, 0u);                          /* 0x41FE3 0x2F0F0 */
+            s32 col0 = 0x15 - (w1 + w2 + w3) / 2;                  /* 0x41FF3..0x41FFA */
+            const u8 *s4 = game_string_get(DSD(DS_000C866C + (u32)DSB(rec + 0x7Au) * 4u));  /* 0x4200D 0x1C500 */
+            text_cursor_set(col0, 2, s4, 0u);                     /* 0x42018 0x2F198 */
+            text_cursor_next_line(game_string_get(0xDBu), 0u);    /* 0x42024/0x42029 0x1C500, 0x2F41C */
+            text_cursor_next_line(
+                game_string_get(DSD(DS_000C8688 + (u32)DSW(DS_00104AFC) * 4u)), 0u);   /* 0x4203F/0x42044 */
+        }
+        DSB(DS_0010810E) = 0u;                                   /* 0x42056 */
+        DSB(DS_00108104 + r) = (u8)(DSB(DS_00108104 + r) + 1u);  /* 0x42060 */
+        DSB(DS_00104B25) = 4u;                                    /* 0x4206C */
+        DSB(DS_00108111) = (u8)(DSB(DS_00108111) + 1u);           /* 0x42079 */
+        /* PORT: 0x4207F 0x2C3FC(0x3A) voice, not wired (record §45-A). */
+        break;
+
+    case 4u:                                                     /* 0x4208E */
+        frontend_portrait_flash(DSW(DS_00104AFC));                /* 0x42096 0x414B4 */
+        DSB(DS_0010810E) = (u8)(DSB(DS_0010810E) + 1u);           /* 0x420A5 */
+        /* PORT: 0x420B7 0x2C3FC(0xC7) voice when DS_0010810E == 8, not wired
+         * (record §45-A). */
+        DSW(DS_00104AFE) = 4u;                                     /* 0x420C5 */
+        DSB(DS_00104B23) = 5u;                                     /* 0x420CC */
+        DSB(DS_00104B25) = 8u;                                     /* 0x420D2 */
+        break;
+
+    case 5u:                                                      /* 0x420E1 */
+        if (DSB(DS_0010810E) < 8u) {                               /* 0x420E8/0x420EB */
+            frontend_portrait_reveal(DSW(DS_00104AFC));            /* 0x42159 0x41528 */
+            DSB(DS_00104B23) = 4u;                                  /* 0x4215E */
+            DSW(DS_00104AFE) = 4u;                                   /* 0x42166 */
+            DSB(DS_00104B25) = 8u;                                   /* 0x4216D */
+            break;
+        }
+        frontend_scoreboard_build();                                /* 0x420ED 0x418F4 */
+        if (DSB(DS_00104B1F) == 3u) {                                /* 0x420F9/0x420FC */
+            frontend_mode12_darken_or_tally();                       /* 0x420FE 0x416D4 */
+            break;
+        }
+        /* PORT: 0x4210D 0x2C3FC(0x33) voice, not wired (record §45-A). */
+        if (DSB(DS_00108104 + r) == 7u) {                            /* 0x42127/0x4212A */
+            frontend_mode12_advance();                                /* 0x4212C 0x4160C */
+            break;
+        }
+        frontend_mode12_challenge_continue();                        /* 0x4213B 0x41760 */
+        break;
+
+    case 6u: {                                                      /* 0x4217D */
+        s32 d = (s32)DSW(DSD(DS_001080F4) + 0x2Cu) - 0x180;          /* 0x42183/0x4218D */
+        s32 step = d / 64;   /* 0x42195..0x4219D: the SAR/SHL/SBB/SAR sequence
+                               * is a truncating (round-toward-zero) signed
+                               * divide by 64, same idiom as elsewhere in this
+                               * file; C's `/` matches it, a plain `>>6` would
+                               * not for a negative `d`. */
+        DSW(DS_00108100) = DSW(DS_000C8518 + r * 2u);                  /* 0x421A7/0x421B5 */
+        u32 field = DS_00107832 + r * 0x94u;                            /* the raw's local ECX, same as `rec + 0x82` */
+        u8 cyc = DSB(field);                                             /* 0x421C2/0x421D2 */
+        s32 base_y = (DSB(DS_00104529) & 2u) != 0u ? 0x2600 : 0x2800;   /* 0x421AF..0x421D9 */
+        DSW(DS_00108102) = (u16)(base_y - (s32)(cyc - 1) * 0x800);       /* 0x421E1/0x421E3 */
+        DSW(DSD(DS_001080F4) + 0x34u) = (s16)(((s32)(u16)DSW(DS_00108100)
+            - (s32)DSD(DSD(DS_001080F4) + 0x18u)) / step);               /* 0x421FC..0x42213 */
+        DSW(DSD(DS_001080F4) + 0x36u) = (s16)(((s32)(u16)DSW(DS_00108102)
+            - (s32)DSD(DSD(DS_001080F4) + 0x1Cu)) / step);               /* 0x42211..0x4221E */
+        /* PORT: 0x42229 0x2C3FC(0xBC, remainder) voice, not wired (record
+         * §45-A). */
+        DSB(DS_00104B25) = 7u;                                            /* 0x42238 (DH) */
+        actors_anim_begin(DSD(DS_001080F4), DS_0000E9286, 0x3F800000u);   /* 0x42245 0x2BC30 */
+        for (u32 off = 0u; off != 0x1Cu; off += 4u)                       /* 0x4224A..0x4226C */
+            actors_anim_begin(DSD(DS_001080C0 + off), DSD(DS_000C85F4 + off),
+                              0x3F800000u);                                /* 0x4225E 0x2BC30 */
+        break;
+    }
+
+    case 7u: {                                                          /* 0x4226E */
+        s32 y = (s32)(s16)DSW(DSD(DS_001080F4) + 0x2Cu) - 0x40;          /* 0x4227C/0x4227F */
+        DSW(DSD(DS_001080F4) + 0x2Cu) = (u16)y;                          /* 0x4227F */
+        if (y > 0x180) break;                                            /* 0x42283/0x42289 */
+        actor_set_dead(DSD(DS_001080F4));                                       /* 0x4228F 0x2B150 */
+        (void)actor_spawn((const u32 *)(mem + DS_000C85A8), DSW(DS_00108100),
+                          0xFFu, DSW(DS_00108102), 0u);                    /* 0x422B2 0x2AE14 */
+        fighter_41310(r, 100000);                                          /* 0x422C1 0x41310 */
+        u32 sc = (DSB(DS_00104529) & 2u) != 0u
+               ? DSB(DS_000C875E + r) : DSB(DS_000C8764 + r);              /* 0x422DA..0x42314 */
+        text_number_set((s32)sc, 0x1C, (s32)DSD(rec + 0x3Cu), 7, 1u, 0x2000u);   /* 0x42329 0x2F434 */
+        if (DSB(DS_00104B1D) != 0u) {                                      /* 0x4232E/0x42335 */
+            frontend_darken_marked();                                      /* 0x42337 0x41578 */
+            break;
+        }
+        if (DSB(DS_00104B1F) == 3u) {                                      /* 0x42346/0x42350 */
+            frontend_darken_marked();                                      /* 0x42352 0x41578 */
+            break;
+        }
+        if (DSB(DS_0010452C) < 9u && DSB(DS_00108113) == 0u) {             /* 0x42368/0x4236B/0x42374 */
+            flow_1082d0_from_column((u32)DSB(DS_00108104 + r));            /* 0x4238B 0x4660C */
+            flow_stage_pick();                                              /* 0x42390 0x25848 */
+            fight_char_select(r ^ 1u, DSW(DS_00104AFC));                    /* 0x423A7 0x41350 */
+            DSD(DS_00104AE4) = FN_000259CC;                                  /* 0x423C4 */
+            DSW(DS_001088EE) = 0u;                                           /* 0x423BD */
+            DSW(DS_00104AFE) = 0x78u;                                        /* 0x423B6 */
+            DSW(DS_00104B00) = 0x17u;                                        /* 0x423CA */
+            break;
+        }
+        if (DSB(DS_00105B3A) == 0u) {                                       /* 0x423E1 */
+            flow_no_continue_screen();                                       /* 0x42434 0x417C4 */
+            break;
+        }
+        if (DSB(DS_001078A7) == 0u) DSB(DS_0010789F) = 0x3Cu;               /* 0x423EA/0x423F5 */
+        else DSB(DS_0010780B) = 0x3Cu;                                       /* 0x423EC */
+        flow_join_prompt_draw();                                             /* 0x423FC 0x271E0 */
+        config_play_time_close(DSD(DS_00104ABC), DSB(DS_00104B19));          /* 0x4240E 0x32A3C */
+        DSB(DS_00104B19) = 0u;                                                /* 0x4241A */
+        /* PORT: 0x42420 longjmp(0x2DAE4, 0x10, 1) — the front-end quit path,
+         * out of scope (spec §7). */
+        break;
+    }
+
+    case 8u:                                                                /* 0x42443 */
+        DSW(DS_00104AFE) = (u16)(DSW(DS_00104AFE) - 1u);                    /* 0x42449 */
+        if ((s16)DSW(DS_00104AFE) < 1)                                       /* 0x42452 */
+            DSB(DS_00104B25) = DSB(DS_00104B23);                             /* 0x42457/0x4245C */
+        break;
+    }
+}
+
 /* ---- the mode 0x1A/0x1B wipe and the DS_00104AE4 hook (record §43-B) ---- */
 
 #define DS_000C98F4 0x000C98F4u   /* no symbols.h name: the wipe-in descriptor */
@@ -4661,6 +5171,9 @@ void game_frame(void)
     case 0x13u:
         game_mode_13_step();                           /* 0x253C4 0x424E8 (record §48-D) */
         break;                                         /* 0x253C9 */
+    case 0x12u:
+        game_mode_12_step();                           /* 0x253BD 0x41C28 (record §48-Z) */
+        break;                                         /* 0x253C2 */
     case 0x09u:
         game_mode_09_step();                           /* 0x2533F 0x28788 (record §48-Y) */
         break;                                         /* 0x25344 */
@@ -4672,7 +5185,6 @@ void game_frame(void)
         break;                                         /* 0x25282 */
     case 0x07u:
     case 0x0Fu:
-    case 0x12u:
     case 0x16u:
     case 0x18u:
     case 0x19u:
@@ -4698,7 +5210,7 @@ void game_frame(void)
         /* PORT: named gaps, each case's body unported (record §47-B.1 has
          * the entry and callees of every one):
          * 7 0x282C4;
-         * 0xF 0x277C0; 0x12 0x41C28;
+         * 0xF 0x277C0;
          * 0x16 0x4F2B0; 0x18 0x4F6E8;
          * 0x19 0x4F704; 0x1E 0x1EEB0; 0x1F 0x208F8; 0x21 0x26540;
          * 0x22 0x26C8C; 0x23 0x26A50; 0x24 0x26F58; 0x25 inline (0x266AC,
@@ -4720,8 +5232,9 @@ void game_frame(void)
          * runs after 0x26254, case 0x13 (0x424E8, record §48-D) is
          * game_mode_13_step, case 9 (0x28788, record §48-Y) is
          * game_mode_09_step, case 8 (0x28468, record §49-C) is
-         * game_mode_08_step, and case 0xA (0x28BD4, record §49-D) is
-         * game_mode_0a_step, each dispatched above. */
+         * game_mode_08_step, case 0xA (0x28BD4, record §49-D) is
+         * game_mode_0a_step, and case 0x12 (0x41C28, record §48-Z) is
+         * game_mode_12_step, each dispatched above. */
         break;
     case 0x00u:
     case 0x1Cu:

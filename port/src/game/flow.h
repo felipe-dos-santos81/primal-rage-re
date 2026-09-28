@@ -342,6 +342,28 @@ void flow_round_over(void);
  * 0x392A0(slot, 1, 0) on each side below 0x77 at its +0x5A byte. */
 void flow_winner_pose_step(void);
 
+/* Record §48-Z, mode 0x12 (the post-match "next opponent" screen).
+ * game_frame's case 0x12 (0x253BD) calls 0x41C28, a 9-state machine on the
+ * byte DS_00104B25 (a jump table at 0x41C04): 0 the prompt (sprite or text),
+ * 1 a one-slot-per-call scan of the seven portraits DS_00108106 for a
+ * DS_0010810F cursor with bit 0x80 set, flashing it (0x414B4) and tallying
+ * DS_0010782A's match against DS_00108104; 2 kills the state-0 prompt; 3 the
+ * "P1'S CHARACTER / VS / STAGE" banner once the background record's y offset
+ * clears 0x2300; 4 flashes the current stage's portrait (0x41528) and counts
+ * DS_0010810E; 5 the scoreboard build (0x418F4) then dispatches on
+ * DS_00104B1F/DS_00108104[r]: 0x416D4 (mode 0x12's tally step, called only
+ * here), 0x4160c (frontend_mode12_advance) or 0x41760
+ * (frontend_mode12_challenge_continue); 6 sets up the credits-reel scroll
+ * velocity and starts the scoreboard actors' animations; 7 scrolls the
+ * background until it passes y = -0x180, awards 100000 points (0x41310) and
+ * draws the updated score, then dispatches to mode 0x17 (continue), 0x417C4
+ * (flow_no_continue_screen) or the join-prompt draw + audit close + longjmp
+ * 0x2DAE4(0x10); 8 a countdown (DS_00104AFE) that restores DS_00104B25 from
+ * DS_00104B23 at zero. 0x416D4's dead stub call 0x32BAC is 0xC3 (a bare RET)
+ * confirmed by raw `read_memory` — its 8 call sites across the image
+ * (including 0x41733) are all no-ops. */
+void game_mode_12_step(void);
+
 /* Record §48-D, mode 0x13 (the challenge screen after a match). 0x424E8,
  * game_frame's case 0x13, steps DS_00104B25: 0 the actors (0x428B8), 1 the
  * drop (0x42BCC), 2 the fighters (0x42724), the crowd (0x4B9AC) and a

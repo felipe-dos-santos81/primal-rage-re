@@ -18522,3 +18522,269 @@ by `grep` across all three; the remaining §7.6/§7.12 mentions in
 `game_flow.md` are historical narrative about other, unrelated addresses
 under the same spec section numbers, not open-gap claims about `0x1922C` or
 `0x46460`/`0x4649C`).
+## 48-Z. Mode `0x12`'s post-match "next opponent" screen `0x41C28`, its tally step `0x416D4`, and their callees (gap batch 21, branch `gap21-mode12`)
+
+(The section letter is Z. `git log --all` and `docs/PROGRESS.md` show A, B,
+C, D, E, J, K, P, Q, R, S, T, U, V, W and X taken; Z is free and nothing
+else in flight names it.)
+
+**Result in one line.** `0x41C28`, `game_frame`'s case `0x12` (the table
+entry `0x253BD call 0x41c28; 0x253C2 jmp 0x2540F`), is ported as
+`game_mode_12_step` (`flow.c`) and wired. `0x416D4` is not a second
+`game_frame` entry — its only caller is `0x41C28`'s state 5 (`0x420FE`) — so
+it is a `static` helper, `frontend_mode12_darken_or_tally`. Nine more
+callees needed for the first time are ported alongside them.
+
+### 48-Z.1 Sources
+
+The raw comes from the Ghidra HTTP bridge at `127.0.0.1:8089`
+(`disassemble_function`, `read_memory`, `get_xrefs_to`,
+`get_function_by_address`, `decompile_function`); the Ghidra MCP tool did
+not connect this session. `decompile_function` was used only to cross-check
+control flow and local-variable identity (loop bounds, which stack slot is
+which named local across intervening `push`/`ret N` shifts) — its own
+argument lists are unreliable for `0x2AE14`/`0x2F434`/`0x2A17C`'s non-EAX/
+EDX/ECX register arguments (it silently drops `EBX` and stack args for
+functions it has not typed), so every register value in the port traces to
+`disassemble_function`'s raw bytes, never to the decompiler's guess.
+
+### 48-Z.2 `0x416D4` (137 bytes) and its shape
+
+`0x416D4` takes no real parameters (`void`). With the match result
+`r = DS_00104AD4 == 2`, it calls `0x41578` (`frontend_darken_marked`,
+already ported) and returns. Otherwise:
+
+- `call 0x4660c(EAX = DS_00108104[r])` — a new callee (§48-Z.4).
+- `call 0x32BAC(EAX = DS_0010782A[r^1], EDX = DS_0010782A[r])` — **a dead
+  stub.** `read_memory 0x32bac` (32 bytes) gives `c3 8d 40 00 53 89 d3 83
+  f8 06 ...`: the byte at `0x32BAC` itself is `0xC3`, a bare `RET`. A real
+  function begins at `0x32BAD` after the one-byte `RET` and a 3-byte
+  `lea eax,[eax]` alignment NOP, but the `CALL` at `0x41733` targets
+  `0x32BAC` exactly, so it always executes the `RET` and returns
+  immediately, observing and changing nothing. `get_xrefs_to 0x32bac`
+  finds 8 callers across the image (`0x3CFCA`, `0x3D082`, four inside
+  `0x28788`/mode 9, `0x41733` and one with no resolved container function
+  at `0x28680`) — all of them dead the same way. This is the same category
+  as the `0x2C3FC` voice stubs this codebase already treats as out of
+  scope (spec §7), so the port drops the call and its argument build
+  entirely, with a `PORT:` note citing the raw bytes.
+- `if (DS_00108104[r] == 7) call 0x4160c(); else call 0x41578();` and
+  return.
+
+Ported as `frontend_mode12_darken_or_tally`, `static` in `flow.c` (its only
+caller is `0x41C28`'s state 5).
+
+### 48-Z.3 `0x41C28` (1858 bytes, 610 instructions) — the state machine
+
+`AL = DS_00104B25; if (AL > 8) return;` (no jump-table read for an
+out-of-range state — the port's `switch` needs no explicit guard for this
+case either, since a `switch` with no matching case is already a no-op; the
+guard is transcribed anyway to keep one C statement per raw instruction).
+Then `ECX = r * 0x94` (`lea/add/shl/add/shl`, cross-checked against every
+other `DS_0010782A`/`DS_00107832`/`DS_001077B0`-relative table this file
+already uses at that same stride) and a jump through the table at `0x41C04`
+(`read_memory`, 9 dwords): `0x41C68, 0x41CDD, 0x41E1B, 0x41E6D, 0x4208E,
+0x420E1, 0x4217D, 0x4226E, 0x42443`, states 0..8.
+
+- **State 0 (`0x41C68`).** The `DS_00104529` bit 1 branch: sprite
+  `DS_000C8704` at `(DS_000C8718, 0xFF, 0x3600, 0)` into `DS_001080BC`, or
+  text `game_string_get(0x4F)` centred at row `0x1B`, mode `0x4003`. Then
+  `DS_00104AFE = 0xF`, `DS_00104B25 = 8`, `DS_00104B23 = 1`.
+- **State 1 (`0x41CDD`).** A resumable, one-hit-per-call scan of the seven
+  portrait slots from the persisted cursor `DS_0010810F`: skip the current
+  stage (`DS_00104AFC`) and any slot whose `DS_00108106` byte lacks bit
+  `0x80`; on the first hit, `frontend_portrait_flash(i)` (new, §48-Z.4),
+  bump the voice-pitch counter `DS_00108112` (voice deferred, §45-A), and,
+  unless `r == 2`, compare the hit's class (`DS_00108106[i] & 0x7F`)
+  against each side's tagged character id (`DS_0010782A[side] |
+  side*0x40`), incrementing `DS_00108104[side]` on a match; then advance
+  the cursor to `i + 1`, arm an 8-frame wait (state 8, return-to 1) and
+  return. If the whole scan finds nothing: `r == 2` or the side's think
+  gate `DS_00107813[r*0x94] == 1` darkens and returns (`0x41578`);
+  otherwise a 30-frame wait (state 8, return-to 2).
+- **State 2 (`0x41E1B`).** Kill state 0's sprite (`0x2B150` on
+  `DS_001080BC`) or hold the text (`0x2F510`, string `0x50`, row `0x1B`,
+  mode `0x4000`). `DS_00104B25 = 3`; the background record
+  `DS_001080F4`'s `+0x36` word = `0x40` (a scroll speed field, matching the
+  state-6/7 scroll setup below).
+- **State 3 (`0x41E6D`).** A "not yet" guard first: while the background
+  record's `(+0x34 hi word) + (+0x1C dword)` is below `0x2300`, nothing
+  happens this frame (no writes at all — confirmed with
+  `check_mode_12_state3_not_yet`, §48-Z.6). Once past it: `+0x1C = 0x2300`,
+  `+0x36 = 0`, then the "P1'S CHARACTER / VS / STAGE" banner. Sprite
+  layout: the own-character actor `DS_0000A7760[char]` at an x derived from
+  `DS_000C86A8[stage*8]`, the centre sprite `DS_000C8780`, the
+  opponent/stage sprite `DS_000C87A8` re-seeked to `DS_000C86A4[stage*8]`'s
+  stream, and a third sprite `DS_000C8794` at `DS_000C8718`. Text layout:
+  three `game_string_get`+`text_width` calls (own name `DS_000C866C[char]`,
+  `"VS"` id `0xDB`, stage name `DS_000C8688[stage]`) sum their widths to
+  centre the first line at row 2, then two more lines through the new
+  `0x2F41C` wrapper (col 0, cursor row `-1`). Then `DS_0010810E = 0`,
+  `DS_00108104[r] += 1`, `DS_00104B25 = 4`, `DS_00108111 += 1`, the `0x3A`
+  voice (deferred).
+- **State 4 (`0x4208E`).** `frontend_portrait_flash(DS_00104AFC)`,
+  `DS_0010810E += 1` (the `0xC7` voice at 8, deferred), `DS_00104AFE = 4`,
+  `DS_00104B23 = 5`, `DS_00104B25 = 8`.
+- **State 5 (`0x420E1`).** While `DS_0010810E < 8`:
+  `frontend_portrait_reveal(DS_00104AFC)` (new, §48-Z.4), state 8
+  return-to 4, 4-frame wait. Once `>= 8`: `frontend_scoreboard_build()`
+  (`0x418F4`, new, §48-Z.5); with `DS_00104B1F == 3`,
+  `frontend_mode12_darken_or_tally()` (`0x416D4`, §48-Z.2); else (`0x33`
+  voice, deferred) when `DS_00108104[r] == 7`,
+  `frontend_mode12_advance()` (`0x4160C`, new, §48-Z.4); else
+  `frontend_mode12_challenge_continue()` (`0x41760`, new, §48-Z.4).
+- **State 6 (`0x4217D`).** Computes the scroll step
+  `((word +0x2C) - 0x180) / 64` (signed, truncating) and the scroll target
+  `DS_00108100/0x108102` from `DS_000C8518[r*2]` and the select-cycle field
+  `DS_00107832[r*0x94]` (the same field `frontend_mode12_advance`
+  increments). Stores the per-frame velocity into the background record's
+  `+0x34`/`+0x36` words (quotient/remainder of two divisions by the scroll
+  step), the `0xBC` voice (deferred), `DS_00104B25 = 7`, then
+  `actors_anim_begin` on the background (stream `DS_0000E9286`) and on each
+  of 7 scoreboard-slot actors (`DS_001080C0`/`DS_000C85F4`, stride 4), all
+  with `frame_bits = 1.0f` (`0x3F800000`).
+- **State 7 (`0x4226E`).** Scrolls `+0x2C` by `-0x40`/frame; while the new
+  value is `> 0x180` nothing else happens this frame. Once it drops to or
+  below: kill the background (`0x2B150`), spawn the "confetti" sprite
+  `DS_000C85A8` at the staged position, award 100000 points
+  (`fighter_41310(r, 100000)`, already ported) and redraw the score
+  (`text_number_set`, col `DS_000C875E`/`DS_000C8764[r]`, row `0x1C`, width
+  7, pad 1, mode `0x2000`). Then: `DS_00104B1D != 0` or `DS_00104B1F == 3`
+  darkens and returns; else, with a low difficulty and no
+  `DS_00108113` lock, `frontend_mode12_challenge_continue`'s body inline
+  (recompute the continue timer, `flow_stage_pick`, `fight_char_select(r^1,
+  DS_00104AFC)`, arm `game_hook_259cc`/mode `0x17`/120 frames); else, with
+  no credit sensor (`DS_00105B3A == 0`), `flow_no_continue_screen()`
+  (`0x417C4`, new, §48-Z.4); else the join prompt (`0x271E0`, new,
+  §48-Z.4), the play-time audit close, and a `longjmp(0x2DAE4, 0x10, 1)`
+  quit path (spec §7, deferred as `PORT:`).
+- **State 8 (`0x42443`).** `DS_00104AFE -= 1`; `<= 0` (signed) copies
+  `DS_00104B23` into `DS_00104B25`.
+
+Ported as `game_mode_12_step` in `flow.c`, wired at `game_frame`'s case
+`0x12` (removed from the named-gap list).
+
+### 48-Z.4 New leaf callees
+
+- **`0x414B4`/`0x41528`** — `frontend_portrait_flash`/`frontend_portrait_reveal`.
+  Both mark a portrait actor's `+0x29` dirty bit, re-seek its animation
+  (`actors_anim_seek`) and reset its pset palette (`actor_pset_palette`).
+  `0x414B4` additionally splits its palette column on bit `0x40` of the
+  slot's flags byte (`DS_000C8610[cls]` or `[cls+7]`); `0x41528` always
+  uses the direct tables `DS_000C85E6`/`DS_000C8648`.
+- **`0x4660c`** — `flow_1082d0_from_column` (`static`). `DS_000C9388[b*7 +
+  col]` (`b = DS_0010452C`, the same table `flow_1082c8_init` already
+  reads at column 0), minus `DS_00104B11 - 1` when the continue count is
+  above 1, clamped to `>= 0`, into `DS_001082D0`.
+- **`0x4160c`** — `frontend_mode12_advance` (`static`). The sprite/text
+  prompt, clears `DS_00108106..0x10810C`, resets `DS_00108111`, bumps
+  `DS_00107832[r*0x94]`, arms a 30-frame wait to state 8.
+- **`0x41760`** — `frontend_mode12_challenge_continue` (`static`, and
+  inlined again for state 7's identical arm per §48-Z.3).
+- **`0x417C4`** — `flow_no_continue_screen` (`static`). Draws the "no
+  continue" text (strings `0x1E`/`0x1F`/`0x20`) or sprite `DS_000C871C`,
+  arms `game_hook_26978` (already ported), mode `0x17`, 180 frames.
+- **`0x271E0`** — `flow_join_prompt_draw` (`static`). Resets the
+  join/character-select scratch, `flow_1082d0_from_column(4)`,
+  `DS_00104AFC = 7`, `flow_side_char_random(r^1)` (`0x2716C`, already
+  ported), arms `game_hook_27134` (already ported), mode `0x17`, 120
+  frames.
+- **`0x2F174`/`0x2F41C`** (`actors.c`, next to the rest of the text-cursor
+  group) — `text_glyph_at`/`text_cursor_next_line`. Thin wrappers over
+  `text_glyph_emit`/`text_cursor_set` that fix the stack-built `&col`/
+  `&row` or the `(0, -1)` args; both are used only by mode `0x12`.
+
+### 48-Z.5 `0x418F4` (212 bytes... 212 instructions) — the scoreboard build
+
+Called once from state 5, no parameters, a `for (i = 0; i < 2; i++)` loop
+(the raw's three-dword local frame plus a fourth read through the shifting
+`[esp+0x10]` slot, resolved with `decompile_function` and cross-checked by
+hand against every intervening `push`/`ret N`: it is the same loop index
+`i`, not a fourth variable, confirmed because `0x2AE14`'s pushed 5th
+argument and `0x2F434`'s pushed pad/mode pair are both consumed by a
+`ret N` on the callee side — the same convention `actor_spawn`/
+`text_number_set`'s existing ports already establish — so the stack
+returns to its pre-call depth after every one of these calls). Per side:
+skip if the camera-target record's `+0x63` byte is 1. Otherwise spawn the
+side's character (`DS_0000A7808[char]`) at a per-side position, draw a
+12- or 19-glyph dash divider (`text_glyph_at`) and either two
+`text_cursor_set` name lines plus a `text_number_set` tally (the
+`DS_00104529` bit-1-clear "text layout", tables `DS_000C8760`/
+`0xC8762`/`0xC8764`) or two fixed sprites plus a `text_number_set` tally
+(the bit-1-set "sprite layout", tables `DS_000C8758`/`0xC875C`/`0xC875E`).
+On the second side (`i != 0`) the spawned character's palette resets to
+handle `0x74`. Both layouts converge on one shared `text_number_set` call
+for the score line (`rec+0x3C`, row `0x1C`, width 7). Last, when the
+side's select-cycle field `rec+0x82` is non-zero, that many copies of
+`DS_000C85A8` scroll in, `0x800` apart, through `DS_00108100`/`0x108102`.
+Ported as `frontend_scoreboard_build` (`static`).
+
+### 48-Z.6 The port and the deviations
+
+- **Placement.** Everything lives in `flow.c`'s new "mode 0x12" section,
+  right after `frontend_darken_marked` (its `0x41578`, which all four of
+  the mode-transition helpers above call, lives immediately before it).
+  `text_glyph_at`/`text_cursor_next_line` are in `actors.c`, next to
+  `text_glyph_emit`/`text_cursor_set`.
+- **`PORT:` notes.** The `0x32BAC` dead stub (§48-Z.2); the `0x2C3FC`
+  voices at `0x41D2B`, `0x4207F`, `0x420B7`, `0x42112`, `0x42229` (all
+  §45-A); the `longjmp(0x2DAE4, 0x10, 1)` quit path in state 7 (spec §7,
+  the same category `game_mode_0e_step`'s `0x2DAE4(0x11, 1)` already
+  names).
+- **No `TODO(verify)`.** Every value traces to a disassembled instruction,
+  a `read_memory` byte range, or an already-ported sibling function's
+  established register convention (`actor_spawn`'s EAX/EDX/ECX/EBX/stack
+  mapping, `text_cursor_set`/`text_number_set`'s EAX/EDX/EBX/ECX mapping,
+  both pinned by their own derivation records and reused here without
+  re-deriving them).
+- **`FN_00026978`/`FN_00027134`** are new local `#define`s (no
+  `symbols.h` name); `FN_000259CC` and `DS_00104529` already existed as
+  local `#define`s later in the file and are duplicated verbatim earlier
+  (identical-token redefinition, legal C) since the new section is used
+  before that point.
+
+### 48-Z.7 The assertions and mutations (`check_mode_12` in `test_fight.c`)
+
+Four of `0x41C28`'s nine states are self-contained enough to assert without
+spawning actors or loading resources — the countdown (state 8), the
+out-of-range guard, the frame-level dispatch, and state 3's "not yet"
+early-out — so `check_mode_12` covers those directly with `mz_save`/
+`mz_restore` and no pool setup:
+
+- **`check_mode_12_no_state`.** `DS_00104B25 = 9` with sentinels on every
+  field state 8 could touch: all untouched.
+- **`check_mode_12_countdown`.** State 8 both ways: `DS_00104AFE` 5 -> 4
+  with the state unchanged, and 1 -> 0 with the state taking
+  `DS_00104B23`'s seeded value (3).
+- **`check_mode_12_frame_wiring`.** The same expiry through `game_frame()`
+  with `DS_00104B00 = 0x12`, proving the switch-case wiring, not just the
+  standalone function.
+- **`check_mode_12_state3_not_yet`.** A scratch background record well
+  below the `0x2300` threshold: the state, the touched dword and
+  `DS_00108104[r]` are all untouched, and a planted sentinel on the
+  unrelated `+0x2C` word survives too.
+
+Three mutations were run and reverted (not a scripted sweep, given the
+narrower assertion surface this batch's self-contained states allow):
+loosening state 8's guard from `> 8u` to `>= 8u` (state 8 itself becomes
+unreachable) fails 4 checks; lowering state 3's `0x2300` threshold to
+`0x100` (the banner fires early) fails 3 checks. A third attempt —
+weakening the `> 8u` guard alone while leaving the `switch`'s exact-match
+semantics in place — was tried first and found **behaviourally inert**: a
+C `switch` with no matching `case` for state 9 already no-ops identically
+whether or not the guard runs, unlike the raw's unconditional jump-table
+read, which would be undefined for an out-of-range index. This is recorded
+here rather than silently dropped, per this repo's evidence discipline:
+the guard is transcribed for fidelity to the raw instruction stream, but
+`check_mode_12_no_state` alone cannot distinguish its presence from its
+absence, and the real guard/no-op coverage for state 9-255 comes from the
+`switch` construct itself, not this test.
+
+### 48-Z.8 Reachability and verification
+
+No no-input path reaches mode `0x12`: nothing in the ported code stores
+`DS_00104B00 = 0x12` (the front-end/demo/attract oracles' entire path stays
+in mode 3 or the already-covered modes). `PR_ORACLE_REQUIRED=1 run_tests`
+is green three times, no SIGBUS. `make verify` is unchanged: front-end
+517/801/3/2, demo-fight fully explained at N = 1886, attract2 0 unexplained
+at N = 3617, and `symbols.h` regenerates byte-identically.
