@@ -22703,7 +22703,12 @@ a persistence cycle; `config.c` keeps its `PORT:` note.
 ### 49-Y.6 Verification
 
 `PR_ORACLE_REQUIRED=1 ./build/run_tests` green three times (~1.8 s each, no
-hang). `make verify`: see the report.
+hang). `make FRONTEND_DUMP=/tmp/pr_frontend_dump_gap44
+TITLE_PIN_DIR=/tmp/pr_title_pin_gap44 verify` green with the gates unchanged:
+front-end 1325 frames, 517 clean / 801 splice / 3 transition / 2 unexplained
+(the two allowed by name); demo-fight N=1886 fully explained; attract cycle 2
+0 unexplained; `symbols.h` regenerates byte-identically. As expected, nothing
+here is reachable from the demo, attract or front-end paths.
 
 ### 49-Y.7 Remaining named gaps
 
