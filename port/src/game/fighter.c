@@ -4594,6 +4594,16 @@ void fighter_46534(u32 side, s32 delta)
         DSD(DS_001082C8 + side * 4u) = DSD(DS_001082D0);    /* 0x46585/0x46587 */
 }
 
+void fighter_4660c(u32 v)
+{
+    u32 b = (u32)DSB(DS_0010452C);                       /* 0x46620/0x46644 */
+    u32 t = (u32)DSB(DS_000C9388 + v + b * 7u);          /* 0x46633/0x46653, zero-extended */
+    u32 streak = (u32)DSB(DS_00104B11);                   /* 0x46613 */
+    s32 r = (streak > 1u) ? ((s32)t - (s32)(streak - 1u)) : (s32)t;  /* 0x4663C/0x4665A */
+    if (r < 0) r = 0;                                     /* 0x46660..0x46664 */
+    DSD(DS_001082D0) = (u32)r;                            /* 0x46666 */
+}
+
 /* 0x46190. 1 when the DIP field 0x29 has bit 0x800 set and the machine is in
  * free play. */
 static int fighter_46190(void)

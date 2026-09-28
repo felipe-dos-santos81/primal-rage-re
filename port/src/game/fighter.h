@@ -295,6 +295,16 @@ u32 fighter_body_push(void);
  * DS_001082D0. Called by 0x4F434. */
 void fighter_46534(u32 side, s32 delta);
 
+/* 0x4660C — record §48-Y. Recomputes the ceiling DS_001082D0 fighter_46534
+ * clamps up to. v = the caller's byte; b = DS_0010452C (the difficulty
+ * index). t = the zero-extended byte 0xC9388[v + b*7] (0x46620/0x46626 or
+ * 0x46644/0x4664A, both `lea eax,[ebx*8]; sub eax,ebx` = b*7). DS_00104B11
+ * (already incremented by the caller) at or below 1 (0x46619/0x4661C):
+ * DS_001082D0 = t. Above 1: DS_001082D0 = t - (DS_00104B11 - 1)
+ * (0x46639/0x4663C), both clamped up to 0 (0x46660..0x46666). EBX/ECX/EDX are
+ * pushed and popped. Only caller: 0x28717 (0x286BC, record §48-Y). */
+void fighter_4660c(u32 v);
+
 /* 0x41310. Add `delta` to the camera-target record DS_001077A8[side]'s +0x3C
  * (mode 3 excluded); a negative delta that would leave it <= 0 stores 0.
  * Exported for mode 0xD's 0x274FC (record §48-Q). */

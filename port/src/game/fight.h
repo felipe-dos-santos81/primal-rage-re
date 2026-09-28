@@ -56,6 +56,14 @@ void fight_command_map(u32 side, u32 edx_arg, u32 override);
  * 0x4A634's slot +0x42 bit 0/1 reset. */
 void fight_effects_pass(void);
 
+/* 0x4A708 — record §48-Y. Walks the effects list DS_0010884C (the same walk
+ * fight_effects_pass opens) and, for every entry whose type (entry+0x1E) is
+ * not 6, zeroes the actor's +0x38/+0x34/+0x36 velocity words and holds it:
+ * fight_4b3f0(entry, index, 1) when DS_00104B16 == entry+0x21, else
+ * fight_4b430(entry, index, 1) (their own headers name both call sites).
+ * Only caller: 0x28788 (mode 9, record §48-Y). */
+void fight_effects_hold_all(void);
+
 /* 0x4AC18. The worshipper streams' 0xD500 target (opcode 0x15, mode 0x4000;
  * the dword 0x0004AC18 at 24 sites in 0xEE09E..0xEF62E, the first after the
  * 0xD500 word at 0xEE09C). EAX = the actor record: with its +0x14 fight-effect

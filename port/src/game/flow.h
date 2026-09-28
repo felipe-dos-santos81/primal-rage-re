@@ -358,6 +358,45 @@ void flow_winner_pose_step(void);
  * hook 0x25AE8). 0x42FE0: the side's prompt actor on the 0xE8816 stream,
  * its count actors killed, its prompts erased, 0x41310 on both sides. */
 void game_mode_13_step(void);
+
+/* 0x28788 — record §48-Y. Mode 9's frame handler (0x24C5C case 9, the table
+ * entry 0x2533F `call 0x28788; jmp 0x2540F`, body to 0x28BD2; its only
+ * caller). A slimmer sibling of the fight frame 0x26254 (game_mode_04_step,
+ * record §48-K) runs unconditionally (fight_slot_clear, camera_screen_base
+ * per side, the position latches, camera_project per side, camera_decay,
+ * fighter_pass_a; unlike 0x26254 there is no DS_001078FA == 2 gate and no
+ * second/third projection round); fight_slot_pass runs only when neither
+ * side's +0x41 byte has bit 1 set; then fight_hud_pass(0)/(1),
+ * fighter_pass_b(1) (note the argument: 1, not 0x26254's 0), fight_effects_pass
+ * and, of camera_scene_step's pair, only camera_y_commit (0x12DA8; 0x1282C is
+ * not called here). The word DS_00104AF8 counts down; reaching 0 this frame
+ * sets DS_001078FE = DS_001078FC = 1, ORs 0x10 into both sides' +0x41 byte
+ * and sets DS_000F0AFE = 4; either way DS_00104AEC |= 2. Only with
+ * DS_000F0AFE == 4 and DS_001078FC != 0 does the results state run: it holds
+ * every effects-list entry (fight_effects_hold_all), draws the result caption
+ * (flow_match_result_text) and updates the streak/handicap bookkeeping
+ * (flow_match_streak_update); rearms the countdowns; with DS_00108173 set,
+ * forces a draw and clears both sides' think bytes; with DS_00104B1D == 0,
+ * snapshots the play-time index and calls config_play_time_snap(idx, 0). It
+ * then dispatches on the match result DS_00104AD4: a draw (2) always darkens
+ * into mode 0x17/return-mode 0x13 (flow_results_darken_close); a decided
+ * result (0/1) whose winner's DS_00107813 think-byte is 1 bumps the loser's
+ * win-streak byte and, once it reaches 3 with the loser's DS_00108104 stat
+ * below 6, records a combined flag byte before the same darken/close;
+ * otherwise (the winner's think-byte isn't 1) the stage word DS_00104AFC ==
+ * 7 clears the stage marks (fight_stage_marks_clear) before the same
+ * darken/close, and any other stage only installs the mode-0x12 hook
+ * fight_hook_4142c (0x4142C) under mode 0x17, with no return-mode store and
+ * no darken/close. Four call sites inside 0x28788 (0x289D9, 0x28AFF,
+ * 0x28B25, 0x28BA2) target 0x32BAC, which `read_memory` shows is a single
+ * byte, 0xC3 (`ret`) — the tail instruction of the unrelated FUN_00032B94,
+ * not a function of its own (Ghidra's own function table agrees:
+ * body_start == body_end == 0x32BAC). A CALL onto a bare `ret` pushes and
+ * immediately pops the same return address, so it is a proven no-op
+ * (`get_xrefs_to 0x32BAC` lists eight such call sites across the image, not
+ * only this function's four); the port omits the register-only computations
+ * that feed them. */
+void game_mode_09_step(void);
 void flow_scroll_reset(u32 stage);
 void flow_challenge_open(void);
 void flow_challenge_drop(void);
