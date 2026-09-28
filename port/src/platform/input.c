@@ -57,6 +57,15 @@ int input_check_key(void)
     return g_count > 0 ? (int)g_keys[g_head] : 0;
 }
 
+/* 0x50146 — record §49-X. EAX = mask, DX = first, BX = next. */
+void input_repeat_set(u32 mask, u32 first, u32 next)
+{
+    DSD(DS_000E1C3C) = mask;                            /* 0x50146 */
+    DSW(DS_000E1C42) = (u16)first;                      /* 0x5014B */
+    DSW(DS_000E1C40) = (u16)first;                      /* 0x50152 */
+    DSW(DS_000E1C44) = (u16)next;                       /* 0x50159 */
+}
+
 /* 0x2D2F0. `xor eax,eax; ret`. */
 u32 input_joystick_device(u32 selector)
 {

@@ -60,6 +60,12 @@ u32 input_pump(void);
  * since the last call, latching them into DAT_000E1C38 as it goes. */
 u32 input_select_bits(u32 mask);
 
+/* 0x50146 (record §49-X). Sets the repeat mask DS_000E1C3C to `mask` and the
+ * repeat timer words: DS_000E1C42 (the reload value) and DS_000E1C40 (the live
+ * counter) to `first`, DS_000E1C44 (the reload after the first repeat) to
+ * `next`. */
+void input_repeat_set(u32 mask, u32 first, u32 next);
+
 /* 0x2D2F0. The joystick accessor: a constant 0 in the shipped profile
  * (`xor eax,eax; ret`), so the joystick half of 0x4F644 is inert. */
 u32 input_joystick_device(u32 selector);

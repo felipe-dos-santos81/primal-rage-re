@@ -17,6 +17,8 @@
 #include "host.h"
 #include "game/rng.h"
 #include "game/actors.h"
+#include "game/menu.h"
+#include "game/config.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -2464,6 +2466,862 @@ static void check_text_vertical_number(void)
     actors_reset();
 }
 
+/* ---- the menu cluster 0x2EB80..0x30000 (record §49-X) -------------------- */
+
+#define MT_STR    0x3E30000u   /* a fabricated ENGLISH.TXT image (9 groups of 0x800) */
+#define MT_HANDLE 0x3E2F000u   /* its 0x1E75C-style handle: +8 base, +0xC len, +0x15 flags */
+#define MT_TABLE  0x3E2E000u   /* the menu tables */
+#define MT_LAYOUT 0x3E2D000u   /* the key layout block DS_00101514 points at */
+#define MT_STRUCT 0x3E2C000u   /* the structure DS_0010740C points at */
+#define MT_GROUP  0x800u
+#define MT_FN0    0xF1A00u     /* fake code addresses for the registered callbacks */
+#define MT_FN1    0xF1A10u
+#define MT_FN2    0xF1A20u
+#define MT_FN3    0xF1A30u
+#define MT_FN_NONE 0xF1AFFu    /* never registered */
+
+typedef struct { u32 n, arg, ret; } mt_cb_t;
+static mt_cb_t mt_cbs[4];
+static u32 mt_args0[16];
+static u32 mt_hook_at, mt_hook_bits, mt_hook_ret_at, mt_hook_ret;
+
+static void mt_press(u32 bits)
+{
+    DSD(DS_000E1C34) = bits;          /* the level the pad reports */
+    DSD(DS_000E1C38) = 0;             /* the latch: every masked bit is new */
+}
+
+static u32 mt_cb_common(u32 which, u32 arg)
+{
+    mt_cbs[which].n++;
+    mt_cbs[which].arg = arg;
+    if (which == 0) {
+        if (mt_cbs[0].n < 16u) mt_args0[mt_cbs[0].n] = arg;
+        if (mt_cbs[0].n == mt_hook_at) mt_press(mt_hook_bits);
+        if (mt_cbs[0].n == mt_hook_ret_at) mt_cbs[0].ret = mt_hook_ret;
+    }
+    return mt_cbs[which].ret;
+}
+static u32 mt_cb0(u32 a) { return mt_cb_common(0, a); }
+static u32 mt_cb1(u32 a) { return mt_cb_common(1, a); }
+static u32 mt_cb2(u32 a) { return mt_cb_common(2, a); }
+static u32 mt_cb3(u32 a) { return mt_cb_common(3, a); }
+
+static void mt_cbs_reset(void)
+{
+    memset(mt_cbs, 0, sizeof mt_cbs);
+    memset(mt_args0, 0, sizeof mt_args0);
+    mt_hook_at = mt_hook_ret_at = 0xFFFFFFFFu;
+    mt_hook_bits = mt_hook_ret = 0;
+}
+
+static void mt_strings_install(void)
+{
+    static const struct { u32 id; const char *s; } ent[] = {
+        { 0x209u, "ESC TO EXIT" }, { 0x20Au, "MENU HELP" },
+        { 0x210u, "TITLE" }, { 0x211u, "ITEM A" }, { 0x212u, "ITEM B" },
+        { 0x213u, "X2" }, { 0x214u, "?HIDE" }, { 0x215u, "\nLOW" },
+        { 0x216u, "\v3ROW" }, { 0x217u, "?" }, { 0x218u, "A_B_C" },
+        { 0x219u, "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ" },
+    };
+    for (u32 g = 0; g < 9u; g++) {
+        u32 p = MT_STR + g * MT_GROUP;
+        DSD(p) = 0;
+        DSD(p + 4u) = (g + 1u) * MT_GROUP;              /* 0x4752F: the next group */
+        p += 8u;
+        for (u32 j = 0; j < 0x40u; j++) {
+            const char *s = "";
+            if (g == 8u)
+                for (u32 k = 0; k < sizeof ent / sizeof ent[0]; k++)
+                    if (ent[k].id == 0x200u + j) s = ent[k].s;
+            u32 len = (u32)strlen(s);
+            DSB(p++) = (u8)len;                          /* 0x4754D */
+            for (u32 i = 0; i < len; i++) DSB(p++) = (u8)((u8)s[i] ^ (u8)len);
+        }
+    }
+    DSD(MT_HANDLE + 8u) = MT_STR;
+    DSD(MT_HANDLE + 0xCu) = 0x10000u;
+    DSB(MT_HANDLE + 0x15u) = 0;
+    DSD(DS_001082DC) = MT_HANDLE;
+}
+
+static void mt_entry(u32 t, u32 i, u32 id, u32 id2, u32 cb, u32 yoff)
+{
+    u32 e = t + i * 0x10u;
+    DSD(e) = id;
+    DSD(e + 4u) = id2;
+    DSD(e + 8u) = cb;
+    DSD(e + 0xCu) = yoff;
+}
+
+/* The mode-0 font's sprite id for `ch` (table 0xBCD7C) and the class font's
+ * (mode & 3 == 2: table 0xBD048 indexed through the class byte 0xBD390). */
+static u32 mt_glyph(u8 ch) { return DSW(0xBCD7Cu + (u32)ch * 4u); }
+static u32 mt_glyph2(u8 ch)
+{
+    s32 k = (s8)DSB(0xBD390u + ch);
+    return k < 0 ? 0u : (u32)DSW(0xBD048u + (u32)k * 4u);
+}
+/* The palette handle (0x33754's table entry +0) of the glyph in a cell: the
+ * font palette its mode selects (0x2F5A0). */
+#define MT_PAL_1000 0x809984u
+#define MT_PAL_2000 0x80998Cu
+#define MT_PAL_4000 0x8099A4u
+#define MT_PAL_F000 0x8099A4u
+static u32 mt_pal(s32 row, s32 col)
+{
+    u32 r = grid(row, col);
+    u32 e = r != 0 ? DSD(actor_pset(r) + 0x18u) : 0u;
+    return e != 0 ? DSD(e) : 0u;
+}
+
+static void mt_menu_reset(void)
+{
+    mem_fill(DS_00107414, 0, 0x40u);
+    mt_cbs_reset();
+    mt_press(0);
+    DSD(DS_00105F30) = 0;
+}
+
+/* 0x2EB80/0x2EBF0/0x2EDE0/0x2EEC8/0x2FE40 (record §49-X.2..5). */
+static void check_menu_input(void)
+{
+    const u32 s_key = DSD(DS_00105F30), s_stamp = DSD(DS_00105F2C),
+              s_ticks = DSD(DS_00101500), s_lay = DSD(DS_00101514),
+              s_lvl = DSD(DS_000E1C34), s_lat = DSD(DS_000E1C38);
+    DSD(DS_00101514) = MT_LAYOUT;
+    mem_fill(MT_LAYOUT, 0, 0x300u);
+    DSW(MT_LAYOUT + 0x2D4u) = 1;                    /* both players' bindings enabled */
+    DSW(MT_LAYOUT + 0x2D6u) = 1;
+    DSB(MT_LAYOUT + 0x2DEu) = 0x48; DSB(MT_LAYOUT + 0x2E6u) = 0x11;   /* up */
+    DSB(MT_LAYOUT + 0x2DFu) = 0x50; DSB(MT_LAYOUT + 0x2E7u) = 0x12;   /* down */
+    DSB(MT_LAYOUT + 0x2E0u) = 0x4B; DSB(MT_LAYOUT + 0x2E8u) = 0x13;   /* left */
+    DSB(MT_LAYOUT + 0x2E1u) = 0x4D; DSB(MT_LAYOUT + 0x2E9u) = 0x14;   /* right */
+
+    /* 0x2EB80: the pending key wins; else 0 through 0x4B0 idle ticks; past that
+     * it clears DS_00107414 (its longjmp is the PORT note). */
+    DSD(DS_00105F30) = 0x4B;
+    CHECK_EQ_INT((int)menu_key_or_timeout(), 0x4B);
+    DSD(DS_00105F30) = 0;
+    DSD(DS_00105F2C) = 100;
+    DSD(DS_00101500) = 100 + 0x4B0;
+    DSB(DS_00107414) = 1;
+    CHECK_EQ_INT((int)menu_key_or_timeout(), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 1);         /* 0x4B0 is not past 0x4B0 (`jbe`) */
+    DSD(DS_00101500) = 100 + 0x4B1;
+    CHECK_EQ_INT((int)menu_key_or_timeout(), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);         /* 0x4B1 is */
+
+    /* 0x2EBF0: the four arrows, Enter and Esc. */
+    DSD(DS_00101500) = 100;
+    DSD(DS_00105F30) = 0;
+    CHECK_EQ_INT((int)menu_key_decode(0), 0);                    /* no key */
+    DSD(DS_00105F30) = 0x48; CHECK_EQ_INT((int)menu_key_decode(0), (int)0x80008000u);
+    DSD(DS_00105F30) = 0x50; CHECK_EQ_INT((int)menu_key_decode(0), 0x40004000);
+    DSD(DS_00105F30) = 0x4B; CHECK_EQ_INT((int)menu_key_decode(0), 0x20002000);
+    DSD(DS_00105F30) = 0x4D; CHECK_EQ_INT((int)menu_key_decode(0), 0x10001000);
+    DSD(DS_00105F30) = 0x0D; CHECK_EQ_INT((int)menu_key_decode(0), 0x1000000);
+    DSD(DS_00105F30) = 0x1B; CHECK_EQ_INT((int)menu_key_decode(0), 0x2000000);
+    DSD(DS_00105F30) = 0x50; CHECK_EQ_INT((int)menu_key_decode(0xC300C000u), 0x40004000);
+    /* Player 2's bindings decode too; an unbound scan code inside 0x48..0x50
+     * (0x49) decodes to nothing. */
+    DSB(MT_LAYOUT + 0x2E6u) = 0x49;
+    DSD(DS_00105F30) = 0x49; CHECK_EQ_INT((int)menu_key_decode(0), 0);
+    DSB(MT_LAYOUT + 0x2E7u) = 0x50; DSB(MT_LAYOUT + 0x2DFu) = 0x33;
+    DSD(DS_00105F30) = 0x50; CHECK_EQ_INT((int)menu_key_decode(0), 0x40004000);
+    DSB(MT_LAYOUT + 0x2DFu) = 0x50;
+    /* A matching binding whose enable word is 0 is skipped, per player. */
+    DSW(MT_LAYOUT + 0x2D4u) = 0;
+    DSD(DS_00105F30) = 0x48; CHECK_EQ_INT((int)menu_key_decode(0), 0);
+    DSD(DS_00105F30) = 0x4D; CHECK_EQ_INT((int)menu_key_decode(0), 0);
+    DSW(MT_LAYOUT + 0x2D4u) = 1;
+    DSW(MT_LAYOUT + 0x2D6u) = 0;
+    DSB(MT_LAYOUT + 0x2E6u) = 0x48;                  /* both players on the same key */
+    DSD(DS_00105F30) = 0x48; CHECK_EQ_INT((int)menu_key_decode(0), 0);   /* p2's word is 0 */
+    DSW(MT_LAYOUT + 0x2D6u) = 1;
+    CHECK_EQ_INT((int)menu_key_decode(0), (int)0x80008000u);   /* both enabled: decoded */
+    /* A mask with no 0xF300F000 bit skips the arrows (0x2EC25); Enter needs its
+     * own bit or mask 0, Esc likewise. */
+    DSD(DS_00105F30) = 0x48; CHECK_EQ_INT((int)menu_key_decode(0x100u), 0);
+    DSD(DS_00105F30) = 0x0D; CHECK_EQ_INT((int)menu_key_decode(0x100u), 0);
+    DSD(DS_00105F30) = 0x0D; CHECK_EQ_INT((int)menu_key_decode(0x2000000u), 0);
+    DSD(DS_00105F30) = 0x0D; CHECK_EQ_INT((int)menu_key_decode(0x1000000u), 0x1000000);
+    DSD(DS_00105F30) = 0x1B; CHECK_EQ_INT((int)menu_key_decode(0x1000000u), 0);
+    DSD(DS_00105F30) = 0x1B; CHECK_EQ_INT((int)menu_key_decode(0x2000000u), 0x2000000);
+    CHECK_EQ_INT((int)DSD(DS_00101514), (int)MT_LAYOUT);   /* stored back unchanged */
+
+    /* 0x2EDE0: the pad bits, plus the keyboard's when `keys` is nonzero; a
+     * nonzero result stamps the idle clock. */
+    DSD(DS_00101500) = 700;
+    DSD(DS_00105F2C) = 5;
+    DSD(DS_00105F30) = 0x50;
+    mt_press(0);
+    CHECK_EQ_INT((int)menu_input_poll(0xC300C000u, 0u), 0);        /* keyboard not read */
+    CHECK_EQ_INT((int)DSD(DS_00105F2C), 5);                        /* nothing: no stamp */
+    CHECK_EQ_INT((int)menu_input_poll(0xC300C000u, 1u), 0x40004000);
+    CHECK_EQ_INT((int)DSD(DS_00105F2C), 700);
+    CHECK_EQ_INT((int)DSD(DS_00105F30), 0x50);                     /* 0x2EDE0 leaves the key */
+    mt_press(0x80008000u);
+    DSD(DS_00105F30) = 0;
+    CHECK_EQ_INT((int)menu_input_poll(0xC300C000u, 0u), (int)0x80008000u);
+    CHECK_EQ_INT((int)menu_input_poll(0xC300C000u, 0u), 0);        /* latched: one shot */
+    /* 0x2EEC8 clears the key after reading it. */
+    DSD(DS_00101500) = 900;
+    DSD(DS_00105F30) = 0x50;
+    mt_press(0);
+    DSD(DS_00105F2C) = 5;
+    CHECK_EQ_INT((int)menu_input_poll_clear(0xC300C000u, 1u), 0x40004000);
+    CHECK_EQ_INT((int)DSD(DS_00105F30), 0);
+    CHECK_EQ_INT((int)DSD(DS_00105F2C), 900);
+    DSD(DS_00105F2C) = 5;
+    CHECK_EQ_INT((int)menu_input_poll_clear(0xC300C000u, 1u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00105F2C), 5);
+
+    DSD(DS_00105F30) = s_key; DSD(DS_00105F2C) = s_stamp; DSD(DS_00101500) = s_ticks;
+    DSD(DS_00101514) = s_lay; DSD(DS_000E1C34) = s_lvl; DSD(DS_000E1C38) = s_lat;
+}
+
+/* 0x2FE40, 0x2F940, 0x2FE84, 0x305FC (record §49-X.3..6). */
+static void check_menu_draw(void)
+{
+    const u32 s_struct = DSD(DS_0010740C);
+    u8 s_dbg[4];
+    memcpy(s_dbg, mem + 0xBCD5Cu, 4u);
+
+    /* 0x2FE40: index -1, past the end and a '?' item give 0. */
+    mt_strings_install();
+    const u32 T = MT_TABLE;
+    mem_fill(T, 0, 0x100u);
+    mt_entry(T, 0, 0x211u, 0, 0, 0);
+    mt_entry(T, 1, 0x214u, 0, 0, 0);                 /* "?HIDE" */
+    mt_entry(T, 2, 0x212u, 0, 0, 0);
+    CHECK_EQ_INT((int)menu_entry_find(T, 0x10u, -1), 0);
+    CHECK_EQ_INT((int)menu_entry_find(T, 0x10u, 0), (int)T);
+    CHECK_EQ_INT((int)menu_entry_find(T, 0x10u, 1), 0);
+    CHECK_EQ_INT((int)menu_entry_find(T, 0x10u, 2), (int)(T + 0x20u));
+    CHECK_EQ_INT((int)menu_entry_find(T, 0x10u, 3), 0);
+    CHECK_EQ_INT((int)menu_entry_find(T, 0x10u, 9), 0);
+    CHECK_EQ_INT((int)menu_entry_find(T, 0x20u, 1), (int)(T + 0x20u));   /* the stride */
+
+    /* 0x2F940: "OS:   " on `row`, "MAIN: " on `row + 1`, each followed by the
+     * string 0x2F41C is handed. */
+    actors_reset();
+    DSD(DS_0010740C) = MT_STRUCT;
+    DSD(MT_STRUCT + 0xCu) = MT_STRUCT + 0x40u;
+    DSB(MT_STRUCT + 0x40u) = 'Y'; DSB(MT_STRUCT + 0x41u) = 0;
+    DSB(0xBCD5Cu) = 'Z'; DSB(0xBCD5Du) = 'X'; DSB(0xBCD5Eu) = 0;
+    menu_debug_lines(3u);
+    CHECK_EQ_INT((int)grid_sprite(3, 4), (int)mt_glyph('O'));
+    CHECK_EQ_INT((int)grid_sprite(3, 5), (int)mt_glyph('S'));
+    CHECK_EQ_INT((int)grid_sprite(3, 10), (int)mt_glyph('Z'));
+    CHECK_EQ_INT((int)grid_sprite(3, 11), (int)mt_glyph('X'));
+    CHECK_EQ_INT((int)grid_sprite(4, 4), (int)mt_glyph('M'));
+    CHECK_EQ_INT((int)grid_sprite(4, 10), (int)mt_glyph('Y'));
+    CHECK_EQ_INT((int)grid(4, 11), 0);
+    CHECK_EQ_INT((int)grid(2, 4), 0);
+    CHECK_EQ_INT((int)grid(5, 4), 0);
+
+    /* 0x2FE84: resets the actors, the input latch and the origin words, spawns
+     * the backdrop row and centres the title (class font, mode | 2) with the
+     * two instruction lines below. */
+    mt_strings_install();
+    mem_fill(T, 0, 0x100u);
+    mt_entry(T, 0, 0x210u, 0, 0, 0);                 /* "TITLE" */
+    actors_reset();
+    text_cursor_set(5, 5, (const u8 *)"Z", 0u);      /* must not survive the reset */
+    CHECK(grid(5, 5) != 0, "the pre-reset cell");
+    DSB(DS_00104B15) = 1;
+    DSW(DS_00107A3A) = 0x77; DSW(DS_00107A38) = 0x66;
+    DSD(DS_00107A1C) = 0;
+    menu_title_draw(T, 0x5000u, 0x1000u, 0u);
+    CHECK_EQ_INT((int)grid(5, 5), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B15), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107A3A), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107A38), 0);
+    CHECK(DSD(DS_00107A1C) != 0, "the backdrop row is spawned");
+    s32 col = (0x2b - text_width((const u8 *)"TITLE", 0x5002u)) >> 1;
+    CHECK(col > 0 && mt_glyph2('T') != 0, "the title column");
+    CHECK_EQ_INT((int)grid_sprite(0, col), (int)mt_glyph2('T'));
+    CHECK_EQ_INT((int)grid(0, col - 1), 0);
+    CHECK_EQ_INT((int)grid_sprite(0x1B, 16), (int)mt_glyph('E'));    /* "ESC TO EXIT" */
+    CHECK_EQ_INT((int)grid_sprite(0x1C, 17), (int)mt_glyph('M'));    /* "MENU HELP" */
+    CHECK_EQ_INT((int)grid(0x1B, 15), 0);
+    /* Flags bit 2 drops the instruction lines; bit 0 adds the debug lines. */
+    menu_title_draw(T, 0x5000u, 0x1000u, 4u);
+    CHECK_EQ_INT((int)grid(0x1B, 16), 0);
+    CHECK_EQ_INT((int)grid(0x1C, 17), 0);
+    CHECK_EQ_INT((int)grid(0x1B, 4), 0);
+    menu_title_draw(T, 0x5000u, 0x1000u, 5u);
+    CHECK_EQ_INT((int)grid_sprite(0x1B, 4), (int)mt_glyph('O'));
+    CHECK_EQ_INT((int)grid_sprite(0x1C, 4), (int)mt_glyph('M'));
+    CHECK_EQ_INT((int)grid(0x1B, 16), 0);
+    /* The second string follows after a space. */
+    mt_entry(T, 0, 0x212u, 0x213u, 0, 0);            /* "ITEM B" + "X2" */
+    menu_title_draw(T, 0x5000u, 0x1000u, 4u);
+    col = (0x2b - text_width((const u8 *)"ITEM B X2", 0x5002u)) >> 1;
+    s32 xcol = col + text_width((const u8 *)"ITEM B ", 0x5002u);
+    CHECK_EQ_INT((int)grid_sprite(0, col), (int)mt_glyph2('I'));
+    CHECK_EQ_INT((int)grid_sprite(0, xcol), (int)mt_glyph2('X'));
+    CHECK_EQ_INT((int)grid(0, xcol - 1), 0);         /* the joining space */
+    /* The '?', '\v' + digit and '\n' prefixes are stripped, in that order. */
+    static const struct { u32 id; const char *shown; } pre[] = {
+        { 0x214u, "HIDE" }, { 0x216u, "ROW" }, { 0x215u, "LOW" } };
+    for (u32 i = 0; i < 3u; i++) {
+        mt_entry(T, 0, pre[i].id, 0, 0, 0);
+        menu_title_draw(T, 0x5000u, 0x1000u, 4u);
+        col = (0x2b - text_width((const u8 *)pre[i].shown, 0x5002u)) >> 1;
+        CHECK_EQ_INT((int)grid_sprite(0, col), (int)mt_glyph2((u8)pre[i].shown[0]));
+    }
+    /* Past 0x28 columns in the class font the '_' turn into spaces and the
+     * plain font is used, centred on the 42 characters copied. */
+    CHECK(mt_glyph('_') != 0, "the plain font has an underscore");
+    {
+        u8 want[0x30];
+        snprintf((char *)want, sizeof want, "A_B_C %s",
+                 "ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ");
+        want[0x2A] = 0;
+        CHECK(text_width(want, 0x5002u) > 0x28, "the fixture is wide enough");
+        mt_entry(T, 0, 0x218u, 0x219u, 0, 0);
+        menu_title_draw(T, 0x5000u, 0x1000u, 4u);
+        CHECK_EQ_INT((int)grid_sprite(0, 0), (int)mt_glyph('A'));
+        CHECK_EQ_INT((int)grid(0, 1), 0);
+        CHECK_EQ_INT((int)grid_sprite(0, 2), (int)mt_glyph('B'));
+        CHECK_EQ_INT((int)grid(0, 3), 0);
+        CHECK_EQ_INT((int)grid_sprite(0, 4), (int)mt_glyph('C'));
+        CHECK_EQ_INT((int)grid(0, 5), 0);
+        CHECK_EQ_INT((int)grid_sprite(0, 6), (int)mt_glyph('A'));
+        /* Narrow enough: the class font keeps the string as it is. */
+        mt_entry(T, 0, 0x218u, 0, 0, 0);
+        menu_title_draw(T, 0x5000u, 0x1000u, 4u);
+        col = (0x2b - text_width((const u8 *)"A_B_C", 0x5002u)) >> 1;
+        CHECK_EQ_INT((int)grid_sprite(0, col), (int)mt_glyph2('A'));
+    }
+
+    actors_reset();
+    DSD(DS_0010740C) = s_struct;
+    memcpy(mem + 0xBCD5Cu, s_dbg, 4u);
+}
+
+/* 0x305FC (record §49-X.6). */
+static void check_menu_widget(void)
+{
+    static u8 sreg[0x1C0];
+    memcpy(sreg, mem + DS_00105D88, sizeof sreg);
+    mem_fill(DS_00107450, 0, 0x20u);
+    memcpy(mem + DS_00107454, "12345678", 8u);
+    memcpy(mem + DS_0010745D, "ABC01234", 9u);
+    actors_reset();
+
+    /* Idle form: the first DS_00107452 characters from DS_00107454 in mode
+     * 0x4000, the rest from DS_0010745D in mode 0x2000. */
+    DSB(DS_00107450 + 2u) = 3;
+    DSB(DS_00107453) = 0;
+    menu_debug_widget(0x11, 2);
+    for (s32 i = 0; i < 8; i++) {
+        u8 want = i < 3 ? (u8)('1' + i) : (u8)"ABC01234"[i];
+        CHECK_EQ_INT((int)grid_sprite(2, 0x11 + i), (int)mt_glyph(want));
+    }
+    CHECK_EQ_INT((int)grid(2, 0x10), 0);
+    CHECK_EQ_INT((int)grid(2, 0x19), 0);
+    CHECK_EQ_INT((int)mt_pal(2, 0x11), (int)MT_PAL_4000);
+    CHECK_EQ_INT((int)mt_pal(2, 0x14), (int)MT_PAL_2000);
+    CHECK(MT_PAL_4000 != MT_PAL_2000, "the two modes differ");
+    /* The whole limit range. */
+    DSB(DS_00107450 + 2u) = 0;
+    actors_reset();
+    menu_debug_widget(0x11, 2);
+    CHECK_EQ_INT((int)grid_sprite(2, 0x11), (int)mt_glyph('A'));
+    CHECK_EQ_INT((int)grid_sprite(2, 0x18), (int)mt_glyph('4'));
+    DSB(DS_00107450 + 2u) = 8;
+    actors_reset();
+    menu_debug_widget(0x11, 2);
+    CHECK_EQ_INT((int)grid_sprite(2, 0x18), (int)mt_glyph('8'));
+
+    /* Entry form: the string at DS_0010745D in mode 0x1000, then the initials
+     * and the digits after them go to high-score table 2, once. */
+    DSB(DS_00107453) = 1;
+    actors_reset();
+    CHECK_EQ_INT((int)hiscore_read(0u, 2u), (int)DS_00105EFC);
+    DSD(DS_00105EFC) = 0xDEADBEEFu;
+    menu_debug_widget(0x11, 2);
+    CHECK_EQ_INT((int)grid_sprite(2, 0x11), (int)mt_glyph('A'));
+    CHECK_EQ_INT((int)mt_pal(2, 0x11), (int)MT_PAL_1000);
+    CHECK_EQ_INT((int)DSB(DS_00107453), 3);
+    CHECK_EQ_INT((int)hiscore_read(0u, 2u), (int)DS_00105EFC);
+    CHECK_EQ_INT((int)DSD(DS_00105EFC), 1234);
+    CHECK_EQ_INT((int)DSB(DS_00105F00), 'A');
+    CHECK_EQ_INT((int)DSB(DS_00105F00 + 1u), 'B');
+    CHECK_EQ_INT((int)DSB(DS_00105F00 + 2u), 'C');
+    /* Bit 1 set: drawn again, never filed again. */
+    memcpy(mem + DS_0010745D, "XYZ99999", 9u);
+    menu_debug_widget(0x11, 2);
+    (void)hiscore_read(0u, 2u);
+    CHECK_EQ_INT((int)DSD(DS_00105EFC), 1234);
+    CHECK_EQ_INT((int)DSB(DS_00107453), 3);
+    CHECK_EQ_INT((int)grid_sprite(2, 0x11), (int)mt_glyph('X'));
+    /* A fresh entry stops at the first non-digit: "12x99" files 12. */
+    memcpy(mem + DS_0010745D, "DEF12x99", 9u);
+    DSB(DS_00107453) = 1;
+    menu_debug_widget(0x11, 2);
+    (void)hiscore_read(0u, 2u);
+    CHECK_EQ_INT((int)DSD(DS_00105EFC), 12);
+    CHECK_EQ_INT((int)DSB(DS_00105F00), 'D');
+
+    memcpy(mem + DS_00105D88, sreg, sizeof sreg);
+    mem_fill(DS_00107450, 0, 0x20u);
+    actors_reset();
+}
+
+/* 0x2FFC4 (record §49-X.7). */
+static void check_menu_step(void)
+{
+    const u32 T = MT_TABLE + 0x200u;
+    const u32 s_lay = DSD(DS_00101514), s_ticks = DSD(DS_00101500),
+              s_stamp = DSD(DS_00105F2C);
+    mem_fill(T, 0, 0x100u);
+    mt_entry(T, 0, 0x210u, 0, MT_FN0, 0);            /* the title */
+    mt_entry(T, 1, 0x211u, 0, MT_FN1, 0);            /* "ITEM A" */
+    mt_entry(T, 2, 0x212u, 0x213u, MT_FN2, 1);       /* "ITEM B" + "X2", one row down */
+    mt_entry(T, 3, 0x214u, 0, MT_FN3, 0);            /* "?HIDE" */
+    mt_entry(T, 4, 0x215u, 0, MT_FN3, 2);            /* "\nLOW", two rows down */
+    mt_strings_install();
+    fn_register(MT_FN0, (void (*)(void))mt_cb0);
+    fn_register(MT_FN1, (void (*)(void))mt_cb1);
+    fn_register(MT_FN2, (void (*)(void))mt_cb2);
+    fn_register(MT_FN3, (void (*)(void))mt_cb3);
+    mt_menu_reset();
+    actors_reset();
+    DSD(DS_00101514) = MT_LAYOUT;
+    DSW(MT_LAYOUT + 0x2D4u) = 1; DSW(MT_LAYOUT + 0x2D6u) = 1;
+    DSB(MT_LAYOUT + 0x2DEu) = 0x48; DSB(MT_LAYOUT + 0x2DFu) = 0x50;
+    DSB(MT_LAYOUT + 0x2E0u) = 0x4B; DSB(MT_LAYOUT + 0x2E1u) = 0x4D;
+    DSB(MT_LAYOUT + 0x2E6u) = 0x11; DSB(MT_LAYOUT + 0x2E7u) = 0x12;
+    DSB(MT_LAYOUT + 0x2E8u) = 0x13; DSB(MT_LAYOUT + 0x2E9u) = 0x14;
+    DSD(DS_00101500) = 1000;
+    DSD(DS_00105F2C) = 5;
+    const u32 pal_hi = MT_PAL_2000, pal_lo = MT_PAL_F000;
+    const u32 A = T + 0x10u, B = T + 0x20u, C = T + 0x40u;
+
+    /* First call: initialises, draws everything, calls the table callback with 0
+     * (the redraw) and again with the selected entry. */
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 1);
+    CHECK_EQ_INT((int)DSD(DS_00107418), 4);
+    CHECK_EQ_INT((int)DSD(DS_00105F2C), 1000);
+    CHECK_EQ_INT((int)DSD(DS_0010741C), (int)A);
+    CHECK_EQ_INT((int)DSD(DS_0010744C), (int)MT_FN0);
+    CHECK_EQ_INT((int)DSD(DS_00107424), 4);          /* the hidden item counts */
+    CHECK_EQ_INT((int)DSD(DS_00107428), 0);
+    CHECK_EQ_INT((int)DSD(DS_00107430), (int)A);
+    CHECK_EQ_INT((int)DSD(DS_0010743C), 0);
+    CHECK_EQ_INT((int)DSD(DS_00107444), 12);         /* rows 5, 7, 11 drawn, then + 1 */
+    CHECK_EQ_INT((int)DSD(DS_00107440), 5);
+    CHECK_EQ_INT((int)mt_cbs[0].n, 2);
+    CHECK_EQ_INT((int)mt_args0[1], 0);
+    CHECK_EQ_INT((int)mt_args0[2], (int)A);
+    CHECK_EQ_INT((int)grid_sprite(5, 4), (int)mt_glyph('I'));
+    CHECK_EQ_INT((int)grid_sprite(5, 9), (int)mt_glyph('A'));
+    CHECK_EQ_INT((int)grid(5, 8), 0);
+    CHECK_EQ_INT((int)grid(6, 4), 0);
+    CHECK_EQ_INT((int)grid_sprite(7, 4), (int)mt_glyph('I'));
+    CHECK_EQ_INT((int)grid_sprite(7, 9), (int)mt_glyph('B'));
+    CHECK_EQ_INT((int)grid_sprite(7, 11), (int)mt_glyph('X'));   /* strlen("ITEM B") + 5 */
+    CHECK_EQ_INT((int)grid_sprite(7, 12), (int)mt_glyph('2'));
+    CHECK_EQ_INT((int)grid(8, 4), 0);
+    CHECK_EQ_INT((int)grid(9, 4), 0);
+    CHECK_EQ_INT((int)grid(10, 4), 0);
+    CHECK_EQ_INT((int)grid_sprite(11, 4), (int)mt_glyph('L'));
+    CHECK_EQ_INT((int)grid(0, 4), 0);
+    CHECK(grid(0x1B, 16) == 0, "flags bit 2: no instruction lines");
+    CHECK_EQ_INT((int)mt_pal(5, 4), (int)pal_hi);    /* the selected item */
+    CHECK_EQ_INT((int)mt_pal(7, 4), (int)pal_lo);
+    CHECK_EQ_INT((int)mt_pal(7, 11), (int)pal_lo);
+    CHECK_EQ_INT((int)mt_pal(11, 4), (int)pal_lo);
+    /* No input: nothing moves, the callback runs with the selection, and 0x4B0
+     * idle ticks are not a timeout. */
+    DSD(DS_00101500) = 1000 + 0x4B0;
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 0u), 0);   /* flags of later calls are ignored */
+    CHECK_EQ_INT((int)DSD(DS_00107418), 4);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 1);
+    CHECK_EQ_INT((int)mt_cbs[0].n, 3);
+    CHECK_EQ_INT((int)mt_args0[3], (int)A);
+    CHECK_EQ_INT((int)DSD(DS_0010743C), 0);
+
+    /* Down: the next visible item, a redraw asked for, the clock stamped. */
+    DSD(DS_00101500) = 2000;
+    mt_press(0x40004000u);
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010742C), 1);
+    CHECK_EQ_INT((int)DSD(DS_00107434), (int)B);
+    CHECK_EQ_INT((int)DSD(DS_0010743C), 1);
+    CHECK_EQ_INT((int)DSD(DS_00105F2C), 2000);
+    CHECK_EQ_INT((int)DSD(DS_00107430), (int)A);     /* not yet redrawn */
+    CHECK_EQ_INT((int)mt_pal(5, 4), (int)pal_hi);
+    /* The redraw unhighlights the old item and highlights the new one, both
+     * strings. */
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00107430), (int)B);
+    CHECK_EQ_INT((int)DSD(DS_00107428), 1);
+    CHECK_EQ_INT((int)DSD(DS_0010743C), 0);
+    CHECK_EQ_INT((int)mt_pal(5, 4), (int)pal_lo);
+    CHECK_EQ_INT((int)mt_pal(7, 4), (int)pal_hi);
+    CHECK_EQ_INT((int)mt_pal(7, 11), (int)pal_hi);
+    CHECK_EQ_INT((int)mt_pal(11, 4), (int)pal_lo);
+    CHECK_EQ_INT((int)mt_cbs[0].n, 6);               /* +2 (redraw 0, sel) after the +1 above */
+    CHECK_EQ_INT((int)mt_args0[5], 0);
+    CHECK_EQ_INT((int)mt_args0[6], (int)B);
+    /* Down again skips the hidden item; then wraps to the first. */
+    mt_press(0x40004000u);
+    (void)menu_step(T, 0x10u, 4u);
+    CHECK_EQ_INT((int)DSD(DS_0010742C), 3);
+    CHECK_EQ_INT((int)DSD(DS_00107434), (int)C);
+    CHECK_EQ_INT((int)DSD(DS_00107448), 1);          /* the wrap fuse untouched */
+    (void)menu_step(T, 0x10u, 4u);
+    CHECK_EQ_INT((int)DSD(DS_00107430), (int)C);
+    mt_press(0x40004000u);
+    (void)menu_step(T, 0x10u, 4u);
+    CHECK_EQ_INT((int)DSD(DS_0010742C), 0);
+    CHECK_EQ_INT((int)DSD(DS_00107434), (int)A);
+    CHECK_EQ_INT((int)DSD(DS_00107448), 0);          /* one wrap spent */
+    /* Up wraps to the last visible item, and beats Down. */
+    (void)menu_step(T, 0x10u, 4u);
+    mt_press(0x80008000u);
+    (void)menu_step(T, 0x10u, 4u);
+    CHECK_EQ_INT((int)DSD(DS_0010742C), 3);
+    (void)menu_step(T, 0x10u, 4u);
+    mt_press(0xC000C000u);
+    (void)menu_step(T, 0x10u, 4u);
+    CHECK_EQ_INT((int)DSD(DS_0010742C), 1);          /* 3 -> 2 (hidden) -> 1 */
+    CHECK_EQ_INT((int)DSD(DS_00107434), (int)B);
+    (void)menu_step(T, 0x10u, 4u);                   /* redraw: the selection is B */
+    CHECK_EQ_INT((int)DSD(DS_00107430), (int)B);
+
+    /* The keyboard reaches the same code: Down through the layout's binding, and
+     * a disabled binding is ignored. */
+    mt_press(0);
+    DSD(DS_00105F30) = 0x50;
+    DSD(DS_00101500) = 3000;
+    (void)menu_step(T, 0x10u, 4u);
+    CHECK_EQ_INT((int)DSD(DS_0010742C), 3);
+    CHECK_EQ_INT((int)DSD(DS_00105F30), 0);          /* 0x2EEC8 consumed the key */
+    CHECK_EQ_INT((int)DSD(DS_00105F2C), 3000);
+    (void)menu_step(T, 0x10u, 4u);
+    DSW(MT_LAYOUT + 0x2D4u) = 0;
+    DSD(DS_00105F30) = 0x48;
+    DSD(DS_00101500) = 3100;
+    (void)menu_step(T, 0x10u, 4u);
+    CHECK_EQ_INT((int)DSD(DS_0010742C), 3);          /* unmoved */
+    CHECK_EQ_INT((int)DSD(DS_00105F2C), 3000);       /* and not stamped */
+    DSW(MT_LAYOUT + 0x2D4u) = 1;
+    CHECK_EQ_INT((int)DSB(DS_00107414), 1);
+
+    /* Idle past 0x4B0 ticks clears the active flag (the longjmp's stand-in). */
+    DSD(DS_00101500) = 3000 + 0x4B1;
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);
+
+    /* Enter runs the item's callback: -5 leaves with a redraw asked for, -10
+     * leaves, any other result returns 0; the title is redrawn for the item. */
+    DSD(DS_00101500) = 4000;
+    DSD(DS_00105F2C) = 4000;
+    (void)menu_step(T, 0x10u, 4u);                   /* re-initialises */
+    CHECK_EQ_INT((int)DSB(DS_00107414), 1);
+    CHECK_EQ_INT((int)DSD(DS_0010742C), 0);
+    mt_press(0x40004000u);
+    (void)menu_step(T, 0x10u, 4u);
+    (void)menu_step(T, 0x10u, 4u);                   /* selection B */
+    CHECK_EQ_INT((int)DSD(DS_00107430), (int)B);
+    CHECK(grid(5, 4) != 0, "the items are on screen before Enter");
+    mt_cbs[2].ret = (u32)-5;
+    mt_press(0x1000000u);
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), -5);
+    CHECK_EQ_INT((int)mt_cbs[2].n, 1);
+    CHECK_EQ_INT((int)mt_cbs[2].arg, (int)B);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010743C), 1);
+    CHECK_EQ_INT((int)DSD(DS_00107428), -2);
+    CHECK_EQ_INT((int)DSD(DS_00107448), -5);
+    CHECK_EQ_INT((int)grid(5, 4), 0);                /* 0x2FE84 reset the screen */
+    {
+        s32 col = (0x2b - text_width((const u8 *)"ITEM B X2", 0x5002u)) >> 1;
+        CHECK_EQ_INT((int)grid_sprite(0, col), (int)mt_glyph2('I'));
+    }
+    /* -10 leaves without asking for a redraw. */
+    (void)menu_step(T, 0x10u, 4u);
+    mt_press(0x40004000u);
+    (void)menu_step(T, 0x10u, 4u);
+    (void)menu_step(T, 0x10u, 4u);
+    mt_cbs[2].ret = (u32)-10;
+    mt_press(0x1000000u);
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), -10);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010743C), 0);
+    CHECK_EQ_INT((int)DSD(DS_00107448), -10);
+    /* Another result is not a way out; neither is a callback nobody registered. */
+    (void)menu_step(T, 0x10u, 4u);
+    mt_press(0x40004000u);
+    (void)menu_step(T, 0x10u, 4u);
+    (void)menu_step(T, 0x10u, 4u);
+    mt_cbs[2].ret = 7;
+    mt_press(0x1000000u);
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00107448), 7);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);
+    DSD(B + 8u) = MT_FN_NONE;
+    (void)menu_step(T, 0x10u, 4u);
+    mt_press(0x40004000u);
+    (void)menu_step(T, 0x10u, 4u);
+    (void)menu_step(T, 0x10u, 4u);
+    mt_press(0x1000000u);
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00107448), 0);
+    DSD(B + 8u) = MT_FN2;
+
+    /* Esc: with flags bit 2 it leaves with -1 and a redraw asked for; without,
+     * -5, or 0 when the selection index equals the item count. */
+    (void)menu_step(T, 0x10u, 4u);
+    mt_press(0x2000000u);
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), -1);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010743C), 1);
+    (void)menu_step(T, 0x10u, 0u);
+    CHECK_EQ_INT((int)DSD(DS_00107418), 0);
+    CHECK_EQ_INT((int)grid_sprite(0x1B, 16), (int)mt_glyph('E'));   /* flags 0: the help lines */
+    mt_press(0x2000000u);
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 0u), -5);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);
+    (void)menu_step(T, 0x10u, 0u);
+    DSD(DS_0010742C) = DSD(DS_00107424);
+    mt_press(0x2000000u);
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 0u), 0);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);
+    /* The Esc key itself is dead: 0x2EEC8 has consumed it before 0x2EB80 looks. */
+    (void)menu_step(T, 0x10u, 4u);
+    DSD(DS_00105F30) = 0x1B;
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), -1);   /* via the 0x2EBF0 Esc bit, flags 4 */
+    CHECK_EQ_INT((int)DSD(DS_00105F30), 0);
+
+    /* A nonzero table callback result is returned before any key is handled. */
+    (void)menu_step(T, 0x10u, 4u);
+    mt_cbs[0].ret = 9;
+    mt_press(0x2000000u);
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 9);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 1);
+    CHECK_EQ_INT((int)DSD(DS_00107448), 9);
+    mt_cbs[0].ret = 0;
+    mt_press(0);
+
+    /* Flags bit 0 draws the 0x305FC widget after a step that did not leave. */
+    DSB(DS_00107414) = 0;
+    actors_reset();
+    memcpy(mem + DS_00107454, "12345678", 8u);
+    DSB(DS_00107450 + 2u) = 8; DSB(DS_00107453) = 0;
+    (void)menu_step(T, 0x10u, 5u);
+    CHECK_EQ_INT((int)grid_sprite(2, 0x11), (int)mt_glyph('1'));
+    CHECK_EQ_INT((int)grid_sprite(2, 0x18), (int)mt_glyph('8'));
+    DSB(DS_00107414) = 0;
+    actors_reset();
+    (void)menu_step(T, 0x10u, 4u);
+    CHECK_EQ_INT((int)grid(2, 0x11), 0);
+    mem_fill(DS_00107450, 0, 0x20u);
+
+    /* A leading "\v3" moves the first row only until the first redraw resets it
+     * to 5 (0x300F9), and a hidden first item with nothing after it drops the
+     * title. */
+    mem_fill(T, 0, 0x100u);
+    mt_entry(T, 0, 0x210u, 0, 0, 0);
+    mt_entry(T, 1, 0x216u, 0, 0, 0);                 /* "\v3ROW" */
+    DSB(DS_00107414) = 0;
+    actors_reset();
+    (void)menu_step(T, 0x10u, 4u);
+    CHECK_EQ_INT((int)DSD(DS_00107440), 5);
+    CHECK_EQ_INT((int)grid_sprite(5, 4), (int)mt_glyph(0x0B));   /* the redraw keeps the "\v3" */
+    CHECK_EQ_INT((int)grid_sprite(5, 6), (int)mt_glyph('R'));
+    CHECK_EQ_INT((int)grid(8, 4), 0);
+    {
+        s32 col = (0x2b - text_width((const u8 *)"TITLE", 0x5002u)) >> 1;
+        CHECK_EQ_INT((int)grid_sprite(0, col), (int)mt_glyph2('T'));
+    }
+    mem_fill(T, 0, 0x100u);
+    mt_entry(T, 0, 0x210u, 0, 0, 0);
+    mt_entry(T, 1, 0x217u, 0, 0, 0);                 /* "?" */
+    mt_entry(T, 2, 0x217u, 0, 0, 0);
+    DSB(DS_00107414) = 0;
+    actors_reset();
+    (void)menu_step(T, 0x10u, 4u);
+    {
+        s32 col = (0x2b - text_width((const u8 *)"TITLE", 0x5002u)) >> 1;
+        CHECK_EQ_INT((int)grid(0, col), 0);          /* no title: entry 0 unused */
+    }
+    /* A menu with nothing visible: Down finds nothing after two wraps and 0x2EA68
+     * is reached (the port returns 0). */
+    DSD(DS_00107448) = 0x12345678u;
+    mt_press(0x40004000u);
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00107448), -1);
+    mt_press(0x80008000u);
+    DSD(DS_00107448) = 0x12345678u;
+    CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00107448), -1);
+
+    mt_menu_reset();
+    mem_fill(DS_00107414, 0, 0x40u);
+    actors_reset();
+    DSD(DS_00101514) = s_lay; DSD(DS_00101500) = s_ticks; DSD(DS_00105F2C) = s_stamp;
+    mt_press(0);
+}
+
+/* 0x2FA40 (record §49-X.7). The callbacks are the script: the input state
+ * changes inside the table callback, which the loop calls once per poll. */
+static void check_menu_run(void)
+{
+    const u32 T = MT_TABLE + 0x400u;
+    const u32 s_lay = DSD(DS_00101514), s_ticks = DSD(DS_00101500);
+    mem_fill(T, 0, 0x100u);
+    mt_entry(T, 0, 0x210u, 0, MT_FN0, 0);
+    mt_entry(T, 1, 0x211u, 0, MT_FN1, 0);
+    mt_entry(T, 2, 0x212u, 0x213u, MT_FN2, 1);
+    mt_entry(T, 3, 0x214u, 0, MT_FN3, 0);
+    mt_entry(T, 4, 0x215u, 0, MT_FN3, 2);
+    mt_strings_install();
+    fn_register(MT_FN0, (void (*)(void))mt_cb0);
+    fn_register(MT_FN1, (void (*)(void))mt_cb1);
+    fn_register(MT_FN2, (void (*)(void))mt_cb2);
+    fn_register(MT_FN3, (void (*)(void))mt_cb3);
+    mt_menu_reset();
+    actors_reset();
+    DSD(DS_00101514) = MT_LAYOUT;
+    DSD(DS_00101500) = 100;
+    const u32 pal_hi = MT_PAL_2000, pal_lo = MT_PAL_F000;
+    const u32 A = T + 0x10u, B = T + 0x20u, C = T + 0x40u;
+
+    /* Down moves to item B, whose entry the next callback call receives; the
+     * callback's nonzero result is the return value. */
+    mt_cbs_reset();
+    mt_press(0x40004000u);
+    mt_hook_ret_at = 3; mt_hook_ret = 0x77;
+    CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0x77);
+    CHECK_EQ_INT((int)mt_cbs[0].n, 3);
+    CHECK_EQ_INT((int)mt_args0[1], 0);               /* the header redraw */
+    CHECK_EQ_INT((int)mt_args0[2], (int)A);
+    CHECK_EQ_INT((int)mt_args0[3], (int)B);
+    CHECK_EQ_INT((int)grid_sprite(5, 4), (int)mt_glyph('I'));
+    CHECK_EQ_INT((int)grid_sprite(7, 11), (int)mt_glyph('X'));
+    CHECK_EQ_INT((int)grid_sprite(11, 4), (int)mt_glyph('L'));
+    CHECK_EQ_INT((int)grid(9, 4), 0);
+    CHECK_EQ_INT((int)mt_pal(5, 4), (int)pal_lo);
+    CHECK_EQ_INT((int)mt_pal(7, 4), (int)pal_hi);
+    CHECK_EQ_INT((int)mt_pal(7, 11), (int)pal_hi);
+    CHECK_EQ_INT((int)mt_pal(11, 4), (int)pal_lo);
+    CHECK_EQ_INT((int)grid(0x1B, 16), 0);            /* flags bit 2: no help lines */
+
+    /* Esc without flags bit 2: -1 (the index never equals the count). */
+    mt_cbs_reset();
+    mt_press(0x2000000u);
+    CHECK_EQ_INT((int)menu_run(T, 0x10u, 0u), -1);
+    CHECK_EQ_INT((int)mt_cbs[0].n, 2);
+    /* Esc with flags bit 2 acts as Down. */
+    mt_cbs_reset();
+    mt_press(0x2000000u);
+    mt_hook_ret_at = 3; mt_hook_ret = 0x55;
+    CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0x55);
+    CHECK_EQ_INT((int)mt_args0[2], (int)A);
+    CHECK_EQ_INT((int)mt_args0[3], (int)B);
+    /* Down twice: past the hidden item to C. */
+    mt_cbs_reset();
+    mt_press(0x40004000u);
+    mt_hook_at = 2; mt_hook_bits = 0x40004000u;
+    mt_hook_ret_at = 4; mt_hook_ret = 0x56;
+    CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0x56);
+    CHECK_EQ_INT((int)mt_args0[3], (int)B);
+    CHECK_EQ_INT((int)mt_args0[4], (int)C);
+    /* Up from the first item wraps to the last visible one. */
+    mt_cbs_reset();
+    mt_press(0x80008000u);
+    mt_hook_ret_at = 3; mt_hook_ret = 0x57;
+    CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0x57);
+    CHECK_EQ_INT((int)mt_args0[3], (int)C);
+    /* Enter: the item's callback runs, then the header is drawn again (the
+     * table callback is called with 0 once more) before it goes on. */
+    mt_cbs_reset();
+    mt_press(0x1000000u);
+    mt_hook_ret_at = 5; mt_hook_ret = 0x66;
+    CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0x66);
+    CHECK_EQ_INT((int)mt_cbs[1].n, 1);
+    CHECK_EQ_INT((int)mt_cbs[1].arg, (int)A);
+    CHECK_EQ_INT((int)mt_args0[3], 0);
+    CHECK_EQ_INT((int)mt_args0[4], (int)A);
+    CHECK_EQ_INT((int)mt_args0[5], (int)A);
+    {
+        s32 col = (0x2b - text_width((const u8 *)"TITLE", 0x5002u)) >> 1;
+        CHECK_EQ_INT((int)grid_sprite(0, col), (int)mt_glyph2('T'));   /* the header is back */
+    }
+    CHECK_EQ_INT((int)grid_sprite(5, 4), (int)mt_glyph('I'));
+    /* The debug flag draws the widget on every poll. */
+    memcpy(mem + DS_00107454, "12345678", 8u);
+    DSB(DS_00107450 + 2u) = 8; DSB(DS_00107453) = 0;
+    mt_cbs_reset();
+    mt_press(0);
+    mt_hook_ret_at = 3; mt_hook_ret = 0x58;
+    CHECK_EQ_INT((int)menu_run(T, 0x10u, 5u), 0x58);
+    CHECK_EQ_INT((int)grid_sprite(2, 0x11), (int)mt_glyph('1'));
+    mem_fill(DS_00107450, 0, 0x20u);
+
+    /* "\v3" puts the first item on row 8 (no reset here, unlike 0x2FFC4). */
+    mem_fill(T, 0, 0x100u);
+    mt_entry(T, 0, 0x210u, 0, MT_FN0, 0);
+    mt_entry(T, 1, 0x216u, 0, MT_FN1, 0);
+    mt_cbs_reset();
+    mt_hook_ret_at = 2; mt_hook_ret = 0x59;
+    CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0x59);
+    CHECK_EQ_INT((int)grid_sprite(8, 4), (int)mt_glyph(0x0B));
+    CHECK_EQ_INT((int)grid_sprite(8, 6), (int)mt_glyph('R'));
+    CHECK_EQ_INT((int)grid(5, 4), 0);
+    /* A hidden first item with no text after the '?' drops the title; a menu
+     * with nothing visible reaches 0x2EA68 on the second wrap and the port
+     * returns 0. */
+    mem_fill(T, 0, 0x100u);
+    mt_entry(T, 0, 0x210u, 0, 0, 0);
+    mt_entry(T, 1, 0x217u, 0, 0, 0);
+    mt_entry(T, 2, 0x217u, 0, 0, 0);
+    mt_cbs_reset();
+    mt_press(0x40004000u);
+    CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0);
+    {
+        s32 col = (0x2b - text_width((const u8 *)"TITLE", 0x5002u)) >> 1;
+        CHECK_EQ_INT((int)grid(0, col), 0);
+    }
+    mt_press(0x80008000u);
+    CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0);
+
+    mt_menu_reset();
+    actors_reset();
+    DSD(DS_00101514) = s_lay; DSD(DS_00101500) = s_ticks;
+    mt_press(0);
+}
+
+static void check_menu(void)
+{
+    static u8 spal[0x180];
+    const u32 s_str = DSD(DS_001082DC);
+    /* Earlier checks fill the 24-entry palette table (0x33754); the menu checks
+     * compare palette entries, so they start from an empty one. */
+    memcpy(spal, mem + DS_00107618, sizeof spal);
+    mem_fill(DS_00107618, 0, sizeof spal);
+    const u32 s_lvl = DSD(DS_000E1C34), s_lat = DSD(DS_000E1C38);
+    check_menu_input();
+    check_menu_draw();
+    check_menu_widget();
+    check_menu_step();
+    check_menu_run();
+    menu_fatal_error(0x80B54u);
+    memcpy(mem + DS_00107618, spal, sizeof spal);
+    DSD(DS_001082DC) = s_str;
+    DSD(DS_000E1C34) = s_lvl;
+    DSD(DS_000E1C38) = s_lat;
+    actors_reset();
+}
+
 int test_text(void)
 {
     int before = g_failures;
@@ -2554,6 +3412,7 @@ int test_text(void)
     CHECK_EQ_INT((int)DSW(DS_00105F34 + 2), 0);
 
     check_text_vertical_number();
+    check_menu();
 
     return g_failures - before;
 }

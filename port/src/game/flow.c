@@ -12,6 +12,7 @@
 #include "game/effects.h"
 #include "game/fight.h"
 #include "game/fighter.h"
+#include "game/menu.h"
 #include "game/nameentry.h"
 #include "game/rng.h"
 #include "mem.h"
@@ -6631,11 +6632,18 @@ void game_frame(void)
         }
         break;                                                      /* 0x2530C/0x25312 */
     }
-    case 0x27u:
-        /* PORT: named gap, the body unported (record §47-B.1 has the entry
-         * and callees):
-         * 0x27 inline (0x50146, the 0xBCBDC menu
-         * 0x2FFC4, 0x65431 longjmp). Case 0x17 is ported (0x4F318, record
+    case 0x27u: {
+        /* 0x251C6..0x25215 — record §49-X. The service menu: 0x50146 sets the
+         * repeat mask 0xC000C000 with delays 0x1E/0xF, then the per-frame menu
+         * 0x2FFC4 over the table 0xBCBDC (stride 0x10, flags 4 from the
+         * `mov ecx,4` at 0x251D5). Results 0, -5 and -10 (0x251F5..0x251FC)
+         * go on to 0x4F644; any other result is the longjmp(0x1044F4, 1) at
+         * 0x25206. No ported path sets DS_00104B00 to 0x27 (the raw's setters
+         * are in the unported 0x2CBxx callbacks), so this arm is not reached by
+         * the front-end, demo-fight or attract runs.
+         * PORT: 0x25206 0x65431 longjmp is out of scope (spec §7): the port
+         * skips 0x4F644 and continues.
+         * The record §47-B.1 note on the other cases follows. Case 0x17 is ported (0x4F318, record
          * §46-G) and dispatched above as frontend_mode_17_step, case 0x10
          * (0x438B4, record §47-M) as fight_mode_10_step, and cases 0xD
          * (0x274FC) and 0x32 (0x296B8, record §48-Q) as game_mode_0d_step and
@@ -6671,7 +6679,14 @@ void game_frame(void)
          * 0x4EF8C/0x4F0FC, record §49-P) is game_mode_25_step/game_mode_25_
          * reveal/game_mode_25_exit, dispatched in its own `case 0x25u:`
          * block above (not this fallthrough). */
+        input_repeat_set(0xC000C000u, 0x1Eu, 0xFu);          /* 0x251C6..0x251DA 0x50146 */
+        {
+            u32 r = menu_step(0xBCBDCu, 0x10u, 4u);           /* 0x251DF..0x251EE 0x2FFC4 */
+            if (r == 0u || r == (u32)-5 || r == (u32)-10)     /* 0x251F3..0x251FC */
+                input_state_update();                          /* 0x25210 0x4F644 */
+        }
         break;
+    }
     case 0x00u:
     case 0x1Cu:
     case 0x1Du:
