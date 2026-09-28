@@ -505,6 +505,27 @@ u32 fighter_145cc(u32 side);
  * +0x5F) on 0x33950(side). EAX = side. */
 void fighter_145e4(u32 side);
 
+/* 0x14B90 (record §49-W). Character 3's reaction-0x26 callback
+ * (*(u32*)0xA4720), 0x14814's twin, same (slot, rec, side) registers (EBX
+ * unread): starts the reaction stream through 0x3C520 and arms the slot
+ * (+0x0C 0x14988, +0x18 0x14938, +0x1C 0x14950). */
+void fighter_14b90(u32 slot, u32 rec, u32 side);
+
+/* 0x14C98 (record §49-W). Character 3's reaction-0x28 callback
+ * (*(u32*)0xA4748), 0x1490C's twin: 0x14B90, then the side's 0xFD11A byte = 1. */
+void fighter_14c98(u32 slot, u32 rec, u32 side);
+
+/* 0x14988 (record §49-W). The slot +0x0C callback 0x14B90 stores (0x3531C case
+ * 7), 0x1461C's twin: the +0x57 step machine 0..3, whose step 2 is 0x14A5C. */
+void fighter_14988(u32 slot, u32 rec, u32 side);
+
+/* 0x14938 (record §49-W). The +0x18 hook 0x14B90 stores: returns 1. EAX = side. */
+u32 fighter_14938(u32 side);
+
+/* 0x14950 (record §49-W). The +0x1C callback 0x14B90 stores: 0x39834(ctx[1],
+ * ctx[2]'s +0x5F) on 0x33950(side). EAX = side. */
+void fighter_14950(u32 side);
+
 /* 0x14E44. Character 3's reaction-0x23 callback (*(u32*)0xA46E4), same
  * (slot, rec, side) registers (EBX unread): the 0xD3026 grab stream at 2.0,
  * state 9/7/0, +0x18 0x14CC4, +0x1C 0x14D7C and +0x42 bit 2. */

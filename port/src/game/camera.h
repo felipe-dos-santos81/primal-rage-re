@@ -120,8 +120,8 @@ void camera_dust_spawn(void);
 
 /* 0x128D4 (record §49-L). 0x1282C's twin, four times as frequent
  * ((DS_000EF6DC & 0xF) == 0) and anchored to the fixed word DS_000BD898
- * rather than a random x. Only caller: mode 0x22's frame (0x26C8C), gated on
- * DS_00104AC4 > 1. */
+ * rather than a random x, then (§49-W) offers the in-use dust nodes to 0x129FC.
+ * Only caller: mode 0x22's frame (0x26C8C), gated on DS_00104AC4 > 1. */
 void camera_impact_dust_spawn(void);
 
 /* 0x1282C then 0x12DA8, the pair 0x263F4 (and 0x26254, record §48-K) calls
@@ -129,6 +129,17 @@ void camera_impact_dust_spawn(void);
  * rng(7)&3 == 0) followed by the selected-player-y commit and the camera-y
  * clamp. */
 void camera_scene_step(void);
+
+/* 0x12BB8 (record §49-W). The dust actor `dust`'s burst on the fighter of
+ * `side`: spawns 0xC976C, retires the dust and adds 1 to the +0x5B byte of the
+ * slot DS_00104B1A names (0x4DBB4). 0x129FC calls it; three of its four
+ * callers are unported. */
+void camera_dust_burst(u32 side, u32 dust);
+
+/* 0x129FC (record §49-W). One in-use dust node offered to the fighters: 1 (and
+ * the burst, DS_000F0AE8 = the fighter's reaction) when its pset point hits a
+ * fighter whose character/reaction pair is in the table, else 0. */
+u32 camera_dust_hit(u32 node);
 
 /* 0x12DA8 alone, the selected player y and the y clamp. Exported for modes
  * 0xD and 0x32 (0x274FC/0x296B8, record §48-Q), which call it directly. */
