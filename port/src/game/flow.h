@@ -331,6 +331,22 @@ void flow_round_hud_init(void);
 void flow_win_markers_spawn(void);
 void flow_round_timer_draw(void);
 
+/* Record §49-J, modes 0x30/0x31/0x33 (mode 0x32's continue/rematch chain).
+ * 0x29328 (mode 0x30): a near-twin of mode 5's 0x25C88, the same
+ * DS_00104B25 sub-state machine (1 the round card and win markers, 2 the
+ * fight card, 3 their release into mode 0x31 once DS_00104B21 == 0, 4 the
+ * DS_00104AFE countdown into DS_00104B23). 0x299E8 (mode 0x31): a near-twin
+ * of mode 0xC's 0x27380 — the same prelude, gated projection block and
+ * tail — plus the DS_00104B12 slot's frozen-pose undo at entry and
+ * flow_round_over_check (0x29970) in place of flow_arena_ko_check. 0x29638
+ * (mode 0x33): the match's end wait (0x4DEF4 unported, out of scope) into
+ * mode 0x17 with the hook FN_00025AE8, armed by mode 0x32's own
+ * game_mode_32_step. */
+void game_mode_30_step(void);
+void flow_round_over_check(void);
+void game_mode_31_step(void);
+void game_mode_33_step(void);
+
 /* Record §48-K, mode 4 (the fight frame). 0x26254, dispatched by game_frame
  * for mode 4 and for mode 6 without a join: the arena frame's steps (the
  * projection block only with DS_001078FA == 2), then 0x1DA08, the round-end
