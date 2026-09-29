@@ -410,6 +410,15 @@ void flow_round_end_check(void);
 void flow_round_winner(void);
 void flow_round_bonus_a(u32 side);
 void flow_round_bonus_b(u32 side);
+/* Record §B8 (2026-09-29-e-wire-k8b-k8d-derivations.md), 0x260BC and
+ * 0x26194: update-table entries 15 (DS_00104AE9 bit 0x80) and 16
+ * (DS_00104AEA bit 0x01), armed by flow_round_bonus_a/_b. Each grows its
+ * bonus card (DS_00104AB4 / DS_00104AB0) in, holds it 0x3C frames, starts
+ * its exit stream and shrinks it out, then kills it and disarms itself;
+ * entry 15's hold end also spawns the second card through 0x2604C when
+ * 0x27C48 named a side in DS_00104B1C. */
+void flow_bonus_card_a_step(void);
+void flow_bonus_card_b_step(void);
 void flow_match_result_set(void);
 void flow_match_end(void);
 void flow_round_over(void);

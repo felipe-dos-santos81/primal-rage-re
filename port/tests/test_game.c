@@ -1962,6 +1962,207 @@ static void check_update_k8c(void)
 #undef K8C_SLOT0
 #undef K8C_SLOT1
 
+/* Update-table entries 15 (0x260BC) and 16 (0x26194), the two bonus cards
+ * (record §B8, 2026-09-29-e-wire-k8b-k8d-derivations.md). Each card record
+ * is a pool record; the expected stream cursor is taken from a reference
+ * record begun on the same stream through actors_anim_begin (0x2BC30), since
+ * the streams open with command words the begin walks. The camera targets
+ * DS_001077A8[0/1] are scratch records so 0x2604C's 0x41310(side) call shows
+ * which side it got. Runs after actors_init, which registers both entries. */
+#define BC_B0E  0x00104B0Eu   /* no symbols.h name: entry 15's timer */
+#define BC_B10  0x00104B10u   /* no symbols.h name: entry 16's timer */
+#define BC_B1C  0x00104B1Cu   /* no symbols.h name: 0x27C48's bonus byte */
+#define BC_SCR  0x3E94000u
+static u32 bc_card(void)
+{
+    u32 r = actor_alloc(0);
+    if (r != 0u) {
+        DSW(r + 0x56u) = (u16)actor_index(r);
+        DSW(r + 0x28u) = 0; DSW(r + 0x2Au) = 0;
+        DSD(r + 0x08u) = 0x5A5A5A5Au; DSD(r + 0x24u) = 0;
+        DSD(actor_pset(r) + 0x18u) = 0;
+    }
+    return r;
+}
+static void check_bonus_cards(void)
+{
+    u8 s_b0c[0x14], s_a8[4];
+    u32 s_ab0 = DSD(DS_00104AB0), s_ab4 = DSD(DS_00104AB4);
+    u32 s_mode = DSD(DS_00104B00), s_7a8[2];
+    u32 a, b, ref, want;
+    s_7a8[0] = DSD(DS_001077A8); s_7a8[1] = DSD(DS_001077A8 + 4u);
+    tf_snap(s_b0c, DS_00104B0C, 0x14u);
+    tf_snap(s_a8, DS_00104AE8, 4u);
+
+    /* (a) The table dwords (0xA8680/0xA8684) and their resolution. */
+    CHECK_EQ_INT((int)DSD(DS_000A8644 + 15u * 4u), 0x260BC);
+    CHECK_EQ_INT((int)DSD(DS_000A8644 + 16u * 4u), 0x26194);
+    CHECK(fn_resolve(0x260BCu) == flow_bonus_card_a_step,
+          "update-table entry 15 (0x260BC) resolves to its port");
+    CHECK(fn_resolve(0x26194u) == flow_bonus_card_b_step,
+          "update-table entry 16 (0x26194) resolves to its port");
+
+    actors_reset();
+    a = bc_card(); b = bc_card(); ref = bc_card();
+    CHECK(a != 0u && b != 0u && ref != 0u, "bonus-card fixture records");
+    if (a == 0u || b == 0u || ref == 0u) goto out;
+    DSD(DS_00104AB4) = a;
+    DSD(DS_001077A8) = BC_SCR;       DSD(BC_SCR + 0x3Cu) = 0x2000u;
+    DSD(DS_001077A8 + 4u) = BC_SCR + 0x100u; DSD(BC_SCR + 0x13Cu) = 0x1000u;
+    DSD(DS_00104B00) = 0x30u;        /* 0x41310 skips mode 3 only */
+
+    /* (b) Entry 15, state 0: +0x2C gains 0x80 below 0x1000; at or above it
+     * the word is clamped, the timer = 0x3C and the state = 1. The compare
+     * is on the zero-extended word, so 0xFFC0 wraps to 0x0040 unclamped. */
+    DSD(DS_00104AE8) = 0xFFFFFFFFu;
+    DSB(DS_00104B0D) = 0u; DSB(BC_B0E) = 0x77u;
+    DSW(a + 0x2Cu) = 0x0010u;
+    flow_bonus_card_a_step();
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), 0x0090);
+    CHECK_EQ_INT((int)DSB(DS_00104B0D), 0);
+    CHECK_EQ_INT((int)DSB(BC_B0E), 0x77);
+    DSW(a + 0x2Cu) = 0xFFC0u;
+    flow_bonus_card_a_step();
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), 0x0040);
+    CHECK_EQ_INT((int)DSB(DS_00104B0D), 0);
+    DSW(a + 0x2Cu) = 0x7FC0u;              /* 0x8040: clamps (a signed compare would not) */
+    flow_bonus_card_a_step();
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), 0x1000);
+    CHECK_EQ_INT((int)DSB(DS_00104B0D), 1);
+    DSB(DS_00104B0D) = 0u; DSB(BC_B0E) = 0x77u;
+    DSW(a + 0x2Cu) = 0x0F81u;
+    flow_bonus_card_a_step();
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), 0x1000);
+    CHECK_EQ_INT((int)DSB(BC_B0E), 0x3C);
+    CHECK_EQ_INT((int)DSB(DS_00104B0D), 1);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFFFFFFu);
+
+    /* (c) State 1: the timer counts while positive (signed); at or below 0
+     * the state = 2 and the card begins 0xE91A4 at 1.0. A negative
+     * DS_00104B1C spawns no second card; a side (1) runs 0x2604C(1). */
+    DSB(BC_B0E) = 2u;
+    flow_bonus_card_a_step();
+    CHECK_EQ_INT((int)DSB(BC_B0E), 1);
+    CHECK_EQ_INT((int)DSB(DS_00104B0D), 1);
+    CHECK_EQ_INT((int)DSD(a + 0x08u), 0x5A5A5A5A);
+    actors_anim_begin(ref, 0x000E91A4u, 0x3F800000u);
+    want = DSD(ref + 0x08u);
+    DSB(BC_B1C) = 0xFFu;
+    DSD(DS_00104AB0) = 0x12345678u;
+    flow_bonus_card_a_step();
+    CHECK_EQ_INT((int)DSB(BC_B0E), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B0D), 2);
+    CHECK_EQ_INT((int)DSD(a + 0x08u), (int)want);
+    CHECK_EQ_INT((int)DSD(a + 0x24u), 0x3F800000);
+    CHECK_EQ_INT((int)DSD(DS_00104AB0), 0x12345678);
+    DSB(DS_00104B0D) = 1u; DSB(BC_B0E) = 0x81u;    /* (s8) -127: fires */
+    DSB(BC_B1C) = 1u;
+    DSB(DS_00104B0F) = 0x77u;
+    DSB(DS_00104AEA) = 0u;
+    DSD(a + 0x08u) = 0x5A5A5A5Au;
+    flow_bonus_card_a_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B0D), 2);
+    CHECK_EQ_INT((int)DSD(a + 0x08u), (int)want);
+    CHECK_EQ_INT((int)DSB(DS_00104B0F), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104AEA), 1);
+    CHECK(DSD(DS_00104AB0) != 0x12345678u && DSD(DS_00104AB0) == actor_list_head(),
+          "0x2604C spawned the second card");
+    CHECK_EQ_INT((int)DSD(BC_SCR + 0x13Cu), 0x1000 + 0x4E20);
+    CHECK_EQ_INT((int)DSD(BC_SCR + 0x3Cu), 0x2000);
+
+    /* (d) State 2: the word drops by 0x200; at zero the card dies and AE9
+     * bit 0x80 (mask bit 15) is cleared. 0x0100 wraps to 0xFF00 (non-zero). */
+    DSD(DS_00104AE8) = 0xFFFFFFFFu;
+    DSB(DS_00104B0D) = 2u;
+    DSW(a + 0x2Cu) = 0x0400u;
+    flow_bonus_card_a_step();
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), 0x0200);
+    CHECK_EQ_INT((int)(DSB(a + 0x28u) & 8u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFFFFFFu);
+    DSW(a + 0x2Cu) = 0x0100u;
+    flow_bonus_card_a_step();
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), 0xFF00);
+    CHECK_EQ_INT((int)(DSB(a + 0x28u) & 8u), 0);
+    DSW(a + 0x2Cu) = 0x0200u;
+    flow_bonus_card_a_step();
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), 0);
+    CHECK_EQ_INT((int)(DSB(a + 0x28u) & 8u), 8);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFF7FFFu);
+    CHECK_EQ_INT((int)DSB(DS_00104B0D), 2);
+
+    /* (e) Any state above 2 does nothing. */
+    DSB(DS_00104B0D) = 3u; DSB(BC_B0E) = 0x55u; DSW(a + 0x2Cu) = 0x0200u;
+    flow_bonus_card_a_step();
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), 0x0200);
+    CHECK_EQ_INT((int)DSB(BC_B0E), 0x55);
+    CHECK_EQ_INT((int)DSB(DS_00104B0D), 3);
+
+    /* (f) Entry 16, the twin on DS_00104B0F/B10, DS_00104AB0, the stream
+     * 0xE91D4 and AEA bit 0x01 (mask bit 16); state 1 has no chain. */
+    DSD(DS_00104AB0) = b;
+    DSD(DS_00104AE8) = 0xFFFFFFFFu;
+    DSB(DS_00104B0F) = 0u; DSB(BC_B10) = 0x77u;
+    DSW(b + 0x2Cu) = 0x0010u;
+    flow_bonus_card_b_step();
+    CHECK_EQ_INT((int)DSW(b + 0x2Cu), 0x0090);
+    CHECK_EQ_INT((int)DSB(BC_B10), 0x77);
+    DSW(b + 0x2Cu) = 0xFFC0u;
+    flow_bonus_card_b_step();
+    CHECK_EQ_INT((int)DSW(b + 0x2Cu), 0x0040);
+    CHECK_EQ_INT((int)DSB(DS_00104B0F), 0);
+    DSW(b + 0x2Cu) = 0x7FC0u;
+    flow_bonus_card_b_step();
+    CHECK_EQ_INT((int)DSW(b + 0x2Cu), 0x1000);
+    CHECK_EQ_INT((int)DSB(DS_00104B0F), 1);
+    DSB(DS_00104B0F) = 0u; DSB(BC_B10) = 0x77u;
+    DSW(b + 0x2Cu) = 0x0F81u;
+    flow_bonus_card_b_step();
+    CHECK_EQ_INT((int)DSW(b + 0x2Cu), 0x1000);
+    CHECK_EQ_INT((int)DSB(BC_B10), 0x3C);
+    CHECK_EQ_INT((int)DSB(DS_00104B0F), 1);
+    DSB(BC_B10) = 2u;
+    flow_bonus_card_b_step();
+    CHECK_EQ_INT((int)DSB(BC_B10), 1);
+    CHECK_EQ_INT((int)DSB(DS_00104B0F), 1);
+    CHECK_EQ_INT((int)DSD(b + 0x08u), 0x5A5A5A5A);
+    actors_anim_begin(ref, 0x000E91D4u, 0x3F800000u);
+    want = DSD(ref + 0x08u);
+    DSB(BC_B1C) = 1u;
+    DSD(DS_00104AB4) = 0x12345678u;
+    DSB(DS_00104B0D) = 0x77u;
+    DSB(BC_B10) = 0x81u;
+    flow_bonus_card_b_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B0F), 2);
+    CHECK_EQ_INT((int)DSD(b + 0x08u), (int)want);
+    CHECK_EQ_INT((int)DSD(b + 0x24u), 0x3F800000);
+    CHECK_EQ_INT((int)DSD(DS_00104AB4), 0x12345678);
+    CHECK_EQ_INT((int)DSB(DS_00104B0D), 0x77);
+    DSW(b + 0x2Cu) = 0x0100u;
+    flow_bonus_card_b_step();
+    CHECK_EQ_INT((int)DSW(b + 0x2Cu), 0xFF00);
+    CHECK_EQ_INT((int)(DSB(b + 0x28u) & 8u), 0);
+    DSW(b + 0x2Cu) = 0x0200u;
+    flow_bonus_card_b_step();
+    CHECK_EQ_INT((int)DSW(b + 0x2Cu), 0);
+    CHECK_EQ_INT((int)(DSB(b + 0x28u) & 8u), 8);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFEFFFFu);
+    DSB(DS_00104B0F) = 3u; DSW(b + 0x2Cu) = 0x0200u;
+    flow_bonus_card_b_step();
+    CHECK_EQ_INT((int)DSW(b + 0x2Cu), 0x0200);
+
+out:
+    tf_put(s_b0c, DS_00104B0C, 0x14u);
+    tf_put(s_a8, DS_00104AE8, 4u);
+    DSD(DS_00104AB0) = s_ab0; DSD(DS_00104AB4) = s_ab4;
+    DSD(DS_00104B00) = s_mode;
+    DSD(DS_001077A8) = s_7a8[0]; DSD(DS_001077A8 + 4u) = s_7a8[1];
+    actors_reset();
+}
+#undef BC_B0E
+#undef BC_B10
+#undef BC_B1C
+#undef BC_SCR
+
 int test_actors(void)
 {
     int before = g_failures;
@@ -1981,6 +2182,7 @@ int test_actors(void)
           "actors_init registered 0x29B74 as frontend_darken_all");
     check_card_ramp();
     check_update_k8c();
+    check_bonus_cards();
 
     /* A fresh reset frees every record and leaves both lists empty. It also
      * runs 0x4F228 with EAX = 0 (0x2BBC0/0x2BBC4): the projection gate

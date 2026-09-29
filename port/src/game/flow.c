@@ -2641,12 +2641,9 @@ void flow_round_bonus_a(u32 side)
         DSD(DS_00104AB4) = actor_spawn((const u32 *)(mem + DS_000A88B8),
                                        0x2A00u, 0xFFu, 0x1200u, 0u);  /* 0x26003..0x26019 0x2AE14 */
     DSB(DS_00104B0D) = 0u;                              /* 0x26023/0x26025 */
-    /* PORT: 0x25FDC's caller sets DS_00104AE9 bit 0x80, switching on entry
-     * 15 of the per-frame update table DS_000A8644 (0xA8680, dispatched
-     * every frame at 0x24CEF, xref-confirmed, not a bare code pointer);
-     * that entry, 0x260BC, is a named gap, so the bonus card it would
-     * animate/kill each frame is skipped. Named gap, not a regression: no
-     * ported path set this bit before, and no oracle path ends a round. */
+    /* Bit 0x80 arms entry 15 of the update table DS_000A8644 (0xA8680,
+     * dispatched at 0x24CEF): flow_bonus_card_a_step (0x260BC, record §B8)
+     * grows, holds and retires this card. */
     DSB(DS_00104AE9) = (u8)(DSB(DS_00104AE9) | 0x80u);  /* 0x2602B..0x26036 */
     fighter_41310(side, 0x4E20);                        /* 0x26034..0x26041 0x41310 */
 }
@@ -2654,8 +2651,8 @@ void flow_round_bonus_a(u32 side)
 /* 0x2604C — record §48-K. 0x25FDC's twin: 0xA88F4 (bit 1) or 0xA88CC at the
  * same places into DS_00104AB0, DS_00104B0F = 0, DS_00104AEA |= 1, then
  * 0x41310(side, 0x4E20). EBX/ECX/EDX/ESI are pushed and popped. Callers:
- * 0x27CFD and 0x27DA0 (0x27C48), and 0x2613E in the unported 0x260BC, on
- * the signed byte DS_00104B1C. */
+ * 0x27CFD and 0x27DA0 (0x27C48), and 0x2613E in 0x260BC
+ * (flow_bonus_card_a_step), on the signed byte DS_00104B1C. */
 void flow_round_bonus_b(u32 side)
 {
     if ((DSB(DS_00104529) & 2u) != 0u)                  /* 0x26052/0x26059 */
@@ -2665,11 +2662,102 @@ void flow_round_bonus_b(u32 side)
         DSD(DS_00104AB0) = actor_spawn((const u32 *)(mem + DS_000A88CC),
                                        0x2A00u, 0xFFu, 0x1200u, 0u);  /* 0x26073..0x26089 0x2AE14 */
     DSB(DS_00104B0F) = 0u;                              /* 0x26093/0x26095 */
-    /* PORT: 0x2604C's caller sets DS_00104AEA bit 0, switching on entry 16
-     * of the same update table DS_000A8644 — 0x26194, the unported twin of
-     * 0x260BC, not documented anywhere else. Same skip, same inertness. */
+    /* Bit 0x01 arms entry 16 (0xA8684): flow_bonus_card_b_step (0x26194,
+     * record §B8). */
     DSB(DS_00104AEA) = (u8)(DSB(DS_00104AEA) | 1u);     /* 0x2609B..0x260A6 */
     fighter_41310(side, 0x4E20);                        /* 0x260A4..0x260B1 0x41310 */
+}
+
+#define DS_00104B0E 0x00104B0Eu   /* no symbols.h name: entry 15's hold timer */
+#define DS_00104B10 0x00104B10u   /* no symbols.h name: entry 16's hold timer */
+#define DS_000E91A4 0x000E91A4u   /* no symbols.h name: entry 15's exit stream (0x2614A) */
+#define DS_000E91D4 0x000E91D4u   /* no symbols.h name: entry 16's exit stream (0x2620D) */
+
+/* 0x260BC — record §B8.1 (2026-09-29-e-wire-k8b-k8d-derivations.md).
+ * Update-table entry 15 (the dword at 0xA8680; no Ghidra function),
+ * dispatched by 0x24CEF while DS_00104AE9 bit 0x80 is set; its one setter is
+ * flow_round_bonus_a (0x26036). The state byte DS_00104B0D (0 from that
+ * setter):
+ *   0: the card DS_00104AB4's word +0x2C gains 0x80 (a 16-bit store; the
+ *      compare is on the zero-extended word, `cmp edx,0x1000; jl`); at or
+ *      above 0x1000 it is clamped, the timer DS_00104B0E = 0x3C, state 1.
+ *   1: the timer byte decrements; at or below 0 (signed `jg`): with the
+ *      signed byte DS_00104B1C (0x27C48's side, the top byte of the dword at
+ *      0x104B19) not negative, flow_round_bonus_b(that side) spawns the
+ *      second card; then state 2 and the card (re-read) begins 0xE91A4 at 1.0.
+ *   2: the word drops by 0x200 (16-bit); at zero it is stored 0, the card is
+ *      marked dead (0x2B150) and bit 0x80 is cleared.
+ *   above 2: nothing (0x260CC `je`, else `ret`).
+ * EAX (the dispatch index) is overwritten; EBX/ECX/EDX are pushed and
+ * popped, so fn() is exact. */
+void flow_bonus_card_a_step(void)
+{
+    u8 st = DSB(DS_00104B0D);                           /* 0x260BF */
+    u32 rec;
+    if (st == 0u) {                                     /* 0x260C4/0x260C6, 0x260D6 */
+        u16 w;
+        rec = DSD(DS_00104AB4);                         /* 0x260DE */
+        w = (u16)(DSW(rec + 0x2Cu) + 0x80u);            /* 0x260E3..0x260EF */
+        DSW(rec + 0x2Cu) = w;                           /* 0x260F2 */
+        if (w < 0x1000u) return;                        /* 0x260F6/0x260FC */
+        DSB(DS_00104B0E) = 0x3Cu;                       /* 0x26102 */
+        DSW(rec + 0x2Cu) = 0x1000u;                     /* 0x2610B */
+        DSB(DS_00104B0D) = 1u;                          /* 0x26109/0x26111 */
+    } else if (st == 1u) {                              /* 0x260C8 `jbe` */
+        u8 t = (u8)(DSB(DS_00104B0E) - 1u);             /* 0x2611B/0x26121 */
+        DSB(DS_00104B0E) = t;                           /* 0x26123 */
+        if ((s8)t > 0) return;                          /* 0x26129/0x2612B */
+        if ((s8)DSB(DS_00104B1C) >= 0)                  /* 0x2612D/0x26134 */
+            flow_round_bonus_b((u32)((s32)DSD(DS_00104B19) >> 24));   /* 0x26136..0x2613E 0x2604C */
+        DSB(DS_00104B0D) = 2u;                          /* 0x26148/0x26154 */
+        actors_anim_begin(DSD(DS_00104AB4), DS_000E91A4, 0x3F800000u);   /* 0x26143..0x2615A 0x2BC30 */
+    } else if (st == 2u) {                              /* 0x260CA/0x260CC */
+        u16 w;
+        rec = DSD(DS_00104AB4);                         /* 0x26163 */
+        w = (u16)(DSW(rec + 0x2Cu) - 0x200u);           /* 0x26168/0x2616C */
+        DSW(rec + 0x2Cu) = w;                           /* 0x26172 */
+        if (w != 0u) return;                            /* 0x26176/0x26179 `ja` */
+        DSW(rec + 0x2Cu) = 0;                           /* 0x2617B */
+        actor_set_dead(rec);                            /* 0x26181 0x2B150 */
+        DSB(DS_00104AE9) = (u8)(DSB(DS_00104AE9) & 0x7Fu);   /* 0x26186 */
+    }
+}
+
+/* 0x26194 — record §B8.2. Update-table entry 16 (the dword at 0xA8684; no
+ * Ghidra function), bit DS_00104AEA 0x01, set only by flow_round_bonus_b
+ * (0x260A6): 0x260BC's twin on the state DS_00104B0F, the timer
+ * DS_00104B10 and the card DS_00104AB0, with the exit stream 0xE91D4 and no
+ * second-card chain; state 2's end clears DS_00104AEA bit 0x01 (0x26249).
+ * EBX/ECX/EDX are pushed and popped, so fn() is exact. */
+void flow_bonus_card_b_step(void)
+{
+    u8 st = DSB(DS_00104B0F);                           /* 0x26197 */
+    u32 rec;
+    if (st == 0u) {                                     /* 0x2619C/0x2619E, 0x261AE */
+        u16 w;
+        rec = DSD(DS_00104AB0);                         /* 0x261B6 */
+        w = (u16)(DSW(rec + 0x2Cu) + 0x80u);            /* 0x261BB..0x261C7 */
+        DSW(rec + 0x2Cu) = w;                           /* 0x261CA */
+        if (w < 0x1000u) return;                        /* 0x261CE/0x261D4 */
+        DSW(rec + 0x2Cu) = 0x1000u;                     /* 0x261DE */
+        DSB(DS_00104B10) = 0x3Cu;                       /* 0x261DA/0x261E4 */
+        DSB(DS_00104B0F) = 1u;                          /* 0x261DC/0x261EA */
+    } else if (st == 1u) {                              /* 0x261A0 `jbe` */
+        u8 t = (u8)(DSB(DS_00104B10) - 1u);             /* 0x261F4/0x261FA */
+        DSB(DS_00104B10) = t;                           /* 0x261FC */
+        if ((s8)t > 0) return;                          /* 0x26202/0x26204 */
+        DSB(DS_00104B0F) = 2u;                          /* 0x2620B/0x26217 */
+        actors_anim_begin(DSD(DS_00104AB0), DS_000E91D4, 0x3F800000u);   /* 0x26206..0x2621D 0x2BC30 */
+    } else if (st == 2u) {                              /* 0x261A2/0x261A4 */
+        u16 w;
+        rec = DSD(DS_00104AB0);                         /* 0x26226 */
+        w = (u16)(DSW(rec + 0x2Cu) - 0x200u);           /* 0x2622B/0x2622F */
+        DSW(rec + 0x2Cu) = w;                           /* 0x26235 */
+        if (w != 0u) return;                            /* 0x26239/0x2623C `ja` */
+        DSW(rec + 0x2Cu) = 0;                           /* 0x2623E */
+        actor_set_dead(rec);                            /* 0x26244 0x2B150 */
+        DSB(DS_00104AEA) = (u8)(DSB(DS_00104AEA) & 0xFEu);   /* 0x26249 */
+    }
 }
 
 /* 0x27BA4 — record §48-K. The match result into the dword DS_00104AD4. With

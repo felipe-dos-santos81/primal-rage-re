@@ -655,6 +655,12 @@ int actors_init(void)
     fn_register(0x4F890u, fighter_4f890);
     fn_register(0x24150u, fighter_24150);
     fn_register(0x45D98u, fighter_45d98);
+    /* PORT: record §B8 (2026-09-29-e-wire-k8b-k8d-derivations.md). The
+     * update table's entries 15 (0x260BC, the dword at 0xA8680) and 16
+     * (0x26194, 0xA8684), the bonus cards; no Ghidra function at either.
+     * fn() with the unread EAX index. */
+    fn_register(0x260BCu, flow_bonus_card_a_step);
+    fn_register(0x26194u, flow_bonus_card_b_step);
     return 1;
 }
 
