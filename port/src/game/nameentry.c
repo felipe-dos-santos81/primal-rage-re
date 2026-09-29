@@ -329,6 +329,80 @@ void nameentry_cells_step(void)
     }
 }
 
+/* 0x204F4 — record §51-A. EAX = `rank` (only its low word is read), EDX =
+ * `score`; the sole caller is 0x1EC38 at 0x1ECA7, after its own `rank < 10`
+ * test. The raw first builds a ten-record 0x2C-stride table in its 0x1C0-byte
+ * frame (records rank..8 moved to slots rank+1..9, records 0..rank-1 copied to
+ * slots 0..rank-1, slot rank = score + 0x24 spaces) that nothing reads back
+ * before 0x20702 frees the frame; the port builds it in `tbl` the same way,
+ * because each 0x2DBC4 read also decodes into DS_00105EFC, which is the one
+ * observable effect of that part. The rest arms the name-entry screen. */
+void nameentry_arm(u32 rank, u32 score)
+{
+    u8 tbl[0x1C0];
+    u16 si;
+    for (si = (u16)rank; (s32)(u32)si < 9; si++) {          /* 0x2050C, 0x2054E..0x20556 `jl` */
+        u32 r = hiscore_read(si, 0u);                       /* 0x20510..0x20517 0x2DBC4 */
+        u32 slot = ((u32)si + 1u) * 0x2Cu;                  /* 0x2051C/0x2051F */
+        u32 v = DSD(r);                                     /* 0x20524 */
+        tbl[slot] = (u8)v; tbl[slot + 1u] = (u8)(v >> 8);
+        tbl[slot + 2u] = (u8)(v >> 16); tbl[slot + 3u] = (u8)(v >> 24);   /* 0x20526 */
+        for (u32 k = 0u; k < 0x24u; k++)
+            tbl[slot + 4u + k] = DSB(r + 4u + k);           /* 0x2052D..0x2054B */
+    }
+    for (si = 0u; si < (u16)rank; si++) {                   /* 0x2055F..0x20564, 0x205A9..0x205AD `jc` */
+        u32 r = hiscore_read(si, 0u);                       /* 0x20566..0x2056D 0x2DBC4 */
+        u32 slot = (u32)si * 0x2Cu;                         /* 0x20574/0x20577 */
+        u32 v = DSD(r);                                     /* 0x2057C */
+        tbl[slot] = (u8)v; tbl[slot + 1u] = (u8)(v >> 8);
+        tbl[slot + 2u] = (u8)(v >> 16); tbl[slot + 3u] = (u8)(v >> 24);   /* 0x2057E */
+        for (u32 k = 0u; k < 0x24u; k++)
+            tbl[slot + 4u + k] = DSB(r + 4u + k);           /* 0x20585..0x205A0 */
+    }
+    {
+        u32 slot = (u32)(u16)rank * 0x2Cu;                  /* 0x205AF..0x205C5 */
+        tbl[slot] = (u8)score; tbl[slot + 1u] = (u8)(score >> 8);
+        tbl[slot + 2u] = (u8)(score >> 16); tbl[slot + 3u] = (u8)(score >> 24);   /* 0x205CE */
+        for (u32 k = 0u; k < 0x24u; k++)
+            tbl[slot + 4u + k] = 0x20u;                     /* 0x205D1..0x205F3 */
+    }
+    (void)tbl;
+
+    u8 blank = 1u;                                          /* 0x205F5 AH */
+    for (u32 i = 0u; i < 0x24u && blank != 0u; i++)         /* 0x20612..0x2061D */
+        if (DSB(DS_00104367 + i) != 0x20u) blank = 0u;      /* 0x205FD..0x2060E */
+    if (blank != 0u) {                                      /* 0x20621/0x20623 */
+        u32 dl = 0u;
+        for (;;) {
+            u8 dh = DSB(DS_000A7BC0 + (u32)(u16)rank * 0x2Cu + dl);   /* 0x20625..0x20638 */
+            if (dh == 0u || dl >= 0x24u) break;             /* 0x2063E..0x20645 */
+            DSB(DS_00104367 + dl) = dh;                     /* 0x20647 */
+            dl++;                                           /* 0x2064D */
+        }
+        DSB(DS_00104367 + dl) = 0u;                         /* 0x20651..0x20657 */
+        DSB(DS_0010431E) = 1u;                              /* 0x2065D */
+    }
+    for (u32 i = 0u; i < 0x24u; i++) {                      /* 0x20664..0x20687 */
+        DSB(DS_0010431F + i) = 0u;                          /* 0x2066C */
+        DSB(DS_00104343 + i) = 0u;                          /* 0x20672 */
+        DSB(DS_00104394 + i) = 0x20u;                       /* 0x20678 */
+    }
+    DSB(NE_NAME_COUNT) = 0u;                                /* 0x20699 */
+    DSD(DS_00104390) = score;                               /* 0x2069F */
+    DSB(DS_0010431F) = 0x20u;                               /* 0x206A8 */
+    DSB(DS_001044D4) = 0u;                                  /* 0x206B3 (byte store of AL) */
+    DSW(DS_0010438C) = 0x2EEu;                              /* 0x206B8 */
+    if ((u16)rank == 0u) {                                  /* 0x206BF/0x206C2 */
+        DSD(DS_001044CC) = 2u;                              /* 0x206D0 */
+        DSD(DS_001044C4) = 0x16u;                           /* 0x206D6 */
+        DSB(NE_NAME_LIMIT) = 0x12u;                         /* 0x206DC */
+    } else {
+        DSD(DS_001044CC) = 0x12u;                           /* 0x206F0 */
+        DSD(DS_001044C4) = 0x16u;                           /* 0x206F6 */
+        DSB(NE_NAME_LIMIT) = 3u;                            /* 0x206FC */
+    }
+}
+
 /* 0x20710 — record §49-T. */
 void nameentry_finish(u8 side)
 {
