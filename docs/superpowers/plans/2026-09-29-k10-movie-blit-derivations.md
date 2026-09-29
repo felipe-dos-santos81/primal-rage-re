@@ -243,7 +243,8 @@ so it is not state the port must carry.
 
 ## §K10.1 `0x50D23`: what it is
 
-Status: drafted from §0.2–§0.3, to be confirmed by Task 1.
+Status: confirmed (Task 1, 2026-09-29): k10_check.py 9/9 ok, both
+mutants FAIL, listings match §0.1/§0.4/§0.5.
 
 It takes a rectangle pointer in EAX (`{x0, y0, x1, y1}` dwords) and walks
 `y1 - y0` rows of `cnt` dwords from `DS_001088F8[y0] + (x0 & ~3)`. For each
@@ -255,7 +256,8 @@ reference.
 
 ## §K10.2 The caller `0x1C740` and the rectangle source
 
-Status: drafted from §0.1, to be confirmed by Task 1.
+Status: confirmed (Task 1, 2026-09-29): k10_check.py 9/9 ok, both
+mutants FAIL, listings match §0.1/§0.4/§0.5.
 
 `0x1C82D` passes `ESP` → `{[h+0x684], [h+0x688], [h+0x684]+[h+0x68C],
 [h+0x688]+[h+0x690]}`, which is the next rectangle that the runtime
@@ -264,7 +266,8 @@ Every loop exit reaches `0x1C873 call 0x52106` with EAX = 0.
 
 ## §K10.3 The EDI half is a dead shadow of the aperture
 
-Status: drafted from §0.4–§0.6, to be confirmed by Task 1.
+Status: confirmed (Task 1, 2026-09-29): k10_check.py 9/9 ok, both
+mutants FAIL, listings match §0.1/§0.4/§0.5.
 
 At `0x1C74D` the aperture and both buffers are filled with 0, so the E87A0
 buffer equals the aperture. From then on `0x50D23` writes both together, and
@@ -275,9 +278,32 @@ call tree. `0x52106(0)` at `0x1C873` zeroes both buffers on every path that
 executed `0x50D23`. The E87A0 buffer's only reader in between is `0x50D23`'s
 own compare.
 
+Task 1 re-check, beyond the script (2026-09-29, LE mirror + capstone; the
+Ghidra MCP was unavailable again):
+- The transitive call tree of `0x1C740` over `prage.calls.csv` holds 281
+  functions (47 below `0x5D000`, including `0x64ED8`'s game-code callees
+  `0x102B8` and `0x10678`). It contains none of the functions that hold an
+  absolute reference to `0xE87A0`, `0x1014E4` or `0x1014E8` other than
+  `0x50D23`, `0x52106` and its fill `0x51F72`: `0x2BAF4`, `0x50188`,
+  `0x501A3`, `0x51F45` and `0x1B120` are all outside it.
+- Every absolute dword `0x1014E4`/`0x1014E8` in the image sits in `0x1B120`
+  (the stores `0x1B2AF/0x1B2C7/0x1B2F0/0x1B308` and the null tests),
+  `0x51F45` (read) or `0x52106` (read). None is in the data object, and none
+  is in the ISRs `0x1B908..0x1BDF4`. So the buffer addresses reach no other
+  global than `[0xE87A0]`/`[0xE87A4]`.
+- `0x51F72` stores EDX over 200 rows of 80 dwords (`0x51F73 mov cl,0xc8`,
+  `0x520F7 add eax,0x140`, `0x520FC dec cl; jne 0x51F78`), and `0x52106`
+  keeps EDX = its EAX argument = 0 for all three fills (`0x52112 mov edx,eax`,
+  `0x52128 push edx` / `0x5214B pop edx` around the DAC loop).
+- `0x64ED8` (554 B, runtime Smacker, one caller) stores only to the handle
+  (`[esi+0x684/0x688/0x68C/0x690]`, `[esi+0x6EC]`, `[esi+0x750/0x754/0x770]`)
+  and to its own stack locals; its calls are `0x102B8`, `0x10678` and
+  `0x61243`, all inside the call tree checked above. No correction to §0.
+
 ## §K10.4 The port's replacement and its evidence
 
-Status: drafted from §0.7, to be confirmed by Task 1 and pinned by Task 2.
+Status: confirmed (Task 1, 2026-09-29): k10_check.py 9/9 ok, both
+mutants FAIL, listings match §0.1/§0.4/§0.5.
 
 `movie_play` → `movie_present` → `gfx_present(mem + DSD(DS_000E87A4), 320,
 200)`, a full-frame copy into `g_aperture`, which is the net effect of
@@ -291,14 +317,16 @@ Status: drafted from §0.7, to be confirmed by Task 1 and pinned by Task 2.
 
 ## §K10.5 Verdict
 
-Status: drafted from §0.8, to be confirmed by Task 1.
+Status: confirmed (Task 1, 2026-09-29): k10_check.py 9/9 ok, both
+mutants FAIL, listings match §0.1/§0.4/§0.5.
 
 **host-owned.** `tools/port_classification.txt` row:
 `50D23 host-owned record-§K10 (k10 movie-blit derivations: movie dirty-rect blit, E87A4 vs E87A0 dwords into the aperture (0x50D4A add ebx,0xa0000) and the E87A0 shadow (EDI); the shadow is zeroed by 0x52106(0) at 0x1C873 before any reader; only caller 0x1C82D; movie_present/gfx_present replaces it, smk oracle 120/120 + 41/41)`.
 
 ## §K10.6 Correction recorded against the ledger
 
-Status: drafted from §0.8, to be confirmed by Task 1.
+Status: confirmed (Task 1, 2026-09-29): k10_check.py 9/9 ok, both
+mutants FAIL, listings match §0.1/§0.4/§0.5.
 
 Ledger §B.1 row `0x50D23` ("port (partial) / host-owned (aperture half)"),
 §F row 17 ("the EDI `mem[]` half is port") and §G ("Explicitly not
