@@ -1003,4 +1003,16 @@ void fighter_47a00(u32 side);
 /* 0x47B04: the slot +0x0C callback 0x47BFC stores (slot, rec, side). */
 void fighter_47b04(u32 slot, u32 rec, u32 side);
 
+/* Record §K8c: the update-table entries 4 (0x37C8C), 8 (0x34648), 9
+ * (0x3800C), 11 (0x4F890), 12 (0x24150) and 17 (0x45D98), each fn() as
+ * 0x24CEF calls it, registered in actors_init; and 0x29C20, entry 8's handle
+ * pick (EAX = char, DL = flag). */
+void fighter_37c8c(void);
+void fighter_34648(void);
+u32  fighter_29c20(u32 ch, u32 flag);
+void fighter_3800c(void);
+void fighter_4f890(void);
+void fighter_24150(void);
+void fighter_45d98(void);
+
 #endif /* PRAGE_GAME_FIGHTER_H */

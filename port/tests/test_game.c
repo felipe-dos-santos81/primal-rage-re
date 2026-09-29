@@ -24,6 +24,7 @@
 #include "game/config.h"
 #include "platform/input.h"
 #include "game/fight.h"
+#include "game/fighter.h"
 #include "game/attract.h"
 #include "game/movie.h"
 #include "game/nameentry.h"
@@ -1594,6 +1595,373 @@ static void check_card_ramp(void)
 }
 #undef CARD_REC
 
+/* Update-table entries 4, 8, 9, 11, 12 and 17 (record §K8c,
+ * 2026-09-29-k8c-derivations.md). Each is driven directly with a seeded
+ * mem[] (only entries 8 and 11 have a ported setter, and no no-input path
+ * arms either, §K8c.0). Scratch records sit at 0x3E92000; the actor pool is
+ * filled with 0xA5 before the reset so every spawned field is a real store.
+ * Runs after actors_init, which registers the six entries. */
+#define K8C_SCR    0x3E92000u
+#define K8C_SLOT0  0x001077B0u
+#define K8C_SLOT1  (0x001077B0u + 0x94u)
+static void check_update_k8c(void)
+{
+    static const u32 k_idx[6] = { 4u, 8u, 9u, 11u, 12u, 17u };
+    static const u32 k_addr[6] = { 0x37C8Cu, 0x34648u, 0x3800Cu, 0x4F890u,
+                                   0x24150u, 0x45D98u };
+    void (*const k_fn[6])(void) = { fighter_37c8c, fighter_34648,
+                                    fighter_3800c, fighter_4f890,
+                                    fighter_24150, fighter_45d98 };
+    u8 s_slots[0x160], s_88e8[0x10], s_8180[0x70], s_5b34[2];
+    u32 s_ae8 = DSD(DS_00104AE8), s_dc = DSD(DS_000EF6DC), s_rng = DSD(DS_000EF6D8);
+    u32 s_4744 = DSD(0x00104744u), s_ad4 = DSD(DS_00104AD4);
+    u32 s_9384 = DSD(0x000C9384u), s_row7 = DSD(DS_000A8A98 + 7u * 4u);
+    u8 s_4770 = DSB(0x00104770u);
+    u32 i, rec, head, pset, seed;
+    tf_snap(s_slots, 0x001077A0u, 0x160u);
+    tf_snap(s_88e8, 0x001088E8u, 0x10u);
+    tf_snap(s_8180, 0x00108180u, 0x70u);
+    tf_snap(s_5b34, DS_00105B34, 2u);
+
+    /* (a) The table dwords (0xA8654/64/68/70/74/88) and their resolution. */
+    for (i = 0; i < 6u; i++) {
+        CHECK_EQ_INT((int)DSD(DS_000A8644 + k_idx[i] * 4u), (int)k_addr[i]);
+        CHECK(fn_resolve(k_addr[i]) == k_fn[i],
+              "update-table entry resolves to its K8c port");
+    }
+
+    memset(mem + DSD(DS_001014F4), 0xA5, 0xEBA0);
+    actors_reset();
+
+    /* (b) Entry 4, 0x37C8C. Word +0x34 = 0: bit 0x10 of AE8 cleared, no
+     * spawn. Nonzero: frame word & 3 != 0 does nothing; & 3 == 0 spawns
+     * 0xBB1DC at (slot+0x2C, rec+0x30 >> 16) (the descriptor's +8 word 0x0080
+     * has no 0x2000 bit, so a3 lands in +0x32), a4 = 0. */
+    DSD(0x001078E0u) = K8C_SCR;
+    DSD(K8C_SCR) = K8C_SCR + 0x100u;
+    DSD(K8C_SCR + 0x2Cu) = 0x00012345u;
+    DSD(K8C_SCR + 0x130u) = 0xFFF00000u;
+    DSW(K8C_SCR + 0x134u) = 0;
+    DSD(DS_00104AE8) = 0xFFFFFFFFu;
+    DSD(DS_000EF6DC) = 0x00010004u;
+    fighter_37c8c();
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFFFFEFu);
+    CHECK_EQ_INT((int)actor_list_head(), 0);
+    DSW(K8C_SCR + 0x134u) = 5u;
+    DSD(DS_00104AE8) = 0x10u;
+    DSD(DS_000EF6DC) = 0x00010001u;
+    fighter_37c8c();
+    CHECK_EQ_INT((int)actor_list_head(), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), 0x10);
+    DSD(DS_000EF6DC) = 0x00010002u;            /* bit 1 alone also skips */
+    fighter_37c8c();
+    CHECK_EQ_INT((int)actor_list_head(), 0);
+    DSD(DS_000EF6DC) = 0x00010004u;
+    fighter_37c8c();
+    head = actor_list_head();
+    CHECK(head != 0u, "entry 4 spawns on a frame word with (w & 3) == 0");
+    if (head != 0u) {
+        CHECK_EQ_INT((int)DSD(head + 0x18u), 0x12345);
+        CHECK_EQ_INT((int)DSW(head + 0x32u), 0xFFF0);
+        CHECK_EQ_INT((int)DSD(head + 0x1Cu), 0);
+    }
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), 0x10);
+
+    /* (c) 0x29C20 on a scratch row as character 7's (0xA8AB4), side 1:
+     * DS_00105B34 = {1, 2}. Flag (DL only) -> row[2]; no flag with a
+     * nonzero index -> row[0]; index 0 -> row[1] (flag -> row[0]). */
+    DSD(DS_000A8A98 + 7u * 4u) = K8C_SCR + 0x200u;
+    DSD(K8C_SCR + 0x200u) = 0x11111111u;
+    DSD(K8C_SCR + 0x204u) = 0x22222222u;
+    DSD(K8C_SCR + 0x208u) = 0x33333333u;
+    DSB(DS_001078FF) = 1u;
+    DSB(DS_00105B34) = 1u;
+    DSB(DS_00105B34 + 1u) = 2u;
+    CHECK_EQ_INT((int)fighter_29c20(7u, 1u), 0x33333333);
+    CHECK_EQ_INT((int)fighter_29c20(7u, 0x100u), 0x11111111);
+    DSB(DS_00105B34 + 1u) = 0u;
+    CHECK_EQ_INT((int)fighter_29c20(7u, 0u), 0x22222222);
+    CHECK_EQ_INT((int)fighter_29c20(7u, 1u), 0x11111111);
+
+    /* (d) Entry 8, 0x34648. W = the image word 0xBDBE4 = 1. An odd frame
+     * word returns; else the flag is (word & 2). Side 1's record takes
+     * 0x29C20(char 7, flag) through 0x2A17C with word 0: pset +2 = 0x800 (the
+     * record's +0x5F is set), and +0x18 changes only for a nonzero handle. */
+    CHECK_EQ_INT((int)DSW(0x000BDBE4u), 1);
+    rec = actor_alloc(0);
+    CHECK(rec != 0u, "entry 8 fixture record");
+    if (rec != 0u) {
+        DSW(rec + 0x56u) = (u16)actor_index(rec);
+        DSB(rec + 0x5Fu) = 1u;
+        pset = actor_pset(rec);
+        DSD(K8C_SLOT1) = rec;
+        DSB(K8C_SLOT1 + 0x7Au) = 7u;
+        DSB(DS_00105B34) = 0u;
+        DSB(DS_00105B34 + 1u) = 2u;
+        DSD(K8C_SCR + 0x200u) = 0u;
+        DSD(K8C_SCR + 0x204u) = 0u;
+        DSD(K8C_SCR + 0x208u) = DSD(DSD(DS_000A8A98));   /* char 0's row[0] */
+        CHECK(DSD(K8C_SCR + 0x208u) != 0u, "a nonzero image palette handle");
+        DSW(pset + 2u) = 0x1234u;
+        DSD(pset + 0x18u) = 0u;
+        DSD(DS_000EF6DC) = 0x00000003u;
+        fighter_34648();
+        CHECK_EQ_INT((int)DSW(pset + 2u), 0x1234);
+        DSD(DS_000EF6DC) = 0x00000004u;        /* no flag: row[0] = 0 */
+        fighter_34648();
+        CHECK_EQ_INT((int)DSW(pset + 2u), 0x0800);
+        CHECK_EQ_INT((int)DSD(pset + 0x18u), 0);
+        DSW(pset + 2u) = 0x1234u;
+        DSD(DS_000EF6DC) = 0x00000002u;        /* flag: row[2] = the handle */
+        fighter_34648();
+        CHECK_EQ_INT((int)DSW(pset + 2u), 0x0800);
+        CHECK(DSD(pset + 0x18u) != 0u, "entry 8 applies the flagged handle");
+    }
+
+    /* (e) Entry 9, 0x3800C: the word +0x38 counts down while above 1
+     * (signed); at or below 1 it becomes 0 and AE9 bit 0x02 is cleared. */
+    DSD(0x001078D8u) = K8C_SCR + 0x300u;
+    DSW(K8C_SCR + 0x336u) = 0xBEEFu;
+    DSD(DS_00104AE8) = 0xFFFFFFFFu;
+    DSW(K8C_SCR + 0x338u) = 5u;
+    fighter_3800c();
+    CHECK_EQ_INT((int)DSW(K8C_SCR + 0x338u), 4);
+    DSW(K8C_SCR + 0x338u) = 2u;
+    fighter_3800c();
+    CHECK_EQ_INT((int)DSW(K8C_SCR + 0x338u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFFFFFFu);
+    fighter_3800c();
+    CHECK_EQ_INT((int)DSW(K8C_SCR + 0x338u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFFFDFFu);
+    DSW(K8C_SCR + 0x338u) = 0x8000u;
+    DSD(DS_00104AE8) = 0x00000200u;
+    fighter_3800c();
+    CHECK_EQ_INT((int)DSW(K8C_SCR + 0x338u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), 0);
+    CHECK_EQ_INT((int)DSW(K8C_SCR + 0x336u), 0xBEEF);
+
+    /* (f) Entry 11, 0x4F890. The countdown word; at <= 0 a layer-0xD8 spawn
+     * (0xC98C8 at x = 0x9ACC4's high word 0x3A00 for an odd count, 0xC98DC at
+     * x = 0 for an even one; y = 0x9ACC6's high word 0), the count drops and
+     * the reload word (not below 4) reloads it; a zero count clears AE9 0x08. */
+    actors_reset();
+    CHECK_EQ_INT((int)((s32)DSD(0x0009ACC4u) >> 16), 0x3A00);
+    CHECK_EQ_INT((int)((s32)DSD(0x0009ACC6u) >> 16), 0);
+    DSD(DS_00104AE8) = 0xFFFFFFFFu;
+    DSW(DS_001088E8) = 2u; DSB(DS_001088F0) = 3u; DSW(0x001088EAu) = 0x10u;
+    fighter_4f890();
+    CHECK_EQ_INT((int)DSW(DS_001088E8), 1);
+    CHECK_EQ_INT((int)DSB(DS_001088F0), 3);
+    CHECK_EQ_INT((int)actor_list_head(), 0);
+    fighter_4f890();
+    head = actor_list_head();
+    CHECK(head != 0u, "entry 11 spawns at a zero countdown");
+    if (head != 0u) {
+        CHECK_EQ_INT((int)DSD(head + 0x18u), 0x3A00);
+        CHECK_EQ_INT((int)DSD(head + 0x1Cu), 0);
+        CHECK_EQ_INT((int)DSB(head + 0x49u), 0xD8);
+        CHECK(DSD(head + 0x08u) >= DSD(0x000C98C8u)
+              && DSD(head + 0x08u) < DSD(0x000C98DCu),
+              "odd count: the 0xC98C8 stream");
+    }
+    CHECK_EQ_INT((int)DSB(DS_001088F0), 2);
+    CHECK_EQ_INT((int)DSW(0x001088EAu), 0x0F);
+    CHECK_EQ_INT((int)DSW(DS_001088E8), 0x0F);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFFFFFFu);
+    DSW(DS_001088E8) = 0u;                     /* -1: signed <= 0 */
+    fighter_4f890();
+    rec = actor_list_head();
+    CHECK(rec != 0u && rec != head, "entry 11 spawns at a negative countdown");
+    if (rec != 0u) {
+        CHECK_EQ_INT((int)DSD(rec + 0x18u), 0);
+        CHECK(DSD(rec + 0x08u) >= DSD(0x000C98DCu), "even count: the 0xC98DC stream");
+    }
+    CHECK_EQ_INT((int)DSB(DS_001088F0), 1);
+    CHECK_EQ_INT((int)DSW(DS_001088E8), 0x0E);
+    DSW(DS_001088E8) = 1u; DSB(DS_001088F0) = 3u; DSW(0x001088EAu) = 4u;
+    fighter_4f890();
+    CHECK_EQ_INT((int)DSW(0x001088EAu), 4);
+    CHECK_EQ_INT((int)DSW(DS_001088E8), 4);
+    DSW(DS_001088E8) = 1u; DSB(DS_001088F0) = 1u; DSW(0x001088EAu) = 0x77u;
+    fighter_4f890();
+    CHECK_EQ_INT((int)DSB(DS_001088F0), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFFF7FFu);
+    CHECK_EQ_INT((int)DSW(0x001088EAu), 0x77);
+    CHECK_EQ_INT((int)DSW(DS_001088E8), 0);
+
+    /* (g) Entry 12, 0x24150. A nonzero dword +0x1C keeps the step byte;
+     * else it advances: below 4 +0x36 = 0x100 >> step, +0x44 = 0xA and +0x34
+     * quartered (signed); at 4 +0x34 = 0 and AE9 bit 0x10 is cleared. */
+    DSD(0x00104744u) = K8C_SCR + 0x400u;
+    DSD(DS_00104AE8) = 0xFFFFFFFFu;
+    DSD(K8C_SCR + 0x41Cu) = 0x00010000u;
+    DSB(0x00104770u) = 2u;
+    DSW(K8C_SCR + 0x434u) = 0x1234u;
+    fighter_24150();
+    CHECK_EQ_INT((int)DSB(0x00104770u), 2);
+    CHECK_EQ_INT((int)DSW(K8C_SCR + 0x434u), 0x1234);
+    DSD(K8C_SCR + 0x41Cu) = 0u;
+    DSB(0x00104770u) = 0u;
+    DSW(K8C_SCR + 0x434u) = 0xFF80u;
+    DSW(K8C_SCR + 0x436u) = 0xBEEFu;
+    DSW(K8C_SCR + 0x444u) = 0x7777u;
+    fighter_24150();
+    CHECK_EQ_INT((int)DSB(0x00104770u), 1);
+    CHECK_EQ_INT((int)DSW(K8C_SCR + 0x436u), 0x80);
+    CHECK_EQ_INT((int)DSW(K8C_SCR + 0x444u), 0x0A);
+    CHECK_EQ_INT((int)DSW(K8C_SCR + 0x434u), 0xFFE0);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFFFFFFu);
+    DSB(0x00104770u) = 3u;
+    DSW(K8C_SCR + 0x436u) = 0xBEEFu;
+    fighter_24150();
+    CHECK_EQ_INT((int)DSB(0x00104770u), 4);
+    CHECK_EQ_INT((int)DSW(K8C_SCR + 0x434u), 0);
+    CHECK_EQ_INT((int)DSW(K8C_SCR + 0x436u), 0xBEEF);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFFEFFFu);
+    DSB(0x00104770u) = 0xFFu;
+    DSW(K8C_SCR + 0x434u) = 0x0010u;
+    fighter_24150();
+    CHECK_EQ_INT((int)DSB(0x00104770u), 0);
+    CHECK_EQ_INT((int)DSW(K8C_SCR + 0x436u), 0x100);
+    CHECK_EQ_INT((int)DSW(K8C_SCR + 0x434u), 0x0004);
+
+    /* (h) Entry 17, 0x45D98, on entry 5 of the twelve (+0x28); the others
+     * are done (4). Slot DS_00104AD4 = 0 (record side byte 1, char 3), slot
+     * DS_001078FD = 1. The rng draws are replayed from the same seed. */
+    actors_reset();
+    for (i = 0; i < 0x60u; i += 8u) DSB(0x00108184u + i) = 4u;
+    DSD(0x00108180u + 0x28u) = 0x5A5A5A5Au;
+    DSB(0x001081EEu) = 0u;
+    DSD(DS_00104AD4) = 0u;
+    DSB(DS_001078FD) = 1u;
+    DSD(K8C_SLOT0) = K8C_SCR + 0x500u;
+    DSB(K8C_SCR + 0x551u) = 1u;
+    DSB(K8C_SLOT0 + 0x7Au) = 3u;
+    DSD(K8C_SLOT0 + 0x2Cu) = 0x00050000u;
+    DSD(K8C_SLOT0 + 0x30u) = 0x00002000u;
+    DSD(K8C_SLOT1) = K8C_SCR + 0x600u;
+    DSD(K8C_SLOT1 + 0x2Cu) = 0x00060000u;
+    DSD(K8C_SCR + 0x630u) = 0x00300000u;
+    DSB(DS_00105B34) = 0u;
+    DSB(DS_00105B34 + 1u) = 1u;
+    CHECK(DSD(DSD(DS_000A8A98 + 12u)) != DSD(DSD(DS_000A8A98 + 12u) + 4u),
+          "char 3's two palette handles differ");
+    DSD(DS_00104AE8) = 0xFFFFFFFFu;
+    /* A state above 4 is skipped (0x45DA7 ja). */
+    DSB(0x00108184u + 0x28u) = 5u;
+    fighter_45d98();
+    CHECK_EQ_INT((int)DSB(0x00108184u + 0x28u), 5);
+    CHECK_EQ_INT((int)DSD(0x00108180u + 0x28u), 0x5A5A5A5A);
+    /* State 0: rng(0xA) != 0 skips; the draw is still taken. */
+    DSB(0x00108184u + 0x28u) = 0u;
+    for (seed = 1u; seed < 1000u; seed++) { rng_seed(seed); if (rng_next(0x0Au) != 0u) break; }
+    rng_seed(seed); (void)rng_next(0x0Au);
+    {
+        u32 after = DSD(DS_000EF6D8);
+        rng_seed(seed);
+        fighter_45d98();
+        CHECK_EQ_INT((int)DSB(0x00108184u + 0x28u), 0);
+        CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)after);
+        CHECK_EQ_INT((int)actor_list_head(), 0);
+    }
+    /* State 0: rng(0xA) == 0 spawns. The seed's first draw is also nonzero
+     * for range 0xB, so the range itself is pinned. */
+    for (seed = 1u; seed < 100000u; seed++) {
+        rng_seed(seed);
+        if (rng_next(0x0Au) != 0u) continue;
+        rng_seed(seed);
+        if (rng_next(0x0Bu) != 0u) break;
+    }
+    CHECK(seed < 100000u, "a seed whose first rng(0xA) is 0 and rng(0xB) is not");
+    {
+        u32 r1, r2;
+        rng_seed(seed); (void)rng_next(0x0Au);
+        r1 = rng_next(0x800u); r2 = rng_next(0x100u);
+        rng_seed(seed);
+        DSD(0x000C9384u) = 0xDEADBEEFu;
+        fighter_45d98();
+        rec = DSD(0x00108180u + 0x28u);
+        CHECK(rec != 0u && rec == actor_list_head(), "state 0 stores the spawned record");
+        if (rec != actor_list_head()) rec = 0u;   /* no scratch deref below */
+        CHECK_EQ_INT((int)DSD(0x000C9384u), (int)DSD(DSD(DS_000A8A98 + 12u) + 4u));
+        CHECK_EQ_INT((int)DSB(0x00108184u + 0x28u), 1);
+        if (rec != 0u) {
+            CHECK_EQ_INT((int)DSD(rec + 0x18u), (int)(0x00050000u - 0x400u + r1));
+            CHECK_EQ_INT((int)DSD(rec + 0x1Cu), (int)(0x00002000u + r2));
+            CHECK_EQ_INT((int)DSW(rec + 0x32u), 0);
+            CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x200);
+        }
+    }
+    if (rec != 0u) {
+        u32 r3, r4;
+        /* State 1: waits for the signed +0x1C >= 0x3A00. */
+        DSD(rec + 0x1Cu) = 0x80000000u;
+        fighter_45d98();
+        CHECK_EQ_INT((int)DSB(0x00108184u + 0x28u), 1);
+        DSD(rec + 0x1Cu) = 0x39FFu;
+        fighter_45d98();
+        CHECK_EQ_INT((int)DSB(0x00108184u + 0x28u), 1);
+        CHECK_EQ_INT((int)DSW(rec + 0x36u), 0x200);
+        DSD(rec + 0x1Cu) = 0x3A00u;
+        fighter_45d98();
+        CHECK_EQ_INT((int)DSB(0x00108184u + 0x28u), 2);
+        CHECK_EQ_INT((int)DSB(0x00108185u + 0x28u), 0x1E);
+        CHECK_EQ_INT((int)DSW(rec + 0x36u), 0);
+        /* State 2: the timer counts; at <= 0 the 0xEB8BE start at 1.0 near
+         * slot 1 (x - 0x800 + rng(0x1000), y - 0x100 + rng(0x200)). */
+        DSB(0x00108185u + 0x28u) = 2u;
+        fighter_45d98();
+        CHECK_EQ_INT((int)DSB(0x00108185u + 0x28u), 1);
+        CHECK_EQ_INT((int)DSB(0x00108184u + 0x28u), 2);
+        rng_seed(0x1234u);
+        r3 = rng_next(0x1000u); r4 = rng_next(0x200u);
+        rng_seed(0x1234u);
+        fighter_45d98();
+        CHECK_EQ_INT((int)DSB(0x00108184u + 0x28u), 3);
+        CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x3F800000);
+        CHECK_EQ_INT((int)DSD(rec + 0x18u), (int)(0x00060000u - 0x800u + r3));
+        CHECK_EQ_INT((int)DSW(rec + 0x32u), (int)(u16)(0x30u - 0x100u + r4));
+        CHECK_EQ_INT((int)DSW(rec + 0x36u), 0xFC00);
+        /* State 3: lands when +0x1C + (s16)+0x36 <= 0. */
+        DSW(rec + 0x36u) = 0xFFF0u;
+        DSD(rec + 0x1Cu) = 0x11u;
+        DSB(0x001081EEu) = 0x0Bu;
+        fighter_45d98();
+        CHECK_EQ_INT((int)DSB(0x00108184u + 0x28u), 3);
+        CHECK_EQ_INT((int)DSB(0x001081EEu), 0x0B);
+        CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFFFFFFu);
+        /* The twelfth landing: 3.0 on slot 0's record, 0x37B54 sets +0x53 on
+         * the other side's slot DS_001077A8[1 ^ 1], AEA bit 0x02 cleared. */
+        DSD(0x001077A8u) = K8C_SCR + 0x700u;
+        DSD(K8C_SCR + 0x700u) = K8C_SCR + 0x800u;
+        DSB(K8C_SCR + 0x853u) = 0x77u;
+        DSD(K8C_SCR + 0x524u) = 0x12345678u;
+        DSD(rec + 0x1Cu) = 0x10u;
+        fighter_45d98();
+        CHECK_EQ_INT((int)DSB(0x00108184u + 0x28u), 4);
+        CHECK_EQ_INT((int)DSD(rec + 0x24u), 0x40400000);
+        CHECK_EQ_INT((int)DSD(rec + 0x1Cu), 0);
+        CHECK_EQ_INT((int)DSW(rec + 0x36u), 0);
+        CHECK_EQ_INT((int)DSB(0x001081EEu), 0x0C);
+        CHECK_EQ_INT((int)DSD(K8C_SCR + 0x524u), 0x40400000);
+        CHECK_EQ_INT((int)DSB(K8C_SCR + 0x853u), 1);
+        CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFDFFFFu);
+    }
+
+    tf_put(s_slots, 0x001077A0u, 0x160u);
+    tf_put(s_88e8, 0x001088E8u, 0x10u);
+    tf_put(s_8180, 0x00108180u, 0x70u);
+    tf_put(s_5b34, DS_00105B34, 2u);
+    DSD(DS_00104AE8) = s_ae8; DSD(DS_000EF6DC) = s_dc; DSD(DS_000EF6D8) = s_rng;
+    DSD(0x00104744u) = s_4744; DSD(DS_00104AD4) = s_ad4;
+    DSD(0x000C9384u) = s_9384; DSD(DS_000A8A98 + 7u * 4u) = s_row7;
+    DSB(0x00104770u) = s_4770;
+    actors_reset();
+}
+#undef K8C_SCR
+#undef K8C_SLOT0
+#undef K8C_SLOT1
+
 int test_actors(void)
 {
     int before = g_failures;
@@ -1612,6 +1980,7 @@ int test_actors(void)
     CHECK(fn_resolve(FN_00029B74) == frontend_darken_all,
           "actors_init registered 0x29B74 as frontend_darken_all");
     check_card_ramp();
+    check_update_k8c();
 
     /* A fresh reset frees every record and leaves both lists empty. It also
      * runs 0x4F228 with EAX = 0 (0x2BBC0/0x2BBC4): the projection gate

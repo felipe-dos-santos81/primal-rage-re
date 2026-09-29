@@ -645,6 +645,16 @@ int actors_init(void)
     /* PORT: record §K8a. The update table's entry 6 (0x25FAC, the dword at
      * 0xA865C; no Ghidra function), fn() with the unread EAX index. */
     fn_register(0x25FACu, flow_card_ramp_step);
+    /* PORT: record §K8c. The update table's entries 4 (0x37C8C, the dword at
+     * 0xA8654), 8 (0x34648, 0xA8664), 9 (0x3800C, 0xA8668), 11 (0x4F890,
+     * 0xA8670), 12 (0x24150, 0xA8674) and 17 (0x45D98, 0xA8688); no Ghidra
+     * function at any of them. fn() with the unread EAX index. */
+    fn_register(0x37C8Cu, fighter_37c8c);
+    fn_register(0x34648u, fighter_34648);
+    fn_register(0x3800Cu, fighter_3800c);
+    fn_register(0x4F890u, fighter_4f890);
+    fn_register(0x24150u, fighter_24150);
+    fn_register(0x45D98u, fighter_45d98);
     return 1;
 }
 
@@ -2839,9 +2849,10 @@ static void actor_type_0a19_update(void)
 
 /* 0x37B54 — demo-pose record §46-D. EAX = rec: the other side's slot
  * DS_001077A8[(rec+0x51) ^ 1] (the byte index, `and eax,0xff`); when it is
- * not 0, its record's +0x53 = 1. Called by 0x48F98 (0x4904F) and the
- * unported 0x45B43/0x45FD3; the D000 target at 0xE8564/0xEDAFC. */
-static void fighter_37b54(u32 rec)
+ * not 0, its record's +0x53 = 1. Called by 0x48F98 (0x4904F), 0x45D98
+ * (0x45FD3, fighter_45d98, record §K8c.6) and the unported 0x45B43; the D000
+ * target at 0xE8564/0xEDAFC. */
+void fighter_37b54(u32 rec)
 {
     u32 slot = DSD(DS_001077A8
                    + (u32)(u8)(DSB(rec + 0x51u) ^ 1u) * 4u);   /* 0x37B54..0x37B5E */

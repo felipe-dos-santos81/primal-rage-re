@@ -201,4 +201,8 @@ void text_glyph_at(s32 col, s32 ch, s32 row, u32 mode);
  * dirty list. The resource loader calls it for string 489 at (0,192). */
 void text_blit_string(const u8 *s, s32 x, s32 y);
 
+/* 0x37B54 (demo-pose record §46-D): the other side's slot record's +0x53 = 1.
+ * Exported for 0x45D98 (record §K8c.6). EAX = rec. */
+void fighter_37b54(u32 rec);
+
 #endif /* PRAGE_GAME_ACTORS_H */
