@@ -25,4 +25,8 @@ u32  tf_anim_spawn_stream(void);
 void tf_frontend_seed_list(u32 handle, u8 *saved);
 void tf_frontend_restore_list(const u8 *saved);
 
+/* ---- test_platform.c: the menu fixtures ---- */
+#define MT_LAYOUT 0x3E2D000u   /* the key layout block DS_00101514 points at */
+void tf_menu_press(u32 bits);
+
 #endif /* PR_TEST_FIXTURES_H */

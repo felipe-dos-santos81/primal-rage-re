@@ -363,3 +363,222 @@ which appends 18 entries to `fn_table` (limit `FN_TABLE_MAX` 1300, `mem.c:18`).
 Task 2 proves neither moves a frame. It byte-compares a `make check frames=8000`
 dump before and after, and checks that every `make verify` oracle line is
 unchanged.
+
+## §K11.0 Baseline (executor, Task 1)
+
+The baseline is green on `8466111` (branch `all-gaps`). `cmake --build build`
+printed no warning or error. `make verify` exited 0 (`verify-exit=0`; log
+`<scratchpad>/k11_t1_verify.txt`). These are its oracle lines as `orlines.sh`
+extracts them (`<scratchpad>/k11_t1_or.txt`, sha256 `5852a1225ab8f3bf...`),
+the comparison base for every later task. They agree with ledger §A. Four
+lines longer than 400 characters (the title splice-byte lists and the
+front-end splice-byte and missing lists) are shortened here to their prefix
+and the sha256 of the full line; the full text is in the file.
+
+```
+oracle C-vs-Python: 9866 writes byte-exact
+capture oracle first difference at C write 430: C tick=1010 reg=0xa0 val=0xd3 vs capture tick=1010 reg=0x1a8 val=0x68 (C 9866 writes, capture 6903 normalised)
+all checks passed
+oracle C-vs-Python: 9866 writes byte-exact
+capture oracle first difference at C write 430: C tick=1010 reg=0xa0 val=0xd3 vs capture tick=1010 reg=0x1a8 val=0x68 (C 9866 writes, capture 6903 normalised)
+all checks passed
+smk_compare: 120/120 frames match
+smk_compare: 41/41 frames match
+all checks passed
+title_compare: capture 1: window distinct [216..326] (raw 2198..2308)
+title_compare: capture 1: 111 frames in window: 54 clean, 55 splice, 2 transition, 0 unexplained
+title_compare: capture 1: splice bytes [55 frames, 55 distinct]:  ... (459 chars, sha256 614f56c8c579f4d8)
+title_compare: capture 1: transition rows (N, row, from_N, from_N+1) [2 frames]: ['port87@row7(28/73)', 'port90@row76(322/273)']
+title_compare: capture 1: port frames exhibited 95/96; missing [0]; endpoints OK
+title_compare: capture 2: window distinct [216..326] (raw 2193..2303)
+title_compare: capture 2: 111 frames in window: 54 clean, 57 splice, 0 transition, 0 unexplained
+title_compare: capture 2: splice bytes [57 frames, 57 distinct]:  ... (472 chars, sha256 2d9ed45f9104492f)
+title_compare: capture 2: transition rows (N, row, from_N, from_N+1) [0 frames]: none
+title_compare: capture 2: port frames exhibited 95/96; missing [0]; endpoints OK
+title_compare: determinism: clean samples of 54 port frame(s) agree, 0 disagree
+all checks passed
+title_compare: frontend: window distinct [560..1884] (raw 3108..4791)
+title_compare: frontend: 1325 frames in window: 517 clean, 801 splice, 3 transition, 2 unexplained
+title_compare: frontend: splice bytes [801 frames, 801 distinct]:  ... (6118 chars, sha256 a94212acd7d58794)
+title_compare: frontend: transition rows (N, row, from_N, from_N+1) [3 frames]: ['port832@row177(235/33)', 'port862@row189(148/478)', 'port906@row31(101/343)']
+title_compare: frontend: port frames exhibited 1145/1382; missing [1, 2, 6, 12, 17, 23, 29, 35, 41, 47, 53, 59, 65, 127, ... (1249 chars, sha256 57cde3464bb284fa)
+title_compare: frontend: 16 all-black capture frame(s) excluded as artifacts: [(0, 1367), (217, 2173), (357, 2420), (390, 2529), (424, 2637), (458, 2746), (491, 2855), (525, 2963), (561, 3109), (831, 3670), (1885, 4793), (2095, 5401), (2133, 5807), (2383, 6758), (3406, 7846), (3543, 8247)]
+title_compare: frontend: 2 unexplained captured frame(s) allowed by name: [(832, 3671), (833, 3740)]; no other unexplained frame in the window.
+all checks passed
+title_compare: demo-fight: no port frames after the front-end window
+title_compare: demo-fight: front-end window distinct [560..1884]; fight window empty: the front-end window reaches the first all-black capture frame 1885 (raw 4793)
+title_compare: demo-fight: 0 unexplained in the fight window
+title_compare: demo-fight: fully explained; the window claim is now exact
+title_compare: attract2: front-end window distinct [560..1884]; cycle-2 region [1885..3616] (raw 4793..8409); cycle-2 dump 2308 frames
+title_compare: attract2: exhibited window distinct [1886..3616] (raw 4795..8409)
+title_compare: attract2: 1732 frames in region: 1078 clean, 630 splice, 17 transition, 1 unexplained, 6 all-black
+title_compare: attract2: captured frame 3545 (raw 8338) allowed by name as a three-frame splice: cycle-2 2192/2193/2194 at bytes 120000/172800 (rows 125/180)
+title_compare: attract2: 0 unexplained in the region
+all checks passed
+attract_compare: data/title-captures/title: attract window [0..215]; title window starts at capture 216 (raw 2198)
+attract_compare: data/title-captures/title: 215/216 capture frames explained; port attract frames exhibited 173/690
+attract_compare: data/title-captures/title: FIRST DIVERGENCE at capture frame 215 (raw 2180)
+attract_compare: data/title-captures/title:   best byte splice port0[0..0) ++ port1[0..192000) still differs at 498 byte(s) (first row 192 byte 184320)
+attract_compare: data/title-captures/title: expected divergence at capture frame 215
+attract_compare: data/title-captures/title2: attract window [0..215]; title window starts at capture 216 (raw 2193)
+attract_compare: data/title-captures/title2: 215/216 capture frames explained; port attract frames exhibited 173/690
+attract_compare: data/title-captures/title2: FIRST DIVERGENCE at capture frame 215 (raw 2175)
+attract_compare: data/title-captures/title2:   best byte splice port0[0..0) ++ port1[0..192000) still differs at 498 byte(s) (first row 192 byte 184320)
+attract_compare: data/title-captures/title2: expected divergence at capture frame 215
+Ran 10 tests in 0.099s
+OK
+Ran 33 tests in 1.102s
+OK
+== symbols.h must regenerate byte-identically ==
+python3 tools/gen_symbols.py port/decomp port/src/symbols.h
+1304 globals, 1206 functions -> port/src/symbols.h
+  dropped 11 globals, 1 functions outside the LE objects
+all checks passed
+```
+
+`python3 tools/port_progress.py` prints:
+
+```
+762 1203 63
+726 730 99 (portable: excludes 82 host-owned/deferred and runtime >= 5D000)
+```
+
+(the plan's `726 731 99` is the older tree; the tree's value is `726 730`.)
+
+The frame baseline is `make check frames=8000` on the same build
+(`check-exit=0`); its 8000 `frames/frame_*.idx` and 8000 `frame_*.pal` files
+are copied to `<scratchpad>/k11_frames_before/` (the `.ppm` is the `.idx`
+through the `.pal`, and is not kept, for disk space).
+
+**§0 re-checked.** `le.py` rebuilt `k11_img.bin` byte-identical to
+`img_rev.bin`. `k11_closure.py` prints `TOTAL 53 functions 15577 bytes`, which
+includes the three already-ported `0x38B18`, `0x500BB` and `0x1AE28`, and its
+output is identical to the planner's `k11_closure.txt`. `k11_tab.py` prints 50
+rows summing to 15 304 bytes. **§0 re-checked: 50 functions / 15 304 B**, no
+correction.
+
+One addition to §0.2 from the fixed-up image: the title entry `0xBCCCC` of the
+START MENU holds string `0x215` "START MENU" (its `+4`/`+8`/`+0xC` are 0), and
+the three tables end at the zero entries `0xBCC0C`, `0xBCCBC` and `0xBCD4C`.
+The START MENU items all have `+0xC = 1`; the title entries `0xBCBDC`,
+`0xBCC1C` and `0xBCCCC` have no menu-level callback (`+8 = 0`).
+
+## §K11.1 The test seams (executor, Task 2)
+
+No raw counterpart; both are test infrastructure.
+
+* **`host_set_pump_hook`** (`host.h`/`host.c`, a `PORT:` test seam). When a
+  hook is set, `host_pump()` calls it once at the end of every call. NULL is
+  the default and nothing outside `run_tests` sets it, so the game and the
+  oracle runs are unaffected (the frame proof of §K11.2 covers this). The
+  blocking menu loops reach the host only through `config_screen_wait`'s
+  `host_wait_vblank()`.
+* **`tf_menu_press`** is `test_platform.c`'s `mt_press`, moved byte for byte to
+  `test_fixtures.c` with `MT_LAYOUT` (`0x3E2D000`, into `test_fixtures.h`). Its
+  34 call sites were renamed. `grep -c CHECK port/tests/test_platform.c` is 819
+  before and after, so no assertion changed.
+* **The harness** (`test_game.c`, `sm_*`). `sm_hook` feeds one scripted step
+  (a BIOS key `(scan << 8) | ascii` through `input_push`, and a pad word through
+  `tf_menu_press`) on the first pump after `DS_000E87A0` changes. That is once
+  per presented frame, because `config_screen_wait` swaps the buffers at
+  `0x2EAD6` before its tick waits. Past the script's end it feeds Esc, then
+  Esc+Enter alternately, and counts each one as an extra frame. After 600
+  extra frames it exits the process. `sm_end(n)` asserts exactly `n` frames
+  and no extra ones.
+* **Hardening (correction to the plan's mutation 8).** With the hook call
+  removed from `host_pump`, the seam checks do fail, but the next scripted
+  blocking run (`0x2CB94`'s `menu_run`) then never sees its Esc. The harness's
+  own exit guard lives in the hook, so the suite hung: the first mutation-8 run
+  was killed, and its failures were lost in the unflushed pipe. `sm_check_seam`
+  now sets `sm_seam_ok` only when both latches and the frame count are right.
+  `sm_begin` stops the process with a `FAIL` line when the flag is clear, and
+  the seam check itself uses the unguarded `sm_begin_raw`. After this change,
+  mutation 8 fails with 3 check failures and the guard's exit.
+* **Frame budget.** This task scripts 3 hooked frames: 2 for the seam and 1 for
+  GAME OPTIONS. Five more frames are presented, one by each `menu_step`
+  initialisation in the START checks (`0x2FFF1`). `run_tests` takes 5.9 s in all.
+
+## §K11.2 Cycle 1: the shell (executor, Task 2)
+
+Ten functions, all re-read from the fixed-up image (`k11_dx.py`):
+
+| addr | raw | port |
+|---|---|---|
+| `0x2CB74` | `mov ebx,0xF000; mov edx,0x10; mov eax,0xBCCCC; xor ecx,ecx; call 0x2FFC4` | `svc_start_menu`: `menu_step(0xBCCCC, 0x10, 0)` |
+| `0x2CB94` | `... mov eax,0xBCC1C; xor ecx,ecx; call 0x2FA40; mov edx,eax; call 0x1B084; call 0x2C304; mov eax,edx` | `svc_options_menu`: `menu_run(0xBCC1C, 0x10, 0)`, `PORT:` for `0x1B084` (deferred row `1B084`), `config_credits_init`, returns `menu_run`'s result |
+| `0x2CBC4`..`0x2CC54` | `push edx; mov edx,M; xor ah,ah` or `mov ah,N`; `mov [0x104B00],dx` (word); `mov [0x104B1D],ah`; `pop edx; ret` | seven setters, M/N = `2D/0 2E/0 28/1 29/1 2A/2 2B/3 2C/4`; EAX returns the entry with AH replaced |
+| `0x2F99C` | `0x4F1E4` (EAX 0, which it overwrites with 0x2700 at `0x4F1E5`), `0x2BAF4` (EAX 1, EBX = ECX = 0), `0x4F1D0` (EAX = EDX = 0), `0x38B18(0x9AD84)` with EDX = EBX = 0 (both preserved across the calls) | `svc_screen_reset`: the same four calls as `menu_title_draw` opens with (`frontend_input_reset`, `actors_reset`, `frontend_origin_zero`, `frontend_spawn_row(0x9AD84, 0, 0)`) |
+
+All nine table callbacks are registered by `svcmenu_register()`, which is
+idempotent (a static guard, because `fn_register` appends unconditionally).
+`game_init` calls it once. `0x2CACC` and `0x2CAC0` are left for their own cycles.
+
+**The two `0x2F9CC` stores** (`game_init`, next to `config_validate`): the store
+`0x2FA01 mov dword [0x10740C], 0x1D2D0` comes before `0x2FA0B call 0x2D6F8`.
+Then `0x2FA10 mov eax,0x2A; call 0x2D974; and al,0xFC; mov [0x107410],eax`. The
+image has `[0x1D2D0..] = 0, 0xA2EB4, 0x1D2C9, 0x1D2C0`, so `[0x1D2D4]` is the
+CONFIG OPTIONS table `0xA2EB4` (and `[+0xC] = 0x1D2C0` is the string
+`menu_debug_lines` reads). **Correction:** §0.5 cites the `DS_00107410` reader
+as `0x32363`, but the instruction is at `0x32361`
+(`mov ebp,[0x107410]; and ebp,0x10`); `0x32363` is its displacement.
+
+**Values the tests pin, checked against the raw:**
+
+* The MAIN MENU table ends at `0xBCC0C`, so the walk counts 2 items. In the
+  START MENU (`0xBCCDC..0xBCD3C`, 7 items, ending at `0xBCD4C`) no string
+  starts with `?`, so two Downs (`0x3055E..0x305BE`: `cur+1`, compared against
+  `DS_00107424 = 7`, then `0x2FE40`) select item 2, `0xBCCFC`, whose `+8` is
+  `0x2CBF4`.
+* Enter (`0x3046F`): `0x30480` clears `DS_00107414`. `0x304A2 call [edx+8]`
+  runs with EAX = the selected entry. `0x2CB74`'s inner `0x2FFC4` sees the
+  cleared byte and re-initialises the one shared state onto `0xBCCCC`:
+  `DS_0010741C = 0xBCCDC`, `DS_00107418 = ECX = 0`. Its result 0 passes
+  `0x304AA` (not -10) and `0x304B3` (not -5), which gives `0x305E7`, result 0.
+* `0x2CBF4` returns `0x000BCCFC` with AH = 1, which is `0x000B01FC`. That is
+  neither -10 nor -5, so `0x2FFC4` returns 0 with `DS_00107414 = 0` (from
+  `0x30480`).
+* **The Esc from START MENU returns -5, not -1** (this corrects the plan's
+  Review Focus, which says -1; the plan's Task 2 test text already says -5).
+  The nested state has flags 0, so `0x30430 test [0x107418],4` falls to
+  `0x30449`. `DS_0010742C = 0` is not `DS_00107424 = 7`, so the result is
+  `0x30466 mov eax,-5`, with `0x30456` clearing `DS_00107414`. The next
+  `menu_step(0xBCBDC, 0x10, 4)` re-initialises MAIN MENU (`DS_0010741C =
+  0xBCBEC`, flags 4). Case `0x27` treats -5 like 0 (`0x251F5..0x251FC`).
+* GAME OPTIONS with an immediate Esc: `0x2FA40` with flags 0 returns
+  `(cur == count) - 1 = -1` (`0x2FD53..0x2FD60`) after one presented frame
+  (`0x2FA61`). Then `0x2C304` sets `DS_00105C00 = ((field 0x29 & 0xF0000) >> 16)
+  + 1`.
+
+**Tests:** `test_svcmenu` (registered after `test_cfg_helpers`, whose one
+`actors_init()` it needs) runs `sm_check_seam` and `sm_check_shell`. It saves
+and restores the tick model, the key state, `DS_00107414..0x10744F` and
+`DS_00105C00`.
+
+**Mutations** (each one rebuilt, run and reverted; log `<scratchpad>/k11_t2_mutations.txt`):
+
+| # | mutation | result |
+|---|---|---|
+| 1 | `0x2CBF4` stores mode 0x29 | caught (2 checks) |
+| 2 | `0x2CBF4` stores AH = 0 and returns AH = 0 | caught (3: `DS_00104B1D` twice and EAX) |
+| 3 | the `0x2CBC4` store becomes a dword | caught (the `+2` sentinel) |
+| 4 | the `0x2CB74` registration is dropped | caught (7) |
+| 5 | `svc_start_menu` passes flags 4 | caught (`DS_00107418`, and the Esc result becomes -1) |
+| 6 | `config_credits_init` is dropped | caught (the credits check) |
+| 7 | `frontend_spawn_row` is dropped | caught (the backdrop check) |
+| 8 | the hook call is removed from `host_pump` | caught (3 seam checks, then the `sm_seam_ok` guard exits; see §K11.1) |
+
+`game_init`'s stores and `svcmenu_register()` are not reachable from `run_tests`
+(`game_init` runs only in the env-gated drivers). The frame proof below shows
+they move nothing.
+
+**Gate (Task 2).** `make verify` exited 0. Its oracle lines equal §K11.0's,
+apart from the two unittest wall-clock lines (`Ran 10 tests in 0.097s`,
+`Ran 33 tests in 1.082s`), which are not oracle claims. `make check
+frames=8000` was run after the change and compared with `cmp` against the
+§K11.0 baseline: 8000 `.idx` and 8000 `.pal`, 16000 files, 0 differ. So the
+two `0x2F9CC` stores and `svcmenu_register()` in `game_init` move no frame.
+The header grep (`/* 0xADDR`) counts 1 for each of the ten addresses. The
+`svcmenu.h` declaration comments put the address last (`... — 0x2CB74.`) so
+that the grep counts only the definition. `tools/port_progress.py` is
+unchanged at `762 1203 63` / `726 730 99`: none of the ten is a Ghidra
+function (§0.3).

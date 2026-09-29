@@ -15,6 +15,7 @@
 #include "game/menu.h"
 #include "game/nameentry.h"
 #include "game/rng.h"
+#include "game/svcmenu.h"
 #include "mem.h"
 #include "symbols.h"
 #include "platform/res.h"
@@ -6561,7 +6562,10 @@ void game_init(void)
      * derived from v. The master init 0x2F9CC (0x20C15) runs 0x13ADC
      * (effects_init, inside actors_init above) then 0x2D6F8 (config_validate)
      * before this block, so on a fresh image v is what the defaults path wrote. */
+    DSD(DS_0010740C) = 0x0001D2D0u;   /* 0x2FA01 (record §K11.2): 0x2F9CC's pointer; [0x1D2D4] = 0xA2EB4, CONFIG OPTIONS */
     config_validate();          /* 0x2F9CC's 0x2D6F8, before 0x20C5D */
+    DSD(DS_00107410) = config_field_get(0x2Au) & 0xFFFFFFFCu;   /* 0x2FA10..0x2FA1C `and al,0xfc` */
+    svcmenu_register();         /* PORT: the options-menu table callbacks (record §K11.2) */
     u32 v = config_field_get(0x29u);                   /* 0x20C68 */
     DSD(DS_00104528) = v;                              /* 0x20C6D */
     /* 0x20C84 0x1E824. The raw runs 0x47370 (the string table, loaded below
@@ -7173,8 +7177,9 @@ void game_frame(void)
          * `mov ecx,4` at 0x251D5). Results 0, -5 and -10 (0x251F5..0x251FC)
          * go on to 0x4F644; any other result is the longjmp(0x1044F4, 1) at
          * 0x25206. Enter in mode 3 sets DS_00104B00 to 0x27 (game_key_loop,
-         * 0x24EE0, record §55-A; the raw's other setters are in the unported
-         * 0x2CBxx callbacks); no oracle driver queues a key, so this arm
+         * 0x24EE0, record §55-A; the START MENU callbacks 0x2CBC4..0x2CC54
+         * (svcmenu.c, record §K11.2) store modes 0x28..0x2E); no oracle
+         * driver queues a key, so this arm
          * is not reached by the front-end, demo-fight or attract runs.
          * PORT: 0x25206 0x65431 longjmp is out of scope (spec §7): the port
          * skips 0x4F644 and continues.

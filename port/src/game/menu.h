@@ -17,8 +17,9 @@
  *
  * Callbacks are code addresses stored in the table: they run through fn_resolve
  * as `u32 cb(u32 entry)` and are skipped (result 0) when the address was never
- * registered. The stock tables at 0xBCBDC/0xBCC1C/0xBCCCC point at 0x2CB74,
- * 0x2CB94, 0x2CACC and 0x2CAC0, which are not ported (see record §49-X.8). */
+ * registered. The stock tables at 0xBCBDC/0xBCC1C/0xBCCCC point at the
+ * options-menu callbacks, which svcmenu_register (svcmenu.h) registers (record
+ * 2026-09-29-k11-service-menu-derivations.md §K11.2; §49-X.8 is superseded). */
 
 /* 0x2EA68. The fatal-error exit `mov eax,1; jmp 0x62003` with the message
  * `msg` (0x80B54 "Null Menu" in the menu code). PORT: 0x62003 is the runtime's

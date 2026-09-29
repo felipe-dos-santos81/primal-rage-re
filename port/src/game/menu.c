@@ -39,8 +39,9 @@
 typedef u32 (*menu_cb_fn)(u32 entry);
 
 /* PORT: a callback is a code address stored in the table. An address that was
- * never registered (the stock tables' 0x2CB74/0x2CB94/0x2CACC/0x2CAC0 are
- * unported) is skipped and reads as result 0. */
+ * never registered is skipped and reads as result 0; the stock callbacks are
+ * registered by svcmenu_register (svcmenu.c, record
+ * 2026-09-29-k11-service-menu-derivations.md §K11.2). */
 static u32 menu_call(u32 addr, u32 arg)
 {
     menu_cb_fn fn = (menu_cb_fn)(void *)fn_resolve(addr);

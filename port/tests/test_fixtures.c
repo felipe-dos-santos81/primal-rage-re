@@ -172,3 +172,18 @@ void tf_frontend_restore_list(const u8 *saved)
     const u32 tbl = DS_00107608;
     for (u32 i = 0; i < 0x190u; i++) DSB(tbl + i) = saved[i];
 }
+
+/* ---- test_platform.c: the menu fixtures ---- */
+
+void tf_menu_press(u32 bits)
+{
+    DSD(DS_000E1C34) = bits;          /* the level the pad reports */
+    DSD(DS_000E1C38) = 0;             /* the latch: every masked bit is new */
+    /* Record §K5.5: 0x2EA74 runs 0x2EA78, whose 0x500C4 pump (0x2EB0C)
+     * rebuilds the level from the key bitmap [DS_00101514]+0x2D8/0x2D9 and the
+     * previous raw word DS_000E1C30. The key is held since the last pump, so
+     * the pump keeps the level: every menu bit is in the 0xFF00FF00 lanes. */
+    DSD(DS_000E1C30) = bits;
+    DSB(MT_LAYOUT + 0x2D8u) = (u8)(bits >> 24);
+    DSB(MT_LAYOUT + 0x2D9u) = (u8)(bits >> 8);
+}
