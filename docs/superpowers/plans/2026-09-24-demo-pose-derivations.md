@@ -24474,3 +24474,165 @@ out of scope with `0x1F458` itself. The deferred `0x2DAE4` audit adds
 inside `0x1EC38` (§49-R.4) — the established spec §7 idiom. States 5, 8,
 0xB-0xE, primed by 0xF/0x10, remain parked exactly as record §49-H left
 them: they gate entirely on `0x1F458`, untouched by this task.
+
+## 51-A. Mode 0x1E's states 0xF/0x10, the name-entry arm `0x204F4` and the `0x1ED2C` resets at states 0/4/7 (branch `gap51-mode1e-f10`)
+
+**Result in one line.** `0x204F4` (537 B) is ported as `nameentry_arm`
+(`nameentry.c`) and called from `hiscore_rank_single` (`0x1EC38`) at `0x1ECA7`;
+`game_mode_1e_step`'s states 0xF (`0x1EFA2`) and 0x10 (`0x1F094`) are wired; and
+the three `0x1ED2C` calls at states 0/4/7's arming points (`0x1EEEA`,
+`0x1F1E2`, `0x1F316`), PORT-noted by §49-R because `0x1F458` was then
+unported, now call `nameentry_reset`. All 17 states of `0x1EEB0` now run the
+raw's logic; only the `0x2C3FC` voices (§45-A) and `0x1EC38`'s deferred
+`0x2DAE4` audit adds (spec §7) remain PORT notes.
+
+### 51-A.1 Sources
+
+Ghidra HTTP bridge (`127.0.0.1:8089`): `disassemble_function` on `0x1EEB0`,
+`0x1EC38`, `0x204F4`, `0x2C3FC`; `get_xrefs_to 0x204F4` (one caller,
+`0x1ECA7` in `FUN_0001ec38`); `read_memory` on the jump table `0x1EE6C`
+(17 dwords) and on the factory records `0xA7BBC` (440 bytes).
+
+Jump table `0x1EE6C`, confirmed entry by entry: state 0xF -> `0x1EFA2`, state
+0x10 -> `0x1F094` (the others match §49-H: 0 `0x1EECF`, 1 `0x1F452`, 2
+`0x1F11E`, 3 `0x1F16E`, 4 `0x1F199`, 5 `0x1F201`, 6 `0x1F25E`, 7 `0x1F2B7`, 8
+`0x1F321`, 9 `0x1F381`, 0xA `0x1F3D9`, 0xB `0x1EF44`, 0xC `0x1F034`, 0xD
+`0x1F0C1`, 0xE `0x1EFD3`).
+
+**Correction to §49-R.1/49-R.4/49-R.6.** §49-R gives `0x204F4` as 708 B. The
+function runs `0x204F4`..`0x2070C` (`ret`), 0x219 = 537 B, which is also the
+decompilation index's `size=537`. The raw wins.
+
+### 51-A.2 States 0xF and 0x10
+
+```
+0x1EFA2  mov eax,0xE1 ; mov dl,0xE ; call 0x2C3FC ; mov [0x104B25],dl
+         call 0x1ED2C ; mov eax,[0x107880] ; call 0x1EC38
+         mov eax,1 ; call 0x1F458 ; ret
+0x1F094  mov eax,0xE1 ; call 0x2C3FC ; mov byte [0x104B25],0xD
+         call 0x1ED2C ; mov eax,[0x1077EC] ; call 0x1EC38
+         xor eax,eax ; call 0x1F458 ; ret
+```
+
+* State 0xF follows state 0xB (side 0's entry done) and arms side 1's (state
+  0xE); state 0x10 follows state 0xC and arms side 0's (state 0xD). This
+  matches state 0's pairing: the higher score enters first (0xB/0xC), the
+  other side second (0xE/0xD), then state 2.
+* State 0xF's `DL = 0xE` is set before the voice call and stored after it.
+  `0x2C3FC` pushes EDX at `0x2C3FD` and pops it before every `ret` in its
+  listing (the two internal jumps to `0x2C890`/`0x2C8E8` reach the same
+  `pop edi; pop edx; pop ebx; ret` tails), so the store is 0xE. Ghidra's `extraout_DL` in the decompilation is its usual
+  conservative artifact.
+* Neither return value is tested. `0x1EC38`'s `AL` is dropped (no
+  `test al,al`), so side 1's (or side 0's) entry runs even when that score
+  does not qualify: nothing is armed then, and `0x1F458` works on whatever the
+  previous arm left. The primed `0x1F458` return is dropped too. The port
+  writes `(void)` on both.
+
+### 51-A.3 `0x204F4`: `nameentry_arm(rank, score)`
+
+EAX = rank (`0x1EC70`/`0x1EC72` `xor eax,eax; mov ax,cx`, so a zero-extended
+word, always < 10 because `0x1EC75`/`0x1EC78` returns before the call
+otherwise), EDX = score (`0x1ECA5 mov edx,ebx`). ECX (the rank that `0x1EC38`
+stores into `DS_001044D6` at `0x1ECBA` after the call) survives: `0x204F5`
+pushes it and `0x2070A` pops it.
+
+1. **A frame-local table that nothing reads.** `0x204F8 sub esp,0x1C0`; the
+   saved rank and score sit at `[esp+0x1BC]`/`[esp+0x1B8]`, and
+   `[esp+0..0x1B7]` is a ten-record table with stride 0x2C: records rank..8
+   are copied to slots rank+1..9 (`0x2050C`..`0x20556`, `jl` on the
+   zero-extended word), records 0..rank-1 to slots 0..rank-1
+   (`0x2055F`..`0x205AD`, skipped by `test dx,dx; jbe` when rank = 0, then
+   `cmp si,bx; jc`), and slot rank gets the score and 0x24 spaces
+   (`0x205AF`..`0x205F3`). The offset `rank * 0x2C` is computed as
+   `((4r - r) * 4 - r) * 4` (`0x205B9`..`0x205C5`). No instruction after
+   `0x205F3` reads the frame, and `0x20702 add esp,0x1C0` releases it. It is
+   an insertion preview that the raw builds and throws away. **Its one
+   observable effect** is that each record comes from `0x2DBC4`
+   (`hiscore_read(i, 0)`, `xor edx,edx` at `0x20512`/`0x20568`), which decodes
+   into `DS_00105EFC`, so the last record read stays there: record 8 when rank
+   is 0 or 9, record rank-1 otherwise. The port builds the table in `u8
+   tbl[0x1C0]` in the raw's order and does not skip it.
+2. **The candidate name.** `AH = 1` (`0x205F5`), and it is cleared when any of
+   `DS_00104367[0..0x23]` is not a space (`0x205FD`..`0x2061D`, which stops at
+   the first one). When every byte is a space, factory record `rank`'s name
+   (`0xA7BC0 + rank * 0x2C`, i.e. the `0xA7BBC` records' `+4`) is copied until
+   its NUL or 0x24 bytes (the byte is loaded, then tested for zero, then the
+   index is tested, `0x20638`..`0x20645`), the byte after it is set to 0
+   (`0x20657`) and `DS_0010431E = 1` (`0x2065D`). `read_memory 0xA7BBC`
+   gives the ten factory names `TWG CFF AMR MSG JSY ACW MrP HUH WHU DUD`, each
+   NUL-terminated, with scores 500000 .. 100 (the `hs_orig` values).
+3. **The entry state.** For i < 0x24: `DS_0010431F[i] = 0`,
+   `DS_00104343[i] = 0` (the name buffer `0x1F458` types into),
+   `DS_00104394[i] = 0x20` (`0x20664`..`0x20687`). Then
+   `B(0x10431C) = 0` (letters typed), `D(0x104390) = score` (the record
+   `0x20710` inserts, whose name is `0x104394`), `B(0x10431F) = 0x20`,
+   `B(0x1044D4) = 0` (a **byte** store of `AL`, `0x206B3`),
+   `W(0x10438C) = 0x2EE` (the entry timer, 750 frames), and then either rank 0:
+   `D(0x1044CC) = 2`, `D(0x1044C4) = 0x16`, `B(0x10431D) = 0x12` (an 18-letter
+   champion name at column 2), or any other rank:
+   `D(0x1044CC) = 0x12`, `D(0x1044C4) = 0x16`, `B(0x10431D) = 3` (three
+   initials at column 0x12), `0x206BF`..`0x206FC`, keyed on `test si,si`.
+
+These are the geometry and limit words §49-T.7 listed as "written by the
+unported `0x204F4`". That gap is now closed.
+
+### 51-A.4 `0x1ED2C` at states 0/4/7
+
+§49-R.6 left these three calls out because `0x1F458` was unported then, and
+the reset would have spawned actors that nothing consumed. §49-T has since
+ported `0x1F458`, and states 5/8/0xB..0xE poll it, so that reason no longer
+applies. Without the reset, those states would run `nameentry_step` against
+cursor actors (`DS_001044B8/B4/B0`) that were never spawned. The raw order is
+kept: state 0 resets before the voices and the winner comparison (`0x1EEEA`);
+state 4 stores 5 and then resets (`0x1F1DB`, `0x1F1E2`); state 7 stores 8,
+plays the voices and then resets (`0x1F301`, `0x1F316`). §49-R's own tests
+(`check_mode_1e_gates`/`check_mode_1e_rank_gate`, `test_fight.c`) stay
+green unchanged.
+
+### 51-A.5 Tests and mutations
+
+`test_mode1e_rearm` (`test_game.c`, registered once in `test.h`) runs on a
+private snapshot (the data object, a private actor pool/pset at
+`0x3F70000`/`0x3FA0000`, and `mem[0..0x3F]`) with a fresh-CMOS table 0 and every
+`0x204F4` output seeded to a sentinel. `ra_check_arm` covers `nameentry_arm`
+at rank 3 (blank candidate, "MSG", last decode record 2 = 350000), rank 0
+(a candidate that is not blank is kept, `DS_0010431E` untouched, the 18-letter
+geometry, last decode 20000) and rank 9 ("DUD"). It checks the byte and word
+store widths through the neighbouring sentinel bytes, and checks that
+`hiscore_rank_single` arms only a qualifying score. `ra_check_rearm` covers
+states 0xF/0x10: the successor state, the re-probe of the **other** side's
+score (`DS_001044D6`, `D(0x104390)`, the limit), the reset (cursor row 6),
+and the priming `0x1F458` for the right side. The timer goes 0x2EE -> 0x2ED,
+and that side's "right" moves the column 0xB -> 0xE while the other side's
+does not. A non-qualifying score still stores the state and primes the
+entry. `ra_check_arming_reset` covers states 0/4/7: the reset runs on the
+arming arm only.
+
+`check_mode_1e_parked` (`test_fight.c`) no longer lists 0xF/0x10. Its state-1
+case is unchanged.
+
+Mutations, each rebuilt, confirmed to fail, then reverted (16 of 16 caught):
+`0x204F4`'s second loop dropped; the blank fill skipped; `B(0x1044D4)` widened
+to a dword; the rank-0 limit set to 3; the `0x104394` fill run to 0x25 bytes;
+`B(0x10431F) = 0x20` dropped; `0x1EC38`'s arm call dropped; state 0xF polling
+side 0; state 0xF without its priming `0x1F458`; state 0xF re-probing
+`DS_001077EC`; state 0x10 storing 0xE; state 0x10 without its reset; state
+0x10 polling side 1; and each of the three state-0/4/7 resets dropped.
+
+### 51-A.6 Verification
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed. `make verify`
+(worktree-local `*_g51` dump directories): exit 0. Title: capture 1 has 54 clean, 55 splice, 2 transition and 0 unexplained; capture 2 has 54 clean, 57 splice and 0 unexplained. Front-end: 517 clean, 801 splice, 3 transition, 2 unexplained (the two allowed by name). Demo-fight: fully explained at N = 1886. Attract2: 0 unexplained in the region. `symbols.h` regenerates byte-identically. Every number is the same as §49-R.7 recorded. Mode 0x1E is
+reachable only from mode 0x13's challenge poll after a live match, and none of
+the no-input capture windows reaches it, so the enforced numbers were expected
+to stay where they were. `tools/port_progress.py`: 742 of 1203 (62%);
+`0x204F4` has left `--unported`.
+
+### 51-A.7 Remaining named gaps
+
+* The `0x2C3FC` voices in states 0/4/5/7/8/0xB..0x10 (§45-A).
+* `0x1EC38`'s deferred `0x2DAE4` audit adds (§49-R.4, spec §7).
+* `0x20860` (the keyboard -> letter-queue writer, §49-T.7) is still unported.
+  The queue stays empty outside tests.
+* The writers of `D(0x1044DC)`/`D(0x1044E0)` (§49-T.3 #1): none found.

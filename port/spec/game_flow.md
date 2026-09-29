@@ -917,8 +917,10 @@ hook/wipe-arm. States 0, 4 and 7's high-score rank probe (`0x1ECC8`/`0x1EC38`,
 calling `0x2DDE4`/`0x2DB58`) is ported whole as `hiscore_rank_pair`/
 `hiscore_rank_single` (record §49-R) and wired into the real gate/advance
 logic. The states 5/8/0xB..0xE high-score name-entry screen, gated by
-`0x1F458`, is ported as `nameentry_step` (record §49-T); states 0xF/0x10 and
-`0x1EC38`'s own `0x204F4` stay a named gap). No task in this plan owns the
+`0x1F458`, is ported as `nameentry_step` (record §49-T); states 0xF/0x10,
+`0x1EC38`'s own `0x204F4` (`nameentry_arm`) and the `0x1ED2C` resets at states
+0/4/7 are wired by record §51-A, so every one of the 17 states now runs the
+raw's logic, voices aside). No task in this plan owns the
 match cycle as a whole. States 6/7
 (the attract demo
 fight: `0x11A8C`, `0x263F4`) were ported by the demo-fight cycle 1 (see the
@@ -1741,7 +1743,7 @@ subsystem, the unported `0x19020` chain; since ported, record §35.)
    and `0x186C4` runs).
 5. **The interactive match is UNOWNED.** The mode graph (`DS_00104B00`), the
    `0x257A4` coin divert, `0x1EEB0` (ported since — records §49-H/§49-R/§49-T;
-   only states 0xF/0x10 and `0x204F4` remain a named gap), the player screens
+   all 17 states wired since record §51-A), the player screens
    and human input are not implemented by any task in this cycle. The design
    spec's Out section stands; this is not a gap inside the demo window.
 
@@ -1838,7 +1840,7 @@ the unported `0x36870` 9→4 closer and `0x37178`/`0x37D18`; the five unported
 
 **The interactive match remains UNOWNED** — the mode graph (`DS_00104B00`), the
 `0x257A4` coin divert, `0x1EEB0` (ported since — records §49-H/§49-R/§49-T;
-only states 0xF/0x10 and `0x204F4` remain a named gap), the player screens and
+all 17 states wired since record §51-A), the player screens and
 human input are implemented by no task in any demo-fight cycle.
 
 **Every enforced oracle claim is unmoved.** `make verify` exits 0 with 0
