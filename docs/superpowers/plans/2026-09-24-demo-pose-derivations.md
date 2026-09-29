@@ -23739,3 +23739,114 @@ existing assertions: the six single-key decodes at mask 0, the `0x4B0`/`0x4B1`
 timeout, the per-player enable words and mask gates, the widget's idle/limit
 forms and the bit-1-set refile guard, and the palette-handle checks of the widget
 (the surviving test checks the mode through `ch_expect`).
+
+## 50-C. Triage of `0x1A000`-`0x1BFFF`: the key-config record ported, the DPMI/ISR/EEPROM glue classified (branch `gap48-triage1a`)
+
+§50-C is free (§50-A exists; no §50-B/§50-C in the record). Twenty-one
+functions in the range were unported. Each was checked by (a) a grep of
+`port/src` for its address, (b) the Ghidra bridge `get_xrefs_to`, (c) a
+disassembly. Raw addresses below are linear; `BIOS` is `DS_00101514`, the
+pointer `0x1BF31` sets to `selector << 4` of a DOS block (`0x1AD64`), which the
+port points at flat scratch (`GAME_BIOS_BASE`).
+
+### 50-C.1 Classification table
+
+| Address | What it is (evidence) | Class | What the port uses instead |
+|---|---|---|---|
+| `0x1ACA8` | `int 31h` AX=`0x0400` (DPMI version query, buffer `[esp]=0x400`, `0x61564` is the `int 31h` wrapper); reads the CPU-type byte `[esp+8]`, jump table `0x1AC90` (6 dwords): CPU <= 3 -> 0, 4 -> 1, >= 5 -> 2. Sole caller `0x1BEC4` (`0x1BEED`): the result is stored to `DS_00101510` (its only xref is that WRITE) and `< 1` -> fatal `0x1D290(0xB)`. | HOST-OWNED | `game_init` writes `DS_00101510 = 1`. The old comment "memory detect" was wrong (it is a CPU probe); corrected. |
+| `0x1ACF0` | `int 31h` AX=`0x0500`, get free memory information into a buffer at EAX. Sole caller `0x1C0F0` (the extended-memory block list, already documented host-owned in §49-V). | HOST-OWNED | flat bump allocator (`mem.c`/`res.c`). |
+| `0x1AD30` | `int 31h` AX=`0x0100` with EBX=`0x7FFFFFFF` to force failure and read back the largest free DOS block (`[esp+4] << 4`). Caller `0x1C0F0` (`0x1C0F8`). | HOST-OWNED | none needed. |
+| `0x1AD64` | `int 31h` AX=`0x0100`, allocate a DOS block of `(EAX+0xF)>>4` paragraphs; returns `(segment << 16) \| selector` or 0. Callers `0x1BEC4` (`0x1BF0D`, `0xC00` bytes: the BIOS/key-config scratch) and `0x1C0F0`. | HOST-OWNED | `DS_00101514 = GAME_BIOS_BASE`, zeroed by `game_init`. |
+| `0x1ADAC` | `int 31h` AX=`0x0200`, get the real-mode interrupt vector AL. Callers `0x1BEC4` only (`0x1C017/0x1C02B/0x1C03F`, the saved-vector reads around the ISR installs; vector numbers not derived). | HOST-OWNED | the SDL host owns timer and keyboard (no ISR chain). Already named a no-op in `game_init`. |
+| `0x1ADE4` | `int 31h` AX=`0x0201`, set the real-mode interrupt vector. Callers `0x1BEC4` (three) and the teardown `0x1BE30`. | HOST-OWNED | as above. |
+| `0x1AE20` | See 50-C.2. `mov eax,0xA2C62` falling through into `0x1AE28`. | PORTABLE, ported | `config_keys_apply_defaults` / `config_keys_apply` |
+| `0x1AEE0` | See 50-C.2. | PORTABLE, ported | `config_keys_pack` |
+| `0x1AF64` | See 50-C.2. | PORTABLE, ported | `config_keys_load` |
+| `0x1AFE8` | Opens the file at `0xA2C5C` (mode `0x80598` = `"rb"`), reads `0x7F8` bytes to `0x100CE4`, XOR-checks bytes `0..0x7F6` against `DS_001014DB`; on any failure clears the block (`0x61A70(...,0xFF,0x7F8)`); returns the failure flag. Wrapped in the DPMI locks `0x10D34`/`0x10D0C`. Sole caller `0x2F9CC` (the master init). | DEFERRED (EEPROM/config storage, spec §7) and file I/O | `config_validate` takes the defaults path with the storage layer a declared no-op (spec "EEPROM/config core"). Host file I/O belongs in `host.c`. |
+| `0x1B084` | The writer twin of `0x1AFE8` (mode `0x8059C` = `"wb"`): `0x2D4EC(1)`, `0x2D4EC(2)`, XOR checksum into `DS_001014DB`, `0x62031` fwrite of `0x7F8` bytes. Callers `0x1BE30` (teardown), `0x249F0` (`0x24AA1`) and the unnamed `0x2CB94` (`0x2CBAF`). | DEFERRED (EEPROM/config storage, spec §7) and file I/O | no-op. The old `game_shutdown` comment "0x1B084 (resource free)" was wrong; corrected. Depends on the named-gap storage family `0x2D4EC`. |
+| `0x1B610` | Keyboard sampler (see 50-C.3): the four player-1 direction keys. | HOST-OWNED | `host_key_bits()` |
+| `0x1B6A0` | Keyboard sampler: the four player-2 direction keys. | HOST-OWNED | as above |
+| `0x1B730` | Keyboard sampler: the four player-1 button keys. | HOST-OWNED | as above |
+| `0x1B7C0` | Keyboard sampler: the four player-2 button keys. | HOST-OWNED | as above |
+| `0x1B850` | `!(key_state[0x3B] & 0x80)` (`BIOS+0x28F` minus the table base `0x254` = scan `0x3B`): the "key down" test of one scan code, an ISR-side helper. Callers `0x1BBAC` (twice). | HOST-OWNED | as above |
+| `0x1B870` | The same for `BIOS+0x290` (scan `0x3C`). Callers `0x1BBAC` (three). | HOST-OWNED | as above |
+| `0x1B890` | `in al, 0x201`: the game-port (joystick) buttons, bits 4..7 -> a 4-bit mask (active low). Callers `0x1BBAC` and the unnamed samplers `0x1B974..`. | HOST-OWNED | joystick device `input_joystick_device` is a constant 0 (`0x2D2F0`). |
+| `0x1B8DC` | `in al, 0x201`, bits 4/5 -> mask bits 0/2. Caller `0x1BBAC`. | HOST-OWNED | as above |
+| `0x1B908` | `in al, 0x201`, bits 6/7 -> mask bits 0/2. Caller `0x1BBAC`. | HOST-OWNED | as above |
+| `0x1BBAC` | Already triaged (§49-V): the ISR's joystick/keyboard sampler, host-owned. | HOST-OWNED | skipped as instructed. |
+
+Also seen, not in the list: the unnamed samplers in `0x1B934`-`0x1BBAB` (Ghidra
+has no functions there; the callers of `0x1B610`, `0x1B730`, `0x1B6A0`,
+`0x1B7C0`, `0x1B890` at `0x1B936`, `0x1B93D`, `0x1B97D`, `0x1BA1D`, `0x1BA56`,
+`0x1BA5D`, `0x1BA9D`, `0x1BB3D` are these). Each is one input mode of the ISR
+(keyboard, joystick, and combinations; `0x4FF8F` is the joystick-axis read) and
+each ends `mov edx,[BIOS]; ... or al,ah; mov [edx+0x2D8],al`.
+
+### 50-C.2 The key-config record: `0x1AE20`/`0x1AE28`, `0x1AEE0`, `0x1AF64`
+
+Ghidra sizes `0x1AE20` at 190 bytes but the first two instructions
+(`mov eax,0xA2C62; lea eax,[eax]`) fall through into `0x1AE28`, a real entry
+with three more callers (`0x1A551`, `0x313F0`, `0x32347`, the key-config menu
+screens). The port has one C function per entry; both headers begin
+`0x1AE20`.
+
+Record layout (28 words / `0x28` bytes), all from the disassembly: word `+0x00`
+and `+0x12` the two devices (low byte only is used), words `+0x02..+0x11` and
+`+0x14..+0x23` eight key words each (high byte = scan code, low byte =
+ASCII), `+0x24`/`+0x26`. The data object mirrors it byte-wise: device
+`DS 0x1014AC`/`0x1014BE`; per key `[0x1014AE + 2i]` = scan, `[0x1014AF + 2i]`
+= ASCII (and `0x1014C0`/`0x1014C1` for player 2); `0x1014D0`, `0x1014D2`. The
+BIOS block holds the devices as words at `+0x2D4`/`+0x2D6` and the scan codes at
+`+0x2DE..+0x2E5` / `+0x2E6..+0x2ED`.
+
+* `0x1AE28(EAX = rec)`: record -> BIOS scan bytes and DS mirror.
+* `0x1AEE0(EAX = rec)`: DS mirror -> record (devices and `+0x24/+0x26`
+  zero-extended).
+* `0x1AF64(EAX = rec)`: record -> BIOS (`+0x2D4/+0x2D6` from the low device
+  bytes, scans from the high key bytes; the ASCII half never reaches BIOS).
+* `0x1AE20`: `0x1AE28(0xA2C62)`; the shipped default (read through the bridge)
+  is player 1 = `1F 2D 2C 2E 16 17 31 32` (S X Z C U I N M), player 2 =
+  `48 50 4B 4D 47 49 4F 51` (the arrow/numpad block), devices 0, words
+  `+0x24/+0x26` = `0x64`.
+
+**Wiring.** The raw's only call sites here are `0x2CB50` (inside the defaults
+writer `0x2CADC`, the last action before the storage write) and `0x20CF2`/
+`0x20CF9` (`0x20C10`, after `0x10E80`: pack into a stack record, load into BIOS).
+`config_set_defaults` now calls `config_keys_apply_defaults` (it had listed
+`0x1AE20` as a "screen setup" no-op; that was a misreading, corrected in
+`config.h`), and `game_init` runs the pack/load pair after `game_state_init`
+with a scratch record at `GAME_BIOS_BASE + 0x800`. Before this the port left the
+key-config record zero, so `config_key_flags` (`0x2EBF0`, which reads
+`+0x2DE..`) compared scan codes against zeros. The stores only touch
+`GAME_BIOS` scratch and the DS mirror, which nothing else on the boot path
+reads; the gates are recorded in 50-C.4.
+
+Tests: `ch_check_keycfg` in `test_game.c` (`test_cfg_helpers`). Every
+destination is seeded with `0xEE`, the device words are given a non-zero garbage
+high byte to prove it is dropped, neighbouring bytes are checked untouched, and
+the default record is checked against the bytes read from the image. Ten
+single-site mutations (wrong offset, wrong source byte, loop bound 7, low vs
+high byte at BIOS, swapped `+0x24/+0x26`, wrong default address) each fail the
+suite.
+
+### 50-C.3 Why the `0x1B610` family is host-owned, not portable
+
+The four functions have identical size (141 bytes) and no callees. Each ANDs
+four bytes of the BIOS key-state table (`BIOS + 0x254`, one byte per scan code,
+bit 7 = key released, maintained by the IRQ1 handler) selected by four
+configured scan codes from the key-config record, and returns a nibble with the
+active-low result: `0x1B610` uses `+0x2DE..+0x2E1` (player 1 arrows) -> bits
+`0x80/0x40/0x20/0x10`; `0x1B6A0` uses `+0x2E6..+0x2E9` (player 2 arrows) -> the
+same bits; `0x1B730` uses `+0x2E2..+0x2E5` (player 1 buttons) -> `1/2/4/8`;
+`0x1B7C0` uses `+0x2EA..+0x2ED` (player 2 buttons) -> `1/2/4/8`. They are the
+four variants of one primitive (direction/button x player), and are used only
+by the ISR-side samplers that write `BIOS+0x2D8`/`+0x2D9`. `0x1BEC4` (`0x1BF7F`)
+takes `0x1B610` as a *data* reference: the DPMI lock `0x109A0(0x1B610, 0x4000)`
+covers the ISR code, which is the point: they run at interrupt time. The port has
+no scancode state table and no ISR: `game_loop` fills `BIOS+0x2D8/+0x2D9`
+directly from `host_key_bits()` (`host.c`, SDL keyboard state), so a port of the
+four would be dead code with no caller. They are counted as host-owned.
+
+### 50-C.4 Gates
+
+See `docs/PROGRESS.md` (gap48-triage1a) for the final `make verify` numbers.

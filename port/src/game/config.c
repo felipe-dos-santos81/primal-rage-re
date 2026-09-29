@@ -158,6 +158,7 @@ void config_set_defaults(void)
     config_field_set(0x37u, 0xA0u);
     u32 v2a = config_field_get(0x2Au);
     config_field_set(0x2Au, (v2a & 0xFCu) | 3u);
+    config_keys_apply_defaults();                  /* 0x2CB50, record §50-C */
 }
 
 /* 0x2D6F8, no-storage path. */
@@ -821,4 +822,91 @@ u32 config_key_name(u32 key, u8 raw, u32 dest)
         for (u32 i = 0u; i <= n; i++) DSB(dest + i) = tmp[i];   /* 0x316C8..0x316DC */
     }
     return 1u;                                              /* 0x316E1 */
+}
+
+/* ---- key-config record (record §50-C) ------------------------------------
+ * The 0x28-byte record: word +0x00 the player-1 device, +0x12 the player-2
+ * device, words +0x02..+0x11 and +0x14..+0x23 the eight key words of each
+ * player (high byte = scan code, low byte = ASCII), +0x24/+0x26 two words. The
+ * data object mirrors it byte-wise at 0x1014AC (device), 0x1014AE/AF (the key
+ * pairs, scan at +2i, ASCII at +2i+1), 0x1014BE, 0x1014C0/C1, 0x1014D0 and
+ * 0x1014D2; the BIOS/key-config record at DS_00101514 keeps the devices as
+ * words at +0x2D4/+0x2D6 and the scan codes at +0x2DE..+0x2E5 and
+ * +0x2E6..+0x2ED. */
+#define KEYCFG_DS_DEV1   0x001014ACu
+#define KEYCFG_DS_KEYS1  0x001014AEu
+#define KEYCFG_DS_DEV2   0x001014BEu
+#define KEYCFG_DS_KEYS2  0x001014C0u
+#define KEYCFG_DS_W24    0x001014D0u
+#define KEYCFG_DS_W26    0x001014D2u
+#define KEYCFG_DEFAULTS  0x000A2C62u
+
+/* 0x1AE20 (entry 0x1AE28) — record §50-C. EAX = the record. Copies the device
+ * bytes into the words at BIOS+0x2D4/0x2D6 (high byte 0, 0x1AE3B/0x1AE4F) and
+ * the DS mirror (0x1AE42/0x1AE5C), splits each of the sixteen key words into
+ * the ASCII mirror byte (low, 0x1AE6F/0x1AEAA), the scan mirror byte (high,
+ * 0x1AE7C/0x1AEB7) and the BIOS scan byte (high, 0x1AE85/0x1AEC0), and copies
+ * the low bytes of +0x24/+0x26 (0x1AED0/0x1AED8). */
+void config_keys_apply(u32 rec)
+{
+    u32 bios = DSD(DS_00101514);                            /* 0x1AE33 */
+    DSW(bios + 0x2D4u) = DSB(rec);                          /* 0x1AE3B */
+    DSB(KEYCFG_DS_DEV1) = DSB(rec);                         /* 0x1AE42 */
+    DSW(bios + 0x2D6u) = DSB(rec + 0x12u);                  /* 0x1AE4F */
+    DSB(KEYCFG_DS_DEV2) = DSB(rec + 0x12u);                 /* 0x1AE5C */
+    for (u32 i = 0u; i < 8u; i++) {                         /* 0x1AE88 */
+        u16 w = DSW(rec + 2u + 2u * i);                     /* 0x1AE63 */
+        DSB(KEYCFG_DS_KEYS1 + 1u + 2u * i) = (u8)w;         /* 0x1AE6F */
+        DSB(KEYCFG_DS_KEYS1 + 2u * i) = (u8)(w >> 8);       /* 0x1AE7C */
+        DSB(bios + 0x2DEu + i) = (u8)(w >> 8);              /* 0x1AE85 */
+    }
+    for (u32 i = 0u; i < 8u; i++) {                         /* 0x1AEC6 */
+        u16 w = DSW(rec + 0x14u + 2u * i);                  /* 0x1AE9E */
+        DSB(KEYCFG_DS_KEYS2 + 1u + 2u * i) = (u8)w;         /* 0x1AEAA */
+        DSB(KEYCFG_DS_KEYS2 + 2u * i) = (u8)(w >> 8);       /* 0x1AEB7 */
+        DSB(bios + 0x2E6u + i) = (u8)(w >> 8);              /* 0x1AEC0 */
+    }
+    DSB(KEYCFG_DS_W24) = DSB(rec + 0x24u);                  /* 0x1AECB */
+    DSB(KEYCFG_DS_W26) = DSB(rec + 0x26u);                  /* 0x1AED3 */
+}
+
+/* 0x1AE20 — record §50-C. `mov eax, 0xA2C62; lea eax,[eax]` and falls through
+ * into 0x1AE28: applies the default record at DS 0x22C62. */
+void config_keys_apply_defaults(void)
+{
+    config_keys_apply(KEYCFG_DEFAULTS);                     /* 0x1AE20 */
+}
+
+/* 0x1AEE0 — record §50-C. EAX = the destination record. The inverse of
+ * 0x1AE28 for the DS mirror: device words (high byte 0, 0x1AEEB/0x1AEF0), each
+ * key word = scan mirror << 8 | ASCII mirror (0x1AF02..0x1AF19,
+ * 0x1AF2B..0x1AF42), then +0x24/+0x26 (0x1AF4D/0x1AF56). */
+void config_keys_pack(u32 rec)
+{
+    DSW(rec) = DSB(KEYCFG_DS_DEV1);                         /* 0x1AEED */
+    DSW(rec + 0x12u) = DSB(KEYCFG_DS_DEV2);                 /* 0x1AEF8 */
+    for (u32 i = 0u; i < 8u; i++)                           /* 0x1AF20 */
+        DSW(rec + 2u + 2u * i) = (u16)(((u32)DSB(KEYCFG_DS_KEYS1 + 2u * i) << 8)
+                                       | DSB(KEYCFG_DS_KEYS1 + 1u + 2u * i));   /* 0x1AF19 */
+    for (u32 i = 0u; i < 8u; i++)                           /* 0x1AF49 */
+        DSW(rec + 0x14u + 2u * i) = (u16)(((u32)DSB(KEYCFG_DS_KEYS2 + 2u * i) << 8)
+                                          | DSB(KEYCFG_DS_KEYS2 + 1u + 2u * i)); /* 0x1AF42 */
+    DSW(rec + 0x24u) = DSB(KEYCFG_DS_W24);                  /* 0x1AF52 */
+    DSW(rec + 0x26u) = DSB(KEYCFG_DS_W26);                  /* 0x1AF5B */
+}
+
+/* 0x1AF64 — record §50-C. EAX = a record. Loads the BIOS key-config: device
+ * words from the low bytes of +0x00/+0x12 (0x1AF6A/0x1AF84 zero AH) at
+ * BIOS+0x2D4/0x2D6, and the scan bytes (high byte of each key word,
+ * 0x1AF94/0x1AFB9) at BIOS+0x2DE.. and +0x2E6... */
+void config_keys_load(u32 rec)
+{
+    u32 bios = DSD(DS_00101514);                            /* 0x1AF6C */
+    DSW(bios + 0x2D4u) = DSB(rec);                          /* 0x1AF77 */
+    DSW(bios + 0x2D6u) = DSB(rec + 0x12u);                  /* 0x1AF89 */
+    for (u32 i = 0u; i < 8u; i++)                           /* 0x1AF9F */
+        DSB(bios + 0x2DEu + i) = (u8)(DSW(rec + 2u + 2u * i) >> 8);   /* 0x1AF99 */
+    bios = DSD(DS_00101514);                                /* 0x1AFA1 */
+    for (u32 i = 0u; i < 8u; i++)                           /* 0x1AFC4 */
+        DSB(bios + 0x2E6u + i) = (u8)(DSW(rec + 0x14u + 2u * i) >> 8); /* 0x1AFBE */
 }

@@ -6284,6 +6284,99 @@ static void ch_check_screen_wait(void)
     DSD(CH_KEY_WORD) = s_kw;
 }
 
+/* Key-config record (0x1AE28/0x1AE20/0x1AEE0/0x1AF64; record §50-C). Every
+ * destination is seeded with a sentinel that differs from the post-condition. */
+static void ch_check_keycfg(void)
+{
+    enum { DSM = 0x001014ACu, RECN = 0x28 };
+    u32 saved_kb = DSD(DS_00101514);
+    u8 saved_rec[0x300], saved_mirror[0x28], saved_def[RECN];
+    memcpy(saved_rec, mem + CH_KB, sizeof saved_rec);
+    memcpy(saved_mirror, mem + DSM, sizeof saved_mirror);
+    memcpy(saved_def, mem + 0x000A2C62u, RECN);
+    DSD(DS_00101514) = CH_KB;
+
+    u8 rec[RECN];
+    memset(rec, 0, sizeof rec);
+    rec[0] = 0x03u; rec[1] = 0xABu;          /* device 3, garbage high byte */
+    rec[0x12] = 0x05u; rec[0x13] = 0xCDu;
+    for (u32 i = 0; i < 8; i++) {
+        rec[2 + 2 * i] = (u8)(0x10u + i);     /* ASCII (low) */
+        rec[3 + 2 * i] = (u8)(0x80u + i);     /* scan (high) */
+        rec[0x14 + 2 * i] = (u8)(0x20u + i);
+        rec[0x15 + 2 * i] = (u8)(0x90u + i);
+    }
+    rec[0x24] = 0x64u; rec[0x25] = 0x77u; rec[0x26] = 0x65u; rec[0x27] = 0x78u;
+    memcpy(mem + 0x2F00000u, rec, RECN);
+
+    /* 0x1AE28 */
+    memset(mem + CH_KB, 0xEE, 0x300);
+    memset(mem + DSM, 0xEE, 0x28);
+    config_keys_apply(0x2F00000u);
+    CHECK_EQ_INT(DSW(CH_KB + 0x2D4u), 3);            /* high byte dropped: 0x1AE3B */
+    CHECK_EQ_INT(DSW(CH_KB + 0x2D6u), 5);
+    CHECK_EQ_INT(DSB(DSM), 3);
+    CHECK_EQ_INT(DSB(DSM + 0x12u), 5);
+    for (u32 i = 0; i < 8; i++) {
+        CHECK_EQ_INT(DSB(CH_KB + 0x2DEu + i), 0x80 + (int)i);
+        CHECK_EQ_INT(DSB(CH_KB + 0x2E6u + i), 0x90 + (int)i);
+        CHECK_EQ_INT(DSB(DSM + 2u + 2u * i), 0x80 + (int)i);   /* scan mirror */
+        CHECK_EQ_INT(DSB(DSM + 3u + 2u * i), 0x10 + (int)i);   /* ASCII mirror */
+        CHECK_EQ_INT(DSB(DSM + 0x14u + 2u * i), 0x90 + (int)i);
+        CHECK_EQ_INT(DSB(DSM + 0x15u + 2u * i), 0x20 + (int)i);
+    }
+    CHECK_EQ_INT(DSB(DSM + 0x24u), 0x64);
+    CHECK_EQ_INT(DSB(DSM + 0x26u), 0x65);
+    CHECK_EQ_INT(DSB(CH_KB + 0x2DDu), 0xEE);         /* neighbours untouched */
+    CHECK_EQ_INT(DSB(CH_KB + 0x2D8u), 0xEE);
+    CHECK_EQ_INT(DSB(CH_KB + 0x2EEu), 0xEE);
+    CHECK_EQ_INT(DSB(DSM + 0x25u), 0xEE);
+
+    /* 0x1AEE0: the pack is the inverse; the device and +0x24/+0x26 words are
+     * zero-extended bytes. */
+    memset(mem + 0x2F00100u, 0xEE, RECN);
+    config_keys_pack(0x2F00100u);
+    u8 want[RECN];
+    memcpy(want, rec, RECN);
+    want[1] = 0; want[0x13] = 0; want[0x25] = 0; want[0x27] = 0;
+    CHECK(memcmp(mem + 0x2F00100u, want, RECN) == 0, "0x1AEE0 packs the mirror");
+
+    /* 0x1AF64: only the low device byte and the high key bytes reach BIOS. */
+    memset(mem + CH_KB, 0xEE, 0x300);
+    config_keys_load(0x2F00000u);
+    CHECK_EQ_INT(DSW(CH_KB + 0x2D4u), 3);
+    CHECK_EQ_INT(DSW(CH_KB + 0x2D6u), 5);
+    for (u32 i = 0; i < 8; i++) {
+        CHECK_EQ_INT(DSB(CH_KB + 0x2DEu + i), 0x80 + (int)i);
+        CHECK_EQ_INT(DSB(CH_KB + 0x2E6u + i), 0x90 + (int)i);
+    }
+    CHECK_EQ_INT(DSB(CH_KB + 0x2DDu), 0xEE);
+    CHECK_EQ_INT(DSB(CH_KB + 0x2D8u), 0xEE);
+    CHECK_EQ_INT(DSB(CH_KB + 0x2EEu), 0xEE);
+
+    /* 0x1AE20: the default record at DS 0x22C62, bytes read from the shipped
+     * image (Ghidra 0xA2C62): S X Z C U I N M and the arrow block. */
+    static const u8 def[RECN] = {
+        0x00,0x00,0x73,0x1F,0x78,0x2D,0x7A,0x2C,0x63,0x2E,0x75,0x16,0x69,0x17,
+        0x6E,0x31,0x6D,0x32,0x00,0x00,0x00,0x48,0x00,0x50,0x00,0x4B,0x00,0x4D,
+        0x00,0x47,0x00,0x49,0x00,0x4F,0x00,0x51,0x64,0x00,0x64,0x00 };
+    memcpy(mem + 0x000A2C62u, def, RECN);
+    memset(mem + CH_KB, 0xEE, 0x300);
+    config_keys_apply_defaults();
+    static const u8 p1[8] = { 0x1F,0x2D,0x2C,0x2E,0x16,0x17,0x31,0x32 };
+    static const u8 p2[8] = { 0x48,0x50,0x4B,0x4D,0x47,0x49,0x4F,0x51 };
+    CHECK_EQ_INT(DSW(CH_KB + 0x2D4u), 0);
+    CHECK_EQ_INT(DSW(CH_KB + 0x2D6u), 0);
+    CHECK(memcmp(mem + CH_KB + 0x2DEu, p1, 8) == 0, "0x1AE20 player 1 scans");
+    CHECK(memcmp(mem + CH_KB + 0x2E6u, p2, 8) == 0, "0x1AE20 player 2 scans");
+    CHECK_EQ_INT(DSB(DSM + 0x24u), 100);
+
+    memcpy(mem + 0x000A2C62u, saved_def, RECN);
+    memcpy(mem + DSM, saved_mirror, sizeof saved_mirror);
+    memcpy(mem + CH_KB, saved_rec, sizeof saved_rec);
+    DSD(DS_00101514) = saved_kb;
+}
+
 int test_cfg_helpers(void)
 {
     int before = g_failures;
@@ -6297,5 +6390,6 @@ int test_cfg_helpers(void)
     ch_check_option_row();
     ch_check_code_row();
     ch_check_screen_wait();
+    ch_check_keycfg();
     return g_failures - before;
 }

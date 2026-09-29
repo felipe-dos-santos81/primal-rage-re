@@ -6130,7 +6130,7 @@ void game_init(void)
     /* 0x1BEC4 init chain, in order. */
     /* PORT: the argc==2 argv probe (0x623B0, "-f") has no host equivalent. */
     DSD(DS_00101504) = int10h_query();   /* 0x4FBA2 */
-    DSD(DS_00101510) = 1;                /* PORT: 0x1ACA8 memory detect -> ok */
+    DSD(DS_00101510) = 1;                /* PORT: 0x1ACA8 (DPMI 0400h CPU probe, result is never read again; record §50-C) -> ok */
     DSD(DS_00101514) = GAME_BIOS_BASE;   /* PORT: selector<<4 -> flat scratch */
     mem_fill(GAME_BIOS_BASE, 0, GAME_BIOS_LEN);
     DSD(DS_000A2CAC) = DSD(DS_00101514);
@@ -6197,6 +6197,12 @@ void game_init(void)
     game_string_table_load(s_game_dir);
 
     game_state_init();      /* 0x20C10's FUN_00010E80 */
+
+    /* 0x20CF0-0x20CF9: the key-config record round trip. PORT: the raw packs
+     * into a stack record; the port uses a scratch inside the BIOS block
+     * (GAME_BIOS_LEN is 0x1000, the key config ends at +0x2ED). */
+    config_keys_pack(GAME_BIOS_BASE + 0x800u);       /* 0x20CF2 */
+    config_keys_load(GAME_BIOS_BASE + 0x800u);       /* 0x20CF9 */
 }
 
 /* 0x1BE30 teardown. */
@@ -6212,7 +6218,7 @@ void game_shutdown(void)
         AIL_stop_sequence(s_sequence);
         AIL_shutdown();     /* 0x5d86a */
     }
-    /* PORT: 0x1B084 (resource free) and the memory frees are no-ops under flat mem[]. */
+    /* PORT: 0x1B084 (the config-file writer, deferred storage, record §50-C) and the memory frees are no-ops under flat mem[]. */
 }
 
 int game_main(void)
