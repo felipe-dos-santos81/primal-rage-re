@@ -117,7 +117,7 @@ them.
 | `0x501A3` | 2944 | 2 / 2: `256A5`@`255CC`P, `2EAD1`@`2EA78`P | — | yes | **closed: host-owned**, §K9.1 | K9 | Dirty-dword blit `E87A4` vs `E87A0` into `0xA0000` (`0x501B0`). All its stores go through EBX. `gfx_present` replaces it (`gfx.c:152`, `config.c:510`). |
 | `0x34B6C` | 541 | 1 / 1: `357FC`@`35658`P | 21, all P | yes | **closed**: header, §K1.1 | K1 | Body is `fight_health_sync` (`fight.c:2066`). The header `/* ---- 0x34B6C` is not counted. |
 | `0x51F72` | 404 | 3 / 3: `52119`, `52123`, `52151`, all @`52106`P | — | yes (boot/movie) | **closed**: `gfx_fill_screen`, §K2.4 | K2 | Unrolled 0xFA00-byte dword fill of `[EAX]` with EDX (`0x51F78..`). `0x52106` uses it on the two `mem[]` buffers and on the aperture; the aperture call stays `g_aperture` (`PORT:`, aperture rule). |
-| `0x1CB18` | 271 | 1 / 1: `1CF26`@`1CF20`P | `1B544`P + AIL `5DC0F/2A/4D/70/A6/C5/E4` | no (no port path writes slot `+0x04`) | port | K7 | Sample start: copies the queued resource into the slot's `0x1D0BC` buffer, then AIL init/set/start. Named gap at `flow.c:5962`. |
+| `0x1CB18` | 271 | 1 / 1: `1CF26`@`1CF20`P | `1B544`P + AIL `5DC0F/2A/4D/70/A6/C5/E4` | no (no port path writes slot `+0x04`) | port — **derived, not ported** (Task 3d, §K7: needs the §K7.3 decisions; re-plan) | K7 | Sample start: copies the queued resource into the slot's `0x1D0BC` buffer, then AIL init/set/start. Named gap at `flow.c:5962`. |
 | `0x1C528` | 190 | 1 / 1: `1C60B`@`1C5E8`P | `1B544`P | yes | **closed**: shared header, §K1.5 | K1 | A byte-identical copy of `0x14268`. It shares `sprite_node_build` (`sprite.c:55-58`), and the header names it mid-comment. |
 | `0x2E180` | 151 | 1 / 1: `2E983`@`2E934`D | `2E034`U, `2E0A4`U | no (only via deferred `0x2E934`) | **closed: deferred**, §K9.6 | K9 | Audit counter add into the EEPROM image tables `0x2D420/0x2D45E/0x2D460`. |
 | `0x31A78` | 137 | 0 / 4†: `321F2`, `32230`, `324A9`, `324DC` (non-Ghidra code after `31E28`P) | `3157C`P | via non-Ghidra code only | port | K11 | Jump-table dispatcher at `0x31A68`. Raw `call`s from `0x321F2`, `0x32230`, `0x324A9`, `0x324DC` (service-menu callback code). |
@@ -163,6 +163,8 @@ gated body `0x4BFEB..0x4C034`, voice kept as `PORT:`) and the four `0x4DEF4` sta
 `0x4A361` waits for K13. The 8000-frame and front-end dumps are byte-identical.
 K6 is closed: `0x4F714`/`0x4F728` are `sound_voice_stage`/`sound_voice_match_end`,
 wired at `0x25C09`/`0x27E4B` (case-1/5 voices only: no resource read, no draw).
+K7 is derived but not ported: §K7.3 names three decisions beyond the AIL
+boundary, and §K7.5 proposes the re-plan.
 
 **Task 3c (2026-09-29).** K3 and K8a are closed (record `2026-09-29-k3-k8a-derivations.md`).
 `0x38990` is `render_scroll_track`, called at both `game_frame` sites before the
@@ -337,8 +339,8 @@ wrong, and Task 6 fixes it.
 | 2 | `game/flow.c:2313` | Only registered character entrances run | `DS_000A8628` table | **stale**: all 8 entries are registered |
 | 3 | `game/flow.c:2520`, `:2535` | `game_mode_33_step` does not call `0x4DEF4` | `0x4DEF4` | **stale, and a wiring gap**: `0x4DEF4` is ported (`fight_effects_idle_pass`, `fight.c`) and already called by mode 0xF (`flow.c:4076`). Wire `0x2965F`. |
 | 4 | `game/flow.c:2622`, `:2623` | Update entry 15 `0x260BC` (bonus card) | `0x260BC` (non-Ghidra) | open (§B.2) |
-| 5 | `game/flow.c:5962` | `0x1CC28` slot choice and `0x1CB18` start | K7 | open |
-| 6 | `game/flow.c:6168` | same as 5 (`snd_sample_queue`) | K7 | open |
+| 5 | `game/flow.c:5962` | `0x1CC28` slot choice and `0x1CB18` start | K7 | open; derived in §K7 (Task 3d), the comment cites §K7.3 |
+| 6 | `game/flow.c:6168` | same as 5 (`snd_sample_queue`) | K7 | open; derived in §K7.2 (Task 3d) |
 | 7 | `game/fighter.h:73` | `0x18540`/`0x18350` screen-anchor path | ported (`fighter.c:183/214`, called at `fighter.c:253/257`) | **stale** |
 | 8 | `game/flow.h:42` | "the other cases are named gaps" | — | **stale** (§D: 52/52) |
 | 9 | `game/fighter.h:89` | `0x494A8` dust entry and `res_resolve` tail | `0x494A8` is ported and called (`fighter.c:371`). The res_resolve tail was not re-measured. | **partly stale** |
@@ -391,7 +393,7 @@ size gate is ≥ ~4 KB or ≥ ~20 new functions, and such a cluster is marked
 | 7 | K8a UPD-06 | update entry 6 `0x25FAC` | n/a (non-Ghidra) | port (live: armed by modes 5/0x23/0x30) | Task 3 — **closed** (Task 3c, §K8a) |
 | 8 | K4 FX-GATE | `0x4A868` | 63 | port (unblocks §E-18/19 and K13) | Task 3 — **closed** (Task 3d, §K4 of `2026-09-29-k4-k6-k7-derivations.md`) |
 | 9 | K6 VOICE-WRAP | `0x4F714`, `0x4F728` | 97 | port (wrappers over the ported `sound_voice`) | Task 3 — **closed** (Task 3d, §K6) |
-| 10 | K7 AUDIO-SMP | `0x1CB18` + `0x1CC28`'s slot choice (`0x1CC62..0x1CD8D`) | 271+ | port | Task 3 |
+| 10 | K7 AUDIO-SMP | `0x1CB18` + `0x1CC28`'s slot choice (`0x1CC62..0x1CD8D`) | 271+ | port | Task 3 — **derived, re-plan needed** (Task 3d, §K7.3/§K7.5: the `+0x10` buffers of the host-owned `0x1D0BC`, the `0x500BB` clock, the announcer stand-in) |
 | 11 | K8c UPD-REST | update entries 4 `0x37C8C`, 8 `0x34648` (+`0x29C20`, 59 B), 9 `0x3800C`, 11 `0x4F890`, 12 `0x24150`, 17 `0x45D98` | 59 + n/a | port. Reachability first: find each bit's setter. | Task 3 |
 | 12 | T4 | §D residue (the `0x29B70` header, the `0x38990` calls) | — | confirmation cycle only. All 52 cases are wired. | Task 4 |
 | 13 | E-WIRE | §E-3 (`0x2965F` → `fight_effects_idle_pass`) and §E-19 (the `0x4DEF4` gate once K4 lands; **done** in Task 3d, §K4.3) | — | wiring | Task 5 |

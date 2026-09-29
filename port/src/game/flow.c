@@ -6001,7 +6001,10 @@ int game_music_notes_seen(void) { return s_music_notes; }
  * (0x1CA14's store, 0x1CA40's status) stay inert, as without an MDI driver.
  * Named gap (spec §7): 0x1CC28's slot choice and 0x1CB18's start (the sample
  * copy into the slot's 0x1D0BC buffer, which the port does not allocate), so
- * no port path writes a slot's +0x04/+0x0C/+0x14. */
+ * no port path writes a slot's +0x04/+0x0C/+0x14. Record §K7 of
+ * 2026-09-29-k4-k6-k7-derivations.md derives both from the raw; porting them
+ * needs three decisions it names (§K7.3): the +0x10 buffers of the host-owned
+ * 0x1D0BC, the 0x500BB clock DS_00101500, and the announcer stand-in below. */
 
 #define SND_SLOT_STRIDE 0x18u
 #define SND_SLOT_END    0x60u
@@ -6205,8 +6208,8 @@ void sound_resume(void)
  * §45-A). It then queues the sample on a slot (AL = 1).
  * PORT: the slot choice (0x1CC62..0x1CD8D: a free slot for a sample of at most
  * 0x6000 bytes, else slot 0 or the oldest, ended and re-inited, then +0x04 =
- * `h`, +0x08 = the loop byte, +0x14 = the time) is the named gap above; its
- * result, AL = 1, is kept. */
+ * `h`, +0x08 = the loop byte, +0x14 = the time; record §K7.2) is the named gap
+ * above; its result, AL = 1, is kept. */
 static u32 snd_sample_queue(u32 h, u32 loop)
 {
     (void)loop;
