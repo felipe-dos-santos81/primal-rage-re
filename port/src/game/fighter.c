@@ -12187,3 +12187,218 @@ void fighter_21d10(u32 slot, u32 rec, u32 side)
     DSB(ctx[2] + 0x41u) = (u8)(DSB(ctx[2] + 0x41u) | 0x80u);    /* 0x21D86..0x21D8A */
     DSW(DS_00104764 + ctx[0] * 2u) = 0u;                    /* 0x21D8E..0x21D93 */
 }
+
+/* ---- record §54-A: the animation-opcode targets in the §50-A/§52-A pose
+ * streams (0x3FF90, 0x3FEA8, 0x40034 with its callee 0x3BD8C, 0x3FC08,
+ * 0x3FCB0, 0x3F77C), the confetti pool's starter 0x40434, and 0x21694, the
+ * unreferenced twin of 0x3E8E4. Each opcode target takes EAX = rec and never
+ * reads EDX (see its anim_code_ wrapper in actors.c). */
+
+/* PORT: data-object addresses symbols.h does not name. */
+#define P54_C7734   0x000C7734u  /* 0x3FFC9/0x40087: [char] the +0x44 word table */
+#define P54_E6F34   0x000E6F34u  /* 0x400C0: 0x40034's stream, char 0 */
+#define P54_D3F58   0x000D3F58u  /* 0x400C7: 0x40034's stream, char 5 */
+#define P54_C76F8   0x000C76F8u  /* 0x3FC1F: 0x3FC08's descriptor, side 0 */
+#define P54_C770C   0x000C770Cu  /* 0x3FC18: 0x3FC08's descriptor, side 1 */
+#define P54_BB100   0x000BB100u  /* 0x3FCF0: 0x3FCB0's descriptor */
+#define P54_E7DF8   0x000E7DF8u  /* 0x3F7A5: 0x3F77C's stream */
+#define P54_BB2CC   0x000BB2CCu  /* 0x404A2: 0x40434's descriptor */
+#define P54_D501E   0x000D501Eu  /* 0x40532: 0x40434's mover stream */
+
+/* 0x3FF90 — record §54-A. The 0xD000 target (opcode 0x10) at 0xE7F32 and
+ * 0xD4C6A, the first code in 0x3FF08's streams 0xE7F2E/0xD4C66: the reader of
+ * the slot word +0x4E that 0x3FFDC writes. ctx = 0x33950(the record's +0x51);
+ * ctx[2]'s +0x54 = 2; the record's words +0x36 = 0x300, +0x34 = ctx[2]'s +0x4E
+ * and +0x44 = the word at 0xC7734 + ctx[3]'s char * 2. */
+void fighter_3ff90(u32 rec)
+{
+    u32 ctx[6];
+    u16 w;
+    fighter_ctx_same(ctx, (u32)DSB(rec + 0x51u));           /* 0x3FF97..0x3FF9E 0x33950 */
+    DSB(ctx[2] + 0x54u) = 2u;                               /* 0x3FFA7 */
+    w = DSW(ctx[2] + 0x4Eu);                                /* 0x3FFAF */
+    DSW(rec + 0x36u) = 0x0300u;                             /* 0x3FFB3 */
+    DSW(rec + 0x34u) = w;                                   /* 0x3FFB9 */
+    DSW(rec + 0x44u) = DSW(P54_C7734 + (u32)DSB(ctx[3] + 0x7Au) * 2u);    /* 0x3FFBD..0x3FFD1 */
+}
+
+/* 0x3FEA8 — record §54-A. The 0xD000 target (opcode 0x10) at 0xE7F9E and
+ * 0xD4CD6 in 0x3FF08's streams. ctx = 0x33950(the record's +0x51). With
+ * ctx[2]'s +0x57 non-zero it returns. Else ctx[2]'s +0x57 = 2, +0x8A = 0,
+ * +0x52 = 4 and +0x53 = 4, ctx[4]'s +0x61 = 0 and 0x36870(ctx[4]). */
+void fighter_3fea8(u32 rec)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, (u32)DSB(rec + 0x51u));           /* 0x3FEAC..0x3FEB3 0x33950 */
+    if (DSB(ctx[2] + 0x57u) != 0u) return;                  /* 0x3FEBC..0x3FEC1 */
+    DSB(ctx[2] + 0x57u) = 2u;                               /* 0x3FEC3 */
+    DSB(ctx[2] + 0x8Au) = 0u;                               /* 0x3FECB (DL = 0) */
+    DSB(ctx[2] + 0x52u) = 4u;                               /* 0x3FED5 */
+    DSB(ctx[2] + 0x53u) = 4u;                               /* 0x3FEDD */
+    DSB(ctx[4] + 0x61u) = 0u;                               /* 0x3FEE5 (DL = 0) */
+    fighter_36870(ctx[4]);                                  /* 0x3FEE8..0x3FEEC */
+}
+
+/* 0x3BD8C — record §54-A. EAX = slot, DX/BX/CX the three words: the slot's
+ * +0x54 = 2, +0x52 = 4 and +0x53 = 0, its record's words +0x34 = dx, +0x36 =
+ * bx and +0x44 = cx. Its one caller is 0x4009C in 0x40034 (no dword
+ * reference; the exported function table has no entry here). */
+static void fighter_3bd8c(u32 slot, u16 dx, u16 bx, u16 cx)
+{
+    DSB(slot + 0x54u) = 2u;                                 /* 0x3BD8D */
+    DSB(slot + 0x52u) = 4u;                                 /* 0x3BD91 */
+    DSB(slot + 0x53u) = 0u;                                 /* 0x3BD97 */
+    DSW(DSD(slot) + 0x34u) = dx;                            /* 0x3BD95/0x3BD9B */
+    DSW(DSD(slot) + 0x36u) = bx;                            /* 0x3BD9F/0x3BDA1 */
+    DSW(DSD(slot) + 0x44u) = cx;                            /* 0x3BDA5/0x3BDA7 */
+}
+
+/* 0x40034 — record §54-A. The 0xD500 target (opcode 0x15) at 0xE8022 and
+ * 0xD4D5A, the end of 0x3FF08's streams. Both DS_001077A8 slots (the record's
+ * +0x51 and its xor 1) gate it (null returns). 0x3BD8C(the side's slot, dx =
+ * 0x100 when 0x1A570(side) holds else -0x100, bx = 0x300, cx = the word at
+ * 0xC7734 + the other slot's char * 2); then, the side's slot re-read (null
+ * returns), the record starts 0xE6F34 (that slot's char 0) or 0xD3F58 (char
+ * 5) at 3.0 through 0x2BC30 (other chars: none). 0x1A570 keeps EDX. */
+void fighter_40034(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x4003B..0x4003D */
+    u32 own = DSD(DS_001077A8 + side * 4u);                 /* 0x40042 */
+    u32 oth = DSD(DS_001077A8 + (side ^ 1u) * 4u);          /* 0x40049..0x40052 */
+    u16 dx, cx;
+    u8 ch;
+    if (own == 0u || oth == 0u) return;                     /* 0x40059..0x40063 */
+    dx = fighter_actor_bit15_clear(side) != 0 ? 0x0100u : 0xFF00u;  /* 0x40069..0x4007E */
+    cx = DSW(P54_C7734 + (u32)DSB(oth + 0x7Au) * 2u);       /* 0x4007E..0x40087 */
+    fighter_3bd8c(own, dx, 0x0300u, cx);                    /* 0x4008F..0x4009C */
+    own = DSD(DS_001077A8 + (u32)DSB(rec + 0x51u) * 4u);    /* 0x400A1..0x400A9 */
+    if (own == 0u) return;                                  /* 0x400AF/0x400B1 */
+    ch = DSB(own + 0x7Au);                                  /* 0x400B3 */
+    if (ch == 0u)                                           /* 0x400B6/0x400B8 `jbe` */
+        actors_anim_begin(rec, P54_E6F34, 0x40400000u);     /* 0x400C0..0x400D3 0x2BC30 */
+    else if (ch == 5u)                                      /* 0x400BA/0x400BC */
+        actors_anim_begin(rec, P54_D3F58, 0x40400000u);     /* 0x400C7..0x400D3 0x2BC30 */
+}
+
+/* 0x3FC08 — record §54-A. The 0xD100 target (opcode 0x11) at 0xE7D9A in
+ * 0x3FB88's stream 0xE7D6E. For side = the record's +0x51 the descriptor is
+ * 0xC770C (side non-zero) or 0xC76F8; its +0x10 gets 0x29C08(side, the side's
+ * slot char), then 0x2AE14(desc, 0, 0, 0, the record's +0x56 | 0x400) goes to
+ * DS_00108080[side]; the child's +0x60 = 1 and +0x14 = the record, and the
+ * record's +0x4B = the child's +0x56 byte. The child is type 0x10, whose
+ * teardown 0x3FC90 (the type table's cb2) clears DS_00108080 again. */
+void fighter_3fc08(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x3FC10 (EBP) */
+    u32 desc = side != 0u ? P54_C770C : P54_C76F8;          /* 0x3FC14..0x3FC1F */
+    u32 child;
+    DSD(desc + 0x10u) = fighter_29c08(side,
+                                      (u32)DSB(DS_0010782A + side * 0x94u));   /* 0x3FC24..0x3FC49 */
+    child = actor_spawn((const u32 *)(mem + desc), 0u, 0u, 0u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));   /* 0x3FC4C..0x3FC61 0x2AE14 */
+    DSD(DS_00108080 + side * 4u) = child;                   /* 0x3FC66 */
+    DSB(child + 0x60u) = 1u;                                /* 0x3FC6D */
+    DSD(DSD(DS_00108080 + side * 4u) + 0x14u) = rec;        /* 0x3FC71/0x3FC78 */
+    DSB(rec + 0x4Bu) = DSB(DSD(DS_00108080 + side * 4u) + 0x56u);  /* 0x3FC7B..0x3FC85 */
+}
+
+/* 0x3FCB0 — record §54-A. The 0xD100 target (opcode 0x11) at 0xE7DDA in
+ * 0x3F85C's stream 0xE7DC4. Nothing when the byte 0x105B3A is above 1 (the
+ * zero-extended byte, `jg`), when the other DS_001077A8 slot is null or when
+ * its +0x52 is not 0x10. Else 0x2AE14(0xBB100, 0, 0, 0, the record's +0x56 |
+ * 0x400), the child's +0x60 = 1, and the child's +0x56 byte goes to the +0x4B
+ * of the side's DS_00108080 actor, or of the record when there is none. */
+void fighter_3fcb0(u32 rec)
+{
+    u32 o, child, act;
+    if ((u32)DSB(DS_00105B3A) > 1u) return;                 /* 0x3FCB6..0x3FCC0 */
+    o = DSD(DS_001077A8 + (u32)(DSB(rec + 0x51u) ^ 1u) * 4u);   /* 0x3FCC2..0x3FCCC */
+    if (o == 0u) return;                                    /* 0x3FCD3/0x3FCD5 */
+    if (DSB(o + 0x52u) != 0x10u) return;                    /* 0x3FCD7/0x3FCDB */
+    child = actor_spawn((const u32 *)(mem + P54_BB100), 0u, 0u, 0u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));   /* 0x3FCDD..0x3FCF5 0x2AE14 */
+    DSB(child + 0x60u) = 1u;                                /* 0x3FCFA */
+    act = DSD(DS_00108080 + (u32)DSB(rec + 0x51u) * 4u);    /* 0x3FCFE..0x3FD06 */
+    if (act != 0u)                                          /* 0x3FD0C/0x3FD0E */
+        DSB(act + 0x4Bu) = DSB(child + 0x56u);              /* 0x3FD10/0x3FD13 */
+    else
+        DSB(rec + 0x4Bu) = DSB(child + 0x56u);              /* 0x3FD18/0x3FD1B */
+    /* PORT: 0x3FD1E/0x3FD23 0x2C3FC(0x48) voice, not wired (record §45-A). */
+}
+
+/* 0x3F77C — record §54-A. The 0xD500 target (opcode 0x15) at 0xE7DF2, the end
+ * of 0x3F85C's stream 0xE7DC4 (record §52-A.5 put the word at 0xE7DE6; the
+ * raw's dword is at 0xE7DF4). side = the record's +0x51: the record on 0xE7DF8
+ * at 3.0 through 0x2BC30; the side's slot +0x54 = 2; the record's words +0x36
+ * = 0x28A, +0x44 = 0x19 and +0x34 = 0xB4, negated when 0x1A570(side) is 0; the
+ * slot's +0x57 = 3; then 0x39834(1 - side, the slot's +0x5F). */
+void fighter_3f77c(u32 rec)
+{
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x3F783..0x3F78A */
+    u32 slot = DS_001077B0 + side * 0x94u;                  /* 0x3F78F..0x3F7AA */
+    actors_anim_begin(rec, P54_E7DF8, 0x40400000u);         /* 0x3F7A5..0x3F7B3 0x2BC30 */
+    DSB(slot + 0x54u) = 2u;                                 /* 0x3F7B8 */
+    DSW(rec + 0x36u) = 0x028Au;                             /* 0x3F7BC */
+    DSW(rec + 0x44u) = 0x0019u;                             /* 0x3F7C2 */
+    DSW(rec + 0x34u) = 0x00B4u;                             /* 0x3F7CA */
+    if (fighter_actor_bit15_clear(side) == 0)               /* 0x3F7C8..0x3F7D7 0x1A570 */
+        DSW(rec + 0x34u) = (u16)(0u - (u32)DSW(rec + 0x34u));   /* 0x3F7D9 */
+    DSB(slot + 0x57u) = 3u;                                 /* 0x3F7E4 */
+    fighter_39834(1u - side, (s32)(u32)DSB(slot + 0x5Fu));  /* 0x3F7DD..0x3F7E8 */
+}
+
+/* 0x40434 — record §54-A. The 0xD000 target (opcode 0x10) at 0xD4FFC, in the
+ * stream 0xD4FF8 (the dword 0xC92B0[5] = 0xC92C4, which only the unported
+ * finisher code at 0x377DD copies to DS_001078E4): the confetti pool's starter,
+ * the only setter of DS_00104AE8 bit 13. Nothing without the record's +0x14
+ * (its slot, EBP). The mover 0x2AE14(0xBB2CC, x = the record's +0x18 +/-
+ * 0x1000, the high word of its +0x30 (signed), y = its +0x1C + 0x1300, the
+ * record's +0x28 bit 14) goes to 0x108098 with the word +0x34 = +/-0xE0 (+
+ * with the flip bit) and +0x14 = the slot; 0x2A17C(mover, 0xC, 0) when the
+ * record's side is non-zero. Then, with the other DS_001077A8 slot set (null
+ * returns): d = |mover +0x18 - that slot's record +0x18| (32-bit, `neg`), the
+ * step word 0x1080B2 = (0x3800 - the mover's word +0x2C) / (d / 0xE0) (both
+ * `div` unsigned, EDX = 0), the byte 0x104AE9 |= 0x20 (bit 13, 0x40554's) and
+ * the mover on 0xD501E at 1.0. */
+void fighter_40434(u32 rec)
+{
+    u32 slot = DSD(rec + 0x14u);                            /* 0x4043C */
+    u32 flip, child, mv, o, d, q;
+    if (slot == 0u) return;                                 /* 0x4043F/0x40441 */
+    flip = (u32)DSW(rec + 0x28u) & 0x4000u;                 /* 0x40447..0x40450, 0x4046D..0x4047C */
+    child = actor_spawn((const u32 *)(mem + P54_BB2CC),
+                        DSD(rec + 0x18u) + (flip != 0u ? 0x1000u : 0xFFFFF000u),
+                        (u32)((s32)DSD(rec + 0x30u) >> 16),
+                        DSD(rec + 0x1Cu) + 0x1300u,
+                        flip != 0u ? 0x4000u : 0u);         /* 0x40457..0x404A7 0x2AE14 */
+    DSW(child + 0x34u) = flip != 0u ? 0x00E0u : 0xFF20u;    /* 0x404AC (DI) */
+    DSD(child + 0x14u) = slot;                              /* 0x404B0 */
+    DSD(P52_108098) = child;                                /* 0x404B6 */
+    if (DSB(rec + 0x51u) != 0u)                             /* 0x404B3/0x404BB */
+        actor_pset_palette(child, 0x0Cu, 0u);               /* 0x404BF..0x404C6 0x2A17C */
+    o = DSD(DS_001077A8 + (u32)(DSB(rec + 0x51u) ^ 1u) * 4u);   /* 0x404CB..0x404D5 */
+    if (o == 0u) return;                                    /* 0x404DC/0x404DE */
+    mv = DSD(P52_108098);                                   /* 0x404E2 */
+    d = DSD(mv + 0x18u) - DSD(DSD(o) + 0x18u);              /* 0x404E0..0x404ED */
+    if ((s32)d < 0) d = 0u - d;                             /* 0x404EF..0x404F3 */
+    q = d / 0xE0u;                                          /* 0x40508..0x40511 `div` */
+    /* PORT: with d below 0xE0 the second `div` (0x40519) divides by zero, a
+     * #DE the raw does not handle; the port leaves the step word 0x1080B2
+     * unchanged and goes on. No path to it is known (record §54-A). */
+    if (q != 0u)
+        DSW(P52_1080B2) = (u16)((0x3800u - (u32)DSW(mv + 0x2Cu)) / q);   /* 0x404F5..0x40521 */
+    DSB(DS_00104AE9) = (u8)(DSB(DS_00104AE9) | 0x20u);      /* 0x4051B..0x4052C */
+    actors_anim_begin(mv, P54_D501E, 0x3F800000u);          /* 0x4052A..0x4053C 0x2BC30 */
+    /* PORT: 0x40541/0x40546 0x2C3FC(0xB8) voice, not wired (record §45-A). */
+}
+
+/* 0x21694 — record §54-A. EAX = side, the twin of 0x3E8E4: the side's record
+ * byte +0x4B = 0 and the other side's record dword +0x24 = 0x40000000. A scan
+ * of both objects finds no call, no jump and no dword naming 0x21694 (it
+ * follows 0x215B0's RET at 0x21693); ported, as 0x3E8E4 is, and not
+ * registered. */
+void fighter_21694(u32 side)
+{
+    DSB(DSD(DS_001077B0 + side * 0x94u) + 0x4Bu) = 0u;      /* 0x21696..0x216B0 */
+    DSD(DSD(DS_001077B0 + (1u - side) * 0x94u) + 0x24u) = 0x40000000u;  /* 0x216B4..0x216C9 */
+}

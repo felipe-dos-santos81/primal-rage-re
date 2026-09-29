@@ -904,6 +904,18 @@ u32  fighter_21b74(u32 side);
 void fighter_21be8(u32 side);
 void fighter_21c84(u32 slot, u32 rec, u32 side);
 void fighter_21d10(u32 slot, u32 rec, u32 side);
+/* Record §54-A: the animation-opcode targets of those pose streams (EAX =
+ * rec): 0x3FF90/0x3FEA8/0x40434 (0xD000, opcode 0x10), 0x3FC08/0x3FCB0
+ * (0xD100, opcode 0x11), 0x40034/0x3F77C (0xD500, opcode 0x15); and 0x21694
+ * (EAX = side, no reference), the twin of 0x3E8E4. */
+void fighter_3ff90(u32 rec);
+void fighter_3fea8(u32 rec);
+void fighter_40034(u32 rec);
+void fighter_3fc08(u32 rec);
+void fighter_3fcb0(u32 rec);
+void fighter_3f77c(u32 rec);
+void fighter_40434(u32 rec);
+void fighter_21694(u32 side);
 /* And their callees no ported code shares: 0x3F184 (EAX = rec: 0x3F308 on
  * the record's side's slot, the 0xE7C98 landing and +0x57 = 3), 0x3F308 (EAX =
  * slot: the 0xBB308 spawn at the slot's record), 0x3C404 (EAX = side, EDX =
