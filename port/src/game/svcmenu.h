@@ -119,4 +119,24 @@ u32 svc_modify_controls(u32 entry);
  * 0 — 0x32358. */
 u32 svc_test_controls(u32 entry);
 
+/* Stores `code` in key slot `slot` of the key-config record 0x100CAC. The
+ * slots run in screen order (the four directions up, right, down, left, then
+ * the four buttons, per player): 0 +2, 1 +8, 2 +4, 3 +6, 4..7 +0xA..+0x10,
+ * 8 +0x14, 9 +0x1A, 10 +0x16, 11 +0x18, 12..15 +0x1C..+0x22. A slot above 15
+ * (unsigned) stores nothing — 0x19C60. */
+void svc_key_slot_set(u32 slot, u16 code);
+/* Key slot `slot` (the same map), zero-extended; 0 for a slot above 15
+ * (unsigned) — 0x19D34. */
+u32 svc_key_slot_get(u32 slot);
+/* Returns the raw key word DS_00105F28 (config_screen_wait's last key) and
+ * zeroes it — 0x2EBBC. */
+u32 svc_raw_key_take(void);
+/* OPTIONS MENU "CONFIGURE KEYBOARD": packs the key-config record into
+ * 0x100CAC, then takes one key per slot 0..15 (Enter keeps the slot's key; a
+ * key whose scan code an earlier slot holds, or with no name, is refused).
+ * Esc leaves without applying; after slot 15 the record is applied. Typing
+ * "spaten" into slots 0..5 sets FREE PLAY (DS_00105D60), "morland" into
+ * slots 0..6 sets DS_00108113. Returns 0 — 0x19DF0. */
+u32 svc_configure_keyboard(u32 entry);
+
 #endif /* PRAGE_GAME_SVCMENU_H */

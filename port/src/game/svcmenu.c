@@ -38,6 +38,10 @@
 #define SVC_DIAG_RULE     0x00080BC0u   /* nineteen '^' */
 #define SVC_DIAG_NAME     0x00080BD4u   /* "DIAGS" */
 #define SVC_DIAG_ADDR     0xFFE80000u   /* 0x323A8 `mov ebx,0xffe80000` */
+#define SVC_KEYS_REC      0x00100CACu   /* the key-config record 0x19DF0 packs and applies */
+#define SVC_KEYS_NAME     0x00100CD4u   /* 0x19DF0's key-name buffer */
+#define SVC_KEY_LABELS    0x000A2C2Cu   /* eight string ids 0x231 0x234 0x232 0x233 0x21C..0x21F */
+#define SVC_BLANK7        0x00080590u   /* "       " (seven spaces) */
 /* The layout bytes are signed chars that the raw reads as the dword three
  * bytes below, `sar 0x18` (0x30932 `mov edx,[0xBD441]` gives the byte at
  * 0xBD444). */
@@ -987,6 +991,131 @@ u32 svc_test_controls(u32 entry)
     return 0u;                                              /* 0x32632 */
 }
 
+/* 0x19C60 — record §K11.6. EAX = slot, DX = the key word. `cmp eax,0xf; ja
+ * 0x19CF0` (unsigned) returns with nothing stored; else jump table 0x19C20,
+ * each case one `mov word [addr],dx; ret`. */
+void svc_key_slot_set(u32 slot, u16 code)
+{
+    switch (slot) {                                         /* 0x19C60..0x19C69 */
+    case 0u:  DSW(0x00100CAEu) = code; break;               /* [0x19C20] = 0x19C71 */
+    case 1u:  DSW(0x00100CB4u) = code; break;               /* [0x19C24] = 0x19C79 */
+    case 2u:  DSW(0x00100CB0u) = code; break;               /* [0x19C28] = 0x19C81 */
+    case 3u:  DSW(0x00100CB2u) = code; break;               /* [0x19C2C] = 0x19C89 */
+    case 4u:  DSW(0x00100CB6u) = code; break;               /* [0x19C30] = 0x19C91 */
+    case 5u:  DSW(0x00100CB8u) = code; break;               /* [0x19C34] = 0x19C99 */
+    case 6u:  DSW(0x00100CBAu) = code; break;               /* [0x19C38] = 0x19CA1 */
+    case 7u:  DSW(0x00100CBCu) = code; break;               /* [0x19C3C] = 0x19CA9 */
+    case 8u:  DSW(0x00100CC0u) = code; break;               /* [0x19C40] = 0x19CB1 */
+    case 9u:  DSW(0x00100CC6u) = code; break;               /* [0x19C44] = 0x19CB9 */
+    case 10u: DSW(0x00100CC2u) = code; break;               /* [0x19C48] = 0x19CC1 */
+    case 11u: DSW(0x00100CC4u) = code; break;               /* [0x19C4C] = 0x19CC9 */
+    case 12u: DSW(0x00100CC8u) = code; break;               /* [0x19C50] = 0x19CD1 */
+    case 13u: DSW(0x00100CCAu) = code; break;               /* [0x19C54] = 0x19CD9 */
+    case 14u: DSW(0x00100CCCu) = code; break;               /* [0x19C58] = 0x19CE1 */
+    case 15u: DSW(0x00100CCEu) = code; break;               /* [0x19C5C] = 0x19CE9 */
+    default: break;                                         /* 0x19C63 ja 0x19CF0 `ret` */
+    }
+}
+
+/* 0x19D34 — record §K11.6. EAX = slot. `cmp eax,0xf; ja 0x19DD5` (unsigned)
+ * returns 0 (`xor eax,eax`); else jump table 0x19CF4, each case `xor
+ * eax,eax; mov ax,[addr]; ret` (zero-extended). */
+u32 svc_key_slot_get(u32 slot)
+{
+    switch (slot) {                                         /* 0x19D34..0x19D3D */
+    case 0u:  return DSW(0x00100CAEu);                      /* [0x19CF4] = 0x19D45 */
+    case 1u:  return DSW(0x00100CB4u);                      /* [0x19CF8] = 0x19D4E */
+    case 2u:  return DSW(0x00100CB0u);                      /* [0x19CFC] = 0x19D57 */
+    case 3u:  return DSW(0x00100CB2u);                      /* [0x19D00] = 0x19D60 */
+    case 4u:  return DSW(0x00100CB6u);                      /* [0x19D04] = 0x19D69 */
+    case 5u:  return DSW(0x00100CB8u);                      /* [0x19D08] = 0x19D72 */
+    case 6u:  return DSW(0x00100CBAu);                      /* [0x19D0C] = 0x19D7B */
+    case 7u:  return DSW(0x00100CBCu);                      /* [0x19D10] = 0x19D84 */
+    case 8u:  return DSW(0x00100CC0u);                      /* [0x19D14] = 0x19D8D */
+    case 9u:  return DSW(0x00100CC6u);                      /* [0x19D18] = 0x19D96 */
+    case 10u: return DSW(0x00100CC2u);                      /* [0x19D1C] = 0x19D9F */
+    case 11u: return DSW(0x00100CC4u);                      /* [0x19D20] = 0x19DA8 */
+    case 12u: return DSW(0x00100CC8u);                      /* [0x19D24] = 0x19DB1 */
+    case 13u: return DSW(0x00100CCAu);                      /* [0x19D28] = 0x19DBA */
+    case 14u: return DSW(0x00100CCCu);                      /* [0x19D2C] = 0x19DC3 */
+    case 15u: return DSW(0x00100CCEu);                      /* [0x19D30] = 0x19DCC */
+    default:  return 0u;                                    /* 0x19D37 ja 0x19DD5 `xor eax,eax` */
+    }
+}
+
+/* 0x2EBBC — record §K11.6. */
+u32 svc_raw_key_take(void)
+{
+    const u32 k = DSD(DS_00105F28);                         /* 0x2EBBF */
+    DSD(DS_00105F28) = 0u;                                  /* 0x2EBBD xor edx,edx; 0x2EBC4 */
+    return k;
+}
+
+/* 0x19DF0 — record §K11.6. OPTIONS MENU "CONFIGURE KEYBOARD". The record is
+ * the global 0x100CAC (not a stack record) and 0x3157C's names go to
+ * 0x100CD4. ESI is the slot, EDI its column, [esp] its row; ECX the key. */
+u32 svc_configure_keyboard(u32 entry)
+{
+    (void)entry;
+    config_keys_pack(SVC_KEYS_REC);                         /* 0x19DF8..0x19E02 0x1AEE0 (ECX = 0x2000, kept) */
+    text_cursor_set(2, 4, game_string_get(0x17u), 0x2000u);        /* 0x19E07..0x19E1D "LEFT PLAYER" */
+    text_cursor_set(0x16, 4, game_string_get(0x16u), 0x2000u);     /* 0x19E22..0x19E3D "RIGHT PLAYER" */
+    for (u32 i = 0u; i < 8u; i++)                           /* 0x19E42..0x19F3D, unrolled */
+        text_cursor_set(2, (s32)(7u + 2u * i), game_string_get(DSD(SVC_KEY_LABELS + 4u * i)), 0x1000u);
+    for (u32 s = 0u; s < 8u; s++) {                         /* 0x19F42..0x1A0B2, unrolled */
+        (void)config_key_name(svc_key_slot_get(s), 0u, SVC_KEYS_NAME);   /* 0x19D34, 0x3157C (EDX = 0) */
+        text_cursor_set(0xC, (s32)(7u + 2u * s), mem + SVC_KEYS_NAME, 0xF000u);   /* 0x2F198 */
+    }
+    for (u32 i = 0u; i < 8u; i++)                           /* 0x1A0B7..0x1A1B2, unrolled */
+        text_cursor_set(0x16, (s32)(7u + 2u * i), game_string_get(DSD(SVC_KEY_LABELS + 4u * i)), 0x1000u);
+    for (u32 s = 8u; s < 16u; s++) {                        /* 0x1A1B7..0x1A32C, unrolled */
+        (void)config_key_name(svc_key_slot_get(s), 0u, SVC_KEYS_NAME);   /* 0x19D34, 0x3157C */
+        text_cursor_set(0x20, (s32)(7u + 2u * (s - 8u)), mem + SVC_KEYS_NAME, 0xF000u);   /* 0x2F198 */
+    }
+    (void)svc_raw_key_take();                               /* 0x1A331 0x2EBBC: a stale key is dropped */
+    for (u32 slot = 0u; slot < 16u; slot++) {               /* 0x1A32A xor esi,esi; 0x1A542..0x1A546 */
+        const s32 col = ((s32)slot > 7 ? 0x16 : 2) + 0xA;   /* 0x1A336..0x1A35A (`jg`) */
+        const s32 row = (s32)(slot % 8u) * 2 + 7;           /* 0x1A347..0x1A369 `idiv`, [esp] */
+        (void)config_key_name(svc_key_slot_get(slot), 0u, SVC_KEYS_NAME);   /* 0x1A367..0x1A373 */
+        text_cursor_set(col, row, mem + SVC_KEYS_NAME, 0x3000u);    /* 0x1A378..0x1A382 (ECX = 0x3000) */
+        u32 key;
+        for (;;) {
+            config_screen_wait(1);                          /* 0x1A387..0x1A38C 0x2EA78 */
+            key = svc_raw_key_take();                       /* 0x1A391..0x1A396 0x2EBBC, ECX */
+            if (key == 0u) continue;                        /* 0x1A398..0x1A39A */
+            if ((key & 0xFFu) == 0x1Bu) return 0u;          /* 0x1A39C..0x1A3A4 -> 0x1A556: no 0x1AE28 */
+            if ((key & 0xFFu) == 0x0Du)                     /* 0x1A3AA..0x1A3AD */
+                key = svc_key_slot_get(slot);               /* 0x1A3AF..0x1A3B6: Enter keeps the slot's key */
+            for (u32 j = 0u; (s32)j < (s32)slot; j++) {     /* 0x1A3B8..0x1A3BC, 0x1A3DA..0x1A3DD */
+                if ((svc_key_slot_get(j) & 0xFF00u) == (key & 0xFF00u)) {   /* 0x1A3BE..0x1A3D4 */
+                    key = 0u;                               /* 0x1A3D6 */
+                    break;
+                }
+            }
+            if (key == 0u) continue;                        /* 0x1A3DF..0x1A3E1 */
+            if (config_key_name(key, 0u, SVC_KEYS_NAME) == 0u) continue;   /* 0x1A3E3..0x1A3F3 `test al,al` */
+            break;
+        }
+        svc_key_slot_set(slot, (u16)key);                   /* 0x1A3F5..0x1A3FE 0x19C60 */
+        text_cursor_set(col, row, mem + SVC_BLANK7, 0xF000u);        /* 0x1A3F9, 0x1A403..0x1A40D: releases 7 cells */
+        text_cursor_set(col, row, mem + SVC_KEYS_NAME, 0xF000u);     /* 0x1A412..0x1A421 */
+        if (slot == 5u) {                                   /* 0x1A426 */
+            static const char spaten[6] = { 's', 'p', 'a', 't', 'e', 'n' };
+            u32 i = 0u;
+            while (i < 6u && (svc_key_slot_get(i) & 0xFFu) == (u8)spaten[i]) i++;   /* 0x1A42F..0x1A49F */
+            if (i == 6u) DSB(DS_00105D60) = 1u;             /* 0x1A4A1: FREE PLAY */
+        }
+        if (slot == 6u) {                                   /* 0x1A4A8 */
+            static const char morland[7] = { 'm', 'o', 'r', 'l', 'a', 'n', 'd' };
+            u32 i = 0u;
+            while (i < 7u && (svc_key_slot_get(i) & 0xFFu) == (u8)morland[i]) i++;  /* 0x1A4B1..0x1A539 */
+            if (i == 7u) DSB(DS_00108113) = 1u;             /* 0x1A53B */
+        }
+    }
+    config_keys_apply(SVC_KEYS_REC);                        /* 0x1A54C..0x1A551 0x1AE28 */
+    return 0u;                                              /* 0x1A556 */
+}
+
 /* PORT: the menu tables 0xBCBDC/0xBCC1C/0xBCCCC hold these as code
  * addresses (record §0.2); menu_step/menu_run reach them through fn_resolve.
  * One-time: fn_register appends unconditionally. Later cycles add their roots. */
@@ -1011,4 +1140,5 @@ void svcmenu_register(void)
     fn_register(0x31138u, (void (*)(void))svc_handicap);
     fn_register(0x31F24u, (void (*)(void))svc_modify_controls);
     fn_register(0x32358u, (void (*)(void))svc_test_controls);
+    fn_register(0x19DF0u, (void (*)(void))svc_configure_keyboard);
 }
