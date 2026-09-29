@@ -5,7 +5,11 @@
 #include "../symbols.h"
 #include <stddef.h>
 
-/* 0x1C528 — record §50-D. A byte-identical second copy of 0x14268 (65
+/* 0x14268 — record §50-E. PORT: the node is a C struct, not the original's
+ * mem[] record (id table entry +0x24 is not kept; pixel_handle is the +0x20
+ * dword); an unresolvable id zeroes rows/width/xorg/yorg where the raw calls
+ * 0x1B544 on whatever the table holds.
+ * 0x1C528 — record §50-D. A byte-identical second copy of 0x14268 (65
  * instructions, identical opcodes and operands; the loader's glyph path 0x1C5E8
  * calls it at 0x1C60B), so both share this body. */
 void sprite_node_build(SpriteNode *n, u32 sprite_id)

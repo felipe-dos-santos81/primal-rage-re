@@ -23953,3 +23953,224 @@ four would be dead code with no caller. They are counted as host-owned.
 ### 50-C.4 Gates
 
 See `docs/PROGRESS.md` (gap48-triage1a) for the final `make verify` numbers.
+
+## 50-E. The 0x10000-0x14FFF and 0x18000-0x19FFF triage: ported, host-owned and deferred (branch `gap50-triage10`)
+
+The list was `tools/port_progress.py --unported` restricted to the two ranges,
+28 addresses. Letter `E` was free in `main` and in every worktree (the only
+`50-` letter in the record was `A`). Every address was checked three ways: a
+grep of `port/src` and `port/tests` for the address (headers written as
+`/* PORT: 0xADDR`, which `port_progress.py` does not count, are the false
+positives), the Ghidra bridge's `get_xrefs_to` (callers), and the raw
+disassembly (bridge `disassemble_function` and capstone over `read_memory`,
+which returns the fixup-applied bytes).
+
+### 50-E.1 The classification
+
+`0x10000..0x10D70` is not game code. It is the Smacker SDK's DOS layer plus the
+game's own CD-ROM drive locator. Every caller of every function in it is either
+the SDK proper (`0x5D000..0x73B14`, tagged `runtime` by `port_progress.py`),
+another function of the layer, or `0x1BEC4`/`0x1AFE8`/`0x1B084` (game startup and
+file open). Classes: **PORTED** (in this record), **FALSE POSITIVE** (already
+ported under another header, normalised), **HOST-OWNED** (DOS/DPMI/drive
+plumbing the SDL host replaces; nothing to port), **DEFERRED** (the movie-audio
+streaming unit of 49-W.2, which is deferred as a unit).
+
+| Address | Size | Callers (Ghidra) | What the raw does | Class and evidence |
+|---|---|---|---|---|
+| `0x10024` | 16 | `0x631F2` (SDK) | `cmp [0x81E08],0 / setnz`: "an AIL digital driver is open" | DEFERRED (movie-audio unit, 49-W.2) |
+| `0x10034` | 141 | `0x631FD` (SDK) | counts users in `[0x81E04]`; the first calls `0x5DFDC` (AIL startup); opens the digital driver with `0x5DB9E`, the name being the argument or the strings `SB16.DIG`/`SBPRO.DIG`/`SBLASTER.DIG` (`0x80004`, `0x80010`, `0x8001C`); stores the handle in `[0x81E08]` | DEFERRED (movie-audio unit); the port opens no AIL driver for movies, `platform/ail.c` is the inert surface |
+| `0x100C4` | 24 | `0x63D83` (SDK) | `[0x81E04]--`; at 0 calls `0x5DFEB` (AIL shutdown); returns 1 | DEFERRED (movie-audio unit) |
+| `0x100DC` | 94 | 3: `0x640B8`, `0x65240` (SDK) and one site outside any Ghidra function | calls the pump `0x102B8`, then turns the stream's fill counters (`+0x244..+0x25C`) into a byte position | DEFERRED (movie-audio unit; holds the AIL sample handle at `+0x23C`, 49-W.2) |
+| `0x10510` | 95 | `0x62AF7` (SDK) | stops the sample (`0x5DC8B`), zeroes the ring counters `+0x244..+0x26C`, `[sample+0x2C] = -2` | DEFERRED (movie-audio unit) |
+| `0x10570` | 146 | `0x63D08` (SDK) | stream close: stops and releases the sample (`0x5DC8B`, `0x5DBF4`), frees the ring (`0x1C8CC`), unlinks the node from the list `[0x81E00]` | DEFERRED (movie-audio unit) |
+| `0x10610` | 103 | `0x63468` (SDK) | timer start: the first user starts AIL and registers the 250 Hz (`0xFA`) callback `0x10604` (`0x5DA12`, `0x5DA87`, `0x5DAA6`), handle in `[0xF0A20]` | DEFERRED (movie-audio unit; the callback drives `0x102B8`) |
+| `0x10678` | 9 | 12, all SDK (`0x6279C..0x65240`) | `eax = [0x81E10] << 2`, the stream buffer size | DEFERRED (movie-audio unit); no equivalent inline in the port, nothing calls it |
+| `0x10684` | 62 | `0x63488`, `0x635DF`, `0x63E24` (SDK) | timer stop, the mirror of `0x10610` | DEFERRED (movie-audio unit) |
+| `0x106E1` | 60 | 5, SDK | calls the allocator hook `[0x81E1C]`, then locks the block with `0x109A0` | HOST-OWNED: the SDK allocates through the hook; the port's Smacker decoder (`platform/smacker.c`) uses the host allocator and flat `mem[]` |
+| `0x1071D` | 46 | 26, SDK | unlocks with `0x109CA`, then the free hook `[0x81E20]` | HOST-OWNED, as `0x106E1` |
+| `0x1074B` | 164 | `0x65BD5`, `0x679D1` (SDK) | DPMI `INT 31h AX=0x100` (allocate DOS memory), then locks it with `0x10830` | HOST-OWNED: no real-mode memory; flat `mem[]` |
+| `0x107EF` | 65 | 10, SDK | DPMI `INT 31h AX=0x101` (free DOS memory) | HOST-OWNED |
+| `0x10830` | 184 | 10: `0x109A0`, `0x1074B`, SDK | DPMI `INT 31h AX=0x600` (lock linear region), `min`/`max` of the two bounds, carry -> 0/1 | HOST-OWNED: `flow.c` `game_init` notes "no DPMI" |
+| `0x108E8` | 184 | 5: `0x109CA`, SDK | DPMI `INT 31h AX=0x601` (unlock linear region) | HOST-OWNED |
+| `0x109A0` | 42 | 36: seven in `0x1BEC4` (`0x1BF60..0x1BFCC`) and SDK | `lock(base, len) = 0x10830(base, base + len)` | HOST-OWNED: the seven `0x1BEC4` calls are the "no DPMI" note in `flow.c` (`game_init`, the 0x1BEC4 chain). No equivalent to fold in: a page lock has no flat-memory meaning |
+| `0x109CA` | 42 | 29, `0x1071D` and SDK | `unlock(base, len) = 0x108E8(base, base + len)` | HOST-OWNED, as `0x109A0` |
+| `0x109F4` | 116 | `0x10A68`, `0x67DC2`, `0x6A302` (SDK) | file size: open with flag `0x200` (`0x6157F`), `0x617CD` (length), close (`0x6180A`); error codes in `[0x81E18]` | HOST-OWNED: file I/O lives in `host.c`/`res.c` only (AGENTS.md); the size is a `res_load_*` result |
+| `0x10B70` | 192 | 1: `0x10C6F` | CD-ROM test of a drive number: under 4 drives (`[0xEF927] < 4`, signed `jge`) returns 0; DOS `INT 21h AX=4409h` (block device remote?), then MSCDEX `INT 2Fh AX=1500h`/`150Bh`; returns 1 for a CD-ROM drive, 2 for a local drive, 3 for an error | HOST-OWNED: no drive letters; the game directory is `--game-dir` (`main.c`) |
+| `0x10C30` | 219 | 1: `0x1BFFD` in `0x1BEC4` | saves the current drive (`INT 21h AH=19h`, `[0xF0A34]`) and directory (`AH=47h`, `[0xF0A38]`), then walks drives from the current one down while `>= 3`, with `0x10B70`, to the first CD-ROM whose `chdir` to `\RAGE.S16` (string at `0x8002C`) succeeds, saving it in `[0xF0A30]`; none found -> fatal message 10 (`0x1D290`); the `-f` argument (`0x1BEDC`, `[0x101520] = 1`) makes it restore the original drive and directory | HOST-OWNED: `main.c` resolves the game directory and `res_load_index` fails with "resource INDEX load failed" when it is missing. `flow.c` had wrongly listed it among the DPMI locks; the note is corrected |
+| `0x10D0C` | 40 | `0x1AFE8`, `0x1B084`, `0x1BEC4` | when `[0x101520]` is 0: `INT 21h AH=0Eh` to the CD drive `[0xF0A30]`, `chdir` `\RAGE.S16` | HOST-OWNED, as `0x10C30` |
+| `0x10D34` | 47 | `0x1AFE8`, `0x1B084`, `0x1BE30`, `0x1BEC4` | when `[0x101520]` is 0: back to the original drive `[0xF0A34]` and directory `[0xF0A38]` | HOST-OWNED, as `0x10C30` |
+| `0x12658` | 198 | `0x12592` (`0x12484`, ported as `game_state_3`) | the state-3 handoff spawner | FALSE POSITIVE: ported as `game_state_3_handoff` under the header `/* PORT: 0x12658.`; checked against the raw (three `0x2AE14` spawns from `0x9AC44`/`0x9AC58`/`0x9AC6C`, the `+0x4B` byte copies, the `0x33904` list walk with the `0x3E688` and `0x1C6D4` tests, `0x13C70(rec, 6, [rec])`, `DS_00107A44 = 0`); header normalised |
+| `0x14268` | 190 | 1: `0x14328` | builds a display node from a sprite id | FALSE POSITIVE: ported as `sprite_node_build` (`platform/sprite.c`) with no address header; checked (id table `0xA8B30`, `0x1B544`, the signed-height arm: rows `-height`, width `-width`, type 2, else 1, `+8` xorg, `+0xC` yorg, hflip -> type `|= 8` and `xorg = width - xorg - 1`, id 0 zeroes the four); header added |
+| `0x14328` | 610 | `0x255CC` (master loop), `0x2EA78` | `render_list` | FALSE POSITIVE: ported as `render_list` under `/* PORT: 0x14328.`; checked block by block (see 50-E.3); header normalised |
+| `0x18428` | 27 | 1: `0x18513` (`0x18460`) | character dispatch through the table `0x1840C` | PORTED (50-E.2): every one of its seven entries is `0x18408`, a bare `RET` |
+| `0x18460` | 193 | 1: `0x185B6` (`0x18540`) | the anchor pre-dispatch | PORTED (50-E.2) |
+| `0x19958` | 380 | 1: `0x19BB3`, inside the unlisted `0x19B90` | the round-end debris spawner | PORTED (50-E.4) |
+
+Two corrections to earlier notes. `flow.c`'s "DPMI locks 0x10C30/0x10D34/
+0x1ADAC/0x1ADE4/0x10D0C are no-ops" named three CD-drive functions as DPMI
+locks; `0x1ADAC`/`0x1ADE4` were not read here and keep that wording. And 49-W.2's
+statement that the layer's callers are "the SDK or `0x100DC`" is incomplete: the
+game itself calls `0x109A0` (seven times from `0x1BEC4`), `0x10C30`, `0x10D0C`
+and `0x10D34`.
+
+### 50-E.2 `0x18428` and `0x18460`
+
+`0x18540` (`fighter_18540`, already ported) ends its per-side anchor with the call
+`0x185B6 -> 0x18460`; the earlier port dropped the call because its target is
+effect-free. It is now ported and called, so the function count follows the raw.
+
+`0x18460` (EAX = side). With `[0x1077A8]` and `[0x1077AC]` both non-zero (0x1846A,
+0x18477) it reads the side's slot (`[0x1077A8 + side*4]`) and its character
+(`+0x7A`, unsigned `cmp al,6 / ja`, 0x1848E). For a character 0..6 the table
+jump `[0x18444 + al*4]` (seven entries, all `0x1849F`, read from the object)
+loads `BX = word[0xA1774 + 14*ch]` and `DI = word[0xA1776 + 14*ch]`
+(`lea eax,[ebx*8]; sub eax,ebx` = 7*ch; the address scales it by 2). For a
+character above 6 the jump goes straight to `0x184BD`, so BX/DI are the caller's
+registers (the unobservable choice is recorded as `TODO(verify)` in the code).
+The two slots' actor-index bytes (`rec+0x56`, 0x184C4, 0x184D1) and the side's
+sprite id (`word[DS_001014EC + idx*0x20] & 0x7FFF`, `and ah,0x7f`, 0x184E8/
+0x184EC) follow. `cmp ax,bx / jc 0x184F9` (unsigned): an id below the low bound
+calls; otherwise `cmp ax,di / jc 0x18518`: below the high bound returns; else
+the id is compared with `0x1E1` (0x184FE, `jz` returns) and `0x18428` is called
+with EAX = side, EDX = the id, EBX/ECX = the two index bytes (0x18513).
+
+`0x18428` reads `[0x1077A8 + side*4]`, the character at `+0x7A`, returns above 6
+(`ja 0x18408`) and otherwise `jmp cs:[0x1840C + al*4]`. Ghidra's fixup-applied
+memory shows all seven dwords as `08 84 01 00` = `0x18408`, and `0x18408` is the
+`RET` that ends `0x18350` (bridge `read_memory` `0x1840C`, 28 bytes). The
+dispatch therefore reaches a bare `RET` for every character (the lesson-3 case:
+a proven no-op). The port keeps both functions so the count and the guard logic
+follow the raw; `fighter_18460` returns whether the dispatch is reached (a
+port-only value so a test can observe the decision). Test: `check_anchor_dispatch`
+in `test_fight.c`.
+
+### 50-E.3 `0x14328` checked against the raw
+
+The port's `render_list` matches the raw block for block: the pset is `[node+4]`
+(0x1434E), the id `word[pset]` (0x14355); the palette pointer `[pset+0x18]`
+(0x1435D); the layer `word[pset+0xE]` (0x14366); above 2 the position is the
+pset's `+4`/`+8` shifted right 6 (0x1436F, 0x14390) and projected with
+`3901`/`3414` (`0xF3D`/`0xD56`) with the `sbb` correction (0x14389); the camera
+origin and the node's pivots are subtracted (0x1439C, 0x143E4, 0x143F1); layer 1
+and 2 adjust as ported; the reject test is `width + x < 0 || rows + y < 0`
+(0x144CE, 0x144DC); the four clips (0x144E4..0x14536) clamp at 0 and move the
+origin to the clip edge exactly when the difference is non-negative; the blit
+runs when the clip sums are 0 (0x1454F), and with type `|= 0x10` when both sums
+are below the size (0x14551, 0x14557); the list is walked through `[node]`
+(0x14574).
+
+One difference was found and fixed. The raw reads `DS_00107A3E`, `DS_00107A4E`,
+`DS_00107A3A` and `DS_00107A38` zero-extended (`xor eax,eax / mov ax,[...]`,
+0x14402, 0x1442E, 0x14479 with `xor edx,edx`, 0x1449F) and runs them through the
+same `sbb`-corrected projection as the main one. The port cast them `(s16)` and
+used an uncorrected `>> 12`, with a `TODO(verify)`. They now use `(int)` of the
+`u16` and the shared `proj_scale`. The values are `>> 5`/`>> 6` results below
+0x8000 on every live path, so the frame output is unchanged (the demo-fight and
+front-end gates below confirm it); the TODO is resolved.
+
+The port's `render_list` keeps its `PORT:` deviation: the raw receives the list
+head, the camera `{x, y}` and the clip record in EAX/EDX/EBX from
+`0x255CC`/`0x2EA78`, the port walks the global list with `render_camera_default`.
+
+### 50-E.4 `0x19958` and its caller `0x19B90`
+
+`0x19B90` is update-table entry 2: the dword at `0xA864C` (`DS_000A8644[2]`, in
+the table listing of the front-end chain record §4.3). Ghidra defines no function
+there; `0x19B90` is a leaf with no prologue whose `call 0x19958` at `0x19BB3`
+falls into the walker `0x19BB8..0x19B8E` (`0x19BB8` pushes and pops six
+registers and ends `ret` at `0x19B8E`), whose blocks sit at `0x19AD4..0x19B7E`.
+`0x19820` (`fighter_19820`) arms it with `DS_00104AE8 |= 4` at every fight start
+(`0x27F3A`), and until now no port code ran it: `run_process_table` resolved the
+entry to nothing. Both are ported (`debris_update`, `debris_spawn` in
+`actors.c`) and `0x19B90` is registered with `fn_register`.
+
+`0x19B90`. `al = [0x100CA8]`; `cmp eax,0x14 / jle 0x19BB3` (the byte is
+zero-extended, so signed and unsigned agree); `ax = word[0xEF6DC]`, `xor ah,ah`,
+`and al,0xF`, `and eax,0xFFFF / jne 0x19BB3`; otherwise `dec byte [0x100CA8]`.
+Then `call 0x19958` and the walk of the list `0x100C28`, `ebx = [0x100C28]` (empty
+when it is its own sentinel, `je 0x19B88`). Per node: `eax = [ebx+8]` (the actor),
+`edx = ((dword)[eax+0x34] >> 16) + [eax+0x1C]` (`sar edx,16`, so the signed word
+`+0x36`), `ecx = [ebx]` (the next link, before any call); `test edx,edx / jge
+0x19B7E` (signed) skips. A landed node zeroes `[eax+0x1C]`, word `+0x34` and word
+`+0x36`, then by `cmp ax,4 / jb 0x19B45 / jbe 0x19AD4 / cmp ax,5 / je 0x19AF8 /
+jmp 0x19B45` on `word[0x104AFC]` (unsigned): `0x19AD4` (== 4) restarts stream
+`0xE8C38` at `0x40000000` through `0x2BC30`; `0x19B45` (below 4, or above 5)
+`0xE8BF4` at `0x40000000`; `0x19AF8` (== 5) tests `byte [rec+0x48] == 0x28`:
+equal zeroes word `+0x44`, restarts `0xE8C5C` at `0x40800000`, sets word `+0x34 =
+0x40` and jumps to `0x19B7E` with no teardown; unequal restarts `0xE8C16` at
+`0x40000000`. Every restart but the type-0x28 one continues at `0x19B61`: `ebx =
+[ebx+8]` (after the restart, the actor again, the node's `+8` untouched;
+`0x2BC30` writes the actor's `+8`, not the node's), `if [ebx+0x14] == 0` skip;
+else `0x249D0(node)`, `0x249B0(0x100C20, [ebx+0x14])`, `[ebx+0x14] = 0`, `byte
+[ebx+0x48] = 0`: exactly `actor_type_19928`, which the port calls. `0x19B7E`
+moves to `ecx` and stops at the sentinel. `0x2BC30` pushes and pops `ECX` (bridge
+disassembly, 0x2BC32/0x2BC33) and the two list routines do not touch it, so the
+pre-read next link survives the calls.
+
+`0x19958`. Registers are pushed and popped (0x19958..0x1995D, 0x19ACD..0x19AD3).
+`al = [0x100CA8]`; `0x5D7DC` (`rng_next`) with that range; a non-zero draw
+returns (0x1996F). `ebp = [0xF0AF0] - 0x3000 + rng(0x3000)`. `ax = rng(0xA00)`,
+`add ah,6` into the word `w8` (`[esp+8]`, 0x19997/0x1999A), and `w0 = 0x3C00 - w8`
+(the low word of a dword subtract from `[esp+8]`, 0x199A4/0x199AA, the upper
+half being uninitialised stack and unused). By `word[0x104AFC]`: below 4 or above
+5 -> `rng(2)` picks descriptor `0xBB448` (non-zero) or `0xBB45C` (0x19A0F..0x19A29);
+4 -> `0xBB4FC`; 5 -> `0xBB4E8` when `byte [0x100CA9] == 0` else `0xBB510` with `w8`
+redrawn as `rng(0x200)` with `add ah,0xE` (0x199F2..0x19A08; `w0` keeps the first
+value). The count in `[esp+4]` is the constant 1 at every path. The spawn (0x19A40..
+0x19A54) is `push 0`, `ecx = [esp+0xA] sar 16`, `ebx = [esp+2] sar 16`, `edx =
+ebp`, `eax = desc`, `call 0x2AE14`: after the `push` the two dwords straddle the
+zero halves (the pushed 0, the count's upper word) and the words `w8`/`w0`, so
+`ecx = (s16)w8` and `ebx = (s16)w0`, exactly `actor_spawn(desc, x, w8, w0, 0)`
+in the port's argument order (as in `game_state_3_handoff`). A spawned record
+takes, by mode: 4 -> `+0x34 = 0x100`, `+0x36 = 0xFE80`; 5 with type `0x28` (the
+descriptor `0xBB510` word `0x3C0428`) -> `0x80`, `0`, and word `+0x44 = 8`; every
+other case -> `0x100`, `0xFD00`. The descriptors' type bytes are `0x06`
+(`0xBB448`, `0xBB45C`), `0x26` (`0xBB4E8`), `0x27` (`0xBB4FC`) and `0x28`
+(`0xBB510`), the four types whose spawn callback `0x198E8` pops the free list
+`0x100C20` and whose teardown is `0x19928`, so the spawner draws its nodes from
+the ten built by `0x19820`.
+
+Tests (`check_debris_update` in `test_fight.c`, seeds chosen so the first draw is
+or is not zero): the count-down gate (0x30 -> 0x2F on nibble 0; unchanged on
+nibble 3; 0x15 -> 0x14; 0x14 stays), the walker over three nodes (landed, sum
+exactly 0, landed) in modes 3, 4, 5 (type 0x26) and 6 with the stream, the frame,
+the free-list order and the surviving middle node, mode 5 with type 0x28, and the
+spawner in modes 3..6 (both `DS_00100CA9` values in mode 5) against a replay of the
+same draws (x, `w8`, `w0`, the RNG state after the call, type, `+0x34`, `+0x36`,
+`+0x44`, the node moved to `0x100C28`).
+
+Mutations (each applied alone to the source, run, then restored; the count is the
+number of `FAIL` lines in `run_tests`):
+
+| Mutation | Fails |
+|---|---|
+| `> 0x14` -> `>= 0x14` (count-down gate) | 2 |
+| nibble test `== 0` -> `!= 0` | 5 |
+| landing `sum >= 0` -> `> 0` | 30 |
+| next link read after the teardown (`node = DSD(node)`) | hang (the walk never reaches the sentinel; the suite was killed) |
+| mode-5 stream `0xE8C16` -> `0xE8C38` | 3 |
+| type-0x28 frame `4.0` -> `2.0` | 2 |
+| `w0` recomputed after the mode-5 redraw | 2 |
+| mode-4 `+0x36` `0xFE80` -> `0xFD00` | 2 |
+| `add ah,6` -> `add ah,5` | 6 |
+| the `rng(2)` draw dropped | 3 |
+| type-0x28 arm without the `mode == 5` test | 0 (equivalent: only mode 5 spawns type 0x28) |
+| `0x18460`: `id < hi` -> `id <= hi` | 2 |
+| `0x18460`: the `0x7FFF` mask dropped | 2 |
+| `0x18460`: the `0x1E1` test dropped | 3 |
+| `0x18460`: second slot test altered | 2 |
+
+### 50-E.5 What remains unported in the two ranges
+
+Nothing portable. Of the 28 addresses: 3 were false positives (`0x12658`,
+`0x14268`, `0x14328`, headers normalised), 3 are ported (`0x18428`, `0x18460`,
+`0x19958`, with the unlisted `0x19B90`), 9 are the movie-audio streaming unit
+that 49-W.2 defers as a whole (`0x10024`, `0x10034`, `0x100C4`, `0x100DC`,
+`0x10510`, `0x10570`, `0x10610`, `0x10678`, `0x10684`; with `0x102B8`, `0x1013C`
+and `0x10A68` the unit is twelve functions) and 13 are DOS memory, DPMI,
+file-size and CD-drive plumbing that the SDL host, flat `mem[]` and
+`--game-dir` replace (`0x106E1`, `0x1071D`, `0x1074B`, `0x107EF`, `0x10830`,
+`0x108E8`, `0x109A0`, `0x109CA`, `0x109F4`, `0x10B70`, `0x10C30`, `0x10D0C`,
+`0x10D34`). They stay unported on purpose. `tools/port_progress.py` cannot tell
+them from real gaps; this table is the input for teaching it.

@@ -32,16 +32,11 @@ static int proj_scale(int v, int num)
     return p >> 12;
 }
 
-/* TODO(verify): 0x14328's three offset projections (layer-1 x at prage.c:3166,
- * layer-2 x at :3173 and layer-2 y fallback at :3175) are a plain +0x800 then
- * arithmetic >>12 with no sign correction, unlike the main projection used for
- * px/py and layer 1's y. In a compositor-only run all five offset globals are
- * zero, so the two forms coincide; 4a-ii's pixel oracle must confirm which form
- * the original applies to these (decompiled as unsigned) operands. */
-static int proj_scale_u(int v, int num)
-{
-    return (v * num + 0x800) >> 12;
-}
+/* PORT: the offset projections in 0x14328 (0x14402..0x1441E, 0x14472..0x1448F,
+ * 0x1449F..0x144BB) use the same sign-corrected idiom as the main one, on
+ * zero-extended words (`xor eax,eax / mov ax,[0x107A3E]` and its siblings), so
+ * they are proj_scale of a u16: a non-negative product, the correction never
+ * applies (record §50-E, which resolves the earlier TODO). */
 
 int render_proj_x(int v) { return proj_scale(v, 3901); }
 int render_proj_y(int v) { return proj_scale(v, 3414); }
@@ -148,7 +143,9 @@ int render_list_count(void)
     return render_count;
 }
 
-/* PORT: 0x14328. `last_mode1_y` tracks the most recent layer-1 entry's y in
+/* 0x14328 — record §50-E. PORT: the raw takes the list head, the camera
+ * {x, y} and the clip record in EAX/EDX/EBX; this wrapper walks the global list
+ * with render_camera_default. `last_mode1_y` tracks the most recent layer-1 entry's y in
  * list order (not a running minimum) and starts at -1. The clip rectangle is
  * the camera's clip fields; the camera's own x/y are the projection origin. */
 void render_list(void)
@@ -175,15 +172,15 @@ void render_list(void)
         int y = render_proj_y(py) - cam->y - n.yorg;
 
         if (layer == 1) {
-            x -= proj_scale_u((s16)DSW(DS_00107A3E), 3901);
-            y  = render_proj_y((s16)DSW(DS_00107A4E) +
+            x -= proj_scale((int)DSW(DS_00107A3E), 3901);
+            y  = render_proj_y((int)DSW(DS_00107A4E) +
                                ((s32)DSD(DS_000F0AEC) >> 6)) - cam->y;
             last_mode1_y = y;
             n.type |= 4u;
         }
         if (layer == 2) {
-            x -= proj_scale_u((s16)DSW(DS_00107A3A), 3901);
-            if (last_mode1_y == -1) y -= proj_scale_u((s16)DSW(DS_00107A38), 3414);
+            x -= proj_scale((int)DSW(DS_00107A3A), 3901);
+            if (last_mode1_y == -1) y -= proj_scale((int)DSW(DS_00107A38), 3414);
             else                    y  = last_mode1_y - n.rows;
         }
 

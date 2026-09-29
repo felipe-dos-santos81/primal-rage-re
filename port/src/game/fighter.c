@@ -127,6 +127,59 @@ int fighter_actor_bit15_clear(u32 side)
     return (DSW(actor) & 0x8000u) == 0;
 }
 
+/* 0x18428 — record §50-E. The character dispatch 0x18460 ends in: EAX = side,
+ * EDX = the sprite id, EBX/ECX = the two slots' actor-index bytes. It reads the
+ * side's slot character (+0x7A, 0x1842F), returns above 6 (0x18432 JA 0x18408)
+ * and otherwise jumps through the seven-entry table 0x1840C, whose every entry
+ * is 0x18408, a bare RET (the fixup-applied dwords `08 84 01 00` x 7). The
+ * dispatch therefore has no effect for any character. */
+static void fighter_18428(u32 side, u32 sprite, u32 a0, u32 a1)
+{
+    u32 slot = DSD(DS_001077A8 + side * 4u);            /* 0x18428 */
+    u32 ch = (u32)DSB(slot + 0x7Au);                    /* 0x1842F */
+    (void)sprite; (void)a0; (void)a1;
+    if (ch > 6u) return;                                /* 0x18432 */
+    /* PORT: every table 0x1840C entry is the RET at 0x18408; nothing to do. */
+}
+
+/* 0x18460 — record §50-E. EAX = side. With both slot pointers 0x1077A8/0x1077AC
+ * live (0x1846A, 0x18477) it reads the side's character (+0x7A) and, for a
+ * character 0..6, the word pair {lo, hi} at 0xA1774/0xA1776 + character * 14
+ * (0x18497..0x184B5; `lea eax,[ebx*8]; sub eax,ebx` = 7 * character, scaled
+ * by 2). Slot 0's and slot 1's actor-index bytes (rec+0x56, 0x184BD..0x184D1)
+ * and the side's sprite id (the actor word masked with 0x7FFF, 0x184D4..0x184EF)
+ * follow. The id inside [lo, hi) (unsigned, 0x184EF JC / 0x184F4 JC) or equal to
+ * 0x1E1 (0x184FE) returns; otherwise 0x18428 is called (0x18513). Returns 1
+ * when the call is made. PORT: the return value is port-only, so a test can
+ * observe the decision; the raw returns nothing, and 0x18428 has no effect.
+ * TODO(verify): for a character above 6 the raw jumps to 0x184BD with EBX/EDI
+ * as the caller left them, so the [lo, hi) test there reads caller registers;
+ * it is taken as not in range, which is unobservable because 0x18428 does
+ * nothing. */
+int fighter_18460(u32 side)
+{
+    u32 slot, ch, idx, lo = 0, hi = 0;
+    u32 id;
+    int ranged = 0;
+    u8 a0, a1;
+    if (DSD(DS_001077A8) == 0u || DSD(DS_001077AC) == 0u) return 0;   /* 0x1846A 0x18477 */
+    slot = DSD(DS_001077A8 + side * 4u);                /* 0x18484 */
+    ch = (u32)DSB(slot + 0x7Au);                        /* 0x1848B */
+    if (ch <= 6u) {                                     /* 0x1848E JA */
+        lo = (u32)DSW(0x000A1774u + ch * 14u);          /* 0x184AD */
+        hi = (u32)DSW(0x000A1776u + ch * 14u);          /* 0x184B5 */
+        ranged = 1;
+    }
+    a0 = DSB(DSD(DSD(DS_001077A8)) + 0x56u);            /* 0x184BD..0x184C7 */
+    a1 = DSB(DSD(DSD(DS_001077AC)) + 0x56u);            /* 0x184CA..0x184D1 */
+    idx = (u32)DSW(DSD(slot) + 0x56u);                  /* 0x184D4..0x184DA */
+    id = (u32)DSW(DSD(DS_001014EC) + idx * 0x20u) & 0x7FFFu;   /* 0x184DF..0x184EC */
+    if (ranged && id >= lo && id < hi) return 0;        /* 0x184EF 0x184F2 0x184F4 0x184F7 */
+    if (id == 0x1E1u) return 0;                         /* 0x184FE 0x18504 */
+    fighter_18428(side, id, (u32)a0, (u32)a1);          /* 0x18513 */
+    return 1;
+}
+
 /* 0x18540. The per-side screen anchor DS_00100AF0[side]: the slot's actor
  * sprite id (its low 15 bits) minus the character's camera-x constant
  * (0xE39D0/0xECBD8/0xD2134/0xEA604/0xD3E08/0xE061C, table 0x18524; the >6
@@ -149,6 +202,7 @@ static void fighter_18540(u32 side)
     case 6u: cam = (u32)DSW(0x000E061Cu); break;
     default: cam = (u32)DSW(0x000E6DD0u); break;        /* char 0 and >6 */
     }
+    (void)fighter_18460(side);                          /* 0x185B6 */
     u32 sprite = (u32)DSW(DSD(DS_001014EC)
         + (u32)DSW(DSD(slot) + 0x56u) * 0x20u) & 0x7FFFu;   /* 0x185BB */
     s32 anchor = (s32)sprite - (s32)cam;                /* 0x185DB */

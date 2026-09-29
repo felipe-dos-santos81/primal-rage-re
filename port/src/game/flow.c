@@ -4365,7 +4365,7 @@ static void game_state_title(void)
     DSW(DS_00107A3A) = (u16)(DSW(DS_00107A50) >> 5);   /* 0x12476 */
 }
 
-/* PORT: 0x12658. The state-3 handoff spawner (derived in
+/* 0x12658 — record §50-E. The state-3 handoff spawner (derived in
  * docs/superpowers/plans/2026-09-20-frontend-chain-derivations.md §2). It
  * spawns three actors from the 0x9AC44 descriptor run, stores the first at
  * DS_000F0A58 and copies the third's +0x56 byte into the record before it
@@ -6272,7 +6272,9 @@ void game_init(void)
 
     if (int10h_query() != 0x13) { game_fatal("no VGA 320x200 mode"); return; }
 
-    /* PORT: DPMI locks 0x10C30/0x10D34/0x1ADAC/0x1ADE4/0x10D0C are no-ops. */
+    /* PORT: 0x10C30/0x10D34/0x10D0C (CD-ROM drive locate and restore) and the
+     * DPMI locks 0x1ADAC/0x1ADE4 have no flat-memory or host equivalent (record
+     * §50-E). */
     if (res_load_index(s_game_dir, index_path) <= 0) {
         game_fatal("resource INDEX load failed");
         return;
