@@ -582,3 +582,226 @@ The header grep (`/* 0xADDR`) counts 1 for each of the ten addresses. The
 that the grep counts only the definition. `tools/port_progress.py` is
 unchanged at `762 1203 63` / `726 730 99`: none of the ten is a Ghidra
 function (§0.3).
+
+## §K11.3 Cycle 2: the option editor and three screens (executor, Task 3)
+
+Nine functions, re-read from the fixed-up image (`k11_dx.py`, dump
+`<scratchpad>/k11_t3_dis.txt`); data from `<scratchpad>/k11_t3_data.py`.
+
+**The option record** (tables `0xA2EB4`, `0xA3500`, `0xA3060`; stride 0x14,
+ended by a zero `+0`): `+0` the label string id, `+4` the shift (only CL is
+used: `0x2CD62 mov cl,[esi+4]`, `0x2D208`), `+8` the value count, `+0xC` a
+byte (draw the 1-based index), `+0x10` the value list of 8-byte `{char *text,
+u32 string id}` entries.
+
+The CONFIG OPTIONS table `0xA2EB4` (10 records, terminator `0xA2F7C`):
+
+| rec | id | shift | count | byte | list | non-zero entries |
+|---|---|---|---:|---|---|---|
+| 0 `A2EB4` | `0x46` CREDITS | `0x10` | 10 | 1 | `A2CEC` | 4 `{0x8088C "*", 0}` |
+| 1 `A2EC8` | `0x1F3` | `0x14` | 4 | 0 | `A2D3C` | "1", "*3", "5", "7" |
+| 2 `A2EDC` | `0x1F4` | 0 | 11 | 0 | `A2D5C` | "30".."80" step 5, each `0x1F5`; default 5 "*55" |
+| 3 `A2EF0` | `0x1F6` Difficulty | 4 | 16 | 1 | `A2DB4` | 0 `{0, 0x1F7}`, 9 `{"*", 0x1F8}`, 15 `{0, 0x1F9}` |
+| 4 `A2F04` | `0x1FA` | 8 | 2 | 0 | `A2E34` | `{"*", 0x1FB}`, `{0, 0x1FC}` |
+| 5 `A2F18` | `0x1FD` | `0x18` | 6 | 0 | `A2E44` | "*English" .. "portugu\x88s" (the language, bits 24..26) |
+| 6 `A2F2C` | `0x1FE` | `0xA` | 2 | 0 | `A2E74` | `{"*", 0x1FF}`, `{0, 0x200}` |
+| 7 `A2F40` | `0x201` | `0xD` | 2 | 0 | `A2E84` | `{0, 0x203}`, `{"*", 0x202}` |
+| 8 `A2F54` | `0x204` | `0xE` | 2 | 0 | `A2E94` | `{"*", 0x203}`, `{0, 0x202}` |
+| 9 `A2F68` | `0x205` "Restore Factory Default?" | `0xF` | 2 | 0 | `A2EA4` | `{"*", 0x203}`, `{0, 0x202 "Yes"}` |
+
+Their `'*'` entries give `0x2CCD0(0xA2EB4)` = `4<<16 | 1<<20 | 5 | 9<<4 |
+1<<13` = **`0x142095`**. SOUND TEST `0xA3500` is one record `{0x207
+"Samples", 0, 143, 1, 0xA3088}` and MUSIC TEST `0xA3060` one record `{0x206
+"Music Tunes", 0, 26, 1, 0xA2F90}`; both lists are all zero, so only the
+index is drawn.
+
+**Corrections (raw wins).**
+
+* **Field `0x29` is a 32-bit field**, not "bits 0..26": its descriptor
+  `[0x2D300 + 0x29*4]` = `0x1D980` gives width `((d >> 14) & 7) + 1` = 8
+  nibbles, bit position 102 and no trailing byte. The table above uses bits
+  0..8, 10, 13..21 and 24..26.
+* **Bit 15 is itself an option**: record 9, "Restore Factory Default?"
+  (shift `0xF`, count 2). `0x33578` honours it twice: before the edit
+  (`0x335BE..0x335D3`) and **after** it (`0x33674..0x33695`, which §0.5 does
+  not mention), so choosing "Yes" and Enter writes `0x142095`.
+* **The `mask` key is a pad button, not a BIOS key.** `0x2CF00` polls
+  `0x2EDE0(0xF300F000, 1)`; `0x50161` returns the unmasked level for every bit
+  outside the mask, so `0x4000000` (byte `+0x2D8` bit 2 of the key record) is
+  seen while held. Its branch `0x2D038..0x2D065` releases the window with the
+  result bits, puts the working bits back to the entry bits (`[esp+0x1C]`),
+  sets the index to 0 and forces the redraw. Strings `0x6E`/`0x71` on the
+  CONFIG screen name it: "Press LEFT PL LOWER LEFT button / to RESTORE old
+  Setting".
+* `0x2CC74`'s rows are 3, 6, .. **21** (`0x2CCC2 cmp ebx,0x16; jle`, so 24 ends
+  the walk): seven rows, one more than the window of 6 below the current top
+  (§0.5 said "rows 3, 6, .. 0x16").
+* SOUND/MUSIC TEST pass the **whole** result of `0x2CF00` to `0x2C9E8`/`0x2C9CC`
+  (`0x30F32 mov edx,eax`); it equals the value only because both records have
+  shift 0.
+
+**`0x2CC74`** (EAX table, EDX bits, EBX first, ECX mode, `[esp+4]` release,
+`ret 4`): `jge` at `0x2CC7D` returns 0 for a negative first; `0x2CC8F` returns
+0 when the first record is empty; otherwise ESI = 3 and each pass calls
+`0x2CD30(rec, bits, (u16)si, mode, release)`, stops with 0 when it returns 0
+(`0x2CCB8`), and adds 3. It returns the last `0x2CD30` result. The `0x2CC8F`
+test repeats `0x2CD30`'s own `0x2CD6A` test; the redundancy is unobservable.
+
+**`0x2CD30`** (EAX record ESI, EDX bits, EBX row `[esp+8]`, ECX mode EBP,
+`[esp+0x28]` = the stack release flag, `ret 4`). Mask: EAX = 2, ECX = 1; while
+`count > EAX` (signed, `0x2CD4B jle` / `0x2CD55 jl`) EAX doubles and ECX
+counts; mask = `(1 << cl) - 1` (`0x2CD65 dec eax`). CREDITS' 10 gives 4 bits
+(15). `v = (bits >> shift) & mask`. `0x2CD6D`: an empty record returns 0;
+`0x2CD72..0x2CD75 jbe`: `v + 1 > count` (unsigned) returns 0 and draws nothing.
+The label is `0x1C500(+0)` at (4, row) in the entry mode, through `0x2F280`
+(release) or `0x2F198`. Entry = `[+0x10] + 8v`; col = 5. A text whose first
+byte (`movsx`) is `'*'` sets mode = `(mode & 0x8000) | 0x1000` and skips the
+star (`0x2CDEC..0x2CDFD`). With byte `+0xC` set, the index is
+`itoa(v + 1, buf, 10)` (`0x2CE11 0x655E4`, runtime) drawn at (col, row + 1)
+(`0x2CE1E inc edx`), then col += strlen + 1. A non-empty text is drawn next at
+(col, row + 1), col += strlen + 1; the `+4` string last. All three use the
+possibly switched mode. It returns `rec + 0x14`. So record 0 with bits `3<<16`
+draws "CREDITS" at (4, 6) and "4" at (5, 7), both `0x2000`; with `4<<16` the
+text "*" switches to `0x1000` before "5" is drawn at (5, 7), and the label keeps
+`0x2000`.
+
+**`0x2CF00`** (EAX table EBP, EDX bits, EBX mask, CL Esc cancels; `sub esp,
+0x44`, plain `ret`). Locals: `[esp]` the copy of string `0x72` "+ MORE +",
+`[esp+0x1C]` entry bits, `[esp+0x20]` current record, `[esp+0x24]` window 6,
+`[esp+0x28]` mask, `[esp+0x2C]` = 6*3+5 = 23 (the lower marker row), `[esp+0x30]`
+result, `[esp+0x34]` working, `[esp+0x38]` top, `[esp+0x3C]` last index,
+`[esp+0x40]` CL. Each `push` before a `ret 4` callee shifts `[esp+N]` by 4: the
+store at `0x2CF6E [esp+0x24]` is `[esp+0x20]` = the table, `0x2CF8E
+[esp+0x40]` is `[esp+0x3C]` = N - 1. Opening: `0x2CC74(table, bits, 0,
+0xF000, 0)`, then record 0 on row 3 in `0x2000`; when `(u16)last > 6`
+(`0x2CFAA jle`) the buffer's first and last bytes become `0x3B` and it is drawn
+at (9, 23) in `0x1000`. `0x50146(0xF000F000, 0x1E, 0xF)`. Each pass: `0x2EA74`,
+`keys = 0x2EDE0(0xF300F000, 1)`; `0x2000000` or `0x1000000` exits. The mask
+branch (above). `[esp+0x30] = [esp+0x34]` (`0x2D06E`). Down (`0x40004000`)
+with `(u16)idx < (u16)last` increments, else Up (`0x80008000`) with a non-zero
+index decrements. **Scroll** (`0xC000C000` held or the mask branch): release the
+window at the old top with the result bits; `idx < top` (16-bit `jae`) sets
+top = idx, else `top + 6 < idx` (signed `jge` at `0x2D0D4`) sets top = idx - 6;
+draw the window at the new top with the working bits; `[esp+0x20]` = table +
+idx*0x14; the buffer's ends become `0x19` and it (or `[0x2CC70]` = `0x80A18`,
+eight spaces, which `0x2F830` turns into a release) goes to (9, 2) when top is
+non-zero; the ends become `0x3B` and it (or the blank) goes to (9, 23) when
+`(u16)last - (u16)top > 6` (`0x2D174 jle`); the current record on row
+`(idx - top + 1) * 3` in `0x2000`. **Left/Right** (no scroll): a second poll
+`0x2EDE0(0, 1)` with Up/Down held skips the pass (`0x2D1CF`); none of
+`0x30003000` skips it. The field mask is `((1 << n) - 1) << shift` with n from
+`0x2D1E1..0x2D1FC` (ECX = 2 doubling while `(u16)cx < count`). Left
+(`0x2D20D`): a zero field ORs `(count - 1) << shift` (the wrap), else
+subtracts `1 << shift`. Right (`0x2D23A`): a field equal to `count - 1`
+(`0x2D250 cmp ecx,ebx; jne`) is cleared (the wrap), else `1 << shift` is added.
+The row is released with the result bits in `0xF000` and redrawn with the
+working bits in `0x2000`, then result = working (`0x2D2B7`). **Exits**
+(`0x2D2C0..0x2D2DA`): Esc with a non-zero CL returns -1, anything else the
+result bits.
+
+**`0x2CACC`**: `mov eax,[0x10740C]; mov eax,[eax+4]; jmp 0x33578`. With the
+§K11.2 store `DS_0010740C = 0x1D2D0`, `[0x1D2D4]` = `0xA2EB4`.
+
+**`0x33578`** (EAX table; pushes EBX/ECX/EDX/ESI/EDI): `0x2F99C`; string
+`0x76` "GAME OPTIONS" centred on row 0 in `0x5002`. `0x335A1..0x335AC`: a zero
+table becomes the code-object `0x32700` and the `je 0x336B3` after it is never
+taken (no raw caller passes 0). `old = 0x2D974(0x29)`; bit 15 (`test ah,0x80`)
+writes `0x2CCD0(table)` first. Strings `0x6E`, `0x71`, `0x209`, `0x70` centred
+on rows `0x19..0x1C` in `0x1000`. `0x2CF00(table, old, 0x4000000, CL = 0)`,
+`0x2DA0C(0x29, r)`; `now = 0x2D974(0x29)` and bit 15 writes `0x2CCD0(table)`
+again. The language test `0x3369C..0x336A9` compares `old & 0x7000000` with
+`now & 0x7000000`; when they differ `0x336AE` calls `0x47370(now >> 24)`, the
+language reload (the port's `PORT:` note and **named gap**: the new language
+is stored in field `0x29` but not shown). EAX is `now & 0x7000000`, or
+`0x47370`'s result; the only path to it, `0x2CACC` through `menu_run`
+(`0x2FD98`), discards it, and the port returns `now & 0x7000000` in both cases.
+
+**`0x30EB4` / `0x30F54`**: `0x2F99C`; the title (`0x20F` / `0x214`) centred on
+row 0 in `0x5002`; `0x209`, `0x20A` on rows `0x1B`/`0x1C` in `0x1000`. ESI = 0,
+then `r = 0x2CF00(0xA3500 / 0xA3060, esi, 0x4000000, CL = 1)` until r = -1,
+each r played by `0x2C9E8` / `0x2C9CC` and kept as the next entry bits
+(`0x30F3E` / `0x30FE2`). The tail `0x30F42..0x30F50` is `sound_voice(0x100)`,
+and its EAX is the result; `0x30FD7 je 0x30F42` jumps into `0x30EB4`'s copy,
+and the port repeats it.
+
+**`0x2C9CC` / `0x2C9E8`**: `sound_voice(0x100)`, then `sound_voice([0xBC938 +
+4i])` / `[0xBC9A0 + 4i]` (EDX kept). The tunes table has 26 ids ending at
+`0xBC9A0` and the samples table 143 ending at `0xBCBDC`. Tune 0 is `0x1B`,
+case 1 with handle `0x0D000008` (so `DS_00105D5C` = `0x0D000008`); tune 2 is
+`0x1D`, `0x0B800008`. Every tune is case 1. The samples are case 2 except 21,
+27 and 34 (`0x46`, `0x4D`, `0x5D`, case 3); sample 0 is `0xD7` (`0x02807ACC`)
+and sample 3 is `0xEA` (`0x1201A05D`). Voice id `0x100` is record 0, case 5
+id 0: the music stop, which zeroes `DS_001028D4`.
+
+**Values the tests pin** (`sm_check_options`), all as the brief gives them
+except the two corrections above: (a) and (b) as above; `0x2CD30` on record 3
+with value 9 draws "10" at (5, 10), (6, 10) and string `0x1F8` at (8, 10), all
+`0x1000` (the "*" switch from `0x4000`); `0x2CC74` from record 0 returns
+`0xA2F40` and draws record 6 on row 21, from record 4 it returns 0 (the
+terminator) with record 9 on row 18, and a negative first returns 0. (c) Left
+on CREDITS 0 wraps to 9 (`9 << 16`, 2 frames), with "10" at (5, 4)/(6, 4) in
+`0x2000` and the lower marker's `0x3B` at (9, 23) and (16, 23); Esc returns -1
+with CL = 1 and `5 << 16` with CL = 0 (1 frame each); Right on 9 wraps to 0 (2
+frames); Right, the restore pad bit, Enter returns the entry `5 << 16` (3
+frames). (d) `0x2C9CC(0)` sets `DS_00105D5C` and `DS_001028D4` to
+`0x0D000008` (the stop comes first). Samples leave no mark without a DIG
+driver, so the test retypes `0xEA` and `0xD7` to case 1 and restores them:
+`0x2C9E8(3)` gives `0x1201A05D`; SOUND TEST Enter, Esc gives `0x02807ACC`
+with `DS_001028D4 = 0` from the tail (2 frames); MUSIC TEST Right, Enter,
+Right, Enter, Esc gives tune 2 `0x0B800008` (5 frames; tune 1 if the next
+edit did not start from the last result). (e) `0x2CACC` with `DS_0010740C =
+0x1D2D0` and field `0x29` = `v0` (bit 15 clear, CREDITS 2): Right, Enter gives
+`v0 + (1 << 16)` (2 frames). Field `0x29` = `v0 | 0x8000`, nine Downs, Right,
+Enter (11 frames): the pre-edit default writes `0x142095`, the Downs scroll to
+record 9 (top 3), Right sets bit 15 and the post-edit default writes
+`0x142095`. Without the pre-edit default the edit would start from the seeded
+bit 15 and wrap it to 0, leaving `v0`; without the post-edit one the field
+keeps bit 15. The screen then shows the upper marker `0x19` at (9, 2), a blank
+lower marker (9 - 3 = 6), record 3 "Difficulty" on row 3 in `0xF000`, record 9
+highlighted on row 21 and "Yes" (`0x202`) at (5, 22) in `0x2000`.
+
+**Unobservable here, noted rather than claimed:** the Up/Down hold check
+`0x2D1BE..0x2D1CF` (a scripted key latches Left or Right only, and the pad
+level is 0, so it never skips a pass); the titles and the four CONFIG help
+lines (drawn, not asserted); the `0x32700` fallback; the `0x47370` reload
+(the named gap); the second `0x2CC8F` empty test.
+
+**Frame budget.** 29 scripted frames (2 + 1 + 1 + 2 + 3 in (c), 2 + 5 for
+SOUND/MUSIC, 2 + 11 in (e)), 37 across K11 so far with cycle 1's 8.
+
+**Mutations** (each applied, rebuilt, run and reverted by
+`<scratchpad>/k11_t3_mut.py`; log `<scratchpad>/k11_t3_mutations.txt`). All 21
+fail the suite:
+
+| # | mutation | result |
+|---|---|---|
+| 1 | `0x2CD65 dec eax` dropped (the mask is one bit too wide) | 14 checks |
+| 2 | the index drawn without `+1` | 7 |
+| 3 | `0x2D250` Right wrap compared with `>` | 1 |
+| 4 | Esc with CL = 1 returns the bits | 1, then the harness exit (SOUND TEST never leaves) |
+| 5 | `0x2C9CC` indexes `0xBC9A0` | 3 |
+| 6 | `0x33578` skips the bit-15 default before the edit | 3 |
+| 7 | `0x2CACC` reads `+0` | SIGSEGV (exit -11): `[0x1D2D0]` = 0 selects the `0x32700` fallback |
+| 8 | `0x33578` skips the bit-15 default after the edit | 1 |
+| 9 | the restore-key branch dropped | 1 |
+| 10 | `0x2CC74`'s row bound `0x13` | 3 |
+| 11 | the scroll top off by one | 3 |
+| 12 | Left wraps to `count` | 3 |
+| 13 | `0x2C9E8` indexes `0xBC938` | 2 |
+| 14 | `0x30EB4`'s tail `sound_voice(0x100)` dropped | 1 |
+| 15 | `0x30F54` drops `prev = r` | 1 |
+| 16 | the `'*'` mode switch dropped | 4 |
+| 17 | the opening lower marker dropped | 2 |
+| 18 | the upper marker's condition inverted | 1 |
+| 19 | the lower marker compared with `>=` | 1 |
+| 20 | the string after the text dropped | 2 |
+| 21 | `input_repeat_set` dropped | 2 |
+
+**Gate (Task 3).** `make verify` exited 0. Its oracle lines equal §K11.0's
+except the two unittest wall-clock lines (`Ran 10 tests in 0.116s`, `Ran 33
+tests in 1.209s`). The three new `fn_register` calls run in `game_init`, so
+the 8000-frame dump was compared: `--check 8000` without the three calls and
+with them gives the same `shasum` list over 8000 `.idx` and 8000 `.pal` files.
+The header grep counts 1 for each of the nine addresses. `tools/port_progress.py`
+is unchanged at `762 1203 63` / `726 730 99`: none of the nine is a Ghidra
+function (§0.3).

@@ -35,4 +35,36 @@ u32 svc_start_handicap(u32 entry);
 /* The screen reset every options screen opens with — 0x2F99C. */
 void svc_screen_reset(void);
 
+/* An option table is an array of 0x14-byte records ended by a zero +0: +0 the
+ * label string id, +4 the value's bit shift, +8 the value count, +0xC a byte
+ * (draw the value's 1-based index), +0x10 the value list of 8-byte
+ * {char *text, u32 string id} entries (record §K11.3). */
+
+/* Draws (release = 0) or releases (release = 1) the option rows from record
+ * `first` on rows 3, 6, .. 0x15; 0 for a negative `first`, an empty record or
+ * a row that returns 0, else the last row's result — 0x2CC74. */
+s32 svc_option_rows(u32 table, u32 bits, s32 first, u32 mode, u32 release);
+/* One option row: the label at (4, row), the value's index, text and string
+ * on row + 1 from column 5. Returns the next record, or 0 when the record is
+ * empty or the value is out of range — 0x2CD30. */
+u32 svc_option_row(u32 opt, u32 bits, s32 row, u32 mode, u32 release);
+/* The blocking editor over a table's bit-packed values: Up/Down pick a row,
+ * Left/Right cycle its value, a `mask` key restores the entry bits. Enter
+ * returns the bits; Esc returns -1 when `esc_cancels`, else the bits
+ * — 0x2CF00. */
+u32 svc_option_edit(u32 table, u32 bits, u32 mask, u8 esc_cancels);
+/* OPTIONS MENU "CONFIG OPTIONS": the table at [[DS_0010740C] + 4] — 0x2CACC. */
+u32 svc_config_options_entry(u32 entry);
+/* The CONFIG OPTIONS screen: edits config field 0x29 through `table`
+ * — 0x33578. */
+u32 svc_config_options(u32 table);
+/* OPTIONS MENU "SOUND TEST": plays each picked sample — 0x30EB4. */
+u32 svc_sound_test(u32 entry);
+/* OPTIONS MENU "MUSIC TEST": plays each picked tune — 0x30F54. */
+u32 svc_music_test(u32 entry);
+/* Stops the voices, then plays tune `i` — 0x2C9CC. */
+u32 svc_play_tune(u32 i);
+/* Stops the voices, then plays sample `i` — 0x2C9E8. */
+u32 svc_play_sample(u32 i);
+
 #endif /* PRAGE_GAME_SVCMENU_H */
