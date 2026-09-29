@@ -527,6 +527,75 @@ static void check_sound_pause_volume(void)
     CHECK_EQ_INT((int)DSD(DS_001028D4), (int)0xD4D4D4D4u);
 }
 
+/* Record §K6: 0x4F714 and 0x4F728 over the shipped voice records (case 1 or
+ * 5 only, so no resource read), on sv_seed's sentinels (DS_00105D5C
+ * 0x5C5C5C5C, DS_001028D4 0xD4D4D4D4, DS_001028D9 0x99). DS_001028D4 and
+ * DS_00105D5C name the case-1 handle that played: 0xDF's 0x02806EC8 or 0x23's
+ * 0x02805B88. The data object is snapshotted: the result, the slots' +0x63
+ * bytes, DS_001088F2 and (last) 0x23's record are seeded. */
+#define VW_SLOT63(k) (0x00107813u + (u32)(k) * 0x94u)   /* no symbols.h name */
+
+static void vw_match(u32 r, u8 own, u8 other, u8 f2)
+{
+    u32 k;
+    sv_seed();
+    for (k = 0; k < 6u; k++) DSB(VW_SLOT63(k) - 0x94u) = other;   /* slots -1..4 */
+    DSD(DS_00104AD4) = r;
+    DSB(VW_SLOT63(r)) = own;
+    DSB(DS_001088F2) = f2;
+    sound_voice_match_end();
+}
+
+static void check_voice_wrappers(void)
+{
+    static u8 vw_data[0x8B0D0];
+    u32 i;
+    tf_snap(vw_data, DATA_BASE, 0x8B0D0u);
+
+    /* 0x4F714: the stage word indexes 0xC9888; stages 0, 2 and 7 name 0x20,
+     * 0x1B and 0x1F, each case 1 with byte 1. */
+    {
+        static const u32 st[3] = { 0u, 2u, 7u };
+        static const u32 h[3] = { 0x0A800008u, 0x0D000008u, 0x0B000008u };
+        for (i = 0; i < 3u; i++) {
+            sv_seed();
+            CHECK_EQ_INT((int)sound_voice_stage(st[i]), 1);
+            CHECK_EQ_INT((int)DSD(DS_00105D5C), (int)h[i]);
+            CHECK_EQ_INT((int)DSD(DS_001028D4), (int)h[i]);
+            CHECK_EQ_INT((int)DSB(DS_001028D9), 1);
+        }
+    }
+
+    /* 0x4F728's gate: result r (not -1/3), slot r's +0x63 == 0 and the
+     * signed DS_001088F2 > 0 play 0xDF, else 0x23; the trailing 0x22 finds a
+     * handle in DS_00105D5C and keeps the song words. */
+    {
+        static const u32 rs[10]  = { 0u, 1u, 0u, 1u, 0xFFFFFFFFu, 3u, 2u, 0u, 0u, 0u };
+        static const u8  own[10] = { 0,  0,  1,  1,  0,           0,  0,  0,  0,  0 };
+        static const u8  oth[10] = { 1,  1,  0,  0,  0,           0,  0,  0,  0,  0 };
+        static const u8  f2[10]  = { 1,  1,  1,  1,  1,           1,  1,  0,  0x80, 0x7F };
+        static const int df[10]  = { 1,  1,  0,  0,  0,           0,  1,  0,  0,  1 };
+        for (i = 0; i < 10u; i++) {
+            u32 h = df[i] ? 0x02806EC8u : 0x02805B88u;
+            vw_match(rs[i], own[i], oth[i], f2[i]);
+            CHECK_EQ_INT((int)DSD(DS_00105D5C), (int)h);
+            CHECK_EQ_INT((int)DSD(DS_001028D4), (int)h);
+            CHECK_EQ_INT((int)DSB(DS_001028D9), 0);
+        }
+    }
+
+    /* The trailing 0x22 and its order: with 0x23's record handle retyped to
+     * 0x1B, 0x23 makes 0x1B the current voice and 0x22 then stops the music
+     * (DS_001028D4 = 0). Played first, or not at all, 0x22 would leave
+     * DS_001028D4 = 0x1B. */
+    DSD(DS_000BBDC8 + 0x23u * 12u + 4u) = 0x1Bu;
+    vw_match(0xFFFFFFFFu, 0, 0, 1);
+    CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x1B);
+    CHECK_EQ_INT((int)DSD(DS_001028D4), 0);
+
+    tf_put(vw_data, DATA_BASE, 0x8B0D0u);
+}
+
 /* 0x2C3FC over the shipped records at DS_000BBDC8 and the sound module's
  * slot scans on the live AIL handles game_audio_init allocated. Snapshots
  * and restores the data object, the INDEX table, both pools, the DAC and the
@@ -1168,6 +1237,7 @@ int test_flow(void)
     /* The voice dispatcher 0x2C3FC and the sound module, on the live handles
      * game_audio_init allocated (record §45-A). */
     check_sound_voice();
+    check_voice_wrappers();
     check_sound_pause_volume();
     /* The attract's high-score screen 0x1EA08 (record §46-A). */
     check_hiscore_screen();

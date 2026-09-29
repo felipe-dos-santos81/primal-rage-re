@@ -157,6 +157,13 @@ void game_audio_init(void);
  * sample in cases 2/3 or an unlisted case-3 id. */
 u32 sound_voice(u32 id);
 
+/* Record §K6.1, 0x4F714: sound_voice(word 0xC9888[stage]), a tail jump. */
+u32 sound_voice_stage(u32 stage);
+
+/* Record §K6.2, 0x4F728: voice 0xDF (the result DS_00104AD4 not -1/3, its
+ * slot's +0x63 clear, the signed DS_001088F2 > 0) or 0x23, then 0x22. */
+void sound_voice_match_end(void);
+
 /* PORT: slot i's AIL sample handle (0..3), which the original keeps at
  * DS_00102860 + i*0x18 and the port in flow.c; NULL out of range. Exposed so
  * a unit test can set the status the sound module's slot scans read. */

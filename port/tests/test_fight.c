@@ -5490,7 +5490,9 @@ static void check_mode_1a_hooks(void)
      * the hook 0x5D812. */
     MH_RESTORE();
     mh_seed_fighters();
+    DSD(DS_00105D5C) = 0x5C5C5C5Cu;
     game_hook_25bbc();
+    CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x0D000008);   /* 0x25C09 0x4F714: stage 2's voice 0x1B, record §K6.1 */
     CHECK_EQ_INT((int)DSB(DS_00104B1E), 0);
     CHECK_EQ_INT((int)DSB(DS_00104B13), 0);
     CHECK_EQ_INT((int)DSB(DS_001078FA), 2);
@@ -28396,7 +28398,10 @@ static void check_fight_frame_a(void)
             DSD(DS_001082CC) = 0x7777u;
             DSD(DS_001082D0) = 0u;
             DSD(DS_001082D0 + 4u) = 0x7777u;
+            DSD(DS_00104AD4) = 0xFFFFFFFFu;
+            DSD(DS_00105D5C) = 0x5C5C5C5Cu;
             flow_match_end();
+            CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x02805B88);   /* 0x27E4B 0x4F728: voice 0x23, record §K6.2 */
             CHECK_EQ_INT((int)DSD(DS_001082D0 + 4u), 0x7777);
             CHECK_EQ_INT((int)DSD(DS_00104ABC), b1f[i] == 3u ? 2 : 1);
             CHECK_EQ_INT((int)DSD(DS_00107480), 10);

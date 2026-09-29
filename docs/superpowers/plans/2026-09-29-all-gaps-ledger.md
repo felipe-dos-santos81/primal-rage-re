@@ -127,7 +127,7 @@ them.
 | `0x51ED8` | 109 | 1 / 1: `1C63D`@`1C5E8`P | `1B544`P | yes | **closed**: split `sprite_blit_aperture`, §K1.6 | K1 | Ported as `sprite_blit_at(n, base)` under `/* PORT: 0x51ED8` (`sprite.h:58`, `sprite.c:285`). |
 | `0x2DF8C` | 109 | 1 / 1: `2D919`@`2D6F8`P | `2D4EC`P, `2E990`D, `61A70` rt | yes, but inert | **closed: deferred**, §K9.9 | K9 | Loops sides 3..5. Each effect goes through the deferred storage read `0x2E990` (§49-Y.5), the no-op `0x2D4EC` (`config.c:58`) or the runtime `0x61A70`. **Correction (§K9.9):** `0x61A70` is memset; on the port's path it zeroes `0x105ECD..0x105EFB`, which are zero in the image and have no ported writer, so it stays inert. `config.c:205` already calls it deferred. |
 | `0x319B0` | 91 | 0 / 2†: `32207`, `32248` (non-Ghidra code after `31E28`P) | — | via non-Ghidra code only | port | K11 | Jump-table dispatcher at `0x319A0`. Raw `call`s from `0x32207` and `0x32248`. |
-| `0x4F728` | 79 | 1 / 1: `27E4B`@`27DC8`P | `2C3FC`P | yes | port | K6 | Two voices: `0xDF` or `0x23` (gated on `DS_00104AD4`, `0x107813+rec`, `DS_001088F2`), then `0x22`. `flow.c:2762` PORT. |
+| `0x4F728` | 79 | 1 / 1: `27E4B`@`27DC8`P | `2C3FC`P | yes | **closed**: `sound_voice_match_end`, §K6 (wired) | K6 | Two voices: `0xDF` or `0x23` (gated on `DS_00104AD4`, `0x107813+rec`, `DS_001088F2`), then `0x22`. `flow.c:2762` PORT. |
 | `0x4682C` | 78 | 1 / 1: `46AA0`@`469A8`P | `1A5D4`P | yes | **closed**: split `ai_pred_4682c`, §K1.4 | K1 | Shares `ai_pred_cmd_sign` with `0x467DC` (`fighter.c:1295`, header `/* 0x467DC / 0x4682C`). It needs its own function. |
 | `0x4FF8F` | 73 | 4 / 8†: `1BD15`, `1BD2E`, `1BD3C`, `1BD8B` @`1BBAC`H; `1B976`, `1B9B6`, `1BA16`, `1BA96` in the unreferenced sampler routines `0x1B934..0x1BB73` | — | no | **closed: host-owned**, §K9.3 | K9 | Joystick A axis bits from `DS_000E1C1E/20/22/24`, ±0x1E. Every caller is in the host-owned sampler region `0x1B908..0x1BDCE` (see §G). |
 | `0x4FFD8` | 73 | 2 / 4†: `1BDA4`, `1BDC9` @`1BBAC`H; `1BAD6`, `1BB36` in the unreferenced sampler routines `0x1B934..0x1BB73` | — | no | **closed: host-owned**, §K9.4 | K9 | Joystick B axis bits from `DS_000E1C26/28/2A/2C`. Callers as for `0x4FF8F` (see §G). |
@@ -140,7 +140,7 @@ them.
 | `0x33714` | 31 | 1 / 1: `13490`@`13420`P | — | yes | **closed**: split `palette_record_flagged`, §K1.7 | K1 | `palette_record` with flag 1 (`effects.c:63-64` PORT; `0x3371F mov byte [eax-4],1`). |
 | `0x2D498` | 27 | 1 / 1: `2D612`@`2D4EC`P | `2EA68`P | no (the port's `0x2D4EC` is a declared no-op) | **closed: deferred**, §K9.10 | K9 | Bounds-checked byte store into the EEPROM image `0x100CE4..0x1014DC`, else `0x2EA68(0x80AA8)`. |
 | `0x32B94` | 24 | 1 / 1: `2786B`@`277C0`P | `2DAE4`D | yes, inert | **closed: deferred**, §K9.11 | K9 | `test al,1` → `0x2DAE4(0xE, 1)` audit add. Its only callee is deferred (record §48-V). |
-| `0x4F714` | 18 | 1 / 1†: `25C09` (non-Ghidra code after `25AE8`P; ported site `flow.c:1325`) | `2C3FC`P | yes (raw `call` `0x25C09`, ported site) | port | K6 | `sound_voice(word[0xC9888 + 2*stage])` (a `jmp 0x2C3FC` tail). `flow.c:1325` PORT. |
+| `0x4F714` | 18 | 1 / 1†: `25C09` (non-Ghidra code after `25AE8`P; ported site `flow.c:1325`) | `2C3FC`P | yes (raw `call` `0x25C09`, ported site) | **closed**: `sound_voice_stage`, §K6 (wired) | K6 | `sound_voice(word[0xC9888 + 2*stage])` (a `jmp 0x2C3FC` tail). `flow.c:1325` PORT. |
 | `0x2D4B4` | 17 | 4 / 4: `2D533`@`2D4EC`P, `2D8C8`@`2D6F8`P, `2DB11`, `2DB24` @`2DAE4`D | — | no (all three callers are no-op/deferred/unrun) | **closed**: `config_codeword_len`, §K2.3 | K2 | **Correction (§K2.3):** not a power of two. The loop jumps back to `inc eax` and returns EAX, so it is n + r + 1 for the smallest r with 2^r ≥ n + r + 1 (0x26 → 0x2D), pure. |
 | `0x4FB98` | 10 | 2 / 2: `1BEB0`@`1BE30`P, `1BFEA`@`1BEC4`P | — | yes | **closed: host-owned**, §K9.2 | K9 | `pushad; and eax,0xff; int 10h; popad; ret`: the BIOS set-mode call. `flow.c:6371` PORT: SDL owns the window. |
 | `0x2D62C` | 9 | 1 / 1†: `1BE28` (timer ISR `0x1BDF4`, non-Ghidra); abs dword at `0x1BF5C` (`push 0x2d62c`) | — | ISR only | **closed: host-owned**, §K9.5 | K9 | `inc dword [0x105D88]; ret`. **Correction (§K9.5):** `0x1BFA4` is a `push 0x105d88` for the `0x109A0` lock, not a read; the one reader is `0x32981` (`0x32970`, host-owned record §48-V, the run clock). `0x1BEC4` hands `0x2D62C` to `0x109A0` at `0x1BF5B` (`push 0x1000; push 0x2d62c`). |
@@ -161,6 +161,8 @@ proposals were re-scanned against the raw and are supported; each has a
 `0x4A868` is `fight_4a868`. Five of its six sites are wired: `0x4BFDE` (with the
 gated body `0x4BFEB..0x4C034`, voice kept as `PORT:`) and the four `0x4DEF4` states.
 `0x4A361` waits for K13. The 8000-frame and front-end dumps are byte-identical.
+K6 is closed: `0x4F714`/`0x4F728` are `sound_voice_stage`/`sound_voice_match_end`,
+wired at `0x25C09`/`0x27E4B` (case-1/5 voices only: no resource read, no draw).
 
 **Task 3c (2026-09-29).** K3 and K8a are closed (record `2026-09-29-k3-k8a-derivations.md`).
 `0x38990` is `render_scroll_track`, called at both `game_frame` sites before the
@@ -388,7 +390,7 @@ size gate is ≥ ~4 KB or ≥ ~20 new functions, and such a cluster is marked
 | 6 | K3 FRAME-SVC | `0x38990` (called at `0x24CC3`/`0x24CC8`) | 52 | port, **live every frame**. Re-run `demo-fight-oracle attract2-oracle` and diff the dumps. | Task 3 — **closed** (Task 3c, §K3 of `2026-09-29-k3-k8a-derivations.md`) |
 | 7 | K8a UPD-06 | update entry 6 `0x25FAC` | n/a (non-Ghidra) | port (live: armed by modes 5/0x23/0x30) | Task 3 — **closed** (Task 3c, §K8a) |
 | 8 | K4 FX-GATE | `0x4A868` | 63 | port (unblocks §E-18/19 and K13) | Task 3 — **closed** (Task 3d, §K4 of `2026-09-29-k4-k6-k7-derivations.md`) |
-| 9 | K6 VOICE-WRAP | `0x4F714`, `0x4F728` | 97 | port (wrappers over the ported `sound_voice`) | Task 3 |
+| 9 | K6 VOICE-WRAP | `0x4F714`, `0x4F728` | 97 | port (wrappers over the ported `sound_voice`) | Task 3 — **closed** (Task 3d, §K6) |
 | 10 | K7 AUDIO-SMP | `0x1CB18` + `0x1CC28`'s slot choice (`0x1CC62..0x1CD8D`) | 271+ | port | Task 3 |
 | 11 | K8c UPD-REST | update entries 4 `0x37C8C`, 8 `0x34648` (+`0x29C20`, 59 B), 9 `0x3800C`, 11 `0x4F890`, 12 `0x24150`, 17 `0x45D98` | 59 + n/a | port. Reachability first: find each bit's setter. | Task 3 |
 | 12 | T4 | §D residue (the `0x29B70` header, the `0x38990` calls) | — | confirmation cycle only. All 52 cases are wired. | Task 4 |

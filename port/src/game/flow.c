@@ -1330,9 +1330,7 @@ void game_hook_25bbc(void)
     game_fight_reset(DSW(DS_00104AFC), 1u);             /* 0x25BE6 0x20DF4 */
     fighter_spawn(0u);                                  /* 0x25BED 0x33EB4 */
     fighter_spawn(1u);                                  /* 0x25BF7 0x33EB4 */
-    /* PORT: 0x25C09 0x4F714(stage) — `mov ax,[eax*2+0xc9888]; and
-     * eax,0xffff; jmp 0x2C3FC`, the stage's voice (0x20, 0x21, 0x1B, 0x1C,
-     * 0x1E, 0x1D, 0x1F, 0x1F) — voice, not wired (record §45-A). */
+    (void)sound_voice_stage(DSW(DS_00104AFC));          /* 0x25BFC..0x25C09 0x4F714 */
     flow_1082c8_latch();                                /* 0x25C0E 0x46504 */
     DSD(DS_00104AE4) = FN_0005D812;                     /* 0x25C13 */
 }
@@ -2787,10 +2785,7 @@ void flow_match_end(void)
      * deferred (spec §7) as in 0x2D962 and 0x32A3C (config.c). */
     if (DSD(DS_00104AC8) != 0u)                         /* 0x27E2D/0x27E35 */
         actor_set_dead(DSD(DS_00104AC8));               /* 0x27E39 0x2B150 */
-    /* PORT: 0x27E4B 0x4F728 (EAX = DS_00104AFC, not read) is two voices, not
-     * wired (record §45-A): 0xDF when DS_00104AD4 is neither -1 nor 3, the
-     * winner's +0x63 is 0 and the signed byte DS_001088F2 > 0, else 0x23;
-     * then 0x22. It reads only. */
+    sound_voice_match_end();                            /* 0x27E3E..0x27E4B 0x4F728 */
     prompt_side_erase(0, 0x1D);                         /* 0x27E50/0x27E52 0x2C2B0 */
     prompt_side_erase(1, 0x1D);                         /* 0x27E57..0x27E61 0x2C2B0 */
     DSB(DS_00104AE8) = (u8)(DSB(DS_00104AE8) & 0xFBu);  /* 0x27E66 */
@@ -6316,6 +6311,37 @@ u32 sound_voice(u32 id)
     default:                                               /* 0x2C8E8, `ja` */
         return 0;
     }
+}
+
+#define SND_STAGE_VOICES 0x000C9888u   /* no symbols.h name: 0x4F714's word table */
+#define SND_SLOT0_63     0x00107813u   /* no symbols.h name: slot 0's +0x63 byte */
+
+/* 0x4F714 — record §K6.1. The stage's voice: `mov ax,[eax*2+0xc9888]; and
+ * eax,0xffff; jmp 0x2C3FC`, a tail jump, so AL is the dispatcher's. EAX is the
+ * stage word its one caller (0x25C09, game_hook_25bbc) zero-extends. Stages
+ * 0..7 name the case-1 records 0x20, 0x21, 0x1B, 0x1C, 0x1E, 0x1D, 0x1F, 0x1F
+ * (music requests: no resource read, no draw, no rng). */
+u32 sound_voice_stage(u32 stage)
+{
+    return sound_voice((u32)DSW(SND_STAGE_VOICES + stage * 2u));  /* 0x4F71C..0x4F721, the read at 0x4F714 */
+}
+
+/* 0x4F728 — record §K6.2. The match end's two voices: 0xDF when the match
+ * result DS_00104AD4 (a dword) is neither -1 nor 3, that side's slot +0x63
+ * byte (0x107813 + result * 0x94) is 0 and the signed byte DS_001088F2 is
+ * above 0; otherwise 0x23. Then 0x22. All three are case 1 or 5 (no resource
+ * read, no draw, no rng). EAX (the caller's stage word) is never read; EDX is
+ * pushed and popped. One caller: 0x27E4B (flow_match_end). */
+void sound_voice_match_end(void)
+{
+    u32 r = DSD(DS_00104AD4);                                  /* 0x4F729 */
+    u32 id = 0x23u;                                             /* 0x4F761 */
+    if (r != 0xFFFFFFFFu && r != 3u &&                          /* 0x4F72F/0x4F734 */
+        DSB(SND_SLOT0_63 + r * 0x94u) == 0u &&                  /* 0x4F739..0x4F74F */
+        (s8)DSB(DS_001088F2) > 0)                               /* 0x4F751/0x4F758 `jle` */
+        id = 0xDFu;                                             /* 0x4F75A */
+    (void)sound_voice(id);                                      /* 0x4F766 0x2C3FC */
+    (void)sound_voice(0x22u);                                   /* 0x4F76B/0x4F770 0x2C3FC */
 }
 
 /* 0x249F0 — record §50-D. The quit prompt (0x24C5C's key 0x10 at 0x24DDF with

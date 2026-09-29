@@ -197,9 +197,14 @@ so it stays unwired until K13 ports the body.
 attract volleyball). Its case 1 with bit 5 set needs an entry that
 `0x4C60C`/`0x4CB18` launched. `fight_effects_idle_pass` runs in mode `0xF`
 (reached only through the match-end stores) and would run in mode `0x33`
-once §E-3 wires `0x2965F`. The 8000-frame check and the front-end/demo-fight/
-attract2 dumps are compared before and after (see the report); the oracle
-lines are the gate.
+once §E-3 wires `0x2965F`. A probe build (a scratch copy of `port/` with
+`fprintf` counters, never committed) ran `--check 8000`: `fight_4a868`,
+`fight_4bf18`, `fight_effects_idle_pass` and `game_mode_21_step` are never
+entered on the no-input path, while the positive control (`sound_voice`)
+fired twice (id `0x4D`, the f = 4444 path of §45-A). So no oracle can see
+these sites; the evidence is `check_fx_gate`. The 8000-frame dump (16000
+files) and the front-end/demo-fight/attract2 dump are byte-identical before
+and after, and every `make verify` oracle line equals ledger §A.
 
 ---
 
@@ -267,7 +272,15 @@ keeps. Neither case reads a resource (`0x1B544`), draws, or calls
 `rng_next`. The readers of `DS_00105D5C`/`DS_001028D4`/`DS_001028D9` are the
 dispatcher's own case 5 and the pause toggles (`0x1D1B0`, key-driven), none
 of which draws. So wiring changes those three words, as the raw does, and no
-frame. The dumps before/after confirm it (report).
+frame. The same probe build saw neither `sound_voice_stage` nor
+`sound_voice_match_end` entered in `--check 8000` (`0x25BBC` and `0x27DC8`
+are not on the no-input path), and the dumps before/after are byte-identical.
+
+Wiring tests (`test_fight.c`): `check_mode_1a_hooks` (d) seeds
+`DS_00105D5C = 0x5C5C5C5C` before `game_hook_25bbc` on stage 2 and expects
+`0x0D000008` (voice `0x1B`); `check_fight_frame_a`'s `flow_match_end` loop
+seeds the result -1
+and expects `0x02805B88` (voice `0x23`).
 
 Test values (`check_voice_wrappers` in `test_game.c`, after
 `check_sound_voice`, on `sv_seed`'s sentinels `DS_00105D5C = 0x5C5C5C5C`,
