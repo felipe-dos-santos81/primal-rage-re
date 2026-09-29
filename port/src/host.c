@@ -113,6 +113,9 @@ static int translate_key(const SDL_KeyboardEvent *k, u8 *scan, u8 *ascii)
         int upper = ((k->mod & SDL_KMOD_SHIFT) != 0) !=
                     ((k->mod & SDL_KMOD_CAPS) != 0);
         *scan = k_bios_letter[i];
+        /* The BIOS gives an Alt-letter as its scan code with ascii 0: 0x24C5C's
+         * extended-key arms Alt-Q/S/J/M (record §55-A). */
+        if ((k->mod & SDL_KMOD_ALT) != 0) return 1;
         *ascii = (u8)((upper ? 'A' : 'a') + i);
         return 1;
     }

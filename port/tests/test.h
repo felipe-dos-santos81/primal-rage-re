@@ -57,7 +57,8 @@ extern int g_failures;
     X(test_text)        \
     X(test_title)       \
     X(test_mode1e_rearm) \
-    X(test_nameentry_input)
+    X(test_nameentry_input) \
+    X(test_key_loop)
 
 /* One line per env-gated driver; each runs alone, before the unit cases. Every
  * entry is an int(void); the front-end determinism gate needs argv[0], so it is

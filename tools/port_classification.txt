@@ -70,3 +70,5 @@
 4FBBB host-owned record-§49-V (called only by the ISR sampler 0x1BBAC)
 4FC05 host-owned record-§49-V (called only by the ISR sampler 0x1BBAC)
 4FCFD host-owned record-§49-V (called only by the ISR sampler 0x1BBAC)
+5004A host-owned record-§55-A (joystick calibration: times the PIT 0x50021 and the game port 0x201 via 0x4FC05/0x4FCFD into 0xE1C1C..0xE1C2C, read only by the ISR sampler 0x1BBAC's 0x4FC05/0x4FCFD/0x4FDF5/0x4FF8F/0x4FFD8)
+50021 host-owned record-§55-A (PIT channel 0 latch read, out 0x43 / in 0x40; only caller 0x5004A)

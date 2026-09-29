@@ -45,7 +45,13 @@ int input_has_key(void)
 
 u16 input_get_key(void)
 {
-    while (g_count == 0) host_pump();
+    while (g_count == 0) {
+        host_pump();
+        /* PORT: a window close ends the wait with no key (0, which int 16h
+         * never returns); the blocking readers (0x249F0, 0x24C5C's pause)
+         * then leave for game_loop's quit. */
+        if (host_quit_requested()) return 0;
+    }
     u16 key = g_keys[g_head];
     g_head = (g_head + 1) % INPUT_QUEUE_CAP;
     g_count--;

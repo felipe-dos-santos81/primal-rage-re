@@ -7107,6 +7107,293 @@ int test_nameentry_input(void)
     return g_failures - before;
 }
 
+/* ---- record §55-A: the rest of 0x24C5C's int 16h keyboard loop ------------ */
+
+#define KL_MODE(m) (0xBEEF0000u | (u32)(m))   /* the word is DS_00104B00's mode */
+#define KL_CURSOR  0x77777777u                /* DS_00105F34's row and column words */
+
+/* ra_env's pool and strings, then `mode` in the word DS_00104B00 (the high
+ * word a sentinel, so a dword compare or store shows), and every output of
+ * the loop's arms at a sentinel: the latch, the prompt byte DS_00104B22, the
+ * quit flag, the text cursor, the sound pause bytes (DB 0x40: a toggle makes
+ * it 0x41, never 1, so 0x1D220 does not reach 0x1CD9C), and the hook. No
+ * sequence handle and no DIG driver, so the pause touches no AIL state. */
+static void kl_env(u32 mode)
+{
+    if (res_count() != 69)
+        CHECK(res_load_index("data/game/C", "data/game/C/INDEX") == 69,
+              "index loaded");
+    ra_env();
+    DSD(DS_00104B00) = KL_MODE(mode);
+    DSD(DS_00105F30) = 0x77777777u;
+    DSB(DS_00104B22) = 0x77u;
+    DSB(DS_000A81A8) = 0x5Au;
+    DSD(DS_00105F34) = KL_CURSOR;
+    DSD(DS_000E87A0) = CH_BUF_A;
+    DSD(DS_000E87A4) = CH_BUF_B;
+    DSD(DS_001028C0) = 0u;
+    DSD(DS_001028C8) = 0u;
+    DSB(DS_001028D9) = 0u;
+    DSB(DS_001028DA) = 0u;
+    DSB(DS_001028D8) = 0x55u;
+    DSB(DS_001028DB) = 0x40u;
+    DSD(DS_00104AE4) = 0x12345678u;
+    for (s32 col = 0; col < 0x2B; col++) DSD(DS_00105F38 + 0xFu * 0xACu + (u32)col * 4u) = 0u;
+    input_clear();
+}
+
+/* No glyph is left on the pause's row 0xF (0x2F280 released what 0x2F198 drew). */
+static int kl_row_f_clear(void)
+{
+    for (s32 col = 0; col < 0x2B; col++)
+        if (ch_cell(0xF, col) != 0u) return 0;
+    return 1;
+}
+
+/* The column word text_cursor_set leaves for string `id` centred in mode
+ * 0x1000 (ch_check_quit_prompt's arithmetic: col + width). */
+static int kl_col(u32 id)
+{
+    int len = (int)strlen((const char *)game_string_get(id));
+    return ((0x2B - len) >> 1) + len;
+}
+
+/* Nothing but the latch moved: no prompt, no pause, no quit, no mode store. */
+static void kl_expect_quiet(u32 mode, u32 latch, const char *msg)
+{
+    CHECK(!input_has_key(), msg);
+    CHECK_EQ_INT((long)DSD(DS_00104B00), (long)KL_MODE(mode));
+    CHECK_EQ_INT((int)DSD(DS_00105F30), (int)latch);
+    CHECK_EQ_INT((int)DSB(DS_00104B22), 0x77);
+    CHECK_EQ_INT((int)DSB(DS_000A81A8), 0x5A);
+    CHECK_EQ_INT((long)DSD(DS_00105F34), (long)KL_CURSOR);
+    CHECK_EQ_INT((int)DSB(DS_001028D8), 0x55);
+    CHECK_EQ_INT((int)DSB(DS_001028DB), 0x40);
+}
+
+/* The prompt ran on string `id` and closed: the byte dropped, the question's
+ * row and column, the sound resumed, and the prompt's frame cleared the
+ * latch (0x2EA85) after the loop stored the key. */
+static void kl_expect_prompt(u32 id, int quit)
+{
+    CHECK(!input_has_key(), "the prompt consumed its keys");
+    CHECK_EQ_INT((int)DSB(DS_00104B22), 0);
+    CHECK_EQ_INT((int)DSB(DS_000A81A8), quit ? 1 : 0x5A);
+    CHECK_EQ_INT((int)DSW(DS_00105F34), 0xA);
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2u), kl_col(id));
+    CHECK_EQ_INT((int)DSB(DS_001028DA), 0);
+    CHECK_EQ_INT((int)DSB(DS_001028D8), 0);
+    CHECK_EQ_INT((int)DSD(DS_00105F30), 0);
+}
+
+/* The wiring: game_frame runs the loop in a mode with no arm (0x1C, an empty
+ * case of the switch), where only the latch moves. */
+static void kl_check_frame(void)
+{
+    kl_env(0x1Cu);
+    ni_frame_env();
+    input_push(0x1E, 'a');
+    input_push(0x48, 0x00);
+    game_frame();
+    CHECK(!input_has_key(), "game_frame drains the int 16h queue in mode 0x1C");
+    CHECK_EQ_INT((int)DSD(DS_00105F30), 0x48);
+    CHECK_EQ_INT((long)DSD(DS_00104B00), (long)KL_MODE(0x1Cu));
+}
+
+/* Enter (ascii 0xD) in mode 3 stores the word 0x27 (0x24EE0); elsewhere it
+ * does nothing, and the ascii bytes beside it do nothing in mode 3. */
+static void kl_check_enter(void)
+{
+    const u32 lo_no = (u32)game_string_get(0x1F1u)[0] + 0x20u;
+
+    kl_env(3u);
+    input_push(0x1C, 0x0D);
+    game_key_loop();
+    CHECK(!input_has_key(), "Enter is consumed");
+    CHECK_EQ_INT((long)DSD(DS_00104B00), (long)KL_MODE(0x27u));
+    CHECK_EQ_INT((int)DSD(DS_00105F30), 0x0D);
+    CHECK_EQ_INT((int)DSB(DS_00104B22), 0x77);
+    CHECK_EQ_INT((int)DSB(DS_000A81A8), 0x5A);
+
+    /* The mode is read per key: after Enter the ESC is mode 0x27's (no
+     * prompt), so the 'n' behind it is only latched. */
+    kl_env(3u);
+    input_push(0x1C, 0x0D);
+    input_push(0x01, 0x1B);
+    input_push(0x31, (u8)lo_no);
+    game_key_loop();
+    kl_expect_quiet(0x27u, lo_no, "Enter, ESC, 'n' are consumed");
+
+    kl_env(0x1Cu);
+    input_push(0x1C, 0x0D);
+    game_key_loop();
+    kl_expect_quiet(0x1Cu, 0x0D, "Enter outside mode 3 is consumed");
+
+    /* The neighbours of 0xD, 0x1B and 0x20 in mode 3. */
+    static const u8 other[] = { 0x0C, 0x0E, 0x1A, 0x1C, 0x1F, 0x21 };
+    for (u32 i = 0u; i < sizeof other; i++) {
+        kl_env(3u);
+        input_push(0x2C, other[i]);
+        game_key_loop();
+        kl_expect_quiet(3u, other[i], "a key of no arm is consumed");
+    }
+}
+
+/* ESC (ascii 0x1B): mode 3 asks 0x1EE (AL = 0), mode 0x27 nothing, any other
+ * mode 0x1EF (AL = 1). */
+static void kl_check_esc(void)
+{
+    const u8 yes = game_string_get(0x1F0u)[0];
+    const u8 no = game_string_get(0x1F1u)[0];
+    CHECK(kl_col(0x1EEu) != kl_col(0x1EFu), "the two questions centre apart");
+
+    kl_env(3u);
+    input_push(0x01, 0x1B);
+    input_push(0x15, yes);
+    game_key_loop();
+    kl_expect_prompt(0x1EEu, 1);
+
+    kl_env(0x1Cu);
+    input_push(0x01, 0x1B);
+    input_push(0x31, no);
+    game_key_loop();
+    kl_expect_prompt(0x1EFu, 0);
+    CHECK_EQ_INT((long)DSD(DS_00104B00), (long)KL_MODE(0x1Cu));
+
+    /* AL = 1's yes: the port's longjmp stand-in is the same quit flag. */
+    kl_env(0x04u);
+    input_push(0x01, 0x1B);
+    input_push(0x15, yes);
+    game_key_loop();
+    kl_expect_prompt(0x1EFu, 1);
+
+    kl_env(0x27u);
+    input_push(0x01, 0x1B);
+    input_push(0x31, (u8)(no + 0x20));
+    game_key_loop();
+    kl_expect_quiet(0x27u, (u32)no + 0x20u, "ESC in mode 0x27 is consumed");
+}
+
+/* Space (ascii 0x20): the pause shows string 0x1E8 on row 0xF and waits for
+ * another space; modes 3 and 0x27, and 0x17 under the hook 0x10E80, skip it.
+ * The queue is space, 'n', space (then 'a' for a pause): a pause that took
+ * any key would pause twice and end on 'a', a skipped pause latches 0x20. */
+static void kl_check_pause(void)
+{
+    kl_env(0x1Cu);
+    input_push(0x39, ' ');
+    input_push(0x31, 'n');
+    input_push(0x39, ' ');
+    input_push(0x1E, 'a');
+    game_key_loop();
+    CHECK(!input_has_key(), "the pause consumed its keys");
+    CHECK_EQ_INT((int)DSD(DS_00105F30), 'a');   /* the key after the pause */
+    CHECK_EQ_INT((int)DSB(DS_00104B22), 0);
+    CHECK_EQ_INT((int)DSB(DS_000A81A8), 0x5A);
+    CHECK_EQ_INT((int)DSW(DS_00105F34), 0xF);
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2u), kl_col(0x1E8u));
+    CHECK(kl_row_f_clear(), "the pause released its text");
+    CHECK_EQ_INT((int)DSD(DS_000E87A0), (int)CH_BUF_B);   /* one frame presented */
+    CHECK_EQ_INT((int)DSB(DS_001028DA), 0);      /* paused, then resumed */
+    CHECK_EQ_INT((int)DSB(DS_001028D8), 0);      /* seed 0x55 */
+    CHECK_EQ_INT((long)DSD(DS_00104B00), (long)KL_MODE(0x1Cu));
+
+    /* Mode 0x17 pauses under any other hook, and another mode under the
+     * hook 0x10E80. */
+    for (u32 pass = 0u; pass < 2u; pass++) {
+        kl_env(pass == 0u ? 0x17u : 0x1Cu);
+        if (pass == 1u) DSD(DS_00104AE4) = FN_00010E80;
+        input_push(0x39, ' ');
+        input_push(0x31, 'n');
+        input_push(0x39, ' ');
+        input_push(0x1E, 'a');
+        game_key_loop();
+        CHECK(!input_has_key(), "the pause consumed its keys");
+        CHECK_EQ_INT((int)DSB(DS_00104B22), 0);
+        CHECK_EQ_INT((int)DSW(DS_00105F34), 0xF);
+        CHECK_EQ_INT((int)DSD(DS_00105F30), 'a');
+    }
+
+    static const u32 skip[] = { 3u, 0x27u, 0x17u };
+    for (u32 i = 0u; i < 3u; i++) {
+        kl_env(skip[i]);
+        if (skip[i] == 0x17u) DSD(DS_00104AE4) = FN_00010E80;
+        input_push(0x39, ' ');
+        input_push(0x31, 'n');
+        input_push(0x39, ' ');
+        game_key_loop();
+        kl_expect_quiet(skip[i], 0x20u, "a skipped pause consumes its keys");
+    }
+}
+
+/* The extended keys (ascii 0), in any mode, 0x1E included: 0x10 asks 0x1EE
+ * (AL = 0), 0x1F toggles the sample pause, 0x32 the music pause, 0x24 (the
+ * joystick calibration, host-owned) and any other scan code only latch. */
+static void kl_check_extended(void)
+{
+    const u8 yes = game_string_get(0x1F0u)[0];
+
+    kl_env(0x1Cu);
+    input_push(0x10, 0x00);
+    input_push(0x15, yes);
+    game_key_loop();
+    kl_expect_prompt(0x1EEu, 1);
+
+    kl_env(0x1Cu);
+    input_push(0x1F, 0x00);
+    game_key_loop();
+    CHECK_EQ_INT((int)DSB(DS_001028DB), 0x41);
+    CHECK_EQ_INT((int)DSD(DS_00105F30), 0x1F);
+
+    kl_env(0x1Eu);
+    input_push(0x1F, 0x00);
+    game_key_loop();
+    CHECK_EQ_INT((int)DSB(DS_001028DB), 0x41);  /* mode 0x1E reaches the arm */
+
+    /* 0x1D1B0 with the music paused: it only clears the byte (no song). */
+    kl_env(0x1Cu);
+    DSB(DS_001028DA) = 1u;
+    input_push(0x32, 0x00);
+    game_key_loop();
+    CHECK_EQ_INT((int)DSB(DS_001028DA), 0);
+    CHECK_EQ_INT((int)DSB(DS_001028DB), 0x40);
+
+    /* An ascii key on those scan codes ('s', 'm', 'q') is no extended key;
+     * the 'n' behind them would answer a prompt that 'q' wrongly opened. */
+    kl_env(0x1Cu);
+    DSB(DS_001028DA) = 1u;
+    input_push(0x1F, 's');
+    input_push(0x32, 'm');
+    input_push(0x10, 'q');
+    input_push(0x31, 'n');
+    game_key_loop();
+    CHECK_EQ_INT((int)DSB(DS_001028DA), 1);
+    DSB(DS_001028DA) = 0u;
+    kl_expect_quiet(0x1Cu, 'n', "ascii 's', 'm', 'q' only latch");
+
+    static const u8 quiet[] = { 0x24, 0x48, 0x11, 0x20, 0x31 };
+    for (u32 i = 0u; i < sizeof quiet; i++) {
+        kl_env(3u);
+        input_push(quiet[i], 0x00);
+        game_key_loop();
+        kl_expect_quiet(3u, quiet[i], "an extended key of no arm is consumed");
+    }
+}
+
+int test_key_loop(void)
+{
+    int before = g_failures;
+    if (!ra_save()) { CHECK(0, "the §55-A snapshot allocates"); return 1; }
+    kl_check_frame();
+    kl_check_enter();
+    kl_check_esc();
+    kl_check_pause();
+    kl_check_extended();
+    input_clear();
+    ra_restore();
+    return g_failures - before;
+}
+
 int test_mode1e_rearm(void)
 {
     int before = g_failures;

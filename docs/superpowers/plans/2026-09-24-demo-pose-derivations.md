@@ -25314,3 +25314,233 @@ finisher stream `0xD4FF8`, none of which the oracle windows play.
 - The voices `0x2C3FC(0x48)` (`0x3FCB0`) and `0x2C3FC(0xB8)` (`0x40434`),
   §45-A's idiom.
 - `0x21694` is ported but dead in the raw (no reference of any kind).
+
+## 55-A. The rest of `0x24C5C`'s int 16h keyboard loop: the latch in every mode, Enter, ESC, space and the Alt keys (branch `gap55-keyloop`)
+
+**Result in one line.** `0x24CFE..0x24EE7` is ported whole as
+`game_key_loop` (`flow.c`, a `PORT:` split of `0x24C5C` that `game_frame`
+calls at the raw's place). It replaces §53-A's mode-0x1E-only loop and
+`game_loop`'s direct ESC quit. Every callee was already ported (§50-D,
+§49-Y, §53-A) except `0x5004A`, the joystick calibration. That one is PIT
+and game-port timing, so it is classified host-owned together with
+`0x50021`. The ported-function count does not change (745 of 1203, 62%).
+The portable denominator drops from 745 to 743.
+
+Letter check: no `§55` existed in this record, in `docs/PROGRESS.md` or in
+`port/src` before this branch (gap54 owns `§54`).
+
+### 55-A.1 Sources
+
+Ghidra HTTP bridge (`127.0.0.1:8089`): `disassemble_function` on `0x24C5C`,
+`0x249F0`, `0x1C500`, `0x1D250`, `0x1D270`, `0x5004A`, `0x50021`,
+`0x4FC05` and `0x20C10`; `get_xrefs_to` on `0x24DE9`, `0x5004A`, `0x50021`,
+`0x4FF8F`, `0x4FFD8`, `0x104B22`, `0x1044F4` and each word of
+`0xE1C1C..0xE1C2C`. The strings were read through `game_string_get` from
+the shipped `ENGLISH.TXT`.
+
+### 55-A.2 The loop, as the raw has it
+
+```
+0x24CFE mov esi,0xFF ; mov edi,0x27          ; loop constants (callee-saved)
+0x24D08 mov ah,1 ; xor ebx,ebx ; mov dh,ah ; int 0x16 ; jnz ; and dh,0xF ;
+        dec dh ; jnz ; sub eax,eax ; mov bx,ax ; test ebx,ebx ; jz 0x24EEC
+0x24D26 xor eax,eax ; mov ah,al ; ... int 0x16 ... ; mov bx,ax  ; the read
+0x24D3E test al,0xFF ; jnz -> eax = ebx ; else eax = ebx >> 8
+0x24D4B and eax,esi ; mov [0x105F30],eax              ; the latch, every mode
+0x24D52 xor eax,eax ; mov ax,[0x104B00] ; cmp eax,0x1E ; jnz 0x24D6E
+0x24D5F test bl,bl ; jz 0x24D6E ; ... call 0x20860 ; jmp 0x24D08
+0x24D6E cmp bl,0xD  ; jc 0x24D8E ; jbe 0x24ECF          ; Enter
+0x24D79 cmp bl,0x1B ; jc 0x24D08 ; jbe 0x24E9E          ; ESC
+0x24D84 cmp bl,0x20 ; jz 0x24DE9 ; jmp 0x24D08          ; space
+0x24D8E test bl,bl ; jnz 0x24D08 ; shr ebx,8            ; ascii 0: scan code
+0x24D99 cmp bl,0x1F ; jc 0x24DB5 ; jbe 0x24DC9          ; 0x1F -> 0x1D220
+0x24DA0 cmp bl,0x24 ; jc 0x24D08 ; jbe 0x24DD3          ; 0x24 -> 0x5004A
+0x24DAB cmp bl,0x32 ; jz 0x24DBF ; jmp 0x24D08          ; 0x32 -> 0x1D1B0
+0x24DB5 cmp bl,0x10 ; jz 0x24DDD ; jmp 0x24D08          ; 0x10 -> 0x249F0(0)
+0x24DE9 mov bx,[0x104B00] ; cmp 3 ; jz loop ; cmp 0x27 ; jz loop ;
+        cmp 0x17 ; jnz 0x24E19 ; cmp dword [0x104AE4],0x10E80 ; jz loop
+0x24E19 mov ch,1 ; mov edx,0xF ; mov [0x104B22],ch ; call 0x1D250
+0x24E2B mov eax,0x1E8 ; mov ecx,0x1000 ; call 0x1C500 ; mov ebx,eax ;
+        mov eax,-1 ; call 0x2F198 ; mov eax,-1 ; call 0x2EA78
+0x24E50 xor ah,ah ; ... int 0x16 ... ; mov ebx,eax ; xor eax,eax ;
+        mov al,bl ; cmp eax,0x20 ; jnz 0x24E50           ; wait for space
+0x24E6C mov eax,0x1E8 ; mov ecx,0x1000 ; mov edx,0xF ; call 0x1C500 ;
+        mov ebx,eax ; mov eax,-1 ; call 0x2F280
+0x24E8C xor dh,dh ; call 0x1D270 ; mov [0x104B22],dh ; jmp 0x24D08
+0x24E9E mov ax,[0x104B00] ; cmp 3 ; jnz 0x24EB7 ; xor eax,eax ;
+        call 0x249F0 ; jmp loop
+0x24EB7 cmp eax,0x27 ; jz loop ; mov eax,1 ; call 0x249F0 ; jmp loop
+0x24ECF mov ax,[0x104B00] ; cmp eax,3 ; jnz loop ; mov [0x104B00],di
+```
+
+* **Unsigned byte compares.** Every ascii test is `cmp bl,imm` with `jc`/
+  `jbe`, so each arm is exactly one byte value: `0xD`, `0x1B`, `0x20`, and
+  `0` for the scan-code arms. Bytes `0x80..0xFF` take no arm. The scan-code
+  tree has the same shape: exactly `0x10`, `0x1F`, `0x24`, `0x32`, the BIOS
+  Alt-Q, Alt-S, Alt-J and Alt-M keys (scan code, ascii 0).
+* **The mode is re-read for each key** (`0x24D54`, `0x24DEB`, `0x24EA0`,
+  `0x24ED1`). Enter in mode 3 changes it, so an ESC queued behind the Enter
+  in the same frame belongs to mode 0x27 and opens nothing. §53-A hoisted
+  the test because no arm it ported changed the mode. That no longer holds,
+  so the port now reads the word for each key.
+* **Mode 0x1E diverts only non-zero ascii bytes.** An extended key falls
+  through to `0x24D6E`, so the Alt keys work on the name-entry screen too.
+  This closes §53-A's "dropped" extended key.
+* **Enter stores a word**: `mov [0x104B00],di`, with DI = `0x27` from
+  `0x24D03`. No callee in the loop writes EDI (Watcom callee-saved;
+  `0x20860`, `0x249F0`, `0x1D1B0`, `0x1D220`, `0x1D250` and `0x1D270` push
+  what they use).
+* **The pause's registers.** `EDX = 0xF` is set before `call 0x1D250`,
+  which pushes EDX, and `0x1C500` pushes EBX/EDX. So `0x2F198` gets
+  (EAX -1, EDX 0xF, EBX the string, ECX 0x1000), that is
+  `text_cursor_set(-1, 0xF, s, 0x1000)`: the convention §50-D pinned for
+  `0x249F0`'s row 0xA. `0x24E76` reloads EDX before `0x2F280`. `DH = 0`
+  survives `0x1D270`, which touches only EAX. Its callee `0x1D1B0` preserves
+  EDX; `0x1D250`'s `mov dl,1 ... mov [0x1028D8],dl` already relies on that.
+  So `DS_00104B22` ends at 0. The wait loop reads keys but does not latch
+  them.
+* **Strings.** `0x1E8` is `- PAUSED -`, `0x1EE` `QUIT TO DOS? Y/N`, `0x1EF`
+  `ABANDON CONQUEST? Y/N`, `0x1F0`/`0x1F1` `Y`/`N`. `0x1C500` returns a
+  single buffer, `0x102760`, so each string must be used before the next
+  one is read.
+* **The hook compare** tests the dword `0x104AE4` against the immediate
+  `0x10E80` (`game_state_init`, one of §46-F's stored hooks). The port
+  stores raw code addresses in that dword, so it compares `FN_00010E80`.
+
+### 55-A.3 The arms in the port
+
+`game_key_loop` follows the listing above arm for arm. The callees are the
+ported `nameentry_key` (`0x20860`), `game_quit_prompt` (`0x249F0`),
+`sound_pause`/`sound_resume` (`0x1D250`/`0x1D270`),
+`sound_music_pause_toggle` (`0x1D1B0`), `sound_sample_pause_toggle`
+(`0x1D220`), `text_cursor_set`/`text_cells_release` (`0x2F198`/`0x2F280`)
+and `config_screen_wait` (`0x2EA78`).
+
+* **`0x5004A` (113 B) is not ported: host-owned.** It stores the PIT
+  channel-0 maximum (`0x50021`: `out 0x43,al ; in al,0x40` twice) into
+  `W(0xE1C1C)` when that word is 0. It then loops over `0x4FC05`/`0x4FCFD`
+  (the game-port `0x201` timers, already host-owned by §49-V) until each
+  axis reads at least `0x1E`, copying `0xE1C1E..0xE1C28` into
+  `0xE1C22..0xE1C2C`. The values are hardware timings, and the image holds
+  nothing to derive them from. Every reader of `0xE1C1C..0xE1C2C` is
+  `0x4FC05`, `0x4FCFD`, `0x4FDF5`, `0x4FF8F` or `0x4FFD8`, and all of them
+  are called only from the ISR sampler `0x1BBAC` (host-owned, §50-C). Its
+  three callers are `0x1C0AC` (`main`), `0x24DD3` (here) and `0x2EB4D`
+  (`0x2EA78`), each already a `PORT:` note. `0x5004A` and `0x50021` are
+  added to `tools/port_classification.txt`.
+* **ESC's AL = 1 yes** is `jmp 0x65431`, `longjmp(0x1044F4, 1)`. It returns
+  to `0x20C10`'s `setjmp` (`0x20C1A`/`0x20C1F`), which reruns the game's
+  init chain: a return to the attract, not to DOS. The port keeps §50-D's
+  stand-in (the quit flag, spec §7), unchanged here.
+* **`game_loop` no longer tests ESC.** Its `input_drain_esc` arm stood in
+  for this loop. It also drained the keys the host pumped between frames
+  before `game_frame` could read them. It keeps `host_quit_requested` (a
+  window close). `input_drain_esc` stays for the movie player's abort
+  (`movie.c`).
+* **A window close during a blocking read** (`0x249F0`'s keys, the pause's
+  wait) would otherwise spin forever in `input_get_key`. `PORT:`
+  `input_get_key` returns 0 once the host asks to quit, and both waits exit
+  on `host_quit_requested`. `game_loop` then sets the quit flag.
+* **`host.c`** maps an Alt-held letter to its scan code with ascii 0, the
+  BIOS form, so Alt-Q/S/J/M reach the scan-code arms.
+
+### 55-A.4 Tests and mutations
+
+`test_key_loop` (`test_game.c`, registered once in `TEST_CASES`) runs on
+§51-A's `ra_save`/`ra_restore` snapshot and `ra_env`. `kl_env` puts the
+mode in the word `DS_00104B00` under a `0xBEEF` high word. It seeds the
+latch, `DS_00104B22`, the quit flag, the text cursor, the pause bytes
+(`DS_001028DB = 0x40`, so a toggle reads `0x41`), the hook and the text
+cells of row 0xF.
+
+* `kl_check_frame`: `game_frame` in mode 0x1C latches and drains.
+* `kl_check_enter`: Enter in mode 3 stores the word 0x27. Enter, ESC and
+  `n` in one frame: the ESC belongs to mode 0x27 and does nothing. Enter in
+  mode 0x1C. The six neighbours `0xC 0xE 0x1A 0x1C 0x1F 0x21` in mode 3.
+* `kl_check_esc`: mode 3 asks 0x1EE and yes quits; mode 0x1C asks 0x1EF and
+  no does not quit; mode 4 asks 0x1EF and yes quits; mode 0x27 does
+  nothing. The test also checks that the two questions centre on different
+  columns.
+* `kl_check_pause`: mode 0x1C pauses on space, ignores `n`, ends on space,
+  then latches `a`. It checks row 0xF, the column of 0x1E8, the released
+  text, the one presented frame, and the music paused and resumed. Mode
+  0x17 under another hook and mode 0x1C under `0x10E80` pause; modes 3,
+  0x27 and 0x17 under `0x10E80` skip.
+* `kl_check_extended`: `0x10` asks 0x1EE; `0x1F` toggles `DS_001028DB` (in
+  mode 0x1C and in mode 0x1E); `0x32` clears the paused-music byte; ascii
+  `s`, `m`, `q` on those scan codes do nothing; `0x24`, `0x48`, `0x11`,
+  `0x20` and `0x31` only latch.
+
+The key sequences are chosen so that a wrong arm consumes a following key
+and fails, instead of blocking in `input_get_key`. For the mutations, a
+script applied each one to `flow.c`, rebuilt, ran `PR_ORACLE_REQUIRED=1
+./build/run_tests` under a 90 s kill and restored the file. The number is
+the count of failing assertions:
+
+| Mutation | Fails |
+|---|---|
+| no loop in `game_frame` | 23 |
+| latch always the ascii byte | 8 |
+| latch dropped | 27 |
+| one key per frame | 20 |
+| mode 0x1E taking ascii 0 | 1 |
+| Enter as 0xC | 7 |
+| Enter as `<= 0xD` | 1 |
+| Enter's store as a dword | 1 |
+| Enter without the mode test | 1 |
+| Enter's mode test as a dword | 6 |
+| ESC in mode 3 with AL = 1 | 1 |
+| ESC elsewhere with AL = 0 | 2 |
+| no mode-0x27 skip for ESC | 8 |
+| the mode read once per frame | 4 |
+| ESC dropped | 17 |
+| space without the mode-3 skip | 4 |
+| space without the mode-0x27 skip | 4 |
+| space without the mode-0x17 skip | 4 |
+| the hook test without the mode | 2 |
+| the mode without the hook | 2 |
+| the pause on row 0xA | 3 |
+| string 0x1E9 | 2 |
+| no release | 1 |
+| release on row 0xA | 1 |
+| any key ending the pause | 3 |
+| no `0x1D250` | 1 |
+| no `0x1D270` | 2 |
+| `DS_00104B22` not cleared | 3 |
+| `DS_00104B22` not set | 0 (equivalent, below) |
+| no pause frame | 1 |
+| space dropped | 8 |
+| the scan-code arms on any ascii | 6 |
+| Alt-Q with AL = 1 | 1 |
+| Alt-Q dropped | 6 |
+| Alt-S dropped | 2 |
+| Alt-M dropped | 1 |
+| Alt-M toggling the samples | 2 |
+| Alt-J toggling the samples | 1 |
+| the scan code from the low byte | 9 |
+
+38 of 39 are caught. The survivor drops `DS_00104B22 = 1` at `0x24E20`, and
+it is equivalent in the port. The byte is the ISR gate (`0x1BDF8`,
+`CFG_ISR_GATE`). Its only modelled reader is `0x2EA78`'s wait loop, which
+`-1` skips, and the pause clears the byte again before it returns.
+
+### 55-A.5 Verification
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed. `make verify`
+(private `*_55` dump directories) exits 0. Title: capture 1 has 54 clean,
+55 splice, 2 transition and 0 unexplained; capture 2 has 54 clean, 57
+splice and 0 unexplained. Front-end: 517 clean, 801 splice, 3 transition
+and 2 unexplained (the two allowed by name). Demo-fight: fully explained at
+N = 1886. Attract2: 0 unexplained in the region. `symbols.h` regenerates
+byte-identically. Every number is §53-A.6's. No oracle driver queues a key
+(the headless host pumps no events), so the loop reads an empty queue on
+every captured frame. `tools/port_progress.py`: 745 of 1203 (62%, the
+README title unchanged); portable 709 of 743 (95%).
+
+### 55-A.6 Remaining named gaps
+
+* ESC's `ABANDON CONQUEST` yes (`0x24AB0`, the `longjmp` to `0x20C10`'s
+  `setjmp`): the port quits instead (spec §7, §50-D).
+* `0x5004A`/`0x50021`: host-owned, not ported (there is no game port).
+* The `0x2C3FC` voices (§45-A) and `0x1EC38`'s `0x2DAE4` audit adds (spec
+  §7), deferred as before.
