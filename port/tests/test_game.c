@@ -8637,6 +8637,122 @@ static void sm_check_controls(void)
     CHECK(fn_resolve(0x32358u) == (void (*)(void))svc_test_controls, "0x32358 registered");
 }
 
+/* Cycle 5 (record §K11.6): the key slots 0x19C60/0x19D34, the raw key take
+ * 0x2EBBC and CONFIGURE KEYBOARD 0x19DF0. */
+#define SM_KEYS_REC 0x00100CACu          /* the record 0x19DF0 packs, edits and applies */
+
+/* Seeds the mirror DS_001014AC.. with the key words `w[16]` in slot order,
+ * through the ported 0x1AE28 of a test-only record. */
+static void sm_seed_slots(const u16 *w)
+{
+    static const u8 off[16] = { 2, 8, 4, 6, 0xA, 0xC, 0xE, 0x10,
+                                0x14, 0x1A, 0x16, 0x18, 0x1C, 0x1E, 0x20, 0x22 };
+    mem_fill(SM_CTRL_REC, 0, 0x28u);
+    for (u32 s = 0; s < 16u; s++) DSW(SM_CTRL_REC + off[s]) = w[s];
+    config_keys_apply(SM_CTRL_REC);
+}
+
+static void sm_check_keyboard(void)
+{
+    static const u32 slot_addr[16] = {
+        0x100CAEu, 0x100CB4u, 0x100CB0u, 0x100CB2u, 0x100CB6u, 0x100CB8u, 0x100CBAu, 0x100CBCu,
+        0x100CC0u, 0x100CC6u, 0x100CC2u, 0x100CC4u, 0x100CC8u, 0x100CCAu, 0x100CCCu, 0x100CCEu,
+    };
+    u8 saved[0x34];                      /* the record and the name buffer 0x100CD4 */
+    memcpy(saved, mem + 0x100CACu, sizeof saved);
+    memset(mem + 0x100CACu, 0x5A, 0x28);
+    for (u32 s = 0; s < 16u; s++) {
+        svc_key_slot_set(s, (u16)(0x1100u + s));
+        CHECK_EQ_INT((int)DSW(slot_addr[s]), (int)(0x1100u + s));
+        CHECK_EQ_INT((int)svc_key_slot_get(s), (int)(0x1100u + s));
+    }
+    svc_key_slot_set(16u, 0x7777u);                      /* above 15: nothing */
+    svc_key_slot_set(0xFFFFFFFFu, 0x7777u);              /* 0x19C60 `ja`: unsigned */
+    CHECK_EQ_INT((int)DSW(0x100CACu), 0x5A5A);           /* +0 is no slot */
+    CHECK_EQ_INT((int)DSW(0x100CBEu), 0x5A5A);           /* 0x100CBE is no slot */
+    for (u32 s = 0; s < 16u; s++) CHECK(DSW(slot_addr[s]) != 0x7777u, "slot 16 writes nothing");
+    CHECK_EQ_INT((int)svc_key_slot_get(16u), 0);
+    CHECK_EQ_INT((int)svc_key_slot_get(0xFFFFFFFFu), 0); /* 0x19D37 `ja`: unsigned */
+    svc_key_slot_set(3u, 0xE00Du);
+    CHECK_EQ_INT((int)svc_key_slot_get(3u), 0xE00D);     /* 0x19D60 `xor eax,eax`: zero-extended */
+    DSD(CH_KEY_WORD) = 0x1C0Du;
+    CHECK_EQ_INT((int)svc_raw_key_take(), 0x1C0D);
+    CHECK_EQ_INT((int)DSD(CH_KEY_WORD), 0);
+
+    /* 0x19DF0. The record is packed from the mirror; the key loop takes one
+     * slot at a time. */
+    u8 s_keys[0x28];
+    memcpy(s_keys, mem + DS_001014AC, sizeof s_keys);
+    const u8 s_free = DSB(DS_00105D60), s_113 = DSB(DS_00108113);
+    DSB(DS_00105D60) = 0u; DSB(DS_00108113) = 0u;
+
+    /* KEYS A: "morland" into slots 0..6 (0x1A4A8..0x1A53B sets DS_00108113);
+     * 'M' has the scan code of slot 0's 'm' (the compare is & 0xFF00) and is
+     * refused; F1 has no name (0x3157C returns 0) and is refused; Enter keeps
+     * slot 7's 'x'; slot 8 takes UP although its own old word has scan 0x48
+     * (only the slots below are compared); slot 12's "<j>" is drawn after
+     * the seven blanks at 0x80590 released its old "<HOME>". After slot 15
+     * the record is applied (0x1A551). */
+    static const u16 seed_a[16] = { 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2D78u,
+                                    0x4830u, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x4700u, 0x2C7Au, 0x2C7Au, 0x2C7Au };
+    static const sm_step_t keys_a[] = {
+        { 0x326Du, 0u }, { 0x186Fu, 0u }, { 0x1372u, 0u }, { 0x266Cu, 0u }, { 0x1E61u, 0u },
+        { 0x316Eu, 0u }, { 0x2064u, 0u }, { 0x324Du, 0u }, { 0x3B00u, 0u }, { 0x1C0Du, 0u },
+        { 0x4800u, 0u }, { 0x4D00u, 0u }, { 0x5000u, 0u }, { 0x4B00u, 0u }, { 0x246Au, 0u },
+        { 0x256Bu, 0u }, { 0x1769u, 0u }, { 0x1675u, 0u } };
+    static const u16 want_a[16] = { 0x326Du, 0x186Fu, 0x1372u, 0x266Cu, 0x1E61u, 0x316Eu, 0x2064u, 0x2D78u,
+                                    0x4800u, 0x4D00u, 0x5000u, 0x4B00u, 0x246Au, 0x256Bu, 0x1769u, 0x1675u };
+    actors_reset();
+    sm_begin(keys_a, 18u);
+    sm_seed_slots(seed_a);
+    CHECK_EQ_INT((int)svc_configure_keyboard(0xBCC7Cu), 0);         /* 0x1A556 */
+    sm_end(18u, "CONFIGURE KEYBOARD: morland, two refusals, Enter, eight keys");
+    for (u32 s = 0; s < 16u; s++) CHECK_EQ_INT((int)DSW(slot_addr[s]), (int)want_a[s]);
+    CHECK_EQ_INT((int)DSB(DS_00108113), 1);                          /* "morland" */
+    CHECK_EQ_INT((int)DSB(DS_001014AE), 0x32);                       /* 0x1AE28: slot 0's scan */
+    CHECK_EQ_INT((int)DSB(DS_001014AC + 3u), 'm');                   /* and its ascii */
+    CHECK_EQ_INT((int)DSB(MT_LAYOUT + 0x2DEu), 0x32);                /* the BIOS record too */
+    CHECK_EQ_INT((int)DSB(MT_LAYOUT + 0x2E6u + 3u), 0x4D);           /* slot 9 is player 2's +0x1A */
+    ch_expect(4, 2, 'L', 0x2000u, "LEFT PLAYER (0x17) at (2, 4)");
+    ch_expect(4, 0x16, 'R', 0x2000u, "RIGHT PLAYER (0x16) at (0x16, 4)");
+    ch_expect(7, 2, 'U', 0x1000u, "label UP (0xA2C2C)");
+    ch_expect(9, 2, 'R', 0x1000u, "label RIGHT (0xA2C30) second");
+    ch_expect(0x15, 0x16, 'L', 0x1000u, "player 2 label LO FIERCE (0xA2C48)");
+    ch_expect(7, 0xC, '<', 0xF000u, "slot 0 <m> at (0xC, 7)");
+    ch_expect(7, 0xE, '>', 0xF000u, "slot 0 <m>: three cells");
+    ch_expect(0x15, 0xC, '<', 0xF000u, "slot 7 redrawn after Enter");
+    ch_expect(7, 0x21, 'U', 0xF000u, "slot 8 <UP> at (0x20, 7)");
+    ch_expect(9, 0x21, 'R', 0xF000u, "slot 9 <RGT> on row 9");
+    ch_expect(0xF, 0x22, '>', 0xF000u, "slot 12 <j>");
+    CHECK_EQ_INT((int)ch_cell(0xF, 0x23), 0);                        /* the old <HOME>'s tail released */
+
+    /* KEYS B: "spaten" into slots 0..5 (0x1A426..0x1A4A1 sets the FREE PLAY
+     * flag DS_00105D60), then Esc on slot 6: EAX = 0 and no 0x1AE28, so the
+     * mirror and the BIOS record keep their 'z'. */
+    static const u16 seed_b[16] = { 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x4700u, 0x2C7Au,
+                                    0x2C7Au, 0x5000u, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au };
+    static const sm_step_t keys_b[] = {
+        { 0x1F73u, 0u }, { 0x1970u, 0u }, { 0x1E61u, 0u }, { 0x1474u, 0u }, { 0x1265u, 0u },
+        { 0x316Eu, 0u }, { 0x011Bu, 0u } };
+    static const u16 want_b[6] = { 0x1F73u, 0x1970u, 0x1E61u, 0x1474u, 0x1265u, 0x316Eu };
+    actors_reset();
+    sm_begin(keys_b, 7u);
+    sm_seed_slots(seed_b);
+    CHECK_EQ_INT((int)svc_configure_keyboard(0xBCC7Cu), 0);         /* 0x1A3A4 -> 0x1A556 */
+    sm_end(7u, "CONFIGURE KEYBOARD: spaten, Esc");
+    for (u32 s = 0; s < 6u; s++) CHECK_EQ_INT((int)DSW(slot_addr[s]), (int)want_b[s]);
+    CHECK_EQ_INT((int)DSB(DS_00105D60), 1);                          /* "spaten": FREE PLAY */
+    CHECK_EQ_INT((int)DSB(DS_001014AE), 0x2C);                       /* Esc: not applied */
+    CHECK_EQ_INT((int)DSB(MT_LAYOUT + 0x2DEu), 0x2C);
+    ch_expect(0x13, 0xD, 'H', 0x3000u, "slot 6's old <HOME> highlighted when Esc left");
+    ch_expect(9, 0x21, 'D', 0xF000u, "slot 9 (0x100CC6) drawn at (0x20, 9): <DOWN>");
+
+    memcpy(mem + DS_001014AC, s_keys, sizeof s_keys);
+    DSB(DS_00105D60) = s_free; DSB(DS_00108113) = s_113;
+    memcpy(mem + 0x100CACu, saved, sizeof saved);
+    CHECK(fn_resolve(0x19DF0u) == (void (*)(void))svc_configure_keyboard, "0x19DF0 registered");
+}
+
 /* Runs after test_cfg_helpers, whose one actors_init() it relies on. The
  * menu screens advance the tick model and the key state; those, the menu
  * state DS_00107414..DS_00107453 and the credits dword are put back. */
@@ -8660,6 +8776,7 @@ int test_svcmenu(void)
     sm_check_options();
     sm_check_volume();
     sm_check_controls();
+    sm_check_keyboard();
 
     DSD(DS_000E1C3C) = s_rpt;
     DSW(DS_000E1C40) = s_rpt40; DSW(DS_000E1C42) = s_rpt42; DSW(DS_000E1C44) = s_rpt44;
