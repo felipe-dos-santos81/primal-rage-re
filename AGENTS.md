@@ -161,6 +161,9 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
   addresses) that have a `/* 0xADDR` header or an `fn_register` in `port/src`.
   Update the README title and its "N% of the original's D real functions"
   line after any merge that adds or removes a ported function.
+  It also prints the adjusted figure that leaves out the functions in
+  `tools/port_classification.txt` (host-owned/deferred, one evidence line each);
+  the README title keeps the raw percentage.
   `--unported` lists what is left (addr, size, callers, callees), largest
   first; the `runtime` rows (>= 0x5D000, WATCOM libc/DOS4GW) are not targets.
 - Multi-task work runs under subagent-driven development with a git-ignored

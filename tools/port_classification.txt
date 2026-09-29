@@ -1,0 +1,72 @@
+# Functions the port deliberately does not port.  Format: ADDR CLASS EVIDENCE
+#   host-owned  the SDL host / flat mem[] replaces it (DPMI, ISR key samplers, allocator, drive plumbing)
+#   deferred    a declared no-op layer (EEPROM/config storage, Smacker movie audio)
+# Every line needs the record section that proves it; seeded from the triage tables §50-C/D/E
+# tools/port_progress.py excludes these from the portable denominator
+10024 deferred record-§50-E
+10034 deferred record-§50-E
+100C4 deferred record-§50-E
+100DC deferred record-§50-E
+10510 deferred record-§50-E
+10570 deferred record-§50-E
+10610 deferred record-§50-E
+10678 deferred record-§50-E
+10684 deferred record-§50-E
+106E1 host-owned record-§50-E
+1071D host-owned record-§50-E
+1074B host-owned record-§50-E
+107EF host-owned record-§50-E
+10830 host-owned record-§50-E
+108E8 host-owned record-§50-E
+109A0 host-owned record-§50-E
+109CA host-owned record-§50-E
+109F4 host-owned record-§50-E
+10B70 host-owned record-§50-E
+10C30 host-owned record-§50-E
+10D0C host-owned record-§50-E
+10D34 host-owned record-§50-E
+1ACA8 host-owned record-§50-C
+1ACF0 host-owned record-§50-C
+1AD30 host-owned record-§50-C
+1AD64 host-owned record-§50-C
+1ADAC host-owned record-§50-C
+1ADE4 host-owned record-§50-C
+1AFE8 deferred record-§50-C
+1B084 deferred record-§50-C
+1B610 host-owned record-§50-C
+1B6A0 host-owned record-§50-C
+1B730 host-owned record-§50-C
+1B7C0 host-owned record-§50-C
+1B850 host-owned record-§50-C
+1B870 host-owned record-§50-C
+1B890 host-owned record-§50-C
+1B8DC host-owned record-§50-C
+1B908 host-owned record-§50-C
+1BBAC host-owned record-§50-C
+1C308 host-owned record-§50-D
+1C320 host-owned record-§50-D
+1C884 host-owned record-§50-D
+1C8CC host-owned record-§50-D
+1D0BC host-owned record-§50-D
+1D290 host-owned record-§50-D
+1E2A0 host-owned record-§50-D
+1E2D8 host-owned record-§50-D
+1E62C host-owned record-§50-D
+1E6D8 host-owned record-§50-D
+1E774 host-owned record-§50-D
+102B8 deferred record-§50-E (movie-audio pump, 49-W.2)
+1013C deferred record-§50-E (movie-audio unit)
+10A68 deferred record-§50-E (movie-audio unit; size query 0x109F4 host-owned)
+1C0F0 host-owned record-§49-V (DPMI extended-memory block list)
+1E30C host-owned record-§49-V (DPMI heap)
+1E458 host-owned record-§49-V (allocator core; res_alloc/flat bump)
+2D638 deferred record-§49-Y.5 (storage load)
+2DE98 deferred record-§49-Y.5 (high-score storage load)
+2E990 deferred record-§49-Y.5 (checksummed storage read)
+2DAE4 deferred record-§48-V (audit no-op)
+2E934 deferred record-§48-V (audit no-op)
+32970 host-owned record-§48-V (host owns wall time)
+4FDF5 host-owned record-§49-V (called only by the ISR sampler 0x1BBAC)
+4FBBB host-owned record-§49-V (called only by the ISR sampler 0x1BBAC)
+4FC05 host-owned record-§49-V (called only by the ISR sampler 0x1BBAC)
+4FCFD host-owned record-§49-V (called only by the ISR sampler 0x1BBAC)
