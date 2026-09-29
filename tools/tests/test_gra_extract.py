@@ -124,12 +124,23 @@ class PaletteBankTests(unittest.TestCase):
     def test_splits_records_and_decodes_words(self):
         recs = palette_records(self.body5(fixture()))
         self.assertEqual([len(r) for r in recs], [3, 8])
-        self.assertEqual(recs[0][0], (10, 20, 30))
-        self.assertEqual(recs[1][7], (8, 16, 24))
+        # the stored 8-bit channels decode to DAC-displayed values: low 6
+        # bits expanded (v<<2)|(v>>4), so (10,20,30) -> (40,81,121)
+        self.assertEqual(recs[0][0], (40, 81, 121))
+        self.assertEqual(recs[1][7], (32, 65, 97))
 
     def test_rejects_overrunning_count(self):
         with self.assertRaises(ValueError):
             palette_records(struct.pack('<I', 5) + b'\0' * 8)
+
+    def test_dac_decode_truncates_each_channel_to_six_bits(self):
+        # The VGA DAC port is 6-bit: the displayed channel is the low 6 bits
+        # of the stored 8-bit field, expanded (v<<2)|(v>>4). 0x50 truncates to
+        # 0x10 -> 65 (the raw decode would give 80); 0xFF saturates the port at
+        # 0x3F -> 255. The same values the C suite pins in test_platform.c.
+        body = struct.pack('<I', 1) + b''.join(
+            struct.pack('<I', colour_word(*c)) for c in [(0x50, 0x10, 0xFF)])
+        self.assertEqual(palette_records(body), [[(65, 65, 255)]])
 
 
 class ChooseBankTests(unittest.TestCase):
@@ -272,16 +283,17 @@ class ExtractFileTests(unittest.TestCase):
         im = Image.open(os.path.join(self.out, 'S16FOO', '0000.png'))
         self.assertEqual((im.mode, im.size), ('RGBA', (4, 3)))
         px = im.load()
-        self.assertEqual(px[0, 0], (5, 10, 15, 255))       # index 5 -> record1[4]
+        # record colours are DAC-displayed values: (r<<2)|(r>>4) per channel
+        self.assertEqual(px[0, 0], (20, 40, 60, 255))     # index 5 -> record1[4]
         self.assertEqual(px[1, 0], (255, 0, 255, 255))     # opaque index 0, flagged
         self.assertEqual(px[2, 0], (0, 0, 0, 0))           # transparent run
         self.assertEqual(px[3, 0], (0, 0, 0, 0))
-        self.assertEqual(px[0, 1], (2, 4, 6, 255))         # repeat colour 2
+        self.assertEqual(px[0, 1], (8, 16, 24, 255))       # repeat colour 2
         self.assertEqual(px[1, 2], (0, 0, 0, 0))           # transparent 1
-        self.assertEqual(px[3, 2], (1, 2, 3, 255))         # repeat colour 1
+        self.assertEqual(px[3, 2], (4, 8, 12, 255))        # repeat colour 1
         raw = Image.open(os.path.join(self.out, 'S16FOO', '0001.png'))
         self.assertEqual(raw.size, (4, 3))
-        self.assertEqual(raw.load()[2, 0], (70, 80, 90, 255))   # index 3 -> record0[2]
+        self.assertEqual(raw.load()[2, 0], (24, 65, 105, 255))  # index 3 -> record0[2]
         self.assertFalse(os.path.exists(os.path.join(self.out, 'S16FOO', '0002.png')))
 
     def test_greyscale_when_no_bank_anywhere(self):

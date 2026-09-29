@@ -170,6 +170,11 @@ b = (word >> 18) & 0xFF;   // bits 18..25
 
 which is exactly the packing of the chunk-5 words (they form descending
 shading ramps, e.g. `S16FONTS` palette 0 = `0090d0f0 0070b0d0 … 00001010`).
+`0x3C9` is a 6-bit port, so the *displayed* channel is the low 6 bits of each
+8-bit field, expanded back as `(v<<2)|(v>>4)` — the decode
+`tools/gra_render.py` implements, and the same transform
+`gfx_flush_palette` applies before storing `gfx_dac`
+(`port/src/platform/gfx.c`).
 A scan of the data object finds resource handles pointing into chunk-5 bodies
 for **27** of the 30 `.GRA` files that contain a type-5 chunk — e.g.
 `s16title` (19 chunk-5 handles), `s16jap` (47) and `s16beach` (12), while

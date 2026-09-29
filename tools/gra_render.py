@@ -15,6 +15,9 @@ Frame selection uses the type-6 descriptor table:
               pixel_handle low 23 bits = file offset of an RLE blob in chunk 2.
     type 5  = a bank of palettes: repeated { u32 count; count x u32 colours },
               colour word: R = bits[2..9], G = bits[10..17], B = bits[18..25].
+              The VGA DAC is a 6-bit port, so the displayed channel is the low
+              6 bits of each 8-bit field, expanded back to 8 bits as
+              (v<<2)|(v>>4) — the decode parse_palette implements.
     type 2  = the RLE pixel blobs, addressed only by the type-6 handles.
 
 Sprite RLE (one control byte, then optional data, per token):
@@ -57,7 +60,14 @@ def chunks(d):
 
 
 def parse_palette(body):
-    """A bank of { u32 count; count u32 colours }; returns flat [(r,g,b)]."""
+    """A bank of { u32 count; count u32 colours }; returns flat [(r,g,b)].
+
+    Colour words hold 8-bit channels at shifts 2/10/18, but the VGA DAC is
+    6-bit: the original's `out 0x3C9` (0x1C470) writes the low 6 bits of each
+    8-bit channel and the VGA expands 6-bit to its 8-bit display value as
+    (v<<2)|(v>>4) — the same transform the port applies in
+    port/src/platform/gfx.c's gfx_dac load. Decoding the raw 8-bit fields
+    instead renders every palette wrong (hue-rotated)."""
     pal, pos = [], 0
     while pos + 4 <= len(body):
         count = struct.unpack_from('<I', body, pos)[0]
@@ -67,7 +77,9 @@ def parse_palette(body):
         for _ in range(count):
             w = struct.unpack_from('<I', body, pos)[0]
             pos += 4
-            pal.append(((w >> 2) & 0xff, (w >> 10) & 0xff, (w >> 18) & 0xff))
+            r, g, b = (w >> 2) & 0x3F, (w >> 10) & 0x3F, (w >> 18) & 0x3F
+            pal.append(((r << 2) | (r >> 4), (g << 2) | (g >> 4),
+                        (b << 2) | (b >> 4)))
     return pal
 
 
