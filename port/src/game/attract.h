@@ -48,8 +48,10 @@ void attract_config_volumes(void);
 
 /* 0x2C8F0 with eax = -1. Set the music/SFX volumes DS_000A2CB8 and
  * DS_000A2CB4 to config fields 0x35 and 0x37 halved (8 / 0x10 when a field
- * reads -1), with no 0x2A scale. The character screens' setups call it. */
-void attract_config_volumes_unscaled(void);
+ * reads -1), with no 0x2A scale. The character screens' setups call it.
+ * Returns field 0x35 as read (0x2C9B1 `mov eax,edx`); ADJUST VOLUME (0x30864)
+ * reads it. */
+u32 attract_config_volumes_unscaled(void);
 
 /* 0x2C9B8 (record §50-D). A negative argument runs the voice dispatcher with
  * id 0 (a no-op) and returns 0x10000; otherwise 0. */

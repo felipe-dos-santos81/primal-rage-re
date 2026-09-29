@@ -7707,6 +7707,10 @@ static const sm_step_t *sm_script;
 static u32 sm_len, sm_frame, sm_last_a0, sm_extra;
 static u32 sm_s_a0, sm_s_a4, sm_s_kb;
 static u8 sm_s_gate;
+/* Pad bits the script holds from an earlier frame: tf_menu_press clears the
+ * latch DS_000E1C38 (every pressed bit is a new edge), and these go back into
+ * it, as 0x500C4's `latch &= level` keeps a held bit latched. 0 by default. */
+static u32 sm_held;
 
 /* One scripted step per presented frame: config_screen_wait swaps DS_000E87A0
  * before its tick passes, so the first hook call after a swap is a new frame. */
@@ -7719,6 +7723,7 @@ static void sm_hook(void *ctx)
         const sm_step_t *s = &sm_script[sm_frame];
         if (s->key != 0u) input_push((u8)(s->key >> 8), (u8)s->key);
         tf_menu_press(s->pad);
+        DSD(DS_000E1C38) |= s->pad & sm_held;
     } else {
         /* Out of script: Esc, then alternately Enter, so any loop leaves. */
         sm_extra++;
@@ -7785,6 +7790,7 @@ static void sm_begin(const sm_step_t *s, u32 n)
 static void sm_end(u32 frames, const char *what)
 {
     host_set_pump_hook(NULL, NULL);
+    sm_held = 0u;
     CHECK(sm_extra == 0u, what);
     CHECK_EQ_INT((int)sm_frame, (int)frames);
     sm_env_end();
@@ -7904,10 +7910,11 @@ static void sm_check_shell(void)
  * 0x2CF00, CONFIG OPTIONS 0x2CACC/0x33578, SOUND TEST 0x30EB4, MUSIC TEST
  * 0x30F54 and the voice wrappers 0x2C9CC/0x2C9E8. The CONFIG OPTIONS table is
  * 0xA2EB4; its record 0 is "CREDITS" (0x46), shift 0x10, 10 values, the index
- * drawn, list 0xA2CEC (all zero but entry 4, {0x8088C "*", 0}). 29 frames. */
+ * drawn, list 0xA2CEC (all zero but entry 4, {0x8088C "*", 0}). 31 frames. */
 #define SM_CONFIG_TABLE 0x000A2EB4u
 #define SM_CONFIG_DEFAULTS 0x00142095u   /* 0x2CCD0(0xA2EB4): the '*' entries (record §K11.3) */
 #define SM_VOICE_REC(id) (0x000BBDC8u + (u32)(id) * 12u)
+#define SM_CFG_REC 0x03D41000u           /* test-only {table, table} record for 0x2CACC */
 static void sm_check_options(void)
 {
     ch_text_setup();
@@ -7951,8 +7958,7 @@ static void sm_check_options(void)
 
     /* (c) 0x2CF00 alone on the CONFIG table: Left from CREDITS 0 wraps to 9 */
     static const sm_step_t left_enter[] = { { 0x4B00u, 0u }, { 0x1C0Du, 0u } };
-    const u32 s_rpt = DSD(DS_000E1C3C);
-    const u16 s_rpt_next = DSW(DS_000E1C44);
+    /* the four repeat words are put back by test_svcmenu */
     DSD(DS_000E1C3C) = 0x12345678u; DSW(DS_000E1C44) = 0x7777u;
     actors_reset();
     sm_begin(left_enter, 2u);
@@ -7960,7 +7966,6 @@ static void sm_check_options(void)
     sm_end(2u, "option editor: Left, Enter");
     CHECK_EQ_INT((int)DSD(DS_000E1C3C), (int)0xF000F000u);   /* 0x2CFE4..0x2CFF3 0x50146 */
     CHECK_EQ_INT((int)DSW(DS_000E1C44), 0xF);
-    DSD(DS_000E1C3C) = s_rpt; DSW(DS_000E1C44) = s_rpt_next;
     ch_expect(4, 5, '1', 0x2000u, "the edited row: index 10");
     ch_expect(4, 6, '0', 0x2000u, "the edited row: index 10, second digit");
     ch_expect(23, 9, 0x3Bu, 0x1000u, "10 records: the MORE marker, first glyph 0x3B");
@@ -7982,6 +7987,15 @@ static void sm_check_options(void)
     sm_begin(restore, 3u);
     CHECK_EQ_INT((int)svc_option_edit(SM_CONFIG_TABLE, 5u << 16, 0x4000000u, 0u), (int)(5u << 16));
     sm_end(3u, "option editor: Right, restore, Enter");
+    /* The Up/Down hold check 0x2D1BE..0x2D1CF: pad Up pressed on an earlier
+     * frame and still held is latched, so 0x2EDE0(0xF300F000) has no Up edge
+     * and the pass reaches the second poll, whose level has it: the latched
+     * Left is skipped and CREDITS keeps 5. */
+    static const sm_step_t held_up[] = { { 0x4B00u, 0x80000000u }, { 0x1C0Du, 0u } };
+    sm_begin(held_up, 2u);
+    sm_held = 0x80000000u;
+    CHECK_EQ_INT((int)svc_option_edit(SM_CONFIG_TABLE, 5u << 16, 0x4000000u, 0u), (int)(5u << 16));
+    sm_end(2u, "option editor: a Left under a held Up is skipped");
 
     /* (d) the voice wrappers, with no DIG driver and no sequence */
     const u32 s_5c = DSD(DS_00105D5C), s_c0 = DSD(DS_001028C0), s_c8 = DSD(DS_001028C8);
@@ -8026,9 +8040,15 @@ static void sm_check_options(void)
     DSD(DS_001028CC) = s_cc; DSD(DS_001028D4) = s_d4;
     DSB(DS_001028D9) = s_d9; DSB(DS_001028DA) = s_da; DSB(DS_001028DB) = s_db;
 
-    /* (e) CONFIG OPTIONS end to end, and 0x2CACC's table argument */
+    /* (e) CONFIG OPTIONS end to end, and 0x2CACC's table argument. The raw
+     * store 0x2FA01 makes DS_0010740C = 0x1D2D0, whose +4 is the table. The
+     * test uses a scratch record whose +0 is MUSIC TEST's table 0xA3060
+     * (record 0 "Music Tunes", shift 0), so taking the wrong dword fails a
+     * check rather than walking the 0x32700 fallback. */
     const u32 s_740c = DSD(DS_0010740C);
-    DSD(DS_0010740C) = 0x0001D2D0u;                           /* 0x2FA01; [0x1D2D4] = 0xA2EB4 */
+    CHECK_EQ_INT((int)DSD(0x0001D2D4u), (int)SM_CONFIG_TABLE);       /* [0x1D2D0 + 4] */
+    DSD(SM_CFG_REC) = 0x000A3060u; DSD(SM_CFG_REC + 4u) = SM_CONFIG_TABLE;
+    DSD(DS_0010740C) = SM_CFG_REC;
     const u32 f0 = config_field_get(0x29u);
     const u32 v0 = (f0 & ~0x000F8000u) | (2u << 16);           /* bit 15 clear, CREDITS = 2 */
     config_field_set(0x29u, v0);
@@ -8036,6 +8056,7 @@ static void sm_check_options(void)
     (void)svc_config_options_entry(0xBCC2Cu);
     sm_end(2u, "CONFIG OPTIONS: Right, Enter");
     CHECK_EQ_INT((int)config_field_get(0x29u), (int)(v0 + (1u << 16)));
+    ch_expect(3, 4, 'C', 0x2000u, "0x2CACC hands [+4] = 0xA2EB4 (CREDITS), not [+0]");
     /* Bit 15 set: the defaults are written before the edit (0x335C3..0x335D3;
      * skipped, Right would wrap the seeded bit 15 to 0 and nothing would
      * default). Nine Downs scroll to record 9 "Restore Factory Default?"
@@ -8059,6 +8080,209 @@ static void sm_check_options(void)
     DSD(DS_0010740C) = s_740c;
 }
 
+/* Cycle 3 (record §K11.4): 0x2F464, the volume error 0x30728, ADJUST VOLUME
+ * 0x30864, the handicap row 0x30FE8 and 2 PLAYER HANDICAP 0x31138. The
+ * image's layout bytes: bar rows 5, 0xD, 0x13 and label rows 3, 0xB, 0x11
+ * (0xBD444..0xBD449); handicap bar rows 4, 0xC and label rows 2, 0xA
+ * (0xBD459..0xBD45C). 37 frames. */
+#define SM_VOL_MUTED 0x000BD458u   /* the mute byte 0x30E25/0x30E49 store */
+static void sm_check_volume(void)
+{
+    ch_text_setup();
+    /* 0x2F464: "  123" at the cursor (row 3, column 10), width 5, pad 1. */
+    actors_reset();
+    DSW(DS_00105F34) = 3u; DSW(DS_00105F34 + 2u) = 10u;
+    text_number_cont(123, 5, 1u, 0x1000u);
+    CHECK_EQ_INT((int)ch_cell(3, 10), 0);                          /* ' ' draws no cell */
+    CHECK_EQ_INT((int)ch_cell(3, 11), 0);
+    ch_expect(3, 12, '1', 0x1000u, "digit 1");
+    ch_expect(3, 13, '2', 0x1000u, "digit 2");
+    ch_expect(3, 14, '3', 0x1000u, "digit 3");
+    CHECK_EQ_INT((int)DSW(DS_00105F34 + 2u), 15);                  /* the cursor moved past 5 cells */
+    CHECK_EQ_INT((int)DSW(DS_00105F34), 3);
+
+    /* 0x30728: a pass without Esc, then Esc; 26 characters centred at column
+     * (0x2B - 26) >> 1 = 8 on row 6 are released (0x3077E). */
+    static const sm_step_t esc2[] = { { 0u, 0u }, { 0x011Bu, 0u } };
+    actors_reset();
+    sm_begin(esc2, 2u);
+    svc_volume_error();
+    sm_end(2u, "the volume error waits for Esc");
+    CHECK_EQ_INT((int)ch_cell(6, 8), 0);
+    CHECK_EQ_INT((int)ch_cell(6, 33), 0);
+
+    /* The sound state the screens touch, with no sequence and no DIG driver. */
+    const u32 s_5c = DSD(DS_00105D5C), s_c0 = DSD(DS_001028C0), s_c8 = DSD(DS_001028C8);
+    const u32 s_cc = DSD(DS_001028CC), s_d4 = DSD(DS_001028D4);
+    const u8 s_d9 = DSB(DS_001028D9), s_da = DSB(DS_001028DA), s_db = DSB(DS_001028DB);
+    const u32 s_mv = DSD(DS_000A2CB8), s_sv = DSD(DS_000A2CB4);
+    const u8 s_muted = DSB(SM_VOL_MUTED);
+    DSD(DS_001028C0) = 0u; DSD(DS_001028C8) = 0u;
+    DSB(DS_001028DA) = 0u; DSB(DS_001028DB) = 0u;
+
+    /* 0x2C8F0(-1) returns field 0x35 as read (0x2C9B1 `mov eax,edx`). */
+    config_field_set(0x35u, 0x40u);
+    DSD(DS_000A2CB8) = 0x77u;
+    CHECK_EQ_INT((int)attract_config_volumes_unscaled(), 0x40);
+    CHECK_EQ_INT((int)DSD(DS_000A2CB8), 0x20);
+
+    /* ADJUST VOLUME A: music 0x40, effects 0x80, voice 1 (field 0x2A = 9, bit
+     * 3 kept). Up wraps 0 -> 2, Right makes the voice 2 (both volumes scaled,
+     * (v * 2 / 3) >> 1), Down wraps 2 -> 0 (music unscaled), Esc. */
+    config_field_set(0x35u, 0x40u); config_field_set(0x37u, 0x80u); config_field_set(0x2Au, 9u);
+    DSB(SM_VOL_MUTED) = 0x5Au;
+    DSD(DS_00105D5C) = 0xDEADu; DSD(DS_001028D4) = 0xD4D4D4D4u;
+    DSD(DS_000A2CB8) = 0x77u; DSD(DS_000A2CB4) = 0x77u;
+    DSD(DS_000E1C3C) = 0x12345678u;
+    actors_reset();
+    static const sm_step_t vol_a[] = {
+        { 0u, 0u }, { 0x4800u, 0u }, { 0x4D00u, 0u }, { 0x5000u, 0u }, { 0x011Bu, 0u }, { 0u, 0u } };
+    sm_begin(vol_a, 6u);
+    CHECK_EQ_INT((int)svc_adjust_volume(0xBCC9Cu), 0);             /* 0x30EA8 */
+    sm_end(6u, "ADJUST VOLUME: Up, Right, Down, Esc");
+    CHECK_EQ_INT((int)config_field_get(0x2Au), 0xA);               /* (f & ~3) | 2 */
+    CHECK_EQ_INT((int)config_field_get(0x35u), 0x40);
+    CHECK_EQ_INT((int)config_field_get(0x37u), 0x80);
+    CHECK_EQ_INT((int)DSD(DS_000A2CB8), 0x20);                     /* sel 0 last: 0x40 >> 1 */
+    CHECK_EQ_INT((int)DSD(DS_000A2CB4), 0x2A);                     /* sel 2: (0x80 * 2 / 3) >> 1 */
+    CHECK_EQ_INT((int)DSB(SM_VOL_MUTED), 0);                       /* the first pass unmutes */
+    CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x21);                     /* sound_voice(3), case 4 */
+    CHECK_EQ_INT((int)DSD(DS_001028D4), 0);                        /* sound_voice(0x100) on the way out */
+    CHECK_EQ_INT((int)DSD(DS_000E1C3C), (int)0xF000F000u);         /* 0x30B39..0x30B40 0x50146 */
+    ch_expect(3, 16, 'G', 0x3000u, "GAME MUSIC selected");
+    ch_expect(0x11, 15, 'A', 0x4000u, "ATTRACT RATIO not selected");
+    ch_expect(0x16, 5, '2', 0xF000u, "voice level 2");
+    ch_expect(0x16, 6, '/', 0xF000u, "the slash 0x80B60");
+    ch_expect(0x16, 7, '3', 0xF000u, "of 3, through 0x2F464");
+    ch_expect(0x13, 15, 0x13u, 0x1000u, "voice bar: (0x80 * 2) / 3 = 0x55 covers cell 10");
+    ch_expect(0x13, 16, 0x13u, 0xF000u, "voice bar: cell 11 is past it");
+
+    /* B: Left takes music 0x40 to 0x38, Down, Right clamps effects 0xFC to
+     * 0xFF (0x30BFC `jg`), Esc. */
+    config_field_set(0x35u, 0x40u); config_field_set(0x37u, 0xFCu); config_field_set(0x2Au, 9u);
+    DSD(DS_000A2CB8) = 0x77u; DSD(DS_000A2CB4) = 0x77u;
+    actors_reset();
+    static const sm_step_t vol_b[] = {
+        { 0u, 0u }, { 0x4B00u, 0u }, { 0x5000u, 0u }, { 0x4D00u, 0u }, { 0x011Bu, 0u }, { 0u, 0u } };
+    sm_begin(vol_b, 6u);
+    (void)svc_adjust_volume(0xBCC9Cu);
+    sm_end(6u, "ADJUST VOLUME: Left, Down, Right, Esc");
+    CHECK_EQ_INT((int)config_field_get(0x35u), 0x38);
+    CHECK_EQ_INT((int)config_field_get(0x37u), 0xFF);
+    CHECK_EQ_INT((int)config_field_get(0x2Au), 9);
+    CHECK_EQ_INT((int)DSD(DS_000A2CB8), 0x1C);                     /* 0x38 >> 1 */
+    CHECK_EQ_INT((int)DSD(DS_000A2CB4), 0x7F);                     /* 0xFF >> 1 */
+    ch_expect(0xB, 15, 'G', 0x3000u, "GAME SAMPLES selected");
+    ch_expect(0x16, 5, '1', 0xF000u, "voice level 1, drawn before the loop");
+
+    /* C: Left clamps music 5 to 0 (0x30BB9 `jl`), which mutes: voice 0x22 and
+     * the byte 0xBD458 = 1 (0x30E07..0x30E25). */
+    config_field_set(0x35u, 5u); config_field_set(0x37u, 0x80u);
+    DSB(SM_VOL_MUTED) = 0u;
+    DSD(DS_000A2CB8) = 0x77u;
+    static const sm_step_t vol_c[] = { { 0u, 0u }, { 0x4B00u, 0u }, { 0x011Bu, 0u }, { 0u, 0u } };
+    sm_begin(vol_c, 4u);
+    (void)svc_adjust_volume(0xBCC9Cu);
+    sm_end(4u, "ADJUST VOLUME: Left to 0, Esc");
+    CHECK_EQ_INT((int)config_field_get(0x35u), 0);
+    CHECK_EQ_INT((int)DSB(SM_VOL_MUTED), 1);
+    CHECK_EQ_INT((int)DSD(DS_000A2CB8), 0);
+    /* D: a pass with no key still redraws (EDI = 1 from 0x308BC): GAME MUSIC
+     * turns 0x3000 and the mute byte is cleared through sound_voice(3). */
+    config_field_set(0x35u, 0x40u);
+    DSB(SM_VOL_MUTED) = 0x5Au;
+    static const sm_step_t vol_d[] = { { 0u, 0u }, { 0u, 0u }, { 0x011Bu, 0u }, { 0u, 0u } };
+    sm_begin(vol_d, 4u);
+    (void)svc_adjust_volume(0xBCC9Cu);
+    sm_end(4u, "ADJUST VOLUME: a pass without a key, Esc");
+    CHECK_EQ_INT((int)DSB(SM_VOL_MUTED), 0);
+    ch_expect(3, 16, 'G', 0x3000u, "the first pass highlights GAME MUSIC");
+
+    DSD(DS_00105D5C) = s_5c; DSD(DS_001028C0) = s_c0; DSD(DS_001028C8) = s_c8;
+    DSD(DS_001028CC) = s_cc; DSD(DS_001028D4) = s_d4;
+    DSB(DS_001028D9) = s_d9; DSB(DS_001028DA) = s_da; DSB(DS_001028DB) = s_db;
+    DSD(DS_000A2CB8) = s_mv; DSD(DS_000A2CB4) = s_sv;
+    DSB(SM_VOL_MUTED) = s_muted;
+
+    /* 0x30FE8: 100 on row 4. "    " is released from column 0x10 on rows 8
+     * and 9, the number goes at column 0x12, and bar cell (100 - 0x32) / 5 =
+     * 10 is 0xF000, the cells below 0x3000, above 0x1000. */
+    actors_reset();
+    text_cursor_set(0x10, 8, (const u8 *)"ZZ", 0u);
+    svc_handicap_row(0x64u, 4);
+    CHECK_EQ_INT((int)ch_cell(8, 0x10), 0);
+    CHECK_EQ_INT((int)ch_cell(8, 0x11), 0);
+    CHECK(ch_cell(8, 0x12) != 0u, "100: its first digit at column 0x12");
+    ch_expect(4, 0xB, 0x13u, 0x3000u, "bar cell 0");
+    ch_expect(5, 0x14, 0x13u, 0x3000u, "bar cell 9, row + 1");
+    ch_expect(6, 0x15, 0x13u, 0xF000u, "bar cell 10 is the value, row + 2");
+    ch_expect(4, 0x16, 0x13u, 0x1000u, "bar cell 11");
+    ch_expect(4, 0x1F, 0x13u, 0x1000u, "bar cell 20, the last");
+    CHECK_EQ_INT((int)ch_cell(4, 0x20), 0);
+    /* Below 100 (0x10, clamped to 0x32): released from 0x12, drawn at 0x14. */
+    actors_reset();
+    text_cursor_set(0x12, 8, (const u8 *)"ZZ", 0u);
+    svc_handicap_row(0x10u, 4);
+    CHECK_EQ_INT((int)ch_cell(8, 0x12), 0);
+    CHECK(ch_cell(8, 0x14) != 0u, "50: its first digit at column 0x14");
+    ch_expect(4, 0xB, 0x13u, 0xF000u, "clamped low: cell 0 is the value");
+    ch_expect(4, 0xC, 0x13u, 0x1000u, "clamped low: cell 1 above it");
+    actors_reset();
+    svc_handicap_row(0x200u, 4);
+    ch_expect(4, 0x1F, 0x13u, 0xF000u, "clamped high: cell 20 is the value");
+    ch_expect(4, 0x1E, 0x13u, 0x3000u, "clamped high: cell 19 below it");
+
+    /* 2 PLAYER HANDICAP: the packed record's +0x24/+0x26 are the mirror bytes
+     * DS_001014D0/DS_001014D2. A: Right clamps 0x93 to 0x96 (0x3132D `jg`),
+     * Down, Left clamps 0x36 to 0x32 (0x312FF `jl`), Esc. */
+    u8 s_keys[0x28];
+    memcpy(s_keys, mem + DS_001014AC, sizeof s_keys);
+    const u32 s_68 = DSD(DS_00107468), s_6c = DSD(DS_0010746C);
+    DSB(DS_001014D0) = 0x93u; DSB(DS_001014D2) = 0x36u;
+    DSD(DS_00107468) = 0xDEADBEEFu; DSD(DS_0010746C) = 0xDEADBEEFu;
+    DSD(DS_000E1C3C) = 0x12345678u;
+    actors_reset();
+    static const sm_step_t hcp_a[] = {
+        { 0u, 0u }, { 0x4D00u, 0u }, { 0x5000u, 0u }, { 0x4B00u, 0u }, { 0x011Bu, 0u }, { 0u, 0u } };
+    sm_begin(hcp_a, 6u);
+    CHECK_EQ_INT((int)svc_handicap(0xBCCACu), -1);                 /* EAX: 0x2EA78's -1 */
+    sm_end(6u, "HANDICAP: Right, Down, Left, Esc");
+    CHECK_EQ_INT((int)DSD(DS_00107468), 0x96);                     /* 0x313CE */
+    CHECK_EQ_INT((int)DSD(DS_0010746C), 0x32);                     /* 0x313D7 */
+    CHECK_EQ_INT((int)DSB(DS_001014D0), 0x96);                     /* 0x1AE28 applies +0x24 */
+    CHECK_EQ_INT((int)DSB(DS_001014D2), 0x32);                     /* and +0x26 */
+    CHECK_EQ_INT((int)DSD(DS_000E1C3C), (int)0xF000F000u);         /* 0x31284..0x3128B 0x50146 */
+    ch_expect(2, 16, 'L', 0x4000u, "LEFT PLAYER not selected");
+    ch_expect(0xA, 15, 'R', 0x3000u, "RIGHT PLAYER selected");
+    ch_expect(4, 0x1F, 0x13u, 0xF000u, "left bar at 0x96");
+    ch_expect(0xC, 0xB, 0x13u, 0xF000u, "right bar at 0x32");
+    /* B: Left, then Enter puts the packed record's value back
+     * (0x312B1..0x312CF), Esc. */
+    DSB(DS_001014D0) = 0x64u; DSB(DS_001014D2) = 0x50u;
+    DSD(DS_00107468) = 0xDEADBEEFu; DSD(DS_0010746C) = 0xDEADBEEFu;
+    static const sm_step_t hcp_b[] = {
+        { 0u, 0u }, { 0x4B00u, 0u }, { 0x1C0Du, 0u }, { 0x011Bu, 0u }, { 0u, 0u } };
+    sm_begin(hcp_b, 5u);
+    (void)svc_handicap(0xBCCACu);
+    sm_end(5u, "HANDICAP: Left, Enter, Esc");
+    CHECK_EQ_INT((int)DSD(DS_00107468), 0x64);
+    CHECK_EQ_INT((int)DSD(DS_0010746C), 0x50);
+    /* E: a pass with no key still redraws (EBP = menu_run's 0x10): LEFT
+     * PLAYER turns 0x3000. */
+    DSD(DS_00107468) = 0xDEADBEEFu;
+    static const sm_step_t hcp_e[] = { { 0u, 0u }, { 0u, 0u }, { 0x011Bu, 0u }, { 0u, 0u } };
+    sm_begin(hcp_e, 4u);
+    (void)svc_handicap(0xBCCACu);
+    sm_end(4u, "HANDICAP: a pass without a key, Esc");
+    ch_expect(2, 16, 'L', 0x3000u, "the first pass highlights LEFT PLAYER");
+    CHECK_EQ_INT((int)DSD(DS_00107468), 0x64);
+    memcpy(mem + DS_001014AC, s_keys, sizeof s_keys);
+    DSD(DS_00107468) = s_68; DSD(DS_0010746C) = s_6c;
+
+    CHECK(fn_resolve(0x30864u) == (void (*)(void))svc_adjust_volume, "0x30864 registered");
+    CHECK(fn_resolve(0x31138u) == (void (*)(void))svc_handicap, "0x31138 registered");
+}
+
 /* Runs after test_cfg_helpers, whose one actors_init() it relies on. The
  * menu screens advance the tick model and the key state; those, the menu
  * state DS_00107414..DS_00107453 and the credits dword are put back. */
@@ -8074,11 +8298,16 @@ int test_svcmenu(void)
     const u32 s_credits = DSD(DS_00105C00);
     u8 s_cfg[0x100];                     /* the config fields and their dirty byte DS_00105DD8 */
     memcpy(s_cfg, mem + DS_00105D88, sizeof s_cfg);
+    const u32 s_rpt = DSD(DS_000E1C3C);  /* the repeat words 0x50146 writes */
+    const u16 s_rpt40 = DSW(DS_000E1C40), s_rpt42 = DSW(DS_000E1C42), s_rpt44 = DSW(DS_000E1C44);
 
     sm_check_seam();
     sm_check_shell();
     sm_check_options();
+    sm_check_volume();
 
+    DSD(DS_000E1C3C) = s_rpt;
+    DSW(DS_000E1C40) = s_rpt40; DSW(DS_000E1C42) = s_rpt42; DSW(DS_000E1C44) = s_rpt44;
     memcpy(mem + DS_00107414, s_menu, sizeof s_menu);
     DSD(CH_TICK) = s_tick; DSD(DS_00101508) = s_isr;
     DSW(DS_000EF6DE) = s_word;

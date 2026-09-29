@@ -175,9 +175,11 @@ void attract_config_volumes(void)
 /* 0x2C8F0 with eax = -1 — record §42-F. The unscaled arm (0x2C8F8..0x2C934):
  * field 0x35 halved with `sar eax,1` (0x2C910) or 8 when it reads -1, into
  * 0x1CAB8; field 0x37 halved (0x2C92D) or 0x10, into 0x1CED4. No 0x2A read.
- * The returned EAX (field 0x35, 0x2C9B1) is dead at both ported call sites
- * (0x43755, 0x444E5 `xor ah,ah` then byte stores and `xor eax,eax`). */
-void attract_config_volumes_unscaled(void)
+ * The returned EAX is EDX, field 0x35 as read at 0x2C902 (0x2C9B1 `mov
+ * eax,edx`; 0x1CAB8, 0x2D974 and 0x1CED4 preserve EDX). It is dead at the
+ * fight call sites (0x43755, 0x444E5 `xor ah,ah` then byte stores and `xor
+ * eax,eax`); 0x30864 tests it (0x308C6..0x308CA, record §K11.4). */
+u32 attract_config_volumes_unscaled(void)
 {
     u32 m = config_field_get(0x35u);                /* 0x2C8FD 0x2D974 */
     u32 s;
@@ -186,6 +188,7 @@ void attract_config_volumes_unscaled(void)
     sound_music_volume((m == 0xFFFFFFFFu) ? 8u : (u32)((s32)m >> 1));   /* 0x2C912 */
     s = config_field_get(0x37u);                    /* 0x2C91C 0x2D974 */
     sound_sfx_volume((s == 0xFFFFFFFFu) ? 0x10u : (u32)((s32)s >> 1)); /* 0x2C92F */
+    return m;                                       /* 0x2C9B1 */
 }
 
 /* 0x2C9B8 — record §50-D. EAX < 0 (signed, 0x2C9BA `jge`) runs the voice
