@@ -4960,7 +4960,9 @@ void fight_effects_hold_all(void)
  * Every open gate then clears entry+0x1E back to 0 (0x4E104). The four state
  * bodies call no rng_next (no CALL to 0x5D7DC in 0x4DF8C..0x4E103).
  * Callers: 0x277C0 (mode 0xF, game_mode_0f_step, flow.c, record §49-F) and
- * 0x29638 (mode 0x33), whose call 0x2965F is not wired yet (ledger §E-3).
+ * 0x29638 (mode 0x33, game_mode_33_step, at 0x2965F, record §W of
+ * 2026-09-29-e-wire-k8b-k8d-derivations.md). Of 0x4A868's six sites only
+ * 0x4A361 (the case-14 body, K13) is still unwired.
  * EBX/ECX/EDX/ESI/EDI are pushed and popped. */
 void fight_effects_idle_pass(void)
 {

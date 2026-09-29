@@ -2542,10 +2542,13 @@ void game_mode_31_step(void)
 
 /* 0x29638 — record §49-J. Mode 0x33's handler (0x24C5C case 0x33, the
  * table's own named-gap listing until now; its only caller). The match's
- * end wait: the two latches, fight_hud_pass per side, the crowd/ambience
- * walker 0x4DEF4 (named gap below), camera_y_commit, then the DS_00104AEC
- * bit-1 mark and the DS_00104AFE countdown (armed to 0x258 by mode 0x32's
- * own final-win arm, game_mode_32_step). On expiry: the voice 0x2B,
+ * end wait: the two latches, fight_hud_pass per side, the effects list's
+ * idle-pose walker fight_effects_idle_pass (0x4DEF4, called at 0x2965F with
+ * no register argument, record §W of
+ * 2026-09-29-e-wire-k8b-k8d-derivations.md; the same call mode 0xF makes at
+ * 0x277E9), camera_y_commit, then the DS_00104AEC bit-1 mark and the
+ * DS_00104AFE countdown (armed to 0x258 by mode 0x32's own final-win arm,
+ * game_mode_32_step). On expiry: the voice 0x2B,
  * DS_00104B25 = 0 (mode 0x30's own sub-state, parked for mode 0x30's next
  * entry), mode 0x17 (frontend_mode_17_step) and the DS_00104AE4 hook
  * FN_00025AE8 (game_hook_25ae8's own header already names this call site).
@@ -2556,11 +2559,7 @@ void game_mode_33_step(void)
     DSD(DS_0010787C) = DSD(DS_00107878);                /* 0x29644/0x29649 */
     fight_hud_pass(0u);                                 /* 0x2964E 0x35658 */
     fight_hud_pass(1u);                                 /* 0x29655 0x35658 */
-    /* PORT: 0x2965F 0x4DEF4, a 552-byte crowd/ambience state walker over the
-     * DS_0010884C actor list (voices 0xCB/0xDC, volume ramps through
-     * 0x2BC30), is a named gap: unrelated to this mode's own transition
-     * logic and out of scope for this task (also called, still unported,
-     * from mode 0xF's 0x277C0). */
+    fight_effects_idle_pass();                          /* 0x2965F 0x4DEF4 */
     camera_y_commit();                                  /* 0x29664 0x12DA8 */
     DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);     /* 0x29676/0x2967A */
     {

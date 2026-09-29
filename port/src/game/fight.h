@@ -74,8 +74,9 @@ void fight_effects_hold_all(void);
  * pair fight_4dbec also arms), then, per DS_0010884C entry, a 5-way dispatch
  * on entry+0x1E whose states 1..4 each gate on fight_4a868 (0x4A868, record
  * §K4.3); see fight.c for the complete derivation. Callers: mode 0xF's
- * 0x277C0 (game_mode_0f_step, flow.c) and mode 0x33's 0x29638, whose call
- * 0x2965F is not wired yet (ledger §E-3). */
+ * 0x277C0 (game_mode_0f_step, flow.c, at 0x277E9) and mode 0x33's 0x29638
+ * (game_mode_33_step, at 0x2965F, record §W of
+ * 2026-09-29-e-wire-k8b-k8d-derivations.md). */
 void fight_effects_idle_pass(void);
 
 /* Record §K4.1, 0x4A868: the effect entry's proximity gate. With R = the

@@ -389,9 +389,9 @@ void flow_round_timer_step(void);
  * of mode 0xC's 0x27380 — the same prelude, gated projection block and
  * tail — plus the DS_00104B12 slot's frozen-pose undo at entry and
  * flow_round_over_check (0x29970) in place of flow_arena_ko_check. 0x29638
- * (mode 0x33): the match's end wait (0x4DEF4 unported, out of scope) into
- * mode 0x17 with the hook FN_00025AE8, armed by mode 0x32's own
- * game_mode_32_step. */
+ * (mode 0x33): the match's end wait (with the idle-pose walker 0x4DEF4 at
+ * 0x2965F, record §W) into mode 0x17 with the hook FN_00025AE8, armed by
+ * mode 0x32's own game_mode_32_step. */
 void game_mode_30_step(void);
 void flow_round_over_check(void);
 void game_mode_31_step(void);

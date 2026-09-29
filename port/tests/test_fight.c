@@ -32638,6 +32638,20 @@ static void check_mode_33(void)
     CHECK_EQ_INT((int)DSW(DS_00104B00), 0x17);
     CHECK_EQ_INT((int)DSD(DS_00104AE4), (int)FN_00025AE8);
 
+    /* (d) Record §W (2026-09-29-e-wire-k8b-k8d-derivations.md): 0x2965F calls
+     * 0x4DEF4 every frame. Its preamble counts the word DS_001088B0 down by
+     * one (0x4DF2B..0x4DF37); with the flag DS_001088BB clear there is no
+     * re-arm and no rng draw, and mz_seed's effect entry is type 8, which the
+     * walker skips. 0x0100 -> 0x00FF only when the call runs. */
+    m33_seed();
+    DSW(DS_00104AFE) = 5u;
+    DSW(DS_001088B0) = 0x0100u;
+    DSB(DS_001088BB) = 0u;
+    game_mode_33_step();
+    CHECK_EQ_INT((int)DSW(DS_001088B0), 0x00FF);
+    CHECK_EQ_INT((int)DSB(DS_001088BB), 0);
+    CHECK_EQ_INT((int)DSW(DS_00104AFE), 4);
+
     mz_restore();
 }
 
