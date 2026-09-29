@@ -1244,7 +1244,7 @@ is not pinned. The port draws 0 and the test asserts only that the row is
 drawn. The arm is reached only with `DS_00107410` bit 4, config field `0x2A`
 bit 4.
 
-**Values the tests pin** (`sm_check_controls`, 19 scripted frames):
+**Values the tests pin** (`sm_check_controls`, 23 scripted frames):
 
 * `0x2EF48`: `0x2A`/4/1 gives "  2A" and 2; `0xBEEF`/6/0 "00BEEF" and 4;
   `0x12345`/3/0 "345" and 3; `0`/3/`0x100` "  0" and 1 (the flag is all of
@@ -1269,11 +1269,21 @@ bit 4.
   acts and frame 5's Up is dropped (player 2 ends at 2), below 4 both act (0),
   and at 13 or more frame 5's Up is dropped too (0).
 * MODIFY B (4, 0): Right, Down, Esc: player 2 goes 0 -> 2 -> 4 (player 1's
-  device 4); player 1's names are released, the FIERCE markers of both are
-  blank.
+  device 4); player 1's names are released; the HI FIERCE and LO FIERCE
+  markers of both players (`0x2000000`/`0x8000000`, `0x200`/`0x800`) are
+  blank, their cells seeded beforehand; LO QUICK keeps its "X".
 * MODIFY C (2, 6): Right, Up, Left, Esc: player 2 goes 6 -> 4 -> 0 (player 1's
   device 2); Left selects player 1 again ("4 BUTTON JOYSTICK" in `0x3000`).
 * MODIFY D (4, 4): Up, Esc: player 1 goes 4 -> 2 -> 0 (player 2's device 4).
+* The unlimited steps (fix round 1). With player 2's device 0, neither of
+  player 1's limit rows matches (Up `0x32081..0x3208D`: other 2, or other 4
+  and new 2; Down `0x320FD..0x3210D`: the same), so the step stands. MODIFY
+  E (6, 0): Up, Esc: player 1 goes 6 -> 4 (`0x3207A sub esi,2`), "2 BUTTON
+  JOYSTICK" selected and HI FIERCE blank. MODIFY F (0, 0): Down, Esc: player
+  1 goes 0 -> 2 (`0x320F6 add esi,2`), "4 BUTTON JOYSTICK" selected and the
+  first pass's "<UP>" released. A step of 4 either way fails (mutations 43,
+  44); before this, every non-wrapping step in A-D ended on a limit arm or
+  gave the same result with a step of 4.
 * TEST A (`DS_00107410` = `0xEF`, bit 4 clear; devices 0 and 4): a frame with
   the pad at `0xA1004000`, then Esc (2 frames). The pass shows player 1's
   stick Up + Left, player 2's Down, "O" for HI QUICK and "X" for HI FIERCE in
@@ -1285,20 +1295,24 @@ bit 4.
   over player 2's stick at (0x20, 0xB), both sticks, and no button names for
   device 8 (a sentinel at (4, 0x13) is kept).
 
-**Not tested:** Up/Down for player 1 when player 2's device is 2, Down for
-player 1 when it is 4, Down for player 2 when player 1's is 2, 4 or 6, and Up
-for player 2 when player 1's is 4 or 6 (the table above; one arm of each
-direction and player is tested); the buttons for device 6; the "PRESS ESCAPE
+**Limit arms tested:** player 1 Up with player 2's device 4 and new 2 (D);
+player 2 Up with player 1's device 2 and new 4 (C); player 2 Down with player
+1's device 4 and new 2 (B). **Not tested:** player 1 Up with player 2's device
+2; **both player 1 Down arms** (other 2 gives 0, other 4 and new 2 gives 4);
+player 2 Up with player 1's device 2 and new 2 (the `dev == dev1` sub-arm,
+`0x320A8`; reaching it needs a Right frame on top of a script) and with
+player 1's device 4 or 6 and new 2; player 2 Down with player 1's device 2
+(new 2 or 4 gives 6), and with player 1's device 6 (the same arm as 4); the buttons for device 6; the "PRESS ESCAPE
 KEY" line; the `0x2EDE0(0xF300F000, 1)` at both exits (its only effect is the
 key-time stamp); the width limits of `0x2EF48` (no caller passes a width
 outside 1..0x13).
 
-**Frame budget.** 19 scripted frames in `sm_check_controls` (MODIFY 6 + 3 +
-4 + 2, TEST 2 + 2); the helper checks present no frame. K11 total: 83 + 19 =
-102 of 160.
+**Frame budget.** 23 scripted frames in `sm_check_controls` (MODIFY 6 + 3 +
+4 + 2 + 2 + 2, TEST 2 + 2); the helper checks present no frame. K11 total: 83
++ 23 = 106 of 160 (fix round 1 added MODIFY E and F, 4 frames).
 
 **Mutations** (each applied, rebuilt, run and reverted by
-`<scratchpad>/k11_t5_mut.py`; log `<scratchpad>/k11_t5_mutations.txt`). All 42
+`<scratchpad>/k11_t5_mut.py`; log `<scratchpad>/k11_t5_mutations.txt`). All 46
 fail the suite with exit 1 and no crash. They include the brief's five: a
 dropped pad flag (1), swapped jump-table cases (10, 14), `0x314A0`'s Up and
 Down swapped (6), the device wraps (17, 18) and the Esc test on `0x0D` (32).
@@ -1347,6 +1361,10 @@ Down swapped (6), the device wraps (17, 18) and the Esc test on `0x0D` (32).
 | 40 | 0x31F24 registration dropped | 2 checks |
 | 41 | 0x32358 registration dropped | 2 checks |
 | 42 | 0x2EF48 pad digit off (0x31) | 3 checks |
+| 43 | 0x31F24 Down step +4 (fix round 1) | 3 checks (MODIFY F: 4, not 2) |
+| 44 | 0x31F24 Up step -4 (fix round 1) | 4 checks (MODIFY E: 2, not 4) |
+| 45 | 0x31F24 LO FIERCE arm dropped for player 1 (fix round 1) | 2 checks |
+| 46 | 0x31F24 LO FIERCE arm dropped for player 2 (fix round 1) | 2 checks |
 
 **Gate (Task 5).** `make verify` exited 0 (`<scratchpad>/k11_t5_verify.txt`).
 Its oracle lines equal §K11.0's and ledger §A's, except the two unittest

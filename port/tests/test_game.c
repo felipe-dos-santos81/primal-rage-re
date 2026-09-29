@@ -8497,12 +8497,14 @@ static void sm_check_controls(void)
 
     /* MODIFY B: BIOS devices 4 and 0. Right, then Down takes player 2 from 0
      * to 2, which player 1's 2 BUTTON JOYSTICK turns into 4 (0x3212D..
-     * 0x3213C). Player 1's key names are cleared, and FIERCE is blank for both
-     * 2 BUTTON JOYSTICKs. */
+     * 0x3213C). Player 1's key names are cleared, and HI FIERCE and LO
+     * FIERCE are blank for both 2 BUTTON JOYSTICKs (their cells are seeded). */
     static const sm_step_t mod_b[] = { { 0x4D00u, 0u }, { 0x5000u, 0u }, { 0x011Bu, 0u } };
     actors_reset();
     sm_fill_row(7, 8, 1u);
     sm_fill_row(2, 0x13, 1u);
+    sm_fill_row(15, 0x12, 1u); sm_fill_row(35, 0x12, 1u);
+    sm_fill_row(15, 0x16, 1u); sm_fill_row(35, 0x16, 1u);
     sm_begin(mod_b, 3u);
     DSW(MT_LAYOUT + 0x2D4u) = 4u; DSW(MT_LAYOUT + 0x2D6u) = 0u;
     (void)svc_modify_controls(0xBCC6Cu);
@@ -8513,7 +8515,10 @@ static void sm_check_controls(void)
     CHECK_EQ_INT((int)ch_cell(0x13, 2), 0);                        /* 0x319B0 */
     CHECK_EQ_INT((int)ch_cell(0x12, 15), 0);                       /* 0x2000000 blank for device 4 */
     CHECK_EQ_INT((int)ch_cell(0x12, 35), 0);                       /* 0x200 */
+    CHECK_EQ_INT((int)ch_cell(0x16, 15), 0);                       /* 0x8000000 */
+    CHECK_EQ_INT((int)ch_cell(0x16, 35), 0);                       /* 0x800 */
     ch_expect(0x12, 25, 'X', 0x4000u, "player 2 HI QUICK marker");
+    ch_expect(0x16, 5, 'X', 0x4000u, "player 1 LO QUICK marker");
 
     /* MODIFY C: BIOS devices 2 and 6. Right, Up takes player 2 from 6 to 4,
      * which player 1's 4 BUTTON JOYSTICK turns into 0 (0x320A3..0x320C8);
@@ -8542,6 +8547,36 @@ static void sm_check_controls(void)
     CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D6u), 4);
     ch_expect(0x12, 15, 'X', 0x4000u, "player 1 keyboard: HI FIERCE marker");
     CHECK_EQ_INT((int)ch_cell(0x12, 35), 0);
+
+    /* MODIFY E: BIOS devices 6 and 0. Up steps player 1 from 6 to 4
+     * (0x3207A `sub esi,2`); player 2's device 0 matches no limit arm
+     * (0x32081..0x3208D), so 4 stands: "2 BUTTON JOYSTICK", HI FIERCE blank. */
+    static const sm_step_t mod_e[] = { { 0x4800u, 0u }, { 0x011Bu, 0u } };
+    actors_reset();
+    sm_fill_row(15, 0x12, 1u);
+    sm_begin(mod_e, 2u);
+    DSW(MT_LAYOUT + 0x2D4u) = 6u; DSW(MT_LAYOUT + 0x2D6u) = 0u;
+    (void)svc_modify_controls(0xBCC6Cu);
+    sm_end(2u, "MODIFY CONTROLS: Up 6 -> 4, Esc");
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D4u), 4);
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D6u), 0);
+    ch_expect(6, 2, '2', 0x3000u, "player 1 2 BUTTON JOYSTICK, selected");
+    CHECK_EQ_INT((int)ch_cell(0x12, 15), 0);                       /* 0x2000000 blank for device 4 */
+
+    /* MODIFY F: BIOS devices 0 and 0. Down steps player 1 from 0 to 2
+     * (0x320F6 `add esi,2`); player 2's device 0 matches no limit arm
+     * (0x320FD..0x3210D), so 2 stands: "4 BUTTON JOYSTICK", the direction
+     * names drawn by the first pass are released. */
+    static const sm_step_t mod_f[] = { { 0x5000u, 0u }, { 0x011Bu, 0u } };
+    actors_reset();
+    sm_begin(mod_f, 2u);
+    DSW(MT_LAYOUT + 0x2D4u) = 0u; DSW(MT_LAYOUT + 0x2D6u) = 0u;
+    (void)svc_modify_controls(0xBCC6Cu);
+    sm_end(2u, "MODIFY CONTROLS: Down 0 -> 2, Esc");
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D4u), 2);
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D6u), 0);
+    ch_expect(6, 2, '4', 0x3000u, "player 1 4 BUTTON JOYSTICK, selected");
+    CHECK_EQ_INT((int)ch_cell(8, 9), 0);                           /* "<UP>" of the first pass released */
 
     /* TEST A (DS_00107410 bit 4 clear): the pad level of frame 1 (player 1
      * Up + Left and HI QUICK, player 2 Down) is shown by the next pass; the

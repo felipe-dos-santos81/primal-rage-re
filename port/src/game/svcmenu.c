@@ -803,9 +803,10 @@ void svc_dirs_draw(u32 side, u32 rec)
     }
 }
 
-/* The key-config record's device words: the BIOS record's +0x2D4/+0x2D6
- * replace the packed ones when they differ (0x31F54..0x31F85, 0x323FE..
- * 0x3242D). */
+/* PORT: one helper for two inline sequences, 0x31F54..0x31F85 (in 0x31F24)
+ * and 0x323FE..0x3242D (in 0x32358), which are the same instructions: the
+ * BIOS record's device words +0x2D4/+0x2D6 replace the packed record's +0 and
+ * +0x12 when they differ. No original function exists at this address. */
 static void svc_keyrec_devices(u32 rec)
 {
     u32 kb = DSD(DS_00101514);
