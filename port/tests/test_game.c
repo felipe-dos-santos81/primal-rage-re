@@ -2537,6 +2537,60 @@ static void check_hiscore(void)
     memcpy(mem + DS_00105D88, sreg, sizeof sreg);
 }
 
+/* 0x2DDE4 — record §49-R. hiscore_rank_probe against the fresh-CMOS table
+ * (the same 0x1E824 recipe check_hiscore uses), on the real, descending
+ * hs_orig values (500000, 400000, 350000, 300000, 250000, 200000, 90210,
+ * 50000, 20000, 100 for records 0..9 of table 0; the single champion
+ * record of table 1 is 500000 too). Proves the strict-win test (a byte
+ * greater than the record's, unsigned), the tie-does-not-win test (an
+ * exact match keeps scanning rather than stopping), and the off-the-table
+ * -1 sentinel, against table 0 and table 1 both, plus the invalid-table
+ * (>= 3) immediate -1. */
+static void check_hiscore_rank(void)
+{
+    static u8 sreg[0x1C0];
+    memcpy(sreg, mem + DS_00105D88, sizeof sreg);
+
+    mem_fill(HS_T0, 0, 153u);
+    DSD(DS_00104528) = 0x142095u;
+    hiscore_init();
+    CHECK(hs_match(HS_T0, hs_orig, 153u), "check_hiscore_rank's own fresh table");
+
+    /* table 0: strict win at record 0 (no records scanned). */
+    CHECK_EQ_INT((int)hiscore_rank_probe(999999u, 0u), 0);
+    /* table 0: an exact tie with record 0 does not win; record 1 does. */
+    CHECK_EQ_INT((int)hiscore_rank_probe(500000u, 0u), 1);
+    /* table 0: strictly between records 0 and 1. */
+    CHECK_EQ_INT((int)hiscore_rank_probe(450000u, 0u), 1);
+    /* table 0: a tie with record 6, then a strict win over record 7. */
+    CHECK_EQ_INT((int)hiscore_rank_probe(90210u, 0u), 7);
+    /* table 0: at or below the last record (9, value 100), no record is
+     * ever beaten and the probe returns -1. Below record 9's own value a
+     * tie with record 9 first (0 < 100 does not win either), then the
+     * table's own byte budget runs out (0x2DE71..0x2DE7C): the loop's
+     * `left` accounting is table 0's own 120-byte budget, so this holds
+     * regardless of what memory happens to sit past table 0's own bytes. */
+    CHECK_EQ_INT((int)hiscore_rank_probe(100u, 0u), (int)0xFFFFFFFFu);
+    CHECK_EQ_INT((int)hiscore_rank_probe(99u, 0u), (int)0xFFFFFFFFu);
+    CHECK_EQ_INT((int)hiscore_rank_probe(0u, 0u), (int)0xFFFFFFFFu);
+
+    /* table 1 (the one-record champion table, also 500000): a strict win
+     * resolves in the first comparison, with no record-advance loop run at
+     * all — the only table-1/2 case the real callers' own table = 0
+     * argument (0x1ECC8/0x1EC38, record §49-R) makes relevant to reason
+     * about; a losing or tying probe against table 1 or 2 is not tested
+     * here since the raw's own record-advance loop then walks past that
+     * table's own tiny byte budget into memory owned by the next table,
+     * behaviour no shipped caller ever exercises. */
+    CHECK_EQ_INT((int)hiscore_rank_probe(999999u, 1u), 0);
+
+    /* table >= 3: 0x2DB58 itself returns 0 (rec 0 >= count 0), -1
+     * immediately regardless of value. */
+    CHECK_EQ_INT((int)hiscore_rank_probe(999999u, 3u), (int)0xFFFFFFFFu);
+
+    memcpy(mem + DS_00105D88, sreg, sizeof sreg);
+}
+
 /* ---- test_config.c ---- */
 
 /* The descriptor table lives in the loaded image (obj-0 VA 0x2D300). These tests
@@ -2735,6 +2789,7 @@ int test_config(void)
         DSB(DS_00104B1F) = suppress;
     }
     check_hiscore();
+    check_hiscore_rank();
     return 0;
 }
 

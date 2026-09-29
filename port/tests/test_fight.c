@@ -30983,12 +30983,28 @@ static void m1e_seed(u8 substate)
     DSW(DS_00104AFA) = 0x7777u;
 }
 
+/* Record §49-R's fixture: a fresh-CMOS table 0, the same recipe record
+ * §46-A's own check_hiscore/check_mode_1e_bookkeeping use (mz_save covers
+ * the whole data object, 0x80000..0x10B0D0, which includes the table
+ * region at 0x105E34 and DS_00104528, so mz_restore cleans this up too).
+ * Table 0's ten records read, descending: 500000, 400000, 350000, 300000,
+ * 250000, 200000, 90210, 50000, 20000, 100 (hs_orig, test_game.c). */
+static void m1e_hiscore_seed(void)
+{
+    mem_fill(0x105E34u, 0, 153u);
+    DSD(DS_00104528) = 0x142095u;
+    hiscore_init();
+}
+
 /* State 1 (the jump table's own shared-tail `ret`, a genuine no-op) and the
- * always-parked "gated" arms of states 0/4/5/7/8/0xB..0xE/0xF/0x10, which
- * this port leaves as named gaps (record §49-H, flow.h): every one of
- * these calls must leave every field this function touches exactly at its
- * sentinel, proving the state truly does not advance without the unported
- * 0x1ECC8/0x1EC38/0x1F458 (not merely "the test didn't look"). */
+ * always-parked states 5/8/0xB..0xE/0xF/0x10, which this port leaves as
+ * named gaps (record §49-H, flow.h) since they gate entirely on the
+ * unported 0x1F458 initials-entry screen: every one of these calls must
+ * leave every field this function touches exactly at its sentinel, proving
+ * the state truly does not advance without it (not merely "the test didn't
+ * look"). States 0, 4 and 7's own rank-probe gate is real as of record
+ * §49-R and is covered separately, by check_mode_1e_gates and
+ * check_mode_1e_rank_gate. */
 static void check_mode_1e_parked(void)
 {
     static const u8 parked[] = {
@@ -31014,26 +31030,15 @@ static void check_mode_1e_parked(void)
         CHECK_EQ_INT((int)DSW(DS_00104AFA), 0x7777);
     }
 
-    /* State 0's own gate: only reached (and only then parked) when
-     * DS_00104AD4 == 2 && DS_00104B1F == 0 (0x1EECF/0x1EED6/0x1EED8/
-     * 0x1EEDF); every other combination takes the ported short-circuit
-     * arm (DS_00104B25 = 4), proven separately by check_mode_1e_gates. */
-    {
-        m1e_seed(0u);
-        DSD(DS_00104AD4) = 2u;
-        DSB(DS_00104B1F) = 0u;
-        game_mode_1e_step();
-        CHECK_EQ_INT((int)DSB(DS_00104B25), 0);
-    }
-
     mz_restore();
 }
 
-/* States 0, 4 and 7's ported short-circuit arms: the raw's chain of `AND`
- * conditions before the unported rank probe short-circuits in assembly
- * (a `JNZ`/`JZ` on the first false term skips the call entirely), so each
- * of these three states can determine "do not enter the gated arm" and
- * advance without the unported 0x1ECC8/0x1EC38. */
+/* States 0, 4 and 7's short-circuit arms (the raw's chain of `AND`
+ * conditions before the rank probe short-circuits in assembly — a
+ * `JNZ`/`JZ` on the first false term skips the call entirely, record
+ * §49-H) and the real rank-probe gate's own non-qualifying arm (record
+ * §49-R): both land on the same next state, proven separately here. The
+ * qualifying arm is check_mode_1e_rank_gate's. */
 static void check_mode_1e_gates(void)
 {
     if (!mz_save()) { CHECK(0, "the §49-H snapshot allocates"); return; }
@@ -31062,13 +31067,18 @@ static void check_mode_1e_gates(void)
         game_mode_1e_step();
         CHECK_EQ_INT((int)DSB(DS_00104B25), 7);
     }
-    /* state 4: DS_00107813 == 0 enters the unported gate and stays parked
-     * at state 4. */
+    /* state 4: DS_00107813 == 0 enters the real rank-probe gate (record
+     * §49-R); a non-qualifying score (below the fresh-CMOS table's own
+     * lowest record, 100 — m1e_hiscore_seed below) fails it, landing on
+     * state 7 exactly as the short-circuit-false arm does. The qualifying
+     * arm is check_mode_1e_rank_gate's. */
     {
+        m1e_hiscore_seed();
         m1e_seed(4u);
         DSB(DS_00107813) = 0u;
+        DSD(DS_001077EC) = 0u;
         game_mode_1e_step();
-        CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 7);
     }
 
     /* state 7: DS_001078A7 != 0 short-circuits straight to state 0xA. */
@@ -31078,13 +31088,195 @@ static void check_mode_1e_gates(void)
         game_mode_1e_step();
         CHECK_EQ_INT((int)DSB(DS_00104B25), 0x0A);
     }
-    /* state 7: DS_001078A7 == 0 enters the unported gate and stays parked
-     * at state 7. */
+    /* state 7: DS_001078A7 == 0 enters the real gate; a non-qualifying
+     * score fails it, landing on state 0xA exactly as the short-circuit
+     * arm does. */
     {
+        m1e_hiscore_seed();
         m1e_seed(7u);
         DSB(DS_001078A7) = 0u;
+        DSD(DS_00107880) = 0u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0x0A);
+    }
+
+    mz_restore();
+}
+
+/* States 0, 4 and 7's real rank-probe gate (record §49-R), qualifying arm:
+ * the fresh-CMOS table (m1e_hiscore_seed) makes every rank below
+ * deterministic (hs_orig, test_game.c's check_hiscore_rank: 500000,
+ * 400000, 350000, 300000, 250000, 200000, 90210, 50000, 20000, 100 for
+ * records 0..9). */
+static void check_mode_1e_rank_gate(void)
+{
+    if (!mz_save()) { CHECK(0, "the §49-H snapshot allocates"); return; }
+
+    /* state 0: the AND-chain holds but the pair fails to qualify (side 0's
+     * own score, 0, ranks below record 9) — the real gate's own "no", not
+     * the short-circuit's. */
+    {
+        m1e_hiscore_seed();
+        m1e_seed(0u);
+        DSD(DS_00104AD4) = 2u;
+        DSB(DS_00104B1F) = 0u;
+        DSD(DS_001077EC) = 0u;
+        DSD(DS_00107880) = 999999u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+    }
+
+    /* state 0: both sides rank exactly 9 (15000 and 16000 both beat only
+     * record 9, 100, and lose to every record 0..8) — the one pathological
+     * tie 0x1ECC8 rejects even though each side individually qualifies. */
+    {
+        m1e_hiscore_seed();
+        m1e_seed(0u);
+        DSD(DS_00104AD4) = 2u;
+        DSB(DS_00104B1F) = 0u;
+        DSD(DS_001077EC) = 15000u;
+        DSD(DS_00107880) = 16000u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+        CHECK_EQ_INT((int)DSW(DS_001044C0), 9);
+        CHECK_EQ_INT((int)DSW(DS_001044C2), 9);
+    }
+
+    /* state 0: side 0 wins (999999 beats record 0 outright, rank 0; side 1,
+     * 450000, beats record 1, rank 1) — DS_00104B25 = 0xB, and the winner's
+     * own re-probe (0x1EC38, discarded by the raw) still runs for real,
+     * observable through DS_001044D6 and config field 0x26. */
+    {
+        m1e_hiscore_seed();
+        m1e_seed(0u);
+        DSD(DS_00104AD4) = 2u;
+        DSB(DS_00104B1F) = 0u;
+        DSD(DS_001077EC) = 999999u;
+        DSD(DS_00107880) = 450000u;
+        config_field_set(0x26u, 150u);
+        DSW(DS_001044D6) = 0x7777u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0x0B);
+        CHECK_EQ_INT((int)DSW(DS_001044C0), 0);
+        CHECK_EQ_INT((int)DSW(DS_001044C2), 1);
+        CHECK_EQ_INT((int)DSW(DS_001044D6), 0);
+        CHECK_EQ_INT((int)config_field_get(0x26u), 0);
+    }
+
+    /* state 0: side 1 wins (150000 ranks 6; 999999 ranks 0) — DS_00104B25
+     * = 0xC, and the re-probe runs on side 1's score. */
+    {
+        m1e_hiscore_seed();
+        m1e_seed(0u);
+        DSD(DS_00104AD4) = 2u;
+        DSB(DS_00104B1F) = 0u;
+        DSD(DS_001077EC) = 150000u;
+        DSD(DS_00107880) = 999999u;
+        DSW(DS_001044D6) = 0x7777u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0x0C);
+        CHECK_EQ_INT((int)DSW(DS_001044C0), 6);
+        CHECK_EQ_INT((int)DSW(DS_001044C2), 0);
+        CHECK_EQ_INT((int)DSW(DS_001044D6), 0);
+    }
+
+    /* state 0: an exact score tie (both 999999, both rank 0) is not the
+     * pathological 9-9 case, so the pair still qualifies; side 0 wins the
+     * `s0 >= s1` unsigned tie-break. */
+    {
+        m1e_hiscore_seed();
+        m1e_seed(0u);
+        DSD(DS_00104AD4) = 2u;
+        DSB(DS_00104B1F) = 0u;
+        DSD(DS_001077EC) = 999999u;
+        DSD(DS_00107880) = 999999u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0x0B);
+    }
+
+    /* state 4: the gate qualifies (999999, rank 0) and DS_00104AD4 != 0
+     * arms state 5 directly. */
+    {
+        m1e_hiscore_seed();
+        m1e_seed(4u);
+        DSB(DS_00107813) = 0u;
+        DSD(DS_00104AD4) = 1u;
+        DSD(DS_001077EC) = 999999u;
+        config_field_set(0x26u, 150u);
+        DSW(DS_001044D6) = 0x7777u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 5);
+        CHECK_EQ_INT((int)DSW(DS_001044D6), 0);
+        CHECK_EQ_INT((int)config_field_get(0x26u), 0);
+    }
+
+    /* state 4: the gate qualifies, DS_00104AD4 == 0, but the alternate arm
+     * (DS_00104B14 != 0 && DS_00104ABC == 1) also holds: state 5. */
+    {
+        m1e_hiscore_seed();
+        m1e_seed(4u);
+        DSB(DS_00107813) = 0u;
+        DSD(DS_00104AD4) = 0u;
+        DSB(DS_00104B14) = 1u;
+        DSD(DS_00104ABC) = 1u;
+        DSD(DS_001077EC) = 999999u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 5);
+    }
+
+    /* state 4: the gate qualifies but DS_00104AD4 == 0 and DS_00104B14 == 0
+     * — the second, independent gate fails, landing on state 7 despite the
+     * score ranking. Proves the two gates are distinct: a qualifying score
+     * alone is not sufficient. */
+    {
+        m1e_hiscore_seed();
+        m1e_seed(4u);
+        DSB(DS_00107813) = 0u;
+        DSD(DS_00104AD4) = 0u;
+        DSB(DS_00104B14) = 0u;
+        DSD(DS_001077EC) = 999999u;
         game_mode_1e_step();
         CHECK_EQ_INT((int)DSB(DS_00104B25), 7);
+    }
+
+    /* state 4: the gate qualifies, DS_00104AD4 == 0, DS_00104B14 != 0, but
+     * DS_00104ABC != 1 — the alternate arm's own third term fails too. */
+    {
+        m1e_hiscore_seed();
+        m1e_seed(4u);
+        DSB(DS_00107813) = 0u;
+        DSD(DS_00104AD4) = 0u;
+        DSB(DS_00104B14) = 1u;
+        DSD(DS_00104ABC) = 2u;
+        DSD(DS_001077EC) = 999999u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 7);
+    }
+
+    /* state 7: side 1's mirror — the gate qualifies and DS_00104AD4 == 1
+     * arms state 8 directly. */
+    {
+        m1e_hiscore_seed();
+        m1e_seed(7u);
+        DSB(DS_001078A7) = 0u;
+        DSD(DS_00104AD4) = 0u;
+        DSD(DS_00107880) = 999999u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 8);
+    }
+
+    /* state 7: the gate qualifies but DS_00104AD4 == 1 and DS_00104ABC != 1
+     * — the second gate fails, landing on state 0xA. */
+    {
+        m1e_hiscore_seed();
+        m1e_seed(7u);
+        DSB(DS_001078A7) = 0u;
+        DSD(DS_00104AD4) = 1u;
+        DSB(DS_00104B14) = 1u;
+        DSD(DS_00104ABC) = 2u;
+        DSD(DS_00107880) = 999999u;
+        game_mode_1e_step();
+        CHECK_EQ_INT((int)DSB(DS_00104B25), 0x0A);
     }
 
     mz_restore();
@@ -31639,6 +31831,7 @@ static void check_mode_1e(void)
 {
     check_mode_1e_parked();
     check_mode_1e_gates();
+    check_mode_1e_rank_gate();
     check_mode_1e_0a();
     check_mode_1e_bookkeeping();
 }

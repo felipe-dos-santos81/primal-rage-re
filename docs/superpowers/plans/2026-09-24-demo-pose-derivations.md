@@ -24174,3 +24174,303 @@ file-size and CD-drive plumbing that the SDL host, flat `mem[]` and
 `0x108E8`, `0x109A0`, `0x109CA`, `0x109F4`, `0x10B70`, `0x10C30`, `0x10D0C`,
 `0x10D34`). They stay unported on purpose. `tools/port_progress.py` cannot tell
 them from real gaps; this table is the input for teaching it.
+
+## 49-R. The high-score rank probe `0x1ECC8`/`0x1EC38`/`0x2DDE4`, closing mode 0x1E's states 0/4/7 (branch `gap37-hiscorerank`)
+
+**Result in one line.** `0x2DDE4` (177 B, the insertion-rank walk over a
+high-score table) is ported as `hiscore_rank_probe` (`config.c`, calling
+the already-ported `hiscore_locate`, `0x2DB58`, record §46-A); its two
+callers `0x1ECC8` (98 B) and `0x1EC38` (141 B) are ported as
+`hiscore_rank_pair` and `hiscore_rank_single` (`flow.c`, mode 0x1E
+section); and `game_mode_1e_step`'s states 0, 4 and 7 (record §49-H) are
+rewired from "parked" PORT notes to the raw's real gate/advance logic.
+Two callees each state also reaches past the gate — `0x1ED2C` (320 B, the
+name-entry screen's own actor spawns) and, inside `0x1EC38`, `0x204F4`
+(708 B, the name-entry candidate-list shuffle) — stay unported: both exist
+solely to set up the still-unported `0x1F458` initials-entry screen (2897
+B, its own subsystem, explicitly out of this task's scope per the task
+brief), both discard their own return value in the raw, and neither
+writes anything any ported code — this task's new functions included —
+ever reads back. Omitting them is therefore a named gap with no
+observable effect on any state this port's own callers can see, not a
+guess.
+
+### 49-R.1 Sources
+
+The Ghidra HTTP bridge at `127.0.0.1:8089` was reachable this session
+(`get_function_by_address`/`disassemble_function`/`read_memory`/
+`get_xrefs_to`, confirmed before starting). Every instruction of `0x1ECC8`,
+`0x1EC38`, `0x2DDE4`, `0x1ED2C` and `0x204F4` was read by hand
+(`disassemble_function`), and `get_xrefs_to` confirmed each function's
+caller set: `0x2DDE4` is called only from `0x1ECC8` (twice) and `0x1EC38`
+(once); `0x1EC38` is called only from `0x1EEB0` (six sites: state 0's
+winner re-probe, states 4 and 7's own gate, and three more inside states
+0xF/0x10's still-parked priming, unreached by this task); `0x1ECC8` only
+from state 0. `read_memory` on `0x2D3FC`/`0x2D400` (32 bytes) confirmed
+the three live table descriptors' own `value_bytes` field (4/4/3 for
+tables 0/1/2), cross-checked against `test_game.c`'s already-existing
+`hs_orig`/`HS_T0`/`HS_T1` fixture (record §46-A) rather than re-derived.
+
+### 49-R.2 `0x2DDE4`: the rank walk
+
+`EAX` = the value to rank, `EDX` = the table id. Locates record 0 of
+`table` through `0x2DB58` (`hiscore_locate`) to get the table's base
+address and per-record size, returning `-1` immediately when that lookup
+fails (`0x2DE01`/`0x2DE07` — an invalid table, `table >= 3`, or an empty
+one, `count == 0`). Reads the descriptor's own value-byte width `nval`
+straight from `0x2D400` (`= 0x2D3FC + 4`, the same field `hiscore_locate`'s
+own `size` sums), then packs `value` into a local buffer, most-significant
+byte last-shifted-out-first — the same big-endian order `hiscore_insert`'s
+own value store already uses (`0x2DE23`-`0x2DE39`: `buf[n-1] = (u8)value;
+value >>= 8;` counting `n` down from `nval` to `1`). It then walks the
+table record by record (`0x2DE3D` the loop head): a byte-by-byte prefix
+compare against the current record (`0x2DE43`-`0x2DE50`) either matches
+every byte (a tie) or stops at the first mismatch; a **strict** win — the
+packed byte is greater, unsigned, than the record's own (`0x2DE5E` `ja`) —
+returns the count of records already scanned, the insertion rank; a tie or
+a loss advances `left`/`p` by one record's size and rank by one, retrying
+(`0x2DE60`-`0x2DE73`); running the table's own byte budget negative
+(`0x2DE71`/`0x2DE7A`/`0x2DE7C`) returns `-1`. Ported literally
+instruction-for-instruction, not simplified to "the first record `value`
+beats" — a tie does **not** win, which matters: two fighters landing on
+the identical score both continue scanning past the tied record rather
+than both claiming its rank (exercised directly by `check_hiscore_rank`,
+`test_game.c`, and indirectly by `check_mode_1e_rank_gate`'s own 9-9 tie
+scenario, `test_fight.c`).
+
+The local packing buffer is declared `u8 buf[8]` — headroom over the
+descriptor's own observed `nval` (4/4/3 for tables 0/1/2, `0x2D3FC`/
+`0x2D400`, read live), not an invented bound: `value` is a 32-bit
+parameter, so no more than 4 of its bytes can ever be non-zero regardless
+of how large `nval` is, and 8 covers every real descriptor with margin.
+
+**A genuine raw quirk, replicated, not smoothed over.** Table 0's ten
+records exactly fill `0x105E34..0x105EAC` (`10 * 12 = 120` bytes),
+`0x105EAC` being table 1's own base; a probe that ties or loses through
+all ten of table 0's records does not stop there — `left` reaches exactly
+`0` (not negative) after the tenth subtraction, and the raw's `JGE`
+(`left >= 0`) sends it around the loop once more, comparing against
+whatever 4 bytes sit at `p` next — table 1's own leading bytes, read as a
+phantom eleventh record of table 0. For every value this task's own real
+callers ever probe (a fighter's post-match score against table 0, always
+below table 1's champion's 500000 in the shipped table, or already a
+strict win well before reaching record 9), this phantom comparison still
+resolves to a loss, so `left` goes negative on the very next iteration and
+`-1` comes out regardless — verified directly (`check_hiscore_rank`'s
+`100`/`99`/`0` probes against table 0, all `-1`). The port's C loop
+reproduces this by construction (no special-casing of "the last record"),
+matching the raw's own accounting rather than adding an artificial `rank
+< count` guard the raw does not have. Table 1 and 2's own boundary-
+crossing behaviour (probing a value that ties or loses against their own,
+much shorter tables) was read and understood but is **not** asserted in
+the test suite: no shipped caller ever passes `table != 0` to `0x2DDE4`
+(`0x1ECC8`/`0x1EC38` both hard-code `table = 0`, confirmed by `get_xrefs_to`
+and by reading both callers' own `xor edx,edx` in full), so a test
+pinning that boundary's exact byte contents would be pinning an artifact
+of unrelated adjacent memory, not behaviour any real path exercises.
+
+### 49-R.3 `0x1ECC8`: `hiscore_rank_pair`
+
+Ranks both fighters' post-match scores — `DS_001077EC` and `DS_00107880`,
+each per-side record's own `+8` field — against table 0 through
+`hiscore_rank_probe`, recording each side's rank into `DS_001044C0`/
+`DS_001044C2` (`0x1ECD5`/`0x1ECFC`, read back by `game_mode_1e_step`'s own
+callers only indirectly, through this function's return and through
+`hiscore_rank_single`'s later re-probe — no ported code reads
+`DS_001044C0`/`DS_001044C2` directly, but they are stored for parity with
+the raw and for the unported `0x1F458` to read once that screen exists).
+Side 0's rank `>= 10` bails immediately (`0x1ECE0`/`0x1ECE3`/`0x1ECE5`,
+`AL = 0`). Otherwise side 1 is probed, and one pathological tie is
+special-cased in the raw and reproduced exactly: **both** sides landing on
+rank `9` (the table's last slot, which only one of them can actually take)
+bails too (`0x1ED02`/`0x1ED05`/`0x1ED0C`/`0x1ED0F`/`0x1ED11`, `AL = DL ^
+AL = 9 ^ 9 = 0`) — any other tied rank (e.g. both `3`) is **not**
+special-cased, confirmed by reading the raw's own `cmp eax,9` literal, not
+assumed from "ties are probably special". Otherwise side 1's rank `>= 10`
+bails (`0x1ED1D`/`0x1ED20`/`0x1ED22`); else returns `1` (`0x1ED26`).
+
+### 49-R.4 `0x1EC38`: `hiscore_rank_single`
+
+`EAX` = a fighter's score. Ranks it against table 0 through
+`hiscore_rank_probe` (`0x1EC3F`, both `xor edx,edx` sites confirm
+`table = 0`). A rank `>= 10` (`0x1EC75`/`0x1EC78`, the low 16 bits of the
+probe's return — `0xFFFFFFFF` masks to `0xFFFF`, correctly `>= 10`)
+returns `0`. A rank `< 10` clears config field `0x26` through the real,
+unconditional `config_field_set(0x26, 0)` (`0x1ECB1`/`0x1ECB3` — **not**
+the deferred audit add below; a plain store, already ported, always
+executed), records the rank into `DS_001044D6` (`0x1ECBA`) and returns
+`1`.
+
+**Two out-of-scope callees, both proven not to matter to this function's
+own contract.**
+
+- `0x1EC44`-`0x1EC6B` and `0x1EC7A`-`0x1EC9A` each post one deferred
+  `0x2DAE4` audit add — field `0x27` always, clamped at 2000 through
+  `config_field_set` when its running total exceeds it; field `0x26` only
+  on the non-qualifying path, clamped at 200. `0x2DAE4` is the deferred
+  audit idiom this codebase already treats as out of scope everywhere else
+  (spec §7, the exact three-function list — `0x2E934`/`0x2DAE4`/`0x2C3FC`
+  — the task brief itself named); PORT-noted, not called. Neither add
+  changes this function's own return value or `DS_001044D6` — both are
+  read only by `hiscore_audit_reset_due` (`0x1E988`, already ported,
+  record §46-A), which no path in this task's own new code calls.
+- `0x1ECA7` calls `0x204F4(edx = the score)` — read in full (708 B): it
+  shifts the name-entry candidate list (`DS_00104367`, the same buffer
+  `hiscore_init` blanks) and initialises the cursor-state fields
+  `DS_0010431C`-`DS_00104394`, `DS_001044C4`/`0x1044CC`/`0x1044D4` for the
+  unported `0x1F458` initials-entry screen. Its own return value is
+  discarded by the raw itself (no `mov eax,...` reads it back), so omitting
+  it changes nothing this function returns or stores; PORT-noted at its
+  call site.
+
+### 49-R.5 Wiring `game_mode_1e_step`'s states 0, 4, 7
+
+Re-read in full against the live Ghidra disassembly (`0x1EEB0`, the whole
+`0x1EECF`-`0x1F3D8` range covering all three states), not assumed from the
+record §49-H header comment's own "PORT: gap" notes:
+
+- **State 0** (`0x1EECF`-`0x1EF43`). The already-ported short-circuit
+  (`DS_00104AD4 == 2 && DS_00104B1F == 0`) now continues, via C's own
+  left-to-right `&&`, into `hiscore_rank_pair() != 0` (`0x1EEE1`/`0x1EEE6`/
+  `0x1EEE8`) — the assembly's own chain of `JNZ`/`JZ` on the first false
+  term, all landing on the same `DS_00104B25 = 4` tail (`0x1EF37`), maps
+  onto a short-circuiting boolean expression exactly. On success: the
+  higher of the two scores wins the unsigned `cmp eax,ecx; jc` comparison
+  (`0x1EF0E`/`0x1EF10`; a tie favours side 0, `s0 >= s1`), `DS_00104B25`
+  becomes `0xB` or `0xC` (`0x1EF12`/`0x1EF27`), and `hiscore_rank_single`
+  is called on the winner's score with its own return discarded
+  (`0x1EF19`/`0x1EF2D`, matching the raw exactly — the raw never checks
+  this call's `AL`). `0x1ED2C` and the two `0x2C3FC(0x100)`/`0x2C3FC(0xE1)`
+  voices between the gate and the winner comparison (`0x1EEEA`-`0x1EEF9`)
+  are PORT-noted (see §49-R.6).
+- **State 4** (`0x1F199`-`0x1F2AA`). The existing short-circuit
+  (`DS_00107813 != 0` → state 7) is unchanged. Past it,
+  `hiscore_rank_single(DS_001077EC)` is called for real (`0x1F1A6`-
+  `0x1F1B2`); a `0` return bails to state 7 (the same target the
+  short-circuit uses). A `1` return does **not** advance immediately — the
+  raw runs a second, independent gate (`0x1F1B8`-`0x1F1D5`):
+  `DS_00104AD4 != 0`, **or** (`DS_00104B14 != 0 && DS_00104ABC == 1`).
+  Only when that too holds does `DS_00104B25` become `5` (`0x1F1DB`); any
+  other combination — including a qualifying score — still lands on state
+  7. This second gate was not visible from record §49-H's own header
+  comment (which only named the rank probe as the gap) and was found by
+  reading the raw straight through past the probe call; it is exercised
+  directly by `check_mode_1e_rank_gate`'s "qualifies but the second gate
+  fails" scenario, which would have been missed by treating the rank
+  probe alone as sufficient.
+- **State 7** (`0x1F2B7`-`0x1F3D8`). An exact mirror of state 4:
+  `DS_001078A7`/`DS_00107880`/`DS_00104AD4 != 1` (not `!= 0`) in place of
+  the corresponding state-4 terms, arming state `8` (`0x1F2FA`/`0x1F301`)
+  instead of `5`, bailing to `0xA` instead of `7`.
+
+### 49-R.6 What stays out of scope, and why it is safe to leave out
+
+`0x1ED2C` (320 B: `frontend_input_reset`, `actors_reset`, four
+`frontend_spawn_row` calls building the name-entry backdrop, two
+`actor_spawn` + `actors_anim_seek` pairs for the cursor actors, then a
+bounded 18-iteration clear loop over `DS_00104112`-`DS_00104168` and four
+more field resets) is called unconditionally on all three states' success
+paths, immediately before the winner comparison (state 0) or the state
+store (states 4/7). Every one of its own callees is already ported
+(`frontend_input_reset`, `actors_reset`, `frontend_spawn_row`,
+`actor_spawn`, `actors_anim_seek`) — it was read in full specifically to
+check whether it was trivially portable — but its entire purpose is
+priming the visual presentation (backdrop, cursor sprites, coordinate
+fields) for the unported `0x1F458` initials-entry screen the task brief
+explicitly places out of scope ("Do not port `0x1F458`... a much larger,
+separate piece of work"). Porting `0x1ED2C` alone, with `0x1F458` never
+running to consume or clean up what it spawns, would leave actors and
+cursor state behind that nothing in this port's own reachable code frees
+or advances — a correctness risk for the actor-pool invariants
+`test_fight.c`'s existing fixtures (`check_point_trample` and neighbours)
+already depend on — for zero benefit to any state transition this task's
+own tests can observe, since every field `0x1ED2C` writes is read only by
+`0x1F458` itself. PORT-noted at all three call sites (`flow.c`), not
+silently dropped.
+
+`0x204F4` (§49-R.4) is the equivalent name-entry setup called from inside
+`0x1EC38`; same reasoning, same disposition.
+
+Both stay named gaps under the same umbrella `docs/PROGRESS.md` already
+carries jointly for `0x1EEB0`/`0x1F458` ("the interactive match ...
+remains unowned") — this task closes the rank-probe half of that gap, not
+the initials-entry screen itself.
+
+### 49-R.7 Verification
+
+`check_hiscore_rank` (`test_game.c`, after `check_hiscore`) exercises
+`hiscore_rank_probe` directly against the fresh-CMOS table's own real
+values (`hs_orig`: 500000, 400000, 350000, 300000, 250000, 200000, 90210,
+50000, 20000, 100 for table 0's records 0..9; 500000 for table 1's single
+champion record): a strict win at record 0 with no records scanned; an
+exact tie with record 0 that does **not** win, continuing to a strict win
+over record 1 (proves the tie-does-not-win branch, not merely that *some*
+rank comes back); a value strictly between two records; a tie with record
+6 followed by a win over record 7; the off-the-table `-1` sentinel at and
+below record 9's own value; a clean win against table 1 with no
+record-advance loop run at all (the only table 1/2 behaviour any real
+caller could exercise, per §49-R.2's own note); and the invalid-table
+(`>= 3`) immediate `-1`.
+
+`check_mode_1e_gates` (`test_fight.c`) keeps its four existing
+short-circuit scenarios and replaces the two "stays parked" scenarios
+(states 4 and 7 with the short-circuit condition open) with a real,
+seeded non-qualifying score (`m1e_hiscore_seed`, the same fresh-CMOS
+recipe as `check_hiscore`/`check_mode_1e_bookkeeping`) landing on the same
+next state the short-circuit-false arm reaches — proving the real gate's
+"no" behaves identically to the short-circuit's "no", not merely that
+"something happens". The new `check_mode_1e_rank_gate` covers the
+qualifying arms end to end: state 0's winner tie-break both directions
+(side 0 wins on `>=`, side 1 wins on `<`, and an exact score tie favouring
+side 0), the pathological both-rank-9 rejection (`DS_001044C0`/
+`DS_001044C2` both read back as `9`, proving the rejection is the special
+case, not a coincidental non-qualification), `DS_001044D6` and config
+field `0x26`'s real side effects from the winner's re-probe, and states
+4/7's second, independent gate — all four of its combinations (armed
+directly by `DS_00104AD4 != 0`/`!= 1`; armed by the alternate
+`DS_00104B14`/`DS_00104ABC` path; and, critically, a **qualifying score
+that still bails** when neither arm of the second gate holds, proving the
+two gates are genuinely independent rather than the rank probe alone
+gating advancement).
+
+**Proved live**, three single-site mutations, each rebuilt, confirmed to
+fail the exact assertion it targets, then reverted and rebuilt clean:
+
+1. `hiscore_rank_probe`'s strict-win test widened from `i < nval &&
+   buf[i] > DSB(p+i)` to `i == nval || (i < nval && buf[i] > DSB(p+i))`
+   (a tie now wins too) — caught by `check_hiscore_rank`
+   (`test_game.c:2440`/`2444`/`2451`, 3 failures: the exact-tie, the
+   tie-then-win, and the off-the-table cases all changed).
+2. State 4's second-gate term inverted, `DSD(DS_00104AD4) != 0u` →
+   `== 0u` — caught by `check_mode_1e_rank_gate`
+   (`test_fight.c:30237`/`30268`/`30282`, 3 failures across the "arms
+   directly", "qualifies but second gate fails" and "third-term fails"
+   scenarios).
+3. `hiscore_rank_pair`'s tie-rejection constant changed from `9u` to `8u`
+   — caught by `check_mode_1e_rank_gate`'s own 9-9 tie scenario
+   (`test_fight.c:30169`, `12 != 4`: the pair no longer rejects the real
+   9-9 tie, so state 0 advances to `0xC` instead of staying parked at
+   state `4`).
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed, 3 consecutive
+clean runs (plus the three mutation round-trips above), each ~1.7-1.8 s
+wall, no SIGBUS, no hang — `hiscore_rank_probe`'s `for (;;)` loop is
+bounded by the table's own byte budget going negative every real caller
+ever exercises (§49-R.2), and no other new function contains a loop.
+`make verify` (worktree-local `*_DUMP`/`TITLE_PIN_DIR` overrides,
+`_gap37` suffixed, per the shared-`/tmp` collision precedent records
+§49-H/§49-K/§49-O/§49-Q already flag): front-end 517/801/3/2, demo-fight
+fully explained at N = 1886, attract2 0 unexplained at N = 3617,
+`symbols.h` regenerates byte-identically — all four gate numbers
+unchanged from before this task, as expected: mode `0x1E` is reachable
+only from a live match's post-challenge high-score flow, which none of
+the front-end/demo-fight/attract2 oracles' own no-input capture windows
+reaches.
+
+### 49-R.8 Remaining named gaps
+
+`0x1ED2C` and `0x204F4` (§49-R.6) — the name-entry screen's own setup,
+out of scope with `0x1F458` itself. The deferred `0x2DAE4` audit adds
+inside `0x1EC38` (§49-R.4) — the established spec §7 idiom. States 5, 8,
+0xB-0xE, primed by 0xF/0x10, remain parked exactly as record §49-H left
+them: they gate entirely on `0x1F458`, untouched by this task.
