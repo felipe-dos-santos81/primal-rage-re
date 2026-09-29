@@ -237,3 +237,188 @@ status 2. Test `test_ail` §4d: a keyed voice, a bad re-init -> status 2, 40
 ticks write nothing, the voice still sounds. Reachability: `0x1C930` always
 stops before it inits, and every shipped bank is valid, so the game never takes
 this branch.
+
+---
+
+## Game (§20–§31)
+
+### §20 `flow.c:1002` — can an unregistered `DS_00104AE4` hook reach `0x4F9A0`? — resolved-as-is
+
+No. Every instruction that stores to `DS_00104AE4` was found by scanning the
+code object for the fixed-up dword `0x00104AE4` and decoding each hit: 42
+stores, all `mov dword [0x104ae4],reg`, each fed by a `mov reg,imm32` at most 34
+bytes before it in the same block; no `mov dword [..],imm32` form exists, and
+the static dword is 0. The 19 distinct values:
+
+| value | stored at (first sites) | port |
+|---|---|---|
+| `0x430E8` | `0x1F447`, `0x43AE8`, `0x43C18`, `0x44824` | registered (`actors.c:627`) |
+| `0x259CC` | `0x253AE`, `0x417A5`, `0x418D5`, `0x423C4` | registered |
+| `0x4367C` | `0x25810` | registered |
+| `0x25BBC` | `0x25A46`, `0x25A73`, `0x285CB`, `0x285F3` | registered |
+| `0x10E80` | `0x25B6E` | registered |
+| `0x24B54` | `0x25B97` | registered |
+| `0x26998` | `0x2698B` | registered |
+| `0x27134` | `0x27074`, `0x27233` | registered |
+| `0x270BC` | `0x2715C` | registered |
+| `0x29B74` | `0x278A4`, `0x2862A`, `0x2898F`, `0x28AB9`, `0x28B57` | registered (`actors.c:615`) |
+| `0x4142C` | `0x28BC6` | registered |
+| `0x43738` | `0x28D73`, `0x28D95` | registered (`actors.c:359`) |
+| `0x28D80` | `0x28E60` | registered (`actors.c:621`) |
+| `0x25AE8` | `0x296AF`, `0x42ED9` | registered |
+| `0x26978` | `0x41854` | registered |
+| `0x28D68` | `0x42D04`, `0x42D40`, `0x42D8F`, `0x42FBD` | registered (`actors.c:620`) |
+| `0x430C0` | `0x43284` | registered |
+| `0x29D60` | `0x43805`, `0x44541` | a bare `ret`: a miss is exact |
+| `0x5D812` | `0x25C13`, `0x26A36`, `0x2712C`, `0x29630` | `xor eax,eax; ret`: a miss is exact |
+
+The comment listed 13 of the 17 non-trivial values; the other four
+(`0x29B74`, `0x43738`, `0x28D68`, `0x28D80`) are registered too.
+
+### §21 `flow.c:5772` — `0x1CF40`'s `param_1`/`param_2` gates — resolved-as-is
+
+`0x1CF40` tests DL at `0x1CF5E` (the DIG install and its preferences) and the
+saved AL at `0x1CFBF` (the MDI install). Its only caller is `0x1BEC4`
+(`prage.calls.csv`; the only `call rel32` to it in the code object), which
+passes `0x1BFD1 mov edx,1; 0x1BFD9 mov eax,edx; 0x1BFDB call 0x1cf40`. Both
+gates are always taken, so the port's unconditional installs are exact.
+Rewritten as `PORT:`.
+
+### §22 `flow.c:5828` — the sound-table id to resource mapping — resolved-as-is
+
+`DS_000BBDC8` is in the image and `sound_voice` already reads it. Scanning its
+records for case 1 with a handle in resource 7 (`S16TITLE.GRA`, INDEX entry 7)
+finds only ids `0x54` and `0x56`, both handle `0x03836102` = resource 7 +
+`0x36102`. There the file holds the size dword `0x1338` (4920) and then the
+XMIDI file: `FORM XDIR` at `0x36106`, `CAT XMID` at `0x3611C`, `FORM XMID` at
+`0x36128`. `0x1C930` copies the `size` bytes that follow the size dword and
+`AIL_init_sequence` finds the sequence in them; `title_music_bank`'s scan
+returns the same `FORM XMID` at `0x36128`. So the port's bank is the table's.
+What remains unported is the request that names id `0x54`/`0x56` (the title
+state's music trigger, already a named port choice at `flow.c`
+`game_state_title`).
+
+### §23 `flow.c:5900` — the sample loop flag — resolved-with-fix
+
+`0x1CB18` calls `AIL_set_sample_loop_count(h, 0)` only when the slot's loop
+byte is 1 (`0x1CBCA mov al,[ebp+0x102868]; 0x1CBD3 cmp eax,1; jne`;
+`0x1CBD8..0x1CBE1`). `0x1CC28` queued that byte from the voice record's `+8`
+(`0x2C3FC` case 2). AIL's loop count is a count, not a flag:
+`AIL_init_sample`'s body sets `+0x30 = 1` (`0x67F4B`); `0x5DCE4` -> `0x68050`
+stores it; at the buffer end the DIG service `0x6F120` restarts a count-0
+sample forever (`0x6F289 cmp [ecx+0x30],0`), stops a count-1 one
+(`0x6F28F cmp [ecx+0x30],1`, status 2) and decrements a larger one
+(`0x6F295 dec [ecx+0x30]`). The announcer the port plays is voice id `0xCD`
+(`DS_000BBDC8[0xCD]` = case 2, handle `0x02824B0F` = `S16SOUND.GRA` +
+`0x24B0F`, the RIFF blob with 19327 8-bit frames at 11025 Hz, loop byte 0), so
+the raw plays it once through the default count 1.
+
+The port had both halves inverted: `ail.c` treated the count as a loop flag
+(default 1 = loop) and `game_sample_play` always set 0 (one-shot), which
+cancelled out audibly. Fix: `AIL_start_sample` loops only a count-0 sample
+(PORT: a count above 1 plays once; the game never sets one), and
+`game_sample_play` sets 0 only when id `0xCD`'s loop byte is 1. Tests:
+`test_ail` (a 1-frame sample: the default plays once, count 0 repeats; the
+tone handle in §6 now uses count 0 to keep looping, an argument change) and
+`test_flow` (id `0xCD`'s handle, and no voice left after ~98k output
+frames).
+
+### §24 `flow.c:6417` — the credit countdown under input — named-gap-with-evidence
+
+The decrementers `0x2CA48`/`0x2CA7C` are ported and unit-tested against the
+raw (`test_game.c`, `config_credit_take`/`config_credit_spend`). What is open
+is oracle coverage: the three captures (`data/title-captures/title`, `title2`,
+`frontend`) have no coin input. A DOSBox-X capture with coins inserted would
+cover it. Rewritten as a `PORT:` named gap.
+
+### §25 `fight.c:1586` — meanings of slot `+0x5A/+0x5D/+0x5E/+0x63` — resolved-as-is
+
+A naming doubt; `0x1D540` is transcribed per instruction. The roles from the
+writers: `+0x5A` is meter A's target, the health (`0x36E90` sets `0x78 -
+[+0x5B]`, `0x33B85` restores it; `0x1D56A` steps meter `DS_0010290C` toward it
+and `0x1D2F0` draws it); `+0x5D` is meter B's target (`0x36C87` sets `0x44`,
+`0x33D9C`/`0x36EA3`/`0x36E10` clear it; `0x1D5AD` steps `DS_0010290E` toward it,
+`0x1D464` draws it; `0x1D6D1..0x1D71F` decay it); `+0x5E` is the timer that
+paces that decay (`0x1D5E6` increments, `0x1D6A8`/`0x1D6D1`/`0x1D711` set or
+clear it); `+0x63` is set by the character select (`0x41385`) and cleared at
+`0x34EFC`/`0x39C7F`.
+
+### §26 `config.c:112` — the raw EDX at `0x2DACA`/`0x2DAD4` — resolved-as-is (signature correction)
+
+`0x2D4EC` takes EAX only: `0x2D4EE push edx` then `0x2D4F5 mov edx,eax`
+overwrites EDX before any read, and the pushed value is restored on exit. The
+EDX values at the call sites cannot matter. The port's `config_storage_touch`
+lost its phantom second parameter; behaviour-neutral (the function is a
+declared no-op), so there is nothing observable to test.
+
+### §27 `config.c:200` — the three omitted `0x2D4EC` calls — resolved-as-is (call sites added)
+
+`0x2D6F8`'s defaults arm ends `0x2D89C cmp byte [0x2d490],0; je 0x2d910;
+0x2D8A5 mov eax,1; call 0x2d4ec; 0x2D8AF mov eax,2; call 0x2d4ec; 0x2D8B9 jmp
+0x2d909` -> `0x2D909 xor eax,eax; call 0x2d4ec`. The other arm (`0x2D834 je
+0x2d8bb`) reads the image through the deferred `0x2E990` and reaches
+`0x2D909` only when that read fails with `DS_0002D490` set. The port now makes
+the defaults arm's three no-op calls under the same gate; the other arm is a
+`PORT:` note (no stored image). Behaviour-neutral, no test.
+
+### §28 `fighter.c:155` — character above 6 reads caller registers — resolved-as-is
+
+`0x18428`: `0x1842F mov al,[eax+0x7a]; 0x18432 cmp al,6; 0x18434 ja 0x18408;
+0x1843B jmp cs:[eax*4+0x1840c]`. The fixed-up table `0x1840C` holds seven
+entries, all `0x18408`, which is `ret`. So `0x18428` has no effect for any
+input, and whatever the register-dependent `[lo, hi)` test in `0x18460`
+decides for a character above 6 changes no state. The port's return value is
+port-only. Rewritten as `PORT:`.
+
+### §29 `fighter.c:2297` — `DSD(0x1078DC)` indirection at `0x374E3` — resolved-with-fix
+
+`0x37464`: `0x374E3 mov edx,[0x1078dc]` (the pointer), `+ 14*char`
+(`lea eax,[edx*8]; sub eax,edx; add eax,eax`), `+ 2*other char`, then
+`0x37502 mov si,[edx]` (and in the other arm `0x3751D mov edx,[0x1078dc]` ...
+`0x37534 mov cx,[edx+eax*2]`). `0x36F10` stores the table `0xBD89C` at
+`0x37043`, and `0x37D7B` stores it too. The port read the word at `0x1078DC`
+itself. Fix: `DSW(DSD(DS_001078DC) + …)`. The `check_gap_handlers` D seeds
+move (the pointer `0x3F54000` whose own low word `0x4000` differs from the
+table word `0x10`); its assertions are unchanged, and with the old read they
+fail (RED: `256 != 240`, `0 != 9`).
+
+### §30 `fighter.c:3883` — load order of slot `+0x2C` vs `0x2BC30` — resolved-with-fix
+
+`0x3C480`: `0x3C4A8 mov ebx,[esp+0xc]` (slot, after the push) `; 0x3C4B0 mov
+ebx,[ebx+0x2c]; 0x3C4B3 call 0x2bc30; 0x3C4BB mov edx,ebx; 0x3C4BD call
+0x188dc`. `0x2BC30` preserves EBX (`0x2BC30 push ebx`). So the value passed to
+`0x188DC` is `+0x2C` from before the animation start, which can change it
+when the stream's opening opcodes run code (op 0x10/0x11/0x15 indirect calls).
+Fix: load before `actors_anim_begin`. Test `check_block` H5: a stream whose
+first word is an indirect call (`0xD000` + a 32-bit code address) to a test
+hook registered at `0x00F0F000` (outside both LE objects) that rewrites slot
+0's `+0x2C` to `0x7777`; with `+0x42` bit 3 set `0x18714` returns the record's
+`+0x18` (`0x12340`), and `+0x2C` must end as that (RED: `30583 != 74560`).
+
+### §31 `fighter.c:11005` — the immediate `0x1F874610` — resolved-as-is
+
+It is a resource handle (`index << 23 | offset`), so "no LE fixup" is expected.
+Index `0x1F874610 >> 23 = 63`; INDEX entry 63 is `s16spift.gra`, 478720 =
+`0x74E00` bytes, and the offset `0x74610` lies inside it. The bytes there are a
+palette block: the count dword `0x1F` (31) followed by 31 colour words
+(`0x00272727`, `0x00212121`, …). The port already passes it to
+`actor_pset_palette` as the raw does (`0x45B94..0x45BA4`), so the acquire
+records a 31-colour palette, not an empty entry. Only the comment was wrong.
+
+---
+
+## Verdict tally
+
+| verdict | sections |
+|---|---|
+| resolved-as-is | §1, §4, §5, §6, §7, §9, §14, §15, §20, §21, §22, §25, §26, §27, §28, §31 (16) |
+| resolved-with-fix | §3, §12, §19, §23, §29, §30 (6) |
+| named-gap-with-evidence | §13, §24 (2) |
+| PORT-reclassified | §2, §8, §10, §11, §16, §17, §18 (7) |
+
+New named gaps found on the way: AIL FOR/NEXT loop controllers 116/117 (§14),
+the `0x1BDF4` tick gate on `DS_00104B22`, which the host tick ignores
+(unobservable, §1), and `0x2D6F8`'s non-defaults arm (§27, deferred with
+`0x2E990`). Frame dumps of the front-end/demo-fight/cycle-2 run (7386 files)
+and the attract/title run (887 files) are byte-identical before (`1a287b0`)
+and after the whole sweep.

@@ -1449,7 +1449,7 @@ int test_ail(void)
         AIL_set_sample_address(hs[1], tone8, 4);
         AIL_set_sample_rate(hs[1], 11025);
         AIL_set_sample_volume(hs[1], 0x7f);
-        AIL_set_sample_loop_count(hs[1], 1);
+        AIL_set_sample_loop_count(hs[1], 0);   /* 0 loops (record §23) */
 
         mixer_reset();                 /* silence OPL so only the voices are heard */
         AIL_start_sample(hs[0]);
@@ -1485,6 +1485,24 @@ int test_ail(void)
         mixer_render(ail_out, 1, 44100);
         CHECK_EQ_INT(ail_out[0], 18432);
         CHECK_EQ_INT(ail_out[1], 18432);
+        AIL_stop_sample(hs[0]);
+        /* The loop count is a count (todo-verify record §23): AIL_init_sample
+         * defaults it to 1 (0x67F4B), and at the buffer's end the DIG service
+         * stops a count-1 sample, decrements a larger count and restarts a
+         * count-0 sample forever (0x6F289/0x6F28F/0x6F295). */
+        mixer_reset();
+        AIL_init_sample(hs[0]);
+        AIL_set_sample_address(hs[0], one8, 1);
+        AIL_set_sample_rate(hs[0], 44100);
+        AIL_set_sample_volume(hs[0], 0x7f);
+        AIL_start_sample(hs[0]);             /* the default count 1: once */
+        mixer_render(ail_out, 2, 44100);
+        CHECK_EQ_INT(ail_out[0], 18432);
+        CHECK_EQ_INT(ail_out[2], 0);
+        AIL_set_sample_loop_count(hs[0], 0); /* count 0: forever */
+        AIL_start_sample(hs[0]);
+        mixer_render(ail_out, 2, 44100);
+        CHECK_EQ_INT(ail_out[2], 18432);
         AIL_stop_sample(hs[0]);
         /* A start with no sample bytes adds no voice, so status stays stopped
          * instead of reporting playing with nothing behind it. */

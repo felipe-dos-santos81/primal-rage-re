@@ -140,8 +140,10 @@ void AIL_set_sample_volume(HSAMPLE sample, s32 volume);
 /* PORT: the volume 0x5dcc5 last stored (0 for a NULL or unused handle). */
 s32 AIL_sample_volume(HSAMPLE sample);
 
-/* 0x5dce4 — spec audio.md "AIL surface" (row 19). Sets the loop count (the game
- * forces 0 = no loop; name inferred). */
+/* 0x5dce4 — spec audio.md "AIL surface" (row 19). Sets the loop count: 0
+ * loops forever, 1 (AIL_init_sample's default, 0x67F4B) plays once, per the
+ * DIG service 0x6F120 (record §23 of 2026-09-29-todo-verify-derivations.md;
+ * name inferred). */
 void AIL_set_sample_loop_count(HSAMPLE sample, u32 count);
 
 /* 0x5dd03 — spec audio.md "AIL surface" (row 20). Returns 2 stopped / 4 playing

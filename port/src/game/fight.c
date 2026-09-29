@@ -1583,8 +1583,14 @@ static u32 fight_cmd_bits_30(u32 side)
  * - then with 0x468D8 holding: +0x5E > lim (signed) zeroes it and takes rate
  *   off +0x5D (to 0 when +0x5D < rate, signed); without it: +0x5E > v zeroes
  *   +0x5E and steps +0x5D down one unless it is 0 (0x1D6FD..0x1D71F).
- * TODO(verify): the meanings of the +0x5A/+0x5D/+0x5E/+0x63 slot bytes are not
- * derived here; the port reproduces the observed byte arithmetic only. */
+ * The slot bytes' roles, from their writers (record §25 of
+ * 2026-09-29-todo-verify-derivations.md): +0x5A is meter A's target, the
+ * health 0x36E90 sets to 0x78 - +0x5B and 0x33B85 restores; +0x5D is meter
+ * B's target, set to 0x44 at 0x36C87, cleared at 0x33D9C/0x36EA3/0x36E10 and
+ * decayed here; +0x5E is the timer that paces that decay; +0x63 is the
+ * flag the character select sets (0x41385) and 0x34EFC/0x39C7F clear. Every
+ * operation above is transcribed per instruction, so the roles change no
+ * arithmetic. */
 void fight_hud_meter_step(void)
 {
     for (u32 side = 0; side < 2u; side++) {                     /* 0x1D732 */

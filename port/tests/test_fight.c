@@ -9535,7 +9535,7 @@ static void check_gap_handlers(void)
     u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
     u8 s_max = DSB(DS_000BDA3E);
     u32 s_left = DSD(DS_000BDBEC);
-    u16 s_base = DSW(DS_001078DC);
+    u32 s_base = DSD(DS_001078DC);
     u8 s_mem1000 = DSB(0x00001000u);
     u32 s_pool = DSD(DS_001014F4);
     u32 s_ec = DSD(DS_001014EC);
@@ -9610,12 +9610,16 @@ static void check_gap_handlers(void)
     CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x3FD + 0x140);   /* 0x1883C added +0x4C */
     CHECK_EQ_INT((int)DSB(r0 + 0x28u) & 4, 4);  /* 0x35C1C ran */
 
-    /* D: 0x37464 (+0x52 = 8). base = word[0x1078DC] = 0x10; 0x1A570(other) != 0
-     * so X = Fo[0x18] - base = 0xF0; |F[0x18] - X| = 0x10 <= 0x200 takes case 0,
-     * writing +0x52 = 9 and rec+0x18 = X. */
+    /* D: 0x37464 (+0x52 = 8). base = word[dword[0x1078DC] + 14*char + 2*other
+     * char] (0x374E3 loads the pointer; todo-verify record §29) = 0x10;
+     * 0x1A570(other) != 0 so X = Fo[0x18] - base = 0xF0; |F[0x18] - X| = 0x10
+     * <= 0x200 takes case 0, writing +0x52 = 9 and rec+0x18 = X. The pointer's
+     * own low word (0x4000) differs from the table word, so reading the word
+     * at 0x1078DC itself misses case 0. */
     (void)tf_hit_fixture(0);
     fight_reset_slot_pair(s0, s1, r0, r1);
-    DSW(DS_001078DC) = 0x10;                    /* base */
+    DSD(DS_001078DC) = 0x03F54000u;             /* the approach-table pointer */
+    DSW(0x03F54000u) = 0x10;                    /* base, chars 0/0 */
     DSB(s0 + 0x57u) = 0;
     DSB(s0 + 0x7Au) = 0;
     DSB(s1 + 0x7Au) = 0;
@@ -9723,7 +9727,8 @@ static void check_gap_handlers(void)
 
     DSB(DS_000BDA3E) = s_max;
     DSD(DS_000BDBEC) = s_left;
-    DSW(DS_001078DC) = s_base;
+    DSD(DS_001078DC) = s_base;
+    DSW(0x03F54000u) = 0;
     DSB(0x00001000u) = s_mem1000;
     DSD(DS_001014F4) = s_pool;
     DSD(DS_001014EC) = s_ec;
@@ -13331,6 +13336,17 @@ static void c3_seed(u32 s0, u32 s1, u32 r0, u32 r1, u32 st)
  * (0xC8FB8[char] for +0x54 1) through 0x2BC30 with 9/0 and +0x62/+0x60 = 0.
  * 0x1A640 is the held-back direction. The four char-3 table entries are
  * pointed at crafted one-word streams and restored. */
+/* check_block H5's animation-code hook: a code address outside both LE objects
+ * (so it can never name an original function) whose body rewrites slot 0's
+ * +0x2C while 0x2BC30 runs the stream's opening opcodes. */
+#define BLOCK_HOOK_ADDR 0x00F0F000u
+static void block_hook_2c(u32 rec, u32 arg)
+{
+    (void)rec;
+    (void)arg;
+    DSD(DS_001077B0 + 0x2Cu) = 0x00007777u;
+}
+
 static void check_block(void)
 {
     u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
@@ -13603,6 +13619,32 @@ static void check_block(void)
     CHECK_EQ_INT((int)DSD(r0 + 8u), 0x00ABCDEF);
     CHECK_EQ_INT((int)DSB(s0 + 0x54u), 7);
     CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0x0A);
+
+    /* H5: 0x3C480 loads the slot's +0x2C into EBX at 0x3C4B0, before its
+     * 0x2BC30 call, and passes that to 0x188DC (todo-verify record §30). The
+     * stream's first word is an indirect-call opcode (bit 15, op 0x10, mode
+     * 0x4000: the code address is the next dword) to a test hook that rewrites
+     * +0x2C during 0x2BC30; with +0x42 bit 3 set 0x18714 returns the record's
+     * +0x18, so +0x2C ends as the value loaded before the call. */
+    {
+        u8 sv_42 = DSB(s0 + 0x42u);
+        u16 sv_w[4];
+        for (k = 0; k < 4u; k++) sv_w[k] = DSW(bst + 0x10u + k * 2u);
+        fn_register(BLOCK_HOOK_ADDR, (void (*)(void))block_hook_2c);
+        DSW(bst + 0x10u) = 0xD000u;
+        DSW(bst + 0x12u) = (u16)(BLOCK_HOOK_ADDR & 0xFFFFu);
+        DSW(bst + 0x14u) = (u16)(BLOCK_HOOK_ADDR >> 16);
+        DSW(bst + 0x16u) = 0x1401u;
+        DSB(s0 + 0x42u) |= 0x08u;
+        DSB(s0 + 0x54u) = 1u;
+        DSB(s0 + 0x43u) = 0u;
+        DSD(r0 + 0x18u) = 0x00012340u;
+        fighter_block_anim(s0, r0);
+        CHECK_EQ_INT((int)DSD(r0 + 8u), (int)(bst + 0x16u));  /* the hook ran */
+        CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x00012340);
+        for (k = 0; k < 4u; k++) DSW(bst + 0x10u + k * 2u) = sv_w[k];
+        DSB(s0 + 0x42u) = sv_42;
+    }
 
     for (i = 0; i < 4u; i++) tf_put(sv_bt + i * 4u, tabs[i] + 3u * 4u, 4u);
     tf_put(sv_ab0, 0x00100AB0u, 0x10u);

@@ -51,6 +51,10 @@
  * in it as a RIFF/WAVE blob. */
 #define SOUND_RES 5u
 
+/* The announcer's voice id: DS_000BBDC8[0xCD] is { case 2, handle 0x02824B0F =
+ * S16SOUND.GRA + 0x24B0F, loop byte 0 } (todo-verify record §23). */
+#define SND_ANNOUNCER_ID 0xCDu
+
 /* PORT: scratch for the localisation table (0x47370's 0x1C308 block). It must
  * sit above the resource heap AND game_state_init's later movie loads (TWI5.SMK
  * is 1.2 MB, allocated by res_load_file after this loader, pushing the heap to
@@ -999,9 +1003,12 @@ void frontend_mode_1a_step(void)
      * §46-B), and so are the 7 other non-trivial values the image stores
      * there (record §46-F): 0x259CC, 0x10E80, 0x24B54, 0x27134, 0x4142C,
      * 0x25AE8 and 0x26978, mode 0x17's hooks.
-     * TODO(verify): game_frame dispatches cases 0x1A/0x1B (record §47-B), so
-     * a miss on any value but the two no-ops is a missing port, not a skip;
-     * no unregistered value is known. The returned EAX is
+     * Record §20 of 2026-09-29-todo-verify-derivations.md closes the list: the
+     * image has 42 stores to DS_00104AE4, all `mov [0x104ae4],reg` of a
+     * `mov reg,imm32` a few bytes before, and the static dword is 0. Their 19
+     * values are the 13 above, the no-ops 0x29D60/0x5D812, and 0x29B74,
+     * 0x43738, 0x28D68 and 0x28D80, which are registered too (actors.c), so
+     * no store can reach a miss that is not a no-op. The returned EAX is
      * dead: `xor ah,ah` and byte/word stores of AH/DX follow. */
     void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
     if (hook != NULL) hook();                           /* 0x4F9AA */
@@ -5769,10 +5776,12 @@ void game_state_init(void)
  * no PIT/ISR and the frame loop owns pacing (see game_audio_service). */
 void game_audio_init(void)
 {
-    /* TODO(verify): the original's FUN_0001cf40 gates the DIG install and its
-     * preferences behind param_2 and the MDI install behind param_1
-     * (prage.c:8703,8719); the port installs both unconditionally. The shipped
-     * init calls it with both nonzero, so the shipped behaviour is equal. */
+    /* PORT: FUN_0001cf40 gates the DIG install and its preferences behind
+     * param_2 (DL, 0x1CF5E) and the MDI install behind param_1 (AL, 0x1CFBF);
+     * the port has no parameters and installs both. Record §21 of
+     * 2026-09-29-todo-verify-derivations.md: its only caller, 0x1BEC4, passes
+     * EAX = EDX = 1 (0x1BFD1 mov edx,1; 0x1BFD9 mov eax,edx; 0x1BFDB call), so
+     * both gates are always taken. */
     mixer_reset();
     AIL_startup();
     DSB(DS_000A2CB1) = 1;
@@ -5825,9 +5834,14 @@ void game_audio_init(void)
  * seq_load use. Task 9's capture spans this S16TITLE bank end to end. (The
  * original's 0x121a0 FUN_0002c3fc(0x41)/(0x43) are case 5 voice cancels, not a
  * case-1 music request.)
- * TODO(verify): the sound-table id -> resource handle mapping is not extracted
- * (DAT_000BBDC8 is a static table in PRAGE.EXE, stride 12, byte 0 = case,
- * dword +4 = handle), so the port binds the title state to the bank directly.
+ * Record §22 of 2026-09-29-todo-verify-derivations.md: the mapping this
+ * binding stands for is in the static table DS_000BBDC8 (stride 12, +0 case,
+ * +4 handle), which sound_voice already reads. Its only case-1 records naming
+ * S16TITLE.GRA are ids 0x54 and 0x56, both handle 0x03836102 = resource 7 +
+ * 0x36102: a size dword 0x1338 followed by the XMIDI file (FORM XDIR at
+ * 0x36106, whose CAT holds the FORM XMID at 0x36128), the bytes 0x1C930 copies
+ * past the size dword. This scan finds that same FORM XMID, so the bank is the
+ * table's; what stays unported is the request that names id 0x54/0x56.
  * Returns NULL on a bank whose declared FORM size runs past the loaded
  * resource. */
 static const u8 *title_music_bank(void)
@@ -5895,12 +5909,16 @@ static void game_sample_play(void)
     AIL_set_sample_volume(h, (s32)DSD(DS_000A2CB4));
     AIL_set_sample_rate(h, s_pending_sample.rate);
     AIL_set_sample_type(h, 0, 0);
-    /* The original gates this on the per-slot flag DAT_00102868[slot] == 1
-     * (prage.c:8469-8471): only a flagged slot gets loop count 0. The port has
-     * no per-slot flag and always forces 0 (one-shot). TODO(verify): the flag's
-     * source and the original's non-1 behaviour are unmodelled; the shipped data
-     * presumably carries 1, which is why the port matches the spec. */
-    AIL_set_sample_loop_count(h, 0);
+    /* 0x1CB18 gates this on the slot's loop byte DAT_00102868[slot] == 1
+     * (prage.c:8469-8471), which 0x1CC28 queued from the voice record's +8
+     * byte (0x2C3FC case 2). Count 0 loops forever; otherwise AIL_init_sample's
+     * default count 1 plays once (0x6F120). Record §23 of
+     * 2026-09-29-todo-verify-derivations.md: the announcer is voice id 0xCD
+     * (DS_000BBDC8[0xCD] = case 2, handle 0x02824B0F = S16SOUND.GRA + 0x24B0F,
+     * the RIFF blob game_sample_request finds), whose loop byte is 0.
+     * PORT: the port has no slot records, so it reads that byte directly. */
+    if (DSB(DS_000BBDC8 + SND_ANNOUNCER_ID * 0x0Cu + 8u) == 1u)  /* 0x1CBCA..0x1CBD6 */
+        AIL_set_sample_loop_count(h, 0);                /* 0x1CBD8..0x1CBE1 */
     AIL_start_sample(h);
 }
 
@@ -6414,8 +6432,11 @@ void game_init(void)
      * renderer scales a text row by 20/3 px (0x200 >> 6, projected by
      * render_proj_y's 3414/4096), so text row 1 lands on the captured screen
      * rows 7-12.
-     * TODO(verify): reproduces the captured no-input window only; credit
-     * countdown under input is not yet covered by an oracle. */
+     * PORT: named gap, record §24 of 2026-09-29-todo-verify-derivations.md:
+     * the captures (data/title-captures/title, title2, frontend) have no coin
+     * input, so the oracles cover the no-input window only; the decrementers
+     * 0x2CA48/0x2CA7C are unit-tested against the raw (test_game.c), and a
+     * DOSBox-X capture with coin input is what would cover the countdown. */
     /* 0x20CCC: the init chain writes the overlay row to 0x1D. */
     config_set_credit_row_init();
     /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */

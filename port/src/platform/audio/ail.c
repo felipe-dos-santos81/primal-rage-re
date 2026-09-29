@@ -50,7 +50,7 @@ struct AIL_SAMPLE {
     u32 flag;
     u32 rate;         /* spec row 17: 0x2b11 = 11025 */
     s32 volume;       /* 0..0x7f (spec row 18) */
-    u32 loop;         /* spec row 19: 0 = one-shot */
+    u32 loop;         /* row 19 loop count: 0 forever, 1 once (record §23) */
     s16 *conv;        /* owned s16 conversion buffer, mixer references it */
     u32 conv_cap;     /* frames `conv` can hold */
 };
@@ -295,7 +295,12 @@ void AIL_start_sample(HSAMPLE sample)
         /* 0..0x7f -> Q8 with 0x7f (the game's full volume) at unity 256, not
          * 254: the mixer's unity is 256 (mixer.h). */
         int volume = (int)sample->volume * 256 / 0x7f;
-        if (mixer_add_sample(buf, frames, rate, volume, sample->loop != 0,
+        /* Record §23 of 2026-09-29-todo-verify-derivations.md: the DIG
+         * service 0x6F120 restarts a count-0 sample forever (0x6F289), stops a
+         * count-1 one (0x6F28F) and decrements a larger count (0x6F295).
+         * PORT: the mixer voice is once-or-forever, so a count above 1 plays
+         * once; the game's only setter (0x1CB18) passes 0. */
+        if (mixer_add_sample(buf, frames, rate, volume, sample->loop == 0,
                              sample))
             sample->state = 4;
         return;
@@ -334,7 +339,8 @@ void AIL_set_sample_volume(HSAMPLE sample, s32 volume)
     sample->volume = volume;
 }
 
-/* 0x5dce4 — spec audio.md "AIL surface" (row 19). */
+/* 0x5dce4 — spec audio.md "AIL surface" (row 19). Stores the loop count
+ * (0x68050 writes the sample's +0x30): 0 loops forever, 1 plays once. */
 void AIL_set_sample_loop_count(HSAMPLE sample, u32 count)
 {
     if (sample == NULL || !sample->used)

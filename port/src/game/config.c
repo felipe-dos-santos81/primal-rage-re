@@ -56,12 +56,13 @@ u32 config_field_get(u32 field)
 }
 
 /* 0x2D4EC. Maintains the EEPROM storage image at 0x80CE4, which the port does not
- * keep (no save/load I/O, spec §7). The setter's three calls are declared no-ops
- * so a later persistence cycle has the call sites already in place. */
-static void config_storage_touch(u32 kind, u32 value)
+ * keep (no save/load I/O, spec §7). Its call sites are declared no-ops so a
+ * later persistence cycle has them in place. It takes EAX only: 0x2D4F5
+ * `mov edx,eax` overwrites EDX before any read (record §26 of
+ * 2026-09-29-todo-verify-derivations.md). */
+static void config_storage_touch(u32 kind)
 {
     (void)kind;
-    (void)value;
 }
 
 /* 0x2DA0C. Inverse of config_field_get (spec §3). */
@@ -78,7 +79,7 @@ u32 config_field_set(u32 field, u32 value)
         flags |= 1u;                               /* 0x2DA3B */
         value >>= 8;
         DSB(DS_00105DD8) = flags;
-        config_storage_touch(0u, value);           /* 0x2DA49 */
+        config_storage_touch(0u);                  /* 0x2DA41/0x2DA49 */
     }
 
     DSB(DS_00105DD8) |= 6u;                        /* 0x2DA4E */
@@ -109,12 +110,10 @@ u32 config_field_set(u32 field, u32 value)
         value >>= 8;
     }
 
-    /* TODO(verify): the raw's edx at 0x2DACA/0x2DAD4 still holds the value shifted
-     * out by the write loop, not 0. The 0u placeholders are safe only because
-     * config_storage_touch is a no-op; a persistence cycle must re-derive both
-     * arguments from those sites instead of trusting them. */
-    config_storage_touch(1u, 0u);                  /* 0x2DACA */
-    config_storage_touch(2u, 0u);                  /* 0x2DAD4 */
+    /* The raw's EDX at 0x2DACA/0x2DAD4 still holds the shifted-out value, but
+     * 0x2D4EC never reads it (record §26). */
+    config_storage_touch(1u);                      /* 0x2DAC5/0x2DACA */
+    config_storage_touch(2u);                      /* 0x2DACF/0x2DAD4 */
     return 0u;
 }
 
@@ -195,12 +194,17 @@ void config_validate(void)
         DSB(DS_00105E2F) = 0u;                     /* 0x2D881 */
         config_set_defaults();                     /* 0x2D886 */
         DSD(DS_00105E30) = 0x9C94D2C4u;            /* 0x2D88D */
+        /* Record §27 of 2026-09-29-todo-verify-derivations.md: the defaults
+         * arm ends with the three storage calls when DS_0002D490 is set. */
+        if (DSB(DS_0002D490) != 0u) {              /* 0x2D89C/0x2D8A3 */
+            config_storage_touch(1u);              /* 0x2D8A5/0x2D8AA */
+            config_storage_touch(2u);              /* 0x2D8AF/0x2D8B4 */
+            config_storage_touch(0u);              /* 0x2D8B9 -> 0x2D909/0x2D90B */
+        }
     }
-
-    /* TODO(verify): the raw also performs three 0x2D4EC storage-maintenance calls
-     * on this path (0x2D8A5, 0x2D8AF, 0x2D909); the port omits them because
-     * storage is a no-op. A persistence cycle must add them rather than leave the
-     * storage image under-maintained. */
+    /* PORT: the other arm (0x2D8BB) reads the stored image through the deferred
+     * 0x2E990 and calls 0x2D4EC(0) (0x2D909) only when that read fails with
+     * DS_0002D490 set; with no stored image the port has neither (record §27). */
 
     /* 0x2D912/0x2D919: high-score validate 0x2DE98 and 0x2DF8C, both deferred
      * no-ops (spec §6/§7); called unconditionally. */

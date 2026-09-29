@@ -1112,6 +1112,17 @@ int test_flow(void)
     }
     CHECK(game_audio_ticks() > 0, "audio service advances the sequencer");
     CHECK(game_music_notes_seen(), "title music keys notes without a device");
+    /* The announcer is sound id 0xCD (DS_000BBDC8[0xCD]: case 2, handle
+     * 0x02824B0F = S16SOUND.GRA + 0x24B0F, loop byte 0), so 0x1CB18 does not
+     * call AIL_set_sample_loop_count and the default count 1 plays it once
+     * (todo-verify record §23): after its 19327 frames at 11025 Hz (~87153
+     * output frames) the voice is gone. */
+    CHECK_EQ_INT((int)DSD(DS_000BBDC8 + 0xCDu * 12u + 4u), 0x02824B0F);
+    {
+        static s16 abuf2[4096 * 2];
+        for (int i = 0; i < 24; i++) mixer_render(abuf2, 4096, MIXER_OPL_RATE);
+        CHECK_EQ_INT(mixer_active_voices(), 0);
+    }
     /* The voice dispatcher 0x2C3FC and the sound module, on the live handles
      * game_audio_init allocated (record §45-A). */
     check_sound_voice();
