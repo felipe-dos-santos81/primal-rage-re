@@ -60,9 +60,9 @@ void effects_list_unlink(u32 rec)
 /* 0x13420. Unlink `rec` from the active list, run its type dispatch, then push
  * it at the front of the free list (0x249B0 insert-after). The dispatch maps the
  * record's type to a palette dirty-list append: types 0/2/3/5 use the source
- * record's own fields through 0x33714 (flag 1), type 1 the record's +0x10 block
- * through 0x33734, type 4 the raw 0xFCCF0 buffer. PORT: 0x33714 is 0x33734 with
- * the flag byte set, so both are palette_record() with the flag argument. */
+ * record's own fields through 0x33714 (flag 1, palette_record_flagged), type 1
+ * the record's +0x10 block through 0x33734, type 4 the raw 0xFCCF0 buffer
+ * (jump table 0x13408). */
 static void effect_teardown(u32 rec)
 {
     u8 saved = DSB(DS_0009AF3C);
@@ -73,7 +73,7 @@ static void effect_teardown(u32 rec)
     u32 src = DSD(rec + 8);
     switch (DSB(rec + 0x0c)) {
     case 0: case 2: case 3: case 5:
-        palette_record(DSD(src), DSD(src + 8), DSD(src + 0x0c), 1);
+        palette_record_flagged(DSD(src), DSD(src + 8), DSD(src + 0x0c));  /* 0x13490 */
         break;
     case 1:
         palette_record(rec + 0x10, DSD(src + 8) + (u32)DSB(rec + 0x0f), 1, 0);

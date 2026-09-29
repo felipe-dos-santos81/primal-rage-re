@@ -1295,15 +1295,28 @@ static int ai_pred_46794(u32 side)
     return DSB(slot + 0x52u) == 4u;
 }
 
-/* 0x467DC / 0x4682C. +0x54 == 0, +0x53 == 0, +0x52 == 1, then the 0x1A5D4
- * command-sign test (0x467DC: zero, 0x4682C: non-zero). */
-static int ai_pred_cmd_sign(u32 side, int want_zero)
+/* 0x467DC. +0x54 == 0 (0x467F2), +0x53 == 0 (0x467FD), +0x52 == 1 (0x4680B),
+ * then 1 when the 0x1A5D4 command-sign test is zero (0x4681E je 0x46825). */
+int ai_pred_467dc(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;
     if (DSB(slot + 0x54u) != 0u) return 0;
     if (DSB(slot + 0x53u) != 0u) return 0;
     if (DSB(slot + 0x52u) != 1u) return 0;
-    return (ai_facing_cmd(side) == 0u) == (want_zero != 0);
+    return ai_facing_cmd(side) == 0u;                   /* 0x46817 0x1A5D4 */
+}
+
+/* 0x4682C — record §K1.4 (2026-09-29-k1-k9-derivations.md). 0x467DC's body
+ * with the opposite sense: +0x54 == 0 (0x46842), +0x53 == 0 (0x4684D),
+ * +0x52 == 1 (0x4685B), then 1 when 0x1A5D4 is non-zero (0x4686E jne
+ * 0x46875). */
+int ai_pred_4682c(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    if (DSB(slot + 0x54u) != 0u) return 0;
+    if (DSB(slot + 0x53u) != 0u) return 0;
+    if (DSB(slot + 0x52u) != 1u) return 0;
+    return ai_facing_cmd(side) != 0u;                   /* 0x46867 0x1A5D4 */
 }
 
 /* 0x46898 / 0x468D8. The +0x10 identity is read from ctx_swap's [ESP+0xc]
@@ -1356,8 +1369,8 @@ static void ai_classify(u32 param)
     }
     if (ai_pred_4673c(param) != 0) { DSD(0x00108218u + ecx * 0x40u) = 3u; return; }
     if (ai_pred_46794(param) != 0) { DSD(0x00108218u + ecx * 0x40u) = 4u; return; }
-    if (ai_pred_cmd_sign(param, 1) != 0) { DSD(0x00108218u + ecx * 0x40u) = 6u; return; }
-    if (ai_pred_cmd_sign(param, 0) != 0) { DSD(0x00108218u + ecx * 0x40u) = 5u; return; }
+    if (ai_pred_467dc(param) != 0) { DSD(0x00108218u + ecx * 0x40u) = 6u; return; }
+    if (ai_pred_4682c(param) != 0) { DSD(0x00108218u + ecx * 0x40u) = 5u; return; }
     if (ai_pred_468d8(param) != 0) { DSD(0x00108218u + ecx * 0x40u) = 7u; return; }
     if (DSB(DS_001077B0 + param * 0x94u + 0x53u) == 0x0Bu) {   /* 0x46AE4 */
         DSD(0x00108218u + ecx * 0x40u) = 9u; return;

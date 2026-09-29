@@ -928,6 +928,14 @@ void fighter_3f308(u32 slot);
 /* 0x468D8 (record §49-V). See fighter.c. */
 int ai_pred_468d8(u32 side);
 
+/* The 0x469A8 predicates 0x467DC and 0x4682C (record §K1.4 of
+ * 2026-09-29-k1-k9-derivations.md). EAX = side: 1 when the slot's
+ * +0x54 == 0, +0x53 == 0 and +0x52 == 1 and the 0x1A5D4 facing/command test
+ * is zero (0x467DC) or non-zero (0x4682C), else 0. Exposed for their unit
+ * test. */
+int ai_pred_467dc(u32 side);
+int ai_pred_4682c(u32 side);
+
 /* 0x21458 (record §49-V). The slot +0x10 callback 0x21994 arms on the opposite
  * side's slot: a three-state (+0x58) knockdown-recovery step, (slot, rec, side)
  * as the reaction callbacks. Registered in actors_init. */

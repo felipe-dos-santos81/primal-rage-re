@@ -78,6 +78,17 @@ void palette_record(u32 ptr, u32 first, u32 count, u32 flag)
     DSD(DS_00107798) = head + 16;
 }
 
+/* 0x33714 — record §K1.7 (2026-09-29-k1-k9-derivations.md). 0x33734's append
+ * with the constant flag byte 1 (0x3371F `mov byte [eax-4],1`, where 0x33734
+ * stores 0 at 0x3373F); EBX = ptr, EAX = first, EDX = count. Its only caller is
+ * the effect teardown 0x13420 (0x13490, types 0/2/3/5). PORT: it delegates the
+ * append to palette_record so the dirty list keeps one writer and one bound
+ * guard. */
+void palette_record_flagged(u32 ptr, u32 first, u32 count)
+{
+    palette_record(ptr, first, count, 1u);
+}
+
 /* 0x1C470 — record §50-D. Drains the palette dirty list DS_00107498..DS_00107798
  * to the DAC. PORT: the DAC ports 0x3C8/0x3C9 and the 0x3DA retrace spin are
  * the host's gfx_dac and gfx_wait_vblank(). Record §3 of

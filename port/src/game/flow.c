@@ -184,13 +184,14 @@ void frontend_origin_zero(void)
     DSW(DS_00107A38) = 0;                       /* 0x4F1DA */
 }
 
-/* PORT: 0x38910. Called with eax = 0 from 0x121F9. 0x4F1D0 zeroes the two
- * cursor words; the mode-1 cursor words copy DS_00107A4E; the two table words
- * come from the data object's fixed-up tables DS_000BDE0C / DS_000BDDFC. */
+/* 0x38910 — record §K1.3 (2026-09-29-k1-k9-derivations.md). Called with
+ * eax = 0 from 0x121F9. 0x4F1D0 zeroes the two cursor words (its EAX, the byte
+ * DS_00107A55, is not read); the mode-1 cursor words copy DS_00107A4E; the two
+ * table words come from the data object's fixed-up tables DS_000BDE0C /
+ * DS_000BDDFC. */
 static void title_origin_reset(u32 idx)
 {
-    DSW(DS_00107A3A) = 0;                       /* 0x4F1D3 (0x4F1D0) */
-    DSW(DS_00107A38) = 0;                       /* 0x4F1DA (0x4F1D0) */
+    frontend_origin_zero();                     /* 0x3891A 0x4F1D0 */
     DSW(DS_00107A4A) = DSW(DS_00107A4E);        /* 0x38925 */
     DSW(DS_00107A4C) = DSW(DS_00107A4E);        /* 0x3892B */
     DSW(DS_00107A50) = DSW(DS_000BDE0C + idx * 2u);   /* 0x38938 */

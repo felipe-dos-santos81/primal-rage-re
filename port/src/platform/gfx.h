@@ -31,12 +31,17 @@ void palette_list_init(void);
  * enqueue and actors.c's 0x33754 palette acquire both call it. */
 void palette_record(u32 ptr, u32 first, u32 count, u32 flag);
 
+/* The flag-1 twin 0x33714 of 0x33734 (record §K1.7 of
+ * 2026-09-29-k1-k9-derivations.md): the same append with the flag byte 1.
+ * The effect teardown (0x13420, types 0/2/3/5) is its only caller. */
+void palette_record_flagged(u32 ptr, u32 first, u32 count);
+
 /* PORT: the VGA aperture (0xA0000), the 320x200 screen. Two original writers
  * target it directly: the loader's text blit (0x51ED8, `add edi, 0xa0000`) and
  * the master loop's copy (0x25680) — the renderer's blit (0x51E5C) targets the
  * back buffer DS_000E87A4 instead. gfx_present models the copy: it writes the
  * index buffer into the aperture, then converts the aperture through gfx_dac.
- * The loader's text blit draws into this buffer (see sprite_blit_at). */
+ * The loader's text blit draws into this buffer (see sprite_blit_aperture). */
 u8 *gfx_aperture(void);
 
 /* 0x52106: both tick counters = ticks, both offscreen buffers (DS_001014E8/

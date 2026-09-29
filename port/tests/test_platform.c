@@ -781,6 +781,22 @@ int test_gfx(void)
     CHECK_EQ_INT(DSD(REC + 12), 0xAABBCC01u);
     DSD(HEAD) = REC;
 
+    /* Record §K1.7 (2026-09-29-k1-k9-derivations.md): 0x33714 is the append
+     * with the constant flag byte 1 (0x3371F), EBX -> +0, EAX -> +4,
+     * EDX -> +8 (0x33723..0x33729), head += 0x10 (0x3372C). Sentinels differ
+     * from every post-value. */
+    DSD(REC + 0) = 0xDEADBEEFu;
+    DSD(REC + 4) = 0xDEADBEEFu;
+    DSD(REC + 8) = 0xDEADBEEFu;
+    DSD(REC + 12) = 0xAABBCC00u;
+    palette_record_flagged(SCRATCH, 0x10, 3);
+    CHECK_EQ_INT(DSD(REC + 0), SCRATCH);
+    CHECK_EQ_INT(DSD(REC + 4), 0x10);
+    CHECK_EQ_INT(DSD(REC + 8), 3);
+    CHECK_EQ_INT(DSD(REC + 12), 0xAABBCC01u);
+    CHECK_EQ_INT(DSD(HEAD), REC + 16);
+    DSD(HEAD) = REC;
+
     /* Handle path: a non-zero flag byte in [3] makes [0] a resource handle;
      * gfx_flush_palette resolves it and skips the bank's u32 colour count at
      * +4. Re-basing the resolved host pointer instead of its offset reads the
@@ -1560,6 +1576,64 @@ static void check_blit_dispatch(void)
     }
 }
 
+/* 1 when all `len` bytes at p equal v. */
+static int k1_all(const u8 *p, u8 v, size_t len)
+{
+    for (size_t i = 0; i < len; i++)
+        if (p[i] != v) return 0;
+    return 1;
+}
+
+/* Record §K1.6 (2026-09-29-k1-k9-derivations.md): 0x51ED8 is 0x51E5C's span
+ * blit with the aperture as its base (0x51F1B `add edi,0xa0000`) that does
+ * not save/restore the node's +0x14: it stores rows - clip_b there
+ * (0x51F23..0x51F2F) and keeps it. Both buffers are seeded 0xEE. */
+static void check_k1_blit_aperture(void)
+{
+    enum { SCREEN = 320 * 200 };
+    u8 *ap = gfx_aperture();
+    u8 *back = mem + DSD(DS_000E87A4);
+    static u8 s_ap[SCREEN], s_back[SCREEN], got[SCREEN];
+    memcpy(s_ap, ap, SCREEN);
+    memcpy(s_back, back, SCREEN);
+
+    /* A zero-width node returns before the store (0x51EDF). */
+    SpriteNode z; memset(&z, 0, sizeof z);
+    z.rows = 5; z.clip_b = 2;
+    sprite_blit_aperture(&z);
+    CHECK_EQ_INT(z.rows, 5);
+
+    u32 pal = PAL_ENTRY;            /* fake 0x33754 palette-table entry */
+    DSB(pal + 8) = 1;               /* start 1 => bank offset 0 */
+    SpriteNode n; memset(&n, 0, sizeof n);
+    sprite_node_build(&n, 0x2C11u);
+    n.pal_ptr = pal;
+    n.x = 0; n.y = 0;
+    n.rows = 4; n.clip_b = 1;
+    SpriteNode m = n;
+
+    /* 0x51E5C into the back buffer: rows restored (0x51ECB), aperture
+     * untouched. */
+    memset(back, 0xEE, SCREEN);
+    memset(ap, 0xEE, SCREEN);
+    sprite_blit(&m);
+    CHECK_EQ_INT(m.rows, 4);
+    CHECK(k1_all(ap, 0xEE, SCREEN), "0x51E5C does not draw to the aperture");
+    CHECK(!k1_all(back, 0xEE, SCREEN), "0x51E5C drew into the back buffer");
+    memcpy(got, back, SCREEN);
+
+    /* 0x51ED8: the same pixels in the aperture, the back buffer untouched,
+     * and the node keeps rows - clip_b = 3. */
+    memset(back, 0xEE, SCREEN);
+    sprite_blit_aperture(&n);
+    CHECK_EQ_INT(n.rows, 3);
+    CHECK(memcmp(ap, got, SCREEN) == 0, "0x51ED8 draws 0x51E5C's pixels");
+    CHECK(k1_all(back, 0xEE, SCREEN), "0x51ED8 does not draw to the back buffer");
+
+    memcpy(ap, s_ap, SCREEN);
+    memcpy(back, s_back, SCREEN);
+}
+
 int test_sprite(void)
 {
     check_node_build();
@@ -1574,6 +1648,7 @@ int test_sprite(void)
     check_shear();
     check_shear_clipped();
     check_blit_dispatch();
+    check_k1_blit_aperture();
     return 0;
 }
 

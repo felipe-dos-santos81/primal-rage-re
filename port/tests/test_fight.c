@@ -38603,6 +38603,46 @@ static void check_fighterset(void)
     g2_save(); check_fs_36f10(); g2_restore();
 }
 
+/* ---- record §K1.4 (2026-09-29-k1-k9-derivations.md): 0x467DC / 0x4682C --
+ * The two predicates share every test but the sense of 0x1A5D4's result:
+ * 0x467DC succeeds on zero (0x4681E je), 0x4682C on non-zero (0x4686E jne).
+ * Run under g2_save/g2_restore: the slot, the command word and the scratch
+ * fighter record are all seeded here. */
+static void check_k1_ai_cmd_sign(void)
+{
+    const u32 side = 1u;
+    const u32 slot = DS_001077B0 + side * 0x94u;
+    const u32 rec = 0x3E80000u;               /* scratch fighter record */
+    u8 s_rec[0x40];
+    tf_snap(s_rec, rec, sizeof s_rec);
+
+    DSD(slot) = rec;                          /* 0x1A5E0: slot+0 -> record */
+    DSW(rec + 0x28u) = 0u;                    /* facing bit 0x4000 clear */
+    DSB(slot + 0x54u) = 0u;                   /* 0x467F2 / 0x46842 */
+    DSB(slot + 0x53u) = 0u;                   /* 0x467FD / 0x4684D */
+    DSB(slot + 0x52u) = 1u;                   /* 0x4680B / 0x4685B */
+
+    /* Command 0x2000 with the facing bit clear: 0x1A5D4 returns 0x2000. */
+    DSW(DS_001088E0 + side * 2u) = 0x2000u;
+    CHECK_EQ_INT(ai_pred_4682c(side), 1);     /* 0x46875 AL = CL = 1 */
+    CHECK_EQ_INT(ai_pred_467dc(side), 0);     /* 0x46820 xor al,al */
+
+    /* No command bit: 0x1A5D4 returns 0. */
+    DSW(DS_001088E0 + side * 2u) = 0u;
+    CHECK_EQ_INT(ai_pred_4682c(side), 0);     /* 0x46870 xor al,al */
+    CHECK_EQ_INT(ai_pred_467dc(side), 1);     /* 0x46825 AL = CL = 1 */
+
+    /* +0x52 != 1 fails both before 0x1A5D4 runs (0x4680E / 0x4685E), with
+     * each one's otherwise-succeeding command word. */
+    DSB(slot + 0x52u) = 2u;
+    DSW(DS_001088E0 + side * 2u) = 0x2000u;
+    CHECK_EQ_INT(ai_pred_4682c(side), 0);
+    DSW(DS_001088E0 + side * 2u) = 0u;
+    CHECK_EQ_INT(ai_pred_467dc(side), 0);
+
+    tf_put(s_rec, rec, sizeof s_rec);
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -38893,6 +38933,7 @@ int test_fight(void)
     check_49z_47a00();
     check_49z_47b04();
     check_49z_round_timer();
+    g2_save(); check_k1_ai_cmd_sign(); g2_restore();
 
     return g_failures - before;
 }

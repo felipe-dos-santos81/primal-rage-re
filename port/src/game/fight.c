@@ -1990,6 +1990,10 @@ void fight_stance_pass(u32 side)
 
 /* ---- 0x3BDB0 the attack-readiness gate --------------------------------- */
 
+/* 0x3BDB0 — record §K1.2 (2026-09-29-k1-k9-derivations.md). EAX = side: the
+ * same-side context (0x3BDB8 0x33950), then AL = 1 when the slot's +0x53 == 0
+ * (0x3BDC1) and +0x54 != 2 (0x3BDC7), else AL = 0. Only AL is defined; the
+ * caller 0x3B27F tests `test al,al`. */
 static int fight_attack_ready(u32 side)
 {
     u32 ctx[6];
@@ -2069,6 +2073,12 @@ static int fight_position_gate(u32 rec)
     return DSB(rec + 0x54u) <= 1u;
 }
 
+/* 0x34B6C — record §K1.1 (2026-09-29-k1-k9-derivations.md). EAX = side. The
+ * slot record DS_001077A8[side] and its fighter (0x34B73..0x34B86), the 0x36E2C
+ * position branch (0x34B97..0x34BEF), else the +0x52 dispatch through the
+ * 22-entry table 0x34B14 (0x34BF4..0x34C00; above 0x15 runs 0x349C8). Caller:
+ * 0x357FC (fight_hud_pass). Case 0x12 is the one arm not reproduced (its
+ * PORT: note below; record §K1.1). */
 static void fight_health_sync(u32 side)
 {
     u32 rec = DSD(DS_001077A8 + side * 4u);     /* 0x34B73 */
