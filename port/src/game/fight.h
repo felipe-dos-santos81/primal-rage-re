@@ -82,7 +82,7 @@ void fight_effects_idle_pass(void);
 /* Record §K4.1, 0x4A868: the effect entry's proximity gate. With R = the
  * entry's actor (+8), 1 when |0x2BE00(R) - entry+0x14| <= |2 * (R's dword
  * +0x32 >> 16)| (both signed, `setle`), else 0. Callers: 0x4A361 (the
- * case-14 body of fight_effects_pass, a named gap, K13), 0x4BFDE
+ * case-14 body of fight_effects_pass, record §K13.2), 0x4BFDE
  * (fight_4bf18) and 0x4DF8E/0x4DFFA/0x4E066/0x4E0D0 (fight_effects_idle_pass). */
 u32 fight_4a868(u32 entry);
 

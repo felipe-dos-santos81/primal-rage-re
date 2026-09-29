@@ -86,3 +86,26 @@ The draw order is the target's `rng(0xC00)`, then `0x496DC`'s three per
 spawned entry (`rng(0x64)` pick, `rng(0x180)`, `rng(0xC00)`). The port's old
 case 13 drew `rng(0xC00)` unconditionally; the raw draws it only on the turn
 path.
+
+## §K13.2 Case 14 `0x4A346..0x4A45B` (+ tail)
+
+```
+4a346: mov ebx,[esp+0x10] ; mov eax,[ecx+8] ; inc ebx ; mov di,[eax+0x34]
+4a352: mov [esp+0x10],ebx                     ; case 14's count, every visit
+4a356: test di,di ; je 0x4a468                ; stopped: next
+4a35f: mov eax,ecx ; call 0x4a868 ; test eax,eax ; je 0x4a3a4
+4a36a: rec+0x38 = 0 ; rec+0x34 = 0 ; rec+0x36 = 0 ; byte rec+0x55 = 1
+4a38c: mov edx,[edx+0xc955c]                  ; EDX = si*4 (0x4A868 pushes/pops EDX)
+4a392: mov eax,[ecx+8] ; push 0x40400000 ; call 0x2bc30 ; jmp 0x4a468
+4a3a4: the on-screen wait as 0x4A24A (0x4a3a4..0x4a3c8, jle 0x4a468)
+4a3ce: the turn as 0x4A29A (0x4a3ce..0x4a3f4)
+4a3fa: the 0xc95d4[si] stream at 3.0 (0x4a3fa..0x4a40e)
+4a413: the target as 0x4A2DF (0x4a413..0x4a450: mov [ebx+0x14],eax)
+4a453: mov eax,[ecx+8] ; mov eax,[eax+0x30] ; sar eax,0x10 ; (falls into 0x4a45c)
+```
+
+`0x4A868` (`fight_4a868`, record §K4.1) starts with `push ebx / push ecx /
+push edx` and pops them before `ret` (`0x4A868..0x4A8A6`), so EDX is still
+`si * 4` at `0x4A38C`: the stop stream is `0xC955C[si]`. Case 14 has no kill,
+no type change and no `0x496DC`; `DS_00108878` is not touched. `0x4A361` is
+now wired: all six `0x4A868` sites are called (record §K4.5).

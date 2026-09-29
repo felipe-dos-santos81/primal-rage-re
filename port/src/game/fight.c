@@ -4527,6 +4527,7 @@ void fight_effects_pass(void)
      * words [ESP]/[ESP+2], the count [ESP+8] and case 14's [ESP+0x10] stay with
      * their named gaps. */
     u32 loc_idle = 0;                           /* [ESP+0xC] */
+    u32 loc_c14 = 0;                            /* [ESP+0x10] (case 14, record §K13.2) */
     u8 loc_walk = 0;                            /* [ESP+0x14] */
     u8 loc_still = 0;                           /* [ESP+0x18] */
     if (DSW(DS_00104B00) == 9u) {               /* 0x49C89 */
@@ -4879,14 +4880,49 @@ void fight_effects_pass(void)
                     break;
                 }
                 case 14: {
-                    /* PORT: 0x4A346..0x4A412. The case-14 body (its gate
-                     * 0x4A361 is fight_4a868, ported but not called here,
-                     * record §K4.4; 0x2BC30, the rec +0x2a/+0x3c/+0x32
-                     * gates) is the named gap (§7.4, ledger K13); the 0x2BE00
-                     * arm is the draw gate. */
-                    s32 r = fight_2be00(fight_case_rec());   /* 0x4A413 */
-                    if (r > 0) (void)rng_next(0xC00u);       /* 0x4A439 */
-                    else       (void)rng_next(0xC00u);       /* 0x4A449 */
+                    /* 0x4A346..0x4A45B — record §K13.2: the other scatter
+                     * walk. It counts into [ESP+0x10] first; a stopped actor
+                     * (+0x34 word 0) does nothing more. When 0x4A868 finds
+                     * it at its target (0x4A361) it stops (+0x38/+0x34/+0x36
+                     * zeroed, +0x55 = 1) on the 0xC955C[si] stream at 3.0
+                     * (EDX still holds si * 4 from 0x49D0F: 0x4A868 pushes
+                     * and pops it). Else case 13's on-screen wait, turn,
+                     * 0xC95D4[si] stream and target, and the 0x496AC tail;
+                     * no kill, no type change, no 0x496DC. */
+                    loc_c14++;                                       /* 0x4A346..0x4A352 */
+                    if (DSW(rec + 0x34u) == 0u) break;               /* 0x4A34E/0x4A356 */
+                    if (fight_4a868(entry) != 0u) {                  /* 0x4A361 */
+                        DSW(rec + 0x38u) = 0;                        /* 0x4A36D */
+                        DSW(rec + 0x34u) = 0;                        /* 0x4A376 */
+                        DSW(rec + 0x36u) = 0;                        /* 0x4A37F */
+                        DSB(rec + 0x55u) = 1u;                       /* 0x4A388 */
+                        actors_anim_begin(rec, DSD(DS_000C955C + index * 4u),
+                                          0x40400000u);              /* 0x4A38C..0x4A39A 0x2BC30 */
+                        break;
+                    }
+                    {
+                        u32 x = DSD(rec + 0x3Cu);                    /* 0x4A3A7 */
+                        if ((DSW(rec + 0x2Au) & 0x1000u) != 0u       /* 0x4A3AA..0x4A3B8 */
+                                && (s32)x >= -0x300 && (s32)x <= 0x5700) /* 0x4A3BA..0x4A3C8 */
+                            break;
+                    }
+                    if (((s32)DSD(rec + 0x32u) >> 16) == 0x80) {     /* 0x4A3D1..0x4A3DC */
+                        DSB(rec + 0x29u) = (u8)(DSB(rec + 0x29u) | 0x40u); /* 0x4A3DE */
+                        DSW(rec + 0x34u) = 0xFF80u;                  /* 0x4A3E5 */
+                    } else {
+                        DSB(rec + 0x29u) = (u8)(DSB(rec + 0x29u) & 0xBFu); /* 0x4A3ED */
+                        DSW(rec + 0x34u) = 0x0080u;                  /* 0x4A3F4 */
+                    }
+                    actors_anim_begin(rec, DSD(DS_000C95D4 + index * 4u),
+                                      0x40400000u);                  /* 0x4A3FA..0x4A40E 0x2BC30 */
+                    {
+                        s32 r = fight_2be00(fight_case_rec());       /* 0x4A413..0x4A429 */
+                        u32 t;
+                        if (r > 0) t = (u32)r - rng_next(0xC00u);    /* 0x4A434..0x4A440 */
+                        else       t = rng_next(0xC00u) + (u32)r;    /* 0x4A444..0x4A44E */
+                        DSD(entry + 0x14u) = t;                      /* 0x4A450 */
+                    }
+                    DSW(rec + 0x2Cu) = fight_dust_clamp((s32)DSD(rec + 0x30u) >> 16); /* 0x4A453..0x4A464 */
                     break;
                 }
                 default:
@@ -4909,6 +4945,7 @@ void fight_effects_pass(void)
     (void)loc_idle;
     (void)loc_walk;
     (void)loc_still;
+    (void)loc_c14;
 
     fight_4a634();                              /* 0x4A591 */
     DSB(DS_001088C2) = 0;                       /* 0x4A5A0 */
@@ -5002,8 +5039,9 @@ void fight_effects_hold_all(void)
  * bodies call no rng_next (no CALL to 0x5D7DC in 0x4DF8C..0x4E103).
  * Callers: 0x277C0 (mode 0xF, game_mode_0f_step, flow.c, record §49-F) and
  * 0x29638 (mode 0x33, game_mode_33_step, at 0x2965F, record §W of
- * 2026-09-29-e-wire-k8b-k8d-derivations.md). Of 0x4A868's six sites only
- * 0x4A361 (the case-14 body, K13) is still unwired.
+ * 2026-09-29-e-wire-k8b-k8d-derivations.md). All six 0x4A868 sites are
+ * wired; the sixth, 0x4A361, is the case-14 body (record §K13.2 of
+ * 2026-09-29-k13-fx74-derivations.md).
  * EBX/ECX/EDX/ESI/EDI are pushed and popped. */
 void fight_effects_idle_pass(void)
 {

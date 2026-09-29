@@ -37436,6 +37436,86 @@ static void check_k13_case13(void)
     mz_restore();
 }
 
+/* Case 14 (0x4A346..0x4A45B): the zero-speed exit, the 0x4A868 stop, the
+ * on-screen skip and the turn (no 0x496DC, DS_00108878 kept). */
+static void check_k13_case14(void)
+{
+    const u32 S = 0x3C41u;
+    u32 a = Z_A(0), e = Z_E(0), rv;
+    if (!mz_save()) { CHECK(0, "the §K13 snapshot allocates"); return; }
+
+    /* Speed 0: nothing. */
+    k13_base(0u, S);
+    k13_one(14u, 1u, 0u);
+    DSD(e + 0x14u) = 0x1000u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(e + 0x1Eu), 14);
+    CHECK_EQ_INT((int)DSD(a + 0x08u), 0xEEFD4);
+    CHECK_EQ_INT((int)DSB(a + 0x55u), 0x77);
+    CHECK_EQ_INT((int)DSW(a + 0x38u), 0x1111);
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), 0x9999);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)S);
+
+    /* 0x4A868 true (|0x1000 - 0x1100| = 0x100 <= |2 * 0x80|): the stop
+     * (+0x38/+0x34/+0x36 = 0, +0x55 = 1, the 0xC955C[3] stream at 3.0). */
+    k13_base(0u, S);
+    k13_one(14u, 1u, 0x0080u);
+    DSD(e + 0x14u) = 0x1100u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(a + 0x38u), 0);
+    CHECK_EQ_INT((int)DSW(a + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(a + 0x36u), 0);
+    CHECK_EQ_INT((int)DSB(a + 0x55u), 1);
+    CHECK_EQ_INT((int)DSD(a + 0x08u), (int)K13_SH);
+    CHECK_EQ_INT((int)DSD(a + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), 0x9999);
+    CHECK_EQ_INT((int)DSD(e + 0x14u), 0x1100);
+    CHECK_EQ_INT((int)DSB(e + 0x1Eu), 14);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)S);
+
+    /* 0x4A868 false (0x101), off screen: the turn (0x80 -> hflip, -0x80),
+     * the 0xC95D4[3] stream, +0x14 = 0x2000 - rng(0xC00), +0x2C =
+     * 0x496AC(0x800); the type, +0x55, +0x36 and DS_00108878 stay. */
+    k13_base(0u, S);
+    k13_one(14u, 1u, 0x0080u);
+    DSD(e + 0x14u) = 0x1101u;
+    rv = k13_draw(S, 0xC00u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(a + 0x34u), 0xFF80);
+    CHECK_EQ_INT((int)DSB(a + 0x29u), 0x41);
+    CHECK_EQ_INT((int)DSD(a + 0x08u), (int)K13_SW);
+    CHECK_EQ_INT((int)DSD(e + 0x14u), (int)(0x2000u - rv));
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), 0xD80);
+    CHECK_EQ_INT((int)DSB(a + 0x55u), 0x77);
+    CHECK_EQ_INT((int)DSW(a + 0x36u), 0x2222);
+    CHECK_EQ_INT((int)DSB(e + 0x1Eu), 14);
+    CHECK_EQ_INT((int)DSD(DS_00108878), 5);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)mz_rng_after(S, 1u));
+    /* Speed -0x80 turns right; a zero case-record term takes rng + 0. */
+    k13_base(0u, S);
+    k13_one(14u, 1u, 0xFF80u);
+    DSB(a + 0x29u) = 0x41u;
+    DSD(Z_PS(14) + 4u) = 0;
+    rv = k13_draw(S, 0xC00u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(a + 0x34u), 0x0080);
+    CHECK_EQ_INT((int)DSB(a + 0x29u), 0x01);
+    CHECK_EQ_INT((int)DSD(e + 0x14u), (int)rv);
+
+    /* 0x4A868 false, on screen: nothing. */
+    k13_base(0u, S);
+    k13_one(14u, 1u, 0x0080u);
+    DSD(e + 0x14u) = 0x1101u;
+    DSW(a + 0x2Au) = 0x1000u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(a + 0x34u), 0x0080);
+    CHECK_EQ_INT((int)DSD(a + 0x08u), 0xEEFD4);
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), 0x9999);
+    CHECK_EQ_INT((int)DSD(e + 0x14u), 0x1101);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)S);
+    mz_restore();
+}
+
 /* The fixture of the fighter checks below: c3_seed's pair (slot 0 char 1,
  * slot 1 char 2, records r0/r1 on psets 1/2, +0x57 = 0x99/0x9A, +0x52 9,
  * +0x53 0x66, +0x5F 0x3C, DS_001077A8 wired) with the stream and the
@@ -39304,6 +39384,7 @@ int test_fight(void)
     check_49z_4cf20();
     check_49z_496dc();
     check_k13_case13();
+    check_k13_case14();
     check_49z_45b50();
     check_49z_47a00();
     check_49z_47b04();
