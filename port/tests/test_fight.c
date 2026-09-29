@@ -30996,19 +30996,16 @@ static void m1e_hiscore_seed(void)
     hiscore_init();
 }
 
-/* State 1 (the jump table's own shared-tail `ret`, a genuine no-op) and the
- * always-parked states 5/8/0xB..0xE/0xF/0x10, which this port leaves as
- * named gaps (record §49-H, flow.h) since they gate entirely on the
- * unported 0x1F458 initials-entry screen: every one of these calls must
- * leave every field this function touches exactly at its sentinel, proving
- * the state truly does not advance without it (not merely "the test didn't
- * look"). States 0, 4 and 7's own rank-probe gate is real as of record
- * §49-R and is covered separately, by check_mode_1e_gates and
- * check_mode_1e_rank_gate. */
+/* State 1 (the jump table's own shared-tail `ret`, a genuine no-op): the
+ * call must leave every field this function touches exactly at its
+ * sentinel. States 0xF/0x10 were parked here until record §51-A wired them;
+ * their checks are test_game.c's test_mode1e_rearm. States 0, 4 and 7's own
+ * rank-probe gate is real as of record §49-R and is covered separately, by
+ * check_mode_1e_gates and check_mode_1e_rank_gate. */
 static void check_mode_1e_parked(void)
 {
     static const u8 parked[] = {
-        1u, 0x0Fu, 0x10u,
+        1u,
     };
     u32 i;
     if (!mz_save()) { CHECK(0, "the §49-H snapshot allocates"); return; }

@@ -25,6 +25,7 @@
 #include "game/fight.h"
 #include "game/attract.h"
 #include "game/movie.h"
+#include "game/nameentry.h"
 #include <string.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -6632,5 +6633,293 @@ int test_cfg_helpers(void)
     ch_check_screen_wait();
     ch_check_quit_prompt();
     ch_check_keycfg();
+    return g_failures - before;
+}
+
+/* ---- record §51-A: 0x204F4 and mode 0x1E's states 0xF/0x10 ---------------- */
+
+/* Addresses symbols.h has no name for (nameentry.c's own NE_* values). */
+#define RA_COL    0x001044D0u   /* word: cursor column */
+#define RA_ROW    0x001044D2u   /* word: cursor row */
+#define RA_CNT    0x0010431Cu   /* byte: letters typed */
+#define RA_LIM    0x0010431Du   /* byte: letters allowed */
+#define RA_PAD0   0x001088E7u   /* side 0's pad byte */
+#define RA_PAD1   0x001088E5u   /* side 1's pad byte */
+#define RA_REP_H  0x001044E0u
+#define RA_REP_V  0x001044DCu
+/* A private actor pool: nameentry_reset and nameentry_step spawn into it, so
+ * the image's own pool is never touched (test_fight.c's M1F_POOL recipe). */
+#define RA_POOL   0x03F70000u
+#define RA_PSET   0x03FA0000u
+#define RA_DATA_LEN (0x0010B0D0u - 0x00080000u)
+#define RA_POOL_LEN (ACTOR_POOL_RECORDS * ACTOR_REC_SIZE)
+#define RA_PSET_LEN (ACTOR_POOL_RECORDS * PSET_SIZE)
+
+static u8 *ra_buf;
+static u8 ra_low[0x40];
+
+static int ra_save(void)
+{
+    ra_buf = (u8 *)malloc(RA_DATA_LEN + RA_POOL_LEN + RA_PSET_LEN);
+    if (ra_buf == NULL) return 0;
+    tf_snap(ra_buf, 0x00080000u, RA_DATA_LEN);
+    tf_snap(ra_buf + RA_DATA_LEN, RA_POOL, RA_POOL_LEN);
+    tf_snap(ra_buf + RA_DATA_LEN + RA_POOL_LEN, RA_PSET, RA_PSET_LEN);
+    tf_snap(ra_low, 0u, sizeof ra_low);
+    return 1;
+}
+
+static void ra_restore(void)
+{
+    if (ra_buf == NULL) return;
+    tf_put(ra_buf, 0x00080000u, RA_DATA_LEN);
+    tf_put(ra_buf + RA_DATA_LEN, RA_POOL, RA_POOL_LEN);
+    tf_put(ra_buf + RA_DATA_LEN + RA_POOL_LEN, RA_PSET, RA_PSET_LEN);
+    tf_put(ra_low, 0u, sizeof ra_low);
+    free(ra_buf);
+    ra_buf = NULL;
+}
+
+/* The fresh-CMOS table 0 (hs_orig: 500000, 400000, 350000, 300000, 250000,
+ * 200000, 90210, 50000, 20000, 100), a private actor pool, the game strings,
+ * and 0x204F4's outputs at sentinels that differ from every post-condition.
+ * hiscore_init leaves DS_00104367's 0x24 bytes blank (0x20). */
+static void ra_env(void)
+{
+    DSD(DS_001014F4) = RA_POOL;
+    DSD(DS_001014EC) = RA_PSET;
+    actors_reset();
+    game_string_table_load("data/game/C");
+    mem_fill(HS_T0, 0, 153u);
+    DSD(DS_00104528) = 0x142095u;
+    hiscore_init();
+    DSB(DS_00104367 + 0x24u) = 0x5Au;
+    DSB(DS_0010431E) = 0x77u;
+    mem_fill(DS_0010431F, 0x77, 0x24u);
+    mem_fill(DS_00104343, 0x77, 0x24u);
+    mem_fill(DS_00104394, 0x77, 0x25u);
+    DSB(RA_CNT) = 0x77u;
+    DSB(RA_LIM) = 0x77u;
+    DSD(DS_00104390) = 0xDEADBEEFu;
+    DSD(DS_001044D4) = 0x77777777u;
+    DSD(DS_0010438C) = 0x77777777u;
+    DSD(DS_001044CC) = 0x77777777u;
+    DSD(DS_001044C4) = 0x77777777u;
+    DSW(DS_001044D6) = 0x7777u;
+    DSD(DS_00105EFC) = 0x77777777u;
+    DSW(RA_COL) = 0x7777u;
+    DSW(RA_ROW) = 0x7777u;
+    DSB(DS_001044D8) = 0x77u;
+    DSB(RA_PAD0) = 0u;
+    DSB(RA_PAD1) = 0u;
+    DSD(RA_REP_H) = 0u;
+    DSD(RA_REP_V) = 0u;
+    DSD(DS_00104B00) = 0xBEEF0000u | 0x1Eu;
+}
+
+/* 0x204F4 called directly: the candidate fill, the buffers, the geometry,
+ * and the 0x2DBC4 read order (its last decode is left in DS_00105EFC). */
+static void ra_check_arm(void)
+{
+    u32 i;
+
+    /* rank 3, a blank candidate: factory record 3's name "MSG" (0xA7BC0 +
+     * 3 * 0x2C) is copied with its NUL, the rest of the buffer untouched;
+     * 3 letters at column 0x12, row 0x16. Records 3..8 then 0..2 are read,
+     * so the last decode is record 2 (350000). */
+    ra_env();
+    nameentry_arm(3u, 0x12345u);
+    CHECK(memcmp(mem + DS_00104367, "MSG", 4u) == 0, "0x204F4 fills the blank candidate from 0xA7BC0");
+    CHECK_EQ_INT((int)DSB(DS_00104367 + 4u), 0x20);
+    CHECK_EQ_INT((int)DSB(DS_00104367 + 0x24u), 0x5A);
+    CHECK_EQ_INT((int)DSB(DS_0010431E), 1);
+    CHECK_EQ_INT((int)DSB(DS_0010431F), 0x20);
+    for (i = 1u; i < 0x24u; i++) CHECK_EQ_INT((int)DSB(DS_0010431F + i), 0);
+    for (i = 0u; i < 0x24u; i++) CHECK_EQ_INT((int)DSB(DS_00104343 + i), 0);
+    for (i = 0u; i < 0x24u; i++) CHECK_EQ_INT((int)DSB(DS_00104394 + i), 0x20);
+    CHECK_EQ_INT((int)DSB(DS_00104394 + 0x24u), 0x77);
+    CHECK_EQ_INT((int)DSB(RA_CNT), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104390), 0x12345);
+    CHECK_EQ_INT((int)DSD(DS_001044D4), 0x77777700);   /* a byte store */
+    CHECK_EQ_INT((int)DSD(DS_0010438C), 0x777702EE);   /* a word store */
+    CHECK_EQ_INT((int)DSD(DS_001044CC), 0x12);
+    CHECK_EQ_INT((int)DSD(DS_001044C4), 0x16);
+    CHECK_EQ_INT((int)DSB(RA_LIM), 3);
+    CHECK_EQ_INT((int)DSD(DS_00105EFC), 350000);
+
+    /* rank 0, a candidate that is not blank: kept as is, DS_0010431E not
+     * raised; 18 letters at column 2. Records 0..8 are read (last 20000). */
+    ra_env();
+    DSB(DS_00104367 + 7u) = 'Q';
+    nameentry_arm(0u, 777u);
+    CHECK_EQ_INT((int)DSB(DS_00104367), 0x20);
+    CHECK_EQ_INT((int)DSB(DS_00104367 + 7u), 'Q');
+    CHECK_EQ_INT((int)DSB(DS_0010431E), 0x77);
+    CHECK_EQ_INT((int)DSD(DS_00104390), 777);
+    CHECK_EQ_INT((int)DSD(DS_001044CC), 2);
+    CHECK_EQ_INT((int)DSD(DS_001044C4), 0x16);
+    CHECK_EQ_INT((int)DSB(RA_LIM), 0x12);
+    CHECK_EQ_INT((int)DSD(DS_00105EFC), 20000);
+
+    /* rank 9, blank: "DUD"; only the second loop runs (records 0..8). */
+    ra_env();
+    nameentry_arm(9u, 150u);
+    CHECK(memcmp(mem + DS_00104367, "DUD", 4u) == 0, "rank 9's factory name");
+    CHECK_EQ_INT((int)DSD(DS_00105EFC), 20000);
+
+    /* 0x1EC38 arms the screen only for a qualifying score. */
+    ra_env();
+    CHECK_EQ_INT((int)hiscore_rank_single(999999u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00104390), 999999);
+    CHECK_EQ_INT((int)DSB(RA_LIM), 0x12);
+    CHECK_EQ_INT((int)DSW(DS_001044D6), 0);
+    ra_env();
+    CHECK_EQ_INT((int)hiscore_rank_single(0u), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104390), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSB(RA_LIM), 0x77);
+    CHECK_EQ_INT((int)DSW(DS_001044D6), 0x7777);
+}
+
+/* States 0xF/0x10 (0x1EFA2/0x1F094): the other side's state (0xE/0xD), the
+ * screen reset (cursor to column 0xB / row 6), 0x1EC38 on the other side's
+ * score, then one priming 0x1F458 for that side: the timer 0x2EE the arm set
+ * is counted down once, and that side's "right" moves the cursor to 0xE. */
+static void ra_check_rearm(void)
+{
+    /* 0xF: side 1's 450000 ranks 1 (3 letters); side 1 presses right. */
+    ra_env();
+    DSB(DS_00104B25) = 0x0Fu;
+    DSD(DS_001077EC) = 999999u;
+    DSD(DS_00107880) = 450000u;
+    DSB(RA_PAD1) = 0x10u;
+    game_mode_1e_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 0x0E);
+    CHECK_EQ_INT((int)DSW(DS_001044D6), 1);
+    CHECK_EQ_INT((int)DSD(DS_00104390), 450000);
+    CHECK_EQ_INT((int)DSB(RA_LIM), 3);
+    CHECK_EQ_INT((int)DSW(DS_0010438C), 0x2ED);
+    CHECK_EQ_INT((int)DSW(RA_COL), 0xE);
+    CHECK_EQ_INT((int)DSW(RA_ROW), 6);
+    CHECK_EQ_INT((int)DSB(DS_001044D8), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104B00), (int)(0xBEEF0000u | 0x1Eu));
+
+    /* 0xF polls side 1, not side 0: side 0's right leaves the column. */
+    ra_env();
+    DSB(DS_00104B25) = 0x0Fu;
+    DSD(DS_00107880) = 450000u;
+    DSB(RA_PAD0) = 0x10u;
+    game_mode_1e_step();
+    CHECK_EQ_INT((int)DSW(RA_COL), 0xB);
+
+    /* 0xF with a non-qualifying side-1 score: the state and the reset still
+     * happen and the entry is still primed (timer 0x100 -> 0xFF), but
+     * nothing is armed. */
+    ra_env();
+    DSB(DS_00104B25) = 0x0Fu;
+    DSD(DS_00107880) = 0u;
+    DSW(DS_0010438C) = 0x100u;
+    game_mode_1e_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 0x0E);
+    CHECK_EQ_INT((int)DSW(DS_001044D6), 0x7777);
+    CHECK_EQ_INT((int)DSD(DS_00104390), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSW(DS_0010438C), 0xFF);
+    CHECK_EQ_INT((int)DSW(RA_COL), 0xB);
+
+    /* 0x10: side 0's 150000 ranks 6; side 0 presses right. */
+    ra_env();
+    DSB(DS_00104B25) = 0x10u;
+    DSD(DS_001077EC) = 150000u;
+    DSD(DS_00107880) = 999999u;
+    DSB(RA_PAD0) = 0x10u;
+    game_mode_1e_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 0x0D);
+    CHECK_EQ_INT((int)DSW(DS_001044D6), 6);
+    CHECK_EQ_INT((int)DSD(DS_00104390), 150000);
+    CHECK_EQ_INT((int)DSW(DS_0010438C), 0x2ED);
+    CHECK_EQ_INT((int)DSW(RA_COL), 0xE);
+    CHECK_EQ_INT((int)DSW(RA_ROW), 6);
+
+    /* 0x10 polls side 0, not side 1. */
+    ra_env();
+    DSB(DS_00104B25) = 0x10u;
+    DSD(DS_001077EC) = 150000u;
+    DSB(RA_PAD1) = 0x10u;
+    game_mode_1e_step();
+    CHECK_EQ_INT((int)DSW(RA_COL), 0xB);
+}
+
+/* States 0/4/7 reset the screen (0x1EEEA/0x1F1E2/0x1F316) only on their
+ * arming arm. */
+static void ra_check_arming_reset(void)
+{
+    /* state 0: both qualify, side 0 wins (0xB), re-probed and armed. */
+    ra_env();
+    DSB(DS_00104B25) = 0u;
+    DSD(DS_00104AD4) = 2u;
+    DSB(DS_00104B1F) = 0u;
+    DSD(DS_001077EC) = 999999u;
+    DSD(DS_00107880) = 450000u;
+    game_mode_1e_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 0x0B);
+    CHECK_EQ_INT((int)DSW(RA_COL), 0xB);
+    CHECK_EQ_INT((int)DSW(RA_ROW), 6);
+    CHECK_EQ_INT((int)DSB(DS_001044D8), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104390), 999999);
+    CHECK_EQ_INT((int)DSB(RA_LIM), 0x12);
+
+    /* state 0: the pair fails: no reset. */
+    ra_env();
+    DSB(DS_00104B25) = 0u;
+    DSD(DS_00104AD4) = 2u;
+    DSB(DS_00104B1F) = 0u;
+    DSD(DS_001077EC) = 0u;
+    DSD(DS_00107880) = 999999u;
+    game_mode_1e_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 4);
+    CHECK_EQ_INT((int)DSW(RA_COL), 0x7777);
+
+    /* state 4: qualifies and DS_00104AD4 != 0 arms state 5. */
+    ra_env();
+    DSB(DS_00104B25) = 4u;
+    DSB(DS_00107813) = 0u;
+    DSD(DS_00104AD4) = 1u;
+    DSD(DS_001077EC) = 999999u;
+    game_mode_1e_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 5);
+    CHECK_EQ_INT((int)DSW(RA_COL), 0xB);
+    CHECK_EQ_INT((int)DSW(RA_ROW), 6);
+
+    /* state 4: qualifies but the second gate fails: armed, not reset. */
+    ra_env();
+    DSB(DS_00104B25) = 4u;
+    DSB(DS_00107813) = 0u;
+    DSD(DS_00104AD4) = 0u;
+    DSB(DS_00104B14) = 0u;
+    DSD(DS_001077EC) = 999999u;
+    game_mode_1e_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 7);
+    CHECK_EQ_INT((int)DSW(RA_COL), 0x7777);
+    CHECK_EQ_INT((int)DSD(DS_00104390), 999999);
+
+    /* state 7: side 1 qualifies and DS_00104AD4 != 1 arms state 8. */
+    ra_env();
+    DSB(DS_00104B25) = 7u;
+    DSB(DS_001078A7) = 0u;
+    DSD(DS_00104AD4) = 0u;
+    DSD(DS_00107880) = 999999u;
+    game_mode_1e_step();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 8);
+    CHECK_EQ_INT((int)DSW(RA_COL), 0xB);
+    CHECK_EQ_INT((int)DSW(RA_ROW), 6);
+}
+
+int test_mode1e_rearm(void)
+{
+    int before = g_failures;
+    if (!ra_save()) { CHECK(0, "the §51-A snapshot allocates"); return 1; }
+    ra_check_arm();
+    ra_check_rearm();
+    ra_check_arming_reset();
+    ra_restore();
     return g_failures - before;
 }

@@ -547,11 +547,10 @@ void game_mode_0a_step(void);
 /* 0x1EC38 — record §49-R. Ranks a fighter's post-match score against
  * table 0 through config.h's hiscore_rank_probe (0x2DDE4): a rank < 10
  * clears config field 0x26 and records the rank in DS_001044D6, returning
- * 1; a rank >= 10 returns 0. The deferred field-0x27/0x26 audit adds
- * (0x2DAE4) and the name-entry candidate-list prep (0x204F4, the unported
- * 0x1F458 screen's own setup) are out of scope — see flow.c's header
- * comment on this function for the full derivation and why neither
- * changes this function's own observable return. */
+ * 1, after arming the name-entry screen through nameentry_arm (0x204F4,
+ * record §51-A); a rank >= 10 returns 0. The deferred field-0x27/0x26 audit
+ * adds (0x2DAE4) are out of scope — see flow.c's header comment on this
+ * function. */
 u32 hiscore_rank_single(u32 score);
 
 /* 0x1ECC8 — record §49-R. Ranks both fighters' post-match scores
@@ -612,10 +611,11 @@ u32 hiscore_rank_pair(void);
  *   0x1F458 is nameentry_step (game/nameentry.h) with its callees 0x1FFD0,
  *   0x20710, 0x1ED2C and the name filter 0x13EF0/0x13F68; states
  *   5/8/0xB..0xE poll it (params 0 or 1 select the side) and advance when it
- *   reports done. Still PORT-noted: the name-entry candidate-list prep
- *   0x204F4 that 0x1EC38 calls, side-specific 0x1ED2C resets at the state
- *   0/4/7 arming points, and states 0xF/0x10 (primed with the return
- *   discarded), which need 0x1EC38's real result to be wired.
+ *   reports done. Record §51-A wires the rest: 0x1ED2C (nameentry_reset)
+ *   at the state 0/4/7 arming points, 0x204F4 (nameentry_arm) inside
+ *   0x1EC38, and states 0xF/0x10, which store DS_00104B25 = 0xE/0xD, reset
+ *   the screen, re-probe the other side's score through 0x1EC38 (return
+ *   discarded) and prime nameentry_step for that side (return discarded).
  *   Two established gaps recur throughout, left as the same PORT: notes
  *   this codebase already uses elsewhere: every 0x2C3FC voice call (record
  *   §45-A) and, inside 0x1EC38, 0x2DAE4 (the deferred audit no-op, spec

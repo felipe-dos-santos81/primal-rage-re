@@ -4931,13 +4931,10 @@ void frontend_match_start(void)
  * idiom this codebase already treats as out of scope everywhere else
  * (spec §7); neither add changes this function's own return value or
  * DS_001044D6, so omitting them changes no state this port's own callers
- * observe. PORT: 0x1ECA7 0x204F4(edx = the score) — the name-entry
- * candidate-list shuffle and cursor-state init (DS_00104367 the buffer,
- * DS_0010431C..0x104394 the cursor fields, DS_001044C4/0x1044CC/0x1044D4
- * the layout) for the unported 0x1F458 initials-entry screen — is the same
- * out-of-scope subsystem record §49-H already names; its own return value
- * is discarded by the raw, so omitting it changes nothing this function
- * itself returns or stores. */
+ * observe. A rank < 10 first arms the name-entry screen through
+ * nameentry_arm (0x204F4, record §51-A) with EAX = the rank's low word
+ * (0x1EC70/0x1EC72 `xor eax,eax; mov ax,cx`) and EDX = the score
+ * (0x1ECA5); ECX (the rank) survives it (0x204F5 push/0x2070A pop). */
 u32 hiscore_rank_single(u32 score)
 {
     u32 rank = hiscore_rank_probe(score, 0u);                  /* 0x1EC3F */
@@ -4947,7 +4944,7 @@ u32 hiscore_rank_single(u32 score)
          * header. */
         return 0u;                                             /* 0x1EC9F */
     }
-    /* PORT: 0x1ECA7 0x204F4(score) — see header. */
+    nameentry_arm((u16)rank, score);                            /* 0x1ECA7 0x204F4 */
     (void)config_field_set(0x26u, 0u);                          /* 0x1ECB3 0x2DA0C */
     DSW(DS_001044D6) = (u16)rank;                               /* 0x1ECBA */
     return 1u;                                                  /* 0x1ECB8 */
@@ -4985,20 +4982,18 @@ u32 hiscore_rank_pair(void)
  * their short-circuit-then-rank-probe gate for real (hiscore_rank_pair/
  * hiscore_rank_single above, record §49-R); states 5/8/0xB..0xE poll the
  * name-entry driver nameentry_step (0x1F458, record §49-T) and advance when
- * it reports done. Still PORT-noted: 0x204F4 (the candidate-list shuffle
- * 0x1EC38 calls) and states 0xF/0x10, which need 0x1EC38's real result. */
+ * it reports done. Record §51-A wires the rest: the 0x1ED2C screen reset
+ * (nameentry_reset) at states 0/4/7's arming points, 0x204F4 inside 0x1EC38,
+ * and states 0xF/0x10, which re-arm the other side's entry. */
 void game_mode_1e_step(void)
 {
     switch (DSB(DS_00104B25)) {
     case 0x00u:
         if (DSD(DS_00104AD4) == 2u && DSB(DS_00104B1F) == 0u    /* 0x1EECF/0x1EED6/0x1EED8/0x1EEDF */
             && hiscore_rank_pair() != 0u) {                     /* 0x1EEE1/0x1EEE6/0x1EEE8 */
-            /* PORT: 0x1EEEA 0x1ED2C — the name-entry screen reset (spawns
-             * the backdrop/cursor actors, resets DS_001044D0/D2/CE and the
-             * entry-buffer state) for the unported 0x1F458 initials screen
-             * — out of scope, record §49-H's own gap. PORT: 0x1EEEF/
-             * 0x1EEF9 0x2C3FC voices (0x100, 0xE1), not wired (record
-             * §45-A). */
+            nameentry_reset();                                  /* 0x1EEEA 0x1ED2C */
+            /* PORT: 0x1EEEF/0x1EEF9 0x2C3FC voices (0x100, 0xE1), not
+             * wired (record §45-A). */
             u32 s0 = DSD(DS_001077EC);                          /* 0x1EF03 */
             u32 s1 = DSD(DS_00107880);                          /* 0x1EF08 */
             if (s0 >= s1) {                                     /* 0x1EF0E/0x1EF10 (unsigned) */
@@ -5042,10 +5037,9 @@ void game_mode_1e_step(void)
                        || (DSB(DS_00104B14) != 0u && DSD(DS_00104ABC) == 1u); /* 0x1F1C1/0x1F1C8/0x1F1CE/0x1F1D5 */
             if (advance) {
                 DSB(DS_00104B25) = 5u;                              /* 0x1F1DB */
-                /* PORT: 0x1F1E2 0x1ED2C — side 0's name-entry screen
-                 * reset — out of scope (see state 0's own note). PORT:
-                 * 0x1F1EC/0x1F1F6 0x2C3FC voices (0x100, 0xE1), not wired
-                 * (record §45-A). */
+                nameentry_reset();                                  /* 0x1F1E2 0x1ED2C */
+                /* PORT: 0x1F1EC/0x1F1F6 0x2C3FC voices (0x100, 0xE1), not
+                 * wired (record §45-A). */
                 break;
             }
         }
@@ -5084,10 +5078,9 @@ void game_mode_1e_step(void)
                        || (DSB(DS_00104B14) != 0u && DSD(DS_00104ABC) == 1u); /* 0x1F2E1/0x1F2E8/0x1F2EE/0x1F2F4 */
             if (advance) {
                 DSB(DS_00104B25) = 8u;                               /* 0x1F301 */
-                /* PORT: 0x1F316 0x1ED2C — side 1's name-entry screen
-                 * reset — out of scope (see state 0's own note). PORT:
-                 * 0x1F307/0x1F311 0x2C3FC voices (0x100, 0xE1), not wired
-                 * (record §45-A). */
+                /* PORT: 0x1F307/0x1F311 0x2C3FC voices (0x100, 0xE1), not
+                 * wired (record §45-A). */
+                nameentry_reset();                                   /* 0x1F316 0x1ED2C */
                 break;
             }
         }
@@ -5165,13 +5158,23 @@ void game_mode_1e_step(void)
         break;
     }
     case 0x0Fu:
+        /* Side 0 is done (state 0xB); arm side 1's entry (state 0xE). The
+         * rank probe's own return is discarded (no `test al,al`), so the
+         * entry runs even for a non-qualifying score. */
+        /* PORT: 0x1EFA9 0x2C3FC(0xE1) voice, not wired (record §45-A); DL =
+         * 0xE survives it (0x2C3FD push edx, popped on every exit). */
+        DSB(DS_00104B25) = 0x0Eu;                               /* 0x1EFA7/0x1EFAE */
+        nameentry_reset();                                      /* 0x1EFB4 0x1ED2C */
+        (void)hiscore_rank_single(DSD(DS_00107880));            /* 0x1EFB9/0x1EFBE 0x1EC38 */
+        (void)nameentry_step(1u);                               /* 0x1EFC3/0x1EFC8 0x1F458 */
+        break;
     case 0x10u:
-        /* PORT: 0x1EFA9/0x1F099 unconditionally re-arm the opposite side's
-         * initials wait (state 0xE/0xD): voice 0xE1, the state store,
-         * nameentry_reset (0x1ED2C, record §49-T), 0x1EC38 (the unported
-         * rank probe, record §49-R) and a priming, return-discarded
-         * nameentry_step (0x1F458). Parked until 0x1EC38 is ported;
-         * reachable now that states 0xB/0xC complete. */
+        /* Side 1 is done (state 0xC); arm side 0's entry (state 0xD). */
+        /* PORT: 0x1F099 0x2C3FC(0xE1) voice, not wired (record §45-A). */
+        DSB(DS_00104B25) = 0x0Du;                               /* 0x1F09E */
+        nameentry_reset();                                      /* 0x1F0A5 0x1ED2C */
+        (void)hiscore_rank_single(DSD(DS_001077EC));            /* 0x1F0AA/0x1F0AF 0x1EC38 */
+        (void)nameentry_step(0u);                               /* 0x1F0B4/0x1F0B6 0x1F458 */
         break;
     }
 }
