@@ -1316,55 +1316,60 @@ outside 1..0x13).
 fail the suite with exit 1 and no crash. They include the brief's five: a
 dropped pad flag (1), swapped jump-table cases (10, 14), `0x314A0`'s Up and
 Down swapped (6), the device wraps (17, 18) and the Esc test on `0x0D` (32).
+**Count correction (Task 6 fix round 1):** the counts first shipped here
+included the suite's closing `FAILURES: N` line, one too many for every row.
+The rows below are the `test_game.c` FAIL lines re-measured from the same log
+(43..46 are 2, 3, 1 and 1, not 3, 4, 2 and 2), and the labels of 45 and 46
+name the marker bit each one drops.
 
 | # | mutation | result |
 |---|---|---|
-| 1 | 0x2EF48 pad flag dropped | 4 checks |
-| 2 | 0x2EF48 pad flag low byte only | 2 checks |
-| 3 | 0x2EF48 returns width - digits | 4 checks |
-| 4 | 0x2EF48 no truncation stop | 8 checks |
-| 5 | 0x2F48C pad and mode swapped | 3 checks |
-| 6 | 0x314A0 Up and Down swapped | 7 checks |
-| 7 | 0x314A0 Left and Right swapped | 6 checks |
-| 8 | 0x314A0 release dropped | 2 checks |
-| 9 | 0x319B0 case 1 column + 3 | 2 checks |
-| 10 | 0x31A78 cases 0 and 1 swapped | 4 checks |
-| 11 | 0x31A78 side 1 at +0x14 | 2 checks |
-| 12 | 0x31B94 case 1 row r + 2 | 2 checks |
-| 13 | 0x31B94 case 3 column c + 2 | 3 checks |
-| 14 | 0x31C78 cases 2 and 3 swapped | 5 checks |
-| 15 | 0x31C78 left/right wrapped | 5 checks |
-| 16 | 0x31C78 side 1 at +0x12 | 2 checks |
-| 17 | 0x31F24 Down wrap dropped | 6 checks |
-| 18 | 0x31F24 Up wrap to 4 | 4 checks |
-| 19 | 0x31F24 Up/Down wait dropped | 4 checks |
-| 20 | 0x31F24 Down wait 9 ticks | 4 checks |
-| 21 | 0x31F24 Down wait 13 ticks | 4 checks |
-| 22 | 0x31F24 BIOS device override dropped | 15 checks |
-| 23 | 0x31F24 p2 Down dev1 4/6 arm dropped | 3 checks |
-| 24 | 0x31F24 p2 Up dev1 2 arm dropped | 3 checks |
-| 25 | 0x31F24 p1 Up dev2 4 arm dropped | 2 checks |
-| 26 | 0x31F24 Left ignored | 3 checks |
-| 27 | 0x31F24 config_keys_apply dropped | 8 checks (the first run's pattern broke the build; rerun) |
-| 28 | 0x31F24 device-4 blank markers dropped | 4 checks |
-| 29 | 0x31F24 option-row flags inverted | 5 checks |
-| 30 | 0x31F24 dirs draw/clear swapped (p1) | 3 checks |
-| 31 | 0x31F24 buttons clear dropped | 2 checks |
+| 1 | 0x2EF48 pad flag dropped | 3 checks |
+| 2 | 0x2EF48 pad flag low byte only | 1 check |
+| 3 | 0x2EF48 returns width - digits | 3 checks |
+| 4 | 0x2EF48 no truncation stop | 7 checks |
+| 5 | 0x2F48C pad and mode swapped | 2 checks |
+| 6 | 0x314A0 Up and Down swapped | 6 checks |
+| 7 | 0x314A0 Left and Right swapped | 5 checks |
+| 8 | 0x314A0 release dropped | 1 check |
+| 9 | 0x319B0 case 1 column + 3 | 1 check |
+| 10 | 0x31A78 cases 0 and 1 swapped | 3 checks |
+| 11 | 0x31A78 side 1 at +0x14 | 1 check |
+| 12 | 0x31B94 case 1 row r + 2 | 1 check |
+| 13 | 0x31B94 case 3 column c + 2 | 2 checks |
+| 14 | 0x31C78 cases 2 and 3 swapped | 4 checks |
+| 15 | 0x31C78 left/right wrapped | 4 checks |
+| 16 | 0x31C78 side 1 at +0x12 | 1 check |
+| 17 | 0x31F24 Down wrap dropped | 5 checks |
+| 18 | 0x31F24 Up wrap to 4 | 3 checks |
+| 19 | 0x31F24 Up/Down wait dropped | 3 checks |
+| 20 | 0x31F24 Down wait 9 ticks | 3 checks |
+| 21 | 0x31F24 Down wait 13 ticks | 3 checks |
+| 22 | 0x31F24 BIOS device override dropped | 14 checks |
+| 23 | 0x31F24 p2 Down dev1 4/6 arm dropped | 2 checks |
+| 24 | 0x31F24 p2 Up dev1 2 arm dropped | 2 checks |
+| 25 | 0x31F24 p1 Up dev2 4 arm dropped | 1 check |
+| 26 | 0x31F24 Left ignored | 2 checks |
+| 27 | 0x31F24 config_keys_apply dropped | 7 checks (the first run's pattern broke the build; rerun) |
+| 28 | 0x31F24 device-4 blank markers dropped | 3 checks |
+| 29 | 0x31F24 option-row flags inverted | 4 checks |
+| 30 | 0x31F24 dirs draw/clear swapped (p1) | 2 checks |
+| 31 | 0x31F24 buttons clear dropped | 1 check |
 | 32 | 0x32358 Esc test on 0x0D | the harness exit (the loop never leaves) |
-| 33 | 0x32358 diag flag bit 0x20 | 16 checks |
-| 34 | 0x32358 diag table start ignored | 5 checks |
-| 35 | 0x32358 O/X inverted | 4 checks |
-| 36 | 0x32358 stick masks swapped | 5 checks |
-| 37 | 0x32358 keys hex row dropped | 5 checks |
-| 38 | 0x32358 applies the record | 2 checks |
-| 39 | 0x32358 buttons drawn for every device | 3 checks (it survived the first run; TEST B now keeps a sentinel where player 1's button names would go) |
-| 40 | 0x31F24 registration dropped | 2 checks |
-| 41 | 0x32358 registration dropped | 2 checks |
-| 42 | 0x2EF48 pad digit off (0x31) | 3 checks |
-| 43 | 0x31F24 Down step +4 (fix round 1) | 3 checks (MODIFY F: 4, not 2) |
-| 44 | 0x31F24 Up step -4 (fix round 1) | 4 checks (MODIFY E: 2, not 4) |
-| 45 | 0x31F24 LO FIERCE arm dropped for player 1 (fix round 1) | 2 checks |
-| 46 | 0x31F24 LO FIERCE arm dropped for player 2 (fix round 1) | 2 checks |
+| 33 | 0x32358 diag flag bit 0x20 | 15 checks |
+| 34 | 0x32358 diag table start ignored | 4 checks |
+| 35 | 0x32358 O/X inverted | 3 checks |
+| 36 | 0x32358 stick masks swapped | 4 checks |
+| 37 | 0x32358 keys hex row dropped | 4 checks |
+| 38 | 0x32358 applies the record | 1 check |
+| 39 | 0x32358 buttons drawn for every device | 2 checks (it survived the first run; TEST B now keeps a sentinel where player 1's button names would go) |
+| 40 | 0x31F24 registration dropped | 1 check |
+| 41 | 0x32358 registration dropped | 1 check |
+| 42 | 0x2EF48 pad digit off (0x31) | 2 checks |
+| 43 | 0x31F24 Down step +4 (fix round 1) | 2 checks (MODIFY F: 4, not 2) |
+| 44 | 0x31F24 Up step -4 (fix round 1) | 3 checks (MODIFY E: 2, not 4) |
+| 45 | 0x31F24 LO FIERCE (0x8000000) dropped from player 1's device-4 blanks (fix round 1) | 1 check |
+| 46 | 0x31F24 LO FIERCE (0x800) dropped from player 2's device-4 blanks (fix round 1) | 1 check |
 
 **Gate (Task 5).** `make verify` exited 0 (`<scratchpad>/k11_t5_verify.txt`).
 Its oracle lines equal §K11.0's and ledger §A's, except the two unittest
@@ -1484,19 +1489,23 @@ call or jump to it and no absolute dword `0x00019DD8`. No port, no row
 
 **Values the tests pin** (`sm_check_keyboard`, 25 scripted frames):
 
-* The slot map through both functions (the brief's values `0x1100 + s` over a
-  `0x5A` fill), `+0` and `0x100CBE` untouched after the out-of-range stores
-  (16 and -1), the getter's 0 for 16 and -1, `0xE00D` read back
-  zero-extended, and `0x2EBBC` returning `0x1C0D` and zeroing the word.
-* KEYS A (18 frames): "morland" into slots 0..6 (`DS_00108113` = 1); 'M'
-  (`0x324D`, slot 0's scan with another ascii) refused; F1 (`0x3B00`, no name)
-  refused; Enter keeps slot 7's 'x'; UP into slot 8, whose own old word has
-  scan `0x48` (only the lower slots are compared); RGT, DOWN, LEFT, j, k, i,
-  u into 9..15. All sixteen words, the applied mirror (slot 0's scan and
-  ascii) and BIOS record (slot 0's scan at `+0x2DE`, slot 9's at
-  `+0x2E6 + 3`), the titles in `0x2000`, three labels, the names in
-  `0xF000` at both columns (slot 7 redrawn after Enter), and slot 12's "<j>"
-  with its old "<HOME>" tail released by the blanks.
+* The slot map through both functions (the values `0x9100 + s`, bit 15 set
+  so the getter's zero extension is checked on every slot; fix round 1, the
+  brief had `0x1100 + s`) over a `0x5A` fill, `+0` and `0x100CBE` untouched
+  after the out-of-range stores (16 and -1), the getter's 0 for 16 and -1,
+  and `0x2EBBC` returning `0x1C0D` and zeroing the word.
+* KEYS A (18 frames): "morland" into slots 0..6 (`DS_00108113` = 1). At slot
+  7, 'D' (`0x2044`) is refused: a shifted letter keeps its scan code, so its
+  high byte `0x20` is that of slot 6's 'd' (`0x2064`), the last slot the
+  `0x1A3B8..0x1A3DD` loop compares; F1 (`0x3B00`, no name) is refused; then
+  'x' replaces slot 7's "<HOME>" in column 0xC (the `0x1A339 jg` switches
+  after 7). UP goes into slot 8, whose own old word has scan `0x48` (only the
+  lower slots are compared); RGT, DOWN, LEFT, j into 9..12; Enter keeps slot
+  13's 'k'; i, u into 14, 15. All sixteen words, the applied mirror (slot 0's
+  scan and ascii) and BIOS record (slot 0's scan at `+0x2DE`, slot 9's at
+  `+0x2E6 + 3`), the titles in `0x2000`, three labels, the names in `0xF000`
+  at both columns (slot 13 redrawn after Enter), and slots 7's "<x>" and 12's
+  "<j>" with their old "<HOME>" tails released by the blanks.
 * KEYS B (7 frames): "spaten" into slots 0..5 (FREE PLAY = 1), then Esc on
   slot 6: EAX = 0, the six words stored, the mirror and BIOS record keep the
   seed (not applied), slot 6's old "<HOME>" left highlighted in `0x3000`,
@@ -1505,13 +1514,18 @@ call or jump to it and no absolute dword `0x00019DD8`. No port, no row
 **Not tested:** the `0x1A331` drop of a stale key word (it shows only when the
 first frame brings no key: one more frame over the brief's 25); the wait on a
 zero key word (`0x1A39A`; the checks after it refuse a zero word anyway, so it
-is not separable); an Enter refused by the duplicate or name check; a key
-whose name exists but whose ascii is `0x0D` or `0x1B` from another scan code
-(keypad Enter `0xE00D` is Enter; it is only read back in the getter check);
-the partial matches of either code word (only the full words are run: a
-first mismatch at each letter is not); "spaten" in a run that also completes
-slot 15; the labels other than UP, RIGHT and player 2's LO FIERCE; the
-unrolled initial draws of slots other than 9 (B) as drawn before any edit.
+is not separable); **the duplicate loop's lower bound**: the one refused
+duplicate clashes with slot 6 (j = slot - 1), so a loop starting at j = 1
+survives (mutation 36); a clash with slot 0 costs one more frame; **the slot
+at which "morland" is tested**: KEYS A goes on past slot 7, so testing it
+after slot 7 instead of 6 also sets the flag (mutation 33 survives; pinning it
+needs an Esc run of its own, 8 frames); an Enter refused by the duplicate or
+name check; a key whose ascii is `0x0D` or `0x1B` from another scan code
+(keypad Enter `0xE00D` is Enter); the partial matches of either code word
+(only the full words are run: a first mismatch at each letter is not);
+"spaten" in a run that also completes slot 15; the labels other than UP,
+RIGHT and player 2's LO FIERCE; the unrolled initial draws of slots other
+than 9 (B) as drawn before any edit.
 
 **Frame budget.** 25 scripted frames in `sm_check_keyboard` (KEYS A 18, KEYS
 B 7); the slot and take checks present no frame. K11 total: 106 + 25 = 131 of
@@ -1524,11 +1538,14 @@ build failed at the link on the four new symbols
 (`k11_t6_green.txt`).
 
 **Mutations** (each applied, rebuilt, run and reverted by
-`<scratchpad>/k11_t6_mut.py`; log `k11_t6_mut_run.txt`, table
-`k11_t6_mut_table.txt`). All 30 fail the suite with exit 1 and no crash; the
-count is the `test_game.c` FAIL lines, as measured. They include the brief's
-four: slots 9 and 10 swapped (1, 2), the getter's -1 above 15 (3), `0x2EBBC`
-without its clear (8) and wrong Enter/Esc arms (9, 10, 11).
+`<scratchpad>/k11_t6r1_mut.py`; log `k11_t6r1_mut_run.txt`, table
+`k11_t6r1_mut_table.txt`). The first run (`k11_t6_mut.py`, 30 mutations, all
+failing) was repeated on the fix-round-1 tests with six more. The count is the
+`test_game.c` FAIL lines, as measured (the closing `FAILURES: N` line is not
+counted). 34 of 36 fail the suite with exit 1 and no crash; 33 and 36 survive
+and are the two untested arms named above. The brief's four are 1, 2 (slots 9
+and 10 swapped), 3 (the getter's -1 above 15), 8 (`0x2EBBC` without its clear)
+and 9, 10, 11 (wrong Enter/Esc arms).
 
 | # | mutation | result |
 |---|---|---|
@@ -1541,27 +1558,33 @@ without its clear (8) and wrong Enter/Esc arms (9, 10, 11).
 | 7 | 0x19D34 signed bound (-1 reads slot 0) | 1 check |
 | 8 | 0x2EBBC without its clear | 1 check |
 | 9 | 0x19DF0 Esc applies the record | 2 checks |
-| 10 | 0x19DF0 Esc and Enter compares swapped | 19 checks |
-| 11 | 0x19DF0 Enter reload dropped | 17 checks |
+| 10 | 0x19DF0 Esc and Enter compares swapped | 9 checks |
+| 11 | 0x19DF0 Enter reload dropped | 9 checks |
 | 12 | 0x19DF0 duplicate compare on the whole word | 15 checks |
-| 13 | 0x19DF0 duplicate scan includes the slot itself | 17 checks |
+| 13 | 0x19DF0 duplicate scan includes the slot itself | 16 checks |
 | 14 | 0x19DF0 duplicate refusal dropped | 15 checks |
-| 15 | 0x19DF0 name refusal dropped | 3 checks |
-| 16 | 0x19DF0 seven blanks dropped | 1 check |
+| 15 | 0x19DF0 name refusal dropped | 17 checks |
+| 16 | 0x19DF0 seven blanks dropped | 2 checks |
 | 17 | 0x19DF0 highlight drawn in 0xF000 | 1 check |
-| 18 | 0x19DF0 accepted name not redrawn | 6 checks |
+| 18 | 0x19DF0 accepted name not redrawn | 7 checks |
 | 19 | 0x19DF0 "spaten" store dropped | 1 check |
 | 20 | 0x19DF0 "morland" store dropped | 1 check |
 | 21 | 0x19DF0 "spaten" tested after slot 4 | 1 check |
 | 22 | 0x19DF0 final 0x1AE28 dropped | 4 checks |
 | 23 | 0x19DF0 column switch after slot 8 | 2 checks |
-| 24 | 0x19DF0 key rows from 6 | 5 checks |
+| 24 | 0x19DF0 key rows from 6 | 7 checks |
 | 25 | 0x19DF0 labels from the second id | 2 checks |
 | 26 | 0x19DF0 LEFT PLAYER in 0x1000 | 1 check |
 | 27 | 0x19DF0 player 2 initial names in 0x1000 | 1 check |
 | 28 | 0x19DF0 registration dropped | 1 check |
 | 29 | 0x19DF0 player 2 labels at column 0x14 | 1 check |
 | 30 | 0x19DF0 "morland" last letter 'e' | 1 check |
+| 31 | 0x19DF0 duplicate loop bound j + 1 < slot (fix round 1, R1) | 15 checks |
+| 32 | 0x19DF0 duplicate loop compares slot 0 only (fix round 1, R2) | 15 checks |
+| 33 | 0x19DF0 "morland" tested after slot 7 (fix round 1, R3) | **survives** (listed under Not tested) |
+| 34 | 0x19D34 slot 12 sign-extended (fix round 1, R7) | 1 check |
+| 35 | 0x19DF0 column switch after slot 6 (fix round 1, R10) | 2 checks |
+| 36 | 0x19DF0 duplicate loop starts at j = 1 (fix round 1) | **survives** (listed under Not tested) |
 
 **Gate (Task 6).** `make verify` exited 0 (`<scratchpad>/k11_t6_verify.txt`).
 Its oracle lines (`k11_t6_or.txt`) equal §K11.5's and ledger §A's, except the

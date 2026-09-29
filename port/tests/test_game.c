@@ -8662,9 +8662,9 @@ static void sm_check_keyboard(void)
     memcpy(saved, mem + 0x100CACu, sizeof saved);
     memset(mem + 0x100CACu, 0x5A, 0x28);
     for (u32 s = 0; s < 16u; s++) {
-        svc_key_slot_set(s, (u16)(0x1100u + s));
-        CHECK_EQ_INT((int)DSW(slot_addr[s]), (int)(0x1100u + s));
-        CHECK_EQ_INT((int)svc_key_slot_get(s), (int)(0x1100u + s));
+        svc_key_slot_set(s, (u16)(0x9100u + s));         /* bit 15 set: the getter zero-extends */
+        CHECK_EQ_INT((int)DSW(slot_addr[s]), (int)(0x9100u + s));
+        CHECK_EQ_INT((int)svc_key_slot_get(s), (int)(0x9100u + s));
     }
     svc_key_slot_set(16u, 0x7777u);                      /* above 15: nothing */
     svc_key_slot_set(0xFFFFFFFFu, 0x7777u);              /* 0x19C60 `ja`: unsigned */
@@ -8673,8 +8673,6 @@ static void sm_check_keyboard(void)
     for (u32 s = 0; s < 16u; s++) CHECK(DSW(slot_addr[s]) != 0x7777u, "slot 16 writes nothing");
     CHECK_EQ_INT((int)svc_key_slot_get(16u), 0);
     CHECK_EQ_INT((int)svc_key_slot_get(0xFFFFFFFFu), 0); /* 0x19D37 `ja`: unsigned */
-    svc_key_slot_set(3u, 0xE00Du);
-    CHECK_EQ_INT((int)svc_key_slot_get(3u), 0xE00D);     /* 0x19D60 `xor eax,eax`: zero-extended */
     DSD(CH_KEY_WORD) = 0x1C0Du;
     CHECK_EQ_INT((int)svc_raw_key_take(), 0x1C0D);
     CHECK_EQ_INT((int)DSD(CH_KEY_WORD), 0);
@@ -8687,26 +8685,27 @@ static void sm_check_keyboard(void)
     DSB(DS_00105D60) = 0u; DSB(DS_00108113) = 0u;
 
     /* KEYS A: "morland" into slots 0..6 (0x1A4A8..0x1A53B sets DS_00108113);
-     * 'M' has the scan code of slot 0's 'm' (the compare is & 0xFF00) and is
-     * refused; F1 has no name (0x3157C returns 0) and is refused; Enter keeps
-     * slot 7's 'x'; slot 8 takes UP although its own old word has scan 0x48
-     * (only the slots below are compared); slot 12's "<j>" is drawn after
-     * the seven blanks at 0x80590 released its old "<HOME>". After slot 15
-     * the record is applied (0x1A551). */
-    static const u16 seed_a[16] = { 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2D78u,
-                                    0x4830u, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x4700u, 0x2C7Au, 0x2C7Au, 0x2C7Au };
+     * at slot 7, 'D' (0x2044: shift keeps the scan code 0x20 of slot 6's 'd'
+     * 0x2064; the compare is & 0xFF00, up to slot - 1) is refused and F1 has
+     * no name (0x3157C returns 0) and is refused; 'x' then replaces slot 7's
+     * "<HOME>" in column 0xC; slot 8 takes UP although its own old word has
+     * scan 0x48 (only the slots below are compared); slot 12's "<j>" is drawn
+     * after the seven blanks at 0x80590 released its old "<HOME>"; Enter
+     * keeps slot 13's 'k'. After slot 15 the record is applied (0x1A551). */
+    static const u16 seed_a[16] = { 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x4700u,
+                                    0x4830u, 0x2C7Au, 0x2C7Au, 0x2C7Au, 0x4700u, 0x256Bu, 0x2C7Au, 0x2C7Au };
     static const sm_step_t keys_a[] = {
         { 0x326Du, 0u }, { 0x186Fu, 0u }, { 0x1372u, 0u }, { 0x266Cu, 0u }, { 0x1E61u, 0u },
-        { 0x316Eu, 0u }, { 0x2064u, 0u }, { 0x324Du, 0u }, { 0x3B00u, 0u }, { 0x1C0Du, 0u },
+        { 0x316Eu, 0u }, { 0x2064u, 0u }, { 0x2044u, 0u }, { 0x3B00u, 0u }, { 0x2D78u, 0u },
         { 0x4800u, 0u }, { 0x4D00u, 0u }, { 0x5000u, 0u }, { 0x4B00u, 0u }, { 0x246Au, 0u },
-        { 0x256Bu, 0u }, { 0x1769u, 0u }, { 0x1675u, 0u } };
+        { 0x1C0Du, 0u }, { 0x1769u, 0u }, { 0x1675u, 0u } };
     static const u16 want_a[16] = { 0x326Du, 0x186Fu, 0x1372u, 0x266Cu, 0x1E61u, 0x316Eu, 0x2064u, 0x2D78u,
                                     0x4800u, 0x4D00u, 0x5000u, 0x4B00u, 0x246Au, 0x256Bu, 0x1769u, 0x1675u };
     actors_reset();
     sm_begin(keys_a, 18u);
     sm_seed_slots(seed_a);
     CHECK_EQ_INT((int)svc_configure_keyboard(0xBCC7Cu), 0);         /* 0x1A556 */
-    sm_end(18u, "CONFIGURE KEYBOARD: morland, two refusals, Enter, eight keys");
+    sm_end(18u, "CONFIGURE KEYBOARD: morland, two refusals, nine keys, Enter");
     for (u32 s = 0; s < 16u; s++) CHECK_EQ_INT((int)DSW(slot_addr[s]), (int)want_a[s]);
     CHECK_EQ_INT((int)DSB(DS_00108113), 1);                          /* "morland" */
     CHECK_EQ_INT((int)DSB(DS_001014AE), 0x32);                       /* 0x1AE28: slot 0's scan */
@@ -8720,7 +8719,9 @@ static void sm_check_keyboard(void)
     ch_expect(0x15, 0x16, 'L', 0x1000u, "player 2 label LO FIERCE (0xA2C48)");
     ch_expect(7, 0xC, '<', 0xF000u, "slot 0 <m> at (0xC, 7)");
     ch_expect(7, 0xE, '>', 0xF000u, "slot 0 <m>: three cells");
-    ch_expect(0x15, 0xC, '<', 0xF000u, "slot 7 redrawn after Enter");
+    ch_expect(0x15, 0xE, '>', 0xF000u, "slot 7 <x> in column 0xC (0x1A339 `jg` above 7)");
+    CHECK_EQ_INT((int)ch_cell(0x15, 0xF), 0);                        /* slot 7's old <HOME> tail released */
+    ch_expect(0x11, 0x20, '<', 0xF000u, "slot 13 redrawn after Enter");
     ch_expect(7, 0x21, 'U', 0xF000u, "slot 8 <UP> at (0x20, 7)");
     ch_expect(9, 0x21, 'R', 0xF000u, "slot 9 <RGT> on row 9");
     ch_expect(0xF, 0x22, '>', 0xF000u, "slot 12 <j>");
