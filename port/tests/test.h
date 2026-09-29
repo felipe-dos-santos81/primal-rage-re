@@ -42,6 +42,7 @@ extern int g_failures;
     X(test_ail)         \
     X(test_smacker)     \
     X(test_movie)       \
+    X(test_movie_blit)  \
     X(test_sprite)      \
     X(test_render)      \
     X(test_rng)         \

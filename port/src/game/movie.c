@@ -22,8 +22,12 @@ static u32 s_pace;        /* sub-tick pacing remainder, in us*60 */
 
 u32 movie_frames_presented(void) { return s_presented; }
 
-/* PORT: 0x1C740 blits DAT_000E87A4 to the screen aperture once per frame; the
- * port's replacement is gfx_present() on the same buffer. The movie loop does
+/* PORT: 0x1C740 blits each of the frame's dirty rectangles (0x64ED8) through
+ * the host-owned 0x50D23 (record §K10): the dwords where DAT_000E87A4 differs
+ * from the DAT_000E87A0 shadow go to the aperture and the shadow. The shadow
+ * equals the aperture throughout and the exit 0x52106 zeroes it (§K10.3), so
+ * the net effect is aperture = DAT_000E87A4 over each rectangle; the port's
+ * replacement is gfx_present() of the whole buffer (§K10.4). The movie loop does
  * not own the double-buffer swap (0x255CC does), and must not: the decoder is
  * in-place (SKIP and delta blocks reference the previous frame), so every frame
  * decodes into the same buffer and swapping would lose that state. Headless

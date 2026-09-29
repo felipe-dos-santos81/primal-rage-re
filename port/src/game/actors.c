@@ -169,6 +169,9 @@ static void anim_code_3FC08(u32 rec, u32 arg);
 static void anim_code_3FCB0(u32 rec, u32 arg);
 static void anim_code_3F77C(u32 rec, u32 arg);
 static void anim_code_40434(u32 rec, u32 arg);
+static void anim_code_37EA0(u32 rec, u32 arg);
+static void anim_code_24078(u32 rec, u32 arg);
+static void anim_code_45D58(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -645,6 +648,29 @@ int actors_init(void)
     /* PORT: record §K8a. The update table's entry 6 (0x25FAC, the dword at
      * 0xA865C; no Ghidra function), fn() with the unread EAX index. */
     fn_register(0x25FACu, flow_card_ramp_step);
+    /* PORT: record §K8c. The update table's entries 4 (0x37C8C, the dword at
+     * 0xA8654), 8 (0x34648, 0xA8664), 9 (0x3800C, 0xA8668), 11 (0x4F890,
+     * 0xA8670), 12 (0x24150, 0xA8674) and 17 (0x45D98, 0xA8688); no Ghidra
+     * function at any of them. fn() with the unread EAX index. */
+    fn_register(0x37C8Cu, fighter_37c8c);
+    fn_register(0x34648u, fighter_34648);
+    fn_register(0x3800Cu, fighter_3800c);
+    fn_register(0x4F890u, fighter_4f890);
+    fn_register(0x24150u, fighter_24150);
+    fn_register(0x45D98u, fighter_45d98);
+    /* PORT: record §B8 (2026-09-29-e-wire-k8b-k8d-derivations.md). The
+     * update table's entries 15 (0x260BC, the dword at 0xA8680) and 16
+     * (0x26194, 0xA8684), the bonus cards; no Ghidra function at either.
+     * fn() with the unread EAX index. */
+    fn_register(0x260BCu, flow_bonus_card_a_step);
+    fn_register(0x26194u, flow_bonus_card_b_step);
+    /* PORT: record §D8. The 0xD100 targets (opcode 0x11) that arm update
+     * entries 9, 12 and 17: 0x37EA0 (the dwords at 0xD2BEA, 0xD486C,
+     * 0xE119C, 0xE4566, 0xE7932, 0xEB1A6, 0xED5AA), 0x24078 (0xE5008) and
+     * 0x45D58 (0xEB894). */
+    fn_register(0x37EA0u, (void (*)(void))anim_code_37EA0);
+    fn_register(0x24078u, (void (*)(void))anim_code_24078);
+    fn_register(0x45D58u, (void (*)(void))anim_code_45D58);
     return 1;
 }
 
@@ -1712,6 +1738,31 @@ static void anim_code_40034(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_40034(rec);
+}
+
+/* PORT: the animation-opcode target shape of 0x37EA0 (record §D8.1,
+ * fighter_37ea0): EAX = rec; EDX is pushed and overwritten before any read. */
+static void anim_code_37EA0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_37ea0(rec);
+}
+
+/* PORT: the animation-opcode target shape of 0x24078 (record §D8.2,
+ * fighter_24078): EAX = rec; EDX is pushed and overwritten before any read. */
+static void anim_code_24078(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_24078(rec);
+}
+
+/* PORT: the animation-opcode target shape of 0x45D58 (record §D8.3,
+ * fighter_45d58): it reads neither EAX nor EDX. */
+static void anim_code_45D58(u32 rec, u32 arg)
+{
+    (void)rec;
+    (void)arg;
+    fighter_45d58();
 }
 
 /* 0x3FC08 — the animation-opcode target shape (record §54-A; the 0xD100
@@ -2839,9 +2890,10 @@ static void actor_type_0a19_update(void)
 
 /* 0x37B54 — demo-pose record §46-D. EAX = rec: the other side's slot
  * DS_001077A8[(rec+0x51) ^ 1] (the byte index, `and eax,0xff`); when it is
- * not 0, its record's +0x53 = 1. Called by 0x48F98 (0x4904F) and the
- * unported 0x45B43/0x45FD3; the D000 target at 0xE8564/0xEDAFC. */
-static void fighter_37b54(u32 rec)
+ * not 0, its record's +0x53 = 1. Called by 0x48F98 (0x4904F), 0x45D98
+ * (0x45FD3, fighter_45d98, record §K8c.6) and the unported 0x45B43; the D000
+ * target at 0xE8564/0xEDAFC. */
+void fighter_37b54(u32 rec)
 {
     u32 slot = DSD(DS_001077A8
                    + (u32)(u8)(DSB(rec + 0x51u) ^ 1u) * 4u);   /* 0x37B54..0x37B5E */

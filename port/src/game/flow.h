@@ -389,9 +389,9 @@ void flow_round_timer_step(void);
  * of mode 0xC's 0x27380 — the same prelude, gated projection block and
  * tail — plus the DS_00104B12 slot's frozen-pose undo at entry and
  * flow_round_over_check (0x29970) in place of flow_arena_ko_check. 0x29638
- * (mode 0x33): the match's end wait (0x4DEF4 unported, out of scope) into
- * mode 0x17 with the hook FN_00025AE8, armed by mode 0x32's own
- * game_mode_32_step. */
+ * (mode 0x33): the match's end wait (with the idle-pose walker 0x4DEF4 at
+ * 0x2965F, record §W) into mode 0x17 with the hook FN_00025AE8, armed by
+ * mode 0x32's own game_mode_32_step. */
 void game_mode_30_step(void);
 void flow_round_over_check(void);
 void game_mode_31_step(void);
@@ -410,6 +410,15 @@ void flow_round_end_check(void);
 void flow_round_winner(void);
 void flow_round_bonus_a(u32 side);
 void flow_round_bonus_b(u32 side);
+/* Record §B8 (2026-09-29-e-wire-k8b-k8d-derivations.md), 0x260BC and
+ * 0x26194: update-table entries 15 (DS_00104AE9 bit 0x80) and 16
+ * (DS_00104AEA bit 0x01), armed by flow_round_bonus_a/_b. Each grows its
+ * bonus card (DS_00104AB4 / DS_00104AB0) in, holds it 0x3C frames, starts
+ * its exit stream and shrinks it out, then kills it and disarms itself;
+ * entry 15's hold end also spawns the second card through 0x2604C when
+ * 0x27C48 named a side in DS_00104B1C. */
+void flow_bonus_card_a_step(void);
+void flow_bonus_card_b_step(void);
 void flow_match_result_set(void);
 void flow_match_end(void);
 void flow_round_over(void);

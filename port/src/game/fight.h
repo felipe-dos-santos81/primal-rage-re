@@ -13,8 +13,11 @@
  * 0x3C5CC, 0x16D58 twice, the two position latches, 0x17FA0 twice, 0x17580,
  * 0x1958C, 0x19068, 0x17FA0 twice, 0x1975C, 0x17FA0 twice, 0x3CB68, 0x35658
  * twice, 0x49C78, 0x1282C, 0x12DA8. The six 0x17FA0 calls are not redundant.
- * The 0x1975C think step is fighter_think() (fighter.h); everything else is
- * ported here or is a named gap. */
+ * The 0x1975C think step is fighter_think() (fighter.h). Re-audited against
+ * the raw (record §3 of 2026-09-29-e-open-derivations.md): of the 315
+ * functions in 0x263F4's static call closure, every one is ported except 12
+ * host-owned/deferred rows of tools/port_classification.txt, all under
+ * res_resolve's (0x1B544) allocator/fatal/config-writer paths. */
 void fight_arena_frame(void);
 
 /* 0x35658. The per-side HUD/health pass. The arena frame calls it twice. Its
@@ -47,16 +50,19 @@ void fight_stance_pass(u32 side);
  * 0x3B298 calls it. */
 void fight_command_map(u32 side, u32 edx_arg, u32 override);
 
-/* 0x49C78. The scene/effects pass. Cycle 1 ports the pass structure, the list
- * walk and the eight direct RNG call sites with their gates; types 0/>0xE, 1..7,
- * 8's gate, 9..12 (record §42-D), 13/14's draws and the per-entry prelude
- * 0x4B69C (the trample, demo-pose record §29) are ported; the type-8 held body,
- * the case-13/14 bodies, the mode-9 block (the only reader of the frame locals
- * types 9 and 11 write) are a named gap (§7.4), though their helpers 0x496DC
- * and 0x4A928 are ported (record §49-Z) without a call site; the tail's
- * 0x4987C (DS_001088BF 1..4) is ported (record §43-A). When the effect list
- * at DS_0010884C is empty only the unconditional tail runs, which includes
- * 0x4A634's slot +0x42 bit 0/1 reset. */
+/* 0x49C78. The scene/effects pass: the list walk with its per-entry prelude
+ * (the side and entry counts, and 0x4B69C, the trample, demo-pose record
+ * §29), every type of the 0x49C2C jump table — 0/>0xE (0x4AAD0), 1..7, 8
+ * (record §42-C), 9..12 (record §42-D), and the case-13 and case-14 bodies
+ * (record §K13.1/§K13.2 of 2026-09-29-k13-fx74-derivations.md, calling
+ * 0x496DC and 0x4A868) — then the mode-9 block (record §K13.3, calling
+ * 0x4A928; the only reader of the frame locals) and the tail with 0x4987C
+ * (DS_001088BF 1..4, record §43-A). One named gap is left: on a drawn round
+ * (DS_00104B16 == 2) the mode-9 block reads the frame word [ESP+4], which
+ * case 3's landing writes; before the first such write in a call it is
+ * uninitialised own-frame memory (record §K13.3). When
+ * the effect list at DS_0010884C is empty only the mode-9 block and the tail
+ * run, which include 0x4A634's slot +0x42 bit 0/1 reset. */
 void fight_effects_pass(void);
 
 /* 0x4A708 — record §48-Y. Walks the effects list DS_0010884C (the same walk
@@ -74,14 +80,15 @@ void fight_effects_hold_all(void);
  * pair fight_4dbec also arms), then, per DS_0010884C entry, a 5-way dispatch
  * on entry+0x1E whose states 1..4 each gate on fight_4a868 (0x4A868, record
  * §K4.3); see fight.c for the complete derivation. Callers: mode 0xF's
- * 0x277C0 (game_mode_0f_step, flow.c) and mode 0x33's 0x29638, whose call
- * 0x2965F is not wired yet (ledger §E-3). */
+ * 0x277C0 (game_mode_0f_step, flow.c, at 0x277E9) and mode 0x33's 0x29638
+ * (game_mode_33_step, at 0x2965F, record §W of
+ * 2026-09-29-e-wire-k8b-k8d-derivations.md). */
 void fight_effects_idle_pass(void);
 
 /* Record §K4.1, 0x4A868: the effect entry's proximity gate. With R = the
  * entry's actor (+8), 1 when |0x2BE00(R) - entry+0x14| <= |2 * (R's dword
  * +0x32 >> 16)| (both signed, `setle`), else 0. Callers: 0x4A361 (the
- * case-14 body of fight_effects_pass, a named gap, K13), 0x4BFDE
+ * case-14 body of fight_effects_pass, record §K13.2), 0x4BFDE
  * (fight_4bf18) and 0x4DF8E/0x4DFFA/0x4E066/0x4E0D0 (fight_effects_idle_pass). */
 u32 fight_4a868(u32 entry);
 
@@ -236,18 +243,18 @@ void fight_char_team_pass(void);
  * descriptor (0xC9524), spawns the dust actor and fills the entry. It issues
  * three RNG draws per iteration (0x49388, rng(0x1800), rng(step)) over
  * slot+0x81 iterations — state 6's six intermediate draws. The entry's type-0
- * processing (0x4AAD0) is a named gap (§7.4); the spawned actor renders. */
+ * processing is 0x4AAD0 (fight_4aad0); the spawned actor renders. */
 void fight_dust_build(u32 side);
 /* 0x4CF20 — record §49-Z. 0x494A8's DS_00104AFA == 0x23 arm: the six-entry
  * dust builder (slot +0x81 = 6). EAX = side. */
 void fight_4cf20(u32 side);
 /* 0x496DC — record §49-Z. The case-13 body's spawner: `count` new type-0x0E
- * entries around `entry`'s actor. EAX = entry, EDX = count. The port has no
- * call site (the case-13 body is the named gap, spec §7.4). */
+ * entries around `entry`'s actor. EAX = entry, EDX = count. Its one caller is
+ * the case-13 body (0x4A32B, record §K13.1). */
 void fight_496dc(u32 entry, s32 count);
 /* 0x4A928 — record §49-Z. The mode-9 block's side survey: DS_001088C6..CA,
- * DS_00108858/5C/70/7C. The port has no call site (the mode-9 block is a
- * named gap, spec §7.4). */
+ * DS_00108858/5C/70/7C. Its one caller is the mode-9 block (0x4A562,
+ * record §K13.3). */
 void fight_4a928(void);
 
 /* 0x41350. The per-side character select state 6 calls for both players. It
@@ -299,9 +306,11 @@ void fight_slot_pass(void);
 /* 0x33F08. The two-side health-bar pass, called by state 7 (0x11E94) and the
  * game_frame tail (0x25457). Per side it selects the character constant
  * (0x17EEC's table), writes the health sprite id into the secondary actor's
- * pset+8 from the slot+0x24 table, sets the pset+0x29 bit 0x40 from actor bit
+ * +8 from the slot+0x24 table, sets the pset+0x29 bit 0x40 from actor bit
  * 15, and advances the secondary actor's animation (0x2A408). The slot+0x24
- * table is a named gap (§7.9). */
+ * table is DS_000BDA8C[char], stored by the spawn core (0x33D5D): seven
+ * pointers to u16 tables indexed by s in [0, 0x4B0] (record §4 of
+ * 2026-09-29-e-open-derivations.md). */
 void fight_health_bars(void);
 
 /* 0x4CB18 (record §42-C). The launch of a worshipper entry: the 0xC9604[si]

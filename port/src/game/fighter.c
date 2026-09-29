@@ -1295,8 +1295,9 @@ static int ai_pred_46794(u32 side)
     return DSB(slot + 0x52u) == 4u;
 }
 
-/* 0x467DC. +0x54 == 0 (0x467F2), +0x53 == 0 (0x467FD), +0x52 == 1 (0x4680B),
- * then 1 when the 0x1A5D4 command-sign test is zero (0x4681E je 0x46825). */
+/* 0x467DC — record §K1.4 (2026-09-29-k1-k9-derivations.md). +0x54 == 0
+ * (0x467F2), +0x53 == 0 (0x467FD), +0x52 == 1 (0x4680B), then 1 when the
+ * 0x1A5D4 command-sign test is zero (0x4681E je 0x46825). */
 int ai_pred_467dc(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;
@@ -2519,14 +2520,17 @@ void fighter_41310(u32 side, s32 delta)
     DSD(rec + 0x3Cu) = (u32)v;                              /* 0x4133C */
 }
 
-/* 0x4F944. Clamp to 0x14, then write the HUD counter globals. */
-static void fighter_4f944(u32 v)
+/* 0x4F944 — record §C (2026-09-29-e-wire-k8b-k8d-derivations.md). Clamp
+ * to 0x14 with a signed compare (`cmp eax,0x14; jle`: every negative value
+ * is kept), then entry 11's arming: the count byte, the countdown word 0, the
+ * reload word 0x10 and DS_00104AE9 |= 8. */
+void fighter_4f944(u32 v)
 {
-    if (v > 0x14u) v = 0x14u;                               /* 0x4F94A */
-    DSB(DS_001088F0) = (u8)v;                               /* 0x4F953 */
-    DSW(DS_001088E8) = 0;                                   /* 0x4F95F */
-    DSW(FIGHT_ROUND_HI) = 0x10u;                            /* 0x4F969 */
-    DSB(DS_00104AE9) |= 8u;                                 /* 0x4F974 */
+    if ((s32)v > 0x14) v = 0x14u;                           /* 0x4F946..0x4F94B */
+    DSB(DS_001088F0) = (u8)v;                               /* 0x4F955 */
+    DSW(DS_001088E8) = 0;                                   /* 0x4F95A/0x4F962 */
+    DSW(FIGHT_ROUND_HI) = 0x10u;                            /* 0x4F950/0x4F96C */
+    DSB(DS_00104AE9) |= 8u;                                 /* 0x4F95C/0x4F969/0x4F973 */
 }
 
 /* 0x367DC. The +0x53 == 7 arm's reset: restart the record's animation at
@@ -3319,6 +3323,8 @@ void fighter_state_350d0(u32 side)
     }
 }
 
+#define FSET_104529  0x00104529u  /* the config byte 0x36F10 (0x36FCE) and 0x3531C (0x353CF) test for bit 1 */
+
 /* 0x3531C. The +0x53 dispatcher fight_hud_pass calls at 0x35803. Cases 0, 0xd
  * and >0xf run 0x350D0; 4 increments +0x56; 7 runs the +0x41 bit 7 / +0xC
  * callback and, for char 4 with a live +0x5F and +0x86 > 0x5A, 0x367DC; 8 runs
@@ -3331,9 +3337,12 @@ void fighter_state_3531c(u32 side)
     if ((s16)DSW(DS_001078F6) != 0) {                       /* 0x353A7 */
         DSW(DS_001078F6) = (u16)(DSW(DS_001078F6) - 1u);    /* 0x353AF */
         if ((s16)DSW(DS_001078F6) < 1) {
-            /* PORT: 0x353C0/0x353CA 0x2C3FC(0xEC/0xE0) and 0x353DD 0x2B150 are
-             * the voice/cutscene pair; 0x36F10 (their only writer of
-             * DS_001078F6) is unreachable, so this arm is inert. */
+            /* PORT: 0x353C0/0x353CA 0x2C3FC(0xEC/0xE0) voices, not wired
+             * (record §45-A). The arm is reachable: DS_001078F6's only writer
+             * 0x36F10 runs from 0x34BE8 once 0x36E78 has set the slot's +0x42
+             * bit 0x10 (record §2 of 2026-09-29-e-open-derivations.md). */
+            if ((DSB(FSET_104529) & 2u) != 0u)              /* 0x353CF */
+                actor_set_dead(DSD(DS_001078EC));           /* 0x353D8/0x353DD 0x2B150 */
             DSD(slot + 0x40u) |= 0x801000u;                 /* 0x353E2 */
         }
     }
@@ -11168,7 +11177,6 @@ void fighter_47b04(u32 slot, u32 rec, u32 side)
 #define FSET_C9238   0x000C9238u  /* 0x3701E: [char] 0x36F10's arm-B stream */
 #define FSET_E905A   0x000E905Au  /* 0x37092: 0x36F10's first stream */
 #define FSET_E908A   0x000E908Au  /* 0x370AF: 0x36F10's second stream */
-#define FSET_104529  0x00104529u  /* 0x36FCE: the config byte 0x36F10 tests for bit 1 */
 
 /* 0x3C12C — record §50-A. EAX = side, EDX = dx: dx is negated when the side's
  * pset is hflipped (0x1A570 non-zero), then 0x1883C(side, dx, 0) (EBX = 0).
@@ -12418,4 +12426,348 @@ void fighter_21694(u32 side)
 {
     DSB(DSD(DS_001077B0 + side * 0x94u) + 0x4Bu) = 0u;      /* 0x21696..0x216B0 */
     DSD(DSD(DS_001077B0 + (1u - side) * 0x94u) + 0x24u) = 0x40000000u;  /* 0x216B4..0x216C9 */
+}
+
+/* ---- update-table entries 4, 8, 9, 11, 12 and 17 (record §K8c,
+ * 2026-09-29-k8c-derivations.md) ------------------------------------------
+ * The dispatcher 0x24CEF calls each with EAX = EDX = the entry index * 4;
+ * every one pushes and pops EDX and none reads EAX, so fn() is exact. */
+
+#define UPD4_SLOT_PTR   0x001078E0u  /* 0x37C8F: entry 4's slot pointer (no writer) */
+#define UPD4_DESC       0x000BB1DCu  /* 0x37CC3: entry 4's spawn descriptor */
+#define UPD8_PERIOD     0x000BDBE4u  /* 0x34655: entry 8's frame-mask word */
+#define UPD9_REC        0x001078D8u  /* 0x3800D: 0x37EA0's spawned record */
+#define UPD11_DESC_ODD  0x000C98C8u  /* 0x4F8C3: the odd-count descriptor */
+#define UPD11_DESC_EVEN 0x000C98DCu  /* 0x4F8E1: the even-count descriptor */
+#define UPD11_XY        0x0009ACC4u  /* 0x4F8CE/0x4F8C8: the two s16 high words */
+#define UPD12_REC       0x00104744u  /* 0x24159: 0x24078's spawned record */
+#define UPD12_STEP      0x00104770u  /* 0x24153: entry 12's step byte */
+#define UPD17_ACT       0x00108180u  /* 0x45E46: [i*8] the i-th record */
+#define UPD17_STATE     0x00108184u  /* 0x45D9F: [i*8] the i-th state */
+#define UPD17_TIMER     0x00108185u  /* 0x45E7E: [i*8] the i-th timer */
+#define UPD17_DONE      0x001081EEu  /* 0x45F6B: the finished count */
+#define UPD17_DESC      0x000C9374u  /* 0x45E3C: the spawn descriptor */
+#define UPD17_STREAM_A  0x000EB8BEu  /* 0x45EA6: state 2's stream */
+#define UPD17_STREAM_B  0x000EB8C2u  /* 0x45F49: state 3's stream */
+
+/* 0x37C8C — record §K8c.1. Update-table entry 4 (the dword at 0xA8654; no
+ * Ghidra function), bit DS_00104AE8 0x10. No instruction in the image sets
+ * that bit (every whole-mask store writes 0) and nothing writes the slot
+ * pointer DS_001078E0, so no path reaches it; ported from the raw. With the
+ * slot's record word +0x34 at 0 it clears its bit (0x37C9E); otherwise on
+ * every fourth frame it spawns 0xBB1DC at the slot's +0x2C and the record's
+ * y (0x37CBA..0x37CCB). */
+void fighter_37c8c(void)
+{
+    u32 slot = DSD(UPD4_SLOT_PTR);                      /* 0x37C8F */
+    u32 rec = DSD(slot);                                /* 0x37C95 */
+    if (DSW(rec + 0x34u) == 0u) {                       /* 0x37C97 */
+        DSB(DS_00104AE8) = (u8)(DSB(DS_00104AE8) & 0xEFu);  /* 0x37C9E */
+        return;
+    }
+    if ((DSW(DS_000EF6DC) & 3u) != 0u) return;          /* 0x37CA9..0x37CB8 */
+    (void)actor_spawn((const u32 *)(mem + UPD4_DESC), DSD(slot + 0x2Cu),
+                      (u32)((s32)DSD(rec + 0x30u) >> 16), 0u, 0u);  /* 0x37CBA..0x37CCB 0x2AE14 */
+}
+
+/* 0x29C20 — record §K8c.2. EAX = char, DL = flag; the row is
+ * DSD(0xA8A98 + char*4) and the side is DS_001078FF. A nonzero flag returns
+ * row[DS_00105B34[side]] (0x29C08's lookup on that side); a zero flag returns
+ * the other of the row's two handles: row[1] when DS_00105B34[side] is 0,
+ * else row[0]. */
+u32 fighter_29c20(u32 ch, u32 flag)
+{
+    u32 row = DSD(DS_000A8A98 + ch * 4u);               /* the entry insn */
+    u32 idx = (u32)DSB(DS_00105B34 + (u32)DSB(DS_001078FF));   /* 0x29C2B..0x29C39 / 0x29C45..0x29C4B */
+    if ((u8)flag != 0u) return DSD(row + idx * 4u);     /* 0x29C27 test dl,dl; 0x29C3F */
+    if (idx == 0u) return DSD(row + 4u);                /* 0x29C52/0x29C54 */
+    return DSD(row);                                    /* 0x29C58 */
+}
+
+/* 0x34648 — record §K8c.2. Update-table entry 8 (the dword at 0xA8664; no
+ * Ghidra function), bit DS_00104AE9 0x01: the stun start 0x34168 sets it
+ * with DS_001078FF = the stunned side; the stun ends 0x34038 (0x340B0) and
+ * 0x36E78 (0x36F05) clear it. W = the data word 0xBDBE4 (1 in the image).
+ * When the frame word has a bit of W it returns; otherwise the flag is
+ * whether the frame word has a bit of W + 1 (`inc eax` on the zero-extended
+ * word), and the side's record takes 0x29C20(char, flag) through 0x2A17C
+ * with pset word 0. */
+void fighter_34648(void)
+{
+    u32 fc = (u32)DSW(DS_000EF6DC);                     /* 0x3464E */
+    u32 w = (u32)DSW(UPD8_PERIOD);                      /* 0x34655 */
+    u32 side, flag, h;
+    if ((fc & w) != 0u) return;                         /* 0x3465B/0x3465D */
+    flag = (fc & (w + 1u)) != 0u ? 1u : 0u;             /* 0x34663..0x34666 / 0x346AB */
+    side = (u32)DSB(DS_001078FF);                       /* 0x3466A / 0x34690 */
+    h = fighter_29c20((u32)DSB(DS_0010782A + side * 0x94u), flag);   /* 0x3467E / 0x346A4, 0x346B5 */
+    actor_pset_palette(DSD(DS_001077B0 + (u32)DSB(DS_001078FF) * 0x94u),
+                       0u, h);                          /* 0x346BA..0x346DB 0x2A17C */
+}
+
+/* 0x3800C — record §K8c.3. Update-table entry 9 (the dword at 0xA8668; no
+ * Ghidra function), bit DS_00104AE9 0x02. Its one setter is the
+ * animation-opcode target 0x37EA0 (fighter_37ea0, record §D8.1; 0xD100 words
+ * in the seven characters' streams), which spawns DS_001078D8's record and
+ * arms the bit (0x37FED..0x37FFC). The record's word +0x38 counts down to 1
+ * (`sar` of the dword +0x36, a signed compare); at or below 1 it becomes 0
+ * and the bit is cleared. */
+void fighter_3800c(void)
+{
+    u32 rec = DSD(UPD9_REC);                            /* 0x3800D */
+    if ((s16)DSW(rec + 0x38u) <= 1) {                   /* 0x38012..0x3801B */
+        DSW(rec + 0x38u) = 0;                           /* 0x3801D */
+        DSB(DS_00104AE9) = (u8)(DSB(DS_00104AE9) & 0xFDu);  /* 0x38023 */
+        return;
+    }
+    DSW(rec + 0x38u) = (u16)(DSW(rec + 0x38u) - 1u);    /* 0x3802C */
+}
+
+/* 0x4F890 — record §K8c.4. Update-table entry 11 (the dword at 0xA8670; no
+ * Ghidra function), bit DS_00104AE9 0x08, which fighter_4f944 (0x4F944)
+ * sets with the count DS_001088F0, the word DS_001088E8 = 0 and the reload
+ * word 0x1088EA = 0x10. Each frame the word counts down; at or below 0
+ * (signed) one actor is spawned, layer 0xD8, at the high words of the dwords
+ * 0x9ACC4 (x, odd counts only: EDX is 0 on the even arm) and 0x9ACC6: the
+ * descriptor 0xC98C8 for an odd count, 0xC98DC for an even one. The count
+ * drops; at 0 the bit is cleared, else the reload word drops (not below 4)
+ * and reloads the countdown. */
+void fighter_4f890(void)
+{
+    u16 t = (u16)(DSW(DS_001088E8) - 1u);               /* 0x4F893/0x4F89A */
+    u8 n;
+    DSW(DS_001088E8) = t;                               /* 0x4F89B */
+    if ((s16)t > 0) return;                             /* 0x4F8A2/0x4F8A5 */
+    if ((DSB(DS_001088F0) & 1u) != 0u)                  /* 0x4F8AB..0x4F8BA */
+        (void)actor_spawn((const u32 *)(mem + UPD11_DESC_ODD),
+                          (u32)((s32)DSD(UPD11_XY) >> 16), 0xD8u,
+                          (u32)((s32)DSD(UPD11_XY + 2u) >> 16), 0u);   /* 0x4F8BC..0x4F8DA 0x2AE14 */
+    else
+        (void)actor_spawn((const u32 *)(mem + UPD11_DESC_EVEN), 0u, 0xD8u,
+                          (u32)((s32)DSD(UPD11_XY + 2u) >> 16), 0u);   /* 0x4F8DC..0x4F8F0 0x2AE14 */
+    n = (u8)(DSB(DS_001088F0) - 1u);                    /* 0x4F8F5/0x4F8FB */
+    DSB(DS_001088F0) = n;                               /* 0x4F8FD */
+    if (n == 0u) {                                      /* 0x4F903/0x4F905 */
+        DSB(DS_00104AE9) = (u8)(DSB(DS_00104AE9) & 0xF7u);  /* 0x4F907 */
+        return;
+    }
+    DSW(FIGHT_ROUND_HI) = (u16)(DSW(FIGHT_ROUND_HI) - 1u);   /* 0x4F912 */
+    if ((s16)DSW(FIGHT_ROUND_HI) < 4)                   /* 0x4F919..0x4F925 */
+        DSW(FIGHT_ROUND_HI) = 4u;                       /* 0x4F927 */
+    DSW(DS_001088E8) = DSW(FIGHT_ROUND_HI);             /* 0x4F930/0x4F937 */
+}
+
+/* 0x24150 — record §K8c.5. Update-table entry 12 (the dword at 0xA8674; no
+ * Ghidra function), bit DS_00104AE9 0x10. Its one setter is the
+ * animation-opcode target 0x24078 (fighter_24078, record §D8.2; a 0xD100
+ * word at 0xE5006), which spawns 0xA84FC into DS_00104744, zeroes the step
+ * byte DS_00104770 and arms the bit (0x2412F..0x24142). While the record's +0x1C is
+ * 0 the step byte advances: below 4 the record's +0x36 = 0x100 >> step,
+ * +0x44 = 0xA and +0x34 quarters (16-bit `sar`); at 4 +0x34 = 0 and the bit
+ * is cleared. A nonzero +0x1C stores the byte back unchanged. */
+void fighter_24150(void)
+{
+    u8 step = DSB(UPD12_STEP);                          /* 0x24153 */
+    u32 rec = DSD(UPD12_REC);                           /* 0x24159 */
+    if (DSD(rec + 0x1Cu) == 0u) {                       /* 0x2415E/0x24162 */
+        step = (u8)(step + 1u);                         /* 0x24164 */
+        if (step >= 4u) {                               /* 0x24166..0x2416D */
+            DSW(rec + 0x34u) = 0;                       /* 0x2416F */
+            DSB(DS_00104AE9) = (u8)(DSB(DS_00104AE9) & 0xEFu);  /* 0x24175 */
+        } else {
+            DSW(rec + 0x36u) = (u16)(0x100u >> step);   /* 0x2417E..0x24185 */
+            DSW(rec + 0x44u) = 0x000Au;                 /* 0x2418D */
+            DSW(rec + 0x34u) = (u16)((s16)DSW(rec + 0x34u) >> 2);   /* 0x24189/0x24193/0x24197 */
+        }
+    }
+    DSB(UPD12_STEP) = step;                             /* 0x2419B */
+}
+
+/* 0x45D98 — record §K8c.6. Update-table entry 17 (the dword at 0xA8688; no
+ * Ghidra function), bit DS_00104AEA 0x02. Its one setter is the
+ * animation-opcode target 0x45D58 (fighter_45d58, record §D8.3; a 0xD100
+ * word at 0xEB892), which zeroes the twelve state bytes and the count
+ * DS_001081EE and arms the bit. Twelve 8-byte entries at 0x108180 (+0 record, +4 state, +5
+ * timer), the state switched through the table at 0x45D84 (above 4 skips):
+ * 0 on rng(0xA) == 0 spawns 0xC9374 near slot DS_00104AD4 (the descriptor's
+ * +0x10 = 0x29C08(side, char)); 1 waits for +0x1C >= 0x3A00; 2 counts 0x1E
+ * frames then starts 0xEB8BE near slot DS_001078FD; 3 lands when +0x1C plus
+ * the word +0x36 is <= 0, starts 0xEB8C2 and counts one done; 4 is done.
+ * Twelve done (the signed byte) stamps 3.0 on DS_00104AD4's record, runs
+ * 0x37B54 on it and clears the bit. */
+void fighter_45d98(void)
+{
+    for (u32 e = 0; e != 0x60u; e += 8u) {              /* 0x45D9D..0x45F97 */
+        u32 rec;
+        switch (DSB(UPD17_STATE + e)) {                 /* 0x45D9F..0x45DB2 */
+        case 0u: {                                      /* 0x45DBA */
+            u32 s, x, y, pal;
+            if (rng_next(0x0Au) != 0u) break;           /* 0x45DBF/0x45DC6 */
+            s = DS_001077B0 + DSD(DS_00104AD4) * 0x94u; /* 0x45DCC */
+            x = DSD(s + 0x2Cu) - 0x400u;                /* 0x45DD6/0x45DF0 */
+            x += rng_next(0x800u);                      /* 0x45DE1/0x45DF6 */
+            y = DSD(s + 0x30u) + rng_next(0x100u);      /* 0x45DFD..0x45E0E */
+            s = DS_001077B0 + DSD(DS_00104AD4) * 0x94u; /* 0x45E08/0x45E10 */
+            pal = fighter_29c08((u32)DSB(DSD(s) + 0x51u), (u32)DSB(s + 0x7Au));  /* 0x45E18..0x45E2C */
+            DSD(UPD17_DESC + 0x10u) = pal;              /* 0x45E35 */
+            rec = actor_spawn((const u32 *)(mem + UPD17_DESC), x, 0u, y, 0u);   /* 0x45E31..0x45E41 0x2AE14 */
+            DSD(UPD17_ACT + e) = rec;                   /* 0x45E46 */
+            DSW(rec + 0x36u) = 0x0200u;                 /* 0x45E4C */
+            DSB(UPD17_STATE + e) = 1u;                  /* 0x45E52 */
+            /* PORT: 0x45E59/0x45F8C 0x2C3FC(0xAB) voice, not wired (record §45-A). */
+            break;
+        }
+        case 1u:                                        /* 0x45E63 */
+            rec = DSD(UPD17_ACT + e);
+            if ((s32)DSD(rec + 0x1Cu) < 0x3A00) break;  /* 0x45E69/0x45E70 */
+            DSW(rec + 0x36u) = 0;                       /* 0x45E78 */
+            DSB(UPD17_TIMER + e) = 0x1Eu;               /* 0x45E7E */
+            DSB(UPD17_STATE + e) = 2u;                  /* 0x45E84 */
+            break;
+        case 2u: {                                      /* 0x45E90 */
+            u8 t = (u8)(DSB(UPD17_TIMER + e) - 1u);     /* 0x45E90/0x45E96 */
+            u32 o, x, y;
+            DSB(UPD17_TIMER + e) = t;                   /* 0x45E98 */
+            if ((s8)t > 0) break;                       /* 0x45E9E/0x45EA0 */
+            actors_anim_begin(DSD(UPD17_ACT + e), UPD17_STREAM_A, 0x3F800000u);  /* 0x45EA6..0x45EB6 0x2BC30 */
+            o = DS_001077B0 + (u32)DSB(DS_001078FD) * 0x94u;   /* 0x45EBB..0x45EC2 */
+            x = DSD(o + 0x2Cu) - 0x800u;                /* 0x45EC8/0x45ED3 */
+            x += rng_next(0x1000u);                     /* 0x45ED9/0x45EDE */
+            o = DS_001077B0 + (u32)DSB(DS_001078FD) * 0x94u;   /* 0x45EE0..0x45EE7 */
+            y = (u32)((s32)DSD(DSD(o) + 0x30u) >> 16) - 0x100u;   /* 0x45EED..0x45EFE */
+            y += rng_next(0x200u);                      /* 0x45F04/0x45F09 */
+            rec = DSD(UPD17_ACT + e);
+            DSD(rec + 0x18u) = x;                       /* 0x45F11 */
+            DSW(rec + 0x32u) = (u16)y;                  /* 0x45F1A */
+            DSW(rec + 0x36u) = 0xFC00u;                 /* 0x45F26 */
+            DSB(UPD17_STATE + e) = 3u;                  /* 0x45F2C */
+            break;
+        }
+        case 3u:                                        /* 0x45F34 */
+            rec = DSD(UPD17_ACT + e);
+            if ((s32)((u32)(s32)(s16)DSW(rec + 0x36u) + DSD(rec + 0x1Cu)) > 0)
+                break;                                  /* 0x45F3A..0x45F47: a 32-bit `add` (wraps), `test; jg` */
+            actors_anim_begin(rec, UPD17_STREAM_B, 0x40400000u);   /* 0x45F49..0x45F53 0x2BC30 */
+            rec = DSD(UPD17_ACT + e);
+            DSD(rec + 0x1Cu) = 0;                       /* 0x45F5E */
+            DSW(rec + 0x36u) = 0;                       /* 0x45F71 */
+            DSB(UPD17_STATE + e) = 4u;                  /* 0x45F7B */
+            DSB(UPD17_DONE) = (u8)(DSB(UPD17_DONE) + 1u);   /* 0x45F6B/0x45F79/0x45F86 */
+            /* PORT: 0x45F81/0x45F8C 0x2C3FC(0xAC) voice, not wired (record §45-A). */
+            break;
+        default:                                        /* 4 (0x45F91) and above 4 (0x45DA7 ja) */
+            break;
+        }
+    }
+    if ((s8)DSB(UPD17_DONE) != 0x0C) return;            /* 0x45F9D..0x45FA8 */
+    {
+        u32 rec = DSD(DS_001077B0 + DSD(DS_00104AD4) * 0x94u);   /* 0x45FAA..0x45FBE */
+        DSD(rec + 0x24u) = 0x40400000u;                 /* 0x45FC5 */
+        fighter_37b54(rec);                             /* 0x45FCC/0x45FD3 */
+    }
+    DSB(DS_00104AEA) = (u8)(DSB(DS_00104AEA) & 0xFDu);  /* 0x45FD8 */
+}
+
+/* ---- the animation-opcode setters of entries 9, 12 and 17 (record §D8,
+ * 2026-09-29-e-wire-k8b-k8d-derivations.md) ----------------------------- */
+
+#define D8_37EA0_PAL   0x0105FEBCu  /* 0x37EF6: a resource handle (no fixup) */
+#define D8_OTHER_ANIM  0x000A8424u  /* 0x240A2: the other side's stream by char */
+#define D8_24078_DESC  0x000A84FCu  /* 0x240D8: 0x24078's spawn descriptor */
+
+/* 0x37EA0 — record §D8.1. The 0xD100 target (opcode 0x11) in the seven
+ * characters' streams (the dwords at 0xD2BEA, 0xD486C, 0xE119C, 0xE4566,
+ * 0xE7932, 0xEB1A6, 0xED5AA). EAX = rec; EDX is pushed and overwritten
+ * (0x37EAA). The sprite by the side's slot char (the table at 0x37E84; `cmp
+ * al,6; ja` sends the rest to 0x46B9) goes into a descriptor built on the
+ * stack: bytes +4/+5 and the word +6 = 0, +8 = 0x2A00, +0xA = 0x80, +0xC =
+ * 0x1000, +0x10 the handle 0x0105FEBC (its word +0xE is never written, and
+ * 0x2AE14 does not read it). The spawn takes the record's pset: a2 = +4, a3 =
+ * the word +0xE, a4 = +8, a5 = 0x4000 when the pset word 0 has bit 15. The new
+ * record's pset gets the old +4/+8, the record its +0x18/+0x1C and words
+ * +0x32/+0x28, +0x29 |= 0x28; it goes to DS_001078D8; the caller is marked
+ * dead (0x2B150); the new one's +0x29 |= 0x10 and 0x2BE5C runs on it; its
+ * word +0x38 = rng(0x10) + 0x20 (entry 9's countdown); DS_00104B0C = 1 and
+ * DS_00104AE9 |= 2 (entry 9). The raw does not test the spawn's return. */
+void fighter_37ea0(u32 rec)
+{
+    static const u16 spr[7] = { 0x46B9u, 0x46BAu, 0x46B8u, 0x46B6u,
+                                0x46B7u, 0x46B9u, 0x46BAu };   /* 0x37E84 -> 0x37ED5..0x37EF1 */
+    u32 side = (u32)DSB(rec + 0x51u);                       /* 0x37EAC */
+    u8 ch = DSB(DS_0010782A + side * 0x94u);                /* 0x37EAF..0x37EBD */
+    u32 desc[5];
+    u32 op, nw, np, a5;
+    desc[0] = ch > 6u ? 0x46B9u : spr[ch];                  /* 0x37EC4 `ja`, 0x37F05/0x37F10 */
+    desc[1] = 0u;                                           /* 0x37F1D..0x37F2E */
+    desc[2] = 0x2A00u | (0x80u << 16);                      /* 0x37F13/0x37F18 */
+    desc[3] = 0x1000u;                                      /* 0x37F33 */
+    desc[4] = D8_37EA0_PAL;                                 /* 0x37EF6/0x37F0A */
+    op = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u; /* 0x37F38..0x37F47 */
+    a5 = (DSW(op) & 0x8000u) != 0u ? 0x4000u : 0u;          /* 0x37F49..0x37F5D */
+    nw = actor_spawn(desc, DSD(op + 4u), (u32)DSW(op + 0x0Eu),
+                     DSD(op + 8u), a5);                     /* 0x37F62..0x37F73 0x2AE14 */
+    np = DSD(DS_001014EC) + (u32)DSW(nw + 0x56u) * 0x20u;  /* 0x37F78..0x37F87 */
+    DSD(np + 4u) = DSD(op + 4u);                            /* 0x37F89/0x37F8C */
+    DSD(np + 8u) = DSD(op + 8u);                            /* 0x37F8F/0x37F92 */
+    DSD(nw + 0x18u) = DSD(rec + 0x18u);                     /* 0x37F95/0x37F98 */
+    DSD(nw + 0x1Cu) = DSD(rec + 0x1Cu);                     /* 0x37F9B/0x37F9E */
+    DSW(nw + 0x32u) = DSW(rec + 0x32u);                     /* 0x37FA1/0x37FA5 */
+    DSW(nw + 0x28u) = DSW(rec + 0x28u);                     /* 0x37FA9/0x37FAD */
+    DSB(nw + 0x29u) = (u8)(DSB(nw + 0x29u) | 0x28u);        /* 0x37FB1..0x37FBC */
+    DSD(UPD9_REC) = nw;                                     /* 0x37FB7 */
+    actor_set_dead(rec);                                    /* 0x37FBF/0x37FC1 0x2B150 */
+    nw = DSD(UPD9_REC);                                     /* 0x37FC6 */
+    DSB(nw + 0x29u) = (u8)(DSB(nw + 0x29u) | 0x10u);        /* 0x37FCB */
+    actor_mode1_pset(nw);                                   /* 0x37FCF 0x2BE5C */
+    {
+        u32 r = rng_next(0x10u);                            /* 0x37FD4/0x37FD9 0x5D7DC */
+        DSW(DSD(UPD9_REC) + 0x38u) = (u16)(r + 0x20u);      /* 0x37FDE..0x37FE9 */
+    }
+    DSB(DS_00104B0C) = 1u;                                  /* 0x37FF2/0x37FF6 */
+    DSB(DS_00104AE9) = (u8)(DSB(DS_00104AE9) | 2u);         /* 0x37FED..0x37FFC */
+}
+
+/* 0x24078 — record §D8.2. The 0xD100 target (opcode 0x11) at 0xE5008. EAX =
+ * rec; EDX is pushed and overwritten (0x2409B). The caller's +0x59 = 0xFD;
+ * with the other side's DS_001077A8 entry set, that entry's record begins
+ * the stream 0xA8424[its char] at 3.0, then 0xA84FC spawns at (the entry's
+ * +0x2C, a3 = its record's +0x30 >> 16, a4 = 0x1000, a5 = 0) into
+ * DS_00104744: +0x34 = 0xFF80 when 0x1A570(the caller's side) holds, else
+ * 0x80; +0x36 = 0, +0x44 = 0xA, +0x59 = 0xFE, the step byte DS_00104770 = 0
+ * and DS_00104AE9 |= 0x10 (entry 12). The raw does not test the spawn's
+ * return. PORT: 0x240B8 0x2C3FC(0x6B) and 0x240CF 0x2C3FC(word[0xBE008 +
+ * char * 2]) voices, not wired (record §45-A); 0x2C3FC keeps EBX, which the
+ * raw reuses at 0x240BF. */
+void fighter_24078(u32 rec)
+{
+    u32 o, nw;
+    DSB(rec + 0x59u) = 0xFDu;                               /* 0x2407E */
+    o = DSD(DS_001077A8 + (((u32)DSB(rec + 0x51u) ^ 1u) & 0xFFu) * 4u);   /* 0x24082..0x2408C */
+    if (o == 0u) return;                                    /* 0x24093/0x24095 */
+    actors_anim_begin(DSD(o), DSD(D8_OTHER_ANIM + (u32)DSB(o + 0x7Au) * 4u),
+                      0x40400000u);                         /* 0x2409B..0x240AE 0x2BC30 */
+    nw = actor_spawn((const u32 *)(mem + D8_24078_DESC), DSD(o + 0x2Cu),
+                     (u32)((s32)DSD(DSD(o) + 0x30u) >> 16), 0x1000u, 0u);   /* 0x240D4..0x240EB 0x2AE14 */
+    DSD(UPD12_REC) = nw;                                    /* 0x240F0 */
+    if (fighter_actor_bit15_clear((u32)DSB(rec + 0x51u)))   /* 0x240F5..0x24101 0x1A570 */
+        DSW(DSD(UPD12_REC) + 0x34u) = 0xFF80u;              /* 0x24103/0x24108 */
+    else
+        DSW(DSD(UPD12_REC) + 0x34u) = 0x0080u;              /* 0x24110/0x24115 */
+    nw = DSD(UPD12_REC);                                    /* 0x2411B */
+    DSW(nw + 0x36u) = 0;                                    /* 0x24129 */
+    DSB(UPD12_STEP) = 0u;                                   /* 0x24127/0x2412F */
+    DSW(nw + 0x44u) = 0x000Au;                              /* 0x24135 */
+    DSB(nw + 0x59u) = 0xFEu;                                /* 0x2413E */
+    DSB(DS_00104AE9) = (u8)(DSB(DS_00104AE9) | 0x10u);      /* 0x24121/0x2413B/0x24142 */
+}
+
+/* 0x45D58 — record §D8.3. The 0xD100 target (opcode 0x11) at 0xEB894; reads
+ * neither EAX nor EDX. The twelve state bytes 0x108184 + 8i (EAX = 8..0x60,
+ * `[eax+0x10817c]`) and DS_001081EE become 0, DS_00104AEA |= 2 (entry 17). */
+void fighter_45d58(void)
+{
+    for (u32 e = 8u; e != 0x68u; e += 8u)                   /* 0x45D5C..0x45D6A */
+        DSB(0x0010817Cu + e) = 0u;                          /* 0x45D61 */
+    DSB(UPD17_DONE) = 0u;                                   /* 0x45D75 */
+    DSB(DS_00104AEA) = (u8)(DSB(DS_00104AEA) | 2u);         /* 0x45D6C..0x45D7B */
 }

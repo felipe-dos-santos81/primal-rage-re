@@ -1385,8 +1385,8 @@ void fight_4cf20(u32 side)
  * draws THREE values — 0x49388's, rng(0x1800) (0x495DF) and rng(step)
  * (0x495FC). State 6's stream needs exactly those: the demo's slot+0x81 is 2,
  * so six draws land between the picks at 0x11AAD and 0x11AE9. The entry's
- * +0x1E type is 0, whose 0x49C78 handler (0x4AAD0) is the unported dust
- * behaviour (§7.4); the actor it spawns is an ordinary pool actor and renders. */
+ * +0x1E type is 0, whose 0x49C78 handler is 0x4AAD0 (fight_4aad0); the actor
+ * it spawns is an ordinary pool actor and renders. */
 void fight_dust_build(u32 side)
 {
     if (DSW(DS_00104AFA) == 0x23u) {                    /* 0x494B7..0x494C0 */
@@ -2093,10 +2093,11 @@ static void fight_health_sync(u32 side)
               ? (s32)DSD(fighter + 0x18u) + 0x3000
               : (s32)DSD(fighter + 0x18u) - 0x3000;
         if (x < (s32)DSD(DS_000BE018) && x > -(s32)DSD(DS_000BE018)) {
-            /* PORT: 0x34BE8 0x36F10 (record §50-A) — the in-range arm. Still
-             * unreachable in practice: slot+0x42 bit 0x10 is set by no ported
-             * writer (0x36F10's own `| 0x820` is bits 5 and 11), so the gate
-             * cannot return 1 before this call has run. Named gap (§7.10). */
+            /* 0x34BE8 0x36F10 (record §50-A), the in-range arm. The gate's
+             * slot +0x42 bit 0x10 has one raw setter, 0x36E78's `or
+             * edx,0x101000` (0x36E9D/0x36EAF, fighter_36e78, ported), reached
+             * from 0x33B00 (0x33BE1) and 0x392A0 (0x3961E); so the arm is
+             * reachable (record §2 of 2026-09-29-e-open-derivations.md). */
             fighter_36f10(rec);                 /* 0x34BE8..0x34BEA */
         } else {
             DSB(rec + 0x43u) |= 0x40u;          /* 0x34BD1 */
@@ -2967,8 +2968,7 @@ static void fight_4b69c(u32 entry, u32 index)
  * the new actor's +0x34 word is 0x80 (signed), else minus; the actor's +0x2C
  * is the 0x496AC clamp of y, and +0x2E takes 4 and +0x4E 1 when the slot's
  * record +0x51 is non-zero. An empty pool ends the loop. Callers: 0x4A32B
- * (0x49C78's case-13 body, which is the named gap, spec §7.4); the port has
- * no call site yet. */
+ * (0x49C78's case-13 body, record §K13.1 of 2026-09-29-k13-fx74-derivations.md). */
 void fight_496dc(u32 entry, s32 count)
 {
     u32 slot = DS_001077B0 + (u32)DSB(entry + 0x21u) * 0x94u;  /* 0x496EC..0x49707 */
@@ -3047,8 +3047,8 @@ static s32 fight_4aa6c(s32 side)
  * direction DS_001088CA is 0 when the first mean is below the second, else 1;
  * a gap of 0x1400 or more (signed) puts DS_0010887C at the first mean moved
  * 0x1400 toward the second, else DS_00108870 at the second moved 0x1400 away
- * from the first. The only caller is the mode-9 block (0x4A562), a named gap
- * (spec §7.4); the port has no call site yet. */
+ * from the first. The only caller is the mode-9 block (0x4A562, record
+ * §K13.3 of 2026-09-29-k13-fx74-derivations.md). */
 void fight_4a928(void)
 {
     DSB(DS_001088C6) = 0;                               /* 0x4A92F */
@@ -4517,22 +4517,36 @@ void fight_4bf18(void)
 
 void fight_effects_pass(void)
 {
-    /* The raw's frame locals the worshipper types write: [ESP+0xC] (type 9's
-     * count, 0x4A128), [ESP+0x14] (type 11 sets it, 0x4A17A) and [ESP+0x18]
-     * (type 11 clears it, 0x4A1E2). Mode 9 initialises them (0x49C8E..0x49CA6:
-     * [ESP+0x18] = 1, [ESP+0x14] = 0, [ESP+0xC] = EDX with DX = 0); only the
-     * mode-9 block reads them (0x4A549 as a word, 0x4A567, 0x4A56E). */
-    /* PORT: outside mode 9 the raw leaves them unset; they start at 0 here, as
-     * nothing reads them there. [ESP+0xC]'s high word (the caller's EDX high
-     * half) is 0: the mode-9 block compares only AX. The prelude's per-side
-     * words [ESP]/[ESP+2], the count [ESP+8] and case 14's [ESP+0x10] stay with
-     * their named gaps. */
+    /* The raw's frame locals (record §K13.3): the per-side entry counts, the
+     * words [ESP]/[ESP+2] (zeroed on every call, 0x49CC1/0x49CBC); the entry
+     * count [ESP+8]; [ESP+0xC] (type 9's count, 0x4A128); case 14's count
+     * [ESP+0x10] (0x4A352); [ESP+0x14] (type 11 sets it, 0x4A17A) and
+     * [ESP+0x18] (type 11 clears it, 0x4A1E2). Mode 9 initialises the last
+     * five (0x49C8E..0x49CA6: [ESP+0x18] = 1, [ESP+0x14] = 0, [ESP+8] =
+     * [ESP+0x10] = 0, [ESP+0xC] = EDX with DX = 0); only the mode-9 block
+     * reads them (0x4A48E, 0x4A499, 0x4A538, 0x4A549, 0x4A567, 0x4A56E). */
+    /* PORT: outside mode 9 the raw leaves [ESP+8]..[ESP+0x18] unset; they
+     * start at 0 here, as nothing reads them there. [ESP+0xC]'s high word
+     * (the caller's EDX high half) is 0: the mode-9 block compares only AX
+     * (0x4A554 `cmp ax,bx`). loc_side[2] is the word [ESP+4]: case 3's
+     * landing writes it as a dword (0x4000 or 0, 0x49DF2/0x49DFE) and a side
+     * byte of 2 would count in it; the mode-9 block reads it on a drawn round
+     * (DS_00104B16 = 2, flow.c 0x27DB3). Before the first such write in a
+     * call it is uninitialised memory of this function's own frame (`sub
+     * esp,0x1c`, 0x49C7E), holding whatever an earlier call at that depth
+     * left: a named gap (record §K13.3; pinning it needs a runtime capture
+     * at 0x4A48E), 0 here. */
+    u16 loc_side[3] = { 0, 0, 0 };              /* [ESP], [ESP+2], [ESP+4] */
+    u32 loc_count = 0;                          /* [ESP+8] */
     u32 loc_idle = 0;                           /* [ESP+0xC] */
+    u32 loc_c14 = 0;                            /* [ESP+0x10] */
     u8 loc_walk = 0;                            /* [ESP+0x14] */
     u8 loc_still = 0;                           /* [ESP+0x18] */
     if (DSW(DS_00104B00) == 9u) {               /* 0x49C89 */
         loc_still = 1u;                         /* 0x49C94 */
         loc_walk = 0;                           /* 0x49C98 */
+        loc_count = 0;                          /* 0x49C9C */
+        loc_c14 = 0;                            /* 0x49CA2 */
         loc_idle = 0;                           /* 0x49CA6 */
     }
 
@@ -4545,10 +4559,20 @@ void fight_effects_pass(void)
                 u32 entry = head;
                 u32 next = DSD(entry);          /* 0x49CD3 */
                 u32 rec = DSD(entry + 8u);      /* 0x49CD8 */
-                /* PORT: 0x49CDD..0x49CF8. The per-side counters (the frame
-                 * locals only the mode-9 block reads) are a named gap (§7.4).
-                 * The `si` the prelude and the handlers index with is
-                 * (u16)(rec+0x48 - 0x20) (0x49CE1/0x49CF2). */
+                /* 0x49CDD..0x49CF8: the entry's side count and the entry
+                 * count (record §K13.3). The `si` the prelude and the
+                 * handlers index with is (u16)(rec+0x48 - 0x20)
+                 * (0x49CE1/0x49CF2). */
+                {
+                    u32 side = (u32)DSB(entry + 0x21u);             /* 0x49CD5 */
+                    /* PORT: the raw indexes [ESP + side*2] unbounded; every
+                     * +0x21 writer stores a side (record §K13.3). A byte
+                     * above 2 would alias the other frame locals (or the
+                     * caller's frame), which the port does not model. */
+                    if (side < 3u)
+                        loc_side[side] = (u16)(loc_side[side] + 1u);  /* 0x49CDD..0x49CEA */
+                    loc_count++;                                     /* 0x49CEE..0x49CF8 */
+                }
                 u32 index = (u32)(u16)((u32)DSB(rec + 0x48u) - 0x20u);
                 fight_4b69c(entry, index);      /* 0x49CFE */
 
@@ -4608,8 +4632,17 @@ void fight_effects_pass(void)
                     if ((s32)DSD(rec + 0x30u) >> 16
                             > (s32)(u32)DSW(DS_000BD898))           /* 0x49DD8 */
                         break;
-                    if (fight_2be1c(rec, DSD(DSD(entry + 0xCu))) > 0) /* 0x49DE6 */
-                        DSW(rec + 0x28u) = (u16)(DSW(rec + 0x28u) | 0x4000u); /* 0x49E0D */
+                    /* 0x49DEB..0x49E0D: the hflip goes through the frame
+                     * dword [ESP+4] (record §K13.3): 0x4000 when 0x2BE1C > 0,
+                     * else 0 (0x49DF2/0x49DFE), then OR-ed into the +0x28
+                     * word (0x49E04..0x49E0D). The mode-9 block reads its low
+                     * word as side 2's count (0x4A48E). */
+                    /* PORT: the dword store also zeroes the word [ESP+6],
+                     * which only a side byte of 3 would reach (the bound in
+                     * the prelude). */
+                    loc_side[2] = (fight_2be1c(rec, DSD(DSD(entry + 0xCu))) > 0)
+                                ? 0x4000u : 0u;                 /* 0x49DE6..0x49DFE */
+                    DSW(rec + 0x28u) = (u16)(DSW(rec + 0x28u) | loc_side[2]); /* 0x49E04..0x49E0D */
                     actors_anim_begin(rec, DSD(DS_000C9634 + index * 4u),
                                       0x40000000u);         /* 0x49E24 */
                     DSW(rec + 0x38u) = 0;                   /* 0x49E29 */
@@ -4829,23 +4862,100 @@ void fight_effects_pass(void)
                                        ? 0x0Eu : 0x0Du;      /* 0x4A22F..0x4A241 */
                     break;
                 case 13: {
-                    /* PORT: 0x4A24A..0x4A2F4. The case-13 body (0x2BE1C,
-                     * 0x2BC30, the rec +0x3c/+0x2a/+0x32 gates, 0x2B150) is
-                     * the named gap (§7.4); the 0x2BE00 arm is the draw gate. */
-                    s32 r = fight_2be00(fight_case_rec());   /* 0x4A2F5 */
-                    if (r > 0) (void)rng_next(0xC00u);       /* 0x4A305 */
-                    else       (void)rng_next(0xC00u);       /* 0x4A315 */
+                    /* 0x4A24A..0x4A345 — record §K13.1: the scatter's walk
+                     * off. On screen (+0x2A bit 0x1000 with the x dword +0x3C
+                     * in [-0x300, 0x5700], signed) it waits. Else an entry
+                     * of side (s8)DS_001088C9 (sign-extended against the
+                     * zero-extended +0x21) is killed unless DS_001088C7 is
+                     * set. Otherwise the actor turns (speed 0x80: hflip and
+                     * -0x80, else no hflip and 0x80) onto the 0xC95D4[si]
+                     * stream at 3.0, the target +0x14 is the case record's
+                     * 0x2BE00 term minus rng(0xC00) (term > 0) or plus it,
+                     * the entry becomes type 0x0E and 0x496DC spawns
+                     * DS_00108878 more; DS_00108878 = 0 and +0x2C takes the
+                     * 0x496AC clamp of the y (the shared tail 0x4A45C). */
+                    u32 x = DSD(rec + 0x3Cu);                        /* 0x4A24D */
+                    if ((DSW(rec + 0x2Au) & 0x1000u) != 0u           /* 0x4A250..0x4A25F */
+                            && (s32)x >= -0x300 && (s32)x <= 0x5700) /* 0x4A261..0x4A26D */
+                        break;
+                    if ((u32)DSB(entry + 0x21u)
+                            == (u32)(s32)(s8)DSB(DS_001088C9)        /* 0x4A273..0x4A282 */
+                            && DSB(DS_001088C7) == 0u) {             /* 0x4A284 */
+                        actor_set_dead(rec);                         /* 0x4A290 0x2B150 */
+                        break;
+                    }
+                    if (((s32)DSD(rec + 0x32u) >> 16) == 0x80) {     /* 0x4A29D..0x4A2A8 */
+                        DSB(rec + 0x29u) = (u8)(DSB(rec + 0x29u) | 0x40u); /* 0x4A2AA */
+                        DSW(rec + 0x34u) = 0xFF80u;                  /* 0x4A2B1 */
+                    } else {
+                        DSB(rec + 0x29u) = (u8)(DSB(rec + 0x29u) & 0xBFu); /* 0x4A2B9 */
+                        DSW(rec + 0x34u) = 0x0080u;                  /* 0x4A2C0 */
+                    }
+                    actors_anim_begin(rec, DSD(DS_000C95D4 + index * 4u),
+                                      0x40400000u);                  /* 0x4A2C6..0x4A2DA 0x2BC30 */
+                    {
+                        s32 r = fight_2be00(fight_case_rec());       /* 0x4A2DF..0x4A2F5 */
+                        u32 t;
+                        if (r > 0) t = (u32)r - rng_next(0xC00u);    /* 0x4A300..0x4A30C */
+                        else       t = rng_next(0xC00u) + (u32)r;    /* 0x4A310..0x4A31A */
+                        DSD(entry + 0x14u) = t;                      /* 0x4A322 */
+                    }
+                    {
+                        s32 count = (s32)DSD(DS_00108878);           /* 0x4A31C */
+                        DSB(entry + 0x1Eu) = 0x0Eu;                  /* 0x4A327 */
+                        fight_496dc(entry, count);                   /* 0x4A32B */
+                    }
+                    {
+                        s32 y = (s32)DSD(rec + 0x30u) >> 16;         /* 0x4A330..0x4A338 */
+                        DSD(DS_00108878) = 0;                        /* 0x4A33B */
+                        DSW(rec + 0x2Cu) = fight_dust_clamp(y);      /* 0x4A45C..0x4A464 0x496AC */
+                    }
                     break;
                 }
                 case 14: {
-                    /* PORT: 0x4A346..0x4A412. The case-14 body (its gate
-                     * 0x4A361 is fight_4a868, ported but not called here,
-                     * record §K4.4; 0x2BC30, the rec +0x2a/+0x3c/+0x32
-                     * gates) is the named gap (§7.4, ledger K13); the 0x2BE00
-                     * arm is the draw gate. */
-                    s32 r = fight_2be00(fight_case_rec());   /* 0x4A413 */
-                    if (r > 0) (void)rng_next(0xC00u);       /* 0x4A439 */
-                    else       (void)rng_next(0xC00u);       /* 0x4A449 */
+                    /* 0x4A346..0x4A45B — record §K13.2: the other scatter
+                     * walk. It counts into [ESP+0x10] first; a stopped actor
+                     * (+0x34 word 0) does nothing more. When 0x4A868 finds
+                     * it at its target (0x4A361) it stops (+0x38/+0x34/+0x36
+                     * zeroed, +0x55 = 1) on the 0xC955C[si] stream at 3.0
+                     * (EDX still holds si * 4 from 0x49D0F: 0x4A868 pushes
+                     * and pops it). Else case 13's on-screen wait, turn,
+                     * 0xC95D4[si] stream and target, and the 0x496AC tail;
+                     * no kill, no type change, no 0x496DC. */
+                    loc_c14++;                                       /* 0x4A346..0x4A352 */
+                    if (DSW(rec + 0x34u) == 0u) break;               /* 0x4A34E/0x4A356 */
+                    if (fight_4a868(entry) != 0u) {                  /* 0x4A361 */
+                        DSW(rec + 0x38u) = 0;                        /* 0x4A36D */
+                        DSW(rec + 0x34u) = 0;                        /* 0x4A376 */
+                        DSW(rec + 0x36u) = 0;                        /* 0x4A37F */
+                        DSB(rec + 0x55u) = 1u;                       /* 0x4A388 */
+                        actors_anim_begin(rec, DSD(DS_000C955C + index * 4u),
+                                          0x40400000u);              /* 0x4A38C..0x4A39A 0x2BC30 */
+                        break;
+                    }
+                    {
+                        u32 x = DSD(rec + 0x3Cu);                    /* 0x4A3A7 */
+                        if ((DSW(rec + 0x2Au) & 0x1000u) != 0u       /* 0x4A3AA..0x4A3B8 */
+                                && (s32)x >= -0x300 && (s32)x <= 0x5700) /* 0x4A3BA..0x4A3C8 */
+                            break;
+                    }
+                    if (((s32)DSD(rec + 0x32u) >> 16) == 0x80) {     /* 0x4A3D1..0x4A3DC */
+                        DSB(rec + 0x29u) = (u8)(DSB(rec + 0x29u) | 0x40u); /* 0x4A3DE */
+                        DSW(rec + 0x34u) = 0xFF80u;                  /* 0x4A3E5 */
+                    } else {
+                        DSB(rec + 0x29u) = (u8)(DSB(rec + 0x29u) & 0xBFu); /* 0x4A3ED */
+                        DSW(rec + 0x34u) = 0x0080u;                  /* 0x4A3F4 */
+                    }
+                    actors_anim_begin(rec, DSD(DS_000C95D4 + index * 4u),
+                                      0x40400000u);                  /* 0x4A3FA..0x4A40E 0x2BC30 */
+                    {
+                        s32 r = fight_2be00(fight_case_rec());       /* 0x4A413..0x4A429 */
+                        u32 t;
+                        if (r > 0) t = (u32)r - rng_next(0xC00u);    /* 0x4A434..0x4A440 */
+                        else       t = rng_next(0xC00u) + (u32)r;    /* 0x4A444..0x4A44E */
+                        DSD(entry + 0x14u) = t;                      /* 0x4A450 */
+                    }
+                    DSW(rec + 0x2Cu) = fight_dust_clamp((s32)DSD(rec + 0x30u) >> 16); /* 0x4A453..0x4A464 */
                     break;
                 }
                 default:
@@ -4859,15 +4969,53 @@ void fight_effects_pass(void)
         }
     }
 
-    /* 0x4A476: the mode-9 block owns the 0x4A4C5/0x4A4F7 draws and the
-     * DS_001088B0/0x1088C9/0x1088B4 traffic. The demo runs mode 3 and gates the
-     * whole block out (0x4A481 `jne 0x4A591`), so those two sites are not
-     * issued in cycle 1. */
-    /* PORT: 0x4A487..0x4A58F (mode 9 only) — named gap (§7.4). It is the only
-     * reader of the three frame locals above. */
-    (void)loc_idle;
-    (void)loc_walk;
-    (void)loc_still;
+    /* 0x4A476..0x4A590 — record §K13.3: the mode-9 block (the demo runs mode
+     * 3 and skips it, 0x4A481 `jne 0x4A591`). Once case 14's count reaches
+     * the DS_00104B16 side's entry count less 2 (signed), the crowd voice
+     * latches (DS_001088C3 = 1) with the countdown DS_001088B0 = rng(0x14) +
+     * 0x78; latched, a zero countdown re-arms it; latched, it counts down.
+     * DS_001088C9 = slot 0's +0x5A < 0x78; DS_001088B4 = 1 with the survey
+     * 0x4A928 when every entry idles (type 9's count == the entry count, as
+     * words), else 0. A type-11 walker with none still moving scatters the
+     * whole list (type 12). */
+    if (DSW(DS_00104B00) == 9u) {                                   /* 0x4A476..0x4A481 */
+        {
+            u32 side = (u32)DSB(DS_00104B16);                        /* 0x4A489 */
+            /* PORT: [ESP + side*2] unbounded, as the prelude's (above). */
+            s32 lim = (s32)(side < 3u ? (u32)loc_side[side] : 0u) - 2; /* 0x4A48E..0x4A49E */
+            if ((s32)(u32)(u16)loc_c14 >= lim                        /* 0x4A499/0x4A4A1 `jl` */
+                    && DSB(DS_001088C3) == 0u) {                     /* 0x4A4A5 */
+                /* PORT: 0x4A4B5 0x2C3FC(0xCB) voice, not wired (record §45-A). */
+                DSB(DS_001088C3) = 1u;                               /* 0x4A4BF (BL = 1) */
+                DSW(DS_001088B0) = (u16)(rng_next(0x14u) + 0x78u);    /* 0x4A4BA..0x4A4CF */
+            }
+        }
+        if (DSB(DS_001088C3) != 0u && DSW(DS_001088B0) == 0u) {      /* 0x4A4D5..0x4A4E6 */
+            /* PORT: 0x4A4ED 0x2C3FC(0xCB) voice, not wired (record §45-A). */
+            DSW(DS_001088B0) = (u16)(rng_next(0x14u) + 0x78u);        /* 0x4A4F2..0x4A501 */
+        }
+        if (DSB(DS_001088C3) != 0u) {                                /* 0x4A507 */
+            u16 pre = DSW(DS_001088B0);                              /* 0x4A510 */
+            DSW(DS_001088B0) = (u16)(pre - 1u);                      /* 0x4A51B/0x4A51C */
+            if (pre == 0x3Cu) {                                      /* 0x4A522 */
+                /* PORT: 0x4A52C 0x2C3FC(0xDC) voice, not wired (record §45-A). */
+            }
+        }
+        DSB(DS_001088C9) = (u8)((u32)DSB(DS_0010780A) < 0x78u);     /* 0x4A531..0x4A544 */
+        DSW(DS_001088B4) = 0;                                        /* 0x4A54D */
+        if ((u16)loc_idle == (u16)loc_count) {                       /* 0x4A538/0x4A549..0x4A557 */
+            DSW(DS_001088B4) = 1u;                                   /* 0x4A559 */
+            fight_4a928();                                           /* 0x4A562 */
+        }
+        if (loc_still != 0u && loc_walk != 0u) {                     /* 0x4A567..0x4A573 */
+            u32 e = DSD(DS_0010884C);                                /* 0x4A575 */
+            while (e != DS_0010884C) {                               /* 0x4A57A/0x4A589 */
+                u32 nx = DSD(e);                                     /* 0x4A581 */
+                DSB(e + 0x1Eu) = 0x0Cu;                              /* 0x4A583 */
+                e = nx;                                              /* 0x4A587 */
+            }
+        }
+    }
 
     fight_4a634();                              /* 0x4A591 */
     DSB(DS_001088C2) = 0;                       /* 0x4A5A0 */
@@ -4960,7 +5108,10 @@ void fight_effects_hold_all(void)
  * Every open gate then clears entry+0x1E back to 0 (0x4E104). The four state
  * bodies call no rng_next (no CALL to 0x5D7DC in 0x4DF8C..0x4E103).
  * Callers: 0x277C0 (mode 0xF, game_mode_0f_step, flow.c, record §49-F) and
- * 0x29638 (mode 0x33), whose call 0x2965F is not wired yet (ledger §E-3).
+ * 0x29638 (mode 0x33, game_mode_33_step, at 0x2965F, record §W of
+ * 2026-09-29-e-wire-k8b-k8d-derivations.md). All six 0x4A868 sites are
+ * wired; the sixth, 0x4A361, is the case-14 body (record §K13.2 of
+ * 2026-09-29-k13-fx74-derivations.md).
  * EBX/ECX/EDX/ESI/EDI are pushed and popped. */
 void fight_effects_idle_pass(void)
 {
