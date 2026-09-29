@@ -976,7 +976,13 @@ unclamped steps and both clamps), Enter (the restore).
 of both screens; the `0x2F388` releases of the voice row; Up on the handicap
 screen (Down is tested, and both run the same `xor`); Up without a wrap on
 ADJUST VOLUME (the `sel - 1` step); the unclamped Left step on the effects
-row (the music row's is tested; both run the same code). **Unobservable:**
+row (the music row's is tested; both run the same code). (Added from the
+cycle-3 review, §K11.5:) the voice Left step `0x30BA9..0x30BAD` (a `v[2] -=
+2` mutation survives the suite, since no script presses Left on the voice
+row) and the unclamped Right step on the effects row (script B's Right on
+effects is the clamp to 0xFF). A test of either costs a new ADJUST VOLUME
+script of at least 5 frames, over the 2-frame limit set for these minors.
+**Unobservable:**
 `config_voice_gate(-1)` at the exit (its `sound_voice(0)` returns at once).
 
 **Cycle-2 review items folded in.** (1) `0x2CACC`'s test now points
@@ -1058,3 +1064,316 @@ The header grep counts 1 for each of `2F464 30728 30864 30FE8 31138`.
 `tools/port_progress.py` goes from `762 1203 63` / `726 730 99` to `763 1203
 63` / `727 730 100`: `0x2F464` is a Ghidra function (`FN_0002F464`), the
 other four are not.
+
+## §K11.5 Cycle 4: MODIFY CONTROLS and TEST CONTROLS (executor, Task 5)
+
+Nine functions, re-read from the fixed-up image (`k11_dx.py`, dumps
+`<scratchpad>/k11_t5_dis_a.txt` for `0x31F24` and `k11_t5_dis_b.txt` for
+`0x32358`).
+
+**(a) `0x2EF48`** (`text_hex_format`; EAX value in ESI, EDX buf, EBX width in
+`[esp+4]`, ECX the pad flag in `[esp]`). `0x2EF56 mov ebx,[esp+2]; sar ebx,0x10`
+reads the width's low word (the dword at `[esp+2]` has the flag's high word
+below it), so the NUL goes at `buf[(s16)width]`. The pad is `0x20` when all of
+ECX is non-zero and `0x30` when it is zero (`0x2EF65 test ecx,ecx`, stored at
+`0x2EF75`). The digits come from the code-object table `0x2EF10` =
+"0123456789ABCDEF": AX counts down from the width, `buf[(s16)ax] =
+digits[v & 0xF]`, `v >>= 4`, until `(s16)ax <= 0` (`0x2EF92 jle`) or `v == 0`
+(`0x2EF96`), so at least one digit is written and the high digits that do not
+fit are dropped. The rest is padded down to index 0. **Correction:** it returns
+`width - (s16)ax` (`0x2EF98..0x2EFA1`), the **digit count**, not `width -
+digits` as §0.5 and the brief say (the brief's `0x2A` case gives 2 either way;
+`0xBEEF` in 6 gives 4).
+
+**`0x2F48C`** (`text_hex_set`): EAX col, EDX row, EBX value, ECX width, stack
+`[esp+4]` pad and `[esp+8]` mode (`ret 8`), as the brief says. `0x2EF48` fills
+the 0x14-byte stack buffer, then `0x2F198(col, row, buf, mode)`. For a width of
+1..0x13 every byte up to the NUL is written; both callers pass 8.
+
+**(b) `0x314A0`** (`svc_stick_draw`; EAX col, EDX row, EBX bits; ECX kept).
+EDI = `0x10` (the centre cell, bit 4); Left `0x20002000` makes it 8, else
+Right `0x10001000` makes it `0x20` (`0x314AB..0x314C7`); then Up `0x80008000`
+shifts it right by 3 (`sar`), else Down `0x40004000` left by 3
+(`0x314CC..0x314E1`). For each row r = row - 2, row, row + 2 it releases 5
+cells from col - 2 (`0x2F388`, `0x31511`), then for c = col - 2, col, col + 2
+draws `'+'` (`0x2B`) when EDI's bit 0 is set, else `'.'` (`0x2E`), in `0x4000`
+(`0x31528..0x31544`, `0x2F174`), and shifts EDI right by one. So the bits are
+the cells row-major from the top left.
+
+**(c) The key-name helpers.** All four jump tables hold the four case bodies
+in order, one per loop index 0..3:
+
+| table | entries | case bodies |
+|---|---|---|
+| `0x319A0` | `319E7 319FF 31A13 31A2A` | `0x2F280` of string `0x22C` (nine blanks) at (col - 8, row + 8), (col + 2, row + 8), (col - 8, row + 0xC), (col + 2, row + 0xC), mode `0x4000` |
+| `0x31A68` | `31ADD 31B00 31B23 31B37` | `0x2F198(x - len/2, y, name, 0x4000)` with x = col - 5, col + 5, col - 5, col + 5 and y = row + 8, row + 8, row + 0xC, row + 0xC |
+| `0x31B84` | `31BDE 31BFA 31C17 31C2E` | string `0x22C`: `0x2F280` at (c - 3, 8) and (c - 3, 0xE), then `0x2F314` (down a column) at (c - 3, 8) and (c + 3, 8) |
+| `0x31C68` | `31CF9 31D38 31D74 31DAE` | `0x2F198(c - len/2, 8)` and `(c - len/2, 0xE)` for "<name>" (EDX = 0), then `0x2F20C(c - 3, 0xB - len/2)` and `(c + 3, 0xB - len/2)` for the bare name (EDX = 1) |
+
+The offsets: `0x319B6 lea eax,[ebx-5]`, `0x319C5 add ebx,5`, then `0x319CF lea
+esi,[eax-3]` = col - 8 and `0x319D2 lea ebp,[ebx-3]` = col + 2; rows `0x319BB
+lea esi,[ecx+8]` and `0x319C8 lea edi,[ecx+0xC]`. In `0x31A78`: `0x31A8E lea
+eax,[ebx-5]` and `0x31A9E add ebx,5` (the name centres), `0x31A93 lea
+ebp,[ecx+8]` and `0x31AA1 lea esi,[ecx+0xC]`. `len/2` is `repne scasb` then
+`shr eax,1`. **So the layout is a 2x2 block below (col, row), not a diamond**
+(§0.5's word), and the directions are a cross around (c, 0xB): up on row 8,
+down on row 0xE, left and right down columns c - 3 and c + 3.
+
+**Corrections to the brief's signatures (raw wins):**
+
+* `0x319B0` takes **EBX = col, ECX = row** only. Its callers load EAX (the
+  side) and EDX (the record), but `0x319B6` overwrites EAX and `0x319B9 xor
+  edx,edx` EDX before either is read. The port is `svc_buttons_clear(col,
+  row)`.
+* `0x31A78` is `(EAX side, EDX record, EBX col, ECX row)`: the brief's `keys`
+  is the key-config record, whose words `+0xA..+0x11` (side 0) or
+  `+0x1C..+0x23` (side 1) are read (`0x31A7E..0x31A87`, `0x31ABB mov
+  ax,[edx]`).
+* `0x31B94` reads only EAX (the side: c = `0xA` or `0x1E`, `0x31B9C..0x31BA7`);
+  EDX (the record) is loaded by its callers and not read.
+* `0x31C78` is `(EAX side, EDX record)`; the words are `+2..+9` or
+  `+0x14..+0x1B` (`0x31C96 lea esi,[edx+2]`, `0x31CA5 lea esi,[edx+0x14]`).
+
+So the 0x28-byte record is: `+0` player 1's device, `+2` its four direction
+keys, `+0xA` its four button keys, `+0x12` player 2's device, `+0x14` and
+`+0x1C` its keys, `+0x24`/`+0x26` the handicaps (§K11.4).
+
+**The name buffer.** `0x31A78` passes `EBX = esp` to `0x3157C`; the buffer is
+the 8 bytes `[esp..esp+7]`, and its locals start at `[esp+8]` (col + 5,
+re-read by cases 1 and 3). `0x31C78` has the same shape with its locals from
+`[esp+8]` (c - 3). The English names fit: the longest is "<HOME>"/"<PGUP>"/
+"<PGDN>"/"<LEFT>"/"<DOWN>", 7 bytes with the NUL. `0x3157C` writes nothing for
+a key with no name (§49-Y), so such a key draws the name left by the key
+before it (tested). The first key's buffer is uninitialised stack; **PORT:** the
+port's buffer is the scratch `SVC_NAME_TMP` (`0x03900080`), zeroed on entry,
+so a first key with no name draws nothing.
+
+**(d) `0x31F24`** (MODIFY CONTROLS). There is no `0x2F99C` reset and no title:
+the screen is drawn over the menu. "PRESS ESCAPE KEY" (`0x6B`) is centred on
+row `0x1B` in `0x1000`. `0x1AEE0` packs the record into `[esp]`; then each
+device word is replaced by the BIOS record's `+0x2D4`/`+0x2D6` when they differ
+(`0x31F54..0x31F85`). Locals: EDI the selected player (0), EBP player 1's
+device (updated each pass while player 1 is selected, `0x31FF7`), `[esp+0x2C]`
+player 2's (while player 2 is, `0x32002`), ESI the selected player's, byte
+`[esp+0x38]` the redraw flag (1), `[esp+0x34]` = tick - 1, `[esp+0x28]` =
+`0x31410 + 0x24` = `0x31434`. Each pass: `0x2EA78(1)` (one frame, three tick
+waits), `keys = 0x2EDE0(0, 1)` (EDX = 1 survives `0x2EA78`); Esc
+(`0x2000000`) leaves.
+
+**Correction (raw wins): Left and Right pick the player; Up and Down cycle the
+device** (§0.5 and the brief have Left/Right cycling it). The chain is
+exclusive: Left (`0x32006`) selects player 1 when player 2 is selected;
+Right (`0x32029`) selects player 2; Up (`0x32051`) is `dev == 0 ? 6 : dev -
+2`; Down (`0x320CF`) is `dev == 6 ? 0 : dev + 2`. The devices are the
+`0x31E28` texts: 0 "KEYBOARD" (`0x22D`), 2 "4 BUTTON JOYSTICK" (`0x22F`), 4 "2
+BUTTON JOYSTICK" (`0x230`), 6 "KEYBOARD/JOYSTICK" (`0x22E`). Then the other
+player's device limits the new one:
+
+| key | player 1 selected (other = player 2) | player 2 selected (other = player 1) |
+|---|---|---|
+| Up | other 2: 0; other 4 and new 2: 0 (`0x32081..0x3209C`) | other 2 and new 2 or 4: 0; other 4 or 6 and new 2: 0 (`0x320A3..0x320C8`) |
+| Down | other 2: 0; other 4 and new 2: 4 (`0x320FD..0x32114`) | other 2 and new 2 or 4: 6; other 4 or 6 and new 2: 4 (`0x32118..0x3213C`) |
+
+**Correction: there is no blink.** The two `0x500BB` reads after the first
+are the Up/Down wait: Up and Down store `[esp+0x34]` = tick + `0xC`
+(`0x3205D..0x32067`, `0x320DB..0x320E5`), and while the tick is below it
+(`0x31FDE..0x31FE5`, unsigned `jae`) the pass masks the keys with
+`0x3FFF3FFF`, dropping Up and Down (Left, Right and Esc still act). The first
+read (`0x31F9F`) starts the wait at tick - 1, so the first pass is free. At
+three ticks a frame, an Up or Down is dropped on the next three frames and
+acts on the fourth.
+
+With the redraw flag clear the pass ends (`0x32141..0x32146`). Otherwise the
+flag is cleared and ESI is stored into the selected device word, then:
+`0x31E28(0, rec, sel == 0)` and `0x31E28(1, rec, sel == 1)` (the selected
+player's device text in `0x3000`); for each side, `0x31C78` when its device is
+0, else `0x31B94`; `0x31A78(side, rec, 0xA or 0x1E, 0xB)` when the device is 0
+or 6, else `0x319B0(0xA or 0x1E, 0xB)`; `0x314A0(0xA, 0xB, 0)` and
+`0x314A0(0x1E, 0xB, 0)` (the centres lit); then the marker table `0x31434`
+(12-byte entries `{u32 bit, u8 col, u8 row, u16 0, u32 string id}`, ended by
+bit and string both 0):
+
+| entry | bit | (col, row) | string |
+|---|---|---|---|
+| `31434` | `0x1000000` | (5, 0x12) | `0x21C` "HI QUICK" |
+| `31440` | `0x2000000` | (15, 0x12) | `0x21D` "HI FIERCE" |
+| `3144C` | `0x4000000` | (5, 0x16) | `0x21E` "LO QUICK" |
+| `31458` | `0x8000000` | (15, 0x16) | `0x21F` "LO FIERCE" |
+| `31464`..`31488` | `0x100`, `0x200`, `0x400`, `0x800` | (25/35, 0x12/0x16) | the same four |
+
+Each entry draws its string at (col - 3, row - 1) in `0x4000`, then a glyph at
+(col, row) in `0x4000`: `' '` (which releases the cell) for the FIERCE entries
+of a player whose device is 4 (`0x322A8..0x322F4`), else `'X'`. **Exit**
+(`0x32336`): `0x2EDE0(0xF300F000, 1)`, `0x1AE28(rec)`, EAX = 0. **PORT:** the
+stack record is the scratch `SVC_KEYREC_TMP`, as in `0x31138`.
+
+**(e) `0x32358`** (TEST CONTROLS). EBP = `DS_00107410 & 0x10` (the
+instruction is `0x32361`, §K11.2). With it set: "ADDRESS    RAW DATA"
+(`0x80BAC`) at (3, 4), nineteen `'^'` (`0x80BC0`) at (3, 5), `0x2F48C(3, 6,
+0xFFE80000, 8, pad 0, 0x4000)` and "DIAGS" (`0x80BD4`) at (3, 7). Then
+"PRESS ESCAPE KEY", the packed record with the device override, `0x31E28(0,
+rec, 0)` and `(1, rec, 0)` (no selection), `0x31C78` for a BIOS device word of
+0 and `0x31A78` for 0 or 6 (both read `[DS_00101514]+0x2D4/+0x2D6` again, not
+the record; no clears), and one `0x2EA74`. The labels are drawn once, from
+`0x31410` with the flag and from `0x31434` without. The three entries at
+`0x31410` are `{8, (0x20, 0xB)}`, `{0x10, (0x22, 0xB)}`, `{4, (0x24, 0xB)}`
+and hold the **pointers** `0x80B6C`/`0x80B70`/`0x80B74` (" D", " S", " F")
+where a string id belongs. `0x1C500` decodes them as ids: the group walk
+`0x80B6C / 0x40 = 0x202D` steps runs around the 9-group ring of ENGLISH.TXT
+(the last group's link is 0), so they are strings `0xAC` "Computer Character
+% Wins  Matches", `0xB0` "Character         spms/round" and `0xB4` "Vertigo",
+drawn from (0x1D, 0xA), (0x1F, 0xA) and (0x21, 0xA). The port calls
+`game_string_get` with the same values (tested).
+
+Each pass: `keys = 0x2EDE0(0, 0)` (the pad level; no latched key), `k =
+0x2EB80()`; `k != 0 && k == 0x1B` leaves (`0x32547..0x3254E`). With the flag:
+`0x2F48C(0xE, 6, keys, 8, 0, 0x3000)` and `0x2F48C(0xE, 7, [byte
+0xFFE80003], 8, 0, 0x3000)`. Then `now = 0x2EDE0(0, 0)`, `0x314A0(0xA, 0xB,
+now & 0xF0000000)`, `0x314A0(0x1E, 0xB, now & 0xF000)`, each table entry's
+glyph `'O'` (`0x4F`) when `now & bit`, else `'X'`, in `0x3000`, and one
+`0x2EA74`. **Exit** (`0x32623`): `0x2EDE0(0xF300F000, 1)`, EAX = 0; no
+`0x1AE28`. The diagnostic rows 4 and 6 are drawn before the option rows,
+which overwrite them from column 2 ("LEFT PLAYER" on row 4, the device text on
+row 6); the pad word under RAW DATA (column 0xE) is drawn each pass and stays.
+
+**Named gap (PORT): `0x32573 mov ebx,0xFFE80003; mov bl,[ebx]`.** The
+diagnostic arm reads a byte at linear `0xFFE80003`, an arcade address with no
+memory behind it in the DOS build and outside the port's `mem[]`. What the DOS
+build reads there (a page fault under DOS/4GW, or whatever the host returns)
+is not pinned. The port draws 0 and the test asserts only that the row is
+drawn. The arm is reached only with `DS_00107410` bit 4, config field `0x2A`
+bit 4.
+
+**Values the tests pin** (`sm_check_controls`, 23 scripted frames):
+
+* `0x2EF48`: `0x2A`/4/1 gives "  2A" and 2; `0xBEEF`/6/0 "00BEEF" and 4;
+  `0x12345`/3/0 "345" and 3; `0`/3/`0x100` "  0" and 1 (the flag is all of
+  ECX). `0x2F48C` draws "00BEEF" from (3, 10) in `0x3000` and "  2A" with the
+  two blanks undrawn.
+* `0x314A0` around (10, 11): no bit lights the centre and releases the 5-cell
+  rows; Up + Left lights (8, 9); Down + Right (`0x5000`) lights (12, 13).
+* `0x319B0(0xA, 0xB)` releases columns 2..10 and 12..20 of rows 0x13 and 0x17
+  and keeps 1 and 11. `0x31A78`: "<A>" from (4, 0x13), "<S>" from (14, 0x13),
+  "<UP>" from (3, 0x17), and a key with no name draws "<UP>" again from (13,
+  0x17); side 1 reads `+0x1C`. `0x31B94(0)` releases rows 8 and 0xE from
+  column 7 and columns 7 and 13 from row 8 through row 16; side 1 is column
+  0x1B. `0x31C78`: "<UP>" from (8, 8), "<DOWN>" from (7, 0xE), "LEFT" down
+  column 7 from row 9, "RGT" down column 13 from row 0xA, and no "<" above
+  either; side 1 reads `+0x14`.
+* MODIFY A (BIOS devices 6 and 0, the mirror's 4 and 2): Down, Right, a frame
+  with no key, Down, Up, Esc (6 frames). Down wraps player 1 from 6 to 0 (from
+  the BIOS word, not the mirror's 4); Right selects player 2; frame 4's Down is
+  inside the wait and dropped; frame 5's Up is past it (tick + 12) and wraps
+  player 2 from 0 to 6. The applied devices are 0 and 6 (BIOS words and the
+  mirror bytes). This pins the wait to 10..12 ticks: at 4..9 frame 4's Down
+  acts and frame 5's Up is dropped (player 2 ends at 2), below 4 both act (0),
+  and at 13 or more frame 5's Up is dropped too (0).
+* MODIFY B (4, 0): Right, Down, Esc: player 2 goes 0 -> 2 -> 4 (player 1's
+  device 4); player 1's names are released; the HI FIERCE and LO FIERCE
+  markers of both players (`0x2000000`/`0x8000000`, `0x200`/`0x800`) are
+  blank, their cells seeded beforehand; LO QUICK keeps its "X".
+* MODIFY C (2, 6): Right, Up, Left, Esc: player 2 goes 6 -> 4 -> 0 (player 1's
+  device 2); Left selects player 1 again ("4 BUTTON JOYSTICK" in `0x3000`).
+* MODIFY D (4, 4): Up, Esc: player 1 goes 4 -> 2 -> 0 (player 2's device 4).
+* The unlimited steps (fix round 1). With player 2's device 0, neither of
+  player 1's limit rows matches (Up `0x32081..0x3208D`: other 2, or other 4
+  and new 2; Down `0x320FD..0x3210D`: the same), so the step stands. MODIFY
+  E (6, 0): Up, Esc: player 1 goes 6 -> 4 (`0x3207A sub esi,2`), "2 BUTTON
+  JOYSTICK" selected and HI FIERCE blank. MODIFY F (0, 0): Down, Esc: player
+  1 goes 0 -> 2 (`0x320F6 add esi,2`), "4 BUTTON JOYSTICK" selected and the
+  first pass's "<UP>" released. A step of 4 either way fails (mutations 43,
+  44); before this, every non-wrapping step in A-D ended on a limit arm or
+  gave the same result with a step of 4.
+* TEST A (`DS_00107410` = `0xEF`, bit 4 clear; devices 0 and 4): a frame with
+  the pad at `0xA1004000`, then Esc (2 frames). The pass shows player 1's
+  stick Up + Left, player 2's Down, "O" for HI QUICK and "X" for HI FIERCE in
+  `0x3000`; there is no DIAGS row, and the mirror is not written.
+* TEST B (`0x10`; devices 8 and 4, so row 6 keeps the address): the pad at
+  `0x10002000`, then Esc (2 frames). "FFE80000" from (3, 6), "DIAGS", RAW DATA
+  at (0xE, 4), "10002000" from (0xE, 6), the raw-data row drawn, the labels
+  of strings `0xAC` and `0xB4` at (0x1D, 0xA) and (0x21, 0xA), the bit-8 "X"
+  over player 2's stick at (0x20, 0xB), both sticks, and no button names for
+  device 8 (a sentinel at (4, 0x13) is kept).
+
+**Limit arms tested:** player 1 Up with player 2's device 4 and new 2 (D);
+player 2 Up with player 1's device 2 and new 4 (C); player 2 Down with player
+1's device 4 and new 2 (B). **Not tested:** player 1 Up with player 2's device
+2; **both player 1 Down arms** (other 2 gives 0, other 4 and new 2 gives 4);
+player 2 Up with player 1's device 2 and new 2 (the `dev == dev1` sub-arm,
+`0x320A8`; reaching it needs a Right frame on top of a script) and with
+player 1's device 4 or 6 and new 2; player 2 Down with player 1's device 2
+(new 2 or 4 gives 6), and with player 1's device 6 (the same arm as 4); the buttons for device 6; the "PRESS ESCAPE
+KEY" line; the `0x2EDE0(0xF300F000, 1)` at both exits (its only effect is the
+key-time stamp); the width limits of `0x2EF48` (no caller passes a width
+outside 1..0x13).
+
+**Frame budget.** 23 scripted frames in `sm_check_controls` (MODIFY 6 + 3 +
+4 + 2 + 2 + 2, TEST 2 + 2); the helper checks present no frame. K11 total: 83
++ 23 = 106 of 160 (fix round 1 added MODIFY E and F, 4 frames).
+
+**Mutations** (each applied, rebuilt, run and reverted by
+`<scratchpad>/k11_t5_mut.py`; log `<scratchpad>/k11_t5_mutations.txt`). All 46
+fail the suite with exit 1 and no crash. They include the brief's five: a
+dropped pad flag (1), swapped jump-table cases (10, 14), `0x314A0`'s Up and
+Down swapped (6), the device wraps (17, 18) and the Esc test on `0x0D` (32).
+
+| # | mutation | result |
+|---|---|---|
+| 1 | 0x2EF48 pad flag dropped | 4 checks |
+| 2 | 0x2EF48 pad flag low byte only | 2 checks |
+| 3 | 0x2EF48 returns width - digits | 4 checks |
+| 4 | 0x2EF48 no truncation stop | 8 checks |
+| 5 | 0x2F48C pad and mode swapped | 3 checks |
+| 6 | 0x314A0 Up and Down swapped | 7 checks |
+| 7 | 0x314A0 Left and Right swapped | 6 checks |
+| 8 | 0x314A0 release dropped | 2 checks |
+| 9 | 0x319B0 case 1 column + 3 | 2 checks |
+| 10 | 0x31A78 cases 0 and 1 swapped | 4 checks |
+| 11 | 0x31A78 side 1 at +0x14 | 2 checks |
+| 12 | 0x31B94 case 1 row r + 2 | 2 checks |
+| 13 | 0x31B94 case 3 column c + 2 | 3 checks |
+| 14 | 0x31C78 cases 2 and 3 swapped | 5 checks |
+| 15 | 0x31C78 left/right wrapped | 5 checks |
+| 16 | 0x31C78 side 1 at +0x12 | 2 checks |
+| 17 | 0x31F24 Down wrap dropped | 6 checks |
+| 18 | 0x31F24 Up wrap to 4 | 4 checks |
+| 19 | 0x31F24 Up/Down wait dropped | 4 checks |
+| 20 | 0x31F24 Down wait 9 ticks | 4 checks |
+| 21 | 0x31F24 Down wait 13 ticks | 4 checks |
+| 22 | 0x31F24 BIOS device override dropped | 15 checks |
+| 23 | 0x31F24 p2 Down dev1 4/6 arm dropped | 3 checks |
+| 24 | 0x31F24 p2 Up dev1 2 arm dropped | 3 checks |
+| 25 | 0x31F24 p1 Up dev2 4 arm dropped | 2 checks |
+| 26 | 0x31F24 Left ignored | 3 checks |
+| 27 | 0x31F24 config_keys_apply dropped | 8 checks (the first run's pattern broke the build; rerun) |
+| 28 | 0x31F24 device-4 blank markers dropped | 4 checks |
+| 29 | 0x31F24 option-row flags inverted | 5 checks |
+| 30 | 0x31F24 dirs draw/clear swapped (p1) | 3 checks |
+| 31 | 0x31F24 buttons clear dropped | 2 checks |
+| 32 | 0x32358 Esc test on 0x0D | the harness exit (the loop never leaves) |
+| 33 | 0x32358 diag flag bit 0x20 | 16 checks |
+| 34 | 0x32358 diag table start ignored | 5 checks |
+| 35 | 0x32358 O/X inverted | 4 checks |
+| 36 | 0x32358 stick masks swapped | 5 checks |
+| 37 | 0x32358 keys hex row dropped | 5 checks |
+| 38 | 0x32358 applies the record | 2 checks |
+| 39 | 0x32358 buttons drawn for every device | 3 checks (it survived the first run; TEST B now keeps a sentinel where player 1's button names would go) |
+| 40 | 0x31F24 registration dropped | 2 checks |
+| 41 | 0x32358 registration dropped | 2 checks |
+| 42 | 0x2EF48 pad digit off (0x31) | 3 checks |
+| 43 | 0x31F24 Down step +4 (fix round 1) | 3 checks (MODIFY F: 4, not 2) |
+| 44 | 0x31F24 Up step -4 (fix round 1) | 4 checks (MODIFY E: 2, not 4) |
+| 45 | 0x31F24 LO FIERCE arm dropped for player 1 (fix round 1) | 2 checks |
+| 46 | 0x31F24 LO FIERCE arm dropped for player 2 (fix round 1) | 2 checks |
+
+**Gate (Task 5).** `make verify` exited 0 (`<scratchpad>/k11_t5_verify.txt`).
+Its oracle lines equal §K11.0's and ledger §A's, except the two unittest
+wall-clock lines (`Ran 10 tests in 0.118s`, `Ran 33 tests in 1.168s`). The two
+new `fn_register` calls run in `game_init`, so the 8000-frame dump was
+compared: `--check 8000` on this tree gives the same `shasum` list over 8000
+`.idx` and 8000 `.pal` files as `k11_t4_frames_after.sha` (the source under
+`port/src` is unchanged from `4862074` to `7cb83e6`; FRAMES-IDENTICAL). The
+header grep counts 1 for each of `2EF48 2F48C 314A0 319B0 31A78 31B94 31C78
+31F24 32358`. `tools/port_progress.py` goes from `763 1203 63` / `727 730 100`
+to `765 1203 64` / `729 730 100`: `0x319B0` and `0x31A78` are Ghidra functions
+(`FN_000319B0`, `FN_00031A78`), the other seven are not.

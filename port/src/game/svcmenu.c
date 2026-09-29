@@ -30,6 +30,14 @@
 #define SVC_BLANK4        0x00080B64u   /* "    " */
 #define SVC_HCP_LABELS    0x00030720u   /* code: {0x17, 0x16}, copied by 0x31145..0x3114B */
 #define SVC_KEYREC_TMP    0x03900040u   /* PORT: 0x31138's 0x28-byte stack record, see there */
+#define SVC_NAME_TMP      0x03900080u   /* PORT: 0x31A78/0x31C78's 8-byte name buffer, see there */
+#define SVC_HEX_DIGITS    0x0002EF10u   /* code: "0123456789ABCDEF" */
+#define SVC_CTRL_DIAG     0x00031410u   /* code: the 12-byte marker entries, 3 diagnostic ones first */
+#define SVC_CTRL_TABLE    0x00031434u   /* 0x31410 + 0x24: the eight button markers, ended by {0, .., 0} */
+#define SVC_DIAG_HEAD     0x00080BACu   /* "ADDRESS    RAW DATA" */
+#define SVC_DIAG_RULE     0x00080BC0u   /* nineteen '^' */
+#define SVC_DIAG_NAME     0x00080BD4u   /* "DIAGS" */
+#define SVC_DIAG_ADDR     0xFFE80000u   /* 0x323A8 `mov ebx,0xffe80000` */
 /* The layout bytes are signed chars that the raw reads as the dword three
  * bytes below, `sar 0x18` (0x30932 `mov edx,[0xBD441]` gives the byte at
  * 0xBD444). */
@@ -622,6 +630,363 @@ u32 svc_handicap(u32 entry)
     return 0xFFFFFFFFu;                                     /* EAX from 0x2EA78 */
 }
 
+/* 0x2EF48 — record §K11.5. EAX = value (ESI), EDX = buf, EBX = width
+ * ([esp+4]), ECX = the pad flag ([esp]). The index is the 16-bit AX
+ * (`movsx`); the NUL goes at buf[(s16)width] (0x2EF56 reads [esp+2], whose
+ * high word is the width's low word, then `sar 0x10`). */
+s32 text_hex_format(u32 value, u8 *buf, s32 width, u32 space_pad)
+{
+    buf[(s16)width] = 0u;                                   /* 0x2EF56..0x2EF61 */
+    const u8 pad = space_pad != 0u ? 0x20u : 0x30u;         /* 0x2EF65..0x2EF75 (all of ECX) */
+    u32 ax = (u32)width;                                    /* 0x2EF5D */
+    do {
+        ax--;                                               /* 0x2EF78 */
+        buf[(s16)ax] = DSB(SVC_HEX_DIGITS + (value & 0xFu));   /* 0x2EF79..0x2EF8D */
+        value >>= 4;                                        /* 0x2EF8A */
+    } while ((s16)ax > 0 && value != 0u);                   /* 0x2EF8F..0x2EF96 */
+    const s32 n = width - (s16)ax;                          /* 0x2EF98..0x2EFA1 */
+    while ((s16)ax > 0) {                                   /* 0x2EFA5..0x2EFA8, 0x2EFB4..0x2EFB7 */
+        ax--;                                               /* 0x2EFAD */
+        buf[(s16)ax] = pad;                                 /* 0x2EFAA..0x2EFB1 */
+    }
+    return n;                                               /* 0x2EFB9 */
+}
+
+/* 0x2F48C — record §K11.5. EAX = col, EDX = row, EBX = value, ECX = width,
+ * [esp+4] = pad, [esp+8] = mode (`ret 8`). The 0x14-byte stack buffer is
+ * fully written by 0x2EF48 for a width of 1..0x13; the callers pass 8. */
+void text_hex_set(s32 col, s32 row, u32 value, s32 width, u32 pad, u32 mode)
+{
+    u8 buf[0x14];
+    (void)text_hex_format(value, buf, width, pad);          /* 0x2F491..0x2F49F 0x2EF48 */
+    text_cursor_set(col, row, buf, mode);                   /* 0x2F4A4..0x2F4AE 0x2F198 */
+}
+
+/* 0x314A0 — record §K11.5. EAX = col, EDX = row, EBX = the direction bits.
+ * EDI holds one bit per cell, row-major from the top left; bit 4 is the
+ * centre. Each row releases 5 cells from col - 2 first. */
+void svc_stick_draw(s32 col, s32 row, u32 bits)
+{
+    s32 lit = 0x10;                                         /* 0x314AB */
+    if ((bits & 0x20002000u) != 0u)                         /* 0x314B0 Left */
+        lit = 8;                                            /* 0x314B8 */
+    else if ((bits & 0x10001000u) != 0u)                    /* 0x314BF Right */
+        lit = 0x20;                                         /* 0x314C7 */
+    if ((bits & 0x80008000u) != 0u)                         /* 0x314CC Up */
+        lit >>= 3;                                          /* 0x314D4 `sar` */
+    else if ((bits & 0x40004000u) != 0u)                    /* 0x314D9 Down */
+        lit <<= 3;                                          /* 0x314E1 */
+    for (s32 r = row - 2; r != row + 4; r += 2) {           /* 0x314E8..0x314FD, 0x31556..0x31571 */
+        text_cells_release_count(col - 2, r, 5);            /* 0x31500..0x31511 0x2F388 */
+        for (s32 c = col - 2; c != col + 4; c += 2) {       /* 0x3151A..0x31524, 0x3154D..0x31554 */
+            text_glyph_at(c, (lit & 1) != 0 ? 0x2B : 0x2E, r, 0x4000u);   /* 0x31528..0x31544 0x2F174 */
+            lit >>= 1;                                      /* 0x31550 `sar` */
+        }
+    }
+}
+
+/* 0x319B0 — record §K11.5. EBX = col, ECX = row. EAX and EDX are loaded by
+ * both callers (the side and the record) but not read: 0x319B6 overwrites
+ * EAX and 0x319B9 EDX. Jump table 0x319A0; each case fetches string 0x22C
+ * (nine blanks) and releases it in mode 0x4000. */
+void svc_buttons_clear(s32 col, s32 row)
+{
+    for (u32 i = 0u; i < 4u; i++) {                         /* 0x319D5..0x319E0, 0x31A44..0x31A5B */
+        switch (i) {
+        case 0u:                                            /* [0x319A0] = 0x319E7 */
+            text_cells_release(col - 8, row + 8, game_string_get(0x22Cu), 0x4000u);
+            break;
+        case 1u:                                            /* [0x319A4] = 0x319FF */
+            text_cells_release(col + 2, row + 8, game_string_get(0x22Cu), 0x4000u);
+            break;
+        case 2u:                                            /* [0x319A8] = 0x31A13 */
+            text_cells_release(col - 8, row + 0xC, game_string_get(0x22Cu), 0x4000u);
+            break;
+        default:                                            /* [0x319AC] = 0x31A2A */
+            text_cells_release(col + 2, row + 0xC, game_string_get(0x22Cu), 0x4000u);
+            break;
+        }
+    }
+}
+
+/* 0x31A78 — record §K11.5. EAX = side, EDX = the key-config record, EBX =
+ * col, ECX = row. Jump table 0x31A68. The name buffer is the 8 bytes at
+ * [esp], below the locals [esp+8] (col + 5) and [esp+0xC] (col - 5); the
+ * English names fit it ("<HOME>" is the longest, 7 bytes). 0x3157C writes
+ * nothing for a key with no name, so the buffer keeps the key before's.
+ * PORT: the buffer is the scratch SVC_NAME_TMP, zeroed on entry; the raw's
+ * first-key buffer is uninitialised stack. */
+void svc_buttons_draw(u32 side, u32 rec, s32 col, s32 row)
+{
+    const u32 name = SVC_NAME_TMP;
+    DSD(name) = 0u; DSD(name + 4u) = 0u;
+    u32 p = rec + (side == 0u ? 0xAu : 0x1Cu);              /* 0x31A7E..0x31A8A */
+    const s32 left = col - 5, right = col + 5;              /* 0x31A8E, 0x31A9E */
+    for (u32 i = 0u; i < 4u; i++) {                         /* 0x31AAC..0x31AD6, 0x31B5D..0x31B74 */
+        (void)config_key_name(DSW(p), 0u, name);            /* 0x31AB0..0x31AC4 0x3157C (EDX = 0: "<name>") */
+        p += 2u;                                            /* 0x31AB8, 0x31AC0 */
+        const s32 half = (s32)(strlen((const char *)(mem + name)) >> 1);   /* `repne scasb`, `shr eax,1` */
+        switch (i) {
+        case 0u:                                            /* [0x31A68] = 0x31ADD */
+            text_cursor_set(left - half, row + 8, mem + name, 0x4000u);
+            break;
+        case 1u:                                            /* [0x31A6C] = 0x31B00 */
+            text_cursor_set(right - half, row + 8, mem + name, 0x4000u);
+            break;
+        case 2u:                                            /* [0x31A70] = 0x31B23 */
+            text_cursor_set(left - half, row + 0xC, mem + name, 0x4000u);
+            break;
+        default:                                            /* [0x31A74] = 0x31B37 */
+            text_cursor_set(right - half, row + 0xC, mem + name, 0x4000u);
+            break;
+        }
+    }
+}
+
+/* 0x31B94 — record §K11.5. EAX = side; EDX (the record, loaded by the
+ * callers) is not read. Centre column c = 0xA or 0x1E (ESI), row 0xB (EDI).
+ * Jump table 0x31B84; string 0x22C (nine blanks) each time. */
+void svc_dirs_clear(u32 side)
+{
+    const s32 c = side == 0u ? 0xA : 0x1E;                  /* 0x31B9C..0x31BA7 */
+    const s32 r = 0xB;                                      /* 0x31BAC */
+    for (u32 i = 0u; i < 4u; i++) {                         /* 0x31BCA..0x31BD7, 0x31C4A..0x31C59 */
+        switch (i) {
+        case 0u:                                            /* [0x31B84] = 0x31BDE */
+            text_cells_release(c - 3, r - 3, game_string_get(0x22Cu), 0x4000u);
+            break;
+        case 1u:                                            /* [0x31B88] = 0x31BFA */
+            text_cells_release(c - 3, r + 3, game_string_get(0x22Cu), 0x4000u);
+            break;
+        case 2u:                                            /* [0x31B8C] = 0x31C17, 0x2F314 */
+            text_cells_release_vertical(c - 3, r - 3, game_string_get(0x22Cu));
+            break;
+        default:                                            /* [0x31B90] = 0x31C2E, 0x2F314 */
+            text_cells_release_vertical(c + 3, r - 3, game_string_get(0x22Cu));
+            break;
+        }
+    }
+}
+
+/* 0x31C78 — record §K11.5. EAX = side, EDX = the key-config record. Centre
+ * (c, r) = (0xA or 0x1E, 0xB); the words from +2 or +0x14 (ESI). Jump table
+ * 0x31C68. Up and down are named wrapped ("<name>", EDX = 0) and centred on
+ * c; left and right unwrapped (EDX = 1) and drawn down a column through
+ * 0x2F20C, centred on r. The name buffer is [esp] as in 0x31A78, with the
+ * locals from [esp+8]. PORT: SVC_NAME_TMP, zeroed on entry (see 0x31A78). */
+void svc_dirs_draw(u32 side, u32 rec)
+{
+    const u32 name = SVC_NAME_TMP;
+    DSD(name) = 0u; DSD(name + 4u) = 0u;
+    const s32 c = side == 0u ? 0xA : 0x1E;                  /* 0x31C84 / 0x31C9B, [esp+0x1C] */
+    const s32 r = 0xB;                                      /* 0x31C89 / 0x31CA0, [esp+0x18] */
+    u32 p = rec + (side == 0u ? 2u : 0x14u);                /* 0x31C96 / 0x31CA5 */
+    for (u32 i = 0u; i < 4u; i++) {                         /* 0x31CE2..0x31CF2, 0x31DEB..0x31DFA */
+        const u8 raw = i >= 2u ? 1u : 0u;                   /* 0x31CFD / 0x31D78 `mov edx,1` */
+        (void)config_key_name(DSW(p), raw, name);           /* 0x31CFF..0x31D08 0x3157C */
+        p += 2u;                                            /* 0x31CEF `lea eax,[esi+2]`, 0x31D02 */
+        const s32 half = (s32)(strlen((const char *)(mem + name)) >> 1);
+        switch (i) {
+        case 0u:                                            /* [0x31C68] = 0x31CF9 */
+            text_cursor_set(c - half, r - 3, mem + name, 0x4000u);
+            break;
+        case 1u:                                            /* [0x31C6C] = 0x31D38 */
+            text_cursor_set(c - half, r + 3, mem + name, 0x4000u);
+            break;
+        case 2u:                                            /* [0x31C70] = 0x31D74, 0x2F20C */
+            text_vertical_set(c - 3, r - half, mem + name, 0x4000u);
+            break;
+        default:                                            /* [0x31C74] = 0x31DAE, 0x2F20C */
+            text_vertical_set(c + 3, r - half, mem + name, 0x4000u);
+            break;
+        }
+    }
+}
+
+/* PORT: one helper for two inline sequences, 0x31F54..0x31F85 (in 0x31F24)
+ * and 0x323FE..0x3242D (in 0x32358), which are the same instructions: the
+ * BIOS record's device words +0x2D4/+0x2D6 replace the packed record's +0 and
+ * +0x12 when they differ. No original function exists at this address. */
+static void svc_keyrec_devices(u32 rec)
+{
+    u32 kb = DSD(DS_00101514);
+    if (DSW(kb + 0x2D4u) != DSW(rec)) DSW(rec) = DSW(kb + 0x2D4u);
+    kb = DSD(DS_00101514);
+    if (DSW(kb + 0x2D6u) != DSW(rec + 0x12u)) DSW(rec + 0x12u) = DSW(kb + 0x2D6u);
+}
+
+/* 0x31F24 — record §K11.5. OPTIONS MENU "MODIFY CONTROLS". Locals: [esp] the
+ * 0x28-byte key-config record, [esp+0x28] the marker table 0x31434,
+ * [esp+0x2C] player 2's device, [esp+0x34] the tick before which Up and Down
+ * are ignored, byte [esp+0x38] the redraw flag; EBP player 1's device, EDI
+ * the selected player, ESI its device. There is no 0x2F99C reset: the screen
+ * is drawn over the menu's. */
+u32 svc_modify_controls(u32 entry)
+{
+    (void)entry;
+    text_cursor_set(-1, 0x1B, game_string_get(0x6Bu), 0x1000u);   /* 0x31F2D..0x31F48 "PRESS ESCAPE KEY" */
+    /* PORT: the raw packs into its stack record (0x31F4D `mov eax,esp`);
+     * 0x1AEE0, 0x31E28, 0x31A78, 0x31C78 and 0x1AE28 read and write it in
+     * mem[], so it lives at the port scratch SVC_KEYREC_TMP instead. */
+    const u32 rec = SVC_KEYREC_TMP;
+    config_keys_pack(rec);                                  /* 0x31F4F 0x1AEE0 */
+    svc_keyrec_devices(rec);                                /* 0x31F54..0x31F85 */
+    u32 sel = 0u;                                           /* 0x31F64 EDI */
+    u32 dev2 = DSW(rec + 0x12u);                            /* 0x31F8A..0x31F91 */
+    u32 dev1 = DSW(rec);                                    /* 0x31F97 */
+    u8 redraw = 1u;                                         /* 0x31F95, 0x31F9B */
+    u32 until = DSD(DS_00101500) - 1u;                      /* 0x31F9F 0x500BB, 0x31FA4 */
+    const u32 table = SVC_CTRL_TABLE;                       /* 0x31FA9..0x31FB1 */
+    for (;;) {
+        config_screen_wait(1);                              /* 0x31FB5..0x31FBF 0x2EA78 */
+        u32 keys = config_input_poll(0u, 1u);               /* 0x31FC4..0x31FC6 0x2EDE0 (EDX = 1, kept by 0x2EA78) */
+        if ((keys & 0x2000000u) != 0u) break;               /* 0x31FCF..0x31FD4 */
+        if (DSD(DS_00101500) < until)                       /* 0x31FDE 0x500BB, 0x31FE3 `jae` */
+            keys &= 0x3FFF3FFFu;                            /* 0x31FE7: Up/Down ignored */
+        u32 dev;
+        if (sel == 0u) {                                    /* 0x31FED */
+            dev = DSW(rec);                                 /* 0x31FF1..0x31FF3 */
+            dev1 = dev;                                     /* 0x31FF7 */
+        } else {
+            dev = DSW(rec + 0x12u);                         /* 0x31FFB..0x31FFD */
+            dev2 = dev;                                     /* 0x32002 */
+        }
+        if ((keys & 0x20002000u) != 0u) {                   /* 0x32006 Left */
+            if (sel != 0u) {                                /* 0x3200E..0x32010 */
+                redraw = 1u;                                /* 0x32020 */
+                sel = 0u;                                   /* 0x3201A */
+                dev = DSW(rec);                             /* 0x3201C */
+            }
+        } else if ((keys & 0x10001000u) != 0u) {            /* 0x32029 Right */
+            if (sel != 1u) {                                /* 0x32031..0x32034 */
+                sel = 1u;                                   /* 0x3203A */
+                dev = DSW(rec + 0x12u);                     /* 0x32043 */
+                redraw = 1u;                                /* 0x32048 */
+            }
+        } else if ((keys & 0x80008000u) != 0u) {            /* 0x32051 Up */
+            until = DSD(DS_00101500) + 0xCu;                /* 0x3205D 0x500BB, 0x32062..0x32067 */
+            redraw = 1u;                                    /* 0x3206B */
+            dev = dev == 0u ? 6u : dev - 2u;                /* 0x3206F..0x3207A */
+            if (sel == 0u) {                                /* 0x3207D */
+                if (dev2 == 2u)                             /* 0x32085 */
+                    dev = 0u;                               /* 0x3209C */
+                else if (dev2 == 4u && dev == 2u)           /* 0x3208A..0x32096 */
+                    dev = 0u;                               /* 0x3209C */
+            } else if (dev1 == 2u && (dev == dev1 || dev == 4u)) {   /* 0x320A3..0x320AF */
+                dev = 0u;                                   /* 0x320C8 */
+            } else if ((dev1 == 4u || dev1 == 6u) && dev == 2u) {    /* 0x320B1..0x320C2 */
+                dev = 0u;                                   /* 0x320C8 */
+            }
+        } else if ((keys & 0x40004000u) != 0u) {            /* 0x320CF Down */
+            until = DSD(DS_00101500) + 0xCu;                /* 0x320DB 0x500BB, 0x320E0..0x320E5 */
+            redraw = 1u;                                    /* 0x320E9 */
+            dev = dev == 6u ? 0u : dev + 2u;                /* 0x320ED..0x320F6 */
+            if (sel == 0u) {                                /* 0x320F9 */
+                if (dev2 == 2u)                             /* 0x32101 */
+                    dev = 0u;                               /* 0x32106 */
+                else if (dev2 == 4u && dev == 2u)           /* 0x3210A..0x32112 */
+                    dev = dev2;                             /* 0x32114 `mov esi,ecx` = 4 */
+            } else if (dev1 == 2u && (dev == dev1 || dev == 4u)) {   /* 0x32118..0x32124 */
+                dev = 6u;                                   /* 0x32126 */
+            } else if ((dev1 == 4u || dev1 == 6u) && dev == 2u) {    /* 0x3212D..0x3213A */
+                dev = 4u;                                   /* 0x3213C */
+            }
+        }
+        if (redraw == 0u) continue;                         /* 0x32141..0x32146 */
+        redraw = 0u;                                        /* 0x3214C..0x3214E */
+        if (sel == 0u) DSW(rec) = (u16)dev;                 /* 0x32152..0x32156 */
+        else DSW(rec + 0x12u) = (u16)dev;                   /* 0x3215C */
+        config_option_row(0u, rec, sel == 0u ? 1u : 0u);    /* 0x32163..0x3216C / 0x3217C..0x32182 0x31E28 */
+        config_option_row(1u, rec, sel == 0u ? 0u : 1u);    /* 0x32171..0x32178 / 0x32187..0x3218E, 0x32190 */
+        if (DSW(rec) == 0u) svc_dirs_draw(0u, rec);         /* 0x32195..0x321A0 0x31C78 */
+        else svc_dirs_clear(0u);                            /* 0x321A7..0x321AB 0x31B94 */
+        if (DSW(rec + 0x12u) == 0u) svc_dirs_draw(1u, rec); /* 0x321B0..0x321BF 0x31C78 */
+        else svc_dirs_clear(1u);                            /* 0x321C6..0x321CD 0x31B94 */
+        const u16 d1 = DSW(rec);                            /* 0x321D2 */
+        if (d1 == 0u || d1 == 6u) svc_buttons_draw(0u, rec, 0xA, 0xB);   /* 0x321D5..0x321F2 0x31A78 */
+        else svc_buttons_clear(0xA, 0xB);                   /* 0x321F9..0x32207 0x319B0 */
+        const u16 d2 = DSW(rec + 0x12u);                    /* 0x3220C */
+        if (d2 == 0u || d2 == 6u) svc_buttons_draw(1u, rec, 0x1E, 0xB);  /* 0x32210..0x32230 0x31A78 */
+        else svc_buttons_clear(0x1E, 0xB);                  /* 0x32237..0x32248 0x319B0 */
+        svc_stick_draw(0xA, 0xB, 0u);                       /* 0x3224D..0x32259 0x314A0 */
+        svc_stick_draw(0x1E, 0xB, 0u);                      /* 0x3225E..0x3226E 0x314A0 */
+        for (u32 e = table; DSD(e) != 0u || DSD(e + 8u) != 0u; e += 0xCu) {   /* 0x3226A, 0x3231B..0x3232B */
+            const s32 col = (s32)DSB(e + 4u), row = (s32)DSB(e + 5u);
+            if (DSD(e + 8u) != 0u)                          /* 0x32278..0x3227D */
+                text_cursor_set(col - 3, row - 1, game_string_get(DSD(e + 8u)), 0x4000u);   /* 0x3227F..0x322A3 */
+            const u32 f = DSD(e);
+            const int gone = ((f == 0x2000000u || f == 0x8000000u) && DSW(rec) == 4u)
+                          || ((f == 0x200u || f == 0x800u) && DSW(rec + 0x12u) == 4u);   /* 0x322A8..0x322F4 */
+            text_glyph_at(col, gone ? 0x20 : 0x58, row, 0x4000u);   /* 0x322F6..0x32316 0x2F174 */
+        }
+    }
+    (void)config_input_poll(0xF300F000u, 1u);               /* 0x32336..0x32340 0x2EDE0 */
+    config_keys_apply(rec);                                 /* 0x32345..0x32347 0x1AE28 */
+    return 0u;                                              /* 0x3234C */
+}
+
+/* 0x32358 — record §K11.5. OPTIONS MENU "TEST CONTROLS". EBP = DS_00107410
+ * & 0x10 (the diagnostic flag, 0x32361..0x32367); [esp] the key-config
+ * record, [esp+0x28] the marker table 0x31434. The labels are drawn once;
+ * each pass polls the pad (0x2EDE0(0, 0), no latched key), leaves on the
+ * latched Esc and draws the sticks and the 'O'/'X' markers. */
+u32 svc_test_controls(u32 entry)
+{
+    (void)entry;
+    const u32 diag = DSD(DS_00107410) & 0x10u;              /* 0x32361..0x32367 */
+    if (diag != 0u) {                                       /* 0x3236A */
+        text_cursor_set(3, 4, mem + SVC_DIAG_HEAD, 0x4000u);   /* 0x3236C..0x32380 0x2F198 */
+        text_cursor_set(3, 5, mem + SVC_DIAG_RULE, 0x4000u);   /* 0x32385..0x32399 0x2F198 */
+        text_hex_set(3, 6, SVC_DIAG_ADDR, 8, 0u, 0x4000u);  /* 0x3239E..0x323B9 0x2F48C */
+        text_cursor_set(3, 7, mem + SVC_DIAG_NAME, 0x4000u);   /* 0x323BE..0x323D2 0x2F198 */
+    }
+    text_cursor_set(-1, 0x1B, game_string_get(0x6Bu), 0x1000u);   /* 0x323D7..0x323F2 "PRESS ESCAPE KEY" */
+    /* PORT: the raw's stack record (0x323F7 `mov eax,esp`) is SVC_KEYREC_TMP,
+     * as in 0x31F24. */
+    const u32 rec = SVC_KEYREC_TMP;
+    config_keys_pack(rec);                                  /* 0x323F9 0x1AEE0 */
+    svc_keyrec_devices(rec);                                /* 0x323FE..0x3242D */
+    config_option_row(0u, rec, 0u);                         /* 0x32432..0x32438 0x31E28 */
+    config_option_row(1u, rec, 0u);                         /* 0x3243D..0x32446 0x31E28 */
+    if (DSW(DSD(DS_00101514) + 0x2D4u) == 0u) svc_dirs_draw(0u, rec);   /* 0x3244B..0x3245E 0x31C78 */
+    if (DSW(DSD(DS_00101514) + 0x2D6u) == 0u) svc_dirs_draw(1u, rec);   /* 0x32463..0x32479 0x31C78 */
+    const u16 d1 = DSW(DSD(DS_00101514) + 0x2D4u);          /* 0x3247E..0x32483 */
+    if (d1 == 0u || d1 == 6u) svc_buttons_draw(0u, rec, 0xA, 0xB);      /* 0x3248A..0x324A9 0x31A78 */
+    const u16 d2 = DSW(DSD(DS_00101514) + 0x2D6u);          /* 0x324AE..0x324B3 */
+    if (d2 == 0u || d2 == 6u) svc_buttons_draw(1u, rec, 0x1E, 0xB);     /* 0x324BA..0x324DC 0x31A78 */
+    config_screen_wait_zero();                              /* 0x324E1 0x2EA74 */
+    const u32 table = diag != 0u ? SVC_CTRL_DIAG : SVC_CTRL_TABLE;   /* 0x324E6..0x324EF, 0x325D1..0x325DF */
+    for (u32 e = table; DSD(e) != 0u || DSD(e + 8u) != 0u; e += 0xCu) {   /* 0x32520..0x32529 */
+        /* The three diagnostic entries hold the pointers 0x80B6C/0x80B70/
+         * 0x80B74 where a string id belongs; 0x1C500 decodes them as ids
+         * (record §K11.5). */
+        if (DSD(e + 8u) != 0u)                              /* 0x324F4..0x324F9 */
+            text_cursor_set((s32)DSB(e + 4u) - 3, (s32)DSB(e + 5u) - 1,
+                            game_string_get(DSD(e + 8u)), 0x4000u);   /* 0x324FB..0x32518 */
+    }
+    for (;;) {
+        const u32 keys = config_input_poll(0u, 0u);         /* 0x32537..0x3253B 0x2EDE0 */
+        const u32 k = config_key_latched();                 /* 0x32542 0x2EB80 (EBX kept) */
+        if (k != 0u && k == 0x1Bu) break;                   /* 0x32547..0x3254E */
+        if (diag != 0u) {                                   /* 0x32554..0x32556 */
+            text_hex_set(0xE, 6, keys, 8, 0u, 0x3000u);     /* 0x32558..0x3256E 0x2F48C */
+            /* PORT: 0x32573..0x32578 reads the byte at linear 0xFFE80003 (an
+             * address outside the port's mem[] and any DOS memory; named gap,
+             * record §K11.5); the port draws 0 in its place. */
+            text_hex_set(0xE, 7, 0u, 8, 0u, 0x3000u);       /* 0x3257A..0x32596 0x2F48C */
+        }
+        const u32 now = config_input_poll(0u, 0u);          /* 0x3259B..0x3259F 0x2EDE0 */
+        svc_stick_draw(0xA, 0xB, now & 0xF0000000u);        /* 0x325A4..0x325BA 0x314A0 */
+        svc_stick_draw(0x1E, 0xB, now & 0xF000u);           /* 0x325BF..0x325D6 0x314A0 */
+        for (u32 e = table; DSD(e) != 0u || DSD(e + 8u) != 0u; e += 0xCu)   /* 0x3260E..0x32617 */
+            text_glyph_at((s32)DSB(e + 4u), (now & DSD(e)) != 0u ? 0x4F : 0x58,
+                          (s32)DSB(e + 5u), 0x3000u);       /* 0x325E5..0x32609 0x2F174 */
+        config_screen_wait_zero();                          /* 0x32619 0x2EA74 */
+    }
+    (void)config_input_poll(0xF300F000u, 1u);               /* 0x32623..0x3262D 0x2EDE0 */
+    return 0u;                                              /* 0x32632 */
+}
+
 /* PORT: the menu tables 0xBCBDC/0xBCC1C/0xBCCCC hold these as code
  * addresses (record §0.2); menu_step/menu_run reach them through fn_resolve.
  * One-time: fn_register appends unconditionally. Later cycles add their roots. */
@@ -644,4 +1009,6 @@ void svcmenu_register(void)
     fn_register(0x30F54u, (void (*)(void))svc_music_test);
     fn_register(0x30864u, (void (*)(void))svc_adjust_volume);
     fn_register(0x31138u, (void (*)(void))svc_handicap);
+    fn_register(0x31F24u, (void (*)(void))svc_modify_controls);
+    fn_register(0x32358u, (void (*)(void))svc_test_controls);
 }

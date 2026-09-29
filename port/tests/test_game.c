@@ -8313,6 +8313,330 @@ static void sm_check_volume(void)
     CHECK(fn_resolve(0x31138u) == (void (*)(void))svc_handicap, "0x31138 registered");
 }
 
+/* Cycle 4 (record §K11.5): the hex text 0x2EF48/0x2F48C, the stick 0x314A0,
+ * the key names around it 0x319B0/0x31A78/0x31B94/0x31C78, MODIFY CONTROLS
+ * 0x31F24 and TEST CONTROLS 0x32358. */
+#define SM_CTRL_REC 0x03D42000u          /* test-only key-config record */
+
+/* Fills `n` cells of row `row` from column `col` with 'Z' (mode 0). */
+static void sm_fill_row(s32 col, s32 row, u32 n)
+{
+    u8 z[0x30];
+    memset(z, 'Z', n);
+    z[n] = 0u;
+    text_cursor_set(col, row, z, 0u);
+}
+
+static void sm_check_controls(void)
+{
+    ch_text_setup();
+    u8 *b = mem + CH_DEST;
+    /* 0x2EF48: the digits from 0x2EF10, right-aligned; the pad is ' ' when ECX
+     * is non-zero (0x2EF65 `test ecx,ecx`), else '0'; EAX = the digit count. */
+    memset(b, 0xEE, 0x20);
+    CHECK_EQ_INT((int)text_hex_format(0x2Au, b, 4, 1u), 2);
+    CHECK(memcmp(b, "  2A", 4) == 0 && b[4] == 0, "space-padded hex");
+    memset(b, 0xEE, 0x20);
+    CHECK_EQ_INT((int)text_hex_format(0xBEEFu, b, 6, 0u), 4);      /* the digit count, not width - digits */
+    CHECK(memcmp(b, "00BEEF", 6) == 0 && b[6] == 0, "zero-padded hex");
+    memset(b, 0xEE, 0x20);
+    CHECK_EQ_INT((int)text_hex_format(0x12345u, b, 3, 0u), 3);     /* the high digits are dropped */
+    CHECK(memcmp(b, "345", 3) == 0 && b[3] == 0, "hex truncated to the width");
+    memset(b, 0xEE, 0x20);
+    CHECK_EQ_INT((int)text_hex_format(0u, b, 3, 0x100u), 1);       /* zero is one digit; the flag is all of ECX */
+    CHECK(memcmp(b, "  0", 3) == 0 && b[3] == 0, "zero, space-padded");
+
+    /* 0x2F48C: EAX col, EDX row, EBX value, ECX width, then the stack pad and
+     * mode (`ret 8`). */
+    actors_reset();
+    text_hex_set(3, 10, 0xBEEFu, 6, 0u, 0x3000u);
+    ch_expect(10, 3, '0', 0x3000u, "hex: the pad digit");
+    ch_expect(10, 5, 'B', 0x3000u, "hex: B");
+    ch_expect(10, 8, 'F', 0x3000u, "hex: the last digit");
+    CHECK_EQ_INT((int)ch_cell(10, 9), 0);
+    text_hex_set(3, 12, 0x2Au, 4, 1u, 0x1000u);
+    CHECK_EQ_INT((int)ch_cell(12, 4), 0);                          /* ' ' draws no cell */
+    ch_expect(12, 5, '2', 0x1000u, "space-padded hex: 2");
+    ch_expect(12, 6, 'A', 0x1000u, "space-padded hex: A");
+
+    /* 0x314A0: 3x3 cells two apart around (col, row); bit 4 (the centre)
+     * moves to 3 on Left, 5 on Right, then >> 3 on Up, << 3 on Down. */
+    actors_reset();
+    sm_fill_row(9, 9, 1u);
+    svc_stick_draw(10, 11, 0u);
+    CHECK_EQ_INT((int)ch_cell(9, 9), 0);                           /* 5 cells released from column 8 */
+    ch_expect(11, 10, '+', 0x4000u, "stick: no bit lights the centre");
+    ch_expect(9, 8, '.', 0x4000u, "stick: the top left is unlit");
+    ch_expect(13, 12, '.', 0x4000u, "stick: the bottom right is unlit");
+    svc_stick_draw(10, 11, 0xA0000000u);
+    ch_expect(9, 8, '+', 0x4000u, "stick: Up + Left lights the top left");
+    ch_expect(11, 10, '.', 0x4000u, "stick: then the centre is unlit");
+    ch_expect(13, 8, '.', 0x4000u, "stick: and the bottom left too");
+    svc_stick_draw(10, 11, 0x5000u);
+    ch_expect(13, 12, '+', 0x4000u, "stick: Down + Right lights the bottom right");
+    ch_expect(9, 12, '.', 0x4000u, "stick: the top right is unlit");
+
+    /* 0x319B0: string 0x22C (nine blanks) released from (col - 8, row + 8),
+     * (col + 2, row + 8), (col - 8, row + 0xC), (col + 2, row + 0xC). */
+    actors_reset();
+    sm_fill_row(1, 0x13, 20u);
+    sm_fill_row(1, 0x17, 20u);
+    svc_buttons_clear(0xA, 0xB);
+    CHECK(ch_cell(0x13, 1) != 0u, "buttons clear: column 1 is kept");
+    CHECK_EQ_INT((int)ch_cell(0x13, 2), 0);
+    CHECK_EQ_INT((int)ch_cell(0x13, 10), 0);
+    CHECK(ch_cell(0x13, 11) != 0u, "buttons clear: column 11 is kept");
+    CHECK_EQ_INT((int)ch_cell(0x13, 12), 0);
+    CHECK_EQ_INT((int)ch_cell(0x13, 20), 0);
+    CHECK_EQ_INT((int)ch_cell(0x17, 2), 0);
+    CHECK(ch_cell(0x17, 11) != 0u, "buttons clear: row 0x17 column 11 is kept");
+    CHECK_EQ_INT((int)ch_cell(0x17, 20), 0);
+
+    /* 0x31A78: the four words from +0xA (side 0) or +0x1C, each "<name>"
+     * centred on col - 5 / col + 5, rows row + 8 / row + 0xC. A key with no
+     * name draws the buffer left by the one before. */
+    mem_fill(SM_CTRL_REC, 0, 0x28u);
+    DSW(SM_CTRL_REC + 0xAu) = 0x1E41u;                             /* 'A' */
+    DSW(SM_CTRL_REC + 0xCu) = 0x1F53u;                             /* 'S' */
+    DSW(SM_CTRL_REC + 0xEu) = 0x4800u;                             /* UP */
+    DSW(SM_CTRL_REC + 0x1Cu) = 0x2C5Au;                            /* 'Z', side 1 */
+    actors_reset();
+    svc_buttons_draw(0u, SM_CTRL_REC, 0xA, 0xB);
+    ch_expect(0x13, 4, '<', 0x4000u, "button 0: <A> centred on column 5");
+    ch_expect(0x13, 5, 'A', 0x4000u, "button 0: A");
+    ch_expect(0x13, 15, 'S', 0x4000u, "button 1: <S> centred on column 15");
+    ch_expect(0x17, 4, 'U', 0x4000u, "button 2: <UP> from column 3, row + 0xC");
+    ch_expect(0x17, 14, 'U', 0x4000u, "button 3 has no name: <UP> again from column 13");
+    CHECK_EQ_INT((int)ch_cell(0x17, 12), 0);
+    svc_buttons_draw(1u, SM_CTRL_REC, 0x1E, 0xB);
+    ch_expect(0x13, 0x19, 'Z', 0x4000u, "side 1 reads +0x1C: <Z> centred on column 0x19");
+
+    /* 0x31B94: blanks released across rows 8 and 0xE from column c - 3 and
+     * down columns c - 3 and c + 3 from row 8 (c = 0xA, or 0x1E for side 1). */
+    actors_reset();
+    sm_fill_row(7, 8, 10u);
+    sm_fill_row(7, 0xE, 10u);
+    text_vertical_set(7, 8, (const u8 *)"ZZZZZZZZZZ", 0u);
+    text_vertical_set(13, 8, (const u8 *)"ZZZZZZZZZZ", 0u);
+    sm_fill_row(0x1B, 8, 1u);
+    svc_dirs_clear(0u);
+    CHECK_EQ_INT((int)ch_cell(8, 7), 0);
+    CHECK_EQ_INT((int)ch_cell(8, 15), 0);
+    CHECK(ch_cell(8, 16) != 0u, "dirs clear: row 8 column 16 is kept");
+    CHECK_EQ_INT((int)ch_cell(0xE, 15), 0);
+    CHECK(ch_cell(0xE, 16) != 0u, "dirs clear: row 0xE column 16 is kept");
+    CHECK_EQ_INT((int)ch_cell(16, 7), 0);
+    CHECK(ch_cell(17, 7) != 0u, "dirs clear: column 7 row 17 is kept");
+    CHECK_EQ_INT((int)ch_cell(9, 13), 0);
+    CHECK_EQ_INT((int)ch_cell(16, 13), 0);
+    CHECK(ch_cell(17, 13) != 0u, "dirs clear: column 13 row 17 is kept");
+    CHECK(ch_cell(8, 0x1B) != 0u, "dirs clear: side 0 leaves side 1");
+    svc_dirs_clear(1u);
+    CHECK_EQ_INT((int)ch_cell(8, 0x1B), 0);
+
+    /* 0x31C78: the words from +2 (side 0) or +0x14: up "<name>" on row 8 and
+     * down on row 0xE centred on c; left and right unwrapped, down columns
+     * c - 3 and c + 3, centred on row 0xB. */
+    mem_fill(SM_CTRL_REC, 0, 0x28u);
+    DSW(SM_CTRL_REC + 2u) = 0x4800u;                               /* UP */
+    DSW(SM_CTRL_REC + 4u) = 0x5000u;                               /* DOWN */
+    DSW(SM_CTRL_REC + 6u) = 0x4B00u;                               /* LEFT */
+    DSW(SM_CTRL_REC + 8u) = 0x4D00u;                               /* RGT */
+    DSW(SM_CTRL_REC + 0x14u) = 0x2C5Au;                            /* 'Z', side 1 */
+    actors_reset();
+    sm_fill_row(7, 8, 1u);                                         /* where "<LEFT>" would start */
+    sm_fill_row(13, 9, 1u);                                        /* where "<RGT>" would start */
+    svc_dirs_draw(0u, SM_CTRL_REC);
+    ch_expect(8, 7, 'Z', 0u, "left is unwrapped (EDX = 1): row 8 kept");
+    ch_expect(9, 13, 'Z', 0u, "right is unwrapped: row 9 kept");
+    ch_expect(8, 8, '<', 0x4000u, "up: <UP> centred on column 0xA, row 8");
+    ch_expect(8, 9, 'U', 0x4000u, "up: U");
+    ch_expect(0xE, 7, '<', 0x4000u, "down: <DOWN> from column 7, row 0xE");
+    ch_expect(0xE, 8, 'D', 0x4000u, "down: D");
+    ch_expect(9, 7, 'L', 0x4000u, "left: LEFT down column 7 from row 9");
+    ch_expect(12, 7, 'T', 0x4000u, "left: T on row 12");
+    ch_expect(10, 13, 'R', 0x4000u, "right: RGT down column 13 from row 0xA");
+    ch_expect(12, 13, 'T', 0x4000u, "right: T on row 12");
+    svc_dirs_draw(1u, SM_CTRL_REC);
+    ch_expect(8, 0x1E, 'Z', 0x4000u, "side 1 reads +0x14: <Z> centred on column 0x1E");
+
+    /* The screens: the packed record comes from the mirror DS_001014AC.., its
+     * device words replaced by the BIOS record's (0x31F54..0x31F85). */
+    u8 s_keys[0x28];
+    memcpy(s_keys, mem + DS_001014AC, sizeof s_keys);
+    const u32 s_410 = DSD(DS_00107410);
+    memset(mem + DS_001014AC, 0, sizeof s_keys);
+    static const u8 keys1[16] = { 0x48, 0, 0x50, 0, 0x4B, 0, 0x4D, 0,
+                                  0x1E, 'A', 0x1F, 'S', 0x20, 'D', 0x21, 'F' };
+    memcpy(mem + DS_001014AC + 2u, keys1, sizeof keys1);
+
+    /* MODIFY A: BIOS devices 6 and 0 (the mirror says 4 and 2). Down wraps
+     * player 1 from 6 to 0; Right picks player 2; frame 4's Down falls inside
+     * the 0xC ticks after frame 1's (3 ticks a frame) and is dropped; frame
+     * 5's Up is past them and wraps 0 to 6; Esc applies the record. */
+    DSB(DS_001014AC) = 4u; DSB(DS_001014BE) = 2u;
+    static const sm_step_t mod_a[] = {
+        { 0x5000u, 0u }, { 0x4D00u, 0u }, { 0u, 0u }, { 0x5000u, 0u }, { 0x4800u, 0u },
+        { 0x011Bu, 0u } };
+    actors_reset();
+    sm_begin(mod_a, 6u);
+    DSW(MT_LAYOUT + 0x2D4u) = 6u; DSW(MT_LAYOUT + 0x2D6u) = 0u;
+    CHECK_EQ_INT((int)svc_modify_controls(0xBCC6Cu), 0);            /* 0x3234C */
+    sm_end(6u, "MODIFY CONTROLS: Down, Right, -, Down, Up, Esc");
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D4u), 0);                 /* 0x1AE28 writes the devices back */
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D6u), 6);
+    CHECK_EQ_INT((int)DSB(DS_001014AC), 0);
+    CHECK_EQ_INT((int)DSB(DS_001014BE), 6);
+    ch_expect(6, 7, 'K', 0x4000u, "player 1 KEYBOARD, not selected");
+    ch_expect(6, 0x16, 'K', 0x3000u, "player 2 KEYBOARD/JOYSTICK, selected");
+    ch_expect(8, 9, 'U', 0x4000u, "player 1's up key <UP>");
+    ch_expect(0x13, 5, 'A', 0x4000u, "player 1's first button <A>");
+    ch_expect(0x11, 2, 'H', 0x4000u, "label HI QUICK at (col - 3, row - 1)");
+    ch_expect(0x12, 5, 'X', 0x4000u, "HI QUICK marker");
+    ch_expect(0xB, 0xA, '+', 0x4000u, "player 1 stick at rest");
+
+    /* MODIFY B: BIOS devices 4 and 0. Right, then Down takes player 2 from 0
+     * to 2, which player 1's 2 BUTTON JOYSTICK turns into 4 (0x3212D..
+     * 0x3213C). Player 1's key names are cleared, and HI FIERCE and LO
+     * FIERCE are blank for both 2 BUTTON JOYSTICKs (their cells are seeded). */
+    static const sm_step_t mod_b[] = { { 0x4D00u, 0u }, { 0x5000u, 0u }, { 0x011Bu, 0u } };
+    actors_reset();
+    sm_fill_row(7, 8, 1u);
+    sm_fill_row(2, 0x13, 1u);
+    sm_fill_row(15, 0x12, 1u); sm_fill_row(35, 0x12, 1u);
+    sm_fill_row(15, 0x16, 1u); sm_fill_row(35, 0x16, 1u);
+    sm_begin(mod_b, 3u);
+    DSW(MT_LAYOUT + 0x2D4u) = 4u; DSW(MT_LAYOUT + 0x2D6u) = 0u;
+    (void)svc_modify_controls(0xBCC6Cu);
+    sm_end(3u, "MODIFY CONTROLS: Right, Down, Esc");
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D4u), 4);
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D6u), 4);
+    CHECK_EQ_INT((int)ch_cell(8, 7), 0);                           /* 0x31B94 for a joystick */
+    CHECK_EQ_INT((int)ch_cell(0x13, 2), 0);                        /* 0x319B0 */
+    CHECK_EQ_INT((int)ch_cell(0x12, 15), 0);                       /* 0x2000000 blank for device 4 */
+    CHECK_EQ_INT((int)ch_cell(0x12, 35), 0);                       /* 0x200 */
+    CHECK_EQ_INT((int)ch_cell(0x16, 15), 0);                       /* 0x8000000 */
+    CHECK_EQ_INT((int)ch_cell(0x16, 35), 0);                       /* 0x800 */
+    ch_expect(0x12, 25, 'X', 0x4000u, "player 2 HI QUICK marker");
+    ch_expect(0x16, 5, 'X', 0x4000u, "player 1 LO QUICK marker");
+
+    /* MODIFY C: BIOS devices 2 and 6. Right, Up takes player 2 from 6 to 4,
+     * which player 1's 4 BUTTON JOYSTICK turns into 0 (0x320A3..0x320C8);
+     * Left picks player 1 again. */
+    static const sm_step_t mod_c[] = {
+        { 0x4D00u, 0u }, { 0x4800u, 0u }, { 0x4B00u, 0u }, { 0x011Bu, 0u } };
+    actors_reset();
+    sm_begin(mod_c, 4u);
+    DSW(MT_LAYOUT + 0x2D4u) = 2u; DSW(MT_LAYOUT + 0x2D6u) = 6u;
+    (void)svc_modify_controls(0xBCC6Cu);
+    sm_end(4u, "MODIFY CONTROLS: Right, Up, Left, Esc");
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D4u), 2);
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D6u), 0);
+    ch_expect(6, 2, '4', 0x3000u, "player 1 4 BUTTON JOYSTICK, selected again");
+    ch_expect(6, 0x1B, 'K', 0x4000u, "player 2 KEYBOARD, not selected");
+
+    /* MODIFY D: BIOS devices 4 and 4. Up takes player 1 from 4 to 2, which
+     * player 2's 2 BUTTON JOYSTICK turns into 0 (0x3208A..0x3209C). */
+    static const sm_step_t mod_d[] = { { 0x4800u, 0u }, { 0x011Bu, 0u } };
+    actors_reset();
+    sm_begin(mod_d, 2u);
+    DSW(MT_LAYOUT + 0x2D4u) = 4u; DSW(MT_LAYOUT + 0x2D6u) = 4u;
+    (void)svc_modify_controls(0xBCC6Cu);
+    sm_end(2u, "MODIFY CONTROLS: Up, Esc");
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D4u), 0);
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D6u), 4);
+    ch_expect(0x12, 15, 'X', 0x4000u, "player 1 keyboard: HI FIERCE marker");
+    CHECK_EQ_INT((int)ch_cell(0x12, 35), 0);
+
+    /* MODIFY E: BIOS devices 6 and 0. Up steps player 1 from 6 to 4
+     * (0x3207A `sub esi,2`); player 2's device 0 matches no limit arm
+     * (0x32081..0x3208D), so 4 stands: "2 BUTTON JOYSTICK", HI FIERCE blank. */
+    static const sm_step_t mod_e[] = { { 0x4800u, 0u }, { 0x011Bu, 0u } };
+    actors_reset();
+    sm_fill_row(15, 0x12, 1u);
+    sm_begin(mod_e, 2u);
+    DSW(MT_LAYOUT + 0x2D4u) = 6u; DSW(MT_LAYOUT + 0x2D6u) = 0u;
+    (void)svc_modify_controls(0xBCC6Cu);
+    sm_end(2u, "MODIFY CONTROLS: Up 6 -> 4, Esc");
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D4u), 4);
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D6u), 0);
+    ch_expect(6, 2, '2', 0x3000u, "player 1 2 BUTTON JOYSTICK, selected");
+    CHECK_EQ_INT((int)ch_cell(0x12, 15), 0);                       /* 0x2000000 blank for device 4 */
+
+    /* MODIFY F: BIOS devices 0 and 0. Down steps player 1 from 0 to 2
+     * (0x320F6 `add esi,2`); player 2's device 0 matches no limit arm
+     * (0x320FD..0x3210D), so 2 stands: "4 BUTTON JOYSTICK", the direction
+     * names drawn by the first pass are released. */
+    static const sm_step_t mod_f[] = { { 0x5000u, 0u }, { 0x011Bu, 0u } };
+    actors_reset();
+    sm_begin(mod_f, 2u);
+    DSW(MT_LAYOUT + 0x2D4u) = 0u; DSW(MT_LAYOUT + 0x2D6u) = 0u;
+    (void)svc_modify_controls(0xBCC6Cu);
+    sm_end(2u, "MODIFY CONTROLS: Down 0 -> 2, Esc");
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D4u), 2);
+    CHECK_EQ_INT((int)DSW(MT_LAYOUT + 0x2D6u), 0);
+    ch_expect(6, 2, '4', 0x3000u, "player 1 4 BUTTON JOYSTICK, selected");
+    CHECK_EQ_INT((int)ch_cell(8, 9), 0);                           /* "<UP>" of the first pass released */
+
+    /* TEST A (DS_00107410 bit 4 clear): the pad level of frame 1 (player 1
+     * Up + Left and HI QUICK, player 2 Down) is shown by the next pass; the
+     * Esc of frame 2 is the latched 0x1B (0x3254B). */
+    DSB(DS_001014AC) = 4u; DSB(DS_001014BE) = 2u;
+    DSD(DS_00107410) = 0xEFu;
+    static const sm_step_t test_a[] = { { 0u, 0xA1004000u }, { 0x011Bu, 0u } };
+    actors_reset();
+    sm_begin(test_a, 2u);
+    DSW(MT_LAYOUT + 0x2D4u) = 0u; DSW(MT_LAYOUT + 0x2D6u) = 4u;
+    CHECK_EQ_INT((int)svc_test_controls(0xBCC8Cu), 0);              /* 0x32632 */
+    sm_end(2u, "TEST CONTROLS: a pad frame, Esc");
+    ch_expect(6, 7, 'K', 0x4000u, "TEST: player 1 KEYBOARD");
+    ch_expect(6, 0x16, '2', 0x4000u, "TEST: player 2 2 BUTTON JOYSTICK");
+    ch_expect(8, 9, 'U', 0x4000u, "TEST: player 1's up key");
+    ch_expect(9, 8, '+', 0x4000u, "TEST: player 1 stick Up + Left");
+    ch_expect(11, 10, '.', 0x4000u, "TEST: player 1 stick centre unlit");
+    ch_expect(13, 0x1E, '+', 0x4000u, "TEST: player 2 stick Down");
+    ch_expect(0x12, 5, 'O', 0x3000u, "TEST: HI QUICK held");
+    ch_expect(0x12, 15, 'X', 0x3000u, "TEST: HI FIERCE not held");
+    ch_expect(0x11, 2, 'H', 0x4000u, "TEST: label HI QUICK");
+    CHECK_EQ_INT((int)ch_cell(7, 3), 0);                           /* no DIAGS row */
+    CHECK_EQ_INT((int)DSB(DS_001014AC), 4);                        /* no 0x1AE28: the mirror keeps its 4 */
+
+    /* TEST B (bit 4 set): the diagnostic rows, the pad word in hex under RAW
+     * DATA, and the three extra entries at 0x31410 whose "string ids" are the
+     * pointers 0x80B6C/0x80B70/0x80B74 (they decode as strings 0xAC, 0xB0,
+     * 0xB4 through the group ring). Rows 4 and 6 are drawn first, so the
+     * option rows overwrite them; player 1's device 8 has no text, which
+     * leaves the address on row 6 visible. */
+    DSD(DS_00107410) = 0x10u;
+    static const sm_step_t test_b[] = { { 0u, 0x10002000u }, { 0x011Bu, 0u } };
+    actors_reset();
+    sm_fill_row(4, 0x13, 1u);                                      /* where player 1's "<A>" would start */
+    sm_begin(test_b, 2u);
+    DSW(MT_LAYOUT + 0x2D4u) = 8u; DSW(MT_LAYOUT + 0x2D6u) = 4u;
+    (void)svc_test_controls(0xBCC8Cu);
+    sm_end(2u, "TEST CONTROLS: diagnostics, a pad frame, Esc");
+    ch_expect(4, 0xE, 'R', 0x4000u, "RAW DATA (0x80BAC + 11) past LEFT PLAYER");
+    ch_expect(6, 3, 'F', 0x4000u, "the address FFE80000");
+    ch_expect(6, 5, 'E', 0x4000u, "the address: E");
+    ch_expect(6, 6, '8', 0x4000u, "the address: 8");
+    ch_expect(7, 3, 'D', 0x4000u, "DIAGS (0x80BD4)");
+    ch_expect(6, 0xE, '1', 0x3000u, "the pad word 10002000");
+    ch_expect(6, 0x12, '2', 0x3000u, "the pad word: 2");
+    ch_expect(6, 0x15, '0', 0x3000u, "the pad word: last digit");
+    CHECK(ch_cell(7, 0xE) != 0u, "the raw data row is drawn");
+    ch_expect(0xA, 0x1D, 'C', 0x4000u, "0x80B6C as a string id: string 0xAC");
+    ch_expect(0xA, 0x21, 'V', 0x4000u, "0x80B74 as a string id: string 0xB4 Vertigo");
+    ch_expect(0xB, 0x20, 'X', 0x3000u, "bit 8 marker over the stick");
+    ch_expect(0xB, 0xC, '+', 0x4000u, "player 1 stick Right");
+    ch_expect(0xB, 0x1C, '+', 0x4000u, "player 2 stick Left");
+    ch_expect(0x13, 4, 'Z', 0u, "device 8: no button names (0x3248A..0x32499)");
+
+    memcpy(mem + DS_001014AC, s_keys, sizeof s_keys);
+    DSD(DS_00107410) = s_410;
+    CHECK(fn_resolve(0x31F24u) == (void (*)(void))svc_modify_controls, "0x31F24 registered");
+    CHECK(fn_resolve(0x32358u) == (void (*)(void))svc_test_controls, "0x32358 registered");
+}
+
 /* Runs after test_cfg_helpers, whose one actors_init() it relies on. The
  * menu screens advance the tick model and the key state; those, the menu
  * state DS_00107414..DS_00107453 and the credits dword are put back. */
@@ -8335,6 +8659,7 @@ int test_svcmenu(void)
     sm_check_shell();
     sm_check_options();
     sm_check_volume();
+    sm_check_controls();
 
     DSD(DS_000E1C3C) = s_rpt;
     DSW(DS_000E1C40) = s_rpt40; DSW(DS_000E1C42) = s_rpt42; DSW(DS_000E1C44) = s_rpt44;
