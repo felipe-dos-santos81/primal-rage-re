@@ -39821,7 +39821,9 @@ static void check_p54_3ff90(void)
 }
 
 /* 0x3FEA8 (rec): the +0x57 == 0 gate on the side's slot, then 2/0/4/4, the
- * slot's record's +0x61 = 0 and 0x36870 on it (whole-state reference). */
+ * slot's record's +0x61 = 0 and 0x36870 on it (whole-state reference). Row
+ * k = 2 is mode 0x25, where 0x36870 runs 0x385B0 on its argument itself, so
+ * 0x36870 must get ctx[4], not the scratch record. */
 static void check_p54_3fea8(void)
 {
     static const u8 v57[] = { 0u, 1u, 2u, 0x80u };
@@ -39829,13 +39831,13 @@ static void check_p54_3fea8(void)
     for (sd = 0; sd < 2u; sd++) {
         u32 s = DS_001077B0 + sd * 0x94u, r = FIGHT_RECS + sd * 0x100u;
         for (i = 0; i < sizeof v57; i++) {
-            for (k = 0; k < 2u; k++) {
+            for (k = 0; k < 3u; k++) {
                 p52_seed(1u, 3u, 0);
                 p54_x(sd);
-                DSW(DS_00104B00) = 0x15u;
+                DSW(DS_00104B00) = k == 2u ? 0x25u : 0x15u;
                 DSB(s + 0x57u) = v57[i];
                 DSB(s + 0x52u) = 0x52u; DSB(s + 0x53u) = 0x53u; DSB(s + 0x8Au) = 0x8Au;
-                DSB(s + 0x54u) = k ? 3u : 0u;
+                DSB(s + 0x54u) = k == 1u ? 3u : 0u;
                 DSB(r + 0x61u) = 0x61u;
                 DSB(P54_X + 0x61u) = 0x16u;
                 sc_snap();
@@ -39853,7 +39855,7 @@ static void check_p54_3fea8(void)
                 if (v57[i] == 0u) {
                     CHECK_EQ_INT((int)DSB(r + 0x61u), 0);
                     CHECK_EQ_INT((int)DSB(s + 0x8Au), 0);
-                    if (k) {                        /* case 3 keeps them */
+                    if (k == 1u) {                  /* case 3 keeps them */
                         CHECK_EQ_INT((int)DSB(s + 0x52u), 4);
                         CHECK_EQ_INT((int)DSB(s + 0x53u), 4);
                     }
@@ -39912,15 +39914,19 @@ static void check_p54_40034(void)
                 CHECK_EQ_INT((int)DSD(r + 0x08u), 0x00ABCDEF);
             }
         }
-        /* the gates: either slot null changes nothing */
+        /* the gates: either slot null changes nothing (the low 0x100 bytes
+         * too: a missing own-slot gate would write through the null slot) */
         for (g = 0; g < 2u; g++) {
+            u8 low[0x100];
             p52_seed(1u, 3u, 0);
             p54_x(sd);
             DSB(s + 0x53u) = 0x53u;
             DSD(DS_001077A8 + (g ? sd : 1u - sd) * 4u) = 0u;
+            memcpy(low, mem, sizeof low);
             p52_ref_take();
             fighter_40034(P54_X);
             CHECK(p52_same(), "0x40034: a null slot changes nothing");
+            CHECK(memcmp(low, mem, sizeof low) == 0, "0x40034: nothing written through a null slot");
         }
     }
 }
