@@ -24877,3 +24877,219 @@ the pool only through `0x40434`; none of these occurs in the oracle windows.
   to reach it.
 - `fighter_state_37464`'s pointer-table TODO(verify) and the voice idiom
   (§50-A.5) are unchanged.
+
+
+
+## 53-A. The name-entry keyboard queue `0x20860` and the autorepeat counters `0x1044DC`/`0x1044E0` (branch `gap53-nameentry-input`)
+
+**Result in one line.** `0x20860` (132 B) is ported as `nameentry_key`
+(`nameentry.c`) and wired at its one caller, `0x24C5C`'s int 16h loop
+(`0x24D67`), whose mode-0x1E arm `game_frame` now runs. The counters
+`D(0x1044DC)`/`D(0x1044E0)` have **no writer** in the image: they are the
+loader's zero for the whole run, so there is nothing to port, and the four
+autorepeat tests in `0x1F458` are always false in the original too.
+
+Letter check: no `§53` existed in this record, in `docs/PROGRESS.md` or in
+`port/src` before this branch.
+
+### 53-A.1 Sources
+
+Ghidra HTTP bridge (`127.0.0.1:8089`): `disassemble_function` on `0x20860`,
+`0x24C5C`, `0x653ED`, `0x1E824` and on every function that names
+`0x1044C0..0x1044EF` (`0x1EC38`, `0x1ED2C`, `0x1F458`, `0x1FFD0`, `0x204F4`,
+`0x20710`, `0x20860`); `get_xrefs_to` on `0x20860` (one: `0x24D67`, in
+`FUN_00024c5c`) and on `0x1044D8`, `0x1044DA`, `0x1044DC`, `0x1044DE`,
+`0x1044E0`, `0x1044E2`. For the exhaustive writer search, a fixed-up image
+rebuilt from `PRAGE.EXE` with `mem.c`'s loader logic (`mem_load_le` +
+`mem_load_le_fixups`; the data object is byte-identical to
+`port/tests/ghidra_data.bin`) and its complete fixup list (27600 records),
+decoded with capstone.
+
+### 53-A.2 `0x20860`: `nameentry_key(c)`
+
+```
+0x20863 mov edx,eax            ; c (0x24D63 zero-extends BL, never 0)
+0x20865 mov eax,[0x1044BC] ; inc eax ; mov ebx,[0x1044C8] ; and eax,0xF
+0x20874 cmp eax,ebx ; jz 0x208D9            ; full: skip to the D8 store
+0x20878 cmp edx,8    -> edx = 0x1B (DEL)
+0x20884 cmp edx,0xD  -> edx = 0x1C (END)
+0x20890 cmp edx,0x20 -> edx = 0x1A (space)
+0x2089C mov al,dl ; inc al ; and eax,0xFF
+0x208A5 mov eax,[eax+0x81C81] ; sar eax,0x18 ; test al,0xC0 ; jz 0x208E0
+0x208B2 mov eax,edx ; call 0x653ED ; lea edx,[eax-0x41]
+0x208BC mov eax,[0x1044BC] ; inc eax ; mov ecx,eax ; mov [0x1044BC],eax
+0x208C9 and ecx,0xF ; mov [eax*4+0x104458],edx ; mov [0x1044BC],ecx
+0x208D9 mov byte [0x1044D8],1
+0x208E0 pop edx ; pop ecx ; pop ebx ; ret
+```
+
+* **The class test.** The dword at `0x81C81 + (u8)(c + 1)` shifted right by
+  24 is the byte at `0x81C84 + (u8)(c + 1)`: the C runtime's character-class
+  table, indexed from `c + 1` (entry 0 is EOF). Read from the image: `A..Z`
+  carry `0x58`/`0x48` (bit 6), `a..z` `0x98`/`0x88` (bit 7), and no other
+  byte in `1..0xFF` has either bit (`@`, `[`, `` ` ``, `{` are `0x0C`; the
+  entry for `c = 0xFF` is `(u8)0x100 = 0`, value 0). Exactly the 52 letters
+  pass. The port reads the table from `mem[]` the raw way
+  (`DSD(DS_00081C81 + idx) >> 24`), not a C `isalpha`.
+* `0x653ED` is `cmp eax,0x61; jl; cmp eax,0x7A; jg; sub eax,0x20; ret`
+  (runtime code, inlined as in `game_quit_prompt`), so a letter becomes
+  `0..0x19`.
+* **The index is the raw's.** The entry is stored at `(write + 1) * 4` before
+  the mask, like the reader `0x1FD7F` (§49-T.3 #2), so write index 15 stores
+  entry 16 (`0x104498`) and wraps to 0. The unmasked `mov [0x1044BC],eax` at
+  `0x208C4` is overwritten at `0x208D3` with nothing in between that reads it;
+  the port stores once (commented).
+* **Full is `((write + 1) & 0xF) == read`,** tested before anything else, and
+  it still reaches `0x208D9`: a full queue stores nothing but sets
+  `B(0x1044D8) = 1` whatever the byte. A byte rejected by the class test
+  jumps to `0x208E0` and leaves `B(0x1044D8)` alone.
+
+### 53-A.3 The caller: `0x24C5C`'s int 16h loop
+
+```
+0x24D08 mov ah,1 ; ... int 0x16 ; ... ; mov bx,ax ; test ebx,ebx ; jz 0x24EEC
+0x24D26 xor eax,eax ; mov ah,al ; ... int 0x16 ; ... ; mov bx,ax
+0x24D3E test al,0xFF ; jnz -> eax = ebx ; else eax = ebx >> 8
+0x24D4B and eax,esi (0xFF) ; mov [0x105F30],eax     ; the key latch
+0x24D52 xor eax,eax ; mov ax,[0x104B00] ; cmp eax,0x1E ; jnz 0x24D6E
+0x24D5F test bl,bl ; jz 0x24D6E
+0x24D63 xor eax,eax ; mov al,bl ; call 0x20860 ; jmp 0x24D08
+0x24D6E ...                                          ; the other arms
+```
+
+`game_frame` ran none of this loop (a PORT note since §47-B); `game_loop`
+drained the queue for ESC only. It now runs the loop in mode 0x1E: peek
+(`input_check_key`, AH = 1), read (`input_get_key`, AH = 0), store the latch
+`DS_00105F30` (the ascii byte, or the scan code when it is 0) and hand a
+non-zero ascii byte to `nameentry_key`, until the queue is empty. Keys come
+from the port's input abstraction (`input.c`, fed by `host.c`), not from ISR
+code. Placement is the raw's: after the update table (`0x24CE2..0x24CFC`)
+and before the mode switch (`0x24EEC`), so a key typed this frame is in the
+queue when state 5/8/0xB..0xE's `0x1F458` looks.
+
+* The mode test is a word compare (`mov ax,[0x104b00]`), inside the loop per
+  key. No key this arm handles changes the mode (every ascii key goes to
+  `0x20860`, which does not touch `0x104B00`), so the port hoists it around
+  the loop. The one arm that can change the mode, Enter in mode 3
+  (`0x24EE0`), is not reached in mode 0x1E: Enter is ascii 0xD and goes to
+  `0x20860` as END.
+* **ESC in mode 0x1E is not a quit.** It is ascii 0x1B, so `0x24D67` hands it
+  to `0x20860`, whose class test drops it. The port matches: the mode-0x1E loop
+  consumes it and `game_loop`'s ESC arm never sees it. A window close still
+  quits (`host_quit_requested`).
+* An extended key (ascii 0) falls through to `0x24D6E` in the raw, where the
+  scan-code arms run (`0x10` the quit prompt `0x249F0(0)`, `0x1F`
+  `0x1D220`, `0x24` `0x5004A`, `0x32` `0x1D1B0`). In mode 0x1E the port reads
+  and latches it, then drops it (`PORT:` note; named gap below).
+* `host.c` now maps Backspace to scan `0x0E` / ascii 8 (the BIOS pair), so the
+  DEL arm is reachable from a keyboard; Enter, space, ESC and the letters were
+  already mapped.
+
+### 53-A.4 `D(0x1044DC)` / `D(0x1044E0)`: no writer (raw wins over the task)
+
+The task asked for their writers. The raw has none; the reads in `0x1F458`
+see the zero the loader put there.
+
+1. **Direct references.** `get_xrefs_to 0x1044DC` returns two reads
+   (`0x1F5DA`, `0x1F738`), `0x1044E0` three (`0x1F503`, `0x1F515`,
+   `0x1F68B`), all in `FUN_0001f458`; `0x1044DA`, `0x1044DE`, `0x1044E2`
+   return nothing. Ghidra only sees analysed code, so this was not taken as
+   final.
+2. **Every absolute reference in the image.** In the flat model any
+   instruction or data dword that names a data-object address carries a
+   fixup. The fixup records whose target lies in `0x1044D9..0x1044E7` are
+   exactly five, at `0x1F505`, `0x1F516`, `0x1F5DC`, `0x1F68D`, `0x1F73A`:
+   the operands of those same five reads (`cmp dword [0x1044E0],0x1E`, `mov
+   eax,[0x1044E0]`, `mov ecx,[0x1044DC]`, `mov esi,[0x1044E0]`, `mov
+   edi,[0x1044DC]`). No record in the data object targets anything in
+   `0x100000..0x1044FF`, so no pointer table leads there.
+3. **Neighbouring stores do not overlap.** Every store naming
+   `0x1044C0..0x1044DB` (Ghidra listings of the seven functions above) is a
+   word at `0x1044D0`/`D2`/`D6`, a byte at `0x1044D4`/`D8`, or a dword at
+   `0x1044C4`/`C8`/`CC`/`BC`: none reaches `0x1044DC`.
+4. **No indexed or pointer write reaches them.** Every fixup-derived base in
+   `0x104000..0x1044DB` used with an index register or loaded as a pointer is
+   bounded well below: the cells `0x104112..0x10427B` (18 x 0x14), `0x1042C7 +
+   0..0x23` (`0x1E85F`), `0x104367 + {0, 0xA0} + 0..0x23` (`0x1E83B`, ending
+   at `0x10442A`), the name buffers `0x10431F`/`0x104343`/`0x104367`/`0x104394`
+   (each under 0x25 bytes), the score record `0x104390` (0x2C bytes, `0x207AA`/
+   `0x207E3`) and the queue `0x104458 + 4 * (0..16)` (ending at `0x10449B`).
+   No immediate in the code object points into `0x103000..0x104000`.
+5. **Not stack, not a heap block.** cstart (`0x624D4..`) puts the command line
+   at `_end = 0x1090CC` (`0x62613`) and the stack above it (ESP = `0x10B0D0`);
+   the `setjmp` buffer at `0x1044F4` is written upward. The key-bitmap pointer
+   `DS_00101514` addresses a DPMI DOS block, not the data object.
+6. **Their value.** The data object's file-backed pages end at `0xF1000`
+   (113 pages), so both counters sit in the zero-filled BSS tail (DOS/4GW
+   zero-fills it; cstart's own clear at `0x62690..0x626C2` covers `0xF0A20..`
+   but is capped at 0x1000 bytes when `B(0xEF91E) == 1`, the DOS/4G path).
+   The port's `mem_load_le` zeroes the same tail.
+
+So `ne_repeat(D(0x1044E0))` and `ne_repeat(D(0x1044DC))` are `0 > 0x1E`,
+false, on every frame of the original, and `nameentry_step` reading
+loader-zeroed memory is the raw's behaviour, not a missing writer. §49-T.3
+#1's hedge ("unless written through a pointer") is closed by 2, 4 and 5. The
+comment on `ne_repeat` now says so; no code changes. There is no test: the
+only claim, "the value is the loader's zero", is an unseeded BSS zero, which
+this repo does not assert.
+
+### 53-A.5 Tests and mutations
+
+`test_nameentry_input` (`test_game.c`, registered once in `TEST_CASES`) runs
+on §51-A's `ra_save`/`ra_restore` snapshot and `ra_env`. `ni_env` seeds the 17
+queue entries and the guard dword past them to per-entry sentinels, the
+indices, `B(0x1044D8) = 0x55` and the latch.
+
+* `ni_check_key`: both cases of `a`, `m`, `z`; backspace/Enter/space; write
+  15 storing entry 16 and wrapping; the empty queue and a non-full `w + 1 !=
+  r`; twelve dropped bytes (`@ [ \` { 1`, ESC, TAB, LF, 0x7F, 0x80, 0xE1, 0xFF),
+  each with no store and `B(0x1044D8)` untouched; three full queues (incl.
+  `w = 15, r = 0` full only through the mask, and a digit), each storing
+  nothing but setting `B(0x1044D8)`.
+* `ni_check_frame`: `game_frame` in mode 0x1E, state 1 (the no-op `0x1F452`),
+  with `ra_env`'s mode dword `0xBEEF001E` (so a dword compare fails): 'a' then
+  an extended key (queued / latched as the scan code / drained); 'Q', a digit
+  and backspace in one frame (entries 2 and 3 in order, latch 8); ESC consumed
+  without queuing or quitting; mode 0x1C queues nothing.
+* `ni_check_typing`: end to end, `nameentry_arm(3)`, `nameentry_reset`, state
+  5, 'm' typed: the same frame's `0x1F458` takes letter 12 (read index 1,
+  cell 0 state 1 letter 12, count 1, cursor to column 0x1A, row 9) and the pad
+  cursor is off.
+
+Mutations (a script applied each, rebuilt, ran `PR_ORACLE_REQUIRED=1
+./build/run_tests`, restored; the number is the failing assertions):
+class index `c` instead of `c + 1` 20; class bit 6 only 34; no upper-casing
+12; `up < 0x7A` 2; `- 0x40` 14; the full test unmasked 3; a full queue
+returning before the `B(0x1044D8)` store 4; the store at the masked index 3;
+the store at `w` instead of `w + 1` 48; the write index left unmasked 2;
+`B(0x1044D8)` set on a rejected byte 14; the `B(0x1044D8)` store dropped 17;
+backspace -> END 3; Enter -> DEL 2; space -> DEL 2; the mode as a dword
+compare 22; the mode test dropped 4; the `0x20860` call dropped 16; an
+extended key passed as its scan code 7; the latch always the scan code 3; the
+latch store dropped 4; one key per frame 8; the loop moved after the mode
+switch 7. 23 of 23 caught. The `host.c` Backspace mapping is SDL-only
+(`translate_key` is static and needs events), so no assertion covers it.
+
+### 53-A.6 Verification
+
+`PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed. `make verify`
+(worktree-local `*_g53` dump directories): exit 0. Title: capture 1 has 54
+clean, 55 splice, 2 transition and 0 unexplained; capture 2 has 54 clean, 57
+splice and 0 unexplained. Front-end: 517 clean, 801 splice, 3 transition, 2
+unexplained (the two allowed by name). Demo-fight: fully explained at N =
+1886. Attract2: 0 unexplained in the region. `symbols.h` regenerates
+byte-identically. Every number is §51-A.6's: the new loop runs only in mode
+0x1E, which no capture window reaches, and no oracle driver queues a key in
+it. `tools/port_progress.py`: 745 of 1203 (62%, the README title unchanged);
+`0x20860` has left `--unported`.
+
+### 53-A.7 Remaining named gaps
+
+* `0x24C5C`'s int 16h loop outside mode 0x1E: the latch store in every mode,
+  Enter in mode 3 (`0x24EE0`, mode 0x27), ESC's quit prompt (`0x24E9E`:
+  `0x249F0(0)` in mode 3, `0x249F0(1)` elsewhere but mode 0x27; the port
+  still quits directly from `game_loop`), the space pause (`0x24DE9..0x24E99`)
+  and the scan-code arms (`0x24D8E..0x24DDF`), which in mode 0x1E also
+  covers extended keys.
+* The `0x2C3FC` voices (§45-A) and `0x1EC38`'s `0x2DAE4` audit adds (spec
+  §7), deferred as before.
