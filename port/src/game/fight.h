@@ -54,8 +54,10 @@ void fight_command_map(u32 side, u32 edx_arg, u32 override);
  * (record §K13.1/§K13.2 of 2026-09-29-k13-fx74-derivations.md, calling
  * 0x496DC and 0x4A868) — then the mode-9 block (record §K13.3, calling
  * 0x4A928; the only reader of the frame locals) and the tail with 0x4987C
- * (DS_001088BF 1..4, record §43-A). One named gap is left: the word a drawn
- * round (DS_00104B16 == 2) reads in the mode-9 block (record §K13.3). When
+ * (DS_001088BF 1..4, record §43-A). One named gap is left: on a drawn round
+ * (DS_00104B16 == 2) the mode-9 block reads the frame word [ESP+4], which
+ * case 3's landing writes; before the first such write in a call it is
+ * uninitialised own-frame memory (record §K13.3). When
  * the effect list at DS_0010884C is empty only the mode-9 block and the tail
  * run, which include 0x4A634's slot +0x42 bit 0/1 reset. */
 void fight_effects_pass(void);

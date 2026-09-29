@@ -37526,6 +37526,7 @@ static void check_k13_mode9(void)
     static const u8 s0[4] = { 0u, 0u, 0u, 0u }, s1[4] = { 1u, 1u, 1u, 1u };
     static const u16 v0[4] = { 0u, 0u, 0u, 0u };
     static const u8 t9[2] = { 9u, 8u }, t11[2] = { 11u, 8u }, t88[2] = { 8u, 8u };
+    static const u8 t3[1] = { 3u };
     static const u16 v11[2] = { 0x0080u, 0u };
     u32 rv;
     if (!mz_save()) { CHECK(0, "the §K13 snapshot allocates"); return; }
@@ -37637,6 +37638,31 @@ static void check_k13_mode9(void)
     fight_effects_pass();
     CHECK_EQ_INT((int)DSB(Z_E(0) + 0x1Eu), 8);
     CHECK_EQ_INT((int)DSB(Z_E(1) + 0x1Eu), 8);
+
+    /* I: a drawn round (DS_00104B16 = 2) reads the word [ESP+4], which case
+     * 3's landing writes as a dword (0x49DF2/0x49DFE): 0x4000 when 0x2BE1C
+     * > 0, so 0 >= 0x4000 - 2 fails and the latch stays shut (only case
+     * 3's rng(0x3C)); 0 when <= 0, so 0 >= -2 opens it (a second draw,
+     * rng(0x14)). The type-3 entry (side 1) lands: y 0x800 <= 0x900. */
+    K13_M9(1u, t3, s1, v0);
+    DSB(DS_00104B16) = 2u;
+    DSW(DS_000BD898) = 0x0900u;
+    DSD(0x000C9634u + 12u) = K13_SH;
+    DSD(Z_PS(14) + 4u) = 0;                 /* 0x2BE1C = 0x1000 - 0 > 0 */
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(Z_A(0) + 0x29u), 0x41);
+    CHECK_EQ_INT((int)DSB(Z_E(0) + 0x1Eu), 4);
+    CHECK_EQ_INT((int)DSB(DS_001088C3), 0);
+    CHECK_EQ_INT((int)DSW(DS_001088B0), 0x1234);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)mz_rng_after(S, 1u));
+    K13_M9(1u, t3, s1, v0);
+    DSB(DS_00104B16) = 2u;
+    DSW(DS_000BD898) = 0x0900u;
+    DSD(0x000C9634u + 12u) = K13_SH;        /* 0x2BE1C = 0x1000 - 0x2000 <= 0 */
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(Z_A(0) + 0x29u), 0x01);
+    CHECK_EQ_INT((int)DSB(DS_001088C3), 1);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)mz_rng_after(S, 2u));
 
     /* H: outside mode 9 the block does not run (A's list in mode 3). */
     K13_M9(4u, t1, s0, v0);

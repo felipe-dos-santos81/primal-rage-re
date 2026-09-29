@@ -117,14 +117,14 @@ now wired: all six `0x4A868` sites are called (record §K4.5).
 | local | written | read |
 |---|---|---|
 | `[ESP]`, `[ESP+2]` words | zeroed every call (`0x49CC1`, `0x49CBC`); `[ESP + side*2]++` per entry (`0x49CDD..0x49CEA`, side = `+0x21`) | `0x4A48E` (`[ESP + DS_00104B16*2]`) |
-| `[ESP+4]` word | never by `0x49C78` (only through a side byte of 2) | `0x4A48E` when `DS_00104B16 == 2` |
+| `[ESP+4]` dword | case 3's landing: `0x4000` when `0x2BE1C > 0` (`0x49DF2`), else 0 (`0x49DFE`), read back at `0x49E04` and OR-ed into `+0x28` (fix round 1); `[ESP + 2*2]++` for a side byte of 2 | its low word at `0x4A48E` when `DS_00104B16 == 2`; `0x49E04` |
 | `[ESP+8]` dword | mode 9: 0 (`0x49C9C`); `inc` per entry (`0x49CEE..0x49CF8`) | `0x4A538` (as BX) |
 | `[ESP+0xC]` dword | mode 9: EDX with DL = DH = 0 (`0x49CA6`); type 9 `inc` (`0x4A128`) | `0x4A549` (as AX) |
 | `[ESP+0x10]` dword | mode 9: 0 (`0x49CA2`); case 14 `inc` (`0x4A352`) | `0x4A499` (as DX) |
 | `[ESP+0x14]` byte | mode 9: 0 (`0x49C98`); type 11: 1 (`0x4A17A`) | `0x4A56E` |
 | `[ESP+0x18]` byte | mode 9: 1 (`0x49C94`); type 11 moving: 0 (`0x4A1E2`) | `0x4A567` |
 
-Every reader is in the mode-9 block, so outside mode 9 the unset values are
+Apart from case 3's read-back of `[ESP+4]` right after its own store (`0x49E04`), every reader is in the mode-9 block, so outside mode 9 the unset values are
 never read (the port starts them at 0).
 
 **The block.**
@@ -176,12 +176,30 @@ pushes and pops EBX, `0x2C3FC push ebx`, so BL is still 1).
 
 **Named gap (the drawn round's side count).** `DS_00104B16` is the round
 winner: 0 or 1 a side, **2 a draw** (`0x27DB3`, `flow.c`). With 2 the block
-reads the word `[ESP+4]`, which `0x49C78` never writes (only a side byte of
-2 would increment it). Its value is the caller's stale stack word, which
-depends on what `0x28788` last called at that depth; it cannot be pinned
-from the image without a runtime capture at `0x4A48E`. The port models it as
-`loc_side[2]`, starting at 0, and names the gap in the code. It decides only
-whether the voice latch opens on a draw (and so one `rng(0x14)` draw).
+reads the word `[ESP+4]`. **Correction (fix round 1, raw wins):** the first
+version of this record said `0x49C78` never writes it. That was wrong. Case 3's
+landing uses the dword as its hflip temporary:
+
+```
+49de6: call 0x2be1c ; lea edx,[ebx+0x28] ; test eax,eax ; jle 0x49dfc
+49df2: mov dword [esp+4],0x4000 ; jmp 0x49e02
+49dfc: xor edi,edi ; mov dword [esp+4],edi
+49e02: xor eax,eax ; mov edi,[esp+4] ; mov ax,[edx] ; or eax,edi ; mov [edx],ax
+```
+
+A scan of every ESP-relative operand in `0x49C78..0x4A633` finds no other
+store to `[esp+4]`/`[esp+6]`. So once a type-3 entry lands in a call, the
+word is `0x4000` (the drawn round's limit `0x3FFE` keeps the latch shut) or
+0 (limit -2 opens it). Type 3 is common; its writers are `0x4B656` and
+`0x4D143`. The port's case 3 now stores `loc_side[2]` the same way and ORs
+it into `+0x28`. **The named gap is only the value before the first case-3
+store in a call** (and before any side-2 increment). That is uninitialised
+memory of `0x49C78`'s own `sub esp,0x1c` frame (`0x49C7E`), holding whatever
+an earlier call at that stack depth left. Pinning it needs a runtime capture
+at `0x4A48E`. The port starts it at 0. It decides only whether the voice
+latch opens on a drawn round with no type-3 landing that frame (one
+`rng(0x14)` draw). The dword store also zeroes the word `[ESP+6]`, which
+only a side byte of 3 would reach (the `PORT:` bound below).
 
 **`PORT:` bound.** The raw indexes `[ESP + side*2]` with the entry's
 `+0x21` byte unbounded. Every `+0x21` writer stores a side argument or a
@@ -251,7 +269,9 @@ case 8 stay inert, pset `k+1` term `0x1000`, x `0x1000`, y word `0x800`,
   term (`+0x14 = rng`); false on screen (nothing).
 - `check_k13_mode9`: the latch open (2 >= 4 - 2) and shut (1 < 2); the count
   of the `DS_00104B16` side, not the entries'; the re-arm at 0; the
-  countdown at `0x3C`; `DS_001088C9 = 1` for `+0x5A 0x10`; `DS_001088B4`
+  countdown at `0x3C`; on a drawn round, case 3's `[ESP+4]` store (fix round
+  1): `0x4000` keeps the latch shut (one draw), 0 opens it (two draws);
+  `DS_001088C9 = 1` for `+0x5A 0x10`; `DS_001088B4`
   cleared; the survey on all-idle (`DS_0010885C 0x1001`, `DS_00108858
   0x3000`, `C6 0`, `C8 1`) and not on one idle of two; the scatter after an
   arrived walker, not with one still walking, not without a walker; mode 3
@@ -259,8 +279,9 @@ case 8 stay inert, pset `k+1` term `0x1000`, x `0x1000`, y word `0x800`,
 
 ## §K13.7 Named gaps left
 
-1. The drawn round's side count `[ESP+4]` (§K13.3): the stale stack word,
-   0 in the port.
+1. The drawn round's side count `[ESP+4]` (§K13.3), but only before the
+   first case-3 store in the call: uninitialised own-frame memory, 0 in the
+   port. Pinning it needs a runtime capture at `0x4A48E`.
 2. The three voices `0x2C3FC(0xCB)` (`0x4A4B5`, `0x4A4ED`) and
    `0x2C3FC(0xDC)` (`0x4A52C`) stay `PORT:` notes (record §45-A).
 3. Side bytes of 3 or more in the per-side count (§K13.3 `PORT:` bound).

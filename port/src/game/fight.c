@@ -4527,10 +4527,14 @@ void fight_effects_pass(void)
     /* PORT: outside mode 9 the raw leaves [ESP+8]..[ESP+0x18] unset; they
      * start at 0 here, as nothing reads them there. [ESP+0xC]'s high word
      * (the caller's EDX high half) is 0: the mode-9 block compares only AX
-     * (0x4A554 `cmp ax,bx`). loc_side[2] is the word [ESP+4], which this
-     * function never writes: only the mode-9 block reads it, with
-     * DS_00104B16 = 2 (a drawn round, flow.c 0x27DB3), and its value is the
-     * caller's stale stack word — a named gap (record §K13.3), 0 here. */
+     * (0x4A554 `cmp ax,bx`). loc_side[2] is the word [ESP+4]: case 3's
+     * landing writes it as a dword (0x4000 or 0, 0x49DF2/0x49DFE) and a side
+     * byte of 2 would count in it; the mode-9 block reads it on a drawn round
+     * (DS_00104B16 = 2, flow.c 0x27DB3). Before the first such write in a
+     * call it is uninitialised memory of this function's own frame (`sub
+     * esp,0x1c`, 0x49C7E), holding whatever an earlier call at that depth
+     * left: a named gap (record §K13.3; pinning it needs a runtime capture
+     * at 0x4A48E), 0 here. */
     u16 loc_side[3] = { 0, 0, 0 };              /* [ESP], [ESP+2], [ESP+4] */
     u32 loc_count = 0;                          /* [ESP+8] */
     u32 loc_idle = 0;                           /* [ESP+0xC] */
@@ -4627,8 +4631,17 @@ void fight_effects_pass(void)
                     if ((s32)DSD(rec + 0x30u) >> 16
                             > (s32)(u32)DSW(DS_000BD898))           /* 0x49DD8 */
                         break;
-                    if (fight_2be1c(rec, DSD(DSD(entry + 0xCu))) > 0) /* 0x49DE6 */
-                        DSW(rec + 0x28u) = (u16)(DSW(rec + 0x28u) | 0x4000u); /* 0x49E0D */
+                    /* 0x49DEB..0x49E0D: the hflip goes through the frame
+                     * dword [ESP+4] (record §K13.3): 0x4000 when 0x2BE1C > 0,
+                     * else 0 (0x49DF2/0x49DFE), then OR-ed into the +0x28
+                     * word (0x49E04..0x49E0D). The mode-9 block reads its low
+                     * word as side 2's count (0x4A48E). */
+                    /* PORT: the dword store also zeroes the word [ESP+6],
+                     * which only a side byte of 3 would reach (the bound in
+                     * the prelude). */
+                    loc_side[2] = (fight_2be1c(rec, DSD(DSD(entry + 0xCu))) > 0)
+                                ? 0x4000u : 0u;                 /* 0x49DE6..0x49DFE */
+                    DSW(rec + 0x28u) = (u16)(DSW(rec + 0x28u) | loc_side[2]); /* 0x49E04..0x49E0D */
                     actors_anim_begin(rec, DSD(DS_000C9634 + index * 4u),
                                       0x40000000u);         /* 0x49E24 */
                     DSW(rec + 0x38u) = 0;                   /* 0x49E29 */
