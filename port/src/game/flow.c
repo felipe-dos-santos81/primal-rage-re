@@ -4933,16 +4933,19 @@ u32 hiscore_rank_pair(void)
     return 1u;                                                    /* 0x1ED26 */
 }
 
-/* 0x1EEB0 — record §49-H. See flow.h for the full derivation: a 17-state
- * sub-machine on DS_00104B25, entered from mode 0x13's challenge poll with
- * DS_00104B25 = 0 when the post-match challenge window runs out unjoined.
- * States 2/3/6/9/0xA are pure bookkeeping and fully ported; states 0/4/7
- * have a portable short-circuit arm, ported, plus an unported rank-probe
- * arm (0x1ECC8/0x1EC38, PORT: notes); states 5/8/0xB..0xE/0xF/0x10 gate
- * entirely on the unported 0x1F458 name-entry driver and stay parked
- * (PORT: notes) — exactly the "still waiting" behaviour those states
- * already have while their own poll returns not-done, not a fabricated
- * stub. */
+/* 0x1EEB0 — record §49-H, states 0/4/7's real gate record §49-R. See
+ * flow.h for the full derivation: a 17-state sub-machine on DS_00104B25,
+ * entered from mode 0x13's challenge poll with DS_00104B25 = 0 when the
+ * post-match challenge window runs out unjoined. States 2/3/6/9/0xA are
+ * pure bookkeeping and fully ported; states 0/4/7 now run their full
+ * short-circuit-then-rank-probe-gate logic for real (hiscore_rank_pair/
+ * hiscore_rank_single below, record §49-R) — only the name-entry screen
+ * setup past a successful gate (0x1ED2C, and 0x1EC38's own 0x204F4) stays
+ * a PORT-noted gap, since both exist solely to feed the still-unported
+ * 0x1F458 name-entry driver; states 5/8/0xB..0xE/0xF/0x10 gate entirely on
+ * that driver and stay parked (PORT: notes) — exactly the "still waiting"
+ * behaviour those states already have while their own poll returns
+ * not-done, not a fabricated stub. */
 void game_mode_1e_step(void)
 {
     switch (DSB(DS_00104B25)) {
