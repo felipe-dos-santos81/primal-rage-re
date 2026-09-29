@@ -361,6 +361,11 @@ void flow_continue_take(void);
  * 0xBB68C markers for DS_00104AF2/DS_00104AF3 wins. 0x4F37C: "TT"/"EE"/"XX"
  * or the number 60 at col 0x13, row 1. */
 void game_mode_05_step(void);
+/* Record §K8a, 0x25FAC: update-table entry 6 (DS_00104AE8 bit 0x40, armed
+ * by modes 5/0x23/0x30 with the card DS_00104ACC): the card's word +0x2C grows
+ * by 0x100 a frame (a byte increment of +0x2D) until it reaches 0x1000, where
+ * it is clamped and the entry disarms itself. */
+void flow_card_ramp_step(void);
 void flow_round_hud_init(void);
 void flow_win_markers_spawn(void);
 void flow_round_timer_draw(void);

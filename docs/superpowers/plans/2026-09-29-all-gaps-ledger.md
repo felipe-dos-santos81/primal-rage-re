@@ -157,9 +157,10 @@ proposals were re-scanned against the raw and are supported; each has a
 `tools/port_classification.txt` row. `port_progress.py`: `752 1203 63` /
 `716 731 98`. The 15 remaining non-runtime rows are K2–K8c, K10 and K11.
 
-**Task 3c (2026-09-29).** K3 is closed (record `2026-09-29-k3-k8a-derivations.md`).
+**Task 3c (2026-09-29).** K3 and K8a are closed (record `2026-09-29-k3-k8a-derivations.md`).
 `0x38990` is `render_scroll_track`, called at both `game_frame` sites before the
-frame counter. `port_progress.py`: `758 1203 63` / `722 731 99`. The 8000-frame
+frame counter. Update entry 6 `0x25FAC` is `flow_card_ramp_step`, registered in
+`actors_init`. `port_progress.py`: `758 1203 63` / `722 731 99`. The 8000-frame
 and front-end dumps are byte-identical. §K3.3 names the state change the oracles
 cannot see: `DS_00107A38` during the demo fights.
 
@@ -175,7 +176,7 @@ entries 3 and 18..29 are `0x5D812`). Unregistered entries are skipped silently.
 | entry | bit | target | registered | reachability evidence |
 |---:|---|---|---|---|
 | 4 | `AE8` 0x10 | `0x37C8C` | no | Cleared by itself at `0x37C9E`. The setter was not identified in this measurement. |
-| **6** | `AE8` 0x40 | **`0x25FAC`** | **no** | **Live.** Set by the ported `game_mode_05_step` (`0x25E1D`, `flow.c:2277`), `game_mode_30_step` (`0x294C9`, `flow.c:2398`) and `game_mode_23_step` (`0x26B2C`, `flow.c:5471`). It is skipped with no comment. |
+| **6** | `AE8` 0x40 | **`0x25FAC`** | **yes** (Task 3c, §K8a: `flow_card_ramp_step`) | **Live.** Set by the ported `game_mode_05_step` (`0x25E1D`, `flow.c:2277`), `game_mode_30_step` (`0x294C9`, `flow.c:2398`) and `game_mode_23_step` (`0x26B2C`, `flow.c:5471`). It is skipped with no comment. |
 | 8 | `AE9` 0x01 | `0x34648` (+ `0x29C20`) | no | Cleared by ported `0x34038` (`0x340B0`) and `0x36E78` (`0x36F05`). The setter is a `mov byte [0x104ae9],reg` (`0x3426E`, `0x37FFC`, …) and was not resolved. |
 | 9 | `AE9` 0x02 | `0x3800C` | no | Cleared at `0x38023`. Setter not identified. |
 | 11 | `AE9` 0x08 | `0x4F890` | no | Cleared at `0x4F907`. Setter not identified (the ported `0x4F944` stores `AE9` from AH at `0x4F973`). |
@@ -380,7 +381,7 @@ size gate is ≥ ~4 KB or ≥ ~20 new functions, and such a cluster is marked
 | 4 | K2 TRIV | `0x29B70`, `0x32968`, `0x2D4B4`, `0x51F72` | 423 | port | Task 3 — **closed** (Task 3b, §K2 of `2026-09-29-k2-k5-derivations.md`) |
 | 5 | K5 MENU-FRAME | `0x2EA74` (and its 3 ported call sites in `menu.c`) | 4 | port (raw conflict fix) | Task 3 — **closed** (Task 3b, §K5 of `2026-09-29-k2-k5-derivations.md`) |
 | 6 | K3 FRAME-SVC | `0x38990` (called at `0x24CC3`/`0x24CC8`) | 52 | port, **live every frame**. Re-run `demo-fight-oracle attract2-oracle` and diff the dumps. | Task 3 — **closed** (Task 3c, §K3 of `2026-09-29-k3-k8a-derivations.md`) |
-| 7 | K8a UPD-06 | update entry 6 `0x25FAC` | n/a (non-Ghidra) | port (live: armed by modes 5/0x23/0x30) | Task 3 |
+| 7 | K8a UPD-06 | update entry 6 `0x25FAC` | n/a (non-Ghidra) | port (live: armed by modes 5/0x23/0x30) | Task 3 — **closed** (Task 3c, §K8a) |
 | 8 | K4 FX-GATE | `0x4A868` | 63 | port (unblocks §E-18/19 and K13) | Task 3 |
 | 9 | K6 VOICE-WRAP | `0x4F714`, `0x4F728` | 97 | port (wrappers over the ported `sound_voice`) | Task 3 |
 | 10 | K7 AUDIO-SMP | `0x1CB18` + `0x1CC28`'s slot choice (`0x1CC62..0x1CD8D`) | 271+ | port | Task 3 |

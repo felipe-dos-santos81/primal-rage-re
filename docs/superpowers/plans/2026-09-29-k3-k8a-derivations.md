@@ -124,3 +124,88 @@ sprite with no preceding layer-1 sprite (`last_mode1_y == -1`). The 8000-frame
 dump is byte-identical before and after (see the Task 3c report), so no layer-2
 sprite on these runs reads it. **The oracles cannot see this state change:**
 `DS_00107A38` now differs during the demo fights, and no pixel changes.
+
+---
+
+## K8a — update-table entry 6, `0x25FAC`
+
+### §K8a The body, the table entry, the arms, the dispatcher
+
+Table: `DS_000A8644` (32 dwords). Entry 6 is the dword at `0xA865C`, value
+`0x00025FAC` (the fixed-up image). That is the only absolute reference to
+`0x25FAC`, and there is no rel32 call or jump to it. Ghidra has no function
+there, so the counter does not move for it.
+
+Raw (46 B):
+
+```
+25fac: push edx
+25fad: mov  eax, dword [0x104acc]      ; the card record
+25fb2: inc  byte [eax+0x2d]            ; word +0x2C += 0x100, no carry out
+25fb5: xor  edx, edx
+25fb7: mov  dx, word [eax+0x2c]        ; zero-extended
+25fbb: cmp  edx, 0x1000
+25fc1: jl   0x25fd8                    ; signed on a zero-extended value: u16 < 0x1000
+25fc3: mov  dh, byte [0x104ae8]
+25fc9: and  dh, 0xbf
+25fcc: mov  word [eax+0x2c], 0x1000
+25fd2: mov  byte [0x104ae8], dh        ; bit 0x40 cleared, byte store
+25fd8: pop  edx
+25fd9: ret
+```
+
+(`0x25FDA mov eax,eax` is padding before `0x25FDC`.)
+
+**The dispatcher** (`0x24CD5..0x24CFC`): `mov ebx,[0x104ae8]` is loaded once.
+For each set bit it does `mov eax,edx; call [eax+0xa8644]`, with EDX = 4·i.
+The body clobbers EAX, keeps EBX, and pushes and pops EDX, so `fn(void)` is
+exact. Clearing bit 0x40 mid-walk does not affect the current frame's walk.
+The port's `run_process_table(DS_000A8644, DSD(DS_00104AE8))` also passes the
+mask by value. Before this task the entry was unregistered, and
+`run_process_table` skipped it silently (`fn_resolve` returns NULL).
+
+**The arms** (every store to `DS_00104ACC` next to an `AE8 |= 0x40`):
+
+| site | owner (port) | record | bit |
+|---|---|---|---|
+| `0x25E18`/`0x25E1D` | `0x25C88` mode 5 case 2 (`game_mode_05_step`) | the fight card `0xA8884` or `0xBB6A0` | `or byte [0x104ae8],0x40` |
+| `0x26B12`/`0x26B2C` | mode 0x23 (`game_mode_23_step`) | `0xA895C` or `0xBB6B4` | `mov dh,[AE8]; or dh,0x40; mov [AE8],dh` |
+| `0x294B8`/`0x294C9` | `0x29328` mode 0x30 (`game_mode_30_step`) | `0xA8884` or `0xBB6A0` | `mov al,[AE8]; or al,0x40; mov [AE8],al` |
+
+Each card is spawned by `0x2AE14(desc, 0x2A00, 0xFF, 0x1200, 0)`. `0x2AE14`
+copies the descriptor's `+0x0C` word into record `+0x2C`, and all four
+descriptors hold `0x0010` there. So the word runs `0x0010, 0x0110, …, 0x0F10`,
+and on the 16th call it reaches `0x1010`, which is clamped to `0x1000`, and the
+bit is cleared. `0x2A690` (`actor_pset_point`, `actors.c`) and its siblings copy record
+`+0x2C` into pset `+0x0C`. The same three handlers kill the card after the `0x3C`-frame
+`DS_00104AFE` countdown (`0x25E89`, `0x26B6F`, `0x2951E`), well after the
+16-frame ramp. The raw never tests `DS_00104ACC` for zero, and neither does
+the port. Other clearers of the bit: the whole-dword `AE8` stores `0x20E1C`,
+`0x20EC3`, `0x28DC4`, `0x2BB13` (`actors_reset`) and `0x41435`.
+
+**Reachability.** Modes 5, 0x23 and 0x30 are reached only by real input (an
+accepted coin/start, ledger §D and record §47-B/§48-W). No oracle path reaches
+them, so the entry runs in play but on no oracle frame.
+
+Test values (`check_card_ramp`, `test_game.c`; the scratch record is at
+`0x3E90000`; `+0x28`/`+0x30` are seeded with `0xA5A5A5A5`/`0x5A5A5A5A`
+and `+0x2E` with `0xBEEF`, and all three must survive. `+0x2E` pins "no carry out
+of the word" on the `0xFF10` case):
+
+| `+0x2C` before | `AE8` before | `+0x2C` after | `AE8` after | pins |
+|---|---|---|---|---|
+| `0x0010` | `0xFFFFFFFF` | `0x0110` | `0xFFFFFFFF` | the byte increment; no clamp below `0x1000` |
+| `0x0FFF` | `0xFFFFFFFF` | `0x1000` | `0xFFFFFFBF` | the clamp (`0x10FF` → `0x1000`); only bit 0x40 cleared |
+| `0x7F10` | `0x40` | `0x1000` | `0` | the zero-extended compare (a signed s16 compare would not clamp `0x8010`) |
+| `0xFF10` | `0x40` | `0x0010` | `0x40` | the byte wrap, with no carry out of the word |
+
+Also: the table dword `DSD(0xA865C) == 0x25FAC`,
+`fn_resolve(0x25FAC) == flow_card_ramp_step` after `actors_init`, and one
+mode-1 `game_frame()` with only bit 0x40 armed takes `0x0210` to `0x0310`
+(the dispatcher calls it). The demo's per-frame blocks (`DS_00104B1B` and
+`DS_00104B15`) are held at 0 for that frame and then restored, so that the
+frame touches no fighter state that later test areas rely on.
+
+**Registration.** `fn_register(0x25FACu, flow_card_ramp_step)` in
+`actors_init`, beside the §46-F hooks, as for entries 1/2/5/7/10 (§42-A,
+§46-D, §50-E).

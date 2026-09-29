@@ -642,6 +642,9 @@ int actors_init(void)
     fn_register(0x4142Cu, fight_hook_4142c);
     fn_register(0x25AE8u, game_hook_25ae8);
     fn_register(0x26978u, game_hook_26978);
+    /* PORT: record §K8a. The update table's entry 6 (0x25FAC, the dword at
+     * 0xA865C; no Ghidra function), fn() with the unread EAX index. */
+    fn_register(0x25FACu, flow_card_ramp_step);
     return 1;
 }
 

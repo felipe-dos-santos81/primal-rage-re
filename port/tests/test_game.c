@@ -1446,6 +1446,84 @@ static void check_pset_layer(void)
     }
 }
 
+/* Update-table entry 6, 0x25FAC (flow_card_ramp_step, record §K8a): byte
+ * [DSD(DS_00104ACC)+0x2D] += 1 (0x25FB2), then once the zero-extended word
+ * +0x2C is >= 0x1000 (0x25FBB `cmp edx,0x1000; jl`) it is clamped to 0x1000
+ * and DS_00104AE8 bit 0x40 is cleared (0x25FC3..0x25FD2, a byte store). The
+ * record is scratch at 0x3E90000; every sentinel differs from its post-value.
+ * Runs after actors_init, which registers the entry. */
+#define CARD_REC 0x3E90000u
+static void check_card_ramp(void)
+{
+    u32 s_acc = DSD(DS_00104ACC), s_ae8 = DSD(DS_00104AE8);
+    u32 s_mode = DSD(DS_00104B00), s_dc = DSD(DS_000EF6DC);
+    u16 s3c = DSW(DS_00107A3C), s4a = DSW(DS_00107A4A);
+    u8 s_b15 = DSB(DS_00104B15), s_b1b = DSB(0x00104B1Bu);
+
+    /* (a) The table dword at 0xA865C (entry 6) is 0x25FAC, and it resolves. */
+    CHECK_EQ_INT((int)DSD(DS_000A8644 + 6u * 4u), 0x25FAC);
+    CHECK(fn_resolve(DSD(DS_000A8644 + 6u * 4u)) == flow_card_ramp_step,
+          "update-table entry 6 (0x25FAC) resolves to flow_card_ramp_step");
+
+    DSD(DS_00104ACC) = CARD_REC;
+    DSD(CARD_REC + 0x28u) = 0xA5A5A5A5u;
+    DSD(CARD_REC + 0x30u) = 0x5A5A5A5Au;
+    DSW(CARD_REC + 0x2Eu) = 0xBEEFu;
+
+    /* (b) 0x0010 -> 0x0110 (below 0x1000): the mask is kept whole. */
+    DSW(CARD_REC + 0x2Cu) = 0x0010u;
+    DSD(DS_00104AE8) = 0xFFFFFFFFu;
+    flow_card_ramp_step();
+    CHECK_EQ_INT((int)DSW(CARD_REC + 0x2Cu), 0x0110);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFFFFFFu);
+
+    /* (c) 0x0FFF -> 0x10FF >= 0x1000: clamped to 0x1000, and only bit 0x40
+     * of the mask's low byte is cleared. */
+    DSW(CARD_REC + 0x2Cu) = 0x0FFFu;
+    flow_card_ramp_step();
+    CHECK_EQ_INT((int)DSW(CARD_REC + 0x2Cu), 0x1000);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFFFFBFu);
+
+    /* (d) 0x7F10 -> 0x8010: the zero-extended compare clamps it (a signed
+     * 16-bit compare would not). */
+    DSW(CARD_REC + 0x2Cu) = 0x7F10u;
+    DSD(DS_00104AE8) = 0x00000040u;
+    flow_card_ramp_step();
+    CHECK_EQ_INT((int)DSW(CARD_REC + 0x2Cu), 0x1000);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), 0);
+
+    /* (e) 0xFF10: the byte increment wraps +0x2D to 0 (no carry out of the
+     * word), 0x0010 < 0x1000, the mask is kept. */
+    DSW(CARD_REC + 0x2Cu) = 0xFF10u;
+    DSD(DS_00104AE8) = 0x00000040u;
+    flow_card_ramp_step();
+    CHECK_EQ_INT((int)DSW(CARD_REC + 0x2Cu), 0x0010);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), 0x40);
+    CHECK_EQ_INT((int)DSD(CARD_REC + 0x28u), (int)0xA5A5A5A5u);
+    CHECK_EQ_INT((int)DSD(CARD_REC + 0x30u), 0x5A5A5A5A);
+    CHECK_EQ_INT((int)DSW(CARD_REC + 0x2Eu), 0xBEEF);   /* no carry into +0x2E */
+
+    /* (f) The dispatcher: a mode-1 game_frame with only bit 0x40 armed runs
+     * entry 6 once (0x24CEF `call [eax+0xa8644]`), 0x0210 -> 0x0310. */
+    DSW(CARD_REC + 0x2Cu) = 0x0210u;
+    DSD(DS_00104AE8) = 0x00000040u;
+    DSD(DS_00104B00) = 1u;
+    /* The demo's per-frame blocks (0x24C7C's AI, gated on DS_00104B1B, and
+     * the 0x25414 tail, gated on DS_00104B15) are held off for this frame
+     * so it touches no fighter state the later cases rely on. */
+    DSB(DS_00104B15) = 0u; DSB(0x00104B1Bu) = 0u;
+    game_frame();
+    CHECK_EQ_INT((int)DSW(CARD_REC + 0x2Cu), 0x0310);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), 0x40);
+
+    DSD(CARD_REC + 0x28u) = 0; DSD(CARD_REC + 0x2Cu) = 0; DSD(CARD_REC + 0x30u) = 0;
+    DSD(DS_00104ACC) = s_acc; DSD(DS_00104AE8) = s_ae8;
+    DSD(DS_00104B00) = s_mode; DSD(DS_000EF6DC) = s_dc;
+    DSW(DS_00107A3C) = s3c; DSW(DS_00107A4A) = s4a;
+    DSB(DS_00104B15) = s_b15; DSB(0x00104B1Bu) = s_b1b;
+}
+#undef CARD_REC
+
 int test_actors(void)
 {
     int before = g_failures;
@@ -1463,6 +1541,7 @@ int test_actors(void)
     /* Record §42-E: the DS_00104AE4 handler 0x29B74 resolves to its port. */
     CHECK(fn_resolve(FN_00029B74) == frontend_darken_all,
           "actors_init registered 0x29B74 as frontend_darken_all");
+    check_card_ramp();
 
     /* A fresh reset frees every record and leaves both lists empty. It also
      * runs 0x4F228 with EAX = 0 (0x2BBC0/0x2BBC4): the projection gate

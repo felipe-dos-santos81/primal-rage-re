@@ -2339,6 +2339,26 @@ void game_mode_05_step(void)
     DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);     /* 0x25DC6/0x25E5A/0x25F5E/0x25F74/0x25F9F */
 }
 
+/* 0x25FAC — record §K8a. Update-table entry 6 (the dword at 0xA865C; no
+ * Ghidra function), dispatched by 0x24CEF while DS_00104AE8 bit 0x40 is set.
+ * The three arms store the card record DS_00104ACC and set the bit together:
+ * 0x25E18/0x25E1D (mode 5 case 2), 0x26B12/0x26B2C (mode 0x23) and
+ * 0x294B8/0x294C9 (mode 0x30). `inc byte [eax+0x2d]` (0x25FB2) adds 0x100 to
+ * the word +0x2C with no carry out of it; `movzx`, `cmp edx,0x1000; jl`
+ * (0x25FB7..0x25FC1) compares the zero-extended word, so 0x8000..0xFFFF also
+ * clamp. At or above 0x1000 the word becomes 0x1000 (0x25FCC) and the byte
+ * DS_00104AE8 loses bit 0x40 (0x25FC3..0x25FD2). The raw does not test
+ * DS_00104ACC for zero; neither does the port. EAX (the dispatch index) is
+ * clobbered and EDX pushed and popped, so the fn() signature is exact. */
+void flow_card_ramp_step(void)
+{
+    u32 rec = DSD(DS_00104ACC);                         /* 0x25FAD */
+    DSB(rec + 0x2Du) = (u8)(DSB(rec + 0x2Du) + 1u);     /* 0x25FB2 */
+    if (DSW(rec + 0x2Cu) < 0x1000u) return;             /* 0x25FB7..0x25FC1 */
+    DSW(rec + 0x2Cu) = 0x1000u;                         /* 0x25FCC */
+    DSB(DS_00104AE8) = (u8)(DSB(DS_00104AE8) & 0xBFu);  /* 0x25FC3..0x25FD2 */
+}
+
 /* ---- modes 0x30/0x31/0x33, mode 0x32's continue/rematch chain (record
  * §49-J) -------------------------------------------------------------- */
 
