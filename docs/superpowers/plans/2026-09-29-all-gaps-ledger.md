@@ -92,44 +92,61 @@ EXIT=0
 come from `prage.calls.csv`. P = ported, U = unported, D = deferred, H =
 host-owned. "Reach" says whether a ported live path calls the function.
 
+**Caller evidence (fix round 1).** The callers column gives the counter's
+`n_callers` (Ghidra's reference count, from `prage.functions.csv`) and then the
+raw `call rel32` / `jmp rel32` / `jcc rel32` site count. The raw count comes
+from a whole-code-object scan of the fixed-up image (`0x10000..0x73B14`); each
+hit was confirmed by decoding it. An absolute-dword scan of the code and data
+objects was also run. Sites are listed as `site@owner`. The owner is the Ghidra
+function whose contiguous extent (`entry + size`) holds the site. **Callers not
+reachable via Ghidra are raw-scan-derived**; a † marks those rows. They sit in
+code Ghidra has no function for, or outside a function's contiguous extent. The
+counter counts call sites, not caller functions. Where raw equals the counter,
+every site is inside a Ghidra function. Where raw is larger, the extra sites
+are the † ones. `0x2EA74` is the one row that does not reconcile site by site:
+Ghidra attributes 5 references, and only 3 of the 18 raw sites fall inside
+contiguous Ghidra extents. The other 2 Ghidra references are presumably in
+non-contiguous function bodies, and the Ghidra MCP was not reachable to name
+them.
+
 ### §B.1 Ghidra functions (the counter's denominator)
 
-| addr | size | callers | callees | reach | class | cluster | what it is (raw) |
+| addr | size | callers: counter / raw sites (site@owner) | callees | reach | class | cluster | what it is (raw) |
 |---|---:|---|---|---|---|---|---|
-| `0x50D23` | 4405 | `1C740`P | — | yes (movie player) | port (partial) / host-owned (aperture half): **own plan** | K10 | Movie dirty-rect blit. It stores to the aperture (EBX = `0xA0000`+off) and to the `DS_000E87A0` buffer (EDI), so the EDI half is `mem[]` state. |
-| `0x501A3` | 2944 | `255CC`P, `2EA78`P | — | yes | **host-owned** (proposed) | K9 | Dirty-dword blit `E87A4` vs `E87A0` into `0xA0000` (`0x501B0`). All its stores go through EBX. `gfx_present` replaces it (`gfx.c:152`, `config.c:510`). |
-| `0x34B6C` | 541 | `35658`P | 21, all P | yes | port (header only) | K1 | Body is `fight_health_sync` (`fight.c:2066`). The header `/* ---- 0x34B6C` is not counted. |
-| `0x51F72` | 404 | `52106`P | — | yes (boot/movie) | port | K2 | Unrolled 0xFA00-byte dword fill of `[EAX]` with EDX (`0x51F78..`). `0x52106` uses it on the two `mem[]` buffers and on the aperture (`gfx.c:175-179`). |
-| `0x1CB18` | 271 | `1CF20`P | `1B544`P + AIL `5DC0F/2A/4D/70/A6/C5/E4` | no (no port path writes slot `+0x04`) | port | K7 | Sample start: copies the queued resource into the slot's `0x1D0BC` buffer, then AIL init/set/start. Named gap at `flow.c:5962`. |
-| `0x1C528` | 190 | `1C5E8`P | `1B544`P | yes | port (header only) | K1 | A byte-identical copy of `0x14268`. It shares `sprite_node_build` (`sprite.c:55-58`), and the header names it mid-comment. |
-| `0x2E180` | 151 | `2E934`D | `2E034`U, `2E0A4`U | no (only via deferred `0x2E934`) | **deferred** (proposed) | K9 | Audit counter add into the EEPROM image tables `0x2D420/0x2D45E/0x2D460`. |
-| `0x31A78` | 137 | none (Ghidra) | `3157C`P | via non-Ghidra code only | port | K11 | Jump-table dispatcher at `0x31A68`. Raw `call`s from `0x321F2`, `0x32230`, `0x324A9`, `0x324DC` (service-menu callback code). |
-| `0x38910` | 125 | `121A0`P | `4F1D0`P | yes | port (header only) | K1 | Ported as `title_origin_reset` under `/* PORT: 0x38910` (`flow.c:183`). |
-| `0x2E0A4` | 117 | `2E180`U | `2D4EC`P | no | **deferred** (proposed) | K9 | Halves an EEPROM-image counter table and sets the dirty bit `DS_00105DD8`. Only via `0x2E180`. |
-| `0x2E034` | 110 | `2E180`U | `2D4EC`P | no | **deferred** (proposed) | K9 | Stores BL into an EEPROM-image counter and sets the dirty bit. Only via `0x2E180`. |
-| `0x51ED8` | 109 | `1C5E8`P | `1B544`P | yes | port (header only) | K1 | Ported as `sprite_blit_at(n, base)` under `/* PORT: 0x51ED8` (`sprite.h:58`, `sprite.c:285`). |
-| `0x2DF8C` | 109 | `2D6F8`P | `2D4EC`P, `2E990`D, `61A70` rt | yes, but inert | **deferred** (proposed) | K9 | Loops sides 3..5. Each effect goes through the deferred storage read `0x2E990` (§49-Y.5), the no-op `0x2D4EC` (`config.c:58`) or the runtime `0x61A70`. `config.c:205` already calls it deferred. |
-| `0x319B0` | 91 | none | — | via non-Ghidra code only | port | K11 | Jump-table dispatcher at `0x319A0`. Raw `call`s from `0x32207` and `0x32248`. |
-| `0x4F728` | 79 | `27DC8`P | `2C3FC`P | yes | port | K6 | Two voices: `0xDF` or `0x23` (gated on `DS_00104AD4`, `0x107813+rec`, `DS_001088F2`), then `0x22`. `flow.c:2762` PORT. |
-| `0x4682C` | 78 | `469A8`P | `1A5D4`P | yes | port (header only) | K1 | Shares `ai_pred_cmd_sign` with `0x467DC` (`fighter.c:1295`, header `/* 0x467DC / 0x4682C`). It needs its own function. |
-| `0x4FF8F` | 73 | `1BBAC`H | — | no | **host-owned** (proposed) | K9 | Joystick A axis bits from `DS_000E1C1E/20/22/24`, ±0x1E. Only the host-owned ISR sampler `0x1BBAC` calls it (record §55-A already names it). |
-| `0x4FFD8` | 73 | `1BBAC`H | — | no | **host-owned** (proposed) | K9 | Joystick B axis bits from `DS_000E1C26/28/2A/2C`. Same evidence as `0x4FF8F`. |
-| `0x4A868` | 63 | `49C78`P, `4BF18`P, `4DEF4`P | `2BE00`P | yes (case-13/14 bodies, `0x4DEF4` states 1..4) | port | K4 | Proximity gate `\|0x2BE00(rec) - entry+0x14\| <= 2*\|(rec+0x32)>>16\|`. Its absence is the named gap at `fight.c:4910`, `fight.h:75`. |
-| `0x29C20` | 59 | none (Ghidra) | — | via update entry 8 only | port | K8c | Reads `0xA8A98[i]` by `DS_00105B34[DS_001078FF]`. The raw `call` at `0x346B5` sits inside update-table entry 8, `0x34648` (non-Ghidra, unregistered). |
-| `0x38990` | 52 | `24C5C`P | — | **yes, every frame** | port | K3 | `DS_00107A3C = word[0xF0AEC] & 0xFFC0`, `DS_00107A4A = dword[0xF0AEC]/64 + DS_00107A4E`. `game_frame` calls it at `0x24CC8`, and also at `0x24CC3` when `DS_00104B26 != 0`. `flow.c:6784` says "deferred". |
-| `0x3BDB0` | 43 | `3B134`P | `33950`P | yes | port (header only) | K1 | Body is `fight_attack_ready` (`fight.c:1987`), header `/* ---- 0x3BDB0`. |
-| `0x32BB0` | 41 | `27DC8`P | `2DAE4`D | yes, inert | **deferred** (proposed) | K9 | Two `0x2DAE4(0x1B+c, 1)` audit adds (`0x32BC0`, `0x32BD2`). Its only callee is deferred (record §48-V). |
-| `0x2F464` | 38 | none (Ghidra) | `2EFD4`P, `2F198`P | via non-Ghidra code only | port | K11 | Raw `call`s from `0x30A12`, `0x30D59`, `0x328E5`, `0x32913` and `0x33020` (service-menu callbacks). |
-| `0x33714` | 31 | `13420`P | — | yes | port (header only) | K1 | `palette_record` with flag 1 (`effects.c:63-64` PORT; `0x3371F mov byte [eax-4],1`). |
-| `0x2D498` | 27 | `2D4EC`P | `2EA68`P | no (the port's `0x2D4EC` is a declared no-op) | **deferred** (proposed) | K9 | Bounds-checked byte store into the EEPROM image `0x100CE4..0x1014DC`, else `0x2EA68(0x80AA8)`. |
-| `0x32B94` | 24 | `277C0`P | `2DAE4`D | yes, inert | **deferred** (proposed) | K9 | `test al,1` → `0x2DAE4(0xE, 1)` audit add. Its only callee is deferred (record §48-V). |
-| `0x4F714` | 18 | none (Ghidra) | `2C3FC`P | yes (raw `call` `0x25C09`, ported site) | port | K6 | `sound_voice(word[0xC9888 + 2*stage])` (a `jmp 0x2C3FC` tail). `flow.c:1325` PORT. |
-| `0x2D4B4` | 17 | `2D4EC`P, `2D6F8`P, `2DAE4`D | — | yes | port | K2 | Smallest power of two ≥ n+1 (`0x2D4B5..0x2D4C3`), pure. |
-| `0x4FB98` | 10 | `1BE30`P, `1BEC4`P | — | yes | **host-owned** (proposed) | K9 | `pushad; and eax,0xff; int 10h; popad; ret`: the BIOS set-mode call. `flow.c:6371` PORT: SDL owns the window. |
-| `0x2D62C` | 9 | ISR `0x1BDF4` (`0x1BE28`) | — | ISR only | **host-owned** (proposed) | K9 | `inc dword [0x105D88]; ret`. `DS_00105D88` is read only at `0x1BFA4` (`0x1BEC4` init) and `0x32982` (`0x32970`, host-owned record §48-V, the run clock). `0x1BEC4` hands `0x2D62C` to `0x109A0` at `0x1BF5B` (`push 0x1000; push 0x2d62c`). |
-| `0x2EA74` | 4 | `2FA40`P, `2FFC4`P (+16 raw sites in non-Ghidra code) | — | yes (service menu) | port | K5 | `xor eax,eax; mov eax,eax`, then falls into `0x2EA78`, so it is `config_screen_wait(0)`. The port treats it as a no-op (raw conflict, see Corrections). |
-| `0x32968` | 1 | `20C10`P (`0x20CC7`) | — | yes (`game_init`) | port | K2 | A bare `ret`. |
-| `0x29B70` | 1 | `20DF4`P, `24C5C`P | — | yes | port | K2 | A bare `ret`: `game_frame` cases 1/2/0x20 and `0x20E0B`. The port inlines it as `break` with no `/* 0x29B70` header. |
+| `0x50D23` | 4405 | 1 / 1: `1C82D`@`1C740`P | — | yes (movie player) | port (partial) / host-owned (aperture half): **own plan** | K10 | Movie dirty-rect blit. It stores to the aperture (EBX = `0xA0000`+off) and to the `DS_000E87A0` buffer (EDI), so the EDI half is `mem[]` state. |
+| `0x501A3` | 2944 | 2 / 2: `256A5`@`255CC`P, `2EAD1`@`2EA78`P | — | yes | **host-owned** (proposed) | K9 | Dirty-dword blit `E87A4` vs `E87A0` into `0xA0000` (`0x501B0`). All its stores go through EBX. `gfx_present` replaces it (`gfx.c:152`, `config.c:510`). |
+| `0x34B6C` | 541 | 1 / 1: `357FC`@`35658`P | 21, all P | yes | port (header only) | K1 | Body is `fight_health_sync` (`fight.c:2066`). The header `/* ---- 0x34B6C` is not counted. |
+| `0x51F72` | 404 | 3 / 3: `52119`, `52123`, `52151`, all @`52106`P | — | yes (boot/movie) | port | K2 | Unrolled 0xFA00-byte dword fill of `[EAX]` with EDX (`0x51F78..`). `0x52106` uses it on the two `mem[]` buffers and on the aperture (`gfx.c:175-179`). |
+| `0x1CB18` | 271 | 1 / 1: `1CF26`@`1CF20`P | `1B544`P + AIL `5DC0F/2A/4D/70/A6/C5/E4` | no (no port path writes slot `+0x04`) | port | K7 | Sample start: copies the queued resource into the slot's `0x1D0BC` buffer, then AIL init/set/start. Named gap at `flow.c:5962`. |
+| `0x1C528` | 190 | 1 / 1: `1C60B`@`1C5E8`P | `1B544`P | yes | port (header only) | K1 | A byte-identical copy of `0x14268`. It shares `sprite_node_build` (`sprite.c:55-58`), and the header names it mid-comment. |
+| `0x2E180` | 151 | 1 / 1: `2E983`@`2E934`D | `2E034`U, `2E0A4`U | no (only via deferred `0x2E934`) | **deferred** (proposed) | K9 | Audit counter add into the EEPROM image tables `0x2D420/0x2D45E/0x2D460`. |
+| `0x31A78` | 137 | 0 / 4†: `321F2`, `32230`, `324A9`, `324DC` (non-Ghidra code after `31E28`P) | `3157C`P | via non-Ghidra code only | port | K11 | Jump-table dispatcher at `0x31A68`. Raw `call`s from `0x321F2`, `0x32230`, `0x324A9`, `0x324DC` (service-menu callback code). |
+| `0x38910` | 125 | 1 / 1: `121F9`@`121A0`P | `4F1D0`P | yes | port (header only) | K1 | Ported as `title_origin_reset` under `/* PORT: 0x38910` (`flow.c:183`). |
+| `0x2E0A4` | 117 | 1 / 1: `2E1EB`@`2E180`U | `2D4EC`P | no | **deferred** (proposed) | K9 | Halves an EEPROM-image counter table and sets the dirty bit `DS_00105DD8`. Only via `0x2E180`. |
+| `0x2E034` | 110 | 1 / 1: `2E20B`@`2E180`U | `2D4EC`P | no | **deferred** (proposed) | K9 | Stores BL into an EEPROM-image counter and sets the dirty bit. Only via `0x2E180`. |
+| `0x51ED8` | 109 | 1 / 1: `1C63D`@`1C5E8`P | `1B544`P | yes | port (header only) | K1 | Ported as `sprite_blit_at(n, base)` under `/* PORT: 0x51ED8` (`sprite.h:58`, `sprite.c:285`). |
+| `0x2DF8C` | 109 | 1 / 1: `2D919`@`2D6F8`P | `2D4EC`P, `2E990`D, `61A70` rt | yes, but inert | **deferred** (proposed) | K9 | Loops sides 3..5. Each effect goes through the deferred storage read `0x2E990` (§49-Y.5), the no-op `0x2D4EC` (`config.c:58`) or the runtime `0x61A70`. `config.c:205` already calls it deferred. |
+| `0x319B0` | 91 | 0 / 2†: `32207`, `32248` (non-Ghidra code after `31E28`P) | — | via non-Ghidra code only | port | K11 | Jump-table dispatcher at `0x319A0`. Raw `call`s from `0x32207` and `0x32248`. |
+| `0x4F728` | 79 | 1 / 1: `27E4B`@`27DC8`P | `2C3FC`P | yes | port | K6 | Two voices: `0xDF` or `0x23` (gated on `DS_00104AD4`, `0x107813+rec`, `DS_001088F2`), then `0x22`. `flow.c:2762` PORT. |
+| `0x4682C` | 78 | 1 / 1: `46AA0`@`469A8`P | `1A5D4`P | yes | port (header only) | K1 | Shares `ai_pred_cmd_sign` with `0x467DC` (`fighter.c:1295`, header `/* 0x467DC / 0x4682C`). It needs its own function. |
+| `0x4FF8F` | 73 | 4 / 8†: `1BD15`, `1BD2E`, `1BD3C`, `1BD8B` @`1BBAC`H; `1B976`, `1B9B6`, `1BA16`, `1BA96` in the unreferenced sampler routines `0x1B934..0x1BB73` | — | no | **host-owned** (proposed) | K9 | Joystick A axis bits from `DS_000E1C1E/20/22/24`, ±0x1E. Every caller is in the host-owned sampler region `0x1B908..0x1BDCE` (see §G). |
+| `0x4FFD8` | 73 | 2 / 4†: `1BDA4`, `1BDC9` @`1BBAC`H; `1BAD6`, `1BB36` in the unreferenced sampler routines `0x1B934..0x1BB73` | — | no | **host-owned** (proposed) | K9 | Joystick B axis bits from `DS_000E1C26/28/2A/2C`. Callers as for `0x4FF8F` (see §G). |
+| `0x4A868` | 63 | 6 / 6: `4A361`@`49C78`P, `4BFDE`@`4BF18`P, `4DF8E`, `4DFFA`, `4E066`, `4E0D0` @`4DEF4`P | `2BE00`P | yes (case-13/14 bodies, `0x4DEF4` states 1..4) | port | K4 | Proximity gate `\|0x2BE00(rec) - entry+0x14\| <= 2*\|(rec+0x32)>>16\|`. Its absence is the named gap at `fight.c:4910`, `fight.h:75`. |
+| `0x29C20` | 59 | 1 / 1†: `346B5` (update-table entry 8 `0x34648`, non-Ghidra) | — | via update entry 8 only | port | K8c | Reads `0xA8A98[i]` by `DS_00105B34[DS_001078FF]`. The raw `call` at `0x346B5` sits inside update-table entry 8, `0x34648` (non-Ghidra, unregistered). |
+| `0x38990` | 52 | 2 / 2: `24CC3`, `24CC8` @`24C5C`P | — | **yes, every frame** | port | K3 | `DS_00107A3C = word[0xF0AEC] & 0xFFC0`, `DS_00107A4A = dword[0xF0AEC]/64 + DS_00107A4E`. `game_frame` calls it at `0x24CC8`, and also at `0x24CC3` when `DS_00104B26 != 0`. `flow.c:6784` says "deferred". |
+| `0x3BDB0` | 43 | 1 / 1: `3B27F`@`3B134`P | `33950`P | yes | port (header only) | K1 | Body is `fight_attack_ready` (`fight.c:1987`), header `/* ---- 0x3BDB0`. |
+| `0x32BB0` | 41 | 1 / 1: `27E28`@`27DC8`P | `2DAE4`D | yes, inert | **deferred** (proposed) | K9 | Two `0x2DAE4(0x1B+c, 1)` audit adds (`0x32BC0`, `0x32BD2`). Its only callee is deferred (record §48-V). |
+| `0x2F464` | 38 | 1 / 5†: `30A12`, `30D59` (after `30788`P), `328E5`, `32913` (after `31E28`P), `33020` (after `32BB0`U) | `2EFD4`P, `2F198`P | via non-Ghidra code only | port | K11 | Raw `call`s from `0x30A12`, `0x30D59`, `0x328E5`, `0x32913` and `0x33020` (service-menu callbacks). |
+| `0x33714` | 31 | 1 / 1: `13490`@`13420`P | — | yes | port (header only) | K1 | `palette_record` with flag 1 (`effects.c:63-64` PORT; `0x3371F mov byte [eax-4],1`). |
+| `0x2D498` | 27 | 1 / 1: `2D612`@`2D4EC`P | `2EA68`P | no (the port's `0x2D4EC` is a declared no-op) | **deferred** (proposed) | K9 | Bounds-checked byte store into the EEPROM image `0x100CE4..0x1014DC`, else `0x2EA68(0x80AA8)`. |
+| `0x32B94` | 24 | 1 / 1: `2786B`@`277C0`P | `2DAE4`D | yes, inert | **deferred** (proposed) | K9 | `test al,1` → `0x2DAE4(0xE, 1)` audit add. Its only callee is deferred (record §48-V). |
+| `0x4F714` | 18 | 1 / 1†: `25C09` (non-Ghidra code after `25AE8`P; ported site `flow.c:1325`) | `2C3FC`P | yes (raw `call` `0x25C09`, ported site) | port | K6 | `sound_voice(word[0xC9888 + 2*stage])` (a `jmp 0x2C3FC` tail). `flow.c:1325` PORT. |
+| `0x2D4B4` | 17 | 4 / 4: `2D533`@`2D4EC`P, `2D8C8`@`2D6F8`P, `2DB11`, `2DB24` @`2DAE4`D | — | yes | port | K2 | Smallest power of two ≥ n+1 (`0x2D4B5..0x2D4C3`), pure. |
+| `0x4FB98` | 10 | 2 / 2: `1BEB0`@`1BE30`P, `1BFEA`@`1BEC4`P | — | yes | **host-owned** (proposed) | K9 | `pushad; and eax,0xff; int 10h; popad; ret`: the BIOS set-mode call. `flow.c:6371` PORT: SDL owns the window. |
+| `0x2D62C` | 9 | 1 / 1†: `1BE28` (timer ISR `0x1BDF4`, non-Ghidra); abs dword at `0x1BF5C` (`push 0x2d62c`) | — | ISR only | **host-owned** (proposed) | K9 | `inc dword [0x105D88]; ret`. `DS_00105D88` is read only at `0x1BFA4` (`0x1BEC4` init) and `0x32982` (`0x32970`, host-owned record §48-V, the run clock). `0x1BEC4` hands `0x2D62C` to `0x109A0` at `0x1BF5B` (`push 0x1000; push 0x2d62c`). |
+| `0x2EA74` | 4 | 5 / 18†: `2FA61`, `2FE2F` @`2FA40`P, `2FFF1`@`2FFC4`P; `2D00C`, `3074B`, `30B20`, `30B45`, `30E5E`, `31275`, `31290`, `313F5`, `324E1`, `32619`, `32E31`, `32F2D`, `33066`, `33242`, `33290` outside contiguous Ghidra extents | — | yes (service menu) | port | K5 | `xor eax,eax; mov eax,eax`, then falls into `0x2EA78`, so it is `config_screen_wait(0)`. The port treats it as a no-op (raw conflict, see Corrections). |
+| `0x32968` | 1 | 1 / 1: `20CC7`@`20C10`P | — | yes (`game_init`) | port | K2 | A bare `ret`. |
+| `0x29B70` | 1 | 4 / 4: `20E0B`@`20DF4`P, `2521A`, `25224`, `2522E` @`24C5C`P | — | yes | port | K2 | A bare `ret`: `game_frame` cases 1/2/0x20 and `0x20E0B`. The port inlines it as `break` with no `/* 0x29B70` header. |
 
 Totals: 34 functions, 10,445 bytes. Classes: 7 header-only (K1), 15 port
 (K2–K8c, K10, K11), 7 deferred and 5 host-owned proposed (K9, see §G).
@@ -368,6 +385,8 @@ K4 1, K5 1, K6 2, K7 1, K8c 1, K9 12, K10 1, K11 3.
 
 ## §G Classifications for the user (one-way scope decisions)
 
+**Task 3 must redo the raw caller scan for each row before writing any `tools/port_classification.txt` line.** Scan the fixed-up image for rel32 call/jmp/jcc sites and absolute-dword references. The evidence lines below carry the placeholder tag `record-§TBD-K9`, to be replaced by the derivation-record section that Task 3 writes.
+
 **For the controller to relay.** These are proposals. Each is closed only by a
 `tools/port_classification.txt` row plus a derivation-record row naming the
 port's replacement (plan Global Constraints). Until approved they stay in §B as
@@ -377,23 +396,23 @@ unported.
 
 | addr | evidence line (proposed) |
 |---|---|
-| `0x501A3` | Dirty-dword blit to the VGA aperture: `0x501B0 mov ebx,0xa0000`, and every store goes through EBX. Its callers `0x255CC`/`0x2EA78` present through `gfx_present` (aperture rule). |
-| `0x4FB98` | `int 10h` set-mode (`pushad; and eax,0xff; int 0x10; popad; ret`). SDL owns the window (`flow.c:6371`). |
-| `0x4FF8F` | Joystick A axis bits from `DS_000E1C1E..24`. Its only caller is the host-owned ISR sampler `0x1BBAC` (record §55-A). |
-| `0x4FFD8` | Joystick B axis bits from `DS_000E1C26..2C`. Its only caller is `0x1BBAC` (record §55-A). |
-| `0x2D62C` | ISR tick `inc dword [0x105D88]`. It is called only from the timer ISR `0x1BDF4` (`0x1BE28`). Its counter is read only by the `0x1BEC4` init (`0x1BFA4`) and the host-owned `0x32970` (`0x32982`, record §48-V). |
+| `0x501A3` | `record-§TBD-K9`: Dirty-dword blit to the VGA aperture: `0x501B0 mov ebx,0xa0000`, and every store goes through EBX. Its callers `0x255CC`/`0x2EA78` present through `gfx_present` (aperture rule). |
+| `0x4FB98` | `record-§TBD-K9`: `int 10h` set-mode (`pushad; and eax,0xff; int 0x10; popad; ret`). SDL owns the window (`flow.c:6371`). |
+| `0x4FF8F` | `record-§TBD-K9`: Joystick A axis bits from `DS_000E1C1E..24`. Every caller is in the ISR/game-port sampler region `0x1B908..0x1BDCE`. There are 8 raw sites. `0x1BD15`, `0x1BD2E`, `0x1BD3C` and `0x1BD8B` are in the host-owned ISR sampler `0x1BBAC` (reached through its jump table at `0x1BB74`, dispatched at `0x1BD06`). `0x1B976`, `0x1B9B6`, `0x1BA16` and `0x1BA96` are in the sampler routines `0x1B934..0x1BB73`. Those routines have no raw reference (no rel32 call/jmp/jcc into the range, no absolute dword equal to a routine start). Their only callees are the host-owned `0x1B610`/`0x1B6A0`/`0x1B730`/`0x1B7C0`/`0x1B890` (§50-C) and `0x4FF8F`/`0x4FFD8`, and they only store the key bitmap `[DS_00101514]+0x2D8/0x2D9`. |
+| `0x4FFD8` | `record-§TBD-K9`: Joystick B axis bits from `DS_000E1C26..2C`. Every caller is in the ISR/game-port sampler region `0x1B908..0x1BDCE`. There are 4 raw sites. `0x1BDA4` and `0x1BDC9` are in `0x1BBAC` (host-owned). `0x1BAD6` and `0x1BB36` are in the unreferenced sampler routines `0x1B934..0x1BB73` (same evidence as `0x4FF8F`). |
+| `0x2D62C` | `record-§TBD-K9`: ISR tick `inc dword [0x105D88]`. It is called only from the timer ISR `0x1BDF4` (`0x1BE28`). Its counter is read only by the `0x1BEC4` init (`0x1BFA4`) and the host-owned `0x32970` (`0x32982`, record §48-V). |
 
 **deferred (7)** (EEPROM/audit storage, the same layer as record §48-V/§49-Y.5)
 
 | addr | evidence line (proposed) |
 |---|---|
-| `0x2E180` | Audit add into the EEPROM-image counters. Its only caller is the deferred `0x2E934` (record §48-V). |
-| `0x2E0A4` | Counter-table halve plus dirty bit `DS_00105DD8`. Its only caller is `0x2E180`. |
-| `0x2E034` | Counter store plus dirty bit. Its only caller is `0x2E180`. |
-| `0x2DF8C` | High-score storage validate. Every effect goes through the deferred `0x2E990` (record §49-Y.5), the declared no-op `0x2D4EC` or the runtime `0x61A70`. |
-| `0x2D498` | Bounds-checked byte store into the EEPROM image `0x100CE4..0x1014DC`. Its only caller is `0x2D4EC`, a declared no-op (`config.c:58`). |
-| `0x32B94` | `0x2DAE4(0xE,1)` when AL bit 0 is set. Its only callee is the deferred `0x2DAE4` (record §48-V). |
-| `0x32BB0` | Two `0x2DAE4(0x1B+c,1)` audit adds. Its only callee is the deferred `0x2DAE4` (record §48-V). |
+| `0x2E180` | `record-§TBD-K9`: Audit add into the EEPROM-image counters. Its only caller is the deferred `0x2E934` (record §48-V), at the single raw site `0x2E983`. |
+| `0x2E0A4` | `record-§TBD-K9`: Counter-table halve plus dirty bit `DS_00105DD8`. Its only caller is `0x2E180`, at the single raw site `0x2E1EB`. |
+| `0x2E034` | `record-§TBD-K9`: Counter store plus dirty bit. Its only caller is `0x2E180`, at the single raw site `0x2E20B`. |
+| `0x2DF8C` | `record-§TBD-K9`: High-score storage validate. Every effect goes through the deferred `0x2E990` (record §49-Y.5), the declared no-op `0x2D4EC` or the runtime `0x61A70`. |
+| `0x2D498` | `record-§TBD-K9`: Bounds-checked byte store into the EEPROM image `0x100CE4..0x1014DC`. Its only caller is `0x2D4EC` (single raw site `0x2D612`), a declared no-op (`config.c:58`). |
+| `0x32B94` | `record-§TBD-K9`: `0x2DAE4(0xE,1)` when AL bit 0 is set. Its only callee is the deferred `0x2DAE4` (record §48-V). |
+| `0x32BB0` | `record-§TBD-K9`: Two `0x2DAE4(0x1B+c,1)` audit adds. Its only callee is the deferred `0x2DAE4` (record §48-V). |
 
 The cost if one of these is wrong: the function stays unported until its one
 classification row is reverted.
