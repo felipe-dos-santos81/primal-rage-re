@@ -342,6 +342,16 @@ void AIL_set_sample_loop_count(HSAMPLE sample, u32 count)
     sample->loop = count;
 }
 
+/* PORT: read-back of the volume 0x5dcc5 stored; the original keeps it in the
+ * driver's sample record. Exposed so a unit test can see which slots a volume
+ * push reached. */
+s32 AIL_sample_volume(HSAMPLE sample)
+{
+    if (sample == NULL || !sample->used)
+        return 0;
+    return sample->volume;
+}
+
 /* 0x5dd03 — spec audio.md "AIL surface" (row 20). */
 s32 AIL_sample_status(HSAMPLE sample)
 {

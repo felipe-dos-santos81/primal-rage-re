@@ -23473,6 +23473,109 @@ consecutive runs, ~1.8 s each. `make verify` results are in the branch report.
 
 
 
+## 50-D. Triage of the 0x1C000-0x1EB00 unported functions, plus `0x249F0` and `0x2C9B8` (branch `gap49-triage1c`)
+
+Letter check: no `50-D` existed in this record, PROGRESS.md or the source before this
+branch, so §50-D is the coordinator's letter as assigned. Every function in
+`tools/port_progress.py --unported` in `0x1C000-0x1EB00` (24 listed by the coordinator,
+plus `0x249F0` and `0x2C9B8`) was disassembled through the Ghidra bridge, its callers
+read with `get_xrefs_to`, and classified. The unported count went 715 -> 730 of 1203
+(15 functions counted; README not edited, per the brief).
+
+### 50-D.1 Classification
+
+PORTABLE = game logic or data-structure code (ported, or already ported under a
+non-standard header and now given the standard `/* 0xADDR — record §50-D` header).
+HOST = DOS/DPMI/BIOS/allocator glue the port replaces (not ported; the replacement is
+named). No function needed DEFERRED (spec §7) status itself; two sound functions keep
+their named gap (below).
+
+| Address | Size / callers | What it is (evidence) | Class | Port equivalent |
+|---|---|---|---|---|
+| `0x1C308` | 23 B / 20 | `and edx,-4`-style round-up of the size then `call 0x1E458(0x101524, flags, size)`: the allocator front end (callers `0x1B120` x13, `0x1D0BC`, `0x1E774`, `0x47370` x2, `0x1C884` x2) | HOST | `res_alloc` bump allocator (`res.c`, "PORT: replaces FUN_0001C308"); the string table's scratch at `STRING_DATA` |
+| `0x1C320` | 33 B / 1 | walks the heap block ring at `0x101524` comparing `[node+8]` to the pointer: find-block-by-data-pointer; sole caller `0x1C8CC` | HOST | none needed: flat `mem[]`, nothing is freed |
+| `0x1C884` | 71 B / 12 | `0` or `-1` -> 0; else `0x1C308(0x41)`, retry with flags 1, else `0x1D290(4)`: `malloc`-or-die. Callers: Watcom runtime `0x6345C` x6, `0x62770`, `0x63180`, `0x649B0`, `0x64490`, `0x64E52` (stdio/heap, >= `0x5D000`, 11 sites), and `0x1013C` (a stream-buffer allocation that calls the AIL buffer-size query `0x5DD2C`; audio) | HOST | host `malloc` for the runtime; `ail.c` owns the sample buffers |
+| `0x1C8CC` | 17 B / 21 | `0x1C320(ptr)` then `0x1E6D8`: `free`. Bridge lists 22 references: `0x6345C` x8, `0x63180`, `0x649B0`, `0x64490`, `0x63CE8` x9 (runtime, 20 sites), `0x1013C` and `0x10570` (the audio stream code) | HOST | none: no path frees |
+| `0x1E2A0` | 53 B / 1 | heap init: links 0xFF 0x18-byte block headers at `0x102910` (`0x17E8 / 0x18`), head `0x104110`, then `0x1C0F0`; caller `0x1BEC4` | HOST | `flow.c` game_init: "extended-memory block list (0x1E2A0/0x1C0F0) unused under flat mem[]" |
+| `0x1E2D8` | 36 B / 3 | pops a block header from the `0x104110` free list, `memset(0x18)` via `0x61A70`; callers `0x1C0F0` x3 | HOST | as `0x1E2A0` |
+| `0x1E62C` | 169 B / 1 | copies a header into a fresh one from the free list and splices it into the block ring; sole caller `0x1E30C` (DPMI heap, already triaged host-owned) | HOST | as `0x1E2A0` |
+| `0x1E6D8` | 131 B / 3 | frees a block: merges with a free previous/next neighbour (`[+0x14]` = 0) and returns the header to the free list; callers `0x47370` (`0x47389`: frees the previous string handle `DS_001082DC` before a reload), `0x1C8CC`, `0x1C2FC` (in no function) | HOST | as `0x1C8CC`; `game_string_table_load` reads the file straight into `STRING_DATA` |
+| `0x1E774` | 145 B / 1 | resize/allocate a block with the lock bit (`test bl,1`) and alloc arm `0x1C308`; sole caller `0x1B544` (the resource resolver's allocate arm, `0x1B5BD`) | HOST | `res_resolve` (`res.c`: "0x1B5A6's allocate arm (0x1E774) ... no port path") |
+| `0x1D0BC` | 243 B / 1 | one-shot (`DS_000A2CB0`) allocation of the music work buffer `0x5100` (`DS_001028D0`) and four sample buffers `0x8C00`/`0x6000` at `DS_00102870 + slot*0x18` through `0x1C308`; failure zeroes `DS_001028C0/C4/CC/C8` and prints via `0x62734`; sole caller `0x1BEC4` (`0x1C0B1`) | HOST | `ail.c` owns the sample state and the conversion buffer; `flow.c` game_audio_init documents "0x1D0BC ... not ported". The consequence is the named gap of `0x1CB18`'s sample copy into the slot buffer (spec §7) |
+| `0x1D290` | 44 B / 18 | `0x1BE30` teardown, print `DS_000A2CBC[code]` and `0xEF998`, `exit(code)` via `0x62003`: the fatal-error exit | HOST | `game_fatal` (`flow.c`): prints and `exit(1)` |
+| `0x1C470` | 143 B / 3 | palette dirty-list drain: `in 0x3DA` retrace spin, `out 0x3C8/0x3C9` | PORTABLE, ported | `gfx_flush_palette` (`gfx.c`); header added. Two raw quirks recorded as `TODO(verify)` there |
+| `0x1C3A0` | 47 B / 2 | sorted insert of a node by the layer word `[[node+4]+0xE]` (stable: stops at the first strictly greater layer) | PORTABLE, ported | `render_splice` (`render.c`); header added |
+| `0x1C3D0` | 42 B / 1 | unlink node `EDX` from the list at `EAX` and push it on the free list `DS_0010275C`; caller `0x2B150` (with `0x1C458`) | PORTABLE, ported | second half of `render_list_remove`; header added. `RENDER_FREE_HEAD` is `DS_0010275C`, so the address is the proof |
+| `0x1C3FC` | 89 B / 2 | list re-sort with a stack head node whose layer is 0, restarting at the first node after each splice | PORTABLE, ported | `render_list_sort`; header added (equivalence below) |
+| `0x1C528` | 190 B / 1 | byte-identical second copy of `0x14268` (65 instructions compared with jump targets made relative: equal); the loader glyph path `0x1C5E8` calls it at `0x1C60B` | PORTABLE, ported | `sprite_node_build`; header added in `sprite.c` |
+| `0x1E75C` | 23 B / 4 | lock: refuse if bit 0 of `[+0x15]` or `[+0xC]` is 0, else set bit 1 and return `[+8]` | PORTABLE, ported | `string_lock` (`flow.c`); header added |
+| `0x1E808` | 22 B / 4 | unlock: clear bit 1, then `[+0x10] = 0x500BB()` (a DPMI page-map query) | PORTABLE, ported | `string_unlock`; header added; the `0x500BB` store is a PORT omission already documented (nothing reads it) |
+| `0x1CAB8` | 95 B / 4 | music volume setter: store to `DS_000A2CB8` unless equal, push to the sequence over 500 ms when it plays | PORTABLE, ported now | `sound_music_volume`; `attract_config_volumes*` call it |
+| `0x1CED4` | 76 B / 3 | SFX volume setter: store to `DS_000A2CB4`, `0x5DCC5` on each playing slot | PORTABLE, ported now | `sound_sfx_volume`; same callers |
+| `0x1D1B0` | 111 B / 3 | music pause toggle | PORTABLE, ported now | `sound_music_pause_toggle` |
+| `0x1D220` | 24 B / 1 | sample pause toggle, tail-jumps to `0x1CD9C` | PORTABLE, ported now | `sound_sample_pause_toggle` |
+| `0x1D250` | 30 B / 2 | pause entry (music pause + stop samples) | PORTABLE, ported now | `sound_pause` |
+| `0x1D270` | 26 B / 3 | resume when `DS_001028D8 == 1` | PORTABLE, ported now | `sound_resume` |
+| `0x249F0` | 280 B / 3 | the ESC quit prompt (`0x24C5C`: `0x24DDF`, `0x24EAD`, `0x24EC5`); BIOS `int 16h` key read | PORTABLE, ported now | `game_quit_prompt`; the frame loop keeps `input_drain_esc` because its caller `0x24C5C` key dispatch is not ported |
+| `0x2C9B8` | 20 B / 2 | `eax < 0` (signed `jge`): `0x2C3FC(0)`, return `0x10000`; else 0. Callers `0x2F9CC` (`0x2FA23`, EAX = 0) and `0x30E68` (in no function) | PORTABLE, ported now | `config_voice_gate` (`attract.c`) |
+
+Already triaged host-owned by the coordinator and not re-examined: `0x1C0F0`, `0x1E30C`,
+`0x1E458` (DPMI heap), `0x1CB18` (`game_sample_play`), `0x1BBAC` (timer ISR sampler).
+`0x1EC38` and `0x1ECC8` also appear in the unported list but lie above `0x1EB00`; they
+were not part of this batch.
+
+### 50-D.2 Findings worth keeping
+
+- **The whole allocator cluster is one host-owned unit.** `0x1C308`/`0x1C884` (alloc),
+  `0x1C320`/`0x1C8CC` (find, free), `0x1E2A0`/`0x1E2D8`/`0x1E62C`/`0x1E6D8`/`0x1E774` (block
+  headers, split/merge, resize) and the three already-triaged `0x1C0F0`/`0x1E30C`/`0x1E458` form the
+  DPMI extended-memory heap. The heavily called `0x1C884` (12 callers) and `0x1C8CC`
+  (21) are not list helpers: 31 of their 34 call sites are Watcom `>= 0x5D000`
+  runtime (stdio and heap), and the other three (`0x1013C` twice, `0x10570`) are the audio
+  stream code. None is a game list or queue; the game's lists are the render list
+  (`0x1C3A0`/`0x1C3D0`/`0x1C3FC`, ported) and the actor lists. So nothing
+  here duplicates `effects_list_insert_before` or `actors.c`.
+- **`0x1C528` is a compiler duplicate of `0x14268`**, not a variant: the sequences are identical
+  after jump-target normalisation. `sprite_node_build` serves both; it does not store the
+  descriptor handle at `+0x24` (the original does, at `0x14287`), which no port reader needs.
+- **`0x1C3FC` restarts at the first node after each splice, the port continues.** The
+  raw keeps the head in a stack node; after `0x1C3A0` it reloads `[esp+0x20]` (the head as of
+  entry) and resumes from that node, rescanning the already sorted tail. The port
+  continues from the detached node's successor. The results are equal: the prefix from the
+  entry head onward is non-decreasing, so the rescan finds no further inversion, and the
+  splice rule (stop at the first strictly greater layer) is shared. The existing render tests
+  and all oracles stay unchanged.
+- **`0x1C470`'s clamp reads the flag word.** `0x1C48B..0x1C499` adds `[rec+4] + [rec+0xC]` (the
+  flag, not the count at `+8`), and the write loop is a do-while (`dec esi; jg`). The port
+  clamps with the count and skips a zero count. Recorded as `TODO(verify)` in `gfx.c`; not
+  changed, because both are on the oracle-covered boot path and the shipped records were not
+  enumerated.
+- **The quit prompt (`0x249F0`)** reads `int 16h` AH=0 (the Watcom wrapper's `dh` test at
+  `0x24A68..0x24A6F` sees `dh = 0`, so `dec dh` never yields zero and the `sub eax,eax`
+  never runs), upper-cases the ascii byte with `0x653ED` (signed compares, 'a'..'z'),
+  and compares it with the sign-extended first bytes of strings `0x1F0` and `0x1F1`.
+  Its AL = 1 yes arm resumes the sound, frees resources (`0x1B084`) and longjmps
+  (`0x65431`); the port ends the run through the flag `DS_000A81A8` instead (spec §7 idiom).
+  With AL = 0 the flag is the raw's own store.
+- **`0x2C9B8(0)` returns 0 and calls nothing**, which is the only value the
+  `0x2F9CC` master init passes; its negative arm calls the voice dispatcher with id 0, a
+  proven no-op (`0x2C401`).
+
+### 50-D.3 Verification
+
+`test_game.c` (`check_sound_pause_volume` in `test_flow`, `ch_check_quit_prompt` in
+`test_cfg_helpers`) seeds sentinels that differ from every post-condition. Mutations proved
+live: `0x1CED4` slot status `!= 4` -> `== 4` failed 7 assertions; `0x1D220` `== 1` ->
+`== 0` failed 12; the quit prompt's question ids swapped failed 5 (the centring word
+differs per string). One mutation did not fail and cannot: swapping the `hard_quit` yes arms
+of `game_quit_prompt` (both end with the quit flag set and the sound resumed by design, the
+PORT deviation above). `AIL_sample_volume` (ail.c) is a new read-back getter so the test
+can see which slots a volume push reached. The music arm of `0x1CAB8` (a playing
+sequence) is not asserted: the sequence handle is private to `flow.c` and no getter exists.
+`PR_ORACLE_REQUIRED=1 run_tests`: all checks passed, three consecutive runs, ~2.4 s each.
+`make verify` results are in the branch report.
+
+
 ## 49-X. The menu/text cluster `0x2EB80`-`0x30000` and `0x50146` (named-gap batch, branch `gap43-menutext`)
 
 ### 49-X.1 Dispositions

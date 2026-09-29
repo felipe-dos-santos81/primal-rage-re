@@ -137,6 +137,9 @@ void AIL_set_sample_rate(HSAMPLE sample, u32 rate);
  * clamped to 0..0x7f. */
 void AIL_set_sample_volume(HSAMPLE sample, s32 volume);
 
+/* PORT: the volume 0x5dcc5 last stored (0 for a NULL or unused handle). */
+s32 AIL_sample_volume(HSAMPLE sample);
+
 /* 0x5dce4 — spec audio.md "AIL surface" (row 19). Sets the loop count (the game
  * forces 0 = no loop; name inferred). */
 void AIL_set_sample_loop_count(HSAMPLE sample, u32 count);

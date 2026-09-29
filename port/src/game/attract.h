@@ -51,6 +51,10 @@ void attract_config_volumes(void);
  * reads -1), with no 0x2A scale. The character screens' setups call it. */
 void attract_config_volumes_unscaled(void);
 
+/* 0x2C9B8 (record §50-D). A negative argument runs the voice dispatcher with
+ * id 0 (a no-op) and returns 0x10000; otherwise 0. */
+u32 config_voice_gate(s32 v);
+
 /* 0x11000. The 13-phase attract sub-machine. DS_000F0A6F selects the phase
  * through the jump table at 0x10FCC (0 -> 0x1101F ... 0xC -> 0x11531); a value
  * > 0xC skips straight to the 0x11550 tail. Every phase falls through to that
