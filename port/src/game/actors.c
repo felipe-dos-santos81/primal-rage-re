@@ -162,6 +162,13 @@ static void actor_type_2d_update(void);
 static void actor_type_19_spawn(void);
 static void anim_code_37B54(u32 rec, u32 arg);
 static void anim_code_459D0(u32 rec, u32 arg);
+static void anim_code_3FF90(u32 rec, u32 arg);
+static void anim_code_3FEA8(u32 rec, u32 arg);
+static void anim_code_40034(u32 rec, u32 arg);
+static void anim_code_3FC08(u32 rec, u32 arg);
+static void anim_code_3FCB0(u32 rec, u32 arg);
+static void anim_code_3F77C(u32 rec, u32 arg);
+static void anim_code_40434(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -538,6 +545,20 @@ int actors_init(void)
     fn_register(0x21BE8u, (void (*)(void))fighter_21be8);
     fn_register(0x40554u, fighter_40554);
     fn_register(0x407ECu, fighter_407ec);
+    /* PORT: record §54-A. The animation-opcode targets of those pose streams,
+     * mode 0x4000: 0xD000 (opcode 0x10) 0x3FF90 (dwords at 0xE7F34/0xD4C6C)
+     * and 0x3FEA8 (0xE7FA0/0xD4CD8) in 0x3FF08's streams, 0xD500 (opcode
+     * 0x15) 0x40034 (0xE8024/0xD4D5C) at their end; 0xD100 (opcode 0x11)
+     * 0x3FC08 (0xE7D9C) in 0x3FB88's 0xE7D6E; 0xD100 0x3FCB0 (0xE7DDC) and
+     * 0xD500 0x3F77C (0xE7DF4) in 0x3F85C's 0xE7DC4; and 0xD000 0x40434
+     * (0xD4FFE, the stream 0xD4FF8), the confetti pool's starter. */
+    fn_register(0x3FF90u, (void (*)(void))anim_code_3FF90);
+    fn_register(0x3FEA8u, (void (*)(void))anim_code_3FEA8);
+    fn_register(0x40034u, (void (*)(void))anim_code_40034);
+    fn_register(0x3FC08u, (void (*)(void))anim_code_3FC08);
+    fn_register(0x3FCB0u, (void (*)(void))anim_code_3FCB0);
+    fn_register(0x3F77Cu, (void (*)(void))anim_code_3F77C);
+    fn_register(0x40434u, (void (*)(void))anim_code_40434);
     /* PORT: record §46-D. The update table's entries 1 (0x48F98, the type-0x2D
      * node walk; dword at 0xA8648) and 10 (0x28F08, the type-0x19 spawner;
      * dword at 0xA866C), fn() with the unread EAX index; and the 0xD000
@@ -1661,6 +1682,69 @@ static void anim_code_459D0(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_459d0(rec);
+}
+
+/* 0x3FF90 — the animation-opcode target shape (record §54-A; the 0xD000
+ * words at 0xE7F32/0xD4C6A, opcode 0x10). EDX is pushed at 0x3FF91 and
+ * zeroed at 0x3FF97 before any read, so this wrapper drops the operand. */
+static void anim_code_3FF90(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3ff90(rec);
+}
+
+/* 0x3FEA8 — the animation-opcode target shape (record §54-A; the 0xD000
+ * words at 0xE7F9E/0xD4CD6, opcode 0x10). EDX is pushed at 0x3FEA8 and zeroed
+ * at 0x3FEAC before any read. */
+static void anim_code_3FEA8(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3fea8(rec);
+}
+
+/* 0x40034 — the animation-opcode target shape (record §54-A; the 0xD500
+ * words at 0xE8022/0xD4D5A, opcode 0x15). EDX is pushed at 0x40036; DL is
+ * written at 0x40040 and EDX masked to it at 0x4004C before any read. */
+static void anim_code_40034(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_40034(rec);
+}
+
+/* 0x3FC08 — the animation-opcode target shape (record §54-A; the 0xD100
+ * word at 0xE7D9A, opcode 0x11). EDX is pushed at 0x3FC0A and written at
+ * 0x3FC29 before any read. */
+static void anim_code_3FC08(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3fc08(rec);
+}
+
+/* 0x3FCB0 — the animation-opcode target shape (record §54-A; the 0xD100
+ * word at 0xE7DDA, opcode 0x11). EDX is pushed at 0x3FCB2 and zeroed at
+ * 0x3FCEE before any read. */
+static void anim_code_3FCB0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3fcb0(rec);
+}
+
+/* 0x3F77C — the animation-opcode target shape (record §54-A; the 0xD500
+ * word at 0xE7DF2, opcode 0x15). EDX is pushed at 0x3F77E and written at
+ * 0x3F7A5 before any read. */
+static void anim_code_3F77C(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_3f77c(rec);
+}
+
+/* 0x40434 — the animation-opcode target shape (record §54-A; the 0xD000
+ * word at 0xD4FFC, opcode 0x10). EDX is pushed at 0x40436; DX is written at
+ * 0x4046D and EDX masked to it at 0x40476 before any read. */
+static void anim_code_40434(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_40434(rec);
 }
 
 /* PORT: TEST-ONLY, see actors.h. The opcode-8 draw is `on ? 0 : rng_next()`. */
