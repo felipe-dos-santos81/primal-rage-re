@@ -47,16 +47,17 @@ void fight_stance_pass(u32 side);
  * 0x3B298 calls it. */
 void fight_command_map(u32 side, u32 edx_arg, u32 override);
 
-/* 0x49C78. The scene/effects pass. Cycle 1 ports the pass structure, the list
- * walk and the eight direct RNG call sites with their gates; types 0/>0xE, 1..7,
- * 8's gate, 9..12 (record §42-D), 13/14's draws and the per-entry prelude
- * 0x4B69C (the trample, demo-pose record §29) are ported; the type-8 held body,
- * the case-13/14 bodies, the mode-9 block (the only reader of the frame locals
- * types 9 and 11 write) are a named gap (§7.4), though their helpers 0x496DC
- * and 0x4A928 are ported (record §49-Z) without a call site; the tail's
- * 0x4987C (DS_001088BF 1..4) is ported (record §43-A). When the effect list
- * at DS_0010884C is empty only the unconditional tail runs, which includes
- * 0x4A634's slot +0x42 bit 0/1 reset. */
+/* 0x49C78. The scene/effects pass: the list walk with its per-entry prelude
+ * (the side and entry counts, and 0x4B69C, the trample, demo-pose record
+ * §29), every type of the 0x49C2C jump table — 0/>0xE (0x4AAD0), 1..7, 8
+ * (record §42-C), 9..12 (record §42-D), and the case-13 and case-14 bodies
+ * (record §K13.1/§K13.2 of 2026-09-29-k13-fx74-derivations.md, calling
+ * 0x496DC and 0x4A868) — then the mode-9 block (record §K13.3, calling
+ * 0x4A928; the only reader of the frame locals) and the tail with 0x4987C
+ * (DS_001088BF 1..4, record §43-A). One named gap is left: the word a drawn
+ * round (DS_00104B16 == 2) reads in the mode-9 block (record §K13.3). When
+ * the effect list at DS_0010884C is empty only the mode-9 block and the tail
+ * run, which include 0x4A634's slot +0x42 bit 0/1 reset. */
 void fight_effects_pass(void);
 
 /* 0x4A708 — record §48-Y. Walks the effects list DS_0010884C (the same walk
@@ -237,7 +238,7 @@ void fight_char_team_pass(void);
  * descriptor (0xC9524), spawns the dust actor and fills the entry. It issues
  * three RNG draws per iteration (0x49388, rng(0x1800), rng(step)) over
  * slot+0x81 iterations — state 6's six intermediate draws. The entry's type-0
- * processing (0x4AAD0) is a named gap (§7.4); the spawned actor renders. */
+ * processing is 0x4AAD0 (fight_4aad0); the spawned actor renders. */
 void fight_dust_build(u32 side);
 /* 0x4CF20 — record §49-Z. 0x494A8's DS_00104AFA == 0x23 arm: the six-entry
  * dust builder (slot +0x81 = 6). EAX = side. */
@@ -247,8 +248,8 @@ void fight_4cf20(u32 side);
  * the case-13 body (0x4A32B, record §K13.1). */
 void fight_496dc(u32 entry, s32 count);
 /* 0x4A928 — record §49-Z. The mode-9 block's side survey: DS_001088C6..CA,
- * DS_00108858/5C/70/7C. The port has no call site (the mode-9 block is a
- * named gap, spec §7.4). */
+ * DS_00108858/5C/70/7C. Its one caller is the mode-9 block (0x4A562,
+ * record §K13.3). */
 void fight_4a928(void);
 
 /* 0x41350. The per-side character select state 6 calls for both players. It

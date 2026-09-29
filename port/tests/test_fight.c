@@ -37516,6 +37516,141 @@ static void check_k13_case14(void)
     mz_restore();
 }
 
+/* The mode-9 block (0x4A487..0x4A590) and the frame locals the walk feeds
+ * it: the per-side counts [ESP]/[ESP+2], the count [ESP+8], type 9's
+ * [ESP+0xC], case 14's [ESP+0x10], type 11's [ESP+0x14]/[ESP+0x18]. */
+static void check_k13_mode9(void)
+{
+    const u32 S = 0x7E03u;
+    static const u8 t1[4] = { 14u, 14u, 8u, 8u }, t2[4] = { 14u, 8u, 8u, 8u };
+    static const u8 s0[4] = { 0u, 0u, 0u, 0u }, s1[4] = { 1u, 1u, 1u, 1u };
+    static const u16 v0[4] = { 0u, 0u, 0u, 0u };
+    static const u8 t9[2] = { 9u, 8u }, t11[2] = { 11u, 8u }, t88[2] = { 8u, 8u };
+    static const u16 v11[2] = { 0x0080u, 0u };
+    u32 rv;
+    if (!mz_save()) { CHECK(0, "the §K13 snapshot allocates"); return; }
+
+#define K13_M9(list_n, types, sides, speeds) do {                       \
+        k13_base(0u, S);                                                \
+        k13_list((list_n), (types), (sides), (speeds));                 \
+        DSW(DS_00104B00) = 9u;                                          \
+        DSB(DS_0010780A) = 0x10u;                                       \
+        DSB(DS_0010789E) = 0x20u;                                       \
+        DSB(DS_001088C3) = 0;                                           \
+        DSW(DS_001088B0) = 0x1234u;                                     \
+        DSW(DS_001088B4) = 0x0100u;                                     \
+        DSB(DS_001088C6) = 0x55u;                                       \
+        DSB(DS_001088C9) = 0x55u;                                       \
+        DSD(DS_0010885C) = 0xA5A5A5A5u;                                 \
+        DSB(DS_00104B16) = 0;                                           \
+    } while (0)
+
+    /* A: side 0 has 4 entries, two of them type 14: 2 >= 4 - 2 opens the
+     * latch: DS_001088C3 = 1, DS_001088B0 = rng(0x14) + 0x78, then the
+     * countdown's -1. DS_001088C9 = (slot 0's +0x5A 0x10 < 0x78) = 1,
+     * DS_001088B4 = 0; no survey (0 idle != 4), no scatter. */
+    K13_M9(4u, t1, s0, v0);
+    rv = k13_draw(S, 0x14u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(DS_001088C3), 1);
+    CHECK_EQ_INT((int)DSW(DS_001088B0), (int)(rv + 0x77u));
+    CHECK_EQ_INT((int)DSB(DS_001088C9), 1);
+    CHECK_EQ_INT((int)DSW(DS_001088B4), 0);
+    CHECK_EQ_INT((int)DSB(DS_001088C6), 0x55);
+    CHECK_EQ_INT((int)DSD(DS_0010885C), (int)0xA5A5A5A5u);
+    CHECK_EQ_INT((int)DSB(Z_E(0) + 0x1Eu), 14);
+    CHECK_EQ_INT((int)DSB(Z_E(3) + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)mz_rng_after(S, 1u));
+    /* B: one type 14: 1 < 2 keeps it shut (no draw, no countdown). */
+    K13_M9(4u, t2, s0, v0);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(DS_001088C3), 0);
+    CHECK_EQ_INT((int)DSW(DS_001088B0), 0x1234);
+    CHECK_EQ_INT((int)DSW(DS_001088B4), 0);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)S);
+    /* C: the count is DS_00104B16's side: side 1 has none, 1 >= -2. */
+    K13_M9(4u, t2, s0, v0);
+    DSB(DS_00104B16) = 1u;
+    rv = k13_draw(S, 0x14u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(DS_001088C3), 1);
+    CHECK_EQ_INT((int)DSW(DS_001088B0), (int)(rv + 0x77u));
+    /* ... and the entries' own side: all on side 1 with DS_00104B16 = 1,
+     * B's shut case again. */
+    K13_M9(4u, t2, s1, v0);
+    DSB(DS_00104B16) = 1u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(DS_001088C3), 0);
+    /* D: latched with the countdown at 0: re-armed (voice 0xCB), then -1. */
+    K13_M9(4u, t2, s0, v0);
+    DSB(DS_001088C3) = 1u;
+    DSW(DS_001088B0) = 0;
+    rv = k13_draw(S, 0x14u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(DS_001088B0), (int)(rv + 0x77u));
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)mz_rng_after(S, 1u));
+    /* E: latched at 0x3C: -1 only (voice 0xDC), no draw. */
+    K13_M9(4u, t2, s0, v0);
+    DSB(DS_001088C3) = 1u;
+    DSW(DS_001088B0) = 0x3Cu;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(DS_001088B0), 0x3B);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)S);
+
+    /* F: every entry idle (one type 9, DS_001088B4 0 at its dispatch):
+     * DS_001088B4 = 1 and the survey 0x4A928 runs: side (C9 = 1)'s mean
+     * 0x1000 / 1 + 1, side 0 has none -> slot 1's record's term 0x3000 with
+     * DS_001088C8 = 1, DS_001088C6 = 0. */
+    K13_M9(1u, t9, s1, v0);
+    DSW(DS_001088B4) = 0;
+    DSB(DS_001088C8) = 0;
+    DSD(Z_PS(15) + 4u) = 0x3000u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSW(DS_001088B4), 1);
+    CHECK_EQ_INT((int)DSD(DS_0010885C), 0x1001);
+    CHECK_EQ_INT((int)DSD(DS_00108858), 0x3000);
+    CHECK_EQ_INT((int)DSB(DS_001088C6), 0);
+    CHECK_EQ_INT((int)DSB(DS_001088C8), 1);
+    CHECK_EQ_INT((int)DSB(Z_E(0) + 0x1Eu), 9);
+    /* One idle of two: no survey. */
+    K13_M9(2u, t9, s1, v0);
+    DSW(DS_001088B4) = 0;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(DS_001088C6), 0x55);
+    CHECK_EQ_INT((int)DSD(DS_0010885C), (int)0xA5A5A5A5u);
+
+    /* G: a type-11 walker that arrives ([ESP+0x14] = 1, [ESP+0x18] stays 1)
+     * scatters every entry to type 12. */
+    K13_M9(2u, t11, s1, v11);
+    DSD(Z_E(0) + 0x14u) = 0x1000u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(Z_A(0) + 0x08u), (int)K13_SI);
+    CHECK_EQ_INT((int)DSB(Z_E(0) + 0x1Eu), 12);
+    CHECK_EQ_INT((int)DSB(Z_E(1) + 0x1Eu), 12);
+    /* Still walking ([ESP+0x18] = 0): no scatter. */
+    K13_M9(2u, t11, s1, v11);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(Z_E(0) + 0x1Eu), 11);
+    CHECK_EQ_INT((int)DSB(Z_E(1) + 0x1Eu), 8);
+    /* No walker ([ESP+0x14] = 0): no scatter. */
+    K13_M9(2u, t88, s1, v0);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(Z_E(0) + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSB(Z_E(1) + 0x1Eu), 8);
+
+    /* H: outside mode 9 the block does not run (A's list in mode 3). */
+    K13_M9(4u, t1, s0, v0);
+    DSW(DS_00104B00) = 3u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(DS_001088C3), 0);
+    CHECK_EQ_INT((int)DSW(DS_001088B0), 0x1234);
+    CHECK_EQ_INT((int)DSW(DS_001088B4), 0x0100);
+    CHECK_EQ_INT((int)DSB(DS_001088C9), 0x55);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)S);
+#undef K13_M9
+    mz_restore();
+}
+
 /* The fixture of the fighter checks below: c3_seed's pair (slot 0 char 1,
  * slot 1 char 2, records r0/r1 on psets 1/2, +0x57 = 0x99/0x9A, +0x52 9,
  * +0x53 0x66, +0x5F 0x3C, DS_001077A8 wired) with the stream and the
@@ -39385,6 +39520,7 @@ int test_fight(void)
     check_49z_496dc();
     check_k13_case13();
     check_k13_case14();
+    check_k13_mode9();
     check_49z_45b50();
     check_49z_47a00();
     check_49z_47b04();

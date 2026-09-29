@@ -1385,8 +1385,8 @@ void fight_4cf20(u32 side)
  * draws THREE values — 0x49388's, rng(0x1800) (0x495DF) and rng(step)
  * (0x495FC). State 6's stream needs exactly those: the demo's slot+0x81 is 2,
  * so six draws land between the picks at 0x11AAD and 0x11AE9. The entry's
- * +0x1E type is 0, whose 0x49C78 handler (0x4AAD0) is the unported dust
- * behaviour (§7.4); the actor it spawns is an ordinary pool actor and renders. */
+ * +0x1E type is 0, whose 0x49C78 handler is 0x4AAD0 (fight_4aad0); the actor
+ * it spawns is an ordinary pool actor and renders. */
 void fight_dust_build(u32 side)
 {
     if (DSW(DS_00104AFA) == 0x23u) {                    /* 0x494B7..0x494C0 */
@@ -3046,8 +3046,8 @@ static s32 fight_4aa6c(s32 side)
  * direction DS_001088CA is 0 when the first mean is below the second, else 1;
  * a gap of 0x1400 or more (signed) puts DS_0010887C at the first mean moved
  * 0x1400 toward the second, else DS_00108870 at the second moved 0x1400 away
- * from the first. The only caller is the mode-9 block (0x4A562), a named gap
- * (spec §7.4); the port has no call site yet. */
+ * from the first. The only caller is the mode-9 block (0x4A562, record
+ * §K13.3 of 2026-09-29-k13-fx74-derivations.md). */
 void fight_4a928(void)
 {
     DSB(DS_001088C6) = 0;                               /* 0x4A92F */
@@ -4516,23 +4516,32 @@ void fight_4bf18(void)
 
 void fight_effects_pass(void)
 {
-    /* The raw's frame locals the worshipper types write: [ESP+0xC] (type 9's
-     * count, 0x4A128), [ESP+0x14] (type 11 sets it, 0x4A17A) and [ESP+0x18]
-     * (type 11 clears it, 0x4A1E2). Mode 9 initialises them (0x49C8E..0x49CA6:
-     * [ESP+0x18] = 1, [ESP+0x14] = 0, [ESP+0xC] = EDX with DX = 0); only the
-     * mode-9 block reads them (0x4A549 as a word, 0x4A567, 0x4A56E). */
-    /* PORT: outside mode 9 the raw leaves them unset; they start at 0 here, as
-     * nothing reads them there. [ESP+0xC]'s high word (the caller's EDX high
-     * half) is 0: the mode-9 block compares only AX. The prelude's per-side
-     * words [ESP]/[ESP+2], the count [ESP+8] and case 14's [ESP+0x10] stay with
-     * their named gaps. */
+    /* The raw's frame locals (record §K13.3): the per-side entry counts, the
+     * words [ESP]/[ESP+2] (zeroed on every call, 0x49CC1/0x49CBC); the entry
+     * count [ESP+8]; [ESP+0xC] (type 9's count, 0x4A128); case 14's count
+     * [ESP+0x10] (0x4A352); [ESP+0x14] (type 11 sets it, 0x4A17A) and
+     * [ESP+0x18] (type 11 clears it, 0x4A1E2). Mode 9 initialises the last
+     * five (0x49C8E..0x49CA6: [ESP+0x18] = 1, [ESP+0x14] = 0, [ESP+8] =
+     * [ESP+0x10] = 0, [ESP+0xC] = EDX with DX = 0); only the mode-9 block
+     * reads them (0x4A48E, 0x4A499, 0x4A538, 0x4A549, 0x4A567, 0x4A56E). */
+    /* PORT: outside mode 9 the raw leaves [ESP+8]..[ESP+0x18] unset; they
+     * start at 0 here, as nothing reads them there. [ESP+0xC]'s high word
+     * (the caller's EDX high half) is 0: the mode-9 block compares only AX
+     * (0x4A554 `cmp ax,bx`). loc_side[2] is the word [ESP+4], which this
+     * function never writes: only the mode-9 block reads it, with
+     * DS_00104B16 = 2 (a drawn round, flow.c 0x27DB3), and its value is the
+     * caller's stale stack word — a named gap (record §K13.3), 0 here. */
+    u16 loc_side[3] = { 0, 0, 0 };              /* [ESP], [ESP+2], [ESP+4] */
+    u32 loc_count = 0;                          /* [ESP+8] */
     u32 loc_idle = 0;                           /* [ESP+0xC] */
-    u32 loc_c14 = 0;                            /* [ESP+0x10] (case 14, record §K13.2) */
+    u32 loc_c14 = 0;                            /* [ESP+0x10] */
     u8 loc_walk = 0;                            /* [ESP+0x14] */
     u8 loc_still = 0;                           /* [ESP+0x18] */
     if (DSW(DS_00104B00) == 9u) {               /* 0x49C89 */
         loc_still = 1u;                         /* 0x49C94 */
         loc_walk = 0;                           /* 0x49C98 */
+        loc_count = 0;                          /* 0x49C9C */
+        loc_c14 = 0;                            /* 0x49CA2 */
         loc_idle = 0;                           /* 0x49CA6 */
     }
 
@@ -4545,10 +4554,20 @@ void fight_effects_pass(void)
                 u32 entry = head;
                 u32 next = DSD(entry);          /* 0x49CD3 */
                 u32 rec = DSD(entry + 8u);      /* 0x49CD8 */
-                /* PORT: 0x49CDD..0x49CF8. The per-side counters (the frame
-                 * locals only the mode-9 block reads) are a named gap (§7.4).
-                 * The `si` the prelude and the handlers index with is
-                 * (u16)(rec+0x48 - 0x20) (0x49CE1/0x49CF2). */
+                /* 0x49CDD..0x49CF8: the entry's side count and the entry
+                 * count (record §K13.3). The `si` the prelude and the
+                 * handlers index with is (u16)(rec+0x48 - 0x20)
+                 * (0x49CE1/0x49CF2). */
+                {
+                    u32 side = (u32)DSB(entry + 0x21u);             /* 0x49CD5 */
+                    /* PORT: the raw indexes [ESP + side*2] unbounded; every
+                     * +0x21 writer stores a side (record §K13.3). A byte
+                     * above 2 would alias the other frame locals (or the
+                     * caller's frame), which the port does not model. */
+                    if (side < 3u)
+                        loc_side[side] = (u16)(loc_side[side] + 1u);  /* 0x49CDD..0x49CEA */
+                    loc_count++;                                     /* 0x49CEE..0x49CF8 */
+                }
                 u32 index = (u32)(u16)((u32)DSB(rec + 0x48u) - 0x20u);
                 fight_4b69c(entry, index);      /* 0x49CFE */
 
@@ -4936,16 +4955,53 @@ void fight_effects_pass(void)
         }
     }
 
-    /* 0x4A476: the mode-9 block owns the 0x4A4C5/0x4A4F7 draws and the
-     * DS_001088B0/0x1088C9/0x1088B4 traffic. The demo runs mode 3 and gates the
-     * whole block out (0x4A481 `jne 0x4A591`), so those two sites are not
-     * issued in cycle 1. */
-    /* PORT: 0x4A487..0x4A58F (mode 9 only) — named gap (§7.4). It is the only
-     * reader of the three frame locals above. */
-    (void)loc_idle;
-    (void)loc_walk;
-    (void)loc_still;
-    (void)loc_c14;
+    /* 0x4A476..0x4A590 — record §K13.3: the mode-9 block (the demo runs mode
+     * 3 and skips it, 0x4A481 `jne 0x4A591`). Once case 14's count reaches
+     * the DS_00104B16 side's entry count less 2 (signed), the crowd voice
+     * latches (DS_001088C3 = 1) with the countdown DS_001088B0 = rng(0x14) +
+     * 0x78; latched, a zero countdown re-arms it; latched, it counts down.
+     * DS_001088C9 = slot 0's +0x5A < 0x78; DS_001088B4 = 1 with the survey
+     * 0x4A928 when every entry idles (type 9's count == the entry count, as
+     * words), else 0. A type-11 walker with none still moving scatters the
+     * whole list (type 12). */
+    if (DSW(DS_00104B00) == 9u) {                                   /* 0x4A476..0x4A481 */
+        {
+            u32 side = (u32)DSB(DS_00104B16);                        /* 0x4A489 */
+            /* PORT: [ESP + side*2] unbounded, as the prelude's (above). */
+            s32 lim = (s32)(side < 3u ? (u32)loc_side[side] : 0u) - 2; /* 0x4A48E..0x4A49E */
+            if ((s32)(u32)(u16)loc_c14 >= lim                        /* 0x4A499/0x4A4A1 `jl` */
+                    && DSB(DS_001088C3) == 0u) {                     /* 0x4A4A5 */
+                /* PORT: 0x4A4B5 0x2C3FC(0xCB) voice, not wired (record §45-A). */
+                DSB(DS_001088C3) = 1u;                               /* 0x4A4BF (BL = 1) */
+                DSW(DS_001088B0) = (u16)(rng_next(0x14u) + 0x78u);    /* 0x4A4BA..0x4A4CF */
+            }
+        }
+        if (DSB(DS_001088C3) != 0u && DSW(DS_001088B0) == 0u) {      /* 0x4A4D5..0x4A4E6 */
+            /* PORT: 0x4A4ED 0x2C3FC(0xCB) voice, not wired (record §45-A). */
+            DSW(DS_001088B0) = (u16)(rng_next(0x14u) + 0x78u);        /* 0x4A4F2..0x4A501 */
+        }
+        if (DSB(DS_001088C3) != 0u) {                                /* 0x4A507 */
+            u16 pre = DSW(DS_001088B0);                              /* 0x4A510 */
+            DSW(DS_001088B0) = (u16)(pre - 1u);                      /* 0x4A51B/0x4A51C */
+            if (pre == 0x3Cu) {                                      /* 0x4A522 */
+                /* PORT: 0x4A52C 0x2C3FC(0xDC) voice, not wired (record §45-A). */
+            }
+        }
+        DSB(DS_001088C9) = (u8)((u32)DSB(DS_0010780A) < 0x78u);     /* 0x4A531..0x4A544 */
+        DSW(DS_001088B4) = 0;                                        /* 0x4A54D */
+        if ((u16)loc_idle == (u16)loc_count) {                       /* 0x4A538/0x4A549..0x4A557 */
+            DSW(DS_001088B4) = 1u;                                   /* 0x4A559 */
+            fight_4a928();                                           /* 0x4A562 */
+        }
+        if (loc_still != 0u && loc_walk != 0u) {                     /* 0x4A567..0x4A573 */
+            u32 e = DSD(DS_0010884C);                                /* 0x4A575 */
+            while (e != DS_0010884C) {                               /* 0x4A57A/0x4A589 */
+                u32 nx = DSD(e);                                     /* 0x4A581 */
+                DSB(e + 0x1Eu) = 0x0Cu;                              /* 0x4A583 */
+                e = nx;                                              /* 0x4A587 */
+            }
+        }
+    }
 
     fight_4a634();                              /* 0x4A591 */
     DSB(DS_001088C2) = 0;                       /* 0x4A5A0 */
