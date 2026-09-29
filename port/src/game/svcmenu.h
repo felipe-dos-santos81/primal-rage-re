@@ -84,4 +84,39 @@ void svc_handicap_row(u32 value, s32 row);
  * and stores them in DS_00107468/DS_0010746C on Esc — 0x31138. */
 u32 svc_handicap(u32 entry);
 
+/* `value` in hex (the digits at 0x2EF10), right-aligned in `width` cells of
+ * `buf` with a NUL at buf[width]; high digits that do not fit are dropped and
+ * the cells left of the digits are ' ' when `space_pad` is non-zero, else
+ * '0'. Returns the digit count — 0x2EF48. */
+s32 text_hex_format(u32 value, u8 *buf, s32 width, u32 space_pad);
+/* text_hex_format into a 0x14-byte buffer drawn at (col, row) in `mode`
+ * (`pad` and `mode` are the two stack arguments) — 0x2F48C. */
+void text_hex_set(s32 col, s32 row, u32 value, s32 width, u32 pad, u32 mode);
+/* A 3x3 stick indicator of '+' (lit) and '.' cells two apart around (col,
+ * row); the direction bits of `bits` pick the lit cell — 0x314A0. */
+void svc_stick_draw(s32 col, s32 row, u32 bits);
+/* Releases the four button-name rows around (col, row) (string 0x22C from
+ * col - 8 and col + 2 on rows row + 8 and row + 0xC) — 0x319B0. */
+void svc_buttons_clear(s32 col, s32 row);
+/* Draws the four button keys of the key-config record `rec` (words +0xA.. for
+ * side 0, +0x1C.. for side 1) as "<name>" centred on col - 5 / col + 5, rows
+ * row + 8 / row + 0xC — 0x31A78. */
+void svc_buttons_draw(u32 side, u32 rec, s32 col, s32 row);
+/* Releases the four direction-name places of side 0 (centre column 0xA) or 1
+ * (0x1E) — 0x31B94. */
+void svc_dirs_clear(u32 side);
+/* Draws the four direction keys of `rec` (words +2.. for side 0, +0x14.. for
+ * side 1) around (0xA or 0x1E, 0xB): up and down wrapped across rows 8 and
+ * 0xE, left and right unwrapped down columns c - 3 and c + 3 — 0x31C78. */
+void svc_dirs_draw(u32 side, u32 rec);
+/* OPTIONS MENU "MODIFY CONTROLS": Left/Right pick a player, Up/Down cycle
+ * its device (0 KEYBOARD, 2 4 BUTTON JOYSTICK, 4 2 BUTTON JOYSTICK, 6
+ * KEYBOARD/JOYSTICK); Esc applies the key-config record; returns 0
+ * — 0x31F24. */
+u32 svc_modify_controls(u32 entry);
+/* OPTIONS MENU "TEST CONTROLS": shows the live pad sticks and buttons (and,
+ * with DS_00107410 bit 4, the diagnostic rows) until the latched Esc; returns
+ * 0 — 0x32358. */
+u32 svc_test_controls(u32 entry);
+
 #endif /* PRAGE_GAME_SVCMENU_H */
