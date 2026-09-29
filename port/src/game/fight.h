@@ -13,8 +13,11 @@
  * 0x3C5CC, 0x16D58 twice, the two position latches, 0x17FA0 twice, 0x17580,
  * 0x1958C, 0x19068, 0x17FA0 twice, 0x1975C, 0x17FA0 twice, 0x3CB68, 0x35658
  * twice, 0x49C78, 0x1282C, 0x12DA8. The six 0x17FA0 calls are not redundant.
- * The 0x1975C think step is fighter_think() (fighter.h); everything else is
- * ported here or is a named gap. */
+ * The 0x1975C think step is fighter_think() (fighter.h). Re-audited against
+ * the raw (record §3 of 2026-09-29-e-open-derivations.md): of the 315
+ * functions in 0x263F4's static call closure, every one is ported except 12
+ * host-owned/deferred rows of tools/port_classification.txt, all under
+ * res_resolve's (0x1B544) allocator/fatal/config-writer paths. */
 void fight_arena_frame(void);
 
 /* 0x35658. The per-side HUD/health pass. The arena frame calls it twice. Its
@@ -303,9 +306,11 @@ void fight_slot_pass(void);
 /* 0x33F08. The two-side health-bar pass, called by state 7 (0x11E94) and the
  * game_frame tail (0x25457). Per side it selects the character constant
  * (0x17EEC's table), writes the health sprite id into the secondary actor's
- * pset+8 from the slot+0x24 table, sets the pset+0x29 bit 0x40 from actor bit
+ * +8 from the slot+0x24 table, sets the pset+0x29 bit 0x40 from actor bit
  * 15, and advances the secondary actor's animation (0x2A408). The slot+0x24
- * table is a named gap (§7.9). */
+ * table is DS_000BDA8C[char], stored by the spawn core (0x33D5D): seven
+ * pointers to u16 tables indexed by s in [0, 0x4B0] (record §4 of
+ * 2026-09-29-e-open-derivations.md). */
 void fight_health_bars(void);
 
 /* 0x4CB18 (record §42-C). The launch of a worshipper entry: the 0xC9604[si]

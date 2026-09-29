@@ -2093,10 +2093,11 @@ static void fight_health_sync(u32 side)
               ? (s32)DSD(fighter + 0x18u) + 0x3000
               : (s32)DSD(fighter + 0x18u) - 0x3000;
         if (x < (s32)DSD(DS_000BE018) && x > -(s32)DSD(DS_000BE018)) {
-            /* PORT: 0x34BE8 0x36F10 (record §50-A) — the in-range arm. Still
-             * unreachable in practice: slot+0x42 bit 0x10 is set by no ported
-             * writer (0x36F10's own `| 0x820` is bits 5 and 11), so the gate
-             * cannot return 1 before this call has run. Named gap (§7.10). */
+            /* 0x34BE8 0x36F10 (record §50-A), the in-range arm. The gate's
+             * slot +0x42 bit 0x10 has one raw setter, 0x36E78's `or
+             * edx,0x101000` (0x36E9D/0x36EAF, fighter_36e78, ported), reached
+             * from 0x33B00 (0x33BE1) and 0x392A0 (0x3961E); so the arm is
+             * reachable (record §2 of 2026-09-29-e-open-derivations.md). */
             fighter_36f10(rec);                 /* 0x34BE8..0x34BEA */
         } else {
             DSB(rec + 0x43u) |= 0x40u;          /* 0x34BD1 */

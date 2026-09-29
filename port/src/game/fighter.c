@@ -3323,6 +3323,8 @@ void fighter_state_350d0(u32 side)
     }
 }
 
+#define FSET_104529  0x00104529u  /* the config byte 0x36F10 (0x36FCE) and 0x3531C (0x353CF) test for bit 1 */
+
 /* 0x3531C. The +0x53 dispatcher fight_hud_pass calls at 0x35803. Cases 0, 0xd
  * and >0xf run 0x350D0; 4 increments +0x56; 7 runs the +0x41 bit 7 / +0xC
  * callback and, for char 4 with a live +0x5F and +0x86 > 0x5A, 0x367DC; 8 runs
@@ -3335,9 +3337,12 @@ void fighter_state_3531c(u32 side)
     if ((s16)DSW(DS_001078F6) != 0) {                       /* 0x353A7 */
         DSW(DS_001078F6) = (u16)(DSW(DS_001078F6) - 1u);    /* 0x353AF */
         if ((s16)DSW(DS_001078F6) < 1) {
-            /* PORT: 0x353C0/0x353CA 0x2C3FC(0xEC/0xE0) and 0x353DD 0x2B150 are
-             * the voice/cutscene pair; 0x36F10 (their only writer of
-             * DS_001078F6) is unreachable, so this arm is inert. */
+            /* PORT: 0x353C0/0x353CA 0x2C3FC(0xEC/0xE0) voices, not wired
+             * (record §45-A). The arm is reachable: DS_001078F6's only writer
+             * 0x36F10 runs from 0x34BE8 once 0x36E78 has set the slot's +0x42
+             * bit 0x10 (record §2 of 2026-09-29-e-open-derivations.md). */
+            if ((DSB(FSET_104529) & 2u) != 0u)              /* 0x353CF */
+                actor_set_dead(DSD(DS_001078EC));           /* 0x353D8/0x353DD 0x2B150 */
             DSD(slot + 0x40u) |= 0x801000u;                 /* 0x353E2 */
         }
     }
@@ -11172,7 +11177,6 @@ void fighter_47b04(u32 slot, u32 rec, u32 side)
 #define FSET_C9238   0x000C9238u  /* 0x3701E: [char] 0x36F10's arm-B stream */
 #define FSET_E905A   0x000E905Au  /* 0x37092: 0x36F10's first stream */
 #define FSET_E908A   0x000E908Au  /* 0x370AF: 0x36F10's second stream */
-#define FSET_104529  0x00104529u  /* 0x36FCE: the config byte 0x36F10 tests for bit 1 */
 
 /* 0x3C12C — record §50-A. EAX = side, EDX = dx: dx is negated when the side's
  * pset is hflipped (0x1A570 non-zero), then 0x1883C(side, dx, 0) (EBX = 0).

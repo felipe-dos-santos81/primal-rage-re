@@ -536,10 +536,17 @@ static void unfreeze_seed_b(void)
  * 0x16DA4 sprite path) and DS_00100AF8[side] = DS_00100B54. The AE0 sentinel
  * distinguishes "0x170A0 ran" from "the gate or the guard returned", so the
  * B60/B61 gates and the 0x170C5/0x170E2 guard are pinned without a fitted
- * number. B54's value is the record's named gap §7.3, so the invariant
- * AF8 == B54 and B54 != 0 are asserted instead. The fixture: both actors use
- * sprite-table index 4 (0xA8B30[4]) resolved to a fake 8x8 sprite whose pixel
- * stream is eight all-on rows, so 0x16DA4 accumulates a non-zero overlap. */
+ * number. The fixture: both actors use sprite-table index 4 (0xA8B30[4])
+ * resolved to a fake 8x8 sprite whose pixel stream is eight all-on rows, so
+ * 0x16DA4 accumulates a non-zero overlap. B54's value (formerly the
+ * pose-freeze record's named gap §7.3) is pinned from the raw, record §5 of
+ * 2026-09-29-e-open-derivations.md: 0x15C30 clips the box (0,36,2,3) to
+ * height 7 (x3 = 9 at 0x15DA6, less 2 at 0x15E85's bottom), so B18 = 7 rows;
+ * each row's 0x25 merged bytes are all 0xFF (0x16F48 ANDs only the decoded
+ * width, and the prefilled 0xFF tails of 0x100BAE/0x100B64 survive), 8 bits
+ * each through the 0xA163C popcount table (0x17012), so the sum is
+ * 7 * 37 * 8 = 2072; (2072 << 12) / 0xF3D = 2175, (2175 << 12) / 0xD56 =
+ * 2609, / 16 = 163 (0x1703E..0x1706F). */
 static void check_unfreeze(void)
 {
     u8  s_b[0x9C];                              /* 0x100B64..0x100C00 */
@@ -649,6 +656,8 @@ static void check_unfreeze(void)
     CHECK(DSD(DS_00100AE0 + 4u) != 0xDEADBEEFu, "B61 gate: side 1 0x170A0 ran");
     CHECK_EQ_INT((int)DSD(DS_00100AE0 + 4u), 0xF3D);
     CHECK(DSD(DS_00100B54) != 0u, "0x16DA4 accumulated a non-zero B54");
+    CHECK_EQ_INT((int)DSD(DS_00100B18), 7);                  /* record §5 */
+    CHECK_EQ_INT((int)DSD(DS_00100B54), 163);                /* record §5 */
     CHECK_EQ_INT((int)DSD(DS_00100AF8), 0);
     CHECK_EQ_INT((int)DSD(DS_00100AF8 + 4u), (int)DSD(DS_00100B54));
 
@@ -663,6 +672,7 @@ static void check_unfreeze(void)
     CHECK_EQ_INT((int)DSD(DS_00100AE0 + 4u), (int)0xDEADBEEFu);   /* 0x176B8 */
     CHECK_EQ_INT((int)DSD(DS_00100AF8 + 4u), 0);
     CHECK_EQ_INT((int)DSD(DS_00100AF8), (int)DSD(DS_00100B54));
+    CHECK_EQ_INT((int)DSD(DS_00100B54), 163);                /* record §5 */
 
     /* D: both gates: both 0x170A0 calls run and AF8[0] == AF8[1] == B54. */
     DSB(DS_00100B60) = 1;
@@ -675,6 +685,7 @@ static void check_unfreeze(void)
     CHECK(DSD(DS_00100AE0 + 4u) != 0xDEADBEEFu, "both: side 1 0x170A0 ran");
     CHECK_EQ_INT((int)DSD(DS_00100AF8), (int)DSD(DS_00100B54));
     CHECK_EQ_INT((int)DSD(DS_00100AF8 + 4u), (int)DSD(DS_00100B54));
+    CHECK_EQ_INT((int)DSD(DS_00100B54), 163);                /* record §5 */
 
     /* E: the 0x170C5 guard. Other side 0's countdown is 2, so camera_decay
      * leaves 1 and side 1's 0x170A0 returns before writing AE0/AF8; side 0
@@ -729,6 +740,10 @@ static void check_unfreeze(void)
     camera_decay();
     CHECK(DSD(DS_00100B54) != 0u, "box_o==0: B54 accumulated");
     CHECK_EQ_INT((int)DSD(DS_00100AF8 + 4u), (int)DSD(DS_00100B54));
+    /* record §5: the sp_b arm's 0x181D0 (p1 7, p2 = the sprite height 8,
+     * p3 1) leaves the same 7 rows, so the same 163. */
+    CHECK_EQ_INT((int)DSD(DS_00100B18), 7);
+    CHECK_EQ_INT((int)DSD(DS_00100B54), 163);
 
     tf_put(s_b, DS_00100B64, sizeof s_b);
     tf_put(s_row0, 0x000FD160u, sizeof s_row0);
@@ -8780,6 +8795,57 @@ static void check_state_dispatch(void)
     CHECK_EQ_INT((int)DSB(p0 + 0x52u), 0x12);
     CHECK_EQ_INT((int)DSB(p0 + 0x41u) & 0x80, 0x80);
 
+    /* A2: the same gate with the fighter in range (x - 0x3000 = 0) takes the
+     * 0x34BE8 arm, 0x36F10 (record §2 of 2026-09-29-e-open-derivations.md:
+     * the bit's raw writer 0x36E78 is ported, so the arm is reachable). A
+     * second slot makes 0x36F10 pass its 0x36F38 gate; its record's +0x51 = 1
+     * equals DS_00104AD4, so it takes arm A: DS_001078F6 = 0x1A4 (0x36FB9),
+     * which 0x35803's 0x3531C counts down once in the same pass (0x353AF),
+     * the other record's +0x59 = 0xFF (0x36F5E) and slot +0x42 |= 0x20
+     * (0x36FD4). The out-of-range arm would set +0x43 bit 0x40 instead. Mode 3
+     * skips 0x3706F's two stream starts; config bit 1 is cleared so 0x36FE1
+     * spawns nothing. Sentinels differ from each post-value. */
+    {
+        u32 p1 = FIGHT_RECS + 0x100u, r1 = FIGHT_RECS + 0x300u;
+        u8 s_b13 = DSB(DS_00104B13), s_b14 = DSB(DS_00104B14);
+        u8 s_529 = DSB(0x00104529u);
+        u32 s_ad4 = DSD(DS_00104AD4);
+        u16 s_8f6 = DSW(DS_001078F6);
+        u8 s_8fd = DSB(DS_001078FD);
+        DSB(DS_00104B13) = 1u;
+        DSB(DS_00104B14) = 0u;
+        DSB(0x00104529u) = 0u;
+        DSD(DS_00104AD4) = 1u;
+        DSD(DS_001077A8 + 4u) = p1;
+        DSD(p1) = r1;
+        DSB(r1 + 0x51u) = 1u;
+        DSB(r1 + 0x59u) = 0x5Au;
+        DSB(p1 + 0x52u) = 0x33u;
+        DSB(p1 + 0x63u) = 0u;
+        DSW(DS_001078F6) = 0x7777u;
+        DSD(r0 + 0x18u) = 0x00003000u;      /* x - 0x3000 = 0: in range */
+        DSB(p0 + 0x42u) = 0x10u;
+        DSB(p0 + 0x41u) = 0;
+        DSB(p0 + 0x43u) = 0;
+        DSB(p0 + 0x52u) = 0;
+        DSB(p0 + 0x54u) = 0;
+        DSW(DS_001088E0) = 0;
+        fight_hud_pass(0u);
+        CHECK_EQ_INT((int)DSW(DS_001078F6), 0x01A3);
+        CHECK_EQ_INT((int)DSB(r1 + 0x59u), 0xFF);
+        CHECK_EQ_INT((int)DSB(p0 + 0x42u) & 0x20, 0x20);
+        CHECK_EQ_INT((int)DSB(p0 + 0x43u) & 0x40, 0);
+        DSD(DS_001077A8 + 4u) = 0;
+        DSB(DS_00104B13) = s_b13;
+        DSB(DS_00104B14) = s_b14;
+        DSB(0x00104529u) = s_529;
+        DSD(DS_00104AD4) = s_ad4;
+        DSW(DS_001078F6) = s_8f6;
+        DSB(DS_001078FD) = s_8fd;
+        mem_fill(p1, 0, 0x94u);
+        mem_fill(r1, 0, 0x100u);
+    }
+
     /* B: gate 0 (bit 0x10 clear), +0x52 = 0 -> the table -> 0x349C8, and a
      * 0x1000 command runs 0x35838 -> slot+0x52 = 0x0E. */
     DSB(p0 + 0x42u) = 0;
@@ -9173,6 +9239,44 @@ static void check_state_machine(void)
     fighter_state_3531c(0u);
     CHECK_EQ_INT((int)DSB(s0 + 0x56u), 0x12);
     CHECK_EQ_INT((int)DSB(s0 + 0x52u), 0x77);
+
+    /* B2: the DS_001078F6 countdown's expiry (0x353A7..0x353E2, record §2 of
+     * 2026-09-29-e-open-derivations.md). Its only writer 0x36F10 is reachable
+     * (0x36E78 sets the slot +0x42 bit 0x10 the 0x34BE8 gate reads), so the
+     * arm is live: 1 -> 0 retires the DS_001078EC actor through 0x2B150 when
+     * the config byte 0x104529 has bit 1 (0x353CF..0x353DD), then sets +0x40
+     * bits 0x801000 either way. Seeded bytes differ from the post-values. */
+    {
+        u8 s_529 = DSB(0x00104529u);
+        u32 s_8ec = DSD(DS_001078EC);
+        u32 k;
+        for (k = 0; k < 2u; k++) {
+            DSB(s0 + 0x53u) = 4;
+            DSD(s0 + 0x40u) = 0;
+            DSW(DS_001078F6) = 1u;
+            DSB(0x00104529u) = (k == 0u) ? 2u : 0xFDu;
+            DSD(DS_001078EC) = r1;
+            DSB(r1 + 0x28u) = 0;
+            DSW(r1 + 0x2Au) = 0;
+            DSD(actor_pset(r1) + 0x18u) = 0;
+            fighter_state_3531c(0u);
+            CHECK_EQ_INT((int)DSW(DS_001078F6), 0);
+            CHECK_EQ_INT((int)(DSD(s0 + 0x40u) & 0x801000u), 0x801000);
+            CHECK_EQ_INT((int)DSB(r1 + 0x28u) & 8, k == 0u ? 8 : 0);
+        }
+        /* 2 -> 1 does not expire: no retirement, no +0x40 bits. */
+        DSD(s0 + 0x40u) = 0;
+        DSW(DS_001078F6) = 2u;
+        DSB(0x00104529u) = 2u;
+        DSB(r1 + 0x28u) = 0;
+        fighter_state_3531c(0u);
+        CHECK_EQ_INT((int)DSW(DS_001078F6), 1);
+        CHECK_EQ_INT((int)DSD(s0 + 0x40u), 0);
+        CHECK_EQ_INT((int)DSB(r1 + 0x28u) & 8, 0);
+        DSW(DS_001078F6) = 0;
+        DSB(0x00104529u) = s_529;
+        DSD(DS_001078EC) = s_8ec;
+    }
 
     /* C1: +0x53 = 8 with slot+0x88 below the 0xBDBE8 = 3 gate and +0x5F < 0x18
      * calls the 0x3CF38 chain at 0x354BC; an armed hitbox resolves, so +0x7C
@@ -9722,9 +9826,15 @@ static void check_gap_handlers(void)
         DSD(DS_001014EC) = FIGHT_ACTORS;        /* actor_pset(act) = FIGHT_ACTORS */
         DSD(old + 4u) = 1;                      /* palette_release(old) drops it */
         DSD(FIGHT_ACTORS + 0x18u) = old;        /* pset+0x18 sentinel */
+        DSB(src + 0x42u) = 0;                   /* copied into the slot */
         fighter_state_33b00(0u, src, dst2);
         CHECK_EQ_INT((int)DSD(FIGHT_ACTORS + 0x18u), (int)old);
         CHECK_EQ_INT((int)DSD(old + 4u), 1);
+        /* Record §2 of 2026-09-29-e-open-derivations.md: 0x36E78's second
+         * branch is the raw's one setter of slot +0x42 bit 0x10 (0x36E9D
+         * `or edx,0x101000`, stored at 0x36EAF), the bit 0x34B6C's position
+         * gate 0x36E2C tests. The copied +0x42 was 0. */
+        CHECK_EQ_INT((int)DSB(DS_001077B0 + 0x42u) & 0x10, 0x10);
     }
 
     DSB(DS_000BDA3E) = s_max;
@@ -25806,6 +25916,58 @@ static void check_char6_entrance(void)
     }
     ce_restore();
 }
+
+/* 0x33F08's slot +0x24 table (record §4 of 2026-09-29-e-open-derivations.md,
+ * formerly the demo-fight record's named gap §7.9). The spawn core stores
+ * DS_000BDA8C[char] into slot +0x24 (0x33D56/0x33D5D); 0x33F08 indexes it
+ * with s = (actor word & 0x7FFF) - the character constant (0x33F39..0x33F8E,
+ * the 0x33EEC table), 2 bytes per s, s in [0, 0x4B0] (0x33FA0), and stores
+ * the word into the secondary record's +8 (0x33FB4..0x33FC4). Every value
+ * below is read from the fixed-up image: the seven table pointers, the
+ * constants and the words at s = 1 and s = 0x4B0 (the gate's last index,
+ * beyond some tables' own end, read as the raw reads it). */
+static void check_health_table(void)
+{
+    static const u32 tab[7] = { 0xE6638u, 0xE31A8u, 0xEC5B8u, 0xD1BD8u,
+                                0xEA088u, 0xD368Cu, 0xDFDF4u };
+    static const u16 cst[7] = { 0x0EE4u, 0x12A2u, 0x0BD4u, 0x16B5u,
+                                0x1F9Eu, 0x2F19u, 0x32D7u };
+    static const u16 w1[7] = { 0x1BEBu, 0x27E2u, 0x24F6u, 0x1964u,
+                               0x225Cu, 0x36EBu, 0x3A9Fu };
+    static const u16 w4b0[7] = { 0x000Eu, 0xFF20u, 0x0CAAu, 0xD500u,
+                                 0xDC00u, 0xB840u, 0xFF20u };
+    const u32 slot = DS_001077B0;
+    u32 ch;
+    ce_save();
+    for (ch = 0; ch < 7u; ch++) {
+        u32 rec, rec2, ps;
+        CHECK_EQ_INT((int)DSD(DS_000BDA8C + ch * 4u), (int)tab[ch]);
+        DSD(slot + 0x24u) = 0xDEADBEEFu;
+        rec = ce_seed(ch, 0u, 0, 0, 0x7C00u, 0u);
+        CHECK_EQ_INT((int)DSD(slot + 0x24u), (int)tab[ch]);   /* 0x33D5D */
+        DSD(DS_001077A8 + 4u) = 0u;                          /* side 1 inert */
+        DSB(slot + 0x41u) = 0u;
+        rec2 = DSD(slot + 4u);
+        ps = DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u;
+        DSW(rec2 + 0x28u) = (u16)(DSW(rec2 + 0x28u) | 0x0800u);  /* literal id */
+
+        DSW(ps) = (u16)(cst[ch] + 1u);                       /* s = 1 */
+        DSD(rec2 + 8u) = 0xDEADBEEFu;
+        fight_health_bars();
+        CHECK_EQ_INT((int)DSD(rec2 + 8u), (int)w1[ch]);
+
+        DSW(ps) = (u16)(cst[ch] + 0x4B0u);                   /* s = 0x4B0 */
+        DSD(rec2 + 8u) = 0xDEADBEEFu;
+        fight_health_bars();
+        CHECK_EQ_INT((int)DSD(rec2 + 8u), (int)w4b0[ch]);
+
+        DSW(ps) = (u16)(cst[ch] + 0x4B1u);                   /* s = 0x4B1 */
+        DSD(rec2 + 8u) = 0xDEADBEEFu;
+        fight_health_bars();
+        CHECK_EQ_INT((int)DSD(rec2 + 8u), 0x1E1);            /* 0x33FAB */
+    }
+    ce_restore();
+}
 #undef CE_10810D
 #undef CE_104B03
 #undef CE_DECOY
@@ -39315,6 +39477,7 @@ int test_fight(void)
     check_char4_entrance();
     check_char5_entrance();
     check_char6_entrance();
+    check_health_table();
     check_sc_char0();
     check_sc_char2();
     check_sc_char6();
