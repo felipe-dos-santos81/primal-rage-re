@@ -158,6 +158,152 @@ targets (`+0x3C` 0x2000 / 0x1000) and the mode word is 0x30, so
   `0x0100 → 0xFF00` alive, `0x0200 → 0` dead, mask `→ 0xFFFEFFFF`; state 3
   kept.
 
+## §D8 K8d: the animation-opcode setters
+
+Each is the dword after a `0xD100` word (opcode 0x11) in a character stream;
+none has a rel32 caller or another reference (§K8c.0). `anim_indirect`
+(`actors.c`) calls a registered target as `fn(rec, arg)`; each raw target
+takes EAX = the record and pushes/overwrites or ignores EDX, so the port's
+wrappers drop `arg`.
+
+| target | stream words (the `0xD100` word at − 2) | size | callees (all ported) |
+|---|---|---:|---|
+| `0x37EA0` | `0xD2BEA`, `0xD486C`, `0xE119C`, `0xE4566`, `0xE7932`, `0xEB1A6`, `0xED5AA` | 362 B | `0x2AE14`, `0x2B150`, `0x2BE5C`, `0x5D7DC` |
+| `0x24078` | `0xE5008` | 213 B | `0x2BC30`, `0x2C3FC` (×2), `0x2AE14`, `0x1A570` |
+| `0x45D58` | `0xEB894` | 44 B | — |
+
+### §D8.1 `0x37EA0`
+
+```
+37ea0: push ebx/ecx/edx/esi/edi ; sub esp,0x14 ; mov esi,eax
+37eaa: dl = [eax+0x51] ; al = [side*0x94 + 0x10782a] ; cmp al,6 ; ja 0x37ef1
+37ecd: jmp [eax*4 + 0x37e84]    ; {0x37EF1,0x37ED5,0x37EDC,0x37EE3,0x37EEA,0x37EF1,0x37ED5}
+       37ed5: 0x46BA  37edc: 0x46B8  37ee3: 0x46B6  37eea: 0x46B7  37ef1: 0x46B9
+37ef6: stack descriptor: [0] = id & 0xFFFF, [4] = [5] = 0 (AH), [6] = 0 (BX),
+       [8] = 0x2A00, [0xA] = 0x80, [0xC] = 0x1000, [0x10] = 0x0105FEBC
+37f38: edi = [0x1014ec] + (u16)[esi+0x56] * 0x20        ; the record's pset
+37f49: a5 = ([edi] & 0x8000) ? 0x4000 : 0
+37f62: a4 = [edi+8] ; a2 = [edi+4] ; a3 = (u16)[edi+0xe] ; call 0x2ae14
+37f78: new pset = [0x1014ec] + (u16)[new+0x56]*0x20 ; its +4/+8 = [edi+4]/[edi+8]
+37f95: new +0x18/+0x1c = rec's ; word +0x32 = rec's ; word +0x28 = rec's
+37fb1: new byte +0x29 |= 0x28 ; DS_001078D8 = new
+37fbf: call 0x2b150 (EAX = rec)                         ; the caller dies
+37fc6: [0x1078d8] byte +0x29 |= 0x10 ; call 0x2be5c (EAX = it)
+37fd4: call 0x5d7dc(0x10) ; word [[0x1078d8]+0x38] = r + 0x20
+37fed: DS_00104B0C = 1 ; AE9 |= 2 ; ret
+```
+
+Character → sprite: 0 `0x46B9`, 1 `0x46BA`, 2 `0x46B8`, 3 `0x46B6`, 4
+`0x46B7`, 5 `0x46B9`, 6 `0x46BA`, above 6 `0x46B9` (`ja`). `0x0105FEBC` is a
+constant (raw file bytes `bc fe 05 01` equal the image: no fixup), a resource
+handle `index << 23 | offset` (index 2, offset `0x5FEBC`), the same form as
+`0xA84FC`'s `0x0105FF3C` and record §31's `0x1F874610`. The descriptor word
+`+0xE` is never written (stack garbage) and never read by `0x2AE14` (the same
+note as `fight_char_team_tag_add`, record §48-S). The raw does not test the
+spawn's return (neither does the port). `DS_00104B0C` is read by `0x274FC`
+(mode 0xD, `0x27562`) and `0x296B8` (mode 0x32, `0x2971E`): arming it changes
+those modes' flow when the stream runs, which is why §R probes it.
+
+### §D8.2 `0x24078`
+
+```
+24078: push ebx/ecx/edx/esi ; mov esi,eax ; mov byte [eax+0x59],0xfd
+24082: al = [eax+0x51] ^ 1 ; ebx = [DS_001077A8 + al*4] ; test ; je 0x24148
+2409b: dl = [ebx+0x7a] ; eax = [ebx] ; edx = [0xa8424 + dl*4] ; push 3.0 ; call 0x2bc30
+240b3: call 0x2c3fc(0x6b) ; call 0x2c3fc((u16)[0xbe008 + [ebx+0x7a]*2])
+240d4: push 0 ; ecx = [ebx] ; eax = 0xa84fc ; edx = [ebx+0x2c]
+240e0: ecx = [ecx+0x30] ; ebx = 0x1000 ; sar ecx,0x10 ; call 0x2ae14 ; [0x104744] = eax
+240f5: al = [esi+0x51] ; call 0x1a570 ; nonzero: word +0x34 = 0xFF80, else 0x0080
+2411b: +0x36 = 0 ; DS_00104770 = 0 ; +0x44 = 0xA ; +0x59 = 0xFE ; AE9 |= 0x10
+```
+
+`0xA84FC` is fixed up (raw `fc 84 02 00`). `0xA8424[c]` is the other side's
+character stream table (`0xE798E, 0xE45C2, 0xED606, 0xD2C46, 0xEB202, 0xD48C8,
+0xE11F8`). The two voices follow `fighter.c`'s convention (record §45-A: the
+fighter-path `0x2C3FC` voices are not wired); `0x2C3FC` keeps EBX, which the
+raw reuses at `0x240BF`.
+
+### §D8.3 `0x45D58`
+
+```
+45d58: push ebx/edx ; xor eax,eax
+45d5c: add eax,8 ; xor dl,dl ; mov [eax+0x10817c],dl ; cmp eax,0x60 ; jne 45d5c
+45d6c: bl = [0x104aea] | 2 ; mov [0x1081ee],dl ; mov [0x104aea],bl ; ret
+```
+
+The twelve state bytes `0x108184 + 8i` (i = 0..11) and `DS_001081EE` become 0;
+`AEA |= 2`. EAX is not read.
+
+### §D8.4 Tests (`check_anim_setters`, `test_game.c`)
+
+The palette table (`DS_00107618`, 0x180 bytes), the fighter slots
+(`0x1077A0`, 0x160), `0x108180` (0x70) and `DS_001088E8` (4) are saved and
+restored around the function.
+
+- Registration: `fn_resolve(0x37EA0/0x24078/0x45D58)` is non-null.
+- `0x45D58`: `0x108180..0x1081EF` = 0x55 with the twelve state bytes 0x77 →
+  the twelve are 0, the `+0`/`+5` bytes and `0x1081E4` stay 0x55,
+  `DS_001081EE` 0x33 → 0, mask `0 → 0x00020000`.
+- `0x24078`, the other side's `DS_001077A8` entry 0: only the caller's
+  `+0x59 = 0xFD`; `DS_00104744`, the step byte and the mask are kept.
+- `0x24078` with the entry pointing at a scratch slot (record `orec`, char 3,
+  `+0x2C = 0x12340`, the record's `+0x30 = 0x00450000`), run twice with the
+  caller's pset word 0 bit 15 clear then set (slot 1's record is `orec`,
+  whose begin leaves bit 15 clear, so the other-side predicate is caught):
+  the spawn is `DS_00104744` = the list head, `+0x18 = 0x12340`, `+0x32 =
+  0x45`, `+0x1C = 0x1000`, `+0x34 = 0xFF80` then `0x0080`, `+0x36 = 0`,
+  `+0x44 = 0xA`, `+0x59 = 0xFE`, the caller's `+0x59 = 0xFD`, step 0, mask
+  `0x1000`; `orec` begins `0xA8424[3] = 0xD2C46` (asserted) at 3.0 (the
+  cursor equals a reference begun on it).
+- `0x37EA0`, side 1, char 3, the caller's pset word 0 `0x8123` (bit 15), pset
+  `+4 = 0x11111`, `+8 = 0x22222`, `+0xE = 0xD0`; record `+0x28 = 0x2102`,
+  `+0x32 = 0x1357`; `DS_000F0AF0 = 0x700000`, `DS_000F0AEC = 0x1000`; seed
+  0x4321. The spawn is `DS_001078D8` = the list head: pset word 0 `0xC6B6`,
+  pset `+4/+8` copied, layer `+0x49 = 0xD0`, the palette entry's handle
+  `0x0105FEBC`, `+0x32 = 0x1357`, `+0x28 = 0x02`, `+0x29 = 0x19` (`0x21 |
+  0x28 | 0x10`, then `0x2BE5C` clears 0x20), `+0x18` by `0x2BE5C`'s bit-12
+  arm (`pset+4 + ((s32)+0x44 >> 16) * 2 − 0x2A00`, not the `DS_000F0AF0`
+  form), `+0x1C = 0x1000 + 0x3BC0 − 0x22222 − ((s32)+0x30 >> 16)`, `+0x38 =
+  rng(0x10) + 0x20` (replayed), the caller's dead bit, `DS_00104B0C` 0x77 →
+  1, mask `0x200`.
+- `0x37EA0` for chars 0..7 with a5 = 0: pset word 0 = `0x46B9, 0x46BA,
+  0x46B8, 0x46B6, 0x46B7, 0x46B9, 0x46BA, 0x46B9`.
+
+## §C `0x4F944`'s clamp is signed
+
+```
+4f944: push ebx / push edx
+4f946: cmp eax,0x14 ; jle 0x4f950 ; mov eax,0x14
+4f950: ebx = 0x10 ; mov [0x1088f0],al (0x4F955) ; xor edx,edx
+4f95c: mov ah,[0x104ae9] ; mov [0x1088e8],dx (0x4F962) ; or ah,8 (0x4F969)
+4f96c: mov [0x1088ea],bx ; mov [0x104ae9],ah (0x4F973) ; pop ; ret
+```
+
+`jle` is a signed compare: a value at or below 0x14 as an s32 (every negative
+value included) is stored as is; the port's `v > 0x14u` clamped negatives to
+0x14. The raw callers pass 1 (`0x1467F`, `0x149EB`) or a round count >= 4
+(`0x39195`), so no shipped path passes a negative; the fix is for fidelity.
+The store addresses in the port's comments are corrected (`0x4F955`,
+`0x4F962`, `0x4F96C`, `0x4F969`/`0x4F973`). Test: `v = 0xFFFFFFFF` → the
+byte 0xFF (unsigned would give 0x14); `0x80000000` → 0x00; `0x15` → 0x14;
+`0x14` → 0x14; each with the countdown 0, the reload 0x10 and mask `0x800`.
+
+## §M Carried minors (Task 3e review)
+
+- `fighter.c`: `UPD11_ROUND_HI` duplicated `FIGHT_ROUND_HI` (both
+  `0x001088EA`); the entry-11 port now uses `FIGHT_ROUND_HI`.
+- `fighter_45d98` state 3: the raw adds in 32 bits (`0x45F43 add edx,ebx`,
+  wrapping) and tests the sign of the result (`test edx,edx; jg`); the port now
+  adds as `u32` and casts, removing the C signed-overflow case (the existing
+  §K8c.6 assertions cover it; two mutations of the compare fail them).
+- `fighter_29c20` already carries `/* 0x29C20 — record §K8c.2`; no change.
+- `test_game.c` `check_update_k8c` (d): entry 8 acquires char 0's palette into
+  the palette table `DS_00107618` and never released it; the table is now
+  saved before (d) and restored after it. No assertion changes.
+- The headers of entries 9, 12 and 17 (`fighter_3800c`, `fighter_24150`,
+  `fighter_45d98`) said "unported setter … the port never sets it"; they now
+  name the §D8 ports. `check_update_k8c`'s comment likewise.
+
 ## §R Reachability probe (not committed)
 
 A temporary `fprintf` (applied and reverted by a script; `git status` clean
@@ -185,3 +331,13 @@ the 8000-frame dump and the front-end dump are unchanged (report). Entries 8,
 9, 11, 12, 15, 16, 17 are live in real play; their correctness rests on the
 unit tests and the raw.
 
+## §N Named gaps left
+
+1. The voices of `0x24078` (`0x2C3FC(0x6B)`, `0x2C3FC(word[0xBE008 +
+   char*2])`) stay `PORT:` notes (record §45-A), like every fighter-path voice.
+2. `0x4A361` (case-14 gate) stays unwired until K13 ports the case-14 body
+   (Task 5b).
+3. Equivalent mutant: dropping `0x37EA0`'s copy of the pset `+8` (`0x37F8F`)
+   is unobservable, because the spawn's layer-mode `pset_write` (`0x2A820`)
+   already wrote pset `+8` = a4 = the same old pset `+8`. The copy is kept for
+   fidelity.

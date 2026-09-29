@@ -1015,4 +1015,16 @@ void fighter_4f890(void);
 void fighter_24150(void);
 void fighter_45d98(void);
 
+/* Record §D8 (2026-09-29-e-wire-k8b-k8d-derivations.md): the animation-opcode
+ * targets that arm entries 9, 12 and 17, each the dword after a 0xD100 word
+ * in a character stream; EAX = the record (0x45D58 reads none). actors.c
+ * registers their (rec, arg) wrappers. */
+void fighter_37ea0(u32 rec);
+void fighter_24078(u32 rec);
+void fighter_45d58(void);
+/* Record §C: 0x4F944, entry 11's arming: the count (clamped to 0x14 by a
+ * signed compare) into DS_001088F0, the countdown 0, the reload word 0x10,
+ * DS_00104AE9 |= 8. Callers 0x1467F, 0x149EB, 0x39195. */
+void fighter_4f944(u32 v);
+
 #endif /* PRAGE_GAME_FIGHTER_H */

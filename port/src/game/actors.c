@@ -169,6 +169,9 @@ static void anim_code_3FC08(u32 rec, u32 arg);
 static void anim_code_3FCB0(u32 rec, u32 arg);
 static void anim_code_3F77C(u32 rec, u32 arg);
 static void anim_code_40434(u32 rec, u32 arg);
+static void anim_code_37EA0(u32 rec, u32 arg);
+static void anim_code_24078(u32 rec, u32 arg);
+static void anim_code_45D58(u32 rec, u32 arg);
 
 /* PORT: validates the two pools res_load_index already allocated. The offsets
  * are pointer-valued mem[] offsets, so consume them as mem + DSD(...). */
@@ -661,6 +664,13 @@ int actors_init(void)
      * fn() with the unread EAX index. */
     fn_register(0x260BCu, flow_bonus_card_a_step);
     fn_register(0x26194u, flow_bonus_card_b_step);
+    /* PORT: record §D8. The 0xD100 targets (opcode 0x11) that arm update
+     * entries 9, 12 and 17: 0x37EA0 (the dwords at 0xD2BEA, 0xD486C,
+     * 0xE119C, 0xE4566, 0xE7932, 0xEB1A6, 0xED5AA), 0x24078 (0xE5008) and
+     * 0x45D58 (0xEB894). */
+    fn_register(0x37EA0u, (void (*)(void))anim_code_37EA0);
+    fn_register(0x24078u, (void (*)(void))anim_code_24078);
+    fn_register(0x45D58u, (void (*)(void))anim_code_45D58);
     return 1;
 }
 
@@ -1728,6 +1738,31 @@ static void anim_code_40034(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_40034(rec);
+}
+
+/* PORT: the animation-opcode target shape of 0x37EA0 (record §D8.1,
+ * fighter_37ea0): EAX = rec; EDX is pushed and overwritten before any read. */
+static void anim_code_37EA0(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_37ea0(rec);
+}
+
+/* PORT: the animation-opcode target shape of 0x24078 (record §D8.2,
+ * fighter_24078): EAX = rec; EDX is pushed and overwritten before any read. */
+static void anim_code_24078(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_24078(rec);
+}
+
+/* PORT: the animation-opcode target shape of 0x45D58 (record §D8.3,
+ * fighter_45d58): it reads neither EAX nor EDX. */
+static void anim_code_45D58(u32 rec, u32 arg)
+{
+    (void)rec;
+    (void)arg;
+    fighter_45d58();
 }
 
 /* 0x3FC08 — the animation-opcode target shape (record §54-A; the 0xD100

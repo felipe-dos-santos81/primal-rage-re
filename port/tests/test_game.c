@@ -1597,8 +1597,8 @@ static void check_card_ramp(void)
 
 /* Update-table entries 4, 8, 9, 11, 12 and 17 (record §K8c,
  * 2026-09-29-k8c-derivations.md). Each is driven directly with a seeded
- * mem[] (only entries 8 and 11 have a ported setter, and no no-input path
- * arms either, §K8c.0). Scratch records sit at 0x3E92000; the actor pool is
+ * mem[] (no no-input path arms any of them, §K8c.0; the setters of 9, 12
+ * and 17 are record §D8's, tested in check_anim_setters). Scratch records sit at 0x3E92000; the actor pool is
  * filled with 0xA5 before the reset so every spawned field is a real store.
  * Runs after actors_init, which registers the six entries. */
 #define K8C_SCR    0x3E92000u
@@ -1612,7 +1612,7 @@ static void check_update_k8c(void)
     void (*const k_fn[6])(void) = { fighter_37c8c, fighter_34648,
                                     fighter_3800c, fighter_4f890,
                                     fighter_24150, fighter_45d98 };
-    u8 s_slots[0x160], s_88e8[0x10], s_8180[0x70], s_5b34[2];
+    u8 s_slots[0x160], s_88e8[0x10], s_8180[0x70], s_5b34[2], s_pal[0x180];
     u32 s_ae8 = DSD(DS_00104AE8), s_dc = DSD(DS_000EF6DC), s_rng = DSD(DS_000EF6D8);
     u32 s_4744 = DSD(0x00104744u), s_ad4 = DSD(DS_00104AD4);
     u32 s_9384 = DSD(0x000C9384u), s_row7 = DSD(DS_000A8A98 + 7u * 4u);
@@ -1688,6 +1688,7 @@ static void check_update_k8c(void)
      * 0x29C20(char 7, flag) through 0x2A17C with word 0: pset +2 = 0x800 (the
      * record's +0x5F is set), and +0x18 changes only for a nonzero handle. */
     CHECK_EQ_INT((int)DSW(0x000BDBE4u), 1);
+    tf_snap(s_pal, DS_00107618, 0x180u);   /* (d) acquires a palette entry */
     rec = actor_alloc(0);
     CHECK(rec != 0u, "entry 8 fixture record");
     if (rec != 0u) {
@@ -1717,6 +1718,7 @@ static void check_update_k8c(void)
         CHECK_EQ_INT((int)DSW(pset + 2u), 0x0800);
         CHECK(DSD(pset + 0x18u) != 0u, "entry 8 applies the flagged handle");
     }
+    tf_put(s_pal, DS_00107618, 0x180u);    /* release (d)'s reference */
 
     /* (e) Entry 9, 0x3800C: the word +0x38 counts down while above 1
      * (signed); at or below 1 it becomes 0 and AE9 bit 0x02 is cleared. */
@@ -2163,6 +2165,226 @@ out:
 #undef BC_B1C
 #undef BC_SCR
 
+/* The animation-opcode setters 0x37EA0, 0x24078 and 0x45D58 (record §D8) and
+ * 0x4F944's signed clamp (record §C), 2026-09-29-e-wire-k8b-k8d-derivations.md.
+ * The setters are driven directly on pool records (no no-input path reaches
+ * their 0xD100 stream words, record §R); the palette table and the fighter
+ * slots are saved and restored around them. */
+#define AS_SCR    0x3E96000u
+#define AS_1078D8 0x001078D8u   /* no symbols.h name: 0x37EA0's spawned record */
+#define AS_104744 0x00104744u   /* no symbols.h name: 0x24078's spawned record */
+#define AS_104770 0x00104770u   /* no symbols.h name: entry 12's step byte */
+#define AS_1081EE 0x001081EEu   /* no symbols.h name: entry 17's done count */
+#define AS_1088EA 0x001088EAu   /* no symbols.h name: 0x4F944's reload word */
+static u32 as_rec(u8 side, u16 w0)
+{
+    u32 r = actor_alloc(0);
+    if (r != 0u) {
+        DSW(r + 0x56u) = (u16)actor_index(r);
+        DSW(r + 0x28u) = 0; DSW(r + 0x2Au) = 0;
+        DSB(r + 0x51u) = side;
+        DSW(actor_pset(r)) = w0;
+        DSD(actor_pset(r) + 0x18u) = 0;
+    }
+    return r;
+}
+static void check_anim_setters(void)
+{
+    static const u16 spr[8] = { 0x46B9u, 0x46BAu, 0x46B8u, 0x46B6u,
+                                0x46B7u, 0x46B9u, 0x46BAu, 0x46B9u };
+    u8 s_pal[0x180], s_slots[0x160], s_8180[0x70], s_88e8[4];
+    u32 s_ae8 = DSD(DS_00104AE8), s_rng = DSD(DS_000EF6D8);
+    u32 s_78d8 = DSD(AS_1078D8), s_4744 = DSD(AS_104744);
+    u32 s_aec = DSD(DS_000F0AEC), s_af0 = DSD(DS_000F0AF0);
+    u8 s_b0c = DSB(DS_00104B0C), s_4770 = DSB(AS_104770), s_88f0 = DSB(DS_001088F0);
+    u32 i, rec, nw, np, ref, r, orec;
+    tf_snap(s_pal, DS_00107618, 0x180u);
+    tf_snap(s_slots, 0x001077A0u, 0x160u);
+    tf_snap(s_8180, 0x00108180u, 0x70u);
+    tf_snap(s_88e8, DS_001088E8, 4u);
+
+    /* (a) Each target resolves (anim_indirect's fn_resolve). */
+    CHECK(fn_resolve(0x37EA0u) != NULL, "0x37EA0 is a registered anim target");
+    CHECK(fn_resolve(0x24078u) != NULL, "0x24078 is a registered anim target");
+    CHECK(fn_resolve(0x45D58u) != NULL, "0x45D58 is a registered anim target");
+
+    /* (b) 0x45D58: the twelve state bytes 0x108184 + 8i and DS_001081EE go
+     * to 0, the bytes between them are kept, AEA |= 2 (mask bit 17). */
+    memset(mem + 0x00108180u, 0x55, 0x70);
+    for (i = 0; i < 0x60u; i += 8u) DSB(0x00108184u + i) = 0x77u;
+    DSB(AS_1081EE) = 0x33u;
+    DSD(DS_00104AE8) = 0u;
+    fighter_45d58();
+    for (i = 0; i < 0x60u; i += 8u) {
+        CHECK_EQ_INT((int)DSB(0x00108184u + i), 0);
+        CHECK_EQ_INT((int)DSB(0x00108185u + i), 0x55);
+        CHECK_EQ_INT((int)DSB(0x00108180u + i), 0x55);
+    }
+    CHECK_EQ_INT((int)DSB(0x00108184u + 0x60u), 0x55);
+    CHECK_EQ_INT((int)DSB(AS_1081EE), 0);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), 0x00020000);
+
+    /* (c) 0x24078 with the other side's DS_001077A8 entry empty: only the
+     * caller's +0x59 = 0xFD. */
+    actors_reset();
+    rec = as_rec(0u, 0x0000u);
+    CHECK(rec != 0u, "0x24078 fixture record");
+    if (rec == 0u) goto out;
+    DSD(DS_001077B0) = rec;
+    DSD(DS_001077A8 + 4u) = 0u;
+    DSB(rec + 0x59u) = 0x11u;
+    DSD(AS_104744) = 0xDEADBEEFu;
+    DSB(AS_104770) = 0x77u;
+    DSD(DS_00104AE8) = 0u;
+    fighter_24078(rec);
+    CHECK_EQ_INT((int)DSB(rec + 0x59u), 0xFD);
+    CHECK_EQ_INT((int)DSD(AS_104744), (int)0xDEADBEEFu);
+    CHECK_EQ_INT((int)DSB(AS_104770), 0x77);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), 0);
+
+    /* (d) With it set (char 3, x 0x12340, its record's y 0x00450000): the
+     * other record begins 0xA8424[3] at 3.0; 0xA84FC spawns at (0x12340,
+     * a3 0x45 -> +0x32, the descriptor has no 0x2000 bit, a4 0x1000) into
+     * DS_00104744; +0x34 = 0xFF80 while the caller's side has bit 15 clear,
+     * 0x0080 otherwise; +0x36 = 0, +0x44 = 0xA, +0x59 = 0xFE, the step byte 0,
+     * AE9 |= 0x10 (mask bit 12). */
+    orec = as_rec(1u, 0x0000u);
+    ref = as_rec(1u, 0x0000u);
+    CHECK(orec != 0u && ref != 0u, "0x24078 other-side records");
+    if (orec == 0u || ref == 0u) goto out;
+    CHECK_EQ_INT((int)DSD(0x000A8424u + 3u * 4u), 0x000D2C46);
+    actors_anim_begin(ref, DSD(0x000A8424u + 3u * 4u), 0x40400000u);
+    DSD(AS_SCR) = orec;
+    DSB(AS_SCR + 0x7Au) = 3u;
+    DSD(AS_SCR + 0x2Cu) = 0x00012340u;
+    DSD(orec + 0x30u) = 0x00450000u;
+    DSD(orec + 0x08u) = 0x5A5A5A5Au;
+    DSD(DS_001077A8 + 4u) = AS_SCR;
+    /* The predicate 0x1A570 reads the caller's side (0). Slot 1's record is
+     * orec, whose begin leaves its pset word 0 with bit 15 clear, so reading
+     * side 1 instead would give 0xFF80 in the second pass. */
+    DSD(DS_001077B0 + 0x94u) = orec;
+    for (i = 0; i < 2u; i++) {
+        DSW(actor_pset(rec)) = i == 0u ? 0x0000u : 0x8000u;
+        DSB(rec + 0x59u) = 0x11u;
+        DSD(AS_104744) = 0xDEADBEEFu;
+        DSB(AS_104770) = 0x77u;
+        DSD(DS_00104AE8) = 0u;
+        fighter_24078(rec);
+        nw = DSD(AS_104744);
+        CHECK(nw != 0xDEADBEEFu && nw == actor_list_head(), "0x24078 stores its spawn");
+        if (nw != actor_list_head()) break;
+        CHECK_EQ_INT((int)DSD(nw + 0x18u), 0x12340);
+        CHECK_EQ_INT((int)DSW(nw + 0x32u), 0x45);
+        CHECK_EQ_INT((int)DSD(nw + 0x1Cu), 0x1000);
+        CHECK_EQ_INT((int)DSW(nw + 0x34u), i == 0u ? 0xFF80 : 0x0080);
+        CHECK_EQ_INT((int)DSW(nw + 0x36u), 0);
+        CHECK_EQ_INT((int)DSW(nw + 0x44u), 0x0A);
+        CHECK_EQ_INT((int)DSB(nw + 0x59u), 0xFE);
+        CHECK_EQ_INT((int)DSB(rec + 0x59u), 0xFD);
+        CHECK_EQ_INT((int)DSB(AS_104770), 0);
+        CHECK_EQ_INT((int)DSD(DS_00104AE8), 0x1000);
+        CHECK_EQ_INT((int)DSD(orec + 0x08u), (int)DSD(ref + 0x08u));
+        CHECK_EQ_INT((int)DSD(orec + 0x24u), 0x40400000);
+        DSD(orec + 0x08u) = 0x5A5A5A5Au;
+    }
+
+    /* (e) 0x37EA0 on side 1 (char 3 -> sprite 0x46B6) with its pset's
+     * word 0 bit 15 set (a5 = 0x4000, so the new pset word 0 = 0xC6B6): the
+     * spawned record DS_001078D8 takes the pset +4/+8, the words +0x32/+0x28
+     * (+0x29 | 0x28 | 0x10, then 0x2BE5C clears 0x20), the layer from pset
+     * +0xE, the handle 0x0105FEBC; the caller dies; 0x2BE5C's bit-12 arm
+     * sets +0x18 from pset +4; +0x38 = rng(0x10) + 0x20; DS_00104B0C = 1 and
+     * AE9 |= 2 (mask bit 9). */
+    actors_reset();
+    DSB(DS_0010782A + 0x94u) = 3u;
+    DSD(DS_000F0AF0) = 0x00700000u;
+    DSD(DS_000F0AEC) = 0x00001000u;
+    rec = as_rec(1u, 0x8123u);
+    CHECK(rec != 0u, "0x37EA0 fixture record");
+    if (rec == 0u) goto out;
+    np = actor_pset(rec);
+    DSD(np + 4u) = 0x00011111u; DSD(np + 8u) = 0x00022222u;
+    DSW(np + 0x0Eu) = 0x00D0u;
+    DSD(rec + 0x18u) = 0x00123456u; DSD(rec + 0x1Cu) = 0x00654321u;
+    DSW(rec + 0x32u) = 0x1357u;
+    DSW(rec + 0x28u) = 0x2102u;
+    DSD(AS_1078D8) = 0xDEADBEEFu;
+    DSB(DS_00104B0C) = 0x77u;
+    DSD(DS_00104AE8) = 0u;
+    rng_seed(0x4321u);
+    r = rng_next(0x10u);
+    rng_seed(0x4321u);
+    fighter_37ea0(rec);
+    nw = DSD(AS_1078D8);
+    CHECK(nw != 0xDEADBEEFu && nw == actor_list_head(), "0x37EA0 stores its spawn");
+    if (nw != actor_list_head()) goto out;
+    np = actor_pset(nw);
+    CHECK_EQ_INT((int)DSW(np), 0xC6B6);
+    CHECK_EQ_INT((int)DSD(np + 4u), 0x11111);
+    CHECK_EQ_INT((int)DSD(np + 8u), 0x22222);
+    CHECK_EQ_INT((int)DSB(nw + 0x49u), 0xD0);
+    CHECK(DSD(np + 0x18u) != 0u && DSD(DSD(np + 0x18u)) == 0x0105FEBCu,
+          "0x37EA0's spawn holds the handle 0x0105FEBC");
+    CHECK_EQ_INT((int)DSW(nw + 0x32u), 0x1357);
+    CHECK_EQ_INT((int)DSB(nw + 0x28u), 0x02);
+    CHECK_EQ_INT((int)DSB(nw + 0x29u), 0x19);
+    CHECK_EQ_INT((int)DSD(nw + 0x18u),
+                 (int)(0x11111u + (u32)((s32)DSD(nw + 0x44u) >> 16) * 2u - 0x2A00u));
+    CHECK_EQ_INT((int)DSD(nw + 0x1Cu),
+                 (int)(0x1000u + 0x3BC0u - 0x22222u - (u32)((s32)DSD(nw + 0x30u) >> 16)));
+    CHECK_EQ_INT((int)DSW(nw + 0x38u), (int)(r + 0x20u));
+    CHECK_EQ_INT((int)(DSB(rec + 0x28u) & 8u), 8);
+    CHECK_EQ_INT((int)DSB(DS_00104B0C), 1);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), 0x200);
+
+    /* (f) The character's sprite through the seven-way table (0x37E84;
+     * above 6 takes the `ja` arm, 0x46B9), a5 = 0: word 0 is the sprite. */
+    for (i = 0; i < 8u; i++) {
+        actors_reset();
+        DSB(DS_0010782A) = (u8)i;
+        rec = as_rec(0u, 0x0123u);
+        if (rec == 0u) break;
+        fighter_37ea0(rec);
+        nw = DSD(AS_1078D8);
+        CHECK_EQ_INT((int)DSW(actor_pset(nw)), (int)spr[i]);
+    }
+
+    /* (g) Record §C, 0x4F944: `cmp eax,0x14; jle` is signed. */
+    {
+        static const u32 v[4] = { 0xFFFFFFFFu, 0x80000000u, 0x15u, 0x14u };
+        static const int want[4] = { 0xFF, 0x00, 0x14, 0x14 };
+        for (i = 0; i < 4u; i++) {
+            DSB(DS_001088F0) = 0x77u;
+            DSW(DS_001088E8) = 0x7777u;
+            DSW(AS_1088EA) = 0x7777u;
+            DSD(DS_00104AE8) = 0u;
+            fighter_4f944(v[i]);
+            CHECK_EQ_INT((int)DSB(DS_001088F0), want[i]);
+            CHECK_EQ_INT((int)DSW(DS_001088E8), 0);
+            CHECK_EQ_INT((int)DSW(AS_1088EA), 0x10);
+            CHECK_EQ_INT((int)DSD(DS_00104AE8), 0x800);
+        }
+    }
+
+out:
+    tf_put(s_pal, DS_00107618, 0x180u);
+    tf_put(s_slots, 0x001077A0u, 0x160u);
+    tf_put(s_8180, 0x00108180u, 0x70u);
+    tf_put(s_88e8, DS_001088E8, 4u);
+    DSD(DS_00104AE8) = s_ae8; DSD(DS_000EF6D8) = s_rng;
+    DSD(AS_1078D8) = s_78d8; DSD(AS_104744) = s_4744;
+    DSD(DS_000F0AEC) = s_aec; DSD(DS_000F0AF0) = s_af0;
+    DSB(DS_00104B0C) = s_b0c; DSB(AS_104770) = s_4770; DSB(DS_001088F0) = s_88f0;
+    actors_reset();
+}
+#undef AS_SCR
+#undef AS_1078D8
+#undef AS_104744
+#undef AS_104770
+#undef AS_1081EE
+#undef AS_1088EA
+
 int test_actors(void)
 {
     int before = g_failures;
@@ -2183,6 +2405,7 @@ int test_actors(void)
     check_card_ramp();
     check_update_k8c();
     check_bonus_cards();
+    check_anim_setters();
 
     /* A fresh reset frees every record and leaves both lists empty. It also
      * runs 0x4F228 with EAX = 0 (0x2BBC0/0x2BBC4): the projection gate

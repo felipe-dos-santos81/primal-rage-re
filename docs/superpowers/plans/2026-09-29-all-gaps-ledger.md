@@ -132,7 +132,7 @@ them.
 | `0x4FF8F` | 73 | 4 / 8†: `1BD15`, `1BD2E`, `1BD3C`, `1BD8B` @`1BBAC`H; `1B976`, `1B9B6`, `1BA16`, `1BA96` in the unreferenced sampler routines `0x1B934..0x1BB73` | — | no | **closed: host-owned**, §K9.3 | K9 | Joystick A axis bits from `DS_000E1C1E/20/22/24`, ±0x1E. Every caller is in the host-owned sampler region `0x1B908..0x1BDCE` (see §G). |
 | `0x4FFD8` | 73 | 2 / 4†: `1BDA4`, `1BDC9` @`1BBAC`H; `1BAD6`, `1BB36` in the unreferenced sampler routines `0x1B934..0x1BB73` | — | no | **closed: host-owned**, §K9.4 | K9 | Joystick B axis bits from `DS_000E1C26/28/2A/2C`. Callers as for `0x4FF8F` (see §G). |
 | `0x4A868` | 63 | 6 / 6: `4A361`@`49C78`P, `4BFDE`@`4BF18`P, `4DF8E`, `4DFFA`, `4E066`, `4E0D0` @`4DEF4`P | `2BE00`P | yes (case-13/14 bodies, `0x4DEF4` states 1..4) | **closed**: `fight_4a868`, §K4 (5 of 6 sites wired; `0x4A361` waits for K13) | K4 | Proximity gate `\|0x2BE00(rec) - entry+0x14\| <= 2*\|(rec+0x32)>>16\|`. Its absence is the named gap at `fight.c:4910`, `fight.h:75`. |
-| `0x29C20` | 59 | 1 / 1†: `346B5` (update-table entry 8 `0x34648`, non-Ghidra) | — | via update entry 8 only | **closed: ported** (Task 3e, §K8c.2, `fighter_29c20`) | K8c | Reads `0xA8A98[i]` by `DS_00105B34[DS_001078FF]`. The raw `call` at `0x346B5` sits inside update-table entry 8, `0x34648` (non-Ghidra, unregistered). |
+| `0x29C20` | 59 | 1 / 1†: `346B5` (update-table entry 8 `0x34648`, non-Ghidra) | — | via update entry 8 only | **closed: ported** (Task 3e, §K8c.2, `fighter_29c20`) | K8c | Reads `0xA8A98[i]` by `DS_00105B34[DS_001078FF]`. The raw `call` at `0x346B5` sits inside update-table entry 8, `0x34648` (non-Ghidra; registered in Task 3e as `fighter_34648`). |
 | `0x38990` | 52 | 2 / 2: `24CC3`, `24CC8` @`24C5C`P | — | **yes, every frame** | **closed**: `render_scroll_track`, §K3 | K3 | `DS_00107A3C = word[0xF0AEC] & 0xFFC0`, `DS_00107A4A = dword[0xF0AEC]/64 + DS_00107A4E`. `game_frame` calls it at `0x24CC8`, and also at `0x24CC3` when `DS_00104B26 != 0`. `flow.c:6784` says "deferred". |
 | `0x3BDB0` | 43 | 1 / 1: `3B27F`@`3B134`P | `33950`P | yes | **closed**: header, §K1.2 | K1 | Body is `fight_attack_ready` (`fight.c:1987`), header `/* ---- 0x3BDB0`. |
 | `0x32BB0` | 41 | 1 / 1: `27E28`@`27DC8`P | `2DAE4`D | yes, inert | **closed: deferred**, §K9.12 | K9 | Two `0x2DAE4(0x1B+c, 1)` audit adds (`0x32BC0`, `0x32BD2`). Its only callee is deferred (record §48-V). |
@@ -156,6 +156,13 @@ The 7 K1 rows carry one standard header each (3 of them split). All 12 K9
 proposals were re-scanned against the raw and are supported; each has a
 `tools/port_classification.txt` row. `port_progress.py`: `752 1203 63` /
 `716 731 98`. The 15 remaining non-runtime rows are K2–K8c, K10 and K11.
+
+**Task 5a (2026-09-29).** Record `2026-09-29-e-wire-k8b-k8d-derivations.md`. §E-3 wired (`0x2965F`, §W); K8b
+entries 15/16 ported and registered (§B8); the K8d anim setters `0x37EA0`/
+`0x24078`/`0x45D58` ported and registered (§D8), so entries 9/12/17 can now be
+armed; `0x4F944`'s clamp is signed (§C). None is reached on a no-input path (probe,
+§R); oracle lines, the 8000-frame and the front-end dumps are unchanged. All five
+new addresses are non-Ghidra: `port_progress.py` stays `762 1203 63` / `726 731 99`.
 
 **Task 3e (2026-09-29).** K8c is closed (record `2026-09-29-k8c-derivations.md`).
 Update entries 4, 8, 9, 11, 12 and 17 and `0x29C20` are ported and registered
@@ -195,12 +202,12 @@ entries 3 and 18..29 are `0x5D812`). Unregistered entries are skipped silently.
 | 4 | `AE8` 0x10 | `0x37C8C` | **yes** (Task 3e, §K8c.1: `fighter_37c8c`) | **Dead.** No store in the image sets `AE8` 0x10 (every whole-mask store writes 0) and `DS_001078E0` has no writer. Cleared by itself at `0x37C9E`. |
 | **6** | `AE8` 0x40 | **`0x25FAC`** | **yes** (Task 3c, §K8a: `flow_card_ramp_step`) | **Live.** Set by the ported `game_mode_05_step` (`0x25E1D`, `flow.c:2277`), `game_mode_30_step` (`0x294C9`, `flow.c:2398`) and `game_mode_23_step` (`0x26B2C`, `flow.c:5471`). It is skipped with no comment. |
 | 8 | `AE9` 0x01 | `0x34648` (+ `0x29C20`) | **yes** (Task 3e, §K8c.2: `fighter_34648`, `fighter_29c20`) | Set by the ported stun start `0x34168` (`0x3426E`, `fighter_34168`). Cleared by ported `0x34038` (`0x340B0`) and `0x36E78` (`0x36F05`). Not armed on the no-input paths (probe, §K8c.0). |
-| 9 | `AE9` 0x02 | `0x3800C` | **yes** (Task 3e, §K8c.3: `fighter_3800c`) | Set only by the **unported** animation target `0x37EA0` (`0x37FFC`; `0xD100` words in the 7 character streams). Never armed in the port (named gap §K8c.7). |
+| 9 | `AE9` 0x02 | `0x3800C` | **yes** (Task 3e, §K8c.3: `fighter_3800c`) | Set only by the animation target `0x37EA0` (`0x37FFC`; `0xD100` words in the 7 character streams), **ported and registered in Task 5a** (record §D8.1, `fighter_37ea0`). Not reached on the no-input paths (probe, §R). |
 | 11 | `AE9` 0x08 | `0x4F890` | **yes** (Task 3e, §K8c.4: `fighter_4f890`) | **Correction:** set by the ported `0x4F944` (`or ah,8` `0x4F969`, store `0x4F973`), called by `fighter_1461c`, `fighter_14988`, `fighter_39040`. Not armed on the no-input paths (probe, §K8c.0). |
-| 12 | `AE9` 0x10 | `0x24150` | **yes** (Task 3e, §K8c.5: `fighter_24150`) | Set only by the **unported** animation target `0x24078` (`0x24142`; the `0xD100` word at `0xE5006`). Never armed in the port (§K8c.7). |
-| 15 | `AE9` 0x80 | `0x260BC` | no | Set by the ported `0x25FDC` (`0x26036`, `flow.c:2625`). Named gap `flow.c:2622`. |
-| 16 | `AEA` 0x01 | `0x26194` | no | Set by the ported `0x2604C` (`0x260A6`, `flow.c:2646`). Named gap `flow.c:2644`. |
-| 17 | `AEA` 0x02 | `0x45D98` | **yes** (Task 3e, §K8c.6: `fighter_45d98`) | Set only by the **unported** animation target `0x45D58` (`0x45D7B`; the `0xD100` word at `0xEB892`). Never armed in the port (§K8c.7). |
+| 12 | `AE9` 0x10 | `0x24150` | **yes** (Task 3e, §K8c.5: `fighter_24150`) | Set only by the animation target `0x24078` (`0x24142`; the `0xD100` word at `0xE5006`), **ported and registered in Task 5a** (record §D8.2, `fighter_24078`). Not reached on the no-input paths (§R). |
+| 15 | `AE9` 0x80 | `0x260BC` | **yes** (Task 5a, record §B8.1: `flow_bonus_card_a_step`) | Set by the ported `0x25FDC` (`0x26036`, `flow_round_bonus_a`). Not armed on the no-input paths (probe, §R). |
+| 16 | `AEA` 0x01 | `0x26194` | **yes** (Task 5a, record §B8.2: `flow_bonus_card_b_step`) | Set by the ported `0x2604C` (`0x260A6`, `flow_round_bonus_b`; also from entry 15 at `0x2613E`). Not armed on the no-input paths (§R). |
+| 17 | `AEA` 0x02 | `0x45D98` | **yes** (Task 3e, §K8c.6: `fighter_45d98`) | Set only by the animation target `0x45D58` (`0x45D7B`; the `0xD100` word at `0xEB892`), **ported and registered in Task 5a** (record §D8.3, `fighter_45d58`). Not reached on the no-input paths (§R). |
 
 Registered (for completeness): entries 0 `0x1324C`, 1 `0x48F98`, 2 `0x19B90`,
 5 `0x22FE8`, 7 `0x2910C`, 10 `0x28F08`, 13 `0x40554`, 14 `0x407EC`. The
@@ -345,8 +352,8 @@ wrong, and Task 6 fixes it.
 |---:|---|---|---|---|
 | 1 | `platform/res.c:42` | Per-read tick model drifts by up to 4 ticks | Boot resource-read timing (record §45-A) | open |
 | 2 | `game/flow.c:2313` | Only registered character entrances run | `DS_000A8628` table | **stale**: all 8 entries are registered |
-| 3 | `game/flow.c:2520`, `:2535` | `game_mode_33_step` does not call `0x4DEF4` | `0x4DEF4` | **stale, and a wiring gap**: `0x4DEF4` is ported (`fight_effects_idle_pass`, `fight.c`) and already called by mode 0xF (`flow.c:4076`). Wire `0x2965F`. |
-| 4 | `game/flow.c:2622`, `:2623` | Update entry 15 `0x260BC` (bonus card) | `0x260BC` (non-Ghidra) | open (§B.2) |
+| 3 | `game/flow.c:2520`, `:2535` | `game_mode_33_step` does not call `0x4DEF4` | `0x4DEF4` | **closed** (Task 5a, record §W): `0x2965F` now calls `fight_effects_idle_pass` between the second `fight_hud_pass` and `camera_y_commit`; the named-gap comment is gone. No oracle path reaches mode 0x33 (§R). |
+| 4 | `game/flow.c:2622`, `:2623` | Update entry 15 `0x260BC` (bonus card) | `0x260BC` (non-Ghidra) | **closed** (Task 5a, record §B8): entries 15 and 16 ported and registered; both `PORT:` notes in `flow_round_bonus_a/_b` rewritten. |
 | 5 | `game/flow.c:5962` | `0x1CC28` slot choice and `0x1CB18` start | K7 | open; derived in §K7 (Task 3d), the comment cites §K7.3 |
 | 6 | `game/flow.c:6168` | same as 5 (`snd_sample_queue`) | K7 | open; derived in §K7.2 (Task 3d) |
 | 7 | `game/fighter.h:73` | `0x18540`/`0x18350` screen-anchor path | ported (`fighter.c:183/214`, called at `fighter.c:253/257`) | **stale** |
@@ -361,7 +368,7 @@ wrong, and Task 6 fixes it.
 | 16 | `game/fight.c:3013`, `fight.h:245` | `0x4A928` has no call site | mode-9 block `0x4A487..0x4A58F` (§7.4) | open (K13) |
 | 17 | `game/fight.c:4490`, `:4510`, `:4825` | mode-9 frame locals and block | §7.4 | open (K13) |
 | 18 | `game/fight.c:4795` | case-13 body | §7.4 + `0x4A868` (K4) | open (K13). `0x4A868` is ported (Task 3d, §K4.1); the case-14 gate site `0x4A361` stays unwired until K13 ports its body (§K4.4). |
-| 19 | `game/fight.c:4910`, `fight.h:75`, `fight.h:80` | `0x4DEF4` states 1..4 gated on `0x4A868`, treated as false | `0x4A868` (K4) | **closed** (Task 3d, §K4.3: the four state bodies are ported and wired; the stale "`0x29638` still a named gap" text is gone from `fight.c`/`fight.h`) |
+| 19 | `game/fight.c:4910`, `fight.h:75`, `fight.h:80` | `0x4DEF4` states 1..4 gated on `0x4A868`, treated as false | `0x4A868` (K4) | **closed** (Task 3d, §K4.3: the four state bodies are ported and wired). Task 5a (record §W): both raw callers of `0x4DEF4` (`0x277E9`, `0x2965F`) now call it, and the "not wired yet (ledger §E-3)" notes in `fight.c`/`fight.h`/`flow.h` are rewritten. The one unwired `0x4A868` site left is `0x4A361` (case-14 body, K13, Task 5b). |
 | 20 | `game/fight.c:4931` | "`0x29638` (mode 0x33, still a named gap)" | `0x29638` ported | **stale** |
 | 21 | `game/fight.h:17` | "everything else ported or a named gap" (arena frame) | not re-measured | open (Task 6 re-audit) |
 | 22 | `game/fight.h:55` | type-8 held body, case-13/14 bodies, mode-9 block | §7.4 | open (K13) |
@@ -404,9 +411,9 @@ size gate is ≥ ~4 KB or ≥ ~20 new functions, and such a cluster is marked
 | 10 | K7 AUDIO-SMP | `0x1CB18` + `0x1CC28`'s slot choice (`0x1CC62..0x1CD8D`) | 271+ | port | Task 3 — **derived, re-plan needed** (Task 3d, §K7.3/§K7.5: the `+0x10` buffers of the host-owned `0x1D0BC`, the `0x500BB` clock, the announcer stand-in) |
 | 11 | K8c UPD-REST | update entries 4 `0x37C8C`, 8 `0x34648` (+`0x29C20`, 59 B), 9 `0x3800C`, 11 `0x4F890`, 12 `0x24150`, 17 `0x45D98` | 59 + n/a | port. Reachability first: find each bit's setter. | Task 3 — **closed** (Task 3e, §K8c; setters `0x37EA0`/`0x24078`/`0x45D58` left as named gaps §K8c.7) |
 | 12 | T4 | §D residue (the `0x29B70` header, the `0x38990` calls) | — | confirmation cycle only. All 52 cases are wired. | Task 4 |
-| 13 | E-WIRE | §E-3 (`0x2965F` → `fight_effects_idle_pass`) and §E-19 (the `0x4DEF4` gate once K4 lands; **done** in Task 3d, §K4.3) | — | wiring | Task 5 |
+| 13 | E-WIRE | §E-3 (`0x2965F` → `fight_effects_idle_pass`) and §E-19 (the `0x4DEF4` gate once K4 lands; **done** in Task 3d, §K4.3) | — | wiring | Task 5 — **closed** (Task 5a, record §W) |
 | 14 | K13 FX-7.4 | case-13 body `0x4A24A..0x4A2F4` (170 B), case-14 body `0x4A346..0x4A412` (204 B), mode-9 block `0x4A487..0x4A58F` (264 B), type-8 held body (not measured) | ≥638 | port (inline blocks of `0x49C78`) | Task 5 |
-| 15 | K8b UPD-BONUS | update entries 15 `0x260BC` and 16 `0x26194` | n/a | port (§E-4) | Task 5 |
+| 15 | K8b UPD-BONUS | update entries 15 `0x260BC` and 16 `0x26194` | n/a | port (§E-4) | Task 5 — **closed** (Task 5a, record §B8; plus the K8d setters `0x37EA0`/`0x24078`/`0x45D58`, record §D8) |
 | 16 | E-OPEN | §E-1, 14, 21, 24, 25, 27 | — | derive or re-scope | Task 5 |
 | 17 | K10 MOVIE-BLIT | `0x50D23` | 4405 | **own plan**: the EDI `mem[]` half is port, the aperture half is host-owned | Task 6 |
 | 18 | K11 MENU-CB | `0x2F464`, `0x319B0`, `0x31A78` + 11 non-Ghidra service-menu callbacks (§B.2) and their sub-menus | 266 + n/a | **own plan** (the callback code spans `0x2D00C..0x33290` in the raw `call` sites) | Task 6 |
