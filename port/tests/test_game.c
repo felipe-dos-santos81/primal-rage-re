@@ -6605,6 +6605,67 @@ static void ch_check_keycfg(void)
     DSD(DS_00101514) = saved_kb;
 }
 
+/* Record §K5 (2026-09-29-k2-k5-derivations.md): 0x2EA74 is `xor eax,eax;
+ * mov eax,eax` with no `ret`, so it runs 0x2EA78 with EAX = 0: the latch is
+ * cleared, one frame is presented (the buffers swap), and two passes wait a
+ * tick each and drain the key queue. Every seed differs from its post-value. */
+static void ch_check_screen_wait_zero(void)
+{
+    ch_text_setup();
+    u32 s_a0 = DSD(DS_000E87A0), s_a4 = DSD(DS_000E87A4);
+    u32 s_tick = DSD(CH_TICK), s_isr = DSD(DS_00101508);
+    u16 s_word = DSW(0x000EF6DEu);
+    u8 s_gate = DSB(0x00104B22u), s_full = DSB(DS_001014FC);
+    u32 s_lat = DSD(CH_KEY_LATCH), s_time = DSD(CH_KEY_TIME), s_kw = DSD(CH_KEY_WORD);
+
+    DSD(DS_000E87A0) = CH_BUF_A;
+    DSD(DS_000E87A4) = CH_BUF_B;
+    memset(mem + CH_BUF_A, 0x11, 64000);
+    memset(mem + CH_BUF_B, 0x33, 64000);
+    DSB(0x00104B22u) = 0u;
+    DSB(DS_001014FC) = 0u;
+    input_clear();
+
+    /* No key: the latch 0x77 is cleared at 0x2EA85 and stays 0. */
+    DSD(CH_KEY_LATCH) = 0x77u;
+    DSD(CH_TICK) = 5000u;
+    DSD(CH_KEY_TIME) = 0x1234u;
+    config_screen_wait_zero();
+    CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 0);
+    CHECK_EQ_INT((int)DSD(CH_TICK), 5002);                   /* two passes */
+    CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 0x1234);             /* nothing stamped */
+    CHECK_EQ_INT((int)DSD(DS_000E87A0), (int)CH_BUF_B);      /* 0x50188 swap */
+    CHECK_EQ_INT((int)DSD(DS_000E87A4), (int)CH_BUF_A);
+    const u8 *shown = gfx_display();
+    CHECK(shown != NULL, "0x2EA74 presents a frame");
+    if (shown != NULL) {
+        CHECK_EQ_INT((int)shown[0], 0x33);
+        CHECK_EQ_INT((int)shown[63999], 0x33);
+    }
+
+    /* A queued key is drained and stamped at the first pass. */
+    input_push(0x1E, 'a');
+    DSD(CH_TICK) = 6000u;
+    DSD(CH_KEY_WORD) = 0u;
+    config_screen_wait_zero();
+    CHECK_EQ_INT((int)DSD(CH_TICK), 6002);
+    CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 'a');
+    CHECK_EQ_INT((int)DSD(CH_KEY_WORD), 0x1E61);
+    CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 6001);
+    CHECK(!input_has_key(), "0x2EA74 drained the queue");
+
+    DSD(DS_000E87A0) = s_a0;
+    DSD(DS_000E87A4) = s_a4;
+    DSD(CH_TICK) = s_tick;
+    DSD(DS_00101508) = s_isr;
+    DSW(0x000EF6DEu) = s_word;
+    DSB(0x00104B22u) = s_gate;
+    DSB(DS_001014FC) = s_full;
+    DSD(CH_KEY_LATCH) = s_lat;
+    DSD(CH_KEY_TIME) = s_time;
+    DSD(CH_KEY_WORD) = s_kw;
+}
+
 /* 0x249F0 (record §50-D): the quit prompt. Strings 0x1F0/0x1F1 are the
  * localised yes/no letters; the seeds differ from every asserted result. */
 static void ch_check_quit_prompt(void)
@@ -6682,6 +6743,7 @@ int test_cfg_helpers(void)
     ch_check_option_row();
     ch_check_code_row();
     ch_check_screen_wait();
+    ch_check_screen_wait_zero();
     ch_check_quit_prompt();
     ch_check_keycfg();
     return g_failures - before;

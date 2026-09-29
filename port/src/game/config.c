@@ -598,6 +598,17 @@ void config_screen_wait(s32 n)
     }
 }
 
+/* 0x2EA74 — record §K5. `xor eax,eax` (0x2EA74), `mov eax,eax` (0x2EA76) and
+ * no `ret`: execution falls into 0x2EA78 with EAX = 0, so this is
+ * config_screen_wait(0), one presented frame and two tick waits. 0x2EA78
+ * restores EBX/ECX/EDX/ESI and leaves EAX = -1, which no ported caller reads.
+ * Ported callers: 0x2FA40 (0x2FA61, 0x2FE2F) and 0x2FFC4 (0x2FFF1); 15 more
+ * sites are in the unported service-menu code (record §K5.3). */
+void config_screen_wait_zero(void)
+{
+    config_screen_wait(0);                                  /* falls into 0x2EA78 */
+}
+
 /* 0x2EB80 — records §49-X, §49-Y (§50-B). Returns the latched key DS_00105F30 when it is
  * non-zero (0x2EB81..0x2EB8E). Otherwise 0x500BB minus DS_00105F2C is tested
  * unsigned against 0x4B0 (0x2EB94..0x2EB9F `jbe`): at or under, 0 (0x2EBB8);

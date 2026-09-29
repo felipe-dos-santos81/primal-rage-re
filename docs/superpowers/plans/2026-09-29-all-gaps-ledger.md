@@ -144,7 +144,7 @@ them.
 | `0x2D4B4` | 17 | 4 / 4: `2D533`@`2D4EC`P, `2D8C8`@`2D6F8`P, `2DB11`, `2DB24` @`2DAE4`D | — | no (all three callers are no-op/deferred/unrun) | **closed**: `config_codeword_len`, §K2.3 | K2 | **Correction (§K2.3):** not a power of two. The loop jumps back to `inc eax` and returns EAX, so it is n + r + 1 for the smallest r with 2^r ≥ n + r + 1 (0x26 → 0x2D), pure. |
 | `0x4FB98` | 10 | 2 / 2: `1BEB0`@`1BE30`P, `1BFEA`@`1BEC4`P | — | yes | **closed: host-owned**, §K9.2 | K9 | `pushad; and eax,0xff; int 10h; popad; ret`: the BIOS set-mode call. `flow.c:6371` PORT: SDL owns the window. |
 | `0x2D62C` | 9 | 1 / 1†: `1BE28` (timer ISR `0x1BDF4`, non-Ghidra); abs dword at `0x1BF5C` (`push 0x2d62c`) | — | ISR only | **closed: host-owned**, §K9.5 | K9 | `inc dword [0x105D88]; ret`. **Correction (§K9.5):** `0x1BFA4` is a `push 0x105d88` for the `0x109A0` lock, not a read; the one reader is `0x32981` (`0x32970`, host-owned record §48-V, the run clock). `0x1BEC4` hands `0x2D62C` to `0x109A0` at `0x1BF5B` (`push 0x1000; push 0x2d62c`). |
-| `0x2EA74` | 4 | 5 / 18†: `2FA61`, `2FE2F` @`2FA40`P, `2FFF1`@`2FFC4`P; `2D00C`, `3074B`, `30B20`, `30B45`, `30E5E`, `31275`, `31290`, `313F5`, `324E1`, `32619`, `32E31`, `32F2D`, `33066`, `33242`, `33290` outside contiguous Ghidra extents | — | yes (service menu) | port | K5 | `xor eax,eax; mov eax,eax`, then falls into `0x2EA78`, so it is `config_screen_wait(0)`. The port treats it as a no-op (raw conflict, see Corrections). |
+| `0x2EA74` | 4 | 5 / 18†: `2FA61`, `2FE2F` @`2FA40`P, `2FFF1`@`2FFC4`P; `2D00C`, `3074B`, `30B20`, `30B45`, `30E5E`, `31275`, `31290`, `313F5`, `324E1`, `32619`, `32E31`, `32F2D`, `33066`, `33242`, `33290` outside contiguous Ghidra extents | — | yes (service menu) | **closed**: `config_screen_wait_zero`, §K5 | K5 | `xor eax,eax; mov eax,eax`, then falls into `0x2EA78`, so it is `config_screen_wait(0)`. The three ported sites (`menu.c`) now call it; the 15 others stay with the unported service-menu code. |
 | `0x32968` | 1 | 1 / 1: `20CC7`@`20C10`P | — | yes (`game_init`) | **closed**: `game_init_null`, §K2.2 | K2 | A bare `ret`. |
 | `0x29B70` | 1 | 4 / 4: `20E0B`@`20DF4`P, `2521A`, `25224`, `2522E` @`24C5C`P | — | yes | **closed**: `game_null_step`, §K2.1 | K2 | A bare `ret`: `game_frame` cases 1/2/0x20 and `0x20E0B`, all four sites now call it. |
 
@@ -299,7 +299,7 @@ except `0x29B70` (a bare `ret`, K2).
 | 0x33 | `0x251BC` | `call 0x29638` | Y | `game_mode_33_step` |
 
 Residue for Task 4 (none of these is a missing case):
-- the `0x29B70` header (K2);
+- the `0x29B70` header (K2) — **closed** (Task 3b, §K2.1: `game_null_step`);
 - the `0x38990` preamble calls at `0x24CC3`/`0x24CC8` (K3);
 - the `game_mode_33_step` → `0x4DEF4` call (§E-3);
 - the case-0x27 longjmp, a spec-§7 deviation that stays;
@@ -356,7 +356,7 @@ phrase "named gap" is summarised here, and the §F cycles own it:
   (`rg -c 'not wired' port/src`: fighter.c 64, flow.c 47, fight.c 32,
   nameentry.c 18, attract.c 8, actors.c 6, others 5). 124 of them have the
   exact form `PORT: 0xADDR 0x2C3FC` (K12);
-- the menu `0x2EA74` "no-op" claim (K5).
+- the menu `0x2EA74` "no-op" claim (K5) — **closed** (Task 3b, §K5: the three `menu.c` sites call `config_screen_wait_zero`).
 
 ---
 
@@ -372,7 +372,7 @@ size gate is ≥ ~4 KB or ≥ ~20 new functions, and such a cluster is marked
 | 2 | K1 HDR | `0x34B6C`, `0x3BDB0`, `0x1C528`, `0x4682C`, `0x38910`, `0x33714`, `0x51ED8` | 1117 | port (header / one-function split only, no behaviour change; +7 on the counter) | Task 3 — **closed** (Task 3a, §K1) |
 | 3 | K9 CLASSIFY | host-owned: `0x501A3`, `0x4FB98`, `0x4FF8F`, `0x4FFD8`, `0x2D62C`. Deferred: `0x2E180`, `0x2E0A4`, `0x2E034`, `0x2DF8C`, `0x2D498`, `0x32B94`, `0x32BB0`. | 3688 | host-owned/deferred rows in `tools/port_classification.txt` plus derivation rows. **Needs the user's approval (§G).** | Task 3 — **closed** (Task 3a, §K9; 12/12 supported) |
 | 4 | K2 TRIV | `0x29B70`, `0x32968`, `0x2D4B4`, `0x51F72` | 423 | port | Task 3 — **closed** (Task 3b, §K2 of `2026-09-29-k2-k5-derivations.md`) |
-| 5 | K5 MENU-FRAME | `0x2EA74` (and its 3 ported call sites in `menu.c`) | 4 | port (raw conflict fix) | Task 3 |
+| 5 | K5 MENU-FRAME | `0x2EA74` (and its 3 ported call sites in `menu.c`) | 4 | port (raw conflict fix) | Task 3 — **closed** (Task 3b, §K5 of `2026-09-29-k2-k5-derivations.md`) |
 | 6 | K3 FRAME-SVC | `0x38990` (called at `0x24CC3`/`0x24CC8`) | 52 | port, **live every frame**. Re-run `demo-fight-oracle attract2-oracle` and diff the dumps. | Task 3 |
 | 7 | K8a UPD-06 | update entry 6 `0x25FAC` | n/a (non-Ghidra) | port (live: armed by modes 5/0x23/0x30) | Task 3 |
 | 8 | K4 FX-GATE | `0x4A868` | 63 | port (unblocks §E-18/19 and K13) | Task 3 |

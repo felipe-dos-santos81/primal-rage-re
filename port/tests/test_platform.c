@@ -2594,6 +2594,8 @@ static void check_text_vertical_number(void)
 #define MT_TABLE  0x3E2E000u   /* the menu tables */
 #define MT_LAYOUT 0x3E2D000u   /* the key layout block DS_00101514 points at */
 #define MT_STRUCT 0x3E2C000u   /* the structure DS_0010740C points at */
+#define MT_BUF_A  0x3E00000u   /* 64000-byte frame buffers 0x2EA78 draws/presents */
+#define MT_BUF_B  0x3E10000u
 #define MT_GROUP  0x800u
 #define MT_FN0    0xF1A00u     /* fake code addresses for the registered callbacks */
 #define MT_FN1    0xF1A10u
@@ -2610,6 +2612,13 @@ static void mt_press(u32 bits)
 {
     DSD(DS_000E1C34) = bits;          /* the level the pad reports */
     DSD(DS_000E1C38) = 0;             /* the latch: every masked bit is new */
+    /* Record §K5.5: 0x2EA74 runs 0x2EA78, whose 0x500C4 pump (0x2EB0C)
+     * rebuilds the level from the key bitmap [DS_00101514]+0x2D8/0x2D9 and the
+     * previous raw word DS_000E1C30. The key is held since the last pump, so
+     * the pump keeps the level: every menu bit is in the 0xFF00FF00 lanes. */
+    DSD(DS_000E1C30) = bits;
+    DSB(MT_LAYOUT + 0x2D8u) = (u8)(bits >> 24);
+    DSB(MT_LAYOUT + 0x2D9u) = (u8)(bits >> 8);
 }
 
 static u32 mt_cb_common(u32 which, u32 arg)
@@ -2861,6 +2870,7 @@ static void check_menu_step(void)
     CHECK_EQ_INT((int)DSB(DS_00107414), 1);
     CHECK_EQ_INT((int)DSD(DS_00107418), 4);
     CHECK_EQ_INT((int)DSD(DS_00105F2C), 1000);
+    CHECK_EQ_INT((int)DSD(DS_00101500), 1002);       /* 0x2FFF1 0x2EA74: two tick waits (§K5) */
     CHECK_EQ_INT((int)DSD(DS_0010741C), (int)A);
     CHECK_EQ_INT((int)DSD(DS_0010744C), (int)MT_FN0);
     CHECK_EQ_INT((int)DSD(DS_00107424), 4);          /* the hidden item counts */
@@ -3154,6 +3164,9 @@ static void check_menu_run(void)
     mt_press(0x40004000u);
     mt_hook_ret_at = 3; mt_hook_ret = 0x77;
     CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0x77);
+    /* §K5: 0x2EA74 at entry (0x2FA61) and after the one completed poll pass
+     * (0x2FE2F), two ticks each. */
+    CHECK_EQ_INT((int)DSD(DS_00101500), 104);
     CHECK_EQ_INT((int)mt_cbs[0].n, 3);
     CHECK_EQ_INT((int)mt_args0[1], 0);               /* the header redraw */
     CHECK_EQ_INT((int)mt_args0[2], (int)A);
@@ -3171,8 +3184,10 @@ static void check_menu_run(void)
     /* Esc without flags bit 2: -1 (the index never equals the count). */
     mt_cbs_reset();
     mt_press(0x2000000u);
+    DSD(DS_00101500) = 200;
     CHECK_EQ_INT((int)menu_run(T, 0x10u, 0u), -1);
     CHECK_EQ_INT((int)mt_cbs[0].n, 2);
+    CHECK_EQ_INT((int)DSD(DS_00101500), 202);        /* only the entry 0x2EA74 */
     /* Esc with flags bit 2 acts as Down. */
     mt_cbs_reset();
     mt_press(0x2000000u);
@@ -3262,6 +3277,15 @@ static void check_menu(void)
     memcpy(spal, mem + DS_00107618, sizeof spal);
     mem_fill(DS_00107618, 0, sizeof spal);
     const u32 s_lvl = DSD(DS_000E1C34), s_lat = DSD(DS_000E1C38);
+    /* Record §K5: the menus now run 0x2EA78 (0x2EA74), which presents the back
+     * buffer, swaps the pair and spins on the ISR model (gate byte not 1). */
+    const u32 s_raw = DSD(DS_000E1C30), s_a0 = DSD(DS_000E87A0),
+              s_a4 = DSD(DS_000E87A4), s_08 = DSD(DS_00101508);
+    const u16 s_word = DSW(0x000EF6DEu);
+    const u8 s_gate = DSB(DS_00104B22);
+    DSD(DS_000E87A0) = MT_BUF_A;
+    DSD(DS_000E87A4) = MT_BUF_B;
+    DSB(DS_00104B22) = 0u;
     check_menu_draw();
     check_menu_step();
     check_menu_run();
@@ -3270,6 +3294,12 @@ static void check_menu(void)
     DSD(DS_001082DC) = s_str;
     DSD(DS_000E1C34) = s_lvl;
     DSD(DS_000E1C38) = s_lat;
+    DSD(DS_000E1C30) = s_raw;
+    DSD(DS_000E87A0) = s_a0;
+    DSD(DS_000E87A4) = s_a4;
+    DSD(DS_00101508) = s_08;
+    DSW(0x000EF6DEu) = s_word;
+    DSB(DS_00104B22) = s_gate;
     actors_reset();
 }
 
