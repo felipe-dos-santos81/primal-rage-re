@@ -24636,3 +24636,244 @@ to stay where they were. `tools/port_progress.py`: 742 of 1203 (62%);
 * `0x20860` (the keyboard -> letter-queue writer, §49-T.7) is still unported.
   The queue stays empty outside tests.
 * The writers of `D(0x1044DC)`/`D(0x1044E0)` (§49-T.3 #1): none found.
+
+
+
+## 52-A. The pose callbacks of the §50-A setups, the confetti pool and character 1's `0x21` cluster (branch `gap52-pose-pool`)
+
+Letter check: no `## 51` or `## 52` heading existed in this record, in
+`docs/PROGRESS.md` or in `port/src` before this branch; `§52-A` is the
+coordinator's letter. Sources: the Ghidra bridge (`/disassemble_function`,
+`/get_xrefs_to`, `/read_memory`) with capstone over the `read_memory` bytes
+(fixups applied) for every address Ghidra has no function at, and a dword
+scan of the whole code object (`0x10000`-`0x73B14`) and data object
+(`0x80000`-`0x10B0CF`) for each target.
+
+### 52-A.1 What was asked, and how each target is reached
+
+`tools/port_progress.py --unported` listed only `3FD30 166 0 4` and
+`40608 91 1 2` in `0x3E000`-`0x41000`; the other requested addresses are not
+Ghidra functions (no `FN_` in `symbols.h`), so they do not move the count
+(741 -> 743 of 1203, 62%).
+
+| Target | Reached by | Shape |
+|---|---|---|
+| `0x3F7F4` | the dword stored at `0x3FBF0` (`+0x18`) by `0x3FB88`; no other dword or call | `fn(side)`, EAX returned (`0x19020`) |
+| `0x3F85C` | the dword stored at `0x3FBFB` (`+0x1C`) by `0x3FB88` | `fn(side)` (`0x193B0`'s `0x19505`) |
+| `0x3FD30` | the dword stored at `0x3FF7A` (`+0x18`) by `0x3FF08` | `fn(side)`, EAX returned |
+| `0x3FEF8` | the dword stored at `0x3FF73` (`+0x0C`) by `0x3FF08` | `(slot, rec, side)`, `0x3531C` case 7 |
+| `0x3FFDC` | the dword at `0xA50E4` (row `(0xA50E4 - 0xA3528) / 20 = 0x163`: character 5, reaction `0x23`, offset 0 of the row) | `(slot, rec, side)`, AL returned (unread) |
+| `0x3FF08` | **the call at `0x40026` in `0x3FFDC`** (bridge `get_xrefs_to(0x3FF08)` returns it; the decompilation CSV lists one caller) | `(slot, rec)`, AL returned |
+| `0x40608` | the call at `0x40585` in `0x40554` (its only caller) | no arguments |
+| `0x40554` | the dword at `0xA8678`: update table `DS_000A8644` entry 13 | `fn()`, gated by `DS_00104AE8` bit 13 |
+| `0x407EC` | the dword at `0xA867C`: update table entry 14 | `fn()`, gated by `DS_00104AE8` bit 14 |
+| `0x215B0` | the calls at `0x21B50` (in `0x21B08`) and `0x21C61` (in `0x21BE8`) | EAX = side |
+| `0x21B08` / `0x21A88` | the dwords stored at `0x21CEE` / `0x21CE3` (`+0x1C` / `+0x18`) by `0x21C84` | `fn(side)` / `fn(side)`, EAX returned |
+| `0x21BE8` / `0x21B74` | the dwords stored at `0x21D7A` / `0x21D6F` by `0x21D10` | as above |
+| `0x21C84` / `0x21D10` | the dwords at `0xA3CE4` / `0xA3CF8` (rows `0x63` / `0x64`: character 1, reactions `0x23` / `0x24`) | `(slot, rec, side)`, AL = 1 (unread) |
+
+The scan's other hit for `0x21C84` (`0x31688`) is the tail of a `je rel32`
+at `0x31687` (bytes `84 1C 02 00`), not a reference.
+
+**Correction to §50-A.1 and §50-A.5 (raw wins).** §50-A recorded `0x3FF08`
+as having "no data dword and no call". The raw has `call 0x3FF08` at
+`0x40026`, inside `0x3FFDC`, which is itself reached from the character-5
+reaction row at `0xA50E4`. `0x3FFDC` is now ported and registered, so
+`0x3FF08` and the callbacks it stores (`0x3FEF8`, `0x3FD30`, `0x3FDD8`) have
+a live path: `0x34E2C` (character 5, reaction `0x23`) -> `0x3FFDC` ->
+`0x3FF08`. The comments on `fighter_3ff08` and on `fighter_21994` (whose
+"unported" callers `0x21B43`/`0x21C33` sit in `0x21B08`/`0x21BE8`) now say
+so.
+
+### 52-A.2 The functions (raw facts that decide the port)
+
+- `0x3F7F4`: `ctx = 0x33950(side)`; ctx[2]'s `+0x57` compared as a
+  zero-extended byte to 1 (`and eax,0xff; cmp eax,1; je`), else EAX = 1.
+  EBX = `0xC7720` and ECX = `0xC772A` are loaded *before* `call 0x18BD4`,
+  which writes only the 16 flag bytes, and `0x18C14` takes EDI = EBX (box a,
+  the x thresholds) and EBX = ECX (box b). Flags: `[esp+0x19]` (1), `+0x20`
+  (8), `+0x1C` (4), `+0x26` (0xE) = DL = 0, `+0x1D` (5) = AH = 1.
+- `0x3F85C`: the order is `0x3C148(0)`, `0x3C148(1)`, `0x3C16C(0)`,
+  `0x3C16C(1)`, `0x34D8C(side)`, `0x188AC(ctx[1], ctx[5]+0x18, EBX = 0)`, the
+  `push 0x40400000` for `0x2BC30(ctx[5], 0xC9170[ctx[3] char])` (after the
+  push the record is read at `[esp+0x18]`, i.e. ctx[5]), ctx[2]'s `+0x54 = 0`,
+  `+0x57 = 2`, `0x1890C(side, (dword[0xBD882 + ctx[2] char * 2] sar 16) -
+  0x3C0)`, `0x188DC(side, ctx[3]+0x2C +/- 0x280)` (`+` when `0x1A570(side)`'s
+  AL is non-zero), `0x39A10 = 0x309` on ctx[4] then ctx[5], `0x2BC30(ctx[4],
+  0xE7DC4, 3.0)`, the `0x108080[side]` actor on `0xE7E9E` with `push 0` when
+  non-null, and ctx[3]'s `+0x52 = 0x10`, `+0x53 = 0xA`, `+0x54 = 0`, dword
+  `+0x10 = 0`, `+0x41 |= 0x80`.
+- `0x3FD30`: returns 1 when ctx[4]'s `+0x61` is 0. `DH = 1` is set before
+  `0x18BD4` (EDX's high byte survives it) and becomes flag 5; BL = 0 is
+  flags 1, 8, 4, 0xE and 7 (`[esp+0x1F]`). ECX = `0xC774C` before the fill,
+  EBX = `0xC7742` after. `cmp eax,1` on the full result: 1 runs `+0x8A = 0`,
+  `+0x52 = 4`, `+0x53 = 4` on ctx[2], ctx[4]'s `+0x61 = 0` and `0x36870(ctx[4])`
+  (which pushes and pops EDX, so the `test edx,edx` after it still sees the
+  result); 0 sets ctx[2]'s `+0x57 = 1`. EAX = the result.
+- `0x3FEF8`: `sub esp,0x18; mov edx,ebx; mov eax,esp; call 0x33950; add
+  esp,0x18; ret`. `0x33950` writes only its six output dwords, so the
+  callback has no effect beyond the clobbered EAX/EDX, which `0x3531C` case 7
+  does not read. Ported as the same context build.
+- `0x3FFDC`: `0x187FC` (the latched `slot0 +0x2C - slot1 +0x2C`) is called
+  once for the sign (`test eax,eax; jge`) and again for the value (negated on
+  the negative arm), then `sar edx,0x1F; idiv edi` with EDI = `0x1E` (signed,
+  truncating), negated when `0x1A570(rec's +0x51)` holds, and stored as the
+  slot's word `+0x4E` before `call 0x3FF08`; `mov al,1` follows.
+- `0x40608`: EDX/ECX/EBX = `0x107EF0`/`0x107EF8`/`0x107F00`; both sentinels
+  self-linked; `cmp ebx,0x108080; jnc` before the loop and `jc` after each
+  `0x249C0(0x107EF8, node)` with `add ebx,0xC` (32 nodes, `0x107F00`..
+  `0x10807F`, appended in address order); `mov word [0x1080B0],8`; `call
+  0x406B4`. The nodes' `+8` are not written.
+- `0x407EC`: `dx = word[0x1080B0]`; when non-zero, `bx = dx - 1` is stored and
+  `dword[0x1080AE] sar 16` (the same word, sign-extended) `== 4`, or `bx ==
+  0` (`test bx,bx`), calls `0x406B4`. EDI = 1, and the walk over the live list
+  `0x107EF0` (`je` on an empty list) clears EDI on each node. Per node the
+  next link is read first (ESI). `+0x1C == 0`: `+0x59 = 0xFC`,
+  `0x2BC30(actor, 0xE8F0A, 6.0)` (`0x40C00000`), `0x2A17C(actor, 0x5A, EBX =
+  0)`, words `+0x34`/`+0x38` = 0, and when `+0x14` (its node) is set,
+  `0x249D0(node)`, `0x249B0(0x107EF8, node)` (head insert), byte `+0x48 = 0`
+  and `+0x14 = EDI` (0). Otherwise `word +0x2C = 0x400000 idiv (dword +0x30
+  sar 16)`. After the walk, EDI non-zero (an empty list at entry) sets
+  `DS_001078FC = 1` and clears the byte `0x104AE9`'s bit 6.
+- `0x40554`: `word[actor+0x2C] += word[0x1080B2]`; `and eax,0xffff; cmp
+  eax,0x3800; jl` returns (the zero-extended word: `0x9000` fires). Else ECX
+  = `DS_00104AD4` (pushed by `0x40608`, `0x2B150` and `0x13C70`), `0x40608`,
+  `0x2B150(actor)`, `0x13C70(EAX = dword[DS_001014EC + (other record's
+  +0x56) * 0x20 + 0x18], DL = 4, EBX = 0x105FC30)` with the other record
+  taken from `DS_00104AD4 xor 1` (`xor dl,1`), `0x37D18(slot, its record)` on
+  the same side (`xor cl,1`), and the byte `0x104AE9 &= 0xDF`. `0x105FC30` is
+  not a fixed-up address (outside both objects): it is the resource handle
+  `0x13C70` resolves.
+- `0x215B0`: the twin of `0x3E800`. The other side's character is the byte
+  at `0x10782A + o * 0x94` (the other slot's `+0x7A`), read twice; the nudges
+  are the high words of the unaligned dwords at `0xA8220 + ch * 2` (EBX of
+  `0x1883C(o, 0, w)`) and `0xA820C + ch * 2` (EDX of `0x3C12C`), i.e. the
+  interleaved words `0xA8222 + 2ch` and `0xA820E + 2ch`.
+- `0x21A88` / `0x21B74`: `0x3E924`'s shape on the counter word `0x104764 +
+  side * 2` (`dword[0x104762 + side * 2] sar 16`), windows 3..7 and 1..9
+  (`jg`/`jge`); `0x21A88`'s box tables are `0xA81E6`/`0xA81F0` (EBX/ECX) when
+  the side's word at `0x107D2C` is positive (`jle`), else `0xA81D2`/`0xA81DC`;
+  `0x21B74`'s are `0xA81FA`/`0xA8204`. Flags: `0x21A88` 4 and 5 = 1, 1 and 8
+  = 0; `0x21B74` 5 = 1 and 1, 4, 7, 8, 0xD, 0xE = 0.
+- `0x21B08` / `0x21BE8`: `0x3E9A4`'s shape with `0x21994(ctx[2], ctx[4])` and
+  `0x215B0(side)` (its EDX = `0x29A` is unread and survives it for the two
+  `0x39A10`). `0x21BE8` loads EBX = `0xC80` before `0x3C148(0)` and EDX = 0
+  before `0x3C148(1)` (it touches neither EBX nor, having pushed it, EDX),
+  then `0x1883C(side, 0, 0xC80)`; after `0x21994` it sets ctx[4]'s words
+  `+0x36 = 0x1C2`, `+0x44 = 0x19` and `0x3C190(side, 0x4B)` before `0x215B0`
+  copies them to the other record.
+- `0x21C84` / `0x21D10`: the `0x3ECF8` shape (`0x339AC(rec)`, EAX overwritten
+  unread): `0xC89F0[char]` through `0x2BC30` at 2.0, byte `0x10476E + side =
+  1`, `+0x54 = 2` (`0x21C84`); `0xC8950[char]` through `0x3C4CC` at 2.0, byte
+  = 0, `+0x54 = 0` and `+0x41 |= 0x80` (`0x21D10`); both `+0x53 = 7`, `+0x52 =
+  9`, `+0x0C = 0x216EC`, their hooks, `+0x57 = 4`, the counter word cleared.
+
+### 52-A.3 Wiring, and what stays unreachable
+
+Registered in `actors_init`: `0x3F7F4`, `0x3F85C`, `0x3FD30`, `0x3FEF8`,
+`0x3FFDC`, `0x21C84`, `0x21D10`, `0x21A88`, `0x21B08`, `0x21B74`, `0x21BE8`,
+and the update-table entries `0x40554` (13) and `0x407EC` (14). `0x40608` and
+`0x215B0` are called directly. `fighter_406b4` now has callers in the port
+(`fighter_40608`, `fighter_407ec`).
+
+The update bits: an operand scan of the code object for `0x104AE8`/`0x104AE9`
+finds exactly one setter of each pool bit: `or byte [0x104AE9],0x40` at
+`0x407D8` (in `0x406B4`: bit 14, the tick) and `or dh,0x20` stored at
+`0x4052C` (in `0x40434`: bit 13, the mover). The other read-modify-writes set
+bits 0, 2, 3, 4 and 7, and every dword store to `0x104AE8` (`0x20E1C`,
+`0x20EC3`, `0x28DC4`, `0x2BB13`, `0x41435`) stores 0. So the chain is
+`0x40434` -> bit 13 -> `0x40554` -> `0x40608` -> `0x406B4` -> bit 14 ->
+`0x407EC` (which clears bit 14 once the live list is empty). `0x40434` is an
+animation-opcode target (the `0xD000` word at `0xD4FFC`, dword at `0xD4FFE`,
+in the stream `0xD4FF8` whose head is the dword at `0xC92C4`) and is **not**
+ported, so in the port the pool runs only when a test drives it. None of the
+oracle windows reaches it.
+
+### 52-A.4 Verification
+
+`test_pose_pool` (in `test_fight.c`, registered once in `TEST_CASES`), every
+part between `g2_save`/`g2_restore` and every row re-seeded from the saved
+state (`p52_seed` restores first, so no row inherits another's writes: an
+early draft without it failed four `0x21B74` base rows on state earlier
+rows left behind, and seeded `0x21B08`'s tables at the wrong character
+unnoticed because an earlier row's bytes were still there). Direct post-conditions with sentinels that differ
+from them, and, where every callee is exported, a whole-state differential
+(data object, fixture region, record pool) against the same callee sequence
+run from the same snapshot: `0x3F7F4`/`0x3FD30`/`0x21B74` (each flag's
+condition violated in its own row; the geometry fixture reads the latched
+distances back so that the passing row fails with the two box tables
+swapped), `0x21A88` (as `check_fs_3e924`), `0x3F85C` (16 rows: side, flip,
+with/without the `0x108080` actor, signed landing word), `0x3FEF8` (whole
+state unchanged), `0x3FFDC` (seven distances incl. truncation and sign, both
+flips, the `0x3FF08` null gate after the `+0x4E` store), `0x40608` (both
+lists walked with prev-link checks, the `0x108080` sentinels just past the
+pool, both `DS_00104AD4`), `0x407EC` (countdown rows 0/1/2/5/6/`0x8005`/
+`0x0105`, the walk over landed and flying pieces incl. a negative divisor,
+the empty-list exit on the following tick only), `0x40554` (six step rows
+incl. the 16-bit wrap and `0x9000`, both `DS_00104AD4`, differential),
+`0x215B0` (as `check_fs_3e800`), `0x21B08`/`0x21BE8` (as `check_fs_3e9a4`,
+plus positions and the `0x21BE8` overrides) and `0x21C84`/`0x21D10`, and the
+raw dwords that wire them (`0xA50E4`, `0xA3CE4`, `0xA3CF8`, `0xA8678`,
+`0xA867C`).
+
+Mutations (a script applied each to the source, rebuilt, ran the suite with
+`PR_ORACLE_REQUIRED=1` and restored the file; the count is the failing
+assertions): 3F7F4 gate 4, flag 4/8/1 skipped 2 each, flag 5 4, flag 0xE 1,
+box swap 2; 3F85C `-0x3C0` 48, `+0x280` 16, `-0x280` 16, `+0x57` 32, the
+`0x108080` index 48, `+0x10` store dropped 32, `0x3C16C(1)` dropped 48, anchor
+side 80, timer 32, `0xE7E9E` hold 16, `0xC9170` index 48, `+0x41` bit 32,
+landing word unsigned 24; 3FD30 gate inverted 36, gate on ctx[5] 6, flag
+7/8 6 each, flag 0xE 8, `+0x57` 4, `0x36870` dropped 12, `+0x52`/`+0x53` 4
+each, box swap 12; 3FEF8 a write 2; 3FFDC `/0x20` 22, flip 22, sign test
+dropped 12, `0x3FF08` dropped 196; 40608 bound `<=` 7, insert order 164,
+countdown 7 8, burst dropped 68; 407EC `== 5` 8, `bx == 1` 8, byte compare 8,
+landed test inverted 72, hold 4, palette 4, free-list end 5, type kept 4,
+EDI never cleared 12, dividend 3, bit 6 kept 6, `+0x59` 4, `+0x38` kept 4,
+`DS_001078FC` 6; 40554 bound `0x3801` 16, signed compare 16, side 18 and 12,
+DL 12, bit 5 kept 12, `0x2B150` dropped 12, pool init dropped 18; 215B0
+tables 12, `+0x56` 12, `+0x20` 4, `0x3C12C` side 8, `+0x44` 12; 21A88 window
+4/4, `jle` 12, box a 24, flag 4 2, counter side 38; 21B74 window 10/10, flag
+7 42, flag 4 28, flag 0xD 42, flag 0xE 49, box swap 70; 21B08 `0x215B0` side
+44, timer 4, `+0x28` bit 4, flash 8; 21BE8 `0xC80` 4, `0x1C2` 8, `0x4B` 8,
+`0x215B0` moved before the overrides 12, `0x21994` dropped 66; 21C84 byte
+side 4, `+0x1C` 2, hold 2, counter side 4; 21D10 `+0x41` bit 2, table 4,
+`+0x54` 2, byte value 2; each of two registrations removed 1. Survivors, and
+why: the first campaign's `+0x53 = 5` in 0x3FD30 (every `0x36870` arm the
+fixture took overwrote it; the case-3 row added afterwards kills it) and
+flags 0xD/0xE (no row made `0x39EFC`/`0x3B298` fire; the `p52_m2` and
+`0x39CC8` rows added afterwards kill them); `0x40608`'s `DS_00107EF4 =
+0x107EF8` is an equivalent mutant (the burst's first `0x249B0` after the
+empty sentinel rewrites that prev link, and the burst always inserts, since
+the free list was just filled); `0x40554`'s `0x105FC30` handle is not
+observable in the fixture (it zeroes the resource count so `0x1B544`
+resolves nothing), so the handle rests on the raw immediate at `0x405C7`
+alone. `PR_ORACLE_REQUIRED=1 ./build/run_tests`: all checks passed.
+`make verify` (worktree-local `*_DUMP`/`TITLE_PIN_DIR`, `_g52` suffixed):
+green; front-end 517 clean / 801 splice / 3 transition / 2 unexplained (the
+two allowed by name), demo-fight fully explained at N = 1886, attract2 0
+unexplained, `symbols.h` regenerates byte-identically. All unchanged, as
+expected: the new callbacks are reached only from character 1's reactions
+`0x23`/`0x24`, character 5's reaction `0x23` and the `0x3FB88`/`0x3FF08`
+poses, and
+the pool only through `0x40434`; none of these occurs in the oracle windows.
+
+### 52-A.5 Remaining named gaps
+
+- The animation-opcode targets inside the pose streams these callbacks
+  start, unported and unregistered (`anim_indirect` skips a `fn_resolve`
+  miss): `0x3FF90` (the `0xD000` words at `0xE7F32`/`0xD4C6A`, the first code
+  in `0x3FF08`'s streams after their `0x36870` word; it reads the slot
+  `+0x4E` that `0x3FFDC` writes), `0x3FEA8` (`0xD000` at `0xE7F9E`/`0xD4CD6`),
+  `0x40034` (`0xD500` at `0xE8022`/`0xD4D5A`), `0x3FC08` (`0xD100` at
+  `0xE7D9A`, in `0x3FB88`'s stream), `0x3FCB0` (`0xD100` at `0xE7DDA`, in
+  `0x3F85C`'s `0xE7DC4`), `0x3F77C` (`0xD500` at `0xE7DE6`), and `0x40434`
+  (§52-A.3). Until they are ported, `0x3FFDC`'s `+0x4E` has no reader in the
+  port and the pool is unreachable.
+- `0x21694`, the twin of `0x3E8E4` (the side's record `+0x4B = 0`, the other
+  record's `+0x24 = 0x40000000`): no call and no dword reference, as
+  `0x3E8E4`; not ported.
+- The `0x407EC` zero divisor: `idiv` by a zero `+0x32` word faults (#DE) in
+  the raw; the port leaves `+0x2C` unchanged (`PORT:` note). No path is known
+  to reach it.
+- `fighter_state_37464`'s pointer-table TODO(verify) and the voice idiom
+  (§50-A.5) are unchanged.

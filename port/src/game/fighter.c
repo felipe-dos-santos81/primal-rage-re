@@ -10056,7 +10056,7 @@ void fighter_216ec(u32 slot, u32 rec, u32 side)
  * = 2, +0x53 = 0xA, +0x10 = 0x21458 (fighter_21458), +0x58 = 3, +0x41 |= 0x80,
  * its record on the stream dword[0xA824C + its char * 4] with a stack a3 of 0;
  * the counter word DS_00104764[side] = 0. Returns 1 (AL, 0x21A7B). Callers
- * 0x21B43 and 0x21C33 are unported. */
+ * 0x21B43 (in 0x21B08) and 0x21C33 (in 0x21BE8), record §52-A. */
 u32 fighter_21994(u32 slot, u32 rec)
 {
     u32 ctx[6];
@@ -11706,9 +11706,9 @@ int fighter_40bbc(u32 slot, u32 rec)
 
 /* 0x3FF08 — record §50-A. The setup that stores 0x3FDD8 as its +0x1C callback
  * (0x3FF7E) with the unported +0x0C/+0x18 callbacks 0x3FEF8 and 0x3FD30. EAX =
- * slot (ECX), EDX = rec (EBX); AL returned, in the shape of 0x40BBC. No
- * reference to it was found (no data dword, no call); Ghidra has no function
- * here. The dwords at 0x1077A8 + (the record's +0x51 xor 1) * 4 and at
+ * slot (ECX), EDX = rec (EBX); AL returned, in the shape of 0x40BBC. Its
+ * caller is 0x40026 in 0x3FFDC (record §52-A corrects §50-A, which found
+ * none). The dwords at 0x1077A8 + (the record's +0x51 xor 1) * 4 and at
  * 0x1077A8 + the record's +0x51 * 4 both gate it (null returns 0). The record
  * starts 0xE7F2E (that slot's char 0) or 0xD4C66 (char 5) at 3.0 through
  * 0x3C4CC (other chars: none); the record's +0x53 = 1; the slot's +0x52 = 9,
@@ -11735,4 +11735,455 @@ int fighter_3ff08(u32 slot, u32 rec)
     DSD(slot + 0x1Cu) = 0x0003FDD8u;                        /* 0x3FF7E */
     DSB(slot + 0x57u) = 0u;                                 /* 0x3FF87 */
     return 1;                                               /* 0x3FF85 */
+}
+
+/* ---- record §52-A: the pose callbacks the §50-A setups store (0x3F7F4,
+ * 0x3F85C, 0x3FD30, 0x3FEF8), the reaction callback 0x3FFDC that calls the
+ * setup 0x3FF08, the confetti pool (init 0x40608, tick 0x407EC, the 0x108098
+ * mover 0x40554) and character 1's 0x21 cluster (setups 0x21C84/0x21D10, the
+ * +0x18 hooks 0x21A88/0x21B74, the +0x1C callbacks 0x21B08/0x21BE8 and their
+ * shared 0x215B0). */
+
+/* PORT: data-object addresses symbols.h does not name. */
+#define P52_C7720   0x000C7720u  /* 0x3F824: 0x3F7F4's EBX box table */
+#define P52_C772A   0x000C772Au  /* 0x3F81F: 0x3F7F4's ECX box table */
+#define P52_C7742   0x000C7742u  /* 0x3FD80: 0x3FD30's EBX box table */
+#define P52_C774C   0x000C774Cu  /* 0x3FD59: 0x3FD30's ECX box table */
+#define P52_E7DC4   0x000E7DC4u  /* 0x3F94A: 0x3F85C's ctx[4] stream */
+#define P52_E7E9E   0x000E7E9Eu  /* 0x3F96F: 0x3F85C's 0x108080 actor stream */
+#define P52_E8F0A   0x000E8F0Au  /* 0x40847: 0x407EC's landed-confetti stream */
+#define P52_1080B0  0x001080B0u  /* 0x407F1: the pool tick's countdown word */
+#define P52_1080B2  0x001080B2u  /* 0x4055C: 0x40554's per-frame step word */
+#define P52_108098  0x00108098u  /* 0x40557: 0x40554's actor (0x40434 stores it) */
+#define P52_POOL    0x00107F00u  /* 0x40615: the first 0xC-byte pool node */
+#define P52_POOLEND 0x00108080u  /* 0x40632: the node bound (32 nodes) */
+#define P52_FX_HANDLE 0x0105FC30u  /* 0x405C7: 0x40554's effect handle (EBX) */
+#define P52_A81D2   0x000A81D2u  /* 0x21AEE: 0x21A88's EBX box table, +0x107D2C <= 0 */
+#define P52_A81DC   0x000A81DCu  /* 0x21AE9: 0x21A88's ECX box table, +0x107D2C <= 0 */
+#define P52_A81E6   0x000A81E6u  /* 0x21AE2: 0x21A88's EBX box table, +0x107D2C > 0 */
+#define P52_A81F0   0x000A81F0u  /* 0x21ADD: 0x21A88's ECX box table, +0x107D2C > 0 */
+#define P52_A81FA   0x000A81FAu  /* 0x21BCF: 0x21B74's EBX box table */
+#define P52_A8204   0x000A8204u  /* 0x21BCA: 0x21B74's ECX box table */
+#define P52_A8220   0x000A8220u  /* 0x215FA: [char] 0x215B0's dword, high word */
+#define P52_A820C   0x000A820Cu  /* 0x21615: [char] 0x215B0's dword, high word */
+#define P52_C8950   0x000C8950u  /* 0x21D2B: [char] 0x21D10's stream */
+
+/* 0x3F7F4 — record §52-A. The +0x18 hook 0x3FB88 stores (0x3FBF0; 0x19020,
+ * fn(side), EAX returned). ctx = 0x33950(side). Unless ctx[2]'s +0x57 is 1 it
+ * returns 1 (0x3F814). Else 0x18C14(side, flags) with flags 2 except flag 5 =
+ * 1 and flags 1, 4, 8 and 0xE = 0, on the box tables 0xC7720 (EBX) and
+ * 0xC772A (ECX), both loaded before 0x18BD4, which leaves them alone. */
+u32 fighter_3f7f4(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    fighter_ctx_same(ctx, side);                            /* 0x3F7FA..0x3F7FE 0x33950 */
+    if (DSB(ctx[2] + 0x57u) != 1u) return 1u;               /* 0x3F803..0x3F819 */
+    fighter_18bd4(flags);                                   /* 0x3F81B..0x3F829 */
+    flags[1] = 0u;                                          /* 0x3F832 */
+    flags[8] = 0u;                                          /* 0x3F836 */
+    flags[4] = 0u;                                          /* 0x3F83A */
+    flags[0xE] = 0u;                                        /* 0x3F83E */
+    flags[5] = 1u;                                          /* 0x3F846 */
+    return (u32)fighter_18c14(ctx[0], flags, P52_C7720, P52_C772A);   /* 0x3F842..0x3F84D */
+}
+
+/* 0x3F85C — record §52-A. The +0x1C callback 0x3FB88 stores (0x3FBFB;
+ * 0x193B0's 0x19505, fn(side)). ctx = 0x33950(side). 0x3C148 and 0x3C16C on
+ * both sides; 0x34D8C(side); the other side anchored at ctx[5]'s +0x18, y 0
+ * (0x188AC); ctx[5] on 0xC9170[ctx[3]'s char] at 3.0 through 0x2BC30; ctx[2]'s
+ * +0x54 = 0 and +0x57 = 2; 0x1890C(side, the high word of the dword at
+ * 0xBD882 + ctx[2]'s char * 2 (signed) - 0x3C0); 0x188DC(side, ctx[3]'s +0x2C
+ * + 0x280, or - 0x280 when 0x1A570(side) is 0); 0x39A10 = 0x309 on both
+ * records; ctx[4] on 0xE7DC4 at 3.0; the side's 0x108080 actor, when there
+ * is one, on 0xE7E9E at hold 0; ctx[3]'s +0x52 = 0x10, +0x53 = 0xA, +0x54 = 0,
+ * +0x10 = 0 and +0x41 bit 7. */
+void fighter_3f85c(u32 side)
+{
+    u32 ctx[6];
+    u32 act;
+    fighter_ctx_same(ctx, side);                            /* 0x3F861..0x3F865 0x33950 */
+    fighter_3c148(0u);                                      /* 0x3F86A..0x3F86C */
+    fighter_3c148(1u);                                      /* 0x3F871..0x3F876 */
+    fighter_3c16c(0u);                                      /* 0x3F87B..0x3F87D */
+    fighter_3c16c(1u);                                      /* 0x3F882..0x3F887 */
+    hit_flash_pair(ctx[0]);                                 /* 0x3F88C..0x3F88F 0x34D8C */
+    hit_anchor_set(ctx[1], DSD(ctx[5] + 0x18u), 0u);        /* 0x3F894..0x3F8A1 0x188AC */
+    actors_anim_begin(ctx[5], DSD(FSET_C9170 + (u32)DSB(ctx[3] + 0x7Au) * 4u),
+                      0x40400000u);                         /* 0x3F8A6..0x3F8C2 0x2BC30 */
+    DSB(ctx[2] + 0x54u) = 0u;                               /* 0x3F8CB */
+    DSB(ctx[2] + 0x57u) = 2u;                               /* 0x3F8D3 */
+    hit_anchor_y(ctx[0],
+                 (u32)(((s32)DSD(DS_000BD882 + (u32)DSB(ctx[2] + 0x7Au) * 2u) >> 16)
+                       - 0x3C0));                           /* 0x3F8D7..0x3F8F6 0x1890C */
+    if (fighter_actor_bit15_clear(ctx[0]) != 0)             /* 0x3F8FB..0x3F905 0x1A570 */
+        hit_anchor_x(ctx[0], DSD(ctx[3] + 0x2Cu) + 0x280u); /* 0x3F907..0x3F917 */
+    else
+        hit_anchor_x(ctx[0], DSD(ctx[3] + 0x2Cu) - 0x280u); /* 0x3F919..0x3F923 */
+    /* 0x3F929 0x188DC */
+    fighter_39a10(ctx[4], 0x309u);                          /* 0x3F92E..0x3F937 */
+    fighter_39a10(ctx[5], 0x309u);                          /* 0x3F93C..0x3F945 */
+    actors_anim_begin(ctx[4], P52_E7DC4, 0x40400000u);      /* 0x3F94A..0x3F958 0x2BC30 */
+    act = DSD(DS_00108080 + ctx[0] * 4u);                   /* 0x3F95D..0x3F963 */
+    if (act != 0u)                                          /* 0x3F969/0x3F96B */
+        actors_anim_begin(act, P52_E7E9E, 0u);              /* 0x3F96D..0x3F976 0x2BC30 */
+    DSB(ctx[3] + 0x52u) = 0x10u;                            /* 0x3F97F */
+    DSB(ctx[3] + 0x53u) = 0x0Au;                            /* 0x3F987 */
+    DSB(ctx[3] + 0x54u) = 0u;                               /* 0x3F98F */
+    DSD(ctx[3] + 0x10u) = 0u;                               /* 0x3F997 */
+    DSB(ctx[3] + 0x41u) = (u8)(DSB(ctx[3] + 0x41u) | 0x80u);    /* 0x3F9A2 */
+}
+
+/* 0x3FD30 — record §52-A. The +0x18 hook 0x3FF08 stores (0x3FF77; 0x19020,
+ * fn(side), EAX returned). ctx = 0x33950(side). With ctx[4]'s +0x61 clear it
+ * returns 1 (0x3FD49). Else r = 0x18C14(side, flags) with flags 2 except flag
+ * 5 = 1 (DH) and flags 1, 4, 7, 8 and 0xE = 0, on 0xC7742 (EBX) and 0xC774C
+ * (ECX, loaded before 0x18BD4). r == 1: ctx[2]'s +0x8A = 0, +0x52 = 4, +0x53 =
+ * 4, ctx[4]'s +0x61 = 0 and 0x36870(ctx[4]) (EDX, holding r, is pushed and
+ * popped by 0x36870). r == 0: ctx[2]'s +0x57 = 1. Returns r. */
+u32 fighter_3fd30(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    u32 r;
+    fighter_ctx_same(ctx, side);                            /* 0x3FD36..0x3FD3A 0x33950 */
+    if (DSB(ctx[4] + 0x61u) == 0u) return 1u;               /* 0x3FD3F..0x3FD4E */
+    fighter_18bd4(flags);                                   /* 0x3FD53..0x3FD5E */
+    flags[5] = 1u;                                          /* 0x3FD68 */
+    flags[1] = 0u;                                          /* 0x3FD6C */
+    flags[8] = 0u;                                          /* 0x3FD70 */
+    flags[4] = 0u;                                          /* 0x3FD74 */
+    flags[0xE] = 0u;                                        /* 0x3FD78 */
+    flags[7] = 0u;                                          /* 0x3FD7C */
+    r = (u32)fighter_18c14(ctx[0], flags, P52_C7742, P52_C774C);  /* 0x3FD80..0x3FD8E */
+    if (r == 1u) {                                          /* 0x3FD90/0x3FD93 */
+        DSB(ctx[2] + 0x8Au) = 0u;                           /* 0x3FD99 */
+        DSB(ctx[2] + 0x52u) = 4u;                           /* 0x3FDA4 */
+        DSB(ctx[2] + 0x53u) = 4u;                           /* 0x3FDAC */
+        DSB(ctx[4] + 0x61u) = 0u;                           /* 0x3FDB4 */
+        fighter_36870(ctx[4]);                              /* 0x3FDB8..0x3FDBC */
+    }
+    if (r == 0u)                                            /* 0x3FDC1/0x3FDC3 */
+        DSB(ctx[2] + 0x57u) = 1u;                           /* 0x3FDC9 */
+    return r;                                               /* 0x3FDCD */
+}
+
+/* 0x3FEF8 — record §52-A. The +0x0C callback 0x3FF08 stores (0x3FF70; 0x3531C
+ * case 7, (slot, rec, side)). The whole body is `sub esp,0x18; mov edx,ebx;
+ * mov eax,esp; call 0x33950; add esp,0x18; ret`: the context of the EBX side is
+ * built on the stack and dropped. PORT: 0x33950 writes only its output
+ * buffer, so the port's body builds and drops the same context; there is no
+ * other effect. */
+void fighter_3fef8(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    (void)slot;
+    (void)rec;
+    fighter_ctx_same(ctx, side);                            /* 0x3FEFB..0x3FEFF 0x33950 */
+}
+
+/* 0x3FFDC — record §52-A. Character 5's reaction-0x23 callback (the dword at
+ * 0xA50E4, row 0x163 of 0xA3528; no code reference), the caller §50-A did not
+ * find for 0x3FF08 (its call is at 0x40026). EAX = slot (EBX), EDX = rec
+ * (ECX); the EBX side is overwritten unread. d = 0x187FC() when a first
+ * 0x187FC() is not negative (`jge`), else -0x187FC(); d / 30 (signed `idiv`),
+ * negated when 0x1A570(rec's +0x51) holds, goes to the slot's word +0x4E;
+ * then 0x3FF08(slot, rec). AL = 1 is unread (as 0x3F3F4's). */
+void fighter_3ffdc(u32 slot, u32 rec, u32 side)
+{
+    u32 sd = (u32)DSB(rec + 0x51u);                         /* 0x3FFE4 */
+    s32 d;
+    (void)side;
+    if (ai_distance() >= 0)                                 /* 0x3FFE8..0x3FFEF `jge` */
+        d = ai_distance();                                  /* 0x3FFFC..0x40001 */
+    else
+        d = (s32)(0u - (u32)ai_distance());                 /* 0x3FFF1..0x3FFF8 */
+    d = d / 0x1E;                                           /* 0x40003..0x4000F `idiv` */
+    if (fighter_actor_bit15_clear(sd) != 0)                 /* 0x40011..0x4001A */
+        d = (s32)(0u - (u32)d);                             /* 0x4001C */
+    DSW(slot + 0x4Eu) = (u16)d;                             /* 0x4001E */
+    (void)fighter_3ff08(slot, rec);                         /* 0x40022..0x40026 */
+}
+
+/* 0x40608 — record §52-A. The confetti pool init, no arguments (EBX, ECX and
+ * EDX are saved). Both sentinels 0x107EF0 (the live list) and 0x107EF8 (the
+ * free list) self-linked; the 32 0xC-byte nodes 0x107F00..0x10807F appended to
+ * the free list in order (0x249C0 before the sentinel; the bound is tested
+ * `jnc` before the first pass and `jc` after each); the countdown word
+ * 0x1080B0 = 8; then the first burst 0x406B4. Its only caller is 0x40585 (in
+ * 0x40554). The nodes' +8 dwords are not written. */
+void fighter_40608(void)
+{
+    u32 n;
+    DSD(DS_00107EF4) = DS_00107EF0;                         /* 0x4061A */
+    DSD(DS_00107EF0) = DS_00107EF0;                         /* 0x40620 */
+    DSD(DS_00107EFC) = DS_00107EF8;                         /* 0x40626 */
+    DSD(DS_00107EF8) = DS_00107EF8;                         /* 0x4062C */
+    for (n = P52_POOL; n < P52_POOLEND; n += 0xCu)          /* 0x40632..0x4064F */
+        effects_list_insert_before(DS_00107EF8, n);         /* 0x4063A..0x40644 0x249C0 */
+    DSW(P52_1080B0) = 8u;                                   /* 0x40651 */
+    fighter_406b4();                                        /* 0x4065A */
+}
+
+/* 0x407EC — record §52-A. The confetti pool tick: update-table entry 14 (the
+ * dword at 0xA867C; bit 14 of DS_00104AE8, which 0x406B4 sets through the byte
+ * 0x104AE9 |= 0x40), fn() with the unread EAX index. When the countdown word
+ * 0x1080B0 is non-zero it is decremented, and a new value of 4 (the high word
+ * of the dword at 0x1080AE, signed) or 0 fires 0x406B4. Then each node on the
+ * live list 0x107EF0 (the next link read first): an actor (node +8) whose
+ * dword +0x1C is 0 gets +0x59 = 0xFC, the 0xE8F0A stream at 6.0 (0x2BC30),
+ * 0x2A17C(actor, 0x5A, 0), words +0x34 and +0x38 = 0, and, with a node at its
+ * +0x14, that node moved to the head of the free list 0x107EF8 (0x249D0/
+ * 0x249B0), its type byte +0x48 = 0 and +0x14 = 0; any other actor gets the
+ * word +0x2C = 0x400000 / (its dword +0x30 >> 16) (`cdq`-style sign fill,
+ * `idiv`). EDI starts 1 and each node clears it: only an empty live list sets
+ * DS_001078FC = 1 and clears the byte 0x104AE9's bit 6 (the tick's own
+ * update bit). */
+void fighter_407ec(void)
+{
+    u32 edi = 1u;                                           /* 0x407F8 */
+    u32 node;
+    u16 t = DSW(P52_1080B0);                                /* 0x407F1 */
+    if (t != 0u) {                                          /* 0x407FD/0x40800 */
+        u16 bx = (u16)(t - 1u);                             /* 0x40802..0x40804 */
+        DSW(P52_1080B0) = bx;                               /* 0x40805 */
+        if (((s32)DSD(DS_001080AE) >> 16) == 4 || bx == 0u) /* 0x4080C..0x4081C */
+            fighter_406b4();                                /* 0x4081E */
+    }
+    node = DSD(DS_00107EF0);                                /* 0x40823 */
+    if (node != DS_00107EF0) {                              /* 0x40829..0x4082F */
+        do {
+            u32 act = DSD(node + 8u);                       /* 0x40835 */
+            u32 next = DSD(node);                           /* 0x40838 */
+            edi = 0u;                                       /* 0x4083D */
+            if (DSD(act + 0x1Cu) == 0u) {                   /* 0x4083A..0x40841 */
+                u32 nd;
+                DSB(act + 0x59u) = 0xFCu;                   /* 0x40843 */
+                actors_anim_begin(DSD(node + 8u), P52_E8F0A, 0x40C00000u);  /* 0x40847..0x40854 0x2BC30 */
+                actor_pset_palette(DSD(node + 8u), 0x5Au, 0u);  /* 0x40859..0x40863 0x2A17C */
+                DSW(DSD(node + 8u) + 0x34u) = 0u;           /* 0x40868..0x4086B */
+                DSW(DSD(node + 8u) + 0x38u) = 0u;           /* 0x40871..0x40874 */
+                act = DSD(node + 8u);                       /* 0x4087A */
+                nd = DSD(act + 0x14u);                      /* 0x4087D */
+                if (nd != 0u) {                             /* 0x40880/0x40882 */
+                    effects_list_unlink(nd);                /* 0x40884..0x40886 0x249D0 */
+                    effects_list_insert_after(DS_00107EF8, DSD(act + 0x14u));  /* 0x4088B..0x40893 0x249B0 */
+                    DSB(act + 0x48u) = 0u;                  /* 0x40898 */
+                    DSD(act + 0x14u) = edi;                 /* 0x4089C */
+                }
+            } else {
+                s32 dv = (s32)DSD(act + 0x30u) >> 16;       /* 0x408A6..0x408AB */
+                /* PORT: `idiv` by a zero +0x32 word is a divide fault in the
+                 * raw (#DE, no handler in this path); the port leaves the word
+                 * +0x2C unchanged instead. No raw path is known to reach it. */
+                if (dv != 0)
+                    DSW(act + 0x2Cu) = (u16)(0x400000 / dv);    /* 0x408A1..0x408B3 */
+            }
+            node = next;                                    /* 0x408B7 */
+        } while (node != DS_00107EF0);                      /* 0x408B9..0x408BF */
+    }
+    if (edi != 0u) {                                        /* 0x408C5/0x408C7 */
+        DSB(DS_001078FC) = 1u;                              /* 0x408D4 */
+        DSB(DS_00104AE9) = (u8)(DSB(DS_00104AE9) & 0xBFu);  /* 0x408C9..0x408DA */
+    }
+}
+
+/* 0x40554 — record §52-A. Update-table entry 13 (the dword at 0xA8678; bit 13
+ * of DS_00104AE8, the byte 0x104AE9's bit 5, which 0x40434 sets), fn() with
+ * the unread EAX index. The 0x108098 actor's word +0x2C advances by the word
+ * 0x1080B2; below 0x3800 (the new word zero-extended, `jl`) it returns. Else
+ * (ECX = DS_00104AD4, kept by every callee): the pool init 0x40608, 0x2B150 on
+ * the actor, the 0x13C70 effect (EAX = the other player's (DS_00104AD4 xor 1)
+ * record's pset's +0x18, DL = 4, EBX = 0x105FC30), 0x37D18 on that slot and
+ * its record, and the byte 0x104AE9's bit 5 cleared. */
+void fighter_40554(void)
+{
+    u32 act = DSD(P52_108098);                              /* 0x40557 */
+    u16 w = (u16)(DSW(act + 0x2Cu) + DSW(P52_1080B2));      /* 0x4055C..0x40567 */
+    u32 e, rec, slot;
+    DSW(act + 0x2Cu) = w;                                   /* 0x40569 */
+    if ((u32)w < 0x3800u) return;                           /* 0x4056D..0x40579 */
+    e = DSD(DS_00104AD4) ^ 1u;                              /* 0x4057F, 0x405B2 */
+    fighter_40608();                                        /* 0x40585 */
+    actor_set_dead(DSD(P52_108098));                        /* 0x4058A..0x4058F 0x2B150 */
+    rec = DSD(DS_001077B0 + (DSD(DS_00104AD4) ^ 1u) * 0x94u);   /* 0x40594..0x405AB */
+    (void)effects_spawn(DSD(DSD(DS_001014EC) + (u32)DSW(rec + 0x56u) * 0x20u + 0x18u),
+                        4u, P52_FX_HANDLE);                 /* 0x405B5..0x405D5 0x13C70 */
+    slot = DS_001077B0 + e * 0x94u;                         /* 0x405DA..0x405F1 */
+    fighter_37d18(slot, DSD(slot));                         /* 0x405EB..0x405F6 */
+    DSB(DS_00104AE9) = (u8)(DSB(DS_00104AE9) & 0xDFu);      /* 0x405FB */
+}
+
+/* 0x215B0 — record §52-A. EAX = side, the twin of 0x3E800 on 0x21's tables:
+ * the other side (ESI) anchored at the side's record +0x18/+0x1C (0x188AC),
+ * nudged by the high word of the dword at 0xA8220 + char * 2 through
+ * 0x1883C(o, 0, w) (EBX = w) and by the high word at 0xA820C + char * 2
+ * through 0x3C12C (flip-aware), char = the other slot's +0x7A (the byte at
+ * 0x10782A + o * 0x94, read twice); then the other record takes the side's
+ * words +0x34, +0x36 and +0x44, the side's record takes the other's byte
+ * +0x56 at +0x4B, and the other record's dwords +0x24 and +0x20 go to 0.
+ * Callers 0x21B50 (in 0x21B08) and 0x21C61 (in 0x21BE8); their EDX = 0x29A is
+ * unread. */
+void fighter_215b0(u32 side)
+{
+    u32 o = 1u - side;                                      /* 0x215B5..0x215BA */
+    u32 slot = DS_001077B0 + side * 0x94u;                  /* 0x215BC..0x215CA */
+    u32 os = DS_001077B0 + o * 0x94u;                       /* 0x215E0..0x215EF */
+    u32 rec = DSD(slot);                                    /* 0x215CD */
+    u32 ch;
+    hit_anchor_set(o, DSD(rec + 0x18u), DSD(rec + 0x1Cu));  /* 0x215D3..0x215DB 0x188AC */
+    ch = (u32)DSB(os + 0x7Au);                              /* 0x215F4 */
+    fighter_1883c(o, 0u, (u32)((s32)DSD(P52_A8220 + ch * 2u) >> 16));    /* 0x215FA..0x21608 */
+    ch = (u32)DSB(os + 0x7Au);                              /* 0x2160F */
+    fighter_3c12c(o, (s32)DSD(P52_A820C + ch * 2u) >> 16);  /* 0x21615..0x21621 */
+    DSW(DSD(os) + 0x34u) = DSW(DSD(slot) + 0x34u);          /* 0x21626..0x21636 */
+    DSW(DSD(os) + 0x36u) = DSW(DSD(slot) + 0x36u);          /* 0x2163A..0x2164A */
+    DSW(DSD(os) + 0x44u) = DSW(DSD(slot) + 0x44u);          /* 0x2164E..0x2165E */
+    DSB(DSD(slot) + 0x4Bu) = DSB(DSD(os) + 0x56u);          /* 0x21662..0x21671 */
+    DSD(DSD(os) + 0x24u) = 0u;                              /* 0x21674..0x2167A */
+    DSD(DSD(os) + 0x20u) = 0u;                              /* 0x21681..0x21687 */
+}
+
+/* 0x21A88 — record §52-A. The +0x18 hook 0x21C84 stores (0x21CE0; 0x19020,
+ * fn(side), EAX returned), the twin of 0x3E924 on the counter word
+ * 0x104764: ctx = 0x33950(side); flags 2 except flags 4 and 5 = 1 and 1 and 8
+ * = 0. The high word of the dword at 0x104762 + side * 2 (signed) outside
+ * 3..7 returns 1 (0x21ACC); else 0x18C14(side, flags) on the box tables
+ * 0xA81E6/0xA81F0 (EBX/ECX) when the side's word at 0x107D2C is positive
+ * (`jle`), else 0xA81D2/0xA81DC. */
+u32 fighter_21a88(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    s32 n;
+    fighter_ctx_same(ctx, side);                            /* 0x21A8E..0x21A92 0x33950 */
+    fighter_18bd4(flags);                                   /* 0x21A97..0x21A9B */
+    flags[5] = 1u;                                          /* 0x21AA2 */
+    flags[4] = 1u;                                          /* 0x21AA6 */
+    flags[1] = 0u;                                          /* 0x21AB1 */
+    flags[8] = 0u;                                          /* 0x21AB5 */
+    n = (s32)DSD(DS_00104762 + ctx[0] * 2u) >> 16;          /* 0x21AAA..0x21ABF */
+    if (n > 7 || n < 3) return 1u;                          /* 0x21AC2..0x21AD1 `jg`/`jge` */
+    if ((s16)DSW(DS_00107D2C + ctx[0] * 2u) > 0)            /* 0x21AD3..0x21ADB `jle` */
+        return (u32)fighter_18c14(ctx[0], flags, P52_A81E6, P52_A81F0);   /* 0x21ADD..0x21AFA */
+    return (u32)fighter_18c14(ctx[0], flags, P52_A81D2, P52_A81DC);       /* 0x21AE9..0x21AFA */
+}
+
+/* 0x21B08 — record §52-A. The +0x1C callback 0x21C84 stores (0x21CEB; fn(side)),
+ * the twin of 0x3E9A4: ctx = 0x33950(side); 0x34D8C(side); 0x18AF8; 0x3C148
+ * on both sides; ctx[5]'s +0x28 bit 5; 0x21994(ctx[2], ctx[4]); 0x215B0(side);
+ * 0x39A10 = 0x29A on both records (EDX, loaded for 0x215B0, is kept by it). */
+void fighter_21b08(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x21B0C..0x21B10 0x33950 */
+    hit_flash_pair(ctx[0]);                                 /* 0x21B15..0x21B18 */
+    fighter_18af8();                                        /* 0x21B1D */
+    fighter_3c148(0u);                                      /* 0x21B22..0x21B24 */
+    fighter_3c148(1u);                                      /* 0x21B29..0x21B2E */
+    DSB(ctx[5] + 0x28u) = (u8)(DSB(ctx[5] + 0x28u) | 0x20u);    /* 0x21B33..0x21B37 */
+    (void)fighter_21994(ctx[2], ctx[4]);                    /* 0x21B3B..0x21B43 */
+    fighter_215b0(ctx[0]);                                  /* 0x21B48..0x21B50 */
+    fighter_39a10(ctx[4], 0x29Au);                          /* 0x21B55..0x21B59 */
+    fighter_39a10(ctx[5], 0x29Au);                          /* 0x21B5E..0x21B67 */
+}
+
+/* 0x21B74 — record §52-A. The +0x18 hook 0x21D10 stores (0x21D6C; 0x19020,
+ * fn(side), EAX returned). ctx = 0x33950(side); flags 2 except flag 5 = 1 and
+ * flags 1, 4, 7, 8, 0xD and 0xE = 0. The high word of the dword at 0x104762 +
+ * side * 2 (signed) outside 1..9 returns 1 (0x21BC3); else 0x18C14(side,
+ * flags) on 0xA81FA (EBX) and 0xA8204 (ECX). */
+u32 fighter_21b74(u32 side)
+{
+    u32 ctx[6];
+    u8 flags[16];
+    s32 n;
+    fighter_ctx_same(ctx, side);                            /* 0x21B7A..0x21B7E 0x33950 */
+    fighter_18bd4(flags);                                   /* 0x21B83..0x21B87 */
+    flags[1] = 0u;                                          /* 0x21B90 */
+    flags[8] = 0u;                                          /* 0x21B94 */
+    flags[5] = 1u;                                          /* 0x21B98 */
+    flags[4] = 0u;                                          /* 0x21B9F */
+    flags[0xE] = 0u;                                        /* 0x21BA3 */
+    flags[7] = 0u;                                          /* 0x21BAE */
+    flags[0xD] = 0u;                                        /* 0x21BB5 */
+    n = (s32)DSD(DS_00104762 + ctx[0] * 2u) >> 16;          /* 0x21B9C..0x21BB2 */
+    if (n > 9 || n < 1) return 1u;                          /* 0x21BB9..0x21BC8 `jg`/`jge` */
+    return (u32)fighter_18c14(ctx[0], flags, P52_A81FA, P52_A8204);   /* 0x21BCA..0x21BDB */
+}
+
+/* 0x21BE8 — record §52-A. The +0x1C callback 0x21D10 stores (0x21D77; fn(side)).
+ * ctx = 0x33950(side); 0x34D8C(side); 0x18AF8; 0x3C148 on both sides (EBX =
+ * 0xC80 and EDX = 0 survive it); 0x1883C(side, 0, 0xC80); ctx[5]'s +0x28 bit
+ * 5; 0x21994(ctx[2], ctx[4]); ctx[4]'s words +0x36 = 0x1C2 and +0x44 = 0x19;
+ * 0x3C190(side, 0x4B); 0x215B0(side); 0x39A10 = 0x29A on both records. */
+void fighter_21be8(u32 side)
+{
+    u32 ctx[6];
+    fighter_ctx_same(ctx, side);                            /* 0x21BED..0x21BF1 0x33950 */
+    hit_flash_pair(ctx[0]);                                 /* 0x21BF6..0x21BF9 */
+    fighter_18af8();                                        /* 0x21BFE */
+    fighter_3c148(0u);                                      /* 0x21C03..0x21C0A */
+    fighter_3c148(1u);                                      /* 0x21C0F..0x21C16 */
+    fighter_1883c(ctx[0], 0u, 0x0C80u);                     /* 0x21C05/0x21C14/0x21C1B..0x21C1E */
+    DSB(ctx[5] + 0x28u) = (u8)(DSB(ctx[5] + 0x28u) | 0x20u);    /* 0x21C23..0x21C27 */
+    (void)fighter_21994(ctx[2], ctx[4]);                    /* 0x21C2B..0x21C33 */
+    DSW(ctx[4] + 0x36u) = 0x01C2u;                          /* 0x21C3C */
+    DSW(ctx[4] + 0x44u) = 0x0019u;                          /* 0x21C46 */
+    fighter_3c190(ctx[0], 0x4Bu);                           /* 0x21C4C..0x21C54 */
+    fighter_215b0(ctx[0]);                                  /* 0x21C59..0x21C61 */
+    fighter_39a10(ctx[4], 0x29Au);                          /* 0x21C66..0x21C6A */
+    fighter_39a10(ctx[5], 0x29Au);                          /* 0x21C6F..0x21C78 */
+}
+
+/* 0x21C84 — record §52-A. Character 1's reaction-0x23 callback (the dword at
+ * 0xA3CE4, row 0x63 of 0xA3528; no code reference), the twin of 0x3ECF8. EAX =
+ * slot is overwritten unread, EDX = rec. ctx = 0x339AC(rec); ctx[4] on
+ * 0xC89F0[ctx[2]'s char] at 2.0 through 0x2BC30; the byte 0x10476E + side = 1;
+ * ctx[2]'s +0x53 = 7, +0x52 = 9, +0x54 = 2, +0x0C = 0x216EC, +0x18 = 0x21A88,
+ * +0x1C = 0x21B08 and +0x57 = 4; the side's word at 0x104764 cleared. AL = 1
+ * is unread (as 0x3F3F4's). */
+void fighter_21c84(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    (void)slot;
+    (void)side;
+    hit_anim_ctx(ctx, rec);                                 /* 0x21C87..0x21C89 0x339AC */
+    actors_anim_begin(ctx[4], DSD(FSET_C89F0 + (u32)DSB(ctx[2] + 0x7Au) * 4u),
+                      0x40000000u);                         /* 0x21C8E..0x21CAA 0x2BC30 */
+    DSB(DS_0010476E + ctx[0]) = 1u;                         /* 0x21CAF..0x21CB2 */
+    DSB(ctx[2] + 0x53u) = 7u;                               /* 0x21CBD */
+    DSB(ctx[2] + 0x52u) = 9u;                               /* 0x21CC5 */
+    DSB(ctx[2] + 0x54u) = 2u;                               /* 0x21CCD */
+    DSD(ctx[2] + 0x0Cu) = 0x000216ECu;                      /* 0x21CD5 */
+    DSD(ctx[2] + 0x18u) = 0x00021A88u;                      /* 0x21CE0 */
+    DSD(ctx[2] + 0x1Cu) = 0x00021B08u;                      /* 0x21CEB */
+    DSB(ctx[2] + 0x57u) = 4u;                               /* 0x21CF6 */
+    DSW(DS_00104764 + ctx[0] * 2u) = 0u;                    /* 0x21CFA..0x21CFF */
+}
+
+/* 0x21D10 — record §52-A. Character 1's reaction-0x24 callback (the dword at
+ * 0xA3CF8, row 0x64 of 0xA3528; no code reference). EAX = slot is overwritten
+ * unread, EDX = rec. ctx = 0x339AC(rec); ctx[4] on 0xC8950[ctx[2]'s char] at
+ * 2.0 through 0x3C4CC; the byte 0x10476E + side = 0; ctx[2]'s +0x53 = 7, +0x52
+ * = 9, +0x54 = 0, +0x0C = 0x216EC, +0x18 = 0x21B74, +0x1C = 0x21BE8, +0x57 = 4
+ * and +0x41 bit 7; the side's word at 0x104764 cleared. AL = 1 is unread. */
+void fighter_21d10(u32 slot, u32 rec, u32 side)
+{
+    u32 ctx[6];
+    (void)slot;
+    (void)side;
+    hit_anim_ctx(ctx, rec);                                 /* 0x21D13..0x21D15 0x339AC */
+    hit_anim_start_b(ctx[4], DSD(P52_C8950 + (u32)DSB(ctx[2] + 0x7Au) * 4u),
+                     0x40000000u);                          /* 0x21D1A..0x21D36 0x3C4CC */
+    DSB(DS_0010476E + ctx[0]) = 0u;                         /* 0x21D3B..0x21D40 */
+    DSB(ctx[2] + 0x53u) = 7u;                               /* 0x21D4A */
+    DSB(ctx[2] + 0x52u) = 9u;                               /* 0x21D52 */
+    DSB(ctx[2] + 0x54u) = 0u;                               /* 0x21D5A */
+    DSD(ctx[2] + 0x0Cu) = 0x000216ECu;                      /* 0x21D61 */
+    DSD(ctx[2] + 0x18u) = 0x00021B74u;                      /* 0x21D6C */
+    DSD(ctx[2] + 0x1Cu) = 0x00021BE8u;                      /* 0x21D77 */
+    DSB(ctx[2] + 0x57u) = 4u;                               /* 0x21D82 */
+    DSB(ctx[2] + 0x41u) = (u8)(DSB(ctx[2] + 0x41u) | 0x80u);    /* 0x21D86..0x21D8A */
+    DSW(DS_00104764 + ctx[0] * 2u) = 0u;                    /* 0x21D8E..0x21D93 */
 }

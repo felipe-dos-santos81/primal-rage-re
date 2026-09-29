@@ -882,6 +882,28 @@ void fighter_406b4(void);
 void fighter_36f10(u32 slot);
 int  fighter_40bbc(u32 slot, u32 rec);
 int  fighter_3ff08(u32 slot, u32 rec);
+/* Record §52-A: the callbacks those setups store (the +0x18 hooks 0x3F7F4/
+ * 0x3FD30/0x21A88/0x21B74, fn(side), EAX returned; the +0x1C callbacks
+ * 0x3F85C/0x21B08/0x21BE8, fn(side); the +0x0C callback 0x3FEF8, (slot, rec,
+ * side)), the reaction-row callbacks 0x3FFDC (char 5, 0x23; it calls 0x3FF08)
+ * and 0x21C84/0x21D10 (char 1, 0x23/0x24), (slot, rec, side), their shared
+ * 0x215B0 (EAX = side) and the confetti pool: the init 0x40608 and the
+ * update-table entries 13 (0x40554) and 14 (0x407EC), fn(). */
+u32  fighter_3f7f4(u32 side);
+void fighter_3f85c(u32 side);
+u32  fighter_3fd30(u32 side);
+void fighter_3fef8(u32 slot, u32 rec, u32 side);
+void fighter_3ffdc(u32 slot, u32 rec, u32 side);
+void fighter_40608(void);
+void fighter_407ec(void);
+void fighter_40554(void);
+void fighter_215b0(u32 side);
+u32  fighter_21a88(u32 side);
+void fighter_21b08(u32 side);
+u32  fighter_21b74(u32 side);
+void fighter_21be8(u32 side);
+void fighter_21c84(u32 slot, u32 rec, u32 side);
+void fighter_21d10(u32 slot, u32 rec, u32 side);
 /* And their callees no ported code shares: 0x3F184 (EAX = rec: 0x3F308 on
  * the record's side's slot, the 0xE7C98 landing and +0x57 = 3), 0x3F308 (EAX =
  * slot: the 0xBB308 spawn at the slot's record), 0x3C404 (EAX = side, EDX =
@@ -907,7 +929,7 @@ void fighter_21458_case10(u32 slot, u32 side);
 void fighter_216ec(u32 slot, u32 rec, u32 side);
 /* 0x21994 (record §49-V). Arms the pair (the 0x216EC/0x21458 callbacks on the
  * slot and the other side's slot); returns 1. Its callers 0x21B43/0x21C33 are
- * unported. */
+ * in 0x21B08/0x21BE8 (record §52-A). */
 u32 fighter_21994(u32 slot, u32 rec);
 s32  fighter_3c404(u32 side, s32 n);
 void fighter_3605c(u32 side, u32 frame_bits);

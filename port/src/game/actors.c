@@ -516,6 +516,28 @@ int actors_init(void)
      * 0x1078E8-shaped setups (slot, rec), AL returned. */
     fn_register(0x40BBCu, (void (*)(void))fighter_40bbc);
     fn_register(0x3FF08u, (void (*)(void))fighter_3ff08);
+    /* PORT: record §52-A. The callbacks the §50-A setups store: +0x18 hooks
+     * 0x3F7F4 (0x3FB88) and 0x3FD30 (0x3FF08), fn(side), EAX returned; +0x1C
+     * 0x3F85C (0x3FB88), fn(side); +0x0C 0x3FEF8 (0x3FF08), (slot, rec,
+     * side). The reaction-row callbacks 0x3FFDC (*(u32*)0xA50E4, char 5
+     * 0x23), 0x21C84 (0xA3CE4) and 0x21D10 (0xA3CF8, char 1 0x23/0x24),
+     * (slot, rec, side), and what the last two store: +0x18 0x21A88/0x21B74
+     * and +0x1C 0x21B08/0x21BE8. The update table's entries 13 (0x40554,
+     * the dword at 0xA8678) and 14 (0x407EC, 0xA867C), fn() with the unread
+     * EAX index. */
+    fn_register(0x3F7F4u, (void (*)(void))fighter_3f7f4);
+    fn_register(0x3F85Cu, (void (*)(void))fighter_3f85c);
+    fn_register(0x3FD30u, (void (*)(void))fighter_3fd30);
+    fn_register(0x3FEF8u, (void (*)(void))fighter_3fef8);
+    fn_register(0x3FFDCu, (void (*)(void))fighter_3ffdc);
+    fn_register(0x21C84u, (void (*)(void))fighter_21c84);
+    fn_register(0x21D10u, (void (*)(void))fighter_21d10);
+    fn_register(0x21A88u, (void (*)(void))fighter_21a88);
+    fn_register(0x21B08u, (void (*)(void))fighter_21b08);
+    fn_register(0x21B74u, (void (*)(void))fighter_21b74);
+    fn_register(0x21BE8u, (void (*)(void))fighter_21be8);
+    fn_register(0x40554u, fighter_40554);
+    fn_register(0x407ECu, fighter_407ec);
     /* PORT: record §46-D. The update table's entries 1 (0x48F98, the type-0x2D
      * node walk; dword at 0xA8648) and 10 (0x28F08, the type-0x19 spawner;
      * dword at 0xA866C), fn() with the unread EAX index; and the 0xD000
