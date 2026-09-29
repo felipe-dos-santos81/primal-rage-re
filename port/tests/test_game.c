@@ -6913,6 +6913,197 @@ static void ra_check_arming_reset(void)
     CHECK_EQ_INT((int)DSW(RA_ROW), 6);
 }
 
+/* ---- record §53-A: 0x20860 and its wiring in 0x24C5C's int 16h loop ------ */
+
+#define NI_Q(i)   (DS_00104458 + 4u * (u32)(i))   /* the queue: entries 0..16 live */
+#define NI_GUARD  0x0010449Cu                     /* the dword just past entry 16 */
+#define NI_SENT(i) (0x5A5A0000u | (u32)(i))
+
+/* ra_env, then the queue (17 entries and the guard dword past it) at
+ * per-entry sentinels, the indices at `w`/`r`, DS_001044D8 at 0x55 and the
+ * key latch at a sentinel. The raw's class table DS_00081C84 is the image's. */
+static void ni_env(u32 w, u32 r)
+{
+    ra_env();
+    for (u32 i = 0u; i <= 17u; i++) DSD(NI_Q(i)) = NI_SENT(i);
+    DSD(DS_001044BC) = w;
+    DSD(DS_001044C8) = r;
+    DSB(DS_001044D8) = 0x55u;
+    DSD(DS_00105F30) = 0x77777777u;
+}
+
+/* Every queue entry except `skip` still holds its sentinel (-1: all of them). */
+static int ni_untouched(int skip)
+{
+    for (int i = 0; i <= 17; i++)
+        if (i != skip && DSD(NI_Q(i)) != NI_SENT(i)) return 0;
+    return 1;
+}
+
+/* One accepted key: stored at entry w + 1 (unmasked), the write index
+ * becomes (w + 1) & 0xF, DS_001044D8 = 1, nothing else in the queue moves. */
+static void ni_expect_store(u32 w, u32 r, u32 c, u32 code)
+{
+    ni_env(w, r);
+    nameentry_key(c);
+    CHECK_EQ_INT((long)DSD(NI_Q(w + 1u)), (long)code);
+    CHECK(ni_untouched((int)(w + 1u)), "0x20860 writes only entry write + 1");
+    CHECK_EQ_INT((int)DSD(DS_001044BC), (int)((w + 1u) & 0xFu));
+    CHECK_EQ_INT((int)DSD(DS_001044C8), (int)r);
+    CHECK_EQ_INT((int)DSB(DS_001044D8), 1);
+}
+
+/* 0x20860 called directly. */
+static void ni_check_key(void)
+{
+    /* Letters of either case become 0..0x19 (0x653ED upper-cases, then -'A'). */
+    ni_expect_store(3u, 0u, 'a', 0u);
+    ni_expect_store(3u, 0u, 'A', 0u);
+    ni_expect_store(3u, 0u, 'm', 12u);
+    ni_expect_store(3u, 0u, 'z', 0x19u);
+    ni_expect_store(3u, 0u, 'Z', 0x19u);
+    /* Backspace, Enter and space. */
+    ni_expect_store(3u, 0u, 8u, 0x1Bu);
+    ni_expect_store(3u, 0u, 0xDu, 0x1Cu);
+    ni_expect_store(3u, 0u, 0x20u, 0x1Au);
+    /* The raw's index: write 15 stores at entry 16 (0x104498), not entry 0,
+     * and wraps to 0; an empty queue (w == r) and w + 1 != r accept. */
+    ni_expect_store(15u, 3u, 'b', 1u);
+    ni_expect_store(7u, 7u, 'c', 2u);
+    ni_expect_store(5u, 7u, 'd', 3u);
+
+    /* Bytes whose class has neither bit 6 nor bit 7 are dropped before
+     * DS_001044D8 is touched: the neighbours of the letter ranges, a digit,
+     * ESC, other control bytes, 0x7F and 0x80.. (the class byte for 0xFF is
+     * the table's entry 0, (u8)(0xFF + 1)). */
+    {
+        static const u8 drop[] = { '@', '[', '`', '{', '1', 0x1Bu, 0x09u, 0x0Au,
+                                   0x7Fu, 0x80u, 0xE1u, 0xFFu };
+        for (u32 k = 0u; k < sizeof drop; k++) {
+            ni_env(3u, 0u);
+            nameentry_key(drop[k]);
+            CHECK(ni_untouched(-1), "0x20860 drops a byte of no letter class");
+            CHECK_EQ_INT((int)DSD(DS_001044BC), 3);
+            CHECK_EQ_INT((int)DSB(DS_001044D8), 0x55);
+        }
+    }
+
+    /* A full queue ((w + 1) & 0xF == r) stores nothing but still sets
+     * DS_001044D8, even for a byte of no letter class (0x20876 jumps past the
+     * class test); w = 15, r = 0 is full through the mask. */
+    {
+        static const u32 full[][3] = { {4u, 5u, 'a'}, {4u, 5u, '1'}, {15u, 0u, 'a'} };
+        for (u32 k = 0u; k < 3u; k++) {
+            ni_env(full[k][0], full[k][1]);
+            nameentry_key(full[k][2]);
+            CHECK(ni_untouched(-1), "0x20860 stores nothing into a full queue");
+            CHECK_EQ_INT((int)DSD(DS_001044BC), (int)full[k][0]);
+            CHECK_EQ_INT((int)DSB(DS_001044D8), 1);
+        }
+    }
+}
+
+/* The wiring: game_frame's int 16h loop in mode 0x1E (0x24D08..0x24D6C). Mode
+ * 0x1E's state byte is 1, the no-op state (0x1F452), so only the loop acts. */
+static void ni_frame_env(void)
+{
+    DSB(DS_00104B25) = 1u;
+    DSD(DS_00104AE8) = 0u;       /* no update-table entries */
+    DSB(DS_00104B15) = 0u;       /* no demo-fight tail */
+    DSB(0x00104B1Bu) = 0u;       /* no CPU command block (0x24C7C) */
+    input_clear();
+}
+
+static void ni_check_frame(void)
+{
+    /* 'a' then an extended key (up, ascii 0): 'a' is queued, the extended
+     * key only latches its scan code, and the host queue is drained. The mode
+     * test is the word at DS_00104B00 (ra_env's dword is 0xBEEF001E). */
+    ni_env(0u, 0u);
+    ni_frame_env();
+    input_push(0x1E, 'a');
+    input_push(0x48, 0x00);
+    game_frame();
+    CHECK_EQ_INT((int)DSD(NI_Q(1)), 0);
+    CHECK(ni_untouched(1), "the frame queues only the letter key");
+    CHECK_EQ_INT((int)DSD(DS_001044BC), 1);
+    CHECK_EQ_INT((int)DSB(DS_001044D8), 1);
+    CHECK_EQ_INT((int)DSD(DS_00105F30), 0x48);
+    CHECK(!input_has_key(), "mode 0x1E drains the int 16h queue");
+
+    /* The next frame: 'Q', a digit (dropped by 0x20860) and backspace, in
+     * order; the latch holds the last key's ascii byte. */
+    input_push(0x10, 'Q');
+    input_push(0x02, '1');
+    input_push(0x0E, 0x08);
+    game_frame();
+    CHECK_EQ_INT((int)DSD(NI_Q(1)), 0);
+    CHECK_EQ_INT((int)DSD(NI_Q(2)), 0x10);
+    CHECK_EQ_INT((int)DSD(NI_Q(3)), 0x1B);
+    CHECK_EQ_INT((int)DSD(NI_Q(4)), (int)NI_SENT(4));
+    CHECK_EQ_INT((int)DSD(DS_001044BC), 3);
+    CHECK_EQ_INT((int)DSD(DS_00105F30), 8);
+    CHECK(!input_has_key(), "mode 0x1E drains the int 16h queue");
+
+    /* ESC in mode 0x1E is 0x20860's too (dropped for its class), not the
+     * quit: the quit flag stays clear and the key is consumed. */
+    ni_env(0u, 0u);
+    ni_frame_env();
+    DSB(DS_000A81A8) = 0u;
+    input_push(0x01, 0x1B);
+    game_frame();
+    CHECK(ni_untouched(-1), "ESC queues nothing");
+    CHECK_EQ_INT((int)DSB(DS_001044D8), 0x55);
+    CHECK_EQ_INT((int)DSD(DS_00105F30), 0x1B);
+    CHECK_EQ_INT((int)DSB(DS_000A81A8), 0);
+    CHECK(!input_has_key(), "mode 0x1E consumes ESC");
+
+    /* Another mode (0x1C, an empty case) does not reach 0x20860. */
+    ni_env(0u, 0u);
+    ni_frame_env();
+    DSD(DS_00104B00) = 0x001E001Cu;
+    input_push(0x1E, 'a');
+    game_frame();
+    CHECK(ni_untouched(-1), "mode 0x1C does not queue letters");
+    CHECK_EQ_INT((int)DSD(DS_001044BC), 0);
+    CHECK_EQ_INT((int)DSB(DS_001044D8), 0x55);
+    input_clear();
+}
+
+/* End to end: a typed key reaches the name through 0x1F458 (state 5 polls
+ * side 0) in the same frame, and the pad cursor is turned off. */
+static void ni_check_typing(void)
+{
+    ni_env(0u, 0u);
+    nameentry_arm(3u, 0x12345u);          /* 3 letters */
+    nameentry_reset();                    /* cursor (0xB, 6), queue empty */
+    ni_frame_env();
+    DSB(DS_00104B25) = 5u;
+    input_push(0x32, 'm');
+    game_frame();
+    CHECK_EQ_INT((int)DSB(DS_00104B25), 5);
+    CHECK_EQ_INT((int)DSD(DS_001044BC), 1);
+    CHECK_EQ_INT((int)DSD(DS_001044C8), 1);   /* 0x1F458 took the letter */
+    CHECK_EQ_INT((int)DSB(DS_001044D8), 1);
+    CHECK_EQ_INT((int)DSB(RA_CNT), 1);
+    CHECK_EQ_INT((int)DSB(DS_00104114 + 0x12u), 1);   /* cell 0 flies */
+    CHECK_EQ_INT((int)DSB(DS_00104114 + 0x13u), 12);  /* 'M' */
+    CHECK_EQ_INT((int)DSW(RA_COL), 0x1A);     /* 3 * (12 % 7) + 0xB */
+    CHECK_EQ_INT((int)DSW(RA_ROW), 9);        /* 3 * (12 / 7) + 6 */
+    input_clear();
+}
+
+int test_nameentry_input(void)
+{
+    int before = g_failures;
+    if (!ra_save()) { CHECK(0, "the §53-A snapshot allocates"); return 1; }
+    ni_check_key();
+    ni_check_frame();
+    ni_check_typing();
+    ra_restore();
+    return g_failures - before;
+}
+
 int test_mode1e_rearm(void)
 {
     int before = g_failures;
