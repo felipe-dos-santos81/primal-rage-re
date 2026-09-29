@@ -39,13 +39,17 @@ static u32 g_heap = RES_HEAP;
  * entry, which reads a smaller set, 27. Rounded up per read. This is a
  * *derived* rate, not a fitted per-frame constant. The macro lives in res.h so
  * test_res.c pins the exact tick delta it produces.
- * Named gap (record §45-A): the per-read model does not reproduce the
- * original's tick after each read. The original re-syncs at ticks 3, 31, 32,
- * 36, 54 and 55 and its state-7 reads land at 58, 59 and 61; the port's
+ * Named gap (record §45-A; re-scoped by record §1 of
+ * 2026-09-29-e-open-derivations.md): the per-read model does not reproduce
+ * the original's tick after each read. The original re-syncs at ticks 3, 31,
+ * 32, 36, 54 and 55 and its state-7 reads land at 58, 59 and 61; the port's
  * ceiling per read gives 2, 31, 32, 37, 56 and 58, then 61, 63 and 65, a
- * drift of up to 4 ticks (up to 3 before §45-A added the sound banks). No
- * frame depends on the absolute tick: the re-sync makes the gate pass either
- * way. */
+ * drift of up to 4 ticks (up to 3 before §45-A added the sound banks). The
+ * raw holds no per-read duration: 0x1B3AC's open/read/close are the runtime's
+ * 0x61C60/0x61CF6/0x61EC0 (DOS I/O), timed by the emulator's disk model. No
+ * frame depends on the absolute tick: the gate (0x25643) compares only the
+ * pair, which 0x1B464 re-syncs; the ISR's other counters are read masked
+ * (DS_000EF6DC's dword readers keep the low bits) or relative (0x2EAF2). */
 
 /* 0x1B3AC's presentation head (0x1B3B8-0x1B3F8). `draw` is the original's BL:
  * 0 from the init walk's call (0x1B250), 1 from the lazy resolve (0x1B5E9).

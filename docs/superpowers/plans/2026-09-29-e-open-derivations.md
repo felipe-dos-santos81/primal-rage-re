@@ -19,12 +19,64 @@ build, with the source restored and `cmp`-checked afterwards.
 
 | item | verdict | port change |
 |---|---|---|
+| §1 row 1, `res.c` tick drift | **re-scoped**: the stall is DOS I/O time, not in the raw; no frame observes it | comment only |
 | §2 row 14, `0x36F10` in-range arm | **stale, closed**: the bit's one raw setter `0x36E78` is ported; the arm is reachable | comment; the now-live `0x353DD` retire ported; tests |
 | §3 row 21, arena-frame audit | **stale**: the closure has no unported portable function | `fight.h` comment |
 | §4 row 24, slot `+0x24` table | **stale, closed**: `DS_000BDA8C[char]`, stored by the ported spawn core | `fight.h` comment; test |
 | §5 row 25, `DS_00100B54` | **closed**: 163 for `check_unfreeze`'s fixture, derived from the raw | test assertions and comment |
+| §6 row 27, s16title at boot | **re-scoped**: a driver artefact, not a port divergence; the fix moves enforced oracle lines | test comment only |
 
 ---
+
+## §1 Row 1: the loader's per-read tick model (`platform/res.c`)
+
+**Question.** The port advances `DS_00101508` by `ceil(size / 132674)` per
+first read. The original's re-syncs at the first demo's state-6 entry land at
+ticks 3, 31, 32, 36, 54 and 55; the port's land at 2, 31, 32, 37, 56 and 58
+(record §45-A.4). Can the raw pin a better model? And is the drift measurable
+against the oracle captures?
+
+**The raw.** `0x1B3AC` opens, reads and closes the file through the runtime:
+`0x1B403 call 0x61C60`, `0x1B445 call 0x61CF6` and `0x1B45A call 0x61EC0`.
+All three are at or above `0x5D000` (WATCOM libc over DOS `int 21h`). The
+re-sync follows at `0x1B45F mov eax,[0x101508]` / `0x1B464 mov [0x10150C],eax`.
+While the read blocks, only the timer ISR `0x1BDF4` runs. It increments
+`DS_00101508` and `DS_00101500` (`0x1BE02..0x1BE16`), calls `0x1BBAC` (the
+host-owned input sampler) and increments the word `DS_000EF6DE` (`0x1BE21`).
+The read's duration is therefore the emulator's (or the drive's) I/O time. No
+byte of PRAGE.EXE encodes it, so no raw-derived per-read model exists. The
+132674 bytes/tick rate is already a measurement (§45-A.4), not a raw constant.
+
+**Observability.** Every raw reference to the tick pair (a scan for the
+displacements `0x101508` and `0x10150C`):
+
+- `0x255D4`/`0x255DF`: zeroed and re-synced at the master loop's entry;
+- `0x25643`: the present gate `cmp [0x10150C],[0x101508]`, a pure equality;
+- `0x256C0..0x256D2`: the frame step and the spin, relative;
+- `0x1B464`, `0x4FA0E`, `0x4FAB2` and `0x5210D`: re-syncs;
+- `0x1BE02..0x1BE10`: the ISR increment;
+- `0x1BF91`: `push 0x101508`, the DPMI lock of the page.
+
+No reader uses the absolute value. The other counters the ISR advances
+during a stall are also harmless:
+
+- `DS_00101500` is read only through `0x500BB`, at `0x2FFDA` in the service
+  menu, which no oracle path reaches.
+- `DS_000EF6DE` is read at `0x2EAF2..0x2EB03`, `config_screen_wait`'s
+  relative spin, and cleared at `0x5D808`.
+- The 20 dword reads of `[0xEF6DC]`, whose high half is `0xEF6DE`, each mask
+  the low byte (`xor ah,ah; and al,N`, or `test al,1`). The scan listing is
+  in the report.
+
+After `0x1B464` the gate passes on the load frame whatever the stall. So the
+drift moves no presented frame, and no oracle line can see it. The captures
+show only how many 70 Hz capture frames the loader screen persists for, and
+the classifiers collapse that to one distinct frame.
+
+**Verdict: re-scoped.** It stays a named gap. Closing it needs a per-read
+DOSBox-X trace: a breakpoint at `0x1B45F` logging `DS_00101508` for each
+read of the first demo's state-6 entry. Even that pins the emulator's disk
+timing, not the game's. The `res.c` comment now carries this evidence.
 
 ## §2 Row 14: `0x36F10`'s in-range arm and slot `+0x42` bit `0x10`
 
@@ -239,3 +291,55 @@ fake 8 x 8 sprite with eight all-on rows. The screen boxes are raw
 **Tests** (`check_unfreeze`): `B54 == 163` in B, C, D and G, and `B18 == 7`
 in B and G. The pre-existing `AF8 == B54` invariants stay. **Verdict:
 closed.**
+
+## §6 Row 27: the s16title read at boot vs at the title state
+
+**Question.** §45-A.3 found that the original reads entry 7 (`s16title`) at
+boot (the poll's f 0), whereas "the port" reads it at cycle 2's loop 1973.
+The front-end driver pins that loader screen as a known divergence.
+
+**The raw.** The only code immediates naming entry 7 (a handle with
+`>> 23 == 7`) are two groups:
+
+- the attract phase 2's `0x110D3..0x1113D`: `palette_acquire(0x396ED28)` at
+  `0x110D8`, then `0x396ECE8`, `0x396EAE8` and `0x396E9E8`;
+- `0x2C7A5`/`0x2C7BA` (`0x383B6F4`/`0x3837440`).
+
+The data handle `0x03836102` (the title music records `0x54`/`0x56` in
+`0xBBDC8`) is used by `0x111FF`, which is phase 4. Entry 7's INDEX flags are
+`0x02`, not the preload bit `0x01` that `0x1B210` tests. So its first read is
+a lazy `0x1B544` resolve, and the first one reached is phase 2's `0x110D8`.
+
+**The port's real boot.** A probe of the headless boot (`prageport --check
+3000`, an `fprintf` in `res_resolve`'s lazy branch) shows the port reading
+entry 7 at f 3, in state 0, attract phase 2, at tick 0. That is the raw's
+own `0x110D8` path in the boot attract. The same probe shows entries 0 and 8
+read at f 691 in state 1, which matches the original's f 691 in state 1.
+§45-A.3's "f 887, state 2" for those is also the driver's.
+
+**The divergence is the driver's.** `test_frontend`'s `PR_FRONTEND_DUMP`
+driver runs `game_init()` and then enters state 2 directly ("this driver
+skips it by entering at state 2"), re-seeding the RNG, the frame counter and
+the attract-cycle counter to the boot attract's post-state. It does not
+re-seed the INDEX read bits, so entry 7 is still unread when cycle 2's
+phase 2 runs (loop 1973 = `c2_start` 1971 + 2). One residue remains. The
+original poll's "f 0" against the port's f 3 is not resolved, because the
+poll log is not in the repo. Settling it needs a DOSBox-X breakpoint at
+`0x1B5E9` that logs `DS_000EF6DC`.
+
+**Why no fix here.** The faithful driver fix is to seed entry 7's `+0xC`
+read bit, as the boot attract leaves it. That removes the loop-1973 screen
+from the cycle-2 dump. `fe_cyc2_n` would go from 2308 to 2307, and every
+later cycle-2 index would shift down by one. That moves `make verify`'s
+printed `attract2: ... cycle-2 dump 2308 frames` line and the name-allowed
+splice `cycle-2 2192/2193/2194` (`tools/title_compare.py`), both enforced
+oracle lines. Per the brief this is a HALT, so the change is not made.
+
+**Verdict: re-scoped.** The `test_game.c` comment now states the true cause,
+the fix, and its oracle impact:
+
+| line | old | new, if fixed |
+|---|---|---|
+| `fe_cyc2_n` / attract2 dump count | 2308 | 2307 |
+| attract2 named splice | cycle-2 2192/2193/2194 | 2191/2192/2193 |
+| `ld_loop[0]`/`ld_frame[0]` | 1973 / 168 | removed |

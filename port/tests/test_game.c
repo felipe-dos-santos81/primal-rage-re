@@ -5608,10 +5608,16 @@ int test_frontend(void)
          * (loop 3557, capture 3257), s16hghsc (loop 3684) and the third
          * demo's state-6 entry (six screens in loop 3985, record §47-A).
          * 2295 presented frames (loops 1971..4099 and the logo player's 166
-         * screens) + 13 = 2308. The first pins a known divergence, not the
-         * original: the original reads s16title at boot, the port at the
-         * title state (record §45-A's named gap). A fix of that gap removes
-         * this screen; it is not a regression. */
+         * screens) + 13 = 2308. The first is this driver's, not the port's:
+         * the original and the port's own boot both read s16title in the
+         * boot attract's phase 2 (0x110D8's palette_acquire(0x396ED28), the
+         * first entry-7 resolve; the headless boot reads it at f 3), but this
+         * driver enters at state 2 and skips that attract, so its first
+         * entry-7 resolve is cycle 2's phase 2 (record §6 of
+         * 2026-09-29-e-open-derivations.md). Seeding entry 7's read bit as
+         * the boot attract leaves it would drop this screen and shift the
+         * cycle-2 dump by one frame (2308 -> 2307, and attract2's named
+         * 2192/2193/2194 splice), an oracle-line move not made here. */
         {
             static const int ld_loop[13] = { 1973, 2783, 2783, 2783, 2783, 3557, 3684,
                                              3985, 3985, 3985, 3985, 3985, 3985 };

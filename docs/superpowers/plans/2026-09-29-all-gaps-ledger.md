@@ -358,7 +358,7 @@ wrong, and Task 6 fixes it.
 
 | # | file:line | gap | blocker | status |
 |---:|---|---|---|---|
-| 1 | `platform/res.c:42` | Per-read tick model drifts by up to 4 ticks | Boot resource-read timing (record §45-A) | open |
+| 1 | `platform/res.c:42` | Per-read tick model drifts by up to 4 ticks | Boot resource-read timing (record §45-A) | **re-scoped** (Task 5c, §1 of `2026-09-29-e-open-derivations.md`): the stall is the runtime's DOS I/O (`0x61C60`/`0x61CF6`/`0x61EC0`), with no duration in the raw; no reader uses the absolute tick (the gate `0x25643` is an equality, re-synced at `0x1B464`), so no frame or oracle line sees it. Closure needs a DOSBox-X per-read trace at `0x1B45F`. |
 | 2 | `game/flow.c:2313` | Only registered character entrances run | `DS_000A8628` table | **stale**: all 8 entries are registered |
 | 3 | `game/flow.c:2520`, `:2535` | `game_mode_33_step` does not call `0x4DEF4` | `0x4DEF4` | **closed** (Task 5a, record §W): `0x2965F` now calls `fight_effects_idle_pass` between the second `fight_hud_pass` and `camera_y_commit`; the named-gap comment is gone. No oracle path reaches mode 0x33 (§R). |
 | 4 | `game/flow.c:2622`, `:2623` | Update entry 15 `0x260BC` (bonus card) | `0x260BC` (non-Ghidra) | **closed** (Task 5a, record §B8): entries 15 and 16 ported and registered; both `PORT:` notes in `flow_round_bonus_a/_b` rewritten. |
@@ -384,7 +384,7 @@ wrong, and Task 6 fixes it.
 | 24 | `game/fight.h:299` | slot `+0x24` health-sprite table (§7.9) | not re-measured | **stale, closed** (Task 5c, §4): `DS_000BDA8C[char]` (7 pointers), stored by the ported spawn core at `0x33D5D`, indexed s in `[0, 0x4B0]`, 2 bytes per s. Pinned by `check_health_table`. |
 | 25 | `tests/test_fight.c:539` | `DS_00100B54`'s value (§7.3) | not re-measured | **closed** (Task 5c, §5): B54 = 163 (7 rows x 37 x 8 = 2072, then `0x1703E..0x1706F`), with B18 = 7; asserted in `check_unfreeze` B/C/D/G. |
 | 26 | `tests/test_game.c:1062` | "0x16 is a still-unported named gap" | `0x4F2B0` ported (§49-G) | **stale** (test comment) |
-| 27 | `tests/test_game.c:4602` | s16title read at boot vs at the title state (§45-A) | boot resource order | open (a fix removes a pinned screen) |
+| 27 | `tests/test_game.c:4602` | s16title read at boot vs at the title state (§45-A) | boot resource order | **re-scoped** (Task 5c, §6): the port's real boot reads entry 7 at f 3 through the raw's `0x110D8` (attract phase 2). The loop-1973 screen is the front-end driver's, because it enters at state 2. The fix (seeding entry 7's read bit) moves the attract2 dump count 2308 -> 2307 and its named splice, both enforced, so it is not made. |
 
 Rows 3/7/8/10/12/20/23/26 are stale, and so are parts of 2/9/11/19 (12 rows).
 The 35 sites fold into 27 rows. The other gap prose that does not use the
