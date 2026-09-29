@@ -363,3 +363,102 @@ which appends 18 entries to `fn_table` (limit `FN_TABLE_MAX` 1300, `mem.c:18`).
 Task 2 proves neither moves a frame. It byte-compares a `make check frames=8000`
 dump before and after, and checks that every `make verify` oracle line is
 unchanged.
+
+## §K11.0 Baseline (executor, Task 1)
+
+The baseline is green on `8466111` (branch `all-gaps`). `cmake --build build`
+printed no warning or error. `make verify` exited 0 (`verify-exit=0`; log
+`<scratchpad>/k11_t1_verify.txt`). These are its oracle lines as `orlines.sh`
+extracts them (`<scratchpad>/k11_t1_or.txt`, sha256 `5852a1225ab8f3bf...`),
+the comparison base for every later task. They agree with ledger §A. Four
+lines longer than 400 characters (the title splice-byte lists and the
+front-end splice-byte and missing lists) are shortened here to their prefix
+and the sha256 of the full line; the full text is in the file.
+
+```
+oracle C-vs-Python: 9866 writes byte-exact
+capture oracle first difference at C write 430: C tick=1010 reg=0xa0 val=0xd3 vs capture tick=1010 reg=0x1a8 val=0x68 (C 9866 writes, capture 6903 normalised)
+all checks passed
+oracle C-vs-Python: 9866 writes byte-exact
+capture oracle first difference at C write 430: C tick=1010 reg=0xa0 val=0xd3 vs capture tick=1010 reg=0x1a8 val=0x68 (C 9866 writes, capture 6903 normalised)
+all checks passed
+smk_compare: 120/120 frames match
+smk_compare: 41/41 frames match
+all checks passed
+title_compare: capture 1: window distinct [216..326] (raw 2198..2308)
+title_compare: capture 1: 111 frames in window: 54 clean, 55 splice, 2 transition, 0 unexplained
+title_compare: capture 1: splice bytes [55 frames, 55 distinct]:  ... (459 chars, sha256 614f56c8c579f4d8)
+title_compare: capture 1: transition rows (N, row, from_N, from_N+1) [2 frames]: ['port87@row7(28/73)', 'port90@row76(322/273)']
+title_compare: capture 1: port frames exhibited 95/96; missing [0]; endpoints OK
+title_compare: capture 2: window distinct [216..326] (raw 2193..2303)
+title_compare: capture 2: 111 frames in window: 54 clean, 57 splice, 0 transition, 0 unexplained
+title_compare: capture 2: splice bytes [57 frames, 57 distinct]:  ... (472 chars, sha256 2d9ed45f9104492f)
+title_compare: capture 2: transition rows (N, row, from_N, from_N+1) [0 frames]: none
+title_compare: capture 2: port frames exhibited 95/96; missing [0]; endpoints OK
+title_compare: determinism: clean samples of 54 port frame(s) agree, 0 disagree
+all checks passed
+title_compare: frontend: window distinct [560..1884] (raw 3108..4791)
+title_compare: frontend: 1325 frames in window: 517 clean, 801 splice, 3 transition, 2 unexplained
+title_compare: frontend: splice bytes [801 frames, 801 distinct]:  ... (6118 chars, sha256 a94212acd7d58794)
+title_compare: frontend: transition rows (N, row, from_N, from_N+1) [3 frames]: ['port832@row177(235/33)', 'port862@row189(148/478)', 'port906@row31(101/343)']
+title_compare: frontend: port frames exhibited 1145/1382; missing [1, 2, 6, 12, 17, 23, 29, 35, 41, 47, 53, 59, 65, 127, ... (1249 chars, sha256 57cde3464bb284fa)
+title_compare: frontend: 16 all-black capture frame(s) excluded as artifacts: [(0, 1367), (217, 2173), (357, 2420), (390, 2529), (424, 2637), (458, 2746), (491, 2855), (525, 2963), (561, 3109), (831, 3670), (1885, 4793), (2095, 5401), (2133, 5807), (2383, 6758), (3406, 7846), (3543, 8247)]
+title_compare: frontend: 2 unexplained captured frame(s) allowed by name: [(832, 3671), (833, 3740)]; no other unexplained frame in the window.
+all checks passed
+title_compare: demo-fight: no port frames after the front-end window
+title_compare: demo-fight: front-end window distinct [560..1884]; fight window empty: the front-end window reaches the first all-black capture frame 1885 (raw 4793)
+title_compare: demo-fight: 0 unexplained in the fight window
+title_compare: demo-fight: fully explained; the window claim is now exact
+title_compare: attract2: front-end window distinct [560..1884]; cycle-2 region [1885..3616] (raw 4793..8409); cycle-2 dump 2308 frames
+title_compare: attract2: exhibited window distinct [1886..3616] (raw 4795..8409)
+title_compare: attract2: 1732 frames in region: 1078 clean, 630 splice, 17 transition, 1 unexplained, 6 all-black
+title_compare: attract2: captured frame 3545 (raw 8338) allowed by name as a three-frame splice: cycle-2 2192/2193/2194 at bytes 120000/172800 (rows 125/180)
+title_compare: attract2: 0 unexplained in the region
+all checks passed
+attract_compare: data/title-captures/title: attract window [0..215]; title window starts at capture 216 (raw 2198)
+attract_compare: data/title-captures/title: 215/216 capture frames explained; port attract frames exhibited 173/690
+attract_compare: data/title-captures/title: FIRST DIVERGENCE at capture frame 215 (raw 2180)
+attract_compare: data/title-captures/title:   best byte splice port0[0..0) ++ port1[0..192000) still differs at 498 byte(s) (first row 192 byte 184320)
+attract_compare: data/title-captures/title: expected divergence at capture frame 215
+attract_compare: data/title-captures/title2: attract window [0..215]; title window starts at capture 216 (raw 2193)
+attract_compare: data/title-captures/title2: 215/216 capture frames explained; port attract frames exhibited 173/690
+attract_compare: data/title-captures/title2: FIRST DIVERGENCE at capture frame 215 (raw 2175)
+attract_compare: data/title-captures/title2:   best byte splice port0[0..0) ++ port1[0..192000) still differs at 498 byte(s) (first row 192 byte 184320)
+attract_compare: data/title-captures/title2: expected divergence at capture frame 215
+Ran 10 tests in 0.099s
+OK
+Ran 33 tests in 1.102s
+OK
+== symbols.h must regenerate byte-identically ==
+python3 tools/gen_symbols.py port/decomp port/src/symbols.h
+1304 globals, 1206 functions -> port/src/symbols.h
+  dropped 11 globals, 1 functions outside the LE objects
+all checks passed
+```
+
+`python3 tools/port_progress.py` prints:
+
+```
+762 1203 63
+726 730 99 (portable: excludes 82 host-owned/deferred and runtime >= 5D000)
+```
+
+(the plan's `726 731 99` is the older tree; the tree's value is `726 730`.)
+
+The frame baseline is `make check frames=8000` on the same build
+(`check-exit=0`); its 8000 `frames/frame_*.idx` and 8000 `frame_*.pal` files
+are copied to `<scratchpad>/k11_frames_before/` (the `.ppm` is the `.idx`
+through the `.pal`, and is not kept, for disk space).
+
+**§0 re-checked.** `le.py` rebuilt `k11_img.bin` byte-identical to
+`img_rev.bin`. `k11_closure.py` prints `TOTAL 53 functions 15577 bytes`, which
+includes the three already-ported `0x38B18`, `0x500BB` and `0x1AE28`, and its
+output is identical to the planner's `k11_closure.txt`. `k11_tab.py` prints 50
+rows summing to 15 304 bytes. **§0 re-checked: 50 functions / 15 304 B**, no
+correction.
+
+One addition to §0.2 from the fixed-up image: the title entry `0xBCCCC` of the
+START MENU holds string `0x215` "START MENU" (its `+4`/`+8`/`+0xC` are 0), and
+the three tables end at the zero entries `0xBCC0C`, `0xBCCBC` and `0xBCD4C`.
+The START MENU items all have `+0xC = 1`; the title entries `0xBCBDC`,
+`0xBCC1C` and `0xBCCCC` have no menu-level callback (`+8 = 0`).
