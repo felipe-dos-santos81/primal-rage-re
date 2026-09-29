@@ -6555,8 +6555,8 @@ void game_loop(void)
         }
 
         /* PORT: the original reads int 16h inside 0x24C5C's keyboard loop and
-         * quits from 0x249F0; the port ports only that quit arm and tests it
-         * here, so the test drains the queue (input_drain_esc) — the BIOS
+         * quits from 0x249F0; outside mode 0x1E (whose loop game_frame runs,
+         * record §53-A) the port ports only that quit arm and tests it here, so the test drains the queue (input_drain_esc) — the BIOS
          * queue's head advances only on a read. A window close is the host's
          * own request rather than a key. */
         if (input_drain_esc() || host_quit_requested()) {  /* ESC: 0x011B */

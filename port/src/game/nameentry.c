@@ -462,7 +462,10 @@ static int ne_pad(u8 side, u8 mask)
     return 0;
 }
 
-/* The autorepeat test: counter `ctr` above 0x1E and a multiple of 5. */
+/* The autorepeat test: counter `ctr` above 0x1E and a multiple of 5. Its two
+ * counters, DS_001044E0 and DS_001044DC, have no writer in the image (record
+ * §53-A.4: the only fixups naming them are these five reads), so in the
+ * original they hold the loader's BSS zero and the test is always false. */
 static int ne_repeat(u32 ctr)
 {
     return ctr > 0x1Eu && (ctr % 5u) == 0u;                 /* 0x1F503..0x1F520 */
