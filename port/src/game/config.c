@@ -216,6 +216,24 @@ void config_validate(void)
     }
 }
 
+/* 0x2D4B4 — record §K2.3. EDX = 1 (0x2D4B5); loop: EAX += 1 (0x2D4BA), stop
+ * when EDX >= EAX signed (0x2D4BB/0x2D4BD `jge`), else EDX += EDX (0x2D4BF)
+ * and back to the `inc` (0x2D4C1). EDX is pushed and popped; the result is
+ * EAX, n + r + 1 for the smallest r with 2^r >= n + r + 1. Callers 0x2D533
+ * (0x2D4EC), 0x2D8C8 (0x2D6F8's stored-image arm) and 0x2DB11/0x2DB24
+ * (0x2DAE4), each with EAX = 0x26; none of those paths runs in the port. */
+u32 config_codeword_len(u32 n)
+{
+    u32 eax = n;
+    u32 edx = 1u;                                  /* 0x2D4B5 */
+    for (;;) {
+        eax++;                                     /* 0x2D4BA */
+        if ((s32)edx >= (s32)eax) break;           /* 0x2D4BB/0x2D4BD */
+        edx += edx;                                /* 0x2D4BF */
+    }
+    return eax;
+}
+
 /* ---- high-score tables (record §46-A) ------------------------------------- */
 
 /* 0x2DB58 — record §46-A. EAX = rec, EDX = table, ECX = size_out, EBX =

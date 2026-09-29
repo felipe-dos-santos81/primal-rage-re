@@ -254,6 +254,11 @@ void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3);
  * below). `stage` is clamped to 7 for the full branch; `full` (the raw's EDX)
  * selects 0x2BAF4/0x38730/0x412A0. */
 void game_fight_reset(u32 stage, u32 full);
+/* Record §K2.1, 0x29B70: a bare `ret`. Called by 0x20DF4 (0x20E0B) and by
+ * game_frame for modes 1, 2 and 0x20 (0x2521A/0x25224/0x2522E). */
+void game_null_step(void);
+/* Record §K2.2, 0x32968: a bare `ret`. Called by game_init (0x20CC7). */
+void game_init_null(void);
 /* 0x4F200: DS_00107A55 = (u8)v, DS_00107A54 = 0, 0x4F1D0, 0x2BAF4(1). */
 void flow_screen_reset(u32 v);
 /* 0x25848: picks the stage word DS_00104AFC (on DS_00104B17). */

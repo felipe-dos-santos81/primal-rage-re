@@ -49,6 +49,11 @@ u8 *gfx_aperture(void);
  * blacked. */
 void gfx_screen_reset(u32 ticks);
 
+/* Record §K2.4, 0x51F72: 0xFA00 bytes of mem[] from addr on, every dword =
+ * value. Callers 0x52119/0x52123 in 0x52106 (its 0x52151 aperture call is
+ * g_aperture). */
+void gfx_fill_screen(u32 addr, u32 value);
+
 /* Writes w*h bytes of palette indices into the aperture (when 320x200) and hands
  * the aperture converted through gfx_dac to host_present_rgb(). */
 void gfx_present(const u8 *indices, int w, int h);

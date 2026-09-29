@@ -890,6 +890,23 @@ int test_gfx(void)
         memcpy(gfx_aperture(), s_ap, sizeof s_ap);
     }
 
+    /* Record §K2.4 (2026-09-29-k2-k5-derivations.md): 0x51F72 stores the dword
+     * EDX over 0xC8 passes of 0x140 bytes from EAX on (0x51F73, 0x520F7), so
+     * exactly 0xFA00 bytes. Four 0xAB sentinel bytes on each side. */
+    {
+        const u32 buf = SCRATCH + 0x30000u, base = buf + 4u;
+        mem_fill(buf, 0xAB, 0xFA08u);
+        gfx_fill_screen(base, 0xCAFEF00Du);
+        u32 bad = 0u;
+        for (u32 i = 0; i < 0xFA00u; i += 4u)
+            if (DSD(base + i) != 0xCAFEF00Du) bad++;
+        CHECK_EQ_INT((int)bad, 0);
+        CHECK_EQ_INT((int)DSD(base), (int)0xCAFEF00Du);
+        CHECK_EQ_INT((int)DSD(base + 0xF9FCu), (int)0xCAFEF00Du);
+        CHECK_EQ_INT((int)DSD(buf), (int)0xABABABABu);
+        CHECK_EQ_INT((int)DSD(base + 0xFA00u), (int)0xABABABABu);
+    }
+
     return g_failures - before;
 }
 

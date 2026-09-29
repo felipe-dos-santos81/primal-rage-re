@@ -40,6 +40,11 @@ void config_set_defaults(void);
  * defaults path, as on a fresh machine. */
 void config_validate(void);
 
+/* Record §K2.3, 0x2D4B4: n + r + 1 for the smallest r with 2^r >= n + r + 1
+ * (a SEC-DED codeword length). Its callers 0x2D4EC, 0x2D6F8's stored-image
+ * arm and 0x2DAE4 are not run by the port (declared no-op / deferred). */
+u32 config_codeword_len(u32 n);
+
 /* ---- high-score tables (0x2DB58/0x2DBC4/0x2DCA0; record §46-A) ----------
  * Three packed tables described by the obj-0 descriptors at 0x2D3FC and kept
  * in the data object at [0x2D478 + 8*table]: 0 = the ten scores (0x105E34),

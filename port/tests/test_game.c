@@ -976,6 +976,28 @@ static void check_hiscore_screen(void)
     tf_put(sv_data, DATA_BASE, 0x8B0D0u);
 }
 
+/* Records §K2.1/§K2.2 (2026-09-29-k2-k5-derivations.md): 0x29B70 and 0x32968
+ * are a bare `ret` (`c3`). The data object is filled with 0xA5, which no
+ * image byte pattern guarantees, and must hold it after each call. */
+static void check_null_fns(void)
+{
+    enum { DATA_LEN = 0x8B0D0 };
+    static u8 saved[DATA_LEN];
+    memcpy(saved, mem + DATA_BASE, DATA_LEN);
+    memset(mem + DATA_BASE, 0xA5, DATA_LEN);
+    game_null_step();
+    u32 bad = 0u;
+    for (u32 i = 0; i < (u32)DATA_LEN; i++)
+        if (DSB(DATA_BASE + i) != 0xA5u) bad++;
+    CHECK_EQ_INT((int)bad, 0);
+    game_init_null();
+    bad = 0u;
+    for (u32 i = 0; i < (u32)DATA_LEN; i++)
+        if (DSB(DATA_BASE + i) != 0xA5u) bad++;
+    CHECK_EQ_INT((int)bad, 0);
+    memcpy(mem + DATA_BASE, saved, DATA_LEN);
+}
+
 int test_flow(void)
 {
     int before = g_failures;
@@ -1209,6 +1231,8 @@ int test_flow(void)
      * last and restores every global it seeds, so it cannot perturb the
      * assertions above. */
     check_timer_exit();
+
+    check_null_fns();
 
     return g_failures - before;
 }
@@ -2803,6 +2827,16 @@ int test_config(void)
     }
     check_hiscore();
     check_hiscore_rank();
+
+    /* Record §K2.3 (2026-09-29-k2-k5-derivations.md): 0x2D4B4's loop jumps
+     * back to its `inc eax` (0x2D4C1 -> 0x2D4BA) and returns EAX, so the result
+     * is n + r + 1 for the smallest r with 2^r >= n + r + 1, not a power of
+     * two. Every caller passes 0x26 (0x2D528, 0x2D8BD, 0x2DB0B, 0x2DB1F). */
+    CHECK_EQ_INT((int)config_codeword_len(0u), 1);
+    CHECK_EQ_INT((int)config_codeword_len(1u), 4);
+    CHECK_EQ_INT((int)config_codeword_len(3u), 7);
+    CHECK_EQ_INT((int)config_codeword_len(4u), 8);
+    CHECK_EQ_INT((int)config_codeword_len(0x26u), 0x2D);
     return 0;
 }
 

@@ -208,13 +208,30 @@ u8 *gfx_aperture(void) { return g_aperture; }
  * function's incoming EAX (0x32BE5). */
 void gfx_screen_reset(u32 ticks)
 {
-    DSD(DS_00101508) = ticks;
-    DSD(DS_0010150C) = ticks;
-    u32 a = DSD(DS_001014E8), b = DSD(DS_001014E4);
-    for (u32 i = 0; i < 0xFA00u; i += 4u) DSD(a + i) = ticks;
-    for (u32 i = 0; i < 0xFA00u; i += 4u) DSD(b + i) = ticks;
+    DSD(DS_00101508) = ticks;                          /* 0x52108 */
+    DSD(DS_0010150C) = ticks;                          /* 0x5210D */
+    gfx_fill_screen(DSD(DS_001014E8), ticks);          /* 0x52114/0x52119 0x51F72 */
+    gfx_fill_screen(DSD(DS_001014E4), ticks);          /* 0x5211E/0x52123 0x51F72 */
     memset(gfx_dac, 0, sizeof gfx_dac);
+    /* PORT: 0x5214C/0x52151 0x51F72 on EAX = 0xA0000, the aperture; the port
+     * keeps the screen in g_aperture (the aperture rule), filled here with the
+     * same dword pattern (record §K2.4). */
     for (u32 i = 0; i < 0xFA00u; i += 4u) memcpy(g_aperture + i, &ticks, 4u);
+}
+
+/* 0x51F72 — record §K2.4. EAX = addr, EDX = value: CL = 0xC8 passes
+ * (0x51F73), each 80 dword stores [EAX+0..0x13C] = EDX (0x51F78..0x520F1)
+ * then EAX += 0x140 (0x520F7), `dec cl; jne` (0x520FC): 0xFA00 bytes. The
+ * `xchg ebx,ebx; nop` at 0x51F75 is alignment padding. EAX is left advanced
+ * by 0xFA00, which no caller reads (0x5211E reloads it, 0x52156 returns). */
+void gfx_fill_screen(u32 addr, u32 value)
+{
+    u32 eax = addr;
+    for (u32 cl = 0xC8u; cl != 0u; cl--) {             /* 0x51F73, 0x520FC */
+        for (u32 k = 0; k < 0x140u; k += 4u)           /* 0x51F78..0x520F1 */
+            DSD(eax + k) = value;
+        eax += 0x140u;                                 /* 0x520F7 */
+    }
 }
 
 const u8 *gfx_display(void)

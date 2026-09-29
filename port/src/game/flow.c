@@ -4718,6 +4718,12 @@ void prompt_side_erase(s32 side, s32 row)
                              (s32)DSD(DS_00105BF8));    /* 0x2C2E9..0x2C2F9 0x2F388 */
 }
 
+/* 0x29B70 — record §K2.1. A bare `ret` (`c3`). Callers: 0x20DF4 (0x20E0B)
+ * and 0x24C5C's jump-table cases 1, 2 and 0x20 (0x2521A/0x25224/0x2522E). */
+void game_null_step(void)
+{
+}
+
 /* 0x20DF4 — record §46-B. The fight reset. EAX = the stage (DS_00104AFC's
  * zero-extended word at every caller), clamped to 7 by a signed `cmp eax,7;
  * jl` (0x20E01/0x20E06) into EBX; EDX = `full`, read at 0x20E6F. EDX survives
@@ -4738,7 +4744,7 @@ void game_fight_reset(u32 stage, u32 full)
 {
     DSD(DS_000F0A48) = 0u;                              /* 0x20DFB */
     u32 s = (s32)stage < 7 ? stage : 7u;                /* 0x20DF7/0x20E01/0x20E06 */
-    /* 0x20E0B 0x29B70 is a bare `ret`. */
+    game_null_step();                                   /* 0x20E0B 0x29B70 */
     DSD(DS_00100B4C) = 0u;                              /* 0x20E16 */
     DSD(DS_00104AE8) = 0u;                              /* 0x20E1C */
     DSB(DS_001088EC) = 0u;                              /* 0x20E22 */
@@ -6354,6 +6360,12 @@ void game_set_game_dir(const char *dir)
     attract_set_media_dir(dir);
 }
 
+/* 0x32968 — record §K2.2. A bare `ret` (`c3`); its one caller is 0x20C10
+ * (game_init) at 0x20CC7. */
+void game_init_null(void)
+{
+}
+
 void game_init(void)
 {
     char index_path[512];
@@ -6424,6 +6436,7 @@ void game_init(void)
     DSB(DS_00105B3A) = (u8)((v & 0x100u) >> 4);        /* 0x20C9F */
     DSD(DS_001088D0) = (v & 0xFu) * 5u + 0x1Eu;        /* 0x20CB0 */
     DSB(DS_0010452C) = (u8)((v & 0xF0u) >> 4);         /* 0x20CC2 */
+    game_init_null();                                  /* 0x20CC7 0x32968 */
     /* PORT: 0x2BF08's captured inputs (docs/superpowers/plans/
      * 2026-09-18-bf08-overlay-diagnosis.md §2.3). DS_00105C00 is the live credit
      * counter the overlay renders as `<CREDITS string>:<n>`; the un-pinned title
@@ -6824,7 +6837,7 @@ void game_frame(void)
     case 0x01u:
     case 0x02u:
     case 0x20u:
-        /* 0x2521A/0x25224/0x2522E call 0x29B70, a bare `ret`. */
+        game_null_step();                              /* 0x2521A/0x25224/0x2522E 0x29B70 */
         break;
     case 0x03u:
         game_state_step();                             /* 0x25238 0x11D04 */
