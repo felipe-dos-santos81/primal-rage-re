@@ -74,17 +74,30 @@ void palette_record(u32 ptr, u32 first, u32 count, u32 flag)
     DSD(head + 0) = ptr;
     DSD(head + 4) = first;
     DSD(head + 8) = count;
-    DSD(head + 12) = flag;
+    DSB(head + 12) = (u8)flag;   /* 0x3373F/0x3371F: low byte only (§3) */
     DSD(DS_00107798) = head + 16;
+}
+
+/* 0x33714 — record §K1.7 (2026-09-29-k1-k9-derivations.md). 0x33734's append
+ * with the constant flag byte 1 (0x3371F `mov byte [eax-4],1`, where 0x33734
+ * stores 0 at 0x3373F); EBX = ptr, EAX = first, EDX = count. Its only caller is
+ * the effect teardown 0x13420 (0x13490, types 0/2/3/5). PORT: it delegates the
+ * append to palette_record so the dirty list keeps one writer and one bound
+ * guard. */
+void palette_record_flagged(u32 ptr, u32 first, u32 count)
+{
+    palette_record(ptr, first, count, 1u);
 }
 
 /* 0x1C470 — record §50-D. Drains the palette dirty list DS_00107498..DS_00107798
  * to the DAC. PORT: the DAC ports 0x3C8/0x3C9 and the 0x3DA retrace spin are
- * the host's gfx_dac and gfx_wait_vblank(). TODO(verify): the raw clamps with
- * first + record+0xC (0x1C48B..0x1C499, the flag word, not the count at +8) and
- * runs the write loop as a do-while (0x1C4D6 `dec esi; jg`), so a zero count
- * still writes one entry; the port clamps with the count and skips a zero count.
- * Whether a shipped record reaches either case is not checked. */
+ * the host's gfx_dac and gfx_wait_vblank(). Record §3 of
+ * 2026-09-29-todo-verify-derivations.md: the clamp adds the dword first to the
+ * flag dword +0xC and subtracts any excess over 0x100 (signed `jle`) from the
+ * flag dword itself (0x1C48B..0x1C49F), never from the count; the handle test
+ * then reads the flag's low byte (0x1C4AD). The write loop is a do-while
+ * (0x1C4D6 `dec esi; jg`), so a count below 1 writes one entry, and the DAC's
+ * 8-bit write index (set from AL at 0x1C4AA) wraps past 0xFF. */
 void gfx_flush_palette(void)
 {
     u32 rec = DS_00107498;
@@ -102,12 +115,14 @@ void gfx_flush_palette(void)
     if (rec != head) gfx_wait_vblank();
     while (rec != head) {
         u32 ptr = DSD(rec + 0);
-        u32 first = (u8)DSD(rec + 4);
-        s32 count = (s32)DSD(rec + 8);
-        u32 flag = DSD(rec + 12);
+        s32 sum = (s32)(DSD(rec + 4) + DSD(rec + 12));  /* 0x1C48B/0x1C48E */
+        if (sum > 0x100)                                 /* 0x1C491/0x1C497 */
+            DSD(rec + 12) -= (u32)(sum - 0x100);         /* 0x1C499/0x1C49F */
+        u32 first = (u8)DSD(rec + 4);                    /* 0x1C4AA out dx,al */
+        s32 count = (s32)DSD(rec + 8);                   /* 0x1C4BD */
+        u32 flag = DSB(rec + 12);                        /* 0x1C4AD */
 
-        if (first + count > 0x100) count = 0x100 - (s32)first;
-        if ((u8)flag != 0) {
+        if (flag != 0) {
             /* PORT: the original walks its extended-memory block list to find
              * the handle's data; res_resolve() is the port's handle resolver.
              * It returns a host pointer, so subtract mem to get back the linear
@@ -132,7 +147,11 @@ void gfx_flush_palette(void)
          * full 8-bit channel without the truncation, and without the expansion,
          * is what rendered every game palette wrong; smk_palette_to already
          * supplies display values, so this path is the one that needed it. */
-        for (s32 i = 0; i < count; i++) {
+        s32 i = 0;
+        do {                                             /* 0x1C4C5..0x1C4D7 */
+            /* PORT: the raw reads wherever the count takes it; the port stops
+             * at the end of mem[] rather than read past the host buffer. */
+            if (!mem_in_range(ptr + (u32)i * 4u, 4u)) break;
             u32 word = DSD(ptr + (u32)i * 4);
             u8 index = (u8)(first + (u32)i);
             u8 r = (u8)((word >> 2) & 0x3Fu), g = (u8)((word >> 10) & 0x3Fu);
@@ -140,7 +159,7 @@ void gfx_flush_palette(void)
             gfx_dac[index][0] = (u8)((r << 2) | (r >> 4));
             gfx_dac[index][1] = (u8)((g << 2) | (g >> 4));
             gfx_dac[index][2] = (u8)((b << 2) | (b >> 4));
-        }
+        } while (++i < count);                           /* 0x1C4D6 dec esi; jg */
         DSD(rec + 4) = 0xFFFFFFFFu;   /* the original marks the record consumed */
         rec += 16;
     }
@@ -189,13 +208,30 @@ u8 *gfx_aperture(void) { return g_aperture; }
  * function's incoming EAX (0x32BE5). */
 void gfx_screen_reset(u32 ticks)
 {
-    DSD(DS_00101508) = ticks;
-    DSD(DS_0010150C) = ticks;
-    u32 a = DSD(DS_001014E8), b = DSD(DS_001014E4);
-    for (u32 i = 0; i < 0xFA00u; i += 4u) DSD(a + i) = ticks;
-    for (u32 i = 0; i < 0xFA00u; i += 4u) DSD(b + i) = ticks;
+    DSD(DS_00101508) = ticks;                          /* 0x52108 */
+    DSD(DS_0010150C) = ticks;                          /* 0x5210D */
+    gfx_fill_screen(DSD(DS_001014E8), ticks);          /* 0x52114/0x52119 0x51F72 */
+    gfx_fill_screen(DSD(DS_001014E4), ticks);          /* 0x5211E/0x52123 0x51F72 */
     memset(gfx_dac, 0, sizeof gfx_dac);
+    /* PORT: 0x5214C/0x52151 0x51F72 on EAX = 0xA0000, the aperture; the port
+     * keeps the screen in g_aperture (the aperture rule), filled here with the
+     * same dword pattern (record §K2.4). */
     for (u32 i = 0; i < 0xFA00u; i += 4u) memcpy(g_aperture + i, &ticks, 4u);
+}
+
+/* 0x51F72 — record §K2.4. EAX = addr, EDX = value: CL = 0xC8 passes
+ * (0x51F73), each 80 dword stores [EAX+0..0x13C] = EDX (0x51F78..0x520F1)
+ * then EAX += 0x140 (0x520F7), `dec cl; jne` (0x520FC): 0xFA00 bytes. The
+ * `xchg ebx,ebx; nop` at 0x51F75 is alignment padding. EAX is left advanced
+ * by 0xFA00, which no caller reads (0x5211E reloads it, 0x52156 returns). */
+void gfx_fill_screen(u32 addr, u32 value)
+{
+    u32 eax = addr;
+    for (u32 cl = 0xC8u; cl != 0u; cl--) {             /* 0x51F73, 0x520FC */
+        for (u32 k = 0; k < 0x140u; k += 4u)           /* 0x51F78..0x520F1 */
+            DSD(eax + k) = value;
+        eax += 0x140u;                                 /* 0x520F7 */
+    }
 }
 
 const u8 *gfx_display(void)

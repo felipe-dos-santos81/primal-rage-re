@@ -50,7 +50,7 @@ struct AIL_SAMPLE {
     u32 flag;
     u32 rate;         /* spec row 17: 0x2b11 = 11025 */
     s32 volume;       /* 0..0x7f (spec row 18) */
-    u32 loop;         /* spec row 19: 0 = one-shot */
+    u32 loop;         /* row 19 loop count: 0 forever, 1 once (record §23) */
     s16 *conv;        /* owned s16 conversion buffer, mixer references it */
     u32 conv_cap;     /* frames `conv` can hold */
 };
@@ -295,7 +295,12 @@ void AIL_start_sample(HSAMPLE sample)
         /* 0..0x7f -> Q8 with 0x7f (the game's full volume) at unity 256, not
          * 254: the mixer's unity is 256 (mixer.h). */
         int volume = (int)sample->volume * 256 / 0x7f;
-        if (mixer_add_sample(buf, frames, rate, volume, sample->loop != 0,
+        /* Record §23 of 2026-09-29-todo-verify-derivations.md: the DIG
+         * service 0x6F120 restarts a count-0 sample forever (0x6F289), stops a
+         * count-1 one (0x6F28F) and decrements a larger count (0x6F295).
+         * PORT: the mixer voice is once-or-forever, so a count above 1 plays
+         * once; the game's only setter (0x1CB18) passes 0. */
+        if (mixer_add_sample(buf, frames, rate, volume, sample->loop == 0,
                              sample))
             sample->state = 4;
         return;
@@ -334,7 +339,8 @@ void AIL_set_sample_volume(HSAMPLE sample, s32 volume)
     sample->volume = volume;
 }
 
-/* 0x5dce4 — spec audio.md "AIL surface" (row 19). */
+/* 0x5dce4 — spec audio.md "AIL surface" (row 19). Stores the loop count
+ * (0x68050 writes the sample's +0x30): 0 loops forever, 1 plays once. */
 void AIL_set_sample_loop_count(HSAMPLE sample, u32 count)
 {
     if (sample == NULL || !sample->used)
@@ -364,23 +370,23 @@ s32 AIL_sample_status(HSAMPLE sample)
  * sub-project 2b (Smacker video), which uses the same streaming path the
  * original's FUN_00010034/FUN_000102b8 drive. Safe inert stubs. */
 
-/* 0x5dd2c — spec audio.md "AIL surface" (row 21, name TODO(verify)). */
-s32 AIL_sample_buffer_size(HDIGDRIVER driver, u32 rate, u32 len)
+/* 0x5dd2c — spec audio.md "AIL surface" (row 21; name: records §8/§16). */
+s32 AIL_sample_buffer_size(HDIGDRIVER driver, u32 rate, u32 format)
 {
     (void)driver;
     (void)rate;
-    (void)len;
+    (void)format;
     return 0;
 }
 
-/* 0x5dd5d — spec audio.md "AIL surface" (row 22, name TODO(verify)). */
+/* 0x5dd5d — spec audio.md "AIL surface" (row 22; name: records §10/§17). */
 s32 AIL_stream_buffer_index(HSAMPLE sample)
 {
     (void)sample;
     return -1;    /* original: -1 when neither streaming half needs refilling */
 }
 
-/* 0x5dd86 — spec audio.md "AIL surface" (row 23, name TODO(verify)). */
+/* 0x5dd86 — spec audio.md "AIL surface" (row 23; name: records §11/§18). */
 void AIL_stream_feed(HSAMPLE sample, s32 half, const void *buf, u32 len)
 {
     (void)sample;
@@ -426,13 +432,15 @@ s32 AIL_init_sequence(HSEQUENCE sequence, const void *data, u32 sequence_num)
         return 0;
     if (!seq_load((const u8 *)data, seq_bank_size((const u8 *)data))) {
         /* Bad data: clear `loaded` so a later AIL_start_sequence cannot restart
-         * the previous bank. seq_load returns before halt(), so an already
-         * playing bank keeps sounding through the engine; the status below
-         * reports that truthfully instead of claiming stopped. TODO(verify): the
-         * original's behaviour on a failed re-init of a playing handle (stop vs
-         * keep playing) is unproven. */
+         * the previous bank. Record §19 of 2026-09-29-todo-verify-derivations.md:
+         * 0x6A410 writes the status 2 (0x6A42E) before it validates the data
+         * (0x6A435 0x687C0), and the service 0x69372 advances only a status-4
+         * sequence, so a playing bank stops where it is with no note-off: its
+         * keyed voices hang. seq_load returns before halt(), so seq_suspend
+         * reproduces exactly that. */
+        seq_suspend();
         sequence->loaded = 0;
-        sequence->state = seq_playing() ? 4 : 2;
+        sequence->state = 2;
         return 0;
     }
     sequence->loaded = 1;

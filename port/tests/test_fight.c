@@ -5490,7 +5490,9 @@ static void check_mode_1a_hooks(void)
      * the hook 0x5D812. */
     MH_RESTORE();
     mh_seed_fighters();
+    DSD(DS_00105D5C) = 0x5C5C5C5Cu;
     game_hook_25bbc();
+    CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x0D000008);   /* 0x25C09 0x4F714: stage 2's voice 0x1B, record §K6.1 */
     CHECK_EQ_INT((int)DSB(DS_00104B1E), 0);
     CHECK_EQ_INT((int)DSB(DS_00104B13), 0);
     CHECK_EQ_INT((int)DSB(DS_001078FA), 2);
@@ -9535,7 +9537,7 @@ static void check_gap_handlers(void)
     u32 r0 = FIGHT_RECS, r1 = FIGHT_RECS + 0x100u;
     u8 s_max = DSB(DS_000BDA3E);
     u32 s_left = DSD(DS_000BDBEC);
-    u16 s_base = DSW(DS_001078DC);
+    u32 s_base = DSD(DS_001078DC);
     u8 s_mem1000 = DSB(0x00001000u);
     u32 s_pool = DSD(DS_001014F4);
     u32 s_ec = DSD(DS_001014EC);
@@ -9610,12 +9612,16 @@ static void check_gap_handlers(void)
     CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x3FD + 0x140);   /* 0x1883C added +0x4C */
     CHECK_EQ_INT((int)DSB(r0 + 0x28u) & 4, 4);  /* 0x35C1C ran */
 
-    /* D: 0x37464 (+0x52 = 8). base = word[0x1078DC] = 0x10; 0x1A570(other) != 0
-     * so X = Fo[0x18] - base = 0xF0; |F[0x18] - X| = 0x10 <= 0x200 takes case 0,
-     * writing +0x52 = 9 and rec+0x18 = X. */
+    /* D: 0x37464 (+0x52 = 8). base = word[dword[0x1078DC] + 14*char + 2*other
+     * char] (0x374E3 loads the pointer; todo-verify record §29) = 0x10;
+     * 0x1A570(other) != 0 so X = Fo[0x18] - base = 0xF0; |F[0x18] - X| = 0x10
+     * <= 0x200 takes case 0, writing +0x52 = 9 and rec+0x18 = X. The pointer's
+     * own low word (0x4000) differs from the table word, so reading the word
+     * at 0x1078DC itself misses case 0. */
     (void)tf_hit_fixture(0);
     fight_reset_slot_pair(s0, s1, r0, r1);
-    DSW(DS_001078DC) = 0x10;                    /* base */
+    DSD(DS_001078DC) = 0x03F54000u;             /* the approach-table pointer */
+    DSW(0x03F54000u) = 0x10;                    /* base, chars 0/0 */
     DSB(s0 + 0x57u) = 0;
     DSB(s0 + 0x7Au) = 0;
     DSB(s1 + 0x7Au) = 0;
@@ -9723,7 +9729,8 @@ static void check_gap_handlers(void)
 
     DSB(DS_000BDA3E) = s_max;
     DSD(DS_000BDBEC) = s_left;
-    DSW(DS_001078DC) = s_base;
+    DSD(DS_001078DC) = s_base;
+    DSW(0x03F54000u) = 0;
     DSB(0x00001000u) = s_mem1000;
     DSD(DS_001014F4) = s_pool;
     DSD(DS_001014EC) = s_ec;
@@ -13331,6 +13338,17 @@ static void c3_seed(u32 s0, u32 s1, u32 r0, u32 r1, u32 st)
  * (0xC8FB8[char] for +0x54 1) through 0x2BC30 with 9/0 and +0x62/+0x60 = 0.
  * 0x1A640 is the held-back direction. The four char-3 table entries are
  * pointed at crafted one-word streams and restored. */
+/* check_block H5's animation-code hook: a code address outside both LE objects
+ * (so it can never name an original function) whose body rewrites slot 0's
+ * +0x2C while 0x2BC30 runs the stream's opening opcodes. */
+#define BLOCK_HOOK_ADDR 0x00F0F000u
+static void block_hook_2c(u32 rec, u32 arg)
+{
+    (void)rec;
+    (void)arg;
+    DSD(DS_001077B0 + 0x2Cu) = 0x00007777u;
+}
+
 static void check_block(void)
 {
     u32 s0 = DS_001077B0, s1 = DS_001077B0 + 0x94u;
@@ -13603,6 +13621,32 @@ static void check_block(void)
     CHECK_EQ_INT((int)DSD(r0 + 8u), 0x00ABCDEF);
     CHECK_EQ_INT((int)DSB(s0 + 0x54u), 7);
     CHECK_EQ_INT((int)DSB(s0 + 0x43u), 0x0A);
+
+    /* H5: 0x3C480 loads the slot's +0x2C into EBX at 0x3C4B0, before its
+     * 0x2BC30 call, and passes that to 0x188DC (todo-verify record §30). The
+     * stream's first word is an indirect-call opcode (bit 15, op 0x10, mode
+     * 0x4000: the code address is the next dword) to a test hook that rewrites
+     * +0x2C during 0x2BC30; with +0x42 bit 3 set 0x18714 returns the record's
+     * +0x18, so +0x2C ends as the value loaded before the call. */
+    {
+        u8 sv_42 = DSB(s0 + 0x42u);
+        u16 sv_w[4];
+        for (k = 0; k < 4u; k++) sv_w[k] = DSW(bst + 0x10u + k * 2u);
+        fn_register(BLOCK_HOOK_ADDR, (void (*)(void))block_hook_2c);
+        DSW(bst + 0x10u) = 0xD000u;
+        DSW(bst + 0x12u) = (u16)(BLOCK_HOOK_ADDR & 0xFFFFu);
+        DSW(bst + 0x14u) = (u16)(BLOCK_HOOK_ADDR >> 16);
+        DSW(bst + 0x16u) = 0x1401u;
+        DSB(s0 + 0x42u) |= 0x08u;
+        DSB(s0 + 0x54u) = 1u;
+        DSB(s0 + 0x43u) = 0u;
+        DSD(r0 + 0x18u) = 0x00012340u;
+        fighter_block_anim(s0, r0);
+        CHECK_EQ_INT((int)DSD(r0 + 8u), (int)(bst + 0x16u));  /* the hook ran */
+        CHECK_EQ_INT((int)DSD(s0 + 0x2Cu), 0x00012340);
+        for (k = 0; k < 4u; k++) DSW(bst + 0x10u + k * 2u) = sv_w[k];
+        DSB(s0 + 0x42u) = sv_42;
+    }
 
     for (i = 0; i < 4u; i++) tf_put(sv_bt + i * 4u, tabs[i] + 3u * 4u, 4u);
     tf_put(sv_ab0, 0x00100AB0u, 0x10u);
@@ -28354,7 +28398,10 @@ static void check_fight_frame_a(void)
             DSD(DS_001082CC) = 0x7777u;
             DSD(DS_001082D0) = 0u;
             DSD(DS_001082D0 + 4u) = 0x7777u;
+            DSD(DS_00104AD4) = 0xFFFFFFFFu;
+            DSD(DS_00105D5C) = 0x5C5C5C5Cu;
             flow_match_end();
+            CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x02805B88);   /* 0x27E4B 0x4F728: voice 0x23, record §K6.2 */
             CHECK_EQ_INT((int)DSD(DS_001082D0 + 4u), 0x7777);
             CHECK_EQ_INT((int)DSD(DS_00104ABC), b1f[i] == 3u ? 2 : 1);
             CHECK_EQ_INT((int)DSD(DS_00107480), 10);
@@ -32854,6 +32901,138 @@ static void check_mode_0f(void)
         CHECK_EQ_INT((int)DSD(M0F_SIDE0_TGT + 0x3Cu), (int)(0x1000u + 0x30D40u));
         CHECK_EQ_INT((int)DSD(M0F_SIDE0_TGT + 0x100u + 0x3Cu), (int)0x2000u);
     }
+
+    mz_restore();
+}
+
+/* ---- record §K4: the proximity gate 0x4A868 and its wired callers --------- */
+
+#define K4_C9574 0x000C9574u   /* no symbols.h name: 0x4DEF4 states 2/3, high */
+#define K4_C964C 0x000C964Cu   /* no symbols.h name: 0x4DEF4 state 2, low */
+#define K4_C9664 0x000C9664u   /* no symbols.h name: 0x4DEF4 state 1, low */
+/* The dword 0x2BE00 returns for mz_seed's actor R: its pset's +4. */
+#define K4_X     (DSD(DS_001014EC) + (u32)DSW(MZ_R + 0x56u) * 0x20u + 4u)
+
+/* mz_seed plus the §K4 gate inputs: E+0x14 = 0x18000, R's +0x34 word 0x0100
+ * (so the reach is 2 * 0x100 = 0x200), R's 0x2BE00 position `x`. The x
+ * values keep the pset's low word far left of the fixture's boxes, so the
+ * volleyball tail's hit test 0x4C60C misses (DS_00108898 = 0x5555 proves
+ * it). The three 0x4DEF4 tables mz_seed does not point get entry 3 at
+ * scratch streams 11..13. The preamble pair DS_001088B0/BB is idle (0x100,
+ * 0): no voice, no rng draw. */
+static void k4_seed(u8 type, u8 c1c, u32 x)
+{
+    mz_seed(type, c1c);
+    DSD(MZ_E + 0x14u) = 0x00018000u;
+    DSW(MZ_R + 0x34u) = 0x0100u;
+    DSD(K4_X) = x;
+    DSW(MZ_ST(11)) = 0x030Cu; DSD(K4_C9664 + 12u) = MZ_ST(11);
+    DSW(MZ_ST(12)) = 0x030Du; DSD(K4_C964C + 12u) = MZ_ST(12);
+    DSW(MZ_ST(13)) = 0x030Eu; DSD(K4_C9574 + 12u) = MZ_ST(13);
+    DSW(DS_001088B0) = 0x0100u;
+    DSB(DS_001088BB) = 0;
+    DSD(DS_00108868) = MZ_R2;       /* its +0x36 is 0: 0x4BF18's preamble idles */
+    DSW(DS_001088A0) = 2u;          /* 0x4BF18's post-loop counts to 1 and returns */
+    DSW(DS_00108898) = 0x5555u;
+}
+
+static void check_fx_gate(void)
+{
+    u32 i;
+    if (!mz_save()) { CHECK(0, "the §K4 snapshot allocates"); return; }
+
+    /* §K4.1, 0x4A868 on its own: |x - E+0x14| <= |2 * (R's dword +0x32 >>
+     * 16)|, both absolute values, `setle` (inclusive), AL = 0/1. The dword
+     * at +0x32 is read, so its low word (+0x32 = 0x0600 from mz_seed) is
+     * shifted out and the +0x34 word is the signed reach. */
+    {
+        static const u16 w34[8] = { 0x0100u, 0x0100u, 0x0100u, 0x0100u,
+                                    0xFF00u, 0xFF00u, 0x0100u, 0x0100u };
+        static const u32 xs[8]  = { 0x18200u, 0x18201u, 0x17E00u, 0x17DFFu,
+                                    0x18200u, 0x18201u, 0x18180u, 0x18000u };
+        static const int want[8] = { 1, 0, 1, 0, 1, 0, 1, 1 };
+        for (i = 0; i < 8u; i++) {
+            k4_seed(0, 0, xs[i]);
+            DSW(MZ_R + 0x34u) = w34[i];
+            CHECK_EQ_INT((int)fight_4a868(MZ_E), want[i]);
+        }
+    }
+
+    /* §K4.3, 0x4DEF4 states 1..4 (0x4DF8E/0x4DFFA/0x4E066/0x4E0D0). Gate
+     * open: DS_001088BB = 1, R's +0x34 word = 0, the stream by R's +0x30
+     * high word (0x600) against the zero-extended word DS_000BD898 (`jge`:
+     * below it the low table, else the high table plus R+0x55 = 1), 3.0;
+     * state 4 has one table (0xC9724) at 5.0 and no +0x55 store; the entry
+     * returns to state 0. Gate shut (x one past the reach): nothing moves. */
+    {
+        static const u8  st[7]   = { 1, 1, 2, 2, 3, 3, 4 };
+        static const u16 bd[7]   = { 0x0601u, 0x0600u, 0x8000u, 0x0600u,
+                                     0x0601u, 0x0001u, 0x0000u };
+        static const u32 frm[7]  = { 0x40400000u, 0x40400000u, 0x40400000u,
+                                     0x40400000u, 0x40400000u, 0x40400000u,
+                                     0x40A00000u };
+        static const int b55[7]  = { 0x77, 1, 0x77, 1, 0x77, 1, 0x77 };
+        u32 strm[7];
+        strm[0] = MZ_ST(11); strm[1] = MZ_ST(8);    /* 0xC9664 / 0xC955C */
+        strm[2] = MZ_ST(12); strm[3] = MZ_ST(13);   /* 0xC964C / 0xC9574 */
+        strm[4] = MZ_ST(4);  strm[5] = MZ_ST(13);   /* 0xC9634 / 0xC9574 */
+        strm[6] = MZ_ST(5);                         /* 0xC9724 */
+        for (i = 0; i < 7u; i++) {
+            k4_seed(st[i], 0, 0x18200u);
+            DSW(DS_000BD898) = bd[i];
+            fight_effects_idle_pass();
+            CHECK_EQ_INT((int)DSB(DS_001088BB), 1);
+            CHECK_EQ_INT((int)DSW(MZ_R + 0x34u), 0);
+            CHECK_EQ_INT((int)DSD(MZ_R + 0x08u), (int)strm[i]);
+            CHECK_EQ_INT((int)DSD(MZ_R + 0x24u), (int)frm[i]);
+            CHECK_EQ_INT((int)DSB(MZ_R + 0x55u), b55[i]);
+            CHECK_EQ_INT((int)DSB(MZ_E + 0x1Eu), 0);
+            CHECK_EQ_INT((int)DSW(DS_001088B0), 0x00FF);
+
+            k4_seed(st[i], 0, 0x18201u);
+            DSW(DS_000BD898) = bd[i];
+            fight_effects_idle_pass();
+            CHECK_EQ_INT((int)DSB(DS_001088BB), 0);
+            CHECK_EQ_INT((int)DSW(MZ_R + 0x34u), 0x0100);
+            CHECK_EQ_INT((int)DSD(MZ_R + 0x08u), 0x0BAD);
+            CHECK_EQ_INT((int)DSB(MZ_R + 0x55u), 0x77);
+            CHECK_EQ_INT((int)DSB(MZ_E + 0x1Eu), (int)st[i]);
+        }
+        /* R's +0x30 high word is signed: -1 against 0x0001 is below it (an
+         * unsigned compare would take the high table). */
+        k4_seed(1, 0, 0x18200u);
+        DSD(MZ_R + 0x30u) = 0xFFFF0000u;
+        DSW(MZ_R + 0x34u) = 0x0100u;
+        DSW(DS_000BD898) = 0x0001u;
+        fight_effects_idle_pass();
+        CHECK_EQ_INT((int)DSD(MZ_R + 0x08u), (int)MZ_ST(11));
+        CHECK_EQ_INT((int)DSB(MZ_R + 0x55u), 0x77);
+    }
+
+    /* §K4.2, 0x4BF18 case 1 with E+0x1C bit 5 set (0x4BFDE). Gate open:
+     * voice 200 (not wired), R's +0x38/+0x34/+0x36 words = 0, type 8, R+0x55
+     * = 1, R begins 0xC958C[3] at 3.0 (0x4BFEB..0x4C02F); the shared tail
+     * then runs 0x4C60C, which misses. Gate shut: nothing moves. */
+    k4_seed(1, 0x20u, 0x18200u);
+    fight_4bf18();
+    CHECK_EQ_INT((int)DSB(MZ_E + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x38u), 0);
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x36u), 0);
+    CHECK_EQ_INT((int)DSB(MZ_R + 0x55u), 1);
+    CHECK_EQ_INT((int)DSD(MZ_R + 0x08u), (int)MZ_ST(9));
+    CHECK_EQ_INT((int)DSD(MZ_R + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSW(DS_00108898), 0x5555);
+    CHECK_EQ_INT((int)DSW(DS_001088A0), 1);
+    k4_seed(1, 0x20u, 0x18201u);
+    fight_4bf18();
+    CHECK_EQ_INT((int)DSB(MZ_E + 0x1Eu), 1);
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x38u), 0x3333);
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x34u), 0x0100);
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x36u), 0x2222);
+    CHECK_EQ_INT((int)DSB(MZ_R + 0x55u), 0x77);
+    CHECK_EQ_INT((int)DSD(MZ_R + 0x08u), 0x0BAD);
+    CHECK_EQ_INT((int)DSW(DS_001088A0), 1);
 
     mz_restore();
 }
@@ -38561,6 +38740,46 @@ static void check_fighterset(void)
     g2_save(); check_fs_36f10(); g2_restore();
 }
 
+/* ---- record §K1.4 (2026-09-29-k1-k9-derivations.md): 0x467DC / 0x4682C --
+ * The two predicates share every test but the sense of 0x1A5D4's result:
+ * 0x467DC succeeds on zero (0x4681E je), 0x4682C on non-zero (0x4686E jne).
+ * Run under g2_save/g2_restore: the slot, the command word and the scratch
+ * fighter record are all seeded here. */
+static void check_k1_ai_cmd_sign(void)
+{
+    const u32 side = 1u;
+    const u32 slot = DS_001077B0 + side * 0x94u;
+    const u32 rec = 0x3E80000u;               /* scratch fighter record */
+    u8 s_rec[0x40];
+    tf_snap(s_rec, rec, sizeof s_rec);
+
+    DSD(slot) = rec;                          /* 0x1A5E0: slot+0 -> record */
+    DSW(rec + 0x28u) = 0u;                    /* facing bit 0x4000 clear */
+    DSB(slot + 0x54u) = 0u;                   /* 0x467F2 / 0x46842 */
+    DSB(slot + 0x53u) = 0u;                   /* 0x467FD / 0x4684D */
+    DSB(slot + 0x52u) = 1u;                   /* 0x4680B / 0x4685B */
+
+    /* Command 0x2000 with the facing bit clear: 0x1A5D4 returns 0x2000. */
+    DSW(DS_001088E0 + side * 2u) = 0x2000u;
+    CHECK_EQ_INT(ai_pred_4682c(side), 1);     /* 0x46875 AL = CL = 1 */
+    CHECK_EQ_INT(ai_pred_467dc(side), 0);     /* 0x46820 xor al,al */
+
+    /* No command bit: 0x1A5D4 returns 0. */
+    DSW(DS_001088E0 + side * 2u) = 0u;
+    CHECK_EQ_INT(ai_pred_4682c(side), 0);     /* 0x46870 xor al,al */
+    CHECK_EQ_INT(ai_pred_467dc(side), 1);     /* 0x46825 AL = CL = 1 */
+
+    /* +0x52 != 1 fails both before 0x1A5D4 runs (0x4680E / 0x4685E), with
+     * each one's otherwise-succeeding command word. */
+    DSB(slot + 0x52u) = 2u;
+    DSW(DS_001088E0 + side * 2u) = 0x2000u;
+    CHECK_EQ_INT(ai_pred_4682c(side), 0);
+    DSW(DS_001088E0 + side * 2u) = 0u;
+    CHECK_EQ_INT(ai_pred_467dc(side), 0);
+
+    tf_put(s_rec, rec, sizeof s_rec);
+}
+
 int test_fight(void)
 {
     int before = g_failures;
@@ -38799,6 +39018,7 @@ int test_fight(void)
     check_mode_0a();
     check_mode_07();
     check_mode_0f();
+    check_fx_gate();
     check_mode_21();
     check_modes_28_2f();
     check_mode_12();
@@ -38851,6 +39071,7 @@ int test_fight(void)
     check_49z_47a00();
     check_49z_47b04();
     check_49z_round_timer();
+    g2_save(); check_k1_ai_cmd_sign(); g2_restore();
 
     return g_failures - before;
 }

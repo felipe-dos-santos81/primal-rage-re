@@ -9,6 +9,14 @@
  */
 #include "opl.h"
 #include "opal/opal.h"
+#include "../mixer.h"
+
+/* PORT: mixer.h mirrors the vendored core's rate so the frame loop never sees
+ * opal.h; this is the one place both are visible, so the build fails if the
+ * core's rate changes without the mirror (record §12 of
+ * 2026-09-29-todo-verify-derivations.md). */
+_Static_assert(MIXER_OPL_RATE == OPAL_OPL3_SAMPLE_RATE,
+               "MIXER_OPL_RATE must equal the vendored OPL core's sample rate");
 
 Opal g_opl;
 

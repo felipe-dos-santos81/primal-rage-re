@@ -169,8 +169,8 @@ u32 menu_run(u32 table, u32 stride, u32 flags)
     u32 entry, base;
     s32 row;
     u32 cb;
-    /* 0x2FA61 0x2EA74 is `xor eax,eax; mov eax,eax`, a no-op. PORT: 0x2FA6D
-     * 0x2C3FC(0x100) voice, not wired (record §45-A). */
+    config_screen_wait_zero();                              /* 0x2FA61 0x2EA74 (record §K5) */
+    /* PORT: 0x2FA6D 0x2C3FC(0x100) voice, not wired (record §45-A). */
     const u8 *s = game_string_get(DSD(table + stride));     /* 0x2FA7A..0x2FA81 0x1C500 */
     if (s != NULL) {                                        /* 0x2FA88 (0x1C500 never returns 0) */
         if ((s8)*s == 0x3F) s++;                            /* 0x2FA8C..0x2FA94 */
@@ -279,7 +279,7 @@ L_poll:                                                     /* 0x2FD0C */
         }
         if ((flags & 1u) != 0u)                             /* 0x2FE19 */
             config_code_row(0x11, 2);                     /* 0x2FE20..0x2FE2A 0x305FC */
-        /* 0x2FE2F 0x2EA74 is a no-op. */
+        config_screen_wait_zero();                          /* 0x2FE2F 0x2EA74 (record §K5) */
         goto L_poll;                                        /* 0x2FE34 jmp 0x2FD11 */
     }
 }
@@ -291,8 +291,8 @@ u32 menu_step(u32 table, u32 stride, u32 flags)
     if (DSB(MENU_ACTIVE) == 0u) {                           /* 0x2FFCD..0x2FFD4 */
         DSD(DS_00105F2C) = DSD(DS_00101500);                /* 0x2FFDA 0x500BB, 0x2FFDF */
         DSD(MENU_ENTRIES) = table + stride;                 /* 0x2FFE4..0x2FFEC */
-        /* 0x2FFF1 0x2EA74 is a no-op. PORT: 0x2FFF6 0x2C3FC(0x100) voice, not
-         * wired (record §45-A). */
+        config_screen_wait_zero();                          /* 0x2FFF1 0x2EA74 (record §K5) */
+        /* PORT: 0x2FFF6 0x2C3FC(0x100) voice, not wired (record §45-A). */
         DSD(MENU_CUR) = 0u;                                 /* 0x30007 */
         DSD(MENU_REDRAW) = 1u;                              /* 0x3000D */
         DSD(MENU_OLD) = (u32)-2;                            /* 0x30017 */

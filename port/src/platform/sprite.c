@@ -1,4 +1,5 @@
 #include "platform/sprite.h"
+#include "platform/gfx.h"
 #include "platform/gra.h"
 #include "platform/res.h"
 #include "../mem.h"
@@ -51,10 +52,12 @@ static void palette_dump_blit(const SpriteNode *n)
 /* 0x14268 — record §50-E. PORT: the node is a C struct, not the original's
  * mem[] record (id table entry +0x24 is not kept; pixel_handle is the +0x20
  * dword); an unresolvable id zeroes rows/width/xorg/yorg where the raw calls
- * 0x1B544 on whatever the table holds.
- * 0x1C528 — record §50-D. A byte-identical second copy of 0x14268 (65
- * instructions, identical opcodes and operands; the loader's glyph path 0x1C5E8
- * calls it at 0x1C60B), so both share this body. */
+ * 0x1B544 on whatever the table holds. */
+/* 0x1C528 — record §K1.5 (2026-09-29-k1-k9-derivations.md), first named in
+ * record §50-D. A second copy of 0x14268: 65 instructions with identical
+ * mnemonics and operands after relocation (the only differing bytes are the
+ * rel32 of the call at +0x22, which targets 0x1B544 in both), so both share
+ * this body. The loader's glyph path 0x1C5E8 calls it at 0x1C60B. */
 void sprite_node_build(SpriteNode *n, u32 sprite_id)
 {
     if (n == NULL) return;
@@ -282,10 +285,12 @@ int sprite_render_shear(const u8 *src, u8 *dst, int width, int rows,
     return 0;
 }
 
-/* PORT: 0x51E5C and 0x51ED8 are the same span blit with different destination
+/* PORT: 0x51E5C and 0x51ED8 share this span blit with different destination
  * bases: 0x51E5C does `add edi, [0x687a4]` (DS_000E87A4, the back buffer the
  * renderer composites into) while 0x51ED8 does `add edi, 0xa0000` (the literal
- * VGA aperture the loader's text draws into). `base` is that destination. */
+ * VGA aperture the loader's text draws into). `base` is that destination. The
+ * node is left intact here, which is 0x51E5C's behaviour; sprite_blit_aperture
+ * adds 0x51ED8's store. */
 void sprite_blit_at(SpriteNode *n, u8 *base)
 {
     if (n == NULL || n->width == 0 || n->rows == 0) return;
@@ -331,4 +336,20 @@ void sprite_blit_at(SpriteNode *n, u8 *base)
 void sprite_blit(SpriteNode *n)
 {
     sprite_blit_at(n, mem + DSD(DS_000E87A4));
+}
+
+/* 0x51ED8 — record §K1.6 (2026-09-29-k1-k9-derivations.md). The loader's text
+ * blit: 0x51E5C's span blit with the aperture as the base (0x51F1B
+ * `add edi,0xa0000`; the aperture rule: gfx_aperture(), never mem[0xA0000]).
+ * Unlike 0x51E5C it does not push/pop the node's +0x14/+0x30: it stores
+ * rows - clip_b into +0x14 (0x51F23..0x51F2F) after the pixel resolve and
+ * leaves it there. A zero-width or zero-row node returns first (0x51EDF,
+ * 0x51EE8). PORT: the +0x30 write-back of the raw renderer is not modelled
+ * (the port's renderers take the clip values by value); the one caller's node
+ * is a dead stack local with zeroed clips (0x1C5EA, 0x1C620..0x1C62C). */
+void sprite_blit_aperture(SpriteNode *n)
+{
+    if (n == NULL || n->width == 0 || n->rows == 0) return;
+    sprite_blit_at(n, gfx_aperture());
+    n->rows -= n->clip_b;                       /* 0x51F2F, not restored */
 }

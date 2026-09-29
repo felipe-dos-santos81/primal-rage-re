@@ -72,13 +72,18 @@ void fight_effects_hold_all(void);
 /* 0x4DEF4 — record §49-F. The active effects list's idle-pose walker: a
  * background-flourish voice/countdown rearm (the DS_001088B0/DS_001088BB
  * pair fight_4dbec also arms), then, per DS_0010884C entry, a 5-way dispatch
- * on entry+0x1E gated by the unported 0x4A868 (the same case-13/14 named gap
- * §7.4 fight_effects_pass already leaves; see its own header and the full
- * derivation in fight.c). PORT: the gate is treated as always false here, so
- * no per-entry transition fires; see fight.c for the complete derivation.
- * Callers: mode 0xF's 0x277C0 (game_mode_0f_step, flow.c) and mode 0x33's
- * 0x29638 (still a named gap). */
+ * on entry+0x1E whose states 1..4 each gate on fight_4a868 (0x4A868, record
+ * §K4.3); see fight.c for the complete derivation. Callers: mode 0xF's
+ * 0x277C0 (game_mode_0f_step, flow.c) and mode 0x33's 0x29638, whose call
+ * 0x2965F is not wired yet (ledger §E-3). */
 void fight_effects_idle_pass(void);
+
+/* Record §K4.1, 0x4A868: the effect entry's proximity gate. With R = the
+ * entry's actor (+8), 1 when |0x2BE00(R) - entry+0x14| <= |2 * (R's dword
+ * +0x32 >> 16)| (both signed, `setle`), else 0. Callers: 0x4A361 (the
+ * case-14 body of fight_effects_pass, a named gap, K13), 0x4BFDE
+ * (fight_4bf18) and 0x4DF8E/0x4DFFA/0x4E066/0x4E0D0 (fight_effects_idle_pass). */
+u32 fight_4a868(u32 entry);
 
 /* 0x4AC18. The worshipper streams' 0xD500 target (opcode 0x15, mode 0x4000;
  * the dword 0x0004AC18 at 24 sites in 0xEE09E..0xEF62E, the first after the

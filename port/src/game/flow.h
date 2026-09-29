@@ -157,6 +157,13 @@ void game_audio_init(void);
  * sample in cases 2/3 or an unlisted case-3 id. */
 u32 sound_voice(u32 id);
 
+/* Record §K6.1, 0x4F714: sound_voice(word 0xC9888[stage]), a tail jump. */
+u32 sound_voice_stage(u32 stage);
+
+/* Record §K6.2, 0x4F728: voice 0xDF (the result DS_00104AD4 not -1/3, its
+ * slot's +0x63 clear, the signed DS_001088F2 > 0) or 0x23, then 0x22. */
+void sound_voice_match_end(void);
+
 /* PORT: slot i's AIL sample handle (0..3), which the original keeps at
  * DS_00102860 + i*0x18 and the port in flow.c; NULL out of range. Exposed so
  * a unit test can set the status the sound module's slot scans read. */
@@ -254,6 +261,11 @@ void frontend_spawn_row(const u32 *desc, u32 a2, u32 a3);
  * below). `stage` is clamped to 7 for the full branch; `full` (the raw's EDX)
  * selects 0x2BAF4/0x38730/0x412A0. */
 void game_fight_reset(u32 stage, u32 full);
+/* Record §K2.1, 0x29B70: a bare `ret`. Called by 0x20DF4 (0x20E0B) and by
+ * game_frame for modes 1, 2 and 0x20 (0x2521A/0x25224/0x2522E). */
+void game_null_step(void);
+/* Record §K2.2, 0x32968: a bare `ret`. Called by game_init (0x20CC7). */
+void game_init_null(void);
 /* 0x4F200: DS_00107A55 = (u8)v, DS_00107A54 = 0, 0x4F1D0, 0x2BAF4(1). */
 void flow_screen_reset(u32 v);
 /* 0x25848: picks the stage word DS_00104AFC (on DS_00104B17). */
@@ -356,6 +368,11 @@ void flow_continue_take(void);
  * 0xBB68C markers for DS_00104AF2/DS_00104AF3 wins. 0x4F37C: "TT"/"EE"/"XX"
  * or the number 60 at col 0x13, row 1. */
 void game_mode_05_step(void);
+/* Record §K8a, 0x25FAC: update-table entry 6 (DS_00104AE8 bit 0x40, armed
+ * by modes 5/0x23/0x30 with the card DS_00104ACC): the card's word +0x2C grows
+ * by 0x100 a frame (a byte increment of +0x2D) until it reaches 0x1000, where
+ * it is clamped and the entry disarms itself. */
+void flow_card_ramp_step(void);
 void flow_round_hud_init(void);
 void flow_win_markers_spawn(void);
 void flow_round_timer_draw(void);

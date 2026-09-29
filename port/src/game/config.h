@@ -40,6 +40,11 @@ void config_set_defaults(void);
  * defaults path, as on a fresh machine. */
 void config_validate(void);
 
+/* Record §K2.3, 0x2D4B4: n + r + 1 for the smallest r with 2^r >= n + r + 1
+ * (a SEC-DED codeword length). Its callers 0x2D4EC, 0x2D6F8's stored-image
+ * arm and 0x2DAE4 are not run by the port (declared no-op / deferred). */
+u32 config_codeword_len(u32 n);
+
 /* ---- high-score tables (0x2DB58/0x2DBC4/0x2DCA0; record §46-A) ----------
  * Three packed tables described by the obj-0 descriptors at 0x2D3FC and kept
  * in the data object at [0x2D478 + 8*table]: 0 = the ten scores (0x105E34),
@@ -124,9 +129,16 @@ void config_play_time_snap_b(u32 idx, u32 arm);
 
 /* 0x2EA78. Builds and presents one frame without the game logic, then waits
  * n + 2 ticks (none for n == -1) while draining the BIOS key queue into the
- * latch DS_00105F30. Callers: 0x24C5C, 0x249F0, 0x2CADC, 0x1A38C, 0x31FBF. Not
- * wired: the only ported caller, config_set_defaults, runs in game_init. */
+ * latch DS_00105F30. Callers: 0x24C5C, 0x249F0, 0x2CADC, 0x1A38C, 0x31FBF, and
+ * 0x2EA74 by falling through (record §K5). Wired from 0x24C5C and 0x249F0
+ * (EAX = -1) and through 0x2EA74; config_set_defaults (0x2CADC) leaves it
+ * out, since it runs in game_init. */
 void config_screen_wait(s32 n);
+
+/* Record §K5, 0x2EA74: `xor eax,eax; mov eax,eax` with no `ret`, falling
+ * into 0x2EA78: config_screen_wait(0), one frame and two tick waits. Ported
+ * callers: 0x2FA40 (0x2FA61, 0x2FE2F) and 0x2FFC4 (0x2FFF1). */
+void config_screen_wait_zero(void);
 
 /* 0x2EB80. The latched key DS_00105F30, or 0; the idle timeout's longjmp quit
  * path (0x65431) is not modelled. */

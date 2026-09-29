@@ -152,10 +152,13 @@ static void fighter_18428(u32 side, u32 sprite, u32 a0, u32 a1)
  * 0x1E1 (0x184FE) returns; otherwise 0x18428 is called (0x18513). Returns 1
  * when the call is made. PORT: the return value is port-only, so a test can
  * observe the decision; the raw returns nothing, and 0x18428 has no effect.
- * TODO(verify): for a character above 6 the raw jumps to 0x184BD with EBX/EDI
- * as the caller left them, so the [lo, hi) test there reads caller registers;
- * it is taken as not in range, which is unobservable because 0x18428 does
- * nothing. */
+ * PORT: for a character above 6 the raw jumps to 0x184BD with EBX/EDI as the
+ * caller left them, so its [lo, hi) test reads caller registers; the port
+ * takes it as not in range. Record §28 of
+ * 2026-09-29-todo-verify-derivations.md: that only decides whether 0x18428
+ * runs, and 0x18428 is effect-free for every input (it returns at 0x18434 for
+ * a character above 6 and otherwise jumps through 0x1840C, whose seven
+ * fixed-up entries are all 0x18408, a `ret`), so no state differs. */
 int fighter_18460(u32 side)
 {
     u32 slot, ch, idx, lo = 0, hi = 0;
@@ -1292,15 +1295,28 @@ static int ai_pred_46794(u32 side)
     return DSB(slot + 0x52u) == 4u;
 }
 
-/* 0x467DC / 0x4682C. +0x54 == 0, +0x53 == 0, +0x52 == 1, then the 0x1A5D4
- * command-sign test (0x467DC: zero, 0x4682C: non-zero). */
-static int ai_pred_cmd_sign(u32 side, int want_zero)
+/* 0x467DC. +0x54 == 0 (0x467F2), +0x53 == 0 (0x467FD), +0x52 == 1 (0x4680B),
+ * then 1 when the 0x1A5D4 command-sign test is zero (0x4681E je 0x46825). */
+int ai_pred_467dc(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;
     if (DSB(slot + 0x54u) != 0u) return 0;
     if (DSB(slot + 0x53u) != 0u) return 0;
     if (DSB(slot + 0x52u) != 1u) return 0;
-    return (ai_facing_cmd(side) == 0u) == (want_zero != 0);
+    return ai_facing_cmd(side) == 0u;                   /* 0x46817 0x1A5D4 */
+}
+
+/* 0x4682C — record §K1.4 (2026-09-29-k1-k9-derivations.md). 0x467DC's body
+ * with the opposite sense: +0x54 == 0 (0x46842), +0x53 == 0 (0x4684D),
+ * +0x52 == 1 (0x4685B), then 1 when 0x1A5D4 is non-zero (0x4686E jne
+ * 0x46875). */
+int ai_pred_4682c(u32 side)
+{
+    u32 slot = DS_001077B0 + side * 0x94u;
+    if (DSB(slot + 0x54u) != 0u) return 0;
+    if (DSB(slot + 0x53u) != 0u) return 0;
+    if (DSB(slot + 0x52u) != 1u) return 0;
+    return ai_facing_cmd(side) != 0u;                   /* 0x46867 0x1A5D4 */
 }
 
 /* 0x46898 / 0x468D8. The +0x10 identity is read from ctx_swap's [ESP+0xc]
@@ -1353,8 +1369,8 @@ static void ai_classify(u32 param)
     }
     if (ai_pred_4673c(param) != 0) { DSD(0x00108218u + ecx * 0x40u) = 3u; return; }
     if (ai_pred_46794(param) != 0) { DSD(0x00108218u + ecx * 0x40u) = 4u; return; }
-    if (ai_pred_cmd_sign(param, 1) != 0) { DSD(0x00108218u + ecx * 0x40u) = 6u; return; }
-    if (ai_pred_cmd_sign(param, 0) != 0) { DSD(0x00108218u + ecx * 0x40u) = 5u; return; }
+    if (ai_pred_467dc(param) != 0) { DSD(0x00108218u + ecx * 0x40u) = 6u; return; }
+    if (ai_pred_4682c(param) != 0) { DSD(0x00108218u + ecx * 0x40u) = 5u; return; }
     if (ai_pred_468d8(param) != 0) { DSD(0x00108218u + ecx * 0x40u) = 7u; return; }
     if (DSB(DS_001077B0 + param * 0x94u + 0x53u) == 0x0Bu) {   /* 0x46AE4 */
         DSD(0x00108218u + ecx * 0x40u) = 9u; return;
@@ -2294,14 +2310,11 @@ void fighter_state_37464(u32 side)
     u32 so = DS_001077B0 + other * 0x94u;
     u32 rec = DSD(slot);
     u32 ro = DSD(so);
-    /* TODO(verify): 0x374E3 loads DSD(0x1078DC) before indexing, and the raw's
-     * 0x36F10 (ported in record §50-A, which stores 0xBD89C at 0x37043)
-     * initializes that pointer. This still reads the pointer word as the
-     * table; the faithful form is DSW(DSD(0x1078DC) + …), a change that moves
-     * the assertions of the 0x37464 tests (which seed the word at 0x1078DC
-     * itself) and is left for the task that wires 0x36F10's caller.
-     * Record §1.3's Task-3 correction. */
-    s16 base = (s16)DSW(DS_001078DC
+    /* 0x374E3/0x3751D load the table pointer DSD(0x1078DC) (0x36F10 stores
+     * 0xBD89C at 0x37043) and index it by 14 * char + 2 * other char
+     * (0x37502 `mov si,[edx]`, 0x37534 `mov cx,[edx+eax*2]`); record §29 of
+     * 2026-09-29-todo-verify-derivations.md. */
+    s16 base = (s16)DSW(DSD(DS_001078DC)
         + (u32)DSB(slot + 0x7Au) * 14u + (u32)DSB(so + 0x7Au) * 2u);  /* 0x374D1 */
     s16 x;
     s16 diff;
@@ -3879,9 +3892,12 @@ static void hit_anim_start_a(u32 rec, u32 stream, u32 frame_bits)
     u32 ctx[6];
     hit_anim_ctx(ctx, rec);                             /* 0x3C48E */
     hit_anchor_set(ctx[0], DSD(ctx[4] + 0x18u), 0u);    /* 0x3C49F */
+    /* 0x3C4B0 loads slot+0x2C into EBX before the 0x2BC30 call, which
+     * preserves EBX, and 0x3C4BB passes it on (record §30 of
+     * 2026-09-29-todo-verify-derivations.md). */
+    u32 x = DSD(ctx[2] + 0x2Cu);                        /* 0x3C4A8/0x3C4B0 */
     actors_anim_begin(rec, stream, frame_bits);         /* 0x3C4B3 */
-    /* TODO(verify): raw loads slot+0x2C at 0x3C4B0, before 0x2BC30 (§17.3). */
-    hit_anchor_x(ctx[0], DSD(ctx[2] + 0x2Cu));          /* 0x3C4BD */
+    hit_anchor_x(ctx[0], x);                            /* 0x3C4BB 0x3C4BD */
 }
 
 /* 0x3C4CC. Dispatch on slot+0x52: {0,1,2,5,0xE,0x15} -> 0x2BC30, else 0x3C480. */
@@ -11002,10 +11018,11 @@ void fighter_39fb0(u32 slot)
  * plays the voice 0xD2, and sets the slot's +0x53 = 3, +0x52 = 9 and the
  * byte DS_000F0AFE = 4. Any other +0x57 does nothing.
  * PORT: 0x45BAE 0x2C3FC(0x50) and 0x45BF4 0x2C3FC(0xD2) voices, not wired
- * (record §45-A). TODO(verify): 0x1F874610 (the immediate at 0x45B95, no LE
- * fixup) is not a data-object handle; the port passes it through
- * actor_pset_palette as the raw does and the unresolved handle acquires an
- * empty palette entry. */
+ * (record §45-A). 0x1F874610 (the immediate at 0x45B95) is a resource handle,
+ * not a data address: record §31 of 2026-09-29-todo-verify-derivations.md
+ * resolves it to INDEX entry 63 (s16spift.gra, 0x74E00 bytes) + 0x74610, a
+ * 31-colour palette block (count dword 0x1F, then 31 colour words), and the
+ * port passes it through actor_pset_palette as the raw does. */
 void fighter_45b50(u32 slot, u32 rec, u32 side)
 {
     u32 ctx[6];

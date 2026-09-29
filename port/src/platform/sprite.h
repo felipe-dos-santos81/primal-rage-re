@@ -55,11 +55,17 @@ u32 sprite_bank(u32 pal_ptr);
  * type 0x0A, which the original leaves a stub) draws nothing. */
 void sprite_blit(SpriteNode *n);
 
-/* PORT: 0x51ED8. The same span blit as 0x51E5C but with the VGA aperture
- * (0xA0000) as its destination base instead of the back buffer DS_000E87A4;
- * the loader's text draw (0x1C5E8) uses it, so its pixels reach the screen
- * directly. `base` is the destination buffer. */
+/* PORT: the span blit 0x51E5C and 0x51ED8 share, with the destination buffer
+ * as `base` (the back buffer DS_000E87A4 for 0x51E5C, the VGA aperture for
+ * 0x51ED8). It leaves the node intact, as 0x51E5C does. */
 void sprite_blit_at(SpriteNode *n, u8 *base);
+
+/* The loader's text blit 0x51ED8 (record §K1.6 of
+ * 2026-09-29-k1-k9-derivations.md), called by 0x1C5E8: the span blit into the
+ * VGA aperture (gfx_aperture()), and, unlike 0x51E5C, the node keeps
+ * rows - clip_b afterwards (0x51F2F, never restored). A zero-width or
+ * zero-row node is left untouched. */
+void sprite_blit_aperture(SpriteNode *n);
 
 /* PORT: sets the frame number the PR_PALETTE_DUMP hook (sprite.c) tags
  * subsequent blits with. Called by the frame-dump drivers (flow.c's

@@ -642,6 +642,9 @@ int actors_init(void)
     fn_register(0x4142Cu, fight_hook_4142c);
     fn_register(0x25AE8u, game_hook_25ae8);
     fn_register(0x26978u, game_hook_26978);
+    /* PORT: record §K8a. The update table's entry 6 (0x25FAC, the dword at
+     * 0xA865C; no Ghidra function), fn() with the unread EAX index. */
+    fn_register(0x25FACu, flow_card_ramp_step);
     return 1;
 }
 
@@ -3426,7 +3429,7 @@ static void text_blit_glyph(u32 ch, s32 *col, s32 *row)
     n.pal_ptr = palette_acquire(0x80997cu);           /* 0x1C610/0x1C61C */
     n.x = *col;                                       /* 0x1C630 */
     n.y = *row;                                       /* 0x1C635 */
-    sprite_blit_at(&n, gfx_aperture());               /* 0x1C63D 0x51ED8 */
+    sprite_blit_aperture(&n);                         /* 0x1C63D 0x51ED8 */
     *col += (DSB(e + 2u) == 0x10u) ? 0xfu : 8;        /* 0x1C642/0x1C647 */
 }
 

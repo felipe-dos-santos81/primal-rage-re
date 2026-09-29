@@ -740,8 +740,10 @@ int test_gfx(void)
     CHECK(gfx_dac[0x30][0] != exp8(0x50u),
           "the 6-bit VGA truncation is applied");
 
-    /* Clamp: first 0xFE + count 8 overruns the DAC. Without the clamp the index
-     * wraps and entry 0/1 get written; with it only 0xFE/0xFF are. */
+    /* No count clamp (record §3 of 2026-09-29-todo-verify-derivations.md):
+     * 0x1C48B..0x1C49F clamps first + the flag word [+0xC], not the count, so
+     * first 0xFE + count 8 with flag 0 runs all eight writes, and the DAC's
+     * 8-bit write index wraps: entries 0 and 1 take the 3rd and 4th words. */
     gfx_dac[0][0] = 0;
     gfx_dac[1][0] = 0;
     put_record(SCRATCH, 0xFE, 8, 0);
@@ -749,8 +751,51 @@ int test_gfx(void)
     gfx_flush_palette();
     CHECK_EQ_INT(gfx_dac[0xFE][0], exp8(0x10));
     CHECK_EQ_INT(gfx_dac[0xFF][0], exp8(0x11));
-    CHECK_EQ_INT(gfx_dac[0][0], 0);   /* no wrap past the table end */
-    CHECK_EQ_INT(gfx_dac[1][0], 0);
+    CHECK_EQ_INT(gfx_dac[0][0], exp8(0x12));   /* the index wraps (0x1C4D6) */
+    CHECK_EQ_INT(gfx_dac[1][0], exp8(0x13));
+
+    /* Record §3: the write loop is a do-while (0x1C4D6 `dec esi; jg`), so a
+     * zero count still writes one entry. */
+    gfx_dac[0x40][0] = 0;
+    put_record(SCRATCH, 0x40, 0, 0);
+    DSD(SCRATCH) = 0x15u << 2;
+    gfx_flush_palette();
+    CHECK_EQ_INT(gfx_dac[0x40][0], exp8(0x15));
+
+    /* Record §3: first + the flag dword above 0x100 (signed, 0x1C497 `jle`)
+     * subtracts the excess from the flag dword itself (0x1C49F), never from
+     * the count: first 0x100 + flag 0x200 leaves flag 0, and the count-1
+     * write still lands, at DAC index (u8)0x100 = 0 (0x1C4AA `out dx,al`). */
+    put_record(SCRATCH, 0x100, 1, 0x200);
+    DSD(SCRATCH) = 0x16u << 2;
+    gfx_flush_palette();
+    CHECK_EQ_INT(DSD(REC + 12), 0);
+    CHECK_EQ_INT(gfx_dac[0][0], exp8(0x16));
+
+    /* Record §3: 0x33734/0x33714 store only the flag's low byte
+     * (`mov byte [eax-4],0/1`, 0x3373F/0x3371F); the upper three bytes keep
+     * what the record slot held. */
+    DSD(HEAD) = REC;
+    DSD(REC + 12) = 0xAABBCC00u;
+    palette_record(SCRATCH, 0x10, 1, 1);
+    CHECK_EQ_INT(DSD(REC + 12), 0xAABBCC01u);
+    DSD(HEAD) = REC;
+
+    /* Record §K1.7 (2026-09-29-k1-k9-derivations.md): 0x33714 is the append
+     * with the constant flag byte 1 (0x3371F), EBX -> +0, EAX -> +4,
+     * EDX -> +8 (0x33723..0x33729), head += 0x10 (0x3372C). Sentinels differ
+     * from every post-value. */
+    DSD(REC + 0) = 0xDEADBEEFu;
+    DSD(REC + 4) = 0xDEADBEEFu;
+    DSD(REC + 8) = 0xDEADBEEFu;
+    DSD(REC + 12) = 0xAABBCC00u;
+    palette_record_flagged(SCRATCH, 0x10, 3);
+    CHECK_EQ_INT(DSD(REC + 0), SCRATCH);
+    CHECK_EQ_INT(DSD(REC + 4), 0x10);
+    CHECK_EQ_INT(DSD(REC + 8), 3);
+    CHECK_EQ_INT(DSD(REC + 12), 0xAABBCC01u);
+    CHECK_EQ_INT(DSD(HEAD), REC + 16);
+    DSD(HEAD) = REC;
 
     /* Handle path: a non-zero flag byte in [3] makes [0] a resource handle;
      * gfx_flush_palette resolves it and skips the bank's u32 colour count at
@@ -843,6 +888,23 @@ int test_gfx(void)
         DSD(DS_0010150C) = s_0c;
         memcpy(gfx_dac, s_dac, sizeof s_dac);
         memcpy(gfx_aperture(), s_ap, sizeof s_ap);
+    }
+
+    /* Record §K2.4 (2026-09-29-k2-k5-derivations.md): 0x51F72 stores the dword
+     * EDX over 0xC8 passes of 0x140 bytes from EAX on (0x51F73, 0x520F7), so
+     * exactly 0xFA00 bytes. Four 0xAB sentinel bytes on each side. */
+    {
+        const u32 buf = SCRATCH + 0x30000u, base = buf + 4u;
+        mem_fill(buf, 0xAB, 0xFA08u);
+        gfx_fill_screen(base, 0xCAFEF00Du);
+        u32 bad = 0u;
+        for (u32 i = 0; i < 0xFA00u; i += 4u)
+            if (DSD(base + i) != 0xCAFEF00Du) bad++;
+        CHECK_EQ_INT((int)bad, 0);
+        CHECK_EQ_INT((int)DSD(base), (int)0xCAFEF00Du);
+        CHECK_EQ_INT((int)DSD(base + 0xF9FCu), (int)0xCAFEF00Du);
+        CHECK_EQ_INT((int)DSD(buf), (int)0xABABABABu);
+        CHECK_EQ_INT((int)DSD(base + 0xFA00u), (int)0xABABABABu);
     }
 
     return g_failures - before;
@@ -1531,6 +1593,64 @@ static void check_blit_dispatch(void)
     }
 }
 
+/* 1 when all `len` bytes at p equal v. */
+static int k1_all(const u8 *p, u8 v, size_t len)
+{
+    for (size_t i = 0; i < len; i++)
+        if (p[i] != v) return 0;
+    return 1;
+}
+
+/* Record §K1.6 (2026-09-29-k1-k9-derivations.md): 0x51ED8 is 0x51E5C's span
+ * blit with the aperture as its base (0x51F1B `add edi,0xa0000`) that does
+ * not save/restore the node's +0x14: it stores rows - clip_b there
+ * (0x51F23..0x51F2F) and keeps it. Both buffers are seeded 0xEE. */
+static void check_k1_blit_aperture(void)
+{
+    enum { SCREEN = 320 * 200 };
+    u8 *ap = gfx_aperture();
+    u8 *back = mem + DSD(DS_000E87A4);
+    static u8 s_ap[SCREEN], s_back[SCREEN], got[SCREEN];
+    memcpy(s_ap, ap, SCREEN);
+    memcpy(s_back, back, SCREEN);
+
+    /* A zero-width node returns before the store (0x51EDF). */
+    SpriteNode z; memset(&z, 0, sizeof z);
+    z.rows = 5; z.clip_b = 2;
+    sprite_blit_aperture(&z);
+    CHECK_EQ_INT(z.rows, 5);
+
+    u32 pal = PAL_ENTRY;            /* fake 0x33754 palette-table entry */
+    DSB(pal + 8) = 1;               /* start 1 => bank offset 0 */
+    SpriteNode n; memset(&n, 0, sizeof n);
+    sprite_node_build(&n, 0x2C11u);
+    n.pal_ptr = pal;
+    n.x = 0; n.y = 0;
+    n.rows = 4; n.clip_b = 1;
+    SpriteNode m = n;
+
+    /* 0x51E5C into the back buffer: rows restored (0x51ECB), aperture
+     * untouched. */
+    memset(back, 0xEE, SCREEN);
+    memset(ap, 0xEE, SCREEN);
+    sprite_blit(&m);
+    CHECK_EQ_INT(m.rows, 4);
+    CHECK(k1_all(ap, 0xEE, SCREEN), "0x51E5C does not draw to the aperture");
+    CHECK(!k1_all(back, 0xEE, SCREEN), "0x51E5C drew into the back buffer");
+    memcpy(got, back, SCREEN);
+
+    /* 0x51ED8: the same pixels in the aperture, the back buffer untouched,
+     * and the node keeps rows - clip_b = 3. */
+    memset(back, 0xEE, SCREEN);
+    sprite_blit_aperture(&n);
+    CHECK_EQ_INT(n.rows, 3);
+    CHECK(memcmp(ap, got, SCREEN) == 0, "0x51ED8 draws 0x51E5C's pixels");
+    CHECK(k1_all(back, 0xEE, SCREEN), "0x51ED8 does not draw to the back buffer");
+
+    memcpy(ap, s_ap, SCREEN);
+    memcpy(back, s_back, SCREEN);
+}
+
 int test_sprite(void)
 {
     check_node_build();
@@ -1545,6 +1665,7 @@ int test_sprite(void)
     check_shear();
     check_shear_clipped();
     check_blit_dispatch();
+    check_k1_blit_aperture();
     return 0;
 }
 
@@ -1996,6 +2117,62 @@ static void check_projection_reset(void)
     DSW(DS_00107A3A) = s3a; DSW(DS_00107A3C) = s3c;
 }
 
+/* 0x38990 (render_scroll_track, record §K3.1): DS_00107A3C = the low word of
+ * DS_000F0AEC with `and al,0xc0` (0x38997), and DS_00107A4A = the dword
+ * DS_000F0AEC through the raw's truncating /64 plus the zero-extended word
+ * DS_00107A4E, low 16 bits stored (0x389BC). The four neighbouring words are
+ * seeded and must survive (both stores are word stores). Every sentinel differs
+ * from its post-condition. */
+static void check_scroll_track(void)
+{
+    u32 sf0 = DSD(DS_000F0AEC);
+    u16 s3a = DSW(DS_00107A3A), s3c = DSW(DS_00107A3C), s3e = DSW(DS_00107A3E);
+    u16 s48 = DSW(DS_00107A48), s4a = DSW(DS_00107A4A), s4c = DSW(DS_00107A4C);
+    u16 s4e = DSW(DS_00107A4E);
+
+    DSW(DS_00107A3A) = 0x1111u; DSW(DS_00107A3E) = 0x2222u;
+    DSW(DS_00107A48) = 0x3333u; DSW(DS_00107A4C) = 0x4444u;
+
+    /* (a) 0x00012345: 0x2345 & 0xFFC0 = 0x2340; the dword (not the word)
+     * divides, 0x12345 / 64 = 0x48D, + 0x10 = 0x49D. */
+    DSD(DS_000F0AEC) = 0x00012345u;
+    DSW(DS_00107A4E) = 0x0010u;
+    DSW(DS_00107A3C) = 0x7777u; DSW(DS_00107A4A) = 0x7777u;
+    render_scroll_track();
+    CHECK_EQ_INT((int)DSW(DS_00107A3C), 0x2340);
+    CHECK_EQ_INT((int)DSW(DS_00107A4A), 0x049D);
+
+    /* (b) -127 (0xFFFFFF81): 0xFF81 & 0xFFC0 = 0xFF80; the `sar`/`shl`/`sbb`
+     * divide truncates toward zero, -127 / 64 = -1, + 0x10 = 0x000F (a
+     * flooring >> 6 would give -2 + 0x10 = 0x000E). */
+    DSD(DS_000F0AEC) = 0xFFFFFF81u;
+    DSW(DS_00107A3C) = 0x7777u; DSW(DS_00107A4A) = 0x7777u;
+    render_scroll_track();
+    CHECK_EQ_INT((int)DSW(DS_00107A3C), 0xFF80);
+    CHECK_EQ_INT((int)DSW(DS_00107A4A), 0x000F);
+
+    /* (c) 0x0000FFFF with DS_00107A4E = 0xFFF0: only the low byte is masked
+     * (0xFFC0), and 0x3FF + 0xFFF0 = 0x103EF stores its low word 0x03EF. */
+    DSD(DS_000F0AEC) = 0x0000FFFFu;
+    DSW(DS_00107A4E) = 0xFFF0u;
+    DSW(DS_00107A3C) = 0x7777u; DSW(DS_00107A4A) = 0x7777u;
+    render_scroll_track();
+    CHECK_EQ_INT((int)DSW(DS_00107A3C), 0xFFC0);
+    CHECK_EQ_INT((int)DSW(DS_00107A4A), 0x03EF);
+
+    CHECK_EQ_INT((int)DSW(DS_00107A3A), 0x1111);
+    CHECK_EQ_INT((int)DSW(DS_00107A3E), 0x2222);
+    CHECK_EQ_INT((int)DSW(DS_00107A48), 0x3333);
+    CHECK_EQ_INT((int)DSW(DS_00107A4C), 0x4444);
+    CHECK_EQ_INT((int)DSW(DS_00107A4E), 0xFFF0);
+    CHECK_EQ_INT((int)DSD(DS_000F0AEC), 0x0000FFFF);
+
+    DSD(DS_000F0AEC) = sf0;
+    DSW(DS_00107A3A) = s3a; DSW(DS_00107A3C) = s3c; DSW(DS_00107A3E) = s3e;
+    DSW(DS_00107A48) = s48; DSW(DS_00107A4A) = s4a; DSW(DS_00107A4C) = s4c;
+    DSW(DS_00107A4E) = s4e;
+}
+
 int test_render(void)
 {
     check_list_order();
@@ -2004,6 +2181,7 @@ int test_render(void)
     check_layer_modes();
     check_end_to_end();
     check_scroll_projection();
+    check_scroll_track();
     check_projection_reset();
     return 0;
 }
@@ -2473,6 +2651,8 @@ static void check_text_vertical_number(void)
 #define MT_TABLE  0x3E2E000u   /* the menu tables */
 #define MT_LAYOUT 0x3E2D000u   /* the key layout block DS_00101514 points at */
 #define MT_STRUCT 0x3E2C000u   /* the structure DS_0010740C points at */
+#define MT_BUF_A  0x3E00000u   /* 64000-byte frame buffers 0x2EA78 draws/presents */
+#define MT_BUF_B  0x3E10000u
 #define MT_GROUP  0x800u
 #define MT_FN0    0xF1A00u     /* fake code addresses for the registered callbacks */
 #define MT_FN1    0xF1A10u
@@ -2489,6 +2669,13 @@ static void mt_press(u32 bits)
 {
     DSD(DS_000E1C34) = bits;          /* the level the pad reports */
     DSD(DS_000E1C38) = 0;             /* the latch: every masked bit is new */
+    /* Record §K5.5: 0x2EA74 runs 0x2EA78, whose 0x500C4 pump (0x2EB0C)
+     * rebuilds the level from the key bitmap [DS_00101514]+0x2D8/0x2D9 and the
+     * previous raw word DS_000E1C30. The key is held since the last pump, so
+     * the pump keeps the level: every menu bit is in the 0xFF00FF00 lanes. */
+    DSD(DS_000E1C30) = bits;
+    DSB(MT_LAYOUT + 0x2D8u) = (u8)(bits >> 24);
+    DSB(MT_LAYOUT + 0x2D9u) = (u8)(bits >> 8);
 }
 
 static u32 mt_cb_common(u32 which, u32 arg)
@@ -2740,6 +2927,7 @@ static void check_menu_step(void)
     CHECK_EQ_INT((int)DSB(DS_00107414), 1);
     CHECK_EQ_INT((int)DSD(DS_00107418), 4);
     CHECK_EQ_INT((int)DSD(DS_00105F2C), 1000);
+    CHECK_EQ_INT((int)DSD(DS_00101500), 1002);       /* 0x2FFF1 0x2EA74: two tick waits (§K5) */
     CHECK_EQ_INT((int)DSD(DS_0010741C), (int)A);
     CHECK_EQ_INT((int)DSD(DS_0010744C), (int)MT_FN0);
     CHECK_EQ_INT((int)DSD(DS_00107424), 4);          /* the hidden item counts */
@@ -3033,6 +3221,9 @@ static void check_menu_run(void)
     mt_press(0x40004000u);
     mt_hook_ret_at = 3; mt_hook_ret = 0x77;
     CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0x77);
+    /* §K5: 0x2EA74 at entry (0x2FA61) and after the one completed poll pass
+     * (0x2FE2F), two ticks each. */
+    CHECK_EQ_INT((int)DSD(DS_00101500), 104);
     CHECK_EQ_INT((int)mt_cbs[0].n, 3);
     CHECK_EQ_INT((int)mt_args0[1], 0);               /* the header redraw */
     CHECK_EQ_INT((int)mt_args0[2], (int)A);
@@ -3050,8 +3241,10 @@ static void check_menu_run(void)
     /* Esc without flags bit 2: -1 (the index never equals the count). */
     mt_cbs_reset();
     mt_press(0x2000000u);
+    DSD(DS_00101500) = 200;
     CHECK_EQ_INT((int)menu_run(T, 0x10u, 0u), -1);
     CHECK_EQ_INT((int)mt_cbs[0].n, 2);
+    CHECK_EQ_INT((int)DSD(DS_00101500), 202);        /* only the entry 0x2EA74 */
     /* Esc with flags bit 2 acts as Down. */
     mt_cbs_reset();
     mt_press(0x2000000u);
@@ -3141,6 +3334,15 @@ static void check_menu(void)
     memcpy(spal, mem + DS_00107618, sizeof spal);
     mem_fill(DS_00107618, 0, sizeof spal);
     const u32 s_lvl = DSD(DS_000E1C34), s_lat = DSD(DS_000E1C38);
+    /* Record §K5: the menus now run 0x2EA78 (0x2EA74), which presents the back
+     * buffer, swaps the pair and spins on the ISR model (gate byte not 1). */
+    const u32 s_raw = DSD(DS_000E1C30), s_a0 = DSD(DS_000E87A0),
+              s_a4 = DSD(DS_000E87A4), s_08 = DSD(DS_00101508);
+    const u16 s_word = DSW(0x000EF6DEu);
+    const u8 s_gate = DSB(DS_00104B22);
+    DSD(DS_000E87A0) = MT_BUF_A;
+    DSD(DS_000E87A4) = MT_BUF_B;
+    DSB(DS_00104B22) = 0u;
     check_menu_draw();
     check_menu_step();
     check_menu_run();
@@ -3149,6 +3351,12 @@ static void check_menu(void)
     DSD(DS_001082DC) = s_str;
     DSD(DS_000E1C34) = s_lvl;
     DSD(DS_000E1C38) = s_lat;
+    DSD(DS_000E1C30) = s_raw;
+    DSD(DS_000E87A0) = s_a0;
+    DSD(DS_000E87A4) = s_a4;
+    DSD(DS_00101508) = s_08;
+    DSW(0x000EF6DEu) = s_word;
+    DSB(DS_00104B22) = s_gate;
     actors_reset();
 }
 

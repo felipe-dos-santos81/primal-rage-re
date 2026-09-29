@@ -12,14 +12,15 @@
  * (port/spec/audio.md "AIL surface" row 10: FUN_0001cf40 allocates 0x60 == 4 *
  * 0x18 bytes). A fifth concurrent add is dropped.
  *
- * TODO(verify): the original's behaviour on voice exhaustion is NOT established.
- * Row 10 shows only the four-handle allocation; it does not say whether the
- * driver dropped the add, stole a playing handle (AIL note stealing), or
- * errored (row 10 does record an "Out of sample handles" return, but not
- * whether any game call site reaches it). This port drops; that policy is a
- * guess, not a reproduction. What would settle it: the S16.DIG / SBPRO.DIG /
- * SBLASTER.DIG driver decompilation ("Out of sample handles" path), or a game
- * call site that adds a fifth sample while four are active.
+ * PORT: the drop is a guard the AIL layer never reaches. Record §7 of
+ * 2026-09-29-todo-verify-derivations.md: in the original a sample handle *is*
+ * a voice — 0x1CF40 sets the preference 4 (the SAMPLE-structure count) to 4
+ * (0x1CF62..0x1CF66), the DIG install allocates that many 0x894-byte SAMPLE
+ * structures, and each handle plays one sample, restarted in place by a
+ * second start. Exhaustion exists only at allocation ("Out of sample handles",
+ * 0x67E60), which AIL_allocate_sample_handle reproduces. ail.c keeps at most
+ * one voice per handle (AIL_start_sample stops the handle's voice first) over
+ * four handles, so a fifth concurrent add cannot arrive from it.
  *
  * Volume: Q8 fixed point, clamped to [0, 1024]. 256 is unity gain, 0 is silent,
  * negative values clamp to 0; above 256 amplifies and may saturate.
@@ -43,8 +44,9 @@
  * audio device with: the OPL core's native sample rate. PORT: mirrored from
  * OPAL_OPL3_SAMPLE_RATE (49716) in opl/opal/opal.h. That header stays private to
  * opl.c, so the core's rate is exported here rather than through opl.h; the
- * frame loop must not duplicate it. TODO(verify): if the vendored core rate ever
- * changes, this constant must change with it. */
+ * frame loop must not duplicate it. opl.c's _Static_assert fails the build if
+ * the vendored core rate ever changes without this constant (record §12 of
+ * 2026-09-29-todo-verify-derivations.md). */
 #define MIXER_OPL_RATE 49716
 
 /* Clears every voice and resets the OPL core, so "nothing playing" is exact
@@ -55,8 +57,8 @@ void mixer_reset(void);
  * Q8 (see above); `loop` selects one-shot vs looping. `owner` identifies the
  * caller's sample handle, so mixer_stop_sample(owner) can stop just this
  * caller's voices and never another's. Returns 1 when a voice started, 0 when
- * the arguments were invalid or all four voices were busy — a port choice; the
- * original's exhaustion policy is unverified (see TODO above). The return is
+ * the arguments were invalid or all four voices were busy — a guard the AIL
+ * layer cannot reach (see the voice-pool note above). The return is
  * what lets callers report "playing" only when a voice actually exists. */
 int mixer_add_sample(const s16 *pcm, u32 frames, int rate, int volume, int loop,
                      const void *owner);

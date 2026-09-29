@@ -140,25 +140,32 @@ void AIL_set_sample_volume(HSAMPLE sample, s32 volume);
 /* PORT: the volume 0x5dcc5 last stored (0 for a NULL or unused handle). */
 s32 AIL_sample_volume(HSAMPLE sample);
 
-/* 0x5dce4 — spec audio.md "AIL surface" (row 19). Sets the loop count (the game
- * forces 0 = no loop; name inferred). */
+/* 0x5dce4 — spec audio.md "AIL surface" (row 19). Sets the loop count: 0
+ * loops forever, 1 (AIL_init_sample's default, 0x67F4B) plays once, per the
+ * DIG service 0x6F120 (record §23 of 2026-09-29-todo-verify-derivations.md;
+ * name inferred). */
 void AIL_set_sample_loop_count(HSAMPLE sample, u32 count);
 
 /* 0x5dd03 — spec audio.md "AIL surface" (row 20). Returns 2 stopped / 4 playing
  * (the game gates on != 4 and == 4), or 0 for a NULL/free handle. */
 s32 AIL_sample_status(HSAMPLE sample);
 
-/* 0x5dd2c — spec audio.md "AIL surface" (row 21. name TODO(verify)).
+/* 0x5dd2c — spec audio.md "AIL surface" (row 21).
  * PORT: deferred stub — movie/Smacker streaming buffer sizing, sub-project 2b.
- * Returns 0. */
-s32 AIL_sample_buffer_size(HDIGDRIVER driver, u32 rate, u32 len);
+ * Returns 0. The third argument is the 0..3 format code 0x1013C derives from
+ * its two flags, not a length. PORT: the name is the port's own; the
+ * statically linked AIL carries no symbol, export or trace string for it
+ * (record §8 of 2026-09-29-todo-verify-derivations.md). */
+s32 AIL_sample_buffer_size(HDIGDRIVER driver, u32 rate, u32 format);
 
-/* 0x5dd5d — spec audio.md "AIL surface" (row 22, name TODO(verify)).
+/* 0x5dd5d — spec audio.md "AIL surface" (row 22). PORT: the name is the
+ * port's own, as for row 21 (record §10).
  * PORT: deferred stub — movie/Smacker streaming, sub-project 2b. Returns -1
  * (idle), the original's "no half needs refilling". */
 s32 AIL_stream_buffer_index(HSAMPLE sample);
 
-/* 0x5dd86 — spec audio.md "AIL surface" (row 23, name TODO(verify)).
+/* 0x5dd86 — spec audio.md "AIL surface" (row 23). PORT: the name is the
+ * port's own, as for row 21 (record §11).
  * PORT: deferred stub — movie/Smacker streaming, sub-project 2b. No-op. */
 void AIL_stream_feed(HSAMPLE sample, s32 half, const void *buf, u32 len);
 

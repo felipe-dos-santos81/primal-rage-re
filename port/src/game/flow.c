@@ -51,6 +51,10 @@
  * in it as a RIFF/WAVE blob. */
 #define SOUND_RES 5u
 
+/* The announcer's voice id: DS_000BBDC8[0xCD] is { case 2, handle 0x02824B0F =
+ * S16SOUND.GRA + 0x24B0F, loop byte 0 } (todo-verify record §23). */
+#define SND_ANNOUNCER_ID 0xCDu
+
 /* PORT: scratch for the localisation table (0x47370's 0x1C308 block). It must
  * sit above the resource heap AND game_state_init's later movie loads (TWI5.SMK
  * is 1.2 MB, allocated by res_load_file after this loader, pushing the heap to
@@ -180,13 +184,14 @@ void frontend_origin_zero(void)
     DSW(DS_00107A38) = 0;                       /* 0x4F1DA */
 }
 
-/* PORT: 0x38910. Called with eax = 0 from 0x121F9. 0x4F1D0 zeroes the two
- * cursor words; the mode-1 cursor words copy DS_00107A4E; the two table words
- * come from the data object's fixed-up tables DS_000BDE0C / DS_000BDDFC. */
+/* 0x38910 — record §K1.3 (2026-09-29-k1-k9-derivations.md). Called with
+ * eax = 0 from 0x121F9. 0x4F1D0 zeroes the two cursor words (its EAX, the byte
+ * DS_00107A55, is not read); the mode-1 cursor words copy DS_00107A4E; the two
+ * table words come from the data object's fixed-up tables DS_000BDE0C /
+ * DS_000BDDFC. */
 static void title_origin_reset(u32 idx)
 {
-    DSW(DS_00107A3A) = 0;                       /* 0x4F1D3 (0x4F1D0) */
-    DSW(DS_00107A38) = 0;                       /* 0x4F1DA (0x4F1D0) */
+    frontend_origin_zero();                     /* 0x3891A 0x4F1D0 */
     DSW(DS_00107A4A) = DSW(DS_00107A4E);        /* 0x38925 */
     DSW(DS_00107A4C) = DSW(DS_00107A4E);        /* 0x3892B */
     DSW(DS_00107A50) = DSW(DS_000BDE0C + idx * 2u);   /* 0x38938 */
@@ -999,9 +1004,12 @@ void frontend_mode_1a_step(void)
      * §46-B), and so are the 7 other non-trivial values the image stores
      * there (record §46-F): 0x259CC, 0x10E80, 0x24B54, 0x27134, 0x4142C,
      * 0x25AE8 and 0x26978, mode 0x17's hooks.
-     * TODO(verify): game_frame dispatches cases 0x1A/0x1B (record §47-B), so
-     * a miss on any value but the two no-ops is a missing port, not a skip;
-     * no unregistered value is known. The returned EAX is
+     * Record §20 of 2026-09-29-todo-verify-derivations.md closes the list: the
+     * image has 42 stores to DS_00104AE4, all `mov [0x104ae4],reg` of a
+     * `mov reg,imm32` a few bytes before, and the static dword is 0. Their 19
+     * values are the 13 above, the no-ops 0x29D60/0x5D812, and 0x29B74,
+     * 0x43738, 0x28D68 and 0x28D80, which are registered too (actors.c), so
+     * no store can reach a miss that is not a no-op. The returned EAX is
      * dead: `xor ah,ah` and byte/word stores of AH/DX follow. */
     void (*hook)(void) = fn_resolve(DSD(DS_00104AE4));
     if (hook != NULL) hook();                           /* 0x4F9AA */
@@ -1322,9 +1330,7 @@ void game_hook_25bbc(void)
     game_fight_reset(DSW(DS_00104AFC), 1u);             /* 0x25BE6 0x20DF4 */
     fighter_spawn(0u);                                  /* 0x25BED 0x33EB4 */
     fighter_spawn(1u);                                  /* 0x25BF7 0x33EB4 */
-    /* PORT: 0x25C09 0x4F714(stage) — `mov ax,[eax*2+0xc9888]; and
-     * eax,0xffff; jmp 0x2C3FC`, the stage's voice (0x20, 0x21, 0x1B, 0x1C,
-     * 0x1E, 0x1D, 0x1F, 0x1F) — voice, not wired (record §45-A). */
+    (void)sound_voice_stage(DSW(DS_00104AFC));          /* 0x25BFC..0x25C09 0x4F714 */
     flow_1082c8_latch();                                /* 0x25C0E 0x46504 */
     DSD(DS_00104AE4) = FN_0005D812;                     /* 0x25C13 */
 }
@@ -2331,6 +2337,26 @@ void game_mode_05_step(void)
     DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 2u);     /* 0x25DC6/0x25E5A/0x25F5E/0x25F74/0x25F9F */
 }
 
+/* 0x25FAC — record §K8a. Update-table entry 6 (the dword at 0xA865C; no
+ * Ghidra function), dispatched by 0x24CEF while DS_00104AE8 bit 0x40 is set.
+ * The three arms store the card record DS_00104ACC and set the bit together:
+ * 0x25E18/0x25E1D (mode 5 case 2), 0x26B12/0x26B2C (mode 0x23) and
+ * 0x294B8/0x294C9 (mode 0x30). `inc byte [eax+0x2d]` (0x25FB2) adds 0x100 to
+ * the word +0x2C with no carry out of it; `movzx`, `cmp edx,0x1000; jl`
+ * (0x25FB7..0x25FC1) compares the zero-extended word, so 0x8000..0xFFFF also
+ * clamp. At or above 0x1000 the word becomes 0x1000 (0x25FCC) and the byte
+ * DS_00104AE8 loses bit 0x40 (0x25FC3..0x25FD2). The raw does not test
+ * DS_00104ACC for zero; neither does the port. EAX (the dispatch index) is
+ * clobbered and EDX pushed and popped, so the fn() signature is exact. */
+void flow_card_ramp_step(void)
+{
+    u32 rec = DSD(DS_00104ACC);                         /* 0x25FAD */
+    DSB(rec + 0x2Du) = (u8)(DSB(rec + 0x2Du) + 1u);     /* 0x25FB2 */
+    if (DSW(rec + 0x2Cu) < 0x1000u) return;             /* 0x25FB7..0x25FC1 */
+    DSW(rec + 0x2Cu) = 0x1000u;                         /* 0x25FCC */
+    DSB(DS_00104AE8) = (u8)(DSB(DS_00104AE8) & 0xBFu);  /* 0x25FC3..0x25FD2 */
+}
+
 /* ---- modes 0x30/0x31/0x33, mode 0x32's continue/rematch chain (record
  * §49-J) -------------------------------------------------------------- */
 
@@ -2759,10 +2785,7 @@ void flow_match_end(void)
      * deferred (spec §7) as in 0x2D962 and 0x32A3C (config.c). */
     if (DSD(DS_00104AC8) != 0u)                         /* 0x27E2D/0x27E35 */
         actor_set_dead(DSD(DS_00104AC8));               /* 0x27E39 0x2B150 */
-    /* PORT: 0x27E4B 0x4F728 (EAX = DS_00104AFC, not read) is two voices, not
-     * wired (record §45-A): 0xDF when DS_00104AD4 is neither -1 nor 3, the
-     * winner's +0x63 is 0 and the signed byte DS_001088F2 > 0, else 0x23;
-     * then 0x22. It reads only. */
+    sound_voice_match_end();                            /* 0x27E3E..0x27E4B 0x4F728 */
     prompt_side_erase(0, 0x1D);                         /* 0x27E50/0x27E52 0x2C2B0 */
     prompt_side_erase(1, 0x1D);                         /* 0x27E57..0x27E61 0x2C2B0 */
     DSB(DS_00104AE8) = (u8)(DSB(DS_00104AE8) & 0xFBu);  /* 0x27E66 */
@@ -2968,9 +2991,8 @@ void game_mode_04_step(void)
  * volleyball mini-game's per-frame ball/entry driver; see its own header
  * comment in fight.c for the full 8-state switch (over the same singly-
  * linked DS_0010884C list fight_effects_pass walks, not a separate
- * doubly-linked one) and shared-tail derivation. Its own unported callee
- * FUN_0004A868 (case 1's else branch) is the same predicate this codebase
- * already treats as always false elsewhere (spec §7.4). After that,
+ * doubly-linked one) and shared-tail derivation. Its callee 0x4A868 (case
+ * 1's else branch) is fight_4a868 (record §K4.2). After that,
  * exactly like 0x26254: camera_scene_step (0x1282C + 0x12DA8),
  * fight_hud_pulse (0x1DA08), flow_round_end_check (0x27FA8), then
  * DS_00104AEC |= 2. Unlike 0x26254 there is no closing DS_001078FA/
@@ -4710,6 +4732,12 @@ void prompt_side_erase(s32 side, s32 row)
                              (s32)DSD(DS_00105BF8));    /* 0x2C2E9..0x2C2F9 0x2F388 */
 }
 
+/* 0x29B70 — record §K2.1. A bare `ret` (`c3`). Callers: 0x20DF4 (0x20E0B)
+ * and 0x24C5C's jump-table cases 1, 2 and 0x20 (0x2521A/0x25224/0x2522E). */
+void game_null_step(void)
+{
+}
+
 /* 0x20DF4 — record §46-B. The fight reset. EAX = the stage (DS_00104AFC's
  * zero-extended word at every caller), clamped to 7 by a signed `cmp eax,7;
  * jl` (0x20E01/0x20E06) into EBX; EDX = `full`, read at 0x20E6F. EDX survives
@@ -4730,7 +4758,7 @@ void game_fight_reset(u32 stage, u32 full)
 {
     DSD(DS_000F0A48) = 0u;                              /* 0x20DFB */
     u32 s = (s32)stage < 7 ? stage : 7u;                /* 0x20DF7/0x20E01/0x20E06 */
-    /* 0x20E0B 0x29B70 is a bare `ret`. */
+    game_null_step();                                   /* 0x20E0B 0x29B70 */
     DSD(DS_00100B4C) = 0u;                              /* 0x20E16 */
     DSD(DS_00104AE8) = 0u;                              /* 0x20E1C */
     DSB(DS_001088EC) = 0u;                              /* 0x20E22 */
@@ -5769,10 +5797,12 @@ void game_state_init(void)
  * no PIT/ISR and the frame loop owns pacing (see game_audio_service). */
 void game_audio_init(void)
 {
-    /* TODO(verify): the original's FUN_0001cf40 gates the DIG install and its
-     * preferences behind param_2 and the MDI install behind param_1
-     * (prage.c:8703,8719); the port installs both unconditionally. The shipped
-     * init calls it with both nonzero, so the shipped behaviour is equal. */
+    /* PORT: FUN_0001cf40 gates the DIG install and its preferences behind
+     * param_2 (DL, 0x1CF5E) and the MDI install behind param_1 (AL, 0x1CFBF);
+     * the port has no parameters and installs both. Record §21 of
+     * 2026-09-29-todo-verify-derivations.md: its only caller, 0x1BEC4, passes
+     * EAX = EDX = 1 (0x1BFD1 mov edx,1; 0x1BFD9 mov eax,edx; 0x1BFDB call), so
+     * both gates are always taken. */
     mixer_reset();
     AIL_startup();
     DSB(DS_000A2CB1) = 1;
@@ -5825,9 +5855,14 @@ void game_audio_init(void)
  * seq_load use. Task 9's capture spans this S16TITLE bank end to end. (The
  * original's 0x121a0 FUN_0002c3fc(0x41)/(0x43) are case 5 voice cancels, not a
  * case-1 music request.)
- * TODO(verify): the sound-table id -> resource handle mapping is not extracted
- * (DAT_000BBDC8 is a static table in PRAGE.EXE, stride 12, byte 0 = case,
- * dword +4 = handle), so the port binds the title state to the bank directly.
+ * Record §22 of 2026-09-29-todo-verify-derivations.md: the mapping this
+ * binding stands for is in the static table DS_000BBDC8 (stride 12, +0 case,
+ * +4 handle), which sound_voice already reads. Its only case-1 records naming
+ * S16TITLE.GRA are ids 0x54 and 0x56, both handle 0x03836102 = resource 7 +
+ * 0x36102: a size dword 0x1338 followed by the XMIDI file (FORM XDIR at
+ * 0x36106, whose CAT holds the FORM XMID at 0x36128), the bytes 0x1C930 copies
+ * past the size dword. This scan finds that same FORM XMID, so the bank is the
+ * table's; what stays unported is the request that names id 0x54/0x56.
  * Returns NULL on a bank whose declared FORM size runs past the loaded
  * resource. */
 static const u8 *title_music_bank(void)
@@ -5895,12 +5930,17 @@ static void game_sample_play(void)
     AIL_set_sample_volume(h, (s32)DSD(DS_000A2CB4));
     AIL_set_sample_rate(h, s_pending_sample.rate);
     AIL_set_sample_type(h, 0, 0);
-    /* The original gates this on the per-slot flag DAT_00102868[slot] == 1
-     * (prage.c:8469-8471): only a flagged slot gets loop count 0. The port has
-     * no per-slot flag and always forces 0 (one-shot). TODO(verify): the flag's
-     * source and the original's non-1 behaviour are unmodelled; the shipped data
-     * presumably carries 1, which is why the port matches the spec. */
-    AIL_set_sample_loop_count(h, 0);
+    /* The raw 0x1CB18 gates this on the slot's loop byte
+     * DAT_00102868[slot] == 1 (prage.c:8469-8471), which 0x1CC28 queued from
+     * the voice record's +8 byte (0x2C3FC case 2). Count 0 loops forever;
+     * otherwise AIL_init_sample's default count 1 plays once (0x6F120).
+     * Record §23 of
+     * 2026-09-29-todo-verify-derivations.md: the announcer is voice id 0xCD
+     * (DS_000BBDC8[0xCD] = case 2, handle 0x02824B0F = S16SOUND.GRA + 0x24B0F,
+     * the RIFF blob game_sample_request finds), whose loop byte is 0.
+     * PORT: the port has no slot records, so it reads that byte directly. */
+    if (DSB(DS_000BBDC8 + SND_ANNOUNCER_ID * 0x0Cu + 8u) == 1u)  /* 0x1CBCA..0x1CBD6 */
+        AIL_set_sample_loop_count(h, 0);                /* 0x1CBD8..0x1CBE1 */
     AIL_start_sample(h);
 }
 
@@ -5961,7 +6001,10 @@ int game_music_notes_seen(void) { return s_music_notes; }
  * (0x1CA14's store, 0x1CA40's status) stay inert, as without an MDI driver.
  * Named gap (spec §7): 0x1CC28's slot choice and 0x1CB18's start (the sample
  * copy into the slot's 0x1D0BC buffer, which the port does not allocate), so
- * no port path writes a slot's +0x04/+0x0C/+0x14. */
+ * no port path writes a slot's +0x04/+0x0C/+0x14. Record §K7 of
+ * 2026-09-29-k4-k6-k7-derivations.md derives both from the raw; porting them
+ * needs three decisions it names (§K7.3): the +0x10 buffers of the host-owned
+ * 0x1D0BC, the 0x500BB clock DS_00101500, and the announcer stand-in below. */
 
 #define SND_SLOT_STRIDE 0x18u
 #define SND_SLOT_END    0x60u
@@ -6165,8 +6208,8 @@ void sound_resume(void)
  * §45-A). It then queues the sample on a slot (AL = 1).
  * PORT: the slot choice (0x1CC62..0x1CD8D: a free slot for a sample of at most
  * 0x6000 bytes, else slot 0 or the oldest, ended and re-inited, then +0x04 =
- * `h`, +0x08 = the loop byte, +0x14 = the time) is the named gap above; its
- * result, AL = 1, is kept. */
+ * `h`, +0x08 = the loop byte, +0x14 = the time; record §K7.2) is the named gap
+ * above; its result, AL = 1, is kept. */
 static u32 snd_sample_queue(u32 h, u32 loop)
 {
     (void)loop;
@@ -6273,6 +6316,37 @@ u32 sound_voice(u32 id)
     }
 }
 
+#define SND_STAGE_VOICES 0x000C9888u   /* no symbols.h name: 0x4F714's word table */
+#define SND_SLOT0_63     0x00107813u   /* no symbols.h name: slot 0's +0x63 byte */
+
+/* 0x4F714 — record §K6.1. The stage's voice: `mov ax,[eax*2+0xc9888]; and
+ * eax,0xffff; jmp 0x2C3FC`, a tail jump, so AL is the dispatcher's. EAX is the
+ * stage word its one caller (0x25C09, game_hook_25bbc) zero-extends. Stages
+ * 0..7 name the case-1 records 0x20, 0x21, 0x1B, 0x1C, 0x1E, 0x1D, 0x1F, 0x1F
+ * (music requests: no resource read, no draw, no rng). */
+u32 sound_voice_stage(u32 stage)
+{
+    return sound_voice((u32)DSW(SND_STAGE_VOICES + stage * 2u));  /* 0x4F71C..0x4F721, the read at 0x4F714 */
+}
+
+/* 0x4F728 — record §K6.2. The match end's two voices: 0xDF when the match
+ * result DS_00104AD4 (a dword) is neither -1 nor 3, that side's slot +0x63
+ * byte (0x107813 + result * 0x94) is 0 and the signed byte DS_001088F2 is
+ * above 0; otherwise 0x23. Then 0x22. All three are case 1 or 5 (no resource
+ * read, no draw, no rng). EAX (the caller's stage word) is never read; EDX is
+ * pushed and popped. One caller: 0x27E4B (flow_match_end). */
+void sound_voice_match_end(void)
+{
+    u32 r = DSD(DS_00104AD4);                                  /* 0x4F729 */
+    u32 id = 0x23u;                                             /* 0x4F761 */
+    if (r != 0xFFFFFFFFu && r != 3u &&                          /* 0x4F72F/0x4F734 */
+        DSB(SND_SLOT0_63 + r * 0x94u) == 0u &&                  /* 0x4F739..0x4F74F */
+        (s8)DSB(DS_001088F2) > 0)                               /* 0x4F751/0x4F758 `jle` */
+        id = 0xDFu;                                             /* 0x4F75A */
+    (void)sound_voice(id);                                      /* 0x4F766 0x2C3FC */
+    (void)sound_voice(0x22u);                                   /* 0x4F76B/0x4F770 0x2C3FC */
+}
+
 /* 0x249F0 — record §50-D. The quit prompt (0x24C5C's key 0x10 at 0x24DDF with
  * AL = 0, and its mode arms at 0x24EAD / 0x24EC5 with AL = 0 / 1). `hard_quit`
  * is AL: 0 asks string 0x1EE and a yes sets the quit flag DS_000A81A8, nonzero
@@ -6332,6 +6406,12 @@ void game_set_game_dir(const char *dir)
     /* The attract machine's phase-0 boot logos (0x1C740) play from the same
      * directory. */
     attract_set_media_dir(dir);
+}
+
+/* 0x32968 — record §K2.2. A bare `ret` (`c3`); its one caller is 0x20C10
+ * (game_init) at 0x20CC7. */
+void game_init_null(void)
+{
 }
 
 void game_init(void)
@@ -6404,6 +6484,7 @@ void game_init(void)
     DSB(DS_00105B3A) = (u8)((v & 0x100u) >> 4);        /* 0x20C9F */
     DSD(DS_001088D0) = (v & 0xFu) * 5u + 0x1Eu;        /* 0x20CB0 */
     DSB(DS_0010452C) = (u8)((v & 0xF0u) >> 4);         /* 0x20CC2 */
+    game_init_null();                                  /* 0x20CC7 0x32968 */
     /* PORT: 0x2BF08's captured inputs (docs/superpowers/plans/
      * 2026-09-18-bf08-overlay-diagnosis.md §2.3). DS_00105C00 is the live credit
      * counter the overlay renders as `<CREDITS string>:<n>`; the un-pinned title
@@ -6414,8 +6495,11 @@ void game_init(void)
      * renderer scales a text row by 20/3 px (0x200 >> 6, projected by
      * render_proj_y's 3414/4096), so text row 1 lands on the captured screen
      * rows 7-12.
-     * TODO(verify): reproduces the captured no-input window only; credit
-     * countdown under input is not yet covered by an oracle. */
+     * PORT: named gap, record §24 of 2026-09-29-todo-verify-derivations.md:
+     * the captures (data/title-captures/title, title2, frontend) have no coin
+     * input, so the oracles cover the no-input window only; the decrementers
+     * 0x2CA48/0x2CA7C are unit-tested against the raw (test_game.c), and a
+     * DOSBox-X capture with coin input is what would cover the countdown. */
     /* 0x20CCC: the init chain writes the overlay row to 0x1D. */
     config_set_credit_row_init();
     /* PORT: 0x5004A joystick init — the port reads int 16h keyboard only. */
@@ -6776,12 +6860,19 @@ void game_frame(void)
      * player records it consumes are the interactive match's and stay a gap;
      * this block is the demo's AI. */
     fighter_command_block();                           /* 0x24C73 */
+    /* 0x24CBA: the projection inputs (record §K3.2), every frame and in every
+     * mode, before the frame counter. With DS_00104B26 != 0 the raw calls
+     * 0x38990 twice (0x24CC3, then 0x24CC8); no instruction stores that byte,
+     * and the function reads neither word it writes, so the second call
+     * repeats the first. */
+    if (DSB(DS_00104B26) != 0u)                        /* 0x24CBA/0x24CC1 */
+        render_scroll_track();                         /* 0x24CC3 0x38990 */
+    render_scroll_track();                             /* 0x24CC8 0x38990 */
     /* 0x24CCD..0x24CDB: the frame counter is a word (`mov di,[0xef6dc]` /
      * `inc edi` / `mov [0xef6dc],di`); 0xEF6DE is a separate global
      * (0x1BE21/0x5D808), so the increment must not carry into it. */
     DSW(DS_000EF6DC) = (u16)(DSW(DS_000EF6DC) + 1u);   /* 0x24CDB */
     run_process_table(DS_000A8644, DSD(DS_00104AE8));  /* update table */
-    /* PORT: 0x24C5C's second 0x38990 per-frame service call is deferred. */
 
     /* 0x24CFE..0x24EE7: the int 16h keyboard loop (records §53-A, §55-A). It
      * runs before the switch and is one of the three ways out of mode 3: Enter
@@ -6801,7 +6892,7 @@ void game_frame(void)
     case 0x01u:
     case 0x02u:
     case 0x20u:
-        /* 0x2521A/0x25224/0x2522E call 0x29B70, a bare `ret`. */
+        game_null_step();                              /* 0x2521A/0x25224/0x2522E 0x29B70 */
         break;
     case 0x03u:
         game_state_step();                             /* 0x25238 0x11D04 */

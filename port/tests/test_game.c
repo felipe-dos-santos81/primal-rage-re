@@ -527,6 +527,75 @@ static void check_sound_pause_volume(void)
     CHECK_EQ_INT((int)DSD(DS_001028D4), (int)0xD4D4D4D4u);
 }
 
+/* Record §K6: 0x4F714 and 0x4F728 over the shipped voice records (case 1 or
+ * 5 only, so no resource read), on sv_seed's sentinels (DS_00105D5C
+ * 0x5C5C5C5C, DS_001028D4 0xD4D4D4D4, DS_001028D9 0x99). DS_001028D4 and
+ * DS_00105D5C name the case-1 handle that played: 0xDF's 0x02806EC8 or 0x23's
+ * 0x02805B88. The data object is snapshotted: the result, the slots' +0x63
+ * bytes, DS_001088F2 and (last) 0x23's record are seeded. */
+#define VW_SLOT63(k) (0x00107813u + (u32)(k) * 0x94u)   /* no symbols.h name */
+
+static void vw_match(u32 r, u8 own, u8 other, u8 f2)
+{
+    u32 k;
+    sv_seed();
+    for (k = 0; k < 6u; k++) DSB(VW_SLOT63(k) - 0x94u) = other;   /* slots -1..4 */
+    DSD(DS_00104AD4) = r;
+    DSB(VW_SLOT63(r)) = own;
+    DSB(DS_001088F2) = f2;
+    sound_voice_match_end();
+}
+
+static void check_voice_wrappers(void)
+{
+    static u8 vw_data[0x8B0D0];
+    u32 i;
+    tf_snap(vw_data, DATA_BASE, 0x8B0D0u);
+
+    /* 0x4F714: the stage word indexes 0xC9888; stages 0, 2 and 7 name 0x20,
+     * 0x1B and 0x1F, each case 1 with byte 1. */
+    {
+        static const u32 st[3] = { 0u, 2u, 7u };
+        static const u32 h[3] = { 0x0A800008u, 0x0D000008u, 0x0B000008u };
+        for (i = 0; i < 3u; i++) {
+            sv_seed();
+            CHECK_EQ_INT((int)sound_voice_stage(st[i]), 1);
+            CHECK_EQ_INT((int)DSD(DS_00105D5C), (int)h[i]);
+            CHECK_EQ_INT((int)DSD(DS_001028D4), (int)h[i]);
+            CHECK_EQ_INT((int)DSB(DS_001028D9), 1);
+        }
+    }
+
+    /* 0x4F728's gate: result r (not -1/3), slot r's +0x63 == 0 and the
+     * signed DS_001088F2 > 0 play 0xDF, else 0x23; the trailing 0x22 finds a
+     * handle in DS_00105D5C and keeps the song words. */
+    {
+        static const u32 rs[10]  = { 0u, 1u, 0u, 1u, 0xFFFFFFFFu, 3u, 2u, 0u, 0u, 0u };
+        static const u8  own[10] = { 0,  0,  1,  1,  0,           0,  0,  0,  0,  0 };
+        static const u8  oth[10] = { 1,  1,  0,  0,  0,           0,  0,  0,  0,  0 };
+        static const u8  f2[10]  = { 1,  1,  1,  1,  1,           1,  1,  0,  0x80, 0x7F };
+        static const int df[10]  = { 1,  1,  0,  0,  0,           0,  1,  0,  0,  1 };
+        for (i = 0; i < 10u; i++) {
+            u32 h = df[i] ? 0x02806EC8u : 0x02805B88u;
+            vw_match(rs[i], own[i], oth[i], f2[i]);
+            CHECK_EQ_INT((int)DSD(DS_00105D5C), (int)h);
+            CHECK_EQ_INT((int)DSD(DS_001028D4), (int)h);
+            CHECK_EQ_INT((int)DSB(DS_001028D9), 0);
+        }
+    }
+
+    /* The trailing 0x22 and its order: with 0x23's record handle retyped to
+     * 0x1B, 0x23 makes 0x1B the current voice and 0x22 then stops the music
+     * (DS_001028D4 = 0). Played first, or not at all, 0x22 would leave
+     * DS_001028D4 = 0x1B. */
+    DSD(DS_000BBDC8 + 0x23u * 12u + 4u) = 0x1Bu;
+    vw_match(0xFFFFFFFFu, 0, 0, 1);
+    CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x1B);
+    CHECK_EQ_INT((int)DSD(DS_001028D4), 0);
+
+    tf_put(vw_data, DATA_BASE, 0x8B0D0u);
+}
+
 /* 0x2C3FC over the shipped records at DS_000BBDC8 and the sound module's
  * slot scans on the live AIL handles game_audio_init allocated. Snapshots
  * and restores the data object, the INDEX table, both pools, the DAC and the
@@ -976,6 +1045,28 @@ static void check_hiscore_screen(void)
     tf_put(sv_data, DATA_BASE, 0x8B0D0u);
 }
 
+/* Records §K2.1/§K2.2 (2026-09-29-k2-k5-derivations.md): 0x29B70 and 0x32968
+ * are a bare `ret` (`c3`). The data object is filled with 0xA5, which no
+ * image byte pattern guarantees, and must hold it after each call. */
+static void check_null_fns(void)
+{
+    enum { DATA_LEN = 0x8B0D0 };
+    static u8 saved[DATA_LEN];
+    memcpy(saved, mem + DATA_BASE, DATA_LEN);
+    memset(mem + DATA_BASE, 0xA5, DATA_LEN);
+    game_null_step();
+    u32 bad = 0u;
+    for (u32 i = 0; i < (u32)DATA_LEN; i++)
+        if (DSB(DATA_BASE + i) != 0xA5u) bad++;
+    CHECK_EQ_INT((int)bad, 0);
+    game_init_null();
+    bad = 0u;
+    for (u32 i = 0; i < (u32)DATA_LEN; i++)
+        if (DSB(DATA_BASE + i) != 0xA5u) bad++;
+    CHECK_EQ_INT((int)bad, 0);
+    memcpy(mem + DATA_BASE, saved, DATA_LEN);
+}
+
 int test_flow(void)
 {
     int before = g_failures;
@@ -1065,6 +1156,26 @@ int test_flow(void)
      * fight_effects_pass chain, which this title-state fixture's actor/
      * effects-list state was never built to tolerate (it hangs in
      * fight_4b69c's trample walk). */
+    /* Record §K3.2: 0x24C5C calls 0x38990 at 0x24CC8 every frame, before the
+     * frame counter and the update table, in every mode. A mode-1 frame (the
+     * bare `ret` 0x29B70) must derive DS_00107A3C/DS_00107A4A from the seeded
+     * DS_000F0AEC/DS_00107A4E; the sentinels differ from both post-values. */
+    {
+        u32 sf0 = DSD(DS_000F0AEC), sdc = DSD(DS_000EF6DC);
+        u16 s3c = DSW(DS_00107A3C), s4a = DSW(DS_00107A4A);
+        u16 s4e = DSW(DS_00107A4E);
+        DSD(DS_000F0AEC) = 0x00012345u;
+        DSW(DS_00107A4E) = 0x0010u;
+        DSW(DS_00107A3C) = 0x7777u;
+        DSW(DS_00107A4A) = 0x7777u;
+        DSD(DS_00104B00) = 1;
+        game_frame();
+        CHECK_EQ_INT((int)DSW(DS_00107A3C), 0x2340);
+        CHECK_EQ_INT((int)DSW(DS_00107A4A), 0x049D);
+        DSD(DS_000F0AEC) = sf0; DSD(DS_000EF6DC) = sdc;
+        DSW(DS_00107A3C) = s3c; DSW(DS_00107A4A) = s4a;
+        DSW(DS_00107A4E) = s4e;
+    }
     DSD(DS_00104B00) = 0x16;
     game_frame();
 
@@ -1112,9 +1223,21 @@ int test_flow(void)
     }
     CHECK(game_audio_ticks() > 0, "audio service advances the sequencer");
     CHECK(game_music_notes_seen(), "title music keys notes without a device");
+    /* The announcer is sound id 0xCD (DS_000BBDC8[0xCD]: case 2, handle
+     * 0x02824B0F = S16SOUND.GRA + 0x24B0F, loop byte 0), so 0x1CB18 does not
+     * call AIL_set_sample_loop_count and the default count 1 plays it once
+     * (todo-verify record §23): after its 19327 frames at 11025 Hz (~87153
+     * output frames) the voice is gone. */
+    CHECK_EQ_INT((int)DSD(DS_000BBDC8 + 0xCDu * 12u + 4u), 0x02824B0F);
+    {
+        static s16 abuf2[4096 * 2];
+        for (int i = 0; i < 24; i++) mixer_render(abuf2, 4096, MIXER_OPL_RATE);
+        CHECK_EQ_INT(mixer_active_voices(), 0);
+    }
     /* The voice dispatcher 0x2C3FC and the sound module, on the live handles
      * game_audio_init allocated (record §45-A). */
     check_sound_voice();
+    check_voice_wrappers();
     check_sound_pause_volume();
     /* The attract's high-score screen 0x1EA08 (record §46-A). */
     check_hiscore_screen();
@@ -1198,6 +1321,8 @@ int test_flow(void)
      * last and restores every global it seeds, so it cannot perturb the
      * assertions above. */
     check_timer_exit();
+
+    check_null_fns();
 
     return g_failures - before;
 }
@@ -1391,6 +1516,84 @@ static void check_pset_layer(void)
     }
 }
 
+/* Update-table entry 6, 0x25FAC (flow_card_ramp_step, record §K8a): byte
+ * [DSD(DS_00104ACC)+0x2D] += 1 (0x25FB2), then once the zero-extended word
+ * +0x2C is >= 0x1000 (0x25FBB `cmp edx,0x1000; jl`) it is clamped to 0x1000
+ * and DS_00104AE8 bit 0x40 is cleared (0x25FC3..0x25FD2, a byte store). The
+ * record is scratch at 0x3E90000; every sentinel differs from its post-value.
+ * Runs after actors_init, which registers the entry. */
+#define CARD_REC 0x3E90000u
+static void check_card_ramp(void)
+{
+    u32 s_acc = DSD(DS_00104ACC), s_ae8 = DSD(DS_00104AE8);
+    u32 s_mode = DSD(DS_00104B00), s_dc = DSD(DS_000EF6DC);
+    u16 s3c = DSW(DS_00107A3C), s4a = DSW(DS_00107A4A);
+    u8 s_b15 = DSB(DS_00104B15), s_b1b = DSB(0x00104B1Bu);
+
+    /* (a) The table dword at 0xA865C (entry 6) is 0x25FAC, and it resolves. */
+    CHECK_EQ_INT((int)DSD(DS_000A8644 + 6u * 4u), 0x25FAC);
+    CHECK(fn_resolve(DSD(DS_000A8644 + 6u * 4u)) == flow_card_ramp_step,
+          "update-table entry 6 (0x25FAC) resolves to flow_card_ramp_step");
+
+    DSD(DS_00104ACC) = CARD_REC;
+    DSD(CARD_REC + 0x28u) = 0xA5A5A5A5u;
+    DSD(CARD_REC + 0x30u) = 0x5A5A5A5Au;
+    DSW(CARD_REC + 0x2Eu) = 0xBEEFu;
+
+    /* (b) 0x0010 -> 0x0110 (below 0x1000): the mask is kept whole. */
+    DSW(CARD_REC + 0x2Cu) = 0x0010u;
+    DSD(DS_00104AE8) = 0xFFFFFFFFu;
+    flow_card_ramp_step();
+    CHECK_EQ_INT((int)DSW(CARD_REC + 0x2Cu), 0x0110);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFFFFFFu);
+
+    /* (c) 0x0FFF -> 0x10FF >= 0x1000: clamped to 0x1000, and only bit 0x40
+     * of the mask's low byte is cleared. */
+    DSW(CARD_REC + 0x2Cu) = 0x0FFFu;
+    flow_card_ramp_step();
+    CHECK_EQ_INT((int)DSW(CARD_REC + 0x2Cu), 0x1000);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), (int)0xFFFFFFBFu);
+
+    /* (d) 0x7F10 -> 0x8010: the zero-extended compare clamps it (a signed
+     * 16-bit compare would not). */
+    DSW(CARD_REC + 0x2Cu) = 0x7F10u;
+    DSD(DS_00104AE8) = 0x00000040u;
+    flow_card_ramp_step();
+    CHECK_EQ_INT((int)DSW(CARD_REC + 0x2Cu), 0x1000);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), 0);
+
+    /* (e) 0xFF10: the byte increment wraps +0x2D to 0 (no carry out of the
+     * word), 0x0010 < 0x1000, the mask is kept. */
+    DSW(CARD_REC + 0x2Cu) = 0xFF10u;
+    DSD(DS_00104AE8) = 0x00000040u;
+    flow_card_ramp_step();
+    CHECK_EQ_INT((int)DSW(CARD_REC + 0x2Cu), 0x0010);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), 0x40);
+    CHECK_EQ_INT((int)DSD(CARD_REC + 0x28u), (int)0xA5A5A5A5u);
+    CHECK_EQ_INT((int)DSD(CARD_REC + 0x30u), 0x5A5A5A5A);
+    CHECK_EQ_INT((int)DSW(CARD_REC + 0x2Eu), 0xBEEF);   /* no carry into +0x2E */
+
+    /* (f) The dispatcher: a mode-1 game_frame with only bit 0x40 armed runs
+     * entry 6 once (0x24CEF `call [eax+0xa8644]`), 0x0210 -> 0x0310. */
+    DSW(CARD_REC + 0x2Cu) = 0x0210u;
+    DSD(DS_00104AE8) = 0x00000040u;
+    DSD(DS_00104B00) = 1u;
+    /* The demo's per-frame blocks (0x24C7C's AI, gated on DS_00104B1B, and
+     * the 0x25414 tail, gated on DS_00104B15) are held off for this frame
+     * so it touches no fighter state the later cases rely on. */
+    DSB(DS_00104B15) = 0u; DSB(0x00104B1Bu) = 0u;
+    game_frame();
+    CHECK_EQ_INT((int)DSW(CARD_REC + 0x2Cu), 0x0310);
+    CHECK_EQ_INT((int)DSD(DS_00104AE8), 0x40);
+
+    DSD(CARD_REC + 0x28u) = 0; DSD(CARD_REC + 0x2Cu) = 0; DSD(CARD_REC + 0x30u) = 0;
+    DSD(DS_00104ACC) = s_acc; DSD(DS_00104AE8) = s_ae8;
+    DSD(DS_00104B00) = s_mode; DSD(DS_000EF6DC) = s_dc;
+    DSW(DS_00107A3C) = s3c; DSW(DS_00107A4A) = s4a;
+    DSB(DS_00104B15) = s_b15; DSB(0x00104B1Bu) = s_b1b;
+}
+#undef CARD_REC
+
 int test_actors(void)
 {
     int before = g_failures;
@@ -1408,6 +1611,7 @@ int test_actors(void)
     /* Record §42-E: the DS_00104AE4 handler 0x29B74 resolves to its port. */
     CHECK(fn_resolve(FN_00029B74) == frontend_darken_all,
           "actors_init registered 0x29B74 as frontend_darken_all");
+    check_card_ramp();
 
     /* A fresh reset frees every record and leaves both lists empty. It also
      * runs 0x4F228 with EAX = 0 (0x2BBC0/0x2BBC4): the projection gate
@@ -2792,6 +2996,16 @@ int test_config(void)
     }
     check_hiscore();
     check_hiscore_rank();
+
+    /* Record §K2.3 (2026-09-29-k2-k5-derivations.md): 0x2D4B4's loop jumps
+     * back to its `inc eax` (0x2D4C1 -> 0x2D4BA) and returns EAX, so the result
+     * is n + r + 1 for the smallest r with 2^r >= n + r + 1, not a power of
+     * two. Every caller passes 0x26 (0x2D528, 0x2D8BD, 0x2DB0B, 0x2DB1F). */
+    CHECK_EQ_INT((int)config_codeword_len(0u), 1);
+    CHECK_EQ_INT((int)config_codeword_len(1u), 4);
+    CHECK_EQ_INT((int)config_codeword_len(3u), 7);
+    CHECK_EQ_INT((int)config_codeword_len(4u), 8);
+    CHECK_EQ_INT((int)config_codeword_len(0x26u), 0x2D);
     return 0;
 }
 
@@ -3953,7 +4167,10 @@ int test_frontend(void)
         CHECK_EQ_INT((int)DSD(DS_00107498 + 0u),  (int)DS_000BD470);
         CHECK_EQ_INT((int)DSD(DS_00107498 + 4u),  0);
         CHECK_EQ_INT((int)DSD(DS_00107498 + 8u),  1);
-        CHECK_EQ_INT((int)DSD(DS_00107498 + 12u), 0);
+        /* 0x3373F stores the flag's low byte only (todo-verify record §3):
+         * the sentinel's upper three bytes survive, and 0x336C0 never clears
+         * the list's +0xC dwords (it marks only +4 at 0x336E9). */
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 12u), (int)0xDEADBE00u);
 
         gfx_flush_palette();                      /* the loader draw's 0x1C470 */
         CHECK_EQ_INT((int)DSD(DS_00107498 + 4u), -1);   /* consumed */
@@ -6557,6 +6774,67 @@ static void ch_check_keycfg(void)
     DSD(DS_00101514) = saved_kb;
 }
 
+/* Record §K5 (2026-09-29-k2-k5-derivations.md): 0x2EA74 is `xor eax,eax;
+ * mov eax,eax` with no `ret`, so it runs 0x2EA78 with EAX = 0: the latch is
+ * cleared, one frame is presented (the buffers swap), and two passes wait a
+ * tick each and drain the key queue. Every seed differs from its post-value. */
+static void ch_check_screen_wait_zero(void)
+{
+    ch_text_setup();
+    u32 s_a0 = DSD(DS_000E87A0), s_a4 = DSD(DS_000E87A4);
+    u32 s_tick = DSD(CH_TICK), s_isr = DSD(DS_00101508);
+    u16 s_word = DSW(0x000EF6DEu);
+    u8 s_gate = DSB(0x00104B22u), s_full = DSB(DS_001014FC);
+    u32 s_lat = DSD(CH_KEY_LATCH), s_time = DSD(CH_KEY_TIME), s_kw = DSD(CH_KEY_WORD);
+
+    DSD(DS_000E87A0) = CH_BUF_A;
+    DSD(DS_000E87A4) = CH_BUF_B;
+    memset(mem + CH_BUF_A, 0x11, 64000);
+    memset(mem + CH_BUF_B, 0x33, 64000);
+    DSB(0x00104B22u) = 0u;
+    DSB(DS_001014FC) = 0u;
+    input_clear();
+
+    /* No key: the latch 0x77 is cleared at 0x2EA85 and stays 0. */
+    DSD(CH_KEY_LATCH) = 0x77u;
+    DSD(CH_TICK) = 5000u;
+    DSD(CH_KEY_TIME) = 0x1234u;
+    config_screen_wait_zero();
+    CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 0);
+    CHECK_EQ_INT((int)DSD(CH_TICK), 5002);                   /* two passes */
+    CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 0x1234);             /* nothing stamped */
+    CHECK_EQ_INT((int)DSD(DS_000E87A0), (int)CH_BUF_B);      /* 0x50188 swap */
+    CHECK_EQ_INT((int)DSD(DS_000E87A4), (int)CH_BUF_A);
+    const u8 *shown = gfx_display();
+    CHECK(shown != NULL, "0x2EA74 presents a frame");
+    if (shown != NULL) {
+        CHECK_EQ_INT((int)shown[0], 0x33);
+        CHECK_EQ_INT((int)shown[63999], 0x33);
+    }
+
+    /* A queued key is drained and stamped at the first pass. */
+    input_push(0x1E, 'a');
+    DSD(CH_TICK) = 6000u;
+    DSD(CH_KEY_WORD) = 0u;
+    config_screen_wait_zero();
+    CHECK_EQ_INT((int)DSD(CH_TICK), 6002);
+    CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 'a');
+    CHECK_EQ_INT((int)DSD(CH_KEY_WORD), 0x1E61);
+    CHECK_EQ_INT((int)DSD(CH_KEY_TIME), 6001);
+    CHECK(!input_has_key(), "0x2EA74 drained the queue");
+
+    DSD(DS_000E87A0) = s_a0;
+    DSD(DS_000E87A4) = s_a4;
+    DSD(CH_TICK) = s_tick;
+    DSD(DS_00101508) = s_isr;
+    DSW(0x000EF6DEu) = s_word;
+    DSB(0x00104B22u) = s_gate;
+    DSB(DS_001014FC) = s_full;
+    DSD(CH_KEY_LATCH) = s_lat;
+    DSD(CH_KEY_TIME) = s_time;
+    DSD(CH_KEY_WORD) = s_kw;
+}
+
 /* 0x249F0 (record §50-D): the quit prompt. Strings 0x1F0/0x1F1 are the
  * localised yes/no letters; the seeds differ from every asserted result. */
 static void ch_check_quit_prompt(void)
@@ -6634,6 +6912,7 @@ int test_cfg_helpers(void)
     ch_check_option_row();
     ch_check_code_row();
     ch_check_screen_wait();
+    ch_check_screen_wait_zero();
     ch_check_quit_prompt();
     ch_check_keycfg();
     return g_failures - before;
