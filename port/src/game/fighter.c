@@ -10056,7 +10056,7 @@ void fighter_216ec(u32 slot, u32 rec, u32 side)
  * = 2, +0x53 = 0xA, +0x10 = 0x21458 (fighter_21458), +0x58 = 3, +0x41 |= 0x80,
  * its record on the stream dword[0xA824C + its char * 4] with a stack a3 of 0;
  * the counter word DS_00104764[side] = 0. Returns 1 (AL, 0x21A7B). Callers
- * 0x21B43 and 0x21C33 are unported. */
+ * 0x21B43 (in 0x21B08) and 0x21C33 (in 0x21BE8), record §52-A. */
 u32 fighter_21994(u32 slot, u32 rec)
 {
     u32 ctx[6];
@@ -11706,9 +11706,9 @@ int fighter_40bbc(u32 slot, u32 rec)
 
 /* 0x3FF08 — record §50-A. The setup that stores 0x3FDD8 as its +0x1C callback
  * (0x3FF7E) with the unported +0x0C/+0x18 callbacks 0x3FEF8 and 0x3FD30. EAX =
- * slot (ECX), EDX = rec (EBX); AL returned, in the shape of 0x40BBC. No
- * reference to it was found (no data dword, no call); Ghidra has no function
- * here. The dwords at 0x1077A8 + (the record's +0x51 xor 1) * 4 and at
+ * slot (ECX), EDX = rec (EBX); AL returned, in the shape of 0x40BBC. Its
+ * caller is 0x40026 in 0x3FFDC (record §52-A corrects §50-A, which found
+ * none). The dwords at 0x1077A8 + (the record's +0x51 xor 1) * 4 and at
  * 0x1077A8 + the record's +0x51 * 4 both gate it (null returns 0). The record
  * starts 0xE7F2E (that slot's char 0) or 0xD4C66 (char 5) at 3.0 through
  * 0x3C4CC (other chars: none); the record's +0x53 = 1; the slot's +0x52 = 9,

@@ -929,7 +929,7 @@ void fighter_21458_case10(u32 slot, u32 side);
 void fighter_216ec(u32 slot, u32 rec, u32 side);
 /* 0x21994 (record §49-V). Arms the pair (the 0x216EC/0x21458 callbacks on the
  * slot and the other side's slot); returns 1. Its callers 0x21B43/0x21C33 are
- * unported. */
+ * in 0x21B08/0x21BE8 (record §52-A). */
 u32 fighter_21994(u32 slot, u32 rec);
 s32  fighter_3c404(u32 side, s32 n);
 void fighter_3605c(u32 side, u32 frame_bits);
