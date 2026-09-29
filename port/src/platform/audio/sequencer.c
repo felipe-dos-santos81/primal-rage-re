@@ -261,8 +261,13 @@ static void midi_control(u8 status, u8 a, u8 b)
         case 11: S.expression[ch] = b; mask = FAM_TL; break;
         case 1:  S.mod[ch] = b; mask = FAM_AMVIB; break;
         case 10: S.pan[ch] = b; mask = FAM_CONN; break;
-        /* TODO(verify): ctrl 64 also calls 0x3b1e(ch) when b < 0x40; that
-         * sustain-release helper is a Task 5 gap (spec §10). */
+        /* PORT: named gap, record §13 of 2026-09-29-todo-verify-derivations.md.
+         * The driver's sustain is not modelled: its note-off 0x39CC marks a
+         * voice held (0x39F6 `cmp [ch+0x1969],0x40; jge` -> [v+0x1525] = 1)
+         * instead of releasing it, and ctrl 64 below 0x40 (0x3C7D..0x3C8A) and
+         * ctrl 121 (0x3CC5) release the held voices through 0x3B1E. Only
+         * S16KONSD.GRA (4) and S16SOUND.GRA (2) send ctrl 64; the title bank,
+         * the only one the port plays, sends none. */
         case 64: S.sustain[ch] = b; return;
         /* PORT: 0x3cc0-0x3ce2. The reset does not touch volume, pan or bend
          * scale; it also calls 0x3b1e(ch), a Task 5 gap. */
@@ -423,9 +428,13 @@ static void process(void)
             if (S.pos >= S.evnt_len) { halt(); return; }
             type = S.evnt[S.pos++];
             if (!read_vlq(&ln)) { halt(); return; }
-            if (type == 0x2F) {           /* XMIDI loop / end of sequence */
-                /* TODO(verify): the RBRN loop range is not reproduced; the
-                 * capture stayed linear over its window, so playback stops. */
+            if (type == 0x2F) {           /* XMIDI end of sequence */
+                /* Record §14 of 2026-09-29-todo-verify-derivations.md: at
+                 * FF 2F the service 0x69372 restarts only while the loop count
+                 * seq[10] is 0 or decrements to non-zero; AIL_init_sequence
+                 * sets it to 1 (0x6A410) and the game never changes it (0x1C930
+                 * calls only 0x5DEAF/0x5DE48/0x5DECA/0x5DE79), so the sequence
+                 * ends here. */
                 halt();
                 return;
             }
@@ -462,7 +471,14 @@ static void process(void)
                 c = S.evnt[S.pos++];
                 val = S.evnt[S.pos++];
                 /* ctrl 0 is the AIL-layer bank select, not a 0x3b54 handler;
-                 * every other controller goes to the driver's dispatch. */
+                 * every other controller goes to the driver's dispatch.
+                 * PORT: named gap, record §14 of
+                 * 2026-09-29-todo-verify-derivations.md: AIL's own FOR/NEXT
+                 * loop controllers 116/117 (0x68AB0: a four-deep stack of
+                 * count and stream position; NEXT at 0x40 or more jumps back,
+                 * count 0 forever) are not modelled and fall through to the
+                 * driver's no-op default. The title bank sends one 116 and no
+                 * 117, so it never loops; the stage banks send both. */
                 if (c == 0 && ch < SEQ_MIDI_CHANNELS)
                     S.bank[ch] = val;
                 else
@@ -620,6 +636,11 @@ void seq_start(void)
 void seq_stop(void)
 {
     halt();
+}
+
+void seq_suspend(void)
+{
+    S.playing = 0;
 }
 
 void seq_tick(void)

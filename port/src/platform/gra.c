@@ -86,11 +86,16 @@ static int rle_decode(const u8 *src, u32 src_len, u16 w, u16 h,
 }
 
 /* Shared decode core for gra_decode_frame (frame-indexed) and
- * gra_decode_frame_at (blob-addressed). A zero or "negative" dimension
- * (0xFEC0 = -320, 0xFC31 = -975, ...) reads as a full-screen blit/clear
- * sentinel, not a sprite, and is rejected here; the frame path sign-extends the
- * header's u16 so the original's (s16) test is reproduced.
- * TODO(verify): the sentinel meaning is documented, not proven. */
+ * gra_decode_frame_at (blob-addressed). A zero or negative dimension is
+ * rejected here; the frame path sign-extends the header's u16 so the
+ * original's (s16) test is reproduced.
+ * PORT: this decoder handles only the RLE form. Record §4 of
+ * 2026-09-29-todo-verify-derivations.md: 0x14268 tests the s16 height
+ * (0x14295 `test si,si; jge`) and a negative one makes the node type 2 with the
+ * negated width and height (0x1429A..0x142B2), which the blitter draws as an
+ * uncompressed bitmap (sprite_render_raw; 0xFEC0 = -320 is a 320-wide one);
+ * a zero width or row count draws nothing (0x51E5C..0x51E6C). The game draws
+ * through sprite.c, so this rejection affects only the inspection decoder. */
 static int decode_frame_core(const u8 *blob, u32 len, int w, int h,
                              u8 *dst, u32 cap)
 {
@@ -101,8 +106,11 @@ static int decode_frame_core(const u8 *blob, u32 len, int w, int h,
 int gra_decode_palette(u32 file_off, const GraChunk *chunks, int chunk_count,
                        u8 *rgb_out, u32 rgb_cap, int *count)
 {
-    /* TODO(verify): the bank is returned flat; which record / DAC base index a
-     * given sprite selects is still open, so no sub-palette split is applied. */
+    /* The bank is returned flat: a sprite selects no palette itself. Record §5
+     * of 2026-09-29-todo-verify-derivations.md: the DAC offset comes from the
+     * pset's palette-table entry (pset+0x18, copied into the node at 0x1435D),
+     * whose start byte +8 indexes the table DS_00081310 (0x51E86..0x51E91);
+     * 0x33754 uploaded the resource there (palette_acquire). */
     *count = 0;
     const GraChunk *c5 = 0;
     for (int i = 0; i < chunk_count; i++)
@@ -148,8 +156,12 @@ int gra_decode_frame(u32 file_off, const GraChunk *chunks, int chunk_count,
 
     u16 w = DSW(at), h = DSW(at + 2);
     u32 handle = DSD(at + 8);
-    /* TODO(verify): the s16 x/y anchor is not read here; its meaning (sprite
-     * origin vs. bounding-box corner) is likely, not proven. */
+    /* The s16 x/y anchor at +4/+6 is not read here. Record §6 of
+     * 2026-09-29-todo-verify-derivations.md: it is the sprite's origin inside
+     * its box — 0x14268 copies it to the node (0x142D2..0x142E6; an hflip
+     * mirrors x as width - x - 1 at 0x142F6..0x142FF) and 0x14328 subtracts
+     * it from the projected point to get the draw corner (0x143E4 x, 0x143F3
+     * y; render_list). */
 
     /* PORT: resolves the pixel handle through res_resolve (the port's resource
      * heap) instead of the original's EMS block walk at 0x1B544. The bytes are

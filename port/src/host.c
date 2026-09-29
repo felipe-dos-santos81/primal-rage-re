@@ -23,8 +23,15 @@
  * unit conversions (/ 0x3c = 60 at 0x32B00; timers wrap at 0xe10 = 3600 ticks =
  * 1 minute at 0x32970) and measured a live 60.05 Hz counter at physical
  * 0x2EBD88 (page offset 0xd88 == DAT_00105D88's, so very likely that counter).
- * TODO(verify): the interrupt vector that installs 0x2D62C is still unknown —
- * it has no static install site. See port/spec/game_flow.md "Tick". */
+ * PORT: no vector installs 0x2D62C. 0x1CF40 registers 0x1BDF4 as an AIL timer
+ * callback (0x1CFED push 0x1bdf4; 0x1CFF2 AIL_register_timer 0x5DA12) at 60 Hz
+ * (0x1CFFA push 0x3c; 0x1CFFF AIL_set_timer_frequency 0x5DA87) and starts it
+ * (0x1D008 0x5DAA6); 0x1BDF4 calls 0x2D62C at 0x1BE28, only while the byte
+ * DS_00104B22 is not 1 (0x1BDF8..0x1BE00). The dword at 0x1BF5C is the
+ * 0x109A0 memory lock of 0x2D62C's code, not an install. g_tick ignores that
+ * gate: DAT_00105D88's only reader besides the lock is the host-owned run clock
+ * 0x32970 (record §1 of 2026-09-29-todo-verify-derivations.md). See
+ * port/spec/game_flow.md "Tick". */
 #define HOST_TICK_NS 16666667ull
 
 /* HOST_TICK_MAX_CATCHUP lives in host.h: the audio service shares the host
@@ -279,9 +286,12 @@ int host_write_file(const char *path, const u8 *src, u32 len)
  * PORT: fixed audio profile, no hardware probe. The seam asks SDL for the
  * default playback device at the caller's rate/channels; it never enumerates
  * devices or negotiates formats beyond what SDL needs to open.
- * TODO(verify): the failure branches (NULL from SDL_OpenAudioDeviceStream, or a
- * failed SDL_ResumeAudioStreamDevice on a host with no audio device) are not
- * exercised by the suite, which never opens a real device. */
+ * PORT: the failure branches (NULL from SDL_OpenAudioDeviceStream, or a failed
+ * SDL_ResumeAudioStreamDevice on a host with no audio device) are host
+ * behaviour with no original counterpart (the original's device probe is the
+ * AIL driver install, replaced by the fixed profile), so no raw or capture can
+ * pin them; the suite never opens a real device and they stay unexercised
+ * (record §2 of 2026-09-29-todo-verify-derivations.md). */
 static SDL_AudioStream *g_audio;
 static int g_audio_rate;     /* > 0 iff the seam is open */
 static int g_audio_channels;

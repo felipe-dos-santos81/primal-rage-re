@@ -740,8 +740,10 @@ int test_gfx(void)
     CHECK(gfx_dac[0x30][0] != exp8(0x50u),
           "the 6-bit VGA truncation is applied");
 
-    /* Clamp: first 0xFE + count 8 overruns the DAC. Without the clamp the index
-     * wraps and entry 0/1 get written; with it only 0xFE/0xFF are. */
+    /* No count clamp (record §3 of 2026-09-29-todo-verify-derivations.md):
+     * 0x1C48B..0x1C49F clamps first + the flag word [+0xC], not the count, so
+     * first 0xFE + count 8 with flag 0 runs all eight writes, and the DAC's
+     * 8-bit write index wraps: entries 0 and 1 take the 3rd and 4th words. */
     gfx_dac[0][0] = 0;
     gfx_dac[1][0] = 0;
     put_record(SCRATCH, 0xFE, 8, 0);
@@ -749,8 +751,35 @@ int test_gfx(void)
     gfx_flush_palette();
     CHECK_EQ_INT(gfx_dac[0xFE][0], exp8(0x10));
     CHECK_EQ_INT(gfx_dac[0xFF][0], exp8(0x11));
-    CHECK_EQ_INT(gfx_dac[0][0], 0);   /* no wrap past the table end */
-    CHECK_EQ_INT(gfx_dac[1][0], 0);
+    CHECK_EQ_INT(gfx_dac[0][0], exp8(0x12));   /* the index wraps (0x1C4D6) */
+    CHECK_EQ_INT(gfx_dac[1][0], exp8(0x13));
+
+    /* Record §3: the write loop is a do-while (0x1C4D6 `dec esi; jg`), so a
+     * zero count still writes one entry. */
+    gfx_dac[0x40][0] = 0;
+    put_record(SCRATCH, 0x40, 0, 0);
+    DSD(SCRATCH) = 0x15u << 2;
+    gfx_flush_palette();
+    CHECK_EQ_INT(gfx_dac[0x40][0], exp8(0x15));
+
+    /* Record §3: first + the flag dword above 0x100 (signed, 0x1C497 `jle`)
+     * subtracts the excess from the flag dword itself (0x1C49F), never from
+     * the count: first 0x100 + flag 0x200 leaves flag 0, and the count-1
+     * write still lands, at DAC index (u8)0x100 = 0 (0x1C4AA `out dx,al`). */
+    put_record(SCRATCH, 0x100, 1, 0x200);
+    DSD(SCRATCH) = 0x16u << 2;
+    gfx_flush_palette();
+    CHECK_EQ_INT(DSD(REC + 12), 0);
+    CHECK_EQ_INT(gfx_dac[0][0], exp8(0x16));
+
+    /* Record §3: 0x33734/0x33714 store only the flag's low byte
+     * (`mov byte [eax-4],0/1`, 0x3373F/0x3371F); the upper three bytes keep
+     * what the record slot held. */
+    DSD(HEAD) = REC;
+    DSD(REC + 12) = 0xAABBCC00u;
+    palette_record(SCRATCH, 0x10, 1, 1);
+    CHECK_EQ_INT(DSD(REC + 12), 0xAABBCC01u);
+    DSD(HEAD) = REC;
 
     /* Handle path: a non-zero flag byte in [3] makes [0] a resource handle;
      * gfx_flush_palette resolves it and skips the bank's u32 colour count at

@@ -1386,6 +1386,29 @@ int test_ail(void)
         CHECK_EQ_INT(AIL_sequence_status(seq), 2);
     }
 
+    /* 4d. A failed re-init of a *playing* handle (todo-verify record §19):
+     *     0x6A42E writes the status 2 before 0x6A435 validates the data, and
+     *     the service 0x69372 advances only status-4 sequences, so the
+     *     sequence stops where it is: no note-off is sent (the keyed voice
+     *     hangs) and no later tick writes anything. */
+    {
+        static const u8 bad_bank[4] = { 0 };
+        CHECK_EQ_INT(AIL_init_sequence(seq, k_bank, 0), 1);
+        AIL_start_sequence(seq);
+        seq_tick();
+        CHECK_EQ_INT(seq_active_track(), 1);
+        CHECK_EQ_INT(AIL_sequence_status(seq), 4);
+        CHECK_EQ_INT(AIL_init_sequence(seq, bad_bank, 0), 0);
+        CHECK_EQ_INT(AIL_sequence_status(seq), 2);
+        u32 w2 = opl_write_count();
+        for (int i = 0; i < 40; i++)
+            seq_tick();
+        CHECK_EQ_INT((int)opl_write_count(), (int)w2);
+        CHECK_EQ_INT(seq_active_track(), 1);
+        seq_stop();                  /* release the hung voice for later tests */
+        CHECK_EQ_INT(seq_active_track(), 0);
+    }
+
     /* 5. The 8-bit -> s16 conversion is exact and lives once, in samples.c. */
     {
         static const u8 pcm8[3] = { 0, 128, 255 };

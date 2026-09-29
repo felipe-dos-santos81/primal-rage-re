@@ -74,17 +74,19 @@ void palette_record(u32 ptr, u32 first, u32 count, u32 flag)
     DSD(head + 0) = ptr;
     DSD(head + 4) = first;
     DSD(head + 8) = count;
-    DSD(head + 12) = flag;
+    DSB(head + 12) = (u8)flag;   /* 0x3373F/0x3371F: the low byte only (record §3) */
     DSD(DS_00107798) = head + 16;
 }
 
 /* 0x1C470 — record §50-D. Drains the palette dirty list DS_00107498..DS_00107798
  * to the DAC. PORT: the DAC ports 0x3C8/0x3C9 and the 0x3DA retrace spin are
- * the host's gfx_dac and gfx_wait_vblank(). TODO(verify): the raw clamps with
- * first + record+0xC (0x1C48B..0x1C499, the flag word, not the count at +8) and
- * runs the write loop as a do-while (0x1C4D6 `dec esi; jg`), so a zero count
- * still writes one entry; the port clamps with the count and skips a zero count.
- * Whether a shipped record reaches either case is not checked. */
+ * the host's gfx_dac and gfx_wait_vblank(). Record §3 of
+ * 2026-09-29-todo-verify-derivations.md: the clamp adds the dword first to the
+ * flag dword +0xC and subtracts any excess over 0x100 (signed `jle`) from the
+ * flag dword itself (0x1C48B..0x1C49F), never from the count; the handle test
+ * then reads the flag's low byte (0x1C4AD). The write loop is a do-while
+ * (0x1C4D6 `dec esi; jg`), so a count below 1 writes one entry, and the DAC's
+ * 8-bit write index (set from AL at 0x1C4AA) wraps past 0xFF. */
 void gfx_flush_palette(void)
 {
     u32 rec = DS_00107498;
@@ -102,12 +104,14 @@ void gfx_flush_palette(void)
     if (rec != head) gfx_wait_vblank();
     while (rec != head) {
         u32 ptr = DSD(rec + 0);
-        u32 first = (u8)DSD(rec + 4);
-        s32 count = (s32)DSD(rec + 8);
-        u32 flag = DSD(rec + 12);
+        s32 sum = (s32)(DSD(rec + 4) + DSD(rec + 12));  /* 0x1C48B/0x1C48E */
+        if (sum > 0x100)                                 /* 0x1C491/0x1C497 */
+            DSD(rec + 12) -= (u32)(sum - 0x100);         /* 0x1C499/0x1C49F */
+        u32 first = (u8)DSD(rec + 4);                    /* 0x1C4A7 `out dx,al` */
+        s32 count = (s32)DSD(rec + 8);                   /* 0x1C4BD */
+        u32 flag = DSB(rec + 12);                        /* 0x1C4AD */
 
-        if (first + count > 0x100) count = 0x100 - (s32)first;
-        if ((u8)flag != 0) {
+        if (flag != 0) {
             /* PORT: the original walks its extended-memory block list to find
              * the handle's data; res_resolve() is the port's handle resolver.
              * It returns a host pointer, so subtract mem to get back the linear
@@ -132,7 +136,11 @@ void gfx_flush_palette(void)
          * full 8-bit channel without the truncation, and without the expansion,
          * is what rendered every game palette wrong; smk_palette_to already
          * supplies display values, so this path is the one that needed it. */
-        for (s32 i = 0; i < count; i++) {
+        s32 i = 0;
+        do {                                             /* 0x1C4C5..0x1C4D7 */
+            /* PORT: the raw reads wherever the count takes it; the port stops
+             * at the end of mem[] rather than read past the host buffer. */
+            if (!mem_in_range(ptr + (u32)i * 4u, 4u)) break;
             u32 word = DSD(ptr + (u32)i * 4);
             u8 index = (u8)(first + (u32)i);
             u8 r = (u8)((word >> 2) & 0x3Fu), g = (u8)((word >> 10) & 0x3Fu);
@@ -140,7 +148,7 @@ void gfx_flush_palette(void)
             gfx_dac[index][0] = (u8)((r << 2) | (r >> 4));
             gfx_dac[index][1] = (u8)((g << 2) | (g >> 4));
             gfx_dac[index][2] = (u8)((b << 2) | (b >> 4));
-        }
+        } while (++i < count);                           /* 0x1C4D6 `dec esi; jg` */
         DSD(rec + 4) = 0xFFFFFFFFu;   /* the original marks the record consumed */
         rec += 16;
     }

@@ -19,9 +19,12 @@
  * data/audio-captures/prage_000.dro gives one XMIDI delta unit == 8.333 ms
  * (120 Hz) over the first 17 notes (<= 3 ms error over 5.6 s), while 60 Hz and
  * 250 Hz do not fit. The capture command and the fit are in
- * port/spec/audio.md. TODO(verify): the same rate as declared by the loaded
- * SBPRO2.MDI at driver offset +0x2e during its 0x300 init (port/decomp/prage.c
- * FUN_00065b7b); the capture is behavioural evidence, not that field.
+ * port/spec/audio.md. The raw pins the same 120 Hz (record §15 of
+ * 2026-09-29-todo-verify-derivations.md): SBPRO2.MDI's only store to its
+ * header's +0x2e service rate is -1 (file offset 0x3DBB), so 0x65B7B registers
+ * no driver timer (`+0x2e < 1`); the XMIDI service timer is set by the MDI
+ * install to the preference 10 (0x6A29B/0x6A2A9), which AIL_startup's defaults
+ * set to 0x78 = 120 (0x660CF..0x660D3) and the game never changes.
  */
 #ifndef PR_SEQUENCER_H
 #define PR_SEQUENCER_H
@@ -67,6 +70,13 @@ void seq_start(void);
 
 /* Keys off every sounding channel and stops. Safe to call when stopped. */
 void seq_stop(void);
+
+/* Stops advancing the stream without keying anything off: sounding channels
+ * keep sounding and seq_tick does nothing until the next seq_start. This is
+ * AIL's status-2 write on a failed AIL_init_sequence (0x6A42E; record §19 of
+ * 2026-09-29-todo-verify-derivations.md), which the service loop 0x69372
+ * skips without sending a note-off. */
+void seq_suspend(void);
 
 /* Number of OPL channels currently keyed on (0 when stopped, nothing loaded, or
  * after the last note's duration expires). This is the port's "is a track

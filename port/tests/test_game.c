@@ -3953,7 +3953,10 @@ int test_frontend(void)
         CHECK_EQ_INT((int)DSD(DS_00107498 + 0u),  (int)DS_000BD470);
         CHECK_EQ_INT((int)DSD(DS_00107498 + 4u),  0);
         CHECK_EQ_INT((int)DSD(DS_00107498 + 8u),  1);
-        CHECK_EQ_INT((int)DSD(DS_00107498 + 12u), 0);
+        /* 0x3373F stores the flag's low byte only (todo-verify record §3):
+         * the sentinel's upper three bytes survive, and 0x336C0 never clears
+         * the list's +0xC dwords (it marks only +4 at 0x336E9). */
+        CHECK_EQ_INT((int)DSD(DS_00107498 + 12u), (int)0xDEADBE00u);
 
         gfx_flush_palette();                      /* the loader draw's 0x1C470 */
         CHECK_EQ_INT((int)DSD(DS_00107498 + 4u), -1);   /* consumed */
