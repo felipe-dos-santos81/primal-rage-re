@@ -6812,12 +6812,19 @@ void game_frame(void)
      * player records it consumes are the interactive match's and stay a gap;
      * this block is the demo's AI. */
     fighter_command_block();                           /* 0x24C73 */
+    /* 0x24CBA: the projection inputs (record §K3.2), every frame and in every
+     * mode, before the frame counter. With DS_00104B26 != 0 the raw calls
+     * 0x38990 twice (0x24CC3, then 0x24CC8); no instruction stores that byte,
+     * and the function reads neither word it writes, so the second call
+     * repeats the first. */
+    if (DSB(DS_00104B26) != 0u)                        /* 0x24CBA/0x24CC1 */
+        render_scroll_track();                         /* 0x24CC3 0x38990 */
+    render_scroll_track();                             /* 0x24CC8 0x38990 */
     /* 0x24CCD..0x24CDB: the frame counter is a word (`mov di,[0xef6dc]` /
      * `inc edi` / `mov [0xef6dc],di`); 0xEF6DE is a separate global
      * (0x1BE21/0x5D808), so the increment must not carry into it. */
     DSW(DS_000EF6DC) = (u16)(DSW(DS_000EF6DC) + 1u);   /* 0x24CDB */
     run_process_table(DS_000A8644, DSD(DS_00104AE8));  /* update table */
-    /* PORT: 0x24C5C's second 0x38990 per-frame service call is deferred. */
 
     /* 0x24CFE..0x24EE7: the int 16h keyboard loop (records §53-A, §55-A). It
      * runs before the switch and is one of the three ways out of mode 3: Enter

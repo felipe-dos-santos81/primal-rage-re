@@ -133,7 +133,7 @@ them.
 | `0x4FFD8` | 73 | 2 / 4†: `1BDA4`, `1BDC9` @`1BBAC`H; `1BAD6`, `1BB36` in the unreferenced sampler routines `0x1B934..0x1BB73` | — | no | **closed: host-owned**, §K9.4 | K9 | Joystick B axis bits from `DS_000E1C26/28/2A/2C`. Callers as for `0x4FF8F` (see §G). |
 | `0x4A868` | 63 | 6 / 6: `4A361`@`49C78`P, `4BFDE`@`4BF18`P, `4DF8E`, `4DFFA`, `4E066`, `4E0D0` @`4DEF4`P | `2BE00`P | yes (case-13/14 bodies, `0x4DEF4` states 1..4) | port | K4 | Proximity gate `\|0x2BE00(rec) - entry+0x14\| <= 2*\|(rec+0x32)>>16\|`. Its absence is the named gap at `fight.c:4910`, `fight.h:75`. |
 | `0x29C20` | 59 | 1 / 1†: `346B5` (update-table entry 8 `0x34648`, non-Ghidra) | — | via update entry 8 only | port | K8c | Reads `0xA8A98[i]` by `DS_00105B34[DS_001078FF]`. The raw `call` at `0x346B5` sits inside update-table entry 8, `0x34648` (non-Ghidra, unregistered). |
-| `0x38990` | 52 | 2 / 2: `24CC3`, `24CC8` @`24C5C`P | — | **yes, every frame** | port | K3 | `DS_00107A3C = word[0xF0AEC] & 0xFFC0`, `DS_00107A4A = dword[0xF0AEC]/64 + DS_00107A4E`. `game_frame` calls it at `0x24CC8`, and also at `0x24CC3` when `DS_00104B26 != 0`. `flow.c:6784` says "deferred". |
+| `0x38990` | 52 | 2 / 2: `24CC3`, `24CC8` @`24C5C`P | — | **yes, every frame** | **closed**: `render_scroll_track`, §K3 | K3 | `DS_00107A3C = word[0xF0AEC] & 0xFFC0`, `DS_00107A4A = dword[0xF0AEC]/64 + DS_00107A4E`. `game_frame` calls it at `0x24CC8`, and also at `0x24CC3` when `DS_00104B26 != 0`. `flow.c:6784` says "deferred". |
 | `0x3BDB0` | 43 | 1 / 1: `3B27F`@`3B134`P | `33950`P | yes | **closed**: header, §K1.2 | K1 | Body is `fight_attack_ready` (`fight.c:1987`), header `/* ---- 0x3BDB0`. |
 | `0x32BB0` | 41 | 1 / 1: `27E28`@`27DC8`P | `2DAE4`D | yes, inert | **closed: deferred**, §K9.12 | K9 | Two `0x2DAE4(0x1B+c, 1)` audit adds (`0x32BC0`, `0x32BD2`). Its only callee is deferred (record §48-V). |
 | `0x2F464` | 38 | 1 / 5†: `30A12`, `30D59` (after `30788`P), `328E5`, `32913` (after `31E28`P), `33020` (after `32BB0`U) | `2EFD4`P, `2F198`P | via non-Ghidra code only | port | K11 | Raw `call`s from `0x30A12`, `0x30D59`, `0x328E5`, `0x32913` and `0x33020` (service-menu callbacks). |
@@ -156,6 +156,12 @@ The 7 K1 rows carry one standard header each (3 of them split). All 12 K9
 proposals were re-scanned against the raw and are supported; each has a
 `tools/port_classification.txt` row. `port_progress.py`: `752 1203 63` /
 `716 731 98`. The 15 remaining non-runtime rows are K2–K8c, K10 and K11.
+
+**Task 3c (2026-09-29).** K3 is closed (record `2026-09-29-k3-k8a-derivations.md`).
+`0x38990` is `render_scroll_track`, called at both `game_frame` sites before the
+frame counter. `port_progress.py`: `758 1203 63` / `722 731 99`. The 8000-frame
+and front-end dumps are byte-identical. §K3.3 names the state change the oracles
+cannot see: `DS_00107A38` during the demo fights.
 
 ### §B.2 Code the counter cannot see (non-Ghidra entry points reached through tables)
 
@@ -300,7 +306,7 @@ except `0x29B70` (a bare `ret`, K2).
 
 Residue for Task 4 (none of these is a missing case):
 - the `0x29B70` header (K2) — **closed** (Task 3b, §K2.1: `game_null_step`);
-- the `0x38990` preamble calls at `0x24CC3`/`0x24CC8` (K3);
+- the `0x38990` preamble calls at `0x24CC3`/`0x24CC8` (K3) — **closed** (Task 3c, §K3.2: both wired in `game_frame`);
 - the `game_mode_33_step` → `0x4DEF4` call (§E-3);
 - the case-0x27 longjmp, a spec-§7 deviation that stays;
 - the stale "other cases are named gaps" comment at `flow.h:42` (§E-8).
@@ -351,7 +357,7 @@ Rows 3/7/8/10/12/20/23/26 are stale, and so are parts of 2/9/11/19 (12 rows).
 The 35 sites fold into 27 rows. The other gap prose that does not use the
 phrase "named gap" is summarised here, and the §F cycles own it:
 
-- `0x38990` "deferred" at `flow.c:6784` (K3);
+- `0x38990` "deferred" at `flow.c:6784` (K3) — **closed** (Task 3c, §K3: the comment is gone and the calls are wired);
 - about 180 sites carry "not wired (record §45-A)"
   (`rg -c 'not wired' port/src`: fighter.c 64, flow.c 47, fight.c 32,
   nameentry.c 18, attract.c 8, actors.c 6, others 5). 124 of them have the
@@ -373,7 +379,7 @@ size gate is ≥ ~4 KB or ≥ ~20 new functions, and such a cluster is marked
 | 3 | K9 CLASSIFY | host-owned: `0x501A3`, `0x4FB98`, `0x4FF8F`, `0x4FFD8`, `0x2D62C`. Deferred: `0x2E180`, `0x2E0A4`, `0x2E034`, `0x2DF8C`, `0x2D498`, `0x32B94`, `0x32BB0`. | 3688 | host-owned/deferred rows in `tools/port_classification.txt` plus derivation rows. **Needs the user's approval (§G).** | Task 3 — **closed** (Task 3a, §K9; 12/12 supported) |
 | 4 | K2 TRIV | `0x29B70`, `0x32968`, `0x2D4B4`, `0x51F72` | 423 | port | Task 3 — **closed** (Task 3b, §K2 of `2026-09-29-k2-k5-derivations.md`) |
 | 5 | K5 MENU-FRAME | `0x2EA74` (and its 3 ported call sites in `menu.c`) | 4 | port (raw conflict fix) | Task 3 — **closed** (Task 3b, §K5 of `2026-09-29-k2-k5-derivations.md`) |
-| 6 | K3 FRAME-SVC | `0x38990` (called at `0x24CC3`/`0x24CC8`) | 52 | port, **live every frame**. Re-run `demo-fight-oracle attract2-oracle` and diff the dumps. | Task 3 |
+| 6 | K3 FRAME-SVC | `0x38990` (called at `0x24CC3`/`0x24CC8`) | 52 | port, **live every frame**. Re-run `demo-fight-oracle attract2-oracle` and diff the dumps. | Task 3 — **closed** (Task 3c, §K3 of `2026-09-29-k3-k8a-derivations.md`) |
 | 7 | K8a UPD-06 | update entry 6 `0x25FAC` | n/a (non-Ghidra) | port (live: armed by modes 5/0x23/0x30) | Task 3 |
 | 8 | K4 FX-GATE | `0x4A868` | 63 | port (unblocks §E-18/19 and K13) | Task 3 |
 | 9 | K6 VOICE-WRAP | `0x4F714`, `0x4F728` | 97 | port (wrappers over the ported `sound_voice`) | Task 3 |

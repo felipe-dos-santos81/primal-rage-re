@@ -65,6 +65,13 @@ int render_proj_y(int v);
  * truncating form. */
 void render_scroll_edge(void);
 
+/* Record §K3.1, 0x38990: the per-frame projection inputs of 0x389C4:
+ * DS_00107A3C = the low word of DS_000F0AEC with its low byte masked by 0xC0,
+ * and DS_00107A4A = DS_000F0AEC / 64 (signed, truncating) + DS_00107A4E, low
+ * 16 bits. game_frame calls it at 0x24CC8 (and at 0x24CC3 first when
+ * DS_00104B26 != 0). */
+void render_scroll_track(void);
+
 /* PORT: 0x38A38. Fills the signed-16-bit shear table at DS_00107900 downward
  * from DS_00107A52 - 1, accumulating scaled DS_000F0AF0, conditionally writes
  * DS_00107A3E, then writes DS_00107A44+2 and DS_00107A3A. Each table entry is

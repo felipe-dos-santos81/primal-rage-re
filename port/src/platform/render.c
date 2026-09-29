@@ -229,6 +229,21 @@ void render_scroll_edge(void)
     }
 }
 
+/* 0x38990 — record §K3.1. `mov ax,[0xf0aec]; and al,0xc0` stores the low
+ * word of DS_000F0AEC with only its low byte masked (0x38991..0x38999). The
+ * dword DS_000F0AEC is then divided by 64 with the same `sar`/`shl`/`sbb`
+ * truncating idiom as 0x389C4 (0x3899F..0x389AE), the zero-extended word
+ * DS_00107A4E is added (0x389B1..0x389BA) and the low 16 bits are stored
+ * (0x389BC). EDX is pushed and popped. The one reader of both words is 0x389C4
+ * (render_scroll_edge: DS_00107A3C at 0x389C6 and as the high word of the
+ * dword read at 0x389D2, DS_00107A4A at 0x389FD). */
+void render_scroll_track(void)
+{
+    DSW(DS_00107A3C) = (u16)(DSW(DS_000F0AEC) & 0xFFC0u);               /* 0x38999 */
+    DSW(DS_00107A4A) = (u16)((s32)DSD(DS_000F0AEC) / 64
+                             + (s32)DSW(DS_00107A4E));                  /* 0x389BC */
+}
+
 /* PORT: 0x38A38. The same signed truncating form: every `/ 256` and `/ 32` is
  * the raw's `sar`/`shl`/`sbb` divide by 2^n, truncating toward zero, not a
  * plain arithmetic shift. The table entry is the raw's `t = (row / 256) >> 1`

@@ -2117,6 +2117,62 @@ static void check_projection_reset(void)
     DSW(DS_00107A3A) = s3a; DSW(DS_00107A3C) = s3c;
 }
 
+/* 0x38990 (render_scroll_track, record §K3.1): DS_00107A3C = the low word of
+ * DS_000F0AEC with `and al,0xc0` (0x38997), and DS_00107A4A = the dword
+ * DS_000F0AEC through the raw's truncating /64 plus the zero-extended word
+ * DS_00107A4E, low 16 bits stored (0x389BC). The four neighbouring words are
+ * seeded and must survive (both stores are word stores). Every sentinel differs
+ * from its post-condition. */
+static void check_scroll_track(void)
+{
+    u32 sf0 = DSD(DS_000F0AEC);
+    u16 s3a = DSW(DS_00107A3A), s3c = DSW(DS_00107A3C), s3e = DSW(DS_00107A3E);
+    u16 s48 = DSW(DS_00107A48), s4a = DSW(DS_00107A4A), s4c = DSW(DS_00107A4C);
+    u16 s4e = DSW(DS_00107A4E);
+
+    DSW(DS_00107A3A) = 0x1111u; DSW(DS_00107A3E) = 0x2222u;
+    DSW(DS_00107A48) = 0x3333u; DSW(DS_00107A4C) = 0x4444u;
+
+    /* (a) 0x00012345: 0x2345 & 0xFFC0 = 0x2340; the dword (not the word)
+     * divides, 0x12345 / 64 = 0x48D, + 0x10 = 0x49D. */
+    DSD(DS_000F0AEC) = 0x00012345u;
+    DSW(DS_00107A4E) = 0x0010u;
+    DSW(DS_00107A3C) = 0x7777u; DSW(DS_00107A4A) = 0x7777u;
+    render_scroll_track();
+    CHECK_EQ_INT((int)DSW(DS_00107A3C), 0x2340);
+    CHECK_EQ_INT((int)DSW(DS_00107A4A), 0x049D);
+
+    /* (b) -127 (0xFFFFFF81): 0xFF81 & 0xFFC0 = 0xFF80; the `sar`/`shl`/`sbb`
+     * divide truncates toward zero, -127 / 64 = -1, + 0x10 = 0x000F (a
+     * flooring >> 6 would give -2 + 0x10 = 0x000E). */
+    DSD(DS_000F0AEC) = 0xFFFFFF81u;
+    DSW(DS_00107A3C) = 0x7777u; DSW(DS_00107A4A) = 0x7777u;
+    render_scroll_track();
+    CHECK_EQ_INT((int)DSW(DS_00107A3C), 0xFF80);
+    CHECK_EQ_INT((int)DSW(DS_00107A4A), 0x000F);
+
+    /* (c) 0x0000FFFF with DS_00107A4E = 0xFFF0: only the low byte is masked
+     * (0xFFC0), and 0x3FF + 0xFFF0 = 0x103EF stores its low word 0x03EF. */
+    DSD(DS_000F0AEC) = 0x0000FFFFu;
+    DSW(DS_00107A4E) = 0xFFF0u;
+    DSW(DS_00107A3C) = 0x7777u; DSW(DS_00107A4A) = 0x7777u;
+    render_scroll_track();
+    CHECK_EQ_INT((int)DSW(DS_00107A3C), 0xFFC0);
+    CHECK_EQ_INT((int)DSW(DS_00107A4A), 0x03EF);
+
+    CHECK_EQ_INT((int)DSW(DS_00107A3A), 0x1111);
+    CHECK_EQ_INT((int)DSW(DS_00107A3E), 0x2222);
+    CHECK_EQ_INT((int)DSW(DS_00107A48), 0x3333);
+    CHECK_EQ_INT((int)DSW(DS_00107A4C), 0x4444);
+    CHECK_EQ_INT((int)DSW(DS_00107A4E), 0xFFF0);
+    CHECK_EQ_INT((int)DSD(DS_000F0AEC), 0x0000FFFF);
+
+    DSD(DS_000F0AEC) = sf0;
+    DSW(DS_00107A3A) = s3a; DSW(DS_00107A3C) = s3c; DSW(DS_00107A3E) = s3e;
+    DSW(DS_00107A48) = s48; DSW(DS_00107A4A) = s4a; DSW(DS_00107A4C) = s4c;
+    DSW(DS_00107A4E) = s4e;
+}
+
 int test_render(void)
 {
     check_list_order();
@@ -2125,6 +2181,7 @@ int test_render(void)
     check_layer_modes();
     check_end_to_end();
     check_scroll_projection();
+    check_scroll_track();
     check_projection_reset();
     return 0;
 }

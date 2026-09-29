@@ -1087,6 +1087,26 @@ int test_flow(void)
      * fight_effects_pass chain, which this title-state fixture's actor/
      * effects-list state was never built to tolerate (it hangs in
      * fight_4b69c's trample walk). */
+    /* Record §K3.2: 0x24C5C calls 0x38990 at 0x24CC8 every frame, before the
+     * frame counter and the update table, in every mode. A mode-1 frame (the
+     * bare `ret` 0x29B70) must derive DS_00107A3C/DS_00107A4A from the seeded
+     * DS_000F0AEC/DS_00107A4E; the sentinels differ from both post-values. */
+    {
+        u32 sf0 = DSD(DS_000F0AEC), sdc = DSD(DS_000EF6DC);
+        u16 s3c = DSW(DS_00107A3C), s4a = DSW(DS_00107A4A);
+        u16 s4e = DSW(DS_00107A4E);
+        DSD(DS_000F0AEC) = 0x00012345u;
+        DSW(DS_00107A4E) = 0x0010u;
+        DSW(DS_00107A3C) = 0x7777u;
+        DSW(DS_00107A4A) = 0x7777u;
+        DSD(DS_00104B00) = 1;
+        game_frame();
+        CHECK_EQ_INT((int)DSW(DS_00107A3C), 0x2340);
+        CHECK_EQ_INT((int)DSW(DS_00107A4A), 0x049D);
+        DSD(DS_000F0AEC) = sf0; DSD(DS_000EF6DC) = sdc;
+        DSW(DS_00107A3C) = s3c; DSW(DS_00107A4A) = s4a;
+        DSW(DS_00107A4E) = s4e;
+    }
     DSD(DS_00104B00) = 0x16;
     game_frame();
 
