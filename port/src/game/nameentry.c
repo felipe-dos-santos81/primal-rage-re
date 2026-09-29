@@ -462,7 +462,10 @@ static int ne_pad(u8 side, u8 mask)
     return 0;
 }
 
-/* The autorepeat test: counter `ctr` above 0x1E and a multiple of 5. */
+/* The autorepeat test: counter `ctr` above 0x1E and a multiple of 5. Its two
+ * counters, DS_001044E0 and DS_001044DC, have no writer in the image (record
+ * §53-A.4: the only fixups naming them are these five reads), so in the
+ * original they hold the loader's BSS zero and the test is always false. */
 static int ne_repeat(u32 ctr)
 {
     return ctr > 0x1Eu && (ctr % 5u) == 0u;                 /* 0x1F503..0x1F520 */
@@ -643,4 +646,42 @@ u32 nameentry_step(u8 side)
         DSD(DSD(DS_001044B8) + 0x1Cu) = 0x2000u;            /* 0x1FF94 */
     }
     return 1u;                                              /* 0x1FF9B */
+}
+
+/* 0x20860 — record §53-A. EAX = the key's ascii byte (0x24D63 `xor eax,eax;
+ * mov al,bl`, never 0 there). When the queue is not full (the masked
+ * write index + 1 differs from the read index DS_001044C8), backspace,
+ * Enter and space become DEL (0x1B), END (0x1C) and the space letter (0x1A);
+ * any other byte is kept only when the C runtime's class byte for it (the
+ * byte at DS_00081C84 + (u8)(c + 1), read as the dword at DS_00081C81 + idx
+ * shifted right by 24) has bit 6 (upper) or 7 (lower) set, and then becomes
+ * its upper-case letter minus 'A' (0x653ED: 'a'..'z' minus 0x20, signed
+ * compares). The entry is stored at (write + 1) * 4 before the & 0xF, like the
+ * reader 0x1FD7F, so entry 16 (0x104498) is live (record §49-T.3 #2). A full ring stores nothing
+ * but still sets DS_001044D8; a rejected byte returns before it (0x208B0 jumps
+ * to the pops at 0x208E0). */
+void nameentry_key(u32 c)
+{
+    u32 edx = c;                                            /* 0x20863 */
+    if (((DSD(DS_001044BC) + 1u) & 0xFu) != DSD(DS_001044C8)) {   /* 0x20865..0x20876 */
+        if (edx == 8u) {                                    /* 0x20878 */
+            edx = 0x1Bu;                                    /* 0x2087D */
+        } else if (edx == 0xDu) {                           /* 0x20884 */
+            edx = 0x1Cu;                                    /* 0x20889 */
+        } else if (edx == 0x20u) {                          /* 0x20890 */
+            edx = 0x1Au;                                    /* 0x20895 */
+        } else {
+            u32 idx = (u8)(edx + 1u);                       /* 0x2089C..0x208A0 */
+            s32 cls = (s32)DSD(DS_00081C81 + idx) >> 24;    /* 0x208A5/0x208AB */
+            if ((cls & 0xC0) == 0) return;                  /* 0x208AE/0x208B0 */
+            s32 up = (s32)edx;                              /* 0x208B2 */
+            if (up >= 0x61 && up <= 0x7A) up -= 0x20;       /* 0x208B4 0x653ED */
+            edx = (u32)(up - 0x41);                         /* 0x208B9 */
+        }
+        /* 0x208C4 stores the unmasked index first; 0x208D3 overwrites it. */
+        u32 w = DSD(DS_001044BC) + 1u;                      /* 0x208BC/0x208C1 */
+        DSD(DS_00104458 + w * 4u) = edx;                    /* 0x208CC */
+        DSD(DS_001044BC) = w & 0xFu;                        /* 0x208C9/0x208D3 */
+    }
+    DSB(DS_001044D8) = 1u;                                  /* 0x208D9 */
 }

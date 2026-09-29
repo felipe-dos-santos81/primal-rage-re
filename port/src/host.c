@@ -100,6 +100,8 @@ static int translate_key(const SDL_KeyboardEvent *k, u8 *scan, u8 *ascii)
     case SDL_SCANCODE_ESCAPE: *scan = 0x01; *ascii = 0x1B; return 1;
     case SDL_SCANCODE_RETURN: *scan = 0x1C; *ascii = 0x0D; return 1;
     case SDL_SCANCODE_SPACE:  *scan = 0x39; *ascii = ' ';  return 1;
+    /* The name-entry screen's DEL key (0x20860 maps ascii 8 to 0x1B). */
+    case SDL_SCANCODE_BACKSPACE: *scan = 0x0E; *ascii = 0x08; return 1;
     case SDL_SCANCODE_UP:     *scan = 0x48; return 1;
     case SDL_SCANCODE_DOWN:   *scan = 0x50; return 1;
     case SDL_SCANCODE_LEFT:   *scan = 0x4B; return 1;

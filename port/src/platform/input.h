@@ -39,8 +39,9 @@ void input_clear(void);
 
 /* PORT: the original drains int 16h every frame — 0x24C5C's keyboard loop
  * peeks (AH=1) then reads (AH=0) until the queue is empty — and 0x249F0 turns
- * the ESC read there into the quit flag. The port ports only that quit arm of
- * the dispatch, so its quit test must drain: peeking would pin the oldest key,
+ * the ESC read there into the quit flag. Outside mode 0x1E (whose loop
+ * game_frame runs, record §53-A) the port ports only that quit arm of the
+ * dispatch, so its quit test must drain: peeking would pin the oldest key,
  * and any later ESC behind it could never be seen. Empties the queue and
  * reports whether ESC was among the keys read. */
 int input_drain_esc(void);

@@ -6555,8 +6555,8 @@ void game_loop(void)
         }
 
         /* PORT: the original reads int 16h inside 0x24C5C's keyboard loop and
-         * quits from 0x249F0; the port ports only that quit arm and tests it
-         * here, so the test drains the queue (input_drain_esc) — the BIOS
+         * quits from 0x249F0; outside mode 0x1E (whose loop game_frame runs,
+         * record §53-A) the port ports only that quit arm and tests it here, so the test drains the queue (input_drain_esc) — the BIOS
          * queue's head advances only on a read. A window close is the host's
          * own request rather than a key. */
         if (input_drain_esc() || host_quit_requested()) {  /* ESC: 0x011B */
@@ -6705,13 +6705,32 @@ void game_frame(void)
     run_process_table(DS_000A8644, DSD(DS_00104AE8));  /* update table */
     /* PORT: 0x24C5C's second 0x38990 per-frame service call is deferred. */
 
-    /* PORT: 0x24CFE..0x24EE7, the int 16h keyboard loop, is not ported (only
-     * its ESC quit arm, in game_loop). It runs before the switch and is one of
-     * the three ways out of mode 3: Enter in mode 3 stores mode 0x27 (0x24EE0,
-     * the start menu), 0x11D04's coin/start arm calls 0x257A4
-     * (game_coin_divert), and so does 0x11D04's state 8 (reached only when
-     * DS_00108173 is non-zero, which no instruction stores) (records §47-B,
-     * §48-W). */
+    /* PORT: 0x24CFE..0x24EE7, the int 16h keyboard loop, is ported only for
+     * mode 0x1E (record §53-A, below); elsewhere only its ESC quit arm is, in
+     * game_loop. It runs before the switch and is one of the three ways out of
+     * mode 3: Enter in mode 3 stores mode 0x27 (0x24EE0, the start menu),
+     * 0x11D04's coin/start arm calls 0x257A4 (game_coin_divert), and so does
+     * 0x11D04's state 8 (reached only when DS_00108173 is non-zero, which no
+     * instruction stores) (records §47-B, §48-W). */
+    /* 0x24D08..0x24D6C: while a key is queued (AH = 1, 0x24D0E), read it (AH =
+     * 0, 0x24D2E), latch its ascii byte, or its scan code when the ascii byte is
+     * 0 (0x24D3E..0x24D4D), and in mode 0x1E (the word compare `mov ax,
+     * [0x104b00]; cmp eax,0x1e`, 0x24D54/0x24D5A) hand a non-zero ascii byte to
+     * 0x20860 and loop (0x24D6C). The mode test is per key in the raw; no key
+     * this arm handles changes the mode, so it is hoisted. Mode 0x1E's keys
+     * therefore never reach game_loop's ESC arm, as in the raw, where ESC (ascii
+     * 0x1B) goes to 0x20860 too.
+     * PORT: an extended key (ascii 0) in mode 0x1E is read and latched but its
+     * scan-code dispatch (0x24D8E..0x24DDF: 0x10 the quit prompt 0x249F0, 0x1F
+     * 0x1D220, 0x24 0x5004A, 0x32 0x1D1B0) is not ported; it is dropped. */
+    if (DSW(DS_00104B00) == 0x1Eu) {                       /* 0x24D54..0x24D5D */
+        while (input_check_key() != 0) {                   /* 0x24D08..0x24D20 int 16h AH=1 */
+            u32 key = input_get_key();                     /* 0x24D26..0x24D3B int 16h AH=0 */
+            u32 bl = key & 0xFFu;
+            DSD(DS_00105F30) = (bl != 0u ? key : key >> 8) & 0xFFu;   /* 0x24D3E..0x24D4D */
+            if (bl != 0u) nameentry_key(bl);               /* 0x24D5F..0x24D67 0x20860 */
+        }
+    }
 
     /* 0x24EEC..0x24F01: the mode switch, on the word DS_00104B00 (`mov
      * ax,[0x104b00]; cmp ax,0x33; ja 0x2540F; and eax,0xffff; jmp
