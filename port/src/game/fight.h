@@ -243,8 +243,8 @@ void fight_dust_build(u32 side);
  * dust builder (slot +0x81 = 6). EAX = side. */
 void fight_4cf20(u32 side);
 /* 0x496DC — record §49-Z. The case-13 body's spawner: `count` new type-0x0E
- * entries around `entry`'s actor. EAX = entry, EDX = count. The port has no
- * call site (the case-13 body is the named gap, spec §7.4). */
+ * entries around `entry`'s actor. EAX = entry, EDX = count. Its one caller is
+ * the case-13 body (0x4A32B, record §K13.1). */
 void fight_496dc(u32 entry, s32 count);
 /* 0x4A928 — record §49-Z. The mode-9 block's side survey: DS_001088C6..CA,
  * DS_00108858/5C/70/7C. The port has no call site (the mode-9 block is a

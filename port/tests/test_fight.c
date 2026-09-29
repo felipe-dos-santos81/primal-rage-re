@@ -37214,6 +37214,228 @@ static void check_49z_496dc(void)
     mz_restore();
 }
 
+/* ---- record §K13 (2026-09-29-k13-fx74-derivations.md): 0x49C78's case-13
+ * body 0x4A24A, case-14 body 0x4A346 and mode-9 block 0x4A487 ------------ */
+
+#define K13_SW  (FIGHT_RECS + 0x3F40u)   /* 0xC95D4[3]: the turn stream */
+#define K13_SH  (FIGHT_RECS + 0x3F50u)   /* 0xC955C[3]: the case-14 stop stream */
+#define K13_SI  (FIGHT_RECS + 0x3F60u)   /* 0xC9544[3]: the type-11 arrival stream */
+
+/* z_nodes(nfree) (mode 3, rng seeded), slot 0's record FIGHT_RECS on pset 14
+ * (+4 = 0x2000: the case record while (s8)DS_001088C9 is 0), slot 1's
+ * FIGHT_RECS + 0x100 on pset 15, both slots' +0x7A = 3, the three stream
+ * tables' entry 3 on plain words, DS_00108878 = 5 (the 0x496DC count). */
+static void k13_base(u32 nfree, u32 seed)
+{
+    z_nodes(nfree, seed);
+    mem_fill(FIGHT_RECS, 0, 0x200u);
+    mem_fill(FIGHT_RECS + 0x3000u, 0, 0x800u);
+    mem_fill(FIGHT_ACTORS, 0, 0x200u);
+    DSD(DS_001014EC) = FIGHT_ACTORS;
+    fight_reset_bases();
+    z_actor(FIGHT_RECS, 14u, 0x2000u);
+    z_actor(FIGHT_RECS + 0x100u, 15u, 0u);
+    DSB(DS_001077B0 + 0x7Au) = 3u;
+    DSB(DS_00107844 + 0x7Au) = 3u;
+    DSW(K13_SW) = 0x0654u;
+    DSW(K13_SH) = 0x0987u;
+    DSW(K13_SI) = 0x0321u;
+    DSD(0x000C95D4u + 12u) = K13_SW;
+    DSD(0x000C955Cu + 12u) = K13_SH;
+    DSD(0x000C9544u + 12u) = K13_SI;
+    DSB(DS_001088C6) = 0; DSB(DS_001088C7) = 0; DSB(DS_001088C8) = 0;
+    DSB(DS_001088C9) = 0; DSB(DS_001088CA) = 0;
+    DSD(DS_00108878) = 5u;
+    DSW(DS_001088B4) = 0;
+    DSB(DS_001088BF) = 0;
+    DSB(DS_001088C2) = 0;
+}
+
+/* Entry Z_E(k) of `type` and `side` (si 3, +0x1C 0x05: no trample, type 8
+ * inert) with its actor Z_A(k) on pset k + 1 (+4 = 0x1000) at x 0x1000, y
+ * word 0x800, speed word `speed`, +0x3C 0x100, sentinels elsewhere. */
+static u32 k13_ent(u32 k, u8 type, u8 side, u16 speed)
+{
+    u32 e = Z_E(k), a = Z_A(k);
+    DSD(e + 8u) = a;
+    DSD(e + 0xCu) = DS_001077B0;
+    DSB(e + 0x1Eu) = type;
+    DSB(e + 0x1Cu) = 0x05u;
+    DSB(e + 0x21u) = side;
+    DSD(e + 0x14u) = 0x5555u;
+    DSB(a + 0x48u) = 0x23u;
+    z_actor(a, k + 1u, 0x1000u);
+    DSD(a + 0x08u) = 0xEEFD4u;
+    DSD(a + 0x24u) = 0x3F800000u;
+    DSD(a + 0x18u) = 0x1000u;
+    DSD(a + 0x30u) = 0x08000000u;
+    DSW(a + 0x34u) = speed;
+    DSW(a + 0x36u) = 0x2222u;
+    DSW(a + 0x38u) = 0x1111u;
+    DSW(a + 0x2Cu) = 0x9999u;
+    DSB(a + 0x28u) = 0x11u;
+    DSB(a + 0x29u) = 0x01u;
+    DSW(a + 0x2Au) = 0;
+    DSD(a + 0x3Cu) = 0x100u;
+    DSB(a + 0x55u) = 0x77u;
+    return e;
+}
+
+/* The active list of `n` k13_ent entries. */
+static void k13_list(u32 n, const u8 *types, const u8 *sides, const u16 *speeds)
+{
+    u32 e[8], k;
+    for (k = 0; k < n; k++) e[k] = k13_ent(k, types[k], sides[k], speeds[k]);
+    z_link(DS_0010884C, e, n);
+}
+
+/* One entry of `type` on its own. */
+static void k13_one(u8 type, u8 side, u16 speed)
+{
+    k13_list(1u, &type, &side, &speed);
+}
+
+/* The rng(bound) draw that follows `seed`. */
+static u32 k13_draw(u32 seed, u32 bound)
+{
+    u32 v;
+    rng_seed(seed);
+    v = rng_next(bound);
+    rng_seed(seed);
+    return v;
+}
+
+/* Case 13 (0x4A24A..0x4A345): the on-screen skip, the removal, the turn, the
+ * target, the 0x496DC call with DS_00108878 and the 0x496AC tail. */
+static void check_k13_case13(void)
+{
+    const u32 S = 0x5A17u;
+    u32 a = Z_A(0), e = Z_E(0), rv, rc;
+    static const u32 xs[5] = { 0x100u, 0xFFFFFD00u, 0x5700u, 0xFFFFFCFFu, 0x5701u };
+    u32 i;
+    if (!mz_save()) { CHECK(0, "the §K13 snapshot allocates"); return; }
+
+    /* The turn: speed 0x80 -> hflip, -0x80; the 0xC95D4[3] stream at 3.0;
+     * +0x14 = 0x2000 - rng(0xC00) (the case record's 0x2BE00 is positive);
+     * type 0x0E; 0x496DC with count 5 on an empty pool; DS_00108878 = 0;
+     * +0x2C = 0x496AC(0x800). */
+    k13_base(0u, S);
+    k13_one(13u, 1u, 0x0080u);
+    rv = k13_draw(S, 0xC00u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(a + 0x29u), 0x41);
+    CHECK_EQ_INT((int)DSW(a + 0x34u), 0xFF80);
+    CHECK_EQ_INT((int)DSD(a + 0x08u), (int)K13_SW);
+    CHECK_EQ_INT((int)DSD(a + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSD(e + 0x14u), (int)(0x2000u - rv));
+    CHECK_EQ_INT((int)DSB(e + 0x1Eu), 0x0E);
+    CHECK_EQ_INT((int)DSD(DS_00108878), 0);
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), 0xD80);
+    CHECK_EQ_INT((int)DSW(a + 0x36u), 0x2222);
+    CHECK_EQ_INT((int)DSW(a + 0x38u), 0x1111);
+    CHECK_EQ_INT((int)(DSB(a + 0x28u) & 0x08u), 0);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)mz_rng_after(S, 1u));
+    CHECK_EQ_INT((int)DSD(DS_0010884C), (int)e);
+
+    /* Any other speed turns right; a negative case-record term takes
+     * rng(0xC00) + term. */
+    k13_base(0u, S);
+    k13_one(13u, 1u, 0xFF80u);
+    DSB(a + 0x29u) = 0x41u;
+    DSD(Z_PS(14) + 4u) = (u32)-0x100;
+    rv = k13_draw(S, 0xC00u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(a + 0x29u), 0x01);
+    CHECK_EQ_INT((int)DSW(a + 0x34u), 0x0080);
+    CHECK_EQ_INT((int)DSD(e + 0x14u), (int)(rv - 0x100u));
+    CHECK_EQ_INT((int)DSB(e + 0x1Eu), 0x0E);
+    /* A zero term is not positive (`jle`): rng(0xC00) + 0. */
+    k13_base(0u, S);
+    k13_one(13u, 1u, 0x0080u);
+    DSD(Z_PS(14) + 4u) = 0;
+    rv = k13_draw(S, 0xC00u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(e + 0x14u), (int)rv);
+
+    /* The removal: the entry's side 1 == (s8)DS_001088C9 with DS_001088C7
+     * clear kills the actor (0x2B150: +0x28 bit 3) and nothing else. */
+    k13_base(0u, S);
+    k13_one(13u, 1u, 0x0080u);
+    DSB(DS_001088C9) = 1u;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSB(a + 0x28u), 0x19);
+    CHECK_EQ_INT((int)DSB(e + 0x1Eu), 13);
+    CHECK_EQ_INT((int)DSW(a + 0x34u), 0x0080);
+    CHECK_EQ_INT((int)DSW(a + 0x2Cu), 0x9999);
+    CHECK_EQ_INT((int)DSD(DS_00108878), 5);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)S);
+    /* DS_001088C7 set: no removal, the turn runs. */
+    k13_base(0u, S);
+    k13_one(13u, 1u, 0x0080u);
+    DSB(DS_001088C9) = 1u;
+    DSB(DS_001088C7) = 1u;
+    DSD(DS_001077B0 + 0x94u) = FIGHT_RECS;
+    fight_effects_pass();
+    CHECK_EQ_INT((int)(DSB(a + 0x28u) & 0x08u), 0);
+    CHECK_EQ_INT((int)DSB(e + 0x1Eu), 0x0E);
+    /* C9 = 0xFF is -1 (sign-extended), the side byte 0xFF is 255: no
+     * removal; the case record is slot -1's (DS_001077B0 - 0x94). */
+    k13_base(0u, S);
+    k13_one(13u, 0xFFu, 0x0080u);
+    DSB(DS_001088C9) = 0xFFu;
+    DSD(DS_001077B0 - 0x94u) = FIGHT_RECS + 0x100u;
+    DSD(Z_PS(15) + 4u) = 0x3000u;
+    rv = k13_draw(S, 0xC00u);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)(DSB(a + 0x28u) & 0x08u), 0);
+    CHECK_EQ_INT((int)DSB(e + 0x1Eu), 0x0E);
+    CHECK_EQ_INT((int)DSD(e + 0x14u), (int)(0x3000u - rv));
+
+    /* The on-screen skip: +0x2A bit 0x1000 with x in [-0x300, 0x5700]
+     * (signed) leaves everything; outside it (or with the bit clear, above)
+     * the body runs. */
+    for (i = 0; i < 5u; i++) {
+        k13_base(0u, S);
+        k13_one(13u, 1u, 0x0080u);
+        DSW(a + 0x2Au) = 0x1000u;
+        DSD(a + 0x3Cu) = xs[i];
+        fight_effects_pass();
+        CHECK_EQ_INT((int)DSB(e + 0x1Eu), i < 3u ? 13 : 0x0E);
+        CHECK_EQ_INT((int)DSW(a + 0x34u), i < 3u ? 0x0080 : 0xFF80);
+        CHECK_EQ_INT((int)DSW(a + 0x2Cu), i < 3u ? 0x9999 : 0xD80);
+        CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)(i < 3u ? S : mz_rng_after(S, 1u)));
+    }
+
+    /* 0x496DC takes DS_00108878 as its count: one free node, count 1. The
+     * draws: the target's rng(0xC00), then 0x496DC's rng(0x64), rng(0x180),
+     * rng(0xC00); the new entry (type 0x0E, side 1) is at the list head and
+     * the walk does not visit it; its +0x14 is the new target minus the last
+     * draw (its actor copies the turned speed 0xFF80). */
+    k13_base(1u, S);
+    for (i = 0; i < 6u; i++) {
+        u32 d = DSD(0x000C9524u + i * 4u);
+        DSD(0x000C95D4u + (u32)(u16)(DSB(d + 4u) - 0x20u) * 4u) = K13_SW;
+    }
+    k13_one(13u, 1u, 0x0080u);
+    DSD(DS_00108878) = 1u;
+    rng_seed(S);
+    rv = rng_next(0xC00u);
+    (void)rng_next(0x64u);
+    (void)rng_next(0x180u);
+    rc = rng_next(0xC00u);
+    rng_seed(S);
+    fight_effects_pass();
+    CHECK_EQ_INT((int)DSD(DS_001083C4), (int)DS_001083C4);
+    CHECK_EQ_INT((int)DSD(DS_0010884C), (int)Z_N(0));
+    CHECK_EQ_INT((int)DSD(Z_N(0)), (int)e);
+    CHECK_EQ_INT((int)DSB(Z_N(0) + 0x1Eu), 0x0E);
+    CHECK_EQ_INT((int)DSB(Z_N(0) + 0x21u), 1);
+    CHECK_EQ_INT((int)DSD(Z_N(0) + 0x14u), (int)(0x2000u - rv - rc));
+    CHECK_EQ_INT((int)DSD(DS_00108878), 0);
+    CHECK_EQ_INT((int)DSD(DS_000EF6D8), (int)mz_rng_after(S, 4u));
+    mz_restore();
+}
+
 /* The fixture of the fighter checks below: c3_seed's pair (slot 0 char 1,
  * slot 1 char 2, records r0/r1 on psets 1/2, +0x57 = 0x99/0x9A, +0x52 9,
  * +0x53 0x66, +0x5F 0x3C, DS_001077A8 wired) with the stream and the
@@ -39081,6 +39303,7 @@ int test_fight(void)
     check_49z_survey();
     check_49z_4cf20();
     check_49z_496dc();
+    check_k13_case13();
     check_49z_45b50();
     check_49z_47a00();
     check_49z_47b04();

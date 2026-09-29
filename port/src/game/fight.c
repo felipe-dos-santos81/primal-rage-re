@@ -2967,8 +2967,7 @@ static void fight_4b69c(u32 entry, u32 index)
  * the new actor's +0x34 word is 0x80 (signed), else minus; the actor's +0x2C
  * is the 0x496AC clamp of y, and +0x2E takes 4 and +0x4E 1 when the slot's
  * record +0x51 is non-zero. An empty pool ends the loop. Callers: 0x4A32B
- * (0x49C78's case-13 body, which is the named gap, spec §7.4); the port has
- * no call site yet. */
+ * (0x49C78's case-13 body, record §K13.1 of 2026-09-29-k13-fx74-derivations.md). */
 void fight_496dc(u32 entry, s32 count)
 {
     u32 slot = DS_001077B0 + (u32)DSB(entry + 0x21u) * 0x94u;  /* 0x496EC..0x49707 */
@@ -4829,12 +4828,54 @@ void fight_effects_pass(void)
                                        ? 0x0Eu : 0x0Du;      /* 0x4A22F..0x4A241 */
                     break;
                 case 13: {
-                    /* PORT: 0x4A24A..0x4A2F4. The case-13 body (0x2BE1C,
-                     * 0x2BC30, the rec +0x3c/+0x2a/+0x32 gates, 0x2B150) is
-                     * the named gap (§7.4); the 0x2BE00 arm is the draw gate. */
-                    s32 r = fight_2be00(fight_case_rec());   /* 0x4A2F5 */
-                    if (r > 0) (void)rng_next(0xC00u);       /* 0x4A305 */
-                    else       (void)rng_next(0xC00u);       /* 0x4A315 */
+                    /* 0x4A24A..0x4A345 — record §K13.1: the scatter's walk
+                     * off. On screen (+0x2A bit 0x1000 with the x dword +0x3C
+                     * in [-0x300, 0x5700], signed) it waits. Else an entry
+                     * of side (s8)DS_001088C9 (sign-extended against the
+                     * zero-extended +0x21) is killed unless DS_001088C7 is
+                     * set. Otherwise the actor turns (speed 0x80: hflip and
+                     * -0x80, else no hflip and 0x80) onto the 0xC95D4[si]
+                     * stream at 3.0, the target +0x14 is the case record's
+                     * 0x2BE00 term minus rng(0xC00) (term > 0) or plus it,
+                     * the entry becomes type 0x0E and 0x496DC spawns
+                     * DS_00108878 more; DS_00108878 = 0 and +0x2C takes the
+                     * 0x496AC clamp of the y (the shared tail 0x4A45C). */
+                    u32 x = DSD(rec + 0x3Cu);                        /* 0x4A24D */
+                    if ((DSW(rec + 0x2Au) & 0x1000u) != 0u           /* 0x4A250..0x4A25F */
+                            && (s32)x >= -0x300 && (s32)x <= 0x5700) /* 0x4A261..0x4A26D */
+                        break;
+                    if ((u32)DSB(entry + 0x21u)
+                            == (u32)(s32)(s8)DSB(DS_001088C9)        /* 0x4A273..0x4A282 */
+                            && DSB(DS_001088C7) == 0u) {             /* 0x4A284 */
+                        actor_set_dead(rec);                         /* 0x4A290 0x2B150 */
+                        break;
+                    }
+                    if (((s32)DSD(rec + 0x32u) >> 16) == 0x80) {     /* 0x4A29D..0x4A2A8 */
+                        DSB(rec + 0x29u) = (u8)(DSB(rec + 0x29u) | 0x40u); /* 0x4A2AA */
+                        DSW(rec + 0x34u) = 0xFF80u;                  /* 0x4A2B1 */
+                    } else {
+                        DSB(rec + 0x29u) = (u8)(DSB(rec + 0x29u) & 0xBFu); /* 0x4A2B9 */
+                        DSW(rec + 0x34u) = 0x0080u;                  /* 0x4A2C0 */
+                    }
+                    actors_anim_begin(rec, DSD(DS_000C95D4 + index * 4u),
+                                      0x40400000u);                  /* 0x4A2C6..0x4A2DA 0x2BC30 */
+                    {
+                        s32 r = fight_2be00(fight_case_rec());       /* 0x4A2DF..0x4A2F5 */
+                        u32 t;
+                        if (r > 0) t = (u32)r - rng_next(0xC00u);    /* 0x4A300..0x4A30C */
+                        else       t = rng_next(0xC00u) + (u32)r;    /* 0x4A310..0x4A31A */
+                        DSD(entry + 0x14u) = t;                      /* 0x4A322 */
+                    }
+                    {
+                        s32 count = (s32)DSD(DS_00108878);           /* 0x4A31C */
+                        DSB(entry + 0x1Eu) = 0x0Eu;                  /* 0x4A327 */
+                        fight_496dc(entry, count);                   /* 0x4A32B */
+                    }
+                    {
+                        s32 y = (s32)DSD(rec + 0x30u) >> 16;         /* 0x4A330..0x4A338 */
+                        DSD(DS_00108878) = 0;                        /* 0x4A33B */
+                        DSW(rec + 0x2Cu) = fight_dust_clamp(y);      /* 0x4A45C..0x4A464 0x496AC */
+                    }
                     break;
                 }
                 case 14: {
