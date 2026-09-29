@@ -32900,6 +32900,138 @@ static void check_mode_0f(void)
     mz_restore();
 }
 
+/* ---- record §K4: the proximity gate 0x4A868 and its wired callers --------- */
+
+#define K4_C9574 0x000C9574u   /* no symbols.h name: 0x4DEF4 states 2/3, high */
+#define K4_C964C 0x000C964Cu   /* no symbols.h name: 0x4DEF4 state 2, low */
+#define K4_C9664 0x000C9664u   /* no symbols.h name: 0x4DEF4 state 1, low */
+/* The dword 0x2BE00 returns for mz_seed's actor R: its pset's +4. */
+#define K4_X     (DSD(DS_001014EC) + (u32)DSW(MZ_R + 0x56u) * 0x20u + 4u)
+
+/* mz_seed plus the §K4 gate inputs: E+0x14 = 0x18000, R's +0x34 word 0x0100
+ * (so the reach is 2 * 0x100 = 0x200), R's 0x2BE00 position `x`. The x
+ * values keep the pset's low word far left of the fixture's boxes, so the
+ * volleyball tail's hit test 0x4C60C misses (DS_00108898 = 0x5555 proves
+ * it). The three 0x4DEF4 tables mz_seed does not point get entry 3 at
+ * scratch streams 11..13. The preamble pair DS_001088B0/BB is idle (0x100,
+ * 0): no voice, no rng draw. */
+static void k4_seed(u8 type, u8 c1c, u32 x)
+{
+    mz_seed(type, c1c);
+    DSD(MZ_E + 0x14u) = 0x00018000u;
+    DSW(MZ_R + 0x34u) = 0x0100u;
+    DSD(K4_X) = x;
+    DSW(MZ_ST(11)) = 0x030Cu; DSD(K4_C9664 + 12u) = MZ_ST(11);
+    DSW(MZ_ST(12)) = 0x030Du; DSD(K4_C964C + 12u) = MZ_ST(12);
+    DSW(MZ_ST(13)) = 0x030Eu; DSD(K4_C9574 + 12u) = MZ_ST(13);
+    DSW(DS_001088B0) = 0x0100u;
+    DSB(DS_001088BB) = 0;
+    DSD(DS_00108868) = MZ_R2;       /* its +0x36 is 0: 0x4BF18's preamble idles */
+    DSW(DS_001088A0) = 2u;          /* 0x4BF18's post-loop counts to 1 and returns */
+    DSW(DS_00108898) = 0x5555u;
+}
+
+static void check_fx_gate(void)
+{
+    u32 i;
+    if (!mz_save()) { CHECK(0, "the §K4 snapshot allocates"); return; }
+
+    /* §K4.1, 0x4A868 on its own: |x - E+0x14| <= |2 * (R's dword +0x32 >>
+     * 16)|, both absolute values, `setle` (inclusive), AL = 0/1. The dword
+     * at +0x32 is read, so its low word (+0x32 = 0x0600 from mz_seed) is
+     * shifted out and the +0x34 word is the signed reach. */
+    {
+        static const u16 w34[8] = { 0x0100u, 0x0100u, 0x0100u, 0x0100u,
+                                    0xFF00u, 0xFF00u, 0x0100u, 0x0100u };
+        static const u32 xs[8]  = { 0x18200u, 0x18201u, 0x17E00u, 0x17DFFu,
+                                    0x18200u, 0x18201u, 0x18180u, 0x18000u };
+        static const int want[8] = { 1, 0, 1, 0, 1, 0, 1, 1 };
+        for (i = 0; i < 8u; i++) {
+            k4_seed(0, 0, xs[i]);
+            DSW(MZ_R + 0x34u) = w34[i];
+            CHECK_EQ_INT((int)fight_4a868(MZ_E), want[i]);
+        }
+    }
+
+    /* §K4.3, 0x4DEF4 states 1..4 (0x4DF8E/0x4DFFA/0x4E066/0x4E0D0). Gate
+     * open: DS_001088BB = 1, R's +0x34 word = 0, the stream by R's +0x30
+     * high word (0x600) against the zero-extended word DS_000BD898 (`jge`:
+     * below it the low table, else the high table plus R+0x55 = 1), 3.0;
+     * state 4 has one table (0xC9724) at 5.0 and no +0x55 store; the entry
+     * returns to state 0. Gate shut (x one past the reach): nothing moves. */
+    {
+        static const u8  st[7]   = { 1, 1, 2, 2, 3, 3, 4 };
+        static const u16 bd[7]   = { 0x0601u, 0x0600u, 0x8000u, 0x0600u,
+                                     0x0601u, 0x0001u, 0x0000u };
+        static const u32 frm[7]  = { 0x40400000u, 0x40400000u, 0x40400000u,
+                                     0x40400000u, 0x40400000u, 0x40400000u,
+                                     0x40A00000u };
+        static const int b55[7]  = { 0x77, 1, 0x77, 1, 0x77, 1, 0x77 };
+        u32 strm[7];
+        strm[0] = MZ_ST(11); strm[1] = MZ_ST(8);    /* 0xC9664 / 0xC955C */
+        strm[2] = MZ_ST(12); strm[3] = MZ_ST(13);   /* 0xC964C / 0xC9574 */
+        strm[4] = MZ_ST(4);  strm[5] = MZ_ST(13);   /* 0xC9634 / 0xC9574 */
+        strm[6] = MZ_ST(5);                         /* 0xC9724 */
+        for (i = 0; i < 7u; i++) {
+            k4_seed(st[i], 0, 0x18200u);
+            DSW(DS_000BD898) = bd[i];
+            fight_effects_idle_pass();
+            CHECK_EQ_INT((int)DSB(DS_001088BB), 1);
+            CHECK_EQ_INT((int)DSW(MZ_R + 0x34u), 0);
+            CHECK_EQ_INT((int)DSD(MZ_R + 0x08u), (int)strm[i]);
+            CHECK_EQ_INT((int)DSD(MZ_R + 0x24u), (int)frm[i]);
+            CHECK_EQ_INT((int)DSB(MZ_R + 0x55u), b55[i]);
+            CHECK_EQ_INT((int)DSB(MZ_E + 0x1Eu), 0);
+            CHECK_EQ_INT((int)DSW(DS_001088B0), 0x00FF);
+
+            k4_seed(st[i], 0, 0x18201u);
+            DSW(DS_000BD898) = bd[i];
+            fight_effects_idle_pass();
+            CHECK_EQ_INT((int)DSB(DS_001088BB), 0);
+            CHECK_EQ_INT((int)DSW(MZ_R + 0x34u), 0x0100);
+            CHECK_EQ_INT((int)DSD(MZ_R + 0x08u), 0x0BAD);
+            CHECK_EQ_INT((int)DSB(MZ_R + 0x55u), 0x77);
+            CHECK_EQ_INT((int)DSB(MZ_E + 0x1Eu), (int)st[i]);
+        }
+        /* R's +0x30 high word is signed: -1 against 0x0001 is below it (an
+         * unsigned compare would take the high table). */
+        k4_seed(1, 0, 0x18200u);
+        DSD(MZ_R + 0x30u) = 0xFFFF0000u;
+        DSW(MZ_R + 0x34u) = 0x0100u;
+        DSW(DS_000BD898) = 0x0001u;
+        fight_effects_idle_pass();
+        CHECK_EQ_INT((int)DSD(MZ_R + 0x08u), (int)MZ_ST(11));
+        CHECK_EQ_INT((int)DSB(MZ_R + 0x55u), 0x77);
+    }
+
+    /* §K4.2, 0x4BF18 case 1 with E+0x1C bit 5 set (0x4BFDE). Gate open:
+     * voice 200 (not wired), R's +0x38/+0x34/+0x36 words = 0, type 8, R+0x55
+     * = 1, R begins 0xC958C[3] at 3.0 (0x4BFEB..0x4C02F); the shared tail
+     * then runs 0x4C60C, which misses. Gate shut: nothing moves. */
+    k4_seed(1, 0x20u, 0x18200u);
+    fight_4bf18();
+    CHECK_EQ_INT((int)DSB(MZ_E + 0x1Eu), 8);
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x38u), 0);
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x34u), 0);
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x36u), 0);
+    CHECK_EQ_INT((int)DSB(MZ_R + 0x55u), 1);
+    CHECK_EQ_INT((int)DSD(MZ_R + 0x08u), (int)MZ_ST(9));
+    CHECK_EQ_INT((int)DSD(MZ_R + 0x24u), 0x40400000);
+    CHECK_EQ_INT((int)DSW(DS_00108898), 0x5555);
+    CHECK_EQ_INT((int)DSW(DS_001088A0), 1);
+    k4_seed(1, 0x20u, 0x18201u);
+    fight_4bf18();
+    CHECK_EQ_INT((int)DSB(MZ_E + 0x1Eu), 1);
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x38u), 0x3333);
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x34u), 0x0100);
+    CHECK_EQ_INT((int)DSW(MZ_R + 0x36u), 0x2222);
+    CHECK_EQ_INT((int)DSB(MZ_R + 0x55u), 0x77);
+    CHECK_EQ_INT((int)DSD(MZ_R + 0x08u), 0x0BAD);
+    CHECK_EQ_INT((int)DSW(DS_001088A0), 1);
+
+    mz_restore();
+}
+
 /* ---- modes 0x22/0x23/0x24 (records §49-L/§49-M/§49-N) -------------------- */
 
 #define DS_00104B1A 0x00104B1Au   /* no symbols.h name */
@@ -38881,6 +39013,7 @@ int test_fight(void)
     check_mode_0a();
     check_mode_07();
     check_mode_0f();
+    check_fx_gate();
     check_mode_21();
     check_modes_28_2f();
     check_mode_12();

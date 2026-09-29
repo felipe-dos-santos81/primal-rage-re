@@ -2284,6 +2284,25 @@ static s32 fight_2be1c(u32 rec_a, u32 rec_b)
     return fight_2be00(rec_a) - fight_2be00(rec_b);
 }
 
+/* 0x4A868 — record §K4.1. The effect entry's proximity gate (EAX = entry;
+ * EBX/ECX/EDX pushed and popped). R = entry+8. ECX = 0x2BE00(R); the reach
+ * is R's dword +0x32 `sar 0x10` (the signed +0x34 word) `add eax,eax`, made
+ * non-negative (`jge`/`neg`); the distance ECX - entry+0x14 is made
+ * non-negative the same way; AL = `setle` (signed, inclusive), zero-extended
+ * by `and eax,0xff`. The port keeps the raw's 32-bit wrap: `neg` of
+ * 0x80000000 stays negative, as the u32 negation below does. */
+u32 fight_4a868(u32 entry)
+{
+    u32 rec = DSD(entry + 8u);                                    /* 0x4A86D */
+    u32 x = (u32)fight_2be00(rec);                                /* 0x4A870 0x2BE00 */
+    u32 reach = (u32)((s32)DSD(rec + 0x32u) >> 16) * 2u;          /* 0x4A877..0x4A880 */
+    u32 d;
+    if ((s32)reach < 0) reach = 0u - reach;                       /* 0x4A882..0x4A88A */
+    d = x - DSD(entry + 0x14u);                                   /* 0x4A88E/0x4A890 */
+    if ((s32)d < 0) d = 0u - d;                                   /* 0x4A893..0x4A897 */
+    return ((s32)d <= (s32)reach) ? 1u : 0u;                      /* 0x4A899..0x4A89E */
+}
+
 /* 0x2BE4C. `(rec+0x44 >> 16) * 2 + value - 0x2A00` (0x2BE4C..0x2BE5B). */
 static s32 fight_2be4c(u32 rec, s32 value)
 {
@@ -4185,11 +4204,10 @@ static void fight_4cd98(void)
  *   case 1 (0x4BFCD): entry+0x1C bit 5 clear is the "arrival" test:
  *     |rec+0x18 - entry+0x14| against the sign(rec+0x34)-gated rec+0x32
  *     (dword, `>>16`) calls fight_4AC38(entry, index) on arrival. Bit 5 set
- *     gates on FUN_0004A868(entry) — the same unported predicate this
- *     codebase already treats as always false in fight_effects_pass's
- *     case-13/14 bodies and fight_effects_idle_pass (spec §7.4); treated the
- *     same way here, so the voice(200)/type-8 flyer spawn body
- *     (0x4BFEB..0x4C034) never runs.
+ *     gates on fight_4a868(entry) (0x4BFDE, record §K4.2): when it holds,
+ *     voice 200, rec's +0x38/+0x34/+0x36 words = 0, type = 8, rec+0x55 = 1
+ *     and actors_anim_begin(rec, DS_000C958C[index], 3.0) (0x4BFEB..0x4C02F),
+ *     then the shared tail (`jmp 0x4C1F3`); else the shared tail directly.
  *   case 2 (0x4C07E): entry+0x18 (word) counts down; reaching < 1 (signed)
  *     calls fight_4AC38(entry, index).
  *   case 3/4 (0x4C0A1, one shared body): rec+0x2C = fight_dust_clamp(rec+
@@ -4253,11 +4271,9 @@ static void fight_4cd98(void)
  *   fight_4AC38/fight_dust_clamp/fight_midpoint/fighter_actor_bit15_clear/
  *   actor_set_dead/actors_anim_begin/fight_4C60C/fight_4CC0C (pre-existing),
  *   fight_4CD98 (newly ported above).
- *   PORT: FUN_0004A868's gate (case 1's else branch) is out of scope per the
- *   precedent cited above; no voice (0x2C3FC) call site in this function is
- *   wired (spec §7, record §45-A), matching this file's existing convention
- *   (0x4BFEB's voice(200) is unreachable anyway, since it sits behind the
- *   0x4A868 gate). */
+ *   PORT: no voice (0x2C3FC) call site in this function is wired (spec §7,
+ *   record §45-A), matching this file's existing convention, 0x4BFF0's
+ *   voice(200) included (record §K4.2). */
 void fight_4bf18(void)
 {
     {
@@ -4299,11 +4315,16 @@ void fight_4bf18(void)
                         if ((s16)DSW(rec + 0x34u) < 0) thresh = -thresh;     /* 0x4C04E/0x4C053 */
                         if (d <= thresh)                                      /* 0x4C065/0x4C067 `jg` */
                             fight_4ac38(entry, index);                        /* 0x4C06F..0x4C074 */
+                    } else if (fight_4a868(entry) != 0u) {                     /* 0x4BFDC..0x4BFE5 */
+                        /* PORT: 0x4BFF0 0x2C3FC(0xC8) voice, not wired (record §45-A). */
+                        DSW(rec + 0x38u) = 0;                                  /* 0x4BFF8 */
+                        DSW(rec + 0x34u) = 0;                                  /* 0x4C001 */
+                        DSW(rec + 0x36u) = 0;                                  /* 0x4C00A */
+                        DSB(entry + 0x1Eu) = 8u;                               /* 0x4C013 */
+                        DSB(rec + 0x55u) = 1u;                                 /* 0x4C017 */
+                        actors_anim_begin(rec, DSD(DS_000C958C + index * 4u),
+                                          0x40400000u);                        /* 0x4C01B..0x4C02F 0x2BC30 */
                     }
-                    /* PORT: 0x4BFDE FUN_0004A868(entry) — the same unported
-                     * gate treated as always false elsewhere in this file
-                     * (spec §7.4); the voice(200)/type-8 spawn body
-                     * (0x4BFEB..0x4C034) never runs here either. */
                     break;
                 case 2: {
                     s16 cd = (s16)(DSW(entry + 0x18u) - 1u);               /* 0x4C07E..0x4C083 */
@@ -4817,9 +4838,11 @@ void fight_effects_pass(void)
                     break;
                 }
                 case 14: {
-                    /* PORT: 0x4A346..0x4A412. The case-14 body (0x4A868,
-                     * 0x2BC30, the rec +0x2a/+0x3c/+0x32 gates) is the named
-                     * gap (§7.4); the 0x2BE00 arm is the draw gate. */
+                    /* PORT: 0x4A346..0x4A412. The case-14 body (its gate
+                     * 0x4A361 is fight_4a868, ported but not called here,
+                     * record §K4.4; 0x2BC30, the rec +0x2a/+0x3c/+0x32
+                     * gates) is the named gap (§7.4, ledger K13); the 0x2BE00
+                     * arm is the draw gate. */
                     s32 r = fight_2be00(fight_case_rec());   /* 0x4A413 */
                     if (r > 0) (void)rng_next(0xC00u);       /* 0x4A439 */
                     else       (void)rng_next(0xC00u);       /* 0x4A449 */
@@ -4924,30 +4947,21 @@ void fight_effects_hold_all(void)
  * fight_effects_hold_all's own index expression) and the state dispatches
  * through a 5-entry jump table (0x4DEE0, states 0..4, `ja` past 4 also lands
  * on the shared advance label 0x4E108). State 0's table entry *is* 0x4E108:
- * already a no-op. States 1..4 each first gate on 0x4A868(entry) — the same
- * call `fight_effects_pass`'s case-13/14 bodies already leave as a named gap
- * (spec §7.4; see the "0x4A868" comment on that function, and its case-14
- * comment above) — skipping to the advance when it returns zero; when
- * non-zero they set DS_001088BB = 1, zero the record's +0x34 word, and pick
- * an idle stream from one of two float/threshold tables — the record's +0x30
- * high word (0x4DFB0/0x4DFBA `sar ecx,0x10`) against the layer word
- * DS_000BD898 (`fight.c`'s own layer-word precedent, e.g. line ~2951) — with
- * the low branch also setting the record's +0x55 = 1, before running it
- * through actors_anim_begin at 3.0 (state 4 has only one branch, no
- * threshold, at 5.0 from a single table 0xC9724) and clearing entry+0x1E
- * back to 0 (0x4E104).
- *   PORT: since 0x4A868 is unported (spec §7.4, as above), its gate is
- * treated here as always false: no per-state transition ever fires, and
- * entry+0x1E is never cleared by this walk. This is the same decision this
- * codebase already made for the identical call inside `fight_effects_pass`'s
- * case-13/14 bodies; unlike those two call sites this function has no
- * rng_next calls inside the gated body to preserve for determinism (the
- * only RNG consumption here is the voice/countdown rearm above, which is
- * ported in full) — `read_memory`/disassembly of 0x4DF8C..0x4E103 confirms
- * no CALL targets 0x5D7DC (rng_next) anywhere in the four state bodies.
+ * already a no-op. States 1..4 each first gate on fight_4a868(entry) (the
+ * calls 0x4DF8E/0x4DFFA/0x4E066/0x4E0D0, record §K4.3), skipping to the
+ * advance when it returns zero; when non-zero they set DS_001088BB = 1, zero
+ * the record's +0x34 word, and pick an idle stream by the record's +0x30
+ * high word (signed, `sar 0x10`) against the zero-extended layer word
+ * DS_000BD898 (`cmp; jge`): below it the state's low table, else its high
+ * table and the record's +0x55 = 1 (0x4DFDA/0x4E046/0x4E0B3). The tables
+ * (dwords by the index) are state 1 0xC9664/0xC955C, state 2 0xC964C/
+ * 0xC9574, state 3 0xC9634/0xC9574, each begun through actors_anim_begin at
+ * 3.0; state 4 has no compare and no +0x55 store, one table 0xC9724 at 5.0.
+ * Every open gate then clears entry+0x1E back to 0 (0x4E104). The four state
+ * bodies call no rng_next (no CALL to 0x5D7DC in 0x4DF8C..0x4E103).
  * Callers: 0x277C0 (mode 0xF, game_mode_0f_step, flow.c, record §49-F) and
- * 0x29638 (mode 0x33, still a named gap). EBX/ECX/EDX/ESI/EDI are pushed
- * and popped. */
+ * 0x29638 (mode 0x33), whose call 0x2965F is not wired yet (ledger §E-3).
+ * EBX/ECX/EDX/ESI/EDI are pushed and popped. */
 void fight_effects_idle_pass(void)
 {
     if (DSW(DS_001088B0) == 0u && DSB(DS_001088BB) != 0u) {  /* 0x4DEF9..0x4DF0A */
@@ -4969,12 +4983,27 @@ void fight_effects_idle_pass(void)
         u32 next = DSD(entry);                                     /* 0x4DF6C */
         u32 state = DSB(entry + 0x1Eu);                             /* 0x4DF71 */
         u32 index = (u32)(u16)((u32)DSB(rec + 0x48u) - 0x20u);       /* 0x4DF6E/0x4DF74 */
-        (void)state;
-        (void)index;
-        /* PORT: 0x4DF8C..0x4E103 (states 1..4, see the header comment
-         * above): each gates on the unported 0x4A868(entry); treated as
-         * always false here, so no transition fires and entry+0x1E is left
-         * untouched for any state. */
+        if (state >= 1u && state <= 4u && fight_4a868(entry) != 0u) {  /* 0x4DF77/0x4DF84, 0x4DF8E/0x4DFFA/0x4E066/0x4E0D0 */
+            DSB(DS_001088BB) = 1u;                                   /* 0x4DF9B/0x4E007/0x4E081/0x4E0E3 */
+            DSW(rec + 0x34u) = 0;                                    /* 0x4DFA5/0x4E011/0x4E076/0x4E0E9 */
+            if (state == 4u) {
+                actors_anim_begin(rec, DSD(DS_000C9724 + index * 4u),
+                                  0x40A00000u);                      /* 0x4E0DE..0x4E0FF */
+            } else {
+                static const u32 lo[3] = { DS_000C9664, DS_000C964C, DS_000C9634 };
+                static const u32 hi[3] = { DS_000C955C, DS_000C9574, DS_000C9574 };
+                s32 h = (s32)DSD(rec + 0x30u) >> 16;                 /* 0x4DFB0/0x4DFBA, 0x4E01C/0x4E026, 0x4E089/0x4E093 */
+                u32 tbl;
+                if (h < (s32)(u32)DSW(DS_000BD898)) {                /* 0x4DFBD/0x4DFBF `jge`, 0x4E029, 0x4E096 */
+                    tbl = lo[state - 1u];                            /* 0x4DFCC/0x4E038/0x4E0A5 */
+                } else {
+                    DSB(rec + 0x55u) = 1u;                           /* 0x4DFDA/0x4E046/0x4E0B3 */
+                    tbl = hi[state - 1u];                            /* 0x4DFE7/0x4E053/0x4E0C0 */
+                }
+                actors_anim_begin(rec, DSD(tbl + index * 4u), 0x40400000u); /* 0x4DFEE/0x4E05A/0x4E0C7 0x2BC30 */
+            }
+            DSB(entry + 0x1Eu) = 0;                                  /* 0x4E104 */
+        }
         entry = next;                                              /* 0x4E108 */
         if (entry == DS_0010884C) break;                            /* 0x4E10A/0x4E110 */
     }

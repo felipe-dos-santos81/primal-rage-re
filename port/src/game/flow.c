@@ -2996,9 +2996,8 @@ void game_mode_04_step(void)
  * volleyball mini-game's per-frame ball/entry driver; see its own header
  * comment in fight.c for the full 8-state switch (over the same singly-
  * linked DS_0010884C list fight_effects_pass walks, not a separate
- * doubly-linked one) and shared-tail derivation. Its own unported callee
- * FUN_0004A868 (case 1's else branch) is the same predicate this codebase
- * already treats as always false elsewhere (spec §7.4). After that,
+ * doubly-linked one) and shared-tail derivation. Its callee 0x4A868 (case
+ * 1's else branch) is fight_4a868 (record §K4.2). After that,
  * exactly like 0x26254: camera_scene_step (0x1282C + 0x12DA8),
  * fight_hud_pulse (0x1DA08), flow_round_end_check (0x27FA8), then
  * DS_00104AEC |= 2. Unlike 0x26254 there is no closing DS_001078FA/
