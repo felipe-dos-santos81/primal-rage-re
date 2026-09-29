@@ -8084,7 +8084,7 @@ static void sm_check_options(void)
  * 0x30864, the handicap row 0x30FE8 and 2 PLAYER HANDICAP 0x31138. The
  * image's layout bytes: bar rows 5, 0xD, 0x13 and label rows 3, 0xB, 0x11
  * (0xBD444..0xBD449); handicap bar rows 4, 0xC and label rows 2, 0xA
- * (0xBD459..0xBD45C). 37 frames. */
+ * (0xBD459..0xBD45C). 44 frames. */
 #define SM_VOL_MUTED 0x000BD458u   /* the mute byte 0x30E25/0x30E49 store */
 static void sm_check_volume(void)
 {
@@ -8127,8 +8127,9 @@ static void sm_check_volume(void)
     CHECK_EQ_INT((int)DSD(DS_000A2CB8), 0x20);
 
     /* ADJUST VOLUME A: music 0x40, effects 0x80, voice 1 (field 0x2A = 9, bit
-     * 3 kept). Up wraps 0 -> 2, Right makes the voice 2 (both volumes scaled,
-     * (v * 2 / 3) >> 1), Down wraps 2 -> 0 (music unscaled), Esc. */
+     * 3 kept). Up wraps 0 -> 2, Right makes the voice 2 (the effects volume is
+     * scaled, (v * 2 / 3) >> 1), Down wraps 2 -> 0, Right steps music 0x40 to
+     * 0x48 (unclamped, 0x30C04), Esc. */
     config_field_set(0x35u, 0x40u); config_field_set(0x37u, 0x80u); config_field_set(0x2Au, 9u);
     DSB(SM_VOL_MUTED) = 0x5Au;
     DSD(DS_00105D5C) = 0xDEADu; DSD(DS_001028D4) = 0xD4D4D4D4u;
@@ -8136,14 +8137,14 @@ static void sm_check_volume(void)
     DSD(DS_000E1C3C) = 0x12345678u;
     actors_reset();
     static const sm_step_t vol_a[] = {
-        { 0u, 0u }, { 0x4800u, 0u }, { 0x4D00u, 0u }, { 0x5000u, 0u }, { 0x011Bu, 0u }, { 0u, 0u } };
-    sm_begin(vol_a, 6u);
+        { 0u, 0u }, { 0x4800u, 0u }, { 0x4D00u, 0u }, { 0x5000u, 0u }, { 0x4D00u, 0u },
+        { 0x011Bu, 0u }, { 0u, 0u } };
+    sm_begin(vol_a, 7u);
     CHECK_EQ_INT((int)svc_adjust_volume(0xBCC9Cu), 0);             /* 0x30EA8 */
-    sm_end(6u, "ADJUST VOLUME: Up, Right, Down, Esc");
+    sm_end(7u, "ADJUST VOLUME: Up, Right, Down, Right, Esc");
     CHECK_EQ_INT((int)config_field_get(0x2Au), 0xA);               /* (f & ~3) | 2 */
-    CHECK_EQ_INT((int)config_field_get(0x35u), 0x40);
-    CHECK_EQ_INT((int)config_field_get(0x37u), 0x80);
-    CHECK_EQ_INT((int)DSD(DS_000A2CB8), 0x20);                     /* sel 0 last: 0x40 >> 1 */
+    CHECK_EQ_INT((int)config_field_get(0x35u), 0x48);              /* 0x40 + 8 */
+    CHECK_EQ_INT((int)DSD(DS_000A2CB8), 0x24);                     /* sel 0 last: 0x48 >> 1 */
     CHECK_EQ_INT((int)DSD(DS_000A2CB4), 0x2A);                     /* sel 2: (0x80 * 2 / 3) >> 1 */
     CHECK_EQ_INT((int)DSB(SM_VOL_MUTED), 0);                       /* the first pass unmutes */
     CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x21);                     /* sound_voice(3), case 4 */
@@ -8156,6 +8157,8 @@ static void sm_check_volume(void)
     ch_expect(0x16, 7, '3', 0xF000u, "of 3, through 0x2F464");
     ch_expect(0x13, 15, 0x13u, 0x1000u, "voice bar: (0x80 * 2) / 3 = 0x55 covers cell 10");
     ch_expect(0x13, 16, 0x13u, 0xF000u, "voice bar: cell 11 is past it");
+    ch_expect(5, 14, 0x13u, 0x1000u, "music bar: 0x48 covers cell 9");
+    ch_expect(5, 15, 0x13u, 0xF000u, "music bar: cell 10 is past it");
 
     /* B: Left takes music 0x40 to 0x38, Down, Right clamps effects 0xFC to
      * 0xFF (0x30BFC `jg`), Esc. */
@@ -8237,6 +8240,14 @@ static void sm_check_volume(void)
      * Down, Left clamps 0x36 to 0x32 (0x312FF `jl`), Esc. */
     u8 s_keys[0x28];
     memcpy(s_keys, mem + DS_001014AC, sizeof s_keys);
+    /* 0x1AE28 also writes the record at [DS_00101514] (+0x2D4..+0x2EF). The
+     * harness points DS_00101514 at MT_LAYOUT while a screen runs, so the
+     * suite's own record, seeded with 0xA5, must come out untouched. */
+    const u32 kb = DSD(DS_00101514);
+    u8 s_kb[0x1C], seed_kb[0x1C];
+    memcpy(s_kb, mem + kb + 0x2D4u, sizeof s_kb);
+    memset(seed_kb, 0xA5, sizeof seed_kb);
+    memcpy(mem + kb + 0x2D4u, seed_kb, sizeof seed_kb);
     const u32 s_68 = DSD(DS_00107468), s_6c = DSD(DS_0010746C);
     DSB(DS_001014D0) = 0x93u; DSB(DS_001014D2) = 0x36u;
     DSD(DS_00107468) = 0xDEADBEEFu; DSD(DS_0010746C) = 0xDEADBEEFu;
@@ -8256,6 +8267,22 @@ static void sm_check_volume(void)
     ch_expect(0xA, 15, 'R', 0x3000u, "RIGHT PLAYER selected");
     ch_expect(4, 0x1F, 0x13u, 0xF000u, "left bar at 0x96");
     ch_expect(0xC, 0xB, 0x13u, 0xF000u, "right bar at 0x32");
+    /* F: unclamped steps (0x31304 `lea ecx,[edx-5]`, 0x31335 `lea edx,[esi+5]`):
+     * Left takes 0x64 to 0x5F, Down, Right takes 0x50 to 0x55, Esc. The bars
+     * put 0xF000 on cell (v - 0x32) / 5: 9 (column 0x14) and 7 (0x12). */
+    DSB(DS_001014D0) = 0x64u; DSB(DS_001014D2) = 0x50u;
+    DSD(DS_00107468) = 0xDEADBEEFu; DSD(DS_0010746C) = 0xDEADBEEFu;
+    static const sm_step_t hcp_f[] = {
+        { 0u, 0u }, { 0x4B00u, 0u }, { 0x5000u, 0u }, { 0x4D00u, 0u }, { 0x011Bu, 0u }, { 0u, 0u } };
+    sm_begin(hcp_f, 6u);
+    (void)svc_handicap(0xBCCACu);
+    sm_end(6u, "HANDICAP: Left, Down, Right, Esc");
+    CHECK_EQ_INT((int)DSD(DS_00107468), 0x5F);
+    CHECK_EQ_INT((int)DSD(DS_0010746C), 0x55);
+    ch_expect(4, 0x14, 0x13u, 0xF000u, "left bar: 0x5F is cell 9");
+    ch_expect(4, 0x15, 0x13u, 0x1000u, "left bar: cell 10 above it");
+    ch_expect(0xC, 0x12, 0x13u, 0xF000u, "right bar: 0x55 is cell 7");
+    ch_expect(0xC, 0x11, 0x13u, 0x3000u, "right bar: cell 6 below it");
     /* B: Left, then Enter puts the packed record's value back
      * (0x312B1..0x312CF), Esc. */
     DSB(DS_001014D0) = 0x64u; DSB(DS_001014D2) = 0x50u;
@@ -8276,6 +8303,9 @@ static void sm_check_volume(void)
     sm_end(4u, "HANDICAP: a pass without a key, Esc");
     ch_expect(2, 16, 'L', 0x3000u, "the first pass highlights LEFT PLAYER");
     CHECK_EQ_INT((int)DSD(DS_00107468), 0x64);
+    CHECK(memcmp(mem + kb + 0x2D4u, seed_kb, sizeof seed_kb) == 0,
+          "the suite's key record at [DS_00101514] is untouched");
+    memcpy(mem + kb + 0x2D4u, s_kb, sizeof s_kb);
     memcpy(mem + DS_001014AC, s_keys, sizeof s_keys);
     DSD(DS_00107468) = s_68; DSD(DS_0010746C) = s_6c;
 

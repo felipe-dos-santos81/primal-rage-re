@@ -925,23 +925,25 @@ stubbed as in §K11.3 by zeroing `DS_001028C0`, `DS_001028C8`, `DS_001028DA`,
 
 * `0x2F464`: "  123" (width 5, pad 1) with the cursor at (3, 10) leaves
   columns 10 and 11 empty, '1', '2', '3' at 12..14 in `0x1000`, and the
-  cursor at column 15, row 3.
+  cursor at column 15, row 3. The row equals its seed because `0x2F198`
+  reloads it; the check still fails under mutation 1 (row 0 is written).
 * `0x30728`: a pass without a key, then Esc (2 frames); the 26-character
   string centred at column 8 on row 6 is released (columns 8 and 33 empty).
 * `0x2C8F0(-1)` with field `0x35` = 0x40 returns 0x40 and sets the music
   volume to 0x20.
 * ADJUST VOLUME A (music 0x40, effects 0x80, field `0x2A` = 9): Up, Right,
-  Down, Esc (6 frames). Up wraps row 0 to 2, Right makes the voice 2 (the
-  effects volume becomes `(0x80 * 2 / 3) >> 1` = 0x2A), Down wraps 2 to 0
-  (music `0x40 >> 1` = 0x20). Fields: `0x2A` = 0xA (bit 3 kept), `0x35` =
-  0x40, `0x37` = 0x80. The mute byte (0x5A) is cleared by the first pass,
+  Down, Right, Esc (7 frames). Up wraps row 0 to 2, Right makes the voice 2
+  (the effects volume becomes `(0x80 * 2 / 3) >> 1` = 0x2A), Down wraps 2 to
+  0, and Right steps music 0x40 to 0x48 unclamped (volume `0x48 >> 1` =
+  0x24; the music bar covers cells 0..9 of row 5). Fields: `0x2A` = 0xA (bit
+  3 kept), `0x35` = 0x48. The mute byte (0x5A) is cleared by the first pass,
   `DS_00105D5C` = 0x21, `DS_001028D4` = 0 (the exit's `0x100`), the repeat
   mask is `0xF000F000`. The screen: "GAME MUSIC" at (3, 16) in `0x3000`,
   "ATTRACT RATIO" at (0x11, 15) in `0x4000`, "2/3" at (0x16, 5..7) in
   `0xF000`, and the voice bar 0x55 covers cells 0..10 of row 0x13 (column 15
   `0x1000`, column 16 `0xF000`).
 * B (music 0x40, effects 0xFC): Left, Down, Right, Esc (6 frames): music
-  0x38, effects clamped to 0xFF, volumes 0x1C and 0x7F, "GAME SAMPLES"
+  0x38 (the unclamped Left step), effects clamped to 0xFF, volumes 0x1C and 0x7F, "GAME SAMPLES"
   selected, "1/3" from the pre-loop draw.
 * C (music 5): Left, Esc (4 frames): music clamped to 0, which mutes (the
   byte becomes 1) and sets the music volume to 0.
@@ -954,14 +956,27 @@ stubbed as in §K11.3 by zeroing `DS_001028C0`, `DS_001028C8`, `DS_001028DA`,
   `0x30FE8(0x200, 4)` clamps to 0x96: cell 20 `0xF000`, cell 19 `0x3000`.
 * 2 PLAYER HANDICAP A (0x93, 0x36): Right, Down, Left, Esc (6 frames):
   `DS_00107468` = 0x96, `DS_0010746C` = 0x32 (both clamped), the mirror
-  bytes the same, EAX = -1, "RIGHT PLAYER" selected. B (0x64, 0x50): Left,
+  bytes the same, EAX = -1, "RIGHT PLAYER" selected. F (0x64, 0x50): Left,
+  Down, Right, Esc (6 frames): the unclamped steps give 0x5F and 0x55, whose
+  bars put `0xF000` on cell 9 (column 0x14, row 4) and cell 7 (column 0x12,
+  row 0xC). B (0x64, 0x50): Left,
   Enter, Esc (5 frames): Enter restores 0x64. E: a pass with no key, then Esc
-  (4 frames): "LEFT PLAYER" turns `0x3000`.
+  (4 frames): "LEFT PLAYER" turns `0x3000`. The suite's own key record at
+  `[DS_00101514]+0x2D4..+0x2EF`, seeded with 0xA5, is unchanged afterwards:
+  `0x1AE28` writes the harness's `MT_LAYOUT` record instead.
+
+**What the arrows pin.** ADJUST VOLUME: Down (the step and the 2 -> 0 wrap),
+Up (the 0 -> 2 wrap), Left (the unclamped music step and the music clamp at
+0), Right (the unclamped music step, the effects clamp at 0xFF, the voice
+step). 2 PLAYER HANDICAP: Down (the side toggle), Left and Right (the
+unclamped steps and both clamps), Enter (the restore).
 
 **Not tested:** the unreachable `0x308CC` arm (above); the voice clamps
 (`v2 < 0`, `v2 > 3`); "FULL"/"MUTE" (voice 0 or 3); the title and help lines
 of both screens; the `0x2F388` releases of the voice row; Up on the handicap
-screen (Down is tested, and both run the same `xor`). **Unobservable:**
+screen (Down is tested, and both run the same `xor`); Up without a wrap on
+ADJUST VOLUME (the `sel - 1` step); the unclamped Left step on the effects
+row (the music row's is tested; both run the same code). **Unobservable:**
 `config_voice_gate(-1)` at the exit (its `sound_voice(0)` returns at once).
 
 **Cycle-2 review items folded in.** (1) `0x2CACC`'s test now points
@@ -978,13 +993,13 @@ skipped (2 frames). (4) The `0x32700` fallback's comment is no longer a
 `PORT:` note (it is the raw's behaviour). (5) `0x2CF00`'s unbounded copy of
 string `0x72` has a `PORT:` note: it mirrors the raw's 0x1C-byte stack buffer.
 
-**Frame budget.** 37 scripted frames in `sm_check_volume` (2 + 6 + 6 + 4 + 4
-+ 6 + 5 + 4) and 2 more in `sm_check_options` (the hold check), 39 in this
-task; the scratch-record change reuses cycle 2's 2 frames. K11 total: 37 + 39
-= 76 of 160.
+**Frame budget.** 44 scripted frames in `sm_check_volume` (2 + 7 + 6 + 4 + 4
++ 6 + 6 + 5 + 4) and 2 more in `sm_check_options` (the hold check), 46 in this
+task; the scratch-record change reuses cycle 2's 2 frames. K11 total: 37 + 46
+= 83 of 160. (Review round 1 added 7: A's unclamped Right and script F.)
 
 **Mutations** (each applied, rebuilt, run and reverted by
-`<scratchpad>/k11_t4_mut.py`; log `<scratchpad>/k11_t4_mutations.txt`). All 37
+`<scratchpad>/k11_t4_mut.py`; log `<scratchpad>/k11_t4_mutations.txt`). All 42
 fail the suite with exit 1 and no crash:
 
 | # | mutation | result |
@@ -1026,6 +1041,11 @@ fail the suite with exit 1 and no crash:
 | 35 | 0x2CF00 Up/Down hold check dropped (review item 3) | 1 checks |
 | 36 | 0x2CACC reads +0 (§K11.3 mutation 7, review item 1) | 2 checks |
 | 37 | 0x31138 handicap label mode swapped | 3 checks |
+| 38 | `0x30864` volume Right step +7 (review round 1) | 3 checks (`0x35` = 0x47, volume 0x23, the music bar) |
+| 39 | `0x31138` Right step +4 (review round 1) | 2 checks (0x54, the right bar) |
+| 40 | `0x31138` Left step -4 (review round 1) | 2 checks (0x60, the left bar) |
+| 41 | `0x30864` volume Left step -7 (review round 1) | 1 check (`0x35` = 0x39) |
+| 42 | the harness leaves `DS_00101514` on the suite's record (test file) | 44 checks, among them the new key-record check |
 
 **Gate (Task 4).** `make verify` exited 0 (`<scratchpad>/k11_t4_verify.txt`).
 Its oracle lines equal §K11.0's except the two unittest wall-clock lines
