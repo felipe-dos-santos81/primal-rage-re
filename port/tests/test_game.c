@@ -7736,10 +7736,10 @@ static void sm_hook(void *ctx)
 static void sm_env_begin(void)
 {
     sm_s_a0 = DSD(DS_000E87A0); sm_s_a4 = DSD(DS_000E87A4);
-    sm_s_kb = DSD(DS_00101514); sm_s_gate = DSB(0x00104B22u);
+    sm_s_kb = DSD(DS_00101514); sm_s_gate = DSB(DS_00104B22);
     DSD(DS_000E87A0) = CH_BUF_A;
     DSD(DS_000E87A4) = CH_BUF_B;
-    DSB(0x00104B22u) = 0u;              /* not 1: the ISR tick model runs (0x1BDF8) */
+    DSB(DS_00104B22) = 0u;              /* not 1: the ISR tick model runs (0x1BDF8) */
     mem_fill(MT_LAYOUT, 0, 0x300u);
     DSD(DS_00101514) = MT_LAYOUT;
     input_clear();
@@ -7756,7 +7756,7 @@ static void sm_env_end(void)
     input_clear();
     tf_menu_press(0u);
     DSD(DS_000E87A0) = sm_s_a0; DSD(DS_000E87A4) = sm_s_a4;
-    DSD(DS_00101514) = sm_s_kb; DSB(0x00104B22u) = sm_s_gate;
+    DSD(DS_00101514) = sm_s_kb; DSB(DS_00104B22) = sm_s_gate;
 }
 
 static void sm_begin_raw(const sm_step_t *s, u32 n)
@@ -7900,6 +7900,165 @@ static void sm_check_shell(void)
     DSW(DS_00104B00) = s_mode; DSW(DS_00104B00 + 2u) = s_mode_hi; DSB(DS_00104B1D) = s_sub;
 }
 
+/* Cycle 2 (record §K11.3): the option rows 0x2CC74/0x2CD30, the editor
+ * 0x2CF00, CONFIG OPTIONS 0x2CACC/0x33578, SOUND TEST 0x30EB4, MUSIC TEST
+ * 0x30F54 and the voice wrappers 0x2C9CC/0x2C9E8. The CONFIG OPTIONS table is
+ * 0xA2EB4; its record 0 is "CREDITS" (0x46), shift 0x10, 10 values, the index
+ * drawn, list 0xA2CEC (all zero but entry 4, {0x8088C "*", 0}). 29 frames. */
+#define SM_CONFIG_TABLE 0x000A2EB4u
+#define SM_CONFIG_DEFAULTS 0x00142095u   /* 0x2CCD0(0xA2EB4): the '*' entries (record §K11.3) */
+#define SM_VOICE_REC(id) (0x000BBDC8u + (u32)(id) * 12u)
+static void sm_check_options(void)
+{
+    ch_text_setup();
+    /* (a) 0x2CD30 on record 0 */
+    actors_reset();
+    CHECK_EQ_INT((int)svc_option_row(SM_CONFIG_TABLE, 3u << 0x10, 6, 0x2000u, 0u), 0xA2EC8);
+    ch_expect(6, 4, 'C', 0x2000u, "label at column 4");
+    ch_expect(7, 5, '4', 0x2000u, "itoa(3 + 1) on row + 1, column 5");
+    CHECK_EQ_INT((int)ch_cell(7, 6), 0);                       /* no text, no string */
+    actors_reset();
+    (void)svc_option_row(SM_CONFIG_TABLE, 4u << 0x10, 6, 0x2000u, 0u);
+    ch_expect(6, 4, 'C', 0x2000u, "the label keeps the entry mode");
+    ch_expect(7, 5, '5', 0x1000u, "the '*' default switches the mode to 0x1000");
+    /* release = 1 (0x2CD7E): the same cells are released, not drawn */
+    (void)svc_option_row(SM_CONFIG_TABLE, 4u << 0x10, 6, 0x2000u, 1u);
+    CHECK_EQ_INT((int)ch_cell(6, 4), 0);
+    CHECK_EQ_INT((int)ch_cell(7, 5), 0);
+    /* a text and a string (record 3 "Difficulty", shift 4, value 9: "*" and
+     * 0x1F8): the index "10", then the string after the empty text. */
+    actors_reset();
+    CHECK_EQ_INT((int)svc_option_row(SM_CONFIG_TABLE + 3u * 0x14u, 9u << 4, 9, 0x4000u, 0u),
+                 (int)(SM_CONFIG_TABLE + 4u * 0x14u));
+    ch_expect(10, 5, '1', 0x1000u, "two-digit index");
+    ch_expect(10, 6, '0', 0x1000u, "two-digit index, second digit");
+    ch_expect(10, 8, (u32)(u8)game_string_get(0x1F8u)[0], 0x1000u,
+              "the string after the index and one blank");
+    /* (b) out of range: value 15 + 1 > 10 */
+    actors_reset();
+    CHECK_EQ_INT((int)svc_option_row(SM_CONFIG_TABLE, 0xFu << 0x10, 6, 0x2000u, 0u), 0);
+    CHECK_EQ_INT((int)ch_cell(6, 4), 0);
+    /* 0x2CC74: seven rows 3..21 from record 0; from record 4 the terminator
+     * ends the walk after six rows. */
+    actors_reset();
+    CHECK_EQ_INT((int)svc_option_rows(SM_CONFIG_TABLE, SM_CONFIG_DEFAULTS, 0, 0xF000u, 0u),
+                 (int)(SM_CONFIG_TABLE + 7u * 0x14u));
+    ch_expect(21, 4, (u32)(u8)game_string_get(0x1FEu)[0], 0xF000u, "row 21 is record 6");
+    actors_reset();
+    CHECK_EQ_INT((int)svc_option_rows(SM_CONFIG_TABLE, SM_CONFIG_DEFAULTS, 4, 0xF000u, 0u), 0);
+    ch_expect(18, 4, 'R', 0xF000u, "record 9 on row 18");
+    CHECK_EQ_INT((int)svc_option_rows(SM_CONFIG_TABLE, SM_CONFIG_DEFAULTS, -1, 0xF000u, 0u), 0);
+
+    /* (c) 0x2CF00 alone on the CONFIG table: Left from CREDITS 0 wraps to 9 */
+    static const sm_step_t left_enter[] = { { 0x4B00u, 0u }, { 0x1C0Du, 0u } };
+    const u32 s_rpt = DSD(DS_000E1C3C);
+    const u16 s_rpt_next = DSW(DS_000E1C44);
+    DSD(DS_000E1C3C) = 0x12345678u; DSW(DS_000E1C44) = 0x7777u;
+    actors_reset();
+    sm_begin(left_enter, 2u);
+    CHECK_EQ_INT((int)svc_option_edit(SM_CONFIG_TABLE, 0x00000000u, 0x4000000u, 0u), (int)(9u << 16));
+    sm_end(2u, "option editor: Left, Enter");
+    CHECK_EQ_INT((int)DSD(DS_000E1C3C), (int)0xF000F000u);   /* 0x2CFE4..0x2CFF3 0x50146 */
+    CHECK_EQ_INT((int)DSW(DS_000E1C44), 0xF);
+    DSD(DS_000E1C3C) = s_rpt; DSW(DS_000E1C44) = s_rpt_next;
+    ch_expect(4, 5, '1', 0x2000u, "the edited row: index 10");
+    ch_expect(4, 6, '0', 0x2000u, "the edited row: index 10, second digit");
+    ch_expect(23, 9, 0x3Bu, 0x1000u, "10 records: the MORE marker, first glyph 0x3B");
+    ch_expect(23, 16, 0x3Bu, 0x1000u, "the MORE marker, last glyph 0x3B");
+    static const sm_step_t esc_only[] = { { 0x011Bu, 0u } };
+    sm_begin(esc_only, 1u);
+    CHECK_EQ_INT((int)svc_option_edit(SM_CONFIG_TABLE, 5u << 16, 0x4000000u, 1u), -1);
+    sm_end(1u, "option editor: Esc cancels");
+    sm_begin(esc_only, 1u);
+    CHECK_EQ_INT((int)svc_option_edit(SM_CONFIG_TABLE, 5u << 16, 0x4000000u, 0u), (int)(5u << 16));
+    sm_end(1u, "option editor: Esc keeps");
+    /* Right from CREDITS 9 wraps to 0; then the mask key (0x2D038) puts the
+     * entry bits back */
+    static const sm_step_t right_enter[] = { { 0x4D00u, 0u }, { 0x1C0Du, 0u } };
+    sm_begin(right_enter, 2u);
+    CHECK_EQ_INT((int)svc_option_edit(SM_CONFIG_TABLE, 9u << 16, 0x4000000u, 0u), 0);
+    sm_end(2u, "option editor: Right wraps");
+    static const sm_step_t restore[] = { { 0x4D00u, 0u }, { 0u, 0x4000000u }, { 0x1C0Du, 0u } };
+    sm_begin(restore, 3u);
+    CHECK_EQ_INT((int)svc_option_edit(SM_CONFIG_TABLE, 5u << 16, 0x4000000u, 0u), (int)(5u << 16));
+    sm_end(3u, "option editor: Right, restore, Enter");
+
+    /* (d) the voice wrappers, with no DIG driver and no sequence */
+    const u32 s_5c = DSD(DS_00105D5C), s_c0 = DSD(DS_001028C0), s_c8 = DSD(DS_001028C8);
+    const u32 s_cc = DSD(DS_001028CC), s_d4 = DSD(DS_001028D4);
+    const u8 s_d9 = DSB(DS_001028D9), s_da = DSB(DS_001028DA), s_db = DSB(DS_001028DB);
+    const u8 s_d7 = DSB(SM_VOICE_REC(0xD7u)), s_ea = DSB(SM_VOICE_REC(0xEAu));
+    DSD(DS_001028C0) = 0u; DSD(DS_001028C8) = 0u;
+    DSB(DS_001028DA) = 0u; DSB(DS_001028DB) = 0u;
+    DSD(DS_00105D5C) = 0xDEADu; DSD(DS_001028D4) = 0xD4D4D4D4u;
+    CHECK_EQ_INT((int)svc_play_tune(0u), 1);
+    CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x0D000008);           /* tune 0 = voice 0x1B, case 1 */
+    CHECK_EQ_INT((int)DSD(DS_001028D4), 0x0D000008);           /* the stop (0x100) came first */
+    /* The samples are case 2, which leaves no mark without a DIG driver:
+     * 0xEA (sample 3) is retyped to case 1 for the test. */
+    DSB(SM_VOICE_REC(0xEAu)) = 1u;
+    DSD(DS_00105D5C) = 0xDEADu;
+    (void)svc_play_sample(3u);
+    CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x1201A05D);
+
+    /* SOUND TEST: Enter plays sample 0 (voice 0xD7, retyped), Esc (CL = 1)
+     * leaves through sound_voice(0x100), which clears the song. */
+    DSB(SM_VOICE_REC(0xD7u)) = 1u;
+    DSD(DS_00105D5C) = 0xDEADu; DSD(DS_001028D4) = 0xD4D4D4D4u;
+    static const sm_step_t enter_esc[] = { { 0x1C0Du, 0u }, { 0x011Bu, 0u } };
+    sm_begin(enter_esc, 2u);
+    CHECK_EQ_INT((int)svc_sound_test(0xBCC4Cu), 1);
+    sm_end(2u, "SOUND TEST: Enter, Esc");
+    CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x02807ACC);
+    CHECK_EQ_INT((int)DSD(DS_001028D4), 0);
+    /* MUSIC TEST: Right, Enter (tune 1), Right, Enter (tune 2: the next edit
+     * starts from the last result), Esc. */
+    DSD(DS_00105D5C) = 0xDEADu; DSD(DS_001028D4) = 0xD4D4D4D4u;
+    static const sm_step_t music[] = {
+        { 0x4D00u, 0u }, { 0x1C0Du, 0u }, { 0x4D00u, 0u }, { 0x1C0Du, 0u }, { 0x011Bu, 0u } };
+    sm_begin(music, 5u);
+    CHECK_EQ_INT((int)svc_music_test(0xBCC5Cu), 1);
+    sm_end(5u, "MUSIC TEST: Right, Enter, Right, Enter, Esc");
+    CHECK_EQ_INT((int)DSD(DS_00105D5C), 0x0B800008);           /* tune 2 = voice 0x1D */
+    CHECK_EQ_INT((int)DSD(DS_001028D4), 0);
+    DSB(SM_VOICE_REC(0xD7u)) = s_d7; DSB(SM_VOICE_REC(0xEAu)) = s_ea;
+    DSD(DS_00105D5C) = s_5c; DSD(DS_001028C0) = s_c0; DSD(DS_001028C8) = s_c8;
+    DSD(DS_001028CC) = s_cc; DSD(DS_001028D4) = s_d4;
+    DSB(DS_001028D9) = s_d9; DSB(DS_001028DA) = s_da; DSB(DS_001028DB) = s_db;
+
+    /* (e) CONFIG OPTIONS end to end, and 0x2CACC's table argument */
+    const u32 s_740c = DSD(DS_0010740C);
+    DSD(DS_0010740C) = 0x0001D2D0u;                           /* 0x2FA01; [0x1D2D4] = 0xA2EB4 */
+    const u32 f0 = config_field_get(0x29u);
+    const u32 v0 = (f0 & ~0x000F8000u) | (2u << 16);           /* bit 15 clear, CREDITS = 2 */
+    config_field_set(0x29u, v0);
+    sm_begin(right_enter, 2u);
+    (void)svc_config_options_entry(0xBCC2Cu);
+    sm_end(2u, "CONFIG OPTIONS: Right, Enter");
+    CHECK_EQ_INT((int)config_field_get(0x29u), (int)(v0 + (1u << 16)));
+    /* Bit 15 set: the defaults are written before the edit (0x335C3..0x335D3;
+     * skipped, Right would wrap the seeded bit 15 to 0 and nothing would
+     * default). Nine Downs scroll to record 9 "Restore Factory Default?"
+     * (shift 0xF), Right sets bit 15, and the defaults are written after the
+     * edit (0x33680..0x33695). The window is then records 3..9. */
+    config_field_set(0x29u, v0 | 0x8000u);
+    static const sm_step_t scroll[] = {
+        { 0x5000u, 0u }, { 0x5000u, 0u }, { 0x5000u, 0u }, { 0x5000u, 0u }, { 0x5000u, 0u },
+        { 0x5000u, 0u }, { 0x5000u, 0u }, { 0x5000u, 0u }, { 0x5000u, 0u },
+        { 0x4D00u, 0u }, { 0x1C0Du, 0u } };
+    sm_begin(scroll, 11u);
+    (void)svc_config_options(SM_CONFIG_TABLE);
+    sm_end(11u, "CONFIG OPTIONS: nine Downs, Right, Enter");
+    CHECK_EQ_INT((int)config_field_get(0x29u), (int)SM_CONFIG_DEFAULTS);
+    ch_expect(2, 9, 0x19u, 0x1000u, "scrolled: the upper marker, glyph 0x19");
+    CHECK_EQ_INT((int)ch_cell(23, 9), 0);                      /* 9 - 3 = 6: the lower marker blanked */
+    ch_expect(3, 4, 'D', 0xF000u, "row 3 is record 3, Difficulty");
+    ch_expect(21, 4, 'R', 0x2000u, "record 9 highlighted on row 21");
+    ch_expect(22, 5, 'Y', 0x2000u, "record 9 value 1: string 0x202");
+    config_field_set(0x29u, f0);
+    DSD(DS_0010740C) = s_740c;
+}
+
 /* Runs after test_cfg_helpers, whose one actors_init() it relies on. The
  * menu screens advance the tick model and the key state; those, the menu
  * state DS_00107414..DS_00107453 and the credits dword are put back. */
@@ -7913,9 +8072,12 @@ int test_svcmenu(void)
     const u8 s_full = DSB(DS_001014FC);
     const u32 s_lat = DSD(CH_KEY_LATCH), s_time = DSD(CH_KEY_TIME), s_kw = DSD(CH_KEY_WORD);
     const u32 s_credits = DSD(DS_00105C00);
+    u8 s_cfg[0x100];                     /* the config fields and their dirty byte DS_00105DD8 */
+    memcpy(s_cfg, mem + DS_00105D88, sizeof s_cfg);
 
     sm_check_seam();
     sm_check_shell();
+    sm_check_options();
 
     memcpy(mem + DS_00107414, s_menu, sizeof s_menu);
     DSD(CH_TICK) = s_tick; DSD(DS_00101508) = s_isr;
@@ -7923,6 +8085,7 @@ int test_svcmenu(void)
     DSB(DS_001014FC) = s_full;
     DSD(CH_KEY_LATCH) = s_lat; DSD(CH_KEY_TIME) = s_time; DSD(CH_KEY_WORD) = s_kw;
     DSD(DS_00105C00) = s_credits;
+    memcpy(mem + DS_00105D88, s_cfg, sizeof s_cfg);
     return g_failures - before;
 }
 
