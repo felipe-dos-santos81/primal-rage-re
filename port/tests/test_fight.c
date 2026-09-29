@@ -38933,6 +38933,16 @@ static void p52_geo(u32 sd, u32 ta, u32 tb, int mode)
     DSB(tb + och) = (u8)vb;
 }
 
+/* sc_m2 for side 0's hooks on the p52 fixture: 0x3B298(1, slot 0's +0x5F = 0)
+ * returns 1 and sets slot 1's +0x43 bit 5 (slot 0's character's 0xA6728 word
+ * +2 = 0 lets the scan run; side 1's command word carries both facing bits). */
+static void p52_m2(void)
+{
+    sc_m2();
+    DSW(0x000A6728u + (u32)DSB(DS_001077B0 + 0x7Au) * 0x180u + 2u) = 0;
+    DSW(DS_001088E2) = 0x3000u;
+}
+
 static void check_p52_registered(void)
 {
     static const struct { u32 a; void (*f)(void); } t[] = {
@@ -38967,6 +38977,7 @@ static void check_p52_3f7f4(void)
         { 1u, 0, 1, 1 },   /* flag 1: the other slot's +0x74 */
         { 1u, 0, 2, 1 },   /* flag 4: the other slot's +0x54 == 2 */
         { 1u, 0, 3, 1 },   /* flag 8: the other slot's +0x42 bit 3 */
+        { 1u, 0, 5, 1 },   /* flag 0xE: 0x3B298 returns 1 (side 0 only) */
     };
     u32 sd, i, j;
     for (sd = 0; sd < 2u; sd++) {
@@ -38975,6 +38986,7 @@ static void check_p52_3f7f4(void)
             u8 f[16];
             u32 got;
             int want;
+            if (row[i].k == 5 && sd != 0u) continue;
             p52_seed(2u, 4u, 0);
             DSB(o + 0x42u) = row[i].k == 3 ? 8u : 0u;
             p52_geo(sd, 0x000C7720u, 0x000C772Au, row[i].mode);
@@ -38982,6 +38994,7 @@ static void check_p52_3f7f4(void)
             DSB(o + 0x54u) = 0u;
             if (row[i].k == 1) DSW(o + 0x74u) = 1u;
             if (row[i].k == 2) DSB(o + 0x54u) = 2u;
+            if (row[i].k == 5) p52_m2();
             for (j = 0; j < 16u; j++) f[j] = 2u;
             f[5] = 1u; f[1] = 0u; f[4] = 0u; f[8] = 0u; f[0xE] = 0u;
             sc_snap();
@@ -39014,6 +39027,8 @@ static void check_p52_3fd30(void)
         { 0x61u, 0, 1, 1 }, { 0x61u, 0, 2, 1 },
         { 0x61u, 0, 4, 1 },   /* flag 7: the other slot's +0x62 */
         { 0x61u, 0, 3, 1 },   /* flag 8: the other slot's +0x42 bit 3 */
+        { 0x61u, 0, 5, 1 },   /* flag 0xE: 0x3B298 returns 1 (side 0 only) */
+        { 0x61u, 1, 6, 1 },   /* +0x54 = 3: 0x36870's case 3 keeps +0x52/+0x53 */
     };
     u32 sd, i, j;
     for (sd = 0; sd < 2u; sd++) {
@@ -39023,6 +39038,7 @@ static void check_p52_3fd30(void)
             u8 f[16];
             u32 got;
             int want;
+            if (row[i].k == 5 && sd != 0u) continue;
             p52_seed(2u, 4u, 0);
             DSB(o + 0x42u) = row[i].k == 3 ? 8u : 0u;
             p52_geo(sd, 0x000C7742u, 0x000C774Cu, row[i].mode);
@@ -39034,6 +39050,8 @@ static void check_p52_3fd30(void)
             if (row[i].k == 1) DSW(o + 0x74u) = 1u;
             if (row[i].k == 2) DSB(o + 0x54u) = 2u;
             if (row[i].k == 4) DSB(o + 0x62u) = 1u;
+            if (row[i].k == 5) p52_m2();
+            if (row[i].k == 6) DSB(s + 0x54u) = 3u;
             sc_snap();
             if (row[i].v61 == 0u) {
                 want = 1;
@@ -39063,6 +39081,11 @@ static void check_p52_3fd30(void)
                 CHECK_EQ_INT((int)DSB(r + 0x61u), 0x61);
             } else {
                 CHECK_EQ_INT((int)DSB(r + 0x61u), 0);
+                if (row[i].k == 5) CHECK_EQ_INT((int)(DSB(o + 0x43u) & 0x20u), 0x20);
+                if (row[i].k == 6) {
+                    CHECK_EQ_INT((int)DSB(s + 0x52u), 4);
+                    CHECK_EQ_INT((int)DSB(s + 0x53u), 4);
+                }
             }
         }
     }
@@ -39555,10 +39578,11 @@ static void check_p52_21_hooks(void)
 
         /* 0x21B74 */
         for (i = 0; i < sizeof cnt / sizeof cnt[0]; i++) {
-            for (k = 0; k < 6u; k++) {
+            for (k = 0; k < 8u; k++) {
                 u8 f[16];
                 u32 want, got;
                 int inwin = cnt[i] >= 1u && cnt[i] <= 9u;
+                if (k == 7u && sd != 0u) continue;
                 p52_seed(1u, 3u, 0);
                 DSB(o + 0x42u) = 0u;
                 p52_geo(sd, 0x000A81FAu, 0x000A8204u, k == 1u ? 1 : k == 5u ? 2 : 0);
@@ -39566,6 +39590,12 @@ static void check_p52_21_hooks(void)
                 if (k == 2u) DSB(o + 0x54u) = 2u;
                 if (k == 3u) DSW(o + 0x74u) = 1u;
                 if (k == 4u) DSB(o + 0x62u) = 1u;
+                if (k == 6u) {                  /* flag 0xD: 0x39EFC(other) holds */
+                    DSB(o + 0x53u) = 0x0Au;
+                    DSD(o + 0x10u) = 0x00039CC8u;
+                    DSB(o + 0x58u) = 4u;
+                }
+                if (k == 7u) p52_m2();          /* flag 0xE */
                 DSW(DS_00104764 + sd * 2u) = cnt[i];
                 DSW(DS_00104764 + (1u - sd) * 2u) = 5u;
                 for (j = 0; j < 16u; j++) f[j] = 2u;
