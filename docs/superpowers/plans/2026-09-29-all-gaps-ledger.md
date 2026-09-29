@@ -20,7 +20,7 @@ used capstone on that image. Callers and callees come from
 |---|---|---|
 | `0x34B6C` (541 B, 21 callees) is a large unported cluster | Its body is already ported as `fight_health_sync` (`fight.c:2066`). All 21 callees are ported. The counter misses it because the header is `/* ---- 0x34B6C the health sync` (`fight.c:2048`), which `port_progress.py`'s `/\* 0x` regex does not match. | `port_progress.py --unported` + `prage.calls.csv` (§B); `fight.c:2048/2066` |
 | `0x501A3` (2944 B) is a "large audio/game-port candidate" | It is the VGA dirty-dword blit. `0x501B0 mov ebx,0xa0000`, and its only stores go through EBX, the aperture. Its callers are the master loop `0x255CC` and `0x2EA78`. | §B row, §F K9 |
-| `0x50D23` (4405 B) is an audio/game-port candidate | It is the movie dirty-rectangle blit. `0x50D3E add edi,[0xe87a0]`, `0x50D44 add esi,[0xe87a4]` and `0x50D4A add ebx,0xa0000`. It stores through **both** EBX (the aperture) **and** EDI (the `DS_000E87A0` buffer in `mem[]`). Its only caller is the movie player `0x1C740`. | §B row |
+| `0x50D23` (4405 B) is an audio/game-port candidate | It is the movie dirty-rectangle blit. `0x50D3E add edi,[0xe87a0]`, `0x50D44 add esi,[0xe87a4]` and `0x50D4A add ebx,0xa0000`. It stores through **both** EBX (the aperture) **and** EDI (the `DS_000E87A0` buffer in `mem[]`). Its only caller is the movie player `0x1C740`. **Corrected (record §K10.6):** the EDI buffer is the aperture's shadow, zeroed by 0x52106(0) at 0x1C873 before any reader, so the function is host-owned. | §B row |
 | `game_frame`: "§47-B listed 39 unported, many since ported" | **All 52 table entries are wired** in `flow.c` `game_frame`'s switch. See §D. | §D |
 | Prose named gaps: 28 comment sites in `port/src` | 32 in `port/src` + 3 in `port/tests` = 35, folded into 27 rows; 12 rows are wholly or partly stale. | §E |
 | `menu.c`: "`0x2EA74` is `xor eax,eax; mov eax,eax`, a no-op" (`menu.c:172/282/294`) | **Wrong.** `0x2EA74` has no `ret`. Bytes `31 C0 8B C0` fall through into `0x2EA78` (`push ebx` …), so `0x2EA74` is `config_screen_wait(0)`: one presented frame, then two tick waits with the BIOS key drain. It has 18 raw `call` sites: `0x2D00C`, `0x2FA61`, `0x2FE2F`, `0x2FFF1`, `0x3074B`, `0x30B20`, `0x30B45`, `0x30E5E`, `0x31275`, `0x31290`, `0x313F5`, `0x324E1`, `0x32619`, `0x32E31`, `0x32F2D`, `0x33066`, `0x33242`, `0x33290`. | capstone at `0x2EA70..0x2EAB0` |
@@ -113,7 +113,7 @@ them.
 
 | addr | size | callers: counter / raw sites (site@owner) | callees | reach | class | cluster | what it is (raw) |
 |---|---:|---|---|---|---|---|---|
-| `0x50D23` | 4405 | 1 / 1: `1C82D`@`1C740`P | — | yes (movie player) | port (partial) / host-owned (aperture half): **own plan** | K10 | Movie dirty-rect blit. It stores to the aperture (EBX = `0xA0000`+off) and to the `DS_000E87A0` buffer (EDI), so the EDI half is `mem[]` state. |
+| `0x50D23` | 4405 | 1 / 1: `1C82D`@`1C740`P | — | yes (movie player) | **closed: host-owned**, §K10 (record 2026-09-29-k10-movie-blit-derivations.md) | K10 | Movie dirty-rect blit. It stores to the aperture (EBX = `0xA0000`+off) and to the `DS_000E87A0` buffer (EDI), so the EDI half is `mem[]` state. |
 | `0x501A3` | 2944 | 2 / 2: `256A5`@`255CC`P, `2EAD1`@`2EA78`P | — | yes | **closed: host-owned**, §K9.1 | K9 | Dirty-dword blit `E87A4` vs `E87A0` into `0xA0000` (`0x501B0`). All its stores go through EBX. `gfx_present` replaces it (`gfx.c:152`, `config.c:510`). |
 | `0x34B6C` | 541 | 1 / 1: `357FC`@`35658`P | 21, all P | yes | **closed**: header, §K1.1 | K1 | Body is `fight_health_sync` (`fight.c:2066`). The header `/* ---- 0x34B6C` is not counted. |
 | `0x51F72` | 404 | 3 / 3: `52119`, `52123`, `52151`, all @`52106`P | — | yes (boot/movie) | **closed**: `gfx_fill_screen`, §K2.4 | K2 | Unrolled 0xFA00-byte dword fill of `[EAX]` with EDX (`0x51F78..`). `0x52106` uses it on the two `mem[]` buffers and on the aperture; the aperture call stays `g_aperture` (`PORT:`, aperture rule). |
@@ -423,7 +423,7 @@ size gate is ≥ ~4 KB or ≥ ~20 new functions, and such a cluster is marked
 | 14 | K13 FX-7.4 | case-13 body `0x4A24A..0x4A2F4` (170 B), case-14 body `0x4A346..0x4A412` (204 B), mode-9 block `0x4A487..0x4A58F` (264 B), type-8 held body (not measured) | ≥638 | port (inline blocks of `0x49C78`) | Task 5 — **closed** (Task 5b, `2026-09-29-k13-fx74-derivations.md`). Measured: case 13 `0x4A24A..0x4A345` (252 B), case 14 `0x4A346..0x4A45B` (278 B), shared tail `0x4A45C..0x4A467`, mode-9 block `0x4A476..0x4A590` (266 B from `0x4A487`), type 8 `0x4A08A..0x4A114` (139 B, already ported). |
 | 15 | K8b UPD-BONUS | update entries 15 `0x260BC` and 16 `0x26194` | n/a | port (§E-4) | Task 5 — **closed** (Task 5a, record §B8; plus the K8d setters `0x37EA0`/`0x24078`/`0x45D58`, record §D8) |
 | 16 | E-OPEN | §E-1, 14, 21, 24, 25, 27 | — | derive or re-scope | Task 5 |
-| 17 | K10 MOVIE-BLIT | `0x50D23` | 4405 | **own plan**: the EDI `mem[]` half is port, the aperture half is host-owned | Task 6 |
+| 17 | K10 MOVIE-BLIT | `0x50D23` | 4405 | **own plan**, **closed: host-owned** (§K10; the EDI half is a dead aperture shadow, §K10.3) | Task 6 |
 | 18 | K11 MENU-CB | `0x2F464`, `0x319B0`, `0x31A78` + 11 non-Ghidra service-menu callbacks (§B.2) and their sub-menus | 266 + n/a | **own plan** (the callback code spans `0x2D00C..0x33290` in the raw `call` sites) | Task 6 |
 | 19 | K12 VOICE-WIRE | about 180 "not wired (record §45-A)" sites | — | **own plan** (≥ 20 sites). Needs proof of no RNG/render effect per site. | Task 6 |
 | 20 | STALE | §E rows 2, 3, 7, 8, 9, 10, 11, 12, 19, 20, 23, 26 | — | comment fixes | Task 6 |
@@ -471,4 +471,4 @@ classification row is reverted.
 
 Explicitly **not** classified host-owned, and why:
 - `0x51F72`: two of its three uses fill `mem[]` buffers.
-- `0x50D23`: it stores the `E87A0` front buffer in `mem[]` through EDI.
+- `0x50D23`: superseded. It is classified host-owned by record §K10.5 (the EDI stores are the aperture's shadow, dead at `0x1C873`, §K10.3). The classification was directed by the all-gaps controller's K10 task brief.
