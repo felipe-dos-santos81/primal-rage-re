@@ -70,6 +70,8 @@ frame loop is reached through `0x20C10`:
   DAT_000EF6DC++                          frame counter
   2 player records at DAT_001077E0, stride 0x94
   process table 1: PTR_FUN_000A8644 + bitmask _DAT_00104AE8 (update)
+  int 16h key loop 0x24CFE..0x24EE7 (latch, Enter/ESC/space, Alt keys)
+  mode switch on DAT_00104B00 (jump table 0x24B8C); mode 3 runs:
   0x11D04   STATE MACHINE: switch(DAT_000F0A64) cases 1..9, transitions via
             DAT_000F0A64 / DAT_000F0A6C / DAT_000F0A6A / DAT_000F0A6F / DAT_000F0A72
   0x11000   per-state render/play dispatch (13-case switch)
@@ -836,7 +838,31 @@ selector.
   action — the raw's `0x4F644` precedes the frame counter and the process
   tables — so the masks are fresh for `game_state_step`.
   `0x50146`'s repeat-timer setter is `input_repeat_set` (record §49-X); its one
-  caller is mode `0x27`'s arm, which nothing in the port enters.
+  caller is mode `0x27`'s arm, which Enter in mode 3 enters (below).
+* **The int 16h keyboard loop** — `0x24CFE..0x24EE7`, inside `0x24C5C` after
+  the update table and before the mode switch; ported as `game_key_loop`
+  (`flow.c`, called by `game_frame`; records §53-A, §55-A). Until the BIOS
+  queue is empty (AH = 1 peek, AH = 0 read; the port's queue is `input.c`,
+  fed by `host.c`), each key stores the latch `DS_00105F30` (the ascii byte,
+  or the scan code when it is 0), then, with the mode word `DS_00104B00` read
+  again per key:
+  - mode `0x1E` and a non-zero ascii byte: `0x20860` (`nameentry_key`);
+  - Enter (ascii `0xD`) in mode 3: mode `0x27`, the service menu (`0x24EE0`);
+  - ESC (`0x1B`): mode 3 asks `QUIT TO DOS? Y/N` (`0x249F0(0)`, yes sets the
+    quit flag `DS_000A81A8`); mode `0x27` nothing; any other mode asks
+    `ABANDON CONQUEST? Y/N` (`0x249F0(1)`, yes is `longjmp(0x1044F4, 1)` back
+    to `0x20C10`'s `setjmp`; the port sets the quit flag instead, spec §7);
+  - space (`0x20`), except in modes 3 and `0x27` and in mode `0x17` under the
+    hook `0x10E80`: the pause — `DS_00104B22 = 1`, `0x1D250`, `- PAUSED -`
+    (string `0x1E8`) centred on row `0xF`, one frame (`0x2EA78(-1)`), then
+    keys are read (not latched) until another space, the text released,
+    `0x1D270`, `DS_00104B22 = 0`;
+  - an extended key (ascii 0), in every mode: scan `0x10` (Alt-Q)
+    `0x249F0(0)`, `0x1F` (Alt-S) the sample pause toggle `0x1D220`, `0x32`
+    (Alt-M) the music pause toggle `0x1D1B0`, `0x24` (Alt-J) the joystick
+    calibration `0x5004A` (host-owned: PIT and game-port timing, not ported).
+  Every other key only latches. `game_loop` no longer tests ESC; a window
+  close still quits there, and ends a blocking prompt or pause.
 * **Credit layer** — `port/src/game/config.c` ports `0x2CAA8`
   (`config_not_free_play`), `0x2CA2C` (`config_has_credit`), `0x2C060`
   (`config_credit_ready`), `0x2CA48` (`config_credit_take`), `0x2CA7C`
