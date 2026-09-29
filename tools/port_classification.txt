@@ -84,3 +84,4 @@
 2D498 deferred record-§K9.10 (k1-k9 derivations: bounds-checked EEPROM-image byte store, only caller 0x2D612 in the declared no-op 0x2D4EC)
 32B94 deferred record-§K9.11 (k1-k9 derivations: 0x2DAE4(0xE,1) on AL bit 0; only callee the deferred 0x2DAE4)
 32BB0 deferred record-§K9.12 (k1-k9 derivations: two 0x2DAE4(0x1B+c,1) audit adds; only callee the deferred 0x2DAE4)
+50D23 host-owned record-§K10 (k10 movie-blit derivations: movie dirty-rect blit, E87A4 vs E87A0 dwords into the aperture (0x50D4A add ebx,0xa0000) and the E87A0 shadow (EDI); the shadow is zeroed by 0x52106(0) at 0x1C873 before any reader; only caller 0x1C82D; movie_present/gfx_present replaces it, smk oracle 120/120 + 41/41, test_movie_blit)
