@@ -6317,7 +6317,7 @@ u32 sound_voice(u32 id)
 }
 
 #define SND_STAGE_VOICES 0x000C9888u   /* no symbols.h name: 0x4F714's word table */
-#define SND_SLOT0_63     0x00107813u   /* no symbols.h name: slot 0's +0x63 byte */
+#define SND_SLOT0_63     DS_00107813   /* slot 0's +0x63 byte */
 
 /* 0x4F714 — record §K6.1. The stage's voice: `mov ax,[eax*2+0xc9888]; and
  * eax,0xffff; jmp 0x2C3FC`, a tail jump, so AL is the dispatcher's. EAX is the

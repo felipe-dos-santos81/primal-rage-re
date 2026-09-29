@@ -1295,8 +1295,9 @@ static int ai_pred_46794(u32 side)
     return DSB(slot + 0x52u) == 4u;
 }
 
-/* 0x467DC. +0x54 == 0 (0x467F2), +0x53 == 0 (0x467FD), +0x52 == 1 (0x4680B),
- * then 1 when the 0x1A5D4 command-sign test is zero (0x4681E je 0x46825). */
+/* 0x467DC — record §K1.4 (2026-09-29-k1-k9-derivations.md). +0x54 == 0
+ * (0x467F2), +0x53 == 0 (0x467FD), +0x52 == 1 (0x4680B), then 1 when the
+ * 0x1A5D4 command-sign test is zero (0x4681E je 0x46825). */
 int ai_pred_467dc(u32 side)
 {
     u32 slot = DS_001077B0 + side * 0x94u;

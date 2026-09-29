@@ -534,7 +534,7 @@ static void check_sound_pause_volume(void)
  * DS_00105D5C name the case-1 handle that played: 0xDF's 0x02806EC8 or 0x23's
  * 0x02805B88. The data object is snapshotted: the result, the slots' +0x63
  * bytes, DS_001088F2 and (last) 0x23's record are seeded. */
-#define VW_SLOT63(k) (0x00107813u + (u32)(k) * 0x94u)   /* no symbols.h name */
+#define VW_SLOT63(k) (DS_00107813 + (u32)(k) * 0x94u)
 
 static void vw_match(u32 r, u8 own, u8 other, u8 f2)
 {
@@ -1150,13 +1150,6 @@ int test_flow(void)
     CHECK(gfx_dac[1][0] || gfx_dac[1][1] || gfx_dac[1][2],
           "title palette reached gfx_dac");
 
-    /* A mode other than 3 must not run the state machine at all. 0x16 is a
-     * still-unported named gap (`game_frame`'s generic no-op case list) as
-     * of record §49-F; mode 7 no longer is (game_mode_07_step, record
-     * §49-E) — it now runs the fight-frame's unconditional fight_slot_pass/
-     * fight_effects_pass chain, which this title-state fixture's actor/
-     * effects-list state was never built to tolerate (it hangs in
-     * fight_4b69c's trample walk). */
     /* Record §K3.2: 0x24C5C calls 0x38990 at 0x24CC8 every frame, before the
      * frame counter and the update table, in every mode. A mode-1 frame (the
      * bare `ret` 0x29B70) must derive DS_00107A3C/DS_00107A4A from the seeded
@@ -1177,6 +1170,13 @@ int test_flow(void)
         DSW(DS_00107A3C) = s3c; DSW(DS_00107A4A) = s4a;
         DSW(DS_00107A4E) = s4e;
     }
+    /* A mode other than 3 must not run the state machine at all. 0x16 is a
+     * still-unported named gap (`game_frame`'s generic no-op case list) as
+     * of record §49-F; mode 7 no longer is (game_mode_07_step, record
+     * §49-E) — it now runs the fight-frame's unconditional fight_slot_pass/
+     * fight_effects_pass chain, which this title-state fixture's actor/
+     * effects-list state was never built to tolerate (it hangs in
+     * fight_4b69c's trample walk). */
     DSD(DS_00104B00) = 0x16;
     game_frame();
 
