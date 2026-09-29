@@ -760,11 +760,12 @@ keeps bit 15. The screen then shows the upper marker `0x19` at (9, 2), a blank
 lower marker (9 - 3 = 6), record 3 "Difficulty" on row 3 in `0xF000`, record 9
 highlighted on row 21 and "Yes" (`0x202`) at (5, 22) in `0x2000`.
 
-**Unobservable here, noted rather than claimed:** the Up/Down hold check
-`0x2D1BE..0x2D1CF` (a scripted key latches Left or Right only, and the pad
-level is 0, so it never skips a pass); the titles and the four CONFIG help
-lines (drawn, not asserted); the `0x32700` fallback; the `0x47370` reload
-(the named gap); the second `0x2CC8F` empty test.
+**Not tested:** the titles and the four CONFIG help lines (drawn, not
+asserted); the `0x32700` fallback (no raw caller passes 0); the `0x47370`
+reload (the named gap). **Unobservable:** the second `0x2CC8F` empty test,
+which repeats `0x2CD6A`'s. (Correction, §K11.4: this line first called the
+Up/Down hold check `0x2D1BE..0x2D1CF` unobservable. It was only not tested;
+§K11.4 tests it through the harness's `sm_held`.)
 
 **Frame budget.** 29 scripted frames (2 + 1 + 1 + 2 + 3 in (c), 2 + 5 for
 SOUND/MUSIC, 2 + 11 in (e)), 37 across K11 so far with cycle 1's 8.
@@ -781,7 +782,7 @@ fail the suite:
 | 4 | Esc with CL = 1 returns the bits | 1, then the harness exit (SOUND TEST never leaves) |
 | 5 | `0x2C9CC` indexes `0xBC9A0` | 3 |
 | 6 | `0x33578` skips the bit-15 default before the edit | 3 |
-| 7 | `0x2CACC` reads `+0` | SIGSEGV (exit -11): `[0x1D2D0]` = 0 selects the `0x32700` fallback |
+| 7 | `0x2CACC` reads `+0` | SIGSEGV (exit -11): `[0x1D2D0]` = 0 selects the `0x32700` fallback (since §K11.4 the test's scratch record makes it fail 2 checks instead) |
 | 8 | `0x33578` skips the bit-15 default after the edit | 1 |
 | 9 | the restore-key branch dropped | 1 |
 | 10 | `0x2CC74`'s row bound `0x13` | 3 |
@@ -805,3 +806,255 @@ with them gives the same `shasum` list over 8000 `.idx` and 8000 `.pal` files.
 The header grep counts 1 for each of the nine addresses. `tools/port_progress.py`
 is unchanged at `762 1203 63` / `726 730 99`: none of the nine is a Ghidra
 function (§0.3).
+
+## §K11.4 Cycle 3: ADJUST VOLUME and 2 PLAYER HANDICAP (executor, Task 4)
+
+Five functions, re-read from the fixed-up image (`k11_dx.py`, dump
+`<scratchpad>/k11_t4_dis.txt` and `k11_t4_dis_a.txt`); data from
+`<scratchpad>/k11_t4_data.py`.
+
+**(a) `0x2F464`** (`text_number_cont`): `push esi; sub esp,0x14; mov esi,ecx;
+mov ecx,ebx; mov ebx,edx; mov edx,esp; call 0x2EFD4` then `mov ebx,esp; mov
+edx,-1; mov ecx,esi; xor eax,eax; call 0x2F198`. So EAX = value, EDX = width,
+EBX = pad, ECX = mode, as the plan says; the number is drawn at col 0, row -1,
+which `0x2F198` turns into the cursor `DS_00105F34` (both words reloaded), and
+the cursor moves past it. A pad-1 "  123" draws no cell for the two blanks.
+
+**(b) The layout bytes.** The image holds, from `0xBD440`:
+`64 65 66 00 | 05 0D 13 | 03 0B 11 | 00 | 78 | 77 00 00 00 | 78 00 00 00 |
+79 00 00 00 | 00 | 04 0C | 02 0A`. **Correction (raw wins):** the plan names
+`0xBD441..0xBD459` as the bytes, but every read is a dword three bytes below
+the byte followed by `sar 0x18` (the WATCOM signed-char load): `mov
+edx,[0xBD441]; sar edx,0x18` (`0x30932`) is the byte at `0xBD444`. The port
+keeps the raw form (`SVC_HI8(a)` = `(s32)DSD(a) >> 24`). The bytes are:
+
+| byte | value | read as | meaning |
+|---|---|---|---|
+| `0xBD444..0xBD446` | 5, 0xD, 0x13 | `[0xBD441..0xBD443]` | the music, effects and voice bar rows (`0x30788`) |
+| `0xBD447..0xBD449` | 3, 0xB, 0x11 | `[0xBD444..0xBD446]`, `[esi+0xBD444]` | their label rows; the voice text is on `0xBD449` + 5 = 0x16 |
+| `0xBD44C/50/54` | 0x77, 0x78, 0x79 | dwords | "GAME MUSIC", "GAME SAMPLES", "ATTRACT RATIO" |
+| `0xBD458` | 0 | byte | the mute flag: `mov [0xBD458],cl` (CL = 1, `0x30E25`), `mov [0xBD458],bh` (BH = 0, `0x30E49`), `cmp byte [0xBD458],0` (`0x30E30`) |
+| `0xBD459/0xBD45A` | 4, 0xC | `[0xBD456]`, `[0xBD457]` | the handicap bar rows |
+| `0xBD45B/0xBD45C` | 2, 0xA | `[0xBD458]`, `[edi/esi+0xBD458]` | the handicap label rows |
+
+The handicap labels are the code-object dwords `0x30720` = `0x17` "LEFT
+PLAYER" and `0x30724` = `0x16` "RIGHT PLAYER", copied to `[esp+0x30]` by two
+`movsd` (`0x31141..0x3114B`). The stack bytes `[esp+0x1C..0x1E]` = `0xFF`
+(`0x30872..0x30881`) are read the same way (`[esp+0x19..0x1B]`, `sar 0x18`):
+the three bars' label row is -1, so `0x30788` draws no number.
+
+**(c) `0x308B7..0x308CC`.** `0x2C8F0(-1)` is `attract_config_volumes_unscaled`.
+Its EAX is EDX = field `0x35` as read at `0x2C902` (`0x2C9B1 mov eax,edx`;
+`0x1CAB8`, `0x2D974` and `0x1CED4` preserve EDX), so the port's function now
+returns `u32` (the fight callers still discard it). **Correction (raw wins):**
+the plan says field `0x35` reads -1 when unset and asks for a test of the
+negative arm. Field `0x35`'s descriptor `[0x2D300 + 0x35*4]` = `0xE0C0` is 4
+nibbles (16 bits) at bit 131 with no trailing byte, and `0x2D974` returns -1
+only for a field above `0x3E` (`0x2D978..0x2D97D`). So field `0x35` reads
+0..0xFFFF, the `jge` at `0x308CA` is always taken, and the arm `0x308CC`
+(`0x30728`, then EAX = -1 at `0x308D1`) is **not reachable in the raw**. It
+is ported as written and left untested; `0x30728` itself is tested directly.
+The same holds for the `== -1` tests inside `0x2C8F0` and for field `0x37`
+(`0x62C0`: 2 nibbles, 0..0xFF), whose `jl`/`> 0xFF` clamp at `0x308E7..0x308F2`
+never fires.
+
+**(d) `0x30864`.** Locals: `[esp]` music (field `0x35`), `[esp+4]` effects
+(field `0x37`), `[esp+8]` voice (field `0x2A` & 3, read first at `0x308A0`),
+ESI the selected row (0), EDI the redraw flag (**1 from `0x308BC`**, so the
+first loop pass redraws even with no key), EBP the voice bar `max(music,
+effects) * voice / 3` (`imul`/`idiv`, recomputed every pass at
+`0x30C18..0x30C48`). Before the loop: the scale string `0x7B` at (4, 9) in
+`0xF000`; the three bars; `0x2F388(5, 0x11, 6)` (the row is `0xBD449`
+without the `+ 5` the loop uses, as the raw has it); voice 0 or 3 draws
+"FULL" (`0x7D`) when the bar is non-zero, else "MUTE" (`0x7E`), at (5, 0x16),
+otherwise `0x2F434(5, 0x16, voice, 2, pad 3, 0xF000)`, "/" (`0x80B60`) through
+`0x2F41C`, and `0x2F464(3, 2, pad 3, 0xF000)`, which makes "1/3" or "2/3";
+the three labels centred on rows 3, 0xB, 0x11 in `0xF000`; `0x6F`, `0x7C`,
+`0x209`, `0x70` on rows 0x18, 0x19, 0x1B, 0x1C in `0x1000`; the title `0x20C`
+on row 0 in `0xF002`; one `0x2EA74`; `sound_voice(3)` (case 4: the music
+restart, `DS_00105D5C = 0x21`); `0x50146(0xF000F000, 0x1E, 0xF)`. Each pass:
+`0x2EA74`, `keys = 0x2EDE0(0xF300F000, 1)`; Esc leaves. Down (`0x40004000`)
+is `sel < 2 ? sel + 1 : 0`, Up (`0x80008000`) `sel > 0 ? sel - 1 : 2`, both
+tested in the same pass. Left: the voice is decremented and floored at 0; a
+volume is `v >= 8 ? v - 8 : 0` (`jl`). Right: the voice is incremented and
+capped at 3; a volume is `v <= 0xF7 ? v + 8 : 0xFF` (`jg`). Each sets EDI.
+With EDI set: the labels, the selected one in `0x3000` and the others in
+`0x4000`; for the voice row, `0x2F388(5, 0x16, 0x14)` and the voice text
+again (width ECX = ESI = 2); the three bars; then the volumes: row 0
+`0x1CAB8(music >> 1)`, row 1 `0x1CED4(effects >> 1)`, row 2 both scaled
+`(v * voice / 3) >> 1`. Then **mute** (`0x30E07..0x30E4F`): music 0, or row 2
+with voice 0, runs `sound_voice(0x22)` and sets `0xBD458`; otherwise a set
+`0xBD458` runs `sound_voice(3)` and clears it. **Exit** (`0x30E54..0x30EA8`):
+`sound_voice(0x100)`, `0x2EA74`, `config_voice_gate(-1)` (its `sound_voice(0)`
+does nothing), `0x2DA0C(0x35, music)`, `0x2DA0C(0x37, effects)`,
+`0x2DA0C(0x2A, (0x2D974(0x2A) & ~3) | voice)` (`and al,0xFC`), EAX = 0.
+
+**`0x30FE8`** (EAX value `[esp+0xC]`, EDX row `[esp+8]`): the value is clamped
+signed to 0x32..0x96 (`jge`/`jle`). From 100 up (`0x31029 jl`), "    "
+(`0x80B64`) is released at column 0x10 on rows + 4 and + 5 and the number is
+`0x2F434(0x12, row + 4, v, 3, pad 2, 0xC002)`; below 100 the same at columns
+0x12 and 0x14. Then glyph 0x13 on rows row..row + 2 for i = 0x32..0x96 step 5
+from column 0xB: `0x3000` while i < v, `0xF000` at i = v, `0x1000` above.
+**Correction:** §0.5's "four `0x2F280` releases clear the row first" is two
+releases on each path, and the number comes between them and the bar.
+
+**(e) `0x31138`.** `0x1AEE0` packs the key-config record into `[esp]`; the
+handicap values are its words `+0x24`/`+0x26` (the mirror bytes
+`DS_001014D0`/`DS_001014D2`), copied to `[esp+0x28]`/`[esp+0x2C]`. The rows
+are drawn through `0x30FE8` on rows 4 and 0xC, the title `0x1F2` on row 0 in
+`0xF002`, the labels on rows 2 and 0xA in `0xF000`, and `0x6C`, `0x71`,
+`0x209`, `0x70` on rows 0x17, 0x18, 0x1A, 0x1B in `0x1000`. Then one
+`0x2EA74`, EDI = 0 (the side) and `0x50146`. **EBP is not initialised**: it
+is the caller's. The only caller is `menu_run` (`0x2FA40`), whose EBP is its
+EDX, the stride 0x10 (`0x2FA48 mov ebp,edx`; nothing else writes EBP before
+`0x2FD9E call [edx+8]`). So the first pass redraws, and the port starts the
+flag at 1. Each pass: Esc leaves; Enter reloads both values from the packed
+record (`0x312B1..0x312CF`); Up or Down toggles the side (`xor di,1`); Left
+is `v >= 0x37 ? v - 5 : 0x32`, Right `v <= 0x91 ? v + 5 : 0x96` (`jg`).
+The redraw draws the labels (`0x3000` selected, `0x4000` not) and both rows.
+**Exit:** `DS_00107468` = left (`0x313CE`), `DS_0010746C` = right (`0x313D7`),
+both stored back into the record's `+0x24`/`+0x26` words, `0x1AE28(record)`
+(which copies their low bytes to `DS_001014D0`/`DS_001014D2`), `0x2EA74`. EAX
+is `0x2EA78`'s -1 (`0x2EB6E..0x2EB74` leaves at EAX = -1); `menu_run`
+discards it (`0x2FDA1 mov eax,1`). The raw's stack record is a `PORT:` scratch
+at `0x03900040` (`SVC_KEYREC_TMP`, beside `config.c`'s `CFG_HISCORE_TMP`).
+
+**Values the tests pin** (`sm_check_volume`; the two sound modules are
+stubbed as in §K11.3 by zeroing `DS_001028C0`, `DS_001028C8`, `DS_001028DA`,
+`DS_001028DB`):
+
+* `0x2F464`: "  123" (width 5, pad 1) with the cursor at (3, 10) leaves
+  columns 10 and 11 empty, '1', '2', '3' at 12..14 in `0x1000`, and the
+  cursor at column 15, row 3. The row equals its seed because `0x2F198`
+  reloads it; the check still fails under mutation 1 (row 0 is written).
+* `0x30728`: a pass without a key, then Esc (2 frames); the 26-character
+  string centred at column 8 on row 6 is released (columns 8 and 33 empty).
+* `0x2C8F0(-1)` with field `0x35` = 0x40 returns 0x40 and sets the music
+  volume to 0x20.
+* ADJUST VOLUME A (music 0x40, effects 0x80, field `0x2A` = 9): Up, Right,
+  Down, Right, Esc (7 frames). Up wraps row 0 to 2, Right makes the voice 2
+  (the effects volume becomes `(0x80 * 2 / 3) >> 1` = 0x2A), Down wraps 2 to
+  0, and Right steps music 0x40 to 0x48 unclamped (volume `0x48 >> 1` =
+  0x24; the music bar covers cells 0..9 of row 5). Fields: `0x2A` = 0xA (bit
+  3 kept), `0x35` = 0x48. The mute byte (0x5A) is cleared by the first pass,
+  `DS_00105D5C` = 0x21, `DS_001028D4` = 0 (the exit's `0x100`), the repeat
+  mask is `0xF000F000`. The screen: "GAME MUSIC" at (3, 16) in `0x3000`,
+  "ATTRACT RATIO" at (0x11, 15) in `0x4000`, "2/3" at (0x16, 5..7) in
+  `0xF000`, and the voice bar 0x55 covers cells 0..10 of row 0x13 (column 15
+  `0x1000`, column 16 `0xF000`).
+* B (music 0x40, effects 0xFC): Left, Down, Right, Esc (6 frames): music
+  0x38 (the unclamped Left step), effects clamped to 0xFF, volumes 0x1C and 0x7F, "GAME SAMPLES"
+  selected, "1/3" from the pre-loop draw.
+* C (music 5): Left, Esc (4 frames): music clamped to 0, which mutes (the
+  byte becomes 1) and sets the music volume to 0.
+* D: a pass with no key, then Esc (4 frames): the first pass redraws ("GAME
+  MUSIC" in `0x3000`) and clears the mute byte 0x5A.
+* `0x30FE8(100, 4)`: (8, 0x10) and (8, 0x11) released, the number from
+  (8, 0x12), bar cells 0..9 in `0x3000`, cell 10 (column 0x15) in `0xF000`,
+  cells 11..20 in `0x1000`, column 0x20 empty. `0x30FE8(0x10, 4)` clamps to
+  0x32: released from 0x12, the number from 0x14, cell 0 `0xF000`.
+  `0x30FE8(0x200, 4)` clamps to 0x96: cell 20 `0xF000`, cell 19 `0x3000`.
+* 2 PLAYER HANDICAP A (0x93, 0x36): Right, Down, Left, Esc (6 frames):
+  `DS_00107468` = 0x96, `DS_0010746C` = 0x32 (both clamped), the mirror
+  bytes the same, EAX = -1, "RIGHT PLAYER" selected. F (0x64, 0x50): Left,
+  Down, Right, Esc (6 frames): the unclamped steps give 0x5F and 0x55, whose
+  bars put `0xF000` on cell 9 (column 0x14, row 4) and cell 7 (column 0x12,
+  row 0xC). B (0x64, 0x50): Left,
+  Enter, Esc (5 frames): Enter restores 0x64. E: a pass with no key, then Esc
+  (4 frames): "LEFT PLAYER" turns `0x3000`. The suite's own key record at
+  `[DS_00101514]+0x2D4..+0x2EF`, seeded with 0xA5, is unchanged afterwards:
+  `0x1AE28` writes the harness's `MT_LAYOUT` record instead.
+
+**What the arrows pin.** ADJUST VOLUME: Down (the step and the 2 -> 0 wrap),
+Up (the 0 -> 2 wrap), Left (the unclamped music step and the music clamp at
+0), Right (the unclamped music step, the effects clamp at 0xFF, the voice
+step). 2 PLAYER HANDICAP: Down (the side toggle), Left and Right (the
+unclamped steps and both clamps), Enter (the restore).
+
+**Not tested:** the unreachable `0x308CC` arm (above); the voice clamps
+(`v2 < 0`, `v2 > 3`); "FULL"/"MUTE" (voice 0 or 3); the title and help lines
+of both screens; the `0x2F388` releases of the voice row; Up on the handicap
+screen (Down is tested, and both run the same `xor`); Up without a wrap on
+ADJUST VOLUME (the `sel - 1` step); the unclamped Left step on the effects
+row (the music row's is tested; both run the same code). **Unobservable:**
+`config_voice_gate(-1)` at the exit (its `sound_voice(0)` returns at once).
+
+**Cycle-2 review items folded in.** (1) `0x2CACC`'s test now points
+`DS_0010740C` at a scratch record `{0xA3060, 0xA2EB4}` and asserts CREDITS on
+row 3, and a separate check pins `[0x1D2D4]` = `0xA2EB4`; the old mutation 7
+(`+0` read) now fails two checks instead of crashing. (2) The four repeat
+words `DS_000E1C3C/40/42/44` are saved and restored around all of
+`test_svcmenu`'s screens. (3) The Up/Down hold check is tested: the harness's
+`sm_held` puts a held pad bit back into the latch `DS_000E1C38` after
+`tf_menu_press` clears it (as `0x500C4`'s `latch &= level` keeps a held bit),
+so a pad Up held from an earlier frame has no edge in `0x2EDE0(0xF300F000)`
+and the second poll `0x2EDE0(0, 1)` sees its level: a latched Left is
+skipped (2 frames). (4) The `0x32700` fallback's comment is no longer a
+`PORT:` note (it is the raw's behaviour). (5) `0x2CF00`'s unbounded copy of
+string `0x72` has a `PORT:` note: it mirrors the raw's 0x1C-byte stack buffer.
+
+**Frame budget.** 44 scripted frames in `sm_check_volume` (2 + 7 + 6 + 4 + 4
++ 6 + 6 + 5 + 4) and 2 more in `sm_check_options` (the hold check), 46 in this
+task; the scratch-record change reuses cycle 2's 2 frames. K11 total: 37 + 46
+= 83 of 160. (Review round 1 added 7: A's unclamped Right and script F.)
+
+**Mutations** (each applied, rebuilt, run and reverted by
+`<scratchpad>/k11_t4_mut.py`; log `<scratchpad>/k11_t4_mutations.txt`). All 42
+fail the suite with exit 1 and no crash:
+
+| # | mutation | result |
+|---|---|---|
+| 1 | 0x2F464 row -1 as 0 | 6 checks |
+| 2 | 0x2F464 width off by one | 4 checks |
+| 3 | 0x30728 exits on Enter | 2 checks |
+| 4 | 0x30728 release dropped | 2 checks |
+| 5 | 0x30864 Left and Right swapped | 13 checks |
+| 6 | 0x30864 field 0x35 save dropped | 2 checks |
+| 7 | 0x30864 field 0x37 save dropped | 1 checks |
+| 8 | 0x30864 field 0x2A save dropped | 1 checks |
+| 9 | 0x30864 field 0x2A keeps bits 0..1 | 1 checks |
+| 10 | 0x31138 exit stores swapped | 5 checks |
+| 11 | 0x2C8F0(-1) returns 0 | 7 checks |
+| 12 | 0x30864 Down wraps to 2 | 3 checks |
+| 13 | 0x30864 Up wraps to 0 | 7 checks |
+| 14 | 0x30864 mute store dropped | 1 checks |
+| 15 | 0x30864 unmute store dropped | 2 checks |
+| 16 | 0x30864 redraw flag starts 0 | 2 checks |
+| 17 | 0x30864 sel-2 effects unscaled | 1 checks |
+| 18 | 0x30864 Right clamp dropped | 2 checks |
+| 19 | 0x30864 Left clamp dropped | 3 checks |
+| 20 | 0x30864 sel-0 music apply dropped | 3 checks |
+| 21 | 0x30864 voice 0x2F464 dropped (loop) | 1 checks |
+| 22 | 0x30864 bar is max * voice without /3 | 1 checks |
+| 23 | 0x30FE8 value cell compare <= | 5 checks |
+| 24 | 0x30FE8 threshold 0x65 | 3 checks |
+| 25 | 0x30FE8 low clamp dropped | 1 checks |
+| 26 | 0x30FE8 high clamp dropped | 1 checks |
+| 27 | 0x30FE8 releases dropped | 3 checks |
+| 28 | 0x31138 Enter restore dropped | 2 checks |
+| 29 | 0x31138 Right clamp dropped | 2 checks |
+| 30 | 0x31138 Left clamp dropped | 2 checks |
+| 31 | 0x31138 config_keys_apply dropped | 2 checks |
+| 32 | 0x31138 redraw flag starts 0 | 1 checks |
+| 33 | 0x31138 input_repeat_set dropped | 1 checks |
+| 34 | 0x30864 registration dropped | 1 checks |
+| 35 | 0x2CF00 Up/Down hold check dropped (review item 3) | 1 checks |
+| 36 | 0x2CACC reads +0 (§K11.3 mutation 7, review item 1) | 2 checks |
+| 37 | 0x31138 handicap label mode swapped | 3 checks |
+| 38 | `0x30864` volume Right step +7 (review round 1) | 3 checks (`0x35` = 0x47, volume 0x23, the music bar) |
+| 39 | `0x31138` Right step +4 (review round 1) | 2 checks (0x54, the right bar) |
+| 40 | `0x31138` Left step -4 (review round 1) | 2 checks (0x60, the left bar) |
+| 41 | `0x30864` volume Left step -7 (review round 1) | 1 check (`0x35` = 0x39) |
+| 42 | the harness leaves `DS_00101514` on the suite's record (test file) | 44 checks, among them the new key-record check |
+
+**Gate (Task 4).** `make verify` exited 0 (`<scratchpad>/k11_t4_verify.txt`).
+Its oracle lines equal §K11.0's except the two unittest wall-clock lines
+(`Ran 10 tests in 0.102s`, `Ran 33 tests in 1.078s`). The signature change
+and the two new `fn_register` calls run on oracle paths (the fight setups
+and `game_init`), so the 8000-frame dump was compared: `--check 8000` on
+`a3d17a6` and on this tree give the same `shasum` list over 8000 `.idx` and
+8000 `.pal` files (`k11_t4_frames_{before,after}.sha`, FRAMES-IDENTICAL).
+The header grep counts 1 for each of `2F464 30728 30864 30FE8 31138`.
+`tools/port_progress.py` goes from `762 1203 63` / `726 730 99` to `763 1203
+63` / `727 730 100`: `0x2F464` is a Ghidra function (`FN_0002F464`), the
+other four are not.

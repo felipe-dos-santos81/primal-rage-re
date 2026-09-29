@@ -67,4 +67,21 @@ u32 svc_play_tune(u32 i);
 /* Stops the voices, then plays sample `i` — 0x2C9E8. */
 u32 svc_play_sample(u32 i);
 
+/* "%i" of `value` fitted to `width` by `pad` (text_number_format), drawn at
+ * the text cursor DS_00105F34 in `mode`; the cursor moves past it
+ * — 0x2F464. */
+void text_number_cont(s32 value, s32 width, u32 pad, u32 mode);
+/* "ERROR SETTING VOLUME LEVEL" on row 6 until Esc, then released
+ * — 0x30728. */
+void svc_volume_error(void);
+/* OPTIONS MENU "ADJUST VOLUME": the music, effects and voice levels in
+ * config fields 0x35, 0x37 and 0x2A bits 0..1; returns 0 — 0x30864. */
+u32 svc_adjust_volume(u32 entry);
+/* One handicap row: `value` clamped to 0x32..0x96, its number on row + 4 and
+ * a 21-cell bar on rows `row`..`row` + 2 — 0x30FE8. */
+void svc_handicap_row(u32 value, s32 row);
+/* OPTIONS MENU "2 PLAYER HANDICAP": edits the key-config record's +0x24/+0x26
+ * and stores them in DS_00107468/DS_0010746C on Esc — 0x31138. */
+u32 svc_handicap(u32 entry);
+
 #endif /* PRAGE_GAME_SVCMENU_H */
