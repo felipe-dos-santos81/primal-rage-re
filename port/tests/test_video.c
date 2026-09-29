@@ -340,3 +340,79 @@ int test_movie(void)
 
     return g_failures - before;
 }
+
+/* ---- test_movie_blit (record §K10) ---- */
+
+/* 0x50D23, the movie's dirty-rectangle blit, is host-owned (record §K10.5).
+ * The classification rests on two port-side facts, pinned here on the real
+ * playback of twg.smk:
+ * (1) its net screen effect, aperture = E87A4 over each dirty rectangle
+ *     (§K10.1), is what movie_present's full-frame gfx_present produces: the
+ *     aperture equals the E87A4 buffer at every screen the player writes;
+ * (2) its EDI stores to the E87A0 shadow are dead (§K10.3): the exit blank
+ *     0x52106(0) at 0x1C873 leaves both offscreen buffers zero, and the player
+ *     never swaps them (0x50188 is not in 0x1C740's call tree), so
+ *     DS_000E87A0 still names a buffer the blank cleared.
+ * The buffers are test-only and seeded 0xA5, so "zero" proves the blank ran;
+ * the aperture is seeded 0x11. They sit clear of the other tests' scratch
+ * (0x3E80000, 0x3E90000..0x3E94000). */
+#define MB_BUF_A 0x03E60000u   /* test-only E87A0 buffer ([0x1014E4]) */
+#define MB_BUF_B 0x03E70000u   /* test-only E87A4 buffer ([0x1014E8]) */
+
+static u32 g_mb_screens, g_mb_mismatch;
+
+static void movie_blit_hook(void)
+{
+    if (memcmp(gfx_aperture(), mem + DSD(DS_000E87A4), 320u * 200u) != 0)
+        g_mb_mismatch++;
+    g_mb_screens++;
+}
+
+static u32 mb_nonzero(u32 addr)
+{
+    u32 n = 0;
+    for (u32 i = 0; i < 0xFA00u; i++) n += mem[addr + i] != 0;
+    return n;
+}
+
+int test_movie_blit(void)
+{
+    int before = g_failures;
+    const char *dir = getenv("PR_GAME_DIR");
+    if (dir == NULL) {
+        printf("test_movie_blit: PR_GAME_DIR unset, skipping\n");
+        return 0;
+    }
+    u32 s_a0 = DSD(DS_000E87A0), s_a4 = DSD(DS_000E87A4);
+    u32 s_e4 = DSD(DS_001014E4), s_e8 = DSD(DS_001014E8);
+
+    /* 0x51F45's pairing: E87A0 = [0x1014E4], E87A4 = [0x1014E8]. */
+    DSD(DS_001014E4) = MB_BUF_A;
+    DSD(DS_001014E8) = MB_BUF_B;
+    DSD(DS_000E87A0) = MB_BUF_A;
+    DSD(DS_000E87A4) = MB_BUF_B;
+    memset(mem + MB_BUF_A, 0xA5, 0xFA00u);
+    memset(mem + MB_BUF_B, 0xA5, 0xFA00u);
+    memset(gfx_aperture(), 0x11, 320u * 200u);
+    CHECK_EQ_INT((int)mb_nonzero(MB_BUF_A), 0xFA00);   /* the sentinel took */
+    CHECK_EQ_INT((int)mb_nonzero(MB_BUF_B), 0xFA00);
+
+    g_mb_screens = 0;
+    g_mb_mismatch = 0;
+    movie_set_screen_hook(movie_blit_hook);
+    CHECK_EQ_INT(movie_play(dir, "twg.smk"), 1);
+    movie_set_screen_hook(NULL);
+
+    CHECK_EQ_INT((int)g_mb_screens, 43);   /* entry blank, 41 frames, exit blank */
+    CHECK_EQ_INT((int)g_mb_mismatch, 0);   /* (1) aperture == E87A4 buffer */
+    CHECK_EQ_INT((long)DSD(DS_000E87A0), (long)MB_BUF_A);   /* (2) no swap */
+    CHECK_EQ_INT((long)DSD(DS_000E87A4), (long)MB_BUF_B);
+    CHECK_EQ_INT((int)mb_nonzero(MB_BUF_A), 0);             /* (2) both zero */
+    CHECK_EQ_INT((int)mb_nonzero(MB_BUF_B), 0);
+
+    DSD(DS_000E87A0) = s_a0;
+    DSD(DS_000E87A4) = s_a4;
+    DSD(DS_001014E4) = s_e4;
+    DSD(DS_001014E8) = s_e8;
+    return g_failures - before;
+}
