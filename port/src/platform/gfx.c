@@ -74,7 +74,7 @@ void palette_record(u32 ptr, u32 first, u32 count, u32 flag)
     DSD(head + 0) = ptr;
     DSD(head + 4) = first;
     DSD(head + 8) = count;
-    DSB(head + 12) = (u8)flag;   /* 0x3373F/0x3371F: the low byte only (record §3) */
+    DSB(head + 12) = (u8)flag;   /* 0x3373F/0x3371F: low byte only (§3) */
     DSD(DS_00107798) = head + 16;
 }
 
@@ -107,7 +107,7 @@ void gfx_flush_palette(void)
         s32 sum = (s32)(DSD(rec + 4) + DSD(rec + 12));  /* 0x1C48B/0x1C48E */
         if (sum > 0x100)                                 /* 0x1C491/0x1C497 */
             DSD(rec + 12) -= (u32)(sum - 0x100);         /* 0x1C499/0x1C49F */
-        u32 first = (u8)DSD(rec + 4);                    /* 0x1C4A7 `out dx,al` */
+        u32 first = (u8)DSD(rec + 4);                    /* 0x1C4AA out dx,al */
         s32 count = (s32)DSD(rec + 8);                   /* 0x1C4BD */
         u32 flag = DSB(rec + 12);                        /* 0x1C4AD */
 
@@ -148,7 +148,7 @@ void gfx_flush_palette(void)
             gfx_dac[index][0] = (u8)((r << 2) | (r >> 4));
             gfx_dac[index][1] = (u8)((g << 2) | (g >> 4));
             gfx_dac[index][2] = (u8)((b << 2) | (b >> 4));
-        } while (++i < count);                           /* 0x1C4D6 `dec esi; jg` */
+        } while (++i < count);                           /* 0x1C4D6 dec esi; jg */
         DSD(rec + 4) = 0xFFFFFFFFu;   /* the original marks the record consumed */
         rec += 16;
     }

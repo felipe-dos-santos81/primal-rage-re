@@ -5909,10 +5909,11 @@ static void game_sample_play(void)
     AIL_set_sample_volume(h, (s32)DSD(DS_000A2CB4));
     AIL_set_sample_rate(h, s_pending_sample.rate);
     AIL_set_sample_type(h, 0, 0);
-    /* 0x1CB18 gates this on the slot's loop byte DAT_00102868[slot] == 1
-     * (prage.c:8469-8471), which 0x1CC28 queued from the voice record's +8
-     * byte (0x2C3FC case 2). Count 0 loops forever; otherwise AIL_init_sample's
-     * default count 1 plays once (0x6F120). Record §23 of
+    /* The raw 0x1CB18 gates this on the slot's loop byte
+     * DAT_00102868[slot] == 1 (prage.c:8469-8471), which 0x1CC28 queued from
+     * the voice record's +8 byte (0x2C3FC case 2). Count 0 loops forever;
+     * otherwise AIL_init_sample's default count 1 plays once (0x6F120).
+     * Record §23 of
      * 2026-09-29-todo-verify-derivations.md: the announcer is voice id 0xCD
      * (DS_000BBDC8[0xCD] = case 2, handle 0x02824B0F = S16SOUND.GRA + 0x24B0F,
      * the RIFF blob game_sample_request finds), whose loop byte is 0.

@@ -188,39 +188,44 @@ open were not walked here.
 
 `grep -rn 'TODO(verify)' port/src` finds **31** sites (they match the snapshot).
 
-| # | file:line | question | evidence needed | note |
-|---:|---|---|---|---|
-| 1 | `host.c:26` | Which interrupt vector installs `0x2D62C`? | Already in hand: none. `0x2D62C` is called directly by the timer ISR `0x1BDF4` at `0x1BE28`, and `0x1BEC4` passes it to `0x109A0` at `0x1BF5B` with size `0x1000`. | Rewrite the comment. Pairs with the K9 host-owned row. |
-| 2 | `host.c:282` | SDL audio-open failure branches are untested | A host-seam test that injects a NULL stream | Host only, with no raw counterpart |
-| 3 | `gfx.c:83` | Raw clamps with `+0xC` (flag word) and do-while runs a zero count | Raw `0x1C48B..0x1C4D6`, plus a scan of the shipped palette records for count 0 or first+`[+0xC]` > 256 | |
-| 4 | `gra.c:93` | RLE sentinel meaning is documented, not proven | Raw decoder disassembly (the `0x51E5C` span path) | |
-| 5 | `gra.c:104` | Which DAC bank or record a sprite selects | Raw `0x14268` / palette-acquire path | |
-| 6 | `gra.c:151` | Meaning of the s16 x/y anchor | Raw `0x14268` xorg/yorg use | |
-| 7 | `platform/audio/mixer.c:15` | Voice-exhaustion policy | DIG driver "Out of sample handles" path, or a game path that queues >4 | Same question as #9 |
-| 8 | `platform/audio/ail.h:151` | Name of AIL row 21 (`0x5DD2C`) | AIL export or ordinal naming in the runtime | Deferred stub (movie audio) |
-| 9 | `platform/audio/mixer.h:15` | Same as #7 | same | |
-| 10 | `platform/audio/ail.h:156` | Name of AIL row 22 (`0x5DD5D`) | as #8 | |
-| 11 | `platform/audio/ail.h:161` | Name of AIL row 23 (`0x5DD86`) | as #8 | |
-| 12 | `platform/audio/mixer.h:46` | `MIXER_OPL_RATE` is tied to the vendored core | Vendored core constant, not raw. A static assert would close it. | |
-| 13 | `platform/audio/sequencer.c:264` | ctrl 64 → MDI `0x3b1e` sustain release | SBPRO2.MDI driver disassembly at `+0x3B1E` | |
-| 14 | `platform/audio/sequencer.c:427` | RBRN loop range not reproduced | XMIDI RBRN semantics from the AIL XMIDI code, plus a capture past the loop | |
-| 15 | `platform/audio/sequencer.h:22` | Tick rate vs the SBPRO2.MDI `+0x2E` field | Read the driver's `+0x2E` during init (`FUN_00065B7B`) | |
-| 16 | `platform/audio/ail.c:367` | as #8 (definition) | as #8 | |
-| 17 | `platform/audio/ail.c:376` | as #10 (definition) | as #8 | |
-| 18 | `platform/audio/ail.c:383` | as #11 (definition) | as #8 | |
-| 19 | `platform/audio/ail.c:431` | Failed re-init of a playing sequence | AIL init-sequence decompilation (`0x5Dxxx`) | |
-| 20 | `game/flow.c:1002` | Could an unregistered `DS_00104AE4` hook value reach `0x4F9A0`? | Enumerate every raw store to `DS_00104AE4` and check each one's registration | |
-| 21 | `game/flow.c:5772` | `0x1CF40`'s `param_1`/`param_2` gates | The raw call site's arguments (shipped init) | Resolvable from raw |
-| 22 | `game/flow.c:5828` | Sound-table id → handle mapping | Read `DS_000BBDC8` (stride 12) with fixups | Resolvable from raw (the mirror image) |
-| 23 | `game/flow.c:5900` | Source of the loop flag | `0x1CC28`'s `+0x08` byte from `BBDC8` rec `+8` | Belongs to K7 |
-| 24 | `game/flow.c:6417` | Credit countdown under input | A capture with coin input (none exists) | Likely stays a named gap |
-| 25 | `game/fight.c:1586` | Meanings of slot `+0x5A/+0x5D/+0x5E/+0x63` | Raw xrefs of the writers | |
-| 26 | `game/config.c:112` | Raw EDX at `0x2DACA`/`0x2DAD4` | Disassembly of `0x2DA0C`'s loop | Moot while `0x2D4EC` is a no-op |
-| 27 | `game/config.c:200` | Three `0x2D4EC` calls omitted (`0x2D8A5`, `0x2D8AF`, `0x2D909`) | Raw sites | Add the no-op calls for fidelity |
-| 28 | `game/fighter.c:155` | Character > 6 reads caller registers | Maximum character index reachable in `DS_0010816A` | Unreachability proof |
-| 29 | `game/fighter.c:2297` | `DSD(0x1078DC)` indirection at `0x374E3` | Raw `0x374E3`. `0x36F10`'s caller is now wired (`fight.c:2082`). | The fix moves the `0x37464` test seeds |
-| 30 | `game/fighter.c:3883` | Load order of slot `+0x2C` vs `0x2BC30` | `0x3C4B0` disassembly, and whether `0x2BC30` writes slot `+0x2C` | |
-| 31 | `game/fighter.c:11005` | Immediate `0x1F874610` is not a handle | Raw `0x45B95`, plus the palette-acquire behaviour on an unresolved handle | |
+**Task 2 (2026-09-29).** All 31 sites are closed or re-scoped; `grep -rn
+'TODO(verify)' port/src` now finds 0. The verdict and raw evidence for each row
+are in `2026-09-29-todo-verify-derivations.md` §1–§31 (16 resolved as-is, 6
+fixed, 2 named gaps, 7 `PORT:` reclassifications).
+
+| # | file:line | question | evidence needed | note | Task 2 |
+|---:|---|---|---|---|---|
+| 1 | `host.c:26` | Which interrupt vector installs `0x2D62C`? | Already in hand: none. `0x2D62C` is called directly by the timer ISR `0x1BDF4` at `0x1BE28`, and `0x1BEC4` passes it to `0x109A0` at `0x1BF5B` with size `0x1000`. | Rewrite the comment. Pairs with the K9 host-owned row. | closed: resolved-as-is, record §1 |
+| 2 | `host.c:282` | SDL audio-open failure branches are untested | A host-seam test that injects a NULL stream | Host only, with no raw counterpart | re-scoped: PORT (host), record §2 |
+| 3 | `gfx.c:83` | Raw clamps with `+0xC` (flag word) and do-while runs a zero count | Raw `0x1C48B..0x1C4D6`, plus a scan of the shipped palette records for count 0 or first+`[+0xC]` > 256 | | closed: fixed, record §3 |
+| 4 | `gra.c:93` | RLE sentinel meaning is documented, not proven | Raw decoder disassembly (the `0x51E5C` span path) | | closed: resolved-as-is, record §4 |
+| 5 | `gra.c:104` | Which DAC bank or record a sprite selects | Raw `0x14268` / palette-acquire path | | closed: resolved-as-is, record §5 |
+| 6 | `gra.c:151` | Meaning of the s16 x/y anchor | Raw `0x14268` xorg/yorg use | | closed: resolved-as-is, record §6 |
+| 7 | `platform/audio/mixer.c:15` | Voice-exhaustion policy | DIG driver "Out of sample handles" path, or a game path that queues >4 | Same question as #9 | closed: resolved-as-is, record §7 |
+| 8 | `platform/audio/ail.h:151` | Name of AIL row 21 (`0x5DD2C`) | AIL export or ordinal naming in the runtime | Deferred stub (movie audio) | re-scoped: PORT (name), record §8 |
+| 9 | `platform/audio/mixer.h:15` | Same as #7 | same | | closed: resolved-as-is, record §9 |
+| 10 | `platform/audio/ail.h:156` | Name of AIL row 22 (`0x5DD5D`) | as #8 | | re-scoped: PORT (name), record §10 |
+| 11 | `platform/audio/ail.h:161` | Name of AIL row 23 (`0x5DD86`) | as #8 | | re-scoped: PORT (name), record §11 |
+| 12 | `platform/audio/mixer.h:46` | `MIXER_OPL_RATE` is tied to the vendored core | Vendored core constant, not raw. A static assert would close it. | | closed: fixed (static assert), record §12 |
+| 13 | `platform/audio/sequencer.c:264` | ctrl 64 → MDI `0x3b1e` sustain release | SBPRO2.MDI driver disassembly at `+0x3B1E` | | re-scoped: PORT named gap, record §13 |
+| 14 | `platform/audio/sequencer.c:427` | RBRN loop range not reproduced | XMIDI RBRN semantics from the AIL XMIDI code, plus a capture past the loop | | closed: resolved-as-is (+ FOR/NEXT named gap), record §14 |
+| 15 | `platform/audio/sequencer.h:22` | Tick rate vs the SBPRO2.MDI `+0x2E` field | Read the driver's `+0x2E` during init (`FUN_00065B7B`) | | closed: resolved-as-is, record §15 |
+| 16 | `platform/audio/ail.c:367` | as #8 (definition) | as #8 | | re-scoped: PORT (name), record §16 |
+| 17 | `platform/audio/ail.c:376` | as #10 (definition) | as #8 | | re-scoped: PORT (name), record §17 |
+| 18 | `platform/audio/ail.c:383` | as #11 (definition) | as #8 | | re-scoped: PORT (name), record §18 |
+| 19 | `platform/audio/ail.c:431` | Failed re-init of a playing sequence | AIL init-sequence decompilation (`0x5Dxxx`) | | closed: fixed, record §19 |
+| 20 | `game/flow.c:1002` | Could an unregistered `DS_00104AE4` hook value reach `0x4F9A0`? | Enumerate every raw store to `DS_00104AE4` and check each one's registration | | closed: resolved-as-is, record §20 |
+| 21 | `game/flow.c:5772` | `0x1CF40`'s `param_1`/`param_2` gates | The raw call site's arguments (shipped init) | Resolvable from raw | closed: resolved-as-is, record §21 |
+| 22 | `game/flow.c:5828` | Sound-table id → handle mapping | Read `DS_000BBDC8` (stride 12) with fixups | Resolvable from raw (the mirror image) | closed: resolved-as-is, record §22 |
+| 23 | `game/flow.c:5900` | Source of the loop flag | `0x1CC28`'s `+0x08` byte from `BBDC8` rec `+8` | Belongs to K7 | closed: fixed, record §23 |
+| 24 | `game/flow.c:6417` | Credit countdown under input | A capture with coin input (none exists) | Likely stays a named gap | re-scoped: PORT named gap (capture), record §24 |
+| 25 | `game/fight.c:1586` | Meanings of slot `+0x5A/+0x5D/+0x5E/+0x63` | Raw xrefs of the writers | | closed: resolved-as-is, record §25 |
+| 26 | `game/config.c:112` | Raw EDX at `0x2DACA`/`0x2DAD4` | Disassembly of `0x2DA0C`'s loop | Moot while `0x2D4EC` is a no-op | closed: resolved-as-is (signature), record §26 |
+| 27 | `game/config.c:200` | Three `0x2D4EC` calls omitted (`0x2D8A5`, `0x2D8AF`, `0x2D909`) | Raw sites | Add the no-op calls for fidelity | closed: resolved-as-is (call sites), record §27 |
+| 28 | `game/fighter.c:155` | Character > 6 reads caller registers | Maximum character index reachable in `DS_0010816A` | Unreachability proof | closed: resolved-as-is, record §28 |
+| 29 | `game/fighter.c:2297` | `DSD(0x1078DC)` indirection at `0x374E3` | Raw `0x374E3`. `0x36F10`'s caller is now wired (`fight.c:2082`). | The fix moves the `0x37464` test seeds | closed: fixed, record §29 |
+| 30 | `game/fighter.c:3883` | Load order of slot `+0x2C` vs `0x2BC30` | `0x3C4B0` disassembly, and whether `0x2BC30` writes slot `+0x2C` | | closed: fixed, record §30 |
+| 31 | `game/fighter.c:11005` | Immediate `0x1F874610` is not a handle | Raw `0x45B95`, plus the palette-acquire behaviour on an unresolved handle | | closed: resolved-as-is, record §31 |
 
 ---
 
