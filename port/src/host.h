@@ -49,6 +49,14 @@ int  host_quit_requested(void);
  * SDL video init is fine). */
 void host_wait_vblank(void);
 
+/* PORT: test seam, no raw counterpart. When set, host_pump() calls fn(ctx)
+ * once at the end of every call. The blocking menu loops reach the host only
+ * through config_screen_wait's host_wait_vblank(); the unit tests script one
+ * input per presented frame through this hook. NULL (the default) disables it,
+ * and nothing outside the tests sets it. */
+typedef void (*host_pump_hook_fn)(void *ctx);
+void host_set_pump_hook(host_pump_hook_fn fn, void *ctx);
+
 /* Hands a w*h RGB24 frame (3 bytes per pixel, row-major) to the host. The frame
  * is presented by the next host_pump(). A no-op when no window is open. */
 void host_present_rgb(const u8 *rgb, int w, int h);

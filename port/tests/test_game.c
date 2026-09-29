@@ -28,6 +28,8 @@
 #include "game/attract.h"
 #include "game/movie.h"
 #include "game/nameentry.h"
+#include "game/svcmenu.h"
+#include "game/menu.h"
 #include <string.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -7697,6 +7699,231 @@ static void ch_check_quit_prompt(void)
     DSD(DS_001028C8) = s_c8;
     DSB(DS_001014FC) = s_full;
     DSD(CH_KEY_LATCH) = s_lat;
+}
+
+/* ---- the options ("service") menu, record 2026-09-29-k11-service-menu-derivations.md ---- */
+typedef struct { u16 key; u32 pad; } sm_step_t;   /* key = (scan << 8) | ascii, 0 = none */
+static const sm_step_t *sm_script;
+static u32 sm_len, sm_frame, sm_last_a0, sm_extra;
+static u32 sm_s_a0, sm_s_a4, sm_s_kb;
+static u8 sm_s_gate;
+
+/* One scripted step per presented frame: config_screen_wait swaps DS_000E87A0
+ * before its tick passes, so the first hook call after a swap is a new frame. */
+static void sm_hook(void *ctx)
+{
+    (void)ctx;
+    if (DSD(DS_000E87A0) == sm_last_a0) return;
+    sm_last_a0 = DSD(DS_000E87A0);
+    if (sm_frame < sm_len) {
+        const sm_step_t *s = &sm_script[sm_frame];
+        if (s->key != 0u) input_push((u8)(s->key >> 8), (u8)s->key);
+        tf_menu_press(s->pad);
+    } else {
+        /* Out of script: Esc, then alternately Enter, so any loop leaves. */
+        sm_extra++;
+        input_push(0x01, 0x1B);
+        tf_menu_press((sm_extra & 1u) ? 0x2000000u : 0x1000000u);
+        if (sm_extra > 600u) {
+            printf("FAIL %s:%d: scripted menu loop never left\n", __FILE__, __LINE__);
+            exit(1);
+        }
+    }
+    sm_frame++;
+}
+
+/* The environment every options-menu test needs, with or without the hook. */
+static void sm_env_begin(void)
+{
+    sm_s_a0 = DSD(DS_000E87A0); sm_s_a4 = DSD(DS_000E87A4);
+    sm_s_kb = DSD(DS_00101514); sm_s_gate = DSB(0x00104B22u);
+    DSD(DS_000E87A0) = CH_BUF_A;
+    DSD(DS_000E87A4) = CH_BUF_B;
+    DSB(0x00104B22u) = 0u;              /* not 1: the ISR tick model runs (0x1BDF8) */
+    mem_fill(MT_LAYOUT, 0, 0x300u);
+    DSD(DS_00101514) = MT_LAYOUT;
+    input_clear();
+    tf_menu_press(0u);
+    DSD(CH_KEY_LATCH) = 0u;
+    /* 0x2EB80's idle timeout (tick - DS_00105F2C > 0x4B0, `jbe` at 0x2EB9F)
+     * clears DS_00107414 on a no-key poll; the suite's tick has run on, so
+     * stamp the key time now. */
+    DSD(CH_KEY_TIME) = DSD(CH_TICK);
+}
+
+static void sm_env_end(void)
+{
+    input_clear();
+    tf_menu_press(0u);
+    DSD(DS_000E87A0) = sm_s_a0; DSD(DS_000E87A4) = sm_s_a4;
+    DSD(DS_00101514) = sm_s_kb; DSB(0x00104B22u) = sm_s_gate;
+}
+
+static void sm_begin_raw(const sm_step_t *s, u32 n)
+{
+    sm_env_begin();
+    sm_script = s; sm_len = n; sm_frame = 0u; sm_extra = 0u;
+    sm_last_a0 = DSD(DS_000E87A0);
+    host_set_pump_hook(sm_hook, NULL);
+}
+
+/* Set by sm_check_seam once the hook has scripted its two frames. Without a
+ * live hook a blocking menu never sees its exit key and the suite would hang,
+ * so every scripted run stops the process instead. */
+static int sm_seam_ok;
+
+static void sm_begin(const sm_step_t *s, u32 n)
+{
+    if (!sm_seam_ok) {
+        printf("FAIL %s:%d: the host pump hook is not live; a scripted menu would hang\n",
+               __FILE__, __LINE__);
+        exit(1);
+    }
+    sm_begin_raw(s, n);
+}
+
+static void sm_end(u32 frames, const char *what)
+{
+    host_set_pump_hook(NULL, NULL);
+    CHECK(sm_extra == 0u, what);
+    CHECK_EQ_INT((int)sm_frame, (int)frames);
+    sm_env_end();
+}
+
+/* The harness seam (record §K11.1): one scripted key per presented frame. */
+static void sm_check_seam(void)
+{
+    static const sm_step_t keys[] = { { 0x011Bu, 0u }, { 0x1C0Du, 0u } };
+    sm_begin_raw(keys, 2u);
+    DSD(CH_KEY_LATCH) = 0x77u;
+    config_screen_wait_zero();
+    const u32 first = DSD(CH_KEY_LATCH);
+    CHECK_EQ_INT((int)first, 0x1B);
+    config_screen_wait_zero();
+    CHECK_EQ_INT((int)DSD(CH_KEY_LATCH), 0x0D);
+    sm_seam_ok = first == 0x1Bu && DSD(CH_KEY_LATCH) == 0x0Du && sm_frame == 2u && sm_extra == 0u;
+    sm_end(2u, "the seam script used exactly its two frames");
+}
+
+/* Cycle 1 (record §K11.2): the START MENU mode setters, the two MAIN MENU
+ * callbacks and the screen reset 0x2F99C. */
+static void sm_check_shell(void)
+{
+    static const struct { u32 (*fn)(u32); u32 addr, entry, mode, ah; } st[] = {
+        { svc_start_arcade_left,    0x2CBC4u, 0xBCCDCu, 0x2Du, 0u },
+        { svc_start_arcade_right,   0x2CBDCu, 0xBCCECu, 0x2Eu, 0u },
+        { svc_start_training_left,  0x2CBF4u, 0xBCCFCu, 0x28u, 1u },
+        { svc_start_training_right, 0x2CC0Cu, 0xBCD0Cu, 0x29u, 1u },
+        { svc_start_tug_of_war,     0x2CC24u, 0xBCD1Cu, 0x2Au, 2u },
+        { svc_start_endurance,      0x2CC3Cu, 0xBCD2Cu, 0x2Bu, 3u },
+        { svc_start_handicap,       0x2CC54u, 0xBCD3Cu, 0x2Cu, 4u },
+    };
+    const u16 s_mode = DSW(DS_00104B00), s_mode_hi = DSW(DS_00104B00 + 2u);
+    const u8 s_sub = DSB(DS_00104B1D);
+    svcmenu_register();
+    svcmenu_register();                                   /* idempotent */
+    for (u32 i = 0; i < sizeof st / sizeof st[0]; i++) {
+        /* record §0.2: the table's +8 holds this callback */
+        CHECK_EQ_INT((int)DSD(st[i].entry + 8u), (int)st[i].addr);
+        CHECK(fn_resolve(st[i].addr) == (void (*)(void))st[i].fn, "registered");
+        DSW(DS_00104B00) = 0xBEEFu; DSW(DS_00104B00 + 2u) = 0x7777u; DSB(DS_00104B1D) = 0xA5u;
+        u32 r = st[i].fn(st[i].entry);
+        CHECK_EQ_INT((int)DSW(DS_00104B00), (int)st[i].mode);
+        CHECK_EQ_INT((int)DSW(DS_00104B00 + 2u), 0x7777);  /* a word store */
+        CHECK_EQ_INT((int)DSB(DS_00104B1D), (int)st[i].ah);
+        CHECK_EQ_INT((int)r, (int)((st[i].entry & 0xFFFF00FFu) | (st[i].ah << 8)));
+    }
+    CHECK(fn_resolve(0x2CB74u) == (void (*)(void))svc_start_menu, "0x2CB74 registered");
+    CHECK(fn_resolve(0x2CB94u) == (void (*)(void))svc_options_menu, "0x2CB94 registered");
+
+    /* 0x2F99C: the reset menu_title_draw opens with (record §K11.2). */
+    ch_text_setup();
+    text_cursor_set(5, 5, (const u8 *)"Z", 0u);
+    CHECK(ch_cell(5, 5) != 0u, "the pre-reset cell");
+    DSB(DS_00104B15) = 1u; DSW(DS_00107A3A) = 0x77u; DSW(DS_00107A38) = 0x66u; DSD(DS_00107A1C) = 0u;
+    svc_screen_reset();
+    CHECK_EQ_INT((int)ch_cell(5, 5), 0);
+    CHECK_EQ_INT((int)DSB(DS_00104B15), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107A3A), 0);
+    CHECK_EQ_INT((int)DSW(DS_00107A38), 0);
+    CHECK(DSD(DS_00107A1C) != 0u, "the 0x9AD84 backdrop row is spawned");
+
+    /* START: menu_step over the stock MAIN MENU, one pad press per call. No
+     * hook: menu_step presents frames only at initialisation (0x2FFF1), and
+     * the pad state is set here between calls. */
+    sm_env_begin();
+    mem_fill(DS_00107414, 0, 0x40u);
+    DSW(DS_00104B00) = 0xBEEFu; DSB(DS_00104B1D) = 0xA5u;
+    CHECK_EQ_INT((int)menu_step(0xBCBDCu, 0x10u, 4u), 0);            /* init */
+    CHECK_EQ_INT((int)DSD(DS_0010741C), 0xBCBEC);
+    tf_menu_press(0x1000000u);                                        /* Enter on "Start" */
+    CHECK_EQ_INT((int)menu_step(0xBCBDCu, 0x10u, 4u), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010741C), 0xBCCDC);                     /* 0x2CB74 re-initialised */
+    CHECK_EQ_INT((int)DSB(DS_00107414), 1);
+    CHECK_EQ_INT((int)DSD(DS_00107418), 0);                           /* ECX = 0 at 0x2CB86 */
+    tf_menu_press(0u);  (void)menu_step(0xBCBDCu, 0x10u, 4u);         /* redraw, release */
+    tf_menu_press(0x40004000u); (void)menu_step(0xBCBDCu, 0x10u, 4u); /* Down */
+    tf_menu_press(0u);  (void)menu_step(0xBCBDCu, 0x10u, 4u);
+    tf_menu_press(0x40004000u); (void)menu_step(0xBCBDCu, 0x10u, 4u); /* Down */
+    tf_menu_press(0u);  (void)menu_step(0xBCBDCu, 0x10u, 4u);
+    tf_menu_press(0x1000000u);
+    CHECK_EQ_INT((int)menu_step(0xBCBDCu, 0x10u, 4u), 0);             /* EAX = 0x000B01FC is not -5/-10 */
+    CHECK_EQ_INT((int)DSW(DS_00104B00), 0x28);                        /* item 2: LEFT TRAINING, 0x2CBF4 */
+    CHECK_EQ_INT((int)DSB(DS_00104B1D), 1);
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);
+
+    /* START then Esc: the nested state has flags 0 (DS_00107418), so Esc takes
+     * 0x30449..0x30466: DS_0010742C (0) != DS_00107424 (7 items walked) gives
+     * -5 with DS_00107414 = 0, and the next call re-initialises MAIN MENU. */
+    mem_fill(DS_00107414, 0, 0x40u);
+    tf_menu_press(0u);         (void)menu_step(0xBCBDCu, 0x10u, 4u);  /* init MAIN */
+    tf_menu_press(0x1000000u); (void)menu_step(0xBCBDCu, 0x10u, 4u);  /* Start: nested init */
+    tf_menu_press(0u);         (void)menu_step(0xBCBDCu, 0x10u, 4u);  /* redraw, release */
+    tf_menu_press(0x2000000u);
+    CHECK_EQ_INT((int)menu_step(0xBCBDCu, 0x10u, 4u), -5);            /* 0x30466 */
+    CHECK_EQ_INT((int)DSB(DS_00107414), 0);                           /* 0x30456 */
+    tf_menu_press(0u);
+    CHECK_EQ_INT((int)menu_step(0xBCBDCu, 0x10u, 4u), 0);
+    CHECK_EQ_INT((int)DSD(DS_0010741C), 0xBCBEC);                     /* MAIN MENU again */
+    CHECK_EQ_INT((int)DSD(DS_00107418), 4);
+    sm_env_end();
+
+    /* GAME OPTIONS: 0x2CB94 = menu_run(0xBCC1C) (blocking), 0x1B084 (deferred), 0x2C304. */
+    static const sm_step_t esc_now[] = { { 0u, 0x2000000u } };
+    const u32 want_credits = ((config_field_get(0x29u) & 0xF0000u) >> 16) + 1u;
+    DSD(DS_00105C00) = 0xDEADu;
+    sm_begin(esc_now, 1u);
+    CHECK_EQ_INT((int)svc_options_menu(0xBCBFCu), -1);                /* 0x2FD53..0x2FD60 */
+    sm_end(1u, "GAME OPTIONS left on the first Esc");
+    CHECK_EQ_INT((int)DSD(DS_00105C00), (int)want_credits);
+
+    DSW(DS_00104B00) = s_mode; DSW(DS_00104B00 + 2u) = s_mode_hi; DSB(DS_00104B1D) = s_sub;
+}
+
+/* Runs after test_cfg_helpers, whose one actors_init() it relies on. The
+ * menu screens advance the tick model and the key state; those, the menu
+ * state DS_00107414..DS_00107453 and the credits dword are put back. */
+int test_svcmenu(void)
+{
+    int before = g_failures;
+    u8 s_menu[0x40];
+    memcpy(s_menu, mem + DS_00107414, sizeof s_menu);
+    const u32 s_tick = DSD(CH_TICK), s_isr = DSD(DS_00101508);
+    const u16 s_word = DSW(DS_000EF6DE);
+    const u8 s_full = DSB(DS_001014FC);
+    const u32 s_lat = DSD(CH_KEY_LATCH), s_time = DSD(CH_KEY_TIME), s_kw = DSD(CH_KEY_WORD);
+    const u32 s_credits = DSD(DS_00105C00);
+
+    sm_check_seam();
+    sm_check_shell();
+
+    memcpy(mem + DS_00107414, s_menu, sizeof s_menu);
+    DSD(CH_TICK) = s_tick; DSD(DS_00101508) = s_isr;
+    DSW(DS_000EF6DE) = s_word;
+    DSB(DS_001014FC) = s_full;
+    DSD(CH_KEY_LATCH) = s_lat; DSD(CH_KEY_TIME) = s_time; DSD(CH_KEY_WORD) = s_kw;
+    DSD(DS_00105C00) = s_credits;
+    return g_failures - before;
 }
 
 int test_cfg_helpers(void)

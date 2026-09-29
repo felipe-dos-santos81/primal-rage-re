@@ -7,6 +7,7 @@
 #include "mem.h"
 #include "symbols.h"
 #include "test.h"
+#include "test_fixtures.h"
 #include "platform/res.h"
 #include "platform/gfx.h"
 #include "game/flow.h"
@@ -2649,7 +2650,6 @@ static void check_text_vertical_number(void)
 #define MT_STR    0x3E30000u   /* a fabricated ENGLISH.TXT image (9 groups of 0x800) */
 #define MT_HANDLE 0x3E2F000u   /* its 0x1E75C-style handle: +8 base, +0xC len, +0x15 flags */
 #define MT_TABLE  0x3E2E000u   /* the menu tables */
-#define MT_LAYOUT 0x3E2D000u   /* the key layout block DS_00101514 points at */
 #define MT_STRUCT 0x3E2C000u   /* the structure DS_0010740C points at */
 #define MT_BUF_A  0x3E00000u   /* 64000-byte frame buffers 0x2EA78 draws/presents */
 #define MT_BUF_B  0x3E10000u
@@ -2665,26 +2665,13 @@ static mt_cb_t mt_cbs[4];
 static u32 mt_args0[16];
 static u32 mt_hook_at, mt_hook_bits, mt_hook_ret_at, mt_hook_ret;
 
-static void mt_press(u32 bits)
-{
-    DSD(DS_000E1C34) = bits;          /* the level the pad reports */
-    DSD(DS_000E1C38) = 0;             /* the latch: every masked bit is new */
-    /* Record §K5.5: 0x2EA74 runs 0x2EA78, whose 0x500C4 pump (0x2EB0C)
-     * rebuilds the level from the key bitmap [DS_00101514]+0x2D8/0x2D9 and the
-     * previous raw word DS_000E1C30. The key is held since the last pump, so
-     * the pump keeps the level: every menu bit is in the 0xFF00FF00 lanes. */
-    DSD(DS_000E1C30) = bits;
-    DSB(MT_LAYOUT + 0x2D8u) = (u8)(bits >> 24);
-    DSB(MT_LAYOUT + 0x2D9u) = (u8)(bits >> 8);
-}
-
 static u32 mt_cb_common(u32 which, u32 arg)
 {
     mt_cbs[which].n++;
     mt_cbs[which].arg = arg;
     if (which == 0) {
         if (mt_cbs[0].n < 16u) mt_args0[mt_cbs[0].n] = arg;
-        if (mt_cbs[0].n == mt_hook_at) mt_press(mt_hook_bits);
+        if (mt_cbs[0].n == mt_hook_at) tf_menu_press(mt_hook_bits);
         if (mt_cbs[0].n == mt_hook_ret_at) mt_cbs[0].ret = mt_hook_ret;
     }
     return mt_cbs[which].ret;
@@ -2766,7 +2753,7 @@ static void mt_menu_reset(void)
 {
     mem_fill(DS_00107414, 0, 0x40u);
     mt_cbs_reset();
-    mt_press(0);
+    tf_menu_press(0);
     DSD(DS_00105F30) = 0;
 }
 
@@ -2969,7 +2956,7 @@ static void check_menu_step(void)
 
     /* Down: the next visible item, a redraw asked for, the clock stamped. */
     DSD(DS_00101500) = 2000;
-    mt_press(0x40004000u);
+    tf_menu_press(0x40004000u);
     CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
     CHECK_EQ_INT((int)DSD(DS_0010742C), 1);
     CHECK_EQ_INT((int)DSD(DS_00107434), (int)B);
@@ -2991,25 +2978,25 @@ static void check_menu_step(void)
     CHECK_EQ_INT((int)mt_args0[5], 0);
     CHECK_EQ_INT((int)mt_args0[6], (int)B);
     /* Down again skips the hidden item; then wraps to the first. */
-    mt_press(0x40004000u);
+    tf_menu_press(0x40004000u);
     (void)menu_step(T, 0x10u, 4u);
     CHECK_EQ_INT((int)DSD(DS_0010742C), 3);
     CHECK_EQ_INT((int)DSD(DS_00107434), (int)C);
     CHECK_EQ_INT((int)DSD(DS_00107448), 1);          /* the wrap fuse untouched */
     (void)menu_step(T, 0x10u, 4u);
     CHECK_EQ_INT((int)DSD(DS_00107430), (int)C);
-    mt_press(0x40004000u);
+    tf_menu_press(0x40004000u);
     (void)menu_step(T, 0x10u, 4u);
     CHECK_EQ_INT((int)DSD(DS_0010742C), 0);
     CHECK_EQ_INT((int)DSD(DS_00107434), (int)A);
     CHECK_EQ_INT((int)DSD(DS_00107448), 0);          /* one wrap spent */
     /* Up wraps to the last visible item, and beats Down. */
     (void)menu_step(T, 0x10u, 4u);
-    mt_press(0x80008000u);
+    tf_menu_press(0x80008000u);
     (void)menu_step(T, 0x10u, 4u);
     CHECK_EQ_INT((int)DSD(DS_0010742C), 3);
     (void)menu_step(T, 0x10u, 4u);
-    mt_press(0xC000C000u);
+    tf_menu_press(0xC000C000u);
     (void)menu_step(T, 0x10u, 4u);
     CHECK_EQ_INT((int)DSD(DS_0010742C), 1);          /* 3 -> 2 (hidden) -> 1 */
     CHECK_EQ_INT((int)DSD(DS_00107434), (int)B);
@@ -3018,7 +3005,7 @@ static void check_menu_step(void)
 
     /* The keyboard reaches the same code: Down through the layout's binding, and
      * a disabled binding is ignored. */
-    mt_press(0);
+    tf_menu_press(0);
     DSD(DS_00105F30) = 0x50;
     DSD(DS_00101500) = 3000;
     (void)menu_step(T, 0x10u, 4u);
@@ -3047,13 +3034,13 @@ static void check_menu_step(void)
     (void)menu_step(T, 0x10u, 4u);                   /* re-initialises */
     CHECK_EQ_INT((int)DSB(DS_00107414), 1);
     CHECK_EQ_INT((int)DSD(DS_0010742C), 0);
-    mt_press(0x40004000u);
+    tf_menu_press(0x40004000u);
     (void)menu_step(T, 0x10u, 4u);
     (void)menu_step(T, 0x10u, 4u);                   /* selection B */
     CHECK_EQ_INT((int)DSD(DS_00107430), (int)B);
     CHECK(grid(5, 4) != 0, "the items are on screen before Enter");
     mt_cbs[2].ret = (u32)-5;
-    mt_press(0x1000000u);
+    tf_menu_press(0x1000000u);
     CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), -5);
     CHECK_EQ_INT((int)mt_cbs[2].n, 1);
     CHECK_EQ_INT((int)mt_cbs[2].arg, (int)B);
@@ -3068,31 +3055,31 @@ static void check_menu_step(void)
     }
     /* -10 leaves without asking for a redraw. */
     (void)menu_step(T, 0x10u, 4u);
-    mt_press(0x40004000u);
+    tf_menu_press(0x40004000u);
     (void)menu_step(T, 0x10u, 4u);
     (void)menu_step(T, 0x10u, 4u);
     mt_cbs[2].ret = (u32)-10;
-    mt_press(0x1000000u);
+    tf_menu_press(0x1000000u);
     CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), -10);
     CHECK_EQ_INT((int)DSB(DS_00107414), 0);
     CHECK_EQ_INT((int)DSD(DS_0010743C), 0);
     CHECK_EQ_INT((int)DSD(DS_00107448), -10);
     /* Another result is not a way out; neither is a callback nobody registered. */
     (void)menu_step(T, 0x10u, 4u);
-    mt_press(0x40004000u);
+    tf_menu_press(0x40004000u);
     (void)menu_step(T, 0x10u, 4u);
     (void)menu_step(T, 0x10u, 4u);
     mt_cbs[2].ret = 7;
-    mt_press(0x1000000u);
+    tf_menu_press(0x1000000u);
     CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
     CHECK_EQ_INT((int)DSD(DS_00107448), 7);
     CHECK_EQ_INT((int)DSB(DS_00107414), 0);
     DSD(B + 8u) = MT_FN_NONE;
     (void)menu_step(T, 0x10u, 4u);
-    mt_press(0x40004000u);
+    tf_menu_press(0x40004000u);
     (void)menu_step(T, 0x10u, 4u);
     (void)menu_step(T, 0x10u, 4u);
-    mt_press(0x1000000u);
+    tf_menu_press(0x1000000u);
     CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
     CHECK_EQ_INT((int)DSD(DS_00107448), 0);
     DSD(B + 8u) = MT_FN2;
@@ -3100,19 +3087,19 @@ static void check_menu_step(void)
     /* Esc: with flags bit 2 it leaves with -1 and a redraw asked for; without,
      * -5, or 0 when the selection index equals the item count. */
     (void)menu_step(T, 0x10u, 4u);
-    mt_press(0x2000000u);
+    tf_menu_press(0x2000000u);
     CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), -1);
     CHECK_EQ_INT((int)DSB(DS_00107414), 0);
     CHECK_EQ_INT((int)DSD(DS_0010743C), 1);
     (void)menu_step(T, 0x10u, 0u);
     CHECK_EQ_INT((int)DSD(DS_00107418), 0);
     CHECK_EQ_INT((int)grid_sprite(0x1B, 16), (int)mt_glyph('E'));   /* flags 0: the help lines */
-    mt_press(0x2000000u);
+    tf_menu_press(0x2000000u);
     CHECK_EQ_INT((int)menu_step(T, 0x10u, 0u), -5);
     CHECK_EQ_INT((int)DSB(DS_00107414), 0);
     (void)menu_step(T, 0x10u, 0u);
     DSD(DS_0010742C) = DSD(DS_00107424);
-    mt_press(0x2000000u);
+    tf_menu_press(0x2000000u);
     CHECK_EQ_INT((int)menu_step(T, 0x10u, 0u), 0);
     CHECK_EQ_INT((int)DSB(DS_00107414), 0);
     /* The Esc key itself is dead: 0x2EEC8 has consumed it before 0x2EB80 looks. */
@@ -3124,12 +3111,12 @@ static void check_menu_step(void)
     /* A nonzero table callback result is returned before any key is handled. */
     (void)menu_step(T, 0x10u, 4u);
     mt_cbs[0].ret = 9;
-    mt_press(0x2000000u);
+    tf_menu_press(0x2000000u);
     CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 9);
     CHECK_EQ_INT((int)DSB(DS_00107414), 1);
     CHECK_EQ_INT((int)DSD(DS_00107448), 9);
     mt_cbs[0].ret = 0;
-    mt_press(0);
+    tf_menu_press(0);
 
     /* Flags bit 0 draws the 0x305FC widget after a step that did not leave. */
     DSB(DS_00107414) = 0;
@@ -3176,10 +3163,10 @@ static void check_menu_step(void)
     /* A menu with nothing visible: Down finds nothing after two wraps and 0x2EA68
      * is reached (the port returns 0). */
     DSD(DS_00107448) = 0x12345678u;
-    mt_press(0x40004000u);
+    tf_menu_press(0x40004000u);
     CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
     CHECK_EQ_INT((int)DSD(DS_00107448), -1);
-    mt_press(0x80008000u);
+    tf_menu_press(0x80008000u);
     DSD(DS_00107448) = 0x12345678u;
     CHECK_EQ_INT((int)menu_step(T, 0x10u, 4u), 0);
     CHECK_EQ_INT((int)DSD(DS_00107448), -1);
@@ -3188,7 +3175,7 @@ static void check_menu_step(void)
     mem_fill(DS_00107414, 0, 0x40u);
     actors_reset();
     DSD(DS_00101514) = s_lay; DSD(DS_00101500) = s_ticks; DSD(DS_00105F2C) = s_stamp;
-    mt_press(0);
+    tf_menu_press(0);
 }
 
 /* 0x2FA40 (record §49-X.7). The callbacks are the script: the input state
@@ -3218,7 +3205,7 @@ static void check_menu_run(void)
     /* Down moves to item B, whose entry the next callback call receives; the
      * callback's nonzero result is the return value. */
     mt_cbs_reset();
-    mt_press(0x40004000u);
+    tf_menu_press(0x40004000u);
     mt_hook_ret_at = 3; mt_hook_ret = 0x77;
     CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0x77);
     /* §K5: 0x2EA74 at entry (0x2FA61) and after the one completed poll pass
@@ -3240,21 +3227,21 @@ static void check_menu_run(void)
 
     /* Esc without flags bit 2: -1 (the index never equals the count). */
     mt_cbs_reset();
-    mt_press(0x2000000u);
+    tf_menu_press(0x2000000u);
     DSD(DS_00101500) = 200;
     CHECK_EQ_INT((int)menu_run(T, 0x10u, 0u), -1);
     CHECK_EQ_INT((int)mt_cbs[0].n, 2);
     CHECK_EQ_INT((int)DSD(DS_00101500), 202);        /* only the entry 0x2EA74 */
     /* Esc with flags bit 2 acts as Down. */
     mt_cbs_reset();
-    mt_press(0x2000000u);
+    tf_menu_press(0x2000000u);
     mt_hook_ret_at = 3; mt_hook_ret = 0x55;
     CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0x55);
     CHECK_EQ_INT((int)mt_args0[2], (int)A);
     CHECK_EQ_INT((int)mt_args0[3], (int)B);
     /* Down twice: past the hidden item to C. */
     mt_cbs_reset();
-    mt_press(0x40004000u);
+    tf_menu_press(0x40004000u);
     mt_hook_at = 2; mt_hook_bits = 0x40004000u;
     mt_hook_ret_at = 4; mt_hook_ret = 0x56;
     CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0x56);
@@ -3262,14 +3249,14 @@ static void check_menu_run(void)
     CHECK_EQ_INT((int)mt_args0[4], (int)C);
     /* Up from the first item wraps to the last visible one. */
     mt_cbs_reset();
-    mt_press(0x80008000u);
+    tf_menu_press(0x80008000u);
     mt_hook_ret_at = 3; mt_hook_ret = 0x57;
     CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0x57);
     CHECK_EQ_INT((int)mt_args0[3], (int)C);
     /* Enter: the item's callback runs, then the header is drawn again (the
      * table callback is called with 0 once more) before it goes on. */
     mt_cbs_reset();
-    mt_press(0x1000000u);
+    tf_menu_press(0x1000000u);
     mt_hook_ret_at = 5; mt_hook_ret = 0x66;
     CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0x66);
     CHECK_EQ_INT((int)mt_cbs[1].n, 1);
@@ -3286,7 +3273,7 @@ static void check_menu_run(void)
     memcpy(mem + DS_00107454, "12345678", 8u);
     DSB(DS_00107450 + 2u) = 8; DSB(DS_00107453) = 0;
     mt_cbs_reset();
-    mt_press(0);
+    tf_menu_press(0);
     mt_hook_ret_at = 3; mt_hook_ret = 0x58;
     CHECK_EQ_INT((int)menu_run(T, 0x10u, 5u), 0x58);
     CHECK_EQ_INT((int)grid_sprite(2, 0x11), (int)mt_glyph('1'));
@@ -3310,19 +3297,19 @@ static void check_menu_run(void)
     mt_entry(T, 1, 0x217u, 0, 0, 0);
     mt_entry(T, 2, 0x217u, 0, 0, 0);
     mt_cbs_reset();
-    mt_press(0x40004000u);
+    tf_menu_press(0x40004000u);
     CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0);
     {
         s32 col = (0x2b - text_width((const u8 *)"TITLE", 0x5002u)) >> 1;
         CHECK_EQ_INT((int)grid(0, col), 0);
     }
-    mt_press(0x80008000u);
+    tf_menu_press(0x80008000u);
     CHECK_EQ_INT((int)menu_run(T, 0x10u, 4u), 0);
 
     mt_menu_reset();
     actors_reset();
     DSD(DS_00101514) = s_lay; DSD(DS_00101500) = s_ticks;
-    mt_press(0);
+    tf_menu_press(0);
 }
 
 static void check_menu(void)

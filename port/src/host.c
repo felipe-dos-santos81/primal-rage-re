@@ -86,6 +86,8 @@ static int g_sdl_video;
 static int g_pending; /* a frame was submitted and awaits present */
 static int g_w, g_h;
 static int g_quit_requested; /* the user closed the window (SDL_EVENT_QUIT) */
+static host_pump_hook_fn g_pump_hook; /* PORT: test seam (host.h); NULL in the game */
+static void *g_pump_hook_ctx;
 
 /* Monotonic, so a wall-clock step (NTP, manual set) cannot skew the tick base.
  * CLOCK_MONOTONIC is POSIX; the port already targets a POSIX host. */
@@ -231,6 +233,13 @@ void host_pump(void)
         g_tick += (u32)missed;
         g_tick_base_ns += missed * HOST_TICK_NS;
     }
+    if (g_pump_hook != NULL) g_pump_hook(g_pump_hook_ctx);
+}
+
+void host_set_pump_hook(host_pump_hook_fn fn, void *ctx)
+{
+    g_pump_hook = fn;
+    g_pump_hook_ctx = ctx;
 }
 
 void host_wait_vblank(void)
