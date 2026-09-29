@@ -43,6 +43,16 @@ void game_loop(void);
  * (modes 0x0C, 0x21..0x23 and 0x25; record §42-D). Exposed for tests. */
 void game_frame(void);
 
+/* 0x24CFE..0x24EE7 (record §55-A): game_frame's int 16h keyboard loop, split
+ * out so a test can drive it without the mode switch. Until the queue is
+ * empty, each key sets the latch DS_00105F30; in mode 0x1E a non-zero ascii
+ * byte goes to 0x20860; otherwise Enter in mode 3 stores mode 0x27, ESC opens
+ * the quit prompt 0x249F0 (AL = 0 in mode 3, none in mode 0x27, else AL = 1),
+ * space pauses (not in modes 3/0x27, nor in 0x17 under the hook 0x10E80), and
+ * the extended keys 0x10/0x1F/0x24/0x32 run 0x249F0(0)/0x1D220/0x5004A (not
+ * ported)/0x1D1B0. The prompt and the pause block on input_get_key. */
+void game_key_loop(void);
+
 /* 0x11D04: switch(DS_000F0A64). States 0/1/2 and the front-end states 3/4/5 are
  * ported; 6/7/8 (the fight engine) and state 9's semantics beyond the countdown
  * handoff carry PORT markers naming the sub-project that owns them. The coin
@@ -167,8 +177,8 @@ void sound_resume(void);
 
 /* 0x249F0 (record §50-D). The quit prompt; `hard_quit` is AL (0 = the quit
  * flag, nonzero = the longjmp quit, which the port ends through the same flag).
- * Blocks on input_get_key. Not called by the frame loop, which keeps its ESC
- * quit arm (input_drain_esc). */
+ * Blocks on input_get_key. Called by game_key_loop (ESC, the extended key
+ * 0x10; record §55-A). */
 void game_quit_prompt(u32 hard_quit);
 
 /* 0x1CF20: the master loop's per-frame audio service — starts pending music,

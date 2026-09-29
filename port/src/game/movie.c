@@ -114,10 +114,9 @@ int movie_play(const char *game_dir, const char *name)
 
         movie_pace(delay);
         host_pump();
-        /* Same quit arm as game_loop(): drain the queue, so a key queued before
-         * the ESC cannot pin the head and hide it (input.h INPUT_ESC). A window
-         * close must stop the movie too: the loop that honours it does not run
-         * while a movie plays. */
+        /* Drain the queue, so a key queued before the ESC cannot pin the head
+         * and hide it (input.h INPUT_ESC). A window close must stop the movie
+         * too: the loop that honours it does not run while a movie plays. */
         if (input_drain_esc() || host_quit_requested()) break;
     }
     gfx_screen_reset(0u);                          /* 0x1C873 0x52106 */

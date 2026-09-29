@@ -23,7 +23,8 @@ void input_push(u8 scan, u8 ascii);
 int input_has_key(void);
 
 /* int 16h AH=0: blocks (draining host_pump()) until a key is queued, then
- * dequeues and returns it packed as (scan << 8) | ascii. */
+ * dequeues and returns it packed as (scan << 8) | ascii. PORT: returns 0
+ * without a key once the host has asked to quit (a window close). */
 u16 input_get_key(void);
 
 /* int 16h AH=1: peeks without dequeuing. Returns the packed key, or 0 when the
@@ -37,13 +38,12 @@ void input_clear(void);
  * the key 0x249F0 turns into the quit flag DAT_000A81A8. */
 #define INPUT_ESC 0x011Bu
 
-/* PORT: the original drains int 16h every frame — 0x24C5C's keyboard loop
- * peeks (AH=1) then reads (AH=0) until the queue is empty — and 0x249F0 turns
- * the ESC read there into the quit flag. Outside mode 0x1E (whose loop
- * game_frame runs, record §53-A) the port ports only that quit arm of the
- * dispatch, so its quit test must drain: peeking would pin the oldest key,
- * and any later ESC behind it could never be seen. Empties the queue and
- * reports whether ESC was among the keys read. */
+/* PORT: the movie player's abort test (movie.c). The frame loop's keys are
+ * 0x24C5C's (game_key_loop, records §53-A/§55-A), which peeks (AH=1) then
+ * reads (AH=0) until the queue is empty. A movie has no such loop, so its test
+ * must drain: peeking would pin the oldest key, and any later ESC behind it
+ * could never be seen. Empties the queue and reports whether ESC was among
+ * the keys read. */
 int input_drain_esc(void);
 
 /* ---- game input bitfield (0x500C4 / 0x50161 / 0x4F644) ------------------

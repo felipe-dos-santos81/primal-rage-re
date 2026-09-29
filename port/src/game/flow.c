@@ -6313,6 +6313,10 @@ void game_quit_prompt(u32 hard_quit)
         } else if (key == no) {                            /* 0x24AB5 */
             DSB(DS_00104B22) = 0;                          /* 0x24ABE */
             text_cells_release(-1, 0xA, game_string_get(id), 0x1000u);   /* 0x24AC4..0x24AE7 0x1C500 0x2F280 */
+        } else if (host_quit_requested()) {
+            /* PORT: a window close ends the prompt (the raw has no window);
+             * game_loop then sets the quit flag. */
+            DSB(DS_00104B22) = 0;
         }
     } while (DSB(DS_00104B22) != 0u);                      /* 0x24AEC */
     sound_resume();                                        /* 0x24AF9 0x1D270 */
@@ -6554,12 +6558,10 @@ void game_loop(void)
             host_wait_vblank();
         }
 
-        /* PORT: the original reads int 16h inside 0x24C5C's keyboard loop and
-         * quits from 0x249F0; outside mode 0x1E (whose loop game_frame runs,
-         * record §53-A) the port ports only that quit arm and tests it here, so the test drains the queue (input_drain_esc) — the BIOS
-         * queue's head advances only on a read. A window close is the host's
-         * own request rather than a key. */
-        if (input_drain_esc() || host_quit_requested()) {  /* ESC: 0x011B */
+        /* PORT: ESC is 0x24C5C's (game_key_loop, record §55-A: the quit
+         * prompt 0x249F0, whose yes sets the quit flag). A window close is the
+         * host's own request rather than a key, and quits at once. */
+        if (host_quit_requested()) {
             DSB(DS_000A81A8) = 1;
         }
     } while (DSB(DS_000A81A8) == 0);
@@ -6686,6 +6688,80 @@ void game_mode_2f_step(void)
 
 #define FN_000259CC 0x000259CCu   /* no symbols.h name: mode 0x11's hook */
 
+/* 0x24CFE..0x24EE7 — records §53-A, §55-A. 0x24C5C's int 16h keyboard loop.
+ * PORT: split out of game_frame (which calls it at the raw's place, after the
+ * update table and before the mode switch) so a test can drive it without the
+ * switch; ESI = 0xFF and EDI = 0x27 (0x24CFE/0x24D03) are its constants and
+ * every callee preserves them. While a key is queued (AH = 1, 0x24D0E; a key
+ * word 0 counts as none, 0x24D1E), read it (AH = 0, 0x24D2E) and latch its
+ * ascii byte, or its scan code when the ascii byte is 0 (0x24D3E..0x24D4D).
+ * The mode is the word DS_00104B00 (`mov ax,[0x104b00]`), read again for each
+ * key: Enter in mode 3 changes it, so the keys after it in the same frame see
+ * mode 0x27. The ascii compares are unsigned (`cmp bl,imm; jc; jbe`). */
+void game_key_loop(void)
+{
+    for (;;) {
+        if (((u32)input_check_key() & 0xFFFFu) == 0u) break;   /* 0x24D08..0x24D20 int 16h AH=1 */
+        u32 key = (u32)input_get_key() & 0xFFFFu;          /* 0x24D26..0x24D3B int 16h AH=0 */
+        u32 bl = key & 0xFFu;
+        DSD(DS_00105F30) = (bl != 0u ? key : key >> 8) & 0xFFu;   /* 0x24D3E..0x24D4D */
+        if (DSW(DS_00104B00) == 0x1Eu && bl != 0u) {       /* 0x24D52..0x24D61 */
+            nameentry_key(bl);                             /* 0x24D63..0x24D67 0x20860 */
+            continue;                                      /* 0x24D6C */
+        }
+        if (bl == 0x0Du) {                                 /* 0x24D6E/0x24D73 Enter */
+            if (DSW(DS_00104B00) == 3u)                    /* 0x24ECF..0x24EDA */
+                DSW(DS_00104B00) = 0x27u;                  /* 0x24EE0 `mov [0x104b00],di` */
+        } else if (bl == 0x1Bu) {                          /* 0x24D79/0x24D7E ESC */
+            u32 mode = DSW(DS_00104B00);                   /* 0x24E9E..0x24EA0 */
+            if (mode == 3u)                                /* 0x24EA6 */
+                game_quit_prompt(0u);                      /* 0x24EAB/0x24EAD 0x249F0 */
+            else if (mode != 0x27u)                        /* 0x24EB7 */
+                game_quit_prompt(1u);                      /* 0x24EC0/0x24EC5 0x249F0 */
+        } else if (bl == 0x20u) {                          /* 0x24D84/0x24D87 space */
+            u32 mode = DSW(DS_00104B00);                   /* 0x24DE9..0x24DEB */
+            if (mode == 3u || mode == 0x27u) continue;     /* 0x24DF2/0x24DFB */
+            if (mode == 0x17u && DSD(DS_00104AE4) == FN_00010E80) continue;   /* 0x24E04/0x24E09 */
+            DSB(DS_00104B22) = 1u;                         /* 0x24E19/0x24E20 (CH = 1) */
+            sound_pause();                                 /* 0x24E26 0x1D250 (EDX = 0xF kept) */
+            text_cursor_set(-1, 0xF, game_string_get(0x1E8u), 0x1000u);   /* 0x24E2B..0x24E41 0x1C500 0x2F198 */
+            config_screen_wait(-1);                        /* 0x24E46/0x24E4B 0x2EA78 */
+            for (;;) {
+                u32 k = (u32)input_get_key();              /* 0x24E50..0x24E61 int 16h AH=0 */
+                if ((k & 0xFFu) == 0x20u) break;           /* 0x24E63..0x24E6A */
+                /* PORT: a window close ends the wait (the raw has no window);
+                 * game_loop then sets the quit flag. */
+                if (host_quit_requested()) break;
+            }
+            text_cells_release(-1, 0xF, game_string_get(0x1E8u), 0x1000u);   /* 0x24E6C..0x24E87 0x1C500 0x2F280 */
+            sound_resume();                                /* 0x24E8C/0x24E8E 0x1D270 (EDX kept) */
+            DSB(DS_00104B22) = 0u;                         /* 0x24E93 (DH = 0) */
+        } else if (bl == 0u) {                             /* 0x24D8E/0x24D90 extended key */
+            switch (key >> 8) {                            /* 0x24D96..0x24DB8 */
+            case 0x10u:                                    /* 0x24DB5/0x24DB8 Alt-Q */
+                game_quit_prompt(0u);                      /* 0x24DDD/0x24DDF 0x249F0 */
+                break;
+            case 0x1Fu:                                    /* 0x24D99/0x24D9E Alt-S */
+                sound_sample_pause_toggle();               /* 0x24DC9 0x1D220 */
+                break;
+            case 0x24u:                                    /* 0x24DA0/0x24DA9 Alt-J */
+                /* PORT: 0x24DD3 calls 0x5004A, the joystick calibration: it
+                 * times the PIT (0x50021) and the game port 0x201 (0x4FC05/
+                 * 0x4FCFD) into DS_000E1C1C..DS_000E1C2C, which only the
+                 * host-owned ISR sampler 0x1BBAC's readers use. Host-owned
+                 * (record §55-A); the port has no game port. */
+                break;
+            case 0x32u:                                    /* 0x24DAB/0x24DAE Alt-M */
+                sound_music_pause_toggle();                /* 0x24DBF 0x1D1B0 */
+                break;
+            default:                                       /* 0x24DBA/0x24DB0 */
+                break;
+            }
+        }
+        /* Every other ascii byte loops (0x24D7C, 0x24D89, 0x24D90). */
+    }
+}
+
 void game_frame(void)
 {
     /* PORT: 0x24C5C calls 0x4F644 at 0x24C6E (unless DAT_00104B00 == 0x27) as
@@ -6694,9 +6770,9 @@ void game_frame(void)
 
     /* 0x24C73: the per-side CPU-AI command block. It runs while
      * DS_00104B26 == 0 (BSS, read-only in the image) and DS_00104B19+2 != 0
-     * (armed by state 6), and fills DS_001088E0/E2 via 0x47208. The original's
-     * int 16h input loop and the 0x94-byte player records it consumes are the
-     * interactive match's and stay a gap; this block is the demo's AI. */
+     * (armed by state 6), and fills DS_001088E0/E2 via 0x47208. The 0x94-byte
+     * player records it consumes are the interactive match's and stay a gap;
+     * this block is the demo's AI. */
     fighter_command_block();                           /* 0x24C73 */
     /* 0x24CCD..0x24CDB: the frame counter is a word (`mov di,[0xef6dc]` /
      * `inc edi` / `mov [0xef6dc],di`); 0xEF6DE is a separate global
@@ -6705,32 +6781,13 @@ void game_frame(void)
     run_process_table(DS_000A8644, DSD(DS_00104AE8));  /* update table */
     /* PORT: 0x24C5C's second 0x38990 per-frame service call is deferred. */
 
-    /* PORT: 0x24CFE..0x24EE7, the int 16h keyboard loop, is ported only for
-     * mode 0x1E (record §53-A, below); elsewhere only its ESC quit arm is, in
-     * game_loop. It runs before the switch and is one of the three ways out of
-     * mode 3: Enter in mode 3 stores mode 0x27 (0x24EE0, the start menu),
-     * 0x11D04's coin/start arm calls 0x257A4 (game_coin_divert), and so does
-     * 0x11D04's state 8 (reached only when DS_00108173 is non-zero, which no
-     * instruction stores) (records §47-B, §48-W). */
-    /* 0x24D08..0x24D6C: while a key is queued (AH = 1, 0x24D0E), read it (AH =
-     * 0, 0x24D2E), latch its ascii byte, or its scan code when the ascii byte is
-     * 0 (0x24D3E..0x24D4D), and in mode 0x1E (the word compare `mov ax,
-     * [0x104b00]; cmp eax,0x1e`, 0x24D54/0x24D5A) hand a non-zero ascii byte to
-     * 0x20860 and loop (0x24D6C). The mode test is per key in the raw; no key
-     * this arm handles changes the mode, so it is hoisted. Mode 0x1E's keys
-     * therefore never reach game_loop's ESC arm, as in the raw, where ESC (ascii
-     * 0x1B) goes to 0x20860 too.
-     * PORT: an extended key (ascii 0) in mode 0x1E is read and latched but its
-     * scan-code dispatch (0x24D8E..0x24DDF: 0x10 the quit prompt 0x249F0, 0x1F
-     * 0x1D220, 0x24 0x5004A, 0x32 0x1D1B0) is not ported; it is dropped. */
-    if (DSW(DS_00104B00) == 0x1Eu) {                       /* 0x24D54..0x24D5D */
-        while (input_check_key() != 0) {                   /* 0x24D08..0x24D20 int 16h AH=1 */
-            u32 key = input_get_key();                     /* 0x24D26..0x24D3B int 16h AH=0 */
-            u32 bl = key & 0xFFu;
-            DSD(DS_00105F30) = (bl != 0u ? key : key >> 8) & 0xFFu;   /* 0x24D3E..0x24D4D */
-            if (bl != 0u) nameentry_key(bl);               /* 0x24D5F..0x24D67 0x20860 */
-        }
-    }
+    /* 0x24CFE..0x24EE7: the int 16h keyboard loop (records §53-A, §55-A). It
+     * runs before the switch and is one of the three ways out of mode 3: Enter
+     * in mode 3 stores mode 0x27 (0x24EE0, the service menu), 0x11D04's
+     * coin/start arm calls 0x257A4 (game_coin_divert), and so does 0x11D04's
+     * state 8 (reached only when DS_00108173 is non-zero, which no instruction
+     * stores) (records §47-B, §48-W). */
+    game_key_loop();
 
     /* 0x24EEC..0x24F01: the mode switch, on the word DS_00104B00 (`mov
      * ax,[0x104b00]; cmp ax,0x33; ja 0x2540F; and eax,0xffff; jmp
@@ -6935,9 +6992,10 @@ void game_frame(void)
          * 0x2FFC4 over the table 0xBCBDC (stride 0x10, flags 4 from the
          * `mov ecx,4` at 0x251D5). Results 0, -5 and -10 (0x251F5..0x251FC)
          * go on to 0x4F644; any other result is the longjmp(0x1044F4, 1) at
-         * 0x25206. No ported path sets DS_00104B00 to 0x27 (the raw's setters
-         * are in the unported 0x2CBxx callbacks), so this arm is not reached by
-         * the front-end, demo-fight or attract runs.
+         * 0x25206. Enter in mode 3 sets DS_00104B00 to 0x27 (game_key_loop,
+         * 0x24EE0, record §55-A; the raw's other setters are in the unported
+         * 0x2CBxx callbacks); no oracle driver queues a key, so this arm
+         * is not reached by the front-end, demo-fight or attract runs.
          * PORT: 0x25206 0x65431 longjmp is out of scope (spec §7): the port
          * skips 0x4F644 and continues.
          * The record §47-B.1 note on the other cases follows. Case 0x17 is ported (0x4F318, record
