@@ -114,42 +114,48 @@ them.
 | addr | size | callers: counter / raw sites (site@owner) | callees | reach | class | cluster | what it is (raw) |
 |---|---:|---|---|---|---|---|---|
 | `0x50D23` | 4405 | 1 / 1: `1C82D`@`1C740`P | — | yes (movie player) | port (partial) / host-owned (aperture half): **own plan** | K10 | Movie dirty-rect blit. It stores to the aperture (EBX = `0xA0000`+off) and to the `DS_000E87A0` buffer (EDI), so the EDI half is `mem[]` state. |
-| `0x501A3` | 2944 | 2 / 2: `256A5`@`255CC`P, `2EAD1`@`2EA78`P | — | yes | **host-owned** (proposed) | K9 | Dirty-dword blit `E87A4` vs `E87A0` into `0xA0000` (`0x501B0`). All its stores go through EBX. `gfx_present` replaces it (`gfx.c:152`, `config.c:510`). |
-| `0x34B6C` | 541 | 1 / 1: `357FC`@`35658`P | 21, all P | yes | port (header only) | K1 | Body is `fight_health_sync` (`fight.c:2066`). The header `/* ---- 0x34B6C` is not counted. |
+| `0x501A3` | 2944 | 2 / 2: `256A5`@`255CC`P, `2EAD1`@`2EA78`P | — | yes | **closed: host-owned**, §K9.1 | K9 | Dirty-dword blit `E87A4` vs `E87A0` into `0xA0000` (`0x501B0`). All its stores go through EBX. `gfx_present` replaces it (`gfx.c:152`, `config.c:510`). |
+| `0x34B6C` | 541 | 1 / 1: `357FC`@`35658`P | 21, all P | yes | **closed**: header, §K1.1 | K1 | Body is `fight_health_sync` (`fight.c:2066`). The header `/* ---- 0x34B6C` is not counted. |
 | `0x51F72` | 404 | 3 / 3: `52119`, `52123`, `52151`, all @`52106`P | — | yes (boot/movie) | port | K2 | Unrolled 0xFA00-byte dword fill of `[EAX]` with EDX (`0x51F78..`). `0x52106` uses it on the two `mem[]` buffers and on the aperture (`gfx.c:175-179`). |
 | `0x1CB18` | 271 | 1 / 1: `1CF26`@`1CF20`P | `1B544`P + AIL `5DC0F/2A/4D/70/A6/C5/E4` | no (no port path writes slot `+0x04`) | port | K7 | Sample start: copies the queued resource into the slot's `0x1D0BC` buffer, then AIL init/set/start. Named gap at `flow.c:5962`. |
-| `0x1C528` | 190 | 1 / 1: `1C60B`@`1C5E8`P | `1B544`P | yes | port (header only) | K1 | A byte-identical copy of `0x14268`. It shares `sprite_node_build` (`sprite.c:55-58`), and the header names it mid-comment. |
-| `0x2E180` | 151 | 1 / 1: `2E983`@`2E934`D | `2E034`U, `2E0A4`U | no (only via deferred `0x2E934`) | **deferred** (proposed) | K9 | Audit counter add into the EEPROM image tables `0x2D420/0x2D45E/0x2D460`. |
+| `0x1C528` | 190 | 1 / 1: `1C60B`@`1C5E8`P | `1B544`P | yes | **closed**: shared header, §K1.5 | K1 | A byte-identical copy of `0x14268`. It shares `sprite_node_build` (`sprite.c:55-58`), and the header names it mid-comment. |
+| `0x2E180` | 151 | 1 / 1: `2E983`@`2E934`D | `2E034`U, `2E0A4`U | no (only via deferred `0x2E934`) | **closed: deferred**, §K9.6 | K9 | Audit counter add into the EEPROM image tables `0x2D420/0x2D45E/0x2D460`. |
 | `0x31A78` | 137 | 0 / 4†: `321F2`, `32230`, `324A9`, `324DC` (non-Ghidra code after `31E28`P) | `3157C`P | via non-Ghidra code only | port | K11 | Jump-table dispatcher at `0x31A68`. Raw `call`s from `0x321F2`, `0x32230`, `0x324A9`, `0x324DC` (service-menu callback code). |
-| `0x38910` | 125 | 1 / 1: `121F9`@`121A0`P | `4F1D0`P | yes | port (header only) | K1 | Ported as `title_origin_reset` under `/* PORT: 0x38910` (`flow.c:183`). |
-| `0x2E0A4` | 117 | 1 / 1: `2E1EB`@`2E180`U | `2D4EC`P | no | **deferred** (proposed) | K9 | Halves an EEPROM-image counter table and sets the dirty bit `DS_00105DD8`. Only via `0x2E180`. |
-| `0x2E034` | 110 | 1 / 1: `2E20B`@`2E180`U | `2D4EC`P | no | **deferred** (proposed) | K9 | Stores BL into an EEPROM-image counter and sets the dirty bit. Only via `0x2E180`. |
-| `0x51ED8` | 109 | 1 / 1: `1C63D`@`1C5E8`P | `1B544`P | yes | port (header only) | K1 | Ported as `sprite_blit_at(n, base)` under `/* PORT: 0x51ED8` (`sprite.h:58`, `sprite.c:285`). |
-| `0x2DF8C` | 109 | 1 / 1: `2D919`@`2D6F8`P | `2D4EC`P, `2E990`D, `61A70` rt | yes, but inert | **deferred** (proposed) | K9 | Loops sides 3..5. Each effect goes through the deferred storage read `0x2E990` (§49-Y.5), the no-op `0x2D4EC` (`config.c:58`) or the runtime `0x61A70`. `config.c:205` already calls it deferred. |
+| `0x38910` | 125 | 1 / 1: `121F9`@`121A0`P | `4F1D0`P | yes | **closed**: header, §K1.3 | K1 | Ported as `title_origin_reset` under `/* PORT: 0x38910` (`flow.c:183`). |
+| `0x2E0A4` | 117 | 1 / 1: `2E1EB`@`2E180`U | `2D4EC`P | no | **closed: deferred**, §K9.7 | K9 | Halves an EEPROM-image counter table and sets the dirty bit `DS_00105DD8`. Only via `0x2E180`. |
+| `0x2E034` | 110 | 1 / 1: `2E20B`@`2E180`U | `2D4EC`P | no | **closed: deferred**, §K9.8 | K9 | Stores BL into an EEPROM-image counter and sets the dirty bit. Only via `0x2E180`. |
+| `0x51ED8` | 109 | 1 / 1: `1C63D`@`1C5E8`P | `1B544`P | yes | **closed**: split `sprite_blit_aperture`, §K1.6 | K1 | Ported as `sprite_blit_at(n, base)` under `/* PORT: 0x51ED8` (`sprite.h:58`, `sprite.c:285`). |
+| `0x2DF8C` | 109 | 1 / 1: `2D919`@`2D6F8`P | `2D4EC`P, `2E990`D, `61A70` rt | yes, but inert | **closed: deferred**, §K9.9 | K9 | Loops sides 3..5. Each effect goes through the deferred storage read `0x2E990` (§49-Y.5), the no-op `0x2D4EC` (`config.c:58`) or the runtime `0x61A70`. **Correction (§K9.9):** `0x61A70` is memset; on the port's path it zeroes `0x105ECD..0x105EFB`, which are zero in the image and have no ported writer, so it stays inert. `config.c:205` already calls it deferred. |
 | `0x319B0` | 91 | 0 / 2†: `32207`, `32248` (non-Ghidra code after `31E28`P) | — | via non-Ghidra code only | port | K11 | Jump-table dispatcher at `0x319A0`. Raw `call`s from `0x32207` and `0x32248`. |
 | `0x4F728` | 79 | 1 / 1: `27E4B`@`27DC8`P | `2C3FC`P | yes | port | K6 | Two voices: `0xDF` or `0x23` (gated on `DS_00104AD4`, `0x107813+rec`, `DS_001088F2`), then `0x22`. `flow.c:2762` PORT. |
-| `0x4682C` | 78 | 1 / 1: `46AA0`@`469A8`P | `1A5D4`P | yes | port (header only) | K1 | Shares `ai_pred_cmd_sign` with `0x467DC` (`fighter.c:1295`, header `/* 0x467DC / 0x4682C`). It needs its own function. |
-| `0x4FF8F` | 73 | 4 / 8†: `1BD15`, `1BD2E`, `1BD3C`, `1BD8B` @`1BBAC`H; `1B976`, `1B9B6`, `1BA16`, `1BA96` in the unreferenced sampler routines `0x1B934..0x1BB73` | — | no | **host-owned** (proposed) | K9 | Joystick A axis bits from `DS_000E1C1E/20/22/24`, ±0x1E. Every caller is in the host-owned sampler region `0x1B908..0x1BDCE` (see §G). |
-| `0x4FFD8` | 73 | 2 / 4†: `1BDA4`, `1BDC9` @`1BBAC`H; `1BAD6`, `1BB36` in the unreferenced sampler routines `0x1B934..0x1BB73` | — | no | **host-owned** (proposed) | K9 | Joystick B axis bits from `DS_000E1C26/28/2A/2C`. Callers as for `0x4FF8F` (see §G). |
+| `0x4682C` | 78 | 1 / 1: `46AA0`@`469A8`P | `1A5D4`P | yes | **closed**: split `ai_pred_4682c`, §K1.4 | K1 | Shares `ai_pred_cmd_sign` with `0x467DC` (`fighter.c:1295`, header `/* 0x467DC / 0x4682C`). It needs its own function. |
+| `0x4FF8F` | 73 | 4 / 8†: `1BD15`, `1BD2E`, `1BD3C`, `1BD8B` @`1BBAC`H; `1B976`, `1B9B6`, `1BA16`, `1BA96` in the unreferenced sampler routines `0x1B934..0x1BB73` | — | no | **closed: host-owned**, §K9.3 | K9 | Joystick A axis bits from `DS_000E1C1E/20/22/24`, ±0x1E. Every caller is in the host-owned sampler region `0x1B908..0x1BDCE` (see §G). |
+| `0x4FFD8` | 73 | 2 / 4†: `1BDA4`, `1BDC9` @`1BBAC`H; `1BAD6`, `1BB36` in the unreferenced sampler routines `0x1B934..0x1BB73` | — | no | **closed: host-owned**, §K9.4 | K9 | Joystick B axis bits from `DS_000E1C26/28/2A/2C`. Callers as for `0x4FF8F` (see §G). |
 | `0x4A868` | 63 | 6 / 6: `4A361`@`49C78`P, `4BFDE`@`4BF18`P, `4DF8E`, `4DFFA`, `4E066`, `4E0D0` @`4DEF4`P | `2BE00`P | yes (case-13/14 bodies, `0x4DEF4` states 1..4) | port | K4 | Proximity gate `\|0x2BE00(rec) - entry+0x14\| <= 2*\|(rec+0x32)>>16\|`. Its absence is the named gap at `fight.c:4910`, `fight.h:75`. |
 | `0x29C20` | 59 | 1 / 1†: `346B5` (update-table entry 8 `0x34648`, non-Ghidra) | — | via update entry 8 only | port | K8c | Reads `0xA8A98[i]` by `DS_00105B34[DS_001078FF]`. The raw `call` at `0x346B5` sits inside update-table entry 8, `0x34648` (non-Ghidra, unregistered). |
 | `0x38990` | 52 | 2 / 2: `24CC3`, `24CC8` @`24C5C`P | — | **yes, every frame** | port | K3 | `DS_00107A3C = word[0xF0AEC] & 0xFFC0`, `DS_00107A4A = dword[0xF0AEC]/64 + DS_00107A4E`. `game_frame` calls it at `0x24CC8`, and also at `0x24CC3` when `DS_00104B26 != 0`. `flow.c:6784` says "deferred". |
-| `0x3BDB0` | 43 | 1 / 1: `3B27F`@`3B134`P | `33950`P | yes | port (header only) | K1 | Body is `fight_attack_ready` (`fight.c:1987`), header `/* ---- 0x3BDB0`. |
-| `0x32BB0` | 41 | 1 / 1: `27E28`@`27DC8`P | `2DAE4`D | yes, inert | **deferred** (proposed) | K9 | Two `0x2DAE4(0x1B+c, 1)` audit adds (`0x32BC0`, `0x32BD2`). Its only callee is deferred (record §48-V). |
+| `0x3BDB0` | 43 | 1 / 1: `3B27F`@`3B134`P | `33950`P | yes | **closed**: header, §K1.2 | K1 | Body is `fight_attack_ready` (`fight.c:1987`), header `/* ---- 0x3BDB0`. |
+| `0x32BB0` | 41 | 1 / 1: `27E28`@`27DC8`P | `2DAE4`D | yes, inert | **closed: deferred**, §K9.12 | K9 | Two `0x2DAE4(0x1B+c, 1)` audit adds (`0x32BC0`, `0x32BD2`). Its only callee is deferred (record §48-V). |
 | `0x2F464` | 38 | 1 / 5†: `30A12`, `30D59` (after `30788`P), `328E5`, `32913` (after `31E28`P), `33020` (after `32BB0`U) | `2EFD4`P, `2F198`P | via non-Ghidra code only | port | K11 | Raw `call`s from `0x30A12`, `0x30D59`, `0x328E5`, `0x32913` and `0x33020` (service-menu callbacks). |
-| `0x33714` | 31 | 1 / 1: `13490`@`13420`P | — | yes | port (header only) | K1 | `palette_record` with flag 1 (`effects.c:63-64` PORT; `0x3371F mov byte [eax-4],1`). |
-| `0x2D498` | 27 | 1 / 1: `2D612`@`2D4EC`P | `2EA68`P | no (the port's `0x2D4EC` is a declared no-op) | **deferred** (proposed) | K9 | Bounds-checked byte store into the EEPROM image `0x100CE4..0x1014DC`, else `0x2EA68(0x80AA8)`. |
-| `0x32B94` | 24 | 1 / 1: `2786B`@`277C0`P | `2DAE4`D | yes, inert | **deferred** (proposed) | K9 | `test al,1` → `0x2DAE4(0xE, 1)` audit add. Its only callee is deferred (record §48-V). |
+| `0x33714` | 31 | 1 / 1: `13490`@`13420`P | — | yes | **closed**: split `palette_record_flagged`, §K1.7 | K1 | `palette_record` with flag 1 (`effects.c:63-64` PORT; `0x3371F mov byte [eax-4],1`). |
+| `0x2D498` | 27 | 1 / 1: `2D612`@`2D4EC`P | `2EA68`P | no (the port's `0x2D4EC` is a declared no-op) | **closed: deferred**, §K9.10 | K9 | Bounds-checked byte store into the EEPROM image `0x100CE4..0x1014DC`, else `0x2EA68(0x80AA8)`. |
+| `0x32B94` | 24 | 1 / 1: `2786B`@`277C0`P | `2DAE4`D | yes, inert | **closed: deferred**, §K9.11 | K9 | `test al,1` → `0x2DAE4(0xE, 1)` audit add. Its only callee is deferred (record §48-V). |
 | `0x4F714` | 18 | 1 / 1†: `25C09` (non-Ghidra code after `25AE8`P; ported site `flow.c:1325`) | `2C3FC`P | yes (raw `call` `0x25C09`, ported site) | port | K6 | `sound_voice(word[0xC9888 + 2*stage])` (a `jmp 0x2C3FC` tail). `flow.c:1325` PORT. |
 | `0x2D4B4` | 17 | 4 / 4: `2D533`@`2D4EC`P, `2D8C8`@`2D6F8`P, `2DB11`, `2DB24` @`2DAE4`D | — | yes | port | K2 | Smallest power of two ≥ n+1 (`0x2D4B5..0x2D4C3`), pure. |
-| `0x4FB98` | 10 | 2 / 2: `1BEB0`@`1BE30`P, `1BFEA`@`1BEC4`P | — | yes | **host-owned** (proposed) | K9 | `pushad; and eax,0xff; int 10h; popad; ret`: the BIOS set-mode call. `flow.c:6371` PORT: SDL owns the window. |
-| `0x2D62C` | 9 | 1 / 1†: `1BE28` (timer ISR `0x1BDF4`, non-Ghidra); abs dword at `0x1BF5C` (`push 0x2d62c`) | — | ISR only | **host-owned** (proposed) | K9 | `inc dword [0x105D88]; ret`. `DS_00105D88` is read only at `0x1BFA4` (`0x1BEC4` init) and `0x32982` (`0x32970`, host-owned record §48-V, the run clock). `0x1BEC4` hands `0x2D62C` to `0x109A0` at `0x1BF5B` (`push 0x1000; push 0x2d62c`). |
+| `0x4FB98` | 10 | 2 / 2: `1BEB0`@`1BE30`P, `1BFEA`@`1BEC4`P | — | yes | **closed: host-owned**, §K9.2 | K9 | `pushad; and eax,0xff; int 10h; popad; ret`: the BIOS set-mode call. `flow.c:6371` PORT: SDL owns the window. |
+| `0x2D62C` | 9 | 1 / 1†: `1BE28` (timer ISR `0x1BDF4`, non-Ghidra); abs dword at `0x1BF5C` (`push 0x2d62c`) | — | ISR only | **closed: host-owned**, §K9.5 | K9 | `inc dword [0x105D88]; ret`. **Correction (§K9.5):** `0x1BFA4` is a `push 0x105d88` for the `0x109A0` lock, not a read; the one reader is `0x32981` (`0x32970`, host-owned record §48-V, the run clock). `0x1BEC4` hands `0x2D62C` to `0x109A0` at `0x1BF5B` (`push 0x1000; push 0x2d62c`). |
 | `0x2EA74` | 4 | 5 / 18†: `2FA61`, `2FE2F` @`2FA40`P, `2FFF1`@`2FFC4`P; `2D00C`, `3074B`, `30B20`, `30B45`, `30E5E`, `31275`, `31290`, `313F5`, `324E1`, `32619`, `32E31`, `32F2D`, `33066`, `33242`, `33290` outside contiguous Ghidra extents | — | yes (service menu) | port | K5 | `xor eax,eax; mov eax,eax`, then falls into `0x2EA78`, so it is `config_screen_wait(0)`. The port treats it as a no-op (raw conflict, see Corrections). |
 | `0x32968` | 1 | 1 / 1: `20CC7`@`20C10`P | — | yes (`game_init`) | port | K2 | A bare `ret`. |
 | `0x29B70` | 1 | 4 / 4: `20E0B`@`20DF4`P, `2521A`, `25224`, `2522E` @`24C5C`P | — | yes | port | K2 | A bare `ret`: `game_frame` cases 1/2/0x20 and `0x20E0B`. The port inlines it as `break` with no `/* 0x29B70` header. |
 
 Totals: 34 functions, 10,445 bytes. Classes: 7 header-only (K1), 15 port
 (K2–K8c, K10, K11), 7 deferred and 5 host-owned proposed (K9, see §G).
+
+**Task 3a (2026-09-29).** K1 and K9 are closed (record `2026-09-29-k1-k9-derivations.md`).
+The 7 K1 rows carry one standard header each (3 of them split). All 12 K9
+proposals were re-scanned against the raw and are supported; each has a
+`tools/port_classification.txt` row. `port_progress.py`: `752 1203 63` /
+`716 731 98`. The 15 remaining non-runtime rows are K2–K8c, K10 and K11.
 
 ### §B.2 Code the counter cannot see (non-Ghidra entry points reached through tables)
 
@@ -325,7 +331,7 @@ wrong, and Task 6 fixes it.
 | 10 | `game/flow.h:292` | Game-start modes `0x28..0x2F` are named gaps | ported (§49-Q) | **stale** |
 | 11 | `game/flow.h:641` | "one of the fallthrough list's named gaps" (history) | — | **stale wording** |
 | 12 | `game/fight.c:41` | "The port skipped `0x20DF4` as a named gap" | `0x20DF4` ported (`flow.c:4713`, §46-B) | **stale** |
-| 13 | `game/fight.c:694` | `0x2E934` character-pick audit | K9 deferred (`0x2E180` cluster) | closes with the K9 approval |
+| 13 | `game/fight.c:694` | `0x2E934` character-pick audit | K9 deferred (`0x2E180` cluster) | **closed** (Task 3a): the chain is classified deferred (§K9.6–§K9.8) and the comment now says deferred |
 | 14 | `game/fight.c:2081` | `0x36F10` in-range arm unreachable: slot `+0x42` bit 0x10 has no ported writer | A writer of bit 0x10 (§7.10) | open |
 | 15 | `game/fight.c:2933`, `fight.h:241` | `0x496DC` has no call site | case-13 body `0x4A24A..0x4A2F4` (§7.4) | open (K13) |
 | 16 | `game/fight.c:3013`, `fight.h:245` | `0x4A928` has no call site | mode-9 block `0x4A487..0x4A58F` (§7.4) | open (K13) |
@@ -363,8 +369,8 @@ size gate is ≥ ~4 KB or ≥ ~20 new functions, and such a cluster is marked
 | order | id | addresses | bytes | kind | owner |
 |---:|---|---|---:|---|---|
 | 1 | T2 | the 31 `TODO(verify)` sites (§C) | — | resolve or re-scope | Task 2 |
-| 2 | K1 HDR | `0x34B6C`, `0x3BDB0`, `0x1C528`, `0x4682C`, `0x38910`, `0x33714`, `0x51ED8` | 1117 | port (header / one-function split only, no behaviour change; +7 on the counter) | Task 3 |
-| 3 | K9 CLASSIFY | host-owned: `0x501A3`, `0x4FB98`, `0x4FF8F`, `0x4FFD8`, `0x2D62C`. Deferred: `0x2E180`, `0x2E0A4`, `0x2E034`, `0x2DF8C`, `0x2D498`, `0x32B94`, `0x32BB0`. | 3688 | host-owned/deferred rows in `tools/port_classification.txt` plus derivation rows. **Needs the user's approval (§G).** | Task 3 |
+| 2 | K1 HDR | `0x34B6C`, `0x3BDB0`, `0x1C528`, `0x4682C`, `0x38910`, `0x33714`, `0x51ED8` | 1117 | port (header / one-function split only, no behaviour change; +7 on the counter) | Task 3 — **closed** (Task 3a, §K1) |
+| 3 | K9 CLASSIFY | host-owned: `0x501A3`, `0x4FB98`, `0x4FF8F`, `0x4FFD8`, `0x2D62C`. Deferred: `0x2E180`, `0x2E0A4`, `0x2E034`, `0x2DF8C`, `0x2D498`, `0x32B94`, `0x32BB0`. | 3688 | host-owned/deferred rows in `tools/port_classification.txt` plus derivation rows. **Needs the user's approval (§G).** | Task 3 — **closed** (Task 3a, §K9; 12/12 supported) |
 | 4 | K2 TRIV | `0x29B70`, `0x32968`, `0x2D4B4`, `0x51F72` | 423 | port | Task 3 |
 | 5 | K5 MENU-FRAME | `0x2EA74` (and its 3 ported call sites in `menu.c`) | 4 | port (raw conflict fix) | Task 3 |
 | 6 | K3 FRAME-SVC | `0x38990` (called at `0x24CC3`/`0x24CC8`) | 52 | port, **live every frame**. Re-run `demo-fight-oracle attract2-oracle` and diff the dumps. | Task 3 |
@@ -389,6 +395,8 @@ K4 1, K5 1, K6 2, K7 1, K8c 1, K9 12, K10 1, K11 3.
 ---
 
 ## §G Classifications for the user (one-way scope decisions)
+
+**Task 3a (2026-09-29): done.** The scan was redone and matches site by site; all 12 rows are supported and written with tags `record-§K9.1..§K9.12` (record `2026-09-29-k1-k9-derivations.md`). Two evidence texts below were corrected there: `0x2DF8C` (`0x61A70` is memset, which is inert on the port's path, §K9.9) and `0x2D62C` (`0x1BFA4` is a lock push, §K9.5).
 
 **Task 3 must redo the raw caller scan for each row before writing any `tools/port_classification.txt` line.** Scan the fixed-up image for rel32 call/jmp/jcc sites and absolute-dword references. The evidence lines below carry the placeholder tag `record-§TBD-K9`, to be replaced by the derivation-record section that Task 3 writes.
 
