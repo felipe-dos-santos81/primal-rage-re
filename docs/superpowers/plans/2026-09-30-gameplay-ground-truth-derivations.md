@@ -385,4 +385,130 @@ Gate (`make verify` with the §G.0 overrides, `/tmp/gameplay-u1/t7_verify.txt`):
 (`K11-EQUAL`); the tool-test line `Ran 67 tests` = the baseline's 40 + 27
 (18 gp_session + 9 gp_capture).
 ## §G.7 The gp-pads capture (U1 Task 8)
+Two runs of `make gp-capture scenario=gp-pads TITLE_PIN_DIR=/tmp/pr_u1_pin`
+(the pinned exe `8120f1bd…a68d`, zero CMOS, `pad_bios=1`, DOSBox-X 2026.08.31,
+`time_limit=75`, wall 75.8 s each, 5 256 AVI frames at 70.0866 fps). Run 1's
+`poll.log` / `session.txt` / `window.txt` / console are kept in the ledger
+(`.superpowers/sdd/2026-09-30-gameplay-u1-capture-harness/gp-pads-run1/`,
+`poll.log` sha256 `78ad7a17…a462`); run 2 is `data/k11-captures/gp-pads/`
+(`poll.log` 2 521 lines, sha256
+`c43f4462a519adbff68a3c83acbb73db062f453338a470c2e67aba804b33649e`; 422 distinct
+frames, raw 1372..5251; 11 MB). The analysis script is
+`/tmp/gameplay-u1/analyse.py`; its run-2 output `/tmp/gameplay-u1/t8_run2_analysis.txt`.
+
+### §G.7.1 Run 1 and the two corrections it forced
+
+Run 1 (the plan's scenario: every pad held 2, the chord `p1.up + p1.b1 +
+p2.left` held 5): every CHECK `ok` (`steps fired 20/20`, `port script v2: ok`),
+`snapshots 2374, f 5..963, 25 frames missed; kb != raw in 0`. Its measurements:
+
+1. **A hold of 2 was sampled by one iteration only.** Every pad showed `raw`
+   in exactly one frame (e.g. `p1.up` pressed in the spin of `0x190`:
+   `191:raw=8000`, `192:raw=0000`). The plan's `Injector` released at the spin
+   of `f + hold − 1`, which contradicts spec §4.1 ("a hold of `n` releases at
+   the spin of `F − 1 + n`", `F = f + 1`) and its own test comment ("held for
+   iterations 0x101, 0x102"). **Correction (capture wins):** release at the
+   spin of `f + hold`; the test now asserts the key still down after
+   `release_due(0x101)` and up after `release_due(0x102)`; the old rule fails
+   it (mutation `f + hold − 1` → `FAIL: test_press_holds_and_queues_once`).
+   Commit `36ea83c`.
+2. **The chord ended the MAIN MENU.** Its `raw = 8220` from `0x3AD`, the three
+   words consumed together at `0x3AE` (§G.4's case), and mode 3 at `f = 0x3AF`
+   (`P` record) after a snapshot gap `0x3AE..0x3B1`. Cause: `0x2FFC4`
+   (`menu.c menu_step`) polls the pad **level** through `0x2EEC8` with the mask
+   `0xC300C000`; `keys & 0x2000000` (P1 `b1`, kb `0x0200`) at `0x3041E` returns
+   −1 for the MAIN MENU (flags 4), and case `0x27` (`0x251C6..0x25215`) turns any
+   result other than 0/−5/−10 into the `0x2520B` longjmp restart. Because the
+   release happens only at a spin snapshot, the gap also made the chord's
+   release late (`release` logged at `f = 0x3B2`, so `raw = 8220` still at
+   `0x3B2`). The single presses never reached the level (below), so the menu
+   ignored them.
+
+Harness change for run 2 (`SCENARIOS['gp-pads']`, harness values, commit
+`36ea83c`): single pads held **1** (one sampled frame: the level
+`DS_000E1C34` never takes it, since `0x500C4` keeps a changed bit's old level,
+so the MAIN MENU does not act on `b0`/`b1`/`start`/up/down); the chord is
+`p1.left + p1.b2 + p2.right` held 5 — bits outside `0xC300C000`, so it reaches
+the level without a menu action.
+
+### §G.7.2 Run 2: the pad map (spec §7 Q2 — closed)
+
+`make gp-capture …` → `snapshots 2448, f 4..998, 5 frames missed (spec §3.7);
+kb != raw in 0`; `CHECK base: ok`, `steps fired 20/20: ok`, `end frame reached:
+ok`, `mode 0x27 after the Enter: ok`, `port script v2: ok`. The map (verbatim):
+
+```
+L445   p1.up     press f=1B8 late=0 first raw f=1B9 kb=8000 want=8000  S(f-1) raw=0
+L478   p1.down   press f=1D6 late=0 first raw f=1D7 kb=4000 want=4000  S(f-1) raw=0
+L511   p1.left   press f=1F4 late=0 first raw f=1F5 kb=2000 want=2000  S(f-1) raw=0
+L544   p1.right  press f=212 late=0 first raw f=213 kb=1000 want=1000  S(f-1) raw=0
+L577   p1.b0     press f=230 late=0 first raw f=231 kb=0100 want=0100  S(f-1) raw=0
+L610   p1.b1     press f=24E late=0 first raw f=24F kb=0200 want=0200  S(f-1) raw=0
+L643   p1.b2     press f=26C late=0 first raw f=26D kb=0400 want=0400  S(f-1) raw=0
+L676   p1.b3     press f=28A late=0 first raw f=28B kb=0800 want=0800  S(f-1) raw=0
+L709   p1.start  press f=2A8 late=0 first raw f=2A9 kb=0100 want=0100  S(f-1) raw=0
+L742   p2.up     press f=2C6 late=0 first raw f=2C7 kb=0080 want=0080  S(f-1) raw=0
+L775   p2.down   press f=2E4 late=0 first raw f=2E5 kb=0040 want=0040  S(f-1) raw=0
+L808   p2.left   press f=302 late=0 first raw f=303 kb=0020 want=0020  S(f-1) raw=0
+L841   p2.right  press f=320 late=0 first raw f=321 kb=0010 want=0010  S(f-1) raw=0
+L874   p2.b0     press f=33E late=0 first raw f=33F kb=0001 want=0001  S(f-1) raw=0
+L907   p2.b1     press f=35C late=0 first raw f=35D kb=0002 want=0002  S(f-1) raw=0
+L940   p2.b2     press f=37A late=0 first raw f=37B kb=0004 want=0004  S(f-1) raw=0
+L973   p2.b3     press f=398 late=0 first raw f=399 kb=0008 want=0008  S(f-1) raw=0
+L1006  p2.start  press f=3B6 late=0 first raw f=3B7 kb=0001 want=0001  S(f-1) raw=0
+L1039  p1.left   press f=3D4 late=0 first raw f=3D5 kb=2410 want=2000  S(f-1) raw=0
+L1040  p1.b2     press f=3D4 late=0 first raw f=3D5 kb=2410 want=0400  S(f-1) raw=0
+L1041  p2.right  press f=3D4 late=0 first raw f=3D5 kb=2410 want=0010  S(f-1) raw=0
+```
+
+Every one of the 18 names gives exactly its §G.1.2 kb bit, in the frame
+`press f + 1`, with `S(f − 1) raw = 0`; the chord gives the OR `2410`. No
+injection was late (0 of 21). Run 1 gave the same 18 bits (kb `8000 4000 2000
+1000 0100 0200 0400 0800 0100 0080 0040 0020 0010 0001 0002 0004 0008 0001`,
+all at `press f + 1`) and the chord `8220`. **F1/F2 are the start bits and
+share bit 0 of their byte with U/Home (`b0`)** — raw-derived in §G.1.2, now
+captured twice. Spec §3.2's table stands; no `PAD` change.
+
+Timing (Review Focus 1–2), run 2: one-frame presses show `raw` in exactly one
+frame and the level `pad` never (`1B9:8000/0000 1BA:0000/0000`, `raw/pad`
+kb words); the chord held 5 shows `raw` in the five frames `0x3D5..0x3D9` and
+the level in `0x3D6..0x3DA` (one iteration behind, including one frame after
+the release: `3DA:0000/2410`), as `0x500C4`'s rule predicts (§G.1.1). The
+consistency self-check `kb != raw` is 0 in both runs (2 374 and 2 448
+snapshots): no torn snapshot.
+
+### §G.7.3 BIOS consumption (spec §3.6, §7 Q3) and the menu
+
+Every queued word was consumed and pinned (`presses with bios 22 H 22`, each
+`S(H.f − 1).head` the old head and `S(H.f).head` the new one). The chord's
+three words were consumed in the one iteration `0x3D5` (`H` records
+`0026 0028 002A`, `S(3D5).head = 002A`), as §G.4 predicted from the key loop.
+`H.f − I.f` (iterations from the queuing spin to the consuming iteration):
+run 2 `{1: 8, 2: 7, 3: 5, 4: 2}`, run 1 `{1: 6, 2: 8, 3: 5, 4: 3}` — one to
+**four** iterations (the planner's probe saw one to three), even on the MAIN
+MENU where the key loop runs every iteration, while a key-state write is
+always sampled by the next iteration. The cause stays open (Q3); the port
+script keys each word at its observed consumption frame, so nothing depends
+on it.
+
+Menu effects: in run 2 the MAIN MENU entry `ent` stayed `0x2A2BEC` (the
+"Start" row `0xBCBEC`) from `0x141` to the timeout, so neither the one-frame
+pads nor their BIOS words (including `48E0`/`50E0`, whose ascii byte `E0` is
+what the key loop latches at `0x24D4D`, not a scan `0x48`/`0x50`) moved the
+cursor or selected anything. Mode 3 came back at `f = 0x88C` (tick `0xCBD`):
+the idle timeout `0x2EBB3` (`config.c`, `tick − key_time > 0x4B0`, record
+named-gaps-a §A.6) counted from the chord's last level frame `0x3DA` (tick
+`0x80B`; `0xCBD − 0x80B = 0x4B2`), after which the RNG reads `0x0000ABCD`
+(`f = 0x890`, the restart's seed, `prage.c:11428`). So the chord bits outside
+the menu mask still refresh the key time (`0x2EEF2`: `input_select_bits`
+returns the unmasked level bits) — consistent with the code, noted, not
+further tested. Run 1's mode change is §G.7.1 item 2.
+
+`python3 tools/gp_session.py port-script --scenario gp-pads --capture
+data/k11-captures/gp-pads --out /tmp/gameplay-u1/gp-pads.script` → 64 lines,
+`enter_frame 321`, `enter_state 0000`, `key 321 1C 0D`, `key 441 1F 73`,
+`bits 441 8000`, `bits 442 0000`, … , `key 981 2C 7A`, `key 981 31 6E`,
+`key 981 4D E0`, `bits 981 2410`, `bits 986 0000`, `end 1041` (the chord's three
+keys in press order, §G.4 item 3).
+
 ## §G.8 U1 closure (U1 Task 9)
