@@ -12155,7 +12155,7 @@ typedef struct { char op; u32 f, a, b; } GpStep;
 static GpStep *gp_step;
 static u32 gp_n, gp_next, gp_nkeys, gp_keys_sent, gp_enter_frame, gp_enter_state, gp_end;
 static u32 gp_dumped, gp_hash_last, gp_idle_pumps, gp_missed, gp_iters;
-static u32 gp_trace_lines, gp_iters_armed, gp_first_f;
+static u32 gp_trace_lines, gp_first_f;
 static int gp_armed, gp_done, gp_failed;
 static char gp_dir[1024];
 static FILE *gp_log, *gp_frames, *gp_trace;
@@ -12191,7 +12191,8 @@ static int gp_parse(const char *path)
     }
     fclose(f);
     return ok && have_frame && have_state && gp_n > 0u && gp_step[gp_n - 1u].op == 'e'
-        && gp_step[0].op == 'k' && gp_step[0].f == gp_enter_frame;
+        && gp_step[0].op == 'k' && gp_step[0].f == gp_enter_frame
+        && gp_step[0].a == 0x1Cu && gp_step[0].b == 0x0Du;   /* the mode-3 Enter (0x24ECF) */
 }
 
 /* Applies every step for the iteration about to run (the one that raises the
@@ -12336,7 +12337,6 @@ int test_gp_replay(void)
         if (gp_armed && input_has_key())
             fprintf(gp_log, "left-queued after f=%u\n", (unsigned)DSW(DS_000EF6DC));
         if (gp_armed) {
-            gp_iters_armed++;
             gp_trace_line();
             gp_dump_if_new();                        /* a present in an iteration that never pumped */
         }
@@ -12367,13 +12367,15 @@ int test_gp_replay(void)
     CHECK_EQ_INT((int)gp_keys_sent, (int)gp_nkeys);
     CHECK_EQ_INT((int)gp_missed, 0);
     CHECK(gp_done, "the gp script ran to its end frame");
-    CHECK(!gp_failed, "no fault ended the gp replay");
+    CHECK(!gp_failed, "no CPU fault or frame-write failure ended the gp replay");
     CHECK(gp_dumped > 1u, "the gp frames were written");
     /* The Enter's iteration always ends with a displayed image and the first
      * one is always new, so the dump starts at enter_frame (not at a later
      * loader screen). */
     CHECK_EQ_INT((int)gp_first_f, (int)gp_enter_frame);
-    CHECK_EQ_INT((int)gp_trace_lines, (int)(gp_iters_armed));
+    /* One T line per f from enter_frame to end: each armed iteration raises
+     * the counter by exactly one (0x24CDB), so a skipped or repeated f fails. */
+    CHECK_EQ_INT((int)gp_trace_lines, (int)(gp_end - gp_enter_frame + 1u));
     return g_failures - before;
 }
 
