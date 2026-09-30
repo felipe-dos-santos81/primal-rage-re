@@ -1867,6 +1867,10 @@ and list both ids).
   `check_mode_31`'s side-1 integration.
 - Rows 137/138 with the audio gate open (`fighter_spawn`'s bank resolves).
 - Mode 0x33's idle pass voices (rows 48/49, batch D1).
+- Row 142's other `DS_00104B16` arms (0, 1 and 2), which draw a string
+  (`0xA89C4[c]` or `0x43`) at row 8 before reaching the same `0x282BB`
+  voice; the driver takes the `>= 3` arm (`0x28266 jmp 0x282B6`), which
+  draws nothing.
 
 ### §5.6 Gate
 
@@ -1883,3 +1887,35 @@ and list both ids).
   `before-t2.wav` (sha256 `df74acfb65d345fb…`).
 - `python3 tools/port_progress.py`: `767 1203 64` / `731 731 100`,
   unchanged (no function is ported; the README stays).
+
+### §5.7 Review 1
+
+1. `docs/PROGRESS.md` gains the K12 batch B1 paragraph.
+2. **Rows 151/153's other `setne` outcome.** The table rows run one value
+   each (151: `n` = 0, `0x25`; 153: `n` = 1, `0x26`), so a hard-coded id
+   would pass them. `vs_setne_check` (`test_game.c`) runs the opposite `n`
+   through the same drivers (`vs_mode0d_replace_b0a(0)`: `0x26` once and no
+   `0x25`; `vs_mode32_replace_b0a(1)`: `0x25` once and no `0x26`); `k12_b1`
+   keeps one entry per row. Measured (`$K/t5mut.py`; FAIL lines exclude
+   `FAILURES: N`):
+
+   | mutation | FAIL lines | printed |
+   |---|---:|---|
+   | row 151's call hard-coded `sound_voice(0x25u)` | 2 | `test_game.c:10535: 0 != 1`, `:10536: 1 != 0`; `row 151 setne case 0: 0x26 x0, 0x25 x1` |
+   | row 153's call hard-coded `sound_voice(0x26u)` | 2 | `test_game.c:10535: 0 != 1`, `:10536: 1 != 0`; `row 153 setne case 1: 0x25 x0, 0x26 x1` |
+   | row 151's id `n == 0` (re-run) | 3 | row 151 `0 of 1` and both setne checks |
+   | row 153's id `n == 0` (re-run) | 3 | row 153 `0 of 1` and both setne checks |
+
+3. §5.5 lists row 142's other `DS_00104B16` arms.
+4. The gate check prints its case on a mismatch (`row 143 gate case I: N
+   0x24 voices, want W`). Re-measured with the gate forced true: 2 FAIL
+   lines (`test_game.c:10513: 1 != 0`), printing cases 0 and 3.
+5. Both checks now snapshot and put back what `tf_voice_sites` does (the
+   data object, the two pools named at entry, the aperture and the DAC; a
+   shared `vs_snap`/`vs_put`) and run with `DS_001028C8` = 0.
+
+Assertion sites: 13374 → **13376** (the setne check's two). Gate:
+`make verify` with the `/tmp` overrides exits 0 with the oracle lines equal
+to `$K/oracle-lines-base.txt` (`$K/verify-t5r1.txt`); `dumps.sh t5-r1`
+matches `$K/base.sha256` (deleted after); the `make audio-render` WAV is
+byte-identical to `before-t2.wav`. `port_progress` is unchanged.

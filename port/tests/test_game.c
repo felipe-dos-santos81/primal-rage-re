@@ -10357,17 +10357,19 @@ static void vs_mode0d_final(void)
     DSB(VS_810D) = 0u;
     game_mode_0d_step();
 }
-/* Row 151: 0x274FC's replace arm, loser side 1; DS_00104B0A 1 ^ 1 = 0, so
- * 0x25 (0x277A0 `setne`). */
-static void vs_mode0d_replace(void)
+/* Row 151: 0x274FC's replace arm, loser side 1; n = DS_00104B0A ^ 1 gives
+ * 0x25 + (n != 0) (0x277A0 `setne`): the row runs b0a = 1 (n 0, 0x25),
+ * vs_setne_check b0a = 0 (n 1, 0x26). */
+static void vs_mode0d_replace_b0a(u8 b0a)
 {
     vs_match_end_seed();
     vs_replace_seed(1u);
     DSB(DS_00104B21) = 0u;
     DSB(DS_00104B12) = 1u;
-    DSB(DS_00104B0A) = 1u;
+    DSB(DS_00104B0A) = b0a;
     game_mode_0d_step();
 }
+static void vs_mode0d_replace(void) { vs_mode0d_replace_b0a(1u); }
 /* Row 152: 0x296B8's final arm, side 0's count 3 -> 4 (0x297A9). */
 static void vs_mode32_final(void)
 {
@@ -10378,8 +10380,9 @@ static void vs_mode32_final(void)
     game_mode_32_step();
 }
 /* Row 153: 0x296B8's replace arm, side 1's count 0 -> 1 and the team byte
- * DS_00108134[4 + 1] = 3; DS_00104B0A 0 ^ 1 = 1, so 0x26. */
-static void vs_mode32_replace(void)
+ * DS_00108134[4 + 1] = 3; the row runs b0a = 0 (n 1, 0x26, 0x29950
+ * `setne`), vs_setne_check b0a = 1 (n 0, 0x25). */
+static void vs_mode32_replace_b0a(u8 b0a)
 {
     vs_match_end_seed();
     vs_replace_seed(1u);
@@ -10387,9 +10390,10 @@ static void vs_mode32_replace(void)
     DSB(DS_00104AF0) = 0u;
     DSB(DS_00104AF1) = 0u;
     DSB(DS_00108134 + 4u + 1u) = 3u;
-    DSB(DS_00104B0A) = 0u;
+    DSB(DS_00104B0A) = b0a;
     game_mode_32_step();
 }
+static void vs_mode32_replace(void) { vs_mode32_replace_b0a(0u); }
 /* Rows 156-159: 0x29970 with side 0's +0x5A (0x29974) or side 1's
  * (DS_0010789E, 0x299AD) at 0x78 and the other at 0. 0x27C48 then runs with
  * DS_00104B1D = 3 (no round bonus, 0x27CAA..) and the win markers present
@@ -10448,32 +10452,89 @@ static const TfVoiceSite k12_b1[] = {
     { 160u, vs_mode33,          1u, { 0x2Bu } },          /* 0x29698 */
 };
 
+/* The checks below put back what tf_voice_sites does after each case: the
+ * data object, the two actor pools DS_001014EC/DS_001014F4 name at entry
+ * (their pools are fixed for the process), the aperture and the DAC; and
+ * they run with DS_001028C8 = 0 (no DIG, no bank read). */
+static u8 vs_d[0x8B0D0], vs_pa[0x4880], vs_pb[0xEBA0], vs_ap[320u * 200u], vs_dac[256][3];
+static u32 vs_pa_at, vs_pb_at;
+static void vs_snap(void)
+{
+    vs_pa_at = DSD(DS_001014EC);
+    vs_pb_at = DSD(DS_001014F4);
+    tf_snap(vs_d, DATA_BASE, sizeof vs_d);
+    if (vs_pa_at != 0u) tf_snap(vs_pa, vs_pa_at, sizeof vs_pa);
+    if (vs_pb_at != 0u) tf_snap(vs_pb, vs_pb_at, sizeof vs_pb);
+    memcpy(vs_ap, gfx_aperture(), sizeof vs_ap);
+    memcpy(vs_dac, gfx_dac, sizeof vs_dac);
+    DSD(DS_001028C8) = 0;
+    sound_voice_log_reset();
+}
+static void vs_put(void)
+{
+    tf_put(vs_d, DATA_BASE, sizeof vs_d);
+    if (vs_pa_at != 0u) tf_put(vs_pa, vs_pa_at, sizeof vs_pa);
+    if (vs_pb_at != 0u) tf_put(vs_pb, vs_pb_at, sizeof vs_pb);
+    memcpy(gfx_aperture(), vs_ap, sizeof vs_ap);
+    memcpy(gfx_dac, vs_dac, sizeof vs_dac);
+}
+/* How many times `id` is in the voice log. */
+static int vs_log_count(u32 id)
+{
+    int n = 0;
+    for (u32 k = 0; k < sound_voice_log_count(); k++)
+        if (sound_voice_log_at(k) == id) n++;
+    return n;
+}
+
 /* Row 143's gate (0x28164..0x28178 for side 0, 0x281DA..0x281EE for side 1):
  * the 0x24 voice when the signed byte DS_001088F2 is below 1 (`sar eax,0x18;
  * cmp eax,1; jl`) or side r's own slot +0x63 is non-zero, and none when both
  * fail. 0xFF is -1 (a signed compare), 1 is not below 1, and the other side's
- * +0x63 is not read. The data object is put back after each case. */
+ * +0x63 is not read. */
 static void vs_result_gate_check(void)
 {
-    static u8 d[0x8B0D0];
     static const struct { u32 r; u8 f2, own, other; int want; } g[6] = {
         { 0u, 0x40u, 0u, 1u, 0 }, { 0u, 0xFFu, 0u, 0u, 1 }, { 0u, 0x40u, 1u, 0u, 1 },
         { 1u, 0x01u, 0u, 1u, 0 }, { 1u, 0x00u, 0u, 0u, 1 }, { 1u, 0x40u, 1u, 0u, 1 },
     };
     for (u32 i = 0; i < 6u; i++) {
-        tf_snap(d, DATA_BASE, sizeof d);
+        vs_snap();
         vs_text();
         DSD(DS_00104AD4) = g[i].r;
         DSB(DS_001088F2) = g[i].f2;
         DSB(DS_00107813 + g[i].r * 0x94u) = g[i].own;
         DSB(DS_00107813 + (g[i].r ^ 1u) * 0x94u) = g[i].other;
-        sound_voice_log_reset();
         flow_match_result_text();
-        int n = 0;
-        for (u32 k = 0; k < sound_voice_log_count(); k++)
-            if (sound_voice_log_at(k) == 0x24u) n++;
+        int n = vs_log_count(0x24u);
+        if (n != g[i].want)
+            fprintf(stderr, "row 143 gate case %u: %d 0x24 voices, want %d\n",
+                    (unsigned)i, n, g[i].want);
         CHECK_EQ_INT(n, g[i].want);
-        tf_put(d, DATA_BASE, sizeof d);
+        vs_put();
+    }
+}
+
+/* Rows 151/153's other setne outcome: the table rows run 0x274FC with n = 0
+ * (0x25) and 0x296B8 with n = 1 (0x26); here 0x274FC with n = 1 posts 0x26
+ * and not 0x25, and 0x296B8 with n = 0 posts 0x25 and not 0x26. */
+static void vs_setne_check(void)
+{
+    static const struct { u32 row; void (*drive)(u8); u8 b0a; u32 want, not_; } c[2] = {
+        { 151u, vs_mode0d_replace_b0a, 0u, 0x26u, 0x25u },
+        { 153u, vs_mode32_replace_b0a, 1u, 0x25u, 0x26u },
+    };
+    for (u32 i = 0; i < 2u; i++) {
+        vs_snap();
+        c[i].drive(c[i].b0a);
+        int got = vs_log_count(c[i].want), bad = vs_log_count(c[i].not_);
+        if (got != 1 || bad != 0)
+            fprintf(stderr, "row %u setne case %u: 0x%X x%d, 0x%X x%d\n",
+                    (unsigned)c[i].row, (unsigned)i, (unsigned)c[i].want, got,
+                    (unsigned)c[i].not_, bad);
+        CHECK_EQ_INT(got, 1);
+        CHECK_EQ_INT(bad, 0);
+        vs_put();
     }
 }
 
@@ -10486,5 +10547,6 @@ int test_voice_sites(void)
     CHECK_EQ_INT((int)(sizeof k12_b1 / sizeof k12_b1[0]), K12_B1_ROWS);
     tf_voice_sites(k12_b1, (u32)(sizeof k12_b1 / sizeof k12_b1[0]));
     vs_result_gate_check();
+    vs_setne_check();
     return g_failures - before;
 }
