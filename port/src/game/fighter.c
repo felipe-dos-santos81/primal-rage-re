@@ -9126,7 +9126,7 @@ void fighter_45238(u32 rec)
             0xFF38u;                                        /* 0x4529F..0x452B7 */
         DSB(rec + 0x29u) &= 0xBFu;                          /* 0x452BD */
     }
-    /* PORT: 0x452C6 0x2C3FC(0x7B) voice, not wired (record §45-A). */
+    (void)sound_voice(0x7Bu);                               /* 0x452C1/0x452C6 0x2C3FC */
 }
 
 /* 0x452E4 — record §48-R. The slot +0x0C callback 0x455A0 stores outside
@@ -9361,10 +9361,10 @@ void fighter_45908(u32 rec)
                               DSD(rec + 0x18u),
                               (u32)((s32)DSD(rec + 0x30u) >> 16),
                               0u, 0u);                      /* 0x4598C..0x4599E 0x2AE14 */
-        /* PORT: 0x459B9 0x2C3FC(0x46) voice, not wired (record §45-A). */
+        (void)sound_voice(0x46u);                           /* 0x459A3/0x459B9 0x2C3FC (0x459A8 jmp) */
     } else {
-        /* PORT: 0x459AF 0x2C3FC(0x6C) and 0x459B9 0x2C3FC(0x72) voices, not
-         * wired (record §45-A). */
+        (void)sound_voice(0x6Cu);                           /* 0x459AA/0x459AF 0x2C3FC */
+        (void)sound_voice(0x72u);                           /* 0x459B4/0x459B9 0x2C3FC */
     }
     DSB(slot + 0x8Au) = 0u;                                 /* 0x459BE */
 }
@@ -9868,14 +9868,14 @@ static void fighter_13244(void)
 void fighter_3f308(u32 slot)
 {
     u32 rec, a5;
-    /* PORT: 0x3F30D/0x3F312 0x2C3FC(0x6C) voice, not wired (record §45-A). */
+    (void)sound_voice(0x6Cu);                               /* 0x3F30D/0x3F312 0x2C3FC */
     rec = DSD(slot);                                        /* 0x3F317 */
     a5 = (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u; /* 0x3F319..0x3F32F */
     (void)actor_spawn((const u32 *)(mem + FIGHT_SC_BB308), DSD(rec + 0x18u),
                       (u32)((s32)DSD(rec + 0x30u) >> 16),
                       DSD(rec + 0x1Cu), a5);                /* 0x3F335..0x3F347 0x2AE14 */
     fighter_13244();                                        /* 0x3F34C */
-    /* PORT: 0x3F351/0x3F356 0x2C3FC(0x72) voice, not wired (record §45-A). */
+    (void)sound_voice(0x72u);                               /* 0x3F351/0x3F356 0x2C3FC */
 }
 
 /* PORT: data-object addresses symbols.h does not name (record §49-V). */
@@ -9900,14 +9900,14 @@ void fighter_3f308(u32 slot)
 static void fighter_21f30(u32 slot)
 {
     u32 rec, a5;
-    /* PORT: 0x21F35/0x21F3A 0x2C3FC(0x6C) voice, not wired (record §45-A). */
+    (void)sound_voice(0x6Cu);                               /* 0x21F35/0x21F3A 0x2C3FC */
     rec = DSD(slot);                                        /* 0x21F3F */
     a5 = (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u; /* 0x21F41..0x21F5D */
     (void)actor_spawn((const u32 *)(mem + FIGHT_21_BB308), DSD(rec + 0x18u),
                       (u32)((s32)DSD(rec + 0x30u) >> 16),
                       DSD(rec + 0x1Cu), a5);                /* 0x21F5D..0x21F6F 0x2AE14 */
     fighter_13244();                                        /* 0x21F74 */
-    /* PORT: 0x21F79/0x21F7E 0x2C3FC(0x72) voice, not wired (record §45-A). */
+    (void)sound_voice(0x72u);                               /* 0x21F79/0x21F7E 0x2C3FC */
 }
 
 /* 0x21458 — record §49-V. The slot +0x10 callback 0x21994 stores in the slot
@@ -10439,7 +10439,7 @@ void fighter_232b4(u32 side)
                          + (u32)DSB(ctx[3] + 0x7Au) * 4u),
                          0x40400000u);                      /* 0x232F3..0x2330C 0x3C4CC */
         hit_anchor_set(ctx[1], DSD(ctx[5] + 0x18u), 0u);    /* 0x23311..0x2331E 0x188AC */
-        /* PORT: 0x23323/0x23328 0x2C3FC(0xA9) voice, not wired (record §45-A). */
+        (void)sound_voice(0xA9u);                           /* 0x23323/0x23328 0x2C3FC */
         DSB(ctx[3] + 0x52u) = 0x0Fu;                        /* 0x2332D/0x23331 */
         DSB(ctx[3] + 0x53u) = 4u;                           /* 0x23335/0x23339 */
         DSB(ctx[3] + 0x54u) = 0u;                           /* 0x2333D/0x23341 */
@@ -10541,7 +10541,7 @@ void fighter_3e064(u32 slot, u32 rec, u32 side)
         DSB(e + 0x4Eu) = 1u;                                /* 0x3E0D3 */
         DSW(e + 0x2Eu) = (u16)(DSW(e + 0x2Eu) + 4u);        /* 0x3E0CF..0x3E0DA */
     }
-    /* PORT: 0x3E0DE/0x3E0E3 0x2C3FC(0xB9) voice, not wired (record §45-A). */
+    (void)sound_voice(0xB9u);                               /* 0x3E0DE/0x3E0E3 0x2C3FC */
 }
 
 /* 0x3DE54 — record §48-P. Character 5's slot +0x0C callback (0x3E08C;
@@ -10656,7 +10656,7 @@ void fighter_3dd84(u32 side)
     (void)effects_spawn_darken(DSD(DSD(DS_001014EC)
                                + (u32)DSW(r1 + 0x56u) * 0x20u + 0x18u),
                                1u);                         /* 0x3DE22..0x3DE3D 0x13D4C */
-    /* PORT: 0x3DE42/0x3DE47 0x2C3FC(0xB7) voice, not wired (record §45-A). */
+    (void)sound_voice(0xB7u);                               /* 0x3DE42/0x3DE47 0x2C3FC */
 }
 
 /* 0x3D3E4 — record §48-P. The slot +0x14 callback 0x3DD84 stores (0x3DDC6;
@@ -10913,7 +10913,7 @@ void fighter_3ee00(u32 slot, u32 rec, u32 side)
         DSB(rec + 0x43u) = 0x1Eu;                           /* 0x3EEC1 */
         if (DSW(rec + 0x34u) == 0u)                         /* 0x3EEBD/0x3EEC5/0x3EEC8 */
             DSB(slot + 0x57u) = 2u;                         /* 0x3EECA */
-        /* PORT: 0x3EECE/0x3EED3 0x2C3FC(0xBB) voice, not wired (record §45-A). */
+        (void)sound_voice(0xBBu);                           /* 0x3EECE/0x3EED3 0x2C3FC */
         return;
     case 2u:
         os = DSD(DS_001077A8 + (u32)DSB(rec + 0x51u) * 4u); /* 0x3EEDF..0x3EEE7 */
@@ -11050,9 +11050,9 @@ void fighter_39fb0(u32 slot)
  * `jg`) and at zero or below sets rec+0x24 = 3.0 and ctx[5]'s +0x24 = 6.0,
  * plays the voice 0xD2, and sets the slot's +0x53 = 3, +0x52 = 9 and the
  * byte DS_000F0AFE = 4. Any other +0x57 does nothing.
- * PORT: 0x45BAE 0x2C3FC(0x50) and 0x45BF4 0x2C3FC(0xD2) voices, not wired
- * (record §45-A). 0x1F874610 (the immediate at 0x45B95) is a resource handle,
- * not a data address: record §31 of 2026-09-29-todo-verify-derivations.md
+ * The voices are 0x45BA9/0x45BAE 0x2C3FC(0x50) and 0x45BEF/0x45BF4
+ * 0x2C3FC(0xD2) (record k7-k12 §10). 0x1F874610 (the immediate at 0x45B95)
+ * is a resource handle, not a data address: record §31 of 2026-09-29-todo-verify-derivations.md
  * resolves it to INDEX entry 63 (s16spift.gra, 0x74E00 bytes) + 0x74610, a
  * 31-colour palette block (count dword 0x1F, then 31 colour words), and the
  * port passes it through actor_pset_palette as the raw does. */
@@ -11067,6 +11067,7 @@ void fighter_45b50(u32 slot, u32 rec, u32 side)
                                       + (u32)DSB(ctx[3] + 0x7Au) * 4u),
                           0x3F800000u);                     /* 0x45B78..0x45B99 0x2BC30 */
         actor_pset_palette(ctx[5], 0u, 0x1F874610u);        /* 0x45B94..0x45BA4 0x2A17C */
+        (void)sound_voice(0x50u);                           /* 0x45BA9/0x45BAE 0x2C3FC */
         DSW(DS_001081EC) = 0x1Eu;                           /* 0x45BB6..0x45BBD */
         DSB(slot + 0x57u) = (u8)(st + 1u);                  /* 0x45BB3..0x45BC4 */
     } else if (st == 2u) {                                  /* 0x45B71 */
@@ -11075,6 +11076,7 @@ void fighter_45b50(u32 slot, u32 rec, u32 side)
         if ((s16)w > 0) return;                             /* 0x45BD8/0x45BDB */
         DSD(rec + 0x24u) = 0x40400000u;                     /* 0x45BDD */
         DSD(ctx[5] + 0x24u) = 0x40C00000u;                  /* 0x45BE4..0x45BE8 */
+        (void)sound_voice(0xD2u);                           /* 0x45BEF/0x45BF4 0x2C3FC */
         DSB(slot + 0x53u) = 3u;                             /* 0x45BF9 */
         DSB(slot + 0x52u) = 9u;                             /* 0x45BFF */
         DSB(DS_000F0AFE) = 4u;                              /* 0x45BFD..0x45C03 */
@@ -11091,7 +11093,7 @@ void fighter_45b50(u32 slot, u32 rec, u32 side)
  * records' slot +0x74 = 0x309 (0x39A10; EDX = 0x309 is still live for the
  * first, 0x3C358 preserves it), and 0x3C208(the other side, the s16 at
  * 0xC9456 + 2 * the other slot's char). Caller: 0x47B85 (0x47B04).
- * PORT: 0x47A7B 0x2C3FC(0x46) voice, not wired (record §45-A). PORT: an
+ * The voice is 0x47A76/0x47A7B 0x2C3FC(0x46) (record k7-k12 §10). PORT: an
  * exhausted actor pool leaves the original writing through 0 (0x47A40); the
  * port skips the two writes. */
 void fighter_47a00(u32 side)
@@ -11108,6 +11110,7 @@ void fighter_47a00(u32 side)
     }
     DSB(DS_001077B0 + side * 0x94u + 0x57u) = 1u;           /* 0x47A58 */
     fighter_39834(ctx[1], (s32)(u32)DSB(ctx[2] + 0x5Fu));   /* 0x47A60..0x47A71 */
+    (void)sound_voice(0x46u);                               /* 0x47A76/0x47A7B 0x2C3FC */
     hit_anim_start_a(ctx[4], DSD(FIGHT_ANIM_47A00
                                  + (u32)DSB(ctx[3] + 0x7Au) * 4u),
                      0x40400000u);                          /* 0x47A80..0x47A99 0x3C480 */
@@ -11237,14 +11240,14 @@ static void fighter_3d0c0(u32 side)
 static void fighter_408e8(u32 slot)
 {
     u32 rec, flags, h;
-    /* PORT: 0x408ED/0x408F2 0x2C3FC(0x6C) voice, not wired (record §45-A). */
+    (void)sound_voice(0x6Cu);                               /* 0x408ED/0x408F2 0x2C3FC */
     rec = DSD(slot);                                        /* 0x408F7 */
     flags = (DSW(rec + 0x28u) & 0x4000u) != 0u ? 0x4000u : 0u;  /* 0x408F9..0x40915 */
     h = actor_spawn((const u32 *)(mem + FSET_C77B0), DSD(rec + 0x18u),
                     (u32)((s32)DSD(rec + 0x30u) >> 16),
                     DSD(rec + 0x1Cu), flags);               /* 0x40915..0x40927 0x2AE14 */
     DSD(DS_00108094) = h;                                   /* 0x4092C */
-    /* PORT: 0x40931/0x40936 0x2C3FC(0x72) voice, not wired (record §45-A). */
+    (void)sound_voice(0x72u);                               /* 0x40931/0x40936 0x2C3FC */
 }
 
 /* 0x3E800 — record §50-A. EAX = side. ECX and EDI carry the slot offsets. The
@@ -11451,7 +11454,7 @@ void fighter_3ef44(u32 slot, u32 rec, u32 side)
     else
         DSW(rec + 0x34u) = 0x0020u;                         /* 0x3EFC3 */
     DSB(rec + 0x42u) = 0x20u;                               /* 0x3EFCE */
-    /* PORT: 0x3EFC9/0x3EFD2 0x2C3FC(0x47) voice, not wired (record §45-A). */
+    (void)sound_voice(0x47u);                               /* 0x3EFC9/0x3EFD2 0x2C3FC */
 }
 
 /* 0x3FB88 — record §50-A. Character 0's reactions 0x28/0x29 callback (the
@@ -11575,7 +11578,7 @@ void fighter_40954(u32 slot, u32 rec, u32 side)
                           0x14u, f);                        /* 0x40AF1..0x40B0C 0x2AE14 */
         if (side != 0u)                                     /* 0x40B11/0x40B13 */
             actor_pset_palette(DSD(DS_00108090), 0x0Cu, 0u);    /* 0x40B15..0x40B21 0x2A17C */
-        /* PORT: 0x40B26/0x40B2B 0x2C3FC(0xEE) voice, not wired (record §45-A). */
+        (void)sound_voice(0xEEu);                           /* 0x40B26/0x40B2B 0x2C3FC */
         DSB(ctx[3] + 0x41u) = (u8)(DSB(ctx[3] + 0x41u) | 0x20u);   /* 0x40B30/0x40B34 */
         DSB(slot + 0x57u) = 3u;                             /* 0x40B38 */
         return;
@@ -11637,7 +11640,7 @@ void fighter_406b4(void)
             actor_pset_palette(act, 0x0Cu, 0u);             /* 0x407B5..0x407BF 0x2A17C */
         i++;                                                /* 0x407C4 */
     } while (i < 8);                                        /* 0x407C5..0x407C8 `jl` */
-    /* PORT: 0x407CE/0x407D3 0x2C3FC(0x73) voice, not wired (record §45-A). */
+    (void)sound_voice(0x73u);                               /* 0x407CE/0x407D3 0x2C3FC */
     DSB(DS_00104AE9) = (u8)(DSB(DS_00104AE9) | 0x40u);      /* 0x407D8 */
 }
 
@@ -11699,8 +11702,8 @@ void fighter_36f10(u32 slot)
         fighter_39a10(DSD(slot), 0x309u);                   /* 0x37031..0x37038 */
         DSB(slot + 0x42u) = (u8)(DSB(slot + 0x42u) | 4u);   /* 0x3703D */
         DSD(DS_001078DC) = FSET_BD89C;                      /* 0x37043/0x3704B */
-        /* PORT: 0x37051..0x3705E 0x2C3FC(word at 0xBDAD4 + char * 2) voice, not
-         * wired (record §45-A). */
+        (void)sound_voice((u32)DSW(FSET_BDAD4
+                                   + (u32)DSB(slot + 0x7Au) * 2u));    /* 0x37041..0x3705E 0x2C3FC */
     }
     DSB(DS_001078FD) = DSB(DSD(slot) + 0x51u);              /* 0x37063..0x37068 */
     if (DSW(DS_00104B00) != 3u && DSW(DS_00104B00) != 0x22u
@@ -12372,7 +12375,7 @@ void fighter_3fcb0(u32 rec)
         DSB(act + 0x4Bu) = DSB(child + 0x56u);              /* 0x3FD10/0x3FD13 */
     else
         DSB(rec + 0x4Bu) = DSB(child + 0x56u);              /* 0x3FD18/0x3FD1B */
-    /* PORT: 0x3FD1E/0x3FD23 0x2C3FC(0x48) voice, not wired (record §45-A). */
+    (void)sound_voice(0x48u);                               /* 0x3FD1E/0x3FD23 0x2C3FC */
 }
 
 /* 0x3F77C — record §54-A. The 0xD500 target (opcode 0x15) at 0xE7DF2, the end
@@ -12438,7 +12441,7 @@ void fighter_40434(u32 rec)
         DSW(P52_1080B2) = (u16)((0x3800u - (u32)DSW(mv + 0x2Cu)) / q);   /* 0x404F5..0x40521 */
     DSB(DS_00104AE9) = (u8)(DSB(DS_00104AE9) | 0x20u);      /* 0x4051B..0x4052C */
     actors_anim_begin(mv, P54_D501E, 0x3F800000u);          /* 0x4052A..0x4053C 0x2BC30 */
-    /* PORT: 0x40541/0x40546 0x2C3FC(0xB8) voice, not wired (record §45-A). */
+    (void)sound_voice(0xB8u);                               /* 0x40541/0x40546 0x2C3FC */
 }
 
 /* 0x21694 — record §54-A. EAX = side, the twin of 0x3E8E4: the side's record
@@ -12638,7 +12641,7 @@ void fighter_45d98(void)
             DSD(UPD17_ACT + e) = rec;                   /* 0x45E46 */
             DSW(rec + 0x36u) = 0x0200u;                 /* 0x45E4C */
             DSB(UPD17_STATE + e) = 1u;                  /* 0x45E52 */
-            /* PORT: 0x45E59/0x45F8C 0x2C3FC(0xAB) voice, not wired (record §45-A). */
+            (void)sound_voice(0xABu);                   /* 0x45E59/0x45F8C 0x2C3FC (0x45E5E jmp) */
             break;
         }
         case 1u:                                        /* 0x45E63 */
@@ -12677,7 +12680,7 @@ void fighter_45d98(void)
             DSW(rec + 0x36u) = 0;                       /* 0x45F71 */
             DSB(UPD17_STATE + e) = 4u;                  /* 0x45F7B */
             DSB(UPD17_DONE) = (u8)(DSB(UPD17_DONE) + 1u);   /* 0x45F6B/0x45F79/0x45F86 */
-            /* PORT: 0x45F81/0x45F8C 0x2C3FC(0xAC) voice, not wired (record §45-A). */
+            (void)sound_voice(0xACu);                   /* 0x45F81/0x45F8C 0x2C3FC */
             break;
         default:                                        /* 4 (0x45F91) and above 4 (0x45DA7 ja) */
             break;
@@ -12698,6 +12701,7 @@ void fighter_45d98(void)
 #define D8_37EA0_PAL   0x0105FEBCu  /* 0x37EF6: a resource handle (no fixup) */
 #define D8_OTHER_ANIM  0x000A8424u  /* 0x240A2: the other side's stream by char */
 #define D8_24078_DESC  0x000A84FCu  /* 0x240D8: 0x24078's spawn descriptor */
+#define D8_24078_VOICE 0x000BE008u  /* 0x240C2: [char] 0x24078's second voice word */
 
 /* 0x37EA0 — record §D8.1. The 0xD100 target (opcode 0x11) in the seven
  * characters' streams (the dwords at 0xD2BEA, 0xD486C, 0xE119C, 0xE4566,
@@ -12759,9 +12763,9 @@ void fighter_37ea0(u32 rec)
  * DS_00104744: +0x34 = 0xFF80 when 0x1A570(the caller's side) holds, else
  * 0x80; +0x36 = 0, +0x44 = 0xA, +0x59 = 0xFE, the step byte DS_00104770 = 0
  * and DS_00104AE9 |= 0x10 (entry 12). The raw does not test the spawn's
- * return. PORT: 0x240B8 0x2C3FC(0x6B) and 0x240CF 0x2C3FC(word[0xBE008 +
- * char * 2]) voices, not wired (record §45-A); 0x2C3FC keeps EBX, which the
- * raw reuses at 0x240BF. */
+ * return. The voices 0x240B3/0x240B8 0x2C3FC(0x6B) and 0x240BD..0x240CF
+ * 0x2C3FC(word[0xBE008 + the entry's char * 2]) follow the stream start
+ * (record k7-k12 §10); 0x2C3FC keeps EBX, which the raw reuses at 0x240BF. */
 void fighter_24078(u32 rec)
 {
     u32 o, nw;
@@ -12770,6 +12774,9 @@ void fighter_24078(u32 rec)
     if (o == 0u) return;                                    /* 0x24093/0x24095 */
     actors_anim_begin(DSD(o), DSD(D8_OTHER_ANIM + (u32)DSB(o + 0x7Au) * 4u),
                       0x40400000u);                         /* 0x2409B..0x240AE 0x2BC30 */
+    (void)sound_voice(0x6Bu);                               /* 0x240B3/0x240B8 0x2C3FC */
+    (void)sound_voice((u32)DSW(D8_24078_VOICE
+                               + (u32)DSB(o + 0x7Au) * 2u));    /* 0x240BD..0x240CF 0x2C3FC */
     nw = actor_spawn((const u32 *)(mem + D8_24078_DESC), DSD(o + 0x2Cu),
                      (u32)((s32)DSD(DSD(o) + 0x30u) >> 16), 0x1000u, 0u);   /* 0x240D4..0x240EB 0x2AE14 */
     DSD(UPD12_REC) = nw;                                    /* 0x240F0 */
