@@ -41660,6 +41660,33 @@ static void vf_4e99c_r6_c0(void) { vf_4e99c(5u, 0u); }   /* r 6: even, count 0 *
 static void vf_4e99c_r5_c1(void) { vf_4e99c(4u, 1u); }   /* r 5: odd, count 1 */
 static void vf_4e99c_r6_c1(void) { vf_4e99c(5u, 1u); }   /* r 6: even, count 1 */
 
+/* Record k7-k12 §8.2: 0x4E99C's count != 0 odd arms (0x4EA66..0x4EA7B,
+ * 0x4EB32..0x4EB47) store the tally and post 0x5D with no DS_001088BD store,
+ * so r = 1 and r = 5 are kept and the tail's {2, 4, 6} test does not toggle
+ * DS_001088BC. vf_4e99c seeds DS_001088BD = r - 1 and DS_001088BC = 0; a
+ * re-bump would leave r + 1 and DS_001088BC = 1. The data object and the
+ * pools named at entry are put back; no DIG driver (DS_001028C8 = 0), so the
+ * voices resolve no bank. */
+static void check_4e99c_odd_count(void)
+{
+    static u8 s_data[0x10B0D0u - 0x80000u], s_rec[0xEBA0u], s_pset[0x4880u];
+    static const u8 bd[2] = { 0u, 4u };
+    u32 rec_pool = DSD(DS_001014F4), pset_pool = DSD(DS_001014EC);
+    u32 i;
+    tf_snap(s_data, 0x80000u, sizeof s_data);
+    if (rec_pool != 0u) tf_snap(s_rec, rec_pool, sizeof s_rec);
+    if (pset_pool != 0u) tf_snap(s_pset, pset_pool, sizeof s_pset);
+    for (i = 0; i < 2u; i++) {
+        DSB(DS_001028C8) = 0u;
+        vf_4e99c(bd[i], 1u);
+        CHECK_EQ_INT((int)DSB(DS_001088BD), bd[i] + 1);
+        CHECK_EQ_INT((int)DSB(DS_001088BC), 0);
+    }
+    tf_put(s_data, 0x80000u, sizeof s_data);
+    if (rec_pool != 0u) tf_put(s_rec, rec_pool, sizeof s_rec);
+    if (pset_pool != 0u) tf_put(s_pset, pset_pool, sizeof s_pset);
+}
+
 #define K12_D1_ROWS 31
 static const TfVoiceSite k12_d1[] = {
     {   2u, vf_2d_list_init,       1u, { 0xEFu } },                        /* 0x48CAE */
@@ -41703,5 +41730,6 @@ int test_fight_voice_sites(void)
     tf_voice_sites(k12_b2_fight, (u32)(sizeof k12_b2_fight / sizeof k12_b2_fight[0]));
     CHECK_EQ_INT((int)(sizeof k12_d1 / sizeof k12_d1[0]), K12_D1_ROWS);
     tf_voice_sites(k12_d1, (u32)(sizeof k12_d1 / sizeof k12_d1[0]));
+    check_4e99c_odd_count();
     return g_failures - before;
 }

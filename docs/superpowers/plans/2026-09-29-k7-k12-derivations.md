@@ -2007,6 +2007,26 @@ caller's `other` for the code after the call.
 - **`fight_4bf18`'s header** said no voice site in it was wired, "0x4BFF0's
   voice(200) included (record §K4.2)". A scan of `0x4BF18..0x4C5B0` finds
   that one call only; the header now says it is made.
+- **§0.4's case column, rows 50/52/54/56:** id `0x5D` is listed as case 2.
+  The record `0xBBDC8 + 0x5D * 12` holds case byte 3 (`03 00 ..`); §0.1
+  and §1.1 already name `0x5D` among the three case-3 ids (the queued pair
+  `0x281A726`, `0x2819183`).
+- **`fight_4e99c`'s counter (review 1; a fidelity fix beyond the voice
+  scope).** The port stored `DS_001088BD = save` (r + 1) on the two count
+  != 0 odd arms, citing `0x4EA76/0x4EA7B` and `0x4EB42/0x4EB47`. Those are
+  the `mov eax,0x5d` / `jmp 0x4EB72` pairs: `0x4EA66..0x4EA7B` is `xor
+  eax,eax; mov al,[0x1088bc]; mov ecx,eax; mov [eax+ecx*4+0x108888],bl`
+  (`0x4EA6F`, the tally) then the voice, and `0x4EB32..0x4EB47` the same
+  on `0x10888A`. A scan of `0x4E99C..0x4EBB8` for `[0x1088bd]` finds its
+  only stores at `0x4E9B4` (the bump), `0x4E9F7` and `0x4EACC` (the two
+  count-0 odd arms' `mov al,[esp]; mov [0x1088bd],al`). The two port stores
+  are deleted. In real play the stores left r + 1 for r odd with count !=
+  0, so the tail's `{2, 4, 6}` test wrongly toggled `DS_001088BC` and ran
+  `hit_flash_pair` at r = 1 and r = 5. `check_4e99c_odd_count` (in
+  `test_fight_voice_sites`, after the D1 table) asserts `DS_001088BD` = 1
+  and 5 and `DS_001088BC` = 0 (seeded) after `vf_4e99c(0, 1)` and
+  `vf_4e99c(4, 1)`; the header's "re-bumps in the reset sub-case" now names
+  the two count-0 odd arms.
 
 ### §8.3 Tests
 
@@ -2018,13 +2038,15 @@ existing callers of these functions (`check_grab_arms`, `check_volleyball`,
 `check_fx_gate`, `check_projectile_step`, `check_dust_consume`, `check_mode_25`
 and the rest) unchanged and passing.
 
-Assertion sites: 13374 → **13375** (the size check).
+Assertion sites: 13374 → **13375** (the size check) → **13377** (review 1:
+`check_4e99c_odd_count`'s two `CHECK_EQ_INT`s, run twice).
 
-`not wired` lines in `.c` files (`rg -c 'not wired' port/src`, the §6.4
-count), before → after: `actors.c` 3 → 1, `camera.c` 1 → 0 (it drops out),
-`fight.c` 26 → 3; the others unchanged. Total 144 → **118** (the three `.h`
-lines are unchanged). `fight.c:4007`'s "out of scope" comment was not a
-`not wired` line.
+`not wired` lines (`rg -c 'not wired' port/src`), before → after:
+`actors.c` 3 → 1, `camera.c` 1 → 0 (it drops out), `fight.c` 26 → 3; the
+others unchanged. All of `port/src`: 147 → **121**; `.c` files only (the
+§6.4 count): 144 → **118** (the three `.h` lines are unchanged). Review 1
+changes neither. `fight.c:4007`'s "out of scope" comment was not a `not
+wired` line.
 
 ### §8.4 Mutations (measured; FAIL lines exclude the closing `FAILURES: N`)
 
@@ -2048,6 +2070,11 @@ in-order check).
 
 No deletion failed a row off its own path.
 
+Review 1 (`$K/t8r1mut.py`, `$K/t8r1-mut-{a,b,ab}.txt`): putting the deleted
+`DS_001088BD = save` store back on the r < 5 arm gives 2 FAIL lines
+(`test_fight.c:41682: 2 != 1`, `:41683: 1 != 0`), on the r >= 5 arm 2
+(`:41682: 6 != 5`, `:41683: 1 != 0`), and both 4.
+
 ### §8.5 Not tested
 
 - The dispatcher's effect at these sites (case 2's queue, case 3's pair);
@@ -2066,6 +2093,11 @@ No deletion failed a row off its own path.
 - Each call's position relative to its non-voice neighbours (e.g. row 32
   before the type-8 store, row 45 before the latch store), beyond the
   in-order ids of each path.
+- The runner does not restore `render.c`'s C static `render_count` when a
+  driver spawns or kills actors (this batch's and the earlier ones'). It
+  drives no behaviour; only `render_list_count()` reads it (test_platform.c
+  `:1684..:1736`, test_fight.c `:20330/:20341`), and `test_fight_voice_sites`
+  is last in `TEST_CASES`.
 
 ### §8.6 Gate
 
@@ -2076,14 +2108,28 @@ No deletion failed a row off its own path.
   path (§0.3), and no oracle line moved.
 - Dumps: `dumps.sh t8-after` matches `$K/base.sha256` (`dumpsha.sh`,
   `DUMPS-IDENTICAL`; `check/frames` 24000, `fe/run1` and `fe/run2` 1384
-  each, the three drivers `all checks passed`). So the real-play-only claim
-  holds for every row: none of the 31 calls changes a frame of `--check
-  8000`, the fe det driver, the attract or the title dump. No before-dump
-  was taken: the after-dump equals the base manifest itself, which `b7b7c74`
-  was already proven against (§6.7). The dump is deleted.
+  each, the three drivers `all checks passed`). No before-dump was taken:
+  the after-dump equals the base manifest itself, which `b7b7c74` was
+  already proven against (§6.7). The dump is deleted.
+- What protects the oracles. `sound_voice` is not side-effect free outside
+  the runner: there `DS_001028C8` is 1, so a case-2/3 id reaches
+  `snd_sample_queue` and `res_resolve(h)` (`flow.c:6386-6388`,
+  `res.c:282-290`), and the first resolve of a lazy bank presents the loader
+  screen (`0x1B5E0`). The oracles stay put because (i) §0.3 measured these
+  31 sites as reached only in real play, not by `--check 8000`, the fe det
+  driver, the attract or the title dump, and (ii) the dumps and oracle lines
+  above are identical, which a visible loader draw would have broken.
 - `./build/prageport --game-dir data/game/C --check 8000`: `CHECK=0`.
 - `make audio-render`: `$K/t8-after.wav` is byte-identical to
   `before-t2.wav` (`cmp`; sha256 `df74acfb…a380844`, 2386412 bytes).
 - `python3 tools/port_progress.py`: `767 1203 64` / `731 731 100`,
   unchanged (no function is ported; the README stays as it is).
 - Build: 0 warnings. Outputs: `$K/t8-gate.txt`.
+- Review 1 (the `fight_4e99c` counter fix): `make verify` (the same `/tmp/pr_t8_*`
+  overrides) `EXIT=0`, 0 warnings (`$K/verify-t8r1.txt`); the oracle grep
+  diffs empty against `$K/oracle-lines-base.txt` (`ORACLES-EQUAL`: no demo-
+  fight or attract2 ratchet moved); `dumps.sh t8r1-after` matches
+  `$K/base.sha256` (`DUMPS-IDENTICAL`, 24000/1384/1384, the three drivers
+  `all checks passed`; deleted); `make audio-render` is byte-identical to
+  `before-t2.wav` (`$K/t8r1-gate.txt`). No oracle path reaches the count != 0
+  odd arms of `0x4E99C`.

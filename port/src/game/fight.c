@@ -5495,8 +5495,9 @@ static void fight_4e5a4(u32 node, u32 idx)
  * Bumps the round counter DS_001088BD (r = r + 1, stored at once) and, per r
  * < 5 (the character array DS_00108888[char * 5..]) or r >= 5 (DS_
  * 0010888A[char * 5..]), and per r's parity and `count`, updates a two-byte
- * "remaining/diff" pair and, in the "reset" sub-case, re-bumps DS_001088BD
- * to r + 1 once more (a stack local saved before the parity split). The
+ * "remaining/diff" pair; the two count-0 odd arms alone re-bump DS_001088BD
+ * to r + 1 (a stack local saved before the parity split, 0x4E9F7/0x4EACC,
+ * the function's only stores to it after 0x4E9B4; record k7-k12 §8.2). The
  * raw's two `jnz`s at 0x4EA80/0x4EB49 are dead code here: their target is
  * only reached with ZF already forced 1 by the `test ecx,ecx`/`idiv` pair
  * immediately above, so they never fire; the port omits them. Every branch
@@ -5504,8 +5505,9 @@ static void fight_4e5a4(u32 node, u32 idx)
  * the two even count != 0 arms only when their difference v is non-zero,
  * 0x4EAA4/0x4EB6B `je 0x4EB77`; record k7-k12 §8). At the tail,
  * DS_001088BD in {2, 4, 6} toggles DS_001088BC and calls hit_flash_pair;
- * then DS_001088B9 = 0 always. EBX/ECX/EDX/ESI pushed and popped. Only caller: the unported 0x4E923 (0x4E67C, the DS_001088B9-
- * gated post-loop tail). */
+ * then DS_001088B9 = 0 always. EBX/ECX/EDX/ESI pushed and popped. Only
+ * caller: the unported 0x4E923 (0x4E67C, the DS_001088B9-gated post-loop
+ * tail). */
 static void fight_4e99c(u32 count)
 {
     u16 bx = (u16)count;                                             /* 0x4E9A3 */
@@ -5527,8 +5529,7 @@ static void fight_4e99c(u32 count)
         } else {
             u8 bl = (u8)(0xAu - (u8)bx);                                        /* 0x4EA5C/0x4EA5E/0x4EA60 */
             if (((s32)DSB(DS_001088BD) % 2) != 0) {                              /* 0x4EA62/0x4EA64 */
-                DSB(DS_00108888 + ch * 5u) = bl;                                   /* 0x4EA6F */
-                DSB(DS_001088BD) = save;                                            /* 0x4EA76/0x4EA7B */
+                DSB(DS_00108888 + ch * 5u) = bl;                                   /* 0x4EA6F; no DS_001088BD store */
                 (void)sound_voice(0x5Du);                                     /* 0x4EA76/0x4EA7B -> 0x4EB72 0x2C3FC */
             } else {
                 /* the raw's 0x4EA80 `jnz` is dead here (ZF still 1). */
@@ -5550,8 +5551,7 @@ static void fight_4e99c(u32 count)
         } else {
             u8 bl = (u8)(0xAu - (u8)bx);                                            /* 0x4EB28/0x4EB2A/0x4EB2C */
             if (((s32)DSB(DS_001088BD) % 2) != 0) {                                  /* 0x4EB2E/0x4EB30 */
-                DSB(DS_0010888A + ch * 5u) = bl;                                       /* 0x4EB3B */
-                DSB(DS_001088BD) = save;                                                /* 0x4EB42/0x4EB47 */
+                DSB(DS_0010888A + ch * 5u) = bl;                                       /* 0x4EB3B; no DS_001088BD store */
                 (void)sound_voice(0x5Du);                                         /* 0x4EB42/0x4EB47 -> 0x4EB72 0x2C3FC */
             } else {
                 /* the raw's 0x4EB49 `jnz` is dead here (ZF still 1). */
