@@ -510,11 +510,11 @@ that proves it.
 | Source | Task 1 | Now | Command |
 |---|---|---|---|
 | Unported non-runtime Ghidra functions | 34 | **0** | `python3 tools/port_progress.py --unported` |
-| Counter | `745 1203 62` / `709 743 95` | **`767 1203 64` / `731 731 100`** (81 host-owned/deferred excluded) | `python3 tools/port_progress.py` |
+| Counter | `745 1203 62` / `709 743 95` | **`767 1203 64` / `731 731 100`** at Task 7 (81 host-owned/deferred excluded); `771 1203 64` / `731 731 100` after named-gaps B (`0x65431`) and unit Z (`0x5D808`), both runtime-region functions | `python3 tools/port_progress.py` |
 | `TODO(verify)` in `port/src` | 31 | **0** | `grep -rn 'TODO(verify)' port/src` |
 | `TODO(verify)` in `port/tests` | not measured | 1, explained | the `test_game.c` comment that starts "TODO(verify): the original's live counter is unread" (above `FRONTEND_FRAMES_BEFORE_STATE2`): the front-end driver's frame-counter seed 886; the original's live counter is unread (demo record §1.6); settling it needs a live-RAM dump |
 | `game_frame` cases | 52/52 wired | 52/52 wired | §D |
-| `named gap` sites (`port/src` + `port/tests`) | 35 | 13, all live named gaps (§H.3) or history ("formerly", "pinned") (three named gaps / 12 named-gap sites after named-gaps A, C, D, E and F, §H.3: `ail.c`'s §0.7.6 site went with gap #6) | `rg -n -i 'named gap' port/src port/tests` |
+| `named gap` sites (`port/src` + `port/tests`) | 35 | **12** after unit Z (11 after named-gaps B, 2026-09-30; 13 at Task 7, 12 after A, C, D, E and F: `ail.c`'s §0.7.6 site went with gap #6; B's `config.c`/`flow.c` longjmp sites went, and B added `test_game.c`'s restart palette-slot site). **None is one of §H.3's gaps #1..#10 (all closed)**: 2 are history (`test_fight.c`: "formerly", "pinned"), 9 are the carried residues of §H.3's last paragraph: §C-13 (`sequencer.c`, 2 sites), §C-14 (`sequencer.c`), §C-24 (`flow.c`), §E-1 (`res.c`), §E-17/§K13.3 (`fight.h`, `fight.c`), §K11.3's language reload (`svcmenu.c`, §E-28) and named-gaps B's post-restart residency/palette-slot order (`test_game.c`, §H.3 row 1); unit Z added the controller-check site (`flow.c` `game_init_resume`, §H.3 row Z3) | `rg -n -i 'named gap' port/src port/tests` |
 | `not wired` in `port/src` | ~180 | 0 | `rg 'not wired' port/src` |
 | `not modelled` deviations in `port/src` (fifth source, added in fix round 1) | not enumerated | 10 hits of `rg -n 'not modelled\|not yet modelled\|is not modelled' port/src` (1 of them matches `PORT:.*not modelled` on one line); that alternation is narrower than the broad one: `rg -n 'not\s+modell?ed\|does not model\|unmodelled' port/src` returns 16 lines, and its multi-line form `rg -U 'not(\s\|\n\s*\*)+modell?ed\|does not model\|unmodelled' port/src` returns 18 matches (the 16 plus 2 that wrap a line, in `movie.c` and `ail.h`; 20 printed lines) at 18 locations = 15 distinct deviations, each with a verdict in §H.1a | as named |
 
@@ -528,7 +528,7 @@ It fixed 62 stale comment sites in `port/src` (commits `1aee088`, and the
 `test_video.c`, and 9 places in `game_flow.md`. `port/src` changes are
 comment-only: a comment-stripped compare of every touched file is identical.
 The `stand-in` hits that remain are live `PORT:` stand-ins (the DIG handle
-value 1 at `DS_001028C8`, the quit flag for the longjmp). The `deferred` hits
+value 1 at `DS_001028C8`; the quit flag stood in for the `0x24AB0` longjmp until named-gaps B ported the jump). The `deferred` hits
 that remain are the audit/EEPROM layer (§G, record §48-V), `0x1B084`
 (§50-C) and the movie-audio AIL rows 21–24. The `unported` hits that remain
 name non-Ghidra code (§H.4).
@@ -598,6 +598,13 @@ unreachable, unobservable or not a deviation.
   stand-in (§0.9.2: the title no longer plays `0xCD`; the attract plays its two
   s16title loops and the `0xBD`/`0xBE`/`0xBF` one-shots); and wiring
   `fight.c:4007`'s three calls (§0.9.3).
+  **Accepted by the user, 2026-09-30** (relayed to unit Z by the controller;
+  record named-gaps-b §B.12): the windowed behaviour changes that follow the
+  raw — ABANDON CONQUEST? Y and the idle timeout / MAIN MENU Esc soft-restart;
+  ESC during the boot logos ends the logo, skips the next at its entry (the key
+  stays queued) and then raises QUIT TO DOS? Y/N. **Confirmed by the user, the
+  same day:** G3's abort line stays verbatim (`180:002244E0`, exit 1, with its
+  `PORT:` note).
   Nothing else is claimed as ratified.
 
 ### §H.3 Named gaps still open
@@ -613,7 +620,7 @@ The six carried by K7+K12 and K11:
 
 | # | Gap | Evidence |
 |---:|---|---|
-| 1 | ~~The idle-timeout / menu-result longjmp is not modelled~~ **closed by named-gaps B** | `0x2EB80` (`config_key_latched`) stores `DS_00107414 = 0` then `0x2EBB3 jmp 0x65431`, `longjmp(0x1044F4, 1)`; `game_frame` case `0x27` (`0x251C6..0x25215`) takes the same longjmp at `0x25206..0x2520B` (`mov eax,0x1044F4` at `0x25206`, `jmp 0x65431` at `0x2520B`) for any menu result other than 0/-5/-10. The port keeps the store and returns 0 / continues (spec §7, `config.c` and `flow.c` `PORT:` notes). **Evidence (named-gaps A §A.6):** the idle timeout fires after `0x4B1` ticks (20.0 s), and the MAIN MENU Esc takes the second longjmp (`0x2520B`); both restart into mode 3, attract state 0, with the frame counter `DS_000EF6DC` kept, one distinct black frame (about four capture frames), then the boot sequence from the TWI5 logo. **Closed (named-gaps B §B.1-§B.3):** the setjmp is single (`0x20C1F`), so the port has a real C `setjmp`/`longjmp` (`game_restart_longjmp`, armed in `game_loop`; the landing re-runs `0x20C10`'s post-setjmp tail `game_init_resume` and `0x255D4/0x255DA`) and all three raw sites jump: `0x2EBB3`, `0x2520B` and `0x24AB0` (ABANDON CONQUEST's yes, which the port used to end as a quit). `test_restart` pins each site; the `PR_RESTART` driver (in `make verify`) drives the idle timeout from the Enter and checks the exact tick, the post-state and 50 boot frames against the first boot's. Report-only against A's captures (§B.6b, the K11 driver now steps with `game_loop_step`): the `menuesc` restart has 0 unexplained frames in 283, the black frame and TWI5 logo included. Residue: the tail calls the port omits before B (§B.2 table); that capture comparison is not in `make verify` (§B.7). |
+| 1 | ~~The idle-timeout / menu-result longjmp is not modelled~~ **closed by named-gaps B** | `0x2EB80` (`config_key_latched`) stores `DS_00107414 = 0` then `0x2EBB3 jmp 0x65431`, `longjmp(0x1044F4, 1)`; `game_frame` case `0x27` (`0x251C6..0x25215`) takes the same longjmp at `0x25206..0x2520B` (`mov eax,0x1044F4` at `0x25206`, `jmp 0x65431` at `0x2520B`) for any menu result other than 0/-5/-10. The port keeps the store and returns 0 / continues (spec §7, `config.c` and `flow.c` `PORT:` notes). **Evidence (named-gaps A §A.6):** the idle timeout fires after `0x4B1` ticks (20.0 s), and the MAIN MENU Esc takes the second longjmp (`0x2520B`); both restart into mode 3, attract state 0, with the frame counter `DS_000EF6DC` kept, one distinct black frame (about four capture frames), then the boot sequence from the TWI5 logo. **Closed (named-gaps B §B.1-§B.3):** the setjmp is single (`0x20C1F`), so the port has a real C `setjmp`/`longjmp` (`game_restart_longjmp`, armed in `game_loop`; the landing re-runs `0x20C10`'s post-setjmp tail `game_init_resume` and `0x255D4/0x255DA`) and all three raw sites jump: `0x2EBB3`, `0x2520B` and `0x24AB0` (ABANDON CONQUEST's yes, which the port used to end as a quit). `test_restart` pins each site; the `PR_RESTART` driver (in `make verify`) drives the idle timeout from the Enter and checks the exact tick, the post-state and 50 boot frames against the first boot's. Report-only against A's captures (§B.6b, the K11 driver now steps with `game_loop_step`): the `menuesc` restart has 0 unexplained frames in 283, the black frame and TWI5 logo included. Residue: the tail calls the port omits before B (§B.2 table); that capture comparison is not in `make verify` (§B.7); since unit Z the `menuesc` comparison is enforced in `make verify` (`make k11-oracle`, a narrow claim with a pinned window END, §B.12) and `idle` stays report-only. **Named gap (review 1, §B.7): the raw's resource residency and palette-slot order after a restart** — the port never evicts a loaded entry, so its restarted attract draws no `- LOADING -` and its palettes sit one slot lower than on the first boot (same RGB); whether the raw's block allocator `0x1C308` frees the entry is not shown and the RGB captures cannot see slots. The tail omissions are decided in rows Z1..Z4 below (unit Z, §B.11). |
 | 2 | ~~TEST CONTROLS RAW DATA reads linear `0xFFE80003`~~ **closed by named-gaps B** | `0x32573..0x32578`; outside `mem[]` and any DOS memory; drawn as 0 (`svcmenu.c:992`, record §K11.5, §E-32). **Evidence (named-gaps A §A.1.1, §A.7):** unreachable in the stock game (field `0x2A` is 4 bits; `0x2FA1A` stores `field & ~3`, so bit 4 is never set); when `DS_00107410 \|= 0x10` is poked, DOS/4GW under DOSBox-X reads `0xFF` with no fault (paging off) and draws `000000FF` — DOSBox-X's answer, not hardware. **Closed (named-gaps B §B.4, SILENT):** the port draws `0xFF` (`000000FF`, `PORT:`), TEST B asserts it. Residue: real hardware's byte is not captured. |
 | 3 | ~~STATISTICS page 1's `idiv` fault~~ **closed by named-gaps B** (named-gaps A corrects "page 2": `0x33458` is called from page 1 at `0x331A6`) | `0x334CD..0x334E2` (`0x33458`): the divisor is the sum's low word, so a sum of exactly `0x10000` (divisor 0) raises #DE; drawn as 0 (`svcmenu.c:1192`, record §K11.7, §E-33). **Evidence (named-gaps A §A.8):** with fields 8 = `0xFFFF` and 6 = `1` poked, entering STATISTICS aborts to DOS with `DOS/4GW Professional error (2001): exception 00h (divide by zero)` at unrelocated `1:000234E0` (the `idiv`); no handler is installed. **Closed (named-gaps B §B.4, ABORT-PINNED):** the port ends the run at `0x334E0` through `host_cpu_fault` (`host.c`), printing that line verbatim to stderr; nothing after the `idiv` runs (`sm_check_stats_fault`). Residue: the errorlevel (not captured; the port exits 1) and the register dump. |
 | 4 | ~~`0x1D0BC`'s two allocation-failure arms are ported but untested~~ **closed** (named-gaps C, record `2026-09-30-named-gaps-c-derivations.md` §C.2/§C.3) | The MIDI arm `0x1D10E..0x1D12F` (zeroes `DS_001028C4/C0/CC`) and the slot break `0x1D16B` (slot 0's failure included). ~~The bump allocator cannot fail in-process without exhausting `mem[]`~~: `res.c`'s `PORT:` seam `res_fail_alloc_nth` fails the n-th request one-shot without moving the heap; `check_sound_buffers` V1-V4 pin both arms and the entry gate (mutations M1, M2). Residue: the two stores of 0 at `0x1D0F7`/`0x1D163` on the failure path are unobservable (§C.2.1). |
@@ -638,6 +645,23 @@ against the raw mirror; all three **closed** by named-gaps unit F (record
 | 8 | The sequence-volume fade is not modelled | `AIL_set_sequence_volume` (`0x5DECA`, which passes its three arguments to the runtime's `0x6A8D0`) is called with a 500 ms fade: `0x1CAF6 push 0x1F4 … 0x1CB09 call 0x5DECA` (its raw call sites are `0x1C910`, `0x1C9A5`, `0x1C9F0` and `0x1CB09`). The port ignores `fade_ms` and applies the volume at once (`ail.c`, `ail.h` `PORT:` notes). Audible only; no frame reads it. | **closed**: `0x6A8D0` sets a step of `ms*1000/|delta|` us; the 120 Hz service (`0x69952`, period `1000000/[0x108D8C]` = 8333 us, `0x6A016..0x6A03E`) steps it and re-sends the CC7 log `seq+0x350` every 8th call; ported in `sequencer.c` (§F.3) |
 | 9 | The movie player's entry skip tests are not modelled | `0x1C752 call 0x62756; test eax,eax; jne 0x1C878` and `0x1C75F cmp byte [0xA81A8],0; jne 0x1C878`: a pending key or the quit flag skips the movie, and `0x1C878` is the epilogue, reached **without** the exit blank (record K10 §0.1). The port always opens the movie, and leaves it only through its own loop exit flag and key poll (`movie.c` `PORT:` note). | **closed**: `0x62756` is WATCOM `kbhit` (the port's input queue, `[0xEF910]` never non-zero); `[0xA81A8]` is the quit flag (only writer `0x24A93`, reachable at phase 0 because `0x24C5C`'s key loop runs before `0x25238 call 0x11D04`). Both entry tests and the loop's `kbhit`/`0x50161(0xFF00FF00)` tests ported; the drivers step with `game_loop_step()` instead of presetting the flag (§F.2) |
 | 10 | `movie_play` returns without the exit blank when a frame fails to decode | `movie.c`: `if (!smk_decode_frame(&m, draw)) return 0;` skips `gfx_screen_reset(0)`. In the raw, every exit of the frame loop reaches `0x1C873` (`0x52106(0)`) before the epilogue (record K10 §0.1, §K10.3). Reached only on a corrupt SMK; the shipped movies decode (smk oracle 120/120, 41/41). | **closed**: the raw has no decode-failure exit (`0x1C7E7`'s result is unused); the port leaves the loop to the `0x1C873` blank (§F.1) |
+
+Final-review follow-ups (unit Z, branch `named-gaps-z`, record
+`2026-09-30-named-gaps-b-derivations.md` §B.11): the restart tail's
+omissions, user-reachable now that the three longjmps are real, and
+`0x6A8D0`'s driver lock:
+
+| # | Item | Evidence | Verdict |
+|---|---|---|---|
+| Z1 | `0x20C2B 0x2C8F0(-1, dl=0)`: the unscaled volume re-apply (after ADJUST VOLUME, then the idle restart) | `0x2C8F8..0x2C934` (fields `0x35`/`0x37` halved, or 8/`0x10`) | **ported** in `game_init_resume`; not a first-boot state no-op (`DS_000A2CB8`/`A2CB4` `0x7F` -> `0x50` until the attract's `0x2C8F0(-2)` stores the same `0x50`); gate identical |
+| Z2 | `0x20D05/0x20D0A` `[0x107468] = [0x10746C] =` the key record's word `+0x24` | `0x1AEE0` packs `+0x24` from `DS_001014D0` (`0x1AF4D`), the player-1 handicap; `0x394AC` reads `[0x107468 + side*4]` | **ported**; first boot `0` -> `0x64` (the image byte); gate identical |
+| Z3 | `0x20D0F..0x20DE3` the controller checks | a device word `2`/`4`/`6` is probed with `0x4FBBB(3)`/`0x4FBBB(0xC)` (game port `0x201`) and zeroed on a 0 answer; devices are 0 on the first boot, the CONTROLS screen can set them | **named gap**: the answer is the hardware's (`4FBBB` host-owned §49-V); not captured |
+| Z4 | `0x20CEB 0x5D808`; `0x20CD5 0x32970(0, 0)`; `0x20C3D 0x38B70`, `0x20C42 0x2F920`, `0x20C58 0x2BAF4(1)` | `0x5D808: mov word [0xEF6DE],0; ret` (one caller); `0x32970` host-owned §48-V, no port code writes its state; the other three are callees of `0x2BAF4`, re-run by `0x10E80` at `0x10E9C` with no reader in between | `0x5D808` **ported** (`game_isr_word_reset`); `0x32970` **host-owned**; the `0x2BAF4` group **unobservable** (equivalent) |
+| Z5 | `0x6A8D0`'s driver lock `inc/dec [drv+0x14]` (`0x6A8E0`, `0x6A8F5`, `0x6A945..0x6A949`) | its reader is the timer callback `0x69370` (`0x6937B cmp [esi+0x14],0; jne 0x69A87`), which skips a service that interrupts the API call | **not modelled, no effect**: the port's `seq_tick` runs only from `game_audio_service` on the game thread (`sequencer.c` `PORT:`) |
+
+Also unanswered (not a port deviation): whether the raw stops music playing at
+the jump. The tail's calls reach `AIL_stop_sequence` only through `0x47370`'s
+fatal-error path; what the re-entered loop does is not traced (§B.7).
 
 Carried from earlier rows (unchanged, evidence in the row): §C-13 (the MDI
 sustain `0x3B1E`), §C-14 (XMIDI FOR/NEXT), §C-24 (the credit countdown under
@@ -668,8 +692,14 @@ it is not a complete scan of non-Ghidra code.
 
 Ten named gaps remained at Task 7; nine remained after named-gaps E closed #7,
 eight after named-gaps D closed #6, seven after named-gaps C closed #4, four
-after named-gaps unit F closed #8..#10 and three remain after named-gaps A closed #5
-(§H.3). §H.1a gives every `not modelled` hit a verdict.
+after named-gaps unit F closed #8..#10, three after named-gaps A closed #5, and
+**none** remains after named-gaps B closed #1..#3 (§H.3). What stays open is the
+residue named in the closed rows (#1: the restart tail's omissions and the
+post-restart residency/palette-slot order; #2: real hardware's byte; #3: the
+errorlevel and register dump; #4: two unobservable stores; #5: the K11 residues)
+and the carried rows of §H.3's last paragraph. §H.1a gives every `not
+modelled` hit a verdict. The gate paragraph below is Task 7's; each later unit
+records its own gate in its record.
 
 `make clean && make build && make verify` (with the `/tmp/pr_t7_*` dump
 overrides; the two oracle fixtures restored byte-identical after `make clean`,

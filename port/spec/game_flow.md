@@ -168,6 +168,78 @@ frame loop is reached through `0x20C10`:
   `[3]` non-zero -> `[0]` is a resource handle resolved by `0x1B544` **+4**.
   Colours are 8-bit guns at R=bits[2..9], G=bits[10..17], B=bits[18..25].
 
+### The soft restart: `0x20C10`'s `setjmp` and its three `longjmp`s (record named-gaps-b)
+
+* **The single `setjmp`.** `0x20C10` has one caller (`0x1C0BD` in `0x1BEC4`):
+  `0x20C15 call 0x2F9CC` (the options-menu pointer `DS_0010740C = 0x1D2D0`,
+  `config_validate` `0x2D6F8`, `DS_00107410 = field 0x2A & ~3`, the menu
+  callbacks), then `0x20C1A mov eax,0x1044F4; 0x20C1F call 0x653FC`: WATCOM
+  `setjmp` on the `0x2C`-byte jmp_buf at `DS 0x1044F4`. It is the binary's only
+  call of `0x653FC`. `0x20C24 mov eax,-1` discards the result, so the first pass
+  and every restart run the same tail `0x20C24..0x20DE3` and then `0x20DE8 call
+  0x255CC`, the master loop re-entered from its entry (its prologue
+  `0x255D4/0x255DA` zeroes the tick pair `DS_00101508`/`DS_0010150C`).
+* **The three jumps.** Each is `mov edx,1; mov eax,0x1044F4; jmp 0x65431`
+  (WATCOM `longjmp`, which returns to `0x20C24` with EAX = 1); they are the only
+  references to `0x65431`:
+  - `0x2EBB3` in `0x2EB80` (`config_key_latched`): the idle timeout. With no
+    latched key and `0x500BB() - DS_00105F2C > 0x4B0` (unsigned, `0x2EB9F
+    jbe`) it stores `DS_00107414 = 0` (`0x2EBA8`) and jumps.
+  - `0x2520B` in `0x24C5C` case `0x27` (the service menu): a menu result other
+    than `0`, `-5` and `-10` jumps; the MAIN MENU Esc returns `-1` (`0x30440`)
+    after `0x3043B` clears `DS_00107414`.
+  - `0x24AB0` in `0x249F0` (the quit prompt) with AL != 0: ABANDON CONQUEST's
+    yes, after `0x1D270` and `0x1B084` (see "The int 16h keyboard loop").
+* **What a restart re-runs** (the tail, in the raw's order): `0x2C8F0(-1)`
+  (the music/SFX volumes from fields `0x35`/`0x37`, halved), `0x29D60` (a bare
+  `ret`), `DS_00104B1D = 0` (`0x20C37`), `0x38B70`, `0x2F920`, `0x4F228(0)`,
+  `0x2BAF4(1)` with the LCG seed `DS_000EF6D8 = 0xABCD` (`0x20C62`),
+  `DS_00104528 = 0x2D974(0x29)` and its three derived globals (`DS_00105B3A`,
+  `DS_001088D0`, `DS_0010452C`), `0x47370` (the string table), `0x1E824` (the
+  high-score init), `0x32968` (a bare `ret`), `0x2BF00`, `0x32970(0)` (the run
+  clock), `0x13ADC`, `DS_00104AFC = 0` (`0x20CDF`), `0x10E80` (the game-state
+  init: mode 3, attract state 0), `0x5D808` (`DS_000EF6DE = 0`, the word the
+  ISR increments), the key-record round trip `0x1AEE0`/`0x1AF64` through a
+  stack record, `DS_00107468 = DS_0010746C =` that record's word `+0x24` (the
+  player-1 handicap byte `DS_001014D0`, `0x20D00..0x20D0A`), and the
+  controller checks `0x20D0F..0x20DE3` (a device word `2`/`4`/`6` at
+  `[DS_00101514]+0x2D4`/`+0x2D6` is probed with `0x4FBBB(3)`/`0x4FBBB(0xC)`,
+  the game port `0x201`, and set to 0 when the probe answers 0).
+* **What it does not re-run.** Everything in `0x1BEC4` before `0x1C0BD` (the
+  resource index, the actor pools, the screen surfaces, the palette and render
+  lists, the audio init `0x1CF40`, the sound buffers `0x1D0BC` at `0x1C0B1`,
+  `0x47370` at `0x1C0B8`) and `0x2F9CC`. The frame word `DS_000EF6DC`, the
+  clock `DS_00101500` and the idle stamp `DS_00105F2C` are kept (named-gaps-a
+  §A.6). The iteration that jumped is abandoned (its frames lie below the
+  restored ESP). The tail itself calls no sequence stop: in Ghidra's call graph
+  its calls reach `AIL_stop_sequence` (`0x5DEAF`) only through `0x47370`'s
+  fatal-error path (`0x1D290` -> `0x1BE30` -> `0x1D018`), and `0x2C8F0(-1)`
+  reaches `AIL_set_sequence_volume` (`0x1CAB8` -> `0x5DECA`, a 500 ms fade of a
+  playing sequence). Whether the music playing at the jump stops after the
+  restart (through the attract's `0x2C3FC(0x100)`, the movie player or
+  otherwise) is not established; no capture holds the audio.
+* **Port.** `game_init()` is the pre-setjmp part (the `0x1BEC4` chain up to
+  `sound_buffers_alloc`, then the `0x2F9CC` work) and ends by calling
+  `game_init_resume()`, the tail. The restart point is a real C `setjmp`,
+  armed in `game_loop()` (`game_restart_arm`), the port's one entry to
+  `0x255CC` (`PORT:` the drivers step `game_loop()` one iteration per call).
+  `game_restart_longjmp()` (`0x65431`) jumps there, and the landing runs
+  `game_init_resume()` and `game_loop_begin()` (`0x255D4/0x255DA`), then the
+  loop body from its top. `game_init_resume()` holds the tail's stores and
+  calls except: the controller checks (a named gap: `0x4FBBB`'s game-port
+  answer is the hardware's), `0x32970` (host-owned), and the direct
+  `0x38B70`/`0x2F920`/`0x2BAF4(1)` calls, which are unobservable because
+  `0x10E80` re-runs `0x2BAF4(1)` with nothing reading that state in between;
+  `0x47370` runs later in the port's order (record named-gaps-b §B.2,
+  §B.11). After a restart
+  the port's attract palettes sit one slot lower than on the first boot (no
+  `- LOADING -` draw: the port never evicts a loaded entry); the raw's
+  residency and slot order after a restart are a named gap (§B.7). The
+  MAIN MENU Esc restart is compared byte-exact with named-gaps A's `menuesc`
+  capture in `make verify` (`make k11-oracle`; a narrow claim, record
+  named-gaps-b §B.12); the `PR_RESTART` driver compares the idle restart with
+  the port's own first boot.
+
 ## Sprite compositor — `0x14328` (sub-project 4a-i, ported)
 
 On-screen sprites are a **three-stage pipeline** (verified by disassembly):
@@ -309,7 +381,7 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
   * **Exit**: `DS_000F0A6F = 0`, `DS_000F0A64 = 2`.
   * **Always**: `DS_00107A3A = DS_00107A50 >> 5`.
 * **The pin.** `0x121A0` has no store to `DS_000EF6D8`; the only `0xABCD` seed
-  store is `0x20C62` in `0x20C10`, transcribed as `game_init`'s `rng_seed`. The
+  store is `0x20C62` in `0x20C10`, transcribed as `game_init_resume`'s `rng_seed`. The
   three draws are therefore the first three from `0xABCD` and land on
   `12`/`111`/`0`, giving `iVar1 = 12`, `iVar2 = 0x1E40`, `DS_00107A50 = 0x2420`,
   `DS_00107A3A = 0x121`, `logo+0x34 = -81`, `logo+0x36 = 8`, `logo+0x2C = 0xAA`.
@@ -718,8 +790,10 @@ pin decouples the title draws from the attract's RNG state. `make verify` runs
     points (`0x41310`) and redraws the score, then dispatches to mode
     `0x17` (continue, hook `0x259CC`), `0x417C4`
     (`flow_no_continue_screen`) or the join prompt `0x271E0`
-    (`flow_join_prompt_draw`) followed by the play-time audit close and a
-    `longjmp(0x2DAE4, 0x10, 1)` quit path (spec §7, deferred); 8 a
+    (`flow_join_prompt_draw`) followed by the play-time audit close and
+    the audit add `0x2DAE4(0x10, 1)` (`0x42420 mov eax,0x10; 0x42425 call
+    0x2DAE4`, EDX = 1 from `0x42415`): a plain call, not a longjmp, deferred
+    with the audit layer (spec §7; record named-gaps-b §B.6a item 9); 8 a
     countdown (`DS_00104AFE`) that restores `DS_00104B25` from
     `DS_00104B23` at zero, reused as the "wait N frames" tail of nearly
     every other state. `0x416D4`'s own dead call `0x32BAC` (its target
@@ -817,16 +891,19 @@ image, `0x2D4EC`) declared a no-op, validate always takes the defaults path, as 
 a fresh machine, writing field `0x29 = 0x142095`, fields `0x35`/`0x37 = 0xA0`,
 field `0x2A`'s low two bits `= 3`, and the `0x9C94D2C4` magic.
 
-**Consumers (`flow.c` `game_init`).** `config_validate()` is called at the
-`0x20C5D` block; the master init `0x2F9CC` (whose `0x13ADC` effects_init already
-ran inside `actors_init`) invokes it before that block in the raw. The block then
+**Consumers (`flow.c` `game_init`, `game_init_resume`).** `config_validate()`
+is called by the master init `0x2F9CC` (`0x20C15`, whose `0x13ADC` effects_init
+already ran inside `actors_init`), before `0x20C10`'s `setjmp`, so the port calls
+it at the end of `game_init`'s pre-setjmp part (record named-gaps-b §B.2). The
+tail's `0x20C5D` block (`game_init_resume`) then
 reads `v = 0x2D974(0x29)` and derives `DS_00104528 = v`,
 `DS_00105B3A = (v & 0x100) >> 4`, `DS_001088D0 = (v & 0xF)*5 + 0x1E`,
 `DS_0010452C = (v & 0xF0) >> 4` (raw `0x20C5D`–`0x20CC2`), plus `0x2C304`'s
 `DS_00105C00 = ((0x2D974(0x29) & 0xF0000) >> 16) + 1 = 5` (`config_credits_init`,
 called from `0x10E80` at `0x10ECC`). The outer wrapper `0x20C10` is not
-transcribed as one function; its `0x2F9CC` call folds into `game_init`, and
-`game_state_init` is `0x10E80` whole (record §46-F).
+transcribed as one function: its `0x2F9CC` call folds into `game_init`, its
+post-setjmp tail `0x20C24..0x20DE3` is `game_init_resume` (see "The soft
+restart"), and `game_state_init` is `0x10E80` whole (record §46-F).
 
 **Declared gaps.** No storage I/O (the save/load path and the `0x80CE4` image)
 and the deferred module taps `0x1AE20`/`0x2EA78` (screen setup, storage write).
@@ -866,8 +943,12 @@ selector.
   - Enter (ascii `0xD`) in mode 3: mode `0x27`, the service menu (`0x24EE0`);
   - ESC (`0x1B`): mode 3 asks `QUIT TO DOS? Y/N` (`0x249F0(0)`, yes sets the
     quit flag `DS_000A81A8`); mode `0x27` nothing; any other mode asks
-    `ABANDON CONQUEST? Y/N` (`0x249F0(1)`, yes is `longjmp(0x1044F4, 1)` back
-    to `0x20C10`'s `setjmp`; the port sets the quit flag instead, spec §7);
+    `ABANDON CONQUEST? Y/N` (`0x249F0(1)`); its yes resumes the sound
+    (`0x24A9C 0x1D270`), calls the config writer `0x1B084` (`0x24AA1`,
+    deferred in the port, record §50-C) and jumps `0x24AB0 jmp 0x65431`,
+    `longjmp(0x1044F4, 1)`: the soft restart (see "The soft restart" under the
+    frame loop). The port jumps too (`game_restart_longjmp`, record
+    named-gaps-b §B.3); it no longer sets the quit flag there;
   - space (`0x20`), except in modes 3 and `0x27` and in mode `0x17` under the
     hook `0x10E80`: the pause — `DS_00104B22 = 1`, `0x1D250`, `- PAUSED -`
     (string `0x1E8`) centred on row `0xF`, one frame (`0x2EA78(-1)`), then

@@ -522,15 +522,29 @@ reproducible by applying the mutation to the commit of its task.
 - The F7 omissions of the resume tail (§B.2 table): `0x2C8F0(-1, 0)`, the
   `0x2BAF4` call at `0x20C58` (the port runs it through `game_state_init`
   only), `0x32970`, `0x5D808`, the `[0x107468]/[0x10746C]` stores and the
-  controller checks. A restart while music plays: `0x5D808` is unported, so
-  the port does not stop what the first pass started.
+  controller checks. (Unit Z, §B.11, ported `0x2C8F0(-1)`, `0x5D808` and the
+  two stores and gives the others their reasons.)
+- **Corrected (final review, unit Z; raw wins).** An earlier version of this
+  bullet said "`0x5D808` is unported, so the port does not stop what the first
+  pass started". `0x5D808` is `mov word [0xEF6DE],0; ret` (the ISR's frame
+  word; `port/spec/audio.md`'s `0x5d808` row agrees, naming it by its DS offset `0x6f6de`): it has nothing to do with
+  the music. What a restart does to music that plays at the jump is
+  **unanswered**: the tail's own calls (§B.11) do not stop the sequence (in
+  Ghidra's call graph they reach `AIL_stop_sequence` `0x5DEAF` only through
+  `0x47370`'s fatal-error path `0x1D290` -> `0x1BE30` -> `0x1D018`), and
+  `0x2C8F0(-1)` at `0x20C2B` only re-sets the volumes (`0x1CAB8` -> `0x5DECA`,
+  a 500 ms fade when the sequence plays). What the re-entered loop does to it
+  (the attract's `0x2C3FC(0x100)`, the movie player) is not traced, and A's
+  captures hold no audio.
 - The capture's restart frames in `make verify`: the `PR_RESTART` driver
   compares the port's restart with the port's own first boot (state, RNG, RGB
   frames sampled after each iteration, so a movie played inside one
   iteration is not seen); the frame-for-frame comparison with A's captures
   (`menuesc`, and `idle` with a hand-extended script) is report-only
   (`make k11-report` is not in `make verify`, and the stock `idle` port
-  script ends 180 ticks after the Enter, before the timeout).
+  script ends 180 ticks after the Enter, before the timeout). **Since unit Z
+  (§B.12) the `menuesc` comparison is enforced in `make verify`** (`make
+  k11-oracle`); `idle` stays report-only.
 - The idle restart from inside a blocking service screen other than the
   menu (the path exists through `config_key_latched`'s callers at svcmenu.c
   `0x32542`, `0x32E36`, `0x3306B`, `0x33247`): only the unit calls and the
@@ -620,3 +634,145 @@ and `make audio-render` + `cmp` against `before-t2.wav`.
   walk lines unchanged, restart driver `all checks passed` (1198 iterations),
   `DUMPS-IDENTICAL`, `make audio-render` + `cmp` with `before-t2.wav`:
   `cmp-exit=0 output=[]`.
+
+## §B.11 Final-review follow-ups (unit Z, branch `named-gaps-z`)
+
+Raw source as above (`k11_img.bin`, `k11_dx.py`), plus Ghidra's call graph
+`port/decomp/prage.calls.csv` for reachability. Every omission of the §B.2
+table was re-disassembled and decided; "first boot" values were measured with
+a temporary probe at `game_init_resume`'s entry and exit on `--check 5`
+(`A2CB8=7F A2CB4=7F f35=A0 f37=A0 b14D0=64 d107468=0 d10746C=0 wEF6DE=0
+b107494=0`; after the tail: record word `+0x24` = `0x64`, devices `0`/`0`).
+
+| Raw | Decision | Evidence |
+|---|---|---|
+| `0x20C24 mov eax,-1; 0x20C29 xor dl,dl; 0x20C2B call 0x2C8F0` | **ported** (`attract_config_volumes_unscaled()`, first in `game_init_resume`) | `0x2C8F3 cmp eax,-1; jne` takes the unscaled arm `0x2C8F8..0x2C934`, already ported (§42-F). **Not a state no-op on the first boot:** `DS_000A2CB8`/`DS_000A2CB4` go `0x7F` -> `0x50` (fields `0x35`/`0x37` = `0xA0`, halved) where the port used to keep `0x7F` until the attract's `0x110B0 0x2C8F0(-2)`, which for the stock field `0x2A & 3 = 3` stores the same `0x50`. The raw does this on the first pass too, so the port's first boot now follows it. No gated output reads the window between the two (the WAV renders the title bank through the sequencer directly, `test_audio.c` §9, not through `game_init`); gate below |
+| `0x20C32 0x29D60` | nothing | bare `ret` |
+| `0x20C3D 0x38B70`, `0x20C42 0x2F920`, `0x20C58 0x2BAF4(1)` | **not ported: unobservable** | all three are callees of `0x2BAF4` (Ghidra: `0x2BAF4` calls `0x38B70`, `0x2F920`, `0x4F228`, `0x13ADC`, `0x336C0`, `0x52106`, ...), which `0x10E80` runs again at `0x10E9C` with EAX = 1 (the port's `game_state_init` -> `actors_reset`). Between the two, the tail's calls (`0x2D974`, `0x47370`, `0x1E824`, `0x32968`, `0x2BF00`, `0x32970`, `0x13ADC`, `0x4F1E4`) read no state `0x2BAF4` resets (`hiscore_init` writes the name tables and config fields; `0x2BF00` one byte; `0x13ADC` is itself re-run by `0x2BAF4`), so the post-tail state is the same with or without the first call: an equivalent mutant, like §B.6b's M6 (`0x4F228`) |
+| `0x20CD1/0x20CD3 0x32970(0, 0)` | **not ported: host-owned** | `tools/port_classification.txt` `32970 host-owned record-§48-V`. `0x32970` stores `[0x10747C] = [0x105D88]`, adds the elapsed ticks into `[0x107470 + 4k]` for each set bit k of `[0x107494]`, into `[0x107484]` and `[0x107488 + 4*[0x107494]]`, posts `0x2DAE4(3+i, q)` when `[0x107484] >= 0x3840`, and stores `[0x107494] = AL` (`0x32A28`). The port omits every call of it (`game_state_init`'s `0x10E84`, `config_play_time_close`'s `0x32A4A`), and no port code writes `DS_00107494`, `DS_0010747C`, `DS_00107484` or `DS_00107488`, so a restart has nothing of it to re-apply |
+| `0x20CEB call 0x5D808` | **ported** (`game_isr_word_reset`, `/* 0x5D808`) | `0x5D808 mov word [0xEF6DE],0; 0x5D811 ret`; one caller (rel32 scan: `0x20CEB` only). The word is what the ISR increments (`0x1BE21`) and `0x2EA78`'s key wait compares (`0x2EAF2..0x2EB03`; config.c models the increment). First boot: `0` -> `0` (measured). It is in the runtime region (>= `0x5D000`) but is a game helper (`port/spec/audio.md`) |
+| `0x20CFE..0x20D0A` `[0x107468] = [0x10746C] = word [esp+0x24]` | **ported** (after `config_keys_load`) | `0x1AEE0` packs `+0x24` from the byte `DS_001014D0` (`0x1AF4D..0x1AF52`, AH = 0) and `+0x26` from `DS_001014D2`; the tail copies `+0x24`, the player-1 handicap, into **both** sides' dwords (the HANDICAP screen `0x313CA..0x313D7` stores `v[0]`/`v[1]` separately; the tail does not). `0x394AC` reads `[0x107468 + side*4]` as a percentage (`fighter.c`). **Not a state no-op on the first boot:** `0` -> `0x64` (the image byte), so a first-boot fight in `DS_00104B1F == 3` now scales by 100 % where the port scaled by 0 %; the gate below shows no oracle reaches that arm |
+| `0x20D0F..0x20DE3` the controller checks | **named gap** (a `PORT:` in `game_init_resume`) | with DL = DH = 0 on entry (`0x20C29`, `0x20C30`, assuming the calls between keep EDX under WATCOM's convention, as the ones checked do: `0x2C8F0` and `0x1AEE0`/`0x1AF64` push and pop it) a device word `2`/`4`/`6` at `[0x101514]+0x2D4`/`+0x2D6` sets DL/DH (`0x20D23..0x20D9C`, including `0x20D6F`'s `+0x2D4 = 0` when both are joysticks and `+0x2D6 == 2`), then `0x4FBBB(3)`/`0x4FBBB(0xC)` time the game port `0x201` (`0x4FBCA in al,dx`, `0x4FBDC out dx,al`, two `0x2FFFF` loops) and a 0 answer zeroes the device word. On the first boot both words are 0 (measured), so nothing runs; the CONTROLS screen (`0x32345 0x1AE28`, svcmenu.c) can set them. The answer of `0x4FBBB` is the hardware's (`4FBBB host-owned record-§49-V`); the port has no game port, and neither real hardware's nor DOSBox-X's answer is captured, so porting the branch would need a fitted answer |
+
+- **`0x6A8D0`'s driver lock (review MINOR 4).** `0x6A8DE mov eax,[esi];
+  0x6A8E0 inc dword [eax+0x14]` on entry, `0x6A8F5 dec` on the early exit and
+  `0x6A940..0x6A949` on the normal one: a net-zero counter on the MDI driver.
+  Its reader is the driver's timer callback `0x69370`: `0x6937B cmp dword
+  [esi+0x14],0; jne 0x69A87`, which skips the service while an API call holds
+  the lock (the timer interrupt can fire mid-call). The port's service
+  (`seq_tick`) runs only from `game_audio_service` (flow.c) on the game
+  thread, never inside `seq_fade_sequence_volume`, and the host audio stream
+  has no callback (host.c `SDL_PutAudioStreamData`), so the counter is always 0
+  when the service runs: not modelled, with a `PORT:` note in `sequencer.c`.
+- **Tests** (`test_game.c` `rs_check_resume_tail`, in `test_restart`; 7 sites):
+  fields `0x35 = 0x64`, `0x37 = 0x3C` and a scale of 1 (field `0x2A`), the
+  volume globals seeded `0x11`/`0x22`, `DS_001014D0 = 0x37`, `DS_001014D2 =
+  0x44`, the handicap dwords and the ISR word seeded; after
+  `game_init_resume()`: volumes `0x32`/`0x1E` (the unscaled arm; the scaled one
+  would give `0x10`/`0x0A`), both handicaps `0x37`, the word 0. Mutations
+  (`PR_ORACLE_REQUIRED=1 run_tests`, restored after each; `test_game.c` lines):
+
+  | # | mutation | measured |
+  |---|---|---|
+  | Z1 | delete the `0x2C8F0(-1)` call | `FAIL ...:12223: 17 != 50`, `:12224: 34 != 30` |
+  | Z2 | delete the `0x5D808` call | `FAIL ...:12227: 4660 != 0` |
+  | Z3 | the record's word `+0x26` for `+0x24` | `FAIL ...:12225: 68 != 55`, `:12226: 68 != 55` |
+  | Z4 | delete the `0x20D05` store | `FAIL ...:12225: 2863289685 != 55` |
+  | Z5 | delete the `0x20D0A` store | `FAIL ...:12226: 1431677610 != 55` |
+  | Z6 | `0x5D808`'s body empty | `FAIL ...:12227: 4660 != 0` |
+  | Z7 | the scaled arm `0x2C8F0(-2)` instead | `FAIL ...:12223: 16 != 50`, `:12224: 10 != 30` |
+
+  A first version read the fields as the unit process left them: field
+  `0x35` was 0 there, so Z7 survived; the test now sets the fields.
+- **`tools/k11_compare.py` (review MINOR 5).** It read `PR_ORACLE_REQUIRED`
+  from the environment, so a caller exporting `=1` made `k11-oracle` fail
+  without the git-ignored capture, where the Makefile comment says the
+  target skips. The tool now ignores the variable; `--required` (which no
+  Makefile target passes) makes an absent capture fail. New
+  `test_inherited_oracle_required_is_ignored` failed before (`1 != 0`, the
+  tool printed `FAIL (required)`) and passes after; the existing
+  absent-capture test now uses `--required`. `port/tests/test.h` notes that
+  `test_restart` must stay last (its resume checks run `game_init_resume()`
+  on the unit process).
+- **Docs (review IMPORTANT 1, 2; MINOR 3, 4).** `port/spec/game_flow.md`:
+  a new "The soft restart" section under the frame loop; ABANDON
+  CONQUEST's yes is the restart, not the quit flag; `0x42425` is a plain call
+  of the audit add; `rng_seed` and `config_validate` placed in
+  `game_init_resume`/`game_init`. §B.7's music sentence corrected (above).
+  Ledger §H.1/§H.5 made consistent with §H.3 (none of #1..#10 open; residues
+  listed), §H.3 row 1 names the residency/palette-slot gap, rows Z1..Z5 added.
+- **Counts.** Assertion sites 13754 -> 13761 (+7). `python3
+  tools/port_progress.py`: `770 1203 64` -> `771 1203 64` (`0x5D808`, runtime
+  region); portable `731 731 100` unchanged; 432 unported = 81 + 351. `named
+  gap` sites (`rg -n -i 'named gap' port/src port/tests`): 11 -> 12 (the
+  controller-check `PORT:` in `game_init_resume`).
+- **Gates** (`make verify` with the `nz` overrides incl.
+  `K11_DUMP=/tmp/pr_nz_k11`, `dumps.sh nz` + `dumpsha.sh nz`, `make
+  audio-render AUDIO_WAV=/tmp/pr_nz_fm.wav` + `cmp` with `before-t2.wav`):
+
+  | Gate | tree | EXIT | oracle lines | K11 walk | restart driver | dumps | WAV |
+  |---|---|---|---|---|---|---|---|
+  | t0 | `6bec424` (base) | 0 | ORACLES-EQUAL | unchanged | 1198 iterations, passed | IDENTICAL | `cmp` exit 0 |
+  | t1 | + the tail code and test | 0 | ORACLES-EQUAL | unchanged | 1198 iterations, passed | IDENTICAL | `cmp` exit 0 |
+  | t2 | + the `k11_compare` fix, the comment-only commits | 0 | ORACLES-EQUAL | unchanged | 1198 iterations, passed | IDENTICAL | `cmp` exit 0 |
+  | t3 | + the enforced `menuesc` oracle (§B.12), the named-gap wording in `game_init_resume` (comment-only, stripper: `COMMENT-ONLY`) | 0 | ORACLES-EQUAL | the walk's five lines unchanged; `menuesc` 0 unexplained in 283, 2/2, END 388 >= 388 | 1198 iterations, passed | IDENTICAL | `cmp` exit 0 |
+
+## §B.12 User decisions and the enforced `menuesc` oracle (unit Z)
+
+Decisions of the user, 2026-09-30, relayed to unit Z by the controller (this
+record holds no other evidence of them):
+
+- **Accepted by the user, 2026-09-30:** the windowed behaviour changes that
+  follow the raw. ABANDON CONQUEST? Y and the idle timeout / MAIN MENU Esc now
+  soft-restart (this record, §B.3); ESC during the boot logos ends the logo,
+  skips the next one at its entry (the key stays queued) and then raises QUIT
+  TO DOS? Y/N (record named-gaps-f §F.2).
+- **Confirmed by the user, 2026-09-30:** G3's abort line stays verbatim
+  (`DOS/4GW Professional error (2001): exception 00h (divide by zero) at
+  180:002244E0`, exit status 1, with the `PORT:` note that the errorlevel is
+  not captured; §B.4).
+- **Enforced at the user's request:** the `menuesc` comparison (the MAIN
+  MENU Esc, the `0x2520B` longjmp, the restart's black frame and reboot,
+  against A's capture `data/k11-captures/menuesc`) moves from `make
+  k11-report` into `make k11-oracle`, which `make verify` runs, after the
+  walk. It skips silently without the capture, like the walk.
+
+**The `menuesc` oracle's claim (narrow, like the walk's, §A.10).** Its
+window START comes from the port's own dump (the first capture frame that
+exhibits a port frame at or before the MAIN MENU); its END is the last
+capture frame that exhibits the port's final settled screen. Inside the
+window every non-black capture frame must be explained byte-exact (clean, a
+splice of two adjacent port frames, or one transition row; no frame is
+allowed by name), and both settled screens must be exhibited. Measured: window
+`[106..388]` (raw 1745..3109), 283 frames: 184 clean, 92 splice, 3
+transition, 0 unexplained, 4 all-black, settled screens 2/2. The walk's claim
+4 (no content after the END) cannot hold here: the original runs on after the
+restart until the capture's 60 s limit (raw 4175) while the port's script
+ends `END_TAIL_TICKS` = 180 ticks (a harness value, `k11_session.py`) after
+the Esc, so the capture continues at 389 (raw 3190). `k11_compare.py`'s
+`K11_OPEN_END` replaces that claim for `menuesc` only with a ratchet: the END
+must reach capture frame 388, the value measured here (like the Makefile's
+demo-fight N). Without the ratchet the oracle was toothless: with case
+`0x27`'s `game_restart_longjmp()` replaced by a no-op the port never
+restarts, the window shrinks to `[106..108]` and every other claim still
+held (`cmp` exit 0, measured); with the ratchet that mutant fails (`END 108
+must be >= 388: FAIL`, exit 1). What it does not prove: anything after raw
+3109 (the rest of the reboot), the audio, and a port that under-renders
+inside frames it never exhibits (the same limits as the walk).
+
+- Tool tests (`tools/tests/test_k11_compare.py`, 17 tests): the pin for
+  `menuesc` (and none for `walk`), an open end passing past the final screen,
+  a short window failing, an unexplained frame and a missing screen still
+  failing under an open end. Mutations of the tool (each restored): T1 (drop
+  the short-window failure) fails `test_open_end_fails_a_short_window`; T2
+  (open end for every scenario) fails `test_capture_past_the_final_screen_fails`;
+  T3 (an open end skips the unexplained check) fails
+  `test_open_end_still_fails_unexplained`.
+- **`idle` stays report-only.** Its stock port script (from the capture's poll
+  log, `end` = the last key + 180 ticks) ends 180 ticks after the Enter, before
+  the `0x4B1`-tick timeout, so the restart is not in the port's dump. No cheap
+  faithful extension exists: the hand extension to 1500 ticks (§B.6b, the K11
+  driver) left 9 unexplained capture frames (95..103, the attract before the
+  Enter, which the dump does not hold), so enforcing it would need a new
+  harness rule for the script's end and a by-name allowance of 9 frames, and
+  its END would meet the same open-end question with a longer run.

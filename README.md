@@ -86,11 +86,11 @@ title screen, the front end and the attract demo — each gated by a byte-exact
 oracle against the original's own captured frames (`make verify`). Real
 interactive gameplay is not yet ported and has no oracle to verify it against.
 
-**64%** (770 of 1203) of the original's real functions have a ported,
+**64%** (771 of 1203) of the original's real functions have a ported,
 header-commented counterpart in `port/src/` (see `AGENTS.md` for how that
-figure is computed). The 433 that are not are not porting targets: 81 are
+figure is computed). The 432 that are not are not porting targets: 81 are
 host-owned or deferred (`tools/port_classification.txt`, each with its
-evidence) and the other 352 are WATCOM libc and DOS/4GW runtime code (at or
+evidence) and the other 351 are WATCOM libc and DOS/4GW runtime code (at or
 above `0x5D000`, served by the host libc). Excluding them, **100%** (731 of
 731) of the portable functions are ported.
 For the detailed, continuously-updated status — what's ported, what's
