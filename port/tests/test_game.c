@@ -9461,8 +9461,7 @@ static void sm_check_hist(void)
     sm_buf_is("100& UP:  0   0% ", "the last of eleven");
     CHECK_EQ_INT((int)audit_hist_line(11u, SM_HBUF, 0x2A), 0);
     sm_buf_is("110-19 :  0   0% ", "past the count, within the size");
-    memcpy(mem + 0x2D414u, s_desc, sizeof s_desc);
-    CHECK(memcmp(mem + 0x2D414u, s_desc, sizeof s_desc) == 0, "the descriptors are back");
+    memcpy(mem + 0x2D414u, s_desc, sizeof s_desc);       /* the descriptors are back */
 
     DSD(DS_001014E4) = CH_BUF_A; DSD(DS_001014E8) = CH_BUF_B;
     CHECK(fn_resolve(0x2CAC0u) == (void (*)(void))svc_statistics_entry, "0x2CAC0 registered");
