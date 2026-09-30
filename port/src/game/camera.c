@@ -1557,8 +1557,9 @@ void camera_dust_spawn(void)
  * and 0x4000 otherwise, and pointed at the stream 0xEF65A at hold 3.0
  * (0x2BC30). The dust actor is then retired (0x2B150), the three voices
  * 0xBF/0xD6/0xCE are posted (0x2C3FC, record k7-k12 §8), and the slot
- * DS_00104B1A names gains 1 in its +0x5B byte (0x4DBB4). 4 callers, three
- * of them unported. */
+ * DS_00104B1A names gains 1 in its +0x5B byte (0x4DBB4). 4 raw call sites
+ * (0x12AA3, 0x12AFF, 0x12B51, 0x12B9D), all in 0x129FC's per-character arms,
+ * which camera_dust_hit folds into its one call. */
 void camera_dust_burst(u32 side, u32 dust)
 {
     u32 fighter = DSD(DS_001077B0 + side * 0x94u);     /* 0x12BC9 */

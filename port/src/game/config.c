@@ -399,7 +399,7 @@ u32 config_credit_take(void)
 /* 0x2CA78 — record §48-E. `xor eax,eax; ret`: the return-0 tail that 0x2CA48
  * (0x2CA5E `je`) and 0x2CA7C (0x2CA91 `ja`) jump to, also called as a
  * function by 0x42F60 (0x42F7A), which makes that function's 0x2CA48 arm dead,
- * and by the unported 0x32F54 (0x32F56). Always 0. */
+ * and by 0x32F54 (0x32F56, svcmenu.c, record §K11.7). Always 0. */
 u32 config_credit_zero(void)
 {
     return 0u;                                         /* 0x2CA78 */
@@ -602,8 +602,8 @@ void config_screen_wait(s32 n)
  * no `ret`: execution falls into 0x2EA78 with EAX = 0, so this is
  * config_screen_wait(0), one presented frame and two tick waits. 0x2EA78
  * restores EBX/ECX/EDX/ESI and leaves EAX = -1, which no ported caller reads.
- * Ported callers: 0x2FA40 (0x2FA61, 0x2FE2F) and 0x2FFC4 (0x2FFF1); 15 more
- * sites are in the unported service-menu code (record §K5.3). */
+ * Callers: 0x2FA40 (0x2FA61, 0x2FE2F) and 0x2FFC4 (0x2FFF1), and the 15
+ * service-menu sites of record §K5.3, ported by K11 (svcmenu.c). */
 void config_screen_wait_zero(void)
 {
     config_screen_wait(0);                                  /* falls into 0x2EA78 */

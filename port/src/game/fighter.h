@@ -70,8 +70,8 @@ void fighter_pass_b(u32 arg);
 
 /* 0x186D0. The slot position latch the game_frame tail (0x25438) calls per live
  * side, and the 0x2545C mode tail calls at 0x2551E/0x25559/0x2559E. With slot+0x42 bit 3 set it copies the fighter record's +0x18/+0x1C to
- * slot+0x2C/+0x30; otherwise the 0x18540/0x18350 screen-anchor path (named gaps
- * §6.3) offsets them by DS_00100AB0/AB4[side]. A set slot+0x41 bit 7 then
+ * slot+0x2C/+0x30; otherwise the 0x18540/0x18350 screen-anchor path (both
+ * ported, fighter.c) offsets them by DS_00100AB0/AB4[side]. A set slot+0x41 bit 7 then
  * latches slot+0x2C into slot+0x34. */
 void fighter_slot_latch(u32 side);
 
@@ -85,8 +85,9 @@ void fighter_slot_latch_both(void);
  * 0x33C78: it stores the slot pointer into DS_001077A8[side], copies the picked
  * character (DS_0010816A[side]) into slot+0x7A, spawns the fighter and its
  * secondary actor through actors.c's 0x2AE14, assigns the character palette
- * (0x29BC8), and resets the slot fields. 0x494A8's dust entry and the
- * res_resolve tail are named gaps (§10.4/§10.5). */
+ * (0x29BC8), and resets the slot fields, then runs 0x494A8's dust entry
+ * (0x33E43, when DS_00104B14 == 0) and the sound-bank res_resolve tail
+ * (0x33E51..0x33EA6, behind the 0x1CEBC gate); both are ported. */
 void fighter_spawn(u32 side);
 
 /* 0x34978. The fighter-slot reset 0x20DF4 calls at 0x20E42 before state 6

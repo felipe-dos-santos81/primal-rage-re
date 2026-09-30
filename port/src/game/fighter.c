@@ -2749,7 +2749,7 @@ static void fighter_379c4(u32 slot)
                       0x40400000u);
 }
 
-/* 0x36870. The +0x54 machine 0x37178/0x379C4 (and the unported 0x3FD30) call.
+/* 0x36870. The +0x54 machine 0x37178/0x379C4 (and 0x3FD30) call.
  * Under mode 0x25 it runs 0x385B0 and returns. Else it resets the pair (the
  * 0x100CE0 word, S+0x90, S+0x40's 0x4000000/0x1000000 mask + 0x39280, the
  * 0x100AF8 entry, rec_s+0x28 bit 5, S+0x62/+0x8A, the S+0x84 counter, 0x164E8,
@@ -9404,8 +9404,8 @@ void fighter_4579c(u32 slot, u32 rec, u32 side)
 }
 
 /* 0x45878 — record §48-R. Character 4's reaction-0x24 callback (*(u32*)
- * 0xA4BF8), also called by 0x46138 (0x46148, the 0xD500 target at 0xEB184,
- * unported) with EBX = 0. EAX = slot, EDX = rec; EBX unread. The record on
+ * 0xA4BF8), also called by 0x46138 (0x46148, the 0xD500 target at 0xEB184)
+ * with EBX = 0. EAX = slot, EDX = rec; EBX unread. The record on
  * 0xEB58C at 3.0 through 0x2BC30 with its +0x53/+0x59 = 1, the slot in state
  * 9/7/1 with +0x57 = 0, +0x0C/+0x18/+0x1C = 0x4579C/0x45640/0x456A8, the word
  * +0x88 = 0 and +0x42 bit 2. */
@@ -9454,8 +9454,8 @@ void fighter_458d4(u32 rec)
  * = 0 before DL), DS_001077A0[DS_001078FF] = 0 (EBX) and DS_00104AE9 &= 0xFE.
  * DS_001078FF is re-read after each call. EBX/ECX/EDX are pushed and popped.
  * Callers: 0x3A08E (0x39FF4, with +0x8C just set to 1), 0x357EE (0x35658,
- * EAX = ESI = the side, each arena frame), and the unported 0x370E2
- * (0x36F10) and 0x38556 (0x384F8). */
+ * EAX = ESI = the side, each arena frame), 0x370E2 (0x36F10) and 0x38556
+ * (0x384F8). */
 void fighter_34038(u32 side)
 {
     u32 s, r;
@@ -9545,7 +9545,7 @@ void fighter_39ff4(void)
  * (EBX/ECX) and 0x367DC (EBX/ECX), which write none of them. EBX..EBP are
  * pushed and popped. Callers: 0x4E223 (0x4E11C), 0x366FB..0x36703 (0x36638's
  * +0x54 == 5 arm) and 0x38724 (0x385B0's), each with the record's +0x51, and
- * the unported 0x382FA (0x382C4). */
+ * 0x382FA (0x382C4). */
 void fighter_38154(u32 side)
 {
     u32 slot = DSD(DS_001077A8 + side * 4u);            /* 0x3815C */
@@ -9611,7 +9611,7 @@ void fighter_38154(u32 side)
  * negated when R->+0x28 bit 0x4000 is set), then fighter_1883c((u32)R->+0x51
  * (the raw's actual EAX at the call, not `side`), (s32)slot->+0x4A >> 16, 0);
  * 2 or above runs fighter_state_35b7c(slot, R) directly. EBX..EBP pushed and
- * popped. Only caller: the unported 0x38564 (0x384F8). */
+ * popped. Only caller: 0x38564 (0x384F8). */
 static void fighter_382c4(u32 side)
 {
     u32 slot = DSD(DS_001077A8 + side * 4u);               /* 0x382CA */
@@ -9675,7 +9675,7 @@ static void fighter_382c4(u32 side)
  * timer(side) and, only when DS_001088BC == side and both round flags DS_
  * 001078F0/F1 and the timeout flag DS_001088BE are set, hit_3d004(side)
  * clearing DS_001078F0[side] on success. EBX..EBP pushed and popped. Only
- * caller: the unported 0x3856B (0x384F8). */
+ * caller: 0x3856B (0x384F8). */
 static void fighter_38434(u32 side)
 {
     u32 slot = DSD(DS_001077A8 + side * 4u);               /* 0x3843A */
@@ -9726,7 +9726,7 @@ static void fighter_38434(u32 side)
  * 0xFF, DS_00107805[slot] = 0xFF unconditionally; returns 0. `slot` here is
  * the 0x94-stride record slot (side * 0x94), distinct from the DS_001077A8
  * combo-node pointer 0x38434 uses. EBX/ECX/ESI pushed and popped. Only
- * caller: the unported 0x384A5 (0x38434, default case). */
+ * caller: 0x384A5 (0x38434, default case). */
 static u8 hit_3d004(u32 side)
 {
     if (hit_scan(side) != 0 && DSB(DS_00104B18) == 0u)      /* 0x3D00F/0x3D011, 0x3D013/0x3D01A */
@@ -9760,7 +9760,7 @@ static u8 hit_3d004(u32 side)
  * third register argument, y, is R->+0x1C read fresh at each call site, so
  * it re-writes its own current value); finally fighter_slot_latch_both()
  * runs unconditionally. EBX/ECX/EDX/ESI pushed and popped. Only caller: the
- * unported 0x2676B/0x26775 (0x266AC, once per side). */
+ * 0x2676B/0x26775 (0x266AC, once per side). */
 void fight_384f8(u32 side)
 {
     if (fighter_pass_flag(3u, side) == 0) {                    /* 0x3850A/0x3850C */
@@ -9863,7 +9863,7 @@ static void fighter_13244(void)
  * 0xBB308 at its own x, y and +0x30 >> 16, a5 = 0x4000 when its +0x28 bit 14
  * is set (else 0); the actor 0x2AE14 returns is not read. Then 0x13244.
  * Callers 0x3F19E (in 0x3F184), 0x3E729 (in 0x3E6A8) and 0x3F46A (in 0x3F450);
- * the last two are unported. */
+ * the last is unported. */
 void fighter_3f308(u32 slot)
 {
     u32 rec, a5;
@@ -11207,7 +11207,7 @@ void fighter_47b04(u32 slot, u32 rec, u32 side)
 /* 0x3C12C — record §50-A. EAX = side, EDX = dx: dx is negated when the side's
  * pset is hflipped (0x1A570 non-zero), then 0x1883C(side, dx, 0) (EBX = 0).
  * ECX carries the side across the call. Callers 0x3E871 (in 0x3E800) and
- * 0x21621 (in the unported 0x215B0). */
+ * 0x21621 (in 0x215B0). */
 static void fighter_3c12c(u32 side, s32 dx)
 {
     if (fighter_actor_bit15_clear(side) != 0) dx = (s32)(0u - (u32)dx);  /* 0x3C130..0x3C139 */
@@ -11756,7 +11756,7 @@ int fighter_40bbc(u32 slot, u32 rec)
 }
 
 /* 0x3FF08 — record §50-A. The setup that stores 0x3FDD8 as its +0x1C callback
- * (0x3FF7E) with the unported +0x0C/+0x18 callbacks 0x3FEF8 and 0x3FD30. EAX =
+ * (0x3FF7E) with the +0x0C/+0x18 callbacks 0x3FEF8 and 0x3FD30. EAX =
  * slot (ECX), EDX = rec (EBX); AL returned, in the shape of 0x40BBC. Its
  * caller is 0x40026 in 0x3FFDC (record §52-A corrects §50-A, which found
  * none). The dwords at 0x1077A8 + (the record's +0x51 xor 1) * 4 and at

@@ -613,8 +613,9 @@ int actors_init(void)
     fn_register(0x49444u, (void (*)(void))actor_type_49444);
     /* The DS_00104AE4 countdown handler 0x29B74 (record §42-E): four live
      * code stores (0x277C0, 0x28788) and one in the dead 0x2861C region put
-     * it there, and six `call [0x104ae4]` sites run it, all unported;
-     * registered so a ported dispatch resolves it. */
+     * it there, and six `call [0x104ae4]` sites run it (0x4F302, 0x4F373,
+     * 0x4F6F1, 0x4F70D, 0x4F9AA, 0x4F9D1); the live stores and the six sites
+     * are ported (flow.c), and they resolve it through this registration. */
     fn_register(0x29B74u, frontend_darken_all);
     /* PORT: record §43-B. The DS_00104AE4 hooks 0x28D68 (code immediates at
      * 0x42CF4/0x42D35/0x42D7D, stored by 0x42CB4, and 0x42FB7, stored by the
@@ -3644,8 +3645,8 @@ void text_cursor_hold(s32 col, s32 row, const u8 *s, u32 mode)
 
 /* 0x2F510 — demo-pose record §43-A (`push esi; or cl,0x2; mov esi,[0x105f34];
  * call 0x2F198; mov [0x105f34],esi`). 0x2F4BC with the mode ORed with 2 (the
- * class font) before the cursor save. The ported callers are 0x4C784 and
- * 0x4CC0C (fight.c); its other 60-odd call sites are not ported. */
+ * class font) before the cursor save. It has 67 raw call sites (a rel32
+ * scan); each ported one carries its raw address at the call. */
 void text_cursor_hold_font2(s32 col, s32 row, const u8 *s, u32 mode)
 {
     mode |= 2u;                                         /* 0x2F511 */
@@ -3760,7 +3761,8 @@ void text_number_draw(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
  * (0x2F447), then 0x2F198 draws it (0x2F456), so the cursor DS_00105F34
  * moves. ESI/EDI pushed and popped. The ported callers are 0x27908 (0x278B0),
  * 0x27B4C (0x27A2C, record §48-E), 0x41A22/0x41B15 (0x418F4) and 0x42329
- * (0x41C28, record §48-Z); its other call sites are not ported. */
+ * (0x41C28, record §48-Z); its other raw call sites (19 in all) are ported
+ * too, the service-menu ones in svcmenu.c (K11). */
 void text_number_set(s32 col, s32 row, s32 value, s32 width, u32 pad, u32 mode)
 {
     /* PORT: the original's buffer is uninitialised stack; the port zeroes it,

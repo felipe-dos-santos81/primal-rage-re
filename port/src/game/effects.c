@@ -9,11 +9,11 @@
  *
  * The one reachable fight-camera update also lives here: the screen-shake decay
  * (0x1324C, update-table entry 0). It draws nothing; it maintains
- * DS_000F0AF4/DS_000F0AF6, which the unported y-stepper would add to the camera
- * y. 0x1324C is dormant in the shipped path (no store sets DS_00104AE8 bit 0);
+ * DS_000F0AF4/DS_000F0AF6, which the y-stepper 0x12CD4 adds to the camera y.
+ * 0x1324C is dormant in the shipped path (no store sets DS_00104AE8 bit 0);
  * it is registered so the existing update-table dispatch reaches it if bit 0 is
- * ever set. The rest of the camera/scene layer is deferred (see the section
- * below and port/spec/game_flow.md). */
+ * ever set. The rest of the camera/scene layer is ported in camera.c (see the
+ * section below). */
 #include "game/effects.h"
 #include "../mem.h"
 #include "../symbols.h"

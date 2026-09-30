@@ -132,8 +132,8 @@ void camera_scene_step(void);
 
 /* 0x12BB8 (record §49-W). The dust actor `dust`'s burst on the fighter of
  * `side`: spawns 0xC976C, retires the dust and adds 1 to the +0x5B byte of the
- * slot DS_00104B1A names (0x4DBB4). 0x129FC calls it; three of its four
- * callers are unported. */
+ * slot DS_00104B1A names (0x4DBB4). Its four raw call sites are all in
+ * 0x129FC (camera_dust_hit), which folds them into one call. */
 void camera_dust_burst(u32 side, u32 dust);
 
 /* 0x129FC (record §49-W). One in-use dust node offered to the fighters: 1 (and

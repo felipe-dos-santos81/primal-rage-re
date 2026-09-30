@@ -1553,10 +1553,9 @@ int test_flow(void)
         DSW(DS_00107A3C) = s3c; DSW(DS_00107A4A) = s4a;
         DSW(DS_00107A4E) = s4e;
     }
-    /* A mode other than 3 must not run the state machine at all. 0x16 is a
-     * still-unported named gap (`game_frame`'s generic no-op case list) as
-     * of record §49-F; mode 7 no longer is (game_mode_07_step, record
-     * §49-E) — it now runs the fight-frame's unconditional fight_slot_pass/
+    /* A mode other than 3 must not run the state machine at all. 0x16 runs
+     * frontend_mode_16_step (0x4F2B0, record §49-G), not the state machine;
+     * mode 7 is not used here (game_mode_07_step, record §49-E) — it runs the fight-frame's unconditional fight_slot_pass/
      * fight_effects_pass chain, which this title-state fixture's actor/
      * effects-list state was never built to tolerate (it hangs in
      * fight_4b69c's trample walk). */
@@ -5230,9 +5229,9 @@ int test_frontend(void)
         CHECK_EQ_INT((int)DSB(DS_00104B15), 0);   /* 0x1EA08 ran 0x4F1E4 */
         CHECK_EQ_INT((int)DSB(DS_00105C05), 0x1D);  /* 0x2C06C ran */
         /* Task 8: the ported state-5 path does not arm the 0x29B74 handler
-         * (its DS_00104AE4 stores are unported) and does not leave mode 3
-         * (so the six call dword [0x104ae4] sites and the four 0x41578
-         * sites stay unreachable). */
+         * (its DS_00104AE4 stores are in modes 0xF and 9, which state 5 does
+         * not reach) and does not leave mode 3 (so the six call dword
+         * [0x104ae4] sites and the four 0x41578 sites are not reached). */
         CHECK(DSD(DS_00104AE4) == 0xDEADBEEFu,
               "state 5 does not arm the 0x29B74 handler");
         CHECK_EQ_INT((int)DSW(DS_00104B00), 3);
@@ -6010,7 +6009,9 @@ int test_frontend(void)
          * 2026-09-29-e-open-derivations.md). Seeding entry 7's read bit as
          * the boot attract leaves it would drop this screen and shift the
          * cycle-2 dump by one frame (2308 -> 2307, and attract2's named
-         * 2192/2193/2194 splice), an oracle-line move not made here. */
+         * 2192/2193/2194 splice), an oracle-line move not made here. The f 0/f 3
+         * residue needs a DOSBox-X breakpoint at 0x1B5E9 that logs
+         * DS_000EF6DC (record §6). */
         {
             static const int ld_loop[13] = { 1973, 2783, 2783, 2783, 2783, 3557, 3684,
                                              3985, 3985, 3985, 3985, 3985, 3985 };
@@ -6425,7 +6426,7 @@ int test_attract(void)
         DSB(DS_00104B19 + 2u) = saved19b2;
     }
 
-    /* 0x10EE4: 0x32970(0) (unported, no-op), 0x4F1E4 (DS_00104B15 = 0),
+    /* 0x10EE4: 0x32970(0) (host-owned, record §48-V; not run), 0x4F1E4 (DS_00104B15 = 0),
      * 0x2BAF4(1) (actors_reset, which zeroes DS_00104AD0), then the four state
      * writes. edx = 3 survives 0x4F1E4's push/pop and becomes DS_00104B00. */
     {
@@ -7818,14 +7819,14 @@ static void ch_check_screen_wait(void)
     u32 s_a0 = DSD(DS_000E87A0), s_a4 = DSD(DS_000E87A4);
     u32 s_tick = DSD(CH_TICK), s_isr = DSD(DS_00101508);
     u16 s_word = DSW(0x000EF6DEu);
-    u8 s_gate = DSB(0x00104B22u), s_full = DSB(DS_001014FC);
+    u8 s_gate = DSB(DS_00104B22), s_full = DSB(DS_001014FC);
     u32 s_lat = DSD(CH_KEY_LATCH), s_time = DSD(CH_KEY_TIME), s_kw = DSD(CH_KEY_WORD);
 
     DSD(DS_000E87A0) = CH_BUF_A;
     DSD(DS_000E87A4) = CH_BUF_B;
     memset(mem + CH_BUF_A, 0x11, 64000);
     memset(mem + CH_BUF_B, 0x22, 64000);
-    DSB(0x00104B22u) = 0u;
+    DSB(DS_00104B22) = 0u;
     DSB(DS_001014FC) = 0x01u;
     DSD(CH_KEY_LATCH) = 0x77u;
     input_clear();
@@ -7883,7 +7884,7 @@ static void ch_check_screen_wait(void)
     DSD(CH_TICK) = s_tick;
     DSD(DS_00101508) = s_isr;
     DSW(0x000EF6DEu) = s_word;
-    DSB(0x00104B22u) = s_gate;
+    DSB(DS_00104B22) = s_gate;
     DSB(DS_001014FC) = s_full;
     DSD(CH_KEY_LATCH) = s_lat;
     DSD(CH_KEY_TIME) = s_time;
@@ -7993,14 +7994,14 @@ static void ch_check_screen_wait_zero(void)
     u32 s_a0 = DSD(DS_000E87A0), s_a4 = DSD(DS_000E87A4);
     u32 s_tick = DSD(CH_TICK), s_isr = DSD(DS_00101508);
     u16 s_word = DSW(0x000EF6DEu);
-    u8 s_gate = DSB(0x00104B22u), s_full = DSB(DS_001014FC);
+    u8 s_gate = DSB(DS_00104B22), s_full = DSB(DS_001014FC);
     u32 s_lat = DSD(CH_KEY_LATCH), s_time = DSD(CH_KEY_TIME), s_kw = DSD(CH_KEY_WORD);
 
     DSD(DS_000E87A0) = CH_BUF_A;
     DSD(DS_000E87A4) = CH_BUF_B;
     memset(mem + CH_BUF_A, 0x11, 64000);
     memset(mem + CH_BUF_B, 0x33, 64000);
-    DSB(0x00104B22u) = 0u;
+    DSB(DS_00104B22) = 0u;
     DSB(DS_001014FC) = 0u;
     input_clear();
 
@@ -8037,7 +8038,7 @@ static void ch_check_screen_wait_zero(void)
     DSD(CH_TICK) = s_tick;
     DSD(DS_00101508) = s_isr;
     DSW(0x000EF6DEu) = s_word;
-    DSB(0x00104B22u) = s_gate;
+    DSB(DS_00104B22) = s_gate;
     DSB(DS_001014FC) = s_full;
     DSD(CH_KEY_LATCH) = s_lat;
     DSD(CH_KEY_TIME) = s_time;

@@ -112,13 +112,13 @@ void config_set_credit_row(u8 row);
 void config_set_credit_row_init(void);
 
 /* 0x2C304 (record §46-F). DS_00105C00 = ((0x2D974(0x29) & 0xF0000) >> 16) +
- * 1. Callers: 0x10ECC (0x10E80, game_state_init) and the unported 0x2CBB4. */
+ * 1. Callers: 0x10ECC (0x10E80, game_state_init) and 0x2CBB4 (svcmenu.c). */
 void config_credits_init(void);
 
 /* 0x32A3C. The play-time audit close: zeroes the per-mode tick accumulator
  * DS_0010746C[mode & 3]. Its run-clock call 0x32970 and its 0x2DAE4 audit adds
- * are out of scope / deferred (spec §7). Callers: 0x41578 (ported) and the
- * unported 0x26F58, 0x277C0, 0x28788, 0x41C28 and the dead 0x2861C region. */
+ * are out of scope / deferred (spec §7). Callers: 0x41578, 0x26F58, 0x277C0,
+ * 0x28788 and 0x41C28 (all ported) and the dead 0x2861C region. */
 void config_play_time_close(u32 mode, u32 flag);
 
 /* 0x32B00 (record §48-Q). `arm` != 0: DS_00107478 = DS_0010746C[idx]; 0:
