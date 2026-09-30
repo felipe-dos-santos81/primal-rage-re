@@ -155,3 +155,40 @@ stop: 8 FAIL lines over V2 and V3).
   design (§C.1); each arm is pinned alone.
 - `0x1C308`'s own failure modes (a real paged allocator with free): host-owned;
   the port's allocator fails only by `mem_in_range`, which the seam mirrors.
+
+## §C.3 Gate and closure
+
+- `make clean && make build && make verify` (overrides `/tmp/pr_c3_*`) exits 0
+  (`$C/verify-t3.txt`); the oracle lines diff empty against
+  `$K/oracle-lines-base.txt` (`ORACLES-EQUAL`); `dumps.sh c-after` matches
+  `$K/base.sha256` (`DUMPS-IDENTICAL`, dump deleted); the `make audio-render`
+  WAV is byte-identical to `$K/before-t2.wav`; `port_progress.py` is unchanged
+  (no function added: `767 1203 64`, portable `731 731 100`). 0 warnings.
+  Assertion sites 13578 (13545 + 33). The oracle fixtures `make clean`
+  deletes were backed up and restored byte-identical (`cmp` against the main
+  checkout's). `$C/gate-t3.log`.
+- `rg -n 'res_fail_alloc_nth' port/src` lists the `res.h` declaration, the
+  `res.c` definition and one `res.h` comment line that names it (the plan
+  expected only the first two; the comment is the declaration's own). No call.
+- **G4 closed.** Both allocation-failure arms of `0x1D0BC` are tested with
+  seeded sentinels and mutation proofs (§C.2: M1 for the MIDI arm, M2/M3/M4 for
+  the slot break and the DIG-off test, M6 for the entry gate), through a
+  `PORT:` seam that is inert unarmed (§C.1). Residue, not a gap in behaviour:
+  the two unobservable stores of 0 and the unprinted messages (§C.2.1).
+- Noticed, out of scope (other allocation-failure arms in `port/src`; line
+  numbers are the tree after §C.1, which shifted `res.c` by 12 lines against
+  the plan's):
+  - `res_load_index`'s `table == 0` (`res.c:177`) and per-entry `data == 0`
+    (`res.c:201`) returns, and its four trailing `res_alloc` results stored
+    unchecked (`res.c:238-241`, `0x1B2A0..0x1B3A9` per the plan, not re-read
+    here): untested; `res_load_index` can run only once per process (a second
+    load exhausts the heap), so a test needs its own env-gated driver. The
+    seam can reach them.
+  - `game_audio_init`'s `FAT.OPL` load (`flow.c:5907`,
+    `res_load_file(s_game_dir, "FAT.OPL", ...)`): the no-bank arm is untested.
+  - Already covered: `res_load_file`'s `off == 0` arm (`res.c:267`, the
+    128 MiB sparse fixture in `test_res`) and `movie_play`'s missing-file arm
+    (`game/movie.c:91`, `test_video.c:330`).
+  - Host-only `malloc` failures (`mem.c` `slurp`, `ail.c` sample growth) and
+    the NULL arms of `AIL_allocate_sample_handle`/`AIL_allocate_sequence_handle`
+    (`flow.c` `game_audio_init`): host, no raw counterpart.
