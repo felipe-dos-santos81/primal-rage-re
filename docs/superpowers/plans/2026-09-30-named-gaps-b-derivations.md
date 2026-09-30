@@ -64,9 +64,11 @@ object `0x10000..0x74000` and every byte pattern below).
   "everything from `render_projection_reset(0u);` to the end of `game_init`"
   into the resume tail "unchanged, in its current order". That block holds
   `sound_buffers_alloc()` (`0x1D0BC`), which the raw calls at `0x1C0B1` in
-  `0x1BEC4`, *before* `0x20C10`; re-running it on a restart would allocate the
-  four sample buffers a second time from the bump allocator. It stays in
-  `game_init`, moved above the split (first-boot order: it still runs before
+  `0x1BEC4`, *before* `0x20C10`, so a restart does not re-run it. (Re-running
+  it would change nothing: `0x1D0BF cmp byte [0xA2CB0],0; jne 0x1D1A9`
+  returns at once once `0x1D19D` has set the byte, so moving the call into the
+  tail is an equivalent mutant; the placement follows the raw's order, review
+  1.) It stays in `game_init`, moved above the split (first-boot order: it still runs before
   `game_state_init`'s movie loads, so the heap layout is unchanged; the gate
   proves it).
 - Two zero stores of the tail the port lacked: `0x20C29 xor dl,dl ... 0x20C37
@@ -215,7 +217,10 @@ object `0x10000..0x74000` and every byte pattern below).
    wins): the idle timeout is a master-loop reader` (line 1208) and the named
    gap text at line 1058 (`rg -n 'idle|0x107414|0x2EBA8'` finds both).
 6. `sound_buffers_alloc()` (`0x1C0B1 0x1D0BC`) is pre-setjmp (§B.2); the
-   plan's Task 1 cut would have re-run it on every restart.
+   plan's Task 1 cut would have moved it after the setjmp. A second call
+   returns at `0x1D0BF` (the `DS_000A2CB0` gate, set at `0x1D19D`), so that
+   would not have been observable; the placement is by the raw's order
+   (review 1 corrected an earlier "allocates twice").
 7. G3's `idiv` is reached from STATISTICS page 1 (`0x33058`), not page 2 (A
    §A.8; spec §2's "STATISTICS page 2" and the plan's F8 wording).
 8. The instruction A left unpinned for the MAIN MENU Esc clear is `0x3043B`
@@ -351,10 +356,24 @@ unchanged, `DUMPS-IDENTICAL`, `WAV-IDENTICAL` — the `0x2F9CC` reorder, the
   is what the RGB captures hold). Measured on the first run: after the
   restart the same picture uses palette indices one lower than on the first
   boot (index 22 -> 21, identical DAC colours; 0 RGB bytes differ over frames
-  1..49); comparing indices failed 48 frames. Why the slot moves is not
-  derived here (the palette list `0x336C0` is pre-setjmp state that the
-  restart does not re-initialise, in the raw as in the port); a capture cannot
-  see indices.
+  1..49); comparing indices failed 48 frames. **Cause (review 1; an earlier
+  version of this record blamed the palette list, wrongly: the tail's
+  `game_state_init` runs `0x2BAF4(1)`, whose non-zero arm calls
+  `palette_list_init` `0x336C0`, actors.c, as the raw's `0x20C58`/`0x10E9C`
+  do).** Re-measured with an instrumented scratch build (the ownership table
+  at `DS_00107618`, `{handle, refs, slot, len}`, after boot iteration 3, and a
+  print in `res_load_present`): first boot `[80997C 14 1 1] [396ED28 2 2 3F]
+  [396ECE8 1 41 F] [396EAE8 2 50 1F] ...`, with one loader draw (`index 7
+  tick 2`); after the restart `[396ED28 2 1 3F] [396ECE8 1 40 F] [396EAE8 2
+  4F 1F] ... [105FE30 1 CC F]` and no loader draw. On the first boot the
+  attract's first acquire resolves a lazy entry not yet loaded, so
+  `res_resolve` draws `- LOADING -` (`0x1B5E0`, `0x1C5E8`), whose font
+  palette `0x80997C` takes slot 1 before the attract's palettes; after the
+  restart the entry keeps its loaded mark (`0x1B47A`; the port's bump
+  allocator never evicts), no loader draw runs, and every attract palette sits
+  one slot lower. Whether the raw keeps that entry resident across a restart
+  (its block allocator `0x1C308` can free) is not shown, and the RGB captures
+  cannot see slots: a named gap (§B.7).
 - **Plan correction (equivalent mutant):** the plan expected removing
   `game_loop_begin()` from the landing to fail the tick-pair checks. It does
   not: the tail's `game_state_init` runs `0x2BAF4` with EAX = 1
@@ -486,6 +505,14 @@ reproducible by applying the mutation to the commit of its task.
 
 ## §B.7 Not tested
 
+- **Named gap (review 1): the raw's resource residency and palette slot order
+  after a restart.** The port keeps every resolved entry loaded, so the
+  restart's attract draws no `- LOADING -` and its palettes sit one slot
+  lower than on the first boot (§B.6b, Task 4). The raw's block allocator
+  `0x1C308` can free, so whether it re-draws the loader (and keeps the first
+  boot's slot order) is not established; the captures are RGB and cannot show
+  palette slots. The driver compares RGB.
+
 - The windowed run's view of a fault: the original prints DOS/4GW's text
   over the screen and returns to the DOS prompt; the port prints the first
   line to stderr and exits (`PORT:`). The register dump is not reproduced.
@@ -528,7 +555,7 @@ reproducible by applying the mutation to the commit of its task.
 | G2 (`0xFFE80003`) | §H.3 #2, §E row 32 | **closed (SILENT)**, residue: real hardware | A §A.7; TEST B's row 7 |
 | G3 (`0x334E0` `#DE`) | §H.3 #3, §E row 33 | **closed (ABORT-PINNED)**, residue: errorlevel, register dump | A §A.8; `sm_check_stats_fault`, `test_host` |
 
-Counts: assertion sites 13678 -> 13749 (+71: Task 1 +11, Task 2 +12, Task 3
+Counts: assertion sites 13678 -> 13749 before review 1, 13754 after it (review 1: +2 in `rs_check_resume`, +3 in `sm_check_stats_fault_exit`). Before review 1 (+71: Task 1 +11, Task 2 +12, Task 3
 +12, Task 4 +17, Task 5 +2, Task 6 +8, Task 7 +9, Task 8 +0 (three
 `ch_expect` calls)); the Task 2 conversions and the Task 5 expectation
 changes replaced one site with one site. `python3 tools/port_progress.py`:
@@ -555,3 +582,37 @@ and `make audio-render` + `cmp` against `before-t2.wav`.
 | t7 | 0 | ORACLES-EQUAL | unchanged | all checks passed | — | — |
 | t8 (full) | 0 | ORACLES-EQUAL | unchanged | all checks passed | IDENTICAL | IDENTICAL |
 | t9 (full, after `762bdfc`, the last code commit) | 0 | ORACLES-EQUAL | unchanged | all checks passed (1198 iterations) | IDENTICAL | IDENTICAL |
+
+## §B.10 Review 1 fixes
+
+- **Important:** the palette-slot cause in §B.6b (Task 4) and the driver's
+  `rd_frame_hash` comment were wrong; re-measured and rewritten (§B.6b), and
+  the raw's post-restart residency/slot order is named in §B.7.
+- `sound_buffers_alloc`'s reason corrected (§B.2, §B.6a item 6): a second
+  call returns at `0x1D0BF`; the placement is the raw's order.
+- `rs_check_resume` now pins that the `0x2F9CC` work is not re-run: it seeds
+  `DS_00107410 |= 0x10` (A's diags poke) and `DS_0010740C = 0x5A5A5A5A`
+  before `game_init_resume()` and asserts both survive (2 sites). Mutation
+  R2M1 (the four `0x2F9CC` lines moved from `game_init` into the tail):
+  `FAIL port/tests/test_game.c:12187: 1319061 != 0` (the re-run
+  `config_validate` rewrites field `0x29`), `:12188: 55 != 30`, `:12194: 0 !=
+  16`, `:12195: 119504 != 1515870810`.
+- The `0x42425 call 0x2DAE4(0x10, 1)` comments (flow.c mode-0x12 sub-state
+  7, flow.h `game_mode_12_step`) now say what the raw does: a deferred audit
+  add, not a longjmp. Comment-only, proved by a Python comment stripper
+  (block/line comments removed outside string and char literals, whitespace
+  collapsed): both files `COMMENT-ONLY` against their pre-edit copies (the
+  stripper reports `CODE-DIFFERS` on a control pair that changes one
+  identifier). §B.6a item 9 stays.
+- The K11 driver disarms the restart point (`game_restart_arm(NULL)`) after
+  leaving `game_loop()` through its own `longjmp`, so `s_restart_point` never
+  points into a dead frame.
+- The verbatim DOS/4GW line is tested end to end: `sm_check_stats_fault_exit`
+  forks a child that runs `svc_stats_rows` on the faulting fields with no
+  hook; the child must exit 1 and its stderr must equal `DOS/4GW Professional
+  error (2001): exception 00h (divide by zero) at 180:002244E0\n` exactly (3
+  sites incl. the pipe). Mutations: R5M1 (last digit `E0` -> `E1` in
+  `SVC_DE_MSG`): `FAIL port/tests/test_game.c:9400: the #DE prints A's
+  DOS/4GW line verbatim`; R5M2 (`SVC_FAULT_EXIT` 2): `FAIL ...:9399: the #DE
+  exits with status 1 (PORT: not captured)`; R5M3 (host.c drops the `\n`):
+  `FAIL ...:9400: the #DE prints A's DOS/4GW line verbatim`.
