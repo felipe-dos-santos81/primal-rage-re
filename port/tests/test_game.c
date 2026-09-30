@@ -9157,6 +9157,11 @@ static void sm_check_controls(void)
     ch_expect(6, 0x12, '2', 0x3000u, "the pad word: 2");
     ch_expect(6, 0x15, '0', 0x3000u, "the pad word: last digit");
     CHECK(ch_cell(7, 0xE) != 0u, "the raw data row is drawn");
+    /* 0x32578's byte, 0xFF as A's diags capture draws it (record named-gaps-b
+     * §B.4): 000000FF */
+    ch_expect(7, 0x13, '0', 0x3000u, "the raw data byte: 000000FF, the last pad digit");
+    ch_expect(7, 0x14, 'F', 0x3000u, "the raw data byte: F");
+    ch_expect(7, 0x15, 'F', 0x3000u, "the raw data byte: the last F");
     ch_expect(0xA, 0x1D, 'C', 0x4000u, "0x80B6C as a string id: string 0xAC");
     ch_expect(0xA, 0x21, 'V', 0x4000u, "0x80B74 as a string id: string 0xB4 Vertigo");
     ch_expect(0xB, 0x20, 'X', 0x3000u, "bit 8 marker over the stick");

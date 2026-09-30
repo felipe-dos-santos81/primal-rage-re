@@ -1000,10 +1000,16 @@ u32 svc_test_controls(u32 entry)
         if (k != 0u && k == 0x1Bu) break;                   /* 0x32547..0x3254E */
         if (diag != 0u) {                                   /* 0x32554..0x32556 */
             text_hex_set(0xE, 6, keys, 8, 0u, 0x3000u);     /* 0x32558..0x3256E 0x2F48C */
-            /* PORT: 0x32573..0x32578 reads the byte at linear 0xFFE80003 (an
-             * address outside the port's mem[] and any DOS memory; named gap,
-             * record §K11.5); the port draws 0 in its place. */
-            text_hex_set(0xE, 7, 0u, 8, 0u, 0x3000u);       /* 0x3257A..0x32596 0x2F48C */
+            /* 0x32573 mov ebx,0xFFE80003; 0x32578 mov bl,[ebx]: an arcade
+             * address with no memory behind it in the DOS build (record
+             * §K11.5), reachable only with DS_00107410 bit 4, which no stock
+             * config sets (record named-gaps-a §A.1.1). PORT: record
+             * named-gaps-b §B.4: under DOS/4GW (paging off, flat 4 GB DS) the
+             * read does not fault, and DOSBox-X returns 0xFF for physical
+             * 0xFFE80003 (A's diags capture, frame 111, raw 2383: row 7 reads
+             * 000000FF); that is DOSBox-X's answer, real hardware is not
+             * captured. 0x32590 `and ebx,0xff` keeps the byte. */
+            text_hex_set(0xE, 7, 0xFFu, 8, 0u, 0x3000u);    /* 0x3257A..0x32596 0x2F48C */
         }
         const u32 now = config_input_poll(0u, 0u);          /* 0x3259B..0x3259F 0x2EDE0 */
         svc_stick_draw(0xA, 0xB, now & 0xF0000000u);        /* 0x325A4..0x325BA 0x314A0 */
