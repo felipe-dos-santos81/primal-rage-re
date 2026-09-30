@@ -154,6 +154,8 @@ void game_audio_init(void);
 /* 0x1D0BC (record k7-k12 §0.7.1): the MIDI buffer and the four sample-slot
  * buffers (+0x10), once. Returns AL (0 when DS_000A2CB0 was already set). */
 u32 sound_buffers_alloc(void);
+/* 0x1CB18 (record k7-k12 §0.7.4): start slot's queued sample; called by 0x1CF20. */
+void sound_sample_start(u32 slot);
 /* PORT: the timer ISR 0x1BDF4's counter pair, n ticks (0x1BE0E..0x1BE16). */
 void game_isr_ticks(u32 n);
 

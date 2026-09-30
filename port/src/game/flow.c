@@ -26,7 +26,6 @@
 #include "platform/audio/ail.h"
 #include "platform/audio/mixer.h"
 #include "platform/audio/patches.h"
-#include "platform/audio/samples.h"
 #include "platform/audio/sequencer.h"
 #include "host.h"
 
@@ -47,14 +46,6 @@
 
 /* s16title.gra is resource index 7 in the shipped INDEX. */
 #define TITLE_RES 7u
-
-/* s16sound.gra is resource index 5; the one located PCM sample (Task 1) lives
- * in it as a RIFF/WAVE blob. */
-#define SOUND_RES 5u
-
-/* The announcer's voice id: DS_000BBDC8[0xCD] is { case 2, handle 0x02824B0F =
- * S16SOUND.GRA + 0x24B0F, loop byte 0 } (todo-verify record §23). */
-#define SND_ANNOUNCER_ID 0xCDu
 
 /* PORT: scratch for the localisation table (0x47370's 0x1C308 block). It must
  * sit above the resource heap AND game_state_init's later movie loads (TWI5.SMK
@@ -96,17 +87,9 @@ static int s_attract_dump_n = 0;
  * handle in DAT_001028cc, both in mem[]; none of this is a mem[] offset. */
 static HSEQUENCE s_sequence;
 /* The four sample handles the original keeps at DAT_00102860 (spec audio.md
- * "AIL surface" row 10). The announcer is queued on slot 0. */
+ * "AIL surface" row 10). Slot i's handle; 0x1CC28/0x1CB18 use the slot
+ * records at DS_00102860. */
 static HSAMPLE s_samples[4];
-/* The announcer request: the original's FUN_0002c3fc case 2/3 resolves the
- * sample bytes and FUN_0001cc28 queues them; the master loop's 0x1CF20 -> the
- * per-slot FUN_0001cb18 then sets the handle up and calls AIL_start_sample.
- * PORT: the runtime sound table (DAT_000bbdc8) maps an id to a resource only at
- * runtime and is not extracted (see title_music_bank), so the port binds the one
- * located sample (S16SOUND.GRA, Task 1) directly. s_pending_sample.pcm borrows
- * the resource bytes in mem[]; they outlive the voice. */
-static SampleVoice s_pending_sample;
-static int s_sample_request;     /* a state asked for a sample; 0x1CF20 plays it */
 static int s_music_request;      /* a state asked for music; 0x1CF20 starts it */
 static u32 s_audio_ticks;        /* seq_tick() calls driven since start */
 static u32 s_audio_frac;         /* sub-host-tick sample remainder, /60 */
@@ -4366,39 +4349,18 @@ void game_attract_dump_frame(void)
     s_attract_dump_n++;
 }
 
-/* FUN_0002c3fc (case 2/3) -> FUN_0001cc28 at the title state's first entry:
- * resolves the announcer's bytes and queues them. The resource is scanned for
- * the RIFF/WAVE blob (the same shape samples_load parses) rather than trusting a
- * fixed offset; samples_load bounds every chunk against the bytes it is handed,
- * so a truncated or corrupt blob is rejected instead of over-read. */
-static void game_sample_request(void)
-{
-    const u8 *base = (const u8 *)res_resolve(res_handle(SOUND_RES, 0));
-    if (base == NULL) return;
-    u32 size = res_size(SOUND_RES);
-    for (u32 i = 0; i + 12 <= size; i++) {
-        if (memcmp(base + i, "RIFF", 4) != 0) continue;
-        if (memcmp(base + i + 8, "WAVE", 4) != 0) continue;
-        if (samples_load(base + i, size - i, &s_pending_sample)) {
-            s_sample_request = 1;
-            return;
-        }
-    }
-}
-
 /* 0x121A0: the title state. Phase counter DS_000F0A6F. */
 static void game_state_title(void)
 {
     if (DSB(DS_000F0A6F) == 0) {
-        /* 0x121C9/0x121D3: FUN_0002C3FC(0x41)/(0x43) are case-5 voice cancels,
-         * not a case-1 music request (their static table records are case 5,
-         * their handles 0x383B6F4/0x3837440 point into s16title.gra). PORT: the
-         * port requests the S16TITLE bank and queues the located announcer
-         * sample here instead; that is a port choice standing in for the
-         * deferred attract-state trigger (0x11000), not a transcription of
-         * those calls. */
+        (void)sound_voice(0x41u);               /* 0x121C9/0x121CE 0x2C3FC: stop 0x40's loop */
+        (void)sound_voice(0x43u);               /* 0x121D3/0x121D8 0x2C3FC: stop 0x42's loop */
+        /* PORT: the S16TITLE bank is requested here (s_music_request), for
+         * the raw's music request 0x54/0x56 at the attract's 0x111FF, whose
+         * 0x1CA14 arm needs the sequence handle DS_001028C0 the port keeps 0
+         * (todo-verify record §22). The raw's title plays no sample (record
+         * k7-k12 §0.7.5). */
         s_music_request = 1;
-        game_sample_request();
         frontend_input_reset();                 /* 0x121D9 (0x4F1E4) */
         actors_reset();                         /* 0x121E4 (0x2BAF4, eax = 1) */
         DSW(DS_00107A48) = 0;                   /* 0x121F2 */
@@ -5997,9 +5959,10 @@ static void title_music_start(void)
     AIL_start_sequence(s_sequence);
 }
 
-/* 0x1CF20: the master loop's per-frame audio service (0x255CC). Starts the
- * pending music, advances the sequencer, then renders and submits one frame of
- * mixed stereo audio. PORT: no PIT/ISR — the music tick is driven here from the
+/* 0x1CF20: the master loop's per-frame audio service (0x255CC). Starts each
+ * slot's queued sample (0x1CB18, slots 0..3), then the pending music,
+ * advances the sequencer, then renders and submits one frame of mixed stereo
+ * audio. PORT: no PIT/ISR — the music tick is driven here from the
  * host's measured 60 Hz tick delta. Task 8 measured one XMIDI tick = 8.333 ms
  * (120 Hz) for the shipped profile, so two sequencer ticks per host tick; both
  * the tick count and the sample count derive from that one delta, and a stalled
@@ -6007,39 +5970,9 @@ static void title_music_start(void)
  * wall time without bursting. With no
  * device (host_audio_rate() == 0, e.g. --check) the sequencer still advances
  * but nothing is rendered or submitted. */
-/* FUN_0001cb18 (reached from 0x1CF20): sets a queued sample up on its handle and
- * starts it, in the original's call order. The port has the one announcer slot
- * rather than the original's per-slot loop over four. */
-static void game_sample_play(void)
-{
-    HSAMPLE h = s_samples[0];
-    if (h == NULL || s_pending_sample.pcm == NULL) return;
-    AIL_init_sample(h);
-    AIL_set_sample_address(h, s_pending_sample.pcm, s_pending_sample.frames);
-    AIL_set_sample_volume(h, (s32)DSD(DS_000A2CB4));
-    AIL_set_sample_rate(h, s_pending_sample.rate);
-    AIL_set_sample_type(h, 0, 0);
-    /* The raw 0x1CB18 gates this on the slot's loop byte
-     * DAT_00102868[slot] == 1 (prage.c:8469-8471), which 0x1CC28 queued from
-     * the voice record's +8 byte (0x2C3FC case 2). Count 0 loops forever;
-     * otherwise AIL_init_sample's default count 1 plays once (0x6F120).
-     * Record §23 of
-     * 2026-09-29-todo-verify-derivations.md: the announcer is voice id 0xCD
-     * (DS_000BBDC8[0xCD] = case 2, handle 0x02824B0F = S16SOUND.GRA + 0x24B0F,
-     * the RIFF blob game_sample_request finds), whose loop byte is 0.
-     * PORT: the port has no slot records, so it reads that byte directly. */
-    if (DSB(DS_000BBDC8 + SND_ANNOUNCER_ID * 0x0Cu + 8u) == 1u)  /* 0x1CBCA..0x1CBD6 */
-        AIL_set_sample_loop_count(h, 0);                /* 0x1CBD8..0x1CBE1 */
-    AIL_start_sample(h);
-}
-
 void game_audio_service(void)
 {
-    /* 0x1CF20 plays queued samples before it starts the pending song. */
-    if (s_sample_request) {
-        s_sample_request = 0;
-        game_sample_play();
-    }
+    for (u32 i = 0; i < 4u; i++) sound_sample_start(i);    /* 0x1CF21..0x1CF2E 0x1CB18 */
     if (s_music_request) {
         s_music_request = 0;
         title_music_start();
@@ -6088,13 +6021,10 @@ int game_music_notes_seen(void) { return s_music_notes; }
  * (game_audio_init) and leaves DS_001028C0/C4 at 0: its music is started by
  * s_music_request, not through DS_001028CC, so the dispatcher's music arms
  * (0x1CA14's store, 0x1CA40's status) stay inert, as without an MDI driver.
- * Named gap (spec §7): 0x1CC28's slot choice and 0x1CB18's start (the sample
- * copy into the slot's 0x1D0BC buffer), so no port path writes a slot's
- * +0x04/+0x0C/+0x14. Record §K7 of 2026-09-29-k4-k6-k7-derivations.md derives
- * both from the raw; record k7-k12 §0.7 settles the decisions it names
- * (§K7.3): the +0x10 buffers are 0x1D0BC's (sound_buffers_alloc), the 0x500BB
- * clock DS_00101500 advances with the ISR tick (game_isr_ticks), and the
- * announcer stand-in below is retired by the task that ports 0x1CB18. */
+ * 0x1CC28 (snd_sample_queue), 0x1CB18 (sound_sample_start, called for each
+ * slot by 0x1CF20) and 0x1D0BC (sound_buffers_alloc) are ported (record
+ * k7-k12 §0.7); the time is DS_00101500 (0x500BB), advanced by
+ * game_isr_ticks. */
 
 #define SND_SLOT_STRIDE 0x18u
 #define SND_SLOT_END    0x60u
@@ -6328,23 +6258,87 @@ void sound_resume(void)
     DSB(DS_001028D8) = 0;                                  /* 0x1D283 */
 }
 
-/* 0x1CC28. EAX = the resource handle of a sample, DL = its loop byte. Without
- * a DIG driver (DS_001028C8) or while samples are paused (DS_001028DB) AL = 0
- * and nothing is read. Otherwise it reads the time (0x500BB) and resolves the
- * handle through 0x1B544 (0x1CC5D): the resolve is what reads a sound bank the
- * first time a voice names it (the loader's `- LOADING -` screen, record
- * §45-A). It then queues the sample on a slot (AL = 1).
- * PORT: the slot choice (0x1CC62..0x1CD8D: a free slot for a sample of at most
- * 0x6000 bytes, else slot 0 or the oldest, ended and re-inited, then +0x04 =
- * `h`, +0x08 = the loop byte, +0x14 = the time; record §K7.2) is the named gap
- * above; its result, AL = 1, is kept. */
+/* 0x1CC28 — record k7-k12 §0.7.3. EAX = the resource handle of a sample, DL
+ * = its loop byte. Without a DIG driver (DS_001028C8) or while samples are
+ * paused (DS_001028DB) AL = 0 and nothing is read. Otherwise the time (0x500BB)
+ * and the resolve (0x1B544; a bank's first read draws the loader, record
+ * §45-A); a slot is free with a buffer (+0x10), nothing queued (+0x04) and a
+ * 0x5DD03 status other than 4. Above 0x6000 bytes only slot 0; otherwise the
+ * first free of slots 3..0, else the one whose queue time +0x14 is the
+ * smallest below now (unsigned; slot 0 when none is). A forced slot is ended
+ * and re-inited. Queueing stores +0x04, +0x08 and +0x14; AL = 1. */
 static u32 snd_sample_queue(u32 h, u32 loop)
 {
-    (void)loop;
     if (DSD(DS_001028C8) == 0u) return 0;                  /* 0x1CC37 */
     if (DSB(DS_001028DB) != 0u) return 0;                  /* 0x1CC44 */
-    (void)res_resolve(h);                                  /* 0x1CC5D 0x1B544 */
-    return 1;
+    u32 now = DSD(DS_00101500);                            /* 0x1CC51 0x500BB */
+    const u8 *p = (const u8 *)res_resolve(h);              /* 0x1CC5D 0x1B544 */
+    /* PORT: the raw dereferences the resolve unconditionally; a handle past
+     * the loaded INDEX (unit fixtures) resolves to NULL and queues nothing. */
+    if (p == NULL) return 1;
+    u32 size = DSD((u32)(p - mem));                        /* 0x1CC62 */
+    u32 cand = 0;                                          /* 0x1CC5B/0x1CC64 */
+    if (size > 0x6000u) {                                  /* 0x1CC68 `jbe` */
+        if (DSD(DS_00102870) != 0u && DSD(DS_00102864) == 0u
+            && snd_slot_status(0u) != 4) {                 /* 0x1CC70..0x1CC94 */
+            DSD(DS_00102864) = h;                          /* 0x1CC99 */
+            DSB(DS_00102868) = (u8)loop;                   /* 0x1CCA2 */
+            DSD(DS_00102874) = DSD(DS_00101500);           /* 0x1CCA7/0x1CCAC 0x500BB */
+            return 1;                                      /* 0x1CCB1 */
+        }
+    } else {
+        u32 min = now;
+        for (u32 k = 4u; k-- > 0u;) {                      /* 0x1CCC3..0x1CD32 */
+            u32 off = k * SND_SLOT_STRIDE;
+            if (DSD(DS_00102870 + off) != 0u && DSD(DS_00102864 + off) == 0u
+                && snd_slot_status(off) != 4) {            /* 0x1CCCD..0x1CCF1 */
+                DSD(DS_00102864 + off) = h;                /* 0x1CCF6 */
+                DSB(DS_00102868 + off) = (u8)loop;         /* 0x1CD00 */
+                DSD(DS_00102874 + off) = DSD(DS_00101500); /* 0x1CD06/0x1CD0B 0x500BB */
+                return 1;                                  /* 0x1CD11 */
+            }
+            u32 t = DSD(DS_00102874 + off);                /* 0x1CD1C */
+            if (min > t) { cand = k; min = t; }            /* 0x1CD22 `jbe`, 0x1CD26/0x1CD2A */
+        }
+    }
+    u32 off = cand * SND_SLOT_STRIDE;                      /* 0x1CD34..0x1CD41 */
+    AIL_stop_sample(s_samples[cand]);                      /* 0x1CD4F 0x5DC8B */
+    AIL_init_sample(s_samples[cand]);                      /* 0x1CD5E 0x5DC0F */
+    DSD(DS_00102864 + off) = h;                            /* 0x1CD69 */
+    DSB(DS_00102868 + off) = (u8)loop;                     /* 0x1CD73 */
+    DSD(DS_00102874 + off) = DSD(DS_00101500);             /* 0x1CD79/0x1CD7E 0x500BB */
+    return 1;                                              /* 0x1CD84 */
+}
+
+/* 0x1CB18 — record k7-k12 §0.7.4. EAX = the slot (0x1CF20 calls it for 0..3).
+ * With a queued handle (+0x04): resolve it, copy its [size] bytes from +4
+ * into the slot's buffer (+0x10), set the AIL sample up (init, address, the
+ * SFX volume DS_000A2CB4, 11025 Hz, 8-bit mono, loop count 0 when the loop
+ * byte +0x08 is 1) and start it; +0x0C = the handle, +0x04 = 0. */
+void sound_sample_start(u32 slot)
+{
+    u32 off = slot * SND_SLOT_STRIDE;                      /* 0x1CB25..0x1CB2E */
+    u32 h = DSD(DS_00102864 + off);                        /* 0x1CB31 */
+    if (h == 0u) return;                                   /* 0x1CB37/0x1CB39 */
+    const u8 *p = (const u8 *)res_resolve(h);              /* 0x1CB41 0x1B544 */
+    u32 buf = DSD(DS_00102870 + off);                      /* 0x1CB4B */
+    /* PORT: a slot without a buffer (0x1D0BC not run, or its allocation
+     * failed) is not started, and a NULL resolve (unit fixtures) neither:
+     * the raw would copy to linear 0 / dereference it. */
+    if (buf == 0u || p == NULL) return;
+    u32 size = DSD((u32)(p - mem));                        /* 0x1CB49 */
+    memcpy(mem + buf, p + 4, size);                        /* 0x1CB51..0x1CB61 rep movsd/movsb */
+    HSAMPLE s = s_samples[slot];
+    AIL_init_sample(s);                                    /* 0x1CB6B 0x5DC0F */
+    AIL_set_sample_address(s, mem + buf, size);            /* 0x1CB87 0x5DC2A */
+    AIL_set_sample_volume(s, (s32)DSD(DS_000A2CB4));       /* 0x1CB9C 0x5DCC5 */
+    AIL_set_sample_rate(s, 0x2B11u);                       /* 0x1CBB0 0x5DCA6 */
+    AIL_set_sample_type(s, 0, 0);                          /* 0x1CBC3 0x5DC4D */
+    if (DSB(DS_00102868 + off) == 1u)                      /* 0x1CBCA..0x1CBD6 */
+        AIL_set_sample_loop_count(s, 0);                   /* 0x1CBE1 0x5DCE4 */
+    AIL_start_sample(s);                                   /* 0x1CBFE 0x5DC70 */
+    DSD(DS_0010286C + off) = DSD(DS_00102864 + off);       /* 0x1CC03/0x1CC0A */
+    DSD(DS_00102864 + off) = 0;                            /* 0x1CC11/0x1CC16 */
 }
 
 /* 0x2C3FC — the voice dispatcher. EAX = the voice id (0 does nothing; 0x100

@@ -7,6 +7,7 @@
 #include "mem.h"
 #include "symbols.h"
 #include "platform/gfx.h"
+#include "platform/audio/ail.h"
 #include "platform/audio/mixer.h"
 #include "game/flow.h"
 
@@ -122,34 +123,23 @@ static u32 buf_hash(const u8 *p)
     return h;
 }
 
-/* Task 12: after the title state queues the announcer sample and the master
- * loop's audio service plays it through the game's own AIL call path (0x1CF20 ->
- * 0x1CB18 -> AIL_start_sample), assert the audio facts themselves, not that a
- * function was called: a mixer voice became active, and the mixer rendered
- * non-silence while it was. Probe before the title music's first note (XMIDI
- * tick 59 = frame 30 at two ticks/frame, Task 8) so the non-silence is the
- * sample's, not the FM's. No device is open: mixer_render() is the same
- * observable the frame loop uses. Returns the failed-assertion count. */
-static int probe_announcer_audio(void)
+/* Record §K7 (k7-k12 derivations §0.7.5): the attract's phase 2 queues the
+ * looping s16title samples 0x40 (handle 0x0383B6F4) and 0x42 (0x03837440),
+ * loop byte 1, at 0x11160/0x1116C; 0x1CF20 -> 0x1CB18 starts them, and the
+ * title's first entry stops them (0x121CE voice 0x41, 0x121D8 voice 0x43).
+ * 1 when a slot holds `h` as playing (+0x0C and AIL status 4). No device is
+ * open, so the mixer is not rendered and a started voice stays live, which is
+ * the loop's own state. */
+static int attract_loop_playing(u32 h)
 {
-    int fail = 0;
-    if (mixer_active_voices() <= 0) {
-        fprintf(stderr,
-                "prageport: --check announcer sample added no active voice\n");
-        return 1;
-    }
-    static s16 buf[4096 * 2];
-    mixer_render(buf, 4096, MIXER_OPL_RATE);
-    int nonzero = 0;
-    for (int i = 0; i < 4096 * 2; i++)
-        if (buf[i] != 0) { nonzero = 1; break; }
-    if (!nonzero) {
-        fprintf(stderr, "prageport: --check mixer rendered silence with the "
-                        "announcer sample active\n");
-        fail++;
-    }
-    return fail;
+    for (u32 i = 0; i < 4u; i++)
+        if (DSD(DS_0010286C + i * 0x18u) == h &&
+            AIL_sample_status(sound_slot_handle(i)) == 4)
+            return 1;
+    return 0;
 }
+
+static const u32 attract_loops[2] = { 0x0383B6F4u, 0x03837440u };
 
 /* PORT: the original has no headless mode. The port runs the real master loop
  * one frame at a time without opening a window: game_init() runs the init chain
@@ -169,7 +159,8 @@ static int run_check(const char *game_dir, int frames)
     mkdir("frames", 0755);             /* ignore EEXIST; capture_frame needs it */
     game_set_game_dir(game_dir);
     int fail = 0, distinct = 0;
-    int title_entry = 0, title_frames = 0, announced = 0;
+    int title_entry = 0, title_frames = 0, probed = 0;
+    int loop_before_title[2] = { 0, 0 };
     u32 last_hash = 0;
     u32 audio0 = game_audio_ticks();
     u32 host0 = host_tick_count();
@@ -178,6 +169,9 @@ static int run_check(const char *game_dir, int frames)
         DSB(DS_000A81A8) = 1;            /* one loop iteration per call */
         game_loop();                     /* frame i */
         u16 st = DSW(DS_000F0A64);
+        if (st == 0)
+            for (int k = 0; k < 2; k++)
+                loop_before_title[k] = attract_loop_playing(attract_loops[k]);
         const u8 *presented = gfx_display();
         if (presented == NULL) presented = mem + DSD(DS_000E87A0);
         /* State 0 is the attract (blank until its scene loads); states 1..9 are
@@ -189,11 +183,24 @@ static int run_check(const char *game_dir, int frames)
             u32 h = buf_hash(presented);
             if (h != last_hash) { distinct++; last_hash = h; }
         }
-        /* The title state queues the announcer sample on entry; its voice is
-         * active a couple of frames later, once 0x1CF20 has played it. */
-        if (title_entry != 0 && !announced && i == title_entry + 2) {
-            fail += probe_announcer_audio();
-            announced = 1;
+        /* The title's first entry stopped the attract's 0x40 and 0x42
+         * loops, which played on the last attract frame. */
+        if (title_entry != 0 && !probed && i == title_entry + 2) {
+            for (int k = 0; k < 2; k++) {
+                if (!loop_before_title[k]) {
+                    fprintf(stderr, "prageport: --check the attract's loop "
+                                    "0x%08X was not playing before the title\n",
+                            (unsigned)attract_loops[k]);
+                    fail++;
+                }
+                if (attract_loop_playing(attract_loops[k])) {
+                    fprintf(stderr, "prageport: --check the title did not stop "
+                                    "the attract's loop 0x%08X\n",
+                            (unsigned)attract_loops[k]);
+                    fail++;
+                }
+            }
+            probed = 1;
         }
     }
 
