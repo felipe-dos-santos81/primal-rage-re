@@ -2022,7 +2022,9 @@ for a = 0, the `0x2EDE0(0, 1)` word without Enter, the release poll's word,
 or -1 (`0x2EA78` returns -1 at `0x2EB6E..0x2EB74`) when the wait runs out.
 `menu_run` tests a callback's result only for -5 and -10 (`0x304AA`,
 `0x304B3`), which no path gives (the poll words sit in `0xFF00FF00` and
-bits 24..25).
+bits 24..25). `menu_run` also stores the result in `DS_00107448` (`0x304A5`),
+and resets that word at `0x304EB` before it is read again, so the `u32`
+return carries the whole state (`menu.c:392`, `:401`).
 
 **(g) `0x33560`** (EAX a): `0x33058` (EAX not read, §K11.7),
 `0x33230(a)`, `0x32BDC(a)`; returns `0x32BDC`'s EAX. **`0x2CAC0`**: `mov
@@ -2084,7 +2086,13 @@ own bar string (L = 1, never taken; it is tested with "#:"); an empty bar
 string (L = 0 would loop or divide by zero in the raw; no caller passes
 one); a title longer than 0x28 (the unsigned column); the release wait's 89
 passes and its -1 result (89 frames); `0x52106`'s argument (no visible
-effect, §K11.7).
+effect, §K11.7). Three more, from the Task 8 review: the signedness of
+the `size < 1` refusal in `0x2E248` (`0x2E27C` `jge`; only size 0 is
+tested, so a negative size is not distinguished); the tabbed template's
+no-pad arm when the length is at least `+0xC` (`0x2E6CA` `jge`), which no
+test reaches and the review reports unreachable (the reason is not
+re-derived here); and the median scan's past-size -1 bucket (`0x2E582`
+`jb`), likewise reported unreachable and not re-derived.
 
 **Frame budget.** 16 scripted frames (A 7, B 3, C 3, D 3). K11 total: 144 +
 16 = **160 of 160**.
@@ -2110,9 +2118,10 @@ counter sum (7 counters), so the column parse's refusal was not needed (the
 case now has 8 counters). 18: no seeded median sat exactly on half (the
 `{0: 2, 3: 1}` case was added). The second run, on the final suite, is the
 table: of 60, 57 fail the suite with exit 1, 8 and 32 crash it (exit -10,
-the suite fails), and 60 survives. The brief's five: `>` for `>=` in
-`0x2E218` (1), the dirty bit without `+ 3` (3), group 3 accepted (4), the
-tab stop removed (6), `0x33560` skipping page 2 (55). Rows 59 and 60 are
+the suite fails), and 60 survives. The brief's five mutations, by table row and the checks that
+fail: row 1 (`>` for `>=` in `0x2E218`, 1 check), row 3 (the dirty bit
+without `+ 3`, 4 checks), row 4 (group 3 accepted, 2 checks), row 6 (the tab
+stop removed, 96 checks), row 55 (`0x33560` skipping page 2, 165 checks). Rows 59 and 60 are
 the Task 7 minor: `0x32F98`'s zero-total value as 1 now fails, and the
 test's removal still survives (AArch64 division by zero gives 0).
 
@@ -2204,7 +2213,55 @@ in 1.069s`). `svcmenu_register` gains `0x2CAC0`, which runs in `game_init`,
 so the 8000-frame dump was compared: `--check 8000` without that
 registration and with it gives the same `shasum` list over 8000 `.idx` and
 8000 `.pal` files (`k11_t8_frames_before.sha`, `k11_t8_frames_after.sha`).
-The header grep counts 1 for each of `2E218 2E11C 2E248 2E5E4 32BDC 33560
-2CAC0`. `tools/port_progress.py` stays at `765 1203 64` / `729 730 100`:
+The header grep (`/* 0xADDR`) counts 1 for each of `2E218 2E11C 2E248 2E5E4
+32BDC 33560` and 2 for `2CAC0`, which matches the header at `svcmenu.c:1597`
+and the inline comment at `:1601` (`/* 0x2CAC0 mov eax,1; ...`). `tools/port_progress.py` stays at `765 1203 64` / `729 730 100`:
 none of the seven is a Ghidra function, so README is unchanged. The frame
 dumps were deleted.
+
+## §K11.9 Closure (executor, Task 9)
+
+**Closure re-check.** `k11_closure.py` (`<scratchpad>/k11_closure_final.txt`)
+prints `ALREADY P` for every function of the closure that has a header. Its
+only two `U` lines are `0x1AE28` (`config_keys_apply`, header
+`0x1AE20`) and `0x500BB` (the inline tick read), which §0.3 showed are already
+ported, so `grep "^[0-9a-f]* U"` minus those (and `0x38B18`) prints nothing
+(exit 1). §0.3's 50 functions are all ported.
+
+**Totals.** 7 cycles: §K11.2 10 functions, §K11.3 9, §K11.4 5, §K11.5 9,
+§K11.6 4, §K11.7 6 and §K11.8 7, which is **50 functions / 15 304 B**
+(§0.3, re-checked in §K11.0). Three are Ghidra functions: `0x2F464`
+(`text_number_cont`, §K11.4), `0x319B0` (`svc_buttons_clear`) and `0x31A78`
+(`svc_buttons_draw`) (both §K11.5). `tools/port_progress.py` prints
+`765 1203 64` / `729 730 100`: 762 at Task 1, 763 after §K11.4 and 765 after
+§K11.5; §K11.6, §K11.7 and §K11.8 hold no Ghidra function. The README title
+(64%) and its "729 of 730" line already read these values, so the README is
+unchanged. `svcmenu_register` makes 19 `fn_register` calls in all, inside `FN_TABLE_MAX`
+(the planner's §0.7 figure was 18 appended entries).
+
+**The test seam.** `host_set_pump_hook` (§K11.1, a `PORT:` seam, NULL in the
+game) plus the `sm_*` harness in `test_game.c`. The frame budget is used up:
+**160 of 160** scripted frames (§K11.8).
+
+**Named gaps** (ledger §E rows 28..31, §0.6): the language reload `0x47370`
+(a language change is stored in field `0x29` but not shown); the joystick
+device choice (`+0x2D4`/`+0x2D6`; stored, no host effect); the play-time fields
+`3, 0xA, 0xC, 0x12, 0x13` (page 1 shows 0); and the audit counters
+`0x105ECD..0x105EFB` (the histograms show 0). Each stays as recorded in §0.6.
+The deferred CMOS save `0x1B084` (§50-C) is unchanged. `grep -c
+'TODO(verify)' port/src/game/svcmenu.c` prints 0.
+
+**Task 8 review minors folded in.** (1) The `CHECK(memcmp(...), "the
+descriptors are back")` in `sm_check_hist`, directly after the `memcpy` that
+restores them, could not fail; it is now a plain comment. The suite's `CHECK`
+total drops by one and every other assertion is unchanged. (2) The header
+grep claim of §K11.8 (and the task-8 report) said "1 for each"; `0x2CAC0`
+counts 2 (`svcmenu.c:1597` and the inline comment at `:1601`). (3) §K11.8's
+five mutations are now listed by table row with their check counts. (4)
+§K11.8 "Not tested" gains the signedness of `size < 1`, the tabbed no-pad arm
+(`0x2E6CA`) and the median's past-size bucket (`0x2E582`). (5) PROGRESS.md's
+cycle 7 paragraph says the clear on the last histogram needs `a` not 0
+(with `a` = 0 the function returns 2). (6) §K11.8 (g) and `svcmenu.h` note that
+`menu_run` also stores the result in `DS_00107448` (`0x304A5`, reset at
+`0x304EB` before it is read), so the `u32` return is the whole state, and the
+header now lists the 2 and -1 results next to the key word.

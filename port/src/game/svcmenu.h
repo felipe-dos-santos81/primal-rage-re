@@ -194,7 +194,9 @@ u32 audit_hist_line(u32 i, u32 buf, s32 width);
 /* STATISTICS page 3: the three histograms one screen each; the latched Esc or
  * Enter or a new pad Esc goes on, and after the last one leaves. With `a`, a
  * new pad Esc on the last with Enter held clears all three. Returns the raw's
- * EAX (the last key word) — 0x32BDC. */
+ * EAX: the last key word (or a poll word), 2 (a = 0 on the last), or -1 (the
+ * release wait ran out). menu_run also stores the result in DS_00107448 (0x304A5) and resets it
+ * at 0x304EB before it is read, so the u32 return is the whole state — 0x32BDC. */
 u32 svc_stats_hist(u32 a);
 /* STATISTICS: page 1, page 2 (clear_ok = a) and the histograms (a); returns
  * svc_stats_hist's result — 0x33560. */

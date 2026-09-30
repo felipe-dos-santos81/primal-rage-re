@@ -120,13 +120,13 @@ them.
 | `0x1CB18` | 271 | 1 / 1: `1CF26`@`1CF20`P | `1B544`P + AIL `5DC0F/2A/4D/70/A6/C5/E4` | no (no port path writes slot `+0x04`) | port — **derived, not ported** (Task 3d, §K7: needs the §K7.3 decisions; re-plan) | K7 | Sample start: copies the queued resource into the slot's `0x1D0BC` buffer, then AIL init/set/start. Named gap at `flow.c:5962`. |
 | `0x1C528` | 190 | 1 / 1: `1C60B`@`1C5E8`P | `1B544`P | yes | **closed**: shared header, §K1.5 | K1 | A byte-identical copy of `0x14268`. It shares `sprite_node_build` (`sprite.c:55-58`), and the header names it mid-comment. |
 | `0x2E180` | 151 | 1 / 1: `2E983`@`2E934`D | `2E034`U, `2E0A4`U | no (only via deferred `0x2E934`) | **closed: deferred**, §K9.6 | K9 | Audit counter add into the EEPROM image tables `0x2D420/0x2D45E/0x2D460`. |
-| `0x31A78` | 137 | 0 / 4†: `321F2`, `32230`, `324A9`, `324DC` (non-Ghidra code after `31E28`P) | `3157C`P | via non-Ghidra code only | port | K11 | Jump-table dispatcher at `0x31A68`. Raw `call`s from `0x321F2`, `0x32230`, `0x324A9`, `0x324DC` (service-menu callback code). |
+| `0x31A78` | 137 | 0 / 4†: `321F2`, `32230`, `324A9`, `324DC` (non-Ghidra code after `31E28`P) | `3157C`P | via non-Ghidra code only | **closed: ported** (`svc_buttons_draw`, `svcmenu.c`), §K11.5 | K11 | Jump-table dispatcher at `0x31A68`. Raw `call`s from `0x321F2`, `0x32230`, `0x324A9`, `0x324DC` (service-menu callback code). |
 | `0x38910` | 125 | 1 / 1: `121F9`@`121A0`P | `4F1D0`P | yes | **closed**: header, §K1.3 | K1 | Ported as `title_origin_reset` under `/* PORT: 0x38910` (`flow.c:183`). |
 | `0x2E0A4` | 117 | 1 / 1: `2E1EB`@`2E180`U | `2D4EC`P | no | **closed: deferred**, §K9.7 | K9 | Halves an EEPROM-image counter table and sets the dirty bit `DS_00105DD8`. Only via `0x2E180`. |
 | `0x2E034` | 110 | 1 / 1: `2E20B`@`2E180`U | `2D4EC`P | no | **closed: deferred**, §K9.8 | K9 | Stores BL into an EEPROM-image counter and sets the dirty bit. Only via `0x2E180`. |
 | `0x51ED8` | 109 | 1 / 1: `1C63D`@`1C5E8`P | `1B544`P | yes | **closed**: split `sprite_blit_aperture`, §K1.6 | K1 | Ported as `sprite_blit_at(n, base)` under `/* PORT: 0x51ED8` (`sprite.h:58`, `sprite.c:285`). |
 | `0x2DF8C` | 109 | 1 / 1: `2D919`@`2D6F8`P | `2D4EC`P, `2E990`D, `61A70` rt | yes, but inert | **closed: deferred**, §K9.9 | K9 | Loops sides 3..5. Each effect goes through the deferred storage read `0x2E990` (§49-Y.5), the no-op `0x2D4EC` (`config.c:58`) or the runtime `0x61A70`. **Correction (§K9.9):** `0x61A70` is memset; on the port's path it zeroes `0x105ECD..0x105EFB`, which are zero in the image and have no ported writer, so it stays inert. `config.c:205` already calls it deferred. **Revisited (K11 record §K11.8):** `0x2E11C`, the STATISTICS histogram clear, is a second writer of `0x105ECD..0x105EFB`; it writes only zeros, and only from the options menu, which no oracle reaches. |
-| `0x319B0` | 91 | 0 / 2†: `32207`, `32248` (non-Ghidra code after `31E28`P) | — | via non-Ghidra code only | port | K11 | Jump-table dispatcher at `0x319A0`. Raw `call`s from `0x32207` and `0x32248`. |
+| `0x319B0` | 91 | 0 / 2†: `32207`, `32248` (non-Ghidra code after `31E28`P) | — | via non-Ghidra code only | **closed: ported** (`svc_buttons_clear`, `svcmenu.c`), §K11.5 | K11 | Jump-table dispatcher at `0x319A0`. Raw `call`s from `0x32207` and `0x32248`. |
 | `0x4F728` | 79 | 1 / 1: `27E4B`@`27DC8`P | `2C3FC`P | yes | **closed**: `sound_voice_match_end`, §K6 (wired) | K6 | Two voices: `0xDF` or `0x23` (gated on `DS_00104AD4`, `0x107813+rec`, `DS_001088F2`), then `0x22`. `flow.c:2762` PORT. |
 | `0x4682C` | 78 | 1 / 1: `46AA0`@`469A8`P | `1A5D4`P | yes | **closed**: split `ai_pred_4682c`, §K1.4 | K1 | Shares `ai_pred_cmd_sign` with `0x467DC` (`fighter.c:1295`, header `/* 0x467DC / 0x4682C`). It needs its own function. |
 | `0x4FF8F` | 73 | 4 / 8†: `1BD15`, `1BD2E`, `1BD3C`, `1BD8B` @`1BBAC`H; `1B976`, `1B9B6`, `1BA16`, `1BA96` in the unreferenced sampler routines `0x1B934..0x1BB73` | — | no | **closed: host-owned**, §K9.3 | K9 | Joystick A axis bits from `DS_000E1C1E/20/22/24`, ±0x1E. Every caller is in the host-owned sampler region `0x1B908..0x1BDCE` (see §G). |
@@ -136,7 +136,7 @@ them.
 | `0x38990` | 52 | 2 / 2: `24CC3`, `24CC8` @`24C5C`P | — | **yes, every frame** | **closed**: `render_scroll_track`, §K3 | K3 | `DS_00107A3C = word[0xF0AEC] & 0xFFC0`, `DS_00107A4A = dword[0xF0AEC]/64 + DS_00107A4E`. `game_frame` calls it at `0x24CC8`, and also at `0x24CC3` when `DS_00104B26 != 0`. `flow.c:6784` says "deferred". |
 | `0x3BDB0` | 43 | 1 / 1: `3B27F`@`3B134`P | `33950`P | yes | **closed**: header, §K1.2 | K1 | Body is `fight_attack_ready` (`fight.c:1987`), header `/* ---- 0x3BDB0`. |
 | `0x32BB0` | 41 | 1 / 1: `27E28`@`27DC8`P | `2DAE4`D | yes, inert | **closed: deferred**, §K9.12 | K9 | Two `0x2DAE4(0x1B+c, 1)` audit adds (`0x32BC0`, `0x32BD2`). Its only callee is deferred (record §48-V). |
-| `0x2F464` | 38 | 1 / 5†: `30A12`, `30D59` (after `30788`P), `328E5`, `32913` (after `31E28`P), `33020` (after `32BB0`U) | `2EFD4`P, `2F198`P | via non-Ghidra code only | port | K11 | Raw `call`s from `0x30A12`, `0x30D59`, `0x328E5`, `0x32913` and `0x33020` (service-menu callbacks). |
+| `0x2F464` | 38 | 1 / 5†: `30A12`, `30D59` (after `30788`P), `328E5`, `32913` (after `31E28`P), `33020` (after `32BB0`U) | `2EFD4`P, `2F198`P | via non-Ghidra code only | **closed: ported** (`text_number_cont`, `svcmenu.c`), §K11.4 | K11 | Raw `call`s from `0x30A12`, `0x30D59`, `0x328E5`, `0x32913` and `0x33020` (service-menu callbacks). |
 | `0x33714` | 31 | 1 / 1: `13490`@`13420`P | — | yes | **closed**: split `palette_record_flagged`, §K1.7 | K1 | `palette_record` with flag 1 (`effects.c:63-64` PORT; `0x3371F mov byte [eax-4],1`). |
 | `0x2D498` | 27 | 1 / 1: `2D612`@`2D4EC`P | `2EA68`P | no (the port's `0x2D4EC` is a declared no-op) | **closed: deferred**, §K9.10 | K9 | Bounds-checked byte store into the EEPROM image `0x100CE4..0x1014DC`, else `0x2EA68(0x80AA8)`. |
 | `0x32B94` | 24 | 1 / 1: `2786B`@`277C0`P | `2DAE4`D | yes, inert | **closed: deferred**, §K9.11 | K9 | `test al,1` → `0x2DAE4(0xE, 1)` audit add. Its only callee is deferred (record §48-V). |
@@ -223,9 +223,18 @@ per-character entrance table `DS_000A8628` (8 dwords) is fully registered.
 
 **Service menu `0xBCBDC`/`0xBCC1C`** (stride 0x10, callback at `+8`):
 `0x2CB74`, `0x2CB94`, `0x2CACC`, `0x2CAC0`, `0x30EB4`, `0x30F54`, `0x31F24`,
-`0x19DF0`, `0x32358`, `0x30864` and `0x31138`. None is registered or has a header
-(`menu.c:41-43` states the first four are skipped). The nested sub-menus they
-open were not walked here.
+`0x19DF0`, `0x32358`, `0x30864` and `0x31138`. None was registered or had a
+header at the baseline (`menu.c:41-43` stated the first four were skipped).
+
+**Closed (K11, Task 9; record `2026-09-29-k11-service-menu-derivations.md`
+§K11.2..§K11.8).** All 11 callbacks plus the 7 START MENU setters
+(`0x2CBC4..0x2CC54`) and their sub-menus are ported in `port/src/game/svcmenu.c`
+and registered by `svcmenu_register`: 50 functions, 15 304 reachable
+instruction bytes, in 7 cycles (10 + 9 + 5 + 9 + 4 + 6 + 7). Three are Ghidra
+functions (`0x2F464`, `0x319B0`, `0x31A78`, §B.1), so the counter moved
+762 -> 765 of 1203. The remaining named gaps are §E rows 28..31. The walk
+(`k11_closure.py`) finds no unported function in the closure other than the
+three already-ported `0x38B18`, `0x500BB` and `0x1AE28` (§0.3 of the record).
 
 ---
 
@@ -386,6 +395,15 @@ wrong, and Task 6 fixes it.
 | 26 | `tests/test_game.c:1062` | "0x16 is a still-unported named gap" | `0x4F2B0` ported (§49-G) | **stale** (test comment) |
 | 27 | `tests/test_game.c:4602` | s16title read at boot vs at the title state (§45-A) | boot resource order | **re-scoped** (Task 5c, §6): the port's real boot reads entry 7 at f 3 through the raw's `0x110D8` (attract phase 2). The loop-1973 screen is the front-end driver's, because it enters at state 2. The fix (seeding entry 7's read bit) moves the attract2 dump count 2308 -> 2307 and its named splice, both enforced, so it is not made. |
 
+| 28 | `game/svcmenu.c` (`0x336AE`, CONFIG OPTIONS) | Language reload `0x47370` | The port's `game_string_table_load` is idempotent and English-only (host file I/O) | **named gap** (K11, record §0.6): a language change is stored in field `0x29` but not shown |
+| 29 | `game/svcmenu.c` (`0x31F24`, `0x32358`) | Joystick device choice, device words `+0x2D4/+0x2D6` | The port's input is keyboard-only (host-owned `0x4FF8F`/`0x4FFD8`/`0x5004A`, §K9.3/§K9.4) | **named gap** (K11, record §0.6): picking a joystick is stored faithfully and has no effect on the host |
+| 30 | `game/svcmenu.c` (`0x33058`, STATISTICS page 1) | Play-time fields `3, 0xA, 0xC, 0x12, 0x13` | Their writer, the run clock `0x32970`, is host-owned (`config_play_time_close`) | **named gap** (K11, record §0.6; existing): they stay 0, so page 1 shows 0 |
+| 31 | `game/svcmenu.c` (`0x2E248`, `0x2E5E4`, `0x32BDC`) | Audit counters `0x105ECD..0x105EFB` | Their writers `0x2E180`/`0x2E0A4`/`0x2E034` are deferred (§K9.6..§K9.8) | **named gap** (K11, record §0.6/§K11.8): they stay 0, so the histograms show 0. `0x2E11C`'s clear is ported |
+
+Rows 28..31 were added by K11 Task 9. They are not `named gap` comment sites:
+each is recorded in the K11 record §0.6, and only row 28 also has a `PORT:` note
+in the code (`svcmenu.c:335`).
+
 Rows 3/7/8/10/12/20/23/26 are stale, and so are parts of 2/9/11/19 (12 rows).
 The 35 sites fold into 27 rows. The other gap prose that does not use the
 phrase "named gap" is summarised here, and the §F cycles own it:
@@ -424,7 +442,7 @@ size gate is ≥ ~4 KB or ≥ ~20 new functions, and such a cluster is marked
 | 15 | K8b UPD-BONUS | update entries 15 `0x260BC` and 16 `0x26194` | n/a | port (§E-4) | Task 5 — **closed** (Task 5a, record §B8; plus the K8d setters `0x37EA0`/`0x24078`/`0x45D58`, record §D8) |
 | 16 | E-OPEN | §E-1, 14, 21, 24, 25, 27 | — | derive or re-scope | Task 5 |
 | 17 | K10 MOVIE-BLIT | `0x50D23` | 4405 | **own plan**, **closed: host-owned** (§K10; the EDI half is a dead aperture shadow, §K10.3) | Task 6 |
-| 18 | K11 MENU-CB | `0x2F464`, `0x319B0`, `0x31A78` + 11 non-Ghidra service-menu callbacks (§B.2) and their sub-menus | 266 + n/a | **own plan** (the callback code spans `0x2D00C..0x33290` in the raw `call` sites) | Task 6 |
+| 18 | K11 MENU-CB | `0x2F464`, `0x319B0`, `0x31A78` + 11 non-Ghidra service-menu callbacks (§B.2) and their sub-menus | 266 + n/a | **own plan** (the callback code spans `0x2D00C..0x33290` in the raw `call` sites) — **closed** (K11, record §K11.2..§K11.8: 50 functions, 15 304 B, 7 cycles, 160 of 160 scripted frames; counter 762 -> 765; named gaps §E-28..31) | Task 6 |
 | 19 | K12 VOICE-WIRE | about 180 "not wired (record §45-A)" sites | — | **own plan** (≥ 20 sites). Needs proof of no RNG/render effect per site. | Task 6 |
 | 20 | STALE | §E rows 2, 3, 7, 8, 9, 10, 11, 12, 19, 20, 23, 26 | — | comment fixes | Task 6 |
 
