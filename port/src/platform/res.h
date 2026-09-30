@@ -28,6 +28,17 @@ int res_load_file(const char *game_dir, const char *name, u32 *out_off, u32 *out
 /* The port's 0x1C308 (res.c's bump allocator): a mem[] offset, 0 if it does not fit. */
 u32 res_block_alloc(u32 size);
 
+/* PORT: the allocation-failure test seam (record
+ * 2026-09-30-named-gaps-c-derivations.md §C.1), not original state (the
+ * pattern of res_set_screen_hook). res_fail_alloc_nth(n) makes the n-th
+ * bump-allocator request from now on return 0 without moving the heap, as a
+ * block that does not fit does, and then disarms; every request counts
+ * (res_load_index's, res_load_file's and res_block_alloc's, size 0 included).
+ * n = 0 disarms. res_fail_alloc_left() is the requests left until the failure
+ * (0 = disarmed). Nothing in port/src arms it. */
+void res_fail_alloc_nth(u32 n);
+u32 res_fail_alloc_left(void);
+
 u32 res_count(void);
 
 /* 12-byte, zero-padded, not necessarily NUL-terminated. */

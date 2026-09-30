@@ -94,10 +94,22 @@ static void res_load_present(u32 draw, u32 index)
     DSD(DS_001014FC) = 1u;                                    /* 0x1B3F8 */
 }
 
+/* PORT: the allocation-failure test seam (res.h), not original state (the
+ * pattern of res_set_screen_hook above). s_fail_left counts the requests left
+ * until the one that fails; 0, its initial value, is disarmed, and no caller
+ * in port/src arms it, so every run's heap offsets are unchanged. */
+static u32 s_fail_left;
+
+void res_fail_alloc_nth(u32 n) { s_fail_left = n; }
+u32 res_fail_alloc_left(void) { return s_fail_left; }
+
 /* PORT: replaces FUN_0001C308. Bump allocator; the original is a real block
  * allocator with free(). Substituted until a task needs to release memory. */
 static u32 res_alloc(u32 size)
 {
+    /* PORT: the test seam above; no original instruction. The injected
+     * failure returns before the heap moves, as the mem_in_range arm does. */
+    if (s_fail_left != 0u && --s_fail_left == 0u) return 0;
     u32 at = (g_heap + 3u) & ~3u;
     if (!mem_in_range(at, size)) return 0;
     g_heap = at + size;

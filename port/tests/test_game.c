@@ -1298,6 +1298,7 @@ static void check_sound_buffers(void)
     const u32 s_c0 = DSD(DS_001028C0), s_c4 = DSD(DS_001028C4);
     const u32 s_d0 = DSD(DS_001028D0), s_c8 = DSD(DS_001028C8);
     const u8 s_b0 = DSB(DS_000A2CB0);
+    const u32 s_cc = DSD(DS_001028CC);
     for (i = 0; i < 4u; i++) s[i] = DSD(DS_00102870 + i * 0x18u);
 
     /* Already run (DS_000A2CB0 set, 0x1D0BF): AL = 0, nothing allocated. */
@@ -1408,6 +1409,101 @@ static void check_sound_buffers(void)
     CHECK_EQ_INT((int)DSD(DS_001028C8), 0);
     CHECK_EQ_INT((int)DSD(DS_00102870 + 0x18u), 0);
 
+    /* named-gaps C (record 2026-09-30-named-gaps-c-derivations.md §C.2): the
+     * two allocation-failure arms, through res.c's PORT: failure seam. Every
+     * armed vector asserts the count the seam has left after the call (0: the
+     * injected failure reached 0x1C308), then disarms it. peek is taken while
+     * the seam is disarmed. */
+
+    /* V1, the MIDI arm's failure (0x1D0FE -> 0x1D10E..0x1D12F): request 1, the
+     * 0x5100 block, fails, and C4, C0 and CC get ecx (DS_001028D0 = 0, loaded
+     * at 0x1D0DE). The arm falls through to 0x1D132: slot 0 gets the block
+     * the failed request did not take. */
+    DSB(DS_000A2CB0) = 0;
+    DSD(DS_001028C0) = 0x1234u;
+    DSD(DS_001028C4) = 0x5678u;
+    DSD(DS_001028CC) = 0xCC01u;
+    DSD(DS_001028D0) = 0;
+    DSD(DS_001028C8) = 1u;
+    for (i = 0; i < 4u; i++) DSD(DS_00102870 + i * 0x18u) = 0;
+    peek = res_block_alloc(0u);
+    res_fail_alloc_nth(1u);
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    CHECK_EQ_INT((int)res_fail_alloc_left(), 0);
+    res_fail_alloc_nth(0u);
+    CHECK_EQ_INT((int)DSB(DS_000A2CB0), 1);
+    CHECK_EQ_INT((int)DSD(DS_001028C4), 0);              /* 0x1D113 */
+    CHECK_EQ_INT((int)DSD(DS_001028C0), 0);              /* 0x1D11E */
+    CHECK_EQ_INT((int)DSD(DS_001028CC), 0);              /* 0x1D124 */
+    CHECK_EQ_INT((int)DSD(DS_00102870), (int)peek);      /* 0x1D132 still runs */
+
+    /* V2, the slot loop's failure at slot 0 (0x1D16B with ecx = 0): request 1,
+     * the 0x8C00, fails; the loop stops before 0x1D16D, so slot 1 is not
+     * taken, and ecx = 0 turns the DIG driver off (0x1D17F..0x1D195). Slots
+     * 1..3 are seeded 0 because 0x1D176 reaches a slot only when it is 0; a
+     * loop that went on would give slot 1 the next block. */
+    DSB(DS_000A2CB0) = 0;
+    DSD(DS_001028C0) = 0;
+    DSD(DS_001028C4) = 0;
+    DSD(DS_001028D0) = 0xD0D0D0D0u;
+    DSD(DS_001028C8) = 1u;
+    for (i = 0; i < 4u; i++) DSD(DS_00102870 + i * 0x18u) = 0;
+    peek = res_block_alloc(0u);
+    res_fail_alloc_nth(1u);
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    CHECK_EQ_INT((int)res_fail_alloc_left(), 0);
+    res_fail_alloc_nth(0u);
+    CHECK_EQ_INT((int)DSD(DS_001028C8), 0);              /* 0x1D195 */
+    CHECK_EQ_INT((int)DSD(DS_00102870 + 0x18u), 0);      /* slot 1 not taken */
+    CHECK_EQ_INT((int)(res_block_alloc(0u) - peek), 0);  /* no block taken */
+
+    /* V3, the failure at slot k = 1..3 (request k + 1): slots 0..k-1 are
+     * allocated, the loop stops at 0x1D16B so no later slot is taken, ecx = k
+     * keeps the DIG driver (0x1D181), and the failed request took nothing: the
+     * next block starts right after slot k-1 (0x8C00 for slot 0, 0x6000
+     * after). */
+    {
+        u32 k, j;
+        for (k = 1u; k < 4u; k++) {
+            DSB(DS_000A2CB0) = 0;
+            DSD(DS_001028C0) = 0;
+            DSD(DS_001028C4) = 0;
+            DSD(DS_001028D0) = 0xD0D0D0D0u;
+            DSD(DS_001028C8) = 1u;
+            for (i = 0; i < 4u; i++) DSD(DS_00102870 + i * 0x18u) = 0;
+            peek = res_block_alloc(0u);
+            res_fail_alloc_nth(k + 1u);
+            CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+            CHECK_EQ_INT((int)res_fail_alloc_left(), 0);
+            res_fail_alloc_nth(0u);
+            CHECK_EQ_INT((int)DSD(DS_00102870), (int)peek);
+            for (j = 1u; j < k; j++)
+                CHECK(DSD(DS_00102870 + j * 0x18u) != 0u,
+                      "a slot before the failed one is allocated");
+            for (j = k + 1u; j < 4u; j++)
+                CHECK_EQ_INT((int)DSD(DS_00102870 + j * 0x18u), 0);   /* 0x1D16B stops */
+            CHECK_EQ_INT((int)DSD(DS_001028C8), 1);                  /* ecx = k */
+            CHECK_EQ_INT((int)(res_block_alloc(0u) - DSD(DS_00102870 + (k - 1u) * 0x18u)),
+                         k == 1u ? 0x8C00 : 0x6000);
+        }
+    }
+
+    /* V4, slot 0's buffer set at entry with the seam armed: the 0x1D147 gate
+     * makes no request at all (the count stays 1), slot 0 keeps its buffer,
+     * and ecx = 0 still turns the DIG driver off (0x1D195). */
+    DSB(DS_000A2CB0) = 0;
+    DSD(DS_001028C0) = 0;
+    DSD(DS_001028C4) = 0;
+    DSD(DS_001028C8) = 1u;
+    for (i = 0; i < 4u; i++) DSD(DS_00102870 + i * 0x18u) = 0;
+    DSD(DS_00102870) = 0x0BADu;
+    res_fail_alloc_nth(1u);
+    CHECK_EQ_INT((int)sound_buffers_alloc(), 1);
+    CHECK_EQ_INT((int)res_fail_alloc_left(), 1);
+    res_fail_alloc_nth(0u);
+    CHECK_EQ_INT((int)DSD(DS_00102870), 0x0BAD);
+    CHECK_EQ_INT((int)DSD(DS_001028C8), 0);
+
     /* The ISR's counter pair (PORT, 0x1BE0E..0x1BE16). */
     DSD(DS_00101508) = 0x10u;
     DSD(DS_00101500) = 0x2000u;
@@ -1418,6 +1514,7 @@ static void check_sound_buffers(void)
     DSD(DS_001028C0) = s_c0; DSD(DS_001028C4) = s_c4;
     DSD(DS_001028D0) = s_d0; DSD(DS_001028C8) = s_c8;
     DSB(DS_000A2CB0) = s_b0;
+    DSD(DS_001028CC) = s_cc;
     for (i = 0; i < 4u; i++) DSD(DS_00102870 + i * 0x18u) = s[i];
 }
 
