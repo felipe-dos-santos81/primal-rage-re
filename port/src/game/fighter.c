@@ -8711,6 +8711,23 @@ void fighter_459d0(u32 rec)
     DSB(rec + 0x63u) = 1u;                                  /* 0x459D0 */
 }
 
+/* PORT: a data-object address symbols.h does not name. */
+#define FIGHT_DESC_45B18 0x000C934Cu  /* 0x45B31: 0x45B18's child descriptor */
+
+/* 0x45B18 — record gameplay-u0 §U0.7. The 0xD100 target at 0xEB70E (after
+ * the 0xD100 word at 0xEB70C; its only reference, opcode 0x11; Ghidra has no
+ * function here). EAX = rec (ESI); EBX/ECX/EDX pushed and popped. It spawns
+ * the descriptor 0xC934C as a child of the record (a5 = the record's +0x56 |
+ * 0x400, the other arguments 0), stores the child's +0x56 low byte in the
+ * record's +0x4B, then 0x37B54(rec) (the call at 0x45B43). */
+void fighter_45b18(u32 rec)
+{
+    u32 e = actor_spawn((const u32 *)(mem + FIGHT_DESC_45B18), 0u, 0u, 0u,
+                        (u32)(u16)(DSW(rec + 0x56u) | 0x0400u));   /* 0x45B1E..0x45B36 0x2AE14 */
+    DSB(rec + 0x4Bu) = DSB(e + 0x56u);                      /* 0x45B3B/0x45B3E */
+    fighter_37b54(rec);                                     /* 0x45B41/0x45B43 0x37B54 */
+}
+
 /* ---- character 4's reaction callbacks 0x20..0x24, 0x26, 0x2D (record §48-R)
  * The entries of 0x34E2C's 0xA3528 table for character 4 (0xA4BA8 0x20
  * 0x44F64, 0xA4BBC 0x21 0x450E8, 0xA4BD0 0x22 0x455A0, 0xA4BE4 0x23 0x44970,

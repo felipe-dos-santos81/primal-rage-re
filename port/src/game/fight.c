@@ -1769,8 +1769,8 @@ void fight_hud_spawn_b(u32 enable)
  * 0xC9A52[(0x78 - v) * 2] — always table 0xC9A52 (no DS_00104B1D/flag8
  * switch, unlike 0x1D2F0) and the index inverted (0x78 - v rather than v).
  * The EBX/ECX/EDX loads before the 0x10D70 call are dead, as 0x1D2F0's own
- * header notes for its call. Callers: 0x1DB70 (0x1DAE8) and 0x1DC5C
- * (unported: it lies in no Ghidra function and no port path reaches it). */
+ * header notes for its call. Callers: 0x1DB70 (0x1DAE8) and 0x1DC5C (in
+ * 0x1DC0C, which lies in no Ghidra function; record gameplay-u0 §U0.6). */
 static void fight_hud_bar_set_inv(s32 v, u32 side)
 {
     u32 c = v > 0x78 ? 0x78u : (v < 0 ? 0u : (u32)v);   /* 0x1DA86..0x1DA98 */
@@ -1814,6 +1814,31 @@ void fight_hud_spawn_side(u32 enable)
     fight_hud_badge_spawn(side, DSB(DS_0010782A + side * 0x94u),
                           DSW(DS_000A76D0));                /* 0x1DBEA..0x1DBFA 0x1D838 */
     DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) | 8u);          /* 0x1DBFF */
+}
+
+/* 0x1DC0C — record gameplay-u0 §U0.6. The render table's bit-3 entry
+ * (DS_000A86C4[3], the dword at 0xA86D0, its only reference; Ghidra has no
+ * function here): 0x255CC's per-bit walk calls it while DS_00104AEC bit 3 is
+ * set (0x1DBFF above; `or` stores at 0x26AC9, 0x26B4C, 0x26C54, 0x26C7F
+ * and 0x26D40), fn() with EAX
+ * unread; EBX/ECX/EDX pushed and popped. side = DS_00104B1A: the shown bar
+ * byte DS_0010290C[side] steps one toward the slot's +0x5B byte
+ * (DS_0010780B[side], stride 0x94; unsigned `jbe`/`jae`) and, when it moved,
+ * 0x1DA84(the new byte, side) redraws the bar (the call at 0x1DC5C); then
+ * DS_00104AEC bit 3 is cleared. */
+void fight_hud_bar_step(void)
+{
+    u32 side = (u32)DSB(DS_00104B1A);                       /* 0x1DC0F/0x1DC11 */
+    u8 want = DSB(DS_0010780B + side * 0x94u);              /* 0x1DC17..0x1DC28 */
+    u8 shown = DSB(DS_0010290C + side);                     /* 0x1DC2E */
+    if (want > shown) {                                     /* 0x1DC34/0x1DC36 */
+        DSB(DS_0010290C + side) = (u8)(shown + 1u);         /* 0x1DC38..0x1DC3C */
+        fight_hud_bar_set_inv((s32)DSB(DS_0010290C + side), side);  /* 0x1DC42..0x1DC4A, 0x1DC5C 0x1DA84 */
+    } else if (want < shown) {                              /* 0x1DC4C */
+        DSB(DS_0010290C + side) = (u8)(shown - 1u);         /* 0x1DC4E..0x1DC56 */
+        fight_hud_bar_set_inv((s32)(u8)(shown - 1u), side); /* 0x1DC50/0x1DC54, 0x1DC5C 0x1DA84 */
+    }
+    DSB(DS_00104AEC) = (u8)(DSB(DS_00104AEC) & 0xF7u);      /* 0x1DC61 */
 }
 
 /* ---- 0x20EF8 the round reset --------------------------------------------- */

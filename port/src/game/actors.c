@@ -162,6 +162,7 @@ static void actor_type_2d_update(void);
 static void actor_type_19_spawn(void);
 static void anim_code_37B54(u32 rec, u32 arg);
 static void anim_code_459D0(u32 rec, u32 arg);
+static void anim_code_45B18(u32 rec, u32 arg);
 static void anim_code_3FF90(u32 rec, u32 arg);
 static void anim_code_3FEA8(u32 rec, u32 arg);
 static void anim_code_40034(u32 rec, u32 arg);
@@ -593,11 +594,19 @@ int actors_init(void)
     fn_register(0x45B50u, (void (*)(void))fighter_45b50);
     fn_register(0x47B04u, (void (*)(void))fighter_47b04);
     fn_register(0x4F4E8u, flow_round_timer_step);
+    /* PORT: record gameplay-u0 §U0.6. The render table's bit-3 and bit-4
+     * entries 0x1DC0C and 0x4F5C8 (DS_000A86C4[3]/[4], the dwords at 0xA86D0
+     * and 0xA86D4; fn() with the unread EAX). */
+    fn_register(0x1DC0Cu, fight_hud_bar_step);
+    fn_register(0x4F5C8u, flow_bonus_count_step);
     fn_register(0x45AD0u, (void (*)(void))fighter_45ad0);
     fn_register(0x45A70u, (void (*)(void))fighter_45a70);
     fn_register(0x459F4u, (void (*)(void))fighter_459f4);
     fn_register(0x45A34u, (void (*)(void))fighter_45a34);
     fn_register(0x459D0u, (void (*)(void))anim_code_459D0);
+    /* PORT: record gameplay-u0 §U0.7. The 0xD100 target 0x45B18 (the dword
+     * at 0xEB70E), opcode 0x11, EAX = rec. */
+    fn_register(0x45B18u, (void (*)(void))anim_code_45B18);
     /* The 16 non-stub entries of the type table's callback halves. The other
      * entries hold the stub 0x5D812, which stays unregistered: the spawn
      * dispatch's fn_resolve miss keeps the raw's identity test for it. */
@@ -1721,6 +1730,15 @@ static void anim_code_459D0(u32 rec, u32 arg)
 {
     (void)arg;
     fighter_459d0(rec);
+}
+
+/* 0x45B18 — the animation-opcode target shape (record gameplay-u0 §U0.7;
+ * the 0xD100 word at 0xEB70C, opcode 0x11). anim_indirect passes EAX = rec;
+ * the raw reads only EAX, so this wrapper drops the operand. */
+static void anim_code_45B18(u32 rec, u32 arg)
+{
+    (void)arg;
+    fighter_45b18(rec);
 }
 
 /* 0x3FF90 — the animation-opcode target shape (record §54-A; the 0xD000
@@ -2900,8 +2918,9 @@ static void actor_type_0a19_update(void)
 /* 0x37B54 — demo-pose record §46-D. EAX = rec: the other side's slot
  * DS_001077A8[(rec+0x51) ^ 1] (the byte index, `and eax,0xff`); when it is
  * not 0, its record's +0x53 = 1. Called by 0x48F98 (0x4904F), 0x45D98
- * (0x45FD3, fighter_45d98, record §K8c.6) and the unported 0x45B43; the D000
- * target at 0xE8564/0xEDAFC. */
+ * (0x45FD3, fighter_45d98, record §K8c.6) and 0x45B18 (0x45B43,
+ * fighter_45b18, record gameplay-u0 §U0.7); the D000 target at
+ * 0xE8564/0xEDAFC. */
 void fighter_37b54(u32 rec)
 {
     u32 slot = DSD(DS_001077A8

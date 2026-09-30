@@ -427,6 +427,11 @@ void flow_round_timer_draw(void);
  * +0x3C numbers when DS_00105B3B is set, else the round-timer countdown
  * redraw on the frames the tick word divides by DS_001088D0. */
 void flow_round_timer_step(void);
+/* 0x4F5C8 — record gameplay-u0 §U0.6. The render table's bit-4 entry: on the
+ * frames the tick word divides by DS_001088D0, the count DS_00104AC4 down by
+ * one (while non-zero), redrawn at column 0x13 row 1, and 0x4DBB4(the
+ * DS_00104B1A slot, 1). */
+void flow_bonus_count_step(void);
 
 /* Record §49-J, modes 0x30/0x31/0x33 (mode 0x32's continue/rematch chain).
  * 0x29328 (mode 0x30): a near-twin of mode 5's 0x25C88, the same

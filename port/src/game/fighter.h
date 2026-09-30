@@ -806,6 +806,9 @@ void fighter_45a70(u32 slot, u32 rec, u32 side);
 u32  fighter_459f4(u32 side);
 void fighter_45a34(u32 side);
 void fighter_459d0(u32 rec);
+/* 0x45B18 (record gameplay-u0 §U0.7). The 0xD100 target at 0xEB70E: the
+ * child 0xC934C spawned on the record (its index in +0x4B), then 0x37B54. */
+void fighter_45b18(u32 rec);
 /* Record §48-R. Character 4's reaction callbacks 0x44F64 (0x20), 0x450E8
  * (0x21), 0x455A0 (0x22), 0x44970 (0x23), 0x45878 (0x24), 0x44CFC (0x26) and
  * 0x44B10 (0x2D), the (slot, rec, side) registers of 0x34E2C's 0x35045 call;

@@ -42843,10 +42843,140 @@ static void check_u0_45c10(void)
     mz_restore();
 }
 
+/* §U0.6: the render table's bit-3 entry 0x1DC0C (fight_hud_bar_step). The
+ * hm_seed fixture (both bars' pset words 0x1234, DS_0010290C = 0): the
+ * DS_00104B1A side's shown byte steps one toward the slot's +0x5B (unsigned),
+ * the bar redrawn from 0xC9A52[(0x78 - shown) * 2] (0x1DA84), DS_00104AEC bit
+ * 3 cleared and the other bits kept; the other side untouched. */
+static void check_u0_hud_bar_step(void)
+{
+    static const u8 want[5]  = { 5u, 2u, 6u, 0x80u, 0x10u };
+    static const u8 shown[5] = { 3u, 9u, 6u, 0x10u, 0x80u };
+    static const u8 after[5] = { 4u, 8u, 6u, 0x11u, 0x7Fu };
+    u32 i, side;
+    if (!mz_save()) { CHECK(0, "the gameplay-u0 snapshot allocates"); return; }
+    CHECK(fn_resolve(0x1DC0Cu) == fight_hud_bar_step,
+          "0x1DC0C is the render table's bit 3 entry");
+    CHECK_EQ_INT((int)DSD(0x000A86D0u), 0x0001DC0C);
+    for (side = 0; side < 2u; side++)
+        for (i = 0; i < 5u; i++) {
+            hm_seed();
+            DSB(DS_00104AEC) = 0x4Fu;
+            DSB(0x00104B1Au) = (u8)side;
+            DSB(hm_slot(side) + 0x5Bu) = want[i];
+            DSB(DS_0010290C + side) = shown[i];
+            DSB(DS_0010290C + (side ^ 1u)) = 0x33u;
+            fn_resolve(0x1DC0Cu)();
+            CHECK_EQ_INT((int)DSB(DS_0010290C + side), after[i]);
+            CHECK_EQ_INT((int)DSW(actor_pset(DSD(DS_001028F0 + side * 4u))),
+                         after[i] == shown[i] ? 0x1234
+                         : (int)DSW(0x000C9A52u + (0x78u - (after[i] > 0x78u ? 0x78u : after[i])) * 2u));
+            CHECK_EQ_INT((int)DSW(actor_pset(DSD(DS_001028F0 + (side ^ 1u) * 4u))), 0x1234);
+            CHECK_EQ_INT((int)DSB(DS_0010290C + (side ^ 1u)), 0x33);
+            CHECK_EQ_INT((int)DSB(DS_00104AEC), 0x47);
+        }
+    mz_restore();
+}
+
+/* Row 1 against a redraw of `n` at column 0x13, width 2, pad 0, `mode`
+ * through 0x2F528 from an empty row, sprite id and palette entry by cell. */
+static int u0_row1_is(s32 n, u32 mode)
+{
+    u32 got[0x2B], pal[0x2B];
+    s32 c;
+    int same = 1;
+    for (c = 0; c < 0x2B; c++) { got[c] = ct_sprite(1, c); pal[c] = q_cell_pal(1, c); }
+    mem_fill(DS_00105F38 + 0xACu, 0, 0xACu);
+    text_number_draw_font2(0x13, 1, n, 2, 0u, mode);
+    for (c = 0; c < 0x2B; c++)
+        if (ct_sprite(1, c) != got[c] || q_cell_pal(1, c) != pal[c]) same = 0;
+    return same && q_row_cells(1) != 0;
+}
+
+/* §U0.6: the render table's bit-4 entry 0x4F5C8 (flow_bonus_count_step). On a
+ * tick multiple of DS_001088D0 with DS_00104AC4 non-zero: the count down by
+ * one, drawn at (0x13, 1) width 2 mode 0x4000, and 0x4DBB4(the DS_00104B1A
+ * slot, 1): +0x5B += 1. Off-multiple, a zero count and (PORT) a zero divisor
+ * do nothing. */
+static void check_u0_bonus_count_step(void)
+{
+    u32 k;
+    if (!mz_save()) { CHECK(0, "the gameplay-u0 snapshot allocates"); return; }
+    game_string_table_load("data/game/C");
+    CHECK(fn_resolve(0x4F5C8u) == flow_bonus_count_step,
+          "0x4F5C8 is the render table's bit 4 entry");
+    CHECK_EQ_INT((int)DSD(0x000A86D4u), 0x0004F5C8);
+    for (k = 0; k < 5u; k++) {
+        hm_seed();
+        mem_fill(DS_00105F38 + 0xACu, 0, 0xACu);
+        DSB(0x00104B1Au) = 1u;
+        DSB(hm_slot(0) + 0x5Bu) = 0x20u;
+        DSB(hm_slot(1) + 0x5Bu) = 0x10u;
+        DSD(DS_001088D0) = 3u;
+        DSW(DS_00104AF4) = 0x8001u;          /* 32769 = 3 * 10923, unsigned */
+        DSD(DS_00104AC4) = 5u;
+        if (k == 1u) DSW(DS_00104AF4) = 0x8002u;
+        if (k == 2u) DSD(DS_00104AC4) = 0u;
+        if (k == 3u) DSD(DS_001088D0) = 0u;
+        if (k == 4u) DSB(0x00104B1Au) = 0u;
+        fn_resolve(0x4F5C8u)();
+        if (k == 0u || k == 4u) {
+            CHECK_EQ_INT((int)DSD(DS_00104AC4), 4);
+            CHECK_EQ_INT((int)DSB(hm_slot(k == 0u ? 1u : 0u) + 0x5Bu),
+                         k == 0u ? 0x11 : 0x21);
+            CHECK_EQ_INT((int)DSB(hm_slot(k == 0u ? 0u : 1u) + 0x5Bu),
+                         k == 0u ? 0x20 : 0x10);
+            CHECK(u0_row1_is(4, 0x4000u), "the count 4 is drawn at (0x13, 1)");
+        } else {
+            CHECK_EQ_INT((int)DSD(DS_00104AC4), k == 2u ? 0 : 5);
+            CHECK_EQ_INT((int)DSB(hm_slot(1) + 0x5Bu), 0x10);
+            CHECK_EQ_INT(q_row_cells(1), 0);
+        }
+    }
+    mz_restore();
+}
+
+/* §U0.7: the 0xD100 target 0x45B18 through its registration (rec, arg): one
+ * child spawned from 0xC934C, its index low byte in the record's +0x4B, and
+ * 0x37B54: the other side's slot record's +0x53 = 1. */
+static void check_u0_45b18(void)
+{
+    typedef void (*anim_fn)(u32 rec, u32 arg);
+    anim_fn fn;
+    u32 rec, n, r, child = 0u;
+    if (!mz_save()) { CHECK(0, "the gameplay-u0 snapshot allocates"); return; }
+    CHECK_EQ_INT((int)DSW(0x000EB70Cu), 0xD100);
+    CHECK_EQ_INT((int)DSD(0x000EB70Eu), 0x00045B18);
+    fn = (anim_fn)(void *)fn_resolve(0x45B18u);
+    CHECK(fn != NULL, "0x45B18 is registered");
+    z_fseed();
+    rec = m5_rec();
+    CHECK(rec != 0u, "a pool record for 0x45B18");
+    if (fn != NULL && rec != 0u) {
+        DSB(rec + 0x51u) = 0u;
+        DSB(rec + 0x4Bu) = 0xEEu;
+        DSB(Z_R1 + 0x53u) = 0x55u;
+        DSB(Z_R0 + 0x53u) = 0x55u;
+        n = tb_active();
+        fn(rec, 0x12345678u);
+        CHECK_EQ_INT((int)tb_active(), (int)(n + 1u));
+        for (r = actor_list_head(); r != 0u; r = actor_next(r))
+            if (r != rec && (u8)actor_index(r) == DSB(rec + 0x4Bu)) child = r;
+        CHECK(child != 0u, "the record's +0x4B names the new child");
+        CHECK(DSB(rec + 0x4Bu) != 0xEEu, "the record's +0x4B was written");
+        CHECK_EQ_INT((int)DSB(Z_R1 + 0x53u), 1);
+        CHECK_EQ_INT((int)DSB(Z_R0 + 0x53u), 0x55);
+    }
+    mz_restore();
+}
+
 int test_table_reached(void)
 {
     int before = g_failures;
+    check_u0_45b18();
     check_u0_finishers();
     check_u0_45c10();
+    check_u0_hud_bar_step();
+    check_u0_bonus_count_step();
     return g_failures - before;
 }

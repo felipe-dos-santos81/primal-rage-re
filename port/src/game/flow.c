@@ -2650,6 +2650,31 @@ void flow_round_timer_step(void)
                            mode);                       /* 0x4F5AE..0x4F5BC 0x2F528 */
 }
 
+/* 0x4F5C8 — record gameplay-u0 §U0.6. The render table's bit-4 entry
+ * (DS_000A86C4[4], the dword at 0xA86D4, its only reference; Ghidra has no
+ * function here; 0x255CC's per-bit walk calls it while DS_00104AEC bit 4 is
+ * set, which 0x26D40 sets), fn() with EAX unread; EBX/ECX/EDX/ESI pushed and
+ * popped. On the frames whose tick word DS_00104AF4 (zero-extended, a signed
+ * `idiv`) is a multiple of DS_001088D0, with the count DS_00104AC4 non-zero:
+ * the count is decremented, the new count is drawn at column 0x13, row 1,
+ * width 2, pad 0, mode 0x4000 through 0x2F528, and 0x4DBB4(the slot
+ * DS_00104B1A names, 1) runs (the call at 0x4F638). PORT: a zero
+ * DS_001088D0 would fault the original's `idiv` (0x4F5E0); the port returns,
+ * as 0x4F4E8 does (record §49-Z). */
+void flow_bonus_count_step(void)
+{
+    u32 n;
+    if (DSD(DS_001088D0) == 0u) return;
+    if (((s32)(u32)DSW(DS_00104AF4) % (s32)DSD(DS_001088D0)) != 0)
+        return;                                         /* 0x4F5CC..0x4F5E4 */
+    if (DSD(DS_00104AC4) == 0u) return;                 /* 0x4F5E6..0x4F5EE */
+    n = DSD(DS_00104AC4) - 1u;                          /* 0x4F5F5 */
+    DSD(DS_00104AC4) = n;                               /* 0x4F60A */
+    text_number_draw_font2(0x13, 1, (s32)n, 2, 0u, 0x4000u);  /* 0x4F5F0..0x4F603 0x4F610 0x2F528 */
+    fight_slot_5b_add(DS_001077B0 + (u32)DSB(DS_00104B1A) * 0x94u,
+                      1);                               /* 0x4F615..0x4F633 0x4F638 0x4DBB4 */
+}
+
 /* 0x25FDC — record §48-K. EAX = the side (kept in ESI). With the
  * DS_00104529 bit 1 the actor 0xA88E0 with EDX = 0x2A00, ECX = 0xFF, EBX =
  * 0xE00, else 0xA88B8 with EBX = 0x1200 (actor_spawn's a2 = EDX, a3 = ECX,

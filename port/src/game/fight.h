@@ -396,7 +396,14 @@ void fight_mode25_scorecard(void);
 
 /* 0x4DBB4 (record §49-W). slot+0x5B += amount * 120 / 100 (signed, truncating),
  * capped at 0x78. 0x12BB8 (camera_dust_burst) calls it with 1; its other
- * caller is unported. */
+ * caller is 0x4F5C8's 0x4F638 (flow_bonus_count_step, record gameplay-u0
+ * §U0.6). */
 void fight_slot_5b_add(u32 slot, s32 amount);
+
+/* 0x1DC0C (record gameplay-u0 §U0.6). The render table's bit-3 entry: the
+ * DS_00104B1A side's shown bar byte DS_0010290C[side] one step toward the
+ * slot's +0x5B, redrawn through 0x1DA84 when it moved; DS_00104AEC bit 3
+ * cleared. */
+void fight_hud_bar_step(void);
 
 #endif /* PRAGE_GAME_FIGHT_H */
