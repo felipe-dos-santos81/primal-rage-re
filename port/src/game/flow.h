@@ -582,7 +582,7 @@ void game_mode_08_step(void);
  * zero (0x28C0E..0x28C1E), it plays voice 0xD8 and advances the mode:
  * `mov eax,0xd8; mov edx,0xb; call 0x2C3FC; mov [DS_00104B00],dx` (0x28C20..
  * 0x28C2F).
- *   PORT: 0x28C2A 0x2C3FC(0xD8, EDX = 0xB) voice, not wired (record §45-A).
+ *   The voice is wired (0x28C20/0x28C2A, record k7-k12 §11).
  * EDX (0xB) survives 0x2C3FC, which pushes and pops EBX, EDX and EDI (record
  * §42-E.2, confirmed here by reading 0x2C3FC's own disassembly: every exit
  * path — including the two "can't play" early-outs at 0x2C8E8/0x2C8EA — ends

@@ -682,8 +682,7 @@ void game_mode_12_step(void)
             frontend_portrait_flash(i);                      /* 0x41D13 0x414B4 */
             u32 n = DSB(DS_00108112);                         /* 0x41D1A */
             DSB(DS_00108112) = (u8)(n + 1u);                  /* 0x41D23 */
-            /* PORT: 0x41D2B 0x2C3FC(n + 0x34, n) voice, not wired (record
-             * §45-A). */
+            (void)sound_voice(n + 0x34u);                     /* 0x41D28/0x41D2B 0x2C3FC (DL = n, unread) */
             if (DSD(DS_00104AD4) != 2u) {                     /* 0x41D30/0x41D37 */
                 u32 cls = DSB(DS_00108106 + i) & 0x7Fu;       /* 0x41D39/0x41D3F */
                 for (u32 side = 0u; side < 2u; side++) {      /* 0x41D4A..0x41D75 */
@@ -768,14 +767,14 @@ void game_mode_12_step(void)
         DSB(DS_00108104 + r) = (u8)(DSB(DS_00108104 + r) + 1u);  /* 0x42060 */
         DSB(DS_00104B25) = 4u;                                    /* 0x4206C */
         DSB(DS_00108111) = (u8)(DSB(DS_00108111) + 1u);           /* 0x42079 */
-        /* PORT: 0x4207F 0x2C3FC(0x3A) voice, not wired (record §45-A). */
+        (void)sound_voice(0x3Au);                                 /* 0x42074/0x4207F 0x2C3FC */
         break;
 
     case 4u:                                                     /* 0x4208E */
         frontend_portrait_flash(DSW(DS_00104AFC));                /* 0x42096 0x414B4 */
         DSB(DS_0010810E) = (u8)(DSB(DS_0010810E) + 1u);           /* 0x420A5 */
-        /* PORT: 0x420B7 0x2C3FC(0xC7) voice when DS_0010810E == 8, not wired
-         * (record §45-A). */
+        if (DSB(DS_0010810E) == 8u)                                /* 0x420AD/0x420B0 */
+            (void)sound_voice(0xC7u);                              /* 0x420B2/0x420B7 0x2C3FC */
         DSW(DS_00104AFE) = 4u;                                     /* 0x420C5 */
         DSB(DS_00104B23) = 5u;                                     /* 0x420CC */
         DSB(DS_00104B25) = 8u;                                     /* 0x420D2 */
@@ -818,8 +817,7 @@ void game_mode_12_step(void)
             - (s32)DSD(DSD(DS_001080F4) + 0x18u)) / step);               /* 0x421FC..0x42213 */
         DSW(DSD(DS_001080F4) + 0x36u) = (s16)(((s32)(u16)DSW(DS_00108102)
             - (s32)DSD(DSD(DS_001080F4) + 0x1Cu)) / step);               /* 0x42211..0x4221E */
-        /* PORT: 0x42229 0x2C3FC(0xBC, remainder) voice, not wired (record
-         * §45-A). */
+        (void)sound_voice(0xBCu);                                         /* 0x42222/0x42229 0x2C3FC (EDX = the remainder, unread) */
         DSB(DS_00104B25) = 7u;                                            /* 0x42238 (DH) */
         actors_anim_begin(DSD(DS_001080F4), DS_0000E9286, 0x3F800000u);   /* 0x42245 0x2BC30 */
         for (u32 off = 0u; off != 0x1Cu; off += 4u)                       /* 0x4224A..0x4226C */
@@ -1696,7 +1694,7 @@ void flow_arena_ko_check(void)
 {
     s32 w = (s32)(s8)DSB(DS_0010810D);                  /* 0x272DD/0x272E3 */
     if (DSB(DS_0010780A + (u32)w * 0x94u) >= 0x78u) {   /* 0x272F4..0x27303 */
-        /* PORT: 0x2730A 0x2C3FC(0xD3) voice, not wired (record §45-A). */
+        (void)sound_voice(0xD3u);                       /* 0x27305/0x2730A 0x2C3FC */
         flow_match_snapshot();                          /* 0x2730F 0x27254 */
         flow_continue_open();                           /* 0x27314 0x278B0 */
         return;                                         /* 0x27319 */
@@ -2266,8 +2264,7 @@ void game_mode_05_step(void)
         DSD(DS_00104ACC) = actor_spawn((const u32 *)(mem + desc), 0x2A00u,
                                        0xFFu, 0x1200u, 0u);  /* 0x25E13 0x2AE14 */
         DSB(DS_00104AE8) = (u8)(DSB(DS_00104AE8) | 0x40u);  /* 0x25E1D */
-        /* PORT: 0x25E39 0x2C3FC(DS_00104B14 != 0 ? 0xD9 : 0xD7) voice, not
-         * wired (record §45-A). */
+        (void)sound_voice(DSB(DS_00104B14) != 0u ? 0xD9u : 0xD7u);  /* 0x25E24..0x25E34, 0x25E39 0x2C3FC */
         DSB(DS_00104B25) = 4u;                          /* 0x25E45 (DL) */
         DSW(DS_00104AFE) = 0x3Cu;                       /* 0x25E4D (DI) */
         DSB(DS_00104B23) = 3u;                          /* 0x25E54 (DH) */
@@ -2407,7 +2404,7 @@ void game_mode_30_step(void)
         DSD(DS_00104ACC) = actor_spawn((const u32 *)(mem + desc), 0x2A00u,
                                        0xFFu, 0x1200u, 0u);  /* 0x294B3 0x2AE14 */
         DSB(DS_00104AE8) = (u8)(DSB(DS_00104AE8) | 0x40u);  /* 0x294BD..0x294C9 */
-        /* PORT: 0x294CE 0x2C3FC(0xD7, dl=3) voice, not wired (record §45-A). */
+        (void)sound_voice(0xD7u);                       /* 0x294CE/0x294D5 0x2C3FC (DL = 3, unread) */
         DSW(DS_00104AFE) = 0x3Cu;                       /* 0x294C4/0x294DC */
         DSB(DS_00104B23) = 3u;                          /* 0x294D3/0x294E3 */
         DSB(DS_00104B25) = 4u;                          /* 0x294DA/0x294E9 */
@@ -2584,7 +2581,7 @@ void game_mode_33_step(void)
  * DS_001088EF) non-zero, the byte is read signed, a value at most 10 plays the
  * voice 0x52 and takes mode 0x3000 (else 0x4000), the byte is decremented and
  * the new value is drawn at column 0x13, row 1, width 2, pad 0 through 0x2F528.
- * PORT: 0x4F577 0x2C3FC(0x52) voice, not wired (record §45-A). PORT: a zero
+ * The voice is 0x4F577/0x4F581 (record k7-k12 §11). PORT: a zero
  * DS_001088D0 would fault the original's `idiv` (0x4F55A); the port returns
  * (the init writes (v & 0xF) * 5 + 0x1E, so it is never zero). */
 void flow_round_timer_step(void)
@@ -2602,10 +2599,12 @@ void flow_round_timer_step(void)
         return;                                         /* 0x4F548..0x4F55E */
     if (DSB(DS_001088F2) == 0u) return;                 /* 0x4F560 */
     u32 mode;
-    if (((s32)DSD(DS_001088EF) >> 24) <= 0xA)           /* 0x4F569..0x4F575 */
+    if (((s32)DSD(DS_001088EF) >> 24) <= 0xA) {         /* 0x4F569..0x4F575 */
         mode = 0x3000u;                                 /* 0x4F57C */
-    else
+        (void)sound_voice(0x52u);                       /* 0x4F577/0x4F581 0x2C3FC (EDX = 0x3000, unread) */
+    } else {
         mode = 0x4000u;                                 /* 0x4F588 */
+    }
     DSB(DS_001088F2) = (u8)(DSB(DS_001088F2) - 1u);     /* 0x4F59E..0x4F5A6 */
     text_number_draw_font2(0x13, 1, (s32)DSD(DS_001088EF) >> 24, 2, 0u,
                            mode);                       /* 0x4F5AE..0x4F5BC 0x2F528 */
@@ -2934,7 +2933,7 @@ void flow_round_end_check(void)
         if (DSW(DS_00104B00) != 0x0Bu                   /* 0x27FCF..0x27FD8 */
                 && (u32)DSB(DS_00104B1E) == DSD(DS_00104ADC)   /* 0x27FDA..0x27FE9 */
                 && DSD(DS_00104AD4) == 2u) {            /* 0x27FEB/0x27FF2 */
-            /* PORT: 0x27FF9 0x2C3FC(0xD3) voice, not wired (record §45-A). */
+            (void)sound_voice(0xD3u);                   /* 0x27FF4/0x27FF9 0x2C3FC */
             fighter_39ff4();                            /* 0x27FFE 0x39FF4 */
             flow_round_over();                          /* 0x28003 0x27ED8 */
             return;
@@ -2946,7 +2945,7 @@ void flow_round_end_check(void)
         return;
     }
     if ((s32)DSD(DS_001088EF) >> 24 >= 1) return;       /* 0x28049..0x28054 */
-    /* PORT: 0x2805F 0x2C3FC(0xD3) voice, not wired (record §45-A). */
+    (void)sound_voice(0xD3u);                           /* 0x2805A/0x2805F 0x2C3FC */
     fighter_39ff4();                                    /* 0x28064 0x39FF4 */
     if ((u32)DSB(DS_00104B1E) == DSD(DS_00104ADC)       /* 0x28069..0x28078 */
             && DSW(DS_00104B00) != 0x0Bu) {             /* 0x2807A..0x28085 */
@@ -4025,10 +4024,10 @@ void game_mode_0a_step(void)
     camera_y_commit();                                   /* 0x28C09 0x12DA8 */
 
     if (DSB(DS_00107804) == 0u && DSB(DS_00107898) == 0u) {  /* 0x28C0E..0x28C1E */
-        /* PORT: 0x28C2A 0x2C3FC(0xD8, EDX = 0xB) voice, not wired (record
-         * §45-A). EDX (0xB) survives 0x2C3FC unconditionally (record §42-E.2)
-         * and becomes the mode below (0x28C2F, `DAT_00104b00 = extraout_DX`
-         * in the decompiled C). */
+        /* EDX (0xB) survives 0x2C3FC unconditionally (record §42-E.2) and
+         * becomes the mode below (0x28C2F, `DAT_00104b00 = extraout_DX` in
+         * the decompiled C). */
+        (void)sound_voice(0xD8u);                        /* 0x28C20/0x28C2A 0x2C3FC */
         DSW(DS_00104B00) = 0xBu;                         /* 0x28C2F */
     }
 }
@@ -5550,7 +5549,7 @@ void game_mode_23_step(void)
         DSD(DS_00104ACC) = actor_spawn((const u32 *)(mem + desc), 0x2A00u,
                                        0xFFu, 0x1200u, 0u);  /* 0x26B0D 0x2AE14 */
         DSB(DS_00104AE8) = (u8)(DSB(DS_00104AE8) | 0x40u);   /* 0x26B2C */
-        /* PORT: 0x26B32 0x2C3FC(0x60) voice, not wired (record §45-A). */
+        (void)sound_voice(0x60u);                            /* 0x26B17/0x26B32 0x2C3FC */
         DSB(DS_00104B25) = 4u;                               /* 0x26B37 */
         DSW(DS_00104AFE) = 0x3Cu;                            /* 0x26B3F */
         DSB(DS_00104B23) = 3u;                               /* 0x26B46 */

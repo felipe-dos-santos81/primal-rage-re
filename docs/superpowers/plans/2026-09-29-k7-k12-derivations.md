@@ -1916,3 +1916,203 @@ swapped (`!= 0u` → `== 0u`, so `0x56` then `0x54`) gives 1 FAIL line,
   is a `mkstemp` template (unique). The `re-render` and `re-oracle`
   targets write `/tmp/*.ppm` and `/tmp/prage_dataobj.txt` but are not in
   `make verify`. The `--check` step writes `frames/` in the worktree.
+
+---
+
+## §11 Task 11: K12 batch D4, the name-entry and flow sample voices
+
+Implemented in the worktree `k12-t11` (branch `k12-t11`, from `b7b7c74`).
+Every batch-D4 call was re-read from the fixup-applied image (`$K/dx.py`),
+`mov` and `call` both; each C call carries the pair `/* 0xMOV/0xCALL 0x2C3FC
+*/`. All 33 ids are case 2 except `0x4D` (case 3, row 203). The runner logs
+them without a bank read (`DS_001028C8` = 0, §4.2).
+
+### §11.1 The 33 wiring points
+
+| row | call (mov/call) | C site | driver | seed | ids |
+|---:|---|---|---|---|---|
+| 131 | `41D28/41D2B` (`lea eax,[edx+0x34]`) | `flow.c` `game_mode_12_step` case 1 | `vs4_mode12_1` | `vs4_mode12(1)`: `vs_pools`, the strings, seven live portrait actors in `DS_001080C0[0..6]` and `DS_001080F4`; `DS_0010810F` = 0, `DS_00104AFC` = 7, `DS_00108106[0]` = `0x80` (the rest 0), `DS_00108112` = 3, `DS_00104AD4` = 2 | `37` (`0x34` + 3) |
+| 132 | `42074/4207F` | same, case 3 | `vs4_mode12_3` | `vs4_mode12(3)`, `DS_00104AD4` = 0, character 0, stage 0, `DS_00104529` = 0 (the text arm); the background's `+0x36` = 0 and `+0x1C` = `0x2300` (`0x41E7D`) | `3A` |
+| 133 | `420B2/420B7` | same, case 4 | `vs4_mode12_4` | `vs4_mode12(4)`, `DS_0010810E` = 7 (7 -> 8, `0x420AD cmp eax,8`) | `C7` |
+| 135 | `42222/42229` | same, case 6 | `vs4_mode12_6` | `vs4_mode12(6)`, the background's `+0x2C` = `0x1C0` (step 1, `0x42183..0x4219D`), `DS_00107832` = 1 | `BC` |
+| 145 | `27305/2730A` | `flow.c` `flow_arena_ko_check` | `vs4_arena_ko` | `vs4_fight` (`tf_demo_fixture`, `vs_pools`, the strings, live HUD records `DS_001028F0/F8[0..1]`, both slots' `+0x8C` = 0, `DS_00104529` = 0); `DS_0010810D` = 0, `DS_0010780A` = `0x78` (`0x27303`) | `D3` |
+| 154 | `25E2D`/`25E34` `/25E39` | `flow.c` `game_mode_05_step` case 2 | `vs4_mode05_2` | `vs4_fight`; case 2 with `DS_00104B14` = 0, then again with 1 (`0x25E24`) | `D7`, `D9` |
+| 155 | `294CE/294D5` | `flow.c` `game_mode_30_step` case 2 | `vs4_mode30_2` | `vs4_fight`, `DS_00104B14` = 0 | `D7` |
+| 161 | `4F577/4F581` | `flow.c` `flow_round_timer_step` | `vs4_round_timer` | `vs_pools`, the strings, `DS_00105B3B` = 0, `DS_001088D0` = 1, `DS_00104AF4` = 7, `DS_001088F2` = 5 (non-zero, `<= 10`) | `52` |
+| 162 | `27FF4/27FF9` | `flow.c` `flow_round_end_check` | `vs4_round_end_ko` | `vs4_fight`; both `+0x5A` at `0x78` (a tie: `0x27C48` leaves `DS_00104AD4` = 2), mode 4, `DS_00104B1D` = 3 (no bonus), `B1E` = `ADC` = 3, win counts 0, characters 0 | `D3` |
+| 163 | `2805A/2805F` | same | `vs4_round_end_time` | as row 162 with both `+0x5A` at 0 and `DS_001088F2` = 0 (`0x28054`) | `D3` |
+| 168 | `28C20/28C2A` | `flow.c` `game_mode_0a_step` | `vs4_mode0a` | `m0a_seed`'s recipe: `tf_demo_fixture`, mode `0xA`, `DS_00107804` = `DS_00107898` = 0 | `D8` |
+| 193 | `26B17/26B32` | `flow.c` `game_mode_23_step` case 2 | `vs4_mode23_2` | `vs_pools`, `DS_00104529` = 0 | `60` |
+| 198 | `200B0/200B5` | `nameentry.c` `nameentry_cells_step` case 1 | `vs4_cells_1` | `vs4_ne_env` (below); cell 3 in state 1, letter 5 | `B0`, `7B` |
+| 199 | `200BA/200BF` | same | same | same | `B0`, `7B` |
+| 200 | `20128/2012D` | same, case 2 | `vs4_cells_2` | cell 2 live, y `0x1F00`, vel `0xFE`, acc `0x20`, target `0x2000` (`0x200F7`) | `71` |
+| 201 | `201C6`/`201CD` `/201D2` | same, case 3 | `vs4_cells_3` | cells 1 (odd) and 2 (even) live, y `0x1FF1`, vel `0x10`, acc `0x20`, target `0x2000` (`0x20183`; `0x201BF test di,1`, EDI = the cell index) | `E7`, `E8` |
+| 202 | `202B9/202C5` | same, case 5 | `vs4_cells_5` | cell 1 live, x `0x5010`, vel `0xFFDE`, target `0x5000` (`0x2027D`) | `70`, `4D` |
+| 203 | `202CA/202CF` | same | same | same | `70`, `4D` |
+| 204 | `2043A/2043F` | same, case 8 | `vs4_cells_8` | cell 4 in state 8, letter `0x1B` (`0x203E0`) | `E9` |
+| 205 | `204B0/204B5` | same, case 9 | `vs4_cells_9` | cell 7 live in state 9 | `E9` |
+| 206 | `1F526/1F52B` | `nameentry.c` `nameentry_step` | `vs4_ne_right_in` | `vs4_ne_dir(0x10, 0xB, 6)` | `E6`, `34` |
+| 207 | `1F560`, `1F580` `/1F593` | same | `vs4_ne_right_wrap` | `vs4_ne_dir(0x10, 0x1D, 6)` (`0x1F580`), then `(0x10, 0x20, 0xF)` (`0x1F560`) | `E6`, `39`, `E6`, `39` |
+| 208 | `1F58E/1F593` | same | `vs4_ne_right_in` | as row 206 | `E6`, `34` |
+| 209 | `1F5F8/1F5FD` | same | `vs4_ne_left_in` | `vs4_ne_dir(0x20, 0xE, 6)` | `E6`, `38` |
+| 210 | `1F638/1F644` | same | `vs4_ne_left_wrap` | `vs4_ne_dir(0x20, 0xB, 6)` (`0x1F615`) | `E6`, `35` |
+| 211 | `1F63F/1F644` | same | `vs4_ne_left_in` | as row 209 | `E6`, `38` |
+| 212 | `1F6A9/1F6AE` | same | `vs4_ne_up` | `vs4_ne_dir(0x80, 0xB, 9)` | `E6`, `37` |
+| 213 | `1F6DE/1F6E8` | same | `vs4_ne_up_end` | `vs4_ne_dir(0x80, 0x20, 0xF)` (`0x1F6DC`) | `E6`, `39` |
+| 214 | `1F705/1F70A` | same | `vs4_ne_up` | as row 212 | `E6`, `37` |
+| 215 | `1F75A/1F75F` | same | `vs4_ne_down` | `vs4_ne_dir(0x40, 0xB, 6)` | `E6`, `36` |
+| 216 | `1F78F/1F794` | same | `vs4_ne_down_end` | `vs4_ne_dir(0x40, 0x20, 0xC)` (`0x1F78D`) | `E6`, `38` |
+| 217 | `1F7B0/1F7B5` | same | `vs4_ne_down` | as row 215 | `E6`, `36` |
+| 218 | `1FF2C/1FF31` | same, the letter pick | `vs4_ne_pick` | `vs4_ne_dir(0x01, 0xB, 6)`: a face button, the letter `A` under the cursor, count 0 below the limit 3 (`0x1FEA3`) | `E9` |
+
+`vs4_ne_env`: `vs_pools`, the strings, `nameentry_reset` (the three cursor
+actors, every cell idle, `DS_001044D8`/`C8`/`BC` = 0), no pad bit and no
+autorepeat, the timer `DS_0010438C` = 500 (not finished, `0x1F4AD`), rank 3,
+count 0 of 3, the name at row 4 / column `0x24`, `DS_00104529` = 0 and
+`DS_000EF6DC` = `0x21`. `vs4_ne_dir(mask, col, row)` adds the cursor words
+`0x1044D0`/`0x1044D2` and side 0's pad byte, then calls `nameentry_step(0)`;
+with no face button and no queued letter it returns at `0x1FCF9`, so a
+direction driver logs only its arm's two ids.
+
+`K12_D4_ROWS` = 33 (`test_game.c`, `k12_d4[]`, run from `test_voice_sites`
+after the B2 pair). `nameentry.c`'s paired `mov`s that share one `call`
+(207: `0x1F560`/`0x1F580` -> `0x1F593`; 210/211 -> `0x1F644`) are one C
+call on each port arm, and row 201's two `mov`s are one C call with the
+selection (`(i & 1u) != 0u ? 0xE7u : 0xE8u`).
+
+**Same-id aliasing (§4.2).** The same id occurs on more than one row
+(`E6` in 206/209/212/215, `39` in 207/213, `38` in 211/216, `E9` in
+204/205/218, `D3` in 145/162/163, `D7` in 154/155), but no driver's path
+reaches two of those calls before the row's own call: each direction driver
+takes one arm, every cell but the seeded one is idle, and the round-end
+drivers stop at the first `D3`. Rows 206..217's `E6` call precedes the arm's
+second id on the same path, so rows sharing an arm list each other's ids.
+
+### §11.2 Corrections (raw wins)
+
+- **Row 155:** §0.4 names `0x294CE`, which is the `mov eax,0xd7`; the call
+  is `0x294D5` (after `0x294D3 mov dl,3`), as §1.3 has it. The comment
+  carries `0x294CE/0x294D5`.
+- **Row 154:** the `mov`s are `0x25E2D` (`0xD9`) and `0x25E34` (`0xD7`) on
+  `0x25E24 cmp byte [0x104b14],0`, one call at `0x25E39`. The selection
+  reads `DS_00104B14` after the spawn, independent of the descriptor pick's
+  `DS_00104529` test (`0x25DD3`).
+- **Row 161:** the old header comment named `0x4F577`, the `mov`; the call
+  is `0x4F581`, after `0x4F57C mov edx,0x3000` (the mode, which `0x2C3FC`
+  preserves and never reads). The header now points at §11 and the call is
+  in the body.
+- **EDX at rows 135, 155, 168, 131:** `0x2C3FC` never reads EDX (§6.2);
+  the `DH = 7` (row 135), `DL = 3` (row 155), `EDX = 0xB` (row 168) and
+  `DL = n` (row 131) loads are the callers' own values kept across the call,
+  which the port already stores as constants/locals. The one-argument
+  `sound_voice` is exact.
+
+### §11.3 Row 219 (the silent site `0x44AFF`) is deferred to the merge
+
+`0x44AFA mov eax,0xab; 0x44AFF call 0x2C3FC` (re-read) is the second copy
+of row 100's body (`0x44A4D`/`0x44A53`). The port runs both through one C
+body, `fighter_c4_spawn` (`fighter.c`), whose call is row 100's and is wired
+by Task 9 in a parallel worktree. By the controller's ruling this task does
+not edit `fighter.c` and adds no row 219 entry: the entry (driver through
+`fighter_44a64(rec)`, `rec+0x14` slot != 0, id `AB`) and the `0x44AFF`
+mention in the row-100 comment are added at the merge integration step,
+after Tasks 9 and 11 merge.
+
+### §11.4 Tests
+
+`k12_d4[]` and its size check in `test_voice_sites`. With the table in and
+the source unwired, the suite printed 33 `voice site row` lines (all `0 of
+n`) and `FAILURES: 33` (`$K/t11-unwired.txt`); no heap or cap failure.
+Wired: `all checks passed`.
+
+Assertion sites: 13374 -> **13375** (one size check; `rg -o
+'\bCHECK(_EQ_INT)?\(' port/tests` gives 13377 including `test.h`'s two
+macro definitions).
+
+`not wired` lines (`rg -c 'not wired' port/src`, headers included): 147 ->
+117 (`nameentry.c` 18 -> 0, `flow.c` 26 -> 15, `flow.h` 1 -> 0; rows 198,
+201 and 202 were split-phrase comments, one line each). The 15 left in
+`flow.c` are batch B1's (Task 5) and row 130's; `rg -n 'not wired'
+port/src` is empty only after every batch merges.
+
+### §11.5 Mutations (measured; FAIL lines exclude the closing `FAILURES: N`)
+
+Every one of the 33 calls was deleted in turn (`$K/t11mut.py`: the call
+becomes `(void)0;`, rebuild, `PR_ORACLE_REQUIRED=1 ./build/run_tests`,
+restore; outputs `$K/t11-mut-<row>.txt`, summary `$K/t11mut-summary.txt`).
+Every FAIL line is `test_fixtures.c:232` (the in-order check).
+
+| deleted call | FAIL lines | failing rows |
+|---|---:|---|
+| row 131 (`0x41D2B`), first | 1 | 131 (`0 of 1`) |
+| rows 132, 133, 135, 145, 155, 161, 162, 163, 168, 193, 200, 204, 205, 218 (last) | 1 each | their own (`0 of 1`) |
+| row 154 | 1 | 154 (`0 of 2`) |
+| row 198 / 199 | 2 each | 198, 199 (`0` / `1 of 2`) |
+| row 201 | 1 | 201 (`0 of 2`) |
+| row 202 / 203 | 2 each | 202, 203 (`0` / `1 of 2`) |
+| row 206 (the right arm's `E6`) | 3 | 206, 207, 208 (`0 of 2`, `0 of 4`, `0 of 2`) |
+| row 207 | 1 | 207 (`1 of 4`) |
+| row 208 | 2 | 206, 208 (`1 of 2`) |
+| row 209 / 212 / 215 (middle: 209) | 3 each | the arm's three rows (`0 of 2`) |
+| rows 210, 213, 216 | 1 each | their own (`1 of 2`) |
+| rows 211, 214, 217 | 2 each | the arm's `E6` row and their own (`1 of 2`) |
+
+No deletion failed a row off its own path. Four more mutations
+(`$K/t11-mut-{131n,133g,154s,201s}.txt`):
+
+| mutation | FAIL lines | result |
+|---|---:|---|
+| row 131's `n + 0x34u` -> `0x34u` | 1 | 131 (`0 of 1`) |
+| row 154's pick swapped (`0xD7`/`0xD9`) | 1 | 154 (`1 of 2`) |
+| row 201's pick swapped (`0xE8`/`0xE7`) | 1 | 201 (`1 of 2`) |
+| row 133's `== 8u` gate removed | 0 | survives: see §11.6 |
+
+### §11.6 Not tested
+
+- The dispatcher's effect at these sites: the runner has no DIG driver, so
+  no case-2/3 id reaches `0x1CC28`/`0x1CB18` here (§3's tests pin those).
+- Row 133's gate (`DS_0010810E == 8`): the runner checks presence, not
+  absence, so a voice on every state-4 pass survives (mutation 133g).
+- Each call's position relative to its non-voice neighbours (row 207/208
+  after the column store, row 213/216 before it, row 161 before the
+  decrement), except the in-order ids on each path.
+- Row 131 with more than one marked stage in one call (the walk returns
+  after the first) and the `DS_00104AD4 != 2` side-count arm.
+- Row 132's actor arm (`DS_00104529` bit 1), row 135's `DS_00104529` bit 1
+  base, rows 154/155's actor descriptor `0xA8884`.
+- Row 145's second test (rows 146/147, batch B1), rows 162/163's other
+  tails (`0x27DC8`, mode 7, `0x280C4`), row 161 with a countdown above 10.
+- Rows 206..217 through the autorepeat counters (`DS_001044E0`/`DC`, which
+  the image never writes, §53-A.4) and side 1's pad byte; row 218 through a
+  queued letter (`DS_001044C8 != DS_001044BC`).
+- Rows 198..205 reached through `nameentry_step` (the drivers call
+  `nameentry_cells_step` directly) and more than one cell per state except
+  row 201.
+- Row 219 (§11.3).
+
+### §11.7 Gate
+
+- `make verify` (every fixed `/tmp` path overridden with `/tmp/pr_t11_*`):
+  `EXIT=0` (`$K/verify-t11.txt`, 571 lines, `all checks passed`). The
+  oracle-line grep diffs empty against `$K/oracle-lines-base.txt`
+  (`ORACLES-EQUAL`).
+- Dumps: `dumps.sh t11-after` matches `$K/base.sha256` (`dumpsha.sh`, exit
+  0; `check/frames` 24000, `fe/run1` and `fe/run2` 1384 each, the three
+  drivers `all checks passed`). No before-dump was taken: the after-dump
+  equals the base manifest, which the §6 tree was proven against (§6.7).
+  The dump is deleted. So no frame of `--check 8000`, the fe det driver,
+  the attract dump or the title dump moves with the 33 calls wired. That
+  alone does not prove the sites are unreached there (§0.2's probe showed
+  reached case-2 voices leave the dumps unchanged too), so each row's
+  "real play only" class was measured: a scratch build turned each of the
+  33 calls into `fprintf(stderr, "T11PROBE file:line")` then the call, and
+  `--check 8000`, the fe det driver, the attract dump and the title dump
+  logged **0** probe lines (the three drivers `all checks passed`, `--check`
+  exit 0), while the unit suite logged all 33 distinct lines (138 hits).
+  The build was then restored and rebuilt.
+- `make audio-render`: `$K/t11-after.wav` is byte-identical to
+  `before-t2.wav` (`cmp`; sha256 `df74acfb…a380844`).
+- `./build/prageport --game-dir data/game/C --check 8000`: `CHECK=0`.
+- `python3 tools/port_progress.py`: `767 1203 64` / `731 731 100`,
+  unchanged (no function is ported; the README stays as it is).
+- Build: 0 warnings.
