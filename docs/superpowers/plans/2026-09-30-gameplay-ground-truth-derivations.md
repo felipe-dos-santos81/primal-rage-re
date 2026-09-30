@@ -385,6 +385,7 @@ Gate (`make verify` with the §G.0 overrides, `/tmp/gameplay-u1/t7_verify.txt`):
 (`K11-EQUAL`); the tool-test line `Ran 67 tests` = the baseline's 40 + 27
 (18 gp_session + 9 gp_capture).
 ## §G.7 The gp-pads capture (U1 Task 8)
+
 Two runs of `make gp-capture scenario=gp-pads TITLE_PIN_DIR=/tmp/pr_u1_pin`
 (the pinned exe `8120f1bd…a68d`, zero CMOS, `pad_bios=1`, DOSBox-X 2026.08.31,
 `time_limit=75`, wall 75.8 s each, 5 256 AVI frames at 70.0866 fps). Run 1's
@@ -512,3 +513,49 @@ data/k11-captures/gp-pads --out /tmp/gameplay-u1/gp-pads.script` → 64 lines,
 keys in press order, §G.4 item 3).
 
 ## §G.8 U1 closure (U1 Task 9)
+
+**Delivered.** `tools/gp_session.py` (constants, the pad table, the
+frame-keyed `Schedule`, the `poll.log` v2 format, `port_script` v2,
+`trace_diff`, the CLI `port-script` / `trace-diff`) and `tools/gp_capture.py`
+(the DOSBox-X run under `DX-CAPTURE /V /O`, the per-frame spin-state snapshot
+closed on both sides, frame-exact key and pad injection with P1/P2 names,
+chords and holds, one `H` record per consumed BIOS word, the gzip frame
+stream, the self-checks), with 27 unit tests (`tools/tests/test_gp_session.py`
+18, `tools/tests/test_gp_capture.py` 9) in `make verify`; `make gp-capture
+scenario=gp-pads`; the evidence capture `data/k11-captures/gp-pads` (run 2).
+No K11 tool, no `title_capture.py`/`smk_capture.py`/`title_compare.py` and no
+`port/` file changed (`git diff --stat 934992a -- tools/k11_capture.py
+tools/k11_session.py tools/k11_fields.py tools/k11_compare.py
+tools/title_compare.py tools/title_capture.py tools/smk_capture.py port/` →
+empty).
+
+**Corrections to the plan (raw/capture wins), each with its evidence:**
+§G.4 (the key loop `0x24D08..0x24EE7` drains a chord's words in one
+iteration: one `H` per word, `S(c).head` against the frame's last `H`, FIFO
+order within a frame; captured in §G.7.3); §G.5.2 (the snapshot's re-read
+`v3`); §G.7.1 (a hold of `n` releases at the spin of `f + n`, not `f + n − 1`;
+the `gp-pads` scenario's one-frame presses and menu-inert chord); §G.0 (the
+gate's grep includes `== demo-fight` and keeps the K11 lines apart).
+
+**Open questions.** Q2 closed (§G.7.2: all 18 names and a chord, captured
+twice, each at `press f + 1`, no late injection). Q3 still open with more
+data (§G.7.3: one to four iterations, `{1: 8, 2: 7, 3: 5, 4: 2}` and `{1: 6,
+2: 8, 3: 5, 4: 3}`; the design replays the observed consumption frame). Q4
+ruled YES by the user (§G.2) and exercised: 22 words queued and consumed per
+run, none acted on by the key loop or the MAIN MENU in run 2. Q5, Q6, Q1: not
+U1's (Q1 and Q6 need U4's long captures).
+
+**Not tested.** The real keyboard controller and IRQ1 handler (the injection
+writes the IRQ1 key-state table `[DS_00101514]+0x254+scan` and the BDA ring
+directly, as K11's `--input inject`); typematic repeat; keys inside blocking
+loops (Q5: `f` is frozen there, the generator rejects such a key); a press or
+release that falls in a snapshot gap is executed at the first snapshot after
+it (logged; §G.7.1 item 2 shows one), so its frame is the observed one, never
+the intended one.
+
+**Gate** (`/tmp/gameplay-u1/t9_verify.txt`, the §G.0 overrides):
+`verify-exit=0`; the 45 oracle lines equal
+`.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt`
+(`ORACLES-EQUAL`); the 12 `k11_compare:` walk/menuesc lines equal the Task 0
+ones (`K11-EQUAL`); tool tests `Ran 67 tests`; `port_progress.py` `771 1203 64`
+and `731 731 100` (unchanged: U1 ports no function).
