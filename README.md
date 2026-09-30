@@ -89,9 +89,9 @@ continue, game over) is ported but has no oracle: only seeded unit tests reach
 it, and a DOSBox-X ground-truth capture of a scripted real fight is the open
 work. Code Ghidra never listed is outside the counts below: 27 of the 72
 move-table callbacks and 6 of the 10 finisher entries are still unported
-(`docs/superpowers/plans/2026-09-30-gameplay-u0-derivations.md` §U0.12), and
-the drivers report every unresolved code pointer they meet (`fn_resolve`'s
-miss log).
+(`docs/superpowers/plans/2026-09-30-gameplay-u0-derivations.md` §U0.12). The
+drivers arm `fn_resolve`'s miss log, which records the unresolved code
+pointers a run reaches through `fn_resolve`.
 
 **64%** (771 of 1203) of the original's real functions have a ported,
 header-commented counterpart in `port/src/` (see `AGENTS.md` for how that

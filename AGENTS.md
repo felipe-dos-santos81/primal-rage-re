@@ -110,9 +110,12 @@ make audio-render          # FM music to a WAV (the windowed run is silent here)
 - Only `CHECK(cond,msg)` and `CHECK_EQ_INT(a,b)`.
 - Every env-gated driver and `--check` run arms `fn_resolve`'s miss log and
   must record exactly the pinned known-set (`k_miss_known` in
-  `test_platform.c`, record gameplay-u0 §U0.2). A port that makes a driver
-  reach a new unregistered code pointer fails it: register the target or pin
-  the miss with its evidence.
+  `test_platform.c`, record gameplay-u0 §U0.2; `PR_FRONTEND_DUMP` also records
+  its own unit probe `0x41578`). A port that makes a driver reach a new
+  unregistered code pointer fails it: register the target or pin the miss
+  with its evidence. The `PR_FRONTEND_DET` parent is not armed (its two
+  `PR_FRONTEND_DUMP` children are), and the windowed `PR_FN_MISSLOG` report
+  prints only when `game_main` returns, not on an `exit()` path.
 - **`game_init()` may run only once per process** (a second resource load
   exhausts the bump allocator). Any test calling it must be env-gated, and
   `run_tests.c` must run that driver alone.

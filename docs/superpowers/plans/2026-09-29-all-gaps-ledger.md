@@ -697,7 +697,7 @@ direct-called helpers; `0x3D4DC`/`0x3D8AC`/`0x20FE0`/`0x21EA4` are +0x1C
 callbacks of unported move setters. U0 ported the 13 live ones with their
 clusters (40 functions) and found `0x2EE3C` unreferenced (dead). A full scan
 (§U0.12) leaves 27 of the 72 move-table callbacks and 6 of the 10 finisher
-entries unported; `fn_resolve`'s miss log now records them in real play.
+entries unported; an armed `fn_resolve` miss log records any a run reaches.
 
 ### §H.5 Final gate
 

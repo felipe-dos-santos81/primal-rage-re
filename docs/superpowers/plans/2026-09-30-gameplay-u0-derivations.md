@@ -20,7 +20,9 @@ rel32 `call`/`jmp`/`jcc` over the code object below the runtime
 unported move clusters or render/animation entries, 4 are call-site
 addresses inside unported code, and one of those (`0x2EE41`) is dead. U0
 ports 40 functions from the raw (the 14 resolved: 13 ported, `0x2EE41` dead)
-and adds a miss log that records every unresolved code pointer in real play.
+and adds a miss log that, while armed, records every unresolved code
+pointer dispatched through `fn_resolve` on the paths a run actually
+reaches (no real-play session has been run with it yet).
 The audit found the ledger's list incomplete: 27 of the 72 move-table
 callbacks and 6 of the 10 finisher entries are still unregistered (§U0.12).
 
@@ -249,13 +251,20 @@ record's `+0x36 <= 0`, signed `jg`), the record's `+0x36/+0x44 = 0`.
 ## §U0.12 What is still missing (named gaps with evidence)
 
 - **27 of the 72 distinct move-table callbacks** (`0xA3528 + (c*64 + r)*20`)
-  are unregistered, so those moves do nothing in real play (the log records
-  them): `14EF8 14F50 15478 21114 21374 22938 22A00 231C0 23208 237D0 2381C
+  are unregistered, so those moves do nothing in real play (an armed run
+  that reaches one records it): `14EF8 14F50 15478 21114 21374 22938 22A00 231C0 23208 237D0 2381C
   3C048 3D10C 3D1EC 3DADC 3DB34 3DCEC 3F0A8 475EC 47608 47624 47720 47874
   47FCC 48608 48964 489A0` (before U0: 37 of 72).
 - **6 of the 10 finisher entries**: `0x1567C`, `0x15908` (char 3), `0x23BF8`,
   `0x23EC0` (char 6), `0x402FC` (char 0), `0x45D14` (char 4). `0x379C4` falls
-  to its `0xC9260` start when `fn_resolve` misses them (logged).
+  to its `0xC9260` start when `fn_resolve` misses them (recorded when the
+  log is armed), where the raw runs the entry. Since U0 this path is
+  reached: before U0 the reactions 0x32..0x34 did nothing; now
+  `0x37774` for characters 3 and 6 and `0x37898` for characters 0, 3, 4
+  and 6 apply the finisher arming (+50000 score through `0x41310`, the
+  flags, `DS_001078E8`) and `0x379C4` then misses the entry and starts
+  `0xC9260[char]` instead. A known deviation, open until these six
+  entries are ported.
 - **The wider non-Ghidra body.** A dword/immediate scan finds 575 plausible
   entries (after `ret`/padding) in no Ghidra function; besides the above,
   animation-opcode targets (dwords in the `0xD2xxx..0xEDxxx` streams, e.g.
@@ -265,12 +274,16 @@ record's `+0x36 <= 0`, signed `jg`), the record's `+0x36/+0x44 = 0`.
 - **Voice sites.** Of record k7-k12 §1.2's 75 outside sites, 9 are now in
   ported code and play: `37687 37691 377B9 377C3 378DE 378E8` (§U0.4), `3D3DB`,
   `3D643`, `3D9D7` (§U0.9). 66 stay outside (`3D730` is dead).
-- **Unobservable in the unit fixtures:** `0x3D4DC`'s `0x188AC(ctx[1], x, 0)`
-  (`0x3D5CE`): `0x39834`'s pose already leaves record 1 at y 0 and slot 1
-  latched (mutation D11); `0x3F450`'s `0x188AC(ctx[0], rec.x, 0)`
-  (`0x3F475`): its own `0x3C480` start zeroes the same y (mutation T23; the
-  ported `0x3F184`'s test has the same limit). Both calls follow the raw; no
-  test proves them.
+- **Two equivalent mutants (in the raw's own control flow):** deleting
+  `0x3D4DC`'s `0x188AC(ctx[1], ctx[5].x, 0)` (`0x3D5CE`, mutation D11)
+  changes nothing: `0x3D597` has set ctx[3]'s `+0x52 = 0x10`, so the
+  `0x3C4CC` at `0x3D5F9` takes its `0x3C480` path, which repeats
+  `0x188AC` with the same arguments (side = ctx[5]'s `+0x51` = ctx[1],
+  x = ctx[5]'s `+0x18`, y 0); only `0x3C148(ctx[1])` runs in between, and it
+  touches nothing the anchor reads. Deleting `0x3F450`'s `0x188AC(ctx[0],
+  rec.x, 0)` (`0x3F475`, mutation T23) is the same pattern: `0x3F488`'s
+  `0x3C480(ctx[4], ...)` repeats it at once (ctx[4] is rec). The port keeps
+  both calls because the raw makes them.
 
 ## §U0.13 Tests, mutations and the gate
 
@@ -290,7 +303,8 @@ record's `+0x36 <= 0`, signed `jg`), the record's `+0x36/+0x44 = 0`.
 - Mutations (scratch `mutbatch.py`, each applied alone, rebuilt, suite run):
   finishers 10/10, `0x45C10` 4/4, render entries 9/9, `0x45B18` 4/4,
   `0x47BFC` cluster 10/10, character 5 18/19 (D11 above), the twins and
-  `0x210C4` 26/27 (T23 above); the seam 6/6. In all 87 of 89 fail.
+  `0x210C4` 26/27 (T23 above); the seam 6/6. In all 87 of 89 fail; the two
+  survivors are equivalent (§U0.12).
 - The existing `check_slot_hook` used `0x3D484` as its example of an
   unregistered +0x18 hook; U0 registers it, so the example is now
   `SH_UNREG_HOOK` (`0x00F0F010`, outside both LE objects). Same assertions,
