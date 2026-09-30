@@ -34,7 +34,13 @@ static int run_windowed(const char *game_dir)
                host_audio_error());
     printf("prageport 0.0.1 game-dir=%s\n", game_dir);
     game_set_game_dir(game_dir);
+    /* PORT: PR_FN_MISSLOG arms the miss log (record gameplay-u0 §U0.1) for a
+     * windowed session and reports it on stdout at exit. */
+    const char *ml = getenv("PR_FN_MISSLOG");
+    int misslog = ml != NULL && ml[0] != '\0';
+    if (misslog) fn_misslog_arm(1);
     int rc = game_main();
+    if (misslog) fn_misslog_report("windowed");
     host_shutdown();
     return rc;
 }
@@ -142,6 +148,24 @@ static int attract_loop_playing(u32 h)
 
 static const u32 attract_loops[2] = { 0x0383B6F4u, 0x03837440u };
 
+/* PORT: the miss log of a --check run (record gameplay-u0 §U0.1), one
+ * `0xADDR caller` line per recorded pair, for the unit suite's known-set check
+ * (test_fn_misslog reads it, like test_gfx reads the frame dumps). Returns 1 on
+ * a write failure. */
+static int write_misslog(const char *path)
+{
+    FILE *f = fopen(path, "w");
+    if (!f) {
+        fprintf(stderr, "prageport: --check could not write %s\n", path);
+        return 1;
+    }
+    for (u32 i = 0; i < fn_misslog_count(); i++)
+        fprintf(f, "0x%05X %s\n", (unsigned)fn_misslog_addr(i), fn_misslog_ctx(i));
+    if (fn_misslog_dropped())
+        fprintf(f, "dropped %u\n", (unsigned)fn_misslog_dropped());
+    return fclose(f) != 0;
+}
+
 /* PORT: the original has no headless mode. The port runs the real master loop
  * one frame at a time without opening a window: game_init() runs the init chain
  * once, then each game_loop_step() call advances exactly one frame (the step
@@ -165,6 +189,7 @@ static int run_check(const char *game_dir, int frames)
     u32 last_hash = 0;
     u32 audio0 = game_audio_ticks();
     u32 host0 = host_tick_count();
+    fn_misslog_arm(1);                 /* record gameplay-u0 §U0.1 */
     game_init();                       /* init chain once; runs the audio init */
     for (int i = 1; i <= frames; i++) {
         game_loop_step();                /* frame i: one loop iteration */
@@ -260,6 +285,9 @@ static int run_check(const char *game_dir, int frames)
         fail++;
     }
     game_shutdown();                   /* 0x1BE30 teardown */
+    fn_misslog_report("check");
+    fail += write_misslog("frames/fn_miss.txt");
+    fn_misslog_arm(0);
     return fail > 255 ? 255 : fail;
 }
 

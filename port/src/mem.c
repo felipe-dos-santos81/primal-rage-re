@@ -36,11 +36,66 @@ void fn_register(u32 orig_addr, void (*fn)(void))
     fn_table_len++;
 }
 
-void (*fn_resolve(u32 orig_addr))(void)
+void (*(fn_resolve)(u32 orig_addr))(void)
 {
     for (u32 i = 0; i < fn_table_len; i++)
         if (fn_table[i].addr == orig_addr) return fn_table[i].fn;
     return NULL;
+}
+
+/* PORT: the miss log's storage is port instrumentation, not game state (like
+ * fn_table above). `ctx` is a caller's __func__, a string literal, so the
+ * pointer stays valid. */
+static struct { u32 addr; const char *ctx; u32 hits; } fn_miss[FN_MISSLOG_MAX];
+static u32 fn_miss_len, fn_miss_dropped;
+static int fn_miss_armed;
+
+void (*fn_resolve_from(u32 orig_addr, const char *ctx))(void)
+{
+    void (*fn)(void) = (fn_resolve)(orig_addr);
+    if (fn != NULL || orig_addr == 0 || !fn_miss_armed) return fn;
+    for (u32 i = 0; i < fn_miss_len; i++)
+        if (fn_miss[i].addr == orig_addr && strcmp(fn_miss[i].ctx, ctx) == 0) {
+            fn_miss[i].hits++;
+            return NULL;
+        }
+    if (fn_miss_len < FN_MISSLOG_MAX) {
+        fn_miss[fn_miss_len].addr = orig_addr;
+        fn_miss[fn_miss_len].ctx = ctx;
+        fn_miss[fn_miss_len].hits = 1;
+        fn_miss_len++;
+    } else {
+        fn_miss_dropped++;
+    }
+    return NULL;
+}
+
+void fn_misslog_arm(int on)
+{
+    fn_miss_armed = on != 0;
+    if (on) fn_miss_len = fn_miss_dropped = 0;
+}
+
+u32 fn_misslog_count(void) { return fn_miss_len; }
+u32 fn_misslog_addr(u32 i) { return i < fn_miss_len ? fn_miss[i].addr : 0; }
+const char *fn_misslog_ctx(u32 i) { return i < fn_miss_len ? fn_miss[i].ctx : ""; }
+u32 fn_misslog_hits(u32 i) { return i < fn_miss_len ? fn_miss[i].hits : 0; }
+u32 fn_misslog_dropped(void) { return fn_miss_dropped; }
+
+int fn_misslog_has(u32 addr)
+{
+    for (u32 i = 0; i < fn_miss_len; i++)
+        if (fn_miss[i].addr == addr) return 1;
+    return 0;
+}
+
+void fn_misslog_report(const char *tag)
+{
+    for (u32 i = 0; i < fn_miss_len; i++)
+        printf("fn-miss %s 0x%05X %s hits=%u\n", tag, (unsigned)fn_miss[i].addr,
+               fn_miss[i].ctx, (unsigned)fn_miss[i].hits);
+    printf("fn-miss %s distinct=%u dropped=%u\n", tag, (unsigned)fn_miss_len,
+           (unsigned)fn_miss_dropped);
 }
 
 u32 fn_origin(void (*fn)(void))

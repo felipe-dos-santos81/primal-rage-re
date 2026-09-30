@@ -31,6 +31,7 @@ extern int g_failures;
  * would change the state any test after it starts from. */
 #define TEST_CASES(X)   \
     X(test_mem)         \
+    X(test_fn_misslog)  \
     X(test_le)          \
     X(test_res)         \
     X(test_gra)         \
@@ -98,5 +99,9 @@ int test_title_window(const char *dump);
  * PR_FRONTEND_DUMP and require the two frame-hash logs byte-identical. `self` is
  * argv[0]; PR_FRONTEND_DET names the dump root. */
 int test_frontend_determinism(const char *self);
+/* The miss log's driver gate (record gameplay-u0 §U0.2): after the driver
+ * selected by `env` ran with the log armed, the recorded (address, caller)
+ * pairs must be exactly that driver's pinned known-set. */
+int test_fn_misslog_driver(const char *env);
 
 #endif /* PR_TEST_H */

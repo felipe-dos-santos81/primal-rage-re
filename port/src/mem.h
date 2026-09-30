@@ -50,4 +50,28 @@ void  fn_register(u32 orig_addr, void (*fn)(void));
 void (*fn_resolve(u32 orig_addr))(void);
 u32   fn_origin(void (*fn)(void));
 
+/* PORT: the miss log (record gameplay-u0 §U0.1). The original calls every code
+ * pointer it loads; the port's callers skip an unregistered one silently, so a
+ * table-reached function the port lacks leaves no trace. fn_resolve_from is
+ * fn_resolve plus the caller's name: while the log is armed, each distinct
+ * (non-zero unresolved address, caller) pair is recorded with a hit count.
+ * Inert by default (nothing is recorded until fn_misslog_arm(1)); the drivers
+ * arm it and report it, PR_FN_MISSLOG arms the windowed run. The macro routes
+ * every `fn_resolve(x)` call through it with the calling function's name. */
+void (*fn_resolve_from(u32 orig_addr, const char *ctx))(void);
+#define fn_resolve(a) fn_resolve_from((a), __func__)
+
+#define FN_MISSLOG_MAX 64u
+void        fn_misslog_arm(int on);        /* 1 arms and clears, 0 disarms */
+u32         fn_misslog_count(void);        /* distinct (address, caller) pairs */
+u32         fn_misslog_addr(u32 i);
+const char *fn_misslog_ctx(u32 i);
+u32         fn_misslog_hits(u32 i);
+u32         fn_misslog_dropped(void);      /* misses past FN_MISSLOG_MAX pairs */
+/* 1 when some recorded pair has address `addr` (any caller). */
+int         fn_misslog_has(u32 addr);
+/* One `fn-miss <tag> 0xADDR <caller> hits=N` line per pair on stdout, then
+ * `fn-miss <tag> distinct=N dropped=N`. */
+void        fn_misslog_report(const char *tag);
+
 #endif /* PR_MEM_H */
