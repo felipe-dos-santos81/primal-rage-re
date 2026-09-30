@@ -79,6 +79,7 @@ extern int g_failures;
     X(test_title,    "PR_TITLE_DUMP")         \
     X(test_frontend, "PR_FRONTEND_DUMP")      \
     X(test_k11_oracle, "PR_K11_DUMP")    \
+    X(test_gp_replay, "PR_GP_DUMP")      \
     X(test_restart_drive, "PR_RESTART")
 
 #define TEST_CASE_DECLARE(name) int name(void);

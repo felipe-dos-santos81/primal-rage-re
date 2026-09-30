@@ -396,7 +396,7 @@ Two runs of `make gp-capture scenario=gp-pads TITLE_PIN_DIR=/tmp/pr_u1_pin`
 `c43f4462a519adbff68a3c83acbb73db062f453338a470c2e67aba804b33649e`; 422 distinct
 frames, raw 1372..5251; 11 MB). The analysis script is
 `/tmp/gameplay-u1/analyse.py`; its run-2 output `/tmp/gameplay-u1/t8_run2_analysis.txt`.
-(After review 1, `data/k11-captures/gp-pads` holds run 3, §G.9; run 2's
+(After review 1, `data/k11-captures/gp-pads` holds run 3, §G.8a; run 2's
 `poll.log`, `session.txt` and `window.txt` are kept in the ledger's
 `gp-pads-run2/`, and the script and its output in the ledger directory.)
 
@@ -565,7 +565,7 @@ the intended one.
 ones (`K11-EQUAL`); tool tests `Ran 67 tests`; `port_progress.py` `771 1203 64`
 and `731 731 100` (unchanged: U1 ports no function).
 
-## §G.9 Review 1 fixes
+## §G.8a Review 1 fixes (U1)
 
 Review `.superpowers/sdd/2026-09-30-gameplay-scope/u1-review1.md` ("Needs
 fixes"; spec verdict ✅). New commits on `gameplay-u1`, no history rewritten:
@@ -627,3 +627,91 @@ counts measure different things: **21** is the pad presses (18 single names
 plus the boot Enter (wall-timed, logged `late=0` by definition), and all 22
 were consumed and pinned by `port_script` (`presses with bios 22 H 22`).
 BIOS consumption `{1: 7, 2: 8, 3: 5, 4: 2}` over those 22.
+
+## §G.9 The replay driver: script v2, frame-keyed keys and bits (U2 Task 1)
+
+Worktree `.worktrees/gameplay-u2`, branch `gameplay-u2` from `gameplay-u1`
+(`302ecc8`); `data` and `.superpowers` symlinked to the main checkout's, the two
+git-ignored fixtures copied from it. Every `make verify` in U2 runs with the
+per-agent overrides `SMK_DUMP=/tmp/pr_u2_smk TITLE_DUMP=/tmp/pr_u2_title
+ATTRACT_DUMP=/tmp/pr_u2_att FRONTEND_DUMP=/tmp/pr_u2_fe TITLE_PIN_DIR=/tmp/pr_u2_pin
+AUDIO_WAV=/tmp/pr_u2.wav K11_DUMP=/tmp/pr_u2_k11`; scratch `S=/tmp/gameplay-u2`.
+
+**Baseline (Step 1).** `make verify` → `verify-exit=0` (`$S/t1_base.txt`). The
+45 oracle lines (`grep -E '^(oracle C-vs-Python|capture oracle|smk_compare|title_compare|attract_compare|== demo-fight)'`,
+the §G.0 pattern, not the plan's) `diff` against
+`.superpowers/sdd/2026-09-29-k7-k12/scratch/oracle-lines-base.txt` → no output
+(`ORACLES-EQUAL`); the 12 `k11_compare:` lines equal `/tmp/gameplay-u1/k11_base.txt`
+(`K11-EQUAL`). The K11 dumps are present (79 walk, 187 menuesc `frame_*.raw`);
+their sha256 lists (`$S/k11_{walk,menuesc}.sha256`) equal those of U1's gate
+dumps `/tmp/pr_u1_k11/{walk,menuesc}` (U1 changed no `port/` file, so those are
+the pristine port's). Assertion sites at `302ecc8`
+(`rg -o '\bCHECK(_EQ_INT)?\(' port/tests -g '!test.h' | wc -l`): **13761**.
+(Note: the verify run's own mid-run `cmake --build` recompiled `test_game.c`
+after the Task 1 driver had been written into it; the driver runs only under
+`PR_GP_DUMP`, and the oracle lines and K11 dumps equal the pristine
+references above, so the baseline stands. The assertion count was taken on the
+stashed tree.)
+
+**The driver** (`port/tests/test_game.c`, after `test_k11_oracle`; registered
+once in `TEST_DRIVERS` as `X(test_gp_replay, "PR_GP_DUMP")`, before
+`test_restart_drive`, which stays last). As the plan's Step 3, with two
+deviations: the Task 2 statics (`gp_dumped`, `gp_hash_last`, `gp_frames`,
+`gp_trace`, `GP_DS_0010810D`) are added in Task 2, where they are first used
+(`-Wall -Wextra` would flag them unused here); and the `calloc` comment drops the
+`PORT:` tag (a test file, not a port deviation). Keys of one frame are queued in
+script order, which `port_script` keeps as press (FIFO) order (§G.4 item 3), so
+a chord's words reach the port's key loop together as they reached the
+original's (§G.4, §G.7.3). No `port/src` change; `run_tests.c` untouched (its
+`k_drivers` table is built from `TEST_DRIVERS`).
+
+**Red (Step 4)** — `$S/smoke.script` with `enter_state FFFF`:
+`FAIL …/port/tests/test_game.c:12297: 0 != 65535`, `FAILURES: 1`, `exit=1` (as
+the plan). **Green (Step 5)** — `enter_state 0000` (the value the red run
+printed, = the K11 smoke's): `all checks passed`, `exit=0`; `gp.log` exactly
+
+```
+key 0 f=300 scan=1C ascii=0D mode=0003
+key 1 f=450 scan=1C ascii=0D mode=0027
+key 2 f=600 scan=1C ascii=0D mode=0027
+```
+
+with no `left-queued` line (as the plan).
+
+**The gp-pads script** (`python3 tools/gp_session.py port-script --scenario
+gp-pads --capture data/k11-captures/gp-pads --out $S/gp-pads.script` → 64
+lines, byte-identical to `/tmp/gameplay-u1/gp-pads.script` of §G.7.3):
+`all checks passed`, `exit=0`; `gp.log` holds the 22 keys and 36 bits lines in
+script order, every key logged with `mode=0027` after the first (`key 0 f=321
+… mode=0003`), the chord `key 19/20/21 f=981` (`2C 7A`, `31 6E`, `4D E0`) then
+`bits f=981 kb=2410`, `bits f=986 kb=0000`, and **no `left-queued` line**: the
+port's key loop consumed every word in the iteration the original consumed it
+(the script's key frame is the capture's `H` frame).
+
+**Mutations (Step 6),** each restored → `all checks passed`:
+
+- (a) `gp_step[gp_next].f <= f + 1u` → `<= f` (keys one iteration late):
+  `FAIL …:12295: 3 != 39` (`mode_after`) **and** `FAIL …:12299: 3 != 0`
+  (`gp_missed`), `FAILURES: 2`, `exit=1`.
+- (b) `key 299 1C 0D` inserted after `key 300 1C 0D`
+  (`$S/smoke_unsorted.script`): `FAIL …:12244: PR_GP_SCRIPT names a parsable gp
+  port script v2`, `FAILURES: 1`.
+- (c, added) `enter_frame 301` (the first key is not the Enter at
+  `enter_frame`, Review Focus 2): the same parse `FAIL …:12244`, `FAILURES: 1`.
+- (d, added) `gp_keys_sent++` removed: `FAIL …:12298: 0 != 3`.
+- (e, added) the end test `>= gp_end` → `> gp_end + GP_LOOP_SLACK` (the end
+  never reached): `FAIL …:12299: 600 != 0` (the `e` step counted missed at each
+  iteration past it) and `FAIL …:12300: the gp script ran to its end frame`.
+- (f, added) a script whose Enter frame the loop never reaches (`enter_frame
+  0`, `key 0 1C 0D`, `end 10`; `f + 1 == 0` never holds): all seven sentinel
+  checks fail (`the loop reached the script's Enter frame`, `65535 != 3`,
+  `65535 != 39`, `1048575 != 0` twice, `0 != 1`, `the gp script ran to its end
+  frame`), `FAILURES: 7`.
+
+**Correction to the plan (Step 6):** the plan records `gp_missed` as never
+tripped and lists it under "Not tested". It is shown failing under mutation (a)
+(`3 != 0`: a step applied one iteration late is exactly a miss) and (e); what
+no *well-formed script* can trip on the unmutated driver is a miss, because
+each `game_loop_step()` raises the counter by one and the parser rejects
+unsorted steps. Not tested: `CHECK(!gp_failed …)` (no scripted path faults; a
+fault would need a capture that faults).
