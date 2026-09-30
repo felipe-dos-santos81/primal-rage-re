@@ -374,7 +374,7 @@ wrong, and Task 6 fixes it.
 | 4 | `game/flow.c:2622`, `:2623` | Update entry 15 `0x260BC` (bonus card) | `0x260BC` (non-Ghidra) | **closed** (Task 5a, record §B8): entries 15 and 16 ported and registered; both `PORT:` notes in `flow_round_bonus_a/_b` rewritten. |
 | 5 | `game/flow.c:5962` | `0x1CC28` slot choice and `0x1CB18` start | K7 | **closed** (record k7-k12 §3): `0x1CC28`'s choice and `0x1CB18` are ported; the comments cite §0.7 |
 | 6 | `game/flow.c:6168` | same as 5 (`snd_sample_queue`) | K7 | **closed** (record k7-k12 §3): `0x1CC28`'s choice and `0x1CB18` are ported; the comments cite §0.7 |
-| 7 | `game/fighter.h:73` | `0x18540`/`0x18350` screen-anchor path | ported (`fighter.c:183/214`, called at `fighter.c:253/257`) | **stale, fixed** (Task 7) |
+| 7 | `game/fighter.h:73` | `0x18540`/`0x18350` screen-anchor path | ported (`fighter_18540`/`fighter_18350` in `fighter.c`, called from `fighter_slot_latch`) | **stale, fixed** (Task 7) |
 | 8 | `game/flow.h:42` | "the other cases are named gaps" | — | **stale, fixed** (Task 7; §D: 52/52) |
 | 9 | `game/fighter.h:89` | `0x494A8` dust entry and `res_resolve` tail | `0x494A8` is ported and called (`0x33E43`), and so is the sound-bank `res_resolve` tail (`0x33E51..0x33EA6`, behind the `0x1CEBC` gate). | **stale, fixed** (Task 7) |
 | 10 | `game/flow.h:292` | Game-start modes `0x28..0x2F` are named gaps | ported (§49-Q) | **stale, fixed** (Task 7) |
@@ -513,17 +513,18 @@ that proves it.
 | Unported non-runtime Ghidra functions | 34 | **0** | `python3 tools/port_progress.py --unported` |
 | Counter | `745 1203 62` / `709 743 95` | **`767 1203 64` / `731 731 100`** (81 host-owned/deferred excluded) | `python3 tools/port_progress.py` |
 | `TODO(verify)` in `port/src` | 31 | **0** | `grep -rn 'TODO(verify)' port/src` |
-| `TODO(verify)` in `port/tests` | not measured | 1, explained | `test_game.c:4720`: the front-end driver's frame-counter seed 886; the original's live counter is unread (demo record §1.6); settling it needs a live-RAM dump |
+| `TODO(verify)` in `port/tests` | not measured | 1, explained | the `test_game.c` comment that starts "TODO(verify): the original's live counter is unread" (above `FRONTEND_FRAMES_BEFORE_STATE2`): the front-end driver's frame-counter seed 886; the original's live counter is unread (demo record §1.6); settling it needs a live-RAM dump |
 | `game_frame` cases | 52/52 wired | 52/52 wired | §D |
 | `named gap` sites (`port/src` + `port/tests`) | 35 | 13, all live named gaps (§H.3) or history ("formerly", "pinned") | `rg -n -i 'named gap' port/src port/tests` |
 | `not wired` in `port/src` | ~180 | 0 | `rg 'not wired' port/src` |
+| `not modelled` deviations in `port/src` (fifth source, added in fix round 1) | not enumerated | 10 hits of `rg -n 'not modelled\|not yet modelled\|is not modelled' port/src` (1 of them matches `PORT:.*not modelled` on one line); a multi-line-aware search (`rg -U 'not(\s\|\n\s*\*)+modell?ed\|does not model\|unmodelled'`) finds 20 lines at 18 locations = 15 distinct deviations, each with a verdict in §H.1a | as named |
 
 The Task 7 sweep (`rg -n -i 'named gap\|TODO\(verify\)\|not wired\|stand-in\|deferred\|unported' port/src`,
 plus `port/tests` and `port/spec/game_flow.md`) checked every hit against a
 port call-site annotation or header and a raw rel32 scan of the fixed-up image.
 It fixed 62 stale comment sites in `port/src` (commits `1aee088`, and the
 `config_key_latched` callers comment in the closing commit), 7 in `port/tests`
-(6 comments and one literal `0x00104B22u` -> `DS_00104B22`), 1 in
+(6 comments and one literal (6 sites) `0x00104B22u` -> `DS_00104B22`), 1 in
 `test_video.c`, and 9 places in `game_flow.md`. `port/src` changes are
 comment-only: a comment-stripped compare of every touched file is identical.
 The `stand-in` hits that remain are live `PORT:` stand-ins (the DIG handle
@@ -538,6 +539,35 @@ entrance table `0xA8628` holds **7** dwords (`0x40CB0, 0x24568, 0x49150,
 0x15A34, 0x45FE8, 0x40E64, 0x24804`), not 8 (§B.2, §E-2). `game_flow.md`'s
 "`0x2D62C` has exactly one reference" is wrong: `0x1BE28 call 0x2d62c` in the
 ISR `0x1BDF4` (already in todo-verify §1 and §K9.5; now noted in the spec).
+
+### §H.1a `not modelled` deviations (fifth enumeration source, fix round 1)
+
+Task 1's four sources (unported functions, `TODO(verify)`, `game_frame` cases,
+`named gap` prose) never enumerated `PORT:` deviations that say "not
+modelled". Every hit of the multi-line-aware search above has a row here.
+
+| site | deviation | verdict | evidence |
+|---|---|---|---|
+| `config.c` (`config_key_latched`), `config.h` (`0x2EB80`) | idle-timeout longjmp | **named gap §H.3 #1** | `0x2EBAE mov eax,0x1044F4; 0x2EBB3 jmp 0x65431` |
+| `ail.c` / `ail.h` (`AIL_set_sequence_volume`, `0x5DECA`) | the 500 ms sequence-volume fade | **named gap §H.3 #8** | see §H.3 |
+| `movie.c` (`movie_play` header) | the entry skip tests `0x1C752..0x1C766` | **named gap §H.3 #9** | see §H.3 |
+| `sequencer.c` (ctrl 64 / ctrl 121) | MDI sustain release `0x3B1E` | named gap §C-13 (carried) | record todo-verify §13 |
+| `sequencer.c` (loop controllers 116/117) | XMIDI FOR/NEXT `0x68AB0` | named gap §C-14 (carried) | record todo-verify §14 |
+| `flow.c` (`game_isr_ticks`) | the ISR's `DS_00104B22` gate | closed: host-owned tick model (todo-verify §1, §K9.5); the ISR `0x1BDF4` is host-owned | `0x2D62C` row in `tools/port_classification.txt` |
+| `flow.c` (`0x2598F`, stage pick) | the `k = -2` read of a leftover stack byte `[esp-2]` | re-scoped: unpinnable (the value is uninitialised stack memory, like §E-17's residue); the port takes the raw's no-match exit `0x259C3`. Reached only with `DS_00104AD4 = -1` (stored at `0x25A0E`, `0x27C3D`) and no free or unmatched stage | `flow.c` `PORT:` note |
+| `res.c` (`0x1B5C2`) | the `0x40000000` force-load arm | closed: unreachable, no store of `0x40000000` to an entry's `+0xC` in the code object | `res.c` `PORT:` note |
+| `sprite.c` (`0x51ED8`) | the `+0x30` clip write-back | closed: unobservable, the one caller's node is a dead stack local with zeroed clips (`0x1C5EA`, `0x1C620..0x1C62C`) | `sprite.c` `PORT:` note |
+| `sequencer.c` (type-3 gate `[v+0x18E5]`) | unreachable voice gate | closed: every shipped payload opens `0x000E` (type 0) | `sequencer.c` comment |
+| `fighter.c` (`0x3AAFC`'s ECX) | a dead argument | closed: not a deviation (overwritten at `0x3AB2D` before any read) | `fighter.c` comment |
+| `fight.c` `0x4D313` and `0x4D77E` (two sites) | a side byte above 1 indexing the raw's saved registers | closed: unreachable, the only writers of `DS_00104B1A` (`0x269D0`, `0x269DF`) store 0 or 1 | `fight.c` `PORT:` notes |
+| `fight.c` `0x49CDD` | a `+0x21` byte above 2 aliasing frame locals | closed: unreachable, every `+0x21` writer stores a side (record §K13.3) | `fight.c` `PORT:` note |
+| `attract.c` `0x11151` | `EDI = 0xB4` into `0x13C70` | closed: not a deviation, the same value is stored as the `DS_000F0A68` countdown | `attract.c` `PORT:` note |
+
+That is 18 locations and 15 distinct deviations (the `ail.c`/`ail.h`,
+`config.c`/`config.h` and `sequencer.c` ctrl-64/ctrl-121 pairs each describe one
+deviation): 3 named gaps in §H.3 (#1, which was already listed, and the new
+#8 and #9), 2 carried named gaps, 1 re-scoped, 1 host-owned, and 8 closed as
+unreachable, unobservable or not a deviation.
 
 ### §H.2 Row accounting
 
@@ -557,26 +587,47 @@ ISR `0x1BDF4` (already in todo-verify §1 and §K9.5; now noted in the spec).
 - **§F:** all 20 cycles closed.
 - **§G:** all 12 K9 rows written with record tags; K10's host-owned verdict is
   recorded, pending the user's ratification.
+- **Awaiting explicit user ratification** (approved by the controller, not by
+  the user): the 12 K9 rows in `tools/port_classification.txt` (host-owned
+  `0x501A3`, `0x4FB98`, `0x4FF8F`, `0x4FFD8`, `0x2D62C`; deferred `0x2E180`,
+  `0x2E0A4`, `0x2E034`, `0x2DF8C`, `0x2D498`, `0x32B94`, `0x32BB0`), the K10
+  host-owned row `0x50D23`, and the removal of the `0x1D0BC` host-owned row
+  (reclassified to ported, record k7-k12 §0.9).
 
 ### §H.3 Named gaps still open
+
+**Ten named gaps** are open: the six carried by K7+K12 and K11 (#1..#6),
+`fight_health_sync`'s case 18 (#7), the two new `not modelled` deviations of
+§H.1a (#8, #9) and `movie.c`'s decode-failure exit (#10).
 
 The six carried by K7+K12 and K11:
 
 | # | Gap | Evidence |
 |---:|---|---|
-| 1 | The idle-timeout / menu-result longjmp is not modelled | `0x2EB80` (`config_key_latched`) stores `DS_00107414 = 0` then `0x2EBB3 jmp 0x65431`, `longjmp(0x1044F4, 1)`; `game_frame` case `0x27` (`0x251C6..0x25215`) takes the same longjmp at `0x25206` for any menu result other than 0/-5/-10. The port keeps the store and returns 0 / continues (spec §7, `config.c` and `flow.c` `PORT:` notes). |
+| 1 | The idle-timeout / menu-result longjmp is not modelled | `0x2EB80` (`config_key_latched`) stores `DS_00107414 = 0` then `0x2EBB3 jmp 0x65431`, `longjmp(0x1044F4, 1)`; `game_frame` case `0x27` (`0x251C6..0x25215`) takes the same longjmp at `0x25206..0x2520B` (`mov eax,0x1044F4` at `0x25206`, `jmp 0x65431` at `0x2520B`) for any menu result other than 0/-5/-10. The port keeps the store and returns 0 / continues (spec §7, `config.c` and `flow.c` `PORT:` notes). |
 | 2 | TEST CONTROLS RAW DATA reads linear `0xFFE80003` | `0x32573..0x32578`; outside `mem[]` and any DOS memory; drawn as 0 (`svcmenu.c:992`, record §K11.5, §E-32). |
 | 3 | STATISTICS page 2's `idiv` fault | `0x334CD..0x334E2` (`0x33458`): a non-zero sum with a zero low word raises #DE; drawn as 0 (`svcmenu.c:1192`, record §K11.7, §E-33). |
 | 4 | `0x1D0BC`'s two allocation-failure arms are ported but untested | The MIDI arm `0x1D10E..0x1D12F` (zeroes `DS_001028C4/C0/CC`) and the slot break `0x1D16B` (slot 0's failure included). The bump allocator cannot fail in-process without exhausting `mem[]` (record k7-k12 §0.7.1 and its Not-tested list). |
 | 5 | No oracle reaches the K11 service menu | No capture of the options menu exists. Its 50 functions are pinned only by 160 scripted unit-test frames (record §K11.8/§K11.9). |
 | 6 | Headless sample slots never end | With no audio device the mixer is not rendered, so `AIL_sample_status` keeps a started sample at 4; the raw DIG service marks it done at the buffer end (`0x6F28F`) (`ail.c:369`, record k7-k12 §0.7.6). |
 
-Found by the Task 7 sweep (a deferred Task 3a minor; not ported here, because
-Task 7 changes no behaviour):
+Recorded in Task 3a (record `2026-09-29-k1-k9-derivations.md` §K1.1, and
+PROGRESS.md's Task 3a paragraph), carried as a deferred minor, and re-verified
+by the Task 7 sweep. It is **live in real play**. It is not ported here,
+because Task 7 changes no behaviour:
 
 | # | Gap | Evidence |
 |---:|---|---|
-| 7 | `fight_health_sync` (`0x34B6C`) case 18 is a `PORT:` `break` | Raw `0x34CC7..0x34D21`: `si = word [DS_001088E0 + side*2]`; if `(si & 0x300) != 0` and `(si & 0xC00) != 0` it exits; else if slot `+0x54` is 0 or 1 it calls `0x3BDDC(side)` and, on a non-zero AL, `0x18B04(side)`. Both callees are ported (`fighter.c`, `/* 0x3BDDC`, `/* 0x18B04`). The arm needs its own cycle: a seeded test and the oracle gate. |
+| 7 | `fight_health_sync` (`0x34B6C`) case 18 is a `PORT:` `break`, so a fighter in slot state `+0x52 = 0x12` loses the attack transition | Raw `0x34CC7..0x34D21`: `si = word [DS_001088E0 + side*2]`; if `(si & 0x300) != 0` and `(si & 0xC00) != 0` it exits; else if slot `+0x54` is 0 or 1 it calls `0x3BDDC(side)` and, on a non-zero AL, `0x18B04(side)`. Both callees are ported (`fighter.c`, `/* 0x3BDDC`, `/* 0x18B04`). The state is reachable: the ported `0x36638` (`fighter_state_36638`) stores `+0x52 = 0x12` at `0x366B2` and `0x366D1`, and it has 13 raw call sites (`0x34A55` in the default state `0x349C8`, `0x34BDE` in `fight_health_sync` itself, `0x358A4`, `0x358F9`, `0x36450`, `0x3651C`, `0x36A7A`, `0x36B41`, `0x373C6`, `0x37414`, `0x37456`, `0x375B5`, `0x3822D`). `0x3BDDC` has 7 raw call sites, of which `0x34D0C` is this arm's. The arm needs its own cycle: a seeded test, a mutation proof and the oracle gate. |
+
+Two `not modelled` deviations from §H.1a and one movie-player exit, verified
+against the raw mirror:
+
+| # | Gap | Evidence |
+|---:|---|---|
+| 8 | The sequence-volume fade is not modelled | `AIL_set_sequence_volume` (`0x5DECA`, which passes its three arguments to the runtime's `0x6A8D0`) is called with a 500 ms fade: `0x1CAF6 push 0x1F4 … 0x1CB09 call 0x5DECA` (its raw call sites are `0x1C910`, `0x1C9A5`, `0x1C9F0` and `0x1CB09`). The port ignores `fade_ms` and applies the volume at once (`ail.c`, `ail.h` `PORT:` notes). Audible only; no frame reads it. |
+| 9 | The movie player's entry skip tests are not modelled | `0x1C752 call 0x62756; test eax,eax; jne 0x1C878` and `0x1C75F cmp byte [0xA81A8],0; jne 0x1C878`: a pending key or the quit flag skips the movie, and `0x1C878` is the epilogue, reached **without** the exit blank (record K10 §0.1). The port always opens the movie, and leaves it only through its own loop exit flag and key poll (`movie.c` `PORT:` note). |
+| 10 | `movie_play` returns without the exit blank when a frame fails to decode | `movie.c`: `if (!smk_decode_frame(&m, draw)) return 0;` skips `gfx_screen_reset(0)`. In the raw, every exit of the frame loop reaches `0x1C873` (`0x52106(0)`) before the epilogue (record K10 §0.1, §K10.3). Reached only on a corrupt SMK; the shipped movies decode (smk oracle 120/120, 41/41). |
 
 Carried from earlier rows (unchanged, evidence in the row): §C-13 (the MDI
 sustain `0x3B1E`), §C-14 (XMIDI FOR/NEXT), §C-24 (the credit countdown under
@@ -586,21 +637,26 @@ needs a runtime capture at `0x4A48E`), §E-27 (the front-end driver's s16title
 screen; needs a breakpoint at `0x1B5E9`), §E-28..31 (language reload
 `0x47370`, joystick device choice, play-time fields, audit counters), the
 deferred CMOS writer `0x1B084` (§50-C), §K3.3 (`DS_00107A38` during the demo
-fights, not visible to the oracles), and the `test_game.c:4720` seed above.
+fights, not visible to the oracles), the stage-pick stack read at `0x2598F`
+(§H.1a), and the `test_game.c` comment that starts "TODO(verify): the original's live counter is unread" (above `FRONTEND_FRAMES_BEFORE_STATE2`).
 
 ### §H.4 Code the counter cannot see (non-Ghidra), still unported
 
 These are not in `symbols.h`, so they do not move the percentage. Each is named
 in a `port/src` comment: `0x37774` (character 2's reaction-0x33 callback),
 `0x20FE0`, `0x21EA4`, `0x21DA4`, `0x2208C`, `0x3D4DC`, `0x3D8AC`, `0x3F450`,
-`0x45B43`, `0x45C10`, `0x47BFC`, `0x4F638` (a `0x4DBB4` caller), `0x1DC5C` and
-`0x2EE41` (a `0x2EB80` caller), plus the 75 raw voice calls in code the port
+`0x45B43`, `0x45C10`, `0x47BFC`, `0x1DC5C` and `0x2EE41` (a `0x2EB80`
+caller). A 14th is not named by address: `fight.h`'s `0x4DBB4` header says
+"its other caller is unported"; a raw rel32 scan names it `0x4F638` (in no
+Ghidra function). Also plus the 75 raw voice calls in code the port
 does not have (record k7-k12 §1.2). The sampler routines `0x1B934..0x1BB73`
 are host-owned by §G's evidence but have no classification row, because the
 file holds only Ghidra (`FN_`) addresses. This list is what the comments name;
 it is not a complete scan of non-Ghidra code.
 
 ### §H.5 Final gate
+
+Ten named gaps remain (§H.3); §H.1a gives every `not modelled` hit a verdict.
 
 `make clean && make build && make verify` (with the `/tmp/pr_t7_*` dump
 overrides; the two oracle fixtures restored byte-identical after `make clean`,
@@ -650,7 +706,7 @@ One reported minor is not a defect: `main.c`'s `mixer.h` include is used
 **Not done** (each would change code, add or move assertions, or needs new
 evidence):
 - `fight_health_sync` case 18 (§H.3 #7): behaviour; needs its own cycle.
-- `movie.c:114` returns without the exit blank when `smk_decode_frame` fails
+- `movie.c:114` (now §H.3 #10) returns without the exit blank when `smk_decode_frame` fails
   (the raw's exits all reach `0x1C873`): behaviour.
 - `gfx_fill_screen` has no aperture guard: code.
 - `FSET_BDAD4` and `FIGHTER_BDAD4` in `fighter.c` are the same value under two
