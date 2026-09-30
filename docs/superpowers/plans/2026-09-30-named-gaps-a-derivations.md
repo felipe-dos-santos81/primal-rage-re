@@ -261,3 +261,127 @@ As the plan. `Ran 6 tests … OK`. Mutation (`+ os.sep` dropped from the guard):
 As the plan. `Ran 7 tests … OK`. Mutation (`missing = []`): `FAIL:
 test_missing_settled_screen_fails`; restored: `OK`.
 
+### §A.3.6 Make targets (Task 8)
+
+`make k11-capture` (passes `--exe $(TITLE_PIN_DIR)/PRAGE.EXE`, so a tagged
+`TITLE_PIN_DIR` override reaches the capture), `make k11-oracle` (in `make
+verify`, before the unit tests) and `make k11-report`. Without a capture:
+`k11-oracle: no capture at data/k11-captures/walk, frames not compared`,
+`k11_compare: no capture at data/k11-captures/walk (skipped)`, exit 0; four
+`k11-report: no capture at …` lines, exit 0. Gate t8: `verify-exit=0`,
+`ORACLES-EQUAL`, `DUMPS-IDENTICAL`, `WAV-IDENTICAL`, the two skip lines and
+`Ran 26 tests` (7 + 6 + 6 + 7).
+
+## §A.4 The walk capture (Task 9)
+
+**Two AUTOTYPE runs failed; the capture uses `--input inject` (§A.9).** With
+the plan's `AUTOTYPE` line, run 1 received 11 of 38 keys (the last `K` at
+`ms=35623`, the STATISTICS Enter; no `K`, no `kb` change afterwards, and the
+idle timeout then fired: `ms=55736` `mode=0003`, `tick 0xCA3 − ktime 0x7F0 =
+0x4B3`) and run 2 received 1 of 38 (`K ms=25043 … key=1C0D` only). Probes on
+the MAIN MENU received 23/23 (`probekeys`) and 15/15 (`probestats`, which
+entered STATISTICS), so the loss is in the host's typer, not a game state.
+These runs are kept out of `data/` (`/tmp/named-gaps-a/caps/`).
+
+`data/k11-captures/walk` (`make k11-capture scenario=walk`, input inject):
+
+- `session.txt`: `exe=/tmp/pr_na_pin/PRAGE.EXE
+  sha256=8120f1bd1df389ed94cb329c030f95d9e38caad193bbd9840717af557161a68d`
+  (the pinned copy), `cmos=zero pokes=[] input=inject enter_wait=25 pace=1`,
+  `time_limit=75 wall_s=75.5 rc=0`, `avis=['prage_000.avi', 'prage_001.avi']
+  fps=70.0866 dro=['prage_000.dro', 'prage_001.dro']`.
+- `window.txt`: `raw_window=1373..4345`, `twi5_last=962 twg_last=1322`; 171
+  distinct frames.
+- `poll.log:1`: `B ms=811 base=00266000` (the data object's runtime base, as
+  earlier records measured). Runtime pointers are base-relative: `ent`
+  `0x2A2BEC` is the port's `0xBCBEC` (`0x2A2BEC − 0x266000 + 0x80000`).
+- `poll.log:1402..1404`: `I ms=25000 key=1C0D down=00010090 tab=FF ring=1`,
+  `K ms=25003 tick=00000571 f=0143 key=1C0D`, `P ms=25012 f=0144 st=0000
+  mode=0027 …` — the Enter, and mode `0x27` on the next poll at `f = 0x144`
+  (the port script's `enter_frame 324`) in attract state 0.
+- 38 `K` lines; the key sequence is exactly WALK (Enter/Down/Esc in order:
+  `E E D D X D E E X D E X X X X X D E X D E X D E X D E X D E X D E X D E X
+  X`). No `LEFT 0x27` line (mode stays `0x27` to the end). `E ms=75255
+  reason=time-limit rc=0`.
+- The DROs (`prage_000.dro` 532 bytes, `prage_001.dro` 910 bytes) are kept as
+  the OPL artefact and not compared: the walk enters SOUND TEST and MUSIC TEST
+  and leaves each with Esc, without playing anything.
+- **Input path (§A.1.5).** A Down tap holds the key bitmap: `poll.log:1533`
+  `kb=0040` from tick `0x5E8`, `poll.log:1538` `kb=0000 pad=00004000` at tick
+  `0x5EC` (the pad level follows). The port script holds 11 `pad … 0040 …`
+  lines (the 11 Downs). **Correction to the plan:** `DS_0010741C` (`ent`) is
+  the current menu record, not the cursor row: it steps only when a menu
+  changes (MAIN `0x2A2BEC` → START `0x2A2CDC` at `poll.log:1469`), so "each
+  Down advances `ent` by `0x10`" does not hold; the Downs are proved by the
+  `kb` runs and by the highlighted row moving in the frames below.
+
+Screens (`walk frame <i> (raw <r>)`): 90 (1746) the title logo sweep before
+the Enter; 92 (1753) MAIN MENU; 94..98 (1821..1961) START MENU and its cursor
+rows; 100/101 (2035/2100) MAIN MENU, "GAME OPTIONS" highlighted; 105 (2173)
+OPTIONS MENU; 107 (2241) CONFIG OPTIONS (titled "GAME OPTIONS"); 113 (2455)
+STATISTICS page 1; 116 (2525) page 2 ("MORE STATISTICS"); 118/120/122
+(2593/2660/2734) the three histograms; 127 (2941) SOUND TEST; 132 (3155) MUSIC
+TEST; 139 (3364) MODIFY CONTROLS; 145 (3572) CONFIGURE KEYBOARD; 150..152
+(3784..3787) TEST CONTROLS (no DIAGS rows); 157..160 (3993..4003) ADJUST
+VOLUME, with `- LOADING -` at 158 (3996); 165/166 (4203/4207) 2 PLAYER
+HANDICAP; 168 (4278) OPTIONS MENU; 170 (4345) the final MAIN MENU.
+
+## §A.5 The walk oracle (Task 10)
+
+First run (`/tmp/named-gaps-a/k11w`, the generated script: `enter_frame 324`,
+`enter_state 0000`, 37 `key` lines, 11 `pad` lines): the driver passed (`all
+checks passed`); the compare reported `window empty (start 90, end None)`,
+`settled screens exhibited 28/38; missing [10, 19, 34, 39, 44, 55, 61, 69,
+75, 77]` and three unexplained capture frames 138, 151, 158. Triage:
+
+1. **The ten missing screens — a tool defect, fixed.** Each is byte-identical
+   to a capture frame (`port 10 == capture 92`, `19 == 105`, `34 == 110`, `39
+   == 125`, `44 == 130`, `55 == 143`, `61 == 148`, `69 == 155`, `75 == 163`,
+   `77 == 92`), but also identical to an earlier port frame (the MAIN MENU and
+   the OPTIONS MENU are redrawn), and `explain()` names only the first
+   identical port frame. `k11_compare.canonical` credits identical port frames
+   together, for the coverage claim and the window end. Test
+   `test_repeated_screen_is_credited` (red before the fix: `FAIL:
+   test_repeated_screen_is_credited`; green after).
+2. **Capture 158 (raw 3996), rows 192..197, x 0..85 — a driver gap, fixed.**
+   It is ADJUST VOLUME with the loader's `- LOADING -` text at (0, 192)
+   (`res_load_present`, text 0x1E9 at `0x1B3EA`). The port draws it too, but
+   between two pumps; the K11 driver now dumps it through
+   `res_set_screen_hook`, as the front-end driver does. Mutation (the hook not
+   set): `k11_compare: walk: FIRST UNEXPLAINED capture 158 (raw 3996): nearest
+   port 64, differs in rows 192..197, x 0..85 (166 px)`.
+3. **Captures 138 (raw 3363) and 151 (raw 3786) — allowed by name (C4).**
+   Pixel analysis: capture 138 equals port 47 or 48 at 63060 of 64000 pixels
+   and is black (`000000`) at the other 940 (rows 91..158), where port 48 has
+   MODIFY CONTROLS' new glyphs; capture 151 equals port 58 or 59 at 63912 and
+   is black at 88 (rows 120..152), exactly TEST CONTROLS' red markers of port
+   59. Both are a glyph screen presented mid-draw with its new glyphs' palette
+   not yet in the presented DAC; the port presents at the loop's wait points
+   only (`0x2EA74`), so no port frame holds that state. The shape is the
+   front-end oracle's allowed frame 833 (the presented DAC state,
+   fidelity-gaps §7.11); it is not a service-menu drawing defect.
+   `K11_ALLOWED_UNEXPLAINED['walk'] = {138, 151}` with these reasons; test
+   `test_allowed_name_admits_only_its_index` (mutation `bad` ignoring the index:
+   `FAIL: test_allowed_name_admits_only_its_index`).
+
+No C1 (run clock) or C2 (input) divergence appeared: STATISTICS page 1's
+cells match (the pinned copy's play-time fields are 0 at the Enter), and the
+screens follow the capture key for key.
+
+**The oracle can fail** (Step 5): frame 2 of the dump (the first settled
+screen) with one byte flipped gives `settled screens exhibited 37/38; missing
+[2]` and exit 1; the rerun restores exit 0.
+
+**Baseline lines** (`make verify`, gate t10, 2026-09-30):
+
+```
+k11_compare: walk: window distinct [90..170] (raw 1746..4345)
+k11_compare: walk: 81 frames in window: 47 clean, 2 splice, 0 transition, 2 unexplained, 30 all-black
+k11_compare: walk: settled screens exhibited 38/38; missing []
+k11_compare: walk: allowed by name: [138, 151]
+k11_compare: walk: 0 unexplained in the window
+```
+
+Gate t10: `verify-exit=0`, `ORACLES-EQUAL`, `DUMPS-IDENTICAL`,
+`WAV-IDENTICAL`.
+
