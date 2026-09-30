@@ -422,7 +422,9 @@ readers of `0x500BB` are `0x1CC28`, the resource LRU stamps
 no-op), the config/menu key timers `0x2EB52..0x2EEF6`/`0x2FFDA` (they use
 differences, inside their own loops) and `0x31F9F..0x320DB` (unported K11).
 None is on an oracle path. The ISR's `DS_00104B22` gate stays unmodelled, as
-todo-verify §1 records.
+todo-verify §1 records. **Corrected in §2.6 (raw wins):** the key timers are
+not all "inside their own loops"; `0x2EB80` (`0x2EB8F`) is called from the
+master loop's menu `0x2FFC4` (`0x303D9`) every frame.
 
 **§0.7.3 `0x1CC28`'s choice, ported into `snd_sample_queue`** (raw
 `0x1CC28..0x1CD99`, re-read here; it confirms §K7.2 and adds the forced arm's
@@ -1046,6 +1048,27 @@ correction.
   the port's form of the DIG service's end at `0x6F28F`. Named gap
   (§0.7.6): with no device the mixer is not rendered, so a started sample stays
   4 in `--check` and in the suite.
+- **Named gap, newly reachable (§2.6):** the idle timeout of `0x2EB80`. Its
+  difference `0x500BB - DS_00105F2C` (`0x2EB8F..0x2EB9F`) now grows with the
+  master loop's spin, and `menu_step` (`0x2FFC4`) calls it every frame at
+  `0x303D9`: in the service menu (mode `0x27`, `flow.c`'s `0x251DF`) and the
+  START MENU (`svc_start_menu`, `0x2CB74`). After `0x4B0` idle ticks (about
+  20 s at 60.05 Hz), the raw stores `DS_00107414 = 0` (`0x2EBA8`) and
+  longjmps (`0x2EBAE..0x2EBB3`, `jmp 0x65431` with EAX = `0x1044F4`,
+  EDX = 1). The port keeps only the store (`config.c`, "PORT: the longjmp
+  quit path is not modelled"). `DS_00107414` is `menu_step`'s active byte, so
+  the next step re-initialises the menu: it re-stamps `DS_00105F2C`, redraws,
+  and resets the selection to 0. This repeats every `0x4B0` idle ticks.
+  Before this task `DS_00101500` advanced only inside
+  `config_screen_wait`'s loop (and 2 ticks per `menu_step` init), so the
+  master-loop arm was unreachable. No oracle driver enters mode `0x27`, and
+  the dumps are unchanged. The longjmp is out of scope by ruling;
+  `check_idle_timeout_clock` pins the store over the ISR clock.
+- **Heap headroom (pre-existing):** `movie_play` loads each movie through
+  `res_load_file` on every play, and the bump allocator never frees, so the
+  heap creeps toward the localisation scratch at `0x3800000` (`flow.c`'s
+  `STRING_HANDLE`). The headroom is about `0xC40000` (12 MB, from about
+  `0x2BC0000`). This task's `0x1AC00` shift takes about 0.1 MB of it.
 - **Classification:** the row `1D0BC host-owned record-§50-D` is removed from
   `tools/port_classification.txt` (user decision §0.9.1, approved).
 - **Comments beyond the brief** (wording only, no code): `flow.c`'s
@@ -1069,55 +1092,89 @@ or is a seeded value that the mutated code would overwrite.
 | slot 0 set at entry | `A2CB0` = 0, `C0` = `C4` = 0, `C8` = 1, slot 0 = `0x0BAD`, slot 1 = 0 | AL = 1; `C8` = 0 (`0x1D195`); slot 1 = 0 |
 | ISR pair | `1508` = `0x10`, `1500` = `0x2000`, `game_isr_ticks(3)` | `0x13`, `0x2003` |
 
+Review 1 added four vectors and two peeks. `res_block_alloc(0)` returns the
+bump allocator's next block: it aligns the heap and does not advance it.
+
+| vector | seeds | asserted |
+|---|---|---|
+| first run (added) | as above; peek before | slot 0 = the peek; the next peek − slot 3 = `0x6000` (slot 3's size) |
+| C4 half (`0x1D0CC`) | `A2CB0` = 0, `C0` = `0x1234`, `C4` = 0, `D0` = 0, `C8` = 1, slots = 0 | AL = 1; `D0` = 0; slot 3 != 0. Slot 4's `+0x10` is `DS_001028D0`, so this also pins the loop bound `i < 4` (`0x1D171`) |
+| D0 half (`0x1D0E6`) | `A2CB0` = 0, `C0` = `0x1234`, `C4` = `0x5678`, `D0` = `0xD0D0D0D0`, `C8` = 0 | AL = 1; `D0` unchanged |
+| stop at a set slot (`0x1D176..0x1D17D`) | `A2CB0` = 0, `C0` = `C4` = 0, `C8` = 1, slots 0/1/3 = 0, slot 2 = `0x0BAD` | AL = 1; slot 1 != 0; slot 2 = `0x0BAD`; slot 3 = 0; `C8` = 1 |
+| MIDI arm (added) | as above; the peeked block filled with `0xA5` | `D0` = the peek; all `0x5100` bytes 0 (`0x61A70`); the next peek − `D0` = `0x5100` |
+
+`check_idle_timeout_clock()` (`test_game.c`, in `test_flow` after
+`check_sound_buffers`) seeds no latched key, `DS_00101500` = `DS_00105F2C` =
+`0x7000` and `DS_00107414` = `0x5A`. After `game_isr_ticks(0x4B0)`,
+`config_key_latched()` returns 0 and the byte stays `0x5A`. After one more
+tick it returns 0 and the byte is 0. It restores all five globals.
+
+`test_title_window` runs in the `PR_TITLE_DUMP` and `PR_ATTRACT_DUMP` drivers,
+both in `make verify`. At entry it asserts that `game_init`'s `0x1C0B1` call
+ran: `DSB(DS_000A2CB0)` = 1 and slot 0 != 0. The image that `game_init` maps
+holds 0 at both, and nothing else writes them. Over its 96 `game_loop`
+iterations it counts those that left `DS_00101500` unchanged (expected 0) and
+sums the clock's advance (expected >= 96). `DS_00101508` is not compared,
+because `0x52106` (`gfx_screen_reset`) stores it, and not `DS_00101500`,
+inside the window. A first draft that compared the two deltas measured 1
+split iteration.
+
 `test_platform.c`'s res stall seeds `DS_00101500` = `0x9ABC` and asserts it
 advances by the same `ceil(res_size(0) / 132674)` as `DS_00101508`.
 `test_audio.c`'s `test_ail` asserts status 2 after the mixer finishes a
 count-1 sample and status 4 while a count-0 sample loops.
 
-Assertion sites: 13254 → **13276** (+22: 19 in `check_sound_buffers`, 1 in
-`test_platform.c`, 2 in `test_audio.c`; `rg -o '\bCHECK(_EQ_INT)?\(' port/tests
--g '!test.h' | wc -l`).
+Assertion sites: 13254 → 13276 (+22: 19 in `check_sound_buffers`, 1 in
+`test_platform.c`, 2 in `test_audio.c`), then **13299** after review 1 (+23:
+15 in `check_sound_buffers`, 4 in `check_idle_timeout_clock`, 4 in
+`test_title_window`). The count comes from `rg -o '\bCHECK(_EQ_INT)?\('
+port/tests -g '!test.h' | wc -l`.
 
 Before the implementation the build fails: `sound_buffers_alloc` and
 `game_isr_ticks` are undeclared (5 errors).
 
 ### §2.3 Mutations (measured; FAIL lines exclude the closing `FAILURES: N`)
 
+Re-measured on the review-1 tree. The line numbers are that tree's.
+
 | | mutation | FAIL lines | failing checks |
 |---|---|---|---|
-| a | slot 0's `0x8C00` → `0x6000` | 1 | `test_game.c:1102` (the `0x8C00` spacing, 24576 != 35840) |
-| b | drop `if (i == 0u) DSD(DS_001028C8) = 0;` | 1 | `test_game.c:1129` (slot 0 set at entry, 1 != 0) |
-| c | drop `DSD(DS_00101500) += n;` | 2 | `test_platform.c:272` (the `0x9ABC` stall pin, 39612 != 39614), `test_game.c:1137` (8192 != 8195) |
+| a | slot 0's `0x8C00` → `0x6000` | 1 | `test_game.c:1105` (the `0x8C00` spacing, 24576 != 35840) |
+| b | drop `if (i == 0u) DSD(DS_001028C8) = 0;` | 1 | `test_game.c:1180` (slot 0 set at entry, 1 != 0) |
+| c | drop `DSD(DS_00101500) += n;` | 3 | `test_platform.c:272` (the `0x9ABC` stall pin), `test_game.c:1188` (`0x2003`), `test_game.c:1219` (the idle timeout) |
 | d | drop the `mixer_sample_active` test in `AIL_sample_status` | 1 | `test_audio.c:1502` (4 != 2) |
-| e | drop `DSB(DS_000A2CB0) = 1u` | 1 | `test_game.c:1098` |
-| f | skip the slot-0 entry gate (`0x1D147`) | 2 | `test_game.c:1129`, `:1130` |
+| e | drop `DSB(DS_000A2CB0) = 1u` | 1 | `test_game.c:1101` |
+| f | skip the slot-0 entry gate (`0x1D147`) | 2 | `test_game.c:1180`, `:1181` |
 | g | `AIL_sample_status` reports 2 for every state-4 handle | 57 | `test_audio.c:1507` (count 0 still loops) plus 56 existing sound checks |
-| h | drop the `DS_001028D0` store (`0x1D0F7`) | 1 | `test_game.c:1116` |
-| i | drop the once-gate (`0x1D0BF`) | 3 | `test_game.c:1087`, `:1088`, `:1099` |
+| h | drop the `DS_001028D0` store (`0x1D0F7`) | 2 | `test_game.c:1160`, `:1163` |
+| i | drop the once-gate (`0x1D0BF`) | 4 | `test_game.c:1089`, `:1090`, `:1102`, `:1108` |
+| j | drop the `DS_001028C4` test (`0x1D0CC`) | 1 | `test_game.c:1121` (`D0` = 0) |
+| k | drop the `DS_001028D0 == 0` test (`0x1D0E6`) | 1 | `test_game.c:1132` (`D0` unchanged) |
+| l | loop condition `i < 4u` only (no stop at a set slot) | 2 | `test_game.c:1144`, `:1145` (slots 2 and 3) |
+| m | drop the MIDI `memset` (`0x61A70`) | 1 | `test_game.c:1167` (20736 non-zero bytes) |
+| n | loop bound `i < 5u` | 1 | `test_game.c:1121` (the loop allocates into `DS_001028D0`) |
+| o | the spin back to `DSD(DS_00101508)++` (`PR_TITLE_DUMP` run) | 2 | `test_game.c:6964` (95 iterations with a still clock), `:6965` |
+| p | delete `game_init`'s `0x1C0B1` call (`PR_TITLE_DUMP` run) | 2 | `test_game.c:6922`, `:6923` |
+| q | drop `config.c`'s idle store (`0x2EBA8`) | 13 | `test_game.c:1219` (the new clock pin), plus 12 existing (`test_game.c:7197`, `:7201`; `test_platform.c:3032..3058`) |
 
 Every mutation was applied alone, rebuilt, run under `PR_ORACLE_REQUIRED=1`
-and restored (`$K/t2mut.py`, outputs `$K/t2-mut-*.txt`).
+(o and p also with `PR_TITLE_DUMP`) and restored (`$K/t2mut.py`, outputs
+`$K/t2-mut-*.txt`). Before review 1, j..m and n survived with 0 FAIL lines.
 
 ### §2.4 Not tested
 
-These arms have no assertion. Mutations j..m were measured and **survive** (0 FAIL lines):
-- (j) the `DS_001028C4` half of the MIDI gate (`0x1D0CC`). No vector has C4
-  clear with C0 set.
-- (k) the `DS_001028D0 == 0` half of the MIDI gate (`0x1D0E6`). No vector has
-  C4 and C0 set with D0 already set.
-- (l) the loop's stop at an already-allocated slot `i` >= 1
-  (`0x1D176..0x1D17D`). No vector presets slot 1..3 with slot 0 clear.
-- (m) the MIDI buffer's zeroing (`0x61A70`). The bump heap's fresh bytes are
-  already zero, and no vector seeds them.
+Review 1 closed j..m and n (the loop bound), the `0x1C0B1` call (p) and the
+spin (o). What is left:
 - The MIDI allocation-failure arm (`0x1D10E..0x1D12F`: C4/C0/CC zeroed) and the
   slot allocation-failure break (`0x1D16B`), slot 0's failure included. The
   bump allocator cannot be made to fail in-process without exhausting `mem[]`.
-- `game_init`'s call at `0x1C0B1`: `game_init` runs only in the env-gated
-  drivers and `--check`, and no assertion reads the slot buffers there. The
-  byte-identical dumps show that it moves no frame, not that it runs.
-- The spin's `game_isr_ticks(1u)` (`0x256C5`): no test reads `DS_00101500`
-  across a `game_loop` spin. Mutation c's failures come from the stall and the
-  direct call.
+- Slot 1's and slot 2's `0x6000` sizes are pinned only through the spacings;
+  slot 3's is pinned by the peek.
+- The idle timeout's re-initialisation, driven through `menu_step` over the
+  master-loop clock (§2.6): the store is pinned on `0x2EB80` directly, and
+  `test_platform.c`'s `check_menu_step` already pins the store and the
+  re-init with a seeded clock. No test runs `0x4B0` `game_loop` iterations
+  in a menu mode.
 - The ISR gate `DS_00104B22` is not modelled (todo-verify §1).
 
 ### §2.5 Gate
@@ -1135,3 +1192,36 @@ These arms have no assertion. Mutations j..m were measured and **survive** (0 FA
   (excludes 82): ported +1, portable denominator +1. `README.md`'s title stays
   at 64%, and its portable line now reads 730 of 731.
 - `grep -c '/\* 0x1D0BC' port/src/game/flow.c` = 1.
+- **Review 1** (tests and docs only, no `port/src` change): `make verify`
+  gives `EXIT=0` (`$K/verify-t2r1.txt`) with `ORACLES-EQUAL`.
+  `dumps.sh after-t2r1` matches `$K/base.sha256` (`DUMPS-IDENTICAL`), and
+  `after-t2r1.wav` is byte-identical to `before-t2.wav`. The counter is
+  unchanged.
+
+### §2.6 Correction to §0.7.2 (raw wins): the idle timeout is a master-loop reader
+
+§0.7.2 says the config/menu key timers `0x2EB52..0x2EEF6`/`0x2FFDA` "use
+differences, inside their own loops". The raw says otherwise (`$K/dx.py`,
+function extents from `prage.functions.csv`):
+- `0x2EB52` (`0x2EA78`), `0x2EE06` (`0x2EDE0`), `0x2EEF6` (`0x2EEC8`) and
+  `0x2FFDA` (`0x2FFC4`) take no difference. Each is `call 0x500BB; mov
+  [0x105F2C],eax`, a stamp of the last key or menu entry. `0x2EDE0` and
+  `0x2EEC8` stamp only when a key bit is set (`0x2EE02`/`0x2EEF2 test
+  edx,edx; je`).
+- `0x2EB8F` (`0x2EB80`) is the only difference: `sub eax,[0x105F2C]; cmp
+  eax,0x4B0; jbe 0x2EBB8` (`0x2EB94..0x2EB9F`). Over `0x4B0`, it does
+  `mov [0x107414],ah` (0) at `0x2EBA8` and then `mov eax,0x1044F4; jmp 0x65431`
+  (`0x2EBAE..0x2EBB3`, EDX = 1), a longjmp.
+- `0x2EB80` has no loop of its own. `0x2FFC4` calls it at `0x303D9` on every
+  step, and `0x2FFC4` runs once per master-loop frame from mode `0x27`
+  (`0x251DF`) and from `0x2CB74` (`svc_start_menu`). So the timeout depends
+  on the ISR clock across frames, which this task models (`game_isr_ticks` in
+  the spin).
+- Also: `0x31F9F..0x320DB` is no longer "unported K11". `svcmenu.c`
+  (`0x31F24`'s loop, MODIFY CONTROLS) reads it, inside its own loop over `config_screen_wait`,
+  which models the ISR itself.
+
+The consequence is the named gap in §2.1. The port stores `DS_00107414 = 0`
+without the longjmp, so a master-loop menu idle for `0x4B0` ticks
+re-initialises instead of leaving. By ruling, the longjmp stays out of scope
+in this task.
