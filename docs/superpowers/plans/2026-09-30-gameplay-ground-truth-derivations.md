@@ -849,3 +849,92 @@ empty. Assertion sites **13776** = 13761 + 15 (11 from Task 1 as the plan; 4
 from Task 2, the plan's 3 plus §G.10's first-frame check). Tool tests `Ran 67
 tests` (unchanged). `port_progress.py`: `771 1203 64`, `731 731 100`
 (unchanged: U2 ports no function).
+
+## §G.12 U2 closure (U2 Task 4)
+
+**Delivered.** The env-gated driver `test_gp_replay` (`port/tests/test_game.c`,
+`TEST_DRIVERS` `X(test_gp_replay, "PR_GP_DUMP")`, before `test_restart_drive`)
+and `make gp-replay scenario=<gp-…>` (in `make verify` on `gp-pads`). No
+`port/src` file, no K11 driver line and no tool changed (`git diff --stat
+302ecc8 -- port/src tools` → empty).
+
+**The driver's contract** (what U3 relies on):
+
+- Input: `PR_GP_SCRIPT`, a port script v2 (`gp_session.py port-script`). The
+  parser sizes its step array from the script's line count (`calloc`, no fixed
+  cap) and rejects a script that is unsorted, lacks `enter_frame`/`enter_state`,
+  does not end in `end`, or whose first step is not a `key` at `enter_frame`.
+- The frame rule: before the iteration that raises `DS_000EF6DC` from `f` to
+  `f + 1`, every step with frame `≤ f + 1` is applied in script order — `key`
+  through `input_push` (a chord's words together, §G.4), `bits` through
+  `k11_key_bits` (the override seam plus the bitmap bytes
+  `[DS_00101514]+0x2D8/+0x2D9`). The Enter is armed when `f + 1 ==
+  enter_frame`; nothing is applied before it.
+- Stop: after the iteration that raises the counter to `end`; the loop bound
+  `end + GP_LOOP_SLACK` iterations from boot, **`GP_LOOP_SLACK = 600` a harness
+  bound, not a game value** (every `game_loop_step()` raises the counter by one,
+  so a well-formed script ends at iteration `end`; the slack only bounds a port
+  that never arms or never reaches `end`); `GP_STALL_PUMPS = 200000` host pumps
+  in one iteration exit 1 (the K11 driver's guard); a CPU fault ends the run
+  through `host_set_fault_hook` and fails `CHECK(!gp_failed …)`.
+- Output in `PR_GP_DUMP`: `gp.log` (`key N f=… scan=… ascii=… mode=…`, `bits
+  f=… kb=…`, `left-queued after f=…` for a key the port left in the queue,
+  `missed …`, `fault …`); `frame_%05u.ipx` (64 000 indices then the 768-byte
+  DAC; RGB = `dac[idx]`, byte-identical to `fe_write_frame`, §G.10) for every
+  new displayed image from the Enter's iteration on, dumped at each host pump,
+  loader screen and iteration end; `frames.txt` (`%05u f=%04X tick=%08X
+  mode=%04X`); `trace.txt`, one `T` line per armed iteration with the
+  `SNAP_FIELDS` names and widths, read after `game_loop_step()` returns.
+- Checks (15 sites): the parse; the log and dump files open; armed; mode 3
+  before and `0x27` after the Enter's iteration, the counter at `enter_frame`
+  and `DS_000F0A64 = enter_state` after it (sentinels `0xFFFF`/`0xFFFFF`); keys
+  queued = keys in the script; no missed step; end reached; no fault; more than
+  one frame; the first frame at `enter_frame`; one `T` line per armed iteration.
+
+**The smoke's mode runs** (§G.10): `300 × 0x27, 1 × 0x2D, 18 × 0x1A, 18 × 0x1B,
+264 × 0x10` over `f = 0x12C..0x384` — the port's first view of spec §3.5's
+path (MAIN MENU, START MENU, LEFT PLAYER ARCADE, the wipe, character select).
+**gp-pads** (§G.10): 721 iterations `0x141..0x411`, all mode `0x27`, no
+`left-queued`; every `SNAP_FIELDS` field equal to the capture's `S` records at
+every `f` except `tick` (host-timed), `t508` (sampling point) and `ent`
+(address space), §H items 1–2.
+
+**Not tested.** A step missed behind a blocking loop (a script cannot express
+one: the generator rejects a key consumed while `f` is frozen, §4.1/Q5, and
+the parser rejects unsorted steps; `gp_missed` is shown failing only under the
+driver mutations of §G.9); a fault during replay (no scripted path faults); a
+script beyond `0xFFFF` frames (the counter is a word; the idle run ends near
+`0x22BA`); a present in an iteration whose spin never pumps (the smoke's and
+gp-pads' iterations all pump, §G.10, so the after-iteration dump is exercised
+only as the first-frame path); `left-queued` (neither script leaves a key).
+
+**Gate:** §G.11 Step 3 (the closure commit changes only `docs/`, this record and `AGENTS.md`'s driver list; `make verify` re-run on it, same results, U2 report).
+
+## §H U2 corrections and notes (raw/measured wins over the plan)
+
+1. **The trace's sampling point differs from the capture's by the releasing
+   tick (for U3).** The capture's `S` is read in the spin (`[t50c] − 1 ==
+   [t508]`, `0x256C6..0x256CC`); the port's `T` after `game_loop_step()`
+   returns, which is after the port's spin loop (`flow.c` `while (DS_0010150C −
+   1 == DS_00101508) { game_isr_ticks(1); host_wait_vblank(); }`) ran its tick.
+   So the port's `t508` equals its `t50c` where the capture's is `t50c − 1` (721
+   of 721 gp-pads frames), and its `tick` is one ISR tick past a spin read.
+   Neither is in `TRACE_FIELDS`; `tick` is host-timed anyway. Kept as the
+   plan's sampling point (no port change in U2); a comparison of `t508` must
+   subtract that tick.
+2. **`ent` is a pointer, compared across address spaces (for U3).** The
+   capture's `ent` is DOSBox's linear address (data object base `0x266000`,
+   the `B` record), the port's the Ghidra linear address:
+   `0x2A2BEC − 0x266000 + 0x80000 = 0xBCBEC` at every gp-pads frame. Not in
+   `TRACE_FIELDS`; a comparison must rebase it.
+3. **The plan's frame check could not fail under its own mutation (a)**
+   (§G.10): the loader-screen hook alone wrote two frames. Added
+   `CHECK_EQ_INT(gp_first_f, gp_enter_frame)`; (a) now fails `602 != 300`.
+4. **`gp_missed` can fail** (§G.9): under the keys-one-late mutation (`3 !=
+   0`); the plan listed it as untestable. Only a well-formed script on the
+   unmutated driver cannot trip it.
+5. **`make verify` replays gp-pads** (§G.11), and `gp-replay` fails on an absent
+   capture under `PR_ORACLE_REQUIRED` — both beyond the plan, per the
+   controller's instruction.
+6. The plan's baseline grep (`… k11_compare`) was replaced by §G.0's
+   (`… == demo-fight`, K11 lines apart), as U1 did.
